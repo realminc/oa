@@ -1,0 +1,27 @@
+# OaFn schema — Vision/FnVideo preprocessing ops (1).
+#
+# CV-CUDA-style fused decode → resize → normalize op. Body is handwritten in
+# Source/Private/Oa/Vision/FnVideo/Preprocess/FnVideoPreprocess.cpp; kernel_forward points
+# to the existing fused shader for traceability (the current handwritten
+# implementation composes decode + Resize + Normalize at native res — the
+# fused kernel is the future perf win).
+
+category    = "Preprocess"
+namespace   = "OaFnVideo"
+file_prefix = "FnVideo"
+cpp_subdir  = "FnVideo"
+
+# --- DecodeResizeNormalize ----------------------------------------------------
+[[ops]]
+name           = "DecodeResizeNormalize"
+category       = "Preprocess"
+kind           = "unary"
+kernel_forward = "Nv12ResizeNormalizeToBf16"
+slang_path     = "Vision/Conversion"
+log_component  = "VISION"
+notes          = "Fused decode + resize + normalize: NV12 → BF16 tensor for ML inference."
+body           = "manual_context"
+extra_params   = [
+    { name = "Width",  type = "OaU32", default = "224U" },
+    { name = "Height", type = "OaU32", default = "224U" },
+]

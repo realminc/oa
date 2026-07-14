@@ -1,0 +1,5 @@
+# Ignore all files in Scratch/ directory (for temporary test files)
+Scratch/*
+
+# But keep the directory itself
+!Scratch/.gitkeep

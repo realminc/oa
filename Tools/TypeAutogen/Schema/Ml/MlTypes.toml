@@ -1,0 +1,73 @@
+# OA ML Types Schema
+# Machine learning types for the OA ML module
+
+domain = "Ml"
+namespace = "Oa"
+
+[[enums]]
+name = "OaActivation"
+underlying_type = "OaU8"
+generate_tostring = true
+generate_fromstring = true
+values = [
+	{ name = "None", value = 0, comment = "No activation" },
+	{ name = "Relu", value = 1, comment = "ReLU" },
+	{ name = "Gelu", value = 2, comment = "GELU" },
+	{ name = "Sigmoid", value = 3, comment = "Sigmoid" },
+	{ name = "Tanh", value = 4, comment = "Tanh" },
+	{ name = "Silu", value = 5, comment = "SiLU (Swish)" },
+	{ name = "Mish", value = 6, comment = "Mish" },
+	{ name = "LeakyRelu", value = 7, comment = "Leaky ReLU" },
+	{ name = "Elu", value = 8, comment = "ELU" },
+	{ name = "Selu", value = 9, comment = "SELU" },
+]
+
+[[enums]]
+name = "OaUpsampleMode"
+underlying_type = "OaU8"
+generate_tostring = true
+generate_fromstring = true
+values = [
+	{ name = "Nearest", value = 0, comment = "Nearest neighbor" },
+	{ name = "Bilinear", value = 1, comment = "Bilinear interpolation" },
+]
+
+[[enums]]
+name = "OaPrecisionTag"
+underlying_type = "OaU8"
+generate_tostring = true
+generate_fromstring = true
+values = [
+	{ name = "None", value = 0, comment = "No precision tag" },
+	{ name = "FP32", value = 1, comment = "FP32 precision" },
+	{ name = "FP16", value = 2, comment = "FP16 precision" },
+	{ name = "BF16", value = 3, comment = "BF16 precision" },
+	{ name = "INT8", value = 4, comment = "INT8 precision" },
+]
+
+[[enums]]
+name = "OamCompression"
+underlying_type = "OaU8"
+generate_tostring = true
+generate_fromstring = true
+values = [
+	{ name = "None", value = 0, comment = "No compression" },
+	{ name = "Zlib", value = 1, comment = "Zlib compression" },
+	{ name = "LZ4", value = 2, comment = "LZ4 compression" },
+	{ name = "Zstd", value = 3, comment = "Zstandard compression" },
+]
+
+[[enums]]
+name = "OamSectionType"
+underlying_type = "OaU32"
+generate_tostring = true
+generate_fromstring = true
+values = [
+	{ name = "Unknown", value = 0, comment = "Unknown section" },
+	{ name = "Header", value = 1, comment = "File header" },
+	{ name = "Weights", value = 2, comment = "Model weights" },
+	{ name = "Optimizer", value = 3, comment = "Optimizer state" },
+	{ name = "Progress", value = 4, comment = "Training progress" },
+	{ name = "Spirv", value = 5, comment = "SPIR-V kernels" },
+	{ name = "Metadata", value = 6, comment = "Model metadata" },
+]

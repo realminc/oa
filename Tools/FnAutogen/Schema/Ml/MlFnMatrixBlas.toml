@@ -1,0 +1,28 @@
+# OaFn schema — Ml/FnMatrix BLAS ops (Linear layer operations).
+#
+# This is the *source of truth* for ML-specific BLAS operations.
+# The generator emits .h declarations, .cpp implementations from this file.
+# See Tools/OaFnAutogen/oafnautogen.py and Docs/Rewrite/Opus/OaFnAutogen.md.
+#
+# Note: MatMul is in Core (general-purpose BLAS operation)
+# Linear/LinearRelu are ML-specific neural network layers
+
+# --- Linear ------------------------------------------------------------------
+[[ops]]
+name           = "Linear"
+category       = "Blas"
+kind           = "binary"
+kernel_forward = "Linear"
+kernel_backward_data = "LinearDataBwd"
+kernel_backward_weight = "LinearWeightBwd"
+slang_path     = "Core/Blas/Gemm"
+log_component  = "ML"
+notes          = "Linear layer: Out = Input @ Weight^T. Router resolves at context execution."
+body           = "manual_context"
+extra_params   = [
+    { name = "Bias", type = "const OaMatrix&", default = "OaMatrix{}" }
+]
+[ops.autograd]
+grad_class = "OaGradLinear"
+inputs     = ["InA", "InB"]
+saved      = ["InA", "InB"]

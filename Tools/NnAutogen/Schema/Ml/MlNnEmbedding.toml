@@ -1,0 +1,31 @@
+# Oa NN schema - embedding layers.
+
+[[layers]]
+name = "Embedding"
+constructor_args = "OaI32 NumEmbeddings, OaI32 EmbeddingDim"
+constructor_init = "NumEmbeddings_(NumEmbeddings), EmbeddingDim_(EmbeddingDim)"
+constructor_body = [
+	"RegisterParameter(\"weight\", OaFnMatrix::RandN(OaMatrixShape{NumEmbeddings, EmbeddingDim}, OaFnMatrix::GetWeightDtype()));",
+]
+methods = [
+	"[[nodiscard]] OaI32 NumEmbeddings() const { return NumEmbeddings_; }",
+	"[[nodiscard]] OaI32 EmbeddingDim() const { return EmbeddingDim_; }",
+]
+members = [
+	"OaI32 NumEmbeddings_;",
+	"OaI32 EmbeddingDim_;",
+]
+forward_body = """
+	auto& weight = Params_[0].Data;
+	auto out = OaFnMatrix::Gather(weight, InInput);
+	if (OaFnAutograd::IsEnabled() and (weight.RequiresGrad())) {
+		auto gradFn = OaMakeSharedPtr<OaGradGather>();
+		gradFn->Saved_         = OaVec<OaMatrix>{InInput, weight};
+		gradFn->SetGraphInputs(  OaVec<OaMatrix>{weight, InInput});
+		gradFn->SequenceNr_    = OaFnAutograd::NextSeq();
+		gradFn->OutputShape_   = out.GetShape();
+		out.MutAutograd().GradFn = gradFn;
+	}
+	return out;
+"""
+notes = "Embedding lookup layer."

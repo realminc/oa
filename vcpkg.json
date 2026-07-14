@@ -1,0 +1,43 @@
+{
+	"$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+	"name": "oa",
+	"version": "0.2.0",
+	"description": "Empyrealm Foundation Library — Vulkan compute, ML, Crypto",
+	"homepage": "https://github.com/empyrealm/oa",
+	"license": "LicenseRef-Proprietary",
+	"dependencies": [
+		"gtest",
+		"yaml-cpp",
+		"cli11",
+		"fmt",
+		"vulkan-headers",
+		"highway",
+		"utf8proc",
+		"shader-slang",
+		{
+			"name": "sdl3",
+			"default-features": false,
+			"features": ["vulkan", "x11", "wayland"]
+		}
+	],
+	"features": {
+		"crypto": {
+			"description": "Post-quantum ML-DSA-65 signing via liboqs (OA_BUILD_CRYPTO)",
+			"dependencies": [
+				"liboqs"
+			]
+		},
+		"database": {
+			"description": "Embedded OHLCV SQL store for OaDatabase (DuckDB)",
+			"dependencies": [
+				"duckdb"
+			]
+		},
+		"python": {
+			"description": "Python bindings via nanobind (Source/Python — OA_BUILD_PYTHON)",
+			"dependencies": [
+				"nanobind"
+			]
+		}
+	}
+}

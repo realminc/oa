@@ -1,0 +1,84 @@
+# OA Core Types Schema
+# Foundational types for the OA library
+
+domain = "Core"
+namespace = "Oa"
+
+[[enums]]
+name = "OaDeterminismMode"
+underlying_type = "OaU8"
+generate_tostring = true
+generate_fromstring = true
+values = [
+	{ name = "Fast", value = 0, comment = "Vendor math, best throughput, non-deterministic reductions" },
+	{ name = "Stable", value = 1, comment = "Stable algorithms + FP32 accumulators, deterministic where possible" },
+	{ name = "Deterministic", value = 2, comment = "Fixed reduction order, deterministic seeds, no atomics with race-order dependence" },
+]
+
+[[enums]]
+name = "OaScalarType"
+underlying_type = "OaU8"
+generate_tostring = true
+generate_fromstring = true
+values = [
+	{ name = "Float32", value = 0, comment = "32-bit float" },
+	{ name = "BFloat16", value = 1, comment = "Brain float 16" },
+	{ name = "Float16", value = 2, comment = "Half precision" },
+	{ name = "Int8", value = 3, comment = "8-bit signed integer" },
+	{ name = "Int32", value = 4, comment = "32-bit signed integer" },
+	{ name = "UInt8", value = 5, comment = "8-bit unsigned integer" },
+	{ name = "Float64", value = 6, comment = "64-bit float (extended)" },
+	{ name = "Int16", value = 7, comment = "16-bit signed integer (extended)" },
+	{ name = "Int64", value = 8, comment = "64-bit signed integer (extended)" },
+	{ name = "UInt16", value = 9, comment = "16-bit unsigned integer (extended)" },
+	{ name = "UInt32", value = 10, comment = "32-bit unsigned integer (extended)" },
+	{ name = "UInt64", value = 11, comment = "64-bit unsigned integer (extended)" },
+	{ name = "Bool", value = 12, comment = "Boolean (extended)" },
+	{ name = "Complex64", value = 13, comment = "64-bit complex (extended)" },
+	{ name = "Complex128", value = 14, comment = "128-bit complex (extended)" },
+	# Quantized types (llama.cpp/GGML compatible)
+	{ name = "Q4_0", value = 15, comment = "4-bit quantization (32-element blocks)" },
+	{ name = "Q4_1", value = 16, comment = "4-bit quantization with min (32-element blocks)" },
+	{ name = "Q5_0", value = 17, comment = "5-bit quantization (32-element blocks)" },
+	{ name = "Q5_1", value = 18, comment = "5-bit quantization with min (32-element blocks)" },
+	{ name = "Q8_0", value = 19, comment = "8-bit quantization (32-element blocks)" },
+	{ name = "Q8_1", value = 20, comment = "8-bit quantization with sum (32-element blocks)" },
+	{ name = "Q2_K", value = 21, comment = "2-bit K-quant (256-element super-blocks)" },
+	{ name = "Q3_K", value = 22, comment = "3-bit K-quant (256-element super-blocks)" },
+	{ name = "Q4_K", value = 23, comment = "4-bit K-quant (256-element super-blocks)" },
+	{ name = "Q5_K", value = 24, comment = "5-bit K-quant (256-element super-blocks)" },
+	{ name = "Q6_K", value = 25, comment = "6-bit K-quant (256-element super-blocks)" },
+	{ name = "Q8_K", value = 26, comment = "8-bit K-quant (256-element super-blocks)" },
+]
+
+[[enums]]
+name = "OaPrecision"
+underlying_type = "OaU8"
+generate_tostring = true
+generate_fromstring = true
+values = [
+	{ name = "FP32", value = 0, comment = "Full precision" },
+	{ name = "TF32", value = 1, comment = "TensorFloat-32 (Ampere+)" },
+	{ name = "BF16", value = 2, comment = "BFloat16 (best for training)" },
+	{ name = "FP16", value = 3, comment = "Float16 (may need loss scaling)" },
+	{ name = "INT8", value = 4, comment = "Quantized inference" },
+]
+
+[[enums]]
+name = "OaFilter"
+underlying_type = "OaU8"
+generate_tostring = true
+generate_fromstring = true
+values = [
+	{ name = "Nearest", value = 0, comment = "Nearest neighbor filtering" },
+	{ name = "Linear", value = 1, comment = "Linear interpolation" },
+]
+
+[[structs]]
+name = "OaPrecisionConfig"
+generate_serialize = true
+generate_validate = true
+fields = [
+	{ name = "Mode", type = "OaPrecision", default = "OaPrecision::FP32", comment = "Computation precision" },
+	{ name = "Determinism", type = "OaDeterminismMode", default = "OaDeterminismMode::Stable", comment = "Determinism mode" },
+]

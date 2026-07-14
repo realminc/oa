@@ -1,0 +1,289 @@
+# OaFn schema — Ml/FnMatrix activation ops (12).
+#
+# This is the *source of truth* for ML activation functions. The generator emits:
+#   - .h declarations, .cpp implementations, .slang shaders (forward ops)
+#   - Autograd/Matrix/AutogradActivation.gen.h (gradient node classes)
+# See Tools/FnAutogen/oafnautogen.py and Docs/Rewrite/Opus/OaFnAutogen.md.
+#
+# All activations follow the unary pattern (except LeakyRelu/Elu which are
+# unary_scalar). Each has a forward kernel and a backward kernel for autograd.
+
+# --- Gelu --------------------------------------------------------------------
+[[ops]]
+name           = "Gelu"
+category       = "Activation"
+kind           = "unary"
+kernel_forward = "Gelu"
+kernel_backward = "GeluBwd"
+slang_path     = "Ml/Nn/Activation"
+log_component  = "ML"
+notes          = "GELU activation: Out = GELU(A)."
+# Keep the tanh approximation identical to Activations::Gelu and GeluBwd.
+forward_op     = "0.5f * a * (1.0f + tanh(0.7978845608f * (a + 0.044715f * a * a * a)))"
+[ops.autograd]
+grad_class = "OaGradGelu"
+inputs     = ["InA"]
+# GeluBwd recomputes from the INPUT x (GeluGrad(x)); saving the output y would
+# compute Grad(y) ≠ Grad(x). Only sign-based (Relu/LeakyRelu) or output-defined
+# (Sigmoid/Tanh/Softplus/Elu) activations may save "out".
+saved      = ["InA"]
+formula    = "auto_bwd_kernel"
+[ops.test]
+cpu_reference = "0.5f * a_host[i] * (1.0f + std::tanh(0.7978845608f * (a_host[i] + 0.044715f * a_host[i] * a_host[i] * a_host[i])))"
+tolerance = "1e-3f"
+test_sizes = [256]
+
+
+
+# --- Silu --------------------------------------------------------------------
+[[ops]]
+name           = "Silu"
+category       = "Activation"
+kind           = "unary"
+kernel_forward = "Silu"
+kernel_backward = "SiluBwd"
+slang_path     = "Ml/Nn/Activation"
+log_component  = "ML"
+notes          = "SiLU (Swish) activation: Out = A * sigmoid(A)."
+forward_op     = "a / (1.0f + exp(-a))"
+[ops.autograd]
+grad_class = "OaGradSilu"
+inputs     = ["InA"]
+# SiluBwd recomputes from the INPUT x (SiluGrad(x)); saving the output is wrong.
+saved      = ["InA"]
+formula    = "auto_bwd_kernel"
+[ops.test]
+cpu_reference = "a_host[i] / (1.0f + std::exp(-a_host[i]))"
+tolerance = "1e-3f"
+test_sizes = [256]
+
+# --- Relu --------------------------------------------------------------------
+[[ops]]
+name           = "Relu"
+category       = "Activation"
+kind           = "unary"
+kernel_forward = "Relu"
+kernel_backward = "ReluBwd"
+slang_path     = "Ml/Nn/Activation"
+log_component  = "ML"
+notes          = "ReLU activation: Out = max(0, A)."
+forward_op     = "max(a, 0.0f)"
+[ops.autograd]
+grad_class = "OaGradRelu"
+inputs     = ["InA"]
+saved      = ["out"]
+formula    = "auto_bwd_kernel"
+[ops.test]
+cpu_reference = "std::max(a_host[i], 0.0f)"
+tolerance = "1e-4f"
+test_sizes = [256]
+
+# --- Tanh --------------------------------------------------------------------
+[[ops]]
+name           = "Tanh"
+category       = "Activation"
+kind           = "unary"
+kernel_forward = "Tanh"
+kernel_backward = "TanhBwd"
+slang_path     = "Ml/Nn/Activation"
+log_component  = "ML"
+notes          = "Tanh activation: Out = tanh(A)."
+forward_op     = "tanh(a)"
+[ops.autograd]
+grad_class = "OaGradTanh"
+inputs     = ["InA"]
+saved      = ["out"]
+formula    = "auto_bwd_kernel"
+[ops.test]
+cpu_reference = "std::tanh(a_host[i])"
+tolerance = "1e-3f"
+test_sizes = [256]
+
+# --- Sigmoid -----------------------------------------------------------------
+[[ops]]
+name           = "Sigmoid"
+category       = "Activation"
+kind           = "unary"
+kernel_forward = "Sigmoid"
+kernel_backward = "SigmoidBwd"
+slang_path     = "Ml/Nn/Activation"
+log_component  = "ML"
+notes          = "Sigmoid activation: Out = 1 / (1 + exp(-A))."
+forward_op     = "1.0f / (1.0f + exp(-a))"
+[ops.autograd]
+grad_class = "OaGradSigmoid"
+inputs     = ["InA"]
+saved      = ["out"]
+formula    = "auto_bwd_kernel"
+[ops.test]
+cpu_reference = "1.0f / (1.0f + std::exp(-a_host[i]))"
+tolerance = "1e-3f"
+test_sizes = [256]
+
+# --- LeakyRelu ---------------------------------------------------------------
+[[ops]]
+name           = "LeakyRelu"
+category       = "Activation"
+kind           = "unary_scalar"
+kernel_forward = "LeakyRelu"
+kernel_backward = "LeakyReluBwd"
+slang_path     = "Ml/Nn/Activation"
+log_component  = "ML"
+notes          = "Leaky ReLU activation: Out = max(Alpha * A, A)."
+forward_op     = "max(pc.Alpha * a, a)"
+scalar_param   = { name = "Alpha", type = "OaF32", push_field = "Alpha" }
+[ops.autograd]
+grad_class = "OaGradLeakyRelu"
+inputs     = ["InA"]
+saved      = ["out"]
+ctor_args  = ["InAlpha"]   # thread alpha into LeakyReluBwd (else negative-side grad collapses to default 0.01)
+formula    = "auto_bwd_kernel"
+[ops.test]
+cpu_reference = "std::max(kScalar * a_host[i], a_host[i])"
+tolerance = "1e-4f"
+scalar_value = "0.01f"
+test_sizes = [256]
+
+# --- Elu ---------------------------------------------------------------------
+[[ops]]
+name           = "Elu"
+category       = "Activation"
+kind           = "unary_scalar"
+kernel_forward = "Elu"
+kernel_backward = "EluBwd"
+slang_path     = "Ml/Nn/Activation"
+log_component  = "ML"
+notes          = "ELU activation: Out = A if A > 0 else Alpha * (exp(A) - 1)."
+forward_op     = "a > 0.0f ? a : pc.Alpha * (exp(a) - 1.0f)"
+scalar_param   = { name = "Alpha", type = "OaF32", push_field = "Alpha" }
+[ops.autograd]
+grad_class = "OaGradElu"
+inputs     = ["InA"]
+saved      = ["out"]
+ctor_args  = ["InAlpha"]   # thread alpha into EluBwd (else negative-side grad uses default 1.0)
+formula    = "auto_bwd_kernel"
+[ops.test]
+cpu_reference = "a_host[i] > 0.0f ? a_host[i] : kScalar * (std::exp(a_host[i]) - 1.0f)"
+tolerance = "1e-3f"
+scalar_value = "1.0f"
+test_sizes = [256]
+
+# --- Mish --------------------------------------------------------------------
+[[ops]]
+name           = "Mish"
+category       = "Activation"
+kind           = "unary"
+kernel_forward = "Mish"
+kernel_backward = "MishBwd"
+slang_path     = "Ml/Nn/Activation"
+log_component  = "ML"
+notes          = "Mish activation: Out = A * tanh(softplus(A))."
+forward_op     = "a * tanh(log(1.0f + exp(a)))"
+[ops.autograd]
+grad_class = "OaGradMish"
+inputs     = ["InA"]
+# MishBwd recomputes from the INPUT x (MishGrad(x)); saving the output is wrong.
+saved      = ["InA"]
+formula    = "auto_bwd_kernel"
+[ops.test]
+cpu_reference = "a_host[i] * std::tanh(std::log(1.0f + std::exp(a_host[i])))"
+tolerance = "1e-3f"
+test_sizes = [256]
+
+# --- SwiGLU ------------------------------------------------------------------
+[[ops]]
+name           = "Swiglu"
+category       = "Activation"
+kind           = "binary"
+kernel_forward = "Swiglu"
+kernel_backward = "SwigluBwd"
+slang_path     = "Ml/Nn/Swiglu"
+log_component  = "ML"
+notes          = "SwiGLU activation: Out = SiLU(gate) * up."
+forward_op     = "Swiglu(gate, up)"
+[ops.autograd]
+grad_class = "OaGradSwiglu"
+inputs     = ["InA", "InB"]
+saved      = ["InA", "InB", "out"]
+formula    = "manual"
+[ops.test]
+# Note: Binary activation - test needs custom implementation
+skip_test = true
+
+# --- SiluMul -----------------------------------------------------------------
+[[ops]]
+name           = "SiluMul"
+category       = "Activation"
+kind           = "unary_scalar"
+kernel_forward = "SiluMul"
+kernel_backward = "SiluMulBwd"
+slang_path     = "Ml/Nn/Swiglu"
+log_component  = "ML"
+notes          = "SiLU on first half, multiply with second half: Out = SiLU(A[:N]) * A[N:]."
+forward_op     = "SiluMul(a)"
+scalar_param   = { name = "IntermediateSize", type = "OaU32", push_field = "intermediate_size" }
+output         = { shape = "last_dim_half" }
+dispatch_workgroups = "output_elemwise"
+[ops.autograd]
+# SiluMulBwd needs the INPUT (gate||up); the forward output SiLU(gate)*up is
+# not invertible. Saving "out" silently fed the wrong tensor to the backward.
+grad_class = "OaGradSiluMul"
+inputs     = ["InA"]
+saved      = ["InA"]
+formula    = "manual"
+[ops.test]
+# Note: This op splits input in half - test needs special handling
+# For now, skip test generation (requires custom test code)
+skip_test = true
+
+# --- Geglu -------------------------------------------------------------------
+[[ops]]
+name           = "Geglu"
+category       = "Activation"
+kind           = "unary_scalar"
+kernel_forward = "Geglu"
+kernel_backward = "GegluBwd"
+slang_path     = "Ml/Nn/Geglu"
+log_component  = "ML"
+notes          = "GEGLU activation: Out = A[:N] * GELU(A[N:])."
+forward_op     = "Geglu(a)"
+scalar_param   = { name = "IntermediateSize", type = "OaU32", push_field = "intermediate_size" }
+output         = { shape = "last_dim_half" }
+dispatch_workgroups = "output_elemwise"
+[ops.autograd]
+# GegluBwd needs the INPUT (up||gate); the forward output up*GELU(gate) is not
+# invertible. Saving "out" silently fed the wrong tensor to the backward.
+grad_class = "OaGradGeglu"
+inputs     = ["InA"]
+saved      = ["InA"]
+formula    = "manual"
+[ops.test]
+# Note: This op splits input in half - test needs special handling
+# For now, skip test generation (requires custom test code)
+skip_test = true
+
+# --- Softplus ---------------------------------------------------------------
+# Numerically stable form: log(1+e^a) overflows f32 for a>~88 (e^a → inf).
+# The identity max(a,0)+log1p(e^-|a|) is mathematically exact and overflow-free
+# (the exp argument is always ≤ 0). Backward d/da softplus(a) = sigmoid(a); with
+# the saved output y=softplus(a)≥0 this equals 1-e^-y (stable). See SoftplusBwd.
+[[ops]]
+name           = "Softplus"
+category       = "Activation"
+kind           = "unary"
+kernel_forward = "Softplus"
+kernel_backward = "SoftplusBwd"
+slang_path     = "Ml/Nn/Activation"
+log_component  = "ML"
+notes          = "Softplus: Out = log(1+exp(A)), computed stably as max(A,0)+log1p(exp(-|A|)) (no f32 overflow)."
+forward_op     = "max(a, 0.0f) + log(1.0f + exp(-abs(a)))"
+[ops.autograd]
+grad_class = "OaGradSoftplus"
+inputs     = ["InA"]
+saved      = ["out"]
+formula    = "auto_bwd_kernel"
+[ops.test]
+cpu_reference = "std::max(a_host[i], 0.0f) + std::log(1.0f + std::exp(-std::abs(a_host[i])))"
+tolerance = "1e-3f"
+test_sizes = [256]
+

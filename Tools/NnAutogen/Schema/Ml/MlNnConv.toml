@@ -1,0 +1,140 @@
+# Oa NN schema - convolution layers.
+
+[[layers]]
+name = "Conv1d"
+constructor_args = "OaI32 InChannels, OaI32 OutChannels, OaI32 KernelSize, OaI32 Stride = 1, OaI32 Padding = 0, OaI32 Dilation = 1"
+constructor_init = "InChannels_(InChannels), OutChannels_(OutChannels), KernelSize_(KernelSize), Stride_(Stride), Padding_(Padding), Dilation_(Dilation)"
+constructor_body = [
+	"auto wd = OaFnMatrix::GetWeightDtype();",
+	"RegisterParameter(\"weight\", OaFnMatrix::Rand(OaMatrixShape{OutChannels, InChannels, KernelSize}, wd));",
+	"RegisterParameter(\"bias\", OaFnMatrix::Zeros(OaMatrixShape{OutChannels}, wd));",
+]
+members = [
+	"OaI32 InChannels_;",
+	"OaI32 OutChannels_;",
+	"OaI32 KernelSize_;",
+	"OaI32 Stride_;",
+	"OaI32 Padding_;",
+	"OaI32 Dilation_;",
+]
+methods = [
+	"[[nodiscard]] OaI32 Stride() const noexcept { return Stride_; }",
+	"[[nodiscard]] OaI32 Padding() const noexcept { return Padding_; }",
+	"[[nodiscard]] OaI32 Dilation() const noexcept { return Dilation_; }",
+]
+forward_body = """
+	auto& weight = Params_[0].Data;
+	auto& bias = Params_[1].Data;
+	// im2col + GEMM path (Conv1dGemm). It composes its own autograd graph from
+	// Im2Col1d + MatMulNt + BiasAdd, so no hand-written OaGradConv1d node is
+	// needed. The scalar direct-conv kernel it replaced was retired (proven
+	// equivalent by NN.Conv1dGemmMatchesScalar / NN.Conv1dGemmGradCheck).
+	return OaFnMatrix::Conv1dGemm(InInput, weight, bias, Stride_, Padding_, Dilation_);
+"""
+notes = "1D convolution layer (im2col + GEMM)."
+
+[[layers]]
+name = "ConvTranspose1d"
+constructor_args = "OaI32 InChannels, OaI32 OutChannels, OaI32 KernelSize, OaI32 Stride = 1, OaI32 Padding = 0"
+constructor_init = "InChannels_(InChannels), OutChannels_(OutChannels), KernelSize_(KernelSize), Stride_(Stride), Padding_(Padding)"
+constructor_body = [
+	"auto wd = OaFnMatrix::GetWeightDtype();",
+	"RegisterParameter(\"weight\", OaFnMatrix::Rand(OaMatrixShape{InChannels, OutChannels, KernelSize}, wd));",
+]
+members = [
+	"OaI32 InChannels_;",
+	"OaI32 OutChannels_;",
+	"OaI32 KernelSize_;",
+	"OaI32 Stride_;",
+	"OaI32 Padding_;",
+]
+forward_body = """
+	auto& weight = Params_[0].Data;
+	const OaI64 lin = InInput.Size(2);
+	const OaI64 lout = (lin - 1) * Stride_ - 2 * static_cast<OaI64>(Padding_) + KernelSize_;
+	const OaMatrixShape outShape = OaMatrixShape{InInput.Size(0), OutChannels_, lout};
+	auto out = OaFnMatrix::Conv1dBwdData(InInput, weight, Stride_, Padding_, 1, outShape);
+	if (OaFnAutograd::IsEnabled() and (InInput.RequiresGrad() or weight.RequiresGrad())) {
+		auto gradFn = OaMakeSharedPtr<OaGradConvTranspose1d>();
+		gradFn->Stride_ = Stride_;
+		gradFn->Padding_ = Padding_;
+		gradFn->Saved_ = OaVec<OaMatrix>{InInput, weight};
+		gradFn->SetGraphInputs(OaVec<OaMatrix>{InInput, weight});
+		gradFn->SequenceNr_ = OaFnAutograd::NextSeq();
+		gradFn->OutputShape_ = out.GetShape();
+		out.MutAutograd().GradFn = gradFn;
+	}
+	return out;
+"""
+notes = "1D transposed convolution (learnable upsampling); adjoint of Conv1d, no bias."
+
+[[layers]]
+name = "Conv2d"
+constructor_args = "OaI32 InChannels, OaI32 OutChannels, OaI32 KernelSize, OaI32 Stride = 1, OaI32 Padding = 0, OaI32 Groups = 1"
+constructor_init = "InChannels_(InChannels), OutChannels_(OutChannels), KernelSize_(KernelSize), Stride_(Stride), Padding_(Padding), Groups_(Groups)"
+constructor_body = [
+	"assert(Groups > 0 && InChannels % Groups == 0 && OutChannels % Groups == 0);",
+	"auto wd = OaFnMatrix::GetWeightDtype();",
+	"RegisterParameter(\"weight\", OaFnMatrix::Rand(OaMatrixShape{OutChannels, InChannels / Groups, KernelSize, KernelSize}, wd));",
+	"RegisterParameter(\"bias\", OaFnMatrix::Zeros(OaMatrixShape{OutChannels}, wd));",
+]
+members = [
+	"OaI32 InChannels_;",
+	"OaI32 OutChannels_;",
+	"OaI32 KernelSize_;",
+	"OaI32 Stride_;",
+	"OaI32 Padding_;",
+	"OaI32 Groups_;",
+]
+forward_body = """
+	auto& weight = Params_[0].Data;
+	auto& bias = Params_[1].Data;
+	auto out = OaFnMatrix::Conv2d(InInput, weight, bias, Stride_, Padding_, Groups_);
+	if (OaFnAutograd::IsEnabled() and (InInput.RequiresGrad() or weight.RequiresGrad() or bias.RequiresGrad())) {
+		auto gradFn = OaMakeSharedPtr<OaGradConv2d>();
+		gradFn->Stride_ = Stride_;
+		gradFn->Padding_ = Padding_;
+		gradFn->Groups_ = Groups_;
+		gradFn->Saved_ = OaVec<OaMatrix>{InInput, weight};
+		gradFn->SetGraphInputs(OaVec<OaMatrix>{InInput, weight, bias});
+		gradFn->SequenceNr_ = OaFnAutograd::NextSeq();
+		gradFn->OutputShape_ = out.GetShape();
+		out.MutAutograd().GradFn = gradFn;
+	}
+	return out;
+"""
+notes = "2D convolution layer."
+
+[[layers]]
+name = "ConvTranspose2d"
+constructor_args = "OaI32 InChannels, OaI32 OutChannels, OaI32 KernelSize, OaI32 Stride = 1, OaI32 Padding = 0"
+constructor_init = "InChannels_(InChannels), OutChannels_(OutChannels), KernelSize_(KernelSize), Stride_(Stride), Padding_(Padding)"
+constructor_body = [
+	"auto wd = OaFnMatrix::GetWeightDtype();",
+	"RegisterParameter(\"weight\", OaFnMatrix::Rand(OaMatrixShape{InChannels, OutChannels, KernelSize, KernelSize}, wd));",
+	"RegisterParameter(\"bias\", OaFnMatrix::Zeros(OaMatrixShape{OutChannels}, wd));",
+]
+members = [
+	"OaI32 InChannels_;",
+	"OaI32 OutChannels_;",
+	"OaI32 KernelSize_;",
+	"OaI32 Stride_;",
+	"OaI32 Padding_;",
+]
+forward_body = """
+	auto& weight = Params_[0].Data;
+	auto& bias = Params_[1].Data;
+	auto out = OaFnMatrix::ConvTranspose2d(InInput, weight, bias, Stride_, Padding_);
+	if (OaFnAutograd::IsEnabled() and (InInput.RequiresGrad() or weight.RequiresGrad() or bias.RequiresGrad())) {
+		auto gradFn = OaMakeSharedPtr<OaGradConvTranspose2d>();
+		gradFn->Stride_ = Stride_;
+		gradFn->Padding_ = Padding_;
+		gradFn->Saved_ = OaVec<OaMatrix>{InInput, weight};
+		gradFn->SetGraphInputs(OaVec<OaMatrix>{InInput, weight, bias});
+		gradFn->SequenceNr_ = OaFnAutograd::NextSeq();
+		gradFn->OutputShape_ = out.GetShape();
+		out.MutAutograd().GradFn = gradFn;
+	}
+	return out;
+"""
+notes = "2D transposed convolution layer (learnable upsampling)."

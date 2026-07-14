@@ -1,0 +1,32 @@
+# OaFn schema — Vision/FnVideo color conversion ops (2).
+#
+# Re-namespaces RGBA↔NV12 paths used by encoder/decoder. Bodies are handwritten
+# in Source/Private/Oa/Vision/FnVideo/Color/FnVideoColor.cpp; kernel_forward names point
+# to the existing shaders for traceability.
+
+category    = "Color"
+namespace   = "OaFnVideo"
+file_prefix = "FnVideo"
+cpp_subdir  = "FnVideo"
+
+# --- CvtRgbaToNv12 ------------------------------------------------------------
+[[ops]]
+name           = "CvtRgbaToNv12"
+category       = "Color"
+kind           = "unary"
+kernel_forward = "CvtRgbaToNv12"
+slang_path     = "Vision/Conversion"
+log_component  = "VISION"
+notes          = "Convert RGBA to NV12 (YUV 4:2:0) for encoder input."
+body           = "manual_context"
+
+# --- CvtNv12ToRgb ------------------------------------------------------------
+[[ops]]
+name           = "CvtNv12ToRgb"
+category       = "Color"
+kind           = "unary"
+kernel_forward = "CvtNv12ToRgb"
+slang_path     = "Vision/Conversion"
+log_component  = "VISION"
+notes          = "Convert NV12 (YUV 4:2:0) to RGB for decoder output."
+body           = "manual_context"

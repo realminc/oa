@@ -1,0 +1,51 @@
+# OaFn schema — Ml/FnMatrix pooling ops (4).
+#
+# This is the *source of truth* for ML pooling functions. The generator
+# emits .h declarations, .cpp implementations, and .slang shaders from this file.
+# See Tools/OaFnAutogen/oafnautogen.py and Docs/Rewrite/Opus/OaFnAutogen.md.
+#
+# Pooling operations downsample spatial dimensions by applying a reduction
+# operation (max or average) over local windows.
+
+# --- MaxPool2d ---------------------------------------------------------------
+[[ops]]
+name           = "MaxPool2d"
+category       = "Pool"
+kind           = "unary"
+kernel_forward = "MaxPool2d"
+kernel_backward = "MaxPool2dBwd"
+slang_path     = "Ml/Nn/Pool"
+log_component  = "ML"
+notes          = "2D max pooling: Out = max(A[window])."
+body           = "manual_context"
+extra_params   = [
+    { name = "KernelSize", type = "OaI32", default = "2" },
+    { name = "Stride", type = "OaI32", default = "2" },
+    { name = "Padding", type = "OaI32", default = "0" }
+]
+[ops.autograd]
+grad_class = "OaGradMaxPool2d"
+inputs     = ["InA"]
+saved      = ["InA", "out", "out"]
+
+# --- AvgPool2d ---------------------------------------------------------------
+[[ops]]
+name           = "AvgPool2d"
+category       = "Pool"
+kind           = "unary"
+kernel_forward = "AvgPool2d"
+kernel_backward = "AvgPool2dBwd"
+slang_path     = "Ml/Nn/Pool"
+log_component  = "ML"
+notes          = "2D average pooling: Out = mean(A[window])."
+body           = "manual_context"
+extra_params   = [
+    { name = "KernelSize", type = "OaI32", default = "2" },
+    { name = "Stride", type = "OaI32", default = "2" },
+    { name = "Padding", type = "OaI32", default = "0" }
+]
+[ops.autograd]
+grad_class = "OaGradAvgPool2d"
+inputs     = ["InA"]
+saved      = ["InA"]
+

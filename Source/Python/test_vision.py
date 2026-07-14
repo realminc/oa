@@ -1,0 +1,223 @@
+#!/usr/bin/env python3
+"""Contract and GPU smoke tests for :mod:`oa.vision`."""
+
+from __future__ import annotations
+
+import os
+import sys
+from pathlib import Path
+
+import pytest
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _add_dev_paths() -> None:
+    candidates = []
+    if build_dir := os.getenv("OA_PYTHON_BUILD_DIR"):
+        candidates.append(Path(build_dir).expanduser())
+    candidates.extend(
+        [REPO_ROOT / "Build" / "Release", REPO_ROOT / "Build" / "Debug",
+         REPO_ROOT / "build", REPO_ROOT / "Source" / "Python"]
+    )
+    for path in candidates:
+        if path.exists() and str(path) not in sys.path:
+            sys.path.insert(0, str(path))
+
+
+_add_dev_paths()
+
+oa = pytest.importorskip("oa", reason="oa Python package is not importable")
+core = oa.core
+runtime = oa.runtime
+vision = oa.vision
+
+IMAGE_OPS_50 = (
+    "Resize", "Normalize", "GaussianBlur", "Convolve2d",
+    "SeparableConvolve2d", "AverageBlur", "Sobel", "Scharr", "Laplacian",
+    "Erode", "Dilate", "MorphologyOpen", "MorphologyClose",
+    "MorphologyGradient", "Crop", "Flip", "Rotate",
+    "ThresholdBinary", "ThresholdBinaryInv", "ThresholdTruncate",
+    "ThresholdToZero", "ThresholdToZeroInv", "InRange", "Clamp", "Invert",
+    "BrightnessContrast", "GammaContrast", "Solarize", "Posterize",
+    "Grayscale", "ChannelReorder", "AlphaBlend", "Composite", "Erase",
+    "ColorTwist", "GaussianNoise", "SaltPepperNoise", "Sharpen",
+    "MedianBlur", "BilateralFilter", "UnsharpMask", "MorphologyTopHat",
+    "MorphologyBlackHat", "AdaptiveThresholdMean",
+    "AdaptiveThresholdGaussian", "Pad", "CenterCrop", "Remap",
+    "WarpAffine", "WarpPerspective",
+)
+
+
+@pytest.fixture(scope="session")
+def engine():
+    if not runtime.OaInitComputeEngine():
+        pytest.skip("OA compute engine could not initialize, likely no Vulkan device")
+    yield
+    runtime.OaShutdownComputeEngine()
+
+
+def test_vision_import_surface():
+    for name in (
+        "OaImage", "OaImageBatch", "OaImageLayout", "OaImageFormat",
+        "OaBorderMode", "OaNormalizationParams", "OaJpegDecoder", "OaVideoStream",
+        "OaVideo", "OaVideoRecorder", "OaScreenCapture", "OaCameraCapture",
+        *IMAGE_OPS_50,
+    ):
+        assert hasattr(vision, name), name
+    assert len(IMAGE_OPS_50) == len(set(IMAGE_OPS_50)) == 50
+
+
+def test_image_metadata_contract(engine):
+    tensor = core.Full([1, 3, 4, 5], 0.25)
+    image = vision.OaImage(tensor, vision.OaImageLayout.Nchw, vision.OaImageFormat.Rgb)
+    assert image.Validate()
+    assert image.BatchSize() == 1
+    assert image.Channels() == 3
+    assert image.Height() == 4
+    assert image.Width() == 5
+    assert image.AsMatrix().Shape() == [1, 3, 4, 5]
+
+
+def test_normalization_params_require_three_channels():
+    params = vision.OaNormalizationParams()
+    params.Mean = [0.485, 0.456, 0.406]
+    params.Std = [0.229, 0.224, 0.225]
+    assert len(params.Mean) == 3 and len(params.Std) == 3
+    with pytest.raises(RuntimeError):
+        params.Mean = [0.5]
+
+
+def test_geometric_ops_shapes(engine):
+    image = core.Rand([1, 3, 8, 10])
+    with oa.Context():
+        resized = vision.Resize(image, 5, 4)
+        nearest = vision.Resize(
+            image, 20, 16, vision.OaInterpolationMode.Nearest
+        )
+        cropped = vision.Crop(image, 2, 1, 5, 6)
+        flipped = vision.Flip(image, horizontal=True)
+        rotated = vision.Rotate(image, 90)
+    assert resized.Shape() == [1, 3, 4, 5]
+    assert nearest.Shape() == [1, 3, 16, 20]
+    assert cropped.Shape() == [1, 3, 6, 5]
+    assert flipped.Shape() == [1, 3, 8, 10]
+    assert rotated.Shape() == [1, 3, 10, 8]
+
+
+def test_normalize_and_blur_execute(engine):
+    image = core.Full([1, 3, 8, 8], 0.5)
+    params = vision.OaNormalizationParams()
+    params.Mean = [0.5, 0.5, 0.5]
+    params.Std = [0.25, 0.25, 0.25]
+    with oa.Context():
+        normalized = vision.Normalize(image, params)
+        blurred = vision.GaussianBlur(image, 1.0, 3)
+    assert normalized.Shape() == image.Shape()
+    assert blurred.Shape() == image.Shape()
+    normalized_values = core.CopyToHost(normalized)
+    blurred_values = core.CopyToHost(blurred)
+    assert len(normalized_values) == 3 * 8 * 8
+    assert max(abs(value) for value in normalized_values) < 1.0e-6
+    assert max(abs(value - 0.5) for value in blurred_values) < 1.0e-5
+
+
+def test_filter_primitives_and_derivatives_execute(engine):
+    values = [float(i) for i in range(9)]
+    image = core.FromFloats(values, [1, 1, 3, 3])
+    identity = core.FromFloats(
+        [0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0], [3, 3]
+    )
+    kernel_x = core.FromFloats([-1.0, 0.0, 1.0], [3])
+    kernel_y = core.FromFloats([1.0], [1])
+    with oa.Context():
+        copied = vision.Convolve2d(
+            image, identity, vision.OaBorderMode.Constant
+        )
+        separated = vision.SeparableConvolve2d(
+            image, kernel_x, kernel_y, vision.OaBorderMode.Replicate
+        )
+        averaged = vision.AverageBlur(
+            core.Full([1, 1, 3, 3], 0.25), 3, 3
+        )
+        sobel = vision.Sobel(image, 1, 0)
+        scharr = vision.Scharr(image, 1, 0)
+        laplacian = vision.Laplacian(image)
+    assert core.CopyToHost(copied) == pytest.approx(values, abs=1.0e-6)
+    assert core.CopyToHost(separated)[4] == pytest.approx(2.0, abs=1.0e-6)
+    assert core.CopyToHost(averaged) == pytest.approx([0.25] * 9, abs=1.0e-6)
+    assert core.CopyToHost(sobel)[4] == pytest.approx(8.0, abs=1.0e-6)
+    assert core.CopyToHost(scharr)[4] == pytest.approx(32.0, abs=1.0e-6)
+    assert core.CopyToHost(laplacian)[4] == pytest.approx(0.0, abs=1.0e-6)
+
+
+def test_morphology_family_executes(engine):
+    ramp = core.FromFloats([float(i) for i in range(9)], [1, 1, 3, 3])
+    impulse = core.FromFloats(
+        [0.0, 0.0, 0.0, 0.0, 9.0, 0.0, 0.0, 0.0, 0.0], [1, 1, 3, 3]
+    )
+    hole = core.FromFloats(
+        [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0], [1, 1, 3, 3]
+    )
+    with oa.Context():
+        eroded = vision.Erode(ramp)
+        dilated = vision.Dilate(ramp)
+        gradient = vision.MorphologyGradient(ramp)
+        opened = vision.MorphologyOpen(impulse)
+        closed = vision.MorphologyClose(hole)
+    assert core.CopyToHost(eroded)[4] == pytest.approx(0.0, abs=1.0e-6)
+    assert core.CopyToHost(dilated)[4] == pytest.approx(8.0, abs=1.0e-6)
+    assert core.CopyToHost(gradient)[4] == pytest.approx(8.0, abs=1.0e-6)
+    assert core.CopyToHost(opened) == pytest.approx([0.0] * 9, abs=1.0e-6)
+    assert core.CopyToHost(closed) == pytest.approx([1.0] * 9, abs=1.0e-6)
+
+
+def test_new_pixel_neighborhood_and_warp_bindings_execute(engine):
+    image = core.FromFloats([0.0, 0.25, 0.5, 0.75], [1, 1, 2, 2])
+    identity_map = core.FromFloats(
+        [0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0], [1, 2, 2, 2]
+    )
+    affine = core.FromFloats([1.0, 0.0, 0.0, 0.0, 1.0, 0.0], [2, 3])
+    perspective = core.FromFloats(
+        [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0], [3, 3]
+    )
+    with oa.Context():
+        threshold = vision.ThresholdBinary(image, 0.4)
+        median = vision.MedianBlur(image, 3, vision.OaBorderMode.Replicate)
+        padded = vision.Pad(image, 1, 1, 1, 1, vision.OaBorderMode.Constant, -1.0)
+        remapped = vision.Remap(
+            image, identity_map, vision.OaInterpolationMode.Nearest
+        )
+        affine_out = vision.WarpAffine(
+            image, affine, 2, 2, vision.OaInterpolationMode.Nearest
+        )
+        perspective_out = vision.WarpPerspective(
+            image, perspective, 2, 2, vision.OaInterpolationMode.Nearest
+        )
+    assert core.CopyToHost(threshold) == pytest.approx([0, 0, 1, 1])
+    assert len(core.CopyToHost(median)) == 4
+    assert padded.Shape() == [1, 1, 4, 4]
+    assert core.CopyToHost(remapped) == pytest.approx([0, 0.25, 0.5, 0.75])
+    assert core.CopyToHost(affine_out) == pytest.approx([0, 0.25, 0.5, 0.75])
+    assert core.CopyToHost(perspective_out) == pytest.approx([0, 0.25, 0.5, 0.75])
+
+
+def test_video_configuration_is_host_only():
+    cfg = vision.OaVideoConfig()
+    cfg.Uri = "sample.mp4"
+    cfg.Loop = False
+    cfg.Filter = vision.OaFilter.Nearest
+    assert cfg.Uri == "sample.mp4"
+    assert not cfg.Loop
+
+
+def test_video_conversion_stays_on_session_owner():
+    assert hasattr(vision.OaVideo, "CurrentFrameToMatrix")
+    assert hasattr(vision.OaVideo, "CurrentFrameToImage")
+    assert not hasattr(vision.OaVideoFrame, "ToMatrix")
+    assert not hasattr(vision.OaVideoFrame, "ToImage")
+
+
+if __name__ == "__main__":
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

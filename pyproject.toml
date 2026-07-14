@@ -1,0 +1,58 @@
+# OA Python preview wheel — built from the root CMake via scikit-build-core.
+#
+#   Build:   python -m build --wheel        (or: pip wheel .)
+#   Install: pip install .
+#
+# The wheel bundles the private nanobind extension `oa._oa`, the shared engine
+# `oa/liboa.so`, and the pure-Python `oa` package. Vulkan is
+# loaded dynamically at runtime, so no Vulkan loader is bundled — the target machine
+# must provide a Vulkan ICD. The current CI artifact is CPython 3.12 on
+# manylinux_2_39_x86_64; additional ABIs and platforms remain preview work.
+[build-system]
+requires = ["scikit-build-core>=0.10", "nanobind>=2.0", "numpy"]
+build-backend = "scikit_build_core.build"
+
+[project]
+# Distribution name is `oapython` (PyPI `oa` is taken); the import name stays `oa`
+# (wheel.packages maps Source/Python/oa -> `import oa`).
+name = "oapython"
+dynamic = ["version"]
+description = "OA — cross-vendor Vulkan GPU compute, ML, vision, audio, and crypto"
+readme = "Docs/PyPIReadme.md"
+requires-python = ">=3.9"
+license = { text = "BUSL-1.1" }
+authors = [{ name = "Lukasz Biernat" }]
+dependencies = ["numpy"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: C++",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Operating System :: POSIX :: Linux",
+]
+
+[project.urls]
+Homepage = "https://github.com/realminc/oa"
+Source = "https://github.com/realminc/oa"
+Documentation = "https://dev.realm.software/"
+Issues = "https://github.com/realminc/oa/issues"
+
+[tool.scikit-build]
+minimum-version = "build-system.requires"
+cmake.version = ">=3.20"
+cmake.build-type = "Release"
+# Only build the extension (and its liboa dependency) — not the app/test/tutorial tree.
+build.targets = ["_oa"]
+cmake.args = ["-DOA_BUILD_PYTHON=ON", "-DOA_BUILD_TESTS=OFF"]
+# Install only the wheel component wired up in CMakeLists.txt (_oa + liboa),
+# so app/extension install rules for unbuilt targets are never invoked.
+install.components = ["PythonWheel"]
+# The pure-Python package lives under Source/Python; map it to the wheel `oa/`.
+wheel.packages = ["Source/Python/oa"]
+build-dir = "Build/Wheel/{wheel_tag}"
+
+# Single-source the version from the root VERSION file (for example "0.7.3").
+[tool.scikit-build.metadata.version]
+provider = "scikit_build_core.metadata.regex"
+input = "VERSION"
+regex = '(?P<value>.+)'

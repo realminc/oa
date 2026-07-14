@@ -1,0 +1,243 @@
+# OaFn schema — verified Vision/FnImage filter ops.
+#
+# This is the *source of truth* for image filtering operations. The generator
+# emits .h declarations, .cpp implementations, and .slang shaders from this file.
+# See Tools/OaFnAutogen/oafnautogen.py and Docs/Rewrite/Opus/OaFnAutogen.md.
+#
+# Filter operations apply convolution kernels for blur, edge detection, etc.
+
+generate_engine_overloads = true
+generate_forwarders = true
+
+# The operations below use hand-written context bodies because their graph
+# lowering has multiple inputs and/or multiple dispatches. This manifest is
+# still the authoritative public inventory; generated files deliberately point
+# back to those implementations instead of producing an immediate path.
+
+[[ops]]
+name           = "Convolve2d"
+category       = "Filter"
+kind           = "binary"
+kernel_forward = "ImageConvolve2d"
+slang_path     = "Vision/Filter"
+log_component  = "VISION"
+notes          = "Same-shape NCHW 2D cross-correlation with an odd shared kernel and explicit border semantics."
+body           = "manual_context"
+api_params = ["const OaMatrix& InImage", "const OaMatrix& InKernel", "OaBorderMode InBorder = OaBorderMode::Reflect101", "OaF32 InBorderValue = 0.0F"]
+
+[[ops]]
+name           = "SeparableConvolve2d"
+category       = "Filter"
+kind           = "binary"
+kernel_forward = "ImageSeparableConvolve"
+slang_path     = "Vision/Filter"
+log_component  = "VISION"
+notes          = "Same-shape NCHW separable cross-correlation with odd horizontal and vertical kernels."
+body           = "manual_context"
+api_params = ["const OaMatrix& InImage", "const OaMatrix& InKernelX", "const OaMatrix& InKernelY", "OaBorderMode InBorder = OaBorderMode::Reflect101", "OaF32 InBorderValue = 0.0F"]
+
+[[ops]]
+name           = "AverageBlur"
+category       = "Filter"
+kind           = "unary"
+kernel_forward = "ImageConvolve2d"
+slang_path     = "Vision/Filter"
+log_component  = "VISION"
+notes          = "Normalized box blur lowered through the generic 2D filter."
+body           = "manual_context"
+api_params = ["const OaMatrix& InImage", "OaU32 InKernelWidth = 3", "OaU32 InKernelHeight = 3", "OaBorderMode InBorder = OaBorderMode::Reflect101"]
+
+[[ops]]
+name           = "Sobel"
+category       = "Filter"
+kind           = "unary"
+kernel_forward = "ImageConvolve2d"
+slang_path     = "Vision/Filter"
+log_component  = "VISION"
+notes          = "Signed 3x3 Sobel x or y derivative lowered through the generic 2D filter."
+body           = "manual_context"
+api_params = ["const OaMatrix& InImage", "OaU32 InDx = 1", "OaU32 InDy = 0", "OaBorderMode InBorder = OaBorderMode::Reflect101"]
+
+[[ops]]
+name           = "Scharr"
+category       = "Filter"
+kind           = "unary"
+kernel_forward = "ImageConvolve2d"
+slang_path     = "Vision/Filter"
+log_component  = "VISION"
+notes          = "Signed 3x3 Scharr x or y derivative lowered through the generic 2D filter."
+body           = "manual_context"
+api_params = ["const OaMatrix& InImage", "OaU32 InDx = 1", "OaU32 InDy = 0", "OaBorderMode InBorder = OaBorderMode::Reflect101"]
+
+[[ops]]
+name           = "Laplacian"
+category       = "Filter"
+kind           = "unary"
+kernel_forward = "ImageConvolve2d"
+slang_path     = "Vision/Filter"
+log_component  = "VISION"
+notes          = "Signed four-neighbour discrete Laplacian lowered through the generic 2D filter."
+body           = "manual_context"
+api_params = ["const OaMatrix& InImage", "OaBorderMode InBorder = OaBorderMode::Reflect101"]
+
+[[ops]]
+name           = "Erode"
+category       = "Filter"
+kind           = "unary"
+kernel_forward = "ImageMorphology"
+slang_path     = "Vision/Filter"
+log_component  = "VISION"
+notes          = "Rectangular NCHW erosion using the shared border contract."
+body           = "manual_context"
+api_params = ["const OaMatrix& InImage", "OaU32 InKernelWidth = 3", "OaU32 InKernelHeight = 3", "OaBorderMode InBorder = OaBorderMode::Reflect101", "OaF32 InBorderValue = 0.0F"]
+
+[[ops]]
+name           = "Dilate"
+category       = "Filter"
+kind           = "unary"
+kernel_forward = "ImageMorphology"
+slang_path     = "Vision/Filter"
+log_component  = "VISION"
+notes          = "Rectangular NCHW dilation using the shared border contract."
+body           = "manual_context"
+api_params = ["const OaMatrix& InImage", "OaU32 InKernelWidth = 3", "OaU32 InKernelHeight = 3", "OaBorderMode InBorder = OaBorderMode::Reflect101", "OaF32 InBorderValue = 0.0F"]
+
+[[ops]]
+name           = "MorphologyOpen"
+category       = "Filter"
+kind           = "unary"
+kernel_forward = "ImageMorphology"
+slang_path     = "Vision/Filter"
+log_component  = "VISION"
+notes          = "Erosion followed by dilation through the reusable morphology primitive."
+body           = "manual_context"
+api_params = ["const OaMatrix& InImage", "OaU32 InKernelWidth = 3", "OaU32 InKernelHeight = 3", "OaBorderMode InBorder = OaBorderMode::Reflect101", "OaF32 InBorderValue = 0.0F"]
+
+[[ops]]
+name           = "MorphologyClose"
+category       = "Filter"
+kind           = "unary"
+kernel_forward = "ImageMorphology"
+slang_path     = "Vision/Filter"
+log_component  = "VISION"
+notes          = "Dilation followed by erosion through the reusable morphology primitive."
+body           = "manual_context"
+api_params = ["const OaMatrix& InImage", "OaU32 InKernelWidth = 3", "OaU32 InKernelHeight = 3", "OaBorderMode InBorder = OaBorderMode::Reflect101", "OaF32 InBorderValue = 0.0F"]
+
+[[ops]]
+name           = "MorphologyGradient"
+category       = "Filter"
+kind           = "unary"
+kernel_forward = "ImageMorphology"
+slang_path     = "Vision/Filter"
+log_component  = "VISION"
+notes          = "Difference between dilation and erosion."
+body           = "manual_context"
+api_params = ["const OaMatrix& InImage", "OaU32 InKernelWidth = 3", "OaU32 InKernelHeight = 3", "OaBorderMode InBorder = OaBorderMode::Reflect101", "OaF32 InBorderValue = 0.0F"]
+
+# --- GaussianBlur ------------------------------------------------------------
+[[ops]]
+name           = "GaussianBlur"
+category       = "Filter"
+kind           = "unary"
+kernel_forward = "ImageSeparableConvolve"
+slang_path     = "Vision/Filter"
+log_component  = "VISION"
+notes          = "Gaussian blur filter with configurable kernel size and sigma."
+body           = "manual_context"
+api_params = ["const OaMatrix& InImage", "OaF32 InSigma", "OaU32 InKernelSize = 0"]
+extra_params   = [
+    { name = "KernelSize", type = "OaU32", default = "5" },
+    { name = "Sigma", type = "OaF32", default = "1.0f" }
+]
+
+# Canny.slang remains a private experiment. Its current in-place NMS ordering
+# and one-step hysteresis are not a valid public algorithm.
+
+[[ops]]
+name = "Sharpen"
+category = "Filter"
+kind = "unary"
+kernel_forward = "ImageConvolve2d"
+slang_path = "Vision/Filter"
+log_component = "VISION"
+notes = "Parameterized 3x3 sharpening lowered through Convolve2d."
+body = "manual_context"
+api_params = ["const OaMatrix& InImage", "OaF32 InAmount = 1.0F", "OaBorderMode InBorder = OaBorderMode::Reflect101"]
+
+[[ops]]
+name = "MedianBlur"
+category = "Filter"
+kind = "unary"
+kernel_forward = "ImageNeighborhood"
+slang_path = "Vision/Filter"
+log_component = "VISION"
+notes = "Odd-window median filter with explicit border semantics."
+body = "manual_context"
+api_params = ["const OaMatrix& InImage", "OaU32 InKernelSize = 3", "OaBorderMode InBorder = OaBorderMode::Reflect101"]
+
+[[ops]]
+name = "BilateralFilter"
+category = "Filter"
+kind = "unary"
+kernel_forward = "ImageNeighborhood"
+slang_path = "Vision/Filter"
+log_component = "VISION"
+notes = "Edge-preserving bilateral neighborhood filter."
+body = "manual_context"
+api_params = ["const OaMatrix& InImage", "OaU32 InKernelSize = 5", "OaF32 InSigmaColor = 0.1F", "OaF32 InSigmaSpace = 1.0F", "OaBorderMode InBorder = OaBorderMode::Reflect101"]
+
+[[ops]]
+name = "UnsharpMask"
+category = "Filter"
+kind = "unary"
+kernel_forward = "ImageSeparableConvolve"
+slang_path = "Vision/Filter"
+log_component = "VISION"
+notes = "Gaussian unsharp masking composed from graph-native primitives."
+body = "manual_context"
+api_params = ["const OaMatrix& InImage", "OaF32 InSigma = 1.0F", "OaF32 InAmount = 1.0F", "OaU32 InKernelSize = 0"]
+
+[[ops]]
+name = "MorphologyTopHat"
+category = "Filter"
+kind = "unary"
+kernel_forward = "ImageMorphology"
+slang_path = "Vision/Filter"
+log_component = "VISION"
+notes = "Input minus morphological opening."
+body = "manual_context"
+api_params = ["const OaMatrix& InImage", "OaU32 InKernelWidth = 3", "OaU32 InKernelHeight = 3", "OaBorderMode InBorder = OaBorderMode::Reflect101", "OaF32 InBorderValue = 0.0F"]
+
+[[ops]]
+name = "MorphologyBlackHat"
+category = "Filter"
+kind = "unary"
+kernel_forward = "ImageMorphology"
+slang_path = "Vision/Filter"
+log_component = "VISION"
+notes = "Morphological closing minus input."
+body = "manual_context"
+api_params = ["const OaMatrix& InImage", "OaU32 InKernelWidth = 3", "OaU32 InKernelHeight = 3", "OaBorderMode InBorder = OaBorderMode::Reflect101", "OaF32 InBorderValue = 0.0F"]
+
+[[ops]]
+name = "AdaptiveThresholdMean"
+category = "Filter"
+kind = "unary"
+kernel_forward = "ImageNeighborhood"
+slang_path = "Vision/Filter"
+log_component = "VISION"
+notes = "Local mean adaptive binary threshold."
+body = "manual_context"
+api_params = ["const OaMatrix& InImage", "OaU32 InKernelSize = 11", "OaF32 InC = 0.0F", "OaF32 InMaxValue = 1.0F", "OaBorderMode InBorder = OaBorderMode::Reflect101"]
+
+[[ops]]
+name = "AdaptiveThresholdGaussian"
+category = "Filter"
+kind = "unary"
+kernel_forward = "ImageNeighborhood"
+slang_path = "Vision/Filter"
+log_component = "VISION"
+notes = "Local Gaussian adaptive binary threshold."
+body = "manual_context"
+api_params = ["const OaMatrix& InImage", "OaU32 InKernelSize = 11", "OaF32 InC = 0.0F", "OaF32 InMaxValue = 1.0F", "OaF32 InSigma = 0.0F", "OaBorderMode InBorder = OaBorderMode::Reflect101"]

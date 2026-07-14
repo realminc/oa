@@ -1,0 +1,44 @@
+# OaFn schema — Core/FnMatrix Reduce ops.
+#
+# Reduction bodies are hand-written context recorders because the dim>=0 path
+# has custom shape arithmetic that's not worth modelling in the schema yet.
+
+[[ops]]
+name           = "Sum"
+category       = "Reduce"
+kind           = "reduce_full"
+kernel_forward = "Sum"
+log_component  = "ML"
+body           = "manual_context"
+extra_params   = [{ name = "Dim", type = "OaI32", default = "-1" }]
+dispatch_workgroups = 1                     # full reduction → single workgroup
+output         = { shape = "scalar_1d", dtype = "match_input" }
+notes          = "Reduce by summation (graph/executor: full reduction only)."
+[ops.test]
+# For reduce_full, we sum all elements and compare to CPU reference
+cpu_reference = "std::accumulate(a_host.begin(), a_host.end(), 0.0f)"
+tolerance = "1e-3f"
+test_sizes = [256, 1024]
+
+[[ops]]
+name           = "Max"
+category       = "Reduce"
+kind           = "reduce_full"
+kernel_forward = "Max"
+kernel_backward = "MaxBwd"
+log_component  = "ML"
+body           = "manual_context"
+extra_params   = [{ name = "Dim", type = "OaI32", default = "-1" }]
+dispatch_workgroups = 1
+output         = { shape = "scalar_1d", dtype = "match_input" }
+notes          = "Reduce by max (graph/executor: full reduction only)."
+[ops.autograd]
+grad_class = "OaGradMax"
+inputs     = ["InA"]
+saved      = ["out"]
+[ops.test]
+# For reduce_full, we find max of all elements and compare to CPU reference
+cpu_reference = "*std::max_element(a_host.begin(), a_host.end())"
+tolerance = "1e-4f"
+test_sizes = [256, 1024]
+

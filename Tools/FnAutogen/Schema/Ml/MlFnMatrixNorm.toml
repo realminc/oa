@@ -1,0 +1,110 @@
+# OaFn schema — Ml/FnMatrix normalization ops (6).
+#
+# This is the *source of truth* for ML normalization functions. The generator
+# emits .h declarations, .cpp implementations, and .slang shaders from this file.
+# See Tools/OaFnAutogen/oafnautogen.py and Docs/Rewrite/Opus/OaFnAutogen.md.
+#
+# Normalization operations are per-row operations that normalize across features.
+# Each has a forward kernel and a backward kernel for autograd.
+
+# --- RmsNorm -----------------------------------------------------------------
+[[ops]]
+name           = "RmsNorm"
+category       = "Norm"
+kind           = "unary_scalar"
+kernel_forward = "RmsNorm"
+kernel_backward = "RmsNormBwd"
+slang_path     = "Ml/Nn/Norm"
+log_component  = "ML"
+notes          = "Root Mean Square normalization: Out = A / sqrt(mean(A^2) + Eps)."
+body           = "manual_context"
+scalar_param   = { name = "Eps", type = "OaF32", push_field = "Eps" }
+[ops.autograd]
+grad_class = "OaGradRmsNorm"
+inputs     = ["InA", "Weight"]
+saved      = ["InA", "Weight", "out", "out"]
+
+# --- LayerNorm ---------------------------------------------------------------
+[[ops]]
+name           = "LayerNorm"
+category       = "Norm"
+kind           = "unary_scalar"
+kernel_forward = "LayerNorm"
+kernel_backward = "LayerNormBwd"
+slang_path     = "Ml/Nn/Norm"
+log_component  = "ML"
+notes          = "Layer normalization: Out = (A - mean(A)) / sqrt(var(A) + Eps)."
+body           = "manual_context"
+scalar_param   = { name = "Eps", type = "OaF32", push_field = "Eps" }
+[ops.autograd]
+grad_class = "OaGradLayerNorm"
+inputs     = ["InA", "Weight", "Bias"]
+saved      = ["InA", "Weight", "Bias", "out", "out", "out"]
+
+# --- Softmax -----------------------------------------------------------------
+[[ops]]
+name           = "Softmax"
+category       = "Norm"
+kind           = "unary"
+kernel_forward = "Softmax"
+kernel_backward = "SoftmaxBwd"
+slang_path     = "Ml/Nn/Norm"
+log_component  = "ML"
+notes          = "Softmax activation: Out = exp(A) / sum(exp(A))."
+body           = "manual_context"
+[ops.autograd]
+grad_class = "OaGradSoftmax"
+inputs     = ["InA"]
+saved      = ["out"]
+[ops.test]
+cpu_reference = "std::exp(a_host[i]) / std::accumulate(a_host.begin(), a_host.end(), 0.0f, [](float sum, float x) { return sum + std::exp(x); })"
+tolerance = "1e-3f"
+test_sizes = [256]
+
+# --- CrossEntropy ------------------------------------------------------------
+[[ops]]
+name           = "CrossEntropy"
+category       = "Norm"
+kind           = "binary"
+kernel_forward = "CrossEntropy"
+kernel_backward = "CrossEntropyBwd"
+slang_path     = "Ml/Nn/Loss"
+log_component  = "ML"
+notes          = "Cross-entropy loss: Out = -sum(Target * log(Pred))."
+body           = "manual_context"
+output         = { shape = "scalar_1d", dtype = "Float32" }
+[ops.autograd]
+grad_class = "OaGradCrossEntropy"
+inputs     = ["InA", "InB"]
+saved      = ["InA", "InB"]
+
+# --- ResidualRmsNorm ---------------------------------------------------------
+[[ops]]
+name           = "ResidualRmsNorm"
+category       = "Norm"
+kind           = "binary"
+kernel_forward = "ResidualRmsNorm"
+slang_path     = "Ml/Nn/Norm"
+log_component  = "ML"
+notes          = "Fused residual + RMS norm: Out = (A + B) / sqrt(mean((A+B)^2) + Eps)."
+body           = "manual_context"
+extra_params   = [{ name = "Eps", type = "OaF32", default = "1e-5f" }]
+
+# --- ReduceMean --------------------------------------------------------------
+[[ops]]
+name           = "ReduceMean"
+category       = "Norm"
+kind           = "reduce_full"
+kernel_forward = "ReduceMean"
+slang_path     = "Core/Shader/Compute/Flat"
+log_component  = "ML"
+notes          = "Mean reduction: Out = sum(A) / count(A)."
+body           = "manual_context"
+extra_params   = [{ name = "Dim", type = "OaI32", default = "-1" }]
+dispatch_workgroups = 1
+output         = { shape = "scalar_1d", dtype = "match_input" }
+# [ops.test]  # Disabled: ReduceMean not yet implemented in OaFnMatrix namespace
+# cpu_reference = "std::accumulate(a_host.begin(), a_host.end(), 0.0f) / static_cast<float>(N)"
+# tolerance = "1e-3f"
+# test_sizes = [256, 1024]
+

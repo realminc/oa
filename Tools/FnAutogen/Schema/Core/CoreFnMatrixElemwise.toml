@@ -1,0 +1,444 @@
+# OaFn schema — Core/FnMatrix elemwise ops (17).
+#
+# This is the *source of truth* for these 17 ops. The generator emits:
+#   - .h declarations, .cpp implementations, .slang shaders (forward ops)
+#   - Autograd/Matrix/AutogradElemwise.gen.h (gradient node classes)
+# See Tools/FnAutogen/oafnautogen.py and Docs/Rewrite/Opus/OaFnAutogen.md.
+#
+# Fields per [[ops]] entry:
+#   name              op name (PascalCase, no Oa prefix — namespace adds it)
+#   category          Elemwise | Blas | Reduce | Shape | Index | Activation | ...
+#   kind              binary | unary | unary_scalar
+#   kernel_forward    Slang shader ID — must exist in KernelRegistry.h
+#   dispatch_id_macro optional: OaComputeKernelId::<Name> instead of "Name"
+#                     literal in OaVkDispatch::Run (matches existing Scale)
+#   log_component     OaLogComponent::* enum value
+#   notes             short docstring
+#   forward_op        Slang body — "a + b", "a - b", "abs(a)", "log(a)",
+#                     "a * pc.Alpha", "pow(a, pc.Exponent)" — used by
+#                     shader template; receives loaded scalars `a`, `b`
+#                     and emits OaStore(...)
+#   immediate.alias_of  optional: immediate-mode body delegates to another op
+#                       (e.g. Neg → Scale(-1)) — preserves existing behavior
+#   autograd.*        gradient wiring (see below)
+#
+# Autograd block:
+#   grad_class    name of the OaGradXxx class (defined in Autograd.h or generated)
+#   inputs        list of parameter names; populates SetGraphInputs in slot order
+#   saved         list of saved tensor names (populates Saved_ vector)
+#   ctor_args     list of expressions passed to OaMakeSharedPtr<grad_class>(...)
+#   formula       "auto_elemwise" | "auto_unary" | "manual:<Op>" | "none"
+
+# --- Add ---------------------------------------------------------------------
+[[ops]]
+name           = "Add"
+category       = "Elemwise"
+kind           = "binary"
+kernel_forward = "Add"
+log_component  = "ML"
+notes          = "Element-wise addition: Out = A + B."
+forward_op     = "a + b"
+body           = "manual_context"
+
+[ops.autograd]
+grad_class = "OaGradAdd"
+inputs     = ["InA", "InB"]
+saved      = []
+formula    = "auto_binary_add"
+
+[ops.test]
+cpu_reference = "a_host[i] + b_host[i]"
+tolerance = "1e-4f"
+test_sizes = [256, 1024]
+edge_cases = ["zeros", "negatives"]
+numerical_grad = false
+benchmark = false
+
+# --- Sub ---------------------------------------------------------------------
+[[ops]]
+name           = "Sub"
+category       = "Elemwise"
+kind           = "binary"
+kernel_forward = "Sub"
+log_component  = "ML"
+notes          = "Element-wise subtraction: Out = A - B."
+forward_op     = "a - b"
+body           = "manual_context"
+
+[ops.autograd]
+grad_class = "OaGradSub"
+inputs     = ["InA", "InB"]
+saved      = []
+formula    = "auto_binary_sub"
+
+[ops.test]
+cpu_reference = "a_host[i] - b_host[i]"
+tolerance = "1e-4f"
+
+# --- Mul ---------------------------------------------------------------------
+[[ops]]
+name           = "Mul"
+category       = "Elemwise"
+kind           = "binary"
+kernel_forward = "Mul"
+log_component  = "ML"
+notes          = "Element-wise multiplication: Out = A * B."
+forward_op     = "a * b"
+body           = "manual_context"
+
+[ops.autograd]
+grad_class = "OaGradMul"
+inputs     = ["InA", "InB"]
+saved      = ["InA", "InB"]
+formula    = "auto_binary_mul"
+
+[ops.test]
+cpu_reference = "a_host[i] * b_host[i]"
+tolerance = "1e-4f"
+
+# --- Div ---------------------------------------------------------------------
+[[ops]]
+name           = "Div"
+category       = "Elemwise"
+kind           = "binary"
+kernel_forward = "Div"
+log_component  = "ML"
+notes          = "Element-wise division: Out = A / B."
+forward_op     = "a / b"
+body           = "manual_context"
+
+[ops.autograd]
+grad_class = "OaGradDiv"
+inputs     = ["InA", "InB"]
+saved      = ["InA", "InB"]
+formula    = "manual"
+
+[ops.test]
+cpu_reference = "a_host[i] / b_host[i]"
+tolerance = "1e-4f"
+
+# --- Scale -------------------------------------------------------------------
+[[ops]]
+name              = "Scale"
+category          = "Elemwise"
+kind              = "unary_scalar"
+kernel_forward    = "Scale"
+dispatch_id_macro = "Scale"             # immediate uses OaComputeKernelId::Scale
+log_component     = "ML"
+notes             = "Scalar multiplication: Out = A * Scalar."
+forward_op        = "a * pc.Alpha"
+scalar_param      = { name = "Scalar", type = "OaF32", push_field = "Alpha" }
+
+[ops.autograd]
+grad_class = "OaGradScale"
+inputs     = ["InA"]
+saved      = []
+ctor_args  = ["InScalar"]
+formula    = "auto_unary_scalar_scale"
+
+[ops.test]
+cpu_reference = "a_host[i] * kScalar"
+tolerance = "1e-4f"
+scalar_value = "1.5f"
+
+# --- Neg ---------------------------------------------------------------------
+[[ops]]
+name           = "Neg"
+category       = "Elemwise"
+kind           = "unary"
+kernel_forward = "Neg"
+log_component  = "ML"
+notes          = "Element-wise negation: Out = -A."
+forward_op     = "-a"
+
+# Neg delegates to Scale(-1) which has autograd, so Neg automatically gets gradients.
+[ops.immediate]
+alias_of = { op = "Scale", scalar = -1.0 }
+
+[ops.test]
+cpu_reference = "-a_host[i]"
+tolerance = "1e-4f"
+
+# --- Abs ---------------------------------------------------------------------
+[[ops]]
+name           = "Abs"
+category       = "Elemwise"
+kind           = "unary"
+kernel_forward = "Abs"
+log_component  = "ML"
+notes          = "Element-wise absolute value: Out = |A|."
+forward_op     = "abs(a)"
+
+[ops.autograd]
+grad_class = "OaGradAbs"
+inputs     = ["InA"]
+saved      = ["InA"]
+formula    = "manual"
+
+[ops.test]
+cpu_reference = "std::abs(a_host[i])"
+tolerance = "1e-4f"
+
+# --- Log ---------------------------------------------------------------------
+[[ops]]
+name           = "Log"
+category       = "Elemwise"
+kind           = "unary"
+kernel_forward = "Log"
+log_component  = "ML"
+notes          = "Element-wise natural log: Out = log(A)."
+forward_op     = "log(a)"
+
+[ops.autograd]
+grad_class = "OaGradLog"
+inputs     = ["InA"]
+saved      = ["InA"]
+formula    = "auto_unary_log"
+
+[ops.test]
+cpu_reference = "std::log(a_host[i])"
+tolerance = "1e-3f"
+
+# --- Sqrt --------------------------------------------------------------------
+[[ops]]
+name           = "Sqrt"
+category       = "Elemwise"
+kind           = "unary"
+kernel_forward = "Sqrt"
+slang_path     = "Ml/Nn/Math"   # historical: Source/Private/Oa/Ml/Shader/Compute/Nn/Math/
+log_component  = "ML"
+notes          = "Element-wise square root: Out = sqrt(A)."
+forward_op     = "sqrt(a)"
+
+[ops.autograd]
+grad_class = "OaGradSqrt"
+inputs     = ["InA"]
+saved      = ["out"]
+formula    = "auto_unary_sqrt"
+
+[ops.test]
+cpu_reference = "std::sqrt(a_host[i])"
+tolerance = "1e-3f"
+
+# --- Pow ---------------------------------------------------------------------
+[[ops]]
+name           = "Pow"
+category       = "Elemwise"
+kind           = "unary_scalar"
+kernel_forward = "Pow"
+slang_path     = "Ml/Nn/Math"   # historical: Source/Private/Oa/Ml/Shader/Compute/Nn/Math/
+log_component  = "ML"
+notes          = "Element-wise power: Out = A^Exponent."
+forward_op     = "pow(a, pc.Exponent)"
+scalar_param   = { name = "Exponent", type = "OaF32", push_field = "Exponent" }
+
+[ops.autograd]
+grad_class = "OaGradPow"
+inputs     = ["InA"]
+saved      = ["InA"]
+ctor_args  = ["InExponent"]
+formula    = "auto_unary_scalar_pow"
+
+[ops.test]
+cpu_reference = "std::pow(a_host[i], kScalar)"
+tolerance = "1e-3f"
+scalar_value = "1.5f"
+
+# --- AddScalar ---------------------------------------------------------------
+[[ops]]
+name           = "AddScalar"
+category       = "Elemwise"
+kind           = "unary_scalar"
+kernel_forward = "AddScalar"
+log_component  = "ML"
+notes          = "Scalar addition: Out = A + Scalar."
+forward_op     = "a + pc.Scalar"
+scalar_param   = { name = "Scalar", type = "OaF32", push_field = "Scalar" }
+
+[ops.autograd]
+grad_class = "OaGradAddScalar"
+inputs     = ["InA"]
+saved      = []
+formula    = "auto_unary_scalar_identity"
+
+[ops.test]
+cpu_reference = "a_host[i] + kScalar"
+tolerance = "1e-4f"
+scalar_value = "1.5f"
+
+# --- SubScalar ---------------------------------------------------------------
+[[ops]]
+name           = "SubScalar"
+category       = "Elemwise"
+kind           = "unary_scalar"
+kernel_forward = "SubScalar"
+log_component  = "ML"
+notes          = "Scalar subtraction: Out = A - Scalar."
+forward_op     = "a - pc.Scalar"
+scalar_param   = { name = "Scalar", type = "OaF32", push_field = "Scalar" }
+
+[ops.autograd]
+grad_class = "OaGradSubScalar"
+inputs     = ["InA"]
+saved      = []
+formula    = "auto_unary_scalar_identity"
+
+[ops.test]
+cpu_reference = "a_host[i] - kScalar"
+tolerance = "1e-4f"
+scalar_value = "1.5f"
+
+# --- DivScalar ---------------------------------------------------------------
+[[ops]]
+name           = "DivScalar"
+category       = "Elemwise"
+kind           = "unary_scalar"
+kernel_forward = "DivScalar"
+log_component  = "ML"
+notes          = "Scalar division: Out = A / Scalar."
+forward_op     = "a / pc.Scalar"
+scalar_param   = { name = "Scalar", type = "OaF32", push_field = "Scalar" }
+
+[ops.autograd]
+grad_class = "OaGradDivScalar"
+inputs     = ["InA"]
+saved      = []
+ctor_args  = ["InScalar"]
+formula    = "auto_unary_scalar_div_scalar"
+
+[ops.test]
+cpu_reference = "a_host[i] / kScalar"
+tolerance = "1e-4f"
+scalar_value = "1.5f"
+
+# --- Exp ---------------------------------------------------------------------
+[[ops]]
+name           = "Exp"
+category       = "Elemwise"
+kind           = "unary"
+kernel_forward = "Exp"
+slang_path     = "Core/Shader/Compute/Flat"
+log_component  = "ML"
+notes          = "Element-wise exponential: Out = exp(A)."
+forward_op     = "exp(a)"
+
+[ops.autograd]
+grad_class = "OaGradExp"
+inputs     = ["InA"]
+saved      = ["out"]
+formula    = "auto_unary_exp"
+
+[ops.test]
+cpu_reference = "std::exp(a_host[i])"
+tolerance = "1e-3f"
+
+# --- Sin ---------------------------------------------------------------------
+[[ops]]
+name           = "Sin"
+category       = "Elemwise"
+kind           = "unary"
+kernel_forward = "Sin"
+slang_path     = "Core/Shader/Compute/Flat"
+log_component  = "ML"
+notes          = "Element-wise sine: Out = sin(A)."
+forward_op     = "sin(a)"
+
+[ops.autograd]
+grad_class = "OaGradSin"
+inputs     = ["InA"]
+saved      = ["InA"]
+formula    = "auto_unary_sin"
+
+[ops.test]
+cpu_reference = "std::sin(a_host[i])"
+tolerance = "1e-3f"
+
+# --- Cos ---------------------------------------------------------------------
+[[ops]]
+name           = "Cos"
+category       = "Elemwise"
+kind           = "unary"
+kernel_forward = "Cos"
+slang_path     = "Core/Shader/Compute/Flat"
+log_component  = "ML"
+notes          = "Element-wise cosine: Out = cos(A)."
+forward_op     = "cos(a)"
+
+[ops.autograd]
+grad_class = "OaGradCos"
+inputs     = ["InA"]
+saved      = ["InA"]
+formula    = "auto_unary_cos"
+
+[ops.test]
+cpu_reference = "std::cos(a_host[i])"
+tolerance = "1e-3f"
+
+# --- Reciprocal --------------------------------------------------------------
+[[ops]]
+name           = "Reciprocal"
+category       = "Elemwise"
+kind           = "unary"
+kernel_forward = "Reciprocal"
+slang_path     = "Core/Shader/Compute/Flat"
+log_component  = "ML"
+notes          = "Element-wise reciprocal: Out = 1 / A."
+forward_op     = "1.0f / a"
+
+[ops.autograd]
+grad_class = "OaGradReciprocal"
+inputs     = ["InA"]
+saved      = ["out"]
+formula    = "auto_unary_reciprocal"
+
+[ops.test]
+cpu_reference = "1.0f / a_host[i]"
+tolerance = "1e-3f"
+
+# --- ClampMax ---------------------------------------------------------------
+[[ops]]
+name           = "ClampMax"
+category       = "Elemwise"
+kind           = "unary_scalar"
+kernel_forward = "ClampMax"
+slang_path     = "Core/Shader/Compute/Flat"
+log_component  = "ML"
+notes          = "Element-wise clamp max: Out = min(A, Max)."
+forward_op     = "min(a, pc.Max)"
+scalar_param   = { name = "Max", type = "OaF32", push_field = "Max" }
+
+[ops.autograd]
+grad_class = "OaGradClampMax"
+inputs     = ["InA"]
+saved      = ["InA"]
+ctor_args  = ["InMax"]
+formula    = "manual"
+
+[ops.test]
+cpu_reference = "std::min(a_host[i], kScalar)"
+tolerance = "1e-4f"
+scalar_value = "0.5f"
+
+# --- ClampMin ---------------------------------------------------------------
+[[ops]]
+name           = "ClampMin"
+category       = "Elemwise"
+kind           = "unary_scalar"
+kernel_forward = "ClampMin"
+slang_path     = "Core/Shader/Compute/Flat"
+log_component  = "ML"
+notes          = "Element-wise clamp min: Out = max(A, Min)."
+forward_op     = "max(a, pc.Min)"
+scalar_param   = { name = "Min", type = "OaF32", push_field = "Min" }
+
+[ops.autograd]
+grad_class = "OaGradClampMin"
+inputs     = ["InA"]
+saved      = ["InA"]
+ctor_args  = ["InMin"]
+formula    = "manual"
+
+[ops.test]
+cpu_reference = "std::max(a_host[i], kScalar)"
+tolerance = "1e-4f"
+scalar_value = "-0.5f"

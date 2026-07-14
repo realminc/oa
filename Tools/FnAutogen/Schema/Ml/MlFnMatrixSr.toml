@@ -1,0 +1,21 @@
+# OaFn schema — Ml/FnMatrix stochastic rounding ops (1).
+#
+# This is the *source of truth* for stochastic rounding operations. The generator
+# emits .h declarations, .cpp implementations, and .slang shaders from this file.
+# See Tools/OaFnAutogen/oafnautogen.py and Docs/Rewrite/Opus/OaFnAutogen.md.
+#
+# Stochastic rounding for improved numerical stability in low-precision training.
+
+# --- SrRoundBf16 -------------------------------------------------------------
+[[ops]]
+name           = "SrRoundBf16"
+category       = "StochasticRounding"
+kind           = "unary"
+kernel_forward = "Sr/SrRoundBf16"
+slang_path     = "Ml/Sr"
+log_component  = "ML"
+notes          = "Stochastic rounding to BF16 for better gradient accumulation."
+body           = "manual_context"
+extra_params   = [
+    { name = "Seed", type = "OaU32", default = "0" }
+]

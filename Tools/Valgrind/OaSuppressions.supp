@@ -1,0 +1,69 @@
+# Valgrind suppressions for known system/driver leaks seen during OA leak passes.
+# These are not OA bugs; they live in dbus, GTK/Pango/FontConfig, and the NVIDIA driver.
+#
+# Usage:
+#   valgrind --leak-check=full --suppressions=Tools/Valgrind/OaSuppressions.supp \
+#     Bin/Release/Tutorial/Ml/TutorialNlpByteRnnAg
+
+{
+   dbus_bus_register leak
+   Memcheck:Leak
+   match-leak-kinds: definite,indirect
+   fun:calloc
+   fun:dbus_message_new_empty_header
+   ...
+   fun:dbus_bus_register
+   fun:internal_bus_get
+}
+
+{
+   pango/fontconfig pattern leak
+   Memcheck:Leak
+   match-leak-kinds: all
+   ...
+   fun:FcPatternObjectInsertElt
+   ...
+   fun:gtk_label_measure
+}
+
+{
+   nvidia driver realloc(0) on dlopen
+   Memcheck:ReallocZero
+   fun:realloc
+   obj:*libnvidia-glcore.so*
+   obj:*libGLX_nvidia.so*
+   obj:*libGLX_nvidia.so*
+   obj:*libGLX_nvidia.so*
+   fun:_dl_init
+   fun:_dl_catch_exception
+   fun:dl_open_worker
+   fun:_dl_catch_exception
+   fun:_dl_open
+   fun:dlopen_doit
+   fun:_dl_catch_exception
+}
+
+{
+   nvidia driver posix_memalign(0) on dlopen
+   Memcheck:BadSize
+   fun:posix_memalign
+   obj:*libnvidia-glcore.so*
+   obj:*libGLX_nvidia.so*
+   obj:*libGLX_nvidia.so*
+   obj:*libGLX_nvidia.so*
+   fun:_dl_init
+   fun:_dl_catch_exception
+   fun:dl_open_worker
+   fun:_dl_catch_exception
+   fun:_dl_open
+   fun:dlopen_doit
+   fun:_dl_catch_exception
+}
+
+{
+   nvidia driver uninit conditional
+   Memcheck:Cond
+   obj:*libnvidia-glcore.so*
+   ...
+   fun:OaGraphicsEngine::PresentSwapchainImage
+}

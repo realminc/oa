@@ -1,0 +1,15 @@
+# OaFn schema — public Vision/FnImage resize operation.
+
+generate_engine_overloads = true
+generate_forwarders = true
+
+[[ops]]
+name = "Resize"
+category = "Resize"
+kind = "unary"
+kernel_forward = "ResizeBilinear"
+slang_path = "Vision/Geometric"
+log_component = "VISION"
+notes = "Resize an NCHW image using nearest or bilinear interpolation."
+body = "manual_context"
+api_params = ["const OaMatrix& InImage", "OaU32 InTargetWidth", "OaU32 InTargetHeight", "OaInterpolationMode InMode = OaInterpolationMode::Bilinear"]

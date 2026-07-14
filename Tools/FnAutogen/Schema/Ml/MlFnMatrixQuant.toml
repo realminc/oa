@@ -1,0 +1,95 @@
+# OaFn schema — Ml/FnMatrix quantization ops (7).
+#
+# This is the *source of truth* for INT8 and Q4 quantization operations. The generator
+# emits .h declarations, .cpp implementations, and .slang shaders from this file.
+# See Tools/OaFnAutogen/oafnautogen.py and Docs/Rewrite/Opus/OaFnAutogen.md.
+#
+# Quantization operations for INT8 and Q4 inference acceleration (llama.cpp compatibility).
+
+# --- QuantizeInt8 ------------------------------------------------------------
+[[ops]]
+name           = "QuantizeInt8"
+category       = "Quantize"
+kind           = "unary"
+kernel_forward = "Quantize/QuantizeInt8"
+slang_path     = "Ml/Quantize"
+log_component  = "ML"
+notes          = "Quantize FP32/BF16 to INT8 using scale factor."
+body           = "manual_context"
+extra_params   = [
+    { name = "Scale", type = "OaF32", default = "1.0f" }
+]
+
+# --- DequantizeInt8 ----------------------------------------------------------
+[[ops]]
+name           = "DequantizeInt8"
+category       = "Quantize"
+kind           = "unary"
+kernel_forward = "Quantize/DequantizeInt8"
+slang_path     = "Ml/Quantize"
+log_component  = "ML"
+notes          = "Dequantize INT8 to FP32/BF16 using scale factor."
+body           = "manual_context"
+extra_params   = [
+    { name = "Scale", type = "OaF32", default = "1.0f" }
+]
+
+# --- ComputeScaleInt8 --------------------------------------------------------
+[[ops]]
+name           = "ComputeScaleInt8"
+category       = "Quantize"
+kind           = "unary"
+kernel_forward = "Quantize/ComputeScaleInt8"
+slang_path     = "Ml/Quantize"
+log_component  = "ML"
+notes          = "Compute optimal scale factor for INT8 quantization."
+body           = "manual_context"
+
+# --- GemmInt8 ----------------------------------------------------------------
+[[ops]]
+name           = "GemmInt8"
+category       = "Quantize"
+kind           = "binary"
+kernel_forward = "Quantize/GemmInt8"
+slang_path     = "Ml/Quantize"
+log_component  = "ML"
+notes          = "INT8 matrix multiplication with scale factors."
+body           = "manual_context"
+extra_params   = [
+    { name = "ScaleA", type = "OaF32", default = "1.0f" },
+    { name = "ScaleB", type = "OaF32", default = "1.0f" },
+    { name = "ScaleOut", type = "OaF32", default = "1.0f" }
+]
+
+# --- QuantizeQ4_0 ------------------------------------------------------------
+[[ops]]
+name           = "QuantizeQ4_0"
+category       = "Quantize"
+kind           = "unary"
+kernel_forward = "Quantize/QuantizeQ4_0"
+slang_path     = "Ml/Quantize"
+log_component  = "ML"
+notes          = "Quantize FP32/BF16 to Q4_0 (llama.cpp format)."
+body           = "manual_context"
+
+# --- DequantizeQ4_0 ----------------------------------------------------------
+[[ops]]
+name           = "DequantizeQ4_0"
+category       = "Quantize"
+kind           = "unary"
+kernel_forward = "Quantize/DequantizeQ4_0"
+slang_path     = "Ml/Quantize"
+log_component  = "ML"
+notes          = "Dequantize Q4_0 to FP32/BF16 (llama.cpp format)."
+body           = "manual_context"
+
+# --- ComputeScaleQ4_0 --------------------------------------------------------
+[[ops]]
+name           = "ComputeScaleQ4_0"
+category       = "Quantize"
+kind           = "unary"
+kernel_forward = "Quantize/ComputeScaleQ4_0"
+slang_path     = "Ml/Quantize"
+log_component  = "ML"
+notes          = "Compute per-block scale for Q4_0 quantization."
+body           = "manual_context"

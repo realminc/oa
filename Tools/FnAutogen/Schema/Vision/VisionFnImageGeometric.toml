@@ -1,0 +1,104 @@
+# OaFn schema — verified public Vision/FnImage geometric ops (8).
+#
+# This is the *source of truth* for geometric image transformations. The generator
+# emits .h declarations, .cpp implementations, and .slang shaders from this file.
+# See Tools/OaFnAutogen/oafnautogen.py and Docs/Rewrite/Opus/OaFnAutogen.md.
+#
+# Geometric operations perform spatial transformations on images.
+
+generate_engine_overloads = true
+generate_forwarders = true
+
+# --- CropNchw ----------------------------------------------------------------
+[[ops]]
+name           = "Crop"
+category       = "Geometric"
+kind           = "unary"
+kernel_forward = "CropNchw"
+slang_path     = "Vision/Geometric"
+log_component  = "VISION"
+notes          = "Crop NCHW image: Out = A[y:y+h, x:x+w]."
+body           = "manual_context"
+api_params = ["const OaMatrix& InImage", "OaU32 InX", "OaU32 InY", "OaU32 InWidth", "OaU32 InHeight"]
+
+# --- FlipNchw ----------------------------------------------------------------
+[[ops]]
+name           = "Flip"
+category       = "Geometric"
+kind           = "unary"
+kernel_forward = "FlipNchw"
+slang_path     = "Vision/Geometric"
+log_component  = "VISION"
+notes          = "Flip NCHW image horizontally or vertically."
+body           = "manual_context"
+api_params = ["const OaMatrix& InImage", "bool InHorizontal", "bool InVertical"]
+
+# --- RotateNchw --------------------------------------------------------------
+[[ops]]
+name           = "Rotate"
+category       = "Geometric"
+kind           = "unary"
+kernel_forward = "RotateNchw"
+slang_path     = "Vision/Geometric"
+log_component  = "VISION"
+notes          = "Rotate NCHW image by 90/180/270 degrees."
+body           = "manual_context"
+api_params = ["const OaMatrix& InImage", "OaU32 InDegrees"]
+
+# Padding is exposed below through the generic ImagePad kernel; the original
+# constant-only one-off shader was retired.
+
+[[ops]]
+name = "Pad"
+category = "Geometric"
+kind = "unary"
+kernel_forward = "ImagePad"
+slang_path = "Vision/Geometric"
+log_component = "VISION"
+notes = "Asymmetric NCHW padding with the shared border contract."
+body = "manual_context"
+api_params = ["const OaMatrix& InImage", "OaU32 InLeft", "OaU32 InRight", "OaU32 InTop", "OaU32 InBottom", "OaBorderMode InBorder = OaBorderMode::Constant", "OaF32 InBorderValue = 0.0F"]
+
+[[ops]]
+name = "CenterCrop"
+category = "Geometric"
+kind = "unary"
+kernel_forward = "CropNchw"
+slang_path = "Vision/Geometric"
+log_component = "VISION"
+notes = "Centered crop lowered through Crop."
+body = "manual_context"
+api_params = ["const OaMatrix& InImage", "OaU32 InWidth", "OaU32 InHeight"]
+
+[[ops]]
+name = "Remap"
+category = "Geometric"
+kind = "binary"
+kernel_forward = "ImageWarp"
+slang_path = "Vision/Geometric"
+log_component = "VISION"
+notes = "Absolute-coordinate NCHW remapping with nearest or bilinear sampling."
+body = "manual_context"
+api_params = ["const OaMatrix& InImage", "const OaMatrix& InMap", "OaInterpolationMode InInterpolation = OaInterpolationMode::Bilinear", "OaBorderMode InBorder = OaBorderMode::Constant", "OaF32 InBorderValue = 0.0F"]
+
+[[ops]]
+name = "WarpAffine"
+category = "Geometric"
+kind = "binary"
+kernel_forward = "ImageWarp"
+slang_path = "Vision/Geometric"
+log_component = "VISION"
+notes = "Inverse 2x3 affine warp with explicit interpolation and border semantics."
+body = "manual_context"
+api_params = ["const OaMatrix& InImage", "const OaMatrix& InTransform", "OaU32 InWidth", "OaU32 InHeight", "OaInterpolationMode InInterpolation = OaInterpolationMode::Bilinear", "OaBorderMode InBorder = OaBorderMode::Constant", "OaF32 InBorderValue = 0.0F"]
+
+[[ops]]
+name = "WarpPerspective"
+category = "Geometric"
+kind = "binary"
+kernel_forward = "ImageWarp"
+slang_path = "Vision/Geometric"
+log_component = "VISION"
+notes = "Inverse 3x3 perspective warp with explicit interpolation and border semantics."
+body = "manual_context"
+api_params = ["const OaMatrix& InImage", "const OaMatrix& InTransform", "OaU32 InWidth", "OaU32 InHeight", "OaInterpolationMode InInterpolation = OaInterpolationMode::Bilinear", "OaBorderMode InBorder = OaBorderMode::Constant", "OaF32 InBorderValue = 0.0F"]

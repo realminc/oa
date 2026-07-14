@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <uses-feature
+        android:name="android.hardware.vulkan.compute"
+        android:required="true" />
+
+    <application
+        android:allowBackup="false"
+        android:label="OA Mobile Lab"
+        android:theme="@style/AppTheme">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <service
+            android:name=".SystemProbeService"
+            android:exported="false"
+            android:process=":probe_system" />
+        <service
+            android:name=".TurnipProbeService"
+            android:exported="false"
+            android:process=":probe_turnip" />
+        <service
+            android:name=".TrainingService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse"
+            android:process=":train_turnip">
+            <!-- Long-running on-device training must survive backgrounding and
+                 screen-off; this subtype is intentionally narrower than dataSync. -->
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="On-device machine-learning model training" />
+        </service>
+    </application>
+</manifest>

@@ -1,0 +1,118 @@
+# Oa NN schema - dense/linear layers.
+
+[[layers]]
+name = "Linear"
+constructor_args = "OaI32 InFeatures, OaI32 OutFeatures, bool InBias = true"
+constructor_init = "HasBias_(InBias)"
+constructor_body = [
+	"auto wd = OaFnMatrix::GetWeightDtype();",
+	"RegisterParameter(\"weight\", OaFnMatrix::RandXavier(OaMatrixShape{OutFeatures, InFeatures}, wd));",
+	"if (InBias) RegisterParameter(\"bias\", OaFnMatrix::Zeros(OaMatrixShape{OutFeatures}, wd));",
+]
+methods = [
+	"void SetActivation(OaActivation InAct) { Activation_ = InAct; }",
+]
+members = [
+	"bool HasBias_;",
+	"OaActivation Activation_ = OaActivation::None;",
+]
+forward_body = """
+\tauto& weight = Params_[0].Data;
+
+\tif (HasBias_ && Params_.Size() > 1) {
+\t\tauto& bias = Params_[1].Data;
+
+\t\tif (Activation_ == OaActivation::Relu) {
+\t\t\tauto out = OaFnMatrix::LinearRelu(InInput, weight, bias);
+\t\t\tif (OaFnAutograd::IsEnabled() and (InInput.RequiresGrad() or weight.RequiresGrad() or bias.RequiresGrad())) {
+\t\t\t\tauto gradFn = OaMakeSharedPtr<OaGradLinearRelu>();
+\t\t\t\tgradFn->Saved_         = OaVec<OaMatrix>{InInput, weight, out};
+\t\t\t\tgradFn->SetGraphInputs(  OaVec<OaMatrix>{InInput, weight, bias});
+\t\t\t\tgradFn->SequenceNr_    = OaFnAutograd::NextSeq();
+\t\t\t\tgradFn->OutputShape_   = out.GetShape();  // tape normalizes viewed upstream (e.g. 3D loss reshape) back to [rows,out] before LinearBwd
+\t\t\t\tout.MutAutograd().GradFn = gradFn;
+\t\t\t}
+\t\t\treturn out;
+\t\t}
+
+\t\tif (Activation_ == OaActivation::Gelu) {
+\t\t\tauto out = OaFnMatrix::LinearGelu(InInput, weight, bias);
+\t\t\tif (OaFnAutograd::IsEnabled() and (InInput.RequiresGrad() or weight.RequiresGrad() or bias.RequiresGrad())) {
+\t\t\t\tauto gradFn = OaMakeSharedPtr<OaGradLinearGelu>();
+\t\t\t\tgradFn->Saved_         = OaVec<OaMatrix>{InInput, weight, bias};  // bias needed to recompute pre-activation in bwd
+\t\t\t\tgradFn->SetGraphInputs(  OaVec<OaMatrix>{InInput, weight, bias});
+\t\t\t\tgradFn->SequenceNr_    = OaFnAutograd::NextSeq();
+\t\t\t\tgradFn->OutputShape_   = out.GetShape();  // tape normalizes viewed upstream (e.g. 3D loss reshape) back to [rows,out] before LinearBwd
+\t\t\t\tout.MutAutograd().GradFn = gradFn;
+\t\t\t}
+\t\t\treturn out;
+\t\t}
+
+\t\tauto out = OaFnMatrix::Linear(InInput, weight, bias);
+\t\tif (OaFnAutograd::IsEnabled() and (InInput.RequiresGrad() or weight.RequiresGrad() or bias.RequiresGrad())) {
+\t\t\tauto gradFn = OaMakeSharedPtr<OaGradLinear>();
+\t\t\tgradFn->Saved_         = OaVec<OaMatrix>{InInput, weight};
+\t\t\tgradFn->SetGraphInputs(  OaVec<OaMatrix>{InInput, weight, bias});
+\t\t\tgradFn->SequenceNr_    = OaFnAutograd::NextSeq();
+\t\t\tgradFn->OutputShape_   = out.GetShape();  // tape normalizes viewed upstream (e.g. 3D loss reshape) back to [rows,out] before LinearBwd
+\t\t\tout.MutAutograd().GradFn = gradFn;
+\t\t}
+\t\treturn out;
+\t}
+
+\tauto out = OaFnMatrix::MatMulNt(InInput, weight);
+
+\tif (Activation_ == OaActivation::Relu) {
+\t\treturn OaFnMatrix::Relu(out);
+\t}
+\tif (Activation_ == OaActivation::Gelu) {
+\t\treturn OaFnMatrix::Gelu(out);
+\t}
+\treturn out;
+"""
+notes = "Fully connected linear layer."
+
+[[layers]]
+name = "SwiGLU"
+constructor_args = "OaI32 InFeatures, OaI32 IntermediateSize, bool InBias = false"
+constructor_init = "HasBias_(InBias)"
+constructor_body = [
+	"auto wd = OaFnMatrix::GetWeightDtype();",
+	"RegisterParameter(\"gate_weight\", OaFnMatrix::RandXavier(OaMatrixShape{IntermediateSize, InFeatures}, wd));",
+	"RegisterParameter(\"up_weight\", OaFnMatrix::RandXavier(OaMatrixShape{IntermediateSize, InFeatures}, wd));",
+	"RegisterParameter(\"down_weight\", OaFnMatrix::RandXavier(OaMatrixShape{InFeatures, IntermediateSize}, wd));",
+	"if (InBias) {",
+	"\tRegisterParameter(\"gate_bias\", OaFnMatrix::Zeros(OaMatrixShape{IntermediateSize}, wd));",
+	"\tRegisterParameter(\"up_bias\", OaFnMatrix::Zeros(OaMatrixShape{IntermediateSize}, wd));",
+	"\tRegisterParameter(\"down_bias\", OaFnMatrix::Zeros(OaMatrixShape{InFeatures}, wd));",
+	"}",
+]
+methods = [
+	"void UpdateFusedWeights();",
+]
+members = [
+	"bool HasBias_;",
+	"OaMatrix FusedGateUpWeight;",
+]
+forward_body = """
+	// Step 1: Fused gate+up projection (if fused weights available)
+	auto& gate_weight = Params_[0].Data;
+	auto& up_weight = Params_[1].Data;
+	auto& down_weight = Params_[2].Data;
+
+	// TODO: Use fused GEMM when FusedGateUpWeight is initialized
+	// For now, use separate GEMMs
+	auto gate = OaFnMatrix::MatMulNt(InInput, gate_weight);
+	auto up = OaFnMatrix::MatMulNt(InInput, up_weight);
+
+	// Step 2: SwiGLU activation
+	auto glu = OaFnMatrix::Swiglu(gate, up);
+
+	// Step 3: Down projection
+	if (HasBias_ && Params_.Size() > 5) {
+		auto& down_bias = Params_[5].Data;
+		return OaFnMatrix::Linear(glu, down_weight, down_bias);
+	}
+	return OaFnMatrix::MatMulNt(glu, down_weight);
+"""
+notes = "SwiGLU MLP layer with optional weight concatenation."

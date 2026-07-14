@@ -1,0 +1,99 @@
+# OaFn schema — Ml/FnMatrix optimizer ops (5).
+#
+# This is the *source of truth* for ML optimizer operations. The generator
+# emits .h declarations, .cpp implementations, and .slang shaders from this file.
+# See Tools/OaFnAutogen/oafnautogen.py and Docs/Rewrite/Opus/OaFnAutogen.md.
+#
+# Optimizer operations update model parameters based on gradients.
+# These are in-place operations that modify the parameter tensors.
+
+# --- Sgd ---------------------------------------------------------------------
+[[ops]]
+name           = "Sgd"
+category       = "Optim"
+kind           = "unary_scalar"
+kernel_forward = "Sgd"
+slang_path     = "Ml/Optim"
+log_component  = "ML"
+notes          = "SGD optimizer step: Param -= LearningRate * Grad."
+body           = "manual_context"
+scalar_param   = { name = "LearningRate", type = "OaF32", push_field = "Lr" }
+
+# --- SgdMomentum -------------------------------------------------------------
+[[ops]]
+name           = "SgdMomentum"
+category       = "Optim"
+kind           = "binary"
+kernel_forward = "SgdMomentum"
+slang_path     = "Ml/Optim"
+log_component  = "ML"
+notes          = "SGD with momentum: Velocity = Momentum * Velocity + Grad; Param -= Lr * Velocity."
+body           = "manual_context"
+extra_params   = [
+    { name = "Velocity", type = "OaMatrix&", default = "OaMatrix{}" },
+    { name = "LearningRate", type = "OaF32", default = "0.01f" },
+    { name = "Momentum", type = "OaF32", default = "0.9f" }
+]
+
+# --- Adam --------------------------------------------------------------------
+[[ops]]
+name           = "Adam"
+category       = "Optim"
+kind           = "unary"
+kernel_forward = "Adam"
+slang_path     = "Ml/Optim"
+log_component  = "ML"
+notes          = "Adam optimizer step with first and second moment estimates."
+body           = "manual_context"
+extra_params   = [
+    { name = "M", type = "OaMatrix&", default = "OaMatrix{}" },
+    { name = "V", type = "OaMatrix&", default = "OaMatrix{}" },
+    { name = "LearningRate", type = "OaF32", default = "0.001f" },
+    { name = "Beta1", type = "OaF32", default = "0.9f" },
+    { name = "Beta2", type = "OaF32", default = "0.999f" },
+    { name = "Eps", type = "OaF32", default = "1e-8f" },
+    { name = "Step", type = "OaI64", default = "1" }
+]
+
+# --- Adamw -------------------------------------------------------------------
+[[ops]]
+name           = "Adamw"
+category       = "Optim"
+kind           = "unary"
+kernel_forward = "Adamw"
+slang_path     = "Ml/Optim"
+log_component  = "ML"
+notes          = "AdamW optimizer step with decoupled weight decay."
+body           = "manual_context"
+extra_params   = [
+    { name = "M", type = "OaMatrix&", default = "OaMatrix{}" },
+    { name = "V", type = "OaMatrix&", default = "OaMatrix{}" },
+    { name = "LearningRate", type = "OaF32", default = "0.001f" },
+    { name = "Beta1", type = "OaF32", default = "0.9f" },
+    { name = "Beta2", type = "OaF32", default = "0.999f" },
+    { name = "Eps", type = "OaF32", default = "1e-8f" },
+    { name = "WeightDecay", type = "OaF32", default = "0.01f" },
+    { name = "Step", type = "OaI64", default = "1" }
+]
+
+# --- AdamwGraph --------------------------------------------------------------
+[[ops]]
+name           = "AdamwGraph"
+category       = "Optim"
+kind           = "unary"
+kernel_forward = "AdamwGraph"
+slang_path     = "Ml/Optim"
+log_component  = "ML"
+notes          = "AdamW optimizer for compute graph execution."
+body           = "manual_context"
+extra_params   = [
+    { name = "M", type = "OaMatrix&", default = "OaMatrix{}" },
+    { name = "V", type = "OaMatrix&", default = "OaMatrix{}" },
+    { name = "LearningRate", type = "OaF32", default = "0.001f" },
+    { name = "Beta1", type = "OaF32", default = "0.9f" },
+    { name = "Beta2", type = "OaF32", default = "0.999f" },
+    { name = "Eps", type = "OaF32", default = "1e-8f" },
+    { name = "WeightDecay", type = "OaF32", default = "0.01f" },
+    { name = "Step", type = "OaI64", default = "1" }
+]
+

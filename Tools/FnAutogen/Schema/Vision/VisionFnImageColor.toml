@@ -1,0 +1,15 @@
+# OaFn schema — public Vision/FnImage normalization operation.
+
+generate_engine_overloads = true
+generate_forwarders = true
+
+[[ops]]
+name = "Normalize"
+category = "Color"
+kind = "unary"
+kernel_forward = "NormalizeImage"
+slang_path = "Vision/Conversion"
+log_component = "VISION"
+notes = "Apply per-channel normalization to an NCHW image tensor."
+body = "manual_context"
+api_params = ["const OaMatrix& InImage", "const OaNormalizationParams& InParams"]

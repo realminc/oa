@@ -1,0 +1,91 @@
+{
+	"version": 6,
+	"configurePresets": [
+		{
+			"name": "base",
+			"hidden": true,
+			"generator": "Ninja",
+			"cacheVariables": {
+				"VCPKG_OVERLAY_PORTS": "${sourceDir}/vcpkg-overlays",
+				"OA_BUILD_CRYPTO": "ON"
+			}
+		},
+		{
+			"name": "linux-base",
+			"hidden": true,
+			"inherits": "base",
+			"cacheVariables": {
+				"CMAKE_C_COMPILER": "clang",
+				"CMAKE_CXX_COMPILER": "clang++",
+				"CMAKE_C_COMPILER_LAUNCHER": "ccache",
+				"CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
+				"CMAKE_TOOLCHAIN_FILE": "$env{HOME}/.vcpkg/vcpkg/scripts/buildsystems/vcpkg.cmake",
+				"VCPKG_INSTALLED_DIR": "$env{HOME}/.vcpkg/installed",
+				"VCPKG_TARGET_TRIPLET": "x64-linux"
+			},
+			"condition": {
+				"type": "equals",
+				"lhs": "${hostSystemName}",
+				"rhs": "Linux"
+			}
+		},
+		{
+			"name": "release",
+			"inherits": "linux-base",
+			"binaryDir": "Build/Release",
+			"cacheVariables": {
+				"CMAKE_BUILD_TYPE": "Release",
+				"OA_VULKAN_VALIDATION": "OFF",
+				"OA_EMBED_SHADERS": "ON"
+			}
+		},
+		{
+			"name": "debug",
+			"inherits": "linux-base",
+			"binaryDir": "Build/Debug",
+			"cacheVariables": {
+				"CMAKE_BUILD_TYPE": "Debug",
+				"OA_VULKAN_VALIDATION": "ON",
+				"OA_EMBED_SHADERS": "ON"
+			}
+		},
+		{
+			"name": "windows-base",
+			"hidden": true,
+			"inherits": "base",
+			"cacheVariables": {
+				"CMAKE_C_COMPILER": "clang",
+				"CMAKE_CXX_COMPILER": "clang++",
+				"CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+				"VCPKG_TARGET_TRIPLET": "x64-windows",
+				"VCPKG_OVERLAY_PORTS": "${sourceDir}/vcpkg-overlays",
+				"OA_BUILD_CRYPTO": "ON"
+			},
+			"condition": {
+				"type": "equals",
+				"lhs": "${hostSystemName}",
+				"rhs": "Windows"
+			}
+		},
+		{
+			"name": "windows-release",
+			"inherits": "windows-base",
+			"binaryDir": "Build/Release",
+			"cacheVariables": {
+				"CMAKE_BUILD_TYPE": "Release",
+				"OA_VULKAN_VALIDATION": "OFF",
+				"OA_EMBED_SHADERS": "ON"
+			}
+		},
+		{
+			"name": "windows-debug",
+			"inherits": "windows-base",
+			"binaryDir": "Build/Debug",
+			"cacheVariables": {
+				"CMAKE_BUILD_TYPE": "Debug",
+				"OA_VULKAN_VALIDATION": "ON",
+				"OA_EMBED_SHADERS": "ON"
+			}
+		}
+	]
+}

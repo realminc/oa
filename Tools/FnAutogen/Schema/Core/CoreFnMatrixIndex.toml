@@ -1,0 +1,68 @@
+# OaFn schema — Core/FnMatrix indexing and view ops (4).
+#
+# This is the *source of truth* for indexing and view operations. The generator
+# emits .h declarations, .cpp implementations from this file.
+# See Tools/OaFnAutogen/oafnautogen.py and Docs/Rewrite/Opus/OaFnAutogen.md.
+#
+# Indexing operations select, slice, or rearrange tensor elements.
+# View operations create new views of existing data without copying.
+
+# --- Argmax ------------------------------------------------------------------
+[[ops]]
+name           = "Argmax"
+category       = "Index"
+kind           = "reduce_full"
+kernel_forward = "Argmax"
+slang_path     = "Core/Shader/Compute/Flat"
+log_component  = "ML"
+notes          = "Find index of maximum value: Out = argmax(A)."
+body           = "manual_context"
+extra_params   = [{ name = "Dim", type = "OaI32", default = "-1" }]
+dispatch_workgroups = 1
+output         = { shape = "scalar_1d", dtype = "Int64" }
+
+# --- CopyAtOffset ------------------------------------------------------------
+[[ops]]
+name           = "CopyAtOffset"
+category       = "Index"
+kind           = "binary"
+kernel_forward = "CopyAtOffset"
+slang_path     = "Core/Shader/Compute/Flat"
+log_component  = "ML"
+notes          = "Copy tensor A into B at specified offset."
+body           = "manual_context"
+extra_params   = [
+    { name = "Offset", type = "OaI64", default = "0" }
+]
+
+# --- Reshape -----------------------------------------------------------------
+[[ops]]
+name           = "Reshape"
+category       = "Index"
+kind           = "unary"
+kernel_forward = "Copy"
+slang_path     = "Core/Shader/Compute/Flat"
+log_component  = "ML"
+notes          = "Reshape tensor to new shape (view operation, no copy)."
+body           = "manual_context"
+extra_params   = [
+    { name = "NewShape", type = "OaSpan<const OaI64>", default = "{}" }
+]
+
+# --- Slice -------------------------------------------------------------------
+[[ops]]
+name           = "Slice"
+category       = "Index"
+kind           = "unary"
+kernel_forward = "Copy"
+slang_path     = "Core/Shader/Compute/Flat"
+log_component  = "ML"
+notes          = "Slice tensor along dimension (view operation when possible)."
+body           = "manual_context"
+extra_params   = [
+    { name = "Dim", type = "OaI32", default = "0" },
+    { name = "Start", type = "OaI64", default = "0" },
+    { name = "End", type = "OaI64", default = "-1" },
+    { name = "Step", type = "OaI64", default = "1" }
+]
+

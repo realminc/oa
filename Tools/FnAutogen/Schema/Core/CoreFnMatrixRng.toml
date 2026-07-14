@@ -1,0 +1,61 @@
+# OaFn schema — Core/FnMatrix RNG ops (3).
+#
+# This is the *source of truth* for random number generation operations. The generator
+# emits .h declarations, .cpp implementations, and .slang shaders from this file.
+# See Tools/OaFnAutogen/oafnautogen.py and Docs/Rewrite/Opus/OaFnAutogen.md.
+#
+# RNG operations use the Philox counter-based PRNG for reproducible,
+# parallel random number generation on GPU.
+
+# --- PhiloxNormal ------------------------------------------------------------
+[[ops]]
+name           = "PhiloxNormal"
+category       = "Rng"
+kind           = "unary"
+kernel_forward = "PhiloxNormal"
+slang_path     = "Core/Rng"
+log_component  = "ML"
+notes          = "Generate normal distribution random numbers using Philox PRNG."
+body           = "manual_context"
+extra_params   = [
+    { name = "Mean", type = "OaF32", default = "0.0f" },
+    { name = "Stddev", type = "OaF32", default = "1.0f" },
+    { name = "Seed", type = "OaU64", default = "0" }
+]
+
+# --- PhiloxUniform -----------------------------------------------------------
+[[ops]]
+name           = "PhiloxUniform"
+category       = "Rng"
+kind           = "unary"
+kernel_forward = "PhiloxUniform"
+slang_path     = "Core/Rng"
+log_component  = "ML"
+notes          = "Generate uniform distribution random numbers using Philox PRNG."
+body           = "manual_context"
+extra_params   = [
+    { name = "Low", type = "OaF32", default = "0.0f" },
+    { name = "High", type = "OaF32", default = "1.0f" },
+    { name = "Seed", type = "OaU64", default = "0" }
+]
+
+# --- Fill --------------------------------------------------------------------
+[[ops]]
+name           = "Fill"
+category       = "Rng"
+kind           = "nullary_scalar"
+kernel_forward = "Fill"
+slang_path     = "Core/Shader/Compute/Flat"
+log_component  = "ML"
+notes          = "Fill tensor with constant value: Out = Value."
+forward_op     = "pc.Value"
+scalar_param   = { name = "Value", type = "OaF32", push_field = "Value" }
+extra_params   = [
+    { name = "Shape", type = "const OaMatrixShape&" }
+]
+[ops.test]
+cpu_reference = "3.14159f"
+tolerance = "1e-6f"
+test_sizes = [256, 1024]
+scalar_value = "3.14159f"
+

@@ -1,0 +1,27 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+find_dependency(Vulkan)
+find_dependency(hwy CONFIG)
+find_dependency(yaml-cpp CONFIG)
+find_dependency(CLI11 CONFIG)
+find_dependency(fmt CONFIG)
+if(@OA_BUILD_CRYPTO@)
+	find_dependency(liboqs CONFIG)
+endif()
+
+include("${CMAKE_CURRENT_LIST_DIR}/oa-targets.cmake")
+
+# Slang shader module search paths for consumer repos
+# Use: slangc -I ${OA_SLANG_UMBRELLA_PATH} -I ${OA_SLANG_MODULE_PATH} ...
+# Umbrella: include/Oa/Core/Math.slang — `import Math;`
+# Importable modules (no entry points): lib/Oa/Core/Shader/Compute/Math/ — Storage, Activations, …
+# Core matrix entry shaders (sources): lib/Oa/Core/Shader/Compute/Matrix/ — Matmul, Transpose, …
+get_filename_component(_oa_prefix "${CMAKE_CURRENT_LIST_DIR}/../../.." ABSOLUTE)
+set(OA_SLANG_MODULE_PATH "${_oa_prefix}/lib/Oa/Core/Shader/Compute/Math"
+	CACHE PATH "Path to oa Slang importable math modules (Kernel/Math/*.slang)")
+set(OA_SLANG_KERNEL_MATRIX_PATH "${_oa_prefix}/lib/Oa/Core/Shader/Compute/Matrix"
+	CACHE PATH "Path to oa core matrix compute .slang entry points (optional -I for local compiles)")
+set(OA_SLANG_UMBRELLA_PATH "${_oa_prefix}/include/Oa/Core"
+	CACHE PATH "Path to oa Slang umbrella module (Math.slang)")

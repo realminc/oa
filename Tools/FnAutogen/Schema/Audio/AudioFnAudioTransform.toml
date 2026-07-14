@@ -1,0 +1,37 @@
+# OaFn schema — Audio/FnAudio transform ops (2).
+#
+# This is the *source of truth* for audio signal processing operations. The generator
+# emits .h declarations, .cpp implementations, and .slang shaders from this file.
+# See Tools/OaFnAutogen/oafnautogen.py and Docs/Rewrite/Opus/OaFnAutogen.md.
+#
+# Audio DSP operations for spectral analysis and feature extraction.
+
+# --- Stft --------------------------------------------------------------------
+[[ops]]
+name           = "Stft"
+category       = "Transform"
+kind           = "unary"
+kernel_forward = "Stft"
+slang_path     = "Audio/Transform"
+log_component  = "AUDIO"
+notes          = "Short-Time Fourier Transform for spectral analysis."
+body           = "manual_context"
+extra_params   = [
+    { name = "WindowSize", type = "OaU32", default = "512" },
+    { name = "HopLength", type = "OaU32", default = "256" }
+]
+
+# --- MelFilterbank -----------------------------------------------------------
+[[ops]]
+name           = "MelFilterbank"
+category       = "Transform"
+kind           = "unary"
+kernel_forward = "MelFilterbank"
+slang_path     = "Audio/Transform"
+log_component  = "AUDIO"
+notes          = "Mel-scale filterbank for audio feature extraction."
+body           = "manual_context"
+extra_params   = [
+    { name = "NumMels", type = "OaU32", default = "80" },
+    { name = "SampleRate", type = "OaU32", default = "16000" }
+]

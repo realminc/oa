@@ -1,0 +1,22 @@
+#version 460
+#extension GL_KHR_memory_scope_semantics : require
+#extension GL_KHR_cooperative_matrix : require
+#extension GL_NV_cooperative_matrix2 : require
+
+layout(local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) buffer InputBuffer {
+	float x[];
+} inputA;
+
+layout(set = 0, binding = 1) buffer OutputBuffer {
+	float x[];
+} outputA;
+
+void main() {
+	tensorLayoutNV<2> tensor_layout = createTensorLayoutNV(2);
+	tensor_layout = setTensorLayoutDimensionNV(tensor_layout, 16, 16);
+	coopmat<float, gl_ScopeWorkgroup, 16, 16, gl_MatrixUseAccumulator> mat;
+	coopMatLoadTensorNV(mat, inputA.x, 0, tensor_layout);
+	coopMatStoreTensorNV(mat, outputA.x, 0, tensor_layout);
+}

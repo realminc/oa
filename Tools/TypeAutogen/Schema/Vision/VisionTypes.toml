@@ -1,0 +1,65 @@
+# OA Vision Types Schema
+# Image and video types for the OA Vision module
+
+domain = "Vision"
+namespace = "Oa"
+
+[[enums]]
+name = "OaVideoCodec"
+underlying_type = "OaU32"
+generate_tostring = true
+generate_fromstring = true
+values = [
+	{ name = "H264", value = 0, comment = "H.264/AVC" },
+	{ name = "H265", value = 1, comment = "H.265/HEVC" },
+	{ name = "AV1", value = 2, comment = "AV1" },
+	{ name = "VP9", value = 3, comment = "VP9" },
+]
+
+[[enums]]
+name = "OaYCbCrModel"
+underlying_type = "OaU32"
+generate_tostring = true
+generate_fromstring = true
+values = [
+	{ name = "Auto", value = 0, comment = "Select from stream metadata" },
+	{ name = "BT709", value = 1, comment = "ITU-R BT.709 (HDTV)" },
+	{ name = "BT2020", value = 2, comment = "ITU-R BT.2020 (UHDTV/HDR)" },
+]
+
+[[enums]]
+name = "OaPixelFormat"
+underlying_type = "OaU32"
+generate_tostring = true
+generate_fromstring = true
+values = [
+	{ name = "NV12", value = 0, comment = "NV12 video-decode image" },
+	{ name = "RGB8", value = 1, comment = "8-bit RGB" },
+	{ name = "RGBA8", value = 2, comment = "8-bit RGBA" },
+	{ name = "BF16", value = 3, comment = "BFloat16 ML tensor" },
+	{ name = "F32", value = 4, comment = "Float32 ML tensor" },
+]
+
+[[enums]]
+name = "OaInterpolationMode"
+underlying_type = "OaU32"
+generate_tostring = true
+generate_fromstring = true
+values = [
+	{ name = "Nearest", value = 0, comment = "Nearest neighbor" },
+	{ name = "Bilinear", value = 1, comment = "Bilinear interpolation" },
+	{ name = "Bicubic", value = 2, comment = "Bicubic interpolation" },
+]
+
+[[enums]]
+name = "OaBorderMode"
+underlying_type = "OaU32"
+generate_tostring = true
+generate_fromstring = true
+values = [
+	{ name = "Constant", value = 0, comment = "Fill samples outside the image with a constant value" },
+	{ name = "Replicate", value = 1, comment = "Replicate the nearest edge sample" },
+	{ name = "Reflect", value = 2, comment = "Reflect including the edge sample (OpenCV BORDER_REFLECT)" },
+	{ name = "Reflect101", value = 3, comment = "Reflect excluding the edge sample (OpenCV BORDER_REFLECT_101)" },
+	{ name = "Wrap", value = 4, comment = "Wrap coordinates periodically" },
+]

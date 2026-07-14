@@ -1,0 +1,73 @@
+# OaFn schema — Ml/FnMatrix embedding and indexing ops (4).
+#
+# This is the *source of truth* for embedding and indexing operations. The generator
+# emits .h declarations, .cpp implementations, and .slang shaders from this file.
+# See Tools/OaFnAutogen/oafnautogen.py and Docs/Rewrite/Opus/OaFnAutogen.md.
+#
+# Embedding operations map discrete indices to continuous vectors.
+# Gather operations select elements based on indices.
+
+# --- Embedding ---------------------------------------------------------------
+[[ops]]
+name           = "Embedding"
+category       = "Embed"
+kind           = "unary"
+kernel_forward = "Embedding"
+slang_path     = "Ml/Nn/Embed"
+log_component  = "ML"
+notes          = "Embedding lookup: Out = Weight[Indices]."
+body           = "manual_context"
+extra_params   = [
+    { name = "Indices", type = "const OaMatrix&", default = "OaMatrix{}" },
+    { name = "PaddingIdx", type = "OaI64", default = "-1" }
+]
+
+# --- Gather ------------------------------------------------------------------
+[[ops]]
+name           = "Gather"
+category       = "Embed"
+kind           = "unary"
+kernel_forward = "Gather"
+slang_path     = "Ml/Nn/Embed"
+log_component  = "ML"
+notes          = "Gather elements: Out = A[Indices]."
+body           = "manual_context"
+extra_params   = [
+    { name = "Indices", type = "const OaMatrix&", default = "OaMatrix{}" },
+    { name = "Dim", type = "OaI32", default = "0" }
+]
+[ops.autograd]
+grad_class = "OaGradGather"
+inputs     = ["InA", "Indices"]
+saved      = ["Indices", "InA"]
+
+# --- ByteEmbed ---------------------------------------------------------------
+[[ops]]
+name           = "ByteEmbed"
+category       = "Embed"
+kind           = "unary"
+kernel_forward = "ByteEmbed"
+slang_path     = "Ml/Nn/Embed"
+log_component  = "ML"
+notes          = "Byte-level embedding: Out = Weight[ByteIndices]."
+body           = "manual_context"
+extra_params   = [
+    { name = "Indices", type = "const OaMatrix&", default = "OaMatrix{}" }
+]
+
+# --- BiasAdd -----------------------------------------------------------------
+[[ops]]
+name           = "BiasAdd"
+category       = "Embed"
+kind           = "binary"
+kernel_forward = "BiasAdd"
+slang_path     = "Ml/Nn/Linear"
+log_component  = "ML"
+notes          = "Add bias vector: Out = A + Bias (broadcasted)."
+forward_op     = "a + b"
+body           = "bias_add_broadcast"
+[ops.test]
+cpu_reference = "a_host[i] + b_host[i]"
+tolerance = "1e-4f"
+test_sizes = [256]
+

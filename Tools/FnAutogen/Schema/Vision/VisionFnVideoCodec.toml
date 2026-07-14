@@ -1,0 +1,44 @@
+# OaFn schema — Vision/FnVideo codec operations (3).
+#
+# Source of truth for OaFnVideo::DecodeFrame / EncodeFrame / FlushSession.
+# These are session-recorder ops: there is no GPU kernel; the body is
+# handwritten in Source/Private/Oa/Vision/FnVideo/Codec/FnVideoCodec.cpp and
+# delegates into OaVideoDecoder / OaVideoEncoder.
+
+category    = "Codec"
+namespace   = "OaFnVideo"
+file_prefix = "FnVideo"
+cpp_subdir  = "FnVideo"
+
+# --- DecodeFrame --------------------------------------------------------------
+[[ops]]
+name           = "DecodeFrame"
+category       = "Codec"
+kind           = "binary"
+log_component  = "VISION"
+notes          = "Decode a single video frame from an access unit (NAL bytes)."
+body           = "manual_context"
+extra_params   = [
+    { name = "Pts", type = "OaU64", default = "0ULL" }
+]
+
+# --- EncodeFrame --------------------------------------------------------------
+[[ops]]
+name           = "EncodeFrame"
+category       = "Codec"
+kind           = "binary"
+log_component  = "VISION"
+notes          = "Encode a single video frame to a bitstream."
+body           = "manual_context"
+extra_params   = [
+    { name = "Pts", type = "OaU64", default = "0ULL" }
+]
+
+# --- FlushSession -------------------------------------------------------------
+[[ops]]
+name           = "FlushSession"
+category       = "Codec"
+kind           = "unary"
+log_component  = "VISION"
+notes          = "Flush pending decode/encode operations and output any buffered frames."
+body           = "manual_context"

@@ -1,0 +1,94 @@
+# OA UI Types Schema
+# User interface types for the OA UI module
+
+domain = "Ui"
+namespace = "Oa"
+
+[[enums]]
+name = "OaViewerMode"
+underlying_type = "OaU8"
+generate_tostring = true
+generate_fromstring = true
+values = [
+	{ name = "Default", value = 0, comment = "Default viewer mode" },
+	{ name = "Orbit", value = 1, comment = "Orbit camera mode" },
+	{ name = "Fly", value = 2, comment = "Fly camera mode" },
+	{ name = "Pan", value = 3, comment = "Pan camera mode" },
+	{ name = "Zoom", value = 4, comment = "Zoom camera mode" },
+]
+
+[[enums]]
+name = "OaImageDtype"
+underlying_type = "OaU8"
+generate_tostring = true
+generate_fromstring = true
+values = [
+	{ name = "Unknown", value = 0, comment = "Unknown image dtype" },
+	{ name = "UInt8", value = 1, comment = "8-bit unsigned" },
+	{ name = "UInt16", value = 2, comment = "16-bit unsigned" },
+	{ name = "Float32", value = 3, comment = "32-bit float" },
+]
+
+[[enums]]
+name = "OuiKey"
+underlying_type = "OaU8"
+generate_tostring = true
+generate_fromstring = true
+values = [
+	{ name = "Unknown", value = 0, comment = "Unknown key" },
+	{ name = "Space", value = 1, comment = "Space" },
+	{ name = "Enter", value = 2, comment = "Enter" },
+	{ name = "Escape", value = 3, comment = "Escape" },
+	{ name = "Tab", value = 4, comment = "Tab" },
+	{ name = "Backspace", value = 5, comment = "Backspace" },
+	{ name = "Delete", value = 6, comment = "Delete" },
+	{ name = "Insert", value = 7, comment = "Insert" },
+	{ name = "Home", value = 8, comment = "Home" },
+	{ name = "End", value = 9, comment = "End" },
+	{ name = "PageUp", value = 10, comment = "Page Up" },
+	{ name = "PageDown", value = 11, comment = "Page Down" },
+	{ name = "Left", value = 12, comment = "Left arrow" },
+	{ name = "Right", value = 13, comment = "Right arrow" },
+	{ name = "Up", value = 14, comment = "Up arrow" },
+	{ name = "Down", value = 15, comment = "Down arrow" },
+	{ name = "F1", value = 16, comment = "F1" },
+	{ name = "F2", value = 17, comment = "F2" },
+	{ name = "F3", value = 18, comment = "F3" },
+	{ name = "F4", value = 19, comment = "F4" },
+	{ name = "F5", value = 20, comment = "F5" },
+	{ name = "F6", value = 21, comment = "F6" },
+	{ name = "F7", value = 22, comment = "F7" },
+	{ name = "F8", value = 23, comment = "F8" },
+	{ name = "F9", value = 24, comment = "F9" },
+	{ name = "F10", value = 25, comment = "F10" },
+	{ name = "F11", value = 26, comment = "F11" },
+	{ name = "F12", value = 27, comment = "F12" },
+]
+
+[[enums]]
+name = "OuiEventType"
+underlying_type = "OaU8"
+generate_tostring = true
+generate_fromstring = true
+values = [
+	{ name = "Unknown", value = 0, comment = "Unknown event" },
+	{ name = "KeyDown", value = 1, comment = "Key down" },
+	{ name = "KeyUp", value = 2, comment = "Key up" },
+	{ name = "Char", value = 3, comment = "Character input" },
+	{ name = "MouseDown", value = 4, comment = "Mouse button down" },
+	{ name = "MouseUp", value = 5, comment = "Mouse button up" },
+	{ name = "MouseMove", value = 6, comment = "Mouse move" },
+	{ name = "MouseWheel", value = 7, comment = "Mouse wheel" },
+	{ name = "Resize", value = 8, comment = "Window resize" },
+	{ name = "Close", value = 9, comment = "Window close" },
+]
+
+[[enums]]
+name = "OaCameraProjection"
+underlying_type = "OaU8"
+generate_tostring = true
+generate_fromstring = true
+values = [
+	{ name = "Perspective", value = 0, comment = "Perspective projection" },
+	{ name = "Orthographic", value = 1, comment = "Orthographic projection" },
+]

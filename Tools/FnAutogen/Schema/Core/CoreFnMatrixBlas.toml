@@ -1,0 +1,17 @@
+# CoreFnMatrixBlas.toml
+# MatMul is a general-purpose BLAS operation (stays in Core)
+# Linear/LinearRelu are ML-specific (moved to Ml)
+
+category = "Blas"
+file_category = "Blas"
+mode = "additive"
+
+[[ops]]
+name = "MatMulNt"
+category = "Blas"
+kind = "binary"
+kernel_forward = "MatMulNt"
+slang_path = "Core/Blas/Gemm"
+log_component = "ML"
+notes = "Matrix multiplication: B is [N,K] and Out = A @ Bᵀ (the OA weight convention, shared with Linear/attention; NOT PyTorch-standard A@B with B as [K,N]). For batched/standard A@B use Bmm. Router resolves precision at context execution."
+body = "manual_context"

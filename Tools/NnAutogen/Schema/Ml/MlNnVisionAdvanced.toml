@@ -1,0 +1,166 @@
+# Oa NN schema - advanced vision layers (BatchNorm, AdaptivePool).
+
+[[layers]]
+name = "BatchNorm2d"
+constructor_args = "OaI32 NumFeatures, OaF32 Eps = 1e-5f, OaF32 Momentum = 0.1f"
+constructor_init = "NumFeatures_(NumFeatures), Eps_(Eps), Momentum_(Momentum)"
+constructor_body = [
+	"auto wd = OaFnMatrix::GetWeightDtype();",
+	"RegisterParameter(\"weight\", OaFnMatrix::Ones(OaMatrixShape{NumFeatures}, wd), true);",
+	"RegisterParameter(\"bias\", OaFnMatrix::Zeros(OaMatrixShape{NumFeatures}, wd), true);",
+	"RegisterBuffer(\"running_mean\", OaFnMatrix::Zeros(OaMatrixShape{NumFeatures}, wd));",
+	"RegisterBuffer(\"running_var\", OaFnMatrix::Ones(OaMatrixShape{NumFeatures}, wd));",
+]
+members = [
+	"OaI32 NumFeatures_;",
+	"OaF32 Eps_;",
+	"OaF32 Momentum_;",
+]
+forward_body = """
+\tauto shape = InInput.GetShape();
+\tOaU32 N = (OaU32)shape[0];
+\tOaU32 C = (OaU32)shape[1];
+\tOaU32 H = (OaU32)shape[2];
+\tOaU32 W = (OaU32)shape[3];
+
+\t// Get weights (gamma) and bias (beta)
+\tauto &gamma = Params_[0].Data;  // [C]
+\tauto &beta  = Params_[1].Data;  // [C]
+\tauto &running_mean = Buffers_[0].Data;  // [C]
+\tauto &running_var  = Buffers_[1].Data;  // [C]
+
+\tauto& ctx = OaContext::GetDefault();
+\tauto is_training = ctx.IsTraining();
+
+\t// Create output tensor
+\tauto output = OaFnMatrix::Empty(OaMatrixShape{N, C, H, W}, InInput.GetDtype());
+
+\t// Allocate temporary per-channel statistics buffers
+\tauto mean_buf = OaFnMatrix::Empty(OaMatrixShape{C}, OaScalarType::Float32);
+\tauto var_buf  = OaFnMatrix::Empty(OaMatrixShape{C}, OaScalarType::Float32);
+
+\tif (is_training) {
+\t\t// Pass 1: Compute per-channel mean and variance
+\t\t{
+\t\t\tstruct StatsPush {
+\t\t\t\tOaU32 BatchSize, Channels, Height, Width;
+\t\t\t};
+\t\t\tStatsPush push = {};
+\t\t\tpush.BatchSize = N;
+\t\t\tpush.Channels = C;
+\t\t\tpush.Height = H;
+\t\t\tpush.Width = W;
+
+\t\t\tOaBufferAccess access[] = {
+\t\t\t\tOaBufferAccess::Read, OaBufferAccess::Write, OaBufferAccess::Write};
+\t\t\tctx.Add("BatchNorm2dStats", {&InInput, &mean_buf, &var_buf},
+\t\t\t\taccess, &push, sizeof(push), C, 1, 1);
+\t\t}
+
+\t\t// Pass 2: Normalize + affine transform
+\t\t{
+\t\t\tstruct NormPush {
+\t\t\t\tOaU32 BatchSize, Channels, Height, Width;
+\t\t\t\tfloat Eps;
+\t\t\t};
+\t\t\tNormPush push = {};
+\t\t\tpush.BatchSize = N;
+\t\t\tpush.Channels = C;
+\t\t\tpush.Height = H;
+\t\t\tpush.Width = W;
+\t\t\tpush.Eps = Eps_;
+
+\t\t\tOaU32 groupsX = DivCeil(W, 16);
+\t\t\tOaU32 groupsY = DivCeil(H, 16);
+\t\t\tOaU32 groupsZ = N * C;
+
+\t\t\tOaBufferAccess access[] = {
+\t\t\t\tOaBufferAccess::Read, OaBufferAccess::Write,
+\t\t\t\tOaBufferAccess::Read, OaBufferAccess::Read,
+\t\t\t\tOaBufferAccess::Read, OaBufferAccess::Read};
+\t\t\tctx.Add("BatchNorm2dNorm",
+\t\t\t\t{&InInput, &output, &mean_buf, &var_buf, &gamma, &beta},
+\t\t\t\taccess, &push, sizeof(push), groupsX, groupsY, groupsZ);
+\t\t}
+
+\t\t// Update running statistics (momentum-based EMA)
+\t\tauto momentum_f = OaFnMatrix::Full(OaMatrixShape{C}, Momentum_);
+\t\tauto one_minus_momentum = OaFnMatrix::Full(OaMatrixShape{C}, 1.0f - Momentum_);
+
+\t\tauto updated_mean = OaFnMatrix::Add(
+\t\t\tOaFnMatrix::Mul(running_mean, one_minus_momentum),
+\t\t\tOaFnMatrix::Mul(mean_buf, momentum_f));
+\t\tauto updated_var = OaFnMatrix::Add(
+\t\t\tOaFnMatrix::Mul(running_var, one_minus_momentum),
+\t\t\tOaFnMatrix::Mul(var_buf, momentum_f));
+
+\t\tstruct CopyPush { OaU32 Count; } copyPush{C};
+\t\tOaBufferAccess copyAccess[] = {OaBufferAccess::Read, OaBufferAccess::Write};
+\t\tctx.Add("Copy", {&updated_mean, &running_mean}, copyAccess,
+\t\t\t&copyPush, sizeof(copyPush), DivCeil(C, 256));
+\t\tctx.Add("Copy", {&updated_var, &running_var}, copyAccess,
+\t\t\t&copyPush, sizeof(copyPush), DivCeil(C, 256));
+\t} else {
+\t\t// Inference mode: use running statistics
+\t\tstruct NormPush {
+\t\t\tOaU32 BatchSize, Channels, Height, Width;
+\t\t\tfloat Eps;
+\t\t};
+\t\tNormPush push = {};
+\t\tpush.BatchSize = N;
+\t\tpush.Channels = C;
+\t\tpush.Height = H;
+\t\tpush.Width = W;
+\t\tpush.Eps = Eps_;
+
+\t\tOaU32 groupsX = DivCeil(W, 16);
+\t\tOaU32 groupsY = DivCeil(H, 16);
+\t\tOaU32 groupsZ = N * C;
+
+\t\tOaBufferAccess access[] = {
+\t\t\tOaBufferAccess::Read, OaBufferAccess::Write,
+\t\t\tOaBufferAccess::Read, OaBufferAccess::Read,
+\t\t\tOaBufferAccess::Read, OaBufferAccess::Read};
+\t\tctx.Add("BatchNorm2dNorm",
+\t\t\t{&InInput, &output, &running_mean, &running_var, &gamma, &beta},
+\t\t\taccess, &push, sizeof(push), groupsX, groupsY, groupsZ);
+\t}
+
+\treturn output;
+"""
+notes = "Batch normalization layer with running statistics."
+extra_includes = """
+#include <cassert>
+"""
+extra_methods = """
+static OaU32 DivCeil(OaU32 InA, OaU32 InB) { return (InA + InB - 1) / InB; }
+"""
+
+[[layers]]
+name = "AdaptiveAvgPool2d"
+constructor_args = "OaI32 OutputSize"
+constructor_init = "OutputSize_(OutputSize)"
+members = [
+	"OaI32 OutputSize_;",
+]
+forward_body = """
+\tauto shape = InInput.GetShape();
+\tOaI32 H = shape[2];
+\tOaI32 W = shape[3];
+
+\t// For global average pooling (OutputSize=1)
+\tif (OutputSize_ == 1)
+\t{
+\t\treturn OaFnMatrix::AvgPool2d(InInput, H, 1, 0);
+\t}
+
+\t// For general adaptive pooling, compute stride and kernel size
+\tOaI32 stride_h = H / OutputSize_;
+\tOaI32 stride_w = W / OutputSize_;
+\tOaI32 kernel_h = H - (OutputSize_ - 1) * stride_h;
+\tOaI32 kernel_w = W - (OutputSize_ - 1) * stride_w;
+
+\t// Use AvgPool2d with computed kernel/stride
+\treturn OaFnMatrix::AvgPool2d(InInput, kernel_h, stride_h, 0);
+"""
+notes = "Adaptive average pooling layer."

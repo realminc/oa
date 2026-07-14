@@ -1,0 +1,69 @@
+# OA Runtime Types Schema
+# GPU and runtime types for the OA Runtime module
+
+domain = "Runtime"
+namespace = "Oa"
+
+[[enums]]
+name = "OaShaderProviderMode"
+underlying_type = "OaU8"
+generate_tostring = true
+generate_fromstring = true
+values = [
+	{ name = "Disk", value = 0, comment = "Load shaders from disk" },
+	{ name = "Embedded", value = 1, comment = "Use embedded shaders" },
+	{ name = "Cache", value = 2, comment = "Use shader cache" },
+]
+
+[[enums]]
+name = "OaStoragePrecision"
+underlying_type = "OaU8"
+generate_tostring = true
+generate_fromstring = true
+values = [
+	{ name = "Unknown", value = 0, comment = "Unknown precision" },
+	{ name = "FP32", value = 1, comment = "FP32 storage" },
+	{ name = "FP16", value = 2, comment = "FP16 storage" },
+	{ name = "BF16", value = 3, comment = "BF16 storage" },
+	{ name = "INT8", value = 4, comment = "INT8 storage" },
+	{ name = "TF32", value = 5, comment = "TF32 storage" },
+]
+
+[[enums]]
+name = "OaGemmKernel"
+underlying_type = "OaU8"
+generate_tostring = true
+generate_fromstring = true
+values = [
+	{ name = "Unknown", value = 0, comment = "Unknown kernel" },
+	{ name = "Simt", value = 1, comment = "SIMT kernel" },
+	{ name = "TensorCore", value = 2, comment = "Tensor Core kernel" },
+	{ name = "Wmma", value = 3, comment = "WMMA kernel" },
+	{ name = "VendorBlas", value = 4, comment = "external vendor BLAS (comparison slot; not built)" },
+]
+
+[[enums]]
+name = "OaGemmPath"
+underlying_type = "OaU8"
+generate_tostring = true
+generate_fromstring = true
+values = [
+	{ name = "Unknown", value = 0, comment = "Unknown path" },
+	{ name = "Direct", value = 1, comment = "Direct GEMM" },
+	{ name = "Fused", value = 2, comment = "Fused GEMM" },
+	{ name = "SplitK", value = 3, comment = "Split-K GEMM" },
+]
+
+[[enums]]
+name = "OaGemmPrecision"
+underlying_type = "OaU8"
+generate_tostring = true
+generate_fromstring = true
+values = [
+	{ name = "Unknown", value = 0, comment = "Unknown precision" },
+	{ name = "FP32", value = 1, comment = "FP32 compute" },
+	{ name = "TF32", value = 2, comment = "TF32 compute" },
+	{ name = "FP16", value = 3, comment = "FP16 compute" },
+	{ name = "BF16", value = 4, comment = "BF16 compute" },
+	{ name = "INT8", value = 5, comment = "INT8 compute" },
+]

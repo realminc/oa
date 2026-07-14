@@ -1,0 +1,86 @@
+# OaFn schema — Ml/FnMatrix convolution ops (4).
+#
+# This is the *source of truth* for ML convolution operations. The generator
+# emits .h declarations, .cpp implementations, and .slang shaders from this file.
+# See Tools/OaFnAutogen/oafnautogen.py and Docs/Rewrite/Opus/OaFnAutogen.md.
+#
+# Convolution operations are fundamental building blocks for CNNs.
+# Each has complex shape arithmetic and backward passes for both input and weights.
+
+# --- Conv1d ------------------------------------------------------------------
+[[ops]]
+name           = "Conv1d"
+category       = "Conv"
+kind           = "binary"
+kernel_forward = "Conv1d"
+slang_path     = "Ml/Nn/Conv"
+log_component  = "ML"
+notes          = "1D convolution: Out = Conv(Input, Weight)."
+body           = "manual_context"
+extra_params   = [
+    { name = "Stride", type = "OaI32", default = "1" },
+    { name = "Padding", type = "OaI32", default = "0" },
+    { name = "Dilation", type = "OaI32", default = "1" },
+    { name = "Groups", type = "OaI32", default = "1" }
+]
+
+# --- Conv2d ------------------------------------------------------------------
+[[ops]]
+name           = "Conv2d"
+category       = "Conv"
+kind           = "binary"
+kernel_forward = "Conv2d"
+slang_path     = "Ml/Nn/Conv"
+log_component  = "ML"
+notes          = "2D convolution: Out = Conv(Input, Weight)."
+body           = "manual_context"
+extra_params   = [
+    { name = "StrideH", type = "OaI32", default = "1" },
+    { name = "StrideW", type = "OaI32", default = "1" },
+    { name = "PaddingH", type = "OaI32", default = "0" },
+    { name = "PaddingW", type = "OaI32", default = "0" },
+    { name = "DilationH", type = "OaI32", default = "1" },
+    { name = "DilationW", type = "OaI32", default = "1" },
+    { name = "Groups", type = "OaI32", default = "1" }
+]
+
+# --- Im2Col ------------------------------------------------------------------
+[[ops]]
+name           = "Im2Col"
+category       = "Conv"
+kind           = "unary"
+kernel_forward = "Im2Col"
+slang_path     = "Ml/Nn/Conv"
+log_component  = "ML"
+notes          = "Image to column transformation for convolution."
+body           = "manual_context"
+extra_params   = [
+    { name = "KernelH", type = "OaI32", default = "3" },
+    { name = "KernelW", type = "OaI32", default = "3" },
+    { name = "StrideH", type = "OaI32", default = "1" },
+    { name = "StrideW", type = "OaI32", default = "1" },
+    { name = "PaddingH", type = "OaI32", default = "0" },
+    { name = "PaddingW", type = "OaI32", default = "0" }
+]
+
+# --- Col2Im ------------------------------------------------------------------
+[[ops]]
+name           = "Col2Im"
+category       = "Conv"
+kind           = "unary"
+kernel_forward = "Col2Im"
+slang_path     = "Ml/Nn/Conv"
+log_component  = "ML"
+notes          = "Column to image transformation (inverse of Im2Col)."
+body           = "manual_context"
+extra_params   = [
+    { name = "OutputH", type = "OaI32", default = "0" },
+    { name = "OutputW", type = "OaI32", default = "0" },
+    { name = "KernelH", type = "OaI32", default = "3" },
+    { name = "KernelW", type = "OaI32", default = "3" },
+    { name = "StrideH", type = "OaI32", default = "1" },
+    { name = "StrideW", type = "OaI32", default = "1" },
+    { name = "PaddingH", type = "OaI32", default = "0" },
+    { name = "PaddingW", type = "OaI32", default = "0" }
+]
+

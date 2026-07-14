@@ -1,0 +1,5 @@
+# GitHub "Sponsor" button. Points at the individual account — org payouts require a
+# registered legal entity, individual Sponsors only needs a personal Stripe Connect.
+# Crypto wallets live in the README "Support OA" section (GitHub's schema has no
+# crypto field).
+github: [empyrealm]

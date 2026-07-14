@@ -1,0 +1,66 @@
+# OaFn schema — Crypto/FnHash operations.
+#
+# This is the *source of truth* for hash operations. The generator
+# emits .h declarations, .cpp implementations from this file.
+# See Tools/FnAutogen/oafnautogen.py and Docs/Rewrite/Opus/OaFnAutogen.md.
+#
+# Hash operations: SHAKE, Keccak, KMAC, Merkle trees.
+
+# Schema-level metadata
+file_category = "Hash"
+
+# --- Shake256 ----------------------------------------------------------------
+[[ops]]
+name           = "Shake256"
+category       = "Crypto"
+kind           = "unary"
+kernel_forward = "Shake/Shake256"
+slang_path     = "Crypto/Hash"
+log_component  = "CRYPTO"
+notes          = "SHAKE-256 extendable-output function (32-byte default)."
+body           = "manual_context"
+extra_params   = [
+    { name = "OutputLength", type = "OaU32", default = "32" }
+]
+
+# --- Shake128 ----------------------------------------------------------------
+[[ops]]
+name           = "Shake128"
+category       = "Crypto"
+kind           = "unary"
+kernel_forward = "Shake/Shake128"
+slang_path     = "Crypto/Hash"
+log_component  = "CRYPTO"
+notes          = "SHAKE-128 extendable-output function (16-byte default)."
+body           = "manual_context"
+extra_params   = [
+    { name = "OutputLength", type = "OaU32", default = "16" }
+]
+
+# --- KeccakF1600 -------------------------------------------------------------
+[[ops]]
+name           = "KeccakF1600"
+category       = "Crypto"
+kind           = "unary"
+kernel_forward = "KeccakF1600"
+slang_path     = "Crypto/Hash"
+log_component  = "CRYPTO"
+notes          = "Keccak-f[1600] permutation (SHA-3 core)."
+body           = "manual_context"
+
+# --- MerkleRoot --------------------------------------------------------------
+[[ops]]
+name           = "MerkleRoot"
+category       = "Crypto"
+kind           = "unary"
+kernel_forward = "Merkle/MerkleReduce"
+slang_path     = "Crypto/Hash"
+log_component  = "CRYPTO"
+notes          = "Compute Merkle tree root from leaf hashes (power-of-two)."
+body           = "manual_context"
+
+# KMAC-256 stays a CPU primitive (OaKmac256, Crypto/Keccak.h) — no GPU kernel.
+# Merkle inclusion-proof verification stays a CPU primitive
+# (OaVerifyMerkleProof, Crypto/Hash.h): the flat matrix form carries no
+# left/right path bits. GPU batch proof verify (Merkle/MerkleVerify.slang) is
+# planned future work.

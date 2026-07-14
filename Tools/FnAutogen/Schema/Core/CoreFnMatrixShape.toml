@@ -1,0 +1,62 @@
+# OaFn schema — Core/FnMatrix shape ops (4).
+#
+# This is the *source of truth* for shape manipulation operations. The generator
+# emits .h declarations, .cpp implementations, and .slang shaders from this file.
+# See Tools/OaFnAutogen/oafnautogen.py and Docs/Rewrite/Opus/OaFnAutogen.md.
+#
+# Shape operations manipulate tensor dimensions without changing the underlying
+# data semantics. Most have complex shape arithmetic in immediate mode.
+
+# --- Transpose ---------------------------------------------------------------
+[[ops]]
+name           = "Transpose"
+category       = "Shape"
+kind           = "unary"
+kernel_forward = "Transpose"
+slang_path     = "Core/Matrix"
+log_component  = "ML"
+notes          = "Matrix transpose: Out = A^T."
+body           = "manual_context"
+extra_params   = [
+    { name = "Dim0", type = "OaI32", default = "-2" },
+    { name = "Dim1", type = "OaI32", default = "-1" }
+]
+
+# --- TransposeTiled ----------------------------------------------------------
+[[ops]]
+name           = "TransposeTiled"
+category       = "Shape"
+kind           = "unary"
+kernel_forward = "TransposeTiled"
+slang_path     = "Core/Matrix"
+log_component  = "ML"
+notes          = "Tiled matrix transpose (optimized): Out = A^T."
+body           = "manual_context"
+
+# --- Broadcast ---------------------------------------------------------------
+[[ops]]
+name           = "Broadcast"
+category       = "Shape"
+kind           = "unary"
+kernel_forward = "Broadcast"
+slang_path     = "Core/Shader/Compute/Flat"
+log_component  = "ML"
+notes          = "Broadcast tensor to target shape."
+body           = "manual_context"
+extra_params   = [{ name = "TargetShape", type = "OaSpan<const OaI64>", default = "{}" }]
+
+# --- Copy --------------------------------------------------------------------
+[[ops]]
+name           = "Copy"
+category       = "Shape"
+kind           = "unary"
+kernel_forward = "Copy"
+slang_path     = "Core/Shader/Compute/Flat"
+log_component  = "ML"
+notes          = "Copy tensor data: Out = A."
+forward_op     = "a"
+[ops.test]
+cpu_reference = "a_host[i]"
+tolerance = "1e-6f"
+test_sizes = [256, 1024]
+

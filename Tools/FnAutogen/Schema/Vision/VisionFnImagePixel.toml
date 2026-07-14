@@ -1,0 +1,224 @@
+# OaFn schema — tensor-native Vision/FnImage pointwise, channel and composite ops.
+
+generate_engine_overloads = true
+generate_forwarders = true
+
+[[ops]]
+name = "ThresholdBinary"
+category = "Pixel"
+kind = "unary"
+kernel_forward = "ImagePointwise"
+slang_path = "Vision/Color"
+log_component = "VISION"
+notes = "Global binary threshold."
+body = "manual_context"
+api_params = ["const OaMatrix& InImage", "OaF32 InThreshold", "OaF32 InMaxValue = 1.0F"]
+
+[[ops]]
+name = "ThresholdBinaryInv"
+category = "Pixel"
+kind = "unary"
+kernel_forward = "ImagePointwise"
+slang_path = "Vision/Color"
+log_component = "VISION"
+notes = "Global inverse binary threshold."
+body = "manual_context"
+api_params = ["const OaMatrix& InImage", "OaF32 InThreshold", "OaF32 InMaxValue = 1.0F"]
+
+[[ops]]
+name = "ThresholdTruncate"
+category = "Pixel"
+kind = "unary"
+kernel_forward = "ImagePointwise"
+slang_path = "Vision/Color"
+log_component = "VISION"
+notes = "Truncate values above a threshold."
+body = "manual_context"
+api_params = ["const OaMatrix& InImage", "OaF32 InThreshold"]
+
+[[ops]]
+name = "ThresholdToZero"
+category = "Pixel"
+kind = "unary"
+kernel_forward = "ImagePointwise"
+slang_path = "Vision/Color"
+log_component = "VISION"
+notes = "Set values at or below a threshold to zero."
+body = "manual_context"
+api_params = ["const OaMatrix& InImage", "OaF32 InThreshold"]
+
+[[ops]]
+name = "ThresholdToZeroInv"
+category = "Pixel"
+kind = "unary"
+kernel_forward = "ImagePointwise"
+slang_path = "Vision/Color"
+log_component = "VISION"
+notes = "Set values above a threshold to zero."
+body = "manual_context"
+api_params = ["const OaMatrix& InImage", "OaF32 InThreshold"]
+
+[[ops]]
+name = "InRange"
+category = "Pixel"
+kind = "unary"
+kernel_forward = "ImagePointwise"
+slang_path = "Vision/Color"
+log_component = "VISION"
+notes = "Inclusive scalar range mask."
+body = "manual_context"
+api_params = ["const OaMatrix& InImage", "OaF32 InLow", "OaF32 InHigh", "OaF32 InTrueValue = 1.0F"]
+
+[[ops]]
+name = "Clamp"
+category = "Pixel"
+kind = "unary"
+kernel_forward = "ImagePointwise"
+slang_path = "Vision/Color"
+log_component = "VISION"
+notes = "Clamp image values to a scalar interval."
+body = "manual_context"
+api_params = ["const OaMatrix& InImage", "OaF32 InLow", "OaF32 InHigh"]
+
+[[ops]]
+name = "Invert"
+category = "Pixel"
+kind = "unary"
+kernel_forward = "ImagePointwise"
+slang_path = "Vision/Color"
+log_component = "VISION"
+notes = "Invert values around a configurable maximum."
+body = "manual_context"
+api_params = ["const OaMatrix& InImage", "OaF32 InMaxValue = 1.0F"]
+
+[[ops]]
+name = "BrightnessContrast"
+category = "Pixel"
+kind = "unary"
+kernel_forward = "ImagePointwise"
+slang_path = "Vision/Color"
+log_component = "VISION"
+notes = "Affine brightness and contrast adjustment."
+body = "manual_context"
+api_params = ["const OaMatrix& InImage", "OaF32 InBrightness = 0.0F", "OaF32 InContrast = 1.0F"]
+
+[[ops]]
+name = "GammaContrast"
+category = "Pixel"
+kind = "unary"
+kernel_forward = "ImagePointwise"
+slang_path = "Vision/Color"
+log_component = "VISION"
+notes = "Gamma and gain adjustment."
+body = "manual_context"
+api_params = ["const OaMatrix& InImage", "OaF32 InGamma", "OaF32 InGain = 1.0F"]
+
+[[ops]]
+name = "Solarize"
+category = "Pixel"
+kind = "unary"
+kernel_forward = "ImagePointwise"
+slang_path = "Vision/Color"
+log_component = "VISION"
+notes = "Invert values above a threshold."
+body = "manual_context"
+api_params = ["const OaMatrix& InImage", "OaF32 InThreshold = 0.5F", "OaF32 InMaxValue = 1.0F"]
+
+[[ops]]
+name = "Posterize"
+category = "Pixel"
+kind = "unary"
+kernel_forward = "ImagePointwise"
+slang_path = "Vision/Color"
+log_component = "VISION"
+notes = "Quantize an intensity interval to a fixed number of levels."
+body = "manual_context"
+api_params = ["const OaMatrix& InImage", "OaU32 InLevels", "OaF32 InLow = 0.0F", "OaF32 InHigh = 1.0F"]
+
+[[ops]]
+name = "Grayscale"
+category = "Pixel"
+kind = "unary"
+kernel_forward = "ImageChannelTransform"
+slang_path = "Vision/Color"
+log_component = "VISION"
+notes = "Rec.709 RGB to single-channel grayscale conversion."
+body = "manual_context"
+api_params = ["const OaMatrix& InImage"]
+
+[[ops]]
+name = "ChannelReorder"
+category = "Pixel"
+kind = "unary"
+kernel_forward = "ImageChannelTransform"
+slang_path = "Vision/Color"
+log_component = "VISION"
+notes = "Reorder one to four NCHW channels."
+body = "manual_context"
+api_params = ["const OaMatrix& InImage", "OaU32 InChannel0", "OaU32 InChannel1 = 1", "OaU32 InChannel2 = 2", "OaU32 InChannel3 = 3"]
+
+[[ops]]
+name = "AlphaBlend"
+category = "Pixel"
+kind = "binary"
+kernel_forward = "ImageComposite"
+slang_path = "Vision/Color"
+log_component = "VISION"
+notes = "Scalar alpha blend of equal-shaped images."
+body = "manual_context"
+api_params = ["const OaMatrix& InA", "const OaMatrix& InB", "OaF32 InAlpha"]
+
+[[ops]]
+name = "Composite"
+category = "Pixel"
+kind = "binary"
+kernel_forward = "ImageComposite"
+slang_path = "Vision/Color"
+log_component = "VISION"
+notes = "Per-pixel masked composite with one or C mask channels."
+body = "manual_context"
+api_params = ["const OaMatrix& InA", "const OaMatrix& InB", "const OaMatrix& InMask"]
+
+[[ops]]
+name = "Erase"
+category = "Pixel"
+kind = "unary"
+kernel_forward = "ImageComposite"
+slang_path = "Vision/Color"
+log_component = "VISION"
+notes = "Fill a rectangular region with a scalar value."
+body = "manual_context"
+api_params = ["const OaMatrix& InImage", "OaU32 InX", "OaU32 InY", "OaU32 InWidth", "OaU32 InHeight", "OaF32 InValue = 0.0F"]
+
+[[ops]]
+name = "ColorTwist"
+category = "Pixel"
+kind = "binary"
+kernel_forward = "ImageColorMatrix"
+slang_path = "Vision/Color"
+log_component = "VISION"
+notes = "Apply a shared 3x4 RGB color transform matrix."
+body = "manual_context"
+api_params = ["const OaMatrix& InImage", "const OaMatrix& InTransform"]
+
+[[ops]]
+name = "GaussianNoise"
+category = "Pixel"
+kind = "unary"
+kernel_forward = "PhiloxNormal"
+slang_path = "Vision/Color"
+log_component = "VISION"
+notes = "Add deterministic GPU-native Philox Gaussian noise."
+body = "manual_context"
+api_params = ["const OaMatrix& InImage", "OaF32 InMean = 0.0F", "OaF32 InStddev = 0.01F", "OaU64 InSeed = 0"]
+
+[[ops]]
+name = "SaltPepperNoise"
+category = "Pixel"
+kind = "unary"
+kernel_forward = "ImageSaltPepper"
+slang_path = "Vision/Color"
+log_component = "VISION"
+notes = "Apply deterministic GPU-native salt-and-pepper noise."
+body = "manual_context"
+api_params = ["const OaMatrix& InImage", "OaF32 InProbability = 0.01F", "OaF32 InSaltValue = 1.0F", "OaF32 InPepperValue = 0.0F", "OaU64 InSeed = 0"]

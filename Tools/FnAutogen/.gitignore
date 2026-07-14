@@ -1,0 +1,8 @@
+# Generator outputs used for round-trip dev/diff. The live tree (Source/...)
+# is the committed truth; Output/ is regenerated on demand.
+Output/
+
+# Python caches
+__pycache__/
+*.py[cod]
+*$py.class

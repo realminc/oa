@@ -1,0 +1,43 @@
+# Oa NN schema - normalization layers.
+
+[[layers]]
+name = "LayerNorm"
+constructor_explicit = true
+constructor_args = "OaI32 NormalizedShape, OaF32 Eps = 1e-5f"
+constructor_init = "Eps_(Eps)"
+constructor_body = [
+	"auto wd = OaFnMatrix::GetWeightDtype();",
+	"RegisterParameter(\"weight\", OaFnMatrix::Ones(OaMatrixShape{NormalizedShape}, wd));",
+	"RegisterParameter(\"bias\", OaFnMatrix::Zeros(OaMatrixShape{NormalizedShape}, wd));",
+]
+members = [
+	"OaF32 Eps_;",
+]
+fn = "OaFnMatrix::LayerNorm(InInput, Params_[0].Data, Params_[1].Data, Eps_)"
+notes = "Layer normalization layer."
+
+[[layers]]
+name = "RmsNorm"
+constructor_explicit = true
+constructor_args = "OaI32 Dim, OaF32 Eps = 1e-6f"
+constructor_init = "Eps_(Eps)"
+constructor_body = [
+	"RegisterParameter(\"weight\", OaFnMatrix::Ones(OaMatrixShape{Dim}, OaFnMatrix::GetWeightDtype()));",
+]
+members = [
+	"OaF32 Eps_;",
+]
+forward_body = """
+\tauto& weight = Params_[0].Data;
+\tauto out = OaFnMatrix::RmsNorm(InInput, weight, Eps_);
+\tif (OaFnAutograd::IsEnabled() and (InInput.RequiresGrad() or weight.RequiresGrad())) {
+\t\tauto gradFn = OaMakeSharedPtr<OaGradRmsNorm>();
+\t\tgradFn->Saved_ = OaVec<OaMatrix>{InInput, weight, out, OaMatrix{}};  // rstd placeholder
+\t\tgradFn->SetGraphInputs(OaVec<OaMatrix>{InInput, weight});
+\t\tgradFn->SequenceNr_ = OaFnAutograd::NextSeq();
+\t\tgradFn->OutputShape_ = out.GetShape();
+\t\tout.MutAutograd().GradFn = gradFn;
+\t}
+\treturn out;
+"""
+notes = "RMS normalization layer."

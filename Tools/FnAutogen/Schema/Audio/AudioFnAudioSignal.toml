@@ -1,0 +1,63 @@
+# OaFn schema — Audio/FnAudio generated signal entry points (3).
+#
+# This is the *source of truth* for audio signal processing operations.
+# The generator emits .h declarations, .cpp implementations, and .slang shaders.
+# See Tools/OaFnAutogen/oafnautogen.py and Docs/Rewrite/ThisIsTheKey/OaFnAutogen.md.
+#
+# Simple audio DSP operations that follow standard kernel dispatch pattern.
+# Complex operations (STFT, Mel, etc.) remain hand-written in FnAudio.cpp.
+
+# --- Normalize ---------------------------------------------------------------
+# Hand-written in FnAudio.cpp: composed from existing verified kernels
+# (Abs → Max → Scalar readback → Scale). The AudioNormalize stub shader is
+# unused and intentionally not compiled.
+[[ops]]
+name           = "Normalize"
+category       = "Signal"
+kind           = "unary"
+kernel_forward = "AudioNormalize"
+slang_path     = "Audio/Signal"
+log_component  = "AUDIO"
+notes          = "Peak or RMS normalization to target dB level."
+body           = "manual_context"
+extra_params   = [
+    { name = "TargetDb", type = "OaF32", default = "-3.0" },
+    { name = "Mode", type = "OaU8", default = "0" }
+]
+
+# --- Resample ----------------------------------------------------------------
+# Hand-written in Signal/FnAudioSignal.cpp: the output length differs from the
+# input ([C, S·Out/In]), so the auto body's same-shape allocation is wrong.
+# Rates are gcd-reduced before pushing so the shader's rational source
+# positioning stays exact in u32.
+[[ops]]
+name           = "Resample"
+category       = "Signal"
+kind           = "unary"
+kernel_forward = "AudioResample"
+slang_path     = "Audio/Signal"
+log_component  = "AUDIO"
+notes          = "Windowed-sinc resampling with anti-aliasing filter."
+body           = "manual_context"
+extra_params   = [
+    { name = "InRate", type = "OaU32", default = "48000" },
+    { name = "OutRate", type = "OaU32", default = "16000" },
+    { name = "FilterHalfWidth", type = "OaU32", default = "64" }
+]
+
+# --- Mix ---------------------------------------------------------------------
+# C++ wrapper auto-generated, Slang shader manual (has extra_params in push constants)
+[[ops]]
+name           = "Mix"
+category       = "Signal"
+kind           = "binary"
+kernel_forward = "AudioMix"
+slang_path     = "Audio/Signal"
+log_component  = "AUDIO"
+notes          = "Weighted sum of two audio tracks."
+body           = "auto"
+push_extra_params = true
+extra_params   = [
+    { name = "GainA", type = "OaF32", default = "1.0" },
+    { name = "GainB", type = "OaF32", default = "1.0" }
+]

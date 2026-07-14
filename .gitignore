@@ -1,0 +1,72 @@
+# Build
+build/
+bin/
+Build/
+Bin/
+
+
+# Pytorch
+*.pt
+
+# Runtime data (models, cache, logs)
+var/*
+!var/
+!var/config/
+!var/config/**
+cmake-build-*/
+out/
+install/
+var/model/dev/
+
+# IDE
+.idea/
+.bob/
+.bobrules/
+.windsurf/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Compiled
+*.o
+*.a
+*.so
+*.dylib
+*.exe
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Generated
+compile_commands.json
+*.spv
+.cache/
+.ccache/
+
+# vcpkg
+vcpkg_installed/
+
+# Testing
+Testing/
+CTestTestfile.cmake
+*.log
+
+# Profiling
+*.nsys-rep
+*.sqlite
+*.qdrep
+profiling_results/
+
+# Valgrind
+vgcore.*
+
+# Secrets (never commit!)
+*.pem
+*.key
+secrets/
+
+# Local agent tooling / memory (may contain private paths — never publish)
+.claude/

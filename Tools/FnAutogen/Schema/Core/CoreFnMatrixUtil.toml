@@ -1,0 +1,150 @@
+# OaFn schema — Core/FnMatrix utility ops (11).
+#
+# This is the *source of truth* for utility and helper operations. The generator
+# emits .h declarations, .cpp implementations, and .slang shaders from this file.
+# See Tools/OaFnAutogen/oafnautogen.py and Docs/Rewrite/Opus/OaFnAutogen.md.
+#
+# Utility operations for data movement, type conversion, and misc helpers.
+
+# --- Copy --------------------------------------------------------------------
+[[ops]]
+name           = "Copy"
+category       = "Util"
+kind           = "unary"
+kernel_forward = "Copy"
+slang_path     = "Core/Shader/Compute/Flat"
+log_component  = "ML"
+notes          = "Copy matrix data."
+body           = "manual_context"
+
+# --- CopyAtOffset ------------------------------------------------------------
+[[ops]]
+name           = "CopyAtOffset"
+category       = "Util"
+kind           = "unary"
+kernel_forward = "CopyAtOffset"
+slang_path     = "Core/Shader/Compute/Flat"
+log_component  = "ML"
+notes          = "Copy matrix data with offset."
+body           = "manual_context"
+extra_params   = [
+    { name = "Offset", type = "OaU32", default = "0" }
+]
+
+# --- Reshape -----------------------------------------------------------------
+[[ops]]
+name           = "Reshape"
+category       = "Util"
+kind           = "unary"
+kernel_forward = "Copy"
+slang_path     = "Core/Shader/Compute/Flat"
+log_component  = "ML"
+notes          = "Reshape matrix (view operation, no data copy)."
+body           = "manual_context"
+
+# --- Slice -------------------------------------------------------------------
+[[ops]]
+name           = "Slice"
+category       = "Util"
+kind           = "unary"
+kernel_forward = "Copy"
+slang_path     = "Core/Shader/Compute/Flat"
+log_component  = "ML"
+notes          = "Slice matrix along dimension."
+body           = "manual_context"
+extra_params   = [
+    { name = "Dim", type = "OaI32", default = "0" },
+    { name = "Start", type = "OaI32", default = "0" },
+    { name = "End", type = "OaI32", default = "-1" }
+]
+
+# --- SumDim ------------------------------------------------------------------
+[[ops]]
+name           = "SumDim"
+category       = "Util"
+kind           = "unary"
+kernel_forward = "SumDim"
+slang_path     = "Core/Shader/Compute/Flat"
+log_component  = "ML"
+notes          = "Sum along specific dimension."
+body           = "manual_context"
+extra_params   = [
+    { name = "Dim", type = "OaI32", default = "0" }
+]
+
+# --- MulBwd ------------------------------------------------------------------
+[[ops]]
+name           = "MulBwd"
+category       = "Util"
+kind           = "binary"
+kernel_forward = "MulBwd"
+slang_path     = "Ml/Nn/Elemwise"
+log_component  = "ML"
+notes          = "Multiplication backward pass helper."
+body           = "manual_context"
+
+# --- MeanBwd -----------------------------------------------------------------
+[[ops]]
+name           = "MeanBwd"
+category       = "Util"
+kind           = "unary"
+kernel_forward = "MeanBwd"
+slang_path     = "Ml/Nn/Reduce"
+log_component  = "ML"
+notes          = "Mean backward pass helper."
+body           = "manual_context"
+
+# --- LinearDataAccumBwd ------------------------------------------------------
+[[ops]]
+name           = "LinearDataAccumBwd"
+category       = "Util"
+kind           = "binary"
+kernel_forward = "LinearDataAccumBwd"
+slang_path     = "Ml/Nn/Linear"
+log_component  = "ML"
+notes          = "Linear backward data with accumulation."
+body           = "manual_context"
+
+# --- GatherBwd ---------------------------------------------------------------
+[[ops]]
+name           = "GatherBwd"
+category       = "Util"
+kind           = "binary"
+kernel_forward = "GatherBwd"
+slang_path     = "Ml/Nn/Embed"
+log_component  = "ML"
+notes          = "Gather backward pass for embeddings."
+body           = "manual_context"
+
+# --- ByteEmbedBwd ------------------------------------------------------------
+[[ops]]
+name           = "ByteEmbedBwd"
+category       = "Util"
+kind           = "binary"
+kernel_forward = "ByteEmbedBwd"
+slang_path     = "Ml/Nn/Embed"
+log_component  = "ML"
+notes          = "Byte embedding backward pass."
+body           = "manual_context"
+
+# --- CastU8ToU32 -------------------------------------------------------------
+[[ops]]
+name           = "CastU8ToU32"
+category       = "Util"
+kind           = "unary"
+kernel_forward = "CastU8ToU32"
+slang_path     = "Core/Shader/Compute/Flat"
+log_component  = "ML"
+notes          = "Cast U8 to U32 for indexing operations."
+body           = "manual_context"
+
+# --- CollectiveReduce --------------------------------------------------------
+[[ops]]
+name           = "CollectiveReduce"
+category       = "Util"
+kind           = "unary"
+kernel_forward = "CollectiveReduce"
+slang_path     = "Ml/Distributed"
+log_component  = "ML"
+notes          = "Collective reduction across devices."
+body           = "manual_context"

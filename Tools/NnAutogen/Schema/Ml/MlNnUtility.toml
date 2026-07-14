@@ -1,0 +1,48 @@
+# Oa NN schema - utility/composition-adjacent layers.
+
+[[layers]]
+name = "Identity"
+fn = "InInput"
+notes = "Identity passthrough layer."
+
+[[layers]]
+name = "Flatten"
+constructor_explicit = true
+constructor_args = "OaI32 StartDim = 1, OaI32 EndDim = -1"
+constructor_init = "StartDim_(StartDim), EndDim_(EndDim)"
+members = [
+	"OaI32 StartDim_;",
+	"OaI32 EndDim_;",
+]
+forward_body = """
+\tconst OaI32 rank = InInput.Rank();
+\tif (rank <= 1) return InInput;
+
+\tOaI32 startDim = StartDim_ < 0 ? StartDim_ + rank : StartDim_;
+\tOaI32 endDim = EndDim_ < 0 ? EndDim_ + rank : EndDim_;
+\tif (startDim >= rank) return InInput;
+
+\tOA_ASSERT(startDim >= 0);
+\tOA_ASSERT(endDim >= 0);
+\tOA_ASSERT(startDim <= endDim);
+\tOA_ASSERT(endDim < rank);
+
+\tOaMatrixShape outShape;
+\tOaI32 outRank = 0;
+\tfor (OaI32 dimIdx = 0; dimIdx < startDim; ++dimIdx) {
+\t\toutShape.Dims[outRank++] = InInput.Size(dimIdx);
+\t}
+
+\tOaI64 flat = 1;
+\tfor (OaI32 dimIdx = startDim; dimIdx <= endDim; ++dimIdx) {
+\t\tflat *= InInput.Size(dimIdx);
+\t}
+\toutShape.Dims[outRank++] = flat;
+
+\tfor (OaI32 dimIdx = endDim + 1; dimIdx < rank; ++dimIdx) {
+\t\toutShape.Dims[outRank++] = InInput.Size(dimIdx);
+\t}
+\toutShape.Rank = outRank;
+\treturn InInput.View(outShape);
+"""
+notes = "Flatten layer with PyTorch-style start_dim/end_dim."
