@@ -221,6 +221,54 @@ public:
 	}
 };
 
+class OaGradPackedLinear2 final : public OaGradNode {
+public:
+	OaI64 N0_ = 0, N1_ = 0;
+	bool HasBias_ = false;
+	void Backward(const OaMatrix& InDOut, OaVec<OaMatrix>& OutDIn) override {
+		const auto d0 = OaFnMatrix::Slice(InDOut, 1, 0, N0_);
+		const auto d1 = OaFnMatrix::Slice(InDOut, 1, N0_, N0_ + N1_);
+		if (OutDIn.Size() > 0) OutDIn[0] = OaFnMatrix::Add(
+			OaFnMatrix::LinearDataBwd(d0, Saved_[1]),
+			OaFnMatrix::LinearDataBwd(d1, Saved_[2]));
+		if (OutDIn.Size() > 1) {
+			auto g0 = OaFnMatrix::LinearWeightBiasBwd(Saved_[0], d0);
+			auto g1 = OaFnMatrix::LinearWeightBiasBwd(Saved_[0], d1);
+			OutDIn[1] = g0.GradWeight;
+			if (OutDIn.Size() > 2) OutDIn[2] = g1.GradWeight;
+			if (HasBias_ and OutDIn.Size() > 4) {
+				OutDIn[3] = g0.GradBias; OutDIn[4] = g1.GradBias;
+			}
+		}
+	}
+};
+
+class OaGradPackedLinear3 final : public OaGradNode {
+public:
+	OaI64 N0_ = 0, N1_ = 0, N2_ = 0;
+	bool HasBias_ = false;
+	void Backward(const OaMatrix& InDOut, OaVec<OaMatrix>& OutDIn) override {
+		const auto d0 = OaFnMatrix::Slice(InDOut, 1, 0, N0_);
+		const auto d1 = OaFnMatrix::Slice(InDOut, 1, N0_, N0_ + N1_);
+		const auto d2 = OaFnMatrix::Slice(InDOut, 1, N0_ + N1_, N0_ + N1_ + N2_);
+		if (OutDIn.Size() > 0) OutDIn[0] = OaFnMatrix::Add(OaFnMatrix::Add(
+			OaFnMatrix::LinearDataBwd(d0, Saved_[1]),
+			OaFnMatrix::LinearDataBwd(d1, Saved_[2])),
+			OaFnMatrix::LinearDataBwd(d2, Saved_[3]));
+		if (OutDIn.Size() > 1) {
+			auto g0 = OaFnMatrix::LinearWeightBiasBwd(Saved_[0], d0);
+			auto g1 = OaFnMatrix::LinearWeightBiasBwd(Saved_[0], d1);
+			auto g2 = OaFnMatrix::LinearWeightBiasBwd(Saved_[0], d2);
+			OutDIn[1] = g0.GradWeight;
+			if (OutDIn.Size() > 2) OutDIn[2] = g1.GradWeight;
+			if (OutDIn.Size() > 3) OutDIn[3] = g2.GradWeight;
+			if (HasBias_ and OutDIn.Size() > 6) {
+				OutDIn[4] = g0.GradBias; OutDIn[5] = g1.GradBias; OutDIn[6] = g2.GradBias;
+			}
+		}
+	}
+};
+
 class OaGradLinearRelu final : public OaGradNode {
 public:
 	void Backward(const OaMatrix& InDOut, OaVec<OaMatrix>& OutDIn) override {
@@ -337,10 +385,12 @@ class OaGradCompactRows final : public OaGradNode {
 public:
 	OaMatrix RowMap_;
 	OaMatrix Count_;
+	OaMatrix DispatchArgs_;
 	void Backward(const OaMatrix& InDOut, OaVec<OaMatrix>& OutDIn) override {
 		if (OutDIn.Size() > 0) {
 			const OaMatrix& input = Saved_[0];
-			OutDIn[0] = OaFnMatrix::CompactRowsBwd(InDOut, RowMap_, Count_, input.GetShape());
+			OutDIn[0] = OaFnMatrix::CompactRowsBwd(
+				InDOut, RowMap_, Count_, DispatchArgs_, input.GetShape());
 		}
 	}
 };
@@ -349,10 +399,13 @@ class OaGradScatterRows final : public OaGradNode {
 public:
 	OaMatrix RowMap_;
 	OaMatrix Count_;
+	OaMatrix DispatchArgs_;
 	void Backward(const OaMatrix& InDOut, OaVec<OaMatrix>& OutDIn) override {
 		if (OutDIn.Size() < 2) return;
 		OutDIn[0] = OaFnMatrix::Copy(InDOut);
-		OutDIn[1] = OaFnMatrix::ScatterRowsBwdSource(InDOut, RowMap_, Count_);
+		OutDIn[1] = DispatchArgs_.NumElements() == 3
+			? OaFnMatrix::ScatterRowsBwdSource(InDOut, RowMap_, Count_, DispatchArgs_)
+			: OaFnMatrix::ScatterRowsBwdSource(InDOut, RowMap_, Count_);
 	}
 };
 
@@ -487,12 +540,11 @@ class OaGradGroupedLinearM final : public OaGradNode {
 public:
 	void Backward(const OaMatrix& InDOut, OaVec<OaMatrix>& OutDIn) override {
 		if (OutDIn.Size() < 3) return;
-		auto result = OaFnMatrix::GroupedGemmMBwd(
+		auto result = OaFnMatrix::GroupedLinearMBwd(
 			InDOut, Saved_[0], Saved_[1], Saved_[3]);
 		OutDIn[0] = result.DInput;
 		OutDIn[1] = result.DWeight;
-		OutDIn[2] = OaFnMatrix::GroupedLinearMBiasBwd(
-			InDOut, Saved_[3], static_cast<OaI32>(Saved_[1].Size(0)));
+		OutDIn[2] = result.DBias;
 	}
 };
 
@@ -504,6 +556,16 @@ public:
 			InDOut, Saved_[0], Saved_[1], Saved_[2], Saved_[3]);
 		OutDIn[0] = result.DPacked;
 		OutDIn[1] = result.DRouteGate;
+	}
+};
+
+class OaGradMoeGather final : public OaGradNode {
+public:
+	void Backward(const OaMatrix& InDOut, OaVec<OaMatrix>& OutDIn) override {
+		if (OutDIn.Size() == 0) return;
+		const OaMatrix& input = Saved_[0];
+		OutDIn[0] = OaFnMatrix::MoeGatherBwd(
+			InDOut, Saved_[2], static_cast<OaI32>(input.Size(0)));
 	}
 };
 

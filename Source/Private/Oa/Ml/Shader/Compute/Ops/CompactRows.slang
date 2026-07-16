@@ -3,7 +3,7 @@
 
 import Storage;
 
-struct PushConstants { uint x_idx; uint mask_idx; uint out_idx; uint rowMap_idx; uint count_idx; uint T; uint D; };
+struct PushConstants { uint x_idx; uint mask_idx; uint out_idx; uint rowMap_idx; uint count_idx; uint dispatchArgs_idx; uint T; uint D; };
 [[vk::push_constant]] PushConstants pc;
 [[vk::binding(0, 0)]] RWByteAddressBuffer heap[];
 groupshared uint scan[256];
@@ -36,5 +36,10 @@ void main(uint3 tid : SV_GroupThreadID) {
 		if (lid == 0) baseOffset += scan[255];
 		GroupMemoryBarrierWithGroupSync();
 	}
-	if (lid == 0) heap[pc.count_idx].Store(0, baseOffset);
+	if (lid == 0) {
+		heap[pc.count_idx].Store(0, baseOffset);
+		heap[pc.dispatchArgs_idx].Store(0, (baseOffset * pc.D + 255) / 256);
+		heap[pc.dispatchArgs_idx].Store(4, 1);
+		heap[pc.dispatchArgs_idx].Store(8, 1);
+	}
 }

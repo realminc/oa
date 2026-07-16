@@ -6,6 +6,7 @@ Runs all OA code generators:
   - oatypeautogen: generates enums/structs from TOML schemas
   - oafnautogen: generates function operations from TOML schemas
   - oannautogen: generates neural network modules
+  - oatile: generates the bounded linear-algebra kernel lattice
 
 Usage:
   python3 Tools/oaautogen.py              # Generate all to Output/
@@ -63,6 +64,19 @@ def run_nn_autogen(live: bool, dry_run: bool) -> int:
 	return result.returncode
 
 
+def run_tile_autogen(live: bool, dry_run: bool) -> int:
+	"""Run OaTile generation."""
+	cmd = [sys.executable, "Tools/OaTile/oatile.py"]
+	if live:
+		cmd.append("--live")
+	if dry_run:
+		cmd.append("--dry-run")
+
+	print("Running oatile...")
+	result = subprocess.run(cmd, cwd=REPO_ROOT)
+	return result.returncode
+
+
 def main() -> int:
 	parser = argparse.ArgumentParser(
 		description="Unified OA code generation runner"
@@ -92,13 +106,19 @@ def main() -> int:
 		action="store_true",
 		help="Run oannautogen only"
 	)
+	parser.add_argument(
+		"--tile",
+		action="store_true",
+		help="Run OaTile generation only"
+	)
 	
 	args = parser.parse_args()
 	
 	# Determine which generators to run
-	run_types = args.types or not (args.functions or args.nn)
-	run_functions = args.functions or not (args.types or args.nn)
-	run_nn = args.nn or not (args.types or args.functions)
+	run_types = args.types or not (args.functions or args.nn or args.tile)
+	run_functions = args.functions or not (args.types or args.nn or args.tile)
+	run_nn = args.nn or not (args.types or args.functions or args.tile)
+	run_tile = args.tile or not (args.types or args.functions or args.nn)
 	
 	exit_code = 0
 	
@@ -110,6 +130,9 @@ def main() -> int:
 	
 	if run_nn:
 		exit_code |= run_nn_autogen(args.live, args.dry_run)
+
+	if run_tile:
+		exit_code |= run_tile_autogen(args.live, args.dry_run)
 	
 	if exit_code == 0:
 		print("\nAll generators completed successfully.")

@@ -1,8 +1,11 @@
 #include "../../OaTest.h"
 
 #include <Oa/Ml/Callbacks.h>
+#include <Oa/Ml/FnOptim.h>
 #include <Oa/Ml/Optim.h>
+#include <Oa/Ml/TrainingProgram.h>
 
+#include <cmath>
 #include <cstring>
 
 namespace {
@@ -21,6 +24,193 @@ public:
 };
 
 } // namespace
+
+TEST(TrainingProgram, CapturedMutableStepProgressesAcrossReplays) {
+	if (not OaVkTestEngineOk()) GTEST_SKIP();
+
+	auto& ctx = OaContext::GetDefault();
+	OaMatrix param = OaFnMatrix::Full(OaMatrixShape{4}, 1.0F);
+	OaMatrix grad = OaFnMatrix::Full(OaMatrixShape{4}, 0.25F);
+	OaMatrix momentum;
+	ASSERT_TRUE(ctx.Execute().IsOk());
+	ASSERT_TRUE(ctx.Sync().IsOk());
+
+	OaFnOptim::SgdStep(param, momentum, grad, 0.1F, 0.0F, 0.0F);
+	ASSERT_EQ(ctx.NodeCount(), 1U);
+
+	OaTrainingProgram program;
+	ASSERT_TRUE(program.Capture(ctx).IsOk());
+	EXPECT_TRUE(program.IsCaptured());
+	EXPECT_EQ(program.NodeCount(), 1U);
+	EXPECT_EQ(ctx.NodeCount(), 0U);
+
+	for (OaU32 i = 0; i < 3; ++i) ASSERT_TRUE(program.Replay().IsOk());
+	ASSERT_TRUE(program.Wait().IsOk());
+	for (OaI64 i = 0; i < param.NumElements(); ++i) {
+		EXPECT_NEAR(param.At(i), 0.925F, 1e-6F);
+	}
+	ASSERT_TRUE(program.Reset().IsOk());
+}
+
+TEST(TrainingProgram, CapturedPhiloxAdvancesWithoutFreezingRandomValues) {
+	if (not OaVkTestEngineOk()) GTEST_SKIP();
+
+	auto& ctx = OaContext::GetDefault();
+	OaMatrix shape = OaFnMatrix::Zeros(OaMatrixShape{8});
+	ASSERT_TRUE(ctx.Execute().IsOk());
+	ASSERT_TRUE(ctx.Sync().IsOk());
+	[[maybe_unused]] OaMatrix random = OaFnMatrix::PhiloxUniform(shape, 0.0F, 1.0F, 42);
+	const OaU32 eagerNodes = ctx.NodeCount();
+	ASSERT_GT(eagerNodes, 0U);
+
+	OaTrainingProgram program;
+	ASSERT_TRUE(program.Capture(ctx).IsOk());
+	EXPECT_EQ(ctx.NodeCount(), 0U);
+	EXPECT_EQ(program.NodeCount(), eagerNodes + 1U); // RNG + counter advance
+
+	ASSERT_TRUE(program.Replay().IsOk());
+	ASSERT_TRUE(program.Wait().IsOk());
+	OaF32 first[8]{};
+	std::memcpy(first, random.Data(), sizeof(first));
+	ASSERT_TRUE(program.Replay().IsOk());
+	ASSERT_TRUE(program.Wait().IsOk());
+	OaF32 second[8]{};
+	std::memcpy(second, random.Data(), sizeof(second));
+
+	OaBool changed = false;
+	for (OaU32 i = 0; i < 8; ++i) {
+		EXPECT_GE(first[i], 0.0F);
+		EXPECT_LT(first[i], 1.0F);
+		EXPECT_GE(second[i], 0.0F);
+		EXPECT_LT(second[i], 1.0F);
+		changed = changed or first[i] != second[i];
+	}
+	EXPECT_TRUE(changed);
+	ASSERT_TRUE(program.Reset().IsOk());
+}
+
+TEST(TrainingProgram, IteratorRecordsTwiceThenReplaysFixedShapeStep) {
+	if (not OaVkTestEngineOk()) GTEST_SKIP();
+
+	auto& ctx = OaContext::GetDefault();
+	OaMatrix param = OaFnMatrix::Full(OaMatrixShape{4}, 1.0F);
+	OaMatrix grad = OaFnMatrix::Full(OaMatrixShape{4}, 0.25F);
+	OaMatrix momentum;
+	ASSERT_TRUE(ctx.Execute().IsOk());
+	ASSERT_TRUE(ctx.Sync().IsOk());
+
+	OaOptimizerNoOp optimizer;
+	OaTrainingProgram program;
+	OaItTraining iter(optimizer, OaItTrainingConfig{
+		.TotalSteps = 4,
+		.Program = &program,
+	});
+	OaI32 prepareCalls = 0;
+	OaI32 recordCalls = 0;
+	while (not iter.IsDone()) {
+		iter.Step(
+			[&] { ++prepareCalls; },
+			[&] {
+				++recordCalls;
+				OaFnOptim::SgdStep(param, momentum, grad, 0.1F, 0.0F, 0.0F);
+				iter.RecordLoss(param);
+			});
+	}
+	ASSERT_TRUE(iter.Finish().IsOk());
+
+	EXPECT_TRUE(program.IsCaptured());
+	EXPECT_EQ(prepareCalls, 4);
+	EXPECT_EQ(recordCalls, 2); // eager warm-up + capture, never rebuilt afterward
+	EXPECT_NEAR(param.At(0), 0.9F, 1e-6F);
+	EXPECT_NEAR(iter.LastLoss(), 0.9F, 1e-6F);
+	EXPECT_EQ(iter.GpuTimingStats().Count, 3);
+	EXPECT_GT(iter.LastGpuMs(), 0.0);
+}
+
+TEST(TrainingProgram, ExplicitRecaptureRecordsNewProgramOnce) {
+	if (not OaVkTestEngineOk()) GTEST_SKIP();
+
+	auto& ctx = OaContext::GetDefault();
+	OaMatrix param = OaFnMatrix::Full(OaMatrixShape{4}, 1.0F);
+	OaMatrix grad = OaFnMatrix::Full(OaMatrixShape{4}, 0.25F);
+	OaMatrix momentum;
+	ASSERT_TRUE(ctx.Execute().IsOk());
+	ASSERT_TRUE(ctx.Sync().IsOk());
+
+	OaOptimizerNoOp optimizer;
+	OaTrainingProgram program;
+	OaItTraining iter(optimizer, OaItTrainingConfig{
+		.TotalSteps = 4,
+		.Program = &program,
+	});
+	OaI32 recordCalls = 0;
+	while (not iter.IsDone()) {
+		if (iter.Index() == 3) ASSERT_TRUE(iter.RequestProgramRecapture().IsOk());
+		iter.Step(
+			[] {},
+			[&] {
+				++recordCalls;
+				OaFnOptim::SgdStep(param, momentum, grad, 0.1F, 0.0F, 0.0F);
+				iter.RecordLoss(param);
+			});
+	}
+	ASSERT_TRUE(iter.Finish().IsOk());
+
+	EXPECT_TRUE(program.IsCaptured());
+	EXPECT_EQ(recordCalls, 3); // warm-up, initial capture, explicit recapture
+	EXPECT_NEAR(param.At(0), 0.9F, 1e-6F);
+}
+
+TEST(TrainingProgram, AdamWMatchesReferenceAndAcceptsReplayLrUpdate) {
+	if (not OaVkTestEngineOk()) GTEST_SKIP();
+
+	auto& ctx = OaContext::GetDefault();
+	OaParameter param;
+	param.Name = "weight";
+	param.Data = OaFnMatrix::Full(OaMatrixShape{4}, 1.0F);
+	param.Data.SetRequiresGrad(true);
+	OaFnMatrix::Fill(param.Grad(), 0.25F);
+	ASSERT_TRUE(ctx.Execute().IsOk());
+	ASSERT_TRUE(ctx.Sync().IsOk());
+
+	OaVec<OaParameter*> params;
+	params.PushBack(&param);
+	constexpr OaF32 beta1 = 0.9F;
+	constexpr OaF32 beta2 = 0.999F;
+	constexpr OaF32 eps = 1e-8F;
+	constexpr OaF32 decay = 0.01F;
+	OaAdamW optimizer(params, 0.1F, beta1, beta2, eps, decay);
+	OaTrainingProgram program;
+	OaItTraining iter(optimizer, OaItTrainingConfig{
+		.TotalSteps = 4,
+		.Program = &program,
+	});
+	while (not iter.IsDone()) {
+		iter.Step(
+			[] {},
+			[&] { iter.RecordLoss(param.Data); });
+		if (iter.Index() == 2) optimizer.SetLr(0.05F);
+	}
+	ASSERT_TRUE(iter.Finish().IsOk());
+
+	OaF32 expected = 1.0F;
+	OaF32 m = 0.0F;
+	OaF32 v = 0.0F;
+	for (OaI32 step = 1; step <= 4; ++step) {
+		const OaF32 lr = step <= 2 ? 0.1F : 0.05F;
+		expected -= lr * decay * expected;
+		m = beta1 * m + (1.0F - beta1) * 0.25F;
+		v = beta2 * v + (1.0F - beta2) * 0.25F * 0.25F;
+		const OaF32 mHat = m / (1.0F - std::pow(beta1, static_cast<OaF32>(step)));
+		const OaF32 vHat = v / (1.0F - std::pow(beta2, static_cast<OaF32>(step)));
+		expected -= lr * mHat / (std::sqrt(vHat) + eps);
+	}
+
+	EXPECT_TRUE(program.IsCaptured());
+	EXPECT_EQ(optimizer.GetStep(), 4U);
+	EXPECT_NEAR(param.Data.At(0), expected, 2e-5F);
+	EXPECT_NEAR(iter.LastLoss(), expected, 2e-5F);
+}
 
 TEST(TrainingMetrics, LossIsCountedExactlyOncePerStep) {
 	if (not OaVkTestEngineOk()) GTEST_SKIP();

@@ -2,8 +2,8 @@
 
 #include <Oa/Core/Types.h>
 
-// Golden Rule 007 — every shipped compute entry point has a globally unique packed ID
-// (namespace + local ordinal). See Docs/OaComputeKernelRegistry.md for prefix blocks.
+// Every shipped compute entry point has a globally unique packed ID
+// (namespace + local ordinal). Prefix blocks below are a stable serialized contract.
 // Dispatch / SPIR-V resolution still keys off Name today; Id is stable for checkpoints,
 // OAV, tooling, and collision detection as the registry is filled in.
 
@@ -41,7 +41,8 @@ static constexpr bool OaComputeKernelIdIsValid(OaU64 InPacked) {
 	return InPacked != 0;
 }
 
-// Reserved prefix blocks (allocate new blocks only via Docs/OaComputeKernelRegistry.md).
+// Reserved prefix blocks. Append new blocks deliberately and never renumber a
+// shipped block.
 namespace OaComputeKernelPrefix {
 
 static constexpr OaU32 Unassigned = 0;
@@ -58,7 +59,7 @@ static constexpr OaU32 App = 0x0000'3000; // oa apps (modelctl, etc.)
 
 } // namespace OaComputeKernelPrefix
 
-// Common foundation ids (locals match ComputeKernelRegistry.cpp / Docs/OaComputeKernelRegistry.md).
+// Common foundation ids (locals match KernelRegistry.h and the canonical registry doc).
 namespace OaComputeKernelId {
 
 static constexpr OaKernelId Silu = OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 23);
@@ -87,7 +88,7 @@ static constexpr OaKernelId Sum = OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml
 static constexpr OaKernelId ReduceCols = OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 14);
 static constexpr OaKernelId Transpose = OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 10);
 static constexpr OaKernelId GemmNaive = OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 72);
-static constexpr OaKernelId GemmTiled = OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 73);
+#include <Oa/Runtime/OaTileComputeKernel.gen.h>
 // IDs 126,127,132-135,144-154,184,212-231 retired (CoopMat2 NV kernels removed).
 // ID 124 retired: was GemmBiasCoopMatBf16 (superseded by GemmBiasBf16).
 static constexpr OaKernelId CvtNv12ToRgb = OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Vision, 2);
@@ -108,7 +109,7 @@ public:
 	const char* Origin; // short source tag: "oa", "ml", "chain"
 };
 
-// Authoritative rows for shipped oa ML + crypto SPIR-V names (see Docs/OaComputeKernelRegistry.md).
+// Authoritative rows for shipped OA SPIR-V names (see the canonical registry doc).
 // ML row order matches CMake OA_ML_SHADER_REG + NaiveMatmul + MatmulCoopMat.
 
 [[nodiscard]] OaSpan<const OaComputeKernel> OaComputeKernelRegistrySpan();

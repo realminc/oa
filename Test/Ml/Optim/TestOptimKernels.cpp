@@ -336,11 +336,36 @@ TEST_VK(OptimKernels, Adamw) {
 		CompareResults(weights_ref, weights_gpu, count, 1e-3f, "AdamW_weights");
 		CompareResults(m_ref, m_gpu, count, 1e-3f, "AdamW_m");
 		CompareResults(v_ref, v_gpu, count, 1e-3f, "AdamW_v");
+
+		// Replay-safe variant: mutable hyperparameters and step live in a
+		// device-visible state buffer, leaving the recorded push payload stable.
+		std::memcpy(bufWeights.MappedPtr, weights.data(), count * 4);
+		std::memcpy(bufM.MappedPtr, m.data(), count * 4);
+		std::memcpy(bufV.MappedPtr, v.data(), count * 4);
+		auto resultState = Rt_.AllocBufferBar(6 * sizeof(OaU32));
+		ASSERT_TRUE(resultState.IsOk());
+		auto bufState = std::move(resultState).GetValue();
+		OaU32 state[6] = {step, 0, 0, 0, 0, 0};
+		const OaF32 scalars[] = {lr, beta1, beta2, eps, weight_decay};
+		std::memcpy(state + 1, scalars, sizeof(scalars));
+		std::memcpy(bufState.MappedPtr, state, sizeof(state));
+		struct { OaU32 count; } graphPc = {count};
+		OaVkBuffer graphBufs[] = {bufWeights, bufGrads, bufM, bufV, bufState};
+		ASSERT_TRUE(OaVkDispatch::Run(Rt_, "AdamwGraph", graphBufs,
+			&graphPc, sizeof(graphPc), groups).IsOk());
+
+		std::memcpy(weights_gpu.data(), bufWeights.MappedPtr, count * 4);
+		std::memcpy(m_gpu.data(), bufM.MappedPtr, count * 4);
+		std::memcpy(v_gpu.data(), bufV.MappedPtr, count * 4);
+		CompareResults(weights_ref, weights_gpu, count, 1e-3f, "AdamWGraph_weights");
+		CompareResults(m_ref, m_gpu, count, 1e-3f, "AdamWGraph_m");
+		CompareResults(v_ref, v_gpu, count, 1e-3f, "AdamWGraph_v");
 		
 		Rt_.FreeBuffer(bufWeights);
 		Rt_.FreeBuffer(bufGrads);
 		Rt_.FreeBuffer(bufM);
 		Rt_.FreeBuffer(bufV);
+		Rt_.FreeBuffer(bufState);
 	};
 	
 	testAdamW(1024, 0.001f, 0.01f, 1);     // First step with weight decay
@@ -721,10 +746,52 @@ TEST_VK(OptimKernels, AdamwMany4) {
 		CompareResults(vRef[p], vGpu, count, 2e-3f, "AdamwMany4_v");
 	}
 
+	// Reset inputs and verify the replay-safe fused-four variant against the
+	// same CPU oracle.
+	for (OaU32 p = 0; p < kParams; ++p) {
+		const OaU32 count = counts[p];
+		std::memcpy(wBuf[p].MappedPtr, weights[p].data(), count * sizeof(float));
+		std::memcpy(mBuf[p].MappedPtr, m[p].data(), count * sizeof(float));
+		std::memcpy(vBuf[p].MappedPtr, v[p].data(), count * sizeof(float));
+	}
+	auto stateResult = Rt_.AllocBufferBar(6 * sizeof(OaU32));
+	ASSERT_TRUE(stateResult.IsOk());
+	auto stateBuf = std::move(stateResult).GetValue();
+	OaU32 state[6] = {step, 0, 0, 0, 0, 0};
+	const OaF32 stateScalars[] = {lr, beta1, beta2, eps, weightDecay};
+	std::memcpy(state + 1, stateScalars, sizeof(stateScalars));
+	std::memcpy(stateBuf.MappedPtr, state, sizeof(state));
+	struct GraphPush {
+		OaU32 Count0;
+		OaU32 Count1;
+		OaU32 Count2;
+		OaU32 Count3;
+	} graphPc{counts[0], counts[1], counts[2], counts[3]};
+	OaVkBuffer graphBufs[] = {
+		wBuf[0], gBuf[0], mBuf[0], vBuf[0],
+		wBuf[1], gBuf[1], mBuf[1], vBuf[1],
+		wBuf[2], gBuf[2], mBuf[2], vBuf[2],
+		wBuf[3], gBuf[3], mBuf[3], vBuf[3],
+		stateBuf,
+	};
+	ASSERT_TRUE(OaVkDispatch::Run(Rt_, "AdamwMany4Graph", graphBufs,
+		&graphPc, sizeof(graphPc), (maxCount + 255U) / 256U).IsOk());
+	for (OaU32 p = 0; p < kParams; ++p) {
+		const OaU32 count = counts[p];
+		std::vector<float> wGpu(count), mGpu(count), vGpu(count);
+		std::memcpy(wGpu.data(), wBuf[p].MappedPtr, count * sizeof(float));
+		std::memcpy(mGpu.data(), mBuf[p].MappedPtr, count * sizeof(float));
+		std::memcpy(vGpu.data(), vBuf[p].MappedPtr, count * sizeof(float));
+		CompareResults(weightsRef[p], wGpu, count, 2e-3f, "AdamwMany4Graph_weights");
+		CompareResults(mRef[p], mGpu, count, 2e-3f, "AdamwMany4Graph_m");
+		CompareResults(vRef[p], vGpu, count, 2e-3f, "AdamwMany4Graph_v");
+	}
+
 	for (OaU32 p = 0; p < kParams; ++p) {
 		Rt_.FreeBuffer(wBuf[p]);
 		Rt_.FreeBuffer(gBuf[p]);
 		Rt_.FreeBuffer(mBuf[p]);
 		Rt_.FreeBuffer(vBuf[p]);
 	}
+	Rt_.FreeBuffer(stateBuf);
 }

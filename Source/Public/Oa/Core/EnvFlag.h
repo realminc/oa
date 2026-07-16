@@ -14,7 +14,6 @@
 //     OA_DISABLE_COOPMAT                Skip CoopMat extension enable + route to scalar.
 //     OA_DISABLE_COOPMAT2               Skip VK_NV_cooperative_matrix2 enable.
 //     OA_DISABLE_BF16                   Force FP32; skip VK_KHR_shader_bfloat16 enable.
-//     OA_DISABLE_GRAPH_OPTIMIZE         Skip graph reorder / barrier deferral.
 //     OA_DISABLE_PERSISTENT_LOOP        Force single-step submission.
 //     OA_DISABLE_INTEGER_DOT_PRODUCT    Skip VK_KHR_shader_integer_dot_product enable.
 //     OA_DISABLE_GRU_SCAN               Use decomposed GRU cells instead of the fused scan.
@@ -75,7 +74,7 @@ enum class OaNumericMode : OaU8;
 // Mapping (see Docs/Rewrite/Opus/OaNumericStability.md §3 table):
 //   Fast           no-op
 //   Stable         OA_FORCE_PRECISION=FP32, OA_DISABLE_COOPMAT=1
-//   Deterministic  + OA_DISABLE_GRAPH_OPTIMIZE=1, OA_DISABLE_PERSISTENT_LOOP=1
+//   Deterministic  + OA_DISABLE_PERSISTENT_LOOP=1
 //
 // Env vars set externally by the user always win (SetIfUnset checks first).
 // Logs to OA at INFO each var the call actually touched.

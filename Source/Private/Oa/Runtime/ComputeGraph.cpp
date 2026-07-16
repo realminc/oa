@@ -8,10 +8,10 @@
 #include <Oa/Runtime/OaVk.h>
 #include <Oa/Core/EnvFlag.h>
 #include <Oa/Core/Validation.h>
-#include <Oa/Runtime/Gemm/Router.h>
 
 #include <algorithm>
 #include <cstring>
+#include <unordered_map>
 
 struct OaGraphBufferState {
 	VkPipelineStageFlags2 StageMask = 0;
@@ -31,7 +31,7 @@ static void UpdateBufferStates(
 	const OaComputeNode& InNode,
 	OaHashMap<void*, OaGraphBufferState>& InOutState
 );
-static void RecordFinalBarrier(VkCommandBuffer InCb);
+static void RecordFinalBarrier(VkCommandBuffer InCb, OaBool InRequired);
 static OaStatus AllocGraphDescriptorSet(
 	const OaVkDevice& InDevice,
 	OaComputePipeline& InPipeline,
@@ -39,14 +39,91 @@ static OaStatus AllocGraphDescriptorSet(
 	void** OutPool,
 	void** OutSet
 );
-static OaComputeNode MakeComputeNode(
-	OaStringView InShader,
-	OaSpan<OaVkBuffer> InBuffers,
-	OaSpan<OaSharedPtr<OaVkBuffer>> InBufferOwners,
-	OaSpan<OaBufferAccess> InAccess,
-	const void* InPush, OaU32 InPushSize,
-	OaU32 InGroupsX, OaU32 InGroupsY, OaU32 InGroupsZ
-);
+static OaComputeNode MakeComputeNode(const OaComputeDispatchDesc& InDesc);
+static OaComputeDispatchDesc MakeDispatchDesc(OaComputeNode& InNode);
+
+struct OaGraphDebugHashes {
+	OaU64 Topology = 14695981039346656037ULL;
+	OaU64 Resources = 14695981039346656037ULL;
+	OaU64 Push = 14695981039346656037ULL;
+};
+
+static OaGraphDebugHashes ComputeGraphDebugHashes(
+	OaSpan<const OaComputeNode> InNodes,
+	OaBool InHostReadbackRequired)
+{
+	OaGraphDebugHashes result;
+	const auto append = [](OaU64& InOutHash, const void* InData, OaU64 InBytes) {
+		const auto* bytes = static_cast<const OaU8*>(InData);
+		for (OaU64 i = 0; i < InBytes; ++i) {
+			InOutHash ^= bytes[i];
+			InOutHash *= 1099511628211ULL;
+		}
+	};
+	const OaU32 count = static_cast<OaU32>(InNodes.Size());
+	append(result.Topology, &count, sizeof(count));
+	append(result.Topology, &InHostReadbackRequired, sizeof(InHostReadbackRequired));
+	for (const auto& node : InNodes) {
+		append(result.Topology, node.Shader.Data(), node.Shader.Size());
+		append(result.Topology, &node.Dtype, sizeof(node.Dtype));
+		append(result.Topology, &node.GroupsX, sizeof(node.GroupsX));
+		append(result.Topology, &node.GroupsY, sizeof(node.GroupsY));
+		append(result.Topology, &node.GroupsZ, sizeof(node.GroupsZ));
+		append(result.Topology, &node.Indirect, sizeof(node.Indirect));
+		if (node.Indirect) {
+			append(result.Resources, &node.IndirectBuffer.Buffer,
+				sizeof(node.IndirectBuffer.Buffer));
+			append(result.Resources, &node.IndirectBuffer.BindlessIndex,
+				sizeof(node.IndirectBuffer.BindlessIndex));
+			append(result.Resources, &node.IndirectBuffer.Size,
+				sizeof(node.IndirectBuffer.Size));
+			append(result.Topology, &node.IndirectOffset,
+				sizeof(node.IndirectOffset));
+		}
+		append(result.Topology, &node.Queue, sizeof(node.Queue));
+		append(result.Topology, &node.NodeIndex, sizeof(node.NodeIndex));
+		const OaU32 bufferCount = static_cast<OaU32>(node.Buffers.Size());
+		append(result.Topology, &bufferCount, sizeof(bufferCount));
+		for (OaU32 i = 0; i < bufferCount; ++i) {
+			append(result.Topology, &node.Access[i], sizeof(node.Access[i]));
+			append(result.Resources, &node.Buffers[i].Buffer, sizeof(node.Buffers[i].Buffer));
+			append(result.Resources, &node.Buffers[i].BindlessIndex, sizeof(node.Buffers[i].BindlessIndex));
+			append(result.Resources, &node.Buffers[i].Size, sizeof(node.Buffers[i].Size));
+		}
+		append(result.Push, &node.PushSize, sizeof(node.PushSize));
+		append(result.Push, node.PushData, node.PushSize);
+	}
+	return result;
+}
+
+void OaComputeGraph::Add(const OaComputeDispatchDesc& InDesc) {
+	if (InDesc.Access.Size() != InDesc.Buffers.Size()) {
+		OA_LOG_ERROR(OaLogComponent::Core,
+			"OaComputeGraph::Add '%.*s': access=%zu buffers=%zu",
+			static_cast<int>(InDesc.Kernel.Size()), InDesc.Kernel.Data(),
+			InDesc.Access.Size(), InDesc.Buffers.Size());
+		return;
+	}
+	if (not InDesc.BufferOwners.Empty()
+		and InDesc.BufferOwners.Size() != InDesc.Buffers.Size())
+	{
+		OA_LOG_ERROR(OaLogComponent::Core,
+			"OaComputeGraph::Add '%.*s': owners=%zu buffers=%zu",
+			static_cast<int>(InDesc.Kernel.Size()), InDesc.Kernel.Data(),
+			InDesc.BufferOwners.Size(), InDesc.Buffers.Size());
+		return;
+	}
+	if (InDesc.PushSize > OA_VK_MAX_PUSH_CONSTANT_BYTES
+		or (InDesc.PushSize != 0U and InDesc.PushData == nullptr))
+	{
+		OA_LOG_ERROR(OaLogComponent::Core,
+			"OaComputeGraph::Add '%.*s': invalid push payload size=%u",
+			static_cast<int>(InDesc.Kernel.Size()), InDesc.Kernel.Data(),
+			InDesc.PushSize);
+		return;
+	}
+	Nodes_.PushBack(MakeComputeNode(InDesc));
+}
 
 void OaComputeGraph::Add(
 	OaStringView InShader,
@@ -67,9 +144,17 @@ void OaComputeGraph::Add(
 	const void* InPush, OaU32 InPushSize,
 	OaU32 InGroupsX, OaU32 InGroupsY, OaU32 InGroupsZ
 ) {
-	Nodes_.PushBack(MakeComputeNode(
-		InShader, InBuffers, InBufferOwners, InAccess,
-		InPush, InPushSize, InGroupsX, InGroupsY, InGroupsZ));
+	OaComputeDispatchDesc desc;
+	desc.Kernel = InShader;
+	desc.Buffers = InBuffers;
+	desc.BufferOwners = InBufferOwners;
+	desc.Access = InAccess;
+	desc.PushData = InPush;
+	desc.PushSize = InPushSize;
+	desc.GroupsX = InGroupsX;
+	desc.GroupsY = InGroupsY;
+	desc.GroupsZ = InGroupsZ;
+	Add(desc);
 }
 
 void OaComputeGraph::Add(
@@ -93,11 +178,18 @@ void OaComputeGraph::Add(
 	OaU32 InGroupsX, OaU32 InGroupsY, OaU32 InGroupsZ,
 	OaQueueHint InQueue
 ) {
-	OaComputeNode node = MakeComputeNode(
-		InShader, InBuffers, InBufferOwners, InAccess,
-		InPush, InPushSize, InGroupsX, InGroupsY, InGroupsZ);
-	node.Queue = InQueue;
-	Nodes_.PushBack(std::move(node));
+	OaComputeDispatchDesc desc;
+	desc.Kernel = InShader;
+	desc.Buffers = InBuffers;
+	desc.BufferOwners = InBufferOwners;
+	desc.Access = InAccess;
+	desc.PushData = InPush;
+	desc.PushSize = InPushSize;
+	desc.GroupsX = InGroupsX;
+	desc.GroupsY = InGroupsY;
+	desc.GroupsZ = InGroupsZ;
+	desc.Queue = InQueue;
+	Add(desc);
 }
 
 void OaComputeGraph::Add(
@@ -121,11 +213,18 @@ void OaComputeGraph::Add(
 	OaU32 InGroupsX, OaU32 InGroupsY, OaU32 InGroupsZ,
 	OaU32 InNodeIndex
 ) {
-	OaComputeNode node = MakeComputeNode(
-		InShader, InBuffers, InBufferOwners, InAccess,
-		InPush, InPushSize, InGroupsX, InGroupsY, InGroupsZ);
-	node.NodeIndex = InNodeIndex;
-	Nodes_.PushBack(std::move(node));
+	OaComputeDispatchDesc desc;
+	desc.Kernel = InShader;
+	desc.Buffers = InBuffers;
+	desc.BufferOwners = InBufferOwners;
+	desc.Access = InAccess;
+	desc.PushData = InPush;
+	desc.PushSize = InPushSize;
+	desc.GroupsX = InGroupsX;
+	desc.GroupsY = InGroupsY;
+	desc.GroupsZ = InGroupsZ;
+	desc.NodeIndex = InNodeIndex;
+	Add(desc);
 }
 
 void OaComputeGraph::AddIndirect(
@@ -147,74 +246,59 @@ void OaComputeGraph::AddIndirect(
 	const void* InPush, OaU32 InPushSize,
 	const OaVkBuffer& InIndirectBuffer, OaU64 InOffset
 ) {
-	OaComputeNode node = MakeComputeNode(
-		InShader, InBuffers, InBufferOwners, InAccess,
-		InPush, InPushSize, 1, 1, 1);
-	node.IndirectBuffer = InIndirectBuffer;
-	node.IndirectOffset = InOffset;
-	node.Indirect = true;
-	Nodes_.PushBack(std::move(node));
+	OaComputeDispatchDesc desc;
+	desc.Kernel = InShader;
+	desc.Buffers = InBuffers;
+	desc.BufferOwners = InBufferOwners;
+	desc.Access = InAccess;
+	desc.PushData = InPush;
+	desc.PushSize = InPushSize;
+	desc.IndirectBuffer = InIndirectBuffer;
+	desc.IndirectOffset = InOffset;
+	desc.Indirect = true;
+	Add(desc);
 }
 
-static OaComputeNode MakeComputeNode(
-	OaStringView InShader,
-	OaSpan<OaVkBuffer> InBuffers,
-	OaSpan<OaSharedPtr<OaVkBuffer>> InBufferOwners,
-	OaSpan<OaBufferAccess> InAccess,
-	const void* InPush, OaU32 InPushSize,
-	OaU32 InGroupsX, OaU32 InGroupsY, OaU32 InGroupsZ
-) {
+static OaComputeNode MakeComputeNode(const OaComputeDispatchDesc& InDesc) {
 	OaComputeNode node;
-	node.Shader = OaString(InShader);
-	node.Buffers.Assign(InBuffers.begin(), InBuffers.end());
-	node.BufferOwners.Assign(InBufferOwners.begin(), InBufferOwners.end());
-	node.Access.Assign(InAccess.begin(), InAccess.end());
-	node.GroupsX = InGroupsX;
-	node.GroupsY = InGroupsY;
-	node.GroupsZ = InGroupsZ;
-	if (InPush && InPushSize > 0) {
-		OaU32 clampedSize = InPushSize > OA_VK_MAX_PUSH_CONSTANT_BYTES
-			? OA_VK_MAX_PUSH_CONSTANT_BYTES
-			: InPushSize;
-		std::memcpy(node.PushData, InPush, clampedSize);
-		node.PushSize = clampedSize;
+	node.Shader = OaString(InDesc.Kernel);
+	node.Buffers.Assign(InDesc.Buffers.begin(), InDesc.Buffers.end());
+	node.BufferOwners.Assign(InDesc.BufferOwners.begin(), InDesc.BufferOwners.end());
+	node.Access.Assign(InDesc.Access.begin(), InDesc.Access.end());
+	node.Dtype = InDesc.Dtype;
+	node.GroupsX = InDesc.GroupsX;
+	node.GroupsY = InDesc.GroupsY;
+	node.GroupsZ = InDesc.GroupsZ;
+	node.IndirectBuffer = InDesc.IndirectBuffer;
+	node.IndirectOffset = InDesc.IndirectOffset;
+	node.Indirect = InDesc.Indirect;
+	node.Queue = InDesc.Queue;
+	node.NodeIndex = InDesc.NodeIndex;
+	if (InDesc.PushData and InDesc.PushSize > 0) {
+		std::memcpy(node.PushData, InDesc.PushData, InDesc.PushSize);
+		node.PushSize = InDesc.PushSize;
 	}
 	return node;
 }
 
-// ─── AddGemm - GEMM kernel selection for graph API ───────────────────────────
-
-void OaComputeGraph::AddGemm(
-	OaComputeEngine& InRt,
-	OaVkBuffer InA,
-	OaVkBuffer InB,
-	OaVkBuffer OutC,
-	OaU32 InM,
-	OaU32 InN,
-	OaU32 InK
-) {
-	const auto route = OaGemmRouter::Select(InRt, InM, InN, InK, OaGemmPrecision::Auto);
-
-	if (route.Path == OaGemmPath::CoopVec) {
-		// CoopVec GEMV: different push constant layout
-		struct PushCoopVec { OaU32 N; OaU32 K; };
-		PushCoopVec push{ InN, InK };
-		
-		OaVkBuffer bufs[] = { InA, InB, OutC };
-		OaBufferAccess access[] = { OaBufferAccess::Read, OaBufferAccess::Read, OaBufferAccess::Write };
-		
-		Add(route.KernelName, bufs, access, &push, sizeof(push), route.Gx, route.Gy, 1);
-		return;
-	}
-	
-	// Standard path
-	struct Push { OaU32 M; OaU32 N; OaU32 K; };
-	Push push{ InM, InN, InK };
-
-	OaVkBuffer bufs[] = { InA, InB, OutC };
-	OaBufferAccess access[] = { OaBufferAccess::Read, OaBufferAccess::Read, OaBufferAccess::Write };
-
-	Add(route.KernelName, bufs, access, &push, sizeof(push), route.Gx, route.Gy, 1);
+static OaComputeDispatchDesc MakeDispatchDesc(OaComputeNode& InNode) {
+	OaComputeDispatchDesc desc;
+	desc.Kernel = InNode.Shader;
+	desc.Buffers = InNode.Buffers.Span();
+	desc.BufferOwners = InNode.BufferOwners.Span();
+	desc.Access = InNode.Access.Span();
+	desc.PushData = InNode.PushSize > 0 ? InNode.PushData : nullptr;
+	desc.PushSize = InNode.PushSize;
+	desc.Dtype = InNode.Dtype;
+	desc.GroupsX = InNode.GroupsX;
+	desc.GroupsY = InNode.GroupsY;
+	desc.GroupsZ = InNode.GroupsZ;
+	desc.IndirectBuffer = InNode.IndirectBuffer;
+	desc.IndirectOffset = InNode.IndirectOffset;
+	desc.Indirect = InNode.Indirect;
+	desc.Queue = InNode.Queue;
+	desc.NodeIndex = InNode.NodeIndex;
+	return desc;
 }
 
 OaStatus OaComputeGraph::ExecuteDistributed(OaComputeEngine& InRt) {
@@ -366,7 +450,7 @@ OaStatus OaComputeGraph::ExecuteDistributed(OaComputeEngine& InRt) {
 			UpdateBufferStates(node, bufferStates);
 		}
 
-		RecordFinalBarrier(static_cast<VkCommandBuffer>(stream->CommandBuffer));
+		RecordFinalBarrier(static_cast<VkCommandBuffer>(stream->CommandBuffer), HostReadbackRequired_);
 	}
 
 	// Submit all device batches and track fences locally.
@@ -574,115 +658,6 @@ static OaU32 PruneRedundantWarBarriers(
 	return removed;
 }
 
-// PR-3 item G (OaLlamaCppVulkanLessons.md §12) — barrier-coalescing groups.
-//
-// Two consecutive nodes "conflict" iff they share a buffer with at least one
-// non-Read access (RAW, WAR, WAW hazard). Non-conflicting consecutive nodes
-// can be dispatched between a SINGLE barrier (covering the union of their
-// incoming deps from earlier groups) instead of one barrier each.
-//
-// Returns true iff the two nodes conflict.
-static bool NodesConflict(const OaComputeNode& InA, const OaComputeNode& InB) {
-	for (OaU32 i = 0; i < static_cast<OaU32>(InA.Buffers.Size()); ++i) {
-		void* a = InA.Buffers[i].Buffer;
-		if (!a) continue;
-		for (OaU32 j = 0; j < static_cast<OaU32>(InB.Buffers.Size()); ++j) {
-			if (a != InB.Buffers[j].Buffer) continue;
-			if (InA.Access[i] != OaBufferAccess::Read
-				|| InB.Access[j] != OaBufferAccess::Read)
-			{
-				return true;
-			}
-		}
-		if (InB.Indirect && a == InB.IndirectBuffer.Buffer
-			&& InA.Access[i] != OaBufferAccess::Read)
-		{
-			return true;
-		}
-	}
-	if (InA.Indirect && InA.IndirectBuffer.Buffer) {
-		for (OaU32 j = 0; j < static_cast<OaU32>(InB.Buffers.Size()); ++j) {
-			if (InA.IndirectBuffer.Buffer == InB.Buffers[j].Buffer
-				&& InB.Access[j] != OaBufferAccess::Read)
-			{
-				return true;
-			}
-		}
-	}
-	return false;
-}
-
-// PR-3 G v2 — look-ahead REORDER. The actual Bolz 2026 mechanism.
-//
-// Builds a barrier-group by scanning forward up to InWindow nodes and pulling
-// every non-conflicting independent node into the group. Critically, this
-// SKIPS blocked nodes (instead of stopping at them) — so node j+1 may join the
-// group even if j cannot.
-//
-// "Independent" means: every node in [InStart, candidate) that is NOT yet in
-// the schedule (used[k]==false) has no dataflow conflict with candidate.
-// (Already-scheduled deps are by definition resolved before this group runs.)
-//
-// On return, OutGroup contains the indices to dispatch IN ORDER. InOutUsed is
-// updated to mark each included index. Caller must advance past used[] until
-// the next unused entry.
-//
-// Indirect-dispatch nodes and queue-hint heterogeneity are treated as hard
-// boundaries — same as v1.
-static void BuildBarrierGroup(
-	const OaVec<OaComputeNode>& InNodes,
-	OaVec<bool>& InOutUsed,
-	OaU32 InStart, OaU32 InWindow,
-	OaVec<OaU32>& OutGroup)
-{
-	OutGroup.Clear();
-	const OaU32 N = static_cast<OaU32>(InNodes.Size());
-	if (InStart >= N || InOutUsed[InStart]) return;
-
-	// Always include the seed.
-	OutGroup.PushBack(InStart);
-	InOutUsed[InStart] = true;
-
-	// Indirect dispatch is a hard scheduling boundary on both sides.
-	if (InNodes[InStart].Indirect) return;
-
-	// Window-1 means seed-only (= OA_DISABLE_GRAPH_OPTIMIZE behavior).
-	if (InWindow <= 1) return;
-
-	const OaU32 end = std::min(InStart + InWindow, N);
-	for (OaU32 j = InStart + 1; j < end; ++j) {
-		if (InOutUsed[j]) continue;
-		// Hard barrier boundaries.
-		if (InNodes[j].Indirect) break;
-		if (InNodes[j].Queue != InNodes[InStart].Queue) continue;
-
-		// Does j depend on any not-yet-scheduled node in [InStart, j)?
-		// A "dep" exists iff some unused k in that range conflicts with j.
-		bool depUnsatisfied = false;
-		for (OaU32 k = InStart; k < j; ++k) {
-			if (InOutUsed[k]) continue;
-			if (NodesConflict(InNodes[k], InNodes[j])) {
-				depUnsatisfied = true;
-				break;
-			}
-		}
-		if (depUnsatisfied) continue;
-
-		// Does j conflict with any node already IN the group?
-		bool conflictsWithGroup = false;
-		for (OaU32 g : OutGroup) {
-			if (NodesConflict(InNodes[g], InNodes[j])) {
-				conflictsWithGroup = true;
-				break;
-			}
-		}
-		if (conflictsWithGroup) continue;
-
-		OutGroup.PushBack(j);
-		InOutUsed[j] = true;
-	}
-}
-
 static void UpdateBufferStates(
 	const OaComputeNode& InNode,
 	OaHashMap<void*, OaGraphBufferState>& InOutState)
@@ -749,7 +724,8 @@ static void UpdateBufferStates(
 	}
 }
 
-static void RecordFinalBarrier(VkCommandBuffer InCb) {
+static void RecordFinalBarrier(VkCommandBuffer InCb, OaBool InRequired) {
+	if (not InRequired) return;
 	// Graph submissions may be followed by a host wait and direct mapped-buffer
 	// read. Keep the required compute -> host visibility edge. TRANSFER is not a
 	// graph-final consumer; transfer work in a later submission is synchronized
@@ -851,70 +827,29 @@ OaStatus OaComputeGraph::Execute(OaComputeEngine& InRt) {
 	OA_RETURN_IF_ERROR(stream->Begin(InRt.Device));
 
 	OaHashMap<void*, OaGraphBufferState> bufferStates;
+	bufferStates.Reserve(Nodes_.Size() * 4U);
 	OaVec<VkBufferMemoryBarrier2> barriers;
 	barriers.Reserve(8);
 
-	// PR-3 item G v2: look-ahead REORDER + barrier-coalescing.
-	// BuildBarrierGroup pulls non-conflicting nodes adjacent across blocked
-	// nodes (within a 20-node window). Within a group: ONE coalesced barrier,
-	// dispatch in group order, deferred resource-state update.
-	const OaU32 kGroupWindow =
-		OaEnvFlag::IsSet("OA_DISABLE_GRAPH_OPTIMIZE") ? 1U : 20U;
-	OaVec<bool> usedNode(Nodes_.Size(), false);
-	OaVec<OaU32> group;
-	OaU32 first = 0;
-	while (first < static_cast<OaU32>(Nodes_.Size())) {
-		while (first < static_cast<OaU32>(Nodes_.Size()) && usedNode[first]) ++first;
-		if (first >= static_cast<OaU32>(Nodes_.Size())) break;
+	for (auto& node : Nodes_) {
+		ComputeNodeBarriers(node, bufferStates, barriers);
+		PruneRedundantWarBarriers(barriers);
 
-		BuildBarrierGroup(Nodes_, usedNode, first, kGroupWindow, group);
-
-		OaVec<VkBufferMemoryBarrier2> groupBarriers;
-		OaHashMap<void*, OaU32> seenBufsInGroup;
-		for (OaU32 idx : group) {
-			ComputeNodeBarriers(Nodes_[idx], bufferStates, barriers);
-			for (const auto& bar : barriers) {
-				void* bufKey = static_cast<void*>(bar.buffer);
-				if (seenBufsInGroup.Find(bufKey) == seenBufsInGroup.End()) {
-					groupBarriers.PushBack(bar);
-					seenBufsInGroup.Emplace(bufKey, 1U);
-				}
-			}
-		}
-		PruneRedundantWarBarriers(groupBarriers);
-
-		if (!groupBarriers.Empty()) {
+		if (!barriers.Empty()) {
 			VkDependencyInfo dep{};
 			dep.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-			dep.bufferMemoryBarrierCount = static_cast<OaU32>(groupBarriers.Size());
-			dep.pBufferMemoryBarriers = groupBarriers.Data();
+			dep.bufferMemoryBarrierCount = static_cast<OaU32>(barriers.Size());
+			dep.pBufferMemoryBarriers = barriers.Data();
 			vkCmdPipelineBarrier2(
 				static_cast<VkCommandBuffer>(stream->CommandBuffer), &dep);
 		}
 
-		for (OaU32 idx : group) {
-			auto& node = Nodes_[idx];
-			if (node.Indirect) {
-				OA_RETURN_IF_ERROR(stream->RecordDispatchIndirect(
-					InRt, node.Shader, node.Buffers.Span(),
-					node.PushSize > 0 ? node.PushData : nullptr,
-					node.PushSize,
-					node.IndirectBuffer, node.IndirectOffset));
-			} else {
-				OA_RETURN_IF_ERROR(stream->RecordDispatch(
-					InRt, node.Shader, node.Buffers.Span(),
-					node.PushSize > 0 ? node.PushData : nullptr,
-					node.PushSize,
-					node.GroupsX, node.GroupsY, node.GroupsZ));
-			}
-		}
+		OA_RETURN_IF_ERROR(stream->RecordDispatchDesc(InRt, MakeDispatchDesc(node)));
 
-		for (OaU32 idx : group) {
-			UpdateBufferStates(Nodes_[idx], bufferStates);
-		}
+		UpdateBufferStates(node, bufferStates);
 	}
 
-	RecordFinalBarrier(static_cast<VkCommandBuffer>(stream->CommandBuffer));
+	RecordFinalBarrier(static_cast<VkCommandBuffer>(stream->CommandBuffer), HostReadbackRequired_);
 
 	OaStatus status = stream->SubmitAndWait(InRt);
 	InRt.ReleaseStream(stream);
@@ -940,6 +875,7 @@ OaStatus OaComputeGraph::ExecuteMultiQueue(OaComputeEngine& InRt) {
 	OA_RETURN_IF_ERROR(asyncStream->Begin(InRt.Device));
 
 	OaHashMap<void*, OaGraphBufferState> bufferStates;
+	bufferStates.Reserve(Nodes_.Size() * 4U);
 	OaVec<VkBufferMemoryBarrier2> barriers;
 	barriers.Reserve(8);
 
@@ -958,7 +894,7 @@ OaStatus OaComputeGraph::ExecuteMultiQueue(OaComputeEngine& InRt) {
 			OaVkStream* outgoing = (currentQueue == OaQueueHint::AsyncCompute)
 				? asyncStream : computeStream;
 
-			RecordFinalBarrier(static_cast<VkCommandBuffer>(outgoing->CommandBuffer));
+			RecordFinalBarrier(static_cast<VkCommandBuffer>(outgoing->CommandBuffer), HostReadbackRequired_);
 			OA_RETURN_IF_ERROR(outgoing->Submit(InRt));
 
 			// Track the dependency for the incoming stream
@@ -986,18 +922,8 @@ OaStatus OaComputeGraph::ExecuteMultiQueue(OaComputeEngine& InRt) {
 				static_cast<VkCommandBuffer>(activeStream->CommandBuffer), &dep);
 		}
 
-		if (node.Indirect) {
-			OA_RETURN_IF_ERROR(activeStream->RecordDispatchIndirect(
-				InRt, node.Shader, node.Buffers.Span(),
-				node.PushSize > 0 ? node.PushData : nullptr,
-				node.PushSize, node.IndirectBuffer, node.IndirectOffset));
-		} else {
-			OA_RETURN_IF_ERROR(activeStream->RecordDispatch(
-				InRt, node.Shader, node.Buffers.Span(),
-				node.PushSize > 0 ? node.PushData : nullptr,
-				node.PushSize,
-				node.GroupsX, node.GroupsY, node.GroupsZ));
-		}
+		OA_RETURN_IF_ERROR(activeStream->RecordDispatchDesc(
+			InRt, MakeDispatchDesc(node)));
 
 		UpdateBufferStates(node, bufferStates);
 	}
@@ -1005,7 +931,7 @@ OaStatus OaComputeGraph::ExecuteMultiQueue(OaComputeEngine& InRt) {
 	// Submit final batch with cross-queue dependency if needed
 	OaVkStream* finalStream = (currentQueue == OaQueueHint::AsyncCompute)
 		? asyncStream : computeStream;
-	RecordFinalBarrier(static_cast<VkCommandBuffer>(finalStream->CommandBuffer));
+	RecordFinalBarrier(static_cast<VkCommandBuffer>(finalStream->CommandBuffer), HostReadbackRequired_);
 
 	OaStatus status;
 	if (prevStream && prevStream != finalStream) {
@@ -1049,6 +975,8 @@ OaU64 OaComputeGraph::ComputeNodeHash() const {
 	// Node count
 	const OaU32 n = static_cast<OaU32>(Nodes_.Size());
 	fnv(&n, sizeof(n));
+	fnv(&HostReadbackRequired_, sizeof(HostReadbackRequired_));
+	fnv(&ReplayTimingEnabled_, sizeof(ReplayTimingEnabled_));
 
 	for (const auto& node : Nodes_) {
 		// Shader name
@@ -1091,6 +1019,7 @@ OaU64 OaComputeGraph::ComputeNodeHash() const {
 }
 
 OaStatus OaComputeGraph::Compile(OaComputeEngine& InRt) {
+	LastCompileReused_ = false;
 	if (Nodes_.Empty()) {
 		Compiled_ = true;
 		BarrierCount_ = 0;
@@ -1102,13 +1031,40 @@ OaStatus OaComputeGraph::Compile(OaComputeEngine& InRt) {
 	// vkResetCommandBuffer + re-recording entirely — just mark compiled.
 	// Also skip rebuilding the primary CB — it still wraps the same secondary.
 	const OaU64 nodeHash = ComputeNodeHash();
+	static const OaBool logGraphCacheMisses =
+		OaEnvFlag::IsSet("OA_LOG_GRAPH_CACHE_MISSES");
+	if (logGraphCacheMisses) {
+		static thread_local OaHashMap<const OaComputeGraph*, OaGraphDebugHashes> previous;
+		const auto current = ComputeGraphDebugHashes(
+			OaSpan<const OaComputeNode>(Nodes_.Data(), Nodes_.Size()),
+			HostReadbackRequired_);
+		auto it = previous.Find(this);
+		if (it != previous.end()) {
+			OA_LOG_INFO(OaLogComponent::Core,
+				"Graph cache identity: topology=%s resources=%s push=%s",
+				it->second.Topology == current.Topology ? "same" : "changed",
+				it->second.Resources == current.Resources ? "same" : "changed",
+				it->second.Push == current.Push ? "same" : "changed");
+		}
+		if (it != previous.end()) {
+			it->second = current;
+		} else {
+			previous.Emplace(this, current);
+		}
+	}
 	if (SecondaryCb_ and nodeHash == LastCompileHash_) {
 		Compiled_ = true;
+		LastCompileReused_ = true;
 		return OaStatus::Ok();
 	}
 
 	VkDevice dev = static_cast<VkDevice>(InRt.Device.Device);
 	QueueFamily_ = InRt.Device.Queues.ComputeQueueFamily;
+	if (ReplayTimingEnabled_ and not ReplayTimestamp_.Pool) {
+		auto timestamp = OaVkTimestamp::Create(InRt, 2);
+		if (not timestamp) return timestamp.GetStatus();
+		ReplayTimestamp_ = std::move(timestamp).GetValue();
+	}
 
 	// Reuse existing command pool + secondary CB if available. This avoids
 	// vkCreateCommandPool + vkAllocateCommandBuffers + vkDestroyCommandPool
@@ -1127,6 +1083,7 @@ OaStatus OaComputeGraph::Compile(OaComputeEngine& InRt) {
 			// Reset failed — fall back to full recreate.
 			Invalidate(InRt.Device);
 		}
+		CompiledBufferOwners_.Clear();
 		// Compiled_ is already false (set by ClearNodes or Invalidate)
 	}
 
@@ -1183,58 +1140,20 @@ OaStatus OaComputeGraph::Compile(OaComputeEngine& InRt) {
 
 	// Record all dispatches with minimal barriers into the secondary CB
 	OaHashMap<void*, OaGraphBufferState> bufferStates;
+	bufferStates.Reserve(Nodes_.Size() * 4U);
 	OaVec<VkBufferMemoryBarrier2> barriers;
 	barriers.Reserve(8);
 	BarrierCount_ = 0;
-	GroupCount_   = 0;
-	MaxGroupSize_ = 0;
-	ReorderCount_ = 0;
 	WarBarrierCount_ = 0;
 	IndirectBarrierCount_ = 0;
 
-	// PR-3 item G v2 (OaLlamaCppVulkanLessons.md §12): look-ahead REORDER +
-	// barrier coalescing. BuildBarrierGroup pulls non-conflicting nodes
-	// adjacent across blocked nodes (within a 20-node window). Within a group:
-	// ONE coalesced barrier, dispatch in group order, deferred resource-state update.
-	const OaU32 kGroupWindow =
-		OaEnvFlag::IsSet("OA_DISABLE_GRAPH_OPTIMIZE") ? 1U : 20U;
-	OaVec<bool> usedNode(Nodes_.Size(), false);
-	OaVec<OaU32> group;
 	VkPipeline boundPipeline = VK_NULL_HANDLE;
 	bool bindlessDescriptorBound = false;
-	OaU32 first = 0;
-	while (first < static_cast<OaU32>(Nodes_.Size())) {
-		while (first < static_cast<OaU32>(Nodes_.Size()) && usedNode[first]) ++first;
-		if (first >= static_cast<OaU32>(Nodes_.Size())) break;
-
-		BuildBarrierGroup(Nodes_, usedNode, first, kGroupWindow, group);
-
-		// Stats: every node added past the seed AND not at its natural-order
-		// position counts as a "reorder event". Seed itself doesn't count.
-		// Track by checking if group[g] > first + g (gap means it was pulled).
-		++GroupCount_;
-		const OaU32 gsz = static_cast<OaU32>(group.Size());
-		if (gsz > MaxGroupSize_) MaxGroupSize_ = gsz;
-		for (OaU32 g = 1; g < gsz; ++g) {
-			if (group[g] > first + g) ++ReorderCount_;
-		}
-
-		// ── Coalesce incoming barriers across ALL nodes in the group.
-		OaVec<VkBufferMemoryBarrier2> groupBarriers;
-		OaHashMap<void*, OaU32> seenBufsInGroup;
-		for (OaU32 idx : group) {
-			ComputeNodeBarriers(Nodes_[idx], bufferStates, barriers);
-			for (const auto& bar : barriers) {
-				void* bufKey = static_cast<void*>(bar.buffer);
-				if (seenBufsInGroup.Find(bufKey) == seenBufsInGroup.End()) {
-					groupBarriers.PushBack(bar);
-					seenBufsInGroup.Emplace(bufKey, 1U);
-				}
-			}
-		}
-		PruneRedundantWarBarriers(groupBarriers);
-		BarrierCount_ += static_cast<OaU32>(groupBarriers.Size());
-		for (const auto& bar : groupBarriers) {
+	for (auto& node : Nodes_) {
+		ComputeNodeBarriers(node, bufferStates, barriers);
+		PruneRedundantWarBarriers(barriers);
+		BarrierCount_ += static_cast<OaU32>(barriers.Size());
+		for (const auto& bar : barriers) {
 			if (bar.srcAccessMask == 0 && bar.dstAccessMask == 0) {
 				++WarBarrierCount_;
 			}
@@ -1245,19 +1164,15 @@ OaStatus OaComputeGraph::Compile(OaComputeEngine& InRt) {
 			}
 		}
 
-		if (!groupBarriers.Empty()) {
+		if (!barriers.Empty()) {
 			VkDependencyInfo dep{};
 			dep.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-			dep.bufferMemoryBarrierCount = static_cast<OaU32>(groupBarriers.Size());
-			dep.pBufferMemoryBarriers = groupBarriers.Data();
+			dep.bufferMemoryBarrierCount = static_cast<OaU32>(barriers.Size());
+			dep.pBufferMemoryBarriers = barriers.Data();
 			vkCmdPipelineBarrier2(static_cast<VkCommandBuffer>(SecondaryCb_), &dep);
 		}
 
-		// ── Dispatch each node in the group WITHOUT inter-node barriers.
-		for (OaU32 idx : group) {
-			auto& node = Nodes_[idx];
-
-			// Resolve pipeline — DTYPE from the node (derived from its operand tensors).
+		// Resolve pipeline — DTYPE from the node (derived from its operand tensors).
 			auto& pipeline = InRt.Pipelines.GetPipeline(node.Shader, node.Dtype);
 			if (!pipeline.Pipeline) {
 				Invalidate(InRt.Device);
@@ -1339,17 +1254,10 @@ OaStatus OaComputeGraph::Compile(OaComputeEngine& InRt) {
 			} else {
 				vkCmdDispatch(static_cast<VkCommandBuffer>(SecondaryCb_), node.GroupsX, node.GroupsY, node.GroupsZ);
 			}
-		}
-
-		// ── Update resource state for the ENTIRE group AFTER all dispatches.
-		// (Within a group nodes are non-conflicting, so the relative order of
-		// these updates is semantically irrelevant.)
-		for (OaU32 idx : group) {
-			UpdateBufferStates(Nodes_[idx], bufferStates);
-		}
+		UpdateBufferStates(node, bufferStates);
 	}
 
-	RecordFinalBarrier(static_cast<VkCommandBuffer>(SecondaryCb_));
+	RecordFinalBarrier(static_cast<VkCommandBuffer>(SecondaryCb_), HostReadbackRequired_);
 
 	r = vkEndCommandBuffer(static_cast<VkCommandBuffer>(SecondaryCb_));
 	if (r != VK_SUCCESS) {
@@ -1358,20 +1266,12 @@ OaStatus OaComputeGraph::Compile(OaComputeEngine& InRt) {
 			"graph compile: vkEndCommandBuffer failed");
 	}
 
-	// PR-3 G v3: opt-in compile-time summary log.
+	// Opt-in compile-time synchronization summary.
 	if (OaEnvFlag::IsSet("OA_LOG_BARRIERS")) {
 		const OaU32 n = static_cast<OaU32>(Nodes_.Size());
-		const float avgGroupSize =
-			GroupCount_ > 0
-				? static_cast<float>(n) / static_cast<float>(GroupCount_)
-				: 0.0F;
 		OA_LOG_INFO(OaLogComponent::Core,
-			"OaComputeGraph::Compile: nodes=%u barriers=%u groups=%u "
-			"max_group=%u avg_group=%.2f reorder_events=%u war=%u indirect=%u "
-			"(coalescing %s)",
-			n, BarrierCount_, GroupCount_, MaxGroupSize_, avgGroupSize,
-			ReorderCount_, WarBarrierCount_, IndirectBarrierCount_,
-			GroupCount_ < n ? "ACTIVE" : "off / no opportunity");
+			"OaComputeGraph::Compile: nodes=%u barriers=%u war=%u indirect=%u",
+			n, BarrierCount_, WarBarrierCount_, IndirectBarrierCount_);
 	}
 
 	// Build a pre-recorded primary CB that wraps the secondary. This lets
@@ -1425,8 +1325,41 @@ OaStatus OaComputeGraph::Compile(OaComputeEngine& InRt) {
 			return OaStatus::Error(OaStatusCode::VulkanError,
 				"graph compile: vkBeginCommandBuffer (primary) failed");
 		}
+		if (ReplayTimingEnabled_) {
+			vkCmdResetQueryPool(pcb,
+				static_cast<VkQueryPool>(ReplayTimestamp_.Pool), 0, 2);
+			vkCmdWriteTimestamp2(pcb, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+				static_cast<VkQueryPool>(ReplayTimestamp_.Pool), 0);
+			ReplayTimestamp_.WriteIndex = 2;
+		}
+		// Replay is re-entrant: parameters, optimizer state, recurrent state, and
+		// GPU-built plans written by replay N may be consumed by replay N+1. Put
+		// the external memory dependency in the reusable primary wrapper so every
+		// replay begins with an explicit device/host-write -> compute/indirect-read
+		// boundary instead of relying on cache behavior across submissions.
+		VkMemoryBarrier2 reentry{};
+		reentry.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2;
+		reentry.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT
+			| VK_PIPELINE_STAGE_2_HOST_BIT;
+		reentry.srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT
+			| VK_ACCESS_2_HOST_WRITE_BIT;
+		reentry.dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT
+			| VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT;
+		reentry.dstAccessMask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT
+			| VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT
+			| VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT;
+		VkDependencyInfo reentryDep{};
+		reentryDep.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+		reentryDep.memoryBarrierCount = 1;
+		reentryDep.pMemoryBarriers = &reentry;
+		vkCmdPipelineBarrier2(pcb, &reentryDep);
+
 		VkCommandBuffer scb = static_cast<VkCommandBuffer>(SecondaryCb_);
 		vkCmdExecuteCommands(pcb, 1, &scb);
+		if (ReplayTimingEnabled_) {
+			vkCmdWriteTimestamp2(pcb, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+				static_cast<VkQueryPool>(ReplayTimestamp_.Pool), 1);
+		}
 		pr = vkEndCommandBuffer(pcb);
 		if (pr != VK_SUCCESS) {
 			return OaStatus::Error(OaStatusCode::VulkanError,
@@ -1436,6 +1369,20 @@ OaStatus OaComputeGraph::Compile(OaComputeEngine& InRt) {
 
 	Compiled_ = true;
 	LastCompileHash_ = nodeHash;
+	CompiledBufferOwners_.Clear();
+	for (const auto& node : Nodes_) {
+		for (const auto& owner : node.BufferOwners) {
+			if (not owner) continue;
+			OaBool found = false;
+			for (const auto& existing : CompiledBufferOwners_) {
+				if (existing.Get() == owner.Get()) {
+					found = true;
+					break;
+				}
+			}
+			if (not found) CompiledBufferOwners_.PushBack(owner);
+		}
+	}
 	return OaStatus::Ok();
 }
 
@@ -1443,6 +1390,10 @@ OaStatus OaComputeGraph::Replay(OaComputeEngine& InRt) {
 	if (Nodes_.Empty()) return OaStatus::Ok();
 	if (!Compiled_ || !SecondaryCb_) {
 		return OaStatus::Error("graph replay: not compiled — call Compile() first");
+	}
+	if (ReplayTimingEnabled_ and ReplayTimestampReadValue_ < ReplayTimelineValue_) {
+		return OaStatus::Error(OaStatusCode::FailedPrecondition,
+			"timed graph replay is single-flight; wait before resubmitting");
 	}
 
 	// Fast path: if we have a pre-built primary CB (from Compile), submit
@@ -1506,7 +1457,13 @@ OaStatus OaComputeGraph::WaitForPendingReplay(const OaVkDevice& InDevice) {
 	if (ReplayTimelineValue_ == 0 or not ReplayTimelineSem_.Semaphore) {
 		return OaStatus::Ok();
 	}
-	return ReplayTimelineSem_.Wait(InDevice, ReplayTimelineValue_);
+	OA_RETURN_IF_ERROR(ReplayTimelineSem_.Wait(InDevice, ReplayTimelineValue_));
+	if (ReplayTimingEnabled_ and ReplayTimestampReadValue_ < ReplayTimelineValue_) {
+		OA_RETURN_IF_ERROR(ReplayTimestamp_.Readback(InDevice));
+		LastReplayGpuMs_ = ReplayTimestamp_.ElapsedMs(0, 1);
+		ReplayTimestampReadValue_ = ReplayTimelineValue_;
+	}
+	return OaStatus::Ok();
 }
 
 OaResult<OaCompletionToken> OaComputeGraph::ReplayAsync(OaComputeEngine& InRt)
@@ -1624,6 +1581,95 @@ OaVec<OaAliasGroup> OaComputeGraph::ComputeAliasGroups() const {
 	return groups;
 }
 
+OaStatus OaComputeGraph::MaterializeAliases(
+	OaComputeEngine& InRt, OaSpan<const OaVkBuffer> InEligible) {
+	if (Compiled_ or not AliasBacking_.Empty() or not AliasViews_.Empty()) {
+		return OaStatus::Error(OaStatusCode::FailedPrecondition,
+			"graph aliases must be materialized exactly once before compilation");
+	}
+	if (InEligible.Empty()) return OaStatus::Ok();
+
+	auto isEligible = [&](void* handle) {
+		for (const auto& buffer : InEligible) {
+			if (buffer.Buffer == handle) return true;
+		}
+		return false;
+	};
+	auto lifetimes = ComputeLifetimes();
+	OaVec<OaAliasGroup> groups;
+	for (const auto& lt : lifetimes) {
+		if (not isEligible(lt.Buffer)) continue;
+		bool placed = false;
+		for (auto& group : groups) {
+			bool overlaps = false;
+			for (const auto& member : group.Members) {
+				if (lt.FirstAccess <= member.LastAccess and lt.LastAccess >= member.FirstAccess) {
+					overlaps = true; break;
+				}
+			}
+			if (not overlaps) {
+				group.Members.PushBack(lt);
+				group.RequiredSize = std::max(group.RequiredSize, lt.Size);
+				placed = true; break;
+			}
+		}
+		if (not placed) {
+			OaAliasGroup group; group.Members.PushBack(lt); group.RequiredSize = lt.Size;
+			groups.PushBack(std::move(group));
+		}
+	}
+
+	std::unordered_map<void*, OaVkBuffer> replacements;
+	OaU64 originalBytes = 0, arenaBytes = 0;
+	AliasRuntime_ = &InRt;
+	for (const auto& group : groups) {
+		if (group.Members.Size() < 2U) continue;
+		auto backingResult = InRt.Allocator.AllocAliased(group.RequiredSize);
+		if (not backingResult.IsOk()) { DestroyAliasArena(); return backingResult.GetStatus(); }
+		auto backing = std::move(backingResult.GetValue());
+		InRt.RegisterBuffer(backing);
+		AliasBacking_.PushBack(backing);
+		replacements.emplace(group.Members[0].Buffer, backing);
+		for (const auto& member : group.Members) originalBytes += member.Size;
+		arenaBytes += group.RequiredSize;
+		for (OaU32 memberIdx = 1; memberIdx < group.Members.Size(); ++memberIdx) {
+			auto aliasResult = InRt.Allocator.CreateAliasingBuffer(
+				AliasBacking_.Back(), group.Members[memberIdx].Size);
+			if (not aliasResult.IsOk()) { DestroyAliasArena(); return aliasResult.GetStatus(); }
+			auto alias = std::move(aliasResult.GetValue());
+			InRt.RegisterBuffer(alias);
+			replacements.emplace(group.Members[memberIdx].Buffer, alias);
+			AliasViews_.PushBack(alias);
+		}
+	}
+	for (auto& node : Nodes_) {
+		for (auto& buffer : node.Buffers) {
+			auto found = replacements.find(buffer.Buffer);
+			if (found != replacements.end()) buffer = found->second;
+		}
+		if (node.Indirect) {
+			auto found = replacements.find(node.IndirectBuffer.Buffer);
+			if (found != replacements.end()) node.IndirectBuffer = found->second;
+		}
+	}
+	MaterializedAliasSavings_ = originalBytes > arenaBytes ? originalBytes - arenaBytes : 0U;
+	return OaStatus::Ok();
+}
+
+void OaComputeGraph::DestroyAliasArena() {
+	if (AliasRuntime_ == nullptr) return;
+	for (auto& alias : AliasViews_) {
+		AliasRuntime_->DeregisterBuffer(alias);
+		AliasRuntime_->Allocator.FreeAlias(alias);
+	}
+	for (auto& backing : AliasBacking_) {
+		AliasRuntime_->DeregisterBuffer(backing);
+		AliasRuntime_->Allocator.Free(backing);
+	}
+	AliasViews_.Clear(); AliasBacking_.Clear(); AliasRuntime_ = nullptr;
+	MaterializedAliasSavings_ = 0;
+}
+
 // ─── Queries ──────────────────────────────────────────────────────────────────
 
 OaGraphStats OaComputeGraph::GetStats() const {
@@ -1631,13 +1677,9 @@ OaGraphStats OaComputeGraph::GetStats() const {
 	stats.DispatchCount = static_cast<OaU32>(Nodes_.Size());
 	stats.BarrierCount = BarrierCount_;
 	stats.DescriptorSetCount = static_cast<OaU32>(DescriptorPools_.Size());
-	// PR-3 G v3 — graph-optimizer observability fields.
-	stats.GroupCount    = GroupCount_;
-	stats.MaxGroupSize  = MaxGroupSize_;
-	stats.ReorderCount  = ReorderCount_;
-	stats.NodeCountStat = static_cast<OaU32>(Nodes_.Size());
 	stats.WarBarrierCount = WarBarrierCount_;
 	stats.IndirectBarrierCount = IndirectBarrierCount_;
+	stats.HostBarrierCount = HostReadbackRequired_ && not Nodes_.Empty() ? 1U : 0U;
 
 	// Compute total buffer bytes and alias savings
 	auto lifetimes = ComputeLifetimes();
@@ -1658,6 +1700,28 @@ OaGraphStats OaComputeGraph::GetStats() const {
 }
 
 // ─── Lifecycle ────────────────────────────────────────────────────────────────
+
+OaStatus OaComputeGraph::CopyNodesFrom(const OaComputeGraph& InSource) {
+	if (this == &InSource) {
+		return OaStatus::InvalidArgument(
+			"OaComputeGraph::CopyNodesFrom cannot copy a graph onto itself");
+	}
+	if (Compiled_ or SecondaryPool_ != nullptr or PrimaryPool_ != nullptr
+		or not DescriptorPools_.Empty() or ReplayTimelineSem_.Semaphore)
+	{
+		return OaStatus::Error(OaStatusCode::FailedPrecondition,
+			"OaComputeGraph::CopyNodesFrom requires a fresh or destroyed destination graph");
+	}
+	Nodes_ = InSource.Nodes_;
+	HostReadbackRequired_ = InSource.HostReadbackRequired_;
+	ReplayTimingEnabled_ = InSource.ReplayTimingEnabled_;
+	LastCompileHash_ = 0;
+	LastCompileReused_ = false;
+	BarrierCount_ = 0;
+	WarBarrierCount_ = 0;
+	IndirectBarrierCount_ = 0;
+	return OaStatus::Ok();
+}
 
 void OaComputeGraph::Invalidate(const OaVkDevice& InDevice) {
 	VkDevice dev = static_cast<VkDevice>(InDevice.Device);
@@ -1692,9 +1756,14 @@ void OaComputeGraph::Invalidate(const OaVkDevice& InDevice) {
 		ReplayTimelineSem_.Destroy(InDevice);
 	}
 	ReplayTimelineValue_ = 0;
+	if (ReplayTimestamp_.Pool) ReplayTimestamp_.Destroy(InDevice);
+	ReplayTimestampReadValue_ = 0;
+	LastReplayGpuMs_ = 0.0;
 
 	Compiled_ = false;
 	LastCompileHash_ = 0;
+	LastCompileReused_ = false;
+	CompiledBufferOwners_.Clear();
 	BarrierCount_ = 0;
 	WarBarrierCount_ = 0;
 	IndirectBarrierCount_ = 0;
@@ -1713,6 +1782,7 @@ void OaComputeGraph::Reset(const OaVkDevice& InDevice) {
 void OaComputeGraph::ClearNodes() {
 	Nodes_.Clear();
 	Compiled_ = false;
+	LastCompileReused_ = false;
 	BarrierCount_ = 0;
 	WarBarrierCount_ = 0;
 	IndirectBarrierCount_ = 0;
@@ -1720,8 +1790,13 @@ void OaComputeGraph::ClearNodes() {
 	// DescriptorPools_ are cleaned up at the start of Compile().
 }
 
+void OaComputeGraph::ReleaseCompletedBufferOwners() {
+	CompiledBufferOwners_.Clear();
+}
+
 void OaComputeGraph::Destroy(const OaVkDevice& InDevice) {
 	Invalidate(InDevice);
+	DestroyAliasArena();
 	Nodes_.Clear();
 	Nodes_.ShrinkToFit();
 }

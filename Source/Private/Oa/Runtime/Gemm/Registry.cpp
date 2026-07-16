@@ -9,8 +9,12 @@
 #include <Oa/Runtime/MatmulTypes.h>
 #include <Oa/Runtime/Engine.h>
 #include <Oa/Runtime/Device.h>
+#include <Oa/Runtime/Spirv.h>
 
-#include <algorithm>
+#include "OaTileMetadata.gen.h"
+#include "OaTileBf16Metadata.gen.h"
+
+#include <array>
 
 namespace OaMatmulRegistry {
 
@@ -18,7 +22,7 @@ namespace {
 
 // One entry per kernel that the OaPipelineRegistry currently ships.
 // Fields in declaration order match OaMatmulVariant:
-//   KernelName, Kernel, Path,
+//   Id, KernelName, Kernel, Path, Epilogue,
 //   APrecision, BPrecision, OutputPrecision, AccumulatorPrecision,
 //   TileM, TileN, TileK, WorkgroupInvocations,
 //   RequiresAligned, RequiresTransposedB, SupportsBias, SupportsActivation,
@@ -27,75 +31,36 @@ namespace {
 constexpr OaMatmulVariant kVariants[] = {
 	// ── Raw GEMM (no bias, no activation) ────────────────────────────────────
 
-	// Tuned KHR CoopMat GEMM — 128x128 tile, FP32 acc, double-buffered.
-	{"GemmCmSgBf16",
-	 OaGemmKernel::GemmCmSgBf16, OaGemmPath::Standard,
-	 OaStoragePrecision::Bf16, OaStoragePrecision::Bf16,
-	 OaStoragePrecision::Fp32, OaStoragePrecision::Fp32,
-	 128, 128, 64, 256,
-	 false, false, false, false, false, 0,
-	 kCapCoopMat1Khr | kCapCoopMat1Bf16Input | kCapCoopMat1Fp32Acc},
+	#include "OaTileBf16Variants.gen.inc"
 
-	// Workgroup-scope KHR CoopMat GEMM — 32x32x16 fragments, 64x64 tile.
-	{"GemmCmWgBf16",
-	 OaGemmKernel::GemmCmWgBf16, OaGemmPath::Standard,
-	 OaStoragePrecision::Bf16, OaStoragePrecision::Bf16,
-	 OaStoragePrecision::Fp32, OaStoragePrecision::Fp32,
-	 64, 64, 64, 256,
-	 false, false, false, false, false, 0,
-	 kCapCoopMat1Khr | kCapCoopMat1WorkgroupBf16 | kCapCoopMat1Fp32Acc},
-
-	// Tiled FP32 fallback — 64x64.
-	{"GemmTiled",
-	 OaGemmKernel::TiledFp32, OaGemmPath::Standard,
-	 OaStoragePrecision::Fp32, OaStoragePrecision::Fp32,
-	 OaStoragePrecision::Fp32, OaStoragePrecision::Fp32,
-	 64, 64, 16, 256,
-	 false, false, false, false, false, 0,
-	 kCapTiledFp32},
+	#include "OaTileFp32Variants.gen.inc"
 
 	// Scalar fallback.
-	{"GemmNaive",
-	 OaGemmKernel::Naive, OaGemmPath::Standard,
+	{OaMatmulVariantIdFromName("GemmNaive"), "GemmNaive",
+	 OaGemmKernel::Naive, OaGemmPath::Standard, OaGemmEpilogue::None,
+	 OaStoragePrecision::Fp32, OaStoragePrecision::Fp32,
+	 OaStoragePrecision::Fp32, OaStoragePrecision::Fp32,
+	 1, 1, 1, 256,
+	 false, true, false, false, false, 0,
+	 kCapNaiveFp32},
+
+	// Universal correctness route for non-canonical views and strided batches.
+	{OaMatmulVariantIdFromName("GemmStrided"), "GemmStrided",
+	 OaGemmKernel::StridedFp32, OaGemmPath::Standard, OaGemmEpilogue::None,
 	 OaStoragePrecision::Fp32, OaStoragePrecision::Fp32,
 	 OaStoragePrecision::Fp32, OaStoragePrecision::Fp32,
 	 1, 1, 1, 256,
 	 false, false, false, false, false, 0,
-	 kCapNaiveFp32},
+	 kCapNaiveFp32, true, true},
 
 	// CoopVec GEMV (M==1 decode path).
-	{"GemmCoopVec",
-	 OaGemmKernel::CoopVec, OaGemmPath::CoopVec,
+	{OaMatmulVariantIdFromName("GemmCoopVec"), "GemmCoopVec",
+	 OaGemmKernel::CoopVec, OaGemmPath::CoopVec, OaGemmEpilogue::None,
 	 OaStoragePrecision::Bf16, OaStoragePrecision::Bf16,
 	 OaStoragePrecision::Fp32, OaStoragePrecision::Fp32,
 	 1, 16, 16, 32,
-	 false, false, false, false, false, 0,
+	 false, true, false, false, false, 0,
 	 kCapCoopVec},
-
-	// ── Tiled fused fallbacks (always available) ─────────────────────────────
-	{"GemmBiasTiled",
-	 OaGemmKernel::TiledFp32, OaGemmPath::Standard,
-	 OaStoragePrecision::Fp32, OaStoragePrecision::Fp32,
-	 OaStoragePrecision::Fp32, OaStoragePrecision::Fp32,
-	 64, 64, 16, 256,
-	 false, false, true, false, false, 0,
-	 kCapTiledFp32},
-
-	{"GemmBiasReluTiled",
-	 OaGemmKernel::TiledFp32, OaGemmPath::Standard,
-	 OaStoragePrecision::Fp32, OaStoragePrecision::Fp32,
-	 OaStoragePrecision::Fp32, OaStoragePrecision::Fp32,
-	 64, 64, 16, 256,
-	 false, false, true, true, false, 0,
-	 kCapTiledFp32},
-
-	{"GemmBiasGeluTiled",
-	 OaGemmKernel::TiledFp32, OaGemmPath::Standard,
-	 OaStoragePrecision::Fp32, OaStoragePrecision::Fp32,
-	 OaStoragePrecision::Fp32, OaStoragePrecision::Fp32,
-	 64, 64, 16, 256,
-	 false, false, true, true, false, 0,
-	 kCapTiledFp32},
 
 };
 
@@ -107,15 +72,32 @@ OaSpan<const OaMatmulVariant> All() {
 	return {kVariants, static_cast<OaUsize>(kVariantCount)};
 }
 
+const OaMatmulVariant* Find(OaMatmulVariantId InId) {
+	for (const auto& variant : kVariants) {
+		if (variant.Id == InId) {
+			return &variant;
+		}
+	}
+	return nullptr;
+}
+
 OaU64 BuildId() {
 	OaU64 h = 0xcbf29ce484222325ULL;
 	auto mix = [&](OaU64 v) { h ^= v; h *= 0x100000001b3ULL; };
+	mix(OaTileFp32SchemaVersion);
+	mix(OaTileGeneratorAbi);
+	mix(OaTileFp32SchemaHash);
+	mix(OaTileBf16SchemaVersion);
+	mix(OaTileBf16GeneratorAbi);
+	mix(OaTileBf16SchemaHash);
 	for (const auto& v : kVariants) {
+		mix(v.Id);
 		for (const char* p = v.KernelName; *p != '\0'; ++p) {
 			mix(static_cast<OaU8>(*p));
 		}
 		mix(static_cast<OaU8>(v.Kernel));
 		mix(static_cast<OaU8>(v.Path));
+		mix(static_cast<OaU8>(v.Epilogue));
 		mix(static_cast<OaU8>(v.APrecision));
 		mix(static_cast<OaU8>(v.BPrecision));
 		mix(static_cast<OaU8>(v.OutputPrecision));
@@ -123,33 +105,41 @@ OaU64 BuildId() {
 		mix(v.TileM); mix(v.TileN); mix(v.TileK); mix(v.WorkgroupInvocations);
 		mix(v.RequiresAligned); mix(v.RequiresTransposedB);
 		mix(v.SupportsBias); mix(v.SupportsActivation); mix(v.DualOutput);
-		mix(v.SharedMemoryBytes); mix(v.RequiredCapsMask); mix(v.Persistent);
+		mix(v.SupportsArbitraryLayout); mix(v.SupportsBatch);
+		mix(v.SharedMemoryBytes); mix(v.RequiredCapsMask);
 	}
 	return h;
 }
 
-// DivCeil + ScoreVariant inline (duplicated from Router.cpp's anonymous
-// namespace to keep the registry self-contained). If this surface grows
-// it gets hoisted into a shared internal header.
-namespace {
-inline OaU32 DivCeilLocal(OaU32 InA, OaU32 InB) {
-	return (InA + InB - 1U) / InB;
-}
+OaU64 ShaderBuildId() {
+	static const OaU64 buildId = [] {
+		OaU64 h = 0xcbf29ce484222325ULL;
+		auto mix = [&](OaU64 v) { h ^= v; h *= 0x100000001b3ULL; };
+		mix(BuildId());
+		for (const auto& variant : kVariants) {
+			mix(variant.Id);
+			mix(ShaderContentHash(variant.Id));
+		}
+		return h;
+	}();
+	return buildId;
 }
 
-float ScoreVariant(const OaMatmulVariant& InVariant,
-                    OaU32 InM, OaU32 InN, OaU32 InCores) {
-	if (InVariant.TileM == 0U or InVariant.TileN == 0U or InCores == 0U) {
-		return 0.0F;
+OaU64 ShaderContentHash(OaMatmulVariantId InId) {
+	static const auto hashes = [] {
+		std::array<OaU64, kVariantCount> result{};
+		for (OaUsize i = 0; i < kVariantCount; ++i) {
+			const OaSpvEntry* spv = OaSpvFindAny(kVariants[i].KernelName);
+			result[i] = spv != nullptr
+				? OaSpvContentHash(spv->Data, spv->Size)
+				: 0U;
+		}
+		return result;
+	}();
+	for (OaUsize i = 0; i < kVariantCount; ++i) {
+		if (kVariants[i].Id == InId) return hashes[i];
 	}
-	const OaU32 tilesM = DivCeilLocal(InM, InVariant.TileM);
-	const OaU32 tilesN = DivCeilLocal(InN, InVariant.TileN);
-	const OaU32 total  = tilesM * tilesN;
-	const float cores  = static_cast<float>(InCores);
-	const float fill   = std::min(1.0F, static_cast<float>(total) / cores);
-	const float spill  = std::max(0.0F,
-		(static_cast<float>(total) - (4.0F * cores)) / (4.0F * cores));
-	return fill - (0.25F * spill);
+	return 0U;
 }
 
 // String-prefix match that accepts either an exact match or a name where the
@@ -164,33 +154,6 @@ float ScoreVariant(const OaMatmulVariant& InVariant,
 		++i;
 	}
 	return InName[i] == '\0' or InName[i] == '_';
-}
-
-const OaMatmulVariant* PickFusedByPrefix(
-	const OaComputeEngine& InRt,
-	const char*              InBaseName,
-	OaU32                    InM,
-	OaU32                    InN)
-{
-	const OaU64 caps  = InRt.GemmCapsMask();
-	const OaU32 cores = InRt.Device.Info.Hardware.NumSMs;
-
-	const OaMatmulVariant* best = nullptr;
-	float bestScore = -1.0F;
-	for (const auto& v : kVariants) {
-		if (not NameMatchesPrefix(v.KernelName, InBaseName)) {
-			continue;
-		}
-		if (not CapsSatisfy(caps, v.RequiredCapsMask)) {
-			continue;
-		}
-		const float score = ScoreVariant(v, InM, InN, cores);
-		if (score > bestScore) {
-			bestScore = score;
-			best = &v;
-		}
-	}
-	return best;
 }
 
 OaU64 RequiredCapsMaskForShaderName(const char* InName) {

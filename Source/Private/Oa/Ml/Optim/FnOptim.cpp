@@ -121,6 +121,12 @@ void MuonMatrixStepGpu(
 
 } // namespace
 
+void AdamWAdvanceGraphState(OaMatrix& InOutState) {
+	auto& ctx = OaContext::GetDefault();
+	OaBufferAccess access[] = {OaBufferAccess::ReadWrite};
+	ctx.Add("AdamwGraphAdvance", {&InOutState}, access, nullptr, 0, 1);
+}
+
 void AdamWStep(
 	OaMatrix& InOutParam,
 	OaMatrix& InOutM,
@@ -156,6 +162,27 @@ void AdamWStep(
 	};
 	const OaU32 groups = (count + 255) / 256;
 	ctx.Add("Adamw", {&InOutParam, &InGrad, &InOutM, &InOutV}, access, &push, sizeof(push), groups);
+}
+
+void AdamWStepGraph(
+	OaMatrix& InOutParam,
+	OaMatrix& InOutM,
+	OaMatrix& InOutV,
+	const OaMatrix& InGrad,
+	const OaMatrix& InState
+) {
+	auto& ctx = OaContext::GetDefault();
+	const OaU32 count = static_cast<OaU32>(InOutParam.NumElements());
+	struct Push { OaU32 Count; } push{count};
+	OaBufferAccess access[] = {
+		OaBufferAccess::ReadWrite,
+		OaBufferAccess::Read,
+		OaBufferAccess::ReadWrite,
+		OaBufferAccess::ReadWrite,
+		OaBufferAccess::Read,
+	};
+	ctx.Add("AdamwGraph", {&InOutParam, &InGrad, &InOutM, &InOutV, &InState},
+		access, &push, sizeof(push), (count + 255) / 256);
 }
 
 void AdamWStepMany(
@@ -214,6 +241,42 @@ void AdamWStepMany(
 		InParams[2].Param, InParams[2].Grad, InParams[2].M, InParams[2].V,
 		InParams[3].Param, InParams[3].Grad, InParams[3].M, InParams[3].V,
 	}, access, &push, sizeof(push), groups);
+}
+
+void AdamWStepManyGraph(
+	OaSpan<const OaAdamWParamSet> InParams,
+	const OaMatrix& InState
+) {
+	if (InParams.size() != 4) {
+		for (const auto& p : InParams) {
+			AdamWStepGraph(*p.Param, *p.M, *p.V, *p.Grad, InState);
+		}
+		return;
+	}
+
+	auto& ctx = OaContext::GetDefault();
+	const OaU32 count0 = static_cast<OaU32>(InParams[0].Param->NumElements());
+	const OaU32 count1 = static_cast<OaU32>(InParams[1].Param->NumElements());
+	const OaU32 count2 = static_cast<OaU32>(InParams[2].Param->NumElements());
+	const OaU32 count3 = static_cast<OaU32>(InParams[3].Param->NumElements());
+	const OaU32 maxCount = std::max(std::max(count0, count1), std::max(count2, count3));
+	struct Push {
+		OaU32 Count0, Count1, Count2, Count3;
+	} push{count0, count1, count2, count3};
+	OaBufferAccess access[] = {
+		OaBufferAccess::ReadWrite, OaBufferAccess::Read, OaBufferAccess::ReadWrite, OaBufferAccess::ReadWrite,
+		OaBufferAccess::ReadWrite, OaBufferAccess::Read, OaBufferAccess::ReadWrite, OaBufferAccess::ReadWrite,
+		OaBufferAccess::ReadWrite, OaBufferAccess::Read, OaBufferAccess::ReadWrite, OaBufferAccess::ReadWrite,
+		OaBufferAccess::ReadWrite, OaBufferAccess::Read, OaBufferAccess::ReadWrite, OaBufferAccess::ReadWrite,
+		OaBufferAccess::Read,
+	};
+	ctx.Add("AdamwMany4Graph", {
+		InParams[0].Param, InParams[0].Grad, InParams[0].M, InParams[0].V,
+		InParams[1].Param, InParams[1].Grad, InParams[1].M, InParams[1].V,
+		InParams[2].Param, InParams[2].Grad, InParams[2].M, InParams[2].V,
+		InParams[3].Param, InParams[3].Grad, InParams[3].M, InParams[3].V,
+		&InState,
+	}, access, &push, sizeof(push), (maxCount + 255) / 256);
 }
 
 void SgdStep(

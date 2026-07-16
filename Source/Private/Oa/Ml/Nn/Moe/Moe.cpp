@@ -101,7 +101,8 @@ OaMatrix OaMoE::SparseExpertDelta(const OaMatrix& InNormed,
 
 	// Gather duplicated routed tokens into stable expert-major layout. Selected
 	// route weights already have token-major [T,K] layout for direct combine.
-	auto packedX = OaFnMatrix::Gather(InNormed, plan.PackedToken);
+	auto packedX = OaFnMatrix::MoeGather(
+		InNormed, plan.PackedToken, plan.Inverse);
 
 	auto gateUp = OaFnMatrix::GroupedLinearM(
 		packedX, ExpertGateUpWeight(), ExpertGateUpBias(), plan.Offsets);

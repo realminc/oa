@@ -397,7 +397,8 @@ OaTopKResult OaFnMatrix::TopK(const OaMatrix& InA, OaI32 InK, OaI32 InDim) {
 		OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Write, OaBufferAccess::Write};
 		ctx.Add("TopK", {&InA, &values, &indices}, access, &push, sizeof(push),
 			static_cast<OaU32>(T));
-		[[maybe_unused]] auto status = ctx.Execute();
+		// TopK is a normal deferred GPU operation. Its consumers establish the
+		// required graph dependency; only an explicit host readback may execute.
 		return {values, indices};
 	}
 

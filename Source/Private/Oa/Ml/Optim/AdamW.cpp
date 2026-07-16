@@ -4,6 +4,7 @@
 #include <Oa/Core/FnMatrix.h>
 #include <Oa/Core/Log.h>
 #include <Oa/Runtime/Context.h>
+#include <Oa/Runtime/Engine.h>
 
 #include <cstring>
 
@@ -21,6 +22,21 @@ static void EnsureMomentBuffers(OaVec<OaParameter*>& InParams,
 	}
 }
 
+void OaAdamW::SetLr(OaF32 InLr) {
+	Lr_ = InLr;
+	if (not GraphState_.HasStorage() or GraphState_.Data() == nullptr) return;
+
+	// Replay reads LR from the mutable state buffer rather than baked push
+	// constants. OaItTraining waits for the replay before callbacks run, so this
+	// host update cannot race the preceding optimizer dispatch.
+	auto* state = static_cast<OaU32*>(GraphState_.Data());
+	std::memcpy(state + 1, &Lr_, sizeof(Lr_));
+	if (auto* runtime = OaContext::GetDefault().GetRuntime()) {
+		(void)runtime->Allocator.FlushHostBuffer(
+			GraphState_.GetVkBuffer(), sizeof(OaU32), sizeof(OaF32));
+	}
+}
+
 void OaAdamW::Step() {
 	++Step_;
 
@@ -28,6 +44,28 @@ void OaAdamW::Step() {
 	EnsureMomentBuffers(Params_, M_, V_);
 	// Lazy-allocate + seed fp32 master weights for any low-precision (bf16) params.
 	PrepareMasters();
+
+	if (not GraphState_.HasStorage()) {
+		GraphState_ = OaFnMatrix::Empty(OaMatrixShape{6}, OaScalarType::UInt32);
+	}
+	auto& ctx = OaContext::GetDefault();
+	const OaBool replayState = ctx.IsStableResourceFrameActive()
+		and GraphState_.HasStorage();
+	if (replayState) {
+		auto* state = static_cast<OaU32*>(GraphState_.Data());
+		// The recorded graph advances this word on the GPU before any parameter
+		// update. Seeding the previous completed step preserves eager semantics on
+		// the first execution and lets subsequent command-buffer replays advance
+		// without a host rewrite.
+		state[0] = static_cast<OaU32>(Step_ - 1U);
+		const OaF32 scalars[] = {Lr_, Beta1_, Beta2_, Eps_, WeightDecay_};
+		std::memcpy(state + 1, scalars, sizeof(scalars));
+		if (auto* runtime = ctx.GetRuntime()) {
+			(void)runtime->Allocator.FlushHostBuffer(
+				GraphState_.GetVkBuffer(), 0, static_cast<OaU64>(GraphState_.ByteSize()));
+		}
+		OaFnOptim::AdamWAdvanceGraphState(GraphState_);
+	}
 
 	// Any low-precision param routes through the fp32-master per-param path. The
 	// fused 4-param fast path assumes fp32 m/v under a single DTYPE, which breaks
@@ -54,9 +92,14 @@ void OaAdamW::Step() {
 				{&Params_[2]->Data, &M_[2], &V_[2], &grads4[2]},
 				{&Params_[3]->Data, &M_[3], &V_[3], &grads4[3]},
 			};
-			OaFnOptim::AdamWStepMany(
-				OaSpan<const OaFnOptim::OaAdamWParamSet>(sets, 4),
-				Lr_, Beta1_, Beta2_, Eps_, WeightDecay_, static_cast<OaI32>(Step_));
+			if (replayState) {
+				OaFnOptim::AdamWStepManyGraph(
+					OaSpan<const OaFnOptim::OaAdamWParamSet>(sets, 4), GraphState_);
+			} else {
+				OaFnOptim::AdamWStepMany(
+					OaSpan<const OaFnOptim::OaAdamWParamSet>(sets, 4),
+					Lr_, Beta1_, Beta2_, Eps_, WeightDecay_, static_cast<OaI32>(Step_));
+			}
 			return;
 		}
 	}
@@ -71,13 +114,14 @@ void OaAdamW::Step() {
 		if (!grad.Data()) continue;
 
 		OaMatrix gradUse = MasterGrad(i, grad);
-		OaFnOptim::AdamWStep(
-			MasterOrData(i),  // InOutParam: fp32 master (bf16) or Data (fp32)
-			M_[i],            // InOutM (mutated, fp32)
-			V_[i],            // InOutV (mutated, fp32)
-			gradUse,          // InGrad: fp32 upcast (bf16) or grad (fp32)
-			Lr_, Beta1_, Beta2_, Eps_, WeightDecay_, static_cast<OaI32>(Step_)
-		);
+		if (replayState) {
+			OaFnOptim::AdamWStepGraph(
+				MasterOrData(i), M_[i], V_[i], gradUse, GraphState_);
+		} else {
+			OaFnOptim::AdamWStep(
+				MasterOrData(i), M_[i], V_[i], gradUse,
+				Lr_, Beta1_, Beta2_, Eps_, WeightDecay_, static_cast<OaI32>(Step_));
+		}
 		WritebackMaster(i);   // fp32 master → bf16 weight (no-op for fp32 params)
 	}
 }

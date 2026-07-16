@@ -10,6 +10,7 @@
 #include <Oa/Core/Status.h>
 #include <Oa/Runtime/Sync.h>
 #include <Oa/Runtime/Allocator.h>
+#include <Oa/Runtime/DispatchDesc.h>
 
 class OaComputeEngine;
 class OaVkDevice;
@@ -62,6 +63,10 @@ public:
 		OaSpan<OaVkBuffer> InBufs, const void* InPush, OaU32 InPushSize,
 		OaU32 InGroupsX, OaU32 InGroupsY = 1, OaU32 InGroupsZ = 1
 	);
+	// Canonical stream encoder. Direct, indirect, primary-device and mesh-node
+	// wrappers all lower to this exact descriptor contract.
+	[[nodiscard]] OaStatus RecordDispatchDesc(
+		OaComputeEngine& InRt, const OaComputeDispatchDesc& InDesc);
 
 	// Same as RecordDispatch but resolves pipeline + bindless on mesh node InNodeIndex.
 	[[nodiscard]] OaStatus RecordDispatchOnNode(
@@ -80,6 +85,9 @@ public:
 
 	void RecordCopyBuffer(const OaVkBuffer& InSrc, const OaVkBuffer& InDst, OaU64 InSize);
 	void RecordBufferBarrier();
+	// One graph/batch-final visibility edge for mapped host readback. Device-only
+	// intermediate graphs must not emit this barrier individually.
+	void RecordHostReadbackBarrier();
 	// Emit precise per-buffer barriers. InBufs/InCount specify which buffers need
 	// COMPUTE_SHADER_WRITE → COMPUTE_SHADER_READ|WRITE synchronization.
 	void RecordBufferMemoryBarriers(const OaVkBuffer* InBufs, OaU32 InCount);

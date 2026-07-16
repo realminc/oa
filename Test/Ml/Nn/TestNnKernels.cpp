@@ -1070,6 +1070,27 @@ TEST(NN, Linear3D) {
 	OaExpectFinite(out);
 }
 
+TEST(NN, PackedLinearThreeWayMatchesIndependentProjections) {
+	auto x = OaFnMatrix::Rand(OaMatrixShape{7, 11});
+	auto w0 = OaFnMatrix::Rand(OaMatrixShape{5, 11});
+	auto w1 = OaFnMatrix::Rand(OaMatrixShape{3, 11});
+	auto w2 = OaFnMatrix::Rand(OaMatrixShape{9, 11});
+	auto b0 = OaFnMatrix::Rand(OaMatrixShape{5});
+	auto b1 = OaFnMatrix::Rand(OaMatrixShape{3});
+	auto b2 = OaFnMatrix::Rand(OaMatrixShape{9});
+	auto packed = OaFnMatrix::PackedLinear3(x, w0, w1, w2, b0, b1, b2);
+	OaI64 widths[] = {5, 3, 9};
+	auto split = OaFnMatrix::Split(packed, OaSpan<OaI64>(widths, 3), 1);
+	auto ref0 = OaFnMatrix::Linear(x, w0, b0);
+	auto ref1 = OaFnMatrix::Linear(x, w1, b1);
+	auto ref2 = OaFnMatrix::Linear(x, w2, b2);
+	ASSERT_TRUE(OaContext::GetDefault().Execute().IsOk());
+	ASSERT_TRUE(OaContext::GetDefault().Sync().IsOk());
+	OaExpectMatrixNear(split[0], ref0, 2e-5F);
+	OaExpectMatrixNear(split[1], ref1, 2e-5F);
+	OaExpectMatrixNear(split[2], ref2, 2e-5F);
+}
+
 TEST(NN, Embedding) {
 	OaEmbedding emb(10, 4);
 	auto out = emb.Forward(OaMakeByteIndices({1, 5, 9}));

@@ -547,6 +547,7 @@ void OaVkDeviceBuilder::PopulateDeviceInfo(
 	OutDevice.Info.Hardware.SubgroupSize = subgroupProps.subgroupSize;
 	OutDevice.Info.Hardware.MaxComputeWorkGroupSize = props.limits.maxComputeWorkGroupSize[0];
 	OutDevice.Info.Hardware.MaxComputeWorkGroupInvocations = props.limits.maxComputeWorkGroupInvocations;
+	OutDevice.Info.Hardware.MaxComputeSharedMemoryBytes = props.limits.maxComputeSharedMemorySize;
 
 	// Query descriptor indexing limits for bindless heap capacity
 	VkPhysicalDeviceDescriptorIndexingProperties indexingProps{};

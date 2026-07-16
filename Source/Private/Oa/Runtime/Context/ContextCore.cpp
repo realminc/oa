@@ -9,9 +9,9 @@
 #include <Oa/Core/EnvFlag.h>
 #include <Oa/Core/Log.h>
 #include <Oa/Core/Matrix.h>
-#include <Oa/Runtime/Gemm/Router.h>
 #include <Oa/Runtime/Spirv.h>
 #include <Oa/Runtime/ComputeKernel.h>
+#include <Oa/Runtime/RuntimeGlobal.h>
 #include <Oa/Vision/VideoEncoder.h>
 #include <Oa/Vision/VideoDecoder.h>
 
@@ -61,6 +61,13 @@ OaContext::~OaContext() {
 		delete graph;
 	}
 	DeferredGraphs_.Clear();
+	for (auto* graph : ReusableGraphs_) {
+		if (Runtime_) {
+			graph->Destroy(Runtime_->Device);
+		}
+		delete graph;
+	}
+	ReusableGraphs_.Clear();
 
 	// Destroy the graph's Vulkan objects (command pool, secondary CB) that
 	// are now kept alive across Execute() calls for reuse. The old per-call
@@ -103,6 +110,73 @@ bool OaContext::HasPresent()    const noexcept { return Runtime_ != nullptr and 
 bool OaContext::HasMeshShader() const noexcept { return Runtime_ != nullptr and Runtime_->HasMeshShader(); }
 bool OaContext::HasRayTrace()   const noexcept { return Runtime_ != nullptr and Runtime_->HasRayTrace(); }
 bool OaContext::IsRemote()      const noexcept { return Runtime_ != nullptr and Runtime_->IsRemote(); }
+
+OaStatus OaContext::Record(const OaComputeDispatchDesc& InDesc) {
+	if (not Runtime_ or not Graph_) {
+		OA_LOG_ERROR(OaLogComponent::Core,
+			"OaContext::Record '%.*s': null runtime/graph",
+			static_cast<int>(InDesc.Kernel.Size()), InDesc.Kernel.Data());
+		return OaStatus::Error(OaStatusCode::Internal,
+			"context record: null runtime or graph");
+	}
+	if (InDesc.Kernel.Empty()) {
+		return OaStatus::Error(OaStatusCode::InvalidArgument,
+			"context record: empty kernel name");
+	}
+	if (InDesc.Access.Size() != InDesc.Buffers.Size()) {
+		OA_LOG_ERROR(OaLogComponent::Core,
+			"OaContext::Record '%.*s': access=%zu buffers=%zu",
+			static_cast<int>(InDesc.Kernel.Size()), InDesc.Kernel.Data(),
+			InDesc.Access.Size(), InDesc.Buffers.Size());
+		return OaStatus::Error(OaStatusCode::InvalidArgument,
+			"context record: buffer access count mismatch");
+	}
+	if (not InDesc.BufferOwners.Empty()
+		and InDesc.BufferOwners.Size() != InDesc.Buffers.Size())
+	{
+		return OaStatus::Error(OaStatusCode::InvalidArgument,
+			"context record: buffer owner count mismatch");
+	}
+	if (InDesc.PushSize > OA_VK_MAX_PUSH_CONSTANT_BYTES
+		or (InDesc.PushSize != 0U and InDesc.PushData == nullptr))
+	{
+		return OaStatus::Error(OaStatusCode::InvalidArgument,
+			"context record: invalid push payload");
+	}
+	if (not OaVkBindlessPushFits(
+			static_cast<OaU32>(InDesc.Buffers.Size()), InDesc.PushSize))
+	{
+		return OaStatus::Error(OaStatusCode::InvalidArgument,
+			"context record: bindless index header plus push payload exceeds limit");
+	}
+
+#ifndef NDEBUG
+	const OaString kernelName(InDesc.Kernel);
+	if (OaComputeKernelUsesDefaultBindlessPipeline(kernelName.c_str())) {
+		const OaU32 declared = OaSpvPushConstantBlockSizeByName(kernelName.c_str());
+		if (declared != 0U) {
+			const OaU32 assembled =
+				static_cast<OaU32>(InDesc.Buffers.Size()) * sizeof(OaU32)
+				+ InDesc.PushSize;
+			if (assembled != declared) {
+				OA_LOG_ERROR(OaLogComponent::Core,
+					"Bindless push mismatch for '%s': %u buffers * 4 + %u push "
+					"tail = %u, shader declares %u bytes",
+					kernelName.c_str(), static_cast<OaU32>(InDesc.Buffers.Size()),
+					InDesc.PushSize, assembled, declared);
+				if (not OaEnvFlag::IsSet("OA_DISABLE_PUSH_CHECK")) {
+					return OaStatus::Error(OaStatusCode::InvalidArgument,
+						"context record: bindless push contract mismatch");
+				}
+			}
+		}
+	}
+#endif
+
+	Graph_->Add(InDesc);
+	Executed_ = false;
+	return OaStatus::Ok();
+}
 
 // ═════════════════════════════════════════════════════════════════════════════
 // Graphics sink record APIs — Step 3b SKELETON
@@ -555,8 +629,71 @@ OaContext& OaContext::GetDefault() {
 	return *sDefaultContext;
 }
 
+void OaContext::BeginStableResourceFrame() {
+	assert(not StableResourceFrameActive_ and
+		"stable resource frames cannot be nested");
+	StableResourceCursor_ = 0;
+	StableResourceFrameActive_ = true;
+}
+
+void OaContext::EndStableResourceFrame() {
+	StableResourceCursor_ = 0;
+	StableResourceFrameActive_ = false;
+}
+
+OaSharedPtr<OaVkBuffer> OaContext::AllocateMatrixBuffer(OaU64 InBytes) {
+	if (not Runtime_ or InBytes == 0) return {};
+	static const OaBool logStableResourceMisses =
+		OaEnvFlag::IsSet("OA_LOG_STABLE_RESOURCE_MISSES");
+
+	const auto allocate = [&]() -> OaSharedPtr<OaVkBuffer> {
+		auto result = Runtime_->AllocBuffer(InBytes);
+		if (not result) return {};
+		return OaSharedPtr<OaVkBuffer>(
+			new OaVkBuffer(std::move(*result)),
+			[](OaVkBuffer* InPtr) {
+				if (not InPtr) return;
+				if (auto* runtime = OaRuntimeGlobal::GetRuntime()) {
+					runtime->FreeBuffer(*InPtr);
+				}
+				delete InPtr;
+			});
+	};
+
+	if (not StableResourceFrameActive_) return allocate();
+
+	const OaUsize slot = StableResourceCursor_++;
+	if (slot < StableResourceSlots_.Size()) {
+		auto& existing = StableResourceSlots_[slot];
+		// Stable frames deliberately reuse storage by allocation ordinal. A caller
+		// may retain the matrix object itself between frames (for example a batch
+		// buffer that is refilled every step); that does not change slot identity.
+		if (existing and existing->Size >= InBytes) {
+			return existing;
+		}
+		if (logStableResourceMisses) {
+			OA_LOG_INFO(OaLogComponent::Core,
+				"Stable resource slot %zu replaced: %llu -> %llu bytes",
+				slot,
+				static_cast<unsigned long long>(existing ? existing->Size : 0),
+				static_cast<unsigned long long>(InBytes));
+		}
+		existing = allocate();
+		return existing;
+	}
+
+	auto buffer = allocate();
+	if (logStableResourceMisses) {
+		OA_LOG_INFO(OaLogComponent::Core,
+			"Stable resource slot %zu created: %llu bytes", slot,
+			static_cast<unsigned long long>(InBytes));
+	}
+	StableResourceSlots_.PushBack(buffer);
+	return buffer;
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
-// OaContext Add* wrappers — implementations live in OaFnContext (FnContext.cpp)
+// OaContext dispatch recording
 // ═════════════════════════════════════════════════════════════════════════════
 
 void OaContext::Add(
@@ -569,7 +706,16 @@ void OaContext::Add(
 	OaU32 InGroupsY,
 	OaU32 InGroupsZ
 ) {
-	OaFnContext::Add(*this, InKernelName, InBuffers, InAccess, InPush, InPushSize, InGroupsX, InGroupsY, InGroupsZ);
+	OaComputeDispatchDesc desc;
+	desc.Kernel = InKernelName;
+	desc.Buffers = InBuffers;
+	desc.Access = InAccess;
+	desc.PushData = InPush;
+	desc.PushSize = InPushSize;
+	desc.GroupsX = InGroupsX;
+	desc.GroupsY = InGroupsY;
+	desc.GroupsZ = InGroupsZ;
+	(void)Record(desc);
 }
 
 void OaContext::Add(
@@ -582,112 +728,83 @@ void OaContext::Add(
 	OaU32 InGroupsY,
 	OaU32 InGroupsZ
 ) {
-	OaFnContext::Add(*this, InKernelName, InMatrices, InAccess, InPush, InPushSize, InGroupsX, InGroupsY, InGroupsZ);
+	OaVec<OaVkBuffer> buffers;
+	OaVec<OaSharedPtr<OaVkBuffer>> owners;
+	buffers.Reserve(InMatrices.size());
+	owners.Reserve(InMatrices.size());
+
+	OaU32 dtype = 0;
+	for (const OaMatrix* matrix : InMatrices) {
+		if (matrix) {
+			const OaScalarType scalarType = matrix->GetDtype();
+			if (scalarType == OaScalarType::BFloat16 or scalarType == OaScalarType::Float16) {
+				dtype = 1;
+			}
+		}
+		if (matrix and matrix->VkBuf_) {
+			buffers.PushBack(*matrix->VkBuf_);
+			owners.PushBack(matrix->VkBuf_);
+		} else {
+			buffers.PushBack(OaVkBuffer{});
+			owners.PushBack({});
+		}
+	}
+
+	OaComputeDispatchDesc desc;
+	desc.Kernel = InKernelName;
+	desc.Buffers = buffers.Span();
+	desc.BufferOwners = owners.Span();
+	desc.Access = InAccess;
+	desc.PushData = InPush;
+	desc.PushSize = InPushSize;
+	desc.Dtype = dtype;
+	desc.GroupsX = InGroupsX;
+	desc.GroupsY = InGroupsY;
+	desc.GroupsZ = InGroupsZ;
+	(void)Record(desc);
 }
 
-void OaContext::AddMatMul(
-	OaVkBuffer InA,
-	OaVkBuffer InB,
-	OaVkBuffer OutC,
-	OaU32 InM,
-	OaU32 InN,
-	OaU32 InK
+void OaContext::AddIndirect(
+	OaStringView InKernelName,
+	std::initializer_list<const OaMatrix*> InMatrices,
+	OaSpan<OaBufferAccess> InAccess,
+	const void* InPush,
+	OaU32 InPushSize,
+	const OaMatrix& InIndirectArgs,
+	OaU64 InOffset
 ) {
-	OaFnContext::AddMatMul(*this, InA, InB, OutC, InM, InN, InK);
-}
+	OaVec<OaVkBuffer> buffers;
+	OaVec<OaSharedPtr<OaVkBuffer>> owners;
+	buffers.Reserve(InMatrices.size());
+	owners.Reserve(InMatrices.size());
 
-void OaContext::AddMatMul(
-	OaVkBuffer InA,
-	OaVkBuffer InB,
-	OaVkBuffer OutC,
-	OaU32 InM,
-	OaU32 InN,
-	OaU32 InK,
-	OaContextMatMulPrecision InPrecision
-) {
-	OaFnContext::AddMatMul(*this, InA, InB, OutC, InM, InN, InK, InPrecision);
-}
+	OaU32 dtype = 0;
+	for (const OaMatrix* matrix : InMatrices) {
+		if (matrix) {
+			const OaScalarType scalarType = matrix->GetDtype();
+			if (scalarType == OaScalarType::BFloat16 or scalarType == OaScalarType::Float16) {
+				dtype = 1;
+			}
+		}
+		if (matrix and matrix->VkBuf_) {
+			buffers.PushBack(*matrix->VkBuf_);
+			owners.PushBack(matrix->VkBuf_);
+		} else {
+			buffers.PushBack(OaVkBuffer{});
+			owners.PushBack({});
+		}
+	}
 
-void OaContext::AddMatMul(
-	const OaMatrix& InA,
-	const OaMatrix& InB,
-	OaMatrix& OutC,
-	OaU32 InM,
-	OaU32 InN,
-	OaU32 InK
-) {
-	OaFnContext::AddMatMul(*this, InA, InB, OutC, InM, InN, InK);
-}
-
-void OaContext::AddMatMul(
-	const OaMatrix& InA,
-	const OaMatrix& InB,
-	OaMatrix& OutC,
-	OaU32 InM,
-	OaU32 InN,
-	OaU32 InK,
-	OaContextMatMulPrecision InPrecision
-) {
-	OaFnContext::AddMatMul(*this, InA, InB, OutC, InM, InN, InK, InPrecision);
-}
-
-void OaContext::AddLinear(
-	OaVkBuffer InX,
-	OaVkBuffer InWeight,
-	OaVkBuffer InBias,
-	OaVkBuffer OutY,
-	OaU32 InM,
-	OaU32 InN,
-	OaU32 InK,
-	OaBool InHasBias
-) {
-	OaFnContext::AddLinear(*this, InX, InWeight, InBias, OutY, InM, InN, InK, InHasBias);
-}
-
-void OaContext::AddLinear(
-	const OaMatrix& InX,
-	const OaMatrix& InWeight,
-	const OaMatrix* InBias,
-	OaMatrix& OutY,
-	OaU32 InM,
-	OaU32 InN,
-	OaU32 InK
-) {
-	OaFnContext::AddLinear(*this, InX, InWeight, InBias, OutY, InM, InN, InK);
-}
-
-void OaContext::AddLinearRelu(
-	const OaMatrix& InX,
-	const OaMatrix& InWeight,
-	const OaMatrix& InBias,
-	OaMatrix& OutY,
-	OaU32 InM,
-	OaU32 InN,
-	OaU32 InK
-) {
-	OaFnContext::AddLinearRelu(*this, InX, InWeight, InBias, OutY, InM, InN, InK);
-}
-
-void OaContext::AddLinearGelu(
-	const OaMatrix& InX,
-	const OaMatrix& InWeight,
-	const OaMatrix& InBias,
-	OaMatrix& OutY,
-	OaU32 InM,
-	OaU32 InN,
-	OaU32 InK
-) {
-	OaFnContext::AddLinearGelu(*this, InX, InWeight, InBias, OutY, InM, InN, InK);
-}
-
-void OaContext::AddLinearBwdWeightBias(
-	const OaMatrix& InInput,
-	const OaMatrix& InGradOutput,
-	OaMatrix& OutGradWeight,
-	OaMatrix& OutGradBias,
-	OaU32 InM,
-	OaU32 InN,
-	OaU32 InK
-) {
-	OaFnContext::AddLinearBwdWeightBias(*this, InInput, InGradOutput, OutGradWeight, OutGradBias, InM, InN, InK);
+	OaComputeDispatchDesc desc;
+	desc.Kernel = InKernelName;
+	desc.Buffers = buffers.Span();
+	desc.BufferOwners = owners.Span();
+	desc.Access = InAccess;
+	desc.PushData = InPush;
+	desc.PushSize = InPushSize;
+	desc.Dtype = dtype;
+	desc.IndirectBuffer = InIndirectArgs.GetVkBuffer();
+	desc.IndirectOffset = InOffset;
+	desc.Indirect = true;
+	(void)Record(desc);
 }

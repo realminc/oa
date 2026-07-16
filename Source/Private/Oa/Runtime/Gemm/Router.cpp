@@ -1,5 +1,4 @@
 #include <Oa/Runtime/Gemm/Router.h>
-#include <Oa/Runtime/Gemm/Cache.h>
 #include <Oa/Runtime/MatmulTypes.h>
 #include <Oa/Core/EnvFlag.h>
 #include <Oa/Core/Log.h>
@@ -7,10 +6,12 @@
 #include <Oa/Runtime/Engine.h>
 #include <Oa/Runtime/Device.h>
 #include <Oa/Runtime/Pipeline.h>
+#include <Oa/Runtime/Spirv.h>
 #include <Oa/Runtime/GemmTypes.h>
 #include <Oa/Runtime/GemmRouteCache.h>
 
 #include <atomic>
+#include <cstring>
 #include <mutex>
 #include <unordered_map>
 
@@ -25,143 +26,196 @@ namespace {
 
 inline OaU32 DivCeil(OaU32 InA, OaU32 InB) { return (InA + InB - 1U) / InB; }
 
-// Build cache key from routing parameters
-static OaRouteCacheKey BuildRouteCacheKey(
-	const OaComputeEngine& InRt,
-	OaGemmKernel             InVariant,
-	OaU32                    InM,
-	OaU32                    InN,
-	OaU32                    InK,
-	OaGemmPrecision          InAPrec,
-	OaGemmPrecision          InBPrec,
-	OaGemmEpilogue           InEpilogue,
-	bool                     InTraining)
-{
-	auto hashString = [](const char* text) {
-		OaU64 h = 0xcbf29ce484222325ULL;
-		for (const char* p = text; p != nullptr and *p != '\0'; ++p) {
-			h ^= static_cast<OaU8>(*p);
-			h *= 0x100000001b3ULL;
-		}
-		return h;
+inline void HashMix(OaU64& InOutHash, OaU64 InValue) {
+	InOutHash ^= InValue;
+	InOutHash *= 0x100000001b3ULL;
+}
+
+OaU64 HashString(const char* InText) {
+	OaU64 h = 0xcbf29ce484222325ULL;
+	for (const char* p = InText; p != nullptr and *p != '\0'; ++p) {
+		HashMix(h, static_cast<OaU8>(*p));
+	}
+	return h;
+}
+
+OaU64 ProblemContractHash(const OaMatmulProblem& InProblem) {
+	OaU64 h = 0xcbf29ce484222325ULL;
+	HashMix(h, InProblem.M); HashMix(h, InProblem.N); HashMix(h, InProblem.K);
+	HashMix(h, InProblem.BatchCount);
+	auto hashLayout = [&](const OaMatmulLayout& layout) {
+		HashMix(h, layout.Offset); HashMix(h, layout.RowStride);
+		HashMix(h, layout.ColStride); HashMix(h, layout.BatchStride);
 	};
+	hashLayout(InProblem.A); hashLayout(InProblem.B); hashLayout(InProblem.C);
+	HashMix(h, static_cast<OaU8>(InProblem.AMaster));
+	HashMix(h, static_cast<OaU8>(InProblem.BMaster));
+	HashMix(h, static_cast<OaU8>(InProblem.RequestedOutput));
+	HashMix(h, InProblem.AContiguous); HashMix(h, InProblem.BContiguous);
+	HashMix(h, InProblem.BTransposed);
+	HashMix(h, static_cast<OaU8>(InProblem.Epilogue));
+	HashMix(h, InProblem.RequiresPreActivation); HashMix(h, InProblem.Training);
+	HashMix(h, static_cast<OaU8>(InProblem.PrecisionHint));
+	return h;
+}
+
+OaU64 DeviceContractHash(const OaComputeEngine& InRt) {
+	const auto& hw = InRt.Device.Info.Hardware;
+	const auto& sw = InRt.Device.Info.Software;
+	OaU64 h = 0xcbf29ce484222325ULL;
+	HashMix(h, hw.VendorId); HashMix(h, hw.DeviceId); HashMix(h, sw.DriverId);
+	HashMix(h, HashString(sw.DriverVersion.c_str()));
+	HashMix(h, InRt.GemmCapsMask());
+	HashMix(h, hw.MaxComputeWorkGroupInvocations);
+	HashMix(h, hw.MaxComputeWorkGroupSize);
+	HashMix(h, hw.MaxComputeSharedMemoryBytes);
+	return h;
+}
+
+OaGemmPrecision ToGemmPrecision(OaStoragePrecision InPrecision) {
+	return InPrecision == OaStoragePrecision::Bf16
+		? OaGemmPrecision::Bf16
+		: OaGemmPrecision::Fp32;
+}
+
+// Build one cache key from the complete operation contract. Layout and
+// dual-output fields are part of the key because replaying a winner across
+// either boundary can select a shader with a different buffer contract.
+static OaRouteCacheKey BuildRouteCacheKeyLocal(
+	const OaComputeEngine& InRt,
+	const OaMatmulProblem& InProblem)
+{
 	OaRouteCacheKey key{};
 	key.VendorId = InRt.Device.Info.Hardware.VendorId;
 	key.DeviceId = InRt.Device.Info.Hardware.DeviceId;
 	key.DriverId = InRt.Device.Info.Software.DriverId;
-	key.DriverVersionHash = hashString(InRt.Device.Info.Software.DriverVersion.c_str());
-	key.ShaderBuildId = OaMatmulRegistry::BuildId();
-	key.Variant = InVariant;
-	key.M = InM;
-	key.N = InN;
-	key.K = InK;
-	key.APrecision = InAPrec;
-	key.BPrecision = InBPrec;
-	key.Epilogue = InEpilogue;
-	key.Training = InTraining;
-	key.UseTMA = InRt.IsBlackwell();  // Enable TMA for Blackwell GPUs
+	key.DriverVersionHash = HashString(InRt.Device.Info.Software.DriverVersion.c_str());
+	key.ShaderBuildId = OaMatmulRegistry::ShaderBuildId();
+	key.M = InProblem.M;
+	key.N = InProblem.N;
+	key.K = InProblem.K;
+	key.BatchCount = InProblem.BatchCount;
+	key.AOffset = InProblem.A.Offset; key.ARowStride = InProblem.A.RowStride;
+	key.AColStride = InProblem.A.ColStride; key.ABatchStride = InProblem.A.BatchStride;
+	key.BOffset = InProblem.B.Offset; key.BRowStride = InProblem.B.RowStride;
+	key.BColStride = InProblem.B.ColStride; key.BBatchStride = InProblem.B.BatchStride;
+	key.COffset = InProblem.C.Offset; key.CRowStride = InProblem.C.RowStride;
+	key.CColStride = InProblem.C.ColStride; key.CBatchStride = InProblem.C.BatchStride;
+	key.APrecision = ToGemmPrecision(InProblem.AMaster);
+	key.BPrecision = ToGemmPrecision(InProblem.BMaster);
+	key.OutputPrecision = ToGemmPrecision(InProblem.RequestedOutput);
+	key.RequestedPrecision = InProblem.PrecisionHint;
+	key.Epilogue = InProblem.Epilogue;
+	key.AContiguous = InProblem.AContiguous;
+	key.BContiguous = InProblem.BContiguous;
+	key.BTransposed = InProblem.BTransposed;
+	key.RequiresPreActivation = InProblem.RequiresPreActivation;
+	key.Training = InProblem.Training;
 	return key;
 }
 
-static bool CachedWinnerLegal(
+static OaGemmPrecision ResolvePrecision(const OaMatmulProblem& InProblem) {
+	if (OaEnvFlag::IsSet("OA_GEMM_FORCE_FP32")) {
+		return OaGemmPrecision::Fp32;
+	}
+	if (InProblem.PrecisionHint != OaGemmPrecision::Auto) {
+		return InProblem.PrecisionHint;
+	}
+	return (InProblem.AMaster == OaStoragePrecision::Bf16
+		or InProblem.BMaster == OaStoragePrecision::Bf16)
+		? OaGemmPrecision::Bf16
+		: OaGemmPrecision::Auto;
+}
+
+static bool VariantLegalResolved(
 	const OaComputeEngine& InRt,
-	OaGemmKernel InWinner,
-	OaU32 InM,
-	OaU32 InN,
-	OaU32 InK,
+	const OaMatmulVariant& InVariant,
+	const OaMatmulProblem& InProblem,
 	OaGemmPrecision InPrecision)
 {
-	switch (InWinner) {
+	if (InProblem.M == 0U or InProblem.N == 0U or InProblem.K == 0U
+		or InProblem.BatchCount == 0U) {
+		return false;
+	}
+	if (InVariant.Epilogue != InProblem.Epilogue
+		or InVariant.DualOutput != InProblem.RequiresPreActivation
+		or InVariant.OutputPrecision != InProblem.RequestedOutput) {
+		return false;
+	}
+	const bool canonicalA = InProblem.A.Offset == 0U
+		and InProblem.A.RowStride == InProblem.K and InProblem.A.ColStride == 1U
+		and (InProblem.BatchCount == 1U or InProblem.A.BatchStride == InProblem.M * InProblem.K);
+	const bool canonicalB = InProblem.B.Offset == 0U
+		and InProblem.B.RowStride == InProblem.K and InProblem.B.ColStride == 1U
+		and (InProblem.BatchCount == 1U or InProblem.B.BatchStride == InProblem.N * InProblem.K);
+	const bool canonicalC = InProblem.C.Offset == 0U
+		and InProblem.C.RowStride == InProblem.N and InProblem.C.ColStride == 1U
+		and (InProblem.BatchCount == 1U or InProblem.C.BatchStride == InProblem.M * InProblem.N);
+	const bool canonical = InProblem.AContiguous and InProblem.BContiguous
+		and canonicalA and canonicalB and canonicalC;
+	if (not canonical and not InVariant.SupportsArbitraryLayout) {
+		return false;
+	}
+	if (InProblem.BatchCount > 1U and not InVariant.SupportsBatch) return false;
+	if (InVariant.RequiresTransposedB and not InProblem.BTransposed) {
+		return false;
+	}
+	if (InPrecision == OaGemmPrecision::Fp32
+		and (InVariant.APrecision != OaStoragePrecision::Fp32
+			or InVariant.BPrecision != OaStoragePrecision::Fp32)) {
+		return false;
+	}
+	if (InPrecision == OaGemmPrecision::Bf16
+		and OaGemmRouter::PrecisionAvailable(InRt, OaGemmPrecision::Bf16)
+		and (InVariant.APrecision != OaStoragePrecision::Bf16
+			or InVariant.BPrecision != OaStoragePrecision::Bf16)) {
+		return false;
+	}
+	if (not OaMatmulRegistry::CapsSatisfy(InRt.GemmCapsMask(), InVariant.RequiredCapsMask)) {
+		return false;
+	}
+	const auto& hw = InRt.Device.Info.Hardware;
+	if ((hw.MaxComputeWorkGroupInvocations != 0U
+			and InVariant.WorkgroupInvocations > hw.MaxComputeWorkGroupInvocations)
+		or (hw.MaxComputeWorkGroupSize != 0U
+			and InVariant.WorkgroupInvocations > hw.MaxComputeWorkGroupSize)
+		or (hw.MaxComputeSharedMemoryBytes != 0U
+			and InVariant.SharedMemoryBytes > hw.MaxComputeSharedMemoryBytes)) {
+		return false;
+	}
+	if (InVariant.RequiresAligned
+		and ((InProblem.M % InVariant.TileM) != 0U
+			or (InProblem.N % InVariant.TileN) != 0U
+			or (InProblem.K % InVariant.TileK) != 0U)) {
+		return false;
+	}
+	switch (InVariant.Kernel) {
 		case OaGemmKernel::TiledFp32:
 		case OaGemmKernel::Naive:
-			return true;
+			return InProblem.BatchCount == 1U;
+		case OaGemmKernel::StridedFp32:
+			return InPrecision != OaGemmPrecision::Bf16
+				and InProblem.Epilogue == OaGemmEpilogue::None;
 		case OaGemmKernel::GemmCmSgBf16:
 			return InPrecision != OaGemmPrecision::Fp32
-				and OaGemmRouter::IsGemmCmSgBf16Suitable(InRt, InM, InN, InK);
+				and OaGemmRouter::IsGemmCmSgBf16Suitable(
+					InRt, InProblem.M, InProblem.N, InProblem.K);
 		case OaGemmKernel::GemmCmWgBf16:
 			return InPrecision != OaGemmPrecision::Fp32
-				and OaGemmRouter::IsGemmCmWgBf16Suitable(InRt, InM, InN, InK);
+				and OaGemmRouter::IsGemmCmWgBf16Suitable(
+					InRt, InProblem.M, InProblem.N, InProblem.K);
 		case OaGemmKernel::CoopVec: {
 			constexpr OaU32 kNvidia = 0x10DEU;
 			const bool trustedVendor = InRt.Device.Info.Hardware.VendorId == kNvidia
 				or OaEnvFlag::IsSet("OA_FORCE_COOPVEC");
-			return InPrecision != OaGemmPrecision::Fp32 and InM == 1U and trustedVendor
+			return InPrecision != OaGemmPrecision::Fp32
+				and InProblem.Epilogue == OaGemmEpilogue::None
+				and InProblem.M == 1U and trustedVendor
 				and OaMatmulRegistry::CapsSatisfy(InRt.GemmCapsMask(), kCapCoopVec);
 		}
 		default:
 			return false;
 	}
-}
-
-// ScoreVariant — occupancy heuristic ported from ggml's
-// ggml_vk_guess_matmul_pipeline. Reward filling the device once, penalize
-// gross overspill. Higher score = better fit for this shape. Variants below
-// minimum legality must be filtered before scoring; this function does not
-// know about caps or activation requirements.
-//
-// fill   = min(1, totalTiles / cores)        plateaus at one wave per SM
-// spill  = max(0, totalTiles - 4 * cores) / (4 * cores)  overspill > 4 waves
-// score  = fill - 0.25 * spill                tolerates moderate spill
-inline OaF32 ScoreVariant(const OaMatmulVariant& InVariant,
-                          OaU32 InM, OaU32 InN, OaU32 InCores)
-{
-	if (InVariant.TileM == 0U or InVariant.TileN == 0U or InCores == 0U) {
-		return 0.0F;
-	}
-	const OaU32 tilesM = DivCeil(InM, InVariant.TileM);
-	const OaU32 tilesN = DivCeil(InN, InVariant.TileN);
-	const OaU32 total  = tilesM * tilesN;
-	const OaF32 cores  = static_cast<OaF32>(InCores);
-	const OaF32 fill   = std::min(1.0F, static_cast<OaF32>(total) / cores);
-	const OaF32 spill  = std::max(0.0F,
-		(static_cast<OaF32>(total) - 4.0F * cores) / (4.0F * cores));
-	return fill - 0.25F * spill;
-}
-
-// PickBestRawVariant — among raw-GEMM rows in the registry whose Kernel
-// enum is in InCandidateKernels and whose required caps are live, return
-// the variant with the highest ScoreVariant for (M, N) on the device.
-// Returns nullptr when no candidate matches. InCandidateKernels is a
-// stack-allocated initializer list; the helper is templated to avoid
-// pulling OaSpan into the closure of every Select branch.
-template <OaUsize InCount>
-const OaMatmulVariant* PickBestRawVariant(
-	const OaGemmKernel (&InCandidateKernels)[InCount],
-	OaGemmPath  InPath,
-	OaU32       InM,
-	OaU32       InN,
-	OaU32       InCores,
-	OaU64       InCapsAvailable)
-{
-	const OaMatmulVariant* best = nullptr;
-	OaF32 bestScore = -1.0F;
-	for (const auto& v : OaMatmulRegistry::All()) {
-		if (v.Path != InPath) {
-			continue;
-		}
-		if (v.SupportsBias or v.SupportsActivation) {
-			continue;
-		}
-		bool match = false;
-		for (OaUsize i = 0; i < InCount; ++i) {
-			if (v.Kernel == InCandidateKernels[i]) {
-				match = true;
-				break;
-			}
-		}
-		if (not match) {
-			continue;
-		}
-		if (not OaMatmulRegistry::CapsSatisfy(InCapsAvailable, v.RequiredCapsMask)) {
-			continue;
-		}
-		const OaF32 score = ScoreVariant(v, InM, InN, InCores);
-		if (score > bestScore) {
-			bestScore = score;
-			best = &v;
-		}
-	}
-	return best;
 }
 
 // Find the raw-GEMM registry entry for an OaGemmKernel enum (no bias, no
@@ -175,7 +229,7 @@ const OaMatmulVariant* FindRawGemmVariant(OaGemmKernel InKernel, OaGemmPath InPa
 		if (v.Path != InPath) {
 			continue;
 		}
-		if (v.SupportsBias or v.SupportsActivation) {
+		if (v.Epilogue != OaGemmEpilogue::None) {
 			continue;
 		}
 		return &v;
@@ -183,51 +237,72 @@ const OaMatmulVariant* FindRawGemmVariant(OaGemmKernel InKernel, OaGemmPath InPa
 	return nullptr;
 }
 
-// Build a route result for a Standard-path kernel using the registry's tile.
-// gx = DivCeil(M, TileM), gy = DivCeil(N, TileN). Returns Naive fallback if
-// the kernel isn't in the registry (shouldn't happen — the registry is the
-// source of truth for shipping kernels).
-OaGemmRouteResult ResultForKernel(OaGemmKernel InKernel, OaGemmPath InPath,
-                                   OaU32 InM, OaU32 InN, OaU32 InNumSMs) {
-	const OaMatmulVariant* v = FindRawGemmVariant(InKernel, InPath);
-	if (v == nullptr) {
-		return {.KernelName = "GemmNaive", .Kernel = OaGemmKernel::Naive,
-		         .Path = OaGemmPath::Standard, .ActualPrec = OaGemmPrecision::Fp32,
-		         .Gx = ((InM * InN) + 255U) / 256U, .Gy = 1U};
-	}
+OaGemmRouteResult ResultForVariant(
+	const OaMatmulVariant& InVariant, const OaMatmulProblem& InProblem) {
 	OaU32 gx = 1U;
 	OaU32 gy = 1U;
+	OaU32 gz = 1U;
 	OaGemmPrecision prec = OaGemmPrecision::Fp32;
-	switch (v->APrecision) {
+	switch (InVariant.APrecision) {
 		case OaStoragePrecision::Bf16: prec = OaGemmPrecision::Bf16; break;
 		case OaStoragePrecision::Fp32: prec = OaGemmPrecision::Fp32; break;
 	}
-	switch (InPath) {
+	switch (InVariant.Path) {
 		case OaGemmPath::Standard:
-			// Standard uses the per-tile grid. Select fills these in directly,
-			// but ResultForKernel is also a fallback for ForceKernel paths and
-			// route-cache promotions. Persistent variants override: one workgroup
-			// per SM, walking tiles in a strided loop inside the shader.
-			if (v->Persistent) {
-				gx = InNumSMs;
-				gy = 1U;
+			if (InVariant.Kernel == OaGemmKernel::Naive
+				or InVariant.Kernel == OaGemmKernel::StridedFp32) {
+				gx = DivCeil(InProblem.M * InProblem.N, 256U);
+				gz = InProblem.BatchCount;
 			} else {
-				gx = DivCeil(InM, v->TileM);
-				gy = DivCeil(InN, v->TileN);
+				gx = DivCeil(InProblem.M, InVariant.TileM);
+				gy = DivCeil(InProblem.N, InVariant.TileN);
 			}
 			break;
-		case OaGemmPath::StreamK:
-			gx = InNumSMs;
-			gy = 1U;
-			break;
 		case OaGemmPath::CoopVec:
-			// CoopVec GEMV: workgroup covers v->TileN rows of output.
-			gx = DivCeil(InN, v->TileN);
+			gx = DivCeil(InProblem.N, InVariant.TileN);
 			gy = 1U;
 			break;
 	}
-	return {.KernelName = v->KernelName, .Kernel = InKernel, .Path = InPath,
-	         .ActualPrec = prec, .Gx = gx, .Gy = gy};
+	return {.Variant = InVariant.Id, .KernelName = InVariant.KernelName,
+		         .Kernel = InVariant.Kernel, .Path = InVariant.Path,
+		         .ActualPrec = prec, .Gx = gx, .Gy = gy, .Gz = gz};
+}
+
+OaMatmulPlan PlanForVariant(
+	const OaComputeEngine& InRt,
+	const OaMatmulVariant& InVariant,
+	const OaMatmulProblem& InProblem)
+{
+	const auto route = ResultForVariant(InVariant, InProblem);
+	return {
+		.Variant = route.Variant,
+		.KernelName = route.KernelName,
+		.Kernel = route.Kernel,
+		.Path = route.Path,
+		.ActualPrecision = route.ActualPrec,
+		.Grid = {.X = route.Gx, .Y = route.Gy, .Z = route.Gz},
+		.WorkspaceBytes = 0,
+		.ProblemContractHash = ProblemContractHash(InProblem),
+		.DeviceContractHash = DeviceContractHash(InRt),
+		.RegistryBuildId = OaMatmulRegistry::BuildId(),
+		.ShaderContentHash = OaMatmulRegistry::ShaderContentHash(route.Variant),
+	};
+}
+
+OaGemmRouteResult RouteForPlan(const OaMatmulPlan& InPlan) {
+	if (not InPlan) {
+		return {};
+	}
+	return {
+		.Variant = InPlan.Variant,
+		.KernelName = InPlan.KernelName,
+		.Kernel = InPlan.Kernel,
+		.Path = InPlan.Path,
+		.ActualPrec = InPlan.ActualPrecision,
+		.Gx = InPlan.Grid.X,
+		.Gy = InPlan.Grid.Y,
+		.Gz = InPlan.Grid.Z,
+	};
 }
 
 // ── ForceKernel override map ──────────────────────────────────────────────────
@@ -249,50 +324,12 @@ struct ForceKeyHash {
 
 struct ForcedMap {
 	std::mutex                                                    Mtx;
-	std::unordered_map<ForceKey, OaGemmKernel, ForceKeyHash>    Map;
+	std::unordered_map<ForceKey, OaMatmulVariantId, ForceKeyHash> Map;
 };
 
 ForcedMap& GetForcedMap() {
 	static ForcedMap s;
 	return s;
-}
-
-// ── Kernel name / precision lookup tables ────────────────────────────────────
-
-const char* KernelName(OaGemmKernel InKernel) {
-	switch (InKernel) {
-		case OaGemmKernel::TiledFp32:         return "GemmTiled";
-		case OaGemmKernel::CoopVec:           return "GemmCoopVec";
-		default:                              return "GemmNaive";
-	}
-}
-
-OaGemmPrecision KernelPrec(OaGemmKernel InKernel) {
-	switch (InKernel) {
-		case OaGemmKernel::CoopVec:     return OaGemmPrecision::Bf16;
-		default:                        return OaGemmPrecision::Fp32;
-	}
-}
-
-OaGemmRouteResult MakeResult(OaGemmKernel InKernel, OaGemmPath InPath, OaU32 InGx, OaU32 InGy) {
-	return {
-		.KernelName  = KernelName(InKernel),
-		.Kernel      = InKernel,
-		.Path        = InPath,
-		.ActualPrec  = KernelPrec(InKernel),
-		.Gx          = InGx,
-		.Gy          = InGy,
-	};
-}
-
-OaGemmRouteResult Naive(OaU32 InM, OaU32 InN) {
-	return MakeResult(OaGemmKernel::Naive, OaGemmPath::Standard,
-		((InM * InN) + 255U) / 256U, 1U);
-}
-
-OaGemmRouteResult Tiled(OaU32 InM, OaU32 InN) {
-	return ResultForKernel(OaGemmKernel::TiledFp32, OaGemmPath::Standard,
-		InM, InN, /*InNumSMs=*/0U);
 }
 
 // ── Emit debug log + counters ─────────────────────────────────────────────────
@@ -315,7 +352,6 @@ bool GemmRouterLogEnabled() {
 const char* PathName(OaGemmPath InPath) {
 	switch (InPath) {
 		case OaGemmPath::Standard: return "Standard";
-		case OaGemmPath::StreamK:  return "StreamK";
 		case OaGemmPath::CoopVec:  return "CoopVec";
 	}
 	return "?";
@@ -337,9 +373,9 @@ void LogAndCount(const OaGemmRouteResult& InR, OaU32 InM, OaU32 InN, OaU32 InK) 
 	// Documents which kernel was selected for each (M, N, K) shape.
 	if (GemmRouterLogEnabled()) {
 		OA_LOG_INFO(OaLogComponent::Core,
-			"GemmRouter: M=%u N=%u K=%u prec=%s -> %s (path=%s, gx=%u, gy=%u)",
+			"GemmRouter: M=%u N=%u K=%u prec=%s -> %s (path=%s, gx=%u, gy=%u, gz=%u)",
 			InM, InN, InK, PrecName(InR.ActualPrec),
-			InR.KernelName, PathName(InR.Path), InR.Gx, InR.Gy);
+			InR.KernelName, PathName(InR.Path), InR.Gx, InR.Gy, InR.Gz);
 	}
 
 	// Only warn on Naive fallback for large GEMMs (performance issue)
@@ -350,6 +386,19 @@ void LogAndCount(const OaGemmRouteResult& InR, OaU32 InM, OaU32 InN, OaU32 InK) 
 }
 
 } // namespace
+
+OaRouteCacheKey OaGemmRouter::CacheKey(
+	const OaComputeEngine& InRt,
+	const OaMatmulProblem& InProblem) {
+	return BuildRouteCacheKeyLocal(InRt, InProblem);
+}
+
+bool OaGemmRouter::IsVariantLegal(
+	const OaComputeEngine& InRt,
+	const OaMatmulVariant& InVariant,
+	const OaMatmulProblem& InProblem) {
+	return VariantLegalResolved(InRt, InVariant, InProblem, ResolvePrecision(InProblem));
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // OaGemmRouter::Select
@@ -362,186 +411,12 @@ OaGemmRouteResult OaGemmRouter::Select(
 	OaU32                    InK,
 	OaGemmPrecision          InPrec)
 {
-	// ── Step 0a: Deterministic fp32 override ─────────────────────────────────
-	// OA_GEMM_FORCE_FP32 forces every GEMM to the exact fp32 Tiled/Naive path,
-	// bypassing the bf16 Auto routing AND the learned route cache (which can
-	// return a bf16 winner even for an Fp32 request). This is required for
-	// finite-difference gradient checking: bf16's ~3-digit mantissa swallows the
-	// small (≈1e-4) weight perturbations, collapsing numerical gradients to ~0
-	// and producing false backward-pass failures. Also useful for bit-stable
-	// debugging / regression triage.
-	const bool forceFp32 = OaEnvFlag::IsSet("OA_GEMM_FORCE_FP32");
-	if (forceFp32) {
-		InPrec = OaGemmPrecision::Fp32;
-	}
-
-	// ── Step 0: ForceKernel override (benchmarking / isolation) ──────────────
-	{
-		auto& fm = GetForcedMap();
-		std::lock_guard<std::mutex> lock(fm.Mtx);
-		auto it = fm.Map.find({.M = InM, .N = InN, .K = InK});
-		if (it != fm.Map.end()) {
-			OaGemmKernel forced = it->second;
-			OaGemmPath path = OaGemmPath::Standard;
-			switch (forced) {
-				case OaGemmKernel::CoopVec:
-					path = OaGemmPath::CoopVec; break;
-				default: break;
-			}
-			auto r = ResultForKernel(forced, path, InM, InN,
-				InRt.Device.Info.Hardware.NumSMs);
-			OA_LOG_DEBUG(OaLogComponent::Core,
-				"GemmRouter M=%u N=%u K=%u → '%s' (FORCED)",
-				InM, InN, InK, r.KernelName);
-			return r;
-		}
-	}
-
-	// ── Step 1: Route cache lookup (learned profitability — PRIMARY) ────────
-	// The autotuner benchmarks the real production path and stores winners here.
-	// This takes precedence over heuristics, including the Fp32 fast-path, but
-	// CachedWinnerLegal revalidates precision/caps/shape before replay. Explicit
-	// Fp32 can reuse a measured Fp32 winner; it can never replay BF16/CoopMat.
-	// OA_GEMM_FORCE_FP32 remains a deterministic cache-bypass override.
-	if (InRt.GemmRouteCache && not forceFp32) {
-		auto key = BuildRouteCacheKey(
-			InRt, OaGemmKernel::Auto, InM, InN, InK, InPrec, InPrec,
-			OaGemmEpilogue::None, false);
-		OaGemmKernel cachedWinner;
-		if (InRt.GemmRouteCache->Query(key, cachedWinner)
-			and CachedWinnerLegal(InRt, cachedWinner, InM, InN, InK, InPrec)) {
-			OaGemmPath path = OaGemmPath::Standard;
-			switch (cachedWinner) {
-				case OaGemmKernel::CoopVec:
-					path = OaGemmPath::CoopVec; break;
-				default: break;
-			}
-			auto r = ResultForKernel(cachedWinner, path, InM, InN,
-				InRt.Device.Info.Hardware.NumSMs);
-			OA_LOG_DEBUG(OaLogComponent::Core,
-				"GemmRouter M=%u N=%u K=%u → '%s' (ROUTE CACHE)",
-				InM, InN, InK, r.KernelName);
-			LogAndCount(r, InM, InN, InK);
-			return r;
-		}
-	}
-
-	// ── Step 2: Fp32 fast-path (no CoopMat) ─────────────────────────────────
-	// Only used when there is NO route-cache entry for this shape+precision.
-	// If the autotuner hasn't seen this shape yet, we fall back to the safest
-	// known-good kernel. For Fp32 that's always Tiled (or Naive for trivial).
-	if (InPrec == OaGemmPrecision::Fp32) {
-		auto r = (InM * InN >= 64U and InK >= 1U) ? Tiled(InM, InN) : Naive(InM, InN);
-		LogAndCount(r, InM, InN, InK);
-		return r;
-	}
-
-	// ── Step 3: Pipeline cache lookup (legacy, to be deprecated) ────────────
-	{
-		OaGemmKernel cached = InRt.Pipelines.LookupGemmKernel(InM, InN, InK);
-		if (cached != OaGemmKernel::Auto) {
-			OaGemmPath path = OaGemmPath::Standard;
-			switch (cached) {
-				case OaGemmKernel::CoopVec:
-					path = OaGemmPath::CoopVec; break;
-				default: break;
-			}
-			auto r = ResultForKernel(cached, path, InM, InN,
-				InRt.Device.Info.Hardware.NumSMs);
-			LogAndCount(r, InM, InN, InK);
-			return r;
-		}
-	}
-
-	const OaU32 nSMs = InRt.Device.Info.Hardware.NumSMs;
-
-	// Device cap mask — lazy-cached on the engine via GemmCapsMask(). The
-	// branch guards below read the relevant CoopMat1/CoopVec bits, which
-	// keeps the gate aligned with each variant's RequiredCapsMask.
-	const OaU64 caps    = InRt.GemmCapsMask();
-	const bool  hasBf16 = OaMatmulRegistry::CapsSatisfy(caps, kCapCoopMat1Bf16Input);
-	const bool  hasCv   = OaMatmulRegistry::CapsSatisfy(caps, kCapCoopVec);
-
-	// ── Step 3: InPrec == Bf16 requested explicitly ───────────────────────────
-	if (InPrec == OaGemmPrecision::Bf16) {
-		if (not hasBf16) {
-			OA_LOG_DEBUG(OaLogComponent::Core,
-				"GemmRouter: Bf16 requested but device lacks BF16 CoopMat — using Naive M=%u N=%u K=%u",
-				InM, InN, InK);
-			auto r = Naive(InM, InN);
-			LogAndCount(r, InM, InN, InK);
-			return r;
-		}
-		// Fall through to BF16 path below
-	}
-
-	// ── Step 4: M==1 decode path — CooperativeVector GEMV (NVIDIA Blackwell+ only) ───
-	// NOTE: VK_NV_cooperative_vector is NVIDIA-specific (no VK_EXT equivalent exists).
-	// This is a Blackwell+ optimization for decode inference (M=1 GEMV).
-	// Vendor-gated at routing time (NOT at pipeline-load time per OaLlamaCppVulkanLessons.md
-	// PR-1 item E): the pipeline can be loaded on any device that compiles the shader, but
-	// we only route to it on NVIDIA. Opt-in via OA_FORCE_COOPVEC=1 bypasses the vendor gate
-	// for testing on AMD/Intel where the extension is exposed but untrusted.
-	constexpr OaU32 kVulkanVendorIdNvidia = 0x10DEU;
-	const bool nvidia = InRt.Device.Info.Hardware.VendorId == kVulkanVendorIdNvidia;
-	const bool coopvec_ok = hasCv && (nvidia || OaEnvFlag::IsSet("OA_FORCE_COOPVEC"));
-	if (InM == 1U and coopvec_ok) {
-		auto r = ResultForKernel(OaGemmKernel::CoopVec, OaGemmPath::CoopVec,
-			InM, InN, nSMs);
-		LogAndCount(r, InM, InN, InK);
-		return r;
-	}
-
-	// ── Step 4b: tuned KHR CoopMat GEMM route (NVIDIA + AMD RDNA3.5/Strix) ─
-	// Prefer the workgroup-scope 32x32x16 variant when the device advertises it
-	// and the shape is 32-aligned. Otherwise fall back to the subgroup-scope
-	// 16x16x16 variant which is universally supported on KHR CoopMat BF16.
-	if (InPrec != OaGemmPrecision::Fp32) {
-		if (IsGemmCmWgBf16Suitable(InRt, InM, InN, InK)) {
-			OaGemmRouteResult r{
-				.KernelName = "GemmCmWgBf16",
-				.Kernel     = OaGemmKernel::GemmCmWgBf16,
-				.Path       = OaGemmPath::Standard,
-				.ActualPrec = OaGemmPrecision::Bf16,
-				.Gx         = DivCeil(InM, 64U),
-				.Gy         = DivCeil(InN, 64U),
-			};
-			OA_LOG_DEBUG(OaLogComponent::Core,
-				"GemmRouter M=%u N=%u K=%u → 'GemmCmWgBf16' (64x64 KHR workgroup)",
-				InM, InN, InK);
-			LogAndCount(r, InM, InN, InK);
-			return r;
-		}
-		if (IsGemmCmSgBf16Suitable(InRt, InM, InN, InK)) {
-			OaGemmRouteResult r{
-				.KernelName = "GemmCmSgBf16",
-				.Kernel     = OaGemmKernel::GemmCmSgBf16,
-				.Path       = OaGemmPath::Standard,
-				.ActualPrec = OaGemmPrecision::Bf16,
-				.Gx         = DivCeil(InM, 128U),
-				.Gy         = DivCeil(InN, 128U),
-			};
-			OA_LOG_DEBUG(OaLogComponent::Core,
-				"GemmRouter M=%u N=%u K=%u → 'GemmCmSgBf16' (128x128 KHR subgroup)",
-				InM, InN, InK);
-			LogAndCount(r, InM, InN, InK);
-			return r;
-		}
-	}
-
-	// ── Step 6: Software-tiled FP32 ──────────────────────────────────────────
-	// FIX: Lowered threshold from 16 to 0 for N dimension — Tiled works fine with
-	// N=1 and is always faster than Naive for M*N >= 64.
-	if (InM * InN >= 64U and InK >= 1U) {
-		auto r = Tiled(InM, InN);
-		LogAndCount(r, InM, InN, InK);
-		return r;
-	}
-
-	// ── Step 8: Naive fallback ────────────────────────────────────────────────
-	auto r = Naive(InM, InN);
-	LogAndCount(r, InM, InN, InK);
-	return r;
+	auto problem = ProblemForRaw(
+		InM, InN, InK,
+		OaStoragePrecision::Fp32, OaStoragePrecision::Fp32, true);
+	problem.Training = false;
+	problem.PrecisionHint = InPrec;
+	return Select(InRt, problem);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -564,24 +439,156 @@ OaU64 OaComputeEngine::GemmCapsMask() const {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Select(problem) — canonical R5 entry. Today this forwards to the (M,N,K,prec)
-// overload; the problem struct carries the additional fields (mirror state,
-// bias/activation flags) that future selection layers will consume directly.
-// Pre-R5 callers using the (M,N,K,prec) form are unaffected.
+// Plan(problem) — the only planner. Legacy Select callers adapt the immutable
+// plan back to the old route result while execution paths migrate.
 // ─────────────────────────────────────────────────────────────────────────────
+
+OaMatmulPlan OaGemmRouter::Plan(
+	const OaComputeEngine& InRt,
+	const OaMatmulProblem& InProblem,
+	OaMatmulPreference InPreference)
+{
+	OaMatmulProblem problem = InProblem;
+	const bool forceFp32 = OaEnvFlag::IsSet("OA_GEMM_FORCE_FP32");
+	const OaGemmPrecision precision = ResolvePrecision(problem);
+
+	auto finish = [&](const OaMatmulVariant& variant) {
+		auto plan = PlanForVariant(InRt, variant, problem);
+		auto route = RouteForPlan(plan);
+		LogAndCount(route, problem.M, problem.N, problem.K);
+		return plan;
+	};
+	auto findLegal = [&](OaMatmulVariantId id) -> const OaMatmulVariant* {
+		const auto* variant = OaMatmulRegistry::Find(id);
+		return variant != nullptr and VariantLegalResolved(InRt, *variant, problem, precision)
+			? variant
+			: nullptr;
+	};
+
+	// Explicit benchmark isolation. An incompatible forced variant is ignored;
+	// executing a shader with a different epilogue or output contract is never
+	// a valid benchmark.
+	{
+		auto& forcedMap = GetForcedMap();
+		std::lock_guard<std::mutex> lock(forcedMap.Mtx);
+		const auto it = forcedMap.Map.find(
+			{.M = problem.M, .N = problem.N, .K = problem.K});
+		if (it != forcedMap.Map.end()) {
+			if (const auto* forced = findLegal(it->second)) {
+				return finish(*forced);
+			}
+		}
+	}
+
+	// The route cache stores a stable variant identity and is always revalidated
+	// against the live registry, full problem contract, device caps and shape.
+	if (InPreference.UseMeasuredCache and InRt.GemmRouteCache != nullptr and not forceFp32) {
+		OaMatmulVariantId cached = OaInvalidMatmulVariantId;
+		if (InRt.GemmRouteCache->Query(CacheKey(InRt, problem), cached)) {
+			if (const auto* winner = findLegal(cached)) {
+				return finish(*winner);
+			}
+		}
+	}
+
+	// M=1 decode is the only distinct path. The legality predicate keeps this
+	// NVIDIA-specific extension vendor-gated unless explicitly overridden.
+	if (problem.Epilogue == OaGemmEpilogue::None and problem.M == 1U
+		and precision != OaGemmPrecision::Fp32) {
+		if (const auto* coopVec = findLegal(
+			OaMatmulVariantIdFromName("GemmCoopVec"))) {
+			return finish(*coopVec);
+		}
+	}
+
+	// Tensor-core families are ordered by the current measured policy. The
+	// registry supplies exact epilogue rows, so the same code covers raw, Bias,
+	// Bias+ReLU, Bias+GELU and dual-output SiLU without name construction.
+	if (precision != OaGemmPrecision::Fp32) {
+		for (const OaGemmKernel family : {
+			OaGemmKernel::GemmCmWgBf16,
+			OaGemmKernel::GemmCmSgBf16}) {
+			for (const auto& variant : OaMatmulRegistry::All()) {
+				if (variant.Kernel == family
+					and VariantLegalResolved(InRt, variant, problem, precision)) {
+					return finish(variant);
+				}
+			}
+		}
+	}
+
+	// Non-canonical views and strided batches use the universal fallback. It is
+	// deliberately selected before contiguous FP32 heuristics; those kernels do
+	// not understand explicit offsets/strides and must never be misrouted here.
+	for (const auto& variant : OaMatmulRegistry::All()) {
+		if (variant.Kernel == OaGemmKernel::StridedFp32
+			and VariantLegalResolved(InRt, variant, problem, OaGemmPrecision::Fp32)) {
+			const bool canonical = problem.BatchCount == 1U
+				and problem.AContiguous and problem.BContiguous
+				and problem.A.Offset == 0U and problem.B.Offset == 0U and problem.C.Offset == 0U
+				and problem.A.RowStride == problem.K and problem.A.ColStride == 1U
+				and problem.B.RowStride == problem.K and problem.B.ColStride == 1U
+				and problem.C.RowStride == problem.N and problem.C.ColStride == 1U;
+			if (not canonical) return finish(variant);
+		}
+	}
+
+	// Portable FP32 fallback. Tiny raw GEMMs retain the scalar path; every
+	// fused contract uses its tiled epilogue variant when one exists.
+	const bool preferNaive = problem.Epilogue == OaGemmEpilogue::None
+		and problem.M * problem.N < 64U;
+	for (const OaGemmKernel family : preferNaive
+		? std::initializer_list<OaGemmKernel>{OaGemmKernel::Naive, OaGemmKernel::TiledFp32}
+		: std::initializer_list<OaGemmKernel>{OaGemmKernel::TiledFp32, OaGemmKernel::Naive}) {
+		for (const auto& variant : OaMatmulRegistry::All()) {
+			if (variant.Kernel == family
+				and variant.APrecision == OaStoragePrecision::Fp32
+				and VariantLegalResolved(InRt, variant, problem, OaGemmPrecision::Fp32)) {
+				return finish(variant);
+			}
+		}
+	}
+
+	OA_LOG_ERROR(OaLogComponent::Core,
+		"GemmRouter: no legal variant for M=%u N=%u K=%u epilogue=%u",
+		problem.M, problem.N, problem.K, static_cast<OaU32>(problem.Epilogue));
+	return {};
+}
+
+bool OaGemmRouter::ValidatePlan(
+	const OaComputeEngine& InRt,
+	const OaMatmulPlan& InPlan,
+	const OaMatmulProblem& InProblem)
+{
+	if (not InPlan
+		or InPlan.RegistryBuildId != OaMatmulRegistry::BuildId()
+		or InPlan.ProblemContractHash != ProblemContractHash(InProblem)
+		or InPlan.DeviceContractHash != DeviceContractHash(InRt)) {
+		return false;
+	}
+	const auto* variant = OaMatmulRegistry::Find(InPlan.Variant);
+	if (variant == nullptr
+		or std::strcmp(variant->KernelName, InPlan.KernelName) != 0
+		or variant->Kernel != InPlan.Kernel
+		or variant->Path != InPlan.Path
+		or InPlan.ShaderContentHash == 0U
+		or InPlan.ShaderContentHash != OaMatmulRegistry::ShaderContentHash(variant->Id)
+		or not IsVariantLegal(InRt, *variant, InProblem)) {
+		return false;
+	}
+	const auto expected = ResultForVariant(*variant, InProblem);
+	return InPlan.ActualPrecision == expected.ActualPrec
+		and InPlan.Grid.X == expected.Gx
+		and InPlan.Grid.Y == expected.Gy
+		and InPlan.Grid.Z == expected.Gz
+		and InPlan.WorkspaceBytes == 0U;
+}
 
 OaGemmRouteResult OaGemmRouter::Select(
 	const OaComputeEngine& InRt,
-	const OaMatmulProblem&   InProblem)
+	const OaMatmulProblem& InProblem)
 {
-	OaGemmPrecision prec = InProblem.PrecisionHint;
-	if (prec == OaGemmPrecision::Auto) {
-		switch (InProblem.AMaster) {
-			case OaStoragePrecision::Bf16: prec = OaGemmPrecision::Bf16; break;
-			case OaStoragePrecision::Fp32: prec = OaGemmPrecision::Auto; break;
-		}
-	}
-	return Select(InRt, InProblem.M, InProblem.N, InProblem.K, prec);
+	return RouteForPlan(Plan(InRt, InProblem));
 }
 
 OaMatmulProblem OaGemmRouter::ProblemForRaw(
@@ -594,6 +601,13 @@ OaMatmulProblem OaGemmRouter::ProblemForRaw(
 	p.M                       = InM;
 	p.N                       = InN;
 	p.K                       = InK;
+	p.BatchCount              = 1U;
+	p.A                       = {.Offset = 0U, .RowStride = InK,
+		.ColStride = 1U, .BatchStride = InM * InK};
+	p.B                       = {.Offset = 0U, .RowStride = InK,
+		.ColStride = 1U, .BatchStride = InN * InK};
+	p.C                       = {.Offset = 0U, .RowStride = InN,
+		.ColStride = 1U, .BatchStride = InM * InN};
 	p.AMaster                 = InAMaster;
 	p.BMaster                 = InBMaster;
 	p.RequestedOutput         = OaStoragePrecision::Fp32;
@@ -612,9 +626,18 @@ OaMatmulProblem OaGemmRouter::ProblemForRaw(
 // ─────────────────────────────────────────────────────────────────────────────
 
 void OaGemmRouter::ForceKernel(OaU32 InM, OaU32 InN, OaU32 InK, OaGemmKernel InKernel) {
+	const OaMatmulVariant* variant = FindRawGemmVariant(
+		InKernel,
+		InKernel == OaGemmKernel::CoopVec ? OaGemmPath::CoopVec : OaGemmPath::Standard);
+	ForceVariant(InM, InN, InK,
+		variant != nullptr ? variant->Id : OaInvalidMatmulVariantId);
+}
+
+void OaGemmRouter::ForceVariant(
+	OaU32 InM, OaU32 InN, OaU32 InK, OaMatmulVariantId InVariant) {
 	auto& fm = GetForcedMap();
 	std::lock_guard<std::mutex> lock(fm.Mtx);
-	fm.Map[{.M = InM, .N = InN, .K = InK}] = InKernel;
+	fm.Map[{.M = InM, .N = InN, .K = InK}] = InVariant;
 }
 
 void OaGemmRouter::ClearForced() {

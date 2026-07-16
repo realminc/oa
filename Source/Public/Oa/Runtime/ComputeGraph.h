@@ -4,18 +4,14 @@
 #include <Oa/Core/Status.h>
 #include <Oa/Core/BufferAccess.h>
 #include <Oa/Runtime/Allocator.h>
+#include <Oa/Runtime/DispatchDesc.h>
 #include <Oa/Runtime/Sync.h>
+#include <Oa/Runtime/Timestamp.h>
 
 class OaComputeEngine;
 class OaVkDevice;
 class OaDeviceMesh;
 class OaScheduler;
-
-enum class OaQueueHint : OaU8 {
-	Compute,
-	AsyncCompute,
-	Transfer,
-};
 
 // Compute graph node — one dispatch with buffer access annotations.
 // Push constant data is copied inline (max 128 bytes per Vulkan spec).
@@ -28,8 +24,8 @@ public:
 	alignas(16) OaU8 PushData[128] = {};
 	OaU32 PushSize = 0;
 	// Storage dtype the shader variant must match: 0 = FP32 (4-byte OaLoad/OaStore),
-	// 1 = BF16/FP16 (2-byte). Derived from the operand tensors at record time (see
-	// OaFnContext::Add) so the dispatch always picks the pipeline variant that matches
+	// 1 = BF16/FP16 (2-byte). Derived from the operand tensors at record time so
+	// the dispatch always picks the pipeline variant that matches
 	// its actual buffers — never a global mode.
 	OaU32 Dtype = 0;
 	OaU32 GroupsX = 1;
@@ -62,19 +58,14 @@ public:
 class OaGraphStats {
 public:
 	OaU32 DispatchCount = 0;
-	OaU32 BarrierCount = 0;        // total VkBufferMemoryBarrier2 entries emitted after PR-3 coalescing
+	OaU32 BarrierCount = 0;        // total exact VkBufferMemoryBarrier2 entries
 	OaU32 DescriptorSetCount = 0;
 	OaU64 TotalBufferBytes = 0;
 	OaU64 PotentialAliasSavings = 0;
 
-	// PR-3 G v3 — graph-optimizer observability.
-	// Populated by Compile() (OaLlamaCppVulkanLessons.md §12).
-	OaU32 GroupCount    = 0;       // # barrier-groups (=  # barrier emissions)
-	OaU32 MaxGroupSize  = 0;       // largest group size
-	OaU32 ReorderCount  = 0;       // # nodes pulled forward by the v2 look-ahead pass
-	OaU32 NodeCountStat = 0;       // mirrors DispatchCount for AvgGroupSize math (= NodeCountStat / GroupCount)
 	OaU32 WarBarrierCount = 0;     // execution-only read -> write dependencies
 	OaU32 IndirectBarrierCount = 0;// dependencies consumed as indirect commands
+	OaU32 HostBarrierCount = 0;    // graph-final compute -> host visibility edges
 };
 
 // DAG-scheduled compute dispatcher with compile/replay semantics. This is the
@@ -102,6 +93,9 @@ public:
 class OaComputeGraph {
 public:
 	// ─── Construction ─────────────────────────────────────────────────────
+	// Canonical append path. Compatibility overloads lower to this descriptor.
+	void Add(const OaComputeDispatchDesc& InDesc);
+
 	void Add(
 		OaStringView InShader,
 		OaSpan<OaVkBuffer> InBuffers,
@@ -173,20 +167,6 @@ public:
 		const void* InPush, OaU32 InPushSize,
 		const OaVkBuffer& InIndirectBuffer, OaU64 InOffset = 0);
 
-	// ─── BLAS Integration ─────────────────────────────────────────────────
-	// Optimized GEMM dispatch with automatic kernel selection.
-	// Selects from: GemmCmSgBf16, GemmCmWgBf16, GemmTiled, or GemmNaive based on (M, N, K, device caps).
-	// C = A @ B^T  (B stored transposed — OA convention)
-	// NOTE: Requires InRt for device capability detection.
-	void AddGemm(
-		OaComputeEngine& InRt,
-		OaVkBuffer InA,
-		OaVkBuffer InB,
-		OaVkBuffer OutC,
-		OaU32 InM,
-		OaU32 InN,
-		OaU32 InK);
-
 	// ─── Phase 1: One-shot execution ──────────────────────────────────────
 	[[nodiscard]] OaStatus Execute(OaComputeEngine& InRt);
 
@@ -216,6 +196,21 @@ public:
 	[[nodiscard]] OaResult<OaCompletionToken> ReplayAsync(OaComputeEngine& InRt);
 	[[nodiscard]] OaCompletionToken LastCompletion(const OaVkDevice& InDevice) const;
 
+	// Embed one timestamp pair around the complete reusable primary program.
+	// Timed replay is intentionally single-flight: callers must WaitForPendingReplay()
+	// before submitting the same program again so query-pool reuse is well-defined.
+	void SetReplayTimingEnabled(OaBool InEnabled) noexcept {
+		if (ReplayTimingEnabled_ == InEnabled) return;
+		ReplayTimingEnabled_ = InEnabled;
+		Compiled_ = false;
+	}
+	[[nodiscard]] OaBool ReplayTimingEnabled() const noexcept {
+		return ReplayTimingEnabled_;
+	}
+	[[nodiscard]] OaF64 LastReplayGpuMs() const noexcept {
+		return LastReplayGpuMs_;
+	}
+
 	// Wait for the most recent Replay() submission to complete on the GPU.
 	// Only needed if Replay() was called without a following Sync().
 	[[nodiscard]] OaStatus WaitForPendingReplay(const OaVkDevice& InDevice);
@@ -225,6 +220,20 @@ public:
 	[[nodiscard]] OaStatus RecordReplay(OaComputeEngine& InRt, void* InPrimaryCommandBuffer) const;
 
 	[[nodiscard]] bool IsCompiled() const { return Compiled_; }
+	[[nodiscard]] OaBool LastCompileReused() const noexcept { return LastCompileReused_; }
+
+	// A standalone graph defaults to host-visible completion because callers may
+	// wait and immediately read mapped output. Context-owned batches disable this
+	// on their secondary graphs and emit one host edge at the actual batch
+	// boundary instead of draining every intermediate graph.
+	void SetHostReadbackRequired(OaBool InRequired) noexcept {
+		if (HostReadbackRequired_ == InRequired) return;
+		HostReadbackRequired_ = InRequired;
+		Compiled_ = false;
+	}
+	[[nodiscard]] OaBool HostReadbackRequired() const noexcept {
+		return HostReadbackRequired_;
+	}
 
 	// ─── Phase 3: Memory aliasing analysis ────────────────────────────────
 	// Per-buffer first/last access within the graph.
@@ -233,16 +242,28 @@ public:
 	// Non-overlapping buffer groups that can share one VkDeviceMemory allocation.
 	[[nodiscard]] OaVec<OaAliasGroup> ComputeAliasGroups() const;
 
+	// Materialize alias backing for an explicit set of graph-internal transient
+	// buffers. The caller must not read those original buffers after execution;
+	// external inputs/outputs are intentionally never inferred as eligible.
+	// Node bindings are rewritten before compilation and retain distinct
+	// VkBuffer/bindless identities over shared allocations.
+	[[nodiscard]] OaStatus MaterializeAliases(
+		OaComputeEngine& InRt, OaSpan<const OaVkBuffer> InEligible);
+	[[nodiscard]] OaU64 MaterializedAliasSavings() const noexcept {
+		return MaterializedAliasSavings_;
+	}
+
 	// ─── Queries ──────────────────────────────────────────────────────────
 	[[nodiscard]] OaGraphStats GetStats() const;
 	[[nodiscard]] OaU32 NodeCount() const { return static_cast<OaU32>(Nodes_.Size()); }
 	[[nodiscard]] OaSpan<OaComputeNode> Nodes() { return {Nodes_.Data(), Nodes_.Size()}; }
 	[[nodiscard]] OaSpan<const OaComputeNode> Nodes() const { return {Nodes_.Data(), Nodes_.Size()}; }
 
-	// Stamp the just-recorded node's storage dtype (see OaComputeNode::Dtype). Called
-	// right after an Add() by the record-time dtype derivation so a dispatch selects the
-	// pipeline variant matching its operand tensors.
-	void SetLastNodeDtype(OaU32 InDtype) { if (not Nodes_.Empty()) { Nodes_.Back().Dtype = InDtype; } }
+	// Copy only immutable dispatch descriptions. Compiled Vulkan state is never
+	// shared between graphs. This is the capture primitive for reusable programs:
+	// the context keeps its eager recording graph while the destination owns an
+	// independently compiled plan and its strong buffer references.
+	[[nodiscard]] OaStatus CopyNodesFrom(const OaComputeGraph& InSource);
 
 	// ─── Lifecycle ────────────────────────────────────────────────────────
 	// Invalidates compiled state only. Nodes are preserved.
@@ -260,6 +281,12 @@ public:
 	// + vkAllocateCommandBuffers per call.
 	void ClearNodes();
 
+	// Release the strong references retained by the compiled command buffer.
+	// Call only after GPU completion. Cached VkBuffers remain alive in the engine
+	// allocator and can be reacquired by the next identical graph, allowing its
+	// node hash to match and the recorded secondary command buffer to replay.
+	void ReleaseCompletedBufferOwners();
+
 	// Destroys all Vulkan objects (descriptor pools, command pool, secondary CB).
 	void Destroy(const OaVkDevice& InDevice);
 
@@ -273,18 +300,32 @@ private:
 	void* PrimaryCb_ = nullptr;        // pre-built primary wrapping SecondaryCb_
 	OaVkTimelineSemaphore ReplayTimelineSem_;  // for cached replay submit+wait
 	OaU64 ReplayTimelineValue_ = 0;
+	OaVkTimestamp ReplayTimestamp_;
+	OaU64 ReplayTimestampReadValue_ = 0;
+	OaF64 LastReplayGpuMs_ = 0.0;
+	OaBool ReplayTimingEnabled_ = false;
 	OaVec<void*> DescriptorPools_;
 	OaU32 QueueFamily_ = 0;
 	bool Compiled_ = false;
 	OaU64 LastCompileHash_ = 0;  // FNV-1a hash of node list; 0 = never compiled
-	
-	// Compile-time stats (PR-3 G v3). Populated by Compile().
+	OaBool LastCompileReused_ = false;
+	// A compiled command buffer embeds resource bindings. Retain matrix-owned
+	// buffers after ClearNodes() so cache reuse cannot outlive those resources.
+	OaVec<OaSharedPtr<OaVkBuffer>> CompiledBufferOwners_;
+
+	// Compile-time synchronization stats.
 	OaU32 BarrierCount_  = 0;   // total VkBufferMemoryBarrier2 entries emitted
-	OaU32 GroupCount_    = 0;   // # barrier-coalescing groups (= # barrier emissions)
-	OaU32 MaxGroupSize_  = 0;   // largest group size
-	OaU32 ReorderCount_  = 0;   // # nodes pulled forward by v2 look-ahead reorder
 	OaU32 WarBarrierCount_ = 0;
 	OaU32 IndirectBarrierCount_ = 0;
+	OaBool HostReadbackRequired_ = true;
+
+	// Allocator-backed transient arena. Alias views must be destroyed before
+	// their backing allocation.
+	OaComputeEngine* AliasRuntime_ = nullptr;
+	OaVec<OaVkBuffer> AliasBacking_;
+	OaVec<OaVkBuffer> AliasViews_;
+	OaU64 MaterializedAliasSavings_ = 0;
+	void DestroyAliasArena();
 
 	// FNV-1a hash over all node fields that affect the compiled secondary CB:
 	// shader/dtype, VkBuffer handles, bindless indices, accesses, push constants,

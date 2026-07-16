@@ -242,56 +242,92 @@ OaStatus OaVkStream::RecordDispatch(
 	OaSpan<OaVkBuffer> InBufs, const void* InPush, OaU32 InPushSize,
 	OaU32 InGroupsX, OaU32 InGroupsY, OaU32 InGroupsZ)
 {
-	auto& pipeline = InRt.GetPipeline(InPipeline);
-	if (!pipeline.Pipeline) {
-		OA_LOG_ERROR(OaLogComponent::Core, "RecordDispatch: pipeline not found: %s (dtype=%u)",
-			InPipeline.data(), InRt.DtypeSpecConstant());
-		return OaStatus::Error("stream: pipeline not found: " + OaString(InPipeline));
+	OaComputeDispatchDesc desc;
+	desc.Kernel = InPipeline;
+	desc.Buffers = InBufs;
+	desc.PushData = InPush;
+	desc.PushSize = InPushSize;
+	desc.Dtype = InRt.DtypeSpecConstant();
+	desc.GroupsX = InGroupsX;
+	desc.GroupsY = InGroupsY;
+	desc.GroupsZ = InGroupsZ;
+	return RecordDispatchDesc(InRt, desc);
+}
+
+OaStatus OaVkStream::RecordDispatchDesc(
+	OaComputeEngine& InRt, const OaComputeDispatchDesc& InDesc)
+{
+	auto* target = InDesc.NodeIndex == 0 ? nullptr : InRt.GetNode(InDesc.NodeIndex);
+	if (InDesc.NodeIndex != 0 and target == nullptr) {
+		return OaStatus::Error(OaStatusCode::InvalidArgument,
+			"stream: dispatch descriptor has an invalid node index");
 	}
-	
-	// Verbose dispatch logging disabled - uncomment for debugging
-	// OA_LOG_INFO(OaLogComponent::Core, "RecordDispatch: %s, groups=(%u,%u,%u), bindless=%d",
-	// 	InPipeline.data(), InGroupsX, InGroupsY, InGroupsZ, pipeline.Bindless ? 1 : 0);
-
-	VkCommandBuffer cb = static_cast<VkCommandBuffer>(CommandBuffer);
-
-	vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE,
-		static_cast<VkPipeline>(pipeline.Pipeline));
-
-	// Bindless is now mandatory for performance - fail fast if not enabled
-	if (!pipeline.Bindless) {
+	auto& pipeline = target
+		? target->Pipelines.GetPipeline(InDesc.Kernel, InDesc.Dtype)
+		: InRt.Pipelines.GetPipeline(InDesc.Kernel, InDesc.Dtype);
+	if (not pipeline.Pipeline) {
+		OA_LOG_ERROR(OaLogComponent::Core,
+			"RecordDispatchDesc: pipeline not found: %.*s (dtype=%u node=%u)",
+			static_cast<int>(InDesc.Kernel.Size()), InDesc.Kernel.Data(),
+			InDesc.Dtype, InDesc.NodeIndex);
+		return OaStatus::Error("stream: pipeline not found: " + OaString(InDesc.Kernel));
+	}
+	if (not pipeline.Bindless) {
 		return OaStatus::Error(OaStatusCode::PipelineError,
 			"stream: pipeline must use bindless (legacy descriptor path removed for performance)");
 	}
+	for (OaU32 i = 0; i < static_cast<OaU32>(InDesc.Buffers.Size()); ++i) {
+		if (InDesc.Buffers[i].NodeIndex != InDesc.NodeIndex) {
+			return OaStatus::Error(OaStatusCode::InvalidArgument,
+				"stream: dispatch buffer node does not match descriptor node");
+		}
+	}
+	if (InDesc.Indirect) {
+		if (not InDesc.IndirectBuffer.Buffer
+			or (InDesc.IndirectOffset & 3ULL) != 0
+			or InDesc.IndirectOffset + 3ULL * sizeof(OaU32) > InDesc.IndirectBuffer.Size)
+		{
+			return OaStatus::Error(OaStatusCode::InvalidArgument,
+				"stream: invalid indirect dispatch buffer or offset");
+		}
+	}
 
-	// Bindless path: bind global descriptor set, pack buffer indices + push data
-	VkDescriptorSet ds = static_cast<VkDescriptorSet>(InRt.Bindless.DescriptorSet);
+	VkCommandBuffer cb = static_cast<VkCommandBuffer>(CommandBuffer);
+	vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE,
+		static_cast<VkPipeline>(pipeline.Pipeline));
+	auto& bindless = target ? target->Bindless : InRt.Bindless;
+	VkDescriptorSet ds = static_cast<VkDescriptorSet>(bindless.DescriptorSet);
 	vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE,
 		static_cast<VkPipelineLayout>(pipeline.PipelineLayout),
 		0, 1, &ds, 0, nullptr);
 
-	OaU32 numBufs = static_cast<OaU32>(InBufs.size());
-	if (!OaVkBindlessPushFits(numBufs, InPushSize)) {
+	const OaU32 numBufs = static_cast<OaU32>(InDesc.Buffers.Size());
+	if (not OaVkBindlessPushFits(numBufs, InDesc.PushSize)) {
 		return OaStatus::Error(OaStatusCode::InvalidArgument,
 			"stream: bindless push exceeds OA_VK_MAX_PUSH_CONSTANT_BYTES "
 			"(buffer index header + user push)");
 	}
-	OA_VALIDATE_PUSH_NO_BUFFER_INDICES(InBufs, InPush, InPushSize, InPipeline);
-	OaU32 headerBytes = numBufs * sizeof(OaU32);
-	OaU32 totalPush = headerBytes + InPushSize;
+	OA_VALIDATE_PUSH_NO_BUFFER_INDICES(
+		InDesc.Buffers, InDesc.PushData, InDesc.PushSize, InDesc.Kernel);
+	const OaU32 headerBytes = numBufs * sizeof(OaU32);
+	const OaU32 totalPush = headerBytes + InDesc.PushSize;
 	alignas(16) OaU8 pushBuf[OA_VK_MAX_PUSH_CONSTANT_BYTES] = {};
-	OaU32* indices = reinterpret_cast<OaU32*>(pushBuf);
+	auto* indices = reinterpret_cast<OaU32*>(pushBuf);
 	for (OaU32 i = 0; i < numBufs; ++i) {
-		indices[i] = InBufs[i].BindlessIndex;
+		indices[i] = InDesc.Buffers[i].BindlessIndex;
 	}
-	if (InPush && InPushSize > 0) {
-		std::memcpy(pushBuf + headerBytes, InPush, InPushSize);
+	if (InDesc.PushData and InDesc.PushSize > 0) {
+		std::memcpy(pushBuf + headerBytes, InDesc.PushData, InDesc.PushSize);
 	}
 	vkCmdPushConstants(cb,
 		static_cast<VkPipelineLayout>(pipeline.PipelineLayout),
 		VK_SHADER_STAGE_COMPUTE_BIT, 0, totalPush, pushBuf);
-
-	vkCmdDispatch(cb, InGroupsX, InGroupsY, InGroupsZ);
+	if (InDesc.Indirect) {
+		vkCmdDispatchIndirect(cb,
+			static_cast<VkBuffer>(InDesc.IndirectBuffer.Buffer), InDesc.IndirectOffset);
+	} else {
+		vkCmdDispatch(cb, InDesc.GroupsX, InDesc.GroupsY, InDesc.GroupsZ);
+	}
 	return OaStatus::Ok();
 }
 
@@ -301,71 +337,17 @@ OaStatus OaVkStream::RecordDispatchOnNode(
 	OaSpan<OaVkBuffer> InBufs, const void* InPush, OaU32 InPushSize,
 	OaU32 InGroupsX, OaU32 InGroupsY, OaU32 InGroupsZ
 ){
-	if (InNodeIndex == 0) {
-		return RecordDispatch(
-			InRt, InPipeline, InBufs, InPush, InPushSize,
-			InGroupsX, InGroupsY, InGroupsZ);
-	}
-	auto* node = InRt.GetNode(InNodeIndex);
-	if (!node) {
-		return OaStatus::Error(OaStatusCode::InvalidArgument,
-			"stream: RecordDispatchOnNode invalid node index");
-	}
-	auto& pipeline = node->Pipelines.GetPipeline(InPipeline, InRt.DtypeSpecConstant());
-	if (!pipeline.Pipeline) {
-		return OaStatus::Error("stream: pipeline not found on node: " + OaString(InPipeline));
-	}
-
-	for (OaU32 i = 0; i < static_cast<OaU32>(InBufs.size()); ++i) {
-		if (InBufs[i].NodeIndex != InNodeIndex) {
-			return OaStatus::Error(OaStatusCode::InvalidArgument,
-				"stream: buffer node mismatch for RecordDispatchOnNode");
-		}
-	}
-
-	VkCommandBuffer cb = static_cast<VkCommandBuffer>(CommandBuffer);
-
-	vkCmdBindPipeline(
-		cb, VK_PIPELINE_BIND_POINT_COMPUTE,
-		static_cast<VkPipeline>(pipeline.Pipeline)
-	);
-
-	// Bindless is now mandatory for performance
-	if (!pipeline.Bindless) {
-		return OaStatus::Error(OaStatusCode::PipelineError,
-			"stream: pipeline must use bindless (legacy descriptor path removed for performance)");
-	}
-
-	VkDescriptorSet ds = static_cast<VkDescriptorSet>(node->Bindless.DescriptorSet);
-	vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE,
-		static_cast<VkPipelineLayout>(pipeline.PipelineLayout),
-		0, 1, &ds, 0, nullptr);
-
-	OaU32 numBufs = static_cast<OaU32>(InBufs.size());
-	if (!OaVkBindlessPushFits(numBufs, InPushSize)) {
-		return OaStatus::Error(
-			OaStatusCode::InvalidArgument,
-			"stream: bindless push exceeds OA_VK_MAX_PUSH_CONSTANT_BYTES "
-			"(buffer index header + user push)"
-		);
-	}
-	OA_VALIDATE_PUSH_NO_BUFFER_INDICES(InBufs, InPush, InPushSize, InPipeline);
-	OaU32 headerBytes = numBufs * sizeof(OaU32);
-	OaU32 totalPush = headerBytes + InPushSize;
-	alignas(16) OaU8 pushBuf[OA_VK_MAX_PUSH_CONSTANT_BYTES] = {};
-	OaU32* indices = reinterpret_cast<OaU32*>(pushBuf);
-	for (OaU32 i = 0; i < numBufs; ++i) {
-		indices[i] = InBufs[i].BindlessIndex;
-	}
-	if (InPush && InPushSize > 0) {
-		std::memcpy(pushBuf + headerBytes, InPush, InPushSize);
-	}
-	vkCmdPushConstants(cb,
-		static_cast<VkPipelineLayout>(pipeline.PipelineLayout),
-		VK_SHADER_STAGE_COMPUTE_BIT, 0, totalPush, pushBuf);
-
-	vkCmdDispatch(cb, InGroupsX, InGroupsY, InGroupsZ);
-	return OaStatus::Ok();
+	OaComputeDispatchDesc desc;
+	desc.Kernel = InPipeline;
+	desc.Buffers = InBufs;
+	desc.PushData = InPush;
+	desc.PushSize = InPushSize;
+	desc.Dtype = InRt.DtypeSpecConstant();
+	desc.GroupsX = InGroupsX;
+	desc.GroupsY = InGroupsY;
+	desc.GroupsZ = InGroupsZ;
+	desc.NodeIndex = InNodeIndex;
+	return RecordDispatchDesc(InRt, desc);
 }
 
 OaStatus OaVkStream::RecordDispatchIndirect(
@@ -373,54 +355,16 @@ OaStatus OaVkStream::RecordDispatchIndirect(
 	OaSpan<OaVkBuffer> InBufs, const void* InPush, OaU32 InPushSize,
 	const OaVkBuffer& InIndirectBuffer, OaU64 InOffset
 ) {
-	auto& pipeline = InRt.GetPipeline(InPipeline);
-	if (!pipeline.Pipeline) {
-		return OaStatus::Error("stream: pipeline not found: " + OaString(InPipeline));
-	}
-
-	VkCommandBuffer cb = static_cast<VkCommandBuffer>(CommandBuffer);
-
-	vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE,
-		static_cast<VkPipeline>(pipeline.Pipeline));
-
-	// Bindless is now mandatory for performance
-	if (!pipeline.Bindless) {
-		return OaStatus::Error(OaStatusCode::PipelineError,
-			"stream: pipeline must use bindless (legacy descriptor path removed for performance)");
-	}
-
-	VkDescriptorSet ds = static_cast<VkDescriptorSet>(InRt.Bindless.DescriptorSet);
-	vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE,
-		static_cast<VkPipelineLayout>(pipeline.PipelineLayout),
-		0, 1, &ds, 0, nullptr);
-
-	OaU32 numBufs = static_cast<OaU32>(InBufs.size());
-	if (!OaVkBindlessPushFits(numBufs, InPushSize)) {
-		return OaStatus::Error(
-			OaStatusCode::InvalidArgument,
-			"stream: bindless push exceeds OA_VK_MAX_PUSH_CONSTANT_BYTES "
-			"(buffer index header + user push)"
-		);
-	}
-	OA_VALIDATE_PUSH_NO_BUFFER_INDICES(InBufs, InPush, InPushSize, InPipeline);
-	OaU32 headerBytes = numBufs * sizeof(OaU32);
-	OaU32 totalPush = headerBytes + InPushSize;
-	alignas(16) OaU8 pushBuf[OA_VK_MAX_PUSH_CONSTANT_BYTES] = {};
-	OaU32* indices = reinterpret_cast<OaU32*>(pushBuf);
-	for (OaU32 i = 0; i < numBufs; ++i) {
-		indices[i] = InBufs[i].BindlessIndex;
-	}
-	if (InPush && InPushSize > 0) {
-		std::memcpy(pushBuf + headerBytes, InPush, InPushSize);
-	}
-	vkCmdPushConstants(cb,
-		static_cast<VkPipelineLayout>(pipeline.PipelineLayout),
-		VK_SHADER_STAGE_COMPUTE_BIT, 0, totalPush, pushBuf);
-
-	vkCmdDispatchIndirect(cb,
-		static_cast<VkBuffer>(InIndirectBuffer.Buffer), InOffset);
-	RecordBufferBarrier();
-	return OaStatus::Ok();
+	OaComputeDispatchDesc desc;
+	desc.Kernel = InPipeline;
+	desc.Buffers = InBufs;
+	desc.PushData = InPush;
+	desc.PushSize = InPushSize;
+	desc.Dtype = InRt.DtypeSpecConstant();
+	desc.IndirectBuffer = InIndirectBuffer;
+	desc.IndirectOffset = InOffset;
+	desc.Indirect = true;
+	return RecordDispatchDesc(InRt, desc);
 }
 
 OaStatus OaVkStream::Record(
@@ -455,6 +399,25 @@ void OaVkStream::RecordBufferBarrier() {
 		.srcAccessMask = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
 		.dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_TRANSFER_BIT | VK_PIPELINE_STAGE_2_HOST_BIT,
 		.dstAccessMask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_TRANSFER_READ_BIT | VK_ACCESS_2_HOST_READ_BIT,
+	};
+
+	VkDependencyInfo dep = {
+		.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+		.memoryBarrierCount = 1,
+		.pMemoryBarriers = &barrier,
+	};
+
+	vkCmdPipelineBarrier2(
+		static_cast<VkCommandBuffer>(CommandBuffer), &dep);
+}
+
+void OaVkStream::RecordHostReadbackBarrier() {
+	VkMemoryBarrier2 barrier = {
+		.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+		.srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+		.srcAccessMask = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+		.dstStageMask = VK_PIPELINE_STAGE_2_HOST_BIT,
+		.dstAccessMask = VK_ACCESS_2_HOST_READ_BIT,
 	};
 
 	VkDependencyInfo dep = {

@@ -201,9 +201,9 @@ def train_all_position(model_forward, params, sampler, *, steps=STEPS, lr=0.01,
     loop.Finish()
 
     # Wall + GPU timing from OaItTraining's own clocks (the same measures the C++ suite
-    # reports), so Python-vs-C++ wall/GPU/overhead is directly comparable on the same
-    # hardware. CPU overhead = the host-side fraction (dispatch recording + the Python
-    # interpreter loop + nanobind calls) that is NOT GPU compute.
+    # reports), so Python-vs-C++ wall/GPU timing is directly comparable on the same
+    # hardware. The wall-GPU gap is not a direct CPU measurement; asynchronous execution
+    # and timer boundaries can make it negative.
     elapsed = loop.ElapsedSeconds()
     if elapsed > 0:
         wall_ms = 1000.0 * elapsed / steps
@@ -212,8 +212,8 @@ def train_all_position(model_forward, params, sampler, *, steps=STEPS, lr=0.01,
         gpu = loop.GpuTimingStats()
         if gpu.Count > 0 and gpu.MeanMs > 0.0:
             gpu_sps = batch / (gpu.MeanMs / 1000.0)   # same basis as the C++ suite
-            overhead = 100.0 * (wall_ms - gpu.MeanMs) / wall_ms
+            wall_gpu_gap = 100.0 * (wall_ms - gpu.MeanMs) / wall_ms
             print(f"GPU:  {gpu.MeanMs:.3f} ms/step · {gpu_sps / 1000.0:.2f}K sps · "
-                  f"CPU overhead: {overhead:.0f}%  (n={gpu.Count})")
+                  f"wall-GPU gap: {wall_gpu_gap:.0f}%  (n={gpu.Count})")
 
     return opt, initial_loss, loop.LastLoss(), last_x, last_y

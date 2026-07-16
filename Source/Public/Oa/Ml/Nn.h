@@ -20,6 +20,16 @@ enum class OaActivation : OaU8 {
 
 enum class OaUpsampleMode : OaU8 { Nearest, Bilinear };
 
+/// Execution policy for scaled dot-product attention. Auto selects the fused
+/// causal implementation when its exact contract is supported and otherwise
+/// preserves the compositional reference path. This is deliberately an enum,
+/// not a boolean, so callers can require either backend in tests and profiles.
+enum class OaAttentionBackend : OaU8 {
+	Auto,
+	Standard,
+	Flash,
+};
+
 // GENERATED LAYERS
 // Regenerate via: python3 Tools/NnAutogen/oannautogen.py --live
 #include "../../../Private/Oa/Ml/Nn/Nn.gen.h"

@@ -97,17 +97,17 @@ enum class OaPresentationMode : OaU8 {
 
 // Numeric stability mode — see Docs/Rewrite/Opus/OaNumericStability.md §3.
 //
-// Fast (default)         vendor math, BF16 CoopMat where supported, graph
-//                        optimizer enabled, DGC enabled. Maximum throughput.
-// Stable                 FP32 path, no CoopMat, graph optimizer still on, no
-//                        DGC. Used for training-correctness CI and accuracy
+// Fast (default)         vendor math, BF16 CoopMat where supported, DGC
+//                        enabled. Maximum throughput.
+// Stable                 FP32 path, no CoopMat, no DGC. Used for
+//                        training-correctness CI and accuracy
 //                        regression where vendor-dependent rounding is a hazard.
-// Deterministic          everything in Stable plus: no graph reorder, no
-//                        persistent loop, no atomics. Used for reproducibility
+// Deterministic          everything in Stable plus: no persistent loop, no
+//                        atomics. Used for reproducibility
 //                        tests. The slowest path; intentional.
 //
 // Each mode translates internally to the equivalent env-knob state at engine
-// init (OA_FORCE_PRECISION, OA_DISABLE_COOPMAT, OA_DISABLE_DGC, OA_DISABLE_GRAPH_OPTIMIZE,
+// init (OA_FORCE_PRECISION, OA_DISABLE_COOPMAT, OA_DISABLE_DGC,
 // OA_DISABLE_PERSISTENT_LOOP). Env knobs set on the command line still override
 // the mode-translated defaults — same precedence as OA_DISABLE_COOPMAT overrides
 // OaPrecision::BF16 today.

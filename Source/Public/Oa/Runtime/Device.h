@@ -57,6 +57,7 @@ public:
 	OaU32        SubgroupSize                   = 0;
 	OaU32        MaxComputeWorkGroupSize        = 0;
 	OaU32        MaxComputeWorkGroupInvocations = 0;
+	OaU32        MaxComputeSharedMemoryBytes    = 0;
 	OaU32        NumSMs                         = 0;  // Streaming multiprocessors (NVIDIA) / CUs (AMD)
 	OaU32        MaxPerStageDescriptorUpdateAfterBindStorageBuffers = 0;
 	OaU32        MaxPerStageDescriptorUpdateAfterBindSampledImages = 0;

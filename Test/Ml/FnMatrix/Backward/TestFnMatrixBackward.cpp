@@ -275,7 +275,7 @@ static void AlphaAutogradGradcheck(
 }
 
 // ─── SPIR-V push-constant reflection (backs the bindless-contract assert) ──
-// The AddOwned debug assert is only as good as the reflected block size. Pin the
+// The Record debug assert is only as good as the reflected block size. Pin the
 // exact reflected sizes for representative kernel shapes so the check can never
 // silently go vacuous (e.g. reflection regressing to always-0). Each shader's
 // PushConstants struct = [one uint buffer-index per bound buffer] ++ [host tail].
@@ -564,6 +564,46 @@ TEST(OaFnMatrixBackward, LinearWeightBiasBwd_LargeShape) {
 	for (OaU32 i = 0; i < N; ++i) {
 		EXPECT_NEAR(bias_result[i], bias_ref[i], 0.1F) << "i=" << i;
 		EXPECT_TRUE(std::isfinite(bias_result[i]));
+	}
+}
+
+TEST(OaFnMatrixBackward, LinearWeightBiasBwd_TiledRouteOddShape) {
+	auto& ctx = OaContext::GetDefault();
+	constexpr OaU32 M = 67, N = 97, K = 95;
+	std::vector<float> inputData(M * K);
+	std::vector<float> gradOutputData(M * N);
+	for (OaU32 i = 0; i < M * K; ++i)
+		inputData[i] = (static_cast<float>(i % 17) - 8.0F) * 0.03125F;
+	for (OaU32 i = 0; i < M * N; ++i)
+		gradOutputData[i] = (static_cast<float>(i % 13) - 6.0F) * 0.0625F;
+
+	auto input = OaFnMatrix::FromBytes(
+		OaSpan<const OaU8>(reinterpret_cast<const OaU8*>(inputData.data()),
+			inputData.size() * sizeof(float)), {M, K});
+	auto gradOutput = OaFnMatrix::FromBytes(
+		OaSpan<const OaU8>(reinterpret_cast<const OaU8*>(gradOutputData.data()),
+			gradOutputData.size() * sizeof(float)), {M, N});
+	auto [gradWeight, gradBias] = OaFnMatrix::LinearWeightBiasBwd(input, gradOutput);
+	ASSERT_TRUE(ctx.Execute().IsOk());
+	ASSERT_TRUE(ctx.Sync().IsOk());
+
+	std::vector<float> weight(N * K), bias(N);
+	ASSERT_TRUE(OaFnMatrix::CopyToHost(
+		gradWeight, weight.data(), weight.size() * sizeof(float)).IsOk());
+	ASSERT_TRUE(OaFnMatrix::CopyToHost(
+		gradBias, bias.data(), bias.size() * sizeof(float)).IsOk());
+	for (OaU32 n = 0; n < N; ++n) {
+		float biasRef = 0.0F;
+		for (OaU32 m = 0; m < M; ++m)
+			biasRef += gradOutputData[m * N + n];
+		EXPECT_NEAR(bias[n], biasRef, 2e-4F) << "bias n=" << n;
+		for (OaU32 k = 0; k < K; ++k) {
+			float weightRef = 0.0F;
+			for (OaU32 m = 0; m < M; ++m)
+				weightRef += gradOutputData[m * N + n] * inputData[m * K + k];
+			EXPECT_NEAR(weight[n * K + k], weightRef, 2e-4F)
+				<< "weight n=" << n << " k=" << k;
+		}
 	}
 }
 
@@ -892,7 +932,7 @@ TEST(OaFnMatrixBackward, GegluBwd) {
 // Full-reduction Max backward: grad routes only to the element equal to the max.
 // (Previously this test merely checked isfinite — vacuous; the kernel was in fact
 // reading buffers/push fields the host never supplied. The SPIR-V push-block
-// assert in AddOwned now makes that class of mismatch impossible.)
+// assert in Record now makes that class of mismatch impossible.)
 //
 // The earlier "fails in-suite, passes standalone" flakiness had TWO independent
 // root causes, both fixed: (1) a real bug in the forward Max.slang cross-wave

@@ -21,23 +21,37 @@ OaSwiGLU::OaSwiGLU(OaI32 InFeatures, OaI32 IntermediateSize, bool InBias)
 }
 
 OaMatrix OaSwiGLU::Forward(const OaMatrix& InInput) {
-	// Step 1: Fused gate+up projection (if fused weights available)
+	// Step 1: one packed gate+up projection.
 	auto& gate_weight = Params_[0].Data;
 	auto& up_weight = Params_[1].Data;
 	auto& down_weight = Params_[2].Data;
+	OaI64 rows = 1;
+	for (OaI32 d = 0; d < InInput.Rank() - 1; ++d) rows *= InInput.Size(d);
+	auto flatInput = InInput.Rank() == 2
+		? InInput : InInput.Reshape(OaMatrixShape{rows, InInput.Size(InInput.Rank() - 1)});
 
-	// TODO: Use fused GEMM when FusedGateUpWeight is initialized
-	// For now, use separate GEMMs
-	auto gate = OaFnMatrix::MatMulNt(InInput, gate_weight);
-	auto up = OaFnMatrix::MatMulNt(InInput, up_weight);
+	auto packed = HasBias_
+		? OaFnMatrix::PackedLinear2(flatInput, gate_weight, up_weight,
+			Params_[3].Data, Params_[4].Data)
+		: OaFnMatrix::PackedLinear2(flatInput, gate_weight, up_weight);
+	OaI64 widths[] = {gate_weight.Size(0), up_weight.Size(0)};
+	auto gateUp = OaFnMatrix::Split(packed, OaSpan<OaI64>(widths, 2), 1);
+	auto gate = gateUp[0];
+	auto up = gateUp[1];
 
 	// Step 2: SwiGLU activation
 	auto glu = OaFnMatrix::Swiglu(gate, up);
 
 	// Step 3: Down projection
+	OaMatrix result;
 	if (HasBias_ && Params_.Size() > 5) {
 		auto& down_bias = Params_[5].Data;
-		return OaFnMatrix::Linear(glu, down_weight, down_bias);
+		result = OaFnMatrix::Linear(glu, down_weight, down_bias);
+	} else {
+		result = OaFnMatrix::MatMulNt(glu, down_weight);
 	}
-	return OaFnMatrix::MatMulNt(glu, down_weight);
+	if (InInput.Rank() == 2) return result;
+	auto outShape = InInput.GetShape();
+	outShape[outShape.Rank - 1] = down_weight.Size(0);
+	return result.Reshape(outShape);
 }

@@ -44,6 +44,8 @@ with oa.Context():
 Python uses the same compute graph and kernels as native C++; it is not a NumPy or CPU
 fallback implementation. End-to-end MNIST and NLP training examples live under
 [`Tutorial/Py`](https://github.com/realminc/oa/tree/main/Tutorial/Py).
+The current desktop matrix and preview-to-preview performance history are published in
+the [NLP benchmark](https://github.com/realminc/oa/blob/main/Docs/Benchmarks/OaNlpSuite.md).
 
 ## Links
 

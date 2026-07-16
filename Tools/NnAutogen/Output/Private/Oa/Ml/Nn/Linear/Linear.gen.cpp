@@ -34,6 +34,19 @@ OaMatrix OaLinear::Forward(const OaMatrix& InInput) {
 			return out;
 		}
 
+		if (Activation_ == OaActivation::Gelu) {
+			auto out = OaFnMatrix::LinearGelu(InInput, weight, bias);
+			if (OaFnAutograd::IsEnabled() and (InInput.RequiresGrad() or weight.RequiresGrad() or bias.RequiresGrad())) {
+				auto gradFn = OaMakeSharedPtr<OaGradLinearGelu>();
+				gradFn->Saved_         = OaVec<OaMatrix>{InInput, weight, bias};  // bias needed to recompute pre-activation in bwd
+				gradFn->SetGraphInputs(  OaVec<OaMatrix>{InInput, weight, bias});
+				gradFn->SequenceNr_    = OaFnAutograd::NextSeq();
+				gradFn->OutputShape_   = out.GetShape();  // tape normalizes viewed upstream (e.g. 3D loss reshape) back to [rows,out] before LinearBwd
+				out.MutAutograd().GradFn = gradFn;
+			}
+			return out;
+		}
+
 		auto out = OaFnMatrix::Linear(InInput, weight, bias);
 		if (OaFnAutograd::IsEnabled() and (InInput.RequiresGrad() or weight.RequiresGrad() or bias.RequiresGrad())) {
 			auto gradFn = OaMakeSharedPtr<OaGradLinear>();
@@ -42,9 +55,6 @@ OaMatrix OaLinear::Forward(const OaMatrix& InInput) {
 			gradFn->SequenceNr_    = OaFnAutograd::NextSeq();
 			gradFn->OutputShape_   = out.GetShape();  // tape normalizes viewed upstream (e.g. 3D loss reshape) back to [rows,out] before LinearBwd
 			out.MutAutograd().GradFn = gradFn;
-		}
-		if (Activation_ == OaActivation::Gelu) {
-			return OaFnMatrix::Gelu(out);
 		}
 		return out;
 	}

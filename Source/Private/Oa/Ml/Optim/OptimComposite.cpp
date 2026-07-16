@@ -47,6 +47,13 @@ void OaOptimizerComposite::Step() {
 	}
 }
 
+void OaOptimizerComposite::NotifyProgramReplay(OaU64 InCount) {
+	Step_ += InCount;
+	for (auto& child : Children_) {
+		child->NotifyProgramReplay(InCount);
+	}
+}
+
 void OaOptimizerComposite::ZeroGrad() {
 	for (auto& child : Children_) {
 		child->ZeroGrad();

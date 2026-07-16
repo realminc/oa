@@ -2,7 +2,7 @@
 //
 // Parses just enough of a compute module to compute the exact byte size of its
 // PushConstant block. This backs the bindless buffer-binding contract assert in
-// OaContext::AddOwned: the GPU push the runtime assembles is
+// OaContext::Record: the GPU push the runtime assembles is
 //   [numBuffers * 4 bytes of auto-prepended buffer indices] ++ [host push tail]
 // and that must exactly fill the shader's declared PushConstants struct. A wrong
 // buffer count (the recurring bug class: SwigluBwd 6→5, MaxPool2dBwd 5→3,
@@ -163,4 +163,14 @@ OaU32 OaSpvPushConstantBlockSizeByName(const char* InName) {
 		cache[InName] = size;
 	}
 	return size;
+}
+
+OaU64 OaSpvContentHash(const OaU8* InSpirv, OaU32 InSizeBytes) {
+	if (InSpirv == nullptr or InSizeBytes == 0U) return 0U;
+	OaU64 hash = 0xcbf29ce484222325ULL;
+	for (OaU32 i = 0; i < InSizeBytes; ++i) {
+		hash ^= InSpirv[i];
+		hash *= 0x100000001b3ULL;
+	}
+	return hash;
 }

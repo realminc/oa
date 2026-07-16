@@ -564,7 +564,7 @@ private:
 // ─── OaCbSummary ─────────────────────────────────────────────────────────
 //
 // Prints a final training summary at OnTrainEnd: loss, wall latency/throughput,
-// GPU mean/p50/p95, CPU overhead, and total duration. Optionally tracks
+// GPU mean/p50/p95, the wall-to-GPU timing gap, and total duration. Optionally tracks
 // initial loss for comparison. Example output:
 //
 //   Summary:
@@ -599,9 +599,9 @@ public:
 		const OaF64 gpuSps = gpuMs > 0.0
 			? static_cast<OaF64>(InIter.Cfg().BatchSize) / (gpuMs / 1000.0) : 0.0;
 		const OaF64 gpuUps = gpuSps * static_cast<OaF64>(InIter.Cfg().SequenceLength);
-		const OaF64 rawCpuOverhead = gpuSps > 0.0 ? 100.0 * (1.0 - wallSps / gpuSps) : 0.0;
-		const OaF64 cpuOverhead = rawCpuOverhead < 0.0 ? 0.0
-			: (rawCpuOverhead > 100.0 ? 100.0 : rawCpuOverhead);
+		const OaF64 rawWallGpuGap = gpuSps > 0.0 ? 100.0 * (1.0 - wallSps / gpuSps) : 0.0;
+		const OaF64 wallGpuGap = rawWallGpuGap < 0.0 ? 0.0
+			: (rawWallGpuGap > 100.0 ? 100.0 : rawWallGpuGap);
 
 		char spsBuf[32];
 		auto FormatSps = [](OaF64 sps, char* buf, size_t sz) -> const char* {
@@ -653,7 +653,7 @@ public:
 						FormatSps(InIter.GpuSourceUnitsPerSecond(), spsBuf, sizeof(spsBuf)),
 						InIter.Cfg().SourceUnit.CStr());
 				}
-				std::printf(" · CPU overhead %.0f%%\n", cpuOverhead);
+				std::printf(" · wall-GPU gap %.0f%%\n", wallGpuGap);
 			}
 		std::printf("  Run: %.2fs · %lld steps · batch %d",
 			totalSec, static_cast<long long>(InIter.StepCount()), InIter.Cfg().BatchSize);

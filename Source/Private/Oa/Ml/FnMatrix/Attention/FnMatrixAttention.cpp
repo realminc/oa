@@ -41,6 +41,13 @@ OaMatrix OaFnMatrix::SplitHeads(
 	const OaU32 s = static_cast<OaU32>(InSeqLen);
 	const OaU32 h = static_cast<OaU32>(InNumHeads);
 	const OaU32 p = static_cast<OaU32>(InX.Size(1) / InNumHeads);
+	// With one head, [B*S,D] and [B*H,S,D/H] == [B,S,D] have identical
+	// contiguous storage. Keep this as a differentiable metadata-only view. The
+	// canonical NLP tutorials use one head, so this removes three forward copies
+	// for Q/K/V and their three inverse backward copies without a new kernel.
+	if (InNumHeads == 1) {
+		return OaFnMatrix::Reshape(InX, OaMatrixShape{b, s, p});
+	}
 	auto out = OaFnMatrix::Empty(OaMatrixShape{b * h, s, p}, InX.GetDtype());
 	struct { OaU32 Batch, SeqLen, NumHeads, HeadDim; } push{b, s, h, p};
 	OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Write};
@@ -69,6 +76,11 @@ OaMatrix OaFnMatrix::MergeHeads(const OaMatrix& InX, OaI32 InBatch, OaI32 InSeqL
 	const OaU32 s = static_cast<OaU32>(InSeqLen);
 	const OaU32 h = static_cast<OaU32>(InNumHeads);
 	const OaU32 p = static_cast<OaU32>(InX.Size(2));
+	// Exact inverse of the one-head SplitHeads view above. No permutation exists
+	// when H == 1, so materializing a copy is unnecessary.
+	if (InNumHeads == 1) {
+		return OaFnMatrix::Reshape(InX, OaMatrixShape{b * s, p});
+	}
 	auto out = OaFnMatrix::Empty(OaMatrixShape{b * s, h * p}, InX.GetDtype());
 	struct { OaU32 Batch, SeqLen, NumHeads, HeadDim; } push{b, s, h, p};
 	OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Write};

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Oa/Core/Types.h>
+#include <Oa/Runtime/Allocator.h>
 
 class OaComputeGraph;
 class OaEngine;
@@ -21,6 +22,23 @@ enum class OaContextMatMulPrecision : OaU8 {
 	Auto,
 	Fp32,
 	Bf16,
+};
+
+class OaContextExecutionStats {
+public:
+	OaU32 NodeCount = 0;
+	OaU32 GraphCount = 0;
+	OaU32 CompileCacheHits = 0;
+	OaU32 BoundaryBarrierCount = 0;
+	OaU32 HostBarrierCount = 0;
+	OaF64 CompileMs = 0.0;
+	OaF64 RecordMs = 0.0;
+	OaF64 SubmitMs = 0.0;
+	OaF64 WaitMs = 0.0;
+
+	[[nodiscard]] OaF64 CpuMs() const noexcept {
+		return CompileMs + RecordMs + SubmitMs + WaitMs;
+	}
 };
 
 struct OaClearColor {
@@ -45,4 +63,16 @@ struct OaBlitDesc {
 	OaFilter         Filter  = OaFilter::Linear;
 	OaRect2D         SrcRect = {};
 	OaRect2D         DstRect = {};
+};
+
+// Pending access state carried across secondary-command-buffer boundaries in a
+// context-owned batch. The primary command buffer emits a barrier only for a
+// buffer with a real cross-graph hazard; unrelated buffers remain pending until
+// a later graph actually consumes or overwrites them.
+class OaContextBatchBufferState {
+public:
+	OaVkBuffer Buffer;
+	OaBool Read = false;
+	OaBool Write = false;
+	OaBool IndirectRead = false;
 };

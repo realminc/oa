@@ -45,6 +45,32 @@ TEST_VK(AttentionTest, SplitMergeHeadsRoundtrip) {
 	}
 }
 
+TEST_VK(AttentionTest, SingleHeadSplitMergeIsDifferentiableView) {
+	auto& ctx = OaContext::GetDefault();
+	OaContext::Scope scope(ctx);
+
+	auto input = OaFnMatrix::RandXavier({6, 4});
+	input.SetRequiresGrad(true);
+	OaGradientTape tape;
+	auto split = OaFnMatrix::SplitHeads(input, 2, 3, 1);
+	auto merged = OaFnMatrix::MergeHeads(split, 2, 3, 1);
+
+	EXPECT_EQ(split.GetShape(), (OaMatrixShape{2, 3, 4}));
+	EXPECT_EQ(merged.GetShape(), input.GetShape());
+	tape.Backward(OaFnMatrix::Sum(merged));
+	ASSERT_TRUE(ctx.Execute().IsOk());
+	ASSERT_TRUE(ctx.Sync().IsOk());
+
+	for (OaI64 i = 0; i < input.NumElements(); ++i) {
+		EXPECT_FLOAT_EQ(merged.DataAs<const OaF32>()[i], input.DataAs<const OaF32>()[i]);
+	}
+	auto grad = input.GradMatrix();
+	ASSERT_FALSE(grad.IsEmpty());
+	for (OaI64 i = 0; i < grad.NumElements(); ++i) {
+		EXPECT_NEAR(grad.DataAs<const OaF32>()[i], 1.0F, 1e-6F);
+	}
+}
+
 TEST_VK(AttentionTest, SplitMergeHeadsBackwardIsIdentity) {
 	auto& ctx = OaContext::GetDefault();
 	OaContext::Scope scope(ctx);
@@ -79,6 +105,113 @@ TEST_VK(AttentionTest, BmmBackwardCrossRow) {
 	ASSERT_FALSE(grad.IsEmpty());
 	EXPECT_NEAR(grad.DataAs<const OaF32>()[0], 0.5F, 1e-6F);
 	EXPECT_NEAR(grad.DataAs<const OaF32>()[1], 0.5F, 1e-6F);
+}
+
+TEST_VK(AttentionTest, FlashCausalForwardMatchesStandard) {
+	auto& ctx = OaContext::GetDefault();
+	OaContext::Scope scope(ctx);
+	constexpr OaI32 batchHeads = 4, seqLen = 5, headDim = 8;
+	auto q = OaFnMatrix::RandN({batchHeads, seqLen, headDim});
+	auto k = OaFnMatrix::RandN({batchHeads, seqLen, headDim});
+	auto v = OaFnMatrix::RandN({batchHeads, seqLen, headDim});
+	const OaF32 scale = 1.0F / std::sqrt(static_cast<OaF32>(headDim));
+	auto mask = OaFnMatrix::CausalMask(OaFnMatrix::Zeros(
+		{batchHeads, seqLen, seqLen}, OaScalarType::Float32));
+	auto score = OaFnMatrix::Bmm(q, OaFnMatrix::Transpose(k, 1, 2));
+	auto probability = OaFnMatrix::SoftmaxScaledMasked(
+		score.Reshape({batchHeads * seqLen, seqLen}),
+		mask.Reshape({batchHeads * seqLen, seqLen}), scale);
+	auto standard = OaFnMatrix::Bmm(
+		probability.Reshape({batchHeads, seqLen, seqLen}), v);
+	auto flash = OaFnMatrix::FlashAttentionCausal(q, k, v, scale);
+	ASSERT_TRUE(ctx.Execute().IsOk());
+	ASSERT_TRUE(ctx.Sync().IsOk());
+	ASSERT_EQ(flash.GetShape(), standard.GetShape());
+	for (OaI64 i = 0; i < flash.NumElements(); ++i) {
+		EXPECT_NEAR(flash.DataAs<const OaF32>()[i], standard.DataAs<const OaF32>()[i], 2e-5F)
+			<< "index " << i;
+	}
+}
+
+TEST_VK(AttentionTest, FlashCausalBackwardMatchesStandard) {
+	auto& ctx = OaContext::GetDefault();
+	OaContext::Scope scope(ctx);
+	constexpr OaI32 batchHeads = 2, seqLen = 4, headDim = 4;
+	const OaF32 scale = 1.0F / std::sqrt(static_cast<OaF32>(headDim));
+	auto q0 = OaFnMatrix::RandN({batchHeads, seqLen, headDim});
+	auto k0 = OaFnMatrix::RandN({batchHeads, seqLen, headDim});
+	auto v0 = OaFnMatrix::RandN({batchHeads, seqLen, headDim});
+	auto gradOutput = OaFnMatrix::RandN({batchHeads, seqLen, headDim});
+	ASSERT_TRUE(ctx.Execute().IsOk());
+	ASSERT_TRUE(ctx.Sync().IsOk());
+	ctx.Clear();
+
+	auto qStandard = q0.Clone(); qStandard.SetRequiresGrad(true);
+	auto kStandard = k0.Clone(); kStandard.SetRequiresGrad(true);
+	auto vStandard = v0.Clone(); vStandard.SetRequiresGrad(true);
+	OaGradientTape standardTape;
+	auto mask = OaFnMatrix::CausalMask(OaFnMatrix::Zeros(
+		{batchHeads, seqLen, seqLen}, OaScalarType::Float32));
+	auto score = OaFnMatrix::Bmm(qStandard, OaFnMatrix::Transpose(kStandard, 1, 2));
+	auto probability = OaFnMatrix::SoftmaxScaledMasked(
+		score.Reshape({batchHeads * seqLen, seqLen}),
+		mask.Reshape({batchHeads * seqLen, seqLen}), scale);
+	auto standard = OaFnMatrix::Bmm(
+		probability.Reshape({batchHeads, seqLen, seqLen}), vStandard);
+	standardTape.Backward(OaFnMatrix::Sum(OaFnMatrix::Mul(standard, gradOutput)));
+	ASSERT_TRUE(ctx.Execute().IsOk());
+	ASSERT_TRUE(ctx.Sync().IsOk());
+	auto dqReference = qStandard.GradMatrix().Clone();
+	auto dkReference = kStandard.GradMatrix().Clone();
+	auto dvReference = vStandard.GradMatrix().Clone();
+	ASSERT_TRUE(ctx.Execute().IsOk());
+	ASSERT_TRUE(ctx.Sync().IsOk());
+	ctx.Clear();
+
+	auto qFlash = q0.Clone(); qFlash.SetRequiresGrad(true);
+	auto kFlash = k0.Clone(); kFlash.SetRequiresGrad(true);
+	auto vFlash = v0.Clone(); vFlash.SetRequiresGrad(true);
+	OaGradientTape flashTape;
+	auto flash = OaFnMatrix::FlashAttentionCausal(qFlash, kFlash, vFlash, scale);
+	flashTape.Backward(OaFnMatrix::Sum(OaFnMatrix::Mul(flash, gradOutput)));
+	ASSERT_TRUE(ctx.Execute().IsOk());
+	ASSERT_TRUE(ctx.Sync().IsOk());
+	const OaMatrix references[] = {dqReference, dkReference, dvReference};
+	const OaMatrix actual[] = {qFlash.GradMatrix(), kFlash.GradMatrix(), vFlash.GradMatrix()};
+	for (OaI32 matrix = 0; matrix < 3; ++matrix) {
+		ASSERT_FALSE(actual[matrix].IsEmpty());
+		for (OaI64 i = 0; i < actual[matrix].NumElements(); ++i) {
+			EXPECT_NEAR(actual[matrix].DataAs<const OaF32>()[i],
+				references[matrix].DataAs<const OaF32>()[i], 8e-5F)
+				<< "gradient " << matrix << " index " << i;
+		}
+	}
+}
+
+TEST_VK(AttentionTest, FlashRejectsUnverifiedBfloat16Storage) {
+	auto q = OaFnMatrix::Empty({1, 4, 4}, OaScalarType::BFloat16);
+	EXPECT_THROW((void)OaFnMatrix::FlashAttentionCausal(q, q, q, 0.5F), std::invalid_argument);
+}
+
+TEST_VK(AttentionTest, MultiHeadBackendPolicyIsExplicit) {
+	auto& ctx = OaContext::GetDefault();
+	OaContext::Scope scope(ctx);
+	OaMultiHeadAttention attention(8, 2, 0.0F, true, OaAttentionBackend::Auto);
+	attention.SetSeqLen(4);
+	auto output = attention.Forward(OaFnMatrix::RandN({8, 8}));
+	ASSERT_TRUE(ctx.Execute().IsOk());
+	ASSERT_TRUE(ctx.Sync().IsOk());
+	EXPECT_EQ(output.GetShape(), (OaMatrixShape{8, 8}));
+	EXPECT_EQ(attention.LastBackend(), OaAttentionBackend::Flash);
+	attention.SetBackend(OaAttentionBackend::Standard);
+	(void)attention.Forward(OaFnMatrix::RandN({8, 8}));
+	EXPECT_EQ(attention.LastBackend(), OaAttentionBackend::Standard);
+	attention.SetBackend(OaAttentionBackend::Auto);
+	{
+		OaGradientTape trainingTape;
+		(void)attention.Forward(OaFnMatrix::RandN({8, 8}));
+	}
+	EXPECT_EQ(attention.LastBackend(), OaAttentionBackend::Standard);
 }
 
 TEST_VK(AttentionTest, MultiHeadCausalForwardMatchesCpuReference) {

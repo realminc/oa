@@ -21,6 +21,7 @@
 #include <Oa/Runtime/Dispatch.h>
 #include <Oa/Runtime/ImageDispatch.h>
 #include <Oa/Runtime/ComputeGraph.h>
+#include <Oa/Runtime/Dnn.h>
 
 #include <Oa/Runtime/Persistent.h>
 #include <Oa/Runtime/App.h>

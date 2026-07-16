@@ -7,16 +7,18 @@
 // **Usage**:
 //   OaMlTraining train(model, optimizer, config);
 //   while (train.Step()) {
-//       auto loss = model->Forward(batch);
-//       loss.Backward();
+//       OaGradientTape tape;
+//       auto loss = Loss(model->Forward(batch), target);
+//       tape.Backward(loss);
 //       train.Next(loss);
 //   }
 //   train.Finish();
 //
 // Or even simpler with the macro:
 //   OA_ML_TRAIN(model, opt, steps, batch) {
-//       auto loss = model->Forward(GetBatch());
-//       loss.Backward();
+//       OaGradientTape tape;
+//       auto loss = Loss(model->Forward(GetBatch()), target);
+//       tape.Backward(loss);
 //       OA_ML_NEXT(loss);
 //   }
 //
@@ -30,6 +32,7 @@
 
 #include <Oa/Runtime/Runtime.h>
 #include <Oa/Ml/ItTraining.h>
+#include <Oa/Ml/TrainingProgram.h>
 #include <Oa/Ml/Callbacks.h>
 #include <Oa/Ml/Metric.h>
 #include <Oa/Ml/Optim.h>
@@ -238,8 +241,10 @@ private:
 // Simple training loop macro
 // Usage:
 //   OA_ML_TRAIN(model, optimizer, 1000, 64) {
-//       auto loss = model->Forward(batch);
-//       loss.Backward();
+//       OaGradientTape tape;
+//       auto loss = Loss(model->Forward(batch), target);
+//       tape.Backward(loss);
+//       OA_ML_NEXT(loss);
 //   }
 #define OA_ML_TRAIN(model, optimizer, steps, batch) \
 	OaMlTraining __ml_train(model, optimizer, OaMlTrainingConfig{ \

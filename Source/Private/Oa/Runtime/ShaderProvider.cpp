@@ -147,9 +147,7 @@ static const OaSpvEntry* FindExternal(const char* InName) {
 // PUBLIC API IMPLEMENTATION
 // ============================================================================
 
-void OaShaderProviderInit(const OaShaderProviderConfig* InConfig) {
-	std::lock_guard<std::mutex> lock(g_State.Mutex);
-	
+static void OaShaderProviderInitLocked(const OaShaderProviderConfig* InConfig) {
 	if (g_State.Initialized) {
 		return; // Already initialized
 	}
@@ -199,6 +197,11 @@ void OaShaderProviderInit(const OaShaderProviderConfig* InConfig) {
 	}
 }
 
+void OaShaderProviderInit(const OaShaderProviderConfig* InConfig) {
+	std::lock_guard<std::mutex> lock(g_State.Mutex);
+	OaShaderProviderInitLocked(InConfig);
+}
+
 void OaShaderProviderShutdown() {
 	std::lock_guard<std::mutex> lock(g_State.Mutex);
 	
@@ -227,13 +230,11 @@ const OaSpvEntry* OaShaderProviderFind(const char* InName) {
 	if (!InName) {
 		return nullptr;
 	}
-	
+
 	std::lock_guard<std::mutex> lock(g_State.Mutex);
-	
-	// Auto-initialize if needed
-	if (!g_State.Initialized) {
-		OaShaderProviderInit(nullptr);
-	}
+	// Initialize under the already-owned lock. Calling the public Init here used
+	// to acquire this non-recursive mutex twice and deadlock on first lookup.
+	OaShaderProviderInitLocked(nullptr);
 	
 	// Check cache first
 	OaString nameStr(InName);

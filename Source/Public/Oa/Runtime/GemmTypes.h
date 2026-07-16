@@ -2,15 +2,14 @@
 
 #include <Oa/Core/Types.h>
 
-// Runtime GEMM routing/cache data types. Public runtime headers use these for
-// pipeline-cache storage; high-level users should reach GEMM through
-// OaFnMatrix::MatMulNt / Linear.
+// Runtime GEMM routing/cache data types. High-level users should reach GEMM
+// through OaFnMatrix::MatMulNt / Linear.
 
 // bf16 is the sole tensor-core input dtype. fp16 was removed: its 5-bit
 // exponent (range ±15) collapses the SSM scan and is unsafe for training,
 // whereas bf16 keeps fp32's 8-bit exponent range. Enum values are left with
 // gaps where the fp16 variants were removed so the surviving bf16 values keep
-// their serialized identity (route cache / pipeline cache).
+// their serialized identity in the route-cache contract.
 enum class OaGemmKernel : OaU8 {
 	Auto              = 0,
 	// IDs 1-2 retired: were CoopMatBf16, CoopMatBf16Sk (old CoopMat1 BF16).
@@ -27,13 +26,15 @@ enum class OaGemmKernel : OaU8 {
 	GemmCmSgBf16          = 11,
 	// Workgroup-scope KHR CoopMat GEMM: 32x32x16 fragments, 64x64 tile.
 	GemmCmWgBf16        = 12,
+	// Correctness-complete arbitrary-stride / strided-batch fallback. Tuned
+	// contiguous families remain preferred when their stricter contract holds.
+	StridedFp32         = 13,
 };
 
 // Dispatch style used by OaGemmRouter. Standard = tiled (Gx × Gy grid),
-// StreamK = two-pass split-K with a reduce pass, CoopVec = M=1 GEMV path.
+// CoopVec = M=1 GEMV path.
 enum class OaGemmPath : OaU8 {
 	Standard,
-	StreamK,
 	CoopVec,
 };
 
@@ -57,38 +58,33 @@ enum class OaGemmEpilogue : OaU8 {
 	SiluDual,
 };
 
+// Stable identity for one compiled matmul contract. The generator will derive
+// this from the canonical variant name; it is deliberately distinct from
+// OaGemmKernel because several tile/epilogue variants may share one family.
+using OaMatmulVariantId = OaU64;
+constexpr OaMatmulVariantId OaInvalidMatmulVariantId = 0U;
+
+[[nodiscard]] constexpr OaMatmulVariantId OaMatmulVariantIdFromName(const char* InName) {
+	OaMatmulVariantId hash = 0xcbf29ce484222325ULL;
+	for (const char* p = InName; p != nullptr and *p != '\0'; ++p) {
+		hash ^= static_cast<OaU8>(*p);
+		hash *= 0x100000001b3ULL;
+	}
+	return hash;
+}
+
 // One picked variant for a problem. KernelName is the registry dispatch
-// string; Kernel is the legacy enum kept for pipeline-cache storage; Path
-// and ActualPrec describe the dispatch shape; Gx/Gy is the workgroup grid.
+// string; Kernel is the coarse route family; Path and ActualPrec describe the
+// dispatch shape; Gx/Gy is the workgroup grid.
 struct OaGemmRouteResult {
-	const char*      KernelName;
-	OaGemmKernel     Kernel;
-	OaGemmPath       Path;
-	OaGemmPrecision  ActualPrec;
-	OaU32            Gx;
-	OaU32            Gy;
-};
-
-struct OaGemmShapeKey {
-	OaU32 M, N, K;
-
-	bool operator==(const OaGemmShapeKey& InOther) const noexcept {
-		return M == InOther.M && N == InOther.N && K == InOther.K;
-	}
-};
-
-struct OaGemmShapeKeyHash {
-	OaU64 operator()(const OaGemmShapeKey& InKey) const noexcept {
-		OaU64 h = 0xcbf29ce484222325ULL;
-		auto mix = [&](OaU32 v) {
-			h ^= v;
-			h *= 0x100000001b3ULL;
-		};
-		mix(InKey.M);
-		mix(InKey.N);
-		mix(InKey.K);
-		return h;
-	}
+	OaMatmulVariantId Variant = OaInvalidMatmulVariantId;
+	const char*      KernelName = nullptr;
+	OaGemmKernel     Kernel = OaGemmKernel::Auto;
+	OaGemmPath       Path = OaGemmPath::Standard;
+	OaGemmPrecision  ActualPrec = OaGemmPrecision::Auto;
+	OaU32            Gx = 0;
+	OaU32            Gy = 0;
+	OaU32            Gz = 1;
 };
 
 // Route cache key for learning per-device variant selection policy
@@ -98,17 +94,25 @@ struct OaRouteCacheKey {
 	OaU32            DriverId;
 	OaU64            DriverVersionHash;
 	OaU64            ShaderBuildId;
-	OaGemmKernel     Variant;
 	// Exact dimensions are intentional. Log2 buckets allowed an aligned tuned
 	// winner to be replayed for an unaligned shape in the same bucket.
 	OaU32            M;
 	OaU32            N;
 	OaU32            K;
+	OaU32            BatchCount = 1;
+	OaU32            AOffset = 0, ARowStride = 1, AColStride = 1, ABatchStride = 0;
+	OaU32            BOffset = 0, BRowStride = 1, BColStride = 1, BBatchStride = 0;
+	OaU32            COffset = 0, CRowStride = 1, CColStride = 1, CBatchStride = 0;
 	OaGemmPrecision  APrecision;
 	OaGemmPrecision  BPrecision;
+	OaGemmPrecision  OutputPrecision;
+	OaGemmPrecision  RequestedPrecision;
 	OaGemmEpilogue   Epilogue;
+	bool             AContiguous;
+	bool             BContiguous;
+	bool             BTransposed;
+	bool             RequiresPreActivation;
 	bool             Training;
-	bool             UseTMA;  // TMA optimization flag (Blackwell-specific)
 
 	bool operator==(const OaRouteCacheKey& InOther) const noexcept {
 		return VendorId == InOther.VendorId
@@ -116,15 +120,26 @@ struct OaRouteCacheKey {
 			&& DriverId == InOther.DriverId
 			&& DriverVersionHash == InOther.DriverVersionHash
 			&& ShaderBuildId == InOther.ShaderBuildId
-			&& Variant == InOther.Variant
 			&& M == InOther.M
 			&& N == InOther.N
 			&& K == InOther.K
+			&& BatchCount == InOther.BatchCount
+			&& AOffset == InOther.AOffset && ARowStride == InOther.ARowStride
+			&& AColStride == InOther.AColStride && ABatchStride == InOther.ABatchStride
+			&& BOffset == InOther.BOffset && BRowStride == InOther.BRowStride
+			&& BColStride == InOther.BColStride && BBatchStride == InOther.BBatchStride
+			&& COffset == InOther.COffset && CRowStride == InOther.CRowStride
+			&& CColStride == InOther.CColStride && CBatchStride == InOther.CBatchStride
 			&& APrecision == InOther.APrecision
 			&& BPrecision == InOther.BPrecision
+			&& OutputPrecision == InOther.OutputPrecision
+			&& RequestedPrecision == InOther.RequestedPrecision
 			&& Epilogue == InOther.Epilogue
-			&& Training == InOther.Training
-			&& UseTMA == InOther.UseTMA;
+			&& AContiguous == InOther.AContiguous
+			&& BContiguous == InOther.BContiguous
+			&& BTransposed == InOther.BTransposed
+			&& RequiresPreActivation == InOther.RequiresPreActivation
+			&& Training == InOther.Training;
 	}
 };
 
@@ -143,22 +158,30 @@ struct OaRouteCacheKeyHash {
 		mix32(InKey.DriverId);
 		mix(InKey.DriverVersionHash);
 		mix(InKey.ShaderBuildId);
-		mix32(static_cast<OaU32>(InKey.Variant));
 		mix32(InKey.M);
 		mix32(InKey.N);
 		mix32(InKey.K);
+		mix32(InKey.BatchCount);
+		mix32(InKey.AOffset); mix32(InKey.ARowStride); mix32(InKey.AColStride); mix32(InKey.ABatchStride);
+		mix32(InKey.BOffset); mix32(InKey.BRowStride); mix32(InKey.BColStride); mix32(InKey.BBatchStride);
+		mix32(InKey.COffset); mix32(InKey.CRowStride); mix32(InKey.CColStride); mix32(InKey.CBatchStride);
 		mix32(static_cast<OaU32>(InKey.APrecision));
 		mix32(static_cast<OaU32>(InKey.BPrecision));
+		mix32(static_cast<OaU32>(InKey.OutputPrecision));
+		mix32(static_cast<OaU32>(InKey.RequestedPrecision));
 		mix32(static_cast<OaU32>(InKey.Epilogue));
+		mix32(InKey.AContiguous ? 1 : 0);
+		mix32(InKey.BContiguous ? 1 : 0);
+		mix32(InKey.BTransposed ? 1 : 0);
+		mix32(InKey.RequiresPreActivation ? 1 : 0);
 		mix32(InKey.Training ? 1 : 0);
-		mix32(InKey.UseTMA ? 1 : 0);
 		return h;
 	}
 };
 
 // Route cache value storing measured profitability
 struct OaRouteCacheValue {
-	OaGemmKernel Winner;
+	OaMatmulVariantId WinnerVariant;
 	float        MedianGpuTimeMs;
 	float        P95GpuTimeMs;
 	OaU32        SampleCount;

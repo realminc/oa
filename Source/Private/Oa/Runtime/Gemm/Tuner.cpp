@@ -2,15 +2,16 @@
 // Runtime GEMM kernel benchmarking and cache population
 //
 // BENCHMARKS THE REAL PRODUCTION PATH:
-//   OaMatrix + OaFnMatrix::MatMulNt -> OaContext::AddMatMul(OaMatrix&) ->
-//   OaGemmRouter::Select -> GemmCmSgBf16 / GemmCmWgBf16 (KHR CoopMat)
+//   OaMatrix + OaFnMatrix::{MatMulNt,Linear,LinearRelu,LinearGelu}
+//   -> OaContext::Record(OaComputeDispatchDesc) -> immutable OaMatmulPlan
+//   -> the exact raw or fused generated candidate
 //
 // This is the SAME path TutorialCoreMatMulIntro uses.
 
 #include <Oa/Runtime/Gemm/Tuner.h>
 #include <Oa/Runtime/Gemm/Router.h>
-#include <Oa/Runtime/Gemm/Cache.h>
 #include <Oa/Core/FnMatrix.h>
+#include <Oa/Ml/FnMatrix.h>
 #include <Oa/Runtime/Context.h>
 #include <Oa/Runtime/Engine.h>
 #include <Oa/Runtime/GemmRouteCache.h>
@@ -18,124 +19,118 @@
 #include <Oa/Runtime/GpuTimer.h>
 #include <Oa/Core/Log.h>
 
+#include <algorithm>
+#include <cmath>
+#include <vector>
+
+static constexpr OaF32 kInvalidMeasurementMs = 1e9F;
+
 // Candidate entry for benchmarking
 struct Candidate {
 	const OaMatmulVariant* Variant;
-	OaGemmKernel Kernel;
 	const char* Name;
 };
 
-// Collect all raw-GEMM candidates (no bias, no activation) whose caps are
+// Collect candidates for one exact production contract whose caps are
 // satisfied on the current device.
 static OaVec<Candidate> CollectCandidates(
 	const OaComputeEngine& InRt,
-	OaU32 InM, OaU32 InN, OaU32 InK)
+	const OaMatmulProblem& InProblem)
 {
 	OaVec<Candidate> candidates;
-	const OaU64 caps = InRt.GemmCapsMask();
 
 	for (const auto& v : OaMatmulRegistry::All()) {
-		// Skip fused-op kernels. Fused kernels reuse raw kernel enums in the
-		// registry, so we filter by name prefix instead of enum value.
-		{
-			OaStringView name(v.KernelName);
-			if (name.find("Bias") != OaStringView::Npos ||
-			    name.find("Silu") != OaStringView::Npos ||
-			    name.find("SwiGlu") != OaStringView::Npos) {
-				continue;
-			}
-		}
-		// Skip persistent variants — they need special grid logic and
-		// the OaContext path doesn't handle persistent dispatch yet.
-		if (v.Persistent) {
-			continue;
-		}
+		if (v.Epilogue != InProblem.Epilogue) continue;
 		// Skip Naive for non-trivial sizes (always slower, wastes time)
-		if (v.Kernel == OaGemmKernel::Naive && InM * InN >= 64) {
+		if (v.Kernel == OaGemmKernel::Naive && InProblem.M * InProblem.N >= 64) {
 			continue;
 		}
-		// CoopVec only for M==1
-		if (v.Path == OaGemmPath::CoopVec && InM != 1) {
-			continue;
-		}
-		// StreamK needs 2-pass overhead; skip for microbenchmarking
-		if (v.Path == OaGemmPath::StreamK) {
-			continue;
-		}
-		// Cap check
-		if (!OaMatmulRegistry::CapsSatisfy(caps, v.RequiredCapsMask)) {
-			continue;
-		}
-		candidates.PushBack({&v, v.Kernel, v.KernelName});
+		if (!OaGemmRouter::IsVariantLegal(InRt, v, InProblem)) continue;
+		candidates.PushBack({&v, v.KernelName});
 	}
 
 	return candidates;
 }
 
 // Benchmark a single candidate through the REAL production path.
-// Creates OaMatrix objects, uses OaFnMatrix::MatMulNt (which routes through
-// OaContext::AddMatMul), and measures the submitted graph with GPU timestamps.
+// Creates OaMatrix objects, uses the public OaFnMatrix operation matching the
+// requested epilogue, and measures the submitted graph with GPU timestamps.
 //
 // Returns average GPU execution time per iteration (ms).
 static OaF32 BenchmarkCandidate(
 	OaComputeEngine& InRt,
-	OaU32 InM, OaU32 InN, OaU32 InK,
-	OaGemmKernel InKernel,
+	const OaMatmulProblem& InProblem,
+	OaMatmulVariantId InVariant,
 	OaU32 InWarmIterations,
 	OaU32 InBenchIterations)
 {
 	if (InBenchIterations == 0U) {
-		return 1e9F;
+		return kInvalidMeasurementMs;
 	}
 
-	// Create a temporary context backed by this engine.
-	// NOTE: We do NOT try to save/restore the old default via GetDefault()
-	// because the caller may not have one (e.g. TestGemmKernels).
+	// Create an isolated temporary context backed by this engine. Engine
+	// initialization establishes a default context; preserve it so running the
+	// tuner cannot invalidate the caller's subsequent work or test teardown.
+	OaContext* previousCtx = &OaContext::GetDefault();
 	OaContext* ctx = OaContext::Create(&InRt);
 	OaContext::SetDefault(ctx);
 
 	// Force the router to pick this specific kernel for the shape.
 	// OaFnMatrix::MatMulNt -> OaContext::AddMatMul -> OaGemmRouter::Select
 	// will see the ForceKernel entry and route accordingly.
-	OaGemmRouter::ForceKernel(InM, InN, InK, InKernel);
+	OaGemmRouter::ForceVariant(InProblem.M, InProblem.N, InProblem.K, InVariant);
 
 	// Create input matrices. B is [N,K] transposed (OA convention).
-	OaMatrix a = OaFnMatrix::Rand(OaMatrixShape{InM, InK});
-	OaMatrix b = OaFnMatrix::Rand(OaMatrixShape{InN, InK});
+	OaMatrix a = OaFnMatrix::Rand(OaMatrixShape{InProblem.M, InProblem.K});
+	OaMatrix b = OaFnMatrix::Rand(OaMatrixShape{InProblem.N, InProblem.K});
+	OaMatrix bias;
+	if (InProblem.Epilogue != OaGemmEpilogue::None) {
+		bias = OaFnMatrix::Rand(OaMatrixShape{InProblem.N});
+	}
+	auto run = [&]() -> OaMatrix {
+		switch (InProblem.Epilogue) {
+			case OaGemmEpilogue::None: return OaFnMatrix::MatMulNt(a, b);
+			case OaGemmEpilogue::Bias: return OaFnMatrix::Linear(a, b, bias);
+			case OaGemmEpilogue::BiasRelu: return OaFnMatrix::LinearRelu(a, b, bias);
+			case OaGemmEpilogue::BiasGelu: return OaFnMatrix::LinearGelu(a, b, bias);
+			default: return {};
+		}
+	};
 
 	OaGpuTimer timer;
 	if (not timer.Init(InRt, "gemm_tuner_candidate").IsOk()) {
 		OaGemmRouter::ClearForced();
-		OaContext::SetDefault(nullptr);
+		OaContext::SetDefault(previousCtx);
 		delete ctx;
-		return 1e9F;
+		return kInvalidMeasurementMs;
 	}
 
 	// Warmup: let the pipeline and clocks settle. ExecuteAsync submits the exact
 	// production graph path but does not contaminate the measured samples.
 	for (OaU32 i = 0; i < InWarmIterations; ++i) {
-		OaMatrix c = OaFnMatrix::MatMulNt(a, b);
+		OaMatrix c = run();
 		if (not ctx->ExecuteAsync().IsOk()) {
 			timer.Destroy(InRt.Device);
 			OaGemmRouter::ClearForced();
-			OaContext::SetDefault(nullptr);
+			OaContext::SetDefault(previousCtx);
 			delete ctx;
-			return 1e9F;
+			return kInvalidMeasurementMs;
 		}
 	}
 
 	// Benchmark GPU execution with timestamp queries. CPU recording, allocation,
 	// submission, and fence wait are intentionally outside the reported value.
 	OaF64 totalGpuMs = 0.0;
+	bool timingValid = true;
 	for (OaU32 i = 0; i < InBenchIterations; ++i) {
-		OaMatrix c = OaFnMatrix::MatMulNt(a, b);
+		OaMatrix c = run();
 		if (not ctx->ExecuteAsync(&timer).IsOk()) {
-			totalGpuMs = 1e9;
+			timingValid = false;
 			break;
 		}
 		const OaF64 sampleMs = timer.ReadbackMs(InRt.Device);
-		if (sampleMs <= 0.0) {
-			totalGpuMs = 1e9;
+		if (not std::isfinite(sampleMs) or sampleMs <= 0.0) {
+			timingValid = false;
 			break;
 		}
 		totalGpuMs += sampleMs;
@@ -144,10 +139,12 @@ static OaF32 BenchmarkCandidate(
 	// Cleanup
 	timer.Destroy(InRt.Device);
 	OaGemmRouter::ClearForced();
-	OaContext::SetDefault(nullptr);
+	OaContext::SetDefault(previousCtx);
 	delete ctx;
 
-	return static_cast<OaF32>(totalGpuMs / InBenchIterations);
+	return timingValid
+		? static_cast<OaF32>(totalGpuMs / InBenchIterations)
+		: kInvalidMeasurementMs;
 }
 
 // Default shapes to benchmark (training + inference patterns)
@@ -157,8 +154,11 @@ static const OaGemmTunerShape kDefaultShapes[] = {
 	{256, 256, 256, "train_atom"},       // Atom config standard
 	{512, 512, 512, "train_small"},      // Small model
 	{1024, 1024, 1024, "train_base"},    // Base model
+	{4096, 384, 384, "alm_qkv"},         // OA ALM Q/K/V projection
+	{4096, 1536, 384, "alm_ffn1"},       // OA ALM FFN expansion
+	{4096, 384, 1536, "alm_ffn2"},       // OA ALM FFN contraction
 	
-	// Irregular shapes (tall-skinny, Stream-K candidates)
+	// Irregular shapes (tall-skinny and short-wide occupancy cases)
 	{1000, 256, 512, "irregular_tall"},  // >25% tail waste
 	{500, 512, 256, "irregular_wide"},
 	{750, 1024, 512, "irregular_med"},
@@ -228,9 +228,18 @@ OaStatus OaGemmTuner::BenchmarkShape(
 	const OaU32 M = InShape.M;
 	const OaU32 N = InShape.N;
 	const OaU32 K = InShape.K;
+	auto problem = OaGemmRouter::ProblemForRaw(
+		M, N, K,
+		OaStoragePrecision::Fp32, OaStoragePrecision::Fp32, true);
+	// OaFnMatrix lowering uses the training-capable contract. Candidate legality
+	// and the published cache key must describe that exact path or the measured
+	// winner cannot be replayed.
+	problem.Epilogue = InShape.Epilogue;
+	problem.Training = true;
+	problem.PrecisionHint = OaGemmPrecision::Auto;
 
 	// Collect candidates for this shape
-	auto candidates = CollectCandidates(InRt, M, N, K);
+	auto candidates = CollectCandidates(InRt, problem);
 	if (candidates.Size() == 0) {
 		return OaStatus::Error("No candidate kernels available for this shape/device");
 	}
@@ -240,56 +249,102 @@ OaStatus OaGemmTuner::BenchmarkShape(
 	// router + kernel path applications use.
 	OaF32 bestMs = 1e9f;
 	OaGemmKernel bestKernel = OaGemmKernel::Auto;
+	OaMatmulVariantId bestVariant = OaInvalidMatmulVariantId;
 	const char* bestName = "";
+	OaF32 bestP95Ms = kInvalidMeasurementMs;
+	OaU32 bestSampleCount = 0U;
 
-	for (const auto& cand : candidates) {
-		OaF32 ms = BenchmarkCandidate(
-			InRt, M, N, K,
-			cand.Kernel, InWarmIterations, InBenchIterations);
+	// Benchmark in alternating forward/reverse blocks. Running every sample for
+	// candidate A before candidate B systematically favors whichever candidate
+	// sees the more favorable clock/thermal state, especially on an iGPU. Four
+	// short blocks preserve the requested approximate sample count while making
+	// each candidate appear early and late in the sweep. The median block mean
+	// rejects a single scheduler/clock excursion without hiding stable changes.
+	const OaU32 blockCount = std::min<OaU32>(4U, InBenchIterations);
+	const OaU32 iterationsPerBlock =
+		(InBenchIterations + blockCount - 1U) / blockCount;
+	std::vector<std::vector<OaF32>> blockMeans(candidates.Size());
+	for (OaU32 block = 0; block < blockCount; ++block) {
+		for (OaU32 order = 0; order < candidates.Size(); ++order) {
+			const OaU32 candidateIdx = (block & 1U) == 0U
+				? order
+				: static_cast<OaU32>(candidates.Size() - 1U - order);
+			const auto& candidate = candidates[candidateIdx];
+			blockMeans[candidateIdx].push_back(BenchmarkCandidate(
+				InRt, problem,
+				candidate.Variant->Id, InWarmIterations, iterationsPerBlock));
+		}
+	}
+
+	for (OaU32 candidateIdx = 0; candidateIdx < candidates.Size(); ++candidateIdx) {
+		const auto& cand = candidates[candidateIdx];
+		auto samples = blockMeans[candidateIdx];
+		samples.erase(
+			std::remove_if(samples.begin(), samples.end(), [](OaF32 sample) {
+				return not std::isfinite(sample) or sample <= 0.0F or
+					sample >= kInvalidMeasurementMs;
+			}),
+			samples.end());
+		if (samples.empty()) {
+			OA_LOG_WARN(OaLogComponent::Core,
+				"  OaGemmTuner candidate %s: rejected (no valid GPU timing blocks)",
+				cand.Name);
+			continue;
+		}
+		std::sort(samples.begin(), samples.end());
+		const OaU32 middle = static_cast<OaU32>(samples.size() / 2U);
+		const OaF32 ms = (samples.size() & 1U) != 0U
+			? samples[middle]
+			: 0.5F * (samples[middle - 1U] + samples[middle]);
+		const auto p95Index = static_cast<size_t>(std::ceil(
+			0.95 * static_cast<double>(samples.size()))) - 1U;
+		const OaF32 p95Ms = samples[std::min(p95Index, samples.size() - 1U)];
+		OutResult.RankedCandidates.PushBack({
+			.Variant = cand.Variant->Id,
+			.Kernel = cand.Variant->Kernel,
+			.Name = cand.Name,
+			.MedianTimeMs = ms,
+			.P95TimeMs = p95Ms,
+			.SampleCount = static_cast<OaU32>(samples.size()),
+		});
 
 		OaF64 flops = 2.0 * M * N * K;
 		OaF32 gflops = static_cast<OaF32>((flops / (ms * 1e-3f)) / 1e9);
 
 		OA_LOG_INFO(OaLogComponent::Core,
-			"  OaGemmTuner candidate %s: %.4f ms (%.1f GFLOP/s)",
-			cand.Name, ms, gflops);
+			"  OaGemmTuner candidate %s: %.4f ms (%.1f GFLOP/s, median of %u blocks)",
+			cand.Name, ms, gflops, static_cast<OaU32>(samples.size()));
 
 		if (ms < bestMs) {
 			bestMs = ms;
-			bestKernel = cand.Kernel;
+			bestKernel = cand.Variant->Kernel;
+			bestVariant = cand.Variant->Id;
 			bestName = cand.Name;
+			bestP95Ms = p95Ms;
+			bestSampleCount = static_cast<OaU32>(samples.size());
 		}
+	}
+	std::sort(OutResult.RankedCandidates.begin(), OutResult.RankedCandidates.end(),
+		[](const OaGemmTunerCandidateResult& a, const OaGemmTunerCandidateResult& b) {
+			return a.MedianTimeMs < b.MedianTimeMs;
+		});
+
+	if (bestVariant == OaInvalidMatmulVariantId or not std::isfinite(bestMs) or
+		bestMs <= 0.0F or bestMs >= kInvalidMeasurementMs) {
+		return OaStatus::Error("OaGemmTuner: every legal candidate failed GPU timing");
 	}
 
 	// Populate route cache with measured winner
-	if (InRt.GemmRouteCache && bestKernel != OaGemmKernel::Auto) {
-		OaRouteCacheKey key{};
-		key.VendorId = InRt.Device.Info.Hardware.VendorId;
-		key.DeviceId = InRt.Device.Info.Hardware.DeviceId;
-		key.DriverId = InRt.Device.Info.Software.DriverId;
-		OaU64 driverHash = 0xcbf29ce484222325ULL;
-		for (const char* p = InRt.Device.Info.Software.DriverVersion.c_str(); *p != '\0'; ++p) {
-			driverHash ^= static_cast<OaU8>(*p);
-			driverHash *= 0x100000001b3ULL;
-		}
-		key.DriverVersionHash = driverHash;
-		key.ShaderBuildId = OaMatmulRegistry::BuildId();
-		key.Variant  = OaGemmKernel::Auto;  // cache key for Auto precision
-		key.M = M;
-		key.N = N;
-		key.K = K;
-		key.APrecision = OaGemmPrecision::Auto;
-		key.BPrecision = OaGemmPrecision::Auto;
-		key.Epilogue = OaGemmEpilogue::None;
-		key.Training = false;
-		key.UseTMA = InRt.IsBlackwell();
+	if (InRt.GemmRouteCache && bestVariant != OaInvalidMatmulVariantId) {
+		const OaRouteCacheKey key = OaGemmRouter::CacheKey(InRt, problem);
 
 		static OaU64 sGlobalStep = 0;
-		InRt.GemmRouteCache->Update(key, bestKernel, bestMs, ++sGlobalStep);
+		InRt.GemmRouteCache->Update(
+			key, bestVariant, bestMs, bestP95Ms, bestSampleCount, ++sGlobalStep);
 
 		OA_LOG_INFO(OaLogComponent::Core,
-			"OaGemmTuner winner for %ux%ux%u: %s (%.4f ms) -> route cache",
-			M, N, K, bestName, bestMs);
+			"OaGemmTuner winner for %ux%ux%u epilogue=%u: %s (%.4f ms) -> route cache",
+			M, N, K, static_cast<OaU32>(problem.Epilogue), bestName, bestMs);
 	}
 
 	// Calculate GFLOPS for winner
@@ -298,7 +353,8 @@ OaStatus OaGemmTuner::BenchmarkShape(
 
 	// Fill result
 	OutResult.Shape = InShape;
-	OutResult.BestKernel = static_cast<OaU8>(bestKernel);
+	OutResult.BestVariant = bestVariant;
+	OutResult.BestKernel = bestKernel;
 	OutResult.BestTimeMs = bestMs;
 	OutResult.BestGflops = bestGflops;
 

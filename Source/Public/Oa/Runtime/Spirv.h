@@ -3,7 +3,8 @@
 #include <Oa/Core/Types.h>
 
 // Embedded SPIR-V registry (populated at build time via embed_spirv.cmake).
-// Stable logical ids for each entry point: Oa/Runtime/ComputeKernel.h + Docs/OaComputeKernelRegistry.md
+// Stable logical IDs for each entry point are defined by
+// Oa/Runtime/ComputeKernel.h and Oa/Core/KernelRegistry.h.
 class OaSpvEntry {
 public:
 	const char* Name;
@@ -35,3 +36,8 @@ OaU32 OaSpvPushConstantBlockSize(const OaU8* InSpirv, OaU32 InSizeBytes);
 // up via OaSpvFindAny and caches the reflected size. Returns 0 if not found /
 // not sizeable. Thread-safe.
 OaU32 OaSpvPushConstantBlockSizeByName(const char* InName);
+
+// Stable FNV-1a identity of the exact compiled module bytes. This is used by
+// measured-kernel caches: changing compiler output invalidates a winner even
+// when its schema name and launch metadata remain unchanged.
+OaU64 OaSpvContentHash(const OaU8* InSpirv, OaU32 InSizeBytes);

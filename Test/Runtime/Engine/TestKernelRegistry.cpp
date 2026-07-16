@@ -25,6 +25,8 @@ void ForEachBuiltInKernel(Fn&& InFn)
 	for (const auto& kernel : OaKernelRegistry::GetMlKernels()) { InFn(kernel); }
 	for (const auto& kernel : OaKernelRegistry::GetVisionKernels()) { InFn(kernel); }
 	for (const auto& kernel : OaKernelRegistry::GetUiKernels()) { InFn(kernel); }
+	for (const auto& kernel : OaKernelRegistry::GetAudioKernels()) { InFn(kernel); }
+	for (const auto& kernel : OaKernelRegistry::GetRenderKernels()) { InFn(kernel); }
 	for (const auto& kernel : OaKernelRegistry::GetCryptoKernels()) { InFn(kernel); }
 }
 
@@ -61,19 +63,31 @@ TEST_VK(KernelRegistryTest, RegistryNotEmpty) {
 	auto ml_kernels = OaKernelRegistry::GetMlKernels();
 	auto vision_kernels = OaKernelRegistry::GetVisionKernels();
 	auto ui_kernels = OaKernelRegistry::GetUiKernels();
+	auto audio_kernels = OaKernelRegistry::GetAudioKernels();
+	auto render_kernels = OaKernelRegistry::GetRenderKernels();
 	auto crypto_kernels = OaKernelRegistry::GetCryptoKernels();
 	
 	EXPECT_GT(ml_kernels.Size(), 0) << "ML kernel registry should not be empty";
 	EXPECT_GT(vision_kernels.Size(), 0) << "Vision kernel registry should not be empty";
 	EXPECT_GT(ui_kernels.Size(), 0) << "UI kernel registry should not be empty";
+	EXPECT_GT(audio_kernels.Size(), 0) << "Audio kernel registry should not be empty";
+	EXPECT_GT(render_kernels.Size(), 0) << "Render kernel registry should not be empty";
 	EXPECT_GT(crypto_kernels.Size(), 0) << "Crypto kernel registry should not be empty";
 	
 	OaUsize total = OaKernelRegistry::GetTotalKernelCount();
 	EXPECT_EQ(total, BuiltInKernelCount())
 		<< "Total count should match sum of categories";
 	
-	std::printf("[KernelRegistry] Total kernels: %zu (ML=%zu, Vision=%zu, UI=%zu, Crypto=%zu)\n",
-		total, ml_kernels.Size(), vision_kernels.Size(), ui_kernels.Size(), crypto_kernels.Size());
+	std::printf("[KernelRegistry] Total kernels: %zu (ML=%zu, Vision=%zu, UI=%zu, Audio=%zu, Render=%zu, Crypto=%zu)\n",
+		total, ml_kernels.Size(), vision_kernels.Size(), ui_kernels.Size(),
+		audio_kernels.Size(), render_kernels.Size(), crypto_kernels.Size());
+}
+
+TEST_VK(KernelRegistryTest, ProviderAutoInitializesWithoutRecursiveLock) {
+	OaShaderProviderShutdown();
+	const OaSpvEntry* entry = OaShaderProviderFind("Add");
+	EXPECT_TRUE(OaShaderProviderIsInitialized());
+	EXPECT_NE(entry, nullptr);
 }
 
 TEST_VK(KernelRegistryTest, AllKernelsHaveValidIds) {
@@ -147,6 +161,20 @@ TEST_VK(KernelRegistryTest, PrefixesAreCorrect) {
 			<< std::hex << prefix;
 	}
 
+	for (const auto& kernel : OaKernelRegistry::GetAudioKernels()) {
+		OaU32 prefix = OaComputeKernelIdUnpackPrefix(kernel.Id);
+		EXPECT_EQ(prefix, OaComputeKernelPrefix::Audio)
+			<< "Audio kernel '" << kernel.Name << "' has wrong prefix: 0x"
+			<< std::hex << prefix;
+	}
+
+	for (const auto& kernel : OaKernelRegistry::GetRenderKernels()) {
+		OaU32 prefix = OaComputeKernelIdUnpackPrefix(kernel.Id);
+		EXPECT_EQ(prefix, OaComputeKernelPrefix::Render)
+			<< "Render kernel '" << kernel.Name << "' has wrong prefix: 0x"
+			<< std::hex << prefix;
+	}
+
 	// Crypto kernels should have Crypto prefix
 	for (const auto& kernel : crypto_kernels) {
 		OaU32 prefix = OaComputeKernelIdUnpackPrefix(kernel.Id);
@@ -157,26 +185,15 @@ TEST_VK(KernelRegistryTest, PrefixesAreCorrect) {
 }
 
 TEST_VK(KernelRegistryTest, LocalIdsAreValid) {
-	auto ml_kernels = OaKernelRegistry::GetMlKernels();
-	auto crypto_kernels = OaKernelRegistry::GetCryptoKernels();
-	
-	// Check ML kernels have valid local IDs (non-zero)
+	// Check every fixed kernel has a plausible non-zero local ID.
 	// Note: IDs don't need to be sequential in the array since registry
 	// order may differ from ID order (e.g., for historical compatibility)
-	for (const auto& kernel : ml_kernels) {
+	ForEachBuiltInKernel([](const OaComputeKernel& kernel) {
 		OaU32 local = OaComputeKernelIdUnpackLocal(kernel.Id);
 		EXPECT_GT(local, 0) << "Kernel '" << kernel.Name << "' has zero local ID";
 		EXPECT_LT(local, 10000) << "Kernel '" << kernel.Name
 			<< "' has unreasonably large local ID: " << local;
-	}
-	
-	// Check crypto kernels
-	for (const auto& kernel : crypto_kernels) {
-		OaU32 local = OaComputeKernelIdUnpackLocal(kernel.Id);
-		EXPECT_GT(local, 0) << "Kernel '" << kernel.Name << "' has zero local ID";
-		EXPECT_LT(local, 10000) << "Kernel '" << kernel.Name
-			<< "' has unreasonably large local ID: " << local;
-	}
+	});
 }
 
 // ============================================================================
@@ -362,39 +379,19 @@ TEST_VK(KernelRegistryTest, IdUnpackingIsConsistent) {
 }
 
 TEST_VK(KernelRegistryTest, CategoryEnumIsValid) {
-	auto ml_kernels = OaKernelRegistry::GetMlKernels();
-	auto crypto_kernels = OaKernelRegistry::GetCryptoKernels();
-	
-	// Check all categories are valid enum values
-	for (const auto& kernel : ml_kernels) {
+	ForEachBuiltInKernel([](const OaComputeKernel& kernel) {
 		EXPECT_NE(kernel.Category, OaComputeKernelCategory::None) 
 			<< "Kernel '" << kernel.Name << "' has None category";
-	}
-	
-	for (const auto& kernel : crypto_kernels) {
-		EXPECT_NE(kernel.Category, OaComputeKernelCategory::None) 
-			<< "Kernel '" << kernel.Name << "' has None category";
-	}
+	});
 }
 
 TEST_VK(KernelRegistryTest, OriginTagsAreValid) {
-	auto ml_kernels = OaKernelRegistry::GetMlKernels();
-	auto crypto_kernels = OaKernelRegistry::GetCryptoKernels();
-	
-	// Check all origin tags are non-null and non-empty
-	for (const auto& kernel : ml_kernels) {
+	ForEachBuiltInKernel([](const OaComputeKernel& kernel) {
 		EXPECT_NE(kernel.Origin, nullptr) 
 			<< "Kernel '" << kernel.Name << "' has null origin";
 		EXPECT_GT(std::strlen(kernel.Origin), 0) 
 			<< "Kernel '" << kernel.Name << "' has empty origin";
-	}
-	
-	for (const auto& kernel : crypto_kernels) {
-		EXPECT_NE(kernel.Origin, nullptr) 
-			<< "Kernel '" << kernel.Name << "' has null origin";
-		EXPECT_GT(std::strlen(kernel.Origin), 0) 
-			<< "Kernel '" << kernel.Name << "' has empty origin";
-	}
+	});
 }
 
 // ============================================================================

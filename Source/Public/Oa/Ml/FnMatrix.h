@@ -19,6 +19,17 @@ struct OaLinearWeightBiasBwdResult {
 	OaMatrix GradBias;
 };
 
+// Two/three projections of the same activation recorded as one GPU dispatch.
+// Outputs are packed along the last dimension and can be exposed through
+// Split/Slice without losing the fused backward contract.
+[[nodiscard]] OaMatrix PackedLinear2(
+	const OaMatrix& InX, const OaMatrix& InWeight0, const OaMatrix& InWeight1,
+	const OaMatrix& InBias0 = {}, const OaMatrix& InBias1 = {});
+[[nodiscard]] OaMatrix PackedLinear3(
+	const OaMatrix& InX, const OaMatrix& InWeight0, const OaMatrix& InWeight1,
+	const OaMatrix& InWeight2, const OaMatrix& InBias0 = {},
+	const OaMatrix& InBias1 = {}, const OaMatrix& InBias2 = {});
+
 struct OaLayerNormBwdResult {
 	OaMatrix DX;
 	OaMatrix DWeight;
@@ -613,12 +624,33 @@ void VqEmaUpdate(const OaMatrix& InZe, const OaMatrix& InIdx,
 // algebra. F32.
 [[nodiscard]] OaMatrix Bmm(const OaMatrix& InA, const OaMatrix& InB);
 
-/// Attention head layout transforms, both fully materialized on GPU.
+/// Attention head layout transforms. Multi-head permutations are materialized on
+/// GPU; H=1 is a differentiable metadata-only view because storage is identical.
 /// SplitHeads: [B*S,D] -> [B*H,S,D/H]. MergeHeads is the exact inverse.
 [[nodiscard]] OaMatrix SplitHeads(
 	const OaMatrix& InX, OaI32 InBatch, OaI32 InSeqLen, OaI32 InNumHeads);
 [[nodiscard]] OaMatrix MergeHeads(
 	const OaMatrix& InX, OaI32 InBatch, OaI32 InSeqLen, OaI32 InNumHeads);
+
+/// IO-aware causal scaled dot-product attention.
+/// Q/K/V and output use contiguous [batchHeads, sequence, headDim] storage.
+/// Forward keeps only the output and one FP32 log-sum-exp value per query;
+/// backward recomputes probabilities instead of retaining an SxS matrix.
+/// The current portable kernel supports sequence lengths up to 1024.
+[[nodiscard]] OaMatrix FlashAttentionCausal(
+	const OaMatrix& InQ, const OaMatrix& InK, const OaMatrix& InV, OaF32 InScale);
+
+struct OaFlashAttentionBwdResult {
+	OaMatrix GradQ;
+	OaMatrix GradK;
+	OaMatrix GradV;
+};
+
+/// Explicit adjoint used by the FlashAttention autograd node and parity tests.
+[[nodiscard]] OaFlashAttentionBwdResult FlashAttentionCausalBwd(
+	const OaMatrix& InQ, const OaMatrix& InK, const OaMatrix& InV,
+	const OaMatrix& InOutput, const OaMatrix& InLogSumExp,
+	const OaMatrix& InGradOutput, OaF32 InScale);
 
 // ─── Neural Network Layers ────────────────────────────────────────
 

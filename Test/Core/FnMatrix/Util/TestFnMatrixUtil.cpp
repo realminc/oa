@@ -469,6 +469,10 @@ TEST_VK(TestFnMatrixUtil, CompactRows_Forward) {
 
 	auto result = CopyToHost(compact.Values);
 	EXPECT_EQ(compact.Count.DataAs<const OaU32>()[0], 2u);
+	const OaU32* dispatch = compact.DispatchArgs.DataAs<const OaU32>();
+	EXPECT_EQ(dispatch[0], 1u);
+	EXPECT_EQ(dispatch[1], 1u);
+	EXPECT_EQ(dispatch[2], 1u);
 	ASSERT_EQ(result.size(), 8u);
 	EXPECT_FLOAT_EQ(result[0], 3.0f);
 	EXPECT_FLOAT_EQ(result[1], 4.0f);
@@ -528,6 +532,8 @@ TEST_VK(TestFnMatrixUtil, CompactRows_AllAndNone) {
 
 	EXPECT_EQ(compactAll.Count.DataAs<const OaU32>()[0], 4u);
 	EXPECT_EQ(compactNone.Count.DataAs<const OaU32>()[0], 0u);
+	EXPECT_EQ(compactAll.DispatchArgs.DataAs<const OaU32>()[0], 1u);
+	EXPECT_EQ(compactNone.DispatchArgs.DataAs<const OaU32>()[0], 0u);
 	EXPECT_EQ(CopyToHost(compactAll.Values), data);
 	for (float value : CopyToHost(compactNone.Values)) EXPECT_FLOAT_EQ(value, 0.0f);
 }
@@ -594,7 +600,7 @@ TEST_VK(TestFnMatrixUtil, ScatterRows_Forward) {
 	auto source = CreateFromHost(src_data, OaMatrixShape{3, 2});
 
 	auto plan = OaFnMatrix::CompactRows(self, maskM);
-	auto out = OaFnMatrix::ScatterRows(self, source, plan.RowMap, plan.Count);
+	auto out = OaFnMatrix::ScatterRows(self, source, plan);
 	(void)ctx.Execute(); (void)ctx.Sync();
 
 	auto result = CopyToHost(out);
@@ -621,7 +627,7 @@ TEST_VK(TestFnMatrixUtil, ScatterRows_Gradcheck_Source) {
 
 	OaGradientTape tape;
 	auto plan = OaFnMatrix::CompactRows(self, maskM);
-	auto out = OaFnMatrix::ScatterRows(self, source, plan.RowMap, plan.Count);
+	auto out = OaFnMatrix::ScatterRows(self, source, plan);
 	auto loss = OaFnMatrix::Sum(out, -1);
 	(void)ctx.Execute(); (void)ctx.Sync();
 
@@ -639,13 +645,13 @@ TEST_VK(TestFnMatrixUtil, ScatterRows_Gradcheck_Source) {
 			OaGradNo noGrad;
 			d[i] = orig + eps; (void)ctx.Sync();
 			auto p = OaFnMatrix::CompactRows(self, maskM);
-			auto op = OaFnMatrix::ScatterRows(self, source, p.RowMap, p.Count);
+			auto op = OaFnMatrix::ScatterRows(self, source, p);
 			auto lp = OaFnMatrix::Sum(op, -1); (void)ctx.Execute(); (void)ctx.Sync();
 			vp = CopyToHost(lp)[0];
 
 			d[i] = orig - eps; (void)ctx.Sync();
 			auto m = OaFnMatrix::CompactRows(self, maskM);
-			auto om = OaFnMatrix::ScatterRows(self, source, m.RowMap, m.Count);
+			auto om = OaFnMatrix::ScatterRows(self, source, m);
 			auto lm = OaFnMatrix::Sum(om, -1); (void)ctx.Execute(); (void)ctx.Sync();
 			vm = CopyToHost(lm)[0];
 		}

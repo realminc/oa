@@ -22,7 +22,7 @@
 // - File: Load .spv from disk (development builds)
 // - Hybrid: Embedded + on-demand file loading for BLAS variants
 //
-// See Docs/OaComputeKernel.md for complete architecture.
+// Kernel ID and provider contracts are declared in ComputeKernel.h.
 // ============================================================================
 
 // Shader provider initialization modes

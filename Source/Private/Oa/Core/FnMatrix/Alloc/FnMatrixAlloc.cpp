@@ -50,23 +50,14 @@ OaMatrix OaFnMatrix::Empty(OaMatrixShape InShape, OaScalarType InDtype) {
 		return t;
 	}
 
-	// Engine's HostVisibleBufferCache provides best-fit buffer reuse after warm-up.
-	auto res = rt->AllocBuffer(static_cast<OaU64>(bytes));
-	if (not res) {
+	// The context owns the allocation policy. Normal calls use the engine cache;
+	// repeatable training frames can additionally map allocation ordinals onto
+	// stable VkBuffer/bindless slots for exact command-graph replay.
+	auto buf = OaContext::GetDefault().AllocateMatrixBuffer(static_cast<OaU64>(bytes));
+	if (not buf) {
 		t.SyncMatrixDescriptor();
 		return t;
 	}
-
-	OaSharedPtr<OaVkBuffer> buf(
-		new OaVkBuffer(std::move(*res)),
-		[](OaVkBuffer* InPtr) {
-			if (not InPtr) return;
-			auto* rt = OaRuntimeGlobal::GetRuntime();
-			if (rt) {
-				rt->FreeBuffer(*InPtr);
-			}
-			delete InPtr;
-		});
 	buf->NodeIndex = 0;
 	t.VkBuf_ = buf;
 	t.Data_ = OaSharedPtr<void>(buf->MappedPtr, [](void*) {});

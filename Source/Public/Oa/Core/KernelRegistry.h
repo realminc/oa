@@ -22,9 +22,8 @@
 // - Never reuse IDs once merged to main
 // - Never change Prefix for shipped blocks
 // - Keep Local ordinals sequential within each category
-// - Update Docs/OaComputeKernelRegistry.md when adding kernels
-//
-// See Docs/OaComputeKernel.md for the complete architecture.
+// - Update the registry schema and generated metadata together whenever the
+//   contract, prefix allocation, or fixed-family status changes
 // ============================================================================
 
 namespace OaKernelRegistry {
@@ -101,6 +100,9 @@ static constexpr OaComputeKernel MlKernels[] = {
 	{ "SoftmaxScaledMaskedBwd",  OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 199), OaComputeKernelCategory::Ml, "oa" },
 	{ "Attention/SplitHeads",    OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 235), OaComputeKernelCategory::Ml, "oa" },
 	{ "Attention/MergeHeads",    OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 236), OaComputeKernelCategory::Ml, "oa" },
+	{ "Attention/FlashCausal",   OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 240), OaComputeKernelCategory::Ml, "oa" },
+	{ "Attention/FlashCausalBwdQ",  OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 241), OaComputeKernelCategory::Ml, "oa" },
+	{ "Attention/FlashCausalBwdKV", OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 242), OaComputeKernelCategory::Ml, "oa" },
 	{ "GruScan",                 OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 200), OaComputeKernelCategory::Ml, "oa" },
 	{ "GruScanBwd",              OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 201), OaComputeKernelCategory::Ml, "oa" },
 	{ "RnnScan",                 OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 202), OaComputeKernelCategory::Ml, "oa" },
@@ -141,6 +143,19 @@ static constexpr OaComputeKernel MlKernels[] = {
 	{ "SgdMomentum",        OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 51), OaComputeKernelCategory::Ml, "oa" },
 	{ "AdamwGraph",         OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 52), OaComputeKernelCategory::Ml, "oa" },
 	{ "AdamwMany4",         OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 189), OaComputeKernelCategory::Ml, "oa" },
+	{ "AdamwMany4Graph",    OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 250), OaComputeKernelCategory::Ml, "oa" },
+	{ "ScatterAddRows",     OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 251), OaComputeKernelCategory::Ml, "oa" },
+	{ "GroupedLinearMWeightBiasBwd", OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 252), OaComputeKernelCategory::Ml, "oa" },
+	{ "LinearWeightBiasBwdTiled", OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 253), OaComputeKernelCategory::Ml, "oa" },
+	{ "AdamwGraphAdvance",  OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 254), OaComputeKernelCategory::Ml, "oa" },
+	{ "MoeGatherBwd",       OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 255), OaComputeKernelCategory::Ml, "oa" },
+	{ "PhiloxUniformGraph", OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 256), OaComputeKernelCategory::Ml, "oa" },
+	{ "PhiloxNormalGraph",  OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 257), OaComputeKernelCategory::Ml, "oa" },
+	{ "PhiloxGraphAdvance", OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 258), OaComputeKernelCategory::Ml, "oa" },
+	{ "CompactRowsBwdIndirect", OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 259), OaComputeKernelCategory::Ml, "oa" },
+	{ "ScatterRowsIndirect", OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 260), OaComputeKernelCategory::Ml, "oa" },
+	{ "ScatterRowsBwdIndirect", OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 261), OaComputeKernelCategory::Ml, "oa" },
+	{ "PackedLinear",       OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 263), OaComputeKernelCategory::Ml, "oa" },
 	{ "MuonNormalize",      OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 156), OaComputeKernelCategory::Ml, "oa" },
 	{ "MuonApply",          OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 158), OaComputeKernelCategory::Ml, "oa" },
 	{ "MuonVector",         OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 159), OaComputeKernelCategory::Ml, "oa" },
@@ -186,7 +201,9 @@ static constexpr OaComputeKernel MlKernels[] = {
 
 	// New GEMM kernels (Phase 4 consolidation) (72-79)
 	{ "GemmNaive",                OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 72), OaComputeKernelCategory::Ml, "oa" },
-	{ "GemmTiled",                OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 73), OaComputeKernelCategory::Ml, "oa" },
+	{ "GemmStrided",              OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 262), OaComputeKernelCategory::Ml, "oa" },
+	#include <Oa/Core/OaTileKernelRegistry.gen.inc>
+	// ID 76 retired: grouped-M=16 did not win a controlled product-shape sweep.
 	// ID 77 retired: was GemmCoopMatStreamKBf16 (StreamK path removed).
 	// ID 78 retired: was GemmReduceStreamK (StreamK path removed).
 	{ "GemmCoopVec",              OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 79), OaComputeKernelCategory::Ml, "oa" },
@@ -236,9 +253,6 @@ static constexpr OaComputeKernel MlKernels[] = {
 	{ "Cos",                      OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 182), OaComputeKernelCategory::Ml, "oa" },
 	{ "LinearDataAccumBwd",       OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 106), OaComputeKernelCategory::Ml, "oa" },
 	{ "ResidualRmsNorm",          OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 108), OaComputeKernelCategory::Ml, "oa" },
-	{ "GemmBiasTiled",            OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 109), OaComputeKernelCategory::Ml, "oa" },
-	{ "GemmBiasReluTiled",        OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 110), OaComputeKernelCategory::Ml, "oa" },
-	{ "GemmBiasGeluTiled",        OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 111), OaComputeKernelCategory::Ml, "oa" },
 	{ "CastU8ToU32",              OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 112), OaComputeKernelCategory::Ml, "oa" },
 	{ "CastBf16ToF32",            OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 208), OaComputeKernelCategory::Ml, "oa" },
 	{ "CastF32ToBf16",            OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 209), OaComputeKernelCategory::Ml, "oa" },

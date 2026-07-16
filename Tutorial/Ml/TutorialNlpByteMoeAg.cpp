@@ -4,7 +4,9 @@
 
 #include <Oa/Ml.h>
 #include <Oa/Ml/Autograd.h>
+#include <Oa/Core/EnvFlag.h>
 
+#include <algorithm>
 #include <cmath>
 
 namespace {
@@ -65,26 +67,36 @@ TEST(TutorialNlpByteMoeAg, MoeAllPositionLM) {
 	std::printf("Params: %lld    Optimizer: AdamW(lr=0.01)\n\n", static_cast<long long>(model->NumParameters()));
 
 	NlpAllPositionSampler sampler(NlpCorpus(), kBatch);
+	const OaI32 steps = static_cast<OaI32>(
+		std::max<OaI64>(OaEnvFlag::GetInt("OA_TUTORIAL_STEPS", kSteps), 1));
+	const OaBool useTrainingProgram = OaEnvFlag::IsSet("OA_TRAINING_PROGRAM");
+	OaTrainingProgram program;
 	TutorialTrainingLoop training(*optimizer, OaItTrainingConfig{
-		.TotalSteps = kSteps,
+		.TotalSteps = steps,
 		.BatchSize = kBatch,
 		.SequenceLength = kContextLen,
 		.SequenceUnit = "token",
 		.SourceUnitsPerSample = kContextLen,
 		.SourceUnit = "byte",
 		.TimerName = "byte_moe_step",
+		.Program = useTrainingProgram ? &program : nullptr,
 	});
-	std::printf("Training: %d steps · batch=%d · sequence=%d byte tokens\n", kSteps, kBatch, kContextLen);
+	std::printf("Training: %d steps · batch=%d · sequence=%d byte tokens · execution=%s\n",
+		steps, kBatch, kContextLen, useTrainingProgram ? "captured" : "eager");
 
 	OaMatrix x, y;
 	OaF32 initialLoss = 0.0F;
 	while (not training.Loop.IsDone()) {
-		sampler.NextBatch(x, y);
-		optimizer->ZeroGrad();
-		OaGradientTape tape;
-		auto loss = OaFnLoss::CrossEntropy(model->Forward(x), y.Reshape(OaMatrixShape{y.NumElements()}));
-		tape.Backward(loss);
-		training.Loop.Next(loss);
+		training.Loop.Step(
+			[&] { sampler.NextBatch(x, y); },
+			[&] {
+				optimizer->ZeroGrad();
+				OaGradientTape tape;
+				auto loss = OaFnLoss::CrossEntropy(
+					model->Forward(x), y.Reshape(OaMatrixShape{y.NumElements()}));
+				tape.Backward(loss);
+				training.Loop.RecordLoss(loss);
+			});
 		if (training.Loop.Index() == 1) initialLoss = training.Loop.LastLoss();
 	}
 	ASSERT_TRUE(training.Loop.Finish().IsOk());

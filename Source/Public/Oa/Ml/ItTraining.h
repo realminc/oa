@@ -49,6 +49,7 @@
 #include <vector>
 
 class OaOptimizer;
+class OaTrainingProgram;
 class OaItTraining;
 class OaCbTraining;
 class OaMetric;
@@ -81,6 +82,9 @@ public:
 	OaString SourceUnit = "byte";
 	// Optional GPU timer label for nsys / perf store integration.
 	const char* TimerName = "training_step";
+	// Disable only for a deliberately uninstrumented latency experiment. Eager
+	// and captured paths otherwise report the same complete-step GPU interval.
+	OaBool EnableGpuTiming = true;
 	// Stateful metrics updated exactly once after each completed step and reset
 	// at epoch boundaries. Non-owning; caller controls lifetime.
 	std::vector<OaMetric*> Metrics;
@@ -88,6 +92,12 @@ public:
 	// lifetime (typically declared on the stack above the iterator). Equivalent
 	// to calling AddCallback(&cb) for each pointer in registration order.
 	std::vector<OaCbTraining*> Callbacks;
+	// Optional fixed-shape forward + backward + optimizer program. Step one runs
+	// eagerly to create lazy state, step two is captured from a stable resource
+	// frame, and following steps replay one pre-recorded Vulkan plan. Unsupported
+	// operations fall back to eager execution for the rest of the run.
+	// Non-owning; the program must outlive this iterator.
+	OaTrainingProgram* Program = nullptr;
 };
 
 struct OaGpuTimingStats {
@@ -97,6 +107,31 @@ struct OaGpuTimingStats {
 	OaF64 MedianMs = 0.0;
 	OaF64 P95Ms = 0.0;
 	OaF64 LastMs = 0.0;
+};
+
+// Opt-in host/runtime decomposition of a complete training step. Enable with
+// OA_LOG_TRAINING_PHASES=1. The normal training path does not take per-phase
+// timestamps when disabled.
+struct OaTrainingPhaseStats {
+	OaI64 Count = 0;
+	OaF64 TotalMs = 0.0;
+	OaF64 BodyMs = 0.0;
+	OaF64 OptimizerMs = 0.0;
+	OaF64 CompileMs = 0.0;
+	OaF64 RecordMs = 0.0;
+	OaF64 SubmitMs = 0.0;
+	OaF64 WaitMs = 0.0;
+	OaF64 ScalarMetricMs = 0.0;
+	OaF64 CallbackMs = 0.0;
+
+	[[nodiscard]] OaF64 Mean(OaF64 InSumMs) const {
+		return Count > 0 ? InSumMs / static_cast<OaF64>(Count) : 0.0;
+	}
+
+	[[nodiscard]] OaF64 AccountedMs() const {
+		return BodyMs + OptimizerMs + CompileMs + RecordMs + SubmitMs + WaitMs
+			+ ScalarMetricMs + CallbackMs;
+	}
 };
 
 class OaItTraining : public OaIterator {
@@ -126,7 +161,16 @@ public:
 	// Equivalent to: if (IsDone()) return; InOpFn(); Next();
 	// Body should record forward + loss-grad + backward into the active
 	// OaContext, and call RecordLoss for the scalar loss matrix when desired.
+	// With Program enabled this overload deliberately replays the same captured
+	// input after capture; use the two-lambda overload for changing batches.
 	void Step(const std::function<void()>& InOpFn);
+	// Fixed-shape capture with changing input. InPrepareFn always runs and may
+	// refill already allocated/mapped input matrices, but it must not append graph
+	// nodes after capture. InRecordFn records zero-grad + forward + backward and
+	// loss only for eager warm-up/capture; it is skipped on replay steps.
+	void Step(
+		const std::function<void()>& InPrepareFn,
+		const std::function<void()>& InRecordFn);
 
 	// Tag the scalar loss matrix from inside InOpFn. It is read exactly after the
 	// step completes and is available to every OnStepEnd callback.
@@ -145,6 +189,9 @@ public:
 	// Drain any pending submitted-but-not-synced batches. Call once after the
 	// last Step() so the final commands complete before teardown.
 	[[nodiscard]] OaStatus Finish();
+	// Explicitly invalidate a captured fixed-shape program. The next Step()
+	// records and captures the new shape/topology; optimizer state is preserved.
+	[[nodiscard]] OaStatus RequestProgramRecapture();
 
 	// Cooperative stop (Keras `model.stop_training = True`). Callbacks (early
 	// stopping, time budget) call this; the next IsDone() returns true and the
@@ -181,6 +228,9 @@ public:
 	[[nodiscard]] bool  HasLossSample()        const { return LastLossStep_ == Index_; }
 	[[nodiscard]] bool  HasGpuTimeSample()     const { return LastGpuTimeStep_ == Index_; }
 	[[nodiscard]] OaGpuTimingStats GpuTimingStats() const;
+	[[nodiscard]] const OaTrainingPhaseStats& TrainingPhaseStats() const {
+		return TrainingPhaseStats_;
+	}
 
 	// Compatibility alias: completed steps are synchronized, so live == last.
 	[[nodiscard]] OaF32 LiveLoss()            const { return LastLoss_; }
@@ -230,6 +280,7 @@ private:
 	void FireTrainEnd();
 	void ResetMetrics_();
 	void UpdateMetrics_();
+	void CloseStableResourceFrame_();
 
 	// Lazy advance: fires TrainBegin (first call), advances Index_ to the
 	// step the user is about to run, fires EpochBegin if we crossed into a
@@ -259,6 +310,7 @@ private:
 	OaI64                LastStepSourceUnits_  = 0;
 	OaI64                EpochSourceUnits_     = 0;
 	OaMatrix             PendingLoss_;
+	OaMatrix             ProgramLoss_;
 	OaF32                LiveAccuracy_         = std::numeric_limits<OaF32>::quiet_NaN();
 	OaF32                LastLoss_             = 0.0F;
 	OaF64                LastGpuMs_            = 0.0;
@@ -278,6 +330,12 @@ private:
 	std::chrono::high_resolution_clock::time_point T0_;
 	std::chrono::high_resolution_clock::time_point EpochT0_;
 	std::chrono::high_resolution_clock::time_point LastStepT_;
+	std::chrono::high_resolution_clock::time_point PhaseBodyT0_;
+	OaTrainingPhaseStats TrainingPhaseStats_;
+	bool                 TrainingPhaseTiming_ = false;
+	bool                 PhaseBodyStarted_ = false;
+	bool                 StableResourceFrameOpen_ = false;
+	bool                 ProgramCaptureDisabled_ = false;
 	std::vector<OaMetric*> Metrics_;
 	std::vector<OaCbTraining*> Callbacks_;
 };

@@ -32,6 +32,23 @@ class OaComputeEngine;
 
 class OaGemmRouter {
 public:
+	// Canonical planning boundary. Selection consumes the complete mathematical
+	// problem, device contract and implementation preferences exactly once.
+	// Execution may replay the returned immutable plan without rerunning cache
+	// lookup or heuristics.
+	[[nodiscard]] static OaMatmulPlan Plan(
+		const OaComputeEngine& InRt,
+		const OaMatmulProblem& InProblem,
+		OaMatmulPreference InPreference = {}
+	);
+
+	// Reject stale, cross-device or contract-mismatched plans before execution.
+	[[nodiscard]] static bool ValidatePlan(
+		const OaComputeEngine& InRt,
+		const OaMatmulPlan& InPlan,
+		const OaMatmulProblem& InProblem
+	);
+
 	// Primary entry called by GEMM dispatch and OaComputeGraph.
 	// InPrec=Auto: use device caps + shape heuristics (full BF16/CoopVec path).
 	// InPrec=Fp32: skip all CoopMat paths, use TiledFp32 or Naive (graph-safe).
@@ -64,9 +81,21 @@ public:
 		bool  InBTransposed
 	);
 
+	// Canonical persisted-cache contract and registry legality predicate.
+	// The tuner calls these rather than duplicating routing policy.
+	[[nodiscard]] static OaRouteCacheKey CacheKey(
+		const OaComputeEngine& InRt,
+		const OaMatmulProblem& InProblem);
+	[[nodiscard]] static bool IsVariantLegal(
+		const OaComputeEngine& InRt,
+		const OaMatmulVariant& InVariant,
+		const OaMatmulProblem& InProblem);
+
 	// Force a specific kernel for a shape (overrides heuristic + cache).
 	// Use for benchmarking or correctness isolation. Thread-safe.
 	static void ForceKernel(OaU32 InM, OaU32 InN, OaU32 InK, OaGemmKernel InKernel);
+	static void ForceVariant(
+		OaU32 InM, OaU32 InN, OaU32 InK, OaMatmulVariantId InVariant);
 	static void ClearForced();
 
 	// Query whether a precision tier is available on this device.

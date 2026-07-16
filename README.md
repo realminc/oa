@@ -23,8 +23,8 @@ targets supported desktop, mobile, and integrated GPUs.
 
 | Area | Current capability |
 |---|---|
-| **Core / Runtime** | Vulkan device selection, bindless memory, streams, compiled compute graphs, autograd recording, pipeline caching, and cache-aware parallel shader preload |
-| **ML** | Tensors, modules, losses, optimizers, checkpoints, validation metrics, RNN, GRU, Transformer, Mamba-3, and GPU-native dropless sparse MoE |
+| **Core / Runtime** | Vulkan device selection, bindless memory, streams, compiled compute graphs, allocator-backed transient aliasing, OaBlasLt routing, semantic DNN planning, pipeline caching, and cache-aware parallel shader preload |
+| **ML** | Matrices, modules, autograd, losses, optimizers, checkpoints, validation metrics, packed Transformer projections, Flash Attention, RNN, GRU, Transformer, Mamba-3, and GPU-native dropless sparse MoE |
 | **OaAlm** | Native CLIP text conditioning, VQ motion tokenization, Transformer generation, one-file `.oam` deployment, and prompt-to-USD motion generation |
 | **Vision** | 50 graph-native image operations, JPEG/image I/O, native container parsing, Vulkan Video decode, encode, capture, recording, and transcoding surfaces |
 | **Audio** | WAV/FLAC/MP3 decode, lossless WAV-F32 output, deterministic PCM16 streaming, capture/playback surfaces, and 15 GPU DSP/feature operations |
@@ -178,6 +178,7 @@ drivers advertise features they do not compile correctly.
 
 - [GitHub releases](https://github.com/realminc/oa/releases)
 - [Changelog](CHANGELOG.md)
+- [NLP training benchmark](Docs/Benchmarks/OaNlpSuite.md)
 - [C++ examples](Examples)
 - [Tutorials](Tutorial)
 

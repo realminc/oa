@@ -1,0 +1,30 @@
+schema_version = 1
+generator_abi = 1
+
+[[family]]
+template = "GemmCmSgBf16"
+kernel = "GemmCmSgBf16"
+tile = [128, 128, 64]
+workgroup = 256
+caps = "kCapCoopMat1Khr | kCapCoopMat1Bf16Input | kCapCoopMat1Fp32Acc"
+variants = [
+  { kind = "none", name = "GemmCmSgBf16", act = 0 },
+  { kind = "bias", name = "GemmBiasCmSgBf16", act = 1 },
+  { kind = "bias_relu", name = "GemmBiasReluCmSgBf16", act = 2 },
+  { kind = "bias_gelu", name = "GemmBiasGeluCmSgBf16", act = 3 },
+  { kind = "silu_dual", name = "GemmSiluCmSgBf16", act = 4 },
+]
+
+[[family]]
+template = "GemmCmWgBf16"
+kernel = "GemmCmWgBf16"
+tile = [64, 64, 64]
+workgroup = 256
+caps = "kCapCoopMat1Khr | kCapCoopMat1WorkgroupBf16 | kCapCoopMat1Fp32Acc"
+variants = [
+  { kind = "none", name = "GemmCmWgBf16", act = 0 },
+  { kind = "bias", name = "GemmBiasCmWgBf16", act = 1 },
+  { kind = "bias_relu", name = "GemmBiasReluCmWgBf16", act = 2 },
+  { kind = "bias_gelu", name = "GemmBiasGeluCmWgBf16", act = 3 },
+  { kind = "silu_dual", name = "GemmSiluCmWgBf16", act = 4 },
+]

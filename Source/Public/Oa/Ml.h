@@ -14,6 +14,7 @@
 #include <Oa/Ml/Nn.h>
 #include <Oa/Ml/Optim.h>
 #include <Oa/Ml/ItTraining.h>
+#include <Oa/Ml/TrainingProgram.h>
 #include <Oa/Ml/Callbacks.h>
 #include <Oa/Ml/Metric.h>
 #include <Oa/Ml/Byte.h>

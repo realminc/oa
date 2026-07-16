@@ -6,7 +6,6 @@
 #include <Oa/Core/Types.h>
 #include <Oa/Core/Status.h>
 #include <Oa/Runtime/Spirv.h>
-#include <Oa/Runtime/GemmTypes.h>
 
 class OaVkDevice;
 class OaVkBuffer;
@@ -134,14 +133,6 @@ public:
 		OaStringView InName,
 		OaU32 InDtype);
 
-	// GEMM kernel cache storage for runtime routing decisions.
-	OaGemmKernel LookupGemmKernel(OaU32 InM, OaU32 InN, OaU32 InK) const noexcept;
-	void StoreGemmKernel(OaU32 InM, OaU32 InN, OaU32 InK, OaGemmKernel InKernel);
-	OaStatus SaveGemmCache(OaStringView InPath) const;
-	OaStatus LoadGemmCache(OaStringView InPath);
-	void ClearGemmCache() noexcept;
-	OaU32 GemmCacheSize() const noexcept;
-
 private:
 	OaHashMap<OaString, OaComputePipeline> Registry_;
 	mutable OaUniquePtr<std::shared_mutex> Mutex_ = OaStdMakeUnique<std::shared_mutex>();
@@ -149,8 +140,4 @@ private:
 	OaString CacheDir_;
 	void* BindlessPipelineLayout_ = nullptr;
 	const OaVkDevice* Device_ = nullptr;  // For on-demand loading
-	
-	// GEMM kernel cache storage for runtime routing decisions.
-	OaHashMap<OaGemmShapeKey, OaGemmKernel, OaGemmShapeKeyHash> GemmCache_;
-	mutable OaUniquePtr<std::shared_mutex> GemmCacheMutex_ = OaStdMakeUnique<std::shared_mutex>();
 };

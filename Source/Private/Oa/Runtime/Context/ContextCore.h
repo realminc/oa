@@ -1,11 +1,12 @@
 #pragma once
 
 #include "ContextTypes.h"
-#include "FnContext.h"
+#include "DefaultContext.h"
 
 #include <Oa/Core/Status.h>
 #include <Oa/Core/BufferAccess.h>
 #include <Oa/Runtime/Allocator.h>
+#include <Oa/Runtime/DispatchDesc.h>
 #include <Oa/Runtime/Pool.h>
 #include <Oa/Runtime/Sync.h>
 
@@ -30,6 +31,10 @@ public:
 	static void SetDefault(OaContext* InContext);
 	[[nodiscard]] static OaContext& GetDefault();
 
+	// Canonical semantic-to-runtime boundary. The descriptor is validated and
+	// copied into the active graph before this call returns.
+	[[nodiscard]] OaStatus Record(const OaComputeDispatchDesc& InDesc);
+
 	void Add(
 		OaStringView InKernelName,
 		OaSpan<OaVkBuffer> InBuffers,
@@ -50,6 +55,21 @@ public:
 		OaU32 InGroupsX,
 		OaU32 InGroupsY = 1,
 		OaU32 InGroupsZ = 1
+	);
+
+	// GPU-authored launch dimensions. InIndirectArgs must contain one
+	// VkDispatchIndirectCommand (three UInt32 values) at InOffset. Include the
+	// argument matrix in InMatrices as well when the recorded graph must retain
+	// its allocation; the runtime tracks its distinct INDIRECT_COMMAND_READ
+	// access through the descriptor below.
+	void AddIndirect(
+		OaStringView InKernelName,
+		std::initializer_list<const OaMatrix*> InMatrices,
+		OaSpan<OaBufferAccess> InAccess,
+		const void* InPush,
+		OaU32 InPushSize,
+		const OaMatrix& InIndirectArgs,
+		OaU64 InOffset = 0
 	);
 
 	void AddMatMul(
@@ -221,133 +241,26 @@ public:
 	[[nodiscard]] OaComputeEngine* GetRuntime() const noexcept { return Runtime_; }
 	[[nodiscard]] OaComputeGraph* Graph() const noexcept { return Graph_; }
 	[[nodiscard]] OaU32 NodeCount() const noexcept;
+	[[nodiscard]] const OaContextExecutionStats& LastExecutionStats() const noexcept {
+		return ExecutionStats_;
+	}
+
+	// Stable matrix storage for repeatable execution frames. The caller opens
+	// one frame before recording a fixed-shape workload and closes it only after
+	// that workload has completed. Allocation ordinal + required capacity form the
+	// slot identity, so subsequent frames receive the same VkBuffer/bindless slot
+	// without exposing allocator details to Core or ML. Matrices allocated inside
+	// a stable frame are transient views of arena storage: retaining the object is
+	// valid, but its previous contents do not survive reuse by the next frame.
+	void BeginStableResourceFrame();
+	void EndStableResourceFrame();
+	[[nodiscard]] OaBool IsStableResourceFrameActive() const noexcept {
+		return StableResourceFrameActive_;
+	}
+	[[nodiscard]] OaSharedPtr<OaVkBuffer> AllocateMatrixBuffer(OaU64 InBytes);
 
 private:
 	friend void OaRuntimeGlobal::SetRuntime(OaComputeEngine* InRuntime);
-	friend void OaFnContext::Add(
-		OaContext& InCtx,
-		OaStringView InKernelName,
-		OaSpan<OaVkBuffer> InBuffers,
-		OaSpan<OaBufferAccess> InAccess,
-		const void* InPush,
-		OaU32 InPushSize,
-		OaU32 InGroupsX,
-		OaU32 InGroupsY,
-		OaU32 InGroupsZ);
-	friend void OaFnContext::Add(
-		OaContext& InCtx,
-		OaStringView InKernelName,
-		std::initializer_list<const OaMatrix*> InMatrices,
-		OaSpan<OaBufferAccess> InAccess,
-		const void* InPush,
-		OaU32 InPushSize,
-		OaU32 InGroupsX,
-		OaU32 InGroupsY,
-		OaU32 InGroupsZ);
-	friend void OaFnContext::AddMatMul(
-		OaContext& InCtx,
-		OaVkBuffer InA,
-		OaVkBuffer InB,
-		OaVkBuffer OutC,
-		OaU32 InM,
-		OaU32 InN,
-		OaU32 InK);
-	friend void OaFnContext::AddMatMul(
-		OaContext& InCtx,
-		OaVkBuffer InA,
-		OaVkBuffer InB,
-		OaVkBuffer OutC,
-		OaU32 InM,
-		OaU32 InN,
-		OaU32 InK,
-		OaContextMatMulPrecision InPrecision);
-	friend void OaFnContext::AddMatMul(
-		OaContext& InCtx,
-		const OaMatrix& InA,
-		const OaMatrix& InB,
-		OaMatrix& OutC,
-		OaU32 InM,
-		OaU32 InN,
-		OaU32 InK);
-	friend void OaFnContext::AddMatMul(
-		OaContext& InCtx,
-		const OaMatrix& InA,
-		const OaMatrix& InB,
-		OaMatrix& OutC,
-		OaU32 InM,
-		OaU32 InN,
-		OaU32 InK,
-		OaContextMatMulPrecision InPrecision);
-	friend void OaFnContext::AddLinear(
-		OaContext& InCtx,
-		OaVkBuffer InX,
-		OaVkBuffer InWeight,
-		OaVkBuffer InBias,
-		OaVkBuffer OutY,
-		OaU32 InM,
-		OaU32 InN,
-		OaU32 InK,
-		OaBool InHasBias);
-	friend void OaFnContext::AddLinear(
-		OaContext& InCtx,
-		const OaMatrix& InX,
-		const OaMatrix& InWeight,
-		const OaMatrix* InBias,
-		OaMatrix& OutY,
-		OaU32 InM,
-		OaU32 InN,
-		OaU32 InK);
-	friend void OaFnContext::AddLinearRelu(
-		OaContext& InCtx,
-		const OaMatrix& InX,
-		const OaMatrix& InWeight,
-		const OaMatrix& InBias,
-		OaMatrix& OutY,
-		OaU32 InM,
-		OaU32 InN,
-		OaU32 InK);
-	friend void OaFnContext::AddLinearGelu(
-		OaContext& InCtx,
-		const OaMatrix& InX,
-		const OaMatrix& InWeight,
-		const OaMatrix& InBias,
-		OaMatrix& OutY,
-		OaU32 InM,
-		OaU32 InN,
-		OaU32 InK);
-	friend void OaFnContext::AddLinearBwdWeightBias(
-		OaContext& InCtx,
-		const OaMatrix& InInput,
-		const OaMatrix& InGradOutput,
-		OaMatrix& OutGradWeight,
-		OaMatrix& OutGradBias,
-		OaU32 InM,
-		OaU32 InN,
-		OaU32 InK);
-	friend void OaFnContext::AddLinearActivation(
-		OaContext& InCtx,
-		const char* InBf16SgName,
-		const char* InBf16WgName,
-		const char* InTiledName,
-		const OaMatrix& InX,
-		const OaMatrix& InWeight,
-		const OaMatrix& InBias,
-		OaMatrix& OutY,
-		OaU32 InM,
-		OaU32 InN,
-		OaU32 InK);
-	friend void OaFnContext::AddOwned(
-		OaContext& InCtx,
-		OaStringView InKernelName,
-		OaSpan<OaVkBuffer> InBuffers,
-		OaSpan<OaSharedPtr<OaVkBuffer>> InBufferOwners,
-		OaSpan<OaBufferAccess> InAccess,
-		const void* InPush,
-		OaU32 InPushSize,
-		OaU32 InGroupsX,
-		OaU32 InGroupsY,
-		OaU32 InGroupsZ);
-
 	explicit OaContext(OaComputeEngine* InRuntime);
 
 	OaComputeEngine* Runtime_;
@@ -355,6 +268,12 @@ private:
 	OaBool Executed_ = false;
 	bool Training_ = true;
 	OaVec<OaComputeGraph*> DeferredGraphs_;
+	OaVec<OaComputeGraph*> ReusableGraphs_;
+	OaVec<OaContextBatchBufferState> BatchBufferStates_;
+	OaContextExecutionStats ExecutionStats_;
+	OaVec<OaSharedPtr<OaVkBuffer>> StableResourceSlots_;
+	OaUsize StableResourceCursor_ = 0;
+	OaBool StableResourceFrameActive_ = false;
 	OaVkQueue* ComputeQueue_ = nullptr;
 	OaVkQueue* GraphicsQueue_ = nullptr;
 	OaVkQueue* VideoQueue_ = nullptr;

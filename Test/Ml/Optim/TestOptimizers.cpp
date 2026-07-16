@@ -474,6 +474,40 @@ TEST(OaAdamW, ComparisonWithAdam) {
 	EXPECT_LT(weight_adamw, weight_adam);
 }
 
+TEST(OaAdamW, AsyncBatchStepsPreservePerStepScalars) {
+	TestModule sequentialModule;
+	TestModule batchedModule;
+	OaAdamW sequential(sequentialModule.Parameters(), 0.001f);
+	OaAdamW batched(batchedModule.Parameters(), 0.001f);
+	auto& ctx = OaContext::GetDefault();
+
+	for (auto* module : {&sequentialModule, &batchedModule}) {
+		OaFnMatrix::Fill(module->Parameters()[0].Grad(), 0.5f);
+		OaFnMatrix::Fill(module->Parameters()[1].Grad(), 0.5f);
+	}
+	ASSERT_TRUE(ctx.Execute().IsOk());
+	ASSERT_TRUE(ctx.Sync().IsOk());
+
+	for (int step = 0; step < 2; ++step) {
+		sequential.Step();
+		ASSERT_TRUE(ctx.Execute().IsOk());
+		ASSERT_TRUE(ctx.Sync().IsOk());
+	}
+
+	for (int step = 0; step < 2; ++step) {
+		batched.Step();
+		ASSERT_TRUE(ctx.ExecuteInAsyncBatch().IsOk());
+	}
+	ASSERT_TRUE(ctx.FlushAsyncBatch().IsOk());
+	ASSERT_TRUE(ctx.Sync().IsOk());
+
+	EXPECT_EQ(sequential.GetStep(), batched.GetStep());
+	EXPECT_NEAR(sequentialModule.Parameters()[0].Data.At(0),
+		batchedModule.Parameters()[0].Data.At(0), 1e-6f);
+	EXPECT_NEAR(sequentialModule.Parameters()[1].Data.At(0),
+		batchedModule.Parameters()[1].Data.At(0), 1e-6f);
+}
+
 // ============================================================================
 // INTEGRATION TESTS
 // ============================================================================
@@ -534,4 +568,3 @@ TEST(Optimizers, GradientAccumulation) {
 	// Expected: 1.0 - 0.1 * (4 * 0.25) = 1.0 - 0.1 = 0.9
 	EXPECT_NEAR(module.Parameters()[0].Data.At(0), 0.9f, 1e-5f);
 }
-

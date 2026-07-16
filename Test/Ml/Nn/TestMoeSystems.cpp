@@ -15,6 +15,80 @@ TEST(OaMoeSparseParity, ForwardAndParameterGradientsMatchDenseOracle) {
 	RunSparseMoeParity();
 }
 
+TEST(OaMoeSparseParity, CapturedTrainingMatchesEagerAcrossRepeatedReplay) {
+	auto& ctx = OaContext::GetDefault();
+	OaContext::Scope scope(ctx);
+	constexpr OaI32 T = 8, D = 4, Steps = 6;
+	std::vector<float> input(T * D), target(T * D);
+	for (OaUsize i = 0; i < input.size(); ++i) {
+		input[i] = 0.04f * static_cast<float>(static_cast<OaI32>(i % 13) - 6);
+		target[i] = 0.03f * static_cast<float>(static_cast<OaI32>(i % 17) - 8);
+	}
+	auto fromF32 = [](const std::vector<float>& data, OaMatrixShape shape) {
+		return OaFnMatrix::FromBytes(OaSpan<const OaU8>(
+			reinterpret_cast<const OaU8*>(data.data()), data.size() * sizeof(float)),
+			shape, OaScalarType::Float32);
+	};
+	auto x = fromF32(input, {T, D});
+	auto y = fromF32(target, {T, D});
+
+	OaFnMatrix::SetRngSeed(919);
+	auto eager = OaMakeSharedPtr<OaMoE>(D, 3, 3, 2);
+	auto eagerParamPtrs = eager->AllParameterPtrs();
+	auto eagerOpt = OaMakeUniquePtr<OaAdamW>(eagerParamPtrs, 0.001F);
+	OaFnMatrix::SetRngSeed(919);
+	auto captured = OaMakeSharedPtr<OaMoE>(D, 3, 3, 2);
+	auto capturedParamPtrs = captured->AllParameterPtrs();
+	auto capturedOpt = OaMakeUniquePtr<OaAdamW>(capturedParamPtrs, 0.001F);
+	ASSERT_TRUE(ctx.Execute().IsOk());
+	ASSERT_TRUE(ctx.Sync().IsOk());
+
+	auto eagerParams = eager->AllNamedParameterPtrs();
+	auto capturedParams = captured->AllNamedParameterPtrs();
+	ASSERT_EQ(eagerParams.Size(), capturedParams.Size());
+	for (OaUsize p = 0; p < eagerParams.Size(); ++p) {
+		ASSERT_STREQ(eagerParams[p].Path.CStr(), capturedParams[p].Path.CStr());
+		const float* a = eagerParams[p].Param->Data.DataAs<const float>();
+		const float* b = capturedParams[p].Param->Data.DataAs<const float>();
+		for (OaI64 i = 0; i < eagerParams[p].Param->Data.NumElements(); ++i)
+			ASSERT_EQ(a[i], b[i]) << eagerParams[p].Path.CStr() << " initial " << i;
+	}
+
+	auto train = [&](OaMoE& model, OaOptimizer& optimizer,
+		OaTrainingProgram* program) {
+		OaItTraining iter(optimizer, OaItTrainingConfig{
+			.TotalSteps = Steps,
+			.Program = program,
+		});
+		while (not iter.IsDone()) {
+			iter.Step([] {}, [&] {
+				optimizer.ZeroGrad();
+				OaGradientTape tape;
+				auto loss = OaFnLoss::Mse(model.Forward(x), y);
+				tape.Backward(loss);
+				iter.RecordLoss(loss);
+			});
+		}
+		EXPECT_TRUE(iter.Finish().IsOk());
+		return iter.LastLoss();
+	};
+	const OaF32 eagerLoss = train(*eager, *eagerOpt, nullptr);
+	OaTrainingProgram program;
+	const OaF32 capturedLoss = train(*captured, *capturedOpt, &program);
+	EXPECT_TRUE(program.IsCaptured());
+	EXPECT_FLOAT_EQ(eagerLoss, capturedLoss);
+	EXPECT_EQ(eagerOpt->GetStep(), Steps);
+	EXPECT_EQ(capturedOpt->GetStep(), Steps);
+
+	for (OaUsize p = 0; p < eagerParams.Size(); ++p) {
+		const float* a = eagerParams[p].Param->Data.DataAs<const float>();
+		const float* b = capturedParams[p].Param->Data.DataAs<const float>();
+		for (OaI64 i = 0; i < eagerParams[p].Param->Data.NumElements(); ++i)
+			EXPECT_FLOAT_EQ(a[i], b[i])
+				<< eagerParams[p].Path.CStr() << " trained " << i;
+	}
+}
+
 TEST(OaGroupedGemmM, ForwardAndBackwardMatchCpuWithEmptyExpert) {
 	auto& ctx = OaContext::GetDefault();
 	OaContext::Scope scope(ctx);
@@ -41,6 +115,7 @@ TEST(OaGroupedGemmM, ForwardAndBackwardMatchCpuWithEmptyExpert) {
 	auto yl = OaFnMatrix::GroupedLinearM(mx, mw, mbias, moff);
 	auto db = OaFnMatrix::GroupedLinearMBiasBwd(mdy, moff, E);
 	auto bwd = OaFnMatrix::GroupedGemmMBwd(mdy, mx, mw, moff);
+	auto linearBwd = OaFnMatrix::GroupedLinearMBwd(mdy, mx, mw, moff);
 	ASSERT_TRUE(ctx.Execute().IsOk());
 	ASSERT_TRUE(ctx.Sync().IsOk());
 
@@ -67,6 +142,9 @@ TEST(OaGroupedGemmM, ForwardAndBackwardMatchCpuWithEmptyExpert) {
 	expect(db, dbRef);
 	expect(bwd.DInput, dxRef);
 	expect(bwd.DWeight, dwRef);
+	expect(linearBwd.DInput, dxRef);
+	expect(linearBwd.DWeight, dwRef);
+	expect(linearBwd.DBias, dbRef);
 }
 
 TEST(OaGroupedGemmM, PackedRouteLinearMatchesDenseCpu) {
@@ -96,7 +174,7 @@ TEST(OaGroupedGemmM, PackedRouteLinearMatchesDenseCpu) {
 	auto mw = matrix(w, {E, N, D}, OaScalarType::Float32);
 	auto mb = matrix(bias, {E, N}, OaScalarType::Float32);
 	auto plan = OaFnMatrix::MoeExpertPlan(mi, E);
-	auto packedX = OaFnMatrix::Gather(mx, plan.PackedToken);
+	auto packedX = OaFnMatrix::MoeGather(mx, plan.PackedToken, plan.Inverse);
 	auto routeGate = OaFnMatrix::GatherLastDim(mg, mi);
 	auto packed = OaFnMatrix::GroupedLinearM(packedX, mw, mb, plan.Offsets);
 	auto out = OaFnMatrix::MoeCombine(
@@ -115,6 +193,81 @@ TEST(OaGroupedGemmM, PackedRouteLinearMatchesDenseCpu) {
 	}
 	const float* got = out.DataAs<const float>();
 	for (OaUsize i = 0; i < ref.size(); ++i) EXPECT_NEAR(got[i], ref[i], 1e-5f) << i;
+}
+
+TEST(OaMoeGather, ForwardAndDeterministicBackwardMatchCpuWithDuplicateRows) {
+	auto& ctx = OaContext::GetDefault();
+	OaContext::Scope scope(ctx);
+	constexpr OaI32 T = 4, D = 3, K = 2, R = T * K;
+	const std::vector<float> input = {
+		0.1f, 0.2f, 0.3f,
+		0.4f, 0.5f, 0.6f,
+		0.7f, 0.8f, 0.9f,
+		1.0f, 1.1f, 1.2f};
+	const std::vector<OaU32> indices = {2, 0, 2, 3, 0, 3, 1, 1};
+	const std::vector<OaU32> inverse = {1, 4, 6, 7, 0, 2, 3, 5};
+	std::vector<float> upstream(R * D);
+	for (OaI32 i = 0; i < R * D; ++i)
+		upstream[i] = 0.01f * static_cast<float>(i + 1);
+	auto matrix = [](const auto& data, OaMatrixShape shape, OaScalarType dtype) {
+		return OaFnMatrix::FromBytes(OaSpan<const OaU8>(
+			reinterpret_cast<const OaU8*>(data.data()), data.size() * sizeof(data[0])),
+			shape, dtype);
+	};
+	auto x = matrix(input, {T, D}, OaScalarType::Float32);
+	auto idx = matrix(indices, {R}, OaScalarType::UInt32);
+	auto inv = matrix(inverse, {R}, OaScalarType::UInt32);
+	auto up = matrix(upstream, {R, D}, OaScalarType::Float32);
+	x.SetRequiresGrad(true);
+	OaGradientTape tape;
+	auto packed = OaFnMatrix::MoeGather(x, idx, inv);
+	auto loss = OaFnMatrix::Sum(OaFnMatrix::Mul(packed, up));
+	tape.Backward(loss);
+	ASSERT_TRUE(ctx.Execute().IsOk());
+	ASSERT_TRUE(ctx.Sync().IsOk());
+
+	const float* gotPacked = packed.DataAs<const float>();
+	for (OaI32 r = 0; r < R; ++r) for (OaI32 d = 0; d < D; ++d)
+		EXPECT_NEAR(gotPacked[r * D + d], input[indices[r] * D + d], 1e-6f)
+			<< "packed route " << r << " dim " << d;
+	std::vector<float> gradRef(T * D, 0.0f);
+	for (OaI32 r = 0; r < R; ++r) for (OaI32 d = 0; d < D; ++d)
+		gradRef[indices[r] * D + d] += upstream[r * D + d];
+	const float* gotGrad = x.GradMatrix().DataAs<const float>();
+	for (OaUsize i = 0; i < gradRef.size(); ++i)
+		EXPECT_NEAR(gotGrad[i], gradRef[i], 1e-6f) << "gradient " << i;
+}
+
+TEST(OaScatterAddRows, AtomicScatterMatchesCpuWithBfloat16Storage) {
+	auto& ctx = OaContext::GetDefault();
+	OaContext::Scope scope(ctx);
+	constexpr OaI32 T = 3, D = 3, R = 6;
+	const std::vector<float> source = {
+		0.25f, -0.50f, 0.75f,
+		1.00f, 0.50f, -0.25f,
+		-0.50f, 0.25f, 1.25f,
+		0.75f, 0.75f, 0.75f,
+		-0.25f, 1.00f, 0.50f,
+		0.50f, -0.75f, 0.25f};
+	const std::vector<OaU32> indices = {2, 0, 2, 1, 0, 2};
+	auto f32 = OaFnMatrix::FromBytes(OaSpan<const OaU8>(
+		reinterpret_cast<const OaU8*>(source.data()), source.size() * sizeof(float)),
+		{R, D}, OaScalarType::Float32);
+	auto idx = OaFnMatrix::FromBytes(OaSpan<const OaU8>(
+		reinterpret_cast<const OaU8*>(indices.data()), indices.size() * sizeof(OaU32)),
+		{R}, OaScalarType::UInt32);
+	auto bf16 = OaFnMatrix::Cast(f32, OaScalarType::BFloat16);
+	auto scattered = OaFnMatrix::ScatterAddRows(bf16, idx, T);
+	auto gotF32 = OaFnMatrix::Cast(scattered, OaScalarType::Float32);
+	ASSERT_TRUE(ctx.Execute().IsOk());
+	ASSERT_TRUE(ctx.Sync().IsOk());
+
+	std::vector<float> ref(T * D, 0.0f);
+	for (OaI32 r = 0; r < R; ++r) for (OaI32 d = 0; d < D; ++d)
+		ref[indices[r] * D + d] += source[r * D + d];
+	const float* got = gotF32.DataAs<const float>();
+	for (OaUsize i = 0; i < ref.size(); ++i)
+		EXPECT_NEAR(got[i], ref[i], 0.02f) << "BF16 scatter " << i;
 }
 
 TEST(OaGroupedGemmM, GatherLastDimBackwardMatchesCpu) {

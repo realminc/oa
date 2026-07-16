@@ -218,6 +218,14 @@ struct OaGroupedGemmMBwdResult {
 	const OaMatrix& InX, const OaMatrix& InWeight, const OaMatrix& InOffsets);
 [[nodiscard]] OaMatrix GroupedLinearMBiasBwd(const OaMatrix& InDOut,
 	const OaMatrix& InOffsets, OaI32 InNumExperts);
+struct OaGroupedLinearMBwdResult {
+	OaMatrix DInput;
+	OaMatrix DWeight;
+	OaMatrix DBias;
+};
+[[nodiscard]] OaGroupedLinearMBwdResult GroupedLinearMBwd(
+	const OaMatrix& InDOut, const OaMatrix& InX, const OaMatrix& InWeight,
+	const OaMatrix& InOffsets);
 [[nodiscard]] OaMatrix MoeCombine(const OaMatrix& InPacked,
 	const OaMatrix& InRouteGate, const OaMatrix& InInverse,
 	const OaMatrix& InPackedSlot);
@@ -228,6 +236,13 @@ struct OaMoeCombineBwdResult {
 [[nodiscard]] OaMoeCombineBwdResult MoeCombineBwd(const OaMatrix& InDOut,
 	const OaMatrix& InPacked, const OaMatrix& InRouteGate,
 	const OaMatrix& InInverse, const OaMatrix& InPackedSlot);
+// MoE token packing. Forward is the same UInt32 row gather as Gather. The
+// route-plan inverse makes backward a deterministic O(T*K*D) reduction with
+// one writer per output scalar (no atomics and no output-clear pass).
+[[nodiscard]] OaMatrix MoeGather(const OaMatrix& InSelf,
+	const OaMatrix& InIndices, const OaMatrix& InInverse);
+[[nodiscard]] OaMatrix MoeGatherBwd(const OaMatrix& InSource,
+	const OaMatrix& InInverse, OaI32 InOutRows);
 [[nodiscard]] OaMatrix ScatterAddRows(const OaMatrix& InSource,
 	const OaMatrix& InIndices, OaI32 InOutRows);
 // GPU-native row compaction keeps fixed capacity T so shape construction never
@@ -236,16 +251,26 @@ struct OaCompactRowsResult {
 	OaMatrix Values;  // [T,D], first Count rows valid, remaining rows zero
 	OaMatrix RowMap;  // UInt32 [T], first Count entries map packed -> source row
 	OaMatrix Count;   // UInt32 [1]
+	OaMatrix DispatchArgs; // UInt32 [3], GPU-authored ceil(Count*D/256),1,1
 };
 [[nodiscard]] OaCompactRowsResult CompactRows(const OaMatrix& InSelf, const OaMatrix& InMask);
 [[nodiscard]] OaMatrix CompactRowsBwd(
 	const OaMatrix& InGradOut, const OaMatrix& InRowMap, const OaMatrix& InCount,
 	OaMatrixShape InInputShape);
+[[nodiscard]] OaMatrix CompactRowsBwd(
+	const OaMatrix& InGradOut, const OaMatrix& InRowMap, const OaMatrix& InCount,
+	const OaMatrix& InDispatchArgs, OaMatrixShape InInputShape);
 [[nodiscard]] OaMatrix ScatterRows(
 	const OaMatrix& InSelf, const OaMatrix& InSource,
 	const OaMatrix& InRowMap, const OaMatrix& InCount);
+[[nodiscard]] OaMatrix ScatterRows(
+	const OaMatrix& InSelf, const OaMatrix& InSource,
+	const OaCompactRowsResult& InPlan);
 [[nodiscard]] OaMatrix ScatterRowsBwdSource(
 	const OaMatrix& InGradOut, const OaMatrix& InRowMap, const OaMatrix& InCount);
+[[nodiscard]] OaMatrix ScatterRowsBwdSource(
+	const OaMatrix& InGradOut, const OaMatrix& InRowMap, const OaMatrix& InCount,
+	const OaMatrix& InDispatchArgs);
 
 // --- Mamba-3 SISO selective scan (full outer-product state, rotary, trapezoidal) ---
 // Implements the exact Mamba-3 SISO recurrence (arxiv 2603.15569). The kernel folds

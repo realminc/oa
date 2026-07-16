@@ -345,7 +345,6 @@ set(OA_SOURCES
 	Source/Private/Oa/Runtime/Gemm/Dispatch.cpp
 	Source/Private/Oa/Runtime/Gemm/Registry.cpp
 	Source/Private/Oa/Runtime/Gemm/Router.cpp
-	Source/Private/Oa/Runtime/Gemm/Cache.cpp
 	Source/Private/Oa/Runtime/Gemm/Tuner.cpp
 	Source/Private/Oa/Core/ByteLogitsHost.cpp
 	Source/Private/Oa/Core/FileIo.cpp
@@ -415,8 +414,9 @@ set(OA_SOURCES
 	Source/Private/Oa/Runtime/Dispatch.cpp
 	Source/Private/Oa/Runtime/ImageDispatch.cpp
 	Source/Private/Oa/Runtime/ComputeGraph.cpp
+	Source/Private/Oa/Runtime/Dnn.cpp
 	Source/Private/Oa/Runtime/Context/ContextCore.cpp
-	Source/Private/Oa/Runtime/Context/FnContext.cpp
+	Source/Private/Oa/Runtime/Context/ContextLowering.cpp
 	Source/Private/Oa/Runtime/Context/ContextExecute.cpp
 
 	Source/Private/Oa/Runtime/Persistent.cpp
@@ -437,6 +437,7 @@ set(OA_SOURCES
 
 	# ML — Matrix operations (OaFnMatrix namespace extensions)
 	Source/Private/Oa/Ml/FnMatrix/Blas/FnMatrixBlas.cpp
+	Source/Private/Oa/Ml/FnMatrix/Blas/FnMatrixPackedLinear.cpp
 	Source/Private/Oa/Ml/FnMatrix/Norm/FnMatrixNorm.cpp
 	Source/Private/Oa/Ml/FnMatrix/Modules/FnMatrixModules.cpp
 	Source/Private/Oa/Ml/FnMatrix/Pool/FnMatrixPool.cpp
@@ -446,6 +447,7 @@ set(OA_SOURCES
 	Source/Private/Oa/Ml/FnMatrix/Vq/FnMatrixVq.cpp
 	Source/Private/Oa/Ml/FnMatrix/Bmm/FnMatrixBmm.cpp
 	Source/Private/Oa/Ml/FnMatrix/Attention/FnMatrixAttention.cpp
+	Source/Private/Oa/Ml/FnMatrix/Attention/FnMatrixFlashAttention.cpp
 	Source/Private/Oa/Ml/FnMatrix/Moe/FnMatrixMoe.cpp
 	Source/Private/Oa/Ml/FnMatrix/Nn/FnMatrixGru.cpp
 	Source/Private/Oa/Ml/FnMatrix/Nn/FnMatrixRnn.cpp
@@ -461,6 +463,7 @@ set(OA_SOURCES
 	# ML — nn modules (Vulkan dispatch)
 	Source/Private/Oa/Ml/Nn/Module.cpp
 	Source/Private/Oa/Ml/ItTraining.cpp
+	Source/Private/Oa/Ml/TrainingProgram.cpp
 	Source/Private/Oa/Ml/Metric.cpp
 	Source/Private/Oa/Ml/Tokenizer.cpp
 	Source/Private/Oa/Ml/NlpSuite.cpp
@@ -780,11 +783,12 @@ if(SLANGC)
 	# Flat tensor ops (linear-index maps + reductions) live under Core/Shader/Compute/Flat/ (same registry names).
 	# Architecture-specific kernels (SSM, ISG, RDG, ACB, H-MSU, etc.) live in ml repo.
 	set(OA_ML_SHADER_REG
+		PackedLinear
 		Add Sub Mul MulBwd Div Neg Abs Fill MultiMatrixFill MultiMatrixAdd Scale Log Exp Sin Cos Reciprocal ClampMax ClampMin Broadcast Copy CopyAtOffset MatrixCopyRegion CastU8ToU32 Equal GreaterEqual CausalMaskApply CausalMaskBwd Sum SumDim Max MaxBwd Argmax TopK TopKMask SampleSortedLogits SampleDenseLogits CategoricalAccuracyCount MaskedCategoricalAccuracyCount ReduceCols ReduceMean MeanBwd
 		AddBcast SubBcast MulBcast DivBcast AddScalar SubScalar DivScalar
 		Tanh TanhBwd Sigmoid SigmoidBwd LeakyRelu LeakyReluBwd Elu EluBwd Mish MishBwd Softplus SoftplusBwd
 		Sqrt Pow
-		BiasAdd Embedding Gather GatherLastDim GatherLastDimBwd VqAssign VqEmaUpdate Bmm SplitHeads MergeHeads GroupedGemmM GroupedGemmMDataBwd GroupedGemmMWeightBwd GroupedLinearM GroupedLinearMBiasBwd RepeatInterleave RepeatInterleaveBwd CompactRows CompactRowsBwd ScatterRows ScatterRowsBwd MoeRoutingBiasUpdate MoeExpertPlan MoeRouteWeights MoeRouteWeightsBwd MoeCombine MoeCombineBwd
+		BiasAdd Embedding Gather GatherLastDim GatherLastDimBwd VqAssign VqEmaUpdate Bmm SplitHeads MergeHeads FlashCausal FlashCausalBwdQ FlashCausalBwdKV GroupedGemmM GroupedGemmMDataBwd GroupedGemmMWeightBwd GroupedLinearM GroupedLinearMBiasBwd GroupedLinearMWeightBiasBwd RepeatInterleave RepeatInterleaveBwd CompactRows CompactRowsBwd CompactRowsBwdIndirect ScatterRows ScatterRowsBwd ScatterRowsIndirect ScatterRowsBwdIndirect MoeRoutingBiasUpdate MoeExpertPlan MoeRouteWeights MoeRouteWeightsBwd MoeCombine MoeCombineBwd ScatterAddRows MoeGatherBwd
 		Silu SiluBwd Gelu GeluBwd Relu ReluBwd Swiglu SwigluBwd SiluMul SiluMulBwd Geglu GegluBwd GruCellPointwise GruCellPointwiseBwd GruCellLinear GruScan GruScanBwd RnnCellPointwise RnnCellPointwiseBwd RnnCellLinear RnnScan RnnScanBwd
 		RmsNorm RmsNormBwd RmsNormGated RmsNormGatedBwd Softmax SoftmaxBwd SoftmaxScaledMasked SoftmaxScaledMaskedBwd
 		CrossEntropy CrossEntropyBwd CrossEntropyLossGradBwd MaskedCrossEntropy MaskedCrossEntropyBwd
@@ -793,9 +797,9 @@ if(SLANGC)
 		Conv1dBwdData Conv1dBwdWeight Conv2d Conv2dBwdData Conv2dBwdWeight ConvTranspose2dBwdWeight Im2Col Col2Im LayerNorm LayerNormBwd
 		AvgPool2d AvgPool2dBwd MaxPool2d MaxPool2dBwd
 		ByteEmbed ByteEmbedBwd GatherBwd
-		LinearDataBwd LinearDataAccumBwd LinearDataReluBwd LinearReluBwdData LinearWeightBwd LinearWeightBiasBwd
+		LinearDataBwd LinearDataAccumBwd LinearDataReluBwd LinearReluBwdData LinearWeightBwd LinearWeightBiasBwd LinearWeightBiasBwdTiled
 		ResidualRmsNorm
-		Sgd SgdMomentum Adam Adamw AdamwGraph AdamwMany4
+		Sgd SgdMomentum Adam Adamw AdamwGraphAdvance AdamwGraph AdamwMany4 AdamwMany4Graph
 		MuonNesterov MuonNormalize MuonApply MuonVector
 		ClipGradNormReduce ClipGradNormScale
 		CollectiveReduce
@@ -806,6 +810,7 @@ if(SLANGC)
 		CastBf16ToF32 CastF32ToBf16
 	)
 	set(OA_ML_SHADER_SRC
+		Blas/PackedLinear
 		Flat/Add Flat/Sub Flat/Mul Nn/Reduction/MulBwd Flat/Div Flat/Neg Flat/Abs Flat/Fill Flat/MultiMatrixFill Flat/MultiMatrixAdd Flat/Scale Flat/Log Flat/Exp Flat/Sin Flat/Cos Flat/Reciprocal Flat/ClampMax Flat/ClampMin Flat/Broadcast Flat/Copy Flat/CopyAtOffset Flat/MatrixCopyRegion Flat/CastU8ToU32 Flat/Equal Flat/GreaterEqual Flat/CausalMaskApply Flat/CausalMaskBwd
 		Flat/Sum Flat/SumDim Flat/Max Nn/Reduction/MaxBwd Flat/Argmax Flat/TopK Flat/TopKMask Flat/SampleSortedLogits Flat/SampleDenseLogits Flat/CategoricalAccuracyCount Flat/MaskedCategoricalAccuracyCount Flat/ReduceCols Flat/ReduceMean Nn/Reduction/MeanBwd
 		Flat/AddBcast Flat/SubBcast Flat/MulBcast Flat/DivBcast
@@ -814,7 +819,7 @@ if(SLANGC)
 		Nn/Activation/LeakyRelu Nn/Activation/LeakyReluBwd Nn/Activation/Elu Nn/Activation/EluBwd
 		Nn/Activation/Mish Nn/Activation/MishBwd Nn/Activation/Softplus Nn/Activation/SoftplusBwd
 		Nn/Math/Sqrt Nn/Math/Pow
-		Ops/BiasAdd Ops/Embedding Ops/Gather Ops/GatherLastDim Ops/GatherLastDimBwd Ops/VqAssign Ops/VqEmaUpdate Ops/Bmm Nn/Attention/SplitHeads Nn/Attention/MergeHeads Blas/GroupedGemmM Blas/GroupedGemmMDataBwd Blas/GroupedGemmMWeightBwd Blas/GroupedLinearM Blas/GroupedLinearMBiasBwd Ops/RepeatInterleave Ops/RepeatInterleaveBwd Ops/CompactRows Ops/CompactRowsBwd Ops/ScatterRows Ops/ScatterRowsBwd Nn/Moe/MoeRoutingBiasUpdate Nn/Moe/MoeExpertPlan Nn/Moe/MoeRouteWeights Nn/Moe/MoeRouteWeightsBwd Nn/Moe/MoeCombine Nn/Moe/MoeCombineBwd
+		Ops/BiasAdd Ops/Embedding Ops/Gather Ops/GatherLastDim Ops/GatherLastDimBwd Ops/VqAssign Ops/VqEmaUpdate Ops/Bmm Nn/Attention/SplitHeads Nn/Attention/MergeHeads Nn/Attention/FlashCausal Nn/Attention/FlashCausalBwdQ Nn/Attention/FlashCausalBwdKV Blas/GroupedGemmM Blas/GroupedGemmMDataBwd Blas/GroupedGemmMWeightBwd Blas/GroupedLinearM Blas/GroupedLinearMBiasBwd Blas/GroupedLinearMWeightBiasBwd Ops/RepeatInterleave Ops/RepeatInterleaveBwd Ops/CompactRows Ops/CompactRowsBwd Ops/CompactRowsBwdIndirect Ops/ScatterRows Ops/ScatterRowsBwd Ops/ScatterRowsIndirect Ops/ScatterRowsBwdIndirect Nn/Moe/MoeRoutingBiasUpdate Nn/Moe/MoeExpertPlan Nn/Moe/MoeRouteWeights Nn/Moe/MoeRouteWeightsBwd Nn/Moe/MoeCombine Nn/Moe/MoeCombineBwd Nn/Moe/ScatterAddRows Nn/Moe/MoeGatherBwd
 		Nn/Silu/Silu Nn/Silu/SiluBwd
 		Nn/Gelu/Gelu Nn/Gelu/GeluBwd
 		Nn/Relu/Relu Nn/Relu/ReluBwd
@@ -827,11 +832,11 @@ if(SLANGC)
 		Nn/Conv/Conv1dBwdData Nn/Conv/Conv1dBwdWeight Nn/Conv/Conv2d Nn/Conv/Conv2dBwdData Nn/Conv/Conv2dBwdWeight Nn/Conv/ConvTranspose2dBwdWeight Nn/Conv/Im2Col Nn/Conv/Col2Im Nn/LayerNorm/LayerNorm Nn/LayerNorm/LayerNormBwd
 		Nn/Pooling/AvgPool2d Nn/Pooling/AvgPool2dBwd Nn/Pooling/MaxPool2d Nn/Pooling/MaxPool2dBwd
 		Nn/ByteEmbed/ByteEmbed Nn/ByteEmbed/ByteEmbedBwd Nn/GatherBwd
-		Nn/Linear/LinearDataBwd Nn/Linear/LinearDataAccumBwd Nn/Linear/LinearDataReluBwd Nn/Linear/LinearReluBwdData Nn/Linear/LinearWeightBwd Nn/Linear/LinearWeightBiasBwd
+		Nn/Linear/LinearDataBwd Nn/Linear/LinearDataAccumBwd Nn/Linear/LinearDataReluBwd Nn/Linear/LinearReluBwdData Nn/Linear/LinearWeightBwd Nn/Linear/LinearWeightBiasBwd Nn/Linear/LinearWeightBiasBwdTiled
 		Nn/ResidualRmsNorm/ResidualRmsNorm
 		Optim/Sgd/Sgd Optim/Sgd/SgdMomentum
 		Optim/Adam/Adam
-		Optim/AdamW/Adamw Optim/AdamW/AdamwGraph Optim/AdamW/AdamwMany4
+		Optim/AdamW/Adamw Optim/AdamW/AdamwGraphAdvance Optim/AdamW/AdamwGraph Optim/AdamW/AdamwMany4 Optim/AdamW/AdamwMany4Graph
 		Optim/Muon/MuonNesterov Optim/Muon/MuonNormalize Optim/Muon/MuonApply Optim/Muon/MuonVector
 		Optim/GradClip/ClipGradNormReduce Optim/GradClip/ClipGradNormScale
 		Flat/CollectiveReduce
@@ -924,38 +929,19 @@ if(SLANGC)
 	# Core GEMM kernels (hierarchy: Naive → Tiled → CmSg/CmWg BF16)
 	set(OA_BLAS_GEMM_KERNELS
 		Gemm/GemmNaive
-		Gemm/GemmTiled
+		Gemm/GemmStrided
 	)
 
-	# GemmCmSgBf16 variants: one template, 5 SPVs (raw, bias, bias+relu, bias+gelu, silu).
-	# OA_ACT selects the epilogue at compile time; push constants vary accordingly.
-	set(OA_GEMM_BF16_VARIANTS
-		"GemmCmSgBf16"          "0"
-		"GemmBiasCmSgBf16"      "1"
-		"GemmBiasReluCmSgBf16"  "2"
-		"GemmBiasGeluCmSgBf16"  "3"
-		"GemmSiluCmSgBf16"      "4"
-	)
-
-	# GemmCmWgBf16 variants: workgroup-scope 32x32x16 KHR CoopMat, same epilogue set.
-	set(OA_GEMM_WG_BF16_VARIANTS
-		"GemmCmWgBf16"          "0"
-		"GemmBiasCmWgBf16"      "1"
-		"GemmBiasReluCmWgBf16"  "2"
-		"GemmBiasGeluCmWgBf16"  "3"
-		"GemmSiluCmWgBf16"      "4"
-	)
+	# Generated from Tools/OaTile/Schema/Fp32Tiled.toml. The schema is the single
+	# source of truth for compile geometry, stable kernel IDs and router metadata.
+	include("${CMAKE_CURRENT_SOURCE_DIR}/Source/Private/Oa/Core/Shader/Compute/Blas/Tile/OaTileFp32Variants.gen.cmake")
+	# BF16 subgroup/workgroup CoopMat families and their epilogues are generated
+	# from one capability-gated schema alongside the FP32 lattice.
+	include("${CMAKE_CURRENT_SOURCE_DIR}/Source/Private/Oa/Core/Shader/Compute/Blas/Tile/OaTileBf16Variants.gen.cmake")
 
 	set(OA_BLAS_GLSL_COMP_KERNELS "")
 	set(OA_ML_BLAS_GLSL_COMP_KERNELS "")
 
-	# Fused GEMM+NN epilogue variants (organized by fusion type)
-	set(OA_ML_BLAS_GEMM_NN_KERNELS
-		Gemm/Nn/Bias/GemmBiasTiled
-		Gemm/Nn/BiasRelu/GemmBiasReluTiled
-		Gemm/Nn/BiasGelu/GemmBiasGeluTiled
-	)
-	
 	# Utility kernels
 	set(OA_BLAS_UTIL_KERNELS
 		Util/GemmCoopVec
@@ -992,6 +978,40 @@ if(SLANGC)
 		endif()
 		list(APPEND OA_ML_SPV_OUTPUTS ${_SPV})
 	endforeach()
+
+	set(_GEMM_FP32_TEMPLATE "${OA_KERNEL_BLAS_DIR}/Gemm/GemmTiled.slang")
+	list(LENGTH OA_TILE_FP32_NAMES _OA_FP32_LEN)
+	set(_OA_FP32_I 0)
+	while(_OA_FP32_I LESS _OA_FP32_LEN)
+		list(GET OA_TILE_FP32_NAMES ${_OA_FP32_I} _FP32_NAME)
+		list(GET OA_TILE_FP32_TILE_M ${_OA_FP32_I} _FP32_TILE_M)
+		list(GET OA_TILE_FP32_TILE_N ${_OA_FP32_I} _FP32_TILE_N)
+		list(GET OA_TILE_FP32_TILE_K ${_OA_FP32_I} _FP32_TILE_K)
+		list(GET OA_TILE_FP32_THREAD_M ${_OA_FP32_I} _FP32_THREAD_M)
+		list(GET OA_TILE_FP32_THREAD_N ${_OA_FP32_I} _FP32_THREAD_N)
+		list(GET OA_TILE_FP32_WORKGROUP ${_OA_FP32_I} _FP32_WORKGROUP)
+		list(GET OA_TILE_FP32_GROUP_M ${_OA_FP32_I} _FP32_GROUP_M)
+		list(GET OA_TILE_FP32_EPILOGUE ${_OA_FP32_I} _FP32_EPILOGUE)
+		set(_FP32_SPV "${OA_SPIRV_DIR}/${_FP32_NAME}.spv")
+		add_custom_command(
+			OUTPUT ${_FP32_SPV}
+			COMMAND ${SLANGC} ${_GEMM_FP32_TEMPLATE}
+				-I ${OA_SLANG_UMBRELLA_DIR} -I ${OA_SLANG_MODULE_DIR}
+				-D OA_TILE_M=${_FP32_TILE_M}
+				-D OA_TILE_N=${_FP32_TILE_N}
+				-D OA_TILE_K=${_FP32_TILE_K}
+				-D OA_THREAD_TILE_M=${_FP32_THREAD_M}
+				-D OA_THREAD_TILE_N=${_FP32_THREAD_N}
+				-D OA_TILE_WORKGROUP=${_FP32_WORKGROUP}
+				-D OA_TILE_GROUP_M=${_FP32_GROUP_M}
+				-D OA_TILE_EPILOGUE=${_FP32_EPILOGUE}
+				-target spirv -entry main -o ${_FP32_SPV}
+			DEPENDS ${_GEMM_FP32_TEMPLATE} ${OA_SLANG_MODULES}
+			COMMENT "slangc: GemmTiled.slang -> ${_FP32_NAME}.spv (${_FP32_TILE_M}x${_FP32_TILE_N}x${_FP32_TILE_K}, thread ${_FP32_THREAD_M}x${_FP32_THREAD_N}, group-M ${_FP32_GROUP_M}, epilogue ${_FP32_EPILOGUE})"
+		)
+		list(APPEND OA_ML_SPV_OUTPUTS ${_FP32_SPV})
+		math(EXPR _OA_FP32_I "${_OA_FP32_I} + 1")
+	endwhile()
 
 	# GemmCmSgBf16 variants from one template source.
 	set(_GEMM_BF16_TEMPLATE "${OA_KERNEL_BLAS_DIR}/Gemm/GemmCmSgBf16.slang")
@@ -1077,25 +1097,6 @@ if(SLANGC)
 		list(APPEND OA_ML_SPV_OUTPUTS ${_SPV})
 	endforeach()
 
-	# Compile ML BLAS GEMM+NN fused kernels (organized by fusion type)
-	foreach(_KERNEL ${OA_ML_BLAS_GEMM_NN_KERNELS})
-		get_filename_component(_NAME ${_KERNEL} NAME)
-		set(_SRC "${OA_KERNEL_ML_BLAS_DIR}/${_KERNEL}.slang")
-		set(_SPV "${OA_SPIRV_DIR}/${_NAME}.spv")
-		add_custom_command(
-			OUTPUT ${_SPV}
-			COMMAND ${SLANGC} ${_SRC}
-				-I ${OA_SLANG_UMBRELLA_DIR} -I ${OA_SLANG_MODULE_DIR}
-				-target spirv -entry main
-				-capability spvCooperativeMatrixKHR
-				-capability spvCooperativeMatrixConversionsNV
-				-o ${_SPV}
-			DEPENDS ${_SRC} ${OA_SLANG_MODULES}
-			COMMENT "slangc: Ml/Shader/Compute/Blas/${_KERNEL}.slang → ${_NAME}.spv"
-		)
-		list(APPEND OA_ML_SPV_OUTPUTS ${_SPV})
-	endforeach()
-	
 	# Compile utility kernels (GemmCoopVec needs CooperativeVector)
 	foreach(_KERNEL ${OA_BLAS_UTIL_KERNELS})
 		get_filename_component(_NAME ${_KERNEL} NAME)
@@ -1166,6 +1167,9 @@ if(SLANGC)
 	set(OA_RNG_SHADERS
 		PhiloxUniform
 		PhiloxNormal
+		PhiloxUniformGraph
+		PhiloxNormalGraph
+		PhiloxGraphAdvance
 	)
 	foreach(_SHADER ${OA_RNG_SHADERS})
 		set(_SRC "${OA_KERNEL_RNG_DIR}/${_SHADER}.slang")
@@ -1423,6 +1427,10 @@ if(SLANGC)
 		get_filename_component(_REG_BASENAME "${_REG}" NAME)
 		list(APPEND OA_ALL_SPV_NAMES ${_REG_BASENAME})
 	endforeach()
+	# Generated FP32 raw and fused-epilogue variants.
+	foreach(_REG ${OA_TILE_FP32_NAMES})
+		list(APPEND OA_ALL_SPV_NAMES ${_REG})
+	endforeach()
 	# GemmCmSgBf16 template variants (raw, bias, bias+relu, bias+gelu, silu).
 	set(_OA_BF16_REG_I 0)
 	while(_OA_BF16_REG_I LESS ${_OA_BF16_LAST})
@@ -1450,12 +1458,12 @@ if(SLANGC)
 		list(APPEND OA_ALL_SPV_NAMES ${_REG_BASENAME})
 	endforeach()
 	list(APPEND OA_ALL_SPV_NAMES "TransposeTiled")
-	list(APPEND OA_ALL_SPV_NAMES "GemmBiasTiled")
-	list(APPEND OA_ALL_SPV_NAMES "GemmBiasReluTiled")
-	list(APPEND OA_ALL_SPV_NAMES "GemmBiasGeluTiled")
 	# ScanSsm* SPVs removed along with the SSM module.
 	list(APPEND OA_ALL_SPV_NAMES "PhiloxUniform")
 	list(APPEND OA_ALL_SPV_NAMES "PhiloxNormal")
+	list(APPEND OA_ALL_SPV_NAMES "PhiloxUniformGraph")
+	list(APPEND OA_ALL_SPV_NAMES "PhiloxNormalGraph")
+	list(APPEND OA_ALL_SPV_NAMES "PhiloxGraphAdvance")
 	list(APPEND OA_ALL_SPV_NAMES "SrRoundBf16")
 	# Audio DSP shaders. Derive names from the compile list so embedding cannot drift.
 	foreach(_SHADER ${OA_AUDIO_SHADERS})

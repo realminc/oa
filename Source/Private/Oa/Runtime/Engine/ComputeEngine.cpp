@@ -499,6 +499,10 @@ OaStatus OaComputeEngine::FlushComputeBatch() {
 	}
 	OaVkStream* current = ComputeBatchStream_;
 	ComputeBatchStream_ = nullptr;
+	// Secondary graphs in a context-owned batch deliberately omit their own
+	// compute -> host barriers. Emit exactly one visibility edge at the real
+	// submission/readback boundary.
+	current->RecordHostReadbackBarrier();
 
 	// Submit with a GPU-side dependency on the previous ring slot.
 	// This ensures the previous step's optimizer writes are visible before the

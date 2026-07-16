@@ -770,6 +770,8 @@ void OaVkDevice::PrintInfoDetailed() const {
 		"    MaxComputeWorkGroupSize: %u (MaxInvocations: %u)",
 		hw.MaxComputeWorkGroupSize, hw.MaxComputeWorkGroupInvocations
 	);
+	OA_LOG_INFO(OaLogComponent::Core, "    MaxComputeSharedMemory: %u bytes",
+		hw.MaxComputeSharedMemoryBytes);
 	OA_LOG_INFO(OaLogComponent::Core, "  )");
 	OA_LOG_INFO(OaLogComponent::Core, "  DescriptorLimits(");
 	OA_LOG_INFO(OaLogComponent::Core, "    maxPerStageDescriptorUpdateAfterBindStorageBuffers: %u",

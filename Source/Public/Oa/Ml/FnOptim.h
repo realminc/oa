@@ -22,6 +22,11 @@ struct OaAdamWParamSet {
 	const OaMatrix* Grad;
 };
 
+/// Advance the mutable replay state immediately before replay-safe AdamW
+/// updates. The host seeds state[0] with the previous completed step; this
+/// one-thread GPU op makes each replay consume a distinct optimizer step.
+void AdamWAdvanceGraphState(OaMatrix& InOutState);
+
 /// AdamW optimizer step: param -= lr * (m_hat / (sqrt(v_hat) + eps) + wd * param)
 void AdamWStep(
 	OaMatrix& InOutParam,
@@ -36,6 +41,17 @@ void AdamWStep(
 	OaI32 InStep
 );
 
+/// Replay-safe AdamW step. Mutable optimizer scalars are read from InState:
+/// uint32[6] = {step, bitcast(lr), bitcast(beta1), bitcast(beta2),
+/// bitcast(eps), bitcast(weight_decay)}. Only Count remains in push constants.
+void AdamWStepGraph(
+	OaMatrix& InOutParam,
+	OaMatrix& InOutM,
+	OaMatrix& InOutV,
+	const OaMatrix& InGrad,
+	const OaMatrix& InState
+);
+
 /// AdamW optimizer step for multiple parameter tensors.
 /// Currently fuses the common four-tensor case into one dispatch and falls back
 /// to AdamWStep for other counts.
@@ -47,6 +63,13 @@ void AdamWStepMany(
 	OaF32 InEps,
 	OaF32 InWeightDecay,
 	OaI32 InStep
+);
+
+/// Replay-safe fused four-parameter AdamW step using the same state contract as
+/// AdamWStepGraph. Other parameter counts fall back to per-parameter graph ops.
+void AdamWStepManyGraph(
+	OaSpan<const OaAdamWParamSet> InParams,
+	const OaMatrix& InState
 );
 
 /// SGD optimizer step with optional momentum and weight decay.

@@ -1,5 +1,4 @@
 #include <Oa/Runtime/Gemm/Dispatch.h>
-#include <Oa/Runtime/Gemm/Cache.h>
 #include <Oa/Runtime/Gemm/Router.h>
 #include <Oa/Core/Validation.h>
 #include <Oa/Runtime/Engine.h>
@@ -15,6 +14,78 @@ OaStatus OaGemmDispatch::Init(OaComputeEngine& InRt)
 	return OaStatus::Ok();
 }
 
+namespace {
+
+template <typename TDispatch>
+OaStatus LowerMatmulPlan(
+	OaComputeEngine& InRt,
+	const OaMatmulPlan& InPlan,
+	const OaMatmulProblem& InProblem,
+	OaSpan<OaVkBuffer> InBuffers,
+	TDispatch&& InDispatch)
+{
+	if (not OaGemmRouter::ValidatePlan(InRt, InPlan, InProblem)) {
+		return OaStatus::Error("OaGemmDispatch: stale or incompatible matmul plan");
+	}
+	const OaUsize expectedBuffers = InProblem.Epilogue == OaGemmEpilogue::None
+		? 3U : 4U;
+	if (InBuffers.size() != expectedBuffers) {
+		return OaStatus::Error("OaGemmDispatch: buffer count does not match matmul epilogue");
+	}
+	if (InPlan.Path == OaGemmPath::CoopVec) {
+		struct Push { OaU32 N; OaU32 K; } push{InProblem.N, InProblem.K};
+		return InDispatch(InPlan.KernelName, InBuffers, &push, sizeof(push));
+	}
+	if (InPlan.Kernel == OaGemmKernel::StridedFp32) {
+		struct Push {
+			OaU32 M, N, K;
+			OaU32 AOffset, ARowStride, AColStride, ABatchStride;
+			OaU32 BOffset, BRowStride, BColStride, BBatchStride;
+			OaU32 COffset, CRowStride, CColStride, CBatchStride;
+		} push{
+			InProblem.M, InProblem.N, InProblem.K,
+			InProblem.A.Offset, InProblem.A.RowStride, InProblem.A.ColStride, InProblem.A.BatchStride,
+			InProblem.B.Offset, InProblem.B.RowStride, InProblem.B.ColStride, InProblem.B.BatchStride,
+			InProblem.C.Offset, InProblem.C.RowStride, InProblem.C.ColStride, InProblem.C.BatchStride,
+		};
+		return InDispatch(InPlan.KernelName, InBuffers, &push, sizeof(push));
+	}
+	struct Push { OaU32 M; OaU32 N; OaU32 K; } push{
+		InProblem.M, InProblem.N, InProblem.K};
+	return InDispatch(InPlan.KernelName, InBuffers, &push, sizeof(push));
+}
+
+} // namespace
+
+OaStatus OaGemmDispatch::ExecutePlan(
+	OaComputeEngine& InRt,
+	const OaMatmulPlan& InPlan,
+	const OaMatmulProblem& InProblem,
+	OaSpan<OaVkBuffer> InBuffers)
+{
+	return LowerMatmulPlan(InRt, InPlan, InProblem, InBuffers,
+		[&](const char* kernel, OaSpan<OaVkBuffer> buffers,
+			const void* push, OaU32 pushSize) {
+			return OaVkDispatch::Run(InRt, kernel, buffers, push, pushSize,
+				InPlan.Grid.X, InPlan.Grid.Y, InPlan.Grid.Z);
+		});
+}
+
+OaStatus OaGemmDispatch::RecordPlan(
+	OaVkBatch& InBatch,
+	OaComputeEngine& InRt,
+	const OaMatmulPlan& InPlan,
+	const OaMatmulProblem& InProblem,
+	OaSpan<OaVkBuffer> InBuffers)
+{
+	return LowerMatmulPlan(InRt, InPlan, InProblem, InBuffers,
+		[&](const char* kernel, OaSpan<OaVkBuffer> buffers,
+			const void* push, OaU32 pushSize) {
+			return OaVkDispatch::Record(InBatch, InRt, kernel, buffers, push, pushSize,
+				InPlan.Grid.X, InPlan.Grid.Y, InPlan.Grid.Z);
+		});
+}
+
 OaStatus OaGemmDispatch::Gemm(
 	OaComputeEngine& InRt,
 	OaVkBuffer InA,
@@ -28,28 +99,12 @@ OaStatus OaGemmDispatch::Gemm(
 	// due to atomic loads in OaValidation::IsEnabled() on every call.
 	// Callers are expected to validate dimensions before calling Gemm.
 	
-	const auto route = OaGemmRouter::Select(InRt, InM, InN, InK);
-
-	if (route.Path == OaGemmPath::CoopVec) {
-		// CoopVec GEMV: out[i] = sum_k A[i,k] * x[k]
-		// Stream.cpp prepends buffer indices automatically - only pass shader params
-		struct PushCoopVec { OaU32 N; OaU32 K; };
-		static_assert(sizeof(PushCoopVec) == 8, "PushCoopVec size mismatch");
-		PushCoopVec push{ InN, InK };
-		OaVkBuffer bufs[] = { InA, InB, OutC };
-		return OaVkDispatch::Run(InRt, route.KernelName, bufs, &push, sizeof(push), route.Gx, route.Gy);
-	}
-	
-	// Standard path
-	// Stream.cpp prepends buffer indices automatically - only pass shader params
-	struct Push { OaU32 M; OaU32 N; OaU32 K; };
-	static_assert(sizeof(Push) == 12, "Push size mismatch");
-	Push push{ InM, InN, InK };
+	auto problem = OaGemmRouter::ProblemForRaw(
+		InM, InN, InK, OaStoragePrecision::Fp32, OaStoragePrecision::Fp32, true);
+	problem.Training = false;
+	const auto plan = OaGemmRouter::Plan(InRt, problem);
 	OaVkBuffer bufs[] = { InA, InB, OutC };
-
-	// Cache entries are populated only by OaGemmTuner using GPU timestamp
-	// queries. Recording/submission duration is CPU overhead, not kernel time.
-	return OaVkDispatch::Run(InRt, route.KernelName, bufs, &push, sizeof(push), route.Gx, route.Gy);
+	return ExecutePlan(InRt, plan, problem, bufs);
 }
 
 OaStatus OaGemmDispatch::GemmRecord(
@@ -66,25 +121,12 @@ OaStatus OaGemmDispatch::GemmRecord(
 	OA_VALIDATE(InN > 0U, OaValidationSeverity::Error, OaLogComponent::Core, "GemmRecord: N must be > 0, got %u", InN);
 	OA_VALIDATE(InK > 0U, OaValidationSeverity::Error, OaLogComponent::Core, "GemmRecord: K must be > 0, got %u", InK);
 
-	const auto route = OaGemmRouter::Select(InRt, InM, InN, InK);
-
-	if (route.Path == OaGemmPath::CoopVec) {
-		// Stream.cpp prepends buffer indices automatically - only pass shader params
-		struct PushCoopVec { OaU32 N; OaU32 K; };
-		static_assert(sizeof(PushCoopVec) == 8, "PushCoopVec size mismatch");
-		PushCoopVec push{ InN, InK };
-		OaVkBuffer bufs[] = { InA, InB, OutC };
-		return OaVkDispatch::Record(InBatch, InRt, route.KernelName, bufs, &push, sizeof(push), route.Gx, route.Gy);
-	}
-	
-	// Standard path
-	// Stream.cpp prepends buffer indices automatically - only pass shader params
-	struct Push { OaU32 M; OaU32 N; OaU32 K; };
-	static_assert(sizeof(Push) == 12, "Push size mismatch");
-	Push push{ InM, InN, InK };
+	auto problem = OaGemmRouter::ProblemForRaw(
+		InM, InN, InK, OaStoragePrecision::Fp32, OaStoragePrecision::Fp32, true);
+	problem.Training = false;
+	const auto plan = OaGemmRouter::Plan(InRt, problem);
 	OaVkBuffer bufs[] = { InA, InB, OutC };
-
-	return OaVkDispatch::Record(InBatch, InRt, route.KernelName, bufs, &push, sizeof(push), route.Gx, route.Gy);
+	return RecordPlan(InBatch, InRt, plan, problem, bufs);
 }
 
 OaStatus OaGemmDispatch::GemmCmSgBf16Out(
@@ -129,20 +171,19 @@ OaStatus OaGemmDispatch::GemmSiluCoopMatBf16(
 	OaU32 InN,
 	OaU32 InK)
 {
-	// Stream.cpp prepends buffer indices automatically - only pass shader params
-	struct Push { OaU32 M; OaU32 N; OaU32 K; };
-	static_assert(sizeof(Push) == 12, "Push size mismatch");
-	Push push{ InM, InN, InK };
 	OaVkBuffer bufs[] = { InA, InB, OutPre, OutAct };
 
-	const bool useWg = OaGemmRouter::IsGemmCmWgBf16Suitable(InRt, InM, InN, InK);
-	const OaU32 BM = useWg ? 64U : 128U;
-	const OaU32 BN = useWg ? 64U : 128U;
-	OaU32 gx = (InM + BM - 1) / BM;
-	OaU32 gy = (InN + BN - 1) / BN;
-
-	const char* kernel = useWg ? "GemmSiluCmWgBf16" : "GemmSiluCmSgBf16";
-	return OaVkDispatch::Run(InRt, kernel, bufs, &push, sizeof(push), gx, gy);
+	auto problem = OaGemmRouter::ProblemForRaw(
+		InM, InN, InK, OaStoragePrecision::Bf16, OaStoragePrecision::Bf16, true);
+	problem.Epilogue = OaGemmEpilogue::SiluDual;
+	problem.RequiresPreActivation = true;
+	problem.Training = true;
+	problem.PrecisionHint = OaGemmPrecision::Bf16;
+	const auto plan = OaGemmRouter::Plan(InRt, problem);
+	if (not plan) {
+		return OaStatus::Error("GemmSiluCoopMatBf16: no legal dual-output SiLU variant");
+	}
+	return ExecutePlan(InRt, plan, problem, bufs);
 }
 
 OaStatus OaGemmDispatch::SiluMul(
@@ -193,23 +234,17 @@ OaStatus OaGemmDispatch::GemmBias(
 	OaU32 InN,
 	OaU32 InK)
 {
-	const bool hasBf16CoopMat = InRt.Device.Info.Software.ShaderBfloat16CooperativeMatrixEnabled
-		and InRt.Device.Info.Software.ShaderBfloat16TypeEnabled;
-
-	struct Push { OaU32 M; OaU32 N; OaU32 K; };
-	static_assert(sizeof(Push) == 12, "Push size mismatch");
-	Push push{ InM, InN, InK };
 	OaVkBuffer bufs[] = { InA, InB, InBias, OutC };
 
-	const bool useWg = OaGemmRouter::IsGemmCmWgBf16Suitable(InRt, InM, InN, InK);
-	const OaU32 BM = useWg ? 64U : 128U;
-	const OaU32 BN = useWg ? 64U : 128U;
-	OaU32 gx = (InM + BM - 1) / BM;
-	OaU32 gy = (InN + BN - 1) / BN;
-
-	const char* kernel = useWg ? "GemmBiasCmWgBf16"
-	                  : (hasBf16CoopMat ? "GemmBiasCmSgBf16" : "GemmBiasTiled");
-	return OaVkDispatch::Run(InRt, kernel, bufs, &push, sizeof(push), gx, gy);
+	auto problem = OaGemmRouter::ProblemForRaw(
+		InM, InN, InK, OaStoragePrecision::Fp32, OaStoragePrecision::Fp32, true);
+	problem.Epilogue = OaGemmEpilogue::Bias;
+	problem.Training = false;
+	const auto plan = OaGemmRouter::Plan(InRt, problem);
+	if (not plan) {
+		return OaStatus::Error("GemmBias: no legal matmul variant");
+	}
+	return ExecutePlan(InRt, plan, problem, bufs);
 }
 
 OaStatus OaGemmDispatch::GemmBiasRelu(
@@ -222,38 +257,16 @@ OaStatus OaGemmDispatch::GemmBiasRelu(
 	OaU32 InN,
 	OaU32 InK)
 {
-	// Use BF16 CoopMat kernel if available, otherwise fall back to FP32 tiled
-	const bool hasBf16CoopMat = InRt.Device.Info.Software.ShaderBfloat16CooperativeMatrixEnabled;
-	
-	if (hasBf16CoopMat) {
-		// BF16 CooperativeMatrix path (tensor cores)
-		struct Push { OaU32 M; OaU32 N; OaU32 K; };
-		static_assert(sizeof(Push) == 12, "Push size mismatch");
-		Push push{ InM, InN, InK };
-		OaVkBuffer bufs[] = { InA, InB, InBias, OutC };
-
-		const bool useWg = OaGemmRouter::IsGemmCmWgBf16Suitable(InRt, InM, InN, InK);
-		const OaU32 BM = useWg ? 64U : 128U;
-		const OaU32 BN = useWg ? 64U : 128U;
-		OaU32 gx = (InM + BM - 1) / BM;
-		OaU32 gy = (InN + BN - 1) / BN;
-
-		const char* kernel = useWg ? "GemmBiasReluCmWgBf16" : "GemmBiasReluCmSgBf16";
-		return OaVkDispatch::Run(InRt, kernel, bufs, &push, sizeof(push), gx, gy);
-	} else {
-		// FP32 tiled fallback
-		struct Push { OaU32 M; OaU32 N; OaU32 K; };
-		static_assert(sizeof(Push) == 12, "Push size mismatch");
-		Push push{ InM, InN, InK };
-		OaVkBuffer bufs[] = { InA, InB, InBias, OutC };
-
-		static const OaU32 BM = 64;
-		static const OaU32 BN = 64;
-		OaU32 gx = (InM + BM - 1) / BM;
-		OaU32 gy = (InN + BN - 1) / BN;
-
-		return OaVkDispatch::Run(InRt, "GemmBiasReluTiled", bufs, &push, sizeof(push), gx, gy);
+	OaVkBuffer bufs[] = { InA, InB, InBias, OutC };
+	auto problem = OaGemmRouter::ProblemForRaw(
+		InM, InN, InK, OaStoragePrecision::Fp32, OaStoragePrecision::Fp32, true);
+	problem.Epilogue = OaGemmEpilogue::BiasRelu;
+	problem.Training = false;
+	const auto plan = OaGemmRouter::Plan(InRt, problem);
+	if (not plan) {
+		return OaStatus::Error("GemmBiasRelu: no legal matmul variant");
 	}
+	return ExecutePlan(InRt, plan, problem, bufs);
 }
 
 OaStatus OaGemmDispatch::GemmBiasGelu(
@@ -266,36 +279,14 @@ OaStatus OaGemmDispatch::GemmBiasGelu(
 	OaU32 InN,
 	OaU32 InK)
 {
-	// Use BF16 CoopMat kernel if available, otherwise fall back to FP32 tiled
-	const bool hasBf16CoopMat = InRt.Device.Info.Software.ShaderBfloat16CooperativeMatrixEnabled;
-	
-	if (hasBf16CoopMat) {
-		// BF16 CooperativeMatrix path (tensor cores)
-		struct Push { OaU32 M; OaU32 N; OaU32 K; };
-		static_assert(sizeof(Push) == 12, "Push size mismatch");
-		Push push{ InM, InN, InK };
-		OaVkBuffer bufs[] = { InA, InB, InBias, OutC };
-
-		const bool useWg = OaGemmRouter::IsGemmCmWgBf16Suitable(InRt, InM, InN, InK);
-		const OaU32 BM = useWg ? 64U : 128U;
-		const OaU32 BN = useWg ? 64U : 128U;
-		OaU32 gx = (InM + BM - 1) / BM;
-		OaU32 gy = (InN + BN - 1) / BN;
-
-		const char* kernel = useWg ? "GemmBiasGeluCmWgBf16" : "GemmBiasGeluCmSgBf16";
-		return OaVkDispatch::Run(InRt, kernel, bufs, &push, sizeof(push), gx, gy);
-	} else {
-		// FP32 tiled fallback
-		struct Push { OaU32 M; OaU32 N; OaU32 K; };
-		static_assert(sizeof(Push) == 12, "Push size mismatch");
-		Push push{ InM, InN, InK };
-		OaVkBuffer bufs[] = { InA, InB, InBias, OutC };
-
-		static const OaU32 BM = 64;
-		static const OaU32 BN = 64;
-		OaU32 gx = (InM + BM - 1) / BM;
-		OaU32 gy = (InN + BN - 1) / BN;
-
-		return OaVkDispatch::Run(InRt, "GemmBiasGeluTiled", bufs, &push, sizeof(push), gx, gy);
+	OaVkBuffer bufs[] = { InA, InB, InBias, OutC };
+	auto problem = OaGemmRouter::ProblemForRaw(
+		InM, InN, InK, OaStoragePrecision::Fp32, OaStoragePrecision::Fp32, true);
+	problem.Epilogue = OaGemmEpilogue::BiasGelu;
+	problem.Training = false;
+	const auto plan = OaGemmRouter::Plan(InRt, problem);
+	if (not plan) {
+		return OaStatus::Error("GemmBiasGelu: no legal matmul variant");
 	}
+	return ExecutePlan(InRt, plan, problem, bufs);
 }

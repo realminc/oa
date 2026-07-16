@@ -5,6 +5,7 @@
 #include <Oa/Core/PerfStat.h>
 #include <Oa/Ml.h>
 #include <Oa/Ml/Autograd.h>
+#include <Oa/Ml/FnOptim.h>
 #include <Oa/Runtime/Engine.h>
 #include <Oa/Runtime/GpuTimer.h>
 
@@ -71,6 +72,23 @@ TEST(BenchMoeComponents, NlpShape) {
 	auto hidden = OaFnMatrix::RandXavier({R, H});
 	auto packedOut = OaFnMatrix::RandXavier({R, D});
 	auto routeGate = OaFnMatrix::Scale(OaFnMatrix::Ones({T, K}), 0.5F);
+	auto dOut = OaFnMatrix::RandXavier({T, D});
+	auto dPacked = OaFnMatrix::RandXavier({R, D});
+	auto dHidden = OaFnMatrix::RandXavier({R, H});
+	auto dGateUp = OaFnMatrix::RandXavier({R, 2 * H});
+	auto dRouteGate = OaFnMatrix::RandXavier({T, K});
+	auto gateWM = OaFnMatrix::Zeros(gateW.GetShape());
+	auto gateWV = OaFnMatrix::Zeros(gateW.GetShape());
+	auto gateBM = OaFnMatrix::Zeros(gateB.GetShape());
+	auto gateBV = OaFnMatrix::Zeros(gateB.GetShape());
+	auto downWM = OaFnMatrix::Zeros(downW.GetShape());
+	auto downWV = OaFnMatrix::Zeros(downW.GetShape());
+	auto downBM = OaFnMatrix::Zeros(downB.GetShape());
+	auto downBV = OaFnMatrix::Zeros(downB.GetShape());
+	auto gateWGrad = OaFnMatrix::RandXavier(gateW.GetShape());
+	auto gateBGrad = OaFnMatrix::RandXavier(gateB.GetShape());
+	auto downWGrad = OaFnMatrix::RandXavier(downW.GetShape());
+	auto downBGrad = OaFnMatrix::RandXavier(downB.GetShape());
 	auto plan = OaFnMatrix::MoeExpertPlan(indices, E);
 	ASSERT_TRUE(ctx.Execute().IsOk());
 	ASSERT_TRUE(ctx.Sync().IsOk());
@@ -91,7 +109,7 @@ TEST(BenchMoeComponents, NlpShape) {
 		keep = {p.Counts, p.Offsets, p.PackedToken, p.PackedSlot, p.Inverse};
 	}));
 	Print("pack tokens", Measure(engine, "pack", [&] {
-		keep = {OaFnMatrix::Gather(x, plan.PackedToken)};
+		keep = {OaFnMatrix::MoeGather(x, plan.PackedToken, plan.Inverse)};
 	}));
 	Print("grouped gate/up", Measure(engine, "gate_up", [&] {
 		keep = {OaFnMatrix::GroupedLinearM(packedX, gateW, gateB, offsets)};
@@ -109,12 +127,77 @@ TEST(BenchMoeComponents, NlpShape) {
 	Print("fused sparse chain", Measure(engine, "sparse_chain", [&] {
 		auto weights = OaFnMatrix::MoeRouteWeights(probs, indices);
 		auto p = OaFnMatrix::MoeExpertPlan(indices, E);
-		auto px = OaFnMatrix::Gather(x, p.PackedToken);
+		auto px = OaFnMatrix::MoeGather(x, p.PackedToken, p.Inverse);
 		auto gu = OaFnMatrix::GroupedLinearM(px, gateW, gateB, p.Offsets);
 		auto h = OaFnMatrix::SiluMul(gu, H);
 		auto po = OaFnMatrix::GroupedLinearM(h, downW, downB, p.Offsets);
 		auto out = OaFnMatrix::MoeCombine(po, weights, p.Inverse, p.PackedSlot);
 		keep = {weights, p.Offsets, p.PackedToken, p.PackedSlot, p.Inverse,
 			px, gu, h, po, out};
+	}));
+
+	std::printf("\nSparse backward and optimizer:\n");
+	Print("combine backward", Measure(engine, "combine_bwd", [&] {
+		auto bwd = OaFnMatrix::MoeCombineBwd(
+			dOut, packedOut, routeGate, plan.Inverse, plan.PackedSlot);
+		keep = {bwd.DPacked, bwd.DRouteGate};
+	}));
+	Print("grouped down backward", Measure(engine, "down_bwd", [&] {
+		auto bwd = OaFnMatrix::GroupedLinearMBwd(dPacked, hidden, downW, offsets);
+		keep = {bwd.DInput, bwd.DWeight, bwd.DBias};
+	}));
+	Print("down data+weight bwd", Measure(engine, "down_gemm_bwd", [&] {
+		auto bwd = OaFnMatrix::GroupedGemmMBwd(dPacked, hidden, downW, offsets);
+		keep = {bwd.DInput, bwd.DWeight};
+	}));
+	Print("down bias backward", Measure(engine, "down_bias_bwd", [&] {
+		keep = {OaFnMatrix::GroupedLinearMBiasBwd(dPacked, offsets, E)};
+	}));
+	Print("SwiGLU backward", Measure(engine, "swiglu_bwd", [&] {
+		keep = {OaFnMatrix::SiluMulBwd(gateUp, dHidden)};
+	}));
+	Print("grouped gate/up backward", Measure(engine, "gate_up_bwd", [&] {
+		auto bwd = OaFnMatrix::GroupedLinearMBwd(dGateUp, packedX, gateW, offsets);
+		keep = {bwd.DInput, bwd.DWeight, bwd.DBias};
+	}));
+	Print("gate/up data+weight bwd", Measure(engine, "gate_up_gemm_bwd", [&] {
+		auto bwd = OaFnMatrix::GroupedGemmMBwd(dGateUp, packedX, gateW, offsets);
+		keep = {bwd.DInput, bwd.DWeight};
+	}));
+	Print("gate/up bias backward", Measure(engine, "gate_up_bias_bwd", [&] {
+		keep = {OaFnMatrix::GroupedLinearMBiasBwd(dGateUp, offsets, E)};
+	}));
+	Print("legacy pack backward", Measure(engine, "legacy_pack_bwd", [&] {
+		keep = {OaFnMatrix::GatherBwd(plan.PackedToken, packedX, T, D)};
+	}));
+	Print("atomic pack backward", Measure(engine, "atomic_pack_bwd", [&] {
+		keep = {OaFnMatrix::ScatterAddRows(packedX, plan.PackedToken, T)};
+	}));
+	Print("route weights backward", Measure(engine, "route_bwd", [&] {
+		keep = {OaFnMatrix::MoeRouteWeightsBwd(
+			dRouteGate, probs, indices, routeGate)};
+	}));
+	Print("complete sparse backward", Measure(engine, "sparse_chain_bwd", [&] {
+		auto combine = OaFnMatrix::MoeCombineBwd(
+			dOut, packedOut, routeGate, plan.Inverse, plan.PackedSlot);
+		auto down = OaFnMatrix::GroupedLinearMBwd(
+			combine.DPacked, hidden, downW, offsets);
+		auto dGu = OaFnMatrix::SiluMulBwd(gateUp, down.DInput);
+		auto gate = OaFnMatrix::GroupedLinearMBwd(dGu, packedX, gateW, offsets);
+		auto dx = OaFnMatrix::ScatterAddRows(gate.DInput, plan.PackedToken, T);
+		auto dProb = OaFnMatrix::MoeRouteWeightsBwd(
+			combine.DRouteGate, probs, indices, routeGate);
+		keep = {combine.DPacked, combine.DRouteGate, down.DInput, down.DWeight,
+			down.DBias, dGu, gate.DInput, gate.DWeight, gate.DBias, dx, dProb};
+	}));
+	Print("expert AdamW (4 tensors)", Measure(engine, "expert_adamw", [&] {
+		OaFnOptim::OaAdamWParamSet sets[] = {
+			{&gateW, &gateWM, &gateWV, &gateWGrad},
+			{&gateB, &gateBM, &gateBV, &gateBGrad},
+			{&downW, &downWM, &downWV, &downWGrad},
+			{&downB, &downBM, &downBV, &downBGrad},
+		};
+		OaFnOptim::AdamWStepMany(OaSpan<const OaFnOptim::OaAdamWParamSet>(sets, 4),
+			1e-3F, 0.9F, 0.999F, 1e-8F, 0.01F, 1);
 	}));
 }

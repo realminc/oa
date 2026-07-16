@@ -588,16 +588,20 @@ OaFnMatrix::OaCompactRowsResult OaFnMatrix::CompactRows(const OaMatrix& InSelf, 
 	result.Values = OaFnMatrix::Zeros(InSelf.GetShape(), InSelf.GetDtype());
 	result.RowMap = OaFnMatrix::Empty(OaMatrixShape{T}, OaScalarType::UInt32);
 	result.Count = OaFnMatrix::Empty(OaMatrixShape{1}, OaScalarType::UInt32);
+	result.DispatchArgs = OaFnMatrix::Empty(OaMatrixShape{3}, OaScalarType::UInt32);
 	struct { OaU32 T, D; } push{T, D};
 	OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Read,
-		OaBufferAccess::Write, OaBufferAccess::Write, OaBufferAccess::Write};
+		OaBufferAccess::Write, OaBufferAccess::Write, OaBufferAccess::Write,
+		OaBufferAccess::Write};
 	auto& ctx = OaContext::GetDefault();
-	ctx.Add("CompactRows", {&InSelf, &InMask, &result.Values, &result.RowMap, &result.Count},
+	ctx.Add("CompactRows", {&InSelf, &InMask, &result.Values, &result.RowMap,
+		&result.Count, &result.DispatchArgs},
 		access, &push, sizeof(push), 1);
 	if (OaFnAutograd::IsEnabled() and InSelf.RequiresGrad()) {
 		auto gradFn = OaMakeSharedPtr<OaGradCompactRows>();
 		gradFn->RowMap_ = result.RowMap;
 		gradFn->Count_ = result.Count;
+		gradFn->DispatchArgs_ = result.DispatchArgs;
 		gradFn->Saved_ = OaVec<OaMatrix>{InSelf};
 		gradFn->SetGraphInputs(OaVec<OaMatrix>{InSelf});
 		gradFn->SequenceNr_ = OaFnAutograd::NextSeq();
@@ -618,6 +622,22 @@ OaMatrix OaFnMatrix::CompactRowsBwd(const OaMatrix& InGradOut, const OaMatrix& I
 	auto& ctx = OaContext::GetDefault();
 	ctx.Add("CompactRowsBwd", {&InGradOut, &InRowMap, &InCount, &gradIn},
 		access, &push, sizeof(push), DivCeil(T * D, 256));
+	return gradIn;
+}
+
+OaMatrix OaFnMatrix::CompactRowsBwd(const OaMatrix& InGradOut, const OaMatrix& InRowMap,
+	const OaMatrix& InCount, const OaMatrix& InDispatchArgs,
+	OaMatrixShape InInputShape) {
+	const OaU32 T = static_cast<OaU32>(InInputShape.Dims[0]);
+	const OaU32 D = static_cast<OaU32>(InInputShape.Dims[1]);
+	OaMatrix gradIn = OaFnMatrix::Zeros(InInputShape, InGradOut.GetDtype());
+	struct { OaU32 T, D; } push{T, D};
+	OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Read,
+		OaBufferAccess::Read, OaBufferAccess::Read, OaBufferAccess::ReadWrite};
+	auto& ctx = OaContext::GetDefault();
+	ctx.AddIndirect("CompactRowsBwdIndirect",
+		{&InGradOut, &InRowMap, &InCount, &InDispatchArgs, &gradIn},
+		access, &push, sizeof(push), InDispatchArgs);
 	return gradIn;
 }
 
@@ -653,6 +673,46 @@ OaMatrix OaFnMatrix::ScatterRows(const OaMatrix& InSelf, const OaMatrix& InSourc
 	return out;
 }
 
+OaMatrix OaFnMatrix::ScatterRows(const OaMatrix& InSelf, const OaMatrix& InSource,
+	const OaCompactRowsResult& InPlan) {
+	if (InSelf.Rank() != 2 or InSource.GetShape() != InSelf.GetShape() or
+		InSource.GetDtype() != InSelf.GetDtype() or
+		InPlan.RowMap.GetDtype() != OaScalarType::UInt32 or
+		InPlan.RowMap.NumElements() < InSelf.Size(0) or
+		InPlan.Count.GetDtype() != OaScalarType::UInt32 or
+		InPlan.Count.NumElements() != 1 or
+		InPlan.DispatchArgs.GetDtype() != OaScalarType::UInt32 or
+		InPlan.DispatchArgs.NumElements() != 3) {
+		OA_LOG_ERROR(OaLogComponent::ML,
+			"ScatterRows: invalid compact-row indirect plan");
+		return {};
+	}
+	const OaU32 T = static_cast<OaU32>(InSelf.Size(0));
+	const OaU32 D = static_cast<OaU32>(InSelf.Size(1));
+	// Preserve every unselected row first, then touch only Count*D selected
+	// values through GPU-authored indirect launch dimensions.
+	OaMatrix out = OaFnMatrix::Copy(InSelf);
+	struct { OaU32 T, D; } push{T, D};
+	OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Read,
+		OaBufferAccess::Read, OaBufferAccess::Read, OaBufferAccess::ReadWrite};
+	auto& ctx = OaContext::GetDefault();
+	ctx.AddIndirect("ScatterRowsIndirect",
+		{&InSource, &InPlan.RowMap, &InPlan.Count, &InPlan.DispatchArgs, &out},
+		access, &push, sizeof(push), InPlan.DispatchArgs);
+	if (OaFnAutograd::IsEnabled() and (InSelf.RequiresGrad() or InSource.RequiresGrad())) {
+		auto gradFn = OaMakeSharedPtr<OaGradScatterRows>();
+		gradFn->RowMap_ = InPlan.RowMap;
+		gradFn->Count_ = InPlan.Count;
+		gradFn->DispatchArgs_ = InPlan.DispatchArgs;
+		gradFn->Saved_ = OaVec<OaMatrix>{InSelf, InSource};
+		gradFn->SetGraphInputs(OaVec<OaMatrix>{InSelf, InSource});
+		gradFn->SequenceNr_ = OaFnAutograd::NextSeq();
+		gradFn->OutputShape_ = out.GetShape();
+		out.MutAutograd().GradFn = gradFn;
+	}
+	return out;
+}
+
 OaMatrix OaFnMatrix::ScatterRowsBwdSource(const OaMatrix& InGradOut,
 	const OaMatrix& InRowMap, const OaMatrix& InCount) {
 	const OaU32 T = static_cast<OaU32>(InGradOut.Size(0));
@@ -664,6 +724,22 @@ OaMatrix OaFnMatrix::ScatterRowsBwdSource(const OaMatrix& InGradOut,
 	auto& ctx = OaContext::GetDefault();
 	ctx.Add("ScatterRowsBwd", {&InGradOut, &InRowMap, &InCount, &gradSrc},
 		access, &push, sizeof(push), DivCeil(T * D, 256));
+	return gradSrc;
+}
+
+OaMatrix OaFnMatrix::ScatterRowsBwdSource(const OaMatrix& InGradOut,
+	const OaMatrix& InRowMap, const OaMatrix& InCount,
+	const OaMatrix& InDispatchArgs) {
+	const OaU32 T = static_cast<OaU32>(InGradOut.Size(0));
+	const OaU32 D = static_cast<OaU32>(InGradOut.Size(1));
+	OaMatrix gradSrc = OaFnMatrix::Zeros(InGradOut.GetShape(), InGradOut.GetDtype());
+	struct { OaU32 T, D; } push{T, D};
+	OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Read,
+		OaBufferAccess::Read, OaBufferAccess::Read, OaBufferAccess::Write};
+	auto& ctx = OaContext::GetDefault();
+	ctx.AddIndirect("ScatterRowsBwdIndirect",
+		{&InGradOut, &InRowMap, &InCount, &InDispatchArgs, &gradSrc},
+		access, &push, sizeof(push), InDispatchArgs);
 	return gradSrc;
 }
 

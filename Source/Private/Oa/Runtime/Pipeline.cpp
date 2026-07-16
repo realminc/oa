@@ -1,6 +1,5 @@
 #include <mutex>
 #include <shared_mutex>
-#include <fstream>
 #include <atomic>
 #include <thread>
 #include <algorithm>
@@ -12,7 +11,6 @@
 #include <Oa/Runtime/OaVk.h>
 #include <Oa/Core/FileIo.h>
 #include <Oa/Core/Log.h>
-#include <Oa/Runtime/Gemm/Cache.h>
 #include <Oa/Core/KernelRegistry.h>
 #include <Oa/Core/EnvFlag.h>
 
@@ -731,10 +729,10 @@ OaStatus OaPipelineRegistry::TryLoadOnDemand(
 		return OaStatus::NotFound("SPIR-V not found in registry");
 	}
 	
-	OA_LOG_INFO(OaLogComponent::Core, "TryLoadOnDemand: Loading '%s' with DTYPE=%u (spirv size=%zu)",
+	OA_LOG_INFO(OaLogComponent::Core, "TryLoadOnDemand: Loading '%s' with DTYPE=%u (spirv size=%u)",
 		kernelName.c_str(), InDtype, spirv->Size);
 	#ifdef __ANDROID__
-	__android_log_print(ANDROID_LOG_INFO, "OA", "Loading pipeline %s dtype=%u (%zu bytes)",
+	__android_log_print(ANDROID_LOG_INFO, "OA", "Loading pipeline %s dtype=%u (%u bytes)",
 		kernelName.c_str(), InDtype, spirv->Size);
 	#endif
 	
@@ -819,110 +817,4 @@ OaComputePipeline& OaPipelineRegistry::GetPipeline(OaStringView InName, OaU32 In
 		"Pipeline not found: '%s' (tried DTYPE=%u, opposite DTYPE, bare name, lazy embedded load).",
 		OaString(InName).c_str(), InDtype);
 	return sNull;
-}
-
-// ─── GEMM Kernel Cache (merged from OaBlasKernelCache) ───────────────────────
-
-OaGemmKernel OaPipelineRegistry::LookupGemmKernel(OaU32 InM, OaU32 InN, OaU32 InK) const noexcept
-{
-	std::shared_lock<std::shared_mutex> lock(*GemmCacheMutex_);
-	auto it = GemmCache_.Find({ InM, InN, InK });
-	return it != GemmCache_.End() ? it->second : OaGemmKernel::Auto;
-}
-
-void OaPipelineRegistry::StoreGemmKernel(OaU32 InM, OaU32 InN, OaU32 InK, OaGemmKernel InKernel)
-{
-	std::unique_lock<std::shared_mutex> lock(*GemmCacheMutex_);
-	GemmCache_.Insert({ { InM, InN, InK }, InKernel });
-}
-
-void OaPipelineRegistry::ClearGemmCache() noexcept
-{
-	std::unique_lock<std::shared_mutex> lock(*GemmCacheMutex_);
-	while (GemmCache_.Begin() != GemmCache_.End()) {
-		GemmCache_.Erase(GemmCache_.Begin()->first);
-	}
-}
-
-OaU32 OaPipelineRegistry::GemmCacheSize() const noexcept
-{
-	std::shared_lock<std::shared_mutex> lock(*GemmCacheMutex_);
-	OaU32 count = 0;
-	for (auto it = GemmCache_.Begin(); it != GemmCache_.End(); ++it) {
-		++count;
-	}
-	return count;
-}
-
-// File format: [magic(4)] [count(4)] [M(4) N(4) K(4) kernel(1) pad(3)] * count
-static constexpr OaU32 kGemmCacheFileMagic = 0x4F424C53; // 'OBLS'
-
-OaStatus OaPipelineRegistry::SaveGemmCache(OaStringView InPath) const
-{
-	std::shared_lock<std::shared_mutex> lock(*GemmCacheMutex_);
-	std::ofstream f(InPath.Data(), std::ios::binary);
-	if (!f) {
-		OaString msg = OaString("OaPipelineRegistry::SaveGemmCache: cannot open '") + InPath.Data() + "' for write";
-		return OaStatus::Error(msg);
-	}
-
-	OaU32 magic = kGemmCacheFileMagic;
-	OaU32 count = GemmCacheSize();
-	f.write(reinterpret_cast<const char*>(&magic), 4);
-	f.write(reinterpret_cast<const char*>(&count), 4);
-
-	for (auto it = GemmCache_.Begin(); it != GemmCache_.End(); ++it) {
-		const auto &key = it->first;
-		OaU8 k = static_cast<OaU8>(it->second);
-		f.write(reinterpret_cast<const char*>(&key.M), 4);
-		f.write(reinterpret_cast<const char*>(&key.N), 4);
-		f.write(reinterpret_cast<const char*>(&key.K), 4);
-		f.write(reinterpret_cast<const char*>(&k), 1);
-		OaU8 pad[3] = {};
-		f.write(reinterpret_cast<const char*>(pad), 3);
-	}
-
-	OA_LOG_INFO(OaLogComponent::Core, "OaPipelineRegistry: saved {} GEMM cache entries to '{}'", count, InPath);
-	return OaStatus::Ok();
-}
-
-OaStatus OaPipelineRegistry::LoadGemmCache(OaStringView InPath)
-{
-	std::ifstream f(InPath.Data(), std::ios::binary);
-	if (!f) {
-		OaString msg = OaString("OaPipelineRegistry::LoadGemmCache: cannot open '") + InPath.Data() + "' for read";
-		return OaStatus::Error(msg);
-	}
-
-	OaU32 magic = 0;
-	OaU32 count = 0;
-	f.read(reinterpret_cast<char*>(&magic), 4);
-	f.read(reinterpret_cast<char*>(&count), 4);
-	if (magic != kGemmCacheFileMagic) {
-		char buf[128];
-		std::snprintf(buf, sizeof(buf), "OaPipelineRegistry::LoadGemmCache: bad magic in '%s' (got 0x%x)",
-		              InPath.Data(), magic);
-		return OaStatus::Error(OaString(buf));
-	}
-
-	std::unique_lock<std::shared_mutex> lock(*GemmCacheMutex_);
-	// Clear cache inline instead of calling ClearGemmCache() to avoid double-locking
-	while (GemmCache_.Begin() != GemmCache_.End()) {
-		GemmCache_.Erase(GemmCache_.Begin()->first);
-	}
-
-	for (OaU32 i = 0; i < count; i++) {
-		OaGemmShapeKey key;
-		OaU8 k = 0;
-		OaU8 pad[3];
-		f.read(reinterpret_cast<char*>(&key.M), 4);
-		f.read(reinterpret_cast<char*>(&key.N), 4);
-		f.read(reinterpret_cast<char*>(&key.K), 4);
-		f.read(reinterpret_cast<char*>(&k), 1);
-		f.read(reinterpret_cast<char*>(pad), 3);
-		GemmCache_.Insert({ key, static_cast<OaGemmKernel>(k) });
-	}
-
-	OA_LOG_INFO(OaLogComponent::Core, "OaPipelineRegistry: loaded {} GEMM cache entries from '{}'", count, InPath);
-	return OaStatus::Ok();
 }

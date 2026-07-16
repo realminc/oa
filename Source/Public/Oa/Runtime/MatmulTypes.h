@@ -61,7 +61,7 @@ enum OaCapBit : OaU64 {
 	kCapNaiveFp32          = 1ULL << 13,
 
 	// 5-10, 14 reserved (retired CoopMat2 bits)
-	// 15..63 reserved for future extension (StreamK, decode-vector, etc.)
+	// 15..63 reserved for future extension.
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -72,10 +72,27 @@ enum OaCapBit : OaU64 {
 // hash table without OaMatrix fixtures. Routes shouldn't peek at OaMatrix
 // directly during selection.
 
+struct OaMatmulLayout {
+	OaU32 Offset = 0;
+	OaU32 RowStride = 0;
+	OaU32 ColStride = 1;
+	OaU32 BatchStride = 0;
+
+	[[nodiscard]] bool operator==(const OaMatmulLayout&) const noexcept = default;
+};
+
 struct OaMatmulProblem {
 	OaU32 M = 0;
 	OaU32 N = 0;
 	OaU32 K = 0;
+	OaU32 BatchCount = 1;
+
+	// Logical A[batch,M,K], B[batch,N,K], C[batch,M,N] address contracts.
+	// Existing OA weights are B=[N,K], hence BTransposed remains true for the
+	// tuned path even though these explicit strides describe physical storage.
+	OaMatmulLayout A{};
+	OaMatmulLayout B{};
+	OaMatmulLayout C{};
 
 	OaStoragePrecision AMaster          = OaStoragePrecision::Fp32;
 	OaStoragePrecision BMaster          = OaStoragePrecision::Fp32;
@@ -97,6 +114,48 @@ struct OaMatmulProblem {
 	OaGemmPrecision PrecisionHint  = OaGemmPrecision::Auto;
 };
 
+// Selection policy is intentionally smaller than the mathematical problem.
+// Changing a preference may change the chosen implementation, but never the
+// result contract. Current kernels are deterministic and workspace-free; the
+// remaining fields reserve explicit gates for generated split-K, prepacked and
+// persistent variants instead of hiding those choices in router heuristics.
+struct OaMatmulPreference {
+	OaU64 MaxWorkspaceBytes       = 0;
+	bool UseMeasuredCache         = true;
+	bool RequireDeterministic     = true;
+	bool AllowInputDownconversion = false;
+	bool AllowWeightPrepack       = false;
+	bool AllowPersistent          = false;
+};
+
+struct OaMatmulDispatchShape {
+	OaU32 X = 0;
+	OaU32 Y = 0;
+	OaU32 Z = 1;
+};
+
+// Immutable result of planning one exact problem on one device contract.
+// KernelName points into the process-lifetime registry and is therefore valid
+// until shutdown. Plans are runtime objects, not serialized pointers; cache
+// persistence continues to use the stable Variant identity.
+struct OaMatmulPlan {
+	OaMatmulVariantId Variant = OaInvalidMatmulVariantId;
+	const char* KernelName = nullptr;
+	OaGemmKernel Kernel = OaGemmKernel::Auto;
+	OaGemmPath Path = OaGemmPath::Standard;
+	OaGemmPrecision ActualPrecision = OaGemmPrecision::Auto;
+	OaMatmulDispatchShape Grid{};
+	OaU64 WorkspaceBytes = 0;
+	OaU64 ProblemContractHash = 0;
+	OaU64 DeviceContractHash = 0;
+	OaU64 RegistryBuildId = 0;
+	OaU64 ShaderContentHash = 0;
+
+	[[nodiscard]] explicit operator bool() const noexcept {
+		return Variant != OaInvalidMatmulVariantId and KernelName != nullptr;
+	}
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // OaMatmulVariant — one row in the routing registry
 // ─────────────────────────────────────────────────────────────────────────────
@@ -107,9 +166,11 @@ struct OaMatmulProblem {
 // a generator-emitted table that matches the SPIR-V actually compiled.
 
 struct OaMatmulVariant {
+	OaMatmulVariantId Id;                 // stable generated variant identity
 	const char*       KernelName;          // dispatch string in OaPipelineRegistry
-	OaGemmKernel      Kernel;              // legacy enum kept for pipeline-cache key
+	OaGemmKernel      Kernel;              // coarse family used by routing policy
 	OaGemmPath        Path           = OaGemmPath::Standard;
+	OaGemmEpilogue    Epilogue       = OaGemmEpilogue::None;
 
 	OaStoragePrecision APrecision;
 	OaStoragePrecision BPrecision;
@@ -126,8 +187,8 @@ struct OaMatmulVariant {
 	// Legality flags.
 	bool RequiresAligned        = false;  // M and K must divide tile dims
 	bool RequiresTransposedB    = false;  // B must be [N,K] layout
-	bool SupportsBias           = false;
-	bool SupportsActivation     = false;
+	bool SupportsBias           = false;  // derived contract metadata for tooling
+	bool SupportsActivation     = false;  // derived contract metadata for tooling
 	bool DualOutput             = false;  // emits pre-activation alongside post
 
 	// Resource limits used by the occupancy heuristic (R4).
@@ -135,13 +196,9 @@ struct OaMatmulVariant {
 
 	// AND-checked against the device cap mask at routing time.
 	OaU64 RequiredCapsMask      = 0;
+	bool SupportsArbitraryLayout = false;
+	bool SupportsBatch           = false;
 
-	// Persistent kernel pattern — when true, the router dispatches numSMs
-	// workgroups (1D) and the shader walks tiles in a strided loop. When
-	// false (default), the router dispatches (DivCeil(M,TileM),
-	// DivCeil(N,TileN)) and each workgroup handles one tile. Persistent
-	// amortizes per-tile dispatch overhead on shapes with many tiles.
-	bool Persistent             = false;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -155,10 +212,23 @@ namespace OaMatmulRegistry {
 // Span over the static variant table. Stable for the program lifetime.
 [[nodiscard]] OaSpan<const OaMatmulVariant> All();
 
+// Exact stable-ID lookup. Returns nullptr for unknown or retired variants.
+[[nodiscard]] const OaMatmulVariant* Find(OaMatmulVariantId InId);
+
 // Stable hash of the registered raw/fused variant contracts. Persisted route
 // entries are ignored when this changes, preventing shader/registry updates
 // from replaying stale winners.
 [[nodiscard]] OaU64 BuildId();
+
+// Stable aggregate of the exact embedded SPIR-V bytes referenced by the
+// registry. Unlike BuildId(), this changes when compiler output changes while
+// schema and launch metadata stay identical.
+[[nodiscard]] OaU64 ShaderBuildId();
+
+// Exact embedded SPIR-V identity for one registered implementation. The
+// registry memoizes these hashes once so hot plan validation does not take a
+// name-cache mutex or rescan shader bytes.
+[[nodiscard]] OaU64 ShaderContentHash(OaMatmulVariantId InId);
 
 // Device cap mask built from OaVkDevice software info. R1 derives this
 // from the existing boolean fields; R2 reads the cap table directly.
@@ -168,24 +238,6 @@ namespace OaMatmulRegistry {
 [[nodiscard]] inline bool CapsSatisfy(OaU64 InAvailable, OaU64 InRequired) {
 	return (InAvailable & InRequired) == InRequired;
 }
-
-// Occupancy heuristic — fill - 0.25*spill against the device's shader-core
-// count. Higher score = better fit for (M, N) on this device. See
-// Source/Private/Oa/Runtime/Gemm/Router.cpp::ScoreVariant for the original
-// definition and the ggml citation.
-[[nodiscard]] float ScoreVariant(const OaMatmulVariant& InVariant,
-                                  OaU32 InM, OaU32 InN, OaU32 InCores);
-
-// Pick the best registry variant whose name starts with InBaseName (so
-// "GemmBiasReluCmSgBf16" matches the subgroup-scope row), gated by the
-// engine's cap mask and scored against (M, N). Returns nullptr when no
-// candidate satisfies caps. Used by OaContext fused-op dispatch to defer
-// tile choice to the registry.
-[[nodiscard]] const OaMatmulVariant* PickFusedByPrefix(
-	const OaComputeEngine& InRt,
-	const char*              InBaseName,
-	OaU32                    InM,
-	OaU32                    InN);
 
 // Return the RequiredCapsMask for the first registry variant whose KernelName
 // matches InName exactly or is a prefix followed by '_' (the suffix convention

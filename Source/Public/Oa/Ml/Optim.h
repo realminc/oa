@@ -37,6 +37,10 @@ public:
 
 	/// Current step count
 	[[nodiscard]] OaU64 GetStep() const { return Step_; }
+	// A compiled training program executes the already-recorded optimizer kernels
+	// without calling Step() again. Keep the host-visible logical step aligned so
+	// schedules and checkpoints observe the same state as eager execution.
+	virtual void NotifyProgramReplay(OaU64 InCount = 1) { Step_ += InCount; }
 
 	// Persistence — write/read optimizer state (moments, step count, hyperparams)
 	// into an OamModel section. Default no-op so SGD/Adam compile until they implement.
@@ -85,6 +89,7 @@ class OaOptimizerNoOp : public OaOptimizer {
 public:
 	void Step() override {}
 	void ZeroGrad() override {}
+	void NotifyProgramReplay(OaU64 InCount = 1) override { (void)InCount; }
 };
 
 // COMPOSITE — run multiple optimizers on disjoint param sets (e.g. Muon + AdamW).
@@ -99,6 +104,7 @@ public:
 
 	void SetLr(OaF32 InLr) override;
 	void Step() override;
+	void NotifyProgramReplay(OaU64 InCount = 1) override;
 	void ZeroGrad() override;
 	void SaveTo(OamModel& OutOam) const override;
 	void LoadFrom(const OamModel& InOam) override;
@@ -198,6 +204,7 @@ public:
 	}
 
 	void Step() override;
+	void SetLr(OaF32 InLr) override;
 	void ZeroGrad() override;
 	void SaveTo(OamModel& OutOam) const override;
 	void LoadFrom(const OamModel& InOam) override;
@@ -206,6 +213,7 @@ private:
 	OaF32 Beta1_, Beta2_, Eps_, WeightDecay_;
 	OaVec<OaMatrix> M_;
 	OaVec<OaMatrix> V_;
+	OaMatrix GraphState_;  // uint32[6], GPU-stepped replay state; host updates schedule scalars
 };
 
 // MUON — Momentum + Newton-Schulz5 Orthogonalization Optimizer

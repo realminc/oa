@@ -85,12 +85,9 @@ void OaApplyNumericMode(OaNumericMode InMode) {
 		setDgc  ? "1 (set)"    : "(user-supplied, kept)");
 
 	if (InMode == OaNumericMode::Deterministic) {
-		const bool setGo = OaEnvFlag::SetIfUnset("OA_DISABLE_GRAPH_OPTIMIZE", "1");
 		const bool setPl = OaEnvFlag::SetIfUnset("OA_DISABLE_PERSISTENT_LOOP", "1");
 		OA_LOG_INFO(OaLogComponent::Core,
-			"OaNumericMode=Deterministic added  "
-			"OA_DISABLE_GRAPH_OPTIMIZE=%s OA_DISABLE_PERSISTENT_LOOP=%s",
-			setGo ? "1 (set)" : "(user-supplied, kept)",
+			"OaNumericMode=Deterministic added  OA_DISABLE_PERSISTENT_LOOP=%s",
 			setPl ? "1 (set)" : "(user-supplied, kept)");
 	}
 }

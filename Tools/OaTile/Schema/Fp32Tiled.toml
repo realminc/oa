@@ -1,0 +1,57 @@
+schema_version = 1
+generator_abi = 2
+
+# A deliberately bounded FP32 lattice. Every record is a complete compiled
+# contract: changing its geometry requires a new name and stable local ID.
+
+[[variant]]
+name = "GemmTiled"
+local_id = 73
+tile = [64, 64, 16]
+thread_tile = [4, 4]
+workgroup = 256
+group_m = 0
+epilogues = [
+  { kind = "bias", name = "GemmBiasTiled", local_id = 109 },
+  { kind = "bias_relu", name = "GemmBiasReluTiled", local_id = 110 },
+  { kind = "bias_gelu", name = "GemmBiasGeluTiled", local_id = 111 },
+]
+
+[[variant]]
+name = "GemmTiledSwizzle4"
+local_id = 75
+tile = [64, 64, 16]
+thread_tile = [4, 4]
+workgroup = 256
+group_m = 4
+epilogues = [
+  { kind = "bias", name = "GemmBiasTiledSwizzle4", local_id = 241 },
+  { kind = "bias_relu", name = "GemmBiasReluTiledSwizzle4", local_id = 242 },
+  { kind = "bias_gelu", name = "GemmBiasGeluTiledSwizzle4", local_id = 243 },
+]
+
+[[variant]]
+name = "GemmTiledSwizzle"
+local_id = 74
+tile = [64, 64, 16]
+thread_tile = [4, 4]
+workgroup = 256
+group_m = 8
+epilogues = [
+  { kind = "bias", name = "GemmBiasTiledSwizzle", local_id = 244 },
+  { kind = "bias_relu", name = "GemmBiasReluTiledSwizzle", local_id = 245 },
+  { kind = "bias_gelu", name = "GemmBiasGeluTiledSwizzle", local_id = 246 },
+]
+
+[[variant]]
+name = "GemmTiledK32"
+local_id = 240
+tile = [64, 64, 32]
+thread_tile = [4, 4]
+workgroup = 256
+group_m = 0
+epilogues = [
+  { kind = "bias", name = "GemmBiasTiledK32", local_id = 247 },
+  { kind = "bias_relu", name = "GemmBiasReluTiledK32", local_id = 248 },
+  { kind = "bias_gelu", name = "GemmBiasGeluTiledK32", local_id = 249 },
+]

@@ -141,9 +141,16 @@ public final class MainActivity extends Activity {
 		root.setPadding(dp(20), dp(24), dp(20), dp(40));
 		scroll.addView(root, new ScrollView.LayoutParams(-1, -2));
 
+		LinearLayout brand = new LinearLayout(this);
+		brand.setOrientation(LinearLayout.HORIZONTAL);
+		brand.setGravity(Gravity.CENTER_VERTICAL);
+		brand.addView(realmMark(), new LinearLayout.LayoutParams(dp(20), dp(20)));
 		TextView eyebrow = text("OA / MOBILE LAB", 11, MUTED, true);
 		eyebrow.setLetterSpacing(0.18f);
-		root.addView(eyebrow);
+		LinearLayout.LayoutParams eyebrowParams = new LinearLayout.LayoutParams(-2, -2);
+		eyebrowParams.setMarginStart(dp(8));
+		brand.addView(eyebrow, eyebrowParams);
+		root.addView(brand);
 		root.addView(text("Train where the data lives.", 31, TEXT, true),
 			margin(-1, -2, 0, 8, 0, 0));
 		TextView subtitle = text(
@@ -311,6 +318,7 @@ public final class MainActivity extends Activity {
 		FrameLayout.LayoutParams copyParams = new FrameLayout.LayoutParams(-1, -2);
 		copyParams.gravity = Gravity.BOTTOM;
 		overlay.addView(copy, copyParams);
+		copy.addView(realmMark(), margin(48, 48, 0, 0, 0, 12));
 		TextView mark = text("OA / MOBILE LAB", 11, WHITE, true);
 		mark.setLetterSpacing(0.2f);
 		copy.addView(mark);
@@ -620,6 +628,14 @@ public final class MainActivity extends Activity {
 		view.setTextColor(color);
 		view.setTypeface(semibold ? sansSemibold : sans);
 		view.setGravity(Gravity.START);
+		return view;
+	}
+
+	private ImageView realmMark() {
+		ImageView view = new ImageView(this);
+		view.setImageResource(R.drawable.realm_mark);
+		view.setScaleType(ImageView.ScaleType.FIT_CENTER);
+		view.setContentDescription("Realm");
 		return view;
 	}
 

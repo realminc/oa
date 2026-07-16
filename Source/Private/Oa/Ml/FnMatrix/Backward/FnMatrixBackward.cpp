@@ -560,10 +560,10 @@ OaMatrix OaFnMatrix::GatherBwd(
 	OaU32 numIndices = static_cast<OaU32>(InIndices.NumElements());
 	OaU32 indexDtype = (InIndices.GetDtype() == OaScalarType::UInt8) ? 0U : 1U;
 
+	// Each workgroup owns one vocabulary row and fully writes every element, so
+	// unlike an atomic scatter this deterministic implementation needs no clear.
 	OaMatrix gradTable = OaFnMatrix::Empty(
 		OaMatrixShape{InVocabSize, InEmbedDim}, InGradOutput.GetDtype());
-	// Embed dim accumulation requires starting from zero — Empty does not zero.
-	gradTable = OaFnMatrix::Zeros(OaMatrixShape{InVocabSize, InEmbedDim}, InGradOutput.GetDtype());
 
 	// NOTE: the framework auto-injects the bound buffers' heap indices as the leading
 	// push-constant u32s (indices_idx, d_out_idx, d_table_idx) — see Gather forward,
@@ -612,7 +612,8 @@ OaMatrix OaFnMatrix::LinearDataBwd(const OaMatrix& InGradOutput, const OaMatrix&
 	
 	struct { OaU32 M; OaU32 N; OaU32 K; } push{.M = M, .N = N, .K = K};
 	OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Read, OaBufferAccess::Write};
-	ctx.Add("LinearDataBwd", {&InGradOutput, &InWeight, &gradInput}, access, &push, sizeof(push), DivCeil(M * K, 256));
+	ctx.Add("LinearDataBwd", {&InGradOutput, &InWeight, &gradInput}, access,
+		&push, sizeof(push), DivCeil(M, 32), DivCeil(K, 32), 1);
 	
 	return gradInput;
 }

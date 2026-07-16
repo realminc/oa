@@ -18,6 +18,7 @@
 #include <Oa/Ml.h>
 #include <Oa/Ml/Byte.h>
 #include <Oa/Ml/Autograd.h>
+#include <Oa/Core/EnvFlag.h>
 #include <Oa/Runtime/Context.h>
 #include <Oa/Runtime/Engine.h>
 #include <Oa/Runtime/GpuTimer.h>
@@ -156,12 +157,15 @@ TEST(TutorialNlpByteTransformerAg, TransformerByteNextToken) {
 	printf("Params: %lld    Optimizer: AdamW(lr=0.01)\n\n",
 		static_cast<long long>(model->NumParameters()));
 
-	constexpr OaI32 kSteps = 300;
+	const OaI32 steps = static_cast<OaI32>(
+		std::max<OaI64>(OaEnvFlag::GetInt("OA_TUTORIAL_STEPS", 300), 1));
 	constexpr OaI32 kBatch = 64;
 	NlpAllPositionSampler sampler(NlpCorpus(), kBatch);
+	const OaBool useTrainingProgram = OaEnvFlag::IsSet("OA_TRAINING_PROGRAM");
+	OaTrainingProgram program;
 
 	TutorialTrainingLoop training(*opt, OaItTrainingConfig{
-		.TotalSteps     = kSteps,
+		.TotalSteps     = steps,
 		.EpochSteps     = {},
 		.BatchSize      = kBatch,
 		.SequenceLength = kContextLen,
@@ -170,9 +174,11 @@ TEST(TutorialNlpByteTransformerAg, TransformerByteNextToken) {
 		.SourceUnit     = "byte",
 		.TimerName      = "transformer_step",
 		.Callbacks      = {},
+		.Program        = useTrainingProgram ? &program : nullptr,
 	});
 
-	printf("Training: %d steps · batch=%d · sequence=%d tokens\n", kSteps, kBatch, kContextLen);
+	printf("Training: %d steps · batch=%d · sequence=%d tokens · execution=%s\n",
+		steps, kBatch, kContextLen, useTrainingProgram ? "captured" : "eager");
 
 	OaMatrix batchX;
 	OaMatrix batchY;
@@ -181,22 +187,23 @@ TEST(TutorialNlpByteTransformerAg, TransformerByteNextToken) {
 
 	while (not training.Loop.IsDone()) {
 		NVTX_RANGE_PUSH("TransformerStep");
-		sampler.NextBatch(batchX, batchY);
-		opt->ZeroGrad();
-		OaGradientTape tape;
-		NVTX_RANGE_PUSH("Forward");
-		auto logits = model->Forward(batchX);
-		NVTX_RANGE_POP();
-		NVTX_RANGE_PUSH("Loss");
-		auto loss = OaFnLoss::CrossEntropy(logits,
-			batchY.Reshape(OaMatrixShape{batchY.Size(0) * batchY.Size(1)}));
-		NVTX_RANGE_POP();
-		NVTX_RANGE_PUSH("Backward");
-		tape.Backward(loss);
-		NVTX_RANGE_POP();
-		NVTX_RANGE_PUSH("ItNext");
-		training.Loop.Next(loss);
-		NVTX_RANGE_POP();
+		training.Loop.Step(
+			[&] { sampler.NextBatch(batchX, batchY); },
+			[&] {
+				opt->ZeroGrad();
+				OaGradientTape tape;
+				NVTX_RANGE_PUSH("Forward");
+				auto logits = model->Forward(batchX);
+				NVTX_RANGE_POP();
+				NVTX_RANGE_PUSH("Loss");
+				auto loss = OaFnLoss::CrossEntropy(logits,
+					batchY.Reshape(OaMatrixShape{batchY.Size(0) * batchY.Size(1)}));
+				NVTX_RANGE_POP();
+				NVTX_RANGE_PUSH("Backward");
+				tape.Backward(loss);
+				NVTX_RANGE_POP();
+				training.Loop.RecordLoss(loss);
+			});
 		NVTX_RANGE_POP(); // TransformerStep
 
 		if (training.Loop.Index() == 1) initialLoss = training.Loop.LastLoss();

@@ -9,6 +9,7 @@
 
 #include <Oa/Core/Types.h>
 #include <Oa/Core/Status.h>
+#include <Oa/Runtime/MatmulTypes.h>
 
 class OaComputeEngine;
 class OaVkBuffer;
@@ -19,6 +20,23 @@ public:
 	// Initialize: detect capabilities, select kernel paths. Idempotent.
 	[[nodiscard]] static OaStatus Init(OaComputeEngine& InRt);
 
+	// Execute an already-selected immutable plan. These entrypoints perform no
+	// heuristic or route-cache lookup; they only validate the exact contract and
+	// lower it to one dispatch.
+	[[nodiscard]] static OaStatus ExecutePlan(
+		OaComputeEngine& InRt,
+		const OaMatmulPlan& InPlan,
+		const OaMatmulProblem& InProblem,
+		OaSpan<OaVkBuffer> InBuffers
+	);
+	[[nodiscard]] static OaStatus RecordPlan(
+		OaVkBatch& InBatch,
+		OaComputeEngine& InRt,
+		const OaMatmulPlan& InPlan,
+		const OaMatmulProblem& InProblem,
+		OaSpan<OaVkBuffer> InBuffers
+	);
+
 	// Standard GEMM: C = A @ B^T  (B stored transposed — OA convention).
 	// OaGemmRouter selects kernel from (M, N, K, dtype, device caps).
 	[[nodiscard]] static OaStatus Gemm(
@@ -28,7 +46,8 @@ public:
 		OaVkBuffer         OutC,
 		OaU32              InM,
 		OaU32              InN,
-		OaU32              InK);
+		OaU32              InK
+	);
 
 	// Batch-aware GEMM: records into an existing batch command buffer.
 	[[nodiscard]] static OaStatus GemmRecord(
@@ -39,7 +58,8 @@ public:
 		OaVkBuffer         OutC,
 		OaU32              InM,
 		OaU32              InN,
-		OaU32              InK);
+		OaU32              InK
+	);
 
 	// GEMM with BF16 output cast epilogue.
 	[[nodiscard]] static OaStatus GemmCmSgBf16Out(
@@ -49,7 +69,8 @@ public:
 		OaVkBuffer         OutC,
 		OaU32              InM,
 		OaU32              InN,
-		OaU32              InK);
+		OaU32              InK
+	);
 
 	// Tiled transpose: out[j, i] = in[i, j].
 	[[nodiscard]] static OaStatus Transpose(
@@ -57,7 +78,8 @@ public:
 		OaVkBuffer         InX,
 		OaVkBuffer         OutY,
 		OaU32              InRows,
-		OaU32              InCols);
+		OaU32              InCols
+	);
 
 	// Fused GEMM + Bias: out = A @ B^T + bias — single dispatch.
 	[[nodiscard]] static OaStatus GemmBias(
@@ -68,7 +90,8 @@ public:
 		OaVkBuffer         OutC,
 		OaU32              InM,
 		OaU32              InN,
-		OaU32              InK);
+		OaU32              InK
+	);
 
 	// Fused GEMM + Bias + ReLU: out = max(0, A @ B^T + bias) — single dispatch.
 	[[nodiscard]] static OaStatus GemmBiasRelu(
@@ -79,7 +102,8 @@ public:
 		OaVkBuffer         OutC,
 		OaU32              InM,
 		OaU32              InN,
-		OaU32              InK);
+		OaU32              InK
+	);
 
 	// Fused GEMM + Bias + GELU: out = GELU(A @ B^T + bias) — single dispatch.
 	[[nodiscard]] static OaStatus GemmBiasGelu(
@@ -90,7 +114,8 @@ public:
 		OaVkBuffer         OutC,
 		OaU32              InM,
 		OaU32              InN,
-		OaU32              InK);
+		OaU32              InK
+	);
 
 	// Fused GEMM + SiLU: pre = A @ B^T,  act = SiLU(pre) — single dispatch (BF16 CoopMat).
 	[[nodiscard]] static OaStatus GemmSiluCoopMatBf16(
@@ -101,7 +126,8 @@ public:
 		OaVkBuffer         OutAct,
 		OaU32              InM,
 		OaU32              InN,
-		OaU32              InK);
+		OaU32              InK
+	);
 
 	// Element-wise SiLU on first half, multiply with second half
 	[[nodiscard]] static OaStatus SiluMul(
@@ -109,7 +135,8 @@ public:
 		OaVkBuffer         InFused,
 		OaVkBuffer         OutY,
 		OaU32              InBatchSize,
-		OaU32              InIntermediateSize);
+		OaU32              InIntermediateSize
+	);
 
 	// Element-wise GELU on second half, multiply with first half (Gemma3)
 	[[nodiscard]] static OaStatus Geglu(
@@ -117,6 +144,7 @@ public:
 		OaVkBuffer         InFused,
 		OaVkBuffer         OutY,
 		OaU32              InBatchSize,
-		OaU32              InIntermediateSize);
+		OaU32              InIntermediateSize
+	);
 
 };

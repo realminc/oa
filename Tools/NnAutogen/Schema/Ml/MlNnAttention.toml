@@ -3,8 +3,8 @@
 [[layers]]
 name = "MultiHeadAttention"
 path = "Attention/MultiHeadAttention"
-constructor_args = "OaI32 DModel, OaI32 NumHeads, OaF32 DropoutP = 0.0f, bool InBias = true"
-constructor_init = "DModel_(DModel), NumHeads_(NumHeads), HeadDim_(DModel / NumHeads), DropoutP_(DropoutP)"
+constructor_args = "OaI32 DModel, OaI32 NumHeads, OaF32 DropoutP = 0.0f, bool InBias = true, OaAttentionBackend InBackend = OaAttentionBackend::Auto"
+constructor_init = "DModel_(DModel), NumHeads_(NumHeads), HeadDim_(DModel / NumHeads), DropoutP_(DropoutP), Backend_(InBackend)"
 constructor_body = [
 	"if (DModel <= 0 || NumHeads <= 0 || DModel % NumHeads != 0) throw std::invalid_argument(\"MultiHeadAttention requires DModel divisible by NumHeads\");",
 	"QProj_ = OaMakeSharedPtr<OaLinear>(DModel, DModel, InBias);",
@@ -21,6 +21,8 @@ members = [
 	"OaI32 NumHeads_;",
 	"OaI32 HeadDim_;",
 	"OaF32 DropoutP_;",
+	"OaAttentionBackend Backend_;",
+	"OaAttentionBackend LastBackend_ = OaAttentionBackend::Standard;",
 	"OaSharedPtr<OaModule> QProj_;",
 	"OaSharedPtr<OaModule> KProj_;",
 	"OaSharedPtr<OaModule> VProj_;",
@@ -29,19 +31,51 @@ members = [
 	"OaMatrix Mask_;",
 	"OaI32 MaskSeqLen_ = 0;",
 	"OaI32 MaskBatch_ = 0;",
+	"OaVec<OaMatrix> ProjectQkv(const OaMatrix& InInput);",
 	"const OaMatrix& CausalMask(OaI32 InBatch);",
+	"OaMatrix ForwardStandard(const OaMatrix& InInput, const OaMatrix& InAdditiveMask);",
+	"OaMatrix ForwardFlash(const OaMatrix& InInput);",
+	"[[nodiscard]] bool CanUseFlash(const OaMatrix& InInput) const noexcept;",
 ]
 methods = [
 	"void SetSeqLen(OaI32 InSeqLen) { SeqLen_ = InSeqLen; Mask_ = {}; MaskSeqLen_ = 0; MaskBatch_ = 0; }",
 	"OaMatrix ForwardMasked(const OaMatrix& InInput, const OaMatrix& InAdditiveMask);",
 	"[[nodiscard]] OaI32 NumHeads() const noexcept { return NumHeads_; }",
 	"[[nodiscard]] OaI32 HeadDim() const noexcept { return HeadDim_; }",
+	"void SetBackend(OaAttentionBackend InBackend) noexcept { Backend_ = InBackend; }",
+	"[[nodiscard]] OaAttentionBackend Backend() const noexcept { return Backend_; }",
+	"[[nodiscard]] OaAttentionBackend LastBackend() const noexcept { return LastBackend_; }",
 ]
 forward_body = """
 if (SeqLen_ <= 0) throw std::invalid_argument("MultiHeadAttention requires SetSeqLen before Forward");
-return ForwardMasked(InInput, CausalMask(static_cast<OaI32>(InInput.Size(0) / SeqLen_)));
+const bool requestFlash = Backend_ == OaAttentionBackend::Flash ||
+	(Backend_ == OaAttentionBackend::Auto && !OaFnAutograd::IsEnabled());
+if (requestFlash && CanUseFlash(InInput)) return ForwardFlash(InInput);
+if (Backend_ == OaAttentionBackend::Flash) {
+	throw std::invalid_argument("FlashAttention requires FP32, dropout=0 and sequence length <= 1024");
+}
+LastBackend_ = OaAttentionBackend::Standard;
+return ForwardStandard(InInput, CausalMask(static_cast<OaI32>(InInput.Size(0) / SeqLen_)));
 """
 extra_methods = """
+OaVec<OaMatrix> OaMultiHeadAttention::ProjectQkv(const OaMatrix& InInput) {
+	auto& q = QProj_->Parameters();
+	auto& k = KProj_->Parameters();
+	auto& v = VProj_->Parameters();
+	const bool hasBias = q.Size() > 1 && k.Size() > 1 && v.Size() > 1;
+	auto packed = hasBias
+		? OaFnMatrix::PackedLinear3(InInput, q[0].Data, k[0].Data, v[0].Data,
+			q[1].Data, k[1].Data, v[1].Data)
+		: OaFnMatrix::PackedLinear3(InInput, q[0].Data, k[0].Data, v[0].Data);
+	OaI64 sizes[] = {DModel_, DModel_, DModel_};
+	return OaFnMatrix::Split(packed, OaSpan<OaI64>(sizes, 3), 1);
+}
+
+bool OaMultiHeadAttention::CanUseFlash(const OaMatrix& InInput) const noexcept {
+	return InInput.GetDtype() == OaScalarType::Float32 && DropoutP_ == 0.0F &&
+		SeqLen_ > 0 && SeqLen_ <= 1024;
+}
+
 const OaMatrix& OaMultiHeadAttention::CausalMask(OaI32 InBatch) {
 	if (InBatch <= 0) throw std::invalid_argument("MultiHeadAttention batch must be positive");
 	if (Mask_.IsEmpty() || MaskSeqLen_ != SeqLen_ || MaskBatch_ != InBatch) {
@@ -58,6 +92,15 @@ const OaMatrix& OaMultiHeadAttention::CausalMask(OaI32 InBatch) {
 
 OaMatrix OaMultiHeadAttention::ForwardMasked(
 	const OaMatrix& InInput, const OaMatrix& InAdditiveMask) {
+	if (Backend_ == OaAttentionBackend::Flash) {
+		throw std::invalid_argument("FlashAttention does not accept an arbitrary additive mask");
+	}
+	LastBackend_ = OaAttentionBackend::Standard;
+	return ForwardStandard(InInput, InAdditiveMask);
+}
+
+OaMatrix OaMultiHeadAttention::ForwardStandard(
+	const OaMatrix& InInput, const OaMatrix& InAdditiveMask) {
 	if (InInput.Rank() != 2 || InInput.Size(1) != DModel_ || SeqLen_ <= 0 ||
 		InInput.Size(0) % SeqLen_ != 0) {
 		throw std::invalid_argument("MultiHeadAttention expects [B*S,D] with a configured sequence length");
@@ -69,9 +112,10 @@ OaMatrix OaMultiHeadAttention::ForwardMasked(
 		throw std::invalid_argument("MultiHeadAttention additive mask must be [B*H*S,S]");
 	}
 
-	auto q = OaFnMatrix::SplitHeads(QProj_->Forward(InInput), batch, SeqLen_, NumHeads_);
-	auto k = OaFnMatrix::SplitHeads(KProj_->Forward(InInput), batch, SeqLen_, NumHeads_);
-	auto v = OaFnMatrix::SplitHeads(VProj_->Forward(InInput), batch, SeqLen_, NumHeads_);
+	auto qkv = ProjectQkv(InInput);
+	auto q = OaFnMatrix::SplitHeads(qkv[0], batch, SeqLen_, NumHeads_);
+	auto k = OaFnMatrix::SplitHeads(qkv[1], batch, SeqLen_, NumHeads_);
+	auto v = OaFnMatrix::SplitHeads(qkv[2], batch, SeqLen_, NumHeads_);
 	auto scores = OaFnMatrix::Bmm(q, OaFnMatrix::Transpose(k, 1, 2));
 	auto attn = OaFnMatrix::SoftmaxScaledMasked(
 		scores.Reshape(OaMatrixShape{scoreRows, SeqLen_}), InAdditiveMask,
@@ -85,9 +129,27 @@ OaMatrix OaMultiHeadAttention::ForwardMasked(
 	return OutProj_->Forward(merged);
 }
 
+OaMatrix OaMultiHeadAttention::ForwardFlash(const OaMatrix& InInput) {
+	if (InInput.Rank() != 2 || InInput.Size(1) != DModel_ || SeqLen_ <= 0 ||
+		InInput.Size(0) % SeqLen_ != 0) {
+		throw std::invalid_argument("MultiHeadAttention expects [B*S,D] with a configured sequence length");
+	}
+	const OaI32 batch = static_cast<OaI32>(InInput.Size(0) / SeqLen_);
+	auto qkv = ProjectQkv(InInput);
+	auto q = OaFnMatrix::SplitHeads(qkv[0], batch, SeqLen_, NumHeads_);
+	auto k = OaFnMatrix::SplitHeads(qkv[1], batch, SeqLen_, NumHeads_);
+	auto v = OaFnMatrix::SplitHeads(qkv[2], batch, SeqLen_, NumHeads_);
+	auto context = OaFnMatrix::FlashAttentionCausal(
+		q, k, v, 1.0F / std::sqrt(static_cast<OaF32>(HeadDim_)));
+	auto merged = OaFnMatrix::MergeHeads(context, batch, SeqLen_, NumHeads_);
+	LastBackend_ = OaAttentionBackend::Flash;
+	return OutProj_->Forward(merged);
+}
+
 """
-notes = "Real multi-head scaled dot-product self-attention with an explicit additive-mask path."
+notes = "Multi-head scaled dot-product self-attention with interchangeable standard and fused causal Flash backends."
 extra_includes = """
+#include <Oa/Ml/Autograd.h>
 #include <Oa/Ml/FnMatrix.h>
 #include <Oa/Runtime/Context.h>
 #include <cmath>

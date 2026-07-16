@@ -1,8 +1,8 @@
 // Private umbrella header for OaContext.
-// Hand-curated; the Add* family lives in FnContext and is a future autogen target.
+// Hand-curated; dispatch lowering is implemented directly by OaContext members.
 
 #pragma once
 
 #include "ContextTypes.h"
 #include "ContextCore.h"
-#include "FnContext.h"
+#include "DefaultContext.h"

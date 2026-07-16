@@ -169,6 +169,44 @@ OaFnMatrix::OaGroupedGemmMBwdResult OaFnMatrix::GroupedGemmMBwd(
 	return result;
 }
 
+OaFnMatrix::OaGroupedLinearMBwdResult OaFnMatrix::GroupedLinearMBwd(
+	const OaMatrix& InDOut, const OaMatrix& InX, const OaMatrix& InWeight,
+	const OaMatrix& InOffsets) {
+	if (InDOut.Rank() != 2 or InX.Rank() != 2 or InWeight.Rank() != 3 or
+		InOffsets.Rank() != 1 or InOffsets.GetDtype() != OaScalarType::UInt32 or
+		InDOut.GetDtype() != InX.GetDtype() or InX.GetDtype() != InWeight.GetDtype() or
+		InDOut.Size(0) != InX.Size(0) or InDOut.Size(1) != InWeight.Size(1) or
+		InX.Size(1) != InWeight.Size(2) or InOffsets.Size(0) != InWeight.Size(0) + 1) {
+		OA_LOG_ERROR(OaLogComponent::ML, "GroupedLinearMBwd: incompatible tensors");
+		return {};
+	}
+	const OaU32 R = static_cast<OaU32>(InX.Size(0));
+	const OaU32 K = static_cast<OaU32>(InX.Size(1));
+	const OaU32 E = static_cast<OaU32>(InWeight.Size(0));
+	const OaU32 N = static_cast<OaU32>(InWeight.Size(1));
+	OaGroupedLinearMBwdResult result;
+	result.DInput = OaFnMatrix::Empty(InX.GetShape(), InX.GetDtype());
+	result.DWeight = OaFnMatrix::Empty(InWeight.GetShape(), InWeight.GetDtype());
+	result.DBias = OaFnMatrix::Empty(OaMatrixShape{E, N}, InDOut.GetDtype());
+	struct { OaU32 R, N, K, E; } push{R, N, K, E};
+	auto& ctx = OaContext::GetDefault();
+	{
+		OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Read,
+			OaBufferAccess::Read, OaBufferAccess::Write};
+		ctx.Add("GroupedGemmMDataBwd",
+			{&InDOut, &InWeight, &InOffsets, &result.DInput}, access,
+			&push, sizeof(push), DivCeil(R, 32), DivCeil(K, 32), 1);
+	}
+	{
+		OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Read,
+			OaBufferAccess::Read, OaBufferAccess::Write, OaBufferAccess::Write};
+		ctx.Add("GroupedLinearMWeightBiasBwd",
+			{&InDOut, &InX, &InOffsets, &result.DWeight, &result.DBias}, access,
+			&push, sizeof(push), DivCeil(N, 32), DivCeil(K, 32), E);
+	}
+	return result;
+}
+
 OaMatrix OaFnMatrix::GroupedLinearMBiasBwd(const OaMatrix& InDOut,
 	const OaMatrix& InOffsets, OaI32 InNumExperts) {
 	if (InDOut.Rank() != 2 or InOffsets.Rank() != 1 or
@@ -267,14 +305,25 @@ OaFnMatrix::OaMoeCombineBwdResult OaFnMatrix::MoeCombineBwd(
 OaMatrix OaFnMatrix::ScatterAddRows(const OaMatrix& InSource,
 	const OaMatrix& InIndices, OaI32 InOutRows) {
 	if (InSource.Rank() != 2 or InIndices.Rank() != 1 or
+		(InSource.GetDtype() != OaScalarType::Float32 and
+		 InSource.GetDtype() != OaScalarType::BFloat16) or
 		InIndices.GetDtype() != OaScalarType::UInt32 or
 		InIndices.Size(0) != InSource.Size(0) or InOutRows <= 0) {
 		OA_LOG_ERROR(OaLogComponent::ML,
 			"ScatterAddRows: expected Source[R,D], UInt32 Indices[R], OutRows > 0");
 		return {};
 	}
-	auto out = OaFnMatrix::GatherBwd(InIndices, InSource, InOutRows,
-		static_cast<OaI32>(InSource.Size(1)));
+	const OaU32 R = static_cast<OaU32>(InSource.Size(0));
+	const OaU32 D = static_cast<OaU32>(InSource.Size(1));
+	const OaU32 T = static_cast<OaU32>(InOutRows);
+	const OaU32 dtype = InSource.GetDtype() == OaScalarType::BFloat16 ? 1U : 0U;
+	auto out = OaFnMatrix::Zeros(OaMatrixShape{InOutRows, D}, InSource.GetDtype());
+	struct { OaU32 R, D, T, Dtype; } push{R, D, T, dtype};
+	OaBufferAccess access[] = {
+		OaBufferAccess::Read, OaBufferAccess::Read, OaBufferAccess::ReadWrite};
+	auto& ctx = OaContext::GetDefault();
+	ctx.Add("ScatterAddRows", {&InSource, &InIndices, &out}, access,
+		&push, sizeof(push), DivCeil(R * D, 256));
 	if (OaFnAutograd::IsEnabled() and InSource.RequiresGrad()) {
 		auto gradFn = OaMakeSharedPtr<OaGradScatterAddRows>();
 		gradFn->Saved_ = OaVec<OaMatrix>{InIndices};
@@ -283,5 +332,64 @@ OaMatrix OaFnMatrix::ScatterAddRows(const OaMatrix& InSource,
 		gradFn->OutputShape_ = out.GetShape();
 		out.MutAutograd().GradFn = gradFn;
 	}
+	return out;
+}
+
+OaMatrix OaFnMatrix::MoeGather(const OaMatrix& InSelf,
+	const OaMatrix& InIndices, const OaMatrix& InInverse) {
+	if (InSelf.Rank() != 2 or InIndices.Rank() != 1 or
+		InInverse.Rank() != 1 or InIndices.GetDtype() != OaScalarType::UInt32 or
+		InInverse.GetDtype() != OaScalarType::UInt32 or
+		InInverse.NumElements() != InIndices.NumElements() or
+		InSelf.Size(0) <= 0 or
+		InIndices.NumElements() % InSelf.Size(0) != 0) {
+		OA_LOG_ERROR(OaLogComponent::ML,
+			"MoeGather: expected Self[T,D] and UInt32 Indices/Inverse[R], R %% T == 0");
+		return {};
+	}
+	const OaU32 R = static_cast<OaU32>(InIndices.NumElements());
+	const OaU32 D = static_cast<OaU32>(InSelf.Size(1));
+	auto out = OaFnMatrix::Empty(OaMatrixShape{R, D}, InSelf.GetDtype());
+	struct { OaU32 NumIndices, RowSize, IndexDtype; } push{R, D, 1U};
+	OaBufferAccess access[] = {
+		OaBufferAccess::Read, OaBufferAccess::Read, OaBufferAccess::Write};
+	auto& ctx = OaContext::GetDefault();
+	ctx.Add("Gather", {&InSelf, &InIndices, &out}, access,
+		&push, sizeof(push), DivCeil(R * D, 256));
+	if (OaFnAutograd::IsEnabled() and InSelf.RequiresGrad()) {
+		auto gradFn = OaMakeSharedPtr<OaGradMoeGather>();
+		gradFn->Saved_ = OaVec<OaMatrix>{InSelf, InIndices, InInverse};
+		gradFn->SetGraphInputs(OaVec<OaMatrix>{InSelf, InIndices, InInverse});
+		gradFn->SequenceNr_ = OaFnAutograd::NextSeq();
+		gradFn->OutputShape_ = out.GetShape();
+		out.MutAutograd().GradFn = gradFn;
+	}
+	return out;
+}
+
+OaMatrix OaFnMatrix::MoeGatherBwd(const OaMatrix& InSource,
+	const OaMatrix& InInverse, OaI32 InOutRows) {
+	if (InSource.Rank() != 2 or InInverse.Rank() != 1 or
+		(InSource.GetDtype() != OaScalarType::Float32 and
+		 InSource.GetDtype() != OaScalarType::BFloat16) or
+		InInverse.GetDtype() != OaScalarType::UInt32 or
+		InInverse.NumElements() != InSource.Size(0) or InOutRows <= 0 or
+		InSource.Size(0) % InOutRows != 0) {
+		OA_LOG_ERROR(OaLogComponent::ML,
+			"MoeGatherBwd: expected Source[R,D], UInt32 Inverse[R], R %% T == 0");
+		return {};
+	}
+	const OaU32 R = static_cast<OaU32>(InSource.Size(0));
+	const OaU32 D = static_cast<OaU32>(InSource.Size(1));
+	const OaU32 T = static_cast<OaU32>(InOutRows);
+	const OaU32 K = R / T;
+	const OaU32 dtype = InSource.GetDtype() == OaScalarType::BFloat16 ? 1U : 0U;
+	auto out = OaFnMatrix::Empty(OaMatrixShape{InOutRows, D}, InSource.GetDtype());
+	struct { OaU32 R, D, T, K, Dtype; } push{R, D, T, K, dtype};
+	OaBufferAccess access[] = {
+		OaBufferAccess::Read, OaBufferAccess::Read, OaBufferAccess::Write};
+	auto& ctx = OaContext::GetDefault();
+	ctx.Add("MoeGatherBwd", {&InSource, &InInverse, &out}, access,
+		&push, sizeof(push), DivCeil(T * D, 256));
 	return out;
 }

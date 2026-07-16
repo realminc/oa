@@ -4,6 +4,53 @@ All notable changes to OA are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is the single
 `VERSION` file at the repo root (read by CMake, `OaVersion()`, and the Python package).
 
+## [0.7.4] — 2026-07-16 (development preview)
+
+### Added
+- **OaBlasLt v1 planning path** — exact immutable plans now cover contiguous,
+  arbitrary-stride and strided-batched FP32 matmul, ranked legal candidates, measured
+  cache replay, and persisted median/p95/sample statistics.
+- **OaDnn semantic planner** — validated operation graphs partition packed QKV, gated
+  FFN, linear epilogues, residual normalization, Flash Attention and grouped MoE while
+  retaining a portable fallback.
+- **Generated BF16/CoopMat registry families** — subgroup/workgroup capability contracts,
+  current epilogues, stable IDs and cache identity now come from checked OaTile schemas.
+- **Public NLP benchmark** — the complete 15-model Byte/BPE/Char training matrix records
+  wall/GPU distributions, learning gates and preview-to-preview MoE progress.
+
+### Changed
+- Multi-head attention preserves checkpoint-compatible Q/K/V modules while executing
+  their projections through one reusable packed operation. FFN gate/up projections use
+  the same API without concatenating or renaming model weights.
+- Row compaction and scatter now write and consume exact GPU-side indirect dispatch
+  arguments, including zero-work dispatches for empty selections.
+- Compute graphs can materialize explicitly eligible, non-overlapping transient buffers
+  as distinct bindless views over allocator-backed alias storage.
+- The GEMM route cache keys exact offsets, row/column/batch strides and batch count;
+  malformed or incompatible legacy entries remain fail-closed.
+
+### Performance
+- On the Iris Xe reference NLP matrix, sparse-MoE/dense Transformer wall ratios improved
+  from `1.46x` to `1.08x` for Byte, `1.46x` to `1.12x` for BPE, and `1.57x` to `1.21x`
+  for Char while preserving convergence, generation and checkpoint gates.
+- Packed projections reduce launch plumbing without changing the public module or
+  checkpoint contract. Dense Transformer remains broadly flat within laptop clock
+  variance; the repeatable gain is the reduced sparse execution gap.
+
+### Verification
+- All 60 canonical NLP processes passed: 15 excluded warm-ups and 45 measured runs.
+- MoE gradchecks pass 22/22 and systems tests pass 9/9, including shuffled repetition.
+- GEMM routing passes 18/18; compute-graph/DNN planning passes 17/17; attention passes
+  11/11; OaTile generation passes 6/6; generated-source drift is clean.
+
+### Preview boundaries
+- Split-K, persistent GEMM and portable serialized weight prepacking require a future
+  multi-stage plan/workspace ABI and are not represented by placeholder routes.
+- OaDnn planning is not yet automatically captured from arbitrary model/autograd graphs.
+- BF16/CoopMat execution still requires fresh validation on capable dGPU hardware.
+- This release adds no new Python API surface; existing bindings inherit the runtime and
+  training improvements.
+
 ## [0.7.3] — 2026-07-14 (development preview)
 
 ### Added

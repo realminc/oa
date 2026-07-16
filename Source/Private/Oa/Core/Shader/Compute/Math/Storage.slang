@@ -5,7 +5,7 @@
 // Because DTYPE is a *specialization* constant, the branch is resolved at pipeline
 // creation and the unused path is dead-code-eliminated — there is NO runtime branch
 // cost. This is exactly what lets ONE kernel (GEMM / Linear / epilogue / elementwise)
-// serve both fp32 and bf16, selected per-dispatch via SetLastNodeDtype.
+// serve both fp32 and bf16, selected by the dtype carried in each dispatch.
 //
 // Use this module for any kernel that must handle both precisions. The single-dtype
 // modules are the specializations, for shaders that provably see one precision only:

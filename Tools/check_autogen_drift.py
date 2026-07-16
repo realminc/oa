@@ -2,7 +2,8 @@
 """
 check_autogen_drift — the regen-safety gate for OA's code generators.
 
-Run this BEFORE any `--live` regen. It runs every generator (Type / Fn / Nn)
+Run this BEFORE any `--live` regen. It runs every generator (Type / Fn / Nn /
+OaTile)
 into a throwaway scratch tree and diffs the result against the committed
 `.gen.*` files in Source/ (and Test/). Any difference means the working tree
 and the generators have diverged, which is the *only* way a `--live` regen can
@@ -44,6 +45,7 @@ GENERATORS = [
 	("Tools/TypeAutogen/oatypeautogen.py", "ty"),
 	("Tools/FnAutogen/oafnautogen.py", "fn"),
 	("Tools/NnAutogen/oannautogen.py", "nn"),
+	("Tools/OaTile/oatile.py", "tile"),
 ]
 
 

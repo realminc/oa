@@ -50,9 +50,19 @@ OaMatrix OaFfn::Forward(const OaMatrix& InX) {
 	// RMSNorm
 	auto normed = Norm_->Forward(InX);
 	
-	// Gate and Up projections
-	auto gate = Gate_->Forward(normed);
-	auto up = Up_->Forward(normed);
+	// Gate and Up share the same activation. Keep the independently named child
+	// modules/checkpoint weights, but execute both projections in one dispatch.
+	auto& gateParams = Gate_->Parameters();
+	auto& upParams = Up_->Parameters();
+	const bool hasBias = gateParams.Size() > 1 and upParams.Size() > 1;
+	auto packed = hasBias
+		? OaFnMatrix::PackedLinear2(normed, gateParams[0].Data, upParams[0].Data,
+			gateParams[1].Data, upParams[1].Data)
+		: OaFnMatrix::PackedLinear2(normed, gateParams[0].Data, upParams[0].Data);
+	OaI64 widths[] = {DFF_, DFF_};
+	auto gateUp = OaFnMatrix::Split(packed, OaSpan<OaI64>(widths, 2), 1);
+	auto gate = gateUp[0];
+	auto up = gateUp[1];
 	
 	// SwiGLU: silu(gate) * up, fused into a single Swiglu dispatch.
 	auto swiglu = OaFnMatrix::Swiglu(gate, up);
@@ -63,4 +73,3 @@ OaMatrix OaFfn::Forward(const OaMatrix& InX) {
 	// Residual connection
 	return OaFnMatrix::Add(InX, out);
 }
-

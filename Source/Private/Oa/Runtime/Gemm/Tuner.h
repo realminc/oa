@@ -6,6 +6,7 @@
 
 #include <Oa/Core/Types.h>
 #include <Oa/Core/Status.h>
+#include <Oa/Runtime/GemmTypes.h>
 
 // Forward declarations
 class OaComputeEngine;
@@ -14,14 +15,29 @@ class OaComputeEngine;
 struct OaGemmTunerShape {
 	OaU32 M, N, K;
 	const char* Name;  // e.g. "train_256x1024x512", "decode_1x1024x1024"
+	OaGemmEpilogue Epilogue = OaGemmEpilogue::None;
+};
+
+struct OaGemmTunerCandidateResult {
+	OaMatmulVariantId Variant = OaInvalidMatmulVariantId;
+	OaGemmKernel Kernel = OaGemmKernel::Auto;
+	const char* Name = "";
+	OaF32 MedianTimeMs = 0.0F;
+	OaF32 P95TimeMs = 0.0F;
+	OaU32 SampleCount = 0;
 };
 
 // Benchmark result for a single shape
 struct OaGemmTunerResult {
 	OaGemmTunerShape Shape;
-	OaU8 BestKernel;     // OaGemmKernel enum value
-	OaF32 BestTimeMs;    // Best mean GPU execution time in milliseconds
+	OaMatmulVariantId BestVariant;
+	OaGemmKernel BestKernel;
+	OaF32 BestTimeMs;    // Best median block-mean GPU time in milliseconds
 	OaF32 BestGflops;    // Best GFLOPS achieved
+	// Fastest first. This is deliberately the complete legal ranking rather
+	// than only the winner, so diagnostics and future policy can compare a
+	// stable second choice without re-running an exhaustive tune.
+	OaVec<OaGemmTunerCandidateResult> RankedCandidates;
 };
 
 // OaGemmTuner — benchmark harness

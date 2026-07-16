@@ -4,21 +4,26 @@
 
 #pragma once
 
-/// OaMultiHeadAttention: Real multi-head scaled dot-product self-attention with an explicit additive-mask path.
+/// OaMultiHeadAttention: Multi-head scaled dot-product self-attention with interchangeable standard and fused causal Flash backends.
 class OaMultiHeadAttention : public OaModule {
 public:
-	OaMultiHeadAttention(OaI32 DModel, OaI32 NumHeads, OaF32 DropoutP = 0.0f, bool InBias = true);
+	OaMultiHeadAttention(OaI32 DModel, OaI32 NumHeads, OaF32 DropoutP = 0.0f, bool InBias = true, OaAttentionBackend InBackend = OaAttentionBackend::Auto);
 	OaMatrix Forward(const OaMatrix& InInput) override;
 	void SetSeqLen(OaI32 InSeqLen) { SeqLen_ = InSeqLen; Mask_ = {}; MaskSeqLen_ = 0; MaskBatch_ = 0; }
 	OaMatrix ForwardMasked(const OaMatrix& InInput, const OaMatrix& InAdditiveMask);
 	[[nodiscard]] OaI32 NumHeads() const noexcept { return NumHeads_; }
 	[[nodiscard]] OaI32 HeadDim() const noexcept { return HeadDim_; }
+	void SetBackend(OaAttentionBackend InBackend) noexcept { Backend_ = InBackend; }
+	[[nodiscard]] OaAttentionBackend Backend() const noexcept { return Backend_; }
+	[[nodiscard]] OaAttentionBackend LastBackend() const noexcept { return LastBackend_; }
 
 private:
 	OaI32 DModel_;
 	OaI32 NumHeads_;
 	OaI32 HeadDim_;
 	OaF32 DropoutP_;
+	OaAttentionBackend Backend_;
+	OaAttentionBackend LastBackend_ = OaAttentionBackend::Standard;
 	OaSharedPtr<OaModule> QProj_;
 	OaSharedPtr<OaModule> KProj_;
 	OaSharedPtr<OaModule> VProj_;
@@ -27,5 +32,9 @@ private:
 	OaMatrix Mask_;
 	OaI32 MaskSeqLen_ = 0;
 	OaI32 MaskBatch_ = 0;
+	OaVec<OaMatrix> ProjectQkv(const OaMatrix& InInput);
 	const OaMatrix& CausalMask(OaI32 InBatch);
+	OaMatrix ForwardStandard(const OaMatrix& InInput, const OaMatrix& InAdditiveMask);
+	OaMatrix ForwardFlash(const OaMatrix& InInput);
+	[[nodiscard]] bool CanUseFlash(const OaMatrix& InInput) const noexcept;
 };

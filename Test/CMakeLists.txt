@@ -369,11 +369,39 @@ if(TARGET oa_shaders)
 	add_dependencies(BenchMoeComponents oa_shaders)
 endif()
 
+# Dense-Transformer forward/backward component breakdown for the canonical NLP shape.
+# Deliberately not registered with ctest: this is a controlled benchmark.
+add_executable(BenchTransformerComponents Ml/Nn/BenchTransformerComponents.cpp ${CMAKE_CURRENT_SOURCE_DIR}/Ml/MlTestMain.cpp)
+target_link_libraries(BenchTransformerComponents PRIVATE oa GTest::gtest)
+target_include_directories(BenchTransformerComponents PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_options(BenchTransformerComponents PRIVATE -include ${CMAKE_CURRENT_SOURCE_DIR}/OaTestVk.h)
+set_target_properties(BenchTransformerComponents PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${OA_BIN_DIR}/Test/Ml/Nn")
+if(TARGET oa_shaders)
+	add_dependencies(BenchTransformerComponents oa_shaders)
+endif()
+
 # The canonical GEMM benchmark is TutorialCoreMatMulIntro. It exercises the
 # public router, validates every shape against CPU, reports p50/p95 wall time,
 # and includes both throughput and real Transformer/FFN shapes. The removed
 # BenchCompute sources used retired Matmul* shader names and did not execute the
 # current context path, so their timings were not valid.
+
+# Exact raw-GEMM variant A/B through the same public production path, measured
+# with GPU timestamps. Deliberately not registered with ctest.
+add_executable(BenchGemmVariants
+	Runtime/Gemm/BenchGemmVariants.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/Ml/MlTestMain.cpp)
+target_link_libraries(BenchGemmVariants PRIVATE oa GTest::gtest)
+target_include_directories(BenchGemmVariants PRIVATE
+	${CMAKE_CURRENT_SOURCE_DIR}
+	${oa_SOURCE_DIR}/Source/Private)
+target_compile_options(BenchGemmVariants PRIVATE
+	-include ${CMAKE_CURRENT_SOURCE_DIR}/OaTestVk.h)
+set_target_properties(BenchGemmVariants PROPERTIES
+	RUNTIME_OUTPUT_DIRECTORY "${OA_BIN_DIR}/Test/Runtime/Gemm")
+if(TARGET oa_shaders)
+	add_dependencies(BenchGemmVariants oa_shaders)
+endif()
 
 # ─── GPU smoke subset ───────────────────────────────────────────────────────
 # A fast, fp32-safe path (engine init -> compute-graph dispatch -> recurrent GRU

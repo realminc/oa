@@ -9,9 +9,7 @@ class OaSwiGLU : public OaModule {
 public:
 	OaSwiGLU(OaI32 InFeatures, OaI32 IntermediateSize, bool InBias = false);
 	OaMatrix Forward(const OaMatrix& InInput) override;
-	void UpdateFusedWeights();
 
 private:
 	bool HasBias_;
-	OaMatrix FusedGateUpWeight;
 };
