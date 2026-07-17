@@ -268,9 +268,21 @@ TEST(OaVideoStream, UnifiedVideoOpenNextSeekFlush)
 	ASSERT_TRUE(opened.IsOk()) << opened.GetStatus().ToString();
 	OaVideo video = OaStdMove(*opened);
 	EXPECT_NE(video.CurrentFrame().ImageView, VK_NULL_HANDLE);
+	const OaU64 durationUs = video.DurationUs();
+	ASSERT_GT(durationUs, 0U);
+	EXPECT_LE(video.PositionUs(), durationUs);
+	video.SetLoop(true);
+	EXPECT_TRUE(video.IsLooping());
+	video.SetLoop(false);
+	EXPECT_FALSE(video.IsLooping());
 	const OaI64 firstIndex = video.Index();
 	ASSERT_TRUE(video.Next().IsOk());
 	EXPECT_GT(video.Index(), firstIndex);
+	ASSERT_TRUE(video.SeekUs(durationUs / 2U).IsOk());
+	EXPECT_NEAR(
+		static_cast<double>(video.PositionUs()),
+		static_cast<double>(durationUs / 2U),
+		1'000'000.0);
 	ASSERT_TRUE(video.Seek(0U).IsOk());
 	EXPECT_NE(video.CurrentFrame().ImageView, VK_NULL_HANDLE);
 	ASSERT_TRUE(video.Flush().IsOk());
@@ -457,7 +469,7 @@ TEST(OaVideoStream, LongPlaybackLoopResetAndBackStep)
 	cfg.Loop = true;
 	cfg.StartPlaying = false;
 	cfg.ReorderDepth = 4;
-	cfg.PreferHardwareYCbCr = false;
+	cfg.PreferHardwareYCbCr = true;
 	auto itResult = OaItVideo::Create(*engine, cfg);
 	ASSERT_TRUE(itResult.IsOk()) << itResult.GetStatus().ToString();
 	OaItVideo it = OaStdMove(*itResult);
@@ -471,10 +483,26 @@ TEST(OaVideoStream, LongPlaybackLoopResetAndBackStep)
 	}
 
 	const OaI64 beforeScrub = it.Index();
+	auto beforeScrubRgba = it.ReadbackCurrentRgba();
+	ASSERT_TRUE(beforeScrubRgba.IsOk()) << beforeScrubRgba.GetStatus().ToString();
 	ASSERT_TRUE(it.StepFrames(5).IsOk());
 	EXPECT_EQ(it.Index(), beforeScrub + 5);
 	ASSERT_TRUE(it.StepFrames(-5).IsOk());
 	EXPECT_EQ(it.Index(), beforeScrub);
+	auto afterScrubRgba = it.ReadbackCurrentRgba();
+	ASSERT_TRUE(afterScrubRgba.IsOk()) << afterScrubRgba.GetStatus().ToString();
+	ASSERT_EQ(afterScrubRgba->Size(), beforeScrubRgba->Size());
+	OaU64 scrubAbsoluteError = 0U;
+	for (OaUsize i = 0U; i < beforeScrubRgba->Size(); ++i) {
+		scrubAbsoluteError += static_cast<OaU64>(std::abs(
+			static_cast<int>((*afterScrubRgba)[i])
+			- static_cast<int>((*beforeScrubRgba)[i])));
+	}
+	EXPECT_LT(
+		static_cast<OaF64>(scrubAbsoluteError)
+			/ static_cast<OaF64>(beforeScrubRgba->Size()),
+		0.01)
+		<< "backward seek did not reconstruct the same display frame";
 	ASSERT_TRUE(it.StepBackward().IsOk());
 	EXPECT_EQ(it.Index(), beforeScrub - 1);
 	ASSERT_TRUE(it.StepForward().IsOk());
@@ -498,6 +526,67 @@ TEST(OaVideoStream, LongPlaybackLoopResetAndBackStep)
 	EXPECT_EQ(it.Index(), 1);
 	EXPECT_FALSE(it.IsDone());
 	it.Destroy();
+}
+
+TEST(OaVideoStream, BackwardSeekReconstructsFrameAcrossCodecs)
+{
+	struct Case {
+		const char* Path;
+		OaVideoCodec Codec;
+	};
+	const Case cases[] = {
+		{kShibuyaH265, OaVideoCodec::H265},
+		{kShibuyaAv1, OaVideoCodec::AV1},
+		{kShibuyaVp9, OaVideoCodec::VP9},
+	};
+	auto* engine = OaComputeEngine::GetGlobal();
+	ASSERT_NE(engine, nullptr);
+	OaU32 exercised = 0U;
+	for (const Case& testCase : cases) {
+		if (!DatasetAvailable(testCase.Path)
+			|| !OaVideoDecoder::IsCodecSupported(*engine, testCase.Codec)) {
+			continue;
+		}
+		++exercised;
+		OaItVideoConfig config;
+		config.Path = testCase.Path;
+		config.Audio = false;
+		config.Loop = false;
+		config.StartPlaying = false;
+		config.ReorderDepth = 4;
+		config.PreferHardwareYCbCr = true;
+		auto opened = OaItVideo::Create(*engine, config);
+		ASSERT_TRUE(opened.IsOk()) << testCase.Path << ": "
+			<< opened.GetStatus().ToString();
+		OaItVideo video = OaStdMove(*opened);
+		for (OaU32 frame = 0U; frame < 24U; ++frame) {
+			ASSERT_TRUE(video.StepForward().IsOk()) << testCase.Path << " frame " << frame;
+		}
+		const OaI64 referenceIndex = video.Index();
+		auto reference = video.ReadbackCurrentRgba();
+		ASSERT_TRUE(reference.IsOk()) << testCase.Path;
+		ASSERT_TRUE(video.StepFrames(3).IsOk()) << testCase.Path;
+		ASSERT_TRUE(video.StepFrames(-3).IsOk()) << testCase.Path;
+		EXPECT_EQ(video.Index(), referenceIndex) << testCase.Path;
+		auto reconstructed = video.ReadbackCurrentRgba();
+		ASSERT_TRUE(reconstructed.IsOk()) << testCase.Path;
+		ASSERT_EQ(reconstructed->Size(), reference->Size()) << testCase.Path;
+		OaU64 absoluteError = 0U;
+		for (OaUsize i = 0U; i < reference->Size(); ++i) {
+			absoluteError += static_cast<OaU64>(std::abs(
+				static_cast<int>((*reconstructed)[i])
+				- static_cast<int>((*reference)[i])));
+		}
+		EXPECT_LT(
+			static_cast<OaF64>(absoluteError)
+				/ static_cast<OaF64>(reference->Size()),
+			0.01)
+			<< testCase.Path << " backward seek changed the display frame";
+		video.Destroy();
+	}
+	if (exercised == 0U) {
+		GTEST_SKIP() << "No H.265, AV1 or VP9 decode path available";
+	}
 }
 
 TEST(OaVideoStream, FirstFrameMatchesFfmpegReference)

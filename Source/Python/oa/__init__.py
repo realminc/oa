@@ -7,7 +7,7 @@ the private :mod:`oa._oa` extension and are never wildcard-exported here.
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
-from . import audio, core, crypto, ml, runtime, vision
+from . import audio, core, crypto, ml, plot, runtime, vision
 from .runtime import Context
 
 
@@ -27,5 +27,5 @@ def _read_version() -> str:
 
 __version__ = _read_version()
 __all__ = [
-    "Context", "audio", "core", "crypto", "ml", "runtime", "vision", "__version__"
+    "Context", "audio", "core", "crypto", "ml", "plot", "runtime", "vision", "__version__"
 ]

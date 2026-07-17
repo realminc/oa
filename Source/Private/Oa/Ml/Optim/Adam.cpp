@@ -1,6 +1,7 @@
 #include <Oa/Ml/Optim.h>
 #include <Oa/Ml/Oam.h>
 #include <Oa/Runtime/Context.h>
+#include <Oa/Runtime/Engine.h>
 #include <Oa/Core/BufferAccess.h>
 #include <Oa/Core/FnMatrix.h>
 #include <Oa/Core/Validation.h>
@@ -28,7 +29,7 @@ void OaAdam::Step() {
 	for (OaUsize i = 0; i < Params_.Size(); ++i) {
 		auto* p = Params_[i];
 		OaMatrix grad = GetParamGrad(p);
-		if (!grad.Data()) continue;
+		if (!grad.HasStorage()) continue;
 		OaU32 n = static_cast<OaU32>(p->Data.NumElements());
 
 		struct { OaU32 Count; OaF32 Lr; OaF32 Beta1; OaF32 Beta2; OaF32 Eps; OaU32 Step; }
@@ -77,10 +78,9 @@ void OaAdam::SaveTo(OamModel& OutOam) const {
 	OaI64 off = 0;
 	for (OaUsize i = 0; i < M_.Size(); ++i) {
 		OaI64 n = M_[i].NumElements();
-		std::memcpy(OutOam.AdamM.Data() + off, M_[i].Data(),
-			static_cast<size_t>(n) * sizeof(OaF32));
-		std::memcpy(OutOam.AdamV.Data() + off, V_[i].Data(),
-			static_cast<size_t>(n) * sizeof(OaF32));
+		const auto bytes = static_cast<OaU64>(n) * sizeof(OaF32);
+		(void)OaFnMatrix::CopyToHost(M_[i], OutOam.AdamM.Data() + off, bytes);
+		(void)OaFnMatrix::CopyToHost(V_[i], OutOam.AdamV.Data() + off, bytes);
 		off += n;
 	}
 }
@@ -119,10 +119,13 @@ void OaAdam::LoadFrom(const OamModel& InOam) {
 	OaI64 off = 0;
 	for (OaUsize i = 0; i < M_.Size(); ++i) {
 		OaI64 n = M_[i].NumElements();
-		std::memcpy(M_[i].Data(), InOam.AdamM.Data() + off,
-			static_cast<size_t>(n) * sizeof(OaF32));
-		std::memcpy(V_[i].Data(), InOam.AdamV.Data() + off,
-			static_cast<size_t>(n) * sizeof(OaF32));
+		const auto bytes = static_cast<OaU64>(n) * sizeof(OaF32);
+		if (auto* runtime = OaContext::GetDefault().GetEngine()) {
+			(void)runtime->UploadBuffer(M_[i].GetVkBuffer(), 0,
+				InOam.AdamM.Data() + off, bytes);
+			(void)runtime->UploadBuffer(V_[i].GetVkBuffer(), 0,
+				InOam.AdamV.Data() + off, bytes);
+		}
 		off += n;
 	}
 }

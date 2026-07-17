@@ -45,10 +45,14 @@ enum class OaImageDtype : OaU8 {
 
 struct OaTexture {
 	OaVkBuffer DeviceBuf;
+	// Optional shared allocation owner for textures produced directly by a
+	// compute graph. File/pixel uploads retain their existing explicit engine
+	// ownership; matrix conversions keep the graph allocation alive here.
+	OaSharedPtr<OaVkBuffer> DeviceOwner;
 	OaI32      Width  = 0;
 	OaI32      Height = 0;
 
-	// ── Image-backed view (UnifiedExecutionArchitecture.md §3.5, Step 3b.3) ─────────────────────
+	// ── Image-backed view (Architecture/OaArchitecture.md §10) ─────────────────────────────────
 	// Non-owning handles populated by OaContext::RecordAcquire to wrap a
 	// swapchain image as an OaTexture. When Image != nullptr, this texture
 	// references a VkImage (typically owned by OaSwapchain) rather than a
@@ -89,8 +93,9 @@ struct OaTexture {
 	// Convert RGBA8 display buffer → [1, 4, H, W] F32 NCHW OaMatrix.
 	[[nodiscard]] OaMatrix ToMatrix() const;
 
-	// Upload a [1, C, H, W] or [1, 4, H, W] OaMatrix back into a packed
-	// RGBA8 OaTexture for display. Values are clamped to [0, 1] and scaled to u8.
+	// Convert a [1,C,H,W] matrix (C=1,3,4) into packed RGBA8 on the GPU.
+	// Values are clamped to [0,1] and scaled to u8. The returned texture owns the
+	// graph allocation and becomes ready with the surrounding OaContext batch.
 	[[nodiscard]] static OaResult<OaTexture> FromMatrix(
 		OaComputeEngine& InRt,
 		const OaMatrix& InMatrix);

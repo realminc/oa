@@ -13,7 +13,6 @@
 #include <Oa/Oa.h>
 #include <Oa/Runtime/Pipeline.h>
 #include <Oa/Runtime/Context.h>
-#include <Oa/Runtime/RuntimeGlobal.h>
 #include <Oa/Core/FileIo.h>
 #include <chrono>
 #include <functional>
@@ -237,17 +236,16 @@ public:
 		}
 		Engine_ = std::move(*result);   // take ownership of the pinned engine
 		// Note: EnsureAllEmbeddedLiboaPipelines() is now called automatically during Create()
-		// SetRuntime() during Create() already created the global default context.
+		// Create() already selected the context owned by the global engine.
 		
 		// Load shaders from spirv/ directory for debug builds (OA_EMBED_SHADERS=OFF)
 		OaTestLoadShaders(*Engine_);
 	}
 
 	void TearDown() override {
-		// Flush and clear the singleton context before engine teardown so the
-		// next test starts with a clean slate. The context survives across tests
-		// (stable singleton), but its graph state must not leak between tests.
-		if (OaRuntimeGlobal::GetRuntime()) {
+		// Flush the engine-owned context before engine teardown. Destroy clears the
+		// thread default before releasing the context, so no state survives the suite.
+		if (OaContext::GetDefaultPtr()) {
 			auto& ctx = OaContext::GetDefault();
 			(void)ctx.Execute();
 			(void)ctx.Sync();

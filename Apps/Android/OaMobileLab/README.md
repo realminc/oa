@@ -69,6 +69,25 @@ Install the staged artifact:
 adb install -r ../../../Bin/Android/OaMobileLab/OaMobileLab-debug.apk
 ```
 
+Release artifacts are signed only when all four signing variables are present. The
+keystore and credentials are never stored in the repository:
+
+```bash
+export OA_ANDROID_KEYSTORE="$HOME/.android/oa-mobile-lab-release.jks"
+export OA_ANDROID_KEYSTORE_PASSWORD="..."
+export OA_ANDROID_KEY_ALIAS="oa-mobile-lab"
+export OA_ANDROID_KEY_PASSWORD="..."
+./gradlew assembleRelease
+
+"$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose \
+	../../../Bin/Android/OaMobileLab/OaMobileLab-release.apk
+adb install -r ../../../Bin/Android/OaMobileLab/OaMobileLab-release.apk
+```
+
+If the variables are absent, Gradle deliberately emits an unsigned release APK for
+downstream CI signing. A partially configured signing environment fails during Gradle
+configuration instead of silently producing an unusable artifact.
+
 The build downloads the pinned Turnip archive only when its local asset is absent and
 checks both the archive and extracted driver SHA-256 before packaging.
 
@@ -126,6 +145,9 @@ steps, checkpoint mismatch, or missing fixed-prompt generation. Pass an architec
 tokenizer to run one route, for example `run-nlp-suite.sh mamba3 byte`. Pass `all` to
 run the broader 5-architecture × 3-tokenizer matrix; that is a long compatibility sweep,
 not the controlled architecture benchmark reported in the Android NLP suite document.
+Debug packages expose their report file through `run-as`. Non-debuggable release packages
+emit the same report as bounded `OA_REPORT` logcat records, allowing the runner to validate
+the shipped APK without weakening its sandbox or exporting app-private storage.
 
 ## Compatibility routes
 

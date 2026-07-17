@@ -16,7 +16,7 @@
 #include <vulkan/vulkan.h>
 
 class OaComputeEngine;
-struct OaVkBuffer;
+class OaVkBuffer;
 class OaUiComputeGraph;   // forward — defined in Runtime/Graph.h
 
 

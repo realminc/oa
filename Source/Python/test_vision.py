@@ -63,6 +63,10 @@ def test_vision_import_surface():
         "OaImage", "OaImageBatch", "OaImageLayout", "OaImageFormat",
         "OaBorderMode", "OaNormalizationParams", "OaJpegDecoder", "OaVideoStream",
         "OaVideo", "OaVideoRecorder", "OaScreenCapture", "OaCameraCapture",
+        "OaNmsConfig", "OaNmsResult", "OaDetectionMetricsResult",
+        "OaSegmentationMetricsResult",
+        "BoxIou", "Nms", "ConfusionMatrix", "BinaryMaskCounts",
+        "EvaluateDetections", "EvaluateSegmentation", "SegmentationOverlay",
         *IMAGE_OPS_50,
     ):
         assert hasattr(vision, name), name
@@ -87,6 +91,108 @@ def test_normalization_params_require_three_channels():
     assert len(params.Mean) == 3 and len(params.Std) == 3
     with pytest.raises(RuntimeError):
         params.Mean = [0.5]
+
+
+def test_detection_postprocess_and_metrics(engine):
+    boxes = core.FromFloats(
+        [0.50, 0.50, 0.40, 0.40,
+         0.51, 0.50, 0.40, 0.40,
+         0.50, 0.50, 0.40, 0.40],
+        [3, 4],
+    )
+    scores = core.FromFloats([0.90, 0.80, 0.85], [3])
+    classes = core.FromInt32([0, 0, 1], [3])
+    config = vision.OaNmsConfig()
+    config.IouThreshold = 0.5
+    config.MaxDetections = 3
+    with oa.Context():
+        iou = vision.BoxIou(boxes, boxes)
+        selected = vision.Nms(boxes, scores, classes, config)
+        confusion = vision.ConfusionMatrix(
+            core.FromInt32([0, 1, 2, 1], [4]),
+            core.FromInt32([0, 2, 2, 1], [4]),
+            3,
+        )
+        mask_counts = vision.BinaryMaskCounts(
+            core.FromBytes([1, 1, 0, 0], [4], core.OaScalarType.UInt8),
+            core.FromBytes([1, 0, 1, 0], [4], core.OaScalarType.UInt8),
+        )
+    assert selected.IsValid()
+    assert iou.Shape() == [3, 3]
+    assert core.CopyToHost(selected.Count) == [2]
+    assert core.CopyToHost(selected.Indices)[:2] == [0, 2]
+    assert core.CopyToHost(confusion) == [1, 0, 0, 0, 1, 0, 0, 1, 1]
+    assert core.CopyToHost(mask_counts) == [1, 1, 1, 1]
+
+
+def test_dataset_detection_map(engine):
+    predicted_boxes = core.FromFloats([
+        0.20, 0.20, 0.20, 0.20,
+        0.20, 0.20, 0.20, 0.20,
+        0.50, 0.50, 0.20, 0.20,
+        0.80, 0.80, 0.20, 0.20,
+    ], [4, 4])
+    target_boxes = core.FromFloats([
+        0.20, 0.20, 0.20, 0.20,
+        0.80, 0.80, 0.20, 0.20,
+        0.50, 0.50, 0.20, 0.20,
+    ], [3, 4])
+    with oa.Context():
+        metrics = vision.EvaluateDetections(
+            predicted_boxes,
+            core.FromFloats([0.90, 0.80, 0.70, 0.60], [4]),
+            core.FromInt32([0, 0, 1, 0], [4]),
+            core.FromInt32([0, 0, 0, 1], [4]),
+            target_boxes,
+            core.FromInt32([0, 0, 1], [3]),
+            core.FromInt32([0, 1, 0], [3]),
+            core.FromFloats([0.50, 0.75], [2]),
+            2,
+            0.75,
+        )
+    assert metrics.IsValid()
+    assert metrics.Counts.Shape() == [2, 2, 3]
+    assert core.CopyToHost(metrics.Counts) == [
+        1, 1, 1, 0, 0, 1,
+        1, 1, 1, 0, 0, 1,
+    ]
+    assert core.CopyToHost(metrics.MeanAveragePrecisionByThreshold) == pytest.approx(
+        [0.9174917, 0.9174917], abs=1.0e-5
+    )
+    assert core.CopyToHost(metrics.MeanAveragePrecision) == pytest.approx(
+        [0.9174917], abs=1.0e-5
+    )
+
+
+def test_segmentation_metrics(engine):
+    with oa.Context():
+        metrics = vision.EvaluateSegmentation(
+            core.FromInt32([0, 1, 2, 1], [2, 2]),
+            core.FromInt32([0, 2, 2, 1], [2, 2]),
+            3,
+        )
+    assert metrics.IsValid()
+    assert core.CopyToHost(metrics.Confusion) == [
+        1, 0, 0,
+        0, 1, 0,
+        0, 1, 1,
+    ]
+    assert core.CopyToHost(metrics.MeanIou) == pytest.approx(
+        [2.0 / 3.0], abs=1.0e-6
+    )
+    assert core.CopyToHost(metrics.PixelAccuracy) == pytest.approx(
+        [0.75], abs=1.0e-6
+    )
+    with oa.Context():
+        overlay = vision.SegmentationOverlay(
+            core.FromFloats([0.0] * 6, [1, 3, 1, 2]),
+            core.FromInt32([0, 1], [1, 1, 1, 2]),
+            core.FromFloats([1, 0, 0, 0, 1, 0], [2, 3]),
+            0.5,
+        )
+    assert core.CopyToHost(overlay) == pytest.approx(
+        [0.5, 0.0, 0.0, 0.5, 0.0, 0.0], abs=1.0e-6
+    )
 
 
 def test_geometric_ops_shapes(engine):

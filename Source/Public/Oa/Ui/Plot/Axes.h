@@ -1,10 +1,7 @@
 // OaPlot::Axes — one subplot inside an OaPlot::Figure.
 //
-// Phase-1 surface (UnifiedExecutionArchitecture.md §3.5 / OaUiFinalGlueBridge.md §5.4): records
-// matplotlib-style draw calls. The parent Figure replays them either through
-// a swapchain (Show) or into an off-screen compose image (SaveFig). Imshow
-// records as a ctx.RecordBlit(source → axes subregion); text/lines/bars
-// route through OaUi widgets when a UI is available.
+// Records the compact image/line/heatmap surface. The parent Figure replays it
+// through a swapchain (Show) or a deterministic PNG sink (SaveFig).
 
 #pragma once
 
@@ -23,13 +20,12 @@ struct LineStyle {
 	OaF32     Width     = 1.5F;
 };
 
-struct BarStyle {
-	OaColor Color     = {0.388F, 0.400F, 0.945F, 1.0F};
-};
-
-struct ScatterStyle {
-	OaColor Color     = {0.388F, 0.400F, 0.945F, 1.0F};
-	OaF32     Size      = 4.0F;
+struct HeatmapStyle {
+	OaF32 VMin = 0.0F;
+	OaF32 VMax = 1.0F;
+	OaU32 Colormap = 1; // viridis
+	bool AutoScale = true;
+	bool ShowGrid = true;
 };
 
 // ─── Axes ──────────────────────────────────────────────────────────────────
@@ -40,19 +36,14 @@ public:
 	// OaContext::RecordBlit (cross-format vkCmdBlitImage when needed).
 	void Imshow(const OaTexture& InTex);
 
-	// Line plot of N values (y[i] vs i). Routes to OaUi::PlotLine when a UI
-	// is present; ignored in headless SaveFig mode (Phase-1 limitation).
+	// Line plot of N values (y[i] vs i). Supported by both sinks.
 	void Plot(OaSpan<const OaF32> InY,
 	          const LineStyle& InStyle = {});
 
-	// Bar plot. UI-only in Phase 1.
-	void Bar(OaSpan<const OaF32> InValues,
-	         const BarStyle& InStyle = {});
-
-	// Scatter plot. UI-only in Phase 1.
-	void Scatter(OaSpan<const OaF32> InXs,
-	             OaSpan<const OaF32> InYs,
-	             const ScatterStyle& InStyle = {});
+	// Dense row-major heatmap. This is the compact plotting contract for
+	// confusion matrices and other evaluation tables.
+	void Heatmap(OaSpan<const OaF32> InValues, OaI32 InRows, OaI32 InCols,
+		const HeatmapStyle& InStyle = {});
 
 	// Title above the axes. Color controls the text color (red/green for the
 	// classify-tutorial correct/wrong indicator).
@@ -85,8 +76,7 @@ private:
 	struct ImshowCmd  { OaTexture Tex; bool Present = false; };
 	struct TextCmd    { OaString  Text; OaColor Color; bool Present = false; };
 	struct LineCmd    { OaVec<OaF32> Y;    LineStyle Style;  bool Present = false; };
-	struct BarCmd     { OaVec<OaF32> V;    BarStyle Style;   bool Present = false; };
-	struct ScatterCmd { OaVec<OaF32> Xs, Ys; ScatterStyle Style; bool Present = false; };
+	struct HeatmapCmd { OaVec<OaF32> V; OaI32 Rows = 0, Cols = 0; HeatmapStyle Style; bool Present = false; };
 
 	ImshowCmd  Image_;
 	TextCmd    Title_;
@@ -94,8 +84,7 @@ private:
 	TextCmd    XLabel_;
 	TextCmd    YLabel_;
 	LineCmd    Line_;
-	BarCmd     Bar_;
-	ScatterCmd Scatter_;
+	HeatmapCmd Heatmap_;
 	OaColor  Border_      = {0.0F, 0.0F, 0.0F, 0.0F};  // transparent = no border
 	bool       HasBorder_   = false;
 };

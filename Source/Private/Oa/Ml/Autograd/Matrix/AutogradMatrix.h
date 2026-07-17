@@ -168,6 +168,15 @@ public:
 	}
 };
 
+class OaGradLogSoftmax final : public OaGradNode {
+public:
+	void Backward(const OaMatrix& InDOut, OaVec<OaMatrix>& OutDIn) override {
+		if (OutDIn.Size() > 0) {
+			OutDIn[0] = OaFnMatrix::LogSoftmaxBwd(Saved_[0], InDOut);
+		}
+	}
+};
+
 class OaGradSoftmaxScaledMasked final : public OaGradNode {
 public:
 	OaF32 Scale_ = 1.0F;

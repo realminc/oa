@@ -6,6 +6,8 @@
 
 #pragma once
 
+#include <cstddef>
+
 #include <Oa/Core/Status.h>
 #include <Oa/Core/Types.h>
 #include <Oa/Runtime/Allocator.h>
@@ -20,10 +22,16 @@ struct OaDetection {
 	OaF32 Height = 0.0F;
 	OaF32 Confidence = 0.0F;
 	OaU32 ClassId = 0;
-	OaU32 Reserved0 = 0;
-	OaU32 Reserved1 = 0;
+	// Optional per-instance display color in 0xRRGGBBAA. Zero selects the
+	// overlay style fallback and preserves compatibility with older producers.
+	OaU32 ColorRgba = 0;
+	// Stable identity for trackers. Rendering ignores it; postprocess and
+	// interaction code can retain the same record layout across frames.
+	OaU32 TrackId = 0;
 };
 static_assert(sizeof(OaDetection) == 32);
+static_assert(offsetof(OaDetection, ColorRgba) == 24);
+static_assert(offsetof(OaDetection, TrackId) == 28);
 
 class OaDetectionBuffer {
 public:

@@ -164,14 +164,14 @@ static void OaContextMaybeLogGraph(const OaComputeGraph& InGraph) {
 }
 
 OaStatus OaContext::Execute() {
-	assert(Runtime_ and "Runtime is null");
+	assert(Engine_ and "Engine is null");
 	assert(Graph_ and "Graph is null");
 
 	if (Graph_->NodeCount() == 0) {
 		Executed_ = true;
 		return OaStatus::Ok();
 	}
-	if (not Runtime_->IsComputeBatchActive()) {
+	if (not Engine_->IsComputeBatchActive()) {
 		ExecutionStats_ = OaContextExecutionStats{};
 	}
 
@@ -179,7 +179,7 @@ OaStatus OaContext::Execute() {
 	ExecutionStats_.NodeCount += Graph_->NodeCount();
 	++ExecutionStats_.GraphCount;
 
-	if (Runtime_->IsComputeBatchActive()) {
+	if (Engine_->IsComputeBatchActive()) {
 		// The primary batch emits one host-visibility edge immediately before
 		// submission. Intermediate secondary graphs remain device-only.
 		Graph_->SetHostReadbackRequired(false);
@@ -190,7 +190,7 @@ OaStatus OaContext::Execute() {
 		// fence. Avoids racing two streams against the same buffers.
 		if (!Graph_->IsCompiled()) {
 			const auto compileBegin = std::chrono::steady_clock::now();
-			auto compileStatus = Graph_->Compile(*Runtime_);
+			auto compileStatus = Graph_->Compile(*Engine_);
 			ExecutionStats_.CompileMs += OaContextElapsedMs(compileBegin);
 			if (Graph_->LastCompileReused()) ++ExecutionStats_.CompileCacheHits;
 			if (not compileStatus.IsOk()) {
@@ -199,11 +199,11 @@ OaStatus OaContext::Execute() {
 					compileStatus.GetMessage().c_str());
 				// Recover: drop the un-compilable graph (not yet recorded into the
 				// primary CB) so the failed node doesn't brick subsequent Executes.
-				Graph_->Reset(Runtime_->Device);
+				Graph_->Reset(Engine_->Device);
 				return compileStatus;
 			}
 		}
-		auto* stream = Runtime_->ActiveComputeBatchStream();
+		auto* stream = Engine_->ActiveComputeBatchStream();
 
 		// Secondary-command-buffer boundaries provide no implicit dependency.
 		// Insert the boundary barrier immediately before a following graph, not
@@ -213,7 +213,7 @@ OaStatus OaContext::Execute() {
 		ExecutionStats_.BoundaryBarrierCount += OaContextBarrierBetweenSecondaryCbs(
 			stream->CommandBuffer, BatchBufferStates_, *Graph_);
 		const auto recordBegin = std::chrono::steady_clock::now();
-		auto recordStatus = Graph_->RecordReplay(*Runtime_, stream->CommandBuffer);
+		auto recordStatus = Graph_->RecordReplay(*Engine_, stream->CommandBuffer);
 		ExecutionStats_.RecordMs += OaContextElapsedMs(recordBegin);
 		if (not recordStatus.IsOk()) {
 			BatchBufferStates_ = std::move(previousBatchStates);
@@ -245,7 +245,7 @@ OaStatus OaContext::Execute() {
 	Graph_->SetHostReadbackRequired(true);
 	if (!Graph_->IsCompiled()) {
 		const auto compileBegin = std::chrono::steady_clock::now();
-		auto compileStatus = Graph_->Compile(*Runtime_);
+		auto compileStatus = Graph_->Compile(*Engine_);
 		ExecutionStats_.CompileMs += OaContextElapsedMs(compileBegin);
 		if (Graph_->LastCompileReused()) ++ExecutionStats_.CompileCacheHits;
 		if (not compileStatus.IsOk()) {
@@ -256,25 +256,25 @@ OaStatus OaContext::Execute() {
 			// doesn't poison every subsequent Execute. Without this, a single
 			// missing/failed kernel (e.g. an op with no shader) permanently
 			// bricks the shared default context — later ops silently read zeros.
-			Graph_->Reset(Runtime_->Device);
+			Graph_->Reset(Engine_->Device);
 			return compileStatus;
 		}
 	}
 	const auto submitBegin = std::chrono::steady_clock::now();
-	auto status = Graph_->Replay(*Runtime_);
+	auto status = Graph_->Replay(*Engine_);
 	ExecutionStats_.SubmitMs += OaContextElapsedMs(submitBegin);
 	if (not status.IsOk()) {
 		OA_LOG_ERROR(OaLogComponent::Core,
 			"OaContext::Execute failed: %s",
 			status.GetMessage().c_str());
-		Graph_->Reset(Runtime_->Device);
+		Graph_->Reset(Engine_->Device);
 		return status;
 	}
 	// Wait for the non-blocking Replay() submission to complete before
 	// clearing nodes. The next Compile() will free descriptor pools that
 	// the GPU may still be referencing — must ensure GPU is done first.
 	const auto waitBegin = std::chrono::steady_clock::now();
-	OA_RETURN_IF_ERROR(Graph_->WaitForPendingReplay(Runtime_->Device));
+	OA_RETURN_IF_ERROR(Graph_->WaitForPendingReplay(Engine_->Device));
 	ExecutionStats_.WaitMs += OaContextElapsedMs(waitBegin);
 	ExecutionStats_.HostBarrierCount = 1;
 	Graph_->ReleaseCompletedBufferOwners();
@@ -298,16 +298,16 @@ OaResult<OaCompletionToken> OaContext::ExecuteAsyncToken(OaGpuTimer* InTimer) {
 }
 
 OaStatus OaContext::BeginAsyncBatch() {
-	assert(Runtime_ and "Runtime is null");
-	if (Runtime_->IsComputeBatchActive()) {
+	assert(Engine_ and "Engine is null");
+	if (Engine_->IsComputeBatchActive()) {
 		return OaStatus::Ok();
 	}
 	ExecutionStats_ = OaContextExecutionStats{};
-	return Runtime_->BeginComputeBatch();
+	return Engine_->BeginComputeBatch();
 }
 
 OaStatus OaContext::ExecuteInAsyncBatch(OaGpuTimer* InTimer) {
-	assert(Runtime_ and "Runtime is null");
+	assert(Engine_ and "Engine is null");
 	assert(Graph_ and "Graph is null");
 
 	if (Graph_->NodeCount() == 0) {
@@ -318,11 +318,11 @@ OaStatus OaContext::ExecuteInAsyncBatch(OaGpuTimer* InTimer) {
 	OA_RETURN_IF_ERROR(BeginAsyncBatch());
 
 	if (InTimer) {
-		InTimer->Begin(*Runtime_);
+		InTimer->Begin(*Engine_);
 	}
 	auto executeStatus = Execute();
 	if (InTimer) {
-		InTimer->End(*Runtime_);
+		InTimer->End(*Engine_);
 	}
 	if (not executeStatus.IsOk()) {
 		return executeStatus;
@@ -332,12 +332,12 @@ OaStatus OaContext::ExecuteInAsyncBatch(OaGpuTimer* InTimer) {
 }
 
 OaStatus OaContext::FlushAsyncBatch() {
-	assert(Runtime_ and "Runtime is null");
-	if (not Runtime_->IsComputeBatchActive()) {
+	assert(Engine_ and "Engine is null");
+	if (not Engine_->IsComputeBatchActive()) {
 		return OaStatus::Ok();
 	}
 	const auto submitBegin = std::chrono::steady_clock::now();
-	auto status = Runtime_->FlushComputeBatch();
+	auto status = Engine_->FlushComputeBatch();
 	ExecutionStats_.SubmitMs += OaContextElapsedMs(submitBegin);
 	ExecutionStats_.HostBarrierCount = 1;
 	BatchBufferStates_.Clear();
@@ -345,32 +345,32 @@ OaStatus OaContext::FlushAsyncBatch() {
 }
 
 OaResult<OaCompletionToken> OaContext::FlushAsyncBatchToken() {
-	assert(Runtime_ and "Runtime is null");
-	if (not Runtime_->IsComputeBatchActive()) {
-		return Runtime_->LastComputeBatchCompletion();
+	assert(Engine_ and "Engine is null");
+	if (not Engine_->IsComputeBatchActive()) {
+		return Engine_->LastComputeBatchCompletion();
 	}
 	const auto submitBegin = std::chrono::steady_clock::now();
-	const auto status = Runtime_->FlushComputeBatch();
+	const auto status = Engine_->FlushComputeBatch();
 	ExecutionStats_.SubmitMs += OaContextElapsedMs(submitBegin);
 	ExecutionStats_.HostBarrierCount = 1;
 	BatchBufferStates_.Clear();
 	OA_RETURN_IF_ERROR(status);
-	return Runtime_->LastComputeBatchCompletion();
+	return Engine_->LastComputeBatchCompletion();
 }
 
 OaBool OaContext::IsAsyncBatchActive() const noexcept {
-	return Runtime_ ? Runtime_->IsComputeBatchActive() : false;
+	return Engine_ ? Engine_->IsComputeBatchActive() : false;
 }
 
 OaStatus OaContext::Sync() {
-	assert(Runtime_ and "Runtime is null");
+	assert(Engine_ and "Engine is null");
 
 	// Wait for any pending non-batch Replay() submission. Replay() now
 	// submits without blocking (fire-and-forget) — same-queue ordering
 	// ensures GPU executes in submission order. We wait here before
 	// returning to the caller.
 	if (Graph_) {
-		OA_RETURN_IF_ERROR(Graph_->WaitForPendingReplay(Runtime_->Device));
+		OA_RETURN_IF_ERROR(Graph_->WaitForPendingReplay(Engine_->Device));
 	}
 
 	// If the caller recorded several Execute() calls into one context-owned
@@ -385,7 +385,7 @@ OaStatus OaContext::Sync() {
 
 	// Wait for GPU completion (flush current batch and sync device)
 	const auto waitBegin = std::chrono::steady_clock::now();
-	auto status = Runtime_->SyncCurrentBatch();
+	auto status = Engine_->SyncCurrentBatch();
 	ExecutionStats_.WaitMs += OaContextElapsedMs(waitBegin);
 
 	// GPU is done with the batch. Preserve compiled secondary CBs and their
@@ -398,7 +398,7 @@ OaStatus OaContext::Sync() {
 			graph->ReleaseCompletedBufferOwners();
 		}
 		if (Graph_->NodeCount() == 0) {
-			Graph_->Destroy(Runtime_->Device);
+			Graph_->Destroy(Engine_->Device);
 			delete Graph_;
 			Graph_ = DeferredGraphs_[0];
 			for (OaUsize i = DeferredGraphs_.Size(); i > 1; --i) {
@@ -438,7 +438,7 @@ OaStatus OaContext::Sync() {
 }
 
 OaU32 OaContext::MaxAsyncSubmissions() const noexcept {
-	return Runtime_ ? Runtime_->ComputeBatchRingSize() : 1U;
+	return Engine_ ? Engine_->ComputeBatchRingSize() : 1U;
 }
 
 void OaContext::Clear() {
@@ -446,13 +446,13 @@ void OaContext::Clear() {
 	
 	// Clear recorded operations for reuse. Keep the command pool + secondary
 	// CB so the next Compile() avoids vkCreateCommandPool + vkAllocateCommandBuffers.
-	if (Runtime_) {
+	if (Engine_) {
 		Graph_->ClearNodes();
 	} else {
 		Graph_->Reset();
 	}
 	Executed_ = false;
-	if (not Runtime_ or not Runtime_->IsComputeBatchActive()) {
+	if (not Engine_ or not Engine_->IsComputeBatchActive()) {
 		BatchBufferStates_.Clear();
 		ExecutionStats_ = OaContextExecutionStats{};
 	}

@@ -5,8 +5,8 @@
 // RNG functions (Rand, RandN, RandXavier, etc.) use GPU-native Philox PRNG
 // via PhiloxUniform/PhiloxNormal (see FnMatrixRng.cpp).
 //
-// Note: Runtime management (SetRuntime, GetRuntime, SetWeightDtype, GetWeightDtype)
-// is in DeviceMatrixFn.cpp
+// Weight dtype configuration lives in FnMatrix.cpp. Allocation resolves the
+// current engine through the selected OaContext.
 
 #include <Oa/Core/Matrix.h>
 #include <Oa/Core/FnMatrix.h>
@@ -19,7 +19,6 @@
 #include <Oa/Runtime/Dispatch.h>
 #include <Oa/Runtime/Engine.h>
 #include <Oa/Runtime/Pool.h>
-#include <Oa/Runtime/RuntimeGlobal.h>
 #include <Oa/Runtime/Stream.h>
 #include <Oa/Runtime/Topology.h>
 
@@ -28,8 +27,18 @@
 #include <cstdlib>
 #include <cstring>
 
+namespace {
+
+OaComputeEngine* ActiveRuntime() {
+	auto* context = OaContext::GetDefaultPtr();
+	return context ? context->GetEngine() : nullptr;
+}
+
+} // namespace
+
 // Allocators: Empty, Zeros, Ones, Full, Rand*, FromBytes, CausalMask
-OaMatrix OaFnMatrix::Empty(OaMatrixShape InShape, OaScalarType InDtype) {
+OaMatrix OaFnMatrix::Empty(
+	OaMatrixShape InShape, OaScalarType InDtype, OaMemoryPlacement InPlacement) {
 
 	OaMatrix t;
 	t.Shape_ = InShape;
@@ -38,7 +47,7 @@ OaMatrix OaFnMatrix::Empty(OaMatrixShape InShape, OaScalarType InDtype) {
 	t.Dtype_ = InDtype;
 	t.Device_ = OaDevice{OaDeviceType::VkDiscrete, 0};
 
-	auto* rt = OaRuntimeGlobal::GetRuntime();
+	auto* rt = ActiveRuntime();
 	if (not rt) {
 		t.SyncMatrixDescriptor();
 		return t;
@@ -53,7 +62,8 @@ OaMatrix OaFnMatrix::Empty(OaMatrixShape InShape, OaScalarType InDtype) {
 	// The context owns the allocation policy. Normal calls use the engine cache;
 	// repeatable training frames can additionally map allocation ordinals onto
 	// stable VkBuffer/bindless slots for exact command-graph replay.
-	auto buf = OaContext::GetDefault().AllocateMatrixBuffer(static_cast<OaU64>(bytes));
+	auto buf = OaContext::GetDefault().AllocateMatrixBuffer(
+		static_cast<OaU64>(bytes), InPlacement);
 	if (not buf) {
 		t.SyncMatrixDescriptor();
 		return t;
@@ -68,10 +78,14 @@ OaMatrix OaFnMatrix::Empty(OaMatrixShape InShape, OaScalarType InDtype) {
 OaMatrix OaFnMatrix::Zeros(OaMatrixShape InShape, OaScalarType InDtype) {
 	auto t = OaFnMatrix::Empty(InShape, InDtype);
 	if (t.HasStorage()) {
-		OaMemzero(t.Data(), static_cast<OaUsize>(t.ByteSize()));
-		if (auto* rt = OaRuntimeGlobal::GetRuntime()) {
-			(void)rt->Allocator.FlushHostBuffer(
-				t.GetVkBuffer(), 0, static_cast<OaU64>(t.ByteSize()));
+		if (t.Data()) {
+			OaMemzero(t.Data(), static_cast<OaUsize>(t.ByteSize()));
+			if (auto* rt = ActiveRuntime()) {
+				(void)rt->Allocator.FlushHostBuffer(
+					t.GetVkBuffer(), 0, static_cast<OaU64>(t.ByteSize()));
+			}
+		} else {
+			OaFnMatrix::Fill(t, 0.0F);
 		}
 	}
 	return t;
@@ -175,31 +189,29 @@ OaMatrix OaFnMatrix::FromBytes(OaSpan<const OaU8> InData, OaMatrixShape InShape,
 	}
 
 	auto t = OaFnMatrix::Empty(InShape, InDtype);
-	if (t.Data()) {
-		if (isFloat32U8Input) {
-			// Convert U8 to F32
-			const OaU8* src = InData.Data();
-			OaF32* dst = static_cast<OaF32*>(t.Data());
-			for (OaI64 i = 0; i < numElements; ++i) {
-				dst[i] = static_cast<OaF32>(src[i]);
-			}
-		} else if (isFp32ToBf16) {
-			// Convert FP32 host bytes to BF16 device storage (truncation).
-			const OaF32* src = reinterpret_cast<const OaF32*>(InData.Data());
-			OaU16* dst = static_cast<OaU16*>(t.Data());
-			for (OaI64 i = 0; i < numElements; ++i) {
-				dst[i] = OaF32ToBf16(src[i]);
-			}
-		} else {
-			std::memcpy(t.Data(), InData.Data(), static_cast<OaUsize>(expectedBytes));
-		}
-		// Make the host write visible to a subsequent GPU read. No-op on coherent
-		// memory, but VMA can hand out non-coherent HOST_VISIBLE memory under
-		// pressure (seen deep in a long test run / training loop), and without the
-		// flush the GPU reads stale zeros — silently corrupting the upload.
-		if (auto* rt = OaRuntimeGlobal::GetRuntime()) {
-			const OaVkBuffer vkb = t.GetVkBuffer();
-			(void)rt->Allocator.FlushHostBuffer(vkb, 0, static_cast<OaU64>(t.ByteSize()));
+	if (!t.HasStorage()) return t;
+	const OaU8* uploadData = InData.Data();
+	OaVec<OaU8> converted;
+	if (isFloat32U8Input) {
+		converted.Resize(static_cast<OaUsize>(expectedBytes));
+		const OaU8* src = InData.Data();
+		auto* dst = reinterpret_cast<OaF32*>(converted.Data());
+		for (OaI64 i = 0; i < numElements; ++i) dst[i] = static_cast<OaF32>(src[i]);
+		uploadData = converted.Data();
+	} else if (isFp32ToBf16) {
+		converted.Resize(static_cast<OaUsize>(expectedBytes));
+		const auto* src = reinterpret_cast<const OaF32*>(InData.Data());
+		auto* dst = reinterpret_cast<OaU16*>(converted.Data());
+		for (OaI64 i = 0; i < numElements; ++i) dst[i] = OaF32ToBf16(src[i]);
+		uploadData = converted.Data();
+	}
+	if (auto* rt = ActiveRuntime()) {
+		const auto status = rt->UploadBuffer(
+			t.GetVkBuffer(), 0, uploadData, static_cast<OaU64>(expectedBytes));
+		if (!status.IsOk()) {
+			OA_LOG_ERROR(OaLogComponent::Core, "FromBytes upload failed: %s",
+				status.GetMessage().CStr());
+			return {};
 		}
 	}
 	return t;
@@ -215,24 +227,28 @@ OaMatrix OaFnMatrix::FromInt32(OaSpan<const OaI32> InData, OaMatrixShape InShape
 	}
 
 	auto t = OaFnMatrix::Empty(InShape, InDtype);
-	if (t.Data()) {
-		if (InDtype == OaScalarType::Int32 or InDtype == OaScalarType::UInt32) {
-			std::memcpy(t.Data(), InData.Data(), static_cast<OaUsize>(numElements * sizeof(OaI32)));
-		} else if (InDtype == OaScalarType::Float32) {
-			const OaI32* src = InData.Data();
-			OaF32* dst = static_cast<OaF32*>(t.Data());
-			for (OaI64 i = 0; i < numElements; ++i) {
-				dst[i] = static_cast<OaF32>(src[i]);
-			}
-		} else {
-			OA_LOG_ERROR(OaLogComponent::Core,
-				"FromInt32: unsupported dtype %d, use Int32, UInt32, or Float32",
-				static_cast<int>(InDtype));
-			return OaMatrix{};
+	if (!t.HasStorage()) return t;
+	const void* uploadData = InData.Data();
+	OaVec<OaF32> converted;
+	if (InDtype == OaScalarType::Float32) {
+		converted.Resize(static_cast<OaUsize>(numElements));
+		for (OaI64 i = 0; i < numElements; ++i) {
+			converted[static_cast<OaUsize>(i)] = static_cast<OaF32>(InData[static_cast<OaUsize>(i)]);
 		}
-		if (auto* rt = OaRuntimeGlobal::GetRuntime()) {
-			(void)rt->Allocator.FlushHostBuffer(
-				t.GetVkBuffer(), 0, static_cast<OaU64>(t.ByteSize()));
+		uploadData = converted.Data();
+	} else if (InDtype != OaScalarType::Int32 and InDtype != OaScalarType::UInt32) {
+		OA_LOG_ERROR(OaLogComponent::Core,
+			"FromInt32: unsupported dtype %d, use Int32, UInt32, or Float32",
+			static_cast<int>(InDtype));
+		return {};
+	}
+	if (auto* rt = ActiveRuntime()) {
+		const auto status = rt->UploadBuffer(
+			t.GetVkBuffer(), 0, uploadData, static_cast<OaU64>(t.ByteSize()));
+		if (!status.IsOk()) {
+			OA_LOG_ERROR(OaLogComponent::Core, "FromInt32 upload failed: %s",
+				status.GetMessage().CStr());
+			return {};
 		}
 	}
 	return t;
@@ -267,28 +283,17 @@ OaStatus OaFnMatrix::CopyToHost(const OaMatrix& InSrc, void* OutHost, OaU64 InBy
 	if (not flush.IsOk()) {
 		return flush;
 	}
-	if (auto* rt = OaRuntimeGlobal::GetRuntime()) {
-		if (not rt->Allocator.InvalidateHostBuffer(
-			InSrc.GetVkBuffer(), 0, srcBytes)) {
-			return OaStatus::Error(
-				OaStatusCode::VulkanError,
-				"CopyToHost: mapped allocation invalidate failed");
-		}
+	if (auto* rt = ActiveRuntime()) {
+		return rt->ReadbackBuffer(
+			InSrc.GetVkBuffer(), InSrc.ByteOffset(), OutHost, srcBytes);
 	}
-
-	const void* srcData = InSrc.Data();
-	if (!srcData) {
-		return OaStatus::Error(OaStatusCode::InvalidArgument, "CopyToHost: source data is null");
-	}
-
-	OaMemcpy(OutHost, srcData, static_cast<OaUsize>(srcBytes));
-	return OaStatus::Ok();
+	return OaStatus::Error(OaStatusCode::FailedPrecondition, "CopyToHost: runtime unavailable");
 }
 
 // Note: OaFnMatrix::Scalar() is implemented in DeviceMatrixFn.cpp
 // Multi-device: EmptyOn
 OaMatrix OaFnMatrix::EmptyOn(OaMatrixShape InShape, OaScalarType InDtype, OaU32 InNodeIndex) {
-	auto* rt = OaRuntimeGlobal::GetRuntime();
+	auto* rt = ActiveRuntime();
 	if (not rt or InNodeIndex == 0 or not rt->IsMultiDevice()) {
 		OaMatrix t = OaFnMatrix::Empty(InShape, InDtype);
 		t.Device_.Index = static_cast<OaI32>(InNodeIndex);
@@ -325,11 +330,10 @@ OaMatrix OaFnMatrix::EmptyOn(OaMatrixShape InShape, OaScalarType InDtype, OaU32 
 
 	OaSharedPtr<OaVkBuffer> buf(
 		new OaVkBuffer(std::move(*res)),
-		[](OaVkBuffer* InPtr) {
+		[rt, lifetime = rt->GetLifetimeToken()](OaVkBuffer* InPtr) {
 			if (not InPtr) return;
-			auto* rt = OaRuntimeGlobal::GetRuntime();
-			if (rt) {
-				rt->FreeBuffer(*InPtr);
+			if (not lifetime.Expired()) {
+				rt->FreeBufferOnNode(*InPtr);
 			}
 			delete InPtr;
 		});

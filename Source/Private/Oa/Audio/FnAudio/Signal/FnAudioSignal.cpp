@@ -183,4 +183,39 @@ OaMatrix Fade(const OaAudioBuffer& InBuf, OaU64 InFadeInSamples, OaU64 InFadeOut
 	return out;
 }
 
+OaMatrix WaveformEnvelope(const OaAudioBuffer& InBuf, OaU32 InBins) {
+	const auto& shape = InBuf.GetShape();
+	if (shape.Rank != 2 || shape[0] <= 0 || shape[1] <= 0
+		|| InBuf.GetDtype() != OaScalarType::Float32 || InBins == 0U
+		|| InBins > 65'536U
+		|| shape[0] > static_cast<OaI64>(std::numeric_limits<OaU32>::max())
+		|| shape[1] > static_cast<OaI64>(std::numeric_limits<OaU32>::max())) {
+		OA_LOG_ERROR(OaLogComponent::Core,
+			"OaFnAudio::WaveformEnvelope: expected non-empty F32 [Channels, Samples] and bins in [1, 65536]");
+		return {};
+	}
+
+	OaMatrix out = OaFnMatrix::Empty(
+		OaMatrixShape{static_cast<OaI64>(InBins), 2},
+		OaScalarType::Float32);
+	struct {
+		OaU32 Channels;
+		OaU32 Samples;
+		OaU32 Bins;
+	} push{
+		.Channels = static_cast<OaU32>(shape[0]),
+		.Samples = static_cast<OaU32>(shape[1]),
+		.Bins = InBins,
+	};
+	OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Write};
+	OaContext::GetDefault().Add(
+		"AudioWaveformEnvelope",
+		{&InBuf, &out},
+		access,
+		&push,
+		sizeof(push),
+		(InBins + 255U) / 256U);
+	return out;
+}
+
 } // namespace OaFnAudio

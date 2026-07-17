@@ -3,7 +3,6 @@
 
 #include <Oa/Runtime/Engine.h>
 #include <Oa/Runtime/Context.h>
-#include <Oa/Runtime/RuntimeGlobal.h>
 
 // Process-scoped engine / context lifetime. The engine is pinned (non-movable):
 // Create returns an owning OaUniquePtr, which we hold directly.
@@ -38,18 +37,12 @@ void BindRuntime(nb::module_& m) {
             return false;
         }
         gEngine = std::move(result).GetValue();
-        OaRuntimeGlobal::SetRuntime(gEngine.get());
-
-        gContext = OaContext::Create(gEngine.get());
-        OaContext::SetDefault(gContext);
+        gContext = &gEngine->GetContext();
         return true;
     }, "Initialize OA compute engine and default context. Must be called before any GPU operations.");
 
     m.def("OaShutdownComputeEngine", []() {
-        if (gContext != nullptr) {
-            delete gContext;
-            gContext = nullptr;
-        }
+        gContext = nullptr;
         gEngine.reset();
     }, "Shutdown OA compute engine and release resources.");
 

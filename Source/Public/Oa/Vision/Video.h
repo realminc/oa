@@ -111,6 +111,13 @@ public:
 	void TogglePlay();
 	[[nodiscard]] bool IsPlaying() const { return Playing_; }
 	[[nodiscard]] bool HasAudio() const { return Audio_.HasValue(); }
+	void SetLoop(bool InLoop);
+	[[nodiscard]] bool IsLooping() const { return Cfg_.Loop; }
+	// Unified viewer transport timebase. Public timeline APIs use microseconds;
+	// container-specific ticks remain private to OaVideo::Seek.
+	[[nodiscard]] OaU64 DurationUs() const;
+	[[nodiscard]] OaU64 PositionUs() const;
+	[[nodiscard]] OaStatus SeekUs(OaU64 InTimestampUs);
 
 	// Decode the next packet immediately (independent of play state). Loops
 	// to t=0 if the stream is at EOS and Cfg.Loop is true.

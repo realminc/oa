@@ -3,7 +3,7 @@
 // Represents a render pass as a subgraph template over dynamic rendering.
 // Passes can be composed like ML layers using the >> operator.
 //
-// Design (from UnifiedExecutionArchitecture.md §7):
+// Design contract (Architecture/OaArchitecture.md §10):
 // - Named subgraph template
 // - Record() method to record draw calls into OaContext
 // - Composition via >> operator (pipe)

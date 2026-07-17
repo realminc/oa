@@ -35,7 +35,6 @@ int OaComputeApp::Main(int argc, char** argv) {
 	auto initStatus = Init();
 	if (!initStatus) {
 		OA_LOG_ERROR(OaLogComponent::Core, "App init failed: %s",	initStatus.ToString().c_str());
-		Rt.Destroy();
 		return 1;
 	}
 
@@ -48,6 +47,5 @@ int OaComputeApp::Main(int argc, char** argv) {
 	}
 
 	Shutdown();
-	Rt.Destroy();
 	return 0;
 }

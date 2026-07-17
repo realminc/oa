@@ -62,12 +62,13 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
     uint atlasW = heap[pc.glyph_idx].Load(offset + 32u);
     uint atlasH = heap[pc.glyph_idx].Load(offset + 36u);
     float4 color = unpackRgba(heap[pc.glyph_idx].Load(offset + 40u));
+    bool solid = atlasW == 0 || atlasH == 0;
 
     int x0 = int(floor(float(pc.dst_x) + anchorX * float(pc.dst_w) + offsetX));
     int y0 = int(floor(float(pc.dst_y) + anchorY * float(pc.dst_h) + offsetY));
     uint quadW = uint(max(1.0, ceil(width)));
     uint quadH = uint(max(1.0, ceil(height)));
-    float smoothing = clamp(
+    float smoothing = solid ? 0.0 : clamp(
         0.5 * max(float(atlasW) / width, float(atlasH) / height) / pc.px_range,
         0.01, 0.25);
 
@@ -77,13 +78,15 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
         for (uint x = lid.x; x < quadW; x += 8u) {
             int dstX = x0 + int(x);
             if (dstX < pc.clip_x || dstX >= pc.clip_x + int(pc.clip_w)) continue;
-            float2 uv = (float2(float(x), float(y)) + 0.5)
-                / float2(width, height);
-            float2 atlasPosition = float2(float(atlasX), float(atlasY))
-                + uv * float2(float(atlasW), float(atlasH)) - 0.5;
-            float alpha = smoothstep(
-                0.5 - smoothing, 0.5 + smoothing, sampleAtlas(atlasPosition));
-            alpha *= color.a;
+            float alpha = color.a;
+            if (!solid) {
+                float2 uv = (float2(float(x), float(y)) + 0.5)
+                    / float2(width, height);
+                float2 atlasPosition = float2(float(atlasX), float(atlasY))
+                    + uv * float2(float(atlasW), float(atlasH)) - 0.5;
+                alpha *= smoothstep(
+                    0.5 - smoothing, 0.5 + smoothing, sampleAtlas(atlasPosition));
+            }
             if (alpha <= 0.001) continue;
             float4 dst = images[pc.dst_idx][uint2(uint(dstX), uint(dstY))];
             images[pc.dst_idx][uint2(uint(dstX), uint(dstY))] =

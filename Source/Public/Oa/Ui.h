@@ -5,15 +5,18 @@
 //   <Oa/Ui/Event.h>   — OaUiEvent, OaUiInputState, OuiKey
 //   <Oa/Ui/Canvas.h>  — VlmVec2, OaPixelRect, OaNodeCanvas
 //   <Oa/Ui/Ui.h>     — OaUi widget API
-//   <Oa/Ui/Viz.h>     — OaHeatmap, OaChart, OaBranchViz, OaTokenGrid
 //   <Oa/Ui/Text.h>    — OaTextAtlas, OaTextLayout
 //   <Oa/Ui/Node.h>    — OaUiNode, OaNodeGraph
 //   <Oa/Ui/DeviceUi.h>    — OaDeviceUi, OaDeviceUiApp, OaUiComposeImage, OaUiConfig
-//   <Oa/Ui/Plot.h>    — OaPlot, OaFigure, OaAxes, OaColor
-//   <Oa/Ui/Cv.h>      — OaCvFrame, OaCvOps
+//   <Oa/Ui/Plot/Plot.h> — OaPlot::Figure and OaPlot::Axes
+//   <Oa/Ui/Cv.h>      — diagnostic OaCvFrame composition
+//   <Oa/Ui/DetectionOverlay.h> — GPU boxes and SDF labels
 //   <Oa/Ui/Capture.h> — legacy OaCapture alias, OaScreenshot
 //   <Oa/Ui/Input.h>   — OaInputSystem, OaKeyAction
 //   <Oa/Ui/Image.h>   — OaTexture (upload RGBA8 → GPU buffer for OaUi::Image())
+//   <Oa/Ui/Viewport.h> — passive camera/target/view description
+//   <Oa/Ui/Viewer.h>  — the single image/video inspection application
+//   <Oa/Ui/TrainingViewer.h> — immutable OaTrainingSession dashboard adapter
 
 #pragma once
 
@@ -22,12 +25,14 @@
 #include <Oa/Ui/Canvas.h>
 #include <Oa/Ui/Text.h>
 #include <Oa/Ui/Ui.h>
-#include <Oa/Ui/Viz.h>
 #include <Oa/Ui/Node.h>
 #include <Oa/Ui/Input.h>
 #include <Oa/Ui/DeviceUi.h>
-#include <Oa/Ui/Plot.h>
+#include <Oa/Ui/Plot/Plot.h>
 #include <Oa/Ui/Cv.h>
-#include <Oa/Ui/Rl.h>
+#include <Oa/Ui/DetectionOverlay.h>
 #include <Oa/Ui/Capture.h>
 #include <Oa/Ui/Image.h>
+#include <Oa/Ui/Viewport.h>
+#include <Oa/Ui/Viewer.h>
+#include <Oa/Ui/TrainingViewer.h>

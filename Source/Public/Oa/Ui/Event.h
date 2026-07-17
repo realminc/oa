@@ -165,6 +165,7 @@ struct OaUiEvent {
 	// Keyboard
 	OuiKey Key       = OuiKey::Unknown;
 	OaU32  Modifiers = OUI_MOD_NONE;
+	bool   KeyRepeat = false;
 	OaU32  Codepoint = 0;       // KeyChar: Unicode codepoint
 
 	// Window (resize)
@@ -189,6 +190,8 @@ struct OaUiInputState {
 	bool  LButton = false;
 	bool  MButton = false;
 	bool  RButton = false;
+	bool  LPressed = false;
+	bool  LReleased = false;
 
 	OaF32 ScrollX = 0.0F;   // accumulated this frame
 	OaF32 ScrollY = 0.0F;

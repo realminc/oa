@@ -1,6 +1,6 @@
 // OaLiveTexture — Host-coherent mailbox for live texture updates
 //
-// UnifiedExecutionArchitecture.md §9.2: Sync-free mailbox pattern for producer/consumer threading.
+// Architecture/OaArchitecture.md §10: sync-free mailbox for producer/consumer threading.
 // Same pattern as LiveLoss in OaItTraining.
 //
 // Producer thread (training step / SD denoise / video decode):

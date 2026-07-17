@@ -109,13 +109,13 @@ public:
 // Transport mode for cross-device data movement.
 enum class OaTransport : OaU8 {
 	HostStaging,  // CPU memcpy through host-visible mapped pointers (universal)
-	DmaBuf,       // Linux DMA-BUF fd export/import (zero-copy, same-vendor)
+	OpaqueFd,     // Vulkan OPAQUE_FD memory sharing (same-vendor attempt)
 };
 
 [[nodiscard]] constexpr OaStringView OaTransportName(OaTransport InMode) noexcept {
 	switch (InMode) {
 		case OaTransport::HostStaging: return "HostStaging";
-		case OaTransport::DmaBuf:      return "DmaBuf";
+		case OaTransport::OpaqueFd:    return "OpaqueFd";
 		default:                       return "Unknown";
 	}
 }
@@ -130,7 +130,7 @@ public:
 	OaBool PeerToPeer = false;        // Same vendor, direct DMA possible
 	OaInterconnect Topology = OaInterconnect::HostMemory;
 	OaTransport BestTransport = OaTransport::HostStaging;
-	OaBool DmaBufCapable = false;
+	OaBool OpaqueFdCapable = false;
 };
 
 // Multi-device topology — all GPUs + their interconnections.

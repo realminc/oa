@@ -4,6 +4,7 @@
 #include <Oa/Ml/ItTraining.h>
 #include <Oa/Ml/Callbacks.h>
 #include <Oa/Ml/Metric.h>
+#include <Oa/Ml/TrainingSession.h>
 
 #include <string>
 
@@ -86,6 +87,138 @@ void BindMlTraining(nb::module_& m) {
 		.def("GpuSamplesPerSecond", &OaItTraining::GpuSamplesPerSecond)
 		.def("WallUnitsPerSecond", &OaItTraining::WallUnitsPerSecond)
 		.def("GpuUnitsPerSecond", &OaItTraining::GpuUnitsPerSecond);
+
+	// Typed, bounded live-training control. The session is independent of any
+	// GUI or transport; Python and native viewers consume the same snapshots.
+	nb::enum_<OaTrainingState>(m, "OaTrainingState")
+		.value("Running", OaTrainingState::Running)
+		.value("Paused", OaTrainingState::Paused)
+		.value("Stopping", OaTrainingState::Stopping)
+		.value("Completed", OaTrainingState::Completed)
+		.value("Failed", OaTrainingState::Failed);
+
+	nb::enum_<OaTrainingCommandDisposition>(m, "OaTrainingCommandDisposition")
+		.value("Applied", OaTrainingCommandDisposition::Applied)
+		.value("Rejected", OaTrainingCommandDisposition::Rejected);
+
+	nb::class_<OaTrainingMetricSample>(m, "OaTrainingMetricSample")
+		.def_prop_ro("Name", [](const OaTrainingMetricSample& metric) {
+			return std::string(metric.Name.c_str());
+		})
+		.def_ro("Value", &OaTrainingMetricSample::Value)
+		.def_ro("Step", &OaTrainingMetricSample::Step);
+
+	nb::class_<OaTrainingSnapshot>(m, "OaTrainingSnapshot")
+		.def_ro("Revision", &OaTrainingSnapshot::Revision)
+		.def_ro("State", &OaTrainingSnapshot::State)
+		.def_ro("Step", &OaTrainingSnapshot::Step)
+		.def_ro("Epoch", &OaTrainingSnapshot::Epoch)
+		.def_ro("LearningRate", &OaTrainingSnapshot::LearningRate)
+		.def_ro("Loss", &OaTrainingSnapshot::Loss)
+		.def_ro("GpuMs", &OaTrainingSnapshot::GpuMs)
+		.def_ro("WallMs", &OaTrainingSnapshot::WallMs)
+		.def_prop_ro("Metrics", [](const OaTrainingSnapshot& snapshot) {
+			std::vector<OaTrainingMetricSample> metrics;
+			metrics.reserve(static_cast<size_t>(snapshot.Metrics.Size()));
+			for (const auto& metric : snapshot.Metrics) metrics.push_back(metric);
+			return metrics;
+		});
+
+	nb::class_<OaTrainingCommandResult>(m, "OaTrainingCommandResult")
+		.def_ro("Sequence", &OaTrainingCommandResult::Sequence)
+		.def_ro("Revision", &OaTrainingCommandResult::Revision)
+		.def_ro("Disposition", &OaTrainingCommandResult::Disposition)
+		.def_ro("State", &OaTrainingCommandResult::State)
+		.def_prop_ro("Success", [](const OaTrainingCommandResult& result) {
+			return result.Status.IsOk();
+		})
+		.def_prop_ro("Status", [](const OaTrainingCommandResult& result) {
+			return std::string(result.Status.ToString().c_str());
+		});
+
+	nb::class_<OaTrainingSession>(m, "OaTrainingSession")
+		.def("__init__", [](OaTrainingSession* self, OaItTraining& training,
+			OaU32 commandCapacity, OaU32 resultCapacity, OaU32 snapshotCapacity) {
+			new (self) OaTrainingSession(training, OaTrainingSessionConfig{
+				.CommandCapacity = commandCapacity,
+				.ResultCapacity = resultCapacity,
+				.SnapshotCapacity = snapshotCapacity,
+			});
+		}, nb::arg("training"), nb::arg("command_capacity") = 64,
+			nb::arg("result_capacity") = 128,
+			nb::arg("snapshot_capacity") = 256, nb::keep_alive<1, 2>())
+		.def("Pause", [](OaTrainingSession& self, OaU64 revision) {
+			auto result = self.Pause(revision);
+			throw_if_error(result.GetStatus());
+			return *result;
+		}, nb::arg("expected_revision") = 0)
+		.def("Resume", [](OaTrainingSession& self, OaU64 revision) {
+			auto result = self.Resume(revision);
+			throw_if_error(result.GetStatus());
+			return *result;
+		}, nb::arg("expected_revision") = 0)
+		.def("Stop", [](OaTrainingSession& self, OaU64 revision) {
+			auto result = self.Stop(revision);
+			throw_if_error(result.GetStatus());
+			return *result;
+		}, nb::arg("expected_revision") = 0)
+		.def("Checkpoint", [](OaTrainingSession& self, OaU64 revision) {
+			auto result = self.Checkpoint(revision);
+			throw_if_error(result.GetStatus());
+			return *result;
+		}, nb::arg("expected_revision") = 0)
+		.def("Evaluate", [](OaTrainingSession& self, OaU64 revision) {
+			auto result = self.Evaluate(revision);
+			throw_if_error(result.GetStatus());
+			return *result;
+		}, nb::arg("expected_revision") = 0)
+		.def("SetFloat", [](OaTrainingSession& self, const std::string& name,
+			double value, OaU64 revision) {
+			auto result = self.SetParameter(OaString(name.c_str()),
+				OaTrainingValue::FromFloat(value), revision);
+			throw_if_error(result.GetStatus());
+			return *result;
+		}, nb::arg("name"), nb::arg("value"), nb::arg("expected_revision") = 0)
+		.def("SetInteger", [](OaTrainingSession& self, const std::string& name,
+			OaI64 value, OaU64 revision) {
+			auto result = self.SetParameter(OaString(name.c_str()),
+				OaTrainingValue::FromInteger(value), revision);
+			throw_if_error(result.GetStatus());
+			return *result;
+		}, nb::arg("name"), nb::arg("value"), nb::arg("expected_revision") = 0)
+		.def("SetBool", [](OaTrainingSession& self, const std::string& name,
+			bool value, OaU64 revision) {
+			auto result = self.SetParameter(OaString(name.c_str()),
+				OaTrainingValue::FromBool(value), revision);
+			throw_if_error(result.GetStatus());
+			return *result;
+		}, nb::arg("name"), nb::arg("value"), nb::arg("expected_revision") = 0)
+		.def("SetString", [](OaTrainingSession& self, const std::string& name,
+			const std::string& value, OaU64 revision) {
+			auto result = self.SetParameter(OaString(name.c_str()),
+				OaTrainingValue::FromString(OaString(value.c_str())), revision);
+			throw_if_error(result.GetStatus());
+			return *result;
+		}, nb::arg("name"), nb::arg("value"), nb::arg("expected_revision") = 0)
+		.def("TryBeginStep", &OaTrainingSession::TryBeginStep)
+		.def("Poll", [](OaTrainingSession& self) { throw_if_error(self.Poll()); })
+		.def("PublishMetric", [](OaTrainingSession& self,
+			const std::string& name, double value) {
+			self.PublishMetric(OaString(name.c_str()), value);
+		})
+		.def("State", &OaTrainingSession::State)
+		.def("Revision", &OaTrainingSession::Revision)
+		.def("LatestSnapshot", [](const OaTrainingSession& self) -> nb::object {
+			auto snapshot = self.LatestSnapshot();
+			return snapshot.HasValue() ? nb::cast(*snapshot) : nb::none();
+		})
+		.def("TakeResults", [](OaTrainingSession& self) {
+			auto source = self.TakeResults();
+			std::vector<OaTrainingCommandResult> results;
+			results.reserve(static_cast<size_t>(source.Size()));
+			for (auto& result : source) results.push_back(OaStdMove(result));
+			return results;
+		});
 
     // ═════════════════════════════════════════════════════════════════════════
     // Callback implementations

@@ -22,7 +22,9 @@
 #include <vulkan/vulkan.h>
 
 class OaComputeEngine;
+class OaVkTimelineSemaphore;
 class OaVkBuffer;
+class OaMatrix;
 class OaDetectionBuffer;
 class OaGlyphBuffer;
 class OaTextAtlas;
@@ -97,6 +99,9 @@ struct OaUiHeatmapConfig {
 	OaF32    VMin    = -1.0F;
 	OaF32    VMax    =  1.0F;
 	OaU32    Colormap = 0;  // 0=plasma 1=viridis 2=coolwarm 3=grays
+	OaU32    ValueType = 0; // 0=Float32 1=UInt32 2=Int32
+	OaU32    OffsetElements = 0;
+	bool     ShowGrid = false;
 };
 
 // ─── OaUi ──────────────────────────────────────────────────────────────────────
@@ -127,6 +132,11 @@ public:
 
 	// Record all widget dispatch commands into InCmd.
 	void RecordRender(VkCommandBuffer InCmd, OaU32 InDstBindlessIdx);
+	// Marks transient resources sampled by this frame. Plot buffers are recycled
+	// only after the graphics timeline reaches this value.
+	void MarkFrameSubmitted(
+		const OaVkTimelineSemaphore& InSemaphore,
+		OaU64 InValue);
 
 	void EndFrame();
 
@@ -164,6 +174,18 @@ public:
 	void Text(OaStringView InText);
 	void ColorSwatch(OaColor InColor, VlmVec2 InSize = {16.0F, 16.0F});
 	void ProgressBar(OaF32 InFraction, OaStringView InOverlay = {});
+	// Explicit transport timeline. InOutFraction is normalized to [0, 1];
+	// returns true when pointer scrubbing changes it.
+	[[nodiscard]] bool Timeline(
+		OaStringView InId,
+		OaPixelRect InRect,
+		OaF32& InOutFraction);
+	// Full-surface audio scrubber backed by a GPU [Bins, 2] min/max envelope.
+	[[nodiscard]] bool WaveformTimeline(
+		OaStringView InId,
+		OaPixelRect InRect,
+		const OaMatrix& InEnvelope,
+		OaF32& InOutFraction);
 	void Image(OaU32 InBindlessIdx, OaI32 InW, OaI32 InH);
 	void ImageVkRgba(
 		void* InImage,
@@ -171,12 +193,19 @@ public:
 		OaI32 InW,
 		OaI32 InH,
 		VkImageLayout InLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-	// Draw an axis-aligned rectangle border directly into the GPU compose image.
-	// The rectangle must already be clipped to the compose-image extent.
+	// Draw filled or outlined axis-aligned rectangles directly into the GPU
+	// compose image. Rectangles must already be clipped to its extent.
+	void Rect(OaPixelRect InRect, OaColor InColor);
 	void RectOutline(
 		OaPixelRect InRect,
 		OaColor InColor,
 		OaU32 InThickness = 1);
+	// Draw an anti-aliased screen-space line in one GPU dispatch.
+	void Line(
+		VlmVec2 InBegin,
+		VlmVec2 InEnd,
+		OaColor InColor,
+		OaF32 InThickness = 2.0F);
 	// Draw normalized rectangle records from a bindless GPU buffer in one
 	// dispatch. InDstRect maps source-image coordinates into the compose image.
 	void RectOutlines(
@@ -200,10 +229,15 @@ public:
 	void PlotLine(OaStringView InLabel, const OaF32* InData, OaI32 InCount, const OaUiPlotConfig& InCfg = {});
 	// Ring-buffer variant: reads InCount floats from InData[InOffset % InCount].
 	void PlotLineRing(OaStringView InLabel, const OaF32* InData, OaI32 InCount, OaI32 InOffset, const OaUiPlotConfig& InCfg = {});
-	// Histogram bars.
-	void PlotHistogram(OaStringView InLabel, const OaF32* InData, OaI32 InCount, const OaUiPlotConfig& InCfg = {});
 	// GPU buffer → heatmap (zero-copy — reads directly from InBuffer on GPU).
 	void Heatmap(OaStringView InLabel, const OaVkBuffer& InBuffer, const OaUiHeatmapConfig& InCfg);
+	// Matrix convenience overload. Rows/Cols and value type are inferred when
+	// omitted, and matrix byte offsets are honored for views.
+	void Heatmap(OaStringView InLabel, const OaMatrix& InMatrix, const OaUiHeatmapConfig& InCfg = {});
+	// Host values → heatmap through the same bounded frame-safe upload ring as
+	// PlotLine. Intended for compact metric tables and recorded OaPlot figures.
+	void Heatmap(OaStringView InLabel, const OaF32* InData, OaI32 InRows,
+		OaI32 InCols, const OaUiHeatmapConfig& InCfg = {});
 
 	// ── Input state ───────────────────────────────────────────────────────────
 

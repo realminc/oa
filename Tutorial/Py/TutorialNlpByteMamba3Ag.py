@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """OA Python Tutorial — Byte-Level Mamba-3 SSM, all-position LM (Autograd).
 
-Python port of Tutorial/Ml/TutorialNlpByteMamba3Ag.cpp. The state-space member of the
+Python port of Tutorial/Ml/Nlp/TutorialNlpByteMamba3Ag.cpp. The state-space member of the
 NLP fair-comparison suite: the untouched Mamba-3
 reference mixer + a flat residual, same all-position task / corpus / dims as the rest.
 

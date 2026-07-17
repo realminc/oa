@@ -1,9 +1,10 @@
 #include <Oa/Runtime/Engine.h>
 #include <Oa/Runtime/Init.h>
-#include <Oa/Runtime/RuntimeGlobal.h>
 #include <Oa/Runtime/Topology.h>
+#include <Oa/Runtime/UploadRing.h>
 #include <Oa/Runtime/OaVk.h>
 #include <Oa/Runtime/Dispatch.h>
+#include <Oa/Runtime/Context.h>
 #include <Oa/Runtime/Spirv.h>
 #include <Oa/Runtime/ShaderProvider.h>
 #include <Oa/Runtime/MatmulTypes.h>
@@ -11,6 +12,8 @@
 #include <Oa/Core/FileIo.h>
 #include <Oa/Core/KernelRegistry.h>
 #include <Oa/Core/Matrix.h>
+#include <Oa/Core/FnMatrix.h>
+#include <Oa/Core/Memory.h>
 #include <Oa/Core/Validation.h>
 #include <Oa/Ml/Module.h>
 #include <Oa/Ml/Precision.h>
@@ -27,20 +30,48 @@ static OaComputeEngine* GEngine = nullptr;
 
 static constexpr OaU64 kHostVisibleCacheMaxBytes = 256ull * 1024ull * 1024ull;
 static constexpr OaU32 kHostVisibleCacheMaxBuffers = 4096u;
+static bool OaAsciiEqI(const char* InA, const char* InB);
+
+static OaMemoryPlacement ResolveMatrixPlacement(const OaVkDevice& InDevice) {
+	const OaString requested = OaEnvFlag::GetString("OA_MATRIX_MEMORY", "auto");
+	if (OaAsciiEqI(requested.CStr(), "device") || OaAsciiEqI(requested.CStr(), "device-local")
+		|| OaAsciiEqI(requested.CStr(), "vram")) {
+		return OaMemoryPlacement::DeviceLocal;
+	}
+	if (OaAsciiEqI(requested.CStr(), "host") || OaAsciiEqI(requested.CStr(), "upload")
+		|| OaAsciiEqI(requested.CStr(), "mapped")) {
+		return OaMemoryPlacement::HostUpload;
+	}
+	if (OaAsciiEqI(requested.CStr(), "unified") || OaAsciiEqI(requested.CStr(), "bar")) {
+		return OaMemoryPlacement::Unified;
+	}
+	return InDevice.Info.Hardware.DeviceType == OaDeviceType::VkDiscrete
+		? OaMemoryPlacement::DeviceLocal
+		: OaMemoryPlacement::HostUpload;
+}
 
 void OaComputeEngine::SetAsGlobal() {
 	GEngine = this;
-	OaRuntimeGlobal::SetRuntime(this);
+	OaFnMatrix::SetWeightDtype(OaPrecisionDtype(GetPrecision()));
+	OaContext::SetDefault(Context_.get());
 }
 
 void OaComputeEngine::ClearGlobal() {
 	if (GEngine == this) {
-		OaRuntimeGlobal::SetRuntime(nullptr);
+		if (OaContext::GetDefaultPtr() == Context_.get()) {
+			OaContext::SetDefault(nullptr);
+		}
+		OaFnMatrix::SetWeightDtype(OaScalarType::Float32);
 		GEngine = nullptr;
 	}
 }
 
 OaComputeEngine* OaComputeEngine::GetGlobal() { return GEngine; }
+
+OaContext& OaComputeEngine::GetContext() const noexcept {
+	assert(Context_ && "OaComputeEngine::GetContext: engine is not initialized");
+	return *Context_;
+}
 
 static OaU32 OaVkEnumIndexOrZero(const OaVkDevice& InDev) {
 	return InDev.Info.Hardware.EnumerationIndex != OaVkEnumerationIndexUnset
@@ -192,7 +223,7 @@ void OaComputeEngine::LogSelectedDevices() {
 	}
 }
 
-OaComputeEngine::~OaComputeEngine() = default;
+OaComputeEngine::~OaComputeEngine() { Destroy(); }
 
 static OaU32 RegisterBufferOnMeshNode(OaDeviceNode& InNode, OaVkBuffer& InOutBuf) {
 	InOutBuf.NodeIndex = InNode.Index;
@@ -211,7 +242,7 @@ static OaU32 RegisterBufferOnMeshNode(OaDeviceNode& InNode, OaVkBuffer& InOutBuf
 
 OaResult<OaUniquePtr<OaComputeEngine>> OaComputeEngine::Create(const OaEngineConfig& InConfig) {
 	// Pinned construction: build the engine on the heap so its address is stable
-	// (it registers itself as GEngine / the runtime global during InitInPlace) and
+	// (it can register itself as the process-global engine during InitInPlace) and
 	// return an owning pointer. No build-then-move.
 	auto engine = OaMakeUniquePtr<OaComputeEngine>();
 	OA_RETURN_IF_ERROR(engine->InitInPlace(InConfig));
@@ -219,6 +250,17 @@ OaResult<OaUniquePtr<OaComputeEngine>> OaComputeEngine::Create(const OaEngineCon
 }
 
 OaStatus OaComputeEngine::InitInPlace(const OaEngineConfig& InConfig) {
+	if (State_ != OaEngineState::Empty) {
+		return OaStatus::Error(OaStatusCode::FailedPrecondition,
+			"OaComputeEngine::InitInPlace: engine initialization is one-shot");
+	}
+	State_ = OaEngineState::Initializing;
+	auto status = InitInPlaceImpl(InConfig);
+	State_ = status.IsOk() ? OaEngineState::Ready : OaEngineState::Failed;
+	return status;
+}
+
+OaStatus OaComputeEngine::InitInPlaceImpl(const OaEngineConfig& InConfig) {
 	// Initializes *this in place. `rt` aliases *this so the body reads as before.
 	OaComputeEngine& rt = *this;
 
@@ -247,6 +289,7 @@ OaStatus OaComputeEngine::InitInPlace(const OaEngineConfig& InConfig) {
 		rt.Pipelines = std::move(pri->Pipelines);
 		rt.Bindless = std::move(pri->Bindless);
 		rt.Precision_ = InConfig.Precision;
+		rt.MatrixPlacement_ = ResolveMatrixPlacement(rt.Device);
 
 		if (rt.Precision_ == OaPrecision::BF16 && !rt.Device.NativeShaderBfloat16Usable()) {
 			OA_LOG_WARN(OaLogComponent::Core, "BF16 requested but device lacks VK_KHR_shader_bfloat16 — falling back to FP32");
@@ -255,6 +298,7 @@ OaStatus OaComputeEngine::InitInPlace(const OaEngineConfig& InConfig) {
 
 		rt.Mesh_ = std::move(mesh);
 		rt.LogSelectedDevices();
+		rt.Context_.reset(OaContext::Create(&rt));
 
 		OA_LOG_INFO(OaLogComponent::Core, "Multi-device: %u device(s)", rt.Mesh_->NodeCount());
 		if (InConfig.EnableValidation) {
@@ -305,7 +349,7 @@ OaStatus OaComputeEngine::InitInPlace(const OaEngineConfig& InConfig) {
 
 	// Both Swapchain (GUI) and Headless modes need a graphics queue. Only
 	// Swapchain triggers actual swapchain creation in OaGraphicsEngine —
-	// Headless never attaches a surface. See UnifiedExecutionArchitecture.md §3.5.
+	// Headless never attaches a surface. See Architecture/OaArchitecture.md §10.
 	const OaBool wantPresentation =
 		(InConfig.PresentationMode == OaPresentationMode::Swapchain
 		 or InConfig.PresentationMode == OaPresentationMode::Headless);
@@ -342,6 +386,7 @@ OaStatus OaComputeEngine::InitInPlace(const OaEngineConfig& InConfig) {
 	rt.Device = std::move(pickResult.GetValue());
 	rt.Allocator = std::move(allocator.GetValue());
 	rt.Precision_ = InConfig.Precision;
+	rt.MatrixPlacement_ = ResolveMatrixPlacement(rt.Device);
 
 	if (rt.Precision_ == OaPrecision::BF16 && !rt.Device.NativeShaderBfloat16Usable()) {
 		OA_LOG_WARN(OaLogComponent::Core,
@@ -360,6 +405,7 @@ OaStatus OaComputeEngine::InitInPlace(const OaEngineConfig& InConfig) {
 			"Bindless heap creation failed (required for all operations)");
 	}
 	rt.Bindless = std::move(bindlessResult.GetValue());
+	rt.Context_.reset(OaContext::Create(&rt));
 
 	OaString cacheDir;
 	if (InConfig.EnablePipelineCache) {
@@ -404,8 +450,22 @@ OaStatus OaComputeEngine::InitInPlace(const OaEngineConfig& InConfig) {
 void OaComputeEngine::Destroy() {
 	// Guard against double-destroy (e.g. an explicit Destroy() followed by the
 	// destructor). The engine is pinned, so there is no moved-from state to guard.
-	if (!Device.Device) return;
+	if (State_ == OaEngineState::Destroying || State_ == OaEngineState::Destroyed) {
+		return;
+	}
+	State_ = OaEngineState::Destroying;
+	if (!Device.Device) {
+		LifetimeToken_.Reset();
+		State_ = OaEngineState::Destroyed;
+		return;
+	}
+	// Expire buffer-owner weak references before any device/VMA state disappears.
+	LifetimeToken_.Reset();
 	ClearGlobal();
+	if (OaContext::GetDefaultPtr() == Context_.get()) {
+		OaContext::SetDefault(nullptr);
+	}
+	Context_.reset();
 	ReleaseMeshDemoAuxBuffer();
 
 	// Cleanup GEMM route cache
@@ -440,6 +500,9 @@ void OaComputeEngine::Destroy() {
 	AsyncStreamPool_.Clear();
 	AsyncFreeStack_.Clear();
 	TransferStream_.Destroy(Device);
+	ReadbackStream_.Destroy(Device);
+	Allocator.Free(ReadbackStaging_);
+	UploadRing_.reset();
 
 	{
 		std::lock_guard<std::mutex> lock(HostVisibleBufferCacheMutex_);
@@ -470,6 +533,7 @@ void OaComputeEngine::Destroy() {
 		Allocator.Destroy();
 		Device.Destroy();
 	}
+	State_ = OaEngineState::Destroyed;
 }
 
 OaStatus OaComputeEngine::BeginComputeBatch() {
@@ -773,21 +837,44 @@ void OaComputeEngine::AddShaderSearchPath(const OaString& InPath) {
 // ─── Buffer Allocation ─────────────────────────────────────────────────────
 
 OaResult<OaVkBuffer> OaComputeEngine::AllocBuffer(OaU64 InSize) {
+	return AllocBuffer(InSize, OaMemoryPlacement::HostUpload);
+}
+
+OaResult<OaVkBuffer> OaComputeEngine::AllocBuffer(
+	OaU64 InSize, OaMemoryPlacement InPlacement)
+{
+	const OaMemoryPlacement placement = InPlacement == OaMemoryPlacement::Auto
+		? MatrixPlacement_
+		: InPlacement;
+	if (placement == OaMemoryPlacement::DeviceLocal) {
+		return AllocBufferDevice(InSize);
+	}
+	if (placement == OaMemoryPlacement::Unified) {
+		return AllocBufferBar(InSize);
+	}
+	if (placement == OaMemoryPlacement::HostReadback) {
+		auto result = Allocator.AllocHostReadback(InSize);
+		if (result) RegisterBuffer(*result);
+		return result;
+	}
+
 	{
 		std::lock_guard<std::mutex> lock(HostVisibleBufferCacheMutex_);
 		OaI32 best = -1;
 		OaU64 bestSize = UINT64_MAX;
 		for (OaU32 i = 0; i < HostVisibleBufferCache_.Size(); ++i) {
 			const auto& candidate = HostVisibleBufferCache_[i];
-			if (candidate.Size >= InSize && candidate.Size < bestSize) {
+			const OaU64 capacity = candidate.Capacity != 0 ? candidate.Capacity : candidate.Size;
+			if (capacity >= InSize && capacity < bestSize) {
 				best = static_cast<OaI32>(i);
-				bestSize = candidate.Size;
+				bestSize = capacity;
 			}
 		}
 		if (best >= 0) {
 			OaVkBuffer reused = HostVisibleBufferCache_[static_cast<OaU32>(best)];
 			HostVisibleBufferCache_.Erase(HostVisibleBufferCache_.begin() + best);
-			HostVisibleBufferCacheBytes_ -= reused.Size;
+			HostVisibleBufferCacheBytes_ -= reused.Capacity;
+			reused.Size = InSize;
 			return reused;
 		}
 	}
@@ -798,6 +885,142 @@ OaResult<OaVkBuffer> OaComputeEngine::AllocBuffer(OaU64 InSize) {
 	}
 	RegisterBuffer(*res);
 	return res;
+}
+
+OaStatus OaComputeEngine::UploadBuffer(
+	const OaVkBuffer& InDst, OaU64 InDstOffset, const void* InData, OaU64 InSize)
+{
+	if (!InDst.Buffer || !InData || InSize == 0 || InDstOffset > InDst.Size
+		|| InSize > InDst.Size - InDstOffset) {
+		return OaStatus::InvalidArgument("UploadBuffer: invalid source or destination range");
+	}
+	if (InDst.MappedPtr) {
+		OaMemcpy(static_cast<OaU8*>(InDst.MappedPtr) + InDstOffset, InData,
+			static_cast<OaUsize>(InSize));
+		return Allocator.FlushHostBuffer(InDst, InDstOffset, InSize)
+			? OaStatus::Ok()
+			: OaStatus::Error(OaStatusCode::VulkanError, "UploadBuffer: mapped flush failed");
+	}
+
+	// vkCmdCopyBuffer requires four-byte aligned offsets and sizes. Matrices may
+	// still contain byte/half scalars or expose an unaligned view, so promote the
+	// transfer to the enclosing words. Partial updates preserve neighbouring
+	// bytes through a read-modify-write; whole-buffer uploads simply zero pad the
+	// physical tail allocated by OaVma.
+	OaVkBuffer copyDst = InDst;
+	OaU64 copyOffset = InDstOffset;
+	const void* copyData = InData;
+	OaU64 copySize = InSize;
+	OaVec<OaU8> alignedData;
+	if ((copyOffset & 3ULL) != 0 || (copySize & 3ULL) != 0) {
+		const OaU64 alignedBegin = copyOffset & ~3ULL;
+		const OaU64 alignedEnd = (copyOffset + copySize + 3ULL) & ~3ULL;
+		if (alignedEnd > copyDst.Capacity) {
+			return OaStatus::InvalidArgument("UploadBuffer: padded range exceeds capacity");
+		}
+		alignedData.Resize(static_cast<OaUsize>(alignedEnd - alignedBegin));
+		if (copyOffset != 0 || copySize != InDst.Size) {
+			OaVkBuffer physical = InDst;
+			physical.Size = physical.Capacity;
+			OA_RETURN_IF_ERROR(ReadbackBuffer(physical, alignedBegin,
+				alignedData.Data(), alignedEnd - alignedBegin));
+		} else {
+			OaMemzero(alignedData.Data(), alignedData.Size());
+		}
+		OaMemcpy(alignedData.Data() + (copyOffset - alignedBegin), copyData,
+			static_cast<OaUsize>(copySize));
+		copyDst.Size = copyDst.Capacity;
+		copyOffset = alignedBegin;
+		copyData = alignedData.Data();
+		copySize = alignedEnd - alignedBegin;
+	}
+
+	std::lock_guard<std::mutex> lock(UploadRingMutex_);
+	if (!UploadRing_ || UploadRing_->FrameCapacityBytes() < copySize) {
+		UploadRing_.reset();
+		const OaU64 frameBytes = (copySize + 255ULL) & ~255ULL;
+		const OaU64 capacity = std::max<OaU64>(64ULL * 1024ULL * 1024ULL, frameBytes * 3ULL);
+		auto ring = OaUploadRing::Create(*this, OaUploadRingConfig{
+			.CapacityBytes = capacity,
+			.FramesInFlight = 3,
+			.Alignment = 256,
+		});
+		if (!ring) return ring.GetStatus();
+		UploadRing_ = OaMakeUniquePtr<OaUploadRing>(std::move(*ring));
+	}
+	OA_RETURN_IF_ERROR(UploadRing_->BeginBatch());
+	OA_RETURN_IF_ERROR(UploadRing_->Upload(
+		copyDst, copyOffset, copyData, copySize));
+	auto completion = UploadRing_->Submit();
+	if (!completion) return completion.GetStatus();
+	return completion->Wait();
+}
+
+OaStatus OaComputeEngine::ReadbackBuffer(
+	const OaVkBuffer& InSrc, OaU64 InSrcOffset, void* OutData, OaU64 InSize)
+{
+	if (!InSrc.Buffer || !OutData || InSize == 0 || InSrcOffset > InSrc.Size
+		|| InSize > InSrc.Size - InSrcOffset) {
+		return OaStatus::InvalidArgument("ReadbackBuffer: invalid source or destination range");
+	}
+	if (InSrc.MappedPtr) {
+		if (!Allocator.InvalidateHostBuffer(InSrc, InSrcOffset, InSize)) {
+			return OaStatus::Error(OaStatusCode::VulkanError, "ReadbackBuffer: mapped invalidate failed");
+		}
+		OaMemcpy(OutData, static_cast<const OaU8*>(InSrc.MappedPtr) + InSrcOffset,
+			static_cast<OaUsize>(InSize));
+		return OaStatus::Ok();
+	}
+	const OaU64 copyOffset = InSrcOffset & ~3ULL;
+	const OaU64 copyEnd = (InSrcOffset + InSize + 3ULL) & ~3ULL;
+	if (copyEnd > InSrc.Capacity) {
+		return OaStatus::InvalidArgument("ReadbackBuffer: padded range exceeds capacity");
+	}
+	const OaU64 copySize = copyEnd - copyOffset;
+
+	std::lock_guard<std::mutex> lock(ReadbackMutex_);
+	if (!ReadbackStream_.CommandPool) {
+		auto streamResult = OaVkStream::Create(
+			Device, Device.Queues.ComputeQueueFamily, Device.Queues.ComputeQueue);
+		if (!streamResult) return streamResult.GetStatus();
+		ReadbackStream_ = std::move(*streamResult);
+	}
+	if (!ReadbackStaging_.Buffer || ReadbackStaging_.Capacity < copySize) {
+		// Begin() below would also wait before command-buffer reuse, but an old
+		// staging allocation cannot be released until its previous copy completes.
+		if (ReadbackStream_.Submitted) {
+			OA_RETURN_IF_ERROR(ReadbackStream_.Synchronize(Device));
+		}
+		Allocator.Free(ReadbackStaging_);
+		OaU64 capacity = 64ULL * 1024ULL;
+		while (capacity < copySize && capacity <= UINT64_MAX / 2ULL) capacity *= 2ULL;
+		if (capacity < copySize) capacity = copySize;
+		auto readbackResult = Allocator.AllocHostReadback(capacity);
+		if (!readbackResult) return readbackResult.GetStatus();
+		ReadbackStaging_ = std::move(*readbackResult);
+	}
+
+	OaStatus status = ReadbackStream_.Begin(Device);
+	if (status.IsOk()) {
+		const OaBufferCopyRegion region{
+			.SrcOffset = copyOffset,
+			.DstOffset = 0,
+			.Size = copySize,
+		};
+		ReadbackStream_.RecordCopyBufferRegions(InSrc, ReadbackStaging_,
+			OaSpan<const OaBufferCopyRegion>(&region, 1));
+		status = ReadbackStream_.Submit(*this);
+	}
+	if (status.IsOk()) status = ReadbackStream_.Synchronize(Device);
+	if (status.IsOk() && !Allocator.InvalidateHostBuffer(ReadbackStaging_, 0, copySize)) {
+		status = OaStatus::Error(OaStatusCode::VulkanError, "ReadbackBuffer: staging invalidate failed");
+	}
+	if (status.IsOk()) {
+		OaMemcpy(OutData,
+			static_cast<const OaU8*>(ReadbackStaging_.MappedPtr) + (InSrcOffset - copyOffset),
+			static_cast<OaUsize>(InSize));
+	}
+	return status;
 }
 
 OaResult<OaVkBuffer> OaComputeEngine::AllocBufferDevice(OaU64 InSize) {
@@ -819,16 +1042,19 @@ OaResult<OaVkBuffer> OaComputeEngine::AllocBufferBar(OaU64 InSize) {
 }
 
 void OaComputeEngine::FreeBuffer(OaVkBuffer& InOutBuffer) {
-	if (InOutBuffer.Buffer && InOutBuffer.MappedPtr && (!Mesh_ || InOutBuffer.NodeIndex == 0) &&
-		!InOutBuffer.IsBar() && !InOutBuffer.IsImported() &&
+	if (InOutBuffer.Buffer && InOutBuffer.MappedPtr
+		&& InOutBuffer.Placement == OaMemoryPlacement::HostUpload
+		&& (!Mesh_ || InOutBuffer.NodeIndex == 0) &&
+		!InOutBuffer.IsBar() && !InOutBuffer.IsImported()
+		&& !InOutBuffer.IsTransient() &&
 		InOutBuffer.BindlessIndex != OA_BINDLESS_INVALID) {
 		std::lock_guard<std::mutex> lock(HostVisibleBufferCacheMutex_);
 		const OaBool canCache =
 			HostVisibleBufferCache_.Size() < kHostVisibleCacheMaxBuffers &&
-			InOutBuffer.Size <= kHostVisibleCacheMaxBytes &&
-			HostVisibleBufferCacheBytes_ + InOutBuffer.Size <= kHostVisibleCacheMaxBytes;
+			InOutBuffer.Capacity <= kHostVisibleCacheMaxBytes &&
+			HostVisibleBufferCacheBytes_ + InOutBuffer.Capacity <= kHostVisibleCacheMaxBytes;
 		if (canCache) {
-			HostVisibleBufferCacheBytes_ += InOutBuffer.Size;
+			HostVisibleBufferCacheBytes_ += InOutBuffer.Capacity;
 			HostVisibleBufferCache_.PushBack(InOutBuffer);
 			InOutBuffer = OaVkBuffer{};
 			return;
@@ -1014,8 +1240,16 @@ OaStatus OaComputeEngine::SubmitToQueue2(void* InQueue, const VkSubmitInfo2* InS
 
 OaStatus OaComputeEngine::CopyBufferAsync(const OaVkBuffer& InSrc, const OaVkBuffer& InDst, OaU64 InSize) {
 	if (!TransferStream_.CommandPool) {
+		// OA buffers use exclusive queue-family ownership. Until graph-level
+		// release/acquire transfers exist, a distinct transfer family cannot safely
+		// consume them. A second queue in the compute family is fine; otherwise use
+		// the primary compute queue.
+		const bool sharedFamily =
+			Device.Queues.TransferQueueFamily == Device.Queues.ComputeQueueFamily;
 		auto res = OaVkStream::Create(
-			Device, Device.Queues.TransferQueueFamily, Device.Queues.TransferQueue
+			Device,
+			sharedFamily ? Device.Queues.TransferQueueFamily : Device.Queues.ComputeQueueFamily,
+			sharedFamily ? Device.Queues.TransferQueue : Device.Queues.ComputeQueue
 		);
 		if (!res) {
 			return res.GetStatus();

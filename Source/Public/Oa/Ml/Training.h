@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // Training.h — Zero-boilerplate ML training framework
 //
-// Combines OaRuntime + OaItTraining into a single "just train" API.
+// Combines OaComputeEngine ownership + OaItTraining into a single "just train" API.
 // No engine setup, no context management, no tick loops, no app boilerplate.
 //
 // **Usage**:
@@ -30,9 +30,11 @@
 
 #pragma once
 
-#include <Oa/Runtime/Runtime.h>
+#include <Oa/Runtime/Engine.h>
+#include <Oa/Runtime/Context.h>
 #include <Oa/Ml/ItTraining.h>
 #include <Oa/Ml/TrainingProgram.h>
+#include <Oa/Ml/TrainingSession.h>
 #include <Oa/Ml/Callbacks.h>
 #include <Oa/Ml/Metric.h>
 #include <Oa/Ml/Optim.h>
@@ -103,22 +105,25 @@ public:
 		if (globalEngine != nullptr) {
 			// Use existing global engine from TEST() fixture
 			Engine_ = globalEngine;
-			OwnsEngine_ = false;
 		} else {
-			// Create our own runtime wrapper
-			OaRuntimeConfig rtCfg;
-			rtCfg.Precision = Config_.Precision;
-			rtCfg.DeviceIndex = Config_.DeviceIndex;
-			rtCfg.EnableValidation = Config_.EnableValidation;
-			rtCfg.AutoExecute = false;  // Manual control for training loop
-			RuntimeWrapper_ = new OaRuntime(rtCfg);
-			OwnsEngine_ = true;
-			
-			if (!RuntimeWrapper_->IsValid()) {
+			OaEngineConfig engineConfig;
+			engineConfig.AppName = "OaMlTraining";
+			engineConfig.Precision = Config_.Precision;
+			engineConfig.EnableValidation = Config_.EnableValidation;
+			if (Config_.DeviceIndex >= 0) {
+				engineConfig.DevicePref = OaDevicePreference::ByIndex;
+				engineConfig.DeviceIndex = static_cast<OaU32>(Config_.DeviceIndex);
+			}
+			auto engine = OaComputeEngine::Create(engineConfig);
+			if (!engine.IsOk()) {
+				OA_LOG_ERROR(OaLogComponent::Core,
+					"OaMlTraining: engine creation failed: %s",
+					engine.GetStatus().GetMessage().c_str());
 				Valid_ = false;
 				return;
 			}
-			Engine_ = &RuntimeWrapper_->GetEngine();
+			OwnedEngine_ = std::move(*engine);
+			Engine_ = OwnedEngine_.get();
 		}
 
 		// Setup metrics
@@ -165,9 +170,7 @@ public:
 		delete ProgressBar_;
 		delete LossMetric_;
 		delete CheckpointMgr_;
-		if (OwnsEngine_ && RuntimeWrapper_) {
-			delete RuntimeWrapper_;
-		}
+		OwnedEngine_.reset();
 	}
 
 	// Non-copyable, non-movable
@@ -180,9 +183,10 @@ public:
 
 	// Check if training should continue
 	[[nodiscard]] bool Step() {
-		if (!Valid_ || Loop_->IsDone()) return false;
-		
-		return true;
+		if (!Valid_) return false;
+		return Loop_->Session() != nullptr
+			? Loop_->Session()->TryBeginStep()
+			: !Loop_->IsDone();
 	}
 
 	// Record loss and advance (call after backward)
@@ -202,7 +206,7 @@ public:
 	[[nodiscard]] OaI64 CurrentStep() const { return Loop_->Index(); }
 	[[nodiscard]] OaF32 CurrentLoss() const { return Loop_->LiveLoss(); }
 	[[nodiscard]] OaComputeEngine& GetEngine() const { return *Engine_; }
-	[[nodiscard]] OaContext& GetContext() const { return OaContext::GetDefault(); }
+	[[nodiscard]] OaContext& GetContext() const { return Engine_->GetContext(); }
 	[[nodiscard]] OaItTraining& GetLoop() { return *Loop_; }
 
 	// Add custom metric
@@ -216,9 +220,8 @@ private:
 	OaOptimizer* Optimizer_;
 	OaModule* Model_ = nullptr;
 	OaComputeEngine* Engine_;
-	OaRuntime* RuntimeWrapper_ = nullptr;
+	OaUniquePtr<OaComputeEngine> OwnedEngine_;
 	OaItTraining* Loop_;
-	bool OwnsEngine_ = false;
 	
 	// Metrics
 	OaMetricLoss* LossMetric_;

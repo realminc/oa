@@ -59,6 +59,24 @@ struct OaHumanMl3dCaption {
 	OaSpan<const OaF32> InPredWorld,
 	OaSpan<const OaF32> InTargetWorld);
 
+/// Geometry/contact diagnostics for denormalized HumanML3D feature streams.
+/// These metrics are representation-level and therefore apply to ALM, flow,
+/// diffusion, or any future generator that emits the 263/251 channel contract.
+struct OaHumanMl3dMotionMetrics {
+	OaF64 MpjpeCm = 0.0;
+	OaF64 VelocityErrorCmPerFrame = 0.0;
+	OaF64 ContactAccuracy = 0.0;
+	OaF64 FootSkateCmPerFrame = 0.0;
+	OaBool Ok = false;
+};
+
+[[nodiscard]] OaHumanMl3dMotionMetrics OaHumanMl3dEvaluateMotion(
+	OaSpan<const OaF32> InPredFeatures,
+	OaSpan<const OaF32> InTargetFeatures,
+	OaI32 InFrames,
+	OaI32 InFeatDim = 263,
+	OaF32 InContactThreshold = 0.5F);
+
 class OaDsHumanMl3d : public OaDataset {
 public:
 	// InDataDir: dataset root (see layout above). InSplit: split file stem.

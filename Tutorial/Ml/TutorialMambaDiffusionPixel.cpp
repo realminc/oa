@@ -5,7 +5,7 @@
 // velocity field of an optimal-transport flow, trained with MSE.
 //
 // Architecture:
-//   Input: xt [B, 784] + sinusoidal timestep embed [B, 16]
+//   Input: xt [B, 784] + GPU sinusoidal timestep embed [B, 32]
 //   Reshape tokens → [B, 49, 16]
 //   4× Mamba-3 block (pre-LayerNorm + residual + gated output norm)
 //   Output: velocity [B, 784]
@@ -26,9 +26,6 @@
 #include <Oa/Ui/Image.h>
 #include <Oa/Vision/FnImage.h>
 
-#include <cmath>
-#include <random>
-
 // ─── Hyperparameters ───────────────────────────────────────────────────────
 
 static constexpr OaI32 kImageSize  = 28;
@@ -47,26 +44,6 @@ static constexpr OaI32 kRefineChannels = 2;  // ConvTranspose2d bottleneck chann
 static constexpr OaI32 kBatch      = 64;
 static constexpr OaI32 kTrainSteps = 10000;
 static constexpr OaF32 kLr         = 0.001F;
-
-// ─── Timestep Embedding ──────────────────────────────────────────────────────
-
-static OaMatrix TimestepEmbedding(const OaVec<OaF32>& InT, OaI32 InDim) {
-	const OaI32 half = InDim / 2;
-	const OaI32 batch = static_cast<OaI32>(InT.Size());
-	OaVec<OaF32> emb(static_cast<OaI64>(batch) * InDim);
-	const OaF32 logMax = std::log(10000.0F);
-	for (OaI32 b = 0; b < batch; ++b) {
-		const OaF32 t = InT[b];
-		for (OaI32 i = 0; i < half; ++i) {
-			const OaF32 freq = std::exp(-logMax * static_cast<OaF32>(i) / static_cast<OaF32>(half));
-			emb[(static_cast<OaI64>(b) * InDim) + i] = std::sin(t * freq);
-			emb[(static_cast<OaI64>(b) * InDim) + half + i] = std::cos(t * freq);
-		}
-	}
-	return OaFnMatrix::FromBytes(
-		OaSpan<const OaU8>(reinterpret_cast<const OaU8*>(emb.Data()), static_cast<OaI64>(emb.Size()) * sizeof(OaF32)),
-		OaMatrixShape{batch, InDim});
-}
 
 // ─── Model: Pixel-Space Mamba Diffusion ──────────────────────────────────────
 
@@ -214,13 +191,15 @@ static OaStatus SaveImage(OaComputeEngine& InRt,
 // ─── Sampling ────────────────────────────────────────────────────────────────
 
 static OaMatrix SampleImages(OaPixelMambaDiffusion& InModel,
+                             OaFlowTimeEmbedding& InTimeEmbedding,
                              OaComputeEngine& InRt,
                              const OaVec<OaU8>& InLabels,
                              OaU64 InSeed) {
 	(void)InRt;
 	const OaI32 count = static_cast<OaI32>(InLabels.Size());
 	OaFnMatrix::SetRngSeed(InSeed);
-	auto x = OaFnMatrix::PhiloxNormal(OaFnMatrix::Zeros(OaMatrixShape{count, kPixels}), 0.0F, 1.0F, InSeed);
+	auto x = OaFnMatrix::PhiloxNormal(
+		OaFnMatrix::Empty(OaMatrixShape{count, kPixels}), 0.0F, 1.0F, InSeed);
 	const OaF32 dt = 1.0F / static_cast<OaF32>(kNumSteps);
 
 	auto labelMat = OaFnMatrix::FromBytes(
@@ -230,10 +209,10 @@ static OaMatrix SampleImages(OaPixelMambaDiffusion& InModel,
 
 	for (OaI32 step = kNumSteps; step >= 1; --step) {
 		const OaF32 tVal = static_cast<OaF32>(step) * dt;
-		OaVec<OaF32> tVals(static_cast<OaI64>(count), tVal);
-		auto tEmbed = TimestepEmbedding(tVals, kTimeDim);
+		auto time = OaFnMatrix::Full(OaMatrixShape{count, 1}, tVal);
+		auto tEmbed = InTimeEmbedding.Forward(time);
 		auto v = InModel.ForwardDiffusion(x, tEmbed, classEmbed);
-		x = x - (v * dt);
+		x = OaFnFlow::EulerStep(x, v, -dt);
 	}
 	return x;
 }
@@ -263,6 +242,8 @@ TEST(TutorialMambaDiffusionPixel, FashionMnistFlowMatching) {
 	OaFnMatrix::SetRngSeed(2026);
 
 	auto model  = OaMakeSharedPtr<OaPixelMambaDiffusion>();
+	// Preserve the tutorial's original normalized-time frequency convention.
+	OaFlowTimeEmbedding timeEmbedding(kTimeDim, 10000.0F, 1.0F);
 	auto params = model->AllParameterPtrs();
 	auto opt    = OaMakeUniquePtr<OaAdamW>(params, kLr);
 
@@ -285,9 +266,6 @@ TEST(TutorialMambaDiffusionPixel, FashionMnistFlowMatching) {
 	OaF32 initialLoss = 0.0F;
 	OaF32 lastLoss    = 0.0F;
 
-	std::mt19937 rng(2026);
-	std::uniform_real_distribution<OaF32> tDist(0.0F, 1.0F);
-
 	while (not training.Loop.IsDone()) {
 		const OaI64 step = training.Loop.Index();
 		OaMatrix& batchX = xRing[(step - 1) % xRing.Size()];
@@ -300,23 +278,20 @@ TEST(TutorialMambaDiffusionPixel, FashionMnistFlowMatching) {
 		// Normalize images to [-1, 1]
 		auto x0 = (OaFnMatrix::Scale(batchX, 2.0F / 255.0F)) - 1.0F;
 
-		// Sample timestep and noise
-		OaVec<OaF32> tVals(kBatch);
-		for (OaI32 i = 0; i < kBatch; ++i) {
-			tVals[i] = tDist(rng);
-		}
-		auto tEmbed = TimestepEmbedding(tVals, kTimeDim);
+		// Sample timestep and noise on-device, then construct the common
+		// linear flow-matching objective without a tensor-sized host loop.
+		auto time = OaFnMatrix::PhiloxUniform(
+			OaFnMatrix::Empty(OaMatrixShape{kBatch, 1}), 0.0F, 1.0F, 0);
+		auto tEmbed = timeEmbedding.Forward(time);
 		auto classEmbed = model->ClassEmbed()->Forward(batchY);
-		auto noise  = OaFnMatrix::PhiloxNormal(OaFnMatrix::Zeros(x0.GetShape()), 0.0F, 1.0F, /*InSeed=*/0);
-		auto xt = x0 + ((noise - x0) * OaFnMatrix::FromBytes(
-			OaSpan<const OaU8>(reinterpret_cast<const OaU8*>(tVals.Data()), static_cast<OaI64>(tVals.Size()) * sizeof(OaF32)),
-			OaMatrixShape{kBatch, 1}));
-		auto target = noise - x0;
+		auto noise = OaFnMatrix::PhiloxNormal(
+			OaFnMatrix::Empty(x0.GetShape()), 0.0F, 1.0F, 0);
+		auto flow = OaFnFlow::LinearMatch(x0, noise, time);
 
 		opt->ZeroGrad();
 		OaGradientTape tape;
-		auto pred = model->ForwardDiffusion(xt, tEmbed, classEmbed);
-		auto loss = OaFnLoss::Mse(pred, target);
+		auto pred = model->ForwardDiffusion(flow.State, tEmbed, classEmbed);
+		auto loss = OaFnLoss::Mse(pred, flow.Velocity);
 		tape.Backward(loss);
 		training.Loop.Next(loss);
 
@@ -342,7 +317,7 @@ TEST(TutorialMambaDiffusionPixel, FashionMnistFlowMatching) {
 	for (OaI32 i = 0; i < kNumClasses; ++i) {
 		labels[i] = static_cast<OaU8>(i);
 	}
-	auto generated = SampleImages(*model, rt, labels, /*InSeed=*/2026);
+	auto generated = SampleImages(*model, timeEmbedding, rt, labels, /*InSeed=*/2026);
 	(void)ctx.Execute();
 	(void)ctx.Sync();
 

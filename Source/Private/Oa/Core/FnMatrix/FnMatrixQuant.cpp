@@ -127,7 +127,7 @@ OaMatrix Quantize(const OaMatrix& InTensor, OaScalarType InTargetType) {
 	const OaU32 numWorkgroups = (numBlocks + 255) / 256;
 	
 	OaStatus status = OaVkDispatch::Run(
-		ctx.GetRuntime(),
+		ctx.GetEngine(),
 		kernelName,
 		buffers,
 		&pc,
@@ -194,7 +194,7 @@ OaMatrix Dequantize(const OaMatrix& InQuantized) {
 	
 	auto& ctx = OaContext::GetDefault();
 	OaStatus status = OaVkDispatch::Run(
-		ctx.GetRuntime(),
+		ctx.GetEngine(),
 		kernelName,
 		buffers,
 		&pc,

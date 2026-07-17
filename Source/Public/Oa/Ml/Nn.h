@@ -30,6 +30,14 @@ enum class OaAttentionBackend : OaU8 {
 	Flash,
 };
 
+/// Token-visibility contract for self-attention. Causal is the language-model
+/// default; Bidirectional is the denoising/encoding path where every token may
+/// observe every other token in the same sequence.
+enum class OaAttentionMode : OaU8 {
+	Causal,
+	Bidirectional,
+};
+
 // GENERATED LAYERS
 // Regenerate via: python3 Tools/NnAutogen/oannautogen.py --live
 #include "../../../Private/Oa/Ml/Nn/Nn.gen.h"
@@ -51,7 +59,7 @@ enum class OaAttentionBackend : OaU8 {
 // MAMBA-3 (Selective State Space Model)
 #include "../../../Private/Oa/Ml/Nn/Mamba3/Mamba3.h"
 
-// TRANSFORMER — pre-norm transformer block with causal self-attention
+// TRANSFORMER — pre-norm transformer block with causal or bidirectional self-attention
 #include "../../../Private/Oa/Ml/Nn/Transformer/Transformer.h"
 
 // EMPYREALM CORE — high-utilization sequential backbone

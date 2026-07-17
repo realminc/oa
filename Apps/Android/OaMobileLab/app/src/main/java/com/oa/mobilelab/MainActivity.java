@@ -15,6 +15,7 @@ import android.os.Looper;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
@@ -86,6 +87,10 @@ public final class MainActivity extends Activity {
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
+		// Keep live metrics visible while this activity is in the foreground. The
+		// training service has its own partial wake lock, so background/screen-off
+		// execution remains independent of this presentation policy.
+		getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 		loadTypefaces();
 		getWindow().setStatusBarColor(BG);
 		getWindow().setNavigationBarColor(BG);

@@ -21,12 +21,23 @@ fi
 
 "$ADB" get-state >/dev/null
 
+if "$ADB" shell "run-as $PACKAGE true" >/dev/null 2>&1; then
+	report_transport="file"
+else
+	report_transport="logcat"
+fi
+echo "Report transport: $report_transport"
+
 for tokenizer in "${tokenizers[@]}"; do
 	for architecture in "${architectures[@]}"; do
 		run_id="$tokenizer-$architecture"
 		report="files/reports/$run_id-training.txt"
 		echo "=== $tokenizer / $architecture · $STEPS steps · batch $BATCH ==="
-		"$ADB" shell "run-as $PACKAGE sh -c 'rm -f \"$report\" files/checkpoints/$run_id*.oam'"
+		if [[ "$report_transport" == "file" ]]; then
+			"$ADB" shell "run-as $PACKAGE sh -c 'rm -f \"$report\" files/checkpoints/$run_id*.oam'"
+		else
+			"$ADB" logcat -c
+		fi
 		"$ADB" shell am force-stop "$PACKAGE"
 		"$ADB" shell am start -S -W --activity-clear-task \
 			-n "$ACTIVITY" \
@@ -35,7 +46,13 @@ for tokenizer in "${tokenizers[@]}"; do
 			--ez train true --ei steps "$STEPS" --ei batch "$BATCH" >/dev/null
 
 		deadline=$((SECONDS + TIMEOUT_SECONDS))
-		while ! "$ADB" shell "run-as $PACKAGE test -f '$report'"; do
+		while true; do
+			if [[ "$report_transport" == "file" ]]; then
+				"$ADB" shell "run-as $PACKAGE test -f '$report'" && break
+			else
+				logs=$("$ADB" logcat -d -v raw -s OaMobileReport:I '*:S' 2>/dev/null)
+				grep -Fq "OA_REPORT_END $run_id" <<<"$logs" && break
+			fi
 			if ((SECONDS >= deadline)); then
 				echo "timeout waiting for $run_id" >&2
 				exit 1
@@ -43,14 +60,24 @@ for tokenizer in "${tokenizers[@]}"; do
 			sleep 2
 		done
 
-		result=$("$ADB" shell "run-as $PACKAGE cat '$report'" | tr -d '\r')
+		if [[ "$report_transport" == "file" ]]; then
+			result=$("$ADB" shell "run-as $PACKAGE cat '$report'" | tr -d '\r')
+		else
+			result=$(awk -v prefix="OA_REPORT $run_id " \
+				'index($0, prefix) == 1 { print substr($0, length(prefix) + 1) }' \
+				<<<"$logs")
+		fi
 		printf '%s\n' "$result"
 		grep -Fq "Steps: $STEPS/$STEPS" <<<"$result"
 		grep -Fq "Cancelled: no" <<<"$result"
 		grep -Fq "CheckpointRoundTrip: PASS" <<<"$result"
-		grep -Fq "GenerationQuality: PASS" <<<"$result"
-		grep -Fq "Prompt: 'to be'" <<<"$result"
-		grep -Fq "Generated: '" <<<"$result"
+		if ((STEPS >= 300)); then
+			grep -Fq "GenerationQuality: PASS" <<<"$result"
+			grep -Fq "Prompt: 'to be'" <<<"$result"
+			grep -Fq "Generated: '" <<<"$result"
+		else
+			grep -Fq "GenerationQuality: not evaluated (<300 optimizer steps)" <<<"$result"
+		fi
 	done
 done
 

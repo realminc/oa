@@ -3,8 +3,8 @@
 [[layers]]
 name = "MultiHeadAttention"
 path = "Attention/MultiHeadAttention"
-constructor_args = "OaI32 DModel, OaI32 NumHeads, OaF32 DropoutP = 0.0f, bool InBias = true, OaAttentionBackend InBackend = OaAttentionBackend::Auto"
-constructor_init = "DModel_(DModel), NumHeads_(NumHeads), HeadDim_(DModel / NumHeads), DropoutP_(DropoutP), Backend_(InBackend)"
+constructor_args = "OaI32 DModel, OaI32 NumHeads, OaF32 DropoutP = 0.0f, bool InBias = true, OaAttentionBackend InBackend = OaAttentionBackend::Auto, OaAttentionMode InMode = OaAttentionMode::Causal"
+constructor_init = "DModel_(DModel), NumHeads_(NumHeads), HeadDim_(DModel / NumHeads), DropoutP_(DropoutP), Backend_(InBackend), Mode_(InMode)"
 constructor_body = [
 	"if (DModel <= 0 || NumHeads <= 0 || DModel % NumHeads != 0) throw std::invalid_argument(\"MultiHeadAttention requires DModel divisible by NumHeads\");",
 	"QProj_ = OaMakeSharedPtr<OaLinear>(DModel, DModel, InBias);",
@@ -23,6 +23,7 @@ members = [
 	"OaF32 DropoutP_;",
 	"OaAttentionBackend Backend_;",
 	"OaAttentionBackend LastBackend_ = OaAttentionBackend::Standard;",
+	"OaAttentionMode Mode_;",
 	"OaSharedPtr<OaModule> QProj_;",
 	"OaSharedPtr<OaModule> KProj_;",
 	"OaSharedPtr<OaModule> VProj_;",
@@ -31,8 +32,9 @@ members = [
 	"OaMatrix Mask_;",
 	"OaI32 MaskSeqLen_ = 0;",
 	"OaI32 MaskBatch_ = 0;",
+	"OaAttentionMode MaskMode_ = OaAttentionMode::Causal;",
 	"OaVec<OaMatrix> ProjectQkv(const OaMatrix& InInput);",
-	"const OaMatrix& CausalMask(OaI32 InBatch);",
+	"const OaMatrix& AttentionMask(OaI32 InBatch);",
 	"OaMatrix ForwardStandard(const OaMatrix& InInput, const OaMatrix& InAdditiveMask);",
 	"OaMatrix ForwardFlash(const OaMatrix& InInput);",
 	"[[nodiscard]] bool CanUseFlash(const OaMatrix& InInput) const noexcept;",
@@ -45,17 +47,20 @@ methods = [
 	"void SetBackend(OaAttentionBackend InBackend) noexcept { Backend_ = InBackend; }",
 	"[[nodiscard]] OaAttentionBackend Backend() const noexcept { return Backend_; }",
 	"[[nodiscard]] OaAttentionBackend LastBackend() const noexcept { return LastBackend_; }",
+	"void SetMode(OaAttentionMode InMode) noexcept { Mode_ = InMode; Mask_ = {}; MaskSeqLen_ = 0; MaskBatch_ = 0; }",
+	"[[nodiscard]] OaAttentionMode Mode() const noexcept { return Mode_; }",
 ]
 forward_body = """
 if (SeqLen_ <= 0) throw std::invalid_argument("MultiHeadAttention requires SetSeqLen before Forward");
-const bool requestFlash = Backend_ == OaAttentionBackend::Flash ||
-	(Backend_ == OaAttentionBackend::Auto && !OaFnAutograd::IsEnabled());
+const bool requestFlash = Mode_ == OaAttentionMode::Causal &&
+	(Backend_ == OaAttentionBackend::Flash ||
+		(Backend_ == OaAttentionBackend::Auto && !OaFnAutograd::IsEnabled()));
 if (requestFlash && CanUseFlash(InInput)) return ForwardFlash(InInput);
 if (Backend_ == OaAttentionBackend::Flash) {
-	throw std::invalid_argument("FlashAttention requires FP32, dropout=0 and sequence length <= 1024");
+	throw std::invalid_argument("FlashAttention requires causal mode, FP32, dropout=0 and sequence length <= 1024");
 }
 LastBackend_ = OaAttentionBackend::Standard;
-return ForwardStandard(InInput, CausalMask(static_cast<OaI32>(InInput.Size(0) / SeqLen_)));
+return ForwardStandard(InInput, AttentionMask(static_cast<OaI32>(InInput.Size(0) / SeqLen_)));
 """
 extra_methods = """
 OaVec<OaMatrix> OaMultiHeadAttention::ProjectQkv(const OaMatrix& InInput) {
@@ -76,16 +81,19 @@ bool OaMultiHeadAttention::CanUseFlash(const OaMatrix& InInput) const noexcept {
 		SeqLen_ > 0 && SeqLen_ <= 1024;
 }
 
-const OaMatrix& OaMultiHeadAttention::CausalMask(OaI32 InBatch) {
+const OaMatrix& OaMultiHeadAttention::AttentionMask(OaI32 InBatch) {
 	if (InBatch <= 0) throw std::invalid_argument("MultiHeadAttention batch must be positive");
-	if (Mask_.IsEmpty() || MaskSeqLen_ != SeqLen_ || MaskBatch_ != InBatch) {
+	if (Mask_.IsEmpty() || MaskSeqLen_ != SeqLen_ || MaskBatch_ != InBatch ||
+		MaskMode_ != Mode_) {
 		const OaI64 rows = static_cast<OaI64>(InBatch) * NumHeads_ * SeqLen_;
 		const OaI64 batchHeads = static_cast<OaI64>(InBatch) * NumHeads_;
-		Mask_ = OaFnMatrix::CausalMask(OaFnMatrix::Zeros(
-			OaMatrixShape{batchHeads, SeqLen_, SeqLen_}, OaScalarType::Float32))
-			.Reshape(OaMatrixShape{rows, SeqLen_});
+		auto mask = OaFnMatrix::Zeros(
+			OaMatrixShape{batchHeads, SeqLen_, SeqLen_}, OaScalarType::Float32);
+		if (Mode_ == OaAttentionMode::Causal) mask = OaFnMatrix::CausalMask(mask);
+		Mask_ = mask.Reshape(OaMatrixShape{rows, SeqLen_});
 		MaskSeqLen_ = SeqLen_;
 		MaskBatch_ = InBatch;
+		MaskMode_ = Mode_;
 	}
 	return Mask_;
 }
@@ -147,7 +155,7 @@ OaMatrix OaMultiHeadAttention::ForwardFlash(const OaMatrix& InInput) {
 }
 
 """
-notes = "Multi-head scaled dot-product self-attention with interchangeable standard and fused causal Flash backends."
+notes = "Multi-head scaled dot-product self-attention with explicit causal/bidirectional visibility and interchangeable standard/fused causal Flash backends."
 extra_includes = """
 #include <Oa/Ml/Autograd.h>
 #include <Oa/Ml/FnMatrix.h>

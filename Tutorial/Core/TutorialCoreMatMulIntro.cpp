@@ -45,7 +45,6 @@
 #include <Oa/Runtime/Context.h>
 #include <Oa/Runtime/ComputeGraph.h>
 #include <Oa/Runtime/Engine.h>
-#include <Oa/Runtime/RuntimeGlobal.h>
 
 #include <algorithm>
 #include <chrono>
@@ -289,7 +288,7 @@ static PerfResult BenchOnePipelined(
 	(void)ctx.Execute();
 	(void)ctx.Sync();
 
-	auto* rt = ctx.GetRuntime();
+	auto* rt = ctx.GetEngine();
 	auto* graph = ctx.Graph();
 
 	auto oncePipeline = [&]() {
@@ -546,7 +545,6 @@ int main() {
 	}
 
 	OaComputeEngine& rt = *engine.GetValue();
-	OaRuntimeGlobal::SetRuntime(&rt);
 
 	// BF16 CoopMat tensor-core paths trade a little precision for throughput,
 	// so the correctness tolerance widens when the router will pick them.

@@ -122,8 +122,12 @@ void* OaMatrix::Data() {
 bool OaMatrix::HasStorage() const {
 	if (Shape_.Rank <= 0) return false;
 	if (NumElements() <= 0) return false;
-	if (VkBuf_) return VkBuf_->MappedPtr != nullptr;
+	if (VkBuf_) return VkBuf_->Buffer != nullptr;
 	return Data_.get() != nullptr;
+}
+
+OaMemoryPlacement OaMatrix::GetMemoryPlacement() const {
+	return VkBuf_ ? VkBuf_->Placement : OaMemoryPlacement::Auto;
 }
 
 void OaMatrix::SyncMatrixDescriptor() const noexcept {
@@ -133,7 +137,7 @@ void OaMatrix::SyncMatrixDescriptor() const noexcept {
 	} else {
 		view.HeapSlot_ = -1;
 	}
-	if (HasStorage()) {
+	if (Data() != nullptr) {
 		view.HostBlock_.Ptr = const_cast<void*>(Data());
 		view.HostBlock_.SizeBytes = static_cast<OaU64>(ByteSize());
 	} else {
@@ -237,5 +241,4 @@ OaMatrix& OaMatrix::operator/=(OaF32 InScalar) {
 	OaFnMatrix::DivScalarInPlace(*this, InScalar);
 	return *this;
 }
-
 

@@ -2,6 +2,7 @@
 
 #include "../../OaTest.h"
 #include <Oa/Core/Memory.h>
+#include <array>
 #include <cstring>
 
 TEST(CoreMemory, CopySmall) {
@@ -32,6 +33,64 @@ TEST(CoreMemory, CopyLarge) {
 	OaAlignedFree(dst);
 }
 
+TEST(CoreMemory, CopyEverySmallSizeAndAlignment) {
+	constexpr OaUsize MaxSize = 1024;
+	constexpr OaUsize Guard = 64;
+	constexpr OaU8 Sentinel = 0xA5;
+	std::array<OaU8, MaxSize + Guard * 3> src{};
+	std::array<OaU8, MaxSize + Guard * 3> actual{};
+	std::array<OaU8, MaxSize + Guard * 3> expected{};
+
+	for (OaUsize index = 0; index < src.size(); ++index) {
+		src[index] = static_cast<OaU8>((index * 131U + 17U) & 0xFFU);
+	}
+	for (OaUsize size = 0; size <= MaxSize; ++size) {
+		for (OaUsize srcOffset = 0; srcOffset < 64; srcOffset += 7) {
+			for (OaUsize dstOffset = 0; dstOffset < 64; dstOffset += 5) {
+				actual.fill(Sentinel);
+				expected.fill(Sentinel);
+				std::memcpy(expected.data() + Guard + dstOffset,
+					src.data() + Guard + srcOffset, size);
+				EXPECT_EQ(OaMemcpy(actual.data() + Guard + dstOffset,
+					src.data() + Guard + srcOffset, size),
+					actual.data() + Guard + dstOffset);
+				ASSERT_EQ(actual, expected)
+					<< "size=" << size << " srcOffset=" << srcOffset
+					<< " dstOffset=" << dstOffset;
+			}
+		}
+	}
+}
+
+TEST(CoreMemory, StreamingCopyEveryTailAndAlignment) {
+	constexpr OaUsize MaxSize = 2048;
+	constexpr OaUsize Guard = 64;
+	constexpr OaU8 Sentinel = 0x5A;
+	std::array<OaU8, MaxSize + Guard * 3> src{};
+	std::array<OaU8, MaxSize + Guard * 3> actual{};
+	std::array<OaU8, MaxSize + Guard * 3> expected{};
+
+	for (OaUsize index = 0; index < src.size(); ++index) {
+		src[index] = static_cast<OaU8>((index * 67U + 29U) & 0xFFU);
+	}
+	for (OaUsize size = 0; size <= MaxSize; ++size) {
+		for (OaUsize srcOffset : {OaUsize{0}, OaUsize{1}, OaUsize{31}, OaUsize{63}}) {
+			for (OaUsize dstOffset : {OaUsize{0}, OaUsize{1}, OaUsize{17}, OaUsize{63}}) {
+				actual.fill(Sentinel);
+				expected.fill(Sentinel);
+				std::memcpy(expected.data() + Guard + dstOffset,
+					src.data() + Guard + srcOffset, size);
+				EXPECT_EQ(OaMemcpyStream(actual.data() + Guard + dstOffset,
+					src.data() + Guard + srcOffset, size),
+					actual.data() + Guard + dstOffset);
+				ASSERT_EQ(actual, expected)
+					<< "size=" << size << " srcOffset=" << srcOffset
+					<< " dstOffset=" << dstOffset;
+			}
+		}
+	}
+}
+
 TEST(CoreMemory, Memzero) {
 	void* buf = OaAlignedAlloc(256, 64);
 	std::memset(buf, 0xFF, 256);
@@ -49,6 +108,51 @@ TEST(CoreMemory, MemEqual) {
 	EXPECT_TRUE(OaMemEqual(a, b, 32));
 	b[15] = 0x99;
 	EXPECT_FALSE(OaMemEqual(a, b, 32));
+}
+
+TEST(CoreMemory, FillZeroAndEqualEveryTail) {
+	constexpr OaUsize MaxSize = 1024;
+	constexpr OaUsize Guard = 64;
+	constexpr OaU8 Sentinel = 0xC7;
+	std::array<OaU8, MaxSize + Guard * 3> a{};
+	std::array<OaU8, MaxSize + Guard * 3> b{};
+	std::array<OaU8, MaxSize + Guard * 3> expected{};
+
+	for (OaUsize size = 0; size <= MaxSize; ++size) {
+		for (OaUsize offset : {OaUsize{0}, OaUsize{1}, OaUsize{17}, OaUsize{63}}) {
+			a.fill(Sentinel);
+			expected.fill(Sentinel);
+			std::memset(expected.data() + Guard + offset, 0x6D, size);
+			EXPECT_EQ(OaMemset(a.data() + Guard + offset, 0x6D, size),
+				a.data() + Guard + offset);
+			ASSERT_EQ(a, expected) << "fill size=" << size << " offset=" << offset;
+
+			a.fill(Sentinel);
+			expected.fill(Sentinel);
+			std::memset(expected.data() + Guard + offset, 0, size);
+			EXPECT_EQ(OaMemzero(a.data() + Guard + offset, size),
+				a.data() + Guard + offset);
+			ASSERT_EQ(a, expected) << "zero size=" << size << " offset=" << offset;
+
+			for (OaUsize index = 0; index < a.size(); ++index) {
+				a[index] = static_cast<OaU8>((index * 29U + 11U) & 0xFFU);
+			}
+			b = a;
+			EXPECT_TRUE(OaMemEqual(a.data() + Guard + offset,
+				b.data() + Guard + offset, size));
+			if (size > 0) {
+				const OaUsize positions[] = {0, size / 2, size - 1};
+				for (OaUsize position : positions) {
+					b[Guard + offset + position] ^= 0xFF;
+					EXPECT_FALSE(OaMemEqual(a.data() + Guard + offset,
+						b.data() + Guard + offset, size))
+						<< "equal size=" << size << " offset=" << offset
+						<< " mismatch=" << position;
+					b[Guard + offset + position] ^= 0xFF;
+				}
+			}
+		}
+	}
 }
 
 TEST(CoreMemory, AlignedAlloc) {

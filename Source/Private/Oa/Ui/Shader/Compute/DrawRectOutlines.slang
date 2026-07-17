@@ -45,6 +45,7 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
     float centerY = asfloat(heap[pc.rect_idx].Load(offset + 4));
     float width = asfloat(heap[pc.rect_idx].Load(offset + 8));
     float height = asfloat(heap[pc.rect_idx].Load(offset + 12));
+    uint instanceRgba = heap[pc.rect_idx].Load(offset + 24);
 
     int x0 = int(floor(float(pc.dst_x) + (centerX - width * 0.5) * float(pc.dst_w)));
     int y0 = int(floor(float(pc.dst_y) + (centerY - height * 0.5) * float(pc.dst_h)));
@@ -60,7 +61,7 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
     if (rectWidth <= 0 || rectHeight <= 0) return;
 
     uint border = min(pc.thickness, uint((min(rectWidth, rectHeight) + 1) / 2));
-    float4 color = unpackRgba(pc.rgba);
+    float4 color = unpackRgba(instanceRgba != 0 ? instanceRgba : pc.rgba);
     for (uint layer = 0; layer < border; ++layer) {
         int left = x0 + int(layer);
         int top = y0 + int(layer);

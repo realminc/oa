@@ -253,6 +253,39 @@ TEST_VK(AttentionTest, MultiHeadCausalForwardMatchesCpuReference) {
 	}
 }
 
+TEST_VK(AttentionTest, MultiHeadBidirectionalVisibilityIsExplicit) {
+	auto& ctx = OaContext::GetDefault();
+	OaContext::Scope scope(ctx);
+	OaMultiHeadAttention attention(4, 2, 0.0F, false);
+	attention.SetSeqLen(2);
+	attention.SetMode(OaAttentionMode::Bidirectional);
+	ASSERT_EQ(attention.Mode(), OaAttentionMode::Bidirectional);
+
+	ASSERT_TRUE(ctx.Execute().IsOk());
+	ASSERT_TRUE(ctx.Sync().IsOk());
+	ctx.Clear();
+	for (auto& parameter : attention.AllNamedParameterPtrs()) SetIdentity(parameter.Param->Data);
+
+	const OaF32 values[] = {1, 0, 0, 0, 0, 1, 10, 0};
+	auto output = attention.Forward(FromF32(values, OaMatrixShape{2, 4}));
+	ASSERT_TRUE(ctx.Execute().IsOk());
+	ASSERT_TRUE(ctx.Sync().IsOk());
+	EXPECT_EQ(attention.LastBackend(), OaAttentionBackend::Standard);
+
+	const OaF32 expScore = std::exp(1.0F / std::sqrt(2.0F));
+	const OaF32 otherWeight = 1.0F / (1.0F + expScore);
+	const OaF32 selfWeight = expScore / (1.0F + expScore);
+	const OaF32 expectedFirst[] = {selfWeight, otherWeight, 5.0F, 0.0F};
+	for (OaI64 i = 0; i < 4; ++i) {
+		EXPECT_NEAR(output.DataAs<const OaF32>()[i], expectedFirst[i], 2e-5F)
+			<< "first-token index " << i;
+	}
+
+	attention.SetBackend(OaAttentionBackend::Flash);
+	EXPECT_THROW((void)attention.Forward(FromF32(values, OaMatrixShape{2, 4})),
+		std::invalid_argument);
+}
+
 TEST_VK(AttentionTest, MultiHeadBackwardReachesInput) {
 	auto& ctx = OaContext::GetDefault();
 	OaContext::Scope scope(ctx);
@@ -288,6 +321,9 @@ TEST_VK(AttentionTest, TransformerBlockUsesSharedMultiHeadAttention) {
 	OaTransformerBlock block(8, 16, 3, 2, 1e-5F);
 	EXPECT_EQ(block.NumHeads(), 2);
 	EXPECT_EQ(block.SeqLen(), 3);
+	EXPECT_EQ(block.AttentionMode(), OaAttentionMode::Causal);
+	block.SetAttentionMode(OaAttentionMode::Bidirectional);
+	EXPECT_EQ(block.AttentionMode(), OaAttentionMode::Bidirectional);
 
 	auto input = OaFnMatrix::RandN(OaMatrixShape{6, 8});
 	input.SetRequiresGrad(true);

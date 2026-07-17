@@ -3,7 +3,7 @@
 #
 # Usage:
 #   valgrind --leak-check=full --suppressions=Tools/Valgrind/OaSuppressions.supp \
-#     Bin/Release/Tutorial/Ml/TutorialNlpByteRnnAg
+#     Bin/Release/Tutorial/Ml/Nlp/TutorialNlpByteRnnAg
 
 {
    dbus_bus_register leak

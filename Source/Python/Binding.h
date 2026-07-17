@@ -75,6 +75,7 @@ void BindMlLoss(nb::module_& m);
 void BindMlAutograd(nb::module_& m);
 void BindMlOptim(nb::module_& m);
 void BindMlTraining(nb::module_& m);
+void BindMlRl(nb::module_& m);
 
 void BindAudio(nb::module_& m);
 void BindAudioType(nb::module_& m);
@@ -84,8 +85,11 @@ void BindAudioFn(nb::module_& m);
 void BindVision(nb::module_& m);
 void BindVisionType(nb::module_& m);
 void BindVisionImage(nb::module_& m);
+void BindVisionDetection(nb::module_& m);
 void BindVisionCodec(nb::module_& m);
 void BindVisionVideo(nb::module_& m);
+
+void BindPlot(nb::module_& m);
 
 void BindCrypto(nb::module_& m);
 void BindCryptoHash(nb::module_& m);

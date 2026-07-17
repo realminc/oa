@@ -21,26 +21,22 @@ void Axes::Plot(OaSpan<const OaF32> InY, const LineStyle& InStyle) {
 	Line_.Present = true;
 }
 
-void Axes::Bar(OaSpan<const OaF32> InValues, const BarStyle& InStyle) {
-	Bar_.V.Resize(InValues.Size());
-	if (InValues.Size() > 0) {
-		std::memcpy(Bar_.V.Data(), InValues.Data(), InValues.Size() * sizeof(OaF32));
+void Axes::Heatmap(OaSpan<const OaF32> InValues, OaI32 InRows,
+	OaI32 InCols, const HeatmapStyle& InStyle) {
+	const OaI64 count = InRows > 0 && InCols > 0
+		? static_cast<OaI64>(InRows) * InCols : 0;
+	Heatmap_.V.Resize(count);
+	if (count > 0 && InValues.Size() >= static_cast<OaUsize>(count)) {
+		std::memcpy(Heatmap_.V.Data(), InValues.Data(),
+			static_cast<OaUsize>(count) * sizeof(OaF32));
+		Heatmap_.Rows = InRows;
+		Heatmap_.Cols = InCols;
+		Heatmap_.Style = InStyle;
+		Heatmap_.Present = true;
+	} else {
+		Heatmap_.V.Clear();
+		Heatmap_.Present = false;
 	}
-	Bar_.Style   = InStyle;
-	Bar_.Present = true;
-}
-
-void Axes::Scatter(OaSpan<const OaF32> InXs, OaSpan<const OaF32> InYs,
-                   const ScatterStyle& InStyle) {
-	const OaUsize n = InXs.Size() < InYs.Size() ? InXs.Size() : InYs.Size();
-	Scatter_.Xs.Resize(n);
-	Scatter_.Ys.Resize(n);
-	if (n > 0) {
-		std::memcpy(Scatter_.Xs.Data(), InXs.Data(), n * sizeof(OaF32));
-		std::memcpy(Scatter_.Ys.Data(), InYs.Data(), n * sizeof(OaF32));
-	}
-	Scatter_.Style   = InStyle;
-	Scatter_.Present = true;
 }
 
 void Axes::Title(const char* InText, OaColor InColor) {

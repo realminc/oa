@@ -6,155 +6,23 @@
 
 #include <cstring>
 
-constexpr const char* OaViewerModeToString(OaViewerMode InType) noexcept {
+constexpr const char* OaViewerNavigationModeToString(OaViewerNavigationMode InType) noexcept {
 	switch (InType) {
-		case OaViewerMode::Default: return "Default";
-		case OaViewerMode::Orbit: return "Orbit";
-		case OaViewerMode::Fly: return "Fly";
-		case OaViewerMode::Pan: return "Pan";
-		case OaViewerMode::Zoom: return "Zoom";
+		case OaViewerNavigationMode::Default: return "Default";
+		case OaViewerNavigationMode::Orbit: return "Orbit";
+		case OaViewerNavigationMode::Fly: return "Fly";
+		case OaViewerNavigationMode::Pan: return "Pan";
+		case OaViewerNavigationMode::Zoom: return "Zoom";
 		default: return "unknown";
 	}
 }
 
-OaViewerMode OaViewerModeFromString(const char* InStr) noexcept {
+OaViewerNavigationMode OaViewerNavigationModeFromString(const char* InStr) noexcept {
 	// Simple string comparison (could be optimized with hash)
-	if (strcmp(InStr, "Default") == 0) return OaViewerMode::Default;
-	if (strcmp(InStr, "Orbit") == 0) return OaViewerMode::Orbit;
-	if (strcmp(InStr, "Fly") == 0) return OaViewerMode::Fly;
-	if (strcmp(InStr, "Pan") == 0) return OaViewerMode::Pan;
-	if (strcmp(InStr, "Zoom") == 0) return OaViewerMode::Zoom;
-	return OaViewerMode::Default;  // Default to first value
-}
-
-constexpr const char* OaImageDtypeToString(OaImageDtype InType) noexcept {
-	switch (InType) {
-		case OaImageDtype::Unknown: return "Unknown";
-		case OaImageDtype::UInt8: return "UInt8";
-		case OaImageDtype::UInt16: return "UInt16";
-		case OaImageDtype::Float32: return "Float32";
-		default: return "unknown";
-	}
-}
-
-OaImageDtype OaImageDtypeFromString(const char* InStr) noexcept {
-	// Simple string comparison (could be optimized with hash)
-	if (strcmp(InStr, "Unknown") == 0) return OaImageDtype::Unknown;
-	if (strcmp(InStr, "UInt8") == 0) return OaImageDtype::UInt8;
-	if (strcmp(InStr, "UInt16") == 0) return OaImageDtype::UInt16;
-	if (strcmp(InStr, "Float32") == 0) return OaImageDtype::Float32;
-	return OaImageDtype::Unknown;  // Default to first value
-}
-
-constexpr const char* OuiKeyToString(OuiKey InType) noexcept {
-	switch (InType) {
-		case OuiKey::Unknown: return "Unknown";
-		case OuiKey::Space: return "Space";
-		case OuiKey::Enter: return "Enter";
-		case OuiKey::Escape: return "Escape";
-		case OuiKey::Tab: return "Tab";
-		case OuiKey::Backspace: return "Backspace";
-		case OuiKey::Delete: return "Delete";
-		case OuiKey::Insert: return "Insert";
-		case OuiKey::Home: return "Home";
-		case OuiKey::End: return "End";
-		case OuiKey::PageUp: return "PageUp";
-		case OuiKey::PageDown: return "PageDown";
-		case OuiKey::Left: return "Left";
-		case OuiKey::Right: return "Right";
-		case OuiKey::Up: return "Up";
-		case OuiKey::Down: return "Down";
-		case OuiKey::F1: return "F1";
-		case OuiKey::F2: return "F2";
-		case OuiKey::F3: return "F3";
-		case OuiKey::F4: return "F4";
-		case OuiKey::F5: return "F5";
-		case OuiKey::F6: return "F6";
-		case OuiKey::F7: return "F7";
-		case OuiKey::F8: return "F8";
-		case OuiKey::F9: return "F9";
-		case OuiKey::F10: return "F10";
-		case OuiKey::F11: return "F11";
-		case OuiKey::F12: return "F12";
-		default: return "unknown";
-	}
-}
-
-OuiKey OuiKeyFromString(const char* InStr) noexcept {
-	// Simple string comparison (could be optimized with hash)
-	if (strcmp(InStr, "Unknown") == 0) return OuiKey::Unknown;
-	if (strcmp(InStr, "Space") == 0) return OuiKey::Space;
-	if (strcmp(InStr, "Enter") == 0) return OuiKey::Enter;
-	if (strcmp(InStr, "Escape") == 0) return OuiKey::Escape;
-	if (strcmp(InStr, "Tab") == 0) return OuiKey::Tab;
-	if (strcmp(InStr, "Backspace") == 0) return OuiKey::Backspace;
-	if (strcmp(InStr, "Delete") == 0) return OuiKey::Delete;
-	if (strcmp(InStr, "Insert") == 0) return OuiKey::Insert;
-	if (strcmp(InStr, "Home") == 0) return OuiKey::Home;
-	if (strcmp(InStr, "End") == 0) return OuiKey::End;
-	if (strcmp(InStr, "PageUp") == 0) return OuiKey::PageUp;
-	if (strcmp(InStr, "PageDown") == 0) return OuiKey::PageDown;
-	if (strcmp(InStr, "Left") == 0) return OuiKey::Left;
-	if (strcmp(InStr, "Right") == 0) return OuiKey::Right;
-	if (strcmp(InStr, "Up") == 0) return OuiKey::Up;
-	if (strcmp(InStr, "Down") == 0) return OuiKey::Down;
-	if (strcmp(InStr, "F1") == 0) return OuiKey::F1;
-	if (strcmp(InStr, "F2") == 0) return OuiKey::F2;
-	if (strcmp(InStr, "F3") == 0) return OuiKey::F3;
-	if (strcmp(InStr, "F4") == 0) return OuiKey::F4;
-	if (strcmp(InStr, "F5") == 0) return OuiKey::F5;
-	if (strcmp(InStr, "F6") == 0) return OuiKey::F6;
-	if (strcmp(InStr, "F7") == 0) return OuiKey::F7;
-	if (strcmp(InStr, "F8") == 0) return OuiKey::F8;
-	if (strcmp(InStr, "F9") == 0) return OuiKey::F9;
-	if (strcmp(InStr, "F10") == 0) return OuiKey::F10;
-	if (strcmp(InStr, "F11") == 0) return OuiKey::F11;
-	if (strcmp(InStr, "F12") == 0) return OuiKey::F12;
-	return OuiKey::Unknown;  // Default to first value
-}
-
-constexpr const char* OuiEventTypeToString(OuiEventType InType) noexcept {
-	switch (InType) {
-		case OuiEventType::Unknown: return "Unknown";
-		case OuiEventType::KeyDown: return "KeyDown";
-		case OuiEventType::KeyUp: return "KeyUp";
-		case OuiEventType::Char: return "Char";
-		case OuiEventType::MouseDown: return "MouseDown";
-		case OuiEventType::MouseUp: return "MouseUp";
-		case OuiEventType::MouseMove: return "MouseMove";
-		case OuiEventType::MouseWheel: return "MouseWheel";
-		case OuiEventType::Resize: return "Resize";
-		case OuiEventType::Close: return "Close";
-		default: return "unknown";
-	}
-}
-
-OuiEventType OuiEventTypeFromString(const char* InStr) noexcept {
-	// Simple string comparison (could be optimized with hash)
-	if (strcmp(InStr, "Unknown") == 0) return OuiEventType::Unknown;
-	if (strcmp(InStr, "KeyDown") == 0) return OuiEventType::KeyDown;
-	if (strcmp(InStr, "KeyUp") == 0) return OuiEventType::KeyUp;
-	if (strcmp(InStr, "Char") == 0) return OuiEventType::Char;
-	if (strcmp(InStr, "MouseDown") == 0) return OuiEventType::MouseDown;
-	if (strcmp(InStr, "MouseUp") == 0) return OuiEventType::MouseUp;
-	if (strcmp(InStr, "MouseMove") == 0) return OuiEventType::MouseMove;
-	if (strcmp(InStr, "MouseWheel") == 0) return OuiEventType::MouseWheel;
-	if (strcmp(InStr, "Resize") == 0) return OuiEventType::Resize;
-	if (strcmp(InStr, "Close") == 0) return OuiEventType::Close;
-	return OuiEventType::Unknown;  // Default to first value
-}
-
-constexpr const char* OaCameraProjectionToString(OaCameraProjection InType) noexcept {
-	switch (InType) {
-		case OaCameraProjection::Perspective: return "Perspective";
-		case OaCameraProjection::Orthographic: return "Orthographic";
-		default: return "unknown";
-	}
-}
-
-OaCameraProjection OaCameraProjectionFromString(const char* InStr) noexcept {
-	// Simple string comparison (could be optimized with hash)
-	if (strcmp(InStr, "Perspective") == 0) return OaCameraProjection::Perspective;
-	if (strcmp(InStr, "Orthographic") == 0) return OaCameraProjection::Orthographic;
-	return OaCameraProjection::Perspective;  // Default to first value
+	if (strcmp(InStr, "Default") == 0) return OaViewerNavigationMode::Default;
+	if (strcmp(InStr, "Orbit") == 0) return OaViewerNavigationMode::Orbit;
+	if (strcmp(InStr, "Fly") == 0) return OaViewerNavigationMode::Fly;
+	if (strcmp(InStr, "Pan") == 0) return OaViewerNavigationMode::Pan;
+	if (strcmp(InStr, "Zoom") == 0) return OaViewerNavigationMode::Zoom;
+	return OaViewerNavigationMode::Default;  // Default to first value
 }

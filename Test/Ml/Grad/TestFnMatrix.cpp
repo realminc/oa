@@ -3,7 +3,6 @@
 #include <gtest/gtest.h>
 #include <Oa/Core/FnMatrix.h>
 #include <Oa/Ml/Autograd.h>
-#include <Oa/Runtime/RuntimeGlobal.h>
 #include <Oa/Runtime/Engine.h>
 #include <Oa/Runtime/Context.h>
 
@@ -18,7 +17,6 @@ protected:
 		ASSERT_TRUE(r.IsOk()) << r.GetStatus().GetMessage();
 		static OaUniquePtr<OaComputeEngine> rt = std::move(*r);
 		GRt = rt.get();
-		OaRuntimeGlobal::SetRuntime(GRt);
 	}
 };
 

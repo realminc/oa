@@ -3,7 +3,6 @@
 
 #include "../../../OaTest.h"
 #include <Oa/Vision.h>
-#include <Oa/Runtime/RuntimeGlobal.h>
 #include <cmath>
 #include <limits>
 
@@ -200,7 +199,7 @@ OaMatrix MatrixFromValues(OaMatrixShape shape, const std::vector<float>& values)
 class FilterKernels : public ::testing::Test {
 protected:
 	void SetUp() override {
-		ASSERT_NE(OaRuntimeGlobal::GetRuntime(), nullptr);
+		ASSERT_NE(OaComputeEngine::GetGlobal(), nullptr);
 	}
 
 	void Materialize() {

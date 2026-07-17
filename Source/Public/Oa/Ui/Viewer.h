@@ -1,156 +1,174 @@
-// OaViewport — Universal 3D/2D viewport wrapper.
+// OaViewer — the single windowed/headless media inspection application.
 //
-// High-level wrapper around presentation/swapchain/window that aligns with
-// the rendering system. Supports both 3D (perspective camera) and 2D
-// (orthographic camera) rendering modes.
-//
-// Lives at <Oa/Core/Viewport.h> as a foundational consumer of the unified
-// OaContext recorder. It depends on the Ui/ layer (inherits OaDeviceUiApp)
-// but provides a higher-level abstraction for viewport rendering.
-//
-// Capabilities:
-// - 2D mode: Image/video viewing with orthographic camera (current functionality)
-// - 3D mode: Scene rendering with perspective camera (new functionality)
-// - Uses OaCamera for view/projection
-// - Uses OaMesh for geometry
-// - Uses OaPass for render pipelines
-// - Animated pan/zoom via OaAnimControl
-// - Wayland touchpad gestures (pinch-zoom, two-finger pan)
-// - Threaded UI for live previews (LiveTexture mailbox pattern)
-//
-// Usage (2D image viewer):
-//   OaViewport viewer(OaViewportMode::Image2D);
-//   viewer.SetContent("path/to/image.jpg");
-//   return viewer.Run();
-//
-// Usage (3D scene viewer):
-//   OaViewport viewer(OaViewportMode::Scene3D);
-//   viewer.SetScene(&scene);
-//   viewer.SetCamera(&camera);
-//   return viewer.Run();
-//
-// Batch / headless usage (no window, no swapchain):
-//   OaViewport::Save(engine, tex, "/tmp/out.png");
+// `OaViewer` owns the application lifecycle, input and presentation. Media
+// implementations remain in their modules and feed the viewer through explicit
+// OA resources. `OaViewport` in <Oa/Ui/Viewport.h> is a passive render
+// description; it is not another application.
 
 #pragma once
 
-#include <Oa/Core/Types.h>
-#include <Oa/Core/Status.h>
 #include <Oa/Core/Constant.h>
 #include <Oa/Core/Navigation.h>
-#include <Oa/Ui/Camera.h>
-#include <Oa/Render/Scene.h>
+#include <Oa/Core/Status.h>
+#include <Oa/Core/Types.h>
+#include <Oa/Ui/DetectionOverlay.h>
 #include <Oa/Ui/DeviceUi.h>
 #include <Oa/Ui/Image.h>
 #include <Oa/Ui/Input.h>
+#include <Oa/Audio/AudioStream.h>
+#include <Oa/Vision/Video.h>
 
 class OaComputeEngine;
 
-// ─── OaViewportMode ────────────────────────────────────────────────────────
-
 enum class OaViewerMode : OaU8 {
-	Image2D,   // 2D image/video viewer (orthographic camera)
-	Scene3D,   // 3D scene viewer (perspective camera)
-	Matrix,    // Matrix-as-heatmap viewer
-	Video,     // Video player with timeline control
+	Auto,
+	Image,
+	Video,
+	Audio,
+	Live,
 };
 
-// ─── OaViewportConfig ──────────────────────────────────────────────────────
+// Non-owning live producer attached to the one OaViewer application lifecycle.
+// It may render domain-specific overlays, but it never owns the window,
+// swapchain, input pump or presentation submission.
+class OaViewerLiveSource {
+public:
+	virtual ~OaViewerLiveSource() = default;
+	virtual OaStatus Open(OaGraphicsEngine&) { return OaStatus::Ok(); }
+	virtual void Init(OaDeviceUi&) {}
+	virtual void Update(OaF32) {}
+	virtual void Render(OaUi&, OaDeviceUi&) {}
+	virtual void Event(const OaUiEvent&) {}
+	virtual void MarkConsumed(const OaVkTimelineSemaphore&, OaU64) {}
+	virtual void Close(OaDeviceUi&) {}
+};
 
 struct OaViewerConfig {
-	// Viewport mode
-	OaViewerMode Mode = OaViewerMode::Image2D;
-
-	// Content (2D mode)
+	// Auto probes the actual decoders in a deterministic order. Explicit modes
+	// skip probing and return the source decoder's error directly.
+	OaViewerMode Mode = OaViewerMode::Auto;
 	OaString Path = "Asset/Image/Realm1024px.jpg";
+	// Required when Mode == Live. The caller owns this object and must keep it
+	// alive until Run() returns.
+	OaViewerLiveSource* LiveSource = nullptr;
 
-	// Content (3D mode)
-	OaScene*  Scene  = nullptr;
-	OaCamera* Camera = nullptr;
+	OaString Title = "OaViewer";
+	OaU32 Width = 1280;
+	OaU32 Height = 720;
+	bool ShowHelp = true;
+	bool ShowStats = true;
+	bool ShowTimeline = true;
 
-	// Window configuration
-	OaString Title  = OA_TITLE_VIEWPORT;
-	OaU32    Width  = 1280;
-	OaU32    Height = 720;
+	// Temporal media options. Ignored for still images.
+	bool Loop = true;
+	bool StartPlaying = true;
+	OaF32 FrameRateOverride = 0.0F;
+	OaU32 ReorderDepth = 4;
+	OaU32 AudioRingMilliseconds = 500;
+	OaU64 AudioStepUs = 5'000'000ULL;
+	OaU32 AudioWaveformBins = 2048;
+	bool PreferHardwareYCbCr = true;
+	OaFilter Filter = OaFilter::Nearest;
 
-	// Keyboard shortcuts (customizable)
-	OuiKey KeyQuit   = OuiKey::Escape;
-	OuiKey KeyQuitQ  = OuiKey::Q;
-	OuiKey KeyRed    = OuiKey::Num1;
-	OuiKey KeyGreen  = OuiKey::Num2;
-	OuiKey KeyBlue   = OuiKey::Num3;
-	OuiKey KeyAlpha  = OuiKey::Num4;
-	OuiKey KeyRGB    = OuiKey::Num5;
-	OuiKey KeyZoomIn = OuiKey::Equals;   // + or =
-	OuiKey KeyZoomOut= OuiKey::Minus;   // -
-	OuiKey KeyZoomFit= OuiKey::Num0;    // 0
-	OuiKey KeyZoom100= OuiKey::Num9;    // 9 (100%)
-	OuiKey KeyPanUp  = OuiKey::Up;
-	OuiKey KeyPanDown= OuiKey::Down;
-	OuiKey KeyPanLeft= OuiKey::Left;
-	OuiKey KeyPanRight= OuiKey::Right;
+	// Optional normalized CV annotations rendered without reading back or
+	// replacing the source frame.
+	OaVec<OaDetectionOverlayItem> Annotations;
+	OaDetectionOverlayConfig AnnotationStyle;
 
-	// Display options
-	bool ShowHelp = true;  // Show keyboard shortcuts on startup
+	// Keyboard shortcuts.
+	OuiKey KeyQuit = OuiKey::Escape;
+	OuiKey KeyQuitQ = OuiKey::Q;
+	OuiKey KeyRed = OuiKey::Num1;
+	OuiKey KeyGreen = OuiKey::Num2;
+	OuiKey KeyBlue = OuiKey::Num3;
+	OuiKey KeyAlpha = OuiKey::Num4;
+	OuiKey KeyRGB = OuiKey::Num5;
+	OuiKey KeyZoomIn = OuiKey::Equals;
+	OuiKey KeyZoomOut = OuiKey::Minus;
+	OuiKey KeyZoomFit = OuiKey::Num0;
+	OuiKey KeyZoom100 = OuiKey::Num9;
+	// Arrow keys are temporal frame controls. Keyboard panning follows the
+	// shared numeric-keypad bindings; pointer and touch navigation are unchanged.
+	OuiKey KeyPanUp = OuiKey::Kp8;
+	OuiKey KeyPanDown = OuiKey::Kp2;
+	OuiKey KeyPanLeft = OuiKey::Kp4;
+	OuiKey KeyPanRight = OuiKey::Kp6;
 };
-
-// ─── OaViewer ─────────────────────────────────────────────────────────────
 
 class OaViewer : public OaDeviceUiApp {
 public:
 	OaViewer() = default;
-	explicit OaViewer(OaViewerMode InMode) { Config_.Mode = InMode; }
-	explicit OaViewer(const char* InPath) {
-		Config_.Mode = OaViewerMode::Image2D;
-		Config_.Path = InPath;
-	}
-	explicit OaViewer(const OaString& InPath) {
-		Config_.Mode = OaViewerMode::Image2D;
-		Config_.Path = InPath;
-	}
+	explicit OaViewer(const char* InPath) { Config_.Path = InPath; }
+	explicit OaViewer(const OaString& InPath) { Config_.Path = InPath; }
 	explicit OaViewer(const OaViewerConfig& InConfig) : Config_(InConfig) {}
 
-	// Content setters
 	void SetMode(OaViewerMode InMode) { Config_.Mode = InMode; }
 	void SetPath(const OaString& InPath) { Config_.Path = InPath; }
 	void SetPath(const char* InPath) { Config_.Path = InPath; }
-	void SetScene(OaScene* InScene) { Config_.Scene = InScene; }
-	void SetCamera(OaCamera* InCamera) { Config_.Camera = InCamera; }
 	void SetConfig(const OaViewerConfig& InConfig) { Config_ = InConfig; }
 
-	// Run the viewport (blocks until window closed)
 	[[nodiscard]] OaStatus Run();
 
-	// Batch sink (UnifiedExecutionArchitecture.md §3.5 SaveImage): readback InTex and write it to
-	// disk via OaFnImage::SaveFile. No window, no swapchain. Sibling of Run().
+	// Headless image sink. The same viewer render-body abstraction will replace
+	// this direct file call when render-target consolidation lands.
 	[[nodiscard]] static OaStatus Save(
 		OaComputeEngine& InEngine,
-		const OaTexture&   InTex,
-		const char*        InPath);
+		const OaTexture& InTexture,
+		const char* InPath);
 
-	// OaDeviceUiApp overrides
+	OaStatus OnDeviceReady(OaGraphicsEngine& InEngine) override;
 	void OnInit(OaDeviceUi& InGpui) override;
 	void OnUpdate(OaF32 InDeltaMs) override;
-	void OnRender(OaUi& InOui) override;
+	void OnRender(OaUi& InUi) override;
 	void OnEvent(const OaUiEvent& InEvent) override;
+	void OnRenderSubmitted(
+		const OaVkTimelineSemaphore& InSemaphore,
+		OaU64 InValue) override;
 	void OnShutdown(OaDeviceUi& InGpui) override;
 
 private:
-	enum class ImageViewMode : OaU8 { RGB = 0, R = 1, G = 2, B = 3, A = 4 };
+	enum class ImageViewMode : OaU8 { RGB, R, G, B, A };
 
 	OaViewerConfig Config_;
+	OaViewerMode ResolvedMode_ = OaViewerMode::Auto;
 
-	// 2D image/video state
-	OaTexture     Image_;
+	OaTexture Image_;
 	OaImagePlanes Planes_;
+	OaOption<OaVideo> Video_;
+	OaOption<OaAudioStream> Audio_;
+	OaMatrix AudioEnvelope_;
 	ImageViewMode ImageMode_ = ImageViewMode::RGB;
 
-	// 3D scene state
-	OaCamera InternalCamera_;  // Default camera if none provided
-
 	OaNavigation Nav_;
+	OaDetectionOverlay DetectionOverlay_;
+	OaF32 StatsAccumMs_ = 0.0F;
+	OaU32 StatsFrameCount_ = 0;
+	OaF32 DisplayFps_ = 0.0F;
+	OaF32 DisplayFrameMs_ = 0.0F;
 
-	// Mode-specific rendering
-	void RenderImage2D(OaUi& InOui);
-	void RenderScene3D(OaUi& InOui);
+	[[nodiscard]] OaStatus OpenImage(OaGraphicsEngine& InEngine);
+	[[nodiscard]] OaStatus OpenVideo(OaGraphicsEngine& InEngine);
+	[[nodiscard]] OaStatus OpenAudio(OaGraphicsEngine& InEngine);
+	[[nodiscard]] bool HasVisualContent() const noexcept;
+	[[nodiscard]] bool HasTimeline() const noexcept;
+	[[nodiscard]] bool IsMediaPlaying() const noexcept;
+	[[nodiscard]] bool IsMediaLooping() const noexcept;
+	[[nodiscard]] OaU64 MediaDurationUs() const noexcept;
+	[[nodiscard]] OaU64 MediaPositionUs() const noexcept;
+	[[nodiscard]] OaPixelRect TimelineRect() noexcept;
+	void ToggleMediaPlayback();
+	void ToggleMediaLoop();
+	void SeekMediaUs(OaU64 InTimestampUs);
+	void SeekMediaFraction(OaF32 InFraction);
+	void StepTemporal(OaI32 InAmount);
+	void ConfigureNavigation(OaDeviceUi& InGpui);
+	void ConfigureOverlay(OaDeviceUi& InGpui);
+	void RegisterCommonInput(OaDeviceUi& InGpui);
+	void RegisterImageInput(OaDeviceUi& InGpui);
+	void RegisterTemporalInput(OaDeviceUi& InGpui);
+	void RenderImage(OaUi& InUi);
+	void RenderVideo(OaUi& InUi);
+	void RenderAudio(OaUi& InUi);
+	void RenderTimeline(OaUi& InUi);
+	void DrawOverlay(OaUi& InUi, OaPixelRect InDestination);
 };

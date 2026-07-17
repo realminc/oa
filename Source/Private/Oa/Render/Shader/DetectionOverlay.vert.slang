@@ -17,6 +17,14 @@ struct PushConstants {
 [[vk::push_constant]] PushConstants pc;
 [[vk::binding(0, 0)]] ByteAddressBuffer heap[];
 
+float4 unpackRgba(uint rgba) {
+	return float4(
+		float((rgba >> 24) & 0xff) / 255.0,
+		float((rgba >> 16) & 0xff) / 255.0,
+		float((rgba >> 8) & 0xff) / 255.0,
+		float(rgba & 0xff) / 255.0);
+}
+
 [shader("vertex")]
 VertexOutput main(uint vertexId : SV_VertexID, uint instanceId : SV_InstanceID) {
 	uint offset = instanceId * 32;
@@ -24,6 +32,7 @@ VertexOutput main(uint vertexId : SV_VertexID, uint instanceId : SV_InstanceID) 
 	float centerY = asfloat(heap[pc.detection_idx].Load(offset + 4));
 	float width = asfloat(heap[pc.detection_idx].Load(offset + 8));
 	float height = asfloat(heap[pc.detection_idx].Load(offset + 12));
+	uint instanceRgba = heap[pc.detection_idx].Load(offset + 24);
 
 	float left = centerX - width * 0.5;
 	float right = centerX + width * 0.5;
@@ -72,6 +81,6 @@ VertexOutput main(uint vertexId : SV_VertexID, uint instanceId : SV_InstanceID) 
 
 	VertexOutput output;
 	output.sv_position = clip;
-	output.color = pc.color;
+	output.color = instanceRgba != 0 ? unpackRgba(instanceRgba) : pc.color;
 	return output;
 }

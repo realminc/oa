@@ -45,6 +45,7 @@ bool OaInputSystem::Dispatch(const OaUiEvent& InEvent) {
 	for (auto& a : Actions_) {
 		if (a.Context != OaInputContext::Global and a.Context != Context_) continue;
 		if (a.Binding.Matches(InEvent)) {
+			if (InEvent.KeyRepeat and not a.AllowRepeat) return true;
 			if (a.Callback) a.Callback();
 			return true;
 		}

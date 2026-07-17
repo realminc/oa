@@ -4,26 +4,14 @@
 #include <gtest/gtest.h>
 #include <Oa/Ml/FnLoss.h>
 #include <Oa/Core/FnMatrix.h>
-#include <Oa/Runtime/Engine.h>
 #include <Oa/Runtime/Context.h>
-#include <Oa/Runtime/RuntimeGlobal.h>
 #include <cmath>
 #include <vector>
 
-static OaComputeEngine* GRt = nullptr;
-
-class TestFnLoss : public ::testing::Test {
-protected:
-	static void SetUpTestSuite() {
-		OaEngineConfig cfg{};
-		cfg.AppName = "TestFnLoss";
-		auto r = OaComputeEngine::Create(cfg);
-		ASSERT_TRUE(r.IsOk()) << r.GetStatus().GetMessage();
-		static OaUniquePtr<OaComputeEngine> rt = std::move(*r);
-		GRt = rt.get();
-		OaRuntimeGlobal::SetRuntime(GRt);
-	}
-};
+// MlTestMain owns the single Vulkan engine for this executable. Creating a
+// second static engine here replaced the process-global runtime and crashed
+// teardown; the fixture intentionally carries no device state of its own.
+class TestFnLoss : public ::testing::Test {};
 
 // Helper to create matrix from host data
 static OaMatrix CreateMatrixFromHost(const std::vector<float>& data, OaMatrixShape shape) {
@@ -398,4 +386,3 @@ TEST_VK(TestFnLoss, SmoothL1_vs_L1) {
 	EXPECT_NEAR(sv, 0.125f, 1e-5f);
 	EXPECT_LT(sv, lv);
 }
-

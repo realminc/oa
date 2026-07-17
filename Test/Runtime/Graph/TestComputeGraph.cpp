@@ -78,6 +78,10 @@ TEST(ComputeGraph, DispatchDescriptorCopiesAllMetadata) {
 	struct Push { OaU32 Count; OaF32 Scale; } push{64, 2.0F};
 
 	OaComputeDispatchDesc desc;
+	desc.Operation = "Scale";
+	desc.ImplementationId = 0x1234U;
+	desc.OperationContractHash = 0x5678U;
+	desc.KernelContentHash = 0x9abcU;
 	desc.Kernel = "Scale";
 	desc.Buffers = buffers;
 	desc.Access = access;
@@ -99,6 +103,10 @@ TEST(ComputeGraph, DispatchDescriptorCopiesAllMetadata) {
 	buffers[0].BindlessIndex = 99;
 	const auto nodes = graph.Nodes();
 	ASSERT_EQ(nodes.Size(), 1U);
+	EXPECT_EQ(nodes[0].Operation, "Scale");
+	EXPECT_EQ(nodes[0].ImplementationId, 0x1234U);
+	EXPECT_EQ(nodes[0].OperationContractHash, 0x5678U);
+	EXPECT_EQ(nodes[0].KernelContentHash, 0x9abcU);
 	EXPECT_EQ(nodes[0].Shader, "Scale");
 	EXPECT_EQ(nodes[0].Buffers[0].BindlessIndex, 7U);
 	EXPECT_EQ(nodes[0].Dtype, 1U);
@@ -110,6 +118,45 @@ TEST(ComputeGraph, DispatchDescriptorCopiesAllMetadata) {
 	std::memcpy(&copied, nodes[0].PushData, sizeof(copied));
 	EXPECT_EQ(copied.Count, 64U);
 	EXPECT_FLOAT_EQ(copied.Scale, 2.0F);
+}
+
+TEST(ComputeGraph, DebugReportIsDeterministicAndHandleFree) {
+	OaVkBuffer a;
+	a.Buffer = reinterpret_cast<void*>(0x11110000);
+	a.Size = 256;
+	OaVkBuffer b;
+	b.Buffer = reinterpret_cast<void*>(0x22220000);
+	b.Size = 512;
+	OaVkBuffer buffers[] = {a, b};
+	OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Write};
+
+	OaComputeDispatchDesc desc;
+	desc.Operation = "MatMulNt";
+	desc.ImplementationId = 0x42U;
+	desc.OperationContractHash = 0x99U;
+	desc.KernelContentHash = 0x123U;
+	desc.Kernel = "GemmTiledFp32_64x64x16";
+	desc.Buffers = buffers;
+	desc.Access = access;
+	desc.GroupsX = 4;
+	desc.GroupsY = 8;
+
+	OaComputeGraph graph;
+	graph.Add(desc);
+	const OaString first = graph.DebugReportJson("unit-matmul");
+	const OaString second = graph.DebugReportJson("unit-matmul");
+	EXPECT_EQ(first, second);
+	const auto text = first.StdStr();
+	EXPECT_NE(text.find("\"schema\": \"oa.execution_graph.v1\""), std::string::npos);
+	EXPECT_NE(text.find("\"operation\": \"MatMulNt\""), std::string::npos);
+	EXPECT_NE(text.find("\"implementation_id\": \"0x0000000000000042\""),
+		std::string::npos);
+	EXPECT_NE(text.find("\"kernel\": \"GemmTiledFp32_64x64x16\""),
+		std::string::npos);
+	EXPECT_NE(text.find("\"resource\": 0"), std::string::npos);
+	EXPECT_NE(text.find("\"access\": \"write\""), std::string::npos);
+	EXPECT_EQ(text.find("11110000"), std::string::npos);
+	EXPECT_EQ(text.find("22220000"), std::string::npos);
 }
 
 TEST(ComputeGraph, ContextRecordRejectsMalformedDescriptor) {
@@ -671,35 +718,97 @@ TEST(ComputeGraph, AllocatorBackedAliasesExecuteCorrectly) {
 	auto* rt = OaComputeEngine::GetGlobal();
 	ASSERT_NE(rt, nullptr);
 	constexpr OaU32 N = 256;
-	OaVec<OaVkBuffer> buffers(5);
-	for (auto& buffer : buffers) {
-		auto result = rt->Allocator.AllocHostVisible(N * sizeof(OaF32));
-		ASSERT_TRUE(result.IsOk());
-		buffer = result.GetValue();
-		rt->RegisterBuffer(buffer);
+	OaVec<OaMatrix> matrices;
+	OaVec<OaVkBuffer> buffers;
+	for (OaU32 i = 0; i < 5U; ++i) {
+		matrices.PushBack(OaFnMatrix::Empty(
+			{static_cast<OaI64>(N)}, OaScalarType::Float32,
+			OaMemoryPlacement::HostUpload));
+		ASSERT_TRUE(matrices.Back().HasStorage());
+		buffers.PushBack(matrices.Back().GetVkBuffer());
 	}
-	auto* input = static_cast<OaF32*>(buffers[0].MappedPtr);
+	auto* input = matrices[0].DataAs<OaF32>();
 	for (OaU32 i = 0; i < N; ++i) input[i] = static_cast<OaF32>(i + 1U);
 	ASSERT_TRUE(rt->Allocator.FlushHostBuffer(buffers[0], 0, buffers[0].Size));
 
 	OaComputeGraph graph;
 	BuildChainGraph(graph, buffers, 4);
-	OaVkBuffer eligible[] = {buffers[1], buffers[3]};
+	OaMatrix* eligible[] = {&matrices[1], &matrices[3]};
+	const auto beforeAlias = rt->Allocator.GetStats();
 	ASSERT_TRUE(graph.MaterializeAliases(*rt, eligible).IsOk());
+	const auto afterAlias = rt->Allocator.GetStats();
 	EXPECT_EQ(graph.MaterializedAliasSavings(), N * sizeof(OaF32));
+	EXPECT_GE(beforeAlias.AllocationBytes, afterAlias.AllocationBytes + N * sizeof(OaF32));
+	EXPECT_EQ(matrices[1].GetVkBuffer().Placement, OaMemoryPlacement::HostUpload);
+	EXPECT_EQ(matrices[1].Data(), matrices[3].Data());
 	ASSERT_TRUE(graph.Execute(*rt).IsOk());
-	ASSERT_TRUE(rt->Allocator.InvalidateHostBuffer(buffers[4], 0, buffers[4].Size));
-	const auto* output = static_cast<const OaF32*>(buffers[4].MappedPtr);
+	ASSERT_TRUE(rt->Allocator.InvalidateHostBuffer(
+		matrices[4].GetVkBuffer(), 0, matrices[4].GetVkBuffer().Size));
+	const auto* output = matrices[4].DataAs<const OaF32>();
 	const OaF32 factor = 1.001F * 1.001F * 1.001F * 1.001F;
 	for (OaU32 i = 0; i < N; ++i) {
 		EXPECT_NEAR(output[i], static_cast<OaF32>(i + 1U) * factor, 1e-4F);
 	}
 
 	graph.Destroy(rt->Device);
-	for (auto& buffer : buffers) {
-		rt->DeregisterBuffer(buffer);
-		rt->Allocator.Free(buffer);
+}
+
+TEST(ComputeGraph, AliasMaterializationRejectsExternallyOwnedTransient) {
+	auto* rt = OaComputeEngine::GetGlobal();
+	ASSERT_NE(rt, nullptr);
+	constexpr OaU32 N = 64;
+	OaVec<OaMatrix> matrices;
+	OaVec<OaVkBuffer> buffers;
+	for (OaU32 i = 0; i < 5U; ++i) {
+		matrices.PushBack(OaFnMatrix::Empty(
+			{static_cast<OaI64>(N)}, OaScalarType::Float32,
+			OaMemoryPlacement::HostUpload));
+		buffers.PushBack(matrices.Back().GetVkBuffer());
 	}
+	OaMatrix retainedView = matrices[1];
+	OaComputeGraph graph;
+	BuildChainGraph(graph, buffers, 4);
+	OaMatrix* eligible[] = {&matrices[1], &matrices[3]};
+	auto status = graph.MaterializeAliases(*rt, eligible);
+	EXPECT_FALSE(status.IsOk());
+	EXPECT_EQ(status.GetCode(), OaStatusCode::FailedPrecondition);
+	EXPECT_EQ(retainedView.GetVkBuffer().Buffer, matrices[1].GetVkBuffer().Buffer);
+}
+
+TEST(ComputeGraph, AllocatorBackedDeviceLocalAliasesExecuteCorrectly) {
+	auto* rt = OaComputeEngine::GetGlobal();
+	ASSERT_NE(rt, nullptr);
+	constexpr OaU32 N = 256;
+	OaVec<OaMatrix> matrices;
+	OaVec<OaVkBuffer> buffers;
+	for (OaU32 i = 0; i < 5U; ++i) {
+		const auto placement = (i == 0U or i == 4U)
+			? OaMemoryPlacement::HostUpload : OaMemoryPlacement::DeviceLocal;
+		matrices.PushBack(OaFnMatrix::Empty(
+			{static_cast<OaI64>(N)}, OaScalarType::Float32, placement));
+		ASSERT_TRUE(matrices.Back().HasStorage());
+		buffers.PushBack(matrices.Back().GetVkBuffer());
+	}
+	auto* input = matrices[0].DataAs<OaF32>();
+	for (OaU32 i = 0; i < N; ++i) input[i] = static_cast<OaF32>(i + 1U);
+	ASSERT_TRUE(rt->Allocator.FlushHostBuffer(buffers[0], 0, buffers[0].Size));
+
+	OaComputeGraph graph;
+	BuildChainGraph(graph, buffers, 4);
+	OaMatrix* eligible[] = {&matrices[1], &matrices[3]};
+	ASSERT_TRUE(graph.MaterializeAliases(*rt, eligible).IsOk());
+	EXPECT_EQ(matrices[1].GetVkBuffer().Placement, OaMemoryPlacement::DeviceLocal);
+	EXPECT_EQ(matrices[3].GetVkBuffer().Placement, OaMemoryPlacement::DeviceLocal);
+	EXPECT_EQ(matrices[1].Data(), nullptr);
+	ASSERT_TRUE(graph.Execute(*rt).IsOk());
+	ASSERT_TRUE(rt->Allocator.InvalidateHostBuffer(
+		matrices[4].GetVkBuffer(), 0, matrices[4].GetVkBuffer().Size));
+	const auto* output = matrices[4].DataAs<const OaF32>();
+	const OaF32 factor = 1.001F * 1.001F * 1.001F * 1.001F;
+	for (OaU32 i = 0; i < N; ++i) {
+		EXPECT_NEAR(output[i], static_cast<OaF32>(i + 1U) * factor, 1e-4F);
+	}
+	graph.Destroy(rt->Device);
 }
 
 TEST(OaDnnPlanner, PartitionsPackedQkvGatedFfnAndFallback) {

@@ -61,7 +61,7 @@ public:
 	// selects a graphics-capable family without needing the surface at device-
 	// creation time, and the resulting device exposes Queues.GraphicsQueue +
 	// GraphicsQueueFamily. Surface-side presentation support is verified later
-	// when the surface is actually attached. See UnifiedExecutionArchitecture.md §3.5.
+	// when the surface is actually attached. See Architecture/OaArchitecture.md §10.
 	[[nodiscard]] OaResult<OaVkDevice> BuildBase(
 		VkInstance InInstance,
 		VkPhysicalDevice InPhysicalDevice,

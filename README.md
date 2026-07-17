@@ -53,11 +53,13 @@ model contracts, training semantics, generation checks, and checkpoint round tri
 #include <Oa/Oa.h>
 
 int main() {
-	OaRuntime runtime;
+	auto result = OaComputeEngine::Create({.AppName = "QuickStart"});
+	if (not result.IsOk()) return 1;
+	auto engine = std::move(*result);
 	auto x = OaFnMatrix::Ones(OaMatrixShape{1024, 1024});
 	auto y = OaFnMatrix::Mul(x, x);
-	if (not runtime.Execute().IsOk()) return 1;
-	return runtime.Sync().IsOk() ? 0 : 1;
+	if (not engine->GetContext().Execute().IsOk()) return 1;
+	return engine->GetContext().Sync().IsOk() ? 0 : 1;
 }
 ```
 
@@ -179,6 +181,8 @@ drivers advertise features they do not compile correctly.
 - [GitHub releases](https://github.com/realminc/oa/releases)
 - [Changelog](CHANGELOG.md)
 - [NLP training benchmark](Docs/Benchmarks/OaNlpSuite.md)
+- [Desktop/mobile NLP validation](Docs/Benchmarks/OaMobileLab.md)
+- [OpenAI Build Week project](BUILD_WEEK.md)
 - [C++ examples](Examples)
 - [Tutorials](Tutorial)
 

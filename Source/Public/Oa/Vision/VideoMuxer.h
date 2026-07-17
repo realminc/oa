@@ -15,11 +15,9 @@
 
 
 // Video muxer - writes encoded packets to MP4 container
-class OaVideoMuxer
-{
+class OaVideoMuxer {
 public:
-	struct CreateInfo
-	{
+	struct CreateInfo {
 		OaVideoCodec Codec = OaVideoCodec::H264;
 		OaU32 Width = 0;
 		OaU32 Height = 0;
@@ -54,7 +52,8 @@ public:
 	void SetCodecConfig(
 		const OaVec<OaU8>& InVps,
 		const OaVec<OaU8>& InSps,
-		const OaVec<OaU8>& InPps);
+		const OaVec<OaU8>& InPps
+	);
 	
 	// Finalize the MP4 file (write moov box and flush)
 	OaStatus Finalize();

@@ -5,6 +5,7 @@
 #include <Oa/Ml/Optim.h>
 #include <Oa/Core/Log.h>
 #include <Oa/Runtime/Context.h>
+#include <Oa/Runtime/Engine.h>
 
 #include <cstring>
 
@@ -201,9 +202,15 @@ void OaModule::LoadWalk(const OamModel& InOam, const OaString& InPrefix) {
 				static_cast<unsigned long long>(entry->NumBytes));
 			continue;
 		}
-		void* dst = p.Data.Data();
-		if (dst == nullptr) continue;
-		std::memcpy(dst, blobData, static_cast<size_t>(entry->NumBytes));
+		if (auto* runtime = OaContext::GetDefault().GetEngine()) {
+			const auto status = runtime->UploadBuffer(
+				p.Data.GetVkBuffer(), 0, blobData, entry->NumBytes);
+			if (!status.IsOk()) {
+				OA_LOG_ERROR(OaLogComponent::Core,
+					"OaModule::Load: upload failed for '%s': %s",
+					name.c_str(), status.GetMessage().CStr());
+			}
+		}
 	}
 	for (auto& buffer : Buffers_) {
 		if (!buffer.Persistent) continue;
@@ -223,9 +230,15 @@ void OaModule::LoadWalk(const OamModel& InOam, const OaString& InPrefix) {
 				"OaModule::Load: state mismatch for '%s'", name.c_str());
 			continue;
 		}
-		void* dst = buffer.Data.Data();
-		if (dst == nullptr) continue;
-		std::memcpy(dst, blobData, static_cast<size_t>(entry->NumBytes));
+		if (auto* runtime = OaContext::GetDefault().GetEngine()) {
+			const auto status = runtime->UploadBuffer(
+				buffer.Data.GetVkBuffer(), 0, blobData, entry->NumBytes);
+			if (!status.IsOk()) {
+				OA_LOG_ERROR(OaLogComponent::Core,
+					"OaModule::Load: state upload failed for '%s': %s",
+					name.c_str(), status.GetMessage().CStr());
+			}
+		}
 	}
 	for (auto& child : Children_) {
 		child.Module->LoadWalk(InOam, JoinPath(InPrefix, child.Name));

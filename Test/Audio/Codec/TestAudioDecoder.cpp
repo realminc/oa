@@ -11,7 +11,6 @@
 #include <Oa/Core/FnMatrix.h>
 #include <Oa/Runtime/Context.h>
 #include <Oa/Runtime/Engine.h>
-#include <Oa/Runtime/RuntimeGlobal.h>
 
 #include <cmath>
 #include <chrono>
@@ -31,7 +30,6 @@ protected:
 		ASSERT_TRUE(r.IsOk()) << r.GetStatus().GetMessage();
 		static OaUniquePtr<OaComputeEngine> rt = std::move(*r);
 		GRt = rt.get();
-		OaRuntimeGlobal::SetRuntime(GRt);
 	}
 
 	// Flush + sync the default context so .At() reads committed values.
@@ -214,7 +212,11 @@ TEST_VK(TestAudioDecoder, AudioStreamPlayPauseSeek)
 	EXPECT_EQ(stream.ChannelCount(), 1U);
 	EXPECT_GT(stream.DurationUs(), 0U);
 	ASSERT_TRUE(stream.Play().IsOk());
-	for (OaI32 retry = 0; retry < 30 and stream.PositionUs() == 0U; ++retry) {
+	// A low-rate source can inherit a 1024-frame device quantum (128 ms at
+	// 8 kHz), and backend startup may miss the first callback deadline. Give
+	// the real device two complete quanta instead of baking workstation timing
+	// into the playback contract.
+	for (OaI32 retry = 0; retry < 200 and stream.PositionUs() == 0U; ++retry) {
 		std::this_thread::sleep_for(std::chrono::milliseconds(5));
 	}
 	stream.Pause();

@@ -1,12 +1,11 @@
 // OaPlot::Figure — top-level container for a grid of OaPlot::Axes.
 //
-// Two terminal sinks (UnifiedExecutionArchitecture.md §3.5):
+// Two terminal sinks (Architecture/OaArchitecture.md §10):
 //   Show()    — opens an interactive OaDeviceUiApp window, blocks until the
 //               user closes it. Re-renders every frame from the recorded
 //               commands so the same figure can be reused on resize.
-//   SaveFig() — allocates an off-screen compose image, replays commands once
-//               (image-only; text rendering is a Phase-2 follow-up), reads
-//               back, writes a PNG via OaFnImage::SaveFile. No window.
+//   SaveFig() — replays image, line and heatmap commands into a fixed-size PNG.
+//               Text glyphs remain interactive-only.
 
 #pragma once
 
@@ -49,7 +48,7 @@ public:
 	// Access the (row, col) axes. Rows and Cols are 0-indexed.
 	[[nodiscard]] Axes& Ax(OaI32 InRow, OaI32 InCol);
 
-	// Figure-level title / labels (Phase-1: drawn at top / margins).
+	// Figure-level title / labels (interactive sink; headless text is pending).
 	void Title(const char* InText);
 	void XLabel(const char* InText);
 	void YLabel(const char* InText);
@@ -60,9 +59,8 @@ public:
 	// user closes the window or the run loop exits.
 	[[nodiscard]] OaStatus Show();
 
-	// Headless render → PNG. The output is sized to (Width, Height) from the
-	// FigureConfig. Phase-1 limitation: image-only — text/line/bar overlays
-	// are skipped in this path (Phase-2 will land an MSDF text rasterizer).
+	// Headless render → PNG. The output is sized to (Width, Height) and includes
+	// images, line plots and heatmaps. Text glyphs are currently omitted.
 	[[nodiscard]] OaStatus SaveFig(const char* InPath);
 
 	// ── Layout query (used by impl + tutorials) ──────────────────────────

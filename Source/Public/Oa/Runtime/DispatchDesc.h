@@ -20,6 +20,13 @@ enum class OaQueueHint : OaU8 {
 // no MatMul, Linear, audio, vision, or autograd knowledge.
 class OaComputeDispatchDesc {
 public:
+	// Optional semantic provenance. These fields identify what the dispatch
+	// implements without teaching the executable graph domain-specific behavior.
+	// A zero id/hash means the lowering did not provide that metadata yet.
+	OaStringView Operation;
+	OaU64 ImplementationId = 0;
+	OaU64 OperationContractHash = 0;
+	OaU64 KernelContentHash = 0;
 	OaStringView Kernel;
 	OaSpan<OaVkBuffer> Buffers;
 	OaSpan<OaSharedPtr<OaVkBuffer>> BufferOwners;

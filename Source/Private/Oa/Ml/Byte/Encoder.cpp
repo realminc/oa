@@ -18,8 +18,11 @@ OaVec<OaU8> OaByteEncoder::Decode(const OaMatrix& InLogits) {
 	auto& ctx = OaContext::GetDefault();
 	(void)ctx.Execute(); (void)ctx.Sync();
 	OaVec<OaU8> result(static_cast<OaUsize>(ids.NumElements()));
-	const OaI32* host = ids.DataAs<const OaI32>();
-	for (OaI64 i = 0; i < ids.NumElements(); ++i) result[static_cast<OaUsize>(i)] = static_cast<OaU8>(host[i]);
+	OaVec<OaI32> host(static_cast<OaUsize>(ids.NumElements()));
+	if (not OaFnMatrix::CopyToHost(ids, host.Data(),
+		static_cast<OaU64>(ids.ByteSize())).IsOk()) return {};
+	for (OaI64 i = 0; i < ids.NumElements(); ++i)
+		result[static_cast<OaUsize>(i)] = static_cast<OaU8>(host[static_cast<OaUsize>(i)]);
 	return result;
 }
 
@@ -29,8 +32,11 @@ OaVec<OaU8> OaByteEncoder::Sample(const OaMatrix& InLogits, OaF32 InTemperature,
 	auto& ctx = OaContext::GetDefault();
 	(void)ctx.Execute(); (void)ctx.Sync();
 	OaVec<OaU8> result(static_cast<OaUsize>(ids.NumElements()));
-	const OaI32* host = ids.DataAs<const OaI32>();
-	for (OaI64 i = 0; i < ids.NumElements(); ++i) result[static_cast<OaUsize>(i)] = static_cast<OaU8>(host[i]);
+	OaVec<OaI32> host(static_cast<OaUsize>(ids.NumElements()));
+	if (not OaFnMatrix::CopyToHost(ids, host.Data(),
+		static_cast<OaU64>(ids.ByteSize())).IsOk()) return {};
+	for (OaI64 i = 0; i < ids.NumElements(); ++i)
+		result[static_cast<OaUsize>(i)] = static_cast<OaU8>(host[static_cast<OaUsize>(i)]);
 	return result;
 }
 

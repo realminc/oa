@@ -17,3 +17,4 @@
 #include <Oa/Vision/FnVideo.h>
 #include <Oa/Vision/JpegDecoder.h>
 #include <Oa/Vision/Detection.h>
+#include <Oa/Vision/FnDetection.h>

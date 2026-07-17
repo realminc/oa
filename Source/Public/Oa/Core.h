@@ -33,7 +33,6 @@
 #include <Oa/Core/Simd.h>       // SIMD: OaSimd::DotF32, OaSimd::ScaleF32 (Google Highway)
 #include <Oa/Core/MatrixShape.h>      // OaMatrixShape, OA_MAX_TENSOR_DIMS
 // Complex.h removed along with the SSM module.
-#include <Oa/Core/Prefetch.h>   // Async staging: OaPrefetchPipeline (double-buffer CPU→GPU)
 #include <Oa/Core/Constant.h>   // Branding: ASCII banners, app subtitles, crypto info
 
 #include <Oa/Core/Matrix.h>         // OaStride, OaMatrix, OaMemoryBlock

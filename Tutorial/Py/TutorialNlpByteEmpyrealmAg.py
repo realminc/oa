@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """OA Python Tutorial — Byte-Level Empyrealm SSM, all-position LM (Autograd).
 
-Python port of Tutorial/Ml/TutorialNlpByteEmpyrealmAg.cpp. The second state-space
+Python port of Tutorial/Ml/Nlp/TutorialNlpByteEmpyrealmAg.cpp. The second state-space
 member of the NLP fair-comparison suite: the fused
 Empyrealm SSM core (its own internal embedding + mixer + flat residual), same
 all-position task / corpus / dims as the rest.

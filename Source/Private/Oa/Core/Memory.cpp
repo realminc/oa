@@ -4,7 +4,6 @@
 //
 // Contains only what can't be inlined:
 //   - Non-temporal streaming copy (AVX2/AVX-512)
-//   - Memset/Memzero (AVX2/AVX-512)
 //   - MemEqual (AVX2/AVX-512)
 //   - Aligned allocation
 //
@@ -17,7 +16,6 @@
 #include <cctype>
 #include <cerrno>
 #include <cstdlib>
-#include <limits>
 
 // SIMD intrinsics
 #if defined(__x86_64__) || defined(_M_X64)
@@ -41,27 +39,8 @@ static bool HasAVX512F() {
 
 static const bool g_HasAVX512 = HasAVX512F();
 
-static OaUsize InitOaMemcpyNtMinBytes() {
-	constexpr OaUsize kDefault = 2097152;
-	const char* env = std::getenv("OA_MEMCPY_NT_MIN");
-	if (!env || !*env) return kDefault;
-	char* end = nullptr;
-	errno = 0;
-	unsigned long long val = std::strtoull(env, &end, 10);
-	if (errno == ERANGE) return std::numeric_limits<OaUsize>::max();
-	if (end == env) return kDefault;
-	while (*end != '\0' && std::isspace(static_cast<unsigned char>(*end))) ++end;
-	if (*end != '\0') return kDefault;
-	if (val == 0ULL) return std::numeric_limits<OaUsize>::max();
-	if (val > static_cast<unsigned long long>(std::numeric_limits<OaUsize>::max()))
-		return std::numeric_limits<OaUsize>::max();
-	return static_cast<OaUsize>(val);
-}
-
-const OaUsize g_OaMemcpyNtMinBytes = InitOaMemcpyNtMinBytes();
-
 static OaUsize InitOaMemcpyNtPrefetchBytes() {
-	constexpr OaUsize kDefault = 512;
+	constexpr OaUsize kDefault = 0;
 	constexpr OaUsize kMax = 8192;
 	const char* env = std::getenv("OA_MEMCPY_NT_PREFETCH");
 	if (!env || !*env) return kDefault;
@@ -80,11 +59,11 @@ static OaUsize InitOaMemcpyNtPrefetchBytes() {
 static const OaUsize g_OaMemcpyNtPrefetchBytes = InitOaMemcpyNtPrefetchBytes();
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// NON-TEMPORAL STREAMING COPY (>2MB sweet spot)
+// EXPLICIT NON-TEMPORAL STREAMING COPY
 // ═══════════════════════════════════════════════════════════════════════════════
-// Bypasses CPU cache — data goes straight to RAM.
-// 33-51% faster than glibc for huge copies (4-64MB).
-// glibc pollutes the cache; we don't.
+// Bypasses normal cache allocation. This is a semantic choice for one-way
+// uploads (for example a mapped discrete-GPU BAR), not a universally faster
+// memcpy selected from the byte count alone.
 
 #if defined(__AVX512F__)
 __attribute__((target("avx512f")))
@@ -174,137 +153,8 @@ void* OaMemcpyNT(void* InDst, const void* InSrc, OaUsize InSize) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// MEMSET (AVX2/AVX-512)
-// ═══════════════════════════════════════════════════════════════════════════════
-
-void* OaMemset(void* InDst, OaI32 InValue, OaUsize InSize) {
-	if (InSize == 0) return InDst;
-	if (InSize < 64) return std::memset(InDst, InValue, InSize);
-
-	OaByte* Dst = static_cast<OaByte*>(InDst);
-	OaByte Val = static_cast<OaByte>(InValue);
-
-#if defined(__AVX512F__)
-	if (g_HasAVX512) {
-		__m512i Z = _mm512_set1_epi8(Val);
-		while (InSize >= 256) {
-			_mm512_storeu_si512(Dst, Z);
-			_mm512_storeu_si512(Dst + 64, Z);
-			_mm512_storeu_si512(Dst + 128, Z);
-			_mm512_storeu_si512(Dst + 192, Z);
-			Dst += 256; InSize -= 256;
-		}
-		while (InSize >= 64) {
-			_mm512_storeu_si512(Dst, Z);
-			Dst += 64; InSize -= 64;
-		}
-		if (InSize > 0) std::memset(Dst, InValue, InSize);
-		return InDst;
-	}
-#endif
-
-#if defined(__AVX2__)
-	{
-		__m256i Y = _mm256_set1_epi8(Val);
-		while (InSize >= 128) {
-			_mm256_storeu_si256(reinterpret_cast<__m256i*>(Dst), Y);
-			_mm256_storeu_si256(reinterpret_cast<__m256i*>(Dst + 32), Y);
-			_mm256_storeu_si256(reinterpret_cast<__m256i*>(Dst + 64), Y);
-			_mm256_storeu_si256(reinterpret_cast<__m256i*>(Dst + 96), Y);
-			Dst += 128; InSize -= 128;
-		}
-		while (InSize >= 32) {
-			_mm256_storeu_si256(reinterpret_cast<__m256i*>(Dst), Y);
-			Dst += 32; InSize -= 32;
-		}
-	}
-#endif
-
-	if (InSize > 0) std::memset(Dst, InValue, InSize);
-	return InDst;
-}
-
-void* OaMemzero(void* InDst, OaUsize InSize) {
-	if (InSize == 0) return InDst;
-	if (InSize < 64) return std::memset(InDst, 0, InSize);
-
-	OaByte* Dst = static_cast<OaByte*>(InDst);
-
-	bool UseNT = InSize >= g_OaMemcpyNtMinBytes;
-
-#if defined(__AVX512F__)
-	if (g_HasAVX512) {
-		__m512i Zero = _mm512_setzero_si512();
-		if (UseNT) {
-			OaUsize Align = (64 - (reinterpret_cast<OaUsize>(Dst) & 63)) & 63;
-			if (Align > 0) { std::memset(Dst, 0, Align); Dst += Align; InSize -= Align; }
-			while (InSize >= 256) {
-				_mm512_stream_si512(reinterpret_cast<__m512i*>(Dst), Zero);
-				_mm512_stream_si512(reinterpret_cast<__m512i*>(Dst + 64), Zero);
-				_mm512_stream_si512(reinterpret_cast<__m512i*>(Dst + 128), Zero);
-				_mm512_stream_si512(reinterpret_cast<__m512i*>(Dst + 192), Zero);
-				Dst += 256; InSize -= 256;
-			}
-			_mm_sfence();
-		} else {
-			while (InSize >= 256) {
-				_mm512_storeu_si512(Dst, Zero);
-				_mm512_storeu_si512(Dst + 64, Zero);
-				_mm512_storeu_si512(Dst + 128, Zero);
-				_mm512_storeu_si512(Dst + 192, Zero);
-				Dst += 256; InSize -= 256;
-			}
-		}
-		while (InSize >= 64) {
-			_mm512_storeu_si512(Dst, Zero);
-			Dst += 64; InSize -= 64;
-		}
-		if (InSize > 0) std::memset(Dst, 0, InSize);
-		return InDst;
-	}
-#endif
-
-#if defined(__AVX2__)
-	{
-		__m256i Zero = _mm256_setzero_si256();
-		if (UseNT) {
-			OaUsize Align = (32 - (reinterpret_cast<OaUsize>(Dst) & 31)) & 31;
-			if (Align > 0) { std::memset(Dst, 0, Align); Dst += Align; InSize -= Align; }
-			while (InSize >= 128) {
-				_mm256_stream_si256(reinterpret_cast<__m256i*>(Dst), Zero);
-				_mm256_stream_si256(reinterpret_cast<__m256i*>(Dst + 32), Zero);
-				_mm256_stream_si256(reinterpret_cast<__m256i*>(Dst + 64), Zero);
-				_mm256_stream_si256(reinterpret_cast<__m256i*>(Dst + 96), Zero);
-				Dst += 128; InSize -= 128;
-			}
-			_mm_sfence();
-		} else {
-			while (InSize >= 128) {
-				_mm256_storeu_si256(reinterpret_cast<__m256i*>(Dst), Zero);
-				_mm256_storeu_si256(reinterpret_cast<__m256i*>(Dst + 32), Zero);
-				_mm256_storeu_si256(reinterpret_cast<__m256i*>(Dst + 64), Zero);
-				_mm256_storeu_si256(reinterpret_cast<__m256i*>(Dst + 96), Zero);
-				Dst += 128; InSize -= 128;
-			}
-		}
-		while (InSize >= 32) {
-			_mm256_storeu_si256(reinterpret_cast<__m256i*>(Dst), Zero);
-			Dst += 32; InSize -= 32;
-		}
-	}
-#endif
-
-	if (InSize > 0) std::memset(Dst, 0, InSize);
-	return InDst;
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
 // MEMCMP / MEMEQUAL
 // ═══════════════════════════════════════════════════════════════════════════════
-
-OaI32 OaMemcmp(const void* InA, const void* InB, OaUsize InSize) {
-	return std::memcmp(InA, InB, InSize);
-}
 
 OaBool OaMemEqual(const void* InA, const void* InB, OaUsize InSize) {
 	if (InA == InB || InSize == 0) return true;

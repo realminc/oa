@@ -138,6 +138,14 @@ void BindVisionImage(nb::module_& m) {
         return matrix_ptr(OaFnImage::Composite(a, b, mask));
     }, nb::arg("a"), nb::arg("b"), nb::arg("mask"),
        nb::rv_policy::take_ownership);
+    m.def("SegmentationOverlay", [](const OaMatrix& image,
+                                      const OaMatrix& mask,
+                                      const OaMatrix& palette,
+                                      OaF32 alpha) {
+        return matrix_ptr(OaFnImage::SegmentationOverlay(
+            image, mask, palette, alpha));
+    }, nb::arg("image"), nb::arg("mask"), nb::arg("palette"),
+       nb::arg("alpha") = 0.5F, nb::rv_policy::take_ownership);
     m.def("Erase", [](const OaMatrix& image, OaU32 x, OaU32 y,
                         OaU32 width, OaU32 height, OaF32 value) {
         return matrix_ptr(OaFnImage::Erase(image, x, y, width, height, value));

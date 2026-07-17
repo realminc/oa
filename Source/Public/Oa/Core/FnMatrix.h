@@ -22,14 +22,15 @@ struct OaTopKResult {
 namespace OaFnMatrix {
 
 // --- Configuration ---
-// SetRuntime / GetRuntime have moved to OaRuntimeGlobal (internal). OaFn
-// bodies route through OaContext::GetDefault() — they no longer reach the
-// runtime themselves. See Source/Public/Oa/Runtime/RuntimeGlobal.h.
+// Global engine selection is internal runtime plumbing. OaFn bodies record through the
+// current engine-owned OaContext and do not maintain another ownership layer here.
 void SetWeightDtype(OaScalarType InDtype);
 [[nodiscard]] OaScalarType GetWeightDtype();
 
 // --- Factory functions ---
-[[nodiscard]] OaMatrix Empty(OaMatrixShape InShape, OaScalarType InDtype = GetWeightDtype());
+[[nodiscard]] OaMatrix Empty(OaMatrixShape InShape,
+	OaScalarType InDtype = GetWeightDtype(),
+	OaMemoryPlacement InPlacement = OaMemoryPlacement::Auto);
 [[nodiscard]] OaMatrix Zeros(OaMatrixShape InShape, OaScalarType InDtype = GetWeightDtype());
 [[nodiscard]] OaMatrix Ones(OaMatrixShape InShape, OaScalarType InDtype = GetWeightDtype());
 [[nodiscard]] OaMatrix Full(OaMatrixShape InShape, OaF64 InValue, OaScalarType InDtype = GetWeightDtype());

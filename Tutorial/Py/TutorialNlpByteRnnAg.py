@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """OA Python Tutorial — Byte-Level Recurrent RNN, all-position LM (Autograd).
 
-Python port of Tutorial/Ml/TutorialNlpByteRnnAg.cpp. The recurrent-RNN member of
+Python port of Tutorial/Ml/Nlp/TutorialNlpByteRnnAg.cpp. The recurrent-RNN member of
 the NLP fair-comparison suite: every tutorial
 trains the same all-position next-token task on the same corpus with the same dims.
 

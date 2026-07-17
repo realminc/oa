@@ -20,7 +20,7 @@ struct OaVideoFrame;
 
 class OaContext {
 public:
-	static OaContext* Create(OaEngine* InEngine);
+	static OaContext* Create(OaComputeEngine* InEngine);
 	~OaContext();
 
 	OaContext(const OaContext&) = delete;
@@ -29,6 +29,7 @@ public:
 	OaContext& operator=(OaContext&&) noexcept = delete;
 
 	static void SetDefault(OaContext* InContext);
+	[[nodiscard]] static OaContext* GetDefaultPtr() noexcept;
 	[[nodiscard]] static OaContext& GetDefault();
 
 	// Canonical semantic-to-runtime boundary. The descriptor is validated and
@@ -43,7 +44,11 @@ public:
 		OaU32 InPushSize,
 		OaU32 InGroupsX,
 		OaU32 InGroupsY = 1,
-		OaU32 InGroupsZ = 1
+		OaU32 InGroupsZ = 1,
+		OaStringView InOperation = {},
+		OaU64 InImplementationId = 0,
+		OaU64 InOperationContractHash = 0,
+		OaU64 InKernelContentHash = 0
 	);
 
 	void Add(
@@ -54,7 +59,11 @@ public:
 		OaU32 InPushSize,
 		OaU32 InGroupsX,
 		OaU32 InGroupsY = 1,
-		OaU32 InGroupsZ = 1
+		OaU32 InGroupsZ = 1,
+		OaStringView InOperation = {},
+		OaU64 InImplementationId = 0,
+		OaU64 InOperationContractHash = 0,
+		OaU64 InKernelContentHash = 0
 	);
 
 	// GPU-authored launch dimensions. InIndirectArgs must contain one
@@ -216,10 +225,14 @@ public:
 
 	class Scope {
 	public:
-		explicit Scope(OaContext& InCtx) : Ctx_(InCtx) {}
+		explicit Scope(OaContext& InCtx)
+			: Ctx_(InCtx), Previous_(OaContext::GetDefaultPtr()) {
+			OaContext::SetDefault(&Ctx_);
+		}
 		~Scope() {
 			(void)Ctx_.Execute();
 			(void)Ctx_.Sync();
+			OaContext::SetDefault(Previous_);
 		}
 		Scope(const Scope&) = delete;
 		Scope& operator=(const Scope&) = delete;
@@ -227,10 +240,11 @@ public:
 		Scope& operator=(Scope&&) noexcept = delete;
 	private:
 		OaContext& Ctx_;
+		OaContext* Previous_ = nullptr;
 	};
 
 	[[nodiscard]] OaEngine& Engine() const noexcept;
-	[[nodiscard]] OaComputeEngine* VkCompute() const noexcept { return Runtime_; }
+	[[nodiscard]] OaComputeEngine* VkCompute() const noexcept { return Engine_; }
 	[[nodiscard]] OaGraphicsEngine* VkGraphics() const noexcept;
 	[[nodiscard]] bool HasCompute() const noexcept;
 	[[nodiscard]] bool HasGraphics() const noexcept;
@@ -238,7 +252,7 @@ public:
 	[[nodiscard]] bool HasMeshShader() const noexcept;
 	[[nodiscard]] bool HasRayTrace() const noexcept;
 	[[nodiscard]] bool IsRemote() const noexcept;
-	[[nodiscard]] OaComputeEngine* GetRuntime() const noexcept { return Runtime_; }
+	[[nodiscard]] OaComputeEngine* GetEngine() const noexcept { return Engine_; }
 	[[nodiscard]] OaComputeGraph* Graph() const noexcept { return Graph_; }
 	[[nodiscard]] OaU32 NodeCount() const noexcept;
 	[[nodiscard]] const OaContextExecutionStats& LastExecutionStats() const noexcept {
@@ -257,13 +271,13 @@ public:
 	[[nodiscard]] OaBool IsStableResourceFrameActive() const noexcept {
 		return StableResourceFrameActive_;
 	}
-	[[nodiscard]] OaSharedPtr<OaVkBuffer> AllocateMatrixBuffer(OaU64 InBytes);
+	[[nodiscard]] OaSharedPtr<OaVkBuffer> AllocateMatrixBuffer(
+		OaU64 InBytes, OaMemoryPlacement InPlacement = OaMemoryPlacement::Auto);
 
 private:
-	friend void OaRuntimeGlobal::SetRuntime(OaComputeEngine* InRuntime);
-	explicit OaContext(OaComputeEngine* InRuntime);
+	explicit OaContext(OaComputeEngine* InEngine);
 
-	OaComputeEngine* Runtime_;
+	OaComputeEngine* Engine_;
 	OaComputeGraph* Graph_;
 	OaBool Executed_ = false;
 	bool Training_ = true;

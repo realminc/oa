@@ -107,9 +107,9 @@ static void BuildTransferLinks(OaDeviceMesh& InOutMesh) {
 				aDiscreteLike && bDiscreteLike;
 
 			#ifdef OA_ANDROID_ML
-			bool dmaBuf = false;
+			bool opaqueFd = false;
 			#else
-			bool dmaBuf = OaCanUseDmaBuf(a.Device, b.Device);
+			bool opaqueFd = OaCanShareOpaqueFd(a.Device, b.Device);
 			#endif
 
 			OaTransferLink link;
@@ -119,8 +119,8 @@ static void BuildTransferLinks(OaDeviceMesh& InOutMesh) {
 			link.SharedMemory = shared;
 			link.PeerToPeer = p2p;
 			link.Topology = topo;
-			link.DmaBufCapable = dmaBuf;
-			link.BestTransport = dmaBuf ? OaTransport::DmaBuf : OaTransport::HostStaging;
+			link.OpaqueFdCapable = opaqueFd;
+			link.BestTransport = opaqueFd ? OaTransport::OpaqueFd : OaTransport::HostStaging;
 			InOutMesh.Links.PushBack(link);
 		}
 	}
@@ -544,7 +544,7 @@ void OaDeviceMesh::PrintTopology() const {
 			static_cast<int>(OaTransportName(link.BestTransport).size()), OaTransportName(link.BestTransport).data(),
 			link.PeerToPeer ? " [P2P]" : "",
 			link.SharedMemory ? " [shared]" : "",
-			link.DmaBufCapable ? " [DMA-BUF]" : ""
+			link.OpaqueFdCapable ? " [OPAQUE_FD]" : ""
 		);
 	}
 }

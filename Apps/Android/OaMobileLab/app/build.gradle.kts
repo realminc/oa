@@ -6,6 +6,20 @@ val oaRootDirectory = rootProject.file("../../..").canonicalFile
 val turnipAssetsDirectory =
 	oaRootDirectory.resolve("Build/Android/OaMobileLab/Assets")
 
+val releaseSigningEnvironment = mapOf(
+	"storeFile" to providers.environmentVariable("OA_ANDROID_KEYSTORE").orNull,
+	"storePassword" to providers.environmentVariable("OA_ANDROID_KEYSTORE_PASSWORD").orNull,
+	"keyAlias" to providers.environmentVariable("OA_ANDROID_KEY_ALIAS").orNull,
+	"keyPassword" to providers.environmentVariable("OA_ANDROID_KEY_PASSWORD").orNull,
+)
+val configuredReleaseSigningValues = releaseSigningEnvironment.values.count { !it.isNullOrBlank() }
+if (configuredReleaseSigningValues != 0 && configuredReleaseSigningValues != releaseSigningEnvironment.size) {
+	throw GradleException(
+		"Release signing requires OA_ANDROID_KEYSTORE, OA_ANDROID_KEYSTORE_PASSWORD, " +
+			"OA_ANDROID_KEY_ALIAS, and OA_ANDROID_KEY_PASSWORD",
+	)
+}
+
 val fetchTurnip by tasks.registering(Exec::class) {
 	group = "oa android"
 	description = "Fetches and verifies the pinned Mesa Turnip driver"
@@ -27,8 +41,8 @@ android {
 		applicationId = "com.oa.mobilelab"
 		minSdk = 33
 		targetSdk = 36
-		versionCode = 1
-		versionName = "0.3.0-lab"
+		versionCode = 2
+		versionName = "0.4.0-build-week"
 
 		ndk {
 			abiFilters += "arm64-v8a"
@@ -46,6 +60,17 @@ android {
 		jniLibs.useLegacyPackaging = true
 	}
 
+	signingConfigs {
+		if (configuredReleaseSigningValues == releaseSigningEnvironment.size) {
+			create("release") {
+				storeFile = file(releaseSigningEnvironment.getValue("storeFile")!!)
+				storePassword = releaseSigningEnvironment.getValue("storePassword")
+				keyAlias = releaseSigningEnvironment.getValue("keyAlias")
+				keyPassword = releaseSigningEnvironment.getValue("keyPassword")
+			}
+		}
+	}
+
 	buildTypes {
 		debug {
 			isDebuggable = true
@@ -54,6 +79,7 @@ android {
 		}
 		release {
 			isMinifyEnabled = false
+			signingConfig = signingConfigs.findByName("release")
 		}
 	}
 

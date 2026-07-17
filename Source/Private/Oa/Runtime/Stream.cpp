@@ -380,15 +380,32 @@ OaStatus OaVkStream::Record(
 }
 
 void OaVkStream::RecordCopyBuffer(const OaVkBuffer& InSrc, const OaVkBuffer& InDst, OaU64 InSize) {
-	VkBufferCopy region = {
-		.size = InSize,
-	};
+	const OaBufferCopyRegion region{.Size = InSize};
+	RecordCopyBufferRegions(
+		InSrc, InDst, OaSpan<const OaBufferCopyRegion>(&region, 1));
+}
 
+void OaVkStream::RecordCopyBufferRegions(
+	const OaVkBuffer& InSrc,
+	const OaVkBuffer& InDst,
+	OaSpan<const OaBufferCopyRegion> InRegions)
+{
+	if (InRegions.Empty()) return;
+	OaVec<VkBufferCopy> regions;
+	regions.Reserve(InRegions.Size());
+	for (const OaBufferCopyRegion& region : InRegions) {
+		if (region.Size == 0) continue;
+		regions.PushBack(VkBufferCopy{
+			.srcOffset = region.SrcOffset,
+			.dstOffset = region.DstOffset,
+			.size = region.Size,
+		});
+	}
+	if (regions.Empty()) return;
 	vkCmdCopyBuffer(
 		static_cast<VkCommandBuffer>(CommandBuffer),
 		static_cast<VkBuffer>(InSrc.Buffer), static_cast<VkBuffer>(InDst.Buffer),
-		1, &region
-	);
+		static_cast<OaU32>(regions.Size()), regions.Data());
 }
 
 void OaVkStream::RecordBufferBarrier() {

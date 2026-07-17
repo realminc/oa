@@ -51,16 +51,30 @@ void BindCoreFnMatrix(nb::module_& m) {
     // ═════════════════════════════════════════════════════════════════════════
 
     m.def("CopyToHost", [](const OaMatrix& mat) -> nb::object {
-        if (mat.GetDtype() == OaScalarType::UInt8) {
-            std::vector<uint8_t> host(static_cast<size_t>(mat.NumElements()));
-            throw_if_error(OaFnMatrix::CopyToHost(mat, host.data(), host.size() * sizeof(uint8_t)));
+        const auto copyTyped = [&mat]<typename T>() -> nb::object {
+            std::vector<T> host(static_cast<size_t>(mat.NumElements()));
+            throw_if_error(OaFnMatrix::CopyToHost(mat, host.data(), host.size() * sizeof(T)));
             return nb::cast(host);
-        } else {
-            std::vector<float> host(static_cast<size_t>(mat.NumElements()));
-            throw_if_error(OaFnMatrix::CopyToHost(mat, host.data(), host.size() * sizeof(float)));
-            return nb::cast(host);
+        };
+
+        switch (mat.GetDtype()) {
+            case OaScalarType::Float32: return copyTyped.template operator()<OaF32>();
+            case OaScalarType::Float64: return copyTyped.template operator()<OaF64>();
+            case OaScalarType::Int8:    return copyTyped.template operator()<OaI8>();
+            case OaScalarType::Int16:   return copyTyped.template operator()<OaI16>();
+            case OaScalarType::Int32:   return copyTyped.template operator()<OaI32>();
+            case OaScalarType::Int64:   return copyTyped.template operator()<OaI64>();
+            case OaScalarType::UInt8:
+            case OaScalarType::Bool:    return copyTyped.template operator()<OaU8>();
+            case OaScalarType::UInt16:  return copyTyped.template operator()<OaU16>();
+            case OaScalarType::UInt32:  return copyTyped.template operator()<OaU32>();
+            case OaScalarType::UInt64:  return copyTyped.template operator()<OaU64>();
+            default:
+                throw nb::type_error(
+                    "CopyToHost does not yet decode this storage dtype; cast the matrix to "
+                    "Float32 or an integer dtype before readback");
         }
-    }, nb::arg("mat"), "Copy device matrix to host as a list (dtype-aware: uint8 or float32)");
+    }, nb::arg("mat"), "Copy a device matrix to a Python list without reinterpreting its dtype");
 
     m.def("CopyToHost2D", [](const OaMatrix& mat, OaI64 rows, OaI64 cols) -> std::vector<std::vector<float>> {
         std::vector<float> flat(static_cast<size_t>(mat.NumElements()));

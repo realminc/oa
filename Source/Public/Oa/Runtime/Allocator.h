@@ -17,6 +17,19 @@ static constexpr OaU8 OA_VK_BUFFER_FLAG_NONE     = 0;
 static constexpr OaU8 OA_VK_BUFFER_FLAG_BAR      = 1;
 static constexpr OaU8 OA_VK_BUFFER_FLAG_ALIAS    = 2;
 static constexpr OaU8 OA_VK_BUFFER_FLAG_IMPORTED = 4;
+static constexpr OaU8 OA_VK_BUFFER_FLAG_TRANSIENT = 8;
+
+// Memory intent is part of the buffer contract. `Auto` is resolved by the
+// engine from the selected device: unified/host-visible on integrated GPUs,
+// device-local on discrete GPUs. Transfer-only placements remain explicitly
+// mapped and must not be used as long-lived compute storage.
+enum class OaMemoryPlacement : OaU8 {
+	Auto = 0,
+	DeviceLocal,
+	HostUpload,
+	HostReadback,
+	Unified,
+};
 
 
 class OaVkBuffer {
@@ -25,9 +38,13 @@ public:
 	// Data, class members.
 	void* Buffer = nullptr;
 	void* Allocation = nullptr;
+	// Logical range visible to callers. Capacity is the physical allocation size
+	// retained by caches/arenas and may be larger after buffer reuse.
 	OaU64 Size = 0;
+	OaU64 Capacity = 0;
 	void* MappedPtr = nullptr;
 	OaU8 Flags = OA_VK_BUFFER_FLAG_NONE;
+	OaMemoryPlacement Placement = OaMemoryPlacement::Auto;
 	OaU32 BindlessIndex = UINT32_MAX;
 	// Owning mesh node: matches OaDeviceNode::Index when OaComputeEngine has a device mesh (0 = primary).
 	OaU32 NodeIndex = 0;
@@ -35,6 +52,11 @@ public:
 	// Methods.
 	[[nodiscard]] OA_FORCEINLINE bool IsBar() const { return Flags & OA_VK_BUFFER_FLAG_BAR; }
 	[[nodiscard]] OA_FORCEINLINE bool IsImported() const { return Flags & OA_VK_BUFFER_FLAG_IMPORTED; }
+	[[nodiscard]] OA_FORCEINLINE bool IsTransient() const { return Flags & OA_VK_BUFFER_FLAG_TRANSIENT; }
+	[[nodiscard]] OA_FORCEINLINE bool IsHostVisible() const { return MappedPtr != nullptr; }
+	[[nodiscard]] OA_FORCEINLINE bool IsDeviceLocal() const {
+		return Placement == OaMemoryPlacement::DeviceLocal || Placement == OaMemoryPlacement::Unified;
+	}
 };
 
 
@@ -62,6 +84,7 @@ public:
 
 	[[nodiscard]] OaResult<OaVkBuffer> AllocDevice(OaU64 InSize);
 	[[nodiscard]] OaResult<OaVkBuffer> AllocHostVisible(OaU64 InSize);
+	[[nodiscard]] OaResult<OaVkBuffer> AllocHostReadback(OaU64 InSize);
 	[[nodiscard]] OaResult<OaVkBuffer> AllocBar(OaU64 InSize);
 	[[nodiscard]] OaResult<OaVkBuffer> AllocPreprocessBuffer(OaU64 InSize);
 	void Free(OaVkBuffer& InOutBuffer);
@@ -84,7 +107,9 @@ public:
 
 	// Aliased allocation — CAN_ALIAS flag, shareable backing memory.
 	// The returned buffer can have other buffers bound to the same memory.
-	[[nodiscard]] OaResult<OaVkBuffer> AllocAliased(OaU64 InSize);
+	[[nodiscard]] OaResult<OaVkBuffer> AllocAliased(
+		OaU64 InSize,
+		OaMemoryPlacement InPlacement = OaMemoryPlacement::HostUpload);
 
 	// Create a new VkBuffer bound to an existing allocation's memory.
 	// The existing buffer must have been allocated with AllocAliased().

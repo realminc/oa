@@ -51,6 +51,7 @@ struct OaKeyAction {
 	OaString       Name;
 	OaKeyBinding   Binding;
 	OaInputContext Context  = OaInputContext::Global;
+	bool           AllowRepeat = false;
 	OaFunc<void()> Callback;
 };
 

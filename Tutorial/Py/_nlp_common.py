@@ -1,6 +1,6 @@
 """Shared scaffolding for the OA Python NLP fair-comparison suite.
 
-Python port of Tutorial/Ml/TutorialNlpCommon.h. Every NLP tutorial trains the SAME
+Python port of Tutorial/Ml/Nlp/TutorialNlpCommon.h. Every NLP tutorial trains the SAME
 all-position next-token task on the SAME corpus with the SAME dims, so their
 loss/accuracy curves are directly comparable and the set doubles as a regression
 test for the recurrent (and, later, attention/SSM) autograd paths through Python.

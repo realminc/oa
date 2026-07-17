@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "source_roots": [
+    "Source/Public/Oa",
+    "Source/Private/Oa"
+  ],
+  "modules": {
+    "Animation": {"allows": ["Core", "Runtime"]},
+    "Audio": {"allows": ["Core", "Runtime"]},
+    "Core": {"allows": []},
+    "Crypto": {"allows": ["Core", "Runtime"]},
+    "Data": {"allows": ["Core"]},
+    "Ml": {"allows": ["Core", "Runtime"]},
+    "Network": {"allows": ["Core", "Runtime"]},
+    "Render": {"allows": ["Core", "Runtime"]},
+    "Runtime": {"allows": ["Core"]},
+    "Ui": {"allows": ["Audio", "Core", "Ml", "Render", "Runtime", "Vision"]},
+    "Vision": {"allows": ["Core", "Runtime"]}
+  }
+}

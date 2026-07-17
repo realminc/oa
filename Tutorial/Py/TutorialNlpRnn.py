@@ -2,7 +2,7 @@
 """
 OA Python Tutorial — Character Text Generation (Manual Backward)
 
-Python port of Tutorial/Ml/TutorialNlpRnn.cpp.
+Python port of Tutorial/Ml/Nlp/TutorialNlpRnn.cpp.
 
 Model: Embedding → Reshape → Linear+Tanh → Linear (head)
 Loss: CrossEntropy

@@ -215,7 +215,33 @@ OaMatrix OaFnMatrix::Softmax(const OaMatrix& InA, OaI32 InDim) {
 }
 
 OaMatrix OaFnMatrix::LogSoftmax(const OaMatrix& InA, OaI32 InDim) {
-	return Log(Softmax(InA, InDim));
+	if (InA.Rank() != 1 && InA.Rank() != 2) return {};
+	if (InA.Rank() == 2 && InDim == 0) {
+		OaMatrix transposed = OaFnMatrix::Transpose(InA, 0, 1);
+		OaMatrix output = OaFnMatrix::LogSoftmax(transposed, -1);
+		return OaFnMatrix::Transpose(output, 0, 1);
+	}
+	if (InDim != -1 && InDim != InA.Rank() - 1) return {};
+
+	auto& ctx = OaContext::GetDefault();
+	const OaU32 rows = InA.Rank() == 2
+		? static_cast<OaU32>(InA.Size(0)) : 1U;
+	const OaU32 cols = InA.Rank() == 2
+		? static_cast<OaU32>(InA.Size(1))
+		: static_cast<OaU32>(InA.NumElements());
+	OaMatrix output = OaFnMatrix::Empty(InA.GetShape(), InA.GetDtype());
+	struct { OaU32 Rows; OaU32 Cols; } push{rows, cols};
+	OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Write};
+	ctx.Add("LogSoftmax", {&InA, &output}, access, &push, sizeof(push), rows);
+	if (OaFnAutograd::IsEnabled() && InA.RequiresGrad()) {
+		auto gradFn = OaMakeSharedPtr<OaGradLogSoftmax>();
+		gradFn->Saved_ = OaVec<OaMatrix>{output};
+		gradFn->SetGraphInputs(OaVec<OaMatrix>{InA});
+		gradFn->SequenceNr_ = OaFnAutograd::NextSeq();
+		gradFn->OutputShape_ = output.GetShape();
+		output.MutAutograd().GradFn = gradFn;
+	}
+	return output;
 }
 
 

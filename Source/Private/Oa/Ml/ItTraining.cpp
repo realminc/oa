@@ -5,7 +5,9 @@
 #include <Oa/Ml/Metric.h>
 #include <Oa/Ml/Optim.h>
 #include <Oa/Ml/TrainingProgram.h>
+#include <Oa/Ml/TrainingSession.h>
 #include <Oa/Core/EnvFlag.h>
+#include <Oa/Core/FileIo.h>
 #include <Oa/Core/FnMatrix.h>
 #include <Oa/Core/Log.h>
 #include <Oa/Runtime/Context.h>
@@ -31,7 +33,7 @@ OaItTraining::OaItTraining(OaOptimizer& InOpt, OaItTrainingConfig InCfg)
 	}
 
 	auto& ctx = OaContext::GetDefault();
-	auto* rt = ctx.GetRuntime();
+	auto* rt = ctx.GetEngine();
 	Rt_ = rt;
 
 	if (rt != nullptr and Cfg_.EnableGpuTiming) {
@@ -159,7 +161,9 @@ void OaItTraining::Reset() {
 	PendingLoss_     = OaMatrix{};
 	ProgramLoss_     = OaMatrix{};
 	ProgramCaptureDisabled_ = false;
+	ProgramReportWritten_ = false;
 	ResetMetrics_();
+	if (Session_ != nullptr) Session_->OnReset(*this);
 }
 
 bool OaItTraining::IsEpochBoundary() const {
@@ -336,6 +340,33 @@ void OaItTraining::Next() {
 			failStep(waitStatus, "training program wait");
 			return;
 		}
+		// Emit evidence only after the first completed replay. The report then
+		// contains the actual submission/timeline completion token, rather than a
+		// compiled-but-never-submitted placeholder.
+		if (not ProgramReportWritten_) {
+			const OaString reportSetting = OaEnvFlag::GetString("OA_GRAPH_REPORT");
+			if (not reportSetting.Empty()) {
+				const OaPath reportPath = reportSetting == "1"
+					? OaFileIo::GetVarDir("report") / "training_graph.json"
+					: OaPath(reportSetting.StdStr());
+				const auto parent = OaFileIo::GetParent(reportPath);
+				auto reportStatus = parent.Empty()
+					? OaStatus::Ok() : OaFileIo::CreateDirectories(parent);
+				if (reportStatus.IsOk()) {
+					const OaString report = Cfg_.Program->DebugReportJson("TrainingStep");
+					reportStatus = OaFileIo::WriteText(reportPath, report);
+				}
+				if (reportStatus.IsOk()) {
+					OA_LOG_INFO(OaLogComponent::ML,
+						"Training graph report: %s", reportPath.String().c_str());
+				} else {
+					OA_LOG_WARN(OaLogComponent::ML,
+						"Training graph report failed: %s",
+						reportStatus.GetMessage().c_str());
+				}
+				ProgramReportWritten_ = true;
+			}
+		}
 		if (replayExisting) Opt_.NotifyProgramReplay();
 	} else {
 		OaGpuTimer* timer = TimerReady_ ? &Timer_ : nullptr;
@@ -397,7 +428,7 @@ void OaItTraining::Next() {
 			GpuTimedSourceUnits_ += LastStepSourceUnits_;
 		}
 	} else if (TimerReady_) {
-		auto* rt = ctx.GetRuntime();
+		auto* rt = ctx.GetEngine();
 		if (rt != nullptr) {
 			LastGpuMs_ = Timer_.ReadbackMs(rt->Device);
 			if (LastGpuMs_ > 0.0) {
@@ -433,6 +464,7 @@ void OaItTraining::Next() {
 	PendingSourceUnits_ = -1;
 	PhaseBodyStarted_ = false;
 	BodyPending_ = false;  // ready for next IsDone() to advance Index_
+	if (Session_ != nullptr) Session_->OnStepCompleted(*this);
 }
 
 void OaItTraining::Next(const OaMatrix& InLoss) {
@@ -459,13 +491,23 @@ void OaItTraining::Step(
 OaStatus OaItTraining::Finish() {
 	CloseStableResourceFrame_();
 	if (Cfg_.Program != nullptr and Cfg_.Program->IsCaptured()) {
-		OA_RETURN_IF_ERROR(Cfg_.Program->Wait());
+		auto status = Cfg_.Program->Wait();
+		if (not status.IsOk()) {
+			if (Session_ != nullptr) Session_->OnFinished(status, *this);
+			return status;
+		}
 	}
 	auto& ctx = OaContext::GetDefault();
 	auto flushStatus = ctx.FlushAsyncBatch();
-	if (not flushStatus.IsOk()) return flushStatus;
+	if (not flushStatus.IsOk()) {
+		if (Session_ != nullptr) Session_->OnFinished(flushStatus, *this);
+		return flushStatus;
+	}
 	auto syncStatus = ctx.Sync();
-	if (not syncStatus.IsOk()) return syncStatus;
+	if (not syncStatus.IsOk()) {
+		if (Session_ != nullptr) Session_->OnFinished(syncStatus, *this);
+		return syncStatus;
+	}
 
 	FireTrainEnd();
 	if (TrainingPhaseTiming_ and TrainingPhaseStats_.Count > 0) {
@@ -481,7 +523,9 @@ OaStatus OaItTraining::Finish() {
 			s.Mean(s.SubmitMs), s.Mean(s.WaitMs), s.Mean(s.ScalarMetricMs),
 			s.Mean(s.CallbackMs), std::max<OaF64>(total - accounted, 0.0));
 	}
-	return OaStatus::Ok();
+	auto status = OaStatus::Ok();
+	if (Session_ != nullptr) Session_->OnFinished(status, *this);
+	return status;
 }
 
 OaStatus OaItTraining::RequestProgramRecapture() {
@@ -492,6 +536,7 @@ OaStatus OaItTraining::RequestProgramRecapture() {
 	OA_RETURN_IF_ERROR(Cfg_.Program->Reset());
 	ProgramCaptureDisabled_ = false;
 	ProgramLoss_ = OaMatrix{};
+	ProgramReportWritten_ = false;
 	return OaStatus::Ok();
 }
 

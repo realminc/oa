@@ -817,7 +817,6 @@ TEST_FN_PREAMBLE = """\
 {ml_include}#include <Oa/Runtime/Engine.h>
 #include <Oa/Runtime/Context.h>
 #include <Oa/Runtime/ComputeGraph.h>
-#include <Oa/Runtime/RuntimeGlobal.h>
 #include <algorithm>
 #include <cmath>
 #include <numeric>
@@ -834,7 +833,6 @@ protected:
 \t\tASSERT_TRUE(r.IsOk()) << r.GetStatus().GetMessage();
 \t\tstatic OaUniquePtr<OaComputeEngine> rt = std::move(*r);
 \t\tGRt = rt.get();
-\t\tOaRuntimeGlobal::SetRuntime(GRt);
 \t}}
 }};
 

@@ -74,7 +74,7 @@ OaStatus OaTrainingProgram::PrepareReplayRng_(OaComputeEngine& InRuntime) {
 		if (not IsFrozenRngKernel(node.Shader)) continue;
 
 		OaMatrix state = OaFnMatrix::Empty(
-			OaMatrixShape{1}, OaScalarType::UInt32);
+			OaMatrixShape{1}, OaScalarType::UInt32, OaMemoryPlacement::HostUpload);
 		if (not state.HasStorage() or state.Data() == nullptr) {
 			return OaStatus::Error(OaStatusCode::OutOfMemory,
 				"OaTrainingProgram: failed to allocate replay RNG state");
@@ -118,7 +118,7 @@ OaStatus OaTrainingProgram::Capture(
 	OaContext& InContext,
 	const OaTrainingProgramOptions& InOptions)
 {
-	auto* runtime = InContext.GetRuntime();
+	auto* runtime = InContext.GetEngine();
 	auto* source = InContext.Graph();
 	if (runtime == nullptr or source == nullptr) {
 		return OaStatus::Error(OaStatusCode::FailedPrecondition,

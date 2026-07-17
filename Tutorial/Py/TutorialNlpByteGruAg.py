@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """OA Python Tutorial — Byte-Level GRU, all-position LM (Autograd).
 
-Python port of Tutorial/Ml/TutorialNlpByteGruAg.cpp. The gated-recurrent member of
+Python port of Tutorial/Ml/Nlp/TutorialNlpByteGruAg.cpp. The gated-recurrent member of
 the NLP fair-comparison suite: same all-position
 next-token task / corpus / dims as the RNN, swapping OaRnn -> OaGru (reset/update
 gates, fused whole-sequence scan).

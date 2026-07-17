@@ -1,5 +1,6 @@
 #include <Oa/Runtime/Pool.h>
 #include <Oa/Core/Memory.h>
+#include <bit>
 
 OaStatus OaVkPqcPool::Init(OaVma& InAllocator, const OaVkPqcPoolConfig& InConfig) {
 	Config_ = InConfig;
@@ -65,8 +66,7 @@ void* OaVkPqcPool::AllocNttSlot() {
 	if (NttBitmap_ == 0) {
 		return nullptr;
 	}
-	OaU32 slot;
-	__asm__ __volatile__("tzcntq %1, %q0" : "=r"(slot) : "r"(NttBitmap_));
+	const OaU32 slot = static_cast<OaU32>(std::countr_zero(NttBitmap_));
 	NttBitmap_ &= NttBitmap_ - 1;
 	OaU64 alignedSlotSize = OaAlignUp(Config_.NttSlotSize, OaUsize(256));
 	return static_cast<OaU8*>(NttBuf_.MappedPtr) + (static_cast<OaU64>(slot) * alignedSlotSize);
@@ -83,8 +83,7 @@ void* OaVkPqcPool::AllocHashSlot() {
 	if (HashBitmap_ == 0) {
 		return nullptr;
 	}
-	OaU32 slot;
-	__asm__ __volatile__("tzcntq %1, %q0" : "=r"(slot) : "r"(HashBitmap_));
+	const OaU32 slot = static_cast<OaU32>(std::countr_zero(HashBitmap_));
 	HashBitmap_ &= HashBitmap_ - 1;
 	return static_cast<OaU8*>(HashBuf_.MappedPtr) + (static_cast<OaU64>(slot) * Config_.HashSlotSize);
 }
@@ -107,14 +106,10 @@ OaSecureBuffer OaVkPqcPool::AllocKeyBuffer(OaU64 InSize) {
 
 OaU32 OaVkPqcPool::NttSlotsUsed() const {
 	OaU32 cap = Config_.MaxConcurrentSigns > 64 ? 64 : Config_.MaxConcurrentSigns;
-	OaU64 count;
-	__asm__ __volatile__("popcntq %1, %0" : "=r"(count) : "r"(NttBitmap_));
-	return cap - static_cast<OaU32>(count);
+	return cap - static_cast<OaU32>(std::popcount(NttBitmap_));
 }
 
 OaU32 OaVkPqcPool::HashSlotsUsed() const {
 	OaU32 cap = Config_.MaxConcurrentHashes > 64 ? 64 : Config_.MaxConcurrentHashes;
-	OaU64 count;
-	__asm__ __volatile__("popcntq %1, %0" : "=r"(count) : "r"(HashBitmap_));
-	return cap - static_cast<OaU32>(count);
+	return cap - static_cast<OaU32>(std::popcount(HashBitmap_));
 }

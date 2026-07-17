@@ -2,7 +2,7 @@
 """
 OA Python Tutorial — Character Text Generation (Implicit Autograd)
 
-Python port of Tutorial/Ml/TutorialNlpRnnAg.cpp.
+Python port of Tutorial/Ml/Nlp/TutorialNlpRnnAg.cpp.
 
 Model: Embedding → Reshape → Linear+Relu → Linear (head)
 Loss: CrossEntropy

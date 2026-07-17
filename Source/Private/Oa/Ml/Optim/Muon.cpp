@@ -4,6 +4,7 @@
 #include <Oa/Core/FnMatrix.h>
 #include <Oa/Core/Log.h>
 #include <Oa/Runtime/Context.h>
+#include <Oa/Runtime/Engine.h>
 
 #include <cstring>
 
@@ -31,7 +32,7 @@ void OaMuon::Step() {
 	for (OaUsize i = 0; i < Params_.Size(); ++i) {
 		auto* p = Params_[i];
 		OaMatrix grad = GetParamGrad(p);
-		if (!grad.Data()) continue;
+		if (!grad.HasStorage()) continue;
 
 		OaMatrix gradUse = MasterGrad(i, grad);
 		OaFnOptim::MuonStep(
@@ -83,8 +84,9 @@ void OaMuon::SaveTo(OamModel& OutOam) const {
 	OaI64 off = 0;
 	for (OaUsize i = 0; i < Momentum_.Size(); ++i) {
 		OaI64 n = Momentum_[i].NumElements();
-		std::memcpy(OutOam.AdamM.Data() + off, Momentum_[i].Data(),
-			static_cast<size_t>(n) * sizeof(OaF32));
+		const auto bytes = static_cast<OaU64>(n) * sizeof(OaF32);
+		(void)OaFnMatrix::CopyToHost(
+			Momentum_[i], OutOam.AdamM.Data() + off, bytes);
 		off += n;
 	}
 }
@@ -123,8 +125,11 @@ void OaMuon::LoadFrom(const OamModel& InOam) {
 	OaI64 off = 0;
 	for (OaUsize i = 0; i < Momentum_.Size(); ++i) {
 		OaI64 n = Momentum_[i].NumElements();
-		std::memcpy(Momentum_[i].Data(), InOam.AdamM.Data() + off,
-			static_cast<size_t>(n) * sizeof(OaF32));
+		const auto bytes = static_cast<OaU64>(n) * sizeof(OaF32);
+		if (auto* runtime = OaContext::GetDefault().GetEngine()) {
+			(void)runtime->UploadBuffer(Momentum_[i].GetVkBuffer(), 0,
+				InOam.AdamM.Data() + off, bytes);
+		}
 		off += n;
 	}
 }

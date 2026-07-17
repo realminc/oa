@@ -1,4 +1,5 @@
 #include <cassert>
+#include <algorithm>
 
 #include <Oa/Runtime/Allocator.h>
 #include <Oa/Runtime/Device.h>
@@ -6,6 +7,14 @@
 #include <Oa/Runtime/OaVma.h>
 #include <Oa/Core/Memory.h>
 #include <Oa/Runtime/Engine.h>
+
+namespace {
+
+constexpr OaU64 TransferCapacity(OaU64 InSize) {
+	return (std::max<OaU64>(InSize, 1ULL) + 3ULL) & ~3ULL;
+}
+
+} // namespace
 
 static OaVmaVulkanFunctions GetOaVkFunctions() {
 	OaVmaVulkanFunctions fns{};
@@ -75,9 +84,10 @@ void OaVma::Destroy() {
 }
 
 OaResult<OaVkBuffer> OaVma::AllocDevice(OaU64 InSize) {
+	const OaU64 capacity = TransferCapacity(InSize);
 	VkBufferCreateInfo bufCI = {
 		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-		.size = InSize,
+		.size = capacity,
 		.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
 			| VK_BUFFER_USAGE_TRANSFER_SRC_BIT
 			| VK_BUFFER_USAGE_TRANSFER_DST_BIT
@@ -103,15 +113,18 @@ OaResult<OaVkBuffer> OaVma::AllocDevice(OaU64 InSize) {
 	buf.Buffer = buffer;
 	buf.Allocation = allocation;
 	buf.Size = InSize;
+	buf.Capacity = capacity;
 	buf.MappedPtr = nullptr;
 	buf.Flags = OA_VK_BUFFER_FLAG_NONE;
+	buf.Placement = OaMemoryPlacement::DeviceLocal;
 	return buf;
 }
 
 OaResult<OaVkBuffer> OaVma::AllocHostVisible(OaU64 InSize) {
+	const OaU64 capacity = TransferCapacity(InSize);
 	VkBufferCreateInfo bufCI{};
 	bufCI.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-	bufCI.size = InSize;
+	bufCI.size = capacity;
 	bufCI.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT 
 		| VK_BUFFER_USAGE_TRANSFER_SRC_BIT 
 		| VK_BUFFER_USAGE_TRANSFER_DST_BIT
@@ -141,9 +154,47 @@ OaResult<OaVkBuffer> OaVma::AllocHostVisible(OaU64 InSize) {
 	buf.Buffer = buffer;
 	buf.Allocation = allocation;
 	buf.Size = InSize;
+	buf.Capacity = capacity;
 	buf.MappedPtr = allocInfo.pMappedData;
 	buf.Flags = OA_VK_BUFFER_FLAG_NONE;
+	buf.Placement = OaMemoryPlacement::HostUpload;
 	return buf;
+}
+
+OaResult<OaVkBuffer> OaVma::AllocHostReadback(OaU64 InSize) {
+	const OaU64 capacity = TransferCapacity(InSize);
+	VkBufferCreateInfo bufCI{};
+	bufCI.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	bufCI.size = capacity;
+	bufCI.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
+		| VK_BUFFER_USAGE_TRANSFER_SRC_BIT
+		| VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+
+	OaVmaAllocationCreateInfo allocCI{};
+	allocCI.usage = OA_VMA_MEMORY_USAGE_GPU_TO_CPU;
+	allocCI.flags = OA_VMA_ALLOCATION_CREATE_MAPPED_BIT
+		| OA_VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
+	allocCI.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+
+	VkBuffer buffer = VK_NULL_HANDLE;
+	OaVmaAllocation allocation = VK_NULL_HANDLE;
+	OaVmaAllocationInfo allocInfo{};
+	const VkResult result = OaVmaCreateBuffer(
+		static_cast<OaVmaAllocator>(Allocator),
+		&bufCI, &allocCI, &buffer, &allocation, &allocInfo);
+	if (result != VK_SUCCESS) {
+		return OaStatus::Error(OaStatusCode::OutOfMemory, "host-readback buffer allocation failed");
+	}
+
+	OaVkBuffer out;
+	out.Buffer = buffer;
+	out.Allocation = allocation;
+	out.Size = InSize;
+	out.Capacity = capacity;
+	out.MappedPtr = allocInfo.pMappedData;
+	out.Flags = OA_VK_BUFFER_FLAG_NONE;
+	out.Placement = OaMemoryPlacement::HostReadback;
+	return out;
 }
 
 OaBool OaVma::FlushHostBuffer(const OaVkBuffer& InBuf, OaU64 InOffset, OaU64 InSize) {
@@ -173,11 +224,12 @@ OaResult<OaVkBuffer> OaVma::AllocBar(OaU64 InSize) {
 	if (!HasSam) {
 		return AllocHostVisible(InSize);
 	}
+	const OaU64 capacity = TransferCapacity(InSize);
 
 	// Device-local + host-visible = BAR (requires SAM / resizable BAR)
 	VkBufferCreateInfo bufCI{};
 	bufCI.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-	bufCI.size = InSize;
+	bufCI.size = capacity;
 	bufCI.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT 
 		| VK_BUFFER_USAGE_TRANSFER_SRC_BIT 
 		| VK_BUFFER_USAGE_TRANSFER_DST_BIT
@@ -205,12 +257,15 @@ OaResult<OaVkBuffer> OaVma::AllocBar(OaU64 InSize) {
 	buf.Buffer = buffer;
 	buf.Allocation = allocation;
 	buf.Size = InSize;
+	buf.Capacity = capacity;
 	buf.MappedPtr = allocInfo.pMappedData;
 	buf.Flags = OA_VK_BUFFER_FLAG_BAR;
+	buf.Placement = OaMemoryPlacement::Unified;
 	return buf;
 }
 
 OaResult<OaVkBuffer> OaVma::AllocPreprocessBuffer(OaU64 InSize) {
+	const OaU64 capacity = TransferCapacity(InSize);
 	// Allocate buffer with VK_BUFFER_USAGE_2_PREPROCESS_BUFFER_BIT_EXT for VK_EXT_device_generated_commands
 	// Note: VK_BUFFER_USAGE_2_PREPROCESS_BUFFER_BIT_EXT requires VkBufferUsageFlags2CreateInfo in pNext
 	VkBufferUsageFlags2CreateInfo usageFlags2{};
@@ -225,7 +280,7 @@ OaResult<OaVkBuffer> OaVma::AllocPreprocessBuffer(OaU64 InSize) {
 	VkBufferCreateInfo bufCI{};
 	bufCI.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
 	bufCI.pNext = &usageFlags2;  // Chain the 64-bit usage flags
-	bufCI.size = InSize;
+	bufCI.size = capacity;
 	bufCI.usage = 0;  // Must be 0 when using VkBufferUsageFlags2CreateInfo
 
 	OaVmaAllocationCreateInfo allocCI{};
@@ -254,8 +309,12 @@ OaResult<OaVkBuffer> OaVma::AllocPreprocessBuffer(OaU64 InSize) {
 	buf.Buffer = buffer;
 	buf.Allocation = allocation;
 	buf.Size = InSize;
+	buf.Capacity = capacity;
 	buf.MappedPtr = allocInfo.pMappedData;
 	buf.Flags = (HasSam && allocInfo.pMappedData) ? OA_VK_BUFFER_FLAG_BAR : OA_VK_BUFFER_FLAG_NONE;
+	buf.Placement = (HasSam && allocInfo.pMappedData)
+		? OaMemoryPlacement::Unified
+		: OaMemoryPlacement::DeviceLocal;
 	return buf;
 }
 
@@ -276,19 +335,45 @@ OaStatus OaVma::UploadWeights(OaVkBuffer& InDst, const void* InSrc, OaU64 InSize
 	return OaStatus::Ok();
 }
 
-OaResult<OaVkBuffer> OaVma::AllocAliased(OaU64 InSize) {
+OaResult<OaVkBuffer> OaVma::AllocAliased(
+	OaU64 InSize, OaMemoryPlacement InPlacement) {
+	const OaU64 capacity = TransferCapacity(InSize);
 	VkBufferCreateInfo bufCI{};
 	bufCI.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-	bufCI.size = InSize;
+	bufCI.size = capacity;
 	bufCI.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
 		| VK_BUFFER_USAGE_TRANSFER_SRC_BIT
 		| VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 
 	OaVmaAllocationCreateInfo allocCI{};
-	allocCI.usage = OA_VMA_MEMORY_USAGE_CPU_TO_GPU;
-	allocCI.flags = OA_VMA_ALLOCATION_CREATE_MAPPED_BIT
-		| OA_VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
-		| OA_VMA_ALLOCATION_CREATE_CAN_ALIAS_BIT;
+	allocCI.flags = OA_VMA_ALLOCATION_CREATE_CAN_ALIAS_BIT;
+	switch (InPlacement) {
+		case OaMemoryPlacement::DeviceLocal:
+			allocCI.usage = OA_VMA_MEMORY_USAGE_GPU_ONLY;
+			break;
+		case OaMemoryPlacement::Unified:
+			allocCI.usage = OA_VMA_MEMORY_USAGE_AUTO;
+			allocCI.flags |= OA_VMA_ALLOCATION_CREATE_MAPPED_BIT
+				| OA_VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+			allocCI.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+				| VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+			break;
+		case OaMemoryPlacement::HostReadback:
+			allocCI.usage = OA_VMA_MEMORY_USAGE_GPU_TO_CPU;
+			allocCI.flags |= OA_VMA_ALLOCATION_CREATE_MAPPED_BIT
+				| OA_VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
+			allocCI.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+			break;
+		case OaMemoryPlacement::Auto:
+		case OaMemoryPlacement::HostUpload:
+			InPlacement = OaMemoryPlacement::HostUpload;
+			allocCI.usage = OA_VMA_MEMORY_USAGE_CPU_TO_GPU;
+			allocCI.flags |= OA_VMA_ALLOCATION_CREATE_MAPPED_BIT
+				| OA_VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+			allocCI.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
+				| VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+			break;
+	}
 
 	VkBuffer buffer = VK_NULL_HANDLE;
 	OaVmaAllocation allocation = VK_NULL_HANDLE;
@@ -305,14 +390,17 @@ OaResult<OaVkBuffer> OaVma::AllocAliased(OaU64 InSize) {
 	buf.Buffer = buffer;
 	buf.Allocation = allocation;
 	buf.Size = InSize;
+	buf.Capacity = capacity;
 	buf.MappedPtr = allocInfo.pMappedData;
 	buf.Flags = OA_VK_BUFFER_FLAG_ALIAS;
+	buf.Placement = InPlacement;
 	return buf;
 }
 
 OaResult<OaVkBuffer> OaVma::CreateAliasingBuffer(
 	const OaVkBuffer& InExisting, OaU64 InSize
 ) {
+	const OaU64 capacity = TransferCapacity(InSize);
 	if (!InExisting.Allocation) {
 		return OaStatus::Error(OaStatusCode::InvalidArgument,
 			"CreateAliasingBuffer: source has no allocation");
@@ -320,7 +408,7 @@ OaResult<OaVkBuffer> OaVma::CreateAliasingBuffer(
 
 	VkBufferCreateInfo bufCI{};
 	bufCI.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-	bufCI.size = InSize;
+	bufCI.size = capacity;
 	bufCI.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
 		| VK_BUFFER_USAGE_TRANSFER_SRC_BIT
 		| VK_BUFFER_USAGE_TRANSFER_DST_BIT;
@@ -340,8 +428,10 @@ OaResult<OaVkBuffer> OaVma::CreateAliasingBuffer(
 	buf.Buffer = buffer;
 	buf.Allocation = nullptr;
 	buf.Size = InSize;
+	buf.Capacity = capacity;
 	buf.MappedPtr = InExisting.MappedPtr;
 	buf.Flags = OA_VK_BUFFER_FLAG_ALIAS;
+	buf.Placement = InExisting.Placement;
 	return buf;
 }
 
@@ -395,9 +485,11 @@ void OaVma::Free(OaVkBuffer& InOutBuffer) {
 		);
 		InOutBuffer.Buffer = nullptr;
 		InOutBuffer.Allocation = nullptr;
-		InOutBuffer.MappedPtr = nullptr;
-		InOutBuffer.Size = 0;
-		InOutBuffer.Flags = OA_VK_BUFFER_FLAG_NONE;
+			InOutBuffer.MappedPtr = nullptr;
+			InOutBuffer.Size = 0;
+			InOutBuffer.Capacity = 0;
+			InOutBuffer.Flags = OA_VK_BUFFER_FLAG_NONE;
+			InOutBuffer.Placement = OaMemoryPlacement::Auto;
 	}
 }
 
@@ -415,5 +507,7 @@ void OaVma::FreeImported(const OaVkDevice& InDevice, OaVkBuffer& InOutBuffer) {
 	InOutBuffer.Allocation = nullptr;
 	InOutBuffer.MappedPtr = nullptr;
 	InOutBuffer.Size = 0;
+	InOutBuffer.Capacity = 0;
 	InOutBuffer.Flags = OA_VK_BUFFER_FLAG_NONE;
+	InOutBuffer.Placement = OaMemoryPlacement::Auto;
 }

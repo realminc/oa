@@ -284,9 +284,14 @@ OaVec<OaF32> OaMoE::LastLoadFraction() const {
 		OaScalarType::Float32);
 	auto& ctx = OaContext::GetDefault();
 	(void)ctx.Execute(); (void)ctx.Sync();
-	const OaF32* loadHost = load.DataAs<const OaF32>();
+	OaVec<OaF32> loadHost(static_cast<OaUsize>(E));
+	if (not OaFnMatrix::CopyToHost(load, loadHost.Data(),
+		static_cast<OaU64>(load.ByteSize())).IsOk()) return frac;
 	OaF64 total = 0.0;
-	for (OaI32 e = 0; e < E; ++e) { frac[e] = loadHost[e]; total += loadHost[e]; }
+	for (OaI32 e = 0; e < E; ++e) {
+		frac[e] = loadHost[static_cast<OaUsize>(e)];
+		total += loadHost[static_cast<OaUsize>(e)];
+	}
 	if (total > 0.0)
 		for (OaI32 e = 0; e < E; ++e) frac[e] = static_cast<OaF32>(frac[e] / total);
 	return frac;
@@ -306,8 +311,12 @@ OaMoeRouteStats OaMoE::RouteStats() const {
 			OaScalarType::Float32);
 		auto& ctx = OaContext::GetDefault();
 		(void)ctx.Execute(); (void)ctx.Sync();
-		const OaF32* meanHost = mean.DataAs<const OaF32>();
-		for (OaI32 e = 0; e < E; ++e) s.MeanProb[e] = meanHost[e];
+		OaVec<OaF32> meanHost(static_cast<OaUsize>(E));
+		if (OaFnMatrix::CopyToHost(mean, meanHost.Data(),
+			static_cast<OaU64>(mean.ByteSize())).IsOk()) {
+			for (OaI32 e = 0; e < E; ++e)
+				s.MeanProb[e] = meanHost[static_cast<OaUsize>(e)];
+		}
 	}
 
 	// Normalized load entropy (1 = balanced) + max-load ratio + dead count.
@@ -337,5 +346,7 @@ OaF32 OaMoE::RoutingBias(OaI32 InExpert) const {
 	auto& ctx = OaContext::GetDefault();
 	(void)ctx.Execute();
 	(void)ctx.Sync();
-	return value.DataAs<const OaF32>()[0];
+	OaF32 host = 0.0F;
+	(void)OaFnMatrix::CopyToHost(value, &host, sizeof(host));
+	return host;
 }

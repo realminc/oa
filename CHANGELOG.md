@@ -4,6 +4,58 @@ All notable changes to OA are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is the single
 `VERSION` file at the repo root (read by CMake, `OaVersion()`, and the Python package).
 
+## [0.7.5] — 2026-07-18 (OpenAI Build Week preview)
+
+### Added
+- **Deterministic execution evidence** — completed training replays can emit
+  `oa.execution_graph.v1` reports containing semantic-operation provenance, selected
+  implementation and kernel-content hashes, resource lifetimes, alias groups, barriers,
+  and the observed completion timeline.
+- **Canonical architecture and migration contract** — one current architecture replaces
+  conflicting historical rewrite plans, with explicit ownership, value/operation/session
+  boundaries, compatibility seams, and acceptance gates.
+- **Enforced module dependencies** — `oacheck` validates source-layer boundaries in CI
+  and includes focused regression coverage for its parser and policy rules.
+- **Build Week evidence package** — public Mobile Lab screenshots, a compressed OaAlm
+  prompt-to-USD capture, reproducible desktop/mobile commands, and an honest before/after
+  development record.
+
+### Changed
+- OaMobileLab release builds support explicit environment-based signing and expose the
+  same bounded native training report through app-private files in debug packages or
+  filtered logcat records in non-debuggable packages.
+- The foreground Mobile Lab activity keeps its live training metrics visible; background
+  execution remains owned independently by the service's bounded partial wake lock.
+- The Android suite now treats generation quality as a release gate at the canonical
+  300-step workload while retaining a bounded one-step packaging smoke test.
+- Training graph reports are published only after completed replay, so planned work is
+  not misrepresented as executed work.
+
+### Fixed
+- Packed Transformer projection no longer selects Q/K/V descriptors through a
+  thread-varying bindless index. Explicit uniform branches preserve the single dispatch
+  while producing correct results on both Intel ANV and Qualcomm Turnip.
+- Raw-buffer `AddMatMul` planning again preserves its inference-only routing contract;
+  a regression test protects the legacy selection behavior.
+- Interrupted Android training now still emits a bounded diagnostic report instead of
+  leaving automation waiting for a file that can never appear.
+
+### Verification
+- The signed release APK completed the five canonical 300-step Byte routes on a physical
+  Adreno 610 phone, including forward, loss, backward, AdamW, evaluation, generation,
+  `.oam` save/load, and exact checkpoint generation parity.
+- Desktop Transformer and sparse-MoE routes completed the same 300-step acceptance gate;
+  compute-graph regression coverage passes 20/20 on the Iris Xe reference system.
+- The public snapshot is generated from the verified private tree and fails closed on
+  internal documentation, credentials, workstation paths, and private-remote references.
+
+### Preview boundaries
+- The Build Week phone gate covers one Android/Adreno/Turnip configuration; it is not a
+  universal mobile compatibility claim.
+- Execution reports expose deterministic graph identity and observed completion, but do
+  not yet replace a full trace profiler.
+- The public API, Python ABI, and `.oam` format remain pre-1.0 contracts.
+
 ## [0.7.4] — 2026-07-16 (development preview)
 
 ### Added

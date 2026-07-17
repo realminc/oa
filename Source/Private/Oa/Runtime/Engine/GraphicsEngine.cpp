@@ -63,11 +63,26 @@ OaGraphicsEngine::~OaGraphicsEngine() {
 }
 
 void OaGraphicsEngine::Destroy() {
-	if (!Device.Device) return;
-	vkDeviceWaitIdle(ReDev(*this));
+	if (!Device.Device) {
+		OaComputeEngine::Destroy();
+		return;
+	}
+	// A successful device-idle wait covers every graphics-ring submission. Do
+	// not ask each stream to wait on its timeline again during destruction:
+	// video teardown may already have released producer semaphores, and the
+	// redundant waits produced false shutdown errors despite an idle device.
+	const VkResult idleResult = vkDeviceWaitIdle(ReDev(*this));
+	if (idleResult != VK_SUCCESS) {
+		OA_LOG_ERROR(OaLogComponent::Core,
+			"OaGraphicsEngine::Destroy: vkDeviceWaitIdle failed (%d)",
+			static_cast<int>(idleResult));
+	}
 	GraphicsBatchStream_ = nullptr;
 	for (OaU32 i = 0; i < kGraphicsBatchRingSize; ++i) {
 		if (GraphicsBatchRingValid_[i]) {
+			if (idleResult == VK_SUCCESS) {
+				GraphicsBatchRing_[i].Submitted = false;
+			}
 			GraphicsBatchRing_[i].Destroy(Device);
 			GraphicsBatchRingValid_[i] = false;
 		}
@@ -868,7 +883,7 @@ bool OaGraphicsEngine::DrawFrame() {
 // Split of DrawFrame's body into AcquireSwapchainImage + PresentSwapchainImage
 // so OaContext::RecordAcquire and OaContext::RecordPresent can drive the WSI
 // loop. OaDeviceUi (Step 3c.2) uses these; DrawFrame() above is preserved
-// for callers that still drive the loop themselves. See UnifiedExecutionArchitecture.md §3.5.
+// for callers that still drive the loop themselves. See Architecture/OaArchitecture.md §10.
 
 bool OaGraphicsEngine::AcquireSwapchainImage(
 	OaSwapchain& InSwap, AcquireResult& OutResult) {

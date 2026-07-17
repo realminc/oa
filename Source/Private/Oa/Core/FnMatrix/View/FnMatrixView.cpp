@@ -176,7 +176,11 @@ OaMatrix OaMatrix::Contiguous() const {
 void OaMatrix::CopyFrom(const OaMatrix& InOther) {
 	if (not (HasStorage() and InOther.HasStorage())) { return; }
 	if (Dtype_ == InOther.Dtype_) {
-		OaMemcpy(Data(), InOther.Data(), static_cast<OaUsize>(ByteSize()));
+		OaU32 count = static_cast<OaU32>(NumElements());
+		struct { OaU32 Count; } push{count};
+		OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Write};
+		OaContext::GetDefault().Add(
+			"Copy", {&InOther, this}, access, &push, sizeof(push), (count + 255U) / 256U);
 	} else {
 		OaFnMatrix::CastInto(InOther, *this);
 	}
@@ -191,8 +195,20 @@ OaF32 OaMatrix::At(OaI64 InIdx) const {
 	assert(InIdx >= 0 and InIdx < NumElements());
 	const OaI64 elemOff = OaMatrixFlatToElementOffset(Shape_, Stride_, InIdx);
 	const OaI64 elemSz = static_cast<OaI64>(OaScalarSize(Dtype_));
-	const auto* base = static_cast<const char*>(Data());
-	const auto* cell = base + elemOff * elemSz;
+	OaU8 cellBytes[sizeof(OaF32)]{};
+	const auto* cell = static_cast<const char*>(Data());
+	if (cell) {
+		cell += elemOff * elemSz;
+	} else if (auto* runtime = OaContext::GetDefault().GetEngine()) {
+		auto executeStatus = OaContext::GetDefault().Execute();
+		assert(executeStatus.IsOk());
+		const auto status = runtime->ReadbackBuffer(
+			GetVkBuffer(), ByteOffset_ + static_cast<OaU64>(elemOff * elemSz),
+			cellBytes, static_cast<OaU64>(elemSz));
+		assert(status.IsOk());
+		cell = reinterpret_cast<const char*>(cellBytes);
+	}
+	assert(cell != nullptr);
 	if (Dtype_ == OaScalarType::BFloat16) {
 		return OaBf16ToF32(*reinterpret_cast<const OaU16*>(cell));
 	}
@@ -204,12 +220,30 @@ void OaMatrix::Set(OaI64 InIdx, OaF32 InValue) {
 	const OaI64 elemOff = OaMatrixFlatToElementOffset(Shape_, Stride_, InIdx);
 	const OaI64 elemSz = static_cast<OaI64>(OaScalarSize(Dtype_));
 	auto* base = static_cast<char*>(Data());
-	auto* cell = base + elemOff * elemSz;
+	auto* cell = base ? base + elemOff * elemSz : nullptr;
+	OaU8 encoded[sizeof(OaF32)]{};
 	if (Dtype_ == OaScalarType::BFloat16) {
-		*reinterpret_cast<OaU16*>(cell) = OaF32ToBf16(InValue);
+		*reinterpret_cast<OaU16*>(cell ? static_cast<void*>(cell) : static_cast<void*>(encoded)) =
+			OaF32ToBf16(InValue);
+	} else {
+		*reinterpret_cast<OaF32*>(cell ? static_cast<void*>(cell) : static_cast<void*>(encoded)) = InValue;
+	}
+	if (cell) {
+		if (auto* runtime = OaContext::GetDefault().GetEngine()) {
+			(void)runtime->Allocator.FlushHostBuffer(
+				GetVkBuffer(), ByteOffset_ + static_cast<OaU64>(elemOff * elemSz),
+				static_cast<OaU64>(elemSz));
+		}
 		return;
 	}
-	*reinterpret_cast<OaF32*>(cell) = InValue;
+	if (auto* runtime = OaContext::GetDefault().GetEngine()) {
+		auto executeStatus = OaContext::GetDefault().Execute();
+		assert(executeStatus.IsOk());
+		const auto status = runtime->UploadBuffer(
+			GetVkBuffer(), ByteOffset_ + static_cast<OaU64>(elemOff * elemSz),
+			encoded, static_cast<OaU64>(elemSz));
+		assert(status.IsOk());
+	}
 }
 
 void OaMatrix::Zero() {

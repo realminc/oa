@@ -2,7 +2,6 @@
 
 // Vulkan record graph: OaDeviceDgNode base + concrete nodes + OaDeviceVkRecord helpers.
 
-#include <Oa/Core/Node/DeviceDgNode.h>
 #include <Oa/Core/Node/DeviceAddNode.h>
 #include <Oa/Core/Node/DeviceCrossEntropyMeanNode.h>
 #include <Oa/Core/Node/DeviceGatherRowsNode.h>

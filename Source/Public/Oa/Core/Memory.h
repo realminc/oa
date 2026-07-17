@@ -2,24 +2,19 @@
 // OA - HIGH-PERFORMANCE MEMORY OPERATIONS
 // ═══════════════════════════════════════════════════════════════════════════════
 //
-// Fully inlined memcpy with raw AVX2 assembly for zero-overhead copies.
+// Fully inlined small-copy dispatch with compiler-generated fixed-size moves.
 //
-// Strategy (benchmark-proven on Intel Ultra 9 275HX):
-//   1-8B:    Register moves (inline)
-//   9-16B:   Two overlapping 8B moves (inline)
-//   17-32B:  Two overlapping 16B SSE moves (inline asm)
-//   33-64B:  Two overlapping 32B AVX2 moves (inline asm)
-//   65-128B: Four overlapping 32B AVX2 moves (inline asm)
-//   129-256B: Eight overlapping 32B AVX2 moves (inline asm, 8 ymm regs)
-//   257B–threshold: glibc memcpy (rep movsb / ifunc — hard to beat mid-band)
-//   ≥threshold: non-temporal AVX2/512 streaming (default threshold 2MiB)
-//   OA_MEMCPY_NT_MIN: decimal byte threshold at process start; 0 = disable auto NT
-//   OA_MEMCPY_NT_PREFETCH: first NTA prefetch offset from current src in OaMemcpyNT (default 512; 0 = off; max 8192)
-//   Prefetch sweep: bin/{preset}/Test/bench_memcpy_nt (Linux re-exec grid; optional --once --mb=N --compare)
+// Strategy:
+//   1-256B: fixed-size overlapping blocks, emitted by the compiler for the
+//             selected target ISA without unaligned typed accesses or raw asm
+//   >256B:   platform memcpy (IFUNC/ERMS/vector implementation on glibc)
+//   explicit streaming: OaMemcpyStream, only when the destination will not be
+//             consumed soon and bypassing the cache is part of the contract
+//   OA_MEMCPY_NT_PREFETCH: optional NTA prefetch distance for experiments
+//             (default 0; max 8192)
 //
-// Why inline asm beats glibc at small sizes:
-//   glibc's ifunc dispatch + internal branching costs ~2-4ns
-//   Our inline asm: 0 function call, 0 dispatch, just register moves
+// The size dispatch matters when the caller's size is dynamic. For a compile-
+// time constant size, both OaMemcpy and std::memcpy reduce to the same moves.
 //
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -31,11 +26,20 @@
 #include <atomic>
 #include <cstring>
 
-// Non-temporal copy for huge buffers (defined in memory.cpp)
+// Explicit non-temporal copy implementation (defined in Memory.cpp).
 void* OaMemcpyNT(void* InDst, const void* InSrc, OaUsize InSize);
 
-// Minimum size for OaMemcpy / OaMemzero to take the non-temporal path (init from OA_MEMCPY_NT_MIN)
-extern const OaUsize g_OaMemcpyNtMinBytes;
+namespace OaMemoryDetail {
+
+template <OaUsize Size>
+__attribute__((always_inline))
+inline void CopyBlock(OaByte* InDst, const OaByte* InSrc) {
+	static_assert(Size == 1 || Size == 2 || Size == 4 || Size == 8
+		|| Size == 16 || Size == 32);
+	std::memcpy(InDst, InSrc, Size);
+}
+
+} // namespace OaMemoryDetail
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // OaMemcpy — Zero-overhead for all sizes
@@ -44,112 +48,69 @@ extern const OaUsize g_OaMemcpyNtMinBytes;
 __attribute__((always_inline))
 inline void* OaMemcpy(void* __restrict__ InDst, const void* __restrict__ InSrc, OaUsize InSize) {
 	if (__builtin_expect(InSize == 0, 0)) return InDst;
+	// Let the compiler emit its optimal single sequence when the call site knows
+	// the size. The branches below are specifically for dynamic-size callers.
+	if (__builtin_constant_p(InSize)) return std::memcpy(InDst, InSrc, InSize);
 
 	OaByte* Dst = static_cast<OaByte*>(InDst);
 	const OaByte* Src = static_cast<const OaByte*>(InSrc);
+	using OaMemoryDetail::CopyBlock;
 
-	// ─── 1-16B: Register moves ─────────────────────────────────────────────
+	// Fixed-size std::memcpy is a compiler primitive, not a libc call. Keeping
+	// these accesses expressed as copies also makes unaligned data legal C++.
 	if (__builtin_expect(InSize <= 16, 1)) {
 		if (InSize >= 8) {
-			*reinterpret_cast<OaU64*>(Dst) = *reinterpret_cast<const OaU64*>(Src);
-			*reinterpret_cast<OaU64*>(Dst + InSize - 8) = *reinterpret_cast<const OaU64*>(Src + InSize - 8);
+			CopyBlock<8>(Dst, Src);
+			CopyBlock<8>(Dst + InSize - 8, Src + InSize - 8);
 		} else if (InSize >= 4) {
-			*reinterpret_cast<OaU32*>(Dst) = *reinterpret_cast<const OaU32*>(Src);
-			*reinterpret_cast<OaU32*>(Dst + InSize - 4) = *reinterpret_cast<const OaU32*>(Src + InSize - 4);
+			CopyBlock<4>(Dst, Src);
+			CopyBlock<4>(Dst + InSize - 4, Src + InSize - 4);
 		} else if (InSize >= 2) {
-			*reinterpret_cast<OaU16*>(Dst) = *reinterpret_cast<const OaU16*>(Src);
-			*reinterpret_cast<OaU16*>(Dst + InSize - 2) = *reinterpret_cast<const OaU16*>(Src + InSize - 2);
+			CopyBlock<2>(Dst, Src);
+			CopyBlock<2>(Dst + InSize - 2, Src + InSize - 2);
 		} else {
-			*Dst = *Src;
+			CopyBlock<1>(Dst, Src);
 		}
 		return InDst;
 	}
 
-#if defined(__AVX2__) && defined(__x86_64__)
-	// ─── 17-32B: Two overlapping 16B SSE moves (inline asm) ────────────────
 	if (InSize <= 32) {
-		__asm__ __volatile__(
-			"vmovdqu (%[src]), %%xmm0\n\t"
-			"vmovdqu -16(%[src],%[sz],1), %%xmm1\n\t"
-			"vmovdqu %%xmm0, (%[dst])\n\t"
-			"vmovdqu %%xmm1, -16(%[dst],%[sz],1)"
-			: : [dst] "r"(Dst), [src] "r"(Src), [sz] "r"(InSize)
-			: "xmm0", "xmm1", "memory"
-		);
+		CopyBlock<16>(Dst, Src);
+		CopyBlock<16>(Dst + InSize - 16, Src + InSize - 16);
 		return InDst;
 	}
 
-	// ─── 33-64B: Two overlapping 32B AVX2 moves ───────────────────────────
 	if (InSize <= 64) {
-		__asm__ __volatile__(
-			"vmovdqu (%[src]), %%ymm0\n\t"
-			"vmovdqu -32(%[src],%[sz],1), %%ymm1\n\t"
-			"vmovdqu %%ymm0, (%[dst])\n\t"
-			"vmovdqu %%ymm1, -32(%[dst],%[sz],1)"
-			: : [dst] "r"(Dst), [src] "r"(Src), [sz] "r"(InSize)
-			: "ymm0", "ymm1", "memory"
-		);
+		CopyBlock<32>(Dst, Src);
+		CopyBlock<32>(Dst + InSize - 32, Src + InSize - 32);
 		return InDst;
 	}
 
-	// ─── 65-128B: Four overlapping 32B AVX2 moves ─────────────────────────
 	if (InSize <= 128) {
-		__asm__ __volatile__(
-			"vmovdqu   (%[src]), %%ymm0\n\t"
-			"vmovdqu 32(%[src]), %%ymm1\n\t"
-			"vmovdqu -64(%[src],%[sz],1), %%ymm2\n\t"
-			"vmovdqu -32(%[src],%[sz],1), %%ymm3\n\t"
-			"vmovdqu %%ymm0,   (%[dst])\n\t"
-			"vmovdqu %%ymm1, 32(%[dst])\n\t"
-			"vmovdqu %%ymm2, -64(%[dst],%[sz],1)\n\t"
-			"vmovdqu %%ymm3, -32(%[dst],%[sz],1)"
-			: : [dst] "r"(Dst), [src] "r"(Src), [sz] "r"(InSize)
-			: "ymm0", "ymm1", "ymm2", "ymm3", "memory"
-		);
+		CopyBlock<32>(Dst, Src);
+		CopyBlock<32>(Dst + 32, Src + 32);
+		CopyBlock<32>(Dst + InSize - 64, Src + InSize - 64);
+		CopyBlock<32>(Dst + InSize - 32, Src + InSize - 32);
 		return InDst;
 	}
 
-	// ─── 129-256B: Eight overlapping 32B AVX2 moves ───────────────────────
 	if (InSize <= 256) {
-		__asm__ __volatile__(
-			"vmovdqu    (%[src]), %%ymm0\n\t"
-			"vmovdqu  32(%[src]), %%ymm1\n\t"
-			"vmovdqu  64(%[src]), %%ymm2\n\t"
-			"vmovdqu  96(%[src]), %%ymm3\n\t"
-			"vmovdqu -128(%[src],%[sz],1), %%ymm4\n\t"
-			"vmovdqu  -96(%[src],%[sz],1), %%ymm5\n\t"
-			"vmovdqu  -64(%[src],%[sz],1), %%ymm6\n\t"
-			"vmovdqu  -32(%[src],%[sz],1), %%ymm7\n\t"
-			"vmovdqu %%ymm0,    (%[dst])\n\t"
-			"vmovdqu %%ymm1,  32(%[dst])\n\t"
-			"vmovdqu %%ymm2,  64(%[dst])\n\t"
-			"vmovdqu %%ymm3,  96(%[dst])\n\t"
-			"vmovdqu %%ymm4, -128(%[dst],%[sz],1)\n\t"
-			"vmovdqu %%ymm5,  -96(%[dst],%[sz],1)\n\t"
-			"vmovdqu %%ymm6,  -64(%[dst],%[sz],1)\n\t"
-			"vmovdqu %%ymm7,  -32(%[dst],%[sz],1)"
-			: : [dst] "r"(Dst), [src] "r"(Src), [sz] "r"(InSize)
-			: "ymm0", "ymm1", "ymm2", "ymm3", "ymm4", "ymm5", "ymm6", "ymm7", "memory"
-		);
+		CopyBlock<32>(Dst, Src);
+		CopyBlock<32>(Dst + 32, Src + 32);
+		CopyBlock<32>(Dst + 64, Src + 64);
+		CopyBlock<32>(Dst + 96, Src + 96);
+		CopyBlock<32>(Dst + InSize - 128, Src + InSize - 128);
+		CopyBlock<32>(Dst + InSize - 96, Src + InSize - 96);
+		CopyBlock<32>(Dst + InSize - 64, Src + InSize - 64);
+		CopyBlock<32>(Dst + InSize - 32, Src + InSize - 32);
 		return InDst;
 	}
-#else
-	if (InSize <= 256) {
-		return std::memcpy(InDst, InSrc, InSize);
-	}
-#endif
 
-	// ─── ≥threshold: non-temporal streaming ────────────────────────────────
-	if (__builtin_expect(InSize >= g_OaMemcpyNtMinBytes, 0)) {
-		return OaMemcpyNT(InDst, InSrc, InSize);
-	}
-
-	// ─── Mid band: glibc memcpy ─────────────────────────────────────────
 	return std::memcpy(InDst, InSrc, InSize);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// OaMemcpyStream — Always non-temporal
+// OaMemcpyStream — Explicit non-temporal cache policy
 // ═══════════════════════════════════════════════════════════════════════════════
 
 inline void* OaMemcpyStream(void* InDst, const void* InSrc, OaUsize InSize) {
@@ -161,9 +122,18 @@ inline void* OaMemcpyStream(void* InDst, const void* InSrc, OaUsize InSize) {
 // MEMSET / MEMZERO / MEMCMP (defined in memory.cpp)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-void* OaMemset(void* InDst, OaI32 InValue, OaUsize InSize);
-void* OaMemzero(void* InDst, OaUsize InSize);
-OaI32 OaMemcmp(const void* InA, const void* InB, OaUsize InSize);
+inline void* OaMemset(void* InDst, OaI32 InValue, OaUsize InSize) {
+	return std::memset(InDst, InValue, InSize);
+}
+
+inline void* OaMemzero(void* InDst, OaUsize InSize) {
+	return std::memset(InDst, 0, InSize);
+}
+
+inline OaI32 OaMemcmp(const void* InA, const void* InB, OaUsize InSize) {
+	return std::memcmp(InA, InB, InSize);
+}
+
 OaBool OaMemEqual(const void* InA, const void* InB, OaUsize InSize);
 
 // ═══════════════════════════════════════════════════════════════════════════════

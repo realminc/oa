@@ -5,7 +5,6 @@
 #include <Oa/Core/FnMatrix.h>
 #include <Oa/Runtime/Engine.h>
 #include <Oa/Runtime/Context.h>
-#include <Oa/Runtime/RuntimeGlobal.h>
 #include <vector>
 
 static OaComputeEngine* GRt = nullptr;
@@ -19,7 +18,6 @@ protected:
 		ASSERT_TRUE(r.IsOk()) << r.GetStatus().GetMessage();
 		static OaUniquePtr<OaComputeEngine> rt = std::move(*r);
 		GRt = rt.get();
-		OaRuntimeGlobal::SetRuntime(GRt);
 	}
 };
 

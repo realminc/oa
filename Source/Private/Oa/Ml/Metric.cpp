@@ -99,7 +99,9 @@ void OaMetricAccuracy::Update(const OaMatrix& InPreds, const OaMatrix& InLabels)
 	if (count.IsEmpty()) return;
 	auto& ctx = OaContext::GetDefault();
 	if (not ctx.Execute().IsOk() or not ctx.Sync().IsOk()) return;
-	Correct_ += static_cast<OaI64>(count.DataAs<const OaU32>()[0]);
+	OaU32 correct = 0;
+	if (not OaFnMatrix::CopyToHost(count, &correct, sizeof(correct)).IsOk()) return;
+	Correct_ += static_cast<OaI64>(correct);
 	Total_ += InLabels.NumElements();
 }
 

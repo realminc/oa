@@ -14,6 +14,8 @@
 #include <Oa/Runtime/Pipeline.h>
 #include <Oa/Runtime/Pool.h>
 #include <Oa/Runtime/Stream.h>
+#include <Oa/Runtime/UploadRing.h>
+#include <Oa/Runtime/Prefetch.h>
 #include <Oa/Runtime/Timestamp.h>
 #include <Oa/Runtime/Timer.h>
 #include <Oa/Runtime/Cmd.h>
@@ -29,4 +31,3 @@
 #include <Oa/Runtime/Distributed.h>
 #include <Oa/Runtime/OaVk.h>
 #include <Oa/Runtime/OaVma.h>
-#include <Oa/Runtime/Runtime.h>

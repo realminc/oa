@@ -50,6 +50,7 @@
 
 class OaOptimizer;
 class OaTrainingProgram;
+class OaTrainingSession;
 class OaItTraining;
 class OaCbTraining;
 class OaMetric;
@@ -129,8 +130,7 @@ struct OaTrainingPhaseStats {
 	}
 
 	[[nodiscard]] OaF64 AccountedMs() const {
-		return BodyMs + OptimizerMs + CompileMs + RecordMs + SubmitMs + WaitMs
-			+ ScalarMetricMs + CallbackMs;
+		return BodyMs + OptimizerMs + CompileMs + RecordMs + SubmitMs + WaitMs + ScalarMetricMs + CallbackMs;
 	}
 };
 
@@ -170,7 +170,8 @@ public:
 	// loss only for eager warm-up/capture; it is skipped on replay steps.
 	void Step(
 		const std::function<void()>& InPrepareFn,
-		const std::function<void()>& InRecordFn);
+		const std::function<void()>& InRecordFn
+	);
 
 	// Tag the scalar loss matrix from inside InOpFn. It is read exactly after the
 	// step completes and is available to every OnStepEnd callback.
@@ -192,6 +193,10 @@ public:
 	// Explicitly invalidate a captured fixed-shape program. The next Step()
 	// records and captures the new shape/topology; optimizer state is preserved.
 	[[nodiscard]] OaStatus RequestProgramRecapture();
+	// A training session is an optional, non-owning control/observation adapter.
+	// It never changes the ordinary iterator contract when absent.
+	void AttachSession(OaTrainingSession* InSession) { Session_ = InSession; }
+	[[nodiscard]] OaTrainingSession* Session() const { return Session_; }
 
 	// Cooperative stop (Keras `model.stop_training = True`). Callbacks (early
 	// stopping, time budget) call this; the next IsDone() returns true and the
@@ -336,8 +341,10 @@ private:
 	bool                 PhaseBodyStarted_ = false;
 	bool                 StableResourceFrameOpen_ = false;
 	bool                 ProgramCaptureDisabled_ = false;
+	bool                 ProgramReportWritten_ = false;
 	std::vector<OaMetric*> Metrics_;
 	std::vector<OaCbTraining*> Callbacks_;
+	OaTrainingSession* Session_ = nullptr;
 };
 
 // ─── OaCbTraining ──────────────────────────────────────────────────────────

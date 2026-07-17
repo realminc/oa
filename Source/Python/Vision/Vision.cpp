@@ -3,7 +3,8 @@
 
 void BindVision(nb::module_& m) {
     BindVisionType(m);
-    BindVisionImage(m);
-    BindVisionCodec(m);
+	BindVisionImage(m);
+	BindVisionDetection(m);
+	BindVisionCodec(m);
     BindVisionVideo(m);
 }

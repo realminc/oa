@@ -14,10 +14,6 @@ class OaVkQueue;
 struct OaTexture;
 struct OaSwapchain;
 
-namespace OaRuntimeGlobal {
-void SetRuntime(OaComputeEngine* InRuntime);
-}
-
 enum class OaContextMatMulPrecision : OaU8 {
 	Auto,
 	Fp32,

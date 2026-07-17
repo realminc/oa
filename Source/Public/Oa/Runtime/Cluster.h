@@ -1,7 +1,8 @@
 // OaCluster — Multi-node distributed compute (stubs)
 //
-// Wraps multiple OaDeviceMesh instances across machines.
-// Real networking via oa/network/ (TCP) or future RDMA.
+// Coordinates ranks across machines while borrowing this process's local mesh.
+// It does not wrap/own OaComputeEngine or create an OaContext. Real networking
+// lives in oa/network/ (TCP) or a future RDMA transport.
 // Header-only stubs — no .cpp until network transport is implemented.
 
 #pragma once
@@ -30,7 +31,7 @@ public:
 	OaU32 RankId = 0;               // This machine's rank
 };
 
-// Multi-machine compute cluster.
+// Multi-machine coordination companion.
 // Stub: all methods return NotImplemented. Real transport in Phase 3.
 class OaCluster {
 public:

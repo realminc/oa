@@ -5,6 +5,7 @@
 #include <Oa/Core/Log.h>
 #include <Oa/Core/Vlm.h>
 
+#include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <cstdint>
@@ -220,6 +221,86 @@ OaF64 OaHumanMl3dMpjpeCm(
 		sum += std::sqrt(dx * dx + dy * dy + dz * dz);
 	}
 	return 100.0 * sum / static_cast<OaF64>(InPredWorld.Size() / 3);
+}
+
+OaHumanMl3dMotionMetrics OaHumanMl3dEvaluateMotion(
+	OaSpan<const OaF32> InPredFeatures,
+	OaSpan<const OaF32> InTargetFeatures,
+	OaI32 InFrames,
+	OaI32 InFeatDim,
+	OaF32 InContactThreshold) {
+	OaHumanMl3dMotionMetrics out;
+	const OaI32 joints = JointsForFeatDimImpl(InFeatDim);
+	const OaUsize expected = static_cast<OaUsize>(std::max(0, InFrames))
+		* static_cast<OaUsize>(std::max(0, InFeatDim));
+	if (InFrames <= 0 || joints <= 0 || InPredFeatures.Size() != expected
+		|| InTargetFeatures.Size() != expected
+		|| !std::isfinite(InContactThreshold)) {
+		return out;
+	}
+	auto predWorld = OaHumanMl3dRecoverWorldJoints(
+		InPredFeatures, InFrames, InFeatDim);
+	auto targetWorld = OaHumanMl3dRecoverWorldJoints(
+		InTargetFeatures, InFrames, InFeatDim);
+	if (predWorld.Empty() || predWorld.Size() != targetWorld.Size()) return out;
+
+	out.MpjpeCm = OaHumanMl3dMpjpeCm(
+		OaSpan<const OaF32>(predWorld.Data(), predWorld.Size()),
+		OaSpan<const OaF32>(targetWorld.Data(), targetWorld.Size()));
+
+	OaF64 velocityError = 0.0;
+	OaI64 velocityCount = 0;
+	for (OaI32 frame = 1; frame < InFrames; ++frame) {
+		for (OaI32 joint = 0; joint < joints; ++joint) {
+			const OaUsize current = (static_cast<OaUsize>(frame) * joints + joint) * 3;
+			const OaUsize previous = current - static_cast<OaUsize>(joints) * 3;
+			const OaF64 dx = (predWorld[current] - predWorld[previous])
+				- (targetWorld[current] - targetWorld[previous]);
+			const OaF64 dy = (predWorld[current + 1] - predWorld[previous + 1])
+				- (targetWorld[current + 1] - targetWorld[previous + 1]);
+			const OaF64 dz = (predWorld[current + 2] - predWorld[previous + 2])
+				- (targetWorld[current + 2] - targetWorld[previous + 2]);
+			velocityError += std::sqrt(dx * dx + dy * dy + dz * dz);
+			++velocityCount;
+		}
+	}
+	out.VelocityErrorCmPerFrame = velocityCount > 0
+		? 100.0 * velocityError / static_cast<OaF64>(velocityCount) : 0.0;
+
+	constexpr OaI32 contactDims = 4;
+	const OaI32 contactOffset = InFeatDim - contactDims;
+	const OaI32 footJoints[contactDims] = {7, 10, 8, 11};
+	OaI64 contactCorrect = 0;
+	OaI64 contactCount = 0;
+	OaF64 footSkate = 0.0;
+	OaI64 footSkateCount = 0;
+	for (OaI32 frame = 0; frame < InFrames; ++frame) {
+		for (OaI32 contact = 0; contact < contactDims; ++contact) {
+			const OaUsize feature = static_cast<OaUsize>(frame) * InFeatDim
+				+ contactOffset + contact;
+			const bool predicted = InPredFeatures[feature] >= InContactThreshold;
+			const bool target = InTargetFeatures[feature] >= InContactThreshold;
+			contactCorrect += predicted == target ? 1 : 0;
+			++contactCount;
+			if (frame == 0 || !target || footJoints[contact] >= joints) continue;
+			const OaUsize current = (static_cast<OaUsize>(frame) * joints
+				+ footJoints[contact]) * 3;
+			const OaUsize previous = current - static_cast<OaUsize>(joints) * 3;
+			const OaF64 dx = predWorld[current] - predWorld[previous];
+			const OaF64 dz = predWorld[current + 2] - predWorld[previous + 2];
+			footSkate += std::sqrt(dx * dx + dz * dz);
+			++footSkateCount;
+		}
+	}
+	out.ContactAccuracy = contactCount > 0
+		? static_cast<OaF64>(contactCorrect) / static_cast<OaF64>(contactCount) : 0.0;
+	out.FootSkateCmPerFrame = footSkateCount > 0
+		? 100.0 * footSkate / static_cast<OaF64>(footSkateCount) : 0.0;
+	out.Ok = std::isfinite(out.MpjpeCm)
+		&& std::isfinite(out.VelocityErrorCmPerFrame)
+		&& std::isfinite(out.ContactAccuracy)
+		&& std::isfinite(out.FootSkateCmPerFrame);
+	return out;
 }
 
 OaI32 OaDsHumanMl3d::JointsForFeatDim(OaI32 InFeatDim) {

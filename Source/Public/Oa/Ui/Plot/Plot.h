@@ -1,6 +1,6 @@
 // Oa/Plot — matplotlib-style plotting on top of OaContext sinks.
 //
-// UnifiedExecutionArchitecture.md §3.5 / OaUiFinalGlueBridge.md §5.4 (Step 3e). The module is
+// Architecture/OaArchitecture.md §10. The module is
 // a thin layout + replay layer over the unified OaContext recorder:
 //
 //   OaPlot::Figure fig({.Rows=5, .Cols=5, .Width=800, .Height=800});
@@ -13,9 +13,9 @@
 //   (void)fig.Show();            // window sink
 //   (void)fig.SaveFig("g.png");  // batch sink
 //
-// Phase-1 surface: Imshow + text labels work end-to-end. Plot/Bar/Scatter
-// land in Show via OaUi::PlotLine; they are skipped in SaveFig until the
-// Phase-2 MSDF text rasterizer + SDF widgets land.
+// Compact surface: Imshow, line curves and heatmaps work in interactive and
+// headless sinks. Text labels are interactive; headless glyph composition is
+// the remaining presentation upgrade.
 
 #pragma once
 

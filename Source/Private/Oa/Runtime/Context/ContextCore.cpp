@@ -11,7 +11,6 @@
 #include <Oa/Core/Matrix.h>
 #include <Oa/Runtime/Spirv.h>
 #include <Oa/Runtime/ComputeKernel.h>
-#include <Oa/Runtime/RuntimeGlobal.h>
 #include <Oa/Vision/VideoEncoder.h>
 #include <Oa/Vision/VideoDecoder.h>
 
@@ -29,12 +28,12 @@ static thread_local OaContext* sDefaultContext = nullptr;
 // OaContext Implementation
 // ═════════════════════════════════════════════════════════════════════════════
 
-OaContext::OaContext(OaComputeEngine* InRuntime)
-	: Runtime_(InRuntime)
+OaContext::OaContext(OaComputeEngine* InEngine)
+	: Engine_(InEngine)
 	, Graph_(nullptr)
 	, Executed_(false)
 {
-	assert(InRuntime and "Runtime cannot be null");
+	assert(InEngine and "Engine cannot be null");
 	Graph_ = new OaComputeGraph();
 	
 	OA_LOG_INFO(OaLogComponent::Core, "OaContext created");
@@ -55,15 +54,15 @@ OaContext::~OaContext() {
 	// teardown path) we still need to release the graphs. Assume the GPU
 	// is idle by the time the context dies.
 	for (auto* graph : DeferredGraphs_) {
-		if (Runtime_) {
-			graph->Reset(Runtime_->Device);
+		if (Engine_) {
+			graph->Reset(Engine_->Device);
 		}
 		delete graph;
 	}
 	DeferredGraphs_.Clear();
 	for (auto* graph : ReusableGraphs_) {
-		if (Runtime_) {
-			graph->Destroy(Runtime_->Device);
+		if (Engine_) {
+			graph->Destroy(Engine_->Device);
 		}
 		delete graph;
 	}
@@ -72,52 +71,45 @@ OaContext::~OaContext() {
 	// Destroy the graph's Vulkan objects (command pool, secondary CB) that
 	// are now kept alive across Execute() calls for reuse. The old per-call
 	// Reset(device) destroyed these every time; ClearNodes() preserves them.
-	if (Runtime_) {
-		Graph_->Destroy(Runtime_->Device);
+	if (Engine_) {
+		Graph_->Destroy(Engine_->Device);
 	}
 	delete Graph_;
 	OA_LOG_INFO(OaLogComponent::Core, "OaContext destroyed");
 }
 
-OaContext* OaContext::Create(OaEngine* InEngine) {
+OaContext* OaContext::Create(OaComputeEngine* InEngine) {
 	assert(InEngine and "OaContext::Create: null engine");
-	// Today every concrete engine is a compute engine (OaComputeEngine or
-	// a subclass). The downcast is always safe under that invariant; we
-	// dynamic_cast so a future engine type that doesn't inherit
-	// OaComputeEngine surfaces as a clear failure rather than UB.
-	auto* compute = dynamic_cast<OaComputeEngine*>(InEngine);
-	assert(compute and "OaContext::Create: engine is not compute-capable "
-		"(must derive from OaComputeEngine)");
-	return new OaContext(compute);
+	return new OaContext(InEngine);
 }
 
 OaEngine& OaContext::Engine() const noexcept {
-	assert(Runtime_ and "OaContext::Engine: runtime is null");
-	return *Runtime_;  // OaComputeEngine inherits OaEngine
+	assert(Engine_ and "OaContext::Engine: engine is null");
+	return *Engine_;  // OaComputeEngine inherits OaEngine
 }
 
 OaGraphicsEngine* OaContext::VkGraphics() const noexcept {
 #ifdef OA_ANDROID_ML
 	return nullptr;
 #else
-	return dynamic_cast<OaGraphicsEngine*>(Runtime_);
+	return dynamic_cast<OaGraphicsEngine*>(Engine_);
 #endif
 }
 
-bool OaContext::HasCompute()    const noexcept { return Runtime_ != nullptr and Runtime_->HasCompute(); }
-bool OaContext::HasGraphics()   const noexcept { return Runtime_ != nullptr and Runtime_->HasGraphics(); }
-bool OaContext::HasPresent()    const noexcept { return Runtime_ != nullptr and Runtime_->HasPresent(); }
-bool OaContext::HasMeshShader() const noexcept { return Runtime_ != nullptr and Runtime_->HasMeshShader(); }
-bool OaContext::HasRayTrace()   const noexcept { return Runtime_ != nullptr and Runtime_->HasRayTrace(); }
-bool OaContext::IsRemote()      const noexcept { return Runtime_ != nullptr and Runtime_->IsRemote(); }
+bool OaContext::HasCompute()    const noexcept { return Engine_ != nullptr and Engine_->HasCompute(); }
+bool OaContext::HasGraphics()   const noexcept { return Engine_ != nullptr and Engine_->HasGraphics(); }
+bool OaContext::HasPresent()    const noexcept { return Engine_ != nullptr and Engine_->HasPresent(); }
+bool OaContext::HasMeshShader() const noexcept { return Engine_ != nullptr and Engine_->HasMeshShader(); }
+bool OaContext::HasRayTrace()   const noexcept { return Engine_ != nullptr and Engine_->HasRayTrace(); }
+bool OaContext::IsRemote()      const noexcept { return Engine_ != nullptr and Engine_->IsRemote(); }
 
 OaStatus OaContext::Record(const OaComputeDispatchDesc& InDesc) {
-	if (not Runtime_ or not Graph_) {
+	if (not Engine_ or not Graph_) {
 		OA_LOG_ERROR(OaLogComponent::Core,
-			"OaContext::Record '%.*s': null runtime/graph",
+			"OaContext::Record '%.*s': null engine/graph",
 			static_cast<int>(InDesc.Kernel.Size()), InDesc.Kernel.Data());
 		return OaStatus::Error(OaStatusCode::Internal,
-			"context record: null runtime or graph");
+			"context record: null engine or graph");
 	}
 	if (InDesc.Kernel.Empty()) {
 		return OaStatus::Error(OaStatusCode::InvalidArgument,
@@ -624,14 +616,17 @@ void OaContext::SetDefault(OaContext* InContext) {
 	sDefaultContext = InContext;
 }
 
+OaContext* OaContext::GetDefaultPtr() noexcept {
+	return sDefaultContext;
+}
+
 OaContext& OaContext::GetDefault() {
 	assert(sDefaultContext and "Default context not set. Call OaContext::SetDefault() or initialize engine.");
 	return *sDefaultContext;
 }
 
 void OaContext::BeginStableResourceFrame() {
-	assert(not StableResourceFrameActive_ and
-		"stable resource frames cannot be nested");
+	assert(not StableResourceFrameActive_ and "stable resource frames cannot be nested");
 	StableResourceCursor_ = 0;
 	StableResourceFrameActive_ = true;
 }
@@ -641,20 +636,24 @@ void OaContext::EndStableResourceFrame() {
 	StableResourceFrameActive_ = false;
 }
 
-OaSharedPtr<OaVkBuffer> OaContext::AllocateMatrixBuffer(OaU64 InBytes) {
-	if (not Runtime_ or InBytes == 0) return {};
+OaSharedPtr<OaVkBuffer> OaContext::AllocateMatrixBuffer(
+	OaU64 InBytes, OaMemoryPlacement InPlacement)
+{
+	if (not Engine_ or InBytes == 0) return {};
 	static const OaBool logStableResourceMisses =
 		OaEnvFlag::IsSet("OA_LOG_STABLE_RESOURCE_MISSES");
 
 	const auto allocate = [&]() -> OaSharedPtr<OaVkBuffer> {
-		auto result = Runtime_->AllocBuffer(InBytes);
+		auto result = Engine_->AllocBuffer(InBytes, InPlacement);
 		if (not result) return {};
+		auto* engine = Engine_;
+		auto lifetime = engine->GetLifetimeToken();
 		return OaSharedPtr<OaVkBuffer>(
 			new OaVkBuffer(std::move(*result)),
-			[](OaVkBuffer* InPtr) {
+			[engine, lifetime](OaVkBuffer* InPtr) {
 				if (not InPtr) return;
-				if (auto* runtime = OaRuntimeGlobal::GetRuntime()) {
-					runtime->FreeBuffer(*InPtr);
+				if (not lifetime.Expired()) {
+					engine->FreeBuffer(*InPtr);
 				}
 				delete InPtr;
 			});
@@ -668,8 +667,13 @@ OaSharedPtr<OaVkBuffer> OaContext::AllocateMatrixBuffer(OaU64 InBytes) {
 		// Stable frames deliberately reuse storage by allocation ordinal. A caller
 		// may retain the matrix object itself between frames (for example a batch
 		// buffer that is refilled every step); that does not change slot identity.
-		if (existing and existing->Size >= InBytes) {
-			return existing;
+			const OaMemoryPlacement resolved = InPlacement == OaMemoryPlacement::Auto
+				? Engine_->DefaultMatrixPlacement()
+				: InPlacement;
+			if (existing and existing->Capacity >= InBytes
+				and existing->Placement == resolved) {
+				existing->Size = InBytes;
+				return existing;
 		}
 		if (logStableResourceMisses) {
 			OA_LOG_INFO(OaLogComponent::Core,
@@ -704,9 +708,17 @@ void OaContext::Add(
 	OaU32 InPushSize,
 	OaU32 InGroupsX,
 	OaU32 InGroupsY,
-	OaU32 InGroupsZ
+	OaU32 InGroupsZ,
+	OaStringView InOperation,
+	OaU64 InImplementationId,
+	OaU64 InOperationContractHash,
+	OaU64 InKernelContentHash
 ) {
 	OaComputeDispatchDesc desc;
+	desc.Operation = InOperation;
+	desc.ImplementationId = InImplementationId;
+	desc.OperationContractHash = InOperationContractHash;
+	desc.KernelContentHash = InKernelContentHash;
 	desc.Kernel = InKernelName;
 	desc.Buffers = InBuffers;
 	desc.Access = InAccess;
@@ -726,7 +738,11 @@ void OaContext::Add(
 	OaU32 InPushSize,
 	OaU32 InGroupsX,
 	OaU32 InGroupsY,
-	OaU32 InGroupsZ
+	OaU32 InGroupsZ,
+	OaStringView InOperation,
+	OaU64 InImplementationId,
+	OaU64 InOperationContractHash,
+	OaU64 InKernelContentHash
 ) {
 	OaVec<OaVkBuffer> buffers;
 	OaVec<OaSharedPtr<OaVkBuffer>> owners;
@@ -751,6 +767,10 @@ void OaContext::Add(
 	}
 
 	OaComputeDispatchDesc desc;
+	desc.Operation = InOperation;
+	desc.ImplementationId = InImplementationId;
+	desc.OperationContractHash = InOperationContractHash;
+	desc.KernelContentHash = InKernelContentHash;
 	desc.Kernel = InKernelName;
 	desc.Buffers = buffers.Span();
 	desc.BufferOwners = owners.Span();

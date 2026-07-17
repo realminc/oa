@@ -62,6 +62,9 @@ public:
 	[[nodiscard]] OaU32 NodeCount() const noexcept { return Graph_.NodeCount(); }
 	[[nodiscard]] OaGraphStats Stats() const { return Graph_.GetStats(); }
 	[[nodiscard]] OaF64 LastGpuMs() const noexcept { return Graph_.LastReplayGpuMs(); }
+	[[nodiscard]] OaString DebugReportJson(OaStringView InName = "TrainingStep") const {
+		return Graph_.DebugReportJson(InName);
+	}
 
 private:
 	[[nodiscard]] static OaStatus Validate_(const OaComputeGraph& InGraph);

@@ -15,6 +15,15 @@
 class OaComputeEngine;
 class OaVkDevice;
 
+// API-neutral buffer-copy region. Keeping this out of Vulkan-facing call sites
+// lets upload producers batch metadata and payload transfers without building
+// VkBufferCopy arrays themselves.
+struct OaBufferCopyRegion {
+	OaU64 SrcOffset = 0;
+	OaU64 DstOffset = 0;
+	OaU64 Size = 0;
+};
+
 class OaVkStream {
 public:
 
@@ -84,6 +93,10 @@ public:
 	);
 
 	void RecordCopyBuffer(const OaVkBuffer& InSrc, const OaVkBuffer& InDst, OaU64 InSize);
+	void RecordCopyBufferRegions(
+		const OaVkBuffer& InSrc,
+		const OaVkBuffer& InDst,
+		OaSpan<const OaBufferCopyRegion> InRegions);
 	void RecordBufferBarrier();
 	// One graph/batch-final visibility edge for mapped host readback. Device-only
 	// intermediate graphs must not emit this barrier individually.

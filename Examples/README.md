@@ -139,18 +139,20 @@ TEST(ExampleMl, MinimalTraining) {
 ### Minimal Compute Example
 ```cpp
 #include "../../Test/OaTest.h"
-#include <Oa/Runtime/Runtime.h>
+#include <Oa/Runtime.h>
 #include <Oa/Core.h>
 
 TEST(ExampleCore, MinimalCompute) {
-    OaRuntime rt;  // Auto-init engine + context
+    auto result = OaComputeEngine::Create({.AppName = "ExampleCore"});
+    ASSERT_TRUE(result.IsOk());
+    auto engine = std::move(*result);
     
     auto a = OaMatrix::Randn(OaShape2D(100, 100));
     auto b = OaMatrix::Randn(OaShape2D(100, 100));
     auto c = OaFnMatrix::MatMul(a, b);
     
-    rt.GetContext().Execute();
-    rt.GetContext().Sync();
+    ASSERT_TRUE(engine->GetContext().Execute().IsOk());
+    ASSERT_TRUE(engine->GetContext().Sync().IsOk());
     
     EXPECT_EQ(c.Size(0), 100);
     EXPECT_EQ(c.Size(1), 100);

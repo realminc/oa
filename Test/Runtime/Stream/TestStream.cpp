@@ -4,6 +4,8 @@
 
 #include "../../OaTest.h"
 #include <Oa/Runtime/Stream.h>
+#include <Oa/Runtime/UploadRing.h>
+#include <Oa/Runtime/Prefetch.h>
 #include <Oa/Runtime/Engine.h>
 #include <Oa/Core/Simd.h>
 #include <Oa/Core/Memory.h>
@@ -397,6 +399,138 @@ TEST(VkStream, RecordCopyBuffer) {
 	rt->Allocator.Free(src);
 	rt->DeregisterBuffer(dst);
 	rt->Allocator.Free(dst);
+}
+
+// ─── Persistent Mapped Upload Ring ───────────────────────────────────────────
+
+TEST(VkStream, UploadRingBatchesRegionsAndRecyclesFrames) {
+	auto* rt = OaComputeEngine::GetGlobal();
+	ASSERT_NE(rt, nullptr);
+
+	constexpr OaU64 kDstSize = 4096;
+	auto dstAResult = rt->AllocBuffer(kDstSize);
+	ASSERT_TRUE(dstAResult.IsOk());
+	auto dstA = std::move(*dstAResult);
+	auto dstBResult = rt->AllocBuffer(kDstSize);
+	ASSERT_TRUE(dstBResult.IsOk());
+	auto dstB = std::move(*dstBResult);
+
+	auto* dstAData = static_cast<OaU8*>(dstA.MappedPtr);
+	auto* dstBData = static_cast<OaU8*>(dstB.MappedPtr);
+	ASSERT_NE(dstAData, nullptr);
+	ASSERT_NE(dstBData, nullptr);
+	OaMemset(dstAData, 0xCD, kDstSize);
+	OaMemset(dstBData, 0xCD, kDstSize);
+
+	auto ringResult = OaUploadRing::Create(*rt, OaUploadRingConfig{
+		.CapacityBytes = 3 * 4096,
+		.FramesInFlight = 3,
+		.Alignment = 64,
+	});
+	ASSERT_TRUE(ringResult.IsOk()) << ringResult.GetStatus().GetMessage();
+	auto ring = std::move(*ringResult);
+	EXPECT_EQ(ring.FrameCapacityBytes(), 4096u);
+
+	OaU8 first[256];
+	OaU8 second[512];
+	OaU8 third[128];
+	for (OaU32 i = 0; i < 256; ++i) first[i] = static_cast<OaU8>(i);
+	for (OaU32 i = 0; i < 512; ++i) second[i] = static_cast<OaU8>(255u - (i & 0xFFu));
+	for (OaU32 i = 0; i < 128; ++i) third[i] = static_cast<OaU8>(0x80u + i);
+
+	// Seven batches lap the three frame arenas twice. BeginBatch must only wait
+	// when its own arena is recycled; earlier frames remain independently in flight.
+	for (OaU32 batch = 0; batch < 7; ++batch) {
+		ASSERT_TRUE(ring.BeginBatch().IsOk());
+		ASSERT_TRUE(ring.Upload(dstA, 0, first, sizeof(first)).IsOk());
+		ASSERT_TRUE(ring.Upload(dstA, 1024, second, sizeof(second)).IsOk());
+		ASSERT_TRUE(ring.Upload(dstB, 256, third, sizeof(third)).IsOk());
+		EXPECT_EQ(ring.PendingCopyCount(), 3u);
+		EXPECT_LE(ring.BytesUsed(), ring.FrameCapacityBytes());
+		auto completion = ring.Submit();
+		ASSERT_TRUE(completion.IsOk()) << completion.GetStatus().GetMessage();
+		ASSERT_TRUE(completion->IsValid());
+	}
+	ASSERT_TRUE(ring.Wait().IsOk());
+	ASSERT_TRUE(rt->Allocator.InvalidateHostBuffer(dstA, 0, kDstSize));
+	ASSERT_TRUE(rt->Allocator.InvalidateHostBuffer(dstB, 0, kDstSize));
+
+	for (OaU32 i = 0; i < 256; ++i) EXPECT_EQ(dstAData[i], first[i]);
+	for (OaU32 i = 0; i < 512; ++i) EXPECT_EQ(dstAData[1024 + i], second[i]);
+	for (OaU32 i = 0; i < 128; ++i) EXPECT_EQ(dstBData[256 + i], third[i]);
+	EXPECT_EQ(dstAData[512], 0xCD);
+	EXPECT_EQ(dstBData[0], 0xCD);
+
+	ring.Destroy();
+	rt->FreeBuffer(dstA);
+	rt->FreeBuffer(dstB);
+}
+
+TEST(VkStream, UploadRingRejectsInvalidRangesAndClosesEmptyBatch) {
+	auto* rt = OaComputeEngine::GetGlobal();
+	ASSERT_NE(rt, nullptr);
+
+	auto dstResult = rt->AllocBuffer(1024);
+	ASSERT_TRUE(dstResult.IsOk());
+	auto dst = std::move(*dstResult);
+	auto ringResult = OaUploadRing::Create(*rt, OaUploadRingConfig{
+		.CapacityBytes = 2 * 1024,
+		.FramesInFlight = 2,
+		.Alignment = 64,
+	});
+	ASSERT_TRUE(ringResult.IsOk());
+	auto ring = std::move(*ringResult);
+
+	ASSERT_TRUE(ring.BeginBatch().IsOk());
+	EXPECT_FALSE(ring.Reserve(2048).IsOk());
+	auto staleSlice = ring.Reserve(8);
+	ASSERT_TRUE(staleSlice.IsOk());
+	auto emptyCompletion = ring.Submit();
+	ASSERT_TRUE(emptyCompletion.IsOk());
+	EXPECT_TRUE(emptyCompletion->IsValid());
+	EXPECT_FALSE(ring.IsBatchOpen());
+	ASSERT_TRUE(emptyCompletion->Wait().IsOk());
+
+	OaU8 data[8] = {};
+	ASSERT_TRUE(ring.BeginBatch().IsOk());
+	EXPECT_FALSE(ring.EnqueueCopy(*staleSlice, dst, 0).IsOk());
+	EXPECT_FALSE(ring.Upload(dst, dst.Size - 4, data, sizeof(data)).IsOk());
+	auto completion = ring.Submit();
+	ASSERT_TRUE(completion.IsOk());
+	ASSERT_TRUE(completion->Wait().IsOk());
+
+	ring.Destroy();
+	rt->FreeBuffer(dst);
+}
+
+TEST(VkStream, PrefetchCompatibilityPathTransfersToDeviceBuffer) {
+	auto* rt = OaComputeEngine::GetGlobal();
+	ASSERT_NE(rt, nullptr);
+
+	constexpr OaU64 kSize = 1024;
+	OaU8 source[kSize];
+	for (OaU32 i = 0; i < kSize; ++i) {
+		source[i] = static_cast<OaU8>((i * 29u + 7u) & 0xFFu);
+	}
+	auto pipelineResult = OaPrefetchPipeline::Create(*rt, kSize);
+	ASSERT_TRUE(pipelineResult.IsOk());
+	auto pipeline = std::move(*pipelineResult);
+	ASSERT_TRUE(pipeline.BeginCopy(source, kSize).IsOk());
+	ASSERT_TRUE(pipeline.IsBusy());
+	auto deviceResult = pipeline.Wait();
+	ASSERT_TRUE(deviceResult.IsOk());
+	EXPECT_FALSE(pipeline.IsBusy());
+
+	auto readbackResult = rt->AllocBuffer(kSize);
+	ASSERT_TRUE(readbackResult.IsOk());
+	auto readback = std::move(*readbackResult);
+	ASSERT_TRUE(rt->CopyBufferAsync(*deviceResult, readback, kSize).IsOk());
+	ASSERT_TRUE(rt->WaitTransfer().IsOk());
+	ASSERT_TRUE(rt->Allocator.InvalidateHostBuffer(readback, 0, kSize));
+	EXPECT_TRUE(OaMemEqual(source, readback.MappedPtr, kSize));
+
+	pipeline.Destroy(*rt);
+	rt->FreeBuffer(readback);
 }
 
 // ─── Thread-Safe Pipeline Access ──────────────────────────────────────────────

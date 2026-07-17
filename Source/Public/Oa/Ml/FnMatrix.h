@@ -307,6 +307,12 @@ void VqEmaUpdate(const OaMatrix& InZe, const OaMatrix& InIdx,
 /// @return Gradient w.r.t. input
 [[nodiscard]] OaMatrix SoftmaxBwd(const OaMatrix& InForwardOutput, const OaMatrix& InGradOutput);
 
+/// Stable LogSoftmax backward.
+/// Computes: d_input = d_output - exp(log_softmax_output) * sum(d_output)
+[[nodiscard]] OaMatrix LogSoftmaxBwd(
+	const OaMatrix& InForwardOutput,
+	const OaMatrix& InGradOutput);
+
 /// TanhBwd: Backward pass for Tanh activation.
 /// Computes: d_input = d_output * (1 - tanh(x)^2)
 /// @param InForwardOutput: Output from forward Tanh pass

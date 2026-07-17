@@ -89,11 +89,23 @@ void OaContext::AddMatMul(
 	OaU32 InK,
 	OaContextMatMulPrecision InPrecision
 ) {
-	assert(GetRuntime() and "Runtime is null");
+	assert(GetEngine() and "Engine is null");
 
-	const auto route = OaGemmRouter::Select(*GetRuntime(), InM, InN, InK, ToGemmPrecision(InPrecision));
+	auto problem = OaGemmRouter::ProblemForRaw(
+		InM, InN, InK, OaStoragePrecision::Fp32, OaStoragePrecision::Fp32, true);
+	// Preserve the raw-buffer route contract used by Select(M,N,K): these
+	// dispatches are graph primitives, while training legality belongs to the
+	// higher-level Linear/MatMul descriptors that carry matrix metadata.
+	problem.Training = false;
+	problem.PrecisionHint = ToGemmPrecision(InPrecision);
+	const auto plan = OaGemmRouter::Plan(*GetEngine(), problem);
+	if (not plan) {
+		OA_LOG_ERROR(OaLogComponent::Core,
+			"AddMatMul: no legal matmul variant for raw buffers");
+		return;
+	}
 
-	if (route.Path == OaGemmPath::CoopVec) {
+	if (plan.Path == OaGemmPath::CoopVec) {
 		// GemmCoopVec computes out[n] = sum_k matrix[n,k] * vector[k] and
 		// expects (a_idx=matrix, x_idx=vector, out_idx=out) in that binding
 		// order. For MatMul(A,B) with M=1, A=[1,K] is the vector and
@@ -105,8 +117,9 @@ void OaContext::AddMatMul(
 			OaBufferAccess::Read,
 			OaBufferAccess::Write
 		};
-		Add(route.KernelName, bufs, access, &push, sizeof(push),
-			route.Gx, route.Gy, 1);
+		Add(plan.KernelName, bufs, access, &push, sizeof(push),
+			plan.Grid.X, plan.Grid.Y, plan.Grid.Z, "MatMulNt", plan.Variant,
+			plan.ProblemContractHash, plan.ShaderContentHash);
 		return;
 	}
 
@@ -120,7 +133,9 @@ void OaContext::AddMatMul(
 		OaBufferAccess::Read,
 		OaBufferAccess::Write
 	};
-	Add(route.KernelName, bufs, access, &push, sizeof(push), route.Gx, route.Gy, 1);
+	Add(plan.KernelName, bufs, access, &push, sizeof(push),
+		plan.Grid.X, plan.Grid.Y, plan.Grid.Z, "MatMulNt", plan.Variant,
+		plan.ProblemContractHash, plan.ShaderContentHash);
 }
 
 void OaContext::AddMatMul(
@@ -132,7 +147,7 @@ void OaContext::AddMatMul(
 	OaU32 InK,
 	OaContextMatMulPrecision InPrecision
 ) {
-	assert(GetRuntime() and "Runtime is null");
+	assert(GetEngine() and "Engine is null");
 
 	OaBufferAccess access[] = {
 		OaBufferAccess::Read,
@@ -174,24 +189,25 @@ void OaContext::AddMatMul(
 		problem.AContiguous = InA.GetStride().MatchesRowMajor(InA.GetShape());
 		problem.BContiguous = InB.GetStride().MatchesRowMajor(InB.GetShape());
 	}
-	const auto route = OaGemmRouter::Select(*GetRuntime(), problem);
-	if (route.KernelName == nullptr) {
+	const auto plan = OaGemmRouter::Plan(*GetEngine(), problem);
+	if (not plan) {
 		OA_LOG_ERROR(OaLogComponent::Core,
 			"AddMatMul: no legal matmul variant for matrix layout");
 		return;
 	}
 
-	if (route.Path == OaGemmPath::CoopVec) {
+	if (plan.Path == OaGemmPath::CoopVec) {
 		// See same-named branch in the OaVkBuffer overload above for the
 		// rationale — GemmCoopVec wants (matrix, vector, out); MatMul(A,B)
 		// for M=1 gives us (vector, matrix), so we swap.
 		struct PushCoopVec { OaU32 N; OaU32 K; } push{InN, InK};
-		Add(route.KernelName, {&InB, &InA, &OutC}, access, &push, sizeof(push),
-			route.Gx, route.Gy, route.Gz);
+		Add(plan.KernelName, {&InB, &InA, &OutC}, access, &push, sizeof(push),
+			plan.Grid.X, plan.Grid.Y, plan.Grid.Z, "MatMulNt", plan.Variant,
+			plan.ProblemContractHash, plan.ShaderContentHash);
 		return;
 	}
 
-	if (route.Kernel == OaGemmKernel::StridedFp32) {
+	if (plan.Kernel == OaGemmKernel::StridedFp32) {
 		struct Push {
 			OaU32 M, N, K;
 			OaU32 AOffset, ARowStride, AColStride, ABatchStride;
@@ -203,12 +219,14 @@ void OaContext::AddMatMul(
 			problem.B.Offset, problem.B.RowStride, problem.B.ColStride, problem.B.BatchStride,
 			problem.C.Offset, problem.C.RowStride, problem.C.ColStride, problem.C.BatchStride,
 		};
-		Add(route.KernelName, {&InA, &InB, &OutC}, access, &push, sizeof(push),
-			route.Gx, route.Gy, route.Gz);
+		Add(plan.KernelName, {&InA, &InB, &OutC}, access, &push, sizeof(push),
+			plan.Grid.X, plan.Grid.Y, plan.Grid.Z, "MatMulNt", plan.Variant,
+			plan.ProblemContractHash, plan.ShaderContentHash);
 	} else {
 		struct Push { OaU32 M; OaU32 N; OaU32 K; } push{InM, InN, InK};
-		Add(route.KernelName, {&InA, &InB, &OutC}, access, &push, sizeof(push),
-			route.Gx, route.Gy, route.Gz);
+		Add(plan.KernelName, {&InA, &InB, &OutC}, access, &push, sizeof(push),
+			plan.Grid.X, plan.Grid.Y, plan.Grid.Z, "MatMulNt", plan.Variant,
+			plan.ProblemContractHash, plan.ShaderContentHash);
 	}
 }
 
@@ -251,7 +269,7 @@ void OaContext::AddLinear(
 		return;
 	}
 
-	assert(GetRuntime() and "Runtime is null");
+	assert(GetEngine() and "Engine is null");
 	const bool isBf16Input = DeriveNodeDtype({&InX, &InWeight, InBias, &OutY}) != 0u;
 	const OaStoragePrecision storage = isBf16Input
 		? OaStoragePrecision::Bf16
@@ -260,8 +278,8 @@ void OaContext::AddLinear(
 		InM, InN, InK, storage, storage, true);
 	problem.Epilogue = OaGemmEpilogue::Bias;
 	problem.Training = true;
-	const auto route = OaGemmRouter::Select(*GetRuntime(), problem);
-	if (route.KernelName == nullptr) {
+	const auto plan = OaGemmRouter::Plan(*GetEngine(), problem);
+	if (not plan) {
 		OA_LOG_ERROR(OaLogComponent::Core, "AddLinear: no legal Bias matmul variant");
 		return;
 	}
@@ -271,8 +289,9 @@ void OaContext::AddLinear(
 		OaBufferAccess::Read, OaBufferAccess::Write
 	};
 	struct Push { OaU32 M; OaU32 N; OaU32 K; } push{InM, InN, InK};
-	Add(route.KernelName, {&InX, &InWeight, InBias, &OutY}, access,
-		&push, sizeof(push), route.Gx, route.Gy, 1);
+	Add(plan.KernelName, {&InX, &InWeight, InBias, &OutY}, access,
+		&push, sizeof(push), plan.Grid.X, plan.Grid.Y, plan.Grid.Z,
+		"Linear", plan.Variant, plan.ProblemContractHash, plan.ShaderContentHash);
 }
 
 void OaContext::AddLinearRelu(
@@ -320,7 +339,7 @@ void AddLinearActivation(
 	OaU32 InN,
 	OaU32 InK
 ) {
-	assert(InCtx.GetRuntime() and "Runtime is null");
+	assert(InCtx.GetEngine() and "Engine is null");
 
 	OaBufferAccess access[] = {
 		OaBufferAccess::Read,
@@ -337,8 +356,8 @@ void AddLinearActivation(
 		InM, InN, InK, storage, storage, true);
 	problem.Epilogue = InEpilogue;
 	problem.Training = true;
-	const auto route = OaGemmRouter::Select(*InCtx.GetRuntime(), problem);
-	if (route.KernelName == nullptr) {
+	const auto plan = OaGemmRouter::Plan(*InCtx.GetEngine(), problem);
+	if (not plan) {
 		OA_LOG_ERROR(OaLogComponent::Core,
 			"AddLinearActivation: no legal matmul variant for epilogue=%u",
 			static_cast<OaU32>(InEpilogue));
@@ -346,8 +365,11 @@ void AddLinearActivation(
 	}
 
 	struct Push { OaU32 M; OaU32 N; OaU32 K; } push{InM, InN, InK};
-	InCtx.Add(route.KernelName, {&InX, &InWeight, &InBias, &OutY}, access,
-		&push, sizeof(push), route.Gx, route.Gy, 1);
+	const OaStringView operation = InEpilogue == OaGemmEpilogue::BiasRelu
+		? OaStringView{"LinearRelu"} : OaStringView{"LinearGelu"};
+	InCtx.Add(plan.KernelName, {&InX, &InWeight, &InBias, &OutY}, access,
+		&push, sizeof(push), plan.Grid.X, plan.Grid.Y, plan.Grid.Z,
+		operation, plan.Variant, plan.ProblemContractHash, plan.ShaderContentHash);
 }
 
 } // namespace
@@ -361,7 +383,7 @@ void OaContext::AddLinearBwdWeightBias(
 	OaU32 InN,
 	OaU32 InK
 ) {
-	assert(GetRuntime() and "Runtime is null");
+	assert(GetEngine() and "Engine is null");
 
 	OaBufferAccess access[] = {
 		OaBufferAccess::Read,

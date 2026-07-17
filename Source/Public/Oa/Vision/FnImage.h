@@ -77,6 +77,23 @@ namespace OaFnImage {
 		OaU32 InHeight,
 		const OaNormalizationParams& InParams
 	);
+
+	// Blend an Int32 semantic label map over an FP32 NCHW RGB/RGBA image.
+	// Mask is [N,H,W] or [N,1,H,W], palette is FP32 [K,3], and invalid labels
+	// leave the source pixel unchanged.
+	[[nodiscard]] OaMatrix SegmentationOverlay(
+		OaEngine& InRt,
+		const OaMatrix& InImage,
+		const OaMatrix& InMask,
+		const OaMatrix& InPalette,
+		OaF32 InAlpha = 0.5F
+	);
+	[[nodiscard]] OaMatrix SegmentationOverlay(
+		const OaMatrix& InImage,
+		const OaMatrix& InMask,
+		const OaMatrix& InPalette,
+		OaF32 InAlpha = 0.5F
+	);
 }
 
 // Deprecated compatibility alias. New code uses OaFnImage.

@@ -1,6 +1,6 @@
 // OaPlot::Figure — implementation. Layout + replay over OaContext sinks.
 //
-// UnifiedExecutionArchitecture.md §3.5 / OaUiFinalGlueBridge.md Step 3e. The Show() path drives
+// Architecture/OaArchitecture.md §10. The Show() path drives
 // an internal OaDeviceUiApp that, in OnRender, iterates every Axes and
 // records its commands through OaContext (Imshow = ctx.RecordBlit) or OaUi
 // (Title / Caption / PlotLine). The SaveFig() path does the same layout on
@@ -20,7 +20,10 @@
 #include "../../../../ThirdParty/stb/stb_image_write.h"
 
 #include <cstdio>
+#include <algorithm>
+#include <cmath>
 #include <cstring>
+#include <limits>
 
 
 namespace OaPlot {
@@ -219,6 +222,40 @@ void Figure::RenderFrame(::OaDeviceUi& InGpui, ::OaUi& InOui) {
 				InOui.Image(ax.Image_.Tex.BindlessIndex(),
 				            ax.Image_.Tex.Width, ax.Image_.Tex.Height);
 				InOui.EndPanel();
+			} else if (ax.Heatmap_.Present && !ax.Heatmap_.V.Empty()) {
+				OaF32 vMin = ax.Heatmap_.Style.VMin;
+				OaF32 vMax = ax.Heatmap_.Style.VMax;
+				if (ax.Heatmap_.Style.AutoScale) {
+					vMin = std::numeric_limits<OaF32>::infinity();
+					vMax = -std::numeric_limits<OaF32>::infinity();
+					for (const OaF32 value : ax.Heatmap_.V) {
+						if (!std::isfinite(value)) continue;
+						vMin = std::min(vMin, value);
+						vMax = std::max(vMax, value);
+					}
+				}
+				char plotId[32];
+				std::snprintf(plotId, sizeof(plotId), "heat_%d_%d", r, c);
+				InOui.BeginPanel(plotId,
+					{cell.X, cell.Y + titleH, cell.W, imgRegionH});
+				InOui.Heatmap(plotId, ax.Heatmap_.V.Data(), ax.Heatmap_.Rows,
+					ax.Heatmap_.Cols, {
+						.VMin = vMin,
+						.VMax = vMax,
+						.Colormap = ax.Heatmap_.Style.Colormap,
+						.ShowGrid = ax.Heatmap_.Style.ShowGrid,
+					});
+				InOui.EndPanel();
+			} else if (ax.Line_.Present && !ax.Line_.Y.Empty()) {
+				char plotId[32];
+				std::snprintf(plotId, sizeof(plotId), "line_%d_%d", r, c);
+				InOui.BeginPanel(plotId,
+					{cell.X, cell.Y + titleH, cell.W, imgRegionH});
+				InOui.PlotLine(plotId, ax.Line_.Y.Data(),
+					static_cast<OaI32>(ax.Line_.Y.Size()), {
+						.Color = ax.Line_.Style.Color,
+					});
+				InOui.EndPanel();
 			} else if (imgRegionH > 0) {
 				InOui.Spacing(static_cast<OaF32>(imgRegionH));
 			}
@@ -227,25 +264,6 @@ void Figure::RenderFrame(::OaDeviceUi& InGpui, ::OaUi& InOui) {
 				InOui.PushStyle({.Text = ax.Caption_.Color});
 				InOui.Label(ax.Caption_.Text.c_str());
 				InOui.PopStyle();
-			}
-
-			// Line / Bar / Scatter — fallback rendering when no Imshow.
-			if (not ax.Image_.Present) {
-				if (ax.Line_.Present and not ax.Line_.Y.Empty()) {
-					InOui.PlotLine(ax.Title_.Text.c_str(),
-					               ax.Line_.Y.Data(),
-					               static_cast<OaI32>(ax.Line_.Y.Size()));
-				}
-				if (ax.Bar_.Present and not ax.Bar_.V.Empty()) {
-					InOui.PlotHistogram(ax.Title_.Text.c_str(),
-					                    ax.Bar_.V.Data(),
-					                    static_cast<OaI32>(ax.Bar_.V.Size()));
-				}
-				if (ax.Scatter_.Present and not ax.Scatter_.Ys.Empty()) {
-					InOui.PlotLine(ax.Title_.Text.c_str(),
-					               ax.Scatter_.Ys.Data(),
-					               static_cast<OaI32>(ax.Scatter_.Ys.Size()));
-				}
 			}
 
 			InOui.EndPanel();
@@ -298,11 +316,9 @@ OaStatus Figure::Show() {
 
 // ─── SaveFig() — CPU-side composition ──────────────────────────────────────
 //
-// Phase-1 limitation: image-only. Text overlays (Title / Caption / XLabel /
-// YLabel) and Plot/Bar/Scatter widgets are skipped because they require the
-// ImGui pipeline which only runs on a swapchain context today. The PNG
-// shows the image grid with the figure background colour fill — sufficient
-// to verify layout + Imshow plumbing. Text rasterization lands as Phase 2.
+// Images, curves and heatmaps are painted into the fixed-size framebuffer.
+// Text overlays remain interactive-only until the SDF atlas gains a CPU/headless
+// composition path.
 
 namespace {
 
@@ -371,6 +387,135 @@ static OaU8 ColorByteFromF32(OaF32 InV) {
 	return static_cast<OaU8>(InV * 255.0F + 0.5F);
 }
 
+static void PutPixel(OaU8* InFb, OaI32 InW, OaI32 InH,
+	OaI32 InX, OaI32 InY, OaColor InColor) {
+	if (InX < 0 || InY < 0 || InX >= InW || InY >= InH) return;
+	auto* pixel = InFb + (static_cast<OaI64>(InY) * InW + InX) * 4;
+	const OaF32 alpha = std::clamp(InColor.A, 0.0F, 1.0F);
+	const auto blend = [alpha](OaU8 InDst, OaF32 InSrc) {
+		return ColorByteFromF32(std::clamp(InSrc, 0.0F, 1.0F) * alpha
+			+ static_cast<OaF32>(InDst) / 255.0F * (1.0F - alpha));
+	};
+	pixel[0] = blend(pixel[0], InColor.R);
+	pixel[1] = blend(pixel[1], InColor.G);
+	pixel[2] = blend(pixel[2], InColor.B);
+	pixel[3] = 255U;
+}
+
+static OaColor HeatColor(OaF32 InT, OaU32 InColormap) {
+	const OaF32 t = std::clamp(InT, 0.0F, 1.0F);
+	if (InColormap == 3U) return {t, t, t, 1.0F};
+	if (InColormap == 2U) {
+		if (t < 0.5F) {
+			const OaF32 u = t * 2.0F;
+			return {
+				0.230F + (0.865F - 0.230F) * u,
+				0.299F + (0.865F - 0.299F) * u,
+				0.754F + (0.865F - 0.754F) * u, 1.0F};
+		}
+		const OaF32 u = (t - 0.5F) * 2.0F;
+		return {
+			0.865F + (0.706F - 0.865F) * u,
+			0.865F + (0.016F - 0.865F) * u,
+			0.865F + (0.150F - 0.865F) * u, 1.0F};
+	}
+	if (InColormap == 0U) {
+		if (t < 0.55F) {
+			const OaF32 u = t / 0.55F;
+			return {
+				0.050F + (0.798F - 0.050F) * u,
+				0.030F + (0.280F - 0.030F) * u,
+				0.528F + (0.470F - 0.528F) * u, 1.0F};
+		}
+		const OaF32 u = (t - 0.55F) / 0.45F;
+		return {
+			0.798F + (0.940F - 0.798F) * u,
+			0.280F + (0.975F - 0.280F) * u,
+			0.470F + (0.131F - 0.470F) * u, 1.0F};
+	}
+	// Small viridis anchor interpolation for deterministic headless figures.
+	if (t < 0.5F) {
+		const OaF32 u = t * 2.0F;
+		return {
+			0.267F + (0.128F - 0.267F) * u,
+			0.005F + (0.567F - 0.005F) * u,
+			0.329F + (0.551F - 0.329F) * u, 1.0F};
+	}
+	const OaF32 u = (t - 0.5F) * 2.0F;
+	return {
+		0.128F + (0.993F - 0.128F) * u,
+		0.567F + (0.906F - 0.567F) * u,
+		0.551F + (0.144F - 0.551F) * u, 1.0F};
+}
+
+static void PaintHeatmap(OaU8* InFb, OaI32 InFbW, OaI32 InFbH,
+	OaI32 InX, OaI32 InY, OaI32 InW, OaI32 InH,
+	const OaF32* InValues, OaI32 InRows, OaI32 InCols,
+	OaF32 InMin, OaF32 InMax, OaU32 InColormap, bool InGrid) {
+	const OaF32 range = std::max(std::abs(InMax - InMin), 1.0e-12F);
+	for (OaI32 y = 0; y < InH; ++y) {
+		const OaI32 row = std::min(InRows - 1, y * InRows / InH);
+		for (OaI32 x = 0; x < InW; ++x) {
+			const OaI32 col = std::min(InCols - 1, x * InCols / InW);
+			OaColor color = HeatColor(
+				(InValues[row * InCols + col] - InMin) / range, InColormap);
+			if (InGrid && (((x + 1) * InCols / InW) != col
+				|| ((y + 1) * InRows / InH) != row)) {
+				color.R *= 0.65F;
+				color.G *= 0.65F;
+				color.B *= 0.65F;
+			}
+			PutPixel(InFb, InFbW, InFbH, InX + x, InY + y, color);
+		}
+	}
+}
+
+static void PaintLine(OaU8* InFb, OaI32 InFbW, OaI32 InFbH,
+	OaI32 InX, OaI32 InY, OaI32 InW, OaI32 InH,
+	const OaF32* InValues, OaI32 InCount, OaColor InColor) {
+	if (InCount <= 0 || InW <= 0 || InH <= 0) return;
+	OaF32 minimum = std::numeric_limits<OaF32>::infinity();
+	OaF32 maximum = -std::numeric_limits<OaF32>::infinity();
+	for (OaI32 i = 0; i < InCount; ++i) {
+		if (!std::isfinite(InValues[i])) continue;
+		minimum = std::min(minimum, InValues[i]);
+		maximum = std::max(maximum, InValues[i]);
+	}
+	if (!std::isfinite(minimum) || !std::isfinite(maximum)) return;
+	if (maximum <= minimum) {
+		const OaF32 margin = std::max(1.0e-4F, std::abs(minimum) * 0.05F);
+		minimum -= margin;
+		maximum += margin;
+	}
+	for (OaI32 q = 1; q < 4; ++q) {
+		const OaI32 gx = InX + InW * q / 4;
+		const OaI32 gy = InY + InH * q / 4;
+		for (OaI32 y = 0; y < InH; ++y)
+			PutPixel(InFb, InFbW, InFbH, gx, InY + y,
+				{1.0F, 1.0F, 1.0F, 0.08F});
+		for (OaI32 x = 0; x < InW; ++x)
+			PutPixel(InFb, InFbW, InFbH, InX + x, gy,
+				{1.0F, 1.0F, 1.0F, 0.08F});
+	}
+	auto sampleY = [&](OaI32 x) {
+		const OaF32 position = InW <= 1 ? 0.0F
+			: static_cast<OaF32>(x) / static_cast<OaF32>(InW - 1);
+		const OaF32 index = position * static_cast<OaF32>(InCount - 1);
+		const OaI32 lo = static_cast<OaI32>(std::floor(index));
+		const OaI32 hi = std::min(InCount - 1, lo + 1);
+		const OaF32 value = InValues[lo]
+			+ (InValues[hi] - InValues[lo]) * (index - static_cast<OaF32>(lo));
+		return InY + static_cast<OaI32>(std::round((1.0F
+			- (value - minimum) / (maximum - minimum)) * (InH - 1)));
+	};
+	for (OaI32 x = 0; x < InW; ++x) {
+		const OaI32 y0 = sampleY(std::max(0, x - 1));
+		const OaI32 y1 = sampleY(x);
+		for (OaI32 y = std::min(y0, y1); y <= std::max(y0, y1); ++y)
+			PutPixel(InFb, InFbW, InFbH, InX + x, y, InColor);
+	}
+}
+
 }  // namespace
 
 
@@ -421,7 +566,8 @@ OaStatus Figure::CompositeFramebuffer(OaComputeEngine& InRt) {
 	for (OaI32 r = 0; r < Config_.Rows; ++r) {
 		for (OaI32 c = 0; c < Config_.Cols; ++c) {
 			const Axes& ax = Ax(r, c);
-			if (not ax.Image_.Present or not ax.Image_.Tex.IsValid()) { continue; }
+			if ((!ax.Image_.Present || !ax.Image_.Tex.IsValid())
+				&& !ax.Heatmap_.Present && !ax.Line_.Present) continue;
 
 			// Cell rect inside the canvas (canvas is its own coord system =
 			// the configured Width × Height, so CellRect against those).
@@ -433,6 +579,31 @@ OaStatus Figure::CompositeFramebuffer(OaComputeEngine& InRt) {
 			const OaI32 imgRegionY = cell.Y + titleH;
 			const OaI32 imgRegionH = cell.H - titleH - captionH;
 			if (imgRegionH <= 0) { continue; }
+
+			if (ax.Heatmap_.Present && !ax.Heatmap_.V.Empty()) {
+				OaF32 vMin = ax.Heatmap_.Style.VMin;
+				OaF32 vMax = ax.Heatmap_.Style.VMax;
+				if (ax.Heatmap_.Style.AutoScale) {
+					vMin = std::numeric_limits<OaF32>::infinity();
+					vMax = -std::numeric_limits<OaF32>::infinity();
+					for (const OaF32 value : ax.Heatmap_.V) {
+						if (!std::isfinite(value)) continue;
+						vMin = std::min(vMin, value);
+						vMax = std::max(vMax, value);
+					}
+				}
+				PaintHeatmap(fb.Data(), W, H, cell.X, imgRegionY,
+					cell.W, imgRegionH, ax.Heatmap_.V.Data(),
+					ax.Heatmap_.Rows, ax.Heatmap_.Cols, vMin, vMax,
+					ax.Heatmap_.Style.Colormap, ax.Heatmap_.Style.ShowGrid);
+				continue;
+			}
+			if (ax.Line_.Present && !ax.Line_.Y.Empty()) {
+				PaintLine(fb.Data(), W, H, cell.X, imgRegionY, cell.W,
+					imgRegionH, ax.Line_.Y.Data(),
+					static_cast<OaI32>(ax.Line_.Y.Size()), ax.Line_.Style.Color);
+				continue;
+			}
 
 			// Use fixed size for square images, otherwise calculate per-cell
 			OaI32 dW, dH;

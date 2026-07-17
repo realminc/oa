@@ -95,6 +95,8 @@ public:
 	[[nodiscard]] OaU32 NodeIndex() const { return static_cast<OaU32>(Device_.Index); }
 	[[nodiscard]] bool HasStorage() const;
 	[[nodiscard]] bool IsEmpty() const { return !HasStorage(); }
+	[[nodiscard]] bool IsHostAccessible() const { return Data() != nullptr; }
+	[[nodiscard]] OaMemoryPlacement GetMemoryPlacement() const;
 
 	[[nodiscard]] OaVkBuffer GetVkBuffer() const;
 

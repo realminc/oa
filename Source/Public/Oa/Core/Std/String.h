@@ -181,7 +181,7 @@ public:
 		char* d = MutableData();
 		const size_type keep = tail - removeN;
 		if (keep > 0) {
-			OaMemcpy(d + InPos, d + InPos + removeN, static_cast<OaUsize>(keep));
+			std::memmove(d + InPos, d + InPos + removeN, keep);
 		}
 		SetLen(newSz);
 		DowngradeToSsoIfFits();

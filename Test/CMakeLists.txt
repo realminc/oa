@@ -60,6 +60,7 @@ oa_add_test(TestContainers       Core/Container/TestContainers.cpp  Core/Contain
 
 # Core/Image tests (Phase 1: metadata wrapper, requires Vulkan since OA is GPU-only)
 oa_add_ml_test(TestImage         Core/TestImage.cpp                 Core)
+oa_add_ml_test(TestUi            Ui/TestUi.cpp                      Ui)
 
 # Core/Audio tests (Phase 6: audio wrapper, requires Vulkan since OA is GPU-only)
 oa_add_ml_test(TestAudio         Core/TestAudio.cpp                 Core)
@@ -79,6 +80,7 @@ oa_add_test(TestTransferWeights  Ml/Io/TestSafeTensorReader.cpp     Ml/Io)
 oa_add_test(TestTokenizer        Ml/Data/TestTokenizer.cpp          Ml/Data)
 oa_add_test(TestGptOssConfig     Ml/Io/TestGptOssConfig.cpp         Ml/Io)
 oa_add_ml_test(TestAttention     Ml/Nn/TestAttention.cpp            Ml/Nn)
+oa_add_ml_test(TestFlow          Ml/Generative/TestFlow.cpp         Ml/Generative)
 oa_add_ml_test(TestClipText      Ml/Nn/TestClipText.cpp             Ml/Nn)
 
 set_tests_properties(
@@ -176,6 +178,11 @@ oa_add_ml_test(TestFnMatrixActivation Ml/FnMatrix/Activation/TestFnMatrixActivat
 oa_add_ml_test(TestFnMatrixEmbed Ml/FnMatrix/Embed/TestFnMatrixEmbed.gen.cpp Ml/FnMatrix/Embed)
 oa_add_ml_test(TestFnMatrixNorm Ml/FnMatrix/Norm/TestFnMatrixNorm.gen.cpp Ml/FnMatrix/Norm)
 oa_add_ml_test(TestFnLoss Ml/Loss/TestFnLoss.cpp Ml/Loss)
+oa_add_ml_test(TestRl Ml/Rl/TestRl.cpp Ml/Rl)
+target_sources(TestRl PRIVATE
+	${oa_SOURCE_DIR}/Tutorial/Ml/Rl/CartPole.cpp
+	Ml/Rl/TestCartPole.cpp)
+target_include_directories(TestRl PRIVATE ${oa_SOURCE_DIR}/Tutorial/Ml/Rl)
 oa_add_ml_test(TestFnMatrixPool Ml/FnMatrix/Pool/TestFnMatrixPool.cpp Ml/FnMatrix/Pool)
 oa_add_ml_test(TestOptimizers Ml/Optim/TestOptimizers.cpp Ml/Optim)
 oa_add_ml_test(TestFnMatrixBackward Ml/FnMatrix/Backward/TestFnMatrixBackward.cpp Ml/FnMatrix/Backward)
@@ -282,8 +289,9 @@ oa_add_ml_test(TestFnImage Vision/Image/TestFnImage.cpp Vision/Image)
 oa_add_ml_test(TestGeometricKernels Vision/Image/Kernel/TestGeometricKernels.cpp Vision/Image/Kernel)
 oa_add_ml_test(TestFilterKernels Vision/Image/Kernel/TestFilterKernels.cpp Vision/Image/Kernel)
 oa_add_ml_test(TestVision50Ops Vision/Image/Kernel/TestVision50Ops.cpp Vision/Image/Kernel)
+oa_add_ml_test(TestFnDetection Vision/Detection/TestFnDetection.cpp Vision/Detection)
 
-set_tests_properties(TestJpegDecoder TestImageProcessor TestVideoDecoder TestVideoDecodeReference TestFnImage TestGeometricKernels TestFilterKernels TestVision50Ops
+set_tests_properties(TestJpegDecoder TestImageProcessor TestVideoDecoder TestVideoDecodeReference TestFnImage TestGeometricKernels TestFilterKernels TestVision50Ops TestFnDetection
 	PROPERTIES LABELS "gpu_bindless;ml;vision")
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -339,11 +347,19 @@ endif()
 # BENCHMARKS
 # ═══════════════════════════════════════════════════════════════════════════
 
-# OaMemcpyNT prefetch × size CSV (Linux sweep re-execs for env)
-add_executable(BenchMemcpyNt Core/Memory/BenchMemcpyNt.cpp)
-target_link_libraries(BenchMemcpyNt PRIVATE oa)
-target_include_directories(BenchMemcpyNt PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-set_target_properties(BenchMemcpyNt PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${OA_BIN_DIR}/Test/Core/Memory")
+# Host memcpy/libc/non-temporal comparison across size and alignment regimes.
+add_executable(BenchMemory Core/Memory/BenchMemory.cpp)
+target_link_libraries(BenchMemory PRIVATE oa)
+target_include_directories(BenchMemory PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+set_target_properties(BenchMemory PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${OA_BIN_DIR}/Test/Core/Memory")
+
+# Persistent mapped upload ring vs allocate/submit/wait/free per copy.
+# Deliberately not registered with ctest: this is a controlled benchmark.
+add_executable(BenchUploadRing Runtime/Stream/BenchUploadRing.cpp ${CMAKE_CURRENT_SOURCE_DIR}/Ml/MlTestMain.cpp)
+target_link_libraries(BenchUploadRing PRIVATE oa GTest::gtest)
+target_include_directories(BenchUploadRing PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_options(BenchUploadRing PRIVATE -include ${CMAKE_CURRENT_SOURCE_DIR}/OaTestVk.h)
+set_target_properties(BenchUploadRing PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${OA_BIN_DIR}/Test/Runtime/Stream")
 
 # Tuned KHR CoopMat BF16 GEMM (GemmCmSgBf16) — correctness + perf.
 oa_add_ml_test(TestGemmCmSgBf16 Compute/TestGemmCmSgBf16.cpp Compute)

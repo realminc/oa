@@ -93,10 +93,13 @@ OaResult<OaTexture> OaTexture::FromPixels(
 }
 
 void OaTexture::Destroy(OaComputeEngine& InRt) {
-	if (DeviceBuf.Buffer) {
+	if (DeviceOwner) {
+		DeviceOwner.Reset();
+	} else if (DeviceBuf.Buffer) {
 		InRt.DeregisterBuffer(DeviceBuf);
 		InRt.FreeBuffer(DeviceBuf);
 	}
+	DeviceBuf = {};
 	// Image-backed textures are non-owning views (the swapchain or other
 	// upstream owns the VkImage/VkImageView). Just drop the references.
 	Image  = nullptr;
@@ -222,19 +225,57 @@ OaResult<OaTexture> OaTexture::FromMatrix(
 	OaComputeEngine& InRt,
 	const OaMatrix& InMatrix)
 {
+	(void)InRt; // allocation is owned by the active context's matrix pool
 	const auto shape = InMatrix.GetShape();
-	if (shape.Rank < 4) {
-		return OaStatus::Error("OaTexture::FromMatrix: expected [1,C,H,W] matrix");
+	if (shape.Rank != 4 || shape[0] != 1) {
+		return OaStatus::InvalidArgument(
+			"OaTexture::FromMatrix: expected [1,C,H,W] matrix");
+	}
+	const OaI32 channels = static_cast<OaI32>(shape[1]);
+	if (channels != 1 && channels != 3 && channels != 4) {
+		return OaStatus::InvalidArgument(
+			"OaTexture::FromMatrix: channel count must be 1, 3 or 4");
+	}
+	if (InMatrix.GetDtype() != OaScalarType::Float32
+		&& InMatrix.GetDtype() != OaScalarType::BFloat16
+		&& InMatrix.GetDtype() != OaScalarType::Float16) {
+		return OaStatus::InvalidArgument(
+			"OaTexture::FromMatrix: expected a floating-point matrix");
 	}
 	const OaI32 h = static_cast<OaI32>(shape[2]);
 	const OaI32 w = static_cast<OaI32>(shape[3]);
+	if (w <= 0 || h <= 0) {
+		return OaStatus::InvalidArgument(
+			"OaTexture::FromMatrix: dimensions must be positive");
+	}
 
-	// TODO: dispatch CvtNchwToRgba8 compute shader — for now delegate to CPU readback.
-	// When the shader is wired, replace this with a zero-copy GPU path.
-	const OaU64 pixelCount = static_cast<OaU64>(w) * h * 4;
-	OaVec<OaU8> rgba;
-	rgba.Resize(pixelCount, 0u);
-	return OaTexture::FromPixels(InRt, OaSpan<const OaU8>(rgba.Data(), rgba.Size()), w, h);
+	const OaI64 pixelCount = static_cast<OaI64>(w) * h;
+	// UInt32 is exactly one packed RGBA8 pixel. It also gives the graph a shared
+	// allocation owner, avoiding a raw-buffer lifetime escape.
+	auto packed = OaFnMatrix::Empty(
+		OaMatrixShape{pixelCount}, OaScalarType::UInt32);
+	struct Push {
+		OaU32 Channels;
+		OaU32 Height;
+		OaU32 Width;
+	} push{
+		static_cast<OaU32>(channels),
+		static_cast<OaU32>(h),
+		static_cast<OaU32>(w),
+	};
+	OaBufferAccess access[] = {
+		OaBufferAccess::Read, OaBufferAccess::Write};
+	auto& ctx = OaContext::GetDefault();
+	ctx.Add("MatrixToRgba8", {&InMatrix, &packed}, access,
+		&push, sizeof(push),
+		(static_cast<OaU32>(pixelCount) + 255U) / 256U);
+
+	OaTexture texture;
+	texture.DeviceBuf = packed.GetVkBuffer();
+	texture.DeviceOwner = packed.VkBuf_;
+	texture.Width = w;
+	texture.Height = h;
+	return texture;
 }
 
 // ─── Phase 4: OaImage bridge ───────────────────────────────────────────────
@@ -327,55 +368,55 @@ void OaImagePlanes::Destroy(OaComputeEngine& InRt) {
 
 OaTexture OaTexture::operator+(const OaTexture& InOther) const {
 	OaMatrix result = this->ToMatrix() + InOther.ToMatrix();
-	auto img = OaTexture::FromMatrix(*OaContext::GetDefault().GetRuntime(), result);
+	auto img = OaTexture::FromMatrix(*OaContext::GetDefault().GetEngine(), result);
 	return img.IsOk() ? *img : OaTexture{};
 }
 
 OaTexture OaTexture::operator-(const OaTexture& InOther) const {
 	OaMatrix result = this->ToMatrix() - InOther.ToMatrix();
-	auto img = OaTexture::FromMatrix(*OaContext::GetDefault().GetRuntime(), result);
+	auto img = OaTexture::FromMatrix(*OaContext::GetDefault().GetEngine(), result);
 	return img.IsOk() ? *img : OaTexture{};
 }
 
 OaTexture OaTexture::operator*(const OaTexture& InOther) const {
 	OaMatrix result = this->ToMatrix() * InOther.ToMatrix();
-	auto img = OaTexture::FromMatrix(*OaContext::GetDefault().GetRuntime(), result);
+	auto img = OaTexture::FromMatrix(*OaContext::GetDefault().GetEngine(), result);
 	return img.IsOk() ? *img : OaTexture{};
 }
 
 OaTexture OaTexture::operator/(const OaTexture& InOther) const {
 	OaMatrix result = this->ToMatrix() / InOther.ToMatrix();
-	auto img = OaTexture::FromMatrix(*OaContext::GetDefault().GetRuntime(), result);
+	auto img = OaTexture::FromMatrix(*OaContext::GetDefault().GetEngine(), result);
 	return img.IsOk() ? *img : OaTexture{};
 }
 
 OaTexture OaTexture::operator+(OaF32 InScalar) const {
 	OaMatrix result = this->ToMatrix() + InScalar;
-	auto img = OaTexture::FromMatrix(*OaContext::GetDefault().GetRuntime(), result);
+	auto img = OaTexture::FromMatrix(*OaContext::GetDefault().GetEngine(), result);
 	return img.IsOk() ? *img : OaTexture{};
 }
 
 OaTexture OaTexture::operator-(OaF32 InScalar) const {
 	OaMatrix result = this->ToMatrix() - InScalar;
-	auto img = OaTexture::FromMatrix(*OaContext::GetDefault().GetRuntime(), result);
+	auto img = OaTexture::FromMatrix(*OaContext::GetDefault().GetEngine(), result);
 	return img.IsOk() ? *img : OaTexture{};
 }
 
 OaTexture OaTexture::operator*(OaF32 InScalar) const {
 	OaMatrix result = this->ToMatrix() * InScalar;
-	auto img = OaTexture::FromMatrix(*OaContext::GetDefault().GetRuntime(), result);
+	auto img = OaTexture::FromMatrix(*OaContext::GetDefault().GetEngine(), result);
 	return img.IsOk() ? *img : OaTexture{};
 }
 
 OaTexture OaTexture::operator/(OaF32 InScalar) const {
 	OaMatrix result = this->ToMatrix() / InScalar;
-	auto img = OaTexture::FromMatrix(*OaContext::GetDefault().GetRuntime(), result);
+	auto img = OaTexture::FromMatrix(*OaContext::GetDefault().GetEngine(), result);
 	return img.IsOk() ? *img : OaTexture{};
 }
 
 OaTexture OaTexture::operator-() const {
 	OaMatrix result = -this->ToMatrix();
-	auto img = OaTexture::FromMatrix(*OaContext::GetDefault().GetRuntime(), result);
+	auto img = OaTexture::FromMatrix(*OaContext::GetDefault().GetEngine(), result);
 	return img.IsOk() ? *img : OaTexture{};
 }
 
@@ -385,55 +426,55 @@ OaTexture OaTexture::operator-() const {
 
 OaImagePlanes OaImagePlanes::operator+(const OaImagePlanes& InOther) const {
 	OaMatrix result = this->ToMatrix() + InOther.ToMatrix();
-	auto img = OaImagePlanes::FromMatrix(*OaContext::GetDefault().GetRuntime(), result);
+	auto img = OaImagePlanes::FromMatrix(*OaContext::GetDefault().GetEngine(), result);
 	return img.IsOk() ? *img : OaImagePlanes{};
 }
 
 OaImagePlanes OaImagePlanes::operator-(const OaImagePlanes& InOther) const {
 	OaMatrix result = this->ToMatrix() - InOther.ToMatrix();
-	auto img = OaImagePlanes::FromMatrix(*OaContext::GetDefault().GetRuntime(), result);
+	auto img = OaImagePlanes::FromMatrix(*OaContext::GetDefault().GetEngine(), result);
 	return img.IsOk() ? *img : OaImagePlanes{};
 }
 
 OaImagePlanes OaImagePlanes::operator*(const OaImagePlanes& InOther) const {
 	OaMatrix result = this->ToMatrix() * InOther.ToMatrix();
-	auto img = OaImagePlanes::FromMatrix(*OaContext::GetDefault().GetRuntime(), result);
+	auto img = OaImagePlanes::FromMatrix(*OaContext::GetDefault().GetEngine(), result);
 	return img.IsOk() ? *img : OaImagePlanes{};
 }
 
 OaImagePlanes OaImagePlanes::operator/(const OaImagePlanes& InOther) const {
 	OaMatrix result = this->ToMatrix() / InOther.ToMatrix();
-	auto img = OaImagePlanes::FromMatrix(*OaContext::GetDefault().GetRuntime(), result);
+	auto img = OaImagePlanes::FromMatrix(*OaContext::GetDefault().GetEngine(), result);
 	return img.IsOk() ? *img : OaImagePlanes{};
 }
 
 OaImagePlanes OaImagePlanes::operator+(OaF32 InScalar) const {
 	OaMatrix result = this->ToMatrix() + InScalar;
-	auto img = OaImagePlanes::FromMatrix(*OaContext::GetDefault().GetRuntime(), result);
+	auto img = OaImagePlanes::FromMatrix(*OaContext::GetDefault().GetEngine(), result);
 	return img.IsOk() ? *img : OaImagePlanes{};
 }
 
 OaImagePlanes OaImagePlanes::operator-(OaF32 InScalar) const {
 	OaMatrix result = this->ToMatrix() - InScalar;
-	auto img = OaImagePlanes::FromMatrix(*OaContext::GetDefault().GetRuntime(), result);
+	auto img = OaImagePlanes::FromMatrix(*OaContext::GetDefault().GetEngine(), result);
 	return img.IsOk() ? *img : OaImagePlanes{};
 }
 
 OaImagePlanes OaImagePlanes::operator*(OaF32 InScalar) const {
 	OaMatrix result = this->ToMatrix() * InScalar;
-	auto img = OaImagePlanes::FromMatrix(*OaContext::GetDefault().GetRuntime(), result);
+	auto img = OaImagePlanes::FromMatrix(*OaContext::GetDefault().GetEngine(), result);
 	return img.IsOk() ? *img : OaImagePlanes{};
 }
 
 OaImagePlanes OaImagePlanes::operator/(OaF32 InScalar) const {
 	OaMatrix result = this->ToMatrix() / InScalar;
-	auto img = OaImagePlanes::FromMatrix(*OaContext::GetDefault().GetRuntime(), result);
+	auto img = OaImagePlanes::FromMatrix(*OaContext::GetDefault().GetEngine(), result);
 	return img.IsOk() ? *img : OaImagePlanes{};
 }
 
 OaImagePlanes OaImagePlanes::operator-() const {
 	OaMatrix result = -this->ToMatrix();
-	auto img = OaImagePlanes::FromMatrix(*OaContext::GetDefault().GetRuntime(), result);
+	auto img = OaImagePlanes::FromMatrix(*OaContext::GetDefault().GetEngine(), result);
 	return img.IsOk() ? *img : OaImagePlanes{};
 }
 

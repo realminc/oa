@@ -3,7 +3,6 @@
 
 #include "../../../OaTest.h"
 #include <Oa/Vision.h>
-#include <Oa/Runtime/RuntimeGlobal.h>
 #include <algorithm>
 #include <cmath>
 

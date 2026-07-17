@@ -313,6 +313,28 @@ TEST(GemmRouter, ImmutablePlanRejectsContractAndDeviceDrift) {
 	EXPECT_FALSE(OaGemmRouter::ValidatePlan(rt, wrongShader, problem));
 }
 
+TEST(GemmRouter, RawPlanPreservesLegacySelectionContract) {
+	if (not OaVkTestEngineOk()) { GTEST_SKIP(); }
+	auto& rt = *OaComputeEngine::GetGlobal();
+	ScopedRouteCache scoped(rt);
+	const auto legacy = OaGemmRouter::Select(
+		rt, 64, 96, 32, OaGemmPrecision::Fp32);
+	auto problem = OaGemmRouter::ProblemForRaw(
+		64, 96, 32,
+		OaStoragePrecision::Fp32, OaStoragePrecision::Fp32, true);
+	problem.Training = false;
+	problem.PrecisionHint = OaGemmPrecision::Fp32;
+	const auto plan = OaGemmRouter::Plan(rt, problem);
+
+	ASSERT_TRUE(static_cast<bool>(plan));
+	EXPECT_EQ(plan.Variant, legacy.Variant);
+	EXPECT_EQ(plan.Kernel, legacy.Kernel);
+	EXPECT_EQ(plan.Grid.X, legacy.Gx);
+	EXPECT_EQ(plan.Grid.Y, legacy.Gy);
+	EXPECT_EQ(plan.Grid.Z, legacy.Gz);
+	EXPECT_TRUE(OaGemmRouter::ValidatePlan(rt, plan, problem));
+}
+
 TEST(GemmRouter, PlanPreferenceCanBypassMeasuredCache) {
 	if (not OaVkTestEngineOk()) { GTEST_SKIP(); }
 	auto& rt = *OaComputeEngine::GetGlobal();

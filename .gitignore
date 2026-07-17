@@ -13,6 +13,8 @@ var/*
 !var/
 !var/config/
 !var/config/**
+imgui.ini
+var/config/*.imgui.ini
 cmake-build-*/
 out/
 install/

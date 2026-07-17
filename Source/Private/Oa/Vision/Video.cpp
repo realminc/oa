@@ -7,6 +7,7 @@
 #include <Oa/Runtime/Engine.h>
 
 #include <algorithm>
+#include <limits>
 
 OaResult<OaVideo> OaVideo::Open(OaEngine& InEngine, const OaVideoConfig& InCfg)
 {
@@ -214,6 +215,69 @@ void OaVideo::TogglePlay()
 	if (Playing_) Pause(); else Play();
 }
 
+void OaVideo::SetLoop(bool InLoop)
+{
+	Cfg_.Loop = InLoop;
+	if (Audio_.HasValue()) Audio_->SetLoop(InLoop);
+}
+
+OaU64 OaVideo::DurationUs() const
+{
+	if (not Stream_.HasValue()) return 0U;
+	const auto& info = Stream_->GetInfo();
+	OaU64 durationTicks = info.Duration;
+	if (durationTicks == 0U && not DisplayPts_.Empty()) {
+		durationTicks = DisplayPts_.Back();
+		if (DisplayPts_.Size() > 1U) {
+			durationTicks += DisplayPts_.Back() - DisplayPts_[DisplayPts_.Size() - 2U];
+		}
+	}
+	if (durationTicks == 0U || info.TimebaseNum == 0U || info.TimebaseDen == 0U) {
+		return 0U;
+	}
+	const long double us = static_cast<long double>(durationTicks)
+		* static_cast<long double>(info.TimebaseNum) * 1'000'000.0L
+		/ static_cast<long double>(info.TimebaseDen);
+	return us >= static_cast<long double>(std::numeric_limits<OaU64>::max())
+		? std::numeric_limits<OaU64>::max()
+		: static_cast<OaU64>(us + 0.5L);
+}
+
+OaU64 OaVideo::PositionUs() const
+{
+	if (not Stream_.HasValue() || Frame_.ImageView == VK_NULL_HANDLE) return 0U;
+	const auto& info = Stream_->GetInfo();
+	if (info.TimebaseNum == 0U || info.TimebaseDen == 0U) return 0U;
+	const long double us = static_cast<long double>(Frame_.PresentationTimestamp)
+		* static_cast<long double>(info.TimebaseNum) * 1'000'000.0L
+		/ static_cast<long double>(info.TimebaseDen);
+	return us >= static_cast<long double>(std::numeric_limits<OaU64>::max())
+		? std::numeric_limits<OaU64>::max()
+		: static_cast<OaU64>(us + 0.5L);
+}
+
+OaStatus OaVideo::SeekUs(OaU64 InTimestampUs)
+{
+	if (not Stream_.HasValue()) {
+		return OaStatus::Error(OaStatusCode::FailedPrecondition,
+			"OaVideo::SeekUs called on a closed video");
+	}
+	const auto& info = Stream_->GetInfo();
+	if (info.TimebaseNum == 0U || info.TimebaseDen == 0U) {
+		return OaStatus::Error(OaStatusCode::FailedPrecondition,
+			"OaVideo::SeekUs requires a declared stream timebase");
+	}
+	const OaU64 durationUs = DurationUs();
+	if (durationUs > 0U) InTimestampUs = std::min(InTimestampUs, durationUs);
+	const long double ticks = static_cast<long double>(InTimestampUs)
+		* static_cast<long double>(info.TimebaseDen)
+		/ (static_cast<long double>(info.TimebaseNum) * 1'000'000.0L);
+	const OaU64 timestamp = ticks >= static_cast<long double>(std::numeric_limits<OaU64>::max())
+		? std::numeric_limits<OaU64>::max()
+		: static_cast<OaU64>(ticks + 0.5L);
+	return Seek(timestamp);
+}
+
 OaStatus OaVideo::StepForward()
 {
 	if (not Decoder_.HasValue() or not Stream_.HasValue()) {
@@ -271,6 +335,7 @@ OaStatus OaVideo::StepFrames(OaI32 InFrameDelta)
 		for (OaI32 i = 0; i < InFrameDelta; ++i) {
 			OA_RETURN_IF_ERROR(StepForward());
 		}
+		if (Audio_.HasValue()) OA_RETURN_IF_ERROR(Audio_->Seek(PositionUs()));
 		return OaStatus::Ok();
 	}
 	if (not Stream_.HasValue() or not Decoder_.HasValue()
@@ -285,7 +350,9 @@ OaStatus OaVideo::StepFrames(OaI32 InFrameDelta)
 	if (target == current) {
 		return OaStatus::Ok();
 	}
-	return SeekDisplayFrame_(static_cast<OaUsize>(target));
+	OA_RETURN_IF_ERROR(SeekDisplayFrame_(static_cast<OaUsize>(target)));
+	if (Audio_.HasValue()) OA_RETURN_IF_ERROR(Audio_->Seek(PositionUs()));
+	return OaStatus::Ok();
 }
 
 OaStatus OaVideo::Seek(OaU64 InTimestamp)

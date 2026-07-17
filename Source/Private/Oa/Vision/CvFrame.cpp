@@ -10,7 +10,6 @@
 #include <Oa/Runtime/Engine.h>
 
 #include <Oa/Vision/CvFrame.h>
-#include <Oa/Core/Log.h>
 
 
 namespace OaCv {
@@ -68,12 +67,6 @@ void Frame::BBoxes(OaVec<BBox> InBoxes, const BBoxStyle& InStyle) {
 
 void Frame::Masks(OaVec<OaCvMask> InMasks, const OaCvMasksConfig& InCfg) {
 	Cv_.AddMasks(std::move(InMasks), InCfg);
-}
-
-
-void Frame::Keypoints() {
-	OA_LOG_WARN(OaLogComponent::App,
-		"OaCv::Frame::Keypoints: not implemented yet (Phase-2)");
 }
 
 

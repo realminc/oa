@@ -12,11 +12,16 @@ class OaComputeEngine;
 class OaVkDevice;
 class OaDeviceMesh;
 class OaScheduler;
+class OaMatrix;
 
 // Compute graph node — one dispatch with buffer access annotations.
 // Push constant data is copied inline (max 128 bytes per Vulkan spec).
 class OaComputeNode {
 public:
+	OaString Operation;
+	OaU64 ImplementationId = 0;
+	OaU64 OperationContractHash = 0;
+	OaU64 KernelContentHash = 0;
 	OaString Shader;
 	OaVec<OaVkBuffer> Buffers;
 	OaVec<OaSharedPtr<OaVkBuffer>> BufferOwners;
@@ -45,6 +50,7 @@ public:
 	OaU64 Size = 0;
 	OaU32 FirstAccess = 0;
 	OaU32 LastAccess = 0;
+	OaU32 ResourceOrder = 0;
 };
 
 // Group of buffers whose lifetimes don't overlap — can share one allocation.
@@ -242,19 +248,23 @@ public:
 	// Non-overlapping buffer groups that can share one VkDeviceMemory allocation.
 	[[nodiscard]] OaVec<OaAliasGroup> ComputeAliasGroups() const;
 
-	// Materialize alias backing for an explicit set of graph-internal transient
-	// buffers. The caller must not read those original buffers after execution;
-	// external inputs/outputs are intentionally never inferred as eligible.
-	// Node bindings are rewritten before compilation and retain distinct
-	// VkBuffer/bindless identities over shared allocations.
+	// Materialize alias backing for an explicit set of exclusively owned,
+	// graph-internal transient matrices. External inputs/outputs are never
+	// inferred as eligible. The matrices and all node owners are rebound to
+	// distinct VkBuffer identities over shared allocations, which releases the
+	// original physical allocations instead of merely adding an alias arena.
 	[[nodiscard]] OaStatus MaterializeAliases(
-		OaComputeEngine& InRt, OaSpan<const OaVkBuffer> InEligible);
+		OaComputeEngine& InRt, OaSpan<OaMatrix*> InEligible);
 	[[nodiscard]] OaU64 MaterializedAliasSavings() const noexcept {
 		return MaterializedAliasSavings_;
 	}
 
 	// ─── Queries ──────────────────────────────────────────────────────────
 	[[nodiscard]] OaGraphStats GetStats() const;
+	// Deterministic, handle-free execution evidence. Resource ids are assigned
+	// by first graph appearance, so identical captures produce identical JSON
+	// even when Vulkan handles and bindless slots differ between processes.
+	[[nodiscard]] OaString DebugReportJson(OaStringView InName = "") const;
 	[[nodiscard]] OaU32 NodeCount() const { return static_cast<OaU32>(Nodes_.Size()); }
 	[[nodiscard]] OaSpan<OaComputeNode> Nodes() { return {Nodes_.Data(), Nodes_.Size()}; }
 	[[nodiscard]] OaSpan<const OaComputeNode> Nodes() const { return {Nodes_.Data(), Nodes_.Size()}; }
@@ -319,11 +329,9 @@ private:
 	OaU32 IndirectBarrierCount_ = 0;
 	OaBool HostReadbackRequired_ = true;
 
-	// Allocator-backed transient arena. Alias views must be destroyed before
-	// their backing allocation.
-	OaComputeEngine* AliasRuntime_ = nullptr;
-	OaVec<OaVkBuffer> AliasBacking_;
-	OaVec<OaVkBuffer> AliasViews_;
+	// Allocator-backed transient arena. View deleters retain their backing owner,
+	// so graph nodes and rebound matrices can safely outlive this graph object.
+	OaVec<OaSharedPtr<OaVkBuffer>> AliasOwners_;
 	OaU64 MaterializedAliasSavings_ = 0;
 	void DestroyAliasArena();
 

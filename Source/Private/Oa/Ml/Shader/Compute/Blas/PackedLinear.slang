@@ -14,11 +14,31 @@ void main(uint3 tid : SV_DispatchThreadID) {
 	uint linear = tid.x;
 	if (linear >= pc.M * width) return;
 	uint m = linear / width, packedN = linear % width;
-	uint w = pc.w0_idx, b = pc.b0_idx, n = packedN;
-	if (packedN >= pc.N0 + pc.N1) { w = pc.w2_idx; b = pc.b2_idx; n -= pc.N0 + pc.N1; }
-	else if (packedN >= pc.N0) { w = pc.w1_idx; b = pc.b1_idx; n -= pc.N0; }
-	float sum = pc.HasBias != 0 ? OaLoad(heap[b], n) : 0.0;
-	for (uint k = 0; k < pc.K; ++k)
-		sum += OaLoad(heap[pc.x_idx], m * pc.K + k) * OaLoad(heap[w], n * pc.K + k);
+	float sum = 0.0;
+	// Keep every descriptor-array index dynamically uniform. Selecting w/b into
+	// thread-varying local variables makes the descriptor itself non-uniform as
+	// adjacent lanes cross a packed projection boundary. Some desktop drivers
+	// tolerated the missing NonUniform decoration; Turnip correctly exposed it
+	// as corrupted Q/K/V projections. The explicit branches retain one dispatch
+	// while each heap index remains a uniform push-constant expression.
+	if (packedN < pc.N0) {
+		uint n = packedN;
+		sum = pc.HasBias != 0 ? OaLoad(heap[pc.b0_idx], n) : 0.0;
+		for (uint k = 0; k < pc.K; ++k)
+			sum += OaLoad(heap[pc.x_idx], m * pc.K + k) *
+				OaLoad(heap[pc.w0_idx], n * pc.K + k);
+	} else if (packedN < pc.N0 + pc.N1) {
+		uint n = packedN - pc.N0;
+		sum = pc.HasBias != 0 ? OaLoad(heap[pc.b1_idx], n) : 0.0;
+		for (uint k = 0; k < pc.K; ++k)
+			sum += OaLoad(heap[pc.x_idx], m * pc.K + k) *
+				OaLoad(heap[pc.w1_idx], n * pc.K + k);
+	} else {
+		uint n = packedN - pc.N0 - pc.N1;
+		sum = pc.HasBias != 0 ? OaLoad(heap[pc.b2_idx], n) : 0.0;
+		for (uint k = 0; k < pc.K; ++k)
+			sum += OaLoad(heap[pc.x_idx], m * pc.K + k) *
+				OaLoad(heap[pc.w2_idx], n * pc.K + k);
+	}
 	OaStore(heap[pc.out_idx], linear, sum);
 }

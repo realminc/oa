@@ -5,6 +5,8 @@
 
 #include <Oa/Core/FileIo.h>
 #include <Oa/Core/FnMatrix.h>
+#include <Oa/Runtime/Context.h>
+#include <Oa/Runtime/Engine.h>
 
 #include <algorithm>
 #include <cstring>
@@ -245,7 +247,13 @@ OaStatus OaWeightSource::ReadMatrix(
 	const OaU64 byteSize = info->ElementCount * OaScalarSize(InTargetDtype);
 	OaVec<OaU8> bytes(byteSize);
 	OA_RETURN_IF_ERROR(Read(InName, OaSpan<OaU8>(bytes.Data(), bytes.Size()), InTargetDtype));
-	OaMemcpy(OutMatrix.Data(), bytes.Data(), bytes.Size());
+	auto* runtime = OaContext::GetDefault().GetEngine();
+	if (runtime == nullptr) {
+		return OaStatus::Error(OaStatusCode::FailedPrecondition,
+			"TransferWeights: runtime unavailable");
+	}
+	OA_RETURN_IF_ERROR(runtime->UploadBuffer(
+		OutMatrix.GetVkBuffer(), OutMatrix.ByteOffset(), bytes.Data(), bytes.Size()));
 	return OaStatus::Ok();
 }
 

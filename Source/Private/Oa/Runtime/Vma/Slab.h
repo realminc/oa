@@ -10,6 +10,7 @@
 #pragma once
 
 #include <Oa/Core/Types.h>
+#include <bit>
 
 struct OaVkSlab {
 	OaU64 FreeBitmap = 0;
@@ -36,9 +37,7 @@ struct OaVkSlab {
 	}
 
 	[[nodiscard]] OA_FORCEINLINE OaU32 FreeCount() const {
-		OaU64 count;
-		__asm__ __volatile__("popcntq %1, %0" : "=r"(count) : "r"(FreeBitmap));
-		return static_cast<OaU32>(count);
+		return static_cast<OaU32>(std::popcount(FreeBitmap));
 	}
 
 	[[nodiscard]] OA_FORCEINLINE OaU32 UsedCount() const {
@@ -48,8 +47,7 @@ struct OaVkSlab {
 	// Returns slot index, or 64 if full
 	[[nodiscard]] OA_FORCEINLINE OaU32 AllocSlot() {
 		if (OA_UNLIKELY(FreeBitmap == 0)) return 64;
-		OaU32 slot;
-		__asm__ __volatile__("tzcntq %1, %q0" : "=r"(slot) : "r"(FreeBitmap));
+		const OaU32 slot = static_cast<OaU32>(std::countr_zero(FreeBitmap));
 		FreeBitmap &= FreeBitmap - 1;
 		return slot;
 	}

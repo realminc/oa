@@ -42,6 +42,7 @@ public final class TrainingService extends Service {
 	static final int RESULT_ERROR = 12;
 
 	private static final String TAG = "OA";
+	private static final String REPORT_TAG = "OaMobileReport";
 	private static final String CHANNEL_ID = "oa_mobile_training";
 	private static final int NOTIFICATION_ID = 0x0A17;
 	private volatile ResultReceiver receiver;
@@ -174,7 +175,6 @@ public final class TrainingService extends Service {
 				|| report.contains("GenerationQuality: FAIL")) {
 				code = RESULT_ERROR;
 			}
-			saveReport(runId, report);
 		} catch (Throwable error) {
 			code = RESULT_ERROR;
 			report = "OaMobileLab(\n  Tokenizer: " + tokenizer
@@ -183,6 +183,9 @@ public final class TrainingService extends Service {
 				+ ": " + error.getMessage() + "\n)\n";
 			Log.e(TAG, "Android ML training failed", error);
 		}
+		String runId = tokenizer + "-" + architecture;
+		saveReport(runId, report);
+		logReportForAdb(runId, report);
 
 		result.putString(EXTRA_REPORT, report);
 		ResultReceiver target = receiver;
@@ -257,6 +260,14 @@ public final class TrainingService extends Service {
 		} catch (Throwable error) {
 			Log.w(TAG, "Could not persist training report", error);
 		}
+	}
+
+	private void logReportForAdb(String runId, String report) {
+		Log.i(REPORT_TAG, "OA_REPORT_BEGIN " + runId);
+		for (String line : report.split("\\n", -1)) {
+			Log.i(REPORT_TAG, "OA_REPORT " + runId + " " + line);
+		}
+		Log.i(REPORT_TAG, "OA_REPORT_END " + runId);
 	}
 
 	private synchronized void acquireTrainingWakeLock() {

@@ -6,6 +6,8 @@
 #include <Oa/Runtime/OaVma.h>
 #include <Oa/Core/Log.h>
 
+#include <utility>
+
 #ifdef __linux__
 #include <unistd.h>
 #endif
@@ -21,6 +23,28 @@ bool HasEnabledExtension(const OaVkDevice& InDevice, OaStringView InName) {
 
 } // namespace
 
+OaExternalBuffer::OaExternalBuffer(OaExternalBuffer&& InOther) noexcept
+	: Fd(InOther.Fd), Size(InOther.Size), SourceNode(InOther.SourceNode) {
+	InOther.Fd = -1;
+	InOther.Size = 0;
+	InOther.SourceNode = 0;
+}
+
+OaExternalBuffer& OaExternalBuffer::operator=(OaExternalBuffer&& InOther) noexcept {
+	if (this != &InOther) {
+		Close();
+		Fd = InOther.Fd;
+		Size = InOther.Size;
+		SourceNode = InOther.SourceNode;
+		InOther.Fd = -1;
+		InOther.Size = 0;
+		InOther.SourceNode = 0;
+	}
+	return *this;
+}
+
+OaExternalBuffer::~OaExternalBuffer() { Close(); }
+
 void OaExternalBuffer::Close() {
 #ifdef __linux__
 	if (Fd >= 0) {
@@ -30,7 +54,7 @@ void OaExternalBuffer::Close() {
 #endif
 }
 
-OaBool OaCanUseDmaBuf(const OaVkDevice& InSrc, const OaVkDevice& InDst) {
+OaBool OaCanShareOpaqueFd(const OaVkDevice& InSrc, const OaVkDevice& InDst) {
 #ifdef __linux__
 	if (!InSrc.Info.Software.HasExternalMemoryFd || !InDst.Info.Software.HasExternalMemoryFd) return false;
 	// Same vendor required for compatible memory types
@@ -90,7 +114,7 @@ OaResult<OaExternalBuffer> OaExportBufferFd(
 	ext.Fd = fd;
 	ext.Size = InBuf.Size;
 	ext.SourceNode = InSourceNode;
-	return ext;
+	return std::move(ext);
 #else
 	(void)InDevice;
 	(void)InAllocator;
@@ -103,7 +127,7 @@ OaResult<OaExternalBuffer> OaExportBufferFd(
 OaResult<OaVkBuffer> OaImportBufferFd(
 	const OaVkDevice& InDevice,
 	OaVma& InAllocator,
-	const OaExternalBuffer& InExt)
+	OaExternalBuffer&& InExt)
 {
 #ifdef __linux__
 	if (!InDevice.Info.Software.HasExternalMemoryFd) {
@@ -170,6 +194,9 @@ OaResult<OaVkBuffer> OaImportBufferFd(
 		vkDestroyBuffer(static_cast<VkDevice>(InDevice.Device), buffer, nullptr);
 		return OaStatus::Error(OaStatusCode::VulkanError, "vkAllocateMemory for import failed");
 	}
+	// Vulkan owns and closes an imported OPAQUE_FD after successful allocation.
+	// Clear the RAII wrapper so it cannot close the same descriptor again.
+	InExt.Fd = -1;
 
 	r = vkBindBufferMemory(static_cast<VkDevice>(InDevice.Device), buffer, memory, 0);
 	if (r != VK_SUCCESS) {
@@ -182,12 +209,40 @@ OaResult<OaVkBuffer> OaImportBufferFd(
 	result.Buffer = buffer;
 	result.Allocation = memory;
 	result.Size = InExt.Size;
+	result.Capacity = InExt.Size;
 	result.MappedPtr = nullptr;
 	result.Flags = OA_VK_BUFFER_FLAG_IMPORTED;
+	result.Placement = OaMemoryPlacement::DeviceLocal;
 	result.NodeIndex = 0;
 
 	(void)InAllocator;
 	return result;
+#else
+	(void)InDevice;
+	(void)InAllocator;
+	(void)InExt;
+	return OaStatus::Unimplemented("OaImportBufferFd: not supported on this platform");
+#endif
+}
+
+OaResult<OaVkBuffer> OaImportBufferFd(
+	const OaVkDevice& InDevice,
+	OaVma& InAllocator,
+	const OaExternalBuffer& InExt)
+{
+#ifdef __linux__
+	if (!InExt.IsValid()) {
+		return OaStatus::InvalidArgument("OaImportBufferFd: invalid fd");
+	}
+	OaExternalBuffer duplicate;
+	duplicate.Fd = ::dup(InExt.Fd);
+	if (duplicate.Fd < 0) {
+		return OaStatus::Error(OaStatusCode::ResourceExhausted,
+			"OaImportBufferFd: could not duplicate fd");
+	}
+	duplicate.Size = InExt.Size;
+	duplicate.SourceNode = InExt.SourceNode;
+	return OaImportBufferFd(InDevice, InAllocator, std::move(duplicate));
 #else
 	(void)InDevice;
 	(void)InAllocator;

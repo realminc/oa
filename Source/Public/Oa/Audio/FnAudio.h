@@ -91,6 +91,13 @@ namespace OaFnAudio {
 	// Linear fade-in/fade-out envelope (sample counts per edge).
 	[[nodiscard]] OaMatrix Fade(const OaAudioBuffer& InBuf, OaU64 InFadeInSamples, OaU64 InFadeOutSamples);
 
+	// Peak-preserving display envelope. Reduces [Channels, Samples] to
+	// [Bins, 2] F32 where each row is {minimum, maximum}. The reduction stays
+	// on the GPU and is intended for waveform viewers and timeline scrubbing.
+	[[nodiscard]] OaMatrix WaveformEnvelope(
+		const OaAudioBuffer& InBuf,
+		OaU32 InBins = 2048U);
+
 	// ── Generic (hand-written, FnAudio.cpp) ───────────────────────────────────
 
 	// Raw waveform as OaMatrix [Channels, 1, SampleCount].

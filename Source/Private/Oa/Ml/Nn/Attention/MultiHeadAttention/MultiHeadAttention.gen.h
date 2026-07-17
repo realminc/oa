@@ -4,10 +4,10 @@
 
 #pragma once
 
-/// OaMultiHeadAttention: Multi-head scaled dot-product self-attention with interchangeable standard and fused causal Flash backends.
+/// OaMultiHeadAttention: Multi-head scaled dot-product self-attention with explicit causal/bidirectional visibility and interchangeable standard/fused causal Flash backends.
 class OaMultiHeadAttention : public OaModule {
 public:
-	OaMultiHeadAttention(OaI32 DModel, OaI32 NumHeads, OaF32 DropoutP = 0.0f, bool InBias = true, OaAttentionBackend InBackend = OaAttentionBackend::Auto);
+	OaMultiHeadAttention(OaI32 DModel, OaI32 NumHeads, OaF32 DropoutP = 0.0f, bool InBias = true, OaAttentionBackend InBackend = OaAttentionBackend::Auto, OaAttentionMode InMode = OaAttentionMode::Causal);
 	OaMatrix Forward(const OaMatrix& InInput) override;
 	void SetSeqLen(OaI32 InSeqLen) { SeqLen_ = InSeqLen; Mask_ = {}; MaskSeqLen_ = 0; MaskBatch_ = 0; }
 	OaMatrix ForwardMasked(const OaMatrix& InInput, const OaMatrix& InAdditiveMask);
@@ -16,6 +16,8 @@ public:
 	void SetBackend(OaAttentionBackend InBackend) noexcept { Backend_ = InBackend; }
 	[[nodiscard]] OaAttentionBackend Backend() const noexcept { return Backend_; }
 	[[nodiscard]] OaAttentionBackend LastBackend() const noexcept { return LastBackend_; }
+	void SetMode(OaAttentionMode InMode) noexcept { Mode_ = InMode; Mask_ = {}; MaskSeqLen_ = 0; MaskBatch_ = 0; }
+	[[nodiscard]] OaAttentionMode Mode() const noexcept { return Mode_; }
 
 private:
 	OaI32 DModel_;
@@ -24,6 +26,7 @@ private:
 	OaF32 DropoutP_;
 	OaAttentionBackend Backend_;
 	OaAttentionBackend LastBackend_ = OaAttentionBackend::Standard;
+	OaAttentionMode Mode_;
 	OaSharedPtr<OaModule> QProj_;
 	OaSharedPtr<OaModule> KProj_;
 	OaSharedPtr<OaModule> VProj_;
@@ -32,8 +35,9 @@ private:
 	OaMatrix Mask_;
 	OaI32 MaskSeqLen_ = 0;
 	OaI32 MaskBatch_ = 0;
+	OaAttentionMode MaskMode_ = OaAttentionMode::Causal;
 	OaVec<OaMatrix> ProjectQkv(const OaMatrix& InInput);
-	const OaMatrix& CausalMask(OaI32 InBatch);
+	const OaMatrix& AttentionMask(OaI32 InBatch);
 	OaMatrix ForwardStandard(const OaMatrix& InInput, const OaMatrix& InAdditiveMask);
 	OaMatrix ForwardFlash(const OaMatrix& InInput);
 	[[nodiscard]] bool CanUseFlash(const OaMatrix& InInput) const noexcept;

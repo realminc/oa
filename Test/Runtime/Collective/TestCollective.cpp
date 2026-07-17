@@ -396,7 +396,7 @@ TEST(Collective, ExportImportFdSameVendorTwoNodes) {
 	ASSERT_NE(n0, nullptr);
 	ASSERT_NE(n1, nullptr);
 
-	if (!OaCanUseDmaBuf(n0->Device, n1->Device)) {
+	if (!OaCanShareOpaqueFd(n0->Device, n1->Device)) {
 		meshRt.Destroy();
 		GTEST_SKIP() << "DMA-BUF requires same vendor and VK_KHR_external_memory_fd on both devices";
 	}
@@ -420,9 +420,8 @@ TEST(Collective, ExportImportFdSameVendorTwoNodes) {
 	}
 	OaExternalBuffer ext = std::move(extRes.GetValue());
 
-	auto impRes = OaImportBufferFd(n1->Device, n1->Allocator, ext);
+	auto impRes = OaImportBufferFd(n1->Device, n1->Allocator, std::move(ext));
 	if (!impRes.IsOk()) {
-		ext.Close();
 		meshRt.FreeBufferOnNode(buf0);
 		meshRt.Destroy();
 		GTEST_SKIP() << "import fd failed: " << impRes.GetStatus().ToString();

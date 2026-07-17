@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """OA Python Tutorial — Byte-Level Transformer, all-position LM (Autograd).
 
-Python port of Tutorial/Ml/TutorialNlpByteTransformerAg.cpp. The attention member of
+Python port of Tutorial/Ml/Nlp/TutorialNlpByteTransformerAg.cpp. The attention member of
 the NLP fair-comparison suite: a pre-norm transformer
 block with causal self-attention, same all-position task / corpus / dims as the
 recurrent models.

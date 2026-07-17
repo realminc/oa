@@ -9,11 +9,16 @@
 #include <Oa/Core/FnMatrix.h>
 #include <Oa/Ml/FnMatrix.h>
 #include <Oa/Ml/FnLoss.h>
+#include <Oa/Ml/Generative/Flow.h>
+#include <Oa/Ml/Generative/FlowDenoiser.h>
+#include <Oa/Ml/Generative/FlowTransformer.h>
+#include <Oa/Ml/Rl.h>
 
 #include <Oa/Ml/Module.h>
 #include <Oa/Ml/Nn.h>
 #include <Oa/Ml/Optim.h>
 #include <Oa/Ml/ItTraining.h>
+#include <Oa/Ml/TrainingSession.h>
 #include <Oa/Ml/TrainingProgram.h>
 #include <Oa/Ml/Callbacks.h>
 #include <Oa/Ml/Metric.h>

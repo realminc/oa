@@ -98,11 +98,11 @@ static constexpr OaComputeKernel MlKernels[] = {
 	{ "SoftmaxBwd",         OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 34), OaComputeKernelCategory::Ml, "oa" },
 	{ "SoftmaxScaledMasked",     OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 198), OaComputeKernelCategory::Ml, "oa" },
 	{ "SoftmaxScaledMaskedBwd",  OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 199), OaComputeKernelCategory::Ml, "oa" },
-	{ "Attention/SplitHeads",    OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 235), OaComputeKernelCategory::Ml, "oa" },
-	{ "Attention/MergeHeads",    OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 236), OaComputeKernelCategory::Ml, "oa" },
-	{ "Attention/FlashCausal",   OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 240), OaComputeKernelCategory::Ml, "oa" },
-	{ "Attention/FlashCausalBwdQ",  OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 241), OaComputeKernelCategory::Ml, "oa" },
-	{ "Attention/FlashCausalBwdKV", OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 242), OaComputeKernelCategory::Ml, "oa" },
+	{ "SplitHeads",              OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 235), OaComputeKernelCategory::Ml, "oa" },
+	{ "MergeHeads",              OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 236), OaComputeKernelCategory::Ml, "oa" },
+	{ "FlashCausal",             OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 267), OaComputeKernelCategory::Ml, "oa" },
+	{ "FlashCausalBwdQ",         OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 268), OaComputeKernelCategory::Ml, "oa" },
+	{ "FlashCausalBwdKV",        OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 269), OaComputeKernelCategory::Ml, "oa" },
 	{ "GruScan",                 OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 200), OaComputeKernelCategory::Ml, "oa" },
 	{ "GruScanBwd",              OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 201), OaComputeKernelCategory::Ml, "oa" },
 	{ "RnnScan",                 OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 202), OaComputeKernelCategory::Ml, "oa" },
@@ -309,6 +309,19 @@ static constexpr OaComputeKernel MlKernels[] = {
 	// IDs 119, 120 retired: were GemmBiasReluBwdCoopMatBf16, GemmBiasGeluBwdCoopMatBf16 (dead code).
 	{ "MultiMatrixFill",          OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 173), OaComputeKernelCategory::Ml, "oa" },
 	{ "MultiMatrixAdd",          OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 174), OaComputeKernelCategory::Ml, "oa" },
+	{ "RlGae",                   OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 264), OaComputeKernelCategory::Ml, "oa" },
+	{ "RlPpoClip",               OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 265), OaComputeKernelCategory::Ml, "oa" },
+	{ "RlPpoClipBwd",            OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 266), OaComputeKernelCategory::Ml, "oa" },
+	{ "RlRolloutAppend",         OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 272), OaComputeKernelCategory::Ml, "oa" },
+	{ "RlRolloutReset",          OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 273), OaComputeKernelCategory::Ml, "oa" },
+	{ "RlCartPoleReset",          OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 274), OaComputeKernelCategory::Ml, "oa" },
+	{ "RlCartPoleStep",           OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 275), OaComputeKernelCategory::Ml, "oa" },
+	{ "RlReplayAppend",           OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 276), OaComputeKernelCategory::Ml, "oa" },
+	{ "RlReplaySample",           OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 277), OaComputeKernelCategory::Ml, "oa" },
+	{ "RlDqnTarget",              OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 278), OaComputeKernelCategory::Ml, "oa" },
+	{ "RlSacTarget",              OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 279), OaComputeKernelCategory::Ml, "oa" },
+	{ "LogSoftmax",              OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 270), OaComputeKernelCategory::Ml, "oa" },
+	{ "LogSoftmaxBwd",           OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 271), OaComputeKernelCategory::Ml, "oa" },
 };
 
 // ============================================================================
@@ -360,6 +373,17 @@ static constexpr OaComputeKernel VisionKernels[] = {
 	{ "ImageSaltPepper",      OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Vision, 28), OaComputeKernelCategory::Vision, "oa" },
 	{ "ImagePad",             OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Vision, 29), OaComputeKernelCategory::Vision, "oa" },
 	{ "ImageWarp",            OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Vision, 30), OaComputeKernelCategory::Vision, "oa" },
+
+	// Detection postprocess and evaluation (31-34).
+	{ "DetectionBoxIou",      OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Vision, 31), OaComputeKernelCategory::Vision, "oa" },
+	{ "DetectionNms",         OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Vision, 32), OaComputeKernelCategory::Vision, "oa" },
+	{ "DetectionConfusion",   OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Vision, 33), OaComputeKernelCategory::Vision, "oa" },
+	{ "DetectionBinaryCounts", OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Vision, 34), OaComputeKernelCategory::Vision, "oa" },
+	{ "DetectionMetricCurves", OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Vision, 35), OaComputeKernelCategory::Vision, "oa" },
+	{ "DetectionAveragePrecision", OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Vision, 36), OaComputeKernelCategory::Vision, "oa" },
+	{ "DetectionMeanAveragePrecision", OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Vision, 37), OaComputeKernelCategory::Vision, "oa" },
+	{ "SegmentationMetrics", OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Vision, 38), OaComputeKernelCategory::Vision, "oa" },
+	{ "ImageSegmentationOverlay", OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Vision, 39), OaComputeKernelCategory::Vision, "oa" },
 };
 
 // ============================================================================
@@ -374,6 +398,8 @@ static constexpr OaComputeKernel UiKernels[] = {
 	{ "DrawRectOutline",      OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ui, 4), OaComputeKernelCategory::Ui, "oa" },
 	{ "DrawRectOutlines",      OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ui, 5), OaComputeKernelCategory::Ui, "oa" },
 	{ "DrawGlyphs",            OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ui, 6), OaComputeKernelCategory::Ui, "oa" },
+	{ "DrawRect",              OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ui, 7), OaComputeKernelCategory::Ui, "oa" },
+	{ "DrawWaveform",          OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ui, 8), OaComputeKernelCategory::Ui, "oa" },
 };
 
 // ============================================================================
@@ -403,6 +429,7 @@ static constexpr OaComputeKernel AudioKernels[] = {
 	{ "AudioFade",          OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Audio, 3), OaComputeKernelCategory::Audio, "oa" },
 	{ "AudioResample",      OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Audio, 4), OaComputeKernelCategory::Audio, "oa" },
 	{ "AudioMix",           OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Audio, 6), OaComputeKernelCategory::Audio, "oa" },
+	{ "AudioWaveformEnvelope", OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Audio, 7), OaComputeKernelCategory::Audio, "oa" },
 };
 
 // ============================================================================

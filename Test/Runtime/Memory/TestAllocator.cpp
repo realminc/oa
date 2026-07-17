@@ -5,9 +5,11 @@
 #include <cstring>
 
 #include <Oa/Core/Memory.h>
+#include <Oa/Core/FnMatrix.h>
 #include <Oa/Runtime/Engine.h>
 #include <Oa/Runtime/Allocator.h>
 #include <Oa/Runtime/Pool.h>
+#include <Oa/Runtime/Context.h>
 
 #include <Oa/Runtime/Vma/Slab.h>
 #include <Oa/Core/Thread.h>
@@ -140,6 +142,81 @@ static OaUniquePtr<OaComputeEngine> CreateTestEngine() {
 	return std::move(result.GetValue());   // move the owning pointer out (engine is pinned)
 }
 
+TEST(Allocator, EngineOwningPointerProvidesRaiiTeardown) {
+	{
+		auto rt = CreateTestEngine();
+		ASSERT_NE(rt.get(), nullptr);
+		EXPECT_EQ(OaComputeEngine::GetGlobal(), rt.get());
+		// No explicit Destroy(): the owning pointer must drain and release the
+		// engine, including clearing its process-global registration.
+	}
+	EXPECT_EQ(OaComputeEngine::GetGlobal(), nullptr);
+}
+
+TEST(Allocator, EngineInitializationIsOneShotAndStateful) {
+	OaComputeEngine engine;
+	EXPECT_EQ(engine.GetState(), OaEngineState::Empty);
+	EXPECT_FALSE(engine.HasCompute());
+
+	OaEngineConfig config;
+	config.AppName = "test_engine_state";
+	config.RegisterAsGlobal = false;
+	config.PreloadEmbeddedPipelines = false;
+	ASSERT_TRUE(engine.InitInPlace(config).IsOk());
+	EXPECT_EQ(engine.GetState(), OaEngineState::Ready);
+	EXPECT_TRUE(engine.HasCompute());
+
+	auto secondInit = engine.InitInPlace(config);
+	EXPECT_FALSE(secondInit.IsOk());
+	EXPECT_EQ(secondInit.GetCode(), OaStatusCode::FailedPrecondition);
+	EXPECT_EQ(engine.GetState(), OaEngineState::Ready);
+
+	engine.Destroy();
+	EXPECT_EQ(engine.GetState(), OaEngineState::Destroyed);
+	EXPECT_FALSE(engine.HasCompute());
+	engine.Destroy();
+	EXPECT_EQ(engine.GetState(), OaEngineState::Destroyed);
+}
+
+TEST(Allocator, EngineOwnsTheContextUsedByFnMatrix) {
+	for (const OaBool registerGlobal : {true, false}) {
+		auto result = OaComputeEngine::Create(OaEngineConfig{
+			.RegisterAsGlobal = registerGlobal,
+		});
+		ASSERT_TRUE(result.IsOk());
+		auto engine = std::move(*result);
+		EXPECT_EQ(OaComputeEngine::GetGlobal() != nullptr, registerGlobal);
+		OaContext::Scope contextScope(engine->GetContext());
+		auto input = OaFnMatrix::Ones(OaMatrixShape{16});
+		auto output = OaFnMatrix::Scale(input, 3.0F);
+		EXPECT_GT(engine->GetContext().NodeCount(), 0U);
+		ASSERT_TRUE(engine->GetContext().Execute().IsOk());
+		ASSERT_TRUE(engine->GetContext().Sync().IsOk());
+		OaF32 values[16]{};
+		ASSERT_TRUE(OaFnMatrix::CopyToHost(output, values, sizeof(values)).IsOk());
+		for (OaF32 value : values) EXPECT_FLOAT_EQ(value, 3.0F);
+	}
+}
+
+TEST(Allocator, MatrixOwnerDoesNotCallDestroyedEngine) {
+	OaMatrix retained;
+	{
+		auto result = OaComputeEngine::Create(OaEngineConfig{
+			.RegisterAsGlobal = false,
+		});
+		ASSERT_TRUE(result.IsOk());
+		auto engine = std::move(*result);
+		OaContext::Scope contextScope(engine->GetContext());
+		retained = OaFnMatrix::Ones(OaMatrixShape{16});
+		ASSERT_TRUE(retained.HasStorage());
+		ASSERT_TRUE(engine->GetContext().Execute().IsOk());
+		ASSERT_TRUE(engine->GetContext().Sync().IsOk());
+	}
+	// The engine has already released its VMA allocation. Dropping the last
+	// matrix owner must not call back through the dead non-global engine.
+	retained = {};
+}
+
 TEST(Allocator, AllocBarFallback) {
 	auto rtP = CreateTestEngine(); OaComputeEngine& rt = *rtP;
 	{
@@ -164,6 +241,80 @@ TEST(Allocator, AllocBarFallback) {
 	}
 
 	rt.Allocator.Free(buf);
+	rt.Destroy();
+}
+
+TEST(Allocator, PlacementMetadataMatchesAllocationContract) {
+	auto rtP = CreateTestEngine(); OaComputeEngine& rt = *rtP;
+
+	auto deviceResult = rt.Allocator.AllocDevice(4096);
+	ASSERT_TRUE(deviceResult.IsOk()) << deviceResult.GetStatus().ToString();
+	auto device = std::move(deviceResult).GetValue();
+	EXPECT_EQ(device.Size, 4096u);
+	EXPECT_EQ(device.Capacity, 4096u);
+	EXPECT_EQ(device.Placement, OaMemoryPlacement::DeviceLocal);
+	EXPECT_FALSE(device.IsHostVisible());
+
+	auto uploadResult = rt.Allocator.AllocHostVisible(4096);
+	ASSERT_TRUE(uploadResult.IsOk()) << uploadResult.GetStatus().ToString();
+	auto upload = std::move(uploadResult).GetValue();
+	EXPECT_EQ(upload.Placement, OaMemoryPlacement::HostUpload);
+	EXPECT_TRUE(upload.IsHostVisible());
+
+	auto readbackResult = rt.Allocator.AllocHostReadback(4096);
+	ASSERT_TRUE(readbackResult.IsOk()) << readbackResult.GetStatus().ToString();
+	auto readback = std::move(readbackResult).GetValue();
+	EXPECT_EQ(readback.Placement, OaMemoryPlacement::HostReadback);
+	EXPECT_TRUE(readback.IsHostVisible());
+
+	rt.Allocator.Free(device);
+	rt.Allocator.Free(upload);
+	rt.Allocator.Free(readback);
+	rt.Destroy();
+}
+
+TEST(Allocator, DeviceLocalUploadReadbackRoundTrip) {
+	auto rtP = CreateTestEngine(); OaComputeEngine& rt = *rtP;
+	constexpr OaU32 kCount = 1024;
+	constexpr OaU64 kBytes = kCount * sizeof(OaU32);
+
+	auto result = rt.AllocBuffer(kBytes, OaMemoryPlacement::DeviceLocal);
+	ASSERT_TRUE(result.IsOk()) << result.GetStatus().ToString();
+	auto buffer = std::move(result).GetValue();
+	ASSERT_EQ(buffer.Placement, OaMemoryPlacement::DeviceLocal);
+
+	OaVec<OaU32> source(kCount);
+	OaVec<OaU32> destination(kCount);
+	for (OaU32 i = 0; i < kCount; ++i) source[i] = i * 2654435761U;
+
+	ASSERT_TRUE(rt.UploadBuffer(buffer, 0, source.Data(), kBytes).IsOk());
+	ASSERT_TRUE(rt.ReadbackBuffer(buffer, 0, destination.Data(), kBytes).IsOk());
+	for (OaU32 i = 0; i < kCount; ++i) EXPECT_EQ(destination[i], source[i]);
+	const OaVmaStats firstReadbackStats = rt.Allocator.GetStats();
+	for (OaU32 repeat = 0; repeat < 8; ++repeat) {
+		ASSERT_TRUE(rt.ReadbackBuffer(buffer, 0, destination.Data(), kBytes).IsOk());
+	}
+	const OaVmaStats repeatedReadbackStats = rt.Allocator.GetStats();
+	EXPECT_EQ(repeatedReadbackStats.AllocationCount, firstReadbackStats.AllocationCount);
+	EXPECT_EQ(repeatedReadbackStats.AllocationBytes, firstReadbackStats.AllocationBytes);
+
+	rt.FreeBuffer(buffer);
+
+	// Byte and BF16 matrices are not necessarily four-byte sized. The public
+	// transfer contract remains byte-addressable even though Vulkan buffer-copy
+	// commands operate on aligned words.
+	auto byteResult = rt.AllocBuffer(7, OaMemoryPlacement::DeviceLocal);
+	ASSERT_TRUE(byteResult.IsOk()) << byteResult.GetStatus().ToString();
+	auto byteBuffer = std::move(byteResult).GetValue();
+	const OaU8 initial[7] = {1, 2, 3, 4, 5, 6, 7};
+	const OaU8 patch[3] = {9, 10, 11};
+	OaU8 bytes[7]{};
+	ASSERT_TRUE(rt.UploadBuffer(byteBuffer, 0, initial, sizeof(initial)).IsOk());
+	ASSERT_TRUE(rt.UploadBuffer(byteBuffer, 1, patch, sizeof(patch)).IsOk());
+	ASSERT_TRUE(rt.ReadbackBuffer(byteBuffer, 0, bytes, sizeof(bytes)).IsOk());
+	const OaU8 expected[7] = {1, 9, 10, 11, 5, 6, 7};
+	for (OaU32 i = 0; i < 7; ++i) EXPECT_EQ(bytes[i], expected[i]);
+	rt.FreeBuffer(byteBuffer);
 	rt.Destroy();
 }
 

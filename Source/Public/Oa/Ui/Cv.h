@@ -1,10 +1,11 @@
-// OaUi — OaCv: computer vision display and overlay compositing.
+// OaUi — legacy CPU reference CV compositing.
 //
-// OaCvFrame wraps a base GPU image and a stack of typed overlays.  Each
-// overlay is a compute shader pass that runs on top of the base.
+// OaCvFrame remains a diagnostic/reference path for edges, masks and saved
+// images. It reads back and uploads a complete RGBA frame and must not be used
+// for realtime playback. Use <Oa/Ui/DetectionOverlay.h> for completion-safe,
+// GPU-resident boxes and SDF labels over image/video views.
 //
-// Phase 1: CPU-side OpenCV bridge when OA_CV_OPENCV=1.
-// Phase 2: All ops as OaUi compute shaders (no OpenCV dependency).
+// OA does not depend on OpenCV.
 //
 // Usage:
 //   OaCvFrame frame;
@@ -19,12 +20,11 @@
 #include <Oa/Core/Types.h>
 #include <Oa/Core/Status.h>
 #include <Oa/Core/Color.h>
-#include <Oa/Ui/Plot.h>       // OaPlotColor (deprecated)
 
 class OaUi;
 class OaComputeEngine;
 struct OaTexture;
-struct OaVkBuffer;
+class OaVkBuffer;
 struct OaPixelRect;
 
 
@@ -141,42 +141,10 @@ struct OaCvFrame {
 
 	void ClearOverlays() noexcept { Overlays.clear(); }
 
-	// Phase 1: CPU-composite all overlays → upload RGBA8 OaTexture.
-	// Phase 2: will dispatch Slang compute shaders directly.
+	// CPU reference/diagnostic composite -> upload RGBA8 OaTexture.
+	// Realtime consumers must use OaDetectionOverlay or another resident path.
 	[[nodiscard]] OaResult<OaTexture> Render(OaComputeEngine& InRt) const;
 	[[nodiscard]] OaResult<OaTexture> Render(
 		OaComputeEngine& InRt,
 		OaSpan<const OaU8> InBaseRgba) const;
 };
-
-
-// ─── OaCvOps ──────────────────────────────────────────────────────────────────
-// Phase 1: delegates to OpenCV (OA_CV_OPENCV=1) or stub no-ops.
-// Phase 2: Slang compute shaders.
-
-struct OaCvCannyResult {
-	OaVkBuffer* Edges   = nullptr;  // OaU8 device buffer
-	OaI32       W       = 0;
-	OaI32       H       = 0;
-};
-
-struct OaCvBlobsResult {
-	OaVec<OaCvBbox> Blobs;
-};
-
-namespace OaCvOps {
-
-// Canny edge detection.
-[[nodiscard]] OaCvCannyResult Canny(
-	const OaVkBuffer& InRgba, OaI32 InW, OaI32 InH,
-	OaF32 InLow = 50.0F, OaF32 InHigh = 150.0F);
-
-// Blob detection (connected components + bounding boxes).
-[[nodiscard]] OaCvBlobsResult Blobs(
-	const OaVkBuffer& InGray, OaI32 InW, OaI32 InH,
-	OaF32 InMinArea = 100.0F, OaF32 InMaxArea = 1e6F);
-
-// Non-maximum suppression (bounding box list → filtered list).
-[[nodiscard]] OaVec<OaCvBbox> Nms(OaVec<OaCvBbox> InBoxes, OaF32 InIouThresh = 0.45F);
-
-} // namespace OaCvOps

@@ -15,8 +15,26 @@
 #include <SDL3/SDL_vulkan.h>
 
 
-static OaUiEvent ConvertSdlEvent(const SDL_Event& InSdl) {
+static OaUiEvent ConvertSdlEvent(const SDL_Event& InSdl, SDL_Window* InWindow) {
 	OaUiEvent e;
+	OaF32 pixelScaleX = 1.0F;
+	OaF32 pixelScaleY = 1.0F;
+	if (InWindow != nullptr) {
+		int logicalWidth = 0;
+		int logicalHeight = 0;
+		int pixelWidth = 0;
+		int pixelHeight = 0;
+		if (SDL_GetWindowSize(InWindow, &logicalWidth, &logicalHeight)
+			&& SDL_GetWindowSizeInPixels(InWindow, &pixelWidth, &pixelHeight)
+			&& logicalWidth > 0 && logicalHeight > 0) {
+			pixelScaleX = static_cast<OaF32>(pixelWidth)
+				/ static_cast<OaF32>(logicalWidth);
+			pixelScaleY = static_cast<OaF32>(pixelHeight)
+				/ static_cast<OaF32>(logicalHeight);
+		}
+	}
+	const auto pixelX = [pixelScaleX](OaF32 InX) { return InX * pixelScaleX; };
+	const auto pixelY = [pixelScaleY](OaF32 InY) { return InY * pixelScaleY; };
 	const SDL_Keymod mods = SDL_GetModState();
 	if ((mods & SDL_KMOD_SHIFT) != 0) { e.Modifiers |= OUI_MOD_SHIFT; }
 	if ((mods & SDL_KMOD_CTRL)  != 0) { e.Modifiers |= OUI_MOD_CTRL; }
@@ -25,25 +43,25 @@ static OaUiEvent ConvertSdlEvent(const SDL_Event& InSdl) {
 	switch (InSdl.type) {
 		case SDL_EVENT_MOUSE_MOTION:
 			e.Type   = OuiEventType::MouseMove;
-			e.MouseX = InSdl.motion.x;
-			e.MouseY = InSdl.motion.y;
-			e.MouseDX = InSdl.motion.xrel;
-			e.MouseDY = InSdl.motion.yrel;
+			e.MouseX = pixelX(InSdl.motion.x);
+			e.MouseY = pixelY(InSdl.motion.y);
+			e.MouseDX = pixelX(InSdl.motion.xrel);
+			e.MouseDY = pixelY(InSdl.motion.yrel);
 			break;
 		case SDL_EVENT_MOUSE_BUTTON_DOWN:
 			e.Type   = OuiEventType::MouseDown;
-			e.MouseX = InSdl.button.x; e.MouseY = InSdl.button.y;
+			e.MouseX = pixelX(InSdl.button.x); e.MouseY = pixelY(InSdl.button.y);
 			e.Button = static_cast<OaI32>(InSdl.button.button);
 			break;
 		case SDL_EVENT_MOUSE_BUTTON_UP:
 			e.Type   = OuiEventType::MouseUp;
-			e.MouseX = InSdl.button.x; e.MouseY = InSdl.button.y;
+			e.MouseX = pixelX(InSdl.button.x); e.MouseY = pixelY(InSdl.button.y);
 			e.Button = static_cast<OaI32>(InSdl.button.button);
 			break;
 		case SDL_EVENT_MOUSE_WHEEL:
 			e.Type    = OuiEventType::MouseScroll;
 			e.ScrollX = InSdl.wheel.x; e.ScrollY = InSdl.wheel.y;
-			e.MouseX  = InSdl.wheel.mouse_x; e.MouseY = InSdl.wheel.mouse_y;
+			e.MouseX  = pixelX(InSdl.wheel.mouse_x); e.MouseY = pixelY(InSdl.wheel.mouse_y);
 			e.IntegerScrollX = InSdl.wheel.integer_x;
 			e.IntegerScrollY = InSdl.wheel.integer_y;
 			e.TimestampNs    = InSdl.wheel.timestamp;
@@ -67,10 +85,12 @@ static OaUiEvent ConvertSdlEvent(const SDL_Event& InSdl) {
 		case SDL_EVENT_KEY_DOWN:
 			e.Type = OuiEventType::KeyDown;
 			e.Key  = static_cast<OuiKey>(InSdl.key.scancode);
+			e.KeyRepeat = InSdl.key.repeat;
 			break;
 		case SDL_EVENT_KEY_UP:
 			e.Type = OuiEventType::KeyUp;
 			e.Key  = static_cast<OuiKey>(InSdl.key.scancode);
+			e.KeyRepeat = InSdl.key.repeat;
 			break;
 		case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
 		case SDL_EVENT_WINDOW_RESIZED: {
@@ -299,7 +319,7 @@ OaStatus OaDeviceUiApp::Run(const OaUiConfig& InConfig) {
 						"Presenter resize failed: %s", s.GetMessage().c_str());
 				}
 			}
-			OaUiEvent e = ConvertSdlEvent(sdlEvent);
+			OaUiEvent e = ConvertSdlEvent(sdlEvent, win);
 			OnEvent(e);
 			events.PushBack(e);
 		}
@@ -341,7 +361,20 @@ OaStatus OaDeviceUiApp::Run(const OaUiConfig& InConfig) {
 
 	// The last frame no longer host-waits before present. Drain its compute
 	// sampling work before user resources and the compose image are destroyed.
-	(void)rt.SyncGraphicsBatch();
+	if (const OaStatus syncStatus = rt.SyncGraphicsBatch(); !syncStatus.IsOk()) {
+		OA_LOG_ERROR(OaLogComponent::App,
+			"SyncGraphicsBatch failed during UI shutdown: %s",
+			syncStatus.GetMessage().c_str());
+	}
+	// Presentation is submitted after the compose batch and is not covered by
+	// the graphics-batch timeline. Drain WSI before application-owned images,
+	// buffers, and the compose target are released below.
+	if (const VkResult idleResult = vkDeviceWaitIdle(
+		static_cast<VkDevice>(rt.Device.Device)); idleResult != VK_SUCCESS) {
+		OA_LOG_ERROR(OaLogComponent::App,
+			"vkDeviceWaitIdle failed during UI shutdown (%d)",
+			static_cast<int>(idleResult));
+	}
 	OnShutdown(Gpui_);
 	Gpui_.Destroy();
 	Window_ = nullptr;

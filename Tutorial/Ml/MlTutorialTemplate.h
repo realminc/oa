@@ -2,7 +2,7 @@
 // MlTutorialTemplate.h — THE canonical shape of an OA ML tutorial.
 //
 // This file is a GUIDELINE, not code to include. It fixes "what goes first" so tutorials stop
-// freestyling. Every Tutorial/Ml/*.cpp should be readable as this skeleton with
+// freestyling. Every Tutorial/Ml/**/*.cpp should be readable as this skeleton with
 // the toy model swapped out — same phase order, same helpers, same training
 // loop, same save/load proof. If your tutorial needs to deviate, deviate
 // *visibly* (a comment saying why), never silently.
@@ -11,11 +11,11 @@
 // Live exemplars to copy:
 //   - Simplest OaMlTraining : Examples/Ml/MlTrainingSimple.cpp (wrapper + macro + ckpt)
 //   - Classification : TutorialMnistClassifierAg.cpp  (accuracy, epochs, ckpt mgr)
-//   - Sequence/LM    : TutorialNlpByteMamba3Ag.cpp     (generation, batch sampler)
+//   - Sequence/LM    : Nlp/TutorialNlpByteMamba3Ag.cpp (generation, batch sampler)
 //   - Multi-stage    : TutorialMotionGen.cpp           (staged loops, sidecar cfg)
 //
 // ─── NON-NEGOTIABLES ───────────────────────────────────────────────────────
-//   1. Drive the loop with OaMlTraining (the OaRuntime wrapper, the default for
+//   1. Drive the loop with OaMlTraining (the engine-owning wrapper, the default for
 //      new tutorials) — or its in-test sibling TutorialTrainingLoop. Both wrap
 //      the same OaItTraining; the iterator owns optimizer-step completion,
 //      GPU timing, exact metrics, and epochs; you own the body. No bare for-loops, no
@@ -58,8 +58,8 @@
 
 // This header intentionally declares nothing. The reference implementation
 // below is a block comment so it never compiles or drifts behind a real build —
-// it documents the shape. Copy it into a new Tutorial/Ml/Tutorial<Name>.cpp and
-// fill in the toy model + data.
+// it documents the shape. Copy it into the appropriate
+// Tutorial/Ml/<Domain>/ directory and fill in the toy model + data.
 
 /*  ── REFERENCE SKELETON — copy, rename, fill in ───────────────────────────
 

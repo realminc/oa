@@ -123,6 +123,31 @@ OaMatrix OaFnMatrix::SoftmaxBwd(const OaMatrix& InForwardOutput, const OaMatrix&
 	return gradInput;
 }
 
+OaMatrix OaFnMatrix::LogSoftmaxBwd(
+	const OaMatrix& InForwardOutput,
+	const OaMatrix& InGradOutput) {
+	if (InForwardOutput.GetShape() != InGradOutput.GetShape()
+		|| InForwardOutput.GetDtype() != InGradOutput.GetDtype()
+		|| (InForwardOutput.Rank() != 1 && InForwardOutput.Rank() != 2)) {
+		return {};
+	}
+	auto& ctx = OaContext::GetDefault();
+	const OaU32 rows = InForwardOutput.Rank() == 2
+		? static_cast<OaU32>(InForwardOutput.Size(0)) : 1U;
+	const OaU32 cols = InForwardOutput.Rank() == 2
+		? static_cast<OaU32>(InForwardOutput.Size(1))
+		: static_cast<OaU32>(InForwardOutput.NumElements());
+	OaMatrix gradInput = OaFnMatrix::Empty(
+		InForwardOutput.GetShape(), InForwardOutput.GetDtype());
+	struct { OaU32 Rows; OaU32 Cols; } push{rows, cols};
+	OaBufferAccess access[] = {
+		OaBufferAccess::Read, OaBufferAccess::Read, OaBufferAccess::Write};
+	ctx.Add("LogSoftmaxBwd",
+		{&InForwardOutput, &InGradOutput, &gradInput},
+		access, &push, sizeof(push), rows);
+	return gradInput;
+}
+
 // ─── SoftmaxScaledMasked ─────────────────────────────────────────────────────
 
 OaMatrix OaFnMatrix::SoftmaxScaledMasked(

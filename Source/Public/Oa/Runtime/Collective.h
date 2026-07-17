@@ -1,5 +1,7 @@
 // OaCollective — Multi-device collective operations
 //
+// Stateless companion: every operation borrows OaComputeEngine and its mesh;
+// collectives own no engine, context, allocator, or execution lifecycle.
 // Span-of-buffers API: each buffer in the span is on a different device node.
 // Transport-aware: auto-selects host-staging or DMA-BUF per link.
 // Sync and async variants — async returns OaDispatchTicket for overlap.

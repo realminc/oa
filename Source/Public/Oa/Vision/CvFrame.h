@@ -1,6 +1,6 @@
 // OaCv::Frame — detection overlay drawing surface bound to an OaPlot::Axes.
 //
-// UnifiedExecutionArchitecture.md §3.5 / OaUiFinalGlueBridge.md §5.5 (Step 3f). Thin Phase-1
+// Architecture/OaArchitecture.md §10. Thin compatibility
 // wrapper over OaCvFrame (Oa/Ui/Cv.h) that integrates the existing CPU
 // composite path with the OaPlot canvas. The flow is:
 //
@@ -12,10 +12,9 @@
 //   (void)fig.Show();         // same renderer body, different content
 //   (void)fig.SaveFig(path);  // same renderer body, batch sink
 //
-// Phase-1 surface: BBoxes works end-to-end. Masks routes to OaCvFrame's
-// existing mask overlay. Keypoints / Stats are documented stubs — they
-// need the corresponding OaCvOverlay variants to be implemented in the
-// underlying renderer first.
+// This plot/save adapter intentionally uses the CPU reference compositor.
+// Realtime image/video display uses OaDetectionOverlay and never replaces the
+// full decoded frame with a host-composited upload.
 
 #pragma once
 
@@ -72,9 +71,6 @@ public:
 	// Add segmentation masks. Routes to OaCvFrame::AddMasks.
 	void Masks(OaVec<OaCvMask> InMasks, const OaCvMasksConfig& InCfg = {});
 
-	// Phase-2 stubs (need the corresponding OaCvOverlay variant in the
-	// renderer first). Logging-only today so call sites compile.
-	void Keypoints();
 	void Stats();
 
 	// ── Commit ────────────────────────────────────────────────────────────

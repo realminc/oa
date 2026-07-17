@@ -23,7 +23,7 @@ void OaSGD::Step() {
 	for (OaUsize i = 0; i < Params_.Size(); ++i) {
 		auto* p = Params_[i];
 		OaMatrix grad = GetParamGrad(p);
-		if (!grad.Data()) continue;
+		if (!grad.HasStorage()) continue;
 
 		OaMatrix gradUse = MasterGrad(i, grad);
 		OaMatrix& weight = MasterOrData(i);

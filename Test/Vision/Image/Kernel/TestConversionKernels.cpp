@@ -3,7 +3,6 @@
 
 #include "../../OaTest.h"
 #include <Oa/Vision.h>
-#include <Oa/Runtime/RuntimeGlobal.h>
 #include <cmath>
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -47,7 +46,7 @@ protected:
 	void SetUp() override {
 		// Runtime is set up by OaVkTestEnvironment (global fixture)
 		// Just verify it's available
-		ASSERT_NE(OaRuntimeGlobal::GetRuntime(), nullptr);
+		ASSERT_NE(OaComputeEngine::GetGlobal(), nullptr);
 	}
 	
 	// Helper: compute max relative error between CPU and GPU results

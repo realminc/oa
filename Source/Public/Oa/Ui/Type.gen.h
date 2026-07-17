@@ -6,76 +6,12 @@
 
 #include <Oa/Core/Types.h>
 
-enum class OaViewerMode : OaU8 {
+enum class OaViewerNavigationMode : OaU8 {
 	Default = 0,  // Default viewer mode
 	Orbit = 1,  // Orbit camera mode
 	Fly = 2,  // Fly camera mode
 	Pan = 3,  // Pan camera mode
 	Zoom = 4,  // Zoom camera mode
 };
-[[nodiscard]] constexpr const char* OaViewerModeToString(OaViewerMode InType) noexcept;
-[[nodiscard]] OaViewerMode OaViewerModeFromString(const char* InStr) noexcept;
-
-enum class OaImageDtype : OaU8 {
-	Unknown = 0,  // Unknown image dtype
-	UInt8 = 1,  // 8-bit unsigned
-	UInt16 = 2,  // 16-bit unsigned
-	Float32 = 3,  // 32-bit float
-};
-[[nodiscard]] constexpr const char* OaImageDtypeToString(OaImageDtype InType) noexcept;
-[[nodiscard]] OaImageDtype OaImageDtypeFromString(const char* InStr) noexcept;
-
-enum class OuiKey : OaU8 {
-	Unknown = 0,  // Unknown key
-	Space = 1,  // Space
-	Enter = 2,  // Enter
-	Escape = 3,  // Escape
-	Tab = 4,  // Tab
-	Backspace = 5,  // Backspace
-	Delete = 6,  // Delete
-	Insert = 7,  // Insert
-	Home = 8,  // Home
-	End = 9,  // End
-	PageUp = 10,  // Page Up
-	PageDown = 11,  // Page Down
-	Left = 12,  // Left arrow
-	Right = 13,  // Right arrow
-	Up = 14,  // Up arrow
-	Down = 15,  // Down arrow
-	F1 = 16,  // F1
-	F2 = 17,  // F2
-	F3 = 18,  // F3
-	F4 = 19,  // F4
-	F5 = 20,  // F5
-	F6 = 21,  // F6
-	F7 = 22,  // F7
-	F8 = 23,  // F8
-	F9 = 24,  // F9
-	F10 = 25,  // F10
-	F11 = 26,  // F11
-	F12 = 27,  // F12
-};
-[[nodiscard]] constexpr const char* OuiKeyToString(OuiKey InType) noexcept;
-[[nodiscard]] OuiKey OuiKeyFromString(const char* InStr) noexcept;
-
-enum class OuiEventType : OaU8 {
-	Unknown = 0,  // Unknown event
-	KeyDown = 1,  // Key down
-	KeyUp = 2,  // Key up
-	Char = 3,  // Character input
-	MouseDown = 4,  // Mouse button down
-	MouseUp = 5,  // Mouse button up
-	MouseMove = 6,  // Mouse move
-	MouseWheel = 7,  // Mouse wheel
-	Resize = 8,  // Window resize
-	Close = 9,  // Window close
-};
-[[nodiscard]] constexpr const char* OuiEventTypeToString(OuiEventType InType) noexcept;
-[[nodiscard]] OuiEventType OuiEventTypeFromString(const char* InStr) noexcept;
-
-enum class OaCameraProjection : OaU8 {
-	Perspective = 0,  // Perspective projection
-	Orthographic = 1,  // Orthographic projection
-};
-[[nodiscard]] constexpr const char* OaCameraProjectionToString(OaCameraProjection InType) noexcept;
-[[nodiscard]] OaCameraProjection OaCameraProjectionFromString(const char* InStr) noexcept;
+[[nodiscard]] constexpr const char* OaViewerNavigationModeToString(OaViewerNavigationMode InType) noexcept;
+[[nodiscard]] OaViewerNavigationMode OaViewerNavigationModeFromString(const char* InStr) noexcept;

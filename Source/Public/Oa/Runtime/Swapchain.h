@@ -1,6 +1,6 @@
 // OaSwapchain — WSI swapchain state for the Present render sink.
 //
-// See UnifiedExecutionArchitecture.md §3.5: one render sink-resource among peers. The renderer
+// See Architecture/OaArchitecture.md §10: one render sink-resource among peers. The renderer
 // produces an OaTexture; the chosen sink decides what happens next.
 //   Present     — this file (Vulkan WSI swapchain → vkQueuePresentKHR)
 //   SaveImage   — filesystem
@@ -18,12 +18,11 @@
 //   engine.DetachPresentation()→ torn back down; zero-state again
 //   engine destructor          → torn down if still attached
 //
-// Why a separate type: the Step 3a extraction (UnifiedExecutionArchitecture.md §13.3) untangles
+// This separate type untangles
 // presentation state from the engine's core compute/graphics queues and
-// caches. After this, the engine can host zero, one, or N swapchains
-// (multi-window) the same way it hosts a graphics queue. Step 3b adds the
-// OaContext record APIs (RecordAcquire / RecordPresent) that consume an
-// OaSwapchain&.
+// caches. The compatibility OaContext record APIs (RecordAcquire /
+// RecordPresent) consume an OaSwapchain& until presentation is extracted into
+// the composed service defined by the canonical migration plan.
 
 #pragma once
 

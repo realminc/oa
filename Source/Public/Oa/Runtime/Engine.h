@@ -65,6 +65,8 @@
 
 
 class OaVkDispatch;
+class OaUploadRing;
+class OaContext;
 
 
 // ─── Config ─────────────────────────────────────────────────────────────────
@@ -77,7 +79,7 @@ enum class OaDevicePreference : OaU8 {
 };
 
 // PresentationMode controls what graphics surface the engine is built for.
-// See UnifiedExecutionArchitecture.md §3.5 (renderer/sink front-back end split).
+// See Architecture/OaArchitecture.md §10 (renderer/sink split).
 //
 //   None       — compute-only engine. No graphics queue, no swapchain.
 //                Headless training, batch ML inference, CI.
@@ -181,6 +183,15 @@ protected:
 	OaEngine& operator=(OaEngine&&) noexcept = default;
 };
 
+enum class OaEngineState : OaU8 {
+	Empty,
+	Initializing,
+	Ready,
+	Failed,
+	Destroying,
+	Destroyed,
+};
+
 
 // B: OaComputeEngine
 class OaComputeEngine : public OaEngine {
@@ -215,11 +226,24 @@ public:
 	virtual void Destroy();
 
 	// ─── Capability overrides ────────────────────────────────────────────────
-	[[nodiscard]] bool HasCompute() const noexcept override { return true; }
+	[[nodiscard]] bool HasCompute() const noexcept override {
+		return State_ == OaEngineState::Ready;
+	}
+	[[nodiscard]] bool IsReady() const noexcept {
+		return State_ == OaEngineState::Ready;
+	}
+	[[nodiscard]] OaEngineState GetState() const noexcept { return State_; }
+	[[nodiscard]] OaContext& GetContext() const noexcept;
 
 	void LogSelectedDevices();
 
 	[[nodiscard]] static OaComputeEngine* GetGlobal();
+	// Buffer owners keep only a weak copy of this token. It lets their deleters
+	// call back into the exact engine that allocated them while it is alive,
+	// without dereferencing a destroyed non-global engine.
+	[[nodiscard]] OaWeakPtr<OaU8> GetLifetimeToken() const noexcept {
+		return OaWeakPtr<OaU8>(LifetimeToken_);
+	}
 
 	[[nodiscard]] OaStatus EnsurePipeline(
 		OaStringView InName, OaSpan<const OaU8> InSpirv, const OaPipelineSpec& InSpec);
@@ -243,8 +267,16 @@ public:
 	void                     ReleaseAsyncStream(OaVkStream* InStream);
 
 	[[nodiscard]] OaResult<OaVkBuffer> AllocBuffer(OaU64 InSize);
+	[[nodiscard]] OaResult<OaVkBuffer> AllocBuffer(OaU64 InSize, OaMemoryPlacement InPlacement);
 	[[nodiscard]] OaResult<OaVkBuffer> AllocBufferDevice(OaU64 InSize);
 	[[nodiscard]] OaResult<OaVkBuffer> AllocBufferBar(OaU64 InSize);
+	[[nodiscard]] OaMemoryPlacement DefaultMatrixPlacement() const noexcept {
+		return MatrixPlacement_;
+	}
+	[[nodiscard]] OaStatus UploadBuffer(
+		const OaVkBuffer& InDst, OaU64 InDstOffset, const void* InData, OaU64 InSize);
+	[[nodiscard]] OaStatus ReadbackBuffer(
+		const OaVkBuffer& InSrc, OaU64 InSrcOffset, void* OutData, OaU64 InSize);
 	void                               FreeBuffer(OaVkBuffer& InOutBuffer);
 
 	OaU32 RegisterBuffer(OaVkBuffer& InOutBuffer);
@@ -312,13 +344,18 @@ private:
 	void SetAsGlobal();
 	void ClearGlobal();
 	void ReleaseMeshDemoAuxBuffer();
+	[[nodiscard]] OaStatus InitInPlaceImpl(const OaEngineConfig& InConfig);
 
 	[[nodiscard]] OaStatus EnsurePipelineOnNode(
 		OaU32 InNodeIndex, OaStringView InName,
 		OaSpan<const OaU8> InSpirv, const OaPipelineSpec& InSpec);
 
 	OaVec<OaString>  ShaderSearchPaths_;
+	OaUniquePtr<OaContext> Context_;
+	OaEngineState     State_ = OaEngineState::Empty;
+	OaSharedPtr<OaU8> LifetimeToken_ = OaMakeSharedPtr<OaU8>(0);
 	OaPrecision      Precision_ = OaPrecision::FP32;
+	OaMemoryPlacement MatrixPlacement_ = OaMemoryPlacement::HostUpload;
 
 	// Cap mask cache (see GemmCapsMask() above). Zero sentinel = not yet
 	// computed; a real cap mask always sets kCapTiledFp32 so 0 is unambiguous.
@@ -333,10 +370,19 @@ private:
 	OaSpinlock                     AsyncStreamPoolLock_;
 
 	OaVkStream                TransferStream_;
+	// Synchronous public readback still needs a CPU completion boundary, but its
+	// Vulkan command resources and mapped staging allocation are engine-owned and
+	// reused. This avoids rebuilding a command pool, timeline semaphore and VMA
+	// allocation for every scalar/log/checkpoint read.
+	OaVkStream                ReadbackStream_;
+	OaVkBuffer                ReadbackStaging_;
+	OaUniquePtr<OaUploadRing> UploadRing_;
 	OaUniquePtr<OaDeviceMesh> Mesh_;
 
 	std::mutex AsyncComputeQueueMutex_;
 	std::mutex TransferQueueMutex_;
+	std::mutex UploadRingMutex_;
+	std::mutex ReadbackMutex_;
 	std::mutex HostVisibleBufferCacheMutex_;
 	OaVec<OaVkBuffer> HostVisibleBufferCache_;
 	OaU64 HostVisibleBufferCacheBytes_ = 0;
@@ -379,7 +425,7 @@ public:
 	// this engine type owns a graphics queue. HasPresent follows the surface
 	// attachment state (false until InitPresentation succeeds; reset on
 	// DetachPresentation).
-	[[nodiscard]] bool HasGraphics() const noexcept override { return true; }
+	[[nodiscard]] bool HasGraphics() const noexcept override { return IsReady(); }
 	[[nodiscard]] bool HasPresent()  const noexcept override { return Swapchain_.PresentReady; }
 
 	// Phase-C: attach surface, build swapchain + renderpass + sync.
@@ -403,7 +449,7 @@ public:
 	// acquire → record (clear + optional ImGui) → submit → present.
 	[[nodiscard]] bool DrawFrame();
 
-	// ─── Ctx-mediated present primitives (UnifiedExecutionArchitecture.md §3.5, Step 3b.3) ──────
+	// ─── Compatibility context-mediated present primitives ─────────────────────────────────────
 	//
 	// These split DrawFrame's body into the two halves that OaContext::
 	// RecordAcquire and OaContext::RecordPresent call. DrawFrame() above is
@@ -526,7 +572,7 @@ private:
 	// WSI swapchain state (handle, format, extent, images, views, per-frame
 	// sync, dirty-resize signal). Extracted into a standalone type so other
 	// render sinks (SaveImage, EncodeFrame) sit at the same level — see
-	// UnifiedExecutionArchitecture.md §3.5.
+	// Architecture/OaArchitecture.md §10.
 	OaSwapchain Swapchain_;
 
 	// Render pass + framebuffers reference Swapchain_.Views directly; they go

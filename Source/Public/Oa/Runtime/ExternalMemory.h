@@ -16,6 +16,13 @@ class OaVkDevice;
 
 class OaExternalBuffer {
 public:
+	OaExternalBuffer() = default;
+	OaExternalBuffer(OaExternalBuffer&& InOther) noexcept;
+	OaExternalBuffer& operator=(OaExternalBuffer&& InOther) noexcept;
+	OaExternalBuffer(const OaExternalBuffer&) = delete;
+	OaExternalBuffer& operator=(const OaExternalBuffer&) = delete;
+	~OaExternalBuffer();
+
 	int Fd = -1;
 	OaU64 Size = 0;
 	OaU32 SourceNode = 0;
@@ -42,15 +49,31 @@ public:
 [[nodiscard]] OaResult<OaVkBuffer> OaImportBufferFd(
 	const OaVkDevice& InDevice,
 	OaVma& InAllocator,
+	OaExternalBuffer&& InExt
+);
+
+// Non-consuming compatibility overload. Duplicates the descriptor before
+// import so the caller remains its owner.
+[[nodiscard]] OaResult<OaVkBuffer> OaImportBufferFd(
+	const OaVkDevice& InDevice,
+	OaVma& InAllocator,
 	const OaExternalBuffer& InExt
 );
 
-// Check if a pair of devices can use opaque-fd zero-copy transfer.
+// Check if a pair of devices can attempt opaque-fd zero-copy transfer.
 // Both must support VK_KHR_external_memory_fd and be the same vendor.
-[[nodiscard]] OaBool OaCanUseDmaBuf(
+[[nodiscard]] OaBool OaCanShareOpaqueFd(
 	const OaVkDevice& InSrc,
 	const OaVkDevice& InDst
 );
+
+// Legacy name retained for source compatibility. This path is OPAQUE_FD, not
+// Linux DMA-BUF; new code should use OaCanShareOpaqueFd.
+[[nodiscard]] inline OaBool OaCanUseDmaBuf(
+	const OaVkDevice& InSrc,
+	const OaVkDevice& InDst) {
+	return OaCanShareOpaqueFd(InSrc, InDst);
+}
 
 // Single-plane Linux DMA-BUF image description. Offset and RowPitch come from
 // the producer's plane metadata; Modifier is the negotiated DRM modifier.

@@ -26,6 +26,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Architecture dependency check
+        run: |
+          python3 Tools/Architecture/test_oacheck.py
+          python3 Tools/Architecture/oacheck.py
+
       - name: Verify tag is on main
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
@@ -237,21 +242,24 @@ jobs:
           # Flip to false (or a tag-pattern check) when cutting the first stable release.
           prerelease: true
           body: |
-            ## OA ${{ github.ref_name }} — Vulkan-native foundation preview
+            ## OA ${{ github.ref_name }} — OpenAI Build Week preview
 
-            This 0.7 development preview brings the public release up to the current OA
-            architecture: cross-vendor Vulkan compute and ML, module-shaped Python
-            bindings, Android training, native media, Audio, Crypto, sparse MoE, and the
-            text-conditioned OaAlm prompt-to-USD pipeline.
+            This development preview packages **OA Mobile Lab**, a physical Android
+            training surface over the same C++ autograd engine, optimizer, checkpoint
+            format, and Vulkan kernels used by OA on desktop.
 
             Highlights:
-            - five end-to-end NLP architectures verified on Intel Iris Xe and Android Adreno;
-            - 50 graph-native Vision operations plus Vulkan Video decode/encode/capture;
-            - GPU-native dropless sparse MoE with dense-oracle gradient parity;
-            - one-file OaAlm deployment with native CLIP text conditioning;
-            - cache-aware parallel native-pipeline preload;
-            - `oa.core`, `oa.runtime`, `oa.ml`, `oa.vision`, `oa.audio`, and `oa.crypto`
-              Python modules over the same C++/Vulkan engine.
+            - signed-release five-model Android training/generation/checkpoint gate on Adreno;
+            - matching Transformer and sparse-MoE acceptance on Intel Iris Xe;
+            - deterministic completed-execution graph reports with kernel and contract identity;
+            - cross-vendor packed-QKV correctness fix found by the physical phone gate;
+            - enforceable source-module dependency rules and a sanitized public release pipeline;
+            - one-file OaAlm text-conditioned prompt-to-USD proof.
+
+            Read [`BUILD_WEEK.md`](https://github.com/realminc/oa/blob/main/BUILD_WEEK.md)
+            for the before/after boundary, reproduction commands, screenshots, and honest
+            limitations. The signed Android APK is attached separately after CI creates
+            this release.
 
             ⚠️ **Preview, not a stable API.** Read the README's *Honest preview
             boundaries* before depending on experimental hardware paths.

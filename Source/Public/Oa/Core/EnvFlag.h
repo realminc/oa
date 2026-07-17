@@ -33,6 +33,9 @@
 //     OA_LOG_BARRIERS=1                 Barrier-count summary per graph compile.
 //     OA_LOG_CONTEXT_GRAPH=N            Log the first N OaContext graphs before
 //                                       execution, including node shaders/groups.
+//     OA_GRAPH_REPORT=path|1             Write the first captured training
+//                                       program as deterministic JSON. Value 1
+//                                       uses var/report/training_graph.json.
 //     OA_LOG_COOPMAT_SHAPES=1           Log enumerated coopmat shapes at device init.
 //     OA_LOG_NUMERIC_DEVIATIONS=1       Per-test summary of max-observed deviation
 //                                       per tolerance tier (Docs/Rewrite/Opus/

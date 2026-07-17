@@ -97,6 +97,18 @@ static constexpr OaKernelId BlitImageRgba = OA_COMPUTE_KERNEL_ID(OaComputeKernel
 static constexpr OaKernelId DrawRectOutline = OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ui, 4);
 static constexpr OaKernelId DrawRectOutlines = OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ui, 5);
 static constexpr OaKernelId DrawGlyphs = OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ui, 6);
+static constexpr OaKernelId DrawRect = OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ui, 7);
+static constexpr OaKernelId DrawWaveform = OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ui, 8);
+static constexpr OaKernelId AudioWaveformEnvelope = OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Audio, 7);
+static constexpr OaKernelId RlGae = OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 264);
+static constexpr OaKernelId RlPpoClip = OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 265);
+static constexpr OaKernelId RlPpoClipBwd = OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 266);
+static constexpr OaKernelId RlRolloutAppend = OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 272);
+static constexpr OaKernelId RlRolloutReset = OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 273);
+static constexpr OaKernelId RlCartPoleReset = OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 274);
+static constexpr OaKernelId RlCartPoleStep = OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 275);
+static constexpr OaKernelId LogSoftmax = OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 270);
+static constexpr OaKernelId LogSoftmaxBwd = OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 271);
 
 } // namespace OaComputeKernelId
 

@@ -5,7 +5,7 @@
 // container demux → hardware video decode → display-order reorder →
 // YCbCr→RGBA conversion → CPU readback — via OaItVideo's compatibility
 // adapter over OaVideo (the same path the
-// TutorialViewportVideo* players use). Each decoded frame is PSNR-compared
+// TutorialViewerVideo* applications use). Each decoded frame is PSNR-compared
 // against an INDEPENDENT ffmpeg decode of the same clip. This replaces
 // eyeballing four player windows with a headless pass/fail gate.
 //

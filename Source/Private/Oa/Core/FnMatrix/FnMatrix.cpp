@@ -1,7 +1,7 @@
 // DeviceMatrixFn.cpp — Shared utilities and runtime management for OaMatrix operations
 //
 // This file contains:
-// - Runtime global management (SetRuntime, GetRuntime, SetWeightDtype, GetWeightDtype)
+// - Global weight dtype configuration
 // - Shared helper functions (DivCeil, OaMatrixFlatToElementOffset, etc.)
 // - OaMatrix member functions (To, Clone, etc.)
 //
@@ -27,7 +27,6 @@
 #include <Oa/Core/Types.h>
 #include <Oa/Runtime/Bindless.h>
 #include <Oa/Runtime/Context.h>
-#include <Oa/Runtime/RuntimeGlobal.h>
 #include <Oa/Runtime/Dispatch.h>
 #include <Oa/Runtime/Engine.h>
 #include <Oa/Runtime/ComputeGraph.h>
@@ -68,50 +67,7 @@ static bool OaScalarIs16BitFloat(OaScalarType InDtype) {
 	return InDtype == OaScalarType::BFloat16 or InDtype == OaScalarType::Float16;
 }
 
-// Runtime Global Management — symbol lives in OaRuntimeGlobal (see
-// Source/Public/Oa/Runtime/RuntimeGlobal.h). Engine init wires itself in.
-// OaFn bodies must NOT call these; use OaContext::GetDefault() instead.
-static OaComputeEngine* GRuntime = nullptr;
 static OaScalarType GWeightDtype = OaScalarType::Float32;
-// Process-wide default context, owned here and bound to the active runtime.
-// OaFn bodies record into OaContext::GetDefault(); without this the first
-// recorded op dereferences a null context. Lifecycle is tied to SetRuntime so
-// both engine init (SetAsGlobal) and manual OaRuntimeGlobal::SetRuntime callers
-// get a valid default, and ClearGlobal()'s SetRuntime(nullptr) tears it down
-// before device teardown.
-static OaContext* GDefaultContext = nullptr;
-
-void OaRuntimeGlobal::SetRuntime(OaComputeEngine* InRuntime) {
-	GRuntime = InRuntime;
-	if (InRuntime) {
-		GWeightDtype = OaPrecisionDtype(InRuntime->GetPrecision());
-		// Rebind if the runtime pointer changed (e.g. engine moved).
-		// Destroying the context here causes it to be created/destroyed
-		// ~8 times during init because the engine is moved from the
-		// stack into the result, into the app member, and into derived
-		// graphics engines. Just rebind the internal pointer instead.
-		// Also clear any stale graph state from a previous test/app.
-		if (GDefaultContext and GDefaultContext->GetRuntime() != InRuntime) {
-			GDefaultContext->Clear();
-			GDefaultContext->Runtime_ = InRuntime;
-		}
-		if (not GDefaultContext) {
-			GDefaultContext = OaContext::Create(InRuntime);
-		}
-		OaContext::SetDefault(GDefaultContext);
-	} else {
-		GWeightDtype = OaScalarType::Float32;
-		OaContext::SetDefault(nullptr);
-		// Do NOT destroy GDefaultContext — it's a stable singleton that survives
-		// engine teardown. Just clear the runtime pointer so any late accesses
-		// fail safely. The next SetRuntime(this) will rebind it.
-		if (GDefaultContext) {
-			GDefaultContext->Runtime_ = nullptr;
-		}
-	}
-}
-
-OaComputeEngine* OaRuntimeGlobal::GetRuntime() { return GRuntime; }
 
 void OaFnMatrix::SetWeightDtype(OaScalarType InDtype) { GWeightDtype = InDtype; }
 
@@ -129,57 +85,16 @@ OaF32 OaFnMatrix::Scalar(const OaMatrix& InSrc) {
 }
 
 OaMatrix OaMatrix::Clone() const {
-	if (not VkBuf_) return OaMatrix();
-	
-	OaMatrix t;
-	t.Shape_ = Shape_;
-	t.Stride_ = Stride_;
-	t.ByteOffset_ = 0;
-	t.Dtype_ = Dtype_;
-	t.Device_ = Device_;
-
-	OaI64 bytes = Shape_.NumElements() * static_cast<OaI64>(OaScalarSize(Dtype_));
-	if (bytes <= 0) {
-		t.SyncMatrixDescriptor();
-		return t;
-	}
-
-	auto res = GRuntime->Allocator.AllocHostVisible(static_cast<OaU64>(bytes));
-	if (not res) {
-		t.SyncMatrixDescriptor();
-		return t;
-	}
-
-	OaSharedPtr<OaVkBuffer> buf(
-		new OaVkBuffer(std::move(*res)),
-		[](OaVkBuffer* InPtr) {
-			if (not InPtr) return;
-			if (GRuntime) {
-				GRuntime->FreeBuffer(*InPtr);
-			}
-			delete InPtr;
-		});
-	buf->NodeIndex = static_cast<OaU32>(Device_.Index);
-	if (GRuntime->IsMultiDevice()) {
-		GRuntime->RegisterBufferForOwnedNode(*buf);
-	}
-	t.VkBuf_ = buf;
-	t.Data_ = OaSharedPtr<void>(buf->MappedPtr, [](void*) {});
-
-	// Copy data
-	if (VkBuf_ and buf) {
-		std::memcpy(buf->MappedPtr, static_cast<const OaU8*>(VkBuf_->MappedPtr) + ByteOffset_,
-			static_cast<OaU64>(bytes));
-	}
-
-	t.SyncMatrixDescriptor();
-	return t;
+	return HasStorage() ? OaFnMatrix::Copy(*this) : OaMatrix{};
 }
 
 OaMatrix OaMatrix::To(OaU32 InNodeIndex) const {
 	if (static_cast<OaU32>(Device_.Index) == InNodeIndex) return *this;
+	auto* engine = OaContext::GetDefaultPtr()
+		? OaContext::GetDefaultPtr()->GetEngine()
+		: nullptr;
 
-	if (not GRuntime or not GRuntime->IsMultiDevice()) {
+	if (not engine or not engine->IsMultiDevice()) {
 		OaMatrix t = Clone();
 		t.Device_.Index = static_cast<OaI32>(InNodeIndex);
 		return t;
@@ -188,7 +103,7 @@ OaMatrix OaMatrix::To(OaU32 InNodeIndex) const {
 	OaMatrix dst = OaFnMatrix::EmptyOn(Shape_, Dtype_, InNodeIndex);
 	if (not dst.VkBuf_ or not VkBuf_) return dst;
 
-	auto* mesh = GRuntime->GetMesh();
+	auto* mesh = engine->GetMesh();
 	if (mesh) {
 		if (auto s = mesh->CopyBuffer(static_cast<OaU32>(Device_.Index), *VkBuf_, InNodeIndex, *dst.VkBuf_,
 			static_cast<OaU64>(Shape_.NumElements() * OaScalarSize(Dtype_))); !s.IsOk()) {

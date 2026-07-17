@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -74,7 +75,26 @@ def test_import_surface():
     assert hasattr(core, "OaMatrixShape")
     assert not hasattr(oa, "OaMatrixShape")
     assert hasattr(oa, "Context")
+    assert hasattr(oa, "plot")
     assert isinstance(oa.__version__, str)
+
+
+def test_metric_figure_save(engine):
+    config = oa.plot.FigureConfig()
+    config.Rows = 1
+    config.Cols = 2
+    config.Width = 480
+    config.Height = 240
+    config.HSpacing = 12
+    config.Padding = 12
+    figure = oa.plot.Figure(config)
+    figure.Ax(0, 0).Title("loss")
+    figure.Ax(0, 0).Plot([1.0, 0.7, 0.5, 0.4])
+    figure.Ax(0, 1).Title("confusion")
+    figure.Ax(0, 1).Heatmap([8.0, 1.0, 2.0, 7.0], 2, 2)
+    with tempfile.NamedTemporaryFile(suffix=".png") as output:
+        figure.SaveFig(output.name)
+        assert Path(output.name).stat().st_size > 512
 
 
 def test_shape_creation():

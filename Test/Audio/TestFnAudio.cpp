@@ -9,7 +9,6 @@
 #include <Oa/Core/FnMatrix.h>
 #include <Oa/Runtime/Context.h>
 #include <Oa/Runtime/Engine.h>
-#include <Oa/Runtime/RuntimeGlobal.h>
 
 #include <cmath>
 #include <vector>
@@ -27,7 +26,6 @@ protected:
 		ASSERT_TRUE(r.IsOk()) << r.GetStatus().GetMessage();
 		static OaUniquePtr<OaComputeEngine> rt = std::move(*r);
 		GRt = rt.get();
-		OaRuntimeGlobal::SetRuntime(GRt);
 	}
 
 	static void Sync() {
@@ -355,6 +353,29 @@ TEST_VK(TestFnAudio, MelNormalizationIsPerChannelZeroMeanUnitVariance)
 }
 
 // ─── Signal ops ───────────────────────────────────────────────────────────────
+
+TEST_VK(TestFnAudio, WaveformEnvelopePreservesMultichannelPeaks)
+{
+	const OaF32 samples[] = {
+		-0.5F, 0.2F, -0.1F, 0.7F, -0.9F, 0.3F, 0.1F, 0.4F,
+		 0.1F, 0.8F, -0.4F, 0.2F, -0.2F, 0.6F, -0.7F, 0.5F,
+	};
+	OaMatrix input = OaFnMatrix::Empty(
+		OaMatrixShape{2, 8}, OaScalarType::Float32);
+	OaMemcpy(input.DataAs<OaF32>(), samples, sizeof(samples));
+	OaMatrix envelope = OaFnAudio::WaveformEnvelope(input, 4U);
+	Sync();
+	ASSERT_EQ(envelope.GetShape(), (OaMatrixShape{4, 2}));
+	const OaF32 expected[] = {
+		-0.5F, 0.8F,
+		-0.4F, 0.7F,
+		-0.9F, 0.6F,
+		-0.7F, 0.5F,
+	};
+	for (OaI64 i = 0; i < 8; ++i) {
+		EXPECT_FLOAT_EQ(envelope.At(i), expected[i]) << "envelope element " << i;
+	}
+}
 
 TEST_VK(TestFnAudio, NormalizePeakHitsTarget)
 {

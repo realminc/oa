@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """OA Python Tutorial — Char-Level GRU, all-position LM (Autograd).
 
-Python port of Tutorial/Ml/TutorialNlpCharGruAg.cpp. The character-tokenizer twin
+Python port of Tutorial/Ml/Nlp/TutorialNlpCharGruAg.cpp. The character-tokenizer twin
 of the byte GRU in the NLP fair-comparison suite: same
 architecture, but a 27-symbol char vocab (a-z + space) via OaEmbedding instead of
 the 256-byte OaByteEmbedding. Loss scales with ln(vocab) (ln 27 ≈ 3.30), so compare

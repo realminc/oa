@@ -31,7 +31,7 @@ void OaAdamW::SetLr(OaF32 InLr) {
 	// host update cannot race the preceding optimizer dispatch.
 	auto* state = static_cast<OaU32*>(GraphState_.Data());
 	std::memcpy(state + 1, &Lr_, sizeof(Lr_));
-	if (auto* runtime = OaContext::GetDefault().GetRuntime()) {
+	if (auto* runtime = OaContext::GetDefault().GetEngine()) {
 		(void)runtime->Allocator.FlushHostBuffer(
 			GraphState_.GetVkBuffer(), sizeof(OaU32), sizeof(OaF32));
 	}
@@ -46,7 +46,11 @@ void OaAdamW::Step() {
 	PrepareMasters();
 
 	if (not GraphState_.HasStorage()) {
-		GraphState_ = OaFnMatrix::Empty(OaMatrixShape{6}, OaScalarType::UInt32);
+		// Replay metadata is intentionally host-visible: callbacks update LR and
+		// the completed step between submissions. Model matrices remain governed
+		// by the engine's device-local placement policy.
+		GraphState_ = OaFnMatrix::Empty(
+			OaMatrixShape{6}, OaScalarType::UInt32, OaMemoryPlacement::HostUpload);
 	}
 	auto& ctx = OaContext::GetDefault();
 	const OaBool replayState = ctx.IsStableResourceFrameActive()
@@ -60,7 +64,7 @@ void OaAdamW::Step() {
 		state[0] = static_cast<OaU32>(Step_ - 1U);
 		const OaF32 scalars[] = {Lr_, Beta1_, Beta2_, Eps_, WeightDecay_};
 		std::memcpy(state + 1, scalars, sizeof(scalars));
-		if (auto* runtime = ctx.GetRuntime()) {
+		if (auto* runtime = ctx.GetEngine()) {
 			(void)runtime->Allocator.FlushHostBuffer(
 				GraphState_.GetVkBuffer(), 0, static_cast<OaU64>(GraphState_.ByteSize()));
 		}
@@ -84,8 +88,8 @@ void OaAdamW::Step() {
 			Params_[0]->Grad(), Params_[1]->Grad(),
 			Params_[2]->Grad(), Params_[3]->Grad(),
 		};
-		if (grads4[0].Data() and grads4[1].Data()
-			and grads4[2].Data() and grads4[3].Data()) {
+		if (grads4[0].HasStorage() and grads4[1].HasStorage()
+			and grads4[2].HasStorage() and grads4[3].HasStorage()) {
 			OaFnOptim::OaAdamWParamSet sets[4] = {
 				{&Params_[0]->Data, &M_[0], &V_[0], &grads4[0]},
 				{&Params_[1]->Data, &M_[1], &V_[1], &grads4[1]},
@@ -111,7 +115,7 @@ void OaAdamW::Step() {
 	for (OaUsize i = 0; i < Params_.Size(); ++i) {
 		auto* p = Params_[i];
 		OaMatrix grad = GetParamGrad(p);
-		if (!grad.Data()) continue;
+		if (!grad.HasStorage()) continue;
 
 		OaMatrix gradUse = MasterGrad(i, grad);
 		if (replayState) {
@@ -137,7 +141,7 @@ void OaAdamW::ZeroGrad() {
 	grads.Reserve(4);
 	for (auto* p : Params_) {
 		OaMatrix g = p->Grad();
-		if (g.Data()) grads.PushBack(g);
+		if (g.HasStorage()) grads.PushBack(g);
 	}
 	for (OaUsize i = 0; i < grads.Size(); i += 4) {
 		OaUsize end = std::min(i + 4, grads.Size());
@@ -178,10 +182,9 @@ void OaAdamW::SaveTo(OamModel& OutOam) const {
 	OaI64 off = 0;
 	for (OaUsize i = 0; i < M_.Size(); ++i) {
 		OaI64 n = M_[i].NumElements();
-		std::memcpy(OutOam.AdamM.Data() + off, M_[i].Data(),
-			static_cast<size_t>(n) * sizeof(OaF32));
-		std::memcpy(OutOam.AdamV.Data() + off, V_[i].Data(),
-			static_cast<size_t>(n) * sizeof(OaF32));
+		const auto bytes = static_cast<OaU64>(n) * sizeof(OaF32);
+		(void)OaFnMatrix::CopyToHost(M_[i], OutOam.AdamM.Data() + off, bytes);
+		(void)OaFnMatrix::CopyToHost(V_[i], OutOam.AdamV.Data() + off, bytes);
 		off += n;
 	}
 }
@@ -227,10 +230,13 @@ void OaAdamW::LoadFrom(const OamModel& InOam) {
 	OaI64 off = 0;
 	for (OaUsize i = 0; i < M_.Size(); ++i) {
 		OaI64 n = M_[i].NumElements();
-		std::memcpy(M_[i].Data(), InOam.AdamM.Data() + off,
-			static_cast<size_t>(n) * sizeof(OaF32));
-		std::memcpy(V_[i].Data(), InOam.AdamV.Data() + off,
-			static_cast<size_t>(n) * sizeof(OaF32));
+		const auto bytes = static_cast<OaU64>(n) * sizeof(OaF32);
+		if (auto* runtime = OaContext::GetDefault().GetEngine()) {
+			(void)runtime->UploadBuffer(M_[i].GetVkBuffer(), 0,
+				InOam.AdamM.Data() + off, bytes);
+			(void)runtime->UploadBuffer(V_[i].GetVkBuffer(), 0,
+				InOam.AdamV.Data() + off, bytes);
+		}
 		off += n;
 	}
 }

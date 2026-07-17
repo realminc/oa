@@ -4,6 +4,8 @@
 #include <Oa/Ml/FnOptim.h>
 #include <Oa/Ml/Optim.h>
 #include <Oa/Ml/TrainingProgram.h>
+#include <Oa/Ml/TrainingSession.h>
+#include <Oa/Ui/TrainingViewer.h>
 
 #include <cmath>
 #include <cstring>
@@ -24,6 +26,138 @@ public:
 };
 
 } // namespace
+
+TEST(TrainingSession, CommandsAreTypedRevisionedAndSafePointApplied) {
+	OaOptimizerNoOp optimizer;
+	optimizer.SetLr(1.0e-3F);
+	OaItTraining training(optimizer, OaItTrainingConfig{.TotalSteps = 2});
+	OaI32 checkpointCount = 0;
+	OaI32 evaluationCount = 0;
+	OaTrainingSession session(training, OaTrainingSessionConfig{
+		.Handlers = {
+			.Checkpoint = [&] {
+				++checkpointCount;
+				return OaStatus::Ok();
+			},
+			.Evaluate = [&] {
+				++evaluationCount;
+				return OaStatus::Ok();
+			},
+		},
+	});
+
+	EXPECT_EQ(session.Revision(), 1U);
+	ASSERT_TRUE(session.Pause().IsOk());
+	EXPECT_FALSE(session.TryBeginStep());
+	EXPECT_EQ(session.State(), OaTrainingState::Paused);
+	const OaU64 pausedRevision = session.Revision();
+
+	ASSERT_TRUE(session.SetParameter(
+		"learning_rate", OaTrainingValue::FromFloat(2.5e-4),
+		pausedRevision).IsOk());
+	ASSERT_TRUE(session.Checkpoint().IsOk());
+	ASSERT_TRUE(session.Evaluate().IsOk());
+	ASSERT_TRUE(session.Resume().IsOk());
+	ASSERT_TRUE(session.Poll().IsOk());
+	EXPECT_EQ(session.State(), OaTrainingState::Running);
+	EXPECT_FLOAT_EQ(optimizer.GetLr(), 2.5e-4F);
+	EXPECT_EQ(checkpointCount, 1);
+	EXPECT_EQ(evaluationCount, 1);
+
+	// The old revision was accepted by Enqueue but rejected atomically at the
+	// next safe point after preceding commands advanced the session revision.
+	ASSERT_TRUE(session.SetParameter(
+		"learning_rate", OaTrainingValue::FromFloat(9.0e-4),
+		pausedRevision).IsOk());
+	ASSERT_TRUE(session.Poll().IsOk());
+	EXPECT_FLOAT_EQ(optimizer.GetLr(), 2.5e-4F);
+
+	const auto observed = session.ResultsAfter(0);
+	ASSERT_EQ(observed.Size(), 6U);
+	EXPECT_EQ(session.ResultsAfter(0).Size(), 6U);
+	EXPECT_TRUE(session.ResultsAfter(observed.Back().Sequence).Empty());
+
+	auto results = session.TakeResults();
+	ASSERT_EQ(results.Size(), 6U);
+	EXPECT_TRUE(session.TakeResults().Empty());
+	EXPECT_EQ(session.ResultsAfter(0).Size(), 6U);
+	EXPECT_EQ(results[0].Disposition, OaTrainingCommandDisposition::Applied);
+	EXPECT_EQ(results[5].Disposition, OaTrainingCommandDisposition::Rejected);
+	EXPECT_EQ(results[5].Status.GetCode(), OaStatusCode::Aborted);
+}
+
+TEST(TrainingSession, IteratorPublishesBoundedSnapshotsAndStop) {
+	if (not OaVkTestEngineOk()) GTEST_SKIP();
+	OaOptimizerNoOp optimizer;
+	OaItTraining training(optimizer, OaItTrainingConfig{.TotalSteps = 3});
+	OaTrainingSession session(training, OaTrainingSessionConfig{
+		.SnapshotCapacity = 2,
+	});
+	OaTrainingViewerSource viewer(session, {
+		.HistoryCapacity = 2,
+		.MaxMetricPlots = 4,
+	});
+	session.PublishMetric("accuracy", 0.75);
+
+	ASSERT_TRUE(session.TryBeginStep());
+	auto loss = OaFnMatrix::Full(OaMatrixShape{1}, 0.5F);
+	training.Next(loss);
+	auto snapshot = session.LatestSnapshot();
+	ASSERT_TRUE(snapshot.HasValue());
+	EXPECT_EQ(snapshot->Step, 1);
+	EXPECT_FLOAT_EQ(snapshot->Loss, 0.5F);
+	ASSERT_EQ(snapshot->Metrics.Size(), 1U);
+	EXPECT_EQ(snapshot->Metrics[0].Name, "accuracy");
+	EXPECT_DOUBLE_EQ(snapshot->Metrics[0].Value, 0.75);
+	viewer.Update(16.0F);
+	const auto viewedSnapshot = viewer.LatestSnapshot();
+	ASSERT_TRUE(viewedSnapshot.HasValue());
+	EXPECT_EQ(viewedSnapshot->Step, 1);
+	EXPECT_EQ(viewer.MetricSeriesCount(), 4U);
+	EXPECT_EQ(viewer.MetricSampleCount("loss"), 1U);
+	EXPECT_EQ(viewer.MetricSampleCount("accuracy"), 1U);
+
+	ASSERT_TRUE(session.Stop().IsOk());
+	EXPECT_FALSE(session.TryBeginStep());
+	EXPECT_EQ(session.State(), OaTrainingState::Stopping);
+	ASSERT_TRUE(training.Finish().IsOk());
+	EXPECT_EQ(session.State(), OaTrainingState::Completed);
+	ASSERT_TRUE(session.LatestSnapshot().HasValue());
+	EXPECT_EQ(session.LatestSnapshot()->State, OaTrainingState::Completed);
+}
+
+TEST(TrainingSession, ViewerPromotesOnlyLatestCompletedPreview) {
+	OaOptimizerNoOp optimizer;
+	OaItTraining training(optimizer, OaItTrainingConfig{.TotalSteps = 1});
+	OaTrainingSession session(training);
+	OaTrainingViewerSource viewer(session);
+	auto first = OaMakeSharedPtr<OaTexture>();
+	first->DeviceBuf.Buffer = reinterpret_cast<void*>(1);
+	first->Width = 8;
+	first->Height = 8;
+	auto latest = OaMakeSharedPtr<OaTexture>();
+	latest->DeviceBuf.Buffer = reinterpret_cast<void*>(2);
+	latest->Width = 16;
+	latest->Height = 16;
+
+	ASSERT_TRUE(viewer.PublishPreview({
+		.Texture = first,
+		.Label = "first",
+		.Step = 1,
+	}).IsOk());
+	ASSERT_TRUE(viewer.PublishPreview({
+		.Texture = latest,
+		.Label = "latest",
+		.Step = 2,
+	}).IsOk());
+	EXPECT_FALSE(viewer.LatestPreview().HasValue());
+	viewer.Update(16.0F);
+	const auto preview = viewer.LatestPreview();
+	ASSERT_TRUE(preview.HasValue());
+	EXPECT_EQ(preview->Label, "latest");
+	EXPECT_EQ(preview->Step, 2);
+	EXPECT_EQ(preview->Texture->Width, 16);
+}
 
 TEST(TrainingProgram, CapturedMutableStepProgressesAcrossReplays) {
 	if (not OaVkTestEngineOk()) GTEST_SKIP();

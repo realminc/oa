@@ -7,10 +7,13 @@
 #include <Oa/Runtime/Pipeline.h>
 #include <Oa/Runtime/OaVk.h>
 #include <Oa/Core/EnvFlag.h>
+#include <Oa/Core/Matrix.h>
 #include <Oa/Core/Validation.h>
 
 #include <algorithm>
 #include <cstring>
+#include <iomanip>
+#include <sstream>
 #include <unordered_map>
 
 struct OaGraphBufferState {
@@ -42,6 +45,53 @@ static OaStatus AllocGraphDescriptorSet(
 static OaComputeNode MakeComputeNode(const OaComputeDispatchDesc& InDesc);
 static OaComputeDispatchDesc MakeDispatchDesc(OaComputeNode& InNode);
 
+static const char* BufferAccessName(OaBufferAccess InAccess) {
+	switch (InAccess) {
+	case OaBufferAccess::Read: return "read";
+	case OaBufferAccess::Write: return "write";
+	case OaBufferAccess::ReadWrite: return "read_write";
+	}
+	return "unknown";
+}
+
+static const char* QueueHintName(OaQueueHint InQueue) {
+	switch (InQueue) {
+	case OaQueueHint::Compute: return "compute";
+	case OaQueueHint::AsyncCompute: return "async_compute";
+	case OaQueueHint::Transfer: return "transfer";
+	}
+	return "unknown";
+}
+
+static void WriteJsonString(std::ostringstream& Out, OaStringView InValue) {
+	Out << '"';
+	for (OaUsize i = 0; i < InValue.Size(); ++i) {
+		const auto value = static_cast<unsigned char>(InValue[i]);
+		switch (value) {
+		case '"': Out << "\\\""; break;
+		case '\\': Out << "\\\\"; break;
+		case '\b': Out << "\\b"; break;
+		case '\f': Out << "\\f"; break;
+		case '\n': Out << "\\n"; break;
+		case '\r': Out << "\\r"; break;
+		case '\t': Out << "\\t"; break;
+		default:
+			if (value < 0x20U) {
+				Out << "\\u" << std::hex << std::setw(4) << std::setfill('0')
+					<< static_cast<unsigned>(value) << std::dec << std::setfill(' ');
+			} else {
+				Out << static_cast<char>(value);
+			}
+		}
+	}
+	Out << '"';
+}
+
+static void WriteHexId(std::ostringstream& Out, OaU64 InValue) {
+	Out << '"' << "0x" << std::hex << std::setw(16) << std::setfill('0')
+		<< InValue << std::dec << std::setfill(' ') << '"';
+}
+
 struct OaGraphDebugHashes {
 	OaU64 Topology = 14695981039346656037ULL;
 	OaU64 Resources = 14695981039346656037ULL;
@@ -64,6 +114,11 @@ static OaGraphDebugHashes ComputeGraphDebugHashes(
 	append(result.Topology, &count, sizeof(count));
 	append(result.Topology, &InHostReadbackRequired, sizeof(InHostReadbackRequired));
 	for (const auto& node : InNodes) {
+		append(result.Topology, node.Operation.Data(), node.Operation.Size());
+		append(result.Topology, &node.ImplementationId, sizeof(node.ImplementationId));
+		append(result.Topology, &node.OperationContractHash,
+			sizeof(node.OperationContractHash));
+		append(result.Topology, &node.KernelContentHash, sizeof(node.KernelContentHash));
 		append(result.Topology, node.Shader.Data(), node.Shader.Size());
 		append(result.Topology, &node.Dtype, sizeof(node.Dtype));
 		append(result.Topology, &node.GroupsX, sizeof(node.GroupsX));
@@ -261,6 +316,10 @@ void OaComputeGraph::AddIndirect(
 
 static OaComputeNode MakeComputeNode(const OaComputeDispatchDesc& InDesc) {
 	OaComputeNode node;
+	node.Operation = OaString(InDesc.Operation);
+	node.ImplementationId = InDesc.ImplementationId;
+	node.OperationContractHash = InDesc.OperationContractHash;
+	node.KernelContentHash = InDesc.KernelContentHash;
 	node.Shader = OaString(InDesc.Kernel);
 	node.Buffers.Assign(InDesc.Buffers.begin(), InDesc.Buffers.end());
 	node.BufferOwners.Assign(InDesc.BufferOwners.begin(), InDesc.BufferOwners.end());
@@ -283,6 +342,10 @@ static OaComputeNode MakeComputeNode(const OaComputeDispatchDesc& InDesc) {
 
 static OaComputeDispatchDesc MakeDispatchDesc(OaComputeNode& InNode) {
 	OaComputeDispatchDesc desc;
+	desc.Operation = InNode.Operation;
+	desc.ImplementationId = InNode.ImplementationId;
+	desc.OperationContractHash = InNode.OperationContractHash;
+	desc.KernelContentHash = InNode.KernelContentHash;
 	desc.Kernel = InNode.Shader;
 	desc.Buffers = InNode.Buffers.Span();
 	desc.BufferOwners = InNode.BufferOwners.Span();
@@ -1499,15 +1562,18 @@ OaVec<OaBufferLifetime> OaComputeGraph::ComputeLifetimes() const {
 		OaU64 Size = 0;
 		OaU32 First = UINT32_MAX;
 		OaU32 Last = 0;
+		OaU32 Order = 0;
 	};
 	OaHashMap<void*, LifetimeEntry> map;
+	OaU32 nextOrder = 0;
 
 	for (OaU32 i = 0; i < static_cast<OaU32>(Nodes_.Size()); ++i) {
 		auto& node = Nodes_[i];
 		for (OaU32 j = 0; j < static_cast<OaU32>(node.Buffers.Size()); ++j) {
 			void* handle = node.Buffers[j].Buffer;
 			if (!handle) continue;
-			auto emplaceResult = map.Emplace(handle, LifetimeEntry{});
+			auto emplaceResult = map.Emplace(handle, LifetimeEntry{.Order = nextOrder});
+			if (emplaceResult.second) ++nextOrder;
 			LifetimeEntry& entry = emplaceResult.first->second;
 			if (i < entry.First) entry.First = i;
 			if (i > entry.Last) entry.Last = i;
@@ -1515,7 +1581,8 @@ OaVec<OaBufferLifetime> OaComputeGraph::ComputeLifetimes() const {
 		}
 		if (node.Indirect && node.IndirectBuffer.Buffer) {
 			void* handle = node.IndirectBuffer.Buffer;
-			auto emplaceResult = map.Emplace(handle, LifetimeEntry{});
+			auto emplaceResult = map.Emplace(handle, LifetimeEntry{.Order = nextOrder});
+			if (emplaceResult.second) ++nextOrder;
 			LifetimeEntry& entry = emplaceResult.first->second;
 			if (i < entry.First) entry.First = i;
 			if (i > entry.Last) entry.Last = i;
@@ -1533,12 +1600,14 @@ OaVec<OaBufferLifetime> OaComputeGraph::ComputeLifetimes() const {
 		lt.Size = entry.Size;
 		lt.FirstAccess = entry.First;
 		lt.LastAccess = entry.Last;
+		lt.ResourceOrder = entry.Order;
 		result.PushBack(lt);
 	}
 
 	std::sort(result.Begin(), result.End(),
 		[](const OaBufferLifetime& a, const OaBufferLifetime& b) {
-			return a.FirstAccess < b.FirstAccess;
+			if (a.FirstAccess != b.FirstAccess) return a.FirstAccess < b.FirstAccess;
+			return a.ResourceOrder < b.ResourceOrder;
 		});
 
 	return result;
@@ -1582,91 +1651,200 @@ OaVec<OaAliasGroup> OaComputeGraph::ComputeAliasGroups() const {
 }
 
 OaStatus OaComputeGraph::MaterializeAliases(
-	OaComputeEngine& InRt, OaSpan<const OaVkBuffer> InEligible) {
-	if (Compiled_ or not AliasBacking_.Empty() or not AliasViews_.Empty()) {
+	OaComputeEngine& InRt, OaSpan<OaMatrix*> InEligible) {
+	if (Compiled_ or not AliasOwners_.Empty()) {
 		return OaStatus::Error(OaStatusCode::FailedPrecondition,
 			"graph aliases must be materialized exactly once before compilation");
 	}
 	if (InEligible.Empty()) return OaStatus::Ok();
 
+	struct EligibleMatrix {
+		OaMatrix* Matrix = nullptr;
+		void* Handle = nullptr;
+		OaMemoryPlacement Placement = OaMemoryPlacement::Auto;
+	};
+	OaVec<EligibleMatrix> eligible;
+	eligible.Reserve(InEligible.Size());
+	for (auto* matrix : InEligible) {
+		if (matrix == nullptr or not matrix->VkBuf_ or matrix->ByteOffset() != 0U) {
+			return OaStatus::Error(OaStatusCode::InvalidArgument,
+				"graph alias transient must be an allocated base matrix");
+		}
+		for (const auto& existing : eligible) {
+			if (existing.Handle == matrix->VkBuf_->Buffer) {
+				return OaStatus::Error(OaStatusCode::InvalidArgument,
+					"graph alias transient list contains duplicate storage");
+			}
+		}
+		EligibleMatrix entry;
+		entry.Matrix = matrix;
+		entry.Handle = matrix->VkBuf_->Buffer;
+		entry.Placement = matrix->VkBuf_->Placement;
+		eligible.PushBack(entry);
+	}
+
 	auto isEligible = [&](void* handle) {
-		for (const auto& buffer : InEligible) {
-			if (buffer.Buffer == handle) return true;
+		for (const auto& entry : eligible) {
+			if (entry.Handle == handle) return true;
 		}
 		return false;
 	};
+	auto placementOf = [&](void* handle) {
+		for (const auto& entry : eligible) {
+			if (entry.Handle == handle) return entry.Placement;
+		}
+		return OaMemoryPlacement::Auto;
+	};
+	struct PlacementAliasGroup {
+		OaAliasGroup Alias;
+		OaMemoryPlacement Placement = OaMemoryPlacement::Auto;
+	};
 	auto lifetimes = ComputeLifetimes();
-	OaVec<OaAliasGroup> groups;
+	OaVec<PlacementAliasGroup> groups;
 	for (const auto& lt : lifetimes) {
 		if (not isEligible(lt.Buffer)) continue;
+		const auto placement = placementOf(lt.Buffer);
 		bool placed = false;
 		for (auto& group : groups) {
+			if (group.Placement != placement) continue;
 			bool overlaps = false;
-			for (const auto& member : group.Members) {
+			for (const auto& member : group.Alias.Members) {
 				if (lt.FirstAccess <= member.LastAccess and lt.LastAccess >= member.FirstAccess) {
 					overlaps = true; break;
 				}
 			}
 			if (not overlaps) {
-				group.Members.PushBack(lt);
-				group.RequiredSize = std::max(group.RequiredSize, lt.Size);
+				group.Alias.Members.PushBack(lt);
+				group.Alias.RequiredSize = std::max(group.Alias.RequiredSize, lt.Size);
 				placed = true; break;
 			}
 		}
 		if (not placed) {
-			OaAliasGroup group; group.Members.PushBack(lt); group.RequiredSize = lt.Size;
+			PlacementAliasGroup group;
+			group.Placement = placement;
+			group.Alias.Members.PushBack(lt);
+			group.Alias.RequiredSize = lt.Size;
 			groups.PushBack(std::move(group));
 		}
 	}
 
-	std::unordered_map<void*, OaVkBuffer> replacements;
-	OaU64 originalBytes = 0, arenaBytes = 0;
-	AliasRuntime_ = &InRt;
+	// Exclusive ownership is the safety boundary: if another matrix/view retains
+	// an eligible allocation, rebinding only the supplied matrix would leave two
+	// logical values backed by different physical storage.
 	for (const auto& group : groups) {
-		if (group.Members.Size() < 2U) continue;
-		auto backingResult = InRt.Allocator.AllocAliased(group.RequiredSize);
-		if (not backingResult.IsOk()) { DestroyAliasArena(); return backingResult.GetStatus(); }
-		auto backing = std::move(backingResult.GetValue());
-		InRt.RegisterBuffer(backing);
-		AliasBacking_.PushBack(backing);
-		replacements.emplace(group.Members[0].Buffer, backing);
-		for (const auto& member : group.Members) originalBytes += member.Size;
-		arenaBytes += group.RequiredSize;
-		for (OaU32 memberIdx = 1; memberIdx < group.Members.Size(); ++memberIdx) {
+		if (group.Alias.Members.Size() < 2U) continue;
+		for (const auto& member : group.Alias.Members) {
+			OaMatrix* matrix = nullptr;
+			for (const auto& entry : eligible) {
+				if (entry.Handle == member.Buffer) { matrix = entry.Matrix; break; }
+			}
+			OaU32 graphOwners = 0;
+			for (const auto& node : Nodes_) {
+				for (const auto& owner : node.BufferOwners) {
+					if (owner and owner.Get() == matrix->VkBuf_.Get()) ++graphOwners;
+				}
+			}
+			if (matrix->VkBuf_.UseCount() != static_cast<long>(graphOwners + 1U)) {
+				return OaStatus::Error(OaStatusCode::FailedPrecondition,
+					"graph alias transient still has an external matrix/view owner");
+			}
+		}
+	}
+
+	auto ownBacking = [&](OaVkBuffer&& buffer) {
+		auto* runtime = &InRt;
+		auto lifetime = InRt.GetLifetimeToken();
+		return OaSharedPtr<OaVkBuffer>(new OaVkBuffer(std::move(buffer)),
+			[runtime, lifetime](OaVkBuffer* ptr) {
+				if (ptr != nullptr) {
+					if (not lifetime.Expired()) {
+						runtime->DeregisterBuffer(*ptr);
+						runtime->Allocator.Free(*ptr);
+					}
+					delete ptr;
+				}
+			});
+	};
+	auto ownView = [&](OaVkBuffer&& buffer, OaSharedPtr<OaVkBuffer> backing) {
+		auto* runtime = &InRt;
+		auto lifetime = InRt.GetLifetimeToken();
+		return OaSharedPtr<OaVkBuffer>(new OaVkBuffer(std::move(buffer)),
+			[runtime, lifetime, backing = std::move(backing)](OaVkBuffer* ptr) mutable {
+				if (ptr != nullptr) {
+					if (not lifetime.Expired()) {
+						runtime->DeregisterBuffer(*ptr);
+						runtime->Allocator.FreeAlias(*ptr);
+					}
+					delete ptr;
+				}
+				backing.Reset();
+			});
+	};
+
+	std::unordered_map<void*, OaSharedPtr<OaVkBuffer>> replacements;
+	OaU64 originalBytes = 0, arenaBytes = 0;
+	for (const auto& group : groups) {
+		if (group.Alias.Members.Size() < 2U) continue;
+		auto placement = group.Placement == OaMemoryPlacement::Auto
+			? InRt.DefaultMatrixPlacement() : group.Placement;
+		auto backingResult = InRt.Allocator.AllocAliased(
+			group.Alias.RequiredSize, placement);
+		if (not backingResult.IsOk()) {
+			DestroyAliasArena(); return backingResult.GetStatus();
+		}
+		auto backingBuffer = std::move(backingResult.GetValue());
+		InRt.RegisterBuffer(backingBuffer);
+		auto backing = ownBacking(std::move(backingBuffer));
+		AliasOwners_.PushBack(backing);
+		replacements.emplace(group.Alias.Members[0].Buffer, backing);
+		for (const auto& member : group.Alias.Members) originalBytes += member.Size;
+		arenaBytes += group.Alias.RequiredSize;
+		for (OaU32 memberIdx = 1; memberIdx < group.Alias.Members.Size(); ++memberIdx) {
 			auto aliasResult = InRt.Allocator.CreateAliasingBuffer(
-				AliasBacking_.Back(), group.Members[memberIdx].Size);
+				*backing, group.Alias.Members[memberIdx].Size);
 			if (not aliasResult.IsOk()) { DestroyAliasArena(); return aliasResult.GetStatus(); }
 			auto alias = std::move(aliasResult.GetValue());
 			InRt.RegisterBuffer(alias);
-			replacements.emplace(group.Members[memberIdx].Buffer, alias);
-			AliasViews_.PushBack(alias);
+			auto owner = ownView(std::move(alias), backing);
+			replacements.emplace(group.Alias.Members[memberIdx].Buffer, owner);
+			AliasOwners_.PushBack(std::move(owner));
 		}
 	}
 	for (auto& node : Nodes_) {
-		for (auto& buffer : node.Buffers) {
+		if (node.BufferOwners.Empty() and not replacements.empty()) {
+			node.BufferOwners.Resize(node.Buffers.Size());
+		}
+		for (OaU32 i = 0; i < node.Buffers.Size(); ++i) {
+			auto& buffer = node.Buffers[i];
 			auto found = replacements.find(buffer.Buffer);
-			if (found != replacements.end()) buffer = found->second;
+			if (found != replacements.end()) {
+				buffer = *found->second;
+				node.BufferOwners[i] = found->second;
+			}
 		}
 		if (node.Indirect) {
 			auto found = replacements.find(node.IndirectBuffer.Buffer);
-			if (found != replacements.end()) node.IndirectBuffer = found->second;
+			if (found != replacements.end()) node.IndirectBuffer = *found->second;
 		}
+	}
+	for (const auto& entry : eligible) {
+		auto found = replacements.find(entry.Handle);
+		if (found == replacements.end()) continue;
+		// These allocations are being retired into an alias arena. Bypass the
+		// general host-visible reuse cache so materialization reduces physical
+		// allocation bytes on unified GPUs as well as discrete GPUs.
+		entry.Matrix->VkBuf_->Flags |= OA_VK_BUFFER_FLAG_TRANSIENT;
+		entry.Matrix->VkBuf_ = found->second;
+		entry.Matrix->Data_ = OaSharedPtr<void>(
+			found->second->MappedPtr, [](void*) {});
+		entry.Matrix->SyncMatrixDescriptor();
 	}
 	MaterializedAliasSavings_ = originalBytes > arenaBytes ? originalBytes - arenaBytes : 0U;
 	return OaStatus::Ok();
 }
 
 void OaComputeGraph::DestroyAliasArena() {
-	if (AliasRuntime_ == nullptr) return;
-	for (auto& alias : AliasViews_) {
-		AliasRuntime_->DeregisterBuffer(alias);
-		AliasRuntime_->Allocator.FreeAlias(alias);
-	}
-	for (auto& backing : AliasBacking_) {
-		AliasRuntime_->DeregisterBuffer(backing);
-		AliasRuntime_->Allocator.Free(backing);
-	}
-	AliasViews_.Clear(); AliasBacking_.Clear(); AliasRuntime_ = nullptr;
+	AliasOwners_.Clear();
 	MaterializedAliasSavings_ = 0;
 }
 
@@ -1697,6 +1875,96 @@ OaGraphStats OaComputeGraph::GetStats() const {
 	}
 
 	return stats;
+}
+
+OaString OaComputeGraph::DebugReportJson(OaStringView InName) const {
+	const auto stats = GetStats();
+	const auto lifetimes = ComputeLifetimes();
+	const auto aliasGroups = ComputeAliasGroups();
+	std::unordered_map<void*, OaU32> resourceIds;
+	for (const auto& lifetime : lifetimes) {
+		resourceIds.emplace(lifetime.Buffer, lifetime.ResourceOrder);
+	}
+
+	std::ostringstream out;
+	out << "{\n  \"schema\": \"oa.execution_graph.v1\",\n  \"name\": ";
+	WriteJsonString(out, InName);
+	out << ",\n  \"compiled\": " << (Compiled_ ? "true" : "false")
+		<< ",\n  \"completion\": {\"submitted\": "
+		<< (ReplayTimelineValue_ != 0U ? "true" : "false")
+		<< ", \"timeline_value\": " << ReplayTimelineValue_ << "},\n"
+		<< "  \"stats\": {\"dispatches\": " << stats.DispatchCount
+		<< ", \"barriers\": " << stats.BarrierCount
+		<< ", \"war_barriers\": " << stats.WarBarrierCount
+		<< ", \"indirect_barriers\": " << stats.IndirectBarrierCount
+		<< ", \"host_barriers\": " << stats.HostBarrierCount
+		<< ", \"descriptor_sets\": " << stats.DescriptorSetCount
+		<< ", \"buffer_bytes\": " << stats.TotalBufferBytes
+		<< ", \"potential_alias_savings\": " << stats.PotentialAliasSavings
+		<< ", \"materialized_alias_savings\": " << MaterializedAliasSavings_
+		<< "},\n  \"resources\": [";
+
+	for (OaU32 i = 0; i < lifetimes.Size(); ++i) {
+		const auto& lifetime = lifetimes[i];
+		out << (i == 0 ? "\n" : ",\n")
+			<< "    {\"id\": " << lifetime.ResourceOrder
+			<< ", \"bytes\": " << lifetime.Size
+			<< ", \"first_node\": " << lifetime.FirstAccess
+			<< ", \"last_node\": " << lifetime.LastAccess << "}";
+	}
+	if (not lifetimes.Empty()) out << '\n';
+	out << "  ],\n  \"alias_groups\": [";
+	for (OaU32 i = 0; i < aliasGroups.Size(); ++i) {
+		const auto& group = aliasGroups[i];
+		out << (i == 0 ? "\n" : ",\n")
+			<< "    {\"required_bytes\": " << group.RequiredSize << ", \"resources\": [";
+		for (OaU32 j = 0; j < group.Members.Size(); ++j) {
+			const auto found = resourceIds.find(group.Members[j].Buffer);
+			if (j != 0) out << ", ";
+			out << (found != resourceIds.end() ? found->second : UINT32_MAX);
+		}
+		out << "]}";
+	}
+	if (not aliasGroups.Empty()) out << '\n';
+	out << "  ],\n  \"nodes\": [";
+
+	for (OaU32 i = 0; i < Nodes_.Size(); ++i) {
+		const auto& node = Nodes_[i];
+		out << (i == 0 ? "\n" : ",\n") << "    {\"index\": " << i
+			<< ", \"operation\": ";
+		if (node.Operation.Empty()) out << "null";
+		else WriteJsonString(out, node.Operation);
+		out << ", \"implementation_id\": ";
+		if (node.ImplementationId == 0U) out << "null";
+		else WriteHexId(out, node.ImplementationId);
+		out << ", \"operation_contract_hash\": ";
+		if (node.OperationContractHash == 0U) out << "null";
+		else WriteHexId(out, node.OperationContractHash);
+		out << ", \"kernel_content_hash\": ";
+		if (node.KernelContentHash == 0U) out << "null";
+		else WriteHexId(out, node.KernelContentHash);
+		out << ", \"kernel\": ";
+		WriteJsonString(out, node.Shader);
+		out << ", \"dtype_class\": " << node.Dtype
+			<< ", \"groups\": [" << node.GroupsX << ", " << node.GroupsY
+			<< ", " << node.GroupsZ << "]"
+			<< ", \"queue\": \"" << QueueHintName(node.Queue) << "\""
+			<< ", \"device_node\": " << node.NodeIndex
+			<< ", \"indirect\": " << (node.Indirect ? "true" : "false")
+			<< ", \"effects\": [";
+		for (OaU32 j = 0; j < node.Buffers.Size(); ++j) {
+			if (j != 0) out << ", ";
+			out << "{\"resource\": ";
+			const auto found = resourceIds.find(node.Buffers[j].Buffer);
+			if (found == resourceIds.end()) out << "null";
+			else out << found->second;
+			out << ", \"access\": \"" << BufferAccessName(node.Access[j]) << "\"}";
+		}
+		out << "]}";
+	}
+	if (not Nodes_.Empty()) out << '\n';
+	out << "  ]\n}\n";
+	return OaString(out.str());
 }
 
 // ─── Lifecycle ────────────────────────────────────────────────────────────────

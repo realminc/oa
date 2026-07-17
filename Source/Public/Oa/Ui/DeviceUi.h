@@ -11,7 +11,7 @@
 // The swapchain itself lives on the caller-supplied OaGraphicsEngine
 // (engine.Swapchain()). OaDeviceUi calls engine.InitPresentation(surface)
 // at Init time, then uses ctx.RecordAcquire / RecordBlit / RecordPresent
-// for the per-frame compose→swap path. See UnifiedExecutionArchitecture.md §3.5.
+// for the per-frame compose→swap path. See Architecture/OaArchitecture.md §10.
 //
 // OaDeviceUiApp: convenience app loop for standalone tools.  Subclass and
 // override OnUpdate() + OnRender() to use.
@@ -39,7 +39,7 @@ class OaGraphicsEngine;
 // A device-local RGBA8 storage image. BindlessIndex is registered in
 // OaComputeEngine::Bindless so widget shaders can address it by slot.
 // Used as the off-screen compose target before the ctx-mediated blit to the
-// acquired swapchain image (UnifiedExecutionArchitecture.md §3.5).
+// acquired swapchain image (Architecture/OaArchitecture.md §10).
 
 struct OaUiComposeImage {
 	VkImage     Image          = VK_NULL_HANDLE;
@@ -105,6 +105,7 @@ public:
 		OaU64 InValue) noexcept {
 		RenderCompletionSemaphore_ = InSemaphore;
 		RenderCompletionValue_ = InValue;
+		Oui_.MarkFrameSubmitted(InSemaphore, InValue);
 	}
 	// Declare GPU work that produced an image sampled by this frame. The app
 	// loop forwards this timeline edge into the graphics-batch submission.

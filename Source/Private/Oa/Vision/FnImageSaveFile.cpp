@@ -1,4 +1,4 @@
-// OaFnImage::SaveFile — SaveImage render sink (UnifiedExecutionArchitecture.md §3.5).
+// OaFnImage::SaveFile — SaveImage sink (Architecture/OaArchitecture.md §10).
 //
 // Reads a packed-RGBA8 OaTexture back from device-local memory via a
 // host-visible staging buffer (CopyBufferAsync + WaitTransfer), then encodes

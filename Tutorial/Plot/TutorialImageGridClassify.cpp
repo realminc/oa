@@ -3,13 +3,13 @@
 // Level 1 API — OaModule + OaPlot::Figure / Axes (FinalGlue Step 3e)
 // ═══════════════════════════════════════════════════════════════════════════
 //
-// The first consumer of the OaPlot module (OaUiFinalGlueBridge.md §5.4):
+// A compact consumer of the OA plot and viewer contracts:
 // Fashion-MNIST classifier predictions rendered as a 5×5 image grid using
 // OaPlot::Figure + Axes::Imshow / Title / Caption. Parallel to the TF Keras
 // classification tutorial — same image grid, OA C++ syntax, GPU all the way
 // through the recorder.
 //
-//   Same renderer body, two sinks (UnifiedExecutionArchitecture.md §3.5 front/back end split):
+//   Same renderer body, two sinks (Architecture/OaArchitecture.md §10):
 //     ./TutorialImageGridClassify                      → Show (window)
 //     ./TutorialImageGridClassify --save grid.png      → SaveFig (batch)
 //

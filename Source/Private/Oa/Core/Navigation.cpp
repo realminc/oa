@@ -12,8 +12,10 @@ void RegisterViewportShortcuts(OaInputSystem& InInput,
                              OaNavigation& InNav,
                              const OaNavigationShortcuts& InKeys) {
 	InInput.RegisterAction({.Name = "nav_zoomin", .Binding = {.Key = InKeys.ZoomIn},
+		.AllowRepeat = true,
 		.Callback = [&InNav] { InNav.KeyboardZoomIn(); }});
 	InInput.RegisterAction({.Name = "nav_zoomout", .Binding = {.Key = InKeys.ZoomOut},
+		.AllowRepeat = true,
 		.Callback = [&InNav] { InNav.KeyboardZoomOut(); }});
 	InInput.RegisterAction({.Name = "nav_zoomfit", .Binding = {.Key = InKeys.ZoomFit},
 		.Callback = [&InNav] { InNav.KeyboardFitToWindow(); }});
@@ -22,12 +24,16 @@ void RegisterViewportShortcuts(OaInputSystem& InInput,
 	InInput.RegisterAction({.Name = "nav_zoom100", .Binding = {.Key = InKeys.Zoom100},
 		.Callback = [&InNav] { InNav.KeyboardZoomTo100(); }});
 	InInput.RegisterAction({.Name = "nav_panup", .Binding = {.Key = InKeys.PanUp},
+		.AllowRepeat = true,
 		.Callback = [&InNav] { InNav.KeyboardPan(0.0F, 1.0F); }});
 	InInput.RegisterAction({.Name = "nav_pandown", .Binding = {.Key = InKeys.PanDown},
+		.AllowRepeat = true,
 		.Callback = [&InNav] { InNav.KeyboardPan(0.0F, -1.0F); }});
 	InInput.RegisterAction({.Name = "nav_panleft", .Binding = {.Key = InKeys.PanLeft},
+		.AllowRepeat = true,
 		.Callback = [&InNav] { InNav.KeyboardPan(1.0F, 0.0F); }});
 	InInput.RegisterAction({.Name = "nav_panright", .Binding = {.Key = InKeys.PanRight},
+		.AllowRepeat = true,
 		.Callback = [&InNav] { InNav.KeyboardPan(-1.0F, 0.0F); }});
 }
 

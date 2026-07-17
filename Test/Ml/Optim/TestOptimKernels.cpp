@@ -10,7 +10,6 @@
 
 #include "../../OaTest.h"
 #include <Oa/Ml/MuonRef.h>
-#include <Oa/Runtime/RuntimeGlobal.h>
 
 
 // ============================================================================
@@ -106,12 +105,15 @@ protected:
 	// Rt_ is a stable reference so all test bodies use `Rt_.` / `&Rt_` unchanged.
 	OaUniquePtr<OaComputeEngine> RtStorage_ = OaMakeUniquePtr<OaComputeEngine>();
 	OaComputeEngine&             Rt_        = *RtStorage_;
-	OaComputeEngine* SavedGlobalRt_ = nullptr;
+	OaContext* SavedContext_ = nullptr;
 
 	void SetUp() override {
-		SavedGlobalRt_ = OaComputeEngine::GetGlobal();
-		ASSERT_TRUE(Rt_.InitInPlace({.AppName = "OptimKernels"}).IsOk());
-		OaRuntimeGlobal::SetRuntime(&Rt_);
+		SavedContext_ = OaContext::GetDefaultPtr();
+		ASSERT_TRUE(Rt_.InitInPlace({
+			.AppName = "OptimKernels",
+			.RegisterAsGlobal = false,
+		}).IsOk());
+		OaContext::SetDefault(&Rt_.GetContext());
 
 		// Load embedded shaders (release mode) or from disk (debug mode)
 		auto status = Rt_.EnsureAllEmbeddedLiboaPipelines();
@@ -128,10 +130,8 @@ protected:
 
 	void TearDown() override {
 		OaContext::GetDefault().Clear();
+		OaContext::SetDefault(SavedContext_);
 		Rt_.Destroy();
-		if (SavedGlobalRt_) {
-			OaRuntimeGlobal::SetRuntime(SavedGlobalRt_);
-		}
 	}
 
 	// Helper: compute max relative error
