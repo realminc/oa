@@ -15,7 +15,6 @@ maintaining a separate mobile ML implementation.
 <td><img src="Docs/Media/BuildWeek/OaMobileLab1.webp" alt="OA Mobile Lab welcome screen"></td>
 <td><img src="Docs/Media/BuildWeek/OaMobileLab2.webp" alt="OA Mobile Lab Vulkan device view"></td>
 <td><img src="Docs/Media/BuildWeek/OaMobileLab3.webp" alt="OA Mobile Lab model training"></td>
-<td><img src="Docs/Media/BuildWeek/OaMobileLab4.webp" alt="OA Mobile Lab generated result"></td>
 </tr>
 </table>
 
