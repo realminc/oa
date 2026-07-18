@@ -25,6 +25,10 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Tag validation needs the tagged commit's ancestry, not only the tag and
+          # current main tips. A depth-1 fetch makes a valid ancestor look unrelated.
+          fetch-depth: 0
 
       - name: Architecture dependency check
         run: |
@@ -34,7 +38,7 @@ jobs:
       - name: Verify tag is on main
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
-          git fetch origin main --depth=1
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
           if ! git merge-base --is-ancestor ${{ github.sha }} origin/main; then
             echo "::error::Tag must be on main branch"
             exit 1
@@ -218,10 +222,13 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Keep the full ancestry so a tag remains verifiable after main advances.
+          fetch-depth: 0
 
       - name: Verify tag is on main
         run: |
-          git fetch origin main --depth=1
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
           if ! git merge-base --is-ancestor ${{ github.sha }} origin/main; then
             echo "::error::Release tags must be on main branch"
             exit 1
