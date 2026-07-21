@@ -5,7 +5,8 @@
 # Full ML/crypto GPU tests: run locally with a discrete or integrated GPU.
 #
 # Triggers:
-#   tag (v*) on main  → build + test + release
+#   public tag (v*) on main → build + test + release
+#   private tag (v*)         → build + test only
 #   pull_request       → build + test
 
 name: CI
@@ -17,7 +18,7 @@ on:
     branches: [dev, main]
 
 env:
-  SLANG_VERSION: "2026.4.2"
+  SLANG_VERSION: "2026.5.2"
 
 jobs:
   build:
@@ -29,6 +30,22 @@ jobs:
           # Tag validation needs the tagged commit's ancestry, not only the tag and
           # current main tips. A depth-1 fetch makes a valid ancestor look unrelated.
           fetch-depth: 0
+
+      - name: Verify release tag and version sources agree
+        if: github.repository == 'realminc/oa' && startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -euo pipefail
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          SOURCE_VERSION="$(tr -d '\r\n' < VERSION)"
+          VCPKG_VERSION="$(python3 -c 'import json; print(json.load(open("vcpkg.json"))["version"])')"
+          test "$SOURCE_VERSION" = "$TAG_VERSION" || {
+            echo "::error::VERSION=$SOURCE_VERSION does not match tag $TAG_VERSION"
+            exit 1
+          }
+          test "$VCPKG_VERSION" = "$TAG_VERSION" || {
+            echo "::error::vcpkg.json=$VCPKG_VERSION does not match tag $TAG_VERSION"
+            exit 1
+          }
 
       - name: Architecture and diagnostic contract checks
         run: |
@@ -46,7 +63,7 @@ jobs:
         run: python3 Tools/check_autogen_drift.py
 
       - name: Verify tag is on main
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.repository == 'realminc/oa' && startsWith(github.ref, 'refs/tags/v')
         run: |
           git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
           if ! git merge-base --is-ancestor ${{ github.sha }} origin/main; then
@@ -101,6 +118,7 @@ jobs:
             -DOA_BUILD_CRYPTO=ON \
             -DOA_BUILD_SHARED=ON \
             -DOA_BUILD_TESTS=OFF \
+            -DOA_ENABLE_NATIVE_ARCH=OFF \
             -DOA_BUILD_TUTORIALS=ON
 
       # vcpkg is built during Configure — persist it now, regardless of what follows.
@@ -127,7 +145,7 @@ jobs:
       # component split (CMakeLists install COMPONENT oa / oa_sdk) self-verifying:
       # a regression that drops files from a component fails the build here.
       - name: Package (staged component installs → tarballs)
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.repository == 'realminc/oa' && startsWith(github.ref, 'refs/tags/v')
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
@@ -153,7 +171,7 @@ jobs:
       # (Ubuntu 24.04+ / Debian 13+ / Fedora 39+). Arch is rolling (newer glibc) so the
       # .pkg.tar.zst runs there, but the canonical native Arch path remains the AUR.
       - name: Build distro packages (.deb, .rpm, .pkg.tar.zst)
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.repository == 'realminc/oa' && startsWith(github.ref, 'refs/tags/v')
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
@@ -183,7 +201,7 @@ jobs:
           ls -lh dist/*.deb dist/*.rpm dist/*.pkg.tar.zst | awk '{print "- " $NF " (" $5 ")"}' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload packaged artifacts
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.repository == 'realminc/oa' && startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@v4
         with:
           name: oa-dist
@@ -220,7 +238,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            clang ninja-build cmake \
+            clang ninja-build cmake ccache \
             libvulkan-dev mesa-vulkan-drivers \
             liburing-dev libdrm-dev \
             autoconf autoconf-archive automake libtool
@@ -320,8 +338,8 @@ jobs:
   release:
     name: Release
     runs-on: ubuntu-24.04
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build, host-sanitizers]
+    if: github.repository == 'realminc/oa' && startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
     steps:
@@ -445,10 +463,18 @@ jobs:
           # NOTE: SKBUILD_CMAKE_ARGS *replaces* pyproject's cmake.args, so OA_BUILD_PYTHON=ON
           # (creates oa_core), OA_BUILD_SHARED=ON (liboa.so for $ORIGIN bundling), and
           # OA_BUILD_TESTS=OFF must all be repeated here.
-          export SKBUILD_CMAKE_ARGS="-DCMAKE_C_COMPILER=clang;-DCMAKE_CXX_COMPILER=clang++;-DCMAKE_TOOLCHAIN_FILE=$HOME/.vcpkg/vcpkg/scripts/buildsystems/vcpkg.cmake;-DVCPKG_INSTALLED_DIR=$HOME/.vcpkg/installed;-DSLANGC=/opt/slang/bin/slangc;-DOA_EMBED_SHADERS=ON;-DOA_BUILD_CRYPTO=ON;-DOA_BUILD_PYTHON=ON;-DOA_BUILD_SHARED=ON;-DOA_BUILD_TESTS=OFF"
+          export SKBUILD_CMAKE_ARGS="-DCMAKE_C_COMPILER=clang;-DCMAKE_CXX_COMPILER=clang++;-DCMAKE_TOOLCHAIN_FILE=$HOME/.vcpkg/vcpkg/scripts/buildsystems/vcpkg.cmake;-DVCPKG_INSTALLED_DIR=$HOME/.vcpkg/installed;-DSLANGC=/opt/slang/bin/slangc;-DOA_EMBED_SHADERS=ON;-DOA_BUILD_CRYPTO=ON;-DOA_BUILD_PYTHON=ON;-DOA_BUILD_SHARED=ON;-DOA_BUILD_TESTS=OFF;-DOA_ENABLE_NATIVE_ARCH=OFF"
           python -m build --wheel --no-isolation --outdir dist_raw
           auditwheel repair dist_raw/*.whl --exclude libvulkan.so.1 -w dist
           ls -lh dist/
+          python -m venv "$GITHUB_WORKSPACE/.venv-wheel-smoke"
+          "$GITHUB_WORKSPACE/.venv-wheel-smoke/bin/python" -m pip install dist/*.whl
+          (
+            cd "$RUNNER_TEMP"
+            OA_EXPECTED_VERSION="$(tr -d '\r\n' < "$GITHUB_WORKSPACE/VERSION")" \
+              "$GITHUB_WORKSPACE/.venv-wheel-smoke/bin/python" -c \
+              'import os, oa; assert oa.__version__ == os.environ["OA_EXPECTED_VERSION"]; assert all(hasattr(oa, name) for name in ("core", "runtime", "ml", "vision", "audio", "crypto"))'
+          )
       - name: Save vcpkg cache
         if: always() && steps.vcpkg-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
@@ -468,8 +494,8 @@ jobs:
   pypi:
     name: Publish to PyPI (oapython preview)
     runs-on: ubuntu-24.04
-    needs: [build, wheel]
-    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [release, wheel]
+    if: github.repository == 'realminc/oa' && startsWith(github.ref, 'refs/tags/v')
     environment: pypi
     permissions:
       id-token: write
@@ -488,7 +514,7 @@ jobs:
     name: Attach wheel to release
     runs-on: ubuntu-24.04
     needs: [release, wheel]
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.repository == 'realminc/oa' && startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
     steps:

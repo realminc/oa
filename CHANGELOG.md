@@ -4,28 +4,33 @@ All notable changes to OA are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is the single
 `VERSION` file at the repo root (read by CMake, `OaVersion()`, and the Python package).
 
-## [Unreleased] — 2026-07-21 source refresh
+## [0.7.6] — 2026-07-21 (architecture-convergence preview)
 
 ### Changed
-- Public `main` now carries the verified private `v0.6.101` architecture-convergence
+- Public `main` now carries the verified private `v0.6.102` architecture-convergence
   checkpoint: explicit execution/session ownership, immutable executable plans,
   deterministic semantic-to-executable provenance, broader schema-owned operations,
   engine-composed presentation, and removal of obsolete compatibility surfaces.
 - Release-facing Build Week documents no longer link to private engineering paths, and
   the controlled architecture-rewrite NLP comparison is published with its thermal,
   estimator, correctness, and provenance limits intact.
+- Generated-source drift remains strict for source and test artifacts while recognizing
+  the one internal operations reference intentionally omitted from sanitized public trees.
 
 ### Verification
-- The private checkpoint completed a clean 734-step Release build, all 15 NLP target
-  builds, the Core MatMul oracle, architecture and diagnostic checks, generated-source
-  drift checks, and 240/240 controlled NLP training/evaluation/generation/checkpoint
-  processes.
+- The exact release-source code completed the full Release target matrix in an isolated
+  worktree after a static-library reconfiguration, including all 15 NLP targets, and
+  passed the Core MatMul oracle, focused allocator/kernel/engine/stream/graph runtime
+  tests, architecture and diagnostic checks, and generated-source drift checks.
+- The preceding controlled rewrite comparison completed 240/240 NLP training, evaluation,
+  generation, checkpoint-round-trip, and GoogleTest processes with quality intact.
 - The comparison retains five performance flags and names the two repeatable regressions;
   it does not claim an aggregate framework speedup.
 
 ### Preview boundaries
-- This `0.7.6-dev` source and documentation refresh is not a new binary, wheel, tag, or
-  PyPI release. Installable artifacts remain the immutable `v0.7.5` preview.
+- This release advances the source, C++ packages, and Python wheel together to `0.7.6`.
+  The controlled performance comparison predates the final release-source cleanup and is
+  not presented as an exact `v0.7.6` benchmark or an aggregate speedup.
 - The unfinished Lunar Lander 3D experiment is not part of this public checkpoint.
 
 ## [0.7.5] — 2026-07-18 (OpenAI Build Week preview)

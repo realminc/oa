@@ -1,7 +1,7 @@
 # OA Build Week claims — Evidence and publication boundaries
 
 **Status:** ✅ ACTIVE
-**Date:** 2026-07-20
+**Date:** 2026-07-21
 **Module:** Documentation
 **Sister docs:** [Submission index](README.md), [Mobile benchmark](../Benchmarks/OaMobileLab.md), [NLP benchmark](../Benchmarks/OaNlpSuite.md), [Public releases](https://github.com/realminc/oa/releases)
 
@@ -21,8 +21,8 @@ comparisons are excluded.
 
 | Topic | State | Safe public wording | Evidence | Do not say |
 |---|---|---|---|---|
-| Product | Shipped preview | “OA is a GPU-first C++ and Python architecture framework for HPC, ML, Vision, Audio, media, plotting, and compact rendering on Vulkan.” | Public headers; [README architecture](../../README.md#architecture); [framework guide](Framework.md); [v0.7.5 release](https://github.com/realminc/oa/releases/tag/v0.7.5) | “OA replaces PyTorch, OpenCV, FFmpeg, and Unreal.” |
-| Architecture convergence | `0.7.6-dev` source refresh | “Public main includes the verified private `v0.6.101` architecture-convergence source checkpoint.” | [Changelog](../../CHANGELOG.md); controlled results in [NLP suite](../Benchmarks/OaNlpSuite.md) | “A new `v0.7.6` release,” “all migration work is complete,” or an aggregate speedup. |
+| Product | Shipped preview | “OA is a GPU-first C++ and Python architecture framework for HPC, ML, Vision, Audio, media, plotting, and compact rendering on Vulkan.” | Public headers; [README architecture](../../README.md#architecture); [framework guide](Framework.md); [v0.7.6 release](https://github.com/realminc/oa/releases/tag/v0.7.6) | “OA replaces PyTorch, OpenCV, FFmpeg, and Unreal.” |
+| Architecture convergence | `v0.7.6` shipped preview | “The `v0.7.6` preview publishes the verified architecture-convergence checkpoint as matching source and installable artifacts.” | [Changelog](../../CHANGELOG.md); controlled results in [NLP suite](../Benchmarks/OaNlpSuite.md) | “All migration work is complete,” an exact-`v0.7.6` performance comparison, or an aggregate speedup. |
 | Cross-vendor execution | Validated subset | “The Build Week training contract passes on Intel Iris Xe and Qualcomm Adreno through Vulkan.” | [Mobile Lab](../Benchmarks/OaMobileLab.md); [NLP suite](../Benchmarks/OaNlpSuite.md) | “Runs identically on every GPU.” |
 | Mobile training | Validated | “Five small neural-network architectures complete local forward, backward, AdamW, evaluation, generation, and checkpoint recreation on the reference phone.” | Signed-release five-route report in [Mobile Lab](../Benchmarks/OaMobileLab.md) | “Production model training on all Android phones.” |
 | Sparse MoE | Experimental, measured | “At the controlled Byte shape, sparse MoE measured 1.08× the dense Transformer wall time on the desktop reference.” | Protocol and device in [NLP suite](../Benchmarks/OaNlpSuite.md) | “Sparse MoE is faster than dense” or a device-independent ratio. |
@@ -36,8 +36,8 @@ comparisons are excluded.
 | Crypto | Shipped minimal, non-certified | “OA contains a minimal hybrid Crypto surface with differential tests and GPU batching for public data.” | `Source/Public/Oa/Crypto`; `Test/Crypto`; [README limits](../../README.md#honest-preview-boundaries) | “Secure,” “audited,” “certified,” or suitable for custody. |
 | Python | Shipped preview binding | “Python calls the same native C++/Vulkan operation library through one extension.” | `Source/Python`; public wheel smoke | “Almost zero Python overhead” until a matched Python/C++ benchmark exists. |
 | Zero-copy | Conditional architecture | “Typed values can share device storage without copying where representation and lifetime permit it.” | [Public memory contract](../../Source/Public/Oa/Core/Memory.h); [matrix value](../../Source/Public/Oa/Core/Matrix.h) | “Zero-copy everywhere.” Codec, file, and host metric boundaries can copy. |
-| Packaging | Shipped preview | “Judges can install the signed APK or Linux/Python packages without rebuilding OA.” | Public `v0.7.5` assets; the automated C++ packages have a checksum manifest, while APK/wheel/demo digest coverage remains an explicit release checklist item | “Fifteen-minute build on every free runner.” |
-| Operating systems | Linux shipped; Android validated; Windows and macOS planned | “OA 0.7.5 ships Linux packages and a validated Android reference app. Windows through Vulkan and macOS through MoltenVK are planned, capability-gated compute targets.” | Public packages; [Mobile Lab](../Benchmarks/OaMobileLab.md); [README limits](../../README.md#honest-preview-boundaries) | “Cross-platform support,” current Windows/macOS support, or “Vulkan Video on macOS.” |
+| Packaging | Shipped preview | “Judges can install the signed APK or Linux/Python packages without rebuilding OA.” | Public `v0.7.6` assets; the final-manifest gate requires checksum coverage for the automated packages, wheel, carried-forward APK, and demo | “Fifteen-minute build on every free runner.” |
+| Operating systems | Linux shipped; Android validated; Windows and macOS planned | “OA 0.7.6 ships Linux packages and a validated Android reference app. Windows through Vulkan and macOS through MoltenVK are planned, capability-gated compute targets.” | Public packages; [Mobile Lab](../Benchmarks/OaMobileLab.md); [README limits](../../README.md#honest-preview-boundaries) | “Cross-platform support,” current Windows/macOS support, or “Vulkan Video on macOS.” |
 | UI / plotting | In migration | “OA has viewer and diagnostic UI foundations; plotting and editor coverage remain incomplete.” | [Public UI headers](../../Source/Public/Oa/Ui); [framework guide](Framework.md) | “Complete plotting and editor suite.” |
 
 ## Hardware statement
@@ -122,7 +122,7 @@ The final coda directs viewers to the evidence rather than making another claim:
 - Public sanitized release repository: `realminc/oa`; product releases use
   `v0.7.x` tags.
 - First public sanitized Build Week tag: `realminc/oa` `v0.7.3`, July 14.
-- Final judgeable Build Week package: `realminc/oa` prerelease `v0.7.5`, released
-  July 18.
-- Current private migration work after that release is not part of the public
-  Build Week claim unless a new sanitized release is cut and rerun.
+- Final judgeable Build Week package: originally submitted as `v0.7.5` on July 18;
+  maintained as `realminc/oa` prerelease `v0.7.6` on July 21.
+- Unreleased private work beyond `v0.6.102` is not part of the public Build Week
+  claim unless a new sanitized release is cut and rerun.

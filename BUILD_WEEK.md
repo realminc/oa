@@ -40,10 +40,10 @@ Public `v0.7.3` (July 14) and `v0.7.4` (July 16) are dated intermediate snapshot
 Build Week branch and release preserve the final eligible delta and its verification
 evidence.
 
-The July 21 `0.7.6-dev` public-`main` refresh imports the completed private `v0.6.101`
-architecture-convergence checkpoint and its controlled NLP comparison. It does not
-replace the immutable `v0.7.5` packages or claim that the comparison binaries were an
-exact later public release.
+The July 21 `v0.7.6` preview publishes the completed private architecture-convergence
+checkpoint as matching source and installable artifacts. Its controlled NLP comparison
+predates the final release-source cleanup, so the results remain engineering evidence and
+are not relabeled as an exact `v0.7.6` benchmark.
 
 ## Demonstration
 

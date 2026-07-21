@@ -16,7 +16,7 @@ Docs/BuildWeek/Video/build.sh
 ```
 
 The script creates an isolated `.build` directory, installs `edge-tts` there,
-downloads the public `v0.7.5` Mobile Lab demo, generates sentence-sized neural
+downloads the carried-forward public `v0.7.6` Mobile Lab demo, generates sentence-sized neural
 narration, applies the requested independent `1.5x` tempo pass, and renders:
 
 - `Docs/Media/BuildWeek/OaBuildWeek2026Master1080p.mp4`
@@ -31,7 +31,7 @@ touching the visual program.
 
 ## Evidence boundaries
 
-- Phone footage comes from the published Realm `v0.7.5` release asset.
+- Phone footage comes from the signed Build Week asset carried forward to `v0.7.6`.
 - Audio, video, RL, NLP, and text-to-motion shots come from live OA tool captures;
   presentation chrome uses the canonical Realm wordmark from the UI repository.
 - The final framework coda uses the developer-site walkthrough plus the existing

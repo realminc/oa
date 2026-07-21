@@ -19,11 +19,11 @@ targets supported desktop, mobile, and integrated GPUs.
 > **0.7 development preview.** OA is real, executable software, but its API and artifact
 > formats are not frozen. Verified paths and experimental boundaries are listed below.
 
-> **Source versus packages.** Public `main` is the `0.7.6-dev` July 21
-> architecture-convergence source refresh. The downloadable packages and `oapython`
-> wheel remain the immutable
-> [`v0.7.5`](https://github.com/realminc/oa/releases/tag/v0.7.5) preview; no new binary
-> release or compatibility promise is implied by the source update.
+> **Current preview.** [`v0.7.6`](https://github.com/realminc/oa/releases/tag/v0.7.6)
+> publishes the July 21 architecture-convergence checkpoint as matching source, C++
+> packages, and an `oapython` wheel. It remains a development preview, not a compatibility
+> promise. The `v0.7.5` Build Week evidence is a historical measurement baseline rather
+> than an exact benchmark of this release tree.
 
 ## What works today
 

@@ -1,6 +1,6 @@
 # OA Build Week submission — Narrative and production index
 
-**Status:** ✅ SUBMITTED; public source refresh in progress
+**Status:** ✅ SUBMITTED; maintained by the public `v0.7.6` preview
 **Date:** 2026-07-21
 **Module:** Documentation
 **Sister docs:** [Devpost](Devpost.md), [Presentation](Presentation.md), [Claims](Claims.md), [Tutorials](Tutorials.md), [Submission checklist](SubmissionChecklist.md)
@@ -21,8 +21,9 @@ remain planned, capability-gated compute targets.
 
 The Build Week entry, public repository, `v0.7.5` packages, private `/feedback`
 session reference, and [public demo](https://www.youtube.com/watch?v=SEw20xx0SJY)
-were submitted on July 18. The July 21 repository update is a source/documentation
-refresh; it does not rewrite the submitted release tag or PyPI package.
+were submitted on July 18. The July 21 `v0.7.6` maintenance release advances the
+source, documentation, C++ packages, and Python wheel together. The immutable PyPI
+`0.7.5` files remain historical package evidence rather than being replaced.
 
 ---
 
@@ -99,7 +100,7 @@ OA predates Build Week. The baseline used for the private engineering comparison
 is `empyrealm/oa` commit `8e5a32b5` from July 10, whose root `VERSION` is `0.7.2`.
 It was not published as a public Git tag. Public sanitized releases begin with
 `realminc/oa` `v0.7.3`; the judgeable Build Week package is public prerelease
-[`v0.7.5`](https://github.com/realminc/oa/releases/tag/v0.7.5).
+[`v0.7.6`](https://github.com/realminc/oa/releases/tag/v0.7.6).
 
 This distinction matters. Public copy must say **pre-event version 0.7.2 baseline**,
 not **public tag v0.7.2**.
@@ -109,7 +110,7 @@ not **public tag v0.7.2**.
 - Project: <https://realm.software/>
 - Documentation: <https://dev.realm.software/>
 - Repository: <https://github.com/realminc/oa>
-- Release: <https://github.com/realminc/oa/releases/tag/v0.7.5>
+- Release: <https://github.com/realminc/oa/releases/tag/v0.7.6>
 - Video: <https://www.youtube.com/watch?v=SEw20xx0SJY>
 - Challenge: <https://openai.devpost.com/>
 

@@ -104,8 +104,9 @@ OA existed before the challenge. Development happens in the private
 on the `v0.6.x` line. Sanitized product releases are published from
 `realminc/oa` with `v0.7.x` tags. Root version 0.7.2 on July 10 is the pre-event
 engineering baseline; it was not published as a public Git tag. Public `v0.7.3`
-is the first sanitized event snapshot, and public prerelease `v0.7.5` is the
-judgeable Build Week package.
+is the first sanitized event snapshot, and public prerelease `v0.7.5` was the
+judgeable package submitted on July 18. The maintained installation path is the
+July 21 `v0.7.6` prerelease.
 
 During Build Week we:
 
@@ -255,7 +256,7 @@ current-base and roadmap matrix is in [Framework.md](Framework.md).
 ## Test it
 
 The fastest judge path is the signed `OaMobileLab-release.apk` attached to public
-prerelease [`v0.7.5`](https://github.com/realminc/oa/releases/tag/v0.7.5).
+prerelease [`v0.7.6`](https://github.com/realminc/oa/releases/tag/v0.7.6).
 Linux users can install the packaged runtime/SDK or CPython 3.12 wheel from the
 same release without rebuilding the framework.
 
@@ -263,8 +264,8 @@ Repository: <https://github.com/realminc/oa>
 
 Project: <https://realm.software/>
 
-Reproduction guide: <https://github.com/realminc/oa/blob/v0.7.5/BUILD_WEEK.md>
+Reproduction guide: <https://github.com/realminc/oa/blob/v0.7.6/BUILD_WEEK.md>
 
-Mobile evidence: <https://github.com/realminc/oa/blob/v0.7.5/Docs/Benchmarks/OaMobileLab.md>
+Mobile evidence: <https://github.com/realminc/oa/blob/v0.7.6/Docs/Benchmarks/OaMobileLab.md>
 
-Desktop evidence: <https://github.com/realminc/oa/blob/v0.7.5/Docs/Benchmarks/OaNlpSuite.md>
+Desktop evidence: <https://github.com/realminc/oa/blob/v0.7.6/Docs/Benchmarks/OaNlpSuite.md>

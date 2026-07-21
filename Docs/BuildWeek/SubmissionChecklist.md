@@ -1,6 +1,6 @@
 # OA Build Week checklist — Submission and publication gate
 
-**Status:** ✅ SUBMITTED; post-submission source refresh
+**Status:** ✅ SUBMITTED; `v0.7.6` maintenance publication gate
 **Date:** 2026-07-21
 **Module:** Documentation
 **Sister docs:** [Submission index](README.md), [Devpost](Devpost.md), [Presentation](Presentation.md), [Claims](Claims.md)
@@ -11,6 +11,8 @@
 
 The Build Week entry was submitted on July 18 with the public `v0.7.5` release,
 repository, install paths, YouTube demo, and private `/feedback` session reference.
+A July 21 `v0.7.6` maintenance release supersedes that GitHub release while preserving
+the immutable PyPI `0.7.5` files as historical package evidence.
 A revised 174.667-second local master and corrected caption text exist, but replacing
 the submitted video is optional and requires a new YouTube URL plus a Devpost edit.
 
@@ -23,23 +25,24 @@ Source: [OpenAI Build Week on Devpost](https://openai.devpost.com/), checked
 
 | Requirement | State | Artifact / action |
 |---|---|---|
-| Working project using Codex with GPT-5.6 | Ready | Public OA `v0.7.5` prerelease and signed Mobile Lab APK. |
+| Working project using Codex with GPT-5.6 | Ready | Public OA `v0.7.6` prerelease and signed Mobile Lab APK. |
 | Category | Ready | Developer Tools. |
 | Project description | Submitted | [Devpost.md](Devpost.md) retains the source copy. |
 | Public YouTube demo under three minutes | Submitted | [Public 172-second demo](https://www.youtube.com/watch?v=SEw20xx0SJY). A revised 174.667-second master remains local. |
 | Demo audio covers Codex and GPT-5.6 | Submitted | Both are spoken in the submitted demo. |
 | Repository URL | Ready | <https://github.com/realminc/oa> |
 | README setup and sample-data guidance | Present; final audit required | Public `BUILD_WEEK.md`, README, Mobile Lab README, and release assets. |
-| Developer-tool installation | Ready | Signed APK, `oapython==0.7.5`, Linux runtime/SDK packages. |
+| Developer-tool installation | Ready | Signed APK, `oapython==0.7.6`, Linux runtime/SDK packages. |
 | Test path without rebuilding | Ready; verify fresh | Install APK or wheel from the release; record one clean smoke. |
 | `/feedback` Codex Session ID | Submitted privately | The identifier is intentionally omitted from public documentation. |
 | Licensing / repository access | Submitted | Public repository includes its current license. |
 
 ## Post-submission maintenance
 
-1. Keep the `v0.7.5` tag, release assets, and PyPI artifact immutable.
-2. Publish the verified architecture-convergence source refresh on public `main`
-   without presenting it as a new package release.
+1. Keep the published PyPI `0.7.5` artifact immutable; carry the signed APK and demo
+   forward to `v0.7.6` before removing the superseded GitHub release and tag.
+2. Publish the verified architecture-convergence checkpoint as the matching `v0.7.6`
+   source, C++ package, and Python-wheel release.
 3. If the revised master replaces the submitted demo, upload it as a new YouTube
    video, review the public encode and captions, then update the Devpost URL.
 
@@ -47,7 +50,7 @@ Source: [OpenAI Build Week on Devpost](https://openai.devpost.com/), checked
 
 ### Android
 
-- Download `OaMobileLab-release.apk` from public `v0.7.5`.
+- Download `OaMobileLab-release.apk` from public `v0.7.6`.
 - Verify its published checksum.
 - Install on a supported Android device.
 - Open the device page before selecting a training route.
@@ -57,7 +60,7 @@ Source: [OpenAI Build Week on Devpost](https://openai.devpost.com/), checked
 ### Python on Linux
 
 ```bash
-python -m pip install oapython==0.7.5
+python -m pip install oapython==0.7.6
 python -c 'import oa; print(oa)'
 ```
 
@@ -72,11 +75,10 @@ hashes and internal documentation do not belong in judge instructions.
 
 ## Repository QA
 
-- [x] Public `v0.7.5` remains downloadable.
+- [ ] Public `v0.7.6` is downloadable with the carried-forward APK and demo assets.
 - [ ] All release assets have checksums.
-      The current `v0.7.5` manifest covers the eight automated C++ package
-      assets but not the separately attached APK, wheel, or demo video; keep
-      this unchecked until one final manifest covers every non-source asset.
+      The automated manifest initially covers only the C++ packages; keep this unchecked
+      until one final manifest covers those packages plus the wheel, APK, and demo video.
 - [ ] APK installs without local signing material.
 - [ ] Python wheel installs into a clean CPython 3.12 environment on its declared
       glibc baseline.
@@ -133,7 +135,7 @@ unrelated active edits, so this documentation pass does not change it.
 | Category | Developer Tools |
 | Repository | <https://github.com/realminc/oa> |
 | Website | <https://realm.software/> |
-| Release | <https://github.com/realminc/oa/releases/tag/v0.7.5> |
+| Release | <https://github.com/realminc/oa/releases/tag/v0.7.6> |
 | Video | <https://www.youtube.com/watch?v=SEw20xx0SJY> |
 | Codex Session ID | Submitted privately; intentionally not reproduced here. |
 

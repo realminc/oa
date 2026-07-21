@@ -258,7 +258,7 @@ const slides = {
     <text x="120" y="850" fill="#d4d4d4" font-family="Intel One Mono" font-size="22">NVIDIA · AMD · INTEL · QUALCOMM · MOBILE</text>
     <text x="120" y="887" fill="#a3a3a3" font-family="Intel One Mono" font-size="18">LINUX + ANDROID / NOW   ·   WINDOWS + MACOS / COMPUTE PLANNED</text>
     <text x="120" y="930" fill="#ffffff" font-family="IBM Plex Sans" font-size="30">realm.software</text>
-    <text x="120" y="972" fill="#a3a3a3" font-family="Intel One Mono" font-size="22">github.com/realminc/oa/releases/tag/v0.7.5</text>`),
+    <text x="120" y="972" fill="#a3a3a3" font-family="Intel One Mono" font-size="22">github.com/realminc/oa/releases/tag/v0.7.6</text>`),
 
   "10-roadmap-ml": roadmapHero(
     mlSpaceImage,
@@ -303,7 +303,7 @@ for (const [name, svg] of Object.entries(slides)) {
 
 if (!fileReady(mobileDemo)) {
   run("curl", ["-fL", "--retry", "3", "--max-time", "180", "-o", mobileDemo,
-    "https://github.com/realminc/oa/releases/download/v0.7.5/OA-Mobile-Lab-Build-Week-Demo.mp4"]);
+    "https://github.com/realminc/oa/releases/download/v0.7.6/OA-Mobile-Lab-Build-Week-Demo.mp4"]);
 }
 
 const segmentNames = ["01-hook", "02-problem", "03-engine", "04-proof", "05-hard", "06-breadth", "07-api", "08-codex", "09-close", "10-roadmap"];

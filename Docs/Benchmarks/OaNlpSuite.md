@@ -41,7 +41,7 @@ public-version or package comparison. It compares exact private tag `v0.6.100`
 (`48a9a205`) with the clean pre-squash rewrite candidate `cd8c41bf`. Four later
 source cleanups are present in private `v0.6.101` but were not part of the
 candidate binaries, so these measurements must not be relabeled as an exact
-`v0.6.101` or future `v0.7.6` result.
+`v0.6.101` or `v0.7.6` result.
 
 Both sides were rebuilt in clean detached worktrees. Each side and executable
 used one excluded warm-up followed by seven measured fresh processes, run

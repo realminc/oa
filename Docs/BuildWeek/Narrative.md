@@ -141,7 +141,7 @@ has no time for a competitor history lesson.
 
 ## 6. What Build Week proves
 
-The public `v0.7.5` package demonstrates:
+The public `v0.7.6` package demonstrates:
 
 - five small neural-network architectures training, evaluating, generating,
   saving, and reloading on a physical Adreno 610 phone;
@@ -196,7 +196,7 @@ The practical impact is not an abstract claim of freedom. It is:
 - FP32 desktop and reference-phone training gates described above.
 - C++ framework and module-shaped Python bindings.
 - Curated Core, ML, Vision, Audio, media, Crypto, and viewer surfaces.
-- Public `v0.7.5` preview packages and signed reference APK.
+- Public `v0.7.6` preview packages and signed reference APK.
 
 ### Experimental
 
