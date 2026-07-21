@@ -12,6 +12,7 @@ directory containing the private `_oa` extension.
 from __future__ import annotations
 
 import os
+import math
 import sys
 import tempfile
 from pathlib import Path
@@ -149,6 +150,42 @@ def test_from_floats_and_scale(engine):
     assert all(abs(a - b) < 1e-5 for a, b in zip(got, expected)), got
 
 
+def test_softmax_family_selected_axis(engine):
+    values = [float(i - 12) / 4.0 for i in range(24)]
+    x = core.FromFloats(values, [2, 3, 4])
+
+    with oa.Context():
+        softmax = core.Softmax(x, dim=1)
+        log_softmax = core.LogSoftmax(x, dim=1)
+
+    softmax_values = core.CopyToHost(softmax)
+    log_softmax_values = core.CopyToHost(log_softmax)
+    assert softmax.Shape() == [2, 3, 4]
+    assert log_softmax.Shape() == [2, 3, 4]
+
+    for outer in range(2):
+        for inner in range(4):
+            indices = [outer * 12 + axis * 4 + inner for axis in range(3)]
+            assert abs(sum(softmax_values[index] for index in indices) - 1.0) < 1e-5
+            assert abs(sum(math.exp(log_softmax_values[index]) for index in indices) - 1.0) < 1e-5
+
+
+def test_mean_selected_axis(engine):
+    values = [float(i - 12) / 4.0 for i in range(24)]
+    x = core.FromFloats(values, [2, 3, 4])
+
+    with oa.Context():
+        mean = core.Mean(x, dim=1)
+
+    got = core.CopyToHost(mean)
+    assert mean.Shape() == [2, 1, 4]
+    for outer in range(2):
+        for inner in range(4):
+            indices = [outer * 12 + axis * 4 + inner for axis in range(3)]
+            expected = sum(values[index] for index in indices) / 3.0
+            assert abs(got[outer * 4 + inner] - expected) < 1e-6
+
+
 def test_matmulnt_and_elementwise(engine):
     a = core.Full(2, 3, 1.0)
     b = core.Full(2, 3, 2.0)
@@ -163,6 +200,20 @@ def test_matmulnt_and_elementwise(engine):
     assert core.CopyToHost2D(add_r, 2, 3) == [[3.0, 3.0, 3.0], [3.0, 3.0, 3.0]]
     assert core.CopyToHost2D(sub_r, 2, 3) == [[-1.0, -1.0, -1.0], [-1.0, -1.0, -1.0]]
     assert core.CopyToHost2D(mul_r, 2, 3) == [[2.0, 2.0, 2.0], [2.0, 2.0, 2.0]]
+
+
+def test_reduction_bindings(engine):
+    x = core.Full(2, 3, 2.0)
+
+    with oa.Context():
+        total = core.Sum(x)
+        rows = core.Sum(x, 1)
+        maximum = core.Max(x)
+
+    assert core.CopyToHost(total) == [12.0]
+    assert rows.Shape() == [2, 1]
+    assert core.CopyToHost(rows) == [6.0, 6.0]
+    assert core.CopyToHost(maximum) == [2.0]
 
 
 def test_gradient_tape_attaches_grad_fn(engine):

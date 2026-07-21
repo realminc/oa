@@ -19,6 +19,12 @@ targets supported desktop, mobile, and integrated GPUs.
 > **0.7 development preview.** OA is real, executable software, but its API and artifact
 > formats are not frozen. Verified paths and experimental boundaries are listed below.
 
+> **Source versus packages.** Public `main` is the `0.7.6-dev` July 21
+> architecture-convergence source refresh. The downloadable packages and `oapython`
+> wheel remain the immutable
+> [`v0.7.5`](https://github.com/realminc/oa/releases/tag/v0.7.5) preview; no new binary
+> release or compatibility promise is implied by the source update.
+
 ## What works today
 
 | Area | Current capability |
@@ -53,7 +59,7 @@ model contracts, training semantics, generation checks, and checkpoint round tri
 #include <Oa/Oa.h>
 
 int main() {
-	auto result = OaComputeEngine::Create({.AppName = "QuickStart"});
+	auto result = OaEngine::Create({.AppName = "QuickStart"});
 	if (not result.IsOk()) return 1;
 	auto engine = std::move(*result);
 	auto x = OaFnMatrix::Ones(OaMatrixShape{1024, 1024});
@@ -197,6 +203,7 @@ version converts to Apache-2.0 on its stated Change Date. Commercial licensing:
 
 Copyright © 2025–2026 Lukasz Biernat, trading as Realm.
 
-OA vendors or integrates permissively licensed components including Vulkan Memory
-Allocator, volk, GLM, miniaudio, stb, liboqs, nanobind, and Slang. See [NOTICE.md](NOTICE.md)
-for exact attribution and license terms.
+OA vendors or integrates permissively licensed components. Release packages
+include OA's license, the attribution manifest, and available dependency
+copyright files. See [NOTICE.md](NOTICE.md) for the exact dependency boundary,
+including components used only by tests or build tooling.

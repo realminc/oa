@@ -10,7 +10,7 @@ struct PushConstants {
 	uint d_logits_idx;  // Prepended by OaVkDispatch::Run
 	uint batch;         // From C++ code
 	uint classes;       // From C++ code
-	uint target_dtype;  // 0=UInt8, 1=UInt32
+	uint target_dtype;  // 0=UInt8, 1=UInt32 or non-negative Int32
 };
 
 [[vk::push_constant]] PushConstants pc;
@@ -18,11 +18,12 @@ struct PushConstants {
 [[vk::binding(0, 0)]] RWByteAddressBuffer heap[];
 
 groupshared float g_buf[256];
+static const uint kPortableDispatchTileWidthX = 65535;
 
 [shader("compute")]
 [numthreads(256, 1, 1)]
 void main(uint3 gid : SV_GroupID, uint3 tid : SV_GroupThreadID) {
-	uint row = gid.x;
+	uint row = gid.x + gid.y * kPortableDispatchTileWidthX;
 	if (row >= pc.batch) return;
 
 	uint lane = tid.x;
@@ -59,6 +60,12 @@ void main(uint3 gid : SV_GroupID, uint3 tid : SV_GroupThreadID) {
 	uint target = (pc.target_dtype == 0)
 		? (uint)heap[pc.targets_idx].Load<uint8_t>(row)
 		: heap[pc.targets_idx].Load<uint>(row * 4);
+	if (target >= pc.classes) {
+		for (uint i = lane; i < pc.classes; i += 256) {
+			OaStore(heap[pc.d_logits_idx], base + i, asfloat(0x7FC00000u));
+		}
+		return;
+	}
 	float inv_batch = 1.0 / float(pc.batch);
 	
 	for (uint i = lane; i < pc.classes; i += 256) {

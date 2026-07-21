@@ -19,6 +19,7 @@
 #include <Oa/Runtime/Engine.h>
 #include <Oa/Runtime/ImageDispatch.h>
 #include <Oa/Runtime/OaVma.h>
+#include "Oa/Runtime/Engine/BorrowedServiceRetirement.h"
 
 
 // ──────────────────────────────────────────────────────────────────────
@@ -363,7 +364,7 @@ OaResult<OaVideoEncodeCapabilities> OaVideoEncoder::QueryEncodeCapabilities(
 		return OaStatus::Error(OaStatusCode::Unimplemented,
 			"Requested Vulkan Video encode codec is not implemented in OA");
 	}
-	auto& vkEngine = static_cast<OaComputeEngine&>(InRt);
+	auto& vkEngine = InRt;
 	const auto& hw = vkEngine.Device.Info.Hardware;
 	const auto& sw = vkEngine.Device.Info.Software;
 	// Mesa 26.1.4 advertises HEVC encode on Tiger Lake GT2, but both OA and
@@ -603,7 +604,34 @@ OaVideoEncoder& OaVideoEncoder::operator=(OaVideoEncoder&& InOther) noexcept
 
 OaVideoEncoder::~OaVideoEncoder()
 {
-	Destroy();
+	Abandon_();
+}
+
+
+void OaVideoEncoder::Abandon_() noexcept
+{
+	if (Rt_ == nullptr) return;
+	OaEngine* engine = Rt_;
+	auto retired = OaMakeUniquePtr<OaVideoEncoder>(OaStdMove(*this));
+	OaBorrowedServiceRetirement::Retire(
+		*engine,
+		retired.Release(),
+		&OaVideoEncoder::CompleteRetired_,
+		&OaVideoEncoder::ReleaseRetired_);
+}
+
+
+OaStatus OaVideoEncoder::CompleteRetired_(void* InPayload)
+{
+	auto* encoder = static_cast<OaVideoEncoder*>(InPayload);
+	return encoder ? encoder->Close() : OaStatus::Ok();
+}
+
+
+void OaVideoEncoder::ReleaseRetired_(void* InPayload)
+{
+	OaUniquePtr<OaVideoEncoder> encoder(
+		static_cast<OaVideoEncoder*>(InPayload));
 }
 
 
@@ -727,7 +755,7 @@ OaResult<OaVideoEncoder> OaVideoEncoder::Create(
 	encoder.CodedWidth_   = alignedWidth;
 	encoder.CodedHeight_  = alignedHeight;
 
-	auto& vkEngine = static_cast<OaComputeEngine&>(InRt);
+	auto& vkEngine = InRt;
 	VkDevice device = static_cast<VkDevice>(vkEngine.Device.Device);
 
 	VkVideoEncodeH264ProfileInfoKHR h264 = {};
@@ -1170,25 +1198,35 @@ OaStatus OaVideoEncoder::UploadInputRgba_(
 			"OaVideoEncoder::UploadInputRgba: visible extent out of range");
 	}
 	const OaU64 visibleBytes = static_cast<OaU64>(InVisibleWidth) * InVisibleHeight * 4ULL;
-	auto& vkEngine = static_cast<OaComputeEngine&>(*Rt_);
+	auto& vkEngine = *Rt_;
+	if (InRgba.Allocation == nullptr or InRgba.AliasIdentity != nullptr
+		or InRgba.IsImported()
+		or InRgba.NodeIndex != 0U
+		or InRgba.AllocatorIdentity != vkEngine.Allocator.Allocator) {
+		return OaStatus::Error(OaStatusCode::InvalidArgument,
+			"RGBA source must be a non-aliased allocation owned by the encoder engine");
+	}
 	if (InRgba.Size < visibleBytes or InSlot.RgbaSnapshot.Size < visibleBytes) {
 		return OaStatus::Error(OaStatusCode::InvalidArgument,
 			"RGBA source buffer is smaller than the visible frame");
 	}
+	OaEvent copyReady;
 	if (InRgba.MappedPtr != nullptr and InSlot.RgbaSnapshot.MappedPtr != nullptr) {
-		std::memcpy(InSlot.RgbaSnapshot.MappedPtr, InRgba.MappedPtr,
-			static_cast<OaUsize>(visibleBytes));
+		OA_RETURN_IF_ERROR(vkEngine.ReadbackBuffer(
+			InRgba, 0U, InSlot.RgbaSnapshot.MappedPtr, visibleBytes));
 		if (not vkEngine.Allocator.FlushHostBuffer(InSlot.RgbaSnapshot, 0U, visibleBytes)) {
 			return OaStatus::Error(OaStatusCode::VulkanError,
 				"Failed to flush asynchronous RGBA snapshot buffer");
 		}
 	} else {
 		// Device-only producers need a stable copy before returning ownership to
-		// the caller. This transfer wait is intentionally limited to that legacy
+		// the caller. This exact event wait is intentionally limited to that legacy
 		// buffer path; mapped capture frames take the fully asynchronous route.
-		OA_RETURN_IF_ERROR(vkEngine.CopyBufferAsync(
-			InRgba, InSlot.RgbaSnapshot, visibleBytes));
-		OA_RETURN_IF_ERROR(vkEngine.WaitTransfer());
+		auto copy = vkEngine.CopyBufferAsync(
+			InRgba, InSlot.RgbaSnapshot, visibleBytes);
+		if (not copy.IsOk()) return copy.GetStatus();
+		OA_RETURN_IF_ERROR(copy->Wait());
+		copyReady = *copy;
 	}
 	OaU32 colorSpace = 1U;  // BT.709 default
 	switch (InColorSpace) {
@@ -1246,15 +1284,32 @@ OaStatus OaVideoEncoder::UploadInputRgba_(
 
 	const OaU32 groupsX = (CodedWidth_  + 15U) / 16U;
 	const OaU32 groupsY = (CodedHeight_ + 15U) / 16U;
-	auto ticketResult = OaVkImageDispatch::RunAsync(
-		vkEngine,
-		"CvtRgbaToNv12",
-		OaSpan<const OaVkImageDispatchBinding>(bindings, 3),
-		&push,
-		static_cast<OaU32>(sizeof(push)),
-		groupsX,
-		groupsY,
-		1U);
+	const auto submitConversion = [&]() -> OaResult<OaVkImageDispatchTicket> {
+		if (copyReady.IsValid()) {
+			const OaVkTimelineWait wait = copyReady.TimelineWait();
+			return OaVkImageDispatch::RunWithDependencyAsync(
+				vkEngine,
+				"CvtRgbaToNv12",
+				OaSpan<const OaVkImageDispatchBinding>(bindings, 3),
+				&push,
+				static_cast<OaU32>(sizeof(push)),
+				groupsX,
+				groupsY,
+				1U,
+				*wait.Semaphore,
+				wait.Value);
+		}
+		return OaVkImageDispatch::RunAsync(
+			vkEngine,
+			"CvtRgbaToNv12",
+			OaSpan<const OaVkImageDispatchBinding>(bindings, 3),
+			&push,
+			static_cast<OaU32>(sizeof(push)),
+			groupsX,
+			groupsY,
+			1U);
+	};
+	auto ticketResult = submitConversion();
 	if (not ticketResult.IsOk()) return ticketResult.GetStatus();
 	InSlot.InputTicket = OaStdMove(*ticketResult);
 	InSlot.InputInitialized = true;
@@ -1273,8 +1328,7 @@ OaStatus OaVideoEncoder::UploadInputRgbaImage_(
 	OaYCbCrModel InColorSpace,
 	bool InFullRange,
 	OaU32 InArrayLayer,
-	const OaVkTimelineSemaphore* InReadySemaphore,
-	OaU64 InReadyValue,
+	OaEvent InReady,
 	OaU32 InExternalQueueFamilyIndex)
 {
 	if (Rt_ == nullptr or Session_.Handle() == VK_NULL_HANDLE) {
@@ -1297,11 +1351,6 @@ OaStatus OaVideoEncoder::UploadInputRgbaImage_(
 		return OaStatus::Error(OaStatusCode::InvalidArgument,
 			"OaVideoEncoder::SubmitRgbaImage visible extent is out of range");
 	}
-	if ((InReadySemaphore == nullptr) != (InReadyValue == 0U)) {
-		return OaStatus::Error(OaStatusCode::InvalidArgument,
-			"OaVideoEncoder::SubmitRgbaImage readiness semaphore/value must be supplied together");
-	}
-
 	OaU32 colorSpace = 1U;
 	switch (InColorSpace) {
 		case OaYCbCrModel::BT709:  colorSpace = 1U; break;
@@ -1355,15 +1404,16 @@ OaStatus OaVideoEncoder::UploadInputRgbaImage_(
 	bindings[2].ImageView = InSlot.InputUvView;
 	bindings[2].ImageLayout = VK_IMAGE_LAYOUT_GENERAL;
 
-	auto& vkEngine = static_cast<OaComputeEngine&>(*Rt_);
+	auto& vkEngine = *Rt_;
 	const OaU32 groupsX = (CodedWidth_ + 15U) / 16U;
 	const OaU32 groupsY = (CodedHeight_ + 15U) / 16U;
-	OaResult<OaVkImageDispatchTicket> ticketResult = InReadySemaphore != nullptr
+	const OaVkTimelineWait ready = InReady.TimelineWait();
+	OaResult<OaVkImageDispatchTicket> ticketResult = InReady.IsValid()
 		? OaVkImageDispatch::RunWithDependencyAsync(
 			vkEngine, "CvtRgbaImageToNv12",
 			OaSpan<const OaVkImageDispatchBinding>(bindings, 3),
 			&push, static_cast<OaU32>(sizeof(push)), groupsX, groupsY, 1U,
-			*InReadySemaphore, InReadyValue)
+			*ready.Semaphore, ready.Value)
 		: OaVkImageDispatch::RunAsync(
 			vkEngine, "CvtRgbaImageToNv12",
 			OaSpan<const OaVkImageDispatchBinding>(bindings, 3),
@@ -1410,7 +1460,7 @@ OaStatus OaVideoEncoder::SubmitEncode_(EncodeSlot& InSlot, OaU64 InPts)
 		return OaStatus::Error("Vulkan Video encode commands are not loaded");
 	}
 
-	auto& vkEngine = static_cast<OaComputeEngine&>(*Rt_);
+	auto& vkEngine = *Rt_;
 	VkDevice device = static_cast<VkDevice>(vkEngine.Device.Device);
 	VkQueue  queue  = static_cast<VkQueue>(vkEngine.Device.Queues.VideoEncodeQueue);
 	if (queue == VK_NULL_HANDLE) {
@@ -2022,7 +2072,7 @@ OaStatus OaVideoEncoder::Harvest_(
 {
 	OutReady = false;
 	if (not InSlot.Pending) return OaStatus::Ok();
-	auto& vkEngine = static_cast<OaComputeEngine&>(*Rt_);
+	auto& vkEngine = *Rt_;
 	VkDevice device = static_cast<VkDevice>(vkEngine.Device.Device);
 	VkResult result = VK_SUCCESS;
 	if (InWait) {
@@ -2208,8 +2258,7 @@ OaStatus OaVideoEncoder::SubmitRgbaImage(
 	OaYCbCrModel InColorSpace,
 	bool InFullRange,
 	OaU32 InArrayLayer,
-	const OaVkTimelineSemaphore* InReadySemaphore,
-	OaU64 InReadyValue,
+	OaEvent InReady,
 	OaU32 InExternalQueueFamilyIndex,
 	OaCompletionToken* OutInputConsumed)
 {
@@ -2233,7 +2282,7 @@ OaStatus OaVideoEncoder::SubmitRgbaImage(
 	OA_RETURN_IF_ERROR(UploadInputRgbaImage_(
 		slot, InImage, InImageView, InFormat, InLayout,
 		InVisibleWidth, InVisibleHeight, InColorSpace, InFullRange,
-		InArrayLayer, InReadySemaphore, InReadyValue,
+		InArrayLayer, InReady,
 		InExternalQueueFamilyIndex));
 	OA_RETURN_IF_ERROR(SubmitEncode_(slot, InPts));
 	++PendingSlots_;
@@ -2281,13 +2330,13 @@ OaStatus OaVideoEncoder::Flush(OaVec<OaEncodedFrame>& OutFrames)
 }
 
 
-void OaVideoEncoder::DestroySlot_(EncodeSlot& InSlot) noexcept
+OaStatus OaVideoEncoder::DestroySlot_(EncodeSlot& InSlot)
 {
-	if (Rt_ == nullptr) return;
-	auto& vkEngine = static_cast<OaComputeEngine&>(*Rt_);
+	if (Rt_ == nullptr) return OaStatus::Ok();
+	auto& vkEngine = *Rt_;
 	VkDevice device = static_cast<VkDevice>(vkEngine.Device.Device);
 	auto* allocator = static_cast<OaVmaAllocator>(vkEngine.Allocator.Allocator);
-	(void)InSlot.InputTicket.Wait();
+	const OaStatus inputStatus = InSlot.InputTicket.Wait();
 	if (InSlot.RgbaSnapshot.Buffer != VK_NULL_HANDLE) {
 		vkEngine.FreeBuffer(InSlot.RgbaSnapshot);
 	}
@@ -2316,25 +2365,54 @@ void OaVideoEncoder::DestroySlot_(EncodeSlot& InSlot) noexcept
 			static_cast<OaVmaAllocation>(InSlot.InputAllocation));
 	}
 	InSlot = {};
+	return inputStatus;
 }
 
 
-void OaVideoEncoder::Destroy()
+OaStatus OaVideoEncoder::Close()
 {
 	if (Rt_ == nullptr) {
 		Reset_();
-		return;
+		return OaStatus::Ok();
 	}
-	auto& vkEngine = static_cast<OaComputeEngine&>(*Rt_);
-	VkQueue queue = static_cast<VkQueue>(vkEngine.Device.Queues.VideoEncodeQueue);
-	if (queue != VK_NULL_HANDLE) (void)vkQueueWaitIdle(queue);
-	for (auto& slot : Slots_) DestroySlot_(slot);
+	auto& vkEngine = *Rt_;
+	VkDevice device = static_cast<VkDevice>(vkEngine.Device.Device);
+	OaStatus firstError = OaStatus::Ok();
+	auto retainError = [&firstError](const OaStatus& InStatus) {
+		if (firstError.IsOk() and not InStatus.IsOk()) firstError = InStatus;
+	};
+	// Each encode submission owns a fence. Waiting only those fences preserves
+	// unrelated work on a shared video queue and makes the lifetime edge exact.
+	for (auto& slot : Slots_) {
+		if (slot.Pending and slot.Fence != VK_NULL_HANDLE) {
+			const VkResult result = vkWaitForFences(
+				device, 1, &slot.Fence, VK_TRUE, UINT64_MAX);
+			if (result != VK_SUCCESS) {
+				retainError(OaStatus::Error(
+					OaStatusCode::VulkanError,
+					"video encoder fence completion failed"));
+			}
+			slot.Pending = false;
+		}
+	}
+	for (auto& slot : Slots_) retainError(DestroySlot_(slot));
 
 	Session_.Destroy();
 	SessionParams_.Destroy();
 	Queue_.Destroy();
 	Dpb_.Destroy();
 	Reset_();
+	return firstError;
+}
+
+
+void OaVideoEncoder::Destroy()
+{
+	if (const auto status = Close(); not status.IsOk()) {
+		OA_LOG_ERROR(OaLogComponent::Core,
+			"OaVideoEncoder::Destroy: shutdown failed: %s",
+			status.ToString().c_str());
+	}
 }
 
 
@@ -2400,7 +2478,7 @@ OaStatus OaVideoTranscoder::TranscodeFrame(
 	OA_RETURN_IF_ERROR(Encoder_.SubmitRgbaImage(
 		rgba.Image, rgba.ImageView, rgba.Format, rgba.Layout,
 		rgba.Width, rgba.Height, pts, ready, rgba.ColorSpace, rgba.FullRange,
-		rgba.ArrayLayer, rgba.ReadySemaphore, rgba.ReadyValue,
+		rgba.ArrayLayer, rgba.Ready,
 		rgba.ExternalQueueFamilyIndex));
 	OA_RETURN_IF_ERROR(Encoder_.Flush(ready));
 	if (ready.Size() != 1U) {

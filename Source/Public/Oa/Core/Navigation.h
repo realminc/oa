@@ -81,7 +81,7 @@ public:
 	[[nodiscard]] bool  IsPanning() const noexcept { return IsPanDragging_; }
 	[[nodiscard]] bool  IsPinching() const noexcept { return IsPinching_; }
 
-	// Wire to OaDeviceUiApp::CaptureRelativeMouse for border tracking (v0.6.55).
+	// Wire to the owning viewer's pointer-capture callback for border tracking.
 	using CaptureFn = OaFunc<void(bool)>;
 	void SetCapturePointer(CaptureFn InFn) { CapturePointer_ = OaStdMove(InFn); }
 

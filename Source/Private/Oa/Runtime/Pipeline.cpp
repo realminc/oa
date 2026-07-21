@@ -323,7 +323,7 @@ void OaComputePipeline::WriteStorageBuffer(
 	VkDescriptorBufferInfo bufInfo{};
 	bufInfo.buffer = static_cast<VkBuffer>(InBuffer.Buffer);
 	bufInfo.offset = 0;
-	bufInfo.range = InBuffer.Size;
+	bufInfo.range = InBuffer.DescriptorRange();
 
 	VkWriteDescriptorSet write{};
 	write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -768,6 +768,12 @@ OaStatus OaPipelineRegistry::TryLoadOnDemand(
 OaComputePipeline& OaPipelineRegistry::GetPipeline(OaStringView InName, OaU32 InDtype) {
 	// Single static null pipeline - must be outside all scopes
 	static OaComputePipeline sNull;
+	if (InDtype > 1U) {
+		OA_LOG_ERROR(OaLogComponent::Core,
+			"Pipeline lookup rejected invalid storage DTYPE=%u for '%s'",
+			InDtype, OaString(InName).c_str());
+		return sNull;
+	}
 	
 	OaString key(InName);
 	key += "|0=";
@@ -781,20 +787,13 @@ OaComputePipeline& OaPipelineRegistry::GetPipeline(OaStringView InName, OaU32 In
 		if (it != Registry_.End()) {
 			return it->second;
 		}
-		
-		// Strategy 2: Try opposite DTYPE (BF16 kernels called from FP32 engine, or vice versa)
-		OaU32 oppositeDtype = (InDtype == 0) ? 1 : 0;
-		OaString oppositeKey(InName);
-		oppositeKey += "|0=";
-		oppositeKey += OaToString(oppositeDtype);
-		auto oppositeIt = Registry_.Find(oppositeKey);
-		if (oppositeIt != Registry_.End()) {
-			return oppositeIt->second;
-		}
-		
-		// Strategy 3: Try bare name without DTYPE suffix (legacy/precision-agnostic kernels)
+
+		// Strategy 2: Preserve legacy FP32 pipelines registered without a DTYPE
+		// specialization, but never let one satisfy a different storage ABI.
+		// Storage.slang uses DTYPE to choose two- versus four-byte addressing, so
+		// an inexact variant can read and write outside the tensor layout.
 		auto bareIt = Registry_.Find(OaString(InName));
-		if (bareIt != Registry_.End()) {
+		if (bareIt != Registry_.End() and bareIt->second.NativeDtype == InDtype) {
 			return bareIt->second;
 		}
 	}
@@ -808,13 +807,15 @@ OaComputePipeline& OaPipelineRegistry::GetPipeline(OaStringView InName, OaU32 In
 			auto it = Registry_.Find(key);
 			if (it != Registry_.End()) return it->second;
 			auto bareIt = Registry_.Find(OaString(InName));
-			if (bareIt != Registry_.End()) return bareIt->second;
+			if (bareIt != Registry_.End() and bareIt->second.NativeDtype == InDtype) {
+				return bareIt->second;
+			}
 		}
 	}
 
 	// Pipeline not found after eager and lazy strategies.
 	OA_LOG_WARN(OaLogComponent::Core,
-		"Pipeline not found: '%s' (tried DTYPE=%u, opposite DTYPE, bare name, lazy embedded load).",
+		"Pipeline not found: '%s' (tried exact DTYPE=%u and lazy exact embedded load).",
 		OaString(InName).c_str(), InDtype);
 	return sNull;
 }

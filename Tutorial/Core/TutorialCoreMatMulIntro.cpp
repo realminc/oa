@@ -13,7 +13,7 @@
 //   make a tensor (on the GPU)       OaFnMatrix::Rand / Full / Zeros
 //   C = A @ B^T                      OaFnMatrix::MatMulNt(a, b)
 //   y = x @ W^T + b                  OaFnMatrix::Linear(x, w, bias)
-//   run it on the GPU                OaContext::Scope / Execute() + Sync()
+//   run it on the GPU                RecordingScope / Submit() / Wait()
 //   read it back                     OaFnMatrix::CopyToHost(c, ...)
 //
 // GPU-only: inputs are generated on-device (Philox RNG via Rand, or the Fill
@@ -40,11 +40,13 @@
 
 #include <Oa/Core/FnMatrix.h>
 #include <Oa/Core/Matrix.h>
+#include <Oa/Core/Operation.h>
 #include <Oa/Core/Types.h>
 #include <Oa/Ml/FnMatrix.h>          // OaFnMatrix::Linear (bias-broadcasting)
 #include <Oa/Runtime/Context.h>
 #include <Oa/Runtime/ComputeGraph.h>
 #include <Oa/Runtime/Engine.h>
+#include <Oa/Runtime/Gemm/GraphLowering.h>
 
 #include <algorithm>
 #include <chrono>
@@ -98,6 +100,34 @@ static double MaxRelError(const std::vector<float>& InRef, const std::vector<flo
 	return maxErr / maxRef;
 }
 
+// The normal tutorial path above exercises OaFnMatrix::MatMulNt. The raw
+// preallocated/pipelined microbench sections intentionally bind an existing
+// output and therefore call the same private production lowerer directly. This
+// helper is benchmark plumbing, not a second public MatMul API.
+static OaStatus RecordPreallocatedMatMul(
+	OaContext& InContext,
+	const OaMatrix& InA,
+	const OaMatrix& InB,
+	OaMatrix& OutC,
+	OaU32 InM,
+	OaU32 InN,
+	OaU32 InK,
+	OaMatMulPrecision InPrecision)
+{
+	return OaGemmGraphLowering::Record(InContext, {
+		.A = &InA,
+		.B = &InB,
+		.C = &OutC,
+		.M = InM,
+		.N = InN,
+		.K = InK,
+		.Precision = InPrecision,
+		.Epilogue = OaGemmEpilogue::None,
+		.Operation = OaOperationRegistry::MatMulNt.Name,
+		.OperationContractHash = OaOperationRegistry::MatMulNt.Hash,
+	});
+}
+
 // ─── Section 1: Basic syntax ────────────────────────────────────────────────
 
 static void DemoBasicSyntax() {
@@ -108,10 +138,16 @@ static void DemoBasicSyntax() {
 	auto b = OaFnMatrix::Full(OaMatrixShape{2, 3}, 2.0f);
 
 	OaMatrix c;
+	auto& ctx = OaContext::GetDefault();
 	{
-		OaContext::Scope scope(OaContext::GetDefault());
+		OaContext::RecordingScope recording(ctx);
 		c = OaFnMatrix::MatMulNt(a, b);   // records into the default context
-	}                                   // scope exit: Execute() + Sync()
+	}
+	auto submitted = ctx.Submit();
+	if (not submitted.IsOk() or not ctx.Wait(submitted.GetValue()).IsOk()) {
+		std::fprintf(stderr, "MatMul submission failed\n");
+		return;
+	}
 
 	std::vector<float> host(2 * 2);
 	(void)OaFnMatrix::CopyToHost(c, host.data(), host.size() * sizeof(float));
@@ -135,9 +171,15 @@ static bool RunCorrectness(const ShapeCase& InCase, double InTol) {
 	const auto hB = ReadHost(b);
 
 	OaMatrix c;
+	auto& ctx = OaContext::GetDefault();
 	{
-		OaContext::Scope scope(OaContext::GetDefault());
+		OaContext::RecordingScope recording(ctx);
 		c = OaFnMatrix::MatMulNt(a, b);
+	}
+	auto submitted = ctx.Submit();
+	if (not submitted.IsOk() or not ctx.Wait(submitted.GetValue()).IsOk()) {
+		std::fprintf(stderr, "MatMul submission failed for %s\n", InCase.Name);
+		return false;
 	}
 
 	const auto gpu = ReadHost(c);
@@ -170,7 +212,7 @@ static PerfResult SummarizeSamples(std::vector<double> InSamples, double InGflop
 
 static PerfResult BenchOne(
 	const ShapeCase& InCase,
-	OaContextMatMulPrecision InPrecision,
+	OaMatMulPrecision InPrecision,
 	int InWarmup,
 	int InIters)
 {
@@ -207,7 +249,7 @@ static PerfResult BenchOne(
 // This isolates kernel + dispatch overhead from per-call buffer allocation.
 static PerfResult BenchOnePreAlloc(
 	const ShapeCase& InCase,
-	OaContextMatMulPrecision InPrecision,
+	OaMatMulPrecision InPrecision,
 	int InWarmup,
 	int InIters)
 {
@@ -220,11 +262,16 @@ static PerfResult BenchOnePreAlloc(
 	(void)ctx.Sync();
 
 	auto once = [&]() {
-		ctx.AddMatMul(a, b, c,
+		const auto recorded = RecordPreallocatedMatMul(ctx, a, b, c,
 			static_cast<OaU32>(InCase.M),
 			static_cast<OaU32>(InCase.N),
 			static_cast<OaU32>(InCase.K),
 			InPrecision);
+		if (not recorded.IsOk()) {
+			std::fprintf(stderr, "MatMulNt recording failed: %s\n",
+				recorded.GetMessage().c_str());
+			std::abort();
+		}
 		(void)ctx.Execute();
 		(void)ctx.Sync();
 	};
@@ -249,8 +296,8 @@ static PerfResult BenchOnePreAlloc(
 // vs FP32 gap on the same shape with the same public API. A sister
 // benchmark does the same across the two OA precision paths.
 static void RunPerf(const ShapeCase& InCase, int InWarmup, int InIters) {
-	const auto autoR = BenchOne(InCase, OaContextMatMulPrecision::Auto, InWarmup, InIters);
-	const auto fp32R = BenchOne(InCase, OaContextMatMulPrecision::Fp32, InWarmup, InIters);
+	const auto autoR = BenchOne(InCase, OaMatMulPrecision::Auto, InWarmup, InIters);
+	const auto fp32R = BenchOne(InCase, OaMatMulPrecision::Fp32, InWarmup, InIters);
 
 	std::printf("   %-16s [%5u,%5u,%5u]   Auto p50 %7.3f p95 %7.3f ms %8.1f GFLOP/s   |   Fp32 p50 %7.3f p95 %7.3f ms %8.1f GFLOP/s\n",
 		InCase.Name, InCase.M, InCase.N, InCase.K,
@@ -260,8 +307,8 @@ static void RunPerf(const ShapeCase& InCase, int InWarmup, int InIters) {
 // Pre-allocated bench: shows kernel + dispatch overhead without per-call
 // buffer allocation, the standard pre-alloc benchmark pattern.
 static void RunPerfPreAlloc(const ShapeCase& InCase, int InWarmup, int InIters) {
-	const auto autoR = BenchOnePreAlloc(InCase, OaContextMatMulPrecision::Auto, InWarmup, InIters);
-	const auto fp32R = BenchOnePreAlloc(InCase, OaContextMatMulPrecision::Fp32, InWarmup, InIters);
+	const auto autoR = BenchOnePreAlloc(InCase, OaMatMulPrecision::Auto, InWarmup, InIters);
+	const auto fp32R = BenchOnePreAlloc(InCase, OaMatMulPrecision::Fp32, InWarmup, InIters);
 
 	std::printf("   %-16s [%5u,%5u,%5u]   Auto p50 %7.3f p95 %7.3f ms %8.1f GFLOP/s   |   Fp32 p50 %7.3f p95 %7.3f ms %8.1f GFLOP/s\n",
 		InCase.Name, InCase.M, InCase.N, InCase.K,
@@ -275,7 +322,7 @@ static void RunPerfPreAlloc(const ShapeCase& InCase, int InWarmup, int InIters) 
 // submits (descriptor pools must survive until GPU consumes them).
 static PerfResult BenchOnePipelined(
 	const ShapeCase& InCase,
-	OaContextMatMulPrecision InPrecision,
+	OaMatMulPrecision InPrecision,
 	int InPipelineDepth,
 	int InWarmup,
 	int InIters)
@@ -293,11 +340,16 @@ static PerfResult BenchOnePipelined(
 
 	auto oncePipeline = [&]() {
 		// Record one matmul into the graph and compile.
-		ctx.AddMatMul(a, b, c,
+		const auto recorded = RecordPreallocatedMatMul(ctx, a, b, c,
 			static_cast<OaU32>(InCase.M),
 			static_cast<OaU32>(InCase.N),
 			static_cast<OaU32>(InCase.K),
 			InPrecision);
+		if (not recorded.IsOk()) {
+			std::fprintf(stderr, "MatMulNt recording failed: %s\n",
+				recorded.GetMessage().c_str());
+			std::abort();
+		}
 		(void)graph->Compile(*rt);
 		// Submit N times without waiting — same-queue ordering ensures
 		// GPU executes in submission order. The pre-recorded primary CB
@@ -327,7 +379,7 @@ static PerfResult BenchOnePipelined(
 }
 
 static void RunPerfPipelined(const ShapeCase& InCase, int InPipelineDepth, int InWarmup, int InIters) {
-	const auto autoR = BenchOnePipelined(InCase, OaContextMatMulPrecision::Auto, InPipelineDepth, InWarmup, InIters);
+	const auto autoR = BenchOnePipelined(InCase, OaMatMulPrecision::Auto, InPipelineDepth, InWarmup, InIters);
 
 	std::printf("   %-16s [%5u,%5u,%5u]   ×%d p50 %7.3f p95 %7.3f ms/op %8.1f GFLOP/s\n",
 		InCase.Name, InCase.M, InCase.N, InCase.K,
@@ -338,7 +390,7 @@ static void RunPerfPipelined(const ShapeCase& InCase, int InPipelineDepth, int I
 
 static PerfResult BenchBatchOne(
 	const ShapeCase& InCase,
-	OaContextMatMulPrecision InPrecision,
+	OaMatMulPrecision InPrecision,
 	int InBatchSize,
 	int InWarmup,
 	int InIters)
@@ -380,8 +432,8 @@ static PerfResult BenchBatchOne(
 }
 
 static void RunBatchPerf(const ShapeCase& InCase, int InBatchSize, int InWarmup, int InIters) {
-	const auto autoR = BenchBatchOne(InCase, OaContextMatMulPrecision::Auto, InBatchSize, InWarmup, InIters);
-	const auto fp32R = BenchBatchOne(InCase, OaContextMatMulPrecision::Fp32, InBatchSize, InWarmup, InIters);
+	const auto autoR = BenchBatchOne(InCase, OaMatMulPrecision::Auto, InBatchSize, InWarmup, InIters);
+	const auto fp32R = BenchBatchOne(InCase, OaMatMulPrecision::Fp32, InBatchSize, InWarmup, InIters);
 
 	std::printf("   %-16s [%5u,%5u,%5u] ×%d   Auto p50 %7.3f p95 %7.3f ms total, %7.3f ms/op %8.1f GFLOP/s   |   Fp32 p50 %7.3f p95 %7.3f ms total, %7.3f ms/op %8.1f GFLOP/s\n",
 		InCase.Name, InCase.M, InCase.N, InCase.K, InBatchSize,
@@ -460,10 +512,10 @@ static void RunAutotuneGrid(int InWarmup, int InIters) {
 	std::printf("   Matches vk_cooperative_matrix_perf wall-time measurement.\n\n");
 	std::printf("shape,m,n,k,precision,p50_ms,p95_ms,gflops\n");
 
-	const OaContextMatMulPrecision precisions[] = {
-		OaContextMatMulPrecision::Auto,
-		OaContextMatMulPrecision::Bf16,
-		OaContextMatMulPrecision::Fp32,
+	const OaMatMulPrecision precisions[] = {
+		OaMatMulPrecision::Auto,
+		OaMatMulPrecision::Bf16,
+		OaMatMulPrecision::Fp32,
 	};
 	const char* precNames[] = {"Auto", "Bf16", "Fp32"};
 
@@ -491,14 +543,20 @@ static bool RunLinear(double InTol) {
 	const auto hBias = ReadHost(bias);
 
 	OaMatrix y;
+	auto& ctx = OaContext::GetDefault();
 	{
-		OaContext::Scope scope(OaContext::GetDefault());
+		OaContext::RecordingScope recording(ctx);
 		// Linear fuses MatMul + bias-broadcast add into one record. Plain
 		// OaFnMatrix::Add is element-wise (no [M,N] + [N] broadcasting) so
 		// pairing it with MatMul here would compare against garbage rows;
 		// Linear is the right public surface for the y = x @ W^T + bias
 		// shape and is what the tutorial header advertises.
 		y = OaFnMatrix::Linear(x, w, bias);
+	}
+	auto submitted = ctx.Submit();
+	if (not submitted.IsOk() or not ctx.Wait(submitted.GetValue()).IsOk()) {
+		std::fprintf(stderr, "Linear submission failed\n");
+		return false;
 	}
 
 	const auto gpu = ReadHost(y);
@@ -536,15 +594,15 @@ int main() {
 		}
 	}
 
-	auto engine = OaComputeEngine::Create(cfg);
+	auto engine = OaEngine::Create(cfg);
 	if (!engine.IsOk()) {
 		// No Vulkan device available — skip cleanly (exit 0), don't fail CI.
-		std::printf("[skip] No OaComputeEngine: %s\n",
+		std::printf("[skip] No OaEngine: %s\n",
 			engine.GetStatus().GetMessage().c_str());
 		return 0;
 	}
 
-	OaComputeEngine& rt = *engine.GetValue();
+	OaEngine& rt = *engine.GetValue();
 
 	// BF16 CoopMat tensor-core paths trade a little precision for throughput,
 	// so the correctness tolerance widens when the router will pick them.

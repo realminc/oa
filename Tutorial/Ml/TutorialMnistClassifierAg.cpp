@@ -130,7 +130,7 @@ TEST(TutorialMnistClassifierAg, FashionMnistClassification) {
 	auto  params = model->AllParameterPtrs();
 	auto  opt    = OaMakeUniquePtr<OaAdamW>(params, 0.001F);
 	auto& ctx    = OaContext::GetDefault();
-	auto& rt     = *OaComputeEngine::GetGlobal();
+	auto& rt     = *OaEngine::GetGlobal();
 
 	printf("Model: 784 → Linear(128) + ReLU → Linear(%d)\n", kNumClasses);
 	printf("Params: %lld    Optimizer: AdamW(lr=0.001)    Loss: CrossEntropy\n\n",

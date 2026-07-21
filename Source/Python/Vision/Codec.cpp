@@ -42,14 +42,14 @@ void BindVisionCodec(nb::module_& m) {
                                       bool normalize_imagenet) {
             const auto* ptr = reinterpret_cast<const OaU8*>(data.data());
             return matrix_ptr(OaJpegDecoder::DecodeToGpu(
-                PythonComputeEngine(), OaSpan<const OaU8>(ptr, data.size()),
+                PythonEngine(), OaSpan<const OaU8>(ptr, data.size()),
                 width, height, normalize_imagenet));
         }, nb::arg("data"), nb::arg("width") = 0, nb::arg("height") = 0,
            nb::arg("normalize_imagenet") = false, nb::rv_policy::take_ownership)
         .def_static("DecodeFileToGpu", [](const std::string& path, OaU32 width,
                                           OaU32 height, bool normalize_imagenet) {
             return matrix_ptr(OaJpegDecoder::DecodeFileToGpu(
-                PythonComputeEngine(), OaStringView(path), width, height,
+                PythonEngine(), OaStringView(path), width, height,
                 normalize_imagenet));
         }, nb::arg("path"), nb::arg("width") = 0, nb::arg("height") = 0,
            nb::arg("normalize_imagenet") = false, nb::rv_policy::take_ownership);

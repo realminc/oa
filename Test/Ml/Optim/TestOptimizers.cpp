@@ -498,8 +498,10 @@ TEST(OaAdamW, AsyncBatchStepsPreservePerStepScalars) {
 		batched.Step();
 		ASSERT_TRUE(ctx.ExecuteInAsyncBatch().IsOk());
 	}
-	ASSERT_TRUE(ctx.FlushAsyncBatch().IsOk());
-	ASSERT_TRUE(ctx.Sync().IsOk());
+	auto completion = ctx.SubmitBatch();
+	ASSERT_TRUE(completion.IsOk());
+	ASSERT_TRUE(completion.GetValue().IsValid());
+	ASSERT_TRUE(ctx.Wait(completion.GetValue()).IsOk());
 
 	EXPECT_EQ(sequential.GetStep(), batched.GetStep());
 	EXPECT_NEAR(sequentialModule.Parameters()[0].Data.At(0),

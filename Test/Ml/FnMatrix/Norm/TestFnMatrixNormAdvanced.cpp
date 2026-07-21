@@ -41,7 +41,7 @@ static OaMatrix NumericalGradientRmsNormGated(
 	                        param_idx == 1 ? weight_data.size() :
 	                        param_idx == 2 ? bias_data.size() : z_data.size());
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	
 	for (OaI32 i = 0; i < static_cast<OaI32>(grad.size()); ++i) {
 		// Forward pass with +h
@@ -108,7 +108,7 @@ TEST_VK(NormAdvanced, RmsNormGatedBasic) {
 	auto bias = CreateMatrixFromHost(bias_data, OaMatrixShape{2});
 	auto z = CreateMatrixFromHost(z_data, OaMatrixShape{2, 2});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto output = OaFnMatrix::RmsNormGated(x, weight, bias, z, 1e-5f, true);
 	
 	auto result = CopyMatrixToHost(output);
@@ -133,7 +133,7 @@ TEST_VK(NormAdvanced, RmsNormGatedNormBeforeGate) {
 	auto bias = CreateMatrixFromHost(bias_data, OaMatrixShape{3});
 	auto z = CreateMatrixFromHost(z_data, OaMatrixShape{2, 3});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto output_before = OaFnMatrix::RmsNormGated(x, weight, bias, z, 1e-5f, true);
 	auto output_after = OaFnMatrix::RmsNormGated(x, weight, bias, z, 1e-5f, false);
 	
@@ -170,7 +170,7 @@ TEST_VK(NormAdvanced, RmsNormGatedLargeBatch) {
 	auto bias = CreateMatrixFromHost(bias_data, OaMatrixShape{dim});
 	auto z = CreateMatrixFromHost(z_data, OaMatrixShape{batch, dim});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto output = OaFnMatrix::RmsNormGated(x, weight, bias, z, 1e-5f, true);
 	
 	auto result = CopyMatrixToHost(output);
@@ -197,7 +197,7 @@ TEST_VK(NormAdvanced, RmsNormGatedBwdNumericalGradientX) {
 	auto z = CreateMatrixFromHost(z_data, OaMatrixShape{2, 2});
 	auto grad_out = CreateMatrixFromHost(grad_out_data, OaMatrixShape{2, 2});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto bwd_result = OaFnMatrix::RmsNormGatedBwd(x, weight, bias, z, grad_out, 1e-5f);
 	
 	auto analytical_grad = CopyMatrixToHost(bwd_result.DX);
@@ -225,7 +225,7 @@ TEST_VK(NormAdvanced, RmsNormGatedBwdGradientShapes) {
 	auto z = CreateMatrixFromHost(z_data, OaMatrixShape{2, 3});
 	auto grad_out = CreateMatrixFromHost(grad_out_data, OaMatrixShape{2, 3});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto bwd_result = OaFnMatrix::RmsNormGatedBwd(x, weight, bias, z, grad_out, 1e-5f);
 	
 	// Check shapes
@@ -262,7 +262,7 @@ TEST_VK(NormAdvanced, RmsNormGatedBwdZeroGradient) {
 	auto z = CreateMatrixFromHost(z_data, OaMatrixShape{2, 2});
 	auto grad_out = CreateMatrixFromHost(grad_out_data, OaMatrixShape{2, 2});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto bwd_result = OaFnMatrix::RmsNormGatedBwd(x, weight, bias, z, grad_out, 1e-5f);
 	
 	auto dx = CopyMatrixToHost(bwd_result.DX);

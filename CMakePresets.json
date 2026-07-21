@@ -20,7 +20,7 @@
 				"CMAKE_C_COMPILER_LAUNCHER": "ccache",
 				"CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
 				"CMAKE_TOOLCHAIN_FILE": "$env{HOME}/.vcpkg/vcpkg/scripts/buildsystems/vcpkg.cmake",
-				"VCPKG_INSTALLED_DIR": "$env{HOME}/.vcpkg/installed",
+				"VCPKG_INSTALLED_DIR": "$env{HOME}/.vcpkg/oa/${presetName}/installed",
 				"VCPKG_TARGET_TRIPLET": "x64-linux"
 			},
 			"condition": {
@@ -47,6 +47,30 @@
 				"CMAKE_BUILD_TYPE": "Debug",
 				"OA_VULKAN_VALIDATION": "ON",
 				"OA_EMBED_SHADERS": "ON"
+			}
+		},
+		{
+			"name": "asan",
+			"inherits": "linux-base",
+			"binaryDir": "Build/Asan",
+			"cacheVariables": {
+				"CMAKE_BUILD_TYPE": "Debug",
+				"OA_SANITIZERS": "address",
+				"OA_VULKAN_VALIDATION": "OFF",
+				"OA_EMBED_SHADERS": "ON",
+				"OA_BUILD_TUTORIALS": "OFF"
+			}
+		},
+		{
+			"name": "ubsan",
+			"inherits": "linux-base",
+			"binaryDir": "Build/Ubsan",
+			"cacheVariables": {
+				"CMAKE_BUILD_TYPE": "Debug",
+				"OA_SANITIZERS": "undefined",
+				"OA_VULKAN_VALIDATION": "OFF",
+				"OA_EMBED_SHADERS": "ON",
+				"OA_BUILD_TUTORIALS": "OFF"
 			}
 		},
 		{

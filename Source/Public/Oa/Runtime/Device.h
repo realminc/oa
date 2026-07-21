@@ -100,6 +100,8 @@ public:
 	OaBool ShaderBfloat16CooperativeMatrixEnabled  = false;
 	OaBool ShaderIntegerDotProductEnabled          = false;  // VK_KHR_shader_integer_dot_product (INT8 quantization)
 	OaBool HasExternalMemoryFd                     = false;
+	// Exact presentation-resource retirement and binary-semaphore reuse proof.
+	OaBool HasSwapchainMaintenance1                = false;
 	
 	// Device-generated commands (Phase 2b DGC)
 	OaBool HasDeviceGeneratedCommands              = false;  // VK_EXT_device_generated_commands (GPU-authored execution)
@@ -143,10 +145,13 @@ public:
 	//
 	// InHintNeedsPresentation:
 	//   Pass true when the caller intends to attach a VkSurfaceKHR later (e.g.
-	//   via OaGraphicsEngine::InitPresentation).  The device will be created
+	//   via OaPresenter::InitPresentation).  The device will be created
 	//   with VK_QUEUE_GRAPHICS_BIT + VK_KHR_swapchain without needing the
 	//   surface at creation time, so SDL_Vulkan_CreateSurface can be called
 	//   against the resulting Instance handle.
+	// InHintNeedsGraphics:
+	//   Pass true for headless graphics. A graphics-capable queue is requested,
+	//   but no surface or swapchain extension is enabled.
 	// -----------------------------------------------------------------------
 	[[nodiscard]] static OaResult<OaVkDevice> Create(
 		OaStringView              InAppName,
@@ -155,20 +160,27 @@ public:
 		OaU32                     InForceEnumerationIndex   = OaVkEnumerationIndexUnset,
 		OaU32                     InAppVersionPatch         = 1,
 		OaSpan<const char* const> InInstanceExtraExtensions = {},
-		OaBool                    InHintNeedsPresentation   = false
+		OaBool                    InHintNeedsPresentation   = false,
+		OaBool                    InHintNeedsGraphics       = false
 	);
 
 	// -----------------------------------------------------------------------
 	// CreateFromPhysical — re-use an existing VkInstance.
 	//
 	// InSurface (VkSurfaceKHR):
-	//   When non-null, queue planning will pick a family that supports
-	//   graphics + present for this surface and enable VK_KHR_swapchain.
+	//   Legacy compatibility parameter. The base-device path does not inspect
+	//   the surface; use OaVkDeviceBuilder::BuildRender for surface-aware queue
+	//   planning. InHintNeedsPresentation still prepares this base device for
+	//   the later OaPresenter attachment path.
 	//
 	// InHintNeedsPresentation:
 	//   When true and InSurface is null, a graphics-capable queue family and
 	//   VK_KHR_swapchain are still enabled so the device is ready for
 	//   swapchain creation once a surface becomes available.
+	//
+	// InHintNeedsGraphics:
+	//   When true and no presentation is requested, selects a graphics-capable
+	//   queue without enabling any surface-dependent extension.
 	// -----------------------------------------------------------------------
 	[[nodiscard]] static OaResult<OaVkDevice> CreateFromPhysical(
 		void*  InInstance,
@@ -177,7 +189,8 @@ public:
 		OaU64  InPickRating            = 0,
 		OaU32  InEnumerationIndex      = OaVkEnumerationIndexUnset,
 		void*  InSurface               = nullptr,
-		OaBool InHintNeedsPresentation = false
+		OaBool InHintNeedsPresentation = false,
+		OaBool InHintNeedsGraphics     = false
 	);
 
 	void Destroy();

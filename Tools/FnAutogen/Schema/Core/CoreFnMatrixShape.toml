@@ -2,7 +2,7 @@
 #
 # This is the *source of truth* for shape manipulation operations. The generator
 # emits .h declarations, .cpp implementations, and .slang shaders from this file.
-# See Tools/OaFnAutogen/oafnautogen.py and Docs/Rewrite/Opus/OaFnAutogen.md.
+# See Tools/FnAutogen/README.md and Tools/FnAutogen/oafnautogen.py.
 #
 # Shape operations manipulate tensor dimensions without changing the underlying
 # data semantics. Most have complex shape arithmetic in immediate mode.
@@ -59,4 +59,3 @@ forward_op     = "a"
 cpu_reference = "a_host[i]"
 tolerance = "1e-6f"
 test_sizes = [256, 1024]
-

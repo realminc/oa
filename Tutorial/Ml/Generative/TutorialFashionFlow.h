@@ -100,7 +100,7 @@ private:
 };
 
 inline OaMatrix Sample(Model& InModel, OaU64 InSeed) {
-	OaContext::ScopedEval eval(OaContext::GetDefault());
+	OaModule::ScopedEval eval(InModel);
 	OaVec<OaU8> labels(Classes);
 	for (OaI32 index = 0; index < Classes; ++index) {
 		labels[index] = static_cast<OaU8>(index);
@@ -123,7 +123,7 @@ inline OaMatrix Sample(Model& InModel, OaU64 InSeed) {
 }
 
 inline OaResult<OaTexture> MakeGrid(
-	OaComputeEngine& InEngine, const OaMatrix& InGenerated) {
+	OaEngine& InEngine, const OaMatrix& InGenerated) {
 	auto mapped = OaFnMatrix::ClampMin(OaFnMatrix::ClampMax(
 		(InGenerated * 0.5F) + 0.5F, 1.0F), 0.0F);
 	// [class,H,W] -> [H,class,W] -> [1,1,H,class*W].
@@ -134,7 +134,7 @@ inline OaResult<OaTexture> MakeGrid(
 }
 
 inline OaF32 Validate(Model& InModel, OaDsMnist& InValidation) {
-	OaContext::ScopedEval eval(OaContext::GetDefault());
+	OaModule::ScopedEval eval(InModel);
 	OaF64 total = 0.0;
 	OaI32 batches = 0;
 	InValidation.Reset(false);
@@ -222,7 +222,7 @@ inline void Run(bool InMoe) {
 		initialLoss, finalLoss, initialValidationLoss, validationLoss);
 
 	auto& context = OaContext::GetDefault();
-	auto& engine = *OaComputeEngine::GetGlobal();
+	auto& engine = *OaEngine::GetGlobal();
 	auto generated = Sample(*model, 2026);
 	auto textureResult = MakeGrid(engine, generated);
 	ASSERT_TRUE(textureResult.IsOk()) << textureResult.GetStatus().ToString().c_str();

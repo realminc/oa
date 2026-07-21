@@ -52,7 +52,7 @@ void BindVisionImage(nb::module_& m) {
     m.def("Resize", [](const OaMatrix& image, OaU32 width, OaU32 height,
                         OaInterpolationMode mode) {
         return matrix_ptr(OaFnImage::Resize(
-            PythonComputeEngine(), image, width, height, mode));
+            PythonEngine(), image, width, height, mode));
     }, nb::arg("image"), nb::arg("width"), nb::arg("height"),
        nb::arg("interpolation") = OaInterpolationMode::Bilinear,
        nb::rv_policy::take_ownership);

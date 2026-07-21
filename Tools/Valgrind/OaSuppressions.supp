@@ -65,5 +65,5 @@
    Memcheck:Cond
    obj:*libnvidia-glcore.so*
    ...
-   fun:OaGraphicsEngine::PresentSwapchainImage
+   fun:OaPresenter::PresentSwapchainImage
 }

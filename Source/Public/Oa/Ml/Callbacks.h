@@ -316,7 +316,10 @@ public:
 		: Mgr_(InMgr), Model_(InModel), Opt_(InOpt), SaveEvery_(InSaveEvery),
 		  Metric_(InMetric), RestoreBest_(InRestoreBest), Verbose_(InVerbose) {}
 
+	[[nodiscard]] OaStatus GetStatus() const override { return Status_; }
+
 	void OnStepEnd(OaItTraining& InIter) override {
+		if (not Status_.IsOk()) return;
 		if (SaveEvery_ <= 0 or InIter.IsEpochBoundary()) return;
 		if ((InIter.StepCount() % SaveEvery_) != 0) return;
 		// Use the exact current-step loss (not epoch mean) for step checkpoints.
@@ -328,11 +331,12 @@ public:
 			std::printf("\nStep %lld: loss = %.6f — saving resumable checkpoint\n", step, metric);
 			std::fflush(stdout);
 		}
-		(void)Mgr_.SaveIncremental(Model_, Opt_, static_cast<OaU64>(InIter.StepCount()),
-			metric, "loss");
+		Status_ = Mgr_.SaveIncremental(Model_, Opt_,
+			static_cast<OaU64>(InIter.StepCount()), metric, "loss");
 	}
 
 	void OnEpochEnd(OaItTraining& InIter) override {
+		if (not Status_.IsOk()) return;
 		const OaF64 metric = GetMetric(InIter);
 		const bool improved = Mgr_.IsBetter(metric);
 		const OaF64 prevBest = Mgr_.GetBestMetric();
@@ -351,30 +355,32 @@ public:
 			}
 			std::fflush(stdout);
 		}
-		if (improved) {
-			HaveBest_  = true;
-			BestEpoch_ = InIter.Epoch();
-		}
 		LastEpoch_ = InIter.Epoch();
 		// Every epoch produces a resumable checkpoint. The manager updates the
 		// master/best model only when the monitored metric improves.
-		(void)Mgr_.MaybeSave(Model_, Opt_, static_cast<OaU64>(InIter.StepCount()),
-			metric, /*InForce=*/true);
+		Status_ = Mgr_.MaybeSave(Model_, Opt_,
+			static_cast<OaU64>(InIter.StepCount()), metric, /*InForce=*/true);
+		if (Status_.IsOk() and improved) {
+			HaveBest_  = true;
+			BestEpoch_ = InIter.Epoch();
+		}
 	}
 
 	void OnTrainEnd(OaItTraining& InIter) override {
+		if (not Status_.IsOk()) return;
 		// Step-only training (no epochs): save once at the end.
 		if (not InIter.HasEpochs()) {
-			(void)Mgr_.MaybeSave(Model_, Opt_, static_cast<OaU64>(InIter.StepCount()),
-				GetMetric(InIter));
+			Status_ = Mgr_.MaybeSave(Model_, Opt_,
+				static_cast<OaU64>(InIter.StepCount()), GetMetric(InIter));
 			return;
 		}
 		if (not RestoreBest_) {
 			// A completed epoch (including a partial final epoch) was already saved
 			// by OnEpochEnd. Only an early stop inside an epoch needs a final save.
 			if (not InIter.IsEpochBoundary()) {
-				(void)Mgr_.MaybeSave(Model_, Opt_, static_cast<OaU64>(InIter.StepCount()),
-					GetMetric(InIter), /*InForce=*/true);
+				Status_ = Mgr_.MaybeSave(Model_, Opt_,
+					static_cast<OaU64>(InIter.StepCount()), GetMetric(InIter),
+					/*InForce=*/true);
 			}
 			return;
 		}
@@ -388,6 +394,7 @@ public:
 			std::printf("Restoring model weights from the end of the best epoch: %lld (%s %.6f)\n",
 				static_cast<long long>(BestEpoch_), MetricName(), Mgr_.GetBestMetric());
 		} else {
+			Status_ = status;
 			std::printf("Restore best weights failed: %s\n", status.GetMessage().c_str());
 		}
 	}
@@ -416,6 +423,7 @@ private:
 	OaMetric*            Metric_;
 	bool                 RestoreBest_;
 	bool                 Verbose_;
+	OaStatus             Status_ = OaStatus::Ok();
 	bool                 HaveBest_  = false;
 	OaI64                BestEpoch_ = 0;
 	OaI64                LastEpoch_ = 0;

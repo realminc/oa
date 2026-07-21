@@ -28,7 +28,7 @@ static OaMatrix NumericalGradient(const std::vector<float>& input_data, const Oa
 	const OaF32 h = 1e-4f;
 	std::vector<float> grad(input_data.size());
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	
 	for (size_t i = 0; i < input_data.size(); ++i) {
 		// f(x + h)
@@ -75,7 +75,7 @@ TEST_F(ElemwiseBwd, DivBwdNumericalGradient) {
 	auto x = CreateMatrixFromHost(x_data, OaMatrixShape{4});
 	auto y = CreateMatrixFromHost(y_data, OaMatrixShape{4});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	
 	// Forward with autograd
 	x.RequiresGrad_(true);
@@ -110,7 +110,7 @@ TEST_F(ElemwiseBwd, DivBwdZeroDenominator) {
 	auto x = CreateMatrixFromHost(x_data, OaMatrixShape{4});
 	auto y = CreateMatrixFromHost(y_data, OaMatrixShape{4});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	x.RequiresGrad_(true);
 	
 	auto result = OaFnMatrix::Div(x, y);
@@ -136,7 +136,7 @@ TEST_F(ElemwiseBwd, PowBwdNumericalGradient) {
 	
 	auto x = CreateMatrixFromHost(x_data, OaMatrixShape{4});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	x.RequiresGrad_(true);
 	
 	auto result = OaFnMatrix::Pow(x, exponent);
@@ -166,7 +166,7 @@ TEST_F(ElemwiseBwd, PowBwdFractionalExponent) {
 	
 	auto x = CreateMatrixFromHost(x_data, OaMatrixShape{4});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	x.RequiresGrad_(true);
 	
 	auto result = OaFnMatrix::Pow(x, exponent);
@@ -192,7 +192,7 @@ TEST_F(ElemwiseBwd, LogBwdNumericalGradient) {
 	
 	auto x = CreateMatrixFromHost(x_data, OaMatrixShape{4});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	x.RequiresGrad_(true);
 	
 	auto result = OaFnMatrix::Log(x);
@@ -221,7 +221,7 @@ TEST_F(ElemwiseBwd, LogBwdSmallValues) {
 	
 	auto x = CreateMatrixFromHost(x_data, OaMatrixShape{4});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	x.RequiresGrad_(true);
 	
 	auto result = OaFnMatrix::Log(x);
@@ -246,7 +246,7 @@ TEST_F(ElemwiseBwd, SqrtBwdNumericalGradient) {
 	
 	auto x = CreateMatrixFromHost(x_data, OaMatrixShape{4});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	x.RequiresGrad_(true);
 	
 	auto result = OaFnMatrix::Sqrt(x);
@@ -279,7 +279,7 @@ TEST_F(ElemwiseBwd, ExpBwdNumericalGradient) {
 	
 	auto x = CreateMatrixFromHost(x_data, OaMatrixShape{4});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	x.RequiresGrad_(true);
 	
 	auto result = OaFnMatrix::Exp(x);
@@ -312,7 +312,7 @@ TEST_F(ElemwiseBwd, SinBwdNumericalGradient) {
 	
 	auto x = CreateMatrixFromHost(x_data, OaMatrixShape{4});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	x.RequiresGrad_(true);
 	
 	auto result = OaFnMatrix::Sin(x);
@@ -341,7 +341,7 @@ TEST_F(ElemwiseBwd, CosBwdNumericalGradient) {
 	
 	auto x = CreateMatrixFromHost(x_data, OaMatrixShape{4});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	x.RequiresGrad_(true);
 	
 	auto result = OaFnMatrix::Cos(x);
@@ -374,7 +374,7 @@ TEST_F(ElemwiseBwd, ReciprocalBwdNumericalGradient) {
 	
 	auto x = CreateMatrixFromHost(x_data, OaMatrixShape{4});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	x.RequiresGrad_(true);
 	
 	auto result = OaFnMatrix::Reciprocal(x);

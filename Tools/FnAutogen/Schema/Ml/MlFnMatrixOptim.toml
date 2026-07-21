@@ -2,7 +2,7 @@
 #
 # This is the *source of truth* for ML optimizer operations. The generator
 # emits .h declarations, .cpp implementations, and .slang shaders from this file.
-# See Tools/OaFnAutogen/oafnautogen.py and Docs/Rewrite/Opus/OaFnAutogen.md.
+# See Tools/FnAutogen/README.md and Tools/FnAutogen/oafnautogen.py.
 #
 # Optimizer operations update model parameters based on gradients.
 # These are in-place operations that modify the parameter tensors.
@@ -96,4 +96,3 @@ extra_params   = [
     { name = "WeightDecay", type = "OaF32", default = "0.01f" },
     { name = "Step", type = "OaI64", default = "1" }
 ]
-

@@ -1,5 +1,9 @@
 #include <Oa/Audio/AudioCapture.h>
 
+#include <Oa/Core/Log.h>
+#include <Oa/Runtime/Engine.h>
+#include "Oa/Runtime/Engine/BorrowedServiceRetirement.h"
+
 #include <miniaudio.h>
 
 #include <algorithm>
@@ -18,6 +22,7 @@ OaU64 MonotonicMicroseconds()
 } // namespace
 
 struct OaAudioCapture::Impl {
+	OaEngine* Engine = nullptr;
 	ma_device Device = {};
 	OaAudioCaptureConfig Config = {};
 	OaVec<OaF32> Ring;
@@ -29,6 +34,7 @@ struct OaAudioCapture::Impl {
 	std::atomic<OaU64> DroppedFrames = 0U;
 	std::atomic<OaU64> EpochUs = 0U;
 	std::atomic<bool> Started = false;
+	std::atomic<bool> AcceptingCallbacks = false;
 	bool Initialized = false;
 };
 
@@ -42,6 +48,7 @@ void CaptureCallback(
 {
 	auto* impl = static_cast<OaAudioCapture::Impl*>(InDevice->pUserData);
 	if (impl == nullptr || InInput == nullptr || InFrameCount == 0U) return;
+	if (not impl->AcceptingCallbacks.load(std::memory_order_acquire)) return;
 	const OaU64 write = impl->WriteFrame.load(std::memory_order_relaxed);
 	const OaU64 read = impl->ReadFrame.load(std::memory_order_acquire);
 	const OaU64 freeFrames = impl->CapacityFrames - std::min(impl->CapacityFrames, write - read);
@@ -98,10 +105,41 @@ OaAudioCapture& OaAudioCapture::operator=(OaAudioCapture&& InOther) noexcept
 
 OaAudioCapture::~OaAudioCapture()
 {
-	Destroy();
+	Abandon_();
 }
 
-OaResult<OaAudioCapture> OaAudioCapture::Open(const OaAudioCaptureConfig& InConfig)
+void OaAudioCapture::Abandon_() noexcept
+{
+	if (not Impl_) return;
+	OaEngine* engine = Impl_->Engine;
+	if (engine == nullptr) {
+		Impl_.Reset();
+		return;
+	}
+	Impl_->AcceptingCallbacks.store(false, std::memory_order_release);
+	auto retired = OaMakeUniquePtr<OaAudioCapture>(OaStdMove(*this));
+	OaBorrowedServiceRetirement::Retire(
+		*engine,
+		retired.Release(),
+		&OaAudioCapture::CompleteRetired_,
+		&OaAudioCapture::ReleaseRetired_);
+}
+
+OaStatus OaAudioCapture::CompleteRetired_(void* InPayload)
+{
+	auto* capture = static_cast<OaAudioCapture*>(InPayload);
+	return capture ? capture->Close() : OaStatus::Ok();
+}
+
+void OaAudioCapture::ReleaseRetired_(void* InPayload)
+{
+	OaUniquePtr<OaAudioCapture> capture(
+		static_cast<OaAudioCapture*>(InPayload));
+}
+
+OaResult<OaAudioCapture> OaAudioCapture::Open(
+	OaEngine& InEngine,
+	const OaAudioCaptureConfig& InConfig)
 {
 	if (InConfig.SampleRate == 0U || InConfig.ChannelCount == 0U
 		|| InConfig.ChannelCount > 8U || InConfig.RingMilliseconds < 20U) {
@@ -111,6 +149,7 @@ OaResult<OaAudioCapture> OaAudioCapture::Open(const OaAudioCaptureConfig& InConf
 	OaAudioCapture capture;
 	capture.Impl_ = OaMakeUniquePtr<Impl>();
 	auto& impl = *capture.Impl_;
+	impl.Engine = &InEngine;
 	impl.Config = InConfig;
 	impl.CapacityFrames = std::max<OaU64>(
 		1U, static_cast<OaU64>(InConfig.SampleRate) * InConfig.RingMilliseconds / 1000U);
@@ -145,8 +184,10 @@ OaStatus OaAudioCapture::Start()
 	Impl_->CapturedFrame.store(0U, std::memory_order_relaxed);
 	Impl_->DroppedFrames.store(0U, std::memory_order_relaxed);
 	Impl_->EpochUs.store(0U, std::memory_order_release);
+	Impl_->AcceptingCallbacks.store(true, std::memory_order_release);
 	const ma_result result = ma_device_start(&Impl_->Device);
 	if (result != MA_SUCCESS) {
+		Impl_->AcceptingCallbacks.store(false, std::memory_order_release);
 		return OaStatus::Error(OaStatusCode::Unavailable,
 			OaString("OaAudioCapture start failed: ") + ma_result_description(result));
 	}
@@ -157,6 +198,7 @@ OaStatus OaAudioCapture::Start()
 OaStatus OaAudioCapture::Stop()
 {
 	if (!Impl_ || !Impl_->Initialized) return OaStatus::Ok();
+	Impl_->AcceptingCallbacks.store(false, std::memory_order_release);
 	if (!Impl_->Started.exchange(false, std::memory_order_acq_rel)) return OaStatus::Ok();
 	const ma_result result = ma_device_stop(&Impl_->Device);
 	if (result != MA_SUCCESS) {
@@ -209,12 +251,22 @@ bool OaAudioCapture::Poll(OaAudioCaptureChunk& OutChunk, OaU32 InMaxFrames)
 	return true;
 }
 
-void OaAudioCapture::Destroy()
+OaStatus OaAudioCapture::Close()
 {
-	if (!Impl_) return;
-	(void)Stop();
+	if (not Impl_) return OaStatus::Ok();
+	const OaStatus status = Stop();
 	if (Impl_->Initialized) ma_device_uninit(&Impl_->Device);
 	Impl_.Reset();
+	return status;
+}
+
+void OaAudioCapture::Destroy()
+{
+	if (const auto status = Close(); not status.IsOk()) {
+		OA_LOG_ERROR(OaLogComponent::App,
+			"OaAudioCapture::Destroy: shutdown failed: %s",
+			status.ToString().c_str());
+	}
 }
 
 bool OaAudioCapture::IsStarted() const noexcept

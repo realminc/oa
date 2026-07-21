@@ -72,7 +72,7 @@ OaStatus OaVideoDecoder::UpdateH264SessionParametersFromSps(const OaH264SpsData&
 	updateInfo.pNext = &addInfo;
 	updateInfo.updateSequenceCount = SessionParameterUpdateCount_ + 1;
 
-	auto& vkEngine = static_cast<OaComputeEngine&>(*Rt_);
+	auto& vkEngine = *Rt_;
 	VkResult result = vkUpdateVideoSessionParametersKHR(
 		static_cast<VkDevice>(vkEngine.Device.Device),
 		SessionParams_.Handle(),
@@ -118,7 +118,7 @@ OaStatus OaVideoDecoder::UpdateH264SessionParametersFromPps(const OaH264PpsData&
 	updateInfo.pNext = &addInfo;
 	updateInfo.updateSequenceCount = SessionParameterUpdateCount_ + 1;
 
-	auto& vkEngine = static_cast<OaComputeEngine&>(*Rt_);
+	auto& vkEngine = *Rt_;
 	VkResult result = vkUpdateVideoSessionParametersKHR(
 		static_cast<VkDevice>(vkEngine.Device.Device),
 		SessionParams_.Handle(),
@@ -161,7 +161,7 @@ OaStatus OaVideoDecoder::UpdateH265SessionParametersFromVps(const OaH265VpsData&
 	updateInfo.pNext = &addInfo;
 	updateInfo.updateSequenceCount = SessionParameterUpdateCount_ + 1;
 
-	auto& vkEngine = static_cast<OaComputeEngine&>(*Rt_);
+	auto& vkEngine = *Rt_;
 	VkResult result = vkUpdateVideoSessionParametersKHR(
 		static_cast<VkDevice>(vkEngine.Device.Device),
 		SessionParams_.Handle(),
@@ -212,7 +212,7 @@ OaStatus OaVideoDecoder::UpdateH265SessionParametersFromSps(const OaH265SpsData&
 	updateInfo.pNext = &addInfo;
 	updateInfo.updateSequenceCount = SessionParameterUpdateCount_ + 1;
 
-	auto& vkEngine = static_cast<OaComputeEngine&>(*Rt_);
+	auto& vkEngine = *Rt_;
 	VkResult result = vkUpdateVideoSessionParametersKHR(
 		static_cast<VkDevice>(vkEngine.Device.Device),
 		SessionParams_.Handle(),
@@ -258,7 +258,7 @@ OaStatus OaVideoDecoder::UpdateH265SessionParametersFromPps(const OaH265PpsData&
 	updateInfo.pNext = &addInfo;
 	updateInfo.updateSequenceCount = SessionParameterUpdateCount_ + 1;
 
-	auto& vkEngine = static_cast<OaComputeEngine&>(*Rt_);
+	auto& vkEngine = *Rt_;
 	VkResult result = vkUpdateVideoSessionParametersKHR(
 		static_cast<VkDevice>(vkEngine.Device.Device),
 		SessionParams_.Handle(),

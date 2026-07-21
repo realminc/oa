@@ -1,14 +1,16 @@
-// OaDeviceMesh — Vulkan Heterogeneous Compute Mesh
+// OaDeviceMesh — experimental Vulkan multi-device discovery scaffolding
 //
-// Multi-device topology: enumerate, profile, classify, and connect all GPUs.
-// Supports any mix of vendors (NVIDIA + Intel + AMD + software).
-// GPU big.LITTLE: Primary (heavy compute) + Auxiliary (light ops) pipelining.
+// Enumerates separate Vulkan devices and builds heuristic profiles/links.
+// It does not prove peer transport, cross-vendor interoperability, zero-copy,
+// or profitable heterogeneous scheduling. Do not extend this as the future
+// semantic distributed API; it remains migration material until physical
+// multi-device capability, synchronization, and oracle gates pass.
 //
-// Layer 1 of the multi-GPU stack:
+// Experimental fragments:
 //   topology.h  — hardware abstraction (this file)
 //   scheduler.h — dispatch routing
 //   collective.h — distributed primitives (AllReduce, Broadcast)
-//   cluster.h   — multi-node stubs
+// Cross-machine metadata and transport remain planned and are not published.
 
 #pragma once
 
@@ -40,13 +42,14 @@ enum class OaDeviceRole : OaU8 {
 	}
 }
 
-// Interconnect topology between two devices.
+// Heuristic interconnect label. The current implementation does not query or
+// prove these physical links; consumers must not use the enum as capability.
 enum class OaInterconnect : OaU8 {
 	HostMemory,  // Staging through CPU RAM (PCIe, universal)
-	PciE,        // Direct PCIe peer-to-peer (same IOMMU group)
-	NvLink,      // NVIDIA NVLink (high-bandwidth, same vendor)
-	Xgmi,        // AMD xGMI / Infinity Fabric (MI250X, same vendor)
-	SharedRam,   // Shared system memory (iGPU + dGPU on same die/SoC)
+	PciE,        // Unverified PCIe candidate label
+	NvLink,      // Unverified NVIDIA-link candidate label
+	Xgmi,        // Unverified AMD-link candidate label
+	SharedRam,   // Unverified shared-memory candidate label
 };
 
 [[nodiscard]] constexpr OaStringView OaInterconnectName(OaInterconnect InType) noexcept {
@@ -60,7 +63,7 @@ enum class OaInterconnect : OaU8 {
 	}
 }
 
-// Benchmarked device capabilities — filled by micro-benchmark or device properties.
+// Estimated device profile. No canonical microbenchmark currently fills it.
 class OaDeviceProfile {
 public:
 	OaF64 PeakTflopsF32 = 0.0;     // Estimated FP32 TFLOPS
@@ -125,11 +128,11 @@ class OaTransferLink {
 public:
 	OaU32 SrcNode = 0;
 	OaU32 DstNode = 0;
-	OaF64 BandwidthGBs = 0.0;        // Measured or estimated transfer bandwidth
-	OaBool SharedMemory = false;      // Devices share system memory (laptop iGPU)
-	OaBool PeerToPeer = false;        // Same vendor, direct DMA possible
+	OaF64 BandwidthGBs = 0.0;        // Current implementation is an estimate, not a benchmark
+	OaBool SharedMemory = false;      // Heuristic candidate, not queried sharing proof
+	OaBool PeerToPeer = false;        // Heuristic candidate, not queried peer-memory proof
 	OaInterconnect Topology = OaInterconnect::HostMemory;
-	OaTransport BestTransport = OaTransport::HostStaging;
+	OaTransport BestTransport = OaTransport::HostStaging; // Candidate only until transfer proof
 	OaBool OpaqueFdCapable = false;
 };
 

@@ -135,6 +135,26 @@ void OaVkStream::Destroy(const OaVkDevice& InDevice) {
 	}
 }
 
+OaStatus OaVkStream::ResetUnsubmitted(const OaVkDevice&) {
+	if (Submitted) {
+		return OaStatus::Error(OaStatusCode::FailedPrecondition,
+			"stream: cannot reset a submitted command buffer before completion");
+	}
+	if (!CommandBuffer) {
+		Recording = false;
+		return OaStatus::Ok();
+	}
+
+	const VkResult result = vkResetCommandBuffer(
+		static_cast<VkCommandBuffer>(CommandBuffer), 0);
+	if (result != VK_SUCCESS) {
+		return OaStatus::Error(OaStatusCode::VulkanError,
+			"stream: vkResetCommandBuffer failed while cancelling unsubmitted work");
+	}
+	Recording = false;
+	return OaStatus::Ok();
+}
+
 // ─── Recording ─────────────────────────────────────────────────────────────────
 
 OaStatus OaVkStream::Begin(const OaVkDevice& InDevice) {
@@ -238,7 +258,7 @@ OaStatus OaVkStream::Begin(const OaVkDevice& InDevice) {
 	} while (0)
 
 OaStatus OaVkStream::RecordDispatch(
-	OaComputeEngine& InRt, OaStringView InPipeline,
+	OaEngine& InRt, OaStringView InPipeline,
 	OaSpan<OaVkBuffer> InBufs, const void* InPush, OaU32 InPushSize,
 	OaU32 InGroupsX, OaU32 InGroupsY, OaU32 InGroupsZ)
 {
@@ -255,7 +275,7 @@ OaStatus OaVkStream::RecordDispatch(
 }
 
 OaStatus OaVkStream::RecordDispatchDesc(
-	OaComputeEngine& InRt, const OaComputeDispatchDesc& InDesc)
+	OaEngine& InRt, const OaComputeDispatchDesc& InDesc)
 {
 	auto* target = InDesc.NodeIndex == 0 ? nullptr : InRt.GetNode(InDesc.NodeIndex);
 	if (InDesc.NodeIndex != 0 and target == nullptr) {
@@ -332,7 +352,7 @@ OaStatus OaVkStream::RecordDispatchDesc(
 }
 
 OaStatus OaVkStream::RecordDispatchOnNode(
-	OaComputeEngine& InRt, OaU32 InNodeIndex,
+	OaEngine& InRt, OaU32 InNodeIndex,
 	OaStringView InPipeline,
 	OaSpan<OaVkBuffer> InBufs, const void* InPush, OaU32 InPushSize,
 	OaU32 InGroupsX, OaU32 InGroupsY, OaU32 InGroupsZ
@@ -351,7 +371,7 @@ OaStatus OaVkStream::RecordDispatchOnNode(
 }
 
 OaStatus OaVkStream::RecordDispatchIndirect(
-	OaComputeEngine& InRt, OaStringView InPipeline,
+	OaEngine& InRt, OaStringView InPipeline,
 	OaSpan<OaVkBuffer> InBufs, const void* InPush, OaU32 InPushSize,
 	const OaVkBuffer& InIndirectBuffer, OaU64 InOffset
 ) {
@@ -368,7 +388,7 @@ OaStatus OaVkStream::RecordDispatchIndirect(
 }
 
 OaStatus OaVkStream::Record(
-	OaComputeEngine& InRt, OaStringView InPipeline,
+	OaEngine& InRt, OaStringView InPipeline,
 	OaSpan<OaVkBuffer> InBufs, const void* InPush, OaU32 InPushSize,
 	OaU32 InGroupsX, OaU32 InGroupsY, OaU32 InGroupsZ
 ) {
@@ -408,6 +428,129 @@ void OaVkStream::RecordCopyBufferRegions(
 		static_cast<OaU32>(regions.Size()), regions.Data());
 }
 
+void OaVkStream::RecordTransferReadBarrier(
+	const OaVkBuffer& InSrc,
+	OaU64 InOffset,
+	OaU64 InSize)
+{
+	if (InSrc.AliasIdentity != nullptr) {
+		VkMemoryBarrier2 aliasBarrier = {
+			.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+			.pNext = nullptr,
+			.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+			.srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT,
+			.dstStageMask = VK_PIPELINE_STAGE_2_COPY_BIT,
+			.dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT,
+		};
+		VkDependencyInfo aliasDependency = {
+			.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+			.pNext = nullptr,
+			.dependencyFlags = 0,
+			.memoryBarrierCount = 1,
+			.pMemoryBarriers = &aliasBarrier,
+			.bufferMemoryBarrierCount = 0,
+			.pBufferMemoryBarriers = nullptr,
+			.imageMemoryBarrierCount = 0,
+			.pImageMemoryBarriers = nullptr,
+		};
+		vkCmdPipelineBarrier2(
+			static_cast<VkCommandBuffer>(CommandBuffer), &aliasDependency);
+		return;
+	}
+
+	VkBufferMemoryBarrier2 barrier = {
+		.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
+		.pNext = nullptr,
+		.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+		.srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT,
+		.dstStageMask = VK_PIPELINE_STAGE_2_COPY_BIT,
+		.dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT,
+		.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+		.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+		.buffer = static_cast<VkBuffer>(InSrc.Buffer),
+		.offset = InOffset,
+		.size = InSize,
+	};
+	VkDependencyInfo dependency = {
+		.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+		.pNext = nullptr,
+		.dependencyFlags = 0,
+		.memoryBarrierCount = 0,
+		.pMemoryBarriers = nullptr,
+		.bufferMemoryBarrierCount = 1,
+		.pBufferMemoryBarriers = &barrier,
+		.imageMemoryBarrierCount = 0,
+		.pImageMemoryBarriers = nullptr,
+	};
+	vkCmdPipelineBarrier2(
+		static_cast<VkCommandBuffer>(CommandBuffer), &dependency);
+}
+
+void OaVkStream::RecordTransferWriteBarrier(
+	const OaVkBuffer& InDst,
+	OaU64 InOffset,
+	OaU64 InSize)
+{
+	if (InDst.AliasIdentity != nullptr) {
+		VkMemoryBarrier2 aliasBarrier = {
+			.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+			.pNext = nullptr,
+			.srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT,
+			.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+			.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT
+				| VK_PIPELINE_STAGE_2_HOST_BIT,
+			.dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT
+				| VK_ACCESS_2_MEMORY_WRITE_BIT
+				| VK_ACCESS_2_HOST_READ_BIT,
+		};
+		VkDependencyInfo aliasDependency = {
+			.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+			.pNext = nullptr,
+			.dependencyFlags = 0,
+			.memoryBarrierCount = 1,
+			.pMemoryBarriers = &aliasBarrier,
+			.bufferMemoryBarrierCount = 0,
+			.pBufferMemoryBarriers = nullptr,
+			.imageMemoryBarrierCount = 0,
+			.pImageMemoryBarriers = nullptr,
+		};
+		vkCmdPipelineBarrier2(
+			static_cast<VkCommandBuffer>(CommandBuffer), &aliasDependency);
+		return;
+	}
+
+	VkBufferMemoryBarrier2 barrier = {
+		.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
+		.pNext = nullptr,
+		.srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT,
+		.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+		.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT
+			| VK_PIPELINE_STAGE_2_HOST_BIT,
+		.dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT
+			| VK_ACCESS_2_MEMORY_WRITE_BIT
+			| VK_ACCESS_2_HOST_READ_BIT,
+		.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+		.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+		.buffer = static_cast<VkBuffer>(InDst.Buffer),
+		.offset = InOffset,
+		.size = InSize,
+	};
+
+	VkDependencyInfo dependency = {
+		.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+		.pNext = nullptr,
+		.dependencyFlags = 0,
+		.memoryBarrierCount = 0,
+		.pMemoryBarriers = nullptr,
+		.bufferMemoryBarrierCount = 1,
+		.pBufferMemoryBarriers = &barrier,
+		.imageMemoryBarrierCount = 0,
+		.pImageMemoryBarriers = nullptr,
+	};
+	vkCmdPipelineBarrier2(
+		static_cast<VkCommandBuffer>(CommandBuffer), &dependency);
+}
+
 void OaVkStream::RecordBufferBarrier() {
 	if (SuppressAutoBarrier) return;
 	VkMemoryBarrier2 barrier = {
@@ -431,16 +574,23 @@ void OaVkStream::RecordBufferBarrier() {
 void OaVkStream::RecordHostReadbackBarrier() {
 	VkMemoryBarrier2 barrier = {
 		.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
-		.srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-		.srcAccessMask = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+		.pNext = nullptr,
+		.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+		.srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT,
 		.dstStageMask = VK_PIPELINE_STAGE_2_HOST_BIT,
 		.dstAccessMask = VK_ACCESS_2_HOST_READ_BIT,
 	};
 
 	VkDependencyInfo dep = {
 		.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+		.pNext = nullptr,
+		.dependencyFlags = 0,
 		.memoryBarrierCount = 1,
 		.pMemoryBarriers = &barrier,
+		.bufferMemoryBarrierCount = 0,
+		.pBufferMemoryBarriers = nullptr,
+		.imageMemoryBarrierCount = 0,
+		.pImageMemoryBarriers = nullptr,
 	};
 
 	vkCmdPipelineBarrier2(
@@ -486,7 +636,7 @@ void OaVkStream::RecordBufferMemoryBarriers(const OaVkBuffer* InBufs, OaU32 InCo
 }
 
 // ─── Submission ────────────────────────────────────────────────────────────────
-OaStatus OaVkStream::Submit(OaComputeEngine& InRt, OaBool InDispatchAlreadyLoadedForNode) {
+OaStatus OaVkStream::Submit(OaEngine& InRt, OaBool InDispatchAlreadyLoadedForNode) {
 	VkResult r = vkEndCommandBuffer(static_cast<VkCommandBuffer>(CommandBuffer));
 	if (r != VK_SUCCESS) {
 		return OaStatus::Error(OaStatusCode::VulkanError, "stream: vkEndCommandBuffer failed");
@@ -524,7 +674,7 @@ OaStatus OaVkStream::Submit(OaComputeEngine& InRt, OaBool InDispatchAlreadyLoade
 }
 
 OaStatus OaVkStream::SubmitWithDependency(
-	OaComputeEngine& InRt,
+	OaEngine& InRt,
 	const OaVkTimelineSemaphore& InWaitSem,
 	OaU64 InWaitValue,
 	OaBool InDispatchAlreadyLoadedForNode
@@ -537,7 +687,7 @@ OaStatus OaVkStream::SubmitWithDependency(
 }
 
 OaStatus OaVkStream::SubmitWithDependencies(
-	OaComputeEngine& InRt,
+	OaEngine& InRt,
 	OaSpan<const OaVkTimelineWait> InWaits,
 	OaBool InDispatchAlreadyLoadedForNode
 ) {
@@ -601,7 +751,32 @@ OaStatus OaVkStream::SubmitWithDependencies(
 		OA_RETURN_IF_ERROR(InRt.SubmitToNodeQueue(MeshNodeIndex, Queue, &si, nullptr,
 			InDispatchAlreadyLoadedForNode));
 	} else {
-		OA_RETURN_IF_ERROR(InRt.SubmitToQueue(Queue, &si, nullptr));
+		OaVec<VkSemaphoreSubmitInfo> waitInfos;
+		for (OaUsize waitIdx = 0; waitIdx < waitSemaphores.Size(); ++waitIdx) {
+			VkSemaphoreSubmitInfo waitInfo = {};
+			waitInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+			waitInfo.semaphore = waitSemaphores[waitIdx];
+			waitInfo.value = waitValues[waitIdx];
+			waitInfo.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+			waitInfos.PushBack(waitInfo);
+		}
+		VkSemaphoreSubmitInfo signalInfo = {};
+		signalInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+		signalInfo.semaphore = signalSem;
+		signalInfo.value = TimelineValue;
+		signalInfo.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+		VkCommandBufferSubmitInfo commandInfo = {};
+		commandInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+		commandInfo.commandBuffer = cb;
+		VkSubmitInfo2 submitInfo = {};
+		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+		submitInfo.waitSemaphoreInfoCount = static_cast<OaU32>(waitInfos.Size());
+		submitInfo.pWaitSemaphoreInfos = waitInfos.Data();
+		submitInfo.commandBufferInfoCount = 1;
+		submitInfo.pCommandBufferInfos = &commandInfo;
+		submitInfo.signalSemaphoreInfoCount = 1;
+		submitInfo.pSignalSemaphoreInfos = &signalInfo;
+		OA_RETURN_IF_ERROR(InRt.SubmitToQueue2(Queue, &submitInfo));
 	}
 
 	Submitted = true;
@@ -610,12 +785,9 @@ OaStatus OaVkStream::SubmitWithDependencies(
 
 OaStatus OaVkStream::Synchronize(const OaVkDevice& InDevice) {
 	if (!Submitted) return OaStatus::Ok();
-	// Fast path: poll once before blocking. For small GPU workloads the
-	// GPU may have already completed — skip the vkWaitSemaphores syscall.
-	if (TimelineSem.GetValue(InDevice) >= TimelineValue) {
-		Submitted = false;
-		return OaStatus::Ok();
-	}
+	// A timeline counter query is only a non-blocking completion observation.
+	// Establish the signal-to-host wait dependency explicitly even when the
+	// counter has already advanced; the wait returns immediately in that case.
 	auto status = TimelineSem.Wait(InDevice, TimelineValue);
 	if (status.IsOk()) {
 		Submitted = false;
@@ -623,7 +795,7 @@ OaStatus OaVkStream::Synchronize(const OaVkDevice& InDevice) {
 	return status;
 }
 
-OaStatus OaVkStream::SubmitAndWait(OaComputeEngine& InRt, OaBool InDispatchAlreadyLoadedForNode) {
+OaStatus OaVkStream::SubmitAndWait(OaEngine& InRt, OaBool InDispatchAlreadyLoadedForNode) {
 	OA_RETURN_IF_ERROR(Submit(InRt, InDispatchAlreadyLoadedForNode));
 	const OaVkDevice* syncDev = &InRt.Device;
 	if (MeshNodeIndex != 0 && InRt.IsMultiDevice()) {
@@ -642,7 +814,7 @@ OaBool OaVkStream::IsComplete(const OaVkDevice& InDevice) const {
 // ─── Single-Shot ───────────────────────────────────────────────────────────────
 
 OaStatus OaVkStream::RunOnce(
-	OaComputeEngine& InRt, OaStringView InPipeline,
+	OaEngine& InRt, OaStringView InPipeline,
 	OaSpan<OaVkBuffer> InBufs, const void* InPush, OaU32 InPushSize,
 	OaU32 InGroupsX, OaU32 InGroupsY, OaU32 InGroupsZ)
 {

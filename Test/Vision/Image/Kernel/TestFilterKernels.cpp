@@ -199,7 +199,7 @@ OaMatrix MatrixFromValues(OaMatrixShape shape, const std::vector<float>& values)
 class FilterKernels : public ::testing::Test {
 protected:
 	void SetUp() override {
-		ASSERT_NE(OaComputeEngine::GetGlobal(), nullptr);
+		ASSERT_NE(OaEngine::GetGlobal(), nullptr);
 	}
 
 	void Materialize() {

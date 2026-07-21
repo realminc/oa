@@ -25,17 +25,13 @@ void SetLastName(const char* InName);
 
 // ─── Loss Functions ───────────────────────────────────────────────
 
-/// CrossEntropy: Cross-entropy loss for classification.
-/// Computes: Out = -mean(log(softmax(Logits)[Targets]))
-/// @param InLogits: [batch, classes] unnormalized logits
-/// @param InTargets: [batch] class indices (UInt8 or UInt32)
-/// @return Scalar loss value
-[[nodiscard]] OaMatrix CrossEntropy(const OaMatrix& InLogits, const OaMatrix& InTargets);
+// Schema-owned forward loss declarations.
+#include "../../../Private/Oa/Ml/FnLoss/FnLoss.gen.h"
 
 /// CrossEntropyBwd: Backward pass for cross-entropy loss.
 /// Computes gradient w.r.t. logits: (softmax(Logits) - onehot(Targets)) / batch
 /// @param InLogits: [batch, classes] unnormalized logits (forward input)
-/// @param InTargets: [batch] class indices (UInt8 or UInt32)
+/// @param InTargets: [batch] class indices (UInt8, UInt32, or non-negative Int32)
 /// @return [batch, classes] gradient w.r.t. logits
 [[nodiscard]] OaMatrix CrossEntropyBwd(const OaMatrix& InLogits, const OaMatrix& InTargets);
 
@@ -96,7 +92,7 @@ void SetLastName(const char* InName);
 [[nodiscard]] OaMatrix BceBwd(const OaMatrix& InA, const OaMatrix& InB);
 
 // ─── Loss Operations ──────────────────────────────────────────────
-// All loss functions are hand-written with fused forward + backward kernels.
-// See Source/Private/Oa/Ml/FnLoss/FnLoss.cpp and Source/Private/Oa/Ml/Shader/Compute/Loss/.
+// Migrated forwards are schema-owned; operation-specific lowering and backward
+// paths remain private implementations selected below the public contract.
 
 } // namespace OaFnLoss

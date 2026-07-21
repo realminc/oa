@@ -17,16 +17,16 @@
 #include <numeric>
 #include <vector>
 
-static OaComputeEngine* GRt = nullptr;
+static OaEngine* GRt = nullptr;
 
 class TestFnMatrixEmbed : public ::testing::Test {
 protected:
 	static void SetUpTestSuite() {
 		OaEngineConfig cfg{};
 		cfg.AppName = "TestFnMatrixEmbed";
-		auto r = OaComputeEngine::Create(cfg);
+		auto r = OaEngine::Create(cfg);
 		ASSERT_TRUE(r.IsOk()) << r.GetStatus().GetMessage();
-		static OaUniquePtr<OaComputeEngine> rt = std::move(*r);
+		static OaUniquePtr<OaEngine> rt = std::move(*r);
 		GRt = rt.get();
 	}
 };
@@ -37,7 +37,7 @@ TEST_VK(TestFnMatrixEmbed, BiasAdd_Context) {
 	auto b = OaFnMatrix::Rand(OaMatrixShape{N});
 	std::vector<float> b_host(N);
 	ASSERT_TRUE(OaFnMatrix::CopyToHost(b, b_host.data(), N * sizeof(float)).IsOk());
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto out = OaFnMatrix::BiasAdd(a, b);
 	// Context scope auto-executes and syncs at end of scope
 	std::vector<float> a_host(N);

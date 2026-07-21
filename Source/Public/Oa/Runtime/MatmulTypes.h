@@ -2,8 +2,7 @@
 
 // OaMatmulProblem / OaMatmulVariant — registry-driven GEMM routing inputs.
 //
-// See Docs/Rewrite/ThisIsTheKey/OaGemmRouterRewrite.md for the full design.
-// Short version: OaGemmRouter::Select used to be 400 lines of switch ladders
+// OaGemmRouter::Select used to be 400 lines of switch ladders
 // over hardcoded (precision, hasCoopMat, hasBf16) triplets. This header
 // introduces the declarative replacement:
 //
@@ -205,7 +204,7 @@ struct OaMatmulVariant {
 // Registry access — implemented in Registry.cpp
 // ─────────────────────────────────────────────────────────────────────────────
 
-class OaComputeEngine;
+class OaEngine;
 
 namespace OaMatmulRegistry {
 
@@ -232,7 +231,7 @@ namespace OaMatmulRegistry {
 
 // Device cap mask built from OaVkDevice software info. R1 derives this
 // from the existing boolean fields; R2 reads the cap table directly.
-[[nodiscard]] OaU64 ComputeCapsMask(const OaComputeEngine& InRt);
+[[nodiscard]] OaU64 ComputeCapsMask(const OaEngine& InRt);
 
 // True if every bit in InRequired is set in InAvailable.
 [[nodiscard]] inline bool CapsSatisfy(OaU64 InAvailable, OaU64 InRequired) {

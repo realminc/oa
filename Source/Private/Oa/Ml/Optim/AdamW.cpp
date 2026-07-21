@@ -5,6 +5,7 @@
 #include <Oa/Core/Log.h>
 #include <Oa/Runtime/Context.h>
 #include <Oa/Runtime/Engine.h>
+#include <Oa/Runtime/ExecutionMemory.h>
 
 #include <cstring>
 
@@ -53,7 +54,7 @@ void OaAdamW::Step() {
 			OaMatrixShape{6}, OaScalarType::UInt32, OaMemoryPlacement::HostUpload);
 	}
 	auto& ctx = OaContext::GetDefault();
-	const OaBool replayState = ctx.IsStableResourceFrameActive()
+	const OaBool replayState = OaExecutionMemory::IsStableFrameActive(ctx)
 		and GraphState_.HasStorage();
 	if (replayState) {
 		auto* state = static_cast<OaU32*>(GraphState_.Data());
@@ -151,8 +152,9 @@ void OaAdamW::ZeroGrad() {
 
 // ─── Persistence ──────────────────────────────────────────────────────────
 
-void OaAdamW::SaveTo(OamModel& OutOam) const {
+OaStatus OaAdamW::SaveTo(OamModel& OutOam) const {
 	// Header (hyperparams + step count). NumParams is total flat element count.
+	OutOam.OptimizerPresent = true;
 	OutOam.Optimizer = OamOptimizerHeader{};
 	std::strncpy(OutOam.Optimizer.Type, "AdamW", sizeof(OutOam.Optimizer.Type) - 1);
 	OutOam.Optimizer.Lr = Lr_;
@@ -167,11 +169,11 @@ void OaAdamW::SaveTo(OamModel& OutOam) const {
 		OutOam.Optimizer.NumParams = 0;
 		OutOam.AdamM.Clear();
 		OutOam.AdamV.Clear();
-		return;
+		return OaStatus::Ok();
 	}
 
 	// Drain pending GPU writes to M_/V_ so the memcpy sees the latest state.
-	(void)OaContext::GetDefault().Execute();
+	OA_RETURN_IF_ERROR(OaContext::GetDefault().Execute());
 
 	OaI64 total = 0;
 	for (const auto& m : M_) total += m.NumElements();
@@ -183,13 +185,37 @@ void OaAdamW::SaveTo(OamModel& OutOam) const {
 	for (OaUsize i = 0; i < M_.Size(); ++i) {
 		OaI64 n = M_[i].NumElements();
 		const auto bytes = static_cast<OaU64>(n) * sizeof(OaF32);
-		(void)OaFnMatrix::CopyToHost(M_[i], OutOam.AdamM.Data() + off, bytes);
-		(void)OaFnMatrix::CopyToHost(V_[i], OutOam.AdamV.Data() + off, bytes);
+		OA_RETURN_IF_ERROR(OaFnMatrix::CopyToHost(
+			M_[i], OutOam.AdamM.Data() + off, bytes));
+		OA_RETURN_IF_ERROR(OaFnMatrix::CopyToHost(
+			V_[i], OutOam.AdamV.Data() + off, bytes));
 		off += n;
 	}
+	return OaStatus::Ok();
 }
 
-void OaAdamW::LoadFrom(const OamModel& InOam) {
+OaStatus OaAdamW::ValidateLoad(const OamModel& InOam) const {
+	if (not InOam.HasOptimizer()
+		or std::strncmp(InOam.Optimizer.Type, "AdamW", sizeof(InOam.Optimizer.Type)) != 0)
+	{
+		return OaStatus::Error(OaStatusCode::FailedPrecondition,
+			"AdamW checkpoint optimizer state is missing or has the wrong type");
+	}
+	OaU64 expected = 0;
+	for (const auto* parameter : Params_) {
+		expected += static_cast<OaU64>(parameter->Data.NumElements());
+	}
+	if (InOam.Optimizer.Step == 0 and InOam.AdamM.Empty()
+		and InOam.AdamV.Empty()) return OaStatus::Ok();
+	if (InOam.AdamM.Size() != expected or InOam.AdamV.Size() != expected) {
+		return OaStatus::Error(OaStatusCode::ShapeMismatch,
+			"AdamW checkpoint moment size does not match the model");
+	}
+	return OaStatus::Ok();
+}
+
+OaStatus OaAdamW::LoadFrom(const OamModel& InOam) {
+	OA_RETURN_IF_ERROR(ValidateLoad(InOam));
 	// Hyperparams + step always restored (cheap, always present in checkpoint).
 	Lr_          = InOam.Optimizer.Lr;
 	Beta1_       = InOam.Optimizer.Beta1;
@@ -199,44 +225,27 @@ void OaAdamW::LoadFrom(const OamModel& InOam) {
 	Step_        = static_cast<OaU64>(InOam.Optimizer.Step);
 	ResetMasterSeed();  // re-seed fp32 masters from the reloaded (bf16) weights
 
-	if (not InOam.HasOptimizer()) {
-		OA_LOG_INFO(OaLogComponent::Core,
-			"OaAdamW::LoadFrom: checkpoint has no AdamM/AdamV section, keeping zero-init state");
-		return;
-	}
-
 	// Allocate moment buffers if first use, then verify sizes line up.
 	EnsureMomentBuffers(Params_, M_, V_);
-
-	OaI64 expected = 0;
-	for (const auto& m : M_) expected += m.NumElements();
-	if (InOam.AdamM.Size() != static_cast<OaUsize>(expected)) {
-		OA_LOG_ERROR(OaLogComponent::Core,
-			"OaAdamW::LoadFrom: AdamM size mismatch — model expects %lld elements, "
-			"checkpoint has %zu (model architecture differs from saved model)",
-			static_cast<long long>(expected), InOam.AdamM.Size());
-		return;
-	}
-	if (InOam.AdamV.Size() != InOam.AdamM.Size()) {
-		OA_LOG_ERROR(OaLogComponent::Core,
-			"OaAdamW::LoadFrom: AdamV size (%zu) != AdamM size (%zu)",
-			InOam.AdamV.Size(), InOam.AdamM.Size());
-		return;
-	}
+	if (InOam.AdamM.Empty()) return OaStatus::Ok();
 
 	// Drain pending GPU writes to M_/V_ before memcpy.
-	(void)OaContext::GetDefault().Execute();
+	OA_RETURN_IF_ERROR(OaContext::GetDefault().Execute());
 
 	OaI64 off = 0;
 	for (OaUsize i = 0; i < M_.Size(); ++i) {
 		OaI64 n = M_[i].NumElements();
 		const auto bytes = static_cast<OaU64>(n) * sizeof(OaF32);
 		if (auto* runtime = OaContext::GetDefault().GetEngine()) {
-			(void)runtime->UploadBuffer(M_[i].GetVkBuffer(), 0,
-				InOam.AdamM.Data() + off, bytes);
-			(void)runtime->UploadBuffer(V_[i].GetVkBuffer(), 0,
-				InOam.AdamV.Data() + off, bytes);
+			OA_RETURN_IF_ERROR(runtime->UploadBuffer(M_[i].GetVkBuffer(), 0,
+				InOam.AdamM.Data() + off, bytes));
+			OA_RETURN_IF_ERROR(runtime->UploadBuffer(V_[i].GetVkBuffer(), 0,
+				InOam.AdamV.Data() + off, bytes));
+		} else {
+			return OaStatus::Error(OaStatusCode::FailedPrecondition,
+				"AdamW restore requires an active OA engine");
 		}
 		off += n;
 	}
+	return OaStatus::Ok();
 }

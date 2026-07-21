@@ -2,7 +2,7 @@
 #
 # This is the *source of truth* for ML pooling functions. The generator
 # emits .h declarations, .cpp implementations, and .slang shaders from this file.
-# See Tools/OaFnAutogen/oafnautogen.py and Docs/Rewrite/Opus/OaFnAutogen.md.
+# See Tools/FnAutogen/README.md and Tools/FnAutogen/oafnautogen.py.
 #
 # Pooling operations downsample spatial dimensions by applying a reduction
 # operation (max or average) over local windows.
@@ -48,4 +48,3 @@ extra_params   = [
 grad_class = "OaGradAvgPool2d"
 inputs     = ["InA"]
 saved      = ["InA"]
-

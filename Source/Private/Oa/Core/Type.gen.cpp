@@ -111,6 +111,23 @@ OaPrecision OaPrecisionFromString(const char* InStr) noexcept {
 	return OaPrecision::FP32;  // Default to first value
 }
 
+constexpr const char* OaMatMulPrecisionToString(OaMatMulPrecision InType) noexcept {
+	switch (InType) {
+		case OaMatMulPrecision::Auto: return "Auto";
+		case OaMatMulPrecision::Fp32: return "Fp32";
+		case OaMatMulPrecision::Bf16: return "Bf16";
+		default: return "unknown";
+	}
+}
+
+OaMatMulPrecision OaMatMulPrecisionFromString(const char* InStr) noexcept {
+	// Simple string comparison (could be optimized with hash)
+	if (strcmp(InStr, "Auto") == 0) return OaMatMulPrecision::Auto;
+	if (strcmp(InStr, "Fp32") == 0) return OaMatMulPrecision::Fp32;
+	if (strcmp(InStr, "Bf16") == 0) return OaMatMulPrecision::Bf16;
+	return OaMatMulPrecision::Auto;  // Default to first value
+}
+
 constexpr const char* OaFilterToString(OaFilter InType) noexcept {
 	switch (InType) {
 		case OaFilter::Nearest: return "Nearest";

@@ -89,6 +89,11 @@ public:
 	OaVideo& operator=(const OaVideo&) = delete;
 	~OaVideo();
 
+	// Explicit completion and resource-release boundary. Waits exact retained
+	// frame-consumer events before releasing decoder-owned image storage.
+	[[nodiscard]] OaStatus Close();
+	// Compatibility wrapper that logs Close() failures. Prefer Close() where
+	// the shutdown result can be propagated.
 	void Destroy();
 
 	// IsDone() is permanently false in looping mode. In non-looping mode,
@@ -158,9 +163,11 @@ public:
 	// CurrentFrame() directly on the GPU.
 	[[nodiscard]] OaResult<OaVec<OaU8>> ReadbackCurrentRgba();
 	// Record the compute submission that most recently sampled CurrentFrame().
-	// The iterator will not recycle that RGBA image until the timeline reaches
-	// InValue. Frames advanced without being rendered remain immediately
-	// reusable.
+	// The iterator will not recycle that RGBA image until InConsumed completes.
+	// Frames advanced without being rendered remain immediately reusable.
+	void MarkCurrentFrameConsumed(const OaEvent& InConsumed);
+	// Compatibility bridge for UI callbacks that have not yet migrated to
+	// OaEvent. New consumers should pass the event directly.
 	void MarkCurrentFrameConsumed(
 		const OaVkTimelineSemaphore& InSemaphore,
 		OaU64 InValue);
@@ -200,8 +207,11 @@ private:
 	OaStatus PopAndPresentLowestPts_();
 	OaStatus SeekDisplayFrame_(OaUsize InTargetFrameIndex);
 	OaStatus ClearReorder_();
-	OaStatus WaitForCurrentFrameConsumer_();
+	OaStatus WaitForPoolConsumers_();
 	OaStatus RestartDecoder_();
+	void Abandon_() noexcept;
+	static OaStatus CompleteRetired_(void* InPayload);
+	static void ReleaseRetired_(void* InPayload);
 	// Pool helpers — produce/release an RGBA target sized to the stream.
 	[[nodiscard]] OaResult<OaVideoFrame> AcquireRgbaFromPool_();
 	void ReleaseRgbaToPool_(const OaVideoFrame& InFrame);
@@ -225,8 +235,7 @@ private:
 	// who's holding which.
 	OaVec<OaVideoFrame>      RgbaPool_;
 	OaVec<bool>              RgbaPoolBusy_;
-	OaVec<OaVkTimelineSemaphore> RgbaPoolConsumerSemaphores_;
-	OaVec<OaU64>             RgbaPoolConsumerValues_;
+	OaVec<OaEvent>            RgbaPoolConsumerEvents_;
 	OaI64                    Index_ = 0;
 	OaU64                    StreamFormatGeneration_ = 1U;
 	OaU64                    StreamReconnectCount_ = 0U;

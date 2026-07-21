@@ -104,9 +104,14 @@ OaVkBuffer OaMatrix::GetVkBuffer() const {
 }
 
 const void* OaMatrix::Data() const {
-	if (VkBuf_ and VkBuf_->MappedPtr) {
-		const auto* base = static_cast<const char*>(VkBuf_->MappedPtr);
-		return base + static_cast<ptrdiff_t>(ByteOffset_);
+	if (VkBuf_) {
+		if (VkBuf_->MappedPtr) {
+			const auto* base = static_cast<const char*>(VkBuf_->MappedPtr);
+			return base + static_cast<ptrdiff_t>(ByteOffset_);
+		}
+		// A retained device matrix is deliberately made inert when its engine
+		// closes. Do not fall through to the non-owning cached mapped pointer.
+		return nullptr;
 	}
 	if (Data_.get()) {
 		const auto* base = static_cast<const char*>(Data_.get());
@@ -241,4 +246,3 @@ OaMatrix& OaMatrix::operator/=(OaF32 InScalar) {
 	OaFnMatrix::DivScalarInPlace(*this, InScalar);
 	return *this;
 }
-

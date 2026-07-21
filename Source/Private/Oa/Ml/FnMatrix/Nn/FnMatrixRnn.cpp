@@ -9,10 +9,7 @@
 
 namespace OaFnMatrix {
 
-OaMatrix RnnCellPointwise(
-	const OaMatrix& InGatesI,
-	const OaMatrix& InGatesH
-) {
+OaMatrix RnnCellPointwise(const OaMatrix& InGatesI,	const OaMatrix& InGatesH) {
 	auto& ctx = OaContext::GetDefault();
 	const OaI64 count = InGatesI.NumElements();
 
@@ -36,7 +33,8 @@ OaMatrix RnnCellPointwise(
 
 	ctx.Add("RnnCellPointwise",
 		{&InGatesI, &InGatesH, &out},
-		access, &push, sizeof(push), OaDivCeil(static_cast<OaU32>(count), 256));
+		access, &push, sizeof(push), OaDivCeil(static_cast<OaU32>(count), 256)
+	);
 
 	return out;
 }

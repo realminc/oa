@@ -38,21 +38,43 @@ public:
 	// Data, class members.
 	void* Buffer = nullptr;
 	void* Allocation = nullptr;
-	// Logical range visible to callers. Capacity is the physical allocation size
-	// retained by caches/arenas and may be larger after buffer reuse.
+	// Opaque VMA allocator that created the allocation. This distinguishes
+	// primary-engine buffers from handles owned by another engine/device.
+	void* AllocatorIdentity = nullptr;
+	// Non-null only for buffers deliberately bound to the same physical
+	// allocation. Distinct VkBuffer handles with the same identity require a
+	// global memory dependency at lifetime hand-off; a buffer barrier scopes
+	// accesses through only one handle and is insufficient for aliases.
+	void* AliasIdentity = nullptr;
+	// Logical range visible to callers. Capacity is the addressable VkBuffer
+	// creation size retained by caches/arenas and may be larger after reuse (the
+	// backing VMA allocation itself may be larger still).
 	OaU64 Size = 0;
 	OaU64 Capacity = 0;
 	void* MappedPtr = nullptr;
 	OaU8 Flags = OA_VK_BUFFER_FLAG_NONE;
 	OaMemoryPlacement Placement = OaMemoryPlacement::Auto;
 	OaU32 BindlessIndex = UINT32_MAX;
-	// Owning mesh node: matches OaDeviceNode::Index when OaComputeEngine has a device mesh (0 = primary).
+	// Owning mesh node: matches OaDeviceNode::Index when OaEngine has a device mesh (0 = primary).
 	OaU32 NodeIndex = 0;
 
 	// Methods.
 	[[nodiscard]] OA_FORCEINLINE bool IsBar() const { return Flags & OA_VK_BUFFER_FLAG_BAR; }
 	[[nodiscard]] OA_FORCEINLINE bool IsImported() const { return Flags & OA_VK_BUFFER_FLAG_IMPORTED; }
 	[[nodiscard]] OA_FORCEINLINE bool IsTransient() const { return Flags & OA_VK_BUFFER_FLAG_TRANSIENT; }
+	// Storage.slang may access packed sub-word scalars through their enclosing
+	// 32-bit word. Expose only that padded logical word, never the full reusable
+	// capacity: a wider descriptor would hide logical out-of-bounds shader access
+	// from GPU-assisted validation. Capacity is still the hard VkBuffer bound.
+	[[nodiscard]] OA_FORCEINLINE OaU64 DescriptorRange() const {
+		if (Capacity == 0) return Size;
+		OaU64 padded = Size == 0 ? 1U : Size;
+		if (padded <= ~OaU64{0} - 3U) padded = (padded + 3U) & ~OaU64{3U};
+		return padded < Capacity ? padded : Capacity;
+	}
+	[[nodiscard]] OA_FORCEINLINE void* SynchronizationIdentity() const {
+		return AliasIdentity ? AliasIdentity : Buffer;
+	}
 	[[nodiscard]] OA_FORCEINLINE bool IsHostVisible() const { return MappedPtr != nullptr; }
 	[[nodiscard]] OA_FORCEINLINE bool IsDeviceLocal() const {
 		return Placement == OaMemoryPlacement::DeviceLocal || Placement == OaMemoryPlacement::Unified;

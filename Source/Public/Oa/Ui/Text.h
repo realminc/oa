@@ -14,7 +14,7 @@
 #include <Oa/Runtime/Allocator.h>
 #include <Oa/Runtime/Sync.h>
 
-class OaComputeEngine;
+class OaEngine;
 
 
 // ─── OaGlyphInfo ──────────────────────────────────────────────────────────────
@@ -53,7 +53,7 @@ public:
 	OaTextAtlas& operator=(OaTextAtlas&&) noexcept;
 	~OaTextAtlas();
 
-	[[nodiscard]] OaStatus Init(OaComputeEngine& InRt);
+	[[nodiscard]] OaStatus Init(OaEngine& InRt);
 	void Destroy();
 
 	// Glyph lookup — returns nullptr for unmapped codepoints.
@@ -101,7 +101,7 @@ public:
 	~OaGlyphBuffer();
 
 	[[nodiscard]] static OaResult<OaGlyphBuffer> CreateHostUpload(
-		OaComputeEngine& InRuntime,
+		OaEngine& InRuntime,
 		OaU32 InCapacity);
 
 	void Destroy();
@@ -115,7 +115,7 @@ public:
 	[[nodiscard]] OaU32 BindlessIndex() const noexcept { return Buffer_.BindlessIndex; }
 
 private:
-	OaComputeEngine* Runtime_ = nullptr;
+	OaEngine* Runtime_ = nullptr;
 	OaVkBuffer Buffer_;
 	OaVkTimelineSemaphore ConsumerSemaphore_;
 	OaU64 ConsumerValue_ = 0;

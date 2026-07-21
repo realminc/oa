@@ -6,7 +6,7 @@
 #include <Oa/Runtime/Allocator.h>
 #include <Oa/Runtime/MatmulTypes.h>
 
-class OaComputeEngine;
+class OaEngine;
 class OaGradNode;   // Ml/Autograd.h — tape node; forward-declared so Core stays Ml-free.
 class OaMatrix;
 
@@ -170,10 +170,16 @@ public:
 	[[nodiscard]] OaMatrixShape GetShape() const { return Shape_; }
 	[[nodiscard]] const OaStride& GetStride() const { return Stride_; }
 	[[nodiscard]] OaScalarType GetDtype() const { return Dtype_; }
-	[[nodiscard]] OaI32 HeapSlot() const { return HeapSlot_; }
+	[[nodiscard]] OaI32 HeapSlot() const {
+		if (VkBuf_) SyncMatrixDescriptor();
+		return HeapSlot_;
+	}
 	[[nodiscard]] OaU64 ByteOffset() const { return ByteOffset_; }
-	[[nodiscard]] OaMemoryBlock HostBlock() const { return HostBlock_; }
-	[[nodiscard]] bool IsOnDevice() const { return HeapSlot_ >= 0; }
+	[[nodiscard]] OaMemoryBlock HostBlock() const {
+		if (VkBuf_) SyncMatrixDescriptor();
+		return HostBlock_;
+	}
+	[[nodiscard]] bool IsOnDevice() const { return HeapSlot() >= 0; }
 	[[nodiscard]] const OaMatrix& AsMatrixView() const {
 		SyncMatrixDescriptor();
 		return *this;

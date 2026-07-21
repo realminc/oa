@@ -126,7 +126,7 @@ static Inputs MakeInputs(const Shape& InShape) {
 
 template <typename Enqueue>
 static Sample Measure(
-	OaComputeEngine& InEngine,
+	OaEngine& InEngine,
 	const char* InName,
 	int InWarmup,
 	int InIterations,
@@ -142,9 +142,14 @@ static Sample Measure(
 	auto& context = OaContext::GetDefault();
 	for (int iteration = 0; iteration < InWarmup + InIterations; ++iteration) {
 		InEnqueue();
-		if (auto status = context.ExecuteAsync(&timer); not status.IsOk()) {
+		auto submitted = context.Submit(&timer);
+		if (not submitted.IsOk()) {
 			timer.Destroy(InEngine.Device);
 			throw std::runtime_error("BenchMamba3: GPU execution failed");
+		}
+		if (auto status = context.Wait(submitted.GetValue()); not status.IsOk()) {
+			timer.Destroy(InEngine.Device);
+			throw std::runtime_error("BenchMamba3: GPU completion failed");
 		}
 		const OaF64 elapsed = timer.ReadbackMs(InEngine.Device);
 		if (!(elapsed > 0.0)) {
@@ -175,7 +180,7 @@ static void PrintSample(const Shape& InShape, const char* InOperation, const Sam
 	}
 }
 
-static void PreheatGpu(OaComputeEngine&, int InIterations) {
+static void PreheatGpu(OaEngine&, int InIterations) {
 	OaGradNo noGrad;
 	auto inputs = MakeInputs({"preheat", 64, 16, 32, 16});
 	auto& context = OaContext::GetDefault();
@@ -193,7 +198,7 @@ static void PreheatGpu(OaComputeEngine&, int InIterations) {
 	}
 }
 
-static void BenchmarkShape(OaComputeEngine& InEngine, const Shape& InShape, int InWarmup, int InIterations) {
+static void BenchmarkShape(OaEngine& InEngine, const Shape& InShape, int InWarmup, int InIterations) {
 	OaGradNo noGrad;
 	auto inputs = MakeInputs(InShape);
 	auto& context = OaContext::GetDefault();
@@ -274,8 +279,8 @@ static void BenchmarkShape(OaComputeEngine& InEngine, const Shape& InShape, int 
 } // namespace
 
 TEST(BenchMamba3, KernelBreakdown) {
-	ASSERT_TRUE(OaVkTestEngineOk()) << "OaVkTestEnvironment did not create OaComputeEngine";
-	auto& engine = *OaComputeEngine::GetGlobal();
+	ASSERT_TRUE(OaVkTestEngineOk()) << "OaVkTestEnvironment did not create OaEngine";
+	auto& engine = *OaEngine::GetGlobal();
 	const int warmup = EnvInt("OA_BENCH_MAMBA_WARMUP", 3);
 	const int iterations = EnvInt("OA_BENCH_MAMBA_ITERS", 10);
 	const int preheat = EnvInt("OA_BENCH_MAMBA_PREHEAT", 3);

@@ -26,9 +26,32 @@ OaU32 EnvIterations(const char* InName, OaU32 InDefault) {
 
 } // namespace
 
+TEST(BenchGemmVariants, CanonicalNlpQkv) {
+	if (not OaVkTestEngineOk()) { GTEST_SKIP(); }
+	auto& engine = *OaEngine::GetGlobal();
+	const OaGemmTunerShape shape{1024U, 32U, 32U, "nlp_qkv"};
+	OaGemmTunerResult result{};
+	const OaStatus status = OaGemmTuner::BenchmarkShape(
+		engine, shape,
+		EnvIterations("OA_BENCH_GEMM_WARMUP", 3U),
+		EnvIterations("OA_BENCH_GEMM_ITERS", 10U),
+		result);
+	ASSERT_TRUE(status.IsOk()) << status.GetMessage().Data();
+	auto problem = OaGemmRouter::ProblemForRaw(
+		shape.M, shape.N, shape.K,
+		OaStoragePrecision::Fp32, OaStoragePrecision::Fp32, true);
+	problem.Training = true;
+	problem.PrecisionHint = OaGemmPrecision::Auto;
+	EXPECT_EQ(OaGemmRouter::Select(engine, problem).Variant, result.BestVariant);
+	std::printf(
+		"OABENCH gemm.nlp_qkv p50_ms=%.6f gflops=%.3f variant=%llu\n",
+		result.BestTimeMs, result.BestGflops,
+		static_cast<unsigned long long>(result.BestVariant));
+}
+
 TEST(BenchGemmVariants, ProductionShapes) {
 	if (not OaVkTestEngineOk()) { GTEST_SKIP(); }
-	auto& engine = *OaComputeEngine::GetGlobal();
+	auto& engine = *OaEngine::GetGlobal();
 	const OaU32 warmup = EnvIterations("OA_BENCH_GEMM_WARMUP", 5U);
 	const OaU32 iterations = EnvIterations("OA_BENCH_GEMM_ITERS", 30U);
 

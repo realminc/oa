@@ -65,6 +65,17 @@ values = [
 ]
 
 [[enums]]
+name = "OaMatMulPrecision"
+underlying_type = "OaU8"
+generate_tostring = true
+generate_fromstring = true
+values = [
+	{ name = "Auto", value = 0, comment = "Select the best supported MatMul precision for the device and problem" },
+	{ name = "Fp32", value = 1, comment = "Require the FP32 MatMul path" },
+	{ name = "Bf16", value = 2, comment = "Require the BF16 MatMul path" },
+]
+
+[[enums]]
 name = "OaFilter"
 underlying_type = "OaU8"
 generate_tostring = true

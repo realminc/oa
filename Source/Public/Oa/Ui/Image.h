@@ -26,7 +26,8 @@
 #include <Oa/Core/Image.h>
 #include <Oa/Runtime/Allocator.h>
 
-class OaComputeEngine;
+class OaEngine;
+class OaContext;
 
 
 // ─── OaImageDtype ─────────────────────────────────────────────────────────────
@@ -53,11 +54,11 @@ struct OaTexture {
 	OaI32      Height = 0;
 
 	// ── Image-backed view (Architecture/OaArchitecture.md §10) ─────────────────────────────────
-	// Non-owning handles populated by OaContext::RecordAcquire to wrap a
+	// Non-owning handles used to wrap a
 	// swapchain image as an OaTexture. When Image != nullptr, this texture
 	// references a VkImage (typically owned by OaSwapchain) rather than a
 	// buffer-backed allocation in the bindless heap. Layout tracks the
-	// current VkImageLayout across record APIs so RecordPresent can emit the
+	// current VkImageLayout across record APIs so a presenter can emit the
 	// correct barrier. Typed as void*/int to keep <vulkan/vulkan.h> out of
 	// this header, matching OaVkBuffer's convention in Allocator.h.
 	void* Image  = nullptr;  // VkImage
@@ -74,12 +75,12 @@ struct OaTexture {
 	// Decode any stb_image-supported format (JPEG, PNG, BMP, TGA, HDR) and
 	// upload to GPU. Output is always RGBA8. Synchronous (returns after transfer).
 	[[nodiscard]] static OaResult<OaTexture> LoadFile(
-		OaComputeEngine& InRt,
+		OaEngine& InRt,
 		OaStringView       InPath);
 
 	// Upload caller-supplied RGBA8 pixels (W*H*4 bytes). Synchronous.
 	[[nodiscard]] static OaResult<OaTexture> FromPixels(
-		OaComputeEngine& InRt,
+		OaEngine& InRt,
 		OaSpan<const OaU8> InRgba,
 		OaI32              InW,
 		OaI32              InH);
@@ -87,17 +88,22 @@ struct OaTexture {
 	// Free the device buffer and deregister from the bindless heap.
 	// Must be called before engine shutdown. Safe to call on a default-constructed
 	// (invalid) OaTexture — becomes a no-op.
-	void Destroy(OaComputeEngine& InRt);
+	void Destroy(OaEngine& InRt);
 
 	// ── OaMatrix bridge ───────────────────────────────────────────────
 	// Convert RGBA8 display buffer → [1, 4, H, W] F32 NCHW OaMatrix.
 	[[nodiscard]] OaMatrix ToMatrix() const;
 
 	// Convert a [1,C,H,W] matrix (C=1,3,4) into packed RGBA8 on the GPU.
-	// Values are clamped to [0,1] and scaled to u8. The returned texture owns the
-	// graph allocation and becomes ready with the surrounding OaContext batch.
+	// Values are clamped to [0,1] and scaled to u8. The context overload records
+	// into that exact batch; its context must be completed before an external
+	// read/copy sink consumes the texture. The engine overload records into the
+	// matching thread-default context and retains the same deferred semantics.
 	[[nodiscard]] static OaResult<OaTexture> FromMatrix(
-		OaComputeEngine& InRt,
+		OaContext& InContext,
+		const OaMatrix& InMatrix);
+	[[nodiscard]] static OaResult<OaTexture> FromMatrix(
+		OaEngine& InRt,
 		const OaMatrix& InMatrix);
 
 	// ── Phase 4: OaImage bridge ─────────────────────────────────────────
@@ -108,7 +114,10 @@ struct OaTexture {
 	// Create OaTexture from OaImage for display.
 	// Converts to RGBA8 packed format regardless of input format/layout.
 	[[nodiscard]] static OaResult<OaTexture> FromImage(
-		OaComputeEngine& InRt,
+		OaContext& InContext,
+		const OaImage& InImage);
+	[[nodiscard]] static OaResult<OaTexture> FromImage(
+		OaEngine& InRt,
 		const OaImage& InImage);
 
 	// ── Operator overloading ──────────────────────────────────────────
@@ -130,6 +139,49 @@ struct OaTexture {
 	// Unary negation
 	[[nodiscard]] OaTexture operator-() const;
 };
+
+
+// Stateless buffer-backed texture operations. Presentation of image-backed
+// textures remains an OaPresenter responsibility.
+
+struct OaClearColor {
+	OaF32 R = 0.0F;
+	OaF32 G = 0.0F;
+	OaF32 B = 0.0F;
+	OaF32 A = 1.0F;
+};
+
+struct OaRect2D {
+	OaI32 X = 0;
+	OaI32 Y = 0;
+	OaI32 W = 0;
+	OaI32 H = 0;
+
+	[[nodiscard]] bool IsEmpty() const noexcept { return W <= 0 or H <= 0; }
+};
+
+struct OaBlitDesc {
+	const OaTexture* Src = nullptr;
+	const OaTexture* Dst = nullptr;
+	OaFilter Filter = OaFilter::Linear;
+	OaRect2D SrcRect = {};
+	OaRect2D DstRect = {};
+};
+
+namespace OaFnTexture {
+	[[nodiscard]] OaStatus Blit(
+		OaContext& InContext,
+		const OaBlitDesc& InDesc);
+	[[nodiscard]] OaStatus Blit(const OaBlitDesc& InDesc);
+
+	[[nodiscard]] OaStatus Clear(
+		OaContext& InContext,
+		const OaTexture& InTarget,
+		OaClearColor InColor);
+	[[nodiscard]] OaStatus Clear(
+		const OaTexture& InTarget,
+		OaClearColor InColor);
+}
 
 
 // ─── OaImagePlanes ────────────────────────────────────────────────────────────
@@ -163,13 +215,13 @@ struct OaImagePlanes {
 	// 4-channel files → RGBA (ChannelCount=4).
 	// HDR (.hdr / .exr) → planar F32.  Synchronous (transfer completes on return).
 	[[nodiscard]] static OaResult<OaImagePlanes> LoadFile(
-		OaComputeEngine& InRt,
+		OaEngine& InRt,
 		OaStringView       InPath);
 
 	// Upload caller-provided planes.  InPlanes and InDtypes must have the same
 	// length (1–4).  Each span is W*H * sizeof(dtype) bytes.  Synchronous.
 	[[nodiscard]] static OaResult<OaImagePlanes> FromPlanes(
-		OaComputeEngine&                 InRt,
+		OaEngine&                 InRt,
 		OaSpan<const OaSpan<const OaU8>>   InPlanes,
 		OaSpan<const OaImageDtype>         InDtypes,
 		OaI32                              InW,
@@ -177,7 +229,7 @@ struct OaImagePlanes {
 
 	// Free all plane buffers and deregister from the bindless heap.
 	// Safe to call on invalid / partially-initialised instances.
-	void Destroy(OaComputeEngine& InRt);
+	void Destroy(OaEngine& InRt);
 
 	// ── OaMatrix bridge ───────────────────────────────────────────────
 	// Convert planar image → [1, C, H, W] F32 NCHW OaMatrix.
@@ -187,7 +239,7 @@ struct OaImagePlanes {
 	// Wrap a [1, C, H, W] OaMatrix as OaImagePlanes without copying.
 	// One OaVkBuffer slice per channel; dtype is inferred from matrix dtype.
 	[[nodiscard]] static OaResult<OaImagePlanes> FromMatrix(
-		OaComputeEngine& InRt,
+		OaEngine& InRt,
 		const OaMatrix& InMatrix);
 
 	// ── Operator overloading ──────────────────────────────────────────
@@ -233,11 +285,11 @@ struct OaImagePlanes {
 // becomes a deprecated alias. OaTexture's name is preserved either way.
 //
 // Lifecycle: ImGui descriptor pool is engine-owned (ImGuiPool_ on
-// OaGraphicsEngine). Registration on construction, deferred-free
+// OaPresenter). Registration on construction, deferred-free
 // unregistration on destruction (frame-in-flight may still reference the
 // descriptor set — same dance ImGui's font texture already does).
 
-class OaGraphicsEngine;
+class OaPresenter;
 
 class OaUiImage {
 public:

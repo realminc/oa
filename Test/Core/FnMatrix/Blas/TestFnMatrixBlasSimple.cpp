@@ -7,16 +7,16 @@
 #include <vector>
 #include <iostream>
 
-static OaComputeEngine* GRt = nullptr;
+static OaEngine* GRt = nullptr;
 
 class TestFnMatrixBlasSimple : public ::testing::Test {
 protected:
 	static void SetUpTestSuite() {
 		OaEngineConfig cfg{};
 		cfg.AppName = "TestFnMatrixBlasSimple";
-		auto r = OaComputeEngine::Create(cfg);
+		auto r = OaEngine::Create(cfg);
 		ASSERT_TRUE(r.IsOk()) << r.GetStatus().GetMessage();
-		static OaUniquePtr<OaComputeEngine> rt = std::move(*r);
+		static OaUniquePtr<OaEngine> rt = std::move(*r);
 		GRt = rt.get();
 	}
 };
@@ -42,7 +42,7 @@ TEST_VK(TestFnMatrixBlasSimple, MatMul_2x2_Manual) {
 	std::cout << "Input B (row-major): [" << b_data[0] << ", " << b_data[1] << "; "
 	          << b_data[2] << ", " << b_data[3] << "]\n";
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto c = OaFnMatrix::MatMulNt(a, b);
 	
 	std::vector<float> c_got(4);
@@ -82,7 +82,7 @@ TEST_VK(TestFnMatrixBlasSimple, MatMul_2x3_3x2) {
 	std::cout << "B[N=2,K=3] (B_std transposed): [" << b_data[0] << "," << b_data[1] << "," << b_data[2] << "; "
 	          << b_data[3] << "," << b_data[4] << "," << b_data[5] << "]\n";
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto c = OaFnMatrix::MatMulNt(a, b);
 	
 	std::vector<float> c_got(4);

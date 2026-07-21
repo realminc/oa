@@ -9,16 +9,16 @@
 #include <numeric>
 #include <vector>
 
-static OaComputeEngine* GRt = nullptr;
+static OaEngine* GRt = nullptr;
 
 class TestFnMatrixShapeManual : public ::testing::Test {
 protected:
 	static void SetUpTestSuite() {
 		OaEngineConfig cfg{};
 		cfg.AppName = "TestFnMatrixShapeManual";
-		auto r = OaComputeEngine::Create(cfg);
+		auto r = OaEngine::Create(cfg);
 		ASSERT_TRUE(r.IsOk()) << r.GetStatus().GetMessage();
-		static OaUniquePtr<OaComputeEngine> rt = std::move(*r);
+		static OaUniquePtr<OaEngine> rt = std::move(*r);
 		GRt = rt.get();
 	}
 };
@@ -45,7 +45,7 @@ TEST_VK(TestFnMatrixShapeManual, Transpose_2D_Simple) {
 	
 	auto a = CreateMatrixFromHost(data, OaMatrixShape{M, N});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto transposed = OaFnMatrix::Transpose(a, 0, 1);  // Transpose dims 0 and 1
 	
 	// Check shape
@@ -80,7 +80,7 @@ TEST_VK(TestFnMatrixShapeManual, Transpose_2D_Square) {
 	
 	auto a = CreateMatrixFromHost(data, OaMatrixShape{N, N});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto transposed = OaFnMatrix::Transpose(a, 0, 1);
 	
 	// Expected: diagonal unchanged, off-diagonal swapped
@@ -112,7 +112,7 @@ TEST_VK(TestFnMatrixShapeManual, Transpose_3D) {
 	
 	auto a = CreateMatrixFromHost(data, OaMatrixShape{B, M, N});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto transposed = OaFnMatrix::Transpose(a, 1, 2);  // Swap dims 1 and 2
 	
 	// Check shape
@@ -151,7 +151,7 @@ TEST_VK(TestFnMatrixShapeManual, Transpose_Identity) {
 	
 	auto a = CreateMatrixFromHost(data, OaMatrixShape{M, N});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto transposed = OaFnMatrix::Transpose(a, 0, 1);
 	auto double_transposed = OaFnMatrix::Transpose(transposed, 0, 1);
 	
@@ -178,7 +178,7 @@ TEST_VK(TestFnMatrixShapeManual, Concat_1D_Simple) {
 	auto b = CreateMatrixFromHost(data2, OaMatrixShape{2});
 	auto c = CreateMatrixFromHost(data3, OaMatrixShape{4});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	OaVec<OaMatrix> inputs = {a, b, c};
 	auto concatenated = OaFnMatrix::Concat(OaSpan<OaMatrix>(inputs), 0);
 	
@@ -203,7 +203,7 @@ TEST_VK(TestFnMatrixShapeManual, Concat_2D_Rows) {
 	auto a = CreateMatrixFromHost(data1, OaMatrixShape{2, N});
 	auto b = CreateMatrixFromHost(data2, OaMatrixShape{1, N});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	OaVec<OaMatrix> inputs = {a, b};
 	auto concatenated = OaFnMatrix::Concat(OaSpan<OaMatrix>(inputs), 0);
 	
@@ -234,7 +234,7 @@ TEST_VK(TestFnMatrixShapeManual, Concat_2D_Cols) {
 	auto a = CreateMatrixFromHost(data1, OaMatrixShape{M, 2});
 	auto b = CreateMatrixFromHost(data2, OaMatrixShape{M, 1});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	OaVec<OaMatrix> inputs = {a, b};
 	auto concatenated = OaFnMatrix::Concat(OaSpan<OaMatrix>(inputs), 1);
 	
@@ -265,7 +265,7 @@ TEST_VK(TestFnMatrixShapeManual, Split_1D_Equal) {
 	
 	auto a = CreateMatrixFromHost(data, OaMatrixShape{6});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	OaVec<OaI64> sizes = {2, 2, 2};
 	auto splits = OaFnMatrix::Split(a, OaSpan<OaI64>(sizes), 0);
 	
@@ -295,7 +295,7 @@ TEST_VK(TestFnMatrixShapeManual, Split_1D_Unequal) {
 	
 	auto a = CreateMatrixFromHost(data, OaMatrixShape{7});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	OaVec<OaI64> sizes = {3, 1, 3};
 	auto splits = OaFnMatrix::Split(a, OaSpan<OaI64>(sizes), 0);
 	
@@ -333,7 +333,7 @@ TEST_VK(TestFnMatrixShapeManual, Split_2D_Rows) {
 	
 	auto a = CreateMatrixFromHost(data, OaMatrixShape{4, N});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	OaVec<OaI64> sizes = {1, 2, 1};
 	auto splits = OaFnMatrix::Split(a, OaSpan<OaI64>(sizes), 0);
 	
@@ -366,7 +366,7 @@ TEST_VK(TestFnMatrixShapeManual, Permute_3D_Simple) {
 
 	auto a = CreateMatrixFromHost(data, OaMatrixShape{B, H, W});
 
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	OaVec<OaI32> dims = {2, 0, 1};  // W, B, H
 	auto permuted = a.Permute(OaSpan<const OaI32>(dims));
 
@@ -406,7 +406,7 @@ TEST_VK(TestFnMatrixShapeManual, Permute_4D_NCHW_to_NHWC) {
 	
 	auto a = CreateMatrixFromHost(data, OaMatrixShape{N, C, H, W});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	OaVec<OaI32> dims = {0, 2, 3, 1};  // N, H, W, C
 	auto permuted = a.Permute(OaSpan<const OaI32>(dims));
 	
@@ -425,7 +425,7 @@ TEST_VK(TestFnMatrixShapeManual, Permute_Identity) {
 	
 	auto a = CreateMatrixFromHost(data, OaMatrixShape{B, H, W});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	OaVec<OaI32> dims = {0, 1, 2};  // Identity
 	auto permuted = a.Permute(OaSpan<const OaI32>(dims));
 	
@@ -448,7 +448,7 @@ TEST_VK(TestFnMatrixShapeManual, Squeeze_SingleDim) {
 	// Shape: [1, 4] -> squeeze dim 0 -> [4]
 	auto a = CreateMatrixFromHost(data, OaMatrixShape{1, 4});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto squeezed = a.Squeeze(0);
 	
 	EXPECT_EQ(squeezed.GetShape().Rank, 1);
@@ -469,7 +469,7 @@ TEST_VK(TestFnMatrixShapeManual, Squeeze_MiddleDim) {
 	// Shape: [2, 1, 3] -> squeeze dim 1 -> [2, 3]
 	auto a = CreateMatrixFromHost(data, OaMatrixShape{2, 1, 3});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto squeezed = a.Squeeze(1);
 	
 	EXPECT_EQ(squeezed.GetShape().Rank, 2);
@@ -491,7 +491,7 @@ TEST_VK(TestFnMatrixShapeManual, Squeeze_LastDim) {
 	// Shape: [3, 1] -> squeeze dim 1 -> [3]
 	auto a = CreateMatrixFromHost(data, OaMatrixShape{3, 1});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto squeezed = a.Squeeze(1);
 	
 	EXPECT_EQ(squeezed.GetShape().Rank, 1);
@@ -509,7 +509,7 @@ TEST_VK(TestFnMatrixShapeManual, Unsqueeze_Front) {
 	// Shape: [4] -> unsqueeze dim 0 -> [1, 4]
 	auto a = CreateMatrixFromHost(data, OaMatrixShape{4});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto unsqueezed = a.Unsqueeze(0);
 	
 	EXPECT_EQ(unsqueezed.GetShape().Rank, 2);
@@ -531,7 +531,7 @@ TEST_VK(TestFnMatrixShapeManual, Unsqueeze_Middle) {
 	// Shape: [2, 3] -> unsqueeze dim 1 -> [2, 1, 3]
 	auto a = CreateMatrixFromHost(data, OaMatrixShape{2, 3});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto unsqueezed = a.Unsqueeze(1);
 	
 	EXPECT_EQ(unsqueezed.GetShape().Rank, 3);
@@ -554,7 +554,7 @@ TEST_VK(TestFnMatrixShapeManual, Unsqueeze_End) {
 	// Shape: [3] -> unsqueeze dim 1 -> [3, 1]
 	auto a = CreateMatrixFromHost(data, OaMatrixShape{3});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto unsqueezed = a.Unsqueeze(1);
 	
 	EXPECT_EQ(unsqueezed.GetShape().Rank, 2);
@@ -568,7 +568,7 @@ TEST_VK(TestFnMatrixShapeManual, Unsqueeze_Squeeze_RoundTrip) {
 	
 	auto a = CreateMatrixFromHost(data, OaMatrixShape{4});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto unsqueezed = a.Unsqueeze(0);  // [4] -> [1, 4]
 	auto squeezed = unsqueezed.Squeeze(0);  // [1, 4] -> [4]
 	

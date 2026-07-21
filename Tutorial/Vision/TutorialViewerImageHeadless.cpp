@@ -44,13 +44,13 @@ int main(int argc, char** argv) {
 	cfg.PresentationMode = OaPresentationMode::None;
 	cfg.RegisterAsGlobal = true;
 
-	auto engineResult = OaComputeEngine::Create(cfg);
+	auto engineResult = OaEngine::Create(cfg);
 	if (not engineResult.IsOk()) {
-		std::fprintf(stderr, "OaComputeEngine::Create failed: %s\n",
+		std::fprintf(stderr, "OaEngine::Create failed: %s\n",
 			engineResult.GetStatus().ToString().c_str());
 		return 1;
 	}
-	OaComputeEngine& engine = *engineResult.GetValue();
+	OaEngine& engine = *engineResult.GetValue();
 
 	OA_LOG_INFO(OaLogComponent::App,
 		"TutorialViewerImageHeadless: %s → %s", inPath, outPath);
@@ -75,15 +75,15 @@ int main(int argc, char** argv) {
 
 	std::printf("OK: %dx%d  %s → %s\n", tex.Width, tex.Height, inPath, outPath);
 
-	// ─── Step 3b.2 smoke: RecordBlit + RecordClear through OaContext ─────────
-	// Both go through the unified context graph (no immediate dispatch) and
+	// ─── Texture operation smoke ─────────────────────────────────────────────
+	// Both record through the texture domain API (no immediate dispatch) and
 	// execute alongside any pending compute work in one ctx.Execute(). Produces
 	// two extra PNGs:
 	//
-	//   /tmp/oa_viewport_batch_blit.png   — clone of the source via RecordBlit
+	//   /tmp/oa_viewport_batch_blit.png   — clone of the source via Blit
 	//                                       (round-trip: should byte-equal the
 	//                                       original outPath save above)
-	//   /tmp/oa_viewport_batch_clear.png  — solid red via RecordClear
+	//   /tmp/oa_viewport_batch_clear.png  — solid red via Clear
 	std::vector<OaU8> zeros(static_cast<size_t>(tex.Width) *
 	                        static_cast<size_t>(tex.Height) * 4U, 0);
 	auto cloneR = OaTexture::FromPixels(engine, OaSpan<const OaU8>(zeros.data(), zeros.size()),
@@ -97,32 +97,56 @@ int main(int argc, char** argv) {
 	OaTexture clone = cloneR.GetValue();
 
 	auto& ctx = OaContext::GetDefault();
-	{
-		OaContext::Scope scope(ctx);
-		OaBlitDesc desc;
-		desc.Src = &tex;
-		desc.Dst = &clone;
-		ctx.RecordBlit(desc);
-	}  // scope dtor: ctx.Execute() + ctx.Sync()
+	OaBlitDesc desc;
+	desc.Src = &tex;
+	desc.Dst = &clone;
+	if (auto status = OaFnTexture::Blit(ctx, desc); not status.IsOk()) {
+		std::fprintf(stderr, "OaFnTexture::Blit failed: %s\n",
+			status.ToString().c_str());
+		clone.Destroy(engine);
+		tex.Destroy(engine);
+		return 1;
+	}
+	auto blitSubmitted = ctx.Submit();
+	if (not blitSubmitted.IsOk()
+		or not ctx.Wait(blitSubmitted.GetValue()).IsOk()) {
+		std::fprintf(stderr, "OaFnTexture::Blit submission failed\n");
+		clone.Destroy(engine);
+		tex.Destroy(engine);
+		return 1;
+	}
 
 	if (auto s = OaFnImage::SaveFile(engine, clone, "/tmp/oa_viewport_batch_blit.png");
 		not s.IsOk()) {
 		std::fprintf(stderr, "SaveFile(blit) failed: %s\n", s.ToString().c_str());
 	} else {
-		std::printf("OK: RecordBlit → /tmp/oa_viewport_batch_blit.png\n");
+		std::printf("OK: Blit → /tmp/oa_viewport_batch_blit.png\n");
 	}
 
-	{
-		OaContext::Scope scope(ctx);
-		// Solid red, full opacity.
-		ctx.RecordClear(clone, OaClearColor{ 0.95F, 0.10F, 0.10F, 1.0F });
+	// Solid red, full opacity.
+	if (auto status = OaFnTexture::Clear(
+			ctx, clone, OaClearColor{0.95F, 0.10F, 0.10F, 1.0F});
+		not status.IsOk()) {
+		std::fprintf(stderr, "OaFnTexture::Clear failed: %s\n",
+			status.ToString().c_str());
+		clone.Destroy(engine);
+		tex.Destroy(engine);
+		return 1;
+	}
+	auto clearSubmitted = ctx.Submit();
+	if (not clearSubmitted.IsOk()
+		or not ctx.Wait(clearSubmitted.GetValue()).IsOk()) {
+		std::fprintf(stderr, "OaFnTexture::Clear submission failed\n");
+		clone.Destroy(engine);
+		tex.Destroy(engine);
+		return 1;
 	}
 
 	if (auto s = OaFnImage::SaveFile(engine, clone, "/tmp/oa_viewport_batch_clear.png");
 		not s.IsOk()) {
 		std::fprintf(stderr, "SaveFile(clear) failed: %s\n", s.ToString().c_str());
 	} else {
-		std::printf("OK: RecordClear(red) → /tmp/oa_viewport_batch_clear.png\n");
+		std::printf("OK: Clear(red) → /tmp/oa_viewport_batch_clear.png\n");
 	}
 
 	clone.Destroy(engine);

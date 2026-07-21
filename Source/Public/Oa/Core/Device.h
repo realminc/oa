@@ -105,7 +105,7 @@ enum class OaMemoryLocation : OaU8 {
 	}
 }
 
-// Device memory budget for ML / tuning (runtime TU when OaComputeEngine is linked).
+// Device memory budget for ML / tuning (runtime TU when OaEngine is linked).
 // VkDiscrete / VkIntegrated / VkVirtualGpu: device-local VRAM capacity from Vulkan heaps.
 // VkCpu: host physical RAM (CPU path uses system memory, not VRAM).
 // VkOther (incl. future NPU-class devices): not queryable here — zeros.

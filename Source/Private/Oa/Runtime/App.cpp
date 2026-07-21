@@ -20,32 +20,48 @@ int OaComputeApp::Main(int argc, char** argv) {
 #endif
 
 	int setupResult = Setup(argc, argv);
-	if (setupResult != 0 || !IsRunning) {
+	if (setupResult not_eq 0 or not IsRunning) {
 		return setupResult;
 	}
 
 	EngineConfig_.Extensions = Extensions_;
 	// Initialize the pinned engine (RtStorage_) in place — no build-then-move.
 	auto engineStatus = RtStorage_->InitInPlace(EngineConfig_);
-	if (!engineStatus) {
+	if (not engineStatus) {
 		OA_LOG_ERROR(OaLogComponent::Core, "Engine init failed: %s", engineStatus.ToString().c_str());
+		auto closeStatus = Rt.Close();
+		if (not closeStatus) {
+			OA_LOG_ERROR(OaLogComponent::Core,
+				"Engine close after init failure failed: %s",
+				closeStatus.ToString().c_str());
+		}
 		return 1;
 	}
 
+	int exitCode = 0;
 	auto initStatus = Init();
-	if (!initStatus) {
-		OA_LOG_ERROR(OaLogComponent::Core, "App init failed: %s",	initStatus.ToString().c_str());
-		return 1;
-	}
-
-	while (IsRunning) {
-		auto status = Tick();
-		if (!status) {
-			OA_LOG_ERROR(OaLogComponent::Core, "Tick error: %s", status.ToString().c_str());
-			break;
+	if (not initStatus) {
+		OA_LOG_ERROR(OaLogComponent::Core,
+			"App init failed: %s", initStatus.ToString().c_str());
+		exitCode = 1;
+	} else {
+		while (IsRunning) {
+			auto tickStatus = Tick();
+			if (not tickStatus) {
+				OA_LOG_ERROR(OaLogComponent::Core,
+					"Tick error: %s", tickStatus.ToString().c_str());
+				exitCode = 1;
+				break;
+			}
 		}
 	}
 
 	Shutdown();
-	return 0;
+	auto closeStatus = Rt.Close();
+	if (not closeStatus) {
+		OA_LOG_ERROR(OaLogComponent::Core,
+			"Engine close failed: %s", closeStatus.ToString().c_str());
+		exitCode = 1;
+	}
+	return exitCode;
 }

@@ -15,3 +15,30 @@ slang_path = "Core/Blas/Gemm"
 log_component = "ML"
 notes = "Matrix multiplication: B is [N,K] and Out = A @ Bᵀ (the OA weight convention, shared with Linear/attention; NOT PyTorch-standard A@B with B as [K,N]). For batched/standard A@B use Bmm. Router resolves precision at context execution."
 body = "manual_context"
+api_params = ["const OaMatrix& InA", "const OaMatrix& InB", "OaMatMulPrecision InPrecision = OaMatMulPrecision::Auto"]
+api_return = "OaMatrix"
+
+[ops.contract]
+input_kinds     = ["matrix", "matrix"]
+output_kinds    = ["matrix"]
+shape_rule      = "matmul_nt"
+dtype_rule      = "match_input"
+effects         = ["read_inputs", "write_outputs"]
+mutated_inputs  = []
+output_alias_inputs = [-1]
+control_flow    = "straight_line"
+differentiation = "reverse"
+lowering        = "gemm"
+
+[ops.python]
+args = ["a", "b", "precision"]
+doc = "Matrix multiplication C = A @ B^T using the OA weight-layout convention."
+
+[ops.autograd]
+grad_class = "OaGradMatMulNt"
+inputs = ["InA", "InB"]
+saved = ["InA", "InB"]
+formula = "manual:MatMulNt"
+attach = "standard"
+input_ranks = [2, 2]
+output_shape = true

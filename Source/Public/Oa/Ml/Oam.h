@@ -20,7 +20,13 @@
 // CONSTANTS
 
 constexpr OaU32  OAM_MAGIC         = 0x004D414F;  // "OAM\0"
-constexpr OaU32  OAM_VERSION       = 1;
+// v2 integrity-checks the complete file/section metadata through
+// FileHeader.Checksum in addition to the per-section payload hashes. These
+// non-cryptographic hashes detect accidental corruption; they do not establish
+// artifact authenticity. The loader remains compatible with v1 and verifies
+// its legacy XOR-of-section-hashes file checksum.
+constexpr OaU32  OAM_VERSION       = 2;
+constexpr OaU32  OAM_MIN_VERSION   = 1;
 constexpr OaUsize OAM_PAGE_SIZE    = 4096;
 constexpr OaUsize OAM_MAX_RANK     = 8;
 constexpr OaUsize OAM_MAX_NAME     = 128;
@@ -144,6 +150,7 @@ public:
 
 class OamModel {
 public:
+	OaU32                  FormatVersion = OAM_VERSION;
 	OamConfig               Config;
 	OaVec<OaU8>             ArchConfig;
 
@@ -157,6 +164,7 @@ public:
 	OaVec<OaF32>            AdamM;
 	OaVec<OaF32>            AdamV;
 	OaVec<OaF32>            MuonM;  // Muon momentum (Muon-only or MuonAdamW hybrid)
+	OaBool                   OptimizerPresent = false;
 
 	OamProgress             Progress = {};
 
@@ -165,7 +173,9 @@ public:
 
 	[[nodiscard]] bool HasWeights()    const { return !WeightBlob.Empty(); }
 	[[nodiscard]] bool HasState()      const { return !StateBlob.Empty(); }
-	[[nodiscard]] bool HasOptimizer()  const { return !AdamM.Empty() || !MuonM.Empty(); }
+	[[nodiscard]] bool HasOptimizer()  const {
+		return OptimizerPresent || !AdamM.Empty() || !AdamV.Empty() || !MuonM.Empty();
+	}
 	[[nodiscard]] bool HasSpirvCache() const { return !SpirvBlob.Empty(); }
 
 	[[nodiscard]] const OamTensorEntry* FindWeight(const char* InName) const;
@@ -196,12 +206,28 @@ inline void OamSetMuonNumParams(OamOptimizerHeader& InOutHdr, OaU64 InNum) {
 	std::memcpy(InOutHdr.Reserved, &InNum, sizeof(InNum));
 }
 
+[[nodiscard]] inline bool OamOptimizerTypeIs(
+	const OamOptimizerHeader& InHdr, const char* InType)
+{
+	return std::strncmp(InHdr.Type, InType, sizeof(InHdr.Type)) == 0;
+}
+
+[[nodiscard]] inline bool OamIsKnownOptimizerType(
+	const OamOptimizerHeader& InHdr)
+{
+	return OamOptimizerTypeIs(InHdr, "SGD")
+		or OamOptimizerTypeIs(InHdr, "Adam")
+		or OamOptimizerTypeIs(InHdr, "AdamW")
+		or OamOptimizerTypeIs(InHdr, "Muon")
+		or OamOptimizerTypeIs(InHdr, "MuonAdamW");
+}
+
 [[nodiscard]] inline bool OamIsMuonAdamWType(const OamOptimizerHeader& InHdr) {
-	return std::strncmp(InHdr.Type, "MuonAdamW", 10) == 0;
+	return OamOptimizerTypeIs(InHdr, "MuonAdamW");
 }
 
 [[nodiscard]] inline bool OamIsMuonOnlyType(const OamOptimizerHeader& InHdr) {
-	return std::strncmp(InHdr.Type, "Muon", 4) == 0 && !OamIsMuonAdamWType(InHdr);
+	return OamOptimizerTypeIs(InHdr, "Muon");
 }
 
 // UTILITIES

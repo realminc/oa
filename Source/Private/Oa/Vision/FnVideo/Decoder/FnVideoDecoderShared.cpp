@@ -71,7 +71,7 @@ OaStatus OaVideoDecoder::UploadBitstream(const OaSpan<const OaU8>& InBitstream)
 	BitstreamSlot& slot = BitstreamRing_[CurrentBitstreamIndex_];
 	if (TimelineSem_.Semaphore != nullptr && slot.UseValue > 0) {
 		OA_RETURN_IF_ERROR(TimelineSem_.Wait(
-			static_cast<OaComputeEngine&>(*Rt_).Device,
+			Rt_->Device,
 			slot.UseValue));
 	}
 
@@ -81,7 +81,7 @@ OaStatus OaVideoDecoder::UploadBitstream(const OaSpan<const OaU8>& InBitstream)
 		return OaStatus::Error(OaStatusCode::InvalidArgument, "Video bitstream is empty");
 	}
 
-	auto& vkEngine = static_cast<OaComputeEngine&>(*Rt_);
+	auto& vkEngine = *Rt_;
 	auto allocator = static_cast<OaVmaAllocator>(vkEngine.Allocator.Allocator);
 
 	if (slot.Buffer.GetCapacity() < requiredSize) {

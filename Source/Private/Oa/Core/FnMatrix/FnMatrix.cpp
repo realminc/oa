@@ -22,7 +22,9 @@
 
 #include <Oa/Core/Matrix.h>
 #include <Oa/Core/FnMatrix.h>
+#include <Oa/Core/Log.h>
 #include <Oa/Core/Memory.h>
+#include <Oa/Core/Operation.h>
 #include <Oa/Core/Status.h>
 #include <Oa/Core/Types.h>
 #include <Oa/Runtime/Bindless.h>
@@ -114,13 +116,32 @@ OaMatrix OaMatrix::To(OaU32 InNodeIndex) const {
 }
 
 // In-Place Operations
+static OaResult<OaSemanticOperationId> RecordAddInPlaceSemantic(
+	OaContext& InContext,
+	OaMatrix& InSelf,
+	const OaMatrix& InOther)
+{
+	return InContext.RecordOperation(
+		OaOperationRegistry::AddInPlace,
+		{&InSelf, &InOther}, {&InSelf});
+}
+
 void OaFnMatrix::AddInPlace(OaMatrix& InSelf, const OaMatrix& InOther) {
 	auto& ctx = OaContext::GetDefault();
 	if (InSelf.GetShape() == InOther.GetShape()) {
+		const auto semantic = RecordAddInPlaceSemantic(ctx, InSelf, InOther);
+		if (not semantic.IsOk()) {
+			OA_LOG_ERROR(OaLogComponent::Core,
+				"AddInPlace semantic recording failed: %s",
+				semantic.GetStatus().GetMessage().c_str());
+			return;
+		}
 		OaU32 n = static_cast<OaU32>(InSelf.NumElements());
 		struct { OaU32 Count; } push{n};
 		OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Read, OaBufferAccess::Write};
-		ctx.Add("Add", {&InSelf, &InOther, &InSelf}, access, &push, sizeof(push), DivCeil(n, 256));
+		ctx.Add("Add", {&InSelf, &InOther, &InSelf}, access, &push, sizeof(push),
+			DivCeil(n, 256), 1, 1, OaOperationRegistry::AddInPlace.Name, 0,
+			OaOperationRegistry::AddInPlace.Hash, 0, 0, semantic.GetValue());
 		return;
 	}
 	auto bcastResult = InSelf.Shape_.Broadcast(InOther.Shape_);
@@ -145,8 +166,18 @@ void OaFnMatrix::AddInPlace(OaMatrix& InSelf, const OaMatrix& InOther) {
 		push.AStrides[d] = static_cast<OaU32>(aStrides[d]);
 		push.BStrides[d] = static_cast<OaU32>(bStrides[d]);
 	}
+	const auto semantic = RecordAddInPlaceSemantic(ctx, InSelf, InOther);
+	if (not semantic.IsOk()) {
+		OA_LOG_ERROR(OaLogComponent::Core,
+			"AddInPlace semantic recording failed: %s",
+			semantic.GetStatus().GetMessage().c_str());
+		return;
+	}
 	OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Read, OaBufferAccess::Write};
-	ctx.Add("AddBcast", {&InSelf, &InOther, &InSelf}, access, &push, sizeof(push), DivCeil(push.Total, 256));
+	ctx.Add("AddBcast", {&InSelf, &InOther, &InSelf}, access, &push,
+		sizeof(push), DivCeil(push.Total, 256), 1, 1,
+		OaOperationRegistry::AddInPlace.Name, 0,
+		OaOperationRegistry::AddInPlace.Hash, 0, 0, semantic.GetValue());
 }
 
 void OaFnMatrix::ScaleInPlace(OaMatrix& InSelf, OaF32 InScalar) {
@@ -235,38 +266,82 @@ void OaFnMatrix::MultiFill(OaSpan<OaMatrix> InTensors, OaF32 InValue) {
 
 void OaFnMatrix::MultiAdd(OaSpan<OaMatrix> InDst, OaSpan<const OaMatrix> InSrc) {
 	auto& ctx = OaContext::GetDefault();
-	OaU32 N = static_cast<OaU32>(InDst.Size());
-	if (N == 0 || N != static_cast<OaU32>(InSrc.Size())) return;
-	if (N == 1) { AddInPlace(InDst[0], InSrc[0]); return; }
-	if (N > 4) N = 4;
-	// User push — buffer indices are auto-prepended by the runtime.
-	struct Push {
-		OaU32 count0;
-		OaU32 count1;
-		OaU32 count2;
-		OaU32 count3;
-	} push{};
-	OaU32 maxCount = 0;
-	OaVkBuffer bufs[8];
-	for (OaU32 i = 0; i < N; ++i) {
-		bufs[i * 2 + 0] = InDst[i].GetVkBuffer();
-		bufs[i * 2 + 1] = InSrc[i].GetVkBuffer();
-		OaU32 c = static_cast<OaU32>(InDst[i].NumElements());
-		if (c > maxCount) maxCount = c;
-		if (i == 0) push.count0 = c;
-		if (i == 1) push.count1 = c;
-		if (i == 2) push.count2 = c;
-		if (i == 3) push.count3 = c;
+	const OaU32 total = static_cast<OaU32>(InDst.Size());
+	if (total == 0U) return;
+	if (total != static_cast<OaU32>(InSrc.Size())) {
+		OA_LOG_ERROR(OaLogComponent::Core,
+			"MultiAdd requires matching destination/source counts");
+		return;
 	}
-	if (N <= 1) push.count1 = 0;
-	if (N <= 2) push.count2 = 0;
-	if (N <= 3) push.count3 = 0;
-	OaBufferAccess access[8] = {};
-	for (OaU32 i = 0; i < N; ++i) {
-		access[i * 2 + 0] = OaBufferAccess::ReadWrite;
-		access[i * 2 + 1] = OaBufferAccess::Read;
+
+	// The fused shader hardcodes eight bindless indices, so only complete groups
+	// of four pairs have the declared push layout. Remainders use the direct
+	// lowering, which also preserves broadcast behavior.
+	OaU32 index = 0U;
+	while (index < total) {
+		OaBool canFuse = index + 4U <= total;
+		for (OaU32 pair = 0U; pair < 4U and canFuse; ++pair) {
+			canFuse = InDst[index + pair].GetShape()
+				== InSrc[index + pair].GetShape();
+		}
+		if (not canFuse) {
+			AddInPlace(InDst[index], InSrc[index]);
+			++index;
+			continue;
+		}
+
+		struct Push {
+			OaU32 Count0;
+			OaU32 Count1;
+			OaU32 Count2;
+			OaU32 Count3;
+		} push{};
+		OaU32* counts[] = {
+			&push.Count0, &push.Count1, &push.Count2, &push.Count3,
+		};
+		OaU32 maxCount = 0U;
+		const OaMatrix* matrices[8];
+		OaBufferAccess access[8];
+		OaSemanticOperationId operations[4];
+		for (OaU32 pair = 0U; pair < 4U; ++pair) {
+			auto& dst = InDst[index + pair];
+			const auto& src = InSrc[index + pair];
+			const auto semantic = RecordAddInPlaceSemantic(ctx, dst, src);
+			if (not semantic.IsOk()) {
+				OA_LOG_ERROR(OaLogComponent::Core,
+					"MultiAdd semantic recording failed: %s",
+					semantic.GetStatus().GetMessage().c_str());
+				return;
+			}
+			operations[pair] = semantic.GetValue();
+			matrices[pair * 2U] = &dst;
+			matrices[pair * 2U + 1U] = &src;
+			access[pair * 2U] = OaBufferAccess::ReadWrite;
+			access[pair * 2U + 1U] = OaBufferAccess::Read;
+			*counts[pair] = static_cast<OaU32>(dst.NumElements());
+			maxCount = OaStdMax(maxCount, *counts[pair]);
+		}
+
+		OaComputeDispatchDesc dispatch;
+		dispatch.Operation = "MultiMatrixAdd";
+		dispatch.SemanticOperations = operations;
+		dispatch.Kernel = "MultiMatrixAdd";
+		dispatch.Access = access;
+		dispatch.PushData = &push;
+		dispatch.PushSize = sizeof(push);
+		dispatch.GroupsX = DivCeil(maxCount, 256U);
+		const auto status = ctx.Record({
+			.Dispatch = dispatch,
+			.Matrices = matrices,
+		});
+		if (not status.IsOk()) {
+			OA_LOG_ERROR(OaLogComponent::Core,
+				"MultiAdd fused lowering failed: %s",
+				status.GetMessage().c_str());
+			return;
+		}
+		index += 4U;
 	}
-	ctx.Add("MultiMatrixAdd", OaSpan<OaVkBuffer>(bufs, N * 2), access, &push, sizeof(push), DivCeil(maxCount, 256));
 }
 
 // SSM — Selective State-Space Scan

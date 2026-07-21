@@ -26,7 +26,7 @@ constexpr OaU64 kVramCapBytes = 1024ull * 1024ull * 1024ull;  // 1 GiB safety ca
 constexpr OaU64 kRssCapBytes  = 3072ull * 1024ull * 1024ull;  // 3 GiB host-RAM cap
 
 OaU64 UsedBytesNow() {
-	return OaComputeEngine::GetGlobal()->Allocator.GetStats().UsedBytes;
+	return OaEngine::GetGlobal()->Allocator.GetStats().UsedBytes;
 }
 
 // Resident host memory (RSS) in bytes, read from /proc/self/statm. This is what the
@@ -45,7 +45,7 @@ OaU64 RssBytesNow() {
 // and the live/block counts. A big (Block - Alloc) gap = fragmentation/pool slack;
 // a climbing AllocationCount/AllocationBytes = a genuine lifecycle leak.
 void PrintAllocBreakdown(OaI32 InStep, const char* InTag) {
-	const auto s = OaComputeEngine::GetGlobal()->Allocator.GetStats();
+	const auto s = OaEngine::GetGlobal()->Allocator.GetStats();
 	printf("  [step %d] %s VRAM alloc=%.1f MiB (count=%llu) block=%.1f MiB  |  host RSS=%.1f MiB\n",
 		InStep, InTag,
 		static_cast<double>(s.AllocationBytes) / (1024.0 * 1024.0),
@@ -329,7 +329,7 @@ TEST(AutogradLeak, GruTapeRealDims) {
 	const OaI64 rssGrowth = static_cast<OaI64>(RssBytesNow()) - static_cast<OaI64>(rssBaseline);
 	printf("[GruRealDims] host RSS growth after warmup: %+.2f MiB (VRAM live=%.1f MiB)\n",
 		static_cast<double>(rssGrowth) / (1024.0 * 1024.0),
-		static_cast<double>(OaComputeEngine::GetGlobal()->Allocator.GetStats().AllocationBytes)
+		static_cast<double>(OaEngine::GetGlobal()->Allocator.GetStats().AllocationBytes)
 			/ (1024.0 * 1024.0));
 	EXPECT_LT(rssGrowth, 128ll * 1024 * 1024)
 		<< "real-dims GRU HOST RAM grew " << rssGrowth << " bytes after warmup — host-side leak";
@@ -382,13 +382,13 @@ TEST(AutogradLeak, GruWorkingSetVsSeq) {
 			(void)OaContext::GetDefault().Execute();
 			(void)OaContext::GetDefault().Sync();
 			// Measure here: tape (and all saved activations) still alive.
-			peak = OaComputeEngine::GetGlobal()->Allocator.GetStats().AllocationBytes;
+			peak = OaEngine::GetGlobal()->Allocator.GetStats().AllocationBytes;
 			GuardRssOrAbort(step);
 		}
 		// After the loop the last tape is destroyed; read the resting set too.
 		(void)OaContext::GetDefault().Execute();
 		(void)OaContext::GetDefault().Sync();
-		const OaU64 resting = OaComputeEngine::GetGlobal()->Allocator.GetStats().AllocationBytes;
+		const OaU64 resting = OaEngine::GetGlobal()->Allocator.GetStats().AllocationBytes;
 		printf("  seq=%-3d  with-tape live = %7.1f MiB   resting = %6.1f MiB   per-timestep = %5.1f MiB\n",
 			seq, static_cast<double>(peak) / (1024.0 * 1024.0),
 			static_cast<double>(resting) / (1024.0 * 1024.0),

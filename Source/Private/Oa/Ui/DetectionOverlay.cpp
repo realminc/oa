@@ -116,7 +116,7 @@ void AppendLabel(
 } // namespace
 
 struct OaDetectionOverlay::Impl {
-	OaComputeEngine* Runtime = nullptr;
+	OaEngine* Runtime = nullptr;
 	OaDetectionOverlayConfig Config;
 	std::array<OverlaySlot, kOverlayRingSize> Slots;
 	OaI32 ActiveSlot = -1;
@@ -144,7 +144,7 @@ OaDetectionOverlay::~OaDetectionOverlay() {
 }
 
 OaResult<OaDetectionOverlay> OaDetectionOverlay::Create(
-	OaComputeEngine& InRuntime,
+	OaEngine& InRuntime,
 	const OaDetectionOverlayConfig& InConfig) {
 	if (InConfig.MaxDetections == 0 || InConfig.MaxGlyphs == 0) {
 		return OaStatus::InvalidArgument(

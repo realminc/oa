@@ -51,7 +51,7 @@ VkShaderModule CreateShaderModule(VkDevice InDevice, const OaSpvEntry& InSpv) {
 }
 
 OaResult<OaVkBuffer> CreateMappedRenderBuffer(
-	OaGraphicsEngine& InEngine,
+	OaEngine& InEngine,
 	OaU64 InSize,
 	VkBufferUsageFlags InUsage) {
 	VkBufferCreateInfo bufferInfo{};
@@ -88,7 +88,7 @@ OaResult<OaVkBuffer> CreateMappedRenderBuffer(
 } // namespace
 
 struct OaCanvasRenderer::Impl {
-	OaGraphicsEngine* Engine = nullptr;
+	OaEngine* Engine = nullptr;
 	VkDescriptorSetLayout DescriptorSetLayout = VK_NULL_HANDLE;
 	VkPipelineLayout PipelineLayout = VK_NULL_HANDLE;
 	VkPipelineLayout DetectionPipelineLayout = VK_NULL_HANDLE;
@@ -211,7 +211,7 @@ OaCanvasRenderer& OaCanvasRenderer::operator=(
 OaCanvasRenderer::~OaCanvasRenderer() { Destroy(); }
 
 OaStatus OaCanvasRenderer::Init(
-	OaGraphicsEngine& InEngine,
+	OaEngine& InEngine,
 	OaU32 InTargetWidth,
 	OaU32 InTargetHeight) {
 	Destroy();

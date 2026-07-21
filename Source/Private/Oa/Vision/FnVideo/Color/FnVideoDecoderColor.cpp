@@ -45,14 +45,9 @@ OaResult<OaVec<OaU8>> OaVideoDecoder::ReadbackLuma(const OaVideoFrame& InFrame)
 	if (!InFrame.Image || InFrame.Width == 0 || InFrame.Height == 0) {
 		return OaStatus::Error(OaStatusCode::InvalidArgument, "Invalid video frame for luma readback");
 	}
-	if (InFrame.ReadySemaphore != nullptr && InFrame.ReadySemaphore->Semaphore != nullptr
-		&& InFrame.ReadyValue > 0) {
-		OA_RETURN_IF_ERROR(InFrame.ReadySemaphore->Wait(
-			static_cast<OaComputeEngine&>(*Rt_).Device,
-			InFrame.ReadyValue));
-	}
+	OA_RETURN_IF_ERROR(InFrame.Ready.Wait());
 
-	auto& vkEngine = static_cast<OaComputeEngine&>(*Rt_);
+	auto& vkEngine = *Rt_;
 	auto allocator = static_cast<OaVmaAllocator>(vkEngine.Allocator.Allocator);
 	const OaU64 byteSize = static_cast<OaU64>(InFrame.Width) * InFrame.Height;
 
@@ -224,14 +219,9 @@ OaResult<OaVec<OaU8>> OaVideoDecoder::ReadbackNv12(const OaVideoFrame& InFrame) 
 	if (InFrame.Format != VK_FORMAT_G8_B8R8_2PLANE_420_UNORM) {
 		return OaStatus::Error(OaStatusCode::InvalidArgument, "ReadbackNv12 requires VK_FORMAT_G8_B8R8_2PLANE_420_UNORM");
 	}
-	if (InFrame.ReadySemaphore != nullptr && InFrame.ReadySemaphore->Semaphore != nullptr
-		&& InFrame.ReadyValue > 0) {
-		OA_RETURN_IF_ERROR(InFrame.ReadySemaphore->Wait(
-			static_cast<OaComputeEngine&>(*Rt_).Device,
-			InFrame.ReadyValue));
-	}
+	OA_RETURN_IF_ERROR(InFrame.Ready.Wait());
 
-	auto& vkEngine = static_cast<OaComputeEngine&>(*Rt_);
+	auto& vkEngine = *Rt_;
 	VkImage readbackImage = InFrame.Image;
 	OaU32 readbackLayer = InFrame.ArrayLayer;
 	bool isSampleStaging = false;
@@ -440,7 +430,7 @@ OaResult<OaVec<OaU8>> OaVideoDecoder::ReadbackRgba(const OaVideoFrame& InFrame)
 		return OaStatus::Error(OaStatusCode::InvalidArgument, "ReadbackRgba requires VK_FORMAT_R8G8B8A8_UNORM");
 	}
 
-	auto& vkEngine = static_cast<OaComputeEngine&>(*Rt_);
+	auto& vkEngine = *Rt_;
 	auto allocator = static_cast<OaVmaAllocator>(vkEngine.Allocator.Allocator);
 	const OaU64 byteSize = static_cast<OaU64>(InFrame.Width) * InFrame.Height * 4;
 
@@ -642,6 +632,101 @@ OaStatus OaVideoDecoder::RestoreDpbLayerToDecodeLayout(const OaVideoFrame& InFra
 	return RestoreDpbLayerToDecodeLayoutAfter(InFrame, nullptr, 0);
 }
 
+OaStatus OaVideoDecoder::ReleaseDpbLayerForComputeCopy(const OaVideoFrame& InFrame)
+{
+	if (!Rt_ || !CmdBuffers_[0] || InFrame.Image != Dpb_.GetImage()) {
+		return OaStatus::Ok();
+	}
+	const OaU32 layer = InFrame.ArrayLayer;
+	if (layer >= DpbImageLayouts_.Size()) {
+		return OaStatus::Error(OaStatusCode::InvalidArgument,
+			"DPB release requires a valid array layer");
+	}
+	if (DpbImageLayouts_[layer] == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL) {
+		return OaStatus::Ok();
+	}
+	if (DpbImageLayouts_[layer] != VK_IMAGE_LAYOUT_VIDEO_DECODE_DPB_KHR) {
+		return OaStatus::Error(OaStatusCode::FailedPrecondition,
+			"DPB release requires VIDEO_DECODE_DPB layout");
+	}
+
+	auto& vkEngine = *Rt_;
+	auto slot = AcquireVideoCmdSlot();
+	if (!slot.Status.IsOk()) {
+		return slot.Status;
+	}
+	VkCommandBufferBeginInfo beginInfo = {};
+	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+	VkResult result = vkBeginCommandBuffer(slot.cb, &beginInfo);
+	if (result != VK_SUCCESS) {
+		ReleaseVideoCmdSlot();
+		return OaStatus::Error(OaStatusCode::VulkanError,
+			"vkBeginCommandBuffer failed for DPB release");
+	}
+
+	// Producer-side layout transition. The following timeline signal makes the
+	// decode write and transition available to the compute-queue copy; therefore
+	// the destination synchronization scope is intentionally NONE.
+	VkImageMemoryBarrier2 barrier = {};
+	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+	barrier.srcStageMask = VK_PIPELINE_STAGE_2_VIDEO_DECODE_BIT_KHR;
+	barrier.srcAccessMask = VK_ACCESS_2_VIDEO_DECODE_WRITE_BIT_KHR;
+	barrier.dstStageMask = VK_PIPELINE_STAGE_2_NONE;
+	barrier.dstAccessMask = VK_ACCESS_2_NONE;
+	barrier.oldLayout = VK_IMAGE_LAYOUT_VIDEO_DECODE_DPB_KHR;
+	barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+	barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	barrier.image = Dpb_.GetImage();
+	barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	barrier.subresourceRange.baseMipLevel = 0;
+	barrier.subresourceRange.levelCount = 1;
+	barrier.subresourceRange.baseArrayLayer = layer;
+	barrier.subresourceRange.layerCount = 1;
+	VkDependencyInfo dependency = {};
+	dependency.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+	dependency.imageMemoryBarrierCount = 1;
+	dependency.pImageMemoryBarriers = &barrier;
+	vkCmdPipelineBarrier2(slot.cb, &dependency);
+
+	result = vkEndCommandBuffer(slot.cb);
+	if (result != VK_SUCCESS) {
+		ReleaseVideoCmdSlot();
+		return OaStatus::Error(OaStatusCode::VulkanError,
+			"vkEndCommandBuffer failed for DPB release");
+	}
+	const OaU64 signalValue = TimelineValue_ + 1;
+	VkSemaphoreSubmitInfo signalInfo = {};
+	signalInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+	signalInfo.semaphore = static_cast<VkSemaphore>(TimelineSem_.Semaphore);
+	signalInfo.value = signalValue;
+	signalInfo.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+	VkCommandBufferSubmitInfo commandInfo = {};
+	commandInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+	commandInfo.commandBuffer = slot.cb;
+	VkSubmitInfo2 submitInfo = {};
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+	submitInfo.commandBufferInfoCount = 1;
+	submitInfo.pCommandBufferInfos = &commandInfo;
+	submitInfo.signalSemaphoreInfoCount = 1;
+	submitInfo.pSignalSemaphoreInfos = &signalInfo;
+	result = vkQueueSubmit2(
+		static_cast<VkQueue>(vkEngine.Device.Queues.VideoDecodeQueue),
+		1,
+		&submitInfo,
+		slot.fence);
+	if (result != VK_SUCCESS) {
+		ReleaseVideoCmdSlot();
+		return OaStatus::Error(OaStatusCode::VulkanError,
+			"vkQueueSubmit2 failed for DPB release");
+	}
+	TimelineValue_ = signalValue;
+	DpbImageLayouts_[layer] = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+	ReleaseVideoCmdSlot();
+	return OaStatus::Ok();
+}
+
 OaStatus OaVideoDecoder::RestoreDpbLayerToDecodeLayoutAfter(
 	const OaVideoFrame& InFrame,
 	const OaVkTimelineSemaphore* InWaitSemaphore,
@@ -673,7 +758,7 @@ OaStatus OaVideoDecoder::RestoreDpbLayerToDecodeLayoutAfter(
 	}
 	const OaU32 barrierLayer = isOutput ? 0u : InFrame.ArrayLayer;
 
-	auto& vkEngine = static_cast<OaComputeEngine&>(*Rt_);
+	auto& vkEngine = *Rt_;
 	auto slot = AcquireVideoCmdSlot();
 	if (!slot.Status.IsOk()) {
 		return slot.Status;
@@ -692,7 +777,7 @@ OaStatus OaVideoDecoder::RestoreDpbLayerToDecodeLayoutAfter(
 
 	VkImageMemoryBarrier2 barrier = {};
 	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
-	auto& vkEngineRestore = static_cast<OaComputeEngine&>(*Rt_);
+	auto& vkEngineRestore = *Rt_;
 	const bool sameFamilyRestore = vkEngineRestore.Device.Queues.VideoDecodeQueueFamily == vkEngineRestore.Device.Queues.ComputeQueueFamily;
 	if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL) {
 		if (sameFamilyRestore) {
@@ -812,7 +897,7 @@ OaStatus OaVideoDecoder::TransitionFrameForSampledRead(const OaVideoFrame& InFra
 	// DPB images with SAMPLED_BIT can be transitioned from VIDEO_DECODE_DST/DPB to SHADER_READ_ONLY_OPTIMAL
 	// Output images with SAMPLED_BIT can also be transitioned
 
-	auto& vkEngine = static_cast<OaComputeEngine&>(*Rt_);
+	auto& vkEngine = *Rt_;
 	auto slot = AcquireVideoCmdSlot();
 	if (!slot.Status.IsOk()) {
 		return slot.Status;
@@ -840,7 +925,7 @@ OaStatus OaVideoDecoder::TransitionFrameForSampledRead(const OaVideoFrame& InFra
 	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
 	barrier.srcStageMask = srcStage;
 	barrier.srcAccessMask = srcAccess;
-	auto& vkEngineSample = static_cast<OaComputeEngine&>(*Rt_);
+	auto& vkEngineSample = *Rt_;
 	const bool sameFamilySample = vkEngineSample.Device.Queues.VideoDecodeQueueFamily == vkEngineSample.Device.Queues.ComputeQueueFamily;
 	if (sameFamilySample) {
 		barrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
@@ -919,7 +1004,7 @@ OaStatus OaVideoDecoder::EnsureYcbcrSampler(OaYCbCrModel InColorSpace, OaFilter 
 	if (!Rt_) {
 		return OaStatus::Error("Video decoder not initialized");
 	}
-	auto& vkEngine = static_cast<OaComputeEngine&>(*Rt_);
+	auto& vkEngine = *Rt_;
 	if (!vkEngine.Device.Info.Software.HasSamplerYcbcrConversion) {
 		return OaStatus::Error(OaStatusCode::Unavailable, "VK_KHR_sampler_ycbcr_conversion is not supported");
 	}
@@ -988,7 +1073,7 @@ OaResult<OaVideoFrame> OaVideoDecoder::AllocateRgbaFrame(OaU32 InWidth, OaU32 In
 		return OaStatus::Error(OaStatusCode::InvalidArgument, "RGBA frame dimensions must be non-zero");
 	}
 
-	auto& vkEngine = static_cast<OaComputeEngine&>(*Rt_);
+	auto& vkEngine = *Rt_;
 	VkDevice device = static_cast<VkDevice>(vkEngine.Device.Device);
 	auto allocator = static_cast<OaVmaAllocator>(vkEngine.Allocator.Allocator);
 
@@ -1164,7 +1249,7 @@ OaResult<OaMatrix> OaVideoDecoder::ConvertFrameToBf16Hardware(
 	OA_RETURN_IF_ERROR(EnsureYcbcrSampler(OaYCbCrModel::Auto));
 	OA_RETURN_IF_ERROR(TransitionFrameForSampledRead(InFrame));
 
-	auto& vkEngine = static_cast<OaComputeEngine&>(*Rt_);
+	auto& vkEngine = *Rt_;
 	VkDevice device = static_cast<VkDevice>(vkEngine.Device.Device);
 
 	VkSamplerYcbcrConversionInfo viewConversion = {};
@@ -1370,13 +1455,9 @@ OaStatus OaVideoDecoder::ConvertNv12ToRgbInto(
 	// device-to-device memory dependency for a later graphics-queue sampler.
 	// Preserve the producing stream's timeline token on the RGBA frame so the
 	// presenter can wait on it even after this synchronous convenience call.
-	const bool hasAsyncWork = ticketResult->IsValid();
-	const OaVkTimelineSemaphore* readySemaphore = hasAsyncWork
-		? &ticketResult->Semaphore() : nullptr;
-	const OaU64 readyValue = hasAsyncWork ? ticketResult->Value() : 0U;
+	const OaEvent ready = ticketResult->Completion();
 	OA_RETURN_IF_ERROR(ticketResult->Wait());
-	InOutRgbTarget.ReadySemaphore = readySemaphore;
-	InOutRgbTarget.ReadyValue = readyValue;
+	InOutRgbTarget.Ready = ready;
 	return OaStatus::Ok();
 }
 
@@ -1409,7 +1490,7 @@ OaResult<OaVkImageDispatchTicket> OaVideoDecoder::ConvertNv12ToRgbIntoAsync(
 		OA_RETURN_IF_ERROR(EnsureYcbcrSampler(InOptions.ColorSpace, InOptions.Filter));
 		OA_RETURN_IF_ERROR(TransitionFrameForSampledRead(InNv12Frame));
 
-		auto& vkEngine = static_cast<OaComputeEngine&>(*Rt_);
+		auto& vkEngine = *Rt_;
 		VkDevice device = static_cast<VkDevice>(vkEngine.Device.Device);
 
 		VkImageViewUsageCreateInfo usageInfo = {};
@@ -1488,16 +1569,15 @@ OaResult<OaVkImageDispatchTicket> OaVideoDecoder::ConvertNv12ToRgbIntoAsync(
 			return ticketResult.GetStatus();
 		}
 		OaVkImageDispatchTicket ticket = OaStdMove(*ticketResult);
-		OaStatus waitStatus = ticket.Wait();
-		vkDestroyImageView(device, ycbcrView, nullptr);
-		OA_RETURN_IF_ERROR(waitStatus);
+		ticket.AdoptImageView(ycbcrView);
 		for (OaUsize i = 0; i < RgbImages_.Size(); ++i) {
 			if (RgbImages_[i] == InRgbTarget.Image && i < RgbImageLayouts_.Size()) {
 				RgbImageLayouts_[i] = VK_IMAGE_LAYOUT_GENERAL;
 				break;
 			}
 		}
-		OA_RETURN_IF_ERROR(RestoreDpbLayerToDecodeLayout(InNv12Frame));
+		OA_RETURN_IF_ERROR(RestoreDpbLayerToDecodeLayoutAfter(
+			InNv12Frame, &ticket.Semaphore(), ticket.Value()));
 		return ticket;
 	}
 
@@ -1552,7 +1632,7 @@ OaResult<OaVkImageDispatchTicket> OaVideoDecoder::ConvertNv12ToRgbIntoAsync(
 			.ColorSpace = ToVisionColorSpace(OaYCbCrModel::Auto, InNv12Frame.Width, InNv12Frame.Height),
 			.FullRange = 0U};
 
-		auto& vkEngine = static_cast<OaComputeEngine&>(*Rt_);
+		auto& vkEngine = *Rt_;
 		const OaU64 convertWaitValue = TimelineValue_;
 		auto ticketResult = OaVkImageDispatch::RunWithDependencyAsync(
 			vkEngine,
@@ -1569,7 +1649,6 @@ OaResult<OaVkImageDispatchTicket> OaVideoDecoder::ConvertNv12ToRgbIntoAsync(
 			return ticketResult.GetStatus();
 		}
 		OaVkImageDispatchTicket ticket = OaStdMove(*ticketResult);
-		OA_RETURN_IF_ERROR(ticket.Wait());
 		for (OaUsize i = 0; i < RgbImages_.Size(); ++i) {
 			if (RgbImages_[i] == InRgbTarget.Image && i < RgbImageLayouts_.Size()) {
 				RgbImageLayouts_[i] = VK_IMAGE_LAYOUT_GENERAL;
@@ -1634,7 +1713,7 @@ OaResult<OaVkImageDispatchTicket> OaVideoDecoder::ConvertNv12ToRgbIntoAsync(
 		.ColorSpace = ToVisionColorSpace(OaYCbCrModel::Auto, InNv12Frame.Width, InNv12Frame.Height),
 		.FullRange = 0U};
 
-	auto& vkEngine = static_cast<OaComputeEngine&>(*Rt_);
+	auto& vkEngine = *Rt_;
 	const OaU64 convertWaitValue = TimelineValue_;
 	auto ticketResult = OaVkImageDispatch::RunWithDependencyAsync(
 		vkEngine,
@@ -1651,15 +1730,14 @@ OaResult<OaVkImageDispatchTicket> OaVideoDecoder::ConvertNv12ToRgbIntoAsync(
 		return ticketResult.GetStatus();
 	}
 	OaVkImageDispatchTicket ticket = OaStdMove(*ticketResult);
-	OA_RETURN_IF_ERROR(ticket.Wait());
 	for (OaUsize i = 0; i < RgbImages_.Size(); ++i) {
 		if (RgbImages_[i] == InRgbTarget.Image && i < RgbImageLayouts_.Size()) {
 			RgbImageLayouts_[i] = VK_IMAGE_LAYOUT_GENERAL;
 			break;
 		}
 	}
-	OA_RETURN_IF_ERROR(RestoreDpbLayerToDecodeLayout(InNv12Frame));
-	OA_RETURN_IF_ERROR(TimelineSem_.Wait(vkEngine.Device, TimelineValue_));
+	OA_RETURN_IF_ERROR(RestoreDpbLayerToDecodeLayoutAfter(
+		InNv12Frame, &ticket.Semaphore(), ticket.Value()));
 	return ticket;
 }
 
@@ -1689,7 +1767,7 @@ OaStatus OaVideoDecoder::ConvertNv12ToRgbHardware(
 	}
 	OaVideoFrame rgbaFrame = *rgbaResult;
 
-	auto& vkEngine = static_cast<OaComputeEngine&>(*Rt_);
+	auto& vkEngine = *Rt_;
 	VkDevice device = static_cast<VkDevice>(vkEngine.Device.Device);
 
 	VkImageViewUsageCreateInfo usageInfo = {};
@@ -1782,7 +1860,7 @@ VkSampler OaVideoDecoder::GetCachedNv12Sampler(OaFilter InFilter) {
 	if (*target || !Rt_) {
 		return *target;
 	}
-	auto& vkEngine = static_cast<OaComputeEngine&>(*Rt_);
+	auto& vkEngine = *Rt_;
 	VkDevice device = static_cast<VkDevice>(vkEngine.Device.Device);
 	const VkFilter vkFilter = (InFilter == OaFilter::Nearest)	? VK_FILTER_NEAREST : VK_FILTER_LINEAR;
 	VkSamplerCreateInfo samplerInfo = {};
@@ -1807,7 +1885,7 @@ VkImageView OaVideoDecoder::GetCachedNv12PlaneView(
 	if (!Rt_ || !InImage || InLayer >= CachedNv12YViews_.Size()) {
 		return VK_NULL_HANDLE;
 	}
-	auto& vkEngine = static_cast<OaComputeEngine&>(*Rt_);
+	auto& vkEngine = *Rt_;
 	VkDevice device = static_cast<VkDevice>(vkEngine.Device.Device);
 
 	// Invalidate the cache if the DPB image changed (e.g. session recreate).
@@ -1955,7 +2033,7 @@ OaStatus OaVideoDecoder::ConvertNv12ToRgbCompute(
 		.ColorSpace = ToVisionColorSpace(InColorSpace, InNv12Frame.Width, InNv12Frame.Height),
 		.FullRange = 0U};
 
-	auto& vkEngine = static_cast<OaComputeEngine&>(*Rt_);
+	auto& vkEngine = *Rt_;
 	OaStatus status = OaVkImageDispatch::Run(
 		vkEngine,
 		"CvtNv12ToRgb",
@@ -2020,7 +2098,7 @@ OaStatus OaVideoDecoder::DecodeFrameWithConversion(
 // Query hardware YCbCr conversion support
 bool OaVideoDecoder::HasHardwareYCbCrConversion(OaEngine& InRt)
 {
-	auto& vkEngine = static_cast<OaComputeEngine&>(InRt);
+	auto& vkEngine = InRt;
 	return vkEngine.Device.Info.Software.HasSamplerYcbcrConversion;
 }
 
@@ -2035,7 +2113,7 @@ OaU32 OaVideoDecoder::GetNv12PlaneArrayLayer(const OaVideoFrame& InFrame) const
 }
 
 OaStatus OaVideoDecoder::CreateOutputImages(
-	OaComputeEngine& InRt,
+	OaEngine& InRt,
 	const VkVideoProfileInfoKHR& InProfile,
 	VkFormat InFormat,
 	VkExtent2D InCodedExtent,
@@ -2136,7 +2214,7 @@ OaStatus OaVideoDecoder::CreateOutputImages(
 }
 
 OaStatus OaVideoDecoder::CreateSampleStagingImages(
-	OaComputeEngine& InRt,
+	OaEngine& InRt,
 	const VkVideoProfileInfoKHR& InProfile,
 	VkExtent2D InCodedExtent,
 	OaU32 InSlotCount
@@ -2261,7 +2339,8 @@ OaStatus OaVideoDecoder::CopyDpbLayerToSampleImage(const OaVideoFrame& InDpbFram
 		return OaStatus::Error(OaStatusCode::InvalidArgument, "CopyDpbLayerToSampleImage: invalid layer");
 	}
 
-	auto& vkEngine = static_cast<OaComputeEngine&>(*Rt_);
+	OA_RETURN_IF_ERROR(ReleaseDpbLayerForComputeCopy(InDpbFrame));
+	auto& vkEngine = *Rt_;
 	const OaU64 decodeWaitValue = TimelineValue_;
 
 	OaVkStream* stream = vkEngine.AcquireStream();
@@ -2325,7 +2404,7 @@ OaStatus OaVideoDecoder::CopyDpbLayerToSampleImage(const OaVideoFrame& InDpbFram
 		== vkEngine.Device.Queues.ComputeQueueFamily;
 	VkPipelineStageFlags2 srcStage = sameFamily
 		? VK_PIPELINE_STAGE_2_VIDEO_DECODE_BIT_KHR
-		: VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT;
+		: VK_PIPELINE_STAGE_2_NONE;
 	VkAccessFlags2 srcAccess = sameFamily
 		? (VK_ACCESS_2_VIDEO_DECODE_WRITE_BIT_KHR | VK_ACCESS_2_VIDEO_DECODE_READ_BIT_KHR)
 		: 0;

@@ -34,10 +34,70 @@ quality.
 | Precision | FP32 |
 | Build | CMake Release, Clang 22.1.6 |
 
-Protocol: one excluded warm-up process followed by three sequential measured
-processes for every executable. All 60 processes passed training, evaluation,
-generation and checkpoint assertions. Values are arithmetic mean ± population
-standard deviation.
+## Private architecture-rewrite comparison — 2026-07-20
+
+This engineering comparison accompanies the July 21 curated source refresh; it is not a
+public-version or package comparison. It compares exact private tag `v0.6.100`
+(`48a9a205`) with the clean pre-squash rewrite candidate `cd8c41bf`. Four later
+source cleanups are present in private `v0.6.101` but were not part of the
+candidate binaries, so these measurements must not be relabeled as an exact
+`v0.6.101` or future `v0.7.6` result.
+
+Both sides were rebuilt in clean detached worktrees. Each side and executable
+used one excluded warm-up followed by seven measured fresh processes, run
+serially with `OA_LOG_TRAINING_PHASES=1`, FP32, and the system `performance`
+power profile. Every process had to complete training, evaluation, generation,
+checkpoint round-trip, and its GoogleTest assertions. The complete controlled
+matrix therefore contains 240 processes.
+
+The ThinkPad X1 Carbon is a thermally constrained integrated-GPU laptop, not a
+fixed-clock benchmark host. The first full matrix overlapped interactive desktop
+activity during Transformer rows and is excluded from the table. The confirmation
+matrix waited for package temperature at or below 70 C before every baseline and
+candidate batch, but the machine can still change clocks while a batch runs.
+Rows whose verdict reversed between the two full passes remain inconclusive; no
+aggregate framework speedup or regression is claimed.
+
+Delta is `(rewrite / v0.6.100 - 1) * 100`; negative is faster. `FAIL` is the
+benchmark runner's actionable-regression result at the 3% threshold after its
+recorded noise band, not a correctness failure.
+
+| Architecture | Tokenizer | Before median ms/step | Rewrite median ms/step | Delta | Gate | Cross-pass interpretation |
+|---|---|---:|---:|---:|---|---|
+| RNN | Byte | 4.72 | 5.18 | +9.75% | **FAIL** | Regression reproduced; first pass was +7.84% |
+| RNN | BPE | 6.48 | 5.92 | -8.64% | PASS | Candidate favored twice; controlled baseline remained noisy |
+| RNN | Char | 5.03 | 4.64 | -7.75% | PASS | Inconclusive; first pass was +5.53% |
+| GRU | Byte | 10.45 | 10.56 | +1.05% | PASS | Flat within the gate in both passes |
+| GRU | BPE | 10.91 | 12.32 | +12.92% | **FAIL** | Inconclusive; first pass was +1.00% |
+| GRU | Char | 11.12 | 11.11 | -0.09% | PASS | Flat controlled result; first baseline was noisy |
+| Transformer | Byte | 7.70 | 8.12 | +5.45% | **FAIL** | Regression direction reproduced; first pass was +5.74% |
+| Transformer | BPE | 7.88 | 9.51 | +20.69% | **FAIL** | Inconclusive; first pass was -1.50% and desktop-contaminated |
+| Transformer | Char | 6.92 | 6.96 | +0.58% | PASS | Flat controlled result; first baseline was contaminated |
+| Sparse MoE Transformer | Byte | 8.81 | 8.73 | -0.91% | PASS | Flat across the two passes |
+| Sparse MoE Transformer | BPE | 9.82 | 9.05 | -7.84% | PASS | Improvement reproduced; first pass was -4.87% |
+| Sparse MoE Transformer | Char | 8.19 | 8.00 | -2.32% | PASS | Improvement direction reproduced; first pass was -6.18% |
+| Mamba-3 | Byte | 35.39 | 33.49 | -5.37% | PASS | Controlled gain; first pass was flat at +1.02% |
+| Mamba-3 | BPE | 33.40 | 33.89 | +1.47% | PASS | Flat within the gate in both passes |
+| Mamba-3 | Char | 32.62 | 35.66 | +9.32% | **FAIL** | Inconclusive; first pass was -1.04% |
+
+Ten rows pass the runner gate and five are flagged. Only Byte RNN and Byte
+Transformer repeat the same greater-than-3% regression direction across both
+full passes. BPE GRU, BPE Transformer, and Char Mamba-3 reverse their first-pass
+verdict and remain explicitly inconclusive. BPE and Char sparse MoE show a
+repeatable improvement direction.
+
+Learning quality remained intact across all 240 controlled processes. Median
+Byte final loss and accuracy were bit-for-bit unchanged between baseline and
+candidate for all five architectures. BPE median accuracy was unchanged; Char
+median accuracy moved by at most 0.1 percentage point. Fresh-process BPE/Char
+initialization can change exact loss and generated text, so this comparison does
+not claim bitwise determinism for those rows.
+
+The remaining tables are the historical OA 0.7.4 release reference: one excluded
+warm-up followed by three sequential measured processes per executable. All 60
+processes passed training, evaluation, generation, and checkpoint assertions.
+Those values are arithmetic mean ± population standard deviation and should not
+be mixed with the seven-process medians above.
 
 ## OA 0.7.4 results
 
@@ -114,8 +174,11 @@ correctness.
 ## Reproduce
 
 Build the 15 Release tutorials named `TutorialNlp{Byte,Bpe,Char}` ×
-`{Rnn,Gru,Transformer,Moe,Mamba3}Ag`. Run one warm-up process per executable,
-then three sequential measured passes with `OA_LOG_TRAINING_PHASES=1`.
+`{Rnn,Gru,Transformer,Moe,Mamba3}Ag`. For a release comparison, run one excluded
+warm-up and at least seven sequential measured fresh processes per executable
+through `Tools/Diagnostics/oabench.py`, with the power profile and thermal
+conditions recorded. Do not compare these results with the historical
+three-process arithmetic means as if they used the same estimator.
 
 Every process must pass:
 

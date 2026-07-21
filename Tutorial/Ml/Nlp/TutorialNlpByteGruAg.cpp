@@ -80,7 +80,7 @@ TEST(TutorialNlpByteGruAg, GruAllPositionLM) {
 	auto  model  = OaMakeSharedPtr<OaByteGruLM>();
 	auto  params = model->AllParameterPtrs();
 	auto  opt    = OaMakeUniquePtr<OaAdamW>(params, 0.01F);
-	auto& rt     = *OaComputeEngine::GetGlobal();
+	auto& rt     = *OaEngine::GetGlobal();
 
 	printf("Model: ByteEmbed(%d→%d) → GRU(%d→%d, layers=1) → Linear(%d→%d)\n",
 		kVocabSize, kDModel, kDModel, kHiddenDim, kHiddenDim, kVocabSize);

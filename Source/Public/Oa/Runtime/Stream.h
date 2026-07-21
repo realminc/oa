@@ -12,7 +12,7 @@
 #include <Oa/Runtime/Allocator.h>
 #include <Oa/Runtime/DispatchDesc.h>
 
-class OaComputeEngine;
+class OaEngine;
 class OaVkDevice;
 
 // API-neutral buffer-copy region. Keeping this out of Vulkan-facing call sites
@@ -55,31 +55,35 @@ public:
 	);
 	[[nodiscard]] static OaResult<OaVkStream> CreateCompute(const OaVkDevice& InDevice);
 	void Destroy(const OaVkDevice& InDevice);
+	// Reset a recording/executable command buffer that was never submitted.
+	// This is the cancellation edge for an abandoned execution-session lease;
+	// pending command buffers must complete through their returned OaEvent.
+	[[nodiscard]] OaStatus ResetUnsubmitted(const OaVkDevice& InDevice);
 
 	// ─── Recording ────────────────────────────────────────────────────────
 	[[nodiscard]] OaStatus Begin(const OaVkDevice& InDevice);
 
 	// Dispatch + automatic full barrier after (existing behavior)
 	[[nodiscard]] OaStatus Record(
-		OaComputeEngine& InRt, OaStringView InPipeline,
+		OaEngine& InRt, OaStringView InPipeline,
 		OaSpan<OaVkBuffer> InBufs, const void* InPush, OaU32 InPushSize,
 		OaU32 InGroupsX, OaU32 InGroupsY = 1, OaU32 InGroupsZ = 1
 	);
 
 	// Dispatch only, no barrier — used by OaComputeGraph for precise barriers
 	[[nodiscard]] OaStatus RecordDispatch(
-		OaComputeEngine& InRt, OaStringView InPipeline,
+		OaEngine& InRt, OaStringView InPipeline,
 		OaSpan<OaVkBuffer> InBufs, const void* InPush, OaU32 InPushSize,
 		OaU32 InGroupsX, OaU32 InGroupsY = 1, OaU32 InGroupsZ = 1
 	);
 	// Canonical stream encoder. Direct, indirect, primary-device and mesh-node
 	// wrappers all lower to this exact descriptor contract.
 	[[nodiscard]] OaStatus RecordDispatchDesc(
-		OaComputeEngine& InRt, const OaComputeDispatchDesc& InDesc);
+		OaEngine& InRt, const OaComputeDispatchDesc& InDesc);
 
 	// Same as RecordDispatch but resolves pipeline + bindless on mesh node InNodeIndex.
 	[[nodiscard]] OaStatus RecordDispatchOnNode(
-		OaComputeEngine& InRt, OaU32 InNodeIndex, OaStringView InPipeline,
+		OaEngine& InRt, OaU32 InNodeIndex, OaStringView InPipeline,
 		OaSpan<OaVkBuffer> InBufs, const void* InPush, OaU32 InPushSize,
 		OaU32 InGroupsX, OaU32 InGroupsY = 1, OaU32 InGroupsZ = 1
 	);
@@ -87,7 +91,7 @@ public:
 	// Indirect dispatch — workgroup counts read from InIndirectBuffer at InOffset.
 	// Buffer must contain a VkDispatchIndirectCommand struct (3 x uint32).
 	[[nodiscard]] OaStatus RecordDispatchIndirect(
-		OaComputeEngine& InRt, OaStringView InPipeline,
+		OaEngine& InRt, OaStringView InPipeline,
 		OaSpan<OaVkBuffer> InBufs, const void* InPush, OaU32 InPushSize,
 		const OaVkBuffer& InIndirectBuffer, OaU64 InOffset = 0
 	);
@@ -97,9 +101,27 @@ public:
 		const OaVkBuffer& InSrc,
 		const OaVkBuffer& InDst,
 		OaSpan<const OaBufferCopyRegion> InRegions);
+	// Make prior device writes to a copy source visible to the next transfer
+	// read. Alias-backed sources use a global memory dependency; ordinary
+	// buffers retain the exact source range. Flushed host writes are made
+	// visible by queue submission and do not require this barrier.
+	void RecordTransferReadBarrier(
+		const OaVkBuffer& InSrc,
+		OaU64 InOffset,
+		OaU64 InSize);
+	// Make prior transfer writes visible to later same-queue buffer accesses
+	// and to host reads after submission completion. Alias-backed destinations
+	// use a global memory dependency; ordinary buffers retain the exact range.
+	// A consumer on another queue in the same family must also wait the
+	// submission's timeline event. A different family additionally needs an
+	// explicit ownership transfer.
+	void RecordTransferWriteBarrier(
+		const OaVkBuffer& InDst,
+		OaU64 InOffset,
+		OaU64 InSize);
 	void RecordBufferBarrier();
-	// One graph/batch-final visibility edge for mapped host readback. Device-only
-	// intermediate graphs must not emit this barrier individually.
+	// One graph/batch-final visibility edge from all prior device writes to
+	// mapped host readback. Device-only intermediates do not emit it individually.
 	void RecordHostReadbackBarrier();
 	// Emit precise per-buffer barriers. InBufs/InCount specify which buffers need
 	// COMPUTE_SHADER_WRITE → COMPUTE_SHADER_READ|WRITE synchronization.
@@ -108,24 +130,24 @@ public:
 	// ─── Submission ───────────────────────────────────────────────────────
 	// For mesh node streams (MeshNodeIndex != 0), if InDispatchAlreadyLoadedForNode,
 	// caller holds DeviceLoadLock and global dispatch matches that node (see RunOn).
-	[[nodiscard]] OaStatus Submit(OaComputeEngine& InRt, OaBool InDispatchAlreadyLoadedForNode = false);
+	[[nodiscard]] OaStatus Submit(OaEngine& InRt, OaBool InDispatchAlreadyLoadedForNode = false);
 
 	// Submit with a GPU-side dependency: wait on InWaitSem reaching InWaitValue
 	// before executing this command buffer. Used for cross-queue sync.
 	[[nodiscard]] OaStatus SubmitWithDependency(
-		OaComputeEngine& InRt,
+		OaEngine& InRt,
 		const OaVkTimelineSemaphore& InWaitSem,
 		OaU64 InWaitValue,
 		OaBool InDispatchAlreadyLoadedForNode = false
 	);
 	[[nodiscard]] OaStatus SubmitWithDependencies(
-		OaComputeEngine& InRt,
+		OaEngine& InRt,
 		OaSpan<const OaVkTimelineWait> InWaits,
 		OaBool InDispatchAlreadyLoadedForNode = false
 	);
 
 	[[nodiscard]] OaStatus Synchronize(const OaVkDevice& InDevice);
-	[[nodiscard]] OaStatus SubmitAndWait(OaComputeEngine& InRt, OaBool InDispatchAlreadyLoadedForNode = false);
+	[[nodiscard]] OaStatus SubmitAndWait(OaEngine& InRt, OaBool InDispatchAlreadyLoadedForNode = false);
 	[[nodiscard]] OaBool IsComplete(const OaVkDevice& InDevice) const;
 	[[nodiscard]] OaCompletionToken Completion(const OaVkDevice& InDevice) const {
 		return Submitted
@@ -135,7 +157,7 @@ public:
 
 	// ─── Single-Shot ──────────────────────────────────────────────────────
 	[[nodiscard]] static OaStatus RunOnce(
-		OaComputeEngine& InRt, OaStringView InPipeline,
+		OaEngine& InRt, OaStringView InPipeline,
 		OaSpan<OaVkBuffer> InBufs, const void* InPush, OaU32 InPushSize,
 		OaU32 InGroupsX, OaU32 InGroupsY = 1, OaU32 InGroupsZ = 1
 	);

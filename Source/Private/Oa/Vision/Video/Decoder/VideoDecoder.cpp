@@ -10,6 +10,7 @@
 #include <Oa/Runtime/ImageDispatch.h>
 #include <Oa/Runtime/OaVma.h>
 #include <Oa/Core/FnMatrix.h>
+#include "Oa/Runtime/Engine/BorrowedServiceRetirement.h"
 #include "../Codec/NalParser.h"
 #include "../Codec/CodecRegistry.h"
 #include "../Codec/VcpH265.h"
@@ -324,7 +325,7 @@ OaStatus OaVideoDecoder::UpdateAv1SessionParametersFromSequenceHeader(const OaAv
 		SessionParams_.Destroy();
 	}
 
-	auto& vkEngine = static_cast<OaComputeEngine&>(*Rt_);
+	auto& vkEngine = *Rt_;
 	VkDevice device = static_cast<VkDevice>(vkEngine.Device.Device);
 	VkVideoSessionParametersKHR newParams = VK_NULL_HANDLE;
 	OaStatus st = CreateDecodeSessionParameters(
@@ -387,7 +388,28 @@ OaVideoDecoder& OaVideoDecoder::operator=(OaVideoDecoder&& InOther) noexcept {
 
 OaVideoDecoder::~OaVideoDecoder()
 {
-	Destroy();
+	Abandon_();
+}
+
+void OaVideoDecoder::Abandon_() noexcept {
+	if (Rt_ == nullptr) return;
+	OaEngine* engine = Rt_;
+	auto retired = OaMakeUniquePtr<OaVideoDecoder>(OaStdMove(*this));
+	OaBorrowedServiceRetirement::Retire(
+		*engine,
+		retired.Release(),
+		&OaVideoDecoder::CompleteRetired_,
+		&OaVideoDecoder::ReleaseRetired_);
+}
+
+OaStatus OaVideoDecoder::CompleteRetired_(void* InPayload) {
+	auto* decoder = static_cast<OaVideoDecoder*>(InPayload);
+	return decoder ? decoder->Close() : OaStatus::Ok();
+}
+
+void OaVideoDecoder::ReleaseRetired_(void* InPayload) {
+	OaUniquePtr<OaVideoDecoder> decoder(
+		static_cast<OaVideoDecoder*>(InPayload));
 }
 
 OaU32 OaVideoDecoder::GetDpbInUseCount() const noexcept
@@ -551,7 +573,7 @@ void OaVideoDecoder::MoveFrom(OaVideoDecoder&& InOther) noexcept
 
 OaResult<OaVideoDecodeCapabilities> OaVideoDecoder::QueryDecodeCapabilities(OaEngine& InRt, OaVideoCodec InCodec)
 {
-	auto& vkEngine = static_cast<OaComputeEngine&>(InRt);
+	auto& vkEngine = InRt;
 	const auto& sw = vkEngine.Device.Info.Software;
 	if (!sw.HasVideoQueue || !sw.HasVideoDecodeQueue || !vkEngine.Device.Queues.HasVideoDecodeQueue) {
 		return OaStatus::Error(OaStatusCode::Unavailable,
@@ -689,7 +711,7 @@ OaResult<OaVideoDecoder> OaVideoDecoder::Create(
 		return OaStatus::Error(OaStatusCode::Unavailable, "Vulkan Video decoder does not expose NV12 DPB support");
 	}
 
-	auto& vkEngine = static_cast<OaComputeEngine&>(InRt);
+	auto& vkEngine = InRt;
 
 	VkVideoDecodeH264ProfileInfoKHR h264 = {};
 	VkVideoDecodeH265ProfileInfoKHR h265 = {};
@@ -1022,7 +1044,7 @@ OaStatus OaVideoDecoder::Flush()
 
 	// Drain all in-flight GPU work before wiping DPB state.
 	if (Rt_) {
-		auto& vkEngine = static_cast<OaComputeEngine&>(*Rt_);
+		auto& vkEngine = *Rt_;
 		VkDevice device = static_cast<VkDevice>(vkEngine.Device.Device);
 
 		// DecodeFrame returns after async video-queue submit; wait fences
@@ -1115,7 +1137,7 @@ OaStatus OaVideoDecoder::Flush()
 	// Recreate session parameters object to clear Vulkan driver's internal state
 	if (SessionParams_.Handle() != VK_NULL_HANDLE && Rt_) {
 		SessionParams_.Destroy();
-		auto& vkEngine = static_cast<OaComputeEngine&>(*Rt_);
+		auto& vkEngine = *Rt_;
 		VkVideoSessionParametersKHR newParams = VK_NULL_HANDLE;
 		VkDevice device = static_cast<VkDevice>(vkEngine.Device.Device);
 		OaStatus createStatus = CreateDecodeSessionParameters(
@@ -1126,7 +1148,7 @@ OaStatus OaVideoDecoder::Flush()
 			newParams,
 			nullptr /* AV1 real seq will be supplied on next DecodeFrame */);
 		if (createStatus.IsOk()) {
-			SessionParams_.SetHandle(newParams);
+			SessionParams_.Attach(vkEngine, newParams);
 		}
 	}
 
@@ -1142,15 +1164,20 @@ OaStatus OaVideoDecoder::WaitForCompletion(OaU64 InTimeoutNs)
 		return OaStatus::Error("Video decoder not initialized");
 	}
 	return TimelineSem_.Wait(
-		static_cast<OaComputeEngine&>(*Rt_).Device,
+		Rt_->Device,
 		TimelineValue_,
 		InTimeoutNs);
 }
 
 void OaVideoDecoder::StampFrameReady(OaVideoFrame& OutFrame) const noexcept
 {
-	OutFrame.ReadySemaphore = &TimelineSem_;
-	OutFrame.ReadyValue = TimelineValue_;
+	if (Rt_ == nullptr || TimelineSem_.Semaphore == nullptr || TimelineValue_ == 0U) {
+		OutFrame.Ready = {};
+		return;
+	}
+	OutFrame.Ready = OaEvent(
+		Rt_->Device,
+		TimelineSem_, TimelineValue_);
 }
 
 OaVideoDecoder::VideoCmdSlot OaVideoDecoder::AcquireVideoCmdSlot()
@@ -1159,7 +1186,7 @@ OaVideoDecoder::VideoCmdSlot OaVideoDecoder::AcquireVideoCmdSlot()
 	slot.cb = CmdBuffers_[CurrentCbIndex_];
 	slot.fence = CmdFences_[CurrentCbIndex_];
 	if (Rt_ && slot.cb != VK_NULL_HANDLE && slot.fence != VK_NULL_HANDLE) {
-		auto& vkEngine = static_cast<OaComputeEngine&>(*Rt_);
+		auto& vkEngine = *Rt_;
 		VkDevice device = static_cast<VkDevice>(vkEngine.Device.Device);
 		VkResult result = vkWaitForFences(
 			device, 1, &slot.fence, VK_TRUE, UINT64_MAX);
@@ -1192,15 +1219,19 @@ void OaVideoDecoder::ReleaseVideoCmdSlot()
 }
 
 // Destroy decoder
-void OaVideoDecoder::Destroy()
+OaStatus OaVideoDecoder::Close()
 {
-	if (!Rt_)
+	if (not Rt_)
 	{
-		return;
+		return OaStatus::Ok();
 	}
 
-	auto& vkEngine = static_cast<OaComputeEngine&>(*Rt_);
+	auto& vkEngine = *Rt_;
 	VkDevice device = static_cast<VkDevice>(vkEngine.Device.Device);
+	OaStatus firstError = OaStatus::Ok();
+	auto retainError = [&firstError](const OaStatus& InStatus) {
+		if (firstError.IsOk() and not InStatus.IsOk()) firstError = InStatus;
+	};
 
 	// Decode, sampled-read transitions, and DPB restores are submitted
 	// asynchronously and all signal TimelineSem_. In particular, the DPB
@@ -1213,10 +1244,8 @@ void OaVideoDecoder::Destroy()
 		const OaStatus waitStatus = TimelineSem_.Wait(
 			vkEngine.Device,
 			TimelineValue_);
-		if (!waitStatus.IsOk()) {
-			OA_LOG_ERROR(OaLogComponent::Core,
-				"VideoDecoder::Destroy: timeline drain failed: %s",
-				waitStatus.ToString().c_str());
+		if (not waitStatus.IsOk()) {
+			retainError(waitStatus);
 		}
 	}
 
@@ -1229,7 +1258,17 @@ void OaVideoDecoder::Destroy()
 		}
 		const VkResult fenceStatus = vkGetFenceStatus(device, CmdFences_[i]);
 		if (fenceStatus == VK_NOT_READY) {
-			vkWaitForFences(device, 1, &CmdFences_[i], VK_TRUE, UINT64_MAX);
+			const VkResult waitResult = vkWaitForFences(
+				device, 1, &CmdFences_[i], VK_TRUE, UINT64_MAX);
+			if (waitResult != VK_SUCCESS) {
+				retainError(OaStatus::Error(
+					OaStatusCode::VulkanError,
+					"video decoder command fence completion failed"));
+			}
+		} else if (fenceStatus != VK_SUCCESS) {
+			retainError(OaStatus::Error(
+				OaStatusCode::VulkanError,
+				"video decoder command fence status query failed"));
 		}
 	}
 
@@ -1371,6 +1410,15 @@ void OaVideoDecoder::Destroy()
 	// by their respective OaVkVideo wrappers above and were already torn
 	// down by the .Destroy() calls at the top of this function.
 	Rt_ = nullptr;
+	return firstError;
+}
+
+void OaVideoDecoder::Destroy() {
+	if (const auto status = Close(); not status.IsOk()) {
+		OA_LOG_ERROR(OaLogComponent::Core,
+			"OaVideoDecoder::Destroy: shutdown failed: %s",
+			status.ToString().c_str());
+	}
 }
 // ============================================================================
 // Phase 2.4.1: DPB (Decoded Picture Buffer) Management

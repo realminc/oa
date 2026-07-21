@@ -6,3 +6,4 @@
 
 #include "Activation/FnMatrixActivation.gen.h"
 #include "Embed/FnMatrixEmbed.gen.h"
+#include "Norm/FnMatrixNorm.gen.h"

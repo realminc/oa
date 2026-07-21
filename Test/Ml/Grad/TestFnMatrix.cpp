@@ -6,16 +6,16 @@
 #include <Oa/Runtime/Engine.h>
 #include <Oa/Runtime/Context.h>
 
-static OaComputeEngine* GRt = nullptr;
+static OaEngine* GRt = nullptr;
 
 class TestFnMatrix : public ::testing::Test {
 protected:
 	static void SetUpTestSuite() {
 		OaEngineConfig cfg{};
 		cfg.AppName = "TestFnMatrix";
-		auto r = OaComputeEngine::Create(cfg);
+		auto r = OaEngine::Create(cfg);
 		ASSERT_TRUE(r.IsOk()) << r.GetStatus().GetMessage();
-		static OaUniquePtr<OaComputeEngine> rt = std::move(*r);
+		static OaUniquePtr<OaEngine> rt = std::move(*r);
 		GRt = rt.get();
 	}
 };
@@ -80,6 +80,10 @@ TEST_VK(TestFnMatrix, TopK_Basic) {
 	a.Set(1 * 4 + 0, 5.0f);
 	a.Set(1 * 4 + 2, 2.0f);
 	auto result = OaFnMatrix::TopK(a, 2);
+	auto& context = OaContext::GetDefault();
+	auto submitted = context.Submit();
+	ASSERT_TRUE(submitted.IsOk()) << submitted.GetStatus().GetMessage();
+	ASSERT_TRUE(context.Wait(submitted.GetValue()).IsOk());
 	EXPECT_EQ(result.Values.Size(0), 2);
 	EXPECT_EQ(result.Values.Size(1), 2);
 	EXPECT_NEAR(result.Values.At(0 * 2 + 0), 3.0f, 1e-5f);

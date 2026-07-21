@@ -29,7 +29,7 @@ double Median(std::vector<double> InValues) {
 }
 
 double RunLegacy(
-	OaComputeEngine& InRt,
+	OaEngine& InRt,
 	OaSpan<const OaVkBuffer> InDestinations,
 	const void* InData,
 	OaU64 InBytes)
@@ -40,9 +40,12 @@ double RunLegacy(
 		if (!stagingResult) return -1.0;
 		auto staging = std::move(*stagingResult);
 		OaMemcpy(staging.MappedPtr, InData, static_cast<OaUsize>(InBytes));
-		if (!InRt.Allocator.FlushHostBuffer(staging, 0, InBytes)
-			|| !InRt.CopyBufferAsync(staging, destination, InBytes).IsOk()
-			|| !InRt.WaitTransfer().IsOk()) {
+		if (not InRt.Allocator.FlushHostBuffer(staging, 0, InBytes)) {
+			InRt.FreeBuffer(staging);
+			return -1.0;
+		}
+		auto copy = InRt.CopyBufferAsync(staging, destination, InBytes);
+		if (not copy.IsOk() or not copy->Wait().IsOk()) {
 			InRt.FreeBuffer(staging);
 			return -1.0;
 		}
@@ -68,7 +71,7 @@ double RunRing(
 }
 
 double RunLegacyReadback(
-	OaComputeEngine& InRt,
+	OaEngine& InRt,
 	const OaVkBuffer& InSource,
 	void* OutData,
 	OaU64 InBytes,
@@ -90,7 +93,9 @@ double RunLegacyReadback(
 		auto stream = std::move(*streamResult);
 		OaStatus status = stream.Begin(InRt.Device);
 		if (status.IsOk()) {
+			stream.RecordTransferReadBarrier(InSource, 0U, InBytes);
 			stream.RecordCopyBuffer(InSource, staging, InBytes);
+			stream.RecordTransferWriteBarrier(staging, 0U, InBytes);
 			status = stream.SubmitAndWait(InRt);
 		}
 		if (status.IsOk() && !InRt.Allocator.InvalidateHostBuffer(staging, 0, InBytes)) {
@@ -105,7 +110,7 @@ double RunLegacyReadback(
 }
 
 double RunPersistentReadback(
-	OaComputeEngine& InRt,
+	OaEngine& InRt,
 	const OaVkBuffer& InSource,
 	void* OutData,
 	OaU64 InBytes,
@@ -121,7 +126,7 @@ double RunPersistentReadback(
 } // namespace
 
 TEST(VkUploadRingBenchmark, BatchedVsLegacyPerCopy) {
-	auto* rt = OaComputeEngine::GetGlobal();
+	auto* rt = OaEngine::GetGlobal();
 	ASSERT_NE(rt, nullptr);
 
 	constexpr UploadCase cases[] = {
@@ -199,7 +204,7 @@ TEST(VkUploadRingBenchmark, BatchedVsLegacyPerCopy) {
 }
 
 TEST(VkUploadRingBenchmark, PersistentReadbackVsPerCallResources) {
-	auto* rt = OaComputeEngine::GetGlobal();
+	auto* rt = OaEngine::GetGlobal();
 	ASSERT_NE(rt, nullptr);
 
 	constexpr UploadCase cases[] = {

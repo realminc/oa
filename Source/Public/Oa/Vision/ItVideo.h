@@ -21,6 +21,7 @@ public:
 	OaItVideo& operator=(const OaItVideo&) = delete;
 	~OaItVideo() override = default;
 
+	[[nodiscard]] OaStatus Close();
 	void Destroy();
 	[[nodiscard]] bool IsDone() const override;
 	void Next() override;
@@ -40,6 +41,7 @@ public:
 
 	[[nodiscard]] const OaVideoFrame& CurrentFrame() const;
 	[[nodiscard]] OaResult<OaVec<OaU8>> ReadbackCurrentRgba();
+	void MarkCurrentFrameConsumed(const OaEvent& InConsumed);
 	void MarkCurrentFrameConsumed(const OaVkTimelineSemaphore& InSemaphore, OaU64 InValue);
 	[[nodiscard]] OaU32 Width() const;
 	[[nodiscard]] OaU32 Height() const;

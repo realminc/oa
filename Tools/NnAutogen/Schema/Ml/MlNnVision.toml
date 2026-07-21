@@ -40,6 +40,9 @@ forward_body = """
 \treturn output;
 """
 notes = "Spatial upsampling layer (Nearest or Bilinear)."
+extra_includes = """
+#include <Oa/Runtime/Context.h>
+"""
 extra_methods = """
 static OaU32 DivCeil(OaU32 InA, OaU32 InB) { return (InA + InB - 1) / InB; }
 """

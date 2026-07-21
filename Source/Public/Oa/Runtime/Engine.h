@@ -1,7 +1,6 @@
-// Runtime engine stack (sequential single inheritance):
-//   OaEngine            — host-level base (topology/mesh policy hooks; no Vulkan here).
-//   OaComputeEngine   — Vulkan compute (device, VMA, bindless, pipelines, queues).
-//   OaGraphicsEngine  — same GPU + graphics queue + WSI / swapchain + optional ImGui integration.
+// Runtime ownership:
+//   OaEngine     — the one concrete Vulkan resource owner.
+//   OaPresenter  — optional WSI/swapchain service borrowing an OaEngine.
 //
 // Two-phase render init (SDL3 example)
 // ─────────────────────────────────────
@@ -10,33 +9,34 @@
 //   cfg.PresentationMode = OaPresentationMode::Swapchain;
 //   win.GetPresenterInstanceExtensions(&exts);         // SDL3 fills this
 //   for (auto e : exts) cfg.InstanceExtraExtensions.PushBack(e);
-//   auto eng = OaGraphicsEngine::Create(cfg).GetValue();
+//   auto eng = OaEngine::Create(cfg).GetValue();
+//   OaPresenter presenter(*eng);
 //
 //   // Phase B — caller creates surface against the live VkInstance:
 //   VkSurfaceKHR surf = VK_NULL_HANDLE;
 //   win.CreatePresenterVkSurface(
-//       static_cast<VkInstance>(eng.Device.Instance), &surf);
+//       static_cast<VkInstance>(eng->Device.Instance), &surf);
 //
 //   // Phase C — attach surface, build swapchain:
 //   int w, h;  SDL_GetWindowSizeInPixels(sdlWin, &w, &h);
-//   eng.InitPresentation(surf, { uint32_t(w), uint32_t(h) });
+//   presenter.InitPresentation(surf, { uint32_t(w), uint32_t(h) });
 //
 //   // Phase D — optional ImGui (compile with -DOA_IMGUI):
-//   eng.InitImGui(win.GetNativeWindowHandle());
+//   presenter.InitImGui(win.GetNativeWindowHandle());
 //
 // Per-frame:
-//   eng.BeginImGuiFrame();   // no-op without OA_IMGUI
+//   presenter.BeginImGuiFrame();   // no-op without OA_IMGUI
 //   // ImGui / imnodes calls
-//   eng.EndImGuiFrame();     // no-op without OA_IMGUI
-//   eng.DrawFrame();
+//   presenter.EndImGuiFrame();     // no-op without OA_IMGUI
+//   presenter.DrawFrame();
 //
 // Window swap (e.g. splash → editor):
-//   VkInstance inst = static_cast<VkInstance>(eng.Device.Instance);
-//   eng.DetachPresentation();                           // swapchain torn down
+//   VkInstance inst = static_cast<VkInstance>(eng->Device.Instance);
+//   presenter.DetachPresentation();                     // swapchain torn down
 //   vkDestroySurfaceKHR(inst, oldSurf, nullptr);        // caller destroys surface
 //   win.reset(); newWin = CreateSdl3(newCfg);
 //   newWin.CreatePresenterVkSurface(inst, &newSurf);
-//   eng.InitPresentation(newSurf, { uint32_t(w), uint32_t(h) });
+//   presenter.InitPresentation(newSurf, { uint32_t(w), uint32_t(h) });
 
 #pragma once
 
@@ -65,8 +65,15 @@
 
 
 class OaVkDispatch;
+class OaVkImageDispatchTicket;
 class OaUploadRing;
 class OaContext;
+class OaExecutionSession;
+class OaComputeGraph;
+class OaExecutionPlan;
+class OaBorrowedServiceRetirement;
+struct OaRetiredUploadRing;
+struct OaRetiredPresenter;
 
 
 // ─── Config ─────────────────────────────────────────────────────────────────
@@ -97,7 +104,7 @@ enum class OaPresentationMode : OaU8 {
 	Swapchain,
 };
 
-// Numeric stability mode — see Docs/Rewrite/Opus/OaNumericStability.md §3.
+// Numeric stability mode.
 //
 // Fast (default)         vendor math, BF16 CoopMat where supported, DGC
 //                        enabled. Maximum throughput.
@@ -156,33 +163,6 @@ public:
 };
 
 
-// A: OaEngine — host / policy base
-//
-// Capability accessors are virtual so OaContext (and other engine-agnostic
-// recorders) can gate work on capabilities without downcasting. Defaults
-// here describe a do-nothing base; OaComputeEngine sets HasCompute = true,
-// OaGraphicsEngine adds HasGraphics / HasPresent.
-class OaEngine {
-public:
-	virtual ~OaEngine() = default;
-	OaEngine(const OaEngine&)            = delete;
-	OaEngine& operator=(const OaEngine&) = delete;
-
-	// ─── Capability accessors ────────────────────────────────────────────────
-	// Defaults: nothing. Overridden by concrete engine subclasses.
-	[[nodiscard]] virtual bool HasCompute()    const noexcept { return false; }
-	[[nodiscard]] virtual bool HasGraphics()   const noexcept { return false; }
-	[[nodiscard]] virtual bool HasPresent()    const noexcept { return false; }
-	[[nodiscard]] virtual bool HasMeshShader() const noexcept { return false; }
-	[[nodiscard]] virtual bool HasRayTrace()   const noexcept { return false; }
-	[[nodiscard]] virtual bool IsRemote()      const noexcept { return false; }
-
-protected:
-	OaEngine() = default;
-	OaEngine(OaEngine&&) noexcept            = default;
-	OaEngine& operator=(OaEngine&&) noexcept = default;
-};
-
 enum class OaEngineState : OaU8 {
 	Empty,
 	Initializing,
@@ -193,8 +173,9 @@ enum class OaEngineState : OaU8 {
 };
 
 
-// B: OaComputeEngine
-class OaComputeEngine : public OaEngine {
+// The engine is deliberately concrete and pinned. Optional presentation,
+// video and collective services compose with it; they do not subclass it.
+class OaEngine {
 public:
 	OaVkDevice         Device;
 	OaVma              Allocator;
@@ -205,29 +186,36 @@ public:
 	// Stores learned profitability data for shape buckets across training.
 	OaGemmRouteCache* GemmRouteCache = nullptr;
 
-	OaComputeEngine() = default;
+	OaEngine();
 	// Pinned: the engine owns a VkInstance/VkDevice/VMA/queues/mutexes and self-
 	// referential pools, so it must never move. Create returns an owning pointer;
 	// hold the engine by reference.
-	OaComputeEngine(OaComputeEngine&&)            = delete;
-	OaComputeEngine(const OaComputeEngine&)       = delete;
-	~OaComputeEngine() override;
+	OaEngine(OaEngine&&)            = delete;
+	OaEngine(const OaEngine&)       = delete;
+	~OaEngine();
 
-	[[nodiscard]] static OaResult<OaUniquePtr<OaComputeEngine>> Create(const OaEngineConfig& InConfig = {});
+	[[nodiscard]] static OaResult<OaUniquePtr<OaEngine>> Create(const OaEngineConfig& InConfig = {});
 
 	// Two-phase construction primitive: initialize a default-constructed (empty)
-	// engine in place. Create() is `OaMakeUniquePtr<OaComputeEngine>()` + this. It
+	// engine in place. Create() is `OaMakeUniquePtr<OaEngine>()` + this. It
 	// is public so callers that want to own the engine as a pinned member/reference
 	// (default-construct empty, init once) can do so without a build-then-move —
 	// e.g. OaComputeApp::RtStorage_. Calling it on an already-initialized engine is
-	// a usage error. OaGraphicsEngine::Create uses it to init its compute base.
+	// a usage error.
 	[[nodiscard]] OaStatus InitInPlace(const OaEngineConfig& InConfig);
 
-	virtual void Destroy();
+	// Explicit shutdown boundary. Close drains engine-owned submissions, releases
+	// resources, and reports completion failures. Destroy remains as a temporary
+	// compatibility facade for callers that cannot yet propagate status.
+	[[nodiscard]] OaStatus Close();
+	void Destroy();
 
-	// ─── Capability overrides ────────────────────────────────────────────────
-	[[nodiscard]] bool HasCompute() const noexcept override {
+	[[nodiscard]] bool HasCompute() const noexcept {
 		return State_ == OaEngineState::Ready;
+	}
+	[[nodiscard]] bool HasGraphics() const noexcept {
+		return HasCompute()
+			and Device.Queues.GraphicsQueueFamily != OaVkEnumerationIndexUnset;
 	}
 	[[nodiscard]] bool IsReady() const noexcept {
 		return State_ == OaEngineState::Ready;
@@ -237,14 +225,7 @@ public:
 
 	void LogSelectedDevices();
 
-	[[nodiscard]] static OaComputeEngine* GetGlobal();
-	// Buffer owners keep only a weak copy of this token. It lets their deleters
-	// call back into the exact engine that allocated them while it is alive,
-	// without dereferencing a destroyed non-global engine.
-	[[nodiscard]] OaWeakPtr<OaU8> GetLifetimeToken() const noexcept {
-		return OaWeakPtr<OaU8>(LifetimeToken_);
-	}
-
+	[[nodiscard]] static OaEngine* GetGlobal();
 	[[nodiscard]] OaStatus EnsurePipeline(
 		OaStringView InName, OaSpan<const OaU8> InSpirv, const OaPipelineSpec& InSpec);
 	[[nodiscard]] OaStatus EnsureAllEmbeddedLiboaPipelines();
@@ -259,8 +240,20 @@ public:
 
 	[[nodiscard]] OaStatus SubmitToQueue(void* InQueue, void* InSubmitInfo, void* InFence);
 	[[nodiscard]] OaStatus SubmitToQueue2(void* InQueue, const VkSubmitInfo2* InSubmitInfo);
-	[[nodiscard]] OaStatus CopyBufferAsync(const OaVkBuffer& InSrc, const OaVkBuffer& InDst, OaU64 InSize);
-	[[nodiscard]] OaStatus WaitTransfer();
+	// Submit one engine-owned buffer copy and return its exact completion. Both
+	// buffers must be non-aliased VMA allocations created by this primary engine,
+	// carry OA's transfer usage, and be owned by its compute queue family. The
+	// helper publishes prior primary-compute device writes to the copy read; a
+	// producer on another queue is outside this contract. The caller keeps both
+	// allocations alive until completion. A GPU consumer on another queue in
+	// the same compute family consumes the event as a timeline wait; another
+	// family additionally requires graph-planned release/acquire ownership
+	// transfer. The engine must outlive event use.
+	// A second in-flight copy is rejected.
+	[[nodiscard]] OaResult<OaEvent> CopyBufferAsync(
+		const OaVkBuffer& InSrc,
+		const OaVkBuffer& InDst,
+		OaU64 InSize);
 
 	[[nodiscard]] bool       HasAsyncCompute()    const { return Device.Queues.HasAsyncCompute; }
 	OaVkStream*              AcquireAsyncStream();
@@ -275,12 +268,17 @@ public:
 	}
 	[[nodiscard]] OaStatus UploadBuffer(
 		const OaVkBuffer& InDst, OaU64 InDstOffset, const void* InData, OaU64 InSize);
+	// Synchronous primary-compute CPU boundary for non-aliased engine-owned VMA
+	// storage.
+	// Device-local sources stage-copy; mapped sources enqueue a device-write to
+	// host-read barrier. Both paths wait, invalidate as needed, then copy bytes.
 	[[nodiscard]] OaStatus ReadbackBuffer(
 		const OaVkBuffer& InSrc, OaU64 InSrcOffset, void* OutData, OaU64 InSize);
 	void                               FreeBuffer(OaVkBuffer& InOutBuffer);
 
 	OaU32 RegisterBuffer(OaVkBuffer& InOutBuffer);
 	OaU32 RegisterBufferForOwnedNode(OaVkBuffer& InOutBuffer);
+	void  UpdateBufferDescriptor(const OaVkBuffer& InBuffer);
 	void  DeregisterBuffer(OaVkBuffer& InOutBuffer);
 
 	[[nodiscard]] bool       HasSAM()                      const { return Device.Info.Hardware.HasSAM; }
@@ -317,33 +315,128 @@ public:
 
 	[[nodiscard]] OaStatus PulseAuxiliaryMeshDemoCompute();
 
-	[[nodiscard]] OaStatus BeginComputeBatch();
-	// Non-blocking submit: GPU begins executing while CPU continues.
-	// Caller must call SyncCurrentBatch() before reading GPU-written memory.
-	[[nodiscard]] OaStatus FlushComputeBatch();
-	[[nodiscard]] OaCompletionToken LastComputeBatchCompletion() const;
-	// Wait for the most recently submitted batch stream to complete on GPU.
-	[[nodiscard]] OaStatus SyncCurrentBatch();
-	[[nodiscard]] bool        IsComputeBatchActive()     const { return ComputeBatchStream_ != nullptr; }
-	[[nodiscard]] OaVkStream* ActiveComputeBatchStream()  const { return ComputeBatchStream_; }
-	[[nodiscard]] OaU32       ComputeBatchRingSize()     const { return kBatchRingSize; }
-
 	[[nodiscard]] OaResult<OaVkBuffer> AllocBufferOnNode(OaU32 InNodeIndex, OaU64 InSize);
 	void                               FreeBufferOnNode(OaVkBuffer& InOutBuffer);
 
-	OaComputeEngine& operator=(OaComputeEngine&&)      = delete;
-	OaComputeEngine& operator=(const OaComputeEngine&) = delete;
+	OaEngine& operator=(OaEngine&&)      = delete;
+	OaEngine& operator=(const OaEngine&) = delete;
 
 protected:
-	// OaGraphicsEngine shares this when GraphicsQueue == ComputeQueue (common on iGPU).
+	// OaPresenter shares this when GraphicsQueue == ComputeQueue (common on iGPU).
 	std::mutex ComputeQueueMutex_;
 
 private:
 	friend class OaVkDispatch;
+	friend class OaVkImageDispatchTicket;
+	friend class OaPresenter;
+	friend class OaBorrowedServiceRetirement;
+	friend class OaExecutionPlan;
+	friend class OaExecutionSession;
+	friend class OaComputeGraph;
+	friend class OaUploadRing;
+
+	class OaBufferLeaseRegistry;
+	class OaRetiredServiceState {
+	public:
+		using CompleteFn = OaStatus (*)(void*);
+		using ReleaseFn = void (*)(void*);
+
+		OaRetiredServiceState() = default;
+		OaRetiredServiceState(
+			void* InPayload,
+			CompleteFn InComplete,
+			ReleaseFn InRelease) noexcept
+			: Payload_(InPayload)
+			, Complete_(InComplete)
+			, Release_(InRelease)
+		{}
+		OaRetiredServiceState(const OaRetiredServiceState&) = delete;
+		OaRetiredServiceState& operator=(const OaRetiredServiceState&) = delete;
+		OaRetiredServiceState(OaRetiredServiceState&& InOther) noexcept {
+			MoveFrom_(OaStdMove(InOther));
+		}
+		OaRetiredServiceState& operator=(OaRetiredServiceState&& InOther) noexcept {
+			if (this != &InOther) {
+				ReleasePayload_();
+				MoveFrom_(OaStdMove(InOther));
+			}
+			return *this;
+		}
+		~OaRetiredServiceState() { ReleasePayload_(); }
+
+		[[nodiscard]] OaStatus Complete() {
+			OaStatus status = Payload_ and Complete_
+				? Complete_(Payload_)
+				: OaStatus::Ok();
+			ReleasePayload_();
+			return status;
+		}
+
+	private:
+		void MoveFrom_(OaRetiredServiceState&& InOther) noexcept {
+			Payload_ = InOther.Payload_;
+			Complete_ = InOther.Complete_;
+			Release_ = InOther.Release_;
+			InOther.Payload_ = nullptr;
+			InOther.Complete_ = nullptr;
+			InOther.Release_ = nullptr;
+		}
+		void ReleasePayload_() noexcept {
+			if (Payload_ and Release_) Release_(Payload_);
+			Payload_ = nullptr;
+			Complete_ = nullptr;
+			Release_ = nullptr;
+		}
+
+		void* Payload_ = nullptr;
+		CompleteFn Complete_ = nullptr;
+		ReleaseFn Release_ = nullptr;
+	};
+
+	struct OaRetiredImageDispatch {
+		OaVkStream* Stream = nullptr;
+		OaVec<OaU32> StorageImageSlots;
+		OaVec<OaU32> SampledImageSlots;
+		OaVec<OaU32> SamplerSlots;
+		OaVec<VkImageView> ImageViews;
+	};
+	struct OaRetiredContextBatch {
+		OaVkStream* Stream = nullptr;
+		OaEvent Completion;
+		OaVec<OaUniquePtr<OaComputeGraph>> Graphs;
+	};
 
 	void SetAsGlobal();
 	void ClearGlobal();
 	void ReleaseMeshDemoAuxBuffer();
+	void RetireImageDispatch(
+		OaVkStream* InStream,
+		OaVec<OaU32>&& InStorageImageSlots,
+		OaVec<OaU32>&& InSampledImageSlots,
+		OaVec<OaU32>&& InSamplerSlots,
+		OaVec<VkImageView>&& InImageViews);
+	void CollectRetiredImageDispatches_();
+	void RetireExecutionPlan(OaUniquePtr<OaComputeGraph>&& InGraph);
+	void CollectRetiredExecutionPlans_();
+	[[nodiscard]] OaStatus CompleteRetiredExecutionPlans_();
+	void RetireContextBatch(
+		OaVkStream* InStream,
+		const OaEvent& InCompletion,
+		OaVec<OaUniquePtr<OaComputeGraph>>&& InGraphs);
+	void CollectRetiredContextBatches_();
+	[[nodiscard]] OaStatus CompleteRetiredContextBatches_();
+	void RetireUploadRing(OaUniquePtr<OaRetiredUploadRing>&& InRing);
+	[[nodiscard]] OaStatus CompleteRetiredUploadRings_();
+	void RetirePresenter(OaUniquePtr<OaRetiredPresenter>&& InPresenter);
+	[[nodiscard]] OaStatus CompleteRetiredPresenters_();
+	void RetireBorrowedService_(
+		void* InPayload,
+		OaRetiredServiceState::CompleteFn InComplete,
+		OaRetiredServiceState::ReleaseFn InRelease);
+	[[nodiscard]] OaStatus CompleteRetiredBorrowedServices_();
+	[[nodiscard]] OaSharedPtr<OaVkBuffer> AdoptBufferLease_(
+		OaVkBuffer&& InBuffer,
+		OaSharedPtr<OaVkBuffer> InBacking = {});
 	[[nodiscard]] OaStatus InitInPlaceImpl(const OaEngineConfig& InConfig);
 
 	[[nodiscard]] OaStatus EnsurePipelineOnNode(
@@ -353,7 +446,7 @@ private:
 	OaVec<OaString>  ShaderSearchPaths_;
 	OaUniquePtr<OaContext> Context_;
 	OaEngineState     State_ = OaEngineState::Empty;
-	OaSharedPtr<OaU8> LifetimeToken_ = OaMakeSharedPtr<OaU8>(0);
+	OaSharedPtr<OaBufferLeaseRegistry> BufferLeaseRegistry_;
 	OaPrecision      Precision_ = OaPrecision::FP32;
 	OaMemoryPlacement MatrixPlacement_ = OaMemoryPlacement::HostUpload;
 
@@ -364,6 +457,18 @@ private:
 	OaVec<OaUniquePtr<OaVkStream>> StreamPool_;
 	OaVec<OaU32>                   FreeStack_;
 	OaSpinlock                     StreamPoolLock_;
+	OaVec<OaRetiredImageDispatch>  RetiredImageDispatches_;
+	std::mutex                     RetiredImageDispatchMutex_;
+	OaVec<OaUniquePtr<OaComputeGraph>> RetiredExecutionPlans_;
+	OaMutex                            RetiredExecutionPlanMutex_;
+	OaVec<OaRetiredContextBatch>       RetiredContextBatches_;
+	OaMutex                            RetiredContextBatchMutex_;
+	OaVec<OaUniquePtr<OaRetiredUploadRing>> RetiredUploadRings_;
+	OaMutex                                 RetiredUploadRingMutex_;
+	OaVec<OaUniquePtr<OaRetiredPresenter>> RetiredPresenters_;
+	OaMutex                                RetiredPresenterMutex_;
+	OaVec<OaRetiredServiceState> RetiredBorrowedServices_;
+	OaMutex                       RetiredBorrowedServiceMutex_;
 
 	OaVec<OaUniquePtr<OaVkStream>> AsyncStreamPool_;
 	OaVec<OaU32>                   AsyncFreeStack_;
@@ -381,6 +486,7 @@ private:
 
 	std::mutex AsyncComputeQueueMutex_;
 	std::mutex TransferQueueMutex_;
+	std::mutex TransferStreamMutex_;
 	std::mutex UploadRingMutex_;
 	std::mutex ReadbackMutex_;
 	std::mutex HostVisibleBufferCacheMutex_;
@@ -391,42 +497,28 @@ private:
 	OaU32      MeshDemoAuxNode_       = 0;
 	OaBool     MeshDemoAuxScaleReady_ = false;
 
-	OaVkStream* ComputeBatchStream_ = nullptr;
-
-	// Dedicated batch streams. A deeper ring lets high-level training submit
-	// short macro-batches before the CPU has to recycle a command buffer slot.
-	static constexpr OaU32 kBatchRingSize = 16;
-	OaVkStream* BatchRing_[kBatchRingSize] = {};
-	OaU32       BatchRingIdx_              = 0;
 };
 
 
-// ─── C: OaGraphicsEngine ─────────────────────────────────────────────────────
+// ─── Optional presentation service ─────────────────────────────────────────
 //
-// Surface ownership: VkSurfaceKHR is owned by the CALLER, not this engine.
-// Call DetachPresentation() before destroying the surface.
-class OaGraphicsEngine : public OaComputeEngine {
+// Surface ownership normally stays with the caller. Call Close() or
+// DetachPresentation() before destroying the surface. As misuse containment,
+// destroying an attached presenter transfers the surface and WSI state to the
+// engine; the engine destroys them at Close() and the caller must not do so.
+class OaPresenter {
 public:
-	OaGraphicsEngine() = default;
-	OaGraphicsEngine(OaGraphicsEngine&&)            = delete;   // pinned — see OaComputeEngine
-	OaGraphicsEngine(const OaGraphicsEngine&)       = delete;
-	~OaGraphicsEngine() override;
+	explicit OaPresenter(OaEngine& InEngine) noexcept : Engine_(InEngine) {}
+	OaPresenter(OaPresenter&&)            = delete;
+	OaPresenter(const OaPresenter&)       = delete;
+	~OaPresenter();
 
-	OaGraphicsEngine& operator=(OaGraphicsEngine&&)      = delete;
-	OaGraphicsEngine& operator=(const OaGraphicsEngine&) = delete;
+	OaPresenter& operator=(OaPresenter&&)      = delete;
+	OaPresenter& operator=(const OaPresenter&) = delete;
 
-	// Phase-A: create device with graphics queue + VK_KHR_swapchain, no surface.
-	// cfg.PresentationMode must be Swapchain.
-	// cfg.InstanceExtraExtensions must contain SDL3 WSI extension names.
-	[[nodiscard]] static OaResult<OaUniquePtr<OaGraphicsEngine>> Create(const OaEngineConfig& InConfig = {});
-
-	// ─── Capability overrides ────────────────────────────────────────────────
-	// HasCompute is inherited (true). HasGraphics is true by construction —
-	// this engine type owns a graphics queue. HasPresent follows the surface
-	// attachment state (false until InitPresentation succeeds; reset on
-	// DetachPresentation).
-	[[nodiscard]] bool HasGraphics() const noexcept override { return IsReady(); }
-	[[nodiscard]] bool HasPresent()  const noexcept override { return Swapchain_.PresentReady; }
+	[[nodiscard]] OaEngine& Engine() const noexcept { return Engine_; }
+	[[nodiscard]] bool HasGraphics() const noexcept { return Engine_.HasGraphics(); }
+	[[nodiscard]] bool HasPresent()  const noexcept { return Swapchain_.PresentReady; }
 
 	// Phase-C: attach surface, build swapchain + renderpass + sync.
 	// Safe to call again after DetachPresentation() with a new surface.
@@ -449,13 +541,8 @@ public:
 	// acquire → record (clear + optional ImGui) → submit → present.
 	[[nodiscard]] bool DrawFrame();
 
-	// ─── Compatibility context-mediated present primitives ─────────────────────────────────────
-	//
-	// These split DrawFrame's body into the two halves that OaContext::
-	// RecordAcquire and OaContext::RecordPresent call. DrawFrame() above is
-	// preserved as a self-driven loop for callers that don't go through ctx
-	// (e.g. compact tools that want one-call render-and-present). OaDeviceUi
-	// (Step 3c.2) drives presentation through ctx via these primitives.
+	// Explicit presentation primitives. OaViewer uses these directly; compute
+	// graph recording has no swapchain or WSI state.
 	//
 	// Acquire result: indices + handles the caller needs to address the
 	// per-frame sync slot and the acquired image. Out parameters keep the
@@ -471,7 +558,7 @@ public:
 	// Acquire the next swapchain image. Waits the InFlightFence at the
 	// current FrameIndex, calls vkAcquireNextImageKHR signalling
 	// ImageAvailSem[FrameIndex], populates OutResult. Returns false on hard
-	// error (surface lost, zero-size window). Used by OaContext::RecordAcquire.
+	// error (surface lost, zero-size window).
 	[[nodiscard]] bool AcquireSwapchainImage(OaSwapchain& InSwap, AcquireResult& OutResult);
 
 	// Body of the graphics CB that PresentSwapchainImage builds. All members
@@ -510,7 +597,7 @@ public:
 	// then submit on the graphics queue waiting on ImageAvailSem[InFrameSlot],
 	// signalling RenderDoneSem[InFrameSlot] with InFlightFence[InFrameSlot];
 	// call vkQueuePresentKHR waiting on RenderDoneSem[InFrameSlot]. Advances
-	// Swapchain.FrameIndex on success. Used by OaContext::RecordPresent.
+	// Swapchain.FrameIndex on success.
 	[[nodiscard]] bool PresentSwapchainImage(
 		OaSwapchain&       InSwap,
 		OaU32              InImageIndex,
@@ -520,13 +607,17 @@ public:
 	// True when GraphicsQueue and ComputeQueue are the same VkQueue (common on laptops).
 	[[nodiscard]] bool UsesMergedGraphicsComputeQueue() const;
 
-	// Serialize vkQueueSubmit with OaComputeEngine::SubmitToQueue on that shared queue.
+	// Serialize vkQueueSubmit with OaEngine::SubmitToQueue on that shared queue.
 	// Call around raw vkQueueSubmit (Dear ImGui texture path, splash upload, etc.).
 	void LockSharedQueueSubmit(void* InQueue);
 	void UnlockSharedQueueSubmit(void* InQueue);
 
 	// Explicit swapchain resize (DrawFrame handles OUT_OF_DATE automatically).
 	[[nodiscard]] bool RecreateSwapchain(VkExtent2D InNewExtent);
+	// WSI completion is not implied by the render-submission timeline. Until a
+	// present-id/fence path is enabled, this is the narrow explicit boundary for
+	// destroying presentation-owned resources.
+	[[nodiscard]] OaStatus WaitPresentationIdle();
 
 	// Unified graphics/compute frame batch recorded on the graphics queue.
 	// Graphics queues also support compute, so Render canvas draws and OaUi
@@ -556,18 +647,30 @@ public:
 	[[nodiscard]] const OaSwapchain& Swapchain() const noexcept { return Swapchain_; }
 	[[nodiscard]] OaSwapchain&       Swapchain()       noexcept { return Swapchain_; }
 
-	void Destroy() override;
+	[[nodiscard]] OaStatus Close();
+	// Compatibility wrapper that logs Close() failures. Prefer Close() where the
+	// shutdown result can be propagated.
+	void Destroy();
 
 private:
+	OaEngine& Engine_;
+
 	[[nodiscard]] bool BuildSwapchainObjects();
 	[[nodiscard]] bool BuildRenderPass();
 	[[nodiscard]] bool BuildFramebuffers();
 	[[nodiscard]] bool BuildCommandPool();
 	[[nodiscard]] bool BuildSyncObjects();
+	[[nodiscard]] OaStatus PreparePresentFence(OaSwapchain& InSwap, OaU32 InFrameSlot);
+	void FinishPresent(OaSwapchain& InSwap, OaU32 InFrameSlot, VkResult InResult);
 
 	void DestroySwapchainObjects();
 	void DestroySyncObjects();
 	void DestroyCommandPool();
+	void ShutdownImGuiResources_();
+	void Abandon_() noexcept;
+	[[nodiscard]] bool HasOwnedState_() const noexcept;
+	static void LockSharedQueueSubmitCallback_(VkQueue InQueue, void* InUser);
+	static void UnlockSharedQueueSubmitCallback_(VkQueue InQueue, void* InUser);
 
 	// WSI swapchain state (handle, format, extent, images, views, per-frame
 	// sync, dirty-resize signal). Extracted into a standalone type so other
@@ -587,8 +690,7 @@ private:
 	bool             ImGuiReady_ = false;
 
 	static constexpr OaU32 kGraphicsBatchRingSize = 4;
-	OaVkStream GraphicsBatchRing_[kGraphicsBatchRingSize];
-	OaBool GraphicsBatchRingValid_[kGraphicsBatchRingSize] = {};
+	OaUniquePtr<OaVkStream> GraphicsBatchRing_[kGraphicsBatchRingSize];
 	OaVkStream* GraphicsBatchStream_ = nullptr;
 	OaU32 GraphicsBatchRingIndex_ = 0;
 };

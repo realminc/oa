@@ -220,6 +220,7 @@ OaStatus OaVideoDecoder::RecordH264DecodeCommands(
 	return OaFnVideoDecoderRecord::FinishAndSubmit(*this, cmd, {
 		.DpbSlot = InDpbSlot,
 		.HasDistinctOutput = hasDistinctOutput,
+		.MarkSlotDeviceActivated = InSliceHeader.IsReference,
 		.ErrorContext = "H.264 video decode",
 	});
 }

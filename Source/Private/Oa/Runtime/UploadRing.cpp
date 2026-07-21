@@ -1,10 +1,13 @@
 #include <Oa/Runtime/UploadRing.h>
 
 #include <Oa/Core/Memory.h>
+#include <Oa/Core/Log.h>
 #include <Oa/Core/Std.h>
 #include <Oa/Runtime/Allocator.h>
 #include <Oa/Runtime/Engine.h>
 #include <Oa/Runtime/Stream.h>
+
+#include "UploadRingRetirement.h"
 
 #include <algorithm>
 
@@ -21,17 +24,10 @@ struct OaPendingUploadCopy {
 	OaBufferCopyRegion Region;
 };
 
-struct OaUploadFrame {
-	OaVkStream Stream;
-	OaU64 Begin = 0;
-	OaU64 End = 0;
-	OaU64 Cursor = 0;
-};
-
 } // namespace
 
 struct OaUploadRing::Impl {
-	OaComputeEngine* Engine = nullptr;
+	OaEngine* Engine = nullptr;
 	OaVkBuffer Staging;
 	OaUploadRingConfig Config;
 	OaU64 FrameCapacity = 0;
@@ -46,15 +42,15 @@ struct OaUploadRing::Impl {
 OaUploadRing::OaUploadRing(OaUploadRing&&) noexcept = default;
 OaUploadRing& OaUploadRing::operator=(OaUploadRing&& InOther) noexcept {
 	if (this != &InOther) {
-		Destroy();
+		Abandon_();
 		Impl_ = OaStdMove(InOther.Impl_);
 	}
 	return *this;
 }
-OaUploadRing::~OaUploadRing() { Destroy(); }
+OaUploadRing::~OaUploadRing() { Abandon_(); }
 
 OaResult<OaUploadRing> OaUploadRing::Create(
-	OaComputeEngine& InEngine,
+	OaEngine& InEngine,
 	const OaUploadRingConfig& InConfig)
 {
 	if (InConfig.CapacityBytes == 0 || InConfig.FramesInFlight < 2
@@ -216,18 +212,35 @@ OaResult<OaCompletionToken> OaUploadRing::Submit() {
 	while (begin < Impl_->Copies.Size()) {
 		const OaVkBuffer& dst = Impl_->Copies[begin].Dst;
 		OaVec<OaBufferCopyRegion> regions;
+		OaU64 barrierBegin = UINT64_MAX;
+		OaU64 barrierEnd = 0U;
 		OaUsize end = begin;
 		while (end < Impl_->Copies.Size()
 			&& Impl_->Copies[end].Dst.Buffer == dst.Buffer) {
-			regions.PushBack(Impl_->Copies[end].Region);
+			const OaBufferCopyRegion& region = Impl_->Copies[end].Region;
+			regions.PushBack(region);
+			barrierBegin = std::min(barrierBegin, region.DstOffset);
+			barrierEnd = std::max(barrierEnd, region.DstOffset + region.Size);
 			++end;
 		}
 		frame.Stream.RecordCopyBufferRegions(
 			Impl_->Staging, dst,
 			OaSpan<const OaBufferCopyRegion>(regions.Data(), regions.Size()));
+		frame.Stream.RecordTransferWriteBarrier(
+			dst, barrierBegin, barrierEnd - barrierBegin);
 		begin = end;
 	}
-	OA_RETURN_IF_ERROR(frame.Stream.Submit(*Impl_->Engine));
+	// Ring arenas protect staging reuse, but destination buffers can repeat
+	// across adjacent batches. Queue order alone is not a Vulkan memory
+	// dependency, so chain submissions through the previous upload completion.
+	// This stays GPU-side and preserves host asynchrony.
+	if (Impl_->LastCompletion.IsValid()) {
+		const OaVkTimelineWait wait = Impl_->LastCompletion.TimelineWait();
+		OA_RETURN_IF_ERROR(frame.Stream.SubmitWithDependencies(
+			*Impl_->Engine, OaSpan<const OaVkTimelineWait>(&wait, 1)));
+	} else {
+		OA_RETURN_IF_ERROR(frame.Stream.Submit(*Impl_->Engine));
+	}
 	Impl_->LastCompletion = frame.Stream.Completion(Impl_->Engine->Device);
 	Impl_->BatchOpen = false;
 	Impl_->Copies.Clear();
@@ -241,14 +254,62 @@ OaStatus OaUploadRing::Wait() {
 		: OaStatus::Ok();
 }
 
-void OaUploadRing::Destroy() {
-	if (!Impl_) return;
+OaStatus OaUploadRing::Close() {
+	if (!Impl_) return OaStatus::Ok();
+	OaStatus firstError = OaStatus::Ok();
+	const auto retainError = [&firstError](const OaStatus& InStatus) {
+		if (firstError.IsOk() && !InStatus.IsOk()) firstError = InStatus;
+	};
 	if (Impl_->Engine && Impl_->Engine->Device.Device) {
+		if (Impl_->BatchOpen) {
+			auto& active = *Impl_->Frames[Impl_->ActiveFrame];
+			retainError(active.Stream.ResetUnsubmitted(Impl_->Engine->Device));
+			Impl_->BatchOpen = false;
+			Impl_->Copies.Clear();
+		}
 		for (auto& frame : Impl_->Frames) {
-			if (frame) frame->Stream.Destroy(Impl_->Engine->Device);
+			if (!frame) continue;
+			retainError(frame->Stream.Synchronize(Impl_->Engine->Device));
+			frame->Stream.Destroy(Impl_->Engine->Device);
 		}
 		Impl_->Engine->FreeBuffer(Impl_->Staging);
 	}
+	Impl_.reset();
+	return firstError;
+}
+
+void OaUploadRing::Destroy() {
+	if (const auto status = Close(); !status.IsOk()) {
+		OA_LOG_ERROR(OaLogComponent::Core,
+			"OaUploadRing::Destroy: close failed: %s",
+			status.GetMessage().c_str());
+	}
+}
+
+void OaUploadRing::Abandon_() noexcept {
+	if (!Impl_) return;
+	auto* engine = Impl_->Engine;
+	if (engine == nullptr || engine->Device.Device == nullptr) {
+		Impl_.reset();
+		return;
+	}
+	if (Impl_->BatchOpen) {
+		auto& active = *Impl_->Frames[Impl_->ActiveFrame];
+		if (const auto status = active.Stream.ResetUnsubmitted(engine->Device);
+			not status.IsOk())
+		{
+			OA_LOG_ERROR(OaLogComponent::Core,
+				"OaUploadRing abandonment failed to cancel open batch: %s",
+				status.GetMessage().c_str());
+		}
+		Impl_->BatchOpen = false;
+		Impl_->Copies.Clear();
+	}
+
+	auto retired = OaMakeUniquePtr<OaRetiredUploadRing>();
+	retired->Staging = OaStdMove(Impl_->Staging);
+	retired->Frames = OaStdMove(Impl_->Frames);
+	engine->RetireUploadRing(OaStdMove(retired));
 	Impl_.reset();
 }
 

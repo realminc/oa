@@ -59,7 +59,7 @@ OaU64 ProblemContractHash(const OaMatmulProblem& InProblem) {
 	return h;
 }
 
-OaU64 DeviceContractHash(const OaComputeEngine& InRt) {
+OaU64 DeviceContractHash(const OaEngine& InRt) {
 	const auto& hw = InRt.Device.Info.Hardware;
 	const auto& sw = InRt.Device.Info.Software;
 	OaU64 h = 0xcbf29ce484222325ULL;
@@ -82,7 +82,7 @@ OaGemmPrecision ToGemmPrecision(OaStoragePrecision InPrecision) {
 // dual-output fields are part of the key because replaying a winner across
 // either boundary can select a shader with a different buffer contract.
 static OaRouteCacheKey BuildRouteCacheKeyLocal(
-	const OaComputeEngine& InRt,
+	const OaEngine& InRt,
 	const OaMatmulProblem& InProblem)
 {
 	OaRouteCacheKey key{};
@@ -128,7 +128,7 @@ static OaGemmPrecision ResolvePrecision(const OaMatmulProblem& InProblem) {
 }
 
 static bool VariantLegalResolved(
-	const OaComputeEngine& InRt,
+	const OaEngine& InRt,
 	const OaMatmulVariant& InVariant,
 	const OaMatmulProblem& InProblem,
 	OaGemmPrecision InPrecision)
@@ -269,7 +269,7 @@ OaGemmRouteResult ResultForVariant(
 }
 
 OaMatmulPlan PlanForVariant(
-	const OaComputeEngine& InRt,
+	const OaEngine& InRt,
 	const OaMatmulVariant& InVariant,
 	const OaMatmulProblem& InProblem)
 {
@@ -361,21 +361,39 @@ const char* PrecName(OaGemmPrecision InPrec) {
 	switch (InPrec) {
 		case OaGemmPrecision::Bf16: return "BF16";
 		case OaGemmPrecision::Fp32: return "FP32";
-		default:                    return "?";
+		case OaGemmPrecision::Auto: return "Auto";
 	}
+	return "?";
 }
 
-void LogAndCount(const OaGemmRouteResult& InR, OaU32 InM, OaU32 InN, OaU32 InK) {
+void LogAndCount(
+	const OaGemmRouteResult& InR,
+	OaGemmPrecision InRequestedPrecision,
+	OaU32 InM,
+	OaU32 InN,
+	OaU32 InK)
+{
 	// Only increment counters (compiled out in Release)
 	OA_DEBUG_COUNTER_INC_NAMED(InR.KernelName);
 
 	// Opt-in per-call decision log (OA_LOG_GEMM_ROUTER=1).
-	// Documents which kernel was selected for each (M, N, K) shape.
+	// This line is a stable machine-readable evidence contract consumed by
+	// Tools/Diagnostics/oaevidence.py. Keep it one record per plan.
 	if (GemmRouterLogEnabled()) {
+		const char* fallback = "none";
+		if (InRequestedPrecision == OaGemmPrecision::Bf16
+			and InR.ActualPrec != OaGemmPrecision::Bf16) {
+			fallback = "precision";
+		} else if (InR.Kernel == OaGemmKernel::StridedFp32) {
+			fallback = "layout";
+		} else if (InR.Kernel == OaGemmKernel::Naive) {
+			fallback = "naive";
+		}
 		OA_LOG_INFO(OaLogComponent::Core,
-			"GemmRouter: M=%u N=%u K=%u prec=%s -> %s (path=%s, gx=%u, gy=%u, gz=%u)",
-			InM, InN, InK, PrecName(InR.ActualPrec),
-			InR.KernelName, PathName(InR.Path), InR.Gx, InR.Gy, InR.Gz);
+			"GemmRouter: M=%u N=%u K=%u requested=%s actual=%s kernel=%s "
+			"path=%s fallback=%s grid=%u,%u,%u",
+			InM, InN, InK, PrecName(InRequestedPrecision), PrecName(InR.ActualPrec),
+			InR.KernelName, PathName(InR.Path), fallback, InR.Gx, InR.Gy, InR.Gz);
 	}
 
 	// Only warn on Naive fallback for large GEMMs (performance issue)
@@ -388,13 +406,13 @@ void LogAndCount(const OaGemmRouteResult& InR, OaU32 InM, OaU32 InN, OaU32 InK) 
 } // namespace
 
 OaRouteCacheKey OaGemmRouter::CacheKey(
-	const OaComputeEngine& InRt,
+	const OaEngine& InRt,
 	const OaMatmulProblem& InProblem) {
 	return BuildRouteCacheKeyLocal(InRt, InProblem);
 }
 
 bool OaGemmRouter::IsVariantLegal(
-	const OaComputeEngine& InRt,
+	const OaEngine& InRt,
 	const OaMatmulVariant& InVariant,
 	const OaMatmulProblem& InProblem) {
 	return VariantLegalResolved(InRt, InVariant, InProblem, ResolvePrecision(InProblem));
@@ -405,7 +423,7 @@ bool OaGemmRouter::IsVariantLegal(
 // ─────────────────────────────────────────────────────────────────────────────
 
 OaGemmRouteResult OaGemmRouter::Select(
-	const OaComputeEngine& InRt,
+	const OaEngine& InRt,
 	OaU32                    InM,
 	OaU32                    InN,
 	OaU32                    InK,
@@ -420,7 +438,7 @@ OaGemmRouteResult OaGemmRouter::Select(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// OaComputeEngine::GemmCapsMask — lazy-init cache for ComputeCapsMask.
+// OaEngine::GemmCapsMask — lazy-init cache for ComputeCapsMask.
 // The mask depends only on Software/Hardware info populated at device init,
 // so we compute it once and stash it on the engine. Two threads racing the
 // first read will both compute the same value and CAS the result; the
@@ -428,7 +446,7 @@ OaGemmRouteResult OaGemmRouter::Select(
 // idempotent — there is no payload the reader depends on through the atomic.
 // ─────────────────────────────────────────────────────────────────────────────
 
-OaU64 OaComputeEngine::GemmCapsMask() const {
+OaU64 OaEngine::GemmCapsMask() const {
 	OaU64 cached = GemmCapsMask_.load(std::memory_order_relaxed);
 	if (cached != 0U) {
 		return cached;
@@ -444,7 +462,7 @@ OaU64 OaComputeEngine::GemmCapsMask() const {
 // ─────────────────────────────────────────────────────────────────────────────
 
 OaMatmulPlan OaGemmRouter::Plan(
-	const OaComputeEngine& InRt,
+	const OaEngine& InRt,
 	const OaMatmulProblem& InProblem,
 	OaMatmulPreference InPreference)
 {
@@ -455,7 +473,7 @@ OaMatmulPlan OaGemmRouter::Plan(
 	auto finish = [&](const OaMatmulVariant& variant) {
 		auto plan = PlanForVariant(InRt, variant, problem);
 		auto route = RouteForPlan(plan);
-		LogAndCount(route, problem.M, problem.N, problem.K);
+		LogAndCount(route, precision, problem.M, problem.N, problem.K);
 		return plan;
 	};
 	auto findLegal = [&](OaMatmulVariantId id) -> const OaMatmulVariant* {
@@ -556,7 +574,7 @@ OaMatmulPlan OaGemmRouter::Plan(
 }
 
 bool OaGemmRouter::ValidatePlan(
-	const OaComputeEngine& InRt,
+	const OaEngine& InRt,
 	const OaMatmulPlan& InPlan,
 	const OaMatmulProblem& InProblem)
 {
@@ -585,7 +603,7 @@ bool OaGemmRouter::ValidatePlan(
 }
 
 OaGemmRouteResult OaGemmRouter::Select(
-	const OaComputeEngine& InRt,
+	const OaEngine& InRt,
 	const OaMatmulProblem& InProblem)
 {
 	return RouteForPlan(Plan(InRt, InProblem));
@@ -651,7 +669,7 @@ void OaGemmRouter::ClearForced() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 bool OaGemmRouter::PrecisionAvailable(
-	const OaComputeEngine& InRt,
+	const OaEngine& InRt,
 	OaGemmPrecision          InPrec)
 {
 	const auto& sw = InRt.Device.Info.Software;
@@ -667,7 +685,7 @@ bool OaGemmRouter::PrecisionAvailable(
 }
 
 bool OaGemmRouter::IsGemmCmSgBf16Suitable(
-	const OaComputeEngine& InRt,
+	const OaEngine& InRt,
 	OaU32                    InM,
 	OaU32                    InN,
 	OaU32                    InK) {
@@ -689,7 +707,7 @@ bool OaGemmRouter::IsGemmCmSgBf16Suitable(
 }
 
 bool OaGemmRouter::IsGemmCmWgBf16Suitable(
-	const OaComputeEngine& InRt,
+	const OaEngine& InRt,
 	OaU32                    InM,
 	OaU32                    InN,
 	OaU32                    InK

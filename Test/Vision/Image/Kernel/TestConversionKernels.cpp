@@ -46,7 +46,7 @@ protected:
 	void SetUp() override {
 		// Runtime is set up by OaVkTestEnvironment (global fixture)
 		// Just verify it's available
-		ASSERT_NE(OaComputeEngine::GetGlobal(), nullptr);
+		ASSERT_NE(OaEngine::GetGlobal(), nullptr);
 	}
 	
 	// Helper: compute max relative error between CPU and GPU results

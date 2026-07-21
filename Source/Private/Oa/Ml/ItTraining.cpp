@@ -12,6 +12,7 @@
 #include <Oa/Core/Log.h>
 #include <Oa/Runtime/Context.h>
 #include <Oa/Runtime/Engine.h>
+#include <Oa/Runtime/ExecutionMemory.h>
 
 #include <algorithm>
 
@@ -75,6 +76,7 @@ void OaItTraining::AdvanceIfNeeded_() {
 	if (not TrainBeginFired_) {
 		TrainBeginFired_ = true;
 		FireTrainBegin();
+		if (StopRequested_) return;
 	}
 	if (BodyPending_) return;
 	BodyPending_ = true;
@@ -92,6 +94,7 @@ void OaItTraining::AdvanceIfNeeded_() {
 			EpochT0_        = std::chrono::high_resolution_clock::now();
 			LastEpochFired_ = currentEpoch;
 			FireEpochBegin();
+			if (StopRequested_) return;
 		}
 	}
 	// Step one is the warm-up: optimizers and autograd may lazily create
@@ -99,7 +102,7 @@ void OaItTraining::AdvanceIfNeeded_() {
 	// are assigned stable context slots so the recorded graph can reuse exact
 	// buffer identities on every following step.
 	if (Index_ > 1) {
-		OaContext::GetDefault().BeginStableResourceFrame();
+		OaExecutionMemory::BeginStableFrame(OaContext::GetDefault());
 		StableResourceFrameOpen_ = true;
 	}
 	if (TrainingPhaseTiming_) {
@@ -116,7 +119,7 @@ bool OaItTraining::IsDone() const {
 		return true;
 	}
 	const_cast<OaItTraining*>(this)->AdvanceIfNeeded_();
-	return false;
+	return StopRequested_;
 }
 
 void OaItTraining::Reset() {
@@ -288,8 +291,13 @@ void OaItTraining::Next() {
 	{
 		if (not replayExisting) {
 			const auto captureT0 = Clock::now();
-			auto captureStatus = Cfg_.Program->Capture(ctx,
-				OaTrainingProgramOptions{.EnableGpuTiming = TimerReady_});
+			OaVec<const OaMatrix*> observedOutputs;
+			if (PendingLoss_.HasStorage()) observedOutputs.PushBack(&PendingLoss_);
+			OaTrainingProgramOptions programOptions;
+			programOptions.EnableGpuTiming = TimerReady_;
+			programOptions.ObservedOutputs = {
+				observedOutputs.Data(), observedOutputs.Size()};
+			auto captureStatus = Cfg_.Program->Capture(ctx, programOptions);
 			const auto captureT1 = Clock::now();
 			if (TrainingPhaseTiming_) {
 				TrainingPhaseStats_.CompileMs += elapsedMs(captureT0, captureT1);
@@ -369,22 +377,21 @@ void OaItTraining::Next() {
 		}
 		if (replayExisting) Opt_.NotifyProgramReplay();
 	} else {
-		OaGpuTimer* timer = TimerReady_ ? &Timer_ : nullptr;
-		auto execStatus = ctx.ExecuteInAsyncBatch(timer);
-		if (not execStatus.IsOk()) {
-			failStep(execStatus, "ExecuteInAsyncBatch");
-			return;
-		}
-
-		auto flushStatus = ctx.FlushAsyncBatch();
-		if (not flushStatus.IsOk()) {
-			failStep(flushStatus, "FlushAsyncBatch");
-			return;
-		}
-		auto syncStatus = ctx.Sync();
-		if (not syncStatus.IsOk()) {
-			failStep(syncStatus, "Sync");
-			return;
+		// A legal step may be host-only (for example OaOptimizerNoOp in callback
+		// lifecycle tests). Submit() deliberately rejects an empty recording, so
+		// only create a GPU event when this step actually recorded device work.
+		if (ctx.NodeCount() != 0U) {
+			OaGpuTimer* timer = TimerReady_ ? &Timer_ : nullptr;
+			auto submitted = ctx.Submit(timer);
+			if (not submitted.IsOk()) {
+				failStep(submitted.GetStatus(), "training step submit");
+				return;
+			}
+			auto waitStatus = ctx.Wait(submitted.GetValue());
+			if (not waitStatus.IsOk()) {
+				failStep(waitStatus, "training step wait");
+				return;
+			}
 		}
 		if (TrainingPhaseTiming_) {
 			const auto& runtime = ctx.LastExecutionStats();
@@ -450,7 +457,7 @@ void OaItTraining::Next() {
 	const auto callbackT0 = TrainingPhaseTiming_ ? Clock::now() : Clock::time_point{};
 	FireStepEnd();
 
-	if (IsEpochBoundary()) {
+	if (LastStatus_.IsOk() and IsEpochBoundary()) {
 		FireEpochEnd();
 	}
 	if (TrainingPhaseTiming_) {
@@ -474,7 +481,15 @@ void OaItTraining::Next(const OaMatrix& InLoss) {
 
 void OaItTraining::Step(const std::function<void()>& InOpFn) {
 	if (IsDone()) return;  // also handles lazy AdvanceIfNeeded_
-	if (Cfg_.Program == nullptr or not Cfg_.Program->IsCaptured()) InOpFn();
+	const OaBool recordsStep = Cfg_.Program == nullptr
+		or not Cfg_.Program->IsCaptured();
+	if (recordsStep) InOpFn();
+	if (StableResourceFrameOpen_ and recordsStep) {
+		// This overload provides no prepare/record boundary. Retain every stable
+		// slot rather than guessing which allocations escape the captured step.
+		OaExecutionMemory::SealAllStableResourcesExternal(
+			OaContext::GetDefault());
+	}
 	Next();
 }
 
@@ -483,8 +498,13 @@ void OaItTraining::Step(
 	const std::function<void()>& InRecordFn)
 {
 	if (IsDone()) return;  // also opens the stable frame before preparation
+	const OaBool recordsStep = Cfg_.Program == nullptr
+		or not Cfg_.Program->IsCaptured();
 	InPrepareFn();
-	if (Cfg_.Program == nullptr or not Cfg_.Program->IsCaptured()) InRecordFn();
+	if (StableResourceFrameOpen_ and recordsStep) {
+		OaExecutionMemory::SealStableInputs(OaContext::GetDefault());
+	}
+	if (recordsStep) InRecordFn();
 	Next();
 }
 
@@ -498,18 +518,21 @@ OaStatus OaItTraining::Finish() {
 		}
 	}
 	auto& ctx = OaContext::GetDefault();
-	auto flushStatus = ctx.FlushAsyncBatch();
-	if (not flushStatus.IsOk()) {
-		if (Session_ != nullptr) Session_->OnFinished(flushStatus, *this);
-		return flushStatus;
-	}
 	auto syncStatus = ctx.Sync();
 	if (not syncStatus.IsOk()) {
 		if (Session_ != nullptr) Session_->OnFinished(syncStatus, *this);
 		return syncStatus;
 	}
+	if (not LastStatus_.IsOk()) {
+		if (Session_ != nullptr) Session_->OnFinished(LastStatus_, *this);
+		return LastStatus_;
+	}
 
 	FireTrainEnd();
+	if (not LastStatus_.IsOk()) {
+		if (Session_ != nullptr) Session_->OnFinished(LastStatus_, *this);
+		return LastStatus_;
+	}
 	if (TrainingPhaseTiming_ and TrainingPhaseStats_.Count > 0) {
 		const auto& s = TrainingPhaseStats_;
 		const OaF64 total = s.Mean(s.TotalMs);
@@ -542,7 +565,7 @@ OaStatus OaItTraining::RequestProgramRecapture() {
 
 void OaItTraining::CloseStableResourceFrame_() {
 	if (not StableResourceFrameOpen_) return;
-	OaContext::GetDefault().EndStableResourceFrame();
+	OaExecutionMemory::EndStableFrame(OaContext::GetDefault());
 	StableResourceFrameOpen_ = false;
 }
 
@@ -677,22 +700,50 @@ void OaItTraining::FireTrainBegin() {
 	T0_ = std::chrono::high_resolution_clock::now();
 	EpochT0_ = T0_;
 	ResetMetrics_();
-	for (auto* cb : Callbacks_) cb->OnTrainBegin(*this);
+	for (auto* cb : Callbacks_) {
+		cb->OnTrainBegin(*this);
+		if (not CaptureCallbackStatus_(*cb, "OnTrainBegin")) break;
+	}
 }
 
 void OaItTraining::FireEpochBegin() {
 	ResetMetrics_();
-	for (auto* cb : Callbacks_) cb->OnEpochBegin(*this);
+	for (auto* cb : Callbacks_) {
+		cb->OnEpochBegin(*this);
+		if (not CaptureCallbackStatus_(*cb, "OnEpochBegin")) break;
+	}
 }
 
 void OaItTraining::FireStepEnd() {
-	for (auto* cb : Callbacks_) cb->OnStepEnd(*this);
+	for (auto* cb : Callbacks_) {
+		cb->OnStepEnd(*this);
+		if (not CaptureCallbackStatus_(*cb, "OnStepEnd")) break;
+	}
 }
 
 void OaItTraining::FireEpochEnd() {
-	for (auto* cb : Callbacks_) cb->OnEpochEnd(*this);
+	for (auto* cb : Callbacks_) {
+		cb->OnEpochEnd(*this);
+		if (not CaptureCallbackStatus_(*cb, "OnEpochEnd")) break;
+	}
 }
 
 void OaItTraining::FireTrainEnd() {
-	for (auto* cb : Callbacks_) cb->OnTrainEnd(*this);
+	for (auto* cb : Callbacks_) {
+		cb->OnTrainEnd(*this);
+		if (not CaptureCallbackStatus_(*cb, "OnTrainEnd")) break;
+	}
+}
+
+bool OaItTraining::CaptureCallbackStatus_(
+	OaCbTraining& InCallback, const char* InPhase)
+{
+	const OaStatus status = InCallback.GetStatus();
+	if (status.IsOk()) return true;
+	if (LastStatus_.IsOk()) LastStatus_ = status;
+	StopRequested_ = true;
+	OA_LOG_ERROR(OaLogComponent::ML,
+		"OaItTraining: callback %s failed at step %lld: %s",
+		InPhase, static_cast<long long>(Index_), status.GetMessage().CStr());
+	return false;
 }

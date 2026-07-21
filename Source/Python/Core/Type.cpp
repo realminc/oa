@@ -1,8 +1,6 @@
 // OA Python bindings — Core types and OaMatrix.
 #include "../Binding.h"
 
-#include <Oa/Runtime/Context.h>
-
 void BindCoreType(nb::module_& m) {
     // ═════════════════════════════════════════════════════════════════════════
     // OaMatrixShape
@@ -58,13 +56,13 @@ void BindCoreType(nb::module_& m) {
         .value("Q8_K", OaScalarType::Q8_K);
 
     // ═════════════════════════════════════════════════════════════════════════
-    // OaContextMatMulPrecision enum
+    // OaMatMulPrecision enum
     // ═════════════════════════════════════════════════════════════════════════
 
-    nb::enum_<OaContextMatMulPrecision>(m, "OaContextMatMulPrecision")
-        .value("Auto", OaContextMatMulPrecision::Auto)
-        .value("Fp32", OaContextMatMulPrecision::Fp32)
-        .value("Bf16", OaContextMatMulPrecision::Bf16);
+    nb::enum_<OaMatMulPrecision>(m, "OaMatMulPrecision")
+        .value("Auto", OaMatMulPrecision::Auto)
+        .value("Fp32", OaMatMulPrecision::Fp32)
+        .value("Bf16", OaMatMulPrecision::Bf16);
 
     // ═════════════════════════════════════════════════════════════════════════
     // OaMatrix

@@ -4,8 +4,10 @@
 // OaFnMatrix — Embed GPU operations.
 // Context-based unified API: records operations to OaContext.
 
+#include <Oa/Ml/Autograd/Nodes.h>
 #include <Oa/Core/Matrix.h>
 #include <Oa/Core/FnMatrix.h>
+#include <Oa/Core/Operation.h>
 #include <Oa/Ml/FnMatrix.h>
 #include <Oa/Core/Status.h>
 #include <Oa/Core/Types.h>
@@ -23,16 +25,37 @@ static OaU32 DivCeil(OaU32 InA, OaU32 InB) { return (InA + InB - 1) / InB; }
 OaMatrix OaFnMatrix::BiasAdd(const OaMatrix& InA, const OaMatrix& InB) {
 	auto& ctx = OaContext::GetDefault();
 	OaMatrix out = OaFnMatrix::Empty(InA.Shape_, InA.Dtype_);
+	const auto semantic = ctx.RecordOperation(
+		OaOperationRegistry::BiasAdd, {&InA, &InB}, {&out},
+		{});
+	if (not semantic.IsOk()) return {};
 	OaU32 n = static_cast<OaU32>(InA.NumElements());
 
 	struct { OaU32 Count; } copyPush{n};
 	OaBufferAccess copyAccess[] = {OaBufferAccess::Read, OaBufferAccess::Write};
-	ctx.Add("Copy", {&InA, &out}, copyAccess, &copyPush, sizeof(copyPush), DivCeil(n, 256));
+	ctx.Add("Copy", {&InA, &out}, copyAccess, &copyPush, sizeof(copyPush), DivCeil(n, 256),
+		1, 1, OaOperationRegistry::BiasAdd.Name, 0,
+		OaOperationRegistry::BiasAdd.Hash, 0, 0, semantic.GetValue());
 
 	OaU32 rows = static_cast<OaU32>(InA.NumElements() / InA.Size(-1));
 	OaU32 cols = static_cast<OaU32>(InA.Size(-1));
 	struct { OaU32 Rows; OaU32 Cols; } push{rows, cols};
 	OaBufferAccess access[] = {OaBufferAccess::ReadWrite, OaBufferAccess::Read};
-	ctx.Add("BiasAdd", {&out, &InB}, access, &push, sizeof(push), DivCeil(rows * cols, 256));
+	ctx.Add("BiasAdd", {&out, &InB}, access, &push, sizeof(push), DivCeil(rows * cols, 256),
+		1, 1, OaOperationRegistry::BiasAdd.Name, 0,
+		OaOperationRegistry::BiasAdd.Hash, 0, 0, semantic.GetValue());
+	if (OaFnAutograd::IsEnabled() and (InA.RequiresGrad() or InB.RequiresGrad())) {
+		auto _gradFn = OaMakeSharedPtr<OaGradBcastBinary>();
+		_gradFn->Op_ = OaBcastBinOp::Add;
+		_gradFn->Saved_ = OaVec<OaMatrix>{InA, InB};
+		_gradFn->SetGraphInputs(OaVec<OaMatrix>{InA, InB});
+		_gradFn->SequenceNr_ = OaFnAutograd::NextSeq();
+		_gradFn->OutputShape_ = out.GetShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads
+		const auto semanticAttached = OaFnAutograd::AttachSemantic(
+			_gradFn, semantic.GetValue());
+		if (not semanticAttached.IsOk()) return {};
+		out.MutAutograd().GradFn = _gradFn;
+		out.SetRequiresGrad(true);
+	}
 	return out;
 }

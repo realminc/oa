@@ -20,7 +20,7 @@
 #include <Oa/Core/Types.h>
 #include <Oa/Core/Status.h>
 
-class OaComputeEngine;
+class OaEngine;
 class OaVkDevice;
 class OaVkStream;
 
@@ -36,7 +36,7 @@ public:
 	~OaVkTimestamp() = default;
 
 	[[nodiscard]] static OaResult<OaVkTimestamp> Create(
-		OaComputeEngine &InRt, OaU32 InMaxQueries
+		OaEngine &InRt, OaU32 InMaxQueries
 	);
 	void Destroy(const OaVkDevice &InDevice);
 

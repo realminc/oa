@@ -62,7 +62,7 @@ TEST(GruNumericalGrad, SingleStepGradient) {
 
 	ForceFp32Gemm();
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 
 	// Create GRU cell
 	auto gru = OaMakeSharedPtr<OaGruCell>(kInputSize, kHiddenSize, true);
@@ -161,7 +161,7 @@ TEST(GruNumericalGrad, SequenceGradient) {
 	ForceFp32Gemm();
 	OaFnMatrix::SetRngSeed(1234);  // deterministic init → stable non-trivial gradient signal
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 
 	// Create GRU
 	auto gru = OaMakeSharedPtr<OaGru>(kInputSize, kHiddenSize, 1, true);

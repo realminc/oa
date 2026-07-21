@@ -271,42 +271,46 @@ static void CpuCrossEntropyBwd(const std::vector<float> &logits, const std::vect
 
 class MlKernels : public OaVkEngineTestFixture {
 protected:
-	OaComputeEngine& Rt_ = Rt();
+	OaEngine& Rt_ = Rt();
 
 	void SetUp() override {
 		OaVkEngineTestFixture::SetUp();  // Asserts global engine exists
 		OA_LOG_INFO(OaLogComponent::Core, "GPU: %s", Rt_.Device.Info.Hardware.DeviceName.c_str());
 	}
 
-	// Helper: compute max relative error
-	double ComputeMaxRelativeError(const std::vector<float> &ref, const std::vector<float> &gpu, OaU32 count) {
-		double maxError = 0.0;
-		for (OaU32 i = 0; i < count; ++i) {
-			float r = ref[i];
-			float g = gpu[i];
-			double absError = std::abs(r - g);
-			double relError = absError / std::max(std::abs(r), 1e-6f);
-			maxError = std::max(maxError, relError);
-		}
-		return maxError;
-	}
-
-	// Helper: compare results with detailed logging
+	// Helper: compare results with detailed absolute/relative error logging.
 	void CompareResults(const std::vector<float> &ref, const std::vector<float> &gpu,
-	                    OaU32 count, float tolerance, const char *testName = "") {
-		double maxError = ComputeMaxRelativeError(ref, gpu, count);
-		if (maxError >= tolerance) {
-			// Find first mismatch for debugging
-			for (OaU32 i = 0; i < std::min(count, 10u); ++i) {
-				if (std::abs(ref[i] - gpu[i]) / std::max(std::abs(ref[i]), 1e-6f) > tolerance) {
-					OA_LOG_ERROR(OaLogComponent::Core, "%s: First mismatch at [%u]: CPU=%.6f GPU=%.6f (rel_err=%.2e)",
-					             testName, i, ref[i], gpu[i],
-					             std::abs(ref[i] - gpu[i]) / std::max(std::abs(ref[i]), 1e-6f));
-					break;
+	                    OaU32 count, float relativeTolerance, const char *testName = "",
+	                    float absoluteTolerance = 0.0F) {
+		bool matches = true;
+		OaU32 worstIndex = 0;
+		double worstRatio = 0.0;
+		double maxAbsError = 0.0;
+		double maxRelError = 0.0;
+		for (OaU32 i = 0; i < count; ++i) {
+			const double absError = std::abs(ref[i] - gpu[i]);
+			const double relError = absError / std::max(std::abs(ref[i]), 1e-6f);
+			const double relativeScale = std::max(std::abs(ref[i]), 1e-6F);
+			const double allowedError = absoluteTolerance + relativeTolerance * relativeScale;
+			maxAbsError = std::max(maxAbsError, absError);
+			maxRelError = std::max(maxRelError, relError);
+			if (absError > allowedError) {
+				matches = false;
+				const double ratio = allowedError > 0.0 ? absError / allowedError : absError;
+				if (ratio >= worstRatio) {
+					worstIndex = i;
+					worstRatio = ratio;
 				}
 			}
 		}
-		EXPECT_LT(maxError, tolerance) << testName << ": Max relative error: " << maxError;
+
+		if (!matches) {
+			OA_LOG_ERROR(OaLogComponent::Core,
+			             "%s: Worst mismatch at [%u]: CPU=%.9g GPU=%.9g (error/limit=%.2e)",
+			             testName, worstIndex, ref[worstIndex], gpu[worstIndex], worstRatio);
+		}
+		EXPECT_TRUE(matches) << testName << ": Max absolute error: " << maxAbsError
+		                     << ", max relative error: " << maxRelError;
 	}
 };
 
@@ -618,8 +622,9 @@ TEST_VK(MlKernels, LayerNorm) {
 		std::vector<float> out_gpu(rows * cols);
 		std::memcpy(out_gpu.data(), bufOut.MappedPtr, rows * cols * 4);
 		
-		// LayerNorm uses rsqrt + shared memory reductions - relaxed tolerance for numerical error
-		CompareResults(out_ref, out_gpu, rows * cols, 2e-2f, "LayerNorm");
+		// Near-zero outputs need an absolute floor in addition to the relative
+		// bound; otherwise sub-micro-unit FP32 differences dominate the ratio.
+		CompareResults(out_ref, out_gpu, rows * cols, 2e-2f, "LayerNorm", 1e-5f);
 		
 		Rt_.FreeBuffer(bufX);
 		Rt_.FreeBuffer(bufWeight);
@@ -695,7 +700,8 @@ TEST_VK(MlKernels, Softmax) {
 		
 		std::memcpy(bufX.MappedPtr, x.data(), rows * cols * 4);
 		
-		struct { OaU32 rows; OaU32 cols; } pc = { rows, cols };
+		struct { OaU32 OuterSize; OaU32 DimSize; OaU32 InnerSize; } pc = {
+			rows, cols, 1};
 		OaVkBuffer bufs[] = {bufX, bufOut};
 		
 		ASSERT_TRUE(OaVkDispatch::Run(Rt_, "Softmax", bufs, &pc, sizeof(pc), rows).IsOk());
@@ -1512,7 +1518,7 @@ TEST(NN, BatchNormUpsampleRecordedGraph) {
 
 	OaBatchNorm2d batchNorm(1);
 	OaUpsample upsample(2, OaUpsampleMode::Nearest);
-	OaContext::ScopedEval eval(OaContext::GetDefault());
+	OaModule::ScopedEval eval(batchNorm);
 	auto produced = OaFnMatrix::Add(input, input);
 	auto normalized = batchNorm.Forward(produced);
 	auto activated = OaFnMatrix::Silu(normalized);
@@ -1551,6 +1557,40 @@ public:
 	}
 };
 
+class OaModuleModeFixture final : public OaModule {
+public:
+	void AddChild(OaSharedPtr<OaModule> InChild) {
+		RegisterModule("child", OaStdMove(InChild));
+	}
+};
+
+TEST(NN, ModuleModeIsRecursiveAndMlOwned) {
+	OaModuleModeFixture model;
+	auto child = OaMakeSharedPtr<OaModuleModeFixture>();
+	model.AddChild(child);
+
+	EXPECT_TRUE(model.IsTraining());
+	EXPECT_TRUE(child->IsTraining());
+	model.Eval();
+	EXPECT_FALSE(model.IsTraining());
+	EXPECT_FALSE(child->IsTraining());
+
+	auto lateChild = OaMakeSharedPtr<OaModuleModeFixture>();
+	model.AddChild(lateChild);
+	EXPECT_FALSE(lateChild->IsTraining());
+
+	model.Train();
+	{
+		OaModule::ScopedEval eval(model);
+		EXPECT_FALSE(model.IsTraining());
+		EXPECT_FALSE(child->IsTraining());
+		EXPECT_FALSE(lateChild->IsTraining());
+	}
+	EXPECT_TRUE(model.IsTraining());
+	EXPECT_TRUE(child->IsTraining());
+	EXPECT_TRUE(lateChild->IsTraining());
+}
+
 TEST(NN, ModuleBuffersAreStateNotParameters) {
 	OaModuleBufferFixture module;
 	EXPECT_EQ(module.Parameters().Size(), 1u);
@@ -1573,13 +1613,13 @@ TEST(NN, ModulePersistentBuffersRoundTripThroughOamState) {
 	source.Buffers()[1].Data.Set(0, 9.0f);
 
 	OamModel checkpoint;
-	source.SaveTo(checkpoint);
+	ASSERT_TRUE(source.SaveTo(checkpoint).IsOk());
 	ASSERT_NE(checkpoint.FindWeight("weight"), nullptr);
 	ASSERT_NE(checkpoint.FindState("persistent"), nullptr);
 	EXPECT_EQ(checkpoint.FindState("scratch"), nullptr);
 
 	OaModuleBufferFixture restored;
-	restored.LoadFrom(checkpoint);
+	ASSERT_TRUE(restored.LoadFrom(checkpoint).IsOk());
 	EXPECT_FLOAT_EQ(restored.Parameters()[0].Data.At(0), 3.0f);
 	EXPECT_FLOAT_EQ(restored.Parameters()[0].Data.At(1), 4.0f);
 	EXPECT_FLOAT_EQ(restored.Buffers()[0].Data.At(0), 7.0f);
@@ -1630,7 +1670,7 @@ TEST(NN, SequentialInitializerListAndFlatten) {
 
 TEST(NN, DropoutEvalPassthrough) {
 	OaDropout drop(0.5f);
-	OaContext::ScopedEval guard(OaContext::GetDefault());
+	OaModule::ScopedEval guard(drop);
 	auto input = OaFnMatrix::Ones(OaMatrixShape{10});
 	auto out = drop.Forward(input);
 	(void)OaContext::GetDefault().Execute();

@@ -5,7 +5,7 @@
 
 #include <Oa/Ml/Nn.h>
 #include <Oa/Core/FnMatrix.h>
-#include <Oa/Ml/Autograd.h>
+#include <Oa/Ml/Autograd/Nodes.h>
 #include <Oa/Core/Validation.h>
 
 OaConv2d::OaConv2d(OaI32 InChannels, OaI32 OutChannels, OaI32 KernelSize, OaI32 Stride, OaI32 Padding, OaI32 Groups)

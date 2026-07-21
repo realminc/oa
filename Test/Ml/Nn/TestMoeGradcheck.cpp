@@ -80,7 +80,7 @@ float GradMag(const OaMatrix& g) {
 // ── DIAGNOSTICS: isolate the broadcast-Mul + Slice backward path ──────────────
 TEST(OaMoeExpertPlan, StableDroplessPacking) {
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	const std::vector<OaI32> routes = {2, 0, 1, 2, 0, 1, 2, 1};
 	auto indices = OaFnMatrix::FromBytes(
 		OaSpan<const OaU8>(reinterpret_cast<const OaU8*>(routes.data()), routes.size() * sizeof(OaI32)),
@@ -110,7 +110,7 @@ TEST(OaMoeExpertPlan, StableDroplessPacking) {
 
 TEST(OaMoeExpertPlan, EmptyExpertsAndAllRoutesPreserved) {
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	const std::vector<OaI32> routes = {3, 3, 3, 3};
 	auto indices = OaFnMatrix::FromBytes(
 		OaSpan<const OaU8>(reinterpret_cast<const OaU8*>(routes.data()), routes.size() * sizeof(OaI32)),
@@ -130,7 +130,7 @@ TEST(OaMoeExpertPlan, EmptyExpertsAndAllRoutesPreserved) {
 
 TEST(OaMoeExpertPlan, StableAcrossMultipleWorkgroupChunks) {
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	constexpr OaU32 T = 211, K = 3, E = 7;
 	std::vector<OaI32> routes(T * K);
 	for (OaU32 r = 0; r < T * K; ++r) routes[r] = static_cast<OaI32>((r * 5 + r / 11) % E);
@@ -162,7 +162,7 @@ TEST(OaMoeDiag, BroadcastMulBackward) {
 	setenv("OA_GEMM_FORCE_FP32", "1", 1);
 	OaFnMatrix::SetRngSeed(3);
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 
 	// a[2,3] * b[2,1] (broadcast over dim1). Check grad to BOTH operands.
 	auto a = OaFnMatrix::RandN(OaMatrixShape{2, 3}, OaScalarType::Float32);
@@ -202,7 +202,7 @@ TEST(OaMoeDiag, SliceColumnBackwardMultiUse) {
 	setenv("OA_GEMM_FORCE_FP32", "1", 1);
 	OaFnMatrix::SetRngSeed(5);
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 
 	// p[2,3]; out = sum_e slice(p,col e)  → every column sliced once (multi-use).
 	auto p = OaFnMatrix::RandN(OaMatrixShape{2, 3}, OaScalarType::Float32);
@@ -233,7 +233,7 @@ TEST(OaMoeDiag, SliceBcastMulMultiUse) {
 	setenv("OA_GEMM_FORCE_FP32", "1", 1);
 	OaFnMatrix::SetRngSeed(21);
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 
 	constexpr OaI32 T = 2, E = 2, D = 3;
 	auto p = OaFnMatrix::RandN(OaMatrixShape{T, E}, OaScalarType::Float32);
@@ -269,7 +269,7 @@ TEST(OaMoeDiag, SoftmaxGateCombineChain) {
 	setenv("OA_GEMM_FORCE_FP32", "1", 1);
 	OaFnMatrix::SetRngSeed(9);
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 
 	constexpr OaI32 T = 2, E = 2, D = 3;
 	auto logits = OaFnMatrix::RandN(OaMatrixShape{T, E}, OaScalarType::Float32);
@@ -314,16 +314,16 @@ TEST(OaMoeDiag, SoftmaxGateCombineChain) {
 
 // OaLinear weight + input gradient in isolation (Linear is used everywhere).
 // Previously failed 6–28% under fp32-forced FD. ROOT CAUSE (fixed): the
-// fused-bias forward Linear (AddLinear) packed inputs to bf16 and ran a bf16
+// fused-bias forward Linear packed inputs to bf16 and ran a bf16
 // CoopMat GEMM unconditionally, bypassing OaGemmRouter — so it ignored
 // OA_GEMM_FORCE_FP32. bf16's ~3-digit mantissa added ~4e-3 forward error, which
 // both corrupted the FD reference and fed into the analytical gradient via dy.
-// Fix: AddLinear/AddLinearRelu/LinearBwdWeightBias now honor the flag.
+// Fix: canonical GEMM lowering and LinearBwdWeightBias now honor the flag.
 TEST(OaMoeDiag, LinearWeightAndInput) {
 	setenv("OA_GEMM_FORCE_FP32", "1", 1);
 	OaFnMatrix::SetRngSeed(43);
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	constexpr OaI32 In = 4, Out = 5, T = 3;
 	OaLinear lin(In, Out);
 	auto x = OaFnMatrix::RandN(OaMatrixShape{T, In}, OaScalarType::Float32);
@@ -362,7 +362,7 @@ TEST(OaMoeDiag, LinearCpuGroundTruth) {
 	setenv("OA_GEMM_FORCE_FP32", "1", 1);
 	OaFnMatrix::SetRngSeed(43);
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	constexpr OaI32 In = 4, Out = 5, T = 3;
 	OaLinear lin(In, Out);
 	auto x = OaFnMatrix::RandN(OaMatrixShape{T, In}, OaScalarType::Float32);
@@ -434,7 +434,7 @@ TEST(OaMoeDiag, RmsNormModuleWeight) {
 	setenv("OA_GEMM_FORCE_FP32", "1", 1);
 	OaFnMatrix::SetRngSeed(37);
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	constexpr OaI32 D = 4, T = 3;
 	OaRmsNorm norm(D);
 	auto x = OaFnMatrix::RandN(OaMatrixShape{T, D}, OaScalarType::Float32);
@@ -465,7 +465,7 @@ TEST(OaMoeDiag, SiluBackward) {
 	setenv("OA_GEMM_FORCE_FP32", "1", 1);
 	OaFnMatrix::SetRngSeed(41);
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	auto x = OaFnMatrix::RandN(OaMatrixShape{3, 4}, OaScalarType::Float32);
 	auto target = OaFnMatrix::RandN(OaMatrixShape{3, 4}, OaScalarType::Float32);
 	x.SetRequiresGrad(true);
@@ -495,7 +495,7 @@ TEST(OaMoeDiag, FfnNormWeightStandalone) {
 	setenv("OA_GEMM_FORCE_FP32", "1", 1);
 	OaFnMatrix::SetRngSeed(31);
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 
 	constexpr OaI32 D = 4, DFF = 8, T = 3;
 	OaFfn ffn(D, DFF);
@@ -536,7 +536,7 @@ TEST(OaMoeGradcheck, DenseRouterAndExperts) {
 	setenv("OA_GEMM_FORCE_FP32", "1", 1);
 	OaFnMatrix::SetRngSeed(7);
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 
 	constexpr OaI32 D = 4, DFF = 8, E = 2, K = 2, T = 3;  // K==E → dense, smooth
 	OaMoE moe(D, DFF, E, K);
@@ -598,7 +598,7 @@ TEST(OaMoeGradcheck, TopKRouterAndExpertsLearn) {
 	setenv("OA_GEMM_FORCE_FP32", "1", 1);
 	OaFnMatrix::SetRngSeed(13);
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 
 	constexpr OaI32 D = 4, DFF = 8, E = 4, K = 2, T = 4;  // top-2 of 4
 	OaMoE moe(D, DFF, E, K);
@@ -642,7 +642,7 @@ TEST(OaMoeConfiguration, RejectsInvalidAndClampsTopK) {
 TEST(OaMoeConfiguration, TiedRouterStillSelectsExactlyK) {
 	setenv("OA_GEMM_FORCE_FP32", "1", 1);
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	constexpr OaI32 T = 5, D = 4, E = 4, K = 2;
 	OaMoE moe(D, 8, E, K);
 	auto named = moe.AllNamedParameterPtrs();
@@ -682,7 +682,7 @@ TEST(OaMoeStage0, RouteStatsAreSane) {
 	setenv("OA_GEMM_FORCE_FP32", "1", 1);
 	OaFnMatrix::SetRngSeed(101);
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	constexpr OaI32 T = 16, D = 8, DFF = 16, E = 4, K = 2;
 	OaMoE moe(D, DFF, E, K);
 	auto x = OaFnMatrix::RandN(OaMatrixShape{T, D}, OaScalarType::Float32);
@@ -711,7 +711,7 @@ TEST(OaMoeStage0, BiasBalancingSpreadsCollapsedLoad) {
 	setenv("OA_GEMM_FORCE_FP32", "1", 1);
 	OaFnMatrix::SetRngSeed(202);
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	constexpr OaI32 T = 64, D = 16, DFF = 16, E = 4, K = 1;  // K=1 → collapse is stark
 	OaMoE moe(D, DFF, E, K);
 	moe.SetBalanceRate(0.3F);  // aggressive for a fast unit test
@@ -763,7 +763,7 @@ TEST(OaMoeStage0, SharedExpertAlwaysContributes) {
 	setenv("OA_GEMM_FORCE_FP32", "1", 1);
 	OaFnMatrix::SetRngSeed(303);
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	constexpr OaI32 T = 4, D = 4, DFF = 8, E = 4, K = 1;
 	OaMoE moe(D, DFF, E, K, 1e-5F, /*shared*/ 1);
 	EXPECT_EQ(moe.NumSharedExperts(), 1);
@@ -789,7 +789,7 @@ TEST(OaMoeStage0, AuxLossIsFiniteAndDifferentiable) {
 	setenv("OA_GEMM_FORCE_FP32", "1", 1);
 	OaFnMatrix::SetRngSeed(404);
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	constexpr OaI32 T = 8, D = 4, DFF = 8, E = 4, K = 2;
 	OaMoE moe(D, DFF, E, K);
 	moe.SetAuxLossAlpha(0.01F);
@@ -820,7 +820,7 @@ TEST(OaMoeStage0, DefaultsAreInertAndAuxLossResets) {
 	setenv("OA_GEMM_FORCE_FP32", "1", 1);
 	OaFnMatrix::SetRngSeed(505);
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	OaMoE moe(4, 8, 4, 2);
 	EXPECT_FLOAT_EQ(moe.BalanceRate(), 0.0F);
 	for (OaI32 e = 0; e < 4; ++e) EXPECT_FLOAT_EQ(moe.RoutingBias(e), 0.0F);
@@ -843,7 +843,7 @@ TEST(OaMoeStage0, RoutingBiasCheckpoints) {
 	setenv("OA_GEMM_FORCE_FP32", "1", 1);
 	OaFnMatrix::SetRngSeed(606);
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	constexpr OaI32 E = 4;
 	OaMoE moe(8, 16, E, 1);
 	moe.SetBalanceRate(0.25F);

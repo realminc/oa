@@ -11,6 +11,7 @@
 #include <Oa/Core/FnMatrix.h>
 #include <Oa/Ml/Autograd.h>
 #include <Oa/Ml/FnMatrix.h>
+#include <Oa/Runtime/Context.h>
 
 // ─── Element-wise manual (complex or no schema entry) ───────────────────────
 
@@ -115,6 +116,20 @@ public:
 	}
 };
 
+class OaGradMean final : public OaGradNode {
+public:
+	OaI32 Dim_ = -1;
+	void Backward(const OaMatrix& InDOut, OaVec<OaMatrix>& OutDIn) override {
+		if (OutDIn.Size() == 0) return;
+		const OaMatrix& input = Saved_[0];
+		const OaI64 count = Dim_ >= 0 and Dim_ < input.Rank()
+			? input.Size(Dim_) : input.NumElements();
+		auto scale = OaFnMatrix::Full(
+			input.GetShape(), 1.0 / static_cast<OaF64>(count), input.GetDtype());
+		OutDIn[0] = OaFnMatrix::Mul(scale, InDOut);
+	}
+};
+
 class OaGradAbs final : public OaGradNode {
 public:
 	void Backward(const OaMatrix& InDOut, OaVec<OaMatrix>& OutDIn) override {
@@ -163,16 +178,20 @@ private:
 
 class OaGradSoftmax final : public OaGradNode {
 public:
+	OaI32 Dim_ = -1;
 	void Backward(const OaMatrix& InDOut, OaVec<OaMatrix>& OutDIn) override {
-		if (OutDIn.Size() > 0) OutDIn[0] = OaFnMatrix::SoftmaxBwd(Saved_[0], InDOut);
+		if (OutDIn.Size() > 0) {
+			OutDIn[0] = OaFnMatrix::SoftmaxBwd(Saved_[0], InDOut, Dim_);
+		}
 	}
 };
 
 class OaGradLogSoftmax final : public OaGradNode {
 public:
+	OaI32 Dim_ = -1;
 	void Backward(const OaMatrix& InDOut, OaVec<OaMatrix>& OutDIn) override {
 		if (OutDIn.Size() > 0) {
-			OutDIn[0] = OaFnMatrix::LogSoftmaxBwd(Saved_[0], InDOut);
+			OutDIn[0] = OaFnMatrix::LogSoftmaxBwd(Saved_[0], InDOut, Dim_);
 		}
 	}
 };
@@ -734,6 +753,7 @@ public:
 
 class OaGradLayerNorm final : public OaGradNode {
 public:
+	OaF32 Eps_ = 1e-5F;
 	void Backward(const OaMatrix& InDOut, OaVec<OaMatrix>& OutDIn) override {
 		const OaMatrix& x = Saved_[0];
 		const OaMatrix& weight = Saved_[1];
@@ -743,7 +763,8 @@ public:
 		const bool needDW = OutDIn.Size() > 1;
 		const bool needDB = OutDIn.Size() > 2;
 		if (needDX or needDW or needDB) {
-			auto grads = OaFnMatrix::LayerNormBwd(x, weight, bias, out, out, out, InDOut);
+			auto grads = OaFnMatrix::LayerNormBwd(
+				x, weight, bias, out, out, out, InDOut, Eps_);
 			if (needDX) OutDIn[0] = grads.DX;
 			if (needDW) OutDIn[1] = grads.DWeight;
 			if (needDB) OutDIn[2] = grads.DBias;
@@ -753,6 +774,7 @@ public:
 
 class OaGradRmsNorm final : public OaGradNode {
 public:
+	OaF32 Eps_ = 1e-5F;
 	void Backward(const OaMatrix& InDOut, OaVec<OaMatrix>& OutDIn) override {
 		const OaMatrix& x = Saved_[0];
 		const OaMatrix& weight = Saved_[1];
@@ -761,7 +783,8 @@ public:
 		const bool needDX = OutDIn.Size() > 0;
 		const bool needDW = OutDIn.Size() > 1;
 		if (needDX or needDW) {
-			auto grads = OaFnMatrix::RmsNormBwd(x, weight, out, rstd, InDOut);
+			auto grads = OaFnMatrix::RmsNormBwd(
+				x, weight, out, rstd, InDOut, Eps_);
 			if (needDX) OutDIn[0] = grads.DX;
 			if (needDW) OutDIn[1] = grads.DWeight;
 		}

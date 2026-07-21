@@ -765,7 +765,7 @@ OaMemoryUsage OaGetMemoryUsage(OaDevice InDevice) {
 		return OaMemoryUsage{};
 	}
 
-	OaComputeEngine* rt = OaComputeEngine::GetGlobal();
+	OaEngine* rt = OaEngine::GetGlobal();
 	if (!rt) {
 		return OaMemoryUsage{};
 	}
@@ -802,8 +802,8 @@ OaMemoryUsage OaGetMemoryUsage(OaDevice InDevice) {
 // ─────────────────────────────────────────────────────────────────────────────
 // OaCoopMatTrust — vendor/arch/driver gate for KHR_cooperative_matrix.
 //
-// PR-2 item C from Docs/Rewrite/Opus/OaLlamaCppVulkanLessons.md §2.
-// Mirrors llama.cpp's ggml_vk_khr_cooperative_matrix_support trust table.
+// This policy mirrors the capability and driver checks used by llama.cpp's
+// ggml_vk_khr_cooperative_matrix_support trust table.
 //
 // Today the OA Vulkan init code at OaVkRefineCooperativeMatrixCapability()
 // already gates HasCoopMatrix on a usable 16x16x16 shape being reported.

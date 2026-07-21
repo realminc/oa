@@ -19,119 +19,119 @@
 // ─── Convolve2d (Same-shape NCHW 2D cross-correlation with an odd shared ker
 
 OaMatrix OaFnImage::Convolve2d(const OaMatrix& InImage, const OaMatrix& InKernel, OaBorderMode InBorder, OaF32 InBorderValue) {
-	return OaFnImage::Convolve2d(*OaComputeEngine::GetGlobal(), InImage, InKernel, InBorder, InBorderValue);
+	return OaFnImage::Convolve2d(*OaEngine::GetGlobal(), InImage, InKernel, InBorder, InBorderValue);
 }
 
 // ─── SeparableConvolve2d (Same-shape NCHW separable cross-correlation with o
 
 OaMatrix OaFnImage::SeparableConvolve2d(const OaMatrix& InImage, const OaMatrix& InKernelX, const OaMatrix& InKernelY, OaBorderMode InBorder, OaF32 InBorderValue) {
-	return OaFnImage::SeparableConvolve2d(*OaComputeEngine::GetGlobal(), InImage, InKernelX, InKernelY, InBorder, InBorderValue);
+	return OaFnImage::SeparableConvolve2d(*OaEngine::GetGlobal(), InImage, InKernelX, InKernelY, InBorder, InBorderValue);
 }
 
 // ─── AverageBlur (Normalized box blur lowered through the generic 2D filter)
 
 OaMatrix OaFnImage::AverageBlur(const OaMatrix& InImage, OaU32 InKernelWidth, OaU32 InKernelHeight, OaBorderMode InBorder) {
-	return OaFnImage::AverageBlur(*OaComputeEngine::GetGlobal(), InImage, InKernelWidth, InKernelHeight, InBorder);
+	return OaFnImage::AverageBlur(*OaEngine::GetGlobal(), InImage, InKernelWidth, InKernelHeight, InBorder);
 }
 
 // ─── Sobel (Signed 3x3 Sobel x or y derivative lowered through the generic 2
 
 OaMatrix OaFnImage::Sobel(const OaMatrix& InImage, OaU32 InDx, OaU32 InDy, OaBorderMode InBorder) {
-	return OaFnImage::Sobel(*OaComputeEngine::GetGlobal(), InImage, InDx, InDy, InBorder);
+	return OaFnImage::Sobel(*OaEngine::GetGlobal(), InImage, InDx, InDy, InBorder);
 }
 
 // ─── Scharr (Signed 3x3 Scharr x or y derivative lowered through the generic
 
 OaMatrix OaFnImage::Scharr(const OaMatrix& InImage, OaU32 InDx, OaU32 InDy, OaBorderMode InBorder) {
-	return OaFnImage::Scharr(*OaComputeEngine::GetGlobal(), InImage, InDx, InDy, InBorder);
+	return OaFnImage::Scharr(*OaEngine::GetGlobal(), InImage, InDx, InDy, InBorder);
 }
 
 // ─── Laplacian (Signed four-neighbour discrete Laplacian lowered through the
 
 OaMatrix OaFnImage::Laplacian(const OaMatrix& InImage, OaBorderMode InBorder) {
-	return OaFnImage::Laplacian(*OaComputeEngine::GetGlobal(), InImage, InBorder);
+	return OaFnImage::Laplacian(*OaEngine::GetGlobal(), InImage, InBorder);
 }
 
 // ─── Erode (Rectangular NCHW erosion using the shared border contract) ────
 
 OaMatrix OaFnImage::Erode(const OaMatrix& InImage, OaU32 InKernelWidth, OaU32 InKernelHeight, OaBorderMode InBorder, OaF32 InBorderValue) {
-	return OaFnImage::Erode(*OaComputeEngine::GetGlobal(), InImage, InKernelWidth, InKernelHeight, InBorder, InBorderValue);
+	return OaFnImage::Erode(*OaEngine::GetGlobal(), InImage, InKernelWidth, InKernelHeight, InBorder, InBorderValue);
 }
 
 // ─── Dilate (Rectangular NCHW dilation using the shared border contract) ───
 
 OaMatrix OaFnImage::Dilate(const OaMatrix& InImage, OaU32 InKernelWidth, OaU32 InKernelHeight, OaBorderMode InBorder, OaF32 InBorderValue) {
-	return OaFnImage::Dilate(*OaComputeEngine::GetGlobal(), InImage, InKernelWidth, InKernelHeight, InBorder, InBorderValue);
+	return OaFnImage::Dilate(*OaEngine::GetGlobal(), InImage, InKernelWidth, InKernelHeight, InBorder, InBorderValue);
 }
 
 // ─── MorphologyOpen (Erosion followed by dilation through the reusable morph
 
 OaMatrix OaFnImage::MorphologyOpen(const OaMatrix& InImage, OaU32 InKernelWidth, OaU32 InKernelHeight, OaBorderMode InBorder, OaF32 InBorderValue) {
-	return OaFnImage::MorphologyOpen(*OaComputeEngine::GetGlobal(), InImage, InKernelWidth, InKernelHeight, InBorder, InBorderValue);
+	return OaFnImage::MorphologyOpen(*OaEngine::GetGlobal(), InImage, InKernelWidth, InKernelHeight, InBorder, InBorderValue);
 }
 
 // ─── MorphologyClose (Dilation followed by erosion through the reusable morp
 
 OaMatrix OaFnImage::MorphologyClose(const OaMatrix& InImage, OaU32 InKernelWidth, OaU32 InKernelHeight, OaBorderMode InBorder, OaF32 InBorderValue) {
-	return OaFnImage::MorphologyClose(*OaComputeEngine::GetGlobal(), InImage, InKernelWidth, InKernelHeight, InBorder, InBorderValue);
+	return OaFnImage::MorphologyClose(*OaEngine::GetGlobal(), InImage, InKernelWidth, InKernelHeight, InBorder, InBorderValue);
 }
 
 // ─── MorphologyGradient (Difference between dilation and erosion) ────
 
 OaMatrix OaFnImage::MorphologyGradient(const OaMatrix& InImage, OaU32 InKernelWidth, OaU32 InKernelHeight, OaBorderMode InBorder, OaF32 InBorderValue) {
-	return OaFnImage::MorphologyGradient(*OaComputeEngine::GetGlobal(), InImage, InKernelWidth, InKernelHeight, InBorder, InBorderValue);
+	return OaFnImage::MorphologyGradient(*OaEngine::GetGlobal(), InImage, InKernelWidth, InKernelHeight, InBorder, InBorderValue);
 }
 
 // ─── GaussianBlur (Gaussian blur filter with configurable kernel size and si
 
 OaMatrix OaFnImage::GaussianBlur(const OaMatrix& InImage, OaF32 InSigma, OaU32 InKernelSize) {
-	return OaFnImage::GaussianBlur(*OaComputeEngine::GetGlobal(), InImage, InSigma, InKernelSize);
+	return OaFnImage::GaussianBlur(*OaEngine::GetGlobal(), InImage, InSigma, InKernelSize);
 }
 
 // ─── Sharpen (Parameterized 3x3 sharpening lowered through Convolve2d) ────
 
 OaMatrix OaFnImage::Sharpen(const OaMatrix& InImage, OaF32 InAmount, OaBorderMode InBorder) {
-	return OaFnImage::Sharpen(*OaComputeEngine::GetGlobal(), InImage, InAmount, InBorder);
+	return OaFnImage::Sharpen(*OaEngine::GetGlobal(), InImage, InAmount, InBorder);
 }
 
 // ─── MedianBlur (Odd-window median filter with explicit border semantics) ──
 
 OaMatrix OaFnImage::MedianBlur(const OaMatrix& InImage, OaU32 InKernelSize, OaBorderMode InBorder) {
-	return OaFnImage::MedianBlur(*OaComputeEngine::GetGlobal(), InImage, InKernelSize, InBorder);
+	return OaFnImage::MedianBlur(*OaEngine::GetGlobal(), InImage, InKernelSize, InBorder);
 }
 
 // ─── BilateralFilter (Edge-preserving bilateral neighborhood filter) ────
 
 OaMatrix OaFnImage::BilateralFilter(const OaMatrix& InImage, OaU32 InKernelSize, OaF32 InSigmaColor, OaF32 InSigmaSpace, OaBorderMode InBorder) {
-	return OaFnImage::BilateralFilter(*OaComputeEngine::GetGlobal(), InImage, InKernelSize, InSigmaColor, InSigmaSpace, InBorder);
+	return OaFnImage::BilateralFilter(*OaEngine::GetGlobal(), InImage, InKernelSize, InSigmaColor, InSigmaSpace, InBorder);
 }
 
 // ─── UnsharpMask (Gaussian unsharp masking composed from graph-native primit
 
 OaMatrix OaFnImage::UnsharpMask(const OaMatrix& InImage, OaF32 InSigma, OaF32 InAmount, OaU32 InKernelSize) {
-	return OaFnImage::UnsharpMask(*OaComputeEngine::GetGlobal(), InImage, InSigma, InAmount, InKernelSize);
+	return OaFnImage::UnsharpMask(*OaEngine::GetGlobal(), InImage, InSigma, InAmount, InKernelSize);
 }
 
 // ─── MorphologyTopHat (Input minus morphological opening) ────
 
 OaMatrix OaFnImage::MorphologyTopHat(const OaMatrix& InImage, OaU32 InKernelWidth, OaU32 InKernelHeight, OaBorderMode InBorder, OaF32 InBorderValue) {
-	return OaFnImage::MorphologyTopHat(*OaComputeEngine::GetGlobal(), InImage, InKernelWidth, InKernelHeight, InBorder, InBorderValue);
+	return OaFnImage::MorphologyTopHat(*OaEngine::GetGlobal(), InImage, InKernelWidth, InKernelHeight, InBorder, InBorderValue);
 }
 
 // ─── MorphologyBlackHat (Morphological closing minus input) ────
 
 OaMatrix OaFnImage::MorphologyBlackHat(const OaMatrix& InImage, OaU32 InKernelWidth, OaU32 InKernelHeight, OaBorderMode InBorder, OaF32 InBorderValue) {
-	return OaFnImage::MorphologyBlackHat(*OaComputeEngine::GetGlobal(), InImage, InKernelWidth, InKernelHeight, InBorder, InBorderValue);
+	return OaFnImage::MorphologyBlackHat(*OaEngine::GetGlobal(), InImage, InKernelWidth, InKernelHeight, InBorder, InBorderValue);
 }
 
 // ─── AdaptiveThresholdMean (Local mean adaptive binary threshold) ────
 
 OaMatrix OaFnImage::AdaptiveThresholdMean(const OaMatrix& InImage, OaU32 InKernelSize, OaF32 InC, OaF32 InMaxValue, OaBorderMode InBorder) {
-	return OaFnImage::AdaptiveThresholdMean(*OaComputeEngine::GetGlobal(), InImage, InKernelSize, InC, InMaxValue, InBorder);
+	return OaFnImage::AdaptiveThresholdMean(*OaEngine::GetGlobal(), InImage, InKernelSize, InC, InMaxValue, InBorder);
 }
 
 // ─── AdaptiveThresholdGaussian (Local Gaussian adaptive binary threshold) ──
 
 OaMatrix OaFnImage::AdaptiveThresholdGaussian(const OaMatrix& InImage, OaU32 InKernelSize, OaF32 InC, OaF32 InMaxValue, OaF32 InSigma, OaBorderMode InBorder) {
-	return OaFnImage::AdaptiveThresholdGaussian(*OaComputeEngine::GetGlobal(), InImage, InKernelSize, InC, InMaxValue, InSigma, InBorder);
+	return OaFnImage::AdaptiveThresholdGaussian(*OaEngine::GetGlobal(), InImage, InKernelSize, InC, InMaxValue, InSigma, InBorder);
 }

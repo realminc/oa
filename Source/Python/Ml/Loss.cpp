@@ -8,10 +8,7 @@ void BindMlLoss(nb::module_& m) {
     // OaFnLoss
     // ═════════════════════════════════════════════════════════════════════════
 
-    m.def("CrossEntropy", [](const OaMatrix& logits, const OaMatrix& targets) {
-        return matrix_ptr(OaFnLoss::CrossEntropy(logits, targets));
-    }, nb::arg("logits"), nb::arg("targets"), nb::rv_policy::take_ownership,
-      "Cross-entropy loss for classification");
+#include "FnLossOps.gen.inl"
 
     m.def("CrossEntropyBwd", [](const OaMatrix& logits, const OaMatrix& targets) {
         return matrix_ptr(OaFnLoss::CrossEntropyBwd(logits, targets));

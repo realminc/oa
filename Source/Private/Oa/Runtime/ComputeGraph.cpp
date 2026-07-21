@@ -20,18 +20,54 @@ struct OaGraphBufferState {
 	VkPipelineStageFlags2 StageMask = 0;
 	VkAccessFlags2 AccessMask = 0;
 	bool Writes = false;
+	void* Buffer = nullptr;
+	OaQueueHint Queue = OaQueueHint::Compute;
+	OaBool MixedQueues = false;
+	OaU32 FirstNode = 0;
+	OaU32 LastNode = 0;
+};
+
+enum class OaGraphHazard : OaU8 {
+	Raw,
+	War,
+	Waw,
+};
+
+struct OaGraphBarrierDebug {
+	OaGraphHazard Hazard = OaGraphHazard::Raw;
+	OaU32 SourceFirstNode = 0;
+	OaU32 SourceLastNode = 0;
+	OaU32 DestinationNode = 0;
+	void* SourceBuffer = nullptr;
+	void* DestinationBuffer = nullptr;
+	void* HazardIdentity = nullptr;
+	OaU64 Bytes = 0;
+	OaQueueHint SourceQueue = OaQueueHint::Compute;
+	OaBool SourceQueuesMixed = false;
+	OaQueueHint DestinationQueue = OaQueueHint::Compute;
+	VkPipelineStageFlags2 SourceStages = 0;
+	VkAccessFlags2 SourceAccess = 0;
+	VkPipelineStageFlags2 DestinationStages = 0;
+	VkAccessFlags2 DestinationAccess = 0;
+	OaBool Alias = false;
 };
 
 static OaU32 ComputeNodeBarriers(
 	const OaComputeNode& InNode,
+	OaU32 InNodeIndex,
 	const OaHashMap<void*, OaGraphBufferState>& InState,
-	OaVec<VkBufferMemoryBarrier2>& OutBarriers
+	OaVec<VkBufferMemoryBarrier2>& OutBufferBarriers,
+	OaVec<VkMemoryBarrier2>& OutAliasBarriers,
+	OaVec<OaGraphBarrierDebug>* OutBufferDebug = nullptr,
+	OaVec<OaGraphBarrierDebug>* OutAliasDebug = nullptr
 );
 static OaU32 PruneRedundantWarBarriers(
-	OaVec<VkBufferMemoryBarrier2>& InOutBarriers
+	OaVec<VkBufferMemoryBarrier2>& InOutBarriers,
+	OaVec<OaGraphBarrierDebug>* InOutDebug = nullptr
 );
 static void UpdateBufferStates(
 	const OaComputeNode& InNode,
+	OaU32 InNodeIndex,
 	OaHashMap<void*, OaGraphBufferState>& InOutState
 );
 static void RecordFinalBarrier(VkCommandBuffer InCb, OaBool InRequired);
@@ -59,6 +95,15 @@ static const char* QueueHintName(OaQueueHint InQueue) {
 	case OaQueueHint::Compute: return "compute";
 	case OaQueueHint::AsyncCompute: return "async_compute";
 	case OaQueueHint::Transfer: return "transfer";
+	}
+	return "unknown";
+}
+
+static const char* HazardName(OaGraphHazard InHazard) {
+	switch (InHazard) {
+	case OaGraphHazard::Raw: return "read_after_write";
+	case OaGraphHazard::War: return "write_after_read";
+	case OaGraphHazard::Waw: return "write_after_write";
 	}
 	return "unknown";
 }
@@ -92,6 +137,37 @@ static void WriteHexId(std::ostringstream& Out, OaU64 InValue) {
 		<< InValue << std::dec << std::setfill(' ') << '"';
 }
 
+static void WriteStageNames(std::ostringstream& Out, VkPipelineStageFlags2 InMask) {
+	Out << '[';
+	bool separator = false;
+	auto write = [&](VkPipelineStageFlags2 bit, const char* name) {
+		if ((InMask & bit) == 0) return;
+		if (separator) Out << ", ";
+		WriteJsonString(Out, name);
+		separator = true;
+	};
+	write(VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, "compute_shader");
+	write(VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT, "draw_indirect");
+	write(VK_PIPELINE_STAGE_2_HOST_BIT, "host");
+	Out << ']';
+}
+
+static void WriteAccessNames(std::ostringstream& Out, VkAccessFlags2 InMask) {
+	Out << '[';
+	bool separator = false;
+	auto write = [&](VkAccessFlags2 bit, const char* name) {
+		if ((InMask & bit) == 0) return;
+		if (separator) Out << ", ";
+		WriteJsonString(Out, name);
+		separator = true;
+	};
+	write(VK_ACCESS_2_SHADER_STORAGE_READ_BIT, "shader_storage_read");
+	write(VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT, "shader_storage_write");
+	write(VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT, "indirect_command_read");
+	write(VK_ACCESS_2_HOST_READ_BIT, "host_read");
+	Out << ']';
+}
+
 struct OaGraphDebugHashes {
 	OaU64 Topology = 14695981039346656037ULL;
 	OaU64 Resources = 14695981039346656037ULL;
@@ -115,9 +191,18 @@ static OaGraphDebugHashes ComputeGraphDebugHashes(
 	append(result.Topology, &InHostReadbackRequired, sizeof(InHostReadbackRequired));
 	for (const auto& node : InNodes) {
 		append(result.Topology, node.Operation.Data(), node.Operation.Size());
+		const OaU32 semanticOperationCount =
+			static_cast<OaU32>(node.SemanticOperations.Size());
+		append(result.Topology, &semanticOperationCount,
+			sizeof(semanticOperationCount));
+		for (const auto semanticOperation : node.SemanticOperations) {
+			append(result.Topology, &semanticOperation, sizeof(semanticOperation));
+		}
 		append(result.Topology, &node.ImplementationId, sizeof(node.ImplementationId));
 		append(result.Topology, &node.OperationContractHash,
 			sizeof(node.OperationContractHash));
+		append(result.Topology, &node.ProblemContractHash,
+			sizeof(node.ProblemContractHash));
 		append(result.Topology, &node.KernelContentHash, sizeof(node.KernelContentHash));
 		append(result.Topology, node.Shader.Data(), node.Shader.Size());
 		append(result.Topology, &node.Dtype, sizeof(node.Dtype));
@@ -176,6 +261,29 @@ void OaComputeGraph::Add(const OaComputeDispatchDesc& InDesc) {
 			static_cast<int>(InDesc.Kernel.Size()), InDesc.Kernel.Data(),
 			InDesc.PushSize);
 		return;
+	}
+	for (OaU32 operation = 0;
+		operation < InDesc.SemanticOperations.Size(); ++operation)
+	{
+		if (InDesc.SemanticOperations[operation]
+			== OaInvalidSemanticOperationId)
+		{
+			OA_LOG_ERROR(OaLogComponent::Core,
+				"OaComputeGraph::Add '%.*s': invalid semantic provenance",
+				static_cast<int>(InDesc.Kernel.Size()), InDesc.Kernel.Data());
+			return;
+		}
+		for (OaU32 previous = 0; previous < operation; ++previous) {
+			if (InDesc.SemanticOperations[previous]
+				!= InDesc.SemanticOperations[operation])
+			{
+				continue;
+			}
+			OA_LOG_ERROR(OaLogComponent::Core,
+				"OaComputeGraph::Add '%.*s': duplicate semantic provenance",
+				static_cast<int>(InDesc.Kernel.Size()), InDesc.Kernel.Data());
+			return;
+		}
 	}
 	Nodes_.PushBack(MakeComputeNode(InDesc));
 }
@@ -317,8 +425,11 @@ void OaComputeGraph::AddIndirect(
 static OaComputeNode MakeComputeNode(const OaComputeDispatchDesc& InDesc) {
 	OaComputeNode node;
 	node.Operation = OaString(InDesc.Operation);
+	node.SemanticOperations.Assign(
+		InDesc.SemanticOperations.begin(), InDesc.SemanticOperations.end());
 	node.ImplementationId = InDesc.ImplementationId;
 	node.OperationContractHash = InDesc.OperationContractHash;
+	node.ProblemContractHash = InDesc.ProblemContractHash;
 	node.KernelContentHash = InDesc.KernelContentHash;
 	node.Shader = OaString(InDesc.Kernel);
 	node.Buffers.Assign(InDesc.Buffers.begin(), InDesc.Buffers.end());
@@ -343,8 +454,11 @@ static OaComputeNode MakeComputeNode(const OaComputeDispatchDesc& InDesc) {
 static OaComputeDispatchDesc MakeDispatchDesc(OaComputeNode& InNode) {
 	OaComputeDispatchDesc desc;
 	desc.Operation = InNode.Operation;
+	desc.SemanticOperations = OaSpan<const OaSemanticOperationId>(
+		InNode.SemanticOperations.Data(), InNode.SemanticOperations.Size());
 	desc.ImplementationId = InNode.ImplementationId;
 	desc.OperationContractHash = InNode.OperationContractHash;
+	desc.ProblemContractHash = InNode.ProblemContractHash;
 	desc.KernelContentHash = InNode.KernelContentHash;
 	desc.Kernel = InNode.Shader;
 	desc.Buffers = InNode.Buffers.Span();
@@ -364,7 +478,7 @@ static OaComputeDispatchDesc MakeDispatchDesc(OaComputeNode& InNode) {
 	return desc;
 }
 
-OaStatus OaComputeGraph::ExecuteDistributed(OaComputeEngine& InRt) {
+OaStatus OaComputeGraph::ExecuteDistributed(OaEngine& InRt) {
 	if (!InRt.IsMultiDevice()) {
 		return Execute(InRt);
 	}
@@ -423,16 +537,19 @@ OaStatus OaComputeGraph::ExecuteDistributed(OaComputeEngine& InRt) {
 
 		OaHashMap<void*, OaGraphBufferState> bufferStates;
 		OaVec<VkBufferMemoryBarrier2> barriers;
+		OaVec<VkMemoryBarrier2> aliasBarriers;
 		barriers.Reserve(8);
 
 		for (OaU32 idx : nodeGroups[d]) {
 			auto& node = Nodes_[idx];
-			ComputeNodeBarriers(node, bufferStates, barriers);
+			ComputeNodeBarriers(node, idx, bufferStates, barriers, aliasBarriers);
 			PruneRedundantWarBarriers(barriers);
 
-			if (!barriers.Empty()) {
+			if (!barriers.Empty() || !aliasBarriers.Empty()) {
 				VkDependencyInfo dep{};
 				dep.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+				dep.memoryBarrierCount = static_cast<OaU32>(aliasBarriers.Size());
+				dep.pMemoryBarriers = aliasBarriers.Data();
 				dep.bufferMemoryBarrierCount = static_cast<OaU32>(barriers.Size());
 				dep.pBufferMemoryBarriers = barriers.Data();
 				vkCmdPipelineBarrier2(
@@ -510,7 +627,7 @@ OaStatus OaComputeGraph::ExecuteDistributed(OaComputeEngine& InRt) {
 				vkCmdDispatch(cb, node.GroupsX, node.GroupsY, node.GroupsZ);
 			}
 
-			UpdateBufferStates(node, bufferStates);
+			UpdateBufferStates(node, idx, bufferStates);
 		}
 
 		RecordFinalBarrier(static_cast<VkCommandBuffer>(stream->CommandBuffer), HostReadbackRequired_);
@@ -612,17 +729,57 @@ static VkAccessFlags2 ShaderAccessMask(OaBufferAccess InAccess) {
 // a pure execution dependency (zero access masks), as required by Vulkan.
 static OaU32 ComputeNodeBarriers(
 	const OaComputeNode& InNode,
+	OaU32 InNodeIndex,
 	const OaHashMap<void*, OaGraphBufferState>& InState,
-	OaVec<VkBufferMemoryBarrier2>& OutBarriers)
+	OaVec<VkBufferMemoryBarrier2>& OutBufferBarriers,
+	OaVec<VkMemoryBarrier2>& OutAliasBarriers,
+	OaVec<OaGraphBarrierDebug>* OutBufferDebug,
+	OaVec<OaGraphBarrierDebug>* OutAliasDebug)
 {
-	OutBarriers.Clear();
-	auto emit = [&](void* InBuffer, VkPipelineStageFlags2 InStageMask,
+	OutBufferBarriers.Clear();
+	OutAliasBarriers.Clear();
+	if (OutBufferDebug) OutBufferDebug->Clear();
+	if (OutAliasDebug) OutAliasDebug->Clear();
+	auto emit = [&](const OaVkBuffer& InBuffer, VkPipelineStageFlags2 InStageMask,
 		VkAccessFlags2 InAccessMask, bool InWrites) {
-		auto it = InState.Find(InBuffer);
+		auto it = InState.Find(InBuffer.SynchronizationIdentity());
 		if (it == InState.End()) return;
 		const OaGraphBufferState& previous = it->second;
 		if (!previous.Writes && !InWrites) return;
+		OaGraphBarrierDebug debug;
+		debug.Hazard = previous.Writes
+			? (InWrites ? OaGraphHazard::Waw : OaGraphHazard::Raw)
+			: OaGraphHazard::War;
+		debug.SourceFirstNode = previous.FirstNode;
+		debug.SourceLastNode = previous.LastNode;
+		debug.DestinationNode = InNodeIndex;
+		debug.SourceBuffer = previous.Buffer;
+		debug.DestinationBuffer = InBuffer.Buffer;
+		debug.HazardIdentity = InBuffer.SynchronizationIdentity();
+		debug.Bytes = InBuffer.Size;
+		debug.SourceQueue = previous.Queue;
+		debug.SourceQueuesMixed = previous.MixedQueues;
+		debug.DestinationQueue = InNode.Queue;
+		debug.SourceStages = previous.StageMask;
+		debug.SourceAccess = previous.Writes ? previous.AccessMask : 0;
+		debug.DestinationStages = InStageMask;
+		debug.DestinationAccess = previous.Writes ? InAccessMask : 0;
 
+		if (previous.Buffer != InBuffer.Buffer) {
+			// Buffer barriers scope accesses through one VkBuffer handle. Aliases
+			// are distinct handles over the same memory and require a global
+			// dependency at the lifetime hand-off.
+			VkMemoryBarrier2 bar{};
+			bar.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2;
+			bar.srcStageMask = previous.StageMask;
+			bar.srcAccessMask = previous.Writes ? previous.AccessMask : 0;
+			bar.dstStageMask = InStageMask;
+			bar.dstAccessMask = previous.Writes ? InAccessMask : 0;
+			OutAliasBarriers.PushBack(bar);
+			debug.Alias = true;
+			if (OutAliasDebug) OutAliasDebug->PushBack(debug);
+			return;
+		}
 		VkBufferMemoryBarrier2 bar{};
 		bar.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2;
 		bar.srcStageMask = previous.StageMask;
@@ -631,10 +788,11 @@ static OaU32 ComputeNodeBarriers(
 		bar.dstAccessMask = previous.Writes ? InAccessMask : 0;
 		bar.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 		bar.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		bar.buffer = static_cast<VkBuffer>(InBuffer);
+		bar.buffer = static_cast<VkBuffer>(InBuffer.Buffer);
 		bar.offset = 0;
 		bar.size = VK_WHOLE_SIZE;
-		OutBarriers.PushBack(bar);
+		OutBufferBarriers.PushBack(bar);
+		if (OutBufferDebug) OutBufferDebug->PushBack(debug);
 	};
 
 	// Merge duplicate declarations in-place without allocating a temporary
@@ -664,7 +822,7 @@ static OaU32 ComputeNodeBarriers(
 			stageMask |= VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT;
 			accessMask |= VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT;
 		}
-		emit(handle, stageMask, accessMask, writes);
+		emit(InNode.Buffers[i], stageMask, accessMask, writes);
 	}
 
 	if (InNode.Indirect && InNode.IndirectBuffer.Buffer) {
@@ -676,12 +834,12 @@ static OaU32 ComputeNodeBarriers(
 			}
 		}
 		if (!includedByRegularAccess) {
-			emit(InNode.IndirectBuffer.Buffer,
+			emit(InNode.IndirectBuffer,
 				VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT,
 				VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT, false);
 		}
 	}
-	return static_cast<OaU32>(OutBarriers.Size());
+	return static_cast<OaU32>(OutBufferBarriers.Size() + OutAliasBarriers.Size());
 }
 
 // An execution dependency orders pipeline stages, not individual buffers.  If
@@ -692,7 +850,8 @@ static OaU32 ComputeNodeBarriers(
 // reads the weight) before the optimizer dispatch (which writes the weight).
 // A standalone WAR is retained.
 static OaU32 PruneRedundantWarBarriers(
-	OaVec<VkBufferMemoryBarrier2>& InOutBarriers)
+	OaVec<VkBufferMemoryBarrier2>& InOutBarriers,
+	OaVec<OaGraphBarrierDebug>* InOutDebug)
 {
 	VkPipelineStageFlags2 orderedSrcStages = 0;
 	VkPipelineStageFlags2 orderedDstStages = 0;
@@ -714,31 +873,44 @@ static OaU32 PruneRedundantWarBarriers(
 			++removed;
 			continue;
 		}
-		if (write != read) InOutBarriers[write] = bar;
+		if (write != read) {
+			InOutBarriers[write] = bar;
+			if (InOutDebug) (*InOutDebug)[write] = (*InOutDebug)[read];
+		}
 		++write;
 	}
 	InOutBarriers.Resize(write);
+	if (InOutDebug) InOutDebug->Resize(write);
 	return removed;
 }
 
 static void UpdateBufferStates(
 	const OaComputeNode& InNode,
+	OaU32 InNodeIndex,
 	OaHashMap<void*, OaGraphBufferState>& InOutState)
 {
-	auto update = [&](void* InBuffer, VkPipelineStageFlags2 InStageMask,
+	auto update = [&](const OaVkBuffer& InBuffer, VkPipelineStageFlags2 InStageMask,
 		VkAccessFlags2 InAccessMask, bool InWrites) {
 		OaGraphBufferState next;
 		next.StageMask = InStageMask;
 		next.AccessMask = InAccessMask;
 		next.Writes = InWrites;
+		next.Buffer = InBuffer.Buffer;
+		next.Queue = InNode.Queue;
+		next.MixedQueues = false;
+		next.FirstNode = InNodeIndex;
+		next.LastNode = InNodeIndex;
 
-		auto it = InOutState.Find(InBuffer);
+		auto it = InOutState.Find(InBuffer.SynchronizationIdentity());
 		if (it == InOutState.End()) {
-			InOutState.Emplace(InBuffer, next);
+			InOutState.Emplace(InBuffer.SynchronizationIdentity(), next);
 		} else if (!it->second.Writes && !next.Writes) {
 			// Preserve every outstanding read domain for a later WAR dependency.
 			it->second.StageMask |= next.StageMask;
 			it->second.AccessMask |= next.AccessMask;
+			it->second.MixedQueues = it->second.MixedQueues
+				or it->second.Queue != next.Queue;
+			it->second.LastNode = InNodeIndex;
 		} else {
 			it->second = next;
 		}
@@ -768,7 +940,7 @@ static void UpdateBufferStates(
 			stageMask |= VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT;
 			accessMask |= VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT;
 		}
-		update(handle, stageMask, accessMask, writes);
+		update(InNode.Buffers[i], stageMask, accessMask, writes);
 	}
 
 	if (InNode.Indirect && InNode.IndirectBuffer.Buffer) {
@@ -780,7 +952,7 @@ static void UpdateBufferStates(
 			}
 		}
 		if (!includedByRegularAccess) {
-			update(InNode.IndirectBuffer.Buffer,
+			update(InNode.IndirectBuffer,
 				VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT,
 				VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT, false);
 		}
@@ -859,7 +1031,7 @@ static OaStatus AllocGraphDescriptorSet(
 		VkDescriptorBufferInfo bufInfo{};
 		bufInfo.buffer = static_cast<VkBuffer>(InBuffers[i].Buffer);
 		bufInfo.offset = 0;
-		bufInfo.range = InBuffers[i].Size;
+		bufInfo.range = InBuffers[i].DescriptorRange();
 
 		VkWriteDescriptorSet write{};
 		write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -879,7 +1051,7 @@ static OaStatus AllocGraphDescriptorSet(
 
 // ─── Phase 1: One-shot execution ──────────────────────────────────────────────
 
-OaStatus OaComputeGraph::Execute(OaComputeEngine& InRt) {
+OaStatus OaComputeGraph::Execute(OaEngine& InRt) {
 	if (Nodes_.Empty()) return OaStatus::Ok();
 
 	OaVkStream* stream = InRt.AcquireStream();
@@ -892,15 +1064,19 @@ OaStatus OaComputeGraph::Execute(OaComputeEngine& InRt) {
 	OaHashMap<void*, OaGraphBufferState> bufferStates;
 	bufferStates.Reserve(Nodes_.Size() * 4U);
 	OaVec<VkBufferMemoryBarrier2> barriers;
+	OaVec<VkMemoryBarrier2> aliasBarriers;
 	barriers.Reserve(8);
 
-	for (auto& node : Nodes_) {
-		ComputeNodeBarriers(node, bufferStates, barriers);
+	for (OaU32 nodeIdx = 0; nodeIdx < Nodes_.Size(); ++nodeIdx) {
+		auto& node = Nodes_[nodeIdx];
+		ComputeNodeBarriers(node, nodeIdx, bufferStates, barriers, aliasBarriers);
 		PruneRedundantWarBarriers(barriers);
 
-		if (!barriers.Empty()) {
+		if (!barriers.Empty() || !aliasBarriers.Empty()) {
 			VkDependencyInfo dep{};
 			dep.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+			dep.memoryBarrierCount = static_cast<OaU32>(aliasBarriers.Size());
+			dep.pMemoryBarriers = aliasBarriers.Data();
 			dep.bufferMemoryBarrierCount = static_cast<OaU32>(barriers.Size());
 			dep.pBufferMemoryBarriers = barriers.Data();
 			vkCmdPipelineBarrier2(
@@ -909,7 +1085,7 @@ OaStatus OaComputeGraph::Execute(OaComputeEngine& InRt) {
 
 		OA_RETURN_IF_ERROR(stream->RecordDispatchDesc(InRt, MakeDispatchDesc(node)));
 
-		UpdateBufferStates(node, bufferStates);
+		UpdateBufferStates(node, nodeIdx, bufferStates);
 	}
 
 	RecordFinalBarrier(static_cast<VkCommandBuffer>(stream->CommandBuffer), HostReadbackRequired_);
@@ -921,7 +1097,7 @@ OaStatus OaComputeGraph::Execute(OaComputeEngine& InRt) {
 
 // ─── Multi-Queue Execution ────────────────────────────────────────────────
 
-OaStatus OaComputeGraph::ExecuteMultiQueue(OaComputeEngine& InRt) {
+OaStatus OaComputeGraph::ExecuteMultiQueue(OaEngine& InRt) {
 	if (Nodes_.Empty()) return OaStatus::Ok();
 
 	if (!InRt.HasAsyncCompute()) return Execute(InRt);
@@ -940,6 +1116,7 @@ OaStatus OaComputeGraph::ExecuteMultiQueue(OaComputeEngine& InRt) {
 	OaHashMap<void*, OaGraphBufferState> bufferStates;
 	bufferStates.Reserve(Nodes_.Size() * 4U);
 	OaVec<VkBufferMemoryBarrier2> barriers;
+	OaVec<VkMemoryBarrier2> aliasBarriers;
 	barriers.Reserve(8);
 
 	// Track the last-submitted stream for cross-queue dependency
@@ -974,11 +1151,13 @@ OaStatus OaComputeGraph::ExecuteMultiQueue(OaComputeEngine& InRt) {
 		OaVkStream* activeStream = (currentQueue == OaQueueHint::AsyncCompute)
 			? asyncStream : computeStream;
 
-		ComputeNodeBarriers(node, bufferStates, barriers);
+		ComputeNodeBarriers(node, i, bufferStates, barriers, aliasBarriers);
 		PruneRedundantWarBarriers(barriers);
-		if (!barriers.Empty()) {
+		if (!barriers.Empty() || !aliasBarriers.Empty()) {
 			VkDependencyInfo dep{};
 			dep.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+			dep.memoryBarrierCount = static_cast<OaU32>(aliasBarriers.Size());
+			dep.pMemoryBarriers = aliasBarriers.Data();
 			dep.bufferMemoryBarrierCount = static_cast<OaU32>(barriers.Size());
 			dep.pBufferMemoryBarriers = barriers.Data();
 			vkCmdPipelineBarrier2(
@@ -988,7 +1167,7 @@ OaStatus OaComputeGraph::ExecuteMultiQueue(OaComputeEngine& InRt) {
 		OA_RETURN_IF_ERROR(activeStream->RecordDispatchDesc(
 			InRt, MakeDispatchDesc(node)));
 
-		UpdateBufferStates(node, bufferStates);
+		UpdateBufferStates(node, i, bufferStates);
 	}
 
 	// Submit final batch with cross-queue dependency if needed
@@ -1076,12 +1255,18 @@ OaU64 OaComputeGraph::ComputeNodeHash() const {
 		}
 		fnv(&node.Queue, sizeof(node.Queue));
 		fnv(&node.NodeIndex, sizeof(node.NodeIndex));
+		const OaU32 semanticOperationCount =
+			static_cast<OaU32>(node.SemanticOperations.Size());
+		fnv(&semanticOperationCount, sizeof(semanticOperationCount));
+		for (const auto semanticOperation : node.SemanticOperations) {
+			fnv(&semanticOperation, sizeof(semanticOperation));
+		}
 	}
 
 	return hash;
 }
 
-OaStatus OaComputeGraph::Compile(OaComputeEngine& InRt) {
+OaStatus OaComputeGraph::Compile(OaEngine& InRt) {
 	LastCompileReused_ = false;
 	if (Nodes_.Empty()) {
 		Compiled_ = true;
@@ -1205,17 +1390,21 @@ OaStatus OaComputeGraph::Compile(OaComputeEngine& InRt) {
 	OaHashMap<void*, OaGraphBufferState> bufferStates;
 	bufferStates.Reserve(Nodes_.Size() * 4U);
 	OaVec<VkBufferMemoryBarrier2> barriers;
+	OaVec<VkMemoryBarrier2> aliasBarriers;
 	barriers.Reserve(8);
 	BarrierCount_ = 0;
 	WarBarrierCount_ = 0;
 	IndirectBarrierCount_ = 0;
+	AliasBarrierCount_ = 0;
 
 	VkPipeline boundPipeline = VK_NULL_HANDLE;
 	bool bindlessDescriptorBound = false;
-	for (auto& node : Nodes_) {
-		ComputeNodeBarriers(node, bufferStates, barriers);
+	for (OaU32 nodeIdx = 0; nodeIdx < Nodes_.Size(); ++nodeIdx) {
+		auto& node = Nodes_[nodeIdx];
+		ComputeNodeBarriers(node, nodeIdx, bufferStates, barriers, aliasBarriers);
 		PruneRedundantWarBarriers(barriers);
-		BarrierCount_ += static_cast<OaU32>(barriers.Size());
+		BarrierCount_ += static_cast<OaU32>(barriers.Size() + aliasBarriers.Size());
+		AliasBarrierCount_ += static_cast<OaU32>(aliasBarriers.Size());
 		for (const auto& bar : barriers) {
 			if (bar.srcAccessMask == 0 && bar.dstAccessMask == 0) {
 				++WarBarrierCount_;
@@ -1226,10 +1415,22 @@ OaStatus OaComputeGraph::Compile(OaComputeEngine& InRt) {
 				++IndirectBarrierCount_;
 			}
 		}
+		for (const auto& bar : aliasBarriers) {
+			if (bar.srcAccessMask == 0 && bar.dstAccessMask == 0) {
+				++WarBarrierCount_;
+			}
+			if ((bar.dstStageMask & VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT) != 0
+				&& (bar.dstAccessMask & VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT) != 0)
+			{
+				++IndirectBarrierCount_;
+			}
+		}
 
-		if (!barriers.Empty()) {
+		if (!barriers.Empty() || !aliasBarriers.Empty()) {
 			VkDependencyInfo dep{};
 			dep.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+			dep.memoryBarrierCount = static_cast<OaU32>(aliasBarriers.Size());
+			dep.pMemoryBarriers = aliasBarriers.Data();
 			dep.bufferMemoryBarrierCount = static_cast<OaU32>(barriers.Size());
 			dep.pBufferMemoryBarriers = barriers.Data();
 			vkCmdPipelineBarrier2(static_cast<VkCommandBuffer>(SecondaryCb_), &dep);
@@ -1317,7 +1518,7 @@ OaStatus OaComputeGraph::Compile(OaComputeEngine& InRt) {
 			} else {
 				vkCmdDispatch(static_cast<VkCommandBuffer>(SecondaryCb_), node.GroupsX, node.GroupsY, node.GroupsZ);
 			}
-		UpdateBufferStates(node, bufferStates);
+		UpdateBufferStates(node, nodeIdx, bufferStates);
 	}
 
 	RecordFinalBarrier(static_cast<VkCommandBuffer>(SecondaryCb_), HostReadbackRequired_);
@@ -1333,8 +1534,9 @@ OaStatus OaComputeGraph::Compile(OaComputeEngine& InRt) {
 	if (OaEnvFlag::IsSet("OA_LOG_BARRIERS")) {
 		const OaU32 n = static_cast<OaU32>(Nodes_.Size());
 		OA_LOG_INFO(OaLogComponent::Core,
-			"OaComputeGraph::Compile: nodes=%u barriers=%u war=%u indirect=%u",
-			n, BarrierCount_, WarBarrierCount_, IndirectBarrierCount_);
+			"OaComputeGraph::Compile: nodes=%u barriers=%u war=%u indirect=%u alias=%u",
+			n, BarrierCount_, WarBarrierCount_, IndirectBarrierCount_,
+			AliasBarrierCount_);
 	}
 
 	// Build a pre-recorded primary CB that wraps the secondary. This lets
@@ -1449,7 +1651,7 @@ OaStatus OaComputeGraph::Compile(OaComputeEngine& InRt) {
 	return OaStatus::Ok();
 }
 
-OaStatus OaComputeGraph::Replay(OaComputeEngine& InRt) {
+OaStatus OaComputeGraph::Replay(OaEngine& InRt) {
 	if (Nodes_.Empty()) return OaStatus::Ok();
 	if (!Compiled_ || !SecondaryCb_) {
 		return OaStatus::Error("graph replay: not compiled — call Compile() first");
@@ -1529,7 +1731,7 @@ OaStatus OaComputeGraph::WaitForPendingReplay(const OaVkDevice& InDevice) {
 	return OaStatus::Ok();
 }
 
-OaResult<OaCompletionToken> OaComputeGraph::ReplayAsync(OaComputeEngine& InRt)
+OaResult<OaCompletionToken> OaComputeGraph::ReplayAsync(OaEngine& InRt)
 {
 	OA_RETURN_IF_ERROR(Replay(InRt));
 	return LastCompletion(InRt.Device);
@@ -1542,7 +1744,7 @@ OaCompletionToken OaComputeGraph::LastCompletion(const OaVkDevice& InDevice) con
 		: OaCompletionToken();
 }
 
-OaStatus OaComputeGraph::RecordReplay(OaComputeEngine& InRt, void* InPrimaryCommandBuffer) const {
+OaStatus OaComputeGraph::RecordReplay(OaEngine& InRt, void* InPrimaryCommandBuffer) const {
 	(void)InRt;
 	if (Nodes_.Empty()) return OaStatus::Ok();
 	if (!Compiled_ || !SecondaryCb_) {
@@ -1651,12 +1853,26 @@ OaVec<OaAliasGroup> OaComputeGraph::ComputeAliasGroups() const {
 }
 
 OaStatus OaComputeGraph::MaterializeAliases(
-	OaComputeEngine& InRt, OaSpan<OaMatrix*> InEligible) {
+	OaEngine& InRt, OaSpan<OaMatrix*> InEligible) {
+	return MaterializeAliases(InRt, InEligible, {});
+}
+
+OaStatus OaComputeGraph::MaterializeAliases(
+	OaEngine& InRt,
+	OaSpan<OaMatrix*> InEligible,
+	OaSpan<const OaU32> InPermittedAdditionalOwners)
+{
 	if (Compiled_ or not AliasOwners_.Empty()) {
 		return OaStatus::Error(OaStatusCode::FailedPrecondition,
 			"graph aliases must be materialized exactly once before compilation");
 	}
 	if (InEligible.Empty()) return OaStatus::Ok();
+	if (not InPermittedAdditionalOwners.Empty()
+		and InPermittedAdditionalOwners.Size() != InEligible.Size())
+	{
+		return OaStatus::Error(OaStatusCode::InvalidArgument,
+			"graph alias retained-owner counts must match the eligible resources");
+	}
 
 	struct EligibleMatrix {
 		OaMatrix* Matrix = nullptr;
@@ -1735,8 +1951,17 @@ OaStatus OaComputeGraph::MaterializeAliases(
 		if (group.Alias.Members.Size() < 2U) continue;
 		for (const auto& member : group.Alias.Members) {
 			OaMatrix* matrix = nullptr;
+			OaU32 eligibleIndex = 0;
 			for (const auto& entry : eligible) {
-				if (entry.Handle == member.Buffer) { matrix = entry.Matrix; break; }
+				if (entry.Handle == member.Buffer) {
+					matrix = entry.Matrix;
+					break;
+				}
+				++eligibleIndex;
+			}
+			if (matrix == nullptr or eligibleIndex >= eligible.Size()) {
+				return OaStatus::Error(OaStatusCode::Internal,
+					"graph alias group contains an unregistered transient");
 			}
 			OaU32 graphOwners = 0;
 			for (const auto& node : Nodes_) {
@@ -1744,7 +1969,11 @@ OaStatus OaComputeGraph::MaterializeAliases(
 					if (owner and owner.Get() == matrix->VkBuf_.Get()) ++graphOwners;
 				}
 			}
-			if (matrix->VkBuf_.UseCount() != static_cast<long>(graphOwners + 1U)) {
+			const OaU32 permitted = InPermittedAdditionalOwners.Empty()
+				? 0U : InPermittedAdditionalOwners[eligibleIndex];
+			if (matrix->VkBuf_.UseCount()
+				!= static_cast<long>(graphOwners + permitted + 1U))
+			{
 				return OaStatus::Error(OaStatusCode::FailedPrecondition,
 					"graph alias transient still has an external matrix/view owner");
 			}
@@ -1752,33 +1981,10 @@ OaStatus OaComputeGraph::MaterializeAliases(
 	}
 
 	auto ownBacking = [&](OaVkBuffer&& buffer) {
-		auto* runtime = &InRt;
-		auto lifetime = InRt.GetLifetimeToken();
-		return OaSharedPtr<OaVkBuffer>(new OaVkBuffer(std::move(buffer)),
-			[runtime, lifetime](OaVkBuffer* ptr) {
-				if (ptr != nullptr) {
-					if (not lifetime.Expired()) {
-						runtime->DeregisterBuffer(*ptr);
-						runtime->Allocator.Free(*ptr);
-					}
-					delete ptr;
-				}
-			});
+		return InRt.AdoptBufferLease_(std::move(buffer));
 	};
 	auto ownView = [&](OaVkBuffer&& buffer, OaSharedPtr<OaVkBuffer> backing) {
-		auto* runtime = &InRt;
-		auto lifetime = InRt.GetLifetimeToken();
-		return OaSharedPtr<OaVkBuffer>(new OaVkBuffer(std::move(buffer)),
-			[runtime, lifetime, backing = std::move(backing)](OaVkBuffer* ptr) mutable {
-				if (ptr != nullptr) {
-					if (not lifetime.Expired()) {
-						runtime->DeregisterBuffer(*ptr);
-						runtime->Allocator.FreeAlias(*ptr);
-					}
-					delete ptr;
-				}
-				backing.Reset();
-			});
+		return InRt.AdoptBufferLease_(std::move(buffer), std::move(backing));
 	};
 
 	std::unordered_map<void*, OaSharedPtr<OaVkBuffer>> replacements;
@@ -1793,8 +1999,18 @@ OaStatus OaComputeGraph::MaterializeAliases(
 			DestroyAliasArena(); return backingResult.GetStatus();
 		}
 		auto backingBuffer = std::move(backingResult.GetValue());
-		InRt.RegisterBuffer(backingBuffer);
+		if (InRt.RegisterBuffer(backingBuffer) == OA_BINDLESS_INVALID) {
+			InRt.Allocator.Free(backingBuffer);
+			DestroyAliasArena();
+			return OaStatus::Error(OaStatusCode::ResourceExhausted,
+				"graph alias backing bindless registration failed");
+		}
 		auto backing = ownBacking(std::move(backingBuffer));
+		if (not backing) {
+			DestroyAliasArena();
+			return OaStatus::Error(OaStatusCode::FailedPrecondition,
+				"graph alias backing lease unavailable during engine shutdown");
+		}
 		AliasOwners_.PushBack(backing);
 		replacements.emplace(group.Alias.Members[0].Buffer, backing);
 		for (const auto& member : group.Alias.Members) originalBytes += member.Size;
@@ -1804,8 +2020,18 @@ OaStatus OaComputeGraph::MaterializeAliases(
 				*backing, group.Alias.Members[memberIdx].Size);
 			if (not aliasResult.IsOk()) { DestroyAliasArena(); return aliasResult.GetStatus(); }
 			auto alias = std::move(aliasResult.GetValue());
-			InRt.RegisterBuffer(alias);
+			if (InRt.RegisterBuffer(alias) == OA_BINDLESS_INVALID) {
+				InRt.Allocator.FreeAlias(alias);
+				DestroyAliasArena();
+				return OaStatus::Error(OaStatusCode::ResourceExhausted,
+					"graph alias view bindless registration failed");
+			}
 			auto owner = ownView(std::move(alias), backing);
+			if (not owner) {
+				DestroyAliasArena();
+				return OaStatus::Error(OaStatusCode::FailedPrecondition,
+					"graph alias view lease unavailable during engine shutdown");
+			}
 			replacements.emplace(group.Alias.Members[memberIdx].Buffer, owner);
 			AliasOwners_.PushBack(std::move(owner));
 		}
@@ -1835,8 +2061,7 @@ OaStatus OaComputeGraph::MaterializeAliases(
 		// allocation bytes on unified GPUs as well as discrete GPUs.
 		entry.Matrix->VkBuf_->Flags |= OA_VK_BUFFER_FLAG_TRANSIENT;
 		entry.Matrix->VkBuf_ = found->second;
-		entry.Matrix->Data_ = OaSharedPtr<void>(
-			found->second->MappedPtr, [](void*) {});
+		entry.Matrix->Data_.Reset();
 		entry.Matrix->SyncMatrixDescriptor();
 	}
 	MaterializedAliasSavings_ = originalBytes > arenaBytes ? originalBytes - arenaBytes : 0U;
@@ -1857,6 +2082,7 @@ OaGraphStats OaComputeGraph::GetStats() const {
 	stats.DescriptorSetCount = static_cast<OaU32>(DescriptorPools_.Size());
 	stats.WarBarrierCount = WarBarrierCount_;
 	stats.IndirectBarrierCount = IndirectBarrierCount_;
+	stats.AliasBarrierCount = AliasBarrierCount_;
 	stats.HostBarrierCount = HostReadbackRequired_ && not Nodes_.Empty() ? 1U : 0U;
 
 	// Compute total buffer bytes and alias savings
@@ -1885,9 +2111,39 @@ OaString OaComputeGraph::DebugReportJson(OaStringView InName) const {
 	for (const auto& lifetime : lifetimes) {
 		resourceIds.emplace(lifetime.Buffer, lifetime.ResourceOrder);
 	}
+	std::unordered_map<void*, OaU32> hazardDomainIds;
+	std::unordered_map<void*, OaU32> resourceHazardDomains;
+	OaU32 nextHazardDomain = 0;
+	auto registerHazardDomain = [&](const OaVkBuffer& buffer) {
+		if (not buffer.Buffer) return;
+		void* identity = buffer.SynchronizationIdentity();
+		auto [domain, inserted] = hazardDomainIds.emplace(identity, nextHazardDomain);
+		if (inserted) ++nextHazardDomain;
+		resourceHazardDomains.emplace(buffer.Buffer, domain->second);
+	};
+	for (const auto& node : Nodes_) {
+		for (const auto& buffer : node.Buffers) registerHazardDomain(buffer);
+		if (node.Indirect) registerHazardDomain(node.IndirectBuffer);
+	}
+
+	OaHashMap<void*, OaGraphBufferState> bufferStates;
+	OaVec<VkBufferMemoryBarrier2> bufferBarriers;
+	OaVec<VkMemoryBarrier2> aliasBarriers;
+	OaVec<OaGraphBarrierDebug> bufferDebug;
+	OaVec<OaGraphBarrierDebug> aliasDebug;
+	OaVec<OaGraphBarrierDebug> plannedBarriers;
+	for (OaU32 nodeIdx = 0; nodeIdx < Nodes_.Size(); ++nodeIdx) {
+		const auto& node = Nodes_[nodeIdx];
+		ComputeNodeBarriers(node, nodeIdx, bufferStates, bufferBarriers,
+			aliasBarriers, &bufferDebug, &aliasDebug);
+		PruneRedundantWarBarriers(bufferBarriers, &bufferDebug);
+		for (const auto& debug : bufferDebug) plannedBarriers.PushBack(debug);
+		for (const auto& debug : aliasDebug) plannedBarriers.PushBack(debug);
+		UpdateBufferStates(node, nodeIdx, bufferStates);
+	}
 
 	std::ostringstream out;
-	out << "{\n  \"schema\": \"oa.execution_graph.v1\",\n  \"name\": ";
+	out << "{\n  \"schema\": \"oa.execution_graph.v3\",\n  \"name\": ";
 	WriteJsonString(out, InName);
 	out << ",\n  \"compiled\": " << (Compiled_ ? "true" : "false")
 		<< ",\n  \"completion\": {\"submitted\": "
@@ -1897,6 +2153,7 @@ OaString OaComputeGraph::DebugReportJson(OaStringView InName) const {
 		<< ", \"barriers\": " << stats.BarrierCount
 		<< ", \"war_barriers\": " << stats.WarBarrierCount
 		<< ", \"indirect_barriers\": " << stats.IndirectBarrierCount
+		<< ", \"alias_barriers\": " << stats.AliasBarrierCount
 		<< ", \"host_barriers\": " << stats.HostBarrierCount
 		<< ", \"descriptor_sets\": " << stats.DescriptorSetCount
 		<< ", \"buffer_bytes\": " << stats.TotalBufferBytes
@@ -1908,6 +2165,8 @@ OaString OaComputeGraph::DebugReportJson(OaStringView InName) const {
 		const auto& lifetime = lifetimes[i];
 		out << (i == 0 ? "\n" : ",\n")
 			<< "    {\"id\": " << lifetime.ResourceOrder
+			<< ", \"hazard_domain\": "
+			<< resourceHazardDomains[lifetime.Buffer]
 			<< ", \"bytes\": " << lifetime.Size
 			<< ", \"first_node\": " << lifetime.FirstAccess
 			<< ", \"last_node\": " << lifetime.LastAccess << "}";
@@ -1926,6 +2185,86 @@ OaString OaComputeGraph::DebugReportJson(OaStringView InName) const {
 		out << "]}";
 	}
 	if (not aliasGroups.Empty()) out << '\n';
+	out << "  ],\n  \"barriers\": [";
+	for (OaU32 i = 0; i < plannedBarriers.Size(); ++i) {
+		const auto& barrier = plannedBarriers[i];
+		out << (i == 0 ? "\n" : ",\n")
+			<< "    {\"reason\": \"" << HazardName(barrier.Hazard)
+			<< "\", \"scope\": \""
+			<< (barrier.Alias ? "memory_alias" : "buffer")
+			<< "\", \"source_nodes\": [" << barrier.SourceFirstNode
+			<< ", " << barrier.SourceLastNode << "]"
+			<< ", \"destination_node\": " << barrier.DestinationNode
+			<< ", \"source_resource\": ";
+		auto sourceResource = resourceIds.find(barrier.SourceBuffer);
+		if (sourceResource == resourceIds.end()) out << "null";
+		else out << sourceResource->second;
+		out << ", \"destination_resource\": ";
+		auto destinationResource = resourceIds.find(barrier.DestinationBuffer);
+		if (destinationResource == resourceIds.end()) out << "null";
+		else out << destinationResource->second;
+		out << ", \"hazard_domain\": ";
+		auto hazardDomain = hazardDomainIds.find(barrier.HazardIdentity);
+		if (hazardDomain == hazardDomainIds.end()) out << "null";
+		else out << hazardDomain->second;
+		out << ", \"range\": {\"offset\": 0, \"bytes\": "
+			<< barrier.Bytes << "}"
+			<< ", \"source_queue\": \""
+			<< (barrier.SourceQueuesMixed ? "mixed" : QueueHintName(barrier.SourceQueue))
+			<< "\", \"destination_queue\": \""
+			<< QueueHintName(barrier.DestinationQueue) << "\""
+			<< ", \"cross_queue\": "
+			<< (barrier.SourceQueuesMixed
+				or barrier.SourceQueue != barrier.DestinationQueue ? "true" : "false")
+			<< ", \"ownership_transfer\": false"
+			<< ", \"source_stage_mask\": ";
+		WriteHexId(out, barrier.SourceStages);
+		out << ", \"source_stages\": ";
+		WriteStageNames(out, barrier.SourceStages);
+		out << ", \"source_access_mask\": ";
+		WriteHexId(out, barrier.SourceAccess);
+		out << ", \"source_accesses\": ";
+		WriteAccessNames(out, barrier.SourceAccess);
+		out << ", \"destination_stage_mask\": ";
+		WriteHexId(out, barrier.DestinationStages);
+		out << ", \"destination_stages\": ";
+		WriteStageNames(out, barrier.DestinationStages);
+		out << ", \"destination_access_mask\": ";
+		WriteHexId(out, barrier.DestinationAccess);
+		out << ", \"destination_accesses\": ";
+		WriteAccessNames(out, barrier.DestinationAccess);
+		out << '}';
+	}
+	if (HostReadbackRequired_ and not Nodes_.Empty()) {
+		out << (plannedBarriers.Empty() ? "\n" : ",\n")
+			<< "    {\"reason\": \"host_readback\", \"scope\": \"memory\""
+			<< ", \"source_nodes\": [" << (Nodes_.Size() - 1U) << ", "
+			<< (Nodes_.Size() - 1U) << "]"
+			<< ", \"destination_node\": null, \"source_resource\": null"
+			<< ", \"destination_resource\": null, \"hazard_domain\": null"
+			<< ", \"range\": null, \"source_queue\": \"compute\""
+			<< ", \"destination_queue\": \"host\", \"cross_queue\": true"
+			<< ", \"ownership_transfer\": false, \"source_stage_mask\": ";
+		WriteHexId(out, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT);
+		out << ", \"source_stages\": ";
+		WriteStageNames(out, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT);
+		out << ", \"source_access_mask\": ";
+		WriteHexId(out, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+		out << ", \"source_accesses\": ";
+		WriteAccessNames(out, VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+		out << ", \"destination_stage_mask\": ";
+		WriteHexId(out, VK_PIPELINE_STAGE_2_HOST_BIT);
+		out << ", \"destination_stages\": ";
+		WriteStageNames(out, VK_PIPELINE_STAGE_2_HOST_BIT);
+		out << ", \"destination_access_mask\": ";
+		WriteHexId(out, VK_ACCESS_2_HOST_READ_BIT);
+		out << ", \"destination_accesses\": ";
+		WriteAccessNames(out, VK_ACCESS_2_HOST_READ_BIT);
+		out << '}';
+	}
+	if (not plannedBarriers.Empty() or (HostReadbackRequired_ and not Nodes_.Empty())) {
+		out << '\n';
+	}
 	out << "  ],\n  \"nodes\": [";
 
 	for (OaU32 i = 0; i < Nodes_.Size(); ++i) {
@@ -1934,12 +2273,23 @@ OaString OaComputeGraph::DebugReportJson(OaStringView InName) const {
 			<< ", \"operation\": ";
 		if (node.Operation.Empty()) out << "null";
 		else WriteJsonString(out, node.Operation);
+		out << ", \"semantic_operations\": [";
+		for (OaU32 operation = 0;
+			operation < node.SemanticOperations.Size(); ++operation)
+		{
+			if (operation != 0U) out << ", ";
+			out << node.SemanticOperations[operation];
+		}
+		out << ']';
 		out << ", \"implementation_id\": ";
 		if (node.ImplementationId == 0U) out << "null";
 		else WriteHexId(out, node.ImplementationId);
 		out << ", \"operation_contract_hash\": ";
 		if (node.OperationContractHash == 0U) out << "null";
 		else WriteHexId(out, node.OperationContractHash);
+		out << ", \"problem_contract_hash\": ";
+		if (node.ProblemContractHash == 0U) out << "null";
+		else WriteHexId(out, node.ProblemContractHash);
 		out << ", \"kernel_content_hash\": ";
 		if (node.KernelContentHash == 0U) out << "null";
 		else WriteHexId(out, node.KernelContentHash);
@@ -1988,6 +2338,7 @@ OaStatus OaComputeGraph::CopyNodesFrom(const OaComputeGraph& InSource) {
 	BarrierCount_ = 0;
 	WarBarrierCount_ = 0;
 	IndirectBarrierCount_ = 0;
+	AliasBarrierCount_ = 0;
 	return OaStatus::Ok();
 }
 
@@ -2035,6 +2386,7 @@ void OaComputeGraph::Invalidate(const OaVkDevice& InDevice) {
 	BarrierCount_ = 0;
 	WarBarrierCount_ = 0;
 	IndirectBarrierCount_ = 0;
+	AliasBarrierCount_ = 0;
 }
 
 void OaComputeGraph::Reset() {
@@ -2054,6 +2406,7 @@ void OaComputeGraph::ClearNodes() {
 	BarrierCount_ = 0;
 	WarBarrierCount_ = 0;
 	IndirectBarrierCount_ = 0;
+	AliasBarrierCount_ = 0;
 	// Keep SecondaryPool_, SecondaryCb_ for reuse in next Compile().
 	// DescriptorPools_ are cleaned up at the start of Compile().
 }

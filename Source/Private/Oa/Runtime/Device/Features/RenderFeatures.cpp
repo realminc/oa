@@ -24,6 +24,16 @@ public:
 			if (strcmp(ext.extensionName, VK_KHR_SWAPCHAIN_EXTENSION_NAME) == 0) {
 				OutProbe.KhrSwapchain = true;
 			}
+			else if (strcmp(ext.extensionName,
+				VK_KHR_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME) == 0) {
+				OutProbe.KhrSwapchainMaintenance1 = true;
+				MaintenanceExtensionPresent_ = true;
+			}
+			else if (strcmp(ext.extensionName,
+				VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME) == 0) {
+				OutProbe.ExtSwapchainMaintenance1 = true;
+				MaintenanceExtensionPresent_ = true;
+			}
 		}
 	}
 
@@ -31,15 +41,29 @@ public:
 		VkPhysicalDevice InPhysicalDevice,
 		OaVkDeviceFeatureBundle& OutBundle
 	) override {
-		// Graphics/present features are queue-based, no additional feature queries needed
-		// Queue family detection happens in queue planning phase
+		if (!MaintenanceExtensionPresent_) return;
+		OutBundle.SupportedSwapchainMaintenance1 = {};
+		OutBundle.SupportedSwapchainMaintenance1.sType =
+			VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SWAPCHAIN_MAINTENANCE_1_FEATURES_KHR;
+		VkPhysicalDeviceFeatures2 features{};
+		features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+		features.pNext = &OutBundle.SupportedSwapchainMaintenance1;
+		vkGetPhysicalDeviceFeatures2(InPhysicalDevice, &features);
+		OutBundle.HasSwapchainMaintenance1 =
+			OutBundle.SupportedSwapchainMaintenance1.swapchainMaintenance1 == VK_TRUE;
 	}
 
 	void BuildFeatureChain(
 		OaVkDeviceFeatureBundle& InOutBundle
 	) override {
-		// Swapchain doesn't require feature enables beyond the extension itself
-		// Graphics queue capabilities are detected during queue planning
+		if (!InOutBundle.HasSwapchainMaintenance1) return;
+		InOutBundle.SwapchainMaintenance1Features = {};
+		InOutBundle.SwapchainMaintenance1Features.sType =
+			VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SWAPCHAIN_MAINTENANCE_1_FEATURES_KHR;
+		InOutBundle.SwapchainMaintenance1Features.pNext =
+			InOutBundle.Features13.pNext;
+		InOutBundle.SwapchainMaintenance1Features.swapchainMaintenance1 = VK_TRUE;
+		InOutBundle.Features13.pNext = &InOutBundle.SwapchainMaintenance1Features;
 	}
 
 	void CollectExtensions(
@@ -50,12 +74,22 @@ public:
 		// Swapchain extension (required for presentation)
 		if (InProbe.KhrSwapchain) {
 			OutExtensions.PushBack(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+			if (InBundle.HasSwapchainMaintenance1) {
+				if (InProbe.KhrSwapchainMaintenance1) {
+					OutExtensions.PushBack(VK_KHR_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME);
+				} else if (InProbe.ExtSwapchainMaintenance1) {
+					OutExtensions.PushBack(VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME);
+				}
+			}
 		}
 	}
 
 	OaVec<OaStringView> Dependencies() const override {
 		return {"Core"};
 	}
+
+private:
+	bool MaintenanceExtensionPresent_ = false;
 };
 
 

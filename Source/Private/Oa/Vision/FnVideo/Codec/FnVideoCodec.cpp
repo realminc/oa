@@ -1,9 +1,9 @@
 // OaFnVideo — VideoCodec category.
 // DecodeFrame / EncodeFrame / FlushSession session-recorder shims.
 //
-// Decode routes through OaContext::RecordDecode so pending compute work is
-// drained only when a real cross-domain dependency exists.
-// EncodeFrame mirrors that via the existing RecordEncode pattern.
+// OaFnVideo owns media-session coordination. OaContext is accepted only as an
+// explicit dependency boundary for pending compute producers; Runtime does not
+// know about decoder or encoder types.
 
 #include <Oa/Vision/FnVideo.h>
 #include <Oa/Runtime/Context.h>
@@ -56,12 +56,39 @@ OaStatus Decode(
 	OaVideoFrame& OutFrame,
 	OaU64 InPts)
 {
-	return InContext.RecordDecode(
-		InSession,
-		InAccessUnit,
-		InOptions,
-		InPts,
-		OutFrame);
+#ifdef OA_ANDROID_ML
+	(void)InContext;
+	(void)InSession;
+	(void)InAccessUnit;
+	(void)InOptions;
+	(void)InPts;
+	(void)OutFrame;
+	return OaStatus::Unimplemented(
+		"Video decoding is not part of the Android ML profile");
+#else
+	if (not InSession.IsInitialized()) {
+		return OaStatus::Error(
+			"OaFnVideo::Decode: decoder session not initialized");
+	}
+	if (InSession.GetEngine() != &InContext.Engine()) {
+		return OaStatus::Error(OaStatusCode::InvalidArgument,
+			"OaFnVideo::Decode: decoder belongs to a different engine");
+	}
+
+	// Decode submits outside the compute graph. Drain only when recorded work
+	// may produce decoder input or share resources with the session.
+	if (InContext.NodeCount() > 0) {
+		OA_RETURN_IF_ERROR(InContext.Execute());
+	}
+	if (InContext.IsAsyncBatchActive()) {
+		OA_RETURN_IF_ERROR(InContext.Sync());
+	}
+
+	OaStatus status = InSession.DecodeFrameWithConversion(
+		InAccessUnit, InOptions, OutFrame);
+	if (status.IsOk()) OutFrame.PresentationTimestamp = InPts;
+	return status;
+#endif
 }
 
 OaResult<OaVideoFrame> Decode(

@@ -193,6 +193,15 @@ OaF32 OaMatrix::Item() const {
 
 OaF32 OaMatrix::At(OaI64 InIdx) const {
 	assert(InIdx >= 0 and InIdx < NumElements());
+	// A host read is an observation boundary even when the allocation happens to
+	// be persistently mapped. Recorded GPU writes must become visible before the
+	// CPU dereferences that mapping; otherwise correctness depends on allocation
+	// size (device-local matrices took the readback path below and were flushed,
+	// while small host-visible matrices returned stale data).
+	if (OaContext::GetDefaultPtr()) {
+		auto executeStatus = OaContext::GetDefault().Execute();
+		assert(executeStatus.IsOk());
+	}
 	const OaI64 elemOff = OaMatrixFlatToElementOffset(Shape_, Stride_, InIdx);
 	const OaI64 elemSz = static_cast<OaI64>(OaScalarSize(Dtype_));
 	OaU8 cellBytes[sizeof(OaF32)]{};
@@ -200,8 +209,6 @@ OaF32 OaMatrix::At(OaI64 InIdx) const {
 	if (cell) {
 		cell += elemOff * elemSz;
 	} else if (auto* runtime = OaContext::GetDefault().GetEngine()) {
-		auto executeStatus = OaContext::GetDefault().Execute();
-		assert(executeStatus.IsOk());
 		const auto status = runtime->ReadbackBuffer(
 			GetVkBuffer(), ByteOffset_ + static_cast<OaU64>(elemOff * elemSz),
 			cellBytes, static_cast<OaU64>(elemSz));

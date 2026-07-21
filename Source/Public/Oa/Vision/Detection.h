@@ -13,7 +13,7 @@
 #include <Oa/Runtime/Allocator.h>
 #include <Oa/Runtime/Sync.h>
 
-class OaComputeEngine;
+class OaEngine;
 
 struct OaDetection {
 	OaF32 CenterX = 0.0F;
@@ -44,7 +44,7 @@ public:
 
 	// Host-visible creation path for sidecars, tests, and CPU integrations.
 	// Native GPU postprocess will use the same record layout and consumer API.
-	[[nodiscard]] static OaResult<OaDetectionBuffer> CreateHostUpload(OaComputeEngine& InRuntime,	OaU32 InCapacity);
+	[[nodiscard]] static OaResult<OaDetectionBuffer> CreateHostUpload(OaEngine& InRuntime,	OaU32 InCapacity);
 
 	void Destroy();
 
@@ -65,7 +65,7 @@ public:
 	[[nodiscard]] const OaVkBuffer& DeviceBuffer() const noexcept { return Buffer_; }
 
 private:
-	OaComputeEngine* Runtime_ = nullptr;
+	OaEngine* Runtime_ = nullptr;
 	OaVkBuffer Buffer_;
 	OaVkTimelineSemaphore ConsumerSemaphore_;
 	OaU64 ConsumerValue_ = 0;

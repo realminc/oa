@@ -21,7 +21,7 @@ public:
 	/// Describe optimizer step for compiled graph mode
 	/// Default: falls back to immediate Step() (works but not optimal)
 	/// Override to add operations to InGraph for better performance
-	virtual void DescribeStep(class OaComputeGraph& InGraph, class OaComputeEngine& InRt) {
+	virtual void DescribeStep(class OaComputeGraph& InGraph, class OaEngine& InRt) {
 		(void)InGraph;
 		(void)InRt;
 		Step();  // Fallback to immediate dispatch
@@ -45,8 +45,18 @@ public:
 	// Persistence — write/read optimizer state (moments, step count, hyperparams)
 	// into an OamModel section. Default no-op so SGD/Adam compile until they implement.
 	// Combined with OaModule::Save/Load(path, optimizer) for one-call full checkpoints.
-	virtual void SaveTo(OamModel& OutOam) const { (void)OutOam; }
-	virtual void LoadFrom(const OamModel& InOam) { (void)InOam; }
+	[[nodiscard]] virtual OaStatus SaveTo(OamModel& OutOam) const {
+		(void)OutOam;
+		return OaStatus::Ok();
+	}
+	[[nodiscard]] virtual OaStatus ValidateLoad(const OamModel& InOam) const {
+		(void)InOam;
+		return OaStatus::Ok();
+	}
+	[[nodiscard]] virtual OaStatus LoadFrom(const OamModel& InOam) {
+		(void)InOam;
+		return OaStatus::Ok();
+	}
 
 protected:
 	OaVec<OaParameter*> Params_;
@@ -106,8 +116,9 @@ public:
 	void Step() override;
 	void NotifyProgramReplay(OaU64 InCount = 1) override;
 	void ZeroGrad() override;
-	void SaveTo(OamModel& OutOam) const override;
-	void LoadFrom(const OamModel& InOam) override;
+	[[nodiscard]] OaStatus SaveTo(OamModel& OutOam) const override;
+	[[nodiscard]] OaStatus ValidateLoad(const OamModel& InOam) const override;
+	[[nodiscard]] OaStatus LoadFrom(const OamModel& InOam) override;
 
 private:
 	OaVec<OaUniquePtr<OaOptimizer>> Children_;
@@ -137,8 +148,9 @@ public:
 
 	void Step() override;
 	void ZeroGrad() override;
-	void SaveTo(OamModel& OutOam) const override;
-	void LoadFrom(const OamModel& InOam) override;
+	[[nodiscard]] OaStatus SaveTo(OamModel& OutOam) const override;
+	[[nodiscard]] OaStatus ValidateLoad(const OamModel& InOam) const override;
+	[[nodiscard]] OaStatus LoadFrom(const OamModel& InOam) override;
 
 private:
 	OaF32 Momentum_;
@@ -167,8 +179,9 @@ public:
 
 	void Step() override;
 	void ZeroGrad() override;
-	void SaveTo(OamModel& OutOam) const override;
-	void LoadFrom(const OamModel& InOam) override;
+	[[nodiscard]] OaStatus SaveTo(OamModel& OutOam) const override;
+	[[nodiscard]] OaStatus ValidateLoad(const OamModel& InOam) const override;
+	[[nodiscard]] OaStatus LoadFrom(const OamModel& InOam) override;
 
 private:
 	OaF32 Beta1_, Beta2_, Eps_;
@@ -206,8 +219,9 @@ public:
 	void Step() override;
 	void SetLr(OaF32 InLr) override;
 	void ZeroGrad() override;
-	void SaveTo(OamModel& OutOam) const override;
-	void LoadFrom(const OamModel& InOam) override;
+	[[nodiscard]] OaStatus SaveTo(OamModel& OutOam) const override;
+	[[nodiscard]] OaStatus ValidateLoad(const OamModel& InOam) const override;
+	[[nodiscard]] OaStatus LoadFrom(const OamModel& InOam) override;
 
 private:
 	OaF32 Beta1_, Beta2_, Eps_, WeightDecay_;
@@ -249,8 +263,9 @@ public:
 
 	void Step() override;
 	void ZeroGrad() override;
-	void SaveTo(OamModel& OutOam) const override;
-	void LoadFrom(const OamModel& InOam) override;
+	[[nodiscard]] OaStatus SaveTo(OamModel& OutOam) const override;
+	[[nodiscard]] OaStatus ValidateLoad(const OamModel& InOam) const override;
+	[[nodiscard]] OaStatus LoadFrom(const OamModel& InOam) override;
 
 private:
 	OaF32 Beta_, WeightDecay_, Eps_;

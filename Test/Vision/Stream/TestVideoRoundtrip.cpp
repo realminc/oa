@@ -6,6 +6,10 @@
 
 #include <Oa/Runtime/Engine.h>
 #include <Oa/Runtime/Context.h>
+#include <Oa/Runtime/Stream.h>
+#include <Oa/Ml/FnMatrix.h>
+#include <Oa/Vision/CameraCapture.h>
+#include <Oa/Vision/ScreenCapture.h>
 #include <Oa/Vision/VideoEncoder.h>
 #include <Oa/Vision/VideoMuxer.h>
 #include <Oa/Vision/VideoRecorder.h>
@@ -17,6 +21,7 @@
 #include <cstdio>
 #include <cmath>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -49,8 +54,115 @@ void PaintFrame(std::vector<OaU8>& InOut, OaI32 InW, OaI32 InH, OaU32 InFrame, O
 
 } // namespace
 
+TEST(OaCaptureLifecycle, DefaultCloseIsIdempotent) {
+	OaCameraCapture camera;
+	OaScreenCapture screen;
+	EXPECT_TRUE(camera.Close().IsOk());
+	EXPECT_TRUE(camera.Close().IsOk());
+	EXPECT_TRUE(screen.Close().IsOk());
+	EXPECT_TRUE(screen.Close().IsOk());
+}
+
+TEST(OaCaptureLifecycle, AbandonedCameraRetiresAtEngineClose) {
+	const char* enabled = std::getenv("OA_TEST_CAMERA_CAPTURE");
+	if (enabled == nullptr or enabled[0] != '1') {
+		GTEST_SKIP() << "Set OA_TEST_CAMERA_CAPTURE=1 for the physical-camera lifecycle gate";
+	}
+	auto config = OaTestEngineConfig(OaPrecision::FP32);
+	config.RegisterAsGlobal = false;
+	config.PreloadEmbeddedPipelines = false;
+	config.EnablePipelineCache = false;
+	auto engineResult = OaEngine::Create(config);
+	ASSERT_TRUE(engineResult.IsOk()) << engineResult.GetStatus().ToString();
+	auto engine = OaStdMove(*engineResult);
+	OaString skipReason;
+	{
+		OaCameraCapture capture;
+		OaCameraCaptureConfig captureConfig;
+		captureConfig.Width = 640;
+		captureConfig.Height = 480;
+		if (const char* device = std::getenv("OA_TEST_CAMERA_DEVICE")) {
+			captureConfig.DevicePath = device;
+		}
+		const auto initStatus = capture.Init(*engine, captureConfig);
+		if (not initStatus.IsOk()) {
+			skipReason = initStatus.ToString();
+		} else {
+			OaVideoFrame frame;
+			const auto deadline = std::chrono::steady_clock::now()
+				+ std::chrono::seconds(5);
+			while (not capture.PollFrame(frame)
+				and std::chrono::steady_clock::now() < deadline) {
+				std::this_thread::sleep_for(std::chrono::milliseconds(1));
+			}
+			if (frame.Width == 0U or frame.Height == 0U) {
+				skipReason = "camera produced no frame within five seconds";
+			} else {
+				auto* stream = engine->AcquireStream();
+				ASSERT_NE(stream, nullptr);
+				ASSERT_TRUE(stream->Begin(engine->Device).IsOk());
+				stream->RecordBufferBarrier();
+				ASSERT_TRUE(stream->Submit(*engine).IsOk());
+				const auto consumed = stream->Completion(engine->Device);
+				ASSERT_TRUE(consumed.IsValid());
+				capture.Release(frame, consumed);
+			}
+		}
+		// No Close/Destroy: producer state and the exact frame-consumer token move
+		// to engine-owned retirement without waiting in the capture destructor.
+	}
+	ASSERT_TRUE(engine->Close().IsOk());
+	if (not skipReason.empty()) GTEST_SKIP() << skipReason.c_str();
+}
+
+TEST(OaCaptureLifecycle, AbandonedScreenCaptureRetiresAtEngineClose) {
+	const char* enabled = std::getenv("OA_TEST_SCREEN_CAPTURE");
+	if (enabled == nullptr or enabled[0] != '1') {
+		GTEST_SKIP() << "Set OA_TEST_SCREEN_CAPTURE=1 for the interactive portal lifecycle gate";
+	}
+	auto config = OaTestEngineConfig(OaPrecision::FP32);
+	config.RegisterAsGlobal = false;
+	config.PreloadEmbeddedPipelines = false;
+	config.EnablePipelineCache = false;
+	auto engineResult = OaEngine::Create(config);
+	ASSERT_TRUE(engineResult.IsOk()) << engineResult.GetStatus().ToString();
+	auto engine = OaStdMove(*engineResult);
+	OaString skipReason;
+	{
+		auto captureResult = OaScreenCapture::Open(*engine);
+		if (not captureResult.IsOk()) {
+			skipReason = captureResult.GetStatus().ToString();
+		} else {
+			auto capture = OaStdMove(*captureResult);
+			OaVideoFrame frame;
+			const auto deadline = std::chrono::steady_clock::now()
+				+ std::chrono::seconds(5);
+			while (not capture.Poll(frame)
+				and std::chrono::steady_clock::now() < deadline) {
+				std::this_thread::sleep_for(std::chrono::milliseconds(1));
+			}
+			if (frame.Width == 0U or frame.Height == 0U) {
+				skipReason = "screen capture produced no frame within five seconds";
+			} else {
+				auto* stream = engine->AcquireStream();
+				ASSERT_NE(stream, nullptr);
+				ASSERT_TRUE(stream->Begin(engine->Device).IsOk());
+				stream->RecordBufferBarrier();
+				ASSERT_TRUE(stream->Submit(*engine).IsOk());
+				const auto consumed = stream->Completion(engine->Device);
+				ASSERT_TRUE(consumed.IsValid());
+				capture.Release(frame, consumed);
+			}
+			// No Close/Destroy: the callback loop is asked to stop without a join;
+			// engine close joins it and completes exact consumer dependencies.
+		}
+	}
+	ASSERT_TRUE(engine->Close().IsOk());
+	if (not skipReason.empty()) GTEST_SKIP() << skipReason.c_str();
+}
+
 TEST(OaVideoRoundtrip, DmaBufImporterRejectsIncompleteDescriptions) {
-	auto* engine = OaComputeEngine::GetGlobal();
+	auto* engine = OaEngine::GetGlobal();
 	if (engine == nullptr) GTEST_SKIP() << "No Vulkan engine available";
 	OaDmaBufImageDesc description;
 	auto result = OaImportedDmaBufImage::Import(*engine, description);
@@ -59,8 +171,90 @@ TEST(OaVideoRoundtrip, DmaBufImporterRejectsIncompleteDescriptions) {
 }
 
 
+TEST(OaVideoRoundtrip, AbandonedSubmittedEncoderRetiresAtEngineClose) {
+	auto config = OaTestEngineConfig(OaPrecision::FP32);
+	config.RegisterAsGlobal = false;
+	config.PreloadEmbeddedPipelines = false;
+	config.EnablePipelineCache = false;
+	auto engineResult = OaEngine::Create(config);
+	ASSERT_TRUE(engineResult.IsOk()) << engineResult.GetStatus().ToString();
+	auto engine = OaStdMove(*engineResult);
+	if (not OaVideoEncoder::IsCodecSupported(*engine, OaVideoCodec::H264)) {
+		ASSERT_TRUE(engine->Close().IsOk());
+		GTEST_SKIP() << "H.264 Vulkan Video encode is not supported on selected device";
+	}
+
+	constexpr OaU32 width = 320U;
+	constexpr OaU32 height = 192U;
+	std::vector<OaU8> rgba(static_cast<OaUsize>(width) * height * 4U, 127U);
+	auto textureResult = OaTexture::FromPixels(
+		*engine, OaSpan<const OaU8>(rgba.data(), rgba.size()), width, height);
+	ASSERT_TRUE(textureResult.IsOk()) << textureResult.GetStatus().ToString();
+	auto texture = OaStdMove(*textureResult);
+	{
+		OaVideoEncodeProfile profile;
+		profile.Width = width;
+		profile.Height = height;
+		profile.AsyncDepth = 2U;
+		auto encoderResult = OaVideoEncoder::Create(*engine, profile);
+		ASSERT_TRUE(encoderResult.IsOk()) << encoderResult.GetStatus().ToString();
+		auto encoder = OaStdMove(*encoderResult);
+		OaVec<OaEncodedFrame> ready;
+		ASSERT_TRUE(encoder.SubmitRgba(
+			texture.DeviceBuf, width, height, 0U, ready).IsOk());
+		// No Close/Destroy: the pending video fence, conversion ticket, and
+		// complete encoder session must transfer to engine retirement.
+	}
+
+	texture.Destroy(*engine);
+	ASSERT_TRUE(engine->Close().IsOk());
+}
+
+
+TEST(OaVideoRoundtrip, AbandonedRecorderRetiresSubmittedEncoderAtEngineClose) {
+	auto config = OaTestEngineConfig(OaPrecision::FP32);
+	config.RegisterAsGlobal = false;
+	config.PreloadEmbeddedPipelines = false;
+	config.EnablePipelineCache = false;
+	auto engineResult = OaEngine::Create(config);
+	ASSERT_TRUE(engineResult.IsOk()) << engineResult.GetStatus().ToString();
+	auto engine = OaStdMove(*engineResult);
+	if (not OaVideoEncoder::IsCodecSupported(*engine, OaVideoCodec::H264)) {
+		ASSERT_TRUE(engine->Close().IsOk());
+		GTEST_SKIP() << "H.264 Vulkan Video encode is not supported on selected device";
+	}
+
+	constexpr OaU32 width = 320U;
+	constexpr OaU32 height = 192U;
+	const char* path = "/tmp/oa_abandoned_recorder.mp4";
+	std::vector<OaU8> rgba(static_cast<OaUsize>(width) * height * 4U, 63U);
+	auto textureResult = OaTexture::FromPixels(
+		*engine, OaSpan<const OaU8>(rgba.data(), rgba.size()), width, height);
+	ASSERT_TRUE(textureResult.IsOk()) << textureResult.GetStatus().ToString();
+	auto texture = OaStdMove(*textureResult);
+	{
+		OaVideoRecorderConfig recorderConfig;
+		recorderConfig.OutputPath = path;
+		recorderConfig.Encode.Width = width;
+		recorderConfig.Encode.Height = height;
+		recorderConfig.Encode.AsyncDepth = 2U;
+		auto recorderResult = OaVideoRecorder::Create(*engine, recorderConfig);
+		ASSERT_TRUE(recorderResult.IsOk()) << recorderResult.GetStatus().ToString();
+		auto recorder = OaStdMove(*recorderResult);
+		ASSERT_TRUE(recorder.WriteRgba(
+			texture.DeviceBuf, width, height, 0U).IsOk());
+		// No Finalize/Destroy: close the host file, but leave submitted GPU work
+		// to the encoder's engine-owned retirement path.
+	}
+
+	texture.Destroy(*engine);
+	std::remove(path);
+	ASSERT_TRUE(engine->Close().IsOk());
+}
+
+
 TEST(OaVideoRoundtrip, TranscoderUsesGpuDecodeConvertEncodePath) {
-	auto* engine = OaComputeEngine::GetGlobal();
+	auto* engine = OaEngine::GetGlobal();
 	if (engine == nullptr) GTEST_SKIP() << "No Vulkan engine available";
 	if (not OaVideoDecoder::IsCodecSupported(*engine, OaVideoCodec::H264)
 		or not OaVideoEncoder::IsCodecSupported(*engine, OaVideoCodec::H264)) {
@@ -107,7 +301,7 @@ TEST(OaVideoRoundtrip, TranscoderUsesGpuDecodeConvertEncodePath) {
 
 TEST(OaVideoRoundtrip, RecorderComposesEncodeAndMux)
 {
-	auto* engine = OaComputeEngine::GetGlobal();
+	auto* engine = OaEngine::GetGlobal();
 	if (engine == nullptr) GTEST_SKIP() << "No Vulkan engine available";
 	if (not OaVideoEncoder::IsCodecSupported(*engine, OaVideoCodec::H264)) {
 		GTEST_SKIP() << "VK_KHR_video_encode_h264 not supported";
@@ -201,7 +395,7 @@ TEST(OaVideoRoundtrip, RecorderComposesEncodeAndMux)
 
 TEST(OaVideoRoundtrip, AdvertisedRateControlModesEncode)
 {
-	auto* engine = OaComputeEngine::GetGlobal();
+	auto* engine = OaEngine::GetGlobal();
 	if (engine == nullptr) GTEST_SKIP() << "No Vulkan engine available";
 	auto capsResult = OaVideoEncoder::QueryEncodeCapabilities(*engine, OaVideoCodec::H264);
 	if (not capsResult.IsOk()) GTEST_SKIP() << capsResult.GetStatus().ToString();
@@ -259,7 +453,7 @@ TEST(OaVideoRoundtrip, AdvertisedRateControlModesEncode)
 
 TEST(OaVideoRoundtrip, EncodeMuxDemuxH264)
 {
-	auto* engine = OaComputeEngine::GetGlobal();
+	auto* engine = OaEngine::GetGlobal();
 	if (engine == nullptr) {
 		GTEST_SKIP() << "No Vulkan engine available";
 	}
@@ -311,7 +505,7 @@ TEST(OaVideoRoundtrip, EncodeMuxDemuxH264)
 
 		OaEncodedFrame eframe;
 		const OaU64 pts = (static_cast<OaU64>(f) * 1'000'000ULL) / prof.FrameRate;
-		auto encStatus = ctx.RecordEncode(encoder, tex, pts, eframe);
+		auto encStatus = OaFnVideo::Encode(ctx, encoder, tex, eframe, pts);
 		tex.Destroy(*engine);
 		ASSERT_TRUE(encStatus.IsOk())
 			<< "frame " << f << ": " << encStatus.ToString();
@@ -375,11 +569,86 @@ TEST(OaVideoRoundtrip, EncodeMuxDemuxH264)
 }
 
 
+TEST(OaVideoRoundtrip, DeferredMatrixTextureCompletesBeforeEncodeSnapshot)
+{
+	auto* engine = OaEngine::GetGlobal();
+	if (engine == nullptr) {
+		GTEST_SKIP() << "No Vulkan engine available";
+	}
+	if (not OaVideoEncoder::IsCodecSupported(*engine, OaVideoCodec::H264)
+		or not OaVideoDecoder::IsCodecSupported(*engine, OaVideoCodec::H264)) {
+		GTEST_SKIP() << "H.264 encode+decode not both supported";
+	}
+
+	constexpr OaU32 width = 320U;
+	constexpr OaU32 height = 192U;
+	auto& context = OaContext::GetDefault();
+	auto white = OaFnMatrix::Ones(
+		OaMatrixShape{1, 4, height, width}, OaScalarType::Float32);
+	auto textureResult = OaTexture::FromMatrix(context, white);
+	ASSERT_TRUE(textureResult.IsOk()) << textureResult.GetStatus().ToString();
+	auto texture = OaStdMove(*textureResult);
+	ASSERT_GT(context.NodeCount(), 0U);
+
+	// Preserve a deterministic stale snapshot. FromMatrix has only recorded its
+	// white producer, so Encode(context, ...) must execute that graph before the
+	// encoder is allowed to read this deliberately black packed buffer.
+	OaVec<OaU8> black(static_cast<OaUsize>(width) * height * 4U, 0U);
+	auto poisonStatus = engine->UploadBuffer(
+		texture.DeviceBuf, 0U, black.Data(), black.Size());
+	ASSERT_TRUE(poisonStatus.IsOk()) << poisonStatus.ToString();
+
+	OaVideoEncodeProfile encodeProfile;
+	encodeProfile.Codec = OaVideoCodec::H264;
+	encodeProfile.Width = width;
+	encodeProfile.Height = height;
+	encodeProfile.GopSize = 1U;
+	encodeProfile.AsyncDepth = 1U;
+	auto encoderResult = OaVideoEncoder::Create(*engine, encodeProfile);
+	ASSERT_TRUE(encoderResult.IsOk()) << encoderResult.GetStatus().ToString();
+	auto encoder = OaStdMove(*encoderResult);
+
+	OaEncodedFrame encoded;
+	auto encodeStatus = OaFnVideo::Encode(
+		context, encoder, texture, encoded, 0U);
+	ASSERT_TRUE(encodeStatus.IsOk()) << encodeStatus.ToString();
+	ASSERT_GT(encoded.Bitstream.Size(), 0U);
+
+	OaVideoProfile decodeProfile = {
+		OaVideoCodec::H264, width, height, 8U};
+	auto decoderResult = OaVideoDecoder::Create(*engine, decodeProfile);
+	ASSERT_TRUE(decoderResult.IsOk()) << decoderResult.GetStatus().ToString();
+	auto decoder = OaStdMove(*decoderResult);
+	auto frameResult = OaFnVideo::Decode(
+		context,
+		decoder,
+		OaSpan<const OaU8>(encoded.Bitstream.Data(), encoded.Bitstream.Size()),
+		0U);
+	ASSERT_TRUE(frameResult.IsOk()) << frameResult.GetStatus().ToString();
+	auto lumaResult = OaFnVideo::ReadbackLuma(decoder, *frameResult);
+	ASSERT_TRUE(lumaResult.IsOk()) << lumaResult.GetStatus().ToString();
+	const OaUsize lumaSize = static_cast<OaUsize>(width) * height;
+	ASSERT_GE(lumaResult->Size(), lumaSize);
+	OaU64 lumaSum = 0U;
+	for (OaUsize pixelIndex = 0U; pixelIndex < lumaSize; ++pixelIndex) {
+		lumaSum += (*lumaResult)[pixelIndex];
+	}
+	const OaF64 meanLuma = static_cast<OaF64>(lumaSum)
+		/ static_cast<OaF64>(lumaSize);
+	EXPECT_GT(meanLuma, 220.0)
+		<< "encoder captured the black poison instead of the deferred white producer";
+
+	ASSERT_TRUE(decoder.Close().IsOk());
+	ASSERT_TRUE(encoder.Close().IsOk());
+	texture.Destroy(*engine);
+}
+
+
 // Bonus coverage: pipe the demuxed output through OaVideoDecoder to prove
 // the whole encode → mux → demux → decode chain produces a valid bitstream.
 TEST(OaVideoRoundtrip, EncodeMuxDemuxDecodeH264)
 {
-	auto* engine = OaComputeEngine::GetGlobal();
+	auto* engine = OaEngine::GetGlobal();
 	if (engine == nullptr) {
 		GTEST_SKIP() << "No Vulkan engine available";
 	}
@@ -426,7 +695,7 @@ TEST(OaVideoRoundtrip, EncodeMuxDemuxDecodeH264)
 			OaTexture tex = OaStdMove(*texR);
 
 			OaEncodedFrame eframe;
-			auto encodeStatus = ctx.RecordEncode(encoder, tex, f, eframe);
+			auto encodeStatus = OaFnVideo::Encode(ctx, encoder, tex, eframe, f);
 			ASSERT_TRUE(encodeStatus.IsOk())
 				<< "frame " << f << ": " << encodeStatus.GetMessage().CStr();
 			tex.Destroy(*engine);
@@ -454,6 +723,7 @@ TEST(OaVideoRoundtrip, EncodeMuxDemuxDecodeH264)
 	auto decR = OaVideoDecoder::Create(*engine, profile);
 	ASSERT_TRUE(decR.IsOk()) << decR.GetStatus().ToString();
 	OaVideoDecoder decoder = OaStdMove(*decR);
+	auto& decodeContext = OaContext::GetDefault();
 
 	// Re-record the decoder-owned RGBA images directly. This exercises the
 	// image-backed OaVideoFrame -> sampled image -> NV12 -> encode contract
@@ -475,10 +745,14 @@ TEST(OaVideoRoundtrip, EncodeMuxDemuxDecodeH264)
 		OaVideoPacket pkt{};
 		ASSERT_TRUE(stream.ReadNextPacket(pkt).IsOk());
 
-		OaVideoFrame fr{};
-		auto ds = decoder.DecodeFrame(
-			OaSpan<const OaU8>(pkt.Data.Data(), pkt.Data.Size()), fr);
-		ASSERT_TRUE(ds.IsOk()) << "decode packet " << i << ": " << ds.ToString();
+		auto frameResult = OaFnVideo::Decode(
+			decodeContext,
+			decoder,
+			OaSpan<const OaU8>(pkt.Data.Data(), pkt.Data.Size()),
+			pkt.PresentationTimestamp);
+		ASSERT_TRUE(frameResult.IsOk()) << "decode packet " << i << ": "
+			<< frameResult.GetStatus().ToString();
+		OaVideoFrame fr = *frameResult;
 		auto rgbResult = OaFnVideo::Convert(decoder, fr);
 		ASSERT_TRUE(rgbResult.IsOk()) << "convert packet " << i << ": "
 			<< rgbResult.GetStatus().ToString();
@@ -492,7 +766,7 @@ TEST(OaVideoRoundtrip, EncodeMuxDemuxDecodeH264)
 		renderTarget.Height = static_cast<OaI32>(rgb.Height);
 		const OaU64 pts = static_cast<OaU64>(i) * 1'000'000ULL / 30ULL;
 		auto renderFrame = OaFnVideo::FromTexture(
-			renderTarget, pts, rgb.ReadySemaphore, rgb.ReadyValue);
+			renderTarget, pts, rgb.Ready);
 		ASSERT_TRUE(renderFrame.IsOk()) << renderFrame.GetStatus().ToString();
 		OaCompletionToken inputConsumed;
 		auto recordStatus = imageRecorder.WriteAsync(*renderFrame, inputConsumed);
@@ -520,7 +794,7 @@ TEST(OaVideoRoundtrip, EncodeMuxDemuxDecodeH264)
 // followed by an independent FFmpeg decode of the same file.
 TEST(OaVideoRoundtrip, EncodeMuxDemuxDecodeH265)
 {
-	auto* engine = OaComputeEngine::GetGlobal();
+	auto* engine = OaEngine::GetGlobal();
 	if (engine == nullptr) GTEST_SKIP() << "No Vulkan engine available";
 	if (not OaVideoEncoder::IsCodecSupported(*engine, OaVideoCodec::H265)
 		|| not OaVideoDecoder::IsCodecSupported(*engine, OaVideoCodec::H265)) {
@@ -573,15 +847,18 @@ TEST(OaVideoRoundtrip, EncodeMuxDemuxDecodeH265)
 	auto decoderResult = OaVideoDecoder::Create(*engine, profile);
 	ASSERT_TRUE(decoderResult.IsOk()) << decoderResult.GetStatus().ToString();
 	OaVideoDecoder decoder = OaStdMove(*decoderResult);
+	auto& decodeContext = OaContext::GetDefault();
 	for (OaU32 frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
 		OaVideoPacket packet = {};
 		ASSERT_TRUE(stream.ReadNextPacket(packet).IsOk()) << "demux frame " << frameIndex;
 		ASSERT_GT(packet.Data.Size(), 4U);
-		OaVideoFrame frame = {};
-		auto status = decoder.DecodeFrame(
-			OaSpan<const OaU8>(packet.Data.Data(), packet.Data.Size()), frame);
-		ASSERT_TRUE(status.IsOk()) << "decode frame " << frameIndex << ": "
-			<< status.ToString();
+		auto frameResult = OaFnVideo::Decode(
+			decodeContext,
+			decoder,
+			OaSpan<const OaU8>(packet.Data.Data(), packet.Data.Size()),
+			packet.PresentationTimestamp);
+		ASSERT_TRUE(frameResult.IsOk()) << "decode frame " << frameIndex << ": "
+			<< frameResult.GetStatus().ToString();
 	}
 
 	if (std::system("command -v ffmpeg >/dev/null 2>&1") == 0) {

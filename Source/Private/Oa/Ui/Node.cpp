@@ -19,7 +19,7 @@ const OaUiNode* OaNodeGraph::FindNode(OaUiNodeId /*InId*/) const noexcept { retu
 OaSpan<const OaUiNode> OaNodeGraph::Nodes() const noexcept { return {}; }
 OaSpan<const OaUiNodeEdge> OaNodeGraph::Edges() const noexcept { return {}; }
 
-OaStatus OaNodeGraph::Compile(OaComputeEngine& /*InRt*/, OaUiComputeGraph& /*OutGraph*/) {
+OaStatus OaNodeGraph::Compile(OaEngine& /*InRt*/, OaUiComputeGraph& /*OutGraph*/) {
 	return OaStatus::Ok();
 }
 

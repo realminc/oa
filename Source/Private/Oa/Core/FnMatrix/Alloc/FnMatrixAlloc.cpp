@@ -13,14 +13,9 @@
 #include <Oa/Core/Memory.h>
 #include <Oa/Core/Status.h>
 #include <Oa/Core/Types.h>
-#include <Oa/Runtime/Bindless.h>
-#include <Oa/Runtime/ComputeGraph.h>
 #include <Oa/Runtime/Context.h>
-#include <Oa/Runtime/Dispatch.h>
 #include <Oa/Runtime/Engine.h>
-#include <Oa/Runtime/Pool.h>
-#include <Oa/Runtime/Stream.h>
-#include <Oa/Runtime/Topology.h>
+#include <Oa/Runtime/ExecutionMemory.h>
 
 #include <cassert>
 #include <cstddef>
@@ -29,7 +24,7 @@
 
 namespace {
 
-OaComputeEngine* ActiveRuntime() {
+OaEngine* ActiveRuntime() {
 	auto* context = OaContext::GetDefaultPtr();
 	return context ? context->GetEngine() : nullptr;
 }
@@ -59,18 +54,18 @@ OaMatrix OaFnMatrix::Empty(
 		return t;
 	}
 
-	// The context owns the allocation policy. Normal calls use the engine cache;
-	// repeatable training frames can additionally map allocation ordinals onto
-	// stable VkBuffer/bindless slots for exact command-graph replay.
-	auto buf = OaContext::GetDefault().AllocateMatrixBuffer(
-		static_cast<OaU64>(bytes), InPlacement);
+	// The execution session owns allocation policy. Repeatable training frames
+	// map allocation ordinals onto stable VkBuffer/bindless slots for exact
+	// command-graph replay without exposing memory policy through OaContext.
+	auto& context = OaContext::GetDefault();
+	auto buf = OaExecutionMemory::AllocateMatrixBuffer(
+		context, static_cast<OaU64>(bytes), InPlacement);
 	if (not buf) {
 		t.SyncMatrixDescriptor();
 		return t;
 	}
 	buf->NodeIndex = 0;
 	t.VkBuf_ = buf;
-	t.Data_ = OaSharedPtr<void>(buf->MappedPtr, [](void*) {});
 	t.SyncMatrixDescriptor();
 	return t;
 }
@@ -322,25 +317,13 @@ OaMatrix OaFnMatrix::EmptyOn(OaMatrixShape InShape, OaScalarType InDtype, OaU32 
 		return t;
 	}
 
-	auto res = node->Allocator.AllocHostVisible(static_cast<OaU64>(bytes));
-	if (not res) {
+	auto buf = OaExecutionMemory::AllocateMatrixBufferOnNode(
+		OaContext::GetDefault(), static_cast<OaU64>(bytes), InNodeIndex);
+	if (not buf) {
 		t.SyncMatrixDescriptor();
 		return t;
 	}
-
-	OaSharedPtr<OaVkBuffer> buf(
-		new OaVkBuffer(std::move(*res)),
-		[rt, lifetime = rt->GetLifetimeToken()](OaVkBuffer* InPtr) {
-			if (not InPtr) return;
-			if (not lifetime.Expired()) {
-				rt->FreeBufferOnNode(*InPtr);
-			}
-			delete InPtr;
-		});
-	buf->NodeIndex = InNodeIndex;
-	rt->RegisterBufferForOwnedNode(*buf);
 	t.VkBuf_ = buf;
-	t.Data_ = OaSharedPtr<void>(buf->MappedPtr, [](void*) {});
 	t.SyncMatrixDescriptor();
 	return t;
 }

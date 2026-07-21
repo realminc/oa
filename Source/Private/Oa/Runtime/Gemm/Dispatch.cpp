@@ -8,34 +8,48 @@
 #include <Oa/Runtime/Pipeline.h>
 #include <Oa/Core/Log.h>
 
-OaStatus OaGemmDispatch::Init(OaComputeEngine& InRt)
+#include <cstring>
+
+OaStatus OaGemmDispatch::Init(OaEngine& InRt)
 {
 	(void)InRt;
 	return OaStatus::Ok();
 }
 
-namespace {
-
-template <typename TDispatch>
-OaStatus LowerMatmulPlan(
-	OaComputeEngine& InRt,
+OaResult<OaMatmulKernelLaunch> OaGemmDispatch::DescribeValidatedPlan(
 	const OaMatmulPlan& InPlan,
-	const OaMatmulProblem& InProblem,
-	OaSpan<OaVkBuffer> InBuffers,
-	TDispatch&& InDispatch)
+	const OaMatmulProblem& InProblem)
 {
-	if (not OaGemmRouter::ValidatePlan(InRt, InPlan, InProblem)) {
-		return OaStatus::Error("OaGemmDispatch: stale or incompatible matmul plan");
+	if (not InPlan) {
+		return OaStatus::Error("OaGemmDispatch: cannot describe an empty matmul plan");
 	}
-	const OaUsize expectedBuffers = InProblem.Epilogue == OaGemmEpilogue::None
-		? 3U : 4U;
-	if (InBuffers.size() != expectedBuffers) {
-		return OaStatus::Error("OaGemmDispatch: buffer count does not match matmul epilogue");
-	}
+
+	OaMatmulKernelLaunch launch;
+	launch.KernelName = InPlan.KernelName;
+	launch.Grid = InPlan.Grid;
+	launch.BufferCount = InProblem.Epilogue == OaGemmEpilogue::None ? 3U : 4U;
+
+	auto copyPush = [&](const auto& InPush) {
+		static_assert(sizeof(InPush) <= OaMatmulKernelLaunch::MaxPushBytes);
+		std::memcpy(launch.PushData, &InPush, sizeof(InPush));
+		launch.PushSize = static_cast<OaU32>(sizeof(InPush));
+	};
+
 	if (InPlan.Path == OaGemmPath::CoopVec) {
+		if (launch.BufferCount != 3U) {
+			return OaStatus::Error(
+				"OaGemmDispatch: CoopVec does not implement fused epilogues");
+		}
+		// GemmCoopVec expects (matrix[N,K], vector[K], output[N]). OA's
+		// MatMulNt problem order is (A[M,K], B[N,K], C[M,N]); for M=1 the
+		// first two mathematical buffers must therefore be swapped.
+		launch.BufferOrder[0] = 1U;
+		launch.BufferOrder[1] = 0U;
 		struct Push { OaU32 N; OaU32 K; } push{InProblem.N, InProblem.K};
-		return InDispatch(InPlan.KernelName, InBuffers, &push, sizeof(push));
+		copyPush(push);
+		return launch;
 	}
+
 	if (InPlan.Kernel == OaGemmKernel::StridedFp32) {
 		struct Push {
 			OaU32 M, N, K;
@@ -44,50 +58,78 @@ OaStatus LowerMatmulPlan(
 			OaU32 COffset, CRowStride, CColStride, CBatchStride;
 		} push{
 			InProblem.M, InProblem.N, InProblem.K,
-			InProblem.A.Offset, InProblem.A.RowStride, InProblem.A.ColStride, InProblem.A.BatchStride,
-			InProblem.B.Offset, InProblem.B.RowStride, InProblem.B.ColStride, InProblem.B.BatchStride,
-			InProblem.C.Offset, InProblem.C.RowStride, InProblem.C.ColStride, InProblem.C.BatchStride,
+			InProblem.A.Offset, InProblem.A.RowStride, InProblem.A.ColStride,
+			InProblem.A.BatchStride,
+			InProblem.B.Offset, InProblem.B.RowStride, InProblem.B.ColStride,
+			InProblem.B.BatchStride,
+			InProblem.C.Offset, InProblem.C.RowStride, InProblem.C.ColStride,
+			InProblem.C.BatchStride,
 		};
-		return InDispatch(InPlan.KernelName, InBuffers, &push, sizeof(push));
+		copyPush(push);
+		return launch;
 	}
+
 	struct Push { OaU32 M; OaU32 N; OaU32 K; } push{
 		InProblem.M, InProblem.N, InProblem.K};
-	return InDispatch(InPlan.KernelName, InBuffers, &push, sizeof(push));
+	copyPush(push);
+	return launch;
 }
 
-} // namespace
-
 OaStatus OaGemmDispatch::ExecutePlan(
-	OaComputeEngine& InRt,
+	OaEngine& InRt,
 	const OaMatmulPlan& InPlan,
 	const OaMatmulProblem& InProblem,
 	OaSpan<OaVkBuffer> InBuffers)
 {
-	return LowerMatmulPlan(InRt, InPlan, InProblem, InBuffers,
-		[&](const char* kernel, OaSpan<OaVkBuffer> buffers,
-			const void* push, OaU32 pushSize) {
-			return OaVkDispatch::Run(InRt, kernel, buffers, push, pushSize,
-				InPlan.Grid.X, InPlan.Grid.Y, InPlan.Grid.Z);
-		});
+	if (not OaGemmRouter::ValidatePlan(InRt, InPlan, InProblem)) {
+		return OaStatus::Error("OaGemmDispatch: stale or incompatible matmul plan");
+	}
+	auto described = DescribeValidatedPlan(InPlan, InProblem);
+	if (not described.IsOk()) return described.GetStatus();
+	const auto& launch = described.GetValue();
+	if (InBuffers.size() != launch.BufferCount) {
+		return OaStatus::Error(
+			"OaGemmDispatch: buffer count does not match matmul epilogue");
+	}
+	OaVkBuffer ordered[OaMatmulKernelLaunch::MaxBuffers];
+	for (OaU32 index = 0; index < launch.BufferCount; ++index) {
+		ordered[index] = InBuffers[launch.BufferOrder[index]];
+	}
+	return OaVkDispatch::Run(InRt, launch.KernelName,
+		OaSpan<OaVkBuffer>{ordered, launch.BufferCount},
+		launch.PushData, launch.PushSize,
+		launch.Grid.X, launch.Grid.Y, launch.Grid.Z);
 }
 
 OaStatus OaGemmDispatch::RecordPlan(
 	OaVkBatch& InBatch,
-	OaComputeEngine& InRt,
+	OaEngine& InRt,
 	const OaMatmulPlan& InPlan,
 	const OaMatmulProblem& InProblem,
 	OaSpan<OaVkBuffer> InBuffers)
 {
-	return LowerMatmulPlan(InRt, InPlan, InProblem, InBuffers,
-		[&](const char* kernel, OaSpan<OaVkBuffer> buffers,
-			const void* push, OaU32 pushSize) {
-			return OaVkDispatch::Record(InBatch, InRt, kernel, buffers, push, pushSize,
-				InPlan.Grid.X, InPlan.Grid.Y, InPlan.Grid.Z);
-		});
+	if (not OaGemmRouter::ValidatePlan(InRt, InPlan, InProblem)) {
+		return OaStatus::Error("OaGemmDispatch: stale or incompatible matmul plan");
+	}
+	auto described = DescribeValidatedPlan(InPlan, InProblem);
+	if (not described.IsOk()) return described.GetStatus();
+	const auto& launch = described.GetValue();
+	if (InBuffers.size() != launch.BufferCount) {
+		return OaStatus::Error(
+			"OaGemmDispatch: buffer count does not match matmul epilogue");
+	}
+	OaVkBuffer ordered[OaMatmulKernelLaunch::MaxBuffers];
+	for (OaU32 index = 0; index < launch.BufferCount; ++index) {
+		ordered[index] = InBuffers[launch.BufferOrder[index]];
+	}
+	return OaVkDispatch::Record(InBatch, InRt, launch.KernelName,
+		OaSpan<OaVkBuffer>{ordered, launch.BufferCount},
+		launch.PushData, launch.PushSize,
+		launch.Grid.X, launch.Grid.Y, launch.Grid.Z);
 }
 
 OaStatus OaGemmDispatch::Gemm(
-	OaComputeEngine& InRt,
+	OaEngine& InRt,
 	OaVkBuffer InA,
 	OaVkBuffer InB,
 	OaVkBuffer OutC,
@@ -109,7 +151,7 @@ OaStatus OaGemmDispatch::Gemm(
 
 OaStatus OaGemmDispatch::GemmRecord(
 	OaVkBatch& InBatch,
-	OaComputeEngine& InRt,
+	OaEngine& InRt,
 	OaVkBuffer InA,
 	OaVkBuffer InB,
 	OaVkBuffer OutC,
@@ -130,7 +172,7 @@ OaStatus OaGemmDispatch::GemmRecord(
 }
 
 OaStatus OaGemmDispatch::GemmCmSgBf16Out(
-	OaComputeEngine& InRt,
+	OaEngine& InRt,
 	OaVkBuffer InA,
 	OaVkBuffer InB,
 	OaVkBuffer OutC,
@@ -142,7 +184,7 @@ OaStatus OaGemmDispatch::GemmCmSgBf16Out(
 }
 
 OaStatus OaGemmDispatch::Transpose(
-	OaComputeEngine& InRt,
+	OaEngine& InRt,
 	OaVkBuffer InX,
 	OaVkBuffer OutY,
 	OaU32 InRows,
@@ -162,7 +204,7 @@ OaStatus OaGemmDispatch::Transpose(
 }
 
 OaStatus OaGemmDispatch::GemmSiluCoopMatBf16(
-	OaComputeEngine& InRt,
+	OaEngine& InRt,
 	OaVkBuffer InA,
 	OaVkBuffer InB,
 	OaVkBuffer OutPre,
@@ -187,7 +229,7 @@ OaStatus OaGemmDispatch::GemmSiluCoopMatBf16(
 }
 
 OaStatus OaGemmDispatch::SiluMul(
-	OaComputeEngine& InRt,
+	OaEngine& InRt,
 	OaVkBuffer InFused,
 	OaVkBuffer OutY,
 	OaU32 InBatchSize,
@@ -206,7 +248,7 @@ OaStatus OaGemmDispatch::SiluMul(
 }
 
 OaStatus OaGemmDispatch::Geglu(
-	OaComputeEngine& InRt,
+	OaEngine& InRt,
 	OaVkBuffer InFused,
 	OaVkBuffer OutY,
 	OaU32 InBatchSize,
@@ -225,7 +267,7 @@ OaStatus OaGemmDispatch::Geglu(
 }
 
 OaStatus OaGemmDispatch::GemmBias(
-	OaComputeEngine& InRt,
+	OaEngine& InRt,
 	OaVkBuffer InA,
 	OaVkBuffer InB,
 	OaVkBuffer InBias,
@@ -248,7 +290,7 @@ OaStatus OaGemmDispatch::GemmBias(
 }
 
 OaStatus OaGemmDispatch::GemmBiasRelu(
-	OaComputeEngine& InRt,
+	OaEngine& InRt,
 	OaVkBuffer InA,
 	OaVkBuffer InB,
 	OaVkBuffer InBias,
@@ -270,7 +312,7 @@ OaStatus OaGemmDispatch::GemmBiasRelu(
 }
 
 OaStatus OaGemmDispatch::GemmBiasGelu(
-	OaComputeEngine& InRt,
+	OaEngine& InRt,
 	OaVkBuffer InA,
 	OaVkBuffer InB,
 	OaVkBuffer InBias,

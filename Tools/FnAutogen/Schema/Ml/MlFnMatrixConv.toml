@@ -2,7 +2,7 @@
 #
 # This is the *source of truth* for ML convolution operations. The generator
 # emits .h declarations, .cpp implementations, and .slang shaders from this file.
-# See Tools/OaFnAutogen/oafnautogen.py and Docs/Rewrite/Opus/OaFnAutogen.md.
+# See Tools/FnAutogen/README.md and Tools/FnAutogen/oafnautogen.py.
 #
 # Convolution operations are fundamental building blocks for CNNs.
 # Each has complex shape arithmetic and backward passes for both input and weights.
@@ -83,4 +83,3 @@ extra_params   = [
     { name = "PaddingH", type = "OaI32", default = "0" },
     { name = "PaddingW", type = "OaI32", default = "0" }
 ]
-

@@ -14,16 +14,16 @@
 #include <vector>
 #include <cmath>
 
-static OaComputeEngine* GRt = nullptr;
+static OaEngine* GRt = nullptr;
 
 class TestFnMatrixBlas : public ::testing::Test {
 protected:
 	static void SetUpTestSuite() {
 		OaEngineConfig cfg{};
 		cfg.AppName = "TestFnMatrixBlas";
-		auto r = OaComputeEngine::Create(cfg);
+		auto r = OaEngine::Create(cfg);
 		ASSERT_TRUE(r.IsOk()) << r.GetStatus().GetMessage();
-		static OaUniquePtr<OaComputeEngine> rt = std::move(*r);
+		static OaUniquePtr<OaEngine> rt = std::move(*r);
 		GRt = rt.get();
 	}
 
@@ -71,10 +71,10 @@ TEST_VK(TestFnMatrixBlas, MatMul_Square) {
 		OaSpan<const OaU8>(reinterpret_cast<const OaU8*>(b_data.data()), N * K * sizeof(float)),
 		OaMatrixShape{N, K});
 
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	// Force Fp32: the Auto router otherwise picks a bf16 path that fails the
 	// 1e-3 correctness tolerance on non-integer data.
-	auto c = OaFnMatrix::MatMulNt(a, b, OaContextMatMulPrecision::Fp32);
+	auto c = OaFnMatrix::MatMulNt(a, b, OaMatMulPrecision::Fp32);
 
 	std::vector<float> c_want(M * N);
 	MatMulNt(a_data, b_data, c_want, M, K, N);
@@ -101,10 +101,10 @@ TEST_VK(TestFnMatrixBlas, MatMul_Rectangular) {
 		OaSpan<const OaU8>(reinterpret_cast<const OaU8*>(b_data.data()), N * K * sizeof(float)),
 		OaMatrixShape{N, K});
 
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	// Force Fp32: the Auto router otherwise picks a bf16 path that fails the
 	// 1e-3 correctness tolerance on non-integer data.
-	auto c = OaFnMatrix::MatMulNt(a, b, OaContextMatMulPrecision::Fp32);
+	auto c = OaFnMatrix::MatMulNt(a, b, OaMatMulPrecision::Fp32);
 
 	std::vector<float> c_want(M * N);
 	MatMulNt(a_data, b_data, c_want, M, K, N);
@@ -131,10 +131,10 @@ TEST_VK(TestFnMatrixBlas, MatMul_Vector) {
 		OaSpan<const OaU8>(reinterpret_cast<const OaU8*>(b_data.data()), N * K * sizeof(float)),
 		OaMatrixShape{N, K});
 
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	// Force Fp32: the Auto router otherwise picks a bf16 path that fails the
 	// 1e-3 correctness tolerance on non-integer data.
-	auto c = OaFnMatrix::MatMulNt(a, b, OaContextMatMulPrecision::Fp32);
+	auto c = OaFnMatrix::MatMulNt(a, b, OaMatMulPrecision::Fp32);
 
 	std::vector<float> c_want(M * N);
 	MatMulNt(a_data, b_data, c_want, M, K, N);
@@ -157,10 +157,10 @@ TEST_VK(TestFnMatrixBlas, MatMul_Large) {
 	ASSERT_TRUE(OaFnMatrix::CopyToHost(a, a_data.data(), M * K * sizeof(float)).IsOk());
 	ASSERT_TRUE(OaFnMatrix::CopyToHost(b, b_data.data(), N * K * sizeof(float)).IsOk());
 
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	// Force Fp32: the Auto router otherwise picks a bf16 path that fails the
 	// 1e-3 correctness tolerance on non-integer data.
-	auto c = OaFnMatrix::MatMulNt(a, b, OaContextMatMulPrecision::Fp32);
+	auto c = OaFnMatrix::MatMulNt(a, b, OaMatMulPrecision::Fp32);
 
 	std::vector<float> c_want(M * N);
 	MatMulNt(a_data, b_data, c_want, M, K, N);
@@ -189,7 +189,7 @@ TEST_VK(TestFnMatrixBlas, MatMul_Identity) {
 		OaSpan<const OaU8>(reinterpret_cast<const OaU8*>(identity.data()), N * N * sizeof(float)),
 		OaMatrixShape{N, N});
 
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto c = OaFnMatrix::MatMulNt(a, I);
 
 	std::vector<float> c_got(N * N);
@@ -205,7 +205,7 @@ TEST_VK(TestFnMatrixBlas, MatMul_Zeros) {
 	auto a = OaFnMatrix::Rand(OaMatrixShape{M, K});
 	auto zeros = OaFnMatrix::Zeros(OaMatrixShape{N, K});
 
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto c = OaFnMatrix::MatMulNt(a, zeros);
 
 	std::vector<float> c_got(M * N);
@@ -232,7 +232,7 @@ TEST_VK(TestFnMatrixBlas, Bmm_Batch) {
 		OaSpan<const OaU8>(reinterpret_cast<const OaU8*>(b_data.data()), BATCH * K * N * sizeof(float)),
 		OaMatrixShape{BATCH, K, N});
 
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto c = OaFnMatrix::Bmm(a, b);
 
 	std::vector<float> c_want(BATCH * M * N);

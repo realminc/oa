@@ -332,7 +332,7 @@ OaStatus OaAlmAg::SaveBundle(const OaString& InPath) const {
 	oam.ArchConfig.Resize(sizeof(arch));
 	std::memcpy(oam.ArchConfig.Data(), &arch, sizeof(arch));
 	oam.Config.ArchConfigSize = static_cast<OaU32>(oam.ArchConfig.Size());
-	SaveTo(oam);
+	OA_RETURN_IF_ERROR(SaveTo(oam));
 	return oam.Save(InPath);
 }
 
@@ -366,6 +366,6 @@ OaResult<OaSharedPtr<OaAlmAg>> OaAlmAg::LoadBundle(const OaString& InPath) {
 	const OaStatus sync = ctx.Sync();
 	if (not sync.IsOk()) return sync;
 	ctx.Clear();
-	model->LoadFrom(oam);
+	OA_RETURN_IF_ERROR(model->LoadFrom(oam));
 	return model;
 }

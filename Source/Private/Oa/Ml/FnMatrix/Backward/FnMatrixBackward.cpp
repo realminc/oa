@@ -2,14 +2,18 @@
 // Manual implementations for gradient computation kernels.
 
 #include <Oa/Ml/FnMatrix.h>
-#include <Oa/Ml/Autograd.h>
+#include <Oa/Ml/Autograd/Nodes.h>
 #include <Oa/Core/Matrix.h>
 #include <Oa/Core/FnMatrix.h>
 #include <Oa/Core/Status.h>
 #include <Oa/Core/Types.h>
 #include <Oa/Core/BufferAccess.h>
+#include <Oa/Core/Log.h>
+#include <Oa/Core/Operation.h>
 #include <Oa/Runtime/Context.h>
+#include <Oa/Runtime/Dnn/GraphLowering.h>
 #include <Oa/Core/Validation.h>
+#include "../../../Core/FnMatrix/FnMatrixAxis.h"
 
 #include <cassert>
 
@@ -96,55 +100,47 @@ OaMatrix OaFnMatrix::SoftplusBwd(const OaMatrix& InForwardOutput, const OaMatrix
 
 // ─── SoftmaxBwd ─────────────────────────────────────────────────────────────
 
-OaMatrix OaFnMatrix::SoftmaxBwd(const OaMatrix& InForwardOutput, const OaMatrix& InGradOutput) {
-	auto& ctx = OaContext::GetDefault();
-
-	// The shader does a per-row jacobian (dx_i = s_i*(d_out_i - sum(d_out*s))) and
-	// needs {rows, cols} after the 3 auto-prepended buffer indices, dispatched one
-	// workgroup per row. The previous host pushed a single {Count} field (cols read
-	// garbage) and dispatched n/256 groups — so for any rows>1 the gradient was
-	// wrong. Match Softmax forward's row/col determination exactly.
-	OaU32 rows, cols;
-	if (InForwardOutput.Rank() == 2) {
-		rows = static_cast<OaU32>(InForwardOutput.Size(0));
-		cols = static_cast<OaU32>(InForwardOutput.Size(1));
-	} else {
-		rows = 1;
-		cols = static_cast<OaU32>(InForwardOutput.NumElements());
+OaMatrix OaFnMatrix::SoftmaxBwd(
+	const OaMatrix& InForwardOutput, const OaMatrix& InGradOutput, OaI32 InDim) {
+	if (InForwardOutput.GetShape() != InGradOutput.GetShape()
+		or InForwardOutput.GetDtype() != InGradOutput.GetDtype()) {
+		return {};
 	}
+	OaFnMatrixAxisShape axis;
+	if (not OaResolveFnMatrixAxis(InForwardOutput, InDim, axis)) return {};
+	auto& ctx = OaContext::GetDefault();
 
 	OaMatrix gradInput = OaFnMatrix::Empty(InForwardOutput.GetShape(), InForwardOutput.GetDtype());
 
-	struct { OaU32 Rows; OaU32 Cols; } push{rows, cols};
+	struct { OaU32 OuterSize; OaU32 DimSize; OaU32 InnerSize; } push{
+		axis.OuterSize, axis.DimSize, axis.InnerSize};
 	OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Read, OaBufferAccess::Write};
 	ctx.Add("SoftmaxBwd", {&InForwardOutput, &InGradOutput, &gradInput},
-		access, &push, sizeof(push), rows);
+		access, &push, sizeof(push), axis.GroupCount());
 
 	return gradInput;
 }
 
 OaMatrix OaFnMatrix::LogSoftmaxBwd(
 	const OaMatrix& InForwardOutput,
-	const OaMatrix& InGradOutput) {
+	const OaMatrix& InGradOutput,
+	OaI32 InDim) {
 	if (InForwardOutput.GetShape() != InGradOutput.GetShape()
-		|| InForwardOutput.GetDtype() != InGradOutput.GetDtype()
-		|| (InForwardOutput.Rank() != 1 && InForwardOutput.Rank() != 2)) {
+		or InForwardOutput.GetDtype() != InGradOutput.GetDtype()) {
 		return {};
 	}
+	OaFnMatrixAxisShape axis;
+	if (not OaResolveFnMatrixAxis(InForwardOutput, InDim, axis)) return {};
 	auto& ctx = OaContext::GetDefault();
-	const OaU32 rows = InForwardOutput.Rank() == 2
-		? static_cast<OaU32>(InForwardOutput.Size(0)) : 1U;
-	const OaU32 cols = InForwardOutput.Rank() == 2
-		? static_cast<OaU32>(InForwardOutput.Size(1))
-		: static_cast<OaU32>(InForwardOutput.NumElements());
 	OaMatrix gradInput = OaFnMatrix::Empty(
 		InForwardOutput.GetShape(), InForwardOutput.GetDtype());
-	struct { OaU32 Rows; OaU32 Cols; } push{rows, cols};
+	struct { OaU32 OuterSize; OaU32 DimSize; OaU32 InnerSize; } push{
+		axis.OuterSize, axis.DimSize, axis.InnerSize};
 	OaBufferAccess access[] = {
 		OaBufferAccess::Read, OaBufferAccess::Read, OaBufferAccess::Write};
 	ctx.Add("LogSoftmaxBwd",
 		{&InForwardOutput, &InGradOutput, &gradInput},
-		access, &push, sizeof(push), rows);
+		access, &push, sizeof(push), axis.GroupCount());
 	return gradInput;
 }
 
@@ -242,7 +238,7 @@ OaFnMatrix::OaSwigluBwdResult OaFnMatrix::SwigluBwd(
 OaFnMatrix::OaLayerNormBwdResult OaFnMatrix::LayerNormBwd(
 	const OaMatrix& InX, const OaMatrix& InWeight, const OaMatrix& InBias,
 	const OaMatrix& InOut, const OaMatrix& InMean, const OaMatrix& InRstd,
-	const OaMatrix& InGradOutput
+	const OaMatrix& InGradOutput, OaF32 InEps
 ) {
 	auto& ctx = OaContext::GetDefault();
 	// Normalize over the LAST dim (must match the forward): [B,T,C] → rows=B*T, cols=C.
@@ -261,7 +257,7 @@ OaFnMatrix::OaLayerNormBwdResult OaFnMatrix::LayerNormBwd(
 	OaMatrix dWcontrib = OaFnMatrix::Empty(OaMatrixShape{rows, cols}, InX.GetDtype());
 
 	struct { OaU32 Rows; OaU32 Cols; OaF32 Eps; } push{
-		static_cast<OaU32>(rows), static_cast<OaU32>(cols), 1e-5f};
+		static_cast<OaU32>(rows), static_cast<OaU32>(cols), InEps};
 	// Shader expects: x, w, dy, dx, dw_contrib (5 buffers)
 	OaBufferAccess access[] = {
 		OaBufferAccess::Read, OaBufferAccess::Read, OaBufferAccess::Read,
@@ -288,7 +284,7 @@ OaFnMatrix::OaLayerNormBwdResult OaFnMatrix::LayerNormBwd(
 OaFnMatrix::OaRmsNormBwdResult OaFnMatrix::RmsNormBwd(
 	const OaMatrix& InX, const OaMatrix& InWeight,
 	const OaMatrix& InOut, const OaMatrix& InRstd,
-	const OaMatrix& InGradOutput
+	const OaMatrix& InGradOutput, OaF32 InEps
 ) {
 	auto& ctx = OaContext::GetDefault();
 	// Normalize over the LAST dim (must match the forward): [B,T,C] → rows=B*T, cols=C.
@@ -304,10 +300,10 @@ OaFnMatrix::OaRmsNormBwdResult OaFnMatrix::RmsNormBwd(
 	OaMatrix dWcontrib = OaFnMatrix::Empty(OaMatrixShape{rows, cols}, InX.GetDtype());
 
 	// The RmsNormBwd shader recomputes inv_rms = rsqrt(mean(x^2) + eps), so it needs
-	// eps in the push tail. The old struct omitted it. It must mirror the shader's
-	// {rows, cols, eps} tail and match the forward eps (1e-5, the RmsNorm default).
+	// eps in the push tail. It must mirror the shader's {rows, cols, eps} tail and
+	// use the exact forward epsilon retained by the autograd node.
 	struct { OaU32 Rows; OaU32 Cols; OaF32 Eps; } push{
-		static_cast<OaU32>(rows), static_cast<OaU32>(cols), 1e-5f};
+		static_cast<OaU32>(rows), static_cast<OaU32>(cols), InEps};
 	// CRITICAL: the shader declares exactly 5 buffer indices
 	// (x, w, dy, dx, dw_contrib). Buffer indices are auto-prepended IN ORDER, so the
 	// bound set must be exactly those 5 — the shader recomputes inv_rms from x and
@@ -634,11 +630,22 @@ OaMatrix OaFnMatrix::LinearDataBwd(const OaMatrix& InGradOutput, const OaMatrix&
 	OaU32 K = static_cast<OaU32>(InWeight.Size(1));      // in_features
 	
 	OaMatrix gradInput = OaFnMatrix::Empty(OaMatrixShape{M, K}, InGradOutput.GetDtype());
+	const auto semantic = ctx.RecordOperation(
+		OaOperationRegistry::LinearDataBwd,
+		{&InGradOutput, &InWeight}, {&gradInput});
+	if (not semantic.IsOk()) {
+		OA_LOG_ERROR(OaLogComponent::ML,
+			"LinearDataBwd semantic recording failed: %s",
+			semantic.GetStatus().GetMessage().c_str());
+		return {};
+	}
 	
 	struct { OaU32 M; OaU32 N; OaU32 K; } push{.M = M, .N = N, .K = K};
 	OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Read, OaBufferAccess::Write};
 	ctx.Add("LinearDataBwd", {&InGradOutput, &InWeight, &gradInput}, access,
-		&push, sizeof(push), DivCeil(M, 32), DivCeil(K, 32), 1);
+		&push, sizeof(push), DivCeil(M, 32), DivCeil(K, 32), 1,
+		OaOperationRegistry::LinearDataBwd.Name, 0,
+		OaOperationRegistry::LinearDataBwd.Hash, 0, 0, semantic.GetValue());
 	
 	return gradInput;
 }
@@ -734,10 +741,22 @@ OaMatrix OaFnMatrix::LinearWeightBwd(const OaMatrix& InInput, const OaMatrix& In
 	OaU32 N = static_cast<OaU32>(InGradOutput.Size(1));  // out_features
 	
 	OaMatrix gradWeight = OaFnMatrix::Empty(OaMatrixShape{N, K}, InInput.GetDtype());
+	const auto semantic = ctx.RecordOperation(
+		OaOperationRegistry::LinearWeightBwd,
+		{&InInput, &InGradOutput}, {&gradWeight});
+	if (not semantic.IsOk()) {
+		OA_LOG_ERROR(OaLogComponent::ML,
+			"LinearWeightBwd semantic recording failed: %s",
+			semantic.GetStatus().GetMessage().c_str());
+		return {};
+	}
 	
 	struct { OaU32 M; OaU32 N; OaU32 K; } push{.M = M, .N = N, .K = K};
 	OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Read, OaBufferAccess::Write};
-	ctx.Add("LinearWeightBwd", {&InGradOutput, &InInput, &gradWeight}, access, &push, sizeof(push), DivCeil(N * K, 256));
+	ctx.Add("LinearWeightBwd", {&InGradOutput, &InInput, &gradWeight}, access,
+		&push, sizeof(push), DivCeil(N * K, 256), 1, 1,
+		OaOperationRegistry::LinearWeightBwd.Name, 0,
+		OaOperationRegistry::LinearWeightBwd.Hash, 0, 0, semantic.GetValue());
 	
 	return gradWeight;
 }
@@ -753,14 +772,37 @@ OaFnMatrix::OaLinearWeightBiasBwdResult OaFnMatrix::LinearWeightBiasBwd(
 	// InGradOutput: [batch, out_features]
 	// GradWeight: [out_features, in_features], GradBias: [out_features]
 
-	OaU32 M = static_cast<OaU32>(InInput.Size(0));       // batch
 	OaU32 K = static_cast<OaU32>(InInput.Size(1));       // in_features
 	OaU32 N = static_cast<OaU32>(InGradOutput.Size(1));  // out_features
 
 	OaMatrix gradWeight = OaFnMatrix::Empty(OaMatrixShape{N, K}, InInput.GetDtype());
 	OaMatrix gradBias = OaFnMatrix::Empty(OaMatrixShape{N}, InGradOutput.GetDtype());
 
-	ctx.AddLinearBwdWeightBias(InInput, InGradOutput, gradWeight, gradBias, M, N, K);
+	const auto semantic = ctx.RecordOperation(
+		OaOperationRegistry::LinearWeightBiasBwd,
+		{&InInput, &InGradOutput}, {&gradWeight, &gradBias});
+	if (not semantic.IsOk()) {
+		OA_LOG_ERROR(OaLogComponent::ML,
+			"LinearWeightBiasBwd semantic recording failed: %s",
+			semantic.GetStatus().GetMessage().c_str());
+		return {};
+	}
+	const auto lowering = OaDnnGraphLowering::RecordLinearWeightBiasBackward(
+		ctx, {
+			.Input = &InInput,
+			.GradOutput = &InGradOutput,
+			.GradWeight = &gradWeight,
+			.GradBias = &gradBias,
+			.Operation = OaOperationRegistry::LinearWeightBiasBwd.Name,
+			.OperationContractHash = OaOperationRegistry::LinearWeightBiasBwd.Hash,
+			.SemanticOperation = semantic.GetValue(),
+		});
+	if (not lowering.IsOk()) {
+		OA_LOG_ERROR(OaLogComponent::ML,
+			"LinearWeightBiasBwd lowering failed: %s",
+			lowering.GetMessage().c_str());
+		return {};
+	}
 
 	return {.GradWeight = gradWeight, .GradBias = gradBias};
 }

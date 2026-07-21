@@ -3,14 +3,12 @@
   "description": "Maximum include counts for dependency edges that violate the target architecture at v0.6.98. Counts may decrease but must never increase.",
   "exceptions": {
     "Core->Ml": 6,
-    "Core->Runtime": 56,
+    "Core->Runtime": 48,
     "Core->Ui": 5,
     "Data->Vision": 1,
     "Render->Ui": 3,
     "Runtime->Crypto": 1,
     "Runtime->Ml": 3,
-    "Runtime->Ui": 1,
-    "Runtime->Vision": 2,
     "Vision->Audio": 3,
     "Vision->Ui": 6
   }

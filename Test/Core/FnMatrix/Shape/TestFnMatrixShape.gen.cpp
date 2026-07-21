@@ -16,16 +16,16 @@
 #include <numeric>
 #include <vector>
 
-static OaComputeEngine* GRt = nullptr;
+static OaEngine* GRt = nullptr;
 
 class TestFnMatrixShape : public ::testing::Test {
 protected:
 	static void SetUpTestSuite() {
 		OaEngineConfig cfg{};
 		cfg.AppName = "TestFnMatrixShape";
-		auto r = OaComputeEngine::Create(cfg);
+		auto r = OaEngine::Create(cfg);
 		ASSERT_TRUE(r.IsOk()) << r.GetStatus().GetMessage();
-		static OaUniquePtr<OaComputeEngine> rt = std::move(*r);
+		static OaUniquePtr<OaEngine> rt = std::move(*r);
 		GRt = rt.get();
 	}
 };
@@ -33,7 +33,7 @@ protected:
 TEST_VK(TestFnMatrixShape, Copy_Context) {
 	constexpr OaU32 N = 256;
 	auto a = OaFnMatrix::Rand(OaMatrixShape{N});
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto out = OaFnMatrix::Copy(a);
 	// Context scope auto-executes and syncs at end of scope
 	std::vector<float> a_host(N);

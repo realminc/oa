@@ -3,7 +3,7 @@
 // AvgPool2d, MaxPool2d.
 
 #include <Oa/Ml/FnMatrix.h>
-#include <Oa/Ml/Autograd.h>
+#include <Oa/Ml/Autograd/Nodes.h>
 #include <Oa/Core/Matrix.h>
 #include <Oa/Core/Types.h>
 #include <Oa/Core/BufferAccess.h>

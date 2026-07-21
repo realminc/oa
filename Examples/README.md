@@ -143,7 +143,7 @@ TEST(ExampleMl, MinimalTraining) {
 #include <Oa/Core.h>
 
 TEST(ExampleCore, MinimalCompute) {
-    auto result = OaComputeEngine::Create({.AppName = "ExampleCore"});
+    auto result = OaEngine::Create({.AppName = "ExampleCore"});
     ASSERT_TRUE(result.IsOk());
     auto engine = std::move(*result);
     

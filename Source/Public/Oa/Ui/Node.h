@@ -15,7 +15,7 @@
 #include <Oa/Ui/Canvas.h>   // VlmVec2
 #include <vulkan/vulkan.h>
 
-class OaComputeEngine;
+class OaEngine;
 class OaVkBuffer;
 class OaUiComputeGraph;   // forward — defined in Runtime/Graph.h
 
@@ -129,7 +129,7 @@ public:
 
 	// ── Compile: produce the OaComputeGraph from the node topology ────────────
 	// Calls OutGraph.Reset(), topological sort, then OutGraph.Add() per node.
-	[[nodiscard]] OaStatus Compile(OaComputeEngine& InRt, OaUiComputeGraph& OutGraph);
+	[[nodiscard]] OaStatus Compile(OaEngine& InRt, OaUiComputeGraph& OutGraph);
 
 	// ── Render ────────────────────────────────────────────────────────────────
 

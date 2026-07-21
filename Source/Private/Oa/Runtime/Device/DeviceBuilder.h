@@ -56,17 +56,16 @@ public:
 	void CollectExtensions();
 
 	// ─── Phase 8: Type-Safe Device Creation ───
-	// InWantsPresentation: caller intends to attach a VkSurfaceKHR later (e.g.
-	// via OaGraphicsEngine::InitPresentation). When true, the queue planner
-	// selects a graphics-capable family without needing the surface at device-
-	// creation time, and the resulting device exposes Queues.GraphicsQueue +
-	// GraphicsQueueFamily. Surface-side presentation support is verified later
-	// when the surface is actually attached. See Architecture/OaArchitecture.md §10.
+	// InWantsPresentation enables surface-dependent device features for a later
+	// OaPresenter attachment. InNeedsGraphics selects a graphics-capable queue
+	// independently for headless rendering. Both expose GraphicsQueue and
+	// GraphicsQueueFamily; only the first enables WSI extensions.
 	[[nodiscard]] OaResult<OaVkDevice> BuildBase(
 		VkInstance InInstance,
 		VkPhysicalDevice InPhysicalDevice,
 		OaBool InEnableValidation = false,
-		OaBool InWantsPresentation = false
+		OaBool InWantsPresentation = false,
+		OaBool InNeedsGraphics = false
 	);
 
 	[[nodiscard]] OaResult<OaVkComputeDevice> BuildCompute(

@@ -7,6 +7,14 @@ from .config import (
 	AUTO_BODY_KINDS,
 	SLANG_EMIT_KINDS,
 	VALID_BODIES,
+	VALID_CONTRACT_DIFFERENTIATION,
+	VALID_CONTRACT_ATTRIBUTE_KINDS,
+	VALID_CONTRACT_DTYPE_RULES,
+	VALID_CONTRACT_EFFECTS,
+	VALID_CONTRACT_LOWERING,
+	VALID_CONTRACT_CONTROL_FLOW,
+	VALID_CONTRACT_SHAPE_RULES,
+	VALID_CONTRACT_VALUE_KINDS,
 	VALID_DISPATCH_WORKGROUPS,
 	VALID_FORMULAS_PREFIX,
 	VALID_KINDS,
@@ -14,6 +22,156 @@ from .config import (
 	VALID_OUTPUT_SHAPES,
 )
 from .errors import fail
+
+
+_SCALAR_ATTRIBUTE_KINDS = {
+	"bool": "boolean",
+	"OaBool": "boolean",
+	"OaI8": "signed_integer",
+	"OaI16": "signed_integer",
+	"OaI32": "signed_integer",
+	"OaI64": "signed_integer",
+	"OaU8": "unsigned_integer",
+	"OaU16": "unsigned_integer",
+	"OaU32": "unsigned_integer",
+	"OaU64": "unsigned_integer",
+	"OaF32": "float",
+	"OaF64": "float",
+}
+
+
+def semantic_attribute_specs(op: dict) -> list[dict[str, str]]:
+	"""Return the normalized ordered non-value semantic inputs."""
+	attributes: list[dict[str, str]] = []
+	scalar = op.get("scalar_param")
+	if scalar is not None:
+		if not isinstance(scalar, dict):
+			fail(f"{op.get('name', '<unnamed>')}: scalar_param must be a table")
+		if not isinstance(scalar.get("name"), str) or not scalar["name"]:
+			fail(f"{op.get('name', '<unnamed>')}: scalar_param.name is missing")
+		if not isinstance(scalar.get("type"), str) or not scalar["type"]:
+			fail(f"{op.get('name', '<unnamed>')}: scalar_param.type is missing")
+		kind = _SCALAR_ATTRIBUTE_KINDS.get(scalar.get("type"))
+		if kind is None:
+			fail(
+				f"{op.get('name', '<unnamed>')}: scalar_param.type "
+				f"{scalar.get('type')!r} has no semantic attribute mapping"
+			)
+		attributes.append({"name": scalar["name"], "kind": kind})
+	contract = op.get("contract", {})
+	attributes.extend(contract.get("attributes", []))
+	return attributes
+
+
+def validate_operation_contract(ctx: str, op: dict) -> None:
+	contract = op.get("contract")
+	if contract is None:
+		return
+	if not isinstance(contract, dict):
+		fail(f"{ctx}: contract must be a table")
+
+	for field in ("input_kinds", "output_kinds"):
+		kinds = contract.get(field)
+		if not isinstance(kinds, list) or not kinds:
+			fail(f"{ctx}: contract.{field} must be a non-empty array")
+		invalid = [kind for kind in kinds if kind not in VALID_CONTRACT_VALUE_KINDS]
+		if invalid:
+			fail(f"{ctx}: contract.{field} contains invalid kinds {invalid!r}")
+		if len(kinds) > 8:
+			fail(f"{ctx}: contract.{field} supports at most 8 values")
+
+	checks = (
+		("shape_rule", VALID_CONTRACT_SHAPE_RULES),
+		("dtype_rule", VALID_CONTRACT_DTYPE_RULES),
+		("differentiation", VALID_CONTRACT_DIFFERENTIATION),
+		("lowering", VALID_CONTRACT_LOWERING),
+	)
+	for field, valid in checks:
+		value = contract.get(field)
+		if value not in valid:
+			fail(f"{ctx}: contract.{field} {value!r} not in {sorted(valid)}")
+
+	effects = contract.get("effects")
+	if not isinstance(effects, list) or not effects:
+		fail(f"{ctx}: contract.effects must be a non-empty array")
+	if len(set(effects)) != len(effects):
+		fail(f"{ctx}: contract.effects contains duplicates")
+	invalid_effects = [effect for effect in effects if effect not in VALID_CONTRACT_EFFECTS]
+	if invalid_effects:
+		fail(f"{ctx}: contract.effects contains invalid effects {invalid_effects!r}")
+
+	input_count = len(contract["input_kinds"])
+	output_count = len(contract["output_kinds"])
+	mutated_inputs = contract.get("mutated_inputs")
+	if not isinstance(mutated_inputs, list):
+		fail(f"{ctx}: contract.mutated_inputs must be an array")
+	if len(set(mutated_inputs)) != len(mutated_inputs):
+		fail(f"{ctx}: contract.mutated_inputs contains duplicates")
+	if any(not isinstance(index, int) or isinstance(index, bool)
+		or index < 0 or index >= input_count for index in mutated_inputs):
+		fail(f"{ctx}: contract.mutated_inputs contains an invalid input index")
+
+	aliases = contract.get("output_alias_inputs")
+	if not isinstance(aliases, list) or len(aliases) != output_count:
+		fail(f"{ctx}: contract.output_alias_inputs must contain one entry per output")
+	if any(not isinstance(index, int) or isinstance(index, bool)
+		or index < -1 or index >= input_count for index in aliases):
+		fail(f"{ctx}: contract.output_alias_inputs contains an invalid input index")
+
+	control_flow = contract.get("control_flow")
+	if control_flow not in VALID_CONTRACT_CONTROL_FLOW:
+		fail(
+			f"{ctx}: contract.control_flow {control_flow!r} not in "
+			f"{sorted(VALID_CONTRACT_CONTROL_FLOW)}"
+		)
+
+	attributes = contract.get("attributes", [])
+	if not isinstance(attributes, list):
+		fail(f"{ctx}: contract.attributes must be an array")
+	for index, attribute in enumerate(attributes):
+		if not isinstance(attribute, dict):
+			fail(f"{ctx}: contract.attributes[{index}] must be a table")
+		if not isinstance(attribute.get("name"), str) or not attribute["name"]:
+			fail(f"{ctx}: contract.attributes[{index}].name must be a non-empty string")
+		if attribute.get("kind") not in VALID_CONTRACT_ATTRIBUTE_KINDS:
+			fail(
+				f"{ctx}: contract.attributes[{index}].kind "
+				f"{attribute.get('kind')!r} not in "
+				f"{sorted(VALID_CONTRACT_ATTRIBUTE_KINDS)}"
+			)
+	normalized_attributes = semantic_attribute_specs(op)
+	if len(normalized_attributes) > 8:
+		fail(f"{ctx}: semantic operation supports at most 8 attributes")
+	attribute_names = [attribute["name"] for attribute in normalized_attributes]
+	if len(set(attribute_names)) != len(attribute_names):
+		fail(f"{ctx}: semantic attribute names contain duplicates")
+
+
+def validate_python_binding(ctx: str, op: dict) -> None:
+	python = op.get("python")
+	if python is None:
+		return
+	if not isinstance(python, dict):
+		fail(f"{ctx}: python must be a table")
+	api_params = op.get("api_params", [])
+	if not api_params:
+		fail(f"{ctx}: python binding requires schema-owned api_params")
+	if op.get("api_return", "OaMatrix") != "OaMatrix":
+		fail(f"{ctx}: generated python binding currently requires api_return = 'OaMatrix'")
+	args = python.get("args")
+	if not isinstance(args, list) or len(args) != len(api_params):
+		fail(f"{ctx}: python.args must contain one name per api parameter")
+	if any(not isinstance(name, str) or not re.fullmatch(r"[a-z_][a-z0-9_]*", name) for name in args):
+		fail(f"{ctx}: python.args must use snake_case identifiers")
+	if len(set(args)) != len(args):
+		fail(f"{ctx}: python.args contains duplicates")
+	if "name" in python and (
+		not isinstance(python["name"], str)
+		or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", python["name"])
+	):
+		fail(f"{ctx}: python.name must be a valid identifier")
+	if "doc" in python and not isinstance(python["doc"], str):
+		fail(f"{ctx}: python.doc must be a string")
 
 
 def load_kernel_registry(path: Path) -> set[str]:
@@ -55,6 +213,8 @@ def validate_schema(schema_path: Path, ops: list[dict], registry: set[str]) -> N
 		if name in seen:
 			fail(f"{ctx}: duplicate op name")
 		seen.add(name)
+		validate_operation_contract(ctx, op)
+		validate_python_binding(ctx, op)
 
 		kind = op.get("kind")
 		if kind not in VALID_KINDS:
@@ -101,6 +261,7 @@ def validate_schema(schema_path: Path, ops: list[dict], registry: set[str]) -> N
 
 		api_params = op.get("api_params", [])
 		seen_api_params = set()
+		api_param_types = {}
 		seen_default = False
 		for i, param in enumerate(api_params):
 			if isinstance(param, str):
@@ -108,12 +269,14 @@ def validate_schema(schema_path: Path, ops: list[dict], registry: set[str]) -> N
 				parts = decl.strip().rsplit(None, 1)
 				if len(parts) != 2 or not parts[0] or not parts[1]:
 					fail(f"{ctx}: api_params[{i}] must be '<type> <name> [= default]'")
+				param_type = parts[0]
 				name = parts[1]
 				has_default = bool(separator)
 			elif isinstance(param, dict):
 				for key in ("name", "type"):
 					if key not in param:
 						fail(f"{ctx}: api_params[{i}].{key} missing")
+				param_type = param.get("type", "")
 				name = f"In{param.get('name', '')}"
 				has_default = "default" in param
 			else:
@@ -124,6 +287,7 @@ def validate_schema(schema_path: Path, ops: list[dict], registry: set[str]) -> N
 			if name in seen_api_params:
 				fail(f"{ctx}: duplicate api parameter {name}")
 			seen_api_params.add(name)
+			api_param_types[name] = param_type
 			if has_default:
 				seen_default = True
 			elif seen_default:
@@ -149,6 +313,51 @@ def validate_schema(schema_path: Path, ops: list[dict], registry: set[str]) -> N
 		formula = ag.get("formula", "none")
 		if not any(formula.startswith(p) or formula == p for p in VALID_FORMULAS_PREFIX):
 			fail(f"{ctx}: autograd.formula {formula!r} invalid")
+		attach = ag.get("attach")
+		if attach is not None:
+			if attach not in ("standard", "broadcast_binary"):
+				fail(f"{ctx}: autograd.attach {attach!r} must be 'standard' or 'broadcast_binary'")
+			inputs = ag.get("inputs", [])
+			if not ag.get("grad_class") or not inputs:
+				fail(f"{ctx}: autograd.attach requires grad_class and non-empty inputs")
+			input_ranks = ag.get("input_ranks")
+			if input_ranks is not None and (
+				not isinstance(input_ranks, list)
+				or len(input_ranks) != len(inputs)
+				or any(not isinstance(rank, int) or rank < 0 for rank in input_ranks)
+			):
+				fail(f"{ctx}: autograd.input_ranks must contain one non-negative integer per input")
+			if attach == "broadcast_binary":
+				if len(inputs) != 2:
+					fail(f"{ctx}: broadcast_binary attachment requires exactly two inputs")
+				if ag.get("broadcast_op") not in ("Add", "Sub", "Mul", "Div"):
+					fail(f"{ctx}: broadcast_binary attachment requires broadcast_op Add/Sub/Mul/Div")
+			state = ag.get("state", [])
+			if not isinstance(state, list):
+				fail(f"{ctx}: autograd.state must be an array")
+			seen_state_members = set()
+			seen_state_sources = set()
+			for i, item in enumerate(state):
+				if not isinstance(item, dict):
+					fail(f"{ctx}: autograd.state[{i}] must be a table")
+				for key in ("member", "source", "type"):
+					if not isinstance(item.get(key), str) or not item[key]:
+						fail(f"{ctx}: autograd.state[{i}].{key} must be a non-empty string")
+				member = item.get("member", "")
+				source = item.get("source", "")
+				state_type = item.get("type", "")
+				if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", member):
+					fail(f"{ctx}: autograd.state[{i}].member is not a C++ identifier")
+				if source not in api_param_types:
+					fail(f"{ctx}: autograd.state[{i}].source must name an api_params entry")
+				if source in inputs:
+					fail(f"{ctx}: autograd.state[{i}].source duplicates a matrix input")
+				if api_param_types.get(source) != state_type:
+					fail(f"{ctx}: autograd.state[{i}].type must match api_params source type")
+				if member in seen_state_members or source in seen_state_sources:
+					fail(f"{ctx}: autograd.state members and sources must be unique")
+				seen_state_members.add(member)
+				seen_state_sources.add(source)
 
 
 def category_from_schema(schema_path: Path, data: dict) -> tuple[str, str]:

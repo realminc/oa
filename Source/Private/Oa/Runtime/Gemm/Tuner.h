@@ -9,7 +9,7 @@
 #include <Oa/Runtime/GemmTypes.h>
 
 // Forward declarations
-class OaComputeEngine;
+class OaEngine;
 
 // Shape to benchmark (common training/inference patterns)
 struct OaGemmTunerShape {
@@ -47,7 +47,7 @@ public:
 	// InWarmIterations: warmup iterations per kernel (default: 3)
 	// InBenchIterations: benchmark iterations per kernel (default: 10)
 	static OaStatus Run(
-		OaComputeEngine& InRt,
+		OaEngine& InRt,
 		OaU32 InWarmIterations = 3,
 		OaU32 InBenchIterations = 10);
 	
@@ -56,7 +56,7 @@ public:
 	
 	// Benchmark a single shape across all available kernels
 	static OaStatus BenchmarkShape(
-		OaComputeEngine& InRt,
+		OaEngine& InRt,
 		const OaGemmTunerShape& InShape,
 		OaU32 InWarmIterations,
 		OaU32 InBenchIterations,
@@ -64,11 +64,11 @@ public:
 	
 	// Get the process-wide route-cache path. Device and driver identity are
 	// fields in every key rather than separate filename conventions.
-	static OaString GetCachePath(const OaComputeEngine& InRt);
+	static OaString GetCachePath(const OaEngine& InRt);
 	
 	// Load cache from disk (if exists)
-	static OaStatus LoadCache(OaComputeEngine& InRt);
+	static OaStatus LoadCache(OaEngine& InRt);
 	
 	// Save cache to disk
-	static OaStatus SaveCache(const OaComputeEngine& InRt);
+	static OaStatus SaveCache(const OaEngine& InRt);
 };

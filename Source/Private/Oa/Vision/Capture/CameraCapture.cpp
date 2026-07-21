@@ -19,6 +19,7 @@
 #include <Oa/Core/Log.h>
 #include <Oa/Core/Std/UniquePtr.h>
 #include <Oa/Runtime/ExternalMemory.h>
+#include "Oa/Runtime/Engine/BorrowedServiceRetirement.h"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_camera.h>
@@ -41,7 +42,7 @@
 // ─── OaCameraCapture::Impl ───────────────────────────────────────────────────
 
 struct OaCameraCapture::Impl {
-	OaComputeEngine* Rt        = nullptr;
+	OaEngine* Rt        = nullptr;
 	SDL_Camera*        Camera    = nullptr;
 	SDL_CameraSpec     Spec      = {};
 
@@ -54,6 +55,7 @@ struct OaCameraCapture::Impl {
 	bool   Streaming   = false;
 
 	OaVec<OaVkBuffer> Ring;
+	OaVec<OaCompletionToken> RingConsumers;
 	OaCameraCaptureConfig Config = {};
 	OaU64 FormatGen = 0U;
 	OaU64 Reconnects = 0U;
@@ -76,7 +78,7 @@ struct OaCameraCapture::Impl {
 	std::chrono::steady_clock::time_point NextReconnect = {};
 
 	bool InitV4l2();
-	void DestroyV4l2(bool InWaitConsumers = true);
+	[[nodiscard]] OaStatus DestroyV4l2(bool InWaitConsumers = true);
 	bool PollV4l2(OaVideoFrame& OutFrame, OaU64& OutTimestampUs);
 	void RequeueCompletedV4l2();
 	void ReleaseV4l2(const OaVideoFrame& InFrame, const OaCompletionToken& InConsumed);
@@ -90,6 +92,28 @@ struct OaCameraCapture::Impl {
 			}
 		}
 		Ring.Clear();
+		RingConsumers.Clear();
+	}
+
+	[[nodiscard]] OaStatus WaitRingConsumers() const {
+		OaStatus firstError = OaStatus::Ok();
+		for (const auto& consumer : RingConsumers) {
+			const auto status = consumer.Wait();
+			if (firstError.IsOk() and not status.IsOk()) firstError = status;
+		}
+		return firstError;
+	}
+
+	void ReleaseRing(
+		const OaVideoFrame& InFrame,
+		const OaCompletionToken& InConsumed)
+	{
+		if (InFrame.Buffer == nullptr) return;
+		for (OaUsize index = 0U; index < Ring.Size(); ++index) {
+			if (InFrame.Buffer != &Ring[index]) continue;
+			RingConsumers[index] = InConsumed;
+			return;
+		}
 	}
 };
 
@@ -122,7 +146,7 @@ constexpr CameraPackedFormat kCameraFormats[] = {
 
 bool OaCameraCapture::Impl::InitV4l2()
 {
-	DestroyV4l2(true);
+	(void)DestroyV4l2(true);
 	OaString path = Config.DevicePath;
 	if (path.empty()) path = OaString("/dev/video" + std::to_string(Config.DeviceIndex));
 	V4l2Fd = ::open(path.CStr(), O_RDWR | O_NONBLOCK | O_CLOEXEC);
@@ -132,7 +156,7 @@ bool OaCameraCapture::Impl::InitV4l2()
 	if (V4l2Ioctl(V4l2Fd, VIDIOC_QUERYCAP, &capabilities) < 0
 		or (capabilities.device_caps & V4L2_CAP_VIDEO_CAPTURE) == 0U
 		or (capabilities.device_caps & V4L2_CAP_STREAMING) == 0U) {
-		DestroyV4l2(false);
+		(void)DestroyV4l2(false);
 		return false;
 	}
 
@@ -154,7 +178,7 @@ bool OaCameraCapture::Impl::InitV4l2()
 			break;
 		}
 	}
-	if (not found) { DestroyV4l2(false); return false; }
+	if (not found) { (void)DestroyV4l2(false); return false; }
 
 	v4l2_streamparm parameters = {};
 	parameters.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
@@ -170,7 +194,7 @@ bool OaCameraCapture::Impl::InitV4l2()
 	request.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	request.memory = V4L2_MEMORY_MMAP;
 	if (V4l2Ioctl(V4l2Fd, VIDIOC_REQBUFS, &request) < 0 or request.count < 2U) {
-		DestroyV4l2(false);
+		(void)DestroyV4l2(false);
 		return false;
 	}
 
@@ -181,14 +205,14 @@ bool OaCameraCapture::Impl::InitV4l2()
 		buffer.memory = request.memory;
 		buffer.index = index;
 		if (V4l2Ioctl(V4l2Fd, VIDIOC_QUERYBUF, &buffer) < 0) {
-			DestroyV4l2(false); return false;
+			(void)DestroyV4l2(false); return false;
 		}
 		v4l2_exportbuffer exportBuffer = {};
 		exportBuffer.type = request.type;
 		exportBuffer.index = index;
 		exportBuffer.flags = O_CLOEXEC;
 		if (V4l2Ioctl(V4l2Fd, VIDIOC_EXPBUF, &exportBuffer) < 0) {
-			DestroyV4l2(false); return false;
+			(void)DestroyV4l2(false); return false;
 		}
 		auto& slot = V4l2Slots[index];
 		slot.ExportFd = exportBuffer.fd;
@@ -202,16 +226,16 @@ bool OaCameraCapture::Impl::InitV4l2()
 		description.RowPitch = selected.fmt.pix.bytesperline;
 		auto imported = OaImportedDmaBufImage::Import(*Rt, description);
 		if (not imported.IsOk()) {
-			DestroyV4l2(false); return false;
+			(void)DestroyV4l2(false); return false;
 		}
 		slot.Imported = OaStdMove(*imported);
 		if (V4l2Ioctl(V4l2Fd, VIDIOC_QBUF, &buffer) < 0) {
-			DestroyV4l2(false); return false;
+			(void)DestroyV4l2(false); return false;
 		}
 	}
 	v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	if (V4l2Ioctl(V4l2Fd, VIDIOC_STREAMON, &type) < 0) {
-		DestroyV4l2(false); return false;
+		(void)DestroyV4l2(false); return false;
 	}
 	V4l2Streaming = true;
 	V4l2ReconnectEnabled = true;
@@ -232,11 +256,14 @@ bool OaCameraCapture::Impl::InitV4l2()
 	return true;
 }
 
-void OaCameraCapture::Impl::DestroyV4l2(bool InWaitConsumers)
+OaStatus OaCameraCapture::Impl::DestroyV4l2(bool InWaitConsumers)
 {
+	OaStatus firstError = OaStatus::Ok();
 	if (InWaitConsumers) {
 		for (auto& slot : V4l2Slots) {
-			if (slot.ReleaseRequested) (void)slot.PendingConsumer.Wait();
+			if (not slot.ReleaseRequested) continue;
+			const auto status = slot.PendingConsumer.Wait();
+			if (firstError.IsOk() and not status.IsOk()) firstError = status;
 		}
 	}
 	if (V4l2Fd >= 0 and V4l2Streaming) {
@@ -253,6 +280,7 @@ void OaCameraCapture::Impl::DestroyV4l2(bool InWaitConsumers)
 	if (V4l2Fd >= 0) ::close(V4l2Fd);
 	V4l2Fd = -1;
 	V4l2VkFormat = VK_FORMAT_UNDEFINED;
+	return firstError;
 }
 
 void OaCameraCapture::Impl::RequeueCompletedV4l2()
@@ -367,14 +395,39 @@ OaCameraCapture& OaCameraCapture::operator=(OaCameraCapture&& InOther) noexcept 
 }
 
 OaCameraCapture::~OaCameraCapture() {
-	Destroy();
+	Abandon_();
+}
+
+void OaCameraCapture::Abandon_() noexcept {
+	if (not Impl_) return;
+	OaEngine* engine = Impl_->Rt;
+	if (engine == nullptr) {
+		Impl_.reset();
+		return;
+	}
+	auto retired = OaMakeUniquePtr<OaCameraCapture>(OaStdMove(*this));
+	OaBorrowedServiceRetirement::Retire(
+		*engine,
+		retired.Release(),
+		&OaCameraCapture::CompleteRetired_,
+		&OaCameraCapture::ReleaseRetired_);
+}
+
+OaStatus OaCameraCapture::CompleteRetired_(void* InPayload) {
+	auto* capture = static_cast<OaCameraCapture*>(InPayload);
+	return capture ? capture->Close() : OaStatus::Ok();
+}
+
+void OaCameraCapture::ReleaseRetired_(void* InPayload) {
+	OaUniquePtr<OaCameraCapture> capture(
+		static_cast<OaCameraCapture*>(InPayload));
 }
 
 // ─── Init ────────────────────────────────────────────────────────────────────
 
 OaStatus OaCameraCapture::Init(
-	OaComputeEngine& InRt, const OaCameraCaptureConfig& InConfig) {
-	Destroy();
+	OaEngine& InRt, const OaCameraCaptureConfig& InConfig) {
+	OA_RETURN_IF_ERROR(Close());
 	if (InConfig.DeviceIndex < 0 or InConfig.Width <= 0 or InConfig.Height <= 0
 		or InConfig.Fps <= 0 or InConfig.RingFrames < 2) {
 		return OaStatus::Error(OaStatusCode::InvalidArgument,
@@ -479,6 +532,7 @@ OaStatus OaCameraCapture::Init(
 	OaU64 frameBytes = static_cast<OaU64>(Impl_->W)
 		* static_cast<OaU64>(Impl_->H) * 4ULL;
 	Impl_->Ring.Resize(static_cast<OaUsize>(Impl_->RingN));
+	Impl_->RingConsumers.Resize(static_cast<OaUsize>(Impl_->RingN));
 	for (OaI32 i = 0; i < Impl_->RingN; ++i) {
 		auto res = InRt.AllocBuffer(frameBytes);
 		if (!res.IsOk()) {
@@ -510,12 +564,17 @@ OaStatus OaCameraCapture::Init(
 
 // ─── Destroy ─────────────────────────────────────────────────────────────────
 
-void OaCameraCapture::Destroy() {
-	if (!Impl_) return;
+OaStatus OaCameraCapture::Close() {
+	if (not Impl_) return OaStatus::Ok();
+	OaStatus firstError = OaStatus::Ok();
+	auto retainError = [&firstError](const OaStatus& InStatus) {
+		if (firstError.IsOk() and not InStatus.IsOk()) firstError = InStatus;
+	};
 	Streaming_ = false;
 #if defined(__linux__)
-	Impl_->DestroyV4l2();
+	retainError(Impl_->DestroyV4l2());
 #endif
+	retainError(Impl_->WaitRingConsumers());
 	Impl_->FreeRing();
 	if (Impl_->Camera) {
 		SDL_CloseCamera(Impl_->Camera);
@@ -526,6 +585,15 @@ void OaCameraCapture::Destroy() {
 	Height_ = 0;
 	Fps_ = 0;
 	LatestTimestampUs_ = 0;
+	return firstError;
+}
+
+void OaCameraCapture::Destroy() {
+	if (const auto status = Close(); not status.IsOk()) {
+		OA_LOG_ERROR(OaLogComponent::App,
+			"OaCameraCapture::Destroy: shutdown failed: %s",
+			status.ToString().c_str());
+	}
 }
 
 // ─── Poll ────────────────────────────────────────────────────────────────────
@@ -542,6 +610,12 @@ bool OaCameraCapture::Poll() {
 	if (!frame) return false;  // no new frame yet
 
 	auto UploadAndRelease = [&](SDL_Surface* Src) -> bool {
+		auto& consumer = Impl_->RingConsumers[static_cast<size_t>(Impl_->Head)];
+		if (consumer.IsValid() and not consumer.IsComplete()) {
+			SDL_ReleaseCameraFrame(Impl_->Camera, Src);
+			return false;
+		}
+		consumer = {};
 		auto& dst = Impl_->Ring[static_cast<size_t>(Impl_->Head)];
 		if (!dst.MappedPtr) {
 			SDL_ReleaseCameraFrame(Impl_->Camera, Src);
@@ -640,8 +714,13 @@ void OaCameraCapture::Release(
 	const OaVideoFrame& InFrame,
 	const OaCompletionToken& InConsumed)
 {
+	if (not Impl_) return;
+	if (InFrame.Resource == OaVideoFrameResource::Buffer) {
+		Impl_->ReleaseRing(InFrame, InConsumed);
+		return;
+	}
 #if defined(__linux__)
-	if (Impl_ and InFrame.Resource == OaVideoFrameResource::Image) {
+	if (InFrame.Resource == OaVideoFrameResource::Image) {
 		Impl_->ReleaseV4l2(InFrame, InConsumed);
 	}
 #else

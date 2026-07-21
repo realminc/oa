@@ -5,7 +5,7 @@
 // Equal, CompactRows, ScatterRows.
 
 #include <Oa/Ml/FnMatrix.h>
-#include <Oa/Ml/Autograd.h>
+#include <Oa/Ml/Autograd/Nodes.h>
 #include <Oa/Core/Matrix.h>
 #include <Oa/Core/Memory.h>
 #include <Oa/Core/Status.h>
@@ -635,9 +635,22 @@ OaMatrix OaFnMatrix::CompactRowsBwd(const OaMatrix& InGradOut, const OaMatrix& I
 	OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Read,
 		OaBufferAccess::Read, OaBufferAccess::Read, OaBufferAccess::ReadWrite};
 	auto& ctx = OaContext::GetDefault();
-	ctx.AddIndirect("CompactRowsBwdIndirect",
-		{&InGradOut, &InRowMap, &InCount, &InDispatchArgs, &gradIn},
-		access, &push, sizeof(push), InDispatchArgs);
+	const OaMatrix* matrices[] = {
+		&InGradOut, &InRowMap, &InCount, &InDispatchArgs, &gradIn};
+	OaMatrixDispatchDesc desc;
+	desc.Dispatch.Kernel = "CompactRowsBwdIndirect";
+	desc.Dispatch.Access = access;
+	desc.Dispatch.PushData = &push;
+	desc.Dispatch.PushSize = sizeof(push);
+	desc.Matrices = matrices;
+	desc.IndirectArgs = &InDispatchArgs;
+	const OaStatus status = ctx.Record(desc);
+	if (not status.IsOk()) {
+		OA_LOG_ERROR(OaLogComponent::ML,
+			"CompactRowsBwd: failed to record indirect dispatch: %s",
+			status.GetMessage().c_str());
+		return {};
+	}
 	return gradIn;
 }
 
@@ -696,9 +709,22 @@ OaMatrix OaFnMatrix::ScatterRows(const OaMatrix& InSelf, const OaMatrix& InSourc
 	OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Read,
 		OaBufferAccess::Read, OaBufferAccess::Read, OaBufferAccess::ReadWrite};
 	auto& ctx = OaContext::GetDefault();
-	ctx.AddIndirect("ScatterRowsIndirect",
-		{&InSource, &InPlan.RowMap, &InPlan.Count, &InPlan.DispatchArgs, &out},
-		access, &push, sizeof(push), InPlan.DispatchArgs);
+	const OaMatrix* matrices[] = {
+		&InSource, &InPlan.RowMap, &InPlan.Count, &InPlan.DispatchArgs, &out};
+	OaMatrixDispatchDesc desc;
+	desc.Dispatch.Kernel = "ScatterRowsIndirect";
+	desc.Dispatch.Access = access;
+	desc.Dispatch.PushData = &push;
+	desc.Dispatch.PushSize = sizeof(push);
+	desc.Matrices = matrices;
+	desc.IndirectArgs = &InPlan.DispatchArgs;
+	const OaStatus status = ctx.Record(desc);
+	if (not status.IsOk()) {
+		OA_LOG_ERROR(OaLogComponent::ML,
+			"ScatterRows: failed to record indirect dispatch: %s",
+			status.GetMessage().c_str());
+		return {};
+	}
 	if (OaFnAutograd::IsEnabled() and (InSelf.RequiresGrad() or InSource.RequiresGrad())) {
 		auto gradFn = OaMakeSharedPtr<OaGradScatterRows>();
 		gradFn->RowMap_ = InPlan.RowMap;
@@ -737,9 +763,22 @@ OaMatrix OaFnMatrix::ScatterRowsBwdSource(const OaMatrix& InGradOut,
 	OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Read,
 		OaBufferAccess::Read, OaBufferAccess::Read, OaBufferAccess::Write};
 	auto& ctx = OaContext::GetDefault();
-	ctx.AddIndirect("ScatterRowsBwdIndirect",
-		{&InGradOut, &InRowMap, &InCount, &InDispatchArgs, &gradSrc},
-		access, &push, sizeof(push), InDispatchArgs);
+	const OaMatrix* matrices[] = {
+		&InGradOut, &InRowMap, &InCount, &InDispatchArgs, &gradSrc};
+	OaMatrixDispatchDesc desc;
+	desc.Dispatch.Kernel = "ScatterRowsBwdIndirect";
+	desc.Dispatch.Access = access;
+	desc.Dispatch.PushData = &push;
+	desc.Dispatch.PushSize = sizeof(push);
+	desc.Matrices = matrices;
+	desc.IndirectArgs = &InDispatchArgs;
+	const OaStatus status = ctx.Record(desc);
+	if (not status.IsOk()) {
+		OA_LOG_ERROR(OaLogComponent::ML,
+			"ScatterRowsBwdSource: failed to record indirect dispatch: %s",
+			status.GetMessage().c_str());
+		return {};
+	}
 	return gradSrc;
 }
 

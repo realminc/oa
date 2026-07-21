@@ -3,12 +3,14 @@
 // LayerNorm, RmsNorm.
 
 #include <Oa/Ml/FnMatrix.h>
-#include <Oa/Ml/Autograd.h>
+#include <Oa/Ml/Autograd/Nodes.h>
 #include <Oa/Core/Matrix.h>
 #include <Oa/Core/Types.h>
 #include <Oa/Core/BufferAccess.h>
+#include <Oa/Core/Operation.h>
 #include <Oa/Runtime/Context.h>
 #include <Oa/Core/Validation.h>
+#include "../../Autograd/AutogradAttach.gen.h"
 
 #include <cassert>
 
@@ -22,19 +24,25 @@ OaMatrix OaFnMatrix::LayerNorm(
 	assert(InWeight.NumElements() == cols and InBias.NumElements() == cols);
 
 	OaMatrix out = OaFnMatrix::Empty(InSelf.Shape_, InSelf.Dtype_);
+	const auto semantic = ctx.RecordOperation(
+		OaOperationRegistry::LayerNorm, {&InSelf, &InWeight, &InBias}, {&out},
+		{OaOperationAttribute::FromFloat("Eps", InEps)});
+	if (not semantic.IsOk()) return {};
 	struct { OaU32 Rows; OaU32 Cols; OaF32 Eps; } push{
 		static_cast<OaU32>(rows), static_cast<OaU32>(cols), InEps};
 	OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Read, OaBufferAccess::Read, OaBufferAccess::Write};
 	ctx.Add("LayerNorm", {&InSelf, &InWeight, &InBias, &out}, access, &push, sizeof(push),
-		static_cast<OaU32>(rows));
+		static_cast<OaU32>(rows), 1, 1,
+		OaOperationRegistry::LayerNorm.Name, 0,
+		OaOperationRegistry::LayerNorm.Hash, 0, 0, semantic.GetValue());
 
-	if (OaFnAutograd::IsEnabled() and (InSelf.RequiresGrad() or InWeight.RequiresGrad() or InBias.RequiresGrad())) {
-		auto gradFn = OaMakeSharedPtr<OaGradLayerNorm>();
-		gradFn->Saved_ = OaVec<OaMatrix>{InSelf, InWeight, InBias, out};
-		gradFn->SetGraphInputs(OaVec<OaMatrix>{InSelf, InWeight, InBias});
-		gradFn->SequenceNr_ = OaFnAutograd::NextSeq();
-		gradFn->OutputShape_ = out.GetShape();
-		out.MutAutograd().GradFn = gradFn;
+	const auto attached = OaGeneratedAutogradAttach::OaFnMatrix::LayerNorm(
+		out, InSelf, InWeight, InBias, InEps, semantic.GetValue());
+	if (not attached.IsOk()) {
+		OA_LOG_ERROR(OaLogComponent::ML,
+			"LayerNorm semantic autograd attachment failed: %s",
+			attached.GetMessage().c_str());
+		return {};
 	}
 
 	return out;
@@ -52,19 +60,25 @@ OaMatrix OaFnMatrix::RmsNorm(
 	assert(InWeight.NumElements() == cols);
 
 	OaMatrix out = OaFnMatrix::Empty(InSelf.Shape_, InSelf.Dtype_);
+	const auto semantic = ctx.RecordOperation(
+		OaOperationRegistry::RmsNorm, {&InSelf, &InWeight}, {&out},
+		{OaOperationAttribute::FromFloat("Eps", InEps)});
+	if (not semantic.IsOk()) return {};
 	struct { OaU32 Rows; OaU32 Cols; OaF32 Eps; } push{
 		static_cast<OaU32>(rows), static_cast<OaU32>(cols), InEps};
 	OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Read, OaBufferAccess::Write};
 	ctx.Add("RmsNorm", {&InSelf, &InWeight, &out}, access, &push, sizeof(push),
-		static_cast<OaU32>(rows));
+		static_cast<OaU32>(rows), 1, 1,
+		OaOperationRegistry::RmsNorm.Name, 0,
+		OaOperationRegistry::RmsNorm.Hash, 0, 0, semantic.GetValue());
 
-	if (OaFnAutograd::IsEnabled() and (InSelf.RequiresGrad() or InWeight.RequiresGrad())) {
-		auto gradFn = OaMakeSharedPtr<OaGradRmsNorm>();
-		gradFn->Saved_ = OaVec<OaMatrix>{InSelf, InWeight, out, out};
-		gradFn->SetGraphInputs(OaVec<OaMatrix>{InSelf, InWeight});
-		gradFn->SequenceNr_ = OaFnAutograd::NextSeq();
-		gradFn->OutputShape_ = out.GetShape();
-		out.MutAutograd().GradFn = gradFn;
+	const auto attached = OaGeneratedAutogradAttach::OaFnMatrix::RmsNorm(
+		out, InSelf, InWeight, InEps, semantic.GetValue());
+	if (not attached.IsOk()) {
+		OA_LOG_ERROR(OaLogComponent::ML,
+			"RmsNorm semantic autograd attachment failed: %s",
+			attached.GetMessage().c_str());
+		return {};
 	}
 
 	return out;

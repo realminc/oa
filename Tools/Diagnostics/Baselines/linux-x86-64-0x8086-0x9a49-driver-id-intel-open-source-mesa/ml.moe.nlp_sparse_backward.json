@@ -1,0 +1,89 @@
+{
+  "acceptance": {
+    "accepted_by": "Realm maintainers",
+    "reason": "Initial Build Week Iris Xe release baseline"
+  },
+  "accepted_utc": "2026-07-18T11:55:29.222479Z",
+  "build": {
+    "CMAKE_BUILD_TYPE": "Release",
+    "CMAKE_CXX_COMPILER": "/usr/bin/clang++",
+    "CMAKE_C_COMPILER": "/usr/bin/clang",
+    "OA_BUILD_SHARED": "OFF",
+    "OA_EMBED_SHADERS": "ON",
+    "OA_VULKAN_VALIDATION": "OFF",
+    "VCPKG_INSTALLED_DIR": "~/.vcpkg/oa/release/installed"
+  },
+  "environment": {
+    "driver": {
+      "api_version": "1.4.354",
+      "conformance_version": "1.4.0.0",
+      "driver_info": "Mesa 26.1.4-arch1.1",
+      "driver_version": "26.1.4"
+    },
+    "power": {
+      "cpu_governors": [
+        "powersave"
+      ],
+      "power_profile": "balanced"
+    }
+  },
+  "metric": {
+    "name": "gpu_p50",
+    "regex": "complete sparse backward\\s+mean=\\s*[0-9.]+ ms\\s+p50=\\s*(?P<value>[0-9.]+)",
+    "statistics": {
+      "count": 7,
+      "mad": 0.0034999999999999476,
+      "maximum": 0.586,
+      "median": 0.5711,
+      "minimum": 0.5655,
+      "p10": 0.56856,
+      "p90": 0.58084,
+      "relative_mad_percent": 0.6128523901243123,
+      "spread_percent": 3.5895639992995902,
+      "unit": "ms"
+    }
+  },
+  "platform": {
+    "available": true,
+    "device_id": "0x9a49",
+    "device_index": 0,
+    "device_name": "Intel(R) Iris(R) Xe Graphics (TGL GT2)",
+    "device_type": "PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU",
+    "driver_id": "DRIVER_ID_INTEL_OPEN_SOURCE_MESA",
+    "driver_name": "Intel open-source Mesa driver",
+    "machine": "x86_64",
+    "system": "Linux",
+    "vendor_id": "0x8086"
+  },
+  "schema": "oa.benchmark_baseline.v1",
+  "source": {
+    "repository_commit": "20f8d24696afe59565dc7f7cdf2965230f8548f7",
+    "result_sha256": "8684f36756dd612d93b7e7a4901a4a7a1c632431178757c96e23ed5e50e5d27c"
+  },
+  "workload": {
+    "command": [
+      "/tmp/oa-benchmark-baseline-20f8d246/Bin/Release/Test/Ml/Nn/BenchMoeComponents",
+      "--gtest_filter=BenchMoeComponents.NlpShape"
+    ],
+    "command_id": "BenchMoeComponents.NlpShape.sparse_backward.v1",
+    "contract": {
+      "experts": "4",
+      "model_dim": "32",
+      "path": "complete_sparse_backward",
+      "tokens": "1024",
+      "top_k": "2"
+    },
+    "cooldown_seconds": 2.0,
+    "executable": {
+      "path": "/tmp/oa-benchmark-baseline-20f8d246/Bin/Release/Test/Ml/Nn/BenchMoeComponents",
+      "sha256": "7a170f9feb171dad3e9885ed9ce6d6ddcd00548780bd433f24d5803a3edac8a9"
+    },
+    "measured_runs": 7,
+    "name": "ml.moe.nlp_sparse_backward",
+    "required_regexes": [
+      "\\[  PASSED  \\] 1 test"
+    ],
+    "timeout_seconds": 120.0,
+    "warmup_runs": 2
+  }
+}

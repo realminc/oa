@@ -353,7 +353,7 @@ TEST(ResidualVectorQuantizer, SerializesDistinctBufferNames) {
 	Flush();
 
 	OamModel oam;
-	rvq.SaveTo(oam);
+	ASSERT_TRUE(rvq.SaveTo(oam).IsOk());
 
 	// 2 levels × {codebook, embed_sum, cluster_size} = 6 uniquely-named state tensors.
 	ASSERT_EQ(oam.StateIndex.Size(), static_cast<OaUsize>(6));

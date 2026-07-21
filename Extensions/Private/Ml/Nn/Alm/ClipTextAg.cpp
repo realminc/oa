@@ -197,7 +197,7 @@ OaResult<OaSharedPtr<OaClipTextAg>> OaClipTextAg::LoadOam(const OaString& InPath
 	OA_RETURN_IF_ERROR(ctx.Execute());
 	OA_RETURN_IF_ERROR(ctx.Sync());
 	ctx.Clear();
-	model->LoadFrom(oam);
+	OA_RETURN_IF_ERROR(model->LoadFrom(oam));
 	model->Freeze();
 	return model;
 }

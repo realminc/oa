@@ -28,13 +28,13 @@ int main(int argc, char** argv) {
 	OaEngineConfig engineConfig;
 	engineConfig.PresentationMode = OaPresentationMode::None;
 	engineConfig.RegisterAsGlobal = true;
-	auto engineResult = OaComputeEngine::Create(engineConfig);
+	auto engineResult = OaEngine::Create(engineConfig);
 	if (not engineResult.IsOk()) {
 		std::fprintf(stderr, "Engine creation failed: %s\n",
 			engineResult.GetStatus().ToString().c_str());
 		return 1;
 	}
-	OaComputeEngine& engine = *engineResult.GetValue();
+	OaEngine& engine = *engineResult.GetValue();
 
 	if (not OaScreenCapture::IsSupported()) {
 		std::fprintf(stderr, "This build has no libportal/PipeWire screen backend\n");
@@ -54,7 +54,7 @@ int main(int argc, char** argv) {
 	OaAudioCapture audioCapture;
 	bool audioEnabled = false;
 	if (wantAudio) {
-		auto audioResult = OaAudioCapture::Open();
+		auto audioResult = OaAudioCapture::Open(engine);
 		if (audioResult.IsOk()) {
 			audioCapture = OaStdMove(*audioResult);
 			auto start = audioCapture.Start();

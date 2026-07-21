@@ -3,11 +3,12 @@
 #include <Oa/Runtime/Allocator.h>
 #include <Oa/Runtime/Engine.h>
 #include <Oa/Runtime/UploadRing.h>
+#include <Oa/Core/Log.h>
 
 #include <algorithm>
 
 struct OaPrefetchPipeline::Impl {
-	OaComputeEngine* Engine = nullptr;
+	OaEngine* Engine = nullptr;
 	OaUploadRing UploadRing;
 	OaVkBuffer DeviceBuffer;
 	OaU64 BufferSize = 0;
@@ -17,17 +18,17 @@ struct OaPrefetchPipeline::Impl {
 OaPrefetchPipeline::OaPrefetchPipeline(OaPrefetchPipeline&&) noexcept = default;
 OaPrefetchPipeline& OaPrefetchPipeline::operator=(OaPrefetchPipeline&& InOther) noexcept {
 	if (this != &InOther) {
-		if (Impl_ && Impl_->Engine) Destroy(*Impl_->Engine);
+		Abandon_();
 		Impl_ = OaStdMove(InOther.Impl_);
 	}
 	return *this;
 }
 OaPrefetchPipeline::~OaPrefetchPipeline() {
-	if (Impl_ && Impl_->Engine) Destroy(*Impl_->Engine);
+	Abandon_();
 }
 
 OaResult<OaPrefetchPipeline> OaPrefetchPipeline::Create(
-	OaComputeEngine& InRt,
+	OaEngine& InRt,
 	OaU64 InBufferSize)
 {
 	if (InBufferSize == 0) {
@@ -58,11 +59,26 @@ OaResult<OaPrefetchPipeline> OaPrefetchPipeline::Create(
 	return pipeline;
 }
 
-void OaPrefetchPipeline::Destroy(OaComputeEngine& InRt) {
+void OaPrefetchPipeline::Destroy(OaEngine& InRt) {
 	if (!Impl_) return;
-	(void)Impl_->UploadRing.Wait();
-	Impl_->UploadRing.Destroy();
+	if (const auto status = Impl_->UploadRing.Close(); !status.IsOk()) {
+		OA_LOG_ERROR(OaLogComponent::Core,
+			"OaPrefetchPipeline::Destroy: upload close failed: %s",
+			status.GetMessage().c_str());
+	}
 	InRt.FreeBuffer(Impl_->DeviceBuffer);
+	Impl_.reset();
+}
+
+void OaPrefetchPipeline::Abandon_() noexcept {
+	if (!Impl_) return;
+	if (Impl_->Engine && Impl_->Engine->Device.Device) {
+		// The compatibility facade has no submitted-but-unwaited state: BeginCopy
+		// only records, while Wait submits and completes. Abandon the ring first so
+		// an open recording is cancelled before its destination buffer is released.
+		Impl_->UploadRing = OaUploadRing{};
+		Impl_->Engine->FreeBuffer(Impl_->DeviceBuffer);
+	}
 	Impl_.reset();
 }
 

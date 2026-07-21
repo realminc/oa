@@ -8,7 +8,7 @@
 
 OaGpuTimer::~OaGpuTimer() = default;
 
-OaStatus OaGpuTimer::Init(OaComputeEngine& InRt, const char* InName) {
+OaStatus OaGpuTimer::Init(OaEngine& InRt, const char* InName) {
     Name_ = InName;
     auto result = OaVkTimestamp::Create(InRt, 2);
     if (not result.IsOk()) { return result.GetStatus(); }
@@ -19,18 +19,6 @@ OaStatus OaGpuTimer::Init(OaComputeEngine& InRt, const char* InName) {
 void OaGpuTimer::Destroy(const OaVkDevice& InDevice) {
     Ts_.Destroy(InDevice);
     Pending_ = false;
-}
-
-void OaGpuTimer::Begin(OaComputeEngine& InRt) {
-    // Always-compiled guard (asserts are debug-only): a timing misuse must not crash
-    // the Release binary — log and no-op instead.
-    if (not InRt.IsComputeBatchActive()) {
-        OA_LOG_ERROR(OaLogComponent::Core,
-            "GpuTimer::Begin(rt) called outside batch mode — use Begin(OaVkStream*); skipped");
-        assert(false and "GpuTimer::Begin(rt) outside batch mode");
-        return;
-    }
-    Begin(InRt.ActiveComputeBatchStream());
 }
 
 void OaGpuTimer::Begin(OaVkStream* InStream) {
@@ -44,12 +32,6 @@ void OaGpuTimer::Begin(OaVkStream* InStream) {
     Ts_.Reset(InStream);
     Ts_.WriteTimestamp(InStream);
     Pending_ = true;
-}
-
-void OaGpuTimer::End(OaComputeEngine& InRt) {
-    if (InRt.IsComputeBatchActive()) {
-        End(InRt.ActiveComputeBatchStream());
-    }
 }
 
 void OaGpuTimer::End(OaVkStream* InStream) {

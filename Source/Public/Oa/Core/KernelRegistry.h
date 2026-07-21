@@ -516,7 +516,7 @@ static constexpr OaUsize GetTotalKernelCount() {
 }
 
 // Register extension kernels into the runtime dynamic table.
-// Called via OaExtKernelRegistry::Add during OaComputeEngine::Create.
+// Called via OaExtKernelRegistry::Add during OaEngine::Create.
 void RegisterDynamic(OaSpan<const OaComputeKernel> InKernels);
 
 } // namespace OaKernelRegistry

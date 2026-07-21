@@ -10,7 +10,12 @@
 #pragma once
 
 #include <Oa/Ml/Module.h>
-#include <Oa/Ml/Nn.h>
+#include <Oa/Ml/NnType.h>
+
+#include "../Attention/MultiHeadAttention/MultiHeadAttention.gen.h"
+#include "../LayerNorm/LayerNorm.gen.h"
+#include "../Linear/Linear.gen.h"
+#include "../Moe/Moe.h"
 
 class OaTransformerBlock : public OaModule {
 public:

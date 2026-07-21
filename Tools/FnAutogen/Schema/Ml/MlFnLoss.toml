@@ -1,0 +1,55 @@
+# OaFn schema — Ml/FnLoss operations (1).
+#
+# Loss operations own their public OaFnLoss declarations, semantic contracts,
+# Python registrations, and autograd attachment here. Their private lowering
+# may remain hand-written when it includes a per-sample kernel followed by a
+# reduction, but every executable node retains the one public loss operation as
+# its semantic owner.
+
+namespace = "OaFnLoss"
+category = "Loss"
+file_category = ""
+file_prefix = "FnLoss"
+cpp_subdir = "FnLoss"
+
+# --- CrossEntropy ------------------------------------------------------------
+[[ops]]
+name            = "CrossEntropy"
+category        = "Loss"
+kind            = "binary"
+kernel_forward  = "CrossEntropy"
+kernel_backward = "CrossEntropyBwd"
+slang_path      = "Ml/Nn/CrossEntropy"
+log_component   = "ML"
+notes           = "Mean cross-entropy over rank-two logits and UInt8, UInt32, or non-negative Int32 class-index targets; the scalar result is Float32, and an out-of-range target produces NaN without an out-of-bounds read."
+body            = "manual_context"
+api_params      = [
+    "const OaMatrix& InLogits",
+    "const OaMatrix& InTargets",
+]
+api_return      = "OaMatrix"
+output          = { shape = "scalar_1d", dtype = "Float32" }
+
+[ops.contract]
+input_kinds         = ["matrix", "matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "explicit"
+dtype_rule          = "promote_float"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+
+[ops.autograd]
+grad_class   = "OaGradCrossEntropy"
+inputs       = ["InLogits"]
+saved        = ["InLogits", "InTargets"]
+formula      = "manual"
+attach       = "standard"
+output_shape = true
+
+[ops.python]
+args = ["logits", "targets"]
+doc = "Mean cross-entropy for rank-two logits and UInt8, UInt32, or non-negative Int32 class-index targets; an out-of-range target produces NaN without an out-of-bounds read."

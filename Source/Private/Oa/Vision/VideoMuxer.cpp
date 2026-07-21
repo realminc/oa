@@ -1029,6 +1029,9 @@ void OaVideoMuxer::WriteMoovBox()
 	OaVec<OaU8> finalData;
 	finalData.Resize(MdatData_.Size() + finalMoov.Size());
 	std::memcpy(finalData.Data(), finalMoov.Data(), finalMoov.Size());
-	std::memcpy(finalData.Data() + finalMoov.Size(), MdatData_.Data(), MdatData_.Size());
+	if (not MdatData_.Empty()) {
+		std::memcpy(finalData.Data() + finalMoov.Size(),
+			MdatData_.Data(), MdatData_.Size());
+	}
 	MdatData_ = std::move(finalData);
 }

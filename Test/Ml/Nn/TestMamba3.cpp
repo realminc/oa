@@ -711,6 +711,11 @@ TEST(TestMamba3, ForwardPassSimple) {
 	auto m3d2 = OaFnMatrix::RandN(OaMatrixShape{2, 32, 64}, OaScalarType::Float32);
 	auto elemMul = m3d * m3d2;
 	std::cerr << "Test 19 passed" << std::endl;
+
+	// This test validates that every operation can be recorded. Complete that
+	// recording before its local matrices are released so no deferred work can
+	// leak into the following parity test.
+	SyncCtx();
 }
 
 // Fused Mamba3Preprocess forward parity: GPU output must match a CPU reference

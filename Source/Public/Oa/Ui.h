@@ -7,7 +7,6 @@
 //   <Oa/Ui/Ui.h>     — OaUi widget API
 //   <Oa/Ui/Text.h>    — OaTextAtlas, OaTextLayout
 //   <Oa/Ui/Node.h>    — OaUiNode, OaNodeGraph
-//   <Oa/Ui/DeviceUi.h>    — OaDeviceUi, OaDeviceUiApp, OaUiComposeImage, OaUiConfig
 //   <Oa/Ui/Plot/Plot.h> — OaPlot::Figure and OaPlot::Axes
 //   <Oa/Ui/Cv.h>      — diagnostic OaCvFrame composition
 //   <Oa/Ui/DetectionOverlay.h> — GPU boxes and SDF labels
@@ -27,7 +26,6 @@
 #include <Oa/Ui/Ui.h>
 #include <Oa/Ui/Node.h>
 #include <Oa/Ui/Input.h>
-#include <Oa/Ui/DeviceUi.h>
 #include <Oa/Ui/Plot/Plot.h>
 #include <Oa/Ui/Cv.h>
 #include <Oa/Ui/DetectionOverlay.h>

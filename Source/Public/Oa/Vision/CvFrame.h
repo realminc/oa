@@ -25,7 +25,8 @@
 #include <Oa/Ui/Image.h>    // OaTexture
 #include <Oa/Ui/Plot/Axes.h>   // OaPlot::Axes
 
-class OaComputeEngine;
+class OaEngine;
+class OaContext;
 
 namespace OaCv {
 
@@ -80,12 +81,13 @@ public:
 	// The overlay handle is held internally; call Destroy() to free its GPU
 	// memory after the figure has been Rasterized (and the canvas no longer
 	// needs to read it back).
-	[[nodiscard]] OaStatus Commit(OaComputeEngine& InRt);
+	[[nodiscard]] OaStatus Commit(OaContext& InContext);
+	[[nodiscard]] OaStatus Commit(OaEngine& InRt);
 
 	[[nodiscard]] const OaTexture& Overlay() const noexcept { return Overlay_; }
 
 	// Releases the overlay's GPU memory. Safe to call multiple times.
-	void Destroy(OaComputeEngine& InRt);
+	void Destroy(OaEngine& InRt);
 
 private:
 	OaPlot::Axes* Ax_  = nullptr;

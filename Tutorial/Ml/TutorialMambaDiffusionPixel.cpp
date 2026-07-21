@@ -162,7 +162,7 @@ private:
 
 // ─── Image Save Helper ───────────────────────────────────────────────────────
 
-static OaStatus SaveImage(OaComputeEngine& InRt,
+static OaStatus SaveImage(OaEngine& InRt,
                           const OaMatrix& InPixels,
                           const OaPath& InPath,
                           OaI32 InW, OaI32 InH) {
@@ -192,7 +192,7 @@ static OaStatus SaveImage(OaComputeEngine& InRt,
 
 static OaMatrix SampleImages(OaPixelMambaDiffusion& InModel,
                              OaFlowTimeEmbedding& InTimeEmbedding,
-                             OaComputeEngine& InRt,
+                             OaEngine& InRt,
                              const OaVec<OaU8>& InLabels,
                              OaU64 InSeed) {
 	(void)InRt;
@@ -259,7 +259,7 @@ TEST(TutorialMambaDiffusionPixel, FashionMnistFlowMatching) {
 	});
 
 	auto& ctx = OaContext::GetDefault();
-	auto& rt  = *OaComputeEngine::GetGlobal();
+	auto& rt  = *OaEngine::GetGlobal();
 
 	OaVec<OaMatrix> xRing(static_cast<OaI64>(ctx.MaxAsyncSubmissions()));
 	OaVec<OaMatrix> yRing(static_cast<OaI64>(ctx.MaxAsyncSubmissions()));

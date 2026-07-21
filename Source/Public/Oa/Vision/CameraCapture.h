@@ -12,7 +12,7 @@
 #include <Oa/Vision/VideoDecoder.h>
 #include <Oa/Runtime/Sync.h>
 
-class OaComputeEngine;
+class OaEngine;
 class OaVkBuffer;
 
 struct OaCameraCaptureConfig {
@@ -39,16 +39,21 @@ public:
 	~OaCameraCapture();
 
 	[[nodiscard]] OaStatus Init(
-		OaComputeEngine& InRt,
+		OaEngine& InRt,
 		const OaCameraCaptureConfig& InConfig = {});
+	// Explicit completion and release boundary for producer-owned images and
+	// mapped ring slots still referenced by GPU consumers.
+	[[nodiscard]] OaStatus Close();
+	// Compatibility wrapper that logs Close() failures. Prefer Close() where
+	// the shutdown result can be propagated.
 	void Destroy();
 
 	// Acquire and upload the newest available frame. Returns false when the
 	// camera has not produced another frame yet.
 	bool Poll();
 	bool PollFrame(OaVideoFrame& OutFrame);
-	// Return a producer-owned DMA-BUF frame after its final GPU consumer.
-	// Mapped SDL fallback frames require no release.
+	// Release a frame after its final consumer. The no-token overload declares
+	// immediate reuse; pass the exact completion when GPU work remains live.
 	void Release(const OaVideoFrame& InFrame);
 	void Release(const OaVideoFrame& InFrame, const OaCompletionToken& InConsumed);
 
@@ -65,6 +70,9 @@ public:
 
 private:
 	struct Impl;
+	void Abandon_() noexcept;
+	static OaStatus CompleteRetired_(void* InPayload);
+	static void ReleaseRetired_(void* InPayload);
 	OaUniquePtr<Impl> Impl_;
 	OaI32 Width_ = 0;
 	OaI32 Height_ = 0;

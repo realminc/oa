@@ -14,7 +14,7 @@
 class OaVkVideoSession {
 public:
 	static OaResult<OaVkVideoSession> Create(
-		class OaComputeEngine& InRt,
+		class OaEngine& InRt,
 		const VkVideoProfileInfoKHR& InProfile,
 		const VkExtent2D& InCodedExtent,
 		VkFormat InPictureFormat,
@@ -40,7 +40,7 @@ public:
 private:
 	void MoveFrom(OaVkVideoSession&& InOther) noexcept;
 
-	class OaComputeEngine* Rt_ = nullptr;
+	class OaEngine* Rt_ = nullptr;
 	VkVideoSessionKHR Session_ = VK_NULL_HANDLE;
 	OaVec<void*> Allocations_;  // VMA blocks bound via vkBindVideoSessionMemoryKHR
 	VkExtent2D CodedExtent_ = {0, 0};
@@ -53,7 +53,7 @@ private:
 class OaVkVideoParameters {
 public:
 	static OaResult<OaVkVideoParameters> Create(
-		class OaComputeEngine& InRt,
+		class OaEngine& InRt,
 		VkVideoSessionKHR InSession,
 		const VkVideoSessionParametersCreateInfoKHR& InCreateInfo);
 
@@ -63,14 +63,13 @@ public:
 	~OaVkVideoParameters();
 
 	[[nodiscard]] VkVideoSessionParametersKHR Handle() const noexcept { return Params_; }
-	void SetHandle(VkVideoSessionParametersKHR InHandle) noexcept { Params_ = InHandle; }
 
 	// Transfer ownership of an already-created VkVideoSessionParametersKHR
 	// handle into this wrapper. Required when the handle was produced via
 	// vkCreateVideoSessionParametersKHR directly (legacy callsites) so that
 	// Destroy() can later call vkDestroyVideoSessionParametersKHR with the
 	// right device.
-	void Attach(class OaComputeEngine& InRt, VkVideoSessionParametersKHR InHandle) noexcept
+	void Attach(class OaEngine& InRt, VkVideoSessionParametersKHR InHandle) noexcept
 	{
 		Rt_ = &InRt;
 		Params_ = InHandle;
@@ -83,7 +82,7 @@ public:
 private:
 	void MoveFrom(OaVkVideoParameters&& InOther) noexcept;
 
-	class OaComputeEngine* Rt_ = nullptr;
+	class OaEngine* Rt_ = nullptr;
 	VkVideoSessionParametersKHR Params_ = VK_NULL_HANDLE;
 };
 
@@ -100,7 +99,7 @@ public:
 	};
 
 	static OaResult<OaVkVideoDpb> Create(
-		class OaComputeEngine& InRt,
+		class OaEngine& InRt,
 		const CreateInfo& InInfo);
 
 	OaVkVideoDpb(OaVkVideoDpb&&) noexcept;
@@ -119,7 +118,7 @@ public:
 private:
 	void MoveFrom(OaVkVideoDpb&& InOther) noexcept;
 
-	class OaComputeEngine* Rt_ = nullptr;
+	class OaEngine* Rt_ = nullptr;
 	VkImage Image_ = VK_NULL_HANDLE;
 	VkImageView View_ = VK_NULL_HANDLE;
 	void* Allocation_ = nullptr;
@@ -137,7 +136,7 @@ public:
 	};
 
 	static OaResult<OaVkVideoBitstream> Create(
-		class OaComputeEngine& InRt,
+		class OaEngine& InRt,
 		OaU64 InSize,
 		Direction InDirection,
 		OaU64 InOffsetAlignment = 1,
@@ -170,7 +169,7 @@ public:
 private:
 	void MoveFrom(OaVkVideoBitstream&& InOther) noexcept;
 
-	class OaComputeEngine* Rt_ = nullptr;
+	class OaEngine* Rt_ = nullptr;
 	VkBuffer Buffer_ = VK_NULL_HANDLE;
 	void* Allocation_ = nullptr;
 	void* MappedPtr_ = nullptr;
@@ -190,7 +189,7 @@ public:
 	};
 
 	static OaResult<OaVkVideoQueue> Create(
-		class OaComputeEngine& InRt,
+		class OaEngine& InRt,
 		QueueType InType);
 
 	OaVkVideoQueue(OaVkVideoQueue&&) noexcept;
@@ -216,7 +215,7 @@ public:
 private:
 	void MoveFrom(OaVkVideoQueue&& InOther) noexcept;
 
-	class OaComputeEngine* Rt_ = nullptr;
+	class OaEngine* Rt_ = nullptr;
 	VkQueue Queue_ = VK_NULL_HANDLE;
 	OaU32 QueueFamilyIndex_ = 0;
 	VkCommandPool CmdPool_ = VK_NULL_HANDLE;
@@ -229,14 +228,14 @@ class OaVkVideoFormat {
 public:
 	// Query video capabilities for a codec (decode or encode)
 	static OaStatus QueryCapabilities(
-		class OaComputeEngine& InRt,
+		class OaEngine& InRt,
 		const VkVideoProfileInfoKHR& InProfile,
 		bool InIsEncode,
 		VkVideoCapabilitiesKHR& OutCapabilities);
 
 	// Query supported formats for a given usage
 	static OaStatus QueryFormats(
-		class OaComputeEngine& InRt,
+		class OaEngine& InRt,
 		const VkVideoProfileInfoKHR& InProfile,
 		VkImageUsageFlags InUsage,
 		OaVec<VkVideoFormatPropertiesKHR>& OutFormats);

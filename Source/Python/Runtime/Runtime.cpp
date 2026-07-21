@@ -6,10 +6,10 @@
 
 // Process-scoped engine / context lifetime. The engine is pinned (non-movable):
 // Create returns an owning OaUniquePtr, which we hold directly.
-static OaUniquePtr<OaComputeEngine> gEngine;
+static OaUniquePtr<OaEngine> gEngine;
 static OaContext* gContext = nullptr;
 
-OaComputeEngine& PythonComputeEngine() {
+OaEngine& PythonEngine() {
     if (gEngine == nullptr) {
         throw std::runtime_error(
             "OA compute engine is not initialized; call "
@@ -32,7 +32,7 @@ void BindRuntime(nb::module_& m) {
         cfg.PresentationMode = OaPresentationMode::None;
         cfg.RegisterAsGlobal = true;
 
-        auto result = OaComputeEngine::Create(cfg);
+        auto result = OaEngine::Create(cfg);
         if (!result.IsOk()) {
             return false;
         }

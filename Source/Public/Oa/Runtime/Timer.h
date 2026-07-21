@@ -9,11 +9,9 @@
 //
 //   OaTimer timer(OaTimerMode::Gpu, "training_step");
 //   timer.Init(rt);
-//       timer.Begin(rt);
-//       // ... forward / backward / optimizer ...
-//       timer.End(rt);
-//       return loss;
-//   });
+//   // ... record forward / backward / optimizer into a context ...
+//   auto done = context.Submit(timer.GpuRegion());
+//   context.Wait(*done);
 //   OaF64 ms = timer.Commit(rt.Device, kBatch);  // readback + throughput
 //
 // CPU usage (data loading, model init, etc.):
@@ -30,7 +28,7 @@
 #include <Oa/Core/Time.h>
 #include <Oa/Runtime/GpuTimer.h>
 
-class OaComputeEngine;
+class OaEngine;
 class OaVkDevice;
 class OaVkStream;
 
@@ -42,22 +40,21 @@ public:
     ~OaTimer();
 
     // Initialize GPU query pool. No-op in CPU mode. Required before Begin in GPU mode.
-    [[nodiscard]] OaStatus Init(OaComputeEngine& InRt);
+    [[nodiscard]] OaStatus Init(OaEngine& InRt);
 
     void Destroy(const OaVkDevice& InDevice);
 
-    // ── Unified timing API ────────────────────────────────────────────────────
-    // GPU mode: records vkCmdWriteTimestamp2 into current CB
-    // CPU mode: records OaTimestamp::Now()
-    void Begin(OaComputeEngine& InRt);
-    void End(OaComputeEngine& InRt);
+    // Explicit GPU region passed to an event-returning submission owner.
+    [[nodiscard]] OaGpuTimer* GpuRegion() noexcept {
+        return Mode_ == OaTimerMode::Gpu && GpuInitialized_ ? &GpuTimer_ : nullptr;
+    }
 
     // ── CPU-only shorthand ────────────────────────────────────────────────────
     void CpuBegin();
     void CpuEnd();
 
     // ── Commit (readback + throughput) ────────────────────────────────────────
-    // Call after GPU work completes (after FlushComputeBatch) or immediately in CPU mode.
+    // Call after the GPU submission event completes or immediately in CPU mode.
     // InUnitsThisStep: samples / tokens / frames processed this step (for throughput).
     // Returns elapsed ms for this measurement.
     [[nodiscard]] OaF64 Commit(const OaVkDevice& InDevice, OaF64 InUnitsThisStep = 1.0);

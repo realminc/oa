@@ -60,7 +60,7 @@ TEST_F(ByteEmbedding, ForwardSingleToken) {
 		OaMatrixShape{1, 1}
 	);
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto output = embed.Forward(input);
 	
 	// Output should be [1, 1, d_model]
@@ -86,7 +86,7 @@ TEST_F(ByteEmbedding, ForwardSequence) {
 		OaMatrixShape{1, seq_len}
 	);
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto output = embed.Forward(input);
 	
 	// Output should be [1, seq_len, d_model]
@@ -117,7 +117,7 @@ TEST_F(ByteEmbedding, ForwardBatch) {
 		OaMatrixShape{batch, seq_len}
 	);
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto output = embed.Forward(input);
 	
 	// Output should be [batch, seq_len, d_model]
@@ -146,7 +146,7 @@ TEST_F(ByteEmbedding, ForwardAllByteValues) {
 		OaMatrixShape{1, 256}
 	);
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto output = embed.Forward(input);
 	
 	// Output should be [1, 256, d_model]
@@ -187,7 +187,7 @@ TEST_F(ByteEmbedding, ForwardLargeModel) {
 		OaMatrixShape{1, seq_len}
 	);
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto output = embed.Forward(input);
 	
 	EXPECT_EQ(output.GetShape()[0], 1);

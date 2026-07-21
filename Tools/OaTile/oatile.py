@@ -14,6 +14,12 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
+TOOLS_ROOT = Path(__file__).resolve().parents[1]
+if str(TOOLS_ROOT) not in sys.path:
+	sys.path.insert(0, str(TOOLS_ROOT))
+
+from autogen_io import write_generated_text
+
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCHEMA = REPO_ROOT / "Tools/OaTile/Schema/Fp32Tiled.toml"
@@ -331,8 +337,7 @@ def write(path: Path, content: str, dry_run: bool) -> None:
 	if dry_run:
 		print(path)
 		return
-	path.parent.mkdir(parents=True, exist_ok=True)
-	path.write_text(content, encoding="utf-8")
+	write_generated_text(path, content)
 	print(f"wrote {path.relative_to(REPO_ROOT) if path.is_relative_to(REPO_ROOT) else path}")
 
 

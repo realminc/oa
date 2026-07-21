@@ -1,15 +1,19 @@
 #include <gtest/gtest.h>
 
 #include <chrono>
+#include <cstdlib>
 #include <cstdio>
 #include <cstring>
 
 #include <Oa/Core/Memory.h>
 #include <Oa/Core/FnMatrix.h>
 #include <Oa/Runtime/Engine.h>
+#include <Oa/Runtime/ExecutionMemory.h>
 #include <Oa/Runtime/Allocator.h>
+#include <Oa/Runtime/Spirv.h>
 #include <Oa/Runtime/Pool.h>
 #include <Oa/Runtime/Context.h>
+#include <Oa/Runtime/ComputeGraph.h>
 
 #include <Oa/Runtime/Vma/Slab.h>
 #include <Oa/Core/Thread.h>
@@ -137,24 +141,84 @@ TEST(Spinlock, Guard) {
 
 // Vulkan allocator tests (require GPU)
 
-static OaUniquePtr<OaComputeEngine> CreateTestEngine() {
-	auto result = OaComputeEngine::Create({.AppName = "test_allocator", .MeshVulkanIndices = {}});
+static OaUniquePtr<OaEngine> CreateTestEngine(OaBool InRegisterAsGlobal = true) {
+	const char* validation = std::getenv("OA_VK_VALIDATION");
+	const OaBool enableValidation = validation != nullptr && validation[0] == '1';
+	auto result = OaEngine::Create({
+		.EnableValidation = enableValidation,
+		.AppName = "test_allocator",
+		.MeshVulkanIndices = {},
+		.RegisterAsGlobal = InRegisterAsGlobal,
+	});
 	return std::move(result.GetValue());   // move the owning pointer out (engine is pinned)
+}
+
+TEST(Allocator, DescriptorRangeExposesPaddedVkBufferTail) {
+	auto rt = CreateTestEngine(false);
+	auto result = rt->AllocBuffer(6);
+	ASSERT_TRUE(result.IsOk());
+	auto buffer = std::move(*result);
+	EXPECT_EQ(buffer.Size, 6U);
+	EXPECT_EQ(buffer.Capacity, 8U);
+	EXPECT_EQ(buffer.DescriptorRange(), 8U);
+
+	// Reuse must not expose the old allocation capacity through the descriptor.
+	auto largeResult = rt->AllocBuffer(4096);
+	ASSERT_TRUE(largeResult.IsOk());
+	auto large = std::move(*largeResult);
+	const auto reusedHandle = large.Buffer;
+	rt->FreeBuffer(large);
+	auto reusedResult = rt->AllocBuffer(6);
+	ASSERT_TRUE(reusedResult.IsOk());
+	auto reused = std::move(*reusedResult);
+	EXPECT_EQ(reused.Buffer, reusedHandle);
+	EXPECT_GE(reused.Capacity, 4096U);
+	EXPECT_EQ(reused.Size, 6U);
+	EXPECT_EQ(reused.DescriptorRange(), 8U);
+	rt->FreeBuffer(reused);
+	rt->FreeBuffer(buffer);
+
+	OaVkBuffer legacy;
+	legacy.Size = 6U;
+	EXPECT_EQ(legacy.Capacity, 0U);
+	EXPECT_EQ(legacy.DescriptorRange(), legacy.Size);
+}
+
+TEST(Allocator, BarePipelineCannotSatisfyDifferentStorageDtype) {
+	auto rt = CreateTestEngine(false);
+	const auto* spirv = OaSpvFindAny("Scale");
+	ASSERT_NE(spirv, nullptr);
+	OaPipelineSpec spec{
+		.WgSize = 256,
+		.NumBindings = 16,
+		.PushConstantBytes = 128,
+	};
+	const OaStringView kBareName = "ScaleBareDtypeContract";
+	ASSERT_TRUE(rt->EnsurePipeline(
+		kBareName, OaSpan<const OaU8>(spirv->Data, spirv->Size), spec).IsOk());
+
+	const auto& fp32 = rt->Pipelines.GetPipeline(kBareName, 0U);
+	ASSERT_NE(fp32.Pipeline, nullptr);
+	EXPECT_EQ(fp32.NativeDtype, 0U);
+	const auto& bf16 = rt->Pipelines.GetPipeline(kBareName, 1U);
+	EXPECT_EQ(bf16.Pipeline, nullptr);
+	const auto& invalid = rt->Pipelines.GetPipeline("Scale", 2U);
+	EXPECT_EQ(invalid.Pipeline, nullptr);
 }
 
 TEST(Allocator, EngineOwningPointerProvidesRaiiTeardown) {
 	{
 		auto rt = CreateTestEngine();
 		ASSERT_NE(rt.get(), nullptr);
-		EXPECT_EQ(OaComputeEngine::GetGlobal(), rt.get());
+		EXPECT_EQ(OaEngine::GetGlobal(), rt.get());
 		// No explicit Destroy(): the owning pointer must drain and release the
 		// engine, including clearing its process-global registration.
 	}
-	EXPECT_EQ(OaComputeEngine::GetGlobal(), nullptr);
+	EXPECT_EQ(OaEngine::GetGlobal(), nullptr);
 }
 
 TEST(Allocator, EngineInitializationIsOneShotAndStateful) {
-	OaComputeEngine engine;
+	OaEngine engine;
 	EXPECT_EQ(engine.GetState(), OaEngineState::Empty);
 	EXPECT_FALSE(engine.HasCompute());
 
@@ -171,22 +235,22 @@ TEST(Allocator, EngineInitializationIsOneShotAndStateful) {
 	EXPECT_EQ(secondInit.GetCode(), OaStatusCode::FailedPrecondition);
 	EXPECT_EQ(engine.GetState(), OaEngineState::Ready);
 
-	engine.Destroy();
+	EXPECT_TRUE(engine.Close().IsOk());
 	EXPECT_EQ(engine.GetState(), OaEngineState::Destroyed);
 	EXPECT_FALSE(engine.HasCompute());
-	engine.Destroy();
+	EXPECT_TRUE(engine.Close().IsOk());
 	EXPECT_EQ(engine.GetState(), OaEngineState::Destroyed);
 }
 
 TEST(Allocator, EngineOwnsTheContextUsedByFnMatrix) {
 	for (const OaBool registerGlobal : {true, false}) {
-		auto result = OaComputeEngine::Create(OaEngineConfig{
+		auto result = OaEngine::Create(OaEngineConfig{
 			.RegisterAsGlobal = registerGlobal,
 		});
 		ASSERT_TRUE(result.IsOk());
 		auto engine = std::move(*result);
-		EXPECT_EQ(OaComputeEngine::GetGlobal() != nullptr, registerGlobal);
-		OaContext::Scope contextScope(engine->GetContext());
+		EXPECT_EQ(OaEngine::GetGlobal() != nullptr, registerGlobal);
+		OaContext::RecordingScope contextScope(engine->GetContext());
 		auto input = OaFnMatrix::Ones(OaMatrixShape{16});
 		auto output = OaFnMatrix::Scale(input, 3.0F);
 		EXPECT_GT(engine->GetContext().NodeCount(), 0U);
@@ -198,27 +262,158 @@ TEST(Allocator, EngineOwnsTheContextUsedByFnMatrix) {
 	}
 }
 
+TEST(Allocator, StableMatrixStorageBelongsToExecutionSessionPolicy) {
+	auto engine = CreateTestEngine(false);
+	auto& context = engine->GetContext();
+
+	OaExecutionMemory::BeginStableFrame(context);
+	EXPECT_TRUE(OaExecutionMemory::IsStableFrameActive(context));
+	auto first = OaExecutionMemory::AllocateMatrixBuffer(
+		context, 4096, OaMemoryPlacement::DeviceLocal);
+	OaExecutionMemory::SealStableInputs(context);
+	EXPECT_TRUE(OaExecutionMemory::AreStableInputsSealed(context));
+	auto second = OaExecutionMemory::AllocateMatrixBuffer(
+		context, 8192, OaMemoryPlacement::DeviceLocal);
+	EXPECT_EQ(OaExecutionMemory::StableExternalResourceCount(context), 1U);
+	EXPECT_EQ(OaExecutionMemory::StableTransientResourceCount(context), 1U);
+	OaExecutionMemory::EndStableFrame(context);
+	ASSERT_TRUE(first);
+	ASSERT_TRUE(second);
+	EXPECT_FALSE(OaExecutionMemory::IsStableFrameActive(context));
+
+	OaExecutionMemory::BeginStableFrame(context);
+	auto firstReused = OaExecutionMemory::AllocateMatrixBuffer(
+		context, 2048, OaMemoryPlacement::DeviceLocal);
+	OaExecutionMemory::SealStableInputs(context);
+	auto secondReused = OaExecutionMemory::AllocateMatrixBuffer(
+		context, 8192, OaMemoryPlacement::DeviceLocal);
+	OaExecutionMemory::EndStableFrame(context);
+
+	EXPECT_EQ(firstReused.Get(), first.Get());
+	EXPECT_EQ(secondReused.Get(), second.Get());
+	EXPECT_EQ(firstReused->Size, 2048U);
+	EXPECT_GE(firstReused->Capacity, 4096U);
+}
+
 TEST(Allocator, MatrixOwnerDoesNotCallDestroyedEngine) {
 	OaMatrix retained;
+	OaMatrix retainedView;
+	auto engine = CreateTestEngine(false);
+	ASSERT_NE(engine, nullptr);
 	{
-		auto result = OaComputeEngine::Create(OaEngineConfig{
-			.RegisterAsGlobal = false,
-		});
-		ASSERT_TRUE(result.IsOk());
-		auto engine = std::move(*result);
-		OaContext::Scope contextScope(engine->GetContext());
+		OaContext::RecordingScope contextScope(engine->GetContext());
 		retained = OaFnMatrix::Ones(OaMatrixShape{16});
+		retainedView = retained.View(OaMatrixShape{4, 4});
 		ASSERT_TRUE(retained.HasStorage());
+		ASSERT_TRUE(retainedView.HasStorage());
 		ASSERT_TRUE(engine->GetContext().Execute().IsOk());
 		ASSERT_TRUE(engine->GetContext().Sync().IsOk());
 	}
-	// The engine has already released its VMA allocation. Dropping the last
-	// matrix owner must not call back through the dead non-global engine.
+
+	ASSERT_TRUE(engine->Close().IsOk());
+	// Close owns allocation teardown and mutates the shared wrapper seen by
+	// every retained matrix/view. No stale descriptor or mapped pointer remains.
+	EXPECT_FALSE(retained.HasStorage());
+	EXPECT_FALSE(retainedView.HasStorage());
+	EXPECT_EQ(retained.Data(), nullptr);
+	EXPECT_EQ(retainedView.Data(), nullptr);
+	EXPECT_EQ(retained.HeapSlot(), -1);
+	EXPECT_EQ(retainedView.HeapSlot(), -1);
+	EXPECT_EQ(retained.HostBlock().Ptr, nullptr);
+	EXPECT_EQ(retainedView.HostBlock().Ptr, nullptr);
+	EXPECT_EQ(retained.GetVkBuffer().Buffer, nullptr);
+	EXPECT_EQ(retained.GetVkBuffer().Allocation, nullptr);
+
+	// Dropping the wrappers after Close must not touch the dead allocator.
 	retained = {};
+	retainedView = {};
+}
+
+TEST(Allocator, EngineCloseDrainsAliasLeasesBeforeAllocatorTeardown) {
+	auto engine = CreateTestEngine(false);
+	ASSERT_NE(engine, nullptr);
+
+	constexpr OaU32 N = 64;
+	OaVec<OaMatrix> matrices;
+	{
+		OaContext::RecordingScope contextScope(engine->GetContext());
+		for (OaU32 i = 0; i < 5U; ++i) {
+			matrices.PushBack(OaFnMatrix::Empty(
+				{static_cast<OaI64>(N)}, OaScalarType::Float32,
+				OaMemoryPlacement::HostUpload));
+			ASSERT_TRUE(matrices.Back().HasStorage());
+		}
+	}
+
+	OaVec<OaVkBuffer> buffers;
+	for (const auto& matrix : matrices) buffers.PushBack(matrix.GetVkBuffer());
+	OaComputeGraph graph;
+	struct PushConstants { OaU32 Count; OaF32 Scale; } push{N, 1.001F};
+	for (OaU32 i = 0; i < 4U; ++i) {
+		OaVkBuffer dispatchBuffers[] = {buffers[i], buffers[i + 1U]};
+		OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Write};
+		graph.Add("Scale", dispatchBuffers, access, &push, sizeof(push), 1);
+	}
+	OaMatrix* eligible[] = {&matrices[1], &matrices[3]};
+	ASSERT_TRUE(graph.MaterializeAliases(*engine, eligible).IsOk());
+	ASSERT_NE(matrices[1].GetVkBuffer().Buffer, nullptr);
+	ASSERT_EQ(matrices[1].Data(), matrices[3].Data());
+
+	ASSERT_TRUE(engine->Close().IsOk());
+	for (const OaUsize index : {OaUsize{1}, OaUsize{3}}) {
+		EXPECT_FALSE(matrices[index].HasStorage());
+		EXPECT_EQ(matrices[index].Data(), nullptr);
+		EXPECT_EQ(matrices[index].HeapSlot(), -1);
+		EXPECT_EQ(matrices[index].GetVkBuffer().Buffer, nullptr);
+		EXPECT_EQ(matrices[index].GetVkBuffer().Allocation, nullptr);
+	}
+	// The graph and matrices intentionally outlive Close(). Their eventual
+	// shared-owner release must only delete the already-inert wrappers.
+}
+
+TEST(Allocator, BindlessExhaustionFailsAllocationWithoutLeakingStorage) {
+	auto engine = CreateTestEngine(false);
+	auto& rt = *engine;
+
+	const OaU32 savedBufferCapacity = OA_BINDLESS_CAPACITY;
+	const OaU32 savedImageCapacity = OA_BINDLESS_IMAGE_CAPACITY;
+	const OaU32 savedSamplerCapacity = OA_BINDLESS_SAMPLER_CAPACITY;
+	OA_BINDLESS_CAPACITY = 2;
+	OA_BINDLESS_IMAGE_CAPACITY = 2;
+	OA_BINDLESS_SAMPLER_CAPACITY = 2;
+	auto tinyResult = OaBindlessHeap::Create(rt.Device);
+	if (not tinyResult.IsOk()) {
+		OA_BINDLESS_CAPACITY = savedBufferCapacity;
+		OA_BINDLESS_IMAGE_CAPACITY = savedImageCapacity;
+		OA_BINDLESS_SAMPLER_CAPACITY = savedSamplerCapacity;
+		FAIL() << tinyResult.GetStatus().ToString();
+		return;
+	}
+
+	auto originalHeap = std::move(rt.Bindless);
+	rt.Bindless = std::move(*tinyResult);
+	auto first = rt.AllocBufferDevice(4096);
+	const OaVmaStats beforeFailure = rt.Allocator.GetStats();
+	auto exhausted = rt.AllocBufferDevice(4096);
+	const OaVmaStats afterFailure = rt.Allocator.GetStats();
+
+	EXPECT_TRUE(first.IsOk()) << first.GetStatus().ToString();
+	EXPECT_FALSE(exhausted.IsOk());
+	if (not exhausted.IsOk()) {
+		EXPECT_EQ(exhausted.GetStatus().GetCode(), OaStatusCode::ResourceExhausted);
+	}
+	EXPECT_EQ(afterFailure.AllocationCount, beforeFailure.AllocationCount);
+
+	if (first.IsOk()) rt.FreeBuffer(*first);
+	rt.Bindless.Destroy(rt.Device);
+	rt.Bindless = std::move(originalHeap);
+	OA_BINDLESS_CAPACITY = savedBufferCapacity;
+	OA_BINDLESS_IMAGE_CAPACITY = savedImageCapacity;
+	OA_BINDLESS_SAMPLER_CAPACITY = savedSamplerCapacity;
 }
 
 TEST(Allocator, AllocBarFallback) {
-	auto rtP = CreateTestEngine(); OaComputeEngine& rt = *rtP;
+	auto rtP = CreateTestEngine(); OaEngine& rt = *rtP;
 	{
 		const OaStringView name = rt.DeviceName();
 		fprintf(stderr, "  [test_allocator] device: %.*s\n",
@@ -245,7 +440,7 @@ TEST(Allocator, AllocBarFallback) {
 }
 
 TEST(Allocator, PlacementMetadataMatchesAllocationContract) {
-	auto rtP = CreateTestEngine(); OaComputeEngine& rt = *rtP;
+	auto rtP = CreateTestEngine(); OaEngine& rt = *rtP;
 
 	auto deviceResult = rt.Allocator.AllocDevice(4096);
 	ASSERT_TRUE(deviceResult.IsOk()) << deviceResult.GetStatus().ToString();
@@ -274,7 +469,7 @@ TEST(Allocator, PlacementMetadataMatchesAllocationContract) {
 }
 
 TEST(Allocator, DeviceLocalUploadReadbackRoundTrip) {
-	auto rtP = CreateTestEngine(); OaComputeEngine& rt = *rtP;
+	auto rtP = CreateTestEngine(); OaEngine& rt = *rtP;
 	constexpr OaU32 kCount = 1024;
 	constexpr OaU64 kBytes = kCount * sizeof(OaU32);
 
@@ -319,7 +514,7 @@ TEST(Allocator, DeviceLocalUploadReadbackRoundTrip) {
 }
 
 TEST(Allocator, UploadWeightsCorrectness) {
-	auto rtP = CreateTestEngine(); OaComputeEngine& rt = *rtP;
+	auto rtP = CreateTestEngine(); OaEngine& rt = *rtP;
 
 	constexpr OaU32 N = 1024;
 	constexpr OaU64 size = N * sizeof(OaF32);
@@ -346,7 +541,7 @@ TEST(Allocator, UploadWeightsCorrectness) {
 }
 
 TEST(Allocator, BudgetQuery) {
-	auto rtP = CreateTestEngine(); OaComputeEngine& rt = *rtP;
+	auto rtP = CreateTestEngine(); OaEngine& rt = *rtP;
 
 	auto stats = rt.Allocator.GetStats();
 	fprintf(stderr, "  Budget: used=%llu MB, budget=%llu MB\n",
@@ -359,7 +554,7 @@ TEST(Allocator, BudgetQuery) {
 }
 
 TEST(Allocator, BenchmarkVmaVsSlab) {
-	auto rtP = CreateTestEngine(); OaComputeEngine& rt = *rtP;
+	auto rtP = CreateTestEngine(); OaEngine& rt = *rtP;
 
 	constexpr OaU32 kVmaIters = 1000;
 	constexpr OaU64 kBufSize = 1024;
@@ -402,7 +597,7 @@ TEST(Allocator, BenchmarkVmaVsSlab) {
 // Inference pool tests (require GPU)
 
 TEST(InferencePool, PreAllocatedStablePointers) {
-	auto rtP = CreateTestEngine(); OaComputeEngine& rt = *rtP;
+	auto rtP = CreateTestEngine(); OaEngine& rt = *rtP;
 
 	OaVkInferencePoolConfig cfg{};
 	cfg.NumLayers = 4;
@@ -444,7 +639,7 @@ TEST(InferencePool, PreAllocatedStablePointers) {
 }
 
 TEST(InferencePool, RingBufferWrapAround) {
-	auto rtP = CreateTestEngine(); OaComputeEngine& rt = *rtP;
+	auto rtP = CreateTestEngine(); OaEngine& rt = *rtP;
 
 	OaVkInferencePoolConfig cfg{};
 	cfg.NumLayers = 1;
@@ -472,7 +667,7 @@ TEST(InferencePool, RingBufferWrapAround) {
 }
 
 TEST(InferencePool, ResetSessionZeros) {
-	auto rtP = CreateTestEngine(); OaComputeEngine& rt = *rtP;
+	auto rtP = CreateTestEngine(); OaEngine& rt = *rtP;
 
 	OaVkInferencePoolConfig cfg{};
 	cfg.NumLayers = 2;
@@ -498,7 +693,7 @@ TEST(InferencePool, ResetSessionZeros) {
 }
 
 TEST(InferencePool, WeightPinning) {
-	auto rtP = CreateTestEngine(); OaComputeEngine& rt = *rtP;
+	auto rtP = CreateTestEngine(); OaEngine& rt = *rtP;
 
 	auto bufResult = rt.Allocator.AllocHostVisible(4096);
 	ASSERT_TRUE(bufResult.IsOk());
@@ -566,7 +761,7 @@ TEST(SecureBuffer, DefaultIsInvalid) {
 // PQC pool tests (require GPU)
 
 TEST(PqcPool, NttSlabAllocFree) {
-	auto rtP = CreateTestEngine(); OaComputeEngine& rt = *rtP;
+	auto rtP = CreateTestEngine(); OaEngine& rt = *rtP;
 
 	OaVkPqcPoolConfig cfg{};
 	cfg.MaxConcurrentSigns = 8;
@@ -604,7 +799,7 @@ TEST(PqcPool, NttSlabAllocFree) {
 }
 
 TEST(PqcPool, HashStatePool) {
-	auto rtP = CreateTestEngine(); OaComputeEngine& rt = *rtP;
+	auto rtP = CreateTestEngine(); OaEngine& rt = *rtP;
 
 	OaVkPqcPoolConfig cfg{};
 	cfg.MaxConcurrentSigns = 4;
@@ -634,7 +829,7 @@ TEST(PqcPool, HashStatePool) {
 }
 
 TEST(PqcPool, SecureKeyAlloc) {
-	auto rtP = CreateTestEngine(); OaComputeEngine& rt = *rtP;
+	auto rtP = CreateTestEngine(); OaEngine& rt = *rtP;
 
 	OaVkPqcPoolConfig cfg{};
 	cfg.MaxConcurrentSigns = 4;

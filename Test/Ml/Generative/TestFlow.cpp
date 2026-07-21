@@ -23,7 +23,7 @@ OaMatrix FromF32(OaSpan<const OaF32> InValues, const OaMatrixShape& InShape) {
 
 TEST_VK(FlowTest, LinearMatchBroadcastsBatchTimeAndEulerReconstructs) {
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	const OaF32 cleanValues[] = {0, 2, 4, 6, 8, 10};
 	const OaF32 noiseValues[] = {10, 12, 14, 16, 18, 20};
 	const OaF32 timeValues[] = {0.25F, 0.75F};
@@ -47,7 +47,7 @@ TEST_VK(FlowTest, LinearMatchBroadcastsBatchTimeAndEulerReconstructs) {
 
 TEST_VK(FlowTest, TimeEmbeddingRunsOnGpuAndMatchesCpuOracle) {
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	OaFlowTimeEmbedding embedding(4, 100.0F, 10.0F);
 	const OaF32 timeValues[] = {0.0F, 0.5F};
 	auto output = embedding.Forward(FromF32(timeValues, {2}));
@@ -69,7 +69,7 @@ TEST_VK(FlowTest, TimeEmbeddingRunsOnGpuAndMatchesCpuOracle) {
 
 TEST_VK(FlowTest, LinearMatchAutogradReachesBothEndpoints) {
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	const OaF32 cleanValues[] = {1, 2};
 	const OaF32 noiseValues[] = {5, 8};
 	const OaF32 timeValues[] = {0.25F};
@@ -93,7 +93,7 @@ TEST_VK(FlowTest, LinearMatchAutogradReachesBothEndpoints) {
 
 TEST_VK(FlowTest, MaskedMseExcludesPaddingAndPreservesAutograd) {
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	const OaF32 predictionValues[] = {
 		1, 3, 5, 7,
 		100, 100, 100, 100,
@@ -126,7 +126,7 @@ TEST_VK(FlowTest, MaskedMseExcludesPaddingAndPreservesAutograd) {
 
 TEST_VK(FlowTest, MaskedMseAllPaddingReturnsZeroAndRejectsBadShape) {
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	auto prediction = OaFnMatrix::Ones({2, 3, 4}, OaScalarType::Float32);
 	auto target = OaFnMatrix::Zeros({2, 3, 4}, OaScalarType::Float32);
 	auto mask = OaFnMatrix::Zeros({2, 3, 1}, OaScalarType::Float32);
@@ -141,7 +141,7 @@ TEST_VK(FlowTest, MaskedMseAllPaddingReturnsZeroAndRejectsBadShape) {
 
 TEST_VK(FlowTest, MaskedMseLargeMotionShapeRemainsNonNegative) {
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	auto prediction = OaFnMatrix::Ones({4, 64, 263}, OaScalarType::Float32);
 	auto target = OaFnMatrix::Zeros({4, 64, 263}, OaScalarType::Float32);
 	auto mask = OaFnMatrix::Ones({4, 64, 1}, OaScalarType::Float32);
@@ -188,7 +188,7 @@ TEST_VK(FlowTest, HumanMl3dGeometryMetricsHaveExactIdentityOracle) {
 
 TEST_VK(FlowTest, DenseAndMoeTransformersShareBidirectionalContract) {
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	const OaFlowTransformerConfig denseConfig{
 		.DModel = 4,
 		.HiddenDim = 8,
@@ -250,7 +250,7 @@ TEST_VK(FlowTest, TransformerRejectsAmbiguousShapesAndMoeConfig) {
 
 TEST_VK(FlowTest, PaddingMaskPreventsInvalidKeysFromChangingValidTokens) {
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	const OaF32 firstValues[] = {
 		1, 2, 3, 4,
 		5, 6, 7, 8,
@@ -294,7 +294,7 @@ TEST_VK(FlowTest, PaddingMaskPreventsInvalidKeysFromChangingValidTokens) {
 
 TEST_VK(FlowTest, DenoiserSharesConditionedDenseAndMoeContract) {
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	auto config = OaFlowDenoiserConfig{
 		.InputDim = 2,
 		.ConditionDim = 3,
@@ -331,7 +331,7 @@ TEST_VK(FlowTest, DenoiserSharesConditionedDenseAndMoeContract) {
 
 TEST_VK(FlowTest, AdaLnZeroAndClassifierFreeGuidanceAreSharedContracts) {
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	auto config = OaFlowDenoiserConfig{
 		.InputDim = 2,
 		.ConditionDim = 3,
@@ -365,7 +365,7 @@ TEST_VK(FlowTest, AdaLnZeroAndClassifierFreeGuidanceAreSharedContracts) {
 	auto sample = OaFnMatrix::RandN({2, 2, 2});
 	auto time = OaFnMatrix::Full({2, 1}, 0.5F);
 	auto condition = OaFnMatrix::Ones({2, 3}, OaScalarType::Float32);
-	OaContext::ScopedEval eval(ctx);
+	OaModule::ScopedEval eval(model);
 	auto unconditional = model.ForwardConditioned(
 		sample, time, OaFnMatrix::Zeros({2, 3}, OaScalarType::Float32));
 	auto conditional = model.ForwardConditioned(sample, time, condition);

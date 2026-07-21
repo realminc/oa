@@ -26,6 +26,225 @@ static float LeakyReluGrad(float x, float alpha = 0.01f) { return x > 0.0f ? 1.0
 static float Elu(float x, float alpha = 1.0f) { return x > 0.0f ? x : alpha * (std::exp(x) - 1.0f); }
 static float EluGrad(float y, float alpha = 1.0f) { return y > 0.0f ? 1.0f : y + alpha; }
 
+static OaMatrix MatrixFromHost(const std::vector<float>& InData, const OaMatrixShape& InShape) {
+	return OaFnMatrix::FromBytes(
+		OaSpan<const OaU8>(reinterpret_cast<const OaU8*>(InData.data()),
+			InData.size() * sizeof(float)), InShape);
+}
+
+static std::vector<float> MatrixToHost(const OaMatrix& InMatrix) {
+	std::vector<float> result(static_cast<size_t>(InMatrix.NumElements()));
+	EXPECT_TRUE(OaFnMatrix::CopyToHost(
+		InMatrix, result.data(), result.size() * sizeof(float)).IsOk());
+	return result;
+}
+
+static std::vector<float> AxisSoftmaxReference(
+	const std::vector<float>& InInput, OaU32 InOuter, OaU32 InDim,
+	OaU32 InInner, bool InLog) {
+	std::vector<float> result(InInput.size());
+	for (OaU32 outer = 0; outer < InOuter; ++outer) {
+		for (OaU32 inner = 0; inner < InInner; ++inner) {
+			const OaU32 base = outer * InDim * InInner + inner;
+			float maximum = -INFINITY;
+			for (OaU32 axis = 0; axis < InDim; ++axis) {
+				maximum = std::max(maximum, InInput[base + axis * InInner]);
+			}
+			float sum = 0.0F;
+			for (OaU32 axis = 0; axis < InDim; ++axis) {
+				sum += std::exp(InInput[base + axis * InInner] - maximum);
+			}
+			for (OaU32 axis = 0; axis < InDim; ++axis) {
+				const OaU32 index = base + axis * InInner;
+				const float shifted = InInput[index] - maximum;
+				result[index] = InLog ? shifted - std::log(sum)
+					: std::exp(shifted) / sum;
+			}
+		}
+	}
+	return result;
+}
+
+static std::vector<float> AxisSoftmaxGradientReference(
+	const std::vector<float>& InOutput, const std::vector<float>& InUpstream,
+	OaU32 InOuter, OaU32 InDim, OaU32 InInner, bool InLog) {
+	std::vector<float> result(InOutput.size());
+	for (OaU32 outer = 0; outer < InOuter; ++outer) {
+		for (OaU32 inner = 0; inner < InInner; ++inner) {
+			const OaU32 base = outer * InDim * InInner + inner;
+			float reduced = 0.0F;
+			for (OaU32 axis = 0; axis < InDim; ++axis) {
+				const OaU32 index = base + axis * InInner;
+				reduced += InLog ? InUpstream[index]
+					: InUpstream[index] * InOutput[index];
+			}
+			for (OaU32 axis = 0; axis < InDim; ++axis) {
+				const OaU32 index = base + axis * InInner;
+				result[index] = InLog
+					? InUpstream[index] - std::exp(InOutput[index]) * reduced
+					: InOutput[index] * (InUpstream[index] - reduced);
+			}
+		}
+	}
+	return result;
+}
+
+TEST(OaFnMatrixBackward, SchemaPilotsAttachTapeToSemanticOperations) {
+	auto& ctx = OaContext::GetDefault();
+	OaContext::RecordingScope scope(ctx);
+	ctx.Clear();
+	auto a = OaFnMatrix::Empty({2, 3});
+	auto b = OaFnMatrix::Empty({2, 3});
+	auto weight = OaFnMatrix::Empty({4, 3});
+	a.SetRequiresGrad(true);
+	b.SetRequiresGrad(true);
+	weight.SetRequiresGrad(true);
+	// SetRequiresGrad creates persistent gradient storage. Its initialization is
+	// unrelated to this provenance-only recording and is deliberately discarded.
+	ctx.Clear();
+
+	OaGradientTape tape;
+	auto sum = OaFnMatrix::Add(a, b);
+	auto product = OaFnMatrix::MatMulNt(sum, weight);
+	ASSERT_FALSE(product.IsEmpty());
+	auto loss = OaFnMatrix::Sum(product, -1);
+	tape.Backward(loss);
+
+	const auto* graph = ctx.SemanticGraph();
+	ASSERT_NE(graph, nullptr);
+	ASSERT_TRUE(graph->Validate().IsOk());
+	ASSERT_GE(graph->OperationCount(), 6U);
+	ASSERT_EQ(graph->Autograd().Size(), 3U);
+	EXPECT_EQ(graph->Autograd()[0].ForwardOperation, 0U);
+	EXPECT_EQ(graph->Autograd()[1].ForwardOperation, 1U);
+	EXPECT_EQ(graph->Autograd()[2].ForwardOperation, 2U);
+	EXPECT_LT(graph->Autograd()[0].Sequence, graph->Autograd()[1].Sequence);
+	EXPECT_LT(graph->Autograd()[1].Sequence, graph->Autograd()[2].Sequence);
+	EXPECT_TRUE(graph->Autograd()[0].BackwardExpanded);
+	EXPECT_EQ(graph->Autograd()[0].BackwardOperationCount, 0U);
+	EXPECT_TRUE(graph->Autograd()[1].BackwardExpanded);
+	EXPECT_EQ(graph->Autograd()[1].BackwardOperationCount, 2U);
+	EXPECT_TRUE(graph->Autograd()[2].BackwardExpanded);
+	EXPECT_EQ(graph->Autograd()[2].BackwardOperationCount, 1U);
+
+	const auto sumNode = sum.GetGradFn();
+	const auto productNode = product.GetGradFn();
+	const auto lossNode = loss.GetGradFn();
+	ASSERT_TRUE(sumNode);
+	ASSERT_TRUE(productNode);
+	ASSERT_TRUE(lossNode);
+	EXPECT_EQ(sumNode->ForwardSemanticOperation_, 0U);
+	EXPECT_EQ(productNode->ForwardSemanticOperation_, 1U);
+	EXPECT_EQ(lossNode->ForwardSemanticOperation_, 2U);
+	EXPECT_EQ(graph->Autograd()[0].Output,
+		graph->Operations()[0].Outputs[0]);
+	EXPECT_EQ(graph->Autograd()[1].Output,
+		graph->Operations()[1].Outputs[0]);
+	EXPECT_EQ(graph->Autograd()[2].Output,
+		graph->Operations()[2].Outputs[0]);
+	const auto matmulBackwardFirst =
+		graph->Autograd()[1].BackwardFirstOperation;
+	ASSERT_LT(matmulBackwardFirst + 1U, graph->OperationCount());
+	EXPECT_EQ(graph->Operations()[matmulBackwardFirst].Name, "LinearDataBwd");
+	EXPECT_EQ(graph->Operations()[matmulBackwardFirst + 1U].Name,
+		"LinearWeightBwd");
+	EXPECT_EQ(graph->Operations()[matmulBackwardFirst].BackwardOf, 1U);
+	EXPECT_EQ(graph->Operations()[matmulBackwardFirst + 1U].BackwardOf, 1U);
+	EXPECT_EQ(graph->Operations()[matmulBackwardFirst].BackwardSequence,
+		graph->Autograd()[1].Sequence);
+	const auto sumBackwardFirst = graph->Autograd()[2].BackwardFirstOperation;
+	ASSERT_LT(sumBackwardFirst, graph->OperationCount());
+	EXPECT_EQ(graph->Operations()[sumBackwardFirst].Name,
+		OaOperationRegistry::Mul.Name);
+	EXPECT_EQ(graph->Operations()[sumBackwardFirst].BackwardOf, 2U);
+
+	const auto report = graph->DebugReportJson("autograd-pilot").StdStr();
+	EXPECT_NE(report.find("\"autograd\""), std::string::npos);
+	EXPECT_NE(report.find("\"backward_of\": 1"), std::string::npos);
+	EXPECT_NE(report.find("\"backward_operation_count\": 2"),
+		std::string::npos);
+	EXPECT_NE(report.find("\"backward_operation_count\": 1"),
+		std::string::npos);
+	EXPECT_EQ(report.find("VkBuffer"), std::string::npos);
+	ctx.Clear();
+}
+
+// These are architecture-pilot tests, not only numerical kernel tests: Add and
+// MatMulNt are hand-written lowerings whose autograd attachment is generated
+// from their operation schemas. They fail if that generated policy disappears.
+TEST(OaFnMatrixBackward, SchemaAttachAddSameShape) {
+	auto& ctx = OaContext::GetDefault();
+	OaContext::RecordingScope scope(ctx);
+	auto a = MatrixFromHost({1.0f, 2.0f, 3.0f, 4.0f}, {2, 2});
+	auto b = MatrixFromHost({5.0f, 6.0f, 7.0f, 8.0f}, {2, 2});
+	a.SetRequiresGrad(true);
+	b.SetRequiresGrad(true);
+
+	OaGradientTape tape;
+	auto loss = OaFnMatrix::Sum(OaFnMatrix::Add(a, b), -1);
+	tape.Backward(loss);
+	ASSERT_TRUE(ctx.Execute().IsOk());
+	ASSERT_TRUE(ctx.Sync().IsOk());
+
+	for (float grad : MatrixToHost(a.GradMatrix())) EXPECT_NEAR(grad, 1.0f, 1e-5f);
+	for (float grad : MatrixToHost(b.GradMatrix())) EXPECT_NEAR(grad, 1.0f, 1e-5f);
+}
+
+TEST(OaFnMatrixBackward, SchemaAttachAddBroadcastReduction) {
+	auto& ctx = OaContext::GetDefault();
+	OaContext::RecordingScope scope(ctx);
+	auto a = MatrixFromHost({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f}, {2, 3});
+	auto b = MatrixFromHost({0.5f, 1.0f, 1.5f}, {3});
+	a.SetRequiresGrad(true);
+	b.SetRequiresGrad(true);
+
+	OaGradientTape tape;
+	auto loss = OaFnMatrix::Sum(OaFnMatrix::Add(a, b), -1);
+	tape.Backward(loss);
+	ASSERT_TRUE(ctx.Execute().IsOk());
+	ASSERT_TRUE(ctx.Sync().IsOk());
+
+	for (float grad : MatrixToHost(a.GradMatrix())) EXPECT_NEAR(grad, 1.0f, 1e-5f);
+	for (float grad : MatrixToHost(b.GradMatrix())) EXPECT_NEAR(grad, 2.0f, 1e-5f);
+}
+
+TEST(OaFnMatrixBackward, SchemaAttachMatMulNtRank2) {
+	auto& ctx = OaContext::GetDefault();
+	OaContext::RecordingScope scope(ctx);
+	const std::vector<float> aHost = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+	const std::vector<float> bHost = {
+		1.0f, 2.0f, 3.0f,
+		4.0f, 5.0f, 6.0f,
+		7.0f, 8.0f, 9.0f,
+		10.0f, 11.0f, 12.0f};
+	auto a = MatrixFromHost(aHost, {2, 3});
+	auto b = MatrixFromHost(bHost, {4, 3});
+	a.SetRequiresGrad(true);
+	b.SetRequiresGrad(true);
+
+	OaGradientTape tape;
+	auto loss = OaFnMatrix::Sum(OaFnMatrix::MatMulNt(a, b), -1);
+	tape.Backward(loss);
+	ASSERT_TRUE(ctx.Execute().IsOk());
+	ASSERT_TRUE(ctx.Sync().IsOk());
+
+	const auto gradA = MatrixToHost(a.GradMatrix());
+	const auto gradB = MatrixToHost(b.GradMatrix());
+	for (size_t m = 0; m < 2; ++m) {
+		for (size_t k = 0; k < 3; ++k) {
+			float expected = 0.0f;
+			for (size_t n = 0; n < 4; ++n) expected += bHost[n * 3 + k];
+			EXPECT_NEAR(gradA[m * 3 + k], expected, 1e-4f);
+		}
+	}
+	for (size_t n = 0; n < 4; ++n) {
+		for (size_t k = 0; k < 3; ++k) {
+			const float expected = aHost[k] + aHost[3 + k];
+			EXPECT_NEAR(gradB[n * 3 + k], expected, 1e-4f);
+		}
+	}
+}
+
 // ─── Simple Activation Backward Tests ──────────────────────────────────────
 
 TEST(OaFnMatrixBackward, ReluBwd) {
@@ -295,7 +514,7 @@ TEST(OaFnMatrixBackward, SpirvPushBlockReflection) {
 
 TEST(OaFnMatrixBackward, LeakyReluAutogradNonDefaultAlpha) {
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	const OaF32 alpha = 0.25f;  // far from the 0.01 default → exposes a dropped alpha
 
 	std::vector<float> x = {-2.0f, -1.3f, -0.4f, 0.5f, 1.7f, 2.5f};
@@ -310,7 +529,7 @@ TEST(OaFnMatrixBackward, LeakyReluAutogradNonDefaultAlpha) {
 
 TEST(OaFnMatrixBackward, EluAutogradNonDefaultAlpha) {
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	const OaF32 alpha = 0.5f;  // != 1.0 default → exposes a dropped alpha on y<=0
 
 	std::vector<float> x = {-2.0f, -1.3f, -0.4f, 0.5f, 1.7f, 2.5f};
@@ -345,26 +564,98 @@ TEST(OaFnMatrixBackward, MishBwd) {
 	}
 }
 
-TEST(OaFnMatrixBackward, SoftmaxBwd) {
+TEST(OaFnMatrixBackward, SoftmaxFamilyPreservesSelectedAxisInAutograd) {
 	auto& ctx = OaContext::GetDefault();
-	
-	std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
-	std::vector<float> grad_output_data = {0.1f, 0.2f, 0.3f, 0.2f, 0.2f};
-	
-	auto input = OaFnMatrix::FromBytes(OaSpan<const OaU8>(reinterpret_cast<const OaU8*>(input_data.data()), input_data.size() * sizeof(float)), OaMatrixShape{5});
-	auto forward_output = OaFnMatrix::Softmax(input);
-	auto grad_output = OaFnMatrix::FromBytes(OaSpan<const OaU8>(reinterpret_cast<const OaU8*>(grad_output_data.data()), grad_output_data.size() * sizeof(float)), OaMatrixShape{5});
-	
-	auto grad_input = OaFnMatrix::SoftmaxBwd(forward_output, grad_output);
-	[[maybe_unused]] auto exec_result = ctx.Execute();
-	[[maybe_unused]] auto sync_result = ctx.Sync();
-	
-	std::vector<float> result(5);
-	[[maybe_unused]] auto copy_result_13 = OaFnMatrix::CopyToHost(grad_input, result.data(), result.size() * sizeof(float));
-	
-	for (size_t i = 0; i < 5; i++) {
-		EXPECT_TRUE(std::isfinite(result[i]));
+	constexpr OaU32 kOuter = 2U;
+	constexpr OaU32 kDim = 3U;
+	constexpr OaU32 kInner = 4U;
+	std::vector<float> inputData(kOuter * kDim * kInner);
+	std::vector<float> upstreamData(inputData.size());
+	for (OaU32 i = 0; i < inputData.size(); ++i) {
+		inputData[i] = static_cast<float>(static_cast<OaI32>((i * 7U) % 17U) - 8) * 0.17F;
+		upstreamData[i] = static_cast<float>(static_cast<OaI32>((i * 5U) % 11U) - 5) * 0.09F;
 	}
+
+	auto runCase = [&](bool inLog) {
+		ctx.Clear();
+		auto input = MatrixFromHost(inputData, {kOuter, kDim, kInner});
+		auto upstream = MatrixFromHost(upstreamData, {kOuter, kDim, kInner});
+		input.SetRequiresGrad(true);
+		OaGradientTape tape;
+		auto output = inLog
+			? OaFnMatrix::LogSoftmax(input, 1)
+			: OaFnMatrix::Softmax(input, 1);
+		ASSERT_FALSE(output.IsEmpty());
+		auto loss = OaFnMatrix::Sum(OaFnMatrix::Mul(output, upstream), -1);
+		tape.Backward(loss);
+		ASSERT_TRUE(ctx.Execute().IsOk());
+		ASSERT_TRUE(ctx.Sync().IsOk());
+
+		const auto expectedOutput = AxisSoftmaxReference(
+			inputData, kOuter, kDim, kInner, inLog);
+		const auto expectedGradient = AxisSoftmaxGradientReference(
+			expectedOutput, upstreamData, kOuter, kDim, kInner, inLog);
+		const auto outputData = MatrixToHost(output);
+		const auto gradientData = MatrixToHost(input.GradMatrix());
+		for (OaU32 i = 0; i < inputData.size(); ++i) {
+			EXPECT_NEAR(outputData[i], expectedOutput[i], 2e-5F)
+				<< (inLog ? "LogSoftmax" : "Softmax") << " output i=" << i;
+			EXPECT_NEAR(gradientData[i], expectedGradient[i], 3e-5F)
+				<< (inLog ? "LogSoftmax" : "Softmax") << " gradient i=" << i;
+		}
+	};
+	runCase(false);
+	runCase(true);
+	ctx.Clear();
+}
+
+TEST(OaFnMatrixBackward, MeanPreservesSelectedAxisInAutograd) {
+	auto& ctx = OaContext::GetDefault();
+	ctx.Clear();
+	constexpr OaU32 kOuter = 2U;
+	constexpr OaU32 kDim = 3U;
+	constexpr OaU32 kInner = 4U;
+	std::vector<float> inputData(kOuter * kDim * kInner);
+	std::vector<float> upstreamData(kOuter * kInner);
+	for (OaU32 i = 0; i < static_cast<OaU32>(inputData.size()); ++i) {
+		inputData[i] = static_cast<float>(static_cast<OaI32>(i) - 9) * 0.13F;
+	}
+	for (OaU32 i = 0; i < static_cast<OaU32>(upstreamData.size()); ++i) {
+		upstreamData[i] = static_cast<float>(static_cast<OaI32>(i) - 3) * 0.21F;
+	}
+
+	auto input = MatrixFromHost(inputData, {kOuter, kDim, kInner});
+	auto upstream = MatrixFromHost(upstreamData, {kOuter, 1, kInner});
+	input.SetRequiresGrad(true);
+	OaGradientTape tape;
+	auto output = OaFnMatrix::Mean(input, 1);
+	ASSERT_EQ(output.GetShape(), (OaMatrixShape{kOuter, 1, kInner}));
+	auto loss = OaFnMatrix::Sum(OaFnMatrix::Mul(output, upstream), -1);
+	tape.Backward(loss);
+	ASSERT_TRUE(ctx.Execute().IsOk());
+	ASSERT_TRUE(ctx.Sync().IsOk());
+
+	const auto outputData = MatrixToHost(output);
+	const auto gradientData = MatrixToHost(input.GradMatrix());
+	for (OaU32 outer = 0; outer < kOuter; ++outer) {
+		for (OaU32 inner = 0; inner < kInner; ++inner) {
+			const OaU32 outputIndex = outer * kInner + inner;
+			float expectedOutput = 0.0F;
+			for (OaU32 axis = 0; axis < kDim; ++axis) {
+				expectedOutput += inputData[
+					outer * kDim * kInner + axis * kInner + inner];
+			}
+			expectedOutput /= static_cast<float>(kDim);
+			EXPECT_NEAR(outputData[outputIndex], expectedOutput, 1e-6F);
+			for (OaU32 axis = 0; axis < kDim; ++axis) {
+				const OaU32 inputIndex =
+					outer * kDim * kInner + axis * kInner + inner;
+				EXPECT_NEAR(gradientData[inputIndex],
+					upstreamData[outputIndex] / static_cast<float>(kDim), 1e-6F);
+			}
+		}
+	}
+	ctx.Clear();
 }
 
 
@@ -659,11 +950,14 @@ TEST(OaFnMatrixBackward, LayerNormBwd) {
 	NormForceFp32();
 	OaFnMatrix::SetRngSeed(7);
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 
 	// rank-3 [B,T,C] = [2,3,4] → rows=6, cols=4. Exercises the rows>1 dw_contrib
 	// path AND the dBias rank-3 reduction (must sum over B and T, not just B).
 	constexpr OaI32 B = 2, T = 3, C = 4;
+	// A deliberately non-default epsilon proves the forward value is retained by
+	// the generated autograd attachment instead of backward hard-coding 1e-5.
+	constexpr OaF32 kForwardEps = 0.01F;
 
 	auto x = OaFnMatrix::Scale(OaFnMatrix::RandN(OaMatrixShape{B, T, C}, OaScalarType::Float32), 1.5f);
 	auto weight = OaFnMatrix::Scale(OaFnMatrix::RandN(OaMatrixShape{C}, OaScalarType::Float32), 0.5f);
@@ -673,7 +967,7 @@ TEST(OaFnMatrixBackward, LayerNormBwd) {
 	auto target = OaFnMatrix::RandN(OaMatrixShape{B, T, C}, OaScalarType::Float32);
 
 	OaGradientTape tape;
-	auto out  = OaFnMatrix::LayerNorm(x, weight, bias, 1e-5f);
+	auto out  = OaFnMatrix::LayerNorm(x, weight, bias, kForwardEps);
 	auto loss = OaFnLoss::Mse(out, target);
 	tape.Backward(loss);
 	(void)ctx.Execute();
@@ -687,7 +981,7 @@ TEST(OaFnMatrixBackward, LayerNormBwd) {
 
 	auto lossFunc = [&]() -> OaF32 {
 		OaGradNo noGrad;
-		auto o = OaFnMatrix::LayerNorm(x, weight, bias, 1e-5f);
+		auto o = OaFnMatrix::LayerNorm(x, weight, bias, kForwardEps);
 		auto l = OaFnLoss::Mse(o, target);
 		(void)ctx.Execute(); (void)ctx.Sync();
 		return l.DataAs<const OaF32>()[0];
@@ -708,10 +1002,12 @@ TEST(OaFnMatrixBackward, RmsNormBwd) {
 	NormForceFp32();
 	OaFnMatrix::SetRngSeed(11);
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 
 	// rank-3 [B,T,C] = [2,3,4] → rows=6, cols=4 (rows>1 dw_contrib path).
 	constexpr OaI32 B = 2, T = 3, C = 4;
+	// This non-default value catches any forward/backward epsilon mismatch.
+	constexpr OaF32 kForwardEps = 0.01F;
 
 	auto x = OaFnMatrix::Scale(OaFnMatrix::RandN(OaMatrixShape{B, T, C}, OaScalarType::Float32), 1.5f);
 	auto weight = OaFnMatrix::Scale(OaFnMatrix::RandN(OaMatrixShape{C}, OaScalarType::Float32), 0.5f);
@@ -721,7 +1017,7 @@ TEST(OaFnMatrixBackward, RmsNormBwd) {
 	auto target = OaFnMatrix::RandN(OaMatrixShape{B, T, C}, OaScalarType::Float32);
 
 	OaGradientTape tape;
-	auto out  = OaFnMatrix::RmsNorm(x, weight, 1e-5f);
+	auto out  = OaFnMatrix::RmsNorm(x, weight, kForwardEps);
 	auto loss = OaFnLoss::Mse(out, target);
 	tape.Backward(loss);
 	(void)ctx.Execute();
@@ -732,7 +1028,7 @@ TEST(OaFnMatrixBackward, RmsNormBwd) {
 
 	auto lossFunc = [&]() -> OaF32 {
 		OaGradNo noGrad;
-		auto o = OaFnMatrix::RmsNorm(x, weight, 1e-5f);
+		auto o = OaFnMatrix::RmsNorm(x, weight, kForwardEps);
 		auto l = OaFnLoss::Mse(o, target);
 		(void)ctx.Execute(); (void)ctx.Sync();
 		return l.DataAs<const OaF32>()[0];
@@ -975,7 +1271,7 @@ TEST(OaFnMatrixBackward, MaxBwd) {
 // reduction fix (see MaxBwd note above).
 TEST(OaFnMatrixBackward, MaxAutogradTape) {
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 
 	std::vector<float> x = {-1.0f, 0.5f, 3.0f, 2.0f, -4.0f};  // max at index 2
 	auto input = OaFnMatrix::FromBytes(OaSpan<const OaU8>(reinterpret_cast<const OaU8*>(x.data()), x.size() * sizeof(float)), OaMatrixShape{5});

@@ -2,7 +2,7 @@
 #
 # This is the *source of truth* for indexing and view operations. The generator
 # emits .h declarations, .cpp implementations from this file.
-# See Tools/OaFnAutogen/oafnautogen.py and Docs/Rewrite/Opus/OaFnAutogen.md.
+# See Tools/FnAutogen/README.md and Tools/FnAutogen/oafnautogen.py.
 #
 # Indexing operations select, slice, or rearrange tensor elements.
 # View operations create new views of existing data without copying.
@@ -65,4 +65,3 @@ extra_params   = [
     { name = "End", type = "OaI64", default = "-1" },
     { name = "Step", type = "OaI64", default = "1" }
 ]
-

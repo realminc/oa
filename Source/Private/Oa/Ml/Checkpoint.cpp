@@ -3,11 +3,15 @@
 
 #include <Oa/Ml/Checkpoint.h>
 #include <Oa/Ml/Module.h>
+#include <Oa/Ml/Oam.h>
 #include <Oa/Ml/Optim.h>
 #include <Oa/Core/Log.h>
 
 #include <algorithm>
+#include <charconv>
 #include <cstdio>
+#include <cstring>
+#include <limits>
 #include <string>
 
 static OaStatus EnsureDirectoryTree(const OaString& InPath) {
@@ -29,6 +33,55 @@ static OaStatus EnsureDirectoryTree(const OaString& InPath) {
 	}
 
 	return OaStatus::Ok();
+}
+
+static OaStatus SaveCheckpointFile(
+	const OaString& InPath,
+	OaModule& InModel,
+	OaOptimizer& InOpt,
+	OaU64 InStep,
+	OaF64 InMetric,
+	const OaString& InMetricName,
+	bool InLowerIsBetter)
+{
+	if (InStep > static_cast<OaU64>(std::numeric_limits<OaI64>::max())) {
+		return OaStatus::Error(OaStatusCode::OutOfRange,
+			"checkpoint step exceeds the .oam progress range");
+	}
+	OamModel checkpoint;
+	OA_RETURN_IF_ERROR(InModel.SaveTo(checkpoint));
+	OA_RETURN_IF_ERROR(InOpt.SaveTo(checkpoint));
+	checkpoint.Progress.Step = static_cast<OaI64>(InStep);
+	checkpoint.Progress.Lr = InOpt.GetLr();
+	checkpoint.Progress.BestMetric = static_cast<OaF32>(InMetric);
+	checkpoint.Progress.LowerIsBetter = InLowerIsBetter ? 1 : 0;
+	std::memset(checkpoint.Progress.MetricName, 0,
+		sizeof(checkpoint.Progress.MetricName));
+	std::strncpy(checkpoint.Progress.MetricName, InMetricName.CStr(),
+		sizeof(checkpoint.Progress.MetricName) - 1);
+	return checkpoint.Save(InPath);
+}
+
+static OaStatus RestoreCheckpointFile(
+	const OaString& InPath,
+	OaModule& InOutModel,
+	OaOptimizer& InOutOpt,
+	OaU64 InExpectedStep,
+	bool InCheckStep)
+{
+	auto loaded = OamModel::Load(InPath);
+	if (not loaded.IsOk()) return loaded.GetStatus();
+	auto checkpoint = std::move(loaded).GetValue();
+	if (InCheckStep and checkpoint.FormatVersion >= 2
+		and (checkpoint.Progress.Step < 0
+			or static_cast<OaU64>(checkpoint.Progress.Step) != InExpectedStep))
+	{
+		return OaStatus::Error(OaStatusCode::CheckpointCorrupt,
+			"checkpoint filename/progress step mismatch: " + InPath);
+	}
+	OA_RETURN_IF_ERROR(InOutOpt.ValidateLoad(checkpoint));
+	OA_RETURN_IF_ERROR(InOutModel.LoadFrom(checkpoint));
+	return InOutOpt.LoadFrom(checkpoint);
 }
 
 // OaCheckpointManager
@@ -104,13 +157,14 @@ OaStatus OaCheckpointManager::MaybeSave(
 	OA_RETURN_IF_ERROR(SaveIncremental(InModel, InOpt, InStep, InMetric));
 
 	if (improved) {
-		BestMetric_ = InMetric;
-		const OaString masterPath = GetMasterPath();
-		const OaStatus masterStatus = InModel.Save(masterPath, InOpt);
-		if (masterStatus.IsOk()) {
+		if (Config_.SaveBest) {
+			const OaString masterPath = GetMasterPath();
+			OA_RETURN_IF_ERROR(SaveCheckpointFile(masterPath, InModel, InOpt,
+				InStep, InMetric, Config_.MetricName, Config_.LowerIsBetter));
 			OA_LOG_INFO(OaLogComponent::ML, "* Best: %s=%.4f -> %s",
 				Config_.MetricName.c_str(), InMetric, masterPath.c_str());
 		}
+		BestMetric_ = InMetric;
 	}
 
 	return OaStatus::Ok();
@@ -124,7 +178,8 @@ OaStatus OaCheckpointManager::SaveIncremental(
 	const OaString& metricName = InMetricName.empty() ? Config_.MetricName : InMetricName;
 	const OaString filename = BuildFilename(InStep, InMetric, metricName);
 	const OaString path = GetIncrementalDir() + "/" + filename;
-	const OaStatus saveStatus = InModel.Save(path, InOpt);
+	const OaStatus saveStatus = SaveCheckpointFile(path, InModel, InOpt,
+		InStep, InMetric, metricName, Config_.LowerIsBetter);
 	if (not saveStatus.IsOk()) {
 		OA_LOG_ERROR(OaLogComponent::ML, "Checkpoint save failed: %s", path.c_str());
 		return saveStatus;
@@ -142,19 +197,23 @@ OaStatus OaCheckpointManager::SaveIncremental(
 OaStatus OaCheckpointManager::LoadBestInto(OaModule& InOutModel, OaOptimizer& InOutOpt) const {
 	const OaString masterPath = GetMasterPath();
 	OA_LOG_INFO(OaLogComponent::ML, "Loading best: %s", masterPath.c_str());
-	return InOutModel.Load(masterPath, InOutOpt);
+	return RestoreCheckpointFile(masterPath, InOutModel, InOutOpt, 0, false);
 }
 
 OaStatus OaCheckpointManager::LoadLatestInto(OaModule& InOutModel, OaOptimizer& InOutOpt) const {
 	// Prefer the in-memory Saved_ list when we have one (saved this session);
 	// otherwise scan the incremental dir, matching the LoadLatest scan rules.
 	OaString latestPath;
+	OaU64 expectedStep = 0;
+	bool found = false;
 	if (not Saved_.Empty()) {
 		const SavedCheckpoint* latest = &Saved_[0];
 		for (const auto& s : Saved_) {
 			if (s.Step > latest->Step) latest = &s;
 		}
 		latestPath = latest->Path;
+		expectedStep = latest->Step;
+		found = true;
 	} else {
 		const OaString dir = GetIncrementalDir();
 		if (not OaFileIo::IsDirectory(OaPath(dir))) {
@@ -163,7 +222,6 @@ OaStatus OaCheckpointManager::LoadLatestInto(OaModule& InOutModel, OaOptimizer& 
 		auto filesResult = OaFileIo::ListFiles(OaPath(dir), ".oam");
 		if (not filesResult.IsOk()) return filesResult.GetStatus();
 
-		OaU64 latestStep = 0;
 		for (const auto& filePath : filesResult.GetValue()) {
 			const OaString name = OaFileIo::GetStem(filePath) + OaFileIo::GetExtension(filePath);
 			if (name == Config_.ModelName + ".oam") continue;
@@ -172,17 +230,24 @@ OaStatus OaCheckpointManager::LoadLatestInto(OaModule& InOutModel, OaOptimizer& 
 			const auto stepStart = stepPos + 5;
 			const auto stepEnd = name.find('_', stepStart);
 			if (stepEnd == OaString::npos) continue;
-			const OaU64 step = std::stoull(name.substr(stepStart, stepEnd - stepStart).StdStr());
-			if (step > latestStep) {
-				latestStep = step;
+			const OaString stepText = name.substr(stepStart, stepEnd - stepStart);
+			OaU64 step = 0;
+			const char* first = stepText.CStr();
+			const char* last = first + stepText.Size();
+			const auto parsed = std::from_chars(first, last, step);
+			if (parsed.ec != std::errc{} or parsed.ptr != last) continue;
+			if (not found or step > expectedStep) {
+				expectedStep = step;
 				latestPath = filePath.String();
+				found = true;
 			}
 		}
-		if (latestPath.Empty()) {
+		if (not found) {
 			return OaStatus::Error(OaStatusCode::NotFound, "No checkpoints in " + dir);
 		}
 	}
 
 	OA_LOG_INFO(OaLogComponent::ML, "Loading latest: %s", latestPath.c_str());
-	return InOutModel.Load(latestPath, InOutOpt);
+	return RestoreCheckpointFile(
+		latestPath, InOutModel, InOutOpt, expectedStep, true);
 }

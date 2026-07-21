@@ -165,7 +165,7 @@ OaU64 RequiredCapsMaskForShaderName(const char* InName) {
 	return 0;
 }
 
-OaU64 ComputeCapsMask(const OaComputeEngine& InRt) {
+OaU64 ComputeCapsMask(const OaEngine& InRt) {
 	const auto& sw     = InRt.Device.Info.Software;
 	const auto& hw     = InRt.Device.Info.Hardware;
 	const auto& shapes = sw.CoopMatShapes;

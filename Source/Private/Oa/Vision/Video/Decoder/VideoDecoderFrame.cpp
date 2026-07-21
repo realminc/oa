@@ -46,7 +46,7 @@ OaResult<OaVideoFramePool> OaVideoFramePool::Create(
 		return OaStatus::Error(OaStatusCode::InvalidArgument, "Video frame pool dimensions and size must be non-zero");
 	}
 
-	auto& vkEngine = static_cast<OaComputeEngine&>(InRt);
+	auto& vkEngine = InRt;
 	VkDevice device = static_cast<VkDevice>(vkEngine.Device.Device);
 	pool.Frames_.Reserve(InPoolSize);
 	pool.InUse_.Reserve(InPoolSize);
@@ -149,7 +149,7 @@ void OaVideoFramePool::Destroy()
 		return;
 	}
 
-	auto& vkEngine = static_cast<OaComputeEngine&>(*Rt_);
+	auto& vkEngine = *Rt_;
 	VkDevice device = static_cast<VkDevice>(vkEngine.Device.Device);
 	for (OaUsize i = 0; i < Frames_.Size(); ++i) {
 		if (Frames_[i].ImageView) {

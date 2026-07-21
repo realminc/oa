@@ -254,7 +254,7 @@ TEST(OaVideoStream, UnifiedVideoOpenNextSeekFlush)
 	if (not DatasetAvailable(kShibuyaH264)) {
 		GTEST_SKIP() << "Shibuya H.264 dataset not present";
 	}
-	auto* engine = OaComputeEngine::GetGlobal();
+	auto* engine = OaEngine::GetGlobal();
 	if (engine == nullptr
 		or not OaVideoDecoder::IsCodecSupported(*engine, OaVideoCodec::H264)) {
 		GTEST_SKIP() << "Vulkan Video H.264 decode not supported";
@@ -286,7 +286,8 @@ TEST(OaVideoStream, UnifiedVideoOpenNextSeekFlush)
 	ASSERT_TRUE(video.Seek(0U).IsOk());
 	EXPECT_NE(video.CurrentFrame().ImageView, VK_NULL_HANDLE);
 	ASSERT_TRUE(video.Flush().IsOk());
-	video.Destroy();
+	EXPECT_TRUE(video.Close().IsOk());
+	EXPECT_TRUE(video.Close().IsOk());
 }
 
 
@@ -302,10 +303,10 @@ TEST(OaVideoStream, DecodesShibuyaH265FirstFrame)
 	auto streamResult = OaVideoStream::OpenFile(kShibuyaH265);
 	ASSERT_TRUE(streamResult.IsOk());
 
-	if (!OaComputeEngine::GetGlobal()) {
+	if (!OaEngine::GetGlobal()) {
 		GTEST_SKIP() << "No Vulkan compute engine available";
 	}
-	auto& rt = *OaComputeEngine::GetGlobal();
+	auto& rt = *OaEngine::GetGlobal();
 	if (not OaVideoDecoder::IsCodecSupported(rt, OaVideoCodec::H265)) {
 		GTEST_SKIP() << "Vulkan Video H.265 decode not supported";
 	}
@@ -340,10 +341,10 @@ TEST(OaVideoStream, DecodesEntireShibuyaH265)
 	auto streamResult = OaVideoStream::OpenFile(kShibuyaH265);
 	ASSERT_TRUE(streamResult.IsOk());
 
-	if (!OaComputeEngine::GetGlobal()) {
+	if (!OaEngine::GetGlobal()) {
 		GTEST_SKIP() << "No Vulkan compute engine available";
 	}
-	auto& rt = *OaComputeEngine::GetGlobal();
+	auto& rt = *OaEngine::GetGlobal();
 	if (not OaVideoDecoder::IsCodecSupported(rt, OaVideoCodec::H265)) {
 		GTEST_SKIP() << "Vulkan Video H.265 decode not supported";
 	}
@@ -382,10 +383,10 @@ TEST(OaVideoStream, DecodesShibuyaGopH264)
 	auto streamResult = OaVideoStream::OpenFile(kShibuyaH264);
 	ASSERT_TRUE(streamResult.IsOk());
 
-	if (!OaComputeEngine::GetGlobal()) {
+	if (!OaEngine::GetGlobal()) {
 		GTEST_SKIP() << "No Vulkan compute engine available";
 	}
-	auto& rt = *OaComputeEngine::GetGlobal();
+	auto& rt = *OaEngine::GetGlobal();
 	if (not OaVideoDecoder::IsCodecSupported(rt, OaVideoCodec::H264)) {
 		GTEST_SKIP() << "Vulkan Video H.264 decode not supported";
 	}
@@ -426,10 +427,10 @@ TEST(OaVideoStream, DecodesShibuyaVp9FirstFrame)
 	auto streamResult = OaVideoStream::OpenFile(kShibuyaVp9);
 	ASSERT_TRUE(streamResult.IsOk());
 
-	if (!OaComputeEngine::GetGlobal()) {
+	if (!OaEngine::GetGlobal()) {
 		GTEST_SKIP() << "No Vulkan compute engine available";
 	}
-	auto& rt = *OaComputeEngine::GetGlobal();
+	auto& rt = *OaEngine::GetGlobal();
 	if (not OaVideoDecoder::IsCodecSupported(rt, OaVideoCodec::VP9)) {
 		GTEST_SKIP() << "Vulkan Video VP9 decode not supported";
 	}
@@ -458,7 +459,7 @@ TEST(OaVideoStream, LongPlaybackLoopResetAndBackStep)
 	if (not DatasetAvailable(kShibuyaH264)) {
 		GTEST_SKIP() << "Shibuya MP4 dataset not present";
 	}
-	auto* engine = OaComputeEngine::GetGlobal();
+	auto* engine = OaEngine::GetGlobal();
 	if (engine == nullptr
 		or not OaVideoDecoder::IsCodecSupported(*engine, OaVideoCodec::H264)) {
 		GTEST_SKIP() << "Vulkan Video H.264 decode not supported";
@@ -539,7 +540,7 @@ TEST(OaVideoStream, BackwardSeekReconstructsFrameAcrossCodecs)
 		{kShibuyaAv1, OaVideoCodec::AV1},
 		{kShibuyaVp9, OaVideoCodec::VP9},
 	};
-	auto* engine = OaComputeEngine::GetGlobal();
+	auto* engine = OaEngine::GetGlobal();
 	ASSERT_NE(engine, nullptr);
 	OaU32 exercised = 0U;
 	for (const Case& testCase : cases) {
@@ -597,7 +598,7 @@ TEST(OaVideoStream, FirstFrameMatchesFfmpegReference)
 	if (std::system("command -v ffmpeg >/dev/null 2>&1") != 0) {
 		GTEST_SKIP() << "ffmpeg is not installed";
 	}
-	auto* engine = OaComputeEngine::GetGlobal();
+	auto* engine = OaEngine::GetGlobal();
 	if (engine == nullptr
 		or not OaVideoDecoder::IsCodecSupported(*engine, OaVideoCodec::H264)) {
 		GTEST_SKIP() << "Vulkan Video H.264 decode not supported";
@@ -658,7 +659,7 @@ TEST(OaVideoStream, FirstFrameNv12MatchesFfmpegReference)
 	if (std::system("command -v ffmpeg >/dev/null 2>&1") != 0) {
 		GTEST_SKIP() << "ffmpeg is not installed";
 	}
-	auto* engine = OaComputeEngine::GetGlobal();
+	auto* engine = OaEngine::GetGlobal();
 	if (engine == nullptr
 		or not OaVideoDecoder::IsCodecSupported(*engine, OaVideoCodec::H264)) {
 		GTEST_SKIP() << "Vulkan Video H.264 decode not supported";
@@ -760,7 +761,7 @@ TEST(OaVideoStream, FirstTwelveDisplayFramesMatchFfmpegReference)
 	if (std::system("command -v ffmpeg >/dev/null 2>&1") != 0) {
 		GTEST_SKIP() << "ffmpeg is not installed";
 	}
-	auto* engine = OaComputeEngine::GetGlobal();
+	auto* engine = OaEngine::GetGlobal();
 	if (engine == nullptr
 		or not OaVideoDecoder::IsCodecSupported(*engine, OaVideoCodec::H264)) {
 		GTEST_SKIP() << "Vulkan Video H.264 decode not supported";
@@ -826,7 +827,7 @@ TEST(OaVideoStream, SustainedH264DisplayFramesMatchFfmpegReference)
 	if (std::system("command -v ffmpeg >/dev/null 2>&1") != 0) {
 		GTEST_SKIP() << "ffmpeg is not installed";
 	}
-	auto* engine = OaComputeEngine::GetGlobal();
+	auto* engine = OaEngine::GetGlobal();
 	if (engine == nullptr
 		or not OaVideoDecoder::IsCodecSupported(*engine, OaVideoCodec::H264)) {
 		GTEST_SKIP() << "Vulkan Video H.264 decode not supported";
@@ -915,7 +916,7 @@ void ExpectCodecIteratorMatchesFirstTwelveFfmpegFrames(
 	const char* InPath,
 	OaVideoCodec InCodec)
 {
-	auto* engine = OaComputeEngine::GetGlobal();
+	auto* engine = OaEngine::GetGlobal();
 	if (engine == nullptr) {
 		GTEST_SKIP() << "No Vulkan compute engine available";
 	}
@@ -995,7 +996,7 @@ TEST(OaVideoStream, H265IteratorMatchesFirstTwelveFfmpegFrames)
 
 TEST(OaVideoStream, H265IteratorMatchesFfmpegAcrossEntireVideo)
 {
-	auto* engine = OaComputeEngine::GetGlobal();
+	auto* engine = OaEngine::GetGlobal();
 	if (engine == nullptr) {
 		GTEST_SKIP() << "No Vulkan compute engine available";
 	}
@@ -1093,7 +1094,7 @@ TEST(OaVideoStream, SustainedH264StepLatencyStaysBelowFrameBudget)
 	if (not DatasetAvailable(kShibuyaH264)) {
 		GTEST_SKIP() << "Shibuya MP4 dataset not present";
 	}
-	auto* engine = OaComputeEngine::GetGlobal();
+	auto* engine = OaEngine::GetGlobal();
 	if (engine == nullptr
 		or not OaVideoDecoder::IsCodecSupported(*engine, OaVideoCodec::H264)) {
 		GTEST_SKIP() << "Vulkan Video H.264 decode not supported";

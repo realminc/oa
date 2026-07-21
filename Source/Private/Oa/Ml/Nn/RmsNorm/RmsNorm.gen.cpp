@@ -5,7 +5,7 @@
 
 #include <Oa/Ml/Nn.h>
 #include <Oa/Core/FnMatrix.h>
-#include <Oa/Ml/Autograd.h>
+#include <Oa/Ml/Autograd/Nodes.h>
 #include <Oa/Core/Validation.h>
 
 OaRmsNorm::OaRmsNorm(OaI32 Dim, OaF32 Eps)

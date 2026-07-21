@@ -1,20 +1,18 @@
-// OaScheduler — Affinity-based dispatch routing
+// OaScheduler — experimental static mesh routing
 //
-// Routes compute dispatches to the best device in the mesh based on
-// workload classification (heavy/light/transfer) and device profiles.
+// Routes Heavy work to Primary and Light work to Auxiliary. It has no measured
+// transfer-cost/load model and must not be described as optimal or supported
+// heterogeneous execution.
 //
-// Existing code dispatches to the primary device by default.
-// Opt-in hints enable multi-device routing.
+// Existing code dispatches to the primary device by default. Experimental
+// graph mapping may query this router with an explicit static hint.
 
 #pragma once
 
 #include <Oa/Core/Types.h>
-#include <Oa/Core/Status.h>
-#include <Oa/Runtime/Sync.h>
 
 class OaDeviceMesh;
 class OaDeviceNode;
-class OaVkDevice;
 
 static constexpr OaU32 OA_NODE_AUTO = UINT32_MAX;
 
@@ -36,48 +34,15 @@ enum class OaComputeClass : OaU8 {
 	}
 }
 
-// Dispatch routing hint — passed to Run() or graph construction.
+// Static routing hint for experimental graph mapping or direct scheduler query.
 class OaDispatchHint {
 public:
 	OaComputeClass Class = OaComputeClass::Any;
 	OaU32 PreferNode = OA_NODE_AUTO;  // Explicit node override
-	OaBool Async = false;              // Don't block caller
 };
 
-// Handle for async dispatches — owns a timeline semaphore + target value.
-// Move-only: prevents double-destroy of the underlying VkSemaphore.
-class OaDispatchTicket {
-public:
-	OaVkTimelineSemaphore Semaphore;
-	OaU64 Value = 0;
-	OaU32 NodeIndex = 0;
-
-	OaDispatchTicket() = default;
-	OaDispatchTicket(const OaDispatchTicket&) = delete;
-	OaDispatchTicket& operator=(const OaDispatchTicket&) = delete;
-	OaDispatchTicket(OaDispatchTicket&& InOther) noexcept
-		: Semaphore(InOther.Semaphore), Value(InOther.Value), NodeIndex(InOther.NodeIndex) {
-		InOther.Semaphore.Semaphore = nullptr;
-		InOther.Value = 0;
-	}
-	OaDispatchTicket& operator=(OaDispatchTicket&& InOther) noexcept {
-		if (this != &InOther) {
-			Semaphore = InOther.Semaphore;
-			Value = InOther.Value;
-			NodeIndex = InOther.NodeIndex;
-			InOther.Semaphore.Semaphore = nullptr;
-			InOther.Value = 0;
-		}
-		return *this;
-	}
-
-	// Blocks until the async operation completes, then destroys the semaphore.
-	[[nodiscard]] OaStatus Wait(const OaVkDevice& InDevice, OaU64 InTimeoutNs = UINT64_MAX);
-	[[nodiscard]] OaBool IsComplete(const OaVkDevice& InDevice) const;
-};
-
-// Dispatch router — picks the best device node for a given workload.
-// Stub: always returns Primary. Future: load-aware, profile-driven.
+// Static experimental router. Future lowering must be capability-queried,
+// measured, dependency-aware, and private policy.
 class OaScheduler {
 public:
 	OaDeviceMesh* Mesh = nullptr;

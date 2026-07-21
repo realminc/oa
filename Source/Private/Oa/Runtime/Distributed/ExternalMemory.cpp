@@ -290,7 +290,7 @@ OaImportedDmaBufImage& OaImportedDmaBufImage::operator=(
 OaImportedDmaBufImage::~OaImportedDmaBufImage() { Destroy(); }
 
 OaResult<OaImportedDmaBufImage> OaImportedDmaBufImage::Import(
-	OaComputeEngine& InEngine, const OaDmaBufImageDesc& InDesc)
+	OaEngine& InEngine, const OaDmaBufImageDesc& InDesc)
 {
 #if !defined(__linux__) || !defined(VK_EXT_external_memory_dma_buf) || !defined(VK_EXT_image_drm_format_modifier)
 	(void)InEngine;

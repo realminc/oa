@@ -24,7 +24,7 @@ struct OaGeneratedGlyph {
 #include "Generated/IBMPlexSansSdf.inc"
 
 struct OaTextAtlasImpl {
-	OaComputeEngine* Runtime = nullptr;
+	OaEngine* Runtime = nullptr;
 	OaVkBuffer Atlas;
 	OaGlyphInfo Glyphs[kPlexGlyphCount];
 };
@@ -58,7 +58,7 @@ OaTextAtlas& OaTextAtlas::operator=(OaTextAtlas&& InOther) noexcept {
 
 OaTextAtlas::~OaTextAtlas() { Destroy(); }
 
-OaStatus OaTextAtlas::Init(OaComputeEngine& InRt) {
+OaStatus OaTextAtlas::Init(OaEngine& InRt) {
 	Destroy();
 	auto allocation = InRt.AllocBuffer(sizeof(kPlexAtlasPixels));
 	if (!allocation.IsOk()) return allocation.GetStatus();
@@ -167,7 +167,7 @@ OaGlyphBuffer& OaGlyphBuffer::operator=(OaGlyphBuffer&& InOther) noexcept {
 OaGlyphBuffer::~OaGlyphBuffer() { Destroy(); }
 
 OaResult<OaGlyphBuffer> OaGlyphBuffer::CreateHostUpload(
-	OaComputeEngine& InRuntime,
+	OaEngine& InRuntime,
 	OaU32 InCapacity) {
 	if (InCapacity == 0) {
 		return OaStatus::InvalidArgument(

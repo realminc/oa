@@ -14,12 +14,12 @@ TEST(OaStdOptional, ValueOr) {
 	OaStdOptional<int> oa;
 	std::optional<int> st;
 	const auto t0 = OaHighResolutionNow();
-	volatile int sinkOa = 0;
+	volatile long long sinkOa = 0;
 	for (int i = 0; i < kLoops; ++i) {
 		sinkOa += oa.ValueOr(i);
 	}
 	const auto t1 = OaHighResolutionNow();
-	volatile int sinkSt = 0;
+	volatile long long sinkSt = 0;
 	for (int i = 0; i < kLoops; ++i) {
 		sinkSt += st.value_or(i);
 	}
@@ -116,13 +116,13 @@ TEST(OaStdOptionalVsStd, TimedValueOrWallUs) {
 	OaStdOptional<int> oa;
 	oa.Emplace(123);
 	std::optional<int> st(123);
-	volatile int sinkOa = 0;
+	volatile long long sinkOa = 0;
 	const auto t0 = OaHighResolutionNow();
 	for (int i = 0; i < kLoops; ++i) {
 		sinkOa += oa.ValueOr(i);
 	}
 	const auto t1 = OaHighResolutionNow();
-	volatile int sinkSt = 0;
+	volatile long long sinkSt = 0;
 	for (int i = 0; i < kLoops; ++i) {
 		sinkSt += st.value_or(i);
 	}

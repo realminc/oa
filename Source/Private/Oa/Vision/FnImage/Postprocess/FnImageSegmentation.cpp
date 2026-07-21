@@ -62,5 +62,5 @@ OaMatrix OaFnImage::SegmentationOverlay(
 	const OaMatrix& InPalette,
 	OaF32 InAlpha) {
 	return SegmentationOverlay(
-		*OaComputeEngine::GetGlobal(), InImage, InMask, InPalette, InAlpha);
+		*OaEngine::GetGlobal(), InImage, InMask, InPalette, InAlpha);
 }

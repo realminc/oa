@@ -63,21 +63,29 @@ public:
 	[[nodiscard]] OaU64 Value() const;
 	[[nodiscard]] OaCompletionToken Completion() const;
 
+	// Transfer ownership of a temporary view referenced by this dispatch. The
+	// view is destroyed only after the ticket's timeline value completes. This
+	// keeps callers asynchronous without leaking Vulkan object lifetime into a
+	// host wait at submission time.
+	void AdoptImageView(VkImageView InView);
+
 private:
 	friend class OaVkImageDispatch;
 	void Cleanup_();
+	void Retire_();
 
-	OaComputeEngine* Engine_ = nullptr;
+	OaEngine* Engine_ = nullptr;
 	OaVkStream* Stream_ = nullptr;
 	OaVec<OaU32> StorageImageSlots_;
 	OaVec<OaU32> SampledImageSlots_;
 	OaVec<OaU32> SamplerSlots_;
+	OaVec<VkImageView> OwnedImageViews_;
 };
 
 class OaVkImageDispatch {
 public:
 	[[nodiscard]] static OaStatus Run(
-		OaComputeEngine& InRt,
+		OaEngine& InRt,
 		OaStringView InShaderName,
 		OaSpan<const OaVkImageDispatchBinding> InBindings,
 		const void* InPushData,
@@ -87,9 +95,11 @@ public:
 		OaU32 InGroupsZ = 1);
 
 	// Record and submit without a host wait. The returned ticket owns the
-	// stream and temporary bindless slots until Wait() or destruction.
+	// stream and temporary bindless slots until Wait(). Destroying an
+	// unfinished ticket transfers those resources to engine retirement; the
+	// destructor never waits for the GPU.
 	[[nodiscard]] static OaResult<OaVkImageDispatchTicket> RunAsync(
-		OaComputeEngine& InRt,
+		OaEngine& InRt,
 		OaStringView InShaderName,
 		OaSpan<const OaVkImageDispatchBinding> InBindings,
 		const void* InPushData,
@@ -102,7 +112,7 @@ public:
 	// InWaitValue before executing. Used for cross-queue async sync
 	// (e.g. compute conversion waits on video decode/transition completion).
 	[[nodiscard]] static OaStatus RunWithDependency(
-		OaComputeEngine& InRt,
+		OaEngine& InRt,
 		OaStringView InShaderName,
 		OaSpan<const OaVkImageDispatchBinding> InBindings,
 		const void* InPushData,
@@ -114,7 +124,7 @@ public:
 		OaU64 InWaitValue);
 
 	[[nodiscard]] static OaResult<OaVkImageDispatchTicket> RunWithDependencyAsync(
-		OaComputeEngine& InRt,
+		OaEngine& InRt,
 		OaStringView InShaderName,
 		OaSpan<const OaVkImageDispatchBinding> InBindings,
 		const void* InPushData,

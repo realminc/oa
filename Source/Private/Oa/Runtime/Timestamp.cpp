@@ -4,7 +4,7 @@
 #include <Oa/Runtime/Stream.h>
 #include <Oa/Runtime/OaVk.h>
 
-OaResult<OaVkTimestamp> OaVkTimestamp::Create(OaComputeEngine &InRt, OaU32 InMaxQueries) {
+OaResult<OaVkTimestamp> OaVkTimestamp::Create(OaEngine &InRt, OaU32 InMaxQueries) {
 	OaVkTimestamp ts;
 	ts.Capacity = InMaxQueries;
 	ts.WriteIndex = 0;

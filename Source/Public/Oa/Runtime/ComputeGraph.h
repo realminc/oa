@@ -8,7 +8,7 @@
 #include <Oa/Runtime/Sync.h>
 #include <Oa/Runtime/Timestamp.h>
 
-class OaComputeEngine;
+class OaEngine;
 class OaVkDevice;
 class OaDeviceMesh;
 class OaScheduler;
@@ -19,8 +19,10 @@ class OaMatrix;
 class OaComputeNode {
 public:
 	OaString Operation;
+	OaVec<OaSemanticOperationId> SemanticOperations;
 	OaU64 ImplementationId = 0;
 	OaU64 OperationContractHash = 0;
+	OaU64 ProblemContractHash = 0;
 	OaU64 KernelContentHash = 0;
 	OaString Shader;
 	OaVec<OaVkBuffer> Buffers;
@@ -64,13 +66,14 @@ public:
 class OaGraphStats {
 public:
 	OaU32 DispatchCount = 0;
-	OaU32 BarrierCount = 0;        // total exact VkBufferMemoryBarrier2 entries
+	OaU32 BarrierCount = 0;        // total exact resource/global dependencies
 	OaU32 DescriptorSetCount = 0;
 	OaU64 TotalBufferBytes = 0;
 	OaU64 PotentialAliasSavings = 0;
 
 	OaU32 WarBarrierCount = 0;     // execution-only read -> write dependencies
 	OaU32 IndirectBarrierCount = 0;// dependencies consumed as indirect commands
+	OaU32 AliasBarrierCount = 0;   // global dependencies between buffer aliases
 	OaU32 HostBarrierCount = 0;    // graph-final compute -> host visibility edges
 };
 
@@ -174,32 +177,31 @@ public:
 		const OaVkBuffer& InIndirectBuffer, OaU64 InOffset = 0);
 
 	// ─── Phase 1: One-shot execution ──────────────────────────────────────
-	[[nodiscard]] OaStatus Execute(OaComputeEngine& InRt);
+	[[nodiscard]] OaStatus Execute(OaEngine& InRt);
 
 	// Multi-queue execution: nodes with AsyncCompute hint go to the async queue.
 	// Cross-queue dependencies are synchronized via timeline semaphores.
-	[[nodiscard]] OaStatus ExecuteMultiQueue(OaComputeEngine& InRt);
+	[[nodiscard]] OaStatus ExecuteMultiQueue(OaEngine& InRt);
 
-	// Multi-device execution: dispatches routed to mesh nodes by NodeIndex.
-	// Single-node mesh delegates to Execute(). Multi-node collects dispatches
-	// per device, submits in parallel, cross-node deps via timeline semaphores.
-	[[nodiscard]] OaStatus ExecuteDistributed(OaComputeEngine& InRt);
+	// Experimental multi-device route. Single-node delegates to Execute(); the
+	// multi-node path is not a supported peer-transport/event contract and lacks
+	// physical two-device acceptance evidence.
+	[[nodiscard]] OaStatus ExecuteDistributed(OaEngine& InRt);
 
-	// Auto-assign NodeIndex to each compute node based on scheduler routing.
-	// Called by OaParallelStrategy after building the graph topology.
+	// Experimental static NodeIndex assignment through OaScheduler.
 	void MapToMesh(OaDeviceMesh& InMesh, OaScheduler& InScheduler);
 
 	// ─── Phase 2: Compile & Replay ────────────────────────────────────────
 	// Record all dispatches + minimal barriers into a secondary command buffer.
 	// Push constants, descriptor sets, and pipeline binds are baked in.
-	[[nodiscard]] OaStatus Compile(OaComputeEngine& InRt);
+	[[nodiscard]] OaStatus Compile(OaEngine& InRt);
 
 	// Execute the pre-compiled secondary command buffer via vkCmdExecuteCommands.
 	// The graph topology, buffers, and push constants must not have changed.
-	[[nodiscard]] OaStatus Replay(OaComputeEngine& InRt);
+	[[nodiscard]] OaStatus Replay(OaEngine& InRt);
 	// Replay and expose the submitted GPU completion without forcing a host
 	// wait. This is the graph edge used by image/video/capture consumers.
-	[[nodiscard]] OaResult<OaCompletionToken> ReplayAsync(OaComputeEngine& InRt);
+	[[nodiscard]] OaResult<OaCompletionToken> ReplayAsync(OaEngine& InRt);
 	[[nodiscard]] OaCompletionToken LastCompletion(const OaVkDevice& InDevice) const;
 
 	// Embed one timestamp pair around the complete reusable primary program.
@@ -223,7 +225,7 @@ public:
 
 	// Record compiled secondary into a primary command buffer that is already recording.
 	// Use to chain multiple compiled graphs before a single SubmitAndWait (same queue).
-	[[nodiscard]] OaStatus RecordReplay(OaComputeEngine& InRt, void* InPrimaryCommandBuffer) const;
+	[[nodiscard]] OaStatus RecordReplay(OaEngine& InRt, void* InPrimaryCommandBuffer) const;
 
 	[[nodiscard]] bool IsCompiled() const { return Compiled_; }
 	[[nodiscard]] OaBool LastCompileReused() const noexcept { return LastCompileReused_; }
@@ -254,7 +256,14 @@ public:
 	// distinct VkBuffer identities over shared allocations, which releases the
 	// original physical allocations instead of merely adding an alias arena.
 	[[nodiscard]] OaStatus MaterializeAliases(
-		OaComputeEngine& InRt, OaSpan<OaMatrix*> InEligible);
+		OaEngine& InRt, OaSpan<OaMatrix*> InEligible);
+	// Transactional capture may retain the original graph, semantic bindings,
+	// and stable slots until the aliased graph compiles. Those known references
+	// are permitted explicitly; every unaccounted owner still fails closed.
+	[[nodiscard]] OaStatus MaterializeAliases(
+		OaEngine& InRt,
+		OaSpan<OaMatrix*> InEligible,
+		OaSpan<const OaU32> InPermittedAdditionalOwners);
 	[[nodiscard]] OaU64 MaterializedAliasSavings() const noexcept {
 		return MaterializedAliasSavings_;
 	}
@@ -324,9 +333,10 @@ private:
 	OaVec<OaSharedPtr<OaVkBuffer>> CompiledBufferOwners_;
 
 	// Compile-time synchronization stats.
-	OaU32 BarrierCount_  = 0;   // total VkBufferMemoryBarrier2 entries emitted
+	OaU32 BarrierCount_  = 0;   // total resource/global dependencies emitted
 	OaU32 WarBarrierCount_ = 0;
 	OaU32 IndirectBarrierCount_ = 0;
+	OaU32 AliasBarrierCount_ = 0;
 	OaBool HostReadbackRequired_ = true;
 
 	// Allocator-backed transient arena. View deleters retain their backing owner,

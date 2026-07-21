@@ -4,6 +4,7 @@
 #include <Oa/Runtime/Allocator.h>
 #include <Oa/Runtime/Engine.h>
 #include <Oa/Runtime/ExternalMemory.h>
+#include "Oa/Runtime/Engine/BorrowedServiceRetirement.h"
 
 #include <algorithm>
 #include <atomic>
@@ -28,9 +29,10 @@
 #endif
 
 struct OaScreenCapture::Impl {
-	OaComputeEngine* Engine = nullptr;
+	OaEngine* Engine = nullptr;
 	OaScreenCaptureConfig Config = {};
 	OaVec<OaVkBuffer> Ring;
+	OaVec<OaCompletionToken> RingConsumers;
 	OaU32 Head = 0;
 	OaU32 Latest = 0;
 	OaU32 Width = 0;
@@ -87,13 +89,46 @@ struct OaScreenCapture::Impl {
 			}
 		}
 		Ring.Clear();
+		RingConsumers.Clear();
 		Head = 0;
 		Latest = 0;
+	}
+
+	[[nodiscard]] bool RingConsumersComplete() const {
+		for (const auto& consumer : RingConsumers) {
+			if (consumer.IsValid() and not consumer.IsComplete()) return false;
+		}
+		return true;
+	}
+
+	[[nodiscard]] OaStatus WaitRingConsumers() const {
+		OaStatus firstError = OaStatus::Ok();
+		for (const auto& consumer : RingConsumers) {
+			const auto status = consumer.Wait();
+			if (firstError.IsOk() and not status.IsOk()) firstError = status;
+		}
+		return firstError;
+	}
+
+	void ReleaseRing(
+		const OaVideoFrame& InFrame,
+		const OaCompletionToken& InConsumed)
+	{
+		if (InFrame.Buffer == nullptr) return;
+		for (OaUsize index = 0U; index < Ring.Size(); ++index) {
+			if (InFrame.Buffer != &Ring[index]) continue;
+			RingConsumers[index] = InConsumed;
+			return;
+		}
 	}
 
 	OaStatus EnsureRing(OaU32 InWidth, OaU32 InHeight) {
 		if (Width == InWidth and Height == InHeight and Ring.Size() > 0U) {
 			return OaStatus::Ok();
+		}
+		if (not RingConsumersComplete()) {
+			return OaStatus::Error(OaStatusCode::Unavailable,
+				"screen capture ring reconfiguration is waiting for GPU consumers");
 		}
 		FreeRing();
 		Width = InWidth;
@@ -101,6 +136,7 @@ struct OaScreenCapture::Impl {
 		const OaU32 ringCount = std::max(2U, Config.RingFrames);
 		const OaU64 bytes = static_cast<OaU64>(Width) * Height * 4ULL;
 		Ring.Resize(ringCount);
+		RingConsumers.Resize(ringCount);
 		for (OaU32 index = 0; index < ringCount; ++index) {
 			auto result = Engine->AllocBuffer(bytes);
 			if (not result.IsOk()) {
@@ -145,7 +181,7 @@ bool HasEnabledExtension(const OaVkDevice& InDevice, OaStringView InName) {
 }
 
 bool IsImportableCaptureModifier(
-	const OaComputeEngine& InEngine, VkFormat InFormat, OaU64 InModifier)
+	const OaEngine& InEngine, VkFormat InFormat, OaU64 InModifier)
 {
 	VkPhysicalDeviceExternalImageFormatInfo externalInfo = {};
 	externalInfo.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_IMAGE_FORMAT_INFO;
@@ -176,7 +212,7 @@ bool IsImportableCaptureModifier(
 }
 
 std::vector<OaU64> CaptureDmaBufModifiers(
-	const OaComputeEngine& InEngine, VkFormat InFormat)
+	const OaEngine& InEngine, VkFormat InFormat)
 {
 	const auto& device = InEngine.Device;
 	if (not HasEnabledExtension(device, VK_EXT_EXTERNAL_MEMORY_DMA_BUF_EXTENSION_NAME)
@@ -466,7 +502,38 @@ OaScreenCapture& OaScreenCapture::operator=(OaScreenCapture&& InOther) noexcept 
 	}
 	return *this;
 }
-OaScreenCapture::~OaScreenCapture() { Destroy(); }
+OaScreenCapture::~OaScreenCapture() { Abandon_(); }
+
+void OaScreenCapture::Abandon_() noexcept {
+	if (not Impl_) return;
+	OaEngine* engine = Impl_->Engine;
+	if (engine == nullptr) {
+		Impl_.reset();
+		return;
+	}
+#if defined(OA_HAS_PIPEWIRE_SCREEN_CAPTURE)
+	Impl_->Streaming = false;
+	if (Impl_->PwThread.joinable() and Impl_->PwLoop != nullptr) {
+		(void)pw_main_loop_quit(Impl_->PwLoop);
+	}
+#endif
+	auto retired = OaMakeUniquePtr<OaScreenCapture>(OaStdMove(*this));
+	OaBorrowedServiceRetirement::Retire(
+		*engine,
+		retired.Release(),
+		&OaScreenCapture::CompleteRetired_,
+		&OaScreenCapture::ReleaseRetired_);
+}
+
+OaStatus OaScreenCapture::CompleteRetired_(void* InPayload) {
+	auto* capture = static_cast<OaScreenCapture*>(InPayload);
+	return capture ? capture->Close() : OaStatus::Ok();
+}
+
+void OaScreenCapture::ReleaseRetired_(void* InPayload) {
+	OaUniquePtr<OaScreenCapture> capture(
+		static_cast<OaScreenCapture*>(InPayload));
+}
 
 bool OaScreenCapture::IsSupported() noexcept {
 #if defined(OA_HAS_PIPEWIRE_SCREEN_CAPTURE)
@@ -477,7 +544,7 @@ bool OaScreenCapture::IsSupported() noexcept {
 }
 
 OaResult<OaScreenCapture> OaScreenCapture::Open(
-	OaComputeEngine& InEngine,
+	OaEngine& InEngine,
 	const OaScreenCaptureConfig& InConfig)
 {
 #if not defined(OA_HAS_PIPEWIRE_SCREEN_CAPTURE)
@@ -679,6 +746,9 @@ bool OaScreenCapture::Poll(OaVideoFrame& OutFrame) {
 	std::lock_guard<std::mutex> lock(impl.FrameMutex);
 	if (impl.CpuSequence == 0U or impl.CpuSequence == impl.UploadedCpuSequence) return false;
 	if (not impl.EnsureRing(impl.CpuWidth, impl.CpuHeight).IsOk()) return false;
+	auto& consumer = impl.RingConsumers[impl.Head];
+	if (consumer.IsValid() and not consumer.IsComplete()) return false;
+	consumer = {};
 	auto& destination = impl.Ring[impl.Head];
 	if (destination.MappedPtr == nullptr) return false;
 	std::memcpy(destination.MappedPtr, impl.CpuFrame.Data(), impl.CpuFrame.Size());
@@ -710,12 +780,17 @@ void OaScreenCapture::Release(
 	const OaVideoFrame& InFrame,
 	const OaCompletionToken& InConsumed)
 {
+	if (not Impl_) return;
+	auto& impl = *Impl_;
+	if (InFrame.Resource == OaVideoFrameResource::Buffer) {
+		impl.ReleaseRing(InFrame, InConsumed);
+		return;
+	}
 #if not defined(OA_HAS_PIPEWIRE_SCREEN_CAPTURE)
 	(void)InFrame;
 	(void)InConsumed;
 #else
-	if (not Impl_ or InFrame.Resource != OaVideoFrameResource::Image) return;
-	auto& impl = *Impl_;
+	if (InFrame.Resource != OaVideoFrameResource::Image) return;
 	pw_buffer* buffer = nullptr;
 	OaImportedDmaBufImage imported;
 	{
@@ -744,29 +819,37 @@ void OaScreenCapture::Release(
 #endif
 }
 
-void OaScreenCapture::Destroy() {
-	if (not Impl_) return;
+OaStatus OaScreenCapture::Close() {
+	if (not Impl_) return OaStatus::Ok();
 	auto& impl = *Impl_;
+	OaStatus firstError = OaStatus::Ok();
+	auto retainError = [&firstError](const OaStatus& InStatus) {
+		if (firstError.IsOk() and not InStatus.IsOk()) firstError = InStatus;
+	};
 #if defined(OA_HAS_PIPEWIRE_SCREEN_CAPTURE)
 	impl.Streaming = false;
-	pw_buffer* heldDmaBuffer = nullptr;
+	if (impl.PwThread.joinable() and impl.PwLoop != nullptr) {
+		const int result = pw_main_loop_quit(impl.PwLoop);
+		if (result < 0) {
+			retainError(OaStatus::Error(OaStatusCode::Unavailable,
+				"PipeWire screen capture loop could not be stopped"));
+		}
+	}
+	if (impl.PwThread.joinable()) impl.PwThread.join();
 	OaImportedDmaBufImage importedDmaImage;
 	{
 		std::lock_guard<std::mutex> lock(impl.FrameMutex);
 		importedDmaImage = OaStdMove(impl.ImportedDmaImage);
-		heldDmaBuffer = impl.HeldDmaBuffer;
 		impl.HeldDmaBuffer = nullptr;
 	}
 	importedDmaImage.Destroy();
-	ReturnDmaBuffer(impl, heldDmaBuffer);
+	// PipeWire owns dequeued buffers until stream destruction. Once the producer
+	// loop has stopped, no requeue is needed before destroying the stream.
 	for (auto& pending : impl.PendingDmaReleases) {
-		(void)pending.Consumed.Wait();
+		retainError(pending.Consumed.Wait());
 		pending.Imported.Destroy();
-		ReturnDmaBuffer(impl, pending.Buffer);
 	}
 	impl.PendingDmaReleases.Clear();
-	if (impl.PwLoop != nullptr) pw_main_loop_quit(impl.PwLoop);
-	if (impl.PwThread.joinable()) impl.PwThread.join();
 	if (impl.PwStream != nullptr) pw_stream_destroy(impl.PwStream);
 	if (impl.PwCore != nullptr) pw_core_disconnect(impl.PwCore);
 	if (impl.PwContext != nullptr) pw_context_destroy(impl.PwContext);
@@ -782,8 +865,18 @@ void OaScreenCapture::Destroy() {
 	if (impl.PipeWireFd >= 0) close(impl.PipeWireFd);
 #endif
 #endif
+	retainError(impl.WaitRingConsumers());
 	impl.FreeRing();
 	Impl_.reset();
+	return firstError;
+}
+
+void OaScreenCapture::Destroy() {
+	if (const auto status = Close(); not status.IsOk()) {
+		OA_LOG_ERROR(OaLogComponent::App,
+			"OaScreenCapture::Destroy: shutdown failed: %s",
+			status.ToString().c_str());
+	}
 }
 
 bool OaScreenCapture::IsStreaming() const noexcept {

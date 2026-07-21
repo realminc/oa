@@ -10,7 +10,7 @@
 #include <Oa/Crypto/Buffer.h>
 
 // Forward declarations
-class OaComputeEngine;
+class OaEngine;
 class OaMatrix;
 enum class OaScalarType : OaU8;
 

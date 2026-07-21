@@ -12,16 +12,16 @@
 #include <cmath>
 #include <cstdlib>
 
-static OaComputeEngine* GRt = nullptr;
+static OaEngine* GRt = nullptr;
 
 class TestFnMatrixUtil : public ::testing::Test {
 protected:
 	static void SetUpTestSuite() {
 		OaEngineConfig cfg{};
 		cfg.AppName = "TestFnMatrixUtil";
-		auto r = OaComputeEngine::Create(cfg);
+		auto r = OaEngine::Create(cfg);
 		ASSERT_TRUE(r.IsOk()) << r.GetStatus().GetMessage();
-		static OaUniquePtr<OaComputeEngine> rt = std::move(*r);
+		static OaUniquePtr<OaEngine> rt = std::move(*r);
 		GRt = rt.get();
 	}
 };
@@ -42,7 +42,7 @@ static OaMatrix CreateFromHost(const std::vector<float>& data, OaMatrixShape sha
 }
 
 TEST_VK(TestFnMatrixUtil, SampleLogits_GreedyRows) {
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto logits = CreateFromHost({1.0f, 4.0f, 2.0f, -1.0f, 3.0f, 3.0f}, OaMatrixShape{2, 3});
 	auto ids = OaFnMatrix::SampleLogits(logits, 0.0f);
 	auto& ctx = OaContext::GetDefault();
@@ -54,7 +54,7 @@ TEST_VK(TestFnMatrixUtil, SampleLogits_GreedyRows) {
 }
 
 TEST_VK(TestFnMatrixUtil, SampleLogits_TopKOneAlwaysArgmax) {
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto logits = CreateFromHost({-2.0f, 0.5f, 7.0f, 1.0f}, OaMatrixShape{1, 4});
 	auto ids = OaFnMatrix::SampleLogits(logits, 0.8f, 1, 0.9f, 123);
 	auto& ctx = OaContext::GetDefault();
@@ -73,7 +73,7 @@ TEST_VK(TestFnMatrixUtil, RepeatInterleave_Dim0) {
 		4.0f, 5.0f, 6.0f
 	};
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto input = CreateFromHost(input_data, OaMatrixShape{2, 3});
 	auto output = OaFnMatrix::RepeatInterleave(input, 2, 0);
 	
@@ -102,7 +102,7 @@ TEST_VK(TestFnMatrixUtil, RepeatInterleave_Dim1) {
 		4.0f, 5.0f, 6.0f
 	};
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto input = CreateFromHost(input_data, OaMatrixShape{2, 3});
 	auto output = OaFnMatrix::RepeatInterleave(input, 2, 1);
 	
@@ -126,7 +126,7 @@ TEST_VK(TestFnMatrixUtil, RepeatInterleave_Repeat3) {
 	// Test with repeat=3
 	std::vector<float> input_data = {1.0f, 2.0f, 3.0f};
 
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto input = CreateFromHost(input_data, OaMatrixShape{3});
 	auto output = OaFnMatrix::RepeatInterleave(input, 3, 0);
 
@@ -154,7 +154,7 @@ static bool GradClose(OaF32 a, OaF32 n, OaF32 atol = 2e-3F, OaF32 rtol = 2e-2F) 
 }
 
 TEST_VK(TestFnMatrixUtil, RepeatInterleave_Gradcheck_Dim0) {
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto& ctx = OaContext::GetDefault();
 
 	// Input [2, 3] with requires_grad
@@ -206,7 +206,7 @@ TEST_VK(TestFnMatrixUtil, RepeatInterleave_Gradcheck_Dim0) {
 }
 
 TEST_VK(TestFnMatrixUtil, RepeatInterleave_Gradcheck_Dim1) {
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto& ctx = OaContext::GetDefault();
 
 	// Input [2, 3] with requires_grad
@@ -265,7 +265,7 @@ TEST_VK(TestFnMatrixUtil, Equal_AllMatch) {
 	// Test where all elements equal the value
 	std::vector<float> input_data = {5.0f, 5.0f, 5.0f, 5.0f};
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto input = CreateFromHost(input_data, OaMatrixShape{4});
 	auto output = OaFnMatrix::Equal(input, 5.0f);
 	
@@ -281,7 +281,7 @@ TEST_VK(TestFnMatrixUtil, Equal_NoneMatch) {
 	// Test where no elements equal the value
 	std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f};
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto input = CreateFromHost(input_data, OaMatrixShape{4});
 	auto output = OaFnMatrix::Equal(input, 5.0f);
 	
@@ -296,7 +296,7 @@ TEST_VK(TestFnMatrixUtil, Equal_Mixed) {
 	// Test with mixed matches
 	std::vector<float> input_data = {1.0f, 2.0f, 2.0f, 3.0f, 2.0f};
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto input = CreateFromHost(input_data, OaMatrixShape{5});
 	auto output = OaFnMatrix::Equal(input, 2.0f);
 	
@@ -310,7 +310,7 @@ TEST_VK(TestFnMatrixUtil, Equal_Mixed) {
 }
 
 TEST_VK(TestFnMatrixUtil, GreaterEqual_Mixed) {
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto input = CreateFromHost(std::vector<float>{-1.0f, 0.25f, 0.5f, 2.0f}, OaMatrixShape{4});
 	auto output = OaFnMatrix::GreaterEqual(input, 0.5f);
 	auto result = CopyToHost(output);
@@ -329,7 +329,7 @@ TEST_VK(TestFnMatrixUtil, Copy_1D) {
 	// Test copying a 1D tensor
 	std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto input = CreateFromHost(input_data, OaMatrixShape{5});
 	auto copied = OaFnMatrix::Copy(input);
 	
@@ -350,7 +350,7 @@ TEST_VK(TestFnMatrixUtil, Copy_2D) {
 		4.0f, 5.0f, 6.0f
 	};
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto input = CreateFromHost(input_data, OaMatrixShape{2, 3});
 	auto copied = OaFnMatrix::Copy(input);
 	
@@ -369,7 +369,7 @@ TEST_VK(TestFnMatrixUtil, Copy_Independence) {
 	// Test that copy creates independent tensor (modifying one doesn't affect the other)
 	std::vector<float> input_data = {1.0f, 2.0f, 3.0f};
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto input = CreateFromHost(input_data, OaMatrixShape{3});
 	auto copied = OaFnMatrix::Copy(input);
 	
@@ -397,7 +397,7 @@ TEST_VK(TestFnMatrixUtil, Detach_1D) {
 	// Test detaching a 1D tensor (breaks autograd connection)
 	std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f};
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto input = CreateFromHost(input_data, OaMatrixShape{4});
 	auto detached = OaFnMatrix::Detach(input);
 	
@@ -419,7 +419,7 @@ TEST_VK(TestFnMatrixUtil, Detach_2D) {
 		5.0f, 6.0f
 	};
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto input = CreateFromHost(input_data, OaMatrixShape{3, 2});
 	auto detached = OaFnMatrix::Detach(input);
 	
@@ -438,7 +438,7 @@ TEST_VK(TestFnMatrixUtil, Detach_PreservesData) {
 	// Test that detach preserves data exactly
 	std::vector<float> input_data = {-5.5f, 0.0f, 3.14f, 100.0f, -0.001f};
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto input = CreateFromHost(input_data, OaMatrixShape{5});
 	auto detached = OaFnMatrix::Detach(input);
 	
@@ -454,7 +454,7 @@ TEST_VK(TestFnMatrixUtil, Detach_PreservesData) {
 // ============================================================================
 
 TEST_VK(TestFnMatrixUtil, CompactRows_Forward) {
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto& ctx = OaContext::GetDefault();
 
 	std::vector<float> data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f};
@@ -479,7 +479,7 @@ TEST_VK(TestFnMatrixUtil, CompactRows_Forward) {
 }
 
 TEST_VK(TestFnMatrixUtil, CompactRows_DeferredMaskAndMultipleScanChunks) {
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto& ctx = OaContext::GetDefault();
 	constexpr OaI64 T = 600;
 	constexpr OaI64 D = 2;
@@ -517,7 +517,7 @@ TEST_VK(TestFnMatrixUtil, CompactRows_DeferredMaskAndMultipleScanChunks) {
 }
 
 TEST_VK(TestFnMatrixUtil, CompactRows_AllAndNone) {
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto& ctx = OaContext::GetDefault();
 	std::vector<float> data = {1.0f, 2.0f, 3.0f, 4.0f};
 	auto input = CreateFromHost(data, OaMatrixShape{4, 1});
@@ -537,7 +537,7 @@ TEST_VK(TestFnMatrixUtil, CompactRows_AllAndNone) {
 }
 
 TEST_VK(TestFnMatrixUtil, CompactRows_Gradcheck) {
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto& ctx = OaContext::GetDefault();
 
 	std::vector<float> data = {0.5f, -1.2f, 3.1f, 0.8f, -2.4f, 1.7f, 0.3f, -0.9f};
@@ -587,7 +587,7 @@ TEST_VK(TestFnMatrixUtil, CompactRows_Gradcheck) {
 // ============================================================================
 
 TEST_VK(TestFnMatrixUtil, ScatterRows_Forward) {
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto& ctx = OaContext::GetDefault();
 
 	std::vector<float> self_data = {10.0f, 20.0f, 30.0f, 40.0f, 50.0f, 60.0f};
@@ -612,7 +612,7 @@ TEST_VK(TestFnMatrixUtil, ScatterRows_Forward) {
 }
 
 TEST_VK(TestFnMatrixUtil, ScatterRows_Gradcheck_Source) {
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto& ctx = OaContext::GetDefault();
 
 	std::vector<float> self_data = {10.0f, 20.0f, 30.0f, 40.0f, 50.0f, 60.0f};

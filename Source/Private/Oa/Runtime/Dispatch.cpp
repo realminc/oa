@@ -1,5 +1,4 @@
 #include <Oa/Runtime/Dispatch.h>
-#include <Oa/Runtime/Scheduler.h>
 #include <Oa/Runtime/Engine.h>
 #include <Oa/Runtime/Stream.h>
 #include <Oa/Runtime/OaVk.h>
@@ -16,7 +15,7 @@ static OaResult<OaStringView> ResolveKernelName(OaKernelId InKernelId) {
 }
 
 OaStatus OaVkDispatch::Run(
-	OaComputeEngine& InRuntime,
+	OaEngine& InRuntime,
 	OaStringView InPipelineName,
 	OaSpan<OaVkBuffer> InBuffers,
 	const void* InPushData,
@@ -32,12 +31,6 @@ OaStatus OaVkDispatch::Run(
 	
 	OA_DEBUG_COUNTER_INC(dispatch_count);
 
-	if (InRuntime.ComputeBatchStream_) {
-		OaVkBatch batch;
-		batch.Stream = InRuntime.ComputeBatchStream_;
-		return Record(batch, InRuntime, InPipelineName, InBuffers,
-			InPushData, InPushSize, InGroupsX, InGroupsY, InGroupsZ);
-	}
 	return OaVkStream::RunOnce(
 		InRuntime, InPipelineName, InBuffers,
 		InPushData, InPushSize,
@@ -45,7 +38,7 @@ OaStatus OaVkDispatch::Run(
 }
 
 OaStatus OaVkDispatch::Run(
-	OaComputeEngine& InRuntime,
+	OaEngine& InRuntime,
 	OaKernelId InKernelId,
 	OaSpan<OaVkBuffer> InBuffers,
 	const void* InPushData,
@@ -62,7 +55,7 @@ OaStatus OaVkDispatch::Run(
 }
 
 OaStatus OaVkDispatch::RunIndirect(
-	OaComputeEngine& InRuntime,
+	OaEngine& InRuntime,
 	OaStringView InPipelineName,
 	OaSpan<OaVkBuffer> InBuffers,
 	const void* InPushData,
@@ -83,7 +76,7 @@ OaStatus OaVkDispatch::RunIndirect(
 	return status;
 }
 
-OaResult<OaVkBatch> OaVkDispatch::BeginBatch(OaComputeEngine& InRuntime) {
+OaResult<OaVkBatch> OaVkDispatch::BeginBatch(OaEngine& InRuntime) {
 	OaVkStream* stream = InRuntime.AcquireStream();
 	if (!stream) {
 		return OaStatus::Error(OaStatusCode::VulkanError, "failed to acquire stream for batch");
@@ -98,7 +91,7 @@ OaResult<OaVkBatch> OaVkDispatch::BeginBatch(OaComputeEngine& InRuntime) {
 
 OaStatus OaVkDispatch::Record(
 	OaVkBatch& InBatch,
-	OaComputeEngine& InRuntime,
+	OaEngine& InRuntime,
 	OaStringView InPipelineName,
 	OaSpan<OaVkBuffer> InBuffers,
 	const void* InPushData,
@@ -137,7 +130,7 @@ OaStatus OaVkDispatch::Record(
 
 OaStatus OaVkDispatch::Record(
 	OaVkBatch& InBatch,
-	OaComputeEngine& InRuntime,
+	OaEngine& InRuntime,
 	OaKernelId InKernelId,
 	OaSpan<OaVkBuffer> InBuffers,
 	const void* InPushData,
@@ -153,34 +146,17 @@ OaStatus OaVkDispatch::Record(
 	return Record(InBatch, InRuntime, *kernelName, InBuffers, InPushData, InPushSize, InGroupsX, InGroupsY, InGroupsZ);
 }
 
-OaStatus OaVkDispatch::Flush(OaVkBatch& InBatch, OaComputeEngine& InRuntime) {
+OaStatus OaVkDispatch::Flush(OaVkBatch& InBatch, OaEngine& InRuntime) {
 	OaStatus status = InBatch.Stream->SubmitAndWait(InRuntime);
 	InRuntime.ReleaseStream(InBatch.Stream);
 	InBatch.Stream = nullptr;
 	return status;
 }
 
-// ─── Multi-Device Dispatch Stubs ────────────────────────────────────────────
-
-OaStatus OaVkDispatch::Run(
-	OaComputeEngine& InRuntime,
-	OaStringView InPipelineName,
-	OaSpan<OaVkBuffer> InBuffers,
-	const void* InPushData,
-	OaU32 InPushSize,
-	OaU32 InGroupsX,
-	OaU32 InGroupsY,
-	OaU32 InGroupsZ,
-	const OaDispatchHint& InHint
-) {
-	// Phase 1 stub: ignore hint, dispatch to primary device.
-	(void)InHint;
-	return Run(InRuntime, InPipelineName, InBuffers,
-		InPushData, InPushSize, InGroupsX, InGroupsY, InGroupsZ);
-}
+// ─── Experimental explicit-device dispatch ─────────────────────────────────
 
 OaStatus OaVkDispatch::RunOn(
-	OaComputeEngine& InRuntime,
+	OaEngine& InRuntime,
 	OaU32 InNodeIndex,
 	OaStringView InPipelineName,
 	OaSpan<OaVkBuffer> InBuffers,
@@ -214,8 +190,8 @@ OaStatus OaVkDispatch::RunOn(
 	OaSpinlockGuard guard(*mesh->DeviceLoadLock);
 	OaVkLoadDevice(static_cast<VkDevice>(node->Device.Device));
 	struct OaRestorePrimaryVkDispatch {
-		OaComputeEngine& Rt;
-		explicit OaRestorePrimaryVkDispatch(OaComputeEngine& InRt) : Rt(InRt) {}
+		OaEngine& Rt;
+		explicit OaRestorePrimaryVkDispatch(OaEngine& InRt) : Rt(InRt) {}
 		~OaRestorePrimaryVkDispatch() {
 			OaVkLoadDevice(static_cast<VkDevice>(Rt.Device.Device));
 		}
@@ -233,23 +209,4 @@ OaStatus OaVkDispatch::RunOn(
 	OaStatus status = stream->SubmitAndWait(InRuntime, true);
 	InRuntime.ReleaseStreamOn(InNodeIndex, stream);
 	return status;
-}
-
-OaResult<OaDispatchTicket> OaVkDispatch::RunAsync(
-	OaComputeEngine& InRuntime,
-	OaStringView InPipelineName,
-	OaSpan<OaVkBuffer> InBuffers,
-	const void* InPushData,
-	OaU32 InPushSize,
-	OaU32 InGroupsX,
-	OaU32 InGroupsY,
-	OaU32 InGroupsZ
-) {
-	// Async path must not defer into an engine compute batch (ticket would lie about completion).
-	OA_RETURN_IF_ERROR(OaVkStream::RunOnce(
-		InRuntime, InPipelineName, InBuffers,
-		InPushData, InPushSize, InGroupsX, InGroupsY, InGroupsZ));
-	OaDispatchTicket ticket;
-	ticket.NodeIndex = 0;
-	return ticket;
 }

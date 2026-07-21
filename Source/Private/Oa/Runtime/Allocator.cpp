@@ -112,6 +112,7 @@ OaResult<OaVkBuffer> OaVma::AllocDevice(OaU64 InSize) {
 	OaVkBuffer buf;
 	buf.Buffer = buffer;
 	buf.Allocation = allocation;
+	buf.AllocatorIdentity = Allocator;
 	buf.Size = InSize;
 	buf.Capacity = capacity;
 	buf.MappedPtr = nullptr;
@@ -153,6 +154,7 @@ OaResult<OaVkBuffer> OaVma::AllocHostVisible(OaU64 InSize) {
 	OaVkBuffer buf;
 	buf.Buffer = buffer;
 	buf.Allocation = allocation;
+	buf.AllocatorIdentity = Allocator;
 	buf.Size = InSize;
 	buf.Capacity = capacity;
 	buf.MappedPtr = allocInfo.pMappedData;
@@ -189,6 +191,7 @@ OaResult<OaVkBuffer> OaVma::AllocHostReadback(OaU64 InSize) {
 	OaVkBuffer out;
 	out.Buffer = buffer;
 	out.Allocation = allocation;
+	out.AllocatorIdentity = Allocator;
 	out.Size = InSize;
 	out.Capacity = capacity;
 	out.MappedPtr = allocInfo.pMappedData;
@@ -256,6 +259,7 @@ OaResult<OaVkBuffer> OaVma::AllocBar(OaU64 InSize) {
 	OaVkBuffer buf;
 	buf.Buffer = buffer;
 	buf.Allocation = allocation;
+	buf.AllocatorIdentity = Allocator;
 	buf.Size = InSize;
 	buf.Capacity = capacity;
 	buf.MappedPtr = allocInfo.pMappedData;
@@ -308,6 +312,7 @@ OaResult<OaVkBuffer> OaVma::AllocPreprocessBuffer(OaU64 InSize) {
 	OaVkBuffer buf;
 	buf.Buffer = buffer;
 	buf.Allocation = allocation;
+	buf.AllocatorIdentity = Allocator;
 	buf.Size = InSize;
 	buf.Capacity = capacity;
 	buf.MappedPtr = allocInfo.pMappedData;
@@ -389,6 +394,8 @@ OaResult<OaVkBuffer> OaVma::AllocAliased(
 	OaVkBuffer buf;
 	buf.Buffer = buffer;
 	buf.Allocation = allocation;
+	buf.AllocatorIdentity = Allocator;
+	buf.AliasIdentity = allocation;
 	buf.Size = InSize;
 	buf.Capacity = capacity;
 	buf.MappedPtr = allocInfo.pMappedData;
@@ -427,6 +434,9 @@ OaResult<OaVkBuffer> OaVma::CreateAliasingBuffer(
 	OaVkBuffer buf;
 	buf.Buffer = buffer;
 	buf.Allocation = nullptr;
+	buf.AllocatorIdentity = Allocator;
+	buf.AliasIdentity = InExisting.AliasIdentity
+		? InExisting.AliasIdentity : InExisting.Allocation;
 	buf.Size = InSize;
 	buf.Capacity = capacity;
 	buf.MappedPtr = InExisting.MappedPtr;
@@ -471,7 +481,7 @@ void OaVma::Free(OaVkBuffer& InOutBuffer) {
 
 		// Deregister bindless slot to prevent heap exhaustion during long training runs
 		if (InOutBuffer.BindlessIndex != UINT32_MAX) {
-			auto* engine = OaComputeEngine::GetGlobal();
+			auto* engine = OaEngine::GetGlobal();
 			if (engine) {
 				engine->Bindless.Deregister(InOutBuffer.BindlessIndex);
 			}
@@ -485,11 +495,13 @@ void OaVma::Free(OaVkBuffer& InOutBuffer) {
 		);
 		InOutBuffer.Buffer = nullptr;
 		InOutBuffer.Allocation = nullptr;
-			InOutBuffer.MappedPtr = nullptr;
-			InOutBuffer.Size = 0;
-			InOutBuffer.Capacity = 0;
-			InOutBuffer.Flags = OA_VK_BUFFER_FLAG_NONE;
-			InOutBuffer.Placement = OaMemoryPlacement::Auto;
+		InOutBuffer.AllocatorIdentity = nullptr;
+		InOutBuffer.AliasIdentity = nullptr;
+		InOutBuffer.MappedPtr = nullptr;
+		InOutBuffer.Size = 0;
+		InOutBuffer.Capacity = 0;
+		InOutBuffer.Flags = OA_VK_BUFFER_FLAG_NONE;
+		InOutBuffer.Placement = OaMemoryPlacement::Auto;
 	}
 }
 
@@ -505,6 +517,8 @@ void OaVma::FreeImported(const OaVkDevice& InDevice, OaVkBuffer& InOutBuffer) {
 	}
 	InOutBuffer.Buffer = nullptr;
 	InOutBuffer.Allocation = nullptr;
+	InOutBuffer.AllocatorIdentity = nullptr;
+	InOutBuffer.AliasIdentity = nullptr;
 	InOutBuffer.MappedPtr = nullptr;
 	InOutBuffer.Size = 0;
 	InOutBuffer.Capacity = 0;

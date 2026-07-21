@@ -11,14 +11,18 @@
 #include <Oa/Core/Navigation.h>
 #include <Oa/Core/Status.h>
 #include <Oa/Core/Types.h>
+#include <Oa/Runtime/OaVk.h>
+#include <Oa/Runtime/Sync.h>
 #include <Oa/Ui/DetectionOverlay.h>
-#include <Oa/Ui/DeviceUi.h>
 #include <Oa/Ui/Image.h>
 #include <Oa/Ui/Input.h>
+#include <Oa/Ui/Text.h>
+#include <Oa/Ui/Ui.h>
 #include <Oa/Audio/AudioStream.h>
 #include <Oa/Vision/Video.h>
 
-class OaComputeEngine;
+class OaEngine;
+class OaPresenter;
 
 enum class OaViewerMode : OaU8 {
 	Auto,
@@ -34,13 +38,16 @@ enum class OaViewerMode : OaU8 {
 class OaViewerLiveSource {
 public:
 	virtual ~OaViewerLiveSource() = default;
-	virtual OaStatus Open(OaGraphicsEngine&) { return OaStatus::Ok(); }
-	virtual void Init(OaDeviceUi&) {}
+	virtual OaStatus Open(OaEngine&) { return OaStatus::Ok(); }
+	virtual OaStatus Init(
+		OaInputSystem&,
+		OaFunc<void(bool)>) { return OaStatus::Ok(); }
 	virtual void Update(OaF32) {}
-	virtual void Render(OaUi&, OaDeviceUi&) {}
+	virtual void Render(OaUi&, const OaTextAtlas&, OaU32, OaU32) {}
 	virtual void Event(const OaUiEvent&) {}
+	[[nodiscard]] virtual OaEvent RenderReady() const { return {}; }
 	virtual void MarkConsumed(const OaVkTimelineSemaphore&, OaU64) {}
-	virtual void Close(OaDeviceUi&) {}
+	[[nodiscard]] virtual OaStatus Close() { return OaStatus::Ok(); }
 };
 
 struct OaViewerConfig {
@@ -55,9 +62,12 @@ struct OaViewerConfig {
 	OaString Title = "OaViewer";
 	OaU32 Width = 1280;
 	OaU32 Height = 720;
+	OaUiStyle Style;
 	bool ShowHelp = true;
 	bool ShowStats = true;
 	bool ShowTimeline = true;
+	bool Vsync = true;
+	OaFilter PresentFilter = OaFilter::Nearest;
 
 	// Temporal media options. Ignored for still images.
 	bool Loop = true;
@@ -95,12 +105,17 @@ struct OaViewerConfig {
 	OuiKey KeyPanRight = OuiKey::Kp6;
 };
 
-class OaViewer : public OaDeviceUiApp {
+class OaViewer {
 public:
 	OaViewer() = default;
 	explicit OaViewer(const char* InPath) { Config_.Path = InPath; }
 	explicit OaViewer(const OaString& InPath) { Config_.Path = InPath; }
 	explicit OaViewer(const OaViewerConfig& InConfig) : Config_(InConfig) {}
+	~OaViewer() = default;
+	OaViewer(const OaViewer&) = delete;
+	OaViewer& operator=(const OaViewer&) = delete;
+	OaViewer(OaViewer&&) = delete;
+	OaViewer& operator=(OaViewer&&) = delete;
 
 	void SetMode(OaViewerMode InMode) { Config_.Mode = InMode; }
 	void SetPath(const OaString& InPath) { Config_.Path = InPath; }
@@ -112,22 +127,46 @@ public:
 	// Headless image sink. The same viewer render-body abstraction will replace
 	// this direct file call when render-target consolidation lands.
 	[[nodiscard]] static OaStatus Save(
-		OaComputeEngine& InEngine,
+		OaEngine& InEngine,
 		const OaTexture& InTexture,
 		const char* InPath);
 
-	OaStatus OnDeviceReady(OaGraphicsEngine& InEngine) override;
-	void OnInit(OaDeviceUi& InGpui) override;
-	void OnUpdate(OaF32 InDeltaMs) override;
-	void OnRender(OaUi& InUi) override;
-	void OnEvent(const OaUiEvent& InEvent) override;
-	void OnRenderSubmitted(
-		const OaVkTimelineSemaphore& InSemaphore,
-		OaU64 InValue) override;
-	void OnShutdown(OaDeviceUi& InGpui) override;
 
 private:
 	enum class ImageViewMode : OaU8 { RGB, R, G, B, A };
+
+	[[nodiscard]] OaStatus OpenSource(OaEngine& InEngine);
+	[[nodiscard]] OaStatus InitView();
+	void Update(OaF32 InDeltaMs);
+	void Render(OaUi& InUi);
+	void RouteEvent(const OaUiEvent& InEvent);
+	void MarkRenderSubmitted(
+		const OaVkTimelineSemaphore& InSemaphore,
+		OaU64 InValue);
+	[[nodiscard]] OaStatus CloseSource();
+
+	[[nodiscard]] OaStatus InitPresentation(
+		OaPresenter& InPresenter,
+		void* InSurface);
+	[[nodiscard]] OaStatus DestroyPresentation();
+	[[nodiscard]] OaStatus BuildComposeImage(OaU32 InWidth, OaU32 InHeight);
+	void DestroyComposeImage();
+	void BeginFrame(OaF32 InDeltaMs);
+	void RouteUiEvents(OaSpan<const OaUiEvent> InEvents);
+	void RecordRender(VkCommandBuffer InCommandBuffer);
+	void EndFrame();
+	[[nodiscard]] OaStatus Resize(OaU32 InWidth, OaU32 InHeight);
+	[[nodiscard]] OaStatus Present();
+	void SetRenderDependency(const OaEvent& InEvent);
+	void SetRenderCompletion(
+		const OaVkTimelineSemaphore& InSemaphore,
+		OaU64 InValue);
+	[[nodiscard]] OaU32 Width() const noexcept;
+	[[nodiscard]] OaU32 Height() const noexcept;
+	void Quit() noexcept { Running_ = false; }
+	void ResizeWindow(OaU32 InWidth, OaU32 InHeight) noexcept;
+	void CapturePointer(bool InEnabled) noexcept;
+	void CaptureRelativeMouse(bool InEnabled) noexcept;
 
 	OaViewerConfig Config_;
 	OaViewerMode ResolvedMode_ = OaViewerMode::Auto;
@@ -146,9 +185,27 @@ private:
 	OaF32 DisplayFps_ = 0.0F;
 	OaF32 DisplayFrameMs_ = 0.0F;
 
-	[[nodiscard]] OaStatus OpenImage(OaGraphicsEngine& InEngine);
-	[[nodiscard]] OaStatus OpenVideo(OaGraphicsEngine& InEngine);
-	[[nodiscard]] OaStatus OpenAudio(OaGraphicsEngine& InEngine);
+	OaPresenter* Presenter_ = nullptr;
+	OaEngine* Engine_ = nullptr;
+	void* Window_ = nullptr;
+	void* ComposeImage_ = nullptr;
+	void* ComposeView_ = nullptr;
+	void* ComposeAllocation_ = nullptr;
+	OaU32 ComposeBindlessIndex_ = UINT32_MAX;
+	OaU32 ComposeWidth_ = 0;
+	OaU32 ComposeHeight_ = 0;
+	OaTextAtlas TextAtlas_;
+	OaUi Ui_;
+	OaInputSystem Input_;
+	OaVkTimelineSemaphore RenderCompletionSemaphore_;
+	OaU64 RenderCompletionValue_ = 0;
+	const OaVkTimelineSemaphore* RenderDependencySemaphore_ = nullptr;
+	OaU64 RenderDependencyValue_ = 0;
+	bool Running_ = false;
+
+	[[nodiscard]] OaStatus OpenImage(OaEngine& InEngine);
+	[[nodiscard]] OaStatus OpenVideo(OaEngine& InEngine);
+	[[nodiscard]] OaStatus OpenAudio(OaEngine& InEngine);
 	[[nodiscard]] bool HasVisualContent() const noexcept;
 	[[nodiscard]] bool HasTimeline() const noexcept;
 	[[nodiscard]] bool IsMediaPlaying() const noexcept;
@@ -161,11 +218,11 @@ private:
 	void SeekMediaUs(OaU64 InTimestampUs);
 	void SeekMediaFraction(OaF32 InFraction);
 	void StepTemporal(OaI32 InAmount);
-	void ConfigureNavigation(OaDeviceUi& InGpui);
-	void ConfigureOverlay(OaDeviceUi& InGpui);
-	void RegisterCommonInput(OaDeviceUi& InGpui);
-	void RegisterImageInput(OaDeviceUi& InGpui);
-	void RegisterTemporalInput(OaDeviceUi& InGpui);
+	void ConfigureNavigation();
+	[[nodiscard]] OaStatus ConfigureOverlay();
+	void RegisterCommonInput();
+	void RegisterImageInput();
+	void RegisterTemporalInput();
 	void RenderImage(OaUi& InUi);
 	void RenderVideo(OaUi& InUi);
 	void RenderAudio(OaUi& InUi);

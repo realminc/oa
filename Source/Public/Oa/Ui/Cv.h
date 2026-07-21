@@ -22,7 +22,8 @@
 #include <Oa/Core/Color.h>
 
 class OaUi;
-class OaComputeEngine;
+class OaEngine;
+class OaContext;
 struct OaTexture;
 class OaVkBuffer;
 struct OaPixelRect;
@@ -142,9 +143,15 @@ struct OaCvFrame {
 	void ClearOverlays() noexcept { Overlays.clear(); }
 
 	// CPU reference/diagnostic composite -> upload RGBA8 OaTexture.
-	// Realtime consumers must use OaDetectionOverlay or another resident path.
-	[[nodiscard]] OaResult<OaTexture> Render(OaComputeEngine& InRt) const;
+	// The context overload completes pending work before reading Base. The engine
+	// overload uses a matching thread-default context when available. Realtime
+	// consumers must use OaDetectionOverlay or another resident path.
+	[[nodiscard]] OaResult<OaTexture> Render(OaContext& InContext) const;
 	[[nodiscard]] OaResult<OaTexture> Render(
-		OaComputeEngine& InRt,
+		OaContext& InContext,
+		OaSpan<const OaU8> InBaseRgba) const;
+	[[nodiscard]] OaResult<OaTexture> Render(OaEngine& InRt) const;
+	[[nodiscard]] OaResult<OaTexture> Render(
+		OaEngine& InRt,
 		OaSpan<const OaU8> InBaseRgba) const;
 };

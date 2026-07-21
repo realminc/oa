@@ -19,5 +19,5 @@
 // ─── Normalize (Apply per-channel normalization to an NCHW image tensor) ───
 
 OaMatrix OaFnImage::Normalize(const OaMatrix& InImage, const OaNormalizationParams& InParams) {
-	return OaFnImage::Normalize(*OaComputeEngine::GetGlobal(), InImage, InParams);
+	return OaFnImage::Normalize(*OaEngine::GetGlobal(), InImage, InParams);
 }

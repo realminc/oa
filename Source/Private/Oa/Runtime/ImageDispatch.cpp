@@ -12,6 +12,7 @@ OaVkImageDispatchTicket::OaVkImageDispatchTicket(OaVkImageDispatchTicket&& InOth
 	, StorageImageSlots_(OaStdMove(InOther.StorageImageSlots_))
 	, SampledImageSlots_(OaStdMove(InOther.SampledImageSlots_))
 	, SamplerSlots_(OaStdMove(InOther.SamplerSlots_))
+	, OwnedImageViews_(OaStdMove(InOther.OwnedImageViews_))
 {
 	InOther.Engine_ = nullptr;
 	InOther.Stream_ = nullptr;
@@ -20,12 +21,13 @@ OaVkImageDispatchTicket::OaVkImageDispatchTicket(OaVkImageDispatchTicket&& InOth
 OaVkImageDispatchTicket& OaVkImageDispatchTicket::operator=(OaVkImageDispatchTicket&& InOther) noexcept
 {
 	if (this != &InOther) {
-		(void)Wait();
+		Retire_();
 		Engine_ = InOther.Engine_;
 		Stream_ = InOther.Stream_;
 		StorageImageSlots_ = OaStdMove(InOther.StorageImageSlots_);
 		SampledImageSlots_ = OaStdMove(InOther.SampledImageSlots_);
 		SamplerSlots_ = OaStdMove(InOther.SamplerSlots_);
+		OwnedImageViews_ = OaStdMove(InOther.OwnedImageViews_);
 		InOther.Engine_ = nullptr;
 		InOther.Stream_ = nullptr;
 	}
@@ -34,7 +36,7 @@ OaVkImageDispatchTicket& OaVkImageDispatchTicket::operator=(OaVkImageDispatchTic
 
 OaVkImageDispatchTicket::~OaVkImageDispatchTicket()
 {
-	(void)Wait();
+	Retire_();
 }
 
 OaStatus OaVkImageDispatchTicket::WaitForSignal(OaU64 InTimeoutNs) const
@@ -82,8 +84,24 @@ OaCompletionToken OaVkImageDispatchTicket::Completion() const
 		: OaCompletionToken();
 }
 
+void OaVkImageDispatchTicket::AdoptImageView(VkImageView InView)
+{
+	if (InView != VK_NULL_HANDLE) {
+		OwnedImageViews_.PushBack(InView);
+	}
+}
+
 void OaVkImageDispatchTicket::Cleanup_()
 {
+	const VkDevice device = Engine_
+		? static_cast<VkDevice>(Engine_->Device.Device)
+		: VK_NULL_HANDLE;
+	if (device != VK_NULL_HANDLE) {
+		for (VkImageView view : OwnedImageViews_) {
+			if (view != VK_NULL_HANDLE) vkDestroyImageView(device, view, nullptr);
+		}
+	}
+	OwnedImageViews_.Clear();
 	for (OaU32 idx : StorageImageSlots_) { Engine_->Bindless.DeregisterStorageImage(idx); }
 	for (OaU32 idx : SampledImageSlots_) { Engine_->Bindless.DeregisterSampledImage(idx); }
 	for (OaU32 idx : SamplerSlots_) { Engine_->Bindless.DeregisterSampler(idx); }
@@ -95,10 +113,28 @@ void OaVkImageDispatchTicket::Cleanup_()
 	Engine_ = nullptr;
 }
 
+void OaVkImageDispatchTicket::Retire_()
+{
+	if (!Stream_ || !Engine_) return;
+	if (Stream_->IsComplete(Engine_->Device)) {
+		Stream_->Submitted = false;
+		Cleanup_();
+		return;
+	}
+	Engine_->RetireImageDispatch(
+		Stream_,
+		OaStdMove(StorageImageSlots_),
+		OaStdMove(SampledImageSlots_),
+		OaStdMove(SamplerSlots_),
+		OaStdMove(OwnedImageViews_));
+	Stream_ = nullptr;
+	Engine_ = nullptr;
+}
+
 // Shared helper: validates, registers bindless resources, and records dispatch.
 // Returns the acquired stream (caller must release) or nullptr on error.
 static OaVkStream* ImageDispatchSetupAndRecord(
-	OaComputeEngine& InRt,
+	OaEngine& InRt,
 	OaStringView InShaderName,
 	OaSpan<const OaVkImageDispatchBinding> InBindings,
 	const void* InPushData,
@@ -370,7 +406,7 @@ static OaVkStream* ImageDispatchSetupAndRecord(
 }
 
 OaStatus OaVkImageDispatch::Run(
-	OaComputeEngine& InRt,
+	OaEngine& InRt,
 	OaStringView InShaderName,
 	OaSpan<const OaVkImageDispatchBinding> InBindings,
 	const void* InPushData,
@@ -399,7 +435,7 @@ OaStatus OaVkImageDispatch::Run(
 }
 
 OaResult<OaVkImageDispatchTicket> OaVkImageDispatch::RunAsync(
-	OaComputeEngine& InRt,
+	OaEngine& InRt,
 	OaStringView InShaderName,
 	OaSpan<const OaVkImageDispatchBinding> InBindings,
 	const void* InPushData,
@@ -415,7 +451,7 @@ OaResult<OaVkImageDispatchTicket> OaVkImageDispatch::RunAsync(
 }
 
 OaStatus OaVkImageDispatch::RunWithDependency(
-	OaComputeEngine& InRt,
+	OaEngine& InRt,
 	OaStringView InShaderName,
 	OaSpan<const OaVkImageDispatchBinding> InBindings,
 	const void* InPushData,
@@ -449,7 +485,7 @@ OaStatus OaVkImageDispatch::RunWithDependency(
 }
 
 OaResult<OaVkImageDispatchTicket> OaVkImageDispatch::RunWithDependencyAsync(
-	OaComputeEngine& InRt,
+	OaEngine& InRt,
 	OaStringView InShaderName,
 	OaSpan<const OaVkImageDispatchBinding> InBindings,
 	const void* InPushData,

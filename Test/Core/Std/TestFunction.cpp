@@ -37,13 +37,13 @@ TEST(OaStdFnVsStd, TimedInvokeWallUs) {
 	constexpr int kCalls = 300'000;
 	OaStdFn<int(int)> oa = [](int x) { return x ^ (x >> 2); };
 	std::function<int(int)> st = [](int x) { return x ^ (x >> 2); };
-	volatile int sinkOa = 0;
+	volatile long long sinkOa = 0;
 	const auto t0 = OaHighResolutionNow();
 	for (int i = 0; i < kCalls; ++i) {
 		sinkOa += oa(i);
 	}
 	const auto t1 = OaHighResolutionNow();
-	volatile int sinkSt = 0;
+	volatile long long sinkSt = 0;
 	for (int i = 0; i < kCalls; ++i) {
 		sinkSt += st(i);
 	}

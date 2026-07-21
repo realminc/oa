@@ -1,6 +1,9 @@
 #include <Oa/Core/Thread.h>
 #include <Oa/Core/Log.h>
 
+#include <condition_variable>
+#include <mutex>
+
 #ifdef OA_PLATFORM_LINUX
 #include <pthread.h>
 #include <sched.h>
@@ -17,25 +20,42 @@ static bool PinThreadToCore([[maybe_unused]] OaI32 InCoreId) {
 #endif
 }
 
-static void WorkerLoop(
+struct OaThreadPool::State {
+	OaVec<OaSharedPtr<OaChannel<Job>>> Queues;
+	std::atomic<OaI32> NextWorker{0};
+	std::atomic<OaI32> WorkersRemaining{0};
+	std::atomic<bool> Running{false};
+	std::atomic<bool> DrainOnStop{false};
+	std::mutex FinishedMutex;
+	std::condition_variable Finished;
+};
+
+void OaThreadPool::WorkerLoop(
+	OaSharedPtr<State> InState,
 	OaI32 InWorkerId,
-	OaSharedPtr<OaChannel<std::function<void()>>>& InOwnQueue,
-	OaVec<OaSharedPtr<OaChannel<std::function<void()>>>>& InAllQueues,
-	std::atomic<bool>& InRunning,
 	OaI32 InCoreId,
-	OaBool InPinToCore
-) {
+	OaBool InPinToCore)
+{
 	if (InPinToCore && InCoreId >= 0) {
 		PinThreadToCore(InCoreId);
 	}
 
-	OaI32 numQueues = static_cast<OaI32>(InAllQueues.Size());
+	const OaI32 numQueues = static_cast<OaI32>(InState->Queues.Size());
+	auto& ownQueue = InState->Queues[InWorkerId];
+	auto executeOrCancel = [&InState](Job& InJob) {
+		if (InState->Running.load(std::memory_order_acquire)
+			|| InState->DrainOnStop.load(std::memory_order_acquire)) {
+			if (InJob.Run) InJob.Run();
+		} else if (InJob.Cancel) {
+			InJob.Cancel();
+		}
+	};
 
-	while (InRunning.load(std::memory_order_relaxed)) {
+	while (InState->Running.load(std::memory_order_acquire)) {
 		// Try own queue first (non-blocking to allow stealing)
-		auto job = InOwnQueue->TryRecv();
+		auto job = ownQueue->TryRecv();
 		if (job) {
-			(*job)();
+			executeOrCancel(*job);
 			continue;
 		}
 
@@ -43,32 +63,40 @@ static void WorkerLoop(
 		bool stolen = false;
 		for (OaI32 i = 1; i < numQueues; ++i) {
 			OaI32 target = (InWorkerId + i) % numQueues;
-			auto stealJob = InAllQueues[target]->TryRecv();
+			auto stealJob = InState->Queues[target]->TryRecv();
 			if (stealJob) {
-				(*stealJob)();
+				executeOrCancel(*stealJob);
 				stolen = true;
 				break;
 			}
 		}
 
 		if (!stolen) {
-			// No work anywhere — block on own queue briefly
-			auto blocking = InOwnQueue->Recv();
-			if (blocking) (*blocking)();
+			// Closing the queue is the stop wake-up for an idle worker.
+			auto blocking = ownQueue->Recv();
+			if (blocking) executeOrCancel(*blocking);
 		}
 	}
 
-	// Drain remaining jobs
-	while (true) {
-		auto job = InOwnQueue->TryRecv();
-		if (!job) break;
-		(*job)();
+	if (InState->DrainOnStop.load(std::memory_order_acquire)) {
+		while (true) {
+			auto job = ownQueue->TryRecv();
+			if (!job) break;
+			if (job->Run) job->Run();
+		}
+	}
+
+	if (InState->WorkersRemaining.fetch_sub(
+		1, std::memory_order_acq_rel) == 1) {
+		std::lock_guard<std::mutex> lock(InState->FinishedMutex);
+		InState->Finished.notify_all();
 	}
 }
 
 OaThreadPool OaThreadPool::Create(const OaThreadPoolConfig& InConfig) {
 	OaThreadPool pool;
 	pool.Topology_ = OaCpuTopology::Detect();
+	pool.State_ = OaMakeSharedPtr<State>();
 
 	OaI32 numWorkers = InConfig.NumWorkers;
 	if (numWorkers <= 0) {
@@ -81,39 +109,40 @@ OaThreadPool OaThreadPool::Create(const OaThreadPoolConfig& InConfig) {
 	}
 
 	// Determine core assignments
+	OaVec<OaI32> workerCoreIds;
 	if (!InConfig.CoreIds.Empty()) {
-		pool.WorkerCoreIds_ = InConfig.CoreIds;
+		workerCoreIds = InConfig.CoreIds;
 	} else if (InConfig.UseTopology) {
 		auto pcores = pool.Topology_.GetPcoreIds();
 		auto ecores = pool.Topology_.GetEcoreIds();
-		pool.WorkerCoreIds_.Reserve(numWorkers);
+		workerCoreIds.Reserve(numWorkers);
 		for (OaI32 i = 0; i < numWorkers; ++i) {
 			if (i < static_cast<OaI32>(pcores.Size()))
-				pool.WorkerCoreIds_.PushBack(pcores[i]);
+				workerCoreIds.PushBack(pcores[i]);
 			else if (!ecores.Empty())
-				pool.WorkerCoreIds_.PushBack(ecores[i % ecores.Size()]);
+				workerCoreIds.PushBack(ecores[i % ecores.Size()]);
 			else
-				pool.WorkerCoreIds_.PushBack(i % pool.Topology_.NumLogicalCores);
+				workerCoreIds.PushBack(i % pool.Topology_.NumLogicalCores);
 		}
 	}
 
-	pool.Running_.store(true, std::memory_order_release);
-	pool.Queues_.Reserve(numWorkers);
+	pool.State_->Running.store(true, std::memory_order_release);
+	pool.State_->WorkersRemaining.store(numWorkers, std::memory_order_release);
+	pool.State_->Queues.Reserve(numWorkers);
 	for (OaI32 i = 0; i < numWorkers; ++i) {
-		pool.Queues_.PushBack(OaMakeSharedPtr<OaChannel<Job>>(kQueueCapacity));
+		pool.State_->Queues.PushBack(
+			OaMakeSharedPtr<OaChannel<Job>>(kQueueCapacity));
 	}
 
-	pool.Workers_.Reserve(numWorkers);
 	for (OaI32 i = 0; i < numWorkers; ++i) {
-		OaI32 coreId = (i < static_cast<OaI32>(pool.WorkerCoreIds_.Size()))
-			? pool.WorkerCoreIds_[i] : -1;
-		pool.Workers_.EmplaceBack(WorkerLoop,
+		const OaI32 coreId = i < static_cast<OaI32>(workerCoreIds.Size())
+			? workerCoreIds[i] : -1;
+		std::thread(
+			&OaThreadPool::WorkerLoop,
+			pool.State_,
 			i,
-			std::ref(pool.Queues_[i]),
-			std::ref(pool.Queues_),
-			std::ref(pool.Running_),
 			coreId,
-			InConfig.PinToCores);
+			InConfig.PinToCores).detach();
 	}
 
 	OA_LOG_INFO(OaLogComponent::Core, "ThreadPool: %d workers started", numWorkers);
@@ -121,63 +150,80 @@ OaThreadPool OaThreadPool::Create(const OaThreadPoolConfig& InConfig) {
 }
 
 void OaThreadPool::Shutdown() {
-	if (!Running_.exchange(false)) return;
-
-	for (auto& q : Queues_) q->Close();
-	for (auto& w : Workers_) {
-		if (w.joinable()) w.join();
+	auto state = State_;
+	if (!state) return;
+	state->DrainOnStop.store(true, std::memory_order_release);
+	if (state->Running.exchange(false, std::memory_order_acq_rel)) {
+		for (auto& queue : state->Queues) queue->Close();
 	}
+	std::unique_lock<std::mutex> lock(state->FinishedMutex);
+	state->Finished.wait(lock, [&state] {
+		return state->WorkersRemaining.load(std::memory_order_acquire) == 0;
+	});
 
 	OA_LOG_INFO(OaLogComponent::Core, "ThreadPool: shutdown complete");
 }
 
 OaThreadPool::~OaThreadPool() {
-	if (Running_.load()) Shutdown();
+	Abandon_();
+}
+
+void OaThreadPool::Abandon_() noexcept {
+	auto state = OaStdMove(State_);
+	if (!state) return;
+	state->DrainOnStop.store(false, std::memory_order_release);
+	if (state->Running.exchange(false, std::memory_order_acq_rel)) {
+		for (auto& queue : state->Queues) queue->Close();
+	}
+	for (auto& queue : state->Queues) {
+		while (auto job = queue->TryRecv()) {
+			if (job->Cancel) job->Cancel();
+		}
+	}
 }
 
 OaThreadPool::OaThreadPool(OaThreadPool&& InOther) noexcept
-	: Workers_(std::move(InOther.Workers_))
-	, Queues_(std::move(InOther.Queues_))
-	, NextWorker_(InOther.NextWorker_.load())
-	, Running_(InOther.Running_.load())
+	: State_(OaStdMove(InOther.State_))
 	, Topology_(std::move(InOther.Topology_))
-	, WorkerCoreIds_(std::move(InOther.WorkerCoreIds_))
-{
-	InOther.Running_.store(false);
-}
+{}
 
 OaThreadPool& OaThreadPool::operator=(OaThreadPool&& InOther) noexcept {
 	if (this != &InOther) {
-		if (Running_.load()) Shutdown();
-		Workers_ = std::move(InOther.Workers_);
-		Queues_ = std::move(InOther.Queues_);
-		NextWorker_.store(InOther.NextWorker_.load());
-		Running_.store(InOther.Running_.load());
+		Abandon_();
+		State_ = OaStdMove(InOther.State_);
 		Topology_ = std::move(InOther.Topology_);
-		WorkerCoreIds_ = std::move(InOther.WorkerCoreIds_);
-		InOther.Running_.store(false);
 	}
 	return *this;
 }
 
 void OaThreadPool::Submit(std::function<void()> InJob) {
-	if (!Running_.load(std::memory_order_relaxed)) return;
-	OaI32 numQ = static_cast<OaI32>(Queues_.Size());
-	OaI32 idx = NextWorker_.fetch_add(1, std::memory_order_relaxed) % numQ;
-	if (Queues_[idx]->TrySend(InJob)) return;
-	for (OaI32 i = 1; i < numQ; ++i) {
-		OaI32 alt = (idx + i) % numQ;
-		if (Queues_[alt]->TrySend(InJob)) return;
+	SubmitJob_({.Run = OaStdMove(InJob), .Cancel = {}});
+}
+
+void OaThreadPool::SubmitJob_(Job InJob) {
+	auto state = State_;
+	if (!state || !state->Running.load(std::memory_order_acquire)) {
+		if (InJob.Cancel) InJob.Cancel();
+		return;
 	}
-	Queues_[idx]->Send(std::move(InJob));
+	const OaI32 numQ = static_cast<OaI32>(state->Queues.Size());
+	const OaI32 idx = state->NextWorker.fetch_add(
+		1, std::memory_order_relaxed) % numQ;
+	if (state->Queues[idx]->TrySend(InJob)) return;
+	for (OaI32 i = 1; i < numQ; ++i) {
+		const OaI32 alt = (idx + i) % numQ;
+		if (state->Queues[alt]->TrySend(InJob)) return;
+	}
+	auto cancel = InJob.Cancel;
+	if (!state->Queues[idx]->Send(OaStdMove(InJob)) && cancel) cancel();
 }
 
 OaI32 OaThreadPool::NumWorkers() const {
-	return static_cast<OaI32>(Workers_.Size());
+	return State_ ? static_cast<OaI32>(State_->Queues.Size()) : 0;
 }
 
 bool OaThreadPool::IsRunning() const {
-	return Running_.load(std::memory_order_relaxed);
+	return State_ && State_->Running.load(std::memory_order_acquire);
 }
 
 const OaCpuTopology& OaThreadPool::GetTopology() const {

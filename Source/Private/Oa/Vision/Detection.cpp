@@ -44,7 +44,7 @@ OaDetectionBuffer::~OaDetectionBuffer() {
 }
 
 OaResult<OaDetectionBuffer> OaDetectionBuffer::CreateHostUpload(
-	OaComputeEngine& InRuntime,
+	OaEngine& InRuntime,
 	OaU32 InCapacity) {
 	if (InCapacity == 0) {
 		return OaStatus::InvalidArgument(

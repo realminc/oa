@@ -11,7 +11,7 @@ OaStatus OaVkPlanDeviceQueues(
 	VkPhysicalDevice InPhys,
 	VkSurfaceKHR InSurface,
 	OaVkQueuePlan& OutPlan,
-	bool InWantsPresentation
+	bool InNeedsGraphics
 );
 
 
@@ -167,7 +167,8 @@ OaResult<OaVkDevice> OaVkDeviceBuilder::BuildBase(
 	VkInstance InInstance,
 	VkPhysicalDevice InPhysicalDevice,
 	OaBool InEnableValidation,
-	OaBool InWantsPresentation
+	OaBool InWantsPresentation,
+	OaBool InNeedsGraphics
 ) {
 	// Validate Core module is present
 	if (!HasCoreModule_) {
@@ -191,6 +192,9 @@ OaResult<OaVkDevice> OaVkDeviceBuilder::BuildBase(
 	// Run build pipeline
 	ProbeExtensions(extensions);
 	QueryFeatures(InPhysicalDevice);
+	if (!InWantsPresentation) {
+		FeatureBundle_.HasSwapchainMaintenance1 = false;
+	}
 	BuildFeatureChains();
 	CollectExtensions();
 	// WithAllFeatures() is also used by the headless compute context.  Merely
@@ -212,7 +216,8 @@ OaResult<OaVkDevice> OaVkDeviceBuilder::BuildBase(
 	// null here (verified against the real surface during InitPresentation).
 	OaVkQueuePlan queuePlan;
 	OaStatus queueStatus = OaVkPlanDeviceQueues(
-		InPhysicalDevice, VK_NULL_HANDLE, queuePlan, InWantsPresentation);
+		InPhysicalDevice, VK_NULL_HANDLE, queuePlan,
+		InWantsPresentation or InNeedsGraphics);
 	if (!queueStatus.IsOk()) {
 		return queueStatus;
 	}
@@ -283,24 +288,14 @@ OaResult<OaVkDevice> OaVkDeviceBuilder::BuildBase(
 		device.Queues.VideoEncodeCodecOps     = queuePlan.VideoEncodeCodecOps;
 	}
 
-	// Step 3c.5: when the caller hinted at presentation, claim the graphics
-	// queue and expose it through Queues.GraphicsQueue* so
-	// OaGraphicsEngine::InitPresentation can attach a surface later. Prior
-	// to this, BuildBase planned no graphics queue at all and the hint
-	// silently dropped on the floor — Queues.GraphicsQueueFamily stayed at
-	// OaVkEnumerationIndexUnset and the engine reported "no graphics queue"
-	// when InitPresentation ran.
-	if (queuePlan.WantsSurfacePresentation
+	// A graphics queue is useful independently of WSI. Presentation queue state
+	// remains unset until OaPresenter verifies the actual surface.
+	if (queuePlan.WantsGraphics
 		and queuePlan.GraphicsQF != UINT32_MAX) {
 		VkQueue graphicsQ = VK_NULL_HANDLE;
 		vkGetDeviceQueue(vkDevice, queuePlan.GraphicsQF, 0, &graphicsQ);
 		device.Queues.GraphicsQueue        = graphicsQ;
 		device.Queues.GraphicsQueueFamily  = queuePlan.GraphicsQF;
-		// Present queue / family are confirmed against the real surface in
-		// OaGraphicsEngine::InitPresentation; the GFX queue is the safe
-		// default since the planner picked it.
-		device.Queues.PresentQueue        = graphicsQ;
-		device.Queues.PresentQueueFamily  = queuePlan.GraphicsQF;
 	}
 
 	PopulateDeviceInfo(InPhysicalDevice, deviceResult.GetValue(), device);
@@ -363,6 +358,9 @@ OaResult<OaVkRenderDevice> OaVkDeviceBuilder::BuildRender(
 	// Run build pipeline
 	ProbeExtensions(extensions);
 	QueryFeatures(InPhysicalDevice);
+	if (InSurface == VK_NULL_HANDLE) {
+		FeatureBundle_.HasSwapchainMaintenance1 = false;
+	}
 	BuildFeatureChains();
 	CollectExtensions();
 	if (InSurface == VK_NULL_HANDLE) {
@@ -417,9 +415,9 @@ OaResult<OaVkRenderDevice> OaVkDeviceBuilder::BuildRender(
 		actualAsyncQF = queuePlan.ComputeQF;
 	}
 	
-	if (queuePlan.WantsSurfacePresentation) {
+	if (queuePlan.WantsGraphics) {
 		vkGetDeviceQueue(vkDevice, queuePlan.GraphicsQF, 0, &graphicsQ);
-		presentQ = graphicsQ;
+		if (InSurface != VK_NULL_HANDLE) presentQ = graphicsQ;
 	}
 	
 	// Populate queue info
@@ -470,6 +468,8 @@ OaResult<OaVkRenderDevice> OaVkDeviceBuilder::BuildRender(
 	renderDevice.HasGraphicsQueue    = graphicsQ != VK_NULL_HANDLE;
 	renderDevice.HasPresentQueue     = presentQ  != VK_NULL_HANDLE;
 	renderDevice.HasSwapchainSupport = ExtProbe_.KhrSwapchain;
+	renderDevice.Info.Software.HasSwapchainMaintenance1 =
+		FeatureBundle_.HasSwapchainMaintenance1 && InSurface != VK_NULL_HANDLE;
 
 	return renderDevice;
 }
@@ -659,6 +659,7 @@ void OaVkDeviceBuilder::PopulateDeviceInfo(
 	OutDevice.Info.Software.ShaderBfloat16CooperativeMatrixEnabled = FeatureBundle_.WantEnableBf16Ext && (FeatureBundle_.EnableBf16Feat.shaderBFloat16CooperativeMatrix == VK_TRUE);
 	OutDevice.Info.Software.ShaderIntegerDotProductEnabled = FeatureBundle_.HasIntDotProduct && (FeatureBundle_.Features13.shaderIntegerDotProduct == VK_TRUE);
 	OutDevice.Info.Software.HasDeviceGeneratedCommands = FeatureBundle_.HasDeviceGeneratedCommands;
+	OutDevice.Info.Software.HasSwapchainMaintenance1 = FeatureBundle_.HasSwapchainMaintenance1;
 	
 	// Apply vendor/arch/driver trust gate to CoopMat (mirrors llama.cpp)
 	if (OutDevice.Info.Software.HasCooperativeMatrix) {

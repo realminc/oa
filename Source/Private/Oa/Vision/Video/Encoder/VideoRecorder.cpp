@@ -1,9 +1,20 @@
 #include <Oa/Vision/VideoRecorder.h>
 
 #include <Oa/Runtime/Allocator.h>
+#include <Oa/Runtime/Context.h>
 #include <Oa/Runtime/Engine.h>
 #include <Oa/Ui/Image.h>
 #include <Oa/Vision/FnVideo.h>
+
+namespace {
+
+OaContext& ContextForEngine(OaEngine& InEngine) {
+	OaContext* active = OaContext::GetDefaultPtr();
+	return active != nullptr and active->GetEngine() == &InEngine
+		? *active : InEngine.GetContext();
+}
+
+} // namespace
 
 OaVideoRecorder::OaVideoRecorder(OaVideoRecorder&& InOther) noexcept {
 	MoveFrom_(OaStdMove(InOther));
@@ -18,7 +29,9 @@ OaVideoRecorder& OaVideoRecorder::operator=(OaVideoRecorder&& InOther) noexcept 
 }
 
 OaVideoRecorder::~OaVideoRecorder() {
-	Destroy();
+	// GPU work belongs to Encoder_. Its destructor transfers an unfinished
+	// session to engine retirement; the remaining members release host-only
+	// state without finalizing or manufacturing a partial container.
 }
 
 void OaVideoRecorder::MoveFrom_(OaVideoRecorder&& InOther) noexcept {
@@ -185,7 +198,7 @@ OaStatus OaVideoRecorder::WriteAsync(
 			InFrame.Image, InFrame.ImageView, InFrame.Format, InFrame.Layout,
 			InFrame.Width, InFrame.Height, InFrame.PresentationTimestamp,
 			ready, colorSpace, InFrame.FullRange, InFrame.ArrayLayer,
-			InFrame.ReadySemaphore, InFrame.ReadyValue,
+			InFrame.Ready,
 			InFrame.ExternalQueueFamilyIndex, &OutInputConsumed));
 	} else {
 		return OaStatus::Error(OaStatusCode::InvalidArgument,
@@ -196,10 +209,45 @@ OaStatus OaVideoRecorder::WriteAsync(
 	return OaStatus::Ok();
 }
 
-OaStatus OaVideoRecorder::Write(const OaTexture& InTexture, OaU64 InPts) {
+OaStatus OaVideoRecorder::Write(
+	OaContext& InContext,
+	const OaTexture& InTexture,
+	OaU64 InPts)
+{
+	if (Engine_ == nullptr) {
+		return OaStatus::Error(OaStatusCode::FailedPrecondition,
+			"OaVideoRecorder is not open");
+	}
+	if (InContext.GetEngine() != Engine_) {
+		return OaStatus::Error(OaStatusCode::InvalidArgument,
+			"OaVideoRecorder texture context does not own this recorder engine");
+	}
 	auto frame = OaFnVideo::FromTexture(InTexture, InPts);
 	if (not frame.IsOk()) return frame.GetStatus();
+	if (frame->Resource == OaVideoFrameResource::Buffer) {
+		const OaVkBuffer& buffer = InTexture.DeviceBuf;
+		const OaU64 bytes = static_cast<OaU64>(InTexture.Width)
+			* static_cast<OaU64>(InTexture.Height) * 4U;
+		if (buffer.Buffer == nullptr or buffer.Size < bytes
+			or buffer.BindlessIndex == OA_BINDLESS_INVALID
+			or buffer.Allocation == nullptr or buffer.AliasIdentity != nullptr
+			or buffer.IsImported() or buffer.NodeIndex != 0U
+			or buffer.AllocatorIdentity != Engine_->Allocator.Allocator) {
+			return OaStatus::Error(OaStatusCode::InvalidArgument,
+				"OaVideoRecorder texture must be a non-aliased buffer owned by its context engine");
+		}
+		OA_RETURN_IF_ERROR(InContext.Execute());
+		OA_RETURN_IF_ERROR(InContext.Sync());
+	}
 	return Write(*frame);
+}
+
+OaStatus OaVideoRecorder::Write(const OaTexture& InTexture, OaU64 InPts) {
+	if (Engine_ == nullptr) {
+		return OaStatus::Error(OaStatusCode::FailedPrecondition,
+			"OaVideoRecorder is not open");
+	}
+	return Write(ContextForEngine(*Engine_), InTexture, InPts);
 }
 
 OaStatus OaVideoRecorder::WriteAudioPackets_(OaVec<OaEncodedAudioPacket>& InPackets)

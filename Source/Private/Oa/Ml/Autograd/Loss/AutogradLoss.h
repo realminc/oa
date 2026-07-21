@@ -8,11 +8,19 @@
 // OaGradCrossEntropy — CrossEntropy(logits, targets) → d_logits
 class OaGradCrossEntropy final : public OaGradNode {
 public:
-	void Backward(const OaMatrix& /*InDLoss*/, OaVec<OaMatrix>& OutDIn) override {
+	void Backward(const OaMatrix& InDLoss, OaVec<OaMatrix>& OutDIn) override {
 		const OaMatrix& logits  = Saved_[0];
 		const OaMatrix& targets = Saved_[1];
 		if (OutDIn.Size() > 0) {
-			OutDIn[0] = OaFnLoss::CrossEntropyBwd(logits, targets);
+			OaMatrix dLogits = OaFnLoss::CrossEntropyBwd(logits, targets);
+			if (dLogits.GetDtype() == InDLoss.GetDtype()) {
+				OutDIn[0] = OaFnMatrix::Mul(dLogits, InDLoss);
+			} else {
+				// CrossEntropy has an FP32 scalar output even for BF16 logits. Preserve
+				// the FP32 upstream while scaling, then restore the leaf-gradient dtype.
+				const OaMatrix scaled = OaFnMatrix::Mul(OaFnMatrix::Cast(dLogits, InDLoss.GetDtype()), InDLoss);
+				OutDIn[0] = OaFnMatrix::Cast(scaled, dLogits.GetDtype());
+			}
 		}
 	}
 };

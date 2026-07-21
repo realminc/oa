@@ -103,7 +103,10 @@ OaStatus DecodePicture(
 	}
 
 	OA_RETURN_IF_ERROR(InDecoder.RecordAV1DecodeCommands(dpbSlot, desc, refNameSlotIndices));
-	OA_RETURN_IF_ERROR(InDecoder.WaitForCompletion());
+	// CPU reference-map bookkeeping describes the submission order; it does
+	// not read decode output. FinishAndSubmit chains this job after the prior
+	// decoder timeline value, and FillNv12OutFrame publishes the new value as
+	// OaVideoFrame::Ready for downstream GPU or host consumers.
 
 	for (OaU32 mask = desc.FrameHeader.RefreshFrameFlags, refIndex = 0u;
 	     mask != 0u; mask >>= 1u, ++refIndex) {

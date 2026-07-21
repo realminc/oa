@@ -5,8 +5,8 @@
 
 #pragma once
 
-// Core infrastructure (hand-written)
-#include "Core/AutogradCore.h"
+// Public tape contract (hand-written)
+#include <Oa/Ml/Autograd.h>
 
 // Matrix domain — generated sub-categories
 #include "Matrix/AutogradElemwise.gen.h"

@@ -4,7 +4,7 @@
 // OaFnMatrix — Activation GPU operations.
 // Context-based unified API: records operations to OaContext.
 
-#include <Oa/Ml/Autograd.h>
+#include <Oa/Ml/Autograd/Nodes.h>
 #include <Oa/Core/Matrix.h>
 #include <Oa/Core/FnMatrix.h>
 #include <Oa/Ml/FnMatrix.h>

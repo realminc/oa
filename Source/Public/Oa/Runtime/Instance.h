@@ -18,10 +18,10 @@ public:
 		OaStringView InAppName,
 		OaU32 InAppVersionPatch,
 		OaBool InEnableValidation,
-		OaSpan<const char* const> InExtraInstanceExtensions = {}
+		OaSpan<const char* const> InExtraInstanceExtensions = {},
+		OaBool InWantsPresentation = false
 	);
 
 	static void DestroyInstance(VkInstance InInstance) noexcept;
 };
-
 

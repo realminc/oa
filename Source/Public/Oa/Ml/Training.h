@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // Training.h — Zero-boilerplate ML training framework
 //
-// Combines OaComputeEngine ownership + OaItTraining into a single "just train" API.
+// Combines OaEngine ownership + OaItTraining into a single "just train" API.
 // No engine setup, no context management, no tick loops, no app boilerplate.
 //
 // **Usage**:
@@ -101,7 +101,7 @@ public:
 			Model_ = InModel.get();
 		}
 		// Check if we're running inside a TEST() fixture that already has a global engine
-		OaComputeEngine* globalEngine = OaComputeEngine::GetGlobal();
+		OaEngine* globalEngine = OaEngine::GetGlobal();
 		if (globalEngine != nullptr) {
 			// Use existing global engine from TEST() fixture
 			Engine_ = globalEngine;
@@ -114,7 +114,7 @@ public:
 				engineConfig.DevicePref = OaDevicePreference::ByIndex;
 				engineConfig.DeviceIndex = static_cast<OaU32>(Config_.DeviceIndex);
 			}
-			auto engine = OaComputeEngine::Create(engineConfig);
+			auto engine = OaEngine::Create(engineConfig);
 			if (!engine.IsOk()) {
 				OA_LOG_ERROR(OaLogComponent::Core,
 					"OaMlTraining: engine creation failed: %s",
@@ -205,7 +205,7 @@ public:
 	[[nodiscard]] bool IsValid() const noexcept { return Valid_; }
 	[[nodiscard]] OaI64 CurrentStep() const { return Loop_->Index(); }
 	[[nodiscard]] OaF32 CurrentLoss() const { return Loop_->LiveLoss(); }
-	[[nodiscard]] OaComputeEngine& GetEngine() const { return *Engine_; }
+	[[nodiscard]] OaEngine& GetEngine() const { return *Engine_; }
 	[[nodiscard]] OaContext& GetContext() const { return Engine_->GetContext(); }
 	[[nodiscard]] OaItTraining& GetLoop() { return *Loop_; }
 
@@ -219,8 +219,8 @@ private:
 	OaMlTrainingConfig Config_;
 	OaOptimizer* Optimizer_;
 	OaModule* Model_ = nullptr;
-	OaComputeEngine* Engine_;
-	OaUniquePtr<OaComputeEngine> OwnedEngine_;
+	OaEngine* Engine_;
+	OaUniquePtr<OaEngine> OwnedEngine_;
 	OaItTraining* Loop_;
 	
 	// Metrics

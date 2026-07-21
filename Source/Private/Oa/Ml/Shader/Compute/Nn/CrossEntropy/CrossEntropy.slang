@@ -9,7 +9,7 @@ struct PushConstants {
 	uint loss_idx;      // Prepended by OaVkDispatch::Run
 	uint batch;         // From C++ code
 	uint classes;       // From C++ code
-	uint target_dtype;  // 0=UInt8, 1=UInt32
+	uint target_dtype;  // 0=UInt8, 1=UInt32 or non-negative Int32
 };
 
 [[vk::push_constant]] PushConstants pc;
@@ -17,11 +17,12 @@ struct PushConstants {
 [[vk::binding(0, 0)]] RWByteAddressBuffer heap[];
 
 groupshared float g_buf[256];
+static const uint kPortableDispatchTileWidthX = 65535;
 
 [shader("compute")]
 [numthreads(256, 1, 1)]
 void main(uint3 gid : SV_GroupID, uint3 tid : SV_GroupThreadID) {
-	uint row = gid.x;
+	uint row = gid.x + gid.y * kPortableDispatchTileWidthX;
 	if (row >= pc.batch) return;
 
 	uint lane = tid.x;
@@ -60,6 +61,12 @@ void main(uint3 gid : SV_GroupID, uint3 tid : SV_GroupThreadID) {
 		uint target = (pc.target_dtype == 0)
 			? (uint)heap[pc.targets_idx].Load<uint8_t>(row)
 			: heap[pc.targets_idx].Load<uint>(row * 4);
+		if (target >= pc.classes) {
+			// Invalid signed values reinterpret above pc.classes as well. Preserve
+			// asynchronous execution while failing visibly and never indexing logits.
+			OaStoreF32(heap[pc.loss_idx], row, asfloat(0x7FC00000u));
+			return;
+		}
 		// Per-sample loss is a dtype-invariant FP32 output (perSample is always Float32,
 		// see FnLoss::CrossEntropy) so the Sum/Mean reduction accumulates in fp32 without
 		// rounding each ~ln(V) row loss into bf16. Logits are still loaded via branched

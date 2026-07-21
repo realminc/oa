@@ -11,6 +11,13 @@
 
 OaMatrix OaModule::Forward(const OaMatrix& InInput) { return InInput; }
 
+void OaModule::Train(OaBool InTraining) {
+	Training_ = InTraining;
+	for (auto& child : Children_) {
+		child.Module->Train(InTraining);
+	}
+}
+
 OaVec<OaParameter> OaModule::AllParameters() {
 	OaVec<OaParameter> all;
 	for (auto& p : Params_) {
@@ -69,6 +76,7 @@ OaI64 OaModule::NumParameters() const {
 }
 
 void OaModule::RegisterModule(OaStringView InName, OaSharedPtr<OaModule> InModule) {
+	InModule->Train(Training_);
 	Children_.PushBack({OaString(InName), std::move(InModule)});
 }
 
@@ -116,7 +124,7 @@ OaVec<OaNamedParameter> OaModule::AllNamedParameterPtrs() {
 	return all;
 }
 
-void OaModule::SaveWalk(OamModel& OutOam, const OaString& InPrefix) const {
+OaStatus OaModule::SaveWalk(OamModel& OutOam, const OaString& InPrefix) const {
 	for (const auto& p : Params_) {
 		const auto& mat = p.Data;
 		if (mat.IsEmpty()) continue;
@@ -129,10 +137,9 @@ void OaModule::SaveWalk(OamModel& OutOam, const OaString& InPrefix) const {
 		OaVec<OaU8> hostBuf(static_cast<OaI64>(bytes));
 		auto status = OaFnMatrix::CopyToHost(mat, hostBuf.Data(), bytes);
 		if (not status.IsOk()) {
-			OA_LOG_ERROR(OaLogComponent::Core,
-				"OaModule::Save: CopyToHost failed for '%s': %s",
-				name.c_str(), status.GetMessage().c_str());
-			continue;
+			return OaStatus::Error(status.GetCode(),
+				"checkpoint readback failed for weight '" + name + "': "
+				+ status.GetMessage());
 		}
 		OutOam.AddWeight(name.c_str(), mat.GetDtype(),
 			OaSpan<const OaU64>(shapeVec.Data(), shapeVec.Size()),
@@ -150,121 +157,165 @@ void OaModule::SaveWalk(OamModel& OutOam, const OaString& InPrefix) const {
 		OaVec<OaU8> hostBuf(static_cast<OaI64>(bytes));
 		auto status = OaFnMatrix::CopyToHost(mat, hostBuf.Data(), bytes);
 		if (not status.IsOk()) {
-			OA_LOG_ERROR(OaLogComponent::Core,
-				"OaModule::Save: CopyToHost failed for state '%s': %s",
-				name.c_str(), status.GetMessage().c_str());
-			continue;
+			return OaStatus::Error(status.GetCode(),
+				"checkpoint readback failed for state '" + name + "': "
+				+ status.GetMessage());
 		}
 		OutOam.AddState(name.c_str(), mat.GetDtype(),
 			OaSpan<const OaU64>(shapeVec.Data(), shapeVec.Size()),
 			hostBuf.Data(), bytes);
 	}
 	for (const auto& child : Children_) {
-		child.Module->SaveWalk(OutOam, JoinPath(InPrefix, child.Name));
+		OA_RETURN_IF_ERROR(child.Module->SaveWalk(
+			OutOam, JoinPath(InPrefix, child.Name)));
 	}
+	return OaStatus::Ok();
 }
 
-void OaModule::SaveTo(OamModel& OutOam) const {
-	SaveWalk(OutOam, OaString());
+OaStatus OaModule::SaveTo(OamModel& OutOam) const {
+	return SaveWalk(OutOam, OaString());
 }
 
 OaStatus OaModule::Save(const OaString& InPath) const {
 	OamModel oam;
-	SaveTo(oam);
+	OA_RETURN_IF_ERROR(SaveTo(oam));
 	return oam.Save(InPath);
 }
 
 OaStatus OaModule::Save(const OaString& InPath, const OaOptimizer& InOptimizer) const {
 	OamModel oam;
-	SaveTo(oam);
-	InOptimizer.SaveTo(oam);
+	OA_RETURN_IF_ERROR(SaveTo(oam));
+	OA_RETURN_IF_ERROR(InOptimizer.SaveTo(oam));
 	return oam.Save(InPath);
 }
 
-void OaModule::LoadWalk(const OamModel& InOam, const OaString& InPrefix) {
+OaStatus OaModule::ValidateLoadWalk(
+	const OamModel& InOam, const OaString& InPrefix) const
+{
+	for (const auto& p : Params_) {
+		const OaString name = JoinPath(InPrefix, p.Name);
+		const OamTensorEntry* entry = InOam.FindWeight(name.CStr());
+		if (entry == nullptr) {
+			return OaStatus::Error(OaStatusCode::FailedPrecondition,
+				"checkpoint is missing weight '" + name + "'");
+		}
+		if (entry->Dtype != p.Data.GetDtype()) {
+			return OaStatus::Error(OaStatusCode::DtypeMismatch,
+				"checkpoint dtype mismatch for weight '" + name + "'");
+		}
+		if (entry->Rank != static_cast<OaU8>(p.Data.Rank())) {
+			return OaStatus::Error(OaStatusCode::ShapeMismatch,
+				"checkpoint rank mismatch for weight '" + name + "'");
+		}
+		for (OaI32 dim = 0; dim < p.Data.Rank(); ++dim) {
+			if (entry->Shape[dim] != static_cast<OaU64>(p.Data.Size(dim))) {
+				return OaStatus::Error(OaStatusCode::ShapeMismatch,
+					"checkpoint shape mismatch for weight '" + name + "'");
+			}
+		}
+		if (entry->NumBytes != static_cast<OaU64>(p.Data.ByteSize())) {
+			return OaStatus::Error(OaStatusCode::ShapeMismatch,
+				"checkpoint byte-size mismatch for weight '" + name + "'");
+		}
+	}
+	for (const auto& buffer : Buffers_) {
+		if (not buffer.Persistent) continue;
+		const OaString name = JoinPath(InPrefix, buffer.Name);
+		const OamTensorEntry* entry = InOam.FindState(name.CStr());
+		if (entry == nullptr) {
+			return OaStatus::Error(OaStatusCode::FailedPrecondition,
+				"checkpoint is missing persistent state '" + name + "'");
+		}
+		if (entry->Dtype != buffer.Data.GetDtype()) {
+			return OaStatus::Error(OaStatusCode::DtypeMismatch,
+				"checkpoint dtype mismatch for state '" + name + "'");
+		}
+		if (entry->Rank != static_cast<OaU8>(buffer.Data.Rank())) {
+			return OaStatus::Error(OaStatusCode::ShapeMismatch,
+				"checkpoint rank mismatch for state '" + name + "'");
+		}
+		for (OaI32 dim = 0; dim < buffer.Data.Rank(); ++dim) {
+			if (entry->Shape[dim] != static_cast<OaU64>(buffer.Data.Size(dim))) {
+				return OaStatus::Error(OaStatusCode::ShapeMismatch,
+					"checkpoint shape mismatch for state '" + name + "'");
+			}
+		}
+		if (entry->NumBytes != static_cast<OaU64>(buffer.Data.ByteSize())) {
+			return OaStatus::Error(OaStatusCode::ShapeMismatch,
+				"checkpoint byte-size mismatch for state '" + name + "'");
+		}
+	}
+	for (const auto& child : Children_) {
+		OA_RETURN_IF_ERROR(child.Module->ValidateLoadWalk(
+			InOam, JoinPath(InPrefix, child.Name)));
+	}
+	return OaStatus::Ok();
+}
+
+OaStatus OaModule::LoadWalk(const OamModel& InOam, const OaString& InPrefix) {
 	for (auto& p : Params_) {
 		OaString name = JoinPath(InPrefix, p.Name);
 		const OamTensorEntry* entry = InOam.FindWeight(name.c_str());
-		if (entry == nullptr) {
-			OA_LOG_WARN(OaLogComponent::Core,
-				"OaModule::Load: weight '%s' not in checkpoint, keeping init value", name.c_str());
-			continue;
-		}
+		if (entry == nullptr) return OaStatus::Error(OaStatusCode::Internal,
+			"validated checkpoint weight disappeared: " + name);
 		const void* blobData = InOam.WeightPtr(name.c_str());
-		if (blobData == nullptr) continue;
-
-		const auto expected = static_cast<OaU64>(p.Data.ByteSize());
-		if (entry->NumBytes != expected) {
-			OA_LOG_ERROR(OaLogComponent::Core,
-				"OaModule::Load: byte size mismatch for '%s' — expected %llu, got %llu",
-				name.c_str(),
-				static_cast<unsigned long long>(expected),
-				static_cast<unsigned long long>(entry->NumBytes));
-			continue;
-		}
+		if (blobData == nullptr) return OaStatus::Error(OaStatusCode::Internal,
+			"validated checkpoint weight payload disappeared: " + name);
 		if (auto* runtime = OaContext::GetDefault().GetEngine()) {
 			const auto status = runtime->UploadBuffer(
 				p.Data.GetVkBuffer(), 0, blobData, entry->NumBytes);
-			if (!status.IsOk()) {
-				OA_LOG_ERROR(OaLogComponent::Core,
-					"OaModule::Load: upload failed for '%s': %s",
-					name.c_str(), status.GetMessage().CStr());
-			}
+			if (not status.IsOk()) return status;
+		} else {
+			return OaStatus::Error(OaStatusCode::FailedPrecondition,
+				"checkpoint restore requires an active OA engine");
 		}
 	}
 	for (auto& buffer : Buffers_) {
 		if (!buffer.Persistent) continue;
 		OaString name = JoinPath(InPrefix, buffer.Name);
 		const OamTensorEntry* entry = InOam.FindState(name.c_str());
-		if (entry == nullptr) {
-			OA_LOG_WARN(OaLogComponent::Core,
-				"OaModule::Load: state '%s' not in checkpoint, keeping init value", name.c_str());
-			continue;
-		}
+		if (entry == nullptr) return OaStatus::Error(OaStatusCode::Internal,
+			"validated checkpoint state disappeared: " + name);
 		const void* blobData = InOam.StatePtr(name.c_str());
-		if (blobData == nullptr) continue;
-
-		const auto expected = static_cast<OaU64>(buffer.Data.ByteSize());
-		if (entry->NumBytes != expected || entry->Dtype != buffer.Data.GetDtype()) {
-			OA_LOG_ERROR(OaLogComponent::Core,
-				"OaModule::Load: state mismatch for '%s'", name.c_str());
-			continue;
-		}
+		if (blobData == nullptr) return OaStatus::Error(OaStatusCode::Internal,
+			"validated checkpoint state payload disappeared: " + name);
 		if (auto* runtime = OaContext::GetDefault().GetEngine()) {
 			const auto status = runtime->UploadBuffer(
 				buffer.Data.GetVkBuffer(), 0, blobData, entry->NumBytes);
-			if (!status.IsOk()) {
-				OA_LOG_ERROR(OaLogComponent::Core,
-					"OaModule::Load: state upload failed for '%s': %s",
-					name.c_str(), status.GetMessage().CStr());
-			}
+			if (not status.IsOk()) return status;
+		} else {
+			return OaStatus::Error(OaStatusCode::FailedPrecondition,
+				"checkpoint restore requires an active OA engine");
 		}
 	}
 	for (auto& child : Children_) {
-		child.Module->LoadWalk(InOam, JoinPath(InPrefix, child.Name));
+		OA_RETURN_IF_ERROR(child.Module->LoadWalk(
+			InOam, JoinPath(InPrefix, child.Name)));
 	}
+	return OaStatus::Ok();
 }
 
-void OaModule::LoadFrom(const OamModel& InOam) {
+OaStatus OaModule::LoadFrom(const OamModel& InOam) {
+	OA_RETURN_IF_ERROR(ValidateLoadWalk(InOam, OaString()));
 	// Drain any pending context ops so we don't memcpy under in-flight GPU writes.
-	(void)OaContext::GetDefault().Execute();
-	(void)OaContext::GetDefault().Sync();
-	LoadWalk(InOam, OaString());
+	OA_RETURN_IF_ERROR(OaContext::GetDefault().Execute());
+	OA_RETURN_IF_ERROR(OaContext::GetDefault().Sync());
+	return LoadWalk(InOam, OaString());
 }
 
 OaStatus OaModule::Load(const OaString& InPath) {
 	auto result = OamModel::Load(InPath);
 	if (not result.IsOk()) return result.GetStatus();
 	auto oam = std::move(result).GetValue();
-	LoadFrom(oam);
-	return OaStatus::Ok();
+	return LoadFrom(oam);
 }
 
 OaStatus OaModule::Load(const OaString& InPath, OaOptimizer& InOptimizer) {
 	auto result = OamModel::Load(InPath);
 	if (not result.IsOk()) return result.GetStatus();
 	auto oam = std::move(result).GetValue();
-	LoadFrom(oam);
-	InOptimizer.LoadFrom(oam);
-	return OaStatus::Ok();
+	OA_RETURN_IF_ERROR(ValidateLoadWalk(oam, OaString()));
+	OA_RETURN_IF_ERROR(InOptimizer.ValidateLoad(oam));
+	OA_RETURN_IF_ERROR(LoadFrom(oam));
+	return InOptimizer.LoadFrom(oam);
 }

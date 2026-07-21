@@ -4,7 +4,7 @@
 #include <Oa/Core/Status.h>
 #include <Oa/Runtime/Allocator.h>
 
-class OaComputeEngine;
+class OaEngine;
 
 // GPU work item: shader name index + push constant offset + dispatch dimensions.
 // Packed into a GPU-readable buffer for persistent kernel consumption.
@@ -41,8 +41,8 @@ public:
 	OaU32 Head = 0;
 
 	[[nodiscard]] static OaResult<OaWorkQueue> Create(
-		OaComputeEngine& InRt, OaU32 InCapacity, OaU32 InMaxPushBytes = 4096);
-	void Destroy(OaComputeEngine& InRt);
+		OaEngine& InRt, OaU32 InCapacity, OaU32 InMaxPushBytes = 4096);
+	void Destroy(OaEngine& InRt);
 
 	// Enqueue a work item. Returns false if queue is full.
 	[[nodiscard]] bool Enqueue(OaWorkItem InItem);

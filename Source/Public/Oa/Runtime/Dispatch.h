@@ -6,8 +6,6 @@
 #include <Oa/Runtime/Engine.h>
 
 class OaVkStream;
-class OaDispatchHint;
-class OaDispatchTicket;
 
 class OaVkBatch {
 public:
@@ -17,7 +15,7 @@ public:
 class OaVkDispatch {
 public:
 	[[nodiscard]] static OaStatus Run(
-		OaComputeEngine& InRuntime,
+		OaEngine& InRuntime,
 		OaStringView InPipelineName,
 		OaSpan<OaVkBuffer> InBuffers,
 		const void* InPushData,
@@ -27,7 +25,7 @@ public:
 		OaU32 InGroupsZ = 1
 	);
 	[[nodiscard]] static OaStatus Run(
-		OaComputeEngine& InRuntime,
+		OaEngine& InRuntime,
 		OaKernelId InKernelId,
 		OaSpan<OaVkBuffer> InBuffers,
 		const void* InPushData,
@@ -39,7 +37,7 @@ public:
 
 	// GPU-driven dispatch: workgroup counts read from InIndirectBuffer.
 	[[nodiscard]] static OaStatus RunIndirect(
-		OaComputeEngine& InRuntime,
+		OaEngine& InRuntime,
 		OaStringView InPipelineName,
 		OaSpan<OaVkBuffer> InBuffers,
 		const void* InPushData,
@@ -48,11 +46,11 @@ public:
 		OaU64 InOffset = 0
 	);
 
-	[[nodiscard]] static OaResult<OaVkBatch> BeginBatch(OaComputeEngine& InRuntime);
+	[[nodiscard]] static OaResult<OaVkBatch> BeginBatch(OaEngine& InRuntime);
 
 	[[nodiscard]] static OaStatus Record(
 		OaVkBatch& InBatch,
-		OaComputeEngine& InRuntime,
+		OaEngine& InRuntime,
 		OaStringView InPipelineName,
 		OaSpan<OaVkBuffer> InBuffers,
 		const void* InPushData,
@@ -63,7 +61,7 @@ public:
 	);
 	[[nodiscard]] static OaStatus Record(
 		OaVkBatch& InBatch,
-		OaComputeEngine& InRuntime,
+		OaEngine& InRuntime,
 		OaKernelId InKernelId,
 		OaSpan<OaVkBuffer> InBuffers,
 		const void* InPushData,
@@ -73,37 +71,12 @@ public:
 		OaU32 InGroupsZ = 1
 	);
 
-	[[nodiscard]] static OaStatus Flush(OaVkBatch& InBatch, OaComputeEngine& InRuntime);
-
-	// Hint-driven dispatch — scheduler routes to optimal device node.
-	[[nodiscard]] static OaStatus Run(
-		OaComputeEngine& InRuntime,
-		OaStringView InPipelineName,
-		OaSpan<OaVkBuffer> InBuffers,
-		const void* InPushData,
-		OaU32 InPushSize,
-		OaU32 InGroupsX,
-		OaU32 InGroupsY,
-		OaU32 InGroupsZ,
-		const OaDispatchHint& InHint
-	);
+	[[nodiscard]] static OaStatus Flush(OaVkBatch& InBatch, OaEngine& InRuntime);
 
 	// Explicit device node targeting.
 	[[nodiscard]] static OaStatus RunOn(
-		OaComputeEngine& InRuntime,
+		OaEngine& InRuntime,
 		OaU32 InNodeIndex,
-		OaStringView InPipelineName,
-		OaSpan<OaVkBuffer> InBuffers,
-		const void* InPushData,
-		OaU32 InPushSize,
-		OaU32 InGroupsX,
-		OaU32 InGroupsY = 1,
-		OaU32 InGroupsZ = 1
-	);
-
-	// Async dispatch — returns a ticket for later synchronization.
-	[[nodiscard]] static OaResult<OaDispatchTicket> RunAsync(
-		OaComputeEngine& InRuntime,
 		OaStringView InPipelineName,
 		OaSpan<OaVkBuffer> InBuffers,
 		const void* InPushData,
@@ -116,7 +89,7 @@ public:
 
 // Look up SPIR-V by name (liboa + external providers) and create pipeline
 [[nodiscard]] inline OaStatus OaVkEnsureShader(
-	OaComputeEngine& InRt, const char* InName, OaPipelineSpec InSpec
+	OaEngine& InRt, const char* InName, OaPipelineSpec InSpec
 ) {
 	auto* spirv = OaSpvFindAny(InName);
 	if (spirv) {

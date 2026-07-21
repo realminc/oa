@@ -2,7 +2,7 @@
 #
 # This is the *source of truth* for random number generation operations. The generator
 # emits .h declarations, .cpp implementations, and .slang shaders from this file.
-# See Tools/OaFnAutogen/oafnautogen.py and Docs/Rewrite/Opus/OaFnAutogen.md.
+# See Tools/FnAutogen/README.md and Tools/FnAutogen/oafnautogen.py.
 #
 # RNG operations use the Philox counter-based PRNG for reproducible,
 # parallel random number generation on GPU.
@@ -58,4 +58,3 @@ cpu_reference = "3.14159f"
 tolerance = "1e-6f"
 test_sizes = [256, 1024]
 scalar_value = "3.14159f"
-

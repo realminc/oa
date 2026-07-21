@@ -16,16 +16,16 @@
 #include <numeric>
 #include <vector>
 
-static OaComputeEngine* GRt = nullptr;
+static OaEngine* GRt = nullptr;
 
 class TestFnMatrixReduce : public ::testing::Test {
 protected:
 	static void SetUpTestSuite() {
 		OaEngineConfig cfg{};
 		cfg.AppName = "TestFnMatrixReduce";
-		auto r = OaComputeEngine::Create(cfg);
+		auto r = OaEngine::Create(cfg);
 		ASSERT_TRUE(r.IsOk()) << r.GetStatus().GetMessage();
-		static OaUniquePtr<OaComputeEngine> rt = std::move(*r);
+		static OaUniquePtr<OaEngine> rt = std::move(*r);
 		GRt = rt.get();
 	}
 };
@@ -33,7 +33,7 @@ protected:
 TEST_VK(TestFnMatrixReduce, Sum_Context) {
 	constexpr OaU32 N = 256;
 	auto a = OaFnMatrix::Rand(OaMatrixShape{N});
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto out = OaFnMatrix::Sum(a);
 	// Context scope auto-executes and syncs at end of scope
 	std::vector<float> a_host(N);
@@ -44,10 +44,54 @@ TEST_VK(TestFnMatrixReduce, Sum_Context) {
 	EXPECT_NEAR(got, want, 1e-3f) << "Reduction result mismatch";
 }
 
+TEST_VK(TestFnMatrixReduce, Mean_Context) {
+	constexpr OaU32 N = 256;
+	auto a = OaFnMatrix::Rand(OaMatrixShape{N});
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
+	auto out = OaFnMatrix::Mean(a);
+	// Context scope auto-executes and syncs at end of scope
+	std::vector<float> a_host(N);
+	ASSERT_TRUE(OaFnMatrix::CopyToHost(a, a_host.data(), N * sizeof(float)).IsOk());
+	float want = std::accumulate(a_host.begin(), a_host.end(), 0.0f) / static_cast<float>(N);
+	float got = 0.0f;
+	ASSERT_TRUE(OaFnMatrix::CopyToHost(out, &got, sizeof(float)).IsOk());
+	EXPECT_NEAR(got, want, 1e-3f) << "Reduction result mismatch";
+}
+
+TEST_VK(TestFnMatrixReduce, Softmax_Context) {
+	constexpr OaU32 N = 256;
+	auto a = OaFnMatrix::Rand(OaMatrixShape{N});
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
+	auto out = OaFnMatrix::Softmax(a);
+	// Context scope auto-executes and syncs at end of scope
+	std::vector<float> a_host(N);
+	ASSERT_TRUE(OaFnMatrix::CopyToHost(a, a_host.data(), N * sizeof(float)).IsOk());
+	std::vector<float> want(N);
+	for (OaU32 i = 0; i < N; ++i) want[i] = std::exp(a_host[i]) / std::accumulate(a_host.begin(), a_host.end(), 0.0f, [](float sum, float x) { return sum + std::exp(x); });
+	std::vector<float> got(N);
+	ASSERT_TRUE(OaFnMatrix::CopyToHost(out, got.data(), N * sizeof(float)).IsOk());
+	for (OaU32 i = 0; i < N; ++i) EXPECT_NEAR(got[i], want[i], 1e-3f) << "i=" << i;
+}
+
+TEST_VK(TestFnMatrixReduce, LogSoftmax_Context) {
+	constexpr OaU32 N = 256;
+	auto a = OaFnMatrix::Rand(OaMatrixShape{N});
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
+	auto out = OaFnMatrix::LogSoftmax(a);
+	// Context scope auto-executes and syncs at end of scope
+	std::vector<float> a_host(N);
+	ASSERT_TRUE(OaFnMatrix::CopyToHost(a, a_host.data(), N * sizeof(float)).IsOk());
+	std::vector<float> want(N);
+	for (OaU32 i = 0; i < N; ++i) want[i] = a_host[i] - std::log(std::accumulate(a_host.begin(), a_host.end(), 0.0f, [](float sum, float x) { return sum + std::exp(x); }));
+	std::vector<float> got(N);
+	ASSERT_TRUE(OaFnMatrix::CopyToHost(out, got.data(), N * sizeof(float)).IsOk());
+	for (OaU32 i = 0; i < N; ++i) EXPECT_NEAR(got[i], want[i], 1e-3f) << "i=" << i;
+}
+
 TEST_VK(TestFnMatrixReduce, Max_Context) {
 	constexpr OaU32 N = 256;
 	auto a = OaFnMatrix::Rand(OaMatrixShape{N});
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto out = OaFnMatrix::Max(a);
 	// Context scope auto-executes and syncs at end of scope
 	std::vector<float> a_host(N);

@@ -8,7 +8,7 @@ OaTimer::OaTimer(OaTimerMode InMode, const char* InName)
 
 OaTimer::~OaTimer() = default;
 
-OaStatus OaTimer::Init(OaComputeEngine& InRt) {
+OaStatus OaTimer::Init(OaEngine& InRt) {
     if (Mode_ == OaTimerMode::Auto) {
         Mode_ = OaTimerMode::Gpu;
     }
@@ -26,22 +26,6 @@ void OaTimer::Destroy(const OaVkDevice& InDevice) {
     if (GpuInitialized_) {
         GpuTimer_.Destroy(InDevice);
         GpuInitialized_ = false;
-    }
-}
-
-void OaTimer::Begin(OaComputeEngine& InRt) {
-    if (Mode_ == OaTimerMode::Gpu) {
-        GpuTimer_.Begin(InRt);
-    } else {
-        CpuBegin();
-    }
-}
-
-void OaTimer::End(OaComputeEngine& InRt) {
-    if (Mode_ == OaTimerMode::Gpu) {
-        GpuTimer_.End(InRt);
-    } else {
-        CpuEnd();
     }
 }
 

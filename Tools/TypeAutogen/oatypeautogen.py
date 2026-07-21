@@ -18,6 +18,12 @@ import argparse
 import sys
 from pathlib import Path
 
+TOOLS_ROOT = Path(__file__).resolve().parents[1]
+if str(TOOLS_ROOT) not in sys.path:
+	sys.path.insert(0, str(TOOLS_ROOT))
+
+from autogen_io import write_generated_text
+
 from oatypeautogen_lib.config import (
 	DOMAIN_OUTPUT_PATHS,
 	DEFAULT_OUTPUT,
@@ -71,12 +77,10 @@ def process_schema(schema_path: Path, out_root: Path, *, live: bool, dry_run: bo
 		return
 	
 	# Write files
-	header_path.parent.mkdir(parents=True, exist_ok=True)
-	header_path.write_text(header_content, encoding="utf-8", newline="\n")
+	write_generated_text(header_path, header_content)
 	print(f"  wrote: {header_path}")
 
-	cpp_path.parent.mkdir(parents=True, exist_ok=True)
-	cpp_path.write_text(cpp_content, encoding="utf-8", newline="\n")
+	write_generated_text(cpp_path, cpp_content)
 	print(f"  wrote: {cpp_path}")
 
 

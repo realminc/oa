@@ -125,7 +125,8 @@ TEST(OaStdAllocatorVsStd, VectorIntParallelIdentical) {
 	oa.reserve(2000);
 	st.reserve(2000);
 	for (int i = 0; i < 2000; ++i) {
-		const int x = (i * 1103515245 + 12345) & 0x7fffffff;
+		const auto state = static_cast<std::uint32_t>(i) * 1103515245U + 12345U;
+		const int x = static_cast<int>(state & 0x7fffffffU);
 		oa.push_back(x);
 		st.push_back(x);
 	}

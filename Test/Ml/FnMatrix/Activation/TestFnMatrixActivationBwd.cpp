@@ -8,16 +8,16 @@
 #include <vector>
 #include <cmath>
 
-static OaComputeEngine* GRt = nullptr;
+static OaEngine* GRt = nullptr;
 
 class TestFnMatrixActivationBwd : public ::testing::Test {
 protected:
 	static void SetUpTestSuite() {
 		OaEngineConfig cfg{};
 		cfg.AppName = "TestFnMatrixActivationBwd";
-		auto r = OaComputeEngine::Create(cfg);
+		auto r = OaEngine::Create(cfg);
 		ASSERT_TRUE(r.IsOk()) << r.GetStatus().GetMessage();
-		static OaUniquePtr<OaComputeEngine> rt = std::move(*r);
+		static OaUniquePtr<OaEngine> rt = std::move(*r);
 		GRt = rt.get();
 	}
 };
@@ -85,7 +85,7 @@ TEST_VK(TestFnMatrixActivationBwd, MishBwd_NumericalGradient) {
 	// Test Mish backward pass against numerical gradient
 	// Mish(x) = x * tanh(softplus(x)) = x * tanh(ln(1 + e^x))
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	
 	std::vector<float> input_data = {-2.0f, -1.0f, 0.0f, 1.0f, 2.0f};
 	auto input = CreateFromHost(input_data, OaMatrixShape{5});
@@ -112,7 +112,7 @@ TEST_VK(TestFnMatrixActivationBwd, MishBwd_NumericalGradient) {
 
 TEST_VK(TestFnMatrixActivationBwd, MishBwd_ZeroGradient) {
 	// Test that zero grad_output produces zero grad_input
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	
 	std::vector<float> input_data = {-1.0f, 0.0f, 1.0f};
 	auto input = CreateFromHost(input_data, OaMatrixShape{3});
@@ -130,7 +130,7 @@ TEST_VK(TestFnMatrixActivationBwd, MishBwd_ZeroGradient) {
 
 TEST_VK(TestFnMatrixActivationBwd, MishBwd_LargeValues) {
 	// Test Mish backward with large positive/negative values
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	
 	std::vector<float> input_data = {-10.0f, -5.0f, 5.0f, 10.0f};
 	auto input = CreateFromHost(input_data, OaMatrixShape{4});
@@ -158,7 +158,7 @@ TEST_VK(TestFnMatrixActivationBwd, SoftplusBwd_NumericalGradient) {
 	// Softplus(x) = ln(1 + e^x)
 	// d/dx Softplus(x) = sigmoid(x) = 1 / (1 + e^(-x))
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	
 	std::vector<float> input_data = {-2.0f, -1.0f, 0.0f, 1.0f, 2.0f};
 	auto input = CreateFromHost(input_data, OaMatrixShape{5});
@@ -188,7 +188,7 @@ TEST_VK(TestFnMatrixActivationBwd, SoftplusBwd_SigmoidProperty) {
 	// Test that Softplus gradient equals Sigmoid
 	// d/dx Softplus(x) = Sigmoid(x)
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	
 	std::vector<float> input_data = {-2.0f, -1.0f, 0.0f, 1.0f, 2.0f};
 	auto input = CreateFromHost(input_data, OaMatrixShape{5});
@@ -213,7 +213,7 @@ TEST_VK(TestFnMatrixActivationBwd, SoftplusBwd_SigmoidProperty) {
 
 TEST_VK(TestFnMatrixActivationBwd, SoftplusBwd_ExtremeValues) {
 	// Test Softplus backward with extreme values
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	
 	std::vector<float> input_data = {-20.0f, -10.0f, 10.0f, 20.0f};
 	auto input = CreateFromHost(input_data, OaMatrixShape{4});
@@ -240,7 +240,7 @@ TEST_VK(TestFnMatrixActivationBwd, SoftplusBwd_ExtremeValues) {
 // ============================================================================
 
 TEST_VK(TestFnMatrixActivationBwd, GeluForwardMatchesFusedGeglu) {
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 
 	const std::vector<float> x = {-3.0f, -1.5f, -0.75f, -0.1f,
 		0.0f, 0.1f, 0.75f, 1.5f, 3.0f};
@@ -268,7 +268,7 @@ TEST_VK(TestFnMatrixActivationBwd, GeluBwd_NumericalGradient) {
 	// Test GELU backward pass against numerical gradient
 	// GELU(x) = x * Φ(x) where Φ is the CDF of standard normal
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	
 	std::vector<float> input_data = {-2.0f, -1.0f, 0.0f, 1.0f, 2.0f};
 	auto input = CreateFromHost(input_data, OaMatrixShape{5});
@@ -297,7 +297,7 @@ TEST_VK(TestFnMatrixActivationBwd, GeluBwd_ZeroPoint) {
 	// Test GELU gradient at x=0
 	// GELU'(0) = 0.5 (by symmetry)
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	
 	std::vector<float> input_data = {0.0f};
 	auto input = CreateFromHost(input_data, OaMatrixShape{1});
@@ -313,7 +313,7 @@ TEST_VK(TestFnMatrixActivationBwd, GeluBwd_ZeroPoint) {
 
 TEST_VK(TestFnMatrixActivationBwd, GeluBwd_Symmetry) {
 	// Test that GELU gradient has expected symmetry properties
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	
 	std::vector<float> input_data = {-1.0f, 1.0f};
 	auto input = CreateFromHost(input_data, OaMatrixShape{2});
@@ -331,7 +331,7 @@ TEST_VK(TestFnMatrixActivationBwd, GeluBwd_Symmetry) {
 
 TEST_VK(TestFnMatrixActivationBwd, GeluBwd_LargeValues) {
 	// Test GELU backward with large values
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	
 	std::vector<float> input_data = {-5.0f, 5.0f};
 	auto input = CreateFromHost(input_data, OaMatrixShape{2});

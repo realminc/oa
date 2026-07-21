@@ -12,7 +12,7 @@
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
-static OaVkBuffer MakeHostBuffer(OaComputeEngine& InRt, OaU64 InSize) {
+static OaVkBuffer MakeHostBuffer(OaEngine& InRt, OaU64 InSize) {
 	auto result = InRt.AllocBuffer(InSize);
 	EXPECT_TRUE(result.IsOk()) << "AllocBuffer failed";
 	return std::move(result.GetValue());
@@ -32,10 +32,25 @@ static OaF32 ReadF32(const OaVkBuffer& InBuf, OaU64 InIdx) {
 	return static_cast<const OaF32*>(InBuf.MappedPtr)[InIdx];
 }
 
+static OaVkBuffer MakeHostView(OaF32* InData, OaU64 InCount) {
+	OaVkBuffer view;
+	view.Size = InCount * sizeof(OaF32);
+	view.Capacity = view.Size;
+	view.MappedPtr = InData;
+	return view;
+}
+
+static bool HasPhysicalDeviceCount(const OaEngine& InRt, OaU32 InRequired) {
+	OaU32 count = 0;
+	const VkResult status = vkEnumeratePhysicalDevices(
+		static_cast<VkInstance>(InRt.Device.Instance), &count, nullptr);
+	return status == VK_SUCCESS and count >= InRequired;
+}
+
 // ─── Single-Device No-Op Tests ──────────────────────────────────────────
 
 TEST(Collective, AllReduceSingleDeviceNoOp) {
-	auto* rt = OaComputeEngine::GetGlobal();
+	auto* rt = OaEngine::GetGlobal();
 	ASSERT_NE(rt, nullptr);
 
 	OaU64 count = 64;
@@ -45,7 +60,7 @@ TEST(Collective, AllReduceSingleDeviceNoOp) {
 
 	OaVkBuffer bufs[] = {buf};
 	OaSpan<OaVkBuffer> span(bufs, 1);
-	auto status = OaCollective::AllReduce(*rt, span, OaReduceOp::Sum);
+	auto status = OaCollective::AllReduce(span, OaReduceOp::Sum);
 	EXPECT_TRUE(status.IsOk());
 
 	for (OaU64 i = 0; i < count; ++i) {
@@ -56,7 +71,7 @@ TEST(Collective, AllReduceSingleDeviceNoOp) {
 }
 
 TEST(Collective, BroadcastSingleDeviceNoOp) {
-	auto* rt = OaComputeEngine::GetGlobal();
+	auto* rt = OaEngine::GetGlobal();
 	ASSERT_NE(rt, nullptr);
 
 	OaU64 count = 32;
@@ -66,7 +81,7 @@ TEST(Collective, BroadcastSingleDeviceNoOp) {
 
 	OaVkBuffer bufs[] = {buf};
 	OaSpan<OaVkBuffer> span(bufs, 1);
-	auto status = OaCollective::Broadcast(*rt, span, 0);
+	auto status = OaCollective::Broadcast(span, 0);
 	EXPECT_TRUE(status.IsOk());
 
 	rt->FreeBuffer(buf);
@@ -75,7 +90,7 @@ TEST(Collective, BroadcastSingleDeviceNoOp) {
 // ─── Two-Buffer AllReduce (simulates 2 devices) ────────────────────────
 
 TEST(Collective, AllReduceTwoBuffersSum) {
-	auto* rt = OaComputeEngine::GetGlobal();
+	auto* rt = OaEngine::GetGlobal();
 	ASSERT_NE(rt, nullptr);
 
 	OaU64 count = 256;
@@ -88,7 +103,7 @@ TEST(Collective, AllReduceTwoBuffersSum) {
 
 	OaVkBuffer bufs[] = {bufA, bufB};
 	OaSpan<OaVkBuffer> span(bufs, 2);
-	auto status = OaCollective::AllReduce(*rt, span, OaReduceOp::Sum);
+	auto status = OaCollective::AllReduce(span, OaReduceOp::Sum);
 	EXPECT_TRUE(status.IsOk());
 
 	for (OaU64 i = 0; i < count; ++i) {
@@ -101,7 +116,7 @@ TEST(Collective, AllReduceTwoBuffersSum) {
 }
 
 TEST(Collective, AllReduceTwoBuffersMax) {
-	auto* rt = OaComputeEngine::GetGlobal();
+	auto* rt = OaEngine::GetGlobal();
 	ASSERT_NE(rt, nullptr);
 
 	OaU64 count = 128;
@@ -116,7 +131,7 @@ TEST(Collective, AllReduceTwoBuffersMax) {
 
 	OaVkBuffer bufs[] = {bufA, bufB};
 	OaSpan<OaVkBuffer> span(bufs, 2);
-	auto status = OaCollective::AllReduce(*rt, span, OaReduceOp::Max);
+	auto status = OaCollective::AllReduce(span, OaReduceOp::Max);
 	EXPECT_TRUE(status.IsOk());
 
 	for (OaU64 i = 0; i < count; ++i) {
@@ -129,10 +144,38 @@ TEST(Collective, AllReduceTwoBuffersMax) {
 	rt->FreeBuffer(bufB);
 }
 
+TEST(Collective, AllReduceThreeBuffersSum) {
+	auto* rt = OaEngine::GetGlobal();
+	ASSERT_NE(rt, nullptr);
+
+	constexpr OaU64 count = 12;
+	constexpr OaU64 size = count * sizeof(OaF32);
+	auto bufA = MakeHostBuffer(*rt, size);
+	auto bufB = MakeHostBuffer(*rt, size);
+	auto bufC = MakeHostBuffer(*rt, size);
+	FillF32(bufA, 1.0F, count);
+	FillF32(bufB, 2.0F, count);
+	FillF32(bufC, 4.0F, count);
+
+	OaVkBuffer bufs[] = {bufA, bufB, bufC};
+	auto status = OaCollective::AllReduce(
+		OaSpan<OaVkBuffer>(bufs, 3), OaReduceOp::Sum);
+	ASSERT_TRUE(status.IsOk()) << status.ToString();
+	for (const OaVkBuffer& buffer : bufs) {
+		for (OaU64 i = 0; i < count; ++i) {
+			EXPECT_FLOAT_EQ(ReadF32(buffer, i), 7.0F);
+		}
+	}
+
+	rt->FreeBuffer(bufA);
+	rt->FreeBuffer(bufB);
+	rt->FreeBuffer(bufC);
+}
+
 // ─── Broadcast ──────────────────────────────────────────────────────────
 
 TEST(Collective, BroadcastTwoBuffers) {
-	auto* rt = OaComputeEngine::GetGlobal();
+	auto* rt = OaEngine::GetGlobal();
 	ASSERT_NE(rt, nullptr);
 
 	OaU64 count = 64;
@@ -145,7 +188,7 @@ TEST(Collective, BroadcastTwoBuffers) {
 
 	OaVkBuffer bufs[] = {bufA, bufB};
 	OaSpan<OaVkBuffer> span(bufs, 2);
-	auto status = OaCollective::Broadcast(*rt, span, 0);
+	auto status = OaCollective::Broadcast(span, 0);
 	EXPECT_TRUE(status.IsOk());
 
 	for (OaU64 i = 0; i < count; ++i) {
@@ -159,7 +202,7 @@ TEST(Collective, BroadcastTwoBuffers) {
 // ─── AllGather ──────────────────────────────────────────────────────────
 
 TEST(Collective, AllGatherTwoBuffers) {
-	auto* rt = OaComputeEngine::GetGlobal();
+	auto* rt = OaEngine::GetGlobal();
 	ASSERT_NE(rt, nullptr);
 
 	OaU64 partialCount = 32;
@@ -179,7 +222,7 @@ TEST(Collective, AllGatherTwoBuffers) {
 	OaSpan<const OaVkBuffer> partialsSpan(partials, 2);
 	OaSpan<OaVkBuffer> fullsSpan(fulls, 2);
 
-	auto status = OaCollective::AllGather(*rt, partialsSpan, fullsSpan);
+	auto status = OaCollective::AllGather(partialsSpan, fullsSpan);
 	EXPECT_TRUE(status.IsOk());
 
 	for (OaU64 i = 0; i < partialCount; ++i) {
@@ -198,7 +241,7 @@ TEST(Collective, AllGatherTwoBuffers) {
 // ─── Scatter ────────────────────────────────────────────────────────────
 
 TEST(Collective, ScatterTwoBuffers) {
-	auto* rt = OaComputeEngine::GetGlobal();
+	auto* rt = OaEngine::GetGlobal();
 	ASSERT_NE(rt, nullptr);
 
 	OaU64 fullCount = 64;
@@ -215,7 +258,7 @@ TEST(Collective, ScatterTwoBuffers) {
 	OaVkBuffer partials[] = {partA, partB};
 	OaSpan<OaVkBuffer> partialsSpan(partials, 2);
 
-	auto status = OaCollective::Scatter(*rt, full, partialsSpan);
+	auto status = OaCollective::Scatter(full, partialsSpan);
 	EXPECT_TRUE(status.IsOk());
 
 	for (OaU64 i = 0; i < partialCount; ++i) {
@@ -231,7 +274,7 @@ TEST(Collective, ScatterTwoBuffers) {
 // ─── ReduceScatter ──────────────────────────────────────────────────────
 
 TEST(Collective, ReduceScatterTwoBuffers) {
-	auto* rt = OaComputeEngine::GetGlobal();
+	auto* rt = OaEngine::GetGlobal();
 	ASSERT_NE(rt, nullptr);
 
 	OaU64 count = 128;
@@ -244,7 +287,7 @@ TEST(Collective, ReduceScatterTwoBuffers) {
 
 	OaVkBuffer bufs[] = {bufA, bufB};
 	OaSpan<OaVkBuffer> span(bufs, 2);
-	auto status = OaCollective::ReduceScatter(*rt, span, OaReduceOp::Sum);
+	auto status = OaCollective::ReduceScatter(span, OaReduceOp::Sum);
 	EXPECT_TRUE(status.IsOk());
 
 	OaU64 chunkCount = count / 2;
@@ -256,45 +299,132 @@ TEST(Collective, ReduceScatterTwoBuffers) {
 	rt->FreeBuffer(bufB);
 }
 
-// ─── Async AllReduce ────────────────────────────────────────────────────
-
-TEST(Collective, AllReduceAsyncTwoBuffers) {
-	auto* rt = OaComputeEngine::GetGlobal();
+TEST(Collective, ReduceScatterThreeBuffers) {
+	auto* rt = OaEngine::GetGlobal();
 	ASSERT_NE(rt, nullptr);
 
-	OaU64 count = 256;
-	OaU64 size = count * sizeof(OaF32);
+	constexpr OaU64 count = 12;
+	constexpr OaU64 chunkCount = count / 3;
+	constexpr OaU64 size = count * sizeof(OaF32);
 	auto bufA = MakeHostBuffer(*rt, size);
 	auto bufB = MakeHostBuffer(*rt, size);
+	auto bufC = MakeHostBuffer(*rt, size);
+	FillF32(bufA, 1.0F, count);
+	FillF32(bufB, 2.0F, count);
+	FillF32(bufC, 4.0F, count);
 
-	FillF32(bufA, 3.0f, count);
-	FillF32(bufB, 7.0f, count);
-
-	OaVkBuffer bufs[] = {bufA, bufB};
-	OaSpan<OaVkBuffer> span(bufs, 2);
-
-	auto ticketResult = OaCollective::AllReduceAsync(*rt, span, OaReduceOp::Sum);
-	EXPECT_TRUE(ticketResult.IsOk());
-
-	auto ticket = std::move(ticketResult.GetValue());
-	if (ticket.Semaphore.Semaphore) {
-		auto waitStatus = ticket.Wait(rt->Device);
-		EXPECT_TRUE(waitStatus.IsOk());
-	}
-
-	for (OaU64 i = 0; i < count; ++i) {
-		EXPECT_FLOAT_EQ(ReadF32(bufs[0], i), 10.0f) << "bufA[" << i << "]";
-		EXPECT_FLOAT_EQ(ReadF32(bufs[1], i), 10.0f) << "bufB[" << i << "]";
+	OaVkBuffer bufs[] = {bufA, bufB, bufC};
+	auto status = OaCollective::ReduceScatter(
+		OaSpan<OaVkBuffer>(bufs, 3), OaReduceOp::Sum);
+	ASSERT_TRUE(status.IsOk()) << status.ToString();
+	for (const OaVkBuffer& buffer : bufs) {
+		for (OaU64 i = 0; i < chunkCount; ++i) {
+			EXPECT_FLOAT_EQ(ReadF32(buffer, i), 7.0F);
+		}
 	}
 
 	rt->FreeBuffer(bufA);
 	rt->FreeBuffer(bufB);
+	rt->FreeBuffer(bufC);
+}
+
+TEST(Collective, RejectsMalformedContractsBeforeMutation) {
+	auto* rt = OaEngine::GetGlobal();
+	ASSERT_NE(rt, nullptr);
+
+	OaSpan<OaVkBuffer> empty;
+	EXPECT_FALSE(OaCollective::AllReduce(
+		empty, OaReduceOp::Sum).IsOk());
+
+	auto src = MakeHostBuffer(*rt, 4 * sizeof(OaF32));
+	auto shortDst = MakeHostBuffer(*rt, 2 * sizeof(OaF32));
+	FillF32(src, 3.0F, 4);
+	FillF32(shortDst, 9.0F, 2);
+	OaVkBuffer broadcastBuffers[] = {src, shortDst};
+	EXPECT_FALSE(OaCollective::Broadcast(
+		OaSpan<OaVkBuffer>(broadcastBuffers, 2), 0).IsOk());
+	EXPECT_FLOAT_EQ(ReadF32(shortDst, 0), 9.0F);
+	EXPECT_FLOAT_EQ(ReadF32(shortDst, 1), 9.0F);
+
+	OaVkBuffer reduceBuffers[] = {src, src};
+	EXPECT_FALSE(OaCollective::AllReduce(
+		OaSpan<OaVkBuffer>(reduceBuffers, 2),
+		static_cast<OaReduceOp>(255)).IsOk());
+
+	auto oddFull = MakeHostBuffer(*rt, 10);
+	auto partA = MakeHostBuffer(*rt, 4);
+	auto partB = MakeHostBuffer(*rt, 4);
+	auto partC = MakeHostBuffer(*rt, 4);
+	OaVkBuffer scatterOutputs[] = {partA, partB, partC};
+	EXPECT_FALSE(OaCollective::Scatter(
+		oddFull,
+		OaSpan<OaVkBuffer>(scatterOutputs, 3)).IsOk());
+
+	const OaVkBuffer gatherInputs[] = {src, src};
+	OaVkBuffer gatherOutputs[] = {shortDst, shortDst};
+	EXPECT_FALSE(OaCollective::AllGather(
+		OaSpan<const OaVkBuffer>(gatherInputs, 2),
+		OaSpan<OaVkBuffer>(gatherOutputs, 2)).IsOk());
+
+	rt->FreeBuffer(src);
+	rt->FreeBuffer(shortDst);
+	rt->FreeBuffer(oddFull);
+	rt->FreeBuffer(partA);
+	rt->FreeBuffer(partB);
+	rt->FreeBuffer(partC);
+}
+
+TEST(Collective, StagesOverlappingHostViews) {
+	OaF32 broadcastStorage[] = {1.0F, 2.0F, 3.0F, 4.0F, 0.0F};
+	OaVkBuffer broadcastBuffers[] = {
+		MakeHostView(broadcastStorage, 4),
+		MakeHostView(broadcastStorage + 1, 4),
+	};
+	ASSERT_TRUE(OaCollective::Broadcast(
+		OaSpan<OaVkBuffer>(broadcastBuffers, 2), 0).IsOk());
+	for (OaU32 i = 0; i < 4; ++i) {
+		EXPECT_FLOAT_EQ(broadcastStorage[i + 1], static_cast<OaF32>(i + 1));
+	}
+
+	OaF32 gatherStorage[] = {1.0F, 2.0F, 3.0F, 4.0F, 0.0F};
+	OaF32 gatherOutput[4] = {};
+	const OaVkBuffer gatherInputs[] = {
+		MakeHostView(gatherStorage, 2),
+		MakeHostView(gatherStorage + 2, 2),
+	};
+	OaVkBuffer gatherOutputs[] = {
+		MakeHostView(gatherStorage + 1, 4),
+		MakeHostView(gatherOutput, 4),
+	};
+	ASSERT_TRUE(OaCollective::AllGather(
+		OaSpan<const OaVkBuffer>(gatherInputs, 2),
+		OaSpan<OaVkBuffer>(gatherOutputs, 2)).IsOk());
+	for (const OaVkBuffer& output : gatherOutputs) {
+		for (OaU32 i = 0; i < 4; ++i) {
+			EXPECT_FLOAT_EQ(ReadF32(output, i), static_cast<OaF32>(i + 1));
+		}
+	}
+
+	OaF32 scatterStorage[] = {1.0F, 2.0F, 3.0F, 4.0F, 5.0F, 6.0F};
+	OaF32 scatterOutput[3] = {};
+	const OaVkBuffer scatterInput = MakeHostView(scatterStorage, 6);
+	OaVkBuffer scatterOutputs[] = {
+		MakeHostView(scatterStorage + 3, 3),
+		MakeHostView(scatterOutput, 3),
+	};
+	ASSERT_TRUE(OaCollective::Scatter(
+		scatterInput,
+		OaSpan<OaVkBuffer>(scatterOutputs, 2)).IsOk());
+	for (OaU32 i = 0; i < 3; ++i) {
+		EXPECT_FLOAT_EQ(ReadF32(scatterOutputs[0], i), static_cast<OaF32>(i + 1));
+		EXPECT_FLOAT_EQ(ReadF32(scatterOutputs[1], i), static_cast<OaF32>(i + 4));
+	}
 }
 
 // ─── Large Buffer Test ──────────────────────────────────────────────────
 
 TEST(Collective, AllReduceLargeBuffer) {
-	auto* rt = OaComputeEngine::GetGlobal();
+	auto* rt = OaEngine::GetGlobal();
 	ASSERT_NE(rt, nullptr);
 
 	OaU64 count = 1024 * 1024; // 4 MB per buffer
@@ -307,7 +437,7 @@ TEST(Collective, AllReduceLargeBuffer) {
 
 	OaVkBuffer bufs[] = {bufA, bufB};
 	OaSpan<OaVkBuffer> span(bufs, 2);
-	auto status = OaCollective::AllReduce(*rt, span, OaReduceOp::Sum);
+	auto status = OaCollective::AllReduce(span, OaReduceOp::Sum);
 	EXPECT_TRUE(status.IsOk());
 
 	// Spot-check a few values
@@ -323,8 +453,11 @@ TEST(Collective, AllReduceLargeBuffer) {
 // ─── Multi-device mesh (second VkDevice) ────────────────────────────────
 
 TEST(Collective, MultiDeviceAllReduceTwoNodes) {
-	auto* fixtureRt = OaComputeEngine::GetGlobal();
+	auto* fixtureRt = OaEngine::GetGlobal();
 	ASSERT_NE(fixtureRt, nullptr);
+	if (not HasPhysicalDeviceCount(*fixtureRt, 2)) {
+		GTEST_SKIP() << "fewer than two Vulkan physical devices";
+	}
 
 	OaEngineConfig cfg{};
 	cfg.EnableMultiDevice = true;
@@ -332,11 +465,11 @@ TEST(Collective, MultiDeviceAllReduceTwoNodes) {
 	cfg.AppName = "OaTestMeshAllReduce";
 	cfg.Precision = fixtureRt->GetPrecision();
 
-	auto meshRes = OaComputeEngine::Create(cfg);
+	auto meshRes = OaEngine::Create(cfg);
 	if (!meshRes) {
-		GTEST_SKIP() << "multi-device OaComputeEngine::Create failed";
+		GTEST_SKIP() << "multi-device OaEngine::Create failed";
 	}
-	OaComputeEngine& meshRt = *meshRes.GetValue();
+	OaEngine& meshRt = *meshRes.GetValue();
 	if (meshRt.DeviceCount() < 2) {
 		meshRt.Destroy();
 		GTEST_SKIP() << "fewer than two Vulkan physical devices";
@@ -357,7 +490,7 @@ TEST(Collective, MultiDeviceAllReduceTwoNodes) {
 
 	OaVkBuffer bufs[] = {buf0, buf1};
 	OaSpan<OaVkBuffer> span(bufs, 2);
-	auto st = OaCollective::AllReduce(meshRt, span, OaReduceOp::Sum);
+	auto st = OaCollective::AllReduce(span, OaReduceOp::Sum);
 	EXPECT_TRUE(st.IsOk());
 
 	for (OaU64 i = 0; i < count; ++i) {
@@ -372,8 +505,11 @@ TEST(Collective, MultiDeviceAllReduceTwoNodes) {
 
 #if defined(__linux__)
 TEST(Collective, ExportImportFdSameVendorTwoNodes) {
-	auto* fixtureRt = OaComputeEngine::GetGlobal();
+	auto* fixtureRt = OaEngine::GetGlobal();
 	ASSERT_NE(fixtureRt, nullptr);
+	if (not HasPhysicalDeviceCount(*fixtureRt, 2)) {
+		GTEST_SKIP() << "fewer than two Vulkan physical devices";
+	}
 
 	OaEngineConfig cfg{};
 	cfg.EnableMultiDevice = true;
@@ -381,11 +517,11 @@ TEST(Collective, ExportImportFdSameVendorTwoNodes) {
 	cfg.AppName = "OaTestDmaBufCollective";
 	cfg.Precision = fixtureRt->GetPrecision();
 
-	auto meshRes = OaComputeEngine::Create(cfg);
+	auto meshRes = OaEngine::Create(cfg);
 	if (!meshRes) {
-		GTEST_SKIP() << "multi-device OaComputeEngine::Create failed";
+		GTEST_SKIP() << "multi-device OaEngine::Create failed";
 	}
-	OaComputeEngine& meshRt = *meshRes.GetValue();
+	OaEngine& meshRt = *meshRes.GetValue();
 	if (meshRt.DeviceCount() < 2) {
 		meshRt.Destroy();
 		GTEST_SKIP() << "fewer than two Vulkan physical devices";
@@ -439,9 +575,9 @@ TEST(Collective, ExportImportFdSameVendorTwoNodes) {
 // ─── DMA-BUF Capability Check ──────────────────────────────────────────
 
 TEST(Collective, DmaBufCapabilityCheck) {
-	auto* rt = OaComputeEngine::GetGlobal();
+	auto* rt = OaEngine::GetGlobal();
 	ASSERT_NE(rt, nullptr);
 
-	bool hasDmaBuf = rt->Device.HasExternalMemoryFd;
+	bool hasDmaBuf = rt->Device.Info.Software.HasExternalMemoryFd;
 	OA_LOG_INFO(OaLogComponent::Core, "HasExternalMemoryFd: %s", hasDmaBuf ? "yes" : "no");
 }

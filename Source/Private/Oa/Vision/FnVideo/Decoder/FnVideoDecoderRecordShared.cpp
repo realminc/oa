@@ -3,6 +3,8 @@
 #include "FnVideoDecoderRecordShared.h"
 #include <Oa/Runtime/Engine.h>
 
+#include <algorithm>
+
 OaResult<OaFnVideoDecoderRecord::ActiveCmd> OaFnVideoDecoderRecord::Begin(
 	OaVideoDecoder& InDecoder,
 	const char* InLabel)
@@ -122,6 +124,30 @@ void OaFnVideoDecoderRecord::EnsureDpbLayer(
 		return;
 	}
 	const OaU32 layer = static_cast<OaU32>(InSlot);
+	if (InDecoder.DpbImageLayouts_[layer] == VK_IMAGE_LAYOUT_VIDEO_DECODE_DPB_KHR) {
+		return;
+	}
+	bool wholeDpbUndefined = true;
+	for (VkImageLayout layout : InDecoder.DpbImageLayouts_) {
+		if (layout != VK_IMAGE_LAYOUT_UNDEFINED) {
+			wholeDpbUndefined = false;
+			break;
+		}
+	}
+	if (wholeDpbUndefined) {
+		// The DPB is one array image. Initialize every layer in one transition
+		// before the first decode instead of lazily transitioning a new layer
+		// after another layer has already been written by the codec engine.
+		TransitionDecodeImage(
+			InCmd,
+			InDecoder.Dpb_.GetImage(),
+			InDecoder.DpbImageLayouts_[0],
+			VK_IMAGE_LAYOUT_VIDEO_DECODE_DPB_KHR,
+			0,
+			InDecoder.DpbSlotCapacity_);
+		InDecoder.DpbImageLayouts_.Fill(VK_IMAGE_LAYOUT_VIDEO_DECODE_DPB_KHR);
+		return;
+	}
 	TransitionDecodeImage(
 		InCmd,
 		InDecoder.Dpb_.GetImage(),
@@ -192,8 +218,7 @@ OaStatus OaFnVideoDecoderRecord::FinishAndSubmit(
 	const ActiveCmd& InCmd,
 	FinishParams InParams)
 {
-	auto& vkEngine = static_cast<OaComputeEngine&>(*InDecoder.Rt_);
-	VkDevice device = static_cast<VkDevice>(vkEngine.Device.Device);
+	auto& vkEngine = *InDecoder.Rt_;
 
 	if (InDecoder.CopySampleStagingOnVideoQueue_) {
 		InDecoder.RecordDpbLayerToSampleImage(InCmd.Cb, InParams.DpbSlot);
@@ -215,25 +240,54 @@ OaStatus OaFnVideoDecoderRecord::FinishAndSubmit(
 	const OaU64 reuseValue = InParams.HasDistinctOutput
 		? InDecoder.OutputReuseValues_[InParams.DpbSlot]
 		: 0;
-	VkPipelineStageFlags reuseStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-	VkTimelineSemaphoreSubmitInfo tsInfo = {};
-	tsInfo.sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO;
-	tsInfo.waitSemaphoreValueCount = reuseSemaphore != VK_NULL_HANDLE ? 1U : 0U;
-	tsInfo.pWaitSemaphoreValues = reuseSemaphore != VK_NULL_HANDLE ? &reuseValue : nullptr;
-	tsInfo.signalSemaphoreValueCount = 1;
-	tsInfo.pSignalSemaphoreValues = &signalValue;
-
-	VkSubmitInfo submitInfo = {};
-	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-	submitInfo.pNext = &tsInfo;
-	submitInfo.waitSemaphoreCount = reuseSemaphore != VK_NULL_HANDLE ? 1U : 0U;
-	submitInfo.pWaitSemaphores = reuseSemaphore != VK_NULL_HANDLE ? &reuseSemaphore : nullptr;
-	submitInfo.pWaitDstStageMask = reuseSemaphore != VK_NULL_HANDLE ? &reuseStage : nullptr;
-	submitInfo.commandBufferCount = 1;
-	submitInfo.pCommandBuffers = &InCmd.Cb;
-	submitInfo.signalSemaphoreCount = 1;
-	submitInfo.pSignalSemaphores = &sem;
-	result = vkQueueSubmit(
+	VkSemaphore waitSemaphores[2] = {};
+	OaU64 waitValues[2] = {};
+	VkPipelineStageFlags2 waitStages[2] = {};
+	OaU32 waitCount = 0;
+	// Queue submission order is not a memory dependency. Chain decoder jobs on
+	// their own timeline so DPB writes and following layout transitions are
+	// ordered without a host wait or a queue-wide idle.
+	if (InDecoder.TimelineValue_ > 0) {
+		waitSemaphores[waitCount] = sem;
+		waitValues[waitCount] = InDecoder.TimelineValue_;
+		waitStages[waitCount] = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+		++waitCount;
+	}
+	if (reuseSemaphore != VK_NULL_HANDLE && reuseValue > 0) {
+		if (waitCount > 0 && waitSemaphores[0] == reuseSemaphore) {
+			waitValues[0] = std::max(waitValues[0], reuseValue);
+			waitStages[0] |= VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+		} else {
+			waitSemaphores[waitCount] = reuseSemaphore;
+			waitValues[waitCount] = reuseValue;
+			waitStages[waitCount] = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+			++waitCount;
+		}
+	}
+	VkSemaphoreSubmitInfo waitInfos[2] = {};
+	for (OaU32 waitIdx = 0; waitIdx < waitCount; ++waitIdx) {
+		waitInfos[waitIdx].sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+		waitInfos[waitIdx].semaphore = waitSemaphores[waitIdx];
+		waitInfos[waitIdx].value = waitValues[waitIdx];
+		waitInfos[waitIdx].stageMask = waitStages[waitIdx];
+	}
+	VkSemaphoreSubmitInfo signalInfo = {};
+	signalInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+	signalInfo.semaphore = sem;
+	signalInfo.value = signalValue;
+	signalInfo.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+	VkCommandBufferSubmitInfo commandInfo = {};
+	commandInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+	commandInfo.commandBuffer = InCmd.Cb;
+	VkSubmitInfo2 submitInfo = {};
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+	submitInfo.waitSemaphoreInfoCount = waitCount;
+	submitInfo.pWaitSemaphoreInfos = waitCount > 0 ? waitInfos : nullptr;
+	submitInfo.commandBufferInfoCount = 1;
+	submitInfo.pCommandBufferInfos = &commandInfo;
+	submitInfo.signalSemaphoreInfoCount = 1;
+	submitInfo.pSignalSemaphoreInfos = &signalInfo;
+	result = vkQueueSubmit2(
 		static_cast<VkQueue>(vkEngine.Device.Queues.VideoDecodeQueue),
 		1,
 		&submitInfo,
@@ -251,9 +305,11 @@ OaStatus OaFnVideoDecoderRecord::FinishAndSubmit(
 	InDecoder.BitstreamRing_[InDecoder.CurrentBitstreamIndex_].UseValue = InDecoder.TimelineValue_;
 	InDecoder.OutputReuseSemaphores_[InParams.DpbSlot] = VK_NULL_HANDLE;
 	InDecoder.OutputReuseValues_[InParams.DpbSlot] = 0;
-	if (InParams.MarkSlotDeviceActivated) {
-		InDecoder.SlotDeviceActivated_[InParams.DpbSlot] = true;
-	}
+	// Submission order makes this the slot state observed by the next decode.
+	// A codec can invalidate an already-active slot by reconstructing a
+	// non-reference picture into it, so this must assign both true and false.
+	InDecoder.SlotDeviceActivated_[InParams.DpbSlot] =
+		InParams.MarkSlotDeviceActivated;
 	ReleaseSlot(InDecoder);
 	if (InParams.HasDistinctOutput) {
 		InDecoder.DpbImageLayouts_[InParams.DpbSlot] = VK_IMAGE_LAYOUT_VIDEO_DECODE_DPB_KHR;

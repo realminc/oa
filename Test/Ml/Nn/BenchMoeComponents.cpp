@@ -16,7 +16,7 @@
 namespace {
 
 template <typename Enqueue>
-OaPerfStat Measure(OaComputeEngine& InEngine, const char* InName, Enqueue&& InEnqueue) {
+OaPerfStat Measure(OaEngine& InEngine, const char* InName, Enqueue&& InEnqueue) {
 	constexpr OaU32 warmup = 5, samples = 25;
 	OaGpuTimer timer;
 	if (auto status = timer.Init(InEngine, InName); not status.IsOk())
@@ -25,8 +25,11 @@ OaPerfStat Measure(OaComputeEngine& InEngine, const char* InName, Enqueue&& InEn
 	auto& ctx = OaContext::GetDefault();
 	for (OaU32 i = 0; i < warmup + samples; ++i) {
 		InEnqueue();
-		if (auto status = ctx.ExecuteAsync(&timer); not status.IsOk())
+		auto submitted = ctx.Submit(&timer);
+		if (not submitted.IsOk())
 			throw std::runtime_error("BenchMoeComponents execution failed");
+		if (auto status = ctx.Wait(submitted.GetValue()); not status.IsOk())
+			throw std::runtime_error("BenchMoeComponents completion failed");
 		stat.Push(timer.ReadbackMs(InEngine.Device));
 	}
 	timer.Destroy(InEngine.Device);
@@ -42,9 +45,9 @@ void Print(const char* InName, const OaPerfStat& InStat) {
 
 TEST(BenchMoeComponents, NlpShape) {
 	if (not OaVkTestEngineOk()) GTEST_SKIP();
-	auto& engine = *OaComputeEngine::GetGlobal();
+	auto& engine = *OaEngine::GetGlobal();
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	OaGradNo noGrad;
 
 	constexpr OaI32 T = 1024, D = 32, E = 4, K = 2, H = 16, R = T * K;

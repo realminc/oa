@@ -1,0 +1,89 @@
+{
+  "acceptance": {
+    "accepted_by": "Realm maintainers",
+    "reason": "Initial Build Week Iris Xe release baseline"
+  },
+  "accepted_utc": "2026-07-18T11:55:29.221546Z",
+  "build": {
+    "CMAKE_BUILD_TYPE": "Release",
+    "CMAKE_CXX_COMPILER": "/usr/bin/clang++",
+    "CMAKE_C_COMPILER": "/usr/bin/clang",
+    "OA_BUILD_SHARED": "OFF",
+    "OA_EMBED_SHADERS": "ON",
+    "OA_VULKAN_VALIDATION": "OFF",
+    "VCPKG_INSTALLED_DIR": "~/.vcpkg/oa/release/installed"
+  },
+  "environment": {
+    "driver": {
+      "api_version": "1.4.354",
+      "conformance_version": "1.4.0.0",
+      "driver_info": "Mesa 26.1.4-arch1.1",
+      "driver_version": "26.1.4"
+    },
+    "power": {
+      "cpu_governors": [
+        "powersave"
+      ],
+      "power_profile": "balanced"
+    }
+  },
+  "metric": {
+    "name": "gpu_p50",
+    "regex": "OABENCH gemm\\.nlp_qkv p50_ms=(?P<value>[0-9.]+)",
+    "statistics": {
+      "count": 7,
+      "mad": 0.001891999999999991,
+      "maximum": 0.073082,
+      "median": 0.070122,
+      "minimum": 0.06645,
+      "p10": 0.067455,
+      "p90": 0.0724412,
+      "relative_mad_percent": 2.6981546447619733,
+      "spread_percent": 9.45780211631157,
+      "unit": "ms"
+    }
+  },
+  "platform": {
+    "available": true,
+    "device_id": "0x9a49",
+    "device_index": 0,
+    "device_name": "Intel(R) Iris(R) Xe Graphics (TGL GT2)",
+    "device_type": "PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU",
+    "driver_id": "DRIVER_ID_INTEL_OPEN_SOURCE_MESA",
+    "driver_name": "Intel open-source Mesa driver",
+    "machine": "x86_64",
+    "system": "Linux",
+    "vendor_id": "0x8086"
+  },
+  "schema": "oa.benchmark_baseline.v1",
+  "source": {
+    "repository_commit": "20f8d24696afe59565dc7f7cdf2965230f8548f7",
+    "result_sha256": "400182fb40f792af7794d1fd7d857fb053283b254391ca78bac63a0971565068"
+  },
+  "workload": {
+    "command": [
+      "/tmp/oa-benchmark-baseline-20f8d246/Bin/Release/Test/Runtime/Gemm/BenchGemmVariants",
+      "--gtest_filter=BenchGemmVariants.CanonicalNlpQkv"
+    ],
+    "command_id": "BenchGemmVariants.CanonicalNlpQkv.v1",
+    "contract": {
+      "dtype": "fp32",
+      "k": "32",
+      "m": "1024",
+      "n": "32",
+      "training": "true"
+    },
+    "cooldown_seconds": 2.0,
+    "executable": {
+      "path": "/tmp/oa-benchmark-baseline-20f8d246/Bin/Release/Test/Runtime/Gemm/BenchGemmVariants",
+      "sha256": "1a2a5672daba88b52e80ad70686d546dc7abcd1f34b21445eca45f265ac93f74"
+    },
+    "measured_runs": 7,
+    "name": "core.gemm.nlp_qkv",
+    "required_regexes": [
+      "\\[  PASSED  \\] 1 test"
+    ],
+    "timeout_seconds": 120.0,
+    "warmup_runs": 2
+  }
+}

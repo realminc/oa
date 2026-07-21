@@ -5,7 +5,7 @@
 
 #include <Oa/Ml/Nn.h>
 #include <Oa/Core/FnMatrix.h>
-#include <Oa/Ml/Autograd.h>
+#include <Oa/Ml/Autograd/Nodes.h>
 #include <Oa/Core/Validation.h>
 
 OaEmbedding::OaEmbedding(OaI32 NumEmbeddings, OaI32 EmbeddingDim)

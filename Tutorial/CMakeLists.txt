@@ -127,7 +127,10 @@ target_include_directories(TutorialRlCartPoleViewer PRIVATE
 # path without involving OaModule, optimizers, or autograd.
 
 oa_add_app_tutorial(TutorialCoreMatMulIntro Core/TutorialCoreMatMulIntro.cpp Core)
+target_include_directories(TutorialCoreMatMulIntro PRIVATE
+	${oa_SOURCE_DIR}/Source/Private)
 oa_add_app_tutorial(TutorialCoreEngine Core/TutorialCoreEngine.cpp Core)
+oa_add_app_tutorial(TutorialCoreDeviceCanary Core/TutorialCoreDeviceCanary.cpp Core)
 
 # ═══════════════════════════════════════════════════════════════════════════
 # INSTALL — headless, self-contained tutorials as `oa-*` CLI tools
@@ -154,6 +157,7 @@ set(_oa_cli_tools
 	"TutorialNlpBpeMoeAg=oa-nlp-bpe-moe"
 	"TutorialNlpBpeMamba3Ag=oa-nlp-bpe-mamba3"
 	"TutorialCoreMatMulIntro=oa-matmul-intro"
+	"TutorialCoreDeviceCanary=oa-device-canary"
 )
 foreach(_pair IN LISTS _oa_cli_tools)
 	string(REPLACE "=" ";" _kv "${_pair}")

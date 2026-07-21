@@ -1,8 +1,8 @@
 // OaPlot::Figure — implementation. Layout + replay over OaContext sinks.
 //
 // Architecture/OaArchitecture.md §10. The Show() path drives
-// an internal OaDeviceUiApp that, in OnRender, iterates every Axes and
-// records its commands through OaContext (Imshow = ctx.RecordBlit) or OaUi
+// an internal OaViewer live source that iterates every Axes and
+// records its commands through OaFnTexture/OaContext or OaUi
 // (Title / Caption / PlotLine). The SaveFig() path does the same layout on
 // the CPU — readback each Imshow source via the staging-buffer pattern,
 // composite into an in-memory RGBA8 framebuffer, write PNG.
@@ -14,8 +14,8 @@
 #include <Oa/Ui/Plot/Figure.h>
 
 #include <Oa/Core/Log.h>
-#include <Oa/Ui/DeviceUi.h>
 #include <Oa/Ui/Ui.h>
+#include <Oa/Ui/Viewer.h>
 
 #include "../../../../ThirdParty/stb/stb_image_write.h"
 
@@ -27,6 +27,16 @@
 
 
 namespace OaPlot {
+
+namespace {
+
+OaContext& ContextForEngine(OaEngine& InEngine) {
+	OaContext* active = OaContext::GetDefaultPtr();
+	return active != nullptr and active->GetEngine() == &InEngine
+		? *active : InEngine.GetContext();
+}
+
+} // namespace
 
 // ─── Figure::Impl ──────────────────────────────────────────────────────────
 
@@ -44,7 +54,7 @@ struct Figure::Impl {
 	// letterboxed in the window — cell proportions never depend on window size.
 	OaVec<OaU8>          Framebuffer_;
 	OaTexture            Canvas_;
-	OaComputeEngine*   CanvasRt_ = nullptr;  // engine that owns Canvas_, for ~Figure
+	OaEngine*   CanvasRt_ = nullptr;  // engine that owns Canvas_, for ~Figure
 };
 
 
@@ -143,9 +153,9 @@ const OaTexture& Figure::Canvas() const noexcept {
 // Legacy fallback (Canvas_ not yet built): per-frame Axes replay through
 // OaUi widgets. Cell proportions follow the window in this path.
 
-void Figure::RenderFrame(::OaDeviceUi& InGpui, ::OaUi& InOui) {
-	const OaU32 W = InGpui.Width();
-	const OaU32 H = InGpui.Height();
+void Figure::RenderFrame(OaU32 InWidth, OaU32 InHeight, ::OaUi& InOui) {
+	const OaU32 W = InWidth;
+	const OaU32 H = InHeight;
 	if (W == 0U or H == 0U) { return; }
 
 	// ─── Rasterized path: display Canvas_ as one letterboxed panel ─────
@@ -272,45 +282,44 @@ void Figure::RenderFrame(::OaDeviceUi& InGpui, ::OaUi& InOui) {
 }
 
 
-// ─── Show() — internal OaDeviceUiApp ───────────────────────────────────────
+// ─── Show() — OaViewer live source ─────────────────────────────────────────
 
 namespace {
 
-class FigureShowApp : public OaDeviceUiApp {
+class FigureShowSource final : public OaViewerLiveSource {
 public:
 	Figure* Fig = nullptr;
 
-	void OnInit(OaDeviceUi& InGpui) override {
-		auto& input = InGpui.Input();
-		input.RegisterAction({.Name = "quit",  .Binding = {.Key = OuiKey::Escape}, .Callback = [this] { Quit(); }});
-		input.RegisterAction({.Name = "quitq", .Binding = {.Key = OuiKey::Q},      .Callback = [this] { Quit(); }});
+	void Render(
+		OaUi& InOui,
+		const OaTextAtlas&,
+		OaU32 InWidth,
+		OaU32 InHeight) override {
+		if (Fig != nullptr) { Fig->RenderFrame(InWidth, InHeight, InOui); }
 	}
-
-	void OnRender(OaUi& InOui) override {
-		if (Fig != nullptr) { Fig->RenderFrame(Gpui(), InOui); }
-	}
-
-	void OnShutdown(OaDeviceUi& /*InGpui*/) override {}
 };
 
 }  // namespace
 
 
 OaStatus Figure::Show() {
-	FigureShowApp app;
-	app.Fig = this;
-
-	OaUiStyle style;
-	style.Background = Config_.Background;
+	FigureShowSource source;
+	source.Fig = this;
 
 	const OaString& title = Impl_->Title_.Empty() ? Config_.Title : Impl_->Title_;
-
-	return app.Run({
+	OaViewerConfig config{
+		.Mode = OaViewerMode::Live,
+		.LiveSource = &source,
 		.Title  = title,
 		.Width  = Config_.Width,
 		.Height = Config_.Height,
-		.Style  = style,
-	});
+		.ShowHelp = false,
+		.ShowStats = false,
+		.ShowTimeline = false,
+	};
+	config.Style.Background = Config_.Background;
+	OaViewer viewer(config);
+	return viewer.Run();
 }
 
 
@@ -324,7 +333,7 @@ namespace {
 
 // Read a buffer-backed OaTexture into a host vector via staging. The texture
 // must have a valid DeviceBuf (the FromPixels / LoadFile path).
-static OaStatus ReadbackTexture(OaComputeEngine& InEngine,
+static OaStatus ReadbackTexture(OaEngine& InEngine,
                                 const OaTexture& InTex,
                                 OaVec<OaU8>& OutBytes) {
 	if (not InTex.IsValid() or InTex.DeviceBuf.Buffer == nullptr) {
@@ -336,27 +345,8 @@ static OaStatus ReadbackTexture(OaComputeEngine& InEngine,
 		return OaStatus::Error("ReadbackTexture: device buffer too small");
 	}
 
-	auto stageR = InEngine.Allocator.AllocHostVisible(bytes);
-	if (not stageR.IsOk()) return stageR.GetStatus();
-	OaVkBuffer staging = stageR.GetValue();
-
-	if (auto s = InEngine.CopyBufferAsync(InTex.DeviceBuf, staging, bytes); not s.IsOk()) {
-		InEngine.Allocator.Free(staging);
-		return s;
-	}
-	if (auto s = InEngine.WaitTransfer(); not s.IsOk()) {
-		InEngine.Allocator.Free(staging);
-		return s;
-	}
-	if (staging.MappedPtr == nullptr) {
-		InEngine.Allocator.Free(staging);
-		return OaStatus::Error("ReadbackTexture: null MappedPtr");
-	}
-
 	OutBytes.Resize(static_cast<OaI64>(bytes));
-	std::memcpy(OutBytes.Data(), staging.MappedPtr, bytes);
-	InEngine.Allocator.Free(staging);
-	return OaStatus::Ok();
+	return InEngine.ReadbackBuffer(InTex.DeviceBuf, 0U, OutBytes.Data(), bytes);
 }
 
 // Nearest-neighbour blit srcW×srcH RGBA8 → dstW×dstH region inside fbW×fbH RGBA8.
@@ -527,7 +517,38 @@ static void PaintLine(OaU8* InFb, OaI32 InFbW, OaI32 InFbH,
 // the GPU via the staging-buffer pattern. Used by both Rasterize (which
 // then uploads to Canvas_) and SaveFig (which writes PNG directly).
 
-OaStatus Figure::CompositeFramebuffer(OaComputeEngine& InRt) {
+OaStatus Figure::ValidateImageSources(
+	OaEngine& InRt,
+	OaBool& OutNeedsCompletion) const
+{
+	OutNeedsCompletion = false;
+	for (const Axes& axes : Impl_->Axes_) {
+		if ((axes.Heatmap_.Present and not axes.Heatmap_.V.Empty())
+			or (axes.Line_.Present and not axes.Line_.Y.Empty())) {
+			continue;
+		}
+		if (not axes.Image_.Present) continue;
+
+		const OaTexture& texture = axes.Image_.Tex;
+		const OaVkBuffer& buffer = texture.DeviceBuf;
+		const OaU64 bytes = texture.Width > 0 and texture.Height > 0
+			? static_cast<OaU64>(texture.Width)
+				* static_cast<OaU64>(texture.Height) * 4U
+			: 0U;
+		if (texture.IsImageBacked() or buffer.Buffer == nullptr
+			or bytes == 0U or buffer.Size < bytes
+			or buffer.Allocation == nullptr or buffer.AliasIdentity != nullptr
+			or buffer.IsImported() or buffer.NodeIndex != 0U
+			or buffer.AllocatorIdentity != InRt.Allocator.Allocator) {
+			return OaStatus::InvalidArgument(
+				"OaPlot::Figure: Imshow source must be a valid non-aliased buffer owned by the context engine");
+		}
+		OutNeedsCompletion = true;
+	}
+	return OaStatus::Ok();
+}
+
+OaStatus Figure::CompositeFramebuffer(OaEngine& InRt) {
 	const OaI32 W = static_cast<OaI32>(Config_.Width);
 	const OaI32 H = static_cast<OaI32>(Config_.Height);
 	const OaU64 fbBytes = static_cast<OaU64>(W) * static_cast<OaU64>(H) * 4U;
@@ -604,6 +625,7 @@ OaStatus Figure::CompositeFramebuffer(OaComputeEngine& InRt) {
 					static_cast<OaI32>(ax.Line_.Y.Size()), ax.Line_.Style.Color);
 				continue;
 			}
+			if (not ax.Image_.Present or not ax.Image_.Tex.IsValid()) continue;
 
 			// Use fixed size for square images, otherwise calculate per-cell
 			OaI32 dW, dH;
@@ -636,12 +658,8 @@ OaStatus Figure::CompositeFramebuffer(OaComputeEngine& InRt) {
 
 // ─── Rasterize — CPU paint + GPU upload ───────────────────────────────────
 
-void Figure::Rasterize(OaComputeEngine& InRt) {
-	if (auto s = CompositeFramebuffer(InRt); not s.IsOk()) {
-		OA_LOG_ERROR(OaLogComponent::App,
-			"OaPlot::Figure::Rasterize: composite failed: %s", s.ToString().c_str());
-		return;
-	}
+OaStatus Figure::RasterizeReady(OaEngine& InRt) {
+	OA_RETURN_IF_ERROR(CompositeFramebuffer(InRt));
 	if (Impl_->Canvas_.IsValid()) {
 		Impl_->Canvas_.Destroy(InRt);
 	}
@@ -650,30 +668,44 @@ void Figure::Rasterize(OaComputeEngine& InRt) {
 		static_cast<OaI32>(Config_.Width),
 		static_cast<OaI32>(Config_.Height));
 	if (not r.IsOk()) {
-		OA_LOG_ERROR(OaLogComponent::App,
-			"OaPlot::Figure::Rasterize: upload failed: %s", r.GetStatus().ToString().c_str());
-		return;
+		return r.GetStatus();
 	}
 	Impl_->Canvas_   = r.GetValue();
 	Impl_->CanvasRt_ = &InRt;
 	OA_LOG_INFO(OaLogComponent::App,
 		"OaPlot::Figure::Rasterize: canvas %ux%u uploaded (bindless=%u)",
 		Config_.Width, Config_.Height, Impl_->Canvas_.BindlessIndex());
+	return OaStatus::Ok();
+}
+
+OaStatus Figure::Rasterize(OaContext& InContext) {
+	OaBool needsCompletion = false;
+	OA_RETURN_IF_ERROR(ValidateImageSources(
+		InContext.Engine(), needsCompletion));
+	if (needsCompletion) {
+		OA_RETURN_IF_ERROR(InContext.Execute());
+		OA_RETURN_IF_ERROR(InContext.Sync());
+	}
+	return RasterizeReady(InContext.Engine());
+}
+
+void Figure::Rasterize(OaEngine& InRt) {
+	const OaStatus status = Rasterize(ContextForEngine(InRt));
+	if (not status.IsOk()) {
+		OA_LOG_ERROR(OaLogComponent::App,
+			"OaPlot::Figure::Rasterize failed: %s", status.ToString().c_str());
+	}
 }
 
 
-OaStatus Figure::SaveFig(const char* InPath) {
+OaStatus Figure::SaveFigReady(OaEngine& InRt, const char* InPath) {
 	if (InPath == nullptr or InPath[0] == '\0') {
 		return OaStatus::Error("OaPlot::Figure::SaveFig: null/empty path");
-	}
-	auto* engine = OaComputeEngine::GetGlobal();
-	if (engine == nullptr) {
-		return OaStatus::Error("OaPlot::Figure::SaveFig: no global engine");
 	}
 
 	const OaI32 W = static_cast<OaI32>(Config_.Width);
 	const OaI32 H = static_cast<OaI32>(Config_.Height);
-	if (auto s = CompositeFramebuffer(*engine); not s.IsOk()) { return s; }
+	if (auto s = CompositeFramebuffer(InRt); not s.IsOk()) { return s; }
 
 	if (stbi_write_png(InPath, W, H, 4, Impl_->Framebuffer_.Data(), W * 4) == 0) {
 		return OaStatus::Error("OaPlot::Figure::SaveFig: stbi_write_png failed");
@@ -681,6 +713,29 @@ OaStatus Figure::SaveFig(const char* InPath) {
 	OA_LOG_INFO(OaLogComponent::App,
 		"OaPlot::Figure::SaveFig: %dx%d → %s", W, H, InPath);
 	return OaStatus::Ok();
+}
+
+OaStatus Figure::SaveFig(OaContext& InContext, const char* InPath) {
+	if (InPath == nullptr or InPath[0] == '\0') {
+		return OaStatus::InvalidArgument(
+			"OaPlot::Figure::SaveFig: null/empty path");
+	}
+	OaBool needsCompletion = false;
+	OA_RETURN_IF_ERROR(ValidateImageSources(
+		InContext.Engine(), needsCompletion));
+	if (needsCompletion) {
+		OA_RETURN_IF_ERROR(InContext.Execute());
+		OA_RETURN_IF_ERROR(InContext.Sync());
+	}
+	return SaveFigReady(InContext.Engine(), InPath);
+}
+
+OaStatus Figure::SaveFig(const char* InPath) {
+	auto* engine = OaEngine::GetGlobal();
+	if (engine == nullptr) {
+		return OaStatus::Error("OaPlot::Figure::SaveFig: no global engine");
+	}
+	return SaveFig(ContextForEngine(*engine), InPath);
 }
 
 }  // namespace OaPlot

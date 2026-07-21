@@ -20,6 +20,7 @@ set(OA_EMBED_SHADERS ON CACHE BOOL "" FORCE)
 find_program(OA_HOST_SLANGC slangc
     HINTS
         "$ENV{SLANG_ROOT}/bin"
+        "$ENV{HOME}/.vcpkg/oa/release/installed/x64-linux/tools/shader-slang"
         "$ENV{HOME}/.vcpkg/installed/x64-linux/tools/shader-slang"
         "$ENV{VCPKG_ROOT}/installed/x64-linux/tools/shader-slang")
 if(NOT OA_HOST_SLANGC)

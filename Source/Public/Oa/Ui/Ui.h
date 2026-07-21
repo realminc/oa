@@ -21,7 +21,7 @@
 #include <Oa/Ui/Canvas.h>
 #include <vulkan/vulkan.h>
 
-class OaComputeEngine;
+class OaEngine;
 class OaVkTimelineSemaphore;
 class OaVkBuffer;
 class OaMatrix;
@@ -115,7 +115,7 @@ public:
 	OaUi& operator=(OaUi&&) noexcept;
 	~OaUi();
 
-	[[nodiscard]] OaStatus Init(OaComputeEngine& InRt, const OaUiStyle& InStyle = {});
+	[[nodiscard]] OaStatus Init(OaEngine& InRt, const OaUiStyle& InStyle = {});
 	// Called once after Init, before the first frame.
 	// InComposeImageView: VkImageView (as void*) of the compose storage image (set=1, slot 0).
 	[[nodiscard]] OaStatus InitBlit(void* InComposeImageView);

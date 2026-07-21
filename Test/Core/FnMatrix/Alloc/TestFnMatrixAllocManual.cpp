@@ -8,16 +8,16 @@
 #include <vector>
 #include <cmath>
 
-static OaComputeEngine* GRt = nullptr;
+static OaEngine* GRt = nullptr;
 
 class TestFnMatrixAllocManual : public ::testing::Test {
 protected:
 	static void SetUpTestSuite() {
 		OaEngineConfig cfg{};
 		cfg.AppName = "TestFnMatrixAllocManual";
-		auto r = OaComputeEngine::Create(cfg);
+		auto r = OaEngine::Create(cfg);
 		ASSERT_TRUE(r.IsOk()) << r.GetStatus().GetMessage();
-		static OaUniquePtr<OaComputeEngine> rt = std::move(*r);
+		static OaUniquePtr<OaEngine> rt = std::move(*r);
 		GRt = rt.get();
 	}
 };
@@ -35,7 +35,7 @@ static std::vector<float> CopyToHost(const OaMatrix& m) {
 
 TEST_F(TestFnMatrixAllocManual, Full_1D) {
 	// Test creating 1D tensor filled with constant value
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto tensor = OaFnMatrix::Full(OaMatrixShape{5}, 3.14);
 	
 	EXPECT_EQ(tensor.GetShape().Rank, 1);
@@ -49,7 +49,7 @@ TEST_F(TestFnMatrixAllocManual, Full_1D) {
 
 TEST_F(TestFnMatrixAllocManual, Full_2D) {
 	// Test creating 2D tensor filled with constant value
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto tensor = OaFnMatrix::Full(OaMatrixShape{3, 4}, -2.5);
 	
 	EXPECT_EQ(tensor.GetShape().Rank, 2);
@@ -64,7 +64,7 @@ TEST_F(TestFnMatrixAllocManual, Full_2D) {
 
 TEST_F(TestFnMatrixAllocManual, Full_Zero) {
 	// Test Full with zero value (should match Zeros)
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto tensor = OaFnMatrix::Full(OaMatrixShape{10}, 0.0);
 	
 	auto result = CopyToHost(tensor);
@@ -75,7 +75,7 @@ TEST_F(TestFnMatrixAllocManual, Full_Zero) {
 
 TEST_F(TestFnMatrixAllocManual, Full_NegativeValue) {
 	// Test Full with negative value
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto tensor = OaFnMatrix::Full(OaMatrixShape{2, 3, 4}, -1.0);
 	
 	EXPECT_EQ(tensor.GetShape().NumElements(), 24);
@@ -92,7 +92,7 @@ TEST_F(TestFnMatrixAllocManual, Full_NegativeValue) {
 
 TEST_F(TestFnMatrixAllocManual, Eye_Square) {
 	// Test creating square identity matrix
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto tensor = OaFnMatrix::Eye(4);
 	
 	EXPECT_EQ(tensor.GetShape().Rank, 2);
@@ -113,7 +113,7 @@ TEST_F(TestFnMatrixAllocManual, Eye_Square) {
 
 TEST_F(TestFnMatrixAllocManual, Eye_Rectangular_TallMatrix) {
 	// Test creating tall rectangular identity matrix (more rows than cols)
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto tensor = OaFnMatrix::Eye(5, 3);
 	
 	EXPECT_EQ(tensor.GetShape()[0], 5);
@@ -133,7 +133,7 @@ TEST_F(TestFnMatrixAllocManual, Eye_Rectangular_TallMatrix) {
 
 TEST_F(TestFnMatrixAllocManual, Eye_Rectangular_WideMatrix) {
 	// Test creating wide rectangular identity matrix (more cols than rows)
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto tensor = OaFnMatrix::Eye(3, 5);
 	
 	EXPECT_EQ(tensor.GetShape()[0], 3);
@@ -153,7 +153,7 @@ TEST_F(TestFnMatrixAllocManual, Eye_Rectangular_WideMatrix) {
 
 TEST_F(TestFnMatrixAllocManual, Eye_Size1) {
 	// Test edge case: 1x1 identity matrix
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto tensor = OaFnMatrix::Eye(1);
 	
 	EXPECT_EQ(tensor.GetShape()[0], 1);
@@ -169,7 +169,7 @@ TEST_F(TestFnMatrixAllocManual, Eye_Size1) {
 
 TEST_F(TestFnMatrixAllocManual, Arange_Basic) {
 	// Test basic arange: [0, 1, 2, 3, 4]
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto tensor = OaFnMatrix::Arange(0.0, 5.0, 1.0);
 	
 	EXPECT_EQ(tensor.GetShape().Rank, 1);
@@ -183,7 +183,7 @@ TEST_F(TestFnMatrixAllocManual, Arange_Basic) {
 
 TEST_F(TestFnMatrixAllocManual, Arange_NonZeroStart) {
 	// Test arange with non-zero start: [5, 6, 7, 8, 9]
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto tensor = OaFnMatrix::Arange(5.0, 10.0, 1.0);
 	
 	EXPECT_EQ(tensor.GetShape()[0], 5);
@@ -196,7 +196,7 @@ TEST_F(TestFnMatrixAllocManual, Arange_NonZeroStart) {
 
 TEST_F(TestFnMatrixAllocManual, Arange_StepSize2) {
 	// Test arange with step=2: [0, 2, 4, 6, 8]
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto tensor = OaFnMatrix::Arange(0.0, 10.0, 2.0);
 	
 	EXPECT_EQ(tensor.GetShape()[0], 5);
@@ -210,7 +210,7 @@ TEST_F(TestFnMatrixAllocManual, Arange_StepSize2) {
 
 TEST_F(TestFnMatrixAllocManual, Arange_FractionalStep) {
 	// Test arange with fractional step: [0.0, 0.5, 1.0, 1.5, 2.0]
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto tensor = OaFnMatrix::Arange(0.0, 2.5, 0.5);
 	
 	EXPECT_EQ(tensor.GetShape()[0], 5);
@@ -224,7 +224,7 @@ TEST_F(TestFnMatrixAllocManual, Arange_FractionalStep) {
 
 TEST_F(TestFnMatrixAllocManual, Arange_NegativeRange) {
 	// Test arange with negative values: [-5, -4, -3, -2, -1]
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto tensor = OaFnMatrix::Arange(-5.0, 0.0, 1.0);
 	
 	EXPECT_EQ(tensor.GetShape()[0], 5);
@@ -241,7 +241,7 @@ TEST_F(TestFnMatrixAllocManual, Arange_NegativeRange) {
 
 TEST_F(TestFnMatrixAllocManual, Linspace_Basic) {
 	// Test basic linspace: [0, 0.25, 0.5, 0.75, 1.0]
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto tensor = OaFnMatrix::Linspace(0.0, 1.0, 5);
 	
 	EXPECT_EQ(tensor.GetShape().Rank, 1);
@@ -256,7 +256,7 @@ TEST_F(TestFnMatrixAllocManual, Linspace_Basic) {
 
 TEST_F(TestFnMatrixAllocManual, Linspace_TwoPoints) {
 	// Test linspace with 2 points (start and end)
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto tensor = OaFnMatrix::Linspace(0.0, 10.0, 2);
 	
 	EXPECT_EQ(tensor.GetShape()[0], 2);
@@ -268,7 +268,7 @@ TEST_F(TestFnMatrixAllocManual, Linspace_TwoPoints) {
 
 TEST_F(TestFnMatrixAllocManual, Linspace_NegativeRange) {
 	// Test linspace with negative range: [-1, -0.5, 0, 0.5, 1]
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto tensor = OaFnMatrix::Linspace(-1.0, 1.0, 5);
 	
 	EXPECT_EQ(tensor.GetShape()[0], 5);
@@ -282,7 +282,7 @@ TEST_F(TestFnMatrixAllocManual, Linspace_NegativeRange) {
 
 TEST_F(TestFnMatrixAllocManual, Linspace_LargeRange) {
 	// Test linspace with large range
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto tensor = OaFnMatrix::Linspace(0.0, 100.0, 11);
 	
 	EXPECT_EQ(tensor.GetShape()[0], 11);
@@ -296,7 +296,7 @@ TEST_F(TestFnMatrixAllocManual, Linspace_LargeRange) {
 
 TEST_F(TestFnMatrixAllocManual, Linspace_ReverseRange) {
 	// Test linspace with start > end (descending)
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto tensor = OaFnMatrix::Linspace(10.0, 0.0, 6);
 	
 	EXPECT_EQ(tensor.GetShape()[0], 6);
@@ -315,7 +315,7 @@ TEST_F(TestFnMatrixAllocManual, Linspace_ReverseRange) {
 TEST_F(TestFnMatrixAllocManual, CausalMask_Size4) {
 	// Test causal mask for sequence length 4
 	// Expected: lower triangular matrix with 0s above diagonal, -inf below
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto mask = OaFnMatrix::CausalMask(4);
 	
 	EXPECT_EQ(mask.GetShape().Rank, 2);
@@ -344,7 +344,7 @@ TEST_F(TestFnMatrixAllocManual, CausalMask_Size4) {
 
 TEST_F(TestFnMatrixAllocManual, CausalMask_Size1) {
 	// Test edge case: causal mask for sequence length 1
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto mask = OaFnMatrix::CausalMask(1);
 	
 	EXPECT_EQ(mask.GetShape()[0], 1);
@@ -356,7 +356,7 @@ TEST_F(TestFnMatrixAllocManual, CausalMask_Size1) {
 
 TEST_F(TestFnMatrixAllocManual, CausalMask_Size8) {
 	// Test larger causal mask
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto mask = OaFnMatrix::CausalMask(8);
 	
 	EXPECT_EQ(mask.GetShape()[0], 8);

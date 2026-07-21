@@ -19,5 +19,5 @@
 // ─── Resize (Resize an NCHW image using nearest or bilinear interpolation) ─
 
 OaMatrix OaFnImage::Resize(const OaMatrix& InImage, OaU32 InTargetWidth, OaU32 InTargetHeight, OaInterpolationMode InMode) {
-	return OaFnImage::Resize(*OaComputeEngine::GetGlobal(), InImage, InTargetWidth, InTargetHeight, InMode);
+	return OaFnImage::Resize(*OaEngine::GetGlobal(), InImage, InTargetWidth, InTargetHeight, InMode);
 }

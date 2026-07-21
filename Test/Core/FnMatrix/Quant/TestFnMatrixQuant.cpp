@@ -8,16 +8,16 @@
 #include <vector>
 #include <cmath>
 
-static OaComputeEngine* GRt = nullptr;
+static OaEngine* GRt = nullptr;
 
 class TestFnMatrixQuant : public ::testing::Test {
 protected:
 	static void SetUpTestSuite() {
 		OaEngineConfig cfg{};
 		cfg.AppName = "TestFnMatrixQuant";
-		auto r = OaComputeEngine::Create(cfg);
+		auto r = OaEngine::Create(cfg);
 		ASSERT_TRUE(r.IsOk()) << r.GetStatus().GetMessage();
-		static OaUniquePtr<OaComputeEngine> rt = std::move(*r);
+		static OaUniquePtr<OaEngine> rt = std::move(*r);
 		GRt = rt.get();
 	}
 };
@@ -43,7 +43,7 @@ static OaMatrix CreateFromHost(const std::vector<float>& data, OaMatrixShape sha
 
 TEST_F(TestFnMatrixQuant, Quantize_Q8_0_Basic) {
 	// Test basic Q8_0 quantization
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	
 	// Create input with known values
 	std::vector<float> input_data(64);
@@ -76,7 +76,7 @@ TEST_F(TestFnMatrixQuant, Quantize_Q8_0_Basic) {
 
 TEST_F(TestFnMatrixQuant, Quantize_Q8_0_AllZeros) {
 	// Test quantization of all-zero tensor
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	
 	auto input = OaFnMatrix::Zeros(OaMatrixShape{128});
 	auto quantized = OaFnMatrix::Quantize(input, OaScalarType::Q8_0);
@@ -90,7 +90,7 @@ TEST_F(TestFnMatrixQuant, Quantize_Q8_0_AllZeros) {
 
 TEST_F(TestFnMatrixQuant, Quantize_Q8_0_LargeRange) {
 	// Test quantization with large value range
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	
 	std::vector<float> input_data(64);
 	for (size_t i = 0; i < input_data.size(); ++i) {
@@ -114,7 +114,7 @@ TEST_F(TestFnMatrixQuant, Quantize_Q8_0_LargeRange) {
 
 TEST_F(TestFnMatrixQuant, Quantize_Q4_0_Basic) {
 	// Test basic Q4_0 quantization (4-bit, lower precision)
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	
 	std::vector<float> input_data(64);
 	for (size_t i = 0; i < input_data.size(); ++i) {
@@ -138,7 +138,7 @@ TEST_F(TestFnMatrixQuant, Quantize_Q4_0_Basic) {
 
 TEST_F(TestFnMatrixQuant, Quantize_Q4_0_SmallValues) {
 	// Test Q4_0 with small values near zero
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	
 	std::vector<float> input_data(64);
 	for (size_t i = 0; i < input_data.size(); ++i) {
@@ -162,7 +162,7 @@ TEST_F(TestFnMatrixQuant, Quantize_Q4_0_SmallValues) {
 
 TEST_F(TestFnMatrixQuant, Quantize_Q4_K_Basic) {
 	// Test Q4_K quantization (improved 4-bit format)
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	
 	std::vector<float> input_data(256);  // Q4_K uses larger blocks
 	for (size_t i = 0; i < input_data.size(); ++i) {
@@ -190,7 +190,7 @@ TEST_F(TestFnMatrixQuant, Quantize_Q4_K_Basic) {
 
 TEST_F(TestFnMatrixQuant, Quantize_Q6_K_Basic) {
 	// Test Q6_K quantization (6-bit, higher quality)
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	
 	std::vector<float> input_data(256);
 	for (size_t i = 0; i < input_data.size(); ++i) {
@@ -218,7 +218,7 @@ TEST_F(TestFnMatrixQuant, Quantize_Q6_K_Basic) {
 
 TEST_F(TestFnMatrixQuant, Quantize_2D_Matrix) {
 	// Test quantization of 2D matrix
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	
 	std::vector<float> input_data(8 * 16);  // 8x16 matrix
 	for (size_t i = 0; i < input_data.size(); ++i) {
@@ -242,7 +242,7 @@ TEST_F(TestFnMatrixQuant, Quantize_2D_Matrix) {
 
 TEST_F(TestFnMatrixQuant, Quantize_3D_Tensor) {
 	// Test quantization of 3D tensor
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	
 	std::vector<float> input_data(4 * 8 * 8);  // 4x8x8 tensor
 	for (size_t i = 0; i < input_data.size(); ++i) {
@@ -265,7 +265,7 @@ TEST_F(TestFnMatrixQuant, Quantize_3D_Tensor) {
 
 TEST_F(TestFnMatrixQuant, Quantize_MinimumSize) {
 	// Test quantization with minimum valid size (32 elements for Q8_0)
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	
 	std::vector<float> input_data(32);
 	for (size_t i = 0; i < input_data.size(); ++i) {
@@ -281,7 +281,7 @@ TEST_F(TestFnMatrixQuant, Quantize_MinimumSize) {
 
 TEST_F(TestFnMatrixQuant, Quantize_NegativeValues) {
 	// Test quantization with all negative values
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	
 	std::vector<float> input_data(64);
 	for (size_t i = 0; i < input_data.size(); ++i) {

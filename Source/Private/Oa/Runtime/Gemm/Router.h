@@ -16,7 +16,7 @@
 // Forward declarations
 // ─────────────────────────────────────────────────────────────────────────────
 
-class OaComputeEngine;
+class OaEngine;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -37,14 +37,14 @@ public:
 	// Execution may replay the returned immutable plan without rerunning cache
 	// lookup or heuristics.
 	[[nodiscard]] static OaMatmulPlan Plan(
-		const OaComputeEngine& InRt,
+		const OaEngine& InRt,
 		const OaMatmulProblem& InProblem,
 		OaMatmulPreference InPreference = {}
 	);
 
 	// Reject stale, cross-device or contract-mismatched plans before execution.
 	[[nodiscard]] static bool ValidatePlan(
-		const OaComputeEngine& InRt,
+		const OaEngine& InRt,
 		const OaMatmulPlan& InPlan,
 		const OaMatmulProblem& InProblem
 	);
@@ -54,7 +54,7 @@ public:
 	// InPrec=Fp32: skip all CoopMat paths, use TiledFp32 or Naive (graph-safe).
 	// InPrec=Bf16/Fp16: require that precision; falls back to Naive if unavailable.
 	[[nodiscard]] static OaGemmRouteResult Select(
-		const OaComputeEngine& InRt,
+		const OaEngine& InRt,
 		OaU32                    InM,
 		OaU32                    InN,
 		OaU32                    InK,
@@ -68,7 +68,7 @@ public:
 	// the raw-GEMM path today; fused-op routes (R5 follow-ups) will consume
 	// the bias/activation/mirror flags directly.
 	[[nodiscard]] static OaGemmRouteResult Select(
-		const OaComputeEngine& InRt,
+		const OaEngine& InRt,
 		const OaMatmulProblem&   InProblem
 	);
 
@@ -84,10 +84,10 @@ public:
 	// Canonical persisted-cache contract and registry legality predicate.
 	// The tuner calls these rather than duplicating routing policy.
 	[[nodiscard]] static OaRouteCacheKey CacheKey(
-		const OaComputeEngine& InRt,
+		const OaEngine& InRt,
 		const OaMatmulProblem& InProblem);
 	[[nodiscard]] static bool IsVariantLegal(
-		const OaComputeEngine& InRt,
+		const OaEngine& InRt,
 		const OaMatmulVariant& InVariant,
 		const OaMatmulProblem& InProblem);
 
@@ -100,7 +100,7 @@ public:
 
 	// Query whether a precision tier is available on this device.
 	[[nodiscard]] static bool PrecisionAvailable(
-		const OaComputeEngine& InRt,
+		const OaEngine& InRt,
 		OaGemmPrecision        InPrec
 	);
 
@@ -111,7 +111,7 @@ public:
 	// in Select; the fused-activation path uses the dedicated GemmBiasCmSgBf16 /
 	// GemmBiasReluCmSgBf16 / GemmBiasGeluCmSgBf16 / GemmSiluCmSgBf16 dispatch functions.
 	[[nodiscard]] static bool IsGemmCmSgBf16Suitable(
-		const OaComputeEngine& InRt,
+		const OaEngine& InRt,
 		OaU32                    InM,
 		OaU32                    InN,
 		OaU32                    InK
@@ -121,7 +121,7 @@ public:
 	// 32x32x16 fragments, 64×64 tile. Gates on the workgroup-scope BF16 shape
 	// reported by the device; used only by the raw MatMul route in Select.
 	[[nodiscard]] static bool IsGemmCmWgBf16Suitable(
-		const OaComputeEngine& InRt,
+		const OaEngine& InRt,
 		OaU32                    InM,
 		OaU32                    InN,
 		OaU32                    InK

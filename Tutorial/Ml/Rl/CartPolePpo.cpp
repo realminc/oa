@@ -160,7 +160,7 @@ OaResult<OaTutorialCartPoleSnapshot> OaTutorialCartPolePpo::SnapshotLane(
 			OaStatusCode::OutOfRange, "CartPole snapshot lane is out of range");
 	}
 	const OaMatrix& state = Impl_->Environment.Observation();
-	auto* runtime = OaComputeEngine::GetGlobal();
+	auto* runtime = OaEngine::GetGlobal();
 	const OaU64 offset = static_cast<OaU64>(InLane) * 4U * sizeof(OaF32);
 	if (runtime == nullptr || !runtime->Allocator.InvalidateHostBuffer(
 		state.GetVkBuffer(), offset, 4U * sizeof(OaF32))) {

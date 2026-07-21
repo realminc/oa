@@ -53,8 +53,9 @@ void OaMuon::ZeroGrad() {
 
 // ─── Persistence ──────────────────────────────────────────────────────────
 
-void OaMuon::SaveTo(OamModel& OutOam) const {
+OaStatus OaMuon::SaveTo(OamModel& OutOam) const {
 	// Header (hyperparams + step count). NumParams is total flat element count.
+	OutOam.OptimizerPresent = true;
 	OutOam.Optimizer = OamOptimizerHeader{};
 	std::strncpy(OutOam.Optimizer.Type, "Muon", sizeof(OutOam.Optimizer.Type) - 1);
 	OutOam.Optimizer.Lr = Lr_;
@@ -69,11 +70,11 @@ void OaMuon::SaveTo(OamModel& OutOam) const {
 		OutOam.Optimizer.NumParams = 0;
 		OutOam.AdamM.Clear();
 		OutOam.AdamV.Clear();
-		return;
+		return OaStatus::Ok();
 	}
 
 	// Drain pending GPU writes to Momentum_ so the memcpy sees the latest state.
-	(void)OaContext::GetDefault().Execute();
+	OA_RETURN_IF_ERROR(OaContext::GetDefault().Execute());
 
 	OaI64 total = 0;
 	for (const auto& m : Momentum_) total += m.NumElements();
@@ -85,13 +86,32 @@ void OaMuon::SaveTo(OamModel& OutOam) const {
 	for (OaUsize i = 0; i < Momentum_.Size(); ++i) {
 		OaI64 n = Momentum_[i].NumElements();
 		const auto bytes = static_cast<OaU64>(n) * sizeof(OaF32);
-		(void)OaFnMatrix::CopyToHost(
-			Momentum_[i], OutOam.AdamM.Data() + off, bytes);
+		OA_RETURN_IF_ERROR(OaFnMatrix::CopyToHost(
+			Momentum_[i], OutOam.AdamM.Data() + off, bytes));
 		off += n;
 	}
+	return OaStatus::Ok();
 }
 
-void OaMuon::LoadFrom(const OamModel& InOam) {
+OaStatus OaMuon::ValidateLoad(const OamModel& InOam) const {
+	if (not InOam.HasOptimizer() or not OamIsMuonOnlyType(InOam.Optimizer)) {
+		return OaStatus::Error(OaStatusCode::FailedPrecondition,
+			"Muon checkpoint optimizer state is missing or has the wrong type");
+	}
+	OaU64 expected = 0;
+	for (const auto* parameter : Params_) {
+		expected += static_cast<OaU64>(parameter->Data.NumElements());
+	}
+	if (InOam.Optimizer.Step == 0 and InOam.AdamM.Empty()) return OaStatus::Ok();
+	if (InOam.AdamM.Size() != expected or not InOam.AdamV.Empty()) {
+		return OaStatus::Error(OaStatusCode::ShapeMismatch,
+			"Muon checkpoint momentum size does not match the model");
+	}
+	return OaStatus::Ok();
+}
+
+OaStatus OaMuon::LoadFrom(const OamModel& InOam) {
+	OA_RETURN_IF_ERROR(ValidateLoad(InOam));
 	// Hyperparams + step always restored (cheap, always present in checkpoint).
 	Lr_          = InOam.Optimizer.Lr;
 	Beta_        = InOam.Optimizer.Beta1;  // Muon Beta stored in Beta1 slot
@@ -100,36 +120,25 @@ void OaMuon::LoadFrom(const OamModel& InOam) {
 	Step_        = static_cast<OaU64>(InOam.Optimizer.Step);
 	ResetMasterSeed();  // re-seed fp32 masters from the reloaded (bf16) weights
 
-	if (not InOam.HasOptimizer()) {
-		OA_LOG_INFO(OaLogComponent::Core,
-			"OaMuon::LoadFrom: checkpoint has no optimizer section, keeping zero-init state");
-		return;
-	}
-
 	// Allocate momentum buffers if first use, then verify sizes line up.
 	EnsureMomentumBuffers(Params_, Momentum_);
-
-	OaI64 expected = 0;
-	for (const auto& m : Momentum_) expected += m.NumElements();
-	if (InOam.AdamM.Size() != static_cast<OaUsize>(expected)) {
-		OA_LOG_ERROR(OaLogComponent::Core,
-			"OaMuon::LoadFrom: Momentum size mismatch — model expects %lld elements, "
-			"checkpoint has %zu (model architecture differs from saved model)",
-			static_cast<long long>(expected), InOam.AdamM.Size());
-		return;
-	}
+	if (InOam.AdamM.Empty()) return OaStatus::Ok();
 
 	// Drain pending GPU writes to Momentum_ before memcpy.
-	(void)OaContext::GetDefault().Execute();
+	OA_RETURN_IF_ERROR(OaContext::GetDefault().Execute());
 
 	OaI64 off = 0;
 	for (OaUsize i = 0; i < Momentum_.Size(); ++i) {
 		OaI64 n = Momentum_[i].NumElements();
 		const auto bytes = static_cast<OaU64>(n) * sizeof(OaF32);
 		if (auto* runtime = OaContext::GetDefault().GetEngine()) {
-			(void)runtime->UploadBuffer(Momentum_[i].GetVkBuffer(), 0,
-				InOam.AdamM.Data() + off, bytes);
+			OA_RETURN_IF_ERROR(runtime->UploadBuffer(Momentum_[i].GetVkBuffer(), 0,
+				InOam.AdamM.Data() + off, bytes));
+		} else {
+			return OaStatus::Error(OaStatusCode::FailedPrecondition,
+				"Muon restore requires an active OA engine");
 		}
 		off += n;
 	}
+	return OaStatus::Ok();
 }

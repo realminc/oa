@@ -9,7 +9,7 @@
 // ============================================================================
 
 OaStatus OaVkVideoFormat::QueryCapabilities(
-	class OaComputeEngine& InRt,
+	class OaEngine& InRt,
 	const VkVideoProfileInfoKHR& InProfile,
 	bool InIsEncode,
 	VkVideoCapabilitiesKHR& OutCapabilities)
@@ -94,7 +94,7 @@ OaStatus OaVkVideoFormat::QueryCapabilities(
 }
 
 OaStatus OaVkVideoFormat::QueryFormats(
-	class OaComputeEngine& InRt,
+	class OaEngine& InRt,
 	const VkVideoProfileInfoKHR& InProfile,
 	VkImageUsageFlags InUsage,
 	OaVec<VkVideoFormatPropertiesKHR>& OutFormats)
@@ -171,7 +171,7 @@ const VkVideoFormatPropertiesKHR* OaVkVideoFormat::FindFormatWithUsage(
 // ============================================================================
 
 OaResult<OaVkVideoSession> OaVkVideoSession::Create(
-	class OaComputeEngine& InRt,
+	class OaEngine& InRt,
 	const VkVideoProfileInfoKHR& InProfile,
 	const VkExtent2D& InCodedExtent,
 	VkFormat InPictureFormat,
@@ -350,7 +350,7 @@ void OaVkVideoSession::MoveFrom(OaVkVideoSession&& InOther) noexcept
 // ============================================================================
 
 OaResult<OaVkVideoParameters> OaVkVideoParameters::Create(
-	class OaComputeEngine& InRt,
+	class OaEngine& InRt,
 	VkVideoSessionKHR InSession,
 	const VkVideoSessionParametersCreateInfoKHR& InCreateInfo)
 {
@@ -408,7 +408,7 @@ void OaVkVideoParameters::MoveFrom(OaVkVideoParameters&& InOther) noexcept
 // ============================================================================
 
 OaResult<OaVkVideoDpb> OaVkVideoDpb::Create(
-	class OaComputeEngine& InRt,
+	class OaEngine& InRt,
 	const CreateInfo& InInfo)
 {
 	OaVkVideoDpb dpb;
@@ -582,7 +582,7 @@ void OaVkVideoDpb::MoveFrom(OaVkVideoDpb&& InOther) noexcept
 // ============================================================================
 
 OaResult<OaVkVideoBitstream> OaVkVideoBitstream::Create(
-	class OaComputeEngine& InRt,
+	class OaEngine& InRt,
 	OaU64 InSize,
 	Direction InDirection,
 	OaU64 InOffsetAlignment,
@@ -723,7 +723,7 @@ void OaVkVideoBitstream::MoveFrom(OaVkVideoBitstream&& InOther) noexcept
 // ============================================================================
 
 OaResult<OaVkVideoQueue> OaVkVideoQueue::Create(
-	class OaComputeEngine& InRt,
+	class OaEngine& InRt,
 	QueueType InType)
 {
 	OaVkVideoQueue queue;

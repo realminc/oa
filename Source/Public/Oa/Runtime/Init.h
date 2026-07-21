@@ -8,8 +8,7 @@
 // Cooperative-matrix tile shape that the device actually reports as supported
 // for a specific (A type, B type, C type, Result type) combination — populated
 // at device-init time by enumerating vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR.
-// Per Docs/Rewrite/Opus/OaLlamaCppVulkanLessons.md §1: we MUST stop hardcoding
-// 16x16x16 in fused kernels — different GPUs report different shapes
+// Do not hardcode 16x16x16 in fused kernels: different GPUs report different shapes
 // (Turing: 16x16x16, Ada: 16x8x16, RDNA3: 16x16x32, Xe2: 16x16x16).
 // The discovered M/N/K should be threaded into shaders as Slang spec constants.
 class OaVkCoopMatShape {
@@ -82,8 +81,7 @@ inline constexpr OaU32 OaVkVendorIdNvidia = 0x10DEU;
 inline constexpr OaU32 OaVkVendorIdIntel  = 0x8086U;
 inline constexpr OaU32 OaVkVendorIdArm    = 0x13B5U;
 
-// Vendor-trust decision for KHR_cooperative_matrix per
-// Docs/Rewrite/Opus/OaLlamaCppVulkanLessons.md §2.
+// Vendor-trust decision for KHR_cooperative_matrix.
 //
 // Returns true iff the (vendor, deviceId, driverId) combination is known to
 // implement CoopMat correctly. Mirrors llama.cpp's vendor blacklist:
@@ -220,6 +218,8 @@ struct OaVkPhysExtProbe {
 	bool QueueFamilyForeign = false;
 	bool KhrShaderBfloat16 = false;
 	bool KhrSwapchain = false;
+	bool KhrSwapchainMaintenance1 = false;
+	bool ExtSwapchainMaintenance1 = false;
 	bool KhrMaintenance5 = false;  // Required by VK_EXT_device_generated_commands
 	bool ExtDeviceGeneratedCommands = false;  // Phase 2b DGC: GPU-authored compute graph execution
 	bool KhrVideoQueue = false;
@@ -253,7 +253,7 @@ struct OaVkQueuePlan {
 	// target codec (Gap 1 — a family can advertise VIDEO_DECODE but not AV1).
 	VkVideoCodecOperationFlagsKHR VideoDecodeCodecOps = 0;
 	VkVideoCodecOperationFlagsKHR VideoEncodeCodecOps = 0;
-	bool WantsSurfacePresentation = false;
+	bool WantsGraphics = false;
 	bool ComputeHasMultiQueue = false;
 	OaU32 ComputeSlots = 0;
 	OaU32 DedicatedTransferSlots = 0;
@@ -283,6 +283,7 @@ struct OaVkDeviceFeatureBundle {
 	VkPhysicalDeviceShaderBfloat16FeaturesKHR SupportedBf16{};
 	VkPhysicalDeviceCooperativeMatrixFeaturesKHR SupportedCoopMat{};
 	VkPhysicalDeviceCooperativeVectorFeaturesNV SupportedCoopVec{};
+	VkPhysicalDeviceSwapchainMaintenance1FeaturesKHR SupportedSwapchainMaintenance1{};
 #if defined(VK_NV_cooperative_matrix2)
 	VkPhysicalDeviceCooperativeMatrix2FeaturesNV SupportedCoopMat2{};
 #endif
@@ -316,6 +317,11 @@ struct OaVkDeviceFeatureBundle {
 	VkPhysicalDeviceCooperativeVectorFeaturesNV CoopVecFeatures = {
 		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COOPERATIVE_VECTOR_FEATURES_NV,
 	};
+	VkPhysicalDeviceSwapchainMaintenance1FeaturesKHR SwapchainMaintenance1Features = {
+		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SWAPCHAIN_MAINTENANCE_1_FEATURES_KHR,
+		.pNext = nullptr,
+		.swapchainMaintenance1 = VK_FALSE,
+	};
 #if defined(VK_NV_cooperative_matrix2)
 	VkPhysicalDeviceCooperativeMatrix2FeaturesNV CoopMat2Features = {
 		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COOPERATIVE_MATRIX_2_FEATURES_NV,
@@ -343,6 +349,7 @@ struct OaVkDeviceFeatureBundle {
 	bool Has16bit = false;
 	bool HasIntDotProduct = false;
 	bool HasDeviceGeneratedCommands = false;
+	bool HasSwapchainMaintenance1 = false;
 	bool HasVideoDecodeVp9 = false;
 
 	// Discovered CoopMat shapes (populated by OaVkRefineCooperativeMatrixCapability

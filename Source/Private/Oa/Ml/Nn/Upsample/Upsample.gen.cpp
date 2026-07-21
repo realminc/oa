@@ -6,6 +6,7 @@
 #include <Oa/Ml/Nn.h>
 #include <Oa/Core/FnMatrix.h>
 #include <Oa/Core/Validation.h>
+#include <Oa/Runtime/Context.h>
 
 OaUpsample::OaUpsample(OaI32 InScaleFactor, OaUpsampleMode InMode)
 	: ScaleFactor_(InScaleFactor), Mode_(InMode) {

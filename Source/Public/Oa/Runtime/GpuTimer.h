@@ -6,12 +6,12 @@
 // Batch mode (typical training loop usage):
 //   OaGpuTimer timer;
 //   timer.Init(rt, "training_step");
-//       timer.Begin(rt);   // vkCmdWriteTimestamp2 into active batch CB
+//       timer.Begin(stream);   // vkCmdWriteTimestamp2 into active batch CB
 //       // ... forward / backward / optimizer ...
-//       timer.End(rt);
+//       timer.End(stream);
 //       return loss;
 //   });
-//   OaF64 gpuMs = timer.ReadbackMs(rt.Device);  // after FlushComputeBatch
+//   OaF64 gpuMs = timer.ReadbackMs(rt.Device);  // after the batch event completes
 //
 // Standalone stream usage:
 //   stream->Begin(rt.Device);
@@ -27,7 +27,7 @@
 #include <Oa/Core/Status.h>
 #include <Oa/Runtime/Timestamp.h>
 
-class OaComputeEngine;
+class OaEngine;
 class OaVkDevice;
 class OaVkStream;
 
@@ -37,20 +37,17 @@ public:
     ~OaGpuTimer();
 
     // Create the query pool (2 slots). Call once after engine init.
-    [[nodiscard]] OaStatus Init(OaComputeEngine& InRt, const char* InName = "");
+    [[nodiscard]] OaStatus Init(OaEngine& InRt, const char* InName = "");
 
     void Destroy(const OaVkDevice& InDevice);
 
-    // Record start timestamp into the current command buffer.
-    // Auto-detects batch mode vs standalone (asserts if neither is available).
-    void Begin(OaComputeEngine& InRt);
+    // Record start timestamp into the explicitly owned command stream.
     void Begin(OaVkStream* InStream);
 
     // Record end timestamp.
-    void End(OaComputeEngine& InRt);
     void End(OaVkStream* InStream);
 
-    // Read back GPU results. Call after GPU work completes (after FlushComputeBatch).
+    // Read back GPU results after the corresponding OaEvent completes.
     // Returns elapsed time in milliseconds or nanoseconds.
     [[nodiscard]] OaF64 ReadbackMs(const OaVkDevice& InDevice);
     [[nodiscard]] OaF64 ReadbackNs(const OaVkDevice& InDevice);

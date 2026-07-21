@@ -51,7 +51,7 @@ TEST_VK(ConvBwd, Conv2dBwdDataBasic) {
 	auto grad_output = CreateMatrixFromHost(grad_output_data, OaMatrixShape{1, 1, 2, 2});
 	auto weight = CreateMatrixFromHost(weight_data, OaMatrixShape{1, 1, 3, 3});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto grad_input = OaFnMatrix::Conv2dBwdData(
 		grad_output, weight, 
 		1,  // stride
@@ -79,7 +79,7 @@ TEST_VK(ConvBwd, Conv2dBwdDataWithPadding) {
 	auto grad_output = CreateMatrixFromHost(grad_output_data, OaMatrixShape{1, 1, 2, 2});
 	auto weight = CreateMatrixFromHost(weight_data, OaMatrixShape{1, 1, 3, 3});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto grad_input = OaFnMatrix::Conv2dBwdData(
 		grad_output, weight,
 		1,  // stride
@@ -102,7 +102,7 @@ TEST_VK(ConvBwd, Conv2dBwdDataWithStride) {
 	auto grad_output = CreateMatrixFromHost(grad_output_data, OaMatrixShape{1, 1, 2, 2});
 	auto weight = CreateMatrixFromHost(weight_data, OaMatrixShape{1, 1, 3, 3});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto grad_input = OaFnMatrix::Conv2dBwdData(
 		grad_output, weight,
 		2,  // stride
@@ -128,7 +128,7 @@ TEST_VK(ConvBwd, Conv2dBwdDataMultiChannel) {
 	auto grad_output = CreateMatrixFromHost(grad_output_data, OaMatrixShape{1, out_channels, 2, 2});
 	auto weight = CreateMatrixFromHost(weight_data, OaMatrixShape{out_channels, in_channels, 3, 3});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto grad_input = OaFnMatrix::Conv2dBwdData(
 		grad_output, weight,
 		1,  // stride
@@ -160,7 +160,7 @@ TEST_VK(ConvBwd, Conv2dBwdWeightBasic) {
 	auto grad_output = CreateMatrixFromHost(grad_output_data, OaMatrixShape{1, 1, 2, 2});
 	auto weight = CreateMatrixFromHost(weight_data, OaMatrixShape{1, 1, 3, 3});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto bwd_result = OaFnMatrix::Conv2dBwdWeight(
 		input, grad_output, weight,
 		1,  // stride
@@ -196,7 +196,7 @@ TEST_VK(ConvBwd, Conv2dBwdWeightMultiChannel) {
 	auto grad_output = CreateMatrixFromHost(grad_output_data, OaMatrixShape{1, out_channels, 2, 2});
 	auto weight = CreateMatrixFromHost(weight_data, OaMatrixShape{out_channels, in_channels, 3, 3});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto bwd_result = OaFnMatrix::Conv2dBwdWeight(
 		input, grad_output, weight,
 		1,  // stride
@@ -224,7 +224,7 @@ TEST_VK(ConvBwd, Conv2dBwdWeightWithPadding) {
 	auto grad_output = CreateMatrixFromHost(grad_output_data, OaMatrixShape{1, 1, 2, 2});
 	auto weight = CreateMatrixFromHost(weight_data, OaMatrixShape{1, 1, 3, 3});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto bwd_result = OaFnMatrix::Conv2dBwdWeight(
 		input, grad_output, weight,
 		1,  // stride
@@ -249,7 +249,7 @@ TEST_VK(ConvBwd, Conv2dBwdWeightBiasSum) {
 	auto grad_output = CreateMatrixFromHost(grad_output_data, OaMatrixShape{1, 1, 2, 2});
 	auto weight = CreateMatrixFromHost(weight_data, OaMatrixShape{1, 1, 3, 3});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto bwd_result = OaFnMatrix::Conv2dBwdWeight(
 		input, grad_output, weight,
 		1, 0, 1
@@ -273,7 +273,7 @@ TEST_VK(ConvBwd, Conv2dBwdWeightLargeKernel) {
 	auto grad_output = CreateMatrixFromHost(grad_output_data, OaMatrixShape{1, 1, 4, 4});
 	auto weight = CreateMatrixFromHost(weight_data, OaMatrixShape{1, 1, kernel_size, kernel_size});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto bwd_result = OaFnMatrix::Conv2dBwdWeight(
 		input, grad_output, weight,
 		1, 0, 1

@@ -29,7 +29,7 @@ void SetIdentity(OaMatrix& InMatrix) {
 
 TEST_VK(AttentionTest, SplitMergeHeadsRoundtrip) {
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	const OaF32 values[] = {
 		0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
 		12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
@@ -47,7 +47,7 @@ TEST_VK(AttentionTest, SplitMergeHeadsRoundtrip) {
 
 TEST_VK(AttentionTest, SingleHeadSplitMergeIsDifferentiableView) {
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 
 	auto input = OaFnMatrix::RandXavier({6, 4});
 	input.SetRequiresGrad(true);
@@ -73,7 +73,7 @@ TEST_VK(AttentionTest, SingleHeadSplitMergeIsDifferentiableView) {
 
 TEST_VK(AttentionTest, SplitMergeHeadsBackwardIsIdentity) {
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	const OaF32 values[] = {0, 1, 2, 3, 4, 5, 6, 7};
 	auto input = FromF32(values, OaMatrixShape{2, 4});
 	input.SetRequiresGrad(true);
@@ -90,7 +90,7 @@ TEST_VK(AttentionTest, SplitMergeHeadsBackwardIsIdentity) {
 
 TEST_VK(AttentionTest, BmmBackwardCrossRow) {
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	const OaF32 weights[] = {1, 0, 0.5F, 0.5F};
 	const OaF32 values[] = {2, 4};
 	auto a = FromF32(weights, OaMatrixShape{1, 2, 2});
@@ -109,7 +109,7 @@ TEST_VK(AttentionTest, BmmBackwardCrossRow) {
 
 TEST_VK(AttentionTest, FlashCausalForwardMatchesStandard) {
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	constexpr OaI32 batchHeads = 4, seqLen = 5, headDim = 8;
 	auto q = OaFnMatrix::RandN({batchHeads, seqLen, headDim});
 	auto k = OaFnMatrix::RandN({batchHeads, seqLen, headDim});
@@ -135,7 +135,7 @@ TEST_VK(AttentionTest, FlashCausalForwardMatchesStandard) {
 
 TEST_VK(AttentionTest, FlashCausalBackwardMatchesStandard) {
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	constexpr OaI32 batchHeads = 2, seqLen = 4, headDim = 4;
 	const OaF32 scale = 1.0F / std::sqrt(static_cast<OaF32>(headDim));
 	auto q0 = OaFnMatrix::RandN({batchHeads, seqLen, headDim});
@@ -195,7 +195,7 @@ TEST_VK(AttentionTest, FlashRejectsUnverifiedBfloat16Storage) {
 
 TEST_VK(AttentionTest, MultiHeadBackendPolicyIsExplicit) {
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	OaMultiHeadAttention attention(8, 2, 0.0F, true, OaAttentionBackend::Auto);
 	attention.SetSeqLen(4);
 	auto output = attention.Forward(OaFnMatrix::RandN({8, 8}));
@@ -216,7 +216,7 @@ TEST_VK(AttentionTest, MultiHeadBackendPolicyIsExplicit) {
 
 TEST_VK(AttentionTest, MultiHeadCausalForwardMatchesCpuReference) {
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	OaMultiHeadAttention attention(4, 2, 0.0F, false);
 	attention.SetSeqLen(2);
 	// Finish the module's deferred parameter initialization before installing the
@@ -255,7 +255,7 @@ TEST_VK(AttentionTest, MultiHeadCausalForwardMatchesCpuReference) {
 
 TEST_VK(AttentionTest, MultiHeadBidirectionalVisibilityIsExplicit) {
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	OaMultiHeadAttention attention(4, 2, 0.0F, false);
 	attention.SetSeqLen(2);
 	attention.SetMode(OaAttentionMode::Bidirectional);
@@ -288,7 +288,7 @@ TEST_VK(AttentionTest, MultiHeadBidirectionalVisibilityIsExplicit) {
 
 TEST_VK(AttentionTest, MultiHeadBackwardReachesInput) {
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	OaMultiHeadAttention attention(4, 1, 0.0F, false);
 	attention.SetSeqLen(2);
 	ASSERT_TRUE(ctx.Execute().IsOk());
@@ -317,7 +317,7 @@ TEST_VK(AttentionTest, MultiHeadBackwardReachesInput) {
 
 TEST_VK(AttentionTest, TransformerBlockUsesSharedMultiHeadAttention) {
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	OaTransformerBlock block(8, 16, 3, 2, 1e-5F);
 	EXPECT_EQ(block.NumHeads(), 2);
 	EXPECT_EQ(block.SeqLen(), 3);

@@ -14,6 +14,12 @@ import sys
 import tomllib
 from pathlib import Path
 
+TOOLS_ROOT = Path(__file__).resolve().parents[1]
+if str(TOOLS_ROOT) not in sys.path:
+	sys.path.insert(0, str(TOOLS_ROOT))
+
+from autogen_io import write_generated_text
+
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCHEMA_DIR = REPO_ROOT / "Tools" / "NnAutogen" / "Schema"
@@ -142,7 +148,7 @@ def emit_cpp(layer: dict, schema_name: str) -> str:
 	elif not forward_body.endswith("\n"):
 		forward_body += "\n"
 	body_uses_autograd = ("OaAutograd" in forward_body or "OaMakeSharedPtr" in forward_body)
-	autograd_include = "#include <Oa/Ml/Autograd.h>\n" if body_uses_autograd else ""
+	autograd_include = "#include <Oa/Ml/Autograd/Nodes.h>\n" if body_uses_autograd else ""
 	
 	return (
 		GEN_HEADER.format(schema_name=schema_name)
@@ -197,9 +203,8 @@ def write_manifest_files(layers: list[tuple[str, str]], out_root: Path, *, dry_r
 		print(f"  would write: {umbrella_path}")
 		print(f"  would write: {cmake_path}")
 		return
-	base.mkdir(parents=True, exist_ok=True)
-	umbrella_path.write_text(emit_umbrella(layers), encoding="utf-8", newline="\n")
-	cmake_path.write_text(emit_cmake_sources(layers), encoding="utf-8", newline="\n")
+	write_generated_text(umbrella_path, emit_umbrella(layers))
+	write_generated_text(cmake_path, emit_cmake_sources(layers))
 	print(f"  wrote {umbrella_path.name}, {cmake_path.name}")
 
 
@@ -219,10 +224,8 @@ def process_schema(schema_path: Path, out_root: Path, *, live: bool, dry_run: bo
 			print(f"  would write: {header_path}")
 			print(f"  would write: {cpp_path}")
 			continue
-		header_path.parent.mkdir(parents=True, exist_ok=True)
-		cpp_path.parent.mkdir(parents=True, exist_ok=True)
-		header_path.write_text(emit_header(layer, schema_name), encoding="utf-8", newline="\n")
-		cpp_path.write_text(emit_cpp(layer, schema_name), encoding="utf-8", newline="\n")
+		write_generated_text(header_path, emit_header(layer, schema_name))
+		write_generated_text(cpp_path, emit_cpp(layer, schema_name))
 		print(f"  wrote {header_path.name}, {cpp_path.name}")
 	return [(layer["name"], layer.get("path", layer["name"])) for layer in layers]
 
@@ -235,6 +238,8 @@ def main() -> int:
 	parser.add_argument("--live", action="store_true")
 	parser.add_argument("--dry-run", action="store_true")
 	args = parser.parse_args()
+	if args.live and args.schema and not args.dry_run:
+		fail("--schema cannot be combined with --live because Nn.gen.h and NnSources.gen.cmake require every schema")
 
 	out_root = LIVE_SOURCE_ROOT if args.live else args.out
 	if args.live:

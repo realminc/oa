@@ -11,7 +11,7 @@ int main() {
 	config.AppName = "TutorialCoreEngine";
 	config.Precision = OaPrecision::FP32;
 
-	auto result = OaComputeEngine::Create(config);
+	auto result = OaEngine::Create(config);
 	if (!result.IsOk()) {
 		std::fprintf(stderr, "Engine creation failed: %s\n",
 			result.GetStatus().GetMessage().c_str());

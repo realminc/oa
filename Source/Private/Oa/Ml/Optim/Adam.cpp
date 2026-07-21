@@ -51,7 +51,8 @@ void OaAdam::ZeroGrad() {
 // Adam shares the OamModel optimizer schema with AdamW. WeightDecay is unused;
 // stored as 0 in the header for round-trip consistency.
 
-void OaAdam::SaveTo(OamModel& OutOam) const {
+OaStatus OaAdam::SaveTo(OamModel& OutOam) const {
+	OutOam.OptimizerPresent = true;
 	OutOam.Optimizer = OamOptimizerHeader{};
 	std::strncpy(OutOam.Optimizer.Type, "Adam", sizeof(OutOam.Optimizer.Type) - 1);
 	OutOam.Optimizer.Lr    = Lr_;
@@ -64,10 +65,10 @@ void OaAdam::SaveTo(OamModel& OutOam) const {
 		OutOam.Optimizer.NumParams = 0;
 		OutOam.AdamM.Clear();
 		OutOam.AdamV.Clear();
-		return;
+		return OaStatus::Ok();
 	}
 
-	(void)OaContext::GetDefault().Execute();
+	OA_RETURN_IF_ERROR(OaContext::GetDefault().Execute());
 
 	OaI64 total = 0;
 	for (const auto& m : M_) total += m.NumElements();
@@ -79,24 +80,42 @@ void OaAdam::SaveTo(OamModel& OutOam) const {
 	for (OaUsize i = 0; i < M_.Size(); ++i) {
 		OaI64 n = M_[i].NumElements();
 		const auto bytes = static_cast<OaU64>(n) * sizeof(OaF32);
-		(void)OaFnMatrix::CopyToHost(M_[i], OutOam.AdamM.Data() + off, bytes);
-		(void)OaFnMatrix::CopyToHost(V_[i], OutOam.AdamV.Data() + off, bytes);
+		OA_RETURN_IF_ERROR(OaFnMatrix::CopyToHost(
+			M_[i], OutOam.AdamM.Data() + off, bytes));
+		OA_RETURN_IF_ERROR(OaFnMatrix::CopyToHost(
+			V_[i], OutOam.AdamV.Data() + off, bytes));
 		off += n;
 	}
+	return OaStatus::Ok();
 }
 
-void OaAdam::LoadFrom(const OamModel& InOam) {
+OaStatus OaAdam::ValidateLoad(const OamModel& InOam) const {
+	if (not InOam.HasOptimizer()
+		or std::strncmp(InOam.Optimizer.Type, "Adam", sizeof(InOam.Optimizer.Type)) != 0)
+	{
+		return OaStatus::Error(OaStatusCode::FailedPrecondition,
+			"Adam checkpoint optimizer state is missing or has the wrong type");
+	}
+	OaU64 expected = 0;
+	for (const auto* parameter : Params_) {
+		expected += static_cast<OaU64>(parameter->Data.NumElements());
+	}
+	if (InOam.Optimizer.Step == 0 and InOam.AdamM.Empty()
+		and InOam.AdamV.Empty()) return OaStatus::Ok();
+	if (InOam.AdamM.Size() != expected or InOam.AdamV.Size() != expected) {
+		return OaStatus::Error(OaStatusCode::ShapeMismatch,
+			"Adam checkpoint moment size does not match the model");
+	}
+	return OaStatus::Ok();
+}
+
+OaStatus OaAdam::LoadFrom(const OamModel& InOam) {
+	OA_RETURN_IF_ERROR(ValidateLoad(InOam));
 	Lr_    = InOam.Optimizer.Lr;
 	Beta1_ = InOam.Optimizer.Beta1;
 	Beta2_ = InOam.Optimizer.Beta2;
 	Eps_   = InOam.Optimizer.Eps;
 	Step_  = static_cast<OaU64>(InOam.Optimizer.Step);
-
-	if (not InOam.HasOptimizer()) {
-		OA_LOG_INFO(OaLogComponent::Core,
-			"OaAdam::LoadFrom: checkpoint has no AdamM/AdamV section, keeping zero-init state");
-		return;
-	}
 
 	if (M_.Empty()) {
 		for (auto* p : Params_) {
@@ -104,28 +123,24 @@ void OaAdam::LoadFrom(const OamModel& InOam) {
 			V_.PushBack(OaFnMatrix::Zeros(p->Data.GetShape()));
 		}
 	}
+	if (InOam.AdamM.Empty()) return OaStatus::Ok();
 
-	OaI64 expected = 0;
-	for (const auto& m : M_) expected += m.NumElements();
-	if (InOam.AdamM.Size() != static_cast<OaUsize>(expected)) {
-		OA_LOG_ERROR(OaLogComponent::Core,
-			"OaAdam::LoadFrom: AdamM size mismatch — model expects %lld, checkpoint has %zu",
-			static_cast<long long>(expected), InOam.AdamM.Size());
-		return;
-	}
-
-	(void)OaContext::GetDefault().Execute();
+	OA_RETURN_IF_ERROR(OaContext::GetDefault().Execute());
 
 	OaI64 off = 0;
 	for (OaUsize i = 0; i < M_.Size(); ++i) {
 		OaI64 n = M_[i].NumElements();
 		const auto bytes = static_cast<OaU64>(n) * sizeof(OaF32);
 		if (auto* runtime = OaContext::GetDefault().GetEngine()) {
-			(void)runtime->UploadBuffer(M_[i].GetVkBuffer(), 0,
-				InOam.AdamM.Data() + off, bytes);
-			(void)runtime->UploadBuffer(V_[i].GetVkBuffer(), 0,
-				InOam.AdamV.Data() + off, bytes);
+			OA_RETURN_IF_ERROR(runtime->UploadBuffer(M_[i].GetVkBuffer(), 0,
+				InOam.AdamM.Data() + off, bytes));
+			OA_RETURN_IF_ERROR(runtime->UploadBuffer(V_[i].GetVkBuffer(), 0,
+				InOam.AdamV.Data() + off, bytes));
+		} else {
+			return OaStatus::Error(OaStatusCode::FailedPrecondition,
+				"Adam restore requires an active OA engine");
 		}
 		off += n;
 	}
+	return OaStatus::Ok();
 }

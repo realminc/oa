@@ -25,16 +25,16 @@ def generate_test_file(ops: list[dict], schema_name: str, category: str, namespa
         "#include <cmath>",
         "#include <vector>",
         "",
-        "static OaComputeEngine* GRt = nullptr;",
+        "static OaEngine* GRt = nullptr;",
         "",
         f"class Test{namespace}{category} : public ::testing::Test {{",
         "protected:",
         "\tstatic void SetUpTestSuite() {",
         "\t\tOaEngineConfig cfg{};",
         f"\t\tcfg.AppName = \"Test{namespace}{category}\";",
-        "\t\tauto r = OaComputeEngine::Create(cfg);",
+        "\t\tauto r = OaEngine::Create(cfg);",
         "\t\tASSERT_TRUE(r.IsOk()) << r.GetStatus().GetMessage();",
-        "\t\tstatic OaUniquePtr<OaComputeEngine> rt = std::move(*r);",
+        "\t\tstatic OaUniquePtr<OaEngine> rt = std::move(*r);",
         "\t\tGRt = rt.get();",
         "\t}",
         "};",
@@ -93,7 +93,7 @@ def _generate_context_test(op: dict, category: str, namespace: str, test_config:
         ])
     
     # Execute operation
-    lines.append("\tOaContext::Scope ctx_scope(OaContext::GetDefault());")
+    lines.append("\tOaContext::RecordingScope ctx_scope(OaContext::GetDefault());")
     
     if kind == "binary":
         lines.append(f"\tauto out = OaFnMatrix::{name}(a, b);")

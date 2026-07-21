@@ -5,11 +5,10 @@
 // everything downstream (parameter walk, optimizer binding, persistence) is
 // derived from that registration.
 //
-// Mode (train/eval) lives on OaContext (see OaContext::ScopedEval). Backward
-// passes are hand-wired via OaFnMatrix::*Bwd until Phase 3 implicit autograd
-// lands. Save/Load are tree-walk helpers (Phase 2 follow-up, Task #6).
-//
-// See: Docs/Rewrite/ThisIsTheKey/OaModule.md
+// Mode (train/eval) is ML module state and propagates through registered child
+// modules. The runtime recorder owns execution, never model policy. Backward
+// passes are hand-wired via OaFnMatrix::*Bwd until implicit autograd covers the
+// remaining manual paths. Save/Load are generic tree-walk helpers.
 
 #pragma once
 
@@ -67,6 +66,30 @@ public:
 	virtual OaMatrix Forward(const OaMatrix& InInput);
 	OaMatrix operator()(const OaMatrix& InInput) { return Forward(InInput); }
 
+	// Training policy belongs to the model hierarchy, not the execution context.
+	// Train propagates to every registered child; Eval is equivalent to
+	// Train(false). Newly registered children inherit the parent's current mode.
+	void Train(OaBool InTraining = true);
+	void Eval() { Train(false); }
+	[[nodiscard]] OaBool IsTraining() const noexcept { return Training_; }
+
+	class ScopedEval {
+	public:
+		explicit ScopedEval(OaModule& InModule)
+			: Module_(InModule), Previous_(InModule.IsTraining()) {
+			InModule.Eval();
+		}
+		~ScopedEval() { Module_.Train(Previous_); }
+		ScopedEval(const ScopedEval&) = delete;
+		ScopedEval& operator=(const ScopedEval&) = delete;
+		ScopedEval(ScopedEval&&) noexcept = delete;
+		ScopedEval& operator=(ScopedEval&&) noexcept = delete;
+
+	private:
+		OaModule& Module_;
+		OaBool Previous_;
+	};
+
 	// Parameter management
 	//
 	// WARNING: Parameters() returns ONLY direct parameters (non-recursive), unlike
@@ -117,8 +140,11 @@ public:
 
 	// Lower-level: dump self/restore self into a caller-owned OamModel (no file I/O).
 	// Useful when composing multiple modules + optimizer + custom metadata.
-	void SaveTo(OamModel& OutOam) const;
-	void LoadFrom(const OamModel& InOam);
+	[[nodiscard]] OaStatus SaveTo(OamModel& OutOam) const;
+	// Validate the complete module tree before mutating live state. A successful
+	// return means every required parameter/buffer has compatible name, dtype,
+	// shape and byte count and every upload completed.
+	[[nodiscard]] OaStatus LoadFrom(const OamModel& InOam);
 
 	// Info
 	void SetName(OaStringView InName) { Name_ = OaString(InName); }
@@ -129,12 +155,17 @@ protected:
 	OaModule() = default;
 
 	// Save/Load tree walk: emit (dotted-path, param) entries for self then children.
-	void SaveWalk(class OamModel& OutOam, const OaString& InPrefix) const;
-	void LoadWalk(const class OamModel& InOam, const OaString& InPrefix);
+	[[nodiscard]] OaStatus SaveWalk(
+		class OamModel& OutOam, const OaString& InPrefix) const;
+	[[nodiscard]] OaStatus ValidateLoadWalk(
+		const class OamModel& InOam, const OaString& InPrefix) const;
+	[[nodiscard]] OaStatus LoadWalk(
+		const class OamModel& InOam, const OaString& InPrefix);
 
 	OaString Name_;
 	OaVec<OaParameter> Params_;
 	OaVec<OaModuleBuffer> Buffers_;
 	OaVec<NamedChild> Children_;
+	OaBool Training_ = true;
 	OaDevice Device_{OaDeviceType::VkDiscrete, 0};
 };

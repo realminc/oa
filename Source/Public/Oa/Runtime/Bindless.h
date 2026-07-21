@@ -98,11 +98,13 @@ public:
 	[[nodiscard]] static OaResult<OaBindlessHeap> Create(const OaVkDevice& InDevice);
 	void Destroy(const OaVkDevice& InDevice);
 
-	// Register a buffer — returns a slot index (0..65535).
-	// Thread-safe. Automatically called by OaVma::Alloc*.
+	// Register a buffer — returns a device-sized slot in
+	// [1, OA_BINDLESS_CAPACITY), or OA_BINDLESS_INVALID on exhaustion.
+	// Thread-safe. Engine descriptor-backed allocation paths call this after VMA
+	// storage succeeds and roll that storage back if no slot remains.
 	[[nodiscard]] OaU32 Register(const OaVkDevice& InDevice, const OaVkBuffer& InBuffer);
 
-	// Release a buffer slot. Thread-safe. Called by OaVma::Free.
+	// Release a buffer slot. Thread-safe. Called by OaEngine before VMA release.
 	void Deregister(OaU32 InIndex);
 
 	// Update a slot's buffer (e.g. after resize). Thread-safe.

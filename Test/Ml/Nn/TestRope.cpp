@@ -92,7 +92,7 @@ TEST(TestRope, BackwardGradcheck) {
 	const float theta = 10000.0f;
 
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 
 	std::vector<float> x(static_cast<size_t>(T * D)), tgt(static_cast<size_t>(T * D));
 	auto f = [](int s) { return std::sin(0.7f * s + 0.4f) * 0.8f; };

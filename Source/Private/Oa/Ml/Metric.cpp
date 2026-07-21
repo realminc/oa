@@ -1,5 +1,6 @@
 #include <Oa/Ml/Metric.h>
 #include <Oa/Core/FnMatrix.h>
+#include <Oa/Runtime/Context.h>
 
 #include <algorithm>
 #include <cstdio>

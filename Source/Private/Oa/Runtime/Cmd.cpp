@@ -150,8 +150,32 @@ OaStatus OaVkCmd::Submit(const OaVkDevice& InDevice) {
 }
 
 OaStatus OaVkCmd::SubmitAndWait(const OaVkDevice& InDevice) {
-	OA_RETURN_IF_ERROR(Submit(InDevice));
-	VkResult r = vkQueueWaitIdle(static_cast<VkQueue>(InDevice.Queues.ComputeQueue));
-	if (r != VK_SUCCESS) return OaStatus::Error(OaStatusCode::VulkanError, "vkQueueWaitIdle failed");
+	VkDevice device = static_cast<VkDevice>(InDevice.Device);
+	VkFenceCreateInfo fenceInfo = {
+		.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+	};
+	VkFence fence = VK_NULL_HANDLE;
+	VkResult r = vkCreateFence(device, &fenceInfo, nullptr, &fence);
+	if (r != VK_SUCCESS) {
+		return OaStatus::Error(OaStatusCode::VulkanError,
+			"vkCreateFence (command completion) failed");
+	}
+
+	VkCommandBuffer cb = static_cast<VkCommandBuffer>(CommandBuffer);
+	VkSubmitInfo submitInfo = {
+		.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+		.commandBufferCount = 1,
+		.pCommandBuffers = &cb,
+	};
+	r = vkQueueSubmit(
+		static_cast<VkQueue>(InDevice.Queues.ComputeQueue), 1, &submitInfo, fence);
+	if (r == VK_SUCCESS) {
+		r = vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX);
+	}
+	vkDestroyFence(device, fence, nullptr);
+	if (r != VK_SUCCESS) {
+		return OaStatus::Error(OaStatusCode::VulkanError,
+			"command submission or fence wait failed");
+	}
 	return OaStatus::Ok();
 }

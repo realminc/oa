@@ -13,43 +13,54 @@
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
+static OaContext& ContextForEngine(OaEngine& InEngine) {
+	OaContext* active = OaContext::GetDefaultPtr();
+	return active != nullptr and active->GetEngine() == &InEngine
+		? *active : InEngine.GetContext();
+}
+
 static OaResult<OaVkBuffer> UploadToDevice(
-	OaComputeEngine& InRt,
+	OaEngine& InRt,
 	const void* InData,
 	OaU64 InBytes)
 {
-	auto stagingRes = InRt.AllocBuffer(InBytes);
-	if (!stagingRes) return stagingRes.GetStatus();
-	OaVkBuffer staging = *stagingRes;
+	auto stagingResult = InRt.AllocBuffer(InBytes);
+	if (not stagingResult) return stagingResult.GetStatus();
+	OaVkBuffer staging = std::move(*stagingResult);
 	std::memcpy(staging.MappedPtr, InData, InBytes);
+	if (not InRt.Allocator.FlushHostBuffer(staging, 0U, InBytes)) {
+		InRt.FreeBuffer(staging);
+		return OaStatus::Error(OaStatusCode::VulkanError,
+			"UploadToDevice: staging flush failed");
+	}
 
 	auto deviceRes = InRt.AllocBufferDevice(InBytes);
-	if (!deviceRes) {
+	if (not deviceRes) {
 		InRt.FreeBuffer(staging);
 		return deviceRes.GetStatus();
 	}
 	OaVkBuffer device = *deviceRes;
 
-	if (auto s = InRt.CopyBufferAsync(staging, device, InBytes); !s.IsOk()) {
+	auto copy = InRt.CopyBufferAsync(staging, device, InBytes);
+	if (not copy.IsOk()) {
 		InRt.FreeBuffer(staging);
 		InRt.FreeBuffer(device);
-		return s;
+		return copy.GetStatus();
 	}
-	if (auto s = InRt.WaitTransfer(); !s.IsOk()) {
+	if (const OaStatus status = copy->Wait(); not status.IsOk()) {
 		InRt.FreeBuffer(staging);
 		InRt.FreeBuffer(device);
-		return s;
+		return status;
 	}
 
 	InRt.FreeBuffer(staging);
-	InRt.RegisterBuffer(device);
 	return device;
 }
 
 
 // ─── OaTexture ────────────────────────────────────────────────────────────────
 
-OaResult<OaTexture> OaTexture::LoadFile(OaComputeEngine& InRt, OaStringView InPath) {
+OaResult<OaTexture> OaTexture::LoadFile(OaEngine& InRt, OaStringView InPath) {
 	int w = 0, h = 0, ch = 0;
 	stbi_uc* px = stbi_load(InPath.data(), &w, &h, &ch, 4);
 	if (!px) {
@@ -72,7 +83,7 @@ OaResult<OaTexture> OaTexture::LoadFile(OaComputeEngine& InRt, OaStringView InPa
 }
 
 OaResult<OaTexture> OaTexture::FromPixels(
-	OaComputeEngine& InRt,
+	OaEngine& InRt,
 	OaSpan<const OaU8> InRgba,
 	OaI32 InW,
 	OaI32 InH)
@@ -92,7 +103,7 @@ OaResult<OaTexture> OaTexture::FromPixels(
 	return img;
 }
 
-void OaTexture::Destroy(OaComputeEngine& InRt) {
+void OaTexture::Destroy(OaEngine& InRt) {
 	if (DeviceOwner) {
 		DeviceOwner.Reset();
 	} else if (DeviceBuf.Buffer) {
@@ -110,9 +121,138 @@ void OaTexture::Destroy(OaComputeEngine& InRt) {
 }
 
 
+// ─── OaFnTexture ─────────────────────────────────────────────────────────────
+
+namespace OaFnTexture {
+
+OaStatus Blit(OaContext& InContext, const OaBlitDesc& InDesc) {
+	if (not InContext.HasCompute()) {
+		return OaStatus::Error(OaStatusCode::FailedPrecondition,
+			"OaFnTexture::Blit: context has no compute queue");
+	}
+	if (InDesc.Src == nullptr or InDesc.Dst == nullptr) {
+		return OaStatus::Error(OaStatusCode::InvalidArgument,
+			"OaFnTexture::Blit: source and destination are required");
+	}
+	if (not InDesc.Src->IsValid() or not InDesc.Dst->IsValid()) {
+		return OaStatus::Error(OaStatusCode::InvalidArgument,
+			"OaFnTexture::Blit: source and destination must be valid");
+	}
+	if (InDesc.Src->IsImageBacked() or InDesc.Dst->IsImageBacked()) {
+		return OaStatus::Error(OaStatusCode::InvalidArgument,
+			"OaFnTexture::Blit: image-backed presentation belongs to OaPresenter");
+	}
+	if (InDesc.Src->Width <= 0 or InDesc.Src->Height <= 0
+		or InDesc.Dst->Width <= 0 or InDesc.Dst->Height <= 0) {
+		return OaStatus::Error(OaStatusCode::InvalidArgument,
+			"OaFnTexture::Blit: texture extents must be positive");
+	}
+	if (InDesc.Src->Width != InDesc.Dst->Width
+		or InDesc.Src->Height != InDesc.Dst->Height) {
+		return OaStatus::Error(OaStatusCode::Unimplemented,
+			"OaFnTexture::Blit: scaled blits are not implemented");
+	}
+	if (not InDesc.SrcRect.IsEmpty() or not InDesc.DstRect.IsEmpty()) {
+		return OaStatus::Error(OaStatusCode::Unimplemented,
+			"OaFnTexture::Blit: rectangle blits are not implemented");
+	}
+
+	const OaU64 pixelCount64 = static_cast<OaU64>(InDesc.Src->Width)
+		* static_cast<OaU64>(InDesc.Src->Height);
+	if (pixelCount64 > 0xFFFFFFFFULL) {
+		return OaStatus::Error(OaStatusCode::OutOfRange,
+			"OaFnTexture::Blit: pixel count exceeds the kernel contract");
+	}
+	const OaU32 pixelCount = static_cast<OaU32>(pixelCount64);
+	OaVkBuffer buffers[2] = {
+		InDesc.Src->DeviceBuf,
+		InDesc.Dst->DeviceBuf,
+	};
+	OaBufferAccess access[2] = {
+		OaBufferAccess::Read,
+		OaBufferAccess::Write,
+	};
+	struct Push { OaU32 Count; } push{pixelCount};
+	constexpr OaU32 kGroupSize = 256U;
+	const OaU32 groupsX = (pixelCount + kGroupSize - 1U) / kGroupSize;
+	InContext.Add(
+		"Copy",
+		OaSpan<OaVkBuffer>(buffers, 2),
+		OaSpan<OaBufferAccess>(access, 2),
+		&push,
+		sizeof(push),
+		groupsX);
+	return OaStatus::Ok();
+}
+
+OaStatus Blit(const OaBlitDesc& InDesc) {
+	return Blit(OaContext::GetDefault(), InDesc);
+}
+
+OaStatus Clear(
+	OaContext& InContext,
+	const OaTexture& InTarget,
+	OaClearColor InColor)
+{
+	if (not InContext.HasCompute()) {
+		return OaStatus::Error(OaStatusCode::FailedPrecondition,
+			"OaFnTexture::Clear: context has no compute queue");
+	}
+	if (not InTarget.IsValid() or InTarget.Width <= 0 or InTarget.Height <= 0) {
+		return OaStatus::Error(OaStatusCode::InvalidArgument,
+			"OaFnTexture::Clear: target must be a valid positive-extent texture");
+	}
+	if (InTarget.IsImageBacked()) {
+		return OaStatus::Error(OaStatusCode::InvalidArgument,
+			"OaFnTexture::Clear: image-backed presentation belongs to OaPresenter");
+	}
+
+	const OaU64 pixelCount64 = static_cast<OaU64>(InTarget.Width)
+		* static_cast<OaU64>(InTarget.Height);
+	if (pixelCount64 > 0xFFFFFFFFULL) {
+		return OaStatus::Error(OaStatusCode::OutOfRange,
+			"OaFnTexture::Clear: pixel count exceeds the kernel contract");
+	}
+	const OaU32 pixelCount = static_cast<OaU32>(pixelCount64);
+	auto clamp01 = [](OaF32 InValue) -> OaU32 {
+		const OaF32 value = InValue < 0.0F
+			? 0.0F
+			: (InValue > 1.0F ? 1.0F : InValue);
+		return static_cast<OaU32>(value * 255.0F + 0.5F) & 0xFFU;
+	};
+	const OaU32 packed =
+		(clamp01(InColor.A) << 24U)
+		| (clamp01(InColor.B) << 16U)
+		| (clamp01(InColor.G) << 8U)
+		| clamp01(InColor.R);
+	OaVkBuffer buffers[1] = {InTarget.DeviceBuf};
+	OaBufferAccess access[1] = {OaBufferAccess::Write};
+	struct Push {
+		OaU32 Count;
+		OaU32 Rgba;
+	} push{pixelCount, packed};
+	constexpr OaU32 kGroupSize = 256U;
+	const OaU32 groupsX = (pixelCount + kGroupSize - 1U) / kGroupSize;
+	InContext.Add(
+		"ClearRgba8",
+		OaSpan<OaVkBuffer>(buffers, 1),
+		OaSpan<OaBufferAccess>(access, 1),
+		&push,
+		sizeof(push),
+		groupsX);
+	return OaStatus::Ok();
+}
+
+OaStatus Clear(const OaTexture& InTarget, OaClearColor InColor) {
+	return Clear(OaContext::GetDefault(), InTarget, InColor);
+}
+
+} // namespace OaFnTexture
+
+
 // ─── OaImagePlanes ────────────────────────────────────────────────────────────
 
-OaResult<OaImagePlanes> OaImagePlanes::LoadFile(OaComputeEngine& InRt, OaStringView InPath) {
+OaResult<OaImagePlanes> OaImagePlanes::LoadFile(OaEngine& InRt, OaStringView InPath) {
 	int w = 0, h = 0, ch = 0;
 	// Query channel count first
 	stbi_info(InPath.data(), &w, &h, &ch);
@@ -179,7 +319,7 @@ OaResult<OaImagePlanes> OaImagePlanes::LoadFile(OaComputeEngine& InRt, OaStringV
 }
 
 OaResult<OaImagePlanes> OaImagePlanes::FromPlanes(
-	OaComputeEngine& InRt,
+	OaEngine& InRt,
 	OaSpan<const OaSpan<const OaU8>> InPlanes,
 	OaSpan<const OaImageDtype>       InDtypes,
 	OaI32 InW,
@@ -222,23 +362,26 @@ OaMatrix OaTexture::ToMatrix() const
 }
 
 OaResult<OaTexture> OaTexture::FromMatrix(
-	OaComputeEngine& InRt,
+	OaContext& InContext,
 	const OaMatrix& InMatrix)
 {
-	(void)InRt; // allocation is owned by the active context's matrix pool
+	if (not InContext.HasCompute()) {
+		return OaStatus::Error(OaStatusCode::FailedPrecondition,
+			"OaTexture::FromMatrix: context has no compute queue");
+	}
 	const auto shape = InMatrix.GetShape();
-	if (shape.Rank != 4 || shape[0] != 1) {
+	if (shape.Rank != 4 or shape[0] != 1) {
 		return OaStatus::InvalidArgument(
 			"OaTexture::FromMatrix: expected [1,C,H,W] matrix");
 	}
 	const OaI32 channels = static_cast<OaI32>(shape[1]);
-	if (channels != 1 && channels != 3 && channels != 4) {
+	if (channels != 1 and channels != 3 and channels != 4) {
 		return OaStatus::InvalidArgument(
 			"OaTexture::FromMatrix: channel count must be 1, 3 or 4");
 	}
 	if (InMatrix.GetDtype() != OaScalarType::Float32
-		&& InMatrix.GetDtype() != OaScalarType::BFloat16
-		&& InMatrix.GetDtype() != OaScalarType::Float16) {
+		and InMatrix.GetDtype() != OaScalarType::BFloat16
+		and InMatrix.GetDtype() != OaScalarType::Float16) {
 		return OaStatus::InvalidArgument(
 			"OaTexture::FromMatrix: expected a floating-point matrix");
 	}
@@ -248,7 +391,16 @@ OaResult<OaTexture> OaTexture::FromMatrix(
 		return OaStatus::InvalidArgument(
 			"OaTexture::FromMatrix: dimensions must be positive");
 	}
+	const OaVkBuffer input = InMatrix.GetVkBuffer();
+	OaEngine& engine = InContext.Engine();
+	if (input.Buffer == nullptr or input.AllocatorIdentity == nullptr
+		or input.NodeIndex != 0U
+		or input.AllocatorIdentity != engine.Allocator.Allocator) {
+		return OaStatus::InvalidArgument(
+			"OaTexture::FromMatrix: matrix storage must belong to the context engine");
+	}
 
+	OaContext::RecordingScope recording(InContext);
 	const OaI64 pixelCount = static_cast<OaI64>(w) * h;
 	// UInt32 is exactly one packed RGBA8 pixel. It also gives the graph a shared
 	// allocation owner, avoiding a raw-buffer lifetime escape.
@@ -265,8 +417,7 @@ OaResult<OaTexture> OaTexture::FromMatrix(
 	};
 	OaBufferAccess access[] = {
 		OaBufferAccess::Read, OaBufferAccess::Write};
-	auto& ctx = OaContext::GetDefault();
-	ctx.Add("MatrixToRgba8", {&InMatrix, &packed}, access,
+	InContext.Add("MatrixToRgba8", {&InMatrix, &packed}, access,
 		&push, sizeof(push),
 		(static_cast<OaU32>(pixelCount) + 255U) / 256U);
 
@@ -276,6 +427,13 @@ OaResult<OaTexture> OaTexture::FromMatrix(
 	texture.Width = w;
 	texture.Height = h;
 	return texture;
+}
+
+OaResult<OaTexture> OaTexture::FromMatrix(
+	OaEngine& InRt,
+	const OaMatrix& InMatrix)
+{
+	return FromMatrix(ContextForEngine(InRt), InMatrix);
 }
 
 // ─── Phase 4: OaImage bridge ───────────────────────────────────────────────
@@ -289,7 +447,14 @@ OaImage OaTexture::ToImage() const
 }
 
 OaResult<OaTexture> OaTexture::FromImage(
-	OaComputeEngine& InRt,
+	OaContext& InContext,
+	const OaImage& InImage)
+{
+	return FromMatrix(InContext, InImage.AsMatrix());
+}
+
+OaResult<OaTexture> OaTexture::FromImage(
+	OaEngine& InRt,
 	const OaImage& InImage)
 {
 	// Convert OaImage to OaTexture for display.
@@ -319,7 +484,7 @@ OaMatrix OaImagePlanes::ToMatrix() const
 }
 
 OaResult<OaImagePlanes> OaImagePlanes::FromMatrix(
-	OaComputeEngine& InRt,
+	OaEngine& InRt,
 	const OaMatrix& InMatrix)
 {
 	const auto shape = InMatrix.GetShape();
@@ -350,7 +515,7 @@ OaResult<OaImagePlanes> OaImagePlanes::FromMatrix(
 	return planes;
 }
 
-void OaImagePlanes::Destroy(OaComputeEngine& InRt) {
+void OaImagePlanes::Destroy(OaEngine& InRt) {
 	for (OaU32 c = 0; c < kOaImageMaxPlanes; ++c) {
 		if (Planes[c].Buffer) {
 			InRt.DeregisterBuffer(Planes[c]);
@@ -368,55 +533,55 @@ void OaImagePlanes::Destroy(OaComputeEngine& InRt) {
 
 OaTexture OaTexture::operator+(const OaTexture& InOther) const {
 	OaMatrix result = this->ToMatrix() + InOther.ToMatrix();
-	auto img = OaTexture::FromMatrix(*OaContext::GetDefault().GetEngine(), result);
+	auto img = OaTexture::FromMatrix(OaContext::GetDefault(), result);
 	return img.IsOk() ? *img : OaTexture{};
 }
 
 OaTexture OaTexture::operator-(const OaTexture& InOther) const {
 	OaMatrix result = this->ToMatrix() - InOther.ToMatrix();
-	auto img = OaTexture::FromMatrix(*OaContext::GetDefault().GetEngine(), result);
+	auto img = OaTexture::FromMatrix(OaContext::GetDefault(), result);
 	return img.IsOk() ? *img : OaTexture{};
 }
 
 OaTexture OaTexture::operator*(const OaTexture& InOther) const {
 	OaMatrix result = this->ToMatrix() * InOther.ToMatrix();
-	auto img = OaTexture::FromMatrix(*OaContext::GetDefault().GetEngine(), result);
+	auto img = OaTexture::FromMatrix(OaContext::GetDefault(), result);
 	return img.IsOk() ? *img : OaTexture{};
 }
 
 OaTexture OaTexture::operator/(const OaTexture& InOther) const {
 	OaMatrix result = this->ToMatrix() / InOther.ToMatrix();
-	auto img = OaTexture::FromMatrix(*OaContext::GetDefault().GetEngine(), result);
+	auto img = OaTexture::FromMatrix(OaContext::GetDefault(), result);
 	return img.IsOk() ? *img : OaTexture{};
 }
 
 OaTexture OaTexture::operator+(OaF32 InScalar) const {
 	OaMatrix result = this->ToMatrix() + InScalar;
-	auto img = OaTexture::FromMatrix(*OaContext::GetDefault().GetEngine(), result);
+	auto img = OaTexture::FromMatrix(OaContext::GetDefault(), result);
 	return img.IsOk() ? *img : OaTexture{};
 }
 
 OaTexture OaTexture::operator-(OaF32 InScalar) const {
 	OaMatrix result = this->ToMatrix() - InScalar;
-	auto img = OaTexture::FromMatrix(*OaContext::GetDefault().GetEngine(), result);
+	auto img = OaTexture::FromMatrix(OaContext::GetDefault(), result);
 	return img.IsOk() ? *img : OaTexture{};
 }
 
 OaTexture OaTexture::operator*(OaF32 InScalar) const {
 	OaMatrix result = this->ToMatrix() * InScalar;
-	auto img = OaTexture::FromMatrix(*OaContext::GetDefault().GetEngine(), result);
+	auto img = OaTexture::FromMatrix(OaContext::GetDefault(), result);
 	return img.IsOk() ? *img : OaTexture{};
 }
 
 OaTexture OaTexture::operator/(OaF32 InScalar) const {
 	OaMatrix result = this->ToMatrix() / InScalar;
-	auto img = OaTexture::FromMatrix(*OaContext::GetDefault().GetEngine(), result);
+	auto img = OaTexture::FromMatrix(OaContext::GetDefault(), result);
 	return img.IsOk() ? *img : OaTexture{};
 }
 
 OaTexture OaTexture::operator-() const {
 	OaMatrix result = -this->ToMatrix();
-	auto img = OaTexture::FromMatrix(*OaContext::GetDefault().GetEngine(), result);
+	auto img = OaTexture::FromMatrix(OaContext::GetDefault(), result);
 	return img.IsOk() ? *img : OaTexture{};
 }
 
@@ -484,7 +649,7 @@ OaImagePlanes OaImagePlanes::operator-() const {
 // ───────────────────────────────────────────────────────────────────────────
 // Step 3b SKELETON. Real impl needs to:
 //   * call ImGui_ImplVulkan_AddTexture(sampler, view, layout) to register a
-//     descriptor set against ImGuiPool_ on OaGraphicsEngine
+//     descriptor set against ImGuiPool_ on OaPresenter
 //   * allocate a VkImageView for the underlying OaTexture (if not already
 //     image-backed — today OaTexture is buffer-backed, so this requires
 //     either a host-side memcpy → VkImage or a compute readback dispatch)

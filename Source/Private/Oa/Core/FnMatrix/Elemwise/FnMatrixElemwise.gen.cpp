@@ -4,9 +4,10 @@
 // OaFnMatrix — Elemwise GPU operations.
 // Context-based unified API: records operations to OaContext.
 
-#include <Oa/Ml/Autograd.h>
+#include <Oa/Ml/Autograd/Nodes.h>
 #include <Oa/Core/Matrix.h>
 #include <Oa/Core/FnMatrix.h>
+#include <Oa/Core/Operation.h>
 #include <Oa/Core/Status.h>
 #include <Oa/Core/Types.h>
 #include <Oa/Core/BufferAccess.h>
@@ -23,17 +24,26 @@ static OaU32 DivCeil(OaU32 InA, OaU32 InB) { return (InA + InB - 1) / InB; }
 OaMatrix OaFnMatrix::Scale(const OaMatrix& InA, OaF32 InScalar) {
 	auto& ctx = OaContext::GetDefault();
 	OaMatrix out = OaFnMatrix::Empty(InA.Shape_, InA.Dtype_);
+	const auto semantic = ctx.RecordOperation(
+		OaOperationRegistry::Scale, {&InA}, {&out},
+		{OaOperationAttribute::FromFloat("Scalar", InScalar)});
+	if (not semantic.IsOk()) return {};
 	OaU32 n = static_cast<OaU32>(InA.NumElements());
 
 	struct { OaU32 Count; OaF32 Alpha; } push{n, InScalar};
 	OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Write};
-	ctx.Add("Scale", {&InA, &out}, access, &push, sizeof(push), DivCeil(n, 256));
+	ctx.Add("Scale", {&InA, &out}, access, &push, sizeof(push), DivCeil(n, 256),
+		1, 1, OaOperationRegistry::Scale.Name, 0,
+		OaOperationRegistry::Scale.Hash, 0, 0, semantic.GetValue());
 	if (OaFnAutograd::IsEnabled() and (InA.RequiresGrad())) {
 		auto _gradFn = OaMakeSharedPtr<OaGradScale>(InScalar);
 		_gradFn->Saved_ = OaVec<OaMatrix>{};
 		_gradFn->SetGraphInputs(OaVec<OaMatrix>{InA});
 		_gradFn->SequenceNr_ = OaFnAutograd::NextSeq();
 		_gradFn->OutputShape_ = out.GetShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads
+		const auto semanticAttached = OaFnAutograd::AttachSemantic(
+			_gradFn, semantic.GetValue());
+		if (not semanticAttached.IsOk()) return {};
 		out.MutAutograd().GradFn = _gradFn;
 		out.SetRequiresGrad(true);
 	}
@@ -43,7 +53,32 @@ OaMatrix OaFnMatrix::Scale(const OaMatrix& InA, OaF32 InScalar) {
 // ─── Neg (Element-wise negation: Out = -A) ────
 
 OaMatrix OaFnMatrix::Neg(const OaMatrix& InA) {
-	return Scale(InA, -1.0f);
+	auto& ctx = OaContext::GetDefault();
+	OaMatrix out = OaFnMatrix::Empty(InA.Shape_, InA.Dtype_);
+	const auto semantic = ctx.RecordOperation(
+		OaOperationRegistry::Neg, {&InA}, {&out},
+		{});
+	if (not semantic.IsOk()) return {};
+	OaU32 n = static_cast<OaU32>(InA.NumElements());
+
+	struct { OaU32 Count; } push{n};
+	OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Write};
+	ctx.Add("Neg", {&InA, &out}, access, &push, sizeof(push), DivCeil(n, 256),
+		1, 1, OaOperationRegistry::Neg.Name, 0,
+		OaOperationRegistry::Neg.Hash, 0, 0, semantic.GetValue());
+	if (OaFnAutograd::IsEnabled() and (InA.RequiresGrad())) {
+		auto _gradFn = OaMakeSharedPtr<OaGradNeg>();
+		_gradFn->Saved_ = OaVec<OaMatrix>{};
+		_gradFn->SetGraphInputs(OaVec<OaMatrix>{InA});
+		_gradFn->SequenceNr_ = OaFnAutograd::NextSeq();
+		_gradFn->OutputShape_ = out.GetShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads
+		const auto semanticAttached = OaFnAutograd::AttachSemantic(
+			_gradFn, semantic.GetValue());
+		if (not semanticAttached.IsOk()) return {};
+		out.MutAutograd().GradFn = _gradFn;
+		out.SetRequiresGrad(true);
+	}
+	return out;
 }
 
 // ─── Abs (Element-wise absolute value: Out = |A|) ────
@@ -51,17 +86,26 @@ OaMatrix OaFnMatrix::Neg(const OaMatrix& InA) {
 OaMatrix OaFnMatrix::Abs(const OaMatrix& InA) {
 	auto& ctx = OaContext::GetDefault();
 	OaMatrix out = OaFnMatrix::Empty(InA.Shape_, InA.Dtype_);
+	const auto semantic = ctx.RecordOperation(
+		OaOperationRegistry::Abs, {&InA}, {&out},
+		{});
+	if (not semantic.IsOk()) return {};
 	OaU32 n = static_cast<OaU32>(InA.NumElements());
 
 	struct { OaU32 Count; } push{n};
 	OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Write};
-	ctx.Add("Abs", {&InA, &out}, access, &push, sizeof(push), DivCeil(n, 256));
+	ctx.Add("Abs", {&InA, &out}, access, &push, sizeof(push), DivCeil(n, 256),
+		1, 1, OaOperationRegistry::Abs.Name, 0,
+		OaOperationRegistry::Abs.Hash, 0, 0, semantic.GetValue());
 	if (OaFnAutograd::IsEnabled() and (InA.RequiresGrad())) {
 		auto _gradFn = OaMakeSharedPtr<OaGradAbs>();
 		_gradFn->Saved_ = OaVec<OaMatrix>{InA};
 		_gradFn->SetGraphInputs(OaVec<OaMatrix>{InA});
 		_gradFn->SequenceNr_ = OaFnAutograd::NextSeq();
 		_gradFn->OutputShape_ = out.GetShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads
+		const auto semanticAttached = OaFnAutograd::AttachSemantic(
+			_gradFn, semantic.GetValue());
+		if (not semanticAttached.IsOk()) return {};
 		out.MutAutograd().GradFn = _gradFn;
 		out.SetRequiresGrad(true);
 	}
@@ -73,17 +117,26 @@ OaMatrix OaFnMatrix::Abs(const OaMatrix& InA) {
 OaMatrix OaFnMatrix::Log(const OaMatrix& InA) {
 	auto& ctx = OaContext::GetDefault();
 	OaMatrix out = OaFnMatrix::Empty(InA.Shape_, InA.Dtype_);
+	const auto semantic = ctx.RecordOperation(
+		OaOperationRegistry::Log, {&InA}, {&out},
+		{});
+	if (not semantic.IsOk()) return {};
 	OaU32 n = static_cast<OaU32>(InA.NumElements());
 
 	struct { OaU32 Count; } push{n};
 	OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Write};
-	ctx.Add("Log", {&InA, &out}, access, &push, sizeof(push), DivCeil(n, 256));
+	ctx.Add("Log", {&InA, &out}, access, &push, sizeof(push), DivCeil(n, 256),
+		1, 1, OaOperationRegistry::Log.Name, 0,
+		OaOperationRegistry::Log.Hash, 0, 0, semantic.GetValue());
 	if (OaFnAutograd::IsEnabled() and (InA.RequiresGrad())) {
 		auto _gradFn = OaMakeSharedPtr<OaGradLog>();
 		_gradFn->Saved_ = OaVec<OaMatrix>{InA};
 		_gradFn->SetGraphInputs(OaVec<OaMatrix>{InA});
 		_gradFn->SequenceNr_ = OaFnAutograd::NextSeq();
 		_gradFn->OutputShape_ = out.GetShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads
+		const auto semanticAttached = OaFnAutograd::AttachSemantic(
+			_gradFn, semantic.GetValue());
+		if (not semanticAttached.IsOk()) return {};
 		out.MutAutograd().GradFn = _gradFn;
 		out.SetRequiresGrad(true);
 	}
@@ -95,17 +148,26 @@ OaMatrix OaFnMatrix::Log(const OaMatrix& InA) {
 OaMatrix OaFnMatrix::Sqrt(const OaMatrix& InA) {
 	auto& ctx = OaContext::GetDefault();
 	OaMatrix out = OaFnMatrix::Empty(InA.Shape_, InA.Dtype_);
+	const auto semantic = ctx.RecordOperation(
+		OaOperationRegistry::Sqrt, {&InA}, {&out},
+		{});
+	if (not semantic.IsOk()) return {};
 	OaU32 n = static_cast<OaU32>(InA.NumElements());
 
 	struct { OaU32 Count; } push{n};
 	OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Write};
-	ctx.Add("Sqrt", {&InA, &out}, access, &push, sizeof(push), DivCeil(n, 256));
+	ctx.Add("Sqrt", {&InA, &out}, access, &push, sizeof(push), DivCeil(n, 256),
+		1, 1, OaOperationRegistry::Sqrt.Name, 0,
+		OaOperationRegistry::Sqrt.Hash, 0, 0, semantic.GetValue());
 	if (OaFnAutograd::IsEnabled() and (InA.RequiresGrad())) {
 		auto _gradFn = OaMakeSharedPtr<OaGradSqrt>();
 		_gradFn->Saved_ = OaVec<OaMatrix>{out};
 		_gradFn->SetGraphInputs(OaVec<OaMatrix>{InA});
 		_gradFn->SequenceNr_ = OaFnAutograd::NextSeq();
 		_gradFn->OutputShape_ = out.GetShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads
+		const auto semanticAttached = OaFnAutograd::AttachSemantic(
+			_gradFn, semantic.GetValue());
+		if (not semanticAttached.IsOk()) return {};
 		out.MutAutograd().GradFn = _gradFn;
 		out.SetRequiresGrad(true);
 	}
@@ -117,17 +179,26 @@ OaMatrix OaFnMatrix::Sqrt(const OaMatrix& InA) {
 OaMatrix OaFnMatrix::Pow(const OaMatrix& InA, OaF32 InExponent) {
 	auto& ctx = OaContext::GetDefault();
 	OaMatrix out = OaFnMatrix::Empty(InA.Shape_, InA.Dtype_);
+	const auto semantic = ctx.RecordOperation(
+		OaOperationRegistry::Pow, {&InA}, {&out},
+		{OaOperationAttribute::FromFloat("Exponent", InExponent)});
+	if (not semantic.IsOk()) return {};
 	OaU32 n = static_cast<OaU32>(InA.NumElements());
 
 	struct { OaU32 Count; OaF32 Exponent; } push{n, InExponent};
 	OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Write};
-	ctx.Add("Pow", {&InA, &out}, access, &push, sizeof(push), DivCeil(n, 256));
+	ctx.Add("Pow", {&InA, &out}, access, &push, sizeof(push), DivCeil(n, 256),
+		1, 1, OaOperationRegistry::Pow.Name, 0,
+		OaOperationRegistry::Pow.Hash, 0, 0, semantic.GetValue());
 	if (OaFnAutograd::IsEnabled() and (InA.RequiresGrad())) {
 		auto _gradFn = OaMakeSharedPtr<OaGradPow>(InExponent);
 		_gradFn->Saved_ = OaVec<OaMatrix>{InA};
 		_gradFn->SetGraphInputs(OaVec<OaMatrix>{InA});
 		_gradFn->SequenceNr_ = OaFnAutograd::NextSeq();
 		_gradFn->OutputShape_ = out.GetShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads
+		const auto semanticAttached = OaFnAutograd::AttachSemantic(
+			_gradFn, semantic.GetValue());
+		if (not semanticAttached.IsOk()) return {};
 		out.MutAutograd().GradFn = _gradFn;
 		out.SetRequiresGrad(true);
 	}
@@ -139,17 +210,26 @@ OaMatrix OaFnMatrix::Pow(const OaMatrix& InA, OaF32 InExponent) {
 OaMatrix OaFnMatrix::AddScalar(const OaMatrix& InA, OaF32 InScalar) {
 	auto& ctx = OaContext::GetDefault();
 	OaMatrix out = OaFnMatrix::Empty(InA.Shape_, InA.Dtype_);
+	const auto semantic = ctx.RecordOperation(
+		OaOperationRegistry::AddScalar, {&InA}, {&out},
+		{OaOperationAttribute::FromFloat("Scalar", InScalar)});
+	if (not semantic.IsOk()) return {};
 	OaU32 n = static_cast<OaU32>(InA.NumElements());
 
 	struct { OaU32 Count; OaF32 Scalar; } push{n, InScalar};
 	OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Write};
-	ctx.Add("AddScalar", {&InA, &out}, access, &push, sizeof(push), DivCeil(n, 256));
+	ctx.Add("AddScalar", {&InA, &out}, access, &push, sizeof(push), DivCeil(n, 256),
+		1, 1, OaOperationRegistry::AddScalar.Name, 0,
+		OaOperationRegistry::AddScalar.Hash, 0, 0, semantic.GetValue());
 	if (OaFnAutograd::IsEnabled() and (InA.RequiresGrad())) {
 		auto _gradFn = OaMakeSharedPtr<OaGradAddScalar>();
 		_gradFn->Saved_ = OaVec<OaMatrix>{};
 		_gradFn->SetGraphInputs(OaVec<OaMatrix>{InA});
 		_gradFn->SequenceNr_ = OaFnAutograd::NextSeq();
 		_gradFn->OutputShape_ = out.GetShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads
+		const auto semanticAttached = OaFnAutograd::AttachSemantic(
+			_gradFn, semantic.GetValue());
+		if (not semanticAttached.IsOk()) return {};
 		out.MutAutograd().GradFn = _gradFn;
 		out.SetRequiresGrad(true);
 	}
@@ -161,17 +241,26 @@ OaMatrix OaFnMatrix::AddScalar(const OaMatrix& InA, OaF32 InScalar) {
 OaMatrix OaFnMatrix::SubScalar(const OaMatrix& InA, OaF32 InScalar) {
 	auto& ctx = OaContext::GetDefault();
 	OaMatrix out = OaFnMatrix::Empty(InA.Shape_, InA.Dtype_);
+	const auto semantic = ctx.RecordOperation(
+		OaOperationRegistry::SubScalar, {&InA}, {&out},
+		{OaOperationAttribute::FromFloat("Scalar", InScalar)});
+	if (not semantic.IsOk()) return {};
 	OaU32 n = static_cast<OaU32>(InA.NumElements());
 
 	struct { OaU32 Count; OaF32 Scalar; } push{n, InScalar};
 	OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Write};
-	ctx.Add("SubScalar", {&InA, &out}, access, &push, sizeof(push), DivCeil(n, 256));
+	ctx.Add("SubScalar", {&InA, &out}, access, &push, sizeof(push), DivCeil(n, 256),
+		1, 1, OaOperationRegistry::SubScalar.Name, 0,
+		OaOperationRegistry::SubScalar.Hash, 0, 0, semantic.GetValue());
 	if (OaFnAutograd::IsEnabled() and (InA.RequiresGrad())) {
 		auto _gradFn = OaMakeSharedPtr<OaGradSubScalar>();
 		_gradFn->Saved_ = OaVec<OaMatrix>{};
 		_gradFn->SetGraphInputs(OaVec<OaMatrix>{InA});
 		_gradFn->SequenceNr_ = OaFnAutograd::NextSeq();
 		_gradFn->OutputShape_ = out.GetShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads
+		const auto semanticAttached = OaFnAutograd::AttachSemantic(
+			_gradFn, semantic.GetValue());
+		if (not semanticAttached.IsOk()) return {};
 		out.MutAutograd().GradFn = _gradFn;
 		out.SetRequiresGrad(true);
 	}
@@ -183,17 +272,26 @@ OaMatrix OaFnMatrix::SubScalar(const OaMatrix& InA, OaF32 InScalar) {
 OaMatrix OaFnMatrix::DivScalar(const OaMatrix& InA, OaF32 InScalar) {
 	auto& ctx = OaContext::GetDefault();
 	OaMatrix out = OaFnMatrix::Empty(InA.Shape_, InA.Dtype_);
+	const auto semantic = ctx.RecordOperation(
+		OaOperationRegistry::DivScalar, {&InA}, {&out},
+		{OaOperationAttribute::FromFloat("Scalar", InScalar)});
+	if (not semantic.IsOk()) return {};
 	OaU32 n = static_cast<OaU32>(InA.NumElements());
 
 	struct { OaU32 Count; OaF32 Scalar; } push{n, InScalar};
 	OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Write};
-	ctx.Add("DivScalar", {&InA, &out}, access, &push, sizeof(push), DivCeil(n, 256));
+	ctx.Add("DivScalar", {&InA, &out}, access, &push, sizeof(push), DivCeil(n, 256),
+		1, 1, OaOperationRegistry::DivScalar.Name, 0,
+		OaOperationRegistry::DivScalar.Hash, 0, 0, semantic.GetValue());
 	if (OaFnAutograd::IsEnabled() and (InA.RequiresGrad())) {
 		auto _gradFn = OaMakeSharedPtr<OaGradDivScalar>(InScalar);
 		_gradFn->Saved_ = OaVec<OaMatrix>{};
 		_gradFn->SetGraphInputs(OaVec<OaMatrix>{InA});
 		_gradFn->SequenceNr_ = OaFnAutograd::NextSeq();
 		_gradFn->OutputShape_ = out.GetShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads
+		const auto semanticAttached = OaFnAutograd::AttachSemantic(
+			_gradFn, semantic.GetValue());
+		if (not semanticAttached.IsOk()) return {};
 		out.MutAutograd().GradFn = _gradFn;
 		out.SetRequiresGrad(true);
 	}
@@ -205,17 +303,26 @@ OaMatrix OaFnMatrix::DivScalar(const OaMatrix& InA, OaF32 InScalar) {
 OaMatrix OaFnMatrix::Exp(const OaMatrix& InA) {
 	auto& ctx = OaContext::GetDefault();
 	OaMatrix out = OaFnMatrix::Empty(InA.Shape_, InA.Dtype_);
+	const auto semantic = ctx.RecordOperation(
+		OaOperationRegistry::Exp, {&InA}, {&out},
+		{});
+	if (not semantic.IsOk()) return {};
 	OaU32 n = static_cast<OaU32>(InA.NumElements());
 
 	struct { OaU32 Count; } push{n};
 	OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Write};
-	ctx.Add("Exp", {&InA, &out}, access, &push, sizeof(push), DivCeil(n, 256));
+	ctx.Add("Exp", {&InA, &out}, access, &push, sizeof(push), DivCeil(n, 256),
+		1, 1, OaOperationRegistry::Exp.Name, 0,
+		OaOperationRegistry::Exp.Hash, 0, 0, semantic.GetValue());
 	if (OaFnAutograd::IsEnabled() and (InA.RequiresGrad())) {
 		auto _gradFn = OaMakeSharedPtr<OaGradExp>();
 		_gradFn->Saved_ = OaVec<OaMatrix>{out};
 		_gradFn->SetGraphInputs(OaVec<OaMatrix>{InA});
 		_gradFn->SequenceNr_ = OaFnAutograd::NextSeq();
 		_gradFn->OutputShape_ = out.GetShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads
+		const auto semanticAttached = OaFnAutograd::AttachSemantic(
+			_gradFn, semantic.GetValue());
+		if (not semanticAttached.IsOk()) return {};
 		out.MutAutograd().GradFn = _gradFn;
 		out.SetRequiresGrad(true);
 	}
@@ -227,17 +334,26 @@ OaMatrix OaFnMatrix::Exp(const OaMatrix& InA) {
 OaMatrix OaFnMatrix::Sin(const OaMatrix& InA) {
 	auto& ctx = OaContext::GetDefault();
 	OaMatrix out = OaFnMatrix::Empty(InA.Shape_, InA.Dtype_);
+	const auto semantic = ctx.RecordOperation(
+		OaOperationRegistry::Sin, {&InA}, {&out},
+		{});
+	if (not semantic.IsOk()) return {};
 	OaU32 n = static_cast<OaU32>(InA.NumElements());
 
 	struct { OaU32 Count; } push{n};
 	OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Write};
-	ctx.Add("Sin", {&InA, &out}, access, &push, sizeof(push), DivCeil(n, 256));
+	ctx.Add("Sin", {&InA, &out}, access, &push, sizeof(push), DivCeil(n, 256),
+		1, 1, OaOperationRegistry::Sin.Name, 0,
+		OaOperationRegistry::Sin.Hash, 0, 0, semantic.GetValue());
 	if (OaFnAutograd::IsEnabled() and (InA.RequiresGrad())) {
 		auto _gradFn = OaMakeSharedPtr<OaGradSin>();
 		_gradFn->Saved_ = OaVec<OaMatrix>{InA};
 		_gradFn->SetGraphInputs(OaVec<OaMatrix>{InA});
 		_gradFn->SequenceNr_ = OaFnAutograd::NextSeq();
 		_gradFn->OutputShape_ = out.GetShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads
+		const auto semanticAttached = OaFnAutograd::AttachSemantic(
+			_gradFn, semantic.GetValue());
+		if (not semanticAttached.IsOk()) return {};
 		out.MutAutograd().GradFn = _gradFn;
 		out.SetRequiresGrad(true);
 	}
@@ -249,17 +365,26 @@ OaMatrix OaFnMatrix::Sin(const OaMatrix& InA) {
 OaMatrix OaFnMatrix::Cos(const OaMatrix& InA) {
 	auto& ctx = OaContext::GetDefault();
 	OaMatrix out = OaFnMatrix::Empty(InA.Shape_, InA.Dtype_);
+	const auto semantic = ctx.RecordOperation(
+		OaOperationRegistry::Cos, {&InA}, {&out},
+		{});
+	if (not semantic.IsOk()) return {};
 	OaU32 n = static_cast<OaU32>(InA.NumElements());
 
 	struct { OaU32 Count; } push{n};
 	OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Write};
-	ctx.Add("Cos", {&InA, &out}, access, &push, sizeof(push), DivCeil(n, 256));
+	ctx.Add("Cos", {&InA, &out}, access, &push, sizeof(push), DivCeil(n, 256),
+		1, 1, OaOperationRegistry::Cos.Name, 0,
+		OaOperationRegistry::Cos.Hash, 0, 0, semantic.GetValue());
 	if (OaFnAutograd::IsEnabled() and (InA.RequiresGrad())) {
 		auto _gradFn = OaMakeSharedPtr<OaGradCos>();
 		_gradFn->Saved_ = OaVec<OaMatrix>{InA};
 		_gradFn->SetGraphInputs(OaVec<OaMatrix>{InA});
 		_gradFn->SequenceNr_ = OaFnAutograd::NextSeq();
 		_gradFn->OutputShape_ = out.GetShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads
+		const auto semanticAttached = OaFnAutograd::AttachSemantic(
+			_gradFn, semantic.GetValue());
+		if (not semanticAttached.IsOk()) return {};
 		out.MutAutograd().GradFn = _gradFn;
 		out.SetRequiresGrad(true);
 	}
@@ -271,17 +396,26 @@ OaMatrix OaFnMatrix::Cos(const OaMatrix& InA) {
 OaMatrix OaFnMatrix::Reciprocal(const OaMatrix& InA) {
 	auto& ctx = OaContext::GetDefault();
 	OaMatrix out = OaFnMatrix::Empty(InA.Shape_, InA.Dtype_);
+	const auto semantic = ctx.RecordOperation(
+		OaOperationRegistry::Reciprocal, {&InA}, {&out},
+		{});
+	if (not semantic.IsOk()) return {};
 	OaU32 n = static_cast<OaU32>(InA.NumElements());
 
 	struct { OaU32 Count; } push{n};
 	OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Write};
-	ctx.Add("Reciprocal", {&InA, &out}, access, &push, sizeof(push), DivCeil(n, 256));
+	ctx.Add("Reciprocal", {&InA, &out}, access, &push, sizeof(push), DivCeil(n, 256),
+		1, 1, OaOperationRegistry::Reciprocal.Name, 0,
+		OaOperationRegistry::Reciprocal.Hash, 0, 0, semantic.GetValue());
 	if (OaFnAutograd::IsEnabled() and (InA.RequiresGrad())) {
 		auto _gradFn = OaMakeSharedPtr<OaGradReciprocal>();
 		_gradFn->Saved_ = OaVec<OaMatrix>{out};
 		_gradFn->SetGraphInputs(OaVec<OaMatrix>{InA});
 		_gradFn->SequenceNr_ = OaFnAutograd::NextSeq();
 		_gradFn->OutputShape_ = out.GetShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads
+		const auto semanticAttached = OaFnAutograd::AttachSemantic(
+			_gradFn, semantic.GetValue());
+		if (not semanticAttached.IsOk()) return {};
 		out.MutAutograd().GradFn = _gradFn;
 		out.SetRequiresGrad(true);
 	}
@@ -293,17 +427,26 @@ OaMatrix OaFnMatrix::Reciprocal(const OaMatrix& InA) {
 OaMatrix OaFnMatrix::ClampMax(const OaMatrix& InA, OaF32 InMax) {
 	auto& ctx = OaContext::GetDefault();
 	OaMatrix out = OaFnMatrix::Empty(InA.Shape_, InA.Dtype_);
+	const auto semantic = ctx.RecordOperation(
+		OaOperationRegistry::ClampMax, {&InA}, {&out},
+		{OaOperationAttribute::FromFloat("Max", InMax)});
+	if (not semantic.IsOk()) return {};
 	OaU32 n = static_cast<OaU32>(InA.NumElements());
 
 	struct { OaU32 Count; OaF32 Max; } push{n, InMax};
 	OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Write};
-	ctx.Add("ClampMax", {&InA, &out}, access, &push, sizeof(push), DivCeil(n, 256));
+	ctx.Add("ClampMax", {&InA, &out}, access, &push, sizeof(push), DivCeil(n, 256),
+		1, 1, OaOperationRegistry::ClampMax.Name, 0,
+		OaOperationRegistry::ClampMax.Hash, 0, 0, semantic.GetValue());
 	if (OaFnAutograd::IsEnabled() and (InA.RequiresGrad())) {
 		auto _gradFn = OaMakeSharedPtr<OaGradClampMax>(InMax);
 		_gradFn->Saved_ = OaVec<OaMatrix>{InA};
 		_gradFn->SetGraphInputs(OaVec<OaMatrix>{InA});
 		_gradFn->SequenceNr_ = OaFnAutograd::NextSeq();
 		_gradFn->OutputShape_ = out.GetShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads
+		const auto semanticAttached = OaFnAutograd::AttachSemantic(
+			_gradFn, semantic.GetValue());
+		if (not semanticAttached.IsOk()) return {};
 		out.MutAutograd().GradFn = _gradFn;
 		out.SetRequiresGrad(true);
 	}
@@ -315,17 +458,26 @@ OaMatrix OaFnMatrix::ClampMax(const OaMatrix& InA, OaF32 InMax) {
 OaMatrix OaFnMatrix::ClampMin(const OaMatrix& InA, OaF32 InMin) {
 	auto& ctx = OaContext::GetDefault();
 	OaMatrix out = OaFnMatrix::Empty(InA.Shape_, InA.Dtype_);
+	const auto semantic = ctx.RecordOperation(
+		OaOperationRegistry::ClampMin, {&InA}, {&out},
+		{OaOperationAttribute::FromFloat("Min", InMin)});
+	if (not semantic.IsOk()) return {};
 	OaU32 n = static_cast<OaU32>(InA.NumElements());
 
 	struct { OaU32 Count; OaF32 Min; } push{n, InMin};
 	OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Write};
-	ctx.Add("ClampMin", {&InA, &out}, access, &push, sizeof(push), DivCeil(n, 256));
+	ctx.Add("ClampMin", {&InA, &out}, access, &push, sizeof(push), DivCeil(n, 256),
+		1, 1, OaOperationRegistry::ClampMin.Name, 0,
+		OaOperationRegistry::ClampMin.Hash, 0, 0, semantic.GetValue());
 	if (OaFnAutograd::IsEnabled() and (InA.RequiresGrad())) {
 		auto _gradFn = OaMakeSharedPtr<OaGradClampMin>(InMin);
 		_gradFn->Saved_ = OaVec<OaMatrix>{InA};
 		_gradFn->SetGraphInputs(OaVec<OaMatrix>{InA});
 		_gradFn->SequenceNr_ = OaFnAutograd::NextSeq();
 		_gradFn->OutputShape_ = out.GetShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads
+		const auto semanticAttached = OaFnAutograd::AttachSemantic(
+			_gradFn, semantic.GetValue());
+		if (not semanticAttached.IsOk()) return {};
 		out.MutAutograd().GradFn = _gradFn;
 		out.SetRequiresGrad(true);
 	}

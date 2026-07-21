@@ -1,0 +1,87 @@
+{
+  "acceptance": {
+    "accepted_by": "Realm maintainers",
+    "reason": "Initial Build Week Iris Xe release baseline"
+  },
+  "accepted_utc": "2026-07-18T11:55:29.222062Z",
+  "build": {
+    "CMAKE_BUILD_TYPE": "Release",
+    "CMAKE_CXX_COMPILER": "/usr/bin/clang++",
+    "CMAKE_C_COMPILER": "/usr/bin/clang",
+    "OA_BUILD_SHARED": "OFF",
+    "OA_EMBED_SHADERS": "ON",
+    "OA_VULKAN_VALIDATION": "OFF",
+    "VCPKG_INSTALLED_DIR": "~/.vcpkg/oa/release/installed"
+  },
+  "environment": {
+    "driver": {
+      "api_version": "1.4.354",
+      "conformance_version": "1.4.0.0",
+      "driver_info": "Mesa 26.1.4-arch1.1",
+      "driver_version": "26.1.4"
+    },
+    "power": {
+      "cpu_governors": [
+        "powersave"
+      ],
+      "power_profile": "balanced"
+    }
+  },
+  "metric": {
+    "name": "gpu_p50",
+    "regex": "complete dense block\\s+mean=\\s*[0-9.]+ ms\\s+p50=\\s*(?P<value>[0-9.]+)",
+    "statistics": {
+      "count": 7,
+      "mad": 0.09139999999999993,
+      "maximum": 1.7297,
+      "median": 1.3251,
+      "minimum": 1.2337,
+      "p10": 1.2341199999999999,
+      "p90": 1.5600200000000002,
+      "relative_mad_percent": 6.897592634518145,
+      "spread_percent": 37.43113727265867,
+      "unit": "ms"
+    }
+  },
+  "platform": {
+    "available": true,
+    "device_id": "0x9a49",
+    "device_index": 0,
+    "device_name": "Intel(R) Iris(R) Xe Graphics (TGL GT2)",
+    "device_type": "PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU",
+    "driver_id": "DRIVER_ID_INTEL_OPEN_SOURCE_MESA",
+    "driver_name": "Intel open-source Mesa driver",
+    "machine": "x86_64",
+    "system": "Linux",
+    "vendor_id": "0x8086"
+  },
+  "schema": "oa.benchmark_baseline.v1",
+  "source": {
+    "repository_commit": "20f8d24696afe59565dc7f7cdf2965230f8548f7",
+    "result_sha256": "53266405938e8baa1ce65f4c4d70324c8c02efe044cdee8fc8388c62fa1ca292"
+  },
+  "workload": {
+    "command": [
+      "/tmp/oa-benchmark-baseline-20f8d246/Bin/Release/Test/Ml/Nn/BenchTransformerComponents",
+      "--gtest_filter=BenchTransformerComponents.NlpShape"
+    ],
+    "command_id": "BenchTransformerComponents.NlpShape.dense_block.v1",
+    "contract": {
+      "batch_tokens": "1024",
+      "model_dim": "32",
+      "path": "complete_dense_block"
+    },
+    "cooldown_seconds": 2.0,
+    "executable": {
+      "path": "/tmp/oa-benchmark-baseline-20f8d246/Bin/Release/Test/Ml/Nn/BenchTransformerComponents",
+      "sha256": "79280ddb67851351b6548ca59386e49d4d54b892baeee0e2bba4973201d34ca9"
+    },
+    "measured_runs": 7,
+    "name": "ml.transformer.nlp_dense_block",
+    "required_regexes": [
+      "\\[  PASSED  \\] 1 test"
+    ],
+    "timeout_seconds": 120.0,
+    "warmup_runs": 2
+  }
+}

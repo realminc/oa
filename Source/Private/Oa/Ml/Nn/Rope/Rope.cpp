@@ -3,7 +3,7 @@
 // Dispatches RopeApply/RopeApplyBwd compute shaders.
 
 #include <Oa/Ml/Nn.h>
-#include <Oa/Ml/Autograd.h>
+#include <Oa/Ml/Autograd/Nodes.h>
 #include <Oa/Core/FnMatrix.h>
 #include <Oa/Runtime/Context.h>
 #include <Oa/Core/Validation.h>

@@ -37,33 +37,22 @@ const char* VideoCodecName(OaVideoCodec InCodec) {
 
 } // namespace
 
-OaStatus OaViewer::Run() {
-	OaUiStyle style;
-	style.Background = {0.01F, 0.01F, 0.01F, 1.0F};
-	return OaDeviceUiApp::Run({
-		.Title = Config_.Title,
-		.Width = Config_.Width,
-		.Height = Config_.Height,
-		.Style = style,
-	});
-}
-
 OaStatus OaViewer::Save(
-	OaComputeEngine& InEngine,
+	OaEngine& InEngine,
 	const OaTexture& InTexture,
 	const char* InPath) {
-	if (!InTexture.IsValid()) {
+	if (not InTexture.IsValid()) {
 		return OaStatus::InvalidArgument("OaViewer::Save: invalid texture");
 	}
-	if (InPath == nullptr || InPath[0] == '\0') {
+	if (InPath == nullptr or InPath[0] == '\0') {
 		return OaStatus::InvalidArgument("OaViewer::Save: empty output path");
 	}
 	return OaFnImage::SaveFile(InEngine, InTexture, InPath);
 }
 
-OaStatus OaViewer::OpenImage(OaGraphicsEngine& InEngine) {
+OaStatus OaViewer::OpenImage(OaEngine& InEngine) {
 	auto image = OaTexture::LoadFile(InEngine, Config_.Path);
-	if (!image.IsOk()) return image.GetStatus();
+	if (not image.IsOk()) return image.GetStatus();
 	Image_ = OaStdMove(*image);
 
 	auto planes = OaImagePlanes::LoadFile(InEngine, Config_.Path);
@@ -72,7 +61,7 @@ OaStatus OaViewer::OpenImage(OaGraphicsEngine& InEngine) {
 	return OaStatus::Ok();
 }
 
-OaStatus OaViewer::OpenVideo(OaGraphicsEngine& InEngine) {
+OaStatus OaViewer::OpenVideo(OaEngine& InEngine) {
 	OaVideoConfig config;
 	config.Uri = Config_.Path;
 	config.Loop = Config_.Loop;
@@ -83,26 +72,26 @@ OaStatus OaViewer::OpenVideo(OaGraphicsEngine& InEngine) {
 	config.StartPlaying = Config_.StartPlaying;
 
 	auto video = OaVideo::Open(InEngine, config);
-	if (!video.IsOk()) return video.GetStatus();
+	if (not video.IsOk()) return video.GetStatus();
 	Video_.Emplace(OaStdMove(*video));
 	ResolvedMode_ = OaViewerMode::Video;
 	return OaStatus::Ok();
 }
 
-OaStatus OaViewer::OpenAudio(OaGraphicsEngine&) {
+OaStatus OaViewer::OpenAudio(OaEngine& InEngine) {
 	OaAudioStreamConfig config;
 	config.Uri = Config_.Path;
 	config.Loop = Config_.Loop;
 	config.RingMilliseconds = Config_.AudioRingMilliseconds;
-	auto audio = OaAudioStream::Open(config);
-	if (!audio.IsOk()) return audio.GetStatus();
+	auto audio = OaAudioStream::Open(InEngine, config);
+	if (not audio.IsOk()) return audio.GetStatus();
 	Audio_.Emplace(OaStdMove(*audio));
 	auto decoded = OaAudioDecoder::LoadFile(config.Uri);
 	if (decoded.IsOk()) {
 		AudioEnvelope_ = OaFnAudio::WaveformEnvelope(
 			decoded->Buffer,
 			Config_.AudioWaveformBins);
-		if (!AudioEnvelope_.IsEmpty()) {
+		if (not AudioEnvelope_.IsEmpty()) {
 			auto& context = OaContext::GetDefault();
 			OA_RETURN_IF_ERROR(context.Execute());
 			OA_RETURN_IF_ERROR(context.Sync());
@@ -119,7 +108,7 @@ OaStatus OaViewer::OpenAudio(OaGraphicsEngine&) {
 	return OaStatus::Ok();
 }
 
-OaStatus OaViewer::OnDeviceReady(OaGraphicsEngine& InEngine) {
+OaStatus OaViewer::OpenSource(OaEngine& InEngine) {
 	switch (Config_.Mode) {
 		case OaViewerMode::Image:
 			return OpenImage(InEngine);
@@ -159,14 +148,14 @@ OaStatus OaViewer::OnDeviceReady(OaGraphicsEngine& InEngine) {
 }
 
 bool OaViewer::HasVisualContent() const noexcept {
-	return ResolvedMode_ == OaViewerMode::Image || ResolvedMode_ == OaViewerMode::Video;
+	return ResolvedMode_ == OaViewerMode::Image or ResolvedMode_ == OaViewerMode::Video;
 }
 
 bool OaViewer::HasTimeline() const noexcept {
 	return Config_.ShowTimeline
-		&& ((ResolvedMode_ == OaViewerMode::Video && Video_.HasValue())
-			|| (ResolvedMode_ == OaViewerMode::Audio && Audio_.HasValue()))
-		&& MediaDurationUs() > 0U;
+		and ((ResolvedMode_ == OaViewerMode::Video and Video_.HasValue())
+			or (ResolvedMode_ == OaViewerMode::Audio and Audio_.HasValue()))
+		and MediaDurationUs() > 0U;
 }
 
 bool OaViewer::IsMediaPlaying() const noexcept {
@@ -195,12 +184,12 @@ OaU64 OaViewer::MediaPositionUs() const noexcept {
 OaPixelRect OaViewer::TimelineRect() noexcept {
 	const OaI32 margin = ResolvedMode_ == OaViewerMode::Audio ? 32 : 24;
 	const OaI32 height = ResolvedMode_ == OaViewerMode::Audio
-		? std::max<OaI32>(1, static_cast<OaI32>(Gpui().Height()) - 96)
+		? std::max<OaI32>(1, static_cast<OaI32>(Height()) - 96)
 		: 20;
-	const OaI32 width = std::max<OaI32>(1, static_cast<OaI32>(Gpui().Width()) - margin * 2);
+	const OaI32 width = std::max<OaI32>(1, static_cast<OaI32>(Width()) - margin * 2);
 	const OaI32 y = ResolvedMode_ == OaViewerMode::Audio
-		? std::max<OaI32>(24, (static_cast<OaI32>(Gpui().Height()) - height) / 2)
-		: std::max<OaI32>(0, static_cast<OaI32>(Gpui().Height()) - 52);
+		? std::max<OaI32>(24, (static_cast<OaI32>(Height()) - height) / 2)
+		: std::max<OaI32>(0, static_cast<OaI32>(Height()) - 52);
 	return {margin, y, width, height};
 }
 
@@ -209,7 +198,7 @@ void OaViewer::ToggleMediaPlayback() {
 		Video_->TogglePlay();
 	} else if (Audio_.HasValue()) {
 		if (Audio_->IsPlaying()) Audio_->Pause();
-		else if (const OaStatus status = Audio_->Play(); !status.IsOk()) {
+		else if (const OaStatus status = Audio_->Play(); not status.IsOk()) {
 			OA_LOG_WARN(OaLogComponent::App,
 				"OaViewer audio playback failed: %s", status.ToString().c_str());
 		}
@@ -217,7 +206,7 @@ void OaViewer::ToggleMediaPlayback() {
 }
 
 void OaViewer::ToggleMediaLoop() {
-	const bool loop = !IsMediaLooping();
+	const bool loop = not IsMediaLooping();
 	Config_.Loop = loop;
 	if (Video_.HasValue()) Video_->SetLoop(loop);
 	if (Audio_.HasValue()) Audio_->SetLoop(loop);
@@ -227,7 +216,7 @@ void OaViewer::SeekMediaUs(OaU64 InTimestampUs) {
 	OaStatus status = OaStatus::Ok();
 	if (Video_.HasValue()) status = Video_->SeekUs(InTimestampUs);
 	else if (Audio_.HasValue()) status = Audio_->Seek(InTimestampUs);
-	if (!status.IsOk()) {
+	if (not status.IsOk()) {
 		OA_LOG_WARN(OaLogComponent::App,
 			"OaViewer media seek failed: %s", status.ToString().c_str());
 	}
@@ -245,13 +234,13 @@ void OaViewer::StepTemporal(OaI32 InAmount) {
 	if (Video_.HasValue()) {
 		Video_->Pause();
 		const OaStatus status = Video_->StepFrames(InAmount);
-		if (!status.IsOk()) {
+		if (not status.IsOk()) {
 			OA_LOG_WARN(OaLogComponent::App,
 				"OaViewer video scrub failed: %s", status.ToString().c_str());
 		}
 		return;
 	}
-	if (!Audio_.HasValue()) return;
+	if (not Audio_.HasValue()) return;
 	Audio_->Pause();
 	const OaU64 position = Audio_->PositionUs();
 	const OaU64 step = Config_.AudioStepUs * static_cast<OaU64>(std::abs(InAmount));
@@ -261,22 +250,22 @@ void OaViewer::StepTemporal(OaI32 InAmount) {
 	SeekMediaUs(target);
 }
 
-void OaViewer::ConfigureNavigation(OaDeviceUi& InGpui) {
-	if (!HasVisualContent()) {
+void OaViewer::ConfigureNavigation() {
+	if (not HasVisualContent()) {
 		ResizeWindow(Config_.Width, Config_.Height);
 		return;
 	}
 	OaU32 contentWidth = 0;
 	OaU32 contentHeight = 0;
-	if (ResolvedMode_ == OaViewerMode::Image && Image_.IsValid()) {
+	if (ResolvedMode_ == OaViewerMode::Image and Image_.IsValid()) {
 		contentWidth = static_cast<OaU32>(Image_.Width);
 		contentHeight = static_cast<OaU32>(Image_.Height);
-	} else if (ResolvedMode_ == OaViewerMode::Video && Video_.HasValue()) {
+	} else if (ResolvedMode_ == OaViewerMode::Video and Video_.HasValue()) {
 		contentWidth = Video_->Width();
 		contentHeight = Video_->Height();
 	}
 
-	if (contentWidth == 0 || contentHeight == 0) {
+	if (contentWidth == 0 or contentHeight == 0) {
 		Quit();
 		return;
 	}
@@ -292,35 +281,37 @@ void OaViewer::ConfigureNavigation(OaDeviceUi& InGpui) {
 		static_cast<OaF32>(contentWidth),
 		static_cast<OaF32>(contentHeight));
 	Nav_.SetWindowSize(
-		static_cast<OaF32>(InGpui.Width()),
-		static_cast<OaF32>(InGpui.Height()));
+		static_cast<OaF32>(Width()),
+		static_cast<OaF32>(Height()));
 	Nav_.FitToWindow(false);
 }
 
-void OaViewer::ConfigureOverlay(OaDeviceUi& InGpui) {
-	if (Config_.Annotations.Empty()) return;
-	auto& runtime = *OaComputeEngine::GetGlobal();
+OaStatus OaViewer::ConfigureOverlay() {
+	if (Config_.Annotations.Empty()) return OaStatus::Ok();
+	auto& runtime = *OaEngine::GetGlobal();
 	auto overlay = OaDetectionOverlay::Create(runtime, Config_.AnnotationStyle);
-	if (!overlay.IsOk()) {
+	if (not overlay.IsOk()) {
 		OA_LOG_ERROR(OaLogComponent::App,
 			"OaViewer overlay creation failed: %s",
 			overlay.GetStatus().ToString().c_str());
-		return;
+		return overlay.GetStatus();
 	}
 	DetectionOverlay_ = OaStdMove(*overlay);
 	const OaStatus update = DetectionOverlay_.Update(
 		OaSpan<const OaDetectionOverlayItem>(
 			Config_.Annotations.Data(), Config_.Annotations.Size()),
-		InGpui.TextAtlas());
-	if (!update.IsOk()) {
+		TextAtlas_);
+	if (not update.IsOk()) {
 		OA_LOG_ERROR(OaLogComponent::App,
 			"OaViewer overlay update failed: %s", update.ToString().c_str());
 		DetectionOverlay_.Destroy();
+		return update;
 	}
+	return OaStatus::Ok();
 }
 
-void OaViewer::RegisterCommonInput(OaDeviceUi& InGpui) {
-	auto& input = InGpui.Input();
+void OaViewer::RegisterCommonInput() {
+	auto& input = Input_;
 	input.RegisterAction({.Name = "quit", .Binding = {.Key = Config_.KeyQuit},
 		.Callback = [this] { Quit(); }});
 	input.RegisterAction({.Name = "quitq", .Binding = {.Key = Config_.KeyQuitQ},
@@ -340,8 +331,8 @@ void OaViewer::RegisterCommonInput(OaDeviceUi& InGpui) {
 	}
 }
 
-void OaViewer::RegisterImageInput(OaDeviceUi& InGpui) {
-	auto& input = InGpui.Input();
+void OaViewer::RegisterImageInput() {
+	auto& input = Input_;
 	input.RegisterAction({.Name = "red", .Binding = {.Key = Config_.KeyRed},
 		.Callback = [this] { ImageMode_ = ImageViewMode::R; }});
 	input.RegisterAction({.Name = "green", .Binding = {.Key = Config_.KeyGreen},
@@ -354,8 +345,8 @@ void OaViewer::RegisterImageInput(OaDeviceUi& InGpui) {
 		.Callback = [this] { ImageMode_ = ImageViewMode::RGB; }});
 }
 
-void OaViewer::RegisterTemporalInput(OaDeviceUi& InGpui) {
-	auto& input = InGpui.Input();
+void OaViewer::RegisterTemporalInput() {
+	auto& input = Input_;
 	input.RegisterAction({.Name = "play", .Binding = {.Key = OuiKey::Space},
 		.Callback = [this] { ToggleMediaPlayback(); }});
 	input.RegisterAction({.Name = "loop", .Binding = {.Key = OuiKey::L},
@@ -370,27 +361,27 @@ void OaViewer::RegisterTemporalInput(OaDeviceUi& InGpui) {
 		.Callback = [this] { StepTemporal(-5); }});
 }
 
-void OaViewer::OnInit(OaDeviceUi& InGpui) {
+OaStatus OaViewer::InitView() {
 	if (ResolvedMode_ == OaViewerMode::Auto) {
-		OA_LOG_ERROR(OaLogComponent::App, "OaViewer has no resolved source");
-		Quit();
-		return;
+		return OaStatus::Error("OaViewer has no resolved source");
 	}
 
-	ConfigureNavigation(InGpui);
-	ConfigureOverlay(InGpui);
-	RegisterCommonInput(InGpui);
+	ConfigureNavigation();
+	OA_RETURN_IF_ERROR(ConfigureOverlay());
+	RegisterCommonInput();
 
 	if (ResolvedMode_ == OaViewerMode::Image) {
-		RegisterImageInput(InGpui);
+		RegisterImageInput();
 	} else if (ResolvedMode_ != OaViewerMode::Live) {
-		RegisterTemporalInput(InGpui);
+		RegisterTemporalInput();
 	}
 	if (ResolvedMode_ == OaViewerMode::Live) {
-		Config_.LiveSource->Init(InGpui);
+		OA_RETURN_IF_ERROR(Config_.LiveSource->Init(
+			Input_,
+			[this](bool InEnabled) { CapturePointer(InEnabled); }));
 	}
 
-	if (!Config_.ShowHelp) return;
+	if (not Config_.ShowHelp) return OaStatus::Ok();
 	OA_LOG_INFO(OaLogComponent::App, "═══════════════════════════════════════════════════");
 	OA_LOG_INFO(OaLogComponent::App, "OaViewer (%s)", ViewerModeName(ResolvedMode_));
 	if (ResolvedMode_ != OaViewerMode::Live) {
@@ -421,10 +412,11 @@ void OaViewer::OnInit(OaDeviceUi& InGpui) {
 	if (HasVisualContent()) OA_LOG_INFO(OaLogComponent::App, "%s", OaNavigationHelpLine());
 	OA_LOG_INFO(OaLogComponent::App, "  Q/Esc=Quit");
 	OA_LOG_INFO(OaLogComponent::App, "═══════════════════════════════════════════════════");
+	return OaStatus::Ok();
 }
 
-void OaViewer::OnUpdate(OaF32 InDeltaMs) {
-	if (ResolvedMode_ == OaViewerMode::Live && Config_.LiveSource != nullptr) {
+void OaViewer::Update(OaF32 InDeltaMs) {
+	if (ResolvedMode_ == OaViewerMode::Live and Config_.LiveSource != nullptr) {
 		Config_.LiveSource->Update(InDeltaMs);
 	}
 	if (Video_.HasValue()) Video_->Tick(InDeltaMs);
@@ -440,34 +432,34 @@ void OaViewer::OnUpdate(OaF32 InDeltaMs) {
 	}
 }
 
-void OaViewer::OnEvent(const OaUiEvent& InEvent) {
-	if (ResolvedMode_ == OaViewerMode::Live && Config_.LiveSource != nullptr) {
+void OaViewer::RouteEvent(const OaUiEvent& InEvent) {
+	if (ResolvedMode_ == OaViewerMode::Live and Config_.LiveSource != nullptr) {
 		Config_.LiveSource->Event(InEvent);
 		return;
 	}
-	if (!HasVisualContent()) return;
+	if (not HasVisualContent()) return;
 	const OaPixelRect controls = TimelineRect();
 	const bool inControls = InEvent.MouseY >= static_cast<OaF32>(controls.Y - 12)
-		&& InEvent.MouseY < static_cast<OaF32>(controls.Y + controls.H + 12);
-	const bool timelineActive = Gpui().WidgetLayer().Input().ActiveId != 0U;
-	if (!HasTimeline() || (!inControls && !timelineActive)) {
+		and InEvent.MouseY < static_cast<OaF32>(controls.Y + controls.H + 12);
+	const bool timelineActive = Ui_.Input().ActiveId != 0U;
+	if (not HasTimeline() or (not inControls and not timelineActive)) {
 		(void)Nav_.HandleEvent(InEvent);
 	}
 }
 
 void OaViewer::DrawOverlay(OaUi& InUi, OaPixelRect InDestination) {
-	if (!DetectionOverlay_.IsValid()) return;
+	if (not DetectionOverlay_.IsValid()) return;
 	DetectionOverlay_.Draw(
 		InUi,
-		Gpui().TextAtlas(),
+		TextAtlas_,
 		InDestination,
 		{.X = 0, .Y = 0,
-		 .W = static_cast<OaI32>(Gpui().Width()),
-		 .H = static_cast<OaI32>(Gpui().Height())});
+		 .W = static_cast<OaI32>(Width()),
+		 .H = static_cast<OaI32>(Height())});
 }
 
 void OaViewer::RenderImage(OaUi& InUi) {
-	if (!Image_.IsValid()) return;
+	if (not Image_.IsValid()) return;
 	const OaPixelRect destination = {
 		.X = static_cast<OaI32>(Nav_.PanX()),
 		.Y = static_cast<OaI32>(Nav_.PanY()),
@@ -475,7 +467,7 @@ void OaViewer::RenderImage(OaUi& InUi) {
 		.H = static_cast<OaI32>(static_cast<OaF32>(Image_.Height) * Nav_.Zoom()),
 	};
 
-	if (ImageMode_ == ImageViewMode::RGB || !Planes_.IsValid()) {
+	if (ImageMode_ == ImageViewMode::RGB or not Planes_.IsValid()) {
 		InUi.BeginPanel("viewer-image", destination);
 		InUi.Image(Image_.BindlessIndex(), Image_.Width, Image_.Height);
 		InUi.EndPanel();
@@ -497,11 +489,11 @@ void OaViewer::RenderImage(OaUi& InUi) {
 }
 
 void OaViewer::RenderVideo(OaUi& InUi) {
-	if (!Video_.HasValue()) return;
+	if (not Video_.HasValue()) return;
 	const auto& frame = Video_->CurrentFrame();
 	if (frame.ImageView == VK_NULL_HANDLE) return;
-	if (frame.ReadySemaphore != nullptr && frame.ReadyValue > 0) {
-		Gpui().SetRenderDependency(*frame.ReadySemaphore, frame.ReadyValue);
+	if (frame.Ready.IsValid()) {
+		SetRenderDependency(frame.Ready);
 	}
 
 	const OaPixelRect destination = {
@@ -529,7 +521,7 @@ void OaViewer::RenderVideo(OaUi& InUi) {
 }
 
 void OaViewer::RenderAudio(OaUi& InUi) {
-	if (!Audio_.HasValue()) return;
+	if (not Audio_.HasValue()) return;
 	const OaU64 duration = MediaDurationUs();
 	if (duration == 0U) return;
 	OaF32 fraction = static_cast<OaF32>(std::min(
@@ -537,7 +529,7 @@ void OaViewer::RenderAudio(OaUi& InUi) {
 		static_cast<long double>(MediaPositionUs())
 			/ static_cast<long double>(duration)));
 	const OaPixelRect rect = TimelineRect();
-	if (!AudioEnvelope_.IsEmpty()) {
+	if (not AudioEnvelope_.IsEmpty()) {
 		if (InUi.WaveformTimeline(
 			"viewer-audio-waveform", rect, AudioEnvelope_, fraction)) {
 			SeekMediaFraction(fraction);
@@ -548,7 +540,7 @@ void OaViewer::RenderAudio(OaUi& InUi) {
 }
 
 void OaViewer::RenderTimeline(OaUi& InUi) {
-	if (!HasTimeline() || ResolvedMode_ == OaViewerMode::Audio) return;
+	if (not HasTimeline() or ResolvedMode_ == OaViewerMode::Audio) return;
 	const OaU64 duration = MediaDurationUs();
 	if (duration == 0U) return;
 	OaF32 fraction = static_cast<OaF32>(std::min(
@@ -569,7 +561,7 @@ void OaViewer::RenderTimeline(OaUi& InUi) {
 	}
 }
 
-void OaViewer::OnRender(OaUi& InUi) {
+void OaViewer::Render(OaUi& InUi) {
 	if (ResolvedMode_ == OaViewerMode::Image) {
 		RenderImage(InUi);
 	} else if (ResolvedMode_ == OaViewerMode::Video) {
@@ -577,39 +569,50 @@ void OaViewer::OnRender(OaUi& InUi) {
 	} else if (ResolvedMode_ == OaViewerMode::Audio) {
 		RenderAudio(InUi);
 	} else if (ResolvedMode_ == OaViewerMode::Live
-		&& Config_.LiveSource != nullptr) {
-		Config_.LiveSource->Render(InUi, Gpui());
+		and Config_.LiveSource != nullptr) {
+		Config_.LiveSource->Render(
+			InUi, TextAtlas_, Width(), Height());
+		SetRenderDependency(Config_.LiveSource->RenderReady());
 	}
 	RenderTimeline(InUi);
 }
 
-void OaViewer::OnRenderSubmitted(
+void OaViewer::MarkRenderSubmitted(
 	const OaVkTimelineSemaphore& InSemaphore,
 	OaU64 InValue) {
 	if (Video_.HasValue()) {
 		Video_->MarkCurrentFrameConsumed(InSemaphore, InValue);
 	}
 	DetectionOverlay_.MarkConsumed(InSemaphore, InValue);
-	if (ResolvedMode_ == OaViewerMode::Live && Config_.LiveSource != nullptr) {
+	if (ResolvedMode_ == OaViewerMode::Live and Config_.LiveSource != nullptr) {
 		Config_.LiveSource->MarkConsumed(InSemaphore, InValue);
 	}
 }
 
-void OaViewer::OnShutdown(OaDeviceUi&) {
-	if (ResolvedMode_ == OaViewerMode::Live && Config_.LiveSource != nullptr) {
-		Config_.LiveSource->Close(Gpui());
+OaStatus OaViewer::CloseSource() {
+	OaStatus sourceStatus = OaStatus::Ok();
+	if (ResolvedMode_ == OaViewerMode::Live and Config_.LiveSource != nullptr) {
+		sourceStatus = Config_.LiveSource->Close();
 	}
 	DetectionOverlay_.Destroy();
 	if (Video_.HasValue()) {
-		Video_->Destroy();
+		const OaStatus videoStatus = Video_->Close();
+		if (sourceStatus.IsOk() and not videoStatus.IsOk()) {
+			sourceStatus = videoStatus;
+		}
 		Video_.Reset();
 	}
 	if (Audio_.HasValue()) {
-		Audio_->Close();
+		const OaStatus audioStatus = Audio_->Close();
+		if (sourceStatus.IsOk() and not audioStatus.IsOk()) {
+			sourceStatus = audioStatus;
+		}
 		Audio_.Reset();
 	}
 	AudioEnvelope_ = {};
-	auto& runtime = *OaComputeEngine::GetGlobal();
+	auto& runtime = *OaEngine::GetGlobal();
 	if (Image_.IsValid()) Image_.Destroy(runtime);
 	if (Planes_.IsValid()) Planes_.Destroy(runtime);
+	ResolvedMode_ = OaViewerMode::Auto;
+	return sourceStatus;
 }

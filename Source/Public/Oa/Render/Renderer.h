@@ -27,7 +27,7 @@
 #include <Oa/Ui/Camera.h>
 #include <Oa/Runtime/OaVk.h>
 
-class OaGraphicsEngine;
+class OaEngine;
 
 // ─── 3D Mesh Renderer ─────────────────────────────────────────────────────────
 
@@ -138,7 +138,7 @@ public:
 	~OaCanvasRenderer();
 
 	[[nodiscard]] OaStatus Init(
-		OaGraphicsEngine& InEngine,
+		OaEngine& InEngine,
 		OaU32 InTargetWidth,
 		OaU32 InTargetHeight);
 	void SetTarget(

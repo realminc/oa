@@ -18,7 +18,7 @@
 
 namespace nb = nanobind;
 
-class OaComputeEngine;
+class OaEngine;
 
 // ─── Shared helpers (header-inline so every binding TU shares one definition) ─
 
@@ -56,7 +56,7 @@ inline OaMatrix* matrix_ptr(OaMatrix&& matrix) {
 
 // Process-scoped engine owned by Runtime/Runtime.cpp. Domain bindings use this
 // instead of exposing OaEngine or raw Vulkan handles to Python.
-[[nodiscard]] OaComputeEngine& PythonComputeEngine();
+[[nodiscard]] OaEngine& PythonEngine();
 
 // ─── Per-module registration (Core.cpp / Runtime.cpp / Ml.cpp / Audio.cpp) ───
 

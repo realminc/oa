@@ -1,0 +1,87 @@
+{
+  "acceptance": {
+    "accepted_by": "Realm maintainers",
+    "reason": "Initial Build Week Iris Xe release baseline"
+  },
+  "accepted_utc": "2026-07-18T11:55:29.223274Z",
+  "build": {
+    "CMAKE_BUILD_TYPE": "Release",
+    "CMAKE_CXX_COMPILER": "/usr/bin/clang++",
+    "CMAKE_C_COMPILER": "/usr/bin/clang",
+    "OA_BUILD_SHARED": "OFF",
+    "OA_EMBED_SHADERS": "ON",
+    "OA_VULKAN_VALIDATION": "OFF",
+    "VCPKG_INSTALLED_DIR": "~/.vcpkg/oa/release/installed"
+  },
+  "environment": {
+    "driver": {
+      "api_version": "1.4.354",
+      "conformance_version": "1.4.0.0",
+      "driver_info": "Mesa 26.1.4-arch1.1",
+      "driver_version": "26.1.4"
+    },
+    "power": {
+      "cpu_governors": [
+        "powersave"
+      ],
+      "power_profile": "balanced"
+    }
+  },
+  "metric": {
+    "name": "batch_median",
+    "regex": "(?m)^\\s*4096\\s+32\\s+[0-9.]+\\s+(?P<value>[0-9.]+)",
+    "statistics": {
+      "count": 7,
+      "mad": 1396.04,
+      "maximum": 6728.33,
+      "median": 4733.05,
+      "minimum": 3243.81,
+      "p10": 3894.348,
+      "p90": 6718.621999999999,
+      "relative_mad_percent": 29.495568396699802,
+      "spread_percent": 73.62102661074782,
+      "unit": "us"
+    }
+  },
+  "platform": {
+    "available": true,
+    "device_id": "0x9a49",
+    "device_index": 0,
+    "device_name": "Intel(R) Iris(R) Xe Graphics (TGL GT2)",
+    "device_type": "PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU",
+    "driver_id": "DRIVER_ID_INTEL_OPEN_SOURCE_MESA",
+    "driver_name": "Intel open-source Mesa driver",
+    "machine": "x86_64",
+    "system": "Linux",
+    "vendor_id": "0x8086"
+  },
+  "schema": "oa.benchmark_baseline.v1",
+  "source": {
+    "repository_commit": "20f8d24696afe59565dc7f7cdf2965230f8548f7",
+    "result_sha256": "508dc0da67d929ed4e9e3a358149e4b6423a65cbce89e361ed2c5f4754c4fdb7"
+  },
+  "workload": {
+    "command": [
+      "/tmp/oa-benchmark-baseline-20f8d246/Bin/Release/Test/Runtime/Stream/BenchUploadRing",
+      "--gtest_filter=VkUploadRingBenchmark.PersistentReadbackVsPerCallResources"
+    ],
+    "command_id": "VkUploadRingBenchmark.PersistentReadbackVsPerCallResources.4096x32.v1",
+    "contract": {
+      "bytes": "4096",
+      "copies": "32",
+      "path": "reused_readback"
+    },
+    "cooldown_seconds": 2.0,
+    "executable": {
+      "path": "/tmp/oa-benchmark-baseline-20f8d246/Bin/Release/Test/Runtime/Stream/BenchUploadRing",
+      "sha256": "dbc7fa99354172f1626d8f65161f5a3014dbcee2ec787319fb84ac54e25d942a"
+    },
+    "measured_runs": 7,
+    "name": "runtime.readback_reused.4k_x32",
+    "required_regexes": [
+      "\\[  PASSED  \\] 1 test"
+    ],
+    "timeout_seconds": 120.0,
+    "warmup_runs": 2
+  }
+}

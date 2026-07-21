@@ -16,16 +16,16 @@ static OaMatrix CreateMatrixFromHost(const std::vector<float>& data, OaMatrixSha
 		shape);
 }
 
-static OaComputeEngine* GRt = nullptr;
+static OaEngine* GRt = nullptr;
 
 class TestFnMatrixIndex : public ::testing::Test {
 protected:
 	static void SetUpTestSuite() {
 		OaEngineConfig cfg{};
 		cfg.AppName = "TestFnMatrixIndex";
-		auto r = OaComputeEngine::Create(cfg);
+		auto r = OaEngine::Create(cfg);
 		ASSERT_TRUE(r.IsOk()) << r.GetStatus().GetMessage();
-		static OaUniquePtr<OaComputeEngine> rt = std::move(*r);
+		static OaUniquePtr<OaEngine> rt = std::move(*r);
 		GRt = rt.get();
 	}
 };
@@ -41,7 +41,7 @@ TEST_VK(TestFnMatrixIndex, Argmax_1D) {
 	
 	auto a = CreateMatrixFromHost(data, OaMatrixShape{N});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	OaI64 idx = OaFnMatrix::Argmax(a);
 	
 	// CPU reference: find index of maximum value
@@ -58,7 +58,7 @@ TEST_VK(TestFnMatrixIndex, Argmax_AllNegative) {
 	
 	auto a = CreateMatrixFromHost(data, OaMatrixShape{N});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	OaI64 idx = OaFnMatrix::Argmax(a);
 	
 	// CPU reference: -1.0f is maximum at index 3
@@ -72,7 +72,7 @@ TEST_VK(TestFnMatrixIndex, Argmax_Duplicates) {
 	
 	auto a = CreateMatrixFromHost(data, OaMatrixShape{N});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	OaI64 idx = OaFnMatrix::Argmax(a);
 	
 	// CPU reference: first occurrence of 5.0f is at index 1
@@ -113,7 +113,7 @@ TEST_VK(TestFnMatrixIndex, Reshape_1Dto2D) {
 	
 	auto a = CreateMatrixFromHost(data, OaMatrixShape{N});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto reshaped = OaFnMatrix::Reshape(a, {3, 4});
 	
 	EXPECT_EQ(reshaped.GetShape().Rank, 2);
@@ -136,7 +136,7 @@ TEST_VK(TestFnMatrixIndex, Reshape_2Dto1D) {
 	
 	auto a = CreateMatrixFromHost(data, OaMatrixShape{M, N});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto reshaped = OaFnMatrix::Reshape(a, {M * N});
 	
 	EXPECT_EQ(reshaped.GetShape().Rank, 1);
@@ -158,7 +158,7 @@ TEST_VK(TestFnMatrixIndex, Reshape_3D) {
 	
 	auto a = CreateMatrixFromHost(data, OaMatrixShape{N});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto reshaped = OaFnMatrix::Reshape(a, {2, 3, 4});
 	
 	EXPECT_EQ(reshaped.GetShape().Rank, 3);
@@ -186,7 +186,7 @@ TEST_VK(TestFnMatrixIndex, Slice_1D_Basic) {
 	
 	auto a = CreateMatrixFromHost(data, OaMatrixShape{N});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto sliced = OaFnMatrix::Slice(a, 0, 2, 7);  // [2:7] = [2, 3, 4, 5, 6]
 	
 	EXPECT_EQ(sliced.GetShape()[0], 5);
@@ -208,7 +208,7 @@ TEST_VK(TestFnMatrixIndex, Slice_2D_Rows) {
 	
 	auto a = CreateMatrixFromHost(data, OaMatrixShape{M, N});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto sliced = OaFnMatrix::Slice(a, 0, 1, 4);  // Rows [1:4] = rows 1, 2, 3
 	
 	EXPECT_EQ(sliced.GetShape()[0], 3);

@@ -4,12 +4,12 @@
 // compact host-upload adapters today; native GPU inference/NMS can write the
 // same OaDetection record layout without changing the display consumer.
 
-// Typical use from an OaDeviceUiApp:
+// Typical use from an OaViewer live source:
 //   Overlay_ = *OaDetectionOverlay::Create(rt);
-//   Overlay_.Update(items, gpui.TextAtlas());
+//   Overlay_.Update(items, textAtlas);
 //   ... draw image into dst ...
-//   Overlay_.Draw(oui, gpui.TextAtlas(), dst, clip);
-//   // in OnRenderSubmitted:
+//   Overlay_.Draw(oui, textAtlas, dst, clip);
+//   // in MarkConsumed:
 //   Overlay_.MarkConsumed(semaphore, value);
 
 #pragma once
@@ -23,7 +23,7 @@
 
 class OaCamera;
 class OaCanvasRenderer;
-class OaComputeEngine;
+class OaEngine;
 class OaTextAtlas;
 class OaUi;
 class OaVkTimelineSemaphore;
@@ -55,7 +55,7 @@ public:
 	~OaDetectionOverlay();
 
 	[[nodiscard]] static OaResult<OaDetectionOverlay> Create(
-		OaComputeEngine& InRuntime,
+		OaEngine& InRuntime,
 		const OaDetectionOverlayConfig& InConfig = {});
 
 	// Non-blocking update. A three-slot completion-tracked ring prevents the

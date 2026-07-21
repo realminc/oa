@@ -927,6 +927,8 @@ TEST_F(OaVkEngineTestFixture, VideoDecoder_PipelinesAsyncH264Conversion)
 			options,
 			rgbaFrames.Back());
 		ASSERT_TRUE(readyResult.IsOk()) << readyResult.GetStatus().ToString();
+		ASSERT_TRUE(readyResult->IsValid())
+			<< "async conversion returned an already-retired dispatch ticket";
 		readyTickets.PushBack(OaStdMove(*readyResult));
 	}
 
@@ -943,6 +945,108 @@ TEST_F(OaVkEngineTestFixture, VideoDecoder_PipelinesAsyncH264Conversion)
 	}
 
 	decoder.Destroy();
+}
+
+TEST_F(OaVkEngineTestFixture, VideoDecoder_DroppedAsyncConversionTicketRetiresSafely)
+{
+	auto fixtureResult = OaFileIo::ReadBinary(
+		OaTestAssetPath("Video/VisionTestPattern128x72_idr.h264"));
+	ASSERT_TRUE(fixtureResult.IsOk()) << fixtureResult.GetStatus().ToString();
+
+	auto& rt = Rt();
+	if (!OaVideoDecoder::IsCodecSupported(rt, OaVideoCodec::H264)) {
+		GTEST_SKIP() << "H.264 Vulkan Video decode is not supported on selected device";
+	}
+
+	OaVideoProfile profile = MakeH264FixtureProfile();
+	profile.MaxDpbSlots = 16;
+	auto decoderResult = OaVideoDecoder::Create(rt, profile);
+	ASSERT_TRUE(decoderResult.IsOk()) << decoderResult.GetStatus().ToString();
+	auto decoder = OaStdMove(*decoderResult);
+
+	OaVideoConversionOptions options = {};
+	options.ConvertToRgb = true;
+	options.PreferHardwareYCbCr = false;
+
+	OaVideoFrame firstNv12 = {};
+	ASSERT_TRUE(decoder.DecodeFrame(OaSpan<const OaU8>(*fixtureResult), firstNv12).IsOk());
+	auto firstRgbaResult = OaVideoDecoderInternal::AllocateRgbaFrame(
+		decoder, profile.Width, profile.Height);
+	ASSERT_TRUE(firstRgbaResult.IsOk()) << firstRgbaResult.GetStatus().ToString();
+	OaVideoFrame firstRgba = *firstRgbaResult;
+
+	OaEvent droppedReady = {};
+	{
+		auto ticketResult = OaVideoDecoderInternal::ConvertNv12ToRgbIntoAsync(
+			decoder, firstNv12, options, firstRgba);
+		ASSERT_TRUE(ticketResult.IsOk()) << ticketResult.GetStatus().ToString();
+		ASSERT_TRUE(ticketResult->IsValid());
+		droppedReady = ticketResult->Completion();
+		// Intentionally destroy the live ticket without Wait(). Its resources
+		// must remain valid until droppedReady completes.
+	}
+	ASSERT_TRUE(droppedReady.IsValid());
+	ASSERT_TRUE(droppedReady.Wait().IsOk());
+
+	// A subsequent dispatch collects the completed retirement and safely
+	// reuses the engine stream pool and bindless heap.
+	OaVideoFrame secondNv12 = {};
+	ASSERT_TRUE(decoder.DecodeFrame(OaSpan<const OaU8>(*fixtureResult), secondNv12).IsOk());
+	auto secondRgbaResult = OaVideoDecoderInternal::AllocateRgbaFrame(
+		decoder, profile.Width, profile.Height);
+	ASSERT_TRUE(secondRgbaResult.IsOk()) << secondRgbaResult.GetStatus().ToString();
+	OaVideoFrame secondRgba = *secondRgbaResult;
+	auto secondTicketResult = OaVideoDecoderInternal::ConvertNv12ToRgbIntoAsync(
+		decoder, secondNv12, options, secondRgba);
+	ASSERT_TRUE(secondTicketResult.IsOk()) << secondTicketResult.GetStatus().ToString();
+	ASSERT_TRUE(secondTicketResult->Wait().IsOk());
+
+	auto rgbaResult = OaVideoDecoderInternal::ReadbackRgba(decoder, secondRgba);
+	ASSERT_TRUE(rgbaResult.IsOk()) << rgbaResult.GetStatus().ToString();
+	ASSERT_EQ(rgbaResult->Size(), static_cast<OaUsize>(profile.Width * profile.Height * 4));
+	for (OaUsize pixel = 0; pixel < rgbaResult->Size(); pixel += 4) {
+		ASSERT_EQ((*rgbaResult)[pixel + 3], 255);
+	}
+
+	decoder.Destroy();
+}
+
+TEST(VideoDecoderLifecycle, AbandonedSubmittedSessionRetiresAtEngineClose)
+{
+	auto fixtureResult = OaFileIo::ReadBinary(
+		OaTestAssetPath("Video/VisionTestPattern128x72_idr.h264"));
+	ASSERT_TRUE(fixtureResult.IsOk()) << fixtureResult.GetStatus().ToString();
+
+	auto config = OaTestEngineConfig(OaPrecision::FP32);
+	config.RegisterAsGlobal = false;
+	config.PreloadEmbeddedPipelines = false;
+	config.EnablePipelineCache = false;
+	auto engineResult = OaEngine::Create(config);
+	ASSERT_TRUE(engineResult.IsOk()) << engineResult.GetStatus().ToString();
+	auto engine = OaStdMove(*engineResult);
+	if (not OaVideoDecoder::IsCodecSupported(*engine, OaVideoCodec::H264)) {
+		ASSERT_TRUE(engine->Close().IsOk());
+		GTEST_SKIP() << "H.264 Vulkan Video decode is not supported on selected device";
+	}
+
+	OaEvent completion;
+	{
+		auto decoderResult = OaVideoDecoder::Create(
+			*engine, MakeH264FixtureProfile());
+		ASSERT_TRUE(decoderResult.IsOk())
+			<< decoderResult.GetStatus().ToString();
+		auto decoder = OaStdMove(*decoderResult);
+		OaVideoFrame frame = {};
+		ASSERT_TRUE(decoder.DecodeFrame(
+			OaSpan<const OaU8>(*fixtureResult), frame).IsOk());
+		completion = frame.Ready;
+		ASSERT_TRUE(completion.IsValid());
+		// No Close/Destroy: the live video session and its semaphore must move to
+		// engine retirement without waiting or invalidating copied completion.
+	}
+
+	ASSERT_TRUE(completion.Wait().IsOk());
+	ASSERT_TRUE(engine->Close().IsOk());
 }
 
 TEST_F(OaVkEngineTestFixture, VideoDecoder_DecodeH265FrameFromLocalFixture)

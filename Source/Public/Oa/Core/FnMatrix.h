@@ -4,9 +4,8 @@
 #include <Oa/Core/MatrixStorage.h>
 #include <Oa/Core/MatrixShape.h>
 #include <Oa/Core/Status.h>
-#include <Oa/Runtime/Context.h>          // OaContextMatMulPrecision (MatMulNt arg)
 
-class OaComputeEngine;
+class OaEngine;
 class OaVkBatch;
 
 struct OaTopKResult {
@@ -106,8 +105,8 @@ void SubScalarInPlace(OaMatrix& InSelf, OaF32 InScalar);
 void DivScalarInPlace(OaMatrix& InSelf, OaF32 InScalar);
 void Fill(OaMatrix& InSelf, OaF32 InValue);
 
-// Multi-tensor batch operations — fuse N dispatches into one.
-// Up to 4 tensors per call; caller partitions larger counts across calls.
+// Multi-tensor batch operations. Complete groups of four are fused; any
+// remainder uses the equivalent direct operation without dropping inputs.
 void MultiFill(OaSpan<OaMatrix> InTensors, OaF32 InValue);
 void MultiAdd(OaSpan<OaMatrix> InDst, OaSpan<const OaMatrix> InSrc);
 
@@ -115,36 +114,28 @@ void MultiAdd(OaSpan<OaMatrix> InDst, OaSpan<const OaMatrix> InSrc);
 // Called automatically by OaGradientTape::Backward; manual use is optional.
 void FlushDeferredAccum();
 
-// Element-wise binary ops — broadcast-aware (manual implementation in
-// Source/Private/Oa/Core/Matrix/FnMatrixElemwise.cpp)
-[[nodiscard]] OaMatrix Add(const OaMatrix& InA, const OaMatrix& InB);
+// Element-wise binary ops — broadcast-aware implementations. Add's public
+// contract is schema-owned; the remaining signatures migrate incrementally.
 [[nodiscard]] OaMatrix Sub(const OaMatrix& InA, const OaMatrix& InB);
 [[nodiscard]] OaMatrix Mul(const OaMatrix& InA, const OaMatrix& InB);
 [[nodiscard]] OaMatrix Div(const OaMatrix& InA, const OaMatrix& InB);
 
 // Scale/Neg/Abs/Log/Sqrt/Pow/AddScalar/SubScalar/DivScalar: see FnMatrixElemwise.gen.h (autogen).
 
-// Auto = router picks by device caps + shape (BF16 CoopMat on RTX 5090,
-// FP32 Tiled on iGPU). Fp32 forces the scalar tile path (apples-to-apples
-// vs the FP32 path). Bf16/Fp16 explicitly request those tensor-core tiers
-// and fall back to Naive if the device doesn't support them.
-[[nodiscard]] OaMatrix MatMulNt(
-	const OaMatrix& InA,
-	const OaMatrix& InB,
-	OaContextMatMulPrecision InPrecision = OaContextMatMulPrecision::Auto);
+// MatMulNt's public declaration and semantic contract are generated from
+// CoreFnMatrixBlas.toml. Its implementation remains hand-tuned and routes
+// through the internal GEMM planner.
 
 // Reduction operations
-[[nodiscard]] OaMatrix Sum(const OaMatrix& InA, OaI32 InDim = -1);
-[[nodiscard]] OaMatrix Mean(const OaMatrix& InA, OaI32 InDim = -1);
-[[nodiscard]] OaMatrix Max(const OaMatrix& InA, OaI32 InDim = -1);
+// Sum, Mean, and Max declarations and semantic contracts are generated from
+// CoreFnMatrixReduce.toml. Their private reduction lowerings remain manual.
 [[nodiscard]] OaI64 Argmax(const OaMatrix& InA, OaI32 InDim = -1);
 
 // DescribeSum / DescribeMax buffer-level helpers retired. Use the
 // OaMatrix-level Sum/Max APIs; implementation records through OaContext.
 
-// Activation functions
-[[nodiscard]] OaMatrix Softmax(const OaMatrix& InA, OaI32 InDim = -1);
-[[nodiscard]] OaMatrix LogSoftmax(const OaMatrix& InA, OaI32 InDim = -1);
+// Softmax and LogSoftmax declarations and semantic contracts are generated
+// from CoreFnMatrixReduce.toml. Their private axis lowerings remain manual.
 
 // Math operations
 // Sqrt/Pow overloads: see FnMatrixElemwise.gen.h (autogen).

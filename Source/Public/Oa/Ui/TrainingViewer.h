@@ -44,14 +44,20 @@ public:
 	OaTrainingViewerSource(OaTrainingViewerSource&&) = delete;
 	OaTrainingViewerSource& operator=(OaTrainingViewerSource&&) = delete;
 
-	OaStatus Open(OaGraphicsEngine& InEngine) override;
-	void Init(OaDeviceUi& InUi) override;
+	OaStatus Open(OaEngine& InEngine) override;
+	OaStatus Init(
+		OaInputSystem& InInput,
+		OaFunc<void(bool)> InCapturePointer) override;
 	void Update(OaF32 InDeltaMs) override;
-	void Render(OaUi& InUi, OaDeviceUi& InDeviceUi) override;
+	void Render(
+		OaUi& InUi,
+		const OaTextAtlas& InTextAtlas,
+		OaU32 InWidth,
+		OaU32 InHeight) override;
 	void MarkConsumed(
 		const OaVkTimelineSemaphore& InSemaphore,
 		OaU64 InValue) override;
-	void Close(OaDeviceUi& InUi) override;
+	[[nodiscard]] OaStatus Close() override;
 
 	[[nodiscard]] OaStatus PublishPreview(OaTrainingPreviewFrame InFrame);
 

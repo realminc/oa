@@ -1,0 +1,65 @@
+{
+  "schema": "oa.benchmark_suite.v1",
+  "workloads": [
+    {
+      "name": "core.gemm.nlp_qkv",
+      "command_id": "BenchGemmVariants.CanonicalNlpQkv.v1",
+      "command": ["{binary_root}/Test/Runtime/Gemm/BenchGemmVariants", "--gtest_filter=BenchGemmVariants.CanonicalNlpQkv"],
+      "contract": {"dtype": "fp32", "m": "1024", "n": "32", "k": "32", "training": "true"},
+      "metric_regex": "OABENCH gemm\\.nlp_qkv p50_ms=(?P<value>[0-9.]+)",
+      "metric_name": "gpu_p50",
+      "metric_unit": "ms",
+      "require_regex": ["\\[  PASSED  \\] 1 test"]
+    },
+    {
+      "name": "ml.transformer.nlp_dense_block",
+      "command_id": "BenchTransformerComponents.NlpShape.dense_block.v1",
+      "command": ["{binary_root}/Test/Ml/Nn/BenchTransformerComponents", "--gtest_filter=BenchTransformerComponents.NlpShape"],
+      "contract": {"batch_tokens": "1024", "model_dim": "32", "path": "complete_dense_block"},
+      "metric_regex": "complete dense block\\s+mean=\\s*[0-9.]+ ms\\s+p50=\\s*(?P<value>[0-9.]+)",
+      "metric_name": "gpu_p50",
+      "metric_unit": "ms",
+      "require_regex": ["\\[  PASSED  \\] 1 test"]
+    },
+    {
+      "name": "ml.moe.nlp_sparse_backward",
+      "command_id": "BenchMoeComponents.NlpShape.sparse_backward.v1",
+      "command": ["{binary_root}/Test/Ml/Nn/BenchMoeComponents", "--gtest_filter=BenchMoeComponents.NlpShape"],
+      "contract": {"tokens": "1024", "model_dim": "32", "experts": "4", "top_k": "2", "path": "complete_sparse_backward"},
+      "metric_regex": "complete sparse backward\\s+mean=\\s*[0-9.]+ ms\\s+p50=\\s*(?P<value>[0-9.]+)",
+      "metric_name": "gpu_p50",
+      "metric_unit": "ms",
+      "require_regex": ["\\[  PASSED  \\] 1 test"]
+    },
+    {
+      "name": "runtime.upload_ring.4k_x64",
+      "command_id": "VkUploadRingBenchmark.BatchedVsLegacyPerCopy.4096x64.v1",
+      "command": ["{binary_root}/Test/Runtime/Stream/BenchUploadRing", "--gtest_filter=VkUploadRingBenchmark.BatchedVsLegacyPerCopy"],
+      "contract": {"bytes": "4096", "copies": "64", "path": "persistent_upload_ring"},
+      "metric_regex": "(?m)^\\s*4096\\s+64\\s+[0-9.]+\\s+(?P<value>[0-9.]+)",
+      "metric_name": "batch_median",
+      "metric_unit": "us",
+      "require_regex": ["\\[  PASSED  \\] 1 test"]
+    },
+    {
+      "name": "runtime.readback_reused.4k_x32",
+      "command_id": "VkUploadRingBenchmark.PersistentReadbackVsPerCallResources.4096x32.v1",
+      "command": ["{binary_root}/Test/Runtime/Stream/BenchUploadRing", "--gtest_filter=VkUploadRingBenchmark.PersistentReadbackVsPerCallResources"],
+      "contract": {"bytes": "4096", "copies": "32", "path": "reused_readback"},
+      "metric_regex": "(?m)^\\s*4096\\s+32\\s+[0-9.]+\\s+(?P<value>[0-9.]+)",
+      "metric_name": "batch_median",
+      "metric_unit": "us",
+      "require_regex": ["\\[  PASSED  \\] 1 test"]
+    },
+    {
+      "name": "vision.av1.decode",
+      "command_id": "VideoDecodeReference.Av1.step_forward_p50.v1",
+      "command": ["{binary_root}/Test/Vision/Codec/TestVideoDecodeReference", "--gtest_filter=VideoDecodeReference.Av1"],
+      "contract": {"codec": "av1", "frames": "8", "path": "step_forward_p50"},
+      "metric_regex": "OABENCH video\\.av1 step_forward_p50_ms=(?P<value>[0-9.]+)",
+      "metric_name": "step_forward_p50_wall",
+      "metric_unit": "ms",
+      "require_regex": ["\\[   psnr   \\] av1\\s+frame 7: [3-9][0-9]\\.[0-9] dB", "\\[  PASSED  \\] 1 test"]
+    }
+  ]
+}

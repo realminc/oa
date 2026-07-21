@@ -16,7 +16,7 @@
 namespace {
 
 template <typename Enqueue>
-OaPerfStat Measure(OaComputeEngine& InEngine, const char* InName, Enqueue&& InEnqueue,
+OaPerfStat Measure(OaEngine& InEngine, const char* InName, Enqueue&& InEnqueue,
 	OaU32 InWarmup = 5, OaU32 InSamples = 25) {
 	OaGpuTimer timer;
 	if (auto status = timer.Init(InEngine, InName); not status.IsOk()) {
@@ -26,8 +26,12 @@ OaPerfStat Measure(OaComputeEngine& InEngine, const char* InName, Enqueue&& InEn
 	auto& ctx = OaContext::GetDefault();
 	for (OaU32 i = 0; i < InWarmup + InSamples; ++i) {
 		InEnqueue();
-		if (auto status = ctx.ExecuteAsync(&timer); not status.IsOk()) {
+		auto submitted = ctx.Submit(&timer);
+		if (not submitted.IsOk()) {
 			throw std::runtime_error("BenchTransformerComponents execution failed");
+		}
+		if (auto status = ctx.Wait(submitted.GetValue()); not status.IsOk()) {
+			throw std::runtime_error("BenchTransformerComponents completion failed");
 		}
 		stat.Push(timer.ReadbackMs(InEngine.Device));
 	}
@@ -41,7 +45,7 @@ void Print(const char* InName, const OaPerfStat& InStat) {
 }
 
 void MeasureAttentionForwardPair(
-	OaComputeEngine& InEngine, const char* InPrefix,
+	OaEngine& InEngine, const char* InPrefix,
 	OaI32 InBatch, OaI32 InHeads, OaI32 InSeqLen, OaI32 InHeadDim) {
 	auto& ctx = OaContext::GetDefault();
 	const OaI32 batchHeads = InBatch * InHeads;
@@ -74,7 +78,7 @@ void MeasureAttentionForwardPair(
 }
 
 void MeasureAttentionTrainingPair(
-	OaComputeEngine& InEngine, const char* InPrefix,
+	OaEngine& InEngine, const char* InPrefix,
 	OaI32 InBatch, OaI32 InHeads, OaI32 InSeqLen, OaI32 InHeadDim) {
 	auto& ctx = OaContext::GetDefault();
 	const OaI32 batchHeads = InBatch * InHeads;
@@ -149,9 +153,9 @@ OaFnMatrix::OaLinearWeightBiasBwdResult LinearWeightBiasBwdScalarForBench(
 
 TEST(BenchTransformerComponents, AlmLinearShape) {
 	if (not OaVkTestEngineOk()) GTEST_SKIP();
-	auto& engine = *OaComputeEngine::GetGlobal();
+	auto& engine = *OaEngine::GetGlobal();
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	OaGradNo noGrad;
 
 	// Current Iris-Xe presentation configuration: B=64, 64 motion tokens plus
@@ -208,9 +212,9 @@ TEST(BenchTransformerComponents, AlmLinearShape) {
 
 TEST(BenchTransformerComponents, LinearParamCrossover) {
 	if (not OaVkTestEngineOk()) GTEST_SKIP();
-	auto& engine = *OaComputeEngine::GetGlobal();
+	auto& engine = *OaEngine::GetGlobal();
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	OaGradNo noGrad;
 	struct Shape { OaI32 M, N, K; };
 	constexpr Shape shapes[] = {
@@ -247,9 +251,9 @@ TEST(BenchTransformerComponents, LinearParamCrossover) {
 
 TEST(BenchTransformerComponents, NlpShape) {
 	if (not OaVkTestEngineOk()) GTEST_SKIP();
-	auto& engine = *OaComputeEngine::GetGlobal();
+	auto& engine = *OaEngine::GetGlobal();
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	OaGradNo noGrad;
 
 	constexpr OaI32 B = 64, S = 16, T = B * S, D = 32, FF = 64;
@@ -398,9 +402,9 @@ TEST(BenchTransformerComponents, NlpShape) {
 
 TEST(BenchTransformerComponents, FlashAttentionForward) {
 	if (not OaVkTestEngineOk()) GTEST_SKIP();
-	auto& engine = *OaComputeEngine::GetGlobal();
+	auto& engine = *OaEngine::GetGlobal();
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	OaGradNo noGrad;
 	MeasureAttentionForwardPair(engine, "NLP B64 H1 S16 Dh32", 64, 1, 16, 32);
 	MeasureAttentionForwardPair(engine, "B64 H1 S32 Dh32", 64, 1, 32, 32);
@@ -410,9 +414,9 @@ TEST(BenchTransformerComponents, FlashAttentionForward) {
 
 TEST(BenchTransformerComponents, FlashAttentionTraining) {
 	if (not OaVkTestEngineOk()) GTEST_SKIP();
-	auto& engine = *OaComputeEngine::GetGlobal();
+	auto& engine = *OaEngine::GetGlobal();
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	MeasureAttentionTrainingPair(engine, "NLP B64 H1 S16 Dh32", 64, 1, 16, 32);
 	MeasureAttentionTrainingPair(engine, "ALM B64 H6 S66 Dh32", 64, 6, 66, 32);
 }

@@ -47,7 +47,7 @@ TEST(LinearGelu, ForwardMatchesUnfused) {
 
 	ForceFp32Gemm();
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 
 	OaLinear linear(kIn, kOut);
 	linear.SetActivation(OaActivation::Gelu);
@@ -89,7 +89,7 @@ TEST(LinearGelu, BackwardNumericalGrad) {
 	ForceFp32Gemm();
 	OaFnMatrix::SetRngSeed(2024);
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 
 	OaLinear linear(kIn, kOut);
 	linear.SetActivation(OaActivation::Gelu);
@@ -156,7 +156,7 @@ TEST(LinearGelu, BackwardNumericalGrad) {
 // exercises the actual BF16 fused path that NLP tutorials hit.
 TEST(LinearGelu, FusedBf16NlpShapesNoHang) {
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 
 	// NLP-scale shapes: large batch, small output dim (divisible by 16).
 	struct Shape { OaI32 M; OaI32 N; OaI32 K; };

@@ -67,7 +67,6 @@ static inline OaEngineConfig OaTestEngineConfig(OaPrecision InPrecision) {
 }
 
 // Overload: explicit NumericMode for accuracy/determinism tests.
-// See Docs/Rewrite/Opus/OaNumericStability.md §3.
 static inline OaEngineConfig OaTestEngineConfig(OaPrecision InPrecision, OaNumericMode InMode) {
 	OaEngineConfig cfg = OaTestEngineConfig(InPrecision);
 	cfg.NumericMode = InMode;
@@ -138,9 +137,9 @@ static inline OaPath OaTestAssetPath(OaStringView InRelativePath) {
 #endif
 }
 
-// True after OaVkTestEnvironment::SetUp when OaComputeEngine::Create succeeded (global device valid).
+// True after OaVkTestEnvironment::SetUp when OaEngine::Create succeeded (global device valid).
 static inline bool OaVkTestEngineOk() {
-	OaComputeEngine* g = OaComputeEngine::GetGlobal();
+	OaEngine* g = OaEngine::GetGlobal();
 	return g != nullptr && g->Device.Device != nullptr;
 }
 
@@ -191,10 +190,10 @@ static inline void OaExpectValidProbability(const OaMatrix& InTensor, OaI32 InDi
 	}
 }
 
-// DEPRECATED: OaComputeEngine::Create() now automatically calls EnsureAllEmbeddedLiboaPipelines().
+// DEPRECATED: OaEngine::Create() now automatically calls EnsureAllEmbeddedLiboaPipelines().
 // This function is kept for backward compatibility with tests that create engines with RegisterAsGlobal=false.
 // Load every *.spv from OA_SPIRV_DIR into InRt (dtype spec constant matches engine precision).
-static inline void OaTestLoadShaders(OaComputeEngine& InRt) {
+static inline void OaTestLoadShaders(OaEngine& InRt) {
 	// Skip if shaders are embedded (OA_EMBED_SHADERS=ON) - they're already loaded by Create()
 	// This function is now a no-op since embedded shaders are the default
 	(void)InRt; // Suppress unused parameter warning
@@ -215,7 +214,7 @@ static inline double OaBenchmark(const char* InName, OaI32 InIterations, std::fu
 	return avg;
 }
 
-// Vulkan Engine Fixture — Init OaComputeEngine for all ML tests (lavapipe for CI)
+// Vulkan Engine Fixture — Init OaEngine for all ML tests (lavapipe for CI)
 // Set OA_TEST_BF16=1 to run with BF16 precision.
 
 class OaVkTestEnvironment : public ::testing::Environment {
@@ -227,10 +226,10 @@ public:
 			prec = OaPrecision::BF16;
 		}
 		OaEngineConfig ecfg = OaTestEngineConfig(prec);
-		auto result = OaComputeEngine::Create(ecfg);
+		auto result = OaEngine::Create(ecfg);
 		if (!result) {
 			fprintf(stderr,
-				"OaVkTestEnvironment: Failed to create OaComputeEngine: %s\n",
+				"OaVkTestEnvironment: Failed to create OaEngine: %s\n",
 				result.GetStatus().ToString().c_str());
 			return;
 		}
@@ -259,17 +258,17 @@ public:
 	}
 
 private:
-	OaUniquePtr<OaComputeEngine> Engine_;
+	OaUniquePtr<OaEngine> Engine_;
 };
 
 // Optional TEST_F base: asserts gtest global Vulkan environment created the engine.
 class OaVkEngineTestFixture : public ::testing::Test {
 protected:
 	void SetUp() override {
-		ASSERT_TRUE(OaVkTestEngineOk()) << "OaVkTestEnvironment did not create OaComputeEngine (see stderr)";
+		ASSERT_TRUE(OaVkTestEngineOk()) << "OaVkTestEnvironment did not create OaEngine (see stderr)";
 	}
 
-	static OaComputeEngine& Rt() { return *OaComputeEngine::GetGlobal(); }
+	static OaEngine& Rt() { return *OaEngine::GetGlobal(); }
 };
 
 // Test Helpers

@@ -6,7 +6,7 @@
 #include <Oa/Core/Status.h>
 #include <Oa/Ml/FnLoss.h>
 
-class OaComputeEngine;
+class OaEngine;
 class OaVkBatch;
 
 // OaFnMatrix — ML module extension for neural network operations.
@@ -305,13 +305,16 @@ void VqEmaUpdate(const OaMatrix& InZe, const OaMatrix& InIdx,
 /// @param InForwardOutput: Output from forward Softmax pass
 /// @param InGradOutput: Gradient flowing back from next layer
 /// @return Gradient w.r.t. input
-[[nodiscard]] OaMatrix SoftmaxBwd(const OaMatrix& InForwardOutput, const OaMatrix& InGradOutput);
+[[nodiscard]] OaMatrix SoftmaxBwd(
+	const OaMatrix& InForwardOutput, const OaMatrix& InGradOutput,
+	OaI32 InDim = -1);
 
 /// Stable LogSoftmax backward.
 /// Computes: d_input = d_output - exp(log_softmax_output) * sum(d_output)
 [[nodiscard]] OaMatrix LogSoftmaxBwd(
 	const OaMatrix& InForwardOutput,
-	const OaMatrix& InGradOutput);
+	const OaMatrix& InGradOutput,
+	OaI32 InDim = -1);
 
 /// TanhBwd: Backward pass for Tanh activation.
 /// Computes: d_input = d_output * (1 - tanh(x)^2)
@@ -495,13 +498,8 @@ void VqEmaUpdate(const OaMatrix& InZe, const OaMatrix& InIdx,
 
 // ─── Normalization Layers ─────────────────────────────────────────
 
-[[nodiscard]] OaMatrix LayerNorm(
-	const OaMatrix& InSelf, const OaMatrix& InWeight, const OaMatrix& InBias,
-	OaF32 InEps
-);
-[[nodiscard]] OaMatrix RmsNorm(
-	const OaMatrix& InSelf, const OaMatrix& InWeight, OaF32 InEps
-);
+// LayerNorm and RmsNorm declarations and semantic contracts are generated
+// from MlFnMatrixNorm.toml. Their private normalization lowerings remain manual.
 [[nodiscard]] OaMatrix RmsNormGated(
 	const OaMatrix& InSelf, const OaMatrix& InWeight, const OaMatrix& InBias,
 	const OaMatrix& InZ, OaF32 InEps, bool InNormBeforeGate = true
@@ -520,7 +518,7 @@ void VqEmaUpdate(const OaMatrix& InZe, const OaMatrix& InIdx,
 [[nodiscard]] OaLayerNormBwdResult LayerNormBwd(
 	const OaMatrix& InX, const OaMatrix& InWeight, const OaMatrix& InBias,
 	const OaMatrix& InOut, const OaMatrix& InMean, const OaMatrix& InRstd,
-	const OaMatrix& InGradOutput
+	const OaMatrix& InGradOutput, OaF32 InEps = 1e-5F
 );
 
 /// RmsNormBwd: Backward pass for RmsNorm.
@@ -533,7 +531,7 @@ void VqEmaUpdate(const OaMatrix& InZe, const OaMatrix& InIdx,
 [[nodiscard]] OaRmsNormBwdResult RmsNormBwd(
 	const OaMatrix& InX, const OaMatrix& InWeight,
 	const OaMatrix& InOut, const OaMatrix& InRstd,
-	const OaMatrix& InGradOutput
+	const OaMatrix& InGradOutput, OaF32 InEps = 1e-5F
 );
 
 /// RmsNormGatedBwd: backward for RmsNormGated (norm_before_gate = true).

@@ -3,7 +3,7 @@
 // Zero-copy: VkImage (NV12) → compressed bitstream
 //
 // Mirrors OaVideoDecoder's shape (Source/Public/Oa/Vision/VideoDecoder.h):
-//   QueryEncodeCapabilities → Create → EncodeFrame → Flush → Destroy.
+//   QueryEncodeCapabilities → Create → EncodeFrame → Flush → Close.
 // The encoder MANUFACTURES the H.264 SPS/PPS at session-parameter creation
 // time (the decoder parses them from the bitstream); see VideoEncoderCodec.cpp
 // once the codec implementation lands.
@@ -145,6 +145,9 @@ public:
 	// input image via the CvtRgbaToNv12 compute shader (3g.2). InRgba
 	// is the source's OaVkBuffer (typically OaTexture::DeviceBuf —
 	// FromPixels and LoadFile both produce buffer-backed textures).
+	// The source must be a completed, non-aliased allocation owned by this
+	// encoder's engine. This low-level call has no producer event/context input;
+	// use OaFnVideo::Encode for a deferred texture produced in an OaContext.
 	// On success, compatibility slot 0 holds the converted picture and is
 	// ready for the next synchronous EncodeFrame call.
 	OaStatus UploadInputRgba(
@@ -163,7 +166,8 @@ public:
 
 	// Submit RGBA conversion + encode without a per-frame host wait. Completed
 	// frames are returned in presentation order through OutReady. When the ring
-	// wraps, only the oldest slot is waited and harvested.
+	// wraps, only the oldest slot is waited and harvested. InRgba has the same
+	// completed engine-owned source precondition as UploadInputRgba.
 	OaStatus SubmitRgba(
 		const OaVkBuffer& InRgba,
 		OaU32 InVisibleWidth,
@@ -190,15 +194,18 @@ public:
 		OaYCbCrModel InColorSpace = OaYCbCrModel::BT709,
 		bool InFullRange = false,
 		OaU32 InArrayLayer = 0U,
-		const OaVkTimelineSemaphore* InReadySemaphore = nullptr,
-		OaU64 InReadyValue = 0U,
+		OaEvent InReady = {},
 		OaU32 InExternalQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
 		OaCompletionToken* OutInputConsumed = nullptr);
 
 	// Flush encoder (get remaining buffered frames — B-frame reordering).
 	OaStatus Flush(OaVec<OaEncodedFrame>& OutFrames);
 
-	// Release all resources.
+	// Explicit completion and resource-release boundary. Pending encoded output
+	// is discarded; call Flush() first when the packets are required.
+	[[nodiscard]] OaStatus Close();
+	// Compatibility wrapper that logs Close() failures. Prefer Close() where
+	// the shutdown result can be propagated.
 	void Destroy();
 
 	[[nodiscard]] const OaVideoEncodeProfile& GetProfile() const noexcept { return Profile_; }
@@ -244,12 +251,15 @@ private:
 		VkImage InImage, VkImageView InImageView, VkFormat InFormat,
 		VkImageLayout InLayout, OaU32 InVisibleWidth, OaU32 InVisibleHeight,
 		OaYCbCrModel InColorSpace, bool InFullRange, OaU32 InArrayLayer,
-		const OaVkTimelineSemaphore* InReadySemaphore, OaU64 InReadyValue,
+		OaEvent InReady,
 		OaU32 InExternalQueueFamilyIndex);
 	OaStatus SubmitEncode_(EncodeSlot& InSlot, OaU64 InPts);
 	OaStatus Harvest_(EncodeSlot& InSlot, bool InWait,
 		OaEncodedFrame& OutFrame, bool& OutReady);
-	void DestroySlot_(EncodeSlot& InSlot) noexcept;
+	[[nodiscard]] OaStatus DestroySlot_(EncodeSlot& InSlot);
+	void Abandon_() noexcept;
+	static OaStatus CompleteRetired_(void* InPayload);
+	static void ReleaseRetired_(void* InPayload);
 
 	OaVideoEncodeProfile Profile_                       = {};
 	class OaEngine* Rt_                                 = nullptr;

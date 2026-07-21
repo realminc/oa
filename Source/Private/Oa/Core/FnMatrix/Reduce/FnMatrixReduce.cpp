@@ -8,31 +8,78 @@
 #include <Oa/Core/Types.h>
 #include <Oa/Core/BufferAccess.h>
 #include <Oa/Runtime/Context.h>
-#include <Oa/Runtime/Dispatch.h>
-#include <Oa/Runtime/Engine.h>
-#include <Oa/Runtime/ComputeGraph.h>
+#include <Oa/Runtime/DispatchDesc.h>
 #include <Oa/Core/Validation.h>
-#include <Oa/Ml/Autograd.h>
+#include <Oa/Core/Operation.h>
+#include <Oa/Ml/Autograd/Nodes.h>
+#include "../../../Ml/Autograd/AutogradAttach.gen.h"
+#include "../FnMatrixAxis.h"
+#include "FnMatrixReduceLowering.h"
 
 #include <cassert>
 static OaU32 DivCeil(OaU32 InA, OaU32 InB) { return (InA + InB - 1) / InB; }
 
-static void AttachSumGrad_(const OaMatrix& InA, OaMatrix& OutSum) {
-	if (OaFnAutograd::IsEnabled() and InA.RequiresGrad()) {
-		auto gradFn = OaMakeSharedPtr<OaGradSum>();
-		gradFn->Saved_ = OaVec<OaMatrix>{InA};
-		gradFn->SetGraphInputs(OaVec<OaMatrix>{InA});
-		gradFn->SequenceNr_ = OaFnAutograd::NextSeq();
-		gradFn->OutputShape_ = OutSum.GetShape();
-		OutSum.MutAutograd().GradFn = gradFn;
+OaStatus OaFnMatrixPrivate::LowerFullMean(
+	OaContext& InContext,
+	const OaMatrix& InInput,
+	OaMatrix& OutMean,
+	const OaOperationContract& InContract,
+	OaSemanticOperationId InSemanticOperation)
+{
+	const OaI64 elementCount = InInput.NumElements();
+	if (elementCount <= 0
+		or static_cast<OaU64>(elementCount) > std::numeric_limits<OaU32>::max()
+		or OutMean.NumElements() != 1
+		or OutMean.GetDtype() != InInput.GetDtype()
+		or not InInput.HasStorage() or not OutMean.HasStorage())
+	{
+		return OaStatus::Error(OaStatusCode::InvalidArgument,
+			"full mean lowering requires a non-empty 32-bit input and one same-dtype output");
 	}
+
+	const OaU32 count = static_cast<OaU32>(elementCount);
+	OaMatrix sum = OaFnMatrix::Empty(OaMatrixShape{1}, InInput.GetDtype());
+	if (not sum.HasStorage()) {
+		return OaStatus::Error(OaStatusCode::OutOfMemory,
+			"full mean lowering failed to allocate reduction storage");
+	}
+	struct { OaU32 Count; } reductionPush{count};
+	OaBufferAccess reductionAccess[] = {
+		OaBufferAccess::Read, OaBufferAccess::Write};
+	const OaMatrix* reductionMatrices[] = {&InInput, &sum};
+	OaMatrixDispatchDesc reduction;
+	reduction.Dispatch.Operation = InContract.Name;
+	reduction.Dispatch.SemanticOperations =
+		OaSpan<const OaSemanticOperationId>(&InSemanticOperation, 1U);
+	reduction.Dispatch.OperationContractHash = InContract.Hash;
+	reduction.Dispatch.Kernel = "Sum";
+	reduction.Dispatch.Access = OaSpan<OaBufferAccess>(reductionAccess, 2U);
+	reduction.Dispatch.PushData = &reductionPush;
+	reduction.Dispatch.PushSize = sizeof(reductionPush);
+	reduction.Matrices = OaSpan<const OaMatrix* const>(reductionMatrices, 2U);
+	OA_RETURN_IF_ERROR(InContext.Record(reduction));
+
+	struct { OaU32 Count; OaF32 Alpha; } scalePush{
+		1U, 1.0F / static_cast<OaF32>(count)};
+	OaBufferAccess scaleAccess[] = {
+		OaBufferAccess::Read, OaBufferAccess::Write};
+	const OaMatrix* scaleMatrices[] = {&sum, &OutMean};
+	OaMatrixDispatchDesc scale;
+	scale.Dispatch.Operation = InContract.Name;
+	scale.Dispatch.SemanticOperations =
+		OaSpan<const OaSemanticOperationId>(&InSemanticOperation, 1U);
+	scale.Dispatch.OperationContractHash = InContract.Hash;
+	scale.Dispatch.Kernel = "Scale";
+	scale.Dispatch.Access = OaSpan<OaBufferAccess>(scaleAccess, 2U);
+	scale.Dispatch.PushData = &scalePush;
+	scale.Dispatch.PushSize = sizeof(scalePush);
+	scale.Matrices = OaSpan<const OaMatrix* const>(scaleMatrices, 2U);
+	return InContext.Record(scale);
 }
 
 // Reductions
 OaMatrix OaFnMatrix::Sum(const OaMatrix& InA, OaI32 InDim) {
 	OaI64 n = InA.NumElements();
-	if (n == 1) { OaMatrix out = InA.Clone(); AttachSumGrad_(InA, out); return out; }
-
 	auto& ctx = OaContext::GetDefault();
 
 	OaI32 resolvedDim = InDim;
@@ -49,31 +96,138 @@ OaMatrix OaFnMatrix::Sum(const OaMatrix& InA, OaI32 InDim) {
 			outShape.Dims[i] = (i == resolvedDim) ? 1 : InA.Size(i);
 
 		OaMatrix out = OaFnMatrix::Zeros(outShape, InA.Dtype_);
+		const auto semantic = ctx.RecordOperation(
+			OaOperationRegistry::Sum, {&InA}, {&out},
+			{OaOperationAttribute::FromSignedInteger("Dim", InDim)});
+		if (not semantic.IsOk()) return {};
 		OaU32 totalOut = static_cast<OaU32>(outerSize * innerSize);
 		struct { OaU32 OuterSize; OaU32 DimSize; OaU32 InnerSize; } push{
 			static_cast<OaU32>(outerSize), static_cast<OaU32>(dimSize), static_cast<OaU32>(innerSize)};
 		OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Write};
-		ctx.Add("SumDim", {&InA, &out}, access, &push, sizeof(push), DivCeil(totalOut, 256));
+		ctx.Add("SumDim", {&InA, &out}, access, &push, sizeof(push),
+			DivCeil(totalOut, 256), 1, 1,
+			OaOperationRegistry::Sum.Name, 0, OaOperationRegistry::Sum.Hash,
+			0, 0, semantic.GetValue());
 
-		AttachSumGrad_(InA, out);
+		const auto attached = OaGeneratedAutogradAttach::OaFnMatrix::Sum(
+			out, InA, semantic.GetValue());
+		if (not attached.IsOk()) {
+			OA_LOG_ERROR(OaLogComponent::Core,
+				"Sum semantic autograd attachment failed: %s",
+				attached.GetMessage().c_str());
+			return {};
+		}
 		return out;
 	}
 
 	OaMatrix out = OaFnMatrix::Zeros(OaMatrixShape{1}, InA.Dtype_);
+	const auto semantic = ctx.RecordOperation(
+		OaOperationRegistry::Sum, {&InA}, {&out},
+		{OaOperationAttribute::FromSignedInteger("Dim", InDim)});
+	if (not semantic.IsOk()) return {};
 	struct { OaU32 Count; } push{static_cast<OaU32>(n)};
 	OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Write};
-	ctx.Add("Sum", {&InA, &out}, access, &push, sizeof(push), 1);
+	ctx.Add("Sum", {&InA, &out}, access, &push, sizeof(push), 1, 1, 1,
+		OaOperationRegistry::Sum.Name, 0, OaOperationRegistry::Sum.Hash,
+		0, 0, semantic.GetValue());
 
-	AttachSumGrad_(InA, out);
+	const auto attached = OaGeneratedAutogradAttach::OaFnMatrix::Sum(
+		out, InA, semantic.GetValue());
+	if (not attached.IsOk()) {
+		OA_LOG_ERROR(OaLogComponent::Core,
+			"Sum semantic autograd attachment failed: %s",
+			attached.GetMessage().c_str());
+		return {};
+	}
 	return out;
 }
 
 OaMatrix OaFnMatrix::Mean(const OaMatrix& InA, OaI32 InDim) {
-	OaMatrix s = Sum(InA, InDim);
-	OaF32 count = (InDim >= 0 and InDim < InA.Rank())
-		? static_cast<OaF32>(InA.Size(InDim))
-		: static_cast<OaF32>(InA.NumElements());
-	return Scale(s, 1.0f / count);
+	const OaI64 elementCount = InA.NumElements();
+	if (InA.Rank() <= 0 or elementCount <= 0 or InDim < -1
+		or InDim >= InA.Rank()
+		or static_cast<OaU64>(elementCount)
+			> std::numeric_limits<OaU32>::max())
+	{
+		OA_LOG_ERROR(OaLogComponent::ML,
+			"Mean: expected a non-empty matrix and Dim=-1 or a valid axis");
+		return {};
+	}
+
+	OaFnMatrixAxisShape axis;
+	const bool reduceAxis = InDim >= 0;
+	if (reduceAxis and not OaResolveFnMatrixAxis(InA, InDim, axis)) {
+		OA_LOG_ERROR(OaLogComponent::ML,
+			"Mean: selected axis exceeds the 32-bit reduction address space");
+		return {};
+	}
+
+	OaMatrixShape outputShape{1};
+	OaU32 outputCount = 1U;
+	OaU32 reductionCount = static_cast<OaU32>(elementCount);
+	if (reduceAxis) {
+		outputShape.Rank = InA.Rank();
+		for (OaI32 dim = 0; dim < InA.Rank(); ++dim) {
+			outputShape.Dims[dim] = dim == InDim ? 1 : InA.Size(dim);
+		}
+		outputCount = axis.GroupCount();
+		reductionCount = axis.DimSize;
+	}
+
+	auto& ctx = OaContext::GetDefault();
+	OaMatrix out = OaFnMatrix::Empty(outputShape, InA.GetDtype());
+	const auto semantic = ctx.RecordOperation(
+		OaOperationRegistry::Mean, {&InA}, {&out},
+		{OaOperationAttribute::FromSignedInteger("Dim", InDim)});
+	if (not semantic.IsOk()) return {};
+	if (not reduceAxis) {
+		const auto lowering = OaFnMatrixPrivate::LowerFullMean(
+			ctx, InA, out, OaOperationRegistry::Mean, semantic.GetValue());
+		if (not lowering.IsOk()) {
+			OA_LOG_ERROR(OaLogComponent::ML,
+				"Mean lowering failed: %s", lowering.GetMessage().c_str());
+			return {};
+		}
+
+		const auto attached = OaGeneratedAutogradAttach::OaFnMatrix::Mean(
+			out, InA, InDim, semantic.GetValue());
+		if (not attached.IsOk()) {
+			OA_LOG_ERROR(OaLogComponent::ML,
+				"Mean semantic autograd attachment failed: %s",
+				attached.GetMessage().c_str());
+			return {};
+		}
+		return out;
+	}
+
+	OaMatrix sum = OaFnMatrix::Empty(outputShape, InA.GetDtype());
+	OaBufferAccess reductionAccess[] = {
+		OaBufferAccess::Read, OaBufferAccess::Write};
+	struct { OaU32 OuterSize; OaU32 DimSize; OaU32 InnerSize; } push{
+		axis.OuterSize, axis.DimSize, axis.InnerSize};
+	ctx.Add("SumDim", {&InA, &sum}, reductionAccess, &push, sizeof(push),
+		DivCeil(outputCount, 256U), 1, 1,
+		OaOperationRegistry::Mean.Name, 0, OaOperationRegistry::Mean.Hash,
+		0, 0, semantic.GetValue());
+
+	struct { OaU32 Count; OaF32 Alpha; } scalePush{
+		outputCount, 1.0F / static_cast<OaF32>(reductionCount)};
+	OaBufferAccess scaleAccess[] = {
+		OaBufferAccess::Read, OaBufferAccess::Write};
+	ctx.Add("Scale", {&sum, &out}, scaleAccess, &scalePush, sizeof(scalePush),
+		DivCeil(outputCount, 256U), 1, 1,
+		OaOperationRegistry::Mean.Name, 0, OaOperationRegistry::Mean.Hash,
+		0, 0, semantic.GetValue());
+
+	const auto attached = OaGeneratedAutogradAttach::OaFnMatrix::Mean(
+		out, InA, InDim, semantic.GetValue());
+	if (not attached.IsOk()) {
+		OA_LOG_ERROR(OaLogComponent::ML,
+			"Mean semantic autograd attachment failed: %s",
+			attached.GetMessage().c_str());
+		return {};
+	}
+	return out;
 }
 
 OaMatrix OaFnMatrix::Max(const OaMatrix& InA, OaI32 InDim) {
@@ -82,19 +236,22 @@ OaMatrix OaFnMatrix::Max(const OaMatrix& InA, OaI32 InDim) {
 
 	// Compute max value (full reduction → scalar)
 	OaMatrix out = OaFnMatrix::Empty(OaMatrixShape{1}, InA.Dtype_);
+	const auto semantic = ctx.RecordOperation(
+		OaOperationRegistry::Max, {&InA}, {&out});
+	if (not semantic.IsOk()) return {};
 	struct { OaU32 Count; } push{static_cast<OaU32>(InA.NumElements())};
 	OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Write};
-	ctx.Add("Max", {&InA, &out}, access, &push, sizeof(push), 1);
+	ctx.Add("Max", {&InA, &out}, access, &push, sizeof(push), 1, 1, 1,
+		OaOperationRegistry::Max.Name, 0, OaOperationRegistry::Max.Hash,
+		0, 0, semantic.GetValue());
 
-	// Differentiable: MaxBwd routes the upstream scalar grad to the element(s)
-	// equal to the max, so the node must save both the input and the max value.
-	if (OaFnAutograd::IsEnabled() and InA.RequiresGrad()) {
-		auto gradFn = OaMakeSharedPtr<OaGradMax>();
-		gradFn->Saved_ = OaVec<OaMatrix>{InA, out};
-		gradFn->SetGraphInputs(OaVec<OaMatrix>{InA});
-		gradFn->SequenceNr_ = OaFnAutograd::NextSeq();
-		gradFn->OutputShape_ = out.GetShape();
-		out.MutAutograd().GradFn = gradFn;
+	const auto attached = OaGeneratedAutogradAttach::OaFnMatrix::Max(
+		out, InA, semantic.GetValue());
+	if (not attached.IsOk()) {
+		OA_LOG_ERROR(OaLogComponent::Core,
+			"Max semantic autograd attachment failed: %s",
+			attached.GetMessage().c_str());
+		return {};
 	}
 
 	return out;
@@ -171,75 +328,66 @@ OaMatrix OaFnMatrix::MaskedCategoricalAccuracyCount(
 }
 
 OaMatrix OaFnMatrix::Softmax(const OaMatrix& InA, OaI32 InDim) {
+	OaFnMatrixAxisShape axis;
+	if (not OaResolveFnMatrixAxis(InA, InDim, axis)) {
+		OA_LOG_ERROR(OaLogComponent::ML,
+			"Softmax: expected a non-empty matrix and Dim=-1 or a valid axis");
+		return {};
+	}
 	auto& ctx = OaContext::GetDefault();
 	OaMatrix out = OaFnMatrix::Empty(InA.Shape_, InA.Dtype_);
+	const auto semantic = ctx.RecordOperation(
+		OaOperationRegistry::Softmax, {&InA}, {&out},
+		{OaOperationAttribute::FromSignedInteger("Dim", InDim)});
+	if (not semantic.IsOk()) return {};
 
-	OaU32 rows, cols;
-	if (InA.Rank() == 2) {
-		// InDim = -1 means last dimension (dim 1), InDim = 0 means first dimension
-		if (InDim == -1 || InDim == 1) {
-			// Softmax over columns (last dim)
-			rows = static_cast<OaU32>(InA.Size(0));
-			cols = static_cast<OaU32>(InA.Size(1));
-		} else if (InDim == 0) {
-			// Softmax over rows (first dim) - transpose, compute, transpose back
-			OaMatrix transposed = OaFnMatrix::Transpose(InA, 0, 1);
-			OaMatrix softmax_out = OaFnMatrix::Softmax(transposed, -1);
-			return OaFnMatrix::Transpose(softmax_out, 0, 1);
-		} else {
-			rows = static_cast<OaU32>(InA.Size(0));
-			cols = static_cast<OaU32>(InA.Size(1));
-		}
-	} else {
-		rows = 1;
-		cols = static_cast<OaU32>(InA.NumElements());
-	}
-
-	struct { OaU32 Rows; OaU32 Cols; } push{rows, cols};
+	struct { OaU32 OuterSize; OaU32 DimSize; OaU32 InnerSize; } push{
+		axis.OuterSize, axis.DimSize, axis.InnerSize};
 	OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Write};
-	ctx.Add("Softmax", {&InA, &out}, access, &push, sizeof(push), rows, 1, 1);
+	ctx.Add("Softmax", {&InA, &out}, access, &push, sizeof(push),
+		axis.GroupCount(), 1, 1, OaOperationRegistry::Softmax.Name, 0,
+		OaOperationRegistry::Softmax.Hash, 0, 0, semantic.GetValue());
 
-	// Attach autograd. Softmax previously attached NO grad node, so gradient was
-	// silently dropped to zero through any standalone softmax (router gating,
-	// hand-rolled attention). OaGradSoftmax saves the OUTPUT (SoftmaxBwd needs y).
-	if (OaFnAutograd::IsEnabled() and InA.RequiresGrad()) {
-		auto gradFn = OaMakeSharedPtr<OaGradSoftmax>();
-		gradFn->Saved_ = OaVec<OaMatrix>{out};
-		gradFn->SetGraphInputs(OaVec<OaMatrix>{InA});
-		gradFn->SequenceNr_ = OaFnAutograd::NextSeq();
-		gradFn->OutputShape_ = out.GetShape();
-		out.MutAutograd().GradFn = gradFn;
+	const auto attached = OaGeneratedAutogradAttach::OaFnMatrix::Softmax(
+		out, InA, InDim, semantic.GetValue());
+	if (not attached.IsOk()) {
+		OA_LOG_ERROR(OaLogComponent::ML,
+			"Softmax semantic autograd attachment failed: %s",
+			attached.GetMessage().c_str());
+		return {};
 	}
-
 	return out;
 }
 
 OaMatrix OaFnMatrix::LogSoftmax(const OaMatrix& InA, OaI32 InDim) {
-	if (InA.Rank() != 1 && InA.Rank() != 2) return {};
-	if (InA.Rank() == 2 && InDim == 0) {
-		OaMatrix transposed = OaFnMatrix::Transpose(InA, 0, 1);
-		OaMatrix output = OaFnMatrix::LogSoftmax(transposed, -1);
-		return OaFnMatrix::Transpose(output, 0, 1);
+	OaFnMatrixAxisShape axis;
+	if (not OaResolveFnMatrixAxis(InA, InDim, axis)) {
+		OA_LOG_ERROR(OaLogComponent::ML,
+			"LogSoftmax: expected a non-empty matrix and Dim=-1 or a valid axis");
+		return {};
 	}
-	if (InDim != -1 && InDim != InA.Rank() - 1) return {};
 
 	auto& ctx = OaContext::GetDefault();
-	const OaU32 rows = InA.Rank() == 2
-		? static_cast<OaU32>(InA.Size(0)) : 1U;
-	const OaU32 cols = InA.Rank() == 2
-		? static_cast<OaU32>(InA.Size(1))
-		: static_cast<OaU32>(InA.NumElements());
 	OaMatrix output = OaFnMatrix::Empty(InA.GetShape(), InA.GetDtype());
-	struct { OaU32 Rows; OaU32 Cols; } push{rows, cols};
+	const auto semantic = ctx.RecordOperation(
+		OaOperationRegistry::LogSoftmax, {&InA}, {&output},
+		{OaOperationAttribute::FromSignedInteger("Dim", InDim)});
+	if (not semantic.IsOk()) return {};
+
+	struct { OaU32 OuterSize; OaU32 DimSize; OaU32 InnerSize; } push{
+		axis.OuterSize, axis.DimSize, axis.InnerSize};
 	OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Write};
-	ctx.Add("LogSoftmax", {&InA, &output}, access, &push, sizeof(push), rows);
-	if (OaFnAutograd::IsEnabled() && InA.RequiresGrad()) {
-		auto gradFn = OaMakeSharedPtr<OaGradLogSoftmax>();
-		gradFn->Saved_ = OaVec<OaMatrix>{output};
-		gradFn->SetGraphInputs(OaVec<OaMatrix>{InA});
-		gradFn->SequenceNr_ = OaFnAutograd::NextSeq();
-		gradFn->OutputShape_ = output.GetShape();
-		output.MutAutograd().GradFn = gradFn;
+	ctx.Add("LogSoftmax", {&InA, &output}, access, &push, sizeof(push),
+		axis.GroupCount(), 1, 1, OaOperationRegistry::LogSoftmax.Name, 0,
+		OaOperationRegistry::LogSoftmax.Hash, 0, 0, semantic.GetValue());
+
+	const auto attached = OaGeneratedAutogradAttach::OaFnMatrix::LogSoftmax(
+		output, InA, InDim, semantic.GetValue());
+	if (not attached.IsOk()) {
+		OA_LOG_ERROR(OaLogComponent::ML,
+			"LogSoftmax semantic autograd attachment failed: %s",
+			attached.GetMessage().c_str());
+		return {};
 	}
 	return output;
 }

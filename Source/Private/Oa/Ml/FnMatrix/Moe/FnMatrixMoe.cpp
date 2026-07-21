@@ -10,8 +10,7 @@
 
 static OaU32 DivCeil(OaU32 InA, OaU32 InB) { return (InA + InB - 1) / InB; }
 
-OaMatrix OaFnMatrix::MoeRouteWeights(const OaMatrix& InProbs,
-	const OaMatrix& InExpertIndices) {
+OaMatrix OaFnMatrix::MoeRouteWeights(const OaMatrix& InProbs,	const OaMatrix& InExpertIndices) {
 	if (InProbs.Rank() != 2 or InExpertIndices.Rank() != 2 or
 		(InProbs.GetDtype() != OaScalarType::Float32 and
 		 InProbs.GetDtype() != OaScalarType::BFloat16) or
@@ -43,9 +42,7 @@ OaMatrix OaFnMatrix::MoeRouteWeights(const OaMatrix& InProbs,
 	return out;
 }
 
-OaMatrix OaFnMatrix::MoeRouteWeightsBwd(const OaMatrix& InDOut,
-	const OaMatrix& InProbs, const OaMatrix& InExpertIndices,
-	const OaMatrix& InRouteWeights) {
+OaMatrix OaFnMatrix::MoeRouteWeightsBwd(const OaMatrix& InDOut,	const OaMatrix& InProbs, const OaMatrix& InExpertIndices,	const OaMatrix& InRouteWeights) {
 	if (InProbs.Rank() != 2 or InDOut.GetShape() != InExpertIndices.GetShape() or
 		InDOut.GetShape() != InRouteWeights.GetShape() or
 		InDOut.GetDtype() != InProbs.GetDtype() or
@@ -74,8 +71,7 @@ OaMatrix OaFnMatrix::GroupedGemmM(const OaMatrix& InX, const OaMatrix& InWeight,
 	if (InX.Rank() != 2 or InWeight.Rank() != 3 or InOffsets.Rank() != 1 or
 		InOffsets.GetDtype() != OaScalarType::UInt32 or InX.GetDtype() != InWeight.GetDtype() or
 		InX.Size(1) != InWeight.Size(2) or InOffsets.Size(0) != InWeight.Size(0) + 1) {
-		OA_LOG_ERROR(OaLogComponent::ML,
-			"GroupedGemmM: expected X[R,K], W[E,N,K], UInt32 offsets[E+1]");
+		OA_LOG_ERROR(OaLogComponent::ML,	"GroupedGemmM: expected X[R,K], W[E,N,K], UInt32 offsets[E+1]");
 		return {};
 	}
 	const OaU32 R = static_cast<OaU32>(InX.Size(0));
@@ -100,15 +96,13 @@ OaMatrix OaFnMatrix::GroupedGemmM(const OaMatrix& InX, const OaMatrix& InWeight,
 	return out;
 }
 
-OaMatrix OaFnMatrix::GroupedLinearM(const OaMatrix& InX, const OaMatrix& InWeight,
-	const OaMatrix& InBias, const OaMatrix& InOffsets) {
+OaMatrix OaFnMatrix::GroupedLinearM(const OaMatrix& InX, const OaMatrix& InWeight, const OaMatrix& InBias, const OaMatrix& InOffsets) {
 	if (InX.Rank() != 2 or InWeight.Rank() != 3 or InBias.Rank() != 2 or
 		InOffsets.Rank() != 1 or InOffsets.GetDtype() != OaScalarType::UInt32 or
 		InX.GetDtype() != InWeight.GetDtype() or InX.GetDtype() != InBias.GetDtype() or
 		InX.Size(1) != InWeight.Size(2) or InBias.Size(0) != InWeight.Size(0) or
 		InBias.Size(1) != InWeight.Size(1) or InOffsets.Size(0) != InWeight.Size(0) + 1) {
-		OA_LOG_ERROR(OaLogComponent::ML,
-			"GroupedLinearM: expected X[R,K], W[E,N,K], Bias[E,N], UInt32 offsets[E+1]");
+		OA_LOG_ERROR(OaLogComponent::ML,	"GroupedLinearM: expected X[R,K], W[E,N,K], Bias[E,N], UInt32 offsets[E+1]");
 		return {};
 	}
 	const OaU32 R = static_cast<OaU32>(InX.Size(0));
@@ -335,24 +329,21 @@ OaMatrix OaFnMatrix::ScatterAddRows(const OaMatrix& InSource,
 	return out;
 }
 
-OaMatrix OaFnMatrix::MoeGather(const OaMatrix& InSelf,
-	const OaMatrix& InIndices, const OaMatrix& InInverse) {
+OaMatrix OaFnMatrix::MoeGather(const OaMatrix& InSelf,const OaMatrix& InIndices, const OaMatrix& InInverse) {
 	if (InSelf.Rank() != 2 or InIndices.Rank() != 1 or
 		InInverse.Rank() != 1 or InIndices.GetDtype() != OaScalarType::UInt32 or
 		InInverse.GetDtype() != OaScalarType::UInt32 or
 		InInverse.NumElements() != InIndices.NumElements() or
 		InSelf.Size(0) <= 0 or
 		InIndices.NumElements() % InSelf.Size(0) != 0) {
-		OA_LOG_ERROR(OaLogComponent::ML,
-			"MoeGather: expected Self[T,D] and UInt32 Indices/Inverse[R], R %% T == 0");
+		OA_LOG_ERROR(OaLogComponent::ML,	"MoeGather: expected Self[T,D] and UInt32 Indices/Inverse[R], R %% T == 0");
 		return {};
 	}
 	const OaU32 R = static_cast<OaU32>(InIndices.NumElements());
 	const OaU32 D = static_cast<OaU32>(InSelf.Size(1));
 	auto out = OaFnMatrix::Empty(OaMatrixShape{R, D}, InSelf.GetDtype());
 	struct { OaU32 NumIndices, RowSize, IndexDtype; } push{R, D, 1U};
-	OaBufferAccess access[] = {
-		OaBufferAccess::Read, OaBufferAccess::Read, OaBufferAccess::Write};
+	OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Read, OaBufferAccess::Write};
 	auto& ctx = OaContext::GetDefault();
 	ctx.Add("Gather", {&InSelf, &InIndices, &out}, access,
 		&push, sizeof(push), DivCeil(R * D, 256));

@@ -9,34 +9,7 @@
 
 #include <Oa/Ml/FnMatrix.h>
 #include <Oa/Ml/Module.h>
-
-// ENUMS (needed by generated layers)
-
-enum class OaActivation : OaU8 {
-	None,
-	Relu,
-	Gelu,
-};
-
-enum class OaUpsampleMode : OaU8 { Nearest, Bilinear };
-
-/// Execution policy for scaled dot-product attention. Auto selects the fused
-/// causal implementation when its exact contract is supported and otherwise
-/// preserves the compositional reference path. This is deliberately an enum,
-/// not a boolean, so callers can require either backend in tests and profiles.
-enum class OaAttentionBackend : OaU8 {
-	Auto,
-	Standard,
-	Flash,
-};
-
-/// Token-visibility contract for self-attention. Causal is the language-model
-/// default; Bidirectional is the denoising/encoding path where every token may
-/// observe every other token in the same sequence.
-enum class OaAttentionMode : OaU8 {
-	Causal,
-	Bidirectional,
-};
+#include <Oa/Ml/NnType.h>
 
 // GENERATED LAYERS
 // Regenerate via: python3 Tools/NnAutogen/oannautogen.py --live
@@ -61,6 +34,11 @@ enum class OaAttentionMode : OaU8 {
 
 // TRANSFORMER — pre-norm transformer block with causal or bidirectional self-attention
 #include "../../../Private/Oa/Ml/Nn/Transformer/Transformer.h"
+
+// FLOW — time embedding plus bidirectional Transformer denoiser family
+#include "../../../Private/Oa/Ml/Nn/Flow/FlowTimeEmbedding.h"
+#include "../../../Private/Oa/Ml/Nn/Flow/FlowTransformer.h"
+#include "../../../Private/Oa/Ml/Nn/Flow/FlowDenoiser.h"
 
 // EMPYREALM CORE — high-utilization sequential backbone
 // (byte + mixer + flat residual pattern, designed for subclassing/specialization

@@ -2,7 +2,7 @@
 #
 # This is the *source of truth* for ML-specific BLAS operations.
 # The generator emits .h declarations, .cpp implementations from this file.
-# See Tools/OaFnAutogen/oafnautogen.py and Docs/Rewrite/Opus/OaFnAutogen.md.
+# See Tools/FnAutogen/README.md and Tools/FnAutogen/oafnautogen.py.
 #
 # Note: MatMul is in Core (general-purpose BLAS operation)
 # Linear/LinearRelu are ML-specific neural network layers
@@ -26,3 +26,85 @@ extra_params   = [
 grad_class = "OaGradLinear"
 inputs     = ["InA", "InB"]
 saved      = ["InA", "InB"]
+
+# --- MatMulNt adjoint primitives --------------------------------------------
+# These contracts are part of the schema-v2 architecture pilot. They make the
+# existing MatMulNt tape expansion visible in semantic IR without changing its
+# proven eager kernels or exposing a second public gradient API.
+[[ops]]
+name                 = "LinearDataBwd"
+category             = "Blas"
+kind                 = "binary"
+body                 = "manual_context"
+generate_declaration = false
+api_return           = "OaMatrix"
+api_params           = [
+    "const OaMatrix& InGradOutput",
+    "const OaMatrix& InWeight",
+]
+notes = "MatMulNt data adjoint: dInput = dOutput @ Weight. Internal semantic backward primitive."
+
+[ops.contract]
+input_kinds         = ["matrix", "matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "explicit"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "none"
+lowering            = "dispatch"
+
+[[ops]]
+name                 = "LinearWeightBwd"
+category             = "Blas"
+kind                 = "binary"
+body                 = "manual_context"
+generate_declaration = false
+api_return           = "OaMatrix"
+api_params           = [
+    "const OaMatrix& InInput",
+    "const OaMatrix& InGradOutput",
+]
+notes = "MatMulNt weight adjoint: dWeight = dOutput^T @ Input. Internal semantic backward primitive."
+
+[ops.contract]
+input_kinds         = ["matrix", "matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "explicit"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "none"
+lowering            = "dispatch"
+
+# --- Linear parameter adjoint -----------------------------------------------
+# Public declaration remains beside its result structure in Oa/Ml/FnMatrix.h;
+# this schema owns the semantic contract used by graph capture and lowering.
+[[ops]]
+name                 = "LinearWeightBiasBwd"
+category             = "Blas"
+kind                 = "binary"
+body                 = "manual_context"
+generate_declaration = false
+api_return           = "OaLinearWeightBiasBwdResult"
+api_params           = [
+    "const OaMatrix& InInput",
+    "const OaMatrix& InGradOutput",
+]
+notes = "Fused Linear parameter adjoint producing dWeight and dBias. Output shapes are explicit and validated by private DNN lowering."
+
+[ops.contract]
+input_kinds        = ["matrix", "matrix"]
+output_kinds       = ["matrix", "matrix"]
+shape_rule         = "explicit"
+dtype_rule         = "match_input"
+effects            = ["read_inputs", "write_outputs"]
+mutated_inputs     = []
+output_alias_inputs = [-1, -1]
+control_flow       = "straight_line"
+differentiation    = "none"
+lowering           = "dispatch"

@@ -7,6 +7,8 @@
 #include <Oa/Ml/TrainingSession.h>
 #include <Oa/Ui/TrainingViewer.h>
 
+#include <Oa/Runtime/ExecutionMemory.h>
+
 #include <cmath>
 #include <cstring>
 
@@ -25,7 +27,37 @@ public:
 	OaVec<OaF32> LossValues;
 };
 
+class FailingTrainingCallback final : public OaCbTraining {
+public:
+	void OnStepEnd(OaItTraining&) override {
+		Status_ = OaStatus::Error(OaStatusCode::DataLoss,
+			"injected checkpoint callback failure");
+	}
+
+	[[nodiscard]] OaStatus GetStatus() const override { return Status_; }
+
+private:
+	OaStatus Status_ = OaStatus::Ok();
+};
+
 } // namespace
+
+TEST(TrainingCallbacks, FailureStopsAndPropagatesThroughFinish) {
+	if (not OaVkTestEngineOk()) GTEST_SKIP();
+	OaOptimizerNoOp optimizer;
+	FailingTrainingCallback callback;
+	OaItTraining training(optimizer, OaItTrainingConfig{
+		.TotalSteps = 2,
+		.EnableGpuTiming = false,
+		.Callbacks = {&callback},
+	});
+	ASSERT_FALSE(training.IsDone());
+	training.Next();
+	EXPECT_TRUE(training.StopRequested());
+	EXPECT_EQ(training.LastStatus().GetCode(), OaStatusCode::DataLoss);
+	const auto status = training.Finish();
+	EXPECT_EQ(status.GetCode(), OaStatusCode::DataLoss);
+}
 
 TEST(TrainingSession, CommandsAreTypedRevisionedAndSafePointApplied) {
 	OaOptimizerNoOp optimizer;
@@ -186,6 +218,234 @@ TEST(TrainingProgram, CapturedMutableStepProgressesAcrossReplays) {
 	ASSERT_TRUE(program.Reset().IsOk());
 }
 
+TEST(TrainingProgram, DroppedReplayRetiresWithoutDestructorWait) {
+	if (not OaVkTestEngineOk()) GTEST_SKIP();
+
+	auto& ctx = OaContext::GetDefault();
+	OaWeakPtr<OaVkBuffer> inputStorage;
+	{
+		OaMatrix input = OaFnMatrix::Full(OaMatrixShape{4096}, 1.0F);
+		OaMatrix increment = OaFnMatrix::Full(OaMatrixShape{4096}, 0.25F);
+		ASSERT_TRUE(ctx.Execute().IsOk());
+		ASSERT_TRUE(ctx.Sync().IsOk());
+
+		OaFnMatrix::AddInPlace(input, increment);
+		auto program = OaMakeUniquePtr<OaTrainingProgram>();
+		ASSERT_TRUE(program->Capture(ctx).IsOk());
+		inputStorage = OaWeakPtr<OaVkBuffer>(input.VkBuf_);
+		ASSERT_TRUE(program->Replay().IsOk());
+		// Program destruction must not host-wait. Its compiled graph and input
+		// owners transfer to OaEngine retirement until exact replay completion.
+	}
+	EXPECT_FALSE(inputStorage.Expired());
+
+	// The first submission is ordered after the retired replay and its explicit
+	// wait proves completion. The second submission gives the engine a collection
+	// boundary at which releasing the retired graph is safe.
+	{
+		auto pulse = OaFnMatrix::Full(OaMatrixShape{1}, 1.0F);
+		(void)pulse;
+		ASSERT_TRUE(ctx.Execute().IsOk());
+		ASSERT_TRUE(ctx.Sync().IsOk());
+	}
+	{
+		auto pulse = OaFnMatrix::Full(OaMatrixShape{1}, 2.0F);
+		(void)pulse;
+		ASSERT_TRUE(ctx.Execute().IsOk());
+		ASSERT_TRUE(ctx.Sync().IsOk());
+	}
+	EXPECT_TRUE(inputStorage.Expired());
+}
+
+TEST(TrainingProgram, CaptureOwnsSemanticAndExecutableRecordingTogether) {
+	if (not OaVkTestEngineOk()) GTEST_SKIP();
+
+	auto& ctx = OaContext::GetDefault();
+	ctx.Clear();
+	const auto a = OaFnMatrix::Empty({2, 3});
+	const auto b = OaFnMatrix::Empty({2, 3});
+	ctx.Clear();
+	const auto sum = OaFnMatrix::Add(a, b);
+	ASSERT_EQ(ctx.NodeCount(), 1U);
+	ASSERT_EQ(ctx.SemanticGraph()->OperationCount(), 1U);
+
+	OaTrainingProgram program;
+	const auto unrelated = OaFnMatrix::Empty({2, 3});
+	const OaMatrix* invalidOutputs[] = {&unrelated};
+	OaTrainingProgramOptions invalidOptions;
+	invalidOptions.ObservedOutputs = {invalidOutputs, 1U};
+	const auto invalidStatus = program.Capture(ctx, invalidOptions);
+	EXPECT_FALSE(invalidStatus.IsOk());
+	EXPECT_EQ(invalidStatus.GetCode(), OaStatusCode::InvalidArgument);
+	EXPECT_EQ(ctx.NodeCount(), 1U);
+	EXPECT_EQ(ctx.SemanticGraph()->OperationCount(), 1U);
+
+	const OaMatrix* observedOutputs[] = {&sum};
+	OaTrainingProgramOptions options;
+	options.ObservedOutputs = {observedOutputs, 1U};
+	ASSERT_TRUE(program.Capture(ctx, options).IsOk());
+	EXPECT_EQ(program.NodeCount(), 1U);
+	EXPECT_EQ(program.SemanticOperationCount(), 1U);
+	EXPECT_EQ(program.CapturedResourceCount(), 3U);
+	ASSERT_TRUE(program.SemanticGraph().Validate().IsOk());
+	EXPECT_EQ(program.SemanticGraph().Operations()[0].Name, "Add");
+	const auto bindings = program.SemanticStorageBindings();
+	ASSERT_EQ(bindings.Size(), 3U);
+	for (OaU32 index = 0; index < bindings.Size(); ++index) {
+		EXPECT_EQ(bindings[index].Value, index);
+		EXPECT_EQ(bindings[index].Resource, index);
+		EXPECT_FALSE(bindings[index].StableReplayInput);
+	}
+	EXPECT_TRUE(bindings[0].SemanticExternal);
+	EXPECT_TRUE(bindings[1].SemanticExternal);
+	EXPECT_FALSE(bindings[2].SemanticExternal);
+	EXPECT_FALSE(bindings[0].ObservedOutput);
+	EXPECT_FALSE(bindings[1].ObservedOutput);
+	EXPECT_TRUE(bindings[2].ObservedOutput);
+	const auto resources = program.CapturedResources();
+	ASSERT_EQ(resources.Size(), 3U);
+	EXPECT_TRUE(resources[0].SemanticExternal);
+	EXPECT_TRUE(resources[1].SemanticExternal);
+	EXPECT_TRUE(resources[2].ObservedOutput);
+	EXPECT_TRUE(resources[2].IsExternallyLive());
+	EXPECT_EQ(program.AliasCandidateCount(), 0U);
+	EXPECT_EQ(program.PlannedAliasGroupCount(), 0U);
+	EXPECT_EQ(program.PotentialAliasSavings(), 0U);
+	EXPECT_EQ(ctx.NodeCount(), 0U);
+	EXPECT_EQ(ctx.SemanticGraph()->OperationCount(), 0U);
+	EXPECT_EQ(ctx.SemanticGraph()->ValueCount(), 0U);
+
+	const auto semanticReport =
+		program.SemanticDebugReportJson("captured-training-step").StdStr();
+	const auto executionReport =
+		program.DebugReportJson("captured-training-step").StdStr();
+	const auto compilationReport =
+		program.CompilationDebugReportJson("captured-training-step").StdStr();
+	const auto compilationReportAgain =
+		program.CompilationDebugReportJson("captured-training-step").StdStr();
+	EXPECT_NE(semanticReport.find("\"schema\": \"oa.semantic_graph.v2\""),
+		std::string::npos);
+	EXPECT_NE(semanticReport.find("\"name\": \"Add\""), std::string::npos);
+	EXPECT_NE(executionReport.find("\"semantic_operations\": [0]"),
+		std::string::npos);
+	EXPECT_EQ(compilationReport, compilationReportAgain);
+	EXPECT_NE(compilationReport.find(
+		"\"schema\": \"oa.training_compilation.v2\""), std::string::npos);
+	EXPECT_NE(compilationReport.find(
+		"\"stage\": \"decomposition\", \"state\": \"analyzed\""),
+		std::string::npos);
+	EXPECT_NE(compilationReport.find(
+		"\"stage\": \"fusion\", \"state\": \"analyzed\""),
+		std::string::npos);
+	EXPECT_NE(compilationReport.find(
+		"\"lowering_analysis\": {"), std::string::npos);
+	EXPECT_NE(compilationReport.find(
+		"\"direct_operation_count\": 1"), std::string::npos);
+	EXPECT_NE(compilationReport.find(
+		"\"decomposed_operation_count\": 0"), std::string::npos);
+	EXPECT_NE(compilationReport.find(
+		"\"fused_operation_count\": 0"), std::string::npos);
+	EXPECT_NE(compilationReport.find(
+		"\"fused_node_count\": 0"), std::string::npos);
+	EXPECT_NE(compilationReport.find(
+		"\"stage\": \"kernel_selection\", \"state\": \"inherited\""),
+		std::string::npos);
+	EXPECT_NE(compilationReport.find(
+		"\"stage\": \"memory_planning\", \"state\": \"analyzed\""),
+		std::string::npos);
+	EXPECT_NE(compilationReport.find(
+		"\"materialized\": false"), std::string::npos);
+	EXPECT_NE(compilationReport.find(
+		"\"stage\": \"command_recording\", \"state\": \"applied\""),
+		std::string::npos);
+	const auto stages = program.CompilationStages();
+	ASSERT_EQ(stages.Size(), 11U);
+	EXPECT_EQ(stages[0].Stage,
+		OaTrainingCompilationStage::SemanticValidation);
+	EXPECT_EQ(stages[1].Stage, OaTrainingCompilationStage::ReplaySafety);
+	EXPECT_EQ(stages[2].Stage, OaTrainingCompilationStage::Decomposition);
+	EXPECT_EQ(stages[2].State, OaTrainingCompilationState::Analyzed);
+	EXPECT_EQ(stages[3].State, OaTrainingCompilationState::Analyzed);
+	EXPECT_EQ(program.LoweringAnalysis().OperationCount(), 1U);
+	EXPECT_EQ(program.LoweringAnalysis().DirectOperationCount(), 1U);
+	EXPECT_EQ(program.LoweringAnalysis().DecomposedOperationCount(), 0U);
+	EXPECT_EQ(program.LoweringAnalysis().FusedOperationCount(), 0U);
+	EXPECT_EQ(program.LoweringAnalysis().FusedNodeCount(), 0U);
+	EXPECT_EQ(stages[8].Stage, OaTrainingCompilationStage::MemoryPlanning);
+	EXPECT_EQ(stages[8].State, OaTrainingCompilationState::Analyzed);
+	EXPECT_EQ(stages[9].Stage,
+		OaTrainingCompilationStage::SynchronizationPlanning);
+	EXPECT_EQ(stages[10].Stage,
+		OaTrainingCompilationStage::CommandRecording);
+
+	// A new recording starts a new semantic SSA namespace instead of appending
+	// to the graph consumed by the captured program.
+	const auto next = OaFnMatrix::Add(a, b);
+	(void)next;
+	ASSERT_EQ(ctx.SemanticGraph()->OperationCount(), 1U);
+	EXPECT_EQ(ctx.SemanticGraph()->Operations()[0].Id, 0U);
+	ctx.Clear();
+	ASSERT_TRUE(program.Reset().IsOk());
+}
+
+TEST(TrainingProgram, RejectedCapturePreservesBothSourceGraphs) {
+	if (not OaVkTestEngineOk()) GTEST_SKIP();
+
+	auto& ctx = OaContext::GetDefault();
+	ctx.Clear();
+	const auto a = OaFnMatrix::Empty({4});
+	const auto b = OaFnMatrix::Empty({4});
+	const auto m = OaFnMatrix::Empty({4});
+	const auto v = OaFnMatrix::Empty({4});
+	ctx.Clear();
+	const auto sum = OaFnMatrix::Add(a, b);
+
+	struct AdamPush {
+		OaU32 Count;
+		OaF32 Lr;
+		OaF32 Beta1;
+		OaF32 Beta2;
+		OaF32 Eps;
+		OaU32 Step;
+	} push{4, 1e-3F, 0.9F, 0.999F, 1e-8F, 1};
+	OaBufferAccess access[] = {
+		OaBufferAccess::ReadWrite,
+		OaBufferAccess::Read,
+		OaBufferAccess::ReadWrite,
+		OaBufferAccess::ReadWrite,
+	};
+	ctx.Add("Adam", {&sum, &b, &m, &v},
+		OaSpan<OaBufferAccess>(access, 4), &push, sizeof(push), 1);
+	ASSERT_EQ(ctx.NodeCount(), 2U);
+	ASSERT_EQ(ctx.SemanticGraph()->OperationCount(), 1U);
+
+	OaTrainingProgram program;
+	const auto status = program.Capture(ctx);
+	ASSERT_FALSE(status.IsOk());
+	EXPECT_EQ(status.GetCode(), OaStatusCode::FailedPrecondition);
+	EXPECT_FALSE(program.IsCaptured());
+	EXPECT_EQ(program.NodeCount(), 0U);
+	EXPECT_EQ(program.SemanticOperationCount(), 0U);
+	const auto failedStages = program.CompilationStages();
+	ASSERT_EQ(failedStages.Size(), 2U);
+	EXPECT_EQ(failedStages[0].Stage,
+		OaTrainingCompilationStage::SemanticValidation);
+	EXPECT_EQ(failedStages[0].State, OaTrainingCompilationState::Applied);
+	EXPECT_EQ(failedStages[1].Stage,
+		OaTrainingCompilationStage::ReplaySafety);
+	EXPECT_EQ(failedStages[1].State, OaTrainingCompilationState::Failed);
+	const auto failedReport =
+		program.CompilationDebugReportJson("rejected-training-step").StdStr();
+	EXPECT_NE(failedReport.find("\"captured\": false"), std::string::npos);
+	EXPECT_NE(failedReport.find(
+		"\"stage\": \"replay_safety\", \"state\": \"failed\""),
+		std::string::npos);
+	EXPECT_EQ(ctx.NodeCount(), 2U);
+	EXPECT_EQ(ctx.SemanticGraph()->OperationCount(), 1U);
+	EXPECT_EQ(ctx.SemanticGraph()->Operations()[0].Name, "Add");
+	ctx.Clear();
+}
+
 TEST(TrainingProgram, CapturedPhiloxAdvancesWithoutFreezingRandomValues) {
 	if (not OaVkTestEngineOk()) GTEST_SKIP();
 
@@ -259,6 +519,165 @@ TEST(TrainingProgram, IteratorRecordsTwiceThenReplaysFixedShapeStep) {
 	EXPECT_NEAR(iter.LastLoss(), 0.9F, 1e-6F);
 	EXPECT_EQ(iter.GpuTimingStats().Count, 3);
 	EXPECT_GT(iter.LastGpuMs(), 0.0);
+}
+
+TEST(TrainingProgram, TwoPhaseStepClassifiesStableReplayInputs) {
+	if (not OaVkTestEngineOk()) GTEST_SKIP();
+
+	auto& ctx = OaContext::GetDefault();
+	OaOptimizerNoOp optimizer;
+	OaTrainingProgram program;
+	OaItTraining iter(optimizer, OaItTrainingConfig{
+		.TotalSteps = 3,
+		.Program = &program,
+	});
+	OaMatrix input;
+	OaMatrix loss;
+	while (not iter.IsDone()) {
+		iter.Step(
+			[&] {
+				input = OaFnMatrix::Empty(
+					OaMatrixShape{4}, OaScalarType::Float32,
+					OaMemoryPlacement::HostUpload);
+				auto* values = input.DataAs<OaF32>();
+				ASSERT_NE(values, nullptr);
+				for (OaU32 index = 0; index < 4U; ++index) values[index] = 1.0F;
+			},
+			[&] {
+				OaMatrix temporary1 = OaFnMatrix::Add(input, input);
+				OaMatrix temporary2 = OaFnMatrix::Add(temporary1, input);
+				OaMatrix temporary3 = OaFnMatrix::Add(temporary2, input);
+				// The schema-owned reduction contributes the final semantic value;
+				// observing it keeps the same physical output externally live.
+				loss = OaFnMatrix::Sum(temporary3);
+				iter.RecordLoss(loss);
+			});
+	}
+	ASSERT_TRUE(iter.Finish().IsOk());
+
+	ASSERT_TRUE(program.IsCaptured());
+	const auto bindings = program.SemanticStorageBindings();
+	ASSERT_EQ(bindings.Size(), 5U);
+	EXPECT_TRUE(bindings[0].SemanticExternal);
+	EXPECT_TRUE(bindings[0].StableReplayInput);
+	for (OaU32 index = 1; index + 1U < bindings.Size(); ++index) {
+		EXPECT_FALSE(bindings[index].SemanticExternal);
+		EXPECT_FALSE(bindings[index].StableReplayInput);
+		EXPECT_FALSE(bindings[index].ObservedOutput);
+	}
+	EXPECT_FALSE(bindings[4].SemanticExternal);
+	EXPECT_FALSE(bindings[4].StableReplayInput);
+	EXPECT_TRUE(bindings[4].ObservedOutput);
+	const auto resources = program.CapturedResources();
+	ASSERT_EQ(resources.Size(), 5U);
+	EXPECT_TRUE(resources[0].StableReplayInput);
+	EXPECT_TRUE(resources[1].AliasCandidate);
+	EXPECT_TRUE(resources[2].AliasCandidate);
+	EXPECT_TRUE(resources[3].AliasCandidate);
+	EXPECT_TRUE(resources[1].AliasMaterialized);
+	EXPECT_FALSE(resources[2].AliasMaterialized);
+	EXPECT_TRUE(resources[3].AliasMaterialized);
+	EXPECT_TRUE(resources[4].ObservedOutput);
+	EXPECT_TRUE(resources[0].IsExternallyLive());
+	EXPECT_FALSE(resources[1].IsExternallyLive());
+	EXPECT_TRUE(resources[4].IsExternallyLive());
+	EXPECT_EQ(program.AliasCandidateCount(), 3U);
+	EXPECT_EQ(program.PlannedAliasGroupCount(), 1U);
+	EXPECT_EQ(program.PotentialAliasSavings(), 4U * sizeof(OaF32));
+	EXPECT_EQ(program.MaterializedAliasSavings(), 4U * sizeof(OaF32));
+	EXPECT_EQ(program.Stats().AliasBarrierCount, 1U);
+	EXPECT_FLOAT_EQ(loss.Item(), 16.0F);
+	const auto report = program.CompilationDebugReportJson(
+		"captured-memory-analysis").StdStr();
+	EXPECT_NE(report.find("\"candidate_count\": 3"), std::string::npos);
+	EXPECT_NE(report.find("\"materialization_eligible_count\": 3"),
+		std::string::npos);
+	EXPECT_NE(report.find("\"alias_group_count\": 1"), std::string::npos);
+	EXPECT_NE(report.find("\"potential_savings_bytes\": 16"),
+		std::string::npos);
+	EXPECT_NE(report.find("\"materialized_savings_bytes\": 16"),
+		std::string::npos);
+	EXPECT_NE(report.find("\"materialized\": true"), std::string::npos);
+	const auto stages = program.CompilationStages();
+	ASSERT_EQ(stages.Size(), 11U);
+	EXPECT_EQ(stages[8].Stage, OaTrainingCompilationStage::MemoryPlanning);
+	EXPECT_EQ(stages[8].State, OaTrainingCompilationState::Applied);
+	EXPECT_EQ(OaExecutionMemory::StableExternalResourceCount(ctx), 1U);
+	EXPECT_EQ(OaExecutionMemory::StableTransientResourceCount(ctx), 0U);
+}
+
+TEST(TrainingProgram, RetainedTransientMatrixPreventsAliasMaterialization) {
+	if (not OaVkTestEngineOk()) GTEST_SKIP();
+
+	OaOptimizerNoOp optimizer;
+	OaTrainingProgram program;
+	OaItTraining iter(optimizer, OaItTrainingConfig{
+		.TotalSteps = 3,
+		.Program = &program,
+	});
+	OaMatrix input;
+	OaMatrix retained1;
+	OaMatrix retained2;
+	OaMatrix retained3;
+	OaMatrix loss;
+	while (not iter.IsDone()) {
+		iter.Step(
+			[&] {
+				input = OaFnMatrix::Empty(
+					OaMatrixShape{4}, OaScalarType::Float32,
+					OaMemoryPlacement::HostUpload);
+				auto* values = input.DataAs<OaF32>();
+				ASSERT_NE(values, nullptr);
+				for (OaU32 index = 0; index < 4U; ++index) values[index] = 1.0F;
+			},
+			[&] {
+				retained1 = OaFnMatrix::Add(input, input);
+				retained2 = OaFnMatrix::Add(retained1, input);
+				retained3 = OaFnMatrix::Add(retained2, input);
+				loss = OaFnMatrix::Sum(retained3);
+				iter.RecordLoss(loss);
+			});
+	}
+	ASSERT_TRUE(iter.Finish().IsOk());
+
+	EXPECT_TRUE(program.IsCaptured());
+	EXPECT_EQ(program.AliasCandidateCount(), 3U);
+	EXPECT_EQ(program.PotentialAliasSavings(), 4U * sizeof(OaF32));
+	EXPECT_EQ(program.MaterializedAliasSavings(), 0U);
+	for (OaU32 index = 1; index <= 3U; ++index) {
+		EXPECT_FALSE(program.CapturedResources()[index].AliasMaterialized);
+	}
+	const auto report = program.CompilationDebugReportJson(
+		"retained-transient").StdStr();
+	EXPECT_NE(report.find("\"materialization_eligible_count\": 0"),
+		std::string::npos);
+	EXPECT_NE(report.find("\"fallback_reason\": \"\""), std::string::npos);
+	const auto stages = program.CompilationStages();
+	ASSERT_EQ(stages.Size(), 11U);
+	EXPECT_EQ(stages[8].Stage, OaTrainingCompilationStage::MemoryPlanning);
+	EXPECT_EQ(stages[8].State, OaTrainingCompilationState::Analyzed);
+	EXPECT_FLOAT_EQ(loss.Item(), 16.0F);
+}
+
+TEST(TrainingProgram, SinglePhaseStepConservativelyRetainsStableResources) {
+	if (not OaVkTestEngineOk()) GTEST_SKIP();
+
+	auto& ctx = OaContext::GetDefault();
+	OaOptimizerNoOp optimizer;
+	OaItTraining iter(optimizer, OaItTrainingConfig{.TotalSteps = 2});
+	OaMatrix first;
+	OaMatrix second;
+	while (not iter.IsDone()) {
+		iter.Step([&] {
+			first = OaFnMatrix::Empty(OaMatrixShape{4});
+			second = OaFnMatrix::Full(OaMatrixShape{4}, 1.0F);
+			iter.RecordLoss(second);
+		});
+	}
+	ASSERT_TRUE(iter.Finish().IsOk());
+
+	EXPECT_EQ(OaExecutionMemory::StableExternalResourceCount(ctx), 2U);
+	EXPECT_EQ(OaExecutionMemory::StableTransientResourceCount(ctx), 0U);
 }
 
 TEST(TrainingProgram, ExplicitRecaptureRecordsNewProgramOnce) {

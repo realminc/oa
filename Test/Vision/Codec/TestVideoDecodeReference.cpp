@@ -158,7 +158,7 @@ void ValidateCodec(
 	}
 	const char* pathC = assetPath.c_str();
 
-	auto& rt = *OaComputeEngine::GetGlobal();
+	auto& rt = *OaEngine::GetGlobal();
 	if (not OaVideoDecoder::IsCodecSupported(rt, InCodec)) {
 		GTEST_SKIP() << InCodecName << ": Vulkan Video decode not supported on this device";
 	}
@@ -182,6 +182,8 @@ void ValidateCodec(
 	const size_t frameBytes = static_cast<size_t>(width) * static_cast<size_t>(height) * 4u;
 
 	std::vector<std::vector<uint8_t>> oaFrames;
+	std::vector<double> stepTimings;
+	stepTimings.reserve(kFramesToCheck);
 	for (int i = 0; i < kFramesToCheck; ++i) {
 		const auto stepStart = std::chrono::steady_clock::now();
 		OaStatus stepStatus = it.StepForward();
@@ -205,10 +207,15 @@ void ValidateCodec(
 		}
 		std::printf("[ timing  ] %-4s frame %d StepForward %.2f ms, Readback %.2f ms\n",
 			InCodecName, i, stepMs, readbackMs);
+		stepTimings.push_back(stepMs);
 		oaFrames.emplace_back(rb->Data(), rb->Data() + rb->Size());
 	}
 	ASSERT_GE(oaFrames.size(), static_cast<size_t>(1))
 		<< InCodecName << ": decoded zero frames end-to-end";
+	std::sort(stepTimings.begin(), stepTimings.end());
+	const double stepMedianMs = stepTimings[stepTimings.size() / 2U];
+	std::printf("OABENCH video.%s step_forward_p50_ms=%.6f frames=%zu\n",
+		InCodecName, stepMedianMs, stepTimings.size());
 
 	// ---- Independent ffmpeg reference decode -------------------------------
 	// A few extra reference frames so the best-match search absorbs any

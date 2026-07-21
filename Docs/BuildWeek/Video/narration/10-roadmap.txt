@@ -1,0 +1,1 @@
+This was a walkthrough, not the finish line. The developer pages publish the working base, benchmarks, gaps, and bounded roadmap: fifty Vision operations, thirteen Audio operation candidates, five complete mobile training routes, CartPole P P O, and early text-to-U-S-D. Explore the architecture, APIs, evidence, and roadmap at dev dot realm dot software.

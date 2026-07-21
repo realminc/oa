@@ -11,14 +11,195 @@ kernel_forward = "Sum"
 log_component  = "ML"
 body           = "manual_context"
 extra_params   = [{ name = "Dim", type = "OaI32", default = "-1" }]
+api_params     = [
+    "const OaMatrix& InA",
+    "OaI32 InDim = -1",
+]
+api_return     = "OaMatrix"
 dispatch_workgroups = 1                     # full reduction → single workgroup
 output         = { shape = "scalar_1d", dtype = "match_input" }
-notes          = "Reduce by summation (graph/executor: full reduction only)."
+notes          = "Reduce by summation; a valid non-negative Dim produces a keep-dimension axis reduction, while -1 produces a full reduction."
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "explicit"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+attributes          = [
+    { name = "Dim", kind = "signed_integer", source = "InDim" },
+]
+
+[ops.autograd]
+grad_class   = "OaGradSum"
+inputs       = ["InA"]
+saved        = ["InA"]
+formula      = "manual"
+attach       = "standard"
+output_shape = true
+
+[ops.python]
+args = ["a", "dim"]
+doc = "Reduce by summation, preserving a selected dimension or reducing all values when dim is -1."
+
 [ops.test]
 # For reduce_full, we sum all elements and compare to CPU reference
 cpu_reference = "std::accumulate(a_host.begin(), a_host.end(), 0.0f)"
 tolerance = "1e-3f"
 test_sizes = [256, 1024]
+
+[[ops]]
+name           = "Mean"
+category       = "Reduce"
+kind           = "reduce_full"
+kernel_forward = "ReduceMean"
+log_component  = "ML"
+body           = "manual_context"
+extra_params   = [{ name = "Dim", type = "OaI32", default = "-1" }]
+api_params     = [
+    "const OaMatrix& InA",
+    "OaI32 InDim = -1",
+]
+api_return     = "OaMatrix"
+dispatch_workgroups = 1
+output         = { shape = "scalar_1d", dtype = "match_input" }
+notes          = "Reduce by arithmetic mean; a valid non-negative Dim produces a keep-dimension axis reduction, while -1 produces a full reduction."
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "explicit"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+attributes          = [
+    { name = "Dim", kind = "signed_integer", source = "InDim" },
+]
+
+[ops.autograd]
+grad_class   = "OaGradMean"
+inputs       = ["InA"]
+saved        = ["InA"]
+formula      = "manual"
+attach       = "standard"
+output_shape = true
+state        = [{ member = "Dim_", source = "InDim", type = "OaI32" }]
+
+[ops.python]
+args = ["a", "dim"]
+doc = "Reduce by arithmetic mean, preserving a selected dimension or reducing all values when dim is -1."
+
+[ops.test]
+cpu_reference = "std::accumulate(a_host.begin(), a_host.end(), 0.0f) / static_cast<float>(N)"
+tolerance = "1e-3f"
+test_sizes = [256, 1024]
+
+[[ops]]
+name            = "Softmax"
+category        = "Reduce"
+kind            = "unary"
+kernel_forward  = "Softmax"
+kernel_backward = "SoftmaxBwd"
+log_component   = "ML"
+body            = "manual_context"
+extra_params    = [{ name = "Dim", type = "OaI32", default = "-1" }]
+api_params      = [
+    "const OaMatrix& InA",
+    "OaI32 InDim = -1",
+]
+api_return      = "OaMatrix"
+notes           = "Stable softmax over the selected dimension; -1 selects the last dimension."
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+attributes          = [
+    { name = "Dim", kind = "signed_integer", source = "InDim" },
+]
+
+[ops.autograd]
+grad_class   = "OaGradSoftmax"
+inputs       = ["InA"]
+saved        = ["Out"]
+formula      = "manual"
+attach       = "standard"
+output_shape = true
+state        = [{ member = "Dim_", source = "InDim", type = "OaI32" }]
+
+[ops.python]
+args = ["a", "dim"]
+doc = "Stable softmax over the selected dimension; -1 selects the last dimension."
+
+[ops.test]
+cpu_reference = "std::exp(a_host[i]) / std::accumulate(a_host.begin(), a_host.end(), 0.0f, [](float sum, float x) { return sum + std::exp(x); })"
+tolerance = "1e-3f"
+test_sizes = [256]
+
+[[ops]]
+name            = "LogSoftmax"
+category        = "Reduce"
+kind            = "unary"
+kernel_forward  = "LogSoftmax"
+kernel_backward = "LogSoftmaxBwd"
+log_component   = "ML"
+body            = "manual_context"
+extra_params    = [{ name = "Dim", type = "OaI32", default = "-1" }]
+api_params      = [
+    "const OaMatrix& InA",
+    "OaI32 InDim = -1",
+]
+api_return      = "OaMatrix"
+notes           = "Stable log-softmax over the selected dimension; -1 selects the last dimension."
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+attributes          = [
+    { name = "Dim", kind = "signed_integer", source = "InDim" },
+]
+
+[ops.autograd]
+grad_class   = "OaGradLogSoftmax"
+inputs       = ["InA"]
+saved        = ["Out"]
+formula      = "manual"
+attach       = "standard"
+output_shape = true
+state        = [{ member = "Dim_", source = "InDim", type = "OaI32" }]
+
+[ops.python]
+args = ["a", "dim"]
+doc = "Stable log-softmax over the selected dimension; -1 selects the last dimension."
+
+[ops.test]
+cpu_reference = "a_host[i] - std::log(std::accumulate(a_host.begin(), a_host.end(), 0.0f, [](float sum, float x) { return sum + std::exp(x); }))"
+tolerance = "1e-3f"
+test_sizes = [256]
 
 [[ops]]
 name           = "Max"
@@ -29,16 +210,41 @@ kernel_backward = "MaxBwd"
 log_component  = "ML"
 body           = "manual_context"
 extra_params   = [{ name = "Dim", type = "OaI32", default = "-1" }]
+api_params     = [
+    "const OaMatrix& InA",
+    "OaI32 InDim = -1",
+]
+api_return     = "OaMatrix"
 dispatch_workgroups = 1
 output         = { shape = "scalar_1d", dtype = "match_input" }
-notes          = "Reduce by max (graph/executor: full reduction only)."
+notes          = "Reduce all values by maximum; Dim is retained as a compatibility parameter and is not a dimensional reduction."
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "explicit"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+
 [ops.autograd]
-grad_class = "OaGradMax"
-inputs     = ["InA"]
-saved      = ["out"]
+grad_class   = "OaGradMax"
+inputs       = ["InA"]
+saved        = ["InA", "Out"]
+formula      = "manual"
+attach       = "standard"
+output_shape = true
+
+[ops.python]
+args = ["a", "dim"]
+doc = "Reduce all matrix values by maximum; dim is currently a compatibility parameter."
+
 [ops.test]
 # For reduce_full, we find max of all elements and compare to CPU reference
 cpu_reference = "*std::max_element(a_host.begin(), a_host.end())"
 tolerance = "1e-4f"
 test_sizes = [256, 1024]
-

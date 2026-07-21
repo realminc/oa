@@ -38,6 +38,25 @@ VALID_OUTPUT_DTYPES = {
 SLANG_EMIT_KINDS = {"binary", "unary", "unary_scalar", "nullary_scalar"}
 AUTO_BODY_KINDS = {"binary", "unary", "unary_scalar", "nullary_scalar", "reduce_full"}
 
+# Schema-v2 semantic operation contracts. These describe the operation before
+# kernel selection and are intentionally independent of Vulkan/runtime details.
+VALID_CONTRACT_VALUE_KINDS = {"matrix", "image", "audio_buffer", "video_frame"}
+VALID_CONTRACT_SHAPE_RULES = {"match_input", "broadcast", "matmul_nt", "explicit"}
+VALID_CONTRACT_DTYPE_RULES = {"match_input", "promote_float"}
+VALID_CONTRACT_EFFECTS = {"read_inputs", "write_outputs"}
+VALID_CONTRACT_DIFFERENTIATION = {"none", "reverse"}
+VALID_CONTRACT_LOWERING = {"dispatch", "gemm"}
+VALID_CONTRACT_CONTROL_FLOW = {"straight_line", "conditional", "loop"}
+VALID_CONTRACT_ATTRIBUTE_KINDS = {
+	"boolean",
+	"signed_integer",
+	"unsigned_integer",
+	"float",
+	"string",
+	"shape",
+	"enum",
+}
+
 # Domain-specific namespace mapping (default — schemas may override via `namespace`)
 DOMAIN_NAMESPACE = {
 	"Core": "OaFnMatrix",

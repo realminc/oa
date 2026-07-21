@@ -9,9 +9,7 @@
 #include <Oa/Core/FnMatrix.h>
 #include <Oa/Ml/FnMatrix.h>
 #include <Oa/Ml/FnLoss.h>
-#include <Oa/Ml/Generative/Flow.h>
-#include <Oa/Ml/Generative/FlowDenoiser.h>
-#include <Oa/Ml/Generative/FlowTransformer.h>
+#include <Oa/Ml/FnFlow.h>
 #include <Oa/Ml/Rl.h>
 
 #include <Oa/Ml/Module.h>

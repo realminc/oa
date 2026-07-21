@@ -14,7 +14,7 @@ nb::bytes bytes_from(const OaVec<OaU8>& data) {
 }
 
 OaVideo* open_video(const OaVideoConfig& config) {
-    auto result = OaVideo::Open(PythonComputeEngine(), config);
+    auto result = OaVideo::Open(PythonEngine(), config);
     if (result.IsError()) {
         throw std::runtime_error(result.GetStatus().ToString().c_str());
     }
@@ -69,7 +69,7 @@ void BindVisionVideo(nb::module_& m) {
         .def_ro("MaxH265Qp", &OaVideoEncodeCapabilities::MaxH265Qp);
 
     m.def("QueryDecodeCapabilities", [](OaVideoCodec codec) {
-        auto result = OaVideoDecoder::QueryDecodeCapabilities(PythonComputeEngine(), codec);
+        auto result = OaVideoDecoder::QueryDecodeCapabilities(PythonEngine(), codec);
         if (result.IsError()) {
             throw std::runtime_error(result.GetStatus().ToString().c_str());
         }
@@ -77,7 +77,7 @@ void BindVisionVideo(nb::module_& m) {
     }, nb::arg("codec"));
 
     m.def("QueryEncodeCapabilities", [](OaVideoCodec codec) {
-        auto result = OaVideoEncoder::QueryEncodeCapabilities(PythonComputeEngine(), codec);
+        auto result = OaVideoEncoder::QueryEncodeCapabilities(PythonEngine(), codec);
         if (result.IsError()) {
             throw std::runtime_error(result.GetStatus().ToString().c_str());
         }
@@ -133,11 +133,12 @@ void BindVisionVideo(nb::module_& m) {
         .def("FrameRate", &OaVideo::FrameRate)
         .def("FrameCount", &OaVideo::FrameCount)
         .def("FrameIntervalMs", &OaVideo::FrameIntervalMs)
+        .def("Close", [](OaVideo& video) { throw_if_error(video.Close()); })
         .def("Destroy", &OaVideo::Destroy);
 
     nb::class_<OaVideoRecorder>(m, "OaVideoRecorder")
         .def_static("Create", [](const OaVideoRecorderConfig& config) {
-            auto result = OaVideoRecorder::Create(PythonComputeEngine(), config);
+            auto result = OaVideoRecorder::Create(PythonEngine(), config);
             if (result.IsError()) {
                 throw std::runtime_error(result.GetStatus().ToString().c_str());
             }
@@ -157,7 +158,7 @@ void BindVisionVideo(nb::module_& m) {
     nb::class_<OaScreenCapture>(m, "OaScreenCapture")
         .def_static("IsSupported", &OaScreenCapture::IsSupported)
         .def_static("Open", [](const OaScreenCaptureConfig& config) {
-            auto result = OaScreenCapture::Open(PythonComputeEngine(), config);
+            auto result = OaScreenCapture::Open(PythonEngine(), config);
             if (result.IsError()) {
                 throw std::runtime_error(result.GetStatus().ToString().c_str());
             }
@@ -171,6 +172,9 @@ void BindVisionVideo(nb::module_& m) {
         .def("Release", [](OaScreenCapture& capture, const OaVideoFrame& frame) {
             capture.Release(frame);
         }, nb::arg("frame"))
+        .def("Close", [](OaScreenCapture& capture) {
+            throw_if_error(capture.Close());
+        })
         .def("Destroy", &OaScreenCapture::Destroy)
         .def("IsStreaming", &OaScreenCapture::IsStreaming)
         .def("Width", &OaScreenCapture::Width)
@@ -179,7 +183,7 @@ void BindVisionVideo(nb::module_& m) {
     nb::class_<OaCameraCapture>(m, "OaCameraCapture")
         .def(nb::init<>())
         .def("Init", [](OaCameraCapture& capture, const OaCameraCaptureConfig& config) {
-            throw_if_error(capture.Init(PythonComputeEngine(), config));
+            throw_if_error(capture.Init(PythonEngine(), config));
         }, nb::arg("config") = OaCameraCaptureConfig())
         .def("Poll", [](OaCameraCapture& capture) -> nb::object {
             OaVideoFrame frame;
@@ -189,6 +193,9 @@ void BindVisionVideo(nb::module_& m) {
         .def("Release", [](OaCameraCapture& capture, const OaVideoFrame& frame) {
             capture.Release(frame);
         }, nb::arg("frame"))
+        .def("Close", [](OaCameraCapture& capture) {
+            throw_if_error(capture.Close());
+        })
         .def("Destroy", &OaCameraCapture::Destroy)
         .def("Width", &OaCameraCapture::Width)
         .def("Height", &OaCameraCapture::Height)

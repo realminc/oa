@@ -7,8 +7,7 @@
 //   2. String override: OaEnvFlag::GetString("OA_FORCE_PRECISION", "FP32")
 //                       Returns the env value if set+non-empty, else the default.
 //
-// Recognized OA env knobs (canonical list, keep in sync with
-// Docs/Rewrite/Opus/OaLlamaCppVulkanLessons.md §15):
+// Recognized OA env knobs (canonical public list):
 //
 //   Disable toggles (route around a code path)
 //     OA_DISABLE_COOPMAT                Skip CoopMat extension enable + route to scalar.
@@ -38,8 +37,7 @@
 //                                       uses var/report/training_graph.json.
 //     OA_LOG_COOPMAT_SHAPES=1           Log enumerated coopmat shapes at device init.
 //     OA_LOG_NUMERIC_DEVIATIONS=1       Per-test summary of max-observed deviation
-//                                       per tolerance tier (Docs/Rewrite/Opus/
-//                                       OaNumericStability.md §9.2; planned —
+//                                       per tolerance tier (planned —
 //                                       requires per-EXPECT_NEAR_* harness wiring).
 
 #pragma once
@@ -72,9 +70,9 @@ public:
 enum class OaNumericMode : OaU8;
 
 // Translate an OaNumericMode to the equivalent env-knob state for the rest of
-// the runtime. Called once at engine init from OaComputeEngine::Create.
+// the runtime. Called once at engine init from OaEngine::Create.
 //
-// Mapping (see Docs/Rewrite/Opus/OaNumericStability.md §3 table):
+// Numeric-mode mapping:
 //   Fast           no-op
 //   Stable         OA_FORCE_PRECISION=FP32, OA_DISABLE_COOPMAT=1
 //   Deterministic  + OA_DISABLE_PERSISTENT_LOOP=1

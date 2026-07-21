@@ -22,9 +22,9 @@
 #include <Oa/Ml.h>
 #include <Oa/Ml/Autograd.h>
 #include <Oa/Ui/Plot/Plot.h>
-#include <Oa/Ui/DeviceUi.h>
 #include <Oa/Ui/Image.h>
 #include <Oa/Ui/Input.h>
+#include <Oa/Ui/Viewer.h>
 #include <Oa/Runtime/Context.h>
 #include <Oa/Runtime/Engine.h>
 #include <Oa/Core/Log.h>
@@ -136,7 +136,7 @@ struct GridCell {
 
 // Load Fashion-MNIST, train an MLP, fill InOutCells[0..25) with prediction
 // tiles + labels. Returns OaStatus on failure.
-static OaStatus TrainAndPredictGrid(OaComputeEngine& InRt,
+static OaStatus TrainAndPredictGrid(OaEngine& InRt,
                                     const OaString&    InDataDir,
                                     OaI32              InTrainSteps,
                                     OaVec<GridCell>&   OutCells) {
@@ -282,11 +282,11 @@ static void PopulateFigure(OaPlot::Figure& InFig, const OaVec<GridCell>& InCells
 }
 
 
-// ─── Show mode — OaDeviceUiApp using fig.RenderFrame ──────────────────────
+// ─── Show mode — OaViewer live source using fig.RenderFrame ───────────────
 
-class ImageGridClassifyApp : public OaDeviceUiApp {
+class ImageGridClassifySource final : public OaViewerLiveSource {
 public:
-	ImageGridClassifyApp(const OaString& InDataDir, OaI32 InTrainSteps)
+	ImageGridClassifySource(const OaString& InDataDir, OaI32 InTrainSteps)
 		: DataDir_(InDataDir), TrainSteps_(InTrainSteps),
 		  Fig_({
 				// .Title    = "OA — Fashion-MNIST Prediction Grid",
@@ -300,31 +300,29 @@ public:
 			})
 	{}
 
-	void OnInit(OaDeviceUi& InGpui) override {
-		auto& rt = *OaComputeEngine::GetGlobal();
-		if (auto s = TrainAndPredictGrid(rt, DataDir_, TrainSteps_, Cells_); not s.IsOk()) {
-			OA_LOG_ERROR(OaLogComponent::App, "TrainAndPredictGrid: %s", s.ToString().c_str());
-			Quit();
-			return;
-		}
+	OaStatus Open(OaEngine& InEngine) override {
+		OA_RETURN_IF_ERROR(TrainAndPredictGrid(
+			InEngine, DataDir_, TrainSteps_, Cells_));
 		PopulateFigure(Fig_, Cells_);
-		Fig_.Rasterize(rt);  // CPU-paint + GPU-upload the fixed-size canvas
-
-		auto& input = InGpui.Input();
-		input.RegisterAction({.Name = "quit",  .Binding = {.Key = OuiKey::Escape}, .Callback = [this] { Quit(); }});
-		input.RegisterAction({.Name = "quitq", .Binding = {.Key = OuiKey::Q},      .Callback = [this] { Quit(); }});
+		Fig_.Rasterize(InEngine);
+		return OaStatus::Ok();
 	}
 
-	void OnRender(OaUi& InOui) override {
+	void Render(
+		OaUi& InOui,
+		const OaTextAtlas&,
+		OaU32 InWidth,
+		OaU32 InHeight) override {
 		if (Cells_.Empty()) { return; }
-		Fig_.RenderFrame(Gpui(), InOui);
+		Fig_.RenderFrame(InWidth, InHeight, InOui);
 	}
 
-	void OnShutdown(OaDeviceUi& /*InGpui*/) override {
-		auto& rt = *OaComputeEngine::GetGlobal();
+	OaStatus Close() override {
+		auto& rt = *OaEngine::GetGlobal();
 		for (auto& cell : Cells_) {
 			if (cell.Tile.IsValid()) { cell.Tile.Destroy(rt); }
 		}
+		return OaStatus::Ok();
 	}
 
 private:
@@ -371,13 +369,13 @@ int main(int argc, char** argv) {
 		OaEngineConfig cfg;
 		cfg.PresentationMode = OaPresentationMode::None;
 		cfg.RegisterAsGlobal = true;
-		auto eR = OaComputeEngine::Create(cfg);
+		auto eR = OaEngine::Create(cfg);
 		if (not eR.IsOk()) {
 			std::fprintf(stderr, "Engine create failed: %s\n",
 			             eR.GetStatus().ToString().c_str());
 			return 1;
 		}
-		OaComputeEngine& engine = *eR.GetValue();
+		OaEngine& engine = *eR.GetValue();
 
 		OaVec<GridCell> cells;
 		if (auto s = TrainAndPredictGrid(engine, dataDir, trainSteps, cells); not s.IsOk()) {
@@ -404,14 +402,18 @@ int main(int argc, char** argv) {
 		return rc.IsOk() ? 0 : 1;
 	}
 
-	// ─── Show mode: subclass OaDeviceUiApp, render via Figure ──────────────
-	OaUiStyle style;
-	style.Background = {0.039F, 0.039F, 0.039F, 1.0F};
-	ImageGridClassifyApp app(dataDir, trainSteps);
-	return app.Run({
-		// .Title  = "OA — Fashion-MNIST Prediction Grid",
-		.Width  = 800U,
+	// ─── Show mode: one OaViewer lifecycle with a figure source ───────────
+	ImageGridClassifySource source(dataDir, trainSteps);
+	OaViewerConfig config{
+		.Mode = OaViewerMode::Live,
+		.LiveSource = &source,
+		.Width = 800U,
 		.Height = 800U,
-		.Style  = style
-	}).IsOk() ? 0 : 1;
+		.ShowHelp = false,
+		.ShowStats = false,
+		.ShowTimeline = false,
+	};
+	config.Style.Background = {0.039F, 0.039F, 0.039F, 1.0F};
+	OaViewer viewer(config);
+	return viewer.Run().IsOk() ? 0 : 1;
 }

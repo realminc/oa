@@ -6,7 +6,7 @@
 
 // ─── Dynamic extension table ─────────────────────────────────────────────────
 // Extensions (ml, chain, anim, …) push their kernel metadata here before
-// OaComputeEngine::Create loads pipelines. Read-only after engine init.
+// OaEngine::Create loads pipelines. Read-only after engine init.
 
 static OaVec<OaComputeKernel> GDynamicKernels;
 

@@ -1,7 +1,7 @@
 #include <cassert>
 
 #include <Oa/Ml/Byte.h>
-#include <Oa/Ml/Autograd.h>
+#include <Oa/Ml/Autograd/Nodes.h>
 #include <Oa/Core/FnMatrix.h>
 
 OaMatrix OaByteEmbedding::Forward(const OaMatrix& InByteIds) {

@@ -1,15 +1,9 @@
 #include <Oa/Runtime/Collective.h>
-#include <Oa/Runtime/Engine.h>
-#include <Oa/Runtime/Topology.h>
-#include <Oa/Runtime/OaVk.h>
 #include <Oa/Core/Memory.h>
 #include <Oa/Core/Simd.h>
-#include <Oa/Core/Log.h>
-#include <Oa/Core/Thread.h>
 
-#include <algorithm>
 #include <cmath>
-#include <atomic>
+#include <limits>
 
 // ─── CPU SIMD Reduce Helpers ──────────────────────────────────────────────
 
@@ -31,17 +25,47 @@ static void CpuReduceF32(OaF32* InOutAcc, const OaF32* InB, OaI64 InCount, OaRed
 
 // ─── Validation Helpers ──────────────────────────────────────────────────
 
-static OaStatus ValidateBuffers(OaSpan<OaVkBuffer> InBufs) {
-	if (InBufs.size() == 0)
+static OaStatus ValidateEqualHostBuffers(OaSpan<OaVkBuffer> InBufs) {
+	if (InBufs.empty()) {
 		return OaStatus::Error(OaStatusCode::InvalidArgument, "empty buffer span");
-	OaU64 size = InBufs[0].Size;
+	}
+	const OaU64 size = InBufs[0].Size;
+	if (size > static_cast<OaU64>(
+			std::numeric_limits<OaVec<OaU8>::size_type>::max())) {
+		return OaStatus::Error(OaStatusCode::InvalidArgument,
+			"collective buffer size exceeds the host staging limit");
+	}
 	for (OaU32 i = 0; i < InBufs.size(); ++i) {
-		if (!InBufs[i].MappedPtr)
-			return OaStatus::Error(OaStatusCode::InvalidArgument,
-				"collective requires host-visible buffers (MappedPtr must be valid)");
-		if (InBufs[i].Size != size)
+		if (InBufs[i].Size != size) {
 			return OaStatus::Error(OaStatusCode::InvalidArgument,
 				"all buffers must have the same size for collective ops");
+		}
+		if (size != 0 and InBufs[i].MappedPtr == nullptr) {
+			return OaStatus::Error(OaStatusCode::InvalidArgument,
+				"collective requires host-visible buffers (MappedPtr must be valid)");
+		}
+	}
+	return OaStatus::Ok();
+}
+
+static OaStatus ValidateReduceBuffers(
+	OaSpan<OaVkBuffer> InBufs,
+	OaReduceOp InOp) {
+	OA_RETURN_IF_ERROR(ValidateEqualHostBuffers(InBufs));
+	if (InOp != OaReduceOp::Sum
+		and InOp != OaReduceOp::Max
+		and InOp != OaReduceOp::Min) {
+		return OaStatus::Error(OaStatusCode::InvalidArgument,
+			"unsupported collective reduction operation");
+	}
+	if (InBufs[0].Size % sizeof(OaF32) != 0) {
+		return OaStatus::Error(OaStatusCode::InvalidArgument,
+			"collective reduction buffer size must be a multiple of sizeof(f32)");
+	}
+	if (InBufs[0].Size / sizeof(OaF32)
+		> static_cast<OaU64>(std::numeric_limits<OaI64>::max())) {
+		return OaStatus::Error(OaStatusCode::InvalidArgument,
+			"collective reduction element count exceeds the SIMD backend limit");
 	}
 	return OaStatus::Ok();
 }
@@ -49,351 +73,175 @@ static OaStatus ValidateBuffers(OaSpan<OaVkBuffer> InBufs) {
 // ─── Span-of-Buffers API ───────────────────────────────────────────────
 
 OaStatus OaCollective::AllReduce(
-	OaComputeEngine& InRt,
 	OaSpan<OaVkBuffer> InOutBufs,
 	OaReduceOp InOp)
 {
-	if (InOutBufs.size() <= 1) return OaStatus::Ok();
-	OA_RETURN_IF_ERROR(ValidateBuffers(InOutBufs));
+	OA_RETURN_IF_ERROR(ValidateReduceBuffers(InOutBufs, InOp));
+	const OaU64 size = InOutBufs[0].Size;
+	if (size == 0 or InOutBufs.size() == 1) return OaStatus::Ok();
 
-	OaU32 n = static_cast<OaU32>(InOutBufs.size());
-	OaU64 size = InOutBufs[0].Size;
-	OaI64 count = static_cast<OaI64>(size / sizeof(OaF32));
-
-	if (n == 2) {
-		// Flat reduce: accumulate buf[1] into buf[0], then copy buf[0] to buf[1].
-		auto* acc = static_cast<OaF32*>(InOutBufs[0].MappedPtr);
-		auto* src = static_cast<OaF32*>(InOutBufs[1].MappedPtr);
-
-		OaDeviceMesh* mesh = InRt.GetMesh();
-		if (mesh) {
-			OA_RETURN_IF_ERROR(mesh->EnsureScratch(size));
-			OaMemcpy(mesh->ScratchBuf.MappedPtr, src, size);
-			CpuReduceF32(acc, static_cast<const OaF32*>(mesh->ScratchBuf.MappedPtr), count, InOp);
-		} else {
-			CpuReduceF32(acc, src, count, InOp);
-		}
-		OaMemcpy(InOutBufs[1].MappedPtr, InOutBufs[0].MappedPtr, size);
-		return OaStatus::Ok();
+	const OaI64 count = static_cast<OaI64>(size / sizeof(OaF32));
+	OaVec<OaF32> reduced(static_cast<OaVec<OaF32>::size_type>(count));
+	OaMemcpy(reduced.Data(), InOutBufs[0].MappedPtr, size);
+	for (OaU32 i = 1; i < InOutBufs.size(); ++i) {
+		CpuReduceF32(
+			reduced.Data(),
+			static_cast<const OaF32*>(InOutBufs[i].MappedPtr),
+			count,
+			InOp);
 	}
-
-	// Ring AllReduce for N > 2
-	if (size % (static_cast<OaU64>(n) * sizeof(OaF32)) != 0) {
-		return OaStatus::Error(OaStatusCode::InvalidArgument,
-			"AllReduce ring: buffer size must be divisible by (N * sizeof(f32))");
-	}
-	OaU64 chunkSize = size / n;
-	OaU64 chunkCount = chunkSize / sizeof(OaF32);
-
-	OaDeviceMesh* mesh = InRt.GetMesh();
-	if (mesh) {
-		OA_RETURN_IF_ERROR(mesh->EnsureScratch(chunkSize));
-	}
-
-	OaVec<OaU8> stageAllReduce(chunkSize);
-
-	// Phase 1: Reduce-Scatter via ring
-	for (OaU32 step = 0; step < n - 1; ++step) {
-		for (OaU32 i = 0; i < n; ++i) {
-			OaU32 recvFrom = (i - 1 + n) % n;
-			OaU32 accChunk = (i - step + n) % n;
-
-			OaU64 offset = accChunk * chunkSize;
-			auto* dst = reinterpret_cast<OaF32*>(
-				static_cast<OaU8*>(InOutBufs[i].MappedPtr) + offset);
-			auto* incoming = static_cast<const OaU8*>(InOutBufs[recvFrom].MappedPtr) + offset;
-
-			OaMemcpy(stageAllReduce.Data(), incoming, chunkSize);
-			CpuReduceF32(dst, reinterpret_cast<const OaF32*>(stageAllReduce.Data()),
-				static_cast<OaI64>(chunkCount), InOp);
-		}
-	}
-
-	// Phase 2: AllGather via ring — node i has reduced chunk i, spread to all
-	for (OaU32 step = 0; step < n - 1; ++step) {
-		for (OaU32 i = 0; i < n; ++i) {
-			OaU32 recvFrom = (i - 1 + n) % n;
-			OaU32 copyChunk = (i - step - 1 + n) % n;
-
-			OaU64 offset = copyChunk * chunkSize;
-			auto* dst = static_cast<OaU8*>(InOutBufs[i].MappedPtr) + offset;
-			auto* src2 = static_cast<const OaU8*>(InOutBufs[recvFrom].MappedPtr) + offset;
-
-			OaMemcpy(stageAllReduce.Data(), src2, chunkSize);
-			OaMemcpy(dst, stageAllReduce.Data(), chunkSize);
-		}
+	for (OaVkBuffer& buffer : InOutBufs) {
+		OaMemcpy(buffer.MappedPtr, reduced.Data(), size);
 	}
 
 	return OaStatus::Ok();
 }
 
 OaStatus OaCollective::Broadcast(
-	OaComputeEngine& InRt,
 	OaSpan<OaVkBuffer> InOutBufs,
 	OaU32 InSrcIdx)
 {
-	(void)InRt;
-	if (InOutBufs.size() <= 1) return OaStatus::Ok();
+	OA_RETURN_IF_ERROR(ValidateEqualHostBuffers(InOutBufs));
 	if (InSrcIdx >= InOutBufs.size())
 		return OaStatus::Error(OaStatusCode::InvalidArgument, "InSrcIdx out of range");
 
 	const auto& src = InOutBufs[InSrcIdx];
-	if (!src.MappedPtr)
-		return OaStatus::Error(OaStatusCode::InvalidArgument, "source buffer not host-visible");
+	if (src.Size == 0 or InOutBufs.size() == 1) return OaStatus::Ok();
 
+	OaVec<OaU8> staged(static_cast<OaVec<OaU8>::size_type>(src.Size));
+	OaMemcpy(staged.Data(), src.MappedPtr, src.Size);
 	for (OaU32 i = 0; i < InOutBufs.size(); ++i) {
 		if (i == InSrcIdx) continue;
-		if (!InOutBufs[i].MappedPtr)
-			return OaStatus::Error(OaStatusCode::InvalidArgument,
-				"destination buffer not host-visible");
-		OaMemcpy(InOutBufs[i].MappedPtr, src.MappedPtr, src.Size);
+		OaMemcpy(InOutBufs[i].MappedPtr, staged.Data(), src.Size);
 	}
 	return OaStatus::Ok();
 }
 
 OaStatus OaCollective::AllGather(
-	OaComputeEngine& InRt,
 	OaSpan<const OaVkBuffer> InPartials,
 	OaSpan<OaVkBuffer> OutFullBufs)
 {
-	(void)InRt;
-	OaU32 n = static_cast<OaU32>(InPartials.size());
-	if (n <= 1) {
-		if (n == 1 && OutFullBufs.size() >= 1 && InPartials[0].MappedPtr && OutFullBufs[0].MappedPtr)
-			OaMemcpy(OutFullBufs[0].MappedPtr, InPartials[0].MappedPtr, InPartials[0].Size);
-		return OaStatus::Ok();
+	const OaU32 n = static_cast<OaU32>(InPartials.size());
+	if (n == 0) {
+		return OaStatus::Error(OaStatusCode::InvalidArgument,
+			"AllGather: empty partial buffer span");
 	}
-
 	if (OutFullBufs.size() != InPartials.size())
 		return OaStatus::Error(OaStatusCode::InvalidArgument,
 			"AllGather: partials and full buffer counts must match");
 
-	OaU64 partialSize = InPartials[0].Size;
-
-	// Gather all partials into each full buffer
-	for (OaU32 dst = 0; dst < n; ++dst) {
-		if (!OutFullBufs[dst].MappedPtr)
-			return OaStatus::Error(OaStatusCode::InvalidArgument, "output buffer not host-visible");
-		for (OaU32 src = 0; src < n; ++src) {
-			if (!InPartials[src].MappedPtr)
-				return OaStatus::Error(OaStatusCode::InvalidArgument, "partial buffer not host-visible");
-			OaU64 offset = src * partialSize;
-			OaMemcpy(
-				static_cast<OaU8*>(OutFullBufs[dst].MappedPtr) + offset,
-				InPartials[src].MappedPtr,
-				partialSize);
+	const OaU64 partialSize = InPartials[0].Size;
+	if (partialSize > std::numeric_limits<OaU64>::max() / n) {
+		return OaStatus::Error(OaStatusCode::InvalidArgument,
+			"AllGather: total output size overflows");
+	}
+	const OaU64 fullSize = partialSize * n;
+	if (fullSize > static_cast<OaU64>(
+			std::numeric_limits<OaVec<OaU8>::size_type>::max())) {
+		return OaStatus::Error(OaStatusCode::InvalidArgument,
+			"AllGather: output size exceeds the host staging limit");
+	}
+	for (OaU32 i = 0; i < n; ++i) {
+		if (InPartials[i].Size != partialSize) {
+			return OaStatus::Error(OaStatusCode::InvalidArgument,
+				"AllGather: partial buffer sizes must match");
 		}
+		if (OutFullBufs[i].Size < fullSize) {
+			return OaStatus::Error(OaStatusCode::InvalidArgument,
+				"AllGather: output buffer is too small");
+		}
+		if (partialSize != 0 and InPartials[i].MappedPtr == nullptr) {
+			return OaStatus::Error(OaStatusCode::InvalidArgument,
+				"AllGather: partial buffer is not host-visible");
+		}
+		if (fullSize != 0 and OutFullBufs[i].MappedPtr == nullptr) {
+			return OaStatus::Error(OaStatusCode::InvalidArgument,
+				"AllGather: output buffer is not host-visible");
+		}
+	}
+	if (fullSize == 0) return OaStatus::Ok();
+
+	OaVec<OaU8> gathered(static_cast<OaVec<OaU8>::size_type>(fullSize));
+	for (OaU32 src = 0; src < n; ++src) {
+		const OaU64 offset = src * partialSize;
+		OaMemcpy(gathered.Data() + offset, InPartials[src].MappedPtr, partialSize);
+	}
+	for (OaVkBuffer& output : OutFullBufs) {
+		OaMemcpy(output.MappedPtr, gathered.Data(), fullSize);
 	}
 	return OaStatus::Ok();
 }
 
 OaStatus OaCollective::Scatter(
-	OaComputeEngine& InRt,
 	const OaVkBuffer& InFull,
 	OaSpan<OaVkBuffer> OutPartials
 ) {
-	(void)InRt;
-	OaU32 n = static_cast<OaU32>(OutPartials.size());
-	if (n == 0) return OaStatus::Ok();
-	if (!InFull.MappedPtr)
+	const OaU32 n = static_cast<OaU32>(OutPartials.size());
+	if (n == 0) {
+		return OaStatus::Error(OaStatusCode::InvalidArgument,
+			"Scatter: empty output buffer span");
+	}
+	if (InFull.Size % n != 0) {
+		return OaStatus::Error(OaStatusCode::InvalidArgument,
+			"Scatter: source size must be divisible by the output count");
+	}
+	if (InFull.Size != 0 and InFull.MappedPtr == nullptr)
 		return OaStatus::Error(OaStatusCode::InvalidArgument, "source buffer not host-visible");
 
-	OaU64 chunkSize = InFull.Size / n;
+	const OaU64 chunkSize = InFull.Size / n;
+	for (const OaVkBuffer& partial : OutPartials) {
+		if (partial.Size < chunkSize) {
+			return OaStatus::Error(OaStatusCode::InvalidArgument,
+				"Scatter: output buffer is too small");
+		}
+		if (chunkSize != 0 and partial.MappedPtr == nullptr) {
+			return OaStatus::Error(OaStatusCode::InvalidArgument,
+				"Scatter: output buffer is not host-visible");
+		}
+	}
+	if (chunkSize == 0) return OaStatus::Ok();
 
+	OaVec<OaU8> staged(static_cast<OaVec<OaU8>::size_type>(InFull.Size));
+	OaMemcpy(staged.Data(), InFull.MappedPtr, InFull.Size);
 	for (OaU32 i = 0; i < n; ++i) {
-		if (!OutPartials[i].MappedPtr)
-			return OaStatus::Error(OaStatusCode::InvalidArgument, "partial buffer not host-visible");
 		OaMemcpy(
 			OutPartials[i].MappedPtr,
-			static_cast<const OaU8*>(InFull.MappedPtr) + i * chunkSize,
+			staged.Data() + i * chunkSize,
 			chunkSize);
 	}
 	return OaStatus::Ok();
 }
 
 OaStatus OaCollective::ReduceScatter(
-	OaComputeEngine& InRt,
 	OaSpan<OaVkBuffer> InOutBufs,
 	OaReduceOp InOp)
 {
-	(void)InRt;
-	OaU32 n = static_cast<OaU32>(InOutBufs.size());
-	if (n <= 1) return OaStatus::Ok();
-	OA_RETURN_IF_ERROR(ValidateBuffers(InOutBufs));
+	OA_RETURN_IF_ERROR(ValidateReduceBuffers(InOutBufs, InOp));
+	const OaU32 n = static_cast<OaU32>(InOutBufs.size());
+	const OaU64 size = InOutBufs[0].Size;
+	if (size == 0 or n == 1) return OaStatus::Ok();
 
-	OaU64 size = InOutBufs[0].Size;
-	OaU64 chunkSize = size / n;
-	OaI64 chunkCount = static_cast<OaI64>(chunkSize / sizeof(OaF32));
-
-	if (size % (static_cast<OaU64>(n) * sizeof(OaF32)) != 0) {
+	if (size % n != 0 or (size / n) % sizeof(OaF32) != 0) {
 		return OaStatus::Error(OaStatusCode::InvalidArgument,
-			"ReduceScatter ring: buffer size must be divisible by (N * sizeof(f32))");
+			"ReduceScatter: buffer size must divide into whole f32 chunks");
 	}
-
-	OaVec<OaU8> stageBuf(chunkSize);
-
-	for (OaU32 step = 0; step < n - 1; ++step) {
-		for (OaU32 i = 0; i < n; ++i) {
-			OaU32 recvFrom = (i - 1 + n) % n;
-			OaU32 accChunk = (i - step + n) % n;
-
-			OaU64 offset = accChunk * chunkSize;
-			auto* dst = reinterpret_cast<OaF32*>(
-				static_cast<OaU8*>(InOutBufs[i].MappedPtr) + offset);
-			auto* incoming = static_cast<const OaU8*>(InOutBufs[recvFrom].MappedPtr) + offset;
-
-			OaMemcpy(stageBuf.Data(), incoming, chunkSize);
-			CpuReduceF32(dst, reinterpret_cast<const OaF32*>(stageBuf.Data()), chunkCount, InOp);
-		}
+	const OaU64 chunkSize = size / n;
+	const OaI64 count = static_cast<OaI64>(size / sizeof(OaF32));
+	OaVec<OaF32> reduced(static_cast<OaVec<OaF32>::size_type>(count));
+	OaMemcpy(reduced.Data(), InOutBufs[0].MappedPtr, size);
+	for (OaU32 i = 1; i < n; ++i) {
+		CpuReduceF32(
+			reduced.Data(),
+			static_cast<const OaF32*>(InOutBufs[i].MappedPtr),
+			count,
+			InOp);
+	}
+	for (OaU32 i = 0; i < n; ++i) {
+		OaMemcpy(
+			InOutBufs[i].MappedPtr,
+			reinterpret_cast<const OaU8*>(reduced.Data()) + i * chunkSize,
+			chunkSize);
 	}
 
 	return OaStatus::Ok();
-}
-
-// ─── Async Variants (Overlap Pattern) ────────────────────────────────────
-
-static OaThreadPool& GetCollectivePool() {
-	OaThreadPoolConfig cfg;
-	cfg.NumWorkers = 2;
-	cfg.PinToCores = false;
-	static OaThreadPool pool = OaThreadPool::Create(cfg);
-	return pool;
-}
-
-OaResult<OaDispatchTicket> OaCollective::AllReduceAsync(
-	OaComputeEngine& InRt,
-	OaSpan<OaVkBuffer> InOutBufs,
-	OaReduceOp InOp)
-{
-	if (InOutBufs.size() <= 1) {
-		return OaDispatchTicket{};
-	}
-
-	auto semResult = OaVkTimelineSemaphore::Create(InRt.Device, 0);
-	if (!semResult.IsOk()) return semResult.GetStatus();
-
-	auto sem = std::move(semResult.GetValue());
-	OaU64 signalValue = 1;
-
-	OaVec<OaVkBuffer> bufsCopy(InOutBufs.begin(), InOutBufs.end());
-	VkSemaphore rawSem = static_cast<VkSemaphore>(sem.Semaphore);
-	VkDevice rawDev = static_cast<VkDevice>(InRt.Device.Device);
-	auto* rtPtr = &InRt;
-
-	GetCollectivePool().Submit([bufsCopy = std::move(bufsCopy), InOp, rawSem, rawDev, signalValue, rtPtr]() mutable {
-		OaSpan<OaVkBuffer> span(bufsCopy.Data(), bufsCopy.Size());
-		auto status = OaCollective::AllReduce(*rtPtr, span, InOp);
-		if (!status.IsOk()) {
-			OA_LOG_ERROR(OaLogComponent::Core, "async AllReduce failed: %s",
-				status.GetMessage().c_str());
-		}
-
-		VkSemaphoreSignalInfo signalInfo{};
-		signalInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO;
-		signalInfo.semaphore = rawSem;
-		signalInfo.value = signalValue;
-		vkSignalSemaphore(rawDev, &signalInfo);
-	});
-
-	OaDispatchTicket ticket;
-	ticket.Semaphore = sem;
-	sem.Semaphore = nullptr;
-	ticket.Value = signalValue;
-	ticket.NodeIndex = 0;
-	return ticket;
-}
-
-OaResult<OaDispatchTicket> OaCollective::BroadcastAsync(
-	OaComputeEngine& InRt,
-	OaSpan<OaVkBuffer> InOutBufs,
-	OaU32 InSrcIdx)
-{
-	if (InOutBufs.size() <= 1) {
-		return OaDispatchTicket{};
-	}
-
-	auto semResult = OaVkTimelineSemaphore::Create(InRt.Device, 0);
-	if (!semResult.IsOk()) return semResult.GetStatus();
-
-	auto sem = std::move(semResult.GetValue());
-	OaU64 signalValue = 1;
-
-	OaVec<OaVkBuffer> bufsCopy(InOutBufs.begin(), InOutBufs.end());
-	VkSemaphore rawSem = static_cast<VkSemaphore>(sem.Semaphore);
-	VkDevice rawDev = static_cast<VkDevice>(InRt.Device.Device);
-	auto* rtPtr = &InRt;
-
-	GetCollectivePool().Submit([bufsCopy = std::move(bufsCopy), InSrcIdx, rawSem, rawDev, signalValue, rtPtr]() mutable {
-		OaSpan<OaVkBuffer> span(bufsCopy.Data(), bufsCopy.Size());
-		auto status = OaCollective::Broadcast(*rtPtr, span, InSrcIdx);
-		if (!status.IsOk()) {
-			OA_LOG_ERROR(OaLogComponent::Core, "async Broadcast failed: %s",
-				status.GetMessage().c_str());
-		}
-
-		VkSemaphoreSignalInfo signalInfo{};
-		signalInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO;
-		signalInfo.semaphore = rawSem;
-		signalInfo.value = signalValue;
-		vkSignalSemaphore(rawDev, &signalInfo);
-	});
-
-	OaDispatchTicket ticket;
-	ticket.Semaphore = sem;
-	sem.Semaphore = nullptr;
-	ticket.Value = signalValue;
-	ticket.NodeIndex = 0;
-	return ticket;
-}
-
-// ─── Single-Buffer Backward-Compat API ───────────────────────────────────
-
-OaStatus OaCollective::AllReduce(
-	OaComputeEngine& InRt,
-	OaVkBuffer& InOutBuf,
-	OaReduceOp InOp,
-	OaSpan<const OaU32> InNodes)
-{
-	(void)InRt;
-	(void)InOutBuf;
-	(void)InOp;
-	if (InNodes.size() <= 1) return OaStatus::Ok();
-	return OaStatus::Unimplemented("single-buffer AllReduce: use span-of-buffers API");
-}
-
-OaStatus OaCollective::Broadcast(
-	OaComputeEngine& InRt,
-	const OaVkBuffer& InSrc,
-	OaU32 InSrcNode,
-	OaSpan<const OaU32> InDstNodes)
-{
-	(void)InRt;
-	(void)InSrc;
-	(void)InSrcNode;
-	if (InDstNodes.size() == 0) return OaStatus::Ok();
-	return OaStatus::Unimplemented("single-buffer Broadcast: use span-of-buffers API");
-}
-
-OaStatus OaCollective::AllGather(
-	OaComputeEngine& InRt,
-	OaSpan<const OaVkBuffer> InPartials,
-	OaVkBuffer& OutFull)
-{
-	(void)InRt;
-	(void)OutFull;
-	if (InPartials.size() <= 1) return OaStatus::Ok();
-	return OaStatus::Unimplemented("single-buffer AllGather: use span-of-buffers API");
-}
-
-OaStatus OaCollective::Scatter(
-	OaComputeEngine& InRt,
-	const OaVkBuffer& InFull,
-	OaU32 InSrcNode,
-	OaSpan<OaVkBuffer> OutPartials)
-{
-	(void)InRt;
-	(void)InFull;
-	(void)InSrcNode;
-	if (OutPartials.size() <= 1) return OaStatus::Ok();
-	return OaStatus::Unimplemented("single-buffer Scatter: use span-of-buffers API");
 }

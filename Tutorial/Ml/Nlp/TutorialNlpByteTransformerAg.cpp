@@ -150,7 +150,7 @@ TEST(TutorialNlpByteTransformerAg, TransformerByteNextToken) {
 	auto  model  = OaMakeSharedPtr<OaByteTransformerLM>();
 	auto  params = model->AllParameterPtrs();
 	auto  opt    = OaMakeUniquePtr<OaAdamW>(params, 0.01F);
-	auto& rt     = *OaComputeEngine::GetGlobal();
+	auto& rt     = *OaEngine::GetGlobal();
 
 	printf("Model: Embed(%d→%d) + PosEmbed → OaTransformerBlock(%d, %d) → LN → Linear(%d→%d)\n",
 		kVocabSize, kDModel, kDModel, kHiddenDim, kDModel, kVocabSize);

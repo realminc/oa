@@ -4,7 +4,7 @@
 
 #include <Oa/Core/FnMatrix.h>
 #include <Oa/Ml/FnMatrix.h>       // VqAssign / VqEmaUpdate / Detach
-#include <Oa/Ml/Autograd.h>
+#include <Oa/Ml/Autograd/Nodes.h>
 #include <Oa/Runtime/Context.h>
 
 #include <utility>

@@ -40,7 +40,7 @@ TEST_VK(ConvTranspose2d, ForwardShape) {
 	auto weight = CreateMatrixFromHost(weight_data, OaMatrixShape{1, 1, 3, 3});
 	auto bias = CreateMatrixFromHost(bias_data, OaMatrixShape{1});
 
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto out = OaFnMatrix::ConvTranspose2d(input, weight, bias, 1, 0);
 	auto result = CopyMatrixToHost(out);
 
@@ -63,7 +63,7 @@ TEST_VK(ConvTranspose2d, ForwardWithStride) {
 	auto weight = CreateMatrixFromHost(weight_data, OaMatrixShape{1, 1, 3, 3});
 	auto bias = CreateMatrixFromHost(bias_data, OaMatrixShape{1});
 
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto out = OaFnMatrix::ConvTranspose2d(input, weight, bias, 2, 0);
 	auto result = CopyMatrixToHost(out);
 
@@ -84,7 +84,7 @@ TEST_VK(ConvTranspose2d, ForwardWithPadding) {
 	auto weight = CreateMatrixFromHost(weight_data, OaMatrixShape{1, 1, 3, 3});
 	auto bias = CreateMatrixFromHost(bias_data, OaMatrixShape{1});
 
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto out = OaFnMatrix::ConvTranspose2d(input, weight, bias, 1, 1);
 	auto result = CopyMatrixToHost(out);
 
@@ -107,7 +107,7 @@ TEST_VK(ConvTranspose2d, ForwardMultiChannel) {
 	auto weight = CreateMatrixFromHost(weight_data, OaMatrixShape{inC, outC, 3, 3});
 	auto bias = CreateMatrixFromHost(bias_data, OaMatrixShape{outC});
 
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto out = OaFnMatrix::ConvTranspose2d(input, weight, bias, 1, 0);
 	auto result = CopyMatrixToHost(out);
 
@@ -138,7 +138,7 @@ TEST_VK(ConvTranspose2d, ForwardNumericalReference) {
 	auto weight = CreateMatrixFromHost(weight_data, OaMatrixShape{1, 1, 2, 2});
 	auto bias = CreateMatrixFromHost(bias_data, OaMatrixShape{1});
 
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto out = OaFnMatrix::ConvTranspose2d(input, weight, bias, 1, 0);
 	auto result = CopyMatrixToHost(out);
 
@@ -157,7 +157,7 @@ TEST_VK(ConvTranspose2d, BwdDataShape) {
 	auto d_out = CreateMatrixFromHost(d_out_data, OaMatrixShape{1, 1, 4, 4});
 	auto weight = CreateMatrixFromHost(weight_data, OaMatrixShape{1, 1, 3, 3});
 
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto d_input = OaFnMatrix::ConvTranspose2dBwdData(d_out, weight, 1, 0, OaMatrixShape{1, 1, 2, 2});
 	auto result = CopyMatrixToHost(d_input);
 
@@ -183,7 +183,7 @@ TEST_VK(ConvTranspose2d, BwdDataNumericalReference) {
 	auto d_out = CreateMatrixFromHost(d_out_data, OaMatrixShape{1, 1, 3, 3});
 	auto weight = CreateMatrixFromHost(weight_data, OaMatrixShape{1, 1, 2, 2});
 
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto d_input = OaFnMatrix::ConvTranspose2dBwdData(d_out, weight, 1, 0, OaMatrixShape{1, 1, 2, 2});
 	auto result = CopyMatrixToHost(d_input);
 
@@ -211,7 +211,7 @@ TEST_VK(ConvTranspose2d, BwdWeightBiasSum) {
 	auto d_out = CreateMatrixFromHost(d_out_data, OaMatrixShape{1, 1, 3, 3});
 	auto weight = CreateMatrixFromHost(weight_data, OaMatrixShape{1, 1, 2, 2});
 
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto bwd = OaFnMatrix::ConvTranspose2dBwdWeight(input, d_out, weight, 1, 0);
 	auto grad_bias = CopyMatrixToHost(bwd.GradBias);
 	auto grad_weight = CopyMatrixToHost(bwd.GradWeight);
@@ -235,7 +235,7 @@ TEST_VK(ConvTranspose2d, BwdWeightShape) {
 	auto d_out = CreateMatrixFromHost(d_out_data, OaMatrixShape{1, 1, 4, 4});
 	auto weight = CreateMatrixFromHost(weight_data, OaMatrixShape{1, 1, 3, 3});
 
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto bwd = OaFnMatrix::ConvTranspose2dBwdWeight(input, d_out, weight, 1, 0);
 	auto grad_weight = CopyMatrixToHost(bwd.GradWeight);
 	auto grad_bias = CopyMatrixToHost(bwd.GradBias);
@@ -266,7 +266,7 @@ TEST_VK(ConvTranspose2d, LayerAutogradGradCorrect) {
 	biasParam.Data.SetRequiresGrad(true);
 	input.SetRequiresGrad(true);
 
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	OaGradientTape tape;
 	auto out = layer.Forward(input);
 	tape.Backward(out);
@@ -311,7 +311,7 @@ TEST_VK(ConvTranspose2d, AutogradFinite) {
 	weight.SetRequiresGrad(true);
 	bias.SetRequiresGrad(true);
 
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	OaGradientTape tape;
 	auto out = OaFnMatrix::ConvTranspose2d(input, weight, bias, 1, 0);
 	auto loss = OaFnLoss::Mse(out, target);
@@ -335,7 +335,7 @@ TEST_VK(ConvTranspose2d, LayerForward) {
 	std::vector<float> input_data(4, 1.0F);
 	auto input = CreateMatrixFromHost(input_data, OaMatrixShape{1, 1, 2, 2});
 
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto out = layer.Forward(input);
 	auto result = CopyMatrixToHost(out);
 

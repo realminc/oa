@@ -167,7 +167,9 @@ public:
 	// Fixed-shape capture with changing input. InPrepareFn always runs and may
 	// refill already allocated/mapped input matrices, but it must not append graph
 	// nodes after capture. InRecordFn records zero-grad + forward + backward and
-	// loss only for eager warm-up/capture; it is skipped on replay steps.
+	// loss only for eager warm-up/capture; it is skipped on replay steps. Stable
+	// allocations completed by InPrepareFn are retained as externally live replay
+	// inputs; later capture allocations may be considered transient.
 	void Step(
 		const std::function<void()>& InPrepareFn,
 		const std::function<void()>& InRecordFn
@@ -283,6 +285,7 @@ private:
 	void FireStepEnd();
 	void FireEpochEnd();
 	void FireTrainEnd();
+	bool CaptureCallbackStatus_(OaCbTraining& InCallback, const char* InPhase);
 	void ResetMetrics_();
 	void UpdateMetrics_();
 	void CloseStableResourceFrame_();
@@ -298,7 +301,7 @@ private:
 	[[nodiscard]] OaI64 EpochIndexForStep_(OaI64 InStep) const;
 
 	OaOptimizer&         Opt_;
-	OaComputeEngine*     Rt_                = nullptr;
+	OaEngine*     Rt_                = nullptr;
 	OaItTrainingConfig   Cfg_;
 	// Prefix sums of EpochSteps: EpochOffsets_[i] = first step of epoch i+1
 	// minus one (i.e. cumulative steps after epoch i). Empty when uniform.
@@ -373,6 +376,11 @@ public:
 
 	// Fired once after Finish(). Use for summary prints, file flush, etc.
 	virtual void OnTrainEnd(OaItTraining& InIter) { (void)InIter; }
+
+	// Stateful callbacks that perform I/O or other fallible work publish their
+	// first failure here. OaItTraining stops and Finish() returns that status;
+	// failures are never reduced to log-only warnings.
+	[[nodiscard]] virtual OaStatus GetStatus() const { return OaStatus::Ok(); }
 
 protected:
 	OaCbTraining() = default;

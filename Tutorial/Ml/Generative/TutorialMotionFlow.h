@@ -155,7 +155,7 @@ inline BatchData NextBatch(OaDsCmp& InDataset, OaI32& InOutCursor) {
 }
 
 inline OaF32 Validate(Model& InModel, OaDsCmp& InDataset) {
-	OaContext::ScopedEval eval(OaContext::GetDefault());
+	OaModule::ScopedEval eval(InModel);
 	OaI32 cursor = 0;
 	OaF64 total = 0.0;
 	constexpr OaI32 batches = 4;
@@ -182,7 +182,7 @@ inline OaF32 Validate(Model& InModel, OaDsCmp& InDataset) {
 
 inline void ValidateGeometryAndExport(
 	Model& InModel, OaDsCmp& InDataset, bool InMoe) {
-	OaContext::ScopedEval eval(OaContext::GetDefault());
+	OaModule::ScopedEval eval(InModel);
 	OaI32 cursor = 0;
 	auto batch = NextBatch(InDataset, cursor);
 	auto state = OaFnMatrix::PhiloxNormal(

@@ -216,6 +216,12 @@ public:
 		if (InOutBundle.Supported11.storagePushConstant16) {
 			InOutBundle.Features11.storagePushConstant16 = VK_TRUE;
 		}
+		// Graphics shaders emitted by the shared Slang pipeline declare the
+		// DrawParameters capability (base vertex/instance and draw index). The
+		// feature is core in Vulkan 1.1 but still has to be enabled explicitly.
+		if (InOutBundle.Supported11.shaderDrawParameters) {
+			InOutBundle.Features11.shaderDrawParameters = VK_TRUE;
+		}
 
 		// Enable required Vulkan 1.2 features
 		InOutBundle.Features12.bufferDeviceAddress = VK_TRUE;

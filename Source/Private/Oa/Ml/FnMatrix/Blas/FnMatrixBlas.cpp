@@ -7,9 +7,11 @@
 #include <Oa/Ml/FnMatrix.h>
 #include <Oa/Core/Matrix.h>
 #include <Oa/Core/FnMatrix.h>
+#include <Oa/Core/Log.h>
 #include <Oa/Core/Status.h>
 #include <Oa/Core/Types.h>
 #include <Oa/Runtime/Context.h>
+#include <Oa/Runtime/Gemm/GraphLowering.h>
 
 #include <Oa/Core/Validation.h>
 
@@ -28,6 +30,42 @@ static OaStatus OaValidateLinear(
 	return OaStatus::Ok();
 }
 #endif
+
+namespace {
+
+OaStatus RecordLinear(
+	OaContext& InContext,
+	const OaMatrix& InX,
+	const OaMatrix& InWeight,
+	const OaMatrix* InBias,
+	OaMatrix& OutY,
+	OaU32 InM,
+	OaU32 InN,
+	OaU32 InK,
+	OaGemmEpilogue InEpilogue,
+	OaStringView InOperation)
+{
+	auto status = OaGemmGraphLowering::Record(InContext, {
+		.A = &InX,
+		.B = &InWeight,
+		.Bias = InBias,
+		.C = &OutY,
+		.M = InM,
+		.N = InN,
+		.K = InK,
+		.Precision = OaMatMulPrecision::Auto,
+		.Epilogue = InEpilogue,
+		.Operation = InOperation,
+	});
+	if (not status.IsOk()) {
+		OA_LOG_ERROR(OaLogComponent::ML, "%.*s lowering failed: %s",
+			static_cast<int>(InOperation.Size()), InOperation.Data(),
+			status.GetMessage().c_str());
+	}
+	return status;
+}
+
+} // namespace
 
 OaMatrix OaFnMatrix::Linear(
 	const OaMatrix& InX,
@@ -63,14 +101,19 @@ OaMatrix OaFnMatrix::Linear(
 		src = &reshapedX;
 	}
 
-	ctx.AddLinear(
+	const OaMatrix* bias = InBias.IsEmpty() ? nullptr : &InBias;
+	const auto lowering = RecordLinear(
+		ctx,
 		*src,
 		InWeight,
-		InBias.IsEmpty() ? nullptr : &InBias,
+		bias,
 		out,
 		static_cast<OaU32>(M2d),
 		static_cast<OaU32>(N),
-		static_cast<OaU32>(K));
+		static_cast<OaU32>(K),
+		bias != nullptr ? OaGemmEpilogue::Bias : OaGemmEpilogue::None,
+		"Linear");
+	if (not lowering.IsOk()) return {};
 
 	if (InX.Rank() > 2) {
 		OaMatrixShape outShape;
@@ -118,14 +161,18 @@ OaMatrix OaFnMatrix::LinearRelu(
 		src = &reshapedX;
 	}
 
-	ctx.AddLinearRelu(
+	const auto lowering = RecordLinear(
+		ctx,
 		*src,
 		InWeight,
-		InBias,
+		&InBias,
 		out,
 		static_cast<OaU32>(M2d),
 		static_cast<OaU32>(N),
-		static_cast<OaU32>(K));
+		static_cast<OaU32>(K),
+		OaGemmEpilogue::BiasRelu,
+		"LinearRelu");
+	if (not lowering.IsOk()) return {};
 
 	if (InX.Rank() > 2) {
 		OaMatrixShape outShape;
@@ -173,14 +220,18 @@ OaMatrix OaFnMatrix::LinearGelu(
 		src = &reshapedX;
 	}
 
-	ctx.AddLinearGelu(
+	const auto lowering = RecordLinear(
+		ctx,
 		*src,
 		InWeight,
-		InBias,
+		&InBias,
 		out,
 		static_cast<OaU32>(M2d),
 		static_cast<OaU32>(N),
-		static_cast<OaU32>(K));
+		static_cast<OaU32>(K),
+		OaGemmEpilogue::BiasGelu,
+		"LinearGelu");
+	if (not lowering.IsOk()) return {};
 
 	if (InX.Rank() > 2) {
 		OaMatrixShape outShape;

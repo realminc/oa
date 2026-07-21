@@ -14,23 +14,24 @@ namespace {
 
 class CartPoleLiveSource final : public OaViewerLiveSource {
 public:
-	OaStatus Open(OaGraphicsEngine& InEngine) override {
+	OaStatus Open(OaEngine& InEngine) override {
 		Runtime_ = &InEngine;
 		return ResetSession_();
 	}
 
-	void Init(OaDeviceUi& InUi) override {
+	OaStatus Init(
+		OaInputSystem& InInput,
+		OaFunc<void(bool)> /*InCapturePointer*/) override {
 		for (auto& labels : LabelSlots_) {
 			auto buffer = OaGlyphBuffer::CreateHostUpload(
 				*Runtime_, kMaxLabelGlyphs);
 			if (buffer.IsError()) {
 				Fail_(buffer.GetStatus());
-				return;
+				return buffer.GetStatus();
 			}
 			labels = OaStdMove(*buffer);
 		}
-		auto& input = InUi.Input();
-		input.RegisterAction({
+		InInput.RegisterAction({
 			.Name = "cartpole-pause",
 			.Binding = {.Key = OuiKey::Space},
 			.Callback = [this] {
@@ -43,18 +44,19 @@ public:
 				}
 			},
 		});
-		input.RegisterAction({
+		InInput.RegisterAction({
 			.Name = "cartpole-step",
 			.Binding = {.Key = OuiKey::Right},
 			.Callback = [this] { StepRequested_ = true; },
 		});
-		input.RegisterAction({
+		InInput.RegisterAction({
 			.Name = "cartpole-reset",
 			.Binding = {.Key = OuiKey::R},
 			.Callback = [this] { ResetRequested_ = true; },
 		});
 		OA_LOG_INFO(OaLogComponent::App,
 			"CartPole PPO: Space=pause · Right=one update · R=restart · Q/Esc=quit");
+		return OaStatus::Ok();
 	}
 
 	void Update(OaF32 InDeltaMs) override {
@@ -127,9 +129,13 @@ public:
 		Snapshot_ = *snapshot;
 	}
 
-	void Render(OaUi& InUi, OaDeviceUi& InDeviceUi) override {
-		const OaI32 width = static_cast<OaI32>(InDeviceUi.Width());
-		const OaI32 height = static_cast<OaI32>(InDeviceUi.Height());
+	void Render(
+		OaUi& InUi,
+		const OaTextAtlas& InTextAtlas,
+		OaU32 InWidth,
+		OaU32 InHeight) override {
+		const OaI32 width = static_cast<OaI32>(InWidth);
+		const OaI32 height = static_cast<OaI32>(InHeight);
 		if (width < 320 || height < 240) return;
 		const OaF32 uiScale = std::clamp(
 			static_cast<OaF32>(height) / 720.0F, 1.0F, 2.0F);
@@ -208,7 +214,8 @@ public:
 			UpdateMs_, {0.70F, 0.46F, 0.96F, 1.0F}, false,
 			plotHeaderHeight, uiScale);
 		UpdateAndDrawLabels_(
-			InUi, InDeviceUi, plotRects, simulation, uiScale);
+			InUi, InTextAtlas, width, height,
+			plotRects, simulation, uiScale);
 
 		const OaF32 progress = static_cast<OaF32>(metrics.Rollout)
 			/ static_cast<OaF32>(Session_->Config().Rollouts);
@@ -232,11 +239,12 @@ public:
 		}
 	}
 
-	void Close(OaDeviceUi&) override {
+	OaStatus Close() override {
 		for (auto& labels : LabelSlots_) labels.Destroy();
 		ActiveLabelSlot_ = -1;
 		Runtime_ = nullptr;
 		Session_.Reset();
+		return OaStatus::Ok();
 	}
 
 private:
@@ -335,7 +343,9 @@ private:
 
 	void UpdateAndDrawLabels_(
 		OaUi& InUi,
-		OaDeviceUi& InDeviceUi,
+		const OaTextAtlas& InTextAtlas,
+		OaI32 InWidth,
+		OaI32 InHeight,
 		const std::array<OaPixelRect, 4>& InRects,
 		OaPixelRect InSimulationRect,
 		OaF32 InUiScale) {
@@ -371,7 +381,7 @@ private:
 
 			OaVec<OaGlyphInstance> glyphs;
 			glyphs.Reserve(320);
-			const OaTextAtlas& atlas = InDeviceUi.TextAtlas();
+			const OaTextAtlas& atlas = InTextAtlas;
 			for (OaU32 index = 0; index < InRects.size(); ++index) {
 				const OaF32 x = static_cast<OaF32>(InRects[index].X)
 					+ 18.0F * InUiScale;
@@ -403,16 +413,14 @@ private:
 		}
 
 		if (ActiveLabelSlot_ >= 0) {
-			const OaPixelRect screen{0, 0,
-				static_cast<OaI32>(InDeviceUi.Width()),
-				static_cast<OaI32>(InDeviceUi.Height())};
+			const OaPixelRect screen{0, 0, InWidth, InHeight};
 			InUi.Glyphs(
 				LabelSlots_[static_cast<OaU32>(ActiveLabelSlot_)],
-				InDeviceUi.TextAtlas(), screen, screen);
+				InTextAtlas, screen, screen);
 		}
 	}
 
-	OaComputeEngine* Runtime_ = nullptr;
+	OaEngine* Runtime_ = nullptr;
 	OaUniquePtr<OaTutorialCartPolePpo> Session_;
 	OaTutorialCartPoleSnapshot Snapshot_;
 	OaVec<OaF32> UpdateMs_;

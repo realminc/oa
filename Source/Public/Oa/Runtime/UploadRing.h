@@ -11,7 +11,7 @@
 #include <Oa/Core/Types.h>
 #include <Oa/Runtime/Sync.h>
 
-class OaComputeEngine;
+class OaEngine;
 class OaVkBuffer;
 
 struct OaUploadRingConfig {
@@ -40,7 +40,7 @@ public:
 	~OaUploadRing();
 
 	[[nodiscard]] static OaResult<OaUploadRing> Create(
-		OaComputeEngine& InEngine,
+		OaEngine& InEngine,
 		const OaUploadRingConfig& InConfig = {});
 
 	// Begin one producer batch. This may wait only for the frame slot being
@@ -61,9 +61,13 @@ public:
 
 	// Flushes mapped writes, records all queued copies into one command buffer,
 	// and submits once. The returned token should be chained into GPU consumers;
-	// host waiting is only required before CPU access or destruction.
+	// host waiting is only required before CPU access or explicit close.
 	[[nodiscard]] OaResult<OaCompletionToken> Submit();
 	[[nodiscard]] OaStatus Wait();
+	// Explicit host completion boundary. Destruction itself never submits or
+	// waits: it cancels an open batch and transfers submitted frame/staging
+	// lifetime to the engine for retirement at engine close.
+	[[nodiscard]] OaStatus Close();
 	void Destroy();
 
 	[[nodiscard]] OaU64 CapacityBytes() const noexcept;
@@ -74,5 +78,6 @@ public:
 
 private:
 	struct Impl;
+	void Abandon_() noexcept;
 	OaUniquePtr<Impl> Impl_;
 };

@@ -10,16 +10,16 @@
 #include <vector>
 #include <algorithm>
 
-static OaComputeEngine* GRt = nullptr;
+static OaEngine* GRt = nullptr;
 
 class TestFnMatrixPool : public ::testing::Test {
 protected:
 	static void SetUpTestSuite() {
 		OaEngineConfig cfg{};
 		cfg.AppName = "TestFnMatrixPool";
-		auto r = OaComputeEngine::Create(cfg);
+		auto r = OaEngine::Create(cfg);
 		ASSERT_TRUE(r.IsOk()) << r.GetStatus().GetMessage();
-		static OaUniquePtr<OaComputeEngine> rt = std::move(*r);
+		static OaUniquePtr<OaEngine> rt = std::move(*r);
 		GRt = rt.get();
 	}
 };
@@ -54,7 +54,7 @@ TEST_VK(TestFnMatrixPool, MaxPool2d_Simple2x2) {
 	
 	auto input_mat = CreateMatrixFromHost(input, OaMatrixShape{1, 1, 4, 4});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto output = OaFnMatrix::MaxPool2d(input_mat, 2, 2, 0).Out;
 	
 	auto result = CopyMatrixToHost(output);
@@ -85,7 +85,7 @@ TEST_VK(TestFnMatrixPool, MaxPool2d_WithStride) {
 	
 	auto input_mat = CreateMatrixFromHost(input, OaMatrixShape{1, 1, 5, 5});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto output = OaFnMatrix::MaxPool2d(input_mat, 2, 1, 0).Out;
 	
 	auto result = CopyMatrixToHost(output);
@@ -123,7 +123,7 @@ TEST_VK(TestFnMatrixPool, MaxPool2d_MultiChannel) {
 	
 	auto input_mat = CreateMatrixFromHost(input, OaMatrixShape{1, 2, 4, 4});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto pool_result = OaFnMatrix::MaxPool2d(input_mat, 2, 2, 0);
 	
 	auto result = CopyMatrixToHost(pool_result.Out);
@@ -158,7 +158,7 @@ TEST_VK(TestFnMatrixPool, MaxPool2d_Batch) {
 	
 	auto input_mat = CreateMatrixFromHost(input, OaMatrixShape{2, 1, 2, 2});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto output = OaFnMatrix::MaxPool2d(input_mat, 2, 2, 0).Out;
 	
 	auto result = CopyMatrixToHost(output);
@@ -191,7 +191,7 @@ TEST_VK(TestFnMatrixPool, AvgPool2d_Simple2x2) {
 	
 	auto input_mat = CreateMatrixFromHost(input, OaMatrixShape{1, 1, 4, 4});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto output = OaFnMatrix::AvgPool2d(input_mat, 2, 2, 0);
 	
 	auto result = CopyMatrixToHost(output);
@@ -223,7 +223,7 @@ TEST_VK(TestFnMatrixPool, AvgPool2d_WithStride) {
 	
 	auto input_mat = CreateMatrixFromHost(input, OaMatrixShape{1, 1, 4, 4});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto output = OaFnMatrix::AvgPool2d(input_mat, 2, 1, 0);
 	
 	auto result = CopyMatrixToHost(output);
@@ -259,7 +259,7 @@ TEST_VK(TestFnMatrixPool, AvgPool2d_MultiChannel) {
 	
 	auto input_mat = CreateMatrixFromHost(input, OaMatrixShape{1, 2, 4, 4});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto output = OaFnMatrix::AvgPool2d(input_mat, 2, 2, 0);
 	
 	auto result = CopyMatrixToHost(output);
@@ -294,7 +294,7 @@ TEST_VK(TestFnMatrixPool, AvgPool2d_Batch) {
 	
 	auto input_mat = CreateMatrixFromHost(input, OaMatrixShape{2, 1, 2, 2});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto output = OaFnMatrix::AvgPool2d(input_mat, 2, 2, 0);
 	
 	auto result = CopyMatrixToHost(output);
@@ -326,7 +326,7 @@ TEST_VK(TestFnMatrixPool, Compare_MaxVsAvg) {
 	
 	auto input_mat = CreateMatrixFromHost(input, OaMatrixShape{1, 1, 4, 4});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto max_pool_result = OaFnMatrix::MaxPool2d(input_mat, 2, 2, 0);
 	auto avg_output = OaFnMatrix::AvgPool2d(input_mat, 2, 2, 0);
 	

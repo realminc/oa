@@ -3,7 +3,10 @@
 #include <Oa/Ml/Autograd.h>
 
 #include <Oa/Core/FnMatrix.h>
+#include <Oa/Core/Log.h>
 #include <Oa/Core/Validation.h>
+#include <Oa/Runtime/Context.h>
+#include <Oa/Runtime/SemanticGraph.h>
 
 #include <algorithm>
 #include <unordered_map>
@@ -21,6 +24,59 @@ namespace OaFnAutograd {
 bool IsEnabled() noexcept                { return g_IsEnabled; }
 void SetEnabled(bool InEnabled) noexcept { g_IsEnabled = InEnabled; }
 OaU64 NextSeq() noexcept                 { return ++g_NextSeq; }
+
+OaStatus AttachSemantic(
+	const OaSharedPtr<OaGradNode>& InNode,
+	OaSemanticOperationId InForwardOperation,
+	OaU32 InOutputIndex)
+{
+	if (not InNode or InForwardOperation == OaInvalidSemanticOperationId) {
+		return OaStatus::Error(OaStatusCode::InvalidArgument,
+			"semantic autograd attachment requires a node and forward operation");
+	}
+	auto* context = OaContext::GetDefaultPtr();
+	auto* graph = context ? context->SemanticGraph() : nullptr;
+	if (not graph) {
+		return OaStatus::Error(OaStatusCode::FailedPrecondition,
+			"semantic autograd attachment requires an active graph");
+	}
+	const auto attached = graph->AttachAutograd(
+		InForwardOperation, InOutputIndex, InNode->SequenceNr_);
+	if (not attached.IsOk()) return attached;
+	InNode->ForwardSemanticOperation_ = InForwardOperation;
+	InNode->ForwardSemanticOutput_ = InOutputIndex;
+	return OaStatus::Ok();
+}
+
+OaStatus CompleteSemantic(
+	const OaGradNode& InNode,
+	OaSemanticOperationId InBackwardFirstOperation,
+	OaU32 InBackwardOperationCount)
+{
+	if (InNode.ForwardSemanticOperation_ == OaInvalidSemanticOperationId) {
+		return OaStatus::Ok();
+	}
+	auto* context = OaContext::GetDefaultPtr();
+	auto* graph = context ? context->SemanticGraph() : nullptr;
+	if (not graph) {
+		return OaStatus::Error(OaStatusCode::FailedPrecondition,
+			"semantic backward completion requires an active graph");
+	}
+	const auto completed = graph->CompleteAutograd(
+		InNode.ForwardSemanticOperation_, InNode.SequenceNr_,
+		InBackwardFirstOperation, InBackwardOperationCount);
+	// Execute() closes and clears the active semantic recording. A tape may
+	// intentionally materialize its forward values before expanding backward
+	// (Max is the canonical example), in which case the submitted forward
+	// attachment no longer belongs to the new recording. Numerical backward
+	// remains valid, but there is no live forward graph to amend.
+	if (completed.GetCode() == OaStatusCode::NotFound
+		and graph->Autograd().Empty())
+	{
+		return OaStatus::Ok();
+	}
+	return completed;
+}
 
 } // namespace OaFnAutograd
 
@@ -65,6 +121,9 @@ void OaGradientTape::Backward(const OaMatrix& InRoot) {
 		auto it = gradMap.find(fn);
 		if (it == gradMap.end()) continue;
 		OaMatrix upstream = it->second;
+		auto* semanticGraph = OaContext::GetDefault().SemanticGraph();
+		const auto backwardFirst = semanticGraph
+			? semanticGraph->OperationCount() : 0U;
 
 		// Robustness: normalize the upstream d (dout for this node) to the exact shape
 		// the node was attached with. View/reshape chains in forward (very common in
@@ -118,6 +177,18 @@ void OaGradientTape::Backward(const OaMatrix& InRoot) {
 					dAcc = dAcc.Reshape(existing->second.GetShape());
 				}
 				existing->second = OaFnMatrix::Add(existing->second, dAcc);
+			}
+		}
+
+		if (semanticGraph) {
+			const auto backwardEnd = semanticGraph->OperationCount();
+			const auto completed = OaFnAutograd::CompleteSemantic(
+				*fn, backwardFirst, backwardEnd - backwardFirst);
+			if (not completed.IsOk()) {
+				OA_LOG_ERROR(OaLogComponent::ML,
+					"semantic backward expansion failed: %s",
+					completed.GetMessage().c_str());
+				return;
 			}
 		}
 

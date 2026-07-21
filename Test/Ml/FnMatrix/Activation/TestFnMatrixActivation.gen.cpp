@@ -17,16 +17,16 @@
 #include <numeric>
 #include <vector>
 
-static OaComputeEngine* GRt = nullptr;
+static OaEngine* GRt = nullptr;
 
 class TestFnMatrixActivation : public ::testing::Test {
 protected:
 	static void SetUpTestSuite() {
 		OaEngineConfig cfg{};
 		cfg.AppName = "TestFnMatrixActivation";
-		auto r = OaComputeEngine::Create(cfg);
+		auto r = OaEngine::Create(cfg);
 		ASSERT_TRUE(r.IsOk()) << r.GetStatus().GetMessage();
-		static OaUniquePtr<OaComputeEngine> rt = std::move(*r);
+		static OaUniquePtr<OaEngine> rt = std::move(*r);
 		GRt = rt.get();
 	}
 };
@@ -34,7 +34,7 @@ protected:
 TEST_VK(TestFnMatrixActivation, Gelu_Context) {
 	constexpr OaU32 N = 256;
 	auto a = OaFnMatrix::Rand(OaMatrixShape{N});
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto out = OaFnMatrix::Gelu(a);
 	// Context scope auto-executes and syncs at end of scope
 	std::vector<float> a_host(N);
@@ -49,7 +49,7 @@ TEST_VK(TestFnMatrixActivation, Gelu_Context) {
 TEST_VK(TestFnMatrixActivation, Silu_Context) {
 	constexpr OaU32 N = 256;
 	auto a = OaFnMatrix::Rand(OaMatrixShape{N});
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto out = OaFnMatrix::Silu(a);
 	// Context scope auto-executes and syncs at end of scope
 	std::vector<float> a_host(N);
@@ -64,7 +64,7 @@ TEST_VK(TestFnMatrixActivation, Silu_Context) {
 TEST_VK(TestFnMatrixActivation, Relu_Context) {
 	constexpr OaU32 N = 256;
 	auto a = OaFnMatrix::Rand(OaMatrixShape{N});
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto out = OaFnMatrix::Relu(a);
 	// Context scope auto-executes and syncs at end of scope
 	std::vector<float> a_host(N);
@@ -79,7 +79,7 @@ TEST_VK(TestFnMatrixActivation, Relu_Context) {
 TEST_VK(TestFnMatrixActivation, Tanh_Context) {
 	constexpr OaU32 N = 256;
 	auto a = OaFnMatrix::Rand(OaMatrixShape{N});
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto out = OaFnMatrix::Tanh(a);
 	// Context scope auto-executes and syncs at end of scope
 	std::vector<float> a_host(N);
@@ -94,7 +94,7 @@ TEST_VK(TestFnMatrixActivation, Tanh_Context) {
 TEST_VK(TestFnMatrixActivation, Sigmoid_Context) {
 	constexpr OaU32 N = 256;
 	auto a = OaFnMatrix::Rand(OaMatrixShape{N});
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto out = OaFnMatrix::Sigmoid(a);
 	// Context scope auto-executes and syncs at end of scope
 	std::vector<float> a_host(N);
@@ -110,7 +110,7 @@ TEST_VK(TestFnMatrixActivation, LeakyRelu_Context) {
 	constexpr OaU32 N = 256;
 	constexpr OaF32 kScalar = 0.01f;
 	auto a = OaFnMatrix::Rand(OaMatrixShape{N});
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto out = OaFnMatrix::LeakyRelu(a, kScalar);
 	// Context scope auto-executes and syncs at end of scope
 	std::vector<float> a_host(N);
@@ -126,7 +126,7 @@ TEST_VK(TestFnMatrixActivation, Elu_Context) {
 	constexpr OaU32 N = 256;
 	constexpr OaF32 kScalar = 1.0f;
 	auto a = OaFnMatrix::Rand(OaMatrixShape{N});
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto out = OaFnMatrix::Elu(a, kScalar);
 	// Context scope auto-executes and syncs at end of scope
 	std::vector<float> a_host(N);
@@ -141,7 +141,7 @@ TEST_VK(TestFnMatrixActivation, Elu_Context) {
 TEST_VK(TestFnMatrixActivation, Mish_Context) {
 	constexpr OaU32 N = 256;
 	auto a = OaFnMatrix::Rand(OaMatrixShape{N});
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto out = OaFnMatrix::Mish(a);
 	// Context scope auto-executes and syncs at end of scope
 	std::vector<float> a_host(N);
@@ -156,7 +156,7 @@ TEST_VK(TestFnMatrixActivation, Mish_Context) {
 TEST_VK(TestFnMatrixActivation, Softplus_Context) {
 	constexpr OaU32 N = 256;
 	auto a = OaFnMatrix::Rand(OaMatrixShape{N});
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto out = OaFnMatrix::Softplus(a);
 	// Context scope auto-executes and syncs at end of scope
 	std::vector<float> a_host(N);

@@ -110,10 +110,10 @@ OaU64 OaVkTimelineSemaphore::GetValue(const OaVkDevice& InDevice) const {
 OaStatus OaCompletionToken::Wait(OaU64 InTimeoutNs) const
 {
 	if (not IsValid()) return OaStatus::Ok();
-	return Semaphore_->Wait(*Device_, Value_, InTimeoutNs);
+	return Semaphore_.Wait(*Device_, Value_, InTimeoutNs);
 }
 
 OaBool OaCompletionToken::IsComplete() const
 {
-	return not IsValid() || Semaphore_->GetValue(*Device_) >= Value_;
+	return not IsValid() or Semaphore_.GetValue(*Device_) >= Value_;
 }

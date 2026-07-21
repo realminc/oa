@@ -214,7 +214,7 @@ struct BlitCmd {
 // ─── OaUi::Impl ────────────────────────────────────────────────────────────────
 
 struct OaUi::Impl {
-	OaComputeEngine* Rt = nullptr;
+	OaEngine* Rt = nullptr;
 
 	// Blit pipelines (created in InitBlit).
 	OaComputePipeline BlitRgba;
@@ -356,7 +356,7 @@ OaUi::~OaUi() { Destroy(); }
 
 // ─── Init / Destroy ───────────────────────────────────────────────────────────
 
-OaStatus OaUi::Init(OaComputeEngine& InRt, const OaUiStyle& InStyle) {
+OaStatus OaUi::Init(OaEngine& InRt, const OaUiStyle& InStyle) {
 	Impl_ = OaStdMakeUnique<Impl>();
 	Impl_->Rt = &InRt;
 	Impl_->DefaultStyle = InStyle;
@@ -440,8 +440,8 @@ OaStatus OaUi::InitBlit(void* /*InComposeImageView*/) {
 // ─── UpdateBlitImage ──────────────────────────────────────────────────────────
 
 void OaUi::UpdateBlitImage(void* /*InComposeImageView*/) {
-	// Compose images are registered directly in OaDeviceUi's bindless
-	// storage-image heap (see OaDeviceUi::BuildComposeImage).
+	// The viewer registers its compose target directly in the engine's
+	// bindless storage-image heap.
 }
 
 

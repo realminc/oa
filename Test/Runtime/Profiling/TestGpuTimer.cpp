@@ -74,7 +74,7 @@ TEST(PerfStat, Reset) {
 
 TEST(GpuTimer, InitDestroy) {
     if (not OaVkTestEngineOk()) { GTEST_SKIP(); }
-    auto& rt = *OaComputeEngine::GetGlobal();
+    auto& rt = *OaEngine::GetGlobal();
 
     OaGpuTimer timer;
     auto status = timer.Init(rt, "test_init");
@@ -88,20 +88,22 @@ TEST(GpuTimer, InitDestroy) {
 
 TEST(GpuTimer, MeasuresKernelTime) {
     if (not OaVkTestEngineOk()) { GTEST_SKIP(); }
-    auto& rt = *OaComputeEngine::GetGlobal();
+    auto& rt = *OaEngine::GetGlobal();
 
     OaGpuTimer timer;
     ASSERT_TRUE(timer.Init(rt, "fill_test").IsOk());
 
     // Time a small Fill kernel. OaFnMatrix::Fill records into OaContext (it does
     // not dispatch immediately), so the kernel must be timed via the context's
-    // async-batch executor — wrapping timer.Begin/End around a bare Fill would
+    // submitted batch — wrapping timer.Begin/End around a bare Fill would
     // time an empty batch.
     auto& ctx = OaContext::GetDefault();
     auto tensor = OaFnMatrix::Empty(OaMatrixShape{1024 * 1024}, OaScalarType::Float32);
 
     OaFnMatrix::Fill(tensor, 1.0F);
-    ASSERT_TRUE(ctx.ExecuteAsync(&timer).IsOk());
+    auto submitted = ctx.Submit(&timer);
+    ASSERT_TRUE(submitted.IsOk());
+    ASSERT_TRUE(ctx.Wait(submitted.GetValue()).IsOk());
 
     OaF64 gpuMs = timer.ReadbackMs(rt.Device);
     EXPECT_GT(gpuMs, 0.0);
@@ -114,7 +116,7 @@ TEST(GpuTimer, MeasuresKernelTime) {
 // check that stddev/mean < 5% over the remaining 100 samples.
 TEST(GpuTimer, LowVarianceOverWindow) {
     if (not OaVkTestEngineOk()) { GTEST_SKIP(); }
-    auto& rt = *OaComputeEngine::GetGlobal();
+    auto& rt = *OaEngine::GetGlobal();
 
     OaGpuTimer timer;
     ASSERT_TRUE(timer.Init(rt, "variance_test").IsOk());
@@ -125,10 +127,12 @@ TEST(GpuTimer, LowVarianceOverWindow) {
     OaPerfStat stat("fill_4m", 100, 20);
 
     for (OaI32 i = 0; i < 120; ++i) {
-        // Fill records into the context; ExecuteAsync(&timer) dispatches the
+        // Fill records into the context; Submit(&timer) dispatches the
         // recorded graph inside the timed batch (timer.Begin → run → timer.End).
         OaFnMatrix::Fill(tensor, static_cast<OaF32>(i));
-        ASSERT_TRUE(ctx.ExecuteAsync(&timer).IsOk());
+        auto submitted = ctx.Submit(&timer);
+        ASSERT_TRUE(submitted.IsOk());
+        ASSERT_TRUE(ctx.Wait(submitted.GetValue()).IsOk());
 
         OaF64 gpuMs = timer.ReadbackMs(rt.Device);
         stat.Push(gpuMs);
@@ -176,7 +180,7 @@ TEST(OaTimerTest, CpuMode) {
     timer.CpuEnd();
 
     // Dummy device — CPU mode doesn't use it
-    OaComputeEngine* rt = OaComputeEngine::GetGlobal();
+    OaEngine* rt = OaEngine::GetGlobal();
     if (rt != nullptr) {
         OaF64 ms = timer.Commit(rt->Device, 64.0);
         EXPECT_GT(ms, 0.5);
@@ -187,18 +191,18 @@ TEST(OaTimerTest, CpuMode) {
 
 TEST(OaTimerTest, GpuMode) {
     if (not OaVkTestEngineOk()) { GTEST_SKIP(); }
-    auto& rt = *OaComputeEngine::GetGlobal();
+    auto& rt = *OaEngine::GetGlobal();
 
     OaTimer timer(OaTimerMode::Gpu, "gpu_unified_test");
     ASSERT_TRUE(timer.Init(rt).IsOk());
 
     auto tensor = OaFnMatrix::Empty(OaMatrixShape{1024 * 1024}, OaScalarType::Float32);
 
-    ASSERT_TRUE(rt.BeginComputeBatch().IsOk());
-    timer.Begin(rt);
     OaFnMatrix::Fill(tensor, 2.0F);
-    timer.End(rt);
-    ASSERT_TRUE(rt.FlushComputeBatch().IsOk());
+    auto& ctx = OaContext::GetDefault();
+    auto submitted = ctx.Submit(timer.GpuRegion());
+    ASSERT_TRUE(submitted.IsOk());
+    ASSERT_TRUE(ctx.Wait(submitted.GetValue()).IsOk());
 
     OaF64 ms = timer.Commit(rt.Device, 1024.0 * 1024.0);
     EXPECT_GT(ms, 0.0);

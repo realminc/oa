@@ -1,5 +1,7 @@
 #include <Oa/Vision/ItVideo.h>
 
+#include <Oa/Core/Log.h>
+
 OaResult<OaItVideo> OaItVideo::Create(
 	OaEngine& InEngine, const OaItVideoConfig& InConfig)
 {
@@ -10,10 +12,20 @@ OaResult<OaItVideo> OaItVideo::Create(
 	return iterator;
 }
 
+OaStatus OaItVideo::Close()
+{
+	OaStatus status = Video_.HasValue() ? Video_->Close() : OaStatus::Ok();
+	Video_.Reset();
+	return status;
+}
+
 void OaItVideo::Destroy()
 {
-	if (Video_.HasValue()) Video_->Destroy();
-	Video_.Reset();
+	if (const auto status = Close(); not status.IsOk()) {
+		OA_LOG_ERROR(OaLogComponent::Core,
+			"OaItVideo::Destroy: shutdown failed: %s",
+			status.ToString().c_str());
+	}
 }
 
 bool OaItVideo::IsDone() const { return not Video_.HasValue() or Video_->IsDone(); }
@@ -46,6 +58,10 @@ OaResult<OaVec<OaU8>> OaItVideo::ReadbackCurrentRgba() { return Video_.HasValue(
 	? Video_->ReadbackCurrentRgba()
 	: OaResult<OaVec<OaU8>>(OaStatus::Error(
 		OaStatusCode::FailedPrecondition, "OaItVideo is closed")); }
+void OaItVideo::MarkCurrentFrameConsumed(const OaEvent& InConsumed)
+{
+	if (Video_.HasValue()) Video_->MarkCurrentFrameConsumed(InConsumed);
+}
 void OaItVideo::MarkCurrentFrameConsumed(
 	const OaVkTimelineSemaphore& InSemaphore, OaU64 InValue)
 {

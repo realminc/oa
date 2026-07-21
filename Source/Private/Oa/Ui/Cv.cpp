@@ -6,6 +6,7 @@
 
 // Engine first — VK_NO_PROTOTYPES before any vulkan.h pull-in.
 #include <Oa/Runtime/Engine.h>
+#include <Oa/Runtime/Context.h>
 
 #include <Oa/Ui/Cv.h>
 #include <Oa/Ui/Image.h>
@@ -15,6 +16,16 @@
 #include <cstring>
 #include <cstdio>
 #include <cmath>
+
+namespace {
+
+OaContext& ContextForEngine(OaEngine& InEngine) {
+	OaContext* active = OaContext::GetDefaultPtr();
+	return active != nullptr and active->GetEngine() == &InEngine
+		? *active : InEngine.GetContext();
+}
+
+} // namespace
 
 // ─── OaCvFrame method bodies ──────────────────────────────────────────────────
 
@@ -227,7 +238,7 @@ static void DrawString(OaVec<OaU8>& Buf, OaI32 W, OaI32 H,
 
 static OaResult<OaTexture> RenderFrame(
 	const OaCvFrame& InFrame,
-	OaComputeEngine& InRt,
+	OaEngine& InRt,
 	OaSpan<const OaU8> InBaseRgba)
 {
 	const OaI32 W = InFrame.W;
@@ -240,19 +251,15 @@ static OaResult<OaTexture> RenderFrame(
 
 	if (InBaseRgba.Size() >= nBytes) {
 		std::memcpy(pixels.Data(), InBaseRgba.Data(), nBytes);
-	} else if (InFrame.Base != nullptr and InFrame.Base->Buffer != nullptr and InFrame.Base->Size >= nBytes) {
-		// Readback the base RGBA8 buffer via the staging-buffer pattern, then
-		// overlays draw on top.
-		auto stageR = InRt.Allocator.AllocHostVisible(nBytes);
-		if (stageR.IsOk()) {
-			OaVkBuffer staging = stageR.GetValue();
-			if (InRt.CopyBufferAsync(*InFrame.Base, staging, nBytes).IsOk() and
-			    InRt.WaitTransfer().IsOk() and
-			    staging.MappedPtr != nullptr) {
-				std::memcpy(pixels.Data(), staging.MappedPtr, nBytes);
-			}
-			InRt.Allocator.Free(staging);
+	} else if (InFrame.Base != nullptr) {
+		if (InFrame.Base->Buffer == nullptr or InFrame.Base->Size < nBytes) {
+			return OaStatus::InvalidArgument(
+				"OaCvFrame::Render: Base is null or smaller than W*H*4");
 		}
+		// Read back the base RGBA8 buffer before composing host-side overlays.
+		if (auto status = InRt.ReadbackBuffer(
+			*InFrame.Base, 0U, pixels.Data(), nBytes);
+			not status.IsOk()) return status;
 	} else {
 		// Black canvas fallback — keep alpha=255 so overlays show on it.
 		for (OaI64 i = 3; i < pixels.Size(); i += 4) pixels[i] = 255;
@@ -310,12 +317,53 @@ static OaResult<OaTexture> RenderFrame(
 		OaSpan<const OaU8>(pixels.Data(), pixels.Size()), W, H);
 }
 
-OaResult<OaTexture> OaCvFrame::Render(OaComputeEngine& InRt) const {
-	return RenderFrame(*this, InRt, {});
+static OaStatus CompleteDeviceBaseIfNeeded(
+	const OaCvFrame& InFrame,
+	OaContext& InContext,
+	OaSpan<const OaU8> InBaseRgba)
+{
+	if (InFrame.W <= 0 or InFrame.H <= 0) return OaStatus::Ok();
+	const OaU64 bytes = static_cast<OaU64>(InFrame.W)
+		* static_cast<OaU64>(InFrame.H) * 4U;
+	if (InBaseRgba.Size() >= bytes or InFrame.Base == nullptr) {
+		return OaStatus::Ok();
+	}
+
+	const OaVkBuffer& base = *InFrame.Base;
+	OaEngine& engine = InContext.Engine();
+	if (base.Buffer == nullptr or base.Size < bytes) {
+		return OaStatus::InvalidArgument(
+			"OaCvFrame::Render: Base is null or smaller than W*H*4");
+	}
+	if (base.Allocation == nullptr or base.AliasIdentity != nullptr
+		or base.IsImported() or base.NodeIndex != 0U
+		or base.AllocatorIdentity != engine.Allocator.Allocator) {
+		return OaStatus::InvalidArgument(
+			"OaCvFrame::Render: Base must be a non-aliased buffer owned by the context engine");
+	}
+	OA_RETURN_IF_ERROR(InContext.Execute());
+	return InContext.Sync();
+}
+
+OaResult<OaTexture> OaCvFrame::Render(OaEngine& InRt) const {
+	return Render(ContextForEngine(InRt));
 }
 
 OaResult<OaTexture> OaCvFrame::Render(
-	OaComputeEngine& InRt,
+	OaEngine& InRt,
 	OaSpan<const OaU8> InBaseRgba) const {
-	return RenderFrame(*this, InRt, InBaseRgba);
+	return Render(ContextForEngine(InRt), InBaseRgba);
+}
+
+OaResult<OaTexture> OaCvFrame::Render(OaContext& InContext) const {
+	return Render(InContext, {});
+}
+
+OaResult<OaTexture> OaCvFrame::Render(
+	OaContext& InContext,
+	OaSpan<const OaU8> InBaseRgba) const
+{
+	OA_RETURN_IF_ERROR(CompleteDeviceBaseIfNeeded(
+		*this, InContext, InBaseRgba));
+	return RenderFrame(*this, InContext.Engine(), InBaseRgba);
 }

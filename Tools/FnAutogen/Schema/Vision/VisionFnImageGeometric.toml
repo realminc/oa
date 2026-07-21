@@ -2,7 +2,7 @@
 #
 # This is the *source of truth* for geometric image transformations. The generator
 # emits .h declarations, .cpp implementations, and .slang shaders from this file.
-# See Tools/OaFnAutogen/oafnautogen.py and Docs/Rewrite/Opus/OaFnAutogen.md.
+# See Tools/FnAutogen/README.md and Tools/FnAutogen/oafnautogen.py.
 #
 # Geometric operations perform spatial transformations on images.
 

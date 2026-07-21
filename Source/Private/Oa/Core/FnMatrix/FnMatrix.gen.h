@@ -4,6 +4,8 @@
 
 // OaFnMatrix — generated umbrella for Core/FnMatrix.
 
+#include "Blas/FnMatrixBlas.gen.h"
 #include "Elemwise/FnMatrixElemwise.gen.h"
+#include "Reduce/FnMatrixReduce.gen.h"
 #include "Rng/FnMatrixRng.gen.h"
 #include "Shape/FnMatrixShape.gen.h"

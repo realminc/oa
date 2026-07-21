@@ -398,7 +398,7 @@ private:
 //   pool.Submit([] { DoWork(); });              // fire-and-forget
 //   auto t = pool.SubmitTask([] { return 42; }); // get future
 //   auto val = t->Wait();                       // blocks, returns 42
-//   pool.Shutdown();                            // joins all workers
+//   pool.Shutdown();                            // drains and waits explicitly
 
 struct OaThreadPoolConfig {
 	OaI32 NumWorkers = 0;
@@ -410,6 +410,8 @@ struct OaThreadPoolConfig {
 struct OaThreadPool {
 	[[nodiscard]] static OaThreadPool Create(
 		const OaThreadPoolConfig& InConfig = {});
+	// Explicit graceful boundary. Stops intake, drains queued jobs, and waits
+	// for every worker. Destruction only requests cancellation and never joins.
 	void Shutdown();
 	~OaThreadPool();
 
@@ -424,13 +426,18 @@ struct OaThreadPool {
 	auto SubmitTask(F InFunc) -> OaSharedPtr<OaTask<decltype(InFunc())>> {
 		using R = decltype(InFunc());
 		auto task = OaMakeSharedPtr<OaTask<R>>();
-		Submit([task, f = std::move(InFunc)]() mutable {
-			if constexpr (std::is_void_v<R>) {
-				f();
-				task->Complete();
-			} else {
-				task->Complete(f());
-			}
+		SubmitJob_({
+			.Run = [task, f = std::move(InFunc)]() mutable {
+				if constexpr (std::is_void_v<R>) {
+					f();
+					task->Complete();
+				} else {
+					task->Complete(f());
+				}
+			},
+			.Cancel = [task] {
+				task->Fail(OaStatus::Cancelled("Thread pool abandoned"));
+			},
 		});
 		return task;
 	}
@@ -442,13 +449,20 @@ struct OaThreadPool {
 private:
 	OaThreadPool() = default;
 
-	using Job = std::function<void()>;
+	struct Job {
+		std::function<void()> Run;
+		std::function<void()> Cancel;
+	};
 	static constexpr OaI32 kQueueCapacity = 256;
+	struct State;
+	static void WorkerLoop(
+		OaSharedPtr<State> InState,
+		OaI32 InWorkerId,
+		OaI32 InCoreId,
+		OaBool InPinToCore);
+	void SubmitJob_(Job InJob);
+	void Abandon_() noexcept;
 
-	OaVec<std::thread> Workers_;
-	OaVec<OaSharedPtr<OaChannel<Job>>> Queues_;
-	std::atomic<OaI32> NextWorker_{0};
-	std::atomic<bool> Running_{false};
+	OaSharedPtr<State> State_;
 	OaCpuTopology Topology_;
-	OaVec<OaI32> WorkerCoreIds_;
 };

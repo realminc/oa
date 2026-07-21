@@ -1,0 +1,355 @@
+1
+00:00:00,000 --> 00:00:01,883
+This phone is training a Transformer locally.
+
+2
+00:00:01,883 --> 00:00:02,690
+No cloud service.
+
+3
+00:00:02,690 --> 00:00:03,767
+No mobile-only inference runtime.
+
+4
+00:00:03,767 --> 00:00:06,457
+The same OA operation library, autograd engine, AdamW optimizer,
+
+5
+00:00:06,457 --> 00:00:09,417
+checkpoint format, and Vulkan kernels also run on an Intel desktop.
+
+6
+00:00:09,417 --> 00:00:11,838
+The same capability-driven runtime has NVIDIA, AMD, Intel, and
+
+7
+00:00:11,838 --> 00:00:13,990
+Qualcomm paths across discrete, integrated, and mobile GPUs.
+
+8
+00:00:13,990 --> 00:00:15,605
+The phone is not the product.
+
+9
+00:00:15,605 --> 00:00:17,488
+It is proof that the architecture travels.
+
+10
+00:00:17,868 --> 00:00:20,865
+GPU software is usually assembled from separate stacks for numerical
+
+11
+00:00:20,865 --> 00:00:23,262
+compute, machine learning, vision, audio, codecs, and presentation.
+
+12
+00:00:23,262 --> 00:00:25,659
+Each boundary introduces another data model, allocator, copy,
+
+13
+00:00:25,659 --> 00:00:27,157
+synchronization rule, and hardware backend.
+
+14
+00:00:27,157 --> 00:00:30,154
+Python makes the surface approachable, but crossing layers can still
+
+15
+00:00:30,154 --> 00:00:31,352
+fragment the work underneath.
+
+16
+00:00:31,352 --> 00:00:34,049
+The result is familiar: powerful accelerators, surrounded by glue.
+
+17
+00:00:34,429 --> 00:00:38,063
+OA tests a different idea: one GPU-first C++ and Python
+
+18
+00:00:38,063 --> 00:00:38,971
+framework over Vulkan.
+
+19
+00:00:38,971 --> 00:00:41,696
+Matrices, images, audio buffers, and video frames keep their
+
+20
+00:00:41,696 --> 00:00:44,421
+meaning, while one engine owns device memory, kernel selection,
+
+21
+00:00:44,421 --> 00:00:45,935
+graph execution, scheduling, and profiling.
+
+22
+00:00:45,935 --> 00:00:46,844
+Operations stay stateless.
+
+23
+00:00:46,844 --> 00:00:47,752
+Sessions own state.
+
+24
+00:00:47,752 --> 00:00:50,174
+Semantic work lowers into dispatches, transfers, barriers, resource
+
+25
+00:00:50,174 --> 00:00:51,385
+aliases, and explicit completion.
+
+26
+00:00:51,385 --> 00:00:54,111
+Capabilities are selected at runtime, and unsupported paths fail
+
+27
+00:00:54,111 --> 00:00:54,413
+visibly.
+
+28
+00:00:54,793 --> 00:00:56,989
+For Build Week, we made that claim physical.
+
+29
+00:00:56,989 --> 00:01:00,009
+OA Mobile Lab trains five small neural network architectures on an
+
+30
+00:01:00,009 --> 00:01:03,303
+Adreno phone: an RNN, a GRU, a Transformer,
+
+31
+00:01:03,303 --> 00:01:05,225
+a sparse mixture-of-experts Transformer, and Mamba-3.
+
+32
+00:01:05,225 --> 00:01:07,970
+A route passes only after forward, loss, backward, AdamW,
+
+33
+00:01:07,970 --> 00:01:09,617
+evaluation, autoregressive generation, checkpoint save, fresh-model
+
+34
+00:01:09,617 --> 00:01:10,990
+reload, and exact generation parity.
+
+35
+00:01:10,990 --> 00:01:12,912
+The controlled Transformer and mixture-of-experts contracts also
+
+36
+00:01:12,912 --> 00:01:14,559
+pass on Intel Iris Xe.
+
+37
+00:01:14,939 --> 00:01:17,581
+That result is difficult because training is not one kernel.
+
+38
+00:01:17,581 --> 00:01:19,960
+It is thousands of coupled decisions about shapes, lifetimes,
+
+39
+00:01:19,960 --> 00:01:21,810
+precision, descriptors, memory visibility, and device capabilities.
+
+40
+00:01:21,810 --> 00:01:24,717
+OA records the semantic operation first, then lowers it to an
+
+41
+00:01:24,717 --> 00:01:25,510
+executable Vulkan graph.
+
+42
+00:01:25,510 --> 00:01:27,888
+Recorded work and compiled replay amortize host work without
+
+43
+00:01:27,888 --> 00:01:30,531
+exposing a vendor policy through the high-level API.
+
+44
+00:01:30,911 --> 00:01:33,046
+The same substrate reaches far beyond the phone.
+
+45
+00:01:33,046 --> 00:01:35,180
+Audio paths decode, normalize, transform, and extract model-ready
+
+46
+00:01:35,180 --> 00:01:35,447
+features.
+
+47
+00:01:35,447 --> 00:01:37,582
+Vision operations preserve image semantics through transforms and
+
+48
+00:01:37,582 --> 00:01:37,849
+display.
+
+49
+00:01:37,849 --> 00:01:39,717
+Reinforcement learning connects native environments, models, and
+
+50
+00:01:39,717 --> 00:01:39,984
+metrics.
+
+51
+00:01:39,984 --> 00:01:43,186
+The early OaAlm pipeline turns text into skeletal motion
+
+52
+00:01:43,186 --> 00:01:44,520
+and exports USD.
+
+53
+00:01:44,520 --> 00:01:47,456
+Media, plotting, and viewer paths remain in the same system, with
+
+54
+00:01:47,456 --> 00:01:49,857
+shared values instead of a chain of opaque copies.
+
+55
+00:01:50,237 --> 00:01:52,157
+At the surface, the intent is deliberately simple.
+
+56
+00:01:52,157 --> 00:01:53,117
+Load an audio file.
+
+57
+00:01:53,117 --> 00:01:53,597
+Normalize it.
+
+58
+00:01:53,597 --> 00:01:54,557
+Compute a mel spectrogram.
+
+59
+00:01:54,557 --> 00:01:55,277
+Run a model.
+
+60
+00:01:55,277 --> 00:01:58,157
+The C++ and Python interfaces describe the same work, while
+
+61
+00:01:58,157 --> 00:02:00,077
+ownership, device choice, and synchronization remain explicit where
+
+62
+00:02:00,077 --> 00:02:00,557
+they matter.
+
+63
+00:02:00,937 --> 00:02:03,837
+We built this week with GPT-5.6 in
+
+64
+00:02:03,837 --> 00:02:06,254
+Codex as an engineering collaborator, not a code vending machine.
+
+65
+00:02:06,254 --> 00:02:07,946
+Codex audited ownership and synchronization, implemented vertical
+
+66
+00:02:07,946 --> 00:02:10,121
+changes, constructed differential tests, and repeatedly ran the real
+
+67
+00:02:10,121 --> 00:02:10,604
+hardware gates.
+
+68
+00:02:10,604 --> 00:02:13,021
+When the phone exposed corrupt Transformer learning that the desktop
+
+69
+00:02:13,021 --> 00:02:15,196
+tolerated, the investigation traced it to a thread-varying bindless
+
+70
+00:02:15,196 --> 00:02:17,371
+descriptor choice in a packed QKV shader.
+
+71
+00:02:17,371 --> 00:02:20,029
+We corrected the contract, rebuilt the signed app, and reran both
+
+72
+00:02:20,029 --> 00:02:20,996
+Qualcomm and Intel paths.
+
+73
+00:02:20,996 --> 00:02:22,929
+The loop was evidence, diagnosis, implementation, and proof.
+
+74
+00:02:23,309 --> 00:02:25,893
+OA 0.7.5 is a development preview, published
+
+75
+00:02:25,893 --> 00:02:28,477
+by Realm with a signed Android app, Python wheel, Linux packages,
+
+76
+00:02:28,477 --> 00:02:28,946
+and source.
+
+77
+00:02:28,946 --> 00:02:31,295
+It targets NVIDIA, AMD, Intel, and Qualcomm through Vulkan, with
+
+78
+00:02:31,295 --> 00:02:32,470
+verified scope declared per device.
+
+79
+00:02:32,470 --> 00:02:35,053
+Linux and Android ship now; Windows and macOS compute are planned.
+
+80
+00:02:35,053 --> 00:02:36,932
+One framework will not make every accelerator identical.
+
+81
+00:02:36,932 --> 00:02:38,577
+It can make more of them useful.
+
+82
+00:02:38,577 --> 00:02:40,925
+The accelerator you already own should be able to train.
+
+83
+00:02:41,305 --> 00:02:43,297
+This was a walkthrough, not the finish line.
+
+84
+00:02:43,297 --> 00:02:45,786
+The developer pages publish the working base, benchmarks, gaps, and
+
+85
+00:02:45,786 --> 00:02:47,777
+bounded roadmap: fifty Vision operations, thirteen Audio operation
+
+86
+00:02:47,777 --> 00:02:50,267
+candidates, five complete mobile training routes, CartPole PPO,
+
+87
+00:02:50,267 --> 00:02:51,013
+and early text-to-USD.
+
+88
+00:02:51,013 --> 00:02:53,503
+Explore the architecture, APIs, evidence, and roadmap at dev dot
+
+89
+00:02:53,503 --> 00:02:54,249
+realm dot software.

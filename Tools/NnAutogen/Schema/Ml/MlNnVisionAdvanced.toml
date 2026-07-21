@@ -30,7 +30,7 @@ forward_body = """
 \tauto &running_var  = Buffers_[1].Data;  // [C]
 
 \tauto& ctx = OaContext::GetDefault();
-\tauto is_training = ctx.IsTraining();
+\tauto is_training = IsTraining();
 
 \t// Create output tensor
 \tauto output = OaFnMatrix::Empty(OaMatrixShape{N, C, H, W}, InInput.GetDtype());
@@ -130,6 +130,7 @@ forward_body = """
 """
 notes = "Batch normalization layer with running statistics."
 extra_includes = """
+#include <Oa/Runtime/Context.h>
 #include <cassert>
 """
 extra_methods = """

@@ -18,7 +18,7 @@ public:
 
 // ─── OaExtension ────────────────────────────────────────────────────────────
 // One implementation per extension repo. The engine calls RegisterKernels and
-// RegisterAdapters exactly once during OaComputeEngine::Create.
+// RegisterAdapters exactly once during OaEngine::Create.
 //
 // Extension pointer must remain valid for the engine's lifetime.
 // Static singletons are the standard pattern:
@@ -38,7 +38,7 @@ public:
 	[[nodiscard]] virtual OaStringView Name() const = 0;
 
 	// Register kernel metadata rows for this extension.
-	// Called once during OaComputeEngine::Create, before any pipeline compilation.
+	// Called once during OaEngine::Create, before any pipeline compilation.
 	virtual void RegisterKernels(OaExtKernelRegistry& InRegistry) = 0;
 
 	// Register adapter factories into the process-level OaAdapterRegistry.

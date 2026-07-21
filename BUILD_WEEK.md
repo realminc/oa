@@ -20,9 +20,11 @@ maintaining a separate mobile ML implementation.
 
 ## What was built during Build Week
 
-OA existed before the event. Public tag `v0.7.2` (July 10) is the baseline. The eligible
-Build Week work extends that foundation rather than presenting five months of prior work
-as a one-week project.
+OA existed before the event. The baseline is private engineering commit `8e5a32b5`
+from July 10, whose root `VERSION` was `0.7.2`; it was not published as a public
+Git tag. The eligible Build Week work extends that foundation rather than
+presenting five months of prior work as a one-week project. Sanitized public
+event snapshots begin with `v0.7.3`.
 
 | Area | Build Week extension |
 |---|---|
@@ -38,7 +40,14 @@ Public `v0.7.3` (July 14) and `v0.7.4` (July 16) are dated intermediate snapshot
 Build Week branch and release preserve the final eligible delta and its verification
 evidence.
 
+The July 21 `0.7.6-dev` public-`main` refresh imports the completed private `v0.6.101`
+architecture-convergence checkpoint and its controlled NLP comparison. It does not
+replace the immutable `v0.7.5` packages or claim that the comparison binaries were an
+exact later public release.
+
 ## Demonstration
+
+[Watch the public Build Week demo](https://www.youtube.com/watch?v=SEw20xx0SJY).
 
 The canonical workload trains five architectures—RNN, GRU, Transformer, sparse-MoE
 Transformer, and Mamba-3—for 300 AdamW updates with batch 64 and sequence length 16.

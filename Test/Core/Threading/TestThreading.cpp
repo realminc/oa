@@ -294,6 +294,63 @@ TEST(ThreadPool, CreateShutdown) {
 	EXPECT_FALSE(pool.IsRunning());
 }
 
+TEST(ThreadPool, AbandonDoesNotWaitForRunningJob) {
+	struct JobGate {
+		std::mutex Mutex;
+		std::condition_variable Cv;
+		bool Started = false;
+		bool Release = false;
+		bool Finished = false;
+		bool QueuedRan = false;
+	};
+	auto gate = std::make_shared<JobGate>();
+	OaSharedPtr<OaTask<OaI32>> cancelledTask;
+	auto destroyStart = std::chrono::steady_clock::now();
+	{
+		auto pool = OaThreadPool::Create(
+			{.NumWorkers = 1, .PinToCores = false});
+		pool.Submit([gate] {
+			std::unique_lock<std::mutex> lock(gate->Mutex);
+			gate->Started = true;
+			gate->Cv.notify_all();
+			(void)gate->Cv.wait_for(
+				lock,
+				std::chrono::seconds(2),
+				[gate] { return gate->Release; });
+			gate->Finished = true;
+			lock.unlock();
+			gate->Cv.notify_all();
+		});
+		pool.Submit([gate] {
+			std::lock_guard<std::mutex> lock(gate->Mutex);
+			gate->QueuedRan = true;
+		});
+		cancelledTask = pool.SubmitTask([] { return 7; });
+
+		std::unique_lock<std::mutex> lock(gate->Mutex);
+		ASSERT_TRUE(gate->Cv.wait_for(
+			lock,
+			std::chrono::seconds(1),
+			[gate] { return gate->Started; }));
+		destroyStart = std::chrono::steady_clock::now();
+	}
+	const auto destroyElapsed = std::chrono::steady_clock::now() - destroyStart;
+	EXPECT_LT(destroyElapsed, std::chrono::milliseconds(500));
+	ASSERT_TRUE(cancelledTask);
+	EXPECT_TRUE(cancelledTask->IsDone());
+	EXPECT_TRUE(cancelledTask->HasFailed());
+	EXPECT_EQ(cancelledTask->GetError().GetCode(), OaStatusCode::Cancelled);
+
+	std::unique_lock<std::mutex> lock(gate->Mutex);
+	gate->Release = true;
+	gate->Cv.notify_all();
+	EXPECT_TRUE(gate->Cv.wait_for(
+		lock,
+		std::chrono::seconds(1),
+		[gate] { return gate->Finished; }));
+	EXPECT_FALSE(gate->QueuedRan);
+}
+
 TEST(ThreadPool, SubmitJobs) {
 	auto pool = OaThreadPool::Create({.NumWorkers = 4, .PinToCores = false});
 	std::atomic<OaI32> counter{0};

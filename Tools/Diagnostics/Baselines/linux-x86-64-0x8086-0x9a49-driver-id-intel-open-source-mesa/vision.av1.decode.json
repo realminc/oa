@@ -1,0 +1,88 @@
+{
+  "acceptance": {
+    "accepted_by": "Realm maintainers",
+    "reason": "Initial Build Week Iris Xe release baseline"
+  },
+  "accepted_utc": "2026-07-18T11:55:29.223676Z",
+  "build": {
+    "CMAKE_BUILD_TYPE": "Release",
+    "CMAKE_CXX_COMPILER": "/usr/bin/clang++",
+    "CMAKE_C_COMPILER": "/usr/bin/clang",
+    "OA_BUILD_SHARED": "OFF",
+    "OA_EMBED_SHADERS": "ON",
+    "OA_VULKAN_VALIDATION": "OFF",
+    "VCPKG_INSTALLED_DIR": "~/.vcpkg/oa/release/installed"
+  },
+  "environment": {
+    "driver": {
+      "api_version": "1.4.354",
+      "conformance_version": "1.4.0.0",
+      "driver_info": "Mesa 26.1.4-arch1.1",
+      "driver_version": "26.1.4"
+    },
+    "power": {
+      "cpu_governors": [
+        "powersave"
+      ],
+      "power_profile": "balanced"
+    }
+  },
+  "metric": {
+    "name": "step_forward_p50_wall",
+    "regex": "OABENCH video\\.av1 step_forward_p50_ms=(?P<value>[0-9.]+)",
+    "statistics": {
+      "count": 7,
+      "mad": 0.5639849999999997,
+      "maximum": 3.992823,
+      "median": 2.785675,
+      "minimum": 1.652349,
+      "p10": 1.9939536000000002,
+      "p90": 3.9112812000000003,
+      "relative_mad_percent": 20.245900903730682,
+      "spread_percent": 84.01820025667028,
+      "unit": "ms"
+    }
+  },
+  "platform": {
+    "available": true,
+    "device_id": "0x9a49",
+    "device_index": 0,
+    "device_name": "Intel(R) Iris(R) Xe Graphics (TGL GT2)",
+    "device_type": "PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU",
+    "driver_id": "DRIVER_ID_INTEL_OPEN_SOURCE_MESA",
+    "driver_name": "Intel open-source Mesa driver",
+    "machine": "x86_64",
+    "system": "Linux",
+    "vendor_id": "0x8086"
+  },
+  "schema": "oa.benchmark_baseline.v1",
+  "source": {
+    "repository_commit": "20f8d24696afe59565dc7f7cdf2965230f8548f7",
+    "result_sha256": "b618b1f8ea0e744dcd0d27403131d720da658a062afe77aaab2a7e4d596809b5"
+  },
+  "workload": {
+    "command": [
+      "/tmp/oa-benchmark-baseline-20f8d246/Bin/Release/Test/Vision/Codec/TestVideoDecodeReference",
+      "--gtest_filter=VideoDecodeReference.Av1"
+    ],
+    "command_id": "VideoDecodeReference.Av1.step_forward_p50.v1",
+    "contract": {
+      "codec": "av1",
+      "frames": "8",
+      "path": "step_forward_p50"
+    },
+    "cooldown_seconds": 2.0,
+    "executable": {
+      "path": "/tmp/oa-benchmark-baseline-20f8d246/Bin/Release/Test/Vision/Codec/TestVideoDecodeReference",
+      "sha256": "f592648e1b7485a8bba936b16da7bad45ea9a1ef94a869953eebcd4404a2430f"
+    },
+    "measured_runs": 7,
+    "name": "vision.av1.decode",
+    "required_regexes": [
+      "\\[   psnr   \\] av1\\s+frame 7: [3-9][0-9]\\.[0-9] dB",
+      "\\[  PASSED  \\] 1 test"
+    ],
+    "timeout_seconds": 120.0,
+    "warmup_runs": 2
+  }
+}

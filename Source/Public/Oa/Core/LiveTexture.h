@@ -29,7 +29,7 @@
 #include <atomic>
 #include <memory>
 
-class OaComputeEngine;
+class OaEngine;
 
 // ─── OaLiveTexture ─────────────────────────────────────────────────────────────
 //
@@ -44,7 +44,7 @@ public:
 	// Both buffers are allocated on the GPU. The producer writes to one,
 	// the consumer reads from the other. Publish() swaps them atomically.
 	static OaResult<OaLiveTexture> Create(
-		OaComputeEngine& InEngine,
+		OaEngine& InEngine,
 		OaI32              InWidth,
 		OaI32              InHeight);
 
@@ -88,7 +88,7 @@ public:
 	[[nodiscard]] OaI32 Height() const noexcept { return Height_; }
 	[[nodiscard]] bool IsValid() const noexcept { return Width_ > 0 && Height_ > 0; }
 
-	void Destroy(OaComputeEngine& InEngine);
+	void Destroy(OaEngine& InEngine);
 
 private:
 	OaLiveTexture(OaI32 InWidth, OaI32 InHeight);
@@ -105,5 +105,5 @@ private:
 	// Atomic sequence number for change detection
 	std::atomic<OaU64> Sequence_{0};
 
-	OaComputeEngine* Engine_ = nullptr;
+	OaEngine* Engine_ = nullptr;
 };

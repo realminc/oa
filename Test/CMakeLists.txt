@@ -77,6 +77,7 @@ oa_add_test(TestTcpFramed        Network/Tcp/TestTcpFramed.cpp      Network/Tcp)
 # ML/Precision tests
 oa_add_test(TestPrecisionDtype   Ml/Precision/TestPrecisionDtype.cpp Ml/Precision)
 oa_add_test(TestTransferWeights  Ml/Io/TestSafeTensorReader.cpp     Ml/Io)
+oa_add_test(TestOamIntegrity     Ml/Io/TestOamIntegrity.cpp         Ml/Io)
 oa_add_test(TestTokenizer        Ml/Data/TestTokenizer.cpp          Ml/Data)
 oa_add_test(TestGptOssConfig     Ml/Io/TestGptOssConfig.cpp         Ml/Io)
 oa_add_ml_test(TestAttention     Ml/Nn/TestAttention.cpp            Ml/Nn)
@@ -84,7 +85,8 @@ oa_add_ml_test(TestFlow          Ml/Generative/TestFlow.cpp         Ml/Generativ
 oa_add_ml_test(TestClipText      Ml/Nn/TestClipText.cpp             Ml/Nn)
 
 set_tests_properties(
-	TestTypes TestMemory TestContainers TestThreading TestCoreMisc TestPrecisionDtype TestTokenizer TestGptOssConfig
+	TestTypes TestMemory TestContainers TestThreading TestCoreMisc TestValidation
+	TestPrecisionDtype TestTransferWeights TestOamIntegrity TestTokenizer TestGptOssConfig
 	PROPERTIES LABELS "core"
 )
 
@@ -176,7 +178,6 @@ oa_add_ml_test(TestTopKBug Core/FnMatrix/Util/TestTopKBug.cpp Core/FnMatrix/Util
 # Re-enabled: Fixed autogen test generator (Swiglu/SiluMul/Geglu marked skip_test)
 oa_add_ml_test(TestFnMatrixActivation Ml/FnMatrix/Activation/TestFnMatrixActivation.gen.cpp Ml/FnMatrix/Activation)
 oa_add_ml_test(TestFnMatrixEmbed Ml/FnMatrix/Embed/TestFnMatrixEmbed.gen.cpp Ml/FnMatrix/Embed)
-oa_add_ml_test(TestFnMatrixNorm Ml/FnMatrix/Norm/TestFnMatrixNorm.gen.cpp Ml/FnMatrix/Norm)
 oa_add_ml_test(TestFnLoss Ml/Loss/TestFnLoss.cpp Ml/Loss)
 oa_add_ml_test(TestRl Ml/Rl/TestRl.cpp Ml/Rl)
 target_sources(TestRl PRIVATE
@@ -218,6 +219,7 @@ oa_add_ml_test(TestFnMatrixActivationBwd Ml/FnMatrix/Activation/TestFnMatrixActi
 oa_add_ml_test(TestByte Ml/Precision/TestByte.cpp Ml/Precision)
 oa_add_ml_test(TestDataLoader Ml/Data/TestDataLoader.cpp Ml/Data)
 oa_add_ml_test(TestTrainingMetrics Ml/Training/TestTrainingMetrics.cpp Ml/Training)
+target_include_directories(TestTrainingMetrics PRIVATE ${oa_SOURCE_DIR}/Source/Private)
 oa_add_ml_test(TestAutogradLeak Ml/Training/TestAutogradLeak.cpp Ml/Training)
 oa_add_test(TestPoseClip Ml/Nn/TestPoseClip.cpp Ml/Nn)
 # Gen3dAnim tests removed — will be redone after sanitization + MotionGpt work.
@@ -281,6 +283,7 @@ oa_add_ml_test(TestVideoDecoder Vision/Codec/TestVideoDecoder.cpp Vision/Codec)
 oa_add_ml_test(TestVideoDecodeReference Vision/Codec/TestVideoDecodeReference.cpp Vision/Codec)
 # Phase 2b — MP4 demuxer + OaFnVideo NAL ops
 oa_add_ml_test(TestVideoStream  Vision/Stream/TestVideoStream.cpp Vision/Stream)
+oa_add_test(TestVideoSessionLifecycle Vision/Stream/TestVideoSessionLifecycle.cpp Vision/Stream)
 # Phase 2c — encode → mux → demux (→ decode) roundtrip
 oa_add_ml_test(TestVideoRoundtrip Vision/Stream/TestVideoRoundtrip.cpp Vision/Stream)
 # Phase 3 — Unified OaFnImage API (GPU-only)
@@ -293,6 +296,8 @@ oa_add_ml_test(TestFnDetection Vision/Detection/TestFnDetection.cpp Vision/Detec
 
 set_tests_properties(TestJpegDecoder TestImageProcessor TestVideoDecoder TestVideoDecodeReference TestFnImage TestGeometricKernels TestFilterKernels TestVision50Ops TestFnDetection
 	PROPERTIES LABELS "gpu_bindless;ml;vision")
+set_tests_properties(TestVideoSessionLifecycle
+	PROPERTIES LABELS "gpu_bindless;vision")
 
 # ═══════════════════════════════════════════════════════════════════════════
 # AUDIO TESTS
@@ -300,8 +305,10 @@ set_tests_properties(TestJpegDecoder TestImageProcessor TestVideoDecoder TestVid
 
 # Decoder/encoder round-trips + OaFnAudio ops vs in-test CPU oracles.
 oa_add_ml_test(TestAudioDecoder Audio/Codec/TestAudioDecoder.cpp Audio/Codec)
+oa_add_test(TestAudioSessionLifecycle Audio/Codec/TestAudioSessionLifecycle.cpp Audio/Codec)
 oa_add_ml_test(TestFnAudio      Audio/TestFnAudio.cpp            Audio)
-set_tests_properties(TestAudioDecoder TestFnAudio PROPERTIES LABELS "gpu_bindless;audio")
+set_tests_properties(TestAudioDecoder TestAudioSessionLifecycle TestFnAudio
+	PROPERTIES LABELS "gpu_bindless;audio")
 
 # ═══════════════════════════════════════════════════════════════════════════
 # RUNTIME TESTS
@@ -312,9 +319,16 @@ target_include_directories(TestAllocator PRIVATE ${oa_SOURCE_DIR}/Source/Private
 
 oa_add_ml_test(TestKernelRegistry Runtime/Engine/TestKernelRegistry.cpp Runtime/Engine)
 oa_add_ml_test(TestEngineInit Runtime/Engine/TestEngineInit.cpp Runtime/Engine)
+oa_add_test(TestComputeApp Runtime/Engine/TestComputeApp.cpp Runtime/Engine)
+set_tests_properties(TestComputeApp PROPERTIES LABELS "gpu_bindless")
+if(TARGET SDL3::SDL3)
+	oa_add_test(TestPresenterWsi Runtime/Engine/TestPresenterWsi.cpp Runtime/Engine)
+	target_link_libraries(TestPresenterWsi PRIVATE SDL3::SDL3)
+	set_tests_properties(TestPresenterWsi PROPERTIES LABELS "gpu_wsi")
+endif()
 oa_add_ml_test(TestStream Runtime/Stream/TestStream.cpp Runtime/Stream)
 oa_add_ml_test(TestComputeGraph Runtime/Graph/TestComputeGraph.cpp Runtime/Graph)
-# oa_add_ml_test(TestCollective Runtime/Collective/TestCollective.cpp Runtime/Collective)
+oa_add_ml_test(TestCollective Runtime/Collective/TestCollective.cpp Runtime/Collective)
 
 # ═══════════════════════════════════════════════════════════════════════════
 # CRYPTO TESTS

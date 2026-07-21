@@ -7,16 +7,16 @@
 #include <Oa/Runtime/Context.h>
 #include <vector>
 
-static OaComputeEngine* GRt = nullptr;
+static OaEngine* GRt = nullptr;
 
 class TestFnMatrixConv : public ::testing::Test {
 protected:
 	static void SetUpTestSuite() {
 		OaEngineConfig cfg{};
 		cfg.AppName = "TestFnMatrixConv";
-		auto r = OaComputeEngine::Create(cfg);
+		auto r = OaEngine::Create(cfg);
 		ASSERT_TRUE(r.IsOk()) << r.GetStatus().GetMessage();
-		static OaUniquePtr<OaComputeEngine> rt = std::move(*r);
+		static OaUniquePtr<OaEngine> rt = std::move(*r);
 		GRt = rt.get();
 	}
 };
@@ -46,7 +46,7 @@ TEST_F(TestFnMatrixConv, Conv2d_Simple3x3) {
 	// Kernel: 1x1x3x3 (out_channels=1, in_channels=1, kh=3, kw=3)
 	// Output: 1x1x3x3
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	
 	// Create simple input (all ones)
 	auto input = OaFnMatrix::Ones(OaMatrixShape{1, 1, 5, 5});
@@ -75,7 +75,7 @@ TEST_F(TestFnMatrixConv, Conv2d_WithPadding) {
 	// Input: 1x1x3x3, Kernel: 1x1x3x3, Padding: 1
 	// Output: 1x1x3x3 (same size due to padding)
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	
 	auto input = OaFnMatrix::Ones(OaMatrixShape{1, 1, 3, 3});
 	auto kernel = OaFnMatrix::Ones(OaMatrixShape{1, 1, 3, 3});
@@ -113,7 +113,7 @@ TEST_F(TestFnMatrixConv, Conv2d_WithStride2) {
 	// Input: 1x1x6x6, Kernel: 1x1x3x3, Stride: 2
 	// Output: 1x1x2x2
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	
 	auto input = OaFnMatrix::Ones(OaMatrixShape{1, 1, 6, 6});
 	auto kernel = OaFnMatrix::Ones(OaMatrixShape{1, 1, 3, 3});
@@ -136,7 +136,7 @@ TEST_F(TestFnMatrixConv, Conv2d_MultiChannel) {
 	// Kernel: 3x2x3x3 (out_channels=3, in_channels=2)
 	// Output: 1x3x2x2
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	
 	auto input = OaFnMatrix::Ones(OaMatrixShape{1, 2, 4, 4});
 	auto kernel = OaFnMatrix::Ones(OaMatrixShape{3, 2, 3, 3});
@@ -161,7 +161,7 @@ TEST_F(TestFnMatrixConv, Conv2d_BatchSize2) {
 	// Kernel: 1x1x3x3
 	// Output: 2x1x2x2
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	
 	auto input = OaFnMatrix::Ones(OaMatrixShape{2, 1, 4, 4});
 	auto kernel = OaFnMatrix::Ones(OaMatrixShape{1, 1, 3, 3});
@@ -188,7 +188,7 @@ TEST_F(TestFnMatrixConv, Im2Col_Simple) {
 	// Input: 1x1x4x4, KernelSize: 3x3, Stride: 1, Padding: 0
 	// Output: 1x9x4 (batch=1, kernel_elements=9, num_patches=4)
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	
 	// Create input with sequential values
 	std::vector<float> input_data(16);
@@ -222,7 +222,7 @@ TEST_F(TestFnMatrixConv, Im2Col_WithPadding) {
 	// Input: 1x1x3x3, KernelSize: 3x3, Stride: 1, Padding: 1
 	// Output: 1x9x9 (3x3 output with padding)
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	
 	auto input = OaFnMatrix::Ones(OaMatrixShape{1, 1, 3, 3});
 	auto output = OaFnMatrix::Im2Col(input, 3, 1, 1);
@@ -238,7 +238,7 @@ TEST_F(TestFnMatrixConv, Im2Col_WithStride2) {
 	// Input: 1x1x6x6, KernelSize: 3x3, Stride: 2, Padding: 0
 	// Output: 1x9x4 (2x2 patches)
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	
 	auto input = OaFnMatrix::Ones(OaMatrixShape{1, 1, 6, 6});
 	auto output = OaFnMatrix::Im2Col(input, 3, 2, 0);
@@ -257,7 +257,7 @@ TEST_F(TestFnMatrixConv, Col2Im_Simple) {
 	// Test col2im transformation (inverse of im2col)
 	// Input: 1x9x4 (columns), Output: 1x1x4x4 (image)
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	
 	// Create column matrix (all ones)
 	auto columns = OaFnMatrix::Ones(OaMatrixShape{1, 9, 4});
@@ -276,7 +276,7 @@ TEST_F(TestFnMatrixConv, Col2Im_RoundTrip) {
 	// Test that im2col followed by col2im preserves structure
 	// (Note: values may accumulate due to overlapping patches)
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	
 	auto input = OaFnMatrix::Ones(OaMatrixShape{1, 1, 4, 4});
 	
@@ -299,7 +299,7 @@ TEST_F(TestFnMatrixConv, Col2Im_RoundTrip) {
 TEST_F(TestFnMatrixConv, Col2Im_WithPadding) {
 	// Test col2im with padding
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	
 	auto columns = OaFnMatrix::Ones(OaMatrixShape{1, 9, 9});
 	auto output = OaFnMatrix::Col2Im(columns, 3, 3, 3, 1, 1);

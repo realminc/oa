@@ -3,7 +3,7 @@
 # This is the *source of truth* for ML activation functions. The generator emits:
 #   - .h declarations, .cpp implementations, .slang shaders (forward ops)
 #   - Autograd/Matrix/AutogradActivation.gen.h (gradient node classes)
-# See Tools/FnAutogen/oafnautogen.py and Docs/Rewrite/Opus/OaFnAutogen.md.
+# See Tools/FnAutogen/README.md and Tools/FnAutogen/oafnautogen.py.
 #
 # All activations follow the unary pattern (except LeakyRelu/Elu which are
 # unary_scalar). Each has a forward kernel and a backward kernel for autograd.
@@ -286,4 +286,3 @@ formula    = "auto_bwd_kernel"
 cpu_reference = "std::max(a_host[i], 0.0f) + std::log(1.0f + std::exp(-std::abs(a_host[i])))"
 tolerance = "1e-3f"
 test_sizes = [256]
-

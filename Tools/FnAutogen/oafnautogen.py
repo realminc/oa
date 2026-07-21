@@ -15,16 +15,23 @@ KernelRegistry.h, and emits per-category files:
   - <out>/Private/Oa/<Domain>/Shader/Compute/<slang_path>/<Name>.slang
       shader (one per op) when generate_slang = true
 
-See Docs/Rewrite/ThisIsTheKey/OaFnAutogen.md for the design.
+See Tools/FnAutogen/README.md for the public schema and generation workflow.
 """
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 import tomllib
 from collections import defaultdict
 from pathlib import Path
+
+TOOLS_ROOT = Path(__file__).resolve().parents[1]
+if str(TOOLS_ROOT) not in sys.path:
+	sys.path.insert(0, str(TOOLS_ROOT))
+
+from autogen_io import write_generated_text
 
 from oafnautogen_lib.config import (
 	DEFAULT_OUTPUT,
@@ -41,6 +48,7 @@ from oafnautogen_lib.layout import SchemaLayout, build_schema_layout, infer_doma
 from oafnautogen_lib.schema import (
 	category_from_schema,
 	load_kernel_registry,
+	semantic_attribute_specs,
 	validate_schema,
 	validate_schema_metadata,
 )
@@ -130,6 +138,8 @@ def header_fragment_for_op(op: dict, namespace: str = "OaFnMatrix") -> list[str]
 	name = op["name"]
 	notes = op.get("notes", "")
 	body = op.get("body", "auto")
+	if not op.get("generate_declaration", True):
+		return []
 	if op.get("api_params"):
 		lines = [f"\t/// {name}: {notes}"]
 		return_type = op.get("api_return", "OaMatrix")
@@ -161,7 +171,7 @@ def emit_manual_forwarder(op: dict, namespace: str) -> str:
 	return_type = op.get("api_return", "OaMatrix")
 	params = api_param_list(op, with_defaults=False)
 	args = api_arg_list(op)
-	call_args = f"*OaComputeEngine::GetGlobal(), {args}" if args else "*OaComputeEngine::GetGlobal()"
+	call_args = f"*OaEngine::GetGlobal(), {args}" if args else "*OaEngine::GetGlobal()"
 	return (
 		f"{return_type} {namespace}::{name}({params}) {{\n"
 		f"\treturn {namespace}::{name}({call_args});\n"
@@ -182,6 +192,464 @@ def emit_header_fragment(ops: list[dict], schema_name: str, category: str, names
 	for op in ops:
 		lines.extend(header_fragment_for_op(op, namespace))
 	return "\n".join(lines)
+
+
+# ─── Semantic operation contracts ─────────────────────────────────────────
+
+_VALUE_KIND_CPP = {
+	"matrix": "OaOperationValueKind::Matrix",
+	"image": "OaOperationValueKind::Image",
+	"audio_buffer": "OaOperationValueKind::AudioBuffer",
+	"video_frame": "OaOperationValueKind::VideoFrame",
+}
+_SHAPE_RULE_CPP = {
+	"match_input": "OaOperationShapeRule::MatchInput",
+	"broadcast": "OaOperationShapeRule::Broadcast",
+	"matmul_nt": "OaOperationShapeRule::MatMulNt",
+	"explicit": "OaOperationShapeRule::Explicit",
+}
+_DTYPE_RULE_CPP = {
+	"match_input": "OaOperationDtypeRule::MatchInput",
+	"promote_float": "OaOperationDtypeRule::PromoteFloat",
+}
+_DIFFERENTIATION_CPP = {
+	"none": "OaOperationDifferentiation::None",
+	"reverse": "OaOperationDifferentiation::Reverse",
+}
+_LOWERING_CPP = {
+	"dispatch": "OaOperationLowering::Dispatch",
+	"gemm": "OaOperationLowering::Gemm",
+}
+_CONTROL_FLOW_CPP = {
+	"straight_line": "OaOperationControlFlow::StraightLine",
+	"conditional": "OaOperationControlFlow::Conditional",
+	"loop": "OaOperationControlFlow::Loop",
+}
+_EFFECT_CPP = {
+	"read_inputs": "OaOperationEffect::ReadInputs",
+	"write_outputs": "OaOperationEffect::WriteOutputs",
+}
+_VALUE_KIND_NIBBLE = {
+	"matrix": 1,
+	"image": 2,
+	"audio_buffer": 3,
+	"video_frame": 4,
+}
+_ATTRIBUTE_KIND_BYTE = {
+	"boolean": 1,
+	"signed_integer": 2,
+	"unsigned_integer": 3,
+	"float": 4,
+	"string": 5,
+	"shape": 6,
+	"enum": 7,
+}
+_ATTRIBUTE_FACTORY_CPP = {
+	"boolean": "FromBoolean",
+	"signed_integer": "FromSignedInteger",
+	"unsigned_integer": "FromUnsignedInteger",
+	"float": "FromFloat",
+	"string": "FromString",
+	"shape": "FromShape",
+	"enum": "FromEnum",
+}
+
+
+def _fnv1a64(data: bytes) -> int:
+	value = 14695981039346656037
+	for byte in data:
+		value ^= byte
+		value = (value * 1099511628211) & 0xffffffffffffffff
+	return value
+
+
+def _packed_value_kinds(kinds: list[str]) -> int:
+	packed = 0
+	for index, kind in enumerate(kinds):
+		packed |= _VALUE_KIND_NIBBLE[kind] << (index * 4)
+	return packed
+
+
+def _packed_output_alias_inputs(aliases: list[int]) -> int:
+	packed = 0xffffffff
+	for index, input_index in enumerate(aliases):
+		value = 0x0f if input_index < 0 else input_index
+		packed &= ~(0x0f << (index * 4))
+		packed |= value << (index * 4)
+	return packed
+
+
+def _mutated_input_mask(indices: list[int]) -> int:
+	mask = 0
+	for index in indices:
+		mask |= 1 << index
+	return mask
+
+
+def operation_attribute_signature_hash(op: dict) -> int:
+	attributes = [
+		{"name": attribute["name"], "kind": attribute["kind"]}
+		for attribute in semantic_attribute_specs(op)
+	]
+	if not attributes:
+		return 0
+	payload = bytearray()
+	for attribute in attributes:
+		payload.append(_ATTRIBUTE_KIND_BYTE[attribute["kind"]])
+		payload.extend(attribute["name"].encode("utf-8"))
+		payload.append(0)
+	return _fnv1a64(bytes(payload))
+
+
+def operation_contract_hash(namespace: str, op: dict) -> int:
+	"""Stable semantic hash. Kernel/problem/runtime details are excluded."""
+	contract = dict(op["contract"])
+	contract.pop("attributes", None)
+	payload = {
+		"schema": "oa.operation_contract.v1",
+		"namespace": namespace,
+		"name": op["name"],
+		"api_params": op.get("api_params", []),
+		"api_return": op.get("api_return", "OaMatrix"),
+		"contract": contract,
+	}
+	attributes = [
+		{"name": attribute["name"], "kind": attribute["kind"]}
+		for attribute in semantic_attribute_specs(op)
+	]
+	if attributes:
+		payload["attributes"] = attributes
+	canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+	return _fnv1a64(canonical.encode("utf-8"))
+
+
+def emit_operation_registry(contracts: list[tuple[str, dict]]) -> str:
+	lines = [
+		"// AUTO-GENERATED by Tools/FnAutogen/oafnautogen.py — DO NOT EDIT.",
+		"// Source of truth: Tools/FnAutogen/Schema/**.toml [ops.contract].",
+		"// Regenerate via: python3 Tools/FnAutogen/oafnautogen.py --live",
+		"#pragma once",
+		"",
+		"#include <Oa/Core/Operation.h>",
+		"",
+		"namespace OaOperationRegistry {",
+	]
+	for namespace, op in sorted(contracts, key=lambda item: (item[0], item[1]["name"])):
+		contract = op["contract"]
+		input_kinds = _packed_value_kinds(contract["input_kinds"])
+		output_kinds = _packed_value_kinds(contract["output_kinds"])
+		effects = " | ".join(_EFFECT_CPP[effect] for effect in contract["effects"])
+		mutated_inputs = _mutated_input_mask(contract["mutated_inputs"])
+		output_alias_inputs = _packed_output_alias_inputs(
+			contract["output_alias_inputs"]
+		)
+		attributes = semantic_attribute_specs(op)
+		attribute_signature = operation_attribute_signature_hash(op)
+		hash_value = operation_contract_hash(namespace, op)
+		lines += [
+			f"inline const OaOperationContract {op['name']}{{",
+			f"\t.Name = \"{op['name']}\",",
+			f"\t.Hash = 0x{hash_value:016x}ULL,",
+			f"\t.InputKinds = 0x{input_kinds:08x}U,",
+			f"\t.OutputKinds = 0x{output_kinds:08x}U,",
+			f"\t.InputCount = {len(contract['input_kinds'])}U,",
+			f"\t.OutputCount = {len(contract['output_kinds'])}U,",
+			f"\t.AttributeCount = {len(attributes)}U,",
+			f"\t.AttributeSignatureHash = 0x{attribute_signature:016x}ULL,",
+			f"\t.ShapeRule = {_SHAPE_RULE_CPP[contract['shape_rule']]},",
+			f"\t.DtypeRule = {_DTYPE_RULE_CPP[contract['dtype_rule']]},",
+			f"\t.Differentiation = {_DIFFERENTIATION_CPP[contract['differentiation']]},",
+			f"\t.Lowering = {_LOWERING_CPP[contract['lowering']]},",
+			f"\t.Effects = {effects},",
+			f"\t.MutatedInputMask = 0x{mutated_inputs:02x}U,",
+			f"\t.OutputAliasInputs = 0x{output_alias_inputs:08x}U,",
+			f"\t.ControlFlow = {_CONTROL_FLOW_CPP[contract['control_flow']]},",
+			"};",
+			"",
+		]
+	lines += ["} // namespace OaOperationRegistry", ""]
+	return "\n".join(lines)
+
+
+def write_operation_registry(
+	schema_paths: list[Path], out_root: Path, *, dry_run: bool
+) -> None:
+	contracts: list[tuple[str, dict]] = []
+	seen: set[tuple[str, str]] = set()
+	for schema_path in schema_paths:
+		with schema_path.open("rb") as file:
+			data = tomllib.load(file)
+		domain = infer_domain(schema_path)
+		namespace = data.get("namespace", DOMAIN_NAMESPACE.get(domain, "OaFnMatrix"))
+		for op in data.get("ops", []):
+			if "contract" not in op:
+				continue
+			key = (namespace, op["name"])
+			if key in seen:
+				fail(f"duplicate operation contract: {namespace}::{op['name']}")
+			seen.add(key)
+			contracts.append((namespace, op))
+
+	path = out_root / "Private" / "Oa" / "Core" / "OperationRegistry.gen.h"
+	if dry_run:
+		print(f"  would write: {path}")
+		return
+	write_generated_text(path, emit_operation_registry(contracts))
+
+
+# ─── Manual-lowering autograd attachment emission ──────────────────────────
+
+def _emit_manual_autograd_attach(op: dict) -> list[str]:
+	ag = op["autograd"]
+	inputs = ag["inputs"]
+	saved = ag.get("saved", [])
+	saved_expressions = ["Out" if name in ("Out", "out") else name for name in saved]
+	# Saved tensors are not necessarily differentiable graph inputs. Losses, for
+	# example, differentiate logits while retaining integer targets for backward.
+	# Pass every saved-only tensor to the generated helper, but keep requires-grad
+	# checks and graph edges restricted to the schema's `inputs` list. `Out`/`out`
+	# already names the helper's output parameter and needs no second declaration.
+	saved_parameters = []
+	for name in saved:
+		if name in inputs or name in ("Out", "out") or name in saved_parameters:
+			continue
+		saved_parameters.append(name)
+	state = ag.get("state", [])
+	grad_class = ag["grad_class"]
+	params = ", ".join(
+		["OaMatrix& Out"]
+		+ [f"const OaMatrix& {name}" for name in inputs]
+		+ [f"const OaMatrix& {name}" for name in saved_parameters]
+		+ [f"{item['type']} {item['source']}" for item in state]
+		+ ["OaSemanticOperationId InSemanticOperation"]
+	)
+	requires_grad = " or ".join(f"{name}.RequiresGrad()" for name in inputs)
+	conditions = ["OaFnAutograd::IsEnabled()", f"({requires_grad})"]
+	for name, rank in zip(inputs, ag.get("input_ranks", [])):
+		conditions.append(f"{name}.Rank() == {rank}")
+	condition = " and ".join(conditions)
+	inputs_init = "{" + ", ".join(inputs) + "}"
+	saved_init = "{" + ", ".join(saved_expressions) + "}"
+	lines = [
+		f"inline OaStatus {op['name']}(" + params + ") {",
+		f"\tif (not ({condition})) return OaStatus::Ok();",
+	]
+	if ag["attach"] == "broadcast_binary":
+		lines += [
+			f"\tif ({inputs[0]}.GetShape() != {inputs[1]}.GetShape()) {{",
+			"\t\tauto GradFn = OaMakeSharedPtr<OaGradBcastBinary>();",
+			f"\t\tGradFn->Op_ = OaBcastBinOp::{ag['broadcast_op']};",
+			f"\t\tGradFn->Saved_ = OaVec<OaMatrix>{inputs_init};",
+			f"\t\tGradFn->SetGraphInputs(OaVec<OaMatrix>{inputs_init});",
+			"\t\tGradFn->SequenceNr_ = OaFnAutograd::NextSeq();",
+			"\t\tGradFn->OutputShape_ = Out.GetShape();",
+			"\t\tOA_RETURN_IF_ERROR(OaFnAutograd::AttachSemantic(GradFn, InSemanticOperation));",
+			"\t\tOut.MutAutograd().GradFn = GradFn;",
+			"\t\treturn OaStatus::Ok();",
+			"\t}",
+		]
+	lines += [
+		f"\tauto GradFn = OaMakeSharedPtr<{grad_class}>();",
+		f"\tGradFn->Saved_ = OaVec<OaMatrix>{saved_init};",
+		f"\tGradFn->SetGraphInputs(OaVec<OaMatrix>{inputs_init});",
+		"\tGradFn->SequenceNr_ = OaFnAutograd::NextSeq();",
+	]
+	lines += [
+		f"\tGradFn->{item['member']} = {item['source']};" for item in state
+	]
+	if ag.get("output_shape", False):
+		lines.append("\tGradFn->OutputShape_ = Out.GetShape();")
+	lines += [
+		"\tOA_RETURN_IF_ERROR(OaFnAutograd::AttachSemantic(GradFn, InSemanticOperation));",
+		"\tOut.MutAutograd().GradFn = GradFn;",
+		"\treturn OaStatus::Ok();",
+		"}",
+		"",
+	]
+	return lines
+
+
+def emit_manual_autograd_attach_header(attachments: list[tuple[str, dict]]) -> str:
+	lines = [
+		"// AUTO-GENERATED by Tools/FnAutogen/oafnautogen.py — DO NOT EDIT.",
+		"// Source of truth: Tools/FnAutogen/Schema/**.toml [ops.autograd].",
+		"// Attaches schema-owned differentiation policy to hand-written lowerings.",
+		"// Include only after <Oa/Ml/Autograd.h> has defined the gradient nodes.",
+		"#pragma once",
+		"",
+		"namespace OaGeneratedAutogradAttach {",
+		"",
+	]
+	by_namespace: dict[str, list[dict]] = defaultdict(list)
+	for namespace, op in attachments:
+		by_namespace[namespace].append(op)
+	for namespace in sorted(by_namespace):
+		lines += [f"namespace {namespace} {{", ""]
+		for op in sorted(by_namespace[namespace], key=lambda item: item["name"]):
+			lines += _emit_manual_autograd_attach(op)
+		lines += [f"}} // namespace {namespace}", ""]
+	lines += ["} // namespace OaGeneratedAutogradAttach", ""]
+	return "\n".join(lines)
+
+
+def write_manual_autograd_attach_header(
+	schema_paths: list[Path], out_root: Path, *, dry_run: bool
+) -> None:
+	attachments: list[tuple[str, dict]] = []
+	for schema_path in schema_paths:
+		with schema_path.open("rb") as file:
+			data = tomllib.load(file)
+		domain = infer_domain(schema_path)
+		namespace = data.get("namespace", DOMAIN_NAMESPACE.get(domain, "OaFnMatrix"))
+		for op in data.get("ops", []):
+			if (
+				op.get("body", "auto") == "manual_context"
+				and op.get("autograd", {}).get("attach")
+			):
+				attachments.append((namespace, op))
+
+	path = out_root / "Private" / "Oa" / "Ml" / "Autograd" / "AutogradAttach.gen.h"
+	if dry_run:
+		print(f"  would write: {path}")
+		return
+	write_generated_text(path, emit_manual_autograd_attach_header(attachments))
+
+
+# ─── Python binding emission ───────────────────────────────────────────────
+
+
+def emit_python_binding(namespace: str, op: dict) -> list[str]:
+	python = op["python"]
+	params = api_param_list(op, with_defaults=False)
+	args = api_arg_list(op)
+	python_name = python.get("name", op["name"])
+	lines = [
+		f'\tm.def("{python_name}", []({params}) {{',
+		f"\t\treturn matrix_ptr({namespace}::{op['name']}({args}));",
+		"\t},",
+	]
+	arg_specs = []
+	for python_arg, api_param in zip(python["args"], op["api_params"]):
+		_, _, default = _api_param_parts(api_param)
+		spec = f'nb::arg("{python_arg}")'
+		if default is not None:
+			spec += f" = {default}"
+		arg_specs.append(spec)
+	lines.append("\t  " + ", ".join(arg_specs) + ",")
+	lines.append("\t  nb::rv_policy::take_ownership,")
+	doc = python.get("doc", op.get("notes", ""))
+	lines.append(f"\t  {json.dumps(doc, ensure_ascii=True)});")
+	lines.append("")
+	return lines
+
+
+def emit_python_bindings(bindings: list[tuple[str, dict]]) -> str:
+	lines = [
+		"// AUTO-GENERATED by Tools/FnAutogen/oafnautogen.py — DO NOT EDIT.",
+		"// Source of truth: Tools/FnAutogen/Schema/**.toml [ops.python].",
+		"// Included inside the owning Bind* function.",
+		"",
+	]
+	for namespace, op in sorted(bindings, key=lambda item: item[1]["name"]):
+		lines.extend(emit_python_binding(namespace, op))
+	return "\n".join(lines).rstrip() + "\n"
+
+
+def write_python_bindings(
+	schema_paths: list[Path], out_root: Path, *, dry_run: bool
+) -> None:
+	groups: dict[tuple[str, str], list[tuple[str, dict]]] = defaultdict(list)
+	for schema_path in schema_paths:
+		with schema_path.open("rb") as file:
+			data = tomllib.load(file)
+		domain = infer_domain(schema_path)
+		namespace = data.get("namespace", DOMAIN_NAMESPACE.get(domain, "OaFnMatrix"))
+		file_prefix = data.get("file_prefix", DOMAIN_FILE_PREFIX.get(domain, "FnMatrix"))
+		for op in data.get("ops", []):
+			if "python" in op:
+				groups[(domain, file_prefix)].append((namespace, op))
+
+	for (domain, file_prefix), bindings in sorted(groups.items()):
+		path = out_root / "Python" / domain / f"{file_prefix}Ops.gen.inl"
+		if dry_run:
+			print(f"  would write: {path}")
+			continue
+		write_generated_text(path, emit_python_bindings(bindings))
+
+
+# ─── Operation reference emission ─────────────────────────────────────────
+
+
+def emit_operation_reference(contracts: list[tuple[str, dict]]) -> str:
+	lines = [
+		"<!-- AUTO-GENERATED by Tools/FnAutogen/oafnautogen.py — DO NOT EDIT. -->",
+		"<!-- Source of truth: Tools/FnAutogen/Schema/**.toml. -->",
+		"# OA operation contracts",
+		"",
+		"This reference is generated from the same schemas as the C++ declarations,",
+		"Python registrations, and runtime semantic hashes.",
+		"",
+	]
+	for namespace, op in sorted(contracts, key=lambda item: (item[0], item[1]["name"])):
+		contract = op["contract"]
+		attributes = semantic_attribute_specs(op)
+		attribute_text = ", ".join(
+			f"{attribute['name']}:{attribute['kind']}"
+			for attribute in attributes
+		) if attributes else "none"
+		lines += [
+			f"## `{namespace}::{op['name']}`",
+			"",
+			f"- C++: `{op.get('api_return', 'OaMatrix')} {op['name']}({api_param_list(op)})`",
+			f"- Contract: `0x{operation_contract_hash(namespace, op):016x}`",
+			f"- Values: `{', '.join(contract['input_kinds'])}` → `{', '.join(contract['output_kinds'])}`",
+			f"- Shape: `{contract['shape_rule']}`",
+			f"- Dtype: `{contract['dtype_rule']}`",
+			f"- Effects: `{', '.join(contract['effects'])}`",
+			f"- Mutated inputs: `{contract['mutated_inputs']}`",
+			f"- Output aliases: `{contract['output_alias_inputs']}`",
+			f"- Attributes: `{attribute_text}`",
+			f"- Control flow: `{contract['control_flow']}`",
+			f"- Differentiation: `{contract['differentiation']}`",
+			f"- Lowering: `{contract['lowering']}`",
+		]
+		if python := op.get("python"):
+			python_params = []
+			for python_arg, api_param in zip(python["args"], op["api_params"]):
+				_, _, default = _api_param_parts(api_param)
+				python_params.append(
+					python_arg if default is None else f"{python_arg}={default}"
+				)
+			lines.append(
+				f"- Python: `{python.get('name', op['name'])}({', '.join(python_params)})`"
+			)
+		if autograd := op.get("autograd"):
+			if grad_class := autograd.get("grad_class"):
+				lines.append(
+					f"- Autograd: `{grad_class}` (`{autograd.get('formula', 'manual')}`)"
+				)
+		lines += ["", op.get("notes", ""), ""]
+	return "\n".join(lines).rstrip() + "\n"
+
+
+def write_operation_reference(
+	schema_paths: list[Path], out_root: Path, *, live: bool, dry_run: bool
+) -> None:
+	contracts: list[tuple[str, dict]] = []
+	for schema_path in schema_paths:
+		with schema_path.open("rb") as file:
+			data = tomllib.load(file)
+		domain = infer_domain(schema_path)
+		namespace = data.get("namespace", DOMAIN_NAMESPACE.get(domain, "OaFnMatrix"))
+		contracts.extend(
+			(namespace, op) for op in data.get("ops", []) if "contract" in op
+		)
+	root = REPO_ROOT if live else out_root
+	path = root / "Docs" / "Internal" / "Architecture" / "OaOperations.gen.md"
+	if dry_run:
+		print(f"  would write: {path}")
+		return
+	write_generated_text(path, emit_operation_reference(contracts))
 
 
 # ─── Body emitters ────────────────────────────────────────────────────────
@@ -242,7 +710,9 @@ def _dispatch_workgroups_expr(op: dict) -> str:
 	return "1"  # unreachable
 
 
-def emit_autograd_attach(op: dict) -> str:
+def emit_autograd_attach(
+	op: dict, semantic_operation: str | None = None
+) -> str:
 	"""Emits the forward-attach tail for an op that declares a [ops.autograd] block.
 
 	The block is purely the *attach* — it constructs a hand-written OaGradXxx
@@ -271,17 +741,51 @@ def emit_autograd_attach(op: dict) -> str:
 	ctor_call = "(" + ", ".join(ctor_args) + ")" if ctor_args else "()"
 	saved_init = "{" + ", ".join(saved) + "}"
 	inputs_init = "{" + ", ".join(inputs) + "}"
+	semantic_attach = ""
+	if semantic_operation is not None:
+		semantic_attach = (
+			"\t\tconst auto semanticAttached = OaFnAutograd::AttachSemantic(\n"
+			f"\t\t\t_gradFn, {semantic_operation});\n"
+			"\t\tif (not semanticAttached.IsOk()) return {};\n"
+		)
+	broadcast_operation = ""
+	if ag.get("attach") == "broadcast_binary":
+		broadcast_operation = (
+			f"\t\t_gradFn->Op_ = OaBcastBinOp::{ag['broadcast_op']};\n"
+		)
 	return (
 		f"\tif (OaFnAutograd::IsEnabled() and ({req_check})) {{\n"
 		f"\t\tauto _gradFn = OaMakeSharedPtr<{grad_class}>{ctor_call};\n"
+		f"{broadcast_operation}"
 		f"\t\t_gradFn->Saved_ = OaVec<OaMatrix>{saved_init};\n"
 		f"\t\t_gradFn->SetGraphInputs(OaVec<OaMatrix>{inputs_init});\n"
 		f"\t\t_gradFn->SequenceNr_ = OaFnAutograd::NextSeq();\n"
 		f"\t\t_gradFn->OutputShape_ = out.GetShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads\n"
+		f"{semantic_attach}"
 		f"\t\tout.MutAutograd().GradFn = _gradFn;\n"
 		f"\t\tout.SetRequiresGrad(true);\n"
 		f"\t}}\n"
 	)
+
+
+def _semantic_attribute_cpp_values(op: dict) -> list[str]:
+	values: list[str] = []
+	scalar = op.get("scalar_param")
+	for index, attribute in enumerate(semantic_attribute_specs(op)):
+		if scalar is not None and index == 0:
+			source = f"In{scalar['name']}"
+		else:
+			source = attribute.get("source")
+			if not source:
+				fail(
+					f"{op['name']}: generated semantic attribute "
+					f"{attribute['name']!r} requires source"
+				)
+		factory = _ATTRIBUTE_FACTORY_CPP[attribute["kind"]]
+		values.append(
+			f'OaOperationAttribute::{factory}("{attribute["name"]}", {source})'
+		)
+	return values
 
 
 def emit_context_body(op: dict, namespace: str = "OaFnMatrix") -> str:
@@ -377,8 +881,29 @@ def emit_context_body(op: dict, namespace: str = "OaFnMatrix") -> str:
 		)
 		push_struct = "struct { OaU32 Count;" + fields + " } push{n" + inits + "};"
 
+	semantic_record = ""
+	semantic_operation = None
+	if "contract" in op:
+		if kind == "binary":
+			semantic_inputs = "{&InA, &InB}"
+		elif kind in ("unary", "unary_scalar", "reduce_full"):
+			semantic_inputs = "{&InA}"
+		elif kind == "nullary_scalar":
+			semantic_inputs = "{}"
+		else:
+			fail(f"{name}: unsupported generated semantic operation kind {kind!r}")
+		attribute_values = _semantic_attribute_cpp_values(op)
+		semantic_attributes = "{" + ", ".join(attribute_values) + "}"
+		semantic_record = (
+			f"\tconst auto semantic = ctx.RecordOperation(\n"
+			f"\t\tOaOperationRegistry::{name}, {semantic_inputs}, {{&out}},\n"
+			f"\t\t{semantic_attributes});\n"
+			"\tif (not semantic.IsOk()) return {};\n"
+		)
+		semantic_operation = "semantic.GetValue()"
+
 	# Autograd attach: appended inside the function body, right before `return out;`
-	autograd_block = emit_autograd_attach(op)
+	autograd_block = emit_autograd_attach(op, semantic_operation)
 
 	# Mark extra params as unused if we don't consume them
 	ignore_extra = "" if push_extras else "".join(
@@ -387,10 +912,17 @@ def emit_context_body(op: dict, namespace: str = "OaFnMatrix") -> str:
 	out_alloc = _output_alloc_stmt(op, namespace)
 	copy_prefix = ""
 	if body == "bias_add_broadcast":
+		copy_dispatch = (
+			",\n\t\t1, 1, "
+			f"OaOperationRegistry::{name}.Name, 0,\n\t\t"
+			f"OaOperationRegistry::{name}.Hash, 0, 0, semantic.GetValue()"
+			if semantic_operation is not None else ""
+		)
 		copy_prefix = (
 			"\tstruct { OaU32 Count; } copyPush{n};\n"
 			"\tOaBufferAccess copyAccess[] = {OaBufferAccess::Read, OaBufferAccess::Write};\n"
-			"\tctx.Add(\"Copy\", {&InA, &out}, copyAccess, &copyPush, sizeof(copyPush), DivCeil(n, 256));\n\n"
+			"\tctx.Add(\"Copy\", {&InA, &out}, copyAccess, &copyPush, "
+			f"sizeof(copyPush), DivCeil(n, 256){copy_dispatch});\n\n"
 		)
 	workgroups_expr = _dispatch_workgroups_expr(op)
 	if body == "bias_add_broadcast":
@@ -406,19 +938,26 @@ def emit_context_body(op: dict, namespace: str = "OaFnMatrix") -> str:
 		if kind == "nullary_scalar" or op.get("dispatch_workgroups") == "output_elemwise"
 		else "static_cast<OaU32>(InA.NumElements())"
 	)
+	dispatch_identity = (
+		",\n\t\t1, 1, "
+		f"OaOperationRegistry::{name}.Name, 0,\n\t\t"
+		f"OaOperationRegistry::{name}.Hash, 0, 0, semantic.GetValue()"
+		if semantic_operation is not None else ""
+	)
 	
 	return (
 		f"OaMatrix {namespace}::{name}({cpp_param_list(op, with_defaults=False)}) {{\n"
 		f"\tauto& ctx = OaContext::GetDefault();\n"
 		f"{ignore_extra}"
 		f"\t{out_alloc}\n"
+		f"{semantic_record}"
 		f"\tOaU32 n = {n_expr};\n"
 		f"\n"
 		f"{copy_prefix}"
 		f"\t{push_struct}\n"
 		f"\tOaBufferAccess access[] = {access};\n"
 		f'\tctx.Add("{op["kernel_forward"]}", {mats_init}, access, &push, sizeof(push), '
-		f"{workgroups_expr});\n"
+		f"{workgroups_expr}{dispatch_identity});\n"
 		f"{autograd_block}"
 		f"\treturn out;\n"
 		f"}}\n"
@@ -438,10 +977,17 @@ def emit_cpp_file(ops: list[dict], schema_name: str, category: str,
 		and op.get("body", "auto") not in ("manual_context", "cpu_util")
 		for op in ops
 	)
+	any_contract = any(
+		"contract" in op
+		and op.get("body", "auto") not in ("manual_context", "cpu_util")
+		for op in ops
+	)
 	if any_autograd:
-		out.append("#include <Oa/Ml/Autograd.h>\n")
+		out.append("#include <Oa/Ml/Autograd/Nodes.h>\n")
 	out.append("#include <Oa/Core/Matrix.h>\n")
 	out.append("#include <Oa/Core/FnMatrix.h>\n")
+	if any_contract:
+		out.append("#include <Oa/Core/Operation.h>\n")
 	# Public header for the target namespace in this domain, when one exists.
 	# Keyed by (domain, namespace) — Core/Ml/Ui all use OaFnMatrix but live in
 	# different headers.
@@ -822,16 +1368,16 @@ TEST_FN_PREAMBLE = """\
 #include <numeric>
 #include <vector>
 
-static OaComputeEngine* GRt = nullptr;
+static OaEngine* GRt = nullptr;
 
 class TestFnMatrix{category} : public ::testing::Test {{
 protected:
 \tstatic void SetUpTestSuite() {{
 \t\tOaEngineConfig cfg{{}};
 \t\tcfg.AppName = "TestFnMatrix{category}";
-\t\tauto r = OaComputeEngine::Create(cfg);
+\t\tauto r = OaEngine::Create(cfg);
 \t\tASSERT_TRUE(r.IsOk()) << r.GetStatus().GetMessage();
-\t\tstatic OaUniquePtr<OaComputeEngine> rt = std::move(*r);
+\t\tstatic OaUniquePtr<OaEngine> rt = std::move(*r);
 \t\tGRt = rt.get();
 \t}}
 }};
@@ -919,8 +1465,9 @@ def _emit_fn_test(op: dict) -> str:
 			"\tASSERT_TRUE(OaFnMatrix::CopyToHost(b, b_host.data(), N * sizeof(float)).IsOk());\n"
 		)
 	
-	# Context-based: use RAII scope for automatic execute + sync
-	context_setup = "\tOaContext::Scope ctx_scope(OaContext::GetDefault());\n"
+	# Select the recorder only; host reads in generated tests provide the explicit
+	# observation boundary without destructor submission.
+	context_setup = "\tOaContext::RecordingScope ctx_scope(OaContext::GetDefault());\n"
 	
 	# Handle reduce_full operations differently
 	if kind == "reduce_full":
@@ -1164,13 +1711,11 @@ def write_manifest_files(layouts: list[SchemaLayout], out_root: Path, *, dry_run
 				print(f"  would write: {manifest_cmake}")
 			continue
 		if emit_header:
-			manifest_header.parent.mkdir(parents=True, exist_ok=True)
-			manifest_header.write_text(emit_umbrella_header(grouped), encoding="utf-8", newline="\n")
+			write_generated_text(manifest_header, emit_umbrella_header(grouped))
 		elif manifest_header.exists() and manifest_header not in generated_headers:
 			manifest_header.unlink()
 		if has_cpp:
-			manifest_cmake.parent.mkdir(parents=True, exist_ok=True)
-			manifest_cmake.write_text(emit_cmake_sources(grouped, out_root), encoding="utf-8", newline="\n")
+			write_generated_text(manifest_cmake, emit_cmake_sources(grouped, out_root))
 		elif manifest_cmake.exists():
 			manifest_cmake.unlink()
 
@@ -1204,7 +1749,10 @@ def process_schema(schema_path: Path, registry: set[str], out_root: Path,
 	cpp_subdir = data.get("cpp_subdir", infer_cpp_subdir(domain, file_category))
 
 	def emits_header(op: dict) -> bool:
-		return op.get("body", "auto") not in ("manual_context", "cpu_util") or bool(op.get("api_params"))
+		return op.get("generate_declaration", True) and (
+			op.get("body", "auto") not in ("manual_context", "cpu_util")
+			or bool(op.get("api_params"))
+		)
 
 	def emits_cpp(op: dict) -> bool:
 		return op.get("body", "auto") not in ("manual_context", "cpu_util") or bool(
@@ -1244,11 +1792,11 @@ def process_schema(schema_path: Path, registry: set[str], out_root: Path,
 			
 			op_subdir.mkdir(parents=True, exist_ok=True)
 			if op_emit_header:
-				h_path.write_text(emit_header_fragment([op], schema_name, op_name, namespace), encoding="utf-8", newline="\n")
+				write_generated_text(h_path, emit_header_fragment([op], schema_name, op_name, namespace))
 			elif h_path.exists():
 				h_path.unlink()
 			if op_emit_cpp:
-				cpp_path.write_text(emit_cpp_file([op], schema_name, op_name, domain, namespace), encoding="utf-8", newline="\n")
+				write_generated_text(cpp_path, emit_cpp_file([op], schema_name, op_name, domain, namespace))
 			elif cpp_path.exists():
 				cpp_path.unlink()
 			print(f"  wrote {op_name}: header={op_emit_header}, cpp={op_emit_cpp}")
@@ -1289,19 +1837,18 @@ def process_schema(schema_path: Path, registry: set[str], out_root: Path,
 			if op.get("forward_op"):
 				print(f"  would write: {op_slang_path(op, out_root, live=live)}")
 		return layout
-	layout.header_path.parent.mkdir(parents=True, exist_ok=True)
 	if emit_header:
-		layout.header_path.write_text(emit_header_fragment(ops, schema_name, category, layout.namespace), encoding="utf-8", newline="\n")
+		write_generated_text(layout.header_path, emit_header_fragment(ops, schema_name, category, layout.namespace))
 	elif layout.header_path.exists():
 		layout.header_path.unlink()
 	if emit_cpp:
-		layout.cpp_path.parent.mkdir(parents=True, exist_ok=True)
-		layout.cpp_path.write_text(emit_cpp_file(ops, schema_name, category, layout.domain, layout.namespace), encoding="utf-8", newline="\n")
+		write_generated_text(layout.cpp_path, emit_cpp_file(ops, schema_name, category, layout.domain, layout.namespace))
 	elif layout.cpp_path.exists():
 		layout.cpp_path.unlink()
 	if emit_tests:
-		layout.test_path.parent.mkdir(parents=True, exist_ok=True)
-		layout.test_path.write_text(test_body, encoding="utf-8", newline="\n")
+		write_generated_text(layout.test_path, test_body)
+	elif layout.test_path.exists():
+		layout.test_path.unlink()
 	n_slang = 0
 	for op in ops:
 		if op.get("forward_op"):
@@ -1310,15 +1857,13 @@ def process_schema(schema_path: Path, registry: set[str], out_root: Path,
 			manual_path = sp.parent / f"{op['name']}.slang"
 			if manual_path.exists() and sp.name.endswith('.gen.slang'):
 				continue
-			sp.parent.mkdir(parents=True, exist_ok=True)
-			sp.write_text(emit_slang(op, schema_name), encoding="utf-8", newline="\n")
+			write_generated_text(sp, emit_slang(op, schema_name))
 			n_slang += 1
 	# Autograd generation
 	autograd_subdir = layout.autograd_header_path.parent.name if layout.autograd_header_path else "Matrix"
 	autograd_body = emit_autograd_header(ops, schema_name, file_category, autograd_subdir)
 	if autograd_body and layout.autograd_header_path:
-		layout.autograd_header_path.parent.mkdir(parents=True, exist_ok=True)
-		layout.autograd_header_path.write_text(autograd_body, encoding="utf-8", newline="\n")
+		write_generated_text(layout.autograd_header_path, autograd_body)
 		print(f"  wrote {layout.autograd_header_path.name}")
 	elif layout.autograd_header_path and layout.autograd_header_path.exists():
 		layout.autograd_header_path.unlink()
@@ -1341,6 +1886,8 @@ def main() -> int:
 	ap.add_argument("--dry-run", action="store_true",
 	                help="Print summary, don't write files")
 	args = ap.parse_args()
+	if args.live and args.schema and not args.dry_run:
+		fail("--schema cannot be combined with --live because shared manifests require the complete schema set")
 	out_root = LIVE_SOURCE_ROOT if args.live else args.out
 	if args.live:
 		print("oafnautogen: LIVE MODE — writing to Source/ tree (overwrites hand-written files)")
@@ -1362,6 +1909,12 @@ def main() -> int:
 		else:
 			layouts.append(result)
 	write_manifest_files(layouts, out_root, dry_run=args.dry_run)
+	write_operation_registry(schemas, out_root, dry_run=args.dry_run)
+	write_manual_autograd_attach_header(schemas, out_root, dry_run=args.dry_run)
+	write_python_bindings(schemas, out_root, dry_run=args.dry_run)
+	write_operation_reference(
+		schemas, out_root, live=args.live, dry_run=args.dry_run
+	)
 	return 0
 
 

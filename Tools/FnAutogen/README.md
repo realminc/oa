@@ -3,11 +3,12 @@
 Schema-driven code generator for the `OaFn*` API. Stdlib Python only — no
 pip deps, runs anywhere with Python 3.11+.
 
-See `Docs/Rewrite/ThisIsTheKey/OaFnAutogen.md` for the full design rationale.
+The schemas are the source of truth; this document and
+`Tools/FnAutogen/oafnautogen.py` define the public generation workflow.
 
 ## Status
 
-**Context API generator** — 162 ops across Core, Ml, Vision, Audio, Ui, and
+**Context API generator** — 167 ops across Core, Ml, Vision, Audio, Ui, and
 Crypto schemas under `Tools/FnAutogen/Schema/`.
 
 Each op emits:
@@ -27,11 +28,22 @@ regeneration. Manual-only autograd categories and generated-source groups with
 no emitted `.cpp` likewise produce no placeholder header or empty CMake
 manifest.
 
+Manual lowerings can still make differentiation schema-owned. Setting
+`autograd.attach = "standard"` emits a mechanical gradient-node attachment;
+`"broadcast_binary"` selects the ordinary node for equal shapes and the
+broadcast-reducing node otherwise. Optional `input_ranks` encode structured
+rank guards without embedding arbitrary C++ in TOML. Optional `state` entries
+copy typed non-matrix API parameters such as epsilon into named gradient-node
+members, keeping forward and backward configuration identical. These private
+helpers are emitted to `AutogradAttach.gen.h` and included only by their
+lowering units.
+
 Schemas with `body = "cpp_expr"` generate C++ bodies over the public `OaFn*`
 surface instead of dispatching a dedicated kernel. Use `cpp_expr` for one-line
-ops, or `cpp_body` for small multiline bodies that need a shared temporary.
-`Tools/FnAutogen/Schema/Ml/MlFnLoss.toml` uses this for `OaFnLoss::Mse`,
-`Bce`, and `L1`.
+ops, or `cpp_body` for small multiline bodies that need a shared temporary. A
+schema may instead use `manual_context` when lowering requires several
+executable nodes; `MlFnLoss.toml` uses that route for `CrossEntropy` while the
+schema still owns every mechanically derivable surface.
 
 ## Usage
 
@@ -51,6 +63,12 @@ python3 Tools/FnAutogen/oafnautogen.py \
     --registry Source/Public/Oa/Core/KernelRegistry.h \
     --out     Tools/FnAutogen/Output
 ```
+
+`--schema` is an isolated preview mode and cannot be combined with `--live`:
+the operation registry, Python bindings, autograd attachment, documentation,
+and source manifests require the complete schema set. Generated files are
+written only when their bytes change, so an unchanged full regeneration
+preserves timestamps and does not invalidate build outputs.
 
 ## Layout
 

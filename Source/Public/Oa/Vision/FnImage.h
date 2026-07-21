@@ -19,6 +19,7 @@
 // SaveFile only needs the renderer texture by reference. Avoid pulling the UI
 // image surface into every Vision transform consumer.
 struct OaTexture;
+class OaContext;
 
 struct OaNormalizationParams {
 	OaF32 Mean[3];
@@ -48,10 +49,17 @@ namespace OaFnImage {
 		bool InNormalizeImageNet = true
 	);
 
-	// Synchronous file sink for a device-local packed RGBA8 texture. The output
-	// codec is inferred from .png, .jpg/.jpeg, .bmp, or .tga.
+	// Synchronous file sink for a device-local packed RGBA8 texture. The context
+	// overload completes the producing batch before readback. The engine overload
+	// uses a matching thread-default context when one exists. The output codec is
+	// inferred from .png, .jpg/.jpeg, .bmp, or .tga.
 	[[nodiscard]] OaStatus SaveFile(
-		OaComputeEngine& InEngine,
+		OaContext& InContext,
+		const OaTexture& InTexture,
+		OaStringView InPath
+	);
+	[[nodiscard]] OaStatus SaveFile(
+		OaEngine& InEngine,
 		const OaTexture& InTexture,
 		OaStringView InPath
 	);

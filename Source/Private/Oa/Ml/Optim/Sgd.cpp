@@ -49,7 +49,8 @@ void OaSGD::ZeroGrad() {
 // Momentum_). Persistence is header-only: Lr, WeightDecay, Step, plus Momentum
 // stashed in Beta1 (repurposed) so future SgdMomentum work can recover it.
 
-void OaSGD::SaveTo(OamModel& OutOam) const {
+OaStatus OaSGD::SaveTo(OamModel& OutOam) const {
+	OutOam.OptimizerPresent = true;
 	OutOam.Optimizer = OamOptimizerHeader{};
 	std::strncpy(OutOam.Optimizer.Type, "SGD", sizeof(OutOam.Optimizer.Type) - 1);
 	OutOam.Optimizer.Lr          = Lr_;
@@ -59,12 +60,29 @@ void OaSGD::SaveTo(OamModel& OutOam) const {
 	OutOam.Optimizer.NumParams   = 0;
 	OutOam.AdamM.Clear();
 	OutOam.AdamV.Clear();
+	return OaStatus::Ok();
 }
 
-void OaSGD::LoadFrom(const OamModel& InOam) {
+OaStatus OaSGD::ValidateLoad(const OamModel& InOam) const {
+	if (not InOam.HasOptimizer()
+		or std::strncmp(InOam.Optimizer.Type, "SGD", sizeof(InOam.Optimizer.Type)) != 0)
+	{
+		return OaStatus::Error(OaStatusCode::FailedPrecondition,
+			"SGD checkpoint optimizer state is missing or has the wrong type");
+	}
+	if (not InOam.AdamM.Empty() or not InOam.AdamV.Empty() or not InOam.MuonM.Empty()) {
+		return OaStatus::Error(OaStatusCode::CheckpointCorrupt,
+			"SGD checkpoint contains unexpected optimizer payloads");
+	}
+	return OaStatus::Ok();
+}
+
+OaStatus OaSGD::LoadFrom(const OamModel& InOam) {
+	OA_RETURN_IF_ERROR(ValidateLoad(InOam));
 	Lr_          = InOam.Optimizer.Lr;
 	Momentum_    = InOam.Optimizer.Beta1;
 	WeightDecay_ = InOam.Optimizer.WeightDecay;
 	Step_        = static_cast<OaU64>(InOam.Optimizer.Step);
 	ResetMasterSeed();  // re-seed fp32 masters from the reloaded (bf16) weights
+	return OaStatus::Ok();
 }

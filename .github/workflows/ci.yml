@@ -30,10 +30,20 @@ jobs:
           # current main tips. A depth-1 fetch makes a valid ancestor look unrelated.
           fetch-depth: 0
 
-      - name: Architecture dependency check
+      - name: Architecture and diagnostic contract checks
         run: |
           python3 Tools/Architecture/test_oacheck.py
           python3 Tools/Architecture/oacheck.py
+          python3 Tools/Diagnostics/test_oaevidence.py
+          python3 Tools/Diagnostics/test_run_validation.py
+          python3 Tools/Diagnostics/test_oabench.py
+          python3 Tools/Diagnostics/test_oabaseline.py
+          python3 Tools/Diagnostics/test_oabenchsuite.py
+          python3 Tools/Diagnostics/test_oadeterminism.py
+          python3 Tools/Diagnostics/run_validation.py --help >/dev/null
+
+      - name: Generated-source drift check
+        run: python3 Tools/check_autogen_drift.py
 
       - name: Verify tag is on main
         if: startsWith(github.ref, 'refs/tags/v')
@@ -185,8 +195,74 @@ jobs:
             dist/*.pkg.tar.zst
             dist/SHA256SUMS.txt
 
+  host-sanitizers:
+    name: Host Sanitizer (${{ matrix.name }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: ASAN
+            preset: asan
+            build_dir: Asan
+          - name: UBSAN
+            preset: ubsan
+            build_dir: Ubsan
+    env:
+      ASAN_OPTIONS: detect_leaks=1:halt_on_error=1:strict_string_checks=1
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang ninja-build cmake \
+            libvulkan-dev mesa-vulkan-drivers \
+            liburing-dev libdrm-dev \
+            autoconf autoconf-archive automake libtool
+
+      - name: Install Slang
+        run: |
+          curl -fsSL -o slang.tar.gz \
+            "https://github.com/shader-slang/slang/releases/download/v${SLANG_VERSION}/slang-${SLANG_VERSION}-linux-x86_64.tar.gz"
+          sudo mkdir -p /opt/slang
+          sudo tar -xzf slang.tar.gz -C /opt/slang
+          test -x /opt/slang/bin/slangc
+          echo "/opt/slang/bin" >> $GITHUB_PATH
+
+      - name: Setup vcpkg
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git $HOME/.vcpkg/vcpkg
+          $HOME/.vcpkg/vcpkg/bootstrap-vcpkg.sh -disableMetrics
+
+      - name: Restore isolated dependency profile
+        uses: actions/cache@v4
+        with:
+          path: ~/.vcpkg/oa/${{ matrix.preset }}/installed
+          key: vcpkg-${{ matrix.preset }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          restore-keys: vcpkg-${{ matrix.preset }}-
+
+      - name: Configure ${{ matrix.name }}
+        run: cmake --preset ${{ matrix.preset }}
+
+      - name: Build host ownership and parser tests
+        run: |
+          cmake --build Build/${{ matrix.build_dir }} --parallel "$(nproc)" --target \
+            TestTypes TestMemory TestContainers TestThreading TestCoreMisc \
+            TestValidation TestPrecisionDtype TestTransferWeights TestOamIntegrity TestTokenizer \
+            TestGptOssConfig TestOaStd
+
+      - name: Run host sanitizer suite
+        run: |
+          ctest --test-dir Build/${{ matrix.build_dir }} \
+            --output-on-failure --timeout 120 -L core
+
   gpu-smoke:
-    name: GPU Smoke (self-hosted)
+    name: GPU Validation (self-hosted)
     # The github-hosted `build` job runs on lavapipe and CANNOT exercise the bindless
     # compute path. This job runs a small, fp32-safe subset (engine init -> compute-graph
     # dispatch -> recurrent GRU kernel; label `gpu_smoke`) on a REAL GPU so a regression
@@ -195,11 +271,14 @@ jobs:
     # Setup (one-time): register a self-hosted runner labeled [self-hosted, gpu] on a box
     # with a Vulkan GPU + the OA build deps (clang, ninja, cmake, slangc on PATH, vcpkg at
     # $VCPKG_ROOT), then set repo variable HAVE_GPU_RUNNER=true. Until then this job is
-    # skipped (not left pending). Once stable, add `gpu-smoke` to the release job's `needs`.
+    # skipped (not left pending). The job is the canonical functional + synchronization +
+    # GPU-assisted contract; once the runner is continuously available, make it a release need.
     if: ${{ vars.HAVE_GPU_RUNNER == 'true' }}
     runs-on: [self-hosted, gpu]
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Configure
         run: |
           cmake -B build/release -G Ninja \
@@ -207,11 +286,36 @@ jobs:
             -DCMAKE_CXX_COMPILER=clang++ \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake \
+            -DVCPKG_INSTALLED_DIR=$RUNNER_TEMP/oa-vcpkg-${{ github.run_id }}-${{ github.run_attempt }} \
             -DOA_EMBED_SHADERS=ON
       - name: Build smoke targets
         run: ninja -C build/release TestEngineInit TestComputeGraph TestGru
       - name: GPU smoke (real device)
         run: ctest --test-dir build/release --output-on-failure -L gpu_smoke
+      - name: Synchronization validation (real device)
+        run: |
+          python3 Tools/Diagnostics/run_validation.py \
+            --mode sync \
+            --cmake-cache build/release/CMakeCache.txt \
+            --output var/report/gpu-sync \
+            -- Bin/release/Test/Runtime/Graph/TestComputeGraph
+      - name: GPU-assisted validation (real device)
+        run: |
+          python3 Tools/Diagnostics/run_validation.py \
+            --mode gpu \
+            --cmake-cache build/release/CMakeCache.txt \
+            --output var/report/gpu-assisted \
+            -- Bin/release/Test/Runtime/Graph/TestComputeGraph
+      - name: Upload real-GPU evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: oa-gpu-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            var/report/gpu-sync
+            var/report/gpu-assisted
 
   release:
     name: Release
@@ -283,7 +387,7 @@ jobs:
             python -m pip install oapython
             ```
 
-            ### Verify
+            ### Verify automated C++ package assets
             ```bash
             sha256sum -c SHA256SUMS.txt
             ```

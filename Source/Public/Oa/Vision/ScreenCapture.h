@@ -12,7 +12,7 @@
 #include <Oa/Vision/VideoDecoder.h>
 #include <Oa/Runtime/Sync.h>
 
-class OaComputeEngine;
+class OaEngine;
 
 enum class OaScreenCaptureTarget : OaU8 {
 	MonitorOrWindow = 0,
@@ -49,18 +49,24 @@ public:
 
 	[[nodiscard]] static bool IsSupported() noexcept;
 	[[nodiscard]] static OaResult<OaScreenCapture> Open(
-		OaComputeEngine& InEngine,
+		OaEngine& InEngine,
 		const OaScreenCaptureConfig& InConfig = {});
 
 	// Non-blocking. Returns true when a newer frame than the previous Poll()
 	// is published through the common video-frame contract.
 	bool Poll(OaVideoFrame& OutFrame);
-	// Release a producer-owned image returned by Poll(). Buffer-backed mapped
-	// fallback frames do not require an explicit release.
+	// Release a frame returned by Poll(). The no-token overload declares that
+	// no asynchronous consumer remains.
 	void Release(const OaVideoFrame& InFrame);
 	// GPU-deferred release. DMA-BUF ownership returns to PipeWire only after
-	// InConsumed completes; mapped fallback frames remain no-op releases.
+	// InConsumed completes. Mapped fallback ring slots are likewise withheld
+	// from producer reuse until the exact completion becomes ready.
 	void Release(const OaVideoFrame& InFrame, const OaCompletionToken& InConsumed);
+	// Stops the producer thread, completes exact frame-consumer dependencies,
+	// and releases portal, PipeWire, and Vulkan resources.
+	[[nodiscard]] OaStatus Close();
+	// Compatibility wrapper that logs Close() failures. Prefer Close() where
+	// the shutdown result can be propagated.
 	void Destroy();
 
 	[[nodiscard]] bool IsStreaming() const noexcept;
@@ -68,5 +74,8 @@ public:
 	[[nodiscard]] OaU32 Height() const noexcept;
 
 private:
+	void Abandon_() noexcept;
+	static OaStatus CompleteRetired_(void* InPayload);
+	static void ReleaseRetired_(void* InPayload);
 	OaUniquePtr<Impl> Impl_;
 };

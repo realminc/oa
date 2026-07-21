@@ -8,6 +8,8 @@
 #include <Oa/Core/Status.h>
 #include <Oa/Core/Std/UniquePtr.h>
 
+class OaEngine;
+
 struct OaAudioStreamConfig {
 	OaString Uri;
 	bool Loop = false;
@@ -26,14 +28,18 @@ public:
 	~OaAudioStream();
 
 	[[nodiscard]] static OaResult<OaAudioStream> Open(
+		OaEngine& InEngine,
 		const OaAudioStreamConfig& InConfig);
-	[[nodiscard]] static OaResult<OaAudioStream> Open(OaStringView InUri);
+	[[nodiscard]] static OaResult<OaAudioStream> Open(
+		OaEngine& InEngine,
+		OaStringView InUri);
 
 	[[nodiscard]] OaStatus Play();
 	void Pause();
 	[[nodiscard]] OaStatus Seek(OaU64 InTimestampUs);
 	void SetLoop(bool InLoop);
-	void Close();
+	// Stops playback, joins decoding, and releases codec/device state.
+	[[nodiscard]] OaStatus Close();
 
 	[[nodiscard]] bool IsOpen() const noexcept;
 	[[nodiscard]] bool IsPlaying() const noexcept;
@@ -45,5 +51,8 @@ public:
 	[[nodiscard]] OaU64 UnderrunFrameCount() const noexcept;
 
 private:
+	void Abandon_() noexcept;
+	static OaStatus CompleteRetired_(void* InPayload);
+	static void ReleaseRetired_(void* InPayload);
 	OaUniquePtr<Impl> Impl_;
 };

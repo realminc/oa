@@ -47,7 +47,8 @@ struct OaConfigTrain {
 	OaBool Validate = false;
 
 	// Vulkan / engine topology (see oa OaEngineConfig)
-	// topology: single | multi | mesh | all | server (server = multi + future cluster hooks)
+	// topology: single | multi | mesh | all. Multi-device modes expose experimental
+	// mesh discovery only; they are not a supported distributed NLP path.
 	// device: discrete | integrated | cpu | by_index — preference for auto-pick / mesh scoring
 	// vulkan_index >= 0: single topology — force VkPhysicalDevice by loader enumeration index (overrides device)
 	// multi + mesh_indices: explicit node order (primary = first); vulkan_index alone does not set mesh order
@@ -203,7 +204,7 @@ public:
 		AddFlag("--validate", Cfg_.Validate, "Enable Vulkan validation layers");
 
 		AddOption("--engine-topology", Cfg_.EngineTopology,
-			"single | multi | mesh | all | server — multi/mesh/all enable OaDeviceMesh");
+			"single | multi | mesh | all — multi-device mesh modes are experimental");
 		AddOption("--engine-device", Cfg_.EngineDevice,
 			"discrete | integrated | cpu | by_index — device preference (by_index needs --vulkan-index)");
 		AddOption("--vulkan-index", Cfg_.VulkanIndex,

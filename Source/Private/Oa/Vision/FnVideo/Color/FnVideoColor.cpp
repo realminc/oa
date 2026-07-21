@@ -2,7 +2,10 @@
 // Implementation: FnVideoDecoderColor.cpp (decoder readback/convert),
 // FnVideoColor.gen.cpp (generated kernels), encoder upload in VideoEncoder.
 
+#include <Oa/Runtime/Engine.h>
+
 #include <Oa/Vision/FnVideo.h>
+#include <Oa/Runtime/Context.h>
 #include <Oa/Ui/Image.h>
 #include "Oa/Vision/Video/Decoder/VideoDecoderInternal.h"
 
@@ -12,18 +15,12 @@ namespace OaFnVideo
 OaResult<OaVideoFrame> FromTexture(
 	const OaTexture& InTexture,
 	OaU64 InPts,
-	const OaVkTimelineSemaphore* InReadySemaphore,
-	OaU64 InReadyValue)
+	OaEvent InReady)
 {
 	if (not InTexture.IsValid() or InTexture.Width <= 0 or InTexture.Height <= 0) {
 		return OaStatus::Error(OaStatusCode::InvalidArgument,
 			"OaFnVideo::FromTexture requires a valid texture with positive extent");
 	}
-	if ((InReadySemaphore == nullptr) != (InReadyValue == 0ULL)) {
-		return OaStatus::Error(OaStatusCode::InvalidArgument,
-			"OaFnVideo::FromTexture readiness semaphore/value must be supplied together");
-	}
-
 	OaVideoFrame frame = {};
 	frame.Width = static_cast<OaU32>(InTexture.Width);
 	frame.Height = static_cast<OaU32>(InTexture.Height);
@@ -31,8 +28,7 @@ OaResult<OaVideoFrame> FromTexture(
 	frame.IsRgb = true;
 	frame.ColorSpace = OaYCbCrModel::BT709;
 	frame.FullRange = true;
-	frame.ReadySemaphore = InReadySemaphore;
-	frame.ReadyValue = InReadyValue;
+	frame.Ready = InReady;
 	if (InTexture.IsImageBacked()) {
 		if (InTexture.View == nullptr
 			or InTexture.Format == static_cast<OaI32>(VK_FORMAT_UNDEFINED)
@@ -61,6 +57,72 @@ OaResult<OaVideoFrame> FromTexture(
 		frame.Format = VK_FORMAT_R8G8B8A8_UNORM;
 	}
 	return frame;
+}
+
+OaStatus Encode(
+	OaContext& InContext,
+	OaVideoEncoder& InSession,
+	const OaTexture& InRgba,
+	OaEncodedFrame& OutFrame,
+	OaU64 InPts)
+{
+#ifdef OA_ANDROID_ML
+	(void)InContext;
+	(void)InSession;
+	(void)InRgba;
+	(void)OutFrame;
+	(void)InPts;
+	return OaStatus::Unimplemented(
+		"Video encoding is not part of the Android ML profile");
+#else
+	if (not InRgba.IsValid()) {
+		return OaStatus::Error(OaStatusCode::InvalidArgument,
+			"OaFnVideo::Encode: source texture is invalid");
+	}
+	if (InRgba.IsImageBacked()) {
+		return OaStatus::Error(OaStatusCode::InvalidArgument,
+			"OaFnVideo::Encode: source texture must be buffer-backed");
+	}
+	if (InRgba.Width <= 0 or InRgba.Height <= 0) {
+		return OaStatus::Error(OaStatusCode::InvalidArgument,
+			"OaFnVideo::Encode: source texture extent must be positive");
+	}
+	const OaVkBuffer& buffer = InRgba.DeviceBuf;
+	OaEngine& engine = InContext.Engine();
+	const OaU64 bytes = static_cast<OaU64>(InRgba.Width)
+		* static_cast<OaU64>(InRgba.Height) * 4U;
+	if (buffer.Buffer == nullptr or buffer.Size < bytes
+		or buffer.BindlessIndex == OA_BINDLESS_INVALID
+		or buffer.Allocation == nullptr
+		or buffer.AliasIdentity != nullptr or buffer.IsImported()
+		or buffer.NodeIndex != 0U
+		or buffer.AllocatorIdentity != engine.Allocator.Allocator) {
+		return OaStatus::Error(OaStatusCode::InvalidArgument,
+			"OaFnVideo::Encode: source must be a non-aliased buffer owned by the context engine");
+	}
+	OaContext::RecordingScope recording(InContext);
+	// Encoding is an explicit consumer boundary. Submit and complete any graph
+	// work that produces the texture before the encoder snapshots its buffer.
+	OA_RETURN_IF_ERROR(InContext.Execute());
+	OA_RETURN_IF_ERROR(InContext.Sync());
+	OA_RETURN_IF_ERROR(InSession.UploadInputRgba(
+		InRgba.DeviceBuf,
+		static_cast<OaU32>(InRgba.Width),
+		static_cast<OaU32>(InRgba.Height),
+		OaYCbCrModel::BT709,
+		false));
+	return InSession.EncodeFrame(VK_NULL_HANDLE, InPts, OutFrame);
+#endif
+}
+
+OaStatus Encode(
+	OaVideoEncoder& InSession,
+	const OaTexture& InRgba,
+	OaEncodedFrame& OutFrame,
+	OaU64 InPts)
+{
+	return Encode(
+		OaContext::GetDefault(), InSession, InRgba, OutFrame, InPts);
 }
 
 OaStatus CvtRgbaToNv12(

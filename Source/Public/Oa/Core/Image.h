@@ -12,8 +12,7 @@
 // domain wrapper.
 //
 // Vision/UI/Audio kernels live in their own modules; this header only owns the
-// data wrapper + enums (no runtime / Vulkan dependencies). See
-// Docs/Rewrite/ThisIsTheKey/OaImage.md for the full design.
+// data wrapper + enums and has no runtime or Vulkan dependency.
 
 #include <Oa/Core/Matrix.h>
 

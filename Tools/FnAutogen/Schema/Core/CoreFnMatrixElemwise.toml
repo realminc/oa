@@ -3,7 +3,7 @@
 # This is the *source of truth* for these 17 ops. The generator emits:
 #   - .h declarations, .cpp implementations, .slang shaders (forward ops)
 #   - Autograd/Matrix/AutogradElemwise.gen.h (gradient node classes)
-# See Tools/FnAutogen/oafnautogen.py and Docs/Rewrite/Opus/OaFnAutogen.md.
+# See Tools/FnAutogen/README.md and Tools/FnAutogen/oafnautogen.py.
 #
 # Fields per [[ops]] entry:
 #   name              op name (PascalCase, no Oa prefix — namespace adds it)
@@ -39,12 +39,32 @@ log_component  = "ML"
 notes          = "Element-wise addition: Out = A + B."
 forward_op     = "a + b"
 body           = "manual_context"
+api_params     = ["const OaMatrix& InA", "const OaMatrix& InB"]
+api_return     = "OaMatrix"
+
+[ops.contract]
+input_kinds     = ["matrix", "matrix"]
+output_kinds    = ["matrix"]
+shape_rule      = "broadcast"
+dtype_rule      = "match_input"
+effects         = ["read_inputs", "write_outputs"]
+mutated_inputs  = []
+output_alias_inputs = [-1]
+control_flow    = "straight_line"
+differentiation = "reverse"
+lowering        = "dispatch"
+
+[ops.python]
+args = ["a", "b"]
+doc = "Element-wise matrix addition with broadcasting."
 
 [ops.autograd]
 grad_class = "OaGradAdd"
 inputs     = ["InA", "InB"]
 saved      = []
 formula    = "auto_binary_add"
+attach     = "broadcast_binary"
+broadcast_op = "Add"
 
 [ops.test]
 cpu_reference = "a_host[i] + b_host[i]"
@@ -53,6 +73,34 @@ test_sizes = [256, 1024]
 edge_cases = ["zeros", "negatives"]
 numerical_grad = false
 benchmark = false
+
+# --- AddInPlace --------------------------------------------------------------
+# Contract-only entry for the handwritten compatibility API. The semantic
+# graph records an SSA output version that aliases and mutates InSelf; lowering
+# may execute it directly or fuse several independent updates into MultiAdd.
+[[ops]]
+name                 = "AddInPlace"
+category             = "Elemwise"
+kind                 = "binary"
+kernel_forward       = "Add"
+log_component        = "ML"
+notes                = "In-place matrix addition with an explicit mutated/aliased output contract."
+body                 = "manual_context"
+generate_declaration = false
+api_params           = ["OaMatrix& InSelf", "const OaMatrix& InOther"]
+api_return           = "void"
+
+[ops.contract]
+input_kinds         = ["matrix", "matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "broadcast"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = [0]
+output_alias_inputs = [0]
+control_flow        = "straight_line"
+differentiation     = "none"
+lowering            = "dispatch"
 
 # --- Sub ---------------------------------------------------------------------
 [[ops]]
@@ -65,11 +113,25 @@ notes          = "Element-wise subtraction: Out = A - B."
 forward_op     = "a - b"
 body           = "manual_context"
 
+[ops.contract]
+input_kinds         = ["matrix", "matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "broadcast"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+
 [ops.autograd]
 grad_class = "OaGradSub"
 inputs     = ["InA", "InB"]
 saved      = []
 formula    = "auto_binary_sub"
+attach     = "broadcast_binary"
+broadcast_op = "Sub"
 
 [ops.test]
 cpu_reference = "a_host[i] - b_host[i]"
@@ -86,11 +148,26 @@ notes          = "Element-wise multiplication: Out = A * B."
 forward_op     = "a * b"
 body           = "manual_context"
 
+[ops.contract]
+input_kinds         = ["matrix", "matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "broadcast"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+
 [ops.autograd]
 grad_class = "OaGradMul"
 inputs     = ["InA", "InB"]
 saved      = ["InA", "InB"]
 formula    = "auto_binary_mul"
+attach     = "broadcast_binary"
+broadcast_op = "Mul"
+output_shape = true
 
 [ops.test]
 cpu_reference = "a_host[i] * b_host[i]"
@@ -107,11 +184,25 @@ notes          = "Element-wise division: Out = A / B."
 forward_op     = "a / b"
 body           = "manual_context"
 
+[ops.contract]
+input_kinds         = ["matrix", "matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "broadcast"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+
 [ops.autograd]
 grad_class = "OaGradDiv"
 inputs     = ["InA", "InB"]
 saved      = ["InA", "InB"]
 formula    = "manual"
+attach     = "broadcast_binary"
+broadcast_op = "Div"
 
 [ops.test]
 cpu_reference = "a_host[i] / b_host[i]"
@@ -128,6 +219,18 @@ log_component     = "ML"
 notes             = "Scalar multiplication: Out = A * Scalar."
 forward_op        = "a * pc.Alpha"
 scalar_param      = { name = "Scalar", type = "OaF32", push_field = "Alpha" }
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
 
 [ops.autograd]
 grad_class = "OaGradScale"
@@ -151,9 +254,23 @@ log_component  = "ML"
 notes          = "Element-wise negation: Out = -A."
 forward_op     = "-a"
 
-# Neg delegates to Scale(-1) which has autograd, so Neg automatically gets gradients.
-[ops.immediate]
-alias_of = { op = "Scale", scalar = -1.0 }
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+
+[ops.autograd]
+grad_class = "OaGradNeg"
+inputs     = ["InA"]
+saved      = []
+formula    = "manual"
 
 [ops.test]
 cpu_reference = "-a_host[i]"
@@ -168,6 +285,18 @@ kernel_forward = "Abs"
 log_component  = "ML"
 notes          = "Element-wise absolute value: Out = |A|."
 forward_op     = "abs(a)"
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
 
 [ops.autograd]
 grad_class = "OaGradAbs"
@@ -188,6 +317,18 @@ kernel_forward = "Log"
 log_component  = "ML"
 notes          = "Element-wise natural log: Out = log(A)."
 forward_op     = "log(a)"
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
 
 [ops.autograd]
 grad_class = "OaGradLog"
@@ -210,6 +351,18 @@ log_component  = "ML"
 notes          = "Element-wise square root: Out = sqrt(A)."
 forward_op     = "sqrt(a)"
 
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+
 [ops.autograd]
 grad_class = "OaGradSqrt"
 inputs     = ["InA"]
@@ -231,6 +384,18 @@ log_component  = "ML"
 notes          = "Element-wise power: Out = A^Exponent."
 forward_op     = "pow(a, pc.Exponent)"
 scalar_param   = { name = "Exponent", type = "OaF32", push_field = "Exponent" }
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
 
 [ops.autograd]
 grad_class = "OaGradPow"
@@ -255,6 +420,18 @@ notes          = "Scalar addition: Out = A + Scalar."
 forward_op     = "a + pc.Scalar"
 scalar_param   = { name = "Scalar", type = "OaF32", push_field = "Scalar" }
 
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+
 [ops.autograd]
 grad_class = "OaGradAddScalar"
 inputs     = ["InA"]
@@ -277,6 +454,18 @@ notes          = "Scalar subtraction: Out = A - Scalar."
 forward_op     = "a - pc.Scalar"
 scalar_param   = { name = "Scalar", type = "OaF32", push_field = "Scalar" }
 
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+
 [ops.autograd]
 grad_class = "OaGradSubScalar"
 inputs     = ["InA"]
@@ -298,6 +487,18 @@ log_component  = "ML"
 notes          = "Scalar division: Out = A / Scalar."
 forward_op     = "a / pc.Scalar"
 scalar_param   = { name = "Scalar", type = "OaF32", push_field = "Scalar" }
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
 
 [ops.autograd]
 grad_class = "OaGradDivScalar"
@@ -322,6 +523,18 @@ log_component  = "ML"
 notes          = "Element-wise exponential: Out = exp(A)."
 forward_op     = "exp(a)"
 
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+
 [ops.autograd]
 grad_class = "OaGradExp"
 inputs     = ["InA"]
@@ -342,6 +555,18 @@ slang_path     = "Core/Shader/Compute/Flat"
 log_component  = "ML"
 notes          = "Element-wise sine: Out = sin(A)."
 forward_op     = "sin(a)"
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
 
 [ops.autograd]
 grad_class = "OaGradSin"
@@ -364,6 +589,18 @@ log_component  = "ML"
 notes          = "Element-wise cosine: Out = cos(A)."
 forward_op     = "cos(a)"
 
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+
 [ops.autograd]
 grad_class = "OaGradCos"
 inputs     = ["InA"]
@@ -384,6 +621,18 @@ slang_path     = "Core/Shader/Compute/Flat"
 log_component  = "ML"
 notes          = "Element-wise reciprocal: Out = 1 / A."
 forward_op     = "1.0f / a"
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
 
 [ops.autograd]
 grad_class = "OaGradReciprocal"
@@ -406,6 +655,18 @@ log_component  = "ML"
 notes          = "Element-wise clamp max: Out = min(A, Max)."
 forward_op     = "min(a, pc.Max)"
 scalar_param   = { name = "Max", type = "OaF32", push_field = "Max" }
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
 
 [ops.autograd]
 grad_class = "OaGradClampMax"
@@ -430,6 +691,18 @@ log_component  = "ML"
 notes          = "Element-wise clamp min: Out = max(A, Min)."
 forward_op     = "max(a, pc.Min)"
 scalar_param   = { name = "Min", type = "OaF32", push_field = "Min" }
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
 
 [ops.autograd]
 grad_class = "OaGradClampMin"

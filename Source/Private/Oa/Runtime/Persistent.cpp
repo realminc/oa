@@ -10,7 +10,7 @@ struct OaWorkQueueHeader {
 };
 
 OaResult<OaWorkQueue> OaWorkQueue::Create(
-	OaComputeEngine& InRt, OaU32 InCapacity, OaU32 InMaxPushBytes)
+	OaEngine& InRt, OaU32 InCapacity, OaU32 InMaxPushBytes)
 {
 	OaU64 queueBytes = sizeof(OaWorkQueueHeader) + InCapacity * sizeof(OaWorkItem);
 	auto queueBuf = InRt.AllocBuffer(queueBytes);
@@ -37,7 +37,7 @@ OaResult<OaWorkQueue> OaWorkQueue::Create(
 	return wq;
 }
 
-void OaWorkQueue::Destroy(OaComputeEngine& InRt) {
+void OaWorkQueue::Destroy(OaEngine& InRt) {
 	InRt.FreeBuffer(QueueBuffer);
 	InRt.FreeBuffer(PushBuffer);
 	Capacity = 0;

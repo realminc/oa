@@ -1,10 +1,10 @@
 {
 	"$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
 	"name": "oa",
-	"version": "0.2.0",
-	"description": "Empyrealm Foundation Library — Vulkan compute, ML, Crypto",
-	"homepage": "https://github.com/empyrealm/oa",
-	"license": "LicenseRef-Proprietary",
+	"version": "0.7.5",
+	"description": "OA — cross-vendor Vulkan compute, ML, vision, audio, and cryptography",
+	"homepage": "https://github.com/realminc/oa",
+	"license": "BUSL-1.1",
 	"dependencies": [
 		"gtest",
 		"yaml-cpp",

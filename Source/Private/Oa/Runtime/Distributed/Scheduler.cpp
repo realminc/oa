@@ -1,19 +1,6 @@
 #include <Oa/Runtime/Scheduler.h>
 #include <Oa/Runtime/Topology.h>
 
-OaStatus OaDispatchTicket::Wait(const OaVkDevice& InDevice, OaU64 InTimeoutNs) {
-	OaStatus s = Semaphore.Wait(InDevice, Value, InTimeoutNs);
-	if (s.IsOk() && Semaphore.Semaphore) {
-		Semaphore.Destroy(InDevice);
-		Semaphore.Semaphore = nullptr;
-	}
-	return s;
-}
-
-OaBool OaDispatchTicket::IsComplete(const OaVkDevice& InDevice) const {
-	return Semaphore.GetValue(InDevice) >= Value;
-}
-
 OaScheduler OaScheduler::Create(OaDeviceMesh& InMesh) {
 	OaScheduler sched;
 	sched.Mesh = &InMesh;

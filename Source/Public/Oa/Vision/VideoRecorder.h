@@ -15,6 +15,7 @@
 #include <Oa/Audio/AudioCapture.h>
 
 class OaEngine;
+class OaContext;
 class OaVkBuffer;
 struct OaTexture;
 
@@ -40,7 +41,9 @@ public:
 		OaEngine& InEngine,
 		const OaVideoRecorderConfig& InConfig);
 
-	// Record one packed RGBA8 bindless buffer.
+	// Record one packed RGBA8 bindless buffer. The source must already be
+	// completed, non-aliased, and owned by this recorder's engine; use the
+	// OaContext texture overload for a deferred producer.
 	[[nodiscard]] OaStatus WriteRgba(
 		const OaVkBuffer& InRgba,
 		OaU32 InWidth,
@@ -48,7 +51,8 @@ public:
 		OaU64 InPts);
 
 	// Record a common capture/decode/render frame. Packed RGBA8/BGRA8 buffers
-	// and images are supported; image readiness stays on the GPU timeline.
+	// must satisfy the completed engine-owned source contract above. Images are
+	// supported and carry readiness on the GPU timeline.
 	[[nodiscard]] OaStatus Write(const OaVideoFrame& InFrame);
 	// Non-blocking image-input variant. OutInputConsumed signals after the
 	// source image has returned to its published layout/queue family and may be
@@ -59,7 +63,14 @@ public:
 
 	// Record a buffer- or image-backed render target. Image-backed targets use
 	// the same OaVideoFrame path as decoded/captured frames and never stage
-	// pixels through host memory.
+	// pixels through host memory. The context overload completes a deferred
+	// buffer-texture producer before the encoder snapshots it; the compatibility
+	// overload selects the matching active context, then the recorder engine's
+	// context when no matching recording scope exists.
+	[[nodiscard]] OaStatus Write(
+		OaContext& InContext,
+		const OaTexture& InTexture,
+		OaU64 InPts);
 	[[nodiscard]] OaStatus Write(const OaTexture& InTexture, OaU64 InPts);
 
 	// Add captured interleaved F32 audio. Timestamps share the monotonic

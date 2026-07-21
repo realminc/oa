@@ -19,119 +19,119 @@
 // ─── ThresholdBinary (Global binary threshold) ────
 
 OaMatrix OaFnImage::ThresholdBinary(const OaMatrix& InImage, OaF32 InThreshold, OaF32 InMaxValue) {
-	return OaFnImage::ThresholdBinary(*OaComputeEngine::GetGlobal(), InImage, InThreshold, InMaxValue);
+	return OaFnImage::ThresholdBinary(*OaEngine::GetGlobal(), InImage, InThreshold, InMaxValue);
 }
 
 // ─── ThresholdBinaryInv (Global inverse binary threshold) ────
 
 OaMatrix OaFnImage::ThresholdBinaryInv(const OaMatrix& InImage, OaF32 InThreshold, OaF32 InMaxValue) {
-	return OaFnImage::ThresholdBinaryInv(*OaComputeEngine::GetGlobal(), InImage, InThreshold, InMaxValue);
+	return OaFnImage::ThresholdBinaryInv(*OaEngine::GetGlobal(), InImage, InThreshold, InMaxValue);
 }
 
 // ─── ThresholdTruncate (Truncate values above a threshold) ────
 
 OaMatrix OaFnImage::ThresholdTruncate(const OaMatrix& InImage, OaF32 InThreshold) {
-	return OaFnImage::ThresholdTruncate(*OaComputeEngine::GetGlobal(), InImage, InThreshold);
+	return OaFnImage::ThresholdTruncate(*OaEngine::GetGlobal(), InImage, InThreshold);
 }
 
 // ─── ThresholdToZero (Set values at or below a threshold to zero) ────
 
 OaMatrix OaFnImage::ThresholdToZero(const OaMatrix& InImage, OaF32 InThreshold) {
-	return OaFnImage::ThresholdToZero(*OaComputeEngine::GetGlobal(), InImage, InThreshold);
+	return OaFnImage::ThresholdToZero(*OaEngine::GetGlobal(), InImage, InThreshold);
 }
 
 // ─── ThresholdToZeroInv (Set values above a threshold to zero) ────
 
 OaMatrix OaFnImage::ThresholdToZeroInv(const OaMatrix& InImage, OaF32 InThreshold) {
-	return OaFnImage::ThresholdToZeroInv(*OaComputeEngine::GetGlobal(), InImage, InThreshold);
+	return OaFnImage::ThresholdToZeroInv(*OaEngine::GetGlobal(), InImage, InThreshold);
 }
 
 // ─── InRange (Inclusive scalar range mask) ────
 
 OaMatrix OaFnImage::InRange(const OaMatrix& InImage, OaF32 InLow, OaF32 InHigh, OaF32 InTrueValue) {
-	return OaFnImage::InRange(*OaComputeEngine::GetGlobal(), InImage, InLow, InHigh, InTrueValue);
+	return OaFnImage::InRange(*OaEngine::GetGlobal(), InImage, InLow, InHigh, InTrueValue);
 }
 
 // ─── Clamp (Clamp image values to a scalar interval) ────
 
 OaMatrix OaFnImage::Clamp(const OaMatrix& InImage, OaF32 InLow, OaF32 InHigh) {
-	return OaFnImage::Clamp(*OaComputeEngine::GetGlobal(), InImage, InLow, InHigh);
+	return OaFnImage::Clamp(*OaEngine::GetGlobal(), InImage, InLow, InHigh);
 }
 
 // ─── Invert (Invert values around a configurable maximum) ────
 
 OaMatrix OaFnImage::Invert(const OaMatrix& InImage, OaF32 InMaxValue) {
-	return OaFnImage::Invert(*OaComputeEngine::GetGlobal(), InImage, InMaxValue);
+	return OaFnImage::Invert(*OaEngine::GetGlobal(), InImage, InMaxValue);
 }
 
 // ─── BrightnessContrast (Affine brightness and contrast adjustment) ────
 
 OaMatrix OaFnImage::BrightnessContrast(const OaMatrix& InImage, OaF32 InBrightness, OaF32 InContrast) {
-	return OaFnImage::BrightnessContrast(*OaComputeEngine::GetGlobal(), InImage, InBrightness, InContrast);
+	return OaFnImage::BrightnessContrast(*OaEngine::GetGlobal(), InImage, InBrightness, InContrast);
 }
 
 // ─── GammaContrast (Gamma and gain adjustment) ────
 
 OaMatrix OaFnImage::GammaContrast(const OaMatrix& InImage, OaF32 InGamma, OaF32 InGain) {
-	return OaFnImage::GammaContrast(*OaComputeEngine::GetGlobal(), InImage, InGamma, InGain);
+	return OaFnImage::GammaContrast(*OaEngine::GetGlobal(), InImage, InGamma, InGain);
 }
 
 // ─── Solarize (Invert values above a threshold) ────
 
 OaMatrix OaFnImage::Solarize(const OaMatrix& InImage, OaF32 InThreshold, OaF32 InMaxValue) {
-	return OaFnImage::Solarize(*OaComputeEngine::GetGlobal(), InImage, InThreshold, InMaxValue);
+	return OaFnImage::Solarize(*OaEngine::GetGlobal(), InImage, InThreshold, InMaxValue);
 }
 
 // ─── Posterize (Quantize an intensity interval to a fixed number of levels)
 
 OaMatrix OaFnImage::Posterize(const OaMatrix& InImage, OaU32 InLevels, OaF32 InLow, OaF32 InHigh) {
-	return OaFnImage::Posterize(*OaComputeEngine::GetGlobal(), InImage, InLevels, InLow, InHigh);
+	return OaFnImage::Posterize(*OaEngine::GetGlobal(), InImage, InLevels, InLow, InHigh);
 }
 
 // ─── Grayscale (Rec.709 RGB to single-channel grayscale conversion) ────
 
 OaMatrix OaFnImage::Grayscale(const OaMatrix& InImage) {
-	return OaFnImage::Grayscale(*OaComputeEngine::GetGlobal(), InImage);
+	return OaFnImage::Grayscale(*OaEngine::GetGlobal(), InImage);
 }
 
 // ─── ChannelReorder (Reorder one to four NCHW channels) ────
 
 OaMatrix OaFnImage::ChannelReorder(const OaMatrix& InImage, OaU32 InChannel0, OaU32 InChannel1, OaU32 InChannel2, OaU32 InChannel3) {
-	return OaFnImage::ChannelReorder(*OaComputeEngine::GetGlobal(), InImage, InChannel0, InChannel1, InChannel2, InChannel3);
+	return OaFnImage::ChannelReorder(*OaEngine::GetGlobal(), InImage, InChannel0, InChannel1, InChannel2, InChannel3);
 }
 
 // ─── AlphaBlend (Scalar alpha blend of equal-shaped images) ────
 
 OaMatrix OaFnImage::AlphaBlend(const OaMatrix& InA, const OaMatrix& InB, OaF32 InAlpha) {
-	return OaFnImage::AlphaBlend(*OaComputeEngine::GetGlobal(), InA, InB, InAlpha);
+	return OaFnImage::AlphaBlend(*OaEngine::GetGlobal(), InA, InB, InAlpha);
 }
 
 // ─── Composite (Per-pixel masked composite with one or C mask channels) ────
 
 OaMatrix OaFnImage::Composite(const OaMatrix& InA, const OaMatrix& InB, const OaMatrix& InMask) {
-	return OaFnImage::Composite(*OaComputeEngine::GetGlobal(), InA, InB, InMask);
+	return OaFnImage::Composite(*OaEngine::GetGlobal(), InA, InB, InMask);
 }
 
 // ─── Erase (Fill a rectangular region with a scalar value) ────
 
 OaMatrix OaFnImage::Erase(const OaMatrix& InImage, OaU32 InX, OaU32 InY, OaU32 InWidth, OaU32 InHeight, OaF32 InValue) {
-	return OaFnImage::Erase(*OaComputeEngine::GetGlobal(), InImage, InX, InY, InWidth, InHeight, InValue);
+	return OaFnImage::Erase(*OaEngine::GetGlobal(), InImage, InX, InY, InWidth, InHeight, InValue);
 }
 
 // ─── ColorTwist (Apply a shared 3x4 RGB color transform matrix) ────
 
 OaMatrix OaFnImage::ColorTwist(const OaMatrix& InImage, const OaMatrix& InTransform) {
-	return OaFnImage::ColorTwist(*OaComputeEngine::GetGlobal(), InImage, InTransform);
+	return OaFnImage::ColorTwist(*OaEngine::GetGlobal(), InImage, InTransform);
 }
 
 // ─── GaussianNoise (Add deterministic GPU-native Philox Gaussian noise) ────
 
 OaMatrix OaFnImage::GaussianNoise(const OaMatrix& InImage, OaF32 InMean, OaF32 InStddev, OaU64 InSeed) {
-	return OaFnImage::GaussianNoise(*OaComputeEngine::GetGlobal(), InImage, InMean, InStddev, InSeed);
+	return OaFnImage::GaussianNoise(*OaEngine::GetGlobal(), InImage, InMean, InStddev, InSeed);
 }
 
 // ─── SaltPepperNoise (Apply deterministic GPU-native salt-and-pepper noise)
 
 OaMatrix OaFnImage::SaltPepperNoise(const OaMatrix& InImage, OaF32 InProbability, OaF32 InSaltValue, OaF32 InPepperValue, OaU64 InSeed) {
-	return OaFnImage::SaltPepperNoise(*OaComputeEngine::GetGlobal(), InImage, InProbability, InSaltValue, InPepperValue, InSeed);
+	return OaFnImage::SaltPepperNoise(*OaEngine::GetGlobal(), InImage, InProbability, InSaltValue, InPepperValue, InSeed);
 }

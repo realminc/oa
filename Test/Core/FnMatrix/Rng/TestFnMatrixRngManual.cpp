@@ -9,16 +9,16 @@
 #include <cmath>
 #include <algorithm>
 
-static OaComputeEngine* GRt = nullptr;
+static OaEngine* GRt = nullptr;
 
 class TestFnMatrixRngManual : public ::testing::Test {
 protected:
 	static void SetUpTestSuite() {
 		OaEngineConfig cfg{};
 		cfg.AppName = "TestFnMatrixRngManual";
-		auto r = OaComputeEngine::Create(cfg);
+		auto r = OaEngine::Create(cfg);
 		ASSERT_TRUE(r.IsOk()) << r.GetStatus().GetMessage();
-		static OaUniquePtr<OaComputeEngine> rt = std::move(*r);
+		static OaUniquePtr<OaEngine> rt = std::move(*r);
 		GRt = rt.get();
 	}
 };
@@ -53,7 +53,7 @@ static float ComputeStddev(const std::vector<float>& data, float mean) {
 
 TEST_VK(TestFnMatrixRngManual, PhiloxNormal_StandardNormal) {
 	// Test standard normal distribution (mean=0, stddev=1)
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	
 	// Generate 10000 samples for statistical validation
 	auto shape_matrix = OaFnMatrix::Empty(OaMatrixShape{10000});
@@ -75,7 +75,7 @@ TEST_VK(TestFnMatrixRngManual, PhiloxNormal_CustomMeanStddev) {
 	float target_mean = 5.0f;
 	float target_stddev = 2.0f;
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto shape_matrix = OaFnMatrix::Empty(OaMatrixShape{10000});
 	auto samples = OaFnMatrix::PhiloxNormal(shape_matrix, target_mean, target_stddev, 123);
 	auto data = CopyMatrixToHost(samples);
@@ -91,7 +91,7 @@ TEST_VK(TestFnMatrixRngManual, PhiloxNormal_Reproducibility) {
 	// Test that same seed produces same results
 	OaU64 seed = 999;
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto shape_matrix = OaFnMatrix::Empty(OaMatrixShape{1000});
 	auto samples1 = OaFnMatrix::PhiloxNormal(shape_matrix, 0.0f, 1.0f, seed);
 	auto samples2 = OaFnMatrix::PhiloxNormal(shape_matrix, 0.0f, 1.0f, seed);
@@ -108,7 +108,7 @@ TEST_VK(TestFnMatrixRngManual, PhiloxNormal_Reproducibility) {
 
 TEST_VK(TestFnMatrixRngManual, PhiloxNormal_DifferentSeeds) {
 	// Test that different seeds produce different results
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto shape_matrix = OaFnMatrix::Empty(OaMatrixShape{1000});
 	auto samples1 = OaFnMatrix::PhiloxNormal(shape_matrix, 0.0f, 1.0f, 111);
 	auto samples2 = OaFnMatrix::PhiloxNormal(shape_matrix, 0.0f, 1.0f, 222);
@@ -128,7 +128,7 @@ TEST_VK(TestFnMatrixRngManual, PhiloxNormal_DifferentSeeds) {
 
 TEST_VK(TestFnMatrixRngManual, PhiloxNormal_2D) {
 	// Test 2D shape
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto shape_matrix = OaFnMatrix::Empty(OaMatrixShape{100, 100});
 	auto samples = OaFnMatrix::PhiloxNormal(shape_matrix, 0.0f, 1.0f, 42);
 	
@@ -149,7 +149,7 @@ TEST_VK(TestFnMatrixRngManual, PhiloxNormal_2D) {
 
 TEST_VK(TestFnMatrixRngManual, PhiloxUniform_ZeroToOne) {
 	// Test uniform distribution [0, 1)
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto shape_matrix = OaFnMatrix::Empty(OaMatrixShape{10000});
 	auto samples = OaFnMatrix::PhiloxUniform(shape_matrix, 0.0f, 1.0f, 42);
 	auto data = CopyMatrixToHost(samples);
@@ -170,7 +170,7 @@ TEST_VK(TestFnMatrixRngManual, PhiloxUniform_CustomRange) {
 	float low = -5.0f;
 	float high = 5.0f;
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto shape_matrix = OaFnMatrix::Empty(OaMatrixShape{10000});
 	auto samples = OaFnMatrix::PhiloxUniform(shape_matrix, low, high, 123);
 	auto data = CopyMatrixToHost(samples);
@@ -191,7 +191,7 @@ TEST_VK(TestFnMatrixRngManual, PhiloxUniform_Reproducibility) {
 	// Test that same seed produces same results
 	OaU64 seed = 777;
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto shape_matrix = OaFnMatrix::Empty(OaMatrixShape{1000});
 	auto samples1 = OaFnMatrix::PhiloxUniform(shape_matrix, 0.0f, 1.0f, seed);
 	auto samples2 = OaFnMatrix::PhiloxUniform(shape_matrix, 0.0f, 1.0f, seed);
@@ -208,7 +208,7 @@ TEST_VK(TestFnMatrixRngManual, PhiloxUniform_Reproducibility) {
 
 TEST_VK(TestFnMatrixRngManual, PhiloxUniform_DifferentSeeds) {
 	// Test that different seeds produce different results
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto shape_matrix = OaFnMatrix::Empty(OaMatrixShape{1000});
 	auto samples1 = OaFnMatrix::PhiloxUniform(shape_matrix, 0.0f, 1.0f, 333);
 	auto samples2 = OaFnMatrix::PhiloxUniform(shape_matrix, 0.0f, 1.0f, 444);
@@ -228,7 +228,7 @@ TEST_VK(TestFnMatrixRngManual, PhiloxUniform_DifferentSeeds) {
 TEST_VK(TestFnMatrixRngManual, PhiloxUniform_Distribution) {
 	// Test that uniform distribution is actually uniform
 	// Divide [0, 1) into 10 bins and check counts
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto shape_matrix = OaFnMatrix::Empty(OaMatrixShape{10000});
 	auto samples = OaFnMatrix::PhiloxUniform(shape_matrix, 0.0f, 1.0f, 555);
 	auto data = CopyMatrixToHost(samples);
@@ -250,7 +250,7 @@ TEST_VK(TestFnMatrixRngManual, PhiloxUniform_Distribution) {
 
 TEST_VK(TestFnMatrixRngManual, PhiloxUniform_2D) {
 	// Test 2D shape
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto shape_matrix = OaFnMatrix::Empty(OaMatrixShape{50, 200});
 	auto samples = OaFnMatrix::PhiloxUniform(shape_matrix, 0.0f, 1.0f, 42);
 	

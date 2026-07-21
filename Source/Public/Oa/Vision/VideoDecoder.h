@@ -133,12 +133,11 @@ struct OaVideoFrame {
 	// H.264/H.265 have no hidden frames, so this stays true for them.
 	bool Shown = true;
 
-	// GPU completion token for the video-queue work that produced this frame
-	// (decode and any layout transition chained before convert). Non-owning;
-	// valid for the parent OaVideoDecoder session lifetime. Downstream compute
-	// waits on ReadyValue via VkTimelineSemaphoreSubmitInfo — no host fence wait.
-	const OaVkTimelineSemaphore* ReadySemaphore = nullptr;
-	OaU64 ReadyValue = 0;
+	// GPU completion for the work that produced this frame. The token is
+	// non-owning and remains valid for the producer session lifetime. Consumers
+	// should pass Ready.TimelineWait() to downstream queues instead of waiting
+	// on the host.
+	OaEvent Ready;
 
 };
 
@@ -209,7 +208,10 @@ public:
 	// Used by OaVideo to ensure a frame is safe to read before presenting.
 	[[nodiscard]] OaStatus WaitForCompletion(OaU64 InTimeoutNs = UINT64_MAX);
 
-	// Release all resources
+	// Explicit completion and resource-release boundary.
+	[[nodiscard]] OaStatus Close();
+	// Compatibility wrapper that logs Close() failures. Prefer Close() where
+	// the shutdown result can be propagated.
 	void Destroy();
 
 	[[nodiscard]] bool IsInitialized() const noexcept { return Session_.Handle() != VK_NULL_HANDLE; }
@@ -279,6 +281,9 @@ private:
 	static bool HasHardwareYCbCrConversion(OaEngine &InRt);
 	OaVideoDecoder() = default;  // OaVkVideo classes have default constructors
 	void MoveFrom(OaVideoDecoder&& InOther) noexcept;
+	void Abandon_() noexcept;
+	static OaStatus CompleteRetired_(void* InPayload);
+	static void ReleaseRetired_(void* InPayload);
 	
 	// Phase 2.4: DPB Management
 	struct DpbSlot {
@@ -354,6 +359,7 @@ private:
 		const OaVkTimelineSemaphore* InWaitSemaphore,
 		OaU64 InWaitValue
 	);
+	OaStatus ReleaseDpbLayerForComputeCopy(const OaVideoFrame& InFrame);
 	[[nodiscard]] VkImageLayout GetFrameLayout(const OaVideoFrame& InFrame, bool& OutIsOutput, OaU32& OutImageIndex) const;
 	void SetFrameLayout(bool InIsOutput, OaU32 InImageIndex, VkImageLayout InLayout);
 	OaStatus EnsureYcbcrSampler(OaYCbCrModel InColorSpace, OaFilter InFilter = OaFilter::Nearest);
@@ -361,14 +367,14 @@ private:
 	// when the video format exposes TRANSFER_SRC. This avoids sampling video
 	// profile images through mutable R8/R8G8 plane views on restrictive drivers.
 	OaStatus CreateOutputImages(
-		class OaComputeEngine& InRt,
+		class OaEngine& InRt,
 		const VkVideoProfileInfoKHR& InProfile,
 		VkFormat InFormat,
 		VkExtent2D InCodedExtent,
 		OaU32 InSlotCount
 	);
 	OaStatus CreateSampleStagingImages(
-		class OaComputeEngine& InRt,
+		class OaEngine& InRt,
 		const VkVideoProfileInfoKHR& InProfile,
 		VkExtent2D InCodedExtent,
 		OaU32 InSlotCount

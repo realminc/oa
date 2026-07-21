@@ -259,7 +259,7 @@ OaU32 OaBindlessHeap::Register(
 	VkDescriptorBufferInfo bufInfo{};
 	bufInfo.buffer = static_cast<VkBuffer>(InBuffer.Buffer);
 	bufInfo.offset = 0;
-	bufInfo.range = InBuffer.Size;
+	bufInfo.range = InBuffer.DescriptorRange();
 
 	VkWriteDescriptorSet write{};
 	write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -291,7 +291,7 @@ void OaBindlessHeap::Update(
 	VkDescriptorBufferInfo bufInfo{};
 	bufInfo.buffer = static_cast<VkBuffer>(InBuffer.Buffer);
 	bufInfo.offset = 0;
-	bufInfo.range = InBuffer.Size;
+	bufInfo.range = InBuffer.DescriptorRange();
 
 	VkWriteDescriptorSet write{};
 	write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;

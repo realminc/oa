@@ -11,7 +11,7 @@
 #include <Oa/Runtime/Allocator.h>
 #include <Oa/Runtime/OaVk.h>
 
-class OaComputeEngine;
+class OaEngine;
 class OaVkDevice;
 
 class OaExternalBuffer {
@@ -101,7 +101,7 @@ public:
 	~OaImportedDmaBufImage();
 
 	[[nodiscard]] static OaResult<OaImportedDmaBufImage> Import(
-		OaComputeEngine& InEngine, const OaDmaBufImageDesc& InDesc);
+		OaEngine& InEngine, const OaDmaBufImageDesc& InDesc);
 	void Destroy();
 
 	[[nodiscard]] bool IsValid() const noexcept { return Image_ != VK_NULL_HANDLE; }
@@ -112,7 +112,7 @@ public:
 	[[nodiscard]] OaU32 Height() const noexcept { return Height_; }
 
 private:
-	OaComputeEngine* Engine_ = nullptr;
+	OaEngine* Engine_ = nullptr;
 	VkImage Image_ = VK_NULL_HANDLE;
 	VkImageView View_ = VK_NULL_HANDLE;
 	VkDeviceMemory Memory_ = VK_NULL_HANDLE;

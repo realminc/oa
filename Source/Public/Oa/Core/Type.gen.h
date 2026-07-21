@@ -56,6 +56,14 @@ enum class OaPrecision : OaU8 {
 [[nodiscard]] constexpr const char* OaPrecisionToString(OaPrecision InType) noexcept;
 [[nodiscard]] OaPrecision OaPrecisionFromString(const char* InStr) noexcept;
 
+enum class OaMatMulPrecision : OaU8 {
+	Auto = 0,  // Select the best supported MatMul precision for the device and problem
+	Fp32 = 1,  // Require the FP32 MatMul path
+	Bf16 = 2,  // Require the BF16 MatMul path
+};
+[[nodiscard]] constexpr const char* OaMatMulPrecisionToString(OaMatMulPrecision InType) noexcept;
+[[nodiscard]] OaMatMulPrecision OaMatMulPrecisionFromString(const char* InStr) noexcept;
+
 enum class OaFilter : OaU8 {
 	Nearest = 0,  // Nearest neighbor filtering
 	Linear = 1,  // Linear interpolation

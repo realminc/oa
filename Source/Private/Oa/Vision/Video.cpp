@@ -5,6 +5,7 @@
 
 #include <Oa/Core/Log.h>
 #include <Oa/Runtime/Engine.h>
+#include "Oa/Runtime/Engine/BorrowedServiceRetirement.h"
 
 #include <algorithm>
 #include <limits>
@@ -40,7 +41,7 @@ OaResult<OaVideo> OaVideo::Open(OaEngine& InEngine, const OaVideoConfig& InCfg)
 		OaAudioStreamConfig audioConfig;
 		audioConfig.Uri = uri;
 		audioConfig.Loop = InCfg.Loop;
-		auto audio = OaAudioStream::Open(audioConfig);
+		auto audio = OaAudioStream::Open(InEngine, audioConfig);
 		if (audio.IsOk()) {
 			it.Audio_.Emplace(OaStdMove(*audio));
 			if (InCfg.StartPlaying) (void)it.Audio_->Play();
@@ -97,8 +98,7 @@ OaVideo::OaVideo(OaVideo&& InOther) noexcept
 	, DisplayPts_(OaStdMove(InOther.DisplayPts_))
 	, RgbaPool_(OaStdMove(InOther.RgbaPool_))
 	, RgbaPoolBusy_(OaStdMove(InOther.RgbaPoolBusy_))
-	, RgbaPoolConsumerSemaphores_(OaStdMove(InOther.RgbaPoolConsumerSemaphores_))
-	, RgbaPoolConsumerValues_(OaStdMove(InOther.RgbaPoolConsumerValues_))
+	, RgbaPoolConsumerEvents_(OaStdMove(InOther.RgbaPoolConsumerEvents_))
 	, Index_(InOther.Index_)
 	, StreamFormatGeneration_(InOther.StreamFormatGeneration_)
 	, StreamReconnectCount_(InOther.StreamReconnectCount_)
@@ -129,8 +129,7 @@ OaVideo& OaVideo::operator=(OaVideo&& InOther) noexcept {
 		DisplayPts_      = OaStdMove(InOther.DisplayPts_);
 		RgbaPool_        = OaStdMove(InOther.RgbaPool_);
 		RgbaPoolBusy_    = OaStdMove(InOther.RgbaPoolBusy_);
-		RgbaPoolConsumerSemaphores_ = OaStdMove(InOther.RgbaPoolConsumerSemaphores_);
-		RgbaPoolConsumerValues_ = OaStdMove(InOther.RgbaPoolConsumerValues_);
+		RgbaPoolConsumerEvents_ = OaStdMove(InOther.RgbaPoolConsumerEvents_);
 		Index_           = InOther.Index_;
 		StreamFormatGeneration_ = InOther.StreamFormatGeneration_;
 		StreamReconnectCount_ = InOther.StreamReconnectCount_;
@@ -146,32 +145,74 @@ OaVideo& OaVideo::operator=(OaVideo&& InOther) noexcept {
 
 OaVideo::~OaVideo()
 {
-	Destroy();
+	Abandon_();
 }
 
-void OaVideo::Destroy()
+void OaVideo::Abandon_() noexcept
 {
-	(void)ClearReorder_();
+	if (Engine_ == nullptr) return;
+	Pause();
+	OaEngine* engine = Engine_;
+	auto retired = OaMakeUniquePtr<OaVideo>(OaStdMove(*this));
+	OaBorrowedServiceRetirement::Retire(
+		*engine,
+		retired.Release(),
+		&OaVideo::CompleteRetired_,
+		&OaVideo::ReleaseRetired_);
+}
+
+OaStatus OaVideo::CompleteRetired_(void* InPayload)
+{
+	auto* video = static_cast<OaVideo*>(InPayload);
+	return video ? video->Close() : OaStatus::Ok();
+}
+
+void OaVideo::ReleaseRetired_(void* InPayload)
+{
+	OaUniquePtr<OaVideo> video(static_cast<OaVideo*>(InPayload));
+}
+
+OaStatus OaVideo::Close()
+{
+	if (Engine_ == nullptr) return OaStatus::Ok();
+	Playing_ = false;
+	if (Audio_.HasValue()) Audio_->Pause();
+
+	OaStatus firstError = OaStatus::Ok();
+	auto retainError = [&firstError](const OaStatus& InStatus) {
+		if (firstError.IsOk() and not InStatus.IsOk()) firstError = InStatus;
+	};
+	retainError(WaitForPoolConsumers_());
+	retainError(ClearReorder_());
 	if (Decoder_.HasValue()) {
-		Decoder_->Destroy();
+		retainError(Decoder_->Close());
 		Decoder_.Reset();
 	}
 	if (Stream_.HasValue()) {
 		Stream_.Reset();
 	}
 	if (Audio_.HasValue()) {
-		Audio_->Close();
+		retainError(Audio_->Close());
 		Audio_.Reset();
 	}
 	// VkImages were owned by Decoder_ via RgbImages_/RgbAllocations_; the
 	// decoder's Destroy() above tore them down. We just drop our pool refs.
 	RgbaPool_.Clear();
 	RgbaPoolBusy_.Clear();
-	RgbaPoolConsumerSemaphores_.Clear();
-	RgbaPoolConsumerValues_.Clear();
+	RgbaPoolConsumerEvents_.Clear();
 	Frame_   = {};
 	Engine_  = nullptr;
 	Playing_ = false;
+	return firstError;
+}
+
+void OaVideo::Destroy()
+{
+	if (const auto status = Close(); not status.IsOk()) {
+		OA_LOG_ERROR(OaLogComponent::Core,
+			"OaVideo::Destroy: shutdown failed: %s",
+			status.ToString().c_str());
+	}
 }
 
 bool OaVideo::IsDone() const
@@ -464,20 +505,30 @@ const OaVideoStreamStats& OaVideo::GetStreamStats() const
 	return Stream_.HasValue() ? Stream_->GetStats() : empty;
 }
 
-void OaVideo::MarkCurrentFrameConsumed(
-	const OaVkTimelineSemaphore& InSemaphore,
-	OaU64 InValue)
+void OaVideo::MarkCurrentFrameConsumed(const OaEvent& InConsumed)
 {
-	if (Frame_.Image == VK_NULL_HANDLE || InSemaphore.Semaphore == nullptr || InValue == 0) {
+	if (Frame_.Image == VK_NULL_HANDLE || not InConsumed.IsValid()) {
 		return;
 	}
 	for (OaUsize i = 0; i < RgbaPool_.Size(); ++i) {
 		if (RgbaPool_[i].Image == Frame_.Image) {
-			RgbaPoolConsumerSemaphores_[i] = InSemaphore;
-			RgbaPoolConsumerValues_[i] = InValue;
+			RgbaPoolConsumerEvents_[i] = InConsumed;
 			return;
 		}
 	}
+}
+
+void OaVideo::MarkCurrentFrameConsumed(
+	const OaVkTimelineSemaphore& InSemaphore,
+	OaU64 InValue)
+{
+	if (Engine_ == nullptr || InSemaphore.Semaphore == nullptr || InValue == 0) {
+		return;
+	}
+	MarkCurrentFrameConsumed(OaEvent(
+		Engine_->Device,
+		InSemaphore,
+		InValue));
 }
 
 OaResult<OaVec<OaU8>> OaVideo::ReadbackCurrentRgba()
@@ -510,14 +561,11 @@ OaResult<OaImage> OaVideo::CurrentFrameToImage(bool InNormalizeImageNet)
 
 OaResult<OaVideoFrame> OaVideo::AcquireRgbaFromPool_()
 {
-	auto& device = static_cast<OaComputeEngine&>(*Engine_).Device;
 	for (OaUsize i = 0; i < RgbaPool_.Size(); ++i) {
-		const bool consumed = RgbaPoolConsumerSemaphores_[i].Semaphore == nullptr
-			|| RgbaPoolConsumerSemaphores_[i].GetValue(device) >= RgbaPoolConsumerValues_[i];
+		const bool consumed = RgbaPoolConsumerEvents_[i].IsComplete();
 		if (not RgbaPoolBusy_[i] and consumed) {
 			RgbaPoolBusy_[i] = true;
-			RgbaPoolConsumerSemaphores_[i] = {};
-			RgbaPoolConsumerValues_[i] = 0;
+			RgbaPoolConsumerEvents_[i] = {};
 			return RgbaPool_[i];
 		}
 	}
@@ -527,14 +575,9 @@ OaResult<OaVideoFrame> OaVideo::AcquireRgbaFromPool_()
 			if (RgbaPoolBusy_[i]) {
 				continue;
 			}
-			if (RgbaPoolConsumerSemaphores_[i].Semaphore != nullptr) {
-				OA_RETURN_IF_ERROR(RgbaPoolConsumerSemaphores_[i].Wait(
-					device,
-					RgbaPoolConsumerValues_[i]));
-			}
+			OA_RETURN_IF_ERROR(RgbaPoolConsumerEvents_[i].Wait());
 			RgbaPoolBusy_[i] = true;
-			RgbaPoolConsumerSemaphores_[i] = {};
-			RgbaPoolConsumerValues_[i] = 0;
+			RgbaPoolConsumerEvents_[i] = {};
 			return RgbaPool_[i];
 		}
 		return OaStatus::Error(
@@ -550,8 +593,7 @@ OaResult<OaVideoFrame> OaVideo::AcquireRgbaFromPool_()
 	}
 	RgbaPool_.PushBack(*allocResult);
 	RgbaPoolBusy_.PushBack(true);
-	RgbaPoolConsumerSemaphores_.PushBack({});
-	RgbaPoolConsumerValues_.PushBack(0);
+	RgbaPoolConsumerEvents_.PushBack({});
 	return *allocResult;
 }
 
@@ -677,24 +719,10 @@ OaStatus OaVideo::ClearReorder_() {
 	return OaStatus::Ok();
 }
 
-OaStatus OaVideo::WaitForCurrentFrameConsumer_() {
-	if (Frame_.Image == VK_NULL_HANDLE or Engine_ == nullptr) {
-		return OaStatus::Ok();
-	}
-	auto& device = static_cast<OaComputeEngine&>(*Engine_).Device;
-	for (OaUsize i = 0; i < RgbaPool_.Size(); ++i) {
-		if (RgbaPool_[i].Image != Frame_.Image) {
-			continue;
-		}
-		if (RgbaPoolConsumerSemaphores_[i].Semaphore != nullptr
-			and RgbaPoolConsumerValues_[i] > 0) {
-			OA_RETURN_IF_ERROR(RgbaPoolConsumerSemaphores_[i].Wait(
-				device,
-				RgbaPoolConsumerValues_[i]));
-			RgbaPoolConsumerSemaphores_[i] = {};
-			RgbaPoolConsumerValues_[i] = 0;
-		}
-		break;
+OaStatus OaVideo::WaitForPoolConsumers_() {
+	for (OaUsize i = 0; i < RgbaPoolConsumerEvents_.Size(); ++i) {
+		OA_RETURN_IF_ERROR(RgbaPoolConsumerEvents_[i].Wait());
+		RgbaPoolConsumerEvents_[i] = {};
 	}
 	return OaStatus::Ok();
 }
@@ -705,7 +733,7 @@ OaStatus OaVideo::RestartDecoder_() {
 	}
 
 	OA_RETURN_IF_ERROR(ClearReorder_());
-	OA_RETURN_IF_ERROR(WaitForCurrentFrameConsumer_());
+	OA_RETURN_IF_ERROR(WaitForPoolConsumers_());
 	if (Decoder_.HasValue()) {
 		// Conversion completion precedes the asynchronous DPB restore submit.
 		// Flush waits the decoder's latest timeline value, covering both,
@@ -726,8 +754,7 @@ OaStatus OaVideo::RestartDecoder_() {
 	}
 	RgbaPool_.Clear();
 	RgbaPoolBusy_.Clear();
-	RgbaPoolConsumerSemaphores_.Clear();
-	RgbaPoolConsumerValues_.Clear();
+	RgbaPoolConsumerEvents_.Clear();
 	Frame_ = {};
 	Decoder_.Emplace(OaStdMove(*decoderResult));
 	return OaStatus::Ok();

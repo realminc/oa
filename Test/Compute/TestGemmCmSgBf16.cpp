@@ -27,7 +27,7 @@ namespace {
 		}                                                                           \
 	} while (0)
 
-OaVkBuffer MakeBuf(OaComputeEngine& rt, size_t elems) {
+OaVkBuffer MakeBuf(OaEngine& rt, size_t elems) {
 	auto res = rt.Allocator.AllocHostVisible(elems * sizeof(OaF32));
 	OaVkBuffer buf = *res;
 	rt.RegisterBuffer(buf);
@@ -37,7 +37,7 @@ OaVkBuffer MakeBuf(OaComputeEngine& rt, size_t elems) {
 // tile = the kernel's output-tile edge (workgroups = ceil(M/tile) x ceil(N/tile)).
 // SMEM kernels use 128; GemmCmSgBf16 uses 128; GemmCmWgBf16 uses 64. Passing the wrong tile
 // under-dispatches → partial output (norm_err ~1) AND inflates TFLOP/s ~ (right/wrong)^2.
-float RunAndCheck(OaComputeEngine& rt, OaU32 M, OaU32 N, OaU32 K, const char* kernel, OaU32 tile = 128u) {
+float RunAndCheck(OaEngine& rt, OaU32 M, OaU32 N, OaU32 K, const char* kernel, OaU32 tile = 128u) {
 	OaVkBuffer bufA = MakeBuf(rt, static_cast<size_t>(M) * K);
 	OaVkBuffer bufB = MakeBuf(rt, static_cast<size_t>(N) * K);
 	OaVkBuffer bufOut = MakeBuf(rt, static_cast<size_t>(M) * N);
@@ -82,7 +82,7 @@ float RunAndCheck(OaComputeEngine& rt, OaU32 M, OaU32 N, OaU32 K, const char* ke
 	return maxAbs > 0.0F ? maxErr / maxAbs : 0.0F;
 }
 
-float RunAndCheckFused(OaComputeEngine& rt, OaU32 M, OaU32 N, OaU32 K, const char* kernel, OaU32 tile = 128u) {
+float RunAndCheckFused(OaEngine& rt, OaU32 M, OaU32 N, OaU32 K, const char* kernel, OaU32 tile = 128u) {
 	OaVkBuffer bufA = MakeBuf(rt, static_cast<size_t>(M) * K);
 	OaVkBuffer bufB = MakeBuf(rt, static_cast<size_t>(N) * K);
 	OaVkBuffer bufBias = MakeBuf(rt, static_cast<size_t>(N));
@@ -137,7 +137,7 @@ float RunAndCheckFused(OaComputeEngine& rt, OaU32 M, OaU32 N, OaU32 K, const cha
 	return maxAbs > 0.0F ? maxErr / maxAbs : 0.0F;
 }
 
-float RunAndCheckSilu(OaComputeEngine& rt, OaU32 M, OaU32 N, OaU32 K, const char* kernel = "GemmSiluCmSgBf16", OaU32 tile = 128u) {
+float RunAndCheckSilu(OaEngine& rt, OaU32 M, OaU32 N, OaU32 K, const char* kernel = "GemmSiluCmSgBf16", OaU32 tile = 128u) {
 	OaVkBuffer bufA = MakeBuf(rt, static_cast<size_t>(M) * K);
 	OaVkBuffer bufB = MakeBuf(rt, static_cast<size_t>(N) * K);
 	OaVkBuffer bufPre = MakeBuf(rt, static_cast<size_t>(M) * N);
@@ -189,7 +189,7 @@ float RunAndCheckSilu(OaComputeEngine& rt, OaU32 M, OaU32 N, OaU32 K, const char
 	return maxAbs > 0.0F ? maxErr / maxAbs : 0.0F;
 }
 
-double BenchTflops(OaComputeEngine& rt, OaU32 M, OaU32 N, OaU32 K, OaU32 iters, const char* kernel) {
+double BenchTflops(OaEngine& rt, OaU32 M, OaU32 N, OaU32 K, OaU32 iters, const char* kernel) {
 	OaVkBuffer bufA = MakeBuf(rt, static_cast<size_t>(M) * K);
 	OaVkBuffer bufB = MakeBuf(rt, static_cast<size_t>(N) * K);
 	OaVkBuffer bufOut = MakeBuf(rt, static_cast<size_t>(M) * N);
@@ -221,7 +221,7 @@ double BenchTflops(OaComputeEngine& rt, OaU32 M, OaU32 N, OaU32 K, OaU32 iters, 
 // submit+wait ONCE, amortizing that overhead ~iters-fold, so wall time tracks GPU
 // kernel throughput. A buffer barrier between dispatches serializes them (WAW on
 // bufOut) so the GPU actually runs `iters` full GEMMs, not overlapped/elided ones.
-double BenchTflopsBatched(OaComputeEngine& rt, OaU32 M, OaU32 N, OaU32 K, OaU32 iters, const char* kernel, OaU32 tile = 128u) {
+double BenchTflopsBatched(OaEngine& rt, OaU32 M, OaU32 N, OaU32 K, OaU32 iters, const char* kernel, OaU32 tile = 128u) {
 	OaVkBuffer bufA = MakeBuf(rt, static_cast<size_t>(M) * K);
 	OaVkBuffer bufB = MakeBuf(rt, static_cast<size_t>(N) * K);
 	OaVkBuffer bufOut = MakeBuf(rt, static_cast<size_t>(M) * N);
@@ -257,7 +257,7 @@ double BenchTflopsBatched(OaComputeEngine& rt, OaU32 M, OaU32 N, OaU32 K, OaU32 
 	return (2.0 * M * N * K) / (best * 1e-3) / 1e12;  // TFLOP/s from best ms/dispatch
 }
 
-OaVkBuffer MakeBufBf16(OaComputeEngine& rt, size_t elems) {
+OaVkBuffer MakeBufBf16(OaEngine& rt, size_t elems) {
 	auto res = rt.Allocator.AllocHostVisible(elems * 2u);  // 2 bytes / bf16
 	OaVkBuffer buf = *res;
 	rt.RegisterBuffer(buf);
@@ -279,7 +279,7 @@ static inline OaF32 UnpackBf16(OaU16 h) {
 // the DTYPE=1 variant did NOT engage and the fp32 path read our bf16 buffer as
 // float4, the result is garbage (norm_err ~1), so a passing check proves the native
 // path actually ran.
-double BenchBf16(OaComputeEngine& rt, OaU32 M, OaU32 N, OaU32 K, OaU32 iters,
+double BenchBf16(OaEngine& rt, OaU32 M, OaU32 N, OaU32 K, OaU32 iters,
                  const char* kernel, OaU32 tile, float* outNormErr) {
 	OaVkBuffer bufA = MakeBufBf16(rt, static_cast<size_t>(M) * K);
 	OaVkBuffer bufB = MakeBufBf16(rt, static_cast<size_t>(N) * K);
@@ -337,7 +337,7 @@ double BenchBf16(OaComputeEngine& rt, OaU32 M, OaU32 N, OaU32 K, OaU32 iters,
 // to engage the DTYPE=1 pipeline variant; skips under the fp32 engine.
 TEST(GemmCmSgBf16, NativeBf16Perf) {
 	ASSERT_TRUE(OaVkTestEngineOk());
-	OaComputeEngine& rt = *OaComputeEngine::GetGlobal();
+	OaEngine& rt = *OaEngine::GetGlobal();
 	if (rt.GetPrecision() != OaPrecision::BF16) {
 		OA_LOG_INFO(OaLogComponent::Core, "NativeBf16Perf: engine is FP32 — set OA_TEST_BF16=1 to bench native bf16. Skipping.");
 		GTEST_SKIP();
@@ -356,7 +356,7 @@ TEST(GemmCmSgBf16, NativeBf16Perf) {
 
 TEST(GemmCmSgBf16, FusedEpilogueCorrectness) {
 	ASSERT_TRUE(OaVkTestEngineOk());
-	OaComputeEngine& rt = *OaComputeEngine::GetGlobal();
+	OaEngine& rt = *OaEngine::GetGlobal();
 	if (!rt.Device.Info.Software.HasCooperativeMatrix2) GTEST_SKIP();
 	OA_SKIP_IF_BF16_ENGINE(rt);
 	for (auto [M, N, K] : std::vector<std::array<OaU32, 3>>{{128, 128, 128}, {256, 256, 256}, {64, 128, 784}}) {
@@ -370,7 +370,7 @@ TEST(GemmCmSgBf16, FusedEpilogueCorrectness) {
 
 TEST(GemmCmSgBf16, SiluDualOutputCorrectness) {
 	ASSERT_TRUE(OaVkTestEngineOk());
-	OaComputeEngine& rt = *OaComputeEngine::GetGlobal();
+	OaEngine& rt = *OaEngine::GetGlobal();
 	if (!rt.Device.Info.Software.HasCooperativeMatrix2) GTEST_SKIP();
 	OA_SKIP_IF_BF16_ENGINE(rt);
 	for (auto [M, N, K] : std::vector<std::array<OaU32, 3>>{{128, 128, 128}, {256, 256, 256}, {64, 128, 784}}) {
@@ -382,7 +382,7 @@ TEST(GemmCmSgBf16, SiluDualOutputCorrectness) {
 
 TEST(GemmCmSgBf16, WorkgroupScopeCorrectness) {
 	ASSERT_TRUE(OaVkTestEngineOk());
-	OaComputeEngine& rt = *OaComputeEngine::GetGlobal();
+	OaEngine& rt = *OaEngine::GetGlobal();
 	const bool hasWg = (rt.GemmCapsMask() & kCapCoopMat1WorkgroupBf16) != 0;
 	OA_LOG_INFO(OaLogComponent::Core, "Workgroup-scope BF16 CoopMat available: %s", hasWg ? "yes" : "no");
 	if (!hasWg) GTEST_SKIP();
@@ -406,7 +406,7 @@ TEST(GemmCmSgBf16, WorkgroupScopeCorrectness) {
 
 TEST(GemmCmSgBf16, WorkgroupScopePerf) {
 	ASSERT_TRUE(OaVkTestEngineOk());
-	OaComputeEngine& rt = *OaComputeEngine::GetGlobal();
+	OaEngine& rt = *OaEngine::GetGlobal();
 	const bool hasWg = (rt.GemmCapsMask() & kCapCoopMat1WorkgroupBf16) != 0;
 	if (!hasWg) GTEST_SKIP();
 	for (auto [M, N, K] : std::vector<std::array<OaU32, 3>>{
@@ -425,7 +425,7 @@ TEST(GemmCmSgBf16, WorkgroupScopePerf) {
 // real kernel throughput, not per-dispatch CPU overhead.
 TEST(GemmCmSgBf16, CrossoverVsCoopMat1) {
 	ASSERT_TRUE(OaVkTestEngineOk());
-	OaComputeEngine& rt = *OaComputeEngine::GetGlobal();
+	OaEngine& rt = *OaEngine::GetGlobal();
 	if (!rt.Device.Info.Software.HasCooperativeMatrix) GTEST_SKIP();
 	OA_SKIP_IF_BF16_ENGINE(rt);
 	// Correctness of GemmCmSgBf16 on aligned shapes (M%16==0, N%16==0).
@@ -458,7 +458,7 @@ TEST(GemmCmSgBf16, CrossoverVsCoopMat1) {
 //    first dispatch.
 TEST(GemmCmSgBf16, FusedVariantPipelinesExist) {
 	ASSERT_TRUE(OaVkTestEngineOk());
-	OaComputeEngine& rt = *OaComputeEngine::GetGlobal();
+	OaEngine& rt = *OaEngine::GetGlobal();
 	if (!rt.Device.Info.Software.HasCooperativeMatrix) GTEST_SKIP();
 
 	static const char* kFusedKernels[] = {
@@ -477,7 +477,7 @@ TEST(GemmCmSgBf16, FusedVariantPipelinesExist) {
 //    means N=32 dispatches with a partial tail tile. Verify correctness.
 TEST(GemmCmSgBf16, FusedSmallNCorrectness) {
 	ASSERT_TRUE(OaVkTestEngineOk());
-	OaComputeEngine& rt = *OaComputeEngine::GetGlobal();
+	OaEngine& rt = *OaEngine::GetGlobal();
 	if (!rt.Device.Info.Software.HasCooperativeMatrix2) GTEST_SKIP();
 	OA_SKIP_IF_BF16_ENGINE(rt);
 
@@ -496,7 +496,7 @@ TEST(GemmCmSgBf16, FusedSmallNCorrectness) {
 //    (64x64 tile, 34KB SMEM — fits, but still verify tail-tile correctness).
 TEST(GemmCmSgBf16, WgFusedSmallNCorrectness) {
 	ASSERT_TRUE(OaVkTestEngineOk());
-	OaComputeEngine& rt = *OaComputeEngine::GetGlobal();
+	OaEngine& rt = *OaEngine::GetGlobal();
 	const bool hasWg = (rt.GemmCapsMask() & kCapCoopMat1WorkgroupBf16) != 0;
 	if (!hasWg) GTEST_SKIP();
 	OA_SKIP_IF_BF16_ENGINE(rt);

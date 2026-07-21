@@ -8,6 +8,7 @@
 
 // Engine first — VK_NO_PROTOTYPES before any vulkan.h pull-in.
 #include <Oa/Runtime/Engine.h>
+#include <Oa/Runtime/Context.h>
 
 #include <Oa/Vision/CvFrame.h>
 
@@ -77,7 +78,7 @@ void Frame::Stats() {
 }
 
 
-OaStatus Frame::Commit(OaComputeEngine& InRt) {
+OaStatus Frame::Commit(OaEngine& InRt) {
 	if (Ax_ == nullptr) {
 		return OaStatus::Error("OaCv::Frame::Commit: no axes bound");
 	}
@@ -89,8 +90,21 @@ OaStatus Frame::Commit(OaComputeEngine& InRt) {
 	return OaStatus::Ok();
 }
 
+OaStatus Frame::Commit(OaContext& InContext) {
+	if (Ax_ == nullptr) {
+		return OaStatus::Error("OaCv::Frame::Commit: no axes bound");
+	}
+	auto r = Cv_.Render(InContext);
+	if (not r.IsOk()) { return r.GetStatus(); }
+	OaEngine& engine = InContext.Engine();
+	if (Overlay_.IsValid()) { Overlay_.Destroy(engine); }
+	Overlay_ = *r;
+	Ax_->Imshow(Overlay_);
+	return OaStatus::Ok();
+}
 
-void Frame::Destroy(OaComputeEngine& InRt) {
+
+void Frame::Destroy(OaEngine& InRt) {
 	if (Overlay_.IsValid()) {
 		Overlay_.Destroy(InRt);
 	}

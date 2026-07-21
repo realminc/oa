@@ -15,6 +15,13 @@ The app provides:
   resumable `.oam` checkpoints;
 - a black-and-white model lab and a dismissible seven-second welcome screen.
 
+Satellite mode is **planned, not shipped**. After the portable CLI worker passes
+its loopback protocol and lifecycle gates, Mobile Lab will wrap the same native
+worker core with explicit pairing/status UI and a dedicated network-connected
+foreground service. It will not define an Android-only protocol. The first
+planned consumer is an Intel Xe plus Adreno multi-device NLP tutorial; that
+tutorial will become public only after the satellite lifecycle gates pass.
+
 ## Model support on the reference phone
 
 The current physical gate is Redmi `25062RN2DE` (`creek`), Adreno 610, using Turnip

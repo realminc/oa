@@ -28,13 +28,13 @@ int main(int argc, char** argv) {
 	OaEngineConfig engineConfig;
 	engineConfig.PresentationMode = OaPresentationMode::None;
 	engineConfig.RegisterAsGlobal = true;
-	auto engineResult = OaComputeEngine::Create(engineConfig);
+	auto engineResult = OaEngine::Create(engineConfig);
 	if (not engineResult.IsOk()) {
 		std::fprintf(stderr, "Engine creation failed: %s\n",
 			engineResult.GetStatus().ToString().c_str());
 		return 1;
 	}
-	OaComputeEngine& engine = *engineResult.GetValue();
+	OaEngine& engine = *engineResult.GetValue();
 
 	// Capture holds non-owning completion tokens returned by the recorder.
 	// Destruction order must drain capture before recorder timeline ownership.

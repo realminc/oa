@@ -197,13 +197,13 @@ void OaVkLogPhysicalDeviceSurvey(OaU32 InCount,	void* const* InPhysicalDevices,	
 
 // Extension probing and feature detection now handled by DeviceBuilder + feature modules
 // ------------------------------------------------------------
-// OaVkPlanDeviceQueues  — PATCHED (non-static for DeviceBuilder)
+// OaVkPlanDeviceQueues — shared by the device builders
 // ------------------------------------------------------------
 OaStatus OaVkPlanDeviceQueues(
 	VkPhysicalDevice  InPhys,
 	VkSurfaceKHR      InSurface,
 	OaVkQueuePlan&    OutPlan,
-	bool              InHintNeedsPresentation)
+	bool              InNeedsGraphics)
 {
 	OaU32 qfCount = 0;
 	vkGetPhysicalDeviceQueueFamilyProperties(InPhys, &qfCount, nullptr);
@@ -214,7 +214,7 @@ OaStatus OaVkPlanDeviceQueues(
 	OutPlan.QueueCIs.Clear();
 	OutPlan.GraphicsQF             = UINT32_MAX;
 	OutPlan.PresentQF              = UINT32_MAX;
-	OutPlan.WantsSurfacePresentation = false;
+	OutPlan.WantsGraphics          = false;
 	OutPlan.ComputeSlots           = 0;
 	OutPlan.DedicatedTransferSlots = 0;
 
@@ -227,8 +227,7 @@ OaStatus OaVkPlanDeviceQueues(
 	}
 
 	const bool wantSurface  = (InSurface != VK_NULL_HANDLE);
-	// "wantGraphics" covers the real-surface path AND the hint-only path.
-	const bool wantGraphics = wantSurface || InHintNeedsPresentation;
+	const bool wantGraphics = wantSurface or InNeedsGraphics;
 
 	OaVec<VkBool32> presentSupport;
 	if (wantSurface) {
@@ -270,7 +269,7 @@ OaStatus OaVkPlanDeviceQueues(
 			OutPlan.PresentQF  = graphicsPresent;
 		} else {
 			// Hint-only path: find any graphics-capable family (no surface check).
-			// Present support is verified later in OaGraphicsEngine::InitPresentation.
+			// Present support is verified later in OaPresenter::InitPresentation.
 			OaU32 gfxFamily = UINT32_MAX;
 			for (OaU32 idx = 0; idx < qfCount; ++idx) {
 				if (qfProps[idx].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
@@ -281,13 +280,12 @@ OaStatus OaVkPlanDeviceQueues(
 			if (gfxFamily == UINT32_MAX) {
 				return OaStatus::Error(
 					OaStatusCode::DeviceNotFound,
-					"InHintNeedsPresentation=true but device has no VK_QUEUE_GRAPHICS_BIT family");
+					"graphics requested but device has no VK_QUEUE_GRAPHICS_BIT family");
 			}
 			OutPlan.GraphicsQF = gfxFamily;
-			OutPlan.PresentQF  = gfxFamily;  // confirmed in InitPresentation
 		}
 
-		OutPlan.WantsSurfacePresentation = true;
+		OutPlan.WantsGraphics = true;
 
 		if (qfProps[OutPlan.GraphicsQF].queueFlags & VK_QUEUE_COMPUTE_BIT) {
 			OutPlan.ComputeQF = OutPlan.GraphicsQF;
@@ -427,7 +425,7 @@ OaStatus OaVkPlanDeviceQueues(
 		bump(OutPlan.AsyncComputeQF, 1);
 	if (OutPlan.TransferQF != OutPlan.ComputeQF && OutPlan.TransferQF != OutPlan.AsyncComputeQF)
 		bump(OutPlan.TransferQF, 1);
-	if (OutPlan.WantsSurfacePresentation && OutPlan.GraphicsQF != UINT32_MAX &&
+	if (OutPlan.WantsGraphics and OutPlan.GraphicsQF != UINT32_MAX and
 		OutPlan.GraphicsQF != OutPlan.ComputeQF)
 	{
 		bump(OutPlan.GraphicsQF, 1);
@@ -473,24 +471,24 @@ OaResult<OaVkDevice> OaVkDevice::CreateFromPhysical(
 	OaU64  InPickRating,
 	OaU32  InEnumerationIndex,
 	void*  InSurface,
-	OaBool InHintNeedsPresentation)
+	OaBool InHintNeedsPresentation,
+	OaBool InHintNeedsGraphics)
 {
 	VkInstance       instance = static_cast<VkInstance>(InInstance);
 	VkPhysicalDevice bestPhys = static_cast<VkPhysicalDevice>(InPhysicalDevice);
-	VkSurfaceKHR     surface  = static_cast<VkSurfaceKHR>(InSurface);
+	(void)InSurface;
 
 	// Use DeviceBuilder with all features for backward compatibility
 	OaVkDeviceBuilder builder;
 	builder.WithAllFeatures();
 
-	// Build base device directly (no derived class complications).
-	// Thread InHintNeedsPresentation through so the queue planner picks a
-	// graphics-capable family when the caller intends to attach a surface
-	// later (Step 3c.5 fix — previously the hint dropped here, leaving
-	// Queues.GraphicsQueue unset and breaking OaGraphicsEngine::
-	// InitPresentation under the new ctx-mediated path).
+	// Build the base device directly. The two hints intentionally separate WSI
+	// extension admission from graphics-queue selection. The legacy InSurface
+	// path remains handled by BuildRender; making this base path surface-aware
+	// is tracked separately because it requires a live-surface conformance test.
 	auto deviceResult = builder.BuildBase(
-		instance, bestPhys, InEnableValidation, InHintNeedsPresentation);
+		instance, bestPhys, InEnableValidation,
+		InHintNeedsPresentation, InHintNeedsGraphics);
 	if (!deviceResult.IsOk()) {
 		return deviceResult.GetStatus();
 	}
@@ -508,7 +506,7 @@ OaResult<OaVkDevice> OaVkDevice::CreateFromPhysical(
 
 
 // ------------------------------------------------------------
-// OaVkDevice::Create  — PATCHED (added InHintNeedsPresentation)
+// OaVkDevice::Create
 // ------------------------------------------------------------
 OaResult<OaVkDevice> OaVkDevice::Create(
 	OaStringView               InAppName,
@@ -517,10 +515,12 @@ OaResult<OaVkDevice> OaVkDevice::Create(
 	OaU32                      InForceEnumerationIndex,
 	OaU32                      InAppVersionPatch,
 	OaSpan<const char* const>  InInstanceExtraExtensions,
-	OaBool                     InHintNeedsPresentation
+	OaBool                     InHintNeedsPresentation,
+	OaBool                     InHintNeedsGraphics
 ) {
 	auto instRes = OaVkInstance::CreateInstance(
-		InAppName, InAppVersionPatch, InEnableValidation, InInstanceExtraExtensions);
+		InAppName, InAppVersionPatch, InEnableValidation,
+		InInstanceExtraExtensions, InHintNeedsPresentation);
 	if (!instRes.IsOk()) return OaResult<OaVkDevice>(instRes.GetStatus());
 
 	VkInstance instance = std::move(instRes).GetValue();
@@ -583,13 +583,15 @@ OaResult<OaVkDevice> OaVkDevice::Create(
 		);
 	}
 
-	// Pass InHintNeedsPresentation; InSurface is null here (surface comes after instance).
+	// InSurface is null here because platform surface creation follows instance
+	// creation. Presentation and headless-graphics intent remain distinct.
 	auto result = CreateFromPhysical(
 		instance, bestPhys, InEnableValidation,
 		bestScore, bestIdx,
 		/*InSurface=*/nullptr,
-		InHintNeedsPresentation
-	);   // <-- threaded through
+		InHintNeedsPresentation,
+		InHintNeedsGraphics
+	);
 
 	if (!result.IsOk()) {
 		OaVkInstance::DestroyInstance(instance);

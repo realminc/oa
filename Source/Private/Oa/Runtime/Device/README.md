@@ -20,9 +20,9 @@ OaVkRenderDevice (+ Graphics, Present, Swapchain)
 ```
 OaEngine
     ↓
-OaComputeEngine (uses OaVkComputeDevice)
+OaEngine (uses OaVkComputeDevice)
     ↓
-OaGraphicsEngine (uses OaVkRenderDevice)
+OaPresenter (uses OaVkRenderDevice)
 ```
 
 ### Feature Modules
@@ -173,8 +173,9 @@ auto intelDevice = OaVkDeviceBuilder()
     .WithRender()
     .BuildRender(instance, intelPhysicalDevice, false, surface);
 
-OaGraphicsEngine renderEngine;
+OaEngine renderEngine;
 renderEngine.Device = std::move(intelDevice.GetValue());
+OaPresenter presenter(renderEngine);
 
 // Device 1: NVIDIA dGPU for compute
 auto nvidiaDevice = OaVkDeviceBuilder()
@@ -182,7 +183,7 @@ auto nvidiaDevice = OaVkDeviceBuilder()
     .WithMl()
     .BuildCompute(instance, nvidiaPhysicalDevice);
 
-OaComputeEngine computeEngine;
+OaEngine computeEngine;
 computeEngine.Device = std::move(nvidiaDevice.GetValue());
 
 // Cross-device memory sharing (if VK_KHR_external_memory_fd available)

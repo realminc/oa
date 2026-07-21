@@ -16,16 +16,16 @@
 #include <numeric>
 #include <vector>
 
-static OaComputeEngine* GRt = nullptr;
+static OaEngine* GRt = nullptr;
 
 class TestFnMatrixElemwise : public ::testing::Test {
 protected:
 	static void SetUpTestSuite() {
 		OaEngineConfig cfg{};
 		cfg.AppName = "TestFnMatrixElemwise";
-		auto r = OaComputeEngine::Create(cfg);
+		auto r = OaEngine::Create(cfg);
 		ASSERT_TRUE(r.IsOk()) << r.GetStatus().GetMessage();
-		static OaUniquePtr<OaComputeEngine> rt = std::move(*r);
+		static OaUniquePtr<OaEngine> rt = std::move(*r);
 		GRt = rt.get();
 	}
 };
@@ -36,7 +36,7 @@ TEST_VK(TestFnMatrixElemwise, Add_Context) {
 	auto b = OaFnMatrix::Rand(OaMatrixShape{N});
 	std::vector<float> b_host(N);
 	ASSERT_TRUE(OaFnMatrix::CopyToHost(b, b_host.data(), N * sizeof(float)).IsOk());
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto out = OaFnMatrix::Add(a, b);
 	// Context scope auto-executes and syncs at end of scope
 	std::vector<float> a_host(N);
@@ -54,7 +54,7 @@ TEST_VK(TestFnMatrixElemwise, Sub_Context) {
 	auto b = OaFnMatrix::Rand(OaMatrixShape{N});
 	std::vector<float> b_host(N);
 	ASSERT_TRUE(OaFnMatrix::CopyToHost(b, b_host.data(), N * sizeof(float)).IsOk());
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto out = OaFnMatrix::Sub(a, b);
 	// Context scope auto-executes and syncs at end of scope
 	std::vector<float> a_host(N);
@@ -72,7 +72,7 @@ TEST_VK(TestFnMatrixElemwise, Mul_Context) {
 	auto b = OaFnMatrix::Rand(OaMatrixShape{N});
 	std::vector<float> b_host(N);
 	ASSERT_TRUE(OaFnMatrix::CopyToHost(b, b_host.data(), N * sizeof(float)).IsOk());
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto out = OaFnMatrix::Mul(a, b);
 	// Context scope auto-executes and syncs at end of scope
 	std::vector<float> a_host(N);
@@ -90,7 +90,7 @@ TEST_VK(TestFnMatrixElemwise, Div_Context) {
 	auto b = OaFnMatrix::Rand(OaMatrixShape{N});
 	std::vector<float> b_host(N);
 	ASSERT_TRUE(OaFnMatrix::CopyToHost(b, b_host.data(), N * sizeof(float)).IsOk());
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto out = OaFnMatrix::Div(a, b);
 	// Context scope auto-executes and syncs at end of scope
 	std::vector<float> a_host(N);
@@ -106,7 +106,7 @@ TEST_VK(TestFnMatrixElemwise, Scale_Context) {
 	constexpr OaU32 N = 256;
 	constexpr OaF32 kScalar = 1.5f;
 	auto a = OaFnMatrix::Rand(OaMatrixShape{N});
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto out = OaFnMatrix::Scale(a, kScalar);
 	// Context scope auto-executes and syncs at end of scope
 	std::vector<float> a_host(N);
@@ -121,7 +121,7 @@ TEST_VK(TestFnMatrixElemwise, Scale_Context) {
 TEST_VK(TestFnMatrixElemwise, Neg_Context) {
 	constexpr OaU32 N = 256;
 	auto a = OaFnMatrix::Rand(OaMatrixShape{N});
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto out = OaFnMatrix::Neg(a);
 	// Context scope auto-executes and syncs at end of scope
 	std::vector<float> a_host(N);
@@ -136,7 +136,7 @@ TEST_VK(TestFnMatrixElemwise, Neg_Context) {
 TEST_VK(TestFnMatrixElemwise, Abs_Context) {
 	constexpr OaU32 N = 256;
 	auto a = OaFnMatrix::Rand(OaMatrixShape{N});
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto out = OaFnMatrix::Abs(a);
 	// Context scope auto-executes and syncs at end of scope
 	std::vector<float> a_host(N);
@@ -151,7 +151,7 @@ TEST_VK(TestFnMatrixElemwise, Abs_Context) {
 TEST_VK(TestFnMatrixElemwise, Log_Context) {
 	constexpr OaU32 N = 256;
 	auto a = OaFnMatrix::Rand(OaMatrixShape{N});  // [0, 1)
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto out = OaFnMatrix::Log(a);
 	// Context scope auto-executes and syncs at end of scope
 	std::vector<float> a_host(N);
@@ -166,7 +166,7 @@ TEST_VK(TestFnMatrixElemwise, Log_Context) {
 TEST_VK(TestFnMatrixElemwise, Sqrt_Context) {
 	constexpr OaU32 N = 256;
 	auto a = OaFnMatrix::Rand(OaMatrixShape{N});  // [0, 1)
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto out = OaFnMatrix::Sqrt(a);
 	// Context scope auto-executes and syncs at end of scope
 	std::vector<float> a_host(N);
@@ -182,7 +182,7 @@ TEST_VK(TestFnMatrixElemwise, Pow_Context) {
 	constexpr OaU32 N = 256;
 	constexpr OaF32 kScalar = 1.5f;
 	auto a = OaFnMatrix::Rand(OaMatrixShape{N});  // [0, 1)
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto out = OaFnMatrix::Pow(a, kScalar);
 	// Context scope auto-executes and syncs at end of scope
 	std::vector<float> a_host(N);
@@ -198,7 +198,7 @@ TEST_VK(TestFnMatrixElemwise, AddScalar_Context) {
 	constexpr OaU32 N = 256;
 	constexpr OaF32 kScalar = 1.5f;
 	auto a = OaFnMatrix::Rand(OaMatrixShape{N});
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto out = OaFnMatrix::AddScalar(a, kScalar);
 	// Context scope auto-executes and syncs at end of scope
 	std::vector<float> a_host(N);
@@ -214,7 +214,7 @@ TEST_VK(TestFnMatrixElemwise, SubScalar_Context) {
 	constexpr OaU32 N = 256;
 	constexpr OaF32 kScalar = 1.5f;
 	auto a = OaFnMatrix::Rand(OaMatrixShape{N});
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto out = OaFnMatrix::SubScalar(a, kScalar);
 	// Context scope auto-executes and syncs at end of scope
 	std::vector<float> a_host(N);
@@ -230,7 +230,7 @@ TEST_VK(TestFnMatrixElemwise, DivScalar_Context) {
 	constexpr OaU32 N = 256;
 	constexpr OaF32 kScalar = 1.5f;
 	auto a = OaFnMatrix::Rand(OaMatrixShape{N});
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto out = OaFnMatrix::DivScalar(a, kScalar);
 	// Context scope auto-executes and syncs at end of scope
 	std::vector<float> a_host(N);
@@ -245,7 +245,7 @@ TEST_VK(TestFnMatrixElemwise, DivScalar_Context) {
 TEST_VK(TestFnMatrixElemwise, Exp_Context) {
 	constexpr OaU32 N = 256;
 	auto a = OaFnMatrix::Rand(OaMatrixShape{N});
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto out = OaFnMatrix::Exp(a);
 	// Context scope auto-executes and syncs at end of scope
 	std::vector<float> a_host(N);
@@ -260,7 +260,7 @@ TEST_VK(TestFnMatrixElemwise, Exp_Context) {
 TEST_VK(TestFnMatrixElemwise, Sin_Context) {
 	constexpr OaU32 N = 256;
 	auto a = OaFnMatrix::Rand(OaMatrixShape{N});
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto out = OaFnMatrix::Sin(a);
 	// Context scope auto-executes and syncs at end of scope
 	std::vector<float> a_host(N);
@@ -275,7 +275,7 @@ TEST_VK(TestFnMatrixElemwise, Sin_Context) {
 TEST_VK(TestFnMatrixElemwise, Cos_Context) {
 	constexpr OaU32 N = 256;
 	auto a = OaFnMatrix::Rand(OaMatrixShape{N});
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto out = OaFnMatrix::Cos(a);
 	// Context scope auto-executes and syncs at end of scope
 	std::vector<float> a_host(N);
@@ -290,7 +290,7 @@ TEST_VK(TestFnMatrixElemwise, Cos_Context) {
 TEST_VK(TestFnMatrixElemwise, Reciprocal_Context) {
 	constexpr OaU32 N = 256;
 	auto a = OaFnMatrix::Rand(OaMatrixShape{N});
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto out = OaFnMatrix::Reciprocal(a);
 	// Context scope auto-executes and syncs at end of scope
 	std::vector<float> a_host(N);
@@ -306,7 +306,7 @@ TEST_VK(TestFnMatrixElemwise, ClampMax_Context) {
 	constexpr OaU32 N = 256;
 	constexpr OaF32 kScalar = 0.5f;
 	auto a = OaFnMatrix::Rand(OaMatrixShape{N});
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto out = OaFnMatrix::ClampMax(a, kScalar);
 	// Context scope auto-executes and syncs at end of scope
 	std::vector<float> a_host(N);
@@ -322,7 +322,7 @@ TEST_VK(TestFnMatrixElemwise, ClampMin_Context) {
 	constexpr OaU32 N = 256;
 	constexpr OaF32 kScalar = -0.5f;
 	auto a = OaFnMatrix::Rand(OaMatrixShape{N});
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto out = OaFnMatrix::ClampMin(a, kScalar);
 	// Context scope auto-executes and syncs at end of scope
 	std::vector<float> a_host(N);

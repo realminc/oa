@@ -6,6 +6,7 @@
 #include <Oa/Ml/Nn.h>
 #include <Oa/Core/FnMatrix.h>
 #include <Oa/Core/Validation.h>
+#include <Oa/Runtime/Context.h>
 #include <cassert>
 
 OaBatchNorm2d::OaBatchNorm2d(OaI32 NumFeatures, OaF32 Eps, OaF32 Momentum)
@@ -32,7 +33,7 @@ OaMatrix OaBatchNorm2d::Forward(const OaMatrix& InInput) {
 	auto &running_var  = Buffers_[1].Data;  // [C]
 
 	auto& ctx = OaContext::GetDefault();
-	auto is_training = ctx.IsTraining();
+	auto is_training = IsTraining();
 
 	// Create output tensor
 	auto output = OaFnMatrix::Empty(OaMatrixShape{N, C, H, W}, InInput.GetDtype());

@@ -1,5 +1,8 @@
 #include <Oa/Audio/AudioStream.h>
 
+#include <Oa/Runtime/Engine.h>
+#include "Oa/Runtime/Engine/BorrowedServiceRetirement.h"
+
 #include <miniaudio.h>
 
 #include <algorithm>
@@ -12,6 +15,7 @@
 #include <thread>
 
 struct OaAudioStream::Impl {
+	OaEngine* Engine = nullptr;
 	OaAudioStreamConfig Config;
 	OaVec<OaF32> Ring;
 	OaU64 CapacityFrames = 0U;
@@ -179,15 +183,48 @@ OaAudioStream::OaAudioStream(OaAudioStream&& InOther) noexcept
 OaAudioStream& OaAudioStream::operator=(OaAudioStream&& InOther) noexcept
 {
 	if (this != &InOther) {
-		Close();
+		(void)Close();
 		Impl_ = OaStdMove(InOther.Impl_);
 	}
 	return *this;
 }
 
-OaAudioStream::~OaAudioStream() { Close(); }
+OaAudioStream::~OaAudioStream() { Abandon_(); }
 
-OaResult<OaAudioStream> OaAudioStream::Open(const OaAudioStreamConfig& InConfig)
+void OaAudioStream::Abandon_() noexcept
+{
+	if (not Impl_) return;
+	OaEngine* engine = Impl_->Engine;
+	if (engine == nullptr) {
+		Impl_.Reset();
+		return;
+	}
+	Impl_->Stop.store(true, std::memory_order_release);
+	Impl_->Playing.store(false, std::memory_order_release);
+	Impl_->Wake.notify_all();
+	auto retired = OaMakeUniquePtr<OaAudioStream>(OaStdMove(*this));
+	OaBorrowedServiceRetirement::Retire(
+		*engine,
+		retired.Release(),
+		&OaAudioStream::CompleteRetired_,
+		&OaAudioStream::ReleaseRetired_);
+}
+
+OaStatus OaAudioStream::CompleteRetired_(void* InPayload)
+{
+	auto* stream = static_cast<OaAudioStream*>(InPayload);
+	return stream ? stream->Close() : OaStatus::Ok();
+}
+
+void OaAudioStream::ReleaseRetired_(void* InPayload)
+{
+	OaUniquePtr<OaAudioStream> stream(
+		static_cast<OaAudioStream*>(InPayload));
+}
+
+OaResult<OaAudioStream> OaAudioStream::Open(
+	OaEngine& InEngine,
+	const OaAudioStreamConfig& InConfig)
 {
 	if (InConfig.Uri.Empty() || InConfig.RingMilliseconds < 40U) {
 		return OaStatus::InvalidArgument(
@@ -196,11 +233,12 @@ OaResult<OaAudioStream> OaAudioStream::Open(const OaAudioStreamConfig& InConfig)
 	OaAudioStream stream;
 	stream.Impl_ = OaMakeUniquePtr<Impl>();
 	auto& impl = *stream.Impl_;
+	impl.Engine = &InEngine;
 	impl.Config = InConfig;
 	impl.Loop = InConfig.Loop;
 	ma_decoder_config decoderConfig = ma_decoder_config_init(ma_format_f32, 0U, 0U);
 	if (ma_decoder_init_file(InConfig.Uri.CStr(), &decoderConfig, &impl.Decoder) != MA_SUCCESS) {
-		stream.Close();
+		(void)stream.Close();
 		return OaStatus::Error(OaStatusCode::Unavailable,
 			"OaAudioStream could not open WAV, FLAC or MP3 source");
 	}
@@ -211,13 +249,13 @@ OaResult<OaAudioStream> OaAudioStream::Open(const OaAudioStreamConfig& InConfig)
 	if (ma_decoder_get_data_format(&impl.Decoder, &outputFormat, &outputChannels,
 		&outputSampleRate, nullptr, 0U) != MA_SUCCESS
 		or outputFormat != ma_format_f32) {
-		stream.Close();
+		(void)stream.Close();
 		return OaStatus::Error("OaAudioStream could not query the native decoder format");
 	}
 	impl.SampleRate = outputSampleRate;
 	impl.Channels = outputChannels;
 	if (impl.SampleRate == 0U || impl.Channels == 0U || impl.Channels > 8U) {
-		stream.Close();
+		(void)stream.Close();
 		return OaStatus::Error(OaStatusCode::Unimplemented,
 			"OaAudioStream supports 1..8 channel streams with a declared sample rate");
 	}
@@ -237,13 +275,13 @@ OaResult<OaAudioStream> OaAudioStream::Open(const OaAudioStreamConfig& InConfig)
 	deviceConfig.dataCallback = PlaybackCallback;
 	deviceConfig.pUserData = &impl;
 	if (ma_device_init(nullptr, &deviceConfig, &impl.Device) != MA_SUCCESS) {
-		stream.Close();
+		(void)stream.Close();
 		return OaStatus::Error(OaStatusCode::Unavailable,
 			"OaAudioStream could not open the playback device");
 	}
 	impl.DeviceInitialized = true;
 	if (ma_device_start(&impl.Device) != MA_SUCCESS) {
-		stream.Close();
+		(void)stream.Close();
 		return OaStatus::Error(OaStatusCode::Unavailable,
 			"OaAudioStream could not start the playback device");
 	}
@@ -251,11 +289,13 @@ OaResult<OaAudioStream> OaAudioStream::Open(const OaAudioStreamConfig& InConfig)
 	return stream;
 }
 
-OaResult<OaAudioStream> OaAudioStream::Open(OaStringView InUri)
+OaResult<OaAudioStream> OaAudioStream::Open(
+	OaEngine& InEngine,
+	OaStringView InUri)
 {
 	OaAudioStreamConfig config;
 	config.Uri = OaString(InUri);
-	return Open(config);
+	return Open(InEngine, config);
 }
 
 OaStatus OaAudioStream::Play()
@@ -309,15 +349,25 @@ void OaAudioStream::SetLoop(bool InLoop) {
 	if (Impl_) Impl_->Loop.store(InLoop, std::memory_order_release);
 }
 
-void OaAudioStream::Close() {
-	if (not Impl_) return;
+OaStatus OaAudioStream::Close() {
+	if (not Impl_) return OaStatus::Ok();
 	Impl_->Stop.store(true, std::memory_order_release);
 	Impl_->Playing.store(false, std::memory_order_release);
 	Impl_->Wake.notify_all();
+	OaStatus status = OaStatus::Ok();
+	if (Impl_->DeviceInitialized) {
+		const ma_result result = ma_device_stop(&Impl_->Device);
+		if (result != MA_SUCCESS) {
+			status = OaStatus::Error(OaStatusCode::Internal,
+				OaString("OaAudioStream stop failed: ")
+					+ ma_result_description(result));
+		}
+	}
 	if (Impl_->DecodeThread.joinable()) Impl_->DecodeThread.join();
 	if (Impl_->DeviceInitialized) ma_device_uninit(&Impl_->Device);
 	if (Impl_->DecoderInitialized) ma_decoder_uninit(&Impl_->Decoder);
 	Impl_.Reset();
+	return status;
 }
 
 bool OaAudioStream::IsOpen() const noexcept { return Impl_ != nullptr; }

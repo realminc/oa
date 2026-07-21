@@ -1,7 +1,6 @@
 #include <Oa/Ui/TrainingViewer.h>
 
 #include <Oa/Core/Log.h>
-#include <Oa/Ui/DeviceUi.h>
 #include <Oa/Ui/Text.h>
 #include <Oa/Ui/Ui.h>
 
@@ -83,7 +82,7 @@ struct OaTrainingViewerSource::Impl {
 
 	OaTrainingSession* Session = nullptr;
 	OaTrainingViewerConfig Config;
-	OaComputeEngine* Runtime = nullptr;
+	OaEngine* Runtime = nullptr;
 	OaOpt<OaTrainingSnapshot> Snapshot;
 	OaOpt<OaTrainingCommandResult> LastCommand;
 	OaVec<Series> SeriesList;
@@ -199,7 +198,7 @@ OaTrainingViewerSource::OaTrainingViewerSource(
 
 OaTrainingViewerSource::~OaTrainingViewerSource() = default;
 
-OaStatus OaTrainingViewerSource::Open(OaGraphicsEngine& InEngine) {
+OaStatus OaTrainingViewerSource::Open(OaEngine& InEngine) {
 	Impl_->Runtime = &InEngine;
 	if (const auto snapshot = Impl_->Session->LatestSnapshot(); snapshot.HasValue()) {
 		Impl_->AppendSnapshot(*snapshot);
@@ -207,38 +206,36 @@ OaStatus OaTrainingViewerSource::Open(OaGraphicsEngine& InEngine) {
 	return OaStatus::Ok();
 }
 
-void OaTrainingViewerSource::Init(OaDeviceUi& InUi) {
+OaStatus OaTrainingViewerSource::Init(
+	OaInputSystem& InInput,
+	OaFunc<void(bool)> /*InCapturePointer*/) {
 	for (auto& slot : Impl_->LabelSlots) {
 		auto buffer = OaGlyphBuffer::CreateHostUpload(*Impl_->Runtime, kMaxGlyphs);
 		if (buffer.IsError()) {
-			OA_LOG_ERROR(OaLogComponent::App,
-				"OaTrainingViewer glyph buffer failed: %s",
-				buffer.GetStatus().ToString().c_str());
-			return;
+			return buffer.GetStatus();
 		}
 		slot = OaStdMove(*buffer);
 	}
-	auto& input = InUi.Input();
-	input.RegisterAction({
+	InInput.RegisterAction({
 		.Name = "training-pause-resume",
 		.Binding = {.Key = OuiKey::Space},
 		.Callback = [this] { Impl_->TogglePause(); },
 	});
-	input.RegisterAction({
+	InInput.RegisterAction({
 		.Name = "training-stop",
 		.Binding = {.Key = OuiKey::S},
 		.Callback = [this] {
 			Impl_->LogEnqueue(Impl_->Session->Stop(), "stop");
 		},
 	});
-	input.RegisterAction({
+	InInput.RegisterAction({
 		.Name = "training-checkpoint",
 		.Binding = {.Key = OuiKey::C},
 		.Callback = [this] {
 			Impl_->LogEnqueue(Impl_->Session->Checkpoint(), "checkpoint");
 		},
 	});
-	input.RegisterAction({
+	InInput.RegisterAction({
 		.Name = "training-evaluate",
 		.Binding = {.Key = OuiKey::E},
 		.Callback = [this] {
@@ -247,6 +244,7 @@ void OaTrainingViewerSource::Init(OaDeviceUi& InUi) {
 	});
 	OA_LOG_INFO(OaLogComponent::App,
 		"OaTrainingViewer: Space=pause/resume · C=checkpoint · E=evaluate · S=stop");
+	return OaStatus::Ok();
 }
 
 void OaTrainingViewerSource::Update(OaF32 InDeltaMs) {
@@ -273,9 +271,13 @@ void OaTrainingViewerSource::Update(OaF32 InDeltaMs) {
 	Impl_->PollResults();
 }
 
-void OaTrainingViewerSource::Render(OaUi& InUi, OaDeviceUi& InDeviceUi) {
-	const OaI32 width = static_cast<OaI32>(InDeviceUi.Width());
-	const OaI32 height = static_cast<OaI32>(InDeviceUi.Height());
+void OaTrainingViewerSource::Render(
+	OaUi& InUi,
+	const OaTextAtlas& InTextAtlas,
+	OaU32 InWidth,
+	OaU32 InHeight) {
+	const OaI32 width = static_cast<OaI32>(InWidth);
+	const OaI32 height = static_cast<OaI32>(InHeight);
 	if (width < 320 || height < 240) return;
 	const OaI32 margin = 20;
 	const OaI32 gap = 14;
@@ -357,7 +359,7 @@ void OaTrainingViewerSource::Render(OaUi& InUi, OaDeviceUi& InDeviceUi) {
 	if (labelSlot >= 0) {
 		OaVec<OaGlyphInstance> glyphs;
 		glyphs.Reserve(512);
-		const auto& atlas = InDeviceUi.TextAtlas();
+		const auto& atlas = InTextAtlas;
 		AppendText(atlas, Impl_->Config.Title,
 			static_cast<OaF32>(header.X + 22),
 			static_cast<OaF32>(header.Y + 30), 18.0F,
@@ -414,7 +416,7 @@ void OaTrainingViewerSource::Render(OaUi& InUi, OaDeviceUi& InDeviceUi) {
 		const OaPixelRect screen{0, 0, width, height};
 		InUi.Glyphs(
 			Impl_->LabelSlots[static_cast<OaU32>(Impl_->ActiveLabelSlot)],
-			InDeviceUi.TextAtlas(), screen, screen);
+			InTextAtlas, screen, screen);
 	}
 }
 
@@ -438,10 +440,11 @@ void OaTrainingViewerSource::MarkConsumed(
 	}
 }
 
-void OaTrainingViewerSource::Close(OaDeviceUi&) {
+OaStatus OaTrainingViewerSource::Close() {
 	for (auto& slot : Impl_->LabelSlots) slot.Destroy();
 	Impl_->ActiveLabelSlot = -1;
 	Impl_->Runtime = nullptr;
+	return OaStatus::Ok();
 }
 
 OaOpt<OaTrainingSnapshot> OaTrainingViewerSource::LatestSnapshot() const {

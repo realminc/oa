@@ -2,7 +2,7 @@
 #
 # This is the *source of truth* for hash operations. The generator
 # emits .h declarations, .cpp implementations from this file.
-# See Tools/FnAutogen/oafnautogen.py and Docs/Rewrite/Opus/OaFnAutogen.md.
+# See Tools/FnAutogen/README.md and Tools/FnAutogen/oafnautogen.py.
 #
 # Hash operations: SHAKE, Keccak, KMAC, Merkle trees.
 

@@ -8,7 +8,7 @@
 // ─── Create ─────────────────────────────────────────────────────────────────────
 
 OaResult<OaLiveTexture> OaLiveTexture::Create(
-	OaComputeEngine& InEngine,
+	OaEngine& InEngine,
 	OaI32              InWidth,
 	OaI32              InHeight)
 {
@@ -125,7 +125,7 @@ void OaLiveTexture::Publish(const OaTexture& InTexture) {
 
 // ─── Destroy ───────────────────────────────────────────────────────────────────
 
-void OaLiveTexture::Destroy(OaComputeEngine& InEngine) {
+void OaLiveTexture::Destroy(OaEngine& InEngine) {
 	if (Engine_) {
 		InEngine.DeregisterBuffer(ProducerTex_.DeviceBuf);
 		InEngine.FreeBuffer(ProducerTex_.DeviceBuf);

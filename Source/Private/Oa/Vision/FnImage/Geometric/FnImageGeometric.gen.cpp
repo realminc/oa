@@ -19,47 +19,47 @@
 // ─── Crop (Crop NCHW image: Out = A[y:y+h, x:x+w]) ────
 
 OaMatrix OaFnImage::Crop(const OaMatrix& InImage, OaU32 InX, OaU32 InY, OaU32 InWidth, OaU32 InHeight) {
-	return OaFnImage::Crop(*OaComputeEngine::GetGlobal(), InImage, InX, InY, InWidth, InHeight);
+	return OaFnImage::Crop(*OaEngine::GetGlobal(), InImage, InX, InY, InWidth, InHeight);
 }
 
 // ─── Flip (Flip NCHW image horizontally or vertically) ────
 
 OaMatrix OaFnImage::Flip(const OaMatrix& InImage, bool InHorizontal, bool InVertical) {
-	return OaFnImage::Flip(*OaComputeEngine::GetGlobal(), InImage, InHorizontal, InVertical);
+	return OaFnImage::Flip(*OaEngine::GetGlobal(), InImage, InHorizontal, InVertical);
 }
 
 // ─── Rotate (Rotate NCHW image by 90/180/270 degrees) ────
 
 OaMatrix OaFnImage::Rotate(const OaMatrix& InImage, OaU32 InDegrees) {
-	return OaFnImage::Rotate(*OaComputeEngine::GetGlobal(), InImage, InDegrees);
+	return OaFnImage::Rotate(*OaEngine::GetGlobal(), InImage, InDegrees);
 }
 
 // ─── Pad (Asymmetric NCHW padding with the shared border contract) ────
 
 OaMatrix OaFnImage::Pad(const OaMatrix& InImage, OaU32 InLeft, OaU32 InRight, OaU32 InTop, OaU32 InBottom, OaBorderMode InBorder, OaF32 InBorderValue) {
-	return OaFnImage::Pad(*OaComputeEngine::GetGlobal(), InImage, InLeft, InRight, InTop, InBottom, InBorder, InBorderValue);
+	return OaFnImage::Pad(*OaEngine::GetGlobal(), InImage, InLeft, InRight, InTop, InBottom, InBorder, InBorderValue);
 }
 
 // ─── CenterCrop (Centered crop lowered through Crop) ────
 
 OaMatrix OaFnImage::CenterCrop(const OaMatrix& InImage, OaU32 InWidth, OaU32 InHeight) {
-	return OaFnImage::CenterCrop(*OaComputeEngine::GetGlobal(), InImage, InWidth, InHeight);
+	return OaFnImage::CenterCrop(*OaEngine::GetGlobal(), InImage, InWidth, InHeight);
 }
 
 // ─── Remap (Absolute-coordinate NCHW remapping with nearest or bilinear samp
 
 OaMatrix OaFnImage::Remap(const OaMatrix& InImage, const OaMatrix& InMap, OaInterpolationMode InInterpolation, OaBorderMode InBorder, OaF32 InBorderValue) {
-	return OaFnImage::Remap(*OaComputeEngine::GetGlobal(), InImage, InMap, InInterpolation, InBorder, InBorderValue);
+	return OaFnImage::Remap(*OaEngine::GetGlobal(), InImage, InMap, InInterpolation, InBorder, InBorderValue);
 }
 
 // ─── WarpAffine (Inverse 2x3 affine warp with explicit interpolation and bor
 
 OaMatrix OaFnImage::WarpAffine(const OaMatrix& InImage, const OaMatrix& InTransform, OaU32 InWidth, OaU32 InHeight, OaInterpolationMode InInterpolation, OaBorderMode InBorder, OaF32 InBorderValue) {
-	return OaFnImage::WarpAffine(*OaComputeEngine::GetGlobal(), InImage, InTransform, InWidth, InHeight, InInterpolation, InBorder, InBorderValue);
+	return OaFnImage::WarpAffine(*OaEngine::GetGlobal(), InImage, InTransform, InWidth, InHeight, InInterpolation, InBorder, InBorderValue);
 }
 
 // ─── WarpPerspective (Inverse 3x3 perspective warp with explicit interpolati
 
 OaMatrix OaFnImage::WarpPerspective(const OaMatrix& InImage, const OaMatrix& InTransform, OaU32 InWidth, OaU32 InHeight, OaInterpolationMode InInterpolation, OaBorderMode InBorder, OaF32 InBorderValue) {
-	return OaFnImage::WarpPerspective(*OaComputeEngine::GetGlobal(), InImage, InTransform, InWidth, InHeight, InInterpolation, InBorder, InBorderValue);
+	return OaFnImage::WarpPerspective(*OaEngine::GetGlobal(), InImage, InTransform, InWidth, InHeight, InInterpolation, InBorder, InBorderValue);
 }

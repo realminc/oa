@@ -9,14 +9,9 @@ void BindCoreFnMatrix(nb::module_& m) {
     // OaFnMatrix core ops
     // ═════════════════════════════════════════════════════════════════════════
 
-    m.def("MatMulNt", [](const OaMatrix& a, const OaMatrix& b, OaContextMatMulPrecision precision) {
-        return matrix_ptr(OaFnMatrix::MatMulNt(a, b, precision));
-    }, nb::arg("a"), nb::arg("b"), nb::arg("precision") = OaContextMatMulPrecision::Auto, nb::rv_policy::take_ownership,
-      "Matrix multiplication: C = A @ B^T (weight convention). B is stored transposed as [N,K]. For standard A@B use Bmm.");
-
-    m.def("Add", [](const OaMatrix& a, const OaMatrix& b) {
-        return matrix_ptr(OaFnMatrix::Add(a, b));
-    }, nb::arg("a"), nb::arg("b"), nb::rv_policy::take_ownership);
+    // Schema-v2 operations. Signatures, argument names/defaults and docs are
+    // emitted from Tools/FnAutogen/Schema alongside their C++ contracts.
+#include "FnMatrixOps.gen.inl"
 
     m.def("Sub", [](const OaMatrix& a, const OaMatrix& b) {
         return matrix_ptr(OaFnMatrix::Sub(a, b));
@@ -29,18 +24,6 @@ void BindCoreFnMatrix(nb::module_& m) {
     m.def("Div", [](const OaMatrix& a, const OaMatrix& b) {
         return matrix_ptr(OaFnMatrix::Div(a, b));
     }, nb::arg("a"), nb::arg("b"), nb::rv_policy::take_ownership);
-
-    m.def("Sum", [](const OaMatrix& a, OaI32 dim) {
-        return matrix_ptr(OaFnMatrix::Sum(a, dim));
-    }, nb::arg("a"), nb::arg("dim") = -1, nb::rv_policy::take_ownership);
-
-    m.def("Mean", [](const OaMatrix& a, OaI32 dim) {
-        return matrix_ptr(OaFnMatrix::Mean(a, dim));
-    }, nb::arg("a"), nb::arg("dim") = -1, nb::rv_policy::take_ownership);
-
-    m.def("Max", [](const OaMatrix& a, OaI32 dim) {
-        return matrix_ptr(OaFnMatrix::Max(a, dim));
-    }, nb::arg("a"), nb::arg("dim") = -1, nb::rv_policy::take_ownership);
 
     m.def("Argmax", &OaFnMatrix::Argmax, nb::arg("a"), nb::arg("dim") = -1);
 
@@ -131,14 +114,6 @@ void BindCoreFnMatrix(nb::module_& m) {
     m.def("Pow", [](const OaMatrix& a, OaF32 exponent) {
         return matrix_ptr(OaFnMatrix::Pow(a, exponent));
     }, nb::arg("a"), nb::arg("exponent"), nb::rv_policy::take_ownership);
-
-    m.def("Softmax", [](const OaMatrix& a, OaI32 dim) {
-        return matrix_ptr(OaFnMatrix::Softmax(a, dim));
-    }, nb::arg("a"), nb::arg("dim") = -1, nb::rv_policy::take_ownership);
-
-    m.def("LogSoftmax", [](const OaMatrix& a, OaI32 dim) {
-        return matrix_ptr(OaFnMatrix::LogSoftmax(a, dim));
-    }, nb::arg("a"), nb::arg("dim") = -1, nb::rv_policy::take_ownership);
 
     m.def("Reshape", [](const OaMatrix& a, const std::vector<OaI64>& dims) {
         return matrix_ptr(OaFnMatrix::Reshape(a, shape_from_vector(dims)));

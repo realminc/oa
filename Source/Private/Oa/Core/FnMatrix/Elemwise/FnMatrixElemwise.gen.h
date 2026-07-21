@@ -4,6 +4,9 @@
 
 // OaFnMatrix — Elemwise overloads.
 
+	/// Add: Element-wise addition: Out = A + B.
+	[[nodiscard]] OaMatrix Add(const OaMatrix& InA, const OaMatrix& InB);
+
 	/// Scale: Scalar multiplication: Out = A * Scalar.
 	/// Context-based: auto y = OaFnMatrix::Scale(...);
 	/// Records operation to thread-local default context.

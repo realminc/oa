@@ -103,8 +103,8 @@ class OptimKernels : public ::testing::Test {
 protected:
 	// Pinned engine: default-constructed empty, initialized in place in SetUp.
 	// Rt_ is a stable reference so all test bodies use `Rt_.` / `&Rt_` unchanged.
-	OaUniquePtr<OaComputeEngine> RtStorage_ = OaMakeUniquePtr<OaComputeEngine>();
-	OaComputeEngine&             Rt_        = *RtStorage_;
+	OaUniquePtr<OaEngine> RtStorage_ = OaMakeUniquePtr<OaEngine>();
+	OaEngine&             Rt_        = *RtStorage_;
 	OaContext* SavedContext_ = nullptr;
 
 	void SetUp() override {

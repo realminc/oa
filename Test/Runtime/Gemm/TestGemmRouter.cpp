@@ -26,7 +26,7 @@ OaU64 HashString(const char* InText) {
 }
 
 OaRouteCacheKey MakeRawKey(
-	const OaComputeEngine& InRt,
+	const OaEngine& InRt,
 	OaU32 InM,
 	OaU32 InN,
 	OaU32 InK,
@@ -58,7 +58,7 @@ OaRouteCacheKey MakeRawKey(
 
 class ScopedRouteCache {
 public:
-	explicit ScopedRouteCache(OaComputeEngine& InRt)
+	explicit ScopedRouteCache(OaEngine& InRt)
 		: Rt_(InRt), Previous_(InRt.GemmRouteCache) {
 		Rt_.GemmRouteCache = &Local_;
 	}
@@ -66,7 +66,7 @@ public:
 	OaGemmRouteCache& Get() { return Local_; }
 
 private:
-	OaComputeEngine& Rt_;
+	OaEngine& Rt_;
 	OaGemmRouteCache* Previous_;
 	OaGemmRouteCache Local_;
 };
@@ -239,7 +239,7 @@ TEST(GemmRouteCache, AggregatedTimingMetadataRoundTrips) {
 
 TEST(GemmRouter, Fp32RejectsIllegalCachedBf16Winner) {
 	if (not OaVkTestEngineOk()) { GTEST_SKIP(); }
-	auto& rt = *OaComputeEngine::GetGlobal();
+	auto& rt = *OaEngine::GetGlobal();
 	ScopedRouteCache scoped(rt);
 	auto key = MakeRawKey(rt, 64, 64, 64, OaGemmPrecision::Fp32);
 	scoped.Get().Update(key, OaMatmulVariantIdFromName("GemmCmSgBf16"), 0.01F, 1);
@@ -251,7 +251,7 @@ TEST(GemmRouter, Fp32RejectsIllegalCachedBf16Winner) {
 
 TEST(GemmRouter, Fp32ReplaysLegalCachedWinner) {
 	if (not OaVkTestEngineOk()) { GTEST_SKIP(); }
-	auto& rt = *OaComputeEngine::GetGlobal();
+	auto& rt = *OaEngine::GetGlobal();
 	ScopedRouteCache scoped(rt);
 	auto key = MakeRawKey(rt, 64, 64, 64, OaGemmPrecision::Fp32);
 	scoped.Get().Update(key, OaMatmulVariantIdFromName("GemmNaive"), 0.01F, 1);
@@ -265,7 +265,7 @@ TEST(GemmRouter, Fp32ReplaysLegalCachedWinner) {
 
 TEST(GemmRouter, Fp32ShapeRoutesAreLegal) {
 	if (not OaVkTestEngineOk()) { GTEST_SKIP(); }
-	auto& rt = *OaComputeEngine::GetGlobal();
+	auto& rt = *OaEngine::GetGlobal();
 	ScopedRouteCache scoped(rt);
 
 	const auto tiny = OaGemmRouter::Select(rt, 1, 1, 1, OaGemmPrecision::Fp32);
@@ -281,7 +281,7 @@ TEST(GemmRouter, Fp32ShapeRoutesAreLegal) {
 
 TEST(GemmRouter, ImmutablePlanRejectsContractAndDeviceDrift) {
 	if (not OaVkTestEngineOk()) { GTEST_SKIP(); }
-	auto& rt = *OaComputeEngine::GetGlobal();
+	auto& rt = *OaEngine::GetGlobal();
 	ScopedRouteCache scoped(rt);
 	auto problem = OaGemmRouter::ProblemForRaw(
 		130, 193, 71,
@@ -313,9 +313,37 @@ TEST(GemmRouter, ImmutablePlanRejectsContractAndDeviceDrift) {
 	EXPECT_FALSE(OaGemmRouter::ValidatePlan(rt, wrongShader, problem));
 }
 
+TEST(GemmRouter, CanonicalLaunchDescribesCoopVecAbi) {
+	auto problem = OaGemmRouter::ProblemForRaw(
+		1, 37, 19,
+		OaStoragePrecision::Fp32, OaStoragePrecision::Fp32, true);
+	OaMatmulPlan validatedPlan{
+		.Variant = 1U,
+		.KernelName = "GemmCoopVec",
+		.Kernel = OaGemmKernel::CoopVec,
+		.Path = OaGemmPath::CoopVec,
+		.Grid = {.X = 2U, .Y = 1U, .Z = 1U},
+	};
+
+	auto described = OaGemmDispatch::DescribeValidatedPlan(validatedPlan, problem);
+	ASSERT_TRUE(described.IsOk());
+	const auto& launch = described.GetValue();
+	EXPECT_STREQ(launch.KernelName, validatedPlan.KernelName);
+	EXPECT_EQ(launch.BufferCount, 3U);
+	EXPECT_EQ(launch.BufferOrder[0], 1U);
+	EXPECT_EQ(launch.BufferOrder[1], 0U);
+	EXPECT_EQ(launch.BufferOrder[2], 2U);
+	EXPECT_EQ(launch.Grid.X, 2U);
+	ASSERT_EQ(launch.PushSize, 2U * sizeof(OaU32));
+	OaU32 push[2]{};
+	std::memcpy(push, launch.PushData, launch.PushSize);
+	EXPECT_EQ(push[0], problem.N);
+	EXPECT_EQ(push[1], problem.K);
+}
+
 TEST(GemmRouter, RawPlanPreservesLegacySelectionContract) {
 	if (not OaVkTestEngineOk()) { GTEST_SKIP(); }
-	auto& rt = *OaComputeEngine::GetGlobal();
+	auto& rt = *OaEngine::GetGlobal();
 	ScopedRouteCache scoped(rt);
 	const auto legacy = OaGemmRouter::Select(
 		rt, 64, 96, 32, OaGemmPrecision::Fp32);
@@ -337,7 +365,7 @@ TEST(GemmRouter, RawPlanPreservesLegacySelectionContract) {
 
 TEST(GemmRouter, PlanPreferenceCanBypassMeasuredCache) {
 	if (not OaVkTestEngineOk()) { GTEST_SKIP(); }
-	auto& rt = *OaComputeEngine::GetGlobal();
+	auto& rt = *OaEngine::GetGlobal();
 	ScopedRouteCache scoped(rt);
 	auto problem = OaGemmRouter::ProblemForRaw(
 		64, 64, 64,
@@ -359,7 +387,7 @@ TEST(GemmRouter, PlanPreferenceCanBypassMeasuredCache) {
 
 TEST(GemmRouter, GeneratedVariantHonorsDeviceLaunchLimits) {
 	if (not OaVkTestEngineOk()) { GTEST_SKIP(); }
-	auto& rt = *OaComputeEngine::GetGlobal();
+	auto& rt = *OaEngine::GetGlobal();
 	auto& hw = rt.Device.Info.Hardware;
 	const OaU32 savedShared = hw.MaxComputeSharedMemoryBytes;
 	const OaU32 savedInvocations = hw.MaxComputeWorkGroupInvocations;
@@ -396,7 +424,7 @@ TEST(GemmRouter, GeneratedVariantHonorsDeviceLaunchLimits) {
 
 TEST(GemmRouter, FusedFp32RoutesPreserveExactEpilogue) {
 	if (not OaVkTestEngineOk()) { GTEST_SKIP(); }
-	auto& rt = *OaComputeEngine::GetGlobal();
+	auto& rt = *OaEngine::GetGlobal();
 	ScopedRouteCache scoped(rt);
 	auto problem = OaGemmRouter::ProblemForRaw(
 		64, 64, 64,
@@ -423,7 +451,7 @@ TEST(GemmRouter, FusedFp32RoutesPreserveExactEpilogue) {
 
 TEST(GemmRouter, RejectsCachedWinnerFromDifferentEpilogue) {
 	if (not OaVkTestEngineOk()) { GTEST_SKIP(); }
-	auto& rt = *OaComputeEngine::GetGlobal();
+	auto& rt = *OaEngine::GetGlobal();
 	ScopedRouteCache scoped(rt);
 	auto key = MakeRawKey(rt, 64, 64, 64, OaGemmPrecision::Fp32);
 	key.Epilogue = OaGemmEpilogue::BiasRelu;
@@ -473,7 +501,7 @@ TEST(GemmRouter, GeneratedTiledVariantsMatchCpuOnIrregularTails) {
 			continue;
 		}
 		OaGemmRouter::ForceVariant(M, N, K, variant.Id);
-		auto c = OaFnMatrix::MatMulNt(a, b, OaContextMatMulPrecision::Fp32);
+		auto c = OaFnMatrix::MatMulNt(a, b, OaMatMulPrecision::Fp32);
 		OaGemmRouter::ClearForced();
 
 		std::vector<OaF32> got(M * N);
@@ -587,7 +615,7 @@ TEST(GemmRouter, ArbitraryRowAndColumnStridesMatchCpu) {
 	const OaI32 permutation[] = {1, 0};
 	auto a = aBase.Permute(OaSpan<const OaI32>(permutation)); // [4,3], strides [1,4]
 	auto b = bBase.Permute(OaSpan<const OaI32>(permutation)); // [2,3], strides [1,2]
-	auto c = OaFnMatrix::MatMulNt(a, b, OaContextMatMulPrecision::Fp32);
+	auto c = OaFnMatrix::MatMulNt(a, b, OaMatMulPrecision::Fp32);
 
 	std::vector<OaF32> got(8);
 	ASSERT_TRUE(OaFnMatrix::CopyToHost(c, got.data(), got.size() * sizeof(OaF32)).IsOk());
@@ -597,7 +625,7 @@ TEST(GemmRouter, ArbitraryRowAndColumnStridesMatchCpu) {
 
 TEST(GemmRouter, StridedBatchPlanMatchesCpu) {
 	if (not OaVkTestEngineOk()) { GTEST_SKIP(); }
-	auto& rt = *OaComputeEngine::GetGlobal();
+	auto& rt = *OaEngine::GetGlobal();
 	const std::vector<OaF32> aData = {
 		1, 2, 3, 4, 5, 6,
 		2, 0, 1, 1, 3, 2,

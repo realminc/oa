@@ -1,7 +1,7 @@
 // OaPlot::Figure — top-level container for a grid of OaPlot::Axes.
 //
 // Two terminal sinks (Architecture/OaArchitecture.md §10):
-//   Show()    — opens an interactive OaDeviceUiApp window, blocks until the
+//   Show()    — opens the OaViewer application, blocks until the
 //               user closes it. Re-renders every frame from the recorded
 //               commands so the same figure can be reused on resize.
 //   SaveFig() — replays image, line and heatmap commands into a fixed-size PNG.
@@ -14,8 +14,8 @@
 #include <Oa/Core/Color.h>    // OaColor
 #include <Oa/Ui/Plot/Axes.h>
 
-class OaDeviceUi;
 class OaUi;
+class OaContext;
 
 namespace OaPlot {
 
@@ -59,8 +59,10 @@ public:
 	// user closes the window or the run loop exits.
 	[[nodiscard]] OaStatus Show();
 
-	// Headless render → PNG. The output is sized to (Width, Height) and includes
-	// images, line plots and heatmaps. Text glyphs are currently omitted.
+	// Headless render → PNG. The context overload completes pending producers
+	// before readback; the compatibility overload uses the matching global/default
+	// context. Output includes images, line plots and heatmaps; text is omitted.
+	[[nodiscard]] OaStatus SaveFig(OaContext& InContext, const char* InPath);
 	[[nodiscard]] OaStatus SaveFig(const char* InPath);
 
 	// ── Layout query (used by impl + tutorials) ──────────────────────────
@@ -86,7 +88,8 @@ public:
 	// letterboxed inside the window, so window resize never affects cell
 	// proportions. Call this from your OnInit after the engine is up and
 	// after axes have been populated.
-	void Rasterize(class OaComputeEngine& InRt);
+	[[nodiscard]] OaStatus Rasterize(OaContext& InContext);
+	void Rasterize(class OaEngine& InRt);
 
 	// The rasterized canvas. Valid after Rasterize(). Use BindlessIndex() +
 	// (Width, Height) to draw the figure as a single OaUi::Image.
@@ -96,13 +99,20 @@ public:
 	// been called, displays the canvas as a single textured panel letterboxed
 	// in the window. Otherwise replays Axes commands as OaUi widgets (legacy
 	// path; cell proportions follow the window).
-	void RenderFrame(::OaDeviceUi& InGpui, ::OaUi& InOui);
+	void RenderFrame(OaU32 InWidth, OaU32 InHeight, ::OaUi& InOui);
 
 private:
 	// Paint the figure into Impl_->Framebuffer_ (CPU-side, fixed size =
 	// Config_.Width × Config_.Height). Used by both Rasterize (which then
 	// uploads to Canvas_) and SaveFig (which writes PNG directly).
-	[[nodiscard]] OaStatus CompositeFramebuffer(class OaComputeEngine& InRt);
+	[[nodiscard]] OaStatus CompositeFramebuffer(class OaEngine& InRt);
+	[[nodiscard]] OaStatus SaveFigReady(
+		class OaEngine& InRt,
+		const char* InPath);
+	[[nodiscard]] OaStatus RasterizeReady(class OaEngine& InRt);
+	[[nodiscard]] OaStatus ValidateImageSources(
+		class OaEngine& InRt,
+		OaBool& OutNeedsCompletion) const;
 
 	struct Impl;
 	OaUniquePtr<Impl> Impl_;

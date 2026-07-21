@@ -17,7 +17,7 @@ void MlSpvInit() {
 	OaSpvRegisterProvider(MlSpvFind);
 }
 
-void MlAddShaderSearchPaths(OaComputeEngine& InRt) {
+void MlAddShaderSearchPaths(OaEngine& InRt) {
 	// CMake can inject the exact build-directory path at configure time.
 #ifdef ML_OA_SPIRV_BUILD_DIR
 	InRt.AddShaderSearchPath(ML_OA_SPIRV_BUILD_DIR);

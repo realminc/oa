@@ -7,16 +7,16 @@
 #include <Oa/Runtime/Context.h>
 #include <vector>
 
-static OaComputeEngine* GRt = nullptr;
+static OaEngine* GRt = nullptr;
 
 class TestTopKBug : public ::testing::Test {
 protected:
 	static void SetUpTestSuite() {
 		OaEngineConfig cfg{};
 		cfg.AppName = "TestTopKBug";
-		auto r = OaComputeEngine::Create(cfg);
+		auto r = OaEngine::Create(cfg);
 		ASSERT_TRUE(r.IsOk()) << r.GetStatus().GetMessage();
-		static OaUniquePtr<OaComputeEngine> rt = std::move(*r);
+		static OaUniquePtr<OaEngine> rt = std::move(*r);
 		GRt = rt.get();
 	}
 };
@@ -41,7 +41,7 @@ TEST_VK(TestTopKBug, TopK_MinimalCrash) {
 	// Input: [3, 1, 4, 1, 5] - find top 2
 	std::vector<float> input_data = {3.0f, 1.0f, 4.0f, 1.0f, 5.0f};
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto input = CreateFromHost(input_data, OaMatrixShape{5});
 	
 	// This line crashes with SIGSEGV
@@ -61,7 +61,7 @@ TEST_VK(TestTopKBug, TopK_DifferentDim) {
 	// Try with explicit dim=-1 (last dimension)
 	std::vector<float> input_data = {3.0f, 1.0f, 4.0f, 1.0f, 5.0f};
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto input = CreateFromHost(input_data, OaMatrixShape{5});
 	
 	auto result = OaFnMatrix::TopK(input, 2, -1);
@@ -76,7 +76,7 @@ TEST_VK(TestTopKBug, TopK_2DInput) {
 		5.0f, 2.0f, 6.0f
 	};
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto input = CreateFromHost(input_data, OaMatrixShape{2, 3});
 	
 	// Find top-2 along last dimension
@@ -91,7 +91,7 @@ TEST_VK(TestTopKBug, TopK_K1) {
 	// Try with k=1 (simplest case)
 	std::vector<float> input_data = {3.0f, 1.0f, 4.0f};
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	auto input = CreateFromHost(input_data, OaMatrixShape{3});
 	
 	auto result = OaFnMatrix::TopK(input, 1, 0);

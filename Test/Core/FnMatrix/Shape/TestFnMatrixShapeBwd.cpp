@@ -40,7 +40,7 @@ TEST_F(ShapeBwd, ConcatBwdDim0) {
 	auto a = CreateMatrixFromHost(a_data, OaMatrixShape{2, 2});
 	auto b = CreateMatrixFromHost(b_data, OaMatrixShape{2, 2});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	a.RequiresGrad_(true);
 	b.RequiresGrad_(true);
 	
@@ -70,7 +70,7 @@ TEST_F(ShapeBwd, ConcatBwdDim1) {
 	auto a = CreateMatrixFromHost(a_data, OaMatrixShape{2, 2});
 	auto b = CreateMatrixFromHost(b_data, OaMatrixShape{2, 2});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	a.RequiresGrad_(true);
 	b.RequiresGrad_(true);
 	
@@ -101,7 +101,7 @@ TEST_F(ShapeBwd, ConcatBwdMultipleInputs) {
 	auto b = CreateMatrixFromHost(b_data, OaMatrixShape{2});
 	auto c = CreateMatrixFromHost(c_data, OaMatrixShape{2});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	a.RequiresGrad_(true);
 	b.RequiresGrad_(true);
 	c.RequiresGrad_(true);
@@ -140,7 +140,7 @@ TEST_F(ShapeBwd, ConcatBwdDifferentSizes) {
 	auto a = CreateMatrixFromHost(a_data, OaMatrixShape{2});
 	auto b = CreateMatrixFromHost(b_data, OaMatrixShape{4});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	a.RequiresGrad_(true);
 	b.RequiresGrad_(true);
 	
@@ -170,7 +170,7 @@ TEST_F(ShapeBwd, SliceBwdBasic) {
 	
 	auto x = CreateMatrixFromHost(x_data, OaMatrixShape{6});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	x.RequiresGrad_(true);
 	
 	// Slice [1:4] from [6] -> [3]
@@ -202,7 +202,7 @@ TEST_F(ShapeBwd, SliceBwd2D) {
 	
 	auto x = CreateMatrixFromHost(x_data, OaMatrixShape{3, 3});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	x.RequiresGrad_(true);
 	
 	// Slice rows [0:2] from [3,3] -> [2,3]
@@ -234,7 +234,7 @@ TEST_F(ShapeBwd, SliceBwdMiddle) {
 	
 	auto x = CreateMatrixFromHost(x_data, OaMatrixShape{5});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	x.RequiresGrad_(true);
 	
 	// Slice [1:4] from [5] -> [3]
@@ -261,7 +261,7 @@ TEST_F(ShapeBwd, SliceBwdFullRange) {
 	
 	auto x = CreateMatrixFromHost(x_data, OaMatrixShape{4});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	x.RequiresGrad_(true);
 	
 	// Slice [0:4] from [4] -> [4] (full range)
@@ -289,7 +289,7 @@ TEST_F(ShapeBwd, ConcatSliceRoundTrip) {
 	auto a = CreateMatrixFromHost(a_data, OaMatrixShape{2});
 	auto b = CreateMatrixFromHost(b_data, OaMatrixShape{2});
 	
-	OaContext::Scope ctx_scope(OaContext::GetDefault());
+	OaContext::RecordingScope ctx_scope(OaContext::GetDefault());
 	a.RequiresGrad_(true);
 	b.RequiresGrad_(true);
 	

@@ -4,7 +4,7 @@
 
 #include <Oa/Core/FnMatrix.h>
 #include <Oa/Ml/Nn.h>
-#include <Oa/Ml/Autograd.h>
+#include <Oa/Ml/Autograd/Nodes.h>
 
 #if __has_include(<nvtx3/nvToolsExt.h>)
 #include <nvtx3/nvToolsExt.h>

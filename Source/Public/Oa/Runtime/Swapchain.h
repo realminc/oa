@@ -6,23 +6,22 @@
 //   SaveImage   — filesystem
 //   EncodeFrame — video encoder
 //
-// Lifecycle is owned by OaGraphicsEngine. Engine-internal Build/Destroy
+// Lifecycle is owned by OaPresenter. Engine-internal Build/Destroy
 // methods write into the held OaSwapchain; external callers read via
-// OaGraphicsEngine::Swapchain(). Headless-mode engines never instantiate
+// OaPresenter::Swapchain(). Headless-mode engines never instantiate
 // one.
 //
 // State sequence:
 //   default construction       → zero-state (Handle == VK_NULL_HANDLE)
-//   engine.InitPresentation()  → swapchain objects + per-frame sync built;
+//   presenter.InitPresentation()  → swapchain objects + per-frame sync built;
 //                                PresentReady = true
-//   engine.DetachPresentation()→ torn back down; zero-state again
-//   engine destructor          → torn down if still attached
+//   presenter.DetachPresentation()→ torn back down; zero-state again
+//   presenter destructor          → unsubmitted work cancelled; submitted
+//                                work and attached WSI state retired by engine
 //
 // This separate type untangles
 // presentation state from the engine's core compute/graphics queues and
-// caches. The compatibility OaContext record APIs (RecordAcquire /
-// RecordPresent) consume an OaSwapchain& until presentation is extracted into
-// the composed service defined by the canonical migration plan.
+// caches. OaPresenter owns the acquire/present protocol as a composed service.
 
 #pragma once
 
@@ -39,9 +38,11 @@ struct OaSwapchain {
 	static constexpr int kFramesInFlight = 2;
 
 	// ─── WSI handles ─────────────────────────────────────────────────────────
-	// Surface is OWNED BY THE CALLER (typically OaVkWindow / SDL3). The engine
-	// references it during the lifetime of the swapchain and clears the pointer
-	// on DetachPresentation; it never destroys the surface.
+	// Surface is normally OWNED BY THE CALLER (typically OaVkWindow / SDL3). The
+	// engine references it during the swapchain lifetime and clears the pointer
+	// on explicit Close/Detach. If an attached presenter is abandoned, ownership
+	// transfers to engine retirement so the surface outlives the swapchain and is
+	// destroyed before the VkInstance; the caller must not destroy it afterward.
 	void*                     Surface       = nullptr;
 	VkSwapchainKHR            Handle        = VK_NULL_HANDLE;
 	VkFormat                  Format        = VK_FORMAT_UNDEFINED;
@@ -57,6 +58,14 @@ struct OaSwapchain {
 	std::vector<VkSemaphore>  ImageAvailSem;
 	std::vector<VkSemaphore>  RenderDoneSem;
 	std::vector<VkFence>      InFlightFence;
+	// Optional VK_KHR/EXT_swapchain_maintenance1 fences. Unlike InFlightFence,
+	// these retire presentation-engine access to the swapchain image and the
+	// RenderDone semaphore. Pending tracks fences currently owned by a present.
+	std::vector<VkFence>      PresentFence;
+	std::vector<bool>         PresentFencePending;
+	// A failed vkQueuePresentKHR may leave completion ownership ambiguous. The
+	// rare recovery path falls back to a queue drain before destroying WSI state.
+	bool                      PresentCompletionUncertain = false;
 
 	// ─── Pending resize signal ───────────────────────────────────────────────
 	// Set from the SDL window event handler (main thread). Consumed at the top
@@ -67,7 +76,7 @@ struct OaSwapchain {
 
 	// When true (default), BuildSwapchainObjects picks VK_PRESENT_MODE_FIFO_KHR
 	// (vsync — one frame per refresh). When false, prefer MAILBOX, falling back
-	// to IMMEDIATE, then FIFO. Set via OaUiConfig.Vsync before Init/Recreate.
+	// to IMMEDIATE, then FIFO. Set by the presenter owner before Init/Recreate.
 	bool                      Vsync         = true;
 
 	// ─── Convenience accessors ───────────────────────────────────────────────

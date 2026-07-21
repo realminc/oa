@@ -8,7 +8,7 @@
 #include <Oa/Core/Status.h>
 #include <Oa/Core/Std.h>
 
-class OaComputeEngine;
+class OaEngine;
 class OaVkBuffer;
 
 // ============================================================================
@@ -27,7 +27,7 @@ public:
 	// Create one device-local destination with two persistent upload frames.
 	// InBufferSize: destination capacity (typically batch size x element size).
 	static OaResult<OaPrefetchPipeline> Create(
-		OaComputeEngine &InRt,
+		OaEngine &InRt,
 		OaU64 InBufferSize);
 
 	// Copy CPU data into the next persistent mapped upload frame.
@@ -43,8 +43,9 @@ public:
 	// Retained for source compatibility. Frame rotation is automatic.
 	void Swap();
 
-	// Cleanup
-	void Destroy(OaComputeEngine &InRt);
+	// Explicit host completion and cleanup boundary. Destruction cancels an
+	// unsubmitted BeginCopy without submitting or waiting.
+	void Destroy(OaEngine &InRt);
 
 	// Query state
 	bool IsBusy() const;
@@ -52,5 +53,6 @@ public:
 
 private:
 	struct Impl;
+	void Abandon_() noexcept;
 	OaUniquePtr<Impl> Impl_;
 };

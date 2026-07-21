@@ -79,7 +79,7 @@ static OaMatrix MakeInput(OaI32 B, OaI32 S, OaI32 InInput) {
 TEST(GruScan, ForwardShapeAndFinite) {
 	ForceFp32Gemm();
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	constexpr OaI32 B = 3, S = 5, In = 7, H = 6;
 
 	auto gru = MakeGru(In, H);
@@ -96,7 +96,7 @@ TEST(GruScan, ForwardShapeAndFinite) {
 TEST(GruScan, WeightHhNumericalGradcheck) {
 	ForceFp32Gemm();
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	constexpr OaI32 B = 2, S = 4, In = 5, H = 4;
 
 	auto gru = MakeGru(In, H);

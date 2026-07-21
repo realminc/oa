@@ -1813,11 +1813,11 @@ struct TrainAlmApp : OaComputeApp {
 	}
 
 	void Shutdown() override {
-		// Release GPU-holding members before the engine is destroyed.
-		// OaComputeApp::Main destroys Rt after Shutdown returns; if these
+		// Release GPU-holding members before the explicit engine close.
+		// OaComputeApp::Main closes Rt after Shutdown returns; if these
 		// smart pointers are still alive when the app struct is destroyed
-		// (after Main), their destructors try to free GPU resources with
-		// no engine — segfault.
+		// (after Main), their destructors would otherwise observe an engine
+		// whose Vulkan resources have already been released.
 		TokSchedCb_.Reset();
 		LmSchedCb_.Reset();
 		TokSched_.Reset();

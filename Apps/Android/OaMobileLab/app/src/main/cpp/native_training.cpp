@@ -461,7 +461,7 @@ static std::string OaMobileRunTraining(
 	config.PipelineCacheDir = OaString((InCacheDirectory + "/oa-vk").c_str());
 	config.AppName = "OaMobileLab";
 
-	auto engineResult = OaComputeEngine::Create(config);
+	auto engineResult = OaEngine::Create(config);
 	if (not engineResult.IsOk()) {
 		OaMobileFail("OA engine creation failed: " +
 			std::string(engineResult.GetStatus().ToString().c_str()));

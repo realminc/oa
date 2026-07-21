@@ -34,7 +34,7 @@ struct Candidate {
 // Collect candidates for one exact production contract whose caps are
 // satisfied on the current device.
 static OaVec<Candidate> CollectCandidates(
-	const OaComputeEngine& InRt,
+	const OaEngine& InRt,
 	const OaMatmulProblem& InProblem)
 {
 	OaVec<Candidate> candidates;
@@ -58,7 +58,7 @@ static OaVec<Candidate> CollectCandidates(
 //
 // Returns average GPU execution time per iteration (ms).
 static OaF32 BenchmarkCandidate(
-	OaComputeEngine& InRt,
+	OaEngine& InRt,
 	const OaMatmulProblem& InProblem,
 	OaMatmulVariantId InVariant,
 	OaU32 InWarmIterations,
@@ -76,7 +76,7 @@ static OaF32 BenchmarkCandidate(
 	OaContext::SetDefault(ctx);
 
 	// Force the router to pick this specific kernel for the shape.
-	// OaFnMatrix::MatMulNt -> OaContext::AddMatMul -> OaGemmRouter::Select
+	// OaFnMatrix::MatMulNt -> OaGemmGraphLowering -> OaGemmRouter::Plan
 	// will see the ForceKernel entry and route accordingly.
 	OaGemmRouter::ForceVariant(InProblem.M, InProblem.N, InProblem.K, InVariant);
 
@@ -105,11 +105,16 @@ static OaF32 BenchmarkCandidate(
 		return kInvalidMeasurementMs;
 	}
 
-	// Warmup: let the pipeline and clocks settle. ExecuteAsync submits the exact
-	// production graph path but does not contaminate the measured samples.
+	auto submitAndWait = [&](OaGpuTimer* InTimer = nullptr) {
+		auto submitted = ctx->Submit(InTimer);
+		return submitted.IsOk() and ctx->Wait(submitted.GetValue()).IsOk();
+	};
+
+	// Warmup: let the pipeline and clocks settle. The explicit completion wait
+	// is outside the GPU timestamp interval and does not contaminate samples.
 	for (OaU32 i = 0; i < InWarmIterations; ++i) {
 		OaMatrix c = run();
-		if (not ctx->ExecuteAsync().IsOk()) {
+		if (not submitAndWait()) {
 			timer.Destroy(InRt.Device);
 			OaGemmRouter::ClearForced();
 			OaContext::SetDefault(previousCtx);
@@ -124,7 +129,7 @@ static OaF32 BenchmarkCandidate(
 	bool timingValid = true;
 	for (OaU32 i = 0; i < InBenchIterations; ++i) {
 		OaMatrix c = run();
-		if (not ctx->ExecuteAsync(&timer).IsOk()) {
+		if (not submitAndWait(&timer)) {
 			timingValid = false;
 			break;
 		}
@@ -179,12 +184,12 @@ OaSpan<const OaGemmTunerShape> OaGemmTuner::GetDefaultShapes() {
 	return OaSpan<const OaGemmTunerShape>(kDefaultShapes, sizeof(kDefaultShapes) / sizeof(kDefaultShapes[0]));
 }
 
-OaString OaGemmTuner::GetCachePath(const OaComputeEngine& InRt) {
+OaString OaGemmTuner::GetCachePath(const OaEngine& InRt) {
 	(void)InRt;
 	return OaString(OaGemmRouteCache::DefaultPath);
 }
 
-OaStatus OaGemmTuner::LoadCache(OaComputeEngine& InRt) {
+OaStatus OaGemmTuner::LoadCache(OaEngine& InRt) {
 	if (InRt.GemmRouteCache == nullptr) {
 		return OaStatus::Error(OaStatusCode::FailedPrecondition,
 			"OaGemmTuner: route cache is not initialized");
@@ -201,7 +206,7 @@ OaStatus OaGemmTuner::LoadCache(OaComputeEngine& InRt) {
 	return OaStatus::Ok(); // Missing or stale cache is not an error.
 }
 
-OaStatus OaGemmTuner::SaveCache(const OaComputeEngine& InRt) {
+OaStatus OaGemmTuner::SaveCache(const OaEngine& InRt) {
 	if (InRt.GemmRouteCache == nullptr) {
 		return OaStatus::Error(OaStatusCode::FailedPrecondition,
 			"OaGemmTuner: route cache is not initialized");
@@ -215,7 +220,7 @@ OaStatus OaGemmTuner::SaveCache(const OaComputeEngine& InRt) {
 }
 
 OaStatus OaGemmTuner::BenchmarkShape(
-	OaComputeEngine& InRt,
+	OaEngine& InRt,
 	const OaGemmTunerShape& InShape,
 	OaU32 InWarmIterations,
 	OaU32 InBenchIterations,
@@ -362,7 +367,7 @@ OaStatus OaGemmTuner::BenchmarkShape(
 }
 
 OaStatus OaGemmTuner::Run(
-	OaComputeEngine& InRt,
+	OaEngine& InRt,
 	OaU32 InWarmIterations,
 	OaU32 InBenchIterations)
 {

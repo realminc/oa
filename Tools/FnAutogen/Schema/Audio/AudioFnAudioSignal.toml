@@ -2,7 +2,7 @@
 #
 # This is the *source of truth* for audio signal processing operations.
 # The generator emits .h declarations, .cpp implementations, and .slang shaders.
-# See Tools/OaFnAutogen/oafnautogen.py and Docs/Rewrite/ThisIsTheKey/OaFnAutogen.md.
+# See Tools/FnAutogen/README.md and Tools/FnAutogen/oafnautogen.py.
 #
 # Simple audio DSP operations that follow standard kernel dispatch pattern.
 # Complex operations (STFT, Mel, etc.) remain hand-written in FnAudio.cpp.

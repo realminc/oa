@@ -60,9 +60,9 @@ void OaOptimizerComposite::ZeroGrad() {
 	}
 }
 
-void OaOptimizerComposite::SaveTo(OamModel& OutOam) const {
-	OaAdamW* adam = nullptr;
-	OaMuon* muon = nullptr;
+OaStatus OaOptimizerComposite::SaveTo(OamModel& OutOam) const {
+	const OaAdamW* adam = nullptr;
+	const OaMuon* muon = nullptr;
 	for (const auto& child : Children_) {
 		if (!adam) adam = dynamic_cast<OaAdamW*>(child.get());
 		if (!muon) muon = dynamic_cast<OaMuon*>(child.get());
@@ -70,16 +70,18 @@ void OaOptimizerComposite::SaveTo(OamModel& OutOam) const {
 
 	if (!adam || !muon) {
 		if (Children_.Size() == 1 && Children_[0]) {
-			Children_[0]->SaveTo(OutOam);
+			return Children_[0]->SaveTo(OutOam);
 		}
-		return;
+		return OaStatus::Error(OaStatusCode::FailedPrecondition,
+			"composite checkpoint persistence requires one child or a Muon+AdamW pair");
 	}
 
 	OamModel adamPart;
 	OamModel muonPart;
-	adam->SaveTo(adamPart);
-	muon->SaveTo(muonPart);
+	OA_RETURN_IF_ERROR(adam->SaveTo(adamPart));
+	OA_RETURN_IF_ERROR(muon->SaveTo(muonPart));
 
+	OutOam.OptimizerPresent = true;
 	OutOam.Optimizer = adamPart.Optimizer;
 	std::strncpy(OutOam.Optimizer.Type, "MuonAdamW", sizeof(OutOam.Optimizer.Type) - 1);
 	OutOam.Optimizer.Beta1 = muonPart.Optimizer.Beta1;
@@ -90,17 +92,52 @@ void OaOptimizerComposite::SaveTo(OamModel& OutOam) const {
 	OutOam.AdamV = std::move(adamPart.AdamV);
 	OutOam.MuonM = std::move(muonPart.AdamM);
 	OamSetMuonNumParams(OutOam.Optimizer, OutOam.MuonM.Size());
+	return OaStatus::Ok();
 }
 
-void OaOptimizerComposite::LoadFrom(const OamModel& InOam) {
+OaStatus OaOptimizerComposite::ValidateLoad(const OamModel& InOam) const {
 	if (!OamIsMuonAdamWType(InOam.Optimizer)) {
-		OA_LOG_WARN(OaLogComponent::ML,
-			"OaOptimizerComposite::LoadFrom: expected MuonAdamW checkpoint, got '%s'",
-			InOam.Optimizer.Type);
 		if (Children_.Size() == 1 && Children_[0]) {
-			Children_[0]->LoadFrom(InOam);
+			return Children_[0]->ValidateLoad(InOam);
 		}
-		return;
+		return OaStatus::Error(OaStatusCode::FailedPrecondition,
+			"composite optimizer checkpoint is not MuonAdamW");
+	}
+
+	const OaAdamW* adam = nullptr;
+	const OaMuon* muon = nullptr;
+	for (const auto& child : Children_) {
+		if (!adam) adam = dynamic_cast<const OaAdamW*>(child.get());
+		if (!muon) muon = dynamic_cast<const OaMuon*>(child.get());
+	}
+	if (!adam || !muon) {
+		return OaStatus::Error(OaStatusCode::FailedPrecondition,
+			"MuonAdamW restore requires Muon and AdamW children");
+	}
+
+	OamModel adamPart = InOam;
+	adamPart.OptimizerPresent = true;
+	std::memset(adamPart.Optimizer.Type, 0, sizeof(adamPart.Optimizer.Type));
+	std::strncpy(adamPart.Optimizer.Type, "AdamW",
+		sizeof(adamPart.Optimizer.Type) - 1);
+
+	OamModel muonPart;
+	muonPart.OptimizerPresent = true;
+	muonPart.Optimizer = InOam.Optimizer;
+	std::memset(muonPart.Optimizer.Type, 0, sizeof(muonPart.Optimizer.Type));
+	std::strncpy(muonPart.Optimizer.Type, "Muon", sizeof(muonPart.Optimizer.Type) - 1);
+	muonPart.Optimizer.Lr = InOam.Optimizer.Beta2;
+	muonPart.Optimizer.Beta1 = InOam.Optimizer.Beta1;
+	muonPart.Optimizer.NumParams = OamGetMuonNumParams(InOam.Optimizer);
+	muonPart.AdamM = InOam.MuonM;
+	OA_RETURN_IF_ERROR(adam->ValidateLoad(adamPart));
+	return muon->ValidateLoad(muonPart);
+}
+
+OaStatus OaOptimizerComposite::LoadFrom(const OamModel& InOam) {
+	OA_RETURN_IF_ERROR(ValidateLoad(InOam));
+	if (!OamIsMuonAdamWType(InOam.Optimizer)) {
+		return Children_[0]->LoadFrom(InOam);
 	}
 
 	Lr_ = InOam.Optimizer.Lr;
@@ -114,22 +151,25 @@ void OaOptimizerComposite::LoadFrom(const OamModel& InOam) {
 		if (!adam) adam = dynamic_cast<OaAdamW*>(child.get());
 		if (!muon) muon = dynamic_cast<OaMuon*>(child.get());
 	}
-	if (!adam || !muon) {
-		OA_LOG_ERROR(OaLogComponent::ML,
-			"OaOptimizerComposite::LoadFrom: need Muon+AdamW children");
-		return;
-	}
 
-	adam->LoadFrom(InOam);
+	OamModel adamPart = InOam;
+	adamPart.OptimizerPresent = true;
+	std::memset(adamPart.Optimizer.Type, 0, sizeof(adamPart.Optimizer.Type));
+	std::strncpy(adamPart.Optimizer.Type, "AdamW",
+		sizeof(adamPart.Optimizer.Type) - 1);
+	OA_RETURN_IF_ERROR(adam->LoadFrom(adamPart));
 
 	OamModel muonPart;
+	muonPart.OptimizerPresent = true;
 	muonPart.Optimizer = InOam.Optimizer;
+	std::memset(muonPart.Optimizer.Type, 0, sizeof(muonPart.Optimizer.Type));
 	std::strncpy(muonPart.Optimizer.Type, "Muon", sizeof(muonPart.Optimizer.Type) - 1);
 	muonPart.Optimizer.Lr = InOam.Optimizer.Beta2;
 	muonPart.Optimizer.Beta1 = InOam.Optimizer.Beta1;
 	muonPart.Optimizer.NumParams = OamGetMuonNumParams(InOam.Optimizer);
 	muonPart.AdamM = InOam.MuonM;
-	muon->LoadFrom(muonPart);
+	OA_RETURN_IF_ERROR(muon->LoadFrom(muonPart));
 
 	InitDualLr(BaseMuonLr_, BaseAdamWLr_);
+	return OaStatus::Ok();
 }

@@ -33,7 +33,7 @@ struct HeatmapStyle {
 class Axes {
 public:
 	// Image grid call. The texture is blitted into this axes subregion through
-	// OaContext::RecordBlit (cross-format vkCmdBlitImage when needed).
+	// OaFnTexture::Blit (cross-format image blits when implemented).
 	void Imshow(const OaTexture& InTex);
 
 	// Line plot of N values (y[i] vs i). Supported by both sinks.

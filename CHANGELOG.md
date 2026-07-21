@@ -4,6 +4,30 @@ All notable changes to OA are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is the single
 `VERSION` file at the repo root (read by CMake, `OaVersion()`, and the Python package).
 
+## [Unreleased] — 2026-07-21 source refresh
+
+### Changed
+- Public `main` now carries the verified private `v0.6.101` architecture-convergence
+  checkpoint: explicit execution/session ownership, immutable executable plans,
+  deterministic semantic-to-executable provenance, broader schema-owned operations,
+  engine-composed presentation, and removal of obsolete compatibility surfaces.
+- Release-facing Build Week documents no longer link to private engineering paths, and
+  the controlled architecture-rewrite NLP comparison is published with its thermal,
+  estimator, correctness, and provenance limits intact.
+
+### Verification
+- The private checkpoint completed a clean 734-step Release build, all 15 NLP target
+  builds, the Core MatMul oracle, architecture and diagnostic checks, generated-source
+  drift checks, and 240/240 controlled NLP training/evaluation/generation/checkpoint
+  processes.
+- The comparison retains five performance flags and names the two repeatable regressions;
+  it does not claim an aggregate framework speedup.
+
+### Preview boundaries
+- This `0.7.6-dev` source and documentation refresh is not a new binary, wheel, tag, or
+  PyPI release. Installable artifacts remain the immutable `v0.7.5` preview.
+- The unfinished Lunar Lander 3D experiment is not part of this public checkpoint.
+
 ## [0.7.5] — 2026-07-18 (OpenAI Build Week preview)
 
 ### Added

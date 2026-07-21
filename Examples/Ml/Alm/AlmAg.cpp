@@ -317,7 +317,7 @@ void ConvPerfImpl(const char* InTag, OaI32 inC, OaI32 outC, OaI32 K, OaI32 S, Oa
 }
 }
 TEST(Alm, Conv1dGemmPerf) {
-	const char* prec = (OaComputeEngine::GetGlobal() && OaComputeEngine::GetGlobal()->GetPrecision() == OaPrecision::BF16) ? "BF16" : "FP32";
+	const char* prec = (OaEngine::GetGlobal() && OaEngine::GetGlobal()->GetPrecision() == OaPrecision::BF16) ? "BF16" : "FP32";
 	std::printf("[perf] engine precision = %s\n", prec);
 	ConvPerfImpl("W384-K3", 384, 384, 3, 1, 1);   // res-block workhorse (x12 fwd)
 	ConvPerfImpl("W384-K4S2", 384, 384, 4, 2, 1); // strided down-conv (per stage)
@@ -1389,7 +1389,7 @@ TEST(Alm, BundleRoundtrip) {
 // full-scale model + autograd tape exhausts host memory and OOMs the box, and a throughput
 // figure from hardware that can't hold the model is meaningless anyway. Skip there.
 static bool OaBenchNeedsDiscreteGpu() {
-	auto* rt = OaComputeEngine::GetGlobal();
+	auto* rt = OaEngine::GetGlobal();
 	if (rt == nullptr) return true;   // no engine → nothing to benchmark
 	const OaDeviceType dt = rt->Device.Info.Hardware.DeviceType;
 	return dt == OaDeviceType::VkIntegrated || dt == OaDeviceType::VkCpu

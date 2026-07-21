@@ -151,7 +151,7 @@ TEST(TutorialMlTraining, ComparisonWithOldStyle) {
 	printf("╚══════════════════════════════════════════════════════════════════╝\n\n");
 
 	printf("OLD STYLE (verbose):\n");
-	printf("  auto& rt = *OaComputeEngine::GetGlobal();\n");
+	printf("  auto& rt = *OaEngine::GetGlobal();\n");
 	printf("  auto& ctx = OaContext::GetDefault();\n");
 	printf("  OaMetricLoss lossMetric;\n");
 	printf("  iterator.AddMetric(&lossMetric);\n");

@@ -47,15 +47,14 @@ namespace OaFnVideo {
 	[[nodiscard]] OaResult<OaVideoFrame> FromTexture(
 		const OaTexture& InTexture,
 		OaU64 InPts = 0ULL,
-		const OaVkTimelineSemaphore* InReadySemaphore = nullptr,
-		OaU64 InReadyValue = 0ULL
+		OaEvent InReady = {}
 	);
 
 	// ──────────────────────────────────────────────────────────────────────
 	// VideoCodec — stateful, delegate into the supplied session.
 	// ──────────────────────────────────────────────────────────────────────
 
-	// Decode one compressed access unit. The default overload records through
+	// Decode one compressed access unit. The default overload coordinates with
 	// OaContext::GetDefault(); pass a context explicitly when the decoder is
 	// attached to a non-default engine.
 	[[nodiscard]] OaResult<OaVideoFrame> Decode(
@@ -93,6 +92,24 @@ namespace OaFnVideo {
 		const OaSpan<const OaU8>& InAccessUnit,
 		const OaVideoConversionOptions& InOptions,
 		OaVideoFrame& OutFrame,
+		OaU64 InPts = 0ULL
+	);
+
+	// Convert a buffer-backed RGBA texture and encode one frame. The context is
+	// an explicit dependency boundary for pending compute producers; media
+	// session behavior remains owned by OaFnVideo/OaVideoEncoder, not Runtime.
+	[[nodiscard]] OaStatus Encode(
+		OaContext& InContext,
+		OaVideoEncoder& InSession,
+		const OaTexture& InRgba,
+		OaEncodedFrame& OutFrame,
+		OaU64 InPts = 0ULL
+	);
+
+	[[nodiscard]] OaStatus Encode(
+		OaVideoEncoder& InSession,
+		const OaTexture& InRgba,
+		OaEncodedFrame& OutFrame,
 		OaU64 InPts = 0ULL
 	);
 

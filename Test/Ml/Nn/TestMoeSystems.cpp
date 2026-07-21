@@ -17,7 +17,7 @@ TEST(OaMoeSparseParity, ForwardAndParameterGradientsMatchDenseOracle) {
 
 TEST(OaMoeSparseParity, CapturedTrainingMatchesEagerAcrossRepeatedReplay) {
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	constexpr OaI32 T = 8, D = 4, Steps = 6;
 	std::vector<float> input(T * D), target(T * D);
 	for (OaUsize i = 0; i < input.size(); ++i) {
@@ -91,7 +91,7 @@ TEST(OaMoeSparseParity, CapturedTrainingMatchesEagerAcrossRepeatedReplay) {
 
 TEST(OaGroupedGemmM, ForwardAndBackwardMatchCpuWithEmptyExpert) {
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	constexpr OaU32 R = 5, K = 3, N = 4, E = 3;
 	std::vector<float> x(R * K), w(E * N * K), dy(R * N);
 	std::vector<float> bias(E * N);
@@ -149,7 +149,7 @@ TEST(OaGroupedGemmM, ForwardAndBackwardMatchCpuWithEmptyExpert) {
 
 TEST(OaGroupedGemmM, PackedRouteLinearMatchesDenseCpu) {
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	constexpr OaI32 T = 4, D = 3, E = 3, K = 2, N = 2;
 	const std::vector<float> x = {
 		0.1f, 0.2f, 0.3f, -0.4f, 0.5f, 0.6f,
@@ -197,7 +197,7 @@ TEST(OaGroupedGemmM, PackedRouteLinearMatchesDenseCpu) {
 
 TEST(OaMoeGather, ForwardAndDeterministicBackwardMatchCpuWithDuplicateRows) {
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	constexpr OaI32 T = 4, D = 3, K = 2, R = T * K;
 	const std::vector<float> input = {
 		0.1f, 0.2f, 0.3f,
@@ -240,7 +240,7 @@ TEST(OaMoeGather, ForwardAndDeterministicBackwardMatchCpuWithDuplicateRows) {
 
 TEST(OaScatterAddRows, AtomicScatterMatchesCpuWithBfloat16Storage) {
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	constexpr OaI32 T = 3, D = 3, R = 6;
 	const std::vector<float> source = {
 		0.25f, -0.50f, 0.75f,
@@ -272,7 +272,7 @@ TEST(OaScatterAddRows, AtomicScatterMatchesCpuWithBfloat16Storage) {
 
 TEST(OaGroupedGemmM, GatherLastDimBackwardMatchesCpu) {
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	constexpr OaI32 T = 3, E = 4, K = 2;
 	const std::vector<float> gate = {
 		0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f,
@@ -303,7 +303,7 @@ TEST(OaGroupedGemmM, GatherLastDimBackwardMatchesCpu) {
 
 TEST(OaMoeRouteWeights, ForwardAndBackwardMatchCpu) {
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	constexpr OaI32 T = 3, E = 4, K = 2;
 	const std::vector<float> probs = {
 		0.1f, 0.2f, 0.3f, 0.4f,
@@ -350,7 +350,7 @@ TEST(OaMoeRouteWeights, ForwardAndBackwardMatchCpu) {
 
 TEST(OaGroupedGemmM, SingleExpertModuleMatchesGroupedExecutor) {
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 	constexpr OaI32 T = 5, D = 4, H = 3;
 	OaMoeExpert expert(D, H);
 	std::vector<float> input(T * D);
@@ -381,7 +381,7 @@ TEST(OaGroupedGemmM, SingleExpertModuleMatchesGroupedExecutor) {
 static void RunSparseMoeParity() {
 	setenv("OA_GEMM_FORCE_FP32", "1", 1);
 	auto& ctx = OaContext::GetDefault();
-	OaContext::Scope scope(ctx);
+	OaContext::RecordingScope scope(ctx);
 
 	// One module is the strongest parity fixture: dense and sparse passes use the
 	// exact same parameter and persistent-gradient buffers, eliminating duplicated

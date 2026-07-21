@@ -3,6 +3,9 @@
 #include <Oa/Core/Types.h>
 #include <Oa/Core/BufferAccess.h>
 #include <Oa/Runtime/Allocator.h>
+#include <Oa/Runtime/SemanticGraphFwd.h>
+
+class OaMatrix;
 
 // Queue placement is execution metadata, not operation semantics. A planner or
 // scheduler may annotate a dispatch; the graph and engine consume the result.
@@ -20,12 +23,16 @@ enum class OaQueueHint : OaU8 {
 // no MatMul, Linear, audio, vision, or autograd knowledge.
 class OaComputeDispatchDesc {
 public:
-	// Optional semantic provenance. These fields identify what the dispatch
-	// implements without teaching the executable graph domain-specific behavior.
-	// A zero id/hash means the lowering did not provide that metadata yet.
+	// Optional semantic provenance. Multiple owners describe one fused executable
+	// node without teaching the executable graph domain-specific behavior. The
+	// recorder copies the span before returning.
 	OaStringView Operation;
+	OaSpan<const OaSemanticOperationId> SemanticOperations;
 	OaU64 ImplementationId = 0;
 	OaU64 OperationContractHash = 0;
+	// Shape/layout/precision-specific lowering identity. Unlike the semantic
+	// operation contract, this may vary between invocations of the same op.
+	OaU64 ProblemContractHash = 0;
 	OaU64 KernelContentHash = 0;
 	OaStringView Kernel;
 	OaSpan<OaVkBuffer> Buffers;
@@ -42,4 +49,16 @@ public:
 	OaBool Indirect = false;
 	OaQueueHint Queue = OaQueueHint::Compute;
 	OaU32 NodeIndex = 0;
+};
+
+// Matrix-aware lowering request. Context resolves semantic storage handles into
+// raw Vulkan buffers and owning references, then immediately records the
+// resulting OaComputeDispatchDesc. The nested dispatch must not provide raw
+// Buffers/BufferOwners or indirect fields: there is one source for each.
+class OaMatrixDispatchDesc {
+public:
+	OaComputeDispatchDesc Dispatch;
+	OaSpan<const OaMatrix* const> Matrices;
+	const OaMatrix* IndirectArgs = nullptr;
+	OaU64 IndirectOffset = 0;
 };

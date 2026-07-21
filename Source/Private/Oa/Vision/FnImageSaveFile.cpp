@@ -1,8 +1,8 @@
 // OaFnImage::SaveFile — SaveImage sink (Architecture/OaArchitecture.md §10).
 //
-// Reads a packed-RGBA8 OaTexture back from device-local memory via a
-// host-visible staging buffer (CopyBufferAsync + WaitTransfer), then encodes
-// to disk via stb_image_write. Format is inferred from the path extension.
+// Reads a packed-RGBA8 OaTexture through the engine's synchronous readback
+// boundary, then encodes it to disk via stb_image_write. Format is inferred
+// from the path extension.
 //
 // This is the first concrete sink that demonstrates the renderer/sink split
 // in code: the texture's producer (loader / renderer / generator) is
@@ -13,6 +13,7 @@
 #include <Oa/Vision/FnImage.h>
 #include <Oa/Ui/Image.h>          // OaTexture (was OaUiImage; see Step 2 rename)
 #include <Oa/Runtime/Engine.h>
+#include <Oa/Runtime/Context.h>
 #include <Oa/Runtime/Allocator.h>
 #include <Oa/Core/Log.h>
 
@@ -61,8 +62,58 @@ enum class SaveFmt { Png, Jpg, Bmp, Tga, Unknown };
 } // namespace
 
 
-OaStatus OaFnImage::SaveFile(
-	OaComputeEngine& InEngine,
+namespace {
+
+OaContext& ContextForEngine(OaEngine& InEngine) {
+	OaContext* active = OaContext::GetDefaultPtr();
+	return active != nullptr and active->GetEngine() == &InEngine
+		? *active : InEngine.GetContext();
+}
+
+OaStatus ValidateSaveFileRequest(
+	OaEngine& InEngine,
+	const OaTexture& InTexture,
+	OaStringView InPath)
+{
+	if (not InTexture.IsValid()) {
+		return OaStatus::InvalidArgument(
+			"OaFnImage::SaveFile: invalid texture");
+	}
+	const OaVkBuffer& buffer = InTexture.DeviceBuf;
+	if (InTexture.IsImageBacked() or buffer.Buffer == nullptr
+		or buffer.Allocation == nullptr or buffer.AliasIdentity != nullptr
+		or buffer.IsImported() or buffer.NodeIndex != 0U
+		or buffer.AllocatorIdentity != InEngine.Allocator.Allocator) {
+		return OaStatus::InvalidArgument(
+			"OaFnImage::SaveFile: texture must be a non-aliased buffer owned by the context engine");
+	}
+	if (InPath.Empty()) {
+		return OaStatus::InvalidArgument(
+			"OaFnImage::SaveFile: empty path");
+	}
+	if (DetectFormatFromExtension(InPath) == SaveFmt::Unknown) {
+		return OaStatus::InvalidArgument(
+			"OaFnImage::SaveFile: unknown extension (expected .png, .jpg, .bmp, .tga)");
+	}
+	if (InTexture.Width <= 0 or InTexture.Height <= 0) {
+		return OaStatus::InvalidArgument(
+			"OaFnImage::SaveFile: texture has zero extent");
+	}
+	const OaU64 bytes = static_cast<OaU64>(InTexture.Width)
+		* static_cast<OaU64>(InTexture.Height) * 4U;
+	if (buffer.Size < bytes) {
+		return OaStatus::Error(OaStatusCode::FailedPrecondition,
+			"OaFnImage::SaveFile: texture buffer smaller than W*H*4");
+	}
+	if (InPath.Size() >= 1024U) {
+		return OaStatus::InvalidArgument(
+			"OaFnImage::SaveFile: path too long");
+	}
+	return OaStatus::Ok();
+}
+
+OaStatus SaveFileReady(
+	OaEngine& InEngine,
 	const OaTexture&   InTexture,
 	OaStringView       InPath
 ) {
@@ -91,60 +142,39 @@ OaStatus OaFnImage::SaveFile(
 			"OaFnImage::SaveFile: texture buffer smaller than W*H*4");
 	}
 
-	// Stage host-visible readback. VMA picks CPU-TO-GPU memory (mappable +
-	// host-visible); the MappedPtr is filled in by the allocator.
-	auto stageR = InEngine.Allocator.AllocHostVisible(bytes);
-	if (not stageR.IsOk()) return stageR.GetStatus();
-	OaVkBuffer staging = stageR.GetValue();
-
-	// GPU → staging, then wait for the transfer queue.
-	if (auto s = InEngine.CopyBufferAsync(InTexture.DeviceBuf, staging, bytes); not s.IsOk()) {
-		InEngine.Allocator.Free(staging);
-		return s;
-	}
-	if (auto s = InEngine.WaitTransfer(); not s.IsOk()) {
-		InEngine.Allocator.Free(staging);
-		return s;
-	}
-
 	// stb_image_write wants a null-terminated C string. Stage into a stack
 	// buffer (paths > 1023 chars are pathological and rejected).
 	constexpr size_t kPathBufSize = 1024;
 	char pathBuf[kPathBufSize];
 	if (InPath.Size() >= kPathBufSize) {
-		InEngine.Allocator.Free(staging);
 		return OaStatus::InvalidArgument("OaFnImage::SaveFile: path too long");
 	}
 	std::memcpy(pathBuf, InPath.Data(), InPath.Size());
 	pathBuf[InPath.Size()] = '\0';
 
-	const void* pixels = staging.MappedPtr;
-	if (pixels == nullptr) {
-		InEngine.Allocator.Free(staging);
-		return OaStatus::Error(OaStatusCode::Internal,
-			"OaFnImage::SaveFile: staging buffer has null MappedPtr");
-	}
+	OaVec<OaU8> pixels;
+	pixels.Resize(static_cast<OaI64>(bytes));
+	OA_RETURN_IF_ERROR(InEngine.ReadbackBuffer(
+		InTexture.DeviceBuf, 0U, pixels.Data(), bytes));
 
 	constexpr int kCompRgba = 4;
 	int rc = 0;
 	switch (fmt) {
 		case SaveFmt::Png:
-			rc = stbi_write_png(pathBuf, W, H, kCompRgba, pixels, W * kCompRgba);
+			rc = stbi_write_png(pathBuf, W, H, kCompRgba, pixels.Data(), W * kCompRgba);
 			break;
 		case SaveFmt::Jpg:
-			rc = stbi_write_jpg(pathBuf, W, H, kCompRgba, pixels, 90);
+			rc = stbi_write_jpg(pathBuf, W, H, kCompRgba, pixels.Data(), 90);
 			break;
 		case SaveFmt::Bmp:
-			rc = stbi_write_bmp(pathBuf, W, H, kCompRgba, pixels);
+			rc = stbi_write_bmp(pathBuf, W, H, kCompRgba, pixels.Data());
 			break;
 		case SaveFmt::Tga:
-			rc = stbi_write_tga(pathBuf, W, H, kCompRgba, pixels);
+			rc = stbi_write_tga(pathBuf, W, H, kCompRgba, pixels.Data());
 			break;
 		case SaveFmt::Unknown:
 			break;
 	}
-
-	InEngine.Allocator.Free(staging);
 
 	if (rc == 0) {
 		return OaStatus::Error(OaStatusCode::Internal,
@@ -154,4 +184,26 @@ OaStatus OaFnImage::SaveFile(
 	OA_LOG_INFO(OaLogComponent::App,
 		"OaFnImage::SaveFile: %dx%d → %s", W, H, pathBuf);
 	return OaStatus::Ok();
+}
+
+} // namespace
+
+OaStatus OaFnImage::SaveFile(
+	OaContext& InContext,
+	const OaTexture& InTexture,
+	OaStringView InPath)
+{
+	OA_RETURN_IF_ERROR(ValidateSaveFileRequest(
+		InContext.Engine(), InTexture, InPath));
+	OA_RETURN_IF_ERROR(InContext.Execute());
+	OA_RETURN_IF_ERROR(InContext.Sync());
+	return SaveFileReady(InContext.Engine(), InTexture, InPath);
+}
+
+OaStatus OaFnImage::SaveFile(
+	OaEngine& InEngine,
+	const OaTexture& InTexture,
+	OaStringView InPath)
+{
+	return SaveFile(ContextForEngine(InEngine), InTexture, InPath);
 }

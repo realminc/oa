@@ -9,9 +9,9 @@
 #include <Oa/Core/BufferAccess.h>
 #include <Oa/Runtime/Context.h>
 #include <Oa/Runtime/Engine.h>
-#include <Oa/Ml/Autograd.h>
-#include <cassert>
-#include <cstring>
+#include <Oa/Core/Operation.h>
+#include <Oa/Ml/Autograd/Nodes.h>
+#include "../../../Ml/Autograd/AutogradAttach.gen.h"
 
 static OaU32 DivCeil(OaU32 InA, OaU32 InB) { return (InA + InB - 1) / InB; }
 
@@ -39,45 +39,55 @@ static void FillPushBcast(PushBcast& OutPush, const OaMatrixShape& InOutShape,
 	}
 }
 
-static bool BcastKernelToOp_(const char* InKernelName, OaBcastBinOp& OutOp) {
-	if (std::strcmp(InKernelName, "AddBcast") == 0) { OutOp = OaBcastBinOp::Add; return true; }
-	if (std::strcmp(InKernelName, "SubBcast") == 0) { OutOp = OaBcastBinOp::Sub; return true; }
-	if (std::strcmp(InKernelName, "MulBcast") == 0) { OutOp = OaBcastBinOp::Mul; return true; }
-	if (std::strcmp(InKernelName, "DivBcast") == 0) { OutOp = OaBcastBinOp::Div; return true; }
-	return false;
-}
+using BinaryAutogradAttach = OaStatus (*)(OaMatrix&, const OaMatrix&,
+	const OaMatrix&, OaSemanticOperationId);
 
-static OaMatrix DispatchBcast_(const OaMatrix& InA, const OaMatrix& InB, const char* InKernelName) {
-	auto bcastResult = InA.Shape_.Broadcast(InB.Shape_);
-	assert(bcastResult.IsOk() && "DispatchBcast_: shapes are not broadcast-compatible");
-	OaMatrixShape outShape = bcastResult.GetValue();
-
-	auto aStrides = InA.Shape_.BroadcastStrides(outShape);
-	auto bStrides = InB.Shape_.BroadcastStrides(outShape);
+static OaMatrix DispatchBinary_(
+	const OaMatrix& InA,
+	const OaMatrix& InB,
+	const char* InKernelName,
+	const char* InBroadcastKernelName,
+	const OaOperationContract& InContract,
+	BinaryAutogradAttach InAttach)
+{
+	const auto inferredShape = OaInferBinaryOperationShape(InContract, InA, InB);
+	if (not inferredShape.IsOk()) return {};
 
 	auto& ctx = OaContext::GetDefault();
-	OaMatrix out = OaFnMatrix::Empty(outShape, InA.Dtype_);
-	PushBcast push{};
-	FillPushBcast(push, outShape, aStrides, bStrides);
+	OaMatrix out = OaFnMatrix::Empty(inferredShape.GetValue(), InA.Dtype_);
+	const auto semantic = ctx.RecordOperation(
+		InContract, {&InA, &InB}, {&out});
+	if (not semantic.IsOk()) return {};
 
-	OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Read, OaBufferAccess::Write};
-	ctx.Add(InKernelName, {&InA, &InB, &out}, access, &push, sizeof(push), DivCeil(push.Total, 256));
+	OaBufferAccess access[] = {
+		OaBufferAccess::Read,
+		OaBufferAccess::Read,
+		OaBufferAccess::Write,
+	};
+	if (InA.GetShape() == InB.GetShape()) {
+		const OaU32 count = static_cast<OaU32>(out.NumElements());
+		struct { OaU32 Count; } push{count};
+		ctx.Add(InKernelName, {&InA, &InB, &out}, access,
+			&push, sizeof(push), DivCeil(count, 256), 1, 1,
+			InContract.Name, 0, InContract.Hash, 0, 0,
+			semantic.GetValue());
+	} else {
+		const auto aStrides = InA.Shape_.BroadcastStrides(out.GetShape());
+		const auto bStrides = InB.Shape_.BroadcastStrides(out.GetShape());
+		PushBcast push{};
+		FillPushBcast(push, out.GetShape(), aStrides, bStrides);
+		ctx.Add(InBroadcastKernelName, {&InA, &InB, &out}, access,
+			&push, sizeof(push), DivCeil(push.Total, 256), 1, 1,
+			InContract.Name, 0, InContract.Hash, 0, 0,
+			semantic.GetValue());
+	}
 
-	// Attach the broadcast-aware grad node. Without this the broadcast operand AND
-	// everything upstream of it silently receive ZERO gradient (numel mismatch drops
-	// the contribution in the tape). This was the root cause of frozen mixer params
-	// (NormWeight broadcast-mul, dt_bias broadcast-add) in Mamba3 / Empyrealm.
-	if (OaFnAutograd::IsEnabled() and (InA.RequiresGrad() or InB.RequiresGrad())) {
-		OaBcastBinOp op{};
-		if (BcastKernelToOp_(InKernelName, op)) {
-			auto gradFn = OaMakeSharedPtr<OaGradBcastBinary>();
-			gradFn->Op_ = op;
-			gradFn->Saved_ = OaVec<OaMatrix>{InA, InB};
-			gradFn->SetGraphInputs(OaVec<OaMatrix>{InA, InB});
-			gradFn->SequenceNr_ = OaFnAutograd::NextSeq();
-			gradFn->OutputShape_ = out.GetShape();
-			out.MutAutograd().GradFn = gradFn;
-		}
+	const auto attached = InAttach(out, InA, InB, semantic.GetValue());
+	if (not attached.IsOk()) {
+		OA_LOG_ERROR(OaLogComponent::Core,
+			"%s semantic autograd attachment failed: %s",
+			OaString(InContract.Name).c_str(), attached.GetMessage().c_str());
+		return {};
 	}
 	return out;
 }
@@ -87,88 +97,27 @@ static OaMatrix DispatchBcast_(const OaMatrix& InA, const OaMatrix& InB, const c
 // ═════════════════════════════════════════════════════════════════════════════
 
 OaMatrix OaFnMatrix::Add(const OaMatrix& InA, const OaMatrix& InB) {
-	assert((InA.GetShape() == InB.GetShape() || InA.Shape_.Broadcast(InB.Shape_).IsOk()) && "OaFnMatrix::Add requires matching or broadcast-compatible shapes");
-	if (InA.GetShape() == InB.GetShape()) {
-		auto& ctx = OaContext::GetDefault();
-		OaU32 n = static_cast<OaU32>(InA.NumElements());
-		OaMatrix out = OaFnMatrix::Empty(InA.Shape_, InA.Dtype_);
-		struct { OaU32 Count; } push{n};
-		OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Read, OaBufferAccess::Write};
-		ctx.Add("Add", {&InA, &InB, &out}, access, &push, sizeof(push), DivCeil(n, 256));
-		if (OaFnAutograd::IsEnabled() and (InA.RequiresGrad() or InB.RequiresGrad())) {
-			auto gradFn = OaMakeSharedPtr<OaGradAdd>();
-			gradFn->Saved_ = OaVec<OaMatrix>{InA, InB};
-			gradFn->SetGraphInputs(OaVec<OaMatrix>{InA, InB});
-			gradFn->SequenceNr_ = OaFnAutograd::NextSeq();
-			out.MutAutograd().GradFn = gradFn;
-		}
-		return out;
-	}
-	return DispatchBcast_(InA, InB, "AddBcast");
+	return DispatchBinary_(InA, InB, "Add", "AddBcast",
+		OaOperationRegistry::Add,
+		&OaGeneratedAutogradAttach::OaFnMatrix::Add);
 }
 
 OaMatrix OaFnMatrix::Sub(const OaMatrix& InA, const OaMatrix& InB) {
-	assert((InA.GetShape() == InB.GetShape() || InA.Shape_.Broadcast(InB.Shape_).IsOk()) && "OaFnMatrix::Sub requires matching or broadcast-compatible shapes");
-	if (InA.GetShape() == InB.GetShape()) {
-		auto& ctx = OaContext::GetDefault();
-		OaU32 n = static_cast<OaU32>(InA.NumElements());
-		OaMatrix out = OaFnMatrix::Empty(InA.Shape_, InA.Dtype_);
-		struct { OaU32 Count; } push{n};
-		OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Read, OaBufferAccess::Write};
-		ctx.Add("Sub", {&InA, &InB, &out}, access, &push, sizeof(push), DivCeil(n, 256));
-		if (OaFnAutograd::IsEnabled() and (InA.RequiresGrad() or InB.RequiresGrad())) {
-			auto gradFn = OaMakeSharedPtr<OaGradSub>();
-			gradFn->Saved_ = OaVec<OaMatrix>{};
-			gradFn->SetGraphInputs(OaVec<OaMatrix>{InA, InB});
-			gradFn->SequenceNr_ = OaFnAutograd::NextSeq();
-			out.MutAutograd().GradFn = gradFn;
-		}
-		return out;
-	}
-	return DispatchBcast_(InA, InB, "SubBcast");
+	return DispatchBinary_(InA, InB, "Sub", "SubBcast",
+		OaOperationRegistry::Sub,
+		&OaGeneratedAutogradAttach::OaFnMatrix::Sub);
 }
 
 OaMatrix OaFnMatrix::Mul(const OaMatrix& InA, const OaMatrix& InB) {
-	assert((InA.GetShape() == InB.GetShape() || InA.Shape_.Broadcast(InB.Shape_).IsOk()) && "OaFnMatrix::Mul requires matching or broadcast-compatible shapes");
-	if (InA.GetShape() == InB.GetShape()) {
-		auto& ctx = OaContext::GetDefault();
-		OaU32 n = static_cast<OaU32>(InA.NumElements());
-		OaMatrix out = OaFnMatrix::Empty(InA.Shape_, InA.Dtype_);
-		struct { OaU32 Count; } push{n};
-		OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Read, OaBufferAccess::Write};
-		ctx.Add("Mul", {&InA, &InB, &out}, access, &push, sizeof(push), DivCeil(n, 256));
-		if (OaFnAutograd::IsEnabled() and (InA.RequiresGrad() or InB.RequiresGrad())) {
-			auto gradFn = OaMakeSharedPtr<OaGradMul>();
-			gradFn->Saved_ = OaVec<OaMatrix>{InA, InB};
-			gradFn->SetGraphInputs(OaVec<OaMatrix>{InA, InB});
-			gradFn->SequenceNr_ = OaFnAutograd::NextSeq();
-			gradFn->OutputShape_ = out.GetShape();  // central tape now normalizes upstream using this; protects bcast in GradMul bwd (the source of previous "bad optional access" during CE/head bwd)
-			out.MutAutograd().GradFn = gradFn;
-		}
-		return out;
-	}
-	return DispatchBcast_(InA, InB, "MulBcast");
+	return DispatchBinary_(InA, InB, "Mul", "MulBcast",
+		OaOperationRegistry::Mul,
+		&OaGeneratedAutogradAttach::OaFnMatrix::Mul);
 }
 
 OaMatrix OaFnMatrix::Div(const OaMatrix& InA, const OaMatrix& InB) {
-	assert((InA.GetShape() == InB.GetShape() || InA.Shape_.Broadcast(InB.Shape_).IsOk()) && "OaFnMatrix::Div requires matching or broadcast-compatible shapes");
-	if (InA.GetShape() == InB.GetShape()) {
-		auto& ctx = OaContext::GetDefault();
-		OaU32 n = static_cast<OaU32>(InA.NumElements());
-		OaMatrix out = OaFnMatrix::Empty(InA.Shape_, InA.Dtype_);
-		struct { OaU32 Count; } push{n};
-		OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Read, OaBufferAccess::Write};
-		ctx.Add("Div", {&InA, &InB, &out}, access, &push, sizeof(push), DivCeil(n, 256));
-		if (OaFnAutograd::IsEnabled() and (InA.RequiresGrad() or InB.RequiresGrad())) {
-			auto gradFn = OaMakeSharedPtr<OaGradDiv>();
-			gradFn->Saved_ = OaVec<OaMatrix>{InA, InB};
-			gradFn->SetGraphInputs(OaVec<OaMatrix>{InA, InB});
-			gradFn->SequenceNr_ = OaFnAutograd::NextSeq();
-			out.MutAutograd().GradFn = gradFn;
-		}
-		return out;
-	}
-	return DispatchBcast_(InA, InB, "DivBcast");
+	return DispatchBinary_(InA, InB, "Div", "DivBcast",
+		OaOperationRegistry::Div,
+		&OaGeneratedAutogradAttach::OaFnMatrix::Div);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

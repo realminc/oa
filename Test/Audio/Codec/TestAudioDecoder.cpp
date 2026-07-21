@@ -19,17 +19,14 @@
 
 namespace {
 
-OaComputeEngine* GRt = nullptr;
+OaEngine* GRt = nullptr;
 
 class TestAudioDecoder : public ::testing::Test {
 protected:
 	static void SetUpTestSuite() {
-		OaEngineConfig cfg{};
-		cfg.AppName = "TestAudioDecoder";
-		auto r = OaComputeEngine::Create(cfg);
-		ASSERT_TRUE(r.IsOk()) << r.GetStatus().GetMessage();
-		static OaUniquePtr<OaComputeEngine> rt = std::move(*r);
-		GRt = rt.get();
+		GRt = OaEngine::GetGlobal();
+		ASSERT_NE(GRt, nullptr)
+			<< "OaVkTestEnvironment did not create the suite engine";
 	}
 
 	// Flush + sync the default context so .At() reads committed values.
@@ -149,12 +146,12 @@ TEST_VK(TestAudioDecoder, RejectsMalformedInputs)
 {
 	OaAudioCaptureConfig invalidCapture;
 	invalidCapture.SampleRate = 0U;
-	EXPECT_FALSE(OaAudioCapture::Open(invalidCapture).IsOk());
+	EXPECT_FALSE(OaAudioCapture::Open(*GRt, invalidCapture).IsOk());
 	OaAudioStreamConfig invalidStream;
-	EXPECT_FALSE(OaAudioStream::Open(invalidStream).IsOk());
+	EXPECT_FALSE(OaAudioStream::Open(*GRt, invalidStream).IsOk());
 	invalidCapture.SampleRate = 48'000U;
 	invalidCapture.RingMilliseconds = 1U;
-	EXPECT_FALSE(OaAudioCapture::Open(invalidCapture).IsOk());
+	EXPECT_FALSE(OaAudioCapture::Open(*GRt, invalidCapture).IsOk());
 
 	EXPECT_FALSE(OaAudioDecoder::LoadFile(nullptr).IsOk());
 	EXPECT_FALSE(OaAudioDecoder::LoadFile("").IsOk());
@@ -169,6 +166,16 @@ TEST_VK(TestAudioDecoder, RejectsMalformedInputs)
 		OaSpan<const OaF32>(incomplete, 3), 48000, 2).IsOk());
 	EXPECT_FALSE(OaAudioEncoder::EncodeWavF32(
 		OaSpan<const OaF32>(incomplete, 3), 0, 1).IsOk());
+}
+
+TEST_VK(TestAudioDecoder, AudioSessionCloseIsIdempotent)
+{
+	OaAudioCapture capture;
+	OaAudioStream stream;
+	EXPECT_TRUE(capture.Close().IsOk());
+	EXPECT_TRUE(capture.Close().IsOk());
+	EXPECT_TRUE(stream.Close().IsOk());
+	EXPECT_TRUE(stream.Close().IsOk());
 }
 
 TEST_VK(TestAudioDecoder, StreamingPcmIsDeterministicForNonFiniteInput)
@@ -202,7 +209,7 @@ TEST_VK(TestAudioDecoder, AudioStreamPlayPauseSeek)
 	OaAudioStreamConfig config;
 	config.Uri = OaTestAssetPath("Audio/0_jackson_0.wav").String();
 	config.RingMilliseconds = 100U;
-	auto opened = OaAudioStream::Open(config);
+	auto opened = OaAudioStream::Open(*GRt, config);
 	if (not opened.IsOk()) {
 		GTEST_SKIP() << "No playback device/media backend: "
 			<< opened.GetStatus().GetMessage();
@@ -223,7 +230,7 @@ TEST_VK(TestAudioDecoder, AudioStreamPlayPauseSeek)
 	EXPECT_GT(stream.PositionUs(), 0U);
 	ASSERT_TRUE(stream.Seek(10'000U).IsOk());
 	EXPECT_GE(stream.PositionUs(), 10'000U);
-	stream.Close();
+	ASSERT_TRUE(stream.Close().IsOk());
 	EXPECT_FALSE(stream.IsOpen());
 }
 

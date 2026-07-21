@@ -47,7 +47,7 @@ int main(int argc, char** argv) {
 	OaEngineConfig engineConfig;
 	engineConfig.PresentationMode = OaPresentationMode::None;
 	engineConfig.RegisterAsGlobal = true;
-	auto engineResult = OaComputeEngine::Create(engineConfig);
+	auto engineResult = OaEngine::Create(engineConfig);
 	if (!engineResult.IsOk()) {
 		std::fprintf(stderr, "Engine creation failed: %s\n",
 			engineResult.GetStatus().ToString().c_str());

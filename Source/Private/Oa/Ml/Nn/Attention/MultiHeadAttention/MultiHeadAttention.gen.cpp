@@ -90,7 +90,7 @@ OaMatrix OaMultiHeadAttention::ForwardStandard(
 	auto attn = OaFnMatrix::SoftmaxScaledMasked(
 		scores.Reshape(OaMatrixShape{scoreRows, SeqLen_}), InAdditiveMask,
 		1.0F / std::sqrt(static_cast<OaF32>(HeadDim_)));
-	if (OaContext::GetDefault().IsTraining() && DropoutP_ > 0.0F) {
+	if (IsTraining() && DropoutP_ > 0.0F) {
 		attn = OaFnMatrix::Dropout(attn, DropoutP_);
 	}
 	auto context = OaFnMatrix::Bmm(
