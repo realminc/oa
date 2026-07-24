@@ -55,7 +55,7 @@ differentiation = "reverse"
 lowering        = "dispatch"
 
 [ops.python]
-args = ["a", "b"]
+args = ["A", "B"]
 doc = "Element-wise matrix addition with broadcasting."
 
 [ops.autograd]

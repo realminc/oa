@@ -1,1 +1,0 @@
-At the surface, the intent is deliberately simple. Load an audio file. Normalize it. Compute a mel spectrogram. Run a model. The C plus plus and Python interfaces describe the same work, while ownership, device choice, and synchronization remain explicit where they matter.

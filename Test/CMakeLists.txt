@@ -61,6 +61,23 @@ oa_add_test(TestContainers       Core/Container/TestContainers.cpp  Core/Contain
 # Core/Image tests (Phase 1: metadata wrapper, requires Vulkan since OA is GPU-only)
 oa_add_ml_test(TestImage         Core/TestImage.cpp                 Core)
 oa_add_ml_test(TestUi            Ui/TestUi.cpp                      Ui)
+oa_add_test(TestCamera           Render/TestCamera.cpp              Render)
+set_tests_properties(TestCamera PROPERTIES LABELS "core;render")
+oa_add_test(TestLunarLander3dRender Render/TestLunarLander3dRender.cpp Render)
+target_sources(TestLunarLander3dRender PRIVATE
+	${oa_SOURCE_DIR}/Tutorial/Ml/Rl/LunarLander3d/LunarLander3d.cpp
+	${oa_SOURCE_DIR}/Tutorial/Ml/Rl/LunarLander3d/LunarLander3dPhysics.cpp
+	${oa_SOURCE_DIR}/Tutorial/Ml/Rl/LunarLander3d/LunarLander3dTypes.cpp
+	${oa_SOURCE_DIR}/Tutorial/Ml/Rl/LunarLander3d/LunarTerrain.cpp
+	${oa_SOURCE_DIR}/Tutorial/Ml/Rl/LunarLander3d/LunarLander3dRender.cpp)
+target_include_directories(TestLunarLander3dRender PRIVATE
+	${oa_SOURCE_DIR}/Tutorial/Ml/Rl/LunarLander3d
+	${oa_SOURCE_DIR}/Source/Private)
+set_tests_properties(TestLunarLander3dRender PROPERTIES
+	LABELS "gpu_bindless;render;rl;headless_readback")
+if(TARGET oa_shaders)
+	add_dependencies(TestLunarLander3dRender oa_shaders)
+endif()
 
 # Core/Audio tests (Phase 6: audio wrapper, requires Vulkan since OA is GPU-only)
 oa_add_ml_test(TestAudio         Core/TestAudio.cpp                 Core)
@@ -184,6 +201,34 @@ target_sources(TestRl PRIVATE
 	${oa_SOURCE_DIR}/Tutorial/Ml/Rl/CartPole.cpp
 	Ml/Rl/TestCartPole.cpp)
 target_include_directories(TestRl PRIVATE ${oa_SOURCE_DIR}/Tutorial/Ml/Rl)
+add_executable(TestLunarLander3d
+	Ml/Rl/TestLunarLander3d.cpp
+	${oa_SOURCE_DIR}/Tutorial/Ml/Rl/LunarLander3d/LunarLander3d.cpp
+	${oa_SOURCE_DIR}/Tutorial/Ml/Rl/LunarLander3d/LunarLander3dPhysics.cpp
+	${oa_SOURCE_DIR}/Tutorial/Ml/Rl/LunarLander3d/LunarLander3dTypes.cpp
+	${oa_SOURCE_DIR}/Tutorial/Ml/Rl/LunarLander3d/LunarTerrain.cpp)
+target_link_libraries(TestLunarLander3d PRIVATE GTest::gtest_main)
+target_include_directories(TestLunarLander3d PRIVATE
+	${oa_SOURCE_DIR}/Tutorial/Ml/Rl/LunarLander3d)
+set_target_properties(TestLunarLander3d PROPERTIES
+	RUNTIME_OUTPUT_DIRECTORY "${OA_BIN_DIR}/Test/Ml/Rl")
+add_test(NAME TestLunarLander3d COMMAND TestLunarLander3d)
+set_tests_properties(TestLunarLander3d PROPERTIES LABELS "host_oracle;ml;rl")
+oa_add_ml_test(
+	TestLunarLander3dVector
+	Ml/Rl/TestLunarLander3dVector.cpp
+	Ml/Rl)
+target_sources(TestLunarLander3dVector PRIVATE
+	${oa_SOURCE_DIR}/Tutorial/Ml/Rl/LunarLander3d/LunarLander3d.cpp
+	${oa_SOURCE_DIR}/Tutorial/Ml/Rl/LunarLander3d/LunarLander3dPhysics.cpp
+	${oa_SOURCE_DIR}/Tutorial/Ml/Rl/LunarLander3d/LunarLander3dTypes.cpp
+	${oa_SOURCE_DIR}/Tutorial/Ml/Rl/LunarLander3d/LunarTerrain.cpp
+	${oa_SOURCE_DIR}/Tutorial/Ml/Rl/LunarLander3d/LunarLander3dVector.cpp)
+target_include_directories(TestLunarLander3dVector PRIVATE
+	${oa_SOURCE_DIR}/Tutorial/Ml/Rl/LunarLander3d
+	${oa_SOURCE_DIR}/Source/Private)
+set_tests_properties(TestLunarLander3dVector PROPERTIES
+	LABELS "gpu_bindless;ml;rl;host_differential")
 oa_add_ml_test(TestFnMatrixPool Ml/FnMatrix/Pool/TestFnMatrixPool.cpp Ml/FnMatrix/Pool)
 oa_add_ml_test(TestOptimizers Ml/Optim/TestOptimizers.cpp Ml/Optim)
 oa_add_ml_test(TestFnMatrixBackward Ml/FnMatrix/Backward/TestFnMatrixBackward.cpp Ml/FnMatrix/Backward)
@@ -275,7 +320,7 @@ set_tests_properties(
 # ═══════════════════════════════════════════════════════════════════════════
 
 # Phase 1 — Image Processing (COMPLETE)
-oa_add_ml_test(TestJpegDecoder Vision/Codec/TestJpegDecoder.cpp Vision/Codec)
+oa_add_ml_test(TestImageCodec Vision/Codec/TestImageCodec.cpp Vision/Codec)
 oa_add_ml_test(TestImageProcessor Vision/Processor/TestImageProcessor.cpp Vision/Processor)
 # Phase 2 — Video Decode (IN PROGRESS)
 oa_add_ml_test(TestVideoDecoder Vision/Codec/TestVideoDecoder.cpp Vision/Codec)
@@ -294,7 +339,7 @@ oa_add_ml_test(TestFilterKernels Vision/Image/Kernel/TestFilterKernels.cpp Visio
 oa_add_ml_test(TestVision50Ops Vision/Image/Kernel/TestVision50Ops.cpp Vision/Image/Kernel)
 oa_add_ml_test(TestFnDetection Vision/Detection/TestFnDetection.cpp Vision/Detection)
 
-set_tests_properties(TestJpegDecoder TestImageProcessor TestVideoDecoder TestVideoDecodeReference TestFnImage TestGeometricKernels TestFilterKernels TestVision50Ops TestFnDetection
+set_tests_properties(TestImageCodec TestImageProcessor TestVideoDecoder TestVideoDecodeReference TestFnImage TestGeometricKernels TestFilterKernels TestVision50Ops TestFnDetection
 	PROPERTIES LABELS "gpu_bindless;ml;vision")
 set_tests_properties(TestVideoSessionLifecycle
 	PROPERTIES LABELS "gpu_bindless;vision")
@@ -327,6 +372,7 @@ if(TARGET SDL3::SDL3)
 	set_tests_properties(TestPresenterWsi PROPERTIES LABELS "gpu_wsi")
 endif()
 oa_add_ml_test(TestStream Runtime/Stream/TestStream.cpp Runtime/Stream)
+target_include_directories(TestStream PRIVATE ${oa_SOURCE_DIR}/Source/Private)
 oa_add_ml_test(TestComputeGraph Runtime/Graph/TestComputeGraph.cpp Runtime/Graph)
 oa_add_ml_test(TestCollective Runtime/Collective/TestCollective.cpp Runtime/Collective)
 

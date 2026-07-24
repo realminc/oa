@@ -1,6 +1,6 @@
 #include "ShardedWeightSource.h"
 
-#include <Oa/Core/FileIo.h>
+#include <Oa/Core/Filesystem.h>
 
 #include <yaml-cpp/yaml.h>
 
@@ -66,7 +66,7 @@ OaStatus OaShardedWeightSource::Open(const OaPath& InIndexPath) {
 			shardIndices.Insert({shard, index});
 		}
 	}
-	auto indexSize = OaFileIo::GetFileSize(InIndexPath);
+	auto indexSize = OaFilesystem::GetFileSize(InIndexPath);
 	if (indexSize.IsOk()) {
 		const OaU64 indexBytes = static_cast<OaU64>(indexSize.GetValue());
 		if (SourceBytes_ > std::numeric_limits<OaU64>::max() - indexBytes) {

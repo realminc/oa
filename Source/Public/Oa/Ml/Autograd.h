@@ -73,14 +73,22 @@ public:
 
 class OaGradientTape {
 	bool Prev_;
+	bool Active_ = true;
 
 public:
 	OaGradientTape() noexcept : Prev_(OaFnAutograd::IsEnabled()) {
 		OaFnAutograd::SetEnabled(true);
 	}
-	~OaGradientTape() noexcept { OaFnAutograd::SetEnabled(Prev_); }
+	~OaGradientTape() noexcept { Close(); }
 	OaGradientTape(const OaGradientTape&) = delete;
 	OaGradientTape& operator=(const OaGradientTape&) = delete;
+
+	void Close() noexcept {
+		if (Active_) {
+			OaFnAutograd::SetEnabled(Prev_);
+			Active_ = false;
+		}
+	}
 
 	// Records backward operations into the active graph. Submission and waiting
 	// remain the caller/training-session responsibility.

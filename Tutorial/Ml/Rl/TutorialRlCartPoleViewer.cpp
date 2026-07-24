@@ -230,13 +230,21 @@ public:
 		}
 	}
 
-	void MarkConsumed(
-		const OaVkTimelineSemaphore& InSemaphore,
-		OaU64 InValue) override {
+	OaStatus MarkConsumed(const OaEvent& InCompletion) override {
+		if (not InCompletion.IsValid()) {
+			return OaStatus::InvalidArgument(
+				"CartPole viewer consumption requires a valid completion event");
+		}
+		const OaVkTimelineWait wait = InCompletion.TimelineWait();
+		if (wait.Semaphore == nullptr or wait.Value == 0U) {
+			return OaStatus::InvalidArgument(
+				"CartPole viewer consumption requires a timeline completion");
+		}
 		if (ActiveLabelSlot_ >= 0) {
 			LabelSlots_[static_cast<OaU32>(ActiveLabelSlot_)].MarkConsumed(
-				InSemaphore, InValue);
+				*wait.Semaphore, wait.Value);
 		}
+		return OaStatus::Ok();
 	}
 
 	OaStatus Close() override {
@@ -253,7 +261,7 @@ private:
 	static constexpr OaU32 kMaxLabelGlyphs = 512;
 
 	OaStatus ResetSession_() {
-		auto created = OaTutorialCartPolePpo::Create();
+		auto created = OaTutorialCartPolePpo::Create(*Runtime_);
 		if (created.IsError()) return created.GetStatus();
 		Session_ = OaStdMove(*created);
 		Failed_ = false;

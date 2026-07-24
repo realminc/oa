@@ -39,6 +39,7 @@ struct OaTutorialCartPolePpoMetrics {
 };
 
 class OaTrainingSession;
+class OaEngine;
 
 // Tutorial-local incremental PPO session shared by the headless acceptance test
 // and OaViewer. Advance() performs at most one optimizer update, allowing the UI
@@ -46,6 +47,7 @@ class OaTrainingSession;
 class OaTutorialCartPolePpo {
 public:
 	static OaResult<OaUniquePtr<OaTutorialCartPolePpo>> Create(
+		OaEngine& InEngine,
 		const OaTutorialCartPolePpoConfig& InConfig = {});
 
 	OaTutorialCartPolePpo(const OaTutorialCartPolePpo&) = delete;

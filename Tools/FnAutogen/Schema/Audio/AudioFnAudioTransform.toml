@@ -1,37 +1,78 @@
-# OaFn schema — Audio/FnAudio transform ops (2).
+# OaFn schema — semantic Audio feature transforms.
 #
-# This is the *source of truth* for audio signal processing operations. The generator
-# emits .h declarations, .cpp implementations, and .slang shaders from this file.
-# See Tools/FnAutogen/README.md and Tools/FnAutogen/oafnautogen.py.
-#
-# Audio DSP operations for spectral analysis and feature extraction.
+# Input rate and layout come from OaAudio. Feature outputs are numerical
+# matrices and therefore intentionally do not pretend to remain audio values.
 
-# --- Stft --------------------------------------------------------------------
 [[ops]]
-name           = "Stft"
-category       = "Transform"
-kind           = "unary"
+name = "Stft"
+category = "Transform"
+kind = "unary"
+body = "manual_context"
 kernel_forward = "Stft"
-slang_path     = "Audio/Transform"
-log_component  = "AUDIO"
-notes          = "Short-Time Fourier Transform for spectral analysis."
-body           = "manual_context"
-extra_params   = [
-    { name = "WindowSize", type = "OaU32", default = "512" },
-    { name = "HopLength", type = "OaU32", default = "256" }
+notes = "Short-time Fourier magnitude transform to [Channels, Frames, Bins]."
+api_return = "OaMatrix"
+api_params = [
+    "const OaAudio& InAudio",
+    "const OaStftConfig& InCfg = {}",
 ]
 
-# --- MelFilterbank -----------------------------------------------------------
+[ops.contract]
+input_kinds = ["audio"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+
 [[ops]]
-name           = "MelFilterbank"
-category       = "Transform"
-kind           = "unary"
+name = "MelSpectrogram"
+category = "Transform"
+kind = "unary"
+body = "manual_context"
 kernel_forward = "MelFilterbank"
-slang_path     = "Audio/Transform"
-log_component  = "AUDIO"
-notes          = "Mel-scale filterbank for audio feature extraction."
-body           = "manual_context"
-extra_params   = [
-    { name = "NumMels", type = "OaU32", default = "80" },
-    { name = "SampleRate", type = "OaU32", default = "16000" }
+notes = "Mel feature matrix in [Channels, NumMels, Frames] layout."
+api_return = "OaMatrix"
+api_params = [
+    "const OaAudio& InAudio",
+    "const OaMelConfig& InCfg = {}",
 ]
+
+[ops.contract]
+input_kinds = ["audio"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+
+[[ops]]
+name = "Mfcc"
+category = "Transform"
+kind = "unary"
+body = "manual_context"
+notes = "Orthonormal DCT-II coefficients of the log-mel feature matrix."
+api_return = "OaMatrix"
+api_params = [
+    "const OaAudio& InAudio",
+    "const OaMfccConfig& InCfg = {}",
+]
+
+[ops.contract]
+input_kinds = ["audio"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"

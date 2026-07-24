@@ -13,7 +13,8 @@
 #include <Oa/Oa.h>
 #include <Oa/Runtime/Pipeline.h>
 #include <Oa/Runtime/Context.h>
-#include <Oa/Core/FileIo.h>
+#include <Oa/Core/Filesystem.h>
+#include <Oa/Core/Paths.h>
 #include <chrono>
 #include <functional>
 #include <cstdio>
@@ -61,6 +62,15 @@ static inline OaEngineConfig OaTestEngineConfig(OaPrecision InPrecision) {
 		v != nullptr && v[0] == '1')
 	{
 		cfg.EnableValidation = true;
+	}
+	// Validation evidence should instrument the workload under test, not spend
+	// most of the run eagerly compiling every unrelated embedded shader. The
+	// runtime's lazy path preserves the same pipeline ABI and is independently
+	// exercised whenever the selected operation is first recorded.
+	if (const char* mode = std::getenv("OA_VK_VALIDATION_MODE");
+		mode != nullptr && mode[0] != '\0')
+	{
+		cfg.PreloadEmbeddedPipelines = false;
 	}
 	OaTestMergeDeviceEnv(cfg);
 	return cfg;
@@ -130,11 +140,7 @@ static inline OaEngineConfig OaTestEngineConfig(OaPrecision InPrecision, OaNumer
 	EXPECT_LE(std::abs(static_cast<int>(actual) - static_cast<int>(expected)), 2)
 
 static inline OaPath OaTestAssetPath(OaStringView InRelativePath) {
-#ifdef OA_REPO_ROOT
-	return OaPath(OA_REPO_ROOT) / "Asset" / OaPath(InRelativePath);
-#else
-	return OaPath("Asset") / OaPath(InRelativePath);
-#endif
+	return OaPaths::Asset(InRelativePath);
 }
 
 // True after OaVkTestEnvironment::SetUp when OaEngine::Create succeeded (global device valid).

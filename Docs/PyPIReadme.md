@@ -20,29 +20,33 @@ provide a Vulkan loader and a working vendor ICD.
 ## First computation
 
 ```python
-import oa
+from oa import *
 
-assert oa.runtime.OaInitComputeEngine()
-
-x = oa.core.Rand([64, 32])
-layer = oa.ml.OaLinear(32, 64)
-with oa.Context():
-    y = layer.Forward(x)
+a = OaFnMatrix.Ones([2, 3])
+b = OaFnMatrix.Full([2, 3], 2.0)
+c = (a + b) * 0.5
+print(OaFnMatrix.CopyToHost(c))
 ```
 
-## Modules
+Import is host-only. The first device-backed request creates the native OA host;
+beginner code does not initialize an engine manually.
 
-| Namespace | Surface |
+## Public surface
+
+| Owner | Surface |
 |---|---|
-| `oa.core` | matrices, shapes, dtypes, factories, and tensor operations |
-| `oa.runtime` | engine lifecycle and compute contexts |
-| `oa.ml` | modules, autograd, losses, optimizers, training, and metrics |
-| `oa.vision` | image operations, codecs, video, and capture |
-| `oa.audio` | decode/encode and GPU audio processing |
-| `oa.crypto` | host cryptography and GPU public-data hashing |
+| `OaMatrix`, `OaFnMatrix` | matrices, shapes, dtypes, factories, operators, and numerical operations |
+| `OaModule`, `OaFnLoss`, `OaFnAutograd` | modules, autograd, losses, optimizers, training, and metrics |
+| `OaImage`, `OaFnImage`, `OaImageDecoder`, `OaImageEncoder` | image operations, still-image codecs, video, and capture |
+| `OaAudio`, `OaFnAudio`, `OaAudioDecoder`, `OaAudioEncoder` | semantic audio decode, processing, and encode |
+| `OaFnHash` and Crypto values | host cryptography and GPU public-data hashing when included in the wheel |
 
 Python uses the same compute graph and kernels as native C++; it is not a NumPy or CPU
-fallback implementation. End-to-end MNIST and NLP training examples live under
+fallback implementation. Public names retain their C++ PascalCase spelling so a Python
+prototype translates directly to the C++ API. Lowercase domain modules remain
+compatibility aliases, not the canonical tutorial vocabulary.
+
+Core, ML, Audio, Vision, end-to-end MNIST, and the complete 16-entry NLP suite live under
 [`Tutorial/Py`](https://github.com/realminc/oa/tree/main/Tutorial/Py).
 The current desktop matrix and preview-to-preview performance history are published in
 the [NLP benchmark](https://github.com/realminc/oa/blob/main/Docs/Benchmarks/OaNlpSuite.md).

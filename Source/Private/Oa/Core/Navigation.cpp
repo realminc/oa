@@ -2,39 +2,54 @@
 
 #include <Oa/Core/Navigation.h>
 #include <Oa/Core/Input.h>
-#include <Oa/Ui/Camera.h>
 #include <Oa/Ui/Input.h>
 
 #include <cmath>
 
 
-void RegisterViewportShortcuts(OaInputSystem& InInput,
-                             OaNavigation& InNav,
-                             const OaNavigationShortcuts& InKeys) {
-	InInput.RegisterAction({.Name = "nav_zoomin", .Binding = {.Key = InKeys.ZoomIn},
+void RegisterViewportShortcuts(OaInputSystem& InInput, OaNavigation& InNav, const OaNavigationShortcuts& InKeys) {
+	InInput.RegisterAction(
+		{.Name = "nav_zoomin", .Binding = {.Key = InKeys.ZoomIn},
 		.AllowRepeat = true,
-		.Callback = [&InNav] { InNav.KeyboardZoomIn(); }});
-	InInput.RegisterAction({.Name = "nav_zoomout", .Binding = {.Key = InKeys.ZoomOut},
+		.Callback = [&InNav] { InNav.KeyboardZoomIn(); }}
+	);
+	InInput.RegisterAction(
+		{.Name = "nav_zoomout", .Binding = {.Key = InKeys.ZoomOut},
 		.AllowRepeat = true,
-		.Callback = [&InNav] { InNav.KeyboardZoomOut(); }});
-	InInput.RegisterAction({.Name = "nav_zoomfit", .Binding = {.Key = InKeys.ZoomFit},
-		.Callback = [&InNav] { InNav.KeyboardFitToWindow(); }});
-	InInput.RegisterAction({.Name = "nav_zoomfit_alt", .Binding = {.Key = InKeys.ZoomFitAlt},
-		.Callback = [&InNav] { InNav.KeyboardFitToWindow(); }});
-	InInput.RegisterAction({.Name = "nav_zoom100", .Binding = {.Key = InKeys.Zoom100},
-		.Callback = [&InNav] { InNav.KeyboardZoomTo100(); }});
-	InInput.RegisterAction({.Name = "nav_panup", .Binding = {.Key = InKeys.PanUp},
+		.Callback = [&InNav] { InNav.KeyboardZoomOut(); }}
+	);
+	InInput.RegisterAction(
+		{.Name = "nav_zoomfit", .Binding = {.Key = InKeys.ZoomFit},
+		.Callback = [&InNav] { InNav.KeyboardFitToWindow(); }}
+	);
+	InInput.RegisterAction(
+		{.Name = "nav_zoomfit_alt", .Binding = {.Key = InKeys.ZoomFitAlt},
+		.Callback = [&InNav] { InNav.KeyboardFitToWindow(); }}
+	);
+	InInput.RegisterAction(
+		{.Name = "nav_zoom100", .Binding = {.Key = InKeys.Zoom100},
+		.Callback = [&InNav] { InNav.KeyboardZoomTo100(); }}
+	);
+	InInput.RegisterAction(
+		{.Name = "nav_panup", .Binding = {.Key = InKeys.PanUp},
 		.AllowRepeat = true,
-		.Callback = [&InNav] { InNav.KeyboardPan(0.0F, 1.0F); }});
-	InInput.RegisterAction({.Name = "nav_pandown", .Binding = {.Key = InKeys.PanDown},
+		.Callback = [&InNav] { InNav.KeyboardPan(0.0F, 1.0F); }}
+	);
+	InInput.RegisterAction(
+		{.Name = "nav_pandown", .Binding = {.Key = InKeys.PanDown},
 		.AllowRepeat = true,
-		.Callback = [&InNav] { InNav.KeyboardPan(0.0F, -1.0F); }});
-	InInput.RegisterAction({.Name = "nav_panleft", .Binding = {.Key = InKeys.PanLeft},
+		.Callback = [&InNav] { InNav.KeyboardPan(0.0F, -1.0F); }}
+	);
+	InInput.RegisterAction(
+		{.Name = "nav_panleft", .Binding = {.Key = InKeys.PanLeft},
 		.AllowRepeat = true,
-		.Callback = [&InNav] { InNav.KeyboardPan(1.0F, 0.0F); }});
-	InInput.RegisterAction({.Name = "nav_panright", .Binding = {.Key = InKeys.PanRight},
+		.Callback = [&InNav] { InNav.KeyboardPan(1.0F, 0.0F); }}
+	);
+	InInput.RegisterAction(
+		{.Name = "nav_panright", .Binding = {.Key = InKeys.PanRight},
 		.AllowRepeat = true,
-		.Callback = [&InNav] { InNav.KeyboardPan(-1.0F, 0.0F); }});
+		.Callback = [&InNav] { InNav.KeyboardPan(-1.0F, 0.0F); }}
+	);
 }
 
 
@@ -60,13 +75,6 @@ void OaNavigation::SyncMovementFromPanel() noexcept {
 		Movement_.X = (PanX_ - (WindowW_ - ContentW_ * Zoom_) * 0.5F) / pxPerUnit;
 		Movement_.Y = ((WindowH_ - ContentH_ * Zoom_) * 0.5F - PanY_) / pxPerUnit;
 	}
-}
-
-void OaNavigation::UpdateCamera(OaCamera& InCamera) const noexcept {
-	const OaF32 z = (Movement_.Z > 0.001F) ? Movement_.Z : 0.001F;
-	InCamera.SetPosition({Movement_.X, Movement_.Y, 1.0F});
-	InCamera.SetZoom(RefZ_ / z);
-	InCamera.SetOffset(0.0F, 0.0F);
 }
 
 void OaNavigation::ClampMovement() noexcept {
@@ -335,8 +343,10 @@ void OaNavigation::HandleScroll(const OaUiEvent& InEvent) noexcept {
 			break;
 		}
 		case OuiScrollGesture::TouchpadPan:
-			PanScreenBy(-InEvent.ScrollX * Config_.TouchpadPanScale,
-			            InEvent.ScrollY * Config_.TouchpadPanScale);
+			PanScreenBy(
+				-InEvent.ScrollX * Config_.TouchpadPanScale,
+			  InEvent.ScrollY * Config_.TouchpadPanScale
+			);
 			break;
 		default:
 			break;

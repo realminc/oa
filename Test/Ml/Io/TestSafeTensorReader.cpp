@@ -14,7 +14,7 @@ OaPath MakeTestDirectory() {
 	const OaString name = OaString("oa_safetensor_") +
 		std::to_string(static_cast<unsigned long long>(++GSafeTensorTestSequence)) + "_" +
 		std::to_string(static_cast<long long>(tick));
-	return OaFileIo::GetTempDirectory() / OaPath(name);
+	return OaPaths::Temp() / OaPath(name);
 }
 
 OaStatus WriteSafeTensor(
@@ -29,18 +29,18 @@ OaStatus WriteSafeTensor(
 	if (!InPayload.Empty()) {
 		OaMemcpy(bytes.Data() + 8 + headerSize, InPayload.Data(), InPayload.Size());
 	}
-	return OaFileIo::WriteBinary(InPath, {bytes.Data(), bytes.Size()});
+	return OaFilesystem::WriteBinary(InPath, {bytes.Data(), bytes.Size()});
 }
 
 class TransferWeightsTest : public ::testing::Test {
 protected:
 	void SetUp() override {
 		Directory_ = MakeTestDirectory();
-		ASSERT_TRUE(OaFileIo::CreateDirectories(Directory_).IsOk());
+		ASSERT_TRUE(OaFilesystem::CreateDirectories(Directory_).IsOk());
 	}
 
 	void TearDown() override {
-		(void)OaFileIo::RemoveDirectory(Directory_, true);
+		(void)OaFilesystem::RemoveDirectory(Directory_, true);
 	}
 
 	OaPath File(const char* InName) const {
@@ -177,7 +177,7 @@ TEST_F(TransferWeightsTest, OpensIndexedShardPackageAsOneWeightSource) {
 		"{\"metadata\":{\"total_size\":\"2\"},\"weight_map\":{"
 		"\"a\":\"model-00001-of-00002.safetensors\","
 		"\"b\":\"model-00002-of-00002.safetensors\"}}";
-	ASSERT_TRUE(OaFileIo::WriteText(File("model.safetensors.index.json"), index).IsOk());
+	ASSERT_TRUE(OaFilesystem::WriteText(File("model.safetensors.index.json"), index).IsOk());
 
 	auto sourceResult = OaOpenWeightSource(Directory_);
 	ASSERT_TRUE(sourceResult.IsOk()) << sourceResult.GetStatus().ToString().c_str();
@@ -201,7 +201,7 @@ TEST_F(TransferWeightsTest, RejectsUnindexedShardWeights) {
 		"\"hidden\":{\"dtype\":\"U8\",\"shape\":[1],\"data_offsets\":[1,2]}}", values).IsOk());
 	const OaString index =
 		"{\"weight_map\":{\"a\":\"model-00001-of-00001.safetensors\"}}";
-	ASSERT_TRUE(OaFileIo::WriteText(File("model.safetensors.index.json"), index).IsOk());
+	ASSERT_TRUE(OaFilesystem::WriteText(File("model.safetensors.index.json"), index).IsOk());
 	auto result = OaOpenWeightSource(Directory_);
 	ASSERT_TRUE(result.IsError());
 	EXPECT_EQ(result.GetStatus().GetCode(), OaStatusCode::FileCorrupt);

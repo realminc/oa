@@ -1,6 +1,6 @@
-// FnAudioTransform.cpp — hand-written OaFnAudio Transform implementations
-// (schema bodies = manual_context; the .gen.{h,cpp} units carry only the
-// schema-derived doc comments for these ops).
+// FnAudioTransform.cpp — hand-written OaFnAudio Transform implementations.
+// Their schemas own the declarations and contracts; this file owns the
+// manual_context bodies.
 //
 // Design rule: compose from existing
 // verified kernels wherever possible. Stft and MelFilterbank dispatch their
@@ -106,8 +106,9 @@ static OaMatrix BuildDctIiMatrix(OaU32 InNumCoeffs, OaU32 InNumMels) {
 
 // Mel spectrogram in the MelFilterbank kernel's native layout [C, Frames, Mels].
 // Public MelSpectrogram/Mfcc transpose/reshape from here.
-static OaMatrix MelNative(const OaAudioBuffer& InBuf, OaU32 InSampleRate, const OaMelConfig& InCfg)
+static OaMatrix MelNative(const OaAudio& InAudio, const OaMelConfig& InCfg)
 {
+	const OaU32 InSampleRate = InAudio.SampleRate();
 	if (!IsValidMelConfig(InCfg, InSampleRate)) {
 		OA_LOG_ERROR(OaLogComponent::Core, "OaFnAudio::MelSpectrogram: invalid sample rate or mel configuration");
 		return {};
@@ -116,7 +117,7 @@ static OaMatrix MelNative(const OaAudioBuffer& InBuf, OaU32 InSampleRate, const 
 	stftCfg.FftSize = InCfg.FftSize;
 	stftCfg.HopSize = InCfg.HopSize;
 	stftCfg.WinSize = InCfg.FftSize;
-	OaMatrix spec = Stft(InBuf, stftCfg);   // [C, Frames, FreqBins]
+	OaMatrix spec = Stft(InAudio, stftCfg);   // [C, Frames, FreqBins]
 	if (spec.GetShape().Rank != 3) return {};
 
 	const OaU32 channels = static_cast<OaU32>(spec.GetShape()[0]);
@@ -140,7 +141,14 @@ static OaMatrix MelNative(const OaAudioBuffer& InBuf, OaU32 InSampleRate, const 
 }
 
 
-OaMatrix Stft(const OaAudioBuffer& InBuf, const OaStftConfig& InCfg) {
+OaMatrix Stft(const OaAudio& InAudio, const OaStftConfig& InCfg) {
+	if (not InAudio.Validate() || InAudio.IsEmpty()) {
+		OA_LOG_ERROR(
+			OaLogComponent::Core,
+			"OaFnAudio::Stft: expected valid non-empty audio");
+		return {};
+	}
+	const OaMatrix& InBuf = InAudio.AsMatrix();
 	const auto& shape = InBuf.GetShape();
 	if (shape.Rank != 2) {
 		OA_LOG_ERROR(OaLogComponent::Core, "OaFnAudio::Stft: expected [Channels, Samples], rank=%d", shape.Rank);
@@ -197,8 +205,9 @@ OaMatrix Stft(const OaAudioBuffer& InBuf, const OaStftConfig& InCfg) {
 	return out;
 }
 
-OaMatrix MelSpectrogram(const OaAudioBuffer& InBuf, OaU32 InSampleRate, const OaMelConfig& InCfg) {
-	OaMatrix mel = MelNative(InBuf, InSampleRate, InCfg);   // [C, Frames, Mels]
+OaMatrix MelSpectrogram(
+	const OaAudio& InAudio, const OaMelConfig& InCfg) {
+	OaMatrix mel = MelNative(InAudio, InCfg);   // [C, Frames, Mels]
 	if (mel.GetShape().Rank != 3) return {};
 	// Whisper/CLAP layout: [C, NumMels, Frames].
 	OaMatrix out = OaFnMatrix::Transpose(mel, 1, 2);
@@ -215,14 +224,14 @@ OaMatrix MelSpectrogram(const OaAudioBuffer& InBuf, OaU32 InSampleRate, const Oa
 	return OaFnMatrix::Reshape(normalized, out.GetShape());
 }
 
-OaMatrix Mfcc(const OaAudioBuffer& InBuf, OaU32 InSampleRate, const OaMfccConfig& InCfg) {
+OaMatrix Mfcc(const OaAudio& InAudio, const OaMfccConfig& InCfg) {
 	if (InCfg.NumCoeffs == 0 || InCfg.NumCoeffs > InCfg.Mel.NumMels) {
 		OA_LOG_ERROR(OaLogComponent::Core, "OaFnAudio::Mfcc: NumCoeffs must be in [1, NumMels]");
 		return {};
 	}
 	OaMelConfig melCfg = InCfg.Mel;
 	melCfg.LogScale = true;   // MFCC is DCT of the LOG mel spectrogram
-	OaMatrix mel = MelNative(InBuf, InSampleRate, melCfg);  // [C, Frames, Mels]
+	OaMatrix mel = MelNative(InAudio, melCfg);  // [C, Frames, Mels]
 	if (mel.GetShape().Rank != 3) return {};
 
 	const OaI64 channels = mel.GetShape()[0];

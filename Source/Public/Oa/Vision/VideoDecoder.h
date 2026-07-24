@@ -44,17 +44,73 @@ enum class OaVideoResourcePath : OaU32 {
 	Unavailable = 4,
 };
 
-// Video profile for decoder session
+// Codec-standard profile. Values are codec-qualified so an OaVideoProfile is
+// self-describing without exposing Vulkan Std Video enums in the public
+// contract. Unspecified preserves source compatibility for callers that only
+// supplied codec/extent; decoder creation resolves it to the currently verified
+// default for that codec before querying the device.
+enum class OaVideoCodecProfile : OaU8 {
+	Unspecified = 0,
+	H264Baseline,
+	H264Main,
+	H264High,
+	H264High444Predictive,
+	H265Main,
+	H265Main10,
+	H265MainStillPicture,
+	H265FormatRangeExtensions,
+	H265ScreenContentCodingExtensions,
+	Av1Main,
+	Av1High,
+	Av1Professional,
+	Vp9Profile0,
+	Vp9Profile1,
+	Vp9Profile2,
+	Vp9Profile3,
+};
+
+enum class OaVideoChromaSubsampling : OaU8 {
+	Monochrome = 0,
+	Yuv420,
+	Yuv422,
+	Yuv444,
+};
+
+enum class OaVideoBitDepth : OaU8 {
+	Bit8 = 8,
+	Bit10 = 10,
+	Bit12 = 12,
+};
+
+enum class OaVideoH264PictureLayout : OaU8 {
+	Progressive = 0,
+	InterlacedInterleavedLines,
+	InterlacedSeparatePlanes,
+};
+
+// Exact stream profile for decoder capability queries and session creation.
+// Level uses the codec's Std Video numeric level value when HasLevel is true.
 struct OaVideoProfile {
-	OaVideoCodec Codec;
-	OaU32 Width;
-	OaU32 Height;
-	OaU32 MaxDpbSlots;  // Decoded Picture Buffer slots (reference frames)
+	OaVideoCodec Codec = OaVideoCodec::H264;
+	OaU32 Width = 0;
+	OaU32 Height = 0;
+	OaU32 MaxDpbSlots = 0;  // Decoded Picture Buffer slots (reference frames)
+	OaVideoCodecProfile StandardProfile = OaVideoCodecProfile::Unspecified;
+	OaVideoChromaSubsampling ChromaSubsampling = OaVideoChromaSubsampling::Yuv420;
+	OaVideoBitDepth LumaBitDepth = OaVideoBitDepth::Bit8;
+	OaVideoBitDepth ChromaBitDepth = OaVideoBitDepth::Bit8;
+	OaVideoH264PictureLayout H264PictureLayout = OaVideoH264PictureLayout::Progressive;
+	bool Av1FilmGrain = false;
+	OaU32 Level = 0;
+	bool HasLevel = false;
+	bool HighTier = false;
 };
 
 // Codec/profile-specific Vulkan Video decode capabilities.
 struct OaVideoDecodeCapabilities {
 	bool Supported = false;
+	bool HardwareProfileSupported = false;
+	bool OaDecodePathImplemented = false;
 	bool SupportsDpbAndOutputCoincide = false;
 	bool SupportsDpbAndOutputDistinct = false;
 	bool SupportsNv12Dpb = false;
@@ -71,10 +127,12 @@ struct OaVideoDecodeCapabilities {
 	OaU32 MaxActiveReferencePictures = 0;
 	OaU64 MinBitstreamBufferOffsetAlignment = 0;
 	OaU64 MinBitstreamBufferSizeAlignment = 0;
-	VkFormat PictureFormat = VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
-	VkFormat ReferencePictureFormat = VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
+	OaU32 MaxLevel = 0;
+	VkFormat PictureFormat = VK_FORMAT_UNDEFINED;
+	VkFormat ReferencePictureFormat = VK_FORMAT_UNDEFINED;
 	VkExtensionProperties StdHeaderVersion = {};
 	VkVideoDecodeCapabilityFlagsKHR DecodeFlags = 0;
+	OaVideoProfile Profile = {};
 	OaVec<VkVideoFormatPropertiesKHR> DpbFormats;
 	OaVec<VkVideoFormatPropertiesKHR> OutputFormats;
 };
@@ -156,8 +214,7 @@ OaStatus DecodeFrame(class OaVideoDecoder& InDecoder, const OaSpan<const OaU8>& 
 }
 namespace FnVideoDecoderAv1 {
 OaStatus DecodeFrame(class OaVideoDecoder& InDecoder, const OaSpan<const OaU8>& InBitstream, OaVideoFrame& OutFrame);
-OaStatus DecodePicture(class OaVideoDecoder& InDecoder, const OaSpan<const OaU8>& InBitstream,
-	const OaAv1PictureDesc& InDesc, OaVideoFrame& OutFrame);
+OaStatus DecodePicture(class OaVideoDecoder& InDecoder, const OaSpan<const OaU8>& InBitstream, const OaAv1PictureDesc& InDesc, OaVideoFrame& OutFrame);
 }
 namespace FnVideoDecoderVp9 {
 OaStatus DecodeFrame(class OaVideoDecoder& InDecoder, const OaSpan<const OaU8>& InBitstream, OaVideoFrame& OutFrame);
@@ -185,10 +242,7 @@ public:
 	~OaVideoDecoder();
 
 	// Create decoder for specific codec and resolution
-	static OaResult<OaVideoDecoder> Create(
-		class OaEngine &InRt,
-		const OaVideoProfile &InProfile
-	);
+	static OaResult<OaVideoDecoder> Create(class OaEngine &InRt, const OaVideoProfile &InProfile);
 
 	// Decode one frame from compressed bitstream
 	// Returns VkImage in NV12 format (or RGB if conversion enabled)
@@ -230,7 +284,9 @@ public:
 	[[nodiscard]] OaVideoResourcePath GetResourcePath() const noexcept { return ResourcePath_; }
 
 	// Query capabilities
-	static OaResult<OaVideoDecodeCapabilities> QueryDecodeCapabilities(OaEngine &InRt, OaVideoCodec InCodec);
+	static OaResult<OaVideoDecodeCapabilities> QueryDecodeCapabilities(OaEngine& InRt, const OaVideoProfile& InProfile);
+	static OaResult<OaVideoDecodeCapabilities> QueryDecodeCapabilities(OaEngine& InRt, OaVideoCodec InCodec);
+	static bool IsProfileSupported(OaEngine& InRt, const OaVideoProfile& InProfile);
 	static bool IsCodecSupported(OaEngine &InRt, OaVideoCodec InCodec);
 	static OaU32 GetMaxWidth(OaEngine &InRt, OaVideoCodec InCodec);
 	static OaU32 GetMaxHeight(OaEngine &InRt, OaVideoCodec InCodec);
@@ -252,19 +308,23 @@ private:
 	);
 	[[nodiscard]] OaResult<OaMatrix> DecodeFrameToBf16(
 		const OaSpan<const OaU8> &InBitstream,
-		bool InNormalizeImageNet = true);
+		bool InNormalizeImageNet = true
+	);
 	OaStatus ConvertFrameToRgba(
 		const OaVideoFrame &InNv12Frame,
 		const OaVideoConversionOptions &InOptions,
-		OaVideoFrame &OutRgbFrame);
+		OaVideoFrame &OutRgbFrame
+	);
 	OaStatus ConvertNv12ToRgbInto(
 		const OaVideoFrame &InNv12Frame,
 		const OaVideoConversionOptions &InOptions,
-		OaVideoFrame &InOutRgbTarget);
+		OaVideoFrame &InOutRgbTarget
+	);
 	[[nodiscard]] OaResult<OaVkImageDispatchTicket> ConvertNv12ToRgbIntoAsync(
 		const OaVideoFrame& InNv12Frame,
 		const OaVideoConversionOptions& InOptions,
-		const OaVideoFrame& InRgbTarget);
+		const OaVideoFrame& InRgbTarget
+	);
 	[[nodiscard]] OaResult<OaVideoFrame> AllocateOutputRgbaFrame(OaU32 InWidth, OaU32 InHeight) {
 		return AllocateRgbaFrame(InWidth, InHeight, 0);
 	}
@@ -324,8 +384,7 @@ private:
 	// MMCO (Memory Management Control Operations) for explicit DPB control.
 	// Walks the slice's parsed dec_ref_pic_marking commands and updates the
 	// software-side DPB slot bookkeeping accordingly.
-	void ApplyMmco(const OaVec<struct OaH264MmcoCommand>& InMmcoCommands,
-		OaI32 InCurrentDpbSlot);
+	void ApplyMmco(const OaVec<struct OaH264MmcoCommand>& InMmcoCommands,	OaI32 InCurrentDpbSlot);
 
 	// Legacy raw-u32 overload (kept for backwards compat — no longer wired).
 	void ApplyMmco(const OaVec<OaU32>& InMmcoCommands);
@@ -379,9 +438,7 @@ private:
 		VkExtent2D InCodedExtent,
 		OaU32 InSlotCount
 	);
-	void RecordDpbLayerToSampleImage(
-		VkCommandBuffer InCommandBuffer,
-		OaI32 InDpbSlot);
+	void RecordDpbLayerToSampleImage(VkCommandBuffer InCommandBuffer,	OaI32 InDpbSlot);
 	// Copies one DPB layer into its per-slot NV12 staging image on the compute
 	// queue when the video queue lacks TRANSFER_BIT, then restores the DPB layer
 	// on the video queue.
@@ -402,42 +459,49 @@ private:
 		OaI32 InDpbSlot,
 		const OaH264PictureDesc& InDesc,
 		const OaVec<OaI32>& InRefPicList0,
-		const OaVec<OaI32>& InRefPicList1);
+		const OaVec<OaI32>& InRefPicList1
+	);
 	OaStatus RecordH265DecodeCommands(
 		OaI32 InDpbSlot,
 		const OaH265PictureDesc& InDesc,
 		const OaVec<OaI32>& InRefPicList0,
-		const OaVec<OaI32>& InRefPicList1);
+		const OaVec<OaI32>& InRefPicList1
+	);
 	OaStatus RecordAV1DecodeCommands(
 		OaI32 InDpbSlot,
 		const OaAv1PictureDesc& InDesc,
-		const OaI32 InReferenceNameSlotIndices[7]);
+		const OaI32 InReferenceNameSlotIndices[7]
+	);
 	OaStatus RecordVP9DecodeCommands(
 		OaI32 InDpbSlot,
 		const struct OaVp9PictureDesc& InDesc,
 		const OaI32 InReferenceNameSlotIndices[STD_VIDEO_VP9_REFS_PER_FRAME],
 		const OaVec<OaI32>& InReferenceSlots,
-		const OaVec<VkExtent2D>& InReferenceExtents);
+		const OaVec<VkExtent2D>& InReferenceExtents
+	);
 	
 	// Convert NV12 frame to RGB using hardware or compute shader
 	OaStatus ConvertNv12ToRgb(
 		const OaVideoFrame &InNv12Frame,
 		const OaVideoConversionOptions &InOptions,
-		OaVideoFrame &OutRgbFrame);
+		OaVideoFrame &OutRgbFrame
+	);
 	
 	// Hardware YCbCr conversion path (VK_KHR_sampler_ycbcr_conversion)
 	OaStatus ConvertNv12ToRgbHardware(
 		const OaVideoFrame &InNv12Frame,
 		OaYCbCrModel InColorSpace,
 		OaVideoFrame &OutRgbFrame,
-		OaFilter InFilter = OaFilter::Nearest);
+		OaFilter InFilter = OaFilter::Nearest
+	);
 
 	// Software YCbCr conversion path (compute shader fallback)
 	OaStatus ConvertNv12ToRgbCompute(
 		const OaVideoFrame &InNv12Frame,
 		OaYCbCrModel InColorSpace,
 		OaVideoFrame &OutRgbFrame,
-		OaFilter InFilter = OaFilter::Nearest);
+		OaFilter InFilter = OaFilter::Nearest
+	);
 
 	// Helper for acquiring/releasing the rotating video command buffer slot.
 	// All video-queue operations (decode, transition, restore, readback) go

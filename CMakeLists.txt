@@ -58,7 +58,7 @@ option(OA_BUILD_TESTS "Build unit tests" ON)
 option(OA_OASTD_EXTRA_TARGETS "Optional: oa_oastd_headers (IDE file list) + oastd -> TestOaStd" ON)
 option(OA_VULKAN_VALIDATION "Enable Vulkan validation layers" OFF)
 option(OA_BUILD_CRYPTO "Build crypto implementations (requires pqcrypto)" OFF)
-option(OA_EMBED_SHADERS "Embed compute shaders (ML+crypto) into liboa (ON=release, OFF=file loading)" ON)
+option(OA_EMBED_SHADERS "Embed OA compute and graphics shaders into liboa (ON=release, OFF=file loading)" ON)
 option(OA_WITH_DATABASE "Embedded OHLCV SQL store (DuckDB in Source/Private/Oa/Data/Database.cpp only; vcpkg feature database)" OFF)
 option(OA_BUILD_PYTHON "Build Python bindings via nanobind (vcpkg feature python)" OFF)
 option(OA_BUILD_SHARED "Build liboa as a shared library (required for distributable runtime packages)" OFF)
@@ -327,9 +327,10 @@ endif()
 target_include_directories(oa_headers SYSTEM INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Source/ThirdParty/glm>)
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/Source/Private/Oa/Core/FnMatrix/FnMatrixSources.gen.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/Source/Private/Oa/Core/FnAutogenKernels.gen.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/Source/Private/Oa/Ml/FnMatrix/FnMatrixSources.gen.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/Source/Private/Oa/Ml/Nn/NnSources.gen.cmake)
-include(${CMAKE_CURRENT_SOURCE_DIR}/Source/Private/Oa/Audio/FnAudio/FnAudioSources.gen.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/Source/Private/Oa/Audio/FnAudio/FnAudioSources.gen.cmake OPTIONAL)
 include(${CMAKE_CURRENT_SOURCE_DIR}/Source/Private/Oa/Vision/FnImage/FnImageSources.gen.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/Source/Private/Oa/Vision/FnVideo/FnVideoSources.gen.cmake OPTIONAL)
 include(${CMAKE_CURRENT_SOURCE_DIR}/Source/Private/Oa/Ui/Matrix/FnMatrixSources.gen.cmake OPTIONAL)
@@ -371,7 +372,7 @@ set(OA_SOURCES
 	Source/Private/Oa/Runtime/Gemm/Router.cpp
 	Source/Private/Oa/Runtime/Gemm/Tuner.cpp
 	Source/Private/Oa/Core/ByteLogitsHost.cpp
-	Source/Private/Oa/Core/FileIo.cpp
+	Source/Private/Oa/Core/Filesystem.cpp
 	Source/Private/Oa/Core/MappedFile.cpp
 	Source/Private/Oa/Core/PerfStat.cpp
 	Source/Private/Oa/Core/PerfStore.cpp
@@ -431,6 +432,7 @@ set(OA_SOURCES
 	Source/Private/Oa/Runtime/Cmd.cpp
 	Source/Private/Oa/Runtime/Sync.cpp
 	Source/Private/Oa/Runtime/Stream.cpp
+	Source/Private/Oa/Runtime/GraphicsStream.cpp
 	Source/Private/Oa/Runtime/UploadRing.cpp
 	Source/Private/Oa/Runtime/Prefetch.cpp
 	Source/Private/Oa/Runtime/Timestamp.cpp
@@ -489,6 +491,7 @@ set(OA_SOURCES
 
 	# ML — reinforcement learning
 	Source/Private/Oa/Ml/Rl/Environment.cpp
+	Source/Private/Oa/Ml/Rl/EnvironmentExecution.cpp
 	Source/Private/Oa/Ml/Rl/ActorCritic.cpp
 	Source/Private/Oa/Ml/Rl/Collector.cpp
 	Source/Private/Oa/Ml/Rl/DqnTrainer.cpp
@@ -521,10 +524,9 @@ set(OA_SOURCES
 	Source/Private/Oa/Ml/Tokenizer.cpp
 	Source/Private/Oa/Ml/NlpSuite.cpp
 	${OA_NN_GENERATED_SOURCES}
-	Source/Private/Oa/Ml/Nn/Activation.cpp
+	Source/Private/Oa/Ml/Nn/Dropout/Dropout.cpp
 	Source/Private/Oa/Ml/Nn/Byte.cpp
 	Source/Private/Oa/Ml/Nn/Rope/Rope.cpp
-	# Source/Private/Oa/Ml/Nn/Ssm.cpp # Disabled: SSM not yet implemented (uses OaDeviceMatrix which doesn't exist)
 	Source/Private/Oa/Ml/Nn/Mamba3/Mamba3.cpp
 	# Hand-written modules (NOT schema-generated) — must live here, not in
 	# NnSources.gen.cmake, or a `--live` NN regen drops them from the build.
@@ -540,7 +542,6 @@ set(OA_SOURCES
 	# Note: Sequential, Attention, Vision (BatchNorm2d, AdaptiveAvgPool2d), Upsample are now generated
 	
 	# Ui — widget layer, present, image loading
-	Source/Private/Oa/Ui/StbImageImpl.cpp
 	Source/Private/Oa/Ui/Image.cpp
 	Source/Private/Oa/Ui/Cv.cpp
 	Source/Private/Oa/Ui/DetectionOverlay.cpp
@@ -549,11 +550,10 @@ set(OA_SOURCES
 	Source/Private/Oa/Ui/Text.cpp
 	Source/Private/Oa/Ui/Node.cpp
 	Source/Private/Oa/Ui/Ui.cpp
+	Source/Private/Oa/Ui/ViewerPlatform.cpp
 	Source/Private/Oa/Ui/ViewerApplication.cpp
 	Source/Private/Oa/Ui/ViewerPresentation.cpp
-	Source/Private/Oa/Ui/Camera.cpp
 	Source/Private/Oa/Ui/Viewport.cpp
-	Source/Private/Oa/Ui/FnCamera.cpp
 
 	# Core — shared interaction/navigation primitives
 	Source/Private/Oa/Core/Input.cpp
@@ -586,6 +586,8 @@ set(OA_SOURCES
 	Source/Private/Oa/Animation/Timeline.cpp
 
 	# Render — 2D/3D rendering infrastructure
+	Source/Private/Oa/Render/Camera.cpp
+	Source/Private/Oa/Render/FnCamera.cpp
 	Source/Private/Oa/Render/Renderer.cpp
 	Source/Private/Oa/Render/FnMaterial.cpp
 	Source/Private/Oa/Render/FnMesh.cpp
@@ -597,7 +599,12 @@ set(OA_SOURCES
 	Source/Private/Oa/Vision/FnDetection/FnDetection.cpp
 	Source/Private/Oa/Vision/FnImage/Postprocess/FnImageSegmentation.cpp
 	Source/Private/Oa/Vision/FnImageSaveFile.cpp
-	Source/Private/Oa/Vision/Image/Decoder/JpegDecoder.cpp
+	Source/Private/Oa/Vision/Image/Codec/ImageCodec.cpp
+	Source/Private/Oa/Vision/Image/Codec/ImageDecoder.cpp
+	Source/Private/Oa/Vision/Image/Codec/ImageEncoder.cpp
+	Source/Private/Oa/Vision/Image/Codec/StbImageCodec.cpp
+	Source/Private/Oa/Vision/Image/Codec/StbImageImpl.cpp
+	Source/Private/Oa/Vision/Image/Codec/WebpImageCodec.cpp
 	Source/Private/Oa/Vision/Video/Decoder/VideoDecoder.cpp
 	Source/Private/Oa/Vision/Video/Decoder/VideoDecoderProfile.cpp
 	Source/Private/Oa/Vision/Video/Decoder/VideoDecoderOps.cpp
@@ -742,13 +749,59 @@ endif()
 if(NOT ANDROID)
 	target_link_libraries(oa PRIVATE utf8proc::utf8proc)
 endif()
+get_target_property(_oa_library_type oa TYPE)
+set(OA_PACKAGE_NEEDS_UTF8PROC OFF)
+if(NOT ANDROID AND _oa_library_type STREQUAL "STATIC_LIBRARY")
+	set(OA_PACKAGE_NEEDS_UTF8PROC ON)
+endif()
+
+# Still-image WebP is an optional internal codec backend. Desktop vcpkg
+# manifests install libwebp; Linux developer builds may use pkg-config. Android
+# keeps the stb JPEG/PNG/BMP/TGA slice and reports WebP unavailable.
+set(OA_WEBP_DEPENDENCY_MODE "None")
+if(NOT ANDROID)
+	find_package(WebP CONFIG QUIET)
+	if(TARGET WebP::webp)
+		target_link_libraries(oa PRIVATE WebP::webp)
+		target_compile_definitions(oa PRIVATE OA_HAS_WEBP=1)
+		if(_oa_library_type STREQUAL "STATIC_LIBRARY")
+			set(OA_WEBP_DEPENDENCY_MODE "CMake")
+		endif()
+		message(STATUS "Still-image WebP: libwebp")
+	elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+		find_package(PkgConfig QUIET)
+		if(PkgConfig_FOUND)
+			pkg_check_modules(OA_WEBP QUIET IMPORTED_TARGET libwebp)
+		endif()
+		if(TARGET PkgConfig::OA_WEBP)
+			target_link_libraries(oa PRIVATE PkgConfig::OA_WEBP)
+			target_compile_definitions(oa PRIVATE OA_HAS_WEBP=1)
+			if(_oa_library_type STREQUAL "STATIC_LIBRARY")
+				set(OA_WEBP_DEPENDENCY_MODE "PkgConfig")
+			endif()
+			message(STATUS "Still-image WebP: libwebp (pkg-config)")
+		else()
+			target_compile_definitions(oa PRIVATE OA_HAS_WEBP=0)
+			message(STATUS "Still-image WebP: unavailable")
+		endif()
+	else()
+		target_compile_definitions(oa PRIVATE OA_HAS_WEBP=0)
+		message(STATUS "Still-image WebP: unavailable")
+	endif()
+else()
+	target_compile_definitions(oa PRIVATE OA_HAS_WEBP=0)
+endif()
 
 # SDL3 — required by OaCameraCapture, OaWindow, and OaViewer
+set(OA_PACKAGE_NEEDS_SDL3 OFF)
 if(NOT ANDROID)
 	find_package(SDL3 CONFIG QUIET)
 endif()
 if(TARGET SDL3::SDL3)
 	target_link_libraries(oa PRIVATE SDL3::SDL3)
+	if(_oa_library_type STREQUAL "STATIC_LIBRARY")
+		set(OA_PACKAGE_NEEDS_SDL3 ON)
+	endif()
 	message(STATUS "SDL3: found (OaCameraCapture enabled)")
 elseif(NOT ANDROID)
 	message(WARNING "SDL3 not found — OaCameraCapture and windowed apps will not work")
@@ -756,6 +809,7 @@ endif()
 
 # Wayland screencast portal + PipeWire. Optional outside Linux; the public
 # OaScreenCapture surface remains available and reports Unavailable at runtime.
+set(OA_PACKAGE_NEEDS_PIPEWIRE_CAPTURE OFF)
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 	find_package(PkgConfig QUIET)
 	if(PkgConfig_FOUND)
@@ -765,6 +819,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 	if(TARGET PkgConfig::OA_PIPEWIRE AND TARGET PkgConfig::OA_LIBPORTAL)
 		target_link_libraries(oa PRIVATE PkgConfig::OA_PIPEWIRE PkgConfig::OA_LIBPORTAL)
 		target_compile_definitions(oa PRIVATE OA_HAS_PIPEWIRE_SCREEN_CAPTURE=1)
+		if(_oa_library_type STREQUAL "STATIC_LIBRARY")
+			set(OA_PACKAGE_NEEDS_PIPEWIRE_CAPTURE ON)
+		endif()
 		message(STATUS "Wayland screen capture: libportal + PipeWire")
 	else()
 		message(STATUS "Wayland screen capture: unavailable (libportal/PipeWire not found)")
@@ -864,7 +921,7 @@ if(SLANGC)
 		Quantize/QuantizeQ4_0 Quantize/DequantizeQ4_0 Quantize/ComputeScaleQ4_0
 		RopeApply RopeApplyBwd
 		CastBf16ToF32 CastF32ToBf16
-		RlGae RlPpoClip RlPpoClipBwd RlDqnTarget RlSacTarget RlRolloutAppend RlRolloutReset RlCartPoleReset RlCartPoleStep RlReplayAppend RlReplaySample
+		RlGae RlPpoClip RlPpoClipBwd RlDqnTarget RlSacTarget RlRolloutAppend RlRolloutReset RlReplayAppend RlReplaySample
 	)
 	set(OA_ML_SHADER_SRC
 		Blas/PackedLinear
@@ -902,8 +959,10 @@ if(SLANGC)
 		Quantize/QuantizeQ4_0 Quantize/DequantizeQ4_0 Quantize/ComputeScaleQ4_0
 		Nn/Rope/RopeApply Nn/Rope/RopeApplyBwd
 		Cast/CastBf16ToF32 Cast/CastF32ToBf16
-		Rl/Gae/RlGae Rl/Loss/RlPpoClip Rl/Loss/RlPpoClipBwd Rl/Loss/RlDqnTarget Rl/Loss/RlSacTarget Rl/Rollout/RlRolloutAppend Rl/Rollout/RlRolloutReset Rl/Environment/RlCartPoleReset Rl/Environment/RlCartPoleStep Rl/Replay/RlReplayAppend Rl/Replay/RlReplaySample
+		Rl/Gae/RlGae Rl/Loss/RlPpoClip Rl/Loss/RlPpoClipBwd Rl/Loss/RlDqnTarget Rl/Loss/RlSacTarget Rl/Rollout/RlRolloutAppend Rl/Rollout/RlRolloutReset Rl/Replay/RlReplayAppend Rl/Replay/RlReplaySample
 	)
+	list(APPEND OA_ML_SHADER_REG ${OA_FN_AUTOGEN_ML_KERNEL_NAMES})
+	list(APPEND OA_ML_SHADER_SRC ${OA_FN_AUTOGEN_ML_KERNEL_SOURCES})
 	set(OA_KERNEL_FLAT_OPS
 		Add Sub Mul Div Neg Abs Fill MultiMatrixFill MultiMatrixAdd Scale Log Exp Sin Cos Reciprocal ClampMax ClampMin Broadcast Copy CopyAtOffset MatrixCopyRegion CastU8ToU32 Equal GreaterEqual CausalMaskApply CausalMaskBwd CollectiveReduce
 		Sum SumDim Max Argmax TopK TopKMask SampleSortedLogits SampleDenseLogits CategoricalAccuracyCount MaskedCategoricalAccuracyCount ReduceCols ReduceMean
@@ -1404,10 +1463,10 @@ if(SLANGC)
 	endforeach()
 
 	# Render graphics shaders — vertex/fragment (rasterization pipeline)
-	set(OA_RENDER_SHADER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/Source/Private/Oa/Render/Shader")
+	set(OA_RENDER_GRAPHICS_SHADER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/Source/Private/Oa/Render/Shader/Graphics")
 	set(OA_RENDER_SPV_OUTPUTS "")
 	# Vertex shader
-	set(_RENDER_VS_SRC "${OA_RENDER_SHADER_DIR}/UnlitTextured.vert.slang")
+	set(_RENDER_VS_SRC "${OA_RENDER_GRAPHICS_SHADER_DIR}/UnlitTextured.vert.slang")
 	set(_RENDER_VS_SPV "${OA_SPIRV_DIR}/UnlitTextured.vert.spv")
 	add_custom_command(
 		OUTPUT ${_RENDER_VS_SPV}
@@ -1415,11 +1474,11 @@ if(SLANGC)
 			-I ${OA_SLANG_UMBRELLA_DIR} -I ${OA_SLANG_MODULE_DIR}
 			-target spirv -stage vertex -entry main -o ${_RENDER_VS_SPV}
 		DEPENDS ${_RENDER_VS_SRC} ${OA_SLANG_MODULES}
-		COMMENT "slangc: Render/Shader/UnlitTextured.vert.slang → UnlitTextured.vert.spv"
+		COMMENT "slangc: Render/Shader/Graphics/UnlitTextured.vert.slang → UnlitTextured.vert.spv"
 	)
 	list(APPEND OA_RENDER_SPV_OUTPUTS ${_RENDER_VS_SPV})
 	# Fragment shader
-	set(_RENDER_FS_SRC "${OA_RENDER_SHADER_DIR}/UnlitTextured.frag.slang")
+	set(_RENDER_FS_SRC "${OA_RENDER_GRAPHICS_SHADER_DIR}/UnlitTextured.frag.slang")
 	set(_RENDER_FS_SPV "${OA_SPIRV_DIR}/UnlitTextured.frag.spv")
 	add_custom_command(
 		OUTPUT ${_RENDER_FS_SPV}
@@ -1427,13 +1486,14 @@ if(SLANGC)
 			-I ${OA_SLANG_UMBRELLA_DIR} -I ${OA_SLANG_MODULE_DIR}
 			-target spirv -stage fragment -entry main -o ${_RENDER_FS_SPV}
 		DEPENDS ${_RENDER_FS_SRC} ${OA_SLANG_MODULES}
-		COMMENT "slangc: Render/Shader/UnlitTextured.frag.slang → UnlitTextured.frag.spv"
+		COMMENT "slangc: Render/Shader/Graphics/UnlitTextured.frag.slang → UnlitTextured.frag.spv"
 	)
 	list(APPEND OA_RENDER_SPV_OUTPUTS ${_RENDER_FS_SPV})
 	foreach(_RENDER_SHADER
 		DetectionOverlay.vert DetectionOverlay.frag
-		CanvasGlyph.vert CanvasGlyph.frag)
-		set(_RENDER_SRC "${OA_RENDER_SHADER_DIR}/${_RENDER_SHADER}.slang")
+		CanvasGlyph.vert CanvasGlyph.frag
+		LunarDiagnostic3d.vert LunarDiagnostic3d.frag)
+		set(_RENDER_SRC "${OA_RENDER_GRAPHICS_SHADER_DIR}/${_RENDER_SHADER}.slang")
 		set(_RENDER_SPV "${OA_SPIRV_DIR}/${_RENDER_SHADER}.spv")
 		get_filename_component(_RENDER_STAGE "${_RENDER_SHADER}" LAST_EXT)
 		if(_RENDER_STAGE STREQUAL ".vert")
@@ -1448,7 +1508,7 @@ if(SLANGC)
 				-target spirv -stage ${_SLANG_STAGE} -entry main
 				-o ${_RENDER_SPV}
 			DEPENDS ${_RENDER_SRC} ${OA_SLANG_MODULES}
-			COMMENT "slangc: Render/Shader/${_RENDER_SHADER}.slang → ${_RENDER_SHADER}.spv"
+			COMMENT "slangc: Render/Shader/Graphics/${_RENDER_SHADER}.slang → ${_RENDER_SHADER}.spv"
 		)
 		list(APPEND OA_RENDER_SPV_OUTPUTS ${_RENDER_SPV})
 	endforeach()
@@ -1481,7 +1541,7 @@ if(SLANGC)
 		list(APPEND OA_CRYPTO_SPV_OUTPUTS ${SPV})
 	endforeach()
 
-	# SPIR-V EMBEDDING — bake compute shaders into liboa.a (release) or stub (debug)
+	# SPIR-V EMBEDDING — bake OA shaders into liboa.a (release) or stub (debug)
 	# Collect all shader names (flattened to basename — no subdirs in .spv)
 	set(OA_ALL_SPV_NAMES "")
 	foreach(_REG ${OA_ML_SHADER_REG})
@@ -1564,6 +1624,8 @@ if(SLANGC)
 	list(APPEND OA_ALL_SPV_NAMES "DetectionOverlay.frag")
 	list(APPEND OA_ALL_SPV_NAMES "CanvasGlyph.vert")
 	list(APPEND OA_ALL_SPV_NAMES "CanvasGlyph.frag")
+	list(APPEND OA_ALL_SPV_NAMES "LunarDiagnostic3d.vert")
+	list(APPEND OA_ALL_SPV_NAMES "LunarDiagnostic3d.frag")
 	if(OA_BUILD_CRYPTO)
 		foreach(SHADER ${OA_CRYPTO_SHADERS})
 			list(APPEND OA_ALL_SPV_NAMES ${SHADER})
@@ -1613,7 +1675,7 @@ if(SLANGC)
 	endif()
 	list(APPEND OA_ALL_SPV_OUTPUTS ${OA_EXT_SPV_OUTPUTS})
 
-	# Unified shader target — all kernels (ML + BLAS + Render + crypto + extensions)
+	# Unified shader target — compute and graphics shaders.
 	add_custom_target(oa_shaders ALL DEPENDS ${OA_ALL_SPV_OUTPUTS})
 
 	# Remove orphan .spv files from previous builds (renamed/removed shaders)
@@ -1631,7 +1693,7 @@ if(SLANGC)
 	add_custom_target(clean_shaders
 		COMMAND ${CMAKE_COMMAND} -E rm -rf "${OA_SPIRV_DIR}"
 		COMMAND ${CMAKE_COMMAND} -E make_directory "${OA_SPIRV_DIR}"
-		COMMENT "Cleaning all compute shaders (ML + crypto)"
+		COMMENT "Cleaning all compiled OA shaders"
 	)
 	
 	# ninja clean_cache → wipe pipeline cache (use after shader changes)
@@ -1776,6 +1838,40 @@ install(DIRECTORY Source/Public/Oa/
 	COMPONENT oa_sdk
 )
 
+# Older operation generators still place declaration fragments in
+# Source/Private while exposing them through public umbrella headers. Install
+# only those declaration families; NN declarations are generated directly into
+# Source/Public and are covered by the public-header install above.
+install(FILES Source/Private/Oa/Core/OperationRegistry.gen.h
+	DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/Oa/Core
+	COMPONENT oa_sdk
+)
+install(DIRECTORY Source/Private/Oa/Core/FnMatrix/
+	DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/Oa/Core/FnMatrix
+	COMPONENT oa_sdk
+	FILES_MATCHING PATTERN "*.gen.h"
+)
+install(DIRECTORY Source/Private/Oa/Ml/FnMatrix/
+	DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/Oa/Ml/FnMatrix
+	COMPONENT oa_sdk
+	FILES_MATCHING PATTERN "*.gen.h"
+)
+install(DIRECTORY Source/Private/Oa/Ml/FnLoss/
+	DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/Oa/Ml/FnLoss
+	COMPONENT oa_sdk
+	FILES_MATCHING PATTERN "*.gen.h"
+)
+install(DIRECTORY Source/Private/Oa/Audio/FnAudio/
+	DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/Oa/Audio/FnAudio
+	COMPONENT oa_sdk
+	FILES_MATCHING PATTERN "*.gen.h"
+)
+install(DIRECTORY Source/Private/Oa/Vision/FnImage/
+	DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/Oa/Vision/FnImage
+	COMPONENT oa_sdk
+	FILES_MATCHING PATTERN "*.gen.h"
+)
+
 # Slang math modules + core matrix kernels (sources for consumer -I paths)
 install(DIRECTORY Source/Private/Oa/Core/Shader/Compute/Math/
 	DESTINATION lib/Oa/Core/Shader/Compute/Math
@@ -1895,6 +1991,7 @@ if(OA_BUILD_PYTHON)
 		${OA_PYTHON_DIR}/Module.cpp
 		${OA_PYTHON_DIR}/Core/Core.cpp
 		${OA_PYTHON_DIR}/Core/Type.cpp
+		${OA_PYTHON_DIR}/Core/Filesystem.cpp
 		${OA_PYTHON_DIR}/Core/Factory.cpp
 		${OA_PYTHON_DIR}/Core/FnMatrix.cpp
 		${OA_PYTHON_DIR}/Core/Backward.cpp
@@ -1906,6 +2003,7 @@ if(OA_BUILD_PYTHON)
 		${OA_PYTHON_DIR}/Ml/Autograd.cpp
 		${OA_PYTHON_DIR}/Ml/Optim.cpp
 		${OA_PYTHON_DIR}/Ml/Training.cpp
+		${OA_PYTHON_DIR}/Ml/Nlp.cpp
 		${OA_PYTHON_DIR}/Ml/Rl.cpp
 		${OA_PYTHON_DIR}/Audio/Audio.cpp
 		${OA_PYTHON_DIR}/Audio/Type.cpp
@@ -1917,6 +2015,7 @@ if(OA_BUILD_PYTHON)
 		${OA_PYTHON_DIR}/Vision/Detection.cpp
 		${OA_PYTHON_DIR}/Vision/Codec.cpp
 		${OA_PYTHON_DIR}/Vision/Video.cpp
+		${OA_PYTHON_DIR}/Ui/Viewer.cpp
 		${OA_PYTHON_DIR}/Ui/Plot.cpp
 	)
 	# Crypto binding only when the crypto backend is built (OaFnHash/OaSign +
@@ -1980,7 +2079,10 @@ if(OA_BUILD_PYTHON)
 		install(TARGETS _oa LIBRARY DESTINATION ${Python_SITEARCH}/oa)
 		install(DIRECTORY ${OA_PYTHON_DIR}/oa/
 			DESTINATION ${Python_SITEARCH}/oa
-			FILES_MATCHING PATTERN "*.py")
+			FILES_MATCHING
+				PATTERN "*.py"
+				PATTERN "*.pyi"
+				PATTERN "py.typed")
 	endif()
 
 	message(STATUS "Python bindings: ENABLED (nanobind)")

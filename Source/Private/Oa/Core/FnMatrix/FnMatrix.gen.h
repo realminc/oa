@@ -2,7 +2,7 @@
 // Source of truth: Tools/FnAutogen/Schema/Core/FnMatrix manifest.
 // Regenerate via: python3 Tools/FnAutogen/oafnautogen.py --live
 
-// OaFnMatrix — generated umbrella for Core/FnMatrix.
+// OaFnMatrix — generated declarations for Core/FnMatrix.
 
 #include "Blas/FnMatrixBlas.gen.h"
 #include "Elemwise/FnMatrixElemwise.gen.h"

@@ -12,7 +12,8 @@
 #include <Oa/Runtime/Context.h>
 #include <Oa/Core/Cli.h>
 #include <Oa/Core/Log.h>
-#include <Oa/Core/FileIo.h>
+#include <Oa/Core/Filesystem.h>
+#include <Oa/Core/Paths.h>
 #include <Oa/Core/Time.h>
 #include <Oa/Ml.h>
 #include <Oa/Ml/Oam.h>
@@ -37,7 +38,7 @@ struct GenAlmConfig {
 	OaString Model    = "var/model/dev/Alm/Alm.oam";
 	OaString Dataset  = "../dataset/gen/3d/anim/ds/Cmp";
 	OaString Split    = "train";
-	OaString OutDir   = OaFileIo::GetVarDir("alm").String();
+	OaString OutDir   = OaPaths::Var("alm").String();
 	OaString Name     = "Alm";
 	OaString PrecisionStr = "fp32";
 
@@ -252,7 +253,7 @@ struct GenAlmApp : OaComputeApp {
 		std::printf("Loaded OaAlmAg: %s\n", c.Model.CStr());
 
 		// ── Generate ──
-		(void)OaFileIo::CreateDirectories(OaPath(c.OutDir));
+		(void)OaFilesystem::CreateDirectories(OaPath(c.OutDir));
 		ctx.Clear();
 		OaMatrix textFeature;
 		if (promptMode) {
@@ -366,7 +367,7 @@ struct GenAlmApp : OaComputeApp {
 				}
 			}
 			const OaPath metadataPath(OaString(pathBuf) + ".meta.txt");
-			const auto metadataSt = OaFileIo::WriteText(
+			const auto metadataSt = OaFilesystem::WriteText(
 				metadataPath, OaString(metadata.str().c_str()));
 			std::printf("         metadata %s (%s)\n", metadataPath.CStr(),
 				metadataSt.IsOk() ? "ok" : metadataSt.ToString().CStr());

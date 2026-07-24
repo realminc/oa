@@ -1,16 +1,10 @@
-// OaAudio types — buffer alias, channel layout, unified metadata, DSP configs.
-// Single source of truth for the audio type surface; included by
-// AudioDecoder.h / AudioEncoder.h / FnAudio.h (use <Oa/Audio.h> as umbrella).
+// OaAudio value, channel layout, and DSP configuration types.
 
 #pragma once
 
 #include <Oa/Core/Matrix.h>
+#include <Oa/Core/Std/Utility.h>
 #include <Oa/Core/Types.h>
-
-// ─── OaAudioBuffer ────────────────────────────────────────────────────────────
-// Planar float32 audio: [Channels, Samples]. Plain OaMatrix alias so all
-// OaFnMatrix ops apply directly.
-using OaAudioBuffer = OaMatrix;
 
 // Encoded audio formats owned by OA. Keep this independent from containers:
 // the same elementary stream can be written to MP4, Matroska or a raw sink.
@@ -50,17 +44,59 @@ enum class OaChannelLayout : OaU8 {
 	}
 }
 
-// ─── OaAudioMeta ──────────────────────────────────────────────────────────────
-// POD metadata — no heap, cheap to copy, pass by value alongside OaAudioBuffer.
-struct OaAudioMeta {
-	OaU32           SampleRate   = 44100;
-	OaU32           ChannelCount = 1;
-	OaU64           SampleCount  = 0;   // per channel
-	OaChannelLayout Layout       = OaChannelLayout::Mono;
+// ─── OaAudio ─────────────────────────────────────────────────────────────────
+// Semantic planar float32 audio value composed over OaMatrix. The matrix view
+// is [Channels, Samples]; sample rate and layout stay attached to that storage.
+class OaAudio {
+public:
+	OaAudio() = default;
 
-	[[nodiscard]] OaF64 DurationSeconds() const noexcept {
-		return SampleRate > 0 ? double(SampleCount) / double(SampleRate) : 0.0;
+	OaAudio(OaMatrix InData, OaU32 InSampleRate, OaChannelLayout InLayout)
+		: Data_(OaStdMove(InData))
+		, SampleRate_(InSampleRate)
+		, Layout_(InLayout)
+	{}
+
+	[[nodiscard]] const OaMatrix& AsMatrix() const noexcept { return Data_; }
+	[[nodiscard]] OaMatrix& AsMatrix() noexcept { return Data_; }
+
+	[[nodiscard]] OaI32 Channels() const noexcept {
+		const OaMatrixShape shape = Data_.GetShape();
+		return shape.Rank == 0 ? 0 : static_cast<OaI32>(shape[0]);
 	}
+	[[nodiscard]] OaI64 Samples() const noexcept {
+		const OaMatrixShape shape = Data_.GetShape();
+		return shape.Rank < 2 ? 0 : shape[1];
+	}
+	[[nodiscard]] OaU32 SampleRate() const noexcept { return SampleRate_; }
+	[[nodiscard]] OaChannelLayout Layout() const noexcept { return Layout_; }
+	[[nodiscard]] OaScalarType GetDtype() const noexcept {
+		return Data_.GetDtype();
+	}
+	[[nodiscard]] bool IsEmpty() const noexcept {
+		return Data_.GetShape().Rank == 0;
+	}
+	[[nodiscard]] OaF64 DurationSeconds() const noexcept {
+		return SampleRate_ > 0
+			? static_cast<OaF64>(Samples()) / static_cast<OaF64>(SampleRate_)
+			: 0.0;
+	}
+	[[nodiscard]] bool Validate() const noexcept {
+		const OaMatrixShape shape = Data_.GetShape();
+		if (shape.Rank == 0) return true;
+		if (shape.Rank != 2 || shape[0] <= 0 || shape[1] <= 0
+			|| SampleRate_ == 0 || Data_.GetDtype() != OaScalarType::Float32) {
+			return false;
+		}
+		const OaI32 expectedChannels = OaChannelsForLayout(Layout_);
+		return expectedChannels == 0
+			|| static_cast<OaI32>(shape[0]) == expectedChannels;
+	}
+
+private:
+	OaMatrix Data_;
+	OaU32 SampleRate_ = 44'100U;
+	OaChannelLayout Layout_ = OaChannelLayout::Mono;
 };
 
 // ─── STFT Configuration ───────────────────────────────────────────────────────
@@ -91,7 +127,6 @@ struct OaMfccConfig {
 
 // ─── Resample Configuration ───────────────────────────────────────────────────
 struct OaResampleConfig {
-	OaU32 InRate = 48000;        // Input sample rate
 	OaU32 OutRate = 16000;       // Output sample rate
 	OaU32 FilterHalfWidth = 64; // Sinc filter half-width in output samples
 };

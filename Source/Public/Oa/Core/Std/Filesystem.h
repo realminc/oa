@@ -3,7 +3,7 @@
 // OaStdFilesystem — PascalCase façade over `std::filesystem` using `OaStdPath`.
 //
 // Thin delegates today (error_code internally; no throws from these entry points).
-// **`OaFileIo`** remains the app-facing API (`OaStatus` / logging policy). This module is
+// **`OaFilesystem`** is the app-facing API (`OaStatus` / logging policy). This module is
 // the OaStd-shaped surface for parity tests and future native VFS — see `docs/OaStd.md`.
 //
 // Depends on: `path.h` (`OaStdPath`).

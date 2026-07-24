@@ -89,11 +89,11 @@ OaStatus OaPoseClip::Write3dAnim(const OaPath& InPath) const {
 		bytes.PushBack(payload[i]);
 	}
 
-	return OaFileIo::WriteBinary(InPath, OaSpan<const OaU8>(bytes.Data(), bytes.Size()));
+	return OaFilesystem::WriteBinary(InPath, OaSpan<const OaU8>(bytes.Data(), bytes.Size()));
 }
 
 OaResult<OaPoseClip> OaPoseClip::Read3dAnim(const OaPath& InPath) {
-	auto bytesResult = OaFileIo::ReadBinary(InPath);
+	auto bytesResult = OaFilesystem::ReadBinary(InPath);
 	if (!bytesResult.IsOk()) {
 		return bytesResult.GetStatus();
 	}
@@ -154,5 +154,5 @@ OaStatus OaPoseClip::WriteTxt(const OaPath& InPath) const {
 		out << '\n';
 	}
 
-	return OaFileIo::WriteText(InPath, OaString(out.str()));
+	return OaFilesystem::WriteText(InPath, OaString(out.str()));
 }

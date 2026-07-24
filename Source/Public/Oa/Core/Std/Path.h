@@ -2,7 +2,7 @@
 
 // OaStdPath — native storage: **`OaStdString`** (native path string, same as `std::filesystem::path::string()`).
 // Lexical queries and **`StdPath()`** build a temporary **`std::filesystem::path`** so behavior matches **`std`**;
-// **`OaStdFilesystem`** / **`OaFileIo`** still use **`std::filesystem`** at the syscall boundary — see `docs/OaStd.md`.
+// **`OaStdFilesystem`** / **`OaFilesystem`** still use **`std::filesystem`** at the syscall boundary.
 
 #include <Oa/Core/Std/String.h>
 #include <Oa/Core/Std/Utility.h>

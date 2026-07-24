@@ -8,5 +8,6 @@ void BindMl(nb::module_& m) {
     BindMlAutograd(m);
     BindMlOptim(m);
     BindMlTraining(m);
+    BindMlNlp(m);
     BindMlRl(m);
 }

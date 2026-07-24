@@ -17,8 +17,10 @@ public:
 };
 
 // ─── OaExtension ────────────────────────────────────────────────────────────
-// One implementation per extension repo. The engine calls RegisterKernels and
-// RegisterAdapters exactly once during OaEngine::Create.
+// Experimental startup kernel-registration seam. The engine currently calls
+// RegisterKernels during OaEngine::Create. RegisterAdapters is unresolved
+// compatibility debt: OaAdapterRegistry has no implementation in this tree and
+// the engine does not call it.
 //
 // Extension pointer must remain valid for the engine's lifetime.
 // Static singletons are the standard pattern:
@@ -27,8 +29,7 @@ public:
 //   OaMlExtension& OaMlExtension::Get() { static OaMlExtension I; return I; }
 //
 // Wire-up in binary main():
-//   OaMlExtension::Get().RegisterAdapters(OaAdapterRegistry::Get());  // before engine
-//   app.AddExtension(&OaMlExtension::Get());                          // before app.Main()
+//   app.AddExtension(&MyExtension::Get());  // before app.Main()
 
 class OaExtension {
 public:
@@ -41,7 +42,7 @@ public:
 	// Called once during OaEngine::Create, before any pipeline compilation.
 	virtual void RegisterKernels(OaExtKernelRegistry& InRegistry) = 0;
 
-	// Register adapter factories into the process-level OaAdapterRegistry.
-	// May be called before engine creation — OaAdapterRegistry::Get() is always valid.
+	// Unresolved compatibility hook. Do not document adapter registration as
+	// supported until OaAdapterRegistry has one implemented owner and consumer.
 	virtual void RegisterAdapters(OaAdapterRegistry& InRegistry) = 0;
 };

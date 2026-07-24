@@ -4,6 +4,7 @@
 #include <Oa/Core/Status.h>
 
 class OaVkDevice;
+class OaEngine;
 
 class OaVkFence {
 public:
@@ -48,12 +49,17 @@ struct OaVkTimelineWait {
 // not do so.
 class OaCompletionToken {
 public:
+	static constexpr OaU32 UnknownQueueFamily = UINT32_MAX;
+
 	OaCompletionToken() = default;
 	OaCompletionToken(
 		const OaVkDevice& InDevice,
 		const OaVkTimelineSemaphore& InSemaphore,
-		OaU64 InValue) noexcept
-		: Device_(&InDevice), Value_(InValue) {
+		OaU64 InValue,
+		OaU32 InQueueFamily = UnknownQueueFamily) noexcept
+		: Device_(&InDevice)
+		, Value_(InValue)
+		, QueueFamily_(InQueueFamily) {
 		Semaphore_.Semaphore = InSemaphore.Semaphore;
 	}
 
@@ -70,20 +76,31 @@ public:
 		return Semaphore_.Semaphore != nullptr ? &Semaphore_ : nullptr;
 	}
 	[[nodiscard]] OaU64 Value() const noexcept { return Value_; }
+	[[nodiscard]] bool HasQueueFamily() const noexcept {
+		return QueueFamily_ != UnknownQueueFamily;
+	}
+	// Queue-family provenance is synchronization metadata, not a Vulkan handle.
+	// A different family still requires an explicit exclusive-resource
+	// release/acquire ownership transfer in addition to a timeline wait.
+	[[nodiscard]] OaU32 QueueFamily() const noexcept { return QueueFamily_; }
 	[[nodiscard]] bool IsSameCompletion(
 		const OaCompletionToken& InOther) const noexcept {
 		return IsValid() and InOther.IsValid()
 			and Device_ == InOther.Device_
 			and Semaphore_.Semaphore == InOther.Semaphore_.Semaphore
-			and Value_ == InOther.Value_;
+			and Value_ == InOther.Value_
+			and QueueFamily_ == InOther.QueueFamily_;
 	}
 
 private:
+	friend class OaEngine;
+
 	const OaVkDevice* Device_ = nullptr;
 	// Non-owning handle snapshot. Keeping this view inside the token makes
 	// copied events independent of the source wrapper object's address.
 	OaVkTimelineSemaphore Semaphore_;
 	OaU64 Value_ = 0U;
+	OaU32 QueueFamily_ = UnknownQueueFamily;
 };
 
 // Canonical completion name for new execution APIs. OaCompletionToken remains

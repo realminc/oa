@@ -173,6 +173,7 @@ public:
 	struct AvcConfig {
 		OaVec<OaU8> SpsAnnexB;   // 00 00 00 01 + SPS NAL
 		OaVec<OaU8> PpsAnnexB;   // 00 00 00 01 + PPS NAL
+		OaVideoProfile Profile = {};
 		OaU8 LengthSize = 4;     // bytes per NAL length field (1, 2 or 4)
 		bool Valid = false;
 	};
@@ -183,6 +184,7 @@ public:
 		OaVec<OaU8> VpsAnnexB;   // 00 00 00 01 + VPS NAL
 		OaVec<OaU8> SpsAnnexB;   // 00 00 00 01 + SPS NAL
 		OaVec<OaU8> PpsAnnexB;   // 00 00 00 01 + PPS NAL
+		OaVideoProfile Profile = {};
 		OaU8 LengthSize = 4;     // bytes per NAL length field (1, 2 or 4)
 		bool Valid = false;
 	};
@@ -194,9 +196,16 @@ public:
 	// every keyframe temporal unit (analogous to SPS/PPS for H.264/H.265).
 	struct Av1Config {
 		OaVec<OaU8> ConfigObus;  // raw low-overhead OBU bytes (sequence header)
+		OaVideoProfile Profile = {};
 		bool Valid = false;
 	};
 	Av1Config Av1_;
+
+	struct Vp9Config {
+		OaVideoProfile Profile = {};
+		bool Valid = false;
+	};
+	Vp9Config Vp9_;
 
 	// ISO-BMFF fragment defaults. `moov/mvex/trex` establishes this state;
 	// later `moof/traf/trun` boxes use it without retaining media payloads.
@@ -213,6 +222,7 @@ public:
 	[[nodiscard]] const AvcConfig& GetAvcConfig() const noexcept { return Avc_; }
 	[[nodiscard]] const HvcConfig& GetHvcConfig() const noexcept { return Hvc_; }
 	[[nodiscard]] const Av1Config& GetAv1Config() const noexcept { return Av1_; }
+	[[nodiscard]] const Vp9Config& GetVp9Config() const noexcept { return Vp9_; }
 
 	// Index of the next sample ReadNextPacket() will read (0-based). After
 	// decoding sample N, this equals N+1. Used by OaVideo for step-back.

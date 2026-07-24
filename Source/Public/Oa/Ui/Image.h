@@ -3,7 +3,8 @@
 // Two layouts:
 //
 //   OaTexture     — packed RGBA8, single OaVkBuffer.  Fast display path.
-//                   Load via stb_image (JPEG, PNG, BMP, TGA, HDR → u8 RGBA8).
+//                   Load JPEG/PNG/BMP/TGA, capability-gated WebP, and the
+//                   legacy stb fallback formats as u8 RGBA8.
 //                   BlitRgba.slang copies it to the compose image.
 //
 //   OaImagePlanes — planar, one OaVkBuffer per channel, independent dtype per
@@ -72,8 +73,9 @@ struct OaTexture {
 		return DeviceBuf.Buffer != nullptr or Image != nullptr;
 	}
 
-	// Decode any stb_image-supported format (JPEG, PNG, BMP, TGA, HDR) and
-	// upload to GPU. Output is always RGBA8. Synchronous (returns after transfer).
+	// Decode through the shared still-image backend, retaining stb fallback
+	// coverage for legacy formats such as HDR. Output is always RGBA8.
+	// Synchronous (returns after transfer).
 	[[nodiscard]] static OaResult<OaTexture> LoadFile(
 		OaEngine& InRt,
 		OaStringView       InPath);
@@ -213,7 +215,7 @@ struct OaImagePlanes {
 	// 1-channel files → gray (ChannelCount=1).
 	// 3-channel files → RGB (ChannelCount=3).
 	// 4-channel files → RGBA (ChannelCount=4).
-	// HDR (.hdr / .exr) → planar F32.  Synchronous (transfer completes on return).
+	// HDR (.hdr) → planar F32. Synchronous (transfer completes on return).
 	[[nodiscard]] static OaResult<OaImagePlanes> LoadFile(
 		OaEngine& InRt,
 		OaStringView       InPath);

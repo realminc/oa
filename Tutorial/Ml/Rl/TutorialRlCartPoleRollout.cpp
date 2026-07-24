@@ -4,7 +4,7 @@
 
 #include <Oa/Core/FnMatrix.h>
 #include <Oa/Ml/Rl.h>
-#include <Oa/Runtime/Context.h>
+#include <Oa/Runtime/Engine.h>
 
 #include <cmath>
 #include <cstdio>
@@ -41,6 +41,7 @@ TEST(TutorialRlCartPoleRollout, VectorizedGpuCollection) {
 		environments, horizon, environments * horizon);
 
 	auto createdEnvironment = OaTutorialCartPole::Create(
+		*OaEngine::GetGlobal(),
 		OaTutorialCartPoleConfig{
 			.Environments = environments,
 			.MaxEpisodeSteps = 500,
@@ -50,50 +51,59 @@ TEST(TutorialRlCartPoleRollout, VectorizedGpuCollection) {
 		<< createdEnvironment.GetStatus().ToString();
 	auto environment = OaStdMove(*createdEnvironment);
 
-	auto createdRollout = OaRlRolloutBuffer::Create(OaRlRolloutConfig{
-		.Time = horizon,
-		.Environments = environments,
-		.ObservationShape = {4},
-	});
-	ASSERT_TRUE(createdRollout.IsOk()) << createdRollout.GetStatus().ToString();
-	auto rollout = OaStdMove(*createdRollout);
-
 	// A tiny fixed stochastic policy: logits are [-score, score], where pole
 	// angle and angular velocity dominate the score. The tutorial proves the
 	// collector path; the following milestone replaces these weights with a
 	// trainable actor/critic and PPO update epochs.
-	const OaMatrix policyWeight = MatrixF32({
-		0.0F, -0.1F, -4.0F, -1.0F,
-		0.0F,  0.1F,  4.0F,  1.0F,
-	}, {2, 4});
-	const OaMatrix value = OaFnMatrix::Zeros(
-		{static_cast<OaI64>(environments)}, OaScalarType::Float32);
-
-	for (OaU32 step = 0; step < horizon; ++step) {
-		const OaMatrix logits = OaFnMatrix::MatMulNt(
-			environment.Observation(), policyWeight);
-		const OaRlPolicyResult policy = OaFnRl::SampleCategoricalPolicy(
-			logits, value, seed + step + 1U);
-		ASSERT_TRUE(policy.IsValid());
-		const auto transition = environment.Step(policy.Action);
-		ASSERT_TRUE(transition.IsOk()) << transition.GetStatus().ToString();
-		ASSERT_TRUE(rollout.Append(OaRlTransition{
-			.Observation = transition->Observation,
-			.Action = policy.Action,
-			.Reward = transition->Reward,
-			.Value = policy.Value,
-			.NextValue = value,
-			.LogProbability = policy.LogProbability,
-			.Terminated = transition->Terminated,
-			.Truncated = transition->Truncated,
-		}).IsOk());
-		environment.ResetDone();
-	}
-	ASSERT_TRUE(rollout.Finalize().IsOk());
-
-	auto& context = OaContext::GetDefault();
-	ASSERT_TRUE(context.Execute().IsOk());
-	ASSERT_TRUE(context.Sync().IsOk());
+	OaRlRolloutBuffer rollout;
+	const OaStatus recorded = environment.RecordCommands([&]() -> OaStatus {
+		auto createdRollout = OaRlRolloutBuffer::Create(OaRlRolloutConfig{
+			.Time = horizon,
+			.Environments = environments,
+			.ObservationShape = {4},
+		});
+		if (createdRollout.IsError()) return createdRollout.GetStatus();
+		rollout = OaStdMove(*createdRollout);
+		rollout.Reset();
+		const OaMatrix policyWeight = MatrixF32({
+			0.0F, -0.1F, -4.0F, -1.0F,
+			0.0F,  0.1F,  4.0F,  1.0F,
+		}, {2, 4});
+		const OaMatrix value = OaFnMatrix::Zeros(
+			{static_cast<OaI64>(environments)}, OaScalarType::Float32);
+		if (policyWeight.IsEmpty() || value.IsEmpty()) {
+			return OaStatus::Error(OaStatusCode::OutOfMemory,
+				"CartPole rollout could not allocate policy storage");
+		}
+		OA_RETURN_IF_ERROR(environment.ResetEnvironment(seed));
+		for (OaU32 step = 0; step < horizon; ++step) {
+			const OaMatrix logits = OaFnMatrix::MatMulNt(
+				environment.Observation(), policyWeight);
+			const OaRlPolicyResult policy = OaFnRl::SampleCategoricalPolicy(
+				logits, value, seed + step + 1U);
+			if (!policy.IsValid()) return OaStatus::Error(
+				OaStatusCode::FailedPrecondition,
+				"CartPole rollout policy evaluation failed");
+			const auto transition = environment.Step(policy.Action);
+			if (transition.IsError()) return transition.GetStatus();
+			OA_RETURN_IF_ERROR(rollout.Append(OaRlTransition{
+				.Observation = transition->Observation,
+				.Action = policy.Action,
+				.Reward = transition->Reward,
+				.Value = policy.Value,
+				.NextValue = value,
+				.LogProbability = policy.LogProbability,
+				.Terminated = transition->Terminated,
+				.Truncated = transition->Truncated,
+			}));
+			OA_RETURN_IF_ERROR(environment.ResetDone());
+		}
+		return rollout.Finalize();
+	});
+	ASSERT_TRUE(recorded.IsOk()) << recorded.ToString();
+	auto completion = environment.Submit();
+	ASSERT_TRUE(completion.IsOk()) << completion.GetStatus().ToString();
+	ASSERT_TRUE(environment.Wait(*completion).IsOk());
 
 	const auto reward = Copy<OaF32>(rollout.Batch().Reward);
 	const auto terminated = Copy<OaU8>(rollout.Batch().Terminated);

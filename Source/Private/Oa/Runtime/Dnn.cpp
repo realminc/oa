@@ -10,8 +10,7 @@ void HashMix(OaU64& InOut, OaU64 InValue) {
 }
 
 bool Consumes(const OaDnnOpDesc& InConsumer, OaDnnMatrixId InValue) {
-	return std::find(InConsumer.Inputs.Begin(), InConsumer.Inputs.End(), InValue)
-		!= InConsumer.Inputs.End();
+	return std::find(InConsumer.Inputs.Begin(), InConsumer.Inputs.End(), InValue)	!= InConsumer.Inputs.End();
 }
 
 bool SingleEdge(const OaDnnOpDesc& InA, const OaDnnOpDesc& InB) {
@@ -24,11 +23,12 @@ OaDnnPartition Portable(OaU32 InOp) {
 	return p;
 }
 
-} // namespace
+} // Namespace
 
 OaStatus OaDnnGraph::AddMatrix(const OaDnnMatrixDesc& InMatrix) {
 	if (InMatrix.Id == OaInvalidDnnMatrixId or InMatrix.Shape.Rank <= 0
-		or InMatrix.Shape.Rank > 4 or InMatrix.Shape.NumElements() <= 0) {
+		or InMatrix.Shape.Rank > 4 or InMatrix.Shape.NumElements() <= 0
+	) {
 		return OaStatus::InvalidArgument("OaDnn matrix has an invalid id or shape");
 	}
 	if (FindMatrix(InMatrix.Id) != nullptr) {
@@ -80,10 +80,11 @@ OaStatus OaDnnGraph::Validate() const {
 	return OaStatus::Ok();
 }
 
-OaResult<OaDnnPlan> OaDnnPlanner::Plan(
-	const OaDnnGraph& InGraph, const OaDnnPolicy& InPolicy) {
+OaResult<OaDnnPlan> OaDnnPlanner::Plan(const OaDnnGraph& InGraph, const OaDnnPolicy& InPolicy) {
 	const auto status = InGraph.Validate();
-	if (not status.IsOk()) return status;
+	if (not status.IsOk()) {
+		return status;
+	}
 
 	OaDnnPlan plan;
 	OaU64 hash = 0xcbf29ce484222325ULL;

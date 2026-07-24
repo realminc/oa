@@ -12,7 +12,7 @@ namespace {
 
 OaPath MakeDirectory() {
 	const auto tick = std::chrono::steady_clock::now().time_since_epoch().count();
-	return OaFileIo::GetTempDirectory() /
+	return OaPaths::Temp() /
 		OaPath("oa_oam_integrity_" + std::to_string(static_cast<long long>(tick)));
 }
 
@@ -42,11 +42,11 @@ class OamIntegrityTest : public ::testing::Test {
 protected:
 	void SetUp() override {
 		Directory = MakeDirectory();
-		ASSERT_TRUE(OaFileIo::CreateDirectories(Directory).IsOk());
+		ASSERT_TRUE(OaFilesystem::CreateDirectories(Directory).IsOk());
 	}
 
 	void TearDown() override {
-		(void)OaFileIo::RemoveDirectory(Directory, true);
+		(void)OaFilesystem::RemoveDirectory(Directory, true);
 	}
 
 	OaPath File(const char* InName) const { return Directory / OaPath(InName); }
@@ -83,7 +83,7 @@ TEST_F(OamIntegrityTest, V2RoundTripAndAtomicReplacement) {
 	ASSERT_NE(values, nullptr);
 	EXPECT_FLOAT_EQ(values[3], 9.0F);
 
-	auto bytes = OaFileIo::ReadBinary(path);
+	auto bytes = OaFilesystem::ReadBinary(path);
 	ASSERT_TRUE(bytes.IsOk());
 	const auto* header = reinterpret_cast<const OamFileHeader*>(bytes->Data());
 	const OaU32 version = header->Version;
@@ -94,7 +94,7 @@ TEST_F(OamIntegrityTest, RejectsPlausibleFinitePayloadBitFlip) {
 	const auto validPath = File("valid.oam");
 	const auto corruptPath = File("payload-corrupt.oam");
 	ASSERT_TRUE(MakeModel().Save(validPath.String()).IsOk());
-	auto bytes = OaFileIo::ReadBinary(validPath);
+	auto bytes = OaFilesystem::ReadBinary(validPath);
 	ASSERT_TRUE(bytes.IsOk());
 	const auto* header = reinterpret_cast<const OamFileHeader*>(bytes->Data());
 	const auto* sections = reinterpret_cast<const OamSectionHeader*>(
@@ -107,7 +107,7 @@ TEST_F(OamIntegrityTest, RejectsPlausibleFinitePayloadBitFlip) {
 	}
 	ASSERT_NE(payloadOffset, 0U);
 	bytes->At(static_cast<OaUsize>(payloadOffset)) ^= 0x01U;
-	ASSERT_TRUE(OaFileIo::WriteBinary(corruptPath,
+	ASSERT_TRUE(OaFilesystem::WriteBinary(corruptPath,
 		{bytes->Data(), bytes->Size()}).IsOk());
 	ExpectCheckpointCorrupt(OamModel::Load(corruptPath.String()));
 }
@@ -115,7 +115,7 @@ TEST_F(OamIntegrityTest, RejectsPlausibleFinitePayloadBitFlip) {
 TEST_F(OamIntegrityTest, RejectsMetadataMutationAndTruncation) {
 	const auto validPath = File("valid.oam");
 	ASSERT_TRUE(MakeModel().Save(validPath.String()).IsOk());
-	auto bytes = OaFileIo::ReadBinary(validPath);
+	auto bytes = OaFilesystem::ReadBinary(validPath);
 	ASSERT_TRUE(bytes.IsOk());
 
 	auto metadata = *bytes;
@@ -123,13 +123,13 @@ TEST_F(OamIntegrityTest, RejectsMetadataMutationAndTruncation) {
 		metadata.Data() + sizeof(OamFileHeader));
 	sections[0].Flags ^= 1U;
 	const auto metadataPath = File("metadata-corrupt.oam");
-	ASSERT_TRUE(OaFileIo::WriteBinary(metadataPath,
+	ASSERT_TRUE(OaFilesystem::WriteBinary(metadataPath,
 		{metadata.Data(), metadata.Size()}).IsOk());
 	ExpectCheckpointCorrupt(OamModel::Load(metadataPath.String()));
 
 	bytes->Resize(bytes->Size() - 7);
 	const auto truncatedPath = File("truncated.oam");
-	ASSERT_TRUE(OaFileIo::WriteBinary(truncatedPath,
+	ASSERT_TRUE(OaFilesystem::WriteBinary(truncatedPath,
 		{bytes->Data(), bytes->Size()}).IsOk());
 	ExpectCheckpointCorrupt(OamModel::Load(truncatedPath.String()));
 }
@@ -137,13 +137,13 @@ TEST_F(OamIntegrityTest, RejectsMetadataMutationAndTruncation) {
 TEST_F(OamIntegrityTest, VerifiesAndLoadsLegacyV1Checksum) {
 	const auto validPath = File("v2.oam");
 	ASSERT_TRUE(MakeModel().Save(validPath.String()).IsOk());
-	auto bytes = OaFileIo::ReadBinary(validPath);
+	auto bytes = OaFilesystem::ReadBinary(validPath);
 	ASSERT_TRUE(bytes.IsOk());
 	auto* header = reinterpret_cast<OamFileHeader*>(bytes->Data());
 	header->Version = 1;
 	header->Checksum = LegacyFileChecksum(*bytes);
 	const auto legacyPath = File("v1.oam");
-	ASSERT_TRUE(OaFileIo::WriteBinary(legacyPath,
+	ASSERT_TRUE(OaFilesystem::WriteBinary(legacyPath,
 		{bytes->Data(), bytes->Size()}).IsOk());
 	auto loaded = OamModel::Load(legacyPath.String());
 	ASSERT_TRUE(loaded.IsOk()) << loaded.GetStatus().ToString().CStr();
@@ -208,7 +208,7 @@ TEST_F(OamIntegrityTest, CheckpointManagerPersistsAndVerifiesStepLineage) {
 		.MaxKeep = 2,
 	});
 	ASSERT_TRUE(manager.SaveIncremental(module, optimizer, 42, 0.5).IsOk());
-	auto files = OaFileIo::ListFiles(
+	auto files = OaFilesystem::ListFiles(
 		OaPath(manager.GetIncrementalDir()), ".oam");
 	ASSERT_TRUE(files.IsOk());
 	ASSERT_EQ(files->Size(), 1U);

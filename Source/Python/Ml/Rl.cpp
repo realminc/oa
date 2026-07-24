@@ -21,22 +21,22 @@ void BindMlRl(nb::module_& m) {
 			return OaRlFieldSpec::Box(
 				OaStringView(name.c_str()), shape_from_vector(shape), dtype,
 				minimum, maximum);
-		}, nb::arg("name"), nb::arg("shape"),
-			nb::arg("dtype") = OaScalarType::Float32,
-			nb::arg("minimum") = -std::numeric_limits<OaF64>::infinity(),
-			nb::arg("maximum") = std::numeric_limits<OaF64>::infinity())
+		}, nb::arg("Name"), nb::arg("Shape"),
+			nb::arg("Dtype") = OaScalarType::Float32,
+			nb::arg("Minimum") = -std::numeric_limits<OaF64>::infinity(),
+			nb::arg("Maximum") = std::numeric_limits<OaF64>::infinity())
 		.def_static("Discrete", [](const std::string& name,
 			OaI64 cardinality, OaScalarType dtype) {
 			return OaRlFieldSpec::Discrete(
 				OaStringView(name.c_str()), cardinality, dtype);
-		}, nb::arg("name"), nb::arg("cardinality"),
-			nb::arg("dtype") = OaScalarType::Int32)
+		}, nb::arg("Name"), nb::arg("Cardinality"),
+			nb::arg("Dtype") = OaScalarType::Int32)
 		.def_static("Binary", [](const std::string& name,
 			const std::vector<OaI64>& shape, OaScalarType dtype) {
 			return OaRlFieldSpec::Binary(
 				OaStringView(name.c_str()), shape_from_vector(shape), dtype);
-		}, nb::arg("name"), nb::arg("shape") = std::vector<OaI64>{},
-			nb::arg("dtype") = OaScalarType::UInt8)
+		}, nb::arg("Name"), nb::arg("Shape") = std::vector<OaI64>{},
+			nb::arg("Dtype") = OaScalarType::UInt8)
 		.def_prop_rw("Name",
 			[](const OaRlFieldSpec& self) { return std::string(self.Name.c_str()); },
 			[](OaRlFieldSpec& self, const std::string& value) {
@@ -61,11 +61,11 @@ void BindMlRl(nb::module_& m) {
 			auto result = self.BatchedShape(environments);
 			throw_if_error(result.GetStatus());
 			return shape_to_vector(*result);
-		}, nb::arg("environments"))
+		}, nb::arg("Environments"))
 		.def("ValidateMatrix", [](const OaRlFieldSpec& self,
 			const OaMatrix& matrix, OaU32 environments) {
 			throw_if_error(self.ValidateMatrix(matrix, environments));
-		}, nb::arg("matrix"), nb::arg("environments"));
+		}, nb::arg("Matrix"), nb::arg("Environments"));
 
 	nb::class_<OaRlEnvironmentSpec>(m, "OaRlEnvironmentSpec")
 		.def(nb::init<>())
@@ -80,11 +80,11 @@ void BindMlRl(nb::module_& m) {
 		.def("ValidateReset", [](const OaRlEnvironmentSpec& self,
 			const OaMatrix& observation, OaU32 environments) {
 			throw_if_error(self.ValidateReset(observation, environments));
-		}, nb::arg("observation"), nb::arg("environments"))
+		}, nb::arg("Observation"), nb::arg("Environments"))
 		.def("ValidateAction", [](const OaRlEnvironmentSpec& self,
 			const OaMatrix& action, OaU32 environments) {
 			throw_if_error(self.ValidateAction(action, environments));
-		}, nb::arg("action"), nb::arg("environments"))
+		}, nb::arg("Action"), nb::arg("Environments"))
 		.def("ValidateTransition", [](const OaRlEnvironmentSpec& self,
 			const OaMatrix& observation, const OaMatrix& action,
 			const OaMatrix& nextObservation, const OaMatrix& reward,
@@ -93,10 +93,10 @@ void BindMlRl(nb::module_& m) {
 			throw_if_error(self.ValidateTransition(
 				observation, action, nextObservation, reward,
 				terminated, truncated, environments));
-		}, nb::arg("observation"), nb::arg("action"),
-			nb::arg("next_observation"), nb::arg("reward"),
-			nb::arg("terminated"), nb::arg("truncated"),
-			nb::arg("environments"));
+		}, nb::arg("Observation"), nb::arg("Action"),
+			nb::arg("NextObservation"), nb::arg("Reward"),
+			nb::arg("Terminated"), nb::arg("Truncated"),
+			nb::arg("Environments"));
 
 	nb::class_<OaGaeConfig>(m, "OaGaeConfig")
 		.def(nb::init<>())
@@ -184,7 +184,7 @@ void BindMlRl(nb::module_& m) {
 			throw std::runtime_error("NormalizeAdvantages rejected its input");
 		}
 		return matrix_ptr(OaStdMove(result));
-	}, nb::arg("advantage"), nb::arg("epsilon") = 1.0e-8F,
+	}, nb::arg("Advantage"), nb::arg("Epsilon") = 1.0e-8F,
 		nb::rv_policy::take_ownership);
 
 	m.def("Gae", [](const OaMatrix& reward, const OaMatrix& value,
@@ -196,9 +196,9 @@ void BindMlRl(nb::module_& m) {
 			throw std::runtime_error("Gae rejected its input");
 		}
 		return new OaGaeResult(OaStdMove(result));
-	}, nb::arg("reward"), nb::arg("value"), nb::arg("next_value"),
-		nb::arg("terminated"), nb::arg("truncated"),
-		nb::arg("config") = OaGaeConfig(), nb::rv_policy::take_ownership);
+	}, nb::arg("Reward"), nb::arg("Value"), nb::arg("NextValue"),
+		nb::arg("Terminated"), nb::arg("Truncated"),
+		nb::arg("Config") = OaGaeConfig(), nb::rv_policy::take_ownership);
 
 	m.def("SampleCategoricalPolicy", [](const OaMatrix& logits,
 		const OaMatrix& value, OaU64 seed) {
@@ -207,7 +207,7 @@ void BindMlRl(nb::module_& m) {
 			throw std::runtime_error("SampleCategoricalPolicy rejected its input");
 		}
 		return new OaRlPolicyResult(OaStdMove(result));
-	}, nb::arg("logits"), nb::arg("value"), nb::arg("seed") = 0,
+	}, nb::arg("Logits"), nb::arg("Value"), nb::arg("Seed") = 0,
 		nb::rv_policy::take_ownership);
 
 	m.def("EvaluateCategoricalPolicy", [](const OaMatrix& logits,
@@ -217,7 +217,7 @@ void BindMlRl(nb::module_& m) {
 			throw std::runtime_error("EvaluateCategoricalPolicy rejected its input");
 		}
 		return new OaRlPolicyResult(OaStdMove(result));
-	}, nb::arg("logits"), nb::arg("action"), nb::arg("value"),
+	}, nb::arg("Logits"), nb::arg("Action"), nb::arg("Value"),
 		nb::rv_policy::take_ownership);
 
 	m.def("SampleTanhNormalPolicy", [](const OaMatrix& mean,
@@ -228,9 +228,9 @@ void BindMlRl(nb::module_& m) {
 		if (!result.IsValid()) throw std::runtime_error(
 			"SampleTanhNormalPolicy rejected its input");
 		return new OaRlContinuousPolicyResult(OaStdMove(result));
-	}, nb::arg("mean"), nb::arg("log_stddev"), nb::arg("value"),
-		nb::arg("minimum") = -1.0F, nb::arg("maximum") = 1.0F,
-		nb::arg("seed") = 0, nb::arg("epsilon") = 1.0e-6F,
+	}, nb::arg("Mean"), nb::arg("LogStddev"), nb::arg("Value"),
+		nb::arg("Minimum") = -1.0F, nb::arg("Maximum") = 1.0F,
+		nb::arg("Seed") = 0, nb::arg("Epsilon") = 1.0e-6F,
 		nb::rv_policy::take_ownership);
 
 	m.def("EvaluateTanhNormalPolicy", [](const OaMatrix& mean,
@@ -241,9 +241,9 @@ void BindMlRl(nb::module_& m) {
 		if (!result.IsValid()) throw std::runtime_error(
 			"EvaluateTanhNormalPolicy rejected its input");
 		return new OaRlContinuousPolicyResult(OaStdMove(result));
-	}, nb::arg("mean"), nb::arg("log_stddev"), nb::arg("raw_action"),
-		nb::arg("value"), nb::arg("minimum") = -1.0F,
-		nb::arg("maximum") = 1.0F, nb::arg("epsilon") = 1.0e-6F,
+	}, nb::arg("Mean"), nb::arg("LogStddev"), nb::arg("RawAction"),
+		nb::arg("Value"), nb::arg("Minimum") = -1.0F,
+		nb::arg("Maximum") = 1.0F, nb::arg("Epsilon") = 1.0e-6F,
 		nb::rv_policy::take_ownership);
 
 	m.def("NormalizeObservation", [](const OaMatrix& observation,
@@ -254,8 +254,8 @@ void BindMlRl(nb::module_& m) {
 		if (result.IsEmpty()) throw std::runtime_error(
 			"NormalizeObservation rejected its input");
 		return matrix_ptr(OaStdMove(result));
-	}, nb::arg("observation"), nb::arg("mean"), nb::arg("stddev"),
-		nb::arg("epsilon") = 1.0e-6F, nb::arg("clip") = 10.0F,
+	}, nb::arg("Observation"), nb::arg("Mean"), nb::arg("Stddev"),
+		nb::arg("Epsilon") = 1.0e-6F, nb::arg("Clip") = 10.0F,
 		nb::rv_policy::take_ownership);
 
 	m.def("ScaleAction", [](const OaMatrix& action, OaF32 sourceMinimum,
@@ -265,9 +265,9 @@ void BindMlRl(nb::module_& m) {
 			targetMinimum, targetMaximum, clamp);
 		if (result.IsEmpty()) throw std::runtime_error("ScaleAction rejected its input");
 		return matrix_ptr(OaStdMove(result));
-	}, nb::arg("action"), nb::arg("source_minimum"),
-		nb::arg("source_maximum"), nb::arg("target_minimum"),
-		nb::arg("target_maximum"), nb::arg("clamp") = true,
+	}, nb::arg("Action"), nb::arg("SourceMinimum"),
+		nb::arg("SourceMaximum"), nb::arg("TargetMinimum"),
+		nb::arg("TargetMaximum"), nb::arg("Clamp") = true,
 		nb::rv_policy::take_ownership);
 
 	m.def("ClipReward", [](const OaMatrix& reward,
@@ -275,8 +275,8 @@ void BindMlRl(nb::module_& m) {
 		auto result = OaFnRl::ClipReward(reward, minimum, maximum);
 		if (result.IsEmpty()) throw std::runtime_error("ClipReward rejected its input");
 		return matrix_ptr(OaStdMove(result));
-	}, nb::arg("reward"), nb::arg("minimum") = -1.0F,
-		nb::arg("maximum") = 1.0F, nb::rv_policy::take_ownership);
+	}, nb::arg("Reward"), nb::arg("Minimum") = -1.0F,
+		nb::arg("Maximum") = 1.0F, nb::rv_policy::take_ownership);
 
 	m.def("PpoClippedPolicyBwd", [](const OaMatrix& newLogProbability,
 		const OaMatrix& oldLogProbability, const OaMatrix& advantage,
@@ -287,8 +287,8 @@ void BindMlRl(nb::module_& m) {
 			throw std::runtime_error("PpoClippedPolicyBwd rejected its input");
 		}
 		return matrix_ptr(OaStdMove(result));
-	}, nb::arg("new_log_probability"), nb::arg("old_log_probability"),
-		nb::arg("advantage"), nb::arg("clip_epsilon") = 0.2F,
+	}, nb::arg("NewLogProbability"), nb::arg("OldLogProbability"),
+		nb::arg("Advantage"), nb::arg("ClipEpsilon") = 0.2F,
 		nb::rv_policy::take_ownership);
 
 	m.def("PpoClippedPolicy", [](const OaMatrix& newLogProbability,
@@ -296,8 +296,8 @@ void BindMlRl(nb::module_& m) {
 		OaF32 clipEpsilon) {
 		return matrix_ptr(OaFnLoss::PpoClippedPolicy(
 			newLogProbability, oldLogProbability, advantage, clipEpsilon));
-	}, nb::arg("new_log_probability"), nb::arg("old_log_probability"),
-		nb::arg("advantage"), nb::arg("clip_epsilon") = 0.2F,
+	}, nb::arg("NewLogProbability"), nb::arg("OldLogProbability"),
+		nb::arg("Advantage"), nb::arg("ClipEpsilon") = 0.2F,
 		nb::rv_policy::take_ownership);
 
 	m.def("Ppo", [](const OaMatrix& newLogProbability,
@@ -311,9 +311,9 @@ void BindMlRl(nb::module_& m) {
 			throw std::runtime_error("Ppo rejected its input");
 		}
 		return new OaPpoLossResult(OaStdMove(result));
-	}, nb::arg("new_log_probability"), nb::arg("old_log_probability"),
-		nb::arg("advantage"), nb::arg("value"), nb::arg("target_return"),
-		nb::arg("entropy"), nb::arg("config") = OaPpoLossConfig(),
+	}, nb::arg("NewLogProbability"), nb::arg("OldLogProbability"),
+		nb::arg("Advantage"), nb::arg("Value"), nb::arg("TargetReturn"),
+		nb::arg("Entropy"), nb::arg("Config") = OaPpoLossConfig(),
 		nb::rv_policy::take_ownership);
 
 	m.def("Dqn", [](const OaMatrix& q, const OaMatrix& action,
@@ -324,9 +324,9 @@ void BindMlRl(nb::module_& m) {
 			q, action, reward, nextQ, terminated, truncated, config);
 		if (!result.IsValid()) throw std::runtime_error("Dqn rejected its input");
 		return new OaDqnLossResult(OaStdMove(result));
-	}, nb::arg("q"), nb::arg("action"), nb::arg("reward"),
-		nb::arg("next_q"), nb::arg("terminated"), nb::arg("truncated"),
-		nb::arg("config") = OaDqnLossConfig(), nb::rv_policy::take_ownership);
+	}, nb::arg("Q"), nb::arg("Action"), nb::arg("Reward"),
+		nb::arg("NextQ"), nb::arg("Terminated"), nb::arg("Truncated"),
+		nb::arg("Config") = OaDqnLossConfig(), nb::rv_policy::take_ownership);
 
 	m.def("SacCritic", [](const OaMatrix& q1, const OaMatrix& q2,
 		const OaMatrix& reward, const OaMatrix& nextQ1,
@@ -337,10 +337,10 @@ void BindMlRl(nb::module_& m) {
 			nextLogProbability, terminated, truncated, config);
 		if (!result.IsValid()) throw std::runtime_error("SacCritic rejected its input");
 		return new OaSacCriticLossResult(OaStdMove(result));
-	}, nb::arg("q1"), nb::arg("q2"), nb::arg("reward"),
-		nb::arg("next_q1"), nb::arg("next_q2"),
-		nb::arg("next_log_probability"), nb::arg("terminated"),
-		nb::arg("truncated"), nb::arg("config") = OaSacLossConfig(),
+	}, nb::arg("Q1"), nb::arg("Q2"), nb::arg("Reward"),
+		nb::arg("NextQ1"), nb::arg("NextQ2"),
+		nb::arg("NextLogProbability"), nb::arg("Terminated"),
+		nb::arg("Truncated"), nb::arg("Config") = OaSacLossConfig(),
 		nb::rv_policy::take_ownership);
 
 	m.def("SacActor", [](const OaMatrix& q1, const OaMatrix& q2,
@@ -349,8 +349,8 @@ void BindMlRl(nb::module_& m) {
 			entropyCoefficient);
 		if (result.IsEmpty()) throw std::runtime_error("SacActor rejected its input");
 		return matrix_ptr(OaStdMove(result));
-	}, nb::arg("q1"), nb::arg("q2"), nb::arg("log_probability"),
-		nb::arg("entropy_coefficient") = 0.2F,
+	}, nb::arg("Q1"), nb::arg("Q2"), nb::arg("LogProbability"),
+		nb::arg("EntropyCoefficient") = 0.2F,
 		nb::rv_policy::take_ownership);
 
 	nb::class_<OaRlReplayConfig>(m, "OaRlReplayConfig")
@@ -379,22 +379,22 @@ void BindMlRl(nb::module_& m) {
 			auto created = OaRlReplayBuffer::Create(config);
 			throw_if_error(created.GetStatus());
 			return new OaRlReplayBuffer(OaStdMove(*created));
-		}, nb::arg("config"), nb::rv_policy::take_ownership)
+		}, nb::arg("Config"), nb::rv_policy::take_ownership)
 		.def("Append", [](OaRlReplayBuffer& self,
 			const OaMatrix& observation, const OaMatrix& action,
 			const OaMatrix& nextObservation, const OaMatrix& reward,
 			const OaMatrix& terminated, const OaMatrix& truncated) {
 			throw_if_error(self.Append({observation, action, nextObservation,
 				reward, terminated, truncated}));
-		}, nb::arg("observation"), nb::arg("action"),
-			nb::arg("next_observation"), nb::arg("reward"),
-			nb::arg("terminated"), nb::arg("truncated"))
+		}, nb::arg("Observation"), nb::arg("Action"),
+			nb::arg("NextObservation"), nb::arg("Reward"),
+			nb::arg("Terminated"), nb::arg("Truncated"))
 		.def("Sample", [](const OaRlReplayBuffer& self,
 			OaU32 batchSize, OaU64 seed) {
 			auto sampled = self.Sample(batchSize, seed);
 			throw_if_error(sampled.GetStatus());
 			return new OaRlReplayBatch(OaStdMove(*sampled));
-		}, nb::arg("batch_size"), nb::arg("seed"),
+		}, nb::arg("BatchSize"), nb::arg("Seed"),
 			nb::rv_policy::take_ownership)
 		.def("Reset", &OaRlReplayBuffer::Reset)
 		.def("IsValid", &OaRlReplayBuffer::IsValid)
@@ -434,7 +434,7 @@ void BindMlRl(nb::module_& m) {
 			auto created = OaRlRolloutBuffer::Create(config);
 			throw_if_error(created.GetStatus());
 			return new OaRlRolloutBuffer(OaStdMove(*created));
-		}, nb::arg("config"), nb::rv_policy::take_ownership)
+		}, nb::arg("Config"), nb::rv_policy::take_ownership)
 		.def("Append", [](OaRlRolloutBuffer& self,
 			const OaMatrix& observation, const OaMatrix& action,
 			const OaMatrix& reward, const OaMatrix& value,
@@ -450,14 +450,14 @@ void BindMlRl(nb::module_& m) {
 				.Terminated = terminated,
 				.Truncated = truncated,
 			}));
-		}, nb::arg("observation"), nb::arg("action"), nb::arg("reward"),
-			nb::arg("value"), nb::arg("next_value"),
-			nb::arg("log_probability"), nb::arg("terminated"),
-			nb::arg("truncated"))
+		}, nb::arg("Observation"), nb::arg("Action"), nb::arg("Reward"),
+			nb::arg("Value"), nb::arg("NextValue"),
+			nb::arg("LogProbability"), nb::arg("Terminated"),
+			nb::arg("Truncated"))
 		.def("Finalize", [](OaRlRolloutBuffer& self,
 			const OaGaeConfig& config) {
 			throw_if_error(self.Finalize(config));
-		}, nb::arg("config") = OaGaeConfig())
+		}, nb::arg("Config") = OaGaeConfig())
 		.def("Reset", &OaRlRolloutBuffer::Reset)
 		.def("IsValid", &OaRlRolloutBuffer::IsValid)
 		.def("IsFull", &OaRlRolloutBuffer::IsFull)
@@ -484,19 +484,19 @@ void BindMlRl(nb::module_& m) {
 		.def("__init__", [](OaItRlTraining* self, OaOptimizer& optimizer,
 			const OaItRlTrainingConfig& config) {
 			new (self) OaItRlTraining(optimizer, config);
-		}, nb::arg("optimizer"), nb::arg("config"), nb::keep_alive<1, 2>())
+		}, nb::arg("Optimizer"), nb::arg("Config"), nb::keep_alive<1, 2>())
 		.def("BeginRollout", [](OaItRlTraining& self,
 			OaRlRolloutBuffer& rollout) {
 			throw_if_error(self.BeginRollout(rollout));
-		}, nb::arg("rollout"))
+		}, nb::arg("Rollout"))
 		.def("FinalizeRollout", [](OaItRlTraining& self,
 			OaRlRolloutBuffer& rollout, const OaGaeConfig& config) {
 			throw_if_error(self.FinalizeRollout(rollout, config));
-		}, nb::arg("rollout"), nb::arg("config") = OaGaeConfig())
+		}, nb::arg("Rollout"), nb::arg("Config") = OaGaeConfig())
 		.def("BeginUpdate", &OaItRlTraining::BeginUpdate)
 		.def("NextUpdate", [](OaItRlTraining& self, const OaMatrix& loss) {
 			throw_if_error(self.NextUpdate(loss));
-		}, nb::arg("loss"))
+		}, nb::arg("Loss"))
 		.def("Finish", [](OaItRlTraining& self) {
 			throw_if_error(self.Finish());
 		})

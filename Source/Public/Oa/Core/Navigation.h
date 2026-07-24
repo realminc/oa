@@ -45,8 +45,6 @@ struct OaNavigationConfig {
 	OaF32 AnimationDurationMs = 200.0F;
 };
 
-class OaCamera;
-
 class OaNavigation {
 public:
 	explicit OaNavigation(const OaNavigationConfig& InConfig = {}) : Config_(InConfig) {}
@@ -72,8 +70,6 @@ public:
 	[[nodiscard]] OaPlaneCamera GetPlaneCamera() const noexcept {
 		return OaPlaneCamera{Movement_};
 	}
-
-	void UpdateCamera(OaCamera& InCamera) const noexcept;
 
 	[[nodiscard]] OaF32 Zoom() const noexcept { return Zoom_; }
 	[[nodiscard]] OaF32 PanX() const noexcept { return PanX_; }

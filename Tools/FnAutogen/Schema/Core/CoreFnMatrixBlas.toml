@@ -31,7 +31,7 @@ differentiation = "reverse"
 lowering        = "gemm"
 
 [ops.python]
-args = ["a", "b", "precision"]
+args = ["A", "B", "Precision"]
 doc = "Matrix multiplication C = A @ B^T using the OA weight-layout convention."
 
 [ops.autograd]

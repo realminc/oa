@@ -1,5 +1,6 @@
 // OA Vision — AV1 Codec Parser
-// Extracts sequence/frame headers from OBUs and converts to Vulkan Video structures
+// Extracts sequence/frame headers from OBUs and converts to Vulkan Video
+// structures
 
 #pragma once
 
@@ -177,7 +178,8 @@ struct OaAv1AccessUnitInfo {
 	[[nodiscard]] OaU32 PictureCount() const { return FrameCount + FrameHeaderCount; }
 };
 
-// Picture descriptor produced by parsing an AV1 access unit (IVF frame payload).
+// Picture descriptor produced by parsing an AV1 access unit (IVF frame
+// payload).
 struct OaAv1PictureDesc {
 	bool HasPicture = false;
 	bool ShowExistingFrame = false;
@@ -187,7 +189,8 @@ struct OaAv1PictureDesc {
 	OaAv1FrameHeaderInfo FrameHeader = {};
 	OaAv1TileGroupInfo TileGroup = {};
 	OaUsize FrameHeaderOffset = 0;
-	// Byte range of the decode OBU (OBU_FRAME or OBU_FRAME_HEADER) inside the frame payload.
+	// Byte range of the decode OBU (OBU_FRAME or OBU_FRAME_HEADER) inside the
+	// frame payload.
 	OaUsize DecodeObuOffset = 0;
 	OaUsize DecodeObuSize = 0;
 	OaVec<OaU32> TileOffsets;
@@ -215,6 +218,14 @@ public:
 		OaVec<OaAv1PictureDesc>& OutDescs);
 	OaStatus InspectAccessUnit(const OaSpan<const OaU8>& InBitstream,
 		OaAv1AccessUnitInfo& OutInfo) const;
+	[[nodiscard]] bool HasSequenceHeader() const noexcept
+	{
+		return HasCachedSequenceHeader_;
+	}
+	[[nodiscard]] const OaAv1SequenceHeaderInfo& GetSequenceHeader() const noexcept
+	{
+		return CachedSequenceHeader_;
+	}
 
 private:
 	// Sequence header cache. In MP4/ISO-BMFF the sequence header is carried

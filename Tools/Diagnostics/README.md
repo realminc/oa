@@ -151,6 +151,10 @@ python3 Tools/Diagnostics/oabenchsuite.py \
 the source commit and result hash. It never overwrites an accepted baseline.
 A deliberate replacement therefore remains reviewable: remove the old record,
 capture from a clean checkpoint, state the reason, and commit the new artifact.
+Checked-in records normalize the maintainer's home-directory prefix to `~` in
+`VCPKG_INSTALLED_DIR`; the measured values, build profile, source commit, and
+result hash remain unchanged. This removes personal workstation identity
+without inventing a different build root.
 
 ## Determinism
 

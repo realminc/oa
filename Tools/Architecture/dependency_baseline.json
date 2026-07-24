@@ -4,9 +4,8 @@
   "exceptions": {
     "Core->Ml": 6,
     "Core->Runtime": 48,
-    "Core->Ui": 5,
+    "Core->Ui": 4,
     "Data->Vision": 1,
-    "Render->Ui": 3,
     "Runtime->Crypto": 1,
     "Runtime->Ml": 3,
     "Vision->Audio": 3,

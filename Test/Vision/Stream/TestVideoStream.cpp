@@ -13,7 +13,7 @@
 #include <Oa/Vision/Video.h>
 #include <Oa/Runtime/Engine.h>
 #include <Oa/Runtime/Sync.h>
-#include <Oa/Core/FileIo.h>
+#include <Oa/Core/Filesystem.h>
 
 #include <cmath>
 #include <chrono>
@@ -44,7 +44,7 @@ constexpr const char* kShibuyaVp9 =
 
 bool DatasetAvailable(const char* InPath)
 {
-	auto status = OaFileIo::ReadBinary(OaPath(InPath));
+	auto status = OaFilesystem::ReadBinary(OaPath(InPath));
 	return status.IsOk();
 }
 
@@ -437,6 +437,12 @@ TEST(OaVideoStream, DecodesShibuyaVp9FirstFrame)
 
 	auto profile = streamResult->GetVideoProfile();
 	profile.MaxDpbSlots = 9;
+	auto capabilities = OaVideoDecoder::QueryDecodeCapabilities(rt, profile);
+	ASSERT_TRUE(capabilities.IsOk()) << capabilities.GetStatus().ToString();
+	if (not capabilities->Supported) {
+		GTEST_SKIP() << "Exact VP9 stream profile unavailable: requested level "
+			<< profile.Level << ", device maximum " << capabilities->MaxLevel;
+	}
 	auto decoderResult = OaVideoDecoder::Create(rt, profile);
 	ASSERT_TRUE(decoderResult.IsOk()) << decoderResult.GetStatus().ToString();
 	auto decoder = OaStdMove(*decoderResult);
@@ -548,6 +554,14 @@ TEST(OaVideoStream, BackwardSeekReconstructsFrameAcrossCodecs)
 			|| !OaVideoDecoder::IsCodecSupported(*engine, testCase.Codec)) {
 			continue;
 		}
+		auto stream = OaVideoStream::OpenFile(testCase.Path);
+		ASSERT_TRUE(stream.IsOk()) << testCase.Path << ": "
+			<< stream.GetStatus().ToString();
+		auto capabilities = OaVideoDecoder::QueryDecodeCapabilities(
+			*engine, stream->GetVideoProfile());
+		ASSERT_TRUE(capabilities.IsOk()) << testCase.Path << ": "
+			<< capabilities.GetStatus().ToString();
+		if (not capabilities->Supported) continue;
 		++exercised;
 		OaItVideoConfig config;
 		config.Path = testCase.Path;
@@ -630,7 +644,7 @@ TEST(OaVideoStream, FirstFrameMatchesFfmpegReference)
 		"ffmpeg -v error -y -i \"") + kShibuyaH264
 		+ "\" -frames:v 1 -f rawvideo -pix_fmt rgba " + refPath;
 	ASSERT_EQ(std::system(command.CStr()), 0);
-	auto reference = OaFileIo::ReadBinary(OaPath(refPath));
+	auto reference = OaFilesystem::ReadBinary(OaPath(refPath));
 	std::remove(refPath);
 	ASSERT_TRUE(reference.IsOk());
 	ASSERT_EQ(reference->Size(), rgba->Size());
@@ -687,7 +701,7 @@ TEST(OaVideoStream, FirstFrameNv12MatchesFfmpegReference)
 		"ffmpeg -v error -y -i \"") + kShibuyaH264
 		+ "\" -frames:v 1 -f rawvideo -pix_fmt nv12 " + refPath;
 	ASSERT_EQ(std::system(command.CStr()), 0);
-	auto reference = OaFileIo::ReadBinary(OaPath(refPath));
+	auto reference = OaFilesystem::ReadBinary(OaPath(refPath));
 	std::remove(refPath);
 	ASSERT_TRUE(reference.IsOk());
 	ASSERT_EQ(reference->Size(), nv12->Size());
@@ -776,7 +790,7 @@ TEST(OaVideoStream, FirstTwelveDisplayFramesMatchFfmpegReference)
 		"ffmpeg -v error -y -i \"") + kShibuyaH264
 		+ "\" -frames:v 12 -f rawvideo -pix_fmt rgba " + refPath;
 	ASSERT_EQ(std::system(command.CStr()), 0);
-	auto reference = OaFileIo::ReadBinary(OaPath(refPath));
+	auto reference = OaFilesystem::ReadBinary(OaPath(refPath));
 	std::remove(refPath);
 	ASSERT_TRUE(reference.IsOk());
 	ASSERT_EQ(reference->Size(), frameBytes * frameCount);
@@ -857,7 +871,7 @@ TEST(OaVideoStream, SustainedH264DisplayFramesMatchFfmpegReference)
 		+ "\" -vf \"" + select
 		+ "\" -vsync 0 -f rawvideo -pix_fmt rgba " + refPath;
 	ASSERT_EQ(std::system(command.CStr()), 0);
-	auto reference = OaFileIo::ReadBinary(OaPath(refPath));
+	auto reference = OaFilesystem::ReadBinary(OaPath(refPath));
 	std::remove(refPath);
 	ASSERT_TRUE(reference.IsOk());
 	ASSERT_EQ(reference->Size(), frameBytes * sampleCount);
@@ -927,6 +941,13 @@ void ExpectCodecIteratorMatchesFirstTwelveFfmpegFrames(
 
 	auto streamResult = OaVideoStream::OpenFile(InPath);
 	ASSERT_TRUE(streamResult.IsOk()) << InName;
+	auto capabilities = OaVideoDecoder::QueryDecodeCapabilities(
+		*engine, streamResult->GetVideoProfile());
+	ASSERT_TRUE(capabilities.IsOk()) << InName << ": "
+		<< capabilities.GetStatus().ToString();
+	if (not capabilities->Supported) {
+		GTEST_SKIP() << InName << ": exact stream profile unavailable";
+	}
 	const OaUsize frameBytes =
 		static_cast<OaUsize>(streamResult->GetInfo().Width)
 		* streamResult->GetInfo().Height * 4U;
@@ -937,7 +958,7 @@ void ExpectCodecIteratorMatchesFirstTwelveFfmpegFrames(
 		+ "\" -vf \"select='between(n\\,0\\,11)'\""
 		+ " -vsync 0 -f rawvideo -pix_fmt rgba " + refPath;
 	ASSERT_EQ(std::system(command.CStr()), 0) << InName;
-	auto reference = OaFileIo::ReadBinary(OaPath(refPath));
+	auto reference = OaFilesystem::ReadBinary(OaPath(refPath));
 	std::remove(refPath.CStr());
 	ASSERT_TRUE(reference.IsOk()) << InName;
 	ASSERT_EQ(reference->Size(), frameBytes * 12U) << InName;
@@ -1025,7 +1046,7 @@ TEST(OaVideoStream, H265IteratorMatchesFfmpegAcrossEntireVideo)
 	const OaUsize frameBytes =
 		static_cast<OaUsize>(streamResult->GetInfo().Width) *
 		streamResult->GetInfo().Height * 4u;
-	auto reference = OaFileIo::ReadBinary(OaPath(refPath));
+	auto reference = OaFilesystem::ReadBinary(OaPath(refPath));
 	std::remove(refPath.CStr());
 	ASSERT_TRUE(reference.IsOk());
 	ASSERT_EQ(reference->Size(), frameBytes * sampleCount);

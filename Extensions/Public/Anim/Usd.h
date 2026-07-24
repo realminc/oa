@@ -13,7 +13,7 @@
 // contacts) lives in PoseClip packing (PosePack.h), not here, so all USD
 // parsing complexity is quarantined in this one file (§4.0).
 
-#include <Oa/Core/FileIo.h>
+#include <Oa/Core/Filesystem.h>
 #include <Oa/Core/Vlm.h>
 #include <Oa/Core/Types.h>
 

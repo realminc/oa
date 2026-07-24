@@ -2,6 +2,7 @@
 // Source of truth: Tools/FnAutogen/Schema/Audio/FnAudio manifest.
 // Regenerate via: python3 Tools/FnAutogen/oafnautogen.py --live
 
-// OaFnAudio — generated umbrella for Audio/FnAudio.
+// OaFnAudio — generated declarations for Audio/FnAudio.
 
 #include "Signal/FnAudioSignal.gen.h"
+#include "Transform/FnAudioTransform.gen.h"

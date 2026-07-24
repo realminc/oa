@@ -1,6 +1,6 @@
 // OaFfn — SwiGLU FFN Implementation (Level 1 API)
 
-#include "Ffn.h"
+#include <Oa/Ml/Nn/Ffn/Ffn.h>
 #include <Oa/Core/FnMatrix.h>
 
 OaFfn::OaFfn(OaI32 InDModel, OaI32 InDFF, OaF32 InRmsEps) {
@@ -59,6 +59,7 @@ OaMatrix OaFfn::Forward(const OaMatrix& InX) {
 		? OaFnMatrix::PackedLinear2(normed, gateParams[0].Data, upParams[0].Data,
 			gateParams[1].Data, upParams[1].Data)
 		: OaFnMatrix::PackedLinear2(normed, gateParams[0].Data, upParams[0].Data);
+
 	OaI64 widths[] = {DFF_, DFF_};
 	auto gateUp = OaFnMatrix::Split(packed, OaSpan<OaI64>(widths, 2), 1);
 	auto gate = gateUp[0];

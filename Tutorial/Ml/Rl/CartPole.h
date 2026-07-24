@@ -5,6 +5,8 @@
 #include <Oa/Ml/Rl/Environment.h>
 
 struct OaTutorialCartPoleConfig {
+	static constexpr OaU32 DynamicsVersion = 1;
+
 	OaU32 Environments = 1;
 	OaU32 MaxEpisodeSteps = 500;
 	OaU64 Seed = 1;
@@ -16,6 +18,10 @@ struct OaTutorialCartPoleConfig {
 	OaF32 TimeStep = 0.02F;
 	OaF32 PositionThreshold = 2.4F;
 	OaF32 AngleThresholdRadians = 0.2094395102F;
+
+	// Stable, versioned identity of every field that changes Step behavior.
+	// Lane count is shape-derived and reset seed deliberately is not dynamics.
+	[[nodiscard]] OaU64 DynamicsIdentity() const noexcept;
 };
 
 struct OaTutorialCartPoleStep {
@@ -34,21 +40,21 @@ struct OaTutorialCartPoleStep {
 // that contract.
 class OaTutorialCartPole : public OaRlEnvironment {
 public:
-	OaTutorialCartPole() = default;
 	OaTutorialCartPole(const OaTutorialCartPole&) = delete;
 	OaTutorialCartPole& operator=(const OaTutorialCartPole&) = delete;
 	OaTutorialCartPole(OaTutorialCartPole&&) noexcept = default;
 	OaTutorialCartPole& operator=(OaTutorialCartPole&&) noexcept = default;
 
 	[[nodiscard]] static OaResult<OaTutorialCartPole> Create(
+		OaEngine& InEngine,
 		const OaTutorialCartPoleConfig& InConfig);
 
 	// Full deterministic reset. Repeating Reset with the same configured seed
 	// produces the same initial states.
-	void Reset();
+	[[nodiscard]] OaStatus Reset();
 	// Resets only lanes marked Done by the preceding Step. Call after preserving
 	// the terminal transition in the rollout buffer.
-	void ResetDone();
+	[[nodiscard]] OaStatus ResetDone();
 
 	// Records one standard CartPole Euler integration step. Actions are Int32
 	// [E], with 0 = left and 1 = right.
@@ -65,14 +71,22 @@ public:
 	[[nodiscard]] OaU32 Environments() const noexcept override {
 		return Config_.Environments;
 	}
-	[[nodiscard]] OaStatus ResetEnvironment(OaU64 InSeed) override;
-	[[nodiscard]] OaResult<OaRlEnvironmentTransition> StepEnvironment(
-		const OaMatrix& InAction) override;
-	[[nodiscard]] OaStatus ResetCompleted() override;
+private:
+	explicit OaTutorialCartPole(OaEngine& InEngine);
+	[[nodiscard]] OaStatus RecordReset_(bool InOnlyDone);
+	[[nodiscard]] OaResult<OaTutorialCartPoleStep> RecordStep_(
+		const OaMatrix& InAction);
+	[[nodiscard]] OaU64 EffectiveSeed_() const noexcept;
+
+protected:
+	[[nodiscard]] OaStatus RecordResetEnvironment_(OaU64 InSeed) override;
+	[[nodiscard]] OaResult<OaRlEnvironmentTransition>
+		RecordStepEnvironment_(const OaMatrix& InAction) override;
+	[[nodiscard]] OaStatus RecordResetCompleted_() override;
+	void CommitRecordedState_() noexcept override;
+	void RollbackRecordedState_() noexcept override;
 
 private:
-	void RecordReset_(bool InOnlyDone);
-
 	OaTutorialCartPoleConfig Config_;
 	OaRlEnvironmentSpec Spec_;
 	OaMatrix State_;
@@ -83,4 +97,8 @@ private:
 	OaMatrix Done_;
 	OaMatrix EpisodeSteps_;
 	OaMatrix EpisodeIndex_;
+	OaU64 PendingSeed_ = 0;
+	bool HasPendingSeed_ = false;
+	bool HasCommittedState_ = false;
+	bool HasPendingFullReset_ = false;
 };

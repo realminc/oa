@@ -138,7 +138,7 @@ Types are organized by domain to enable modular builds:
   - **Vision**: Image/video types (OaPixelFormat, OaVideoCodec, OaImageFormat)
   - **Ui**: UI types (OaViewerMode, OuiKey, OuiEventType)
   - **Runtime**: GPU/runtime types (OaGemmKernel, OaStoragePrecision)
-  - **Audio**: Audio types (OaChannelLayout, OaAudioMeta)
+  - **Audio**: schema-owned Audio enums and POD configuration types
   - **Render**: Render types (OaLightType, OaMeshTopology, OaBlendMode)
   - **Animation**: Animation types (OaTimeDirection, OaInterpolationMode)
 

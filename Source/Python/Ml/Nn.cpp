@@ -11,14 +11,14 @@ void BindMlNn(nb::module_& m) {
 
     nb::class_<OaLinear, OaModule>(m, "OaLinear")
         .def(nb::init<OaI32, OaI32, bool>(),
-             nb::arg("in_features"), nb::arg("out_features"), nb::arg("bias") = true,
+             nb::arg("InFeatures"), nb::arg("OutFeatures"), nb::arg("Bias") = true,
              "Fully connected linear layer: y = x @ W.T + b")
         .def("Forward", [](OaLinear& self, const OaMatrix& input) {
             OaMatrix result = self.Forward(input);
             return matrix_ptr(std::move(result));
-        }, nb::arg("input"), "Forward pass: Out = Input @ W.T + b",
+        }, nb::arg("Input"), "Forward pass: Out = Input @ W.T + b",
              nb::rv_policy::take_ownership)
-        .def("SetActivation", &OaLinear::SetActivation, nb::arg("activation"),
+        .def("SetActivation", &OaLinear::SetActivation, nb::arg("Activation"),
              "Set activation function (None, Relu, Gelu)")
         .def("Parameters", [](OaLinear& self) -> std::vector<OaParameter*> {
             auto& params = self.Parameters();
@@ -35,12 +35,12 @@ void BindMlNn(nb::module_& m) {
 
     nb::class_<OaEmbedding, OaModule>(m, "OaEmbedding")
         .def(nb::init<OaI32, OaI32>(),
-             nb::arg("num_embeddings"), nb::arg("embedding_dim"),
+             nb::arg("NumEmbeddings"), nb::arg("EmbeddingDim"),
              "Embedding lookup layer")
         .def("Forward", [](OaEmbedding& self, const OaMatrix& input) {
             OaMatrix result = self.Forward(input);
             return matrix_ptr(std::move(result));
-        }, nb::arg("input"), "Forward pass: lookup embeddings for each token index",
+        }, nb::arg("Input"), "Forward pass: lookup embeddings for each token index",
              nb::rv_policy::take_ownership)
         .def("Parameters", [](OaEmbedding& self) -> std::vector<OaParameter*> {
             auto& params = self.Parameters();
@@ -59,7 +59,7 @@ void BindMlNn(nb::module_& m) {
     // ═════════════════════════════════════════════════════════════════════════
 
     nb::class_<OaByteEmbedding, OaModule>(m, "OaByteEmbedding")
-        .def(nb::init<OaI32>(), nb::arg("d_model"),
+        .def(nb::init<OaI32>(), nb::arg("DModel"),
              "Byte-level embedding (256-symbol vocab, no tokenizer)")
         .def_prop_ro("DModel", &OaByteEmbedding::DModel);
 
@@ -70,8 +70,8 @@ void BindMlNn(nb::module_& m) {
 
     nb::class_<OaRnn, OaModule>(m, "OaRnn")
         .def(nb::init<OaI32, OaI32, OaI32, bool>(),
-             nb::arg("input_size"), nb::arg("hidden_size"),
-             nb::arg("num_layers") = 1, nb::arg("bias") = true,
+             nb::arg("InputSize"), nb::arg("HiddenSize"),
+             nb::arg("NumLayers") = 1, nb::arg("Bias") = true,
              "Recurrent tanh RNN (fused whole-sequence scan)")
         .def_prop_ro("InputSize", &OaRnn::InputSize)
         .def_prop_ro("HiddenSize", &OaRnn::HiddenSize)
@@ -83,8 +83,8 @@ void BindMlNn(nb::module_& m) {
 
     nb::class_<OaGru, OaModule>(m, "OaGru")
         .def(nb::init<OaI32, OaI32, OaI32, bool>(),
-             nb::arg("input_size"), nb::arg("hidden_size"),
-             nb::arg("num_layers") = 1, nb::arg("bias") = true,
+             nb::arg("InputSize"), nb::arg("HiddenSize"),
+             nb::arg("NumLayers") = 1, nb::arg("Bias") = true,
              "Gated recurrent unit (fused whole-sequence scan)")
         .def_prop_ro("InputSize", &OaGru::InputSize)
         .def_prop_ro("HiddenSize", &OaGru::HiddenSize)
@@ -96,7 +96,7 @@ void BindMlNn(nb::module_& m) {
 
     nb::class_<OaLayerNorm, OaModule>(m, "OaLayerNorm")
         .def(nb::init<OaI32, OaF32>(),
-             nb::arg("normalized_shape"), nb::arg("eps") = 1e-5f,
+             nb::arg("NormalizedShape"), nb::arg("Eps") = 1e-5f,
              "Layer normalization over the last dimension");
 
     // ═════════════════════════════════════════════════════════════════════════
@@ -106,13 +106,13 @@ void BindMlNn(nb::module_& m) {
 
     nb::class_<OaTransformerBlock, OaModule>(m, "OaTransformerBlock")
         .def(nb::init<OaI32, OaI32, OaI32, OaF32>(),
-             nb::arg("d_model"), nb::arg("d_ff"), nb::arg("seq_len"), nb::arg("eps") = 1e-5f,
+             nb::arg("DModel"), nb::arg("DFf"), nb::arg("SeqLen"), nb::arg("Eps") = 1e-5f,
              "Pre-norm one-head transformer block (compatibility constructor)")
         .def(nb::init<OaI32, OaI32, OaI32, OaI32, OaF32>(),
-             nb::arg("d_model"), nb::arg("d_ff"), nb::arg("seq_len"),
-             nb::arg("num_heads"), nb::arg("eps") = 1e-5f,
+             nb::arg("DModel"), nb::arg("DFf"), nb::arg("SeqLen"),
+             nb::arg("NumHeads"), nb::arg("Eps") = 1e-5f,
              "Pre-norm multi-head transformer block (causal self-attention + FFN)")
-        .def("SetSeqLen", &OaTransformerBlock::SetSeqLen, nb::arg("seq_len"),
+        .def("SetSeqLen", &OaTransformerBlock::SetSeqLen, nb::arg("SeqLen"),
              "Update the runtime sequence length without replacing model weights");
 
     // ═════════════════════════════════════════════════════════════════════════
@@ -124,12 +124,12 @@ void BindMlNn(nb::module_& m) {
     nb::class_<OaMamba3Module, OaModule>(m, "OaMamba3Module")
         .def(nb::init<OaI32, OaI32, OaI32, OaI32, OaI32, OaF32, bool, OaI32,
                       OaF32, OaF32, OaF32, OaF32, bool>(),
-             nb::arg("d_model"), nb::arg("d_state") = 128, nb::arg("expand") = 2,
-             nb::arg("head_dim") = 64, nb::arg("n_groups") = 1,
-             nb::arg("rope_fraction") = 0.5f, nb::arg("mimo") = false,
-             nb::arg("mimo_rank") = 4, nb::arg("dt_min") = 0.001f, nb::arg("dt_max") = 0.1f,
-             nb::arg("dt_init_floor") = 1e-4f, nb::arg("a_floor") = 1e-4f,
-             nb::arg("outproj_norm") = false,
+             nb::arg("DModel"), nb::arg("DState") = 128, nb::arg("Expand") = 2,
+             nb::arg("HeadDim") = 64, nb::arg("NGroups") = 1,
+             nb::arg("RopeFraction") = 0.5f, nb::arg("Mimo") = false,
+             nb::arg("MimoRank") = 4, nb::arg("DtMin") = 0.001f, nb::arg("DtMax") = 0.1f,
+             nb::arg("DtInitFloor") = 1e-4f, nb::arg("AFloor") = 1e-4f,
+             nb::arg("OutprojNorm") = false,
              "Mamba-3 SSM mixer (experimental)");
 
     // ═════════════════════════════════════════════════════════════════════════
@@ -140,11 +140,11 @@ void BindMlNn(nb::module_& m) {
     nb::class_<OaEmpyrealmCore, OaModule>(m, "OaEmpyrealmCore")
         .def(nb::init<OaI32, OaI32, OaI32, OaI32, OaI32, OaI32, OaF32, bool, OaI32,
                       OaF32, OaF32, OaF32, OaF32, bool>(),
-             nb::arg("vocab_size"), nb::arg("d_model"), nb::arg("d_state") = 32,
-             nb::arg("expand") = 2, nb::arg("head_dim") = 16, nb::arg("n_groups") = 1,
-             nb::arg("rope_fraction") = 0.5f, nb::arg("mimo") = false,
-             nb::arg("mimo_rank") = 1, nb::arg("dt_min") = 0.001f, nb::arg("dt_max") = 0.1f,
-             nb::arg("dt_init_floor") = 1e-4f, nb::arg("a_floor") = 1e-4f,
-             nb::arg("outproj_norm") = true,
+             nb::arg("VocabSize"), nb::arg("DModel"), nb::arg("DState") = 32,
+             nb::arg("Expand") = 2, nb::arg("HeadDim") = 16, nb::arg("NGroups") = 1,
+             nb::arg("RopeFraction") = 0.5f, nb::arg("Mimo") = false,
+             nb::arg("MimoRank") = 1, nb::arg("DtMin") = 0.001f, nb::arg("DtMax") = 0.1f,
+             nb::arg("DtInitFloor") = 1e-4f, nb::arg("AFloor") = 1e-4f,
+             nb::arg("OutprojNorm") = true,
              "Empyrealm SSM core with internal embedding (experimental)");
 }

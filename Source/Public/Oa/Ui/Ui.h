@@ -187,12 +187,19 @@ public:
 		const OaMatrix& InEnvelope,
 		OaF32& InOutFraction);
 	void Image(OaU32 InBindlessIdx, OaI32 InW, OaI32 InH);
+	// Source stage/access describe the producer's last write made visible to
+	// this sampled read. Defaults preserve compute storage-image producers;
+	// graphics render targets must pass their color-attachment scopes.
 	void ImageVkRgba(
 		void* InImage,
 		void* InImageView,
 		OaI32 InW,
 		OaI32 InH,
-		VkImageLayout InLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+		VkImageLayout InLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		VkPipelineStageFlags2 InSourceStageMask =
+			VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+		VkAccessFlags2 InSourceAccessMask =
+			VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
 	// Draw filled or outlined axis-aligned rectangles directly into the GPU
 	// compose image. Rectangles must already be clipped to its extent.
 	void Rect(OaPixelRect InRect, OaColor InColor);

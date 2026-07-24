@@ -4,7 +4,7 @@
 #include "../../../Test/OaTest.h"
 
 #include <Oa/Data/DsHumanMl3d.h>
-#include <Oa/Core/FileIo.h>
+#include <Oa/Core/Filesystem.h>
 #include <Oa/Ml.h>
 #include <Oa/Ml/Autograd.h>
 #include <Oa/Runtime/Context.h>
@@ -241,8 +241,8 @@ inline void ValidateGeometryAndExport(
 		OaSkHumanMl3d(), OaSpan<const OaF32>(world.Data(), world.Size()),
 		frames, 20.0F, 1, 100.0F);
 	ASSERT_TRUE(clip.IsValid());
-	const OaPath directory = OaFileIo::GetVarDir() / "generative";
-	ASSERT_TRUE(OaFileIo::CreateDirectories(directory).IsOk());
+	const OaPath directory = OaPaths::Var() / "generative";
+	ASSERT_TRUE(OaFilesystem::CreateDirectories(directory).IsOk());
 	const OaPath path = directory /
 		(InMoe ? "motion_flow_moe.usda" : "motion_flow_dense.usda");
 	ASSERT_TRUE(OaUsd::WriteUsda(path, clip, "humanml3d").IsOk());

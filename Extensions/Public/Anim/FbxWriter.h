@@ -10,7 +10,7 @@
 // FBX. The header / SceneInfo / PropertyTemplates / Takes ceremony is
 // load-bearing; the format rejects incomplete files.
 
-#include <Oa/Core/FileIo.h>
+#include <Oa/Core/Filesystem.h>
 #include <Oa/Core/Types.h>
 
 struct OaUsdSkelClip;

@@ -1,7 +1,8 @@
 // OA CORE - Persistent Performance Record Store
 
 #include <Oa/Core/PerfStore.h>
-#include <Oa/Core/FileIo.h>
+#include <Oa/Core/Filesystem.h>
+#include <Oa/Core/Paths.h>
 #include <Oa/Core/Time.h>
 #include <cstring>
 #include <cstdio>
@@ -21,16 +22,16 @@ OaStatus OaPerfStore::Load(const char* InPath) {
     if (InPath != nullptr and InPath[0] != '\0') {
         Path_ = OaString(OaStringView(InPath));
     } else {
-        Path_ = OaString((OaFileIo::GetVarDir("perf") / "OaPerf.dat").String());
+        Path_ = OaString((OaPaths::Var("perf") / "OaPerf.dat").String());
     }
 
     Records_.Clear();
 
-    if (not OaFileIo::Exists(OaPath(Path_))) {
+    if (not OaFilesystem::Exists(OaPath(Path_))) {
         return OaStatus::Ok();
     }
 
-    auto rawResult = OaFileIo::ReadBinary(OaPath(Path_));
+    auto rawResult = OaFilesystem::ReadBinary(OaPath(Path_));
     if (not rawResult.IsOk()) {
         return rawResult.GetStatus();
     }
@@ -122,7 +123,7 @@ void OaPerfStore::PrintComparison(
 }
 
 OaStatus OaPerfStore::Flush() const {
-    OaStatus mkdirStatus = OaFileIo::CreateDirectories(OaFileIo::GetVarDir("perf"));
+    OaStatus mkdirStatus = OaFilesystem::CreateDirectories(OaPaths::Var("perf"));
     if (not mkdirStatus.IsOk()) {
         return mkdirStatus;
     }
@@ -145,6 +146,6 @@ OaStatus OaPerfStore::Flush() const {
         ptr += sizeof(rec);
     }
 
-    return OaFileIo::WriteBinary(OaPath(Path_),
+    return OaFilesystem::WriteBinary(OaPath(Path_),
         OaSpan<const OaU8>(buf.Data(), buf.Size()));
 }

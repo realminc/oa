@@ -1,6 +1,6 @@
 #include <Oa/Data/Database.h>
 
-#include <Oa/Core/FileIo.h>
+#include <Oa/Core/Filesystem.h>
 
 #include <fmt/format.h>
 
@@ -231,8 +231,8 @@ OaStatus OaDatabase::Open(const OaDatabaseConfig& InConfig) {
 	}
 
 	OaPath DbPath(InConfig.Path);
-	if (DbPath.has_parent_path()) {
-		OA_RETURN_IF_ERROR(OaFileIo::CreateDirectories(DbPath.parent_path()));
+	if (const OaPath parent = DbPath.ParentPath(); !parent.Empty()) {
+		OA_RETURN_IF_ERROR(OaFilesystem::CreateDirectories(parent));
 	}
 
 	duckdb_config cfg;

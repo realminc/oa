@@ -10,14 +10,6 @@ used by OA on desktop. It is a compact demonstration of a larger developer tool:
 cross-vendor execution substrate for building and validating GPU software without
 maintaining a separate mobile ML implementation.
 
-<table>
-<tr>
-<td><img src="Docs/Media/BuildWeek/OaMobileLab1.webp" alt="OA Mobile Lab welcome screen"></td>
-<td><img src="Docs/Media/BuildWeek/OaMobileLab2.webp" alt="OA Mobile Lab Vulkan device view"></td>
-<td><img src="Docs/Media/BuildWeek/OaMobileLab3.webp" alt="OA Mobile Lab model training"></td>
-</tr>
-</table>
-
 ## What was built during Build Week
 
 OA existed before the event. The baseline is private engineering commit `8e5a32b5`
@@ -45,6 +37,11 @@ checkpoint as matching source and installable artifacts. Its controlled NLP comp
 predates the final release-source cleanup, so the results remain engineering evidence and
 are not relabeled as an exact `v0.7.6` benchmark.
 
+The July 24 `v0.7.7` preview is the post-event API convergence release: it adds
+the canonical C++-parity Python root, paired tutorials, semantic media APIs, and
+format-neutral still-image I/O. It does not alter or relabel the Build Week
+measurements above.
+
 ## Demonstration
 
 [Watch the public Build Week demo](https://www.youtube.com/watch?v=SEw20xx0SJY).
@@ -67,8 +64,6 @@ kernel that desktop drivers tolerated and Turnip exposed.
 The same repository also includes a small text-to-motion proof: text conditioning,
 motion-token generation, decoding, and USD export through OaAlm. The current checkpoint
 is an early model, not a production motion generator.
-
-[Watch the 720p OaAlm text-to-motion capture](Docs/Media/BuildWeek/OaAlmTextToMotion720p.mp4).
 
 ## Reproduce
 
@@ -101,8 +96,6 @@ Detailed desktop protocol and results are in
 [Docs/Benchmarks/OaNlpSuite.md](Docs/Benchmarks/OaNlpSuite.md).
 The physical-device comparison and signed-release acceptance record are in
 [Docs/Benchmarks/OaMobileLab.md](Docs/Benchmarks/OaMobileLab.md).
-Devpost-ready project copy and the narrated demo outline are in
-[Docs/BuildWeek/Devpost.md](Docs/BuildWeek/Devpost.md).
 
 ## Codex collaboration
 

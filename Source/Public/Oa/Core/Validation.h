@@ -3,7 +3,6 @@
 // OaValidation — Vulkan-style debug layer for Realm compute.
 //
 // Phase 1: macro infrastructure + OaValidation class.
-// Design: oa/Docs/OaValidation.md
 //
 // Build model:
 //   !NDEBUG (debug)              : OA_VALIDATE always active; counters compiled in

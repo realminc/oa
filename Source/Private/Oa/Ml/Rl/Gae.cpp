@@ -39,17 +39,14 @@ OaStatus ValidateGaeInputs(
 		&& InTerminated.GetDtype() == OaScalarType::UInt8
 		&& InTruncated.GetDtype() == OaScalarType::UInt8;
 	if (!configValid || !shapeValid || !valuesValid || !masksValid) {
-		return OaStatus::InvalidArgument(
-			"OaFnRl::Gae expects matching non-empty [T,E] FP32 reward/value/next-value matrices, UInt8 boundary masks, and gamma/lambda in [0,1]");
+		return OaStatus::InvalidArgument("OaFnRl::Gae expects matching non-empty [T,E] FP32 reward/value/next-value matrices, UInt8 boundary masks, and gamma/lambda in [0,1]");
 	}
 	return OaStatus::Ok();
 }
 
 } // namespace
 
-OaMatrix OaFnRl::NormalizeAdvantages(
-	const OaMatrix& InAdvantage,
-	OaF32 InEpsilon) {
+OaMatrix OaFnRl::NormalizeAdvantages(const OaMatrix& InAdvantage,	OaF32 InEpsilon) {
 	if (InAdvantage.IsEmpty()
 		|| InAdvantage.GetDtype() != OaScalarType::Float32
 		|| !std::isfinite(InEpsilon) || InEpsilon <= 0.0F) {
@@ -62,10 +59,8 @@ OaMatrix OaFnRl::NormalizeAdvantages(
 	// Do not express x^2 as pow(x, 2): shader pow is undefined for negative
 	// bases on several Vulkan backends, and centered advantages are commonly
 	// negative. Multiplication is both cheaper and well-defined.
-	const OaMatrix variance = OaFnMatrix::Mean(
-		OaFnMatrix::Mul(centered, centered));
-	const OaMatrix denominator = OaFnMatrix::Sqrt(
-		OaFnMatrix::AddScalar(variance, InEpsilon));
+	const OaMatrix variance = OaFnMatrix::Mean(OaFnMatrix::Mul(centered, centered));
+	const OaMatrix denominator = OaFnMatrix::Sqrt(OaFnMatrix::AddScalar(variance, InEpsilon));
 	return OaFnMatrix::Div(centered, denominator);
 }
 
@@ -105,22 +100,20 @@ OaStatus OaFnRl::GaeInto(
 	const OaMatrix& InTruncated,
 	OaMatrix& OutAdvantage,
 	OaMatrix& OutReturn,
-	const OaGaeConfig& InConfig) {
-	const OaStatus validation = ValidateGaeInputs(
-		InReward, InValue, InNextValue, InTerminated, InTruncated, InConfig);
-	if (validation.IsError()) return validation;
+	const OaGaeConfig& InConfig
+) {
+	const OaStatus validation = ValidateGaeInputs(InReward, InValue, InNextValue, InTerminated, InTruncated, InConfig);
+	if (validation.IsError()) { return validation; }
 	const OaMatrixShape shape = InReward.GetShape();
-	if (!IsRolloutF32(OutAdvantage, shape)
-		|| !IsRolloutF32(OutReturn, shape)) {
-		return OaStatus::InvalidArgument(
-			"OaFnRl::GaeInto expects matching FP32 [T,E] output matrices");
+	if (!IsRolloutF32(OutAdvantage, shape)	|| !IsRolloutF32(OutReturn, shape)) {
+		return OaStatus::InvalidArgument("OaFnRl::GaeInto expects matching FP32 [T,E] output matrices");
 	}
 	struct Push {
 		OaU32 Time;
 		OaU32 Environments;
 		OaF32 Gamma;
 		OaF32 Lambda;
-	} push{
+	} push {
 		.Time = static_cast<OaU32>(shape[0]),
 		.Environments = static_cast<OaU32>(shape[1]),
 		.Gamma = InConfig.Gamma,

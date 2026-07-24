@@ -15,7 +15,8 @@ TEST(TutorialRlCartPolePpo, LearnsFromVectorizedGpuRollouts) {
 		config.Environments, config.Horizon,
 		config.UpdateEpochs, config.Rollouts);
 
-	auto created = OaTutorialCartPolePpo::Create(config);
+	auto created = OaTutorialCartPolePpo::Create(
+		*OaEngine::GetGlobal(), config);
 	ASSERT_TRUE(created.IsOk()) << created.GetStatus().ToString();
 	auto session = OaStdMove(*created);
 	auto beforeResult = session->Evaluate(evaluationSeed);
@@ -41,7 +42,8 @@ TEST(TutorialRlCartPolePpo, LearnsFromVectorizedGpuRollouts) {
 
 	const OaString checkpointPath = "/tmp/oa_cartpole_ppo.oam";
 	ASSERT_TRUE(session->Save(checkpointPath).IsOk());
-	auto restoredResult = OaTutorialCartPolePpo::Create(config);
+	auto restoredResult = OaTutorialCartPolePpo::Create(
+		*OaEngine::GetGlobal(), config);
 	ASSERT_TRUE(restoredResult.IsOk())
 		<< restoredResult.GetStatus().ToString();
 	auto restoredSession = OaStdMove(*restoredResult);
@@ -71,7 +73,8 @@ TEST(TutorialRlCartPolePpo, ObservationDoesNotChangeSeededTraining) {
 	OaTutorialCartPolePpoConfig config;
 	config.Rollouts = 8;
 
-	auto headlessResult = OaTutorialCartPolePpo::Create(config);
+	auto headlessResult = OaTutorialCartPolePpo::Create(
+		*OaEngine::GetGlobal(), config);
 	ASSERT_TRUE(headlessResult.IsOk());
 	auto headless = OaStdMove(*headlessResult);
 	while (!headless->IsDone()) {
@@ -80,7 +83,8 @@ TEST(TutorialRlCartPolePpo, ObservationDoesNotChangeSeededTraining) {
 	auto headlessScore = headless->Evaluate(evaluationSeed);
 	ASSERT_TRUE(headlessScore.IsOk());
 
-	auto observedResult = OaTutorialCartPolePpo::Create(config);
+	auto observedResult = OaTutorialCartPolePpo::Create(
+		*OaEngine::GetGlobal(), config);
 	ASSERT_TRUE(observedResult.IsOk());
 	auto observed = OaStdMove(*observedResult);
 	while (!observed->IsDone()) {

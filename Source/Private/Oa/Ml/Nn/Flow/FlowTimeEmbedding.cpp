@@ -1,4 +1,4 @@
-#include "FlowTimeEmbedding.h"
+#include <Oa/Ml/Nn/Flow/FlowTimeEmbedding.h>
 
 #include <Oa/Core/FnMatrix.h>
 
@@ -15,8 +15,7 @@ OaFlowTimeEmbedding::OaFlowTimeEmbedding(
 	if (EmbeddingDim_ <= 0 || (EmbeddingDim_ % 2) != 0 ||
 		!std::isfinite(MaxPeriod_) || MaxPeriod_ <= 1.0F ||
 		!std::isfinite(TimeScale_) || TimeScale_ <= 0.0F) {
-		throw std::invalid_argument(
-			"FlowTimeEmbedding requires positive even dimension, max period > 1 and positive scale");
+		throw std::invalid_argument("FlowTimeEmbedding requires positive even dimension, max period > 1 and positive scale");
 	}
 
 	const OaI32 half = EmbeddingDim_ / 2;

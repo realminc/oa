@@ -33,9 +33,7 @@ static OaStatus OaValidateGather(
 	return OaStatus::Ok();
 }
 
-static OaStatus OaValidateSlice(
-	const OaMatrix& InSelf, OaI32 InDim, OaI64 InStart, OaI64 InEnd)
-{
+static OaStatus OaValidateSlice(const OaMatrix& InSelf, OaI32 InDim, OaI64 InStart, OaI64 InEnd) {
 	OA_VALIDATE_BOUNDS(InDim, InSelf.Rank(), "Slice dim");
 	OA_VALIDATE(InStart >= 0, OaValidationSeverity::Error, OaLogComponent::ML,
 		"Slice: InStart=%lld must be >= 0", static_cast<OaI64>(InStart));

@@ -672,6 +672,11 @@ OaStatus OaExecutionSession::CompletePendingBatch_() {
 		return OaStatus::Ok();
 	}
 	OA_RETURN_IF_ERROR(PendingBatchStream_->Synchronize(Engine_->Device));
+	// Completion makes resource destruction legal, but the executable command
+	// buffer still retains descriptor-set references until it is reset. Detach
+	// those references before graphs recycle or destroy their descriptor pools.
+	OA_RETURN_IF_ERROR(
+		PendingBatchStream_->ResetUnsubmitted(Engine_->Device));
 	Engine_->ReleaseStream(PendingBatchStream_);
 	PendingBatchStream_ = nullptr;
 	PendingEvent_ = {};
@@ -731,10 +736,17 @@ OaStatus OaExecutionSession::Abandon() {
 			// The poll above is the completion proof. Destruction must not call a
 			// wait path, even one with a fast-poll optimization.
 			PendingBatchStream_->Submitted = false;
-			Engine_->ReleaseStream(PendingBatchStream_);
-			PendingBatchStream_ = nullptr;
-			PendingEvent_ = {};
-			ReclaimCompletedGraphs();
+			const auto resetStatus =
+				PendingBatchStream_->ResetUnsubmitted(Engine_->Device);
+			if (resetStatus.IsOk()) {
+				Engine_->ReleaseStream(PendingBatchStream_);
+				PendingBatchStream_ = nullptr;
+				PendingEvent_ = {};
+				ReclaimCompletedGraphs();
+			} else {
+				if (result.IsOk()) result = resetStatus;
+				RetirePendingBatch_();
+			}
 		} else {
 			RetirePendingBatch_();
 		}

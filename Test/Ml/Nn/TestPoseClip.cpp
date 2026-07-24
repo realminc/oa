@@ -20,8 +20,8 @@ TEST(PoseClip, BinaryRoundTripAndTxtExport) {
 	ASSERT_TRUE(clipResult.IsOk()) << clipResult.GetStatus().ToString();
 	const OaPoseClip clip = *clipResult;
 
-	const OaPath dir = OaFileIo::GetTempDirectory() / "oa_poseclip_test";
-	ASSERT_TRUE(OaFileIo::CreateDirectories(dir).IsOk());
+	const OaPath dir = OaPaths::Temp() / "oa_poseclip_test";
+	ASSERT_TRUE(OaFilesystem::CreateDirectories(dir).IsOk());
 	const OaPath binPath = dir / "fake_gait.3danim";
 	const OaPath txtPath = dir / "fake_gait.txt";
 
@@ -43,12 +43,12 @@ TEST(PoseClip, BinaryRoundTripAndTxtExport) {
 	}
 
 	ASSERT_TRUE(loaded.WriteTxt(txtPath).IsOk());
-	auto text = OaFileIo::ReadText(txtPath);
+	auto text = OaFilesystem::ReadText(txtPath);
 	ASSERT_TRUE(text.IsOk()) << text.GetStatus().ToString();
 	EXPECT_NE(text->View().find("frames 3"), OaStdString::npos);
 	EXPECT_NE(text->View().find("-1"), OaStdString::npos);
 
-	(void)OaFileIo::RemoveDirectory(dir, true);
+	(void)OaFilesystem::RemoveDirectory(dir, true);
 }
 
 TEST(PoseClip, RejectsBadSampleCount) {

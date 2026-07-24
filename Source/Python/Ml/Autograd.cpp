@@ -15,8 +15,12 @@ void BindMlAutograd(nb::module_& m) {
 
     nb::class_<OaGradientTape>(m, "GradientTape", nb::is_final())
         .def(nb::init<>(), "Create autograd tape (RAII: enables gradient tracking in constructor, restores in destructor)")
-        .def("Backward", &OaGradientTape::Backward, nb::arg("root"),
+        .def("Backward", &OaGradientTape::Backward, nb::arg("Root"),
              "Reverse-mode autodiff from scalar loss root")
+        .def("Close", &OaGradientTape::Close,
+             "Restore the gradient-enabled state captured by this tape")
         .def("__enter__", [](OaGradientTape& self) -> OaGradientTape& { return self; }, nb::rv_policy::reference)
-        .def("__exit__", [](OaGradientTape&, nb::object, nb::object, nb::object) { /* destructor will be called */ });
+        .def("__exit__", [](OaGradientTape& self, nb::args) {
+            self.Close();
+        });
 }

@@ -75,7 +75,7 @@ OaStatus OaMappedFile::OpenReadOnly(const OaPath& InPath) {
 	Data_ = static_cast<const OaU8*>(mapped);
 	(void)madvise(const_cast<OaU8*>(Data_), Size_, MADV_RANDOM);
 #else
-	auto read = OaFileIo::ReadBinary(InPath);
+	auto read = OaFilesystem::ReadBinary(InPath);
 	if (read.IsError()) return read.GetStatus();
 	Owned_ = OaStdMove(read).GetValue();
 	if (Owned_.Empty()) {

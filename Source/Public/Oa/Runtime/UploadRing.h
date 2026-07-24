@@ -39,25 +39,24 @@ public:
 	OaUploadRing& operator=(const OaUploadRing&) = delete;
 	~OaUploadRing();
 
-	[[nodiscard]] static OaResult<OaUploadRing> Create(
-		OaEngine& InEngine,
-		const OaUploadRingConfig& InConfig = {});
+	[[nodiscard]] static OaResult<OaUploadRing> Create(OaEngine& InEngine, const OaUploadRingConfig& InConfig = {});
 
 	// Begin one producer batch. This may wait only for the frame slot being
 	// recycled; other in-flight frames remain asynchronous.
 	[[nodiscard]] OaStatus BeginBatch();
-	[[nodiscard]] OaResult<OaUploadSlice> Reserve(
-		OaU64 InSize, OaU64 InAlignment = 0);
+	[[nodiscard]] OaResult<OaUploadSlice> Reserve(OaU64 InSize, OaU64 InAlignment = 0);
 	[[nodiscard]] OaStatus EnqueueCopy(
 		const OaUploadSlice& InSlice,
 		const OaVkBuffer& InDst,
-		OaU64 InDstOffset = 0);
+		OaU64 InDstOffset = 0
+	);
 	[[nodiscard]] OaStatus Upload(
 		const OaVkBuffer& InDst,
 		OaU64 InDstOffset,
 		const void* InData,
 		OaU64 InSize,
-		OaU64 InAlignment = 0);
+		OaU64 InAlignment = 0
+	);
 
 	// Flushes mapped writes, records all queued copies into one command buffer,
 	// and submits once. The returned token should be chained into GPU consumers;

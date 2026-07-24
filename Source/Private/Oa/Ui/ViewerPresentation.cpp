@@ -73,13 +73,15 @@ OaStatus OaViewer::DestroyPresentation() {
 	if (Presenter_ == nullptr) return OaStatus::Ok();
 	// Closing the Presenter also completes and destroys its graphics-stream
 	// ring. Detaching only the swapchain would leave those device children live
-	// until the borrowed Presenter wrapper dies, which is after the explicit
-	// engine-close call in OaViewer::Run().
+	// until the borrowed Presenter wrapper dies. A borrowed engine must remain
+	// valid after OaViewer::Run(InEngine) returns.
 	const OaStatus presenterStatus = Presenter_->Close();
 	if (not presenterStatus.IsOk()) return presenterStatus;
 	Ui_.Destroy();
 	TextAtlas_.Destroy();
 	DestroyComposeImage();
+	RenderCompletion_ = {};
+	RenderDependency_ = {};
 	Presenter_ = nullptr;
 	Engine_    = nullptr;
 	return OaStatus::Ok();
@@ -230,8 +232,7 @@ void OaViewer::DestroyComposeImage() {
 // ─── Per-frame ────────────────────────────────────────────────────────────────
 
 void OaViewer::BeginFrame(OaF32 InDeltaMs) {
-	RenderDependencySemaphore_ = nullptr;
-	RenderDependencyValue_ = 0;
+	RenderDependency_ = {};
 	Ui_.BeginFrame(InDeltaMs);
 }
 
@@ -337,9 +338,10 @@ OaStatus OaViewer::Present() {
 	args.BlitSrcWidth  = ComposeWidth_;
 	args.BlitSrcHeight = ComposeHeight_;
 	args.Filter        = Config_.PresentFilter;
-	if (RenderCompletionSemaphore_.Semaphore != nullptr and RenderCompletionValue_ > 0) {
-		args.WaitTimelineSemaphore = RenderCompletionSemaphore_.Semaphore;
-		args.WaitTimelineValue = RenderCompletionValue_;
+	if (RenderCompletion_.IsValid()) {
+		const OaVkTimelineWait wait = RenderCompletion_.TimelineWait();
+		args.WaitTimelineSemaphore = wait.Semaphore->Semaphore;
+		args.WaitTimelineValue = wait.Value;
 	}
 	if (not Presenter_->PresentSwapchainImage(
 		swap, acquired.ImageIndex, acquired.FrameSlot, args)) {
@@ -351,19 +353,13 @@ OaStatus OaViewer::Present() {
 
 void OaViewer::SetRenderDependency(const OaEvent& InEvent) {
 	if (not InEvent.IsValid()) return;
-	const OaVkTimelineWait wait = InEvent.TimelineWait();
-	if (wait.Semaphore != nullptr and wait.Value > RenderDependencyValue_) {
-		RenderDependencySemaphore_ = wait.Semaphore;
-		RenderDependencyValue_ = wait.Value;
-	}
+	RenderDependency_ = InEvent;
 }
 
-void OaViewer::SetRenderCompletion(
-	const OaVkTimelineSemaphore& InSemaphore,
-	OaU64 InValue) {
-	RenderCompletionSemaphore_ = InSemaphore;
-	RenderCompletionValue_ = InValue;
-	Ui_.MarkFrameSubmitted(InSemaphore, InValue);
+void OaViewer::SetRenderCompletion(const OaEvent& InCompletion) {
+	RenderCompletion_ = InCompletion;
+	const OaVkTimelineWait wait = InCompletion.TimelineWait();
+	Ui_.MarkFrameSubmitted(*wait.Semaphore, wait.Value);
 }
 
 OaU32 OaViewer::Width() const noexcept {

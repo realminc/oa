@@ -7,7 +7,8 @@
 #include <Oa/Ml/TrainingProgram.h>
 #include <Oa/Ml/TrainingSession.h>
 #include <Oa/Core/EnvFlag.h>
-#include <Oa/Core/FileIo.h>
+#include <Oa/Core/Filesystem.h>
+#include <Oa/Core/Paths.h>
 #include <Oa/Core/FnMatrix.h>
 #include <Oa/Core/Log.h>
 #include <Oa/Runtime/Context.h>
@@ -38,7 +39,7 @@ OaItTraining::OaItTraining(OaOptimizer& InOpt, OaItTrainingConfig InCfg)
 	Rt_ = rt;
 
 	if (rt != nullptr and Cfg_.EnableGpuTiming) {
-		auto status = Timer_.Init(*rt, Cfg_.TimerName);
+		auto status = Timer_.Init(*rt, Cfg_.TimerName.c_str());
 		TimerReady_ = status.IsOk();
 		if (not TimerReady_) {
 			OA_LOG_WARN(OaLogComponent::ML,
@@ -355,14 +356,14 @@ void OaItTraining::Next() {
 			const OaString reportSetting = OaEnvFlag::GetString("OA_GRAPH_REPORT");
 			if (not reportSetting.Empty()) {
 				const OaPath reportPath = reportSetting == "1"
-					? OaFileIo::GetVarDir("report") / "training_graph.json"
+					? OaPaths::Var("report") / "training_graph.json"
 					: OaPath(reportSetting.StdStr());
-				const auto parent = OaFileIo::GetParent(reportPath);
+				const auto parent = reportPath.ParentPath();
 				auto reportStatus = parent.Empty()
-					? OaStatus::Ok() : OaFileIo::CreateDirectories(parent);
+					? OaStatus::Ok() : OaFilesystem::CreateDirectories(parent);
 				if (reportStatus.IsOk()) {
 					const OaString report = Cfg_.Program->DebugReportJson("TrainingStep");
-					reportStatus = OaFileIo::WriteText(reportPath, report);
+					reportStatus = OaFilesystem::WriteText(reportPath, report);
 				}
 				if (reportStatus.IsOk()) {
 					OA_LOG_INFO(OaLogComponent::ML,

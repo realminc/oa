@@ -46,8 +46,8 @@ TEST(Skeleton, MannyRestStanding) {
 // `.skel` JSON round-trip preserves identity + rest (translate + orient quat).
 TEST(Skeleton, SkelRoundTrip) {
 	const OaSkeleton& sk = OaSkMetaHuman();
-	const OaPath dir = OaFileIo::GetTempDirectory() / "oa_rig";
-	ASSERT_TRUE(OaFileIo::CreateDirectories(dir).IsOk());
+	const OaPath dir = OaPaths::Temp() / "oa_rig";
+	ASSERT_TRUE(OaFilesystem::CreateDirectories(dir).IsOk());
 	const OaPath p = dir / "metahuman.skel.json";
 	ASSERT_TRUE(sk.WriteSkel(p).IsOk());
 

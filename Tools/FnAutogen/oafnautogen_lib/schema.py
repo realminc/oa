@@ -18,6 +18,8 @@ from .config import (
 	VALID_DISPATCH_WORKGROUPS,
 	VALID_FORMULAS_PREFIX,
 	VALID_KINDS,
+	VALID_KERNEL_CATEGORIES,
+	VALID_KERNEL_PREFIXES,
 	VALID_OUTPUT_DTYPES,
 	VALID_OUTPUT_SHAPES,
 )
@@ -91,6 +93,25 @@ def validate_operation_contract(ctx: str, op: dict) -> None:
 		if value not in valid:
 			fail(f"{ctx}: contract.{field} {value!r} not in {sorted(valid)}")
 
+	value_validation = contract.get("value_validation")
+	if op.get("kind") == "session_command":
+		if value_validation != "session_command":
+			fail(
+				f"{ctx}: session_command requires "
+				"contract.value_validation = 'session_command'"
+			)
+		if contract.get("shape_rule") != "explicit":
+			fail(f"{ctx}: session_command requires contract.shape_rule = 'explicit'")
+		if contract.get("dtype_rule") != "match_input":
+			fail(
+				f"{ctx}: session_command uses frozen match_input as its dtype "
+				"sentinel and validates exact value dtypes manually"
+			)
+	elif value_validation is not None:
+		fail(
+			f"{ctx}: contract.value_validation is reserved for session_command"
+		)
+
 	effects = contract.get("effects")
 	if not isinstance(effects, list) or not effects:
 		fail(f"{ctx}: contract.effects must be a non-empty array")
@@ -161,8 +182,8 @@ def validate_python_binding(ctx: str, op: dict) -> None:
 	args = python.get("args")
 	if not isinstance(args, list) or len(args) != len(api_params):
 		fail(f"{ctx}: python.args must contain one name per api parameter")
-	if any(not isinstance(name, str) or not re.fullmatch(r"[a-z_][a-z0-9_]*", name) for name in args):
-		fail(f"{ctx}: python.args must use snake_case identifiers")
+	if any(not isinstance(name, str) or not re.fullmatch(r"[A-Z][A-Za-z0-9]*", name) for name in args):
+		fail(f"{ctx}: python.args must use PascalCase identifiers")
 	if len(set(args)) != len(args):
 		fail(f"{ctx}: python.args contains duplicates")
 	if "name" in python and (
@@ -172,6 +193,38 @@ def validate_python_binding(ctx: str, op: dict) -> None:
 		fail(f"{ctx}: python.name must be a valid identifier")
 	if "doc" in python and not isinstance(python["doc"], str):
 		fail(f"{ctx}: python.doc must be a string")
+
+
+def validate_kernel_metadata(ctx: str, op: dict) -> None:
+	kernel = op.get("kernel")
+	if kernel is None:
+		return
+	if not isinstance(kernel, dict):
+		fail(f"{ctx}: kernel must be a table")
+	if not op.get("kernel_forward"):
+		fail(f"{ctx}: schema-owned kernel requires kernel_forward")
+	for field in ("id_prefix", "id_local", "category", "origin", "source"):
+		if field not in kernel:
+			fail(f"{ctx}: kernel.{field} is missing")
+	if kernel.get("id_prefix") not in VALID_KERNEL_PREFIXES:
+		fail(
+			f"{ctx}: kernel.id_prefix {kernel.get('id_prefix')!r} not in "
+			f"{sorted(VALID_KERNEL_PREFIXES)}"
+		)
+	if kernel.get("category") not in VALID_KERNEL_CATEGORIES:
+		fail(
+			f"{ctx}: kernel.category {kernel.get('category')!r} not in "
+			f"{sorted(VALID_KERNEL_CATEGORIES)}"
+		)
+	local = kernel.get("id_local")
+	if not isinstance(local, int) or isinstance(local, bool) or local <= 0:
+		fail(f"{ctx}: kernel.id_local must be a positive integer")
+	for field in ("origin", "source"):
+		value = kernel.get(field)
+		if not isinstance(value, str) or not value:
+			fail(f"{ctx}: kernel.{field} must be a non-empty string")
+	if not re.fullmatch(r"[A-Za-z0-9_./-]+", kernel["source"]):
+		fail(f"{ctx}: kernel.source contains unsupported path characters")
 
 
 def load_kernel_registry(path: Path) -> set[str]:
@@ -215,6 +268,7 @@ def validate_schema(schema_path: Path, ops: list[dict], registry: set[str]) -> N
 		seen.add(name)
 		validate_operation_contract(ctx, op)
 		validate_python_binding(ctx, op)
+		validate_kernel_metadata(ctx, op)
 
 		kind = op.get("kind")
 		if kind not in VALID_KINDS:
@@ -227,6 +281,8 @@ def validate_schema(schema_path: Path, ops: list[dict], registry: set[str]) -> N
 			fail(f"{ctx}: body {body!r} does not support kind {kind!r}")
 		if body == "cpp_expr" and not (op.get("cpp_expr") or op.get("cpp_body")):
 			fail(f"{ctx}: body 'cpp_expr' requires cpp_expr or cpp_body")
+		if kind == "session_command" and body != "manual_context":
+			fail(f"{ctx}: kind 'session_command' requires body = 'manual_context'")
 
 		kf = op.get("kernel_forward")
 		if body == "cpp_expr":

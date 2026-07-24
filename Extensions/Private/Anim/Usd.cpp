@@ -234,7 +234,7 @@ OaStatus WriteStage(const OaPath& InPath, OaSpan<const OaUsdNamedClip> InClips,
 	o << "    }\n";  // close Skeleton
 	o << "}\n";      // close SkelRoot
 
-	return OaFileIo::WriteText(InPath, OaString(o.str()));
+	return OaFilesystem::WriteText(InPath, OaString(o.str()));
 }
 
 } // namespace
@@ -529,7 +529,7 @@ void ParseStageMeta(const std::string& text, OaF32& OutFps, OaI32& OutUpAxis) {
 } // namespace
 
 OaResult<OaUsdSkelClip> OaUsd::ReadUsda(const OaPath& InPath) {
-	auto textResult = OaFileIo::ReadText(InPath);
+	auto textResult = OaFilesystem::ReadText(InPath);
 	if (!textResult.IsOk()) {
 		return textResult.GetStatus();
 	}
@@ -560,7 +560,7 @@ OaResult<OaUsdSkelClip> OaUsd::ReadUsda(const OaPath& InPath) {
 }
 
 OaResult<OaVec<OaUsdNamedClip>> OaUsd::ReadUsdaMulti(const OaPath& InPath) {
-	auto textResult = OaFileIo::ReadText(InPath);
+	auto textResult = OaFilesystem::ReadText(InPath);
 	if (!textResult.IsOk()) {
 		return textResult.GetStatus();
 	}

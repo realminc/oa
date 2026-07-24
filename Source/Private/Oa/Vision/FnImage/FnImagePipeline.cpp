@@ -2,7 +2,6 @@
 //
 // Implements:
 // - OaFnImage::ResizeBatch          — Batch resize operation
-// - OaFnImage::DecodeAndPreprocess  — JPEG decode + resize + normalize
 //
 // The schema-generated category translation units own the mechanical
 // global-engine forwarding overloads for primitive tensor operations.
@@ -12,7 +11,6 @@
 // - Multi-stage augmentation pipelines
 
 #include <Oa/Vision/FnImage.h>
-#include <Oa/Vision/JpegDecoder.h>
 #include <Oa/Runtime/Engine.h>
 #include <Oa/Runtime/Context.h>
 #include <Oa/Core/Log.h>
@@ -48,17 +46,6 @@ OaVec<OaMatrix> OaFnImage::ResizeBatch(
     }
 
     return result;
-}
-
-OaMatrix OaFnImage::DecodeAndPreprocess(
-    OaEngine& InRt,
-    const OaSpan<const OaU8>& InCompressedFrame,
-    OaU32 InTargetWidth,
-    OaU32 InTargetHeight,
-    bool InNormalizeImageNet)
-{
-    OaJpegDecoder decoder;
-    return decoder.DecodeToGpu(InRt, InCompressedFrame, InTargetWidth, InTargetHeight, InNormalizeImageNet);
 }
 
 namespace OaFnImage {
@@ -103,6 +90,27 @@ OaImage Normalize(const OaImage& InImage, const OaNormalizationParams& InParams)
 		normalized = OaFnMatrix::Reshape(normalized, InImage.AsMatrix().GetShape());
 	}
 	return OaImage(std::move(normalized), InImage.Layout(), InImage.Format());
+}
+
+OaImage BrightnessContrast(
+	const OaImage& InImage,
+	OaF32 InBrightness,
+	OaF32 InContrast)
+{
+	if (InImage.Layout() != OaImageLayout::Nchw
+		and InImage.Layout() != OaImageLayout::Chw) {
+		OA_LOG_WARN(
+			OaLogComponent::Core,
+			"OaFnImage::BrightnessContrast(OaImage) currently supports Nchw and Chw layouts only");
+		return InImage;
+	}
+	return OaImage(
+		BrightnessContrast(
+			InImage.AsMatrix(),
+			InBrightness,
+			InContrast),
+		InImage.Layout(),
+		InImage.Format());
 }
 
 OaImage ConvertColor(const OaImage& InImage, OaImageFormat InDstFormat)

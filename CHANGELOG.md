@@ -4,6 +4,61 @@ All notable changes to OA are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is the single
 `VERSION` file at the repo root (read by CMake, `OaVersion()`, and the Python package).
 
+## [0.7.7] — 2026-07-24 (public API convergence preview)
+
+### Added
+
+- **C++-parity Python root** — `from oa import *` exposes the verified
+  PascalCase `Oa*` values and real `OaFn*` namespace modules. Generated
+  runtime/native stubs keep Pylance and Pyright aligned with the live binding.
+- **Paired Python tutorials** — Core, ML, Fashion-MNIST, Audio, Vision, Viewer,
+  and all 16 Byte/BPE/Char NLP entries use the same public vocabulary and native
+  Vulkan implementation as their C++ counterparts.
+- **Format-neutral still-image I/O** — `OaImageDecoder` and `OaImageEncoder`
+  provide semantic JPEG, PNG, BMP, TGA, and capability-gated WebP load/save
+  without exposing backend-specific public classes.
+- **Python matrix language parity** — matrix/matrix and matrix/scalar
+  arithmetic, unary negation, and compound assignment now mirror existing C++
+  `OaMatrix` operators.
+
+### Changed
+
+- `OaAudio` is the sole semantic whole-audio value across decode, operations,
+  encode, viewer, C++, and Python. Redundant audio buffer/meta aliases are
+  removed.
+- Public NN generated headers use normal API names and installed include paths;
+  generator ownership no longer leaks `.gen.h` spelling to consumers.
+- `OaFilesystem`, `OaPath`, and `OaPaths` replace ad-hoc source-tree path
+  construction in public Python examples.
+- `OaViewer` is the compact direct-resource display path over the one
+  `OaEngine` plus composed presenter; obsolete device-UI and split-engine
+  concepts remain removed.
+- Vulkan Video decode negotiates the exact codec profile derived from the
+  stream rather than silently substituting a nearby profile.
+
+### Verification
+
+- The Python extension and complete binding suite passed 66 tests with two
+  optional capability skips; fresh-process smoke and canonical 300-step
+  quality runs passed all 16 NLP entries on Intel Iris Xe.
+- Generic image codecs passed 11 native codec tests and 22 focused Python
+  Vision/tutorial tests. The Core operator/tutorial checkpoint passed 23
+  targeted Python tests and direct Iris Xe execution.
+- The preceding private architecture checkpoint passed its focused
+  Lunar/render, Audio, Video, NN/Fashion, camera, generated-source,
+  architecture, and documentation gates. Exact `0.7.7` package and wheel
+  results are recorded by the release workflow.
+
+### Preview boundaries
+
+- The public API and Python ABI remain pre-1.0. Lowercase Python domain modules
+  are migration aliases, not a second canonical API.
+- WebP depends on the build including libwebp. Vulkan Video remains
+  codec/profile/device dependent and fails closed when the exact profile is
+  unavailable.
+- Lunar Lander 3D is an Experimental tutorial, not evidence for a complete
+  generic renderer, physics engine, or learned PPO policy.
+
 ## [0.7.6] — 2026-07-21 (architecture-convergence preview)
 
 ### Changed

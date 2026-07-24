@@ -28,7 +28,7 @@
 #pragma once
 
 #include <Oa/Core/Types.h>
-#include <Oa/Ui/Camera.h>
+#include <Oa/Render/Camera.h>
 #include <Oa/Render/Scene.h>
 
 // Forward declarations.

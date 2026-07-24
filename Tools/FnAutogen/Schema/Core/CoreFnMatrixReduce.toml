@@ -44,7 +44,7 @@ attach       = "standard"
 output_shape = true
 
 [ops.python]
-args = ["a", "dim"]
+args = ["A", "Dim"]
 doc = "Reduce by summation, preserving a selected dimension or reducing all values when dim is -1."
 
 [ops.test]
@@ -95,7 +95,7 @@ output_shape = true
 state        = [{ member = "Dim_", source = "InDim", type = "OaI32" }]
 
 [ops.python]
-args = ["a", "dim"]
+args = ["A", "Dim"]
 doc = "Reduce by arithmetic mean, preserving a selected dimension or reducing all values when dim is -1."
 
 [ops.test]
@@ -144,7 +144,7 @@ output_shape = true
 state        = [{ member = "Dim_", source = "InDim", type = "OaI32" }]
 
 [ops.python]
-args = ["a", "dim"]
+args = ["A", "Dim"]
 doc = "Stable softmax over the selected dimension; -1 selects the last dimension."
 
 [ops.test]
@@ -193,7 +193,7 @@ output_shape = true
 state        = [{ member = "Dim_", source = "InDim", type = "OaI32" }]
 
 [ops.python]
-args = ["a", "dim"]
+args = ["A", "Dim"]
 doc = "Stable log-softmax over the selected dimension; -1 selects the last dimension."
 
 [ops.test]
@@ -240,7 +240,7 @@ attach       = "standard"
 output_shape = true
 
 [ops.python]
-args = ["a", "dim"]
+args = ["A", "Dim"]
 doc = "Reduce all matrix values by maximum; dim is currently a compatibility parameter."
 
 [ops.test]

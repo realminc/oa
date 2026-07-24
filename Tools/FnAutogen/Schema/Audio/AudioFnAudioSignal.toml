@@ -1,63 +1,249 @@
-# OaFn schema — Audio/FnAudio generated signal entry points (3).
+# OaFn schema — semantic Audio signal operations.
 #
-# This is the *source of truth* for audio signal processing operations.
-# The generator emits .h declarations, .cpp implementations, and .slang shaders.
-# See Tools/FnAutogen/README.md and Tools/FnAutogen/oafnautogen.py.
-#
-# Simple audio DSP operations that follow standard kernel dispatch pattern.
-# Complex operations (STFT, Mel, etc.) remain hand-written in FnAudio.cpp.
+# These schemas own the public declarations and operation contracts. Their
+# private implementations validate OaAudio metadata and either compose verified
+# matrix operations or dispatch the named Audio kernel.
 
-# --- Normalize ---------------------------------------------------------------
-# Hand-written in FnAudio.cpp: composed from existing verified kernels
-# (Abs → Max → Scalar readback → Scale). The AudioNormalize stub shader is
-# unused and intentionally not compiled.
 [[ops]]
-name           = "Normalize"
-category       = "Signal"
-kind           = "unary"
-kernel_forward = "AudioNormalize"
-slang_path     = "Audio/Signal"
-log_component  = "AUDIO"
-notes          = "Peak or RMS normalization to target dB level."
-body           = "manual_context"
-extra_params   = [
-    { name = "TargetDb", type = "OaF32", default = "-3.0" },
-    { name = "Mode", type = "OaU8", default = "0" }
+name = "Normalize"
+category = "Signal"
+kind = "unary"
+body = "manual_context"
+notes = "Peak or RMS normalization to a target dB level while preserving audio metadata."
+api_return = "OaAudio"
+api_params = [
+    "const OaAudio& InAudio",
+    "OaF32 InTargetDb = -3.0F",
+    "OaU8 InMode = 0",
 ]
 
-# --- Resample ----------------------------------------------------------------
-# Hand-written in Signal/FnAudioSignal.cpp: the output length differs from the
-# input ([C, S·Out/In]), so the auto body's same-shape allocation is wrong.
-# Rates are gcd-reduced before pushing so the shader's rational source
-# positioning stays exact in u32.
+[ops.contract]
+input_kinds = ["audio"]
+output_kinds = ["audio"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+
 [[ops]]
-name           = "Resample"
-category       = "Signal"
-kind           = "unary"
+name = "Resample"
+category = "Signal"
+kind = "unary"
+body = "manual_context"
 kernel_forward = "AudioResample"
-slang_path     = "Audio/Signal"
-log_component  = "AUDIO"
-notes          = "Windowed-sinc resampling with anti-aliasing filter."
-body           = "manual_context"
-extra_params   = [
-    { name = "InRate", type = "OaU32", default = "48000" },
-    { name = "OutRate", type = "OaU32", default = "16000" },
-    { name = "FilterHalfWidth", type = "OaU32", default = "64" }
+notes = "Windowed-sinc resampling with sample rate derived from the input audio value."
+api_return = "OaAudio"
+api_params = [
+    "const OaAudio& InAudio",
+    "OaU32 InOutRate = 16'000U",
+    "OaU32 InFilterHalfWidth = 64U",
 ]
 
-# --- Mix ---------------------------------------------------------------------
-# C++ wrapper auto-generated, Slang shader manual (has extra_params in push constants)
+[ops.contract]
+input_kinds = ["audio"]
+output_kinds = ["audio"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+
 [[ops]]
-name           = "Mix"
-category       = "Signal"
-kind           = "binary"
-kernel_forward = "AudioMix"
-slang_path     = "Audio/Signal"
-log_component  = "AUDIO"
-notes          = "Weighted sum of two audio tracks."
-body           = "auto"
-push_extra_params = true
-extra_params   = [
-    { name = "GainA", type = "OaF32", default = "1.0" },
-    { name = "GainB", type = "OaF32", default = "1.0" }
+name = "Gain"
+category = "Signal"
+kind = "unary"
+body = "manual_context"
+notes = "Apply scalar gain in dB while preserving audio metadata."
+api_return = "OaAudio"
+api_params = ["const OaAudio& InAudio", "OaF32 InGainDb"]
+
+[ops.contract]
+input_kinds = ["audio"]
+output_kinds = ["audio"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+
+[[ops]]
+name = "Clip"
+category = "Signal"
+kind = "unary"
+body = "manual_context"
+notes = "Clamp waveform samples to a finite range while preserving audio metadata."
+api_return = "OaAudio"
+api_params = [
+    "const OaAudio& InAudio",
+    "OaF32 InMin = -1.0F",
+    "OaF32 InMax = 1.0F",
 ]
+
+[ops.contract]
+input_kinds = ["audio"]
+output_kinds = ["audio"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+
+[[ops]]
+name = "PreEmphasis"
+category = "Signal"
+kind = "unary"
+body = "manual_context"
+notes = "Apply y[n] = x[n] - alpha*x[n-1] while preserving audio metadata."
+api_return = "OaAudio"
+api_params = [
+    "const OaAudio& InAudio",
+    "OaF32 InAlpha = 0.97F",
+]
+
+[ops.contract]
+input_kinds = ["audio"]
+output_kinds = ["audio"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+
+[[ops]]
+name = "ToMono"
+category = "Signal"
+kind = "unary"
+body = "manual_context"
+notes = "Average channels into one mono channel while retaining the sample rate."
+api_return = "OaAudio"
+api_params = ["const OaAudio& InAudio"]
+
+[ops.contract]
+input_kinds = ["audio"]
+output_kinds = ["audio"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+
+[[ops]]
+name = "Fade"
+category = "Signal"
+kind = "unary"
+body = "manual_context"
+kernel_forward = "AudioFade"
+notes = "Apply linear fade-in and fade-out envelopes measured in samples."
+api_return = "OaAudio"
+api_params = [
+    "const OaAudio& InAudio",
+    "OaU64 InFadeInSamples",
+    "OaU64 InFadeOutSamples",
+]
+
+[ops.contract]
+input_kinds = ["audio"]
+output_kinds = ["audio"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+
+[[ops]]
+name = "Mix"
+category = "Signal"
+kind = "binary"
+body = "manual_context"
+kernel_forward = "AudioMix"
+notes = "Weighted sum of two audio values with identical rate, layout, shape, and dtype."
+api_return = "OaAudio"
+api_params = [
+    "const OaAudio& InA",
+    "const OaAudio& InB",
+    "OaF32 InGainA = 1.0F",
+    "OaF32 InGainB = 1.0F",
+]
+
+[ops.contract]
+input_kinds = ["audio", "audio"]
+output_kinds = ["audio"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+
+[[ops]]
+name = "AmplitudeToDb"
+category = "Signal"
+kind = "unary"
+body = "manual_context"
+notes = "Convert waveform amplitude to a finite dB matrix with a silence floor."
+api_return = "OaMatrix"
+api_params = [
+    "const OaAudio& InAudio",
+    "OaF32 InFloorDb = -100.0F",
+]
+
+[ops.contract]
+input_kinds = ["audio"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+
+[[ops]]
+name = "WaveformEnvelope"
+category = "Signal"
+kind = "unary"
+body = "manual_context"
+kernel_forward = "AudioWaveformEnvelope"
+notes = "Reduce multichannel audio to a peak-preserving min/max display matrix."
+api_return = "OaMatrix"
+api_params = [
+    "const OaAudio& InAudio",
+    "OaU32 InBins = 2'048U",
+]
+
+[ops.contract]
+input_kinds = ["audio"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"

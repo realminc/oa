@@ -1,4 +1,5 @@
-// Shared VkVideoProfileInfoKHR builder for OaVideoDecoder (deduped from VideoDecoder*.cpp).
+// Shared VkVideoProfileInfoKHR builder for OaVideoDecoder (deduped from
+// VideoDecoder*.cpp).
 
 #pragma once
 
@@ -6,8 +7,11 @@
 
 namespace OaVideoDecoderProfile {
 
-VkVideoProfileInfoKHR BuildDecodeProfile(
-	OaVideoCodec InCodec,
+OaResult<OaVideoProfile> ResolveDecodeProfile(const OaVideoProfile& InProfile);
+bool IsDecodePathImplemented(const OaVideoProfile& InProfile);
+
+OaResult<VkVideoProfileInfoKHR> BuildDecodeProfile(
+	const OaVideoProfile& InProfile,
 	VkVideoDecodeH264ProfileInfoKHR& OutH264,
 	VkVideoDecodeH265ProfileInfoKHR& OutH265,
 	VkVideoDecodeAV1ProfileInfoKHR& OutAV1,

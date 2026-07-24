@@ -16,7 +16,7 @@
 #include "../../Test/OaTest.h"
 #include "TutorialMl.h"
 #include <Oa/Core/EnvFlag.h>
-#include <Oa/Core/FileIo.h>
+#include <Oa/Core/Filesystem.h>
 #include <Oa/Core/Log.h>
 #include <Oa/Data/DsMnist.h>
 #include <Oa/Ml.h>
@@ -310,8 +310,8 @@ TEST(TutorialMambaDiffusionPixel, FashionMnistFlowMatching) {
 		"T-shirt", "Trouser", "Pullover", "Dress", "Coat",
 		"Sandal", "Shirt", "Sneaker", "Bag", "Boot"
 	};
-	OaPath outDir = OaFileIo::GetVarDir() / "mamba_diffusion";
-	ASSERT_TRUE(OaFileIo::CreateDirectories(outDir).IsOk());
+	OaPath outDir = OaPaths::Var() / "mamba_diffusion";
+	ASSERT_TRUE(OaFilesystem::CreateDirectories(outDir).IsOk());
 	printf("\nSampling %d class-conditional images (%d Euler steps) ...\n", kNumClasses, kNumSteps);
 	OaVec<OaU8> labels(kNumClasses);
 	for (OaI32 i = 0; i < kNumClasses; ++i) {

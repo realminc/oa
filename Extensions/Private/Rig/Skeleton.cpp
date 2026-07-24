@@ -225,7 +225,7 @@ OaStatus OaSkeleton::WriteSkel(const OaPath& InPath) const {
 	out << "  ]\n";
 	out << "}\n";
 
-	return OaFileIo::WriteText(InPath, OaString(out.str()));
+	return OaFilesystem::WriteText(InPath, OaString(out.str()));
 }
 
 namespace {
@@ -286,7 +286,7 @@ struct JsonCursor {
 } // namespace
 
 OaResult<OaSkeleton> OaSkeleton::ReadSkel(const OaPath& InPath) {
-	auto textResult = OaFileIo::ReadText(InPath);
+	auto textResult = OaFilesystem::ReadText(InPath);
 	if (!textResult.IsOk()) {
 		return textResult.GetStatus();
 	}

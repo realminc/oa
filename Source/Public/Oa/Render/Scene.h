@@ -31,7 +31,7 @@
 #include <Oa/Core/Status.h>
 #include <Oa/Core/Vlm.h>
 #include <Oa/Render/Mesh.h>
-#include <Oa/Ui/Camera.h>
+#include <Oa/Render/Camera.h>
 #include <Oa/Render/Material.h>
 
 // Light types

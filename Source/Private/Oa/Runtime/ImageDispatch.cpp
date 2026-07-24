@@ -80,7 +80,11 @@ OaU64 OaVkImageDispatchTicket::Value() const
 OaCompletionToken OaVkImageDispatchTicket::Completion() const
 {
 	return Stream_ && Engine_
-		? OaCompletionToken(Engine_->Device, Stream_->TimelineSem, Stream_->TimelineValue)
+		? OaCompletionToken(
+			Engine_->Device,
+			Stream_->TimelineSem,
+			Stream_->TimelineValue,
+			Stream_->QueueFamily)
 		: OaCompletionToken();
 }
 

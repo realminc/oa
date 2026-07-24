@@ -10,5 +10,5 @@ from ._native import native
 __all__ = export_native(globals(), native.crypto)
 available = getattr(native.crypto, "available", True)
 if "available" not in __all__:
-    __all__.append("available")
+	__all__.append("available")
 del export_native, native

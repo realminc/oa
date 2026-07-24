@@ -11,6 +11,7 @@ NB_MODULE(_oa, m) {
     auto audio = m.def_submodule("audio", "OA audio codecs and GPU signal operations");
     auto crypto = m.def_submodule("crypto", "OA cryptography and GPU hashing");
     auto vision = m.def_submodule("vision", "OA image processing and Vulkan Video");
+    auto ui = m.def_submodule("ui", "OA viewer and interactive presentation sessions");
     auto plot = m.def_submodule("plot", "OA metric plots and evaluation figures");
 
     // Registration order matters: shared matrix and enum types must exist before
@@ -20,10 +21,13 @@ NB_MODULE(_oa, m) {
     BindMl(ml);
     BindAudio(audio);
     BindVision(vision);
+    BindViewer(ui);
     BindPlot(plot);
 #ifdef OA_BUILD_CRYPTO
     BindCrypto(crypto);
 #else
     crypto.attr("available") = false;
 #endif
+
+    RegisterPythonRuntimeExitHook();
 }

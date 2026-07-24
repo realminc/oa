@@ -203,18 +203,9 @@ namespace OaFnVideo {
 	);
 
 	// Copy decoded planes to CPU-visible memory (tests/diagnostics).
-	[[nodiscard]] OaResult<OaVec<OaU8>> ReadbackLuma(
-		OaVideoDecoder& InSession,
-		const OaVideoFrame& InFrame
-	);
-	[[nodiscard]] OaResult<OaVec<OaU8>> ReadbackNv12(
-		OaVideoDecoder& InSession,
-		const OaVideoFrame& InFrame
-	);
-	[[nodiscard]] OaResult<OaVec<OaU8>> ReadbackRgba(
-		OaVideoDecoder& InSession,
-		const OaVideoFrame& InFrame
-	);
+	[[nodiscard]] OaResult<OaVec<OaU8>> ReadbackLuma(OaVideoDecoder& InSession,	const OaVideoFrame& InFrame);
+	[[nodiscard]] OaResult<OaVec<OaU8>> ReadbackNv12(OaVideoDecoder& InSession,	const OaVideoFrame& InFrame);
+	[[nodiscard]] OaResult<OaVec<OaU8>> ReadbackRgba(OaVideoDecoder& InSession,	const OaVideoFrame& InFrame);
 
 	// Allocate a caller-owned RGBA target from the decoder pool (e.g. reorder buffers).
 	[[nodiscard]] OaResult<OaVideoFrame> AllocateRgbaFrame(

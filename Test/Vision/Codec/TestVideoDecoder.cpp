@@ -1,15 +1,21 @@
 // OA Vision — Video Decoder Tests
 // Hardware H.264/H.265 decode validation
 
-#include "../../OaTest.h"
 #include "../../../Source/Private/Oa/Vision/Video/Codec/NalParser.h"
+
+#include "../../OaTest.h"
+#include "../../../Source/Private/Oa/Vision/Video/Codec/CodecRegistry.h"
+#include "../../../Source/Private/Oa/Vision/Video/Codec/VcpAv1.h"
+#include "../../../Source/Private/Oa/Vision/Video/Decoder/VideoDecoderInternal.h"
+#include "../../../Source/Private/Oa/Vision/Video/Decoder/VideoDecoderProfile.h"
+#include <Oa/Runtime/Engine.h>
 
 #include <Oa/Vision/VideoDecoder.h>
 #include <Oa/Vision/VideoStream.h>
-#include <Oa/Runtime/Engine.h>
-#include "../../../Source/Private/Oa/Vision/Video/Decoder/VideoDecoderInternal.h"
-#include "../../../Source/Private/Oa/Vision/Video/Codec/CodecRegistry.h"
-#include "../../../Source/Private/Oa/Vision/Video/Codec/VcpAv1.h"
+#include <array>
+#include <fstream>
+#include <sstream>
+#include <string>
 
 namespace {
 
@@ -304,7 +310,8 @@ void ExpectDecodedLumaIsReadable(OaVideoDecoder& InDecoder, const OaVideoFrame& 
 			fprintf(stderr, "%u ", (*lumaResult)[i]);
 		}
 		fprintf(stderr, "\n");
-		GTEST_SKIP() << "Vulkan Video command submission succeeded, but luma readback is still all zero or flat";
+		GTEST_SKIP() << "Vulkan Video command submission succeeded, but luma "
+						"readback is still all zero or flat";
 	}
 	EXPECT_GT(nonZeroCount, 0u);
 	EXPECT_GT(maxValue, minValue);
@@ -334,7 +341,7 @@ void ExpectDecodedNv12MatchesFfmpeg(
 		+ InReferencePath
 		+ "\"";
 	ASSERT_EQ(std::system(command.CStr()), 0);
-	auto reference = OaFileIo::ReadBinary(OaPath(InReferencePath));
+	auto reference = OaFilesystem::ReadBinary(OaPath(InReferencePath));
 	std::remove(InReferencePath);
 	ASSERT_TRUE(reference.IsOk()) << reference.GetStatus().ToString();
 	ASSERT_EQ(reference->Size(), decoded->Size());
@@ -387,6 +394,194 @@ void ExpectDecodedNv12MatchesFfmpeg(
 
 } // namespace
 
+TEST(VideoProfile, BuildsEveryRegistryProfileWithoutCodecFallback)
+{
+	struct Case {
+		OaVideoCodec Codec;
+		OaVideoCodecProfile StandardProfile;
+		VkVideoCodecOperationFlagBitsKHR Operation;
+		OaU32 VkStandardProfile;
+	};
+	const Case cases[] = {
+		{OaVideoCodec::H264, OaVideoCodecProfile::H264Baseline, VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR,
+		 STD_VIDEO_H264_PROFILE_IDC_BASELINE},
+		{OaVideoCodec::H264, OaVideoCodecProfile::H264Main, VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR,
+		 STD_VIDEO_H264_PROFILE_IDC_MAIN},
+		{OaVideoCodec::H264, OaVideoCodecProfile::H264High, VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR,
+		 STD_VIDEO_H264_PROFILE_IDC_HIGH},
+		{OaVideoCodec::H264, OaVideoCodecProfile::H264High444Predictive, VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR,
+		 STD_VIDEO_H264_PROFILE_IDC_HIGH_444_PREDICTIVE},
+		{OaVideoCodec::H265, OaVideoCodecProfile::H265Main, VK_VIDEO_CODEC_OPERATION_DECODE_H265_BIT_KHR,
+		 STD_VIDEO_H265_PROFILE_IDC_MAIN},
+		{OaVideoCodec::H265, OaVideoCodecProfile::H265Main10, VK_VIDEO_CODEC_OPERATION_DECODE_H265_BIT_KHR,
+		 STD_VIDEO_H265_PROFILE_IDC_MAIN_10},
+		{OaVideoCodec::H265, OaVideoCodecProfile::H265MainStillPicture, VK_VIDEO_CODEC_OPERATION_DECODE_H265_BIT_KHR,
+		 STD_VIDEO_H265_PROFILE_IDC_MAIN_STILL_PICTURE},
+		{OaVideoCodec::H265, OaVideoCodecProfile::H265FormatRangeExtensions,
+		 VK_VIDEO_CODEC_OPERATION_DECODE_H265_BIT_KHR, STD_VIDEO_H265_PROFILE_IDC_FORMAT_RANGE_EXTENSIONS},
+		{OaVideoCodec::H265, OaVideoCodecProfile::H265ScreenContentCodingExtensions,
+		 VK_VIDEO_CODEC_OPERATION_DECODE_H265_BIT_KHR, STD_VIDEO_H265_PROFILE_IDC_SCC_EXTENSIONS},
+		{OaVideoCodec::AV1, OaVideoCodecProfile::Av1Main, VK_VIDEO_CODEC_OPERATION_DECODE_AV1_BIT_KHR,
+		 STD_VIDEO_AV1_PROFILE_MAIN},
+		{OaVideoCodec::AV1, OaVideoCodecProfile::Av1High, VK_VIDEO_CODEC_OPERATION_DECODE_AV1_BIT_KHR,
+		 STD_VIDEO_AV1_PROFILE_HIGH},
+		{OaVideoCodec::AV1, OaVideoCodecProfile::Av1Professional, VK_VIDEO_CODEC_OPERATION_DECODE_AV1_BIT_KHR,
+		 STD_VIDEO_AV1_PROFILE_PROFESSIONAL},
+		{OaVideoCodec::VP9, OaVideoCodecProfile::Vp9Profile0, VK_VIDEO_CODEC_OPERATION_DECODE_VP9_BIT_KHR,
+		 STD_VIDEO_VP9_PROFILE_0},
+		{OaVideoCodec::VP9, OaVideoCodecProfile::Vp9Profile1, VK_VIDEO_CODEC_OPERATION_DECODE_VP9_BIT_KHR,
+		 STD_VIDEO_VP9_PROFILE_1},
+		{OaVideoCodec::VP9, OaVideoCodecProfile::Vp9Profile2, VK_VIDEO_CODEC_OPERATION_DECODE_VP9_BIT_KHR,
+		 STD_VIDEO_VP9_PROFILE_2},
+		{OaVideoCodec::VP9, OaVideoCodecProfile::Vp9Profile3, VK_VIDEO_CODEC_OPERATION_DECODE_VP9_BIT_KHR,
+		 STD_VIDEO_VP9_PROFILE_3},
+	};
+
+	for (const Case& testCase : cases) {
+		OaVideoProfile request = {};
+		request.Codec = testCase.Codec;
+		request.StandardProfile = testCase.StandardProfile;
+		VkVideoDecodeH264ProfileInfoKHR h264 = {};
+		VkVideoDecodeH265ProfileInfoKHR h265 = {};
+		VkVideoDecodeAV1ProfileInfoKHR av1 = {};
+		VkVideoDecodeVP9ProfileInfoKHR vp9 = {};
+		auto result = OaVideoDecoderProfile::BuildDecodeProfile(request, h264, h265, av1, vp9);
+		ASSERT_TRUE(result.IsOk()) << result.GetStatus().ToString();
+		EXPECT_EQ(result->videoCodecOperation, testCase.Operation);
+		EXPECT_EQ(result->chromaSubsampling, VK_VIDEO_CHROMA_SUBSAMPLING_420_BIT_KHR);
+		EXPECT_EQ(result->lumaBitDepth, VK_VIDEO_COMPONENT_BIT_DEPTH_8_BIT_KHR);
+		EXPECT_EQ(result->chromaBitDepth, VK_VIDEO_COMPONENT_BIT_DEPTH_8_BIT_KHR);
+		switch (testCase.Codec) {
+		case OaVideoCodec::H264: EXPECT_EQ(static_cast<OaU32>(h264.stdProfileIdc), testCase.VkStandardProfile); break;
+		case OaVideoCodec::H265: EXPECT_EQ(static_cast<OaU32>(h265.stdProfileIdc), testCase.VkStandardProfile); break;
+		case OaVideoCodec::AV1: EXPECT_EQ(static_cast<OaU32>(av1.stdProfile), testCase.VkStandardProfile); break;
+		case OaVideoCodec::VP9: EXPECT_EQ(static_cast<OaU32>(vp9.stdProfile), testCase.VkStandardProfile); break;
+		}
+	}
+}
+
+TEST(VideoProfile, MapsFormatAndCodecSpecificAxes)
+{
+	OaVideoProfile request = {};
+	request.Codec = OaVideoCodec::AV1;
+	request.StandardProfile = OaVideoCodecProfile::Av1Professional;
+	request.ChromaSubsampling = OaVideoChromaSubsampling::Yuv444;
+	request.LumaBitDepth = OaVideoBitDepth::Bit12;
+	request.ChromaBitDepth = OaVideoBitDepth::Bit12;
+	request.Av1FilmGrain = true;
+	VkVideoDecodeH264ProfileInfoKHR h264 = {};
+	VkVideoDecodeH265ProfileInfoKHR h265 = {};
+	VkVideoDecodeAV1ProfileInfoKHR av1 = {};
+	VkVideoDecodeVP9ProfileInfoKHR vp9 = {};
+	auto result = OaVideoDecoderProfile::BuildDecodeProfile(request, h264, h265, av1, vp9);
+	ASSERT_TRUE(result.IsOk()) << result.GetStatus().ToString();
+	EXPECT_EQ(result->chromaSubsampling, VK_VIDEO_CHROMA_SUBSAMPLING_444_BIT_KHR);
+	EXPECT_EQ(result->lumaBitDepth, VK_VIDEO_COMPONENT_BIT_DEPTH_12_BIT_KHR);
+	EXPECT_EQ(result->chromaBitDepth, VK_VIDEO_COMPONENT_BIT_DEPTH_12_BIT_KHR);
+	EXPECT_EQ(av1.stdProfile, STD_VIDEO_AV1_PROFILE_PROFESSIONAL);
+	EXPECT_EQ(av1.filmGrainSupport, VK_TRUE);
+
+	request = {};
+	request.Codec = OaVideoCodec::H264;
+	request.StandardProfile = OaVideoCodecProfile::H264High;
+	request.H264PictureLayout = OaVideoH264PictureLayout::InterlacedSeparatePlanes;
+	h264 = {};
+	h265 = {};
+	av1 = {};
+	vp9 = {};
+	result = OaVideoDecoderProfile::BuildDecodeProfile(request, h264, h265, av1, vp9);
+	ASSERT_TRUE(result.IsOk()) << result.GetStatus().ToString();
+	EXPECT_EQ(h264.pictureLayout, VK_VIDEO_DECODE_H264_PICTURE_LAYOUT_INTERLACED_SEPARATE_PLANES_BIT_KHR);
+}
+
+TEST(VideoProfile, RejectsCodecProfileMismatch)
+{
+	OaVideoProfile request = {};
+	request.Codec = OaVideoCodec::H264;
+	request.StandardProfile = OaVideoCodecProfile::H265Main;
+	auto resolved = OaVideoDecoderProfile::ResolveDecodeProfile(request);
+	EXPECT_FALSE(resolved.IsOk());
+}
+
+TEST(VideoProfile, LegacyDefaultsResolveToVerifiedProfiles)
+{
+	const std::pair<OaVideoCodec, OaVideoCodecProfile> cases[] = {
+		{OaVideoCodec::H264, OaVideoCodecProfile::H264High},
+		{OaVideoCodec::H265, OaVideoCodecProfile::H265Main},
+		{OaVideoCodec::AV1, OaVideoCodecProfile::Av1Main},
+		{OaVideoCodec::VP9, OaVideoCodecProfile::Vp9Profile0},
+	};
+	for (const auto& [codec, expected] : cases) {
+		OaVideoProfile request = {};
+		request.Codec = codec;
+		auto resolved = OaVideoDecoderProfile::ResolveDecodeProfile(request);
+		ASSERT_TRUE(resolved.IsOk());
+		EXPECT_EQ(resolved->StandardProfile, expected);
+		EXPECT_TRUE(OaVideoDecoderProfile::IsDecodePathImplemented(*resolved));
+	}
+}
+
+TEST(VideoProfile, AssetManifestDrivesExactStreamProfiles)
+{
+	const OaPath manifestPath = OaTestAssetPath("Video/manifest.tsv");
+	std::ifstream manifest(manifestPath.CStr());
+	ASSERT_TRUE(manifest.is_open()) << manifestPath.CStr();
+
+	std::string line;
+	ASSERT_TRUE(static_cast<bool>(std::getline(manifest, line)));
+	OaU32 rowCount = 0;
+	while (std::getline(manifest, line)) {
+		if (line.empty()) continue;
+		std::array<std::string, 18> columns;
+		std::istringstream row(line);
+		for (std::string& column : columns) {
+			ASSERT_TRUE(static_cast<bool>(std::getline(row, column, '\t'))) << line;
+		}
+
+		OaString relativePath = "Video/";
+		relativePath += columns[0];
+		const OaPath fixturePath = OaTestAssetPath(relativePath);
+		auto streamResult = OaVideoStream::OpenFile(fixturePath.CStr());
+		ASSERT_TRUE(streamResult.IsOk()) << columns[0] << ": " << streamResult.GetStatus().ToString();
+		const OaVideoProfile profile = streamResult->GetVideoProfile();
+		EXPECT_EQ(profile.Width, static_cast<OaU32>(std::stoul(columns[8])));
+		EXPECT_EQ(profile.Height, static_cast<OaU32>(std::stoul(columns[9])));
+		EXPECT_EQ(profile.LumaBitDepth, OaVideoBitDepth::Bit8);
+		EXPECT_EQ(profile.ChromaBitDepth, OaVideoBitDepth::Bit8);
+		EXPECT_EQ(profile.ChromaSubsampling, OaVideoChromaSubsampling::Yuv420);
+
+		if (columns[1] == "h264") {
+			EXPECT_EQ(profile.Codec, OaVideoCodec::H264);
+			EXPECT_EQ(profile.StandardProfile, OaVideoCodecProfile::H264High);
+			EXPECT_EQ(profile.H264PictureLayout, OaVideoH264PictureLayout::Progressive);
+			EXPECT_TRUE(profile.HasLevel);
+			EXPECT_EQ(profile.Level, static_cast<OaU32>(STD_VIDEO_H264_LEVEL_IDC_3_1));
+		} else if (columns[1] == "h265") {
+			EXPECT_EQ(profile.Codec, OaVideoCodec::H265);
+			EXPECT_EQ(profile.StandardProfile, OaVideoCodecProfile::H265Main);
+			EXPECT_TRUE(profile.HasLevel);
+			EXPECT_EQ(profile.Level, static_cast<OaU32>(STD_VIDEO_H265_LEVEL_IDC_3_1));
+			EXPECT_FALSE(profile.HighTier);
+		} else if (columns[1] == "av1") {
+			EXPECT_EQ(profile.Codec, OaVideoCodec::AV1);
+			EXPECT_EQ(profile.StandardProfile, OaVideoCodecProfile::Av1Main);
+			EXPECT_FALSE(profile.Av1FilmGrain);
+			EXPECT_TRUE(profile.HasLevel);
+			EXPECT_EQ(profile.Level, static_cast<OaU32>(STD_VIDEO_AV1_LEVEL_3_1));
+			EXPECT_FALSE(profile.HighTier);
+		} else if (columns[1] == "vp9") {
+			EXPECT_EQ(profile.Codec, OaVideoCodec::VP9);
+			EXPECT_EQ(profile.StandardProfile, OaVideoCodecProfile::Vp9Profile0);
+			EXPECT_TRUE(profile.HasLevel);
+			EXPECT_EQ(profile.Level, static_cast<OaU32>(STD_VIDEO_VP9_LEVEL_3_1));
+		} else {
+			FAIL() << "Unknown manifest codec: " << columns[1];
+		}
+		++rowCount;
+	}
+	EXPECT_EQ(rowCount, 4U);
+}
+
 TEST(OaVideoCodecRegistry, CreatesStreamLocalParserState)
 {
 	auto first = OaVideoCodecRegistry::GetInstance().CreateParser(OaVideoCodec::H264);
@@ -422,7 +617,8 @@ TEST_F(OaVkEngineTestFixture, VideoDecoder_QueryCodecSupport)
 	if (h265Supported) EXPECT_TRUE(sw.HasVideoDecodeH265);
 	if (av1Supported) EXPECT_TRUE(sw.HasVideoDecodeAV1);
 	if (!h264Supported && !h265Supported && !av1Supported) {
-		GTEST_SKIP() << "Vulkan Video decode extensions are present, but default profile capability queries are unsupported";
+		GTEST_SKIP() << "Vulkan Video decode extensions are present, but default "
+						"profile capability queries are unsupported";
 	}
 }
 
@@ -451,6 +647,9 @@ TEST_F(OaVkEngineTestFixture, VideoDecoder_QueryDecodeCapabilities)
 
 	const auto& caps = *capsResult;
 	EXPECT_TRUE(caps.Supported);
+	EXPECT_TRUE(caps.HardwareProfileSupported);
+	EXPECT_TRUE(caps.OaDecodePathImplemented);
+	EXPECT_EQ(caps.Profile.StandardProfile, OaVideoCodecProfile::H264High);
 	EXPECT_GE(caps.MaxWidth, 3840u);
 	EXPECT_GE(caps.MaxHeight, 2160u);
 	EXPECT_GT(caps.MaxDpbSlots, 0u);
@@ -465,6 +664,23 @@ TEST_F(OaVkEngineTestFixture, VideoDecoder_QueryDecodeCapabilities)
 		(caps.SupportsDpbAndOutputCoincide
 			&& (caps.SupportsNv12DpbTransferSrc || caps.SupportsNv12DpbSampled))
 		|| (caps.SupportsDpbAndOutputDistinct && caps.SupportsNv12OutputSampled));
+}
+
+TEST_F(OaVkEngineTestFixture, VideoDecoder_UnimplementedProfileNeverClaimsSupport)
+{
+	OaVideoProfile profile = {};
+	profile.Codec = OaVideoCodec::H265;
+	profile.StandardProfile = OaVideoCodecProfile::H265Main10;
+	profile.ChromaSubsampling = OaVideoChromaSubsampling::Yuv420;
+	profile.LumaBitDepth = OaVideoBitDepth::Bit10;
+	profile.ChromaBitDepth = OaVideoBitDepth::Bit10;
+	auto capsResult = OaVideoDecoder::QueryDecodeCapabilities(Rt(), profile);
+	if (not capsResult.IsOk()) {
+		GTEST_SKIP() << capsResult.GetStatus().ToString();
+	}
+	EXPECT_FALSE(capsResult->Supported);
+	EXPECT_FALSE(capsResult->OaDecodePathImplemented);
+	EXPECT_EQ(capsResult->Profile.StandardProfile, OaVideoCodecProfile::H265Main10);
 }
 
 TEST_F(OaVkEngineTestFixture, VideoDecoder_CreateH264Decoder)
@@ -652,7 +868,7 @@ TEST_F(OaVkEngineTestFixture, VideoDecoder_UpdateH264SessionParametersFromAccess
 
 TEST_F(OaVkEngineTestFixture, VideoDecoder_DecodeH264FrameFromLocalFixture)
 {
-	auto fixtureResult = OaFileIo::ReadBinary(OaTestAssetPath("Video/VisionTestPattern128x72_idr.h264"));
+	auto fixtureResult = OaFilesystem::ReadBinary(OaTestAssetPath("Video/VisionTestPattern128x72_idr.h264"));
 	ASSERT_TRUE(fixtureResult.IsOk()) << fixtureResult.GetStatus().ToString();
 
 	auto& rt = Rt();
@@ -697,7 +913,8 @@ TEST_F(OaVkEngineTestFixture, VideoDecoder_DecodeH264FrameFromLocalFixture)
 			maxValue = value > maxValue ? value : maxValue;
 		}
 		if (nonZeroCount == 0 || maxValue == minValue) {
-			GTEST_SKIP() << "Vulkan H.264 command submission succeeded, but luma readback is still all zero";
+			GTEST_SKIP() << "Vulkan H.264 command submission succeeded, but luma "
+							"readback is still all zero";
 		}
 		EXPECT_GT(nonZeroCount, 0u);
 		EXPECT_GT(maxValue, minValue);
@@ -715,7 +932,7 @@ TEST_F(OaVkEngineTestFixture, VideoDecoder_DecodeH264FrameFromLocalFixture)
 				+ "\" -frames:v 1 -f rawvideo -pix_fmt nv12 "
 				+ referencePath;
 			ASSERT_EQ(std::system(command.CStr()), 0);
-			auto referenceResult = OaFileIo::ReadBinary(OaPath(referencePath));
+			auto referenceResult = OaFilesystem::ReadBinary(OaPath(referencePath));
 			std::remove(referencePath);
 			ASSERT_TRUE(referenceResult.IsOk())
 				<< referenceResult.GetStatus().ToString();
@@ -880,7 +1097,7 @@ TEST_F(OaVkEngineTestFixture, VideoDecoder_DecodeH264FrameFromLocalFixture)
 
 TEST_F(OaVkEngineTestFixture, VideoDecoder_PipelinesAsyncH264Conversion)
 {
-	auto fixtureResult = OaFileIo::ReadBinary(
+	auto fixtureResult = OaFilesystem::ReadBinary(
 		OaTestAssetPath("Video/VisionTestPattern128x72_idr.h264"));
 	ASSERT_TRUE(fixtureResult.IsOk()) << fixtureResult.GetStatus().ToString();
 
@@ -949,7 +1166,7 @@ TEST_F(OaVkEngineTestFixture, VideoDecoder_PipelinesAsyncH264Conversion)
 
 TEST_F(OaVkEngineTestFixture, VideoDecoder_DroppedAsyncConversionTicketRetiresSafely)
 {
-	auto fixtureResult = OaFileIo::ReadBinary(
+	auto fixtureResult = OaFilesystem::ReadBinary(
 		OaTestAssetPath("Video/VisionTestPattern128x72_idr.h264"));
 	ASSERT_TRUE(fixtureResult.IsOk()) << fixtureResult.GetStatus().ToString();
 
@@ -1013,7 +1230,7 @@ TEST_F(OaVkEngineTestFixture, VideoDecoder_DroppedAsyncConversionTicketRetiresSa
 
 TEST(VideoDecoderLifecycle, AbandonedSubmittedSessionRetiresAtEngineClose)
 {
-	auto fixtureResult = OaFileIo::ReadBinary(
+	auto fixtureResult = OaFilesystem::ReadBinary(
 		OaTestAssetPath("Video/VisionTestPattern128x72_idr.h264"));
 	ASSERT_TRUE(fixtureResult.IsOk()) << fixtureResult.GetStatus().ToString();
 
@@ -1051,7 +1268,7 @@ TEST(VideoDecoderLifecycle, AbandonedSubmittedSessionRetiresAtEngineClose)
 
 TEST_F(OaVkEngineTestFixture, VideoDecoder_DecodeH265FrameFromLocalFixture)
 {
-	auto fixtureResult = OaFileIo::ReadBinary(OaTestAssetPath("Video/VisionTestPattern128x72_idr.h265"));
+	auto fixtureResult = OaFilesystem::ReadBinary(OaTestAssetPath("Video/VisionTestPattern128x72_idr.h265"));
 	ASSERT_TRUE(fixtureResult.IsOk()) << fixtureResult.GetStatus().ToString();
 
 	auto& rt = Rt();
@@ -1088,7 +1305,7 @@ TEST_F(OaVkEngineTestFixture, VideoDecoder_DecodeH265FrameFromLocalFixture)
 
 TEST_F(OaVkEngineTestFixture, VideoDecoder_Av1FixturePresentAndCapabilityQueried)
 {
-	auto fixtureResult = OaFileIo::ReadBinary(OaTestAssetPath("Video/VisionTestPattern128x72_keyframe.ivf"));
+	auto fixtureResult = OaFilesystem::ReadBinary(OaTestAssetPath("Video/VisionTestPattern128x72_keyframe.ivf"));
 	ASSERT_TRUE(fixtureResult.IsOk()) << fixtureResult.GetStatus().ToString();
 	EXPECT_GT(fixtureResult->Size(), 0u);
 
@@ -1137,7 +1354,7 @@ TEST_F(OaVkEngineTestFixture, VideoDecoder_CreateVp9Decoder)
 
 TEST_F(OaVkEngineTestFixture, VideoDecoder_Vp9FixturePresentAndCapabilityQueried)
 {
-	auto fixtureResult = OaFileIo::ReadBinary(OaTestAssetPath("Video/VisionTestPattern128x72_keyframe_vp9.ivf"));
+	auto fixtureResult = OaFilesystem::ReadBinary(OaTestAssetPath("Video/VisionTestPattern128x72_keyframe_vp9.ivf"));
 	ASSERT_TRUE(fixtureResult.IsOk()) << fixtureResult.GetStatus().ToString();
 	EXPECT_GT(fixtureResult->Size(), 0u);
 
@@ -1152,7 +1369,7 @@ TEST_F(OaVkEngineTestFixture, VideoDecoder_Vp9FixturePresentAndCapabilityQueried
 
 TEST_F(OaVkEngineTestFixture, VideoDecoder_DecodeVp9FrameFromLocalFixture)
 {
-	auto fixtureResult = OaFileIo::ReadBinary(OaTestAssetPath("Video/VisionTestPattern128x72_keyframe_vp9.ivf"));
+	auto fixtureResult = OaFilesystem::ReadBinary(OaTestAssetPath("Video/VisionTestPattern128x72_keyframe_vp9.ivf"));
 	ASSERT_TRUE(fixtureResult.IsOk()) << fixtureResult.GetStatus().ToString();
 
 	auto& rt = Rt();
@@ -1185,7 +1402,7 @@ TEST_F(OaVkEngineTestFixture, VideoDecoder_DecodeVp9FrameFromLocalFixture)
 
 TEST_F(OaVkEngineTestFixture, Av1Parser_ParseLocalFixture)
 {
-	auto fixtureResult = OaFileIo::ReadBinary(OaTestAssetPath("Video/VisionTestPattern128x72_keyframe.ivf"));
+	auto fixtureResult = OaFilesystem::ReadBinary(OaTestAssetPath("Video/VisionTestPattern128x72_keyframe.ivf"));
 	ASSERT_TRUE(fixtureResult.IsOk()) << fixtureResult.GetStatus().ToString();
 
 	OaVcpAv1 parser;
@@ -1204,7 +1421,7 @@ TEST_F(OaVkEngineTestFixture, Av1Parser_ParseLocalFixture)
 
 TEST(Av1Parser, CountsEveryPictureInMultiFrameTemporalUnits)
 {
-	const OaPath path = OaTestAssetPath("Video/shibuya_720p_av1.mp4");
+	const OaPath path = OaTestAssetPath("Video/shibuya_720p_av1_main_8bit_420.mp4");
 	auto streamResult = OaVideoStream::OpenFile(path.CStr());
 	ASSERT_TRUE(streamResult.IsOk()) << streamResult.GetStatus().ToString();
 	OaVcpAv1 parser;
@@ -1225,7 +1442,7 @@ TEST(Av1Parser, CountsEveryPictureInMultiFrameTemporalUnits)
 
 TEST_F(OaVkEngineTestFixture, VideoDecoder_DecodeAv1FrameFromLocalFixture)
 {
-	auto fixtureResult = OaFileIo::ReadBinary(OaTestAssetPath("Video/VisionTestPattern128x72_keyframe.ivf"));
+	auto fixtureResult = OaFilesystem::ReadBinary(OaTestAssetPath("Video/VisionTestPattern128x72_keyframe.ivf"));
 	ASSERT_TRUE(fixtureResult.IsOk()) << fixtureResult.GetStatus().ToString();
 
 	auto& rt = Rt();
@@ -1280,7 +1497,7 @@ TEST_F(OaVkEngineTestFixture, VideoDecoder_DpbInitialState)
 
 TEST_F(OaVkEngineTestFixture, VideoDecoder_DpbDecodeAndFlush)
 {
-	auto fixtureResult = OaFileIo::ReadBinary(OaTestAssetPath("Video/VisionTestPattern128x72_idr.h264"));
+	auto fixtureResult = OaFilesystem::ReadBinary(OaTestAssetPath("Video/VisionTestPattern128x72_idr.h264"));
 	ASSERT_TRUE(fixtureResult.IsOk()) << fixtureResult.GetStatus().ToString();
 
 	auto& rt = Rt();
@@ -1318,11 +1535,12 @@ TEST_F(OaVkEngineTestFixture, VideoDecoder_DpbDecodeAndFlush)
 }
 
 // NOTE: DPB flush-with-references is already covered by the decode-then-Flush
-// assertions above (GetDpbInUseCount()/GetDpbReferenceCount() == 0 after flush).
-// NV12→BF16 conversion is not tested here: OaFnImage::CvtNv12ToBf16 is still a
-// dispatch stub (allocates the output tensor but does not bind the VkImage /
-// run the shader), so any test would only validate the shape of uninitialized
-// memory. Add real coverage when the image-descriptor dispatch path lands.
+// assertions above (GetDpbInUseCount()/GetDpbReferenceCount() == 0 after
+// flush). NV12→BF16 conversion is not tested here: OaFnImage::CvtNv12ToBf16 is
+// still a dispatch stub (allocates the output tensor but does not bind the
+// VkImage / run the shader), so any test would only validate the shape of
+// uninitialized memory. Add real coverage when the image-descriptor dispatch
+// path lands.
 
 // Frame Pool Tests
 TEST_F(OaVkEngineTestFixture, VideoFramePool_CreatePool)
@@ -1372,6 +1590,6 @@ TEST_F(OaVkEngineTestFixture, VideoFramePool_AcquireRelease)
 	pool.Destroy();
 }
 
-// NOTE: 4K@60 / 8K@30 decode-throughput benchmarks are intentionally not part of
-// the correctness suite — they are performance measurements (and un-runnable on
-// the CI iGPU). If added later, they belong in a Bench* target, not here.
+// NOTE: 4K@60 / 8K@30 decode-throughput benchmarks are intentionally not part
+// of the correctness suite — they are performance measurements (and un-runnable
+// on the CI iGPU). If added later, they belong in a Bench* target, not here.

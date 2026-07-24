@@ -5,6 +5,7 @@
 
 #include <Oa/Core/Types.h>
 #include <Oa/Vision/VideoCodecParameterSets.h>
+#include <vk_video/vulkan_video_codec_h265std_decode.h>
 #include "BitstreamReader.h"
 
 // H.264 NAL unit types

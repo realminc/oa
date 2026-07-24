@@ -24,7 +24,7 @@
 #include <Oa/Render/FnRender.h>
 #include <Oa/Render/Mesh.h>
 #include <Oa/Render/Material.h>
-#include <Oa/Ui/Camera.h>
+#include <Oa/Render/Camera.h>
 #include <Oa/Runtime/OaVk.h>
 
 class OaEngine;

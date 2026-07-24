@@ -2,7 +2,7 @@
 // Source of truth: Tools/FnAutogen/Schema/Vision/FnImage manifest.
 // Regenerate via: python3 Tools/FnAutogen/oafnautogen.py --live
 
-// OaFnImage — generated umbrella for Vision/FnImage.
+// OaFnImage — generated declarations for Vision/FnImage.
 
 #include "Color/FnImageColor.gen.h"
 #include "Filter/FnImageFilter.gen.h"

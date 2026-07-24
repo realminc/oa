@@ -44,8 +44,7 @@ struct OaAudioStream::Impl {
 
 namespace {
 
-void PlaybackCallback(ma_device* InDevice, void* Out, const void*, ma_uint32 InFrames)
-{
+void PlaybackCallback(ma_device* InDevice, void* Out, const void*, ma_uint32 InFrames) {
 	auto* impl = static_cast<OaAudioStream::Impl*>(InDevice->pUserData);
 	auto* output = static_cast<OaF32*>(Out);
 	const OaU64 samples = static_cast<OaU64>(InFrames) * impl->Channels;
@@ -73,8 +72,7 @@ void PlaybackCallback(ma_device* InDevice, void* Out, const void*, ma_uint32 InF
 	impl->Wake.notify_one();
 }
 
-bool PushFrames(OaAudioStream::Impl& InImpl, const OaF32* InSamples, OaU64 InFrames)
-{
+bool PushFrames(OaAudioStream::Impl& InImpl, const OaF32* InSamples, OaU64 InFrames) {
 	OaU64 consumed = 0U;
 	while (consumed < InFrames and not InImpl.Stop.load(std::memory_order_acquire)) {
 		if (InImpl.SeekSerial.load(std::memory_order_acquire)
@@ -107,8 +105,7 @@ bool PushFrames(OaAudioStream::Impl& InImpl, const OaF32* InSamples, OaU64 InFra
 	return consumed == InFrames;
 }
 
-bool SeekDecoder(OaAudioStream::Impl& InImpl, OaU64 InTimestampUs)
-{
+bool SeekDecoder(OaAudioStream::Impl& InImpl, OaU64 InTimestampUs) {
 	if (InImpl.SampleRate == 0U) return false;
 	const OaU64 frame = InTimestampUs > std::numeric_limits<OaU64>::max() / InImpl.SampleRate
 		? std::numeric_limits<OaU64>::max()
@@ -121,8 +118,7 @@ bool SeekDecoder(OaAudioStream::Impl& InImpl, OaU64 InTimestampUs)
 	return true;
 }
 
-void DecodeLoop(OaAudioStream::Impl* InImpl)
-{
+void DecodeLoop(OaAudioStream::Impl* InImpl) {
 	constexpr OaU64 kDecodeFrames = 4096U;
 	OaVec<OaF32> decoded;
 	decoded.Resize(static_cast<OaUsize>(kDecodeFrames * InImpl->Channels));
@@ -140,8 +136,7 @@ void DecodeLoop(OaAudioStream::Impl* InImpl)
 			continue;
 		}
 		ma_uint64 frameCount = 0U;
-		const ma_result readResult = ma_decoder_read_pcm_frames(
-			&InImpl->Decoder, decoded.Data(), kDecodeFrames, &frameCount);
+		const ma_result readResult = ma_decoder_read_pcm_frames(&InImpl->Decoder, decoded.Data(), kDecodeFrames, &frameCount);
 		if (frameCount > 0U and not PushFrames(*InImpl, decoded.Data(), frameCount)) {
 			continue;
 		}
@@ -150,9 +145,11 @@ void DecodeLoop(OaAudioStream::Impl* InImpl)
 				(void)SeekDecoder(*InImpl, 0U);
 				continue;
 			}
-			while (not InImpl->Stop.load(std::memory_order_acquire)
+			while (
+				not InImpl->Stop.load(std::memory_order_acquire)
 				and InImpl->ReadFrame.load(std::memory_order_acquire)
-					< InImpl->WriteFrame.load(std::memory_order_acquire)) {
+					< InImpl->WriteFrame.load(std::memory_order_acquire)
+				) {
 				if (InImpl->SeekSerial.load(std::memory_order_acquire)
 					!= InImpl->AppliedSeekSerial.load(std::memory_order_relaxed)) {
 					break;
@@ -180,8 +177,7 @@ void DecodeLoop(OaAudioStream::Impl* InImpl)
 OaAudioStream::OaAudioStream(OaAudioStream&& InOther) noexcept
 	: Impl_(OaStdMove(InOther.Impl_)) {}
 
-OaAudioStream& OaAudioStream::operator=(OaAudioStream&& InOther) noexcept
-{
+OaAudioStream& OaAudioStream::operator=(OaAudioStream&& InOther) noexcept {
 	if (this != &InOther) {
 		(void)Close();
 		Impl_ = OaStdMove(InOther.Impl_);
@@ -191,8 +187,7 @@ OaAudioStream& OaAudioStream::operator=(OaAudioStream&& InOther) noexcept
 
 OaAudioStream::~OaAudioStream() { Abandon_(); }
 
-void OaAudioStream::Abandon_() noexcept
-{
+void OaAudioStream::Abandon_() noexcept {
 	if (not Impl_) return;
 	OaEngine* engine = Impl_->Engine;
 	if (engine == nullptr) {
@@ -210,22 +205,16 @@ void OaAudioStream::Abandon_() noexcept
 		&OaAudioStream::ReleaseRetired_);
 }
 
-OaStatus OaAudioStream::CompleteRetired_(void* InPayload)
-{
+OaStatus OaAudioStream::CompleteRetired_(void* InPayload) {
 	auto* stream = static_cast<OaAudioStream*>(InPayload);
 	return stream ? stream->Close() : OaStatus::Ok();
 }
 
-void OaAudioStream::ReleaseRetired_(void* InPayload)
-{
-	OaUniquePtr<OaAudioStream> stream(
-		static_cast<OaAudioStream*>(InPayload));
+void OaAudioStream::ReleaseRetired_(void* InPayload) {
+	OaUniquePtr<OaAudioStream> stream(static_cast<OaAudioStream*>(InPayload));
 }
 
-OaResult<OaAudioStream> OaAudioStream::Open(
-	OaEngine& InEngine,
-	const OaAudioStreamConfig& InConfig)
-{
+OaResult<OaAudioStream> OaAudioStream::Open(OaEngine& InEngine,	const OaAudioStreamConfig& InConfig) {
 	if (InConfig.Uri.Empty() || InConfig.RingMilliseconds < 40U) {
 		return OaStatus::InvalidArgument(
 			"OaAudioStream requires a URI and at least 40 ms of ring storage");
@@ -239,8 +228,7 @@ OaResult<OaAudioStream> OaAudioStream::Open(
 	ma_decoder_config decoderConfig = ma_decoder_config_init(ma_format_f32, 0U, 0U);
 	if (ma_decoder_init_file(InConfig.Uri.CStr(), &decoderConfig, &impl.Decoder) != MA_SUCCESS) {
 		(void)stream.Close();
-		return OaStatus::Error(OaStatusCode::Unavailable,
-			"OaAudioStream could not open WAV, FLAC or MP3 source");
+		return OaStatus::Error(OaStatusCode::Unavailable,	"OaAudioStream could not open WAV, FLAC or MP3 source");
 	}
 	impl.DecoderInitialized = true;
 	ma_format outputFormat = ma_format_unknown;
@@ -256,16 +244,14 @@ OaResult<OaAudioStream> OaAudioStream::Open(
 	impl.Channels = outputChannels;
 	if (impl.SampleRate == 0U || impl.Channels == 0U || impl.Channels > 8U) {
 		(void)stream.Close();
-		return OaStatus::Error(OaStatusCode::Unimplemented,
-			"OaAudioStream supports 1..8 channel streams with a declared sample rate");
+		return OaStatus::Error(OaStatusCode::Unimplemented,	"OaAudioStream supports 1..8 channel streams with a declared sample rate");
 	}
 	ma_uint64 totalFrames = 0U;
 	if (ma_decoder_get_length_in_pcm_frames(&impl.Decoder, &totalFrames) == MA_SUCCESS
 		and totalFrames <= std::numeric_limits<OaU64>::max() / 1'000'000ULL) {
 		impl.Duration = totalFrames * 1'000'000ULL / impl.SampleRate;
 	}
-	impl.CapacityFrames = std::max<OaU64>(1U,
-		static_cast<OaU64>(impl.SampleRate) * InConfig.RingMilliseconds / 1000U);
+	impl.CapacityFrames = std::max<OaU64>(1U, static_cast<OaU64>(impl.SampleRate) * InConfig.RingMilliseconds / 1000U);
 	impl.Ring.Resize(static_cast<OaUsize>(impl.CapacityFrames * impl.Channels));
 
 	ma_device_config deviceConfig = ma_device_config_init(ma_device_type_playback);
@@ -276,30 +262,24 @@ OaResult<OaAudioStream> OaAudioStream::Open(
 	deviceConfig.pUserData = &impl;
 	if (ma_device_init(nullptr, &deviceConfig, &impl.Device) != MA_SUCCESS) {
 		(void)stream.Close();
-		return OaStatus::Error(OaStatusCode::Unavailable,
-			"OaAudioStream could not open the playback device");
+		return OaStatus::Error(OaStatusCode::Unavailable,	"OaAudioStream could not open the playback device");
 	}
 	impl.DeviceInitialized = true;
 	if (ma_device_start(&impl.Device) != MA_SUCCESS) {
 		(void)stream.Close();
-		return OaStatus::Error(OaStatusCode::Unavailable,
-			"OaAudioStream could not start the playback device");
+		return OaStatus::Error(OaStatusCode::Unavailable,	"OaAudioStream could not start the playback device");
 	}
 	impl.DecodeThread = std::thread(DecodeLoop, &impl);
 	return stream;
 }
 
-OaResult<OaAudioStream> OaAudioStream::Open(
-	OaEngine& InEngine,
-	OaStringView InUri)
-{
+OaResult<OaAudioStream> OaAudioStream::Open(OaEngine& InEngine,	OaStringView InUri) {
 	OaAudioStreamConfig config;
 	config.Uri = OaString(InUri);
 	return Open(InEngine, config);
 }
 
-OaStatus OaAudioStream::Play()
-{
+OaStatus OaAudioStream::Play() {
 	if (not Impl_) return OaStatus::Error(OaStatusCode::FailedPrecondition,
 		"OaAudioStream::Play called on a closed stream");
 	if (Impl_->Eos.load(std::memory_order_acquire)) {
@@ -376,8 +356,7 @@ bool OaAudioStream::IsEos() const noexcept { return not Impl_ or Impl_->Eos.load
 OaU32 OaAudioStream::SampleRate() const noexcept { return Impl_ ? Impl_->SampleRate : 0U; }
 OaU32 OaAudioStream::ChannelCount() const noexcept { return Impl_ ? Impl_->Channels : 0U; }
 OaU64 OaAudioStream::DurationUs() const noexcept { return Impl_ ? Impl_->Duration : 0U; }
-OaU64 OaAudioStream::PositionUs() const noexcept
-{
+OaU64 OaAudioStream::PositionUs() const noexcept {
 	return Impl_ and Impl_->SampleRate > 0U
 		? Impl_->PositionFrame.load(std::memory_order_relaxed) * 1'000'000ULL / Impl_->SampleRate
 		: 0U;

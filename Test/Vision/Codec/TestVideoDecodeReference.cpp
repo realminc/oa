@@ -9,7 +9,8 @@
 // against an INDEPENDENT ffmpeg decode of the same clip. This replaces
 // eyeballing four player windows with a headless pass/fail gate.
 //
-// Assets:   Asset/Video/shibuya_720p_<codec>.mp4  (see that folder's README)
+// Assets:   Asset/Video/shibuya_720p_<codec>_<profile>_8bit_420.mp4
+// Dataset:  ../dataset/video/profiles/ (canonical Git LFS copies + manifest)
 // Oracle:   ffmpeg on PATH (test skips if absent)
 //
 // PSNR note: OA's YCbCr→RGB conversion and ffmpeg's swscale differ slightly
@@ -21,20 +22,22 @@
 
 #include "../../OaTest.h"
 
+#include <Oa/Core/Filesystem.h>
+#include <Oa/Runtime/Engine.h>
+
 #include <Oa/Vision/ItVideo.h>
 #include <Oa/Vision/VideoDecoder.h>
-#include <Oa/Runtime/Engine.h>
-#include <Oa/Core/FileIo.h>
+#include <Oa/Vision/VideoStream.h>
+#include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <cstdint>
 
 #include <cstdio>
 #include <cstdlib>
-#include <cmath>
-#include <cstdint>
+#include <filesystem>
 #include <string>
 #include <vector>
-#include <algorithm>
-#include <chrono>
-#include <filesystem>
 
 namespace {
 
@@ -153,7 +156,7 @@ void ValidateCodec(
 	}
 
 	const std::string assetPath = ResolveVideoAsset(InFixtureRelAsset, InDatasetFilename);
-	if (not OaFileIo::ReadBinary(OaPath(assetPath.c_str())).IsOk()) {
+	if (not OaFilesystem::ReadBinary(OaPath(assetPath.c_str())).IsOk()) {
 		FAIL() << "missing test asset: " << assetPath;
 	}
 	const char* pathC = assetPath.c_str();
@@ -161,6 +164,21 @@ void ValidateCodec(
 	auto& rt = *OaEngine::GetGlobal();
 	if (not OaVideoDecoder::IsCodecSupported(rt, InCodec)) {
 		GTEST_SKIP() << InCodecName << ": Vulkan Video decode not supported on this device";
+	}
+	auto streamResult = OaVideoStream::Open(OaStringView(pathC));
+	ASSERT_TRUE(streamResult.IsOk()) << InCodecName
+									 << ": profile probe failed: " << streamResult.GetStatus().ToString().c_str();
+	const OaVideoProfile exactProfile = streamResult->GetVideoProfile();
+	auto exactCaps = OaVideoDecoder::QueryDecodeCapabilities(rt, exactProfile);
+	ASSERT_TRUE(exactCaps.IsOk()) << InCodecName
+								  << ": exact capability query failed: " << exactCaps.GetStatus().ToString().c_str();
+	if (not exactCaps->Supported) {
+		GTEST_SKIP() << InCodecName << ": exact stream profile is unsupported "
+					 << "(profile=" << static_cast<unsigned>(exactProfile.StandardProfile)
+					 << ", level=" << exactProfile.Level << ", maxLevel=" << exactCaps->MaxLevel
+					 << ", hardware=" << exactCaps->HardwareProfileSupported
+					 << ", oaPath=" << exactCaps->OaDecodePathImplemented << ", nv12Dpb=" << exactCaps->SupportsNv12Dpb
+					 << ")";
 	}
 
 	// ---- OA end-to-end decode (container → decode → reorder → RGBA) --------
@@ -200,7 +218,8 @@ void ValidateCodec(
 		const auto readbackEnd = std::chrono::steady_clock::now();
 		const double readbackMs = std::chrono::duration<double, std::milli>(readbackEnd - readbackStart).count();
 		if (not rb.IsOk()) {
-			std::printf("[ timing  ] %-4s frame %d StepForward %.2f ms, Readback failed after %.2f ms: %s\n",
+			std::printf("[ timing  ] %-4s frame %d StepForward %.2f ms, Readback "
+						"failed after %.2f ms: %s\n",
 				InCodecName, i, stepMs, readbackMs, rb.GetStatus().ToString().c_str());
 			FAIL() << InCodecName << " frame " << i
 				<< ": ReadbackCurrentRgba failed: " << rb.GetStatus().ToString().c_str();
@@ -262,7 +281,11 @@ void ValidateCodec(
 
 class VideoDecodeReference : public ::testing::Test {};
 
-TEST_VK(VideoDecodeReference, Av1)  { ValidateCodec(OaVideoCodec::AV1,  "Video/shibuya_720p_av1.mp4",  "shibuya_crossing_1080p30_av1.mp4",  "av1");  }
-TEST_VK(VideoDecodeReference, H264) { ValidateCodec(OaVideoCodec::H264, "Video/shibuya_720p_h264.mp4", "shibuya_crossing_1080p30_h264.mp4", "h264"); }
-TEST_VK(VideoDecodeReference, H265) { ValidateCodec(OaVideoCodec::H265, "Video/shibuya_720p_h265.mp4", "shibuya_crossing_1080p30_h265.mp4", "h265"); }
-TEST_VK(VideoDecodeReference, Vp9)  { ValidateCodec(OaVideoCodec::VP9,  "Video/shibuya_720p_vp9.mp4",  "shibuya_crossing_1080p30_vp9.mp4",  "vp9");  }
+TEST_VK(VideoDecodeReference, Av1)  { ValidateCodec(OaVideoCodec::AV1, "Video/shibuya_720p_av1_main_8bit_420.mp4",
+				  "profiles/shibuya_720p_av1_main_8bit_420.mp4",  "av1");  }
+TEST_VK(VideoDecodeReference, H264) { ValidateCodec(OaVideoCodec::H264, "Video/shibuya_720p_h264_high_8bit_420.mp4",
+				  "profiles/shibuya_720p_h264_high_8bit_420.mp4", "h264"); }
+TEST_VK(VideoDecodeReference, H265) { ValidateCodec(OaVideoCodec::H265, "Video/shibuya_720p_h265_main_8bit_420.mp4",
+				  "profiles/shibuya_720p_h265_main_8bit_420.mp4", "h265"); }
+TEST_VK(VideoDecodeReference, Vp9)  { ValidateCodec(OaVideoCodec::VP9, "Video/shibuya_720p_vp9_profile0_8bit_420.mp4",
+				  "profiles/shibuya_720p_vp9_profile0_8bit_420.mp4",  "vp9");  }

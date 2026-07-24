@@ -24,7 +24,7 @@
 #include <Oa/Core/Types.h>
 #include <Oa/Core/Log.h>
 #include <Oa/Core/Cli.h>
-#include <Oa/Core/FileIo.h>
+#include <Oa/Core/Filesystem.h>
 #include <Oa/Ml/Oam.h>
 #include <Oa/Ml/TransferWeights.h>
 #include <Ml/Nn/Alm/ClipTextWeightAdapter.h>
@@ -167,7 +167,7 @@ static int CmdInfo(const OaString& InPath) {
 	OA_CLI("  Model: %s", InPath.c_str());
 	OA_CLI_RAW("\n");
 
-	auto sizeResult = OaFileIo::GetFileSize(OaPath(InPath));
+	auto sizeResult = OaFilesystem::GetFileSize(OaPath(InPath));
 	if (sizeResult.IsOk()) {
 		OA_CLI("  File Size:      %s", FormatBytes(sizeResult.GetValue()).c_str());
 	}
@@ -412,12 +412,12 @@ static int CmdVerify(const OaString& InPath) {
 }
 
 static int CmdList(const OaString& InDir) {
-	if (!OaFileIo::IsDirectory(OaPath(InDir))) {
+	if (!OaFilesystem::IsDirectory(OaPath(InDir))) {
 		OA_CLI("Error: directory not found: %s", InDir.c_str());
 		return 1;
 	}
 
-	auto filesResult = OaFileIo::ListAll(OaPath(InDir), true);
+	auto filesResult = OaFilesystem::ListAll(OaPath(InDir), true);
 	if (!filesResult.IsOk()) {
 		OA_CLI("Error: %s", filesResult.GetStatus().GetMessage().c_str());
 		return 1;
@@ -431,7 +431,7 @@ static int CmdList(const OaString& InDir) {
 
 	OaI32 count = 0;
 	for (const auto& path : filesResult.GetValue()) {
-		auto ext = OaFileIo::GetExtension(path);
+		const OaString ext = path.Extension().String();
 		if (ext != ".oam") continue;
 
 		auto loadResult = OamModel::Load(path.String());

@@ -49,11 +49,7 @@ public:
 	// Set AVC SPS/PPS data for the avcC decoder configuration box.
 	void SetCodecConfig(const OaVec<OaU8>& InSps, const OaVec<OaU8>& InPps);
 	// Set HEVC VPS/SPS/PPS data for the hvcC decoder configuration box.
-	void SetCodecConfig(
-		const OaVec<OaU8>& InVps,
-		const OaVec<OaU8>& InSps,
-		const OaVec<OaU8>& InPps
-	);
+	void SetCodecConfig(const OaVec<OaU8>& InVps,	const OaVec<OaU8>& InSps,	const OaVec<OaU8>& InPps);
 	
 	// Finalize the MP4 file (write moov box and flush)
 	OaStatus Finalize();

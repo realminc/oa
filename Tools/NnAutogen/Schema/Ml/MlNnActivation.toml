@@ -1,8 +1,8 @@
 # Oa NN schema - stateless activation layers.
 #
 # Generates one header/source pair per layer:
-#   Source/Private/Oa/Ml/Nn/Relu.gen.h
-#   Source/Private/Oa/Ml/Nn/Relu.gen.cpp
+#   Source/Public/Oa/Ml/Nn/Relu/Relu.h
+#   Source/Private/Oa/Ml/Nn/Relu/Relu.cpp
 
 [[layers]]
 name = "Relu"

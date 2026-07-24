@@ -89,8 +89,12 @@ OaStatus OaVideoDecoder::UploadBitstream(const OaSpan<const OaU8>& InBitstream)
 		VkVideoDecodeH265ProfileInfoKHR h265 = {};
 		VkVideoDecodeAV1ProfileInfoKHR av1 = {};
 		VkVideoDecodeVP9ProfileInfoKHR vp9 = {};
-		VkVideoProfileInfoKHR profile =
-			OaVideoDecoderProfile::BuildDecodeProfile(Profile_.Codec, h264, h265, av1, vp9);
+		auto profileResult =
+			OaVideoDecoderProfile::BuildDecodeProfile(Profile_, h264, h265, av1, vp9);
+		if (not profileResult.IsOk()) {
+			return profileResult.GetStatus();
+		}
+		const VkVideoProfileInfoKHR& profile = *profileResult;
 		const OaU64 newCapacity = OaAlignUp(
 			requiredSize,
 			static_cast<OaU64>(4 * 1024 * 1024));

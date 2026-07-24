@@ -12,11 +12,13 @@ class OaEngine;
 // plan owns replay, exact completion, and Vulkan graph lifetime.
 class OaExecutionPlan {
 public:
+
 	OaExecutionPlan();
 	~OaExecutionPlan();
 
 	OaExecutionPlan(const OaExecutionPlan&) = delete;
 	OaExecutionPlan& operator=(const OaExecutionPlan&) = delete;
+
 	OaExecutionPlan(OaExecutionPlan&&) = delete;
 	OaExecutionPlan& operator=(OaExecutionPlan&&) = delete;
 

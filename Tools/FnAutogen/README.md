@@ -8,7 +8,7 @@ The schemas are the source of truth; this document and
 
 ## Status
 
-**Context API generator** — 167 ops across Core, Ml, Vision, Audio, Ui, and
+**Context API generator** — 169 ops across Core, Ml, Vision, Audio, Ui, and
 Crypto schemas under `Tools/FnAutogen/Schema/`.
 
 Each op emits:
@@ -18,6 +18,8 @@ Each op emits:
   - optional `.gen.slang` shaders when `forward_op` is present
   - optional autograd class fragments when `[ops.autograd]` is differentiable
   - optional GTest scaffolding when a CPU reference can be derived
+  - optional fixed-kernel registry rows, stable ID constants, and parallel
+    CMake name/source lists when `[ops.kernel]` owns the kernel identity
 
 Schemas with `body = "manual_context"` keep validation, graph recording and
 dispatch handwritten. When an op supplies exact `api_params`, the generator
@@ -37,6 +39,17 @@ copy typed non-matrix API parameters such as epsilon into named gradient-node
 members, keeping forward and backward configuration identical. These private
 helpers are emitted to `AutogradAttach.gen.h` and included only by their
 lowering units.
+
+`kind = "session_command"` describes a stateful command recorded into an
+owner's explicit session. It emits semantic operation metadata without
+inventing a public stateless `OaFn*` declaration. Its lowering remains private
+to the owning session. Such a schema must set
+`contract.value_validation = "session_command"`, `shape_rule = "explicit"`,
+and the frozen `dtype_rule = "match_input"` sentinel. The sentinel does not
+claim that heterogeneous session values share one dtype: the private command
+must validate exact shapes and dtypes before recording. Ordinary operations
+are rejected if they attempt to use this escape hatch. The frozen descriptor
+still permits at most eight ordered semantic attributes.
 
 Schemas with `body = "cpp_expr"` generate C++ bodies over the public `OaFn*`
 surface instead of dispatching a dedicated kernel. Use `cpp_expr` for one-line
@@ -83,10 +96,11 @@ preserves timestamps and does not invalidate build outputs.
 
 Before writing anything the generator:
 
-  1. Parses `Source/Public/Oa/Core/KernelRegistry.h` for all kernel
-     name strings (239 entries today).
-  2. Checks every `kernel_forward` in the schema exists in the registry —
-     fails fast with the offending op + kernel name if not.
+  1. Parses `Source/Public/Oa/Core/KernelRegistry.h` for kernel name/ID rows,
+     then merges schema-owned `[ops.kernel]` rows while rejecting duplicate
+     names, IDs, or sources.
+  2. Checks every `kernel_forward` is either in the hand-written registry or
+     owned by that operation's validated `[ops.kernel]` block.
   3. Checks PascalCase, duplicate op names, body/kind compatibility,
      scalar-param completeness, output shape/dtype vocabulary, dispatch
      workgroup modes, exact public API parameters, and autograd formula
@@ -97,14 +111,17 @@ files which are no longer emitted. A clean gate therefore proves both that
 generated content matches and that dead placeholder artifacts have not
 survived a schema change.
 
-Adding a new op = add a `[[ops]]` entry + (if a new kernel) append to
-`KernelRegistry.h` with a fresh ID. The generator rejects anything that
-references a missing kernel — drift is impossible by construction.
+Adding a new op = add a `[[ops]]` entry. If it owns a new fixed kernel, add one
+`[ops.kernel]` block with its stable prefix/local ID, category, origin, and
+shader source. The generator writes the install-safe public registry row and ID
+constant plus the private CMake source pair. Existing shared kernels remain
+valid `kernel_forward` references without a new ownership block.
 
 ## Adding a new op
 
-  1. Add `{ "Op", OA_COMPUTE_KERNEL_ID(...) }` to `KernelRegistry.h`.
-  2. Add `[[ops]]` entry to the appropriate schema TOML.
+  1. Add `[[ops]]` to the appropriate schema TOML.
+  2. For a new fixed kernel, add `[ops.kernel]` to that operation; do not patch
+     generated registry or ID files.
   3. Run the generator.
   4. (Round-trip phase) Diff `Output/...` against the hand-written file.
      Fix schema or template until the diff is intentional.
@@ -116,11 +133,11 @@ references a missing kernel — drift is impossible by construction.
 ```bash
 # Compare a generated shader against the hand-written one
 diff -u Source/Private/Oa/Core/Shader/Compute/Flat/Add.slang \
-        Tools/OaFnAutogen/Output/Private/Oa/Core/Shader/Compute/Flat/Add.gen.slang
+        Tools/FnAutogen/Output/Private/Oa/Core/Shader/Compute/Flat/Add.gen.slang
 
 # Compare the elemwise .cpp
-diff -u Source/Private/Oa/Core/Matrix/FnMatrixElemwise.cpp \
-        Tools/OaFnAutogen/Output/Private/Oa/Core/Matrix/FnMatrixElemwise.gen.cpp
+diff -u Source/Private/Oa/Core/FnMatrix/Elemwise/FnMatrixElemwise.cpp \
+        Tools/FnAutogen/Output/Private/Oa/Core/FnMatrix/Elemwise/FnMatrixElemwise.gen.cpp
 ```
 
 Differences should be either intentional schema/template changes or bugs to fix

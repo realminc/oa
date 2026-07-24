@@ -13,7 +13,7 @@ void BindMlOptim(nb::module_& m) {
     nb::class_<OaOptimizer>(m, "OaOptimizer")
         .def("Step", &OaOptimizer::Step)
         .def("ZeroGrad", &OaOptimizer::ZeroGrad)
-        .def("SetLr", &OaOptimizer::SetLr, nb::arg("lr"))
+        .def("SetLr", &OaOptimizer::SetLr, nb::arg("Lr"))
         .def("Lr", &OaOptimizer::Lr)
         .def("GetLr", &OaOptimizer::GetLr)
         .def("GetStep", &OaOptimizer::GetStep);
@@ -30,8 +30,8 @@ void BindMlOptim(nb::module_& m) {
             }
             new (self) OaSGD(OaSpan<OaParameter*>(ptrs.Data(), ptrs.Size()),
                 lr, momentum, weight_decay);
-        }, nb::arg("params"), nb::arg("lr") = 1e-2f, nb::arg("momentum") = 0.0f,
-           nb::arg("weight_decay") = 0.0f)
+        }, nb::arg("Params"), nb::arg("Lr") = 1e-2f, nb::arg("Momentum") = 0.0f,
+           nb::arg("WeightDecay") = 0.0f)
         .def("Step", &OaSGD::Step)
         .def("ZeroGrad", &OaSGD::ZeroGrad);
 
@@ -44,8 +44,8 @@ void BindMlOptim(nb::module_& m) {
             }
             new (self) OaAdam(OaSpan<OaParameter*>(ptrs.Data(), ptrs.Size()),
                 lr, beta1, beta2, eps);
-        }, nb::arg("params"), nb::arg("lr") = 1e-3f, nb::arg("beta1") = 0.9f,
-           nb::arg("beta2") = 0.999f, nb::arg("eps") = 1e-8f)
+        }, nb::arg("Params"), nb::arg("Lr") = 1e-3f, nb::arg("Beta1") = 0.9f,
+           nb::arg("Beta2") = 0.999f, nb::arg("Eps") = 1e-8f)
         .def("Step", &OaAdam::Step)
         .def("ZeroGrad", &OaAdam::ZeroGrad);
 
@@ -62,9 +62,9 @@ void BindMlOptim(nb::module_& m) {
             }
             new (self) OaAdamW(OaSpan<OaParameter*>(ptrs.Data(), ptrs.Size()),
                 lr, beta1, beta2, eps, weight_decay);
-        }, nb::arg("params"), nb::arg("lr") = 1e-3f, nb::arg("beta1") = 0.9f,
-           nb::arg("beta2") = 0.999f, nb::arg("eps") = 1e-8f,
-           nb::arg("weight_decay") = 0.01f,
+        }, nb::arg("Params"), nb::arg("Lr") = 1e-3f, nb::arg("Beta1") = 0.9f,
+           nb::arg("Beta2") = 0.999f, nb::arg("Eps") = 1e-8f,
+           nb::arg("WeightDecay") = 0.01f,
            "AdamW optimizer (decoupled weight decay)")
         .def("Step", &OaAdamW::Step, "Apply one optimizer step (update weights)")
         .def("ZeroGrad", &OaAdamW::ZeroGrad, "Zero all parameter gradients");
@@ -82,8 +82,8 @@ void BindMlOptim(nb::module_& m) {
             }
             new (self) OaMuon(OaSpan<OaParameter*>(ptrs.Data(), ptrs.Size()),
                 lr, beta, weight_decay, eps, ns5_iters);
-        }, nb::arg("params"), nb::arg("lr") = 1e-3f, nb::arg("beta") = 0.95f,
-           nb::arg("weight_decay") = 0.1f, nb::arg("eps") = 1e-7f, nb::arg("ns5_iters") = 5,
+        }, nb::arg("Params"), nb::arg("Lr") = 1e-3f, nb::arg("Beta") = 0.95f,
+           nb::arg("WeightDecay") = 0.1f, nb::arg("Eps") = 1e-7f, nb::arg("Ns5Iters") = 5,
            "Muon optimizer (2D hidden matrices)")
         .def("Step", &OaMuon::Step)
         .def("ZeroGrad", &OaMuon::ZeroGrad);
@@ -114,7 +114,7 @@ void BindMlOptim(nb::module_& m) {
         [](OaModule& model, const OaMuonAdamWConfig& cfg) {
             return MakeMuonAdamWOptimizer(model, cfg).Release();
         },
-        nb::arg("model"), nb::arg("config") = OaMuonAdamWConfig(),
+        nb::arg("Model"), nb::arg("Config") = OaMuonAdamWConfig(),
         nb::rv_policy::take_ownership,
         "Build official Muon+AdamW composite (Muon on 2D body, AdamW on embed/head/1D)");
 }

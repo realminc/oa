@@ -110,6 +110,11 @@ public:
 	// One batch may be in flight per context until Wait() consumes the event.
 	[[nodiscard]] OaResult<OaEvent> SubmitBatch();
 	[[nodiscard]] OaBool IsAsyncBatchActive() const noexcept;
+	// True only after queue submission has accepted a batch and before its
+	// exact completion has been consumed or retired. This lets composed
+	// sessions distinguish a pre-submit rollback from accepted-but-unobservable
+	// work when an internal completion-handle invariant fails.
+	[[nodiscard]] OaBool HasPendingSubmission() const noexcept;
 	[[nodiscard]] OaStatus Sync();
 	[[nodiscard]] OaU32 MaxAsyncSubmissions() const noexcept;
 	void Clear();

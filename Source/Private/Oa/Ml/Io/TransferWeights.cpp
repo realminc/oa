@@ -3,7 +3,7 @@
 #include "SafeTensorsWeightSource.h"
 #include "ShardedWeightSource.h"
 
-#include <Oa/Core/FileIo.h>
+#include <Oa/Core/Filesystem.h>
 #include <Oa/Core/FnMatrix.h>
 #include <Oa/Runtime/Context.h>
 #include <Oa/Runtime/Engine.h>
@@ -260,10 +260,10 @@ OaStatus OaWeightSource::ReadMatrix(
 OaResult<OaUniquePtr<OaWeightSource>> OaOpenWeightSource(
 	const OaPath& InPath, OaWeightFormat InFormat) {
 	OaPath path = InPath;
-	if (OaFileIo::IsDirectory(path)) path /= "model.safetensors.index.json";
+	if (OaFilesystem::IsDirectory(path)) path /= "model.safetensors.index.json";
 	OaWeightFormat format = InFormat;
 	if (format == OaWeightFormat::Auto) {
-		const OaString extension = OaFileIo::GetExtension(path);
+		const OaString extension = path.Extension().String();
 		if (extension == ".safetensors") format = OaWeightFormat::SafeTensors;
 		else if (extension == ".json") format = OaWeightFormat::SafeTensors;
 		else if (extension == ".oam") format = OaWeightFormat::Oam;
@@ -272,7 +272,7 @@ OaResult<OaUniquePtr<OaWeightSource>> OaOpenWeightSource(
 		else return OaStatus::InvalidArgument(OaString("Cannot infer weight source format: ") + path.String());
 	}
 	if (format == OaWeightFormat::SafeTensors) {
-		if (OaFileIo::GetExtension(path) == ".json") {
+		if (path.Extension().String() == ".json") {
 			auto package = OaMakeUniquePtr<OaShardedWeightSource>();
 			OA_RETURN_IF_ERROR(package->Open(path));
 			OaUniquePtr<OaWeightSource> source(OaStdMove(package));

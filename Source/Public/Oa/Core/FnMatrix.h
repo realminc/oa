@@ -29,7 +29,8 @@ void SetWeightDtype(OaScalarType InDtype);
 // --- Factory functions ---
 [[nodiscard]] OaMatrix Empty(OaMatrixShape InShape,
 	OaScalarType InDtype = GetWeightDtype(),
-	OaMemoryPlacement InPlacement = OaMemoryPlacement::Auto);
+	OaMemoryPlacement InPlacement = OaMemoryPlacement::Auto
+);
 [[nodiscard]] OaMatrix Zeros(OaMatrixShape InShape, OaScalarType InDtype = GetWeightDtype());
 [[nodiscard]] OaMatrix Ones(OaMatrixShape InShape, OaScalarType InDtype = GetWeightDtype());
 [[nodiscard]] OaMatrix Full(OaMatrixShape InShape, OaF64 InValue, OaScalarType InDtype = GetWeightDtype());
@@ -94,8 +95,8 @@ void SetRngSeed(OaU64 InSeed);
 
 // --- Core operations ---
 // Generated overloads from OaFnAutogen schemas
-// Regenerate via: python3 Tools/OaFnAutogen/oafnautogen.py
-#include "../../../Private/Oa/Core/FnMatrix/FnMatrix.gen.h"
+// Regenerate via: python3 Tools/FnAutogen/oafnautogen.py --live
+#include <Oa/Core/FnMatrix/FnMatrix.gen.h>
 
 // In-place operations
 void AddInPlace(OaMatrix& InSelf, const OaMatrix& InOther);

@@ -26,7 +26,7 @@ void SetLastName(const char* InName);
 // ─── Loss Functions ───────────────────────────────────────────────
 
 // Schema-owned forward loss declarations.
-#include "../../../Private/Oa/Ml/FnLoss/FnLoss.gen.h"
+#include <Oa/Ml/FnLoss/FnLoss.gen.h>
 
 /// CrossEntropyBwd: Backward pass for cross-entropy loss.
 /// Computes gradient w.r.t. logits: (softmax(Logits) - onehot(Targets)) / batch

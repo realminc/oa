@@ -217,8 +217,8 @@ TEST(OaTimerTest, GpuMode) {
 TEST(PerfStore, AppendAndFindLatest) {
     OaPerfStore store;
     // Use a temp path to avoid polluting the real perf store
-    OaPath tmpPath = OaFileIo::GetVarDir("perf") / "OaPerfTest_tmp.dat";
-    static_cast<void>(OaFileIo::RemoveFile(tmpPath));
+    OaPath tmpPath = OaPaths::Var("perf") / "OaPerfTest_tmp.dat";
+    static_cast<void>(OaFilesystem::RemoveFile(tmpPath));
 
     auto loadStatus = store.Load(tmpPath.CStr());
     EXPECT_TRUE(loadStatus.IsOk());
@@ -246,5 +246,5 @@ TEST(PerfStore, AppendAndFindLatest) {
     ASSERT_NE(found2, nullptr);
     EXPECT_NEAR(found2->Mean, 42.0, 1e-9);
 
-    static_cast<void>(OaFileIo::RemoveFile(tmpPath));
+    static_cast<void>(OaFilesystem::RemoveFile(tmpPath));
 }

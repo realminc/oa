@@ -7,7 +7,7 @@
 #pragma once
 
 #include <Oa/Core/Types.h>
-#include <Oa/Core/FileIo.h>
+#include <Oa/Core/Filesystem.h>
 
 #include <random>
 
@@ -32,5 +32,5 @@ static inline void SampleBatch(
 
 static inline OaString DeriveContext(const OaString& InContext, const OaString& InDataPath) {
 	if (!InContext.empty()) return InContext;
-	return OaFileIo::GetStem(OaPath(InDataPath));
+	return OaPath(InDataPath).Stem().String();
 }

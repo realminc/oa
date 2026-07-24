@@ -18,7 +18,7 @@ TEST(VideoSessionLifecycle, AbandonedDecodedSourceRetiresAtEngineClose)
 	}
 
 	OaVideoConfig config;
-	config.Uri = OaTestAssetPath("Video/shibuya_720p_h264.mp4").String();
+	config.Uri = OaTestAssetPath("Video/shibuya_720p_h264_high_8bit_420.mp4").String();
 	config.Audio = false;
 	config.StartPlaying = false;
 	config.Loop = false;

@@ -82,7 +82,7 @@ public:
 	OaF64 SourceUnitsPerSample = 0.0;
 	OaString SourceUnit = "byte";
 	// Optional GPU timer label for nsys / perf store integration.
-	const char* TimerName = "training_step";
+	OaString TimerName = "training_step";
 	// Disable only for a deliberately uninstrumented latency experiment. Eager
 	// and captured paths otherwise report the same complete-step GPU interval.
 	OaBool EnableGpuTiming = true;

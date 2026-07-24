@@ -7,7 +7,7 @@
 // trapezoidal, full outer-product state). End-to-end LM training: see
 // TutorialNlpMamba3Ag (Mamba-3 reference + flat residual + gated out-norm).
 
-#include "Mamba3.h"
+#include <Oa/Ml/Nn/Mamba3/Mamba3.h>
 #include <Oa/Core/FnMatrix.h>
 #include <Oa/Ml/Nn.h>
 #include <Oa/Runtime/Context.h>

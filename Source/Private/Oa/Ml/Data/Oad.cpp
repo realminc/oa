@@ -1,7 +1,7 @@
 // .oad v1 — packed byte corpus (train / val / test)
 
 #include <Oa/Ml/Oad.h>
-#include <Oa/Core/FileIo.h>
+#include <Oa/Core/Filesystem.h>
 #include <Oa/Core/Memory.h>
 #include <cstring>
 #include <fstream>
@@ -202,7 +202,7 @@ bool OaOadFile::TryOpen(const OaString& InPath) {
 	MapSize_ = FileSize_;
 	Bytes_ = MapAddr_;
 #else
-	auto bin = OaFileIo::ReadBinary(OaPath(InPath));
+	auto bin = OaFilesystem::ReadBinary(OaPath(InPath));
 	if (!bin.IsOk()) return false;
 	Owned_ = std::move(bin).GetValue();
 	FileSize_ = static_cast<OaI64>(Owned_.size());

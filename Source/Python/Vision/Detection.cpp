@@ -53,26 +53,26 @@ void BindVisionDetection(nb::module_& m) {
 
 	m.def("BoxIou", [](const OaMatrix& a, const OaMatrix& b) {
 		return matrix_ptr(OaFnDetection::BoxIou(a, b));
-	}, nb::arg("a"), nb::arg("b"), nb::rv_policy::take_ownership);
+	}, nb::arg("A"), nb::arg("B"), nb::rv_policy::take_ownership);
 
 	m.def("Nms", [](const OaMatrix& boxes, const OaMatrix& scores,
 		const OaMatrix& classes, const OaNmsConfig& config) {
 		return new OaNmsResult(OaFnDetection::Nms(
 			boxes, scores, classes, config));
-	}, nb::arg("boxes"), nb::arg("scores"), nb::arg("classes"),
-		nb::arg("config") = OaNmsConfig(), nb::rv_policy::take_ownership);
+	}, nb::arg("Boxes"), nb::arg("Scores"), nb::arg("Classes"),
+		nb::arg("Config") = OaNmsConfig(), nb::rv_policy::take_ownership);
 
 	m.def("ConfusionMatrix", [](const OaMatrix& predicted,
 		const OaMatrix& target, OaI32 classCount) {
 		return matrix_ptr(OaFnDetection::ConfusionMatrix(
 			predicted, target, classCount));
-	}, nb::arg("predicted"), nb::arg("target"), nb::arg("class_count"),
+	}, nb::arg("Predicted"), nb::arg("Target"), nb::arg("ClassCount"),
 		nb::rv_policy::take_ownership);
 
 	m.def("BinaryMaskCounts", [](const OaMatrix& predicted,
 		const OaMatrix& target) {
 		return matrix_ptr(OaFnDetection::BinaryMaskCounts(predicted, target));
-	}, nb::arg("predicted"), nb::arg("target"),
+	}, nb::arg("Predicted"), nb::arg("Target"),
 		nb::rv_policy::take_ownership);
 
 	m.def("EvaluateDetections", [](const OaMatrix& predictedBoxes,
@@ -85,17 +85,17 @@ void BindVisionDetection(nb::module_& m) {
 			predictedBoxes, predictedScores, predictedClasses,
 			predictedImageIds, targetBoxes, targetClasses, targetImageIds,
 			iouThresholds, classCount, scoreThreshold));
-	}, nb::arg("predicted_boxes"), nb::arg("predicted_scores"),
-		nb::arg("predicted_classes"), nb::arg("predicted_image_ids"),
-		nb::arg("target_boxes"), nb::arg("target_classes"),
-		nb::arg("target_image_ids"), nb::arg("iou_thresholds"),
-		nb::arg("class_count"), nb::arg("score_threshold") = 0.0F,
+	}, nb::arg("PredictedBoxes"), nb::arg("PredictedScores"),
+		nb::arg("PredictedClasses"), nb::arg("PredictedImageIds"),
+		nb::arg("TargetBoxes"), nb::arg("TargetClasses"),
+		nb::arg("TargetImageIds"), nb::arg("IouThresholds"),
+		nb::arg("ClassCount"), nb::arg("ScoreThreshold") = 0.0F,
 		nb::rv_policy::take_ownership);
 
 	m.def("EvaluateSegmentation", [](const OaMatrix& predicted,
 		const OaMatrix& target, OaI32 classCount) {
 		return new OaSegmentationMetricsResult(
 			OaFnDetection::EvaluateSegmentation(predicted, target, classCount));
-	}, nb::arg("predicted"), nb::arg("target"), nb::arg("class_count"),
+	}, nb::arg("Predicted"), nb::arg("Target"), nb::arg("ClassCount"),
 		nb::rv_policy::take_ownership);
 }

@@ -3,7 +3,8 @@
 #pragma once
 
 #include <Oa/Core/Types.h>
-#include <Oa/Core/FileIo.h>
+#include <Oa/Core/Filesystem.h>
+#include <Oa/Core/Paths.h>
 #include <Oa/Core/Yaml.h>
 
 class OaCheckpointConfig {
@@ -17,7 +18,7 @@ public:
 
 class OaLogConfig {
 public:
-	OaString Dir = OaFileIo::GetVarDir("log").String();
+	OaString Dir = OaPaths::Var("log").String();
 	OaString Level = "info";
 	OaBool Console = true;
 	OaBool File = false;

@@ -38,7 +38,7 @@ int main(int argc, char** argv) {
 	// ─── Engine bring-up ─────────────────────────────────────────────────────
 	// PresentationMode::None — pure compute. We never instantiate a surface,
 	// never request VK_KHR_swapchain, and the runtime is free to pick any
-	// device (discrete, integrated, or even CPU/llvmpipe fallback). This is
+	// admitted Vulkan device. This is
 	// exactly the engine config a render-farm worker or CI box would use.
 	OaEngineConfig cfg;
 	cfg.PresentationMode = OaPresentationMode::None;
@@ -76,8 +76,8 @@ int main(int argc, char** argv) {
 	std::printf("OK: %dx%d  %s → %s\n", tex.Width, tex.Height, inPath, outPath);
 
 	// ─── Texture operation smoke ─────────────────────────────────────────────
-	// Both record through the texture domain API (no immediate dispatch) and
-	// execute alongside any pending compute work in one ctx.Execute(). Produces
+	// Both record through the texture domain API (no immediate dispatch), then
+	// submit and wait explicitly at the file-output boundary. Produces
 	// two extra PNGs:
 	//
 	//   /tmp/oa_viewport_batch_blit.png   — clone of the source via Blit

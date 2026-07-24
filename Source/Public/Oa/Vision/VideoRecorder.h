@@ -39,7 +39,8 @@ public:
 
 	[[nodiscard]] static OaResult<OaVideoRecorder> Create(
 		OaEngine& InEngine,
-		const OaVideoRecorderConfig& InConfig);
+		const OaVideoRecorderConfig& InConfig
+	);
 
 	// Record one packed RGBA8 bindless buffer. The source must already be
 	// completed, non-aliased, and owned by this recorder's engine; use the
@@ -48,7 +49,8 @@ public:
 		const OaVkBuffer& InRgba,
 		OaU32 InWidth,
 		OaU32 InHeight,
-		OaU64 InPts);
+		OaU64 InPts
+	);
 
 	// Record a common capture/decode/render frame. Packed RGBA8/BGRA8 buffers
 	// must satisfy the completed engine-owned source contract above. Images are
@@ -57,9 +59,7 @@ public:
 	// Non-blocking image-input variant. OutInputConsumed signals after the
 	// source image has returned to its published layout/queue family and may be
 	// recycled. Buffer-backed frames produce an already-complete empty token.
-	[[nodiscard]] OaStatus WriteAsync(
-		const OaVideoFrame& InFrame,
-		OaCompletionToken& OutInputConsumed);
+	[[nodiscard]] OaStatus WriteAsync(const OaVideoFrame& InFrame, OaCompletionToken& OutInputConsumed);
 
 	// Record a buffer- or image-backed render target. Image-backed targets use
 	// the same OaVideoFrame path as decoded/captured frames and never stage
@@ -67,10 +67,7 @@ public:
 	// buffer-texture producer before the encoder snapshots it; the compatibility
 	// overload selects the matching active context, then the recorder engine's
 	// context when no matching recording scope exists.
-	[[nodiscard]] OaStatus Write(
-		OaContext& InContext,
-		const OaTexture& InTexture,
-		OaU64 InPts);
+	[[nodiscard]] OaStatus Write(OaContext& InContext, const OaTexture& InTexture, OaU64 InPts);
 	[[nodiscard]] OaStatus Write(const OaTexture& InTexture, OaU64 InPts);
 
 	// Add captured interleaved F32 audio. Timestamps share the monotonic
@@ -80,7 +77,9 @@ public:
 		OaSpan<const OaF32> InInterleaved,
 		OaU32 InSampleRate,
 		OaU32 InChannelCount,
-		OaU64 InPts);
+		OaU64 InPts
+	);
+
 	[[nodiscard]] OaStatus WriteAudio(const OaAudioCaptureChunk& InChunk);
 
 	// Flush the encoder and finalize the container. Idempotent.
@@ -94,8 +93,7 @@ public:
 private:
 	void MoveFrom_(OaVideoRecorder&& InOther) noexcept;
 	[[nodiscard]] OaStatus WriteEncoded_(const OaEncodedFrame& InFrame);
-	[[nodiscard]] OaStatus WriteAudioAligned_(
-		OaSpan<const OaF32> InInterleaved, OaU64 InPts);
+	[[nodiscard]] OaStatus WriteAudioAligned_(OaSpan<const OaF32> InInterleaved, OaU64 InPts);
 	[[nodiscard]] OaStatus WriteAudioPackets_(OaVec<OaEncodedAudioPacket>& InPackets);
 	[[nodiscard]] OaStatus SetFirstVideoPts_(OaU64 InPts);
 

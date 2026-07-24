@@ -30,7 +30,7 @@ namespace OaFnImage {
 	// Exact declarations for the 50 tensor-native image operations. Every op
 	// has an explicit-engine overload and a global-engine convenience overload.
 	// Regenerate with: python3 Tools/FnAutogen/oafnautogen.py --live
-	#include "../../../Private/Oa/Vision/FnImage/FnImage.gen.h"
+	#include <Oa/Vision/FnImage/FnImage.gen.h>
 
 	// Handwritten compositions which intentionally are not primitive image ops.
 	[[nodiscard]] OaVec<OaMatrix> ResizeBatch(
@@ -39,14 +39,6 @@ namespace OaFnImage {
 		OaU32 InTargetWidth,
 		OaU32 InTargetHeight,
 		OaInterpolationMode InMode = OaInterpolationMode::Bilinear
-	);
-
-	[[nodiscard]] OaMatrix DecodeAndPreprocess(
-		OaEngine& InRt,
-		const OaSpan<const OaU8>& InCompressedFrame,
-		OaU32 InTargetWidth,
-		OaU32 InTargetHeight,
-		bool InNormalizeImageNet = true
 	);
 
 	// Synchronous file sink for a device-local packed RGBA8 texture. The context
@@ -74,6 +66,11 @@ namespace OaFnImage {
 	[[nodiscard]] OaImage Normalize(
 		const OaImage& InImage,
 		const OaNormalizationParams& InParams
+	);
+	[[nodiscard]] OaImage BrightnessContrast(
+		const OaImage& InImage,
+		OaF32 InBrightness = 0.0F,
+		OaF32 InContrast = 1.0F
 	);
 	[[nodiscard]] OaImage ConvertColor(
 		const OaImage& InImage,

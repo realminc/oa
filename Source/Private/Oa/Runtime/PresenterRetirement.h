@@ -3,6 +3,7 @@
 #include <Oa/Core/Std.h>
 #include <Oa/Runtime/Stream.h>
 #include <Oa/Runtime/Swapchain.h>
+#include "Engine/QueueSubmitRoute.h"
 
 #include <vector>
 #include <vulkan/vulkan.h>
@@ -22,7 +23,7 @@ struct OaRetiredPresenter {
 	OaBool ImGuiReady = false;
 	OaVec<OaUniquePtr<OaVkStream>> GraphicsStreams;
 	void* PresentQueue = nullptr;
-	OaBool UsesMergedGraphicsComputeQueue = false;
+	OaQueueSubmitRoute PresentQueueRoute = OaQueueSubmitRoute::Unknown;
 	OaBool HasSwapchainMaintenance1 = false;
 	OaBool OwnsAbandonedSurface = false;
 };

@@ -19,17 +19,17 @@ void BindCryptoHash(nb::module_& m) {
 				reinterpret_cast<const OaByte*>(data.data()), data.size()));
 			throw_if_error(result.GetStatus());
 			new (self) OaHash(std::move(result).GetValue());
-        }, nb::arg("data"), "Construct from exactly 32 raw bytes.")
+        }, nb::arg("Data"), "Construct from exactly 32 raw bytes.")
 		.def_static("FromHex", [](const std::string& hex) {
 			auto result = OaHash::FromHex(OaStringView(hex.data(), hex.size()));
 			throw_if_error(result.GetStatus());
 			return std::move(result).GetValue();
-		}, nb::arg("hex"), "Parse exactly 64 hexadecimal characters.")
+		}, nb::arg("Hex"), "Parse exactly 64 hexadecimal characters.")
         .def_static("Zero", &OaHash::Zero)
         .def("ToHex", &OaHash::ToHex)
         .def("ToShortHex", &OaHash::ToShortHex)
         .def("IsZero", &OaHash::IsZero)
-        .def("bytes", [](const OaHash& self) { return bytes_of(self.Data(), 32); },
+        .def("Bytes", [](const OaHash& self) { return bytes_of(self.Data(), 32); },
              "The 32 digest bytes.")
         .def("__eq__", [](const OaHash& a, const OaHash& b) { return a == b; })
         .def("__repr__", [](const OaHash& self) {
@@ -45,7 +45,7 @@ void BindCryptoHash(nb::module_& m) {
         .def("Update", [](OaHasher& self, nb::bytes data) {
 			throw_if_error(self.Update(
 				reinterpret_cast<const OaByte*>(data.data()), data.size()));
-        }, nb::arg("data"), "Absorb more bytes (call repeatedly before Finalize).")
+        }, nb::arg("Data"), "Absorb more bytes (call repeatedly before Finalize).")
         .def("Finalize", &OaHasher::Finalize, "Squeeze the 32-byte digest.")
         .def("Reset", &OaHasher::Reset);
 
@@ -56,7 +56,7 @@ void BindCryptoHash(nb::module_& m) {
         OaShake256(reinterpret_cast<const OaByte*>(data.data()), data.size(),
                    out.data(), out_len);
         return bytes_of(out.data(), out_len);
-    }, nb::arg("data"), nb::arg("out_len") = 32,
+    }, nb::arg("Data"), nb::arg("OutLen") = 32,
        "One-shot SHAKE-256 over bytes → bytes.");
 
     m.def("Shake128Bytes", [](nb::bytes data, OaU32 out_len) {
@@ -64,7 +64,7 @@ void BindCryptoHash(nb::module_& m) {
         OaShake128(reinterpret_cast<const OaByte*>(data.data()), data.size(),
                    out.data(), out_len);
         return bytes_of(out.data(), out_len);
-    }, nb::arg("data"), nb::arg("out_len") = 16,
+    }, nb::arg("Data"), nb::arg("OutLen") = 16,
        "One-shot SHAKE-128 over bytes → bytes.");
 
     m.def("Kmac256Bytes", [](nb::bytes key, nb::bytes data, nb::bytes custom,
@@ -75,13 +75,13 @@ void BindCryptoHash(nb::module_& m) {
 				  reinterpret_cast<const OaByte*>(custom.data()), custom.size(),
 				  out.data(), out_len));
         return bytes_of(out.data(), out_len);
-    }, nb::arg("key"), nb::arg("data"), nb::arg("custom") = nb::bytes("", 0),
-       nb::arg("out_len") = 32, "KMAC-256 keyed hash (NIST SP 800-185).");
+    }, nb::arg("Key"), nb::arg("Data"), nb::arg("Custom") = nb::bytes("", 0),
+       nb::arg("OutLen") = 32, "KMAC-256 keyed hash (NIST SP 800-185).");
 
     m.def("MerkleRootHashes", [](const std::vector<OaHash>& leaves) {
         OaVec<OaHash> v;
         v.reserve(leaves.size());
         for (const auto& h : leaves) { v.push_back(h); }
         return OaMerkleRoot(v);
-    }, nb::arg("leaves"), "CPU Merkle root over a list of OaHash leaves.");
+    }, nb::arg("Leaves"), "CPU Merkle root over a list of OaHash leaves.");
 }

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../Mamba3/Mamba3.h"
+#include <Oa/Ml/Nn/Mamba3/Mamba3.h>
 
 // OaEmpyrealmModule — Empyrealm SSM mixer (1:1 copy of Mamba3, renamed kernels).
 //

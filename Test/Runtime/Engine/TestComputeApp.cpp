@@ -36,9 +36,12 @@ public:
 		payload->State_->Calls_.PushBack("RetirementComplete");
 		payload->State_->RetirementCompleteSawDestroying_ =
 			payload->Engine_->GetState() == OaEngineState::Destroying;
-		return OaStatus::Error(
-			OaStatusCode::Internal,
-			"injected retirement completion failure");
+		if (payload->State_->RetirementCompleteCount_ == 1) {
+			return OaStatus::Error(
+				OaStatusCode::Internal,
+				"injected retirement completion failure");
+		}
+		return OaStatus::Ok();
 	}
 
 	static void Release(void* InPayload) {
@@ -61,6 +64,7 @@ public:
 	[[nodiscard]] OaEngineState EngineState() const noexcept {
 		return Rt.GetState();
 	}
+	[[nodiscard]] OaStatus RetryClose() { return Rt.Close(); }
 	[[nodiscard]] const OaVec<OaString>& Calls() const noexcept {
 		return State_->Calls_;
 	}
@@ -251,21 +255,28 @@ TEST(ComputeApp, EngineInitFailureClosesWithoutEnteringAppLifecycle) {
 	EXPECT_EQ(app.Calls()[0], "Setup");
 }
 
-TEST(ComputeApp, EngineCloseFailureOverridesSuccessfulAppResult) {
+TEST(ComputeApp, EngineCloseFailureRetainsBorrowedServiceForSuccessfulRetry) {
 	OaComputeAppProbe app(OaComputeAppProbeMode::RetirementFailure);
 
 	EXPECT_EQ(app.Main(0, nullptr), 1);
-	EXPECT_EQ(app.EngineState(), OaEngineState::Destroyed);
+	EXPECT_EQ(app.EngineState(), OaEngineState::Failed);
 	EXPECT_EQ(app.ShutdownCount(), 1U);
 	EXPECT_EQ(app.RetirementCompleteCount(), 1U);
-	EXPECT_EQ(app.RetirementReleaseCount(), 1U);
+	EXPECT_EQ(app.RetirementReleaseCount(), 0U);
 	EXPECT_TRUE(app.ShutdownSawReady());
 	EXPECT_TRUE(app.RetirementCompleteSawDestroying());
-	ASSERT_EQ(app.Calls().Size(), 6U);
+	ASSERT_EQ(app.Calls().Size(), 5U);
 	EXPECT_EQ(app.Calls()[0], "Setup");
 	EXPECT_EQ(app.Calls()[1], "Init");
 	EXPECT_EQ(app.Calls()[2], "Tick");
 	EXPECT_EQ(app.Calls()[3], "Shutdown");
 	EXPECT_EQ(app.Calls()[4], "RetirementComplete");
-	EXPECT_EQ(app.Calls()[5], "RetirementRelease");
+
+	ASSERT_TRUE(app.RetryClose().IsOk());
+	EXPECT_EQ(app.EngineState(), OaEngineState::Destroyed);
+	EXPECT_EQ(app.RetirementCompleteCount(), 2U);
+	EXPECT_EQ(app.RetirementReleaseCount(), 1U);
+	ASSERT_EQ(app.Calls().Size(), 7U);
+	EXPECT_EQ(app.Calls()[5], "RetirementComplete");
+	EXPECT_EQ(app.Calls()[6], "RetirementRelease");
 }

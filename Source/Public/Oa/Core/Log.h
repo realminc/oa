@@ -2,7 +2,7 @@
 
 #include <Oa/Core/Types.h>
 #include <Oa/Core/Status.h>
-#include <Oa/Core/FileIo.h>
+#include <Oa/Core/Filesystem.h>
 #include <Oa/Core/Time.h>
 
 #include <cstdarg>
@@ -259,7 +259,7 @@ public:
 	// Methods.
 	OaStatus Open(const OaString& InLogDir) {
 		LogDir_ = InLogDir;
-		(void)OaFileIo::CreateDirectories(OaPath(LogDir_));
+		(void)OaFilesystem::CreateDirectories(OaPath(LogDir_));
 		EventsPath_ = LogDir_ + "/events.jsonl";
 		StartTime_ = OaNow();
 		IsOpen_ = true;
@@ -305,7 +305,7 @@ public:
 		if (Buffer_.empty()) {
 			return;
 		}
-		(void)OaFileIo::AppendText(OaPath(EventsPath_), Buffer_);
+		(void)OaFilesystem::AppendText(OaPath(EventsPath_), Buffer_);
 		Buffer_.clear();
 		BufferCount_ = 0;
 	}

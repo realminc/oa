@@ -1,7 +1,7 @@
 // OaAudioEncoder — validated WAV-F32 encoder and synchronous GPU readback sink.
 
 #include <Oa/Audio/AudioEncoder.h>
-#include <Oa/Core/FileIo.h>
+#include <Oa/Core/Filesystem.h>
 #include <Oa/Core/Memory.h>
 #include <Oa/Runtime/Context.h>
 
@@ -26,11 +26,7 @@ void WriteU32Le(OaU8* Out, OaU32 InValue) {
 
 } // namespace
 
-OaResult<OaVec<OaU8>> OaAudioEncoder::EncodeWavF32(
-	OaSpan<const OaF32> InSamples,
-	OaU32 InSampleRate,
-	OaU32 InChannelCount)
-{
+OaResult<OaVec<OaU8>> OaAudioEncoder::EncodeWavF32(OaSpan<const OaF32> InSamples,	OaU32 InSampleRate, OaU32 InChannelCount) {
 	if (InSampleRate == 0) {
 		return OaStatus::InvalidArgument("OaAudioEncoder: sample rate must be > 0");
 	}
@@ -78,14 +74,14 @@ OaResult<OaVec<OaU8>> OaAudioEncoder::EncodeWavF32(
 	return out;
 }
 
-OaResult<OaVec<OaU8>> OaAudioEncoder::EncodeWavF32(
-	const OaAudioBuffer& InBuffer,
-	OaU32 InSampleRate)
-{
+OaResult<OaVec<OaU8>> OaAudioEncoder::EncodeWavF32(const OaAudio& InAudio) {
+	if (not InAudio.Validate() || InAudio.IsEmpty()) {
+		return OaStatus::InvalidArgument("OaAudioEncoder: expected valid non-empty audio");
+	}
+	const OaMatrix& InBuffer = InAudio.AsMatrix();
 	const OaMatrixShape shape = InBuffer.GetShape();
 	if (shape.Rank != 2 || shape[0] <= 0 || shape[1] <= 0) {
-		return OaStatus::InvalidArgument(
-			"OaAudioEncoder: expected non-empty [Channels, Samples] audio");
+		return OaStatus::InvalidArgument("OaAudioEncoder: expected non-empty [Channels, Samples] audio");
 	}
 	if (InBuffer.GetDtype() != OaScalarType::Float32) {
 		return OaStatus::InvalidArgument("OaAudioEncoder: audio buffer must be Float32");
@@ -104,28 +100,24 @@ OaResult<OaVec<OaU8>> OaAudioEncoder::EncodeWavF32(
 	const OaF32* planar = InBuffer.DataAs<OaF32>();
 	for (OaU64 sample = 0; sample < samples; ++sample) {
 		for (OaU64 channel = 0; channel < channels; ++channel) {
-			interleaved[static_cast<OaUsize>(sample * channels + channel)] =
-				planar[static_cast<OaUsize>(channel * samples + sample)];
+			interleaved[static_cast<OaUsize>(sample * channels + channel)] = planar[static_cast<OaUsize>(channel * samples + sample)];
 		}
 	}
 	return EncodeWavF32(
 		OaSpan<const OaF32>(interleaved.Data(), interleaved.Size()),
-		InSampleRate,
-		static_cast<OaU32>(channels));
+		InAudio.SampleRate(),
+		static_cast<OaU32>(channels)
+	);
 }
 
-OaStatus OaAudioEncoder::SaveWavF32(
-	const OaPath& InPath,
-	const OaAudioBuffer& InBuffer,
-	OaU32 InSampleRate)
-{
+OaStatus OaAudioEncoder::SaveWavF32(const OaPath& InPath,	const OaAudio& InAudio) {
 	if (InPath.Empty()) {
 		return OaStatus::InvalidArgument("OaAudioEncoder: output path is empty");
 	}
-	auto encoded = EncodeWavF32(InBuffer, InSampleRate);
+	auto encoded = EncodeWavF32(InAudio);
 	if (not encoded.IsOk()) return encoded.GetStatus();
 	const auto& bytes = encoded.GetValue();
-	return OaFileIo::WriteBinary(InPath, OaSpan<const OaU8>(bytes.Data(), bytes.Size()));
+	return OaFilesystem::WriteBinary(InPath, OaSpan<const OaU8>(bytes.Data(), bytes.Size()));
 }
 
 struct OaAudioStreamEncoder::Impl {
@@ -138,8 +130,7 @@ struct OaAudioStreamEncoder::Impl {
 
 namespace {
 
-OaI16 QuantizePcmS16(OaF32 InSample)
-{
+OaI16 QuantizePcmS16(OaF32 InSample) {
 	// A device/caller can hand the recorder non-finite FP32. Never feed NaN to
 	// lrint: silence NaN and saturate infinities deterministically.
 	if (std::isnan(InSample)) return 0;
@@ -150,11 +141,7 @@ OaI16 QuantizePcmS16(OaF32 InSample)
 	return static_cast<OaI16>(std::lrint(scaled));
 }
 
-void EmitPcmPacket(
-	OaAudioStreamEncoder::Impl& InImpl,
-	OaU32 InFrames,
-	OaVec<OaEncodedAudioPacket>& OutPackets)
-{
+void EmitPcmPacket(OaAudioStreamEncoder::Impl& InImpl, OaU32 InFrames, OaVec<OaEncodedAudioPacket>& OutPackets) {
 	const OaU32 channels = InImpl.Profile.ChannelCount;
 	const OaUsize samples = static_cast<OaUsize>(InFrames) * channels;
 	OaEncodedAudioPacket packet;
@@ -171,7 +158,8 @@ void EmitPcmPacket(
 	const OaUsize remaining = InImpl.Pending.Size() - samples;
 	if (remaining > 0U) {
 		std::memmove(InImpl.Pending.Data(), InImpl.Pending.Data() + samples,
-			remaining * sizeof(OaF32));
+			remaining * sizeof(OaF32)
+		);
 	}
 	InImpl.Pending.Resize(remaining);
 }

@@ -14,7 +14,8 @@
 #include <Oa/Runtime/Context.h>
 #include <Oa/Core/Cli.h>
 #include <Oa/Core/Log.h>
-#include <Oa/Core/FileIo.h>
+#include <Oa/Core/Filesystem.h>
+#include <Oa/Core/Paths.h>
 #include <Oa/Core/Time.h>
 #include <Oa/Ml.h>
 #include <Oa/Ml/Autograd.h>
@@ -61,7 +62,7 @@ struct AlmTrainConfig {
 	OaString ValSplit  = "val";
 	OaI32    MaxClips  = 0;
 	OaI32    ValBatches = 0;  // 0 = complete held-out split
-	OaString ModelDir  = OaFileIo::GetVarDir("model/dev").String();
+	OaString ModelDir  = OaPaths::Var("model/dev").String();
 	OaString PrecisionStr = "fp32";
 
 	[[nodiscard]] OaPrecision Precision() const {
@@ -357,17 +358,17 @@ OaStatus WriteNpyF32Atomic(const OaPath& InPath, const OaF32* InData,
 	std::memcpy(bytes.Data() + prefixBytes, header.data(), header.size());
 	std::memcpy(bytes.Data() + prefixBytes + header.size(), InData, payloadBytes);
 	const OaPath temporary(InPath.String() + ".tmp");
-	OA_RETURN_IF_ERROR(OaFileIo::WriteBinary(temporary,
+	OA_RETURN_IF_ERROR(OaFilesystem::WriteBinary(temporary,
 		OaSpan<const OaU8>(bytes.Data(), bytes.Size())));
-	if (OaFileIo::Exists(InPath)) OA_RETURN_IF_ERROR(OaFileIo::RemoveFile(InPath));
-	return OaFileIo::Move(temporary, InPath);
+	if (OaFilesystem::Exists(InPath)) OA_RETURN_IF_ERROR(OaFilesystem::RemoveFile(InPath));
+	return OaFilesystem::Move(temporary, InPath);
 }
 
 OaStatus WriteTextAtomic(const OaPath& InPath, OaStringView InText) {
 	const OaPath temporary(InPath.String() + ".tmp");
-	OA_RETURN_IF_ERROR(OaFileIo::WriteText(temporary, InText));
-	if (OaFileIo::Exists(InPath)) OA_RETURN_IF_ERROR(OaFileIo::RemoveFile(InPath));
-	return OaFileIo::Move(temporary, InPath);
+	OA_RETURN_IF_ERROR(OaFilesystem::WriteText(temporary, InText));
+	if (OaFilesystem::Exists(InPath)) OA_RETURN_IF_ERROR(OaFilesystem::RemoveFile(InPath));
+	return OaFilesystem::Move(temporary, InPath);
 }
 
 struct Lcg {
@@ -791,14 +792,14 @@ struct TrainAlmApp : OaComputeApp {
 			return OaStatus::InvalidArgument("ALM tokenizer and prior must both be loaded");
 		const OaString bundleDir = c.ModelDir + "/" + c.Name;
 		const OaString bundlePath = bundleDir + "/" + c.Name + ".oam";
-		(void)OaFileIo::CreateDirectories(OaPath(bundleDir));
+		(void)OaFilesystem::CreateDirectories(OaPath(bundleDir));
 		const OaString textEncoder = LmTextFeatureDim_ > 0
 			? OaString("openai/clip-vit-large-patch14") : OaString();
 		OaSharedPtr<OaAlmAg> alm;
 		if (LmTextFeatureDim_ > 0) {
 			auto clip = OaClipTextAg::LoadOam(c.ClipTextModel);
 			if (clip.IsError()) return clip.GetStatus();
-			auto merges = OaFileIo::ReadBinary(OaPath(c.ClipMerges));
+			auto merges = OaFilesystem::ReadBinary(OaPath(c.ClipMerges));
 			if (merges.IsError()) return merges.GetStatus();
 			const auto& bytes = merges.GetValue();
 			alm = OaMakeSharedPtr<OaAlmAg>(Tok_.Ptr, Lm_.Ptr,
@@ -844,8 +845,8 @@ struct TrainAlmApp : OaComputeApp {
 
 	OaStatus BakeNativeClipFeatures() {
 		const auto& c = Cli.GetConfig();
-		if (not OaFileIo::IsFile(OaPath(c.ClipTextModel)) or
-			not OaFileIo::IsFile(OaPath(c.ClipMerges))) {
+		if (not OaFilesystem::IsFile(OaPath(c.ClipTextModel)) or
+			not OaFilesystem::IsFile(OaPath(c.ClipMerges))) {
 			return OaStatus::NotFound(OaString("native CLIP assets are missing: ")
 				+ c.ClipTextModel + ", " + c.ClipMerges);
 		}
@@ -915,7 +916,7 @@ struct TrainAlmApp : OaComputeApp {
 		std::printf("\n");
 
 		const OaPath outDir = OaPath(c.Dataset) / "text_feats";
-		OA_RETURN_IF_ERROR(OaFileIo::CreateDirectories(outDir));
+		OA_RETURN_IF_ERROR(OaFilesystem::CreateDirectories(outDir));
 		OA_RETURN_IF_ERROR(WriteNpyF32Atomic(outDir / "uncond.npy",
 			features.data(), 1, static_cast<OaUsize>(dim)));
 		for (const auto& record : records) {
@@ -1095,7 +1096,7 @@ struct TrainAlmApp : OaComputeApp {
 			.MetricName    = TokValidationCb_ ? OaString("val_loss") : OaString("recon"),
 			.LowerIsBetter = true,
 		});
-		(void)OaFileIo::CreateDirectories(OaPath(TokMgr_->GetModelDir()));
+		(void)OaFilesystem::CreateDirectories(OaPath(TokMgr_->GetModelDir()));
 		TokCkptCb_ = OaMakeUniquePtr<OaCbCheckpoint>(
 			*TokMgr_, Tok_.Module(), *TokOpt_, c.CkptSaveEvery,
 			TokValidationCb_ ? TokValidationCb_->MetricPtr() : nullptr, c.CkptRestoreBest);
@@ -1457,8 +1458,8 @@ struct TrainAlmApp : OaComputeApp {
 					OaClipTextConfig::ViTL14().ProjectionDim);
 				IsRunning = false; return OaStatus::Ok();
 			}
-			if (not OaFileIo::IsFile(OaPath(c.ClipTextModel)) or
-				not OaFileIo::IsFile(OaPath(c.ClipMerges))) {
+			if (not OaFilesystem::IsFile(OaPath(c.ClipTextModel)) or
+				not OaFilesystem::IsFile(OaPath(c.ClipMerges))) {
 				OA_LOG_ERROR(OaLogComponent::ML,
 					"trainalm: native CLIP assets are missing (%s, %s); import them before LM training",
 					c.ClipTextModel.CStr(), c.ClipMerges.CStr());
@@ -1590,7 +1591,7 @@ struct TrainAlmApp : OaComputeApp {
 			.MetricName    = LmValidationCb_ ? OaString("val_loss") : OaString("cross_entropy"),
 			.LowerIsBetter = true,
 		});
-		(void)OaFileIo::CreateDirectories(OaPath(LmMgr_->GetModelDir()));
+		(void)OaFilesystem::CreateDirectories(OaPath(LmMgr_->GetModelDir()));
 		LmCkptCb_ = OaMakeUniquePtr<OaCbCheckpoint>(
 			*LmMgr_, Lm_.Module(), *LmOpt_, c.CkptSaveEvery,
 			LmValidationCb_ ? LmValidationCb_->MetricPtr() : nullptr, c.CkptRestoreBest);

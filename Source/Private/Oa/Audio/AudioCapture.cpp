@@ -251,8 +251,7 @@ bool OaAudioCapture::Poll(OaAudioCaptureChunk& OutChunk, OaU32 InMaxFrames)
 	return true;
 }
 
-OaStatus OaAudioCapture::Close()
-{
+OaStatus OaAudioCapture::Close() {
 	if (not Impl_) return OaStatus::Ok();
 	const OaStatus status = Stop();
 	if (Impl_->Initialized) ma_device_uninit(&Impl_->Device);

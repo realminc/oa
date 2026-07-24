@@ -9,7 +9,7 @@
 #include <Oa/Runtime/Device.h>
 #include <Oa/Runtime/Allocator.h>
 #include <Oa/Runtime/OaVk.h>
-#include <Oa/Core/FileIo.h>
+#include <Oa/Core/Filesystem.h>
 #include <Oa/Core/Log.h>
 #include <Oa/Core/KernelRegistry.h>
 #include <Oa/Core/EnvFlag.h>
@@ -32,8 +32,7 @@ struct OaForcedSubgroup {
 	bool Active = false;
 };
 
-inline void OaMaybeForceSubgroupSize(VkPipelineShaderStageCreateInfo& InOutStage,
-                                     OaForcedSubgroup& OutHolder) {
+inline void OaMaybeForceSubgroupSize(VkPipelineShaderStageCreateInfo& InOutStage, OaForcedSubgroup& OutHolder) {
 	const OaI64 sz = OaEnvFlag::GetInt("OA_GEMM_SUBGROUP_SIZE", 0);
 	if (sz == 8 || sz == 16 || sz == 32) {
 		OutHolder.Info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_REQUIRED_SUBGROUP_SIZE_CREATE_INFO;
@@ -52,11 +51,10 @@ OaResult<OaPipelineCache> OaPipelineCache::Create(const OaVkDevice& InDevice, co
 	OaVec<OaU8> cacheData;
 	if (!InCacheDir.empty()) {
 		OaPath cachePath = OaPath(InCacheDir) / OA_PIPELINE_CACHE_FILE;
-		auto loaded = OaFileIo::ReadBinary(cachePath);
+		auto loaded = OaFilesystem::ReadBinary(cachePath);
 		if (loaded.IsOk()) {
 			cacheData = std::move(loaded.GetValue());
-			OA_LOG_INFO(OaLogComponent::Core, "Pipeline cache: loaded %zu bytes from %s",
-				cacheData.Size(), cachePath.string().c_str());
+			OA_LOG_INFO(OaLogComponent::Core, "Pipeline cache: loaded %zu bytes from %s",	cacheData.Size(), cachePath.string().c_str());
 		}
 	}
 
@@ -98,9 +96,9 @@ void OaPipelineCache::Save(const OaVkDevice& InDevice, const OaString& InCacheDi
 	(void)vkGetPipelineCacheData(dev, cache, &dataSize, data.Data());
 
 	OaPath cacheDir(InCacheDir);
-	(void)OaFileIo::CreateDirectories(cacheDir);
+	(void)OaFilesystem::CreateDirectories(cacheDir);
 	OaPath cachePath = cacheDir / OA_PIPELINE_CACHE_FILE;
-	(void)OaFileIo::WriteBinary(cachePath, OaSpan<const OaU8>(data.Data(), data.Size()));
+	(void)OaFilesystem::WriteBinary(cachePath, OaSpan<const OaU8>(data.Data(), data.Size()));
 	OA_LOG_INFO(OaLogComponent::Core, "Pipeline cache: saved %zu bytes to %s",
 		dataSize, cachePath.string().c_str());
 }
@@ -545,7 +543,7 @@ OaStatus OaPipelineRegistry::EnsurePipeline(
 			OaString(InName).c_str(), OA_PIPELINE_CACHE_FILE);
 		Cache_.Destroy(InDevice);
 		if (!CacheDir_.empty()) {
-			(void)OaFileIo::RemoveFile(OaPath(CacheDir_) / OA_PIPELINE_CACHE_FILE);
+			(void)OaFilesystem::RemoveFile(OaPath(CacheDir_) / OA_PIPELINE_CACHE_FILE);
 		}
 		result = OaComputePipeline::Create(
 			InDevice, InSpirv, InSpec, nullptr, BindlessPipelineLayout_);

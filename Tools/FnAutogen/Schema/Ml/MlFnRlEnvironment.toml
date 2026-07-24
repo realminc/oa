@@ -1,0 +1,147 @@
+namespace = "OaFnRlEnvironment"
+category = "RlEnvironment"
+file_category = "RlEnvironment"
+file_prefix = "FnRlEnvironment"
+cpp_subdir = "Rl"
+
+[[ops]]
+name = "CartPoleReset"
+kind = "session_command"
+body = "manual_context"
+generate_declaration = false
+kernel_forward = "RlCartPoleReset"
+notes = "Reset all CartPole lanes or only completed lanes with deterministic seeded state. Lane count is shape-derived; the private session command validates the heterogeneous state dtypes behind the frozen match_input sentinel."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 274
+category = "Ml"
+origin = "oa"
+source = "Rl/Environment/RlCartPoleReset"
+
+[ops.contract]
+value_validation = "session_command"
+input_kinds = ["matrix", "matrix", "matrix", "matrix"]
+output_kinds = ["matrix", "matrix", "matrix", "matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = [0, 1, 2, 3]
+output_alias_inputs = [0, 1, 2, 3]
+differentiation = "none"
+lowering = "dispatch"
+control_flow = "conditional"
+attributes = [
+    { name = "Seed", kind = "unsigned_integer" },
+    { name = "OnlyCompleted", kind = "boolean" },
+]
+
+[[ops]]
+name = "CartPoleStep"
+kind = "session_command"
+body = "manual_context"
+generate_declaration = false
+kernel_forward = "RlCartPoleStep"
+notes = "Advance one vectorized CartPole transition while preserving pre-action observations. Lane count is shape-derived. DynamicsIdentity is versioned and covers every behavior-changing step field, including the mass and pole-length values folded behind the inspectable attribute subset; the private command validates exact heterogeneous value dtypes."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 275
+category = "Ml"
+origin = "oa"
+source = "Rl/Environment/RlCartPoleStep"
+
+[ops.contract]
+value_validation = "session_command"
+input_kinds = ["matrix", "matrix", "matrix", "matrix"]
+output_kinds = ["matrix", "matrix", "matrix", "matrix", "matrix", "matrix", "matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = [1, 2, 3]
+output_alias_inputs = [-1, 1, -1, -1, -1, 2, 3]
+differentiation = "none"
+lowering = "dispatch"
+control_flow = "conditional"
+attributes = [
+    { name = "DynamicsVersion", kind = "unsigned_integer" },
+    { name = "DynamicsIdentity", kind = "unsigned_integer" },
+    { name = "MaxEpisodeSteps", kind = "unsigned_integer" },
+    { name = "Gravity", kind = "float" },
+    { name = "ForceMagnitude", kind = "float" },
+    { name = "TimeStep", kind = "float" },
+    { name = "PositionThreshold", kind = "float" },
+    { name = "AngleThresholdRadians", kind = "float" },
+]
+
+[[ops]]
+name = "LunarLander3dReset"
+kind = "session_command"
+body = "manual_context"
+generate_declaration = false
+kernel_forward = "RlLunarLander3dReset"
+notes = "Reset every Lunar Lander 3D lane or only completed lanes. The session owns immutable serialized configuration and terrain values, packed FP32/UInt32 state, deterministic per-lane episode counters, and the current 33-value observation. Exact heterogeneous shapes and dtypes are validated before this private command records."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 280
+category = "Ml"
+origin = "oa"
+source = "Rl/Environment/RlLunarLander3dReset"
+
+[ops.contract]
+value_validation = "session_command"
+input_kinds = ["matrix", "matrix", "matrix", "matrix", "matrix", "matrix", "matrix"]
+output_kinds = ["matrix", "matrix", "matrix", "matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = [3, 4, 5, 6]
+output_alias_inputs = [3, 4, 5, 6]
+differentiation = "none"
+lowering = "dispatch"
+control_flow = "conditional"
+attributes = [
+    { name = "EnvironmentVersion", kind = "unsigned_integer" },
+    { name = "StateLayoutVersion", kind = "unsigned_integer" },
+    { name = "Seed", kind = "unsigned_integer" },
+    { name = "OnlyCompleted", kind = "boolean" },
+]
+
+[[ops]]
+name = "LunarLander3dStep"
+kind = "session_command"
+body = "manual_context"
+generate_declaration = false
+kernel_forward = "RlLunarLander3dStep"
+notes = "Advance one vectorized FP32 Lunar Lander 3D transition while preserving the pre-action 33-value observation. A lane-local UInt8 external-stop mask truncates valid-action lanes without advancing their episode step; invalid Discrete(8) actions take precedence and terminate only their lane with the configured failure penalty. ConfigIdentity covers every behavior-changing scalar reference field; the private command validates exact heterogeneous shapes and dtypes."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 281
+category = "Ml"
+origin = "oa"
+source = "Rl/Environment/RlLunarLander3dStep"
+
+[ops.contract]
+value_validation = "session_command"
+input_kinds = ["matrix", "matrix", "matrix", "matrix", "matrix", "matrix", "matrix", "matrix"]
+output_kinds = ["matrix", "matrix", "matrix", "matrix", "matrix", "matrix", "matrix", "matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = [5, 6, 7]
+output_alias_inputs = [5, 6, -1, 7, -1, -1, -1, -1]
+differentiation = "none"
+lowering = "dispatch"
+control_flow = "conditional"
+attributes = [
+    { name = "EnvironmentVersion", kind = "unsigned_integer" },
+    { name = "PhysicsVersion", kind = "unsigned_integer" },
+    { name = "ObservationVersion", kind = "unsigned_integer" },
+    { name = "RewardVersion", kind = "unsigned_integer" },
+    { name = "StateLayoutVersion", kind = "unsigned_integer" },
+    { name = "ConfigIdentity", kind = "unsigned_integer" },
+    { name = "MaxEpisodeSteps", kind = "unsigned_integer" },
+    { name = "FailurePenalty", kind = "float" },
+]

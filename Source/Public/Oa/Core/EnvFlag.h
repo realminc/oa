@@ -27,6 +27,7 @@
 //                                           1=serial, N=explicit worker count.
 //
 //   Diagnostic logs (opt-in extra output, all cost-free when off)
+//     OA_VK_VALIDATION=1               Enable Vulkan validation for this run.
 //     OA_LOG_GEMM_ROUTER=1              Per-call runtime GEMM routing decision log.
 //     OA_LOG_PIPELINE_LOAD=1            Per-shader load timing + status.
 //     OA_LOG_BARRIERS=1                 Barrier-count summary per graph compile.

@@ -15,6 +15,8 @@
 #include <Oa/Vision/CameraCapture.h>
 #include <Oa/Vision/FnImage.h>
 #include <Oa/Vision/FnVideo.h>
-#include <Oa/Vision/JpegDecoder.h>
+#include <Oa/Vision/ImageCodec.h>
+#include <Oa/Vision/ImageDecoder.h>
+#include <Oa/Vision/ImageEncoder.h>
 #include <Oa/Vision/Detection.h>
 #include <Oa/Vision/FnDetection.h>

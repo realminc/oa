@@ -112,8 +112,8 @@ void OaVkLogCoopMatShapes(const OaVkCoopMatShapes& InShapes, const char* InInden
 
 // OA Vulkan Extensions & Device Initialization
 //
-// Canonical extension names, layer names, and minimal specs.
-// Internal structures for device creation (documented in oa/Docs/OaVkInit.md).
+// Canonical extension names, layer names, minimal specs, and internal device
+// creation structures.
 
 // Instance layer (enabled when OaVkDevice::Create(enableValidation=true))
 inline constexpr const char OaVkLayerKhronosValidation[] = "VK_LAYER_KHRONOS_validation";
@@ -197,12 +197,7 @@ inline constexpr uint32_t OaVkNumOptionalDeviceExtensionProbes = static_cast<uin
 // OA Vulkan Internal Structures
 //=============================================================================
 // Helper structures used during device creation (in Device.cpp).
-// Not part of the public API; documented in oa/Docs/OaVkInit.md
-//
-// See phases in OaVkInit.md:
-//   - OaVkPhysExtProbe: Phase 3 (extension probing)
-//   - OaVkQueuePlan: Phase 4 (queue planning)
-//   - OaVkDeviceFeatureBundle: Phase 5 (feature detection)
+// Not part of the public API.
 
 struct OaVkPhysExtProbe {
 	bool KhrCooperativeMatrix = false;

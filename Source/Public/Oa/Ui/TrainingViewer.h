@@ -54,9 +54,8 @@ public:
 		const OaTextAtlas& InTextAtlas,
 		OaU32 InWidth,
 		OaU32 InHeight) override;
-	void MarkConsumed(
-		const OaVkTimelineSemaphore& InSemaphore,
-		OaU64 InValue) override;
+	[[nodiscard]] OaStatus MarkConsumed(
+		const OaEvent& InCompletion) override;
 	[[nodiscard]] OaStatus Close() override;
 
 	[[nodiscard]] OaStatus PublishPreview(OaTrainingPreviewFrame InFrame);

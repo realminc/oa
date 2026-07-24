@@ -8,7 +8,14 @@ SCHEMA_DIR = Path(__file__).resolve().parents[1] / "Schema"
 DEFAULT_OUTPUT = Path(__file__).resolve().parents[1] / "Output"
 LIVE_SOURCE_ROOT = REPO_ROOT / "Source"
 
-VALID_KINDS = {"binary", "unary", "unary_scalar", "nullary_scalar", "reduce_full"}
+VALID_KINDS = {
+	"binary",
+	"unary",
+	"unary_scalar",
+	"nullary_scalar",
+	"reduce_full",
+	"session_command",
+}
 VALID_BODIES = {"auto", "manual_context", "bias_add_broadcast", "cpp_expr", "cpu_util"}
 VALID_FORMULAS_PREFIX = (
 	"manual", "manual:",
@@ -40,7 +47,7 @@ AUTO_BODY_KINDS = {"binary", "unary", "unary_scalar", "nullary_scalar", "reduce_
 
 # Schema-v2 semantic operation contracts. These describe the operation before
 # kernel selection and are intentionally independent of Vulkan/runtime details.
-VALID_CONTRACT_VALUE_KINDS = {"matrix", "image", "audio_buffer", "video_frame"}
+VALID_CONTRACT_VALUE_KINDS = {"matrix", "image", "audio", "video_frame"}
 VALID_CONTRACT_SHAPE_RULES = {"match_input", "broadcast", "matmul_nt", "explicit"}
 VALID_CONTRACT_DTYPE_RULES = {"match_input", "promote_float"}
 VALID_CONTRACT_EFFECTS = {"read_inputs", "write_outputs"}
@@ -55,6 +62,13 @@ VALID_CONTRACT_ATTRIBUTE_KINDS = {
 	"string",
 	"shape",
 	"enum",
+}
+
+# Schema-owned fixed-kernel metadata. FnAutogen only emits identities for
+# built-in OA kernels mechanically tied to an operation schema.
+VALID_KERNEL_PREFIXES = {"Ml", "Crypto", "Vision", "Ui", "Audio", "Render"}
+VALID_KERNEL_CATEGORIES = {
+	"Ml", "Math", "Crypto", "Vision", "Ui", "Audio", "Render"
 }
 
 # Domain-specific namespace mapping (default — schemas may override via `namespace`)

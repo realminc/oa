@@ -10,7 +10,11 @@
 #include <Oa/Core/Input.h>
 #include <Oa/Core/Validation.h>
 
+#include "ViewerPlatform.h"
+
 #include <chrono>
+#include <cstdlib>
+#include <cstring>
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
@@ -137,6 +141,20 @@ void OaViewer::CaptureRelativeMouse(bool InEnabled) noexcept {
 }
 
 OaStatus OaViewer::Run() {
+	return RunApplication(nullptr);
+}
+
+OaStatus OaViewer::Run(OaEngine& InEngine) {
+	return RunApplication(&InEngine);
+}
+
+OaStatus OaViewer::RunApplication(OaEngine* InBorrowedEngine) {
+	if (Running_) {
+		return OaStatus::Error(
+			OaStatusCode::FailedPrecondition,
+			"OaViewer::Run cannot enter an already-running viewer");
+	}
+
 	// Deterministic, graceful smoke-test boundary for windowed tutorials. Zero
 	// or an invalid value preserves the normal interactive run-until-closed loop.
 	OaU64 maxFrames = 0;
@@ -149,100 +167,68 @@ OaStatus OaViewer::Run() {
 	}
 	OaU64 renderedFrames = 0;
 
-	// SDL uses this identity for Wayland app IDs and desktop integration.
-	// Leaving it unset makes compositor extensions treat the window as an
-	// anonymous client, which is particularly fragile on GNOME/Wayland.
-	if (not SDL_SetAppMetadata("OA", nullptr, "com.empyrealm.oa")) {
-		OA_LOG_WARN(OaLogComponent::App, "SDL_SetAppMetadata failed: %s", SDL_GetError());
-	}
-
-	// Diagnostic/workaround override for compositor-specific WSI failures.
-	// SDL must receive the video backend hint before SDL_Init. An explicit
-	// OA_UI_BACKEND always wins over the session-type heuristic below.
-	const char* backendOverride = std::getenv("OA_UI_BACKEND");
-	if (backendOverride and *backendOverride) {
-		if (not SDL_SetHint(SDL_HINT_VIDEO_DRIVER, backendOverride)) {
-			OA_LOG_WARN(OaLogComponent::App,
-				"SDL video backend override '%s' was rejected", backendOverride);
-		}
-	} else if (const char* session = std::getenv("XDG_SESSION_TYPE");
-	           session and std::strcmp(session, "wayland") == 0) {
-		// Pure-Wayland session: pin the Wayland backend. This only works when SDL
-		// was built with Wayland + Vulkan support (vcpkg sdl3 "vulkan" feature);
-		// otherwise SDL_Vulkan_LoadLibrary below fails loudly instead of crashing.
-		SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "wayland");
-	}
-
-	// Set a default locale if none is set (prevents xkbcommon compose file errors)
-	if (not std::getenv("LC_ALL") and not std::getenv("LANG")) {
-		#if !defined(_WIN32)
-		::setenv("LC_ALL", "C.UTF-8", 0);  // Don't override if already set
-		#endif
-	}
-
-	if (not SDL_Init(SDL_INIT_VIDEO)) {
-		OA_LOG_ERROR(OaLogComponent::App, "SDL_Init failed: %s", SDL_GetError());
-		return OaStatus::Error("SDL_Init failed");
-	}
-	OaInput::Initialize();
-
-	// SDL3 requires the Vulkan loader to be live before SDL_Vulkan_*; otherwise
-	// the backend's instance-extension hook is null and the query jumps to 0x0.
-	// Previously this worked only because the auto-selected backend happened to
-	// load the loader implicitly; forcing the Wayland backend exposed the gap.
-	if (not SDL_Vulkan_LoadLibrary(nullptr)) {
-		OA_LOG_ERROR(OaLogComponent::App, "SDL_Vulkan_LoadLibrary failed: %s", SDL_GetError());
-		OaInput::Shutdown();
-		SDL_Quit();
-		return OaStatus::Error("SDL_Vulkan_LoadLibrary failed");
-	}
-
-	// Collect WSI instance extensions (VK_KHR_surface + platform ext).
 	OaEngineConfig engineCfg;
-	engineCfg.PresentationMode = OaPresentationMode::Swapchain;
+	OaViewerPlatformLease platform;
+	const OaStatus platformStatus = platform.Acquire(
+		InBorrowedEngine == nullptr ? &engineCfg : nullptr);
+	if (not platformStatus.IsOk()) return platformStatus;
+
 	// Keep windowed applications inside the same validation contract as tests
 	// and headless workloads. Tools/Diagnostics/run_validation.py sets this
 	// process-local flag and verifies that OA actually enabled the requested
 	// validation profile.
-	if (OaEnvFlag::IsSet("OA_VK_VALIDATION")) {
+	if (InBorrowedEngine == nullptr
+		and OaEnvFlag::IsSet("OA_VK_VALIDATION")) {
 		engineCfg.EnableValidation = true;
-	}
-	OaU32 extCount = 0;
-	const char* const* extNames = SDL_Vulkan_GetInstanceExtensions(&extCount);
-	for (OaU32 i = 0; i < extCount; ++i) {
-		engineCfg.InstanceExtraExtensions.PushBack(extNames[i]);
 	}
 
 	// Respect OA_DEVICE env var (same semantics as gtest harness).
-	if (const char* dev = std::getenv("OA_DEVICE"); dev and *dev) {
-		if (std::strcmp(dev, "integrated") == 0 or std::strcmp(dev, "igpu") == 0) {
-			engineCfg.DevicePref = OaDevicePreference::Integrated;
-		} else if (std::strcmp(dev, "discrete") == 0 or std::strcmp(dev, "dgpu") == 0) {
-			engineCfg.DevicePref = OaDevicePreference::Discrete;
-		} else if (std::strcmp(dev, "cpu") == 0) {
-			engineCfg.DevicePref = OaDevicePreference::Cpu;
-		} else {
-			char* end = nullptr;
-			unsigned long idx = std::strtoul(dev, &end, 10);
-			if (end != dev and *end == '\0' and idx <= 0xFFFFu) {
-				engineCfg.DevicePref = OaDevicePreference::ByIndex;
-				engineCfg.DeviceIndex = static_cast<OaU32>(idx);
+	if (InBorrowedEngine == nullptr) {
+		if (const char* dev = std::getenv("OA_DEVICE"); dev and *dev) {
+			if (std::strcmp(dev, "integrated") == 0
+				or std::strcmp(dev, "igpu") == 0) {
+				engineCfg.DevicePref = OaDevicePreference::Integrated;
+			} else if (std::strcmp(dev, "discrete") == 0
+				or std::strcmp(dev, "dgpu") == 0) {
+				engineCfg.DevicePref = OaDevicePreference::Discrete;
+			} else if (std::strcmp(dev, "cpu") == 0) {
+				engineCfg.DevicePref = OaDevicePreference::Cpu;
+			} else {
+				char* end = nullptr;
+				unsigned long idx = std::strtoul(dev, &end, 10);
+				if (end != dev and *end == '\0' and idx <= 0xFFFFu) {
+					engineCfg.DevicePref = OaDevicePreference::ByIndex;
+					engineCfg.DeviceIndex = static_cast<OaU32>(idx);
+				}
 			}
 		}
 	}
 
 	// Phase A — one engine with a graphics-capable queue, no surface yet.
-	auto rtResult = OaEngine::Create(engineCfg);
-	if (not rtResult) {
-		OA_LOG_ERROR(OaLogComponent::App, "Engine create failed: %s",
-			rtResult.GetStatus().GetMessage().c_str());
-		OaInput::Shutdown();
-		SDL_Quit();
-		return OaStatus::Error("Engine create failed");
+	OaUniquePtr<OaEngine> ownedEngine;
+	OaEngine* engine = InBorrowedEngine;
+	if (engine == nullptr) {
+		auto engineResult = OaEngine::Create(engineCfg);
+		if (not engineResult.IsOk()) {
+			OA_LOG_ERROR(OaLogComponent::App, "Engine create failed: %s",
+				engineResult.GetStatus().GetMessage().c_str());
+			return engineResult.GetStatus();
+		}
+		ownedEngine = OaStdMove(*engineResult);
+		engine = ownedEngine.get();
 	}
-	// rtResult (a function-local) owns the pinned engine for this scope; bind a
-	// reference so all downstream `rt.` usage stays unchanged.
-	OaEngine& rt = *rtResult.GetValue();
+	if (not engine->IsReady() or not engine->HasGraphics()) {
+		if (ownedEngine != nullptr) (void)engine->Close();
+		return OaStatus::Error(
+			OaStatusCode::FailedPrecondition,
+			"OaViewer::Run requires a ready presentation-capable OaEngine");
+	}
+	OaEngine& rt = *engine;
+	const auto closeOwnedEngine = [&]() -> OaStatus {
+		return ownedEngine != nullptr ? rt.Close() : OaStatus::Ok();
+	};
+
+	OaInput::Initialize();
 	OaPresenter presenter(rt);
 
 	SDL_WindowFlags flags = SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
@@ -253,9 +239,8 @@ OaStatus OaViewer::Run() {
 		flags);
 	if (win == nullptr) {
 		OA_LOG_ERROR(OaLogComponent::App, "SDL_CreateWindow failed: %s", SDL_GetError());
-		rt.Destroy();
 		OaInput::Shutdown();
-		SDL_Quit();
+		(void)closeOwnedEngine();
 		return OaStatus::Error("SDL_CreateWindow failed");
 	}
 
@@ -264,9 +249,8 @@ OaStatus OaViewer::Run() {
 	if (not SDL_Vulkan_CreateSurface(win, static_cast<VkInstance>(rt.Device.Instance), nullptr, &surface)) {
 		OA_LOG_ERROR(OaLogComponent::App, "SDL_Vulkan_CreateSurface failed: %s", SDL_GetError());
 		SDL_DestroyWindow(win);
-		rt.Destroy();
 		OaInput::Shutdown();
-		SDL_Quit();
+		(void)closeOwnedEngine();
 		return OaStatus::Error("Vulkan surface creation failed");
 	}
 
@@ -281,7 +265,7 @@ OaStatus OaViewer::Run() {
 	if (auto s = OpenSource(rt); not s.IsOk()) {
 		OA_LOG_ERROR(OaLogComponent::App, "Device-ready initialization failed: %s",
 			s.GetMessage().c_str());
-		const OaStatus closeStatus = CloseSource();
+		const OaStatus closeStatus = CloseSource(rt);
 		if (not closeStatus.IsOk()) {
 			OA_LOG_ERROR(OaLogComponent::App,
 				"Source cleanup after open failure failed: %s",
@@ -290,29 +274,27 @@ OaStatus OaViewer::Run() {
 		vkDestroySurfaceKHR(static_cast<VkInstance>(rt.Device.Instance), surface, nullptr);
 		SDL_DestroyWindow(win);
 		Window_ = nullptr;
-		(void)rt.Close();
 		OaInput::Shutdown();
-		SDL_Quit();
+		(void)closeOwnedEngine();
 		return s;
 	}
 
 	// Phase C — the presenter owns WSI; the viewer owns its UI render target.
 	if (auto s = InitPresentation(presenter, static_cast<void*>(surface)); not s.IsOk()) {
 		OA_LOG_ERROR(OaLogComponent::App, "OaViewer initialization failed: %s", s.GetMessage().c_str());
-		(void)CloseSource();
+		(void)CloseSource(rt);
 		vkDestroySurfaceKHR(static_cast<VkInstance>(rt.Device.Instance), surface, nullptr);
 		SDL_DestroyWindow(win);
 		Window_ = nullptr;
-		(void)rt.Close();
 		OaInput::Shutdown();
-		SDL_Quit();
+		(void)closeOwnedEngine();
 		return s;
 	}
 
 	Running_ = true;
 	if (auto s = InitView(); not s.IsOk()) {
 		Running_ = false;
-		(void)CloseSource();
+		(void)CloseSource(rt);
 		const OaStatus presentationStatus = DestroyPresentation();
 		if (not presentationStatus.IsOk()) {
 			OA_LOG_ERROR(OaLogComponent::App,
@@ -322,14 +304,14 @@ OaStatus OaViewer::Run() {
 		vkDestroySurfaceKHR(static_cast<VkInstance>(rt.Device.Instance), surface, nullptr);
 		SDL_DestroyWindow(win);
 		Window_ = nullptr;
-		(void)rt.Close();
 		OaInput::Shutdown();
-		SDL_Quit();
+		(void)closeOwnedEngine();
 		return s;
 	}
 	OaVec<OaUiEvent> events;
 	using Clock = std::chrono::steady_clock;
 	auto tPrev = Clock::now();
+	OaStatus runStatus = OaStatus::Ok();
 
 	while (Running_) {
 		events.Clear();
@@ -345,6 +327,8 @@ OaStatus OaViewer::Run() {
 					static_cast<OaU32>(sdlEvent.window.data2)); not s.IsOk()) {
 					OA_LOG_ERROR(OaLogComponent::App,
 						"Presenter resize failed: %s", s.GetMessage().c_str());
+					runStatus = s;
+					Running_ = false;
 				}
 			}
 			OaUiEvent e = ConvertSdlEvent(sdlEvent, win);
@@ -352,6 +336,7 @@ OaStatus OaViewer::Run() {
 			events.PushBack(e);
 		}
 		OaInput::Update();
+		if (runStatus.IsError()) break;
 
 		auto tNow = Clock::now();
 		OaF32 deltaMs = static_cast<OaF32>(
@@ -363,22 +348,40 @@ OaStatus OaViewer::Run() {
 		RouteUiEvents(OaSpan<const OaUiEvent>(events.Data(), events.Size()));
 		Render(Ui_);
 
-		if (auto s = presenter.BeginGraphicsBatch(); s.IsOk()) {
+		OaStatus frameStatus = OaStatus::Ok();
+		OaVkTimelineWait renderDependency;
+		if (RenderDependency_.IsValid()) {
+			if (not rt.OwnsEvent(RenderDependency_)) {
+				frameStatus = OaStatus::InvalidArgument(
+					"OaViewer source readiness event belongs to another engine");
+			} else {
+				renderDependency = RenderDependency_.TimelineWait();
+			}
+		}
+		if (frameStatus.IsOk()) frameStatus = presenter.BeginGraphicsBatch();
+		if (frameStatus.IsOk()) {
 			OaVkStream* stream = presenter.ActiveGraphicsBatchStream();
 			RecordRender(static_cast<VkCommandBuffer>(stream->CommandBuffer));
-			if (auto fs = presenter.FlushGraphicsBatch(
-				RenderDependencySemaphore_,
-				RenderDependencyValue_); not fs.IsOk()) {
-				OA_LOG_ERROR(OaLogComponent::App,
-					"FlushGraphicsBatch failed: %s", fs.GetMessage().c_str());
+			auto flush = presenter.FlushGraphicsBatch(
+				renderDependency.Semaphore,
+				renderDependency.Value);
+			if (not flush.IsOk()) {
+				frameStatus = flush.GetStatus();
 			} else {
-				SetRenderCompletion(stream->TimelineSem, stream->TimelineValue);
-				MarkRenderSubmitted(stream->TimelineSem, stream->TimelineValue);
+				const OaEvent completion = *flush;
+				SetRenderCompletion(completion);
+				frameStatus = MarkRenderSubmitted(completion);
 			}
 		}
 
 		// OUT_OF_DATE handled internally; resize already applied above.
-		(void)Present();
+		if (frameStatus.IsOk()) frameStatus = Present();
+		if (frameStatus.IsError()) {
+			OA_LOG_ERROR(OaLogComponent::App,
+				"OaViewer frame failed: %s", frameStatus.ToString().c_str());
+			runStatus = frameStatus;
+			Running_ = false;
+		}
 
 		EndFrame();
 		OaInput::ClearForNextFrame();
@@ -393,6 +396,7 @@ OaStatus OaViewer::Run() {
 		OA_LOG_ERROR(OaLogComponent::App,
 			"SyncGraphicsBatch failed during UI shutdown: %s",
 			syncStatus.GetMessage().c_str());
+		if (runStatus.IsOk()) runStatus = syncStatus;
 	}
 	// Presentation is submitted after the compose batch and is not covered by
 	// the graphics-batch timeline. Drain WSI before application-owned images,
@@ -402,15 +406,16 @@ OaStatus OaViewer::Run() {
 		OA_LOG_ERROR(OaLogComponent::App,
 			"presentation drain failed during UI shutdown: %s",
 			presentStatus.ToString().c_str());
+		if (runStatus.IsOk()) runStatus = presentStatus;
 	}
-	const OaStatus closeStatus = CloseSource();
+	const OaStatus closeStatus = CloseSource(rt);
 	const OaStatus presentationStatus = DestroyPresentation();
 	Window_ = nullptr;
 	vkDestroySurfaceKHR(static_cast<VkInstance>(rt.Device.Instance), surface, nullptr);
 	SDL_DestroyWindow(win);
-	const OaStatus engineStatus = rt.Close();
+	const OaStatus engineStatus = closeOwnedEngine();
 	OaInput::Shutdown();
-	SDL_Quit();
+	if (not runStatus.IsOk()) return runStatus;
 	if (not closeStatus.IsOk()) return closeStatus;
 	if (not presentationStatus.IsOk()) return presentationStatus;
 	return engineStatus;

@@ -20,7 +20,7 @@ struct OaRlEvaluationMetrics {
 
 // Deterministic categorical evaluation over any native OA vector environment.
 // Evaluation is an explicit telemetry boundary: it records the entire horizon
-// first, then performs one execution/synchronization and two compact readbacks.
+// first, then performs one execution/synchronization and three compact readbacks.
 namespace OaFnRl {
 
 [[nodiscard]] OaResult<OaRlEvaluationMetrics> EvaluateCategorical(

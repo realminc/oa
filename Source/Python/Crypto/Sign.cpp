@@ -14,8 +14,8 @@ void BindCryptoSign(nb::module_& m) {
 				reinterpret_cast<const OaByte*>(data.data()), data.size()));
 			throw_if_error(result.GetStatus());
 			new (self) OaPublicKey(std::move(result).GetValue());
-		}, nb::arg("data"))
-        .def("bytes", [](const OaPublicKey& self) {
+		}, nb::arg("Data"))
+        .def("Bytes", [](const OaPublicKey& self) {
             return bytes_of(self.Bytes.data(), OA_SIGN_PUBKEY_SIZE);
         }, "The 1952 public-key bytes.")
         .def("ToShortHex", &OaPublicKey::ToShortHex)
@@ -31,8 +31,8 @@ void BindCryptoSign(nb::module_& m) {
 				reinterpret_cast<const OaByte*>(data.data()), data.size()));
 			throw_if_error(result.GetStatus());
 			new (self) OaSignature(std::move(result).GetValue());
-        }, nb::arg("data"))
-        .def("bytes", [](const OaSignature& self) {
+        }, nb::arg("Data"))
+        .def("Bytes", [](const OaSignature& self) {
             return bytes_of(self.Bytes.data(), OA_SIGN_SIG_SIZE);
         }, "The 3309 signature bytes.")
         .def("ToShortHex", &OaSignature::ToShortHex);
@@ -55,12 +55,12 @@ void BindCryptoSign(nb::module_& m) {
         auto r = OaSign(reinterpret_cast<const OaByte*>(data.data()), data.size(), secret);
         throw_if_error(r.GetStatus());
         return new OaSignature(std::move(r).GetValue());
-    }, nb::arg("data"), nb::arg("secret"), nb::rv_policy::take_ownership,
+    }, nb::arg("Data"), nb::arg("Secret"), nb::rv_policy::take_ownership,
        "Sign a message with an ML-DSA-65 secret key.");
 
     m.def("Verify", [](nb::bytes data, const OaSignature& sig, const OaPublicKey& pubkey) {
         return static_cast<bool>(OaVerify(
             reinterpret_cast<const OaByte*>(data.data()), data.size(), sig, pubkey));
-    }, nb::arg("data"), nb::arg("signature"), nb::arg("pubkey"),
+    }, nb::arg("Data"), nb::arg("Signature"), nb::arg("Pubkey"),
        "Verify an ML-DSA-65 signature. Returns False for any tampered input.");
 }

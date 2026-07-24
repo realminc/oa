@@ -271,7 +271,7 @@ jobs:
         run: |
           cmake --build Build/${{ matrix.build_dir }} --parallel "$(nproc)" --target \
             TestTypes TestMemory TestContainers TestThreading TestCoreMisc \
-            TestValidation TestPrecisionDtype TestTransferWeights TestOamIntegrity TestTokenizer \
+            TestValidation TestCamera TestPrecisionDtype TestTransferWeights TestOamIntegrity TestTokenizer \
             TestGptOssConfig TestOaStd
 
       - name: Run host sanitizer suite
@@ -473,7 +473,7 @@ jobs:
             cd "$RUNNER_TEMP"
             OA_EXPECTED_VERSION="$(tr -d '\r\n' < "$GITHUB_WORKSPACE/VERSION")" \
               "$GITHUB_WORKSPACE/.venv-wheel-smoke/bin/python" -c \
-              'import os, oa; assert oa.__version__ == os.environ["OA_EXPECTED_VERSION"]; assert all(hasattr(oa, name) for name in ("core", "runtime", "ml", "vision", "audio", "crypto"))'
+              'import os, pathlib, oa; assert oa.__version__ == os.environ["OA_EXPECTED_VERSION"]; assert all(hasattr(oa, name) for name in ("OaMatrix", "OaFnMatrix", "OaImageDecoder", "OaAudioDecoder", "OaViewer")); assert all(hasattr(oa, name) for name in ("core", "runtime", "ml", "vision", "audio", "crypto")); assert pathlib.Path(oa.__file__).with_suffix(".pyi").is_file()'
           )
       - name: Save vcpkg cache
         if: always() && steps.vcpkg-cache.outputs.cache-hit != 'true'

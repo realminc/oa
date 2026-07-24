@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
-#include <Oa/Core/FileIo.h>
+#include <Oa/Core/Filesystem.h>
+#include <Oa/Core/Paths.h>
 #include <Oa/Core/MatrixList.h>
 #include <Oa/Core/MatrixRef.h>
 #include <Oa/Core/MatrixStorage.h>
@@ -12,11 +13,11 @@
 static std::atomic<OaU64> gOaMatrixListTestDirSeq{0};
 
 static OaPath OaMatrixListTestMakeWorkDir() {
-	OaPath tmp = OaFileIo::GetTempDirectory();
+	OaPath tmp = OaPaths::Temp();
 	const auto tick = std::chrono::steady_clock::now().time_since_epoch().count();
 	OaString name = OaString("oa_matrix_ref_list_") + std::to_string(static_cast<long long>(++gOaMatrixListTestDirSeq)) + "_"
 		+ std::to_string(static_cast<long long>(tick));
-	return OaFileIo::Join(tmp, OaPath(name));
+	return tmp / OaPath(name);
 }
 
 class MatrixRefListFs : public ::testing::Test {
@@ -25,11 +26,11 @@ protected:
 
 	void SetUp() override {
 		WorkDir_ = OaMatrixListTestMakeWorkDir();
-		ASSERT_TRUE(OaFileIo::CreateDirectories(WorkDir_).IsOk());
+		ASSERT_TRUE(OaFilesystem::CreateDirectories(WorkDir_).IsOk());
 	}
 
 	void TearDown() override {
-		(void)OaFileIo::RemoveDirectory(WorkDir_, true);
+		(void)OaFilesystem::RemoveDirectory(WorkDir_, true);
 	}
 };
 
@@ -118,7 +119,7 @@ TEST_F(MatrixRefListFs, SaveLoadRoundTrip) {
 	OaMatrixList list;
 	list.Add("m", OaMatrixStorage::Full(OaMatrixShape{2, 3}, OaScalarType::Float32, 7.0f));
 
-	OaPath path = OaFileIo::Join(WorkDir_, OaPath("matrices.oaml"));
+	OaPath path = WorkDir_ / "matrices.oaml";
 	ASSERT_TRUE(list.SaveToFile(OaStringView(path.CStr())).IsOk());
 
 	OaMatrixList loaded;

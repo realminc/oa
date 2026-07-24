@@ -195,6 +195,9 @@ struct BlitCmd {
 	VkImage SrcImage = VK_NULL_HANDLE;
 	VkImageView SrcImageView = VK_NULL_HANDLE;
 	VkImageLayout SrcImageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	VkPipelineStageFlags2 SrcStageMask =
+		VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+	VkAccessFlags2 SrcAccessMask = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT;
 	union {
 		BlitRgbaPc      Rgba;
 		BlitPlanarPc    Planar;
@@ -563,8 +566,8 @@ void OaUi::RecordRender(VkCommandBuffer InCmd, OaU32 InDstBindlessIdx) {
 		if (bc.Kind != BlitKind::ImageRgba || bc.SrcImage == VK_NULL_HANDLE) continue;
 		VkImageMemoryBarrier2 barrier{};
 		barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
-		barrier.srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
-		barrier.srcAccessMask = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT;
+		barrier.srcStageMask = bc.SrcStageMask;
+		barrier.srcAccessMask = bc.SrcAccessMask;
 		barrier.dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
 		barrier.dstAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
 		barrier.oldLayout = bc.SrcImageLayout;
@@ -935,7 +938,9 @@ void OaUi::ImageVkRgba(
 	void* InImageView,
 	OaI32 InW,
 	OaI32 InH,
-	VkImageLayout InLayout) {
+	VkImageLayout InLayout,
+	VkPipelineStageFlags2 InSourceStageMask,
+	VkAccessFlags2 InSourceAccessMask) {
 	if (!Impl_ || !InImageView) return;
 	OaI32 dstX = 0, dstY = 0, dstW = InW, dstH = InH;
 	if (!Impl_->PanelStack.Empty()) {
@@ -948,6 +953,8 @@ void OaUi::ImageVkRgba(
 	bc.SrcImage = static_cast<VkImage>(InImage);
 	bc.SrcImageView = static_cast<VkImageView>(InImageView);
 	bc.SrcImageLayout = InLayout;
+	bc.SrcStageMask = InSourceStageMask;
+	bc.SrcAccessMask = InSourceAccessMask;
 	bc.ImageRgba.src_w = static_cast<OaU32>(InW);
 	bc.ImageRgba.src_h = static_cast<OaU32>(InH);
 	bc.ImageRgba.dst_idx = 0;

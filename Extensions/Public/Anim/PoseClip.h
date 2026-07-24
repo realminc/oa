@@ -6,7 +6,7 @@
 //   magic "3DAN", version, flags, n_frames, d_pose, fps, skeleton_id, payload.
 // Payload is row-major f32[n_frames * d_pose] in canonical channel order.
 
-#include <Oa/Core/FileIo.h>
+#include <Oa/Core/Filesystem.h>
 #include <Oa/Core/Types.h>
 
 struct OaPoseClip {

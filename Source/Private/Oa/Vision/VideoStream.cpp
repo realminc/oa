@@ -3,6 +3,7 @@
 
 #include <Oa/Vision/VideoStream.h>
 #include "Video/Codec/NalParser.h"
+#include "Video/Codec/VcpAv1.h"
 #include <algorithm>
 #include <cerrno>
 #include <cstdio>
@@ -74,6 +75,116 @@ inline OaU16 ReadU16BE(const OaU8* InPtr)
 {
 	return (static_cast<OaU16>(InPtr[0]) << 8) |
 	       (static_cast<OaU16>(InPtr[1]));
+}
+
+OaVideoCodecProfile H264ProfileFromIdc(OaU32 InProfileIdc)
+{
+	switch (InProfileIdc) {
+	case 66U: return OaVideoCodecProfile::H264Baseline;
+	case 77U: return OaVideoCodecProfile::H264Main;
+	case 100U: return OaVideoCodecProfile::H264High;
+	case 244U: return OaVideoCodecProfile::H264High444Predictive;
+	default: return OaVideoCodecProfile::Unspecified;
+	}
+}
+
+OaVideoCodecProfile H265ProfileFromIdc(OaU32 InProfileIdc)
+{
+	switch (InProfileIdc) {
+	case 1U: return OaVideoCodecProfile::H265Main;
+	case 2U: return OaVideoCodecProfile::H265Main10;
+	case 3U: return OaVideoCodecProfile::H265MainStillPicture;
+	case 4U: return OaVideoCodecProfile::H265FormatRangeExtensions;
+	case 9U: return OaVideoCodecProfile::H265ScreenContentCodingExtensions;
+	default: return OaVideoCodecProfile::Unspecified;
+	}
+}
+
+OaVideoChromaSubsampling ChromaFromIdc(OaU32 InChromaIdc)
+{
+	switch (InChromaIdc) {
+	case 0U: return OaVideoChromaSubsampling::Monochrome;
+	case 1U: return OaVideoChromaSubsampling::Yuv420;
+	case 2U: return OaVideoChromaSubsampling::Yuv422;
+	case 3U: return OaVideoChromaSubsampling::Yuv444;
+	default: return OaVideoChromaSubsampling::Yuv420;
+	}
+}
+
+OaVideoBitDepth BitDepthFromValue(OaU32 InBitDepth)
+{
+	switch (InBitDepth) {
+	case 10U: return OaVideoBitDepth::Bit10;
+	case 12U: return OaVideoBitDepth::Bit12;
+	default: return OaVideoBitDepth::Bit8;
+	}
+}
+
+bool H264StdLevel(OaU32 InLevelIdc, OaU32& OutLevel)
+{
+	switch (InLevelIdc) {
+	case 10U: OutLevel = STD_VIDEO_H264_LEVEL_IDC_1_0; return true;
+	case 11U: OutLevel = STD_VIDEO_H264_LEVEL_IDC_1_1; return true;
+	case 12U: OutLevel = STD_VIDEO_H264_LEVEL_IDC_1_2; return true;
+	case 13U: OutLevel = STD_VIDEO_H264_LEVEL_IDC_1_3; return true;
+	case 20U: OutLevel = STD_VIDEO_H264_LEVEL_IDC_2_0; return true;
+	case 21U: OutLevel = STD_VIDEO_H264_LEVEL_IDC_2_1; return true;
+	case 22U: OutLevel = STD_VIDEO_H264_LEVEL_IDC_2_2; return true;
+	case 30U: OutLevel = STD_VIDEO_H264_LEVEL_IDC_3_0; return true;
+	case 31U: OutLevel = STD_VIDEO_H264_LEVEL_IDC_3_1; return true;
+	case 32U: OutLevel = STD_VIDEO_H264_LEVEL_IDC_3_2; return true;
+	case 40U: OutLevel = STD_VIDEO_H264_LEVEL_IDC_4_0; return true;
+	case 41U: OutLevel = STD_VIDEO_H264_LEVEL_IDC_4_1; return true;
+	case 42U: OutLevel = STD_VIDEO_H264_LEVEL_IDC_4_2; return true;
+	case 50U: OutLevel = STD_VIDEO_H264_LEVEL_IDC_5_0; return true;
+	case 51U: OutLevel = STD_VIDEO_H264_LEVEL_IDC_5_1; return true;
+	case 52U: OutLevel = STD_VIDEO_H264_LEVEL_IDC_5_2; return true;
+	case 60U: OutLevel = STD_VIDEO_H264_LEVEL_IDC_6_0; return true;
+	case 61U: OutLevel = STD_VIDEO_H264_LEVEL_IDC_6_1; return true;
+	case 62U: OutLevel = STD_VIDEO_H264_LEVEL_IDC_6_2; return true;
+	default: return false;
+	}
+}
+
+bool H265StdLevel(OaU32 InGeneralLevelIdc, OaU32& OutLevel)
+{
+	switch (InGeneralLevelIdc) {
+	case 30U: OutLevel = STD_VIDEO_H265_LEVEL_IDC_1_0; return true;
+	case 60U: OutLevel = STD_VIDEO_H265_LEVEL_IDC_2_0; return true;
+	case 63U: OutLevel = STD_VIDEO_H265_LEVEL_IDC_2_1; return true;
+	case 90U: OutLevel = STD_VIDEO_H265_LEVEL_IDC_3_0; return true;
+	case 93U: OutLevel = STD_VIDEO_H265_LEVEL_IDC_3_1; return true;
+	case 120U: OutLevel = STD_VIDEO_H265_LEVEL_IDC_4_0; return true;
+	case 123U: OutLevel = STD_VIDEO_H265_LEVEL_IDC_4_1; return true;
+	case 150U: OutLevel = STD_VIDEO_H265_LEVEL_IDC_5_0; return true;
+	case 153U: OutLevel = STD_VIDEO_H265_LEVEL_IDC_5_1; return true;
+	case 156U: OutLevel = STD_VIDEO_H265_LEVEL_IDC_5_2; return true;
+	case 180U: OutLevel = STD_VIDEO_H265_LEVEL_IDC_6_0; return true;
+	case 183U: OutLevel = STD_VIDEO_H265_LEVEL_IDC_6_1; return true;
+	case 186U: OutLevel = STD_VIDEO_H265_LEVEL_IDC_6_2; return true;
+	default: return false;
+	}
+}
+
+bool Vp9StdLevel(OaU32 InLevel, OaU32& OutLevel)
+{
+	switch (InLevel) {
+	case 10U: OutLevel = STD_VIDEO_VP9_LEVEL_1_0; return true;
+	case 11U: OutLevel = STD_VIDEO_VP9_LEVEL_1_1; return true;
+	case 20U: OutLevel = STD_VIDEO_VP9_LEVEL_2_0; return true;
+	case 21U: OutLevel = STD_VIDEO_VP9_LEVEL_2_1; return true;
+	case 30U: OutLevel = STD_VIDEO_VP9_LEVEL_3_0; return true;
+	case 31U: OutLevel = STD_VIDEO_VP9_LEVEL_3_1; return true;
+	case 40U: OutLevel = STD_VIDEO_VP9_LEVEL_4_0; return true;
+	case 41U: OutLevel = STD_VIDEO_VP9_LEVEL_4_1; return true;
+	case 50U: OutLevel = STD_VIDEO_VP9_LEVEL_5_0; return true;
+	case 51U: OutLevel = STD_VIDEO_VP9_LEVEL_5_1; return true;
+	case 52U: OutLevel = STD_VIDEO_VP9_LEVEL_5_2; return true;
+	case 60U: OutLevel = STD_VIDEO_VP9_LEVEL_6_0; return true;
+	case 61U: OutLevel = STD_VIDEO_VP9_LEVEL_6_1; return true;
+	case 62U: OutLevel = STD_VIDEO_VP9_LEVEL_6_2; return true;
+	default: return false;
+	}
 }
 
 struct EbmlElement {
@@ -153,6 +264,9 @@ bool ParseAvcDecoderConfig(const OaU8* InData, OaU64 InSize,
 {
 	if (InData == nullptr or InSize < 7U or InData[0] != 1U) return false;
 	Out = {};
+	Out.Profile.Codec = OaVideoCodec::H264;
+	Out.Profile.StandardProfile = H264ProfileFromIdc(InData[1]);
+	Out.Profile.HasLevel = H264StdLevel(InData[3], Out.Profile.Level);
 	Out.LengthSize = static_cast<OaU8>((InData[4] & 0x03U) + 1U);
 	OaU64 p = 6U;
 	const OaU8 startCode[4] = {0U, 0U, 0U, 1U};
@@ -161,6 +275,18 @@ bool ParseAvcDecoderConfig(const OaU8* InData, OaU64 InSize,
 		if (p + 2U > InSize) return false;
 		const OaU16 size = ReadU16BE(InData + p); p += 2U;
 		if (p + size > InSize) return false;
+		if (i == 0U) {
+			OaH264SpsData sps = {};
+			if (OaNalParser::ParseSPS(InData + p, size, sps)) {
+				Out.Profile.StandardProfile = H264ProfileFromIdc(sps.ProfileIdc);
+				Out.Profile.ChromaSubsampling = ChromaFromIdc(sps.ChromaFormatIdc);
+				Out.Profile.LumaBitDepth = BitDepthFromValue(sps.BitDepthLumaMinus8 + 8U);
+				Out.Profile.ChromaBitDepth = BitDepthFromValue(sps.BitDepthChromaMinus8 + 8U);
+				Out.Profile.H264PictureLayout = sps.FrameMbsOnly ? OaVideoH264PictureLayout::Progressive
+																 : OaVideoH264PictureLayout::InterlacedInterleavedLines;
+				Out.Profile.HasLevel = H264StdLevel(sps.LevelIdc, Out.Profile.Level);
+			}
+		}
 		for (OaU8 byte : startCode) Out.SpsAnnexB.PushBack(byte);
 		for (OaU16 k = 0U; k < size; ++k) Out.SpsAnnexB.PushBack(InData[p + k]);
 		p += size;
@@ -176,6 +302,161 @@ bool ParseAvcDecoderConfig(const OaU8* InData, OaU64 InSize,
 		p += size;
 	}
 	Out.Valid = not Out.SpsAnnexB.Empty() and not Out.PpsAnnexB.Empty();
+	return Out.Valid;
+}
+
+bool ParseHevcDecoderConfig(const OaU8* InData, OaU64 InSize, OaVideoStream::HvcConfig& Out)
+{
+	if (InData == nullptr or InSize < 23U or InData[0] != 1U) return false;
+	Out = {};
+	Out.Profile.Codec = OaVideoCodec::H265;
+	Out.Profile.StandardProfile = H265ProfileFromIdc(InData[1] & 0x1FU);
+	Out.Profile.HighTier = (InData[1] & 0x20U) != 0U;
+	Out.Profile.HasLevel = H265StdLevel(InData[12], Out.Profile.Level);
+	Out.Profile.ChromaSubsampling = ChromaFromIdc(InData[16] & 0x03U);
+	Out.Profile.LumaBitDepth = BitDepthFromValue((InData[17] & 0x07U) + 8U);
+	Out.Profile.ChromaBitDepth = BitDepthFromValue((InData[18] & 0x07U) + 8U);
+	Out.LengthSize = static_cast<OaU8>((InData[21] & 0x03U) + 1U);
+
+	const OaU8 startCode[4] = {0U, 0U, 0U, 1U};
+	const OaU8 numArrays = InData[22];
+	OaU64 p = 23U;
+	for (OaU8 arrayIndex = 0U; arrayIndex < numArrays and p + 3U <= InSize; ++arrayIndex) {
+		const OaU8 nalType = InData[p] & 0x3FU;
+		++p;
+		const OaU16 numNalus = ReadU16BE(InData + p);
+		p += 2U;
+		OaVec<OaU8>* target = nullptr;
+		if (nalType == 32U)
+			target = &Out.VpsAnnexB;
+		else if (nalType == 33U)
+			target = &Out.SpsAnnexB;
+		else if (nalType == 34U)
+			target = &Out.PpsAnnexB;
+		for (OaU16 nalIndex = 0U; nalIndex < numNalus and p + 2U <= InSize; ++nalIndex) {
+			const OaU16 nalSize = ReadU16BE(InData + p);
+			p += 2U;
+			if (p + nalSize > InSize) return false;
+			if (nalType == 32U and nalIndex == 0U) {
+				OaH265VpsData vps = {};
+				if (OaNalParser::ParseH265Vps(InData + p, nalSize, vps)) {
+					Out.Profile.StandardProfile = H265ProfileFromIdc(vps.GeneralProfileIdc);
+					Out.Profile.HighTier = vps.GeneralTierFlag;
+					Out.Profile.HasLevel = H265StdLevel(vps.GeneralLevelIdc, Out.Profile.Level);
+				}
+			} else if (nalType == 33U and nalIndex == 0U) {
+				OaH265SpsData sps = {};
+				if (OaNalParser::ParseH265Sps(InData + p, nalSize, sps)) {
+					Out.Profile.ChromaSubsampling = ChromaFromIdc(sps.ChromaFormatIdc);
+					Out.Profile.LumaBitDepth = BitDepthFromValue(sps.BitDepthLumaMinus8 + 8U);
+					Out.Profile.ChromaBitDepth = BitDepthFromValue(sps.BitDepthChromaMinus8 + 8U);
+				}
+			}
+			if (target != nullptr) {
+				for (OaU8 byte : startCode) target->PushBack(byte);
+				for (OaU16 byteIndex = 0U; byteIndex < nalSize; ++byteIndex) {
+					target->PushBack(InData[p + byteIndex]);
+				}
+			}
+			p += nalSize;
+		}
+	}
+	Out.Valid = not Out.VpsAnnexB.Empty() and not Out.SpsAnnexB.Empty() and not Out.PpsAnnexB.Empty();
+	return Out.Valid;
+}
+
+bool ParseAv1DecoderConfig(const OaU8* InData, OaU64 InSize, OaVideoStream::Av1Config& Out)
+{
+	if (InData == nullptr or InSize < 4U or (InData[0] & 0x80U) == 0U or (InData[0] & 0x7FU) != 1U) {
+		return false;
+	}
+	Out = {};
+	Out.Profile.Codec = OaVideoCodec::AV1;
+	switch ((InData[1] >> 5U) & 0x07U) {
+	case 0U: Out.Profile.StandardProfile = OaVideoCodecProfile::Av1Main; break;
+	case 1U: Out.Profile.StandardProfile = OaVideoCodecProfile::Av1High; break;
+	case 2U: Out.Profile.StandardProfile = OaVideoCodecProfile::Av1Professional; break;
+	default: Out.Profile.StandardProfile = OaVideoCodecProfile::Unspecified; break;
+	}
+	Out.Profile.Level = InData[1] & 0x1FU;
+	Out.Profile.HasLevel = true;
+	Out.Profile.HighTier = (InData[2] & 0x80U) != 0U;
+	const bool highBitDepth = (InData[2] & 0x40U) != 0U;
+	const bool twelveBit = (InData[2] & 0x20U) != 0U;
+	const bool monochrome = (InData[2] & 0x10U) != 0U;
+	const bool subsamplingX = (InData[2] & 0x08U) != 0U;
+	const bool subsamplingY = (InData[2] & 0x04U) != 0U;
+	const OaU32 bitDepth = not highBitDepth ? 8U : (twelveBit ? 12U : 10U);
+	Out.Profile.LumaBitDepth = BitDepthFromValue(bitDepth);
+	Out.Profile.ChromaBitDepth = BitDepthFromValue(bitDepth);
+	if (monochrome) {
+		Out.Profile.ChromaSubsampling = OaVideoChromaSubsampling::Monochrome;
+	} else if (subsamplingX and subsamplingY) {
+		Out.Profile.ChromaSubsampling = OaVideoChromaSubsampling::Yuv420;
+	} else if (subsamplingX) {
+		Out.Profile.ChromaSubsampling = OaVideoChromaSubsampling::Yuv422;
+	} else {
+		Out.Profile.ChromaSubsampling = OaVideoChromaSubsampling::Yuv444;
+	}
+	for (OaU64 byteIndex = 4U; byteIndex < InSize; ++byteIndex) {
+		Out.ConfigObus.PushBack(InData[byteIndex]);
+	}
+	Out.Valid = not Out.ConfigObus.Empty();
+	if (Out.Valid) {
+		OaVcpAv1 parser;
+		OaVec<OaAv1PictureDesc> pictures;
+		const OaStatus parseStatus =
+			parser.ParseAccessUnitPictures(OaSpan<const OaU8>(Out.ConfigObus.Data(), Out.ConfigObus.Size()), pictures);
+		if (parseStatus.IsOk() and parser.HasSequenceHeader()) {
+			const OaAv1SequenceHeaderInfo& sequence = parser.GetSequenceHeader();
+			switch (sequence.SeqProfile) {
+			case STD_VIDEO_AV1_PROFILE_MAIN: Out.Profile.StandardProfile = OaVideoCodecProfile::Av1Main; break;
+			case STD_VIDEO_AV1_PROFILE_HIGH: Out.Profile.StandardProfile = OaVideoCodecProfile::Av1High; break;
+			case STD_VIDEO_AV1_PROFILE_PROFESSIONAL:
+				Out.Profile.StandardProfile = OaVideoCodecProfile::Av1Professional;
+				break;
+			default: Out.Profile.StandardProfile = OaVideoCodecProfile::Unspecified; break;
+			}
+			Out.Profile.LumaBitDepth = BitDepthFromValue(sequence.ColorConfig.BitDepth);
+			Out.Profile.ChromaBitDepth = Out.Profile.LumaBitDepth;
+			if (sequence.ColorConfig.flags.mono_chrome != 0U) {
+				Out.Profile.ChromaSubsampling = OaVideoChromaSubsampling::Monochrome;
+			} else if (sequence.ColorConfig.subsampling_x != 0U and sequence.ColorConfig.subsampling_y != 0U) {
+				Out.Profile.ChromaSubsampling = OaVideoChromaSubsampling::Yuv420;
+			} else if (sequence.ColorConfig.subsampling_x != 0U) {
+				Out.Profile.ChromaSubsampling = OaVideoChromaSubsampling::Yuv422;
+			} else {
+				Out.Profile.ChromaSubsampling = OaVideoChromaSubsampling::Yuv444;
+			}
+			Out.Profile.Av1FilmGrain = sequence.FilmGrainParamsPresent;
+		}
+	}
+	return Out.Valid;
+}
+
+bool ParseVp9DecoderConfig(const OaU8* InData, OaU64 InSize, OaVideoStream::Vp9Config& Out)
+{
+	// vpcC is a FullBox. The VPCodecConfigurationRecord starts after its
+	// version/flags and carries profile, level, then packed depth/chroma.
+	if (InData == nullptr or InSize < 7U) return false;
+	Out = {};
+	Out.Profile.Codec = OaVideoCodec::VP9;
+	switch (InData[4]) {
+	case 0U: Out.Profile.StandardProfile = OaVideoCodecProfile::Vp9Profile0; break;
+	case 1U: Out.Profile.StandardProfile = OaVideoCodecProfile::Vp9Profile1; break;
+	case 2U: Out.Profile.StandardProfile = OaVideoCodecProfile::Vp9Profile2; break;
+	case 3U: Out.Profile.StandardProfile = OaVideoCodecProfile::Vp9Profile3; break;
+	default: Out.Profile.StandardProfile = OaVideoCodecProfile::Unspecified; break;
+	}
+	Out.Profile.HasLevel = Vp9StdLevel(InData[5], Out.Profile.Level);
+	Out.Profile.LumaBitDepth = BitDepthFromValue(InData[6] >> 4U);
+	Out.Profile.ChromaBitDepth = Out.Profile.LumaBitDepth;
+	switch (InData[6] & 0x07U) {
+	case 3U: Out.Profile.ChromaSubsampling = OaVideoChromaSubsampling::Yuv422; break;
+	case 4U: Out.Profile.ChromaSubsampling = OaVideoChromaSubsampling::Yuv444; break;
+	default: Out.Profile.ChromaSubsampling = OaVideoChromaSubsampling::Yuv420; break;
+	}
+	Out.Valid = Out.Profile.StandardProfile != OaVideoCodecProfile::Unspecified;
 	return Out.Valid;
 }
 
@@ -332,10 +613,19 @@ OaStatus ParseMatroskaFile(std::FILE* InFile, OaU64 InFileSize,
 			selected.CodecPrivate.Size(), Out.Avc_)) {
 			return OaStatus::Error(OaStatusCode::DataLoss, "Matroska AVC track has invalid CodecPrivate");
 		}
-	} else if (codec == "V_MPEGH/ISO/HEVC") Out.Info_.Codec = OaVideoCodec::H265;
-	else if (codec == "V_AV1") Out.Info_.Codec = OaVideoCodec::AV1;
-	else if (codec == "V_VP9") Out.Info_.Codec = OaVideoCodec::VP9;
-	else return OaStatus::Error(OaStatusCode::Unimplemented,
+	} else if (codec == "V_MPEGH/ISO/HEVC") {
+		Out.Info_.Codec = OaVideoCodec::H265;
+		if (not ParseHevcDecoderConfig(selected.CodecPrivate.Data(), selected.CodecPrivate.Size(), Out.Hvc_)) {
+			return OaStatus::Error(OaStatusCode::DataLoss, "Matroska HEVC track has invalid CodecPrivate");
+		}
+	} else if (codec == "V_AV1") {
+		Out.Info_.Codec = OaVideoCodec::AV1;
+		if (not ParseAv1DecoderConfig(selected.CodecPrivate.Data(), selected.CodecPrivate.Size(), Out.Av1_)) {
+			return OaStatus::Error(OaStatusCode::DataLoss, "Matroska AV1 track has invalid CodecPrivate");
+		}
+	} else if (codec == "V_VP9") {
+		Out.Info_.Codec = OaVideoCodec::VP9;
+	} else return OaStatus::Error(OaStatusCode::Unimplemented,
 		"Matroska video codec is not supported by OA Vulkan Video");
 	const std::string_view path(InPath.Data(), InPath.Size());
 	Out.Info_.Kind = path.ends_with(".webm") ? OaContainerKind::WebM : OaContainerKind::Matroska;
@@ -344,8 +634,8 @@ OaStatus ParseMatroskaFile(std::FILE* InFile, OaU64 InFileSize,
 	Out.Info_.TimebaseNum = timecodeScale;
 	Out.Info_.TimebaseDen = 1'000'000'000ULL;
 	Out.Info_.TrackCount = trackCount;
-	if (Out.Samples_.Empty()) return OaStatus::Error(OaStatusCode::DataLoss,
-		"Matroska video track contains no supported unlaced blocks");
+	if (Out.Samples_.Empty())
+		return OaStatus::Error(OaStatusCode::DataLoss, "Matroska video track contains no supported unlaced blocks");
 	return OaStatus::Ok();
 }
 
@@ -396,8 +686,7 @@ bool ParseTsPat(const TsPayload& InPayload, OaU16& OutPmtPid)
 	for (OaUsize p = 8U; p + 4U <= end; p += 4U) {
 		const OaU16 program = ReadU16BE(section + p);
 		if (program != 0U) {
-			OutPmtPid = static_cast<OaU16>(((section[p + 2U] & 0x1FU) << 8U)
-				| section[p + 3U]);
+			OutPmtPid = static_cast<OaU16>(((section[p + 2U] & 0x1FU) << 8U) | section[p + 3U]);
 			return true;
 		}
 	}
@@ -411,15 +700,12 @@ bool ParseTsPmt(const TsPayload& InPayload, OaU16& OutVideoPid, OaVideoCodec& Ou
 	if (section == nullptr or size < 16U or section[0] != 0x02U) return false;
 	const OaU16 sectionLength = static_cast<OaU16>(((section[1] & 0x0FU) << 8U) | section[2]);
 	if (sectionLength + 3U > size or sectionLength < 13U) return false;
-	const OaU16 programInfoLength = static_cast<OaU16>(
-		((section[10] & 0x0FU) << 8U) | section[11]);
+	const OaU16 programInfoLength = static_cast<OaU16>(((section[10] & 0x0FU) << 8U) | section[11]);
 	const OaUsize end = 3U + sectionLength - 4U;
 	for (OaUsize p = 12U + programInfoLength; p + 5U <= end;) {
 		const OaU8 streamType = section[p];
-		const OaU16 pid = static_cast<OaU16>(((section[p + 1U] & 0x1FU) << 8U)
-			| section[p + 2U]);
-		const OaU16 infoLength = static_cast<OaU16>(((section[p + 3U] & 0x0FU) << 8U)
-			| section[p + 4U]);
+		const OaU16 pid = static_cast<OaU16>(((section[p + 1U] & 0x1FU) << 8U) | section[p + 2U]);
+		const OaU16 infoLength = static_cast<OaU16>(((section[p + 3U] & 0x0FU) << 8U) | section[p + 4U]);
 		if (streamType == 0x1BU or streamType == 0x24U) {
 			OutVideoPid = pid;
 			OutCodec = streamType == 0x1BU ? OaVideoCodec::H264 : OaVideoCodec::H265;
@@ -432,19 +718,16 @@ bool ParseTsPmt(const TsPayload& InPayload, OaU16& OutVideoPid, OaVideoCodec& Ou
 
 OaU64 ParsePesTimestamp(const OaU8* InData)
 {
-	return (static_cast<OaU64>((InData[0] >> 1U) & 0x07U) << 30U)
-		| (static_cast<OaU64>(InData[1]) << 22U)
-		| (static_cast<OaU64>((InData[2] >> 1U) & 0x7FU) << 15U)
-		| (static_cast<OaU64>(InData[3]) << 7U)
-		| static_cast<OaU64>(InData[4] >> 1U);
+	return (static_cast<OaU64>((InData[0] >> 1U) & 0x07U) << 30U) | (static_cast<OaU64>(InData[1]) << 22U) |
+		   (static_cast<OaU64>((InData[2] >> 1U) & 0x7FU) << 15U) | (static_cast<OaU64>(InData[3]) << 7U) |
+		   static_cast<OaU64>(InData[4] >> 1U);
 }
 
 bool H264AccessUnitIsKeyframe(OaSpan<const OaU8> InData)
 {
 	for (OaUsize i = 0U; i + 4U < InData.Size(); ++i) {
-		if (InData[i] == 0U and InData[i + 1U] == 0U
-			and ((InData[i + 2U] == 1U)
-				or (InData[i + 2U] == 0U and InData[i + 3U] == 1U))) {
+		if (InData[i] == 0U and InData[i + 1U] == 0U and
+			((InData[i + 2U] == 1U) or (InData[i + 2U] == 0U and InData[i + 3U] == 1U))) {
 			const OaUsize header = i + (InData[i + 2U] == 1U ? 3U : 4U);
 			if (header < InData.Size() and (InData[header] & 0x1FU) == 5U) return true;
 		}
@@ -457,14 +740,15 @@ void ParseH264AccessUnitGeometry(OaSpan<const OaU8> InData, OaContainerInfo& Out
 	for (OaUsize i = 0U; i + 5U < InData.Size(); ++i) {
 		if (InData[i] != 0U or InData[i + 1U] != 0U) continue;
 		OaUsize header = 0U;
-		if (InData[i + 2U] == 1U) header = i + 3U;
-		else if (InData[i + 2U] == 0U and InData[i + 3U] == 1U) header = i + 4U;
+		if (InData[i + 2U] == 1U)
+			header = i + 3U;
+		else if (InData[i + 2U] == 0U and InData[i + 3U] == 1U)
+			header = i + 4U;
 		if (header == 0U or header >= InData.Size() or (InData[header] & 0x1FU) != 7U) continue;
 		OaUsize end = InData.Size();
 		for (OaUsize p = header + 1U; p + 3U < InData.Size(); ++p) {
-			if (InData[p] == 0U and InData[p + 1U] == 0U
-				and (InData[p + 2U] == 1U
-					or (InData[p + 2U] == 0U and InData[p + 3U] == 1U))) {
+			if (InData[p] == 0U and InData[p + 1U] == 0U and
+				(InData[p + 2U] == 1U or (InData[p + 2U] == 0U and InData[p + 3U] == 1U))) {
 				end = p;
 				break;
 			}
@@ -476,12 +760,9 @@ void ParseH264AccessUnitGeometry(OaSpan<const OaU8> InData, OaContainerInfo& Out
 		OaU32 height = sps.PicHeightInMbs * 16U * frameFactor;
 		const OaU32 cropUnitX = sps.ChromaFormatIdc == 0U or sps.ChromaFormatIdc == 3U ? 1U : 2U;
 		const OaU32 chromaHeight = sps.ChromaFormatIdc == 1U ? 2U : 1U;
-		const OaU32 cropUnitY = sps.ChromaFormatIdc == 0U ? frameFactor
-			: chromaHeight * frameFactor;
-		const OaU64 cropX = static_cast<OaU64>(sps.FrameCropLeftOffset
-			+ sps.FrameCropRightOffset) * cropUnitX;
-		const OaU64 cropY = static_cast<OaU64>(sps.FrameCropTopOffset
-			+ sps.FrameCropBottomOffset) * cropUnitY;
+		const OaU32 cropUnitY = sps.ChromaFormatIdc == 0U ? frameFactor : chromaHeight * frameFactor;
+		const OaU64 cropX = static_cast<OaU64>(sps.FrameCropLeftOffset + sps.FrameCropRightOffset) * cropUnitX;
+		const OaU64 cropY = static_cast<OaU64>(sps.FrameCropTopOffset + sps.FrameCropBottomOffset) * cropUnitY;
 		if (cropX < width) width -= static_cast<OaU32>(cropX);
 		if (cropY < height) height -= static_cast<OaU32>(cropY);
 		Out.Width = width;
@@ -490,14 +771,12 @@ void ParseH264AccessUnitGeometry(OaSpan<const OaU8> InData, OaContainerInfo& Out
 	}
 }
 
-OaStatus ReadMpegTsPes(std::FILE* InFile, OaVideoStream::MediaImpl& InMedia,
-	OaVideoCodec InCodec, OaVideoPacket& Out)
+OaStatus ReadMpegTsPes(std::FILE* InFile, OaVideoStream::MediaImpl& InMedia, OaVideoCodec InCodec, OaVideoPacket& Out)
 {
 	OaU8 packet[188] = {};
 	while (std::fread(packet, 1U, sizeof(packet), InFile) == sizeof(packet)) {
 		TsPayload payload;
-		if (not ParseTsPayload(packet, payload) or payload.Pid != InMedia.VideoPid
-			or payload.Data == nullptr) continue;
+		if (not ParseTsPayload(packet, payload) or payload.Pid != InMedia.VideoPid or payload.Data == nullptr) continue;
 		if (payload.Start and not InMedia.Pes.Empty()) {
 			::fseeko(InFile, -static_cast<off_t>(sizeof(packet)), SEEK_CUR);
 			break;
@@ -523,14 +802,13 @@ OaStatus ReadMpegTsPes(std::FILE* InFile, OaVideoStream::MediaImpl& InMedia,
 		InMedia.Pes.Resize(old + size);
 		if (size > 0U) OaMemcpy(InMedia.Pes.Data() + old, data, size);
 	}
-	if (InMedia.Pes.Empty()) return OaStatus::Error(OaStatusCode::OutOfRange,
-		"End of MPEG-TS stream");
+	if (InMedia.Pes.Empty()) return OaStatus::Error(OaStatusCode::OutOfRange, "End of MPEG-TS stream");
 	Out.Data = OaStdMove(InMedia.Pes);
 	Out.PresentationTimestamp = InMedia.PesPts;
 	Out.DecodeTimestamp = InMedia.PesDts;
 	Out.IsKeyframe = InCodec == OaVideoCodec::H264
-		? H264AccessUnitIsKeyframe(OaSpan<const OaU8>(Out.Data.Data(), Out.Data.Size()))
-		: false;
+						 ? H264AccessUnitIsKeyframe(OaSpan<const OaU8>(Out.Data.Data(), Out.Data.Size()))
+						 : false;
 	Out.TrackIndex = InMedia.VideoPid;
 	InMedia.Pes.Clear();
 	InMedia.PesPts = 0U;
@@ -538,8 +816,7 @@ OaStatus ReadMpegTsPes(std::FILE* InFile, OaVideoStream::MediaImpl& InMedia,
 	return OaStatus::Ok();
 }
 
-OaStatus InitMpegTs(std::FILE* InFile, OaU64 InFileSize,
-	OaVideoStream::MediaImpl& OutMedia, OaContainerInfo& OutInfo)
+OaStatus InitMpegTs(std::FILE* InFile, OaU64 InFileSize, OaVideoStream::MediaImpl& OutMedia, OaContainerInfo& OutInfo)
 {
 	::fseeko(InFile, 0, SEEK_SET);
 	OaU8 packet[188] = {};
@@ -549,12 +826,14 @@ OaStatus InitMpegTs(std::FILE* InFile, OaU64 InFileSize,
 		if (std::fread(packet, 1U, sizeof(packet), InFile) != sizeof(packet)) break;
 		TsPayload payload;
 		if (not ParseTsPayload(packet, payload)) continue;
-		if (payload.Pid == 0U) (void)ParseTsPat(payload, OutMedia.PmtPid);
-		else if (payload.Pid == OutMedia.PmtPid
-			and ParseTsPmt(payload, OutMedia.VideoPid, codec)) break;
+		if (payload.Pid == 0U)
+			(void)ParseTsPat(payload, OutMedia.PmtPid);
+		else if (payload.Pid == OutMedia.PmtPid and ParseTsPmt(payload, OutMedia.VideoPid, codec))
+			break;
 	}
-	if (OutMedia.VideoPid == 0x1FFFU) return OaStatus::Error(OaStatusCode::DataLoss,
-		"MPEG-TS PAT/PMT contains no supported H.264/H.265 video stream");
+	if (OutMedia.VideoPid == 0x1FFFU)
+		return OaStatus::Error(OaStatusCode::DataLoss,
+							   "MPEG-TS PAT/PMT contains no supported H.264/H.265 video stream");
 	OutMedia.Kind = OaVideoStream::MediaImpl::NativeKind::MpegTs;
 	OutMedia.Live = false;
 	OutMedia.Seekable = true;
@@ -676,6 +955,7 @@ void OaVideoStream::Reset_() noexcept
 	Avc_ = {};
 	Hvc_ = {};
 	Av1_ = {};
+	Vp9_ = {};
 	Fragment_ = {};
 	NeedParameterSets_ = true;
 	BufferedPictureNals_.Clear();
@@ -694,7 +974,7 @@ OaVideoStream::OaVideoStream(OaVideoStream&& InOther) noexcept
 	, Info_(InOther.Info_)
 	, Avc_(std::move(InOther.Avc_))
 	, Hvc_(std::move(InOther.Hvc_))
-	, Av1_(std::move(InOther.Av1_))
+	, Av1_(std::move(InOther.Av1_)), Vp9_(std::move(InOther.Vp9_))
 	, Fragment_(InOther.Fragment_)
 	, Media_(OaStdMove(InOther.Media_))
 	, Uri_(OaStdMove(InOther.Uri_))
@@ -726,6 +1006,7 @@ OaVideoStream& OaVideoStream::operator=(OaVideoStream&& InOther) noexcept
 		Avc_ = std::move(InOther.Avc_);
 		Hvc_ = std::move(InOther.Hvc_);
 		Av1_ = std::move(InOther.Av1_);
+		Vp9_ = std::move(InOther.Vp9_);
 		Fragment_ = InOther.Fragment_;
 		Media_ = OaStdMove(InOther.Media_);
 		Uri_ = OaStdMove(InOther.Uri_);
@@ -1034,8 +1315,9 @@ OaStatus OaVideoStream::ReadNextPacket(OaVideoPacket& OutPacket)
 	const bool prependAv1Cfg = isMp4 && Av1_.Valid && sample.IsKeyframe
 		&& Info_.Codec == OaVideoCodec::AV1;
 
-	// For H.265, we need to separate parameter-set-only NAL units from picture NAL units
-	// to ensure parameter sets are uploaded to the Vulkan session before slices are decoded
+	// For H.265, we need to separate parameter-set-only NAL units from picture
+	// NAL units to ensure parameter sets are uploaded to the Vulkan session
+	// before slices are decoded
 	const bool splitH265Ps = lengthPrefixedNal
 		&& Info_.Codec == OaVideoCodec::H265 && !rawMp4Sample;
 
@@ -1106,8 +1388,9 @@ OaStatus OaVideoStream::ReadNextPacket(OaVideoPacket& OutPacket)
 				OutPacket.Data.PushBack(src[p + k]);
 			}
 
-			// For H.265, if we have both parameter sets and picture NALs in the same sample,
-			// return parameter sets first and buffer picture NALs for the next call
+				// For H.265, if we have both parameter sets and picture NALs in the
+				// same sample, return parameter sets first and buffer picture NALs for
+				// the next call
 			if (splitH265Ps) {
 				if (!isParamSet) {
 					hasPictureNal = true;
@@ -1150,12 +1433,14 @@ OaStatus OaVideoStream::ReadNextPacket(OaVideoPacket& OutPacket)
 				BufferedTimestamp_ = sample.Dts + static_cast<OaU64>(sample.CtsOffset);
 				BufferedIsKeyframe_ = sample.IsKeyframe;
 
-				// Return parameter sets only (no timestamp needed for parameter-set-only packet)
+					// Return parameter sets only (no timestamp needed for
+					// parameter-set-only packet)
 				OutPacket.PresentationTimestamp = 0;
 				OutPacket.DecodeTimestamp = 0;
 				OutPacket.IsKeyframe = false;
 				OutPacket.TrackIndex = 0;
-				// Sample is fully consumed; picture NALs are buffered for the next call.
+					// Sample is fully consumed; picture NALs are buffered for the next
+					// call.
 				++CurrentSampleIndex_;
 				return OaStatus::Ok();
 			}
@@ -1263,6 +1548,20 @@ bool OaVideoStream::IsSeekable() const noexcept
 OaVideoProfile OaVideoStream::GetVideoProfile() const
 {
 	OaVideoProfile profile = {};
+	switch (Info_.Codec) {
+	case OaVideoCodec::H264:
+		if (Avc_.Valid) profile = Avc_.Profile;
+		break;
+	case OaVideoCodec::H265:
+		if (Hvc_.Valid) profile = Hvc_.Profile;
+		break;
+	case OaVideoCodec::AV1:
+		if (Av1_.Valid) profile = Av1_.Profile;
+		break;
+	case OaVideoCodec::VP9:
+		if (Vp9_.Valid) profile = Vp9_.Profile;
+		break;
+	}
 	profile.Codec = Info_.Codec;
 	profile.Width = Info_.Width;
 	profile.Height = Info_.Height;
@@ -1433,7 +1732,8 @@ void ParseStblBox(const OaU8* InData, OaU64 InSize, OaVideoStream& OutStream)
 	OaVec<OaU32> sampleSizes;      // From stsz
 	OaVec<OaU64> chunkOffsets;     // From stco
 	OaVec<OaU32> sttsEntries;     // From stts (count, duration pairs)
-	OaVec<OaU32> stscEntries;     // From stsc (firstChunk, samplesPerChunk, sampleDescriptionIndex)
+	OaVec<OaU32> stscEntries;  // From stsc (firstChunk, samplesPerChunk,
+							   // sampleDescriptionIndex)
 	OaVec<OaU32> stssEntries;     // From stss (keyframe sample indices)
 	OaVec<OaI32> cttsEntries;     // From ctts (sampleCount, compositionOffset)
 	
@@ -1507,45 +1807,8 @@ void ParseStblBox(const OaU8* InData, OaU64 InSize, OaVideoStream& OutStream)
 							// AVCDecoderConfigurationRecord (ISO/IEC 14496-15 §5.2.1.1).
 							const OaU8* avcc = boxData + cfgOffset + 8;
 							const OaU64 avccSize = cfgSize - 8;
-							OutStream.Avc_.LengthSize =
-								static_cast<OaU8>((avcc[4] & 0x03U) + 1U);
-							const OaU8 numSps = avcc[5] & 0x1FU;
-							OaUsize p = 6;
-							const OaU8 startCode[4] = { 0, 0, 0, 1 };
-							for (OaU8 i = 0; i < numSps && p + 2 <= avccSize; ++i) {
-								OaU16 spsLen = ReadU16BE(avcc + p);
-								p += 2;
-								if (p + spsLen > avccSize) {
-									break;
-								}
-								for (auto byte : startCode) {
-									OutStream.Avc_.SpsAnnexB.PushBack(byte);
-								}
-								for (OaU16 k = 0; k < spsLen; ++k) {
-									OutStream.Avc_.SpsAnnexB.PushBack(avcc[p + k]);
-								}
-								p += spsLen;
-							}
-							if (p < avccSize) {
-								const OaU8 numPps = avcc[p];
-								++p;
-								for (OaU8 i = 0; i < numPps && p + 2 <= avccSize; ++i) {
-									OaU16 ppsLen = ReadU16BE(avcc + p);
-									p += 2;
-									if (p + ppsLen > avccSize) {
-										break;
-									}
-									for (auto byte : startCode) {
-										OutStream.Avc_.PpsAnnexB.PushBack(byte);
-									}
-									for (OaU16 k = 0; k < ppsLen; ++k) {
-										OutStream.Avc_.PpsAnnexB.PushBack(avcc[p + k]);
-									}
-									p += ppsLen;
-								}
-							}
-							OutStream.Avc_.Valid = OutStream.Avc_.SpsAnnexB.Size() > 0
-								&& OutStream.Avc_.PpsAnnexB.Size() > 0;
+							(void)ParseAvcDecoderConfig(avcc, avccSize,
+							OutStream.Avc_);
 						}
 						cfgOffset += cfgSize;
 					}
@@ -1563,41 +1826,8 @@ void ParseStblBox(const OaU8* InData, OaU64 InSize, OaVideoStream& OutStream)
 							// HEVCDecoderConfigurationRecord (ISO/IEC 14496-15 §8.3.3.1).
 							const OaU8* hvcc = boxData + cfgOffset + 8;
 							const OaU64 hvccSize = cfgSize - 8;
-							OutStream.Hvc_.LengthSize =
-								static_cast<OaU8>((hvcc[21] & 0x03U) + 1U);
-							// Parse NAL arrays (VPS=32, SPS=33, PPS=34)
-							if (hvccSize > 26) {
-								const OaU8 numArrays = hvcc[22];
-								OaUsize p = 23;
-								const OaU8 startCode[4] = { 0, 0, 0, 1 };
-								for (OaU8 a = 0; a < numArrays && p + 3 <= hvccSize; ++a) {
-									const OaU8 nalType = hvcc[p] & 0x3FU;
-									++p;
-									const OaU16 numNalus = ReadU16BE(hvcc + p);
-									p += 2;
-									OaVec<OaU8>* target = nullptr;
-									if (nalType == 32) { target = &OutStream.Hvc_.VpsAnnexB; }
-									else if (nalType == 33) { target = &OutStream.Hvc_.SpsAnnexB; }
-									else if (nalType == 34) { target = &OutStream.Hvc_.PpsAnnexB; }
-									for (OaU16 n = 0; n < numNalus && p + 2 <= hvccSize; ++n) {
-										const OaU16 nalLen = ReadU16BE(hvcc + p);
-										p += 2;
-										if (p + nalLen > hvccSize) { break; }
-										if (target) {
-											for (auto byte : startCode) {
-												target->PushBack(byte);
-											}
-											for (OaU16 k = 0; k < nalLen; ++k) {
-												target->PushBack(hvcc[p + k]);
-											}
-										}
-										p += nalLen;
-									}
-								}
-								OutStream.Hvc_.Valid = OutStream.Hvc_.VpsAnnexB.Size() > 0
-									&& OutStream.Hvc_.SpsAnnexB.Size() > 0
-									&& OutStream.Hvc_.PpsAnnexB.Size() > 0;
-							}
+							(void)ParseHevcDecoderConfig(hvcc, hvccSize,
+							OutStream.Hvc_);
 						}
 						cfgOffset += cfgSize;
 					}
@@ -1622,13 +1852,22 @@ void ParseStblBox(const OaU8* InData, OaU64 InSize, OaVideoStream& OutStream)
 						// configOBUs, so require > 8 (box hdr) + 4.
 						if (cfgType == kFourccAv1c && cfgSize > 8 + 4) {
 							const OaU8* av1c = boxData + cfgOffset + 8;
-							const OaU64 av1cSize = cfgSize - 8;
-							// configOBUs = everything after the 4-byte record
-							// header; copied verbatim (raw low-overhead OBUs).
-							for (OaU64 k = 4; k < av1cSize; ++k) {
-								OutStream.Av1_.ConfigObus.PushBack(av1c[k]);
+							const OaU64 av1cSize = cfgSize - 8; (void)ParseAv1DecoderConfig(av1c, av1cSize,
+								OutStream.Av1_);
 							}
-							OutStream.Av1_.Valid = OutStream.Av1_.ConfigObus.Size() > 0;
+						cfgOffset += cfgSize;
+					}
+				} else if (entryType == kFourccVp09) {
+					constexpr OaU32 kFourccVpcc = 0x76706343; // 'vpcC'
+					const OaUsize visualEnd = (entry + entrySize) - boxData;
+					OaUsize cfgOffset = (visual - boxData) + 78;
+					while (cfgOffset + 8 <= visualEnd && cfgOffset + 8 <= boxDataSize) {
+						const OaU32 cfgSize = ReadU32BE(boxData + cfgOffset);
+						const OaU32 cfgType = ReadU32BE(boxData + cfgOffset + 4);
+						if (cfgSize < 8 or cfgOffset + cfgSize > visualEnd) break;
+						if (cfgType == kFourccVpcc and cfgSize >= 8U + 7U) {
+							(void)ParseVp9DecoderConfig(boxData + cfgOffset + 8, cfgSize - 8U,
+							OutStream.Vp9_);
 						}
 						cfgOffset += cfgSize;
 					}
@@ -1767,7 +2006,8 @@ void ParseStblBox(const OaU8* InData, OaU64 InSize, OaVideoStream& OutStream)
 		OutStream.Samples_.Resize(sampleCount);
 
 		// Walk stsc to materialize samples-per-chunk for every chunk index.
-		// stscEntries layout per row: [firstChunk(1-based), samplesPerChunk, descIndex].
+		// stscEntries layout per row: [firstChunk(1-based), samplesPerChunk,
+		// descIndex].
 		const OaU32 stscRows = stscEntries.Size() / 3;
 		const OaU32 chunkCount = chunkOffsets.Size();
 

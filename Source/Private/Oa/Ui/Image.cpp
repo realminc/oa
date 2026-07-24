@@ -2,14 +2,18 @@
 #include <Oa/Runtime/Engine.h>
 
 #include <Oa/Ui/Image.h>
+#include <Oa/Core/Filesystem.h>
 #include <Oa/Vision/FnImage.h>
 #include <Oa/Core/FnMatrix.h>
 #include <Oa/Core/Log.h>
 #include <Oa/Runtime/Context.h>
 
+#include <Oa/Vision/Image/Codec/ImageCodecInternal.h>
+
 #include "../../../ThirdParty/stb/stb_image.h"
 
 #include <cstring>
+#include <limits>
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -61,24 +65,84 @@ static OaResult<OaVkBuffer> UploadToDevice(
 // ─── OaTexture ────────────────────────────────────────────────────────────────
 
 OaResult<OaTexture> OaTexture::LoadFile(OaEngine& InRt, OaStringView InPath) {
-	int w = 0, h = 0, ch = 0;
-	stbi_uc* px = stbi_load(InPath.data(), &w, &h, &ch, 4);
-	if (!px) {
-		OA_LOG_ERROR(OaLogComponent::App, "OaTexture::LoadFile: stb_image failed: %s (%s)",
-			InPath.data(), stbi_failure_reason());
+	auto bytesResult = OaFilesystem::ReadBinary(OaPath(InPath));
+	if (bytesResult.IsError()) return bytesResult.GetStatus();
+	const OaSpan<const OaU8> bytes(
+		bytesResult->Data(),
+		bytesResult->Size());
+
+	using namespace OaImageCodecPrivate;
+	const OaImageCodec codec = DetectCodec(bytes);
+	if (codec != OaImageCodec::Auto) {
+		auto decoded = codec == OaImageCodec::Webp
+			? DecodeWebp(bytes, OaImageFormat::Rgba)
+			: DecodeStb(bytes, OaImageFormat::Rgba);
+		if (decoded.IsError()) return decoded.GetStatus();
+
+		auto upload = UploadToDevice(
+			InRt,
+			decoded->Data.Data(),
+			decoded->Data.Size());
+		if (upload.IsError()) return upload.GetStatus();
+
+		OaTexture image;
+		image.DeviceBuf = *upload;
+		image.Width = decoded->Width;
+		image.Height = decoded->Height;
+		OA_LOG_INFO(
+			OaLogComponent::App,
+			"OaTexture: loaded %s (%dx%d, %s)",
+			OaPath(InPath).String().CStr(),
+			image.Width,
+			image.Height,
+			OaImageCodecName(codec).Data());
+		return image;
+	}
+
+	// Preserve the lower-level texture loader's historical stb coverage for
+	// formats outside the semantic still-image contract (for example HDR).
+	if (bytes.Size() > static_cast<OaUsize>(
+		std::numeric_limits<int>::max())) {
+		return OaStatus::Error(
+			OaStatusCode::OutOfRange,
+			"OaTexture::LoadFile: compressed data exceeds stb_image limits");
+	}
+	int width = 0;
+	int height = 0;
+	int sourceChannels = 0;
+	stbi_uc* pixels = stbi_load_from_memory(
+		bytes.Data(),
+		static_cast<int>(bytes.Size()),
+		&width,
+		&height,
+		&sourceChannels,
+		4);
+	if (pixels == nullptr) {
+		const char* reason = stbi_failure_reason();
+		OA_LOG_ERROR(
+			OaLogComponent::App,
+			"OaTexture::LoadFile: stb_image failed: %s (%s)",
+			OaPath(InPath).String().CStr(),
+			reason != nullptr ? reason : "unknown error");
 		return OaStatus::Error("stb_image load failed");
 	}
 
-	OaU64 bytes = static_cast<OaU64>(w) * h * 4;
-	auto res = UploadToDevice(InRt, px, bytes);
-	stbi_image_free(px);
+	const OaU64 byteCount =
+		static_cast<OaU64>(width) * static_cast<OaU64>(height) * 4U;
+	auto res = UploadToDevice(InRt, pixels, byteCount);
+	stbi_image_free(pixels);
 	if (!res) return res.GetStatus();
 
 	OaTexture img;
 	img.DeviceBuf = *res;
-	img.Width     = w;
-	img.Height    = h;
-	OA_LOG_INFO(OaLogComponent::App, "OaTexture: loaded %s (%dx%d)", InPath.data(), w, h);
+	img.Width = width;
+	img.Height = height;
+	OA_LOG_INFO(
+		OaLogComponent::App,
+		"OaTexture: loaded %s (%dx%d, stb fallback)",
+		OaPath(InPath).String().CStr(),
+		width,
+		height);
 	return img;
 }
 

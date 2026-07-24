@@ -295,5 +295,5 @@ OaStatus OaFbx::WriteFbx(const OaPath& InPath, const OaUsdSkelClip& InClip) {
 		o << "\t\tReferenceTime: 0," << stopTime << "\n\t}\n}\n";
 	}
 
-	return OaFileIo::WriteText(InPath, OaString(o.str()));
+	return OaFilesystem::WriteText(InPath, OaString(o.str()));
 }

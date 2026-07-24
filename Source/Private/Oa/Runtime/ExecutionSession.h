@@ -57,6 +57,9 @@ public:
 	[[nodiscard]] OaBool IsBatchActive() const noexcept {
 		return ActiveBatchStream_ != nullptr;
 	}
+	[[nodiscard]] OaBool HasPendingSubmission() const noexcept {
+		return PendingBatchStream_ != nullptr;
+	}
 	[[nodiscard]] OaVkStream* ActiveBatchStream() const noexcept {
 		return ActiveBatchStream_;
 	}

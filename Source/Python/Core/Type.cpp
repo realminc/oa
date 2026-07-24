@@ -12,7 +12,7 @@ void BindCoreType(nb::module_& m) {
         // placement-new __init__ lambda, not an nb::init factory-lambda.
         .def("__init__", [](OaMatrixShape* self, const std::vector<OaI64>& dims) {
             new (self) OaMatrixShape(shape_from_vector(dims));
-        }, nb::arg("dims"))
+        }, nb::arg("Dims"))
         .def("__getitem__", [](const OaMatrixShape& self, OaI32 idx) { return self[idx]; })
         .def("__setitem__", [](OaMatrixShape& self, OaI32 idx, OaI64 val) { self[idx] = val; })
         .def("NumElements", &OaMatrixShape::NumElements)
@@ -79,28 +79,28 @@ void BindCoreType(nb::module_& m) {
         .def("Clone", [](const OaMatrix& self) { return matrix_ptr(self.Clone()); }, nb::rv_policy::take_ownership)
         .def("Reshape", [](const OaMatrix& self, const std::vector<OaI64>& dims) {
             return matrix_ptr(self.Reshape(shape_from_vector(dims)));
-        }, nb::arg("shape"), nb::rv_policy::take_ownership)
+        }, nb::arg("Shape"), nb::rv_policy::take_ownership)
         .def("Flatten", [](const OaMatrix& self) { return matrix_ptr(self.Flatten()); }, nb::rv_policy::take_ownership)
         .def("Unsqueeze", [](const OaMatrix& self, OaI32 dim) {
             return matrix_ptr(self.Unsqueeze(dim));
-        }, nb::arg("dim"), nb::rv_policy::take_ownership)
+        }, nb::arg("Dim"), nb::rv_policy::take_ownership)
         .def("Squeeze", [](const OaMatrix& self, OaI32 dim) {
             return matrix_ptr(self.Squeeze(dim));
-        }, nb::arg("dim"), nb::rv_policy::take_ownership)
+        }, nb::arg("Dim"), nb::rv_policy::take_ownership)
         .def("Transpose", [](const OaMatrix& self, OaI32 dim0, OaI32 dim1) {
             return matrix_ptr(self.Transpose(dim0, dim1));
-        }, nb::arg("dim0"), nb::arg("dim1"), nb::rv_policy::take_ownership)
+        }, nb::arg("Dim0"), nb::arg("Dim1"), nb::rv_policy::take_ownership)
         .def("Contiguous", [](const OaMatrix& self) { return matrix_ptr(self.Contiguous()); }, nb::rv_policy::take_ownership)
         .def("Item", &OaMatrix::Item)
-        .def("At", &OaMatrix::At, nb::arg("index"))
-        .def("Set", &OaMatrix::Set, nb::arg("index"), nb::arg("value"))
+        .def("At", &OaMatrix::At, nb::arg("Index"))
+        .def("Set", &OaMatrix::Set, nb::arg("Index"), nb::arg("Value"))
         .def("Zero", &OaMatrix::Zero)
         .def("RequiresGrad", &OaMatrix::RequiresGrad)
         .def("SetRequiresGrad", &OaMatrix::SetRequiresGrad)
         .def("GradMatrix", &OaMatrix::GradMatrix, "Get persistent gradient accumulator")
         .def("MutGradMatrix", &OaMatrix::MutGradMatrix, nb::rv_policy::reference_internal,
              "Get mutable persistent gradient accumulator")
-        .def("AccumulateGrad", &OaMatrix::AccumulateGrad, nb::arg("contribution"),
+        .def("AccumulateGrad", &OaMatrix::AccumulateGrad, nb::arg("Contribution"),
              "Accumulate gradient: grad += contribution")
         .def("ZeroGrad", &OaMatrix::ZeroGrad, "Zero gradient: grad = 0")
         .def("IsLeaf", &OaMatrix::IsLeaf, "Check if tensor is a leaf (no grad_fn)")
@@ -108,12 +108,54 @@ void BindCoreType(nb::module_& m) {
              "Check if tensor has a gradient function attached")
         .def("__add__", [](const OaMatrix& a, const OaMatrix& b) { return matrix_ptr(a + b); },
              nb::rv_policy::take_ownership)
+        .def("__add__", [](const OaMatrix& a, OaF32 b) { return matrix_ptr(a + b); },
+             nb::rv_policy::take_ownership)
         .def("__sub__", [](const OaMatrix& a, const OaMatrix& b) { return matrix_ptr(a - b); },
+             nb::rv_policy::take_ownership)
+        .def("__sub__", [](const OaMatrix& a, OaF32 b) { return matrix_ptr(a - b); },
              nb::rv_policy::take_ownership)
         .def("__mul__", [](const OaMatrix& a, const OaMatrix& b) { return matrix_ptr(a * b); },
              nb::rv_policy::take_ownership)
+        .def("__mul__", [](const OaMatrix& a, OaF32 b) { return matrix_ptr(a * b); },
+             nb::rv_policy::take_ownership)
         .def("__truediv__", [](const OaMatrix& a, const OaMatrix& b) { return matrix_ptr(a / b); },
-             nb::rv_policy::take_ownership);
+             nb::rv_policy::take_ownership)
+        .def("__truediv__", [](const OaMatrix& a, OaF32 b) { return matrix_ptr(a / b); },
+             nb::rv_policy::take_ownership)
+        .def("__neg__", [](const OaMatrix& a) { return matrix_ptr(-a); },
+             nb::rv_policy::take_ownership)
+        .def("__iadd__", [](OaMatrix& a, const OaMatrix& b) -> OaMatrix& {
+            a += b;
+            return a;
+        }, nb::rv_policy::reference)
+        .def("__iadd__", [](OaMatrix& a, OaF32 b) -> OaMatrix& {
+            a += b;
+            return a;
+        }, nb::rv_policy::reference)
+        .def("__isub__", [](OaMatrix& a, const OaMatrix& b) -> OaMatrix& {
+            a -= b;
+            return a;
+        }, nb::rv_policy::reference)
+        .def("__isub__", [](OaMatrix& a, OaF32 b) -> OaMatrix& {
+            a -= b;
+            return a;
+        }, nb::rv_policy::reference)
+        .def("__imul__", [](OaMatrix& a, const OaMatrix& b) -> OaMatrix& {
+            a *= b;
+            return a;
+        }, nb::rv_policy::reference)
+        .def("__imul__", [](OaMatrix& a, OaF32 b) -> OaMatrix& {
+            a *= b;
+            return a;
+        }, nb::rv_policy::reference)
+        .def("__itruediv__", [](OaMatrix& a, const OaMatrix& b) -> OaMatrix& {
+            a /= b;
+            return a;
+        }, nb::rv_policy::reference)
+        .def("__itruediv__", [](OaMatrix& a, OaF32 b) -> OaMatrix& {
+            a /= b;
+            return a;
+        }, nb::rv_policy::reference);
     // ═════════════════════════════════════════════════════════════════════════
     // OaFnMatrix factory functions (2D helpers for Python)
 }

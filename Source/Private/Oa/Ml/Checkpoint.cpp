@@ -23,7 +23,7 @@ static OaStatus EnsureDirectoryTree(const OaString& InPath) {
 		const OaUsize end = (slash == OaString::npos) ? InPath.size() : slash;
 		const OaString prefix = InPath.substr(0, end);
 		if (!prefix.empty()) {
-			OaStatus st = OaFileIo::CreateDirectories(OaPath(prefix));
+			OaStatus st = OaFilesystem::CreateDirectories(OaPath(prefix));
 			if (!st) {
 				return OaStatus::Error("create checkpoint directory failed: " + prefix + ": " + st.ToString());
 			}
@@ -141,7 +141,7 @@ void OaCheckpointManager::RotateCheckpoints() {
 
 	while (static_cast<OaI32>(Saved_.Size()) > Config_.MaxKeep) {
 		const auto& worst = Saved_.Back();
-		(void)OaFileIo::RemoveFile(OaPath(worst.Path));
+		(void)OaFilesystem::RemoveFile(OaPath(worst.Path));
 		OA_LOG_DEBUG(OaLogComponent::ML, "Rotated: %s", worst.Path.c_str());
 		Saved_.PopBack();
 	}
@@ -216,14 +216,14 @@ OaStatus OaCheckpointManager::LoadLatestInto(OaModule& InOutModel, OaOptimizer& 
 		found = true;
 	} else {
 		const OaString dir = GetIncrementalDir();
-		if (not OaFileIo::IsDirectory(OaPath(dir))) {
+		if (not OaFilesystem::IsDirectory(OaPath(dir))) {
 			return OaStatus::Error(OaStatusCode::NotFound, "No checkpoint dir: " + dir);
 		}
-		auto filesResult = OaFileIo::ListFiles(OaPath(dir), ".oam");
+		auto filesResult = OaFilesystem::ListFiles(OaPath(dir), ".oam");
 		if (not filesResult.IsOk()) return filesResult.GetStatus();
 
 		for (const auto& filePath : filesResult.GetValue()) {
-			const OaString name = OaFileIo::GetStem(filePath) + OaFileIo::GetExtension(filePath);
+			const OaString name = filePath.Stem().String() + filePath.Extension().String();
 			if (name == Config_.ModelName + ".oam") continue;
 			const auto stepPos = name.find("_step");
 			if (stepPos == OaString::npos) continue;

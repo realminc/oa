@@ -5,48 +5,48 @@
 	m.def("Add", [](const OaMatrix& InA, const OaMatrix& InB) {
 		return matrix_ptr(OaFnMatrix::Add(InA, InB));
 	},
-	  nb::arg("a"), nb::arg("b"),
+	  nb::arg("A"), nb::arg("B"),
 	  nb::rv_policy::take_ownership,
 	  "Element-wise matrix addition with broadcasting.");
 
 	m.def("LogSoftmax", [](const OaMatrix& InA, OaI32 InDim) {
 		return matrix_ptr(OaFnMatrix::LogSoftmax(InA, InDim));
 	},
-	  nb::arg("a"), nb::arg("dim") = -1,
+	  nb::arg("A"), nb::arg("Dim") = -1,
 	  nb::rv_policy::take_ownership,
 	  "Stable log-softmax over the selected dimension; -1 selects the last dimension.");
 
 	m.def("MatMulNt", [](const OaMatrix& InA, const OaMatrix& InB, OaMatMulPrecision InPrecision) {
 		return matrix_ptr(OaFnMatrix::MatMulNt(InA, InB, InPrecision));
 	},
-	  nb::arg("a"), nb::arg("b"), nb::arg("precision") = OaMatMulPrecision::Auto,
+	  nb::arg("A"), nb::arg("B"), nb::arg("Precision") = OaMatMulPrecision::Auto,
 	  nb::rv_policy::take_ownership,
 	  "Matrix multiplication C = A @ B^T using the OA weight-layout convention.");
 
 	m.def("Max", [](const OaMatrix& InA, OaI32 InDim) {
 		return matrix_ptr(OaFnMatrix::Max(InA, InDim));
 	},
-	  nb::arg("a"), nb::arg("dim") = -1,
+	  nb::arg("A"), nb::arg("Dim") = -1,
 	  nb::rv_policy::take_ownership,
 	  "Reduce all matrix values by maximum; dim is currently a compatibility parameter.");
 
 	m.def("Mean", [](const OaMatrix& InA, OaI32 InDim) {
 		return matrix_ptr(OaFnMatrix::Mean(InA, InDim));
 	},
-	  nb::arg("a"), nb::arg("dim") = -1,
+	  nb::arg("A"), nb::arg("Dim") = -1,
 	  nb::rv_policy::take_ownership,
 	  "Reduce by arithmetic mean, preserving a selected dimension or reducing all values when dim is -1.");
 
 	m.def("Softmax", [](const OaMatrix& InA, OaI32 InDim) {
 		return matrix_ptr(OaFnMatrix::Softmax(InA, InDim));
 	},
-	  nb::arg("a"), nb::arg("dim") = -1,
+	  nb::arg("A"), nb::arg("Dim") = -1,
 	  nb::rv_policy::take_ownership,
 	  "Stable softmax over the selected dimension; -1 selects the last dimension.");
 
 	m.def("Sum", [](const OaMatrix& InA, OaI32 InDim) {
 		return matrix_ptr(OaFnMatrix::Sum(InA, InDim));
 	},
-	  nb::arg("a"), nb::arg("dim") = -1,
+	  nb::arg("A"), nb::arg("Dim") = -1,
 	  nb::rv_policy::take_ownership,
 	  "Reduce by summation, preserving a selected dimension or reducing all values when dim is -1.");

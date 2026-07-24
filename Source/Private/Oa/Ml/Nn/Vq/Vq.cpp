@@ -1,6 +1,6 @@
 // OaVectorQuantizer / OaResidualVectorQuantizer implementation.
 
-#include "Vq.h"
+#include <Oa/Ml/Nn/Vq/Vq.h>
 
 #include <Oa/Core/FnMatrix.h>
 #include <Oa/Ml/FnMatrix.h>       // VqAssign / VqEmaUpdate / Detach

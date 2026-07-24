@@ -6,8 +6,6 @@
 // Previously duplicated as OaGemmRouterSelect (static in Blas.cpp) and
 // OaGemmRouterSelectLocal (anonymous namespace in Graph.cpp) — both removed.
 //
-// Design: oa/Docs/OaValidation.md §2
-
 #include <Oa/Core/Types.h>
 #include <Oa/Runtime/GemmTypes.h>
 #include <Oa/Runtime/MatmulTypes.h>

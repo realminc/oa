@@ -4,7 +4,32 @@
 
 // OaFnAudio — Signal overloads.
 
-	/// Mix: Weighted sum of two audio tracks.
-	/// Context-based: auto y = OaFnAudio::Mix(...);
-	/// Records operation to thread-local default context.
-	[[nodiscard]] OaMatrix Mix(const OaMatrix& InA, const OaMatrix& InB, OaF32 InGainA = 1.0, OaF32 InGainB = 1.0);
+	/// Normalize: Peak or RMS normalization to a target dB level while preserving audio metadata.
+	[[nodiscard]] OaAudio Normalize(const OaAudio& InAudio, OaF32 InTargetDb = -3.0F, OaU8 InMode = 0);
+
+	/// Resample: Windowed-sinc resampling with sample rate derived from the input audio value.
+	[[nodiscard]] OaAudio Resample(const OaAudio& InAudio, OaU32 InOutRate = 16'000U, OaU32 InFilterHalfWidth = 64U);
+
+	/// Gain: Apply scalar gain in dB while preserving audio metadata.
+	[[nodiscard]] OaAudio Gain(const OaAudio& InAudio, OaF32 InGainDb);
+
+	/// Clip: Clamp waveform samples to a finite range while preserving audio metadata.
+	[[nodiscard]] OaAudio Clip(const OaAudio& InAudio, OaF32 InMin = -1.0F, OaF32 InMax = 1.0F);
+
+	/// PreEmphasis: Apply y[n] = x[n] - alpha*x[n-1] while preserving audio metadata.
+	[[nodiscard]] OaAudio PreEmphasis(const OaAudio& InAudio, OaF32 InAlpha = 0.97F);
+
+	/// ToMono: Average channels into one mono channel while retaining the sample rate.
+	[[nodiscard]] OaAudio ToMono(const OaAudio& InAudio);
+
+	/// Fade: Apply linear fade-in and fade-out envelopes measured in samples.
+	[[nodiscard]] OaAudio Fade(const OaAudio& InAudio, OaU64 InFadeInSamples, OaU64 InFadeOutSamples);
+
+	/// Mix: Weighted sum of two audio values with identical rate, layout, shape, and dtype.
+	[[nodiscard]] OaAudio Mix(const OaAudio& InA, const OaAudio& InB, OaF32 InGainA = 1.0F, OaF32 InGainB = 1.0F);
+
+	/// AmplitudeToDb: Convert waveform amplitude to a finite dB matrix with a silence floor.
+	[[nodiscard]] OaMatrix AmplitudeToDb(const OaAudio& InAudio, OaF32 InFloorDb = -100.0F);
+
+	/// WaveformEnvelope: Reduce multichannel audio to a peak-preserving min/max display matrix.
+	[[nodiscard]] OaMatrix WaveformEnvelope(const OaAudio& InAudio, OaU32 InBins = 2'048U);

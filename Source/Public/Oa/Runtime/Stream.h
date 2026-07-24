@@ -78,8 +78,7 @@ public:
 	);
 	// Canonical stream encoder. Direct, indirect, primary-device and mesh-node
 	// wrappers all lower to this exact descriptor contract.
-	[[nodiscard]] OaStatus RecordDispatchDesc(
-		OaEngine& InRt, const OaComputeDispatchDesc& InDesc);
+	[[nodiscard]] OaStatus RecordDispatchDesc(OaEngine& InRt, const OaComputeDispatchDesc& InDesc);
 
 	// Same as RecordDispatch but resolves pipeline + bindless on mesh node InNodeIndex.
 	[[nodiscard]] OaStatus RecordDispatchOnNode(
@@ -100,7 +99,8 @@ public:
 	void RecordCopyBufferRegions(
 		const OaVkBuffer& InSrc,
 		const OaVkBuffer& InDst,
-		OaSpan<const OaBufferCopyRegion> InRegions);
+		OaSpan<const OaBufferCopyRegion> InRegions
+	);
 	// Make prior device writes to a copy source visible to the next transfer
 	// read. Alias-backed sources use a global memory dependency; ordinary
 	// buffers retain the exact source range. Flushed host writes are made
@@ -108,7 +108,8 @@ public:
 	void RecordTransferReadBarrier(
 		const OaVkBuffer& InSrc,
 		OaU64 InOffset,
-		OaU64 InSize);
+		OaU64 InSize
+	);
 	// Make prior transfer writes visible to later same-queue buffer accesses
 	// and to host reads after submission completion. Alias-backed destinations
 	// use a global memory dependency; ordinary buffers retain the exact range.
@@ -118,7 +119,8 @@ public:
 	void RecordTransferWriteBarrier(
 		const OaVkBuffer& InDst,
 		OaU64 InOffset,
-		OaU64 InSize);
+		OaU64 InSize
+	);
 	void RecordBufferBarrier();
 	// One graph/batch-final visibility edge from all prior device writes to
 	// mapped host readback. Device-only intermediates do not emit it individually.
@@ -151,7 +153,7 @@ public:
 	[[nodiscard]] OaBool IsComplete(const OaVkDevice& InDevice) const;
 	[[nodiscard]] OaCompletionToken Completion(const OaVkDevice& InDevice) const {
 		return Submitted
-			? OaCompletionToken(InDevice, TimelineSem, TimelineValue)
+			? OaCompletionToken(InDevice, TimelineSem, TimelineValue, QueueFamily)
 			: OaCompletionToken();
 	}
 

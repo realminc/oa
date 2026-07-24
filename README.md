@@ -19,11 +19,12 @@ targets supported desktop, mobile, and integrated GPUs.
 > **0.7 development preview.** OA is real, executable software, but its API and artifact
 > formats are not frozen. Verified paths and experimental boundaries are listed below.
 
-> **Current preview.** [`v0.7.6`](https://github.com/realminc/oa/releases/tag/v0.7.6)
-> publishes the July 21 architecture-convergence checkpoint as matching source, C++
-> packages, and an `oapython` wheel. It remains a development preview, not a compatibility
-> promise. The `v0.7.5` Build Week evidence is a historical measurement baseline rather
-> than an exact benchmark of this release tree.
+> **Current preview.** [`v0.7.7`](https://github.com/realminc/oa/releases/tag/v0.7.7)
+> publishes the architecture-converged runtime together with the first coherent
+> C++-parity Python surface, paired tutorials, semantic media values, and format-neutral
+> still-image I/O. It remains a development preview, not a compatibility promise. The
+> `v0.7.5` Build Week evidence is a historical measurement baseline rather than an exact
+> benchmark of this release tree.
 
 ## What works today
 
@@ -32,10 +33,10 @@ targets supported desktop, mobile, and integrated GPUs.
 | **Core / Runtime** | Vulkan device selection, bindless memory, streams, compiled compute graphs, allocator-backed transient aliasing, OaBlasLt routing, semantic DNN planning, pipeline caching, and cache-aware parallel shader preload |
 | **ML** | Matrices, modules, autograd, losses, optimizers, checkpoints, validation metrics, packed Transformer projections, Flash Attention, RNN, GRU, Transformer, Mamba-3, and GPU-native dropless sparse MoE |
 | **OaAlm** | Native CLIP text conditioning, VQ motion tokenization, Transformer generation, one-file `.oam` deployment, and prompt-to-USD motion generation |
-| **Vision** | 50 graph-native image operations, JPEG/image I/O, native container parsing, Vulkan Video decode, encode, capture, recording, and transcoding surfaces |
+| **Vision** | 50 graph-native image operations, semantic `OaImage` I/O for JPEG/PNG/BMP/TGA plus capability-gated WebP, native container parsing, Vulkan Video decode, encode, capture, recording, and transcoding surfaces |
 | **Audio** | WAV/FLAC/MP3 decode, lossless WAV-F32 output, deterministic PCM16 streaming, capture/playback surfaces, and 15 GPU DSP/feature operations |
 | **Crypto** | Strict host cryptographic primitives plus Vulkan batch hashing and public-data acceleration; security-sensitive CPU paths use established libraries |
-| **Python** | Module-shaped `oa.core`, `runtime`, `ml`, `vision`, `audio`, and `crypto` bindings over the same native engine |
+| **Python** | PascalCase C++-parity root values and real `OaFn*` namespace modules, generated type stubs, matrix operators, lazy device creation, paired Core/ML/Audio/Vision tutorials, and the full 16-entry NLP suite over the same native engine |
 | **Android** | OaMobileLab runs the five canonical Vulkan NLP models end-to-end on a physical Adreno phone, including training, generation, save, and reload |
 
 The flagship validation is not a synthetic kernel launch. OA trains RNN, GRU,
@@ -45,7 +46,7 @@ model contracts, training semantics, generation checks, and checkpoint round tri
 
 <p align="center">
   <a href="https://x.com/empyrealm1/status/2072364333909037178">
-    <img src="assets/motiongpt.gif" width="520" alt="OaAlm generating 3D character motion on Vulkan">
+    <img src="Asset/Image/motiongpt.gif" width="520" alt="OaAlm generating 3D character motion on Vulkan">
   </a>
   <br>
   <em>OaAlm: text-conditioned motion tokens → decoded motion → USD. <a href="https://x.com/empyrealm1/status/2072364333909037178">full clip ↗</a></em>
@@ -78,16 +79,14 @@ python -m pip install oapython
 ```
 
 ```python
-import oa
+from oa import *
 
-assert oa.runtime.OaInitComputeEngine()
-
-x = oa.core.Rand([64, 32])
-layer = oa.ml.OaLinear(32, 64)
-with oa.Context():
-    y = layer.Forward(x)
+audio = OaAudioDecoder.LoadFile("speech.flac")
+clean = OaFnAudio.Normalize(audio, -3.0)
+OaAudioEncoder.SaveWavF32("speech_clean.wav", clean)
 ```
 
+The import is host-only; the first device-backed request initializes the binding host.
 Python calls the same C++ objects and Vulkan kernels. It is not a CPU reimplementation.
 
 ## Build from source
@@ -158,7 +157,7 @@ Public headers live under `Source/Public/Oa/`; implementations and shaders live 
 |---|---|
 | NVIDIA RTX | Core/ML and Vulkan Video paths verified; cooperative-matrix/BF16 routes are capability-gated |
 | AMD RDNA | Core/ML supported through Vulkan; complete current media matrix still needs hardware reruns |
-| Intel Xe / Iris Xe | FP32 training, 50-op Vision path, and H.264/H.265/VP9 Vulkan Video decode verified on Tiger Lake with Mesa `xe` KMD |
+| Intel Xe / Iris Xe | FP32 training and the 50-op Vision path verified; exact H.264/H.265/AV1 8-bit 4:2:0 fixtures pass on Tiger Lake with Mesa `xe`, while the pinned VP9 level-3.1 fixture is capability-rejected by the level-3.0 driver |
 | Qualcomm Adreno | Five-model FP32 NLP training/generation/checkpoint suite verified through OaMobileLab |
 | CPU Vulkan | Useful for selected correctness and CI work, not a performance target |
 
@@ -179,8 +178,9 @@ drivers advertise features they do not compile correctly.
   proof, not a production-quality general motion model.
 - Crypto is correctness-tested but has not received an independent security audit. Do
   not market it as certified, military-grade, or suitable for custody without review.
-- Cross-machine distributed execution and the UI/plot/3D editor stack are not part of
-  this preview.
+- Cross-machine distributed execution and a generic 3D engine/editor are not part of
+  this preview. `OaViewer` is the shipped compact presentation path; the Lunar Lander 3D
+  tutorial remains Experimental rather than a general rendering claim.
 
 ## Documentation
 

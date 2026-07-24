@@ -5,7 +5,7 @@
 //   datasetctl unpack path.oad -o outdir
 
 #include <Oa/Core/Cli.h>
-#include <Oa/Core/FileIo.h>
+#include <Oa/Core/Filesystem.h>
 #include <Oa/Core/Log.h>
 #include <Oa/Core/Types.h>
 #include <Oa/Ml/Oad.h>
@@ -35,7 +35,7 @@ static int CmdInfo(const OaString& InPath) {
 	const auto& h = f.Header();
 	OA_CLI_RAW("\n");
 	OA_CLI("  File:     %s", InPath.c_str());
-	auto sz = OaFileIo::GetFileSize(OaPath(InPath));
+	auto sz = OaFilesystem::GetFileSize(OaPath(InPath));
 	if (sz.IsOk()) {
 		OA_CLI("  Size:     %s", FormatBytes(sz.GetValue()).c_str());
 	}
@@ -56,11 +56,11 @@ static int CmdPack(
 	const OaString& ValPath,
 	const OaString& TestPath
 ) {
-	if (!OaFileIo::IsFile(OaPath(TrainPath))) {
+	if (!OaFilesystem::IsFile(OaPath(TrainPath))) {
 		OA_CLI("Error: train file not found: %s", TrainPath.c_str());
 		return 1;
 	}
-	auto trainR = OaFileIo::ReadBinary(OaPath(TrainPath));
+	auto trainR = OaFilesystem::ReadBinary(OaPath(TrainPath));
 	if (!trainR.IsOk()) {
 		OA_CLI("Error: read train: %s", TrainPath.c_str());
 		return 1;
@@ -69,11 +69,11 @@ static int CmdPack(
 
 	OaVec<OaU8> val;
 	if (!ValPath.empty()) {
-		if (!OaFileIo::IsFile(OaPath(ValPath))) {
+		if (!OaFilesystem::IsFile(OaPath(ValPath))) {
 			OA_CLI("Error: val file not found: %s", ValPath.c_str());
 			return 1;
 		}
-		auto valR = OaFileIo::ReadBinary(OaPath(ValPath));
+		auto valR = OaFilesystem::ReadBinary(OaPath(ValPath));
 		if (!valR.IsOk()) {
 			OA_CLI("Error: read val: %s", ValPath.c_str());
 			return 1;
@@ -83,11 +83,11 @@ static int CmdPack(
 
 	OaVec<OaU8> test;
 	if (!TestPath.empty()) {
-		if (!OaFileIo::IsFile(OaPath(TestPath))) {
+		if (!OaFilesystem::IsFile(OaPath(TestPath))) {
 			OA_CLI("Error: test file not found: %s", TestPath.c_str());
 			return 1;
 		}
-		auto testR = OaFileIo::ReadBinary(OaPath(TestPath));
+		auto testR = OaFilesystem::ReadBinary(OaPath(TestPath));
 		if (!testR.IsOk()) {
 			OA_CLI("Error: read test: %s", TestPath.c_str());
 			return 1;
@@ -114,12 +114,12 @@ static int CmdUnpack(const OaString& InPath, const OaString& OutDir) {
 		OA_CLI("Error: not a valid .oad v1 file: %s", InPath.c_str());
 		return 1;
 	}
-	(void)OaFileIo::CreateDirectories(OaPath(OutDir));
+	(void)OaFilesystem::CreateDirectories(OaPath(OutDir));
 
 	auto writeSplit = [&](const char* Name, OaSpan<const OaU8> Span) -> int {
 		if (Span.empty()) return 0;
 		OaPath p = OaPath(OutDir) / Name;
-		auto wst = OaFileIo::WriteBinary(p, Span);
+		auto wst = OaFilesystem::WriteBinary(p, Span);
 		if (wst.IsError()) {
 			OA_CLI("Error: write %s: %s", p.string().c_str(), wst.GetMessage().c_str());
 			return 1;

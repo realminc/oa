@@ -5,6 +5,6 @@
 	m.def("CrossEntropy", [](const OaMatrix& InLogits, const OaMatrix& InTargets) {
 		return matrix_ptr(OaFnLoss::CrossEntropy(InLogits, InTargets));
 	},
-	  nb::arg("logits"), nb::arg("targets"),
+	  nb::arg("Logits"), nb::arg("Targets"),
 	  nb::rv_policy::take_ownership,
 	  "Mean cross-entropy for rank-two logits and UInt8, UInt32, or non-negative Int32 class-index targets; an out-of-range target produces NaN without an out-of-bounds read.");

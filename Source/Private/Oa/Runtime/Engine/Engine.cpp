@@ -11,8 +11,9 @@
 #include <Oa/Runtime/Spirv.h>
 #include <Oa/Runtime/ShaderProvider.h>
 #include <Oa/Runtime/MatmulTypes.h>
+#include "QueueSubmitRoute.h"
 #include <Oa/Core/EnvFlag.h>
-#include <Oa/Core/FileIo.h>
+#include <Oa/Core/Filesystem.h>
 #include <Oa/Core/KernelRegistry.h>
 #include <Oa/Core/Matrix.h>
 #include <Oa/Core/FnMatrix.h>
@@ -308,6 +309,11 @@ OaEngine::~OaEngine() {
 		OA_LOG_ERROR(OaLogComponent::Core,
 			"OaEngine::~OaEngine: shutdown failed: %s",
 			status.ToString().c_str());
+		// Completion did not prove that retired service resources are idle. The
+		// engine cannot report another retry once destruction begins, so detach
+		// these payloads instead of invoking release callbacks against potentially
+		// live Vulkan work. This is an intentional last-resort leak.
+		DetachRetiredBorrowedServices_();
 	}
 }
 
@@ -361,7 +367,15 @@ OaStatus OaEngine::InitInPlace(const OaEngineConfig& InConfig) {
 			"OaEngine::InitInPlace: engine initialization is one-shot");
 	}
 	State_ = OaEngineState::Initializing;
-	auto status = InitInPlaceImpl(InConfig);
+	// Validation evidence is intentionally selectable at runtime so the exact
+	// Release workload can be exercised under core, synchronization, and
+	// GPU-assisted VVL profiles. An explicit config request or the diagnostic
+	// environment toggle enables it; a false environment value never disables
+	// an explicit config request.
+	OaEngineConfig resolvedConfig = InConfig;
+	resolvedConfig.EnableValidation = InConfig.EnableValidation
+		or OaEnvFlag::IsSet("OA_VK_VALIDATION");
+	auto status = InitInPlaceImpl(resolvedConfig);
 	State_ = status.IsOk() ? OaEngineState::Ready : OaEngineState::Failed;
 	return status;
 }
@@ -589,14 +603,28 @@ OaStatus OaEngine::Close() {
 	}
 	if (TransferStream_.Submitted) retainError(TransferStream_.Synchronize(Device));
 	if (ReadbackStream_.Submitted) retainError(ReadbackStream_.Synchronize(Device));
+	// Graphics leases abandoned by composed services retire into the engine pool.
+	// Engine Close is the explicit boundary that completes those timelines and
+	// cancels any never-submitted recording before borrowed service payloads can
+	// release resources referenced by those submissions.
+	const OaStatus graphicsStatus = CompleteGraphicsStreams_();
+	retainError(graphicsStatus);
+	if (not graphicsStatus.IsOk()) {
+		State_ = OaEngineState::Failed;
+		return firstError;
+	}
+	// A failed borrowed-service completion retains its payload for a later Close
+	// retry. Do not enter device teardown until every callback proves completion.
+	const OaStatus borrowedServiceStatus = CompleteRetiredBorrowedServices_();
+	retainError(borrowedServiceStatus);
+	if (not borrowedServiceStatus.IsOk()) {
+		State_ = OaEngineState::Failed;
+		return firstError;
+	}
 	if (UploadRing_) {
 		retainError(UploadRing_->Close());
 		UploadRing_.reset();
 	}
-	// Complete composed borrowed sessions first. They can own image-dispatch
-	// tickets and other lower-level retirement payloads that must be released
-	// before those engine retirement queues are collected.
-	retainError(CompleteRetiredBorrowedServices_());
 	// Directly pooled engine stream timelines are complete now. Retire facade-
 	// owned submissions and their resources before either subsystem is destroyed.
 	CollectRetiredImageDispatches_();
@@ -628,6 +656,10 @@ OaStatus OaEngine::Close() {
 	for (auto& s : AsyncStreamPool_) s->Destroy(Device);
 	AsyncStreamPool_.Clear();
 	AsyncFreeStack_.Clear();
+	for (auto& slot : GraphicsStreamPool_) {
+		if (slot.Stream) slot.Stream->Destroy(Device);
+	}
+	GraphicsStreamPool_.Clear();
 	TransferStream_.Destroy(Device);
 	ReadbackStream_.Destroy(Device);
 	Allocator.Free(ReadbackStaging_);
@@ -691,11 +723,34 @@ OaStatus OaEngine::CompleteRetiredBorrowedServices_() {
 		retired = OaStdMove(RetiredBorrowedServices_);
 	}
 	OaStatus firstError = OaStatus::Ok();
+	OaVec<OaRetiredServiceState> retry;
 	for (auto& service : retired) {
 		const auto status = service.Complete();
-		if (firstError.IsOk() and not status.IsOk()) firstError = status;
+		if (not status.IsOk()) {
+			if (firstError.IsOk()) firstError = status;
+			retry.PushBack(OaStdMove(service));
+		}
+	}
+	if (not retry.Empty()) {
+		// Completion callbacks may retire additional services. Append failures to
+		// that live queue before the local vector destructs so their release
+		// callbacks cannot run until a successful retry.
+		OaScopedLock<OaMutex> lock(RetiredBorrowedServiceMutex_);
+		RetiredBorrowedServices_.Reserve(
+			RetiredBorrowedServices_.Size() + retry.Size());
+		for (auto& service : retry) {
+			RetiredBorrowedServices_.PushBack(OaStdMove(service));
+		}
 	}
 	return firstError;
+}
+
+void OaEngine::DetachRetiredBorrowedServices_() noexcept {
+	OaScopedLock<OaMutex> lock(RetiredBorrowedServiceMutex_);
+	for (auto& service : RetiredBorrowedServices_) {
+		service.DetachWithoutRelease();
+	}
+	RetiredBorrowedServices_.Clear();
 }
 
 OaStatus OaEngine::EnsurePipeline(
@@ -714,11 +769,11 @@ static void OaLoadSpvDirIntoPipelines(
 	if (spirvDir.empty()) return;
 	if (spirvDir.back() != '/') spirvDir += '/';
 
-	auto filesResult = OaFileIo::Glob(OaPath(spirvDir), "*.spv");
+	auto filesResult = OaFilesystem::Glob(OaPath(spirvDir), "*.spv");
 	if (!filesResult) return;
 
 	for (const auto& path : filesResult.GetValue()) {
-		OaString name = OaFileIo::GetStem(path);
+		OaString name = path.Stem().String();
 		// Skip cooperative-matrix kernels — they are loaded (and cap-gated) only via
 		// the embedded path. Match the real kernel names (GemmCmSgBf16 / GemmCmWgBf16,
 		// "Cm" = CoopMat), not just a "CoopMat" substring the renamed kernels lack.
@@ -729,7 +784,7 @@ static void OaLoadSpvDirIntoPipelines(
 			++*InOutSkipped;
 			continue;
 		}
-		auto data = OaFileIo::ReadBinary(path);
+		auto data = OaFilesystem::ReadBinary(path);
 		if (!data || data.GetValue().Empty()) continue;
 		const auto& bytes = data.GetValue();
 		OaPipelineSpec spec{.WgSize = 256, .NumBindings = 16, .PushConstantBytes = 128,
@@ -1278,6 +1333,245 @@ OaVkStream* OaEngine::AcquireStream() {
 	return raw;
 }
 
+bool OaEngine::OwnsEvent(const OaEvent& InEvent) const noexcept {
+	return InEvent.IsValid() and InEvent.Device_ == &Device;
+}
+
+void OaEngine::CollectRetiredGraphicsStreams_() {
+	if (Device.Device == nullptr) return;
+	std::lock_guard<std::mutex> lock(GraphicsStreamPoolMutex_);
+	for (auto& slot : GraphicsStreamPool_) {
+		if (slot.State != OaGraphicsStreamSlotState::Retired
+			or not slot.Stream
+			or not slot.Stream->IsComplete(Device)) {
+			continue;
+		}
+		slot.Stream->Submitted = false;
+		slot.Completion = {};
+		slot.State = OaGraphicsStreamSlotState::Free;
+	}
+}
+
+OaVkStream* OaEngine::GraphicsStreamForLease_(
+	OaU32 InSlot, OaU64 InGeneration) noexcept
+{
+	std::lock_guard<std::mutex> lock(GraphicsStreamPoolMutex_);
+	if (InSlot >= GraphicsStreamPool_.Size()) return nullptr;
+	auto& slot = GraphicsStreamPool_[InSlot];
+	if (slot.Generation != InGeneration
+		or slot.State != OaGraphicsStreamSlotState::Recording) {
+		return nullptr;
+	}
+	return slot.Stream.get();
+}
+
+OaResult<OaEvent> OaEngine::SubmitGraphicsStream_(
+	OaU32 InSlot,
+	OaU64 InGeneration,
+	OaSpan<const OaEvent> InDependencies)
+{
+	if (not IsReady()) {
+		return OaStatus::Error(
+			OaStatusCode::FailedPrecondition,
+			"graphics submission requires a ready engine");
+	}
+	std::lock_guard<std::mutex> lock(GraphicsStreamPoolMutex_);
+	if (InSlot >= GraphicsStreamPool_.Size()) {
+		return OaStatus::Error(
+			OaStatusCode::InvalidArgument,
+			"graphics stream lease slot is invalid");
+	}
+	auto& slot = GraphicsStreamPool_[InSlot];
+	if (slot.Generation != InGeneration
+		or slot.State != OaGraphicsStreamSlotState::Recording
+		or not slot.Stream) {
+		return OaStatus::Error(
+			OaStatusCode::InvalidArgument,
+			"graphics stream lease is stale or not recording");
+	}
+
+	OaVec<OaVkTimelineWait> waits;
+	waits.Reserve(InDependencies.size());
+	for (const OaEvent& dependency : InDependencies) {
+		if (not OwnsEvent(dependency)) {
+			return OaStatus::Error(
+				OaStatusCode::InvalidArgument,
+				"graphics dependency event belongs to another engine");
+		}
+		if (not dependency.HasQueueFamily()) {
+			return OaStatus::Error(
+				OaStatusCode::InvalidArgument,
+				"graphics dependency event has no producer queue-family provenance");
+		}
+		if (dependency.QueueFamily()
+			!= Device.Queues.GraphicsQueueFamily) {
+			return OaStatus::Error(
+				OaStatusCode::FailedPrecondition,
+				"cross-family graphics dependencies require explicit resource ownership transfer");
+		}
+		waits.PushBack(dependency.TimelineWait());
+	}
+
+	const OaStatus submitStatus = waits.Empty()
+		? slot.Stream->Submit(*this)
+		: slot.Stream->SubmitWithDependencies(
+			*this, OaSpan<const OaVkTimelineWait>(waits.Data(), waits.Size()));
+	if (not submitStatus.IsOk()) {
+		const OaStatus resetStatus = slot.Stream->ResetUnsubmitted(Device);
+		slot.Completion = {};
+		slot.State = resetStatus.IsOk()
+			? OaGraphicsStreamSlotState::Free
+			: OaGraphicsStreamSlotState::Quarantined;
+		return resetStatus.IsOk() ? submitStatus : resetStatus;
+	}
+
+	const OaEvent completion = slot.Stream->Completion(Device);
+	if (not completion.IsValid()) {
+		slot.State = OaGraphicsStreamSlotState::Retired;
+		return OaStatus::Error(
+			OaStatusCode::Internal,
+			"graphics submission did not produce an exact completion event");
+	}
+	slot.Completion = completion;
+	slot.State = OaGraphicsStreamSlotState::Submitted;
+	return completion;
+}
+
+OaStatus OaEngine::CancelGraphicsStream_(
+	OaU32 InSlot, OaU64 InGeneration)
+{
+	std::lock_guard<std::mutex> lock(GraphicsStreamPoolMutex_);
+	if (InSlot >= GraphicsStreamPool_.Size()) {
+		return OaStatus::Error(
+			OaStatusCode::InvalidArgument,
+			"graphics stream lease slot is invalid");
+	}
+	auto& slot = GraphicsStreamPool_[InSlot];
+	if (slot.Generation != InGeneration
+		or slot.State != OaGraphicsStreamSlotState::Recording
+		or not slot.Stream) {
+		return OaStatus::Error(
+			OaStatusCode::InvalidArgument,
+			"only an exact active graphics recording can be cancelled");
+	}
+	const OaStatus status = slot.Stream->ResetUnsubmitted(Device);
+	slot.Completion = {};
+	slot.State = status.IsOk()
+		? OaGraphicsStreamSlotState::Free
+		: OaGraphicsStreamSlotState::Quarantined;
+	return status;
+}
+
+OaStatus OaEngine::RecycleGraphicsStream_(
+	OaU32 InSlot,
+	OaU64 InGeneration,
+	const OaEvent& InCompletion)
+{
+	std::lock_guard<std::mutex> lock(GraphicsStreamPoolMutex_);
+	if (InSlot >= GraphicsStreamPool_.Size()) {
+		return OaStatus::Error(
+			OaStatusCode::InvalidArgument,
+			"graphics stream lease slot is invalid");
+	}
+	auto& slot = GraphicsStreamPool_[InSlot];
+	if (slot.Generation != InGeneration
+		or slot.State != OaGraphicsStreamSlotState::Submitted
+		or not slot.Stream) {
+		return OaStatus::Error(
+			OaStatusCode::InvalidArgument,
+			"graphics stream lease is stale or not submitted");
+	}
+	if (not OwnsEvent(InCompletion)
+		or not slot.Completion.IsSameCompletion(InCompletion)) {
+		return OaStatus::Error(
+			OaStatusCode::InvalidArgument,
+			"graphics stream recycle requires its exact completion event");
+	}
+	if (not InCompletion.IsComplete()) {
+		return OaStatus::Error(
+			OaStatusCode::FailedPrecondition,
+			"graphics stream completion is still pending");
+	}
+	slot.Stream->Submitted = false;
+	slot.Completion = {};
+	slot.State = OaGraphicsStreamSlotState::Free;
+	return OaStatus::Ok();
+}
+
+OaStatus OaEngine::AbandonGraphicsStream_(
+	OaU32 InSlot, OaU64 InGeneration)
+{
+	std::lock_guard<std::mutex> lock(GraphicsStreamPoolMutex_);
+	if (InSlot >= GraphicsStreamPool_.Size()) {
+		return OaStatus::Error(
+			OaStatusCode::InvalidArgument,
+			"graphics stream lease slot is invalid");
+	}
+	auto& slot = GraphicsStreamPool_[InSlot];
+	if (slot.Generation != InGeneration or not slot.Stream) {
+		return OaStatus::Error(
+			OaStatusCode::InvalidArgument,
+			"graphics stream lease generation is stale");
+	}
+	if (slot.State == OaGraphicsStreamSlotState::Recording) {
+		const OaStatus status = slot.Stream->ResetUnsubmitted(Device);
+		slot.Completion = {};
+		slot.State = status.IsOk()
+			? OaGraphicsStreamSlotState::Free
+			: OaGraphicsStreamSlotState::Quarantined;
+		return status;
+	}
+	if (slot.State == OaGraphicsStreamSlotState::Submitted) {
+		if (slot.Stream->IsComplete(Device)) {
+			slot.Stream->Submitted = false;
+			slot.Completion = {};
+			slot.State = OaGraphicsStreamSlotState::Free;
+		} else {
+			slot.State = OaGraphicsStreamSlotState::Retired;
+		}
+		return OaStatus::Ok();
+	}
+	if (slot.State == OaGraphicsStreamSlotState::Retired
+		or slot.State == OaGraphicsStreamSlotState::Quarantined
+		or slot.State == OaGraphicsStreamSlotState::Free) {
+		return OaStatus::Ok();
+	}
+	return OaStatus::Error(
+		OaStatusCode::InvalidArgument,
+		"graphics stream lease is no longer active");
+}
+
+OaStatus OaEngine::CompleteGraphicsStreams_() {
+	std::lock_guard<std::mutex> lock(GraphicsStreamPoolMutex_);
+	OaStatus firstError = OaStatus::Ok();
+	for (auto& slot : GraphicsStreamPool_) {
+		if (not slot.Stream) continue;
+		if (slot.State == OaGraphicsStreamSlotState::Recording) {
+			const OaStatus status = slot.Stream->ResetUnsubmitted(Device);
+			if (firstError.IsOk() and not status.IsOk()) firstError = status;
+			slot.State = status.IsOk()
+				? OaGraphicsStreamSlotState::Free
+				: OaGraphicsStreamSlotState::Quarantined;
+			continue;
+		}
+		if (slot.State != OaGraphicsStreamSlotState::Submitted
+			and slot.State != OaGraphicsStreamSlotState::Retired) {
+			continue;
+		}
+		const OaStatus status = slot.Stream->Synchronize(Device);
+		if (not status.IsOk()) {
+			if (firstError.IsOk()) firstError = status;
+			// Synchronize leaves Submitted set when its wait fails. Preserve the
+			// exact Submitted/Retired state and completion event so Close can retry
+			// instead of quarantining live work and then tearing its resources down.
+			continue;
+		}
+		slot.Completion = {};
+		slot.State = OaGraphicsStreamSlotState::Free;
+	}
+	return firstError;
+}
+
 void OaEngine::RetireImageDispatch(
 	OaVkStream* InStream,
 	OaVec<OaU32>&& InStorageImageSlots,
@@ -1410,6 +1704,15 @@ void OaEngine::CollectRetiredContextBatches_()
 		}
 		if (batch.Stream != nullptr) {
 			batch.Stream->Submitted = false;
+			const auto resetStatus =
+				batch.Stream->ResetUnsubmitted(Device);
+			if (not resetStatus.IsOk()) {
+				OA_LOG_ERROR(OaLogComponent::Core,
+					"retired context stream reset failed: %s",
+					resetStatus.GetMessage().c_str());
+				pending.PushBack(OaStdMove(batch));
+				continue;
+			}
 			ReleaseStream(batch.Stream);
 		}
 		for (auto& graph : batch.Graphs) {
@@ -1446,6 +1749,13 @@ OaStatus OaEngine::CompleteRetiredContextBatches_()
 			continue;
 		}
 		if (batch.Stream != nullptr) {
+			const auto resetStatus =
+				batch.Stream->ResetUnsubmitted(Device);
+			if (not resetStatus.IsOk()) {
+				if (result.IsOk()) result = resetStatus;
+				pending.PushBack(OaStdMove(batch));
+				continue;
+			}
 			ReleaseStream(batch.Stream);
 		}
 		for (auto& graph : batch.Graphs) {
@@ -1553,63 +1863,97 @@ void OaEngine::ReleaseAsyncStream(OaVkStream* InStream) {
 
 // ─── Thread-Safe Queue Submit ──────────────────────────────────────────────
 
+std::mutex* OaEngine::QueueSubmitMutex_(void* InQueue) noexcept {
+	switch (OaClassifyQueueSubmitRoute(Device.Queues, InQueue)) {
+	case OaQueueSubmitRoute::Compute:
+		return &ComputeQueueMutex_;
+	case OaQueueSubmitRoute::AsyncCompute:
+		return &AsyncComputeQueueMutex_;
+	case OaQueueSubmitRoute::Transfer:
+		return &TransferQueueMutex_;
+	case OaQueueSubmitRoute::Graphics:
+		return &GraphicsQueueMutex_;
+	case OaQueueSubmitRoute::Present:
+		return &PresentQueueMutex_;
+	case OaQueueSubmitRoute::Unknown:
+		return nullptr;
+	}
+	return nullptr;
+}
+
+void OaEngine::LockQueueSubmit_(void* InQueue) {
+	if (std::mutex* mutex = QueueSubmitMutex_(InQueue)) mutex->lock();
+}
+
+void OaEngine::UnlockQueueSubmit_(void* InQueue) {
+	if (std::mutex* mutex = QueueSubmitMutex_(InQueue)) mutex->unlock();
+}
+
+static const char* OaQueueSubmitRouteName(OaQueueSubmitRoute InRoute) noexcept {
+	switch (InRoute) {
+	case OaQueueSubmitRoute::Compute: return "compute";
+	case OaQueueSubmitRoute::AsyncCompute: return "async compute";
+	case OaQueueSubmitRoute::Transfer: return "transfer";
+	case OaQueueSubmitRoute::Graphics: return "graphics";
+	case OaQueueSubmitRoute::Present: return "present";
+	case OaQueueSubmitRoute::Unknown: return "unknown";
+	}
+	return "unknown";
+}
+
 OaStatus OaEngine::SubmitToQueue(void* InQueue, void* InSubmitInfo, void* InFence) {
 	CollectRetiredExecutionPlans_();
+	const OaQueueSubmitRoute route = OaClassifyQueueSubmitRoute(Device.Queues, InQueue);
+	if (route == OaQueueSubmitRoute::Unknown
+		or route == OaQueueSubmitRoute::Present
+		or InSubmitInfo == nullptr) {
+		return OaStatus::Error(OaStatusCode::InvalidArgument, "unknown queue");
+	}
+	std::mutex* mutex = QueueSubmitMutex_(InQueue);
+	if (mutex == nullptr) {
+		return OaStatus::Error(OaStatusCode::InvalidArgument, "unknown queue");
+	}
 	VkQueue queue = static_cast<VkQueue>(InQueue);
 	VkFence fence = static_cast<VkFence>(InFence);
 	const VkSubmitInfo* si = static_cast<const VkSubmitInfo*>(InSubmitInfo);
-
-	if (InQueue == Device.Queues.ComputeQueue) {
-		std::lock_guard<std::mutex> lock(ComputeQueueMutex_);
-		VkResult r = vkQueueSubmit(queue, 1, si, fence);
-		if (r != VK_SUCCESS) {
-			OA_LOG_ERROR(OaLogComponent::Core, "vkQueueSubmit (compute) failed, VkResult=%d", static_cast<int>(r));
-			return OaStatus::Error(OaStatusCode::VulkanError, "vkQueueSubmit (compute) failed");
-		}
-	} else if (Device.Queues.HasAsyncCompute && InQueue == Device.Queues.AsyncComputeQueue) {
-		std::lock_guard<std::mutex> lock(AsyncComputeQueueMutex_);
-		VkResult r = vkQueueSubmit(queue, 1, si, fence);
-		if (r != VK_SUCCESS) {
-			OA_LOG_ERROR(OaLogComponent::Core, "vkQueueSubmit (async compute) failed, VkResult=%d", static_cast<int>(r));
-			return OaStatus::Error(OaStatusCode::VulkanError, "vkQueueSubmit (async compute) failed");
-		}
-	} else if (InQueue == Device.Queues.TransferQueue) {
-		std::lock_guard<std::mutex> lock(TransferQueueMutex_);
-		VkResult r = vkQueueSubmit(queue, 1, si, fence);
-		if (r != VK_SUCCESS) {
-			OA_LOG_ERROR(OaLogComponent::Core, "vkQueueSubmit (transfer) failed, VkResult=%d", static_cast<int>(r));
-			return OaStatus::Error(OaStatusCode::VulkanError, "vkQueueSubmit (transfer) failed");
-		}
-	} else {
-		return OaStatus::Error(OaStatusCode::InvalidArgument, "unknown queue");
+	std::lock_guard<std::mutex> lock(*mutex);
+	const VkResult result = vkQueueSubmit(queue, 1, si, fence);
+	if (result != VK_SUCCESS) {
+		const char* routeName = OaQueueSubmitRouteName(route);
+		OA_LOG_ERROR(OaLogComponent::Core,
+			"vkQueueSubmit (%s) failed, VkResult=%d",
+			routeName, static_cast<int>(result));
+		return OaStatus::Error(
+			OaStatusCode::VulkanError,
+			OaString("vkQueueSubmit (") + routeName + ") failed");
 	}
 	return OaStatus::Ok();
 }
 
 OaStatus OaEngine::SubmitToQueue2(void* InQueue, const VkSubmitInfo2* InSubmitInfo) {
 	CollectRetiredExecutionPlans_();
-	VkQueue queue = static_cast<VkQueue>(InQueue);
-
-	if (InQueue == Device.Queues.ComputeQueue) {
-		std::lock_guard<std::mutex> lock(ComputeQueueMutex_);
-		VkResult r = vkQueueSubmit2(queue, 1, InSubmitInfo, VK_NULL_HANDLE);
-		if (r != VK_SUCCESS) {
-			return OaStatus::Error(OaStatusCode::VulkanError, "vkQueueSubmit2 (compute) failed");
-		}
-	} else if (Device.Queues.HasAsyncCompute and InQueue == Device.Queues.AsyncComputeQueue) {
-		std::lock_guard<std::mutex> lock(AsyncComputeQueueMutex_);
-		VkResult r = vkQueueSubmit2(queue, 1, InSubmitInfo, VK_NULL_HANDLE);
-		if (r != VK_SUCCESS) {
-			return OaStatus::Error(OaStatusCode::VulkanError, "vkQueueSubmit2 (async compute) failed");
-		}
-	} else if (InQueue == Device.Queues.TransferQueue) {
-		std::lock_guard<std::mutex> lock(TransferQueueMutex_);
-		VkResult r = vkQueueSubmit2(queue, 1, InSubmitInfo, VK_NULL_HANDLE);
-		if (r != VK_SUCCESS) {
-			return OaStatus::Error(OaStatusCode::VulkanError, "vkQueueSubmit2 (transfer) failed");
-		}
-	} else {
+	const OaQueueSubmitRoute route = OaClassifyQueueSubmitRoute(Device.Queues, InQueue);
+	if (route == OaQueueSubmitRoute::Unknown
+		or route == OaQueueSubmitRoute::Present
+		or InSubmitInfo == nullptr) {
 		return OaStatus::Error(OaStatusCode::InvalidArgument, "unknown queue");
+	}
+	std::mutex* mutex = QueueSubmitMutex_(InQueue);
+	if (mutex == nullptr) {
+		return OaStatus::Error(OaStatusCode::InvalidArgument, "unknown queue");
+	}
+	VkQueue queue = static_cast<VkQueue>(InQueue);
+	std::lock_guard<std::mutex> lock(*mutex);
+	const VkResult result = vkQueueSubmit2(
+		queue, 1, InSubmitInfo, VK_NULL_HANDLE);
+	if (result != VK_SUCCESS) {
+		const char* routeName = OaQueueSubmitRouteName(route);
+		OA_LOG_ERROR(OaLogComponent::Core,
+			"vkQueueSubmit2 (%s) failed, VkResult=%d",
+			routeName, static_cast<int>(result));
+		return OaStatus::Error(
+			OaStatusCode::VulkanError,
+			OaString("vkQueueSubmit2 (") + routeName + ") failed");
 	}
 	return OaStatus::Ok();
 }

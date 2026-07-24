@@ -26,7 +26,7 @@
 #include <Oa/Core/Vlm.h>
 #include <Oa/Render/FnMesh.h>
 #include <Oa/Render/FnMaterial.h>
-#include <Oa/Ui/FnCamera.h>
+#include <Oa/Render/FnCamera.h>
 
 // Forward declarations
 class OaContext;

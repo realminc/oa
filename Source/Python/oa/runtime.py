@@ -8,16 +8,16 @@ __all__ = export_native(globals(), native.runtime)
 
 
 class Context:
-    """Execute and synchronize the default OA context on scope exit.
-    """
+	"""Execute and synchronize the default OA context on scope exit.
+	"""
 
-    def __enter__(self) -> "Context":
-        self._ctx = OaContext_GetDefault()
-        return self
+	def __enter__(self) -> "Context":
+		self._ctx = OaContextGetDefault()
+		return self
 
-    def __exit__(self, exc_type, exc_value, traceback) -> None:
-        self._ctx.Execute()
-        self._ctx.Sync()
+	def __exit__(self, exc_type, exc_value, traceback) -> None:
+		self._ctx.Execute()
+		self._ctx.Sync()
 
 
 __all__.append("Context")

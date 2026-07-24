@@ -1,4 +1,4 @@
-// OA Python bindings — audio metadata and DSP configuration types.
+// OA Python bindings — semantic audio and DSP configuration types.
 #include "../Binding.h"
 
 #include <Oa/Audio/Type.h>
@@ -18,22 +18,28 @@ void BindAudioType(nb::module_& m) {
 
     m.def("OaChannelsForLayout", [](OaChannelLayout layout) {
         return OaChannelsForLayout(layout);
-    }, nb::arg("layout"), "Expected channel count for a layout (0 = unknown).");
+    }, nb::arg("Layout"), "Expected channel count for a layout (0 = unknown).");
     m.def("OaLayoutForChannels", [](OaU32 channels) {
         return OaLayoutForChannels(channels);
-    }, nb::arg("channels"), "Best-effort layout for a raw channel count.");
+    }, nb::arg("Channels"), "Best-effort layout for a raw channel count.");
 
     // ═════════════════════════════════════════════════════════════════════════
-    // OaAudioMeta
+    // OaAudio
     // ═════════════════════════════════════════════════════════════════════════
 
-    nb::class_<OaAudioMeta>(m, "OaAudioMeta")
+    nb::class_<OaAudio>(m, "OaAudio")
         .def(nb::init<>())
-        .def_rw("SampleRate", &OaAudioMeta::SampleRate)
-        .def_rw("ChannelCount", &OaAudioMeta::ChannelCount)
-        .def_rw("SampleCount", &OaAudioMeta::SampleCount)
-        .def_rw("Layout", &OaAudioMeta::Layout)
-        .def("DurationSeconds", &OaAudioMeta::DurationSeconds, "Clip duration in seconds (SampleCount / SampleRate).");
+        .def(nb::init<OaMatrix, OaU32, OaChannelLayout>(),
+             nb::arg("Matrix"), nb::arg("SampleRate"), nb::arg("Layout"))
+        .def_prop_ro("Matrix",
+            [](OaAudio& self) -> OaMatrix& { return self.AsMatrix(); },
+            nb::rv_policy::reference_internal)
+        .def_prop_ro("SampleRate", &OaAudio::SampleRate)
+        .def_prop_ro("ChannelCount", &OaAudio::Channels)
+        .def_prop_ro("SampleCount", &OaAudio::Samples)
+        .def_prop_ro("Layout", &OaAudio::Layout)
+        .def("IsValid", &OaAudio::Validate)
+        .def("DurationSeconds", &OaAudio::DurationSeconds);
 
     // ═════════════════════════════════════════════════════════════════════════
     // DSP configuration structs (plain-data; construct then set fields)
@@ -65,7 +71,6 @@ void BindAudioType(nb::module_& m) {
 
     nb::class_<OaResampleConfig>(m, "OaResampleConfig")
         .def(nb::init<>())
-        .def_rw("InRate", &OaResampleConfig::InRate)
         .def_rw("OutRate", &OaResampleConfig::OutRate)
         .def_rw("FilterHalfWidth", &OaResampleConfig::FilterHalfWidth);
 

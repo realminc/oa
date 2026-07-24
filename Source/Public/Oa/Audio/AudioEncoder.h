@@ -19,13 +19,11 @@ struct OaAudioEncoder {
 	// Execute pending GPU work, read planar [Channels, Samples] F32, interleave,
 	// and encode. This is intentionally a synchronous file/codec boundary.
 	[[nodiscard]] static OaResult<OaVec<OaU8>> EncodeWavF32(
-		const OaAudioBuffer& InBuffer,
-		OaU32 InSampleRate);
+		const OaAudio& InAudio);
 
 	[[nodiscard]] static OaStatus SaveWavF32(
 		const OaPath& InPath,
-		const OaAudioBuffer& InBuffer,
-		OaU32 InSampleRate);
+		const OaAudio& InAudio);
 };
 
 struct OaEncodedAudioPacket {

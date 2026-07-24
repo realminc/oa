@@ -18,8 +18,9 @@ struct OaRlCollectorMetrics {
 	OaU64 Transitions = 0;
 };
 
-// Synchronous same-device categorical collector. It owns no environment,
-// network or storage; it only records their exchange into a supplied rollout.
+// Same-device categorical collector. It owns no environment, network or
+// storage; Collect records one complete rollout transaction and returns its
+// exact completion event without waiting.
 class OaRlCollector {
 public:
 	[[nodiscard]] static OaResult<OaRlCollector> Create(
@@ -28,7 +29,7 @@ public:
 		const OaRlCollectorConfig& InConfig
 	);
 
-	[[nodiscard]] OaStatus Collect(OaRlRolloutBuffer& InOutRollout);
+	[[nodiscard]] OaResult<OaEvent> Collect(OaRlRolloutBuffer& InOutRollout);
 	[[nodiscard]] const OaRlCollectorMetrics& Metrics() const noexcept {
 		return Metrics_;
 	}

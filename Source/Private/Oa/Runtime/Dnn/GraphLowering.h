@@ -23,5 +23,6 @@ class OaDnnGraphLowering {
 public:
 	[[nodiscard]] static OaStatus RecordLinearWeightBiasBackward(
 		OaContext& InContext,
-		const OaLinearWeightBiasBwdGraphDesc& InDesc);
+		const OaLinearWeightBiasBwdGraphDesc& InDesc
+	);
 };

@@ -116,6 +116,70 @@ target_sources(TutorialRlCartPoleViewer PRIVATE
 	Ml/Rl/CartPole.cpp Ml/Rl/CartPolePpo.cpp)
 target_include_directories(TutorialRlCartPoleViewer PRIVATE
 	${CMAKE_CURRENT_SOURCE_DIR}/Ml/Rl)
+
+# Experimental deterministic scalar + headless Vulkan render checkpoint. Keep
+# this standalone: it needs neither the GTest ML harness nor SDL presentation.
+add_executable(TutorialRlLunarLander3dHeadless
+	Ml/Rl/LunarLander3d/TutorialRlLunarLander3dHeadless.cpp
+	Ml/Rl/LunarLander3d/LunarLander3d.cpp
+	Ml/Rl/LunarLander3d/LunarLander3dPhysics.cpp
+	Ml/Rl/LunarLander3d/LunarLander3dTypes.cpp
+	Ml/Rl/LunarLander3d/LunarTerrain.cpp
+	Ml/Rl/LunarLander3d/LunarLander3dRender.cpp)
+target_link_libraries(TutorialRlLunarLander3dHeadless PRIVATE oa)
+target_include_directories(TutorialRlLunarLander3dHeadless PRIVATE
+	${CMAKE_CURRENT_SOURCE_DIR}/Ml/Rl/LunarLander3d
+	${oa_SOURCE_DIR}/Source/Private)
+set_target_properties(TutorialRlLunarLander3dHeadless PROPERTIES
+	RUNTIME_OUTPUT_DIRECTORY "${OA_BIN_DIR}/Tutorial/Ml/Rl")
+if(TARGET oa_shaders)
+	add_dependencies(TutorialRlLunarLander3dHeadless oa_shaders)
+endif()
+
+set(_oa_lunar_headless_artifacts
+	"${CMAKE_CURRENT_BINARY_DIR}/Artifacts/$<CONFIG>/TutorialRlLunarLander3dHeadless")
+add_test(
+	NAME TutorialRlLunarLander3dHeadless
+	COMMAND TutorialRlLunarLander3dHeadless
+		"${_oa_lunar_headless_artifacts}")
+set_tests_properties(TutorialRlLunarLander3dHeadless PROPERTIES
+	LABELS "gpu_bindless;tutorial;ml;rl;render;headless_readback"
+	SKIP_RETURN_CODE 125
+	TIMEOUT 120
+	WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
+
+# Experimental flat-terrain integration smoke for the generic categorical PPO
+# stack. Learning/convergence and procedural-terrain gates remain separate.
+oa_add_tutorial(TutorialRlLunarLander3dPpo
+	Ml/Rl/LunarLander3d/TutorialRlLunarLander3dPpo.cpp Ml/Rl)
+target_sources(TutorialRlLunarLander3dPpo PRIVATE
+	Ml/Rl/LunarLander3d/LunarLander3d.cpp
+	Ml/Rl/LunarLander3d/LunarLander3dPhysics.cpp
+	Ml/Rl/LunarLander3d/LunarLander3dTypes.cpp
+	Ml/Rl/LunarLander3d/LunarTerrain.cpp
+	Ml/Rl/LunarLander3d/LunarLander3dVector.cpp
+	Ml/Rl/LunarLander3d/LunarLander3dPpo.cpp)
+target_include_directories(TutorialRlLunarLander3dPpo PRIVATE
+	${CMAKE_CURRENT_SOURCE_DIR}/Ml/Rl/LunarLander3d)
+set_tests_properties(TutorialRlLunarLander3dPpo PROPERTIES
+	LABELS "gpu_bindless;tutorial;ml;rl"
+	TIMEOUT 120)
+
+# Interactive scalar + Vulkan render path through the one OaViewer lifecycle.
+# The live source passes the renderer's sampled image directly to the Viewer;
+# there is no host readback/upload bridge or tutorial-owned presenter.
+oa_add_app_tutorial(TutorialRlLunarLander3dViewer
+	Ml/Rl/LunarLander3d/TutorialRlLunarLander3dViewer.cpp Ml/Rl)
+target_sources(TutorialRlLunarLander3dViewer PRIVATE
+	Ml/Rl/LunarLander3d/LunarLander3d.cpp
+	Ml/Rl/LunarLander3d/LunarLander3dPhysics.cpp
+	Ml/Rl/LunarLander3d/LunarLander3dTypes.cpp
+	Ml/Rl/LunarLander3d/LunarTerrain.cpp
+	Ml/Rl/LunarLander3d/LunarLander3dRender.cpp
+	Ml/Rl/LunarLander3d/LunarLander3dViewerSource.cpp)
+target_include_directories(TutorialRlLunarLander3dViewer PRIVATE
+	${CMAKE_CURRENT_SOURCE_DIR}/Ml/Rl/LunarLander3d
+	${oa_SOURCE_DIR}/Source/Private)
 # REMOVED: oa_add_nlp_tutorial(TutorialNlpMamba3TinyShakespeare TutorialNlpMamba3TinyShakespeare.cpp)
 # MOVED to Examples/Ml/MotionGpt.cpp (converted to TEST format with training stubs)
 
@@ -131,6 +195,18 @@ target_include_directories(TutorialCoreMatMulIntro PRIVATE
 	${oa_SOURCE_DIR}/Source/Private)
 oa_add_app_tutorial(TutorialCoreEngine Core/TutorialCoreEngine.cpp Core)
 oa_add_app_tutorial(TutorialCoreDeviceCanary Core/TutorialCoreDeviceCanary.cpp Core)
+
+# Linux-only defensive-security checkpoint. The executable uses an in-memory
+# fixture and has no filesystem or network input.
+oa_add_app_tutorial(TutorialCryptoCyberRangeIntegrity
+	Crypto/TutorialCryptoCyberRangeIntegrity.cpp Crypto)
+add_test(
+	NAME TutorialCryptoCyberRangeIntegrity
+	COMMAND TutorialCryptoCyberRangeIntegrity)
+set_tests_properties(TutorialCryptoCyberRangeIntegrity PROPERTIES
+	LABELS "gpu_bindless;tutorial;crypto;security"
+	SKIP_RETURN_CODE 125
+	TIMEOUT 60)
 
 # ═══════════════════════════════════════════════════════════════════════════
 # INSTALL — headless, self-contained tutorials as `oa-*` CLI tools
@@ -179,6 +255,14 @@ oa_add_app_tutorial(TutorialViewerVideoH264 Vision/TutorialViewerVideoH264.cpp V
 oa_add_app_tutorial(TutorialViewerVideoH265 Vision/TutorialViewerVideoH265.cpp Vision)
 oa_add_app_tutorial(TutorialViewerVideoAv1  Vision/TutorialViewerVideoAv1.cpp  Vision)
 oa_add_app_tutorial(TutorialViewerVideoVp9  Vision/TutorialViewerVideoVp9.cpp  Vision)
+oa_add_app_tutorial(TutorialViewerVideoH264High8bit420
+	Vision/TutorialViewerVideoH264High8bit420.cpp Vision)
+oa_add_app_tutorial(TutorialViewerVideoH265Main8bit420
+	Vision/TutorialViewerVideoH265Main8bit420.cpp Vision)
+oa_add_app_tutorial(TutorialViewerVideoAv1Main8bit420
+	Vision/TutorialViewerVideoAv1Main8bit420.cpp Vision)
+oa_add_app_tutorial(TutorialViewerVideoVp9Profile0_8bit420
+	Vision/TutorialViewerVideoVp9Profile0_8bit420.cpp Vision)
 oa_add_app_tutorial(TutorialViewerAudio Vision/TutorialViewerAudio.cpp Vision)
 # TutorialVideoDecodeDiagnostic (manual PNG-dump) REMOVED 2026-07-09: decode is
 # covered headlessly by Test/Vision/Codec/TestVideoDecoder + TestVideoDecodeReference.

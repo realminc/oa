@@ -26,8 +26,7 @@ enum class OaVideoRateControl : OaU8 {
 };
 
 // Video encoding profile — what the user asks for.
-struct OaVideoEncodeProfile
-{
+struct OaVideoEncodeProfile {
 	OaVideoCodec Codec      = OaVideoCodec::H264;
 	OaU32 Width             = 0;
 	OaU32 Height            = 0;
@@ -51,8 +50,7 @@ struct OaVideoEncodeProfile
 
 
 // Encoded frame output — bitstream + PTS + key/keyflag.
-struct OaEncodedFrame
-{
+struct OaEncodedFrame {
 	OaVec<OaU8> Bitstream;
 	OaU64 PresentationTimestamp = 0U;        // PTS in microseconds
 	bool  IsKeyframe            = false;
@@ -112,8 +110,7 @@ struct OaVideoEncodeCapabilities {
 
 
 // Hardware video encoder session — wraps VkVideoSessionKHR for encoding.
-class OaVideoEncoder
-{
+class OaVideoEncoder {
 	friend class OaVideoTranscoder;
 public:
 	OaVideoEncoder() = default;
@@ -139,7 +136,8 @@ public:
 	// Create encoder for specific codec and settings.
 	static OaResult<OaVideoEncoder> Create(
 		class OaEngine& InRt,
-		const OaVideoEncodeProfile& InProfile);
+		const OaVideoEncodeProfile& InProfile
+	);
 
 	// Convert a packed RGBA8 source buffer into the encoder's NV12
 	// input image via the CvtRgbaToNv12 compute shader (3g.2). InRgba

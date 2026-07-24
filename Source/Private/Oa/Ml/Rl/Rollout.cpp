@@ -111,7 +111,7 @@ OaResult<OaRlRolloutBuffer> OaRlRolloutBuffer::Create(
 			scalarShape, OaScalarType::Float32),
 		.Terminated = OaFnMatrix::Empty(scalarShape, OaScalarType::UInt8),
 		.Truncated = OaFnMatrix::Empty(scalarShape, OaScalarType::UInt8),
-		.Valid = OaFnMatrix::Zeros(scalarShape, OaScalarType::UInt8),
+		.Valid = OaFnMatrix::Empty(scalarShape, OaScalarType::UInt8),
 		.Advantage = OaFnMatrix::Empty(scalarShape, OaScalarType::Float32),
 		.Return = OaFnMatrix::Empty(scalarShape, OaScalarType::Float32),
 	};

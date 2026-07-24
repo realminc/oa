@@ -22,6 +22,7 @@
 #include <Oa/Vision/Video.h>
 
 class OaEngine;
+class OaContext;
 class OaPresenter;
 
 enum class OaViewerMode : OaU8 {
@@ -46,7 +47,11 @@ public:
 	virtual void Render(OaUi&, const OaTextAtlas&, OaU32, OaU32) {}
 	virtual void Event(const OaUiEvent&) {}
 	[[nodiscard]] virtual OaEvent RenderReady() const { return {}; }
-	virtual void MarkConsumed(const OaVkTimelineSemaphore&, OaU64) {}
+	// Retain the exact Viewer submission until every resource rendered by this
+	// frame can be recycled. A source may reject stale or foreign completion.
+	[[nodiscard]] virtual OaStatus MarkConsumed(const OaEvent&) {
+		return OaStatus::Ok();
+	}
 	[[nodiscard]] virtual OaStatus Close() { return OaStatus::Ok(); }
 };
 
@@ -123,6 +128,26 @@ public:
 	void SetConfig(const OaViewerConfig& InConfig) { Config_ = InConfig; }
 
 	[[nodiscard]] OaStatus Run();
+	// Run the windowed session against an existing presentation-capable engine.
+	// The viewer borrows the engine and closes only its presenter/window state.
+	[[nodiscard]] OaStatus Run(OaEngine& InEngine);
+
+	// Blocking one-shot display sinks. Matrix and image overloads record the
+	// RGBA8 conversion into the supplied context, submit it once, and pass its
+	// exact completion into presentation before reclaiming the context.
+	[[nodiscard]] static OaStatus Show(
+		OaContext& InContext,
+		const OaMatrix& InMatrix,
+		const OaViewerConfig& InConfig = {});
+	[[nodiscard]] static OaStatus Show(
+		OaContext& InContext,
+		const OaImage& InImage,
+		const OaViewerConfig& InConfig = {});
+	// Ready buffer-backed textures can be displayed without conversion.
+	[[nodiscard]] static OaStatus Show(
+		OaEngine& InEngine,
+		const OaTexture& InTexture,
+		const OaViewerConfig& InConfig = {});
 
 	// Headless image sink. The same viewer render-body abstraction will replace
 	// this direct file call when render-target consolidation lands.
@@ -135,15 +160,15 @@ public:
 private:
 	enum class ImageViewMode : OaU8 { RGB, R, G, B, A };
 
+	[[nodiscard]] OaStatus RunApplication(OaEngine* InBorrowedEngine);
 	[[nodiscard]] OaStatus OpenSource(OaEngine& InEngine);
 	[[nodiscard]] OaStatus InitView();
 	void Update(OaF32 InDeltaMs);
 	void Render(OaUi& InUi);
 	void RouteEvent(const OaUiEvent& InEvent);
-	void MarkRenderSubmitted(
-		const OaVkTimelineSemaphore& InSemaphore,
-		OaU64 InValue);
-	[[nodiscard]] OaStatus CloseSource();
+	[[nodiscard]] OaStatus MarkRenderSubmitted(const OaEvent& InCompletion);
+	[[nodiscard]] OaStatus CloseSource(OaEngine& InEngine);
+	[[nodiscard]] const OaTexture& ImageSource() const noexcept;
 
 	[[nodiscard]] OaStatus InitPresentation(
 		OaPresenter& InPresenter,
@@ -158,9 +183,7 @@ private:
 	[[nodiscard]] OaStatus Resize(OaU32 InWidth, OaU32 InHeight);
 	[[nodiscard]] OaStatus Present();
 	void SetRenderDependency(const OaEvent& InEvent);
-	void SetRenderCompletion(
-		const OaVkTimelineSemaphore& InSemaphore,
-		OaU64 InValue);
+	void SetRenderCompletion(const OaEvent& InCompletion);
 	[[nodiscard]] OaU32 Width() const noexcept;
 	[[nodiscard]] OaU32 Height() const noexcept;
 	void Quit() noexcept { Running_ = false; }
@@ -172,6 +195,10 @@ private:
 	OaViewerMode ResolvedMode_ = OaViewerMode::Auto;
 
 	OaTexture Image_;
+	// Direct Show() inputs are borrowed for the blocking Run() call. The caller
+	// retains ownership; CloseSource never destroys this resource.
+	const OaTexture* BorrowedImage_ = nullptr;
+	OaEvent BorrowedImageReady_;
 	OaImagePlanes Planes_;
 	OaOption<OaVideo> Video_;
 	OaOption<OaAudioStream> Audio_;
@@ -197,10 +224,8 @@ private:
 	OaTextAtlas TextAtlas_;
 	OaUi Ui_;
 	OaInputSystem Input_;
-	OaVkTimelineSemaphore RenderCompletionSemaphore_;
-	OaU64 RenderCompletionValue_ = 0;
-	const OaVkTimelineSemaphore* RenderDependencySemaphore_ = nullptr;
-	OaU64 RenderDependencyValue_ = 0;
+	OaEvent RenderCompletion_;
+	OaEvent RenderDependency_;
 	bool Running_ = false;
 
 	[[nodiscard]] OaStatus OpenImage(OaEngine& InEngine);

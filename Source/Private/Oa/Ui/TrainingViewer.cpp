@@ -431,13 +431,22 @@ OaStatus OaTrainingViewerSource::PublishPreview(
 	return OaStatus::Ok();
 }
 
-void OaTrainingViewerSource::MarkConsumed(
-	const OaVkTimelineSemaphore& InSemaphore,
-	OaU64 InValue) {
+OaStatus OaTrainingViewerSource::MarkConsumed(
+	const OaEvent& InCompletion) {
+	if (not InCompletion.IsValid()) {
+		return OaStatus::InvalidArgument(
+			"training viewer consumption requires a valid completion event");
+	}
+	const OaVkTimelineWait wait = InCompletion.TimelineWait();
+	if (wait.Semaphore == nullptr or wait.Value == 0U) {
+		return OaStatus::InvalidArgument(
+			"training viewer consumption requires a timeline completion");
+	}
 	if (Impl_->ActiveLabelSlot >= 0) {
 		Impl_->LabelSlots[static_cast<OaU32>(Impl_->ActiveLabelSlot)]
-			.MarkConsumed(InSemaphore, InValue);
+			.MarkConsumed(*wait.Semaphore, wait.Value);
 	}
+	return OaStatus::Ok();
 }
 
 OaStatus OaTrainingViewerSource::Close() {

@@ -143,13 +143,21 @@ public:
 		return Video_.HasValue() ? Video_->CurrentFrame().Ready : OaEvent{};
 	}
 
-	void MarkConsumed(
-		const OaVkTimelineSemaphore& InSemaphore,
-		OaU64 InValue) override {
-		if (Video_.HasValue()) {
-			Video_->MarkCurrentFrameConsumed(InSemaphore, InValue);
+	OaStatus MarkConsumed(const OaEvent& InCompletion) override {
+		if (not InCompletion.IsValid()) {
+			return OaStatus::InvalidArgument(
+				"detection viewer consumption requires a valid completion event");
 		}
-		Overlay_.MarkConsumed(InSemaphore, InValue);
+		const OaVkTimelineWait wait = InCompletion.TimelineWait();
+		if (wait.Semaphore == nullptr or wait.Value == 0U) {
+			return OaStatus::InvalidArgument(
+				"detection viewer consumption requires a timeline completion");
+		}
+		if (Video_.HasValue()) {
+			Video_->MarkCurrentFrameConsumed(*wait.Semaphore, wait.Value);
+		}
+		Overlay_.MarkConsumed(*wait.Semaphore, wait.Value);
+		return OaStatus::Ok();
 	}
 
 	OaStatus Close() override {

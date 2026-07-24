@@ -2,7 +2,7 @@
 
 #include <Oa/Render/Renderer.h>
 #include <Oa/Runtime/Engine.h>
-#include <Oa/Ui/Camera.h>
+#include <Oa/Render/Camera.h>
 #include <Oa/Ui/Text.h>
 #include <Oa/Ui/Ui.h>
 

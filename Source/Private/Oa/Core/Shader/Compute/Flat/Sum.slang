@@ -16,7 +16,11 @@ struct PushConstants {
 
 [[vk::binding(0, 0)]] RWByteAddressBuffer heap[];
 
-groupshared float g_buf[256];
+// Keep the input and output of each tree level in different shared-memory
+// banks. The arithmetic order is unchanged, but the generated SPIR-V no longer
+// performs a same-address read/modify/write that older GPU-AV instrumentation
+// reports as a race despite the barrier between levels.
+groupshared float g_buf[2][256];
 
 [shader("compute")]
 [numthreads(256, 1, 1)]
@@ -27,18 +31,24 @@ void main(uint3 tid : SV_GroupThreadID) {
 	for (uint i = lid; i < pc.count; i += 256) {
 		acc += OaLoad(heap[pc.x_idx], i);
 	}
-	g_buf[lid] = acc;
+	uint readBank = 0;
+	uint writeBank = 1;
+	g_buf[readBank][lid] = acc;
 	GroupMemoryBarrierWithGroupSync();
 
 	// Inclusive tree reduction: 128 -> 64 -> ... -> 1.
 	[unroll] for (uint s = 128; s > 0; s >>= 1) {
 		if (lid < s) {
-			g_buf[lid] += g_buf[lid + s];
+			g_buf[writeBank][lid] =
+				g_buf[readBank][lid] + g_buf[readBank][lid + s];
 		}
 		GroupMemoryBarrierWithGroupSync();
+		uint previousReadBank = readBank;
+		readBank = writeBank;
+		writeBank = previousReadBank;
 	}
 
 	if (lid == 0) {
-		OaStore(heap[pc.out_idx], 0, g_buf[0]);
+		OaStore(heap[pc.out_idx], 0, g_buf[readBank][0]);
 	}
 }

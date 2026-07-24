@@ -37,6 +37,93 @@ const char* VideoCodecName(OaVideoCodec InCodec) {
 
 } // namespace
 
+OaStatus OaViewer::Show(
+	OaContext& InContext,
+	const OaMatrix& InMatrix,
+	const OaViewerConfig& InConfig)
+{
+	OaEngine& engine = InContext.Engine();
+	if (not engine.HasGraphics()) {
+		return OaStatus::Error(
+			OaStatusCode::FailedPrecondition,
+			"OaViewer::Show requires a presentation-capable OaEngine");
+	}
+
+	auto textureResult = OaTexture::FromMatrix(InContext, InMatrix);
+	if (not textureResult.IsOk()) return textureResult.GetStatus();
+	OaTexture texture = OaStdMove(*textureResult);
+
+	auto submitResult = InContext.Submit();
+	if (not submitResult.IsOk()) {
+		texture.Destroy(engine);
+		return submitResult.GetStatus();
+	}
+	const OaEvent ready = *submitResult;
+
+	OaViewer viewer(InConfig);
+	viewer.Config_.Mode = OaViewerMode::Image;
+	viewer.Config_.Path.Clear();
+	viewer.BorrowedImage_ = &texture;
+	viewer.BorrowedImageReady_ = ready;
+	const OaStatus runStatus = viewer.Run(engine);
+	const OaStatus waitStatus = InContext.Wait(ready);
+	texture.Destroy(engine);
+	if (not runStatus.IsOk()) return runStatus;
+	return waitStatus;
+}
+
+OaStatus OaViewer::Show(
+	OaContext& InContext,
+	const OaImage& InImage,
+	const OaViewerConfig& InConfig)
+{
+	OaEngine& engine = InContext.Engine();
+	if (not engine.HasGraphics()) {
+		return OaStatus::Error(
+			OaStatusCode::FailedPrecondition,
+			"OaViewer::Show requires a presentation-capable OaEngine");
+	}
+
+	auto textureResult = OaTexture::FromImage(InContext, InImage);
+	if (not textureResult.IsOk()) return textureResult.GetStatus();
+	OaTexture texture = OaStdMove(*textureResult);
+
+	auto submitResult = InContext.Submit();
+	if (not submitResult.IsOk()) {
+		texture.Destroy(engine);
+		return submitResult.GetStatus();
+	}
+	const OaEvent ready = *submitResult;
+
+	OaViewer viewer(InConfig);
+	viewer.Config_.Mode = OaViewerMode::Image;
+	viewer.Config_.Path.Clear();
+	viewer.BorrowedImage_ = &texture;
+	viewer.BorrowedImageReady_ = ready;
+	const OaStatus runStatus = viewer.Run(engine);
+	const OaStatus waitStatus = InContext.Wait(ready);
+	texture.Destroy(engine);
+	if (not runStatus.IsOk()) return runStatus;
+	return waitStatus;
+}
+
+OaStatus OaViewer::Show(
+	OaEngine& InEngine,
+	const OaTexture& InTexture,
+	const OaViewerConfig& InConfig)
+{
+	if (not InEngine.HasGraphics()) {
+		return OaStatus::Error(
+			OaStatusCode::FailedPrecondition,
+			"OaViewer::Show requires a presentation-capable OaEngine");
+	}
+	OaViewer viewer(InConfig);
+	viewer.Config_.Mode = OaViewerMode::Image;
+	viewer.Config_.Path.Clear();
+	viewer.BorrowedImage_ = &InTexture;
+	return viewer.Run(InEngine);
+}
+
 OaStatus OaViewer::Save(
 	OaEngine& InEngine,
 	const OaTexture& InTexture,
@@ -51,6 +138,26 @@ OaStatus OaViewer::Save(
 }
 
 OaStatus OaViewer::OpenImage(OaEngine& InEngine) {
+	if (BorrowedImage_ != nullptr) {
+		const OaTexture& image = *BorrowedImage_;
+		const OaVkBuffer& buffer = image.DeviceBuf;
+		if (not image.IsValid() or image.IsImageBacked()
+			or buffer.Buffer == nullptr or buffer.NodeIndex != 0U
+			or buffer.AllocatorIdentity != InEngine.Allocator.Allocator) {
+			return OaStatus::InvalidArgument(
+				"OaViewer::Show requires a buffer-backed texture owned by its engine");
+		}
+		if (BorrowedImageReady_.IsValid()) {
+			if (not InEngine.OwnsEvent(BorrowedImageReady_)) {
+				return OaStatus::InvalidArgument(
+					"OaViewer::Show readiness event belongs to another engine");
+			}
+			SetRenderDependency(BorrowedImageReady_);
+		}
+		ResolvedMode_ = OaViewerMode::Image;
+		return OaStatus::Ok();
+	}
+
 	auto image = OaTexture::LoadFile(InEngine, Config_.Path);
 	if (not image.IsOk()) return image.GetStatus();
 	Image_ = OaStdMove(*image);
@@ -86,10 +193,10 @@ OaStatus OaViewer::OpenAudio(OaEngine& InEngine) {
 	auto audio = OaAudioStream::Open(InEngine, config);
 	if (not audio.IsOk()) return audio.GetStatus();
 	Audio_.Emplace(OaStdMove(*audio));
-	auto decoded = OaAudioDecoder::LoadFile(config.Uri);
+	auto decoded = OaAudioDecoder::LoadFile(OaPath(config.Uri));
 	if (decoded.IsOk()) {
 		AudioEnvelope_ = OaFnAudio::WaveformEnvelope(
-			decoded->Buffer,
+			*decoded,
 			Config_.AudioWaveformBins);
 		if (not AudioEnvelope_.IsEmpty()) {
 			auto& context = OaContext::GetDefault();
@@ -257,9 +364,9 @@ void OaViewer::ConfigureNavigation() {
 	}
 	OaU32 contentWidth = 0;
 	OaU32 contentHeight = 0;
-	if (ResolvedMode_ == OaViewerMode::Image and Image_.IsValid()) {
-		contentWidth = static_cast<OaU32>(Image_.Width);
-		contentHeight = static_cast<OaU32>(Image_.Height);
+	if (ResolvedMode_ == OaViewerMode::Image and ImageSource().IsValid()) {
+		contentWidth = static_cast<OaU32>(ImageSource().Width);
+		contentHeight = static_cast<OaU32>(ImageSource().Height);
 	} else if (ResolvedMode_ == OaViewerMode::Video and Video_.HasValue()) {
 		contentWidth = Video_->Width();
 		contentHeight = Video_->Height();
@@ -288,8 +395,11 @@ void OaViewer::ConfigureNavigation() {
 
 OaStatus OaViewer::ConfigureOverlay() {
 	if (Config_.Annotations.Empty()) return OaStatus::Ok();
-	auto& runtime = *OaEngine::GetGlobal();
-	auto overlay = OaDetectionOverlay::Create(runtime, Config_.AnnotationStyle);
+	if (Engine_ == nullptr) {
+		return OaStatus::Error(
+			"OaViewer overlay creation requires an attached engine");
+	}
+	auto overlay = OaDetectionOverlay::Create(*Engine_, Config_.AnnotationStyle);
 	if (not overlay.IsOk()) {
 		OA_LOG_ERROR(OaLogComponent::App,
 			"OaViewer overlay creation failed: %s",
@@ -384,11 +494,12 @@ OaStatus OaViewer::InitView() {
 	if (not Config_.ShowHelp) return OaStatus::Ok();
 	OA_LOG_INFO(OaLogComponent::App, "═══════════════════════════════════════════════════");
 	OA_LOG_INFO(OaLogComponent::App, "OaViewer (%s)", ViewerModeName(ResolvedMode_));
-	if (ResolvedMode_ != OaViewerMode::Live) {
+	if (ResolvedMode_ != OaViewerMode::Live and not Config_.Path.Empty()) {
 		OA_LOG_INFO(OaLogComponent::App, "  Source: %s", Config_.Path.c_str());
 	}
 	if (ResolvedMode_ == OaViewerMode::Image) {
-		OA_LOG_INFO(OaLogComponent::App, "  Size: %dx%d", Image_.Width, Image_.Height);
+		OA_LOG_INFO(OaLogComponent::App, "  Size: %dx%d",
+			ImageSource().Width, ImageSource().Height);
 		OA_LOG_INFO(OaLogComponent::App,
 			"  Channels: 1=R  2=G  3=B  4=A  5=RGB");
 	} else if (Video_.HasValue()) {
@@ -459,17 +570,18 @@ void OaViewer::DrawOverlay(OaUi& InUi, OaPixelRect InDestination) {
 }
 
 void OaViewer::RenderImage(OaUi& InUi) {
-	if (not Image_.IsValid()) return;
+	const OaTexture& image = ImageSource();
+	if (not image.IsValid()) return;
 	const OaPixelRect destination = {
 		.X = static_cast<OaI32>(Nav_.PanX()),
 		.Y = static_cast<OaI32>(Nav_.PanY()),
-		.W = static_cast<OaI32>(static_cast<OaF32>(Image_.Width) * Nav_.Zoom()),
-		.H = static_cast<OaI32>(static_cast<OaF32>(Image_.Height) * Nav_.Zoom()),
+		.W = static_cast<OaI32>(static_cast<OaF32>(image.Width) * Nav_.Zoom()),
+		.H = static_cast<OaI32>(static_cast<OaF32>(image.Height) * Nav_.Zoom()),
 	};
 
 	if (ImageMode_ == ImageViewMode::RGB or not Planes_.IsValid()) {
 		InUi.BeginPanel("viewer-image", destination);
-		InUi.Image(Image_.BindlessIndex(), Image_.Width, Image_.Height);
+		InUi.Image(image.BindlessIndex(), image.Width, image.Height);
 		InUi.EndPanel();
 	} else {
 		const OaU32 channel = static_cast<OaU32>(ImageMode_) - 1U;
@@ -577,19 +689,35 @@ void OaViewer::Render(OaUi& InUi) {
 	RenderTimeline(InUi);
 }
 
-void OaViewer::MarkRenderSubmitted(
-	const OaVkTimelineSemaphore& InSemaphore,
-	OaU64 InValue) {
-	if (Video_.HasValue()) {
-		Video_->MarkCurrentFrameConsumed(InSemaphore, InValue);
+OaStatus OaViewer::MarkRenderSubmitted(const OaEvent& InCompletion) {
+	if (not InCompletion.IsValid()) {
+		return OaStatus::InvalidArgument(
+			"OaViewer render consumption requires a valid completion event");
 	}
-	DetectionOverlay_.MarkConsumed(InSemaphore, InValue);
+	if (Engine_ == nullptr or not Engine_->OwnsEvent(InCompletion)) {
+		return OaStatus::InvalidArgument(
+			"OaViewer render consumption requires an event from its engine");
+	}
+	const OaVkTimelineWait wait = InCompletion.TimelineWait();
+	if (wait.Semaphore == nullptr or wait.Value == 0U) {
+		return OaStatus::InvalidArgument(
+			"OaViewer render consumption requires a timeline completion");
+	}
 	if (ResolvedMode_ == OaViewerMode::Live and Config_.LiveSource != nullptr) {
-		Config_.LiveSource->MarkConsumed(InSemaphore, InValue);
+		OA_RETURN_IF_ERROR(Config_.LiveSource->MarkConsumed(InCompletion));
 	}
+	if (Video_.HasValue()) {
+		Video_->MarkCurrentFrameConsumed(*wait.Semaphore, wait.Value);
+	}
+	DetectionOverlay_.MarkConsumed(*wait.Semaphore, wait.Value);
+	return OaStatus::Ok();
 }
 
-OaStatus OaViewer::CloseSource() {
+const OaTexture& OaViewer::ImageSource() const noexcept {
+	return BorrowedImage_ != nullptr ? *BorrowedImage_ : Image_;
+}
+
+OaStatus OaViewer::CloseSource(OaEngine& InEngine) {
 	OaStatus sourceStatus = OaStatus::Ok();
 	if (ResolvedMode_ == OaViewerMode::Live and Config_.LiveSource != nullptr) {
 		sourceStatus = Config_.LiveSource->Close();
@@ -610,9 +738,10 @@ OaStatus OaViewer::CloseSource() {
 		Audio_.Reset();
 	}
 	AudioEnvelope_ = {};
-	auto& runtime = *OaEngine::GetGlobal();
-	if (Image_.IsValid()) Image_.Destroy(runtime);
-	if (Planes_.IsValid()) Planes_.Destroy(runtime);
+	if (Image_.IsValid()) Image_.Destroy(InEngine);
+	if (Planes_.IsValid()) Planes_.Destroy(InEngine);
+	BorrowedImage_ = nullptr;
+	BorrowedImageReady_ = {};
 	ResolvedMode_ = OaViewerMode::Auto;
 	return sourceStatus;
 }

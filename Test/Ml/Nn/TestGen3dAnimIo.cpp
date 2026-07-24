@@ -18,8 +18,8 @@ TEST(Gen3dAnimIo, SkeletonBuiltinAndSkelRoundTrip) {
 	// Compact layout: root+pelvis 9 each, 24 hinges ×1, 38 regular ×6, +2 contacts.
 	EXPECT_EQ(sk.PoseDim(), 272);
 
-	const OaPath dir = OaFileIo::GetTempDirectory() / "oa_gen3danim_io";
-	ASSERT_TRUE(OaFileIo::CreateDirectories(dir).IsOk());
+	const OaPath dir = OaPaths::Temp() / "oa_gen3danim_io";
+	ASSERT_TRUE(OaFilesystem::CreateDirectories(dir).IsOk());
 	const OaPath skelPath = dir / "metahuman_body.skel.json";
 	ASSERT_TRUE(sk.WriteSkel(skelPath).IsOk());
 
@@ -111,11 +111,11 @@ TEST(Gen3dAnimIo, UsdFileRoundTrip) {
 	OaUsdSkelClip usd = MakeSampleUsd(sk, 4);
 	ASSERT_TRUE(usd.IsValid());
 
-	const OaPath dir = OaFileIo::GetTempDirectory() / "oa_gen3danim_io";
-	ASSERT_TRUE(OaFileIo::CreateDirectories(dir).IsOk());
+	const OaPath dir = OaPaths::Temp() / "oa_gen3danim_io";
+	ASSERT_TRUE(OaFilesystem::CreateDirectories(dir).IsOk());
 	const OaPath usdaPath = dir / "sample.usda";
 	ASSERT_TRUE(OaUsd::WriteUsda(usdaPath, usd, "Sample").IsOk());
-	auto written = OaFileIo::ReadText(usdaPath);
+	auto written = OaFilesystem::ReadText(usdaPath);
 	ASSERT_TRUE(written.IsOk());
 	EXPECT_NE(written->find("uniform token[] joints = [\"root\", \"root/pelvis\", \"root/pelvis/spine_01\""),
 	          OaString::npos);
@@ -148,12 +148,12 @@ TEST(Gen3dAnimIo, FbxWriteSucceeds) {
 	OaUsdSkelClip usd = MakeSampleUsd(sk, 6);
 	ASSERT_TRUE(usd.IsValid());
 
-	const OaPath dir = OaFileIo::GetTempDirectory() / "oa_gen3danim_io";
-	ASSERT_TRUE(OaFileIo::CreateDirectories(dir).IsOk());
+	const OaPath dir = OaPaths::Temp() / "oa_gen3danim_io";
+	ASSERT_TRUE(OaFilesystem::CreateDirectories(dir).IsOk());
 	const OaPath fbxPath = dir / "sample.fbx";
 	ASSERT_TRUE(OaFbx::WriteFbx(fbxPath, usd).IsOk());
 
-	auto txt = OaFileIo::ReadText(fbxPath);
+	auto txt = OaFilesystem::ReadText(fbxPath);
 	ASSERT_TRUE(txt.IsOk());
 	EXPECT_NE(txt->find("FBXVersion: 7500"), OaString::npos);
 	EXPECT_NE(txt->find("Model::thigh_l"), OaString::npos);

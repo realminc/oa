@@ -2,26 +2,26 @@
 # Regenerate via: python3 Tools/NnAutogen/oannautogen.py --live
 
 set(OA_NN_GENERATED_SOURCES
-	Source/Private/Oa/Ml/Nn/Relu/Relu.gen.cpp
-	Source/Private/Oa/Ml/Nn/Gelu/Gelu.gen.cpp
-	Source/Private/Oa/Ml/Nn/Silu/Silu.gen.cpp
-	Source/Private/Oa/Ml/Nn/Softmax/Softmax.gen.cpp
-	Source/Private/Oa/Ml/Nn/Attention/MultiHeadAttention/MultiHeadAttention.gen.cpp
-	Source/Private/Oa/Ml/Nn/Sequential/Sequential.gen.cpp
-	Source/Private/Oa/Ml/Nn/Conv1d/Conv1d.gen.cpp
-	Source/Private/Oa/Ml/Nn/ConvTranspose1d/ConvTranspose1d.gen.cpp
-	Source/Private/Oa/Ml/Nn/Conv2d/Conv2d.gen.cpp
-	Source/Private/Oa/Ml/Nn/ConvTranspose2d/ConvTranspose2d.gen.cpp
-	Source/Private/Oa/Ml/Nn/Embedding/Embedding.gen.cpp
-	Source/Private/Oa/Ml/Nn/Linear/Linear.gen.cpp
-	Source/Private/Oa/Ml/Nn/SwiGLU/SwiGLU.gen.cpp
-	Source/Private/Oa/Ml/Nn/LayerNorm/LayerNorm.gen.cpp
-	Source/Private/Oa/Ml/Nn/RmsNorm/RmsNorm.gen.cpp
-	Source/Private/Oa/Ml/Nn/MaxPool2d/MaxPool2d.gen.cpp
-	Source/Private/Oa/Ml/Nn/AvgPool2d/AvgPool2d.gen.cpp
-	Source/Private/Oa/Ml/Nn/Identity/Identity.gen.cpp
-	Source/Private/Oa/Ml/Nn/Flatten/Flatten.gen.cpp
-	Source/Private/Oa/Ml/Nn/Upsample/Upsample.gen.cpp
-	Source/Private/Oa/Ml/Nn/BatchNorm2d/BatchNorm2d.gen.cpp
-	Source/Private/Oa/Ml/Nn/AdaptiveAvgPool2d/AdaptiveAvgPool2d.gen.cpp
+	Source/Private/Oa/Ml/Nn/Relu/Relu.cpp
+	Source/Private/Oa/Ml/Nn/Gelu/Gelu.cpp
+	Source/Private/Oa/Ml/Nn/Silu/Silu.cpp
+	Source/Private/Oa/Ml/Nn/Softmax/Softmax.cpp
+	Source/Private/Oa/Ml/Nn/Attention/MultiHeadAttention/MultiHeadAttention.cpp
+	Source/Private/Oa/Ml/Nn/Sequential/Sequential.cpp
+	Source/Private/Oa/Ml/Nn/Conv1d/Conv1d.cpp
+	Source/Private/Oa/Ml/Nn/ConvTranspose1d/ConvTranspose1d.cpp
+	Source/Private/Oa/Ml/Nn/Conv2d/Conv2d.cpp
+	Source/Private/Oa/Ml/Nn/ConvTranspose2d/ConvTranspose2d.cpp
+	Source/Private/Oa/Ml/Nn/Embedding/Embedding.cpp
+	Source/Private/Oa/Ml/Nn/Linear/Linear.cpp
+	Source/Private/Oa/Ml/Nn/SwiGLU/SwiGLU.cpp
+	Source/Private/Oa/Ml/Nn/LayerNorm/LayerNorm.cpp
+	Source/Private/Oa/Ml/Nn/RmsNorm/RmsNorm.cpp
+	Source/Private/Oa/Ml/Nn/MaxPool2d/MaxPool2d.cpp
+	Source/Private/Oa/Ml/Nn/AvgPool2d/AvgPool2d.cpp
+	Source/Private/Oa/Ml/Nn/Identity/Identity.cpp
+	Source/Private/Oa/Ml/Nn/Flatten/Flatten.cpp
+	Source/Private/Oa/Ml/Nn/Upsample/Upsample.cpp
+	Source/Private/Oa/Ml/Nn/BatchNorm2d/BatchNorm2d.cpp
+	Source/Private/Oa/Ml/Nn/AdaptiveAvgPool2d/AdaptiveAvgPool2d.cpp
 )

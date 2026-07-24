@@ -105,8 +105,7 @@ static constexpr OaKernelId RlPpoClip = OA_COMPUTE_KERNEL_ID(OaComputeKernelPref
 static constexpr OaKernelId RlPpoClipBwd = OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 266);
 static constexpr OaKernelId RlRolloutAppend = OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 272);
 static constexpr OaKernelId RlRolloutReset = OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 273);
-static constexpr OaKernelId RlCartPoleReset = OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 274);
-static constexpr OaKernelId RlCartPoleStep = OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 275);
+#include <Oa/Runtime/ComputeKernelIds.gen.inl>
 static constexpr OaKernelId LogSoftmax = OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 270);
 static constexpr OaKernelId LogSoftmaxBwd = OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 271);
 

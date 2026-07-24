@@ -314,8 +314,7 @@ static constexpr OaComputeKernel MlKernels[] = {
 	{ "RlPpoClipBwd",            OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 266), OaComputeKernelCategory::Ml, "oa" },
 	{ "RlRolloutAppend",         OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 272), OaComputeKernelCategory::Ml, "oa" },
 	{ "RlRolloutReset",          OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 273), OaComputeKernelCategory::Ml, "oa" },
-	{ "RlCartPoleReset",          OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 274), OaComputeKernelCategory::Ml, "oa" },
-	{ "RlCartPoleStep",           OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 275), OaComputeKernelCategory::Ml, "oa" },
+#include <Oa/Core/KernelRegistryMl.gen.inl>
 	{ "RlReplayAppend",           OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 276), OaComputeKernelCategory::Ml, "oa" },
 	{ "RlReplaySample",           OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 277), OaComputeKernelCategory::Ml, "oa" },
 	{ "RlDqnTarget",              OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::Ml, 278), OaComputeKernelCategory::Ml, "oa" },

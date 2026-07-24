@@ -70,6 +70,8 @@ def build_schema_layout(
 		category_subdir = file_category
 	else:
 		category_subdir = ""
+	# Per-category generated fragments are generator internals. A single
+	# package-stable declaration fragment is emitted beside the public umbrella.
 	h_path = out_root / "Private" / "Oa" / domain / cpp_subdir / category_subdir / f"{file_prefix}{file_category}.gen.h"
 	cpp_path = out_root / "Private" / "Oa" / domain / cpp_subdir / category_subdir / f"{file_prefix}{file_category}.gen.cpp"
 	# Autograd generated headers mirror the cpp_subdir domain but strip the "Fn" prefix

@@ -254,8 +254,8 @@ void VqEmaUpdate(const OaMatrix& InZe, const OaMatrix& InIdx,
                  bool InNormalize);
 
 // ─── Generated ML Operations ──────────────────────────────────────
-// Regenerate via: python3 Tools/OaFnAutogen/oafnautogen.py
-#include "../../../Private/Oa/Ml/FnMatrix/FnMatrix.gen.h"
+// Regenerate via: python3 Tools/FnAutogen/oafnautogen.py --live
+#include <Oa/Ml/FnMatrix/FnMatrix.gen.h>
 
 // ─── Backward Pass Operations ─────────────────────────────────────
 

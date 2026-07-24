@@ -66,8 +66,10 @@ public:
 class OaMetricValueFormatter {
 public:
 	OaMetricValueFormatter(OaI32 InDefaultPrecision = 4, OaI32 InMaxPrecision = 8)
-		: DefaultPrecision_(InDefaultPrecision), MaxPrecision_(InMaxPrecision),
-		  Precision_(InDefaultPrecision) {}
+		: DefaultPrecision_(InDefaultPrecision)
+		, MaxPrecision_(InMaxPrecision)
+		, Precision_(InDefaultPrecision)
+	{}
 
 	OaI32 Format(char* OutBuffer, OaI32 InBufferSize, OaF64 InValue);
 	[[nodiscard]] OaI32 Precision() const { return Precision_; }
@@ -94,7 +96,9 @@ public:
 
 	OaMetricLoss() = default;
 	explicit OaMetricLoss(OaString InName, Mode InMode = Mode::Mean)
-		: Name_(std::move(InName)), Mode_(InMode) {}
+		: Name_(std::move(InName))
+		, Mode_(InMode)
+	{}
 
 	void Update(const OaMatrix& InPreds, const OaMatrix& InLabels) override;
 	void Update(OaF32 InLossValue);  // Convenience overload for scalar values
@@ -104,7 +108,7 @@ public:
 	void Reset() override;
 	[[nodiscard]] OaF64 Result() const override;
 	[[nodiscard]] const char* Name() const override {
-		if (!Name_.empty()) return Name_.c_str();
+		if (!Name_.empty()) { return Name_.c_str(); }
 		const char* last = OaFnLoss::LastName();
 		return last ? last : "loss";
 	}

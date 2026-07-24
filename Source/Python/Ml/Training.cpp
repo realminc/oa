@@ -19,7 +19,30 @@ void BindMlTraining(nb::module_& m) {
         .def_rw("StepsPerEpoch", &OaItTrainingConfig::StepsPerEpoch)
 		.def_rw("BatchSize", &OaItTrainingConfig::BatchSize)
 		.def_rw("SequenceLength", &OaItTrainingConfig::SequenceLength)
-		.def_rw("SequenceUnit", &OaItTrainingConfig::SequenceUnit);
+		.def_prop_rw("SequenceUnit",
+			[](const OaItTrainingConfig& self) {
+				return std::string(self.SequenceUnit.c_str());
+			},
+			[](OaItTrainingConfig& self, const std::string& value) {
+				self.SequenceUnit = OaString(value.c_str());
+			})
+		.def_rw("SourceUnitsPerSample",
+			&OaItTrainingConfig::SourceUnitsPerSample)
+		.def_prop_rw("SourceUnit",
+			[](const OaItTrainingConfig& self) {
+				return std::string(self.SourceUnit.c_str());
+			},
+			[](OaItTrainingConfig& self, const std::string& value) {
+				self.SourceUnit = OaString(value.c_str());
+			})
+		.def_prop_rw("TimerName",
+			[](const OaItTrainingConfig& self) {
+				return std::string(self.TimerName.c_str());
+			},
+			[](OaItTrainingConfig& self, const std::string& value) {
+				self.TimerName = OaString(value.c_str());
+			})
+		.def_rw("EnableGpuTiming", &OaItTrainingConfig::EnableGpuTiming);
 
     // Exact per-step GPU timing statistics.
     nb::class_<OaGpuTimingStats>(m, "OaGpuTimingStats")
@@ -54,22 +77,24 @@ void BindMlTraining(nb::module_& m) {
     nb::class_<OaItTraining>(m, "OaItTraining")
         .def("__init__", [](OaItTraining* self, OaOptimizer& opt, const OaItTrainingConfig& cfg) {
             new (self) OaItTraining(opt, cfg);
-        }, nb::arg("optimizer"), nb::arg("config") = OaItTrainingConfig())
+        }, nb::arg("Optimizer"), nb::arg("Config") = OaItTrainingConfig())
         .def("IsDone", &OaItTraining::IsDone)
         .def("Next", nb::overload_cast<>(&OaItTraining::Next))
-        .def("Next", nb::overload_cast<const OaMatrix&>(&OaItTraining::Next), nb::arg("loss"))
+        .def("Next", nb::overload_cast<const OaMatrix&>(&OaItTraining::Next), nb::arg("Loss"))
         .def("Reset", &OaItTraining::Reset)
         .def("Index", &OaItTraining::Index)
-        .def("RecordLoss", &OaItTraining::RecordLoss, nb::arg("loss"))
-        .def("RecordAccuracy", &OaItTraining::RecordAccuracy, nb::arg("accuracy"))
+        .def("RecordLoss", &OaItTraining::RecordLoss, nb::arg("Loss"))
+        .def("RecordAccuracy", &OaItTraining::RecordAccuracy, nb::arg("Accuracy"))
+        .def("RecordSourceUnits", &OaItTraining::RecordSourceUnits,
+			nb::arg("Units"))
         .def("Finish", [](OaItTraining& self) {
             auto status = self.Finish();
             if (!status.IsOk()) {
                 throw std::runtime_error(status.ToString().c_str());
             }
         })
-        .def("AddCallback", &OaItTraining::AddCallback, nb::arg("callback"), nb::keep_alive<1, 2>())
-		.def("AddMetric", &OaItTraining::AddMetric, nb::arg("metric"), nb::keep_alive<1, 2>())
+        .def("AddCallback", &OaItTraining::AddCallback, nb::arg("Callback"), nb::keep_alive<1, 2>())
+		.def("AddMetric", &OaItTraining::AddMetric, nb::arg("Metric"), nb::keep_alive<1, 2>())
         .def("StepCount", &OaItTraining::StepCount)
         .def("TotalSteps", &OaItTraining::TotalSteps)
         .def("Epoch", &OaItTraining::Epoch)
@@ -86,7 +111,12 @@ void BindMlTraining(nb::module_& m) {
 		.def("WallSamplesPerSecond", &OaItTraining::WallSamplesPerSecond)
 		.def("GpuSamplesPerSecond", &OaItTraining::GpuSamplesPerSecond)
 		.def("WallUnitsPerSecond", &OaItTraining::WallUnitsPerSecond)
-		.def("GpuUnitsPerSecond", &OaItTraining::GpuUnitsPerSecond);
+		.def("GpuUnitsPerSecond", &OaItTraining::GpuUnitsPerSecond)
+		.def("WallSourceUnitsPerSecond",
+			&OaItTraining::WallSourceUnitsPerSecond)
+		.def("GpuSourceUnitsPerSecond",
+			&OaItTraining::GpuSourceUnitsPerSecond)
+		.def("TotalSourceUnits", &OaItTraining::TotalSourceUnits);
 
 	// Typed, bounded live-training control. The session is independent of any
 	// GUI or transport; Python and native viewers consume the same snapshots.
@@ -144,62 +174,62 @@ void BindMlTraining(nb::module_& m) {
 				.ResultCapacity = resultCapacity,
 				.SnapshotCapacity = snapshotCapacity,
 			});
-		}, nb::arg("training"), nb::arg("command_capacity") = 64,
-			nb::arg("result_capacity") = 128,
-			nb::arg("snapshot_capacity") = 256, nb::keep_alive<1, 2>())
+		}, nb::arg("Training"), nb::arg("CommandCapacity") = 64,
+			nb::arg("ResultCapacity") = 128,
+			nb::arg("SnapshotCapacity") = 256, nb::keep_alive<1, 2>())
 		.def("Pause", [](OaTrainingSession& self, OaU64 revision) {
 			auto result = self.Pause(revision);
 			throw_if_error(result.GetStatus());
 			return *result;
-		}, nb::arg("expected_revision") = 0)
+		}, nb::arg("ExpectedRevision") = 0)
 		.def("Resume", [](OaTrainingSession& self, OaU64 revision) {
 			auto result = self.Resume(revision);
 			throw_if_error(result.GetStatus());
 			return *result;
-		}, nb::arg("expected_revision") = 0)
+		}, nb::arg("ExpectedRevision") = 0)
 		.def("Stop", [](OaTrainingSession& self, OaU64 revision) {
 			auto result = self.Stop(revision);
 			throw_if_error(result.GetStatus());
 			return *result;
-		}, nb::arg("expected_revision") = 0)
+		}, nb::arg("ExpectedRevision") = 0)
 		.def("Checkpoint", [](OaTrainingSession& self, OaU64 revision) {
 			auto result = self.Checkpoint(revision);
 			throw_if_error(result.GetStatus());
 			return *result;
-		}, nb::arg("expected_revision") = 0)
+		}, nb::arg("ExpectedRevision") = 0)
 		.def("Evaluate", [](OaTrainingSession& self, OaU64 revision) {
 			auto result = self.Evaluate(revision);
 			throw_if_error(result.GetStatus());
 			return *result;
-		}, nb::arg("expected_revision") = 0)
+		}, nb::arg("ExpectedRevision") = 0)
 		.def("SetFloat", [](OaTrainingSession& self, const std::string& name,
 			double value, OaU64 revision) {
 			auto result = self.SetParameter(OaString(name.c_str()),
 				OaTrainingValue::FromFloat(value), revision);
 			throw_if_error(result.GetStatus());
 			return *result;
-		}, nb::arg("name"), nb::arg("value"), nb::arg("expected_revision") = 0)
+		}, nb::arg("Name"), nb::arg("Value"), nb::arg("ExpectedRevision") = 0)
 		.def("SetInteger", [](OaTrainingSession& self, const std::string& name,
 			OaI64 value, OaU64 revision) {
 			auto result = self.SetParameter(OaString(name.c_str()),
 				OaTrainingValue::FromInteger(value), revision);
 			throw_if_error(result.GetStatus());
 			return *result;
-		}, nb::arg("name"), nb::arg("value"), nb::arg("expected_revision") = 0)
+		}, nb::arg("Name"), nb::arg("Value"), nb::arg("ExpectedRevision") = 0)
 		.def("SetBool", [](OaTrainingSession& self, const std::string& name,
 			bool value, OaU64 revision) {
 			auto result = self.SetParameter(OaString(name.c_str()),
 				OaTrainingValue::FromBool(value), revision);
 			throw_if_error(result.GetStatus());
 			return *result;
-		}, nb::arg("name"), nb::arg("value"), nb::arg("expected_revision") = 0)
+		}, nb::arg("Name"), nb::arg("Value"), nb::arg("ExpectedRevision") = 0)
 		.def("SetString", [](OaTrainingSession& self, const std::string& name,
 			const std::string& value, OaU64 revision) {
 			auto result = self.SetParameter(OaString(name.c_str()),
 				OaTrainingValue::FromString(OaString(value.c_str())), revision);
 			throw_if_error(result.GetStatus());
 			return *result;
-		}, nb::arg("name"), nb::arg("value"), nb::arg("expected_revision") = 0)
+		}, nb::arg("Name"), nb::arg("Value"), nb::arg("ExpectedRevision") = 0)
 		.def("TryBeginStep", &OaTrainingSession::TryBeginStep)
 		.def("Poll", [](OaTrainingSession& self) { throw_if_error(self.Poll()); })
 		.def("PublishMetric", [](OaTrainingSession& self,
@@ -226,7 +256,7 @@ void BindMlTraining(nb::module_& m) {
 
     nb::class_<OaCbProgressBar, OaCbTraining>(m, "OaCbProgressBar")
         .def(nb::init<>())
-        .def("AddMetric", &OaCbProgressBar::AddMetric, nb::arg("metric"), nb::keep_alive<1, 2>());
+        .def("AddMetric", &OaCbProgressBar::AddMetric, nb::arg("Metric"), nb::keep_alive<1, 2>());
 
     nb::class_<OaCbSummary, OaCbTraining>(m, "OaCbSummary")
         .def(nb::init<>());
@@ -247,7 +277,7 @@ void BindMlTraining(nb::module_& m) {
         // implicit conversion).
         .def("__init__", [](OaMetricLoss* self, const std::string& name) {
             new (self) OaMetricLoss(OaString(name.c_str()));
-        }, nb::arg("name"));
+        }, nb::arg("Name"));
 
     nb::class_<OaMetricAccuracy, OaMetric>(m, "OaMetricAccuracy")
         .def(nb::init<>());

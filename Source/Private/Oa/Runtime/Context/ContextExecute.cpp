@@ -250,6 +250,10 @@ OaBool OaContext::IsAsyncBatchActive() const noexcept {
 	return Impl_->Execution_.IsBatchActive();
 }
 
+OaBool OaContext::HasPendingSubmission() const noexcept {
+	return Impl_->Execution_.HasPendingSubmission();
+}
+
 OaStatus OaContext::Wait(const OaEvent& InEvent) {
 	const auto waitBegin = std::chrono::steady_clock::now();
 	const auto status = Impl_->Execution_.Wait(InEvent);

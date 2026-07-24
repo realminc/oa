@@ -3,6 +3,7 @@
 
 #include <Oa/Ml/Module.h>
 #include <Oa/Ml/Nn.h>
+#include <Oa/Ml/Optim.h>
 
 #include <string>
 
@@ -38,7 +39,7 @@ void BindMlModule(nb::module_& m) {
     nb::class_<OaModule>(m, "OaModule")
         .def("Forward", [](OaModule& self, const OaMatrix& input) {
             return matrix_ptr(self.Forward(input));
-        }, nb::arg("input"), nb::rv_policy::take_ownership)
+        }, nb::arg("Input"), nb::rv_policy::take_ownership)
         .def("Parameters", [](OaModule& self) -> std::vector<OaParameter*> {
             auto& params = self.Parameters();
             std::vector<OaParameter*> result;
@@ -61,10 +62,24 @@ void BindMlModule(nb::module_& m) {
         // Persistence — dotted-path tree walk over registered params/children into an
         // .oam file. Works on any module (a leaf like OaLinear, or a nested OaRnn/OaGru),
         // so a composed model persists by round-tripping its submodules.
-        .def("Save", [](const OaModule& self, const std::string& path) {
-            throw_if_error(self.Save(OaString(path.c_str())));
-        }, nb::arg("path"), "Serialize module parameters to an .oam file")
-        .def("Load", [](OaModule& self, const std::string& path) {
-            throw_if_error(self.Load(OaString(path.c_str())));
-        }, nb::arg("path"), "Load module parameters from an .oam file");
+        .def("Save", [](const OaModule& self, nb::handle path) {
+            const auto native = path_from_python(path);
+            throw_if_error(self.Save(native.String()));
+        }, nb::arg("Path"), "Serialize module parameters to an .oam file")
+        .def("Save", [](const OaModule& self, nb::handle path,
+                        const OaOptimizer& optimizer) {
+            const auto native = path_from_python(path);
+            throw_if_error(self.Save(native.String(), optimizer));
+        }, nb::arg("Path"), nb::arg("Optimizer"),
+           "Serialize module parameters and optimizer state to an .oam file")
+        .def("Load", [](OaModule& self, nb::handle path) {
+            const auto native = path_from_python(path);
+            throw_if_error(self.Load(native.String()));
+        }, nb::arg("Path"), "Load module parameters from an .oam file")
+        .def("Load", [](OaModule& self, nb::handle path,
+                        OaOptimizer& optimizer) {
+            const auto native = path_from_python(path);
+            throw_if_error(self.Load(native.String(), optimizer));
+        }, nb::arg("Path"), nb::arg("Optimizer"),
+           "Load module parameters and optimizer state from an .oam file");
 }

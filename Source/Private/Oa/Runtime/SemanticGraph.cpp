@@ -17,7 +17,7 @@ OaStringView KindName(OaOperationValueKind InKind) {
 	switch (InKind) {
 		case OaOperationValueKind::Matrix: return "matrix";
 		case OaOperationValueKind::Image: return "image";
-		case OaOperationValueKind::AudioBuffer: return "audio_buffer";
+		case OaOperationValueKind::Audio: return "audio";
 		case OaOperationValueKind::VideoFrame: return "video_frame";
 	}
 	return "unknown";

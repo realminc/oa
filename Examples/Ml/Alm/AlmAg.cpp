@@ -16,7 +16,7 @@
 #include <Ml/Nn/Alm/AlmTokenizerAg.h>
 #include <Ml/Nn/Alm/AlmPriorAg.h>
 #include <Anim/Usd.h>
-#include <Oa/Core/FileIo.h>
+#include <Oa/Core/Filesystem.h>
 #include <Oa/Core/Vlm.h>
 #include <Oa/Data/DsHumanMl3d.h>
 #include <Oa/Ml.h>
@@ -902,7 +902,7 @@ TEST(Alm, GenerateStub) {
 			}
 		}
 		OaPath usdPath("var/alm/Alm_GenerateStub.usda");
-		(void)OaFileIo::CreateDirectories(OaFileIo::GetParent(usdPath));
+		(void)OaFilesystem::CreateDirectories(usdPath.ParentPath());
 		auto st = OaUsd::WriteUsda(usdPath, clip, "rig");
 		std::printf("USD export: %s\n", st.IsOk() ? "ok" : st.ToString().CStr());
 		EXPECT_TRUE(st.IsOk());

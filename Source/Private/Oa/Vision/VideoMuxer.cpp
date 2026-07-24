@@ -1,7 +1,7 @@
 // OA Vision — streaming MP4 muxer implementation.
 
 #include <Oa/Vision/VideoMuxer.h>
-#include <Oa/Core/FileIo.h>
+#include <Oa/Core/Filesystem.h>
 #include <algorithm>
 #include <cstring>
 #include <limits>

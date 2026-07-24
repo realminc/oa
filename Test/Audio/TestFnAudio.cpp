@@ -59,12 +59,14 @@ std::vector<OaF32> MakeToneWithNoise(OaU32 InRate, OaF32 InFreqHz, OaU32 InSampl
 	return x;
 }
 
-OaMatrix UploadMono(const std::vector<OaF32>& InX)
+OaAudio UploadMono(
+	const std::vector<OaF32>& InX,
+	OaU32 InSampleRate = 48'000U)
 {
 	auto m = OaFnMatrix::Empty(
 		OaMatrixShape{1, static_cast<OaI64>(InX.size())}, OaScalarType::Float32);
 	OaMemcpy(m.DataAs<OaF32>(), InX.data(), InX.size() * sizeof(OaF32));
-	return m;
+	return OaAudio(OaStdMove(m), InSampleRate, OaChannelLayout::Mono);
 }
 
 // Float64 STFT magnitude reference: periodic Hann, naive DFT, optional
@@ -145,7 +147,7 @@ TEST_VK(TestFnAudio, StftMatchesCpuDft)
 {
 	const OaU32 rate = 22050, fft = 512, hop = 128, n = 2048;
 	auto x = MakeSine(rate, 440.0F, n);
-	auto buf = UploadMono(x);
+	auto buf = UploadMono(x, rate);
 
 	OaStftConfig cfg{};
 	cfg.FftSize = fft; cfg.HopSize = hop; cfg.WinSize = fft; cfg.Center = true;
@@ -176,7 +178,7 @@ TEST_VK(TestFnAudio, StftParsevalEnergy)
 {
 	const OaU32 rate = 22050, fft = 256, hop = 256, n = 1024;  // disjoint frames
 	auto x = MakeSine(rate, 993.0F, n);   // deliberately off-bin frequency
-	auto buf = UploadMono(x);
+	auto buf = UploadMono(x, rate);
 
 	OaStftConfig cfg{};
 	cfg.FftSize = fft; cfg.HopSize = hop; cfg.WinSize = fft; cfg.Center = false;
@@ -214,7 +216,7 @@ TEST_VK(TestFnAudio, StftSupportsConfiguredWindowsAndShortInput)
 {
 	const OaU32 rate = 16000, fft = 256, hop = 64, win = 128, n = 91;
 	auto x = MakeToneWithNoise(rate, 700.0F, n);
-	auto buf = UploadMono(x);
+	auto buf = UploadMono(x, rate);
 
 	for (OaU8 window : {OaU8(1), OaU8(2), OaU8(3)}) {
 		OaStftConfig cfg{};
@@ -243,11 +245,11 @@ TEST_VK(TestFnAudio, MelSpectrogramMatchesCpuChain)
 {
 	const OaU32 rate = 16000, fft = 512, hop = 160, mels = 80, n = 4000;
 	auto x = MakeToneWithNoise(rate, 440.0F, n);
-	auto buf = UploadMono(x);
+	auto buf = UploadMono(x, rate);
 
 	OaMelConfig cfg{};
 	cfg.FftSize = fft; cfg.HopSize = hop; cfg.NumMels = mels; cfg.LogScale = true;
-	OaMatrix mel = OaFnAudio::MelSpectrogram(buf, rate, cfg);
+	OaMatrix mel = OaFnAudio::MelSpectrogram(buf, cfg);
 	Sync();
 
 	OaU32 frames = 0, bins = 0;
@@ -280,12 +282,12 @@ TEST_VK(TestFnAudio, MfccMatchesCpuChain)
 {
 	const OaU32 rate = 16000, fft = 512, hop = 160, mels = 40, coeffs = 13, n = 3200;
 	auto x = MakeToneWithNoise(rate, 440.0F, n);
-	auto buf = UploadMono(x);
+	auto buf = UploadMono(x, rate);
 
 	OaMfccConfig cfg{};
 	cfg.NumCoeffs = coeffs;
 	cfg.Mel.FftSize = fft; cfg.Mel.HopSize = hop; cfg.Mel.NumMels = mels;
-	OaMatrix mfcc = OaFnAudio::Mfcc(buf, rate, cfg);
+	OaMatrix mfcc = OaFnAudio::Mfcc(buf, cfg);
 	Sync();
 
 	OaU32 frames = 0, bins = 0;
@@ -330,13 +332,13 @@ TEST_VK(TestFnAudio, MelNormalizationIsPerChannelZeroMeanUnitVariance)
 {
 	const OaU32 rate = 16000;
 	auto x = MakeToneWithNoise(rate, 440.0F, 3200);
-	auto buf = UploadMono(x);
+	auto buf = UploadMono(x, rate);
 	OaMelConfig cfg{};
 	cfg.FftSize = 256;
 	cfg.HopSize = 80;
 	cfg.NumMels = 32;
 	cfg.Normalize = true;
-	OaMatrix mel = OaFnAudio::MelSpectrogram(buf, rate, cfg);
+	OaMatrix mel = OaFnAudio::MelSpectrogram(buf, cfg);
 	Sync();
 
 	double mean = 0.0;
@@ -363,7 +365,9 @@ TEST_VK(TestFnAudio, WaveformEnvelopePreservesMultichannelPeaks)
 	OaMatrix input = OaFnMatrix::Empty(
 		OaMatrixShape{2, 8}, OaScalarType::Float32);
 	OaMemcpy(input.DataAs<OaF32>(), samples, sizeof(samples));
-	OaMatrix envelope = OaFnAudio::WaveformEnvelope(input, 4U);
+	OaAudio audio(
+		OaStdMove(input), 48'000U, OaChannelLayout::Stereo);
+	OaMatrix envelope = OaFnAudio::WaveformEnvelope(audio, 4U);
 	Sync();
 	ASSERT_EQ(envelope.GetShape(), (OaMatrixShape{4, 2}));
 	const OaF32 expected[] = {
@@ -383,8 +387,11 @@ TEST_VK(TestFnAudio, NormalizePeakHitsTarget)
 	for (size_t i = 0; i < x.size(); ++i) x[i] = 0.25F * float(i) / float(x.size());
 	auto buf = UploadMono(x);
 
-	OaMatrix out = OaFnAudio::Normalize(buf, -3.0F, 0);
+	OaAudio normalized = OaFnAudio::Normalize(buf, -3.0F, 0);
+	const OaMatrix& out = normalized.AsMatrix();
 	Sync();
+	EXPECT_EQ(normalized.SampleRate(), buf.SampleRate());
+	EXPECT_EQ(normalized.Layout(), buf.Layout());
 	OaF32 peak = 0.0F;
 	for (OaI64 i = 0; i < 1024; ++i) peak = std::max(peak, std::abs(out.At(i)));
 	EXPECT_NEAR(peak, std::pow(10.0F, -3.0F / 20.0F), 1e-4F);
@@ -395,7 +402,8 @@ TEST_VK(TestFnAudio, NormalizeRmsHitsTarget)
 	auto x = MakeSine(48000, 440.0F, 4800);
 	auto buf = UploadMono(x);
 
-	OaMatrix out = OaFnAudio::Normalize(buf, -20.0F, 1);
+	OaAudio normalized = OaFnAudio::Normalize(buf, -20.0F, 1);
+	const OaMatrix& out = normalized.AsMatrix();
 	Sync();
 	double sq = 0.0;
 	for (OaI64 i = 0; i < 4800; ++i) { const double v = out.At(i); sq += v * v; }
@@ -406,7 +414,10 @@ TEST_VK(TestFnAudio, NormalizeRmsHitsTarget)
 TEST_VK(TestFnAudio, NormalizeSilenceRemainsFiniteSilence)
 {
 	auto silence = OaFnMatrix::Zeros(OaMatrixShape{2, 128}, OaScalarType::Float32);
-	OaMatrix out = OaFnAudio::Normalize(silence, -3.0F, 0);
+	OaAudio audio(
+		OaStdMove(silence), 48'000U, OaChannelLayout::Stereo);
+	OaAudio normalized = OaFnAudio::Normalize(audio, -3.0F, 0);
+	const OaMatrix& out = normalized.AsMatrix();
 	Sync();
 	for (OaI64 i = 0; i < out.NumElements(); ++i) EXPECT_FLOAT_EQ(out.At(i), 0.0F);
 }
@@ -415,7 +426,8 @@ TEST_VK(TestFnAudio, GainPlus6DbDoubles)
 {
 	auto x = MakeSine(48000, 440.0F, 512);
 	auto buf = UploadMono(x);
-	OaMatrix out = OaFnAudio::Gain(buf, 20.0F * std::log10(2.0F));
+	OaAudio gained = OaFnAudio::Gain(buf, 20.0F * std::log10(2.0F));
+	const OaMatrix& out = gained.AsMatrix();
 	Sync();
 	for (OaI64 i = 0; i < 512; ++i) {
 		ASSERT_NEAR(out.At(i), 2.0F * x[static_cast<size_t>(i)], 1e-5F) << "i=" << i;
@@ -426,7 +438,8 @@ TEST_VK(TestFnAudio, ClipClampsRange)
 {
 	std::vector<OaF32> x = {-2.0F, -0.6F, -0.5F, 0.0F, 0.4F, 0.5F, 0.9F, 3.0F};
 	auto buf = UploadMono(x);
-	OaMatrix out = OaFnAudio::Clip(buf, -0.5F, 0.5F);
+	OaAudio clipped = OaFnAudio::Clip(buf, -0.5F, 0.5F);
+	const OaMatrix& out = clipped.AsMatrix();
 	Sync();
 	const OaF32 expect[] = {-0.5F, -0.5F, -0.5F, 0.0F, 0.4F, 0.5F, 0.5F, 0.5F};
 	for (OaI64 i = 0; i < 8; ++i) ASSERT_FLOAT_EQ(out.At(i), expect[i]) << "i=" << i;
@@ -452,8 +465,13 @@ TEST_VK(TestFnAudio, ToMonoAveragesChannels)
 	auto buf = OaFnMatrix::Empty(OaMatrixShape{2, n}, OaScalarType::Float32);
 	OaMemcpy(buf.DataAs<OaF32>(), host.data(), host.size() * sizeof(OaF32));
 
-	OaMatrix mono = OaFnAudio::ToMono(buf);
+	OaAudio audio(
+		OaStdMove(buf), 48'000U, OaChannelLayout::Stereo);
+	OaAudio monoAudio = OaFnAudio::ToMono(audio);
+	const OaMatrix& mono = monoAudio.AsMatrix();
 	Sync();
+	EXPECT_EQ(monoAudio.SampleRate(), 48'000U);
+	EXPECT_EQ(monoAudio.Layout(), OaChannelLayout::Mono);
 	ASSERT_EQ(mono.GetShape()[0], 1);
 	ASSERT_EQ(mono.GetShape()[1], n);
 	for (OaI64 i = 0; i < n; ++i) ASSERT_NEAR(mono.At(i), 0.5F, 1e-5F) << "i=" << i;
@@ -466,10 +484,13 @@ TEST_VK(TestFnAudio, ResampleMatchesCpuSinc)
 	const OaU32 halfW = 32;
 	const OaU32 n = 4800;
 	auto x = MakeToneWithNoise(inRate, 440.0F, n);
-	auto buf = UploadMono(x);
+	auto buf = UploadMono(x, inRate);
 
-	OaMatrix out = OaFnAudio::Resample(buf, inRate, outRate, halfW);
+	OaAudio resampled = OaFnAudio::Resample(buf, outRate, halfW);
+	const OaMatrix& out = resampled.AsMatrix();
 	Sync();
+	EXPECT_EQ(resampled.SampleRate(), outRate);
+	EXPECT_EQ(resampled.Layout(), OaChannelLayout::Mono);
 
 	const OaU32 inR = 3;    // 48000/16000 gcd-reduced
 	const OaU32 outR = 1;
@@ -513,10 +534,12 @@ TEST_VK(TestFnAudio, ResampleMatchesCpuSinc)
 TEST_VK(TestFnAudio, ResampleIdentityPreservesSamples)
 {
 	auto x = MakeToneWithNoise(48000, 440.0F, 257);
-	auto buf = UploadMono(x);
-	OaMatrix out = OaFnAudio::Resample(buf, OaResampleConfig{.InRate = 48000, .OutRate = 48000, .FilterHalfWidth = 32});
+	auto buf = UploadMono(x, 48'000U);
+	OaAudio resampled = OaFnAudio::Resample(
+		buf, OaResampleConfig{.OutRate = 48'000U, .FilterHalfWidth = 32});
+	const OaMatrix& out = resampled.AsMatrix();
 	Sync();
-	ASSERT_EQ(out.GetShape(), buf.GetShape());
+	ASSERT_EQ(out.GetShape(), buf.AsMatrix().GetShape());
 	for (OaI64 i = 0; i < out.NumElements(); ++i) EXPECT_FLOAT_EQ(out.At(i), x[static_cast<size_t>(i)]);
 }
 
@@ -524,8 +547,9 @@ TEST_VK(TestFnAudio, ResampleDownsampleSuppressesOutOfBandTone)
 {
 	const OaU32 inRate = 48000, outRate = 16000, n = 4800;
 	auto x = MakeSine(inRate, 12000.0F, n); // above the 8 kHz output Nyquist
-	auto buf = UploadMono(x);
-	OaMatrix out = OaFnAudio::Resample(buf, inRate, outRate, 64);
+	auto buf = UploadMono(x, inRate);
+	OaAudio resampled = OaFnAudio::Resample(buf, outRate, 64);
+	const OaMatrix& out = resampled.AsMatrix();
 	Sync();
 	double squareSum = 0.0;
 	const OaI64 margin = 64;
@@ -539,22 +563,22 @@ TEST_VK(TestFnAudio, ResampleDownsampleSuppressesOutOfBandTone)
 
 TEST_VK(TestFnAudio, InvalidConfigurationsReturnEmpty)
 {
-	auto buf = UploadMono(MakeSine(16000, 440.0F, 512));
+	auto buf = UploadMono(MakeSine(16000, 440.0F, 512), 16'000U);
 	OaStftConfig stft{};
 	stft.FftSize = 300;
 	EXPECT_TRUE(OaFnAudio::Stft(buf, stft).IsEmpty());
 
 	OaMelConfig mel{};
 	mel.FMin = 9000.0F;
-	EXPECT_TRUE(OaFnAudio::MelSpectrogram(buf, 16000, mel).IsEmpty());
+	EXPECT_TRUE(OaFnAudio::MelSpectrogram(buf, mel).IsEmpty());
 
 	OaMfccConfig mfcc{};
 	mfcc.NumCoeffs = mfcc.Mel.NumMels + 1;
-	EXPECT_TRUE(OaFnAudio::Mfcc(buf, 16000, mfcc).IsEmpty());
+	EXPECT_TRUE(OaFnAudio::Mfcc(buf, mfcc).IsEmpty());
 
 	EXPECT_TRUE(OaFnAudio::Normalize(buf, -3.0F, 2).IsEmpty());
-	EXPECT_TRUE(OaFnAudio::Resample(buf, 0, 16000, 32).IsEmpty());
-	EXPECT_TRUE(OaFnAudio::Resample(buf, 16000, 16000, 2048).IsEmpty());
+	EXPECT_TRUE(OaFnAudio::Resample(buf, 0, 32).IsEmpty());
+	EXPECT_TRUE(OaFnAudio::Resample(buf, 16000, 2048).IsEmpty());
 	EXPECT_TRUE(OaFnAudio::Clip(buf, 1.0F, -1.0F).IsEmpty());
 }
 
@@ -563,9 +587,10 @@ TEST_VK(TestFnAudio, PreEmphasisMatchesClosedForm)
 	const OaU32 n = 512;
 	const OaF32 alpha = 0.97F;
 	auto x = MakeToneWithNoise(22050, 440.0F, n);
-	auto buf = UploadMono(x);
+	auto buf = UploadMono(x, 22'050U);
 
-	OaMatrix out = OaFnAudio::PreEmphasis(buf, alpha);
+	OaAudio emphasized = OaFnAudio::PreEmphasis(buf, alpha);
+	const OaMatrix& out = emphasized.AsMatrix();
 	Sync();
 
 	ASSERT_EQ(out.GetShape()[0], 1);
@@ -582,7 +607,8 @@ TEST_VK(TestFnAudio, FadeAppliesLinearEnvelope)
 	const OaI64 n = 100;
 	std::vector<OaF32> x(static_cast<size_t>(n), 1.0F);
 	auto buf = UploadMono(x);
-	OaMatrix out = OaFnAudio::Fade(buf, 10, 10);
+	OaAudio faded = OaFnAudio::Fade(buf, 10, 10);
+	const OaMatrix& out = faded.AsMatrix();
 	Sync();
 	EXPECT_FLOAT_EQ(out.At(0), 0.0F);
 	EXPECT_NEAR(out.At(5),  0.5F, 1e-5F);

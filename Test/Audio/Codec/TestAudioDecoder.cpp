@@ -7,7 +7,7 @@
 #include "../../OaTest.h"
 
 #include <Oa/Audio.h>
-#include <Oa/Core/FileIo.h>
+#include <Oa/Core/Filesystem.h>
 #include <Oa/Core/FnMatrix.h>
 #include <Oa/Runtime/Context.h>
 #include <Oa/Runtime/Engine.h>
@@ -67,17 +67,17 @@ TEST_VK(TestAudioDecoder, WavRoundTripMonoBitExact)
 	ASSERT_TRUE(res.IsOk()) << res.GetStatus().GetMessage();
 
 	auto& dec = res.GetValue();
-	EXPECT_EQ(dec.SampleRate,   sampleRate);
-	EXPECT_EQ(dec.ChannelCount, 1u);
-	EXPECT_EQ(dec.SampleCount,  static_cast<OaU64>(sine.Size()));
+	EXPECT_EQ(dec.SampleRate(), sampleRate);
+	EXPECT_EQ(dec.Channels(), 1);
+	EXPECT_EQ(dec.Samples(), static_cast<OaI64>(sine.Size()));
 
-	ASSERT_FALSE(dec.Buffer.IsEmpty());
-	ASSERT_EQ(dec.Buffer.GetShape()[0], 1);
-	ASSERT_EQ(dec.Buffer.GetShape()[1], static_cast<OaI64>(sine.Size()));
+	ASSERT_FALSE(dec.IsEmpty());
+	ASSERT_EQ(dec.AsMatrix().GetShape()[0], 1);
+	ASSERT_EQ(dec.AsMatrix().GetShape()[1], static_cast<OaI64>(sine.Size()));
 
 	// F32 WAV (format 3) → miniaudio f32 output is a pass-through: bit-exact.
 	for (OaUsize i = 0; i < sine.Size(); ++i) {
-		ASSERT_EQ(dec.Buffer.At(static_cast<OaI64>(i)), sine[i]) << "sample " << i;
+		ASSERT_EQ(dec.AsMatrix().At(static_cast<OaI64>(i)), sine[i]) << "sample " << i;
 	}
 }
 
@@ -103,15 +103,15 @@ TEST_VK(TestAudioDecoder, WavRoundTripStereoDeinterleaves)
 	ASSERT_TRUE(res.IsOk()) << res.GetStatus().GetMessage();
 
 	auto& dec = res.GetValue();
-	EXPECT_EQ(dec.ChannelCount, 2u);
-	ASSERT_EQ(dec.Buffer.GetShape()[0], 2);
-	ASSERT_EQ(dec.Buffer.GetShape()[1], static_cast<OaI64>(left.Size()));
+	EXPECT_EQ(dec.Channels(), 2);
+	ASSERT_EQ(dec.AsMatrix().GetShape()[0], 2);
+	ASSERT_EQ(dec.AsMatrix().GetShape()[1], static_cast<OaI64>(left.Size()));
 
 	// Planar [C, S]: row 0 = left, row 1 = right, both bit-exact.
 	const OaI64 n = static_cast<OaI64>(left.Size());
 	for (OaI64 i = 0; i < n; ++i) {
-		ASSERT_EQ(dec.Buffer.At(i),     left[static_cast<OaUsize>(i)])  << "L sample " << i;
-		ASSERT_EQ(dec.Buffer.At(n + i), right[static_cast<OaUsize>(i)]) << "R sample " << i;
+		ASSERT_EQ(dec.AsMatrix().At(i), left[static_cast<OaUsize>(i)]) << "L sample " << i;
+		ASSERT_EQ(dec.AsMatrix().At(n + i), right[static_cast<OaUsize>(i)]) << "R sample " << i;
 	}
 }
 
@@ -134,12 +134,12 @@ TEST_VK(TestAudioDecoder, DecodeResultMeta)
 	auto res = OaAudioDecoder::LoadMemory(OaSpan<const OaU8>(wavBytes.Data(), wavBytes.Size()));
 	ASSERT_TRUE(res.IsOk()) << res.GetStatus().GetMessage();
 
-	const OaAudioMeta meta = res.GetValue().Meta();
-	EXPECT_EQ(meta.SampleRate,   sampleRate);
-	EXPECT_EQ(meta.ChannelCount, 2u);
-	EXPECT_EQ(meta.SampleCount,  static_cast<OaU64>(sine.Size()));
-	EXPECT_EQ(meta.Layout,       OaChannelLayout::Stereo);
-	EXPECT_NEAR(meta.DurationSeconds(), 1.0, 1e-6);
+	const OaAudio& audio = res.GetValue();
+	EXPECT_EQ(audio.SampleRate(), sampleRate);
+	EXPECT_EQ(audio.Channels(), 2);
+	EXPECT_EQ(audio.Samples(), static_cast<OaI64>(sine.Size()));
+	EXPECT_EQ(audio.Layout(), OaChannelLayout::Stereo);
+	EXPECT_NEAR(audio.DurationSeconds(), 1.0, 1e-6);
 }
 
 TEST_VK(TestAudioDecoder, RejectsMalformedInputs)
@@ -239,37 +239,36 @@ TEST_VK(TestAudioDecoder, RealSpeechDecodeProcessSaveReload)
 	const OaPath wavPath = OaTestAssetPath("Audio/0_jackson_0.wav");
 	const OaPath inputPath = OaTestAssetPath("Audio/0_jackson_0.flac");
 	const OaPath mp3Path = OaTestAssetPath("Audio/0_jackson_0.mp3");
-	auto decoded = OaAudioDecoder::LoadFile(inputPath.CStr());
+	auto decoded = OaAudioDecoder::LoadFile(inputPath);
 	ASSERT_TRUE(decoded.IsOk()) << decoded.GetStatus().GetMessage();
-	auto wavDecoded = OaAudioDecoder::LoadFile(wavPath.CStr());
+	auto wavDecoded = OaAudioDecoder::LoadFile(wavPath);
 	ASSERT_TRUE(wavDecoded.IsOk()) << wavDecoded.GetStatus().GetMessage();
-	ASSERT_EQ(decoded->SampleRate, 8000U);
-	ASSERT_EQ(decoded->ChannelCount, 1U);
-	ASSERT_GT(decoded->SampleCount, 4000U);
-	ASSERT_EQ(decoded->SampleCount, wavDecoded->SampleCount);
-	for (OaU64 i = 0; i < decoded->SampleCount; i += 31) {
-		ASSERT_FLOAT_EQ(decoded->Buffer.At(static_cast<OaI64>(i)),
-			wavDecoded->Buffer.At(static_cast<OaI64>(i))) << "lossless sample " << i;
+	ASSERT_EQ(decoded->SampleRate(), 8000U);
+	ASSERT_EQ(decoded->Channels(), 1);
+	ASSERT_GT(decoded->Samples(), 4000);
+	ASSERT_EQ(decoded->Samples(), wavDecoded->Samples());
+	for (OaI64 i = 0; i < decoded->Samples(); i += 31) {
+		ASSERT_FLOAT_EQ(decoded->AsMatrix().At(i),
+			wavDecoded->AsMatrix().At(i)) << "lossless sample " << i;
 	}
-	auto mp3Decoded = OaAudioDecoder::LoadFile(mp3Path.CStr());
+	auto mp3Decoded = OaAudioDecoder::LoadFile(mp3Path);
 	ASSERT_TRUE(mp3Decoded.IsOk()) << mp3Decoded.GetStatus().GetMessage();
-	EXPECT_EQ(mp3Decoded->SampleRate, 8000U);
-	EXPECT_EQ(mp3Decoded->ChannelCount, 1U);
-	EXPECT_GT(mp3Decoded->SampleCount, 4000U);
+	EXPECT_EQ(mp3Decoded->SampleRate(), 8000U);
+	EXPECT_EQ(mp3Decoded->Channels(), 1);
+	EXPECT_GT(mp3Decoded->Samples(), 4000);
 	double mp3SquareSum = 0.0;
-	for (OaU64 i = 0; i < mp3Decoded->SampleCount; ++i) {
-		const double sample = mp3Decoded->Buffer.At(static_cast<OaI64>(i));
+	for (OaI64 i = 0; i < mp3Decoded->Samples(); ++i) {
+		const double sample = mp3Decoded->AsMatrix().At(i);
 		EXPECT_TRUE(std::isfinite(sample));
 		mp3SquareSum += sample * sample;
 	}
-	EXPECT_GT(std::sqrt(mp3SquareSum / static_cast<double>(mp3Decoded->SampleCount)), 0.01);
+	EXPECT_GT(std::sqrt(mp3SquareSum / static_cast<double>(mp3Decoded->Samples())), 0.01);
 
 	OaResampleConfig resampleCfg{};
-	resampleCfg.InRate = decoded->SampleRate;
 	resampleCfg.OutRate = 16000;
 	resampleCfg.FilterHalfWidth = 32;
-	OaMatrix processed = OaFnAudio::Normalize(
-		OaFnAudio::Resample(decoded->Buffer, resampleCfg),
+	OaAudio processed = OaFnAudio::Normalize(
+		OaFnAudio::Resample(*decoded, resampleCfg),
 		OaNormalizeAudioConfig{.Mode = 0, .TargetDb = -6.0F});
 
 	OaMelConfig melCfg{};
@@ -277,19 +276,19 @@ TEST_VK(TestAudioDecoder, RealSpeechDecodeProcessSaveReload)
 	melCfg.HopSize = 80;
 	melCfg.NumMels = 40;
 	melCfg.Normalize = true;
-	OaMatrix mel = OaFnAudio::MelSpectrogram(processed, 16000, melCfg);
+	OaMatrix mel = OaFnAudio::MelSpectrogram(processed, melCfg);
 	ASSERT_EQ(mel.GetShape().Rank, 3);
 	ASSERT_EQ(mel.GetShape()[0], 1);
 	ASSERT_EQ(mel.GetShape()[1], 40);
 
-	const OaPath outputPath = OaFileIo::GetTempDirectory() / "oa_audio_real_e2e.wav";
-	ASSERT_TRUE(OaAudioEncoder::SaveWavF32(outputPath, processed, 16000).IsOk());
-	auto reloaded = OaAudioDecoder::LoadFile(outputPath.CStr());
+	const OaPath outputPath = OaPaths::Temp() / "oa_audio_real_e2e.wav";
+	ASSERT_TRUE(OaAudioEncoder::SaveWavF32(outputPath, processed).IsOk());
+	auto reloaded = OaAudioDecoder::LoadFile(outputPath);
 	ASSERT_TRUE(reloaded.IsOk()) << reloaded.GetStatus().GetMessage();
-	EXPECT_EQ(reloaded->SampleRate, 16000U);
-	EXPECT_EQ(reloaded->ChannelCount, 1U);
-	EXPECT_EQ(reloaded->SampleCount, processed.GetShape()[1]);
-	EXPECT_TRUE(OaFileIo::RemoveFile(outputPath).IsOk());
+	EXPECT_EQ(reloaded->SampleRate(), 16000U);
+	EXPECT_EQ(reloaded->Channels(), 1);
+	EXPECT_EQ(reloaded->Samples(), processed.Samples());
+	EXPECT_TRUE(OaFilesystem::RemoveFile(outputPath).IsOk());
 
 	for (OaI64 i = 0; i < mel.NumElements(); i += 97) {
 		EXPECT_TRUE(std::isfinite(mel.At(i))) << "mel element " << i;
@@ -298,15 +297,18 @@ TEST_VK(TestAudioDecoder, RealSpeechDecodeProcessSaveReload)
 
 // ─── OaFnAudio ────────────────────────────────────────────────────────────────
 
-TEST_VK(TestAudioDecoder, ToMatrixReshapes)
+TEST_VK(TestAudioDecoder, AudioComposesMatrixWithoutAlias)
 {
-	auto buf = OaFnMatrix::Zeros(OaMatrixShape{2, 512});
-	auto res = OaFnAudio::ToMatrix(buf);
-	ASSERT_TRUE(res.IsOk()) << res.GetStatus().GetMessage();
-	const auto& m = res.GetValue();
+	OaAudio audio(
+		OaFnMatrix::Zeros(OaMatrixShape{2, 512}),
+		48'000U,
+		OaChannelLayout::Stereo);
+	ASSERT_TRUE(audio.Validate());
+	const OaMatrix& m = audio.AsMatrix();
 	EXPECT_EQ(m.GetShape()[0], 2);
-	EXPECT_EQ(m.GetShape()[1], 1);
-	EXPECT_EQ(m.GetShape()[2], 512);
+	EXPECT_EQ(m.GetShape()[1], 512);
+	EXPECT_EQ(audio.SampleRate(), 48'000U);
+	EXPECT_EQ(audio.Layout(), OaChannelLayout::Stereo);
 }
 
 TEST_VK(TestAudioDecoder, MixMatchesCpuOracle)
@@ -322,7 +324,10 @@ TEST_VK(TestAudioDecoder, MixMatchesCpuOracle)
 	OaMemcpy(mb.DataAs<OaF32>(), b.Data(), static_cast<OaUsize>(n) * sizeof(OaF32));
 
 	const OaF32 gainA = 0.75F, gainB = 0.25F;
-	OaMatrix mixed = OaFnAudio::Mix(ma, mb, gainA, gainB);
+	OaAudio audioA(OaStdMove(ma), 48'000U, OaChannelLayout::Mono);
+	OaAudio audioB(OaStdMove(mb), 48'000U, OaChannelLayout::Mono);
+	OaAudio mixedAudio = OaFnAudio::Mix(audioA, audioB, gainA, gainB);
+	const OaMatrix& mixed = mixedAudio.AsMatrix();
 	Sync();
 
 	for (OaI64 i = 0; i < n; ++i) {

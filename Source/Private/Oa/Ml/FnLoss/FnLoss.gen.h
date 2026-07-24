@@ -2,6 +2,6 @@
 // Source of truth: Tools/FnAutogen/Schema/Ml/FnLoss manifest.
 // Regenerate via: python3 Tools/FnAutogen/oafnautogen.py --live
 
-// OaFnLoss — generated umbrella for Ml/FnLoss.
+// OaFnLoss — generated declarations for Ml/FnLoss.
 
 #include "CrossEntropy/FnLossCrossEntropy.gen.h"

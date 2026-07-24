@@ -3,7 +3,7 @@
 #include "../TutorialMl.h"
 #include "../../../Test/OaTest.h"
 
-#include <Oa/Core/FileIo.h>
+#include <Oa/Core/Filesystem.h>
 #include <Oa/Data/DsMnist.h>
 #include <Oa/Ml.h>
 #include <Oa/Ml/Autograd.h>
@@ -22,19 +22,73 @@ namespace TutorialFashionFlow {
 
 constexpr OaI32 ImageSize = 28;
 constexpr OaI32 Pixels = ImageSize * ImageSize;
+constexpr OaI32 PatchSize = 4;
+constexpr OaI32 PatchesPerSide = ImageSize / PatchSize;
 constexpr OaI32 Sequence = 49;
-constexpr OaI32 PatchDim = 16;
+constexpr OaI32 PatchDim = PatchSize * PatchSize;
 constexpr OaI32 ModelDim = 32;
 constexpr OaI32 Classes = 10;
 constexpr OaI32 Batch = 64;
 constexpr OaI32 SampleSteps = 20;
 constexpr OaF32 LearningRate = 1.0e-3F;
 
+static_assert(ImageSize % PatchSize == 0);
+static_assert(Sequence == PatchesPerSide * PatchesPerSide);
+
 inline OaI32 TrainSteps() {
 	const char* value = std::getenv("OA_GENERATIVE_STEPS");
 	if (!value) return 1000;
 	return std::max<OaI32>(1,
 		static_cast<OaI32>(std::strtol(value, nullptr, 10)));
+}
+
+inline OaI32 GeneratedClass() {
+	const char* value = std::getenv("OA_GENERATIVE_CLASS");
+	if (!value) return 0;
+	char* end = nullptr;
+	const long parsed = std::strtol(value, &end, 10);
+	if (end == value || *end != '\0' || parsed < 0 || parsed >= Classes) {
+		throw std::invalid_argument(
+			"OA_GENERATIVE_CLASS must be an integer in [0,9]");
+	}
+	return static_cast<OaI32>(parsed);
+}
+
+inline OaMatrix Patchify(const OaMatrix& InImages) {
+	if (InImages.Rank() != 2 || InImages.Size(1) != Pixels) {
+		throw std::invalid_argument(
+			"Fashion flow patchify expects [B,784] images");
+	}
+	const OaI64 batch = InImages.Size(0);
+	// [B,7,4,7,4] -> [B,7,7,4,4] without requiring a rank-5
+	// permutation. Both rank-3 transposes are materialized GPU operations.
+	auto columns = OaFnMatrix::Transpose(
+		InImages.Reshape(OaMatrixShape{
+			batch * PatchesPerSide, PatchSize, ImageSize}),
+		1, 2);
+	auto patches = OaFnMatrix::Transpose(
+		columns.Reshape(OaMatrixShape{
+			batch * Sequence, PatchSize, PatchSize}),
+		1, 2);
+	return patches.Reshape(OaMatrixShape{batch, Sequence, PatchDim});
+}
+
+inline OaMatrix Unpatchify(const OaMatrix& InPatches) {
+	if (InPatches.Rank() != 3 || InPatches.Size(1) != Sequence
+		|| InPatches.Size(2) != PatchDim) {
+		throw std::invalid_argument(
+			"Fashion flow unpatchify expects [B,49,16] patches");
+	}
+	const OaI64 batch = InPatches.Size(0);
+	auto columns = OaFnMatrix::Transpose(
+		InPatches.Reshape(OaMatrixShape{
+			batch * Sequence, PatchSize, PatchSize}),
+		1, 2);
+	auto rows = OaFnMatrix::Transpose(
+		columns.Reshape(OaMatrixShape{
+			batch * PatchesPerSide, ImageSize, PatchSize}),
+		1, 2);
+	return rows.Reshape(OaMatrixShape{batch, Pixels});
 }
 
 class Model final : public OaModule {
@@ -62,20 +116,16 @@ public:
 	}
 
 	OaMatrix Forward(const OaMatrix& InSample) override {
-		return Denoiser_->Forward(InSample.Reshape(OaMatrixShape{
-			InSample.Size(0), Sequence, PatchDim})).Reshape(
-			OaMatrixShape{InSample.Size(0), Pixels});
+		return Unpatchify(Denoiser_->Forward(Patchify(InSample)));
 	}
 
 	OaMatrix ForwardFlow(
 		const OaMatrix& InSample,
 		const OaMatrix& InTime,
 		const OaMatrix& InLabels) {
-		const OaI64 batch = InSample.Size(0);
 		auto condition = ClassEmbedding_->Forward(InLabels);
-		return Denoiser_->ForwardConditioned(
-			InSample.Reshape(OaMatrixShape{batch, Sequence, PatchDim}),
-			InTime, condition).Reshape(OaMatrixShape{batch, Pixels});
+		return Unpatchify(Denoiser_->ForwardConditioned(
+			Patchify(InSample), InTime, condition));
 	}
 
 	OaMatrix ForwardGuided(
@@ -83,12 +133,9 @@ public:
 		const OaMatrix& InTime,
 		const OaMatrix& InLabels,
 		OaF32 InGuidanceScale) {
-		const OaI64 batch = InSample.Size(0);
 		auto condition = ClassEmbedding_->Forward(InLabels);
-		return Denoiser_->ForwardGuided(
-			InSample.Reshape(OaMatrixShape{batch, Sequence, PatchDim}),
-			InTime, condition, InGuidanceScale)
-			.Reshape(OaMatrixShape{batch, Pixels});
+		return Unpatchify(Denoiser_->ForwardGuided(
+			Patchify(InSample), InTime, condition, InGuidanceScale));
 	}
 
 	[[nodiscard]] bool IsMoe() const noexcept { return IsMoe_; }
@@ -99,22 +146,22 @@ private:
 	OaSharedPtr<OaFlowDenoiser> Denoiser_;
 };
 
-inline OaMatrix Sample(Model& InModel, OaU64 InSeed) {
+inline OaMatrix Sample(
+	Model& InModel,
+	OaU64 InSeed,
+	OaI32 InClass) {
 	OaModule::ScopedEval eval(InModel);
-	OaVec<OaU8> labels(Classes);
-	for (OaI32 index = 0; index < Classes; ++index) {
-		labels[index] = static_cast<OaU8>(index);
-	}
+	const OaU8 label = static_cast<OaU8>(InClass);
 	auto labelMatrix = OaFnMatrix::FromBytes(
-		OaSpan<const OaU8>(labels.Data(), labels.Size()),
-		OaMatrixShape{Classes}, OaScalarType::UInt8);
+		OaSpan<const OaU8>(&label, 1),
+		OaMatrixShape{1}, OaScalarType::UInt8);
 	auto state = OaFnMatrix::PhiloxNormal(
-		OaFnMatrix::Empty(OaMatrixShape{Classes, Pixels}),
+		OaFnMatrix::Empty(OaMatrixShape{1, Pixels}),
 		0.0F, 1.0F, InSeed);
 	const OaF32 delta = 1.0F / static_cast<OaF32>(SampleSteps);
 	for (OaI32 step = SampleSteps; step > 0; --step) {
 		auto time = OaFnMatrix::Full(
-			OaMatrixShape{Classes, 1}, static_cast<OaF32>(step) * delta);
+			OaMatrixShape{1, 1}, static_cast<OaF32>(step) * delta);
 		auto velocity = InModel.ForwardGuided(
 			state, time, labelMatrix, 2.0F);
 		state = OaFnFlow::EulerStep(state, velocity, -delta);
@@ -122,15 +169,118 @@ inline OaMatrix Sample(Model& InModel, OaU64 InSeed) {
 	return state;
 }
 
-inline OaResult<OaTexture> MakeGrid(
+inline OaResult<OaTexture> MakeImage(
 	OaEngine& InEngine, const OaMatrix& InGenerated) {
+	if (InGenerated.GetShape() != OaMatrixShape{1, Pixels}) {
+		return OaStatus::InvalidArgument(
+			"Fashion flow image expects one flattened 28x28 sample");
+	}
 	auto mapped = OaFnMatrix::ClampMin(OaFnMatrix::ClampMax(
 		(InGenerated * 0.5F) + 0.5F, 1.0F), 0.0F);
-	// [class,H,W] -> [H,class,W] -> [1,1,H,class*W].
-	auto grid = OaFnMatrix::Transpose(
-		mapped.Reshape(OaMatrixShape{Classes, ImageSize, ImageSize}), 0, 1)
-		.Contiguous().Reshape(OaMatrixShape{1, 1, ImageSize, Classes * ImageSize});
-	return OaTexture::FromMatrix(InEngine, grid);
+	return OaTexture::FromMatrix(InEngine,
+		mapped.Reshape(OaMatrixShape{1, 1, ImageSize, ImageSize}));
+}
+
+inline void ValidatePatchRoundTrip() {
+	OaVec<OaF32> input(Pixels);
+	for (OaI32 index = 0; index < Pixels; ++index) {
+		input[static_cast<OaUsize>(index)] = static_cast<OaF32>(index);
+	}
+	auto matrix = OaFnMatrix::FromBytes(
+		OaSpan<const OaU8>(
+			reinterpret_cast<const OaU8*>(input.Data()),
+			input.Size() * sizeof(OaF32)),
+		OaMatrixShape{1, Pixels}, OaScalarType::Float32);
+	auto roundTrip = Unpatchify(Patchify(matrix));
+	OaVec<OaF32> output(Pixels);
+	ASSERT_TRUE(OaFnMatrix::CopyToHost(
+		roundTrip, output.Data(), output.Size() * sizeof(OaF32)).IsOk());
+	EXPECT_EQ(output, input);
+}
+
+inline void ValidateImageLayout(OaEngine& InEngine) {
+	OaVec<OaF32> input(Pixels);
+	for (OaI32 y = 0; y < ImageSize; ++y) {
+		for (OaI32 x = 0; x < ImageSize; ++x) {
+			const bool high = ((y * 5 + x * 7) & 1) != 0;
+			input[static_cast<OaUsize>(y * ImageSize + x)] =
+				high ? 1.0F : -1.0F;
+		}
+	}
+	auto matrix = OaFnMatrix::FromBytes(
+		OaSpan<const OaU8>(
+			reinterpret_cast<const OaU8*>(input.Data()),
+			input.Size() * sizeof(OaF32)),
+		OaMatrixShape{1, Pixels}, OaScalarType::Float32);
+	auto texture = MakeImage(InEngine, matrix);
+	ASSERT_TRUE(texture.IsOk()) << texture.GetStatus().ToString().c_str();
+	auto& context = OaContext::GetDefault();
+	ASSERT_TRUE(context.Execute().IsOk());
+	ASSERT_TRUE(context.Sync().IsOk());
+	EXPECT_EQ(texture->Width, ImageSize);
+	EXPECT_EQ(texture->Height, ImageSize);
+
+	OaVec<OaU32> pixels(Pixels);
+	ASSERT_TRUE(InEngine.ReadbackBuffer(
+		texture->DeviceBuf, 0U, pixels.Data(),
+		pixels.Size() * sizeof(OaU32)).IsOk());
+	OaU32 mismatches = 0U;
+	OaI32 firstY = -1;
+	OaI32 firstX = -1;
+	OaU8 firstExpected = 0U;
+	OaU8 firstActual = 0U;
+	for (OaI32 y = 0; y < ImageSize; ++y) {
+		for (OaI32 x = 0; x < ImageSize; ++x) {
+			const OaI32 index = y * ImageSize + x;
+			const bool high = ((y * 5 + x * 7) & 1) != 0;
+			const OaU8 expected = high ? 255U : 0U;
+			const OaU8 actual = static_cast<OaU8>(
+				pixels[static_cast<OaUsize>(index)] & 0xFFU);
+			if (actual == expected) continue;
+			if (mismatches == 0U) {
+				firstY = y;
+				firstX = x;
+				firstExpected = expected;
+				firstActual = actual;
+			}
+			++mismatches;
+		}
+	}
+	EXPECT_EQ(mismatches, 0U)
+		<< "first image mismatch y=" << firstY << " x=" << firstX
+		<< " expected=" << static_cast<unsigned>(firstExpected)
+		<< " actual=" << static_cast<unsigned>(firstActual);
+	texture->Destroy(InEngine);
+}
+
+inline void ValidateImagePixels(
+	OaEngine& InEngine,
+	const OaTexture& InTexture) {
+	const OaI64 pixelCount = Pixels;
+	OaVec<OaU32> pixels(pixelCount);
+	ASSERT_TRUE(InEngine.ReadbackBuffer(
+		InTexture.DeviceBuf, 0U, pixels.Data(),
+		pixels.Size() * sizeof(OaU32)).IsOk());
+	OaU8 minimum = 255U;
+	OaU8 maximum = 0U;
+	OaF64 sum = 0.0;
+	OaF64 sumSquares = 0.0;
+	for (OaU32 pixel : pixels) {
+		const OaU8 value = static_cast<OaU8>(pixel & 0xFFU);
+		minimum = std::min(minimum, value);
+		maximum = std::max(maximum, value);
+		sum += value;
+		sumSquares += static_cast<OaF64>(value) * value;
+	}
+	const OaF64 mean = sum / static_cast<OaF64>(pixelCount);
+	const OaF64 variance = std::max(
+		0.0, sumSquares / static_cast<OaF64>(pixelCount) - mean * mean);
+	const OaF64 standardDeviation = std::sqrt(variance);
+	std::printf("image pixels min=%u max=%u mean=%.2f stddev=%.2f\n",
+		static_cast<unsigned>(minimum), static_cast<unsigned>(maximum),
+		mean, standardDeviation);
+	EXPECT_LT(minimum, maximum);
+	EXPECT_GT(standardDeviation, 1.0);
 }
 
 inline OaF32 Validate(Model& InModel, OaDsMnist& InValidation) {
@@ -170,11 +320,16 @@ inline void Run(bool InMoe) {
 	}
 
 	const OaI32 steps = TrainSteps();
+	const OaI32 generatedClass = GeneratedClass();
 	std::printf("\nOA Fashion-MNIST flow — %s FFN\n",
 		InMoe ? "dropless MoE" : "dense");
-	std::printf("train=%d val=%d batch=%d steps=%d seed=2026\n",
-		train.NumSamples(), validation.NumSamples(), Batch, steps);
+	std::printf("train=%d val=%d batch=%d steps=%d seed=2026 class=%d\n",
+		train.NumSamples(), validation.NumSamples(), Batch, steps,
+		generatedClass);
 	OaFnMatrix::SetRngSeed(2026);
+	auto& engine = *OaEngine::GetGlobal();
+	ValidatePatchRoundTrip();
+	ValidateImageLayout(engine);
 	auto model = OaMakeSharedPtr<Model>(InMoe);
 	auto parameters = model->AllParameterPtrs();
 	OaAdamW optimizer(parameters, LearningRate);
@@ -222,14 +377,16 @@ inline void Run(bool InMoe) {
 		initialLoss, finalLoss, initialValidationLoss, validationLoss);
 
 	auto& context = OaContext::GetDefault();
-	auto& engine = *OaEngine::GetGlobal();
-	auto generated = Sample(*model, 2026);
-	auto textureResult = MakeGrid(engine, generated);
+	auto generated = Sample(*model, 2026, generatedClass);
+	auto textureResult = MakeImage(engine, generated);
 	ASSERT_TRUE(textureResult.IsOk()) << textureResult.GetStatus().ToString().c_str();
 	ASSERT_TRUE(context.Execute().IsOk());
 	ASSERT_TRUE(context.Sync().IsOk());
-	const OaPath directory = OaFileIo::GetVarDir() / "generative";
-	ASSERT_TRUE(OaFileIo::CreateDirectories(directory).IsOk());
+	EXPECT_EQ(textureResult->Width, ImageSize);
+	EXPECT_EQ(textureResult->Height, ImageSize);
+	ValidateImagePixels(engine, *textureResult);
+	const OaPath directory = OaPaths::Var() / "generative";
+	ASSERT_TRUE(OaFilesystem::CreateDirectories(directory).IsOk());
 	const OaPath imagePath = directory /
 		(InMoe ? "fashion_flow_moe.png" : "fashion_flow_dense.png");
 	ASSERT_TRUE(OaFnImage::SaveFile(

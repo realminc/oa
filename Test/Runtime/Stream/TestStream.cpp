@@ -7,12 +7,15 @@
 #include <Oa/Runtime/UploadRing.h>
 #include <Oa/Runtime/Prefetch.h>
 #include <Oa/Runtime/Engine.h>
+#include <Oa/Runtime/GraphicsStream.h>
+#include <Oa/Runtime/Engine/QueueSubmitRoute.h>
 #include <Oa/Core/Simd.h>
 #include <Oa/Core/Memory.h>
 #include <thread>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstdint>
 #include <mutex>
 
 // ─── Stream Lifecycle ─────────────────────────────────────────────────────────
@@ -807,6 +810,359 @@ static OaResult<OaUniquePtr<OaEngine>> CreateHeadlessGraphicsTestEngine() {
 	config.PreloadEmbeddedPipelines = false;
 	config.EnablePipelineCache = false;
 	return OaEngine::Create(config);
+}
+
+TEST(GraphicsQueueRoute, ClassifiesMergedDistinctAndUnknownHandles) {
+	auto* compute = reinterpret_cast<void*>(static_cast<std::uintptr_t>(0x1000U));
+	auto* asyncCompute = reinterpret_cast<void*>(static_cast<std::uintptr_t>(0x2000U));
+	auto* transfer = reinterpret_cast<void*>(static_cast<std::uintptr_t>(0x3000U));
+	auto* graphics = reinterpret_cast<void*>(static_cast<std::uintptr_t>(0x4000U));
+	auto* present = reinterpret_cast<void*>(static_cast<std::uintptr_t>(0x5000U));
+	auto* unknown = reinterpret_cast<void*>(static_cast<std::uintptr_t>(0x6000U));
+
+	OaVkQueues queues;
+	queues.ComputeQueue = compute;
+	queues.AsyncComputeQueue = asyncCompute;
+	queues.TransferQueue = transfer;
+	queues.GraphicsQueue = compute;
+	queues.PresentQueue = compute;
+	queues.HasAsyncCompute = true;
+	EXPECT_EQ(OaClassifyQueueSubmitRoute(queues, compute),
+		OaQueueSubmitRoute::Compute);
+	EXPECT_EQ(OaClassifyQueueSubmitRoute(queues, asyncCompute),
+		OaQueueSubmitRoute::AsyncCompute);
+	EXPECT_EQ(OaClassifyQueueSubmitRoute(queues, transfer),
+		OaQueueSubmitRoute::Transfer);
+
+	queues.GraphicsQueue = graphics;
+	queues.PresentQueue = present;
+	EXPECT_EQ(OaClassifyQueueSubmitRoute(queues, graphics),
+		OaQueueSubmitRoute::Graphics);
+	EXPECT_EQ(OaClassifyQueueSubmitRoute(queues, present),
+		OaQueueSubmitRoute::Present);
+	EXPECT_EQ(OaClassifyQueueSubmitRoute(queues, unknown),
+		OaQueueSubmitRoute::Unknown);
+	EXPECT_EQ(OaClassifyQueueSubmitRoute(queues, nullptr),
+		OaQueueSubmitRoute::Unknown);
+}
+
+TEST(VkStream, HeadlessGraphicsLeaseReturnsExactGenerationSafeEvent) {
+	auto engineResult = CreateHeadlessGraphicsTestEngine();
+	ASSERT_TRUE(engineResult.IsOk()) << engineResult.GetStatus().GetMessage();
+	auto engine = std::move(*engineResult);
+	if (engine->Device.Queues.GraphicsQueue
+		!= engine->Device.Queues.ComputeQueue) {
+		ASSERT_TRUE(engine->Close().IsOk());
+		GTEST_SKIP() << "merged graphics/compute queue required by this hardware proof";
+	}
+
+	auto firstResult = OaGraphicsStreamLease::Acquire(*engine);
+	ASSERT_TRUE(firstResult.IsOk()) << firstResult.GetStatus().GetMessage();
+	auto first = OaStdMove(*firstResult);
+	OaVkStream* firstStream = first.GetStream();
+	ASSERT_NE(firstStream, nullptr);
+	auto firstCompletion = first.Submit();
+	ASSERT_TRUE(firstCompletion.IsOk())
+		<< firstCompletion.GetStatus().GetMessage();
+	EXPECT_TRUE(engine->OwnsEvent(*firstCompletion));
+	EXPECT_TRUE(firstCompletion->HasQueueFamily());
+	EXPECT_EQ(firstCompletion->QueueFamily(),
+		engine->Device.Queues.GraphicsQueueFamily);
+	ASSERT_TRUE(firstCompletion->Wait().IsOk());
+	ASSERT_TRUE(first.Recycle(*firstCompletion).IsOk());
+	EXPECT_FALSE(first.IsValid());
+
+	auto secondResult = OaGraphicsStreamLease::Acquire(*engine);
+	ASSERT_TRUE(secondResult.IsOk()) << secondResult.GetStatus().GetMessage();
+	auto second = OaStdMove(*secondResult);
+	EXPECT_EQ(second.GetStream(), firstStream);
+	auto secondCompletion = second.Submit();
+	ASSERT_TRUE(secondCompletion.IsOk())
+		<< secondCompletion.GetStatus().GetMessage();
+	ASSERT_TRUE(secondCompletion->Wait().IsOk());
+	const OaStatus staleRecycle = second.Recycle(*firstCompletion);
+	EXPECT_EQ(staleRecycle.GetCode(), OaStatusCode::InvalidArgument);
+	EXPECT_TRUE(second.IsValid());
+	ASSERT_TRUE(second.Recycle(*secondCompletion).IsOk());
+
+	VkSubmitInfo submitInfo = {.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO};
+	VkSubmitInfo2 submitInfo2 = {.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2};
+	void* unknown = reinterpret_cast<void*>(
+		static_cast<std::uintptr_t>(0xBAD0U));
+	EXPECT_EQ(engine->SubmitToQueue(unknown, &submitInfo, nullptr).GetCode(),
+		OaStatusCode::InvalidArgument);
+	EXPECT_EQ(engine->SubmitToQueue2(unknown, &submitInfo2).GetCode(),
+		OaStatusCode::InvalidArgument);
+	ASSERT_TRUE(engine->Close().IsOk());
+}
+
+TEST(VkStream, GraphicsLeaseRejectsForeignUnknownAndCrossFamilyDependencies) {
+	auto engineResult = CreateHeadlessGraphicsTestEngine();
+	ASSERT_TRUE(engineResult.IsOk()) << engineResult.GetStatus().GetMessage();
+	auto engine = std::move(*engineResult);
+	auto gateResult = OaVkTimelineSemaphore::Create(engine->Device, 0U);
+	ASSERT_TRUE(gateResult.IsOk()) << gateResult.GetStatus().GetMessage();
+	auto gate = OaStdMove(*gateResult);
+
+	OaVkDevice foreignDevice;
+	const OaEvent foreign(
+		foreignDevice,
+		gate,
+		1U,
+		engine->Device.Queues.GraphicsQueueFamily);
+	const OaEvent unknownFamily(engine->Device, gate, 1U);
+	OaU32 otherFamily = engine->Device.Queues.GraphicsQueueFamily ^ 1U;
+	if (otherFamily == OaCompletionToken::UnknownQueueFamily) otherFamily = 0U;
+	const OaEvent crossFamily(engine->Device, gate, 1U, otherFamily);
+	EXPECT_FALSE(engine->OwnsEvent(foreign));
+	EXPECT_TRUE(engine->OwnsEvent(unknownFamily));
+	EXPECT_TRUE(engine->OwnsEvent(crossFamily));
+
+	auto leaseResult = OaGraphicsStreamLease::Acquire(*engine);
+	ASSERT_TRUE(leaseResult.IsOk()) << leaseResult.GetStatus().GetMessage();
+	auto lease = OaStdMove(*leaseResult);
+	const OaEvent foreignDeps[] = {foreign};
+	auto foreignSubmit = lease.Submit(foreignDeps);
+	EXPECT_FALSE(foreignSubmit.IsOk());
+	EXPECT_EQ(foreignSubmit.GetStatus().GetCode(), OaStatusCode::InvalidArgument);
+	ASSERT_NE(lease.GetStream(), nullptr);
+
+	const OaEvent unknownDeps[] = {unknownFamily};
+	auto unknownSubmit = lease.Submit(unknownDeps);
+	EXPECT_FALSE(unknownSubmit.IsOk());
+	EXPECT_EQ(unknownSubmit.GetStatus().GetCode(), OaStatusCode::InvalidArgument);
+	ASSERT_NE(lease.GetStream(), nullptr);
+
+	const OaEvent crossDeps[] = {crossFamily};
+	auto crossSubmit = lease.Submit(crossDeps);
+	EXPECT_FALSE(crossSubmit.IsOk());
+	EXPECT_EQ(crossSubmit.GetStatus().GetCode(),
+		OaStatusCode::FailedPrecondition);
+	ASSERT_NE(lease.GetStream(), nullptr);
+	ASSERT_TRUE(lease.Cancel().IsOk());
+
+	gate.Destroy(engine->Device);
+	ASSERT_TRUE(engine->Close().IsOk());
+}
+
+TEST(VkStream, GraphicsLeaseChainsSameFamilyDependencyOnGpu) {
+	auto engineResult = CreateHeadlessGraphicsTestEngine();
+	ASSERT_TRUE(engineResult.IsOk()) << engineResult.GetStatus().GetMessage();
+	auto engine = std::move(*engineResult);
+	if (engine->Device.Queues.GraphicsQueueFamily
+		!= engine->Device.Queues.ComputeQueueFamily) {
+		ASSERT_TRUE(engine->Close().IsOk());
+		GTEST_SKIP() << "cross-family resource ownership is intentionally deferred";
+	}
+
+	constexpr OaU64 kSize = 4096;
+	auto srcResult = engine->AllocBuffer(kSize);
+	ASSERT_TRUE(srcResult.IsOk());
+	auto src = OaStdMove(*srcResult);
+	auto intermediateResult = engine->AllocBuffer(kSize);
+	ASSERT_TRUE(intermediateResult.IsOk());
+	auto intermediate = OaStdMove(*intermediateResult);
+	auto dstResult = engine->AllocBuffer(kSize);
+	ASSERT_TRUE(dstResult.IsOk());
+	auto dst = OaStdMove(*dstResult);
+	auto* source = static_cast<OaU8*>(src.MappedPtr);
+	for (OaU64 index = 0; index < kSize; ++index) {
+		source[index] = static_cast<OaU8>((index * 37U + 13U) & 0xFFU);
+	}
+	OaMemset(dst.MappedPtr, 0xB5, kSize);
+	ASSERT_TRUE(engine->Allocator.FlushHostBuffer(src, 0U, kSize));
+	ASSERT_TRUE(engine->Allocator.FlushHostBuffer(dst, 0U, kSize));
+
+	OaVkStream* producer = engine->AcquireStream();
+	ASSERT_NE(producer, nullptr);
+	ASSERT_TRUE(producer->Begin(engine->Device).IsOk());
+	producer->RecordCopyBuffer(src, intermediate, kSize);
+	producer->RecordTransferWriteBarrier(intermediate, 0U, kSize);
+	ASSERT_TRUE(producer->Submit(*engine).IsOk());
+	const OaEvent producerCompletion = producer->Completion(engine->Device);
+	ASSERT_TRUE(producerCompletion.IsValid());
+	ASSERT_EQ(producerCompletion.QueueFamily(),
+		engine->Device.Queues.GraphicsQueueFamily);
+
+	auto consumerResult = OaGraphicsStreamLease::Acquire(*engine);
+	ASSERT_TRUE(consumerResult.IsOk()) << consumerResult.GetStatus().GetMessage();
+	auto consumer = OaStdMove(*consumerResult);
+	OaVkStream* stream = consumer.GetStream();
+	ASSERT_NE(stream, nullptr);
+	stream->RecordCopyBuffer(intermediate, dst, kSize);
+	stream->RecordTransferWriteBarrier(dst, 0U, kSize);
+	const OaEvent dependencies[] = {producerCompletion};
+	auto consumed = consumer.Submit(dependencies);
+	ASSERT_TRUE(consumed.IsOk()) << consumed.GetStatus().GetMessage();
+	ASSERT_TRUE(consumed->Wait().IsOk());
+	ASSERT_TRUE(consumer.Recycle(*consumed).IsOk());
+	ASSERT_TRUE(producer->Synchronize(engine->Device).IsOk());
+	engine->ReleaseStream(producer);
+	ASSERT_TRUE(engine->Allocator.InvalidateHostBuffer(dst, 0U, kSize));
+	EXPECT_TRUE(OaMemEqual(source, dst.MappedPtr, kSize));
+
+	engine->FreeBuffer(src);
+	engine->FreeBuffer(intermediate);
+	engine->FreeBuffer(dst);
+	ASSERT_TRUE(engine->Close().IsOk());
+}
+
+TEST(VkStream, GraphicsLeaseCancellationDoesNotSubmitRecordedWork) {
+	auto engineResult = CreateHeadlessGraphicsTestEngine();
+	ASSERT_TRUE(engineResult.IsOk()) << engineResult.GetStatus().GetMessage();
+	auto engine = std::move(*engineResult);
+	constexpr OaU64 kSize = 1024;
+	auto srcResult = engine->AllocBuffer(kSize);
+	ASSERT_TRUE(srcResult.IsOk());
+	auto src = OaStdMove(*srcResult);
+	auto dstResult = engine->AllocBuffer(kSize);
+	ASSERT_TRUE(dstResult.IsOk());
+	auto dst = OaStdMove(*dstResult);
+	OaMemset(src.MappedPtr, 0x31, kSize);
+	OaMemset(dst.MappedPtr, 0xC9, kSize);
+	ASSERT_TRUE(engine->Allocator.FlushHostBuffer(src, 0U, kSize));
+	ASSERT_TRUE(engine->Allocator.FlushHostBuffer(dst, 0U, kSize));
+
+	auto leaseResult = OaGraphicsStreamLease::Acquire(*engine);
+	ASSERT_TRUE(leaseResult.IsOk()) << leaseResult.GetStatus().GetMessage();
+	auto lease = OaStdMove(*leaseResult);
+	OaVkStream* cancelledStream = lease.GetStream();
+	ASSERT_NE(cancelledStream, nullptr);
+	cancelledStream->RecordCopyBuffer(src, dst, kSize);
+	ASSERT_TRUE(lease.Cancel().IsOk());
+	ASSERT_TRUE(engine->Allocator.InvalidateHostBuffer(dst, 0U, kSize));
+	const auto* values = static_cast<const OaU8*>(dst.MappedPtr);
+	for (OaU64 index = 0; index < kSize; ++index) {
+		ASSERT_EQ(values[index], 0xC9);
+	}
+
+	auto reusedResult = OaGraphicsStreamLease::Acquire(*engine);
+	ASSERT_TRUE(reusedResult.IsOk()) << reusedResult.GetStatus().GetMessage();
+	auto reused = OaStdMove(*reusedResult);
+	EXPECT_EQ(reused.GetStream(), cancelledStream);
+	ASSERT_TRUE(reused.Cancel().IsOk());
+	engine->FreeBuffer(src);
+	engine->FreeBuffer(dst);
+	ASSERT_TRUE(engine->Close().IsOk());
+}
+
+TEST(VkStream, GraphicsLeaseRetirementAndAcquireNeverWait) {
+	auto engineResult = CreateHeadlessGraphicsTestEngine();
+	ASSERT_TRUE(engineResult.IsOk()) << engineResult.GetStatus().GetMessage();
+	auto engine = std::move(*engineResult);
+	auto gateResult = OaVkTimelineSemaphore::Create(engine->Device, 0U);
+	ASSERT_TRUE(gateResult.IsOk()) << gateResult.GetStatus().GetMessage();
+	auto gate = OaStdMove(*gateResult);
+	const OaEvent gateEvent(
+		engine->Device,
+		gate,
+		1U,
+		engine->Device.Queues.GraphicsQueueFamily);
+
+	auto leaseResult = OaGraphicsStreamLease::Acquire(*engine);
+	ASSERT_TRUE(leaseResult.IsOk()) << leaseResult.GetStatus().GetMessage();
+	auto lease = OaStdMove(*leaseResult);
+	OaVkStream* retiredStream = lease.GetStream();
+	ASSERT_NE(retiredStream, nullptr);
+	const OaEvent dependencies[] = {gateEvent};
+	auto submitted = lease.Submit(dependencies);
+	ASSERT_TRUE(submitted.IsOk()) << submitted.GetStatus().GetMessage();
+
+	auto signalGate = [&]() {
+		VkSemaphoreSignalInfo signalInfo = {
+			.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO,
+			.semaphore = static_cast<VkSemaphore>(gate.Semaphore),
+			.value = 1U,
+		};
+		return vkSignalSemaphore(
+			static_cast<VkDevice>(engine->Device.Device), &signalInfo);
+	};
+	std::mutex watchdogMutex;
+	std::condition_variable watchdogCondition;
+	bool closeReturned = false;
+	bool closeTimedOut = false;
+	std::atomic<OaI32> watchdogSignal{static_cast<OaI32>(VK_NOT_READY)};
+	std::thread closeWatchdog([&]() {
+		std::unique_lock lock(watchdogMutex);
+		if (not watchdogCondition.wait_for(lock, std::chrono::seconds(2),
+			[&]() { return closeReturned; })) {
+			closeTimedOut = true;
+			lock.unlock();
+			watchdogSignal.store(
+				static_cast<OaI32>(signalGate()), std::memory_order_release);
+		}
+	});
+	const OaStatus closeStatus = lease.Close();
+	{
+		std::lock_guard lock(watchdogMutex);
+		closeReturned = true;
+	}
+	watchdogCondition.notify_one();
+	closeWatchdog.join();
+	EXPECT_TRUE(closeStatus.IsOk()) << closeStatus.GetMessage();
+	EXPECT_FALSE(closeTimedOut) << "graphics lease Close waited for GPU completion";
+	EXPECT_FALSE(submitted->IsComplete());
+
+	bool acquireReturned = false;
+	bool acquireTimedOut = false;
+	std::thread acquireWatchdog([&]() {
+		std::unique_lock lock(watchdogMutex);
+		if (not watchdogCondition.wait_for(lock, std::chrono::seconds(2),
+			[&]() { return acquireReturned; })) {
+			acquireTimedOut = true;
+			lock.unlock();
+			if (watchdogSignal.load(std::memory_order_acquire)
+				== static_cast<OaI32>(VK_NOT_READY)) {
+				watchdogSignal.store(
+					static_cast<OaI32>(signalGate()), std::memory_order_release);
+			}
+		}
+	});
+	auto secondResult = OaGraphicsStreamLease::Acquire(*engine);
+	{
+		std::lock_guard lock(watchdogMutex);
+		acquireReturned = true;
+	}
+	watchdogCondition.notify_one();
+	acquireWatchdog.join();
+	if (not secondResult.IsOk()) {
+		if (watchdogSignal.load(std::memory_order_acquire)
+			== static_cast<OaI32>(VK_NOT_READY)) {
+			watchdogSignal.store(
+				static_cast<OaI32>(signalGate()), std::memory_order_release);
+		}
+		const OaStatus submittedStatus = submitted->Wait();
+		gate.Destroy(engine->Device);
+		const OaStatus engineStatus = engine->Close();
+		ADD_FAILURE()
+			<< secondResult.GetStatus().GetMessage()
+			<< "; pending completion cleanup: "
+			<< submittedStatus.GetMessage()
+			<< "; engine cleanup: " << engineStatus.GetMessage();
+		return;
+	}
+	auto second = OaStdMove(*secondResult);
+	EXPECT_FALSE(acquireTimedOut)
+		<< "graphics stream acquisition waited for a retired slot";
+	EXPECT_NE(second.GetStream(), retiredStream);
+	ASSERT_TRUE(second.Cancel().IsOk());
+
+	if (watchdogSignal.load(std::memory_order_acquire)
+		== static_cast<OaI32>(VK_NOT_READY)) {
+		watchdogSignal.store(
+			static_cast<OaI32>(signalGate()), std::memory_order_release);
+	}
+	ASSERT_EQ(watchdogSignal.load(std::memory_order_acquire),
+		static_cast<OaI32>(VK_SUCCESS));
+	ASSERT_TRUE(submitted->Wait().IsOk());
+
+	auto recycledResult = OaGraphicsStreamLease::Acquire(*engine);
+	ASSERT_TRUE(recycledResult.IsOk()) << recycledResult.GetStatus().GetMessage();
+	auto recycled = OaStdMove(*recycledResult);
+	EXPECT_EQ(recycled.GetStream(), retiredStream);
+	ASSERT_TRUE(recycled.Cancel().IsOk());
+	gate.Destroy(engine->Device);
+	ASSERT_TRUE(engine->Close().IsOk());
 }
 
 TEST(VkStream, PresenterDestructionCancelsUnsubmittedGraphicsBatch) {

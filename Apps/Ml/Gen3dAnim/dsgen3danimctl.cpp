@@ -29,7 +29,7 @@
 // Implements the canonical ALM dataset pipeline contract.
 
 #include <Oa/Core/Cli.h>
-#include <Oa/Core/FileIo.h>
+#include <Oa/Core/Filesystem.h>
 
 #include <Anim/FbxWriter.h>
 #include <Anim/PoseClip.h>
@@ -59,8 +59,8 @@ static OaStringView LeafName(OaStringView InPath) {
 }
 
 static void EnsureParent(const OaPath& p) {
-	if (auto parent = OaFileIo::GetParent(p); !parent.String().empty()) {
-		(void)OaFileIo::CreateDirectories(parent);
+	if (auto parent = p.ParentPath(); !parent.Empty()) {
+		(void)OaFilesystem::CreateDirectories(parent);
 	}
 }
 
@@ -70,7 +70,7 @@ static void EnsureParent(const OaPath& p) {
 
 static int CmdClean(const OaString& InIn, const OaString& InSave,
                     const OaString& InUsda, const OaString& InFbx) {
-	if (!OaFileIo::IsFile(OaPath(InIn))) {
+	if (!OaFilesystem::IsFile(OaPath(InIn))) {
 		std::printf("clean: input not found: %s\n", InIn.c_str());
 		return 1;
 	}
@@ -237,7 +237,7 @@ static std::string ContentOf(const std::string& InStem) {
 // Read a --clips list file into source paths (skips blanks and '#' comments).
 static OaVec<OaString> ReadClipList(const OaString& InPath) {
 	OaVec<OaString> out;
-	auto text = OaFileIo::ReadText(OaPath(InPath));
+	auto text = OaFilesystem::ReadText(OaPath(InPath));
 	if (!text.IsOk()) { return out; }
 	std::string s = text->StdStr();
 	std::string line;
@@ -265,7 +265,7 @@ static int CmdPack(const OaString& InIn, const OaString& InClips, const OaString
 			return 1;
 		}
 	} else if (!InIn.empty()) {
-		auto listing = OaFileIo::ListAll(OaPath(InIn), /*recursive=*/true);
+		auto listing = OaFilesystem::ListAll(OaPath(InIn), /*recursive=*/true);
 		if (!listing.IsOk()) {
 			std::printf("pack: cannot list %s: %s\n", InIn.c_str(),
 				listing.GetStatus().ToString().c_str());
@@ -352,7 +352,7 @@ static int CmdStrip(const OaString& InIn, const OaString& InDir,
 	// minus any path containing an --exclude substring (AimOffset by default).
 	OaVec<OaString> files;
 	if (!InDir.empty()) {
-		auto listing = OaFileIo::ListAll(OaPath(InDir), /*recursive=*/true);
+		auto listing = OaFilesystem::ListAll(OaPath(InDir), /*recursive=*/true);
 		if (!listing.IsOk()) {
 			std::printf("strip: cannot list %s: %s\n", InDir.c_str(),
 				listing.GetStatus().ToString().c_str());

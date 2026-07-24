@@ -1740,7 +1740,8 @@ OaResult<OaCompletionToken> OaComputeGraph::ReplayAsync(OaEngine& InRt)
 OaCompletionToken OaComputeGraph::LastCompletion(const OaVkDevice& InDevice) const
 {
 	return ReplayTimelineValue_ != 0U && ReplayTimelineSem_.Semaphore
-		? OaCompletionToken(InDevice, ReplayTimelineSem_, ReplayTimelineValue_)
+		? OaCompletionToken(
+			InDevice, ReplayTimelineSem_, ReplayTimelineValue_, QueueFamily_)
 		: OaCompletionToken();
 }
 

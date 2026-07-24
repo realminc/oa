@@ -49,7 +49,8 @@
 #include <Oa/Core/Status.h>
 #include <Oa/Core/Device.h>
 #include <Oa/Core/Extension.h>
-#include <Oa/Core/FileIo.h>
+#include <Oa/Core/Filesystem.h>
+#include <Oa/Core/Paths.h>
 #include <Oa/Core/Thread.h>
 #include <Oa/Runtime/Device.h>
 #include <Oa/Runtime/Allocator.h>
@@ -72,6 +73,7 @@ class OaExecutionSession;
 class OaComputeGraph;
 class OaExecutionPlan;
 class OaBorrowedServiceRetirement;
+class OaGraphicsStreamLease;
 struct OaRetiredUploadRing;
 struct OaRetiredPresenter;
 
@@ -144,7 +146,7 @@ public:
 	// Mobile and other memory-constrained embedders can disable this and rely on
 	// the normal on-demand path while preserving the desktop default.
 	OaBool   PreloadEmbeddedPipelines = true;
-	OaString PipelineCacheDir    = OaFileIo::GetVarDir("vk").String();
+	OaString PipelineCacheDir    = OaPaths::Var("vk").String();
 	OaString AppName             = "OaApp";
 	OaU32    AppVersion          = 1;
 	// SDL3: fill from SDL_Vulkan_GetInstanceExtensions (VK_KHR_surface + platform ext).
@@ -237,6 +239,9 @@ public:
 
 	OaVkStream* AcquireStream();
 	void        ReleaseStream(OaVkStream* InStream);
+	// Boolean provenance check for completion-consuming APIs. This intentionally
+	// exposes neither the event's device nor its Vulkan semaphore handle.
+	[[nodiscard]] bool OwnsEvent(const OaEvent& InEvent) const noexcept;
 
 	[[nodiscard]] OaStatus SubmitToQueue(void* InQueue, void* InSubmitInfo, void* InFence);
 	[[nodiscard]] OaStatus SubmitToQueue2(void* InQueue, const VkSubmitInfo2* InSubmitInfo);
@@ -334,6 +339,7 @@ private:
 	friend class OaExecutionSession;
 	friend class OaComputeGraph;
 	friend class OaUploadRing;
+	friend class OaGraphicsStreamLease;
 
 	class OaBufferLeaseRegistry;
 	class OaRetiredServiceState {
@@ -368,8 +374,13 @@ private:
 			OaStatus status = Payload_ and Complete_
 				? Complete_(Payload_)
 				: OaStatus::Ok();
-			ReleasePayload_();
+			if (status.IsOk()) ReleasePayload_();
 			return status;
+		}
+		void DetachWithoutRelease() noexcept {
+			Payload_ = nullptr;
+			Complete_ = nullptr;
+			Release_ = nullptr;
 		}
 
 	private:
@@ -405,6 +416,19 @@ private:
 		OaEvent Completion;
 		OaVec<OaUniquePtr<OaComputeGraph>> Graphs;
 	};
+	enum class OaGraphicsStreamSlotState : OaU8 {
+		Free,
+		Recording,
+		Submitted,
+		Retired,
+		Quarantined,
+	};
+	struct OaGraphicsStreamSlot {
+		OaUniquePtr<OaVkStream> Stream;
+		OaGraphicsStreamSlotState State = OaGraphicsStreamSlotState::Free;
+		OaU64 Generation = 0;
+		OaEvent Completion;
+	};
 
 	void SetAsGlobal();
 	void ClearGlobal();
@@ -425,6 +449,23 @@ private:
 		OaVec<OaUniquePtr<OaComputeGraph>>&& InGraphs);
 	void CollectRetiredContextBatches_();
 	[[nodiscard]] OaStatus CompleteRetiredContextBatches_();
+	[[nodiscard]] OaVkStream* GraphicsStreamForLease_(
+		OaU32 InSlot, OaU64 InGeneration) noexcept;
+	[[nodiscard]] OaResult<OaEvent> SubmitGraphicsStream_(
+		OaU32 InSlot,
+		OaU64 InGeneration,
+		OaSpan<const OaEvent> InDependencies);
+	[[nodiscard]] OaStatus CancelGraphicsStream_(
+		OaU32 InSlot, OaU64 InGeneration);
+	[[nodiscard]] OaStatus RecycleGraphicsStream_(
+		OaU32 InSlot, OaU64 InGeneration, const OaEvent& InCompletion);
+	[[nodiscard]] OaStatus AbandonGraphicsStream_(
+		OaU32 InSlot, OaU64 InGeneration);
+	void CollectRetiredGraphicsStreams_();
+	[[nodiscard]] OaStatus CompleteGraphicsStreams_();
+	[[nodiscard]] std::mutex* QueueSubmitMutex_(void* InQueue) noexcept;
+	void LockQueueSubmit_(void* InQueue);
+	void UnlockQueueSubmit_(void* InQueue);
 	void RetireUploadRing(OaUniquePtr<OaRetiredUploadRing>&& InRing);
 	[[nodiscard]] OaStatus CompleteRetiredUploadRings_();
 	void RetirePresenter(OaUniquePtr<OaRetiredPresenter>&& InPresenter);
@@ -434,6 +475,7 @@ private:
 		OaRetiredServiceState::CompleteFn InComplete,
 		OaRetiredServiceState::ReleaseFn InRelease);
 	[[nodiscard]] OaStatus CompleteRetiredBorrowedServices_();
+	void DetachRetiredBorrowedServices_() noexcept;
 	[[nodiscard]] OaSharedPtr<OaVkBuffer> AdoptBufferLease_(
 		OaVkBuffer&& InBuffer,
 		OaSharedPtr<OaVkBuffer> InBacking = {});
@@ -473,6 +515,8 @@ private:
 	OaVec<OaUniquePtr<OaVkStream>> AsyncStreamPool_;
 	OaVec<OaU32>                   AsyncFreeStack_;
 	OaSpinlock                     AsyncStreamPoolLock_;
+	OaVec<OaGraphicsStreamSlot>    GraphicsStreamPool_;
+	std::mutex                     GraphicsStreamPoolMutex_;
 
 	OaVkStream                TransferStream_;
 	// Synchronous public readback still needs a CPU completion boundary, but its
@@ -486,6 +530,8 @@ private:
 
 	std::mutex AsyncComputeQueueMutex_;
 	std::mutex TransferQueueMutex_;
+	std::mutex GraphicsQueueMutex_;
+	std::mutex PresentQueueMutex_;
 	std::mutex TransferStreamMutex_;
 	std::mutex UploadRingMutex_;
 	std::mutex ReadbackMutex_;
@@ -607,8 +653,9 @@ public:
 	// True when GraphicsQueue and ComputeQueue are the same VkQueue (common on laptops).
 	[[nodiscard]] bool UsesMergedGraphicsComputeQueue() const;
 
-	// Serialize vkQueueSubmit with OaEngine::SubmitToQueue on that shared queue.
-	// Call around raw vkQueueSubmit (Dear ImGui texture path, splash upload, etc.).
+	// Compatibility spelling for presentation/ImGui callbacks that must surround
+	// a raw Vulkan queue operation. It selects the centralized mutex for the
+	// exact compute, graphics, or present queue handle, including distinct queues.
 	void LockSharedQueueSubmit(void* InQueue);
 	void UnlockSharedQueueSubmit(void* InQueue);
 
@@ -621,9 +668,10 @@ public:
 
 	// Unified graphics/compute frame batch recorded on the graphics queue.
 	// Graphics queues also support compute, so Render canvas draws and OaUi
-	// compute composition can share one command buffer and timeline edge.
+	// compute composition can share one command buffer and timeline edge. Flush
+	// returns the exact submission event consumed by presentation resources.
 	[[nodiscard]] OaStatus BeginGraphicsBatch();
-	[[nodiscard]] OaStatus FlushGraphicsBatch(
+	[[nodiscard]] OaResult<OaEvent> FlushGraphicsBatch(
 		const OaVkTimelineSemaphore* InProducerSemaphore = nullptr,
 		OaU64 InProducerValue = 0);
 	[[nodiscard]] OaStatus SyncGraphicsBatch();

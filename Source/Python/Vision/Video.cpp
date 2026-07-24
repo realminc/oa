@@ -74,7 +74,7 @@ void BindVisionVideo(nb::module_& m) {
             throw std::runtime_error(result.GetStatus().ToString().c_str());
         }
         return std::move(result).GetValue();
-    }, nb::arg("codec"));
+    }, nb::arg("Codec"));
 
     m.def("QueryEncodeCapabilities", [](OaVideoCodec codec) {
         auto result = OaVideoEncoder::QueryEncodeCapabilities(PythonEngine(), codec);
@@ -82,10 +82,10 @@ void BindVisionVideo(nb::module_& m) {
             throw std::runtime_error(result.GetStatus().ToString().c_str());
         }
         return std::move(result).GetValue();
-    }, nb::arg("codec"));
+    }, nb::arg("Codec"));
 
     nb::class_<OaVideo>(m, "OaVideo")
-        .def_static("Open", &open_video, nb::arg("config"), nb::rv_policy::take_ownership)
+        .def_static("Open", &open_video, nb::arg("Config"), nb::rv_policy::take_ownership)
         .def("Next", [](OaVideo& video) { throw_if_error(video.Next()); })
         .def("Reset", &OaVideo::Reset)
         .def("Play", &OaVideo::Play)
@@ -99,12 +99,12 @@ void BindVisionVideo(nb::module_& m) {
         .def("StepBackward", [](OaVideo& video) { throw_if_error(video.StepBackward()); })
         .def("StepFrames", [](OaVideo& video, OaI32 count) {
             throw_if_error(video.StepFrames(count));
-        }, nb::arg("count"))
+        }, nb::arg("Count"))
         .def("Seek", [](OaVideo& video, OaU64 timestamp) {
             throw_if_error(video.Seek(timestamp));
-        }, nb::arg("timestamp"))
+        }, nb::arg("Timestamp"))
         .def("Flush", [](OaVideo& video) { throw_if_error(video.Flush()); })
-        .def("Tick", &OaVideo::Tick, nb::arg("delta_ms"))
+        .def("Tick", &OaVideo::Tick, nb::arg("DeltaMs"))
         .def("CurrentFrame", &OaVideo::CurrentFrame, nb::rv_policy::reference_internal)
         .def("CurrentFrameToMatrix", [](OaVideo& video, bool normalize_imagenet) {
             auto result = video.CurrentFrameToMatrix(normalize_imagenet);
@@ -112,14 +112,14 @@ void BindVisionVideo(nb::module_& m) {
                 throw std::runtime_error(result.GetStatus().ToString().c_str());
             }
             return matrix_ptr(OaStdMove(result).GetValue());
-        }, nb::arg("normalize_imagenet") = true, nb::rv_policy::take_ownership)
+        }, nb::arg("NormalizeImagenet") = true, nb::rv_policy::take_ownership)
         .def("CurrentFrameToImage", [](OaVideo& video, bool normalize_imagenet) {
             auto result = video.CurrentFrameToImage(normalize_imagenet);
             if (result.IsError()) {
                 throw std::runtime_error(result.GetStatus().ToString().c_str());
             }
             return new OaImage(OaStdMove(result).GetValue());
-        }, nb::arg("normalize_imagenet") = true, nb::rv_policy::take_ownership)
+        }, nb::arg("NormalizeImagenet") = true, nb::rv_policy::take_ownership)
         .def("ReadbackCurrentRgba", [](OaVideo& video) {
             auto result = video.ReadbackCurrentRgba();
             if (result.IsError()) {
@@ -143,10 +143,10 @@ void BindVisionVideo(nb::module_& m) {
                 throw std::runtime_error(result.GetStatus().ToString().c_str());
             }
             return new OaVideoRecorder(std::move(result).GetValue());
-        }, nb::arg("config"), nb::rv_policy::take_ownership)
+        }, nb::arg("Config"), nb::rv_policy::take_ownership)
         .def("Write", [](OaVideoRecorder& recorder, const OaVideoFrame& frame) {
             throw_if_error(recorder.Write(frame));
-        }, nb::arg("frame"))
+        }, nb::arg("Frame"))
         .def("Finalize", [](OaVideoRecorder& recorder) {
             throw_if_error(recorder.Finalize());
         })
@@ -163,7 +163,7 @@ void BindVisionVideo(nb::module_& m) {
                 throw std::runtime_error(result.GetStatus().ToString().c_str());
             }
             return new OaScreenCapture(std::move(result).GetValue());
-        }, nb::arg("config") = OaScreenCaptureConfig(), nb::rv_policy::take_ownership)
+        }, nb::arg("Config") = OaScreenCaptureConfig(), nb::rv_policy::take_ownership)
         .def("Poll", [](OaScreenCapture& capture) -> nb::object {
             OaVideoFrame frame;
             if (!capture.Poll(frame)) return nb::none();
@@ -171,7 +171,7 @@ void BindVisionVideo(nb::module_& m) {
         })
         .def("Release", [](OaScreenCapture& capture, const OaVideoFrame& frame) {
             capture.Release(frame);
-        }, nb::arg("frame"))
+        }, nb::arg("Frame"))
         .def("Close", [](OaScreenCapture& capture) {
             throw_if_error(capture.Close());
         })
@@ -184,7 +184,7 @@ void BindVisionVideo(nb::module_& m) {
         .def(nb::init<>())
         .def("Init", [](OaCameraCapture& capture, const OaCameraCaptureConfig& config) {
             throw_if_error(capture.Init(PythonEngine(), config));
-        }, nb::arg("config") = OaCameraCaptureConfig())
+        }, nb::arg("Config") = OaCameraCaptureConfig())
         .def("Poll", [](OaCameraCapture& capture) -> nb::object {
             OaVideoFrame frame;
             if (!capture.PollFrame(frame)) return nb::none();
@@ -192,7 +192,7 @@ void BindVisionVideo(nb::module_& m) {
         })
         .def("Release", [](OaCameraCapture& capture, const OaVideoFrame& frame) {
             capture.Release(frame);
-        }, nb::arg("frame"))
+        }, nb::arg("Frame"))
         .def("Close", [](OaCameraCapture& capture) {
             throw_if_error(capture.Close());
         })

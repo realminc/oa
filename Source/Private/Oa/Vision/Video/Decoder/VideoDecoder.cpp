@@ -148,29 +148,45 @@ static OaStatus QueryVideoFormats(
 	formatInfo.pNext = &profileList;
 	formatInfo.imageUsage = InUsage;
 
-	OaU32 formatCount = 0;
-	VkResult result = vkGetPhysicalDeviceVideoFormatPropertiesKHR(InPhys, &formatInfo, &formatCount, nullptr);
-	if (result != VK_SUCCESS) {
-		return OaStatus::Error("Failed to query Vulkan Video format count");
-	}
+	for (OaU32 attempt = 0U; attempt < 3U; ++attempt) {
+		OaU32 formatCount = 0U;
+		VkResult result = vkGetPhysicalDeviceVideoFormatPropertiesKHR(
+			InPhys, &formatInfo, &formatCount, nullptr);
+		if (result == VK_ERROR_IMAGE_USAGE_NOT_SUPPORTED_KHR) {
+			OutFormats.Clear();
+			return OaStatus::Ok();
+		}
+		if (result != VK_SUCCESS) {
+			return OaStatus::Error("Failed to query Vulkan Video format count");
+		}
 
-	OutFormats.Resize(formatCount);
-	for (auto& format : OutFormats) {
-		format = {};
-		format.sType = VK_STRUCTURE_TYPE_VIDEO_FORMAT_PROPERTIES_KHR;
-	}
+		OutFormats.Resize(formatCount);
+		for (auto& format : OutFormats) {
+			format = {};
+			format.sType = VK_STRUCTURE_TYPE_VIDEO_FORMAT_PROPERTIES_KHR;
+		}
+		if (formatCount == 0U) {
+			return OaStatus::Ok();
+		}
 
-	if (formatCount == 0) {
+		result = vkGetPhysicalDeviceVideoFormatPropertiesKHR(
+			InPhys, &formatInfo, &formatCount, OutFormats.Data());
+		if (result == VK_ERROR_IMAGE_USAGE_NOT_SUPPORTED_KHR) {
+			OutFormats.Clear();
+			return OaStatus::Ok();
+		}
+		if (result == VK_INCOMPLETE) {
+			continue;
+		}
+		if (result != VK_SUCCESS) {
+			OutFormats.Clear();
+			return OaStatus::Error("Failed to query Vulkan Video formats");
+		}
+		OutFormats.Resize(formatCount);
 		return OaStatus::Ok();
 	}
-
-	result = vkGetPhysicalDeviceVideoFormatPropertiesKHR(InPhys, &formatInfo, &formatCount, OutFormats.Data());
-	if (result != VK_SUCCESS) {
-		OutFormats.Resize(0);
-		return OaStatus::Error("Failed to query Vulkan Video formats");
-	}
-	OutFormats.Resize(formatCount);
-	return OaStatus::Ok();
+	OutFormats.Clear();
+	return OaStatus::Error("Vulkan Video format enumeration did not stabilize");
 }
 
 static OaStatus CreateDecodeSessionParameters(
@@ -571,8 +587,16 @@ void OaVideoDecoder::MoveFrom(OaVideoDecoder&& InOther) noexcept
 	InOther.Rt_ = nullptr;
 }
 
-OaResult<OaVideoDecodeCapabilities> OaVideoDecoder::QueryDecodeCapabilities(OaEngine& InRt, OaVideoCodec InCodec)
+OaResult<OaVideoDecodeCapabilities> OaVideoDecoder::QueryDecodeCapabilities(
+	OaEngine& InRt,
+	const OaVideoProfile& InProfile)
 {
+	auto resolvedResult = OaVideoDecoderProfile::ResolveDecodeProfile(InProfile);
+	if (not resolvedResult.IsOk()) {
+		return resolvedResult.GetStatus();
+	}
+	const OaVideoProfile& resolved = *resolvedResult;
+	const OaVideoCodec codec = resolved.Codec;
 	auto& vkEngine = InRt;
 	const auto& sw = vkEngine.Device.Info.Software;
 	if (!sw.HasVideoQueue || !sw.HasVideoDecodeQueue || !vkEngine.Device.Queues.HasVideoDecodeQueue) {
@@ -581,19 +605,19 @@ OaResult<OaVideoDecodeCapabilities> OaVideoDecoder::QueryDecodeCapabilities(OaEn
 			"VK_QUEUE_VIDEO_DECODE_BIT_KHR (the decode extensions may be advertised without "
 			"a usable queue — on Intel this requires the xe kernel driver, not i915).");
 	}
-	if (InCodec == OaVideoCodec::H264 && !sw.HasVideoDecodeH264) {
+	if (codec == OaVideoCodec::H264 && !sw.HasVideoDecodeH264) {
 		return OaStatus::Error(OaStatusCode::Unavailable, "VK_KHR_video_decode_h264 is not enabled");
 	}
-	if (InCodec == OaVideoCodec::H265 && !sw.HasVideoDecodeH265) {
+	if (codec == OaVideoCodec::H265 && !sw.HasVideoDecodeH265) {
 		return OaStatus::Error(OaStatusCode::Unavailable, "VK_KHR_video_decode_h265 is not enabled");
 	}
-	if (InCodec == OaVideoCodec::AV1 && !sw.HasVideoDecodeAV1) {
+	if (codec == OaVideoCodec::AV1 && !sw.HasVideoDecodeAV1) {
 		return OaStatus::Error(OaStatusCode::Unavailable, "VK_KHR_video_decode_av1 is not enabled");
 	}
-	if (InCodec == OaVideoCodec::VP9 && !sw.HasVideoDecodeVP9) {
+	if (codec == OaVideoCodec::VP9 && !sw.HasVideoDecodeVP9) {
 		return OaStatus::Error(OaStatusCode::Unavailable, "VK_KHR_video_decode_vp9 is not enabled");
 	}
-	if (!VideoDecodeQueueSupportsCodec(vkEngine.Device.Queues, InCodec)) {
+	if (!VideoDecodeQueueSupportsCodec(vkEngine.Device.Queues, codec)) {
 		return OaStatus::Error(
 			OaStatusCode::Unavailable,
 			"Video decode queue family does not support the requested codec");
@@ -608,7 +632,11 @@ OaResult<OaVideoDecodeCapabilities> OaVideoDecoder::QueryDecodeCapabilities(OaEn
 	VkVideoDecodeH265ProfileInfoKHR h265 = {};
 	VkVideoDecodeAV1ProfileInfoKHR av1 = {};
 	VkVideoDecodeVP9ProfileInfoKHR vp9 = {};
-	VkVideoProfileInfoKHR profile = OaVideoDecoderProfile::BuildDecodeProfile(InCodec, h264, h265, av1, vp9);
+	auto vkProfileResult = OaVideoDecoderProfile::BuildDecodeProfile(resolved, h264, h265, av1, vp9);
+	if (not vkProfileResult.IsOk()) {
+		return vkProfileResult.GetStatus();
+	}
+	const VkVideoProfileInfoKHR& profile = *vkProfileResult;
 	VkVideoCapabilitiesKHR caps = {};
 	caps.sType = VK_STRUCTURE_TYPE_VIDEO_CAPABILITIES_KHR;
 	VkVideoDecodeCapabilitiesKHR decodeCaps = {};
@@ -616,14 +644,29 @@ OaResult<OaVideoDecodeCapabilities> OaVideoDecoder::QueryDecodeCapabilities(OaEn
 	VkVideoDecodeH265CapabilitiesKHR h265Caps = {};
 	VkVideoDecodeAV1CapabilitiesKHR av1Caps = {};
 	VkVideoDecodeVP9CapabilitiesKHR vp9Caps = {};
-	AttachCodecCapabilities(InCodec, caps, decodeCaps, h264Caps, h265Caps, av1Caps, vp9Caps);
+	AttachCodecCapabilities(codec, caps, decodeCaps, h264Caps, h265Caps, av1Caps, vp9Caps);
 	VkResult result = vkGetPhysicalDeviceVideoCapabilitiesKHR(phys, &profile, &caps);
 	if (result != VK_SUCCESS) {
-		return OaStatus::Error("Vulkan Video decode profile is not supported");
+		if (result == VK_ERROR_VIDEO_PICTURE_LAYOUT_NOT_SUPPORTED_KHR or
+			result == VK_ERROR_VIDEO_PROFILE_OPERATION_NOT_SUPPORTED_KHR or
+			result == VK_ERROR_VIDEO_PROFILE_FORMAT_NOT_SUPPORTED_KHR or
+			result == VK_ERROR_VIDEO_PROFILE_CODEC_NOT_SUPPORTED_KHR or
+			result == VK_ERROR_VIDEO_STD_VERSION_NOT_SUPPORTED_KHR) {
+			OaVideoDecodeCapabilities unsupported = {};
+			unsupported.Profile = resolved;
+			unsupported.OaDecodePathImplemented =
+				OaVideoDecoderProfile::IsDecodePathImplemented(resolved);
+			return unsupported;
+		}
+		return OaStatus::Error(
+			OaStatusCode::VulkanError,
+			"Failed to query Vulkan Video decode capabilities");
 	}
 
 	OaVideoDecodeCapabilities out;
-	out.Supported = true;
+	out.Profile = resolved;
+	out.HardwareProfileSupported = true;
+	out.OaDecodePathImplemented = OaVideoDecoderProfile::IsDecodePathImplemented(resolved);
 	out.SupportsDpbAndOutputCoincide = (decodeCaps.flags & VK_VIDEO_DECODE_CAPABILITY_DPB_AND_OUTPUT_COINCIDE_BIT_KHR) != 0;
 	out.SupportsDpbAndOutputDistinct = (decodeCaps.flags & VK_VIDEO_DECODE_CAPABILITY_DPB_AND_OUTPUT_DISTINCT_BIT_KHR) != 0;
 	out.MaxWidth = caps.maxCodedExtent.width;
@@ -638,6 +681,12 @@ OaResult<OaVideoDecodeCapabilities> OaVideoDecoder::QueryDecodeCapabilities(OaEn
 	out.MinBitstreamBufferSizeAlignment = caps.minBitstreamBufferSizeAlignment;
 	out.DecodeFlags = decodeCaps.flags;
 	out.StdHeaderVersion = caps.stdHeaderVersion;
+	switch (codec) {
+	case OaVideoCodec::H264: out.MaxLevel = static_cast<OaU32>(h264Caps.maxLevelIdc); break;
+	case OaVideoCodec::H265: out.MaxLevel = static_cast<OaU32>(h265Caps.maxLevelIdc); break;
+	case OaVideoCodec::AV1: out.MaxLevel = static_cast<OaU32>(av1Caps.maxLevel); break;
+	case OaVideoCodec::VP9: out.MaxLevel = static_cast<OaU32>(vp9Caps.maxLevel); break;
+	}
 
 	const VkImageUsageFlags dpbUsage = VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR;
 	const VkImageUsageFlags dpbSampledUsage = VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR | VK_IMAGE_USAGE_SAMPLED_BIT;
@@ -648,27 +697,70 @@ OaResult<OaVideoDecodeCapabilities> OaVideoDecoder::QueryDecodeCapabilities(OaEn
 	const VkImageUsageFlags outputSampledUsage = VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR | VK_IMAGE_USAGE_SAMPLED_BIT;
 
 	OA_RETURN_IF_ERROR(QueryVideoFormats(phys, profile, dpbUsage, out.DpbFormats));
-	out.SupportsNv12Dpb = HasFormatWithUsage(out.DpbFormats, out.ReferencePictureFormat, dpbUsage);
+	if (out.OaDecodePathImplemented) {
+		out.ReferencePictureFormat = VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
+		out.PictureFormat = VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
+	} else {
+		if (not out.DpbFormats.Empty()) {
+			out.ReferencePictureFormat = out.DpbFormats[0].format;
+		}
+	}
+	out.SupportsNv12Dpb = HasFormatWithUsage(out.DpbFormats, VK_FORMAT_G8_B8R8_2PLANE_420_UNORM, dpbUsage);
 
 	OaVec<VkVideoFormatPropertiesKHR> dpbSampledFormats;
 	OA_RETURN_IF_ERROR(QueryVideoFormats(phys, profile, dpbSampledUsage, dpbSampledFormats));
-	out.SupportsNv12DpbSampled = HasFormatWithUsage(dpbSampledFormats, out.ReferencePictureFormat, dpbSampledUsage);
+	out.SupportsNv12DpbSampled = HasFormatWithUsage(dpbSampledFormats, VK_FORMAT_G8_B8R8_2PLANE_420_UNORM, dpbSampledUsage);
 
 	OaVec<VkVideoFormatPropertiesKHR> dpbTransferFormats;
 	OA_RETURN_IF_ERROR(QueryVideoFormats(phys, profile, dpbTransferUsage, dpbTransferFormats));
 	out.SupportsNv12DpbTransferSrc =
-		HasFormatWithUsage(dpbTransferFormats, out.ReferencePictureFormat, dpbTransferUsage);
+		HasFormatWithUsage(dpbTransferFormats, VK_FORMAT_G8_B8R8_2PLANE_420_UNORM, dpbTransferUsage);
 
 	OA_RETURN_IF_ERROR(QueryVideoFormats(phys, profile, outputSampledUsage, out.OutputFormats));
-	out.SupportsNv12OutputSampled = HasFormatWithUsage(out.OutputFormats, out.PictureFormat, outputSampledUsage);
+	if (out.PictureFormat == VK_FORMAT_UNDEFINED and not out.OutputFormats.Empty()) {
+		out.PictureFormat = out.OutputFormats[0].format;
+	}
+	out.SupportsNv12OutputSampled = HasFormatWithUsage(out.OutputFormats, VK_FORMAT_G8_B8R8_2PLANE_420_UNORM, outputSampledUsage);
+	const bool levelAccepted = not resolved.HasLevel or resolved.Level <= out.MaxLevel;
+	OA_LOG_DEBUG(OaLogComponent::Core,
+		"VideoDecoder exact profile: codec=%u profile=%u chroma=%u "
+		"lumaDepth=%u chromaDepth=%u level=%u hasLevel=%d maxLevel=%u "
+		"hardware=%d oaPath=%d nv12Dpb=%d levelAccepted=%d",
+		static_cast<unsigned>(resolved.Codec),
+		static_cast<unsigned>(resolved.StandardProfile),
+		static_cast<unsigned>(resolved.ChromaSubsampling),
+		static_cast<unsigned>(resolved.LumaBitDepth),
+		static_cast<unsigned>(resolved.ChromaBitDepth),
+		resolved.Level,
+		static_cast<int>(resolved.HasLevel),
+		out.MaxLevel,
+		static_cast<int>(out.HardwareProfileSupported),
+		static_cast<int>(out.OaDecodePathImplemented),
+		static_cast<int>(out.SupportsNv12Dpb),
+		static_cast<int>(levelAccepted));
+	out.Supported =
+		out.HardwareProfileSupported and out.OaDecodePathImplemented and out.SupportsNv12Dpb and levelAccepted;
 
 	return out;
+}
+
+OaResult<OaVideoDecodeCapabilities> OaVideoDecoder::QueryDecodeCapabilities(OaEngine& InRt, OaVideoCodec InCodec)
+{
+	OaVideoProfile profile = {};
+	profile.Codec = InCodec;
+	return QueryDecodeCapabilities(InRt, profile);
+}
+
+bool OaVideoDecoder::IsProfileSupported(OaEngine& InRt, const OaVideoProfile& InProfile)
+{
+	auto caps = QueryDecodeCapabilities(InRt, InProfile);
+	return caps.IsOk() and caps->Supported;
 }
 
 bool OaVideoDecoder::IsCodecSupported(OaEngine& InRt, OaVideoCodec InCodec)
 {
 	auto caps = QueryDecodeCapabilities(InRt, InCodec);
-	return caps.IsOk() && caps->Supported;
+	return caps.IsOk() and caps->Supported;
 }
 
 OaU32 OaVideoDecoder::GetMaxWidth(OaEngine& InRt, OaVideoCodec InCodec)
@@ -688,23 +780,42 @@ OaResult<OaVideoDecoder> OaVideoDecoder::Create(
 	OaEngine& InRt,
 	const OaVideoProfile& InProfile)
 {
+	auto resolvedResult = OaVideoDecoderProfile::ResolveDecodeProfile(InProfile);
+	if (not resolvedResult.IsOk()) {
+		return resolvedResult.GetStatus();
+	}
+	const OaVideoProfile& resolved = *resolvedResult;
 	// Ensure codec parsers are registered
 	OaVideoCodecRegistry::GetInstance().RegisterAllParsers();
 
 	OaVideoDecoder decoder;
 	decoder.Rt_ = &InRt;
-	decoder.Profile_ = InProfile;
-	decoder.Parser_ = OaVideoCodecRegistry::GetInstance().CreateParser(InProfile.Codec);
+	decoder.Profile_ = resolved;
+	decoder.Parser_ = OaVideoCodecRegistry::GetInstance().CreateParser(resolved.Codec);
 	if (!decoder.Parser_) {
 		return OaStatus::Error(OaStatusCode::InvalidArgument, "Unsupported video codec parser");
 	}
 
-	auto capsResult = QueryDecodeCapabilities(InRt, InProfile.Codec);
+	auto capsResult = QueryDecodeCapabilities(InRt, resolved);
 	if (!capsResult.IsOk()) {
 		return capsResult.GetStatus();
 	}
 	const OaVideoDecodeCapabilities& caps = *capsResult;
-	if (InProfile.Width == 0 || InProfile.Height == 0 || InProfile.Width > caps.MaxWidth || InProfile.Height > caps.MaxHeight) {
+	if (not caps.HardwareProfileSupported) {
+		return OaStatus::Error(OaStatusCode::Unavailable,
+			"The selected device rejects the exact Vulkan Video decode profile");
+	}
+	if (not caps.OaDecodePathImplemented) {
+		return OaStatus::Error(OaStatusCode::Unavailable,
+			"OA does not yet implement the exact requested video profile path");
+	}
+	if (not caps.Supported) {
+		return OaStatus::Error(
+			OaStatusCode::Unavailable,
+			"The exact video profile, level, or required image format is unavailable");
+	}
+	if (resolved.Width == 0 || resolved.Height == 0 or resolved.Width > caps.MaxWidth ||
+		resolved.Height > caps.MaxHeight) {
 		return OaStatus::Error(OaStatusCode::InvalidArgument, "Video decode extent is unsupported");
 	}
 	if (!caps.SupportsNv12Dpb) {
@@ -717,25 +828,29 @@ OaResult<OaVideoDecoder> OaVideoDecoder::Create(
 	VkVideoDecodeH265ProfileInfoKHR h265 = {};
 	VkVideoDecodeAV1ProfileInfoKHR av1 = {};
 	VkVideoDecodeVP9ProfileInfoKHR vp9 = {};
-	VkVideoProfileInfoKHR profile = OaVideoDecoderProfile::BuildDecodeProfile(InProfile.Codec, h264, h265, av1, vp9);
+	auto vkProfileResult = OaVideoDecoderProfile::BuildDecodeProfile(resolved, h264, h265, av1, vp9);
+	if (not vkProfileResult.IsOk()) {
+		return vkProfileResult.GetStatus();
+	}
+	const VkVideoProfileInfoKHR& profile = *vkProfileResult;
 
 	// Calculate aligned coded extent
-	const OaU32 codecGranularity = GetCodecExtentGranularity(InProfile.Codec);
+	const OaU32 codecGranularity = GetCodecExtentGranularity(resolved.Codec);
 	const OaU32 widthGranularity = caps.PictureAccessGranularityWidth > codecGranularity
 		? caps.PictureAccessGranularityWidth
 		: codecGranularity;
 	const OaU32 heightGranularity = caps.PictureAccessGranularityHeight > codecGranularity
 		? caps.PictureAccessGranularityHeight
 		: codecGranularity;
-	decoder.CodedWidth_ = AlignVideoExtent(InProfile.Width, caps.MinWidth, widthGranularity);
-	decoder.CodedHeight_ = AlignVideoExtent(InProfile.Height, caps.MinHeight, heightGranularity);
+	decoder.CodedWidth_ = AlignVideoExtent(resolved.Width, caps.MinWidth, widthGranularity);
+	decoder.CodedHeight_ = AlignVideoExtent(resolved.Height, caps.MinHeight, heightGranularity);
 	if (decoder.CodedWidth_ > caps.MaxWidth || decoder.CodedHeight_ > caps.MaxHeight) {
 		return OaStatus::Error(OaStatusCode::InvalidArgument, "Aligned video decode extent is unsupported");
 	}
 
 	// Calculate DPB slots
 	constexpr OaU32 MaxTrackedDpbSlots = 16;
-	const OaU32 requestedDpbSlots = InProfile.MaxDpbSlots == 0 ? caps.MaxDpbSlots : InProfile.MaxDpbSlots;
+	const OaU32 requestedDpbSlots = resolved.MaxDpbSlots == 0 ? caps.MaxDpbSlots : resolved.MaxDpbSlots;
 	const OaU32 driverDpbSlots = requestedDpbSlots > caps.MaxDpbSlots ? caps.MaxDpbSlots : requestedDpbSlots;
 	const OaU32 maxDpbSlots = driverDpbSlots > MaxTrackedDpbSlots ? MaxTrackedDpbSlots : driverDpbSlots;
 	if (maxDpbSlots == 0) {
@@ -849,7 +964,7 @@ OaResult<OaVideoDecoder> OaVideoDecoder::Create(
 	// the device-loss-avoidance behaviour below.
 	// NEEDS GPU VERIFICATION: the grey frame reproduces only on NVIDIA coincide.
 	const bool av1PreferDistinct =
-		InProfile.Codec == OaVideoCodec::AV1
+		resolved.Codec == OaVideoCodec::AV1
 		and caps.SupportsDpbAndOutputDistinct
 		and caps.SupportsNv12OutputSampled;
 

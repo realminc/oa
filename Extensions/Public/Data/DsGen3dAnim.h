@@ -13,7 +13,7 @@
 // OaDataLoader indices or a split-specific view wrapper.
 
 #include <Oa/Data/Dataset.h>
-#include <Oa/Core/FileIo.h>
+#include <Oa/Core/Filesystem.h>
 #include <Oa/Core/Types.h>
 #include <Anim/PoseClip.h>
 

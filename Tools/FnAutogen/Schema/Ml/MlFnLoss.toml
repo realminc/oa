@@ -51,5 +51,5 @@ attach       = "standard"
 output_shape = true
 
 [ops.python]
-args = ["logits", "targets"]
+args = ["Logits", "Targets"]
 doc = "Mean cross-entropy for rank-two logits and UInt8, UInt32, or non-negative Int32 class-index targets; an out-of-range target produces NaN without an out-of-bounds read."

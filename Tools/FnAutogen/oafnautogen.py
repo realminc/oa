@@ -8,7 +8,7 @@ Discovers every TOML schema under `Schema/`, validates each op against
 KernelRegistry.h, and emits per-category files:
 
   - <out>/Private/Oa/<Domain>/Matrix/FnMatrix<Category>.gen.h
-      declarations fragment for the unified context-based API
+      declaration fragment included through the public umbrella
   - <out>/Private/Oa/<Domain>/Matrix/FnMatrix<Category>.gen.cpp
       implementations for auto bodies. `manual_context` ops are declared and
       implemented by hand.
@@ -199,7 +199,7 @@ def emit_header_fragment(ops: list[dict], schema_name: str, category: str, names
 _VALUE_KIND_CPP = {
 	"matrix": "OaOperationValueKind::Matrix",
 	"image": "OaOperationValueKind::Image",
-	"audio_buffer": "OaOperationValueKind::AudioBuffer",
+	"audio": "OaOperationValueKind::Audio",
 	"video_frame": "OaOperationValueKind::VideoFrame",
 }
 _SHAPE_RULE_CPP = {
@@ -232,7 +232,7 @@ _EFFECT_CPP = {
 _VALUE_KIND_NIBBLE = {
 	"matrix": 1,
 	"image": 2,
-	"audio_buffer": 3,
+	"audio": 3,
 	"video_frame": 4,
 }
 _ATTRIBUTE_KIND_BYTE = {
@@ -395,6 +395,9 @@ def write_operation_registry(
 		print(f"  would write: {path}")
 		return
 	write_generated_text(path, emit_operation_registry(contracts))
+	legacy_path = out_root / "Public" / "Oa" / "Core" / "OperationRegistry.gen.h"
+	if legacy_path != path and legacy_path.exists():
+		legacy_path.unlink()
 
 
 # ─── Manual-lowering autograd attachment emission ──────────────────────────
@@ -597,10 +600,15 @@ def emit_operation_reference(contracts: list[tuple[str, dict]]) -> str:
 			f"{attribute['name']}:{attribute['kind']}"
 			for attribute in attributes
 		) if attributes else "none"
+		cpp_surface = (
+			"internal session command"
+			if op.get("kind") == "session_command"
+			else f"`{op.get('api_return', 'OaMatrix')} {op['name']}({api_param_list(op)})`"
+		)
 		lines += [
 			f"## `{namespace}::{op['name']}`",
 			"",
-			f"- C++: `{op.get('api_return', 'OaMatrix')} {op['name']}({api_param_list(op)})`",
+			f"- C++: {cpp_surface}",
 			f"- Contract: `0x{operation_contract_hash(namespace, op):016x}`",
 			f"- Values: `{', '.join(contract['input_kinds'])}` → `{', '.join(contract['output_kinds'])}`",
 			f"- Shape: `{contract['shape_rule']}`",
@@ -613,6 +621,11 @@ def emit_operation_reference(contracts: list[tuple[str, dict]]) -> str:
 			f"- Differentiation: `{contract['differentiation']}`",
 			f"- Lowering: `{contract['lowering']}`",
 		]
+		if contract.get("value_validation") == "session_command":
+			lines += [
+				"- Value validation: private session command; `match_input` is the "
+				"frozen descriptor sentinel, not generic homogeneous-dtype validation",
+			]
 		if python := op.get("python"):
 			python_params = []
 			for python_arg, api_param in zip(python["args"], op["api_params"]):
@@ -1593,6 +1606,151 @@ def op_slang_path(op: dict, out_root: Path, *, live: bool) -> Path:
 	return out_root / "Private" / "Oa" / domain / "Shader" / "Compute" / f"{name}{suffix}"
 
 
+# ─── Schema-owned fixed-kernel metadata ─────────────────────────────────────
+
+
+def collect_schema_kernels(schema_paths: list[Path]) -> list[dict]:
+	"""Collect built-in kernel identities mechanically owned by operation schemas."""
+	kernels: list[dict] = []
+	for schema_path in schema_paths:
+		with schema_path.open("rb") as file:
+			data = tomllib.load(file)
+		for op in data.get("ops", []):
+			if "kernel" not in op:
+				continue
+			spec = dict(op["kernel"])
+			spec["name"] = op.get("kernel_forward", "")
+			spec["operation"] = op.get("name", "")
+			spec["schema"] = schema_label(schema_path)
+			kernels.append(spec)
+	return kernels
+
+
+def validate_schema_kernel_ownership(
+	kernels: list[dict], registry_path: Path
+) -> None:
+	text = registry_path.read_text()
+	pattern = re.compile(
+		r'\{\s*"([^"]+)"\s*,\s*OA_COMPUTE_KERNEL_ID\('
+		r'OaComputeKernelPrefix::([A-Za-z0-9_]+),\s*([0-9]+)\)'
+	)
+	manual_names: set[str] = set()
+	manual_ids: set[tuple[str, int]] = set()
+	for name, prefix, local in pattern.findall(text):
+		manual_names.add(name)
+		manual_ids.add((prefix, int(local)))
+
+	seen_names: set[str] = set()
+	seen_ids: set[tuple[str, int]] = set()
+	seen_sources: set[str] = set()
+	for kernel in kernels:
+		ctx = f"{kernel.get('schema', '<schema>')}:{kernel.get('operation', '<op>')}"
+		name = kernel.get("name", "")
+		prefix = kernel.get("id_prefix")
+		local = kernel.get("id_local")
+		source = kernel.get("source")
+		if not name:
+			fail(f"{ctx}: schema-owned kernel is missing kernel_forward")
+		if name in manual_names:
+			fail(f"{ctx}: kernel {name!r} is duplicated in KernelRegistry.h")
+		if name in seen_names:
+			fail(f"{ctx}: duplicate schema-owned kernel name {name!r}")
+		if isinstance(local, int) and not isinstance(local, bool):
+			packed = (prefix, local)
+			if packed in manual_ids:
+				fail(f"{ctx}: kernel id {prefix}:{local} is already handwritten")
+			if packed in seen_ids:
+				fail(f"{ctx}: duplicate schema-owned kernel id {prefix}:{local}")
+			seen_ids.add(packed)
+		if source in seen_sources:
+			fail(f"{ctx}: duplicate schema-owned kernel source {source!r}")
+		seen_names.add(name)
+		seen_sources.add(source)
+
+
+def emit_schema_kernel_registry(kernels: list[dict], category: str) -> str:
+	lines = [
+		"// AUTO-GENERATED by Tools/FnAutogen/oafnautogen.py — DO NOT EDIT.",
+		"// Source of truth: Tools/FnAutogen/Schema/**.toml [ops.kernel].",
+		"// Included inside the matching OaKernelRegistry fixed-family array.",
+	]
+	for kernel in sorted(
+		(k for k in kernels if k["category"] == category),
+		key=lambda item: (item["id_prefix"], item["id_local"], item["name"]),
+	):
+		lines.append(
+			f'\t{{ "{kernel["name"]}", '
+			f'OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::{kernel["id_prefix"]}, '
+			f'{kernel["id_local"]}), OaComputeKernelCategory::{kernel["category"]}, '
+			f'"{kernel["origin"]}" }},'
+		)
+	lines.append("")
+	return "\n".join(lines)
+
+
+def emit_schema_kernel_ids(kernels: list[dict]) -> str:
+	lines = [
+		"// AUTO-GENERATED by Tools/FnAutogen/oafnautogen.py — DO NOT EDIT.",
+		"// Source of truth: Tools/FnAutogen/Schema/**.toml [ops.kernel].",
+		"// Included inside namespace OaComputeKernelId.",
+	]
+	for kernel in sorted(
+		kernels,
+		key=lambda item: (item["id_prefix"], item["id_local"], item["name"]),
+	):
+		lines.append(
+			f"static constexpr OaKernelId {kernel['name']} = "
+			f"OA_COMPUTE_KERNEL_ID(OaComputeKernelPrefix::{kernel['id_prefix']}, "
+			f"{kernel['id_local']});"
+		)
+	lines.append("")
+	return "\n".join(lines)
+
+
+def emit_schema_kernel_cmake(kernels: list[dict]) -> str:
+	lines = [
+		"# AUTO-GENERATED by Tools/FnAutogen/oafnautogen.py -- DO NOT EDIT.",
+		"# Source of truth: Tools/FnAutogen/Schema/**.toml [ops.kernel].",
+	]
+	by_category: dict[str, list[dict]] = defaultdict(list)
+	for kernel in kernels:
+		by_category[kernel["category"]].append(kernel)
+	for category, entries in sorted(by_category.items()):
+		variable = re.sub(r"(?<!^)(?=[A-Z])", "_", category).upper()
+		entries.sort(key=lambda item: (item["id_prefix"], item["id_local"], item["name"]))
+		lines += [f"set(OA_FN_AUTOGEN_{variable}_KERNEL_NAMES"]
+		lines += [f"\t{entry['name']}" for entry in entries]
+		lines += [")", f"set(OA_FN_AUTOGEN_{variable}_KERNEL_SOURCES"]
+		lines += [f"\t{entry['source']}" for entry in entries]
+		lines += [")"]
+	lines.append("")
+	return "\n".join(lines)
+
+
+def write_schema_kernel_files(
+	kernels: list[dict], out_root: Path, *, dry_run: bool
+) -> None:
+	for category in sorted({kernel["category"] for kernel in kernels}):
+		path = (
+			out_root / "Public" / "Oa" / "Core"
+			/ f"KernelRegistry{category}.gen.inl"
+		)
+		if dry_run:
+			print(f"  would write: {path}")
+		else:
+			write_generated_text(path, emit_schema_kernel_registry(kernels, category))
+	id_path = out_root / "Public" / "Oa" / "Runtime" / "ComputeKernelIds.gen.inl"
+	if dry_run:
+		print(f"  would write: {id_path}")
+	else:
+		write_generated_text(id_path, emit_schema_kernel_ids(kernels))
+	cmake_path = out_root / "Private" / "Oa" / "Core" / "FnAutogenKernels.gen.cmake"
+	if dry_run:
+		print(f"  would write: {cmake_path}")
+	else:
+		write_generated_text(cmake_path, emit_schema_kernel_cmake(kernels))
+
+
 # ─── Manifest emission ───────────────────────────────────────────────────────
 
 
@@ -1618,36 +1776,17 @@ def emit_umbrella_header(layouts: list[SchemaLayout]) -> str:
 	first = layouts[0]
 	lines = [
 		GEN_HEADER.format(schema_name=f"{first.domain}/{first.file_prefix} manifest"),
-		f"// {first.namespace} — generated umbrella for {first.domain}/{first.cpp_subdir}.\n",
+		f"// {first.namespace} — generated declarations for {first.domain}/{first.cpp_subdir}.\n",
 	]
+	manifest_parent = (
+		first.header_path.parents[1]
+		if first.header_path.parent.name != first.cpp_subdir
+		else first.header_path.parent
+	)
 	for layout in layouts:
 		if not layout.emit_header:
 			continue
-		# Include with subdirectory path if present (e.g., "Activation/FnMatrixActivation.gen.h")
-		# For flat structure (Core), use just filename. For subdirectories (Ml), use category path.
-		# For Loss domain, use per-function subdirectory (e.g., "Mse/FnLossMse.gen.h")
-		# For Core domain, use category subdirectories (e.g., "Blas/FnMatrixBlas.gen.h")
-		# For Audio domain, use category subdirectories (e.g., "Signal/FnAudioSignal.gen.h")
-		# For Vision FnImage domain, use category subdirectories (e.g., "Color/FnImageColor.gen.h")
-		# For Vision FnVideo domain, use category subdirectories (e.g., "Codec/FnVideoCodec.gen.h")
-		if layout.header_path.parent.name == first.cpp_subdir:
-			# Flat structure - file is directly in cpp_subdir
-			include_path = layout.header_path.name
-		elif first.domain == "Ml" and first.cpp_subdir == "FnLoss":
-			# Loss domain - per-function subdirectory
-			include_path = layout.header_path.relative_to(layout.header_path.parent.parent).as_posix()
-		elif first.domain == "Core" and first.cpp_subdir == "FnMatrix":
-			# Core domain - category subdirectory
-			include_path = layout.header_path.relative_to(layout.header_path.parent.parent).as_posix()
-		elif first.domain == "Audio" and first.cpp_subdir == "FnAudio":
-			# Audio domain - category subdirectory
-			include_path = layout.header_path.relative_to(layout.header_path.parent.parent).as_posix()
-		elif first.domain == "Vision" and (first.cpp_subdir == "FnImage" or first.cpp_subdir == "FnVideo"):
-			# Vision domain - category subdirectory
-			include_path = layout.header_path.relative_to(layout.header_path.parent.parent).as_posix()
-		else:
-			# Subdirectory structure - file is in category subdirectory
-			include_path = layout.header_path.relative_to(layout.header_path.parent.parent).as_posix()
+		include_path = layout.header_path.relative_to(manifest_parent).as_posix()
 		lines.append(f'#include "{include_path}"')
 	lines.append("")
 	return "\n".join(lines)
@@ -1682,25 +1821,17 @@ def write_manifest_files(layouts: list[SchemaLayout], out_root: Path, *, dry_run
 		has_headers = any(layout.emit_header for layout in grouped)
 		has_cpp = any(layout.emit_cpp for layout in grouped)
 		
-		# Special handling for Loss domain: umbrella header at FnLoss/ directory
-		# Special handling for Core domain: umbrella header at FnMatrix/ directory
-		# Special handling for Audio domain: umbrella header at FnAudio/ directory
-		# Special handling for Vision FnImage domain: umbrella header at FnImage/ directory
-		# Special handling for Vision FnVideo domain: umbrella header at FnVideo/ directory
-		if first.domain == "Ml" and first.cpp_subdir == "FnLoss":
-			manifest_parent = first.header_path.parent.parent  # FnLoss/ directory
-		elif first.domain == "Core" and first.cpp_subdir == "FnMatrix":
-			manifest_parent = first.header_path.parent.parent  # FnMatrix/ directory
-		elif first.domain == "Audio" and first.cpp_subdir == "FnAudio":
-			manifest_parent = first.header_path.parent.parent  # FnAudio/ directory
-		elif first.domain == "Vision" and (first.cpp_subdir == "FnImage" or first.cpp_subdir == "FnVideo"):
-			manifest_parent = first.header_path.parent.parent  # FnImage/ or FnVideo/ directory
-		else:
-			# Place umbrella header at the parent directory (e.g., Matrix/), not in category subdirectory
-			manifest_parent = first.header_path.parent.parent if first.header_path.parent.name != first.cpp_subdir else first.header_path.parent
-		
+		manifest_parent = (
+			out_root / "Private" / "Oa" / first.domain / first.cpp_subdir
+		)
 		manifest_header = manifest_parent / f"{first.file_prefix}.gen.h"
-		manifest_cmake = manifest_parent / f"{first.file_prefix}Sources.gen.cmake"
+		# The public declaration manifest follows header_path. The build-source
+		# manifest follows cpp_path and remains private.
+		if first.cpp_path.parent.name == first.cpp_subdir:
+			cmake_parent = first.cpp_path.parent
+		else:
+			cmake_parent = first.cpp_path.parent.parent
+		manifest_cmake = cmake_parent / f"{first.file_prefix}Sources.gen.cmake"
 		emit_header = (
 			has_headers and manifest_header not in generated_headers and first.domain != "Crypto"
 		)
@@ -1712,8 +1843,26 @@ def write_manifest_files(layouts: list[SchemaLayout], out_root: Path, *, dry_run
 			continue
 		if emit_header:
 			write_generated_text(manifest_header, emit_umbrella_header(grouped))
+			legacy_header = (
+				out_root / "Public" / "Oa" / first.domain
+				/ f"{first.file_prefix}.gen.h"
+			)
+			if legacy_header != manifest_header and legacy_header.exists():
+				legacy_header.unlink()
+			legacy_public_header = (
+				out_root / "Public" / "Oa" / first.domain
+				/ first.cpp_subdir / f"{first.file_prefix}.gen.h"
+			)
+			if legacy_public_header != manifest_header and legacy_public_header.exists():
+				legacy_public_header.unlink()
 		elif manifest_header.exists() and manifest_header not in generated_headers:
 			manifest_header.unlink()
+		legacy_public_header = (
+			out_root / "Public" / "Oa" / first.domain
+			/ f"{first.file_prefix}.gen.h"
+		)
+		if legacy_public_header != manifest_header and legacy_public_header.exists():
+			legacy_public_header.unlink()
 		if has_cpp:
 			write_generated_text(manifest_cmake, emit_cmake_sources(grouped, out_root))
 		elif manifest_cmake.exists():
@@ -1764,9 +1913,10 @@ def process_schema(schema_path: Path, registry: set[str], out_root: Path,
 		layouts = []
 		for op in ops:
 			op_name = op["name"]
-			op_subdir = out_root / "Private" / "Oa" / domain / cpp_subdir / op_name
-			h_path = op_subdir / f"{file_prefix}{op_name}.gen.h"
-			cpp_path = op_subdir / f"{file_prefix}{op_name}.gen.cpp"
+			header_subdir = out_root / "Private" / "Oa" / domain / cpp_subdir / op_name
+			cpp_subdir_path = out_root / "Private" / "Oa" / domain / cpp_subdir / op_name
+			h_path = header_subdir / f"{file_prefix}{op_name}.gen.h"
+			cpp_path = cpp_subdir_path / f"{file_prefix}{op_name}.gen.cpp"
 			schema_name = schema_label(schema_path)
 			op_emit_header = emits_header(op)
 			op_emit_cpp = emits_cpp(op)
@@ -1790,9 +1940,16 @@ def process_schema(schema_path: Path, registry: set[str], out_root: Path,
 				))
 				continue
 			
-			op_subdir.mkdir(parents=True, exist_ok=True)
+			header_subdir.mkdir(parents=True, exist_ok=True)
+			cpp_subdir_path.mkdir(parents=True, exist_ok=True)
 			if op_emit_header:
 				write_generated_text(h_path, emit_header_fragment([op], schema_name, op_name, namespace))
+				legacy_public_header = (
+					out_root / "Public" / "Oa" / domain / cpp_subdir
+					/ op_name / h_path.name
+				)
+				if legacy_public_header.exists():
+					legacy_public_header.unlink()
 			elif h_path.exists():
 				h_path.unlink()
 			if op_emit_cpp:
@@ -1841,6 +1998,11 @@ def process_schema(schema_path: Path, registry: set[str], out_root: Path,
 		write_generated_text(layout.header_path, emit_header_fragment(ops, schema_name, category, layout.namespace))
 	elif layout.header_path.exists():
 		layout.header_path.unlink()
+	relative_header = layout.header_path.relative_to(
+		out_root / "Private" / "Oa")
+	legacy_public_header = out_root / "Public" / "Oa" / relative_header
+	if legacy_public_header.exists():
+		legacy_public_header.unlink()
 	if emit_cpp:
 		write_generated_text(layout.cpp_path, emit_cpp_file(ops, schema_name, category, layout.domain, layout.namespace))
 	elif layout.cpp_path.exists():
@@ -1891,8 +2053,6 @@ def main() -> int:
 	out_root = LIVE_SOURCE_ROOT if args.live else args.out
 	if args.live:
 		print("oafnautogen: LIVE MODE — writing to Source/ tree (overwrites hand-written files)")
-	registry = load_kernel_registry(args.registry)
-	print(f"oafnautogen: registry {args.registry.name} — {len(registry)} kernels")
 	if args.schema:
 		schemas = [args.schema]
 	else:
@@ -1900,6 +2060,14 @@ def main() -> int:
 		schemas = sorted(args.schema_dir.rglob("*.toml"))
 		if not schemas:
 			fail(f"no schemas found in {args.schema_dir}")
+	schema_kernels = collect_schema_kernels(schemas)
+	validate_schema_kernel_ownership(schema_kernels, args.registry)
+	registry = load_kernel_registry(args.registry)
+	registry.update(kernel["name"] for kernel in schema_kernels)
+	print(
+		f"oafnautogen: registry {args.registry.name} — {len(registry)} kernels "
+		f"({len(schema_kernels)} schema-owned)"
+	)
 	layouts = []
 	for schema_path in schemas:
 		result = process_schema(schema_path, registry, out_root, live=args.live, dry_run=args.dry_run)
@@ -1912,6 +2080,7 @@ def main() -> int:
 	write_operation_registry(schemas, out_root, dry_run=args.dry_run)
 	write_manual_autograd_attach_header(schemas, out_root, dry_run=args.dry_run)
 	write_python_bindings(schemas, out_root, dry_run=args.dry_run)
+	write_schema_kernel_files(schema_kernels, out_root, dry_run=args.dry_run)
 	write_operation_reference(
 		schemas, out_root, live=args.live, dry_run=args.dry_run
 	)

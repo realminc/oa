@@ -26,34 +26,34 @@ void BindPlot(nb::module_& m) {
 	nb::class_<OaPlot::Axes>(m, "Axes")
 		.def("Plot", [](OaPlot::Axes& axes, const std::vector<OaF32>& values) {
 			axes.Plot(OaSpan<const OaF32>(values.data(), values.size()));
-		}, nb::arg("values"))
+		}, nb::arg("Values"))
 		.def("Heatmap", [](OaPlot::Axes& axes,
 			const std::vector<OaF32>& values, OaI32 rows, OaI32 cols,
 			const OaPlot::HeatmapStyle& style) {
 			axes.Heatmap(OaSpan<const OaF32>(values.data(), values.size()),
 				rows, cols, style);
-		}, nb::arg("values"), nb::arg("rows"), nb::arg("cols"),
-			nb::arg("style") = OaPlot::HeatmapStyle())
+		}, nb::arg("Values"), nb::arg("Rows"), nb::arg("Cols"),
+			nb::arg("Style") = OaPlot::HeatmapStyle())
 		.def("Title", [](OaPlot::Axes& axes, const char* text) {
 			axes.Title(text);
-		}, nb::arg("text"))
-		.def("XLabel", &OaPlot::Axes::XLabel, nb::arg("text"))
-		.def("YLabel", &OaPlot::Axes::YLabel, nb::arg("text"))
+		}, nb::arg("Text"))
+		.def("XLabel", &OaPlot::Axes::XLabel, nb::arg("Text"))
+		.def("YLabel", &OaPlot::Axes::YLabel, nb::arg("Text"))
 		.def("Caption", [](OaPlot::Axes& axes, const char* text) {
 			axes.Caption(text);
-		}, nb::arg("text"));
+		}, nb::arg("Text"));
 
 	nb::class_<OaPlot::Figure>(m, "Figure")
 		.def(nb::init<const OaPlot::FigureConfig&>(),
-			nb::arg("config") = OaPlot::FigureConfig())
-		.def("Ax", &OaPlot::Figure::Ax, nb::arg("row"), nb::arg("col"),
+			nb::arg("Config") = OaPlot::FigureConfig())
+		.def("Ax", &OaPlot::Figure::Ax, nb::arg("Row"), nb::arg("Col"),
 			nb::rv_policy::reference_internal)
-		.def("Title", &OaPlot::Figure::Title, nb::arg("text"))
-		.def("XLabel", &OaPlot::Figure::XLabel, nb::arg("text"))
-		.def("YLabel", &OaPlot::Figure::YLabel, nb::arg("text"))
+		.def("Title", &OaPlot::Figure::Title, nb::arg("Text"))
+		.def("XLabel", &OaPlot::Figure::XLabel, nb::arg("Text"))
+		.def("YLabel", &OaPlot::Figure::YLabel, nb::arg("Text"))
 		.def("SaveFig", [](OaPlot::Figure& figure, const char* path) {
 			throw_if_error(figure.SaveFig(path));
-		}, nb::arg("path"))
+		}, nb::arg("Path"))
 		.def("Show", [](OaPlot::Figure& figure) {
 			throw_if_error(figure.Show());
 		});

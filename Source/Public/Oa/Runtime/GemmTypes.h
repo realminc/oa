@@ -23,7 +23,7 @@ enum class OaGemmKernel : OaU8 {
 	// ID 9 retired: was FusedSk (StreamK path removed).
 	// ID 10 retired: was CoopMatSmallMBf16 (old CoopMat1 small-M).
 	// Tuned KHR CoopMat GEMM: 128x128 tile, double-buffered, register-tiled.
-	GemmCmSgBf16          = 11,
+	GemmCmSgBf16        = 11,
 	// Workgroup-scope KHR CoopMat GEMM: 32x32x16 fragments, 64x64 tile.
 	GemmCmWgBf16        = 12,
 	// Correctness-complete arbitrary-stride / strided-batch fallback. Tuned

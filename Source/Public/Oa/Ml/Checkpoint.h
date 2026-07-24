@@ -14,7 +14,8 @@
 #pragma once
 
 #include <Oa/Core/Matrix.h>
-#include <Oa/Core/FileIo.h>
+#include <Oa/Core/Filesystem.h>
+#include <Oa/Core/Paths.h>
 
 class OaModule;
 class OaOptimizer;
@@ -25,7 +26,7 @@ class OaOptimizer;
 
 class OaCheckpointManagerConfig {
 public:
-	OaString Dir = OaFileIo::GetVarDir("model/dev").String();
+	OaString Dir = OaPaths::Var("model/dev").String();
 	OaString ModelName = "OaModule";
 	OaString Context;
 	OaI32 MaxKeep = 5;

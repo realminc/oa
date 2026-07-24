@@ -1,5 +1,6 @@
 // FnAudioSignal.cpp — hand-written OaFnAudio Signal implementations.
-// The generated Signal wrapper (Mix) lives in FnAudioSignal.gen.cpp.
+// The schema owns their declarations and contracts; this file owns the
+// manual_context bodies.
 //
 // Everything except Resample is composed from existing verified FnMatrix
 // kernels (Scale/Clamp/Log/Abs/Max/Mean/Mul); Resample dispatches the
@@ -21,8 +22,16 @@ constexpr OaF32 kLn10Over20Inv = 8.68588963806504F;  // 20 / ln(10)
 
 static OaF32 DbToLinear(OaF32 InDb) { return std::pow(10.0F, InDb / 20.0F); }
 
+static OaAudio WrapLike(OaMatrix InMatrix, const OaAudio& InAudio) {
+	if (InMatrix.IsEmpty()) return {};
+	return OaAudio(
+		OaStdMove(InMatrix), InAudio.SampleRate(), InAudio.Layout());
+}
 
-OaMatrix Normalize(const OaMatrix& InA, OaF32 InTargetDb, OaU8 InMode) {
+OaAudio Normalize(
+	const OaAudio& InAudio, OaF32 InTargetDb, OaU8 InMode) {
+	if (not InAudio.Validate() || InAudio.IsEmpty()) return {};
+	const OaMatrix& InA = InAudio.AsMatrix();
 	const auto& shape = InA.GetShape();
 	if (shape.Rank != 2 || shape[0] <= 0 || shape[1] <= 0 ||
 		InA.GetDtype() != OaScalarType::Float32 || !std::isfinite(InTargetDb) ||
@@ -42,12 +51,20 @@ OaMatrix Normalize(const OaMatrix& InA, OaF32 InTargetDb, OaU8 InMode) {
 		level = std::sqrt(OaFnMatrix::Scalar(OaFnMatrix::Mean(OaFnMatrix::Mul(InA, InA))));
 	}
 	if (!(level > 0.0F)) {
-		return OaFnMatrix::Scale(InA, 1.0F);   // silence: return an unscaled copy
+		return WrapLike(
+			OaFnMatrix::Scale(InA, 1.0F), InAudio);
 	}
-	return OaFnMatrix::Scale(InA, targetLin / level);
+	return WrapLike(
+		OaFnMatrix::Scale(InA, targetLin / level), InAudio);
 }
 
-OaMatrix Resample(const OaMatrix& InA, OaU32 InInRate, OaU32 InOutRate, OaU32 InFilterHalfWidth) {
+OaAudio Resample(
+	const OaAudio& InAudio,
+	OaU32 InOutRate,
+	OaU32 InFilterHalfWidth) {
+	if (not InAudio.Validate() || InAudio.IsEmpty()) return {};
+	const OaMatrix& InA = InAudio.AsMatrix();
+	const OaU32 InInRate = InAudio.SampleRate();
 	const auto& shape = InA.GetShape();
 	if (shape.Rank != 2 || shape[0] <= 0 || shape[1] <= 0 || InA.GetDtype() != OaScalarType::Float32) {
 		OA_LOG_ERROR(OaLogComponent::Core, "OaFnAudio::Resample: expected [Channels, Samples], rank=%d", shape.Rank);
@@ -59,7 +76,7 @@ OaMatrix Resample(const OaMatrix& InA, OaU32 InInRate, OaU32 InOutRate, OaU32 In
 		return {};
 	}
 	if (InInRate == InOutRate) {
-		return OaFnMatrix::Scale(InA, 1.0F);   // no-op: copy
+		return WrapLike(OaFnMatrix::Scale(InA, 1.0F), InAudio);
 	}
 
 	// gcd-reduce so the shader's rational source positioning stays in u32.
@@ -100,30 +117,84 @@ OaMatrix Resample(const OaMatrix& InA, OaU32 InInRate, OaU32 InOutRate, OaU32 In
 	};
 	OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Write};
 	ctx.Add("AudioResample", {&InA, &out}, access, &push, sizeof(push), (count + 255) / 256);
-	return out;
+	return OaAudio(OaStdMove(out), InOutRate, InAudio.Layout());
 }
 
-OaMatrix Gain(const OaAudioBuffer& InBuf, OaF32 InGainDb) {
+OaAudio Mix(
+	const OaAudio& InA,
+	const OaAudio& InB,
+	OaF32 InGainA,
+	OaF32 InGainB) {
+	if (not InA.Validate() || not InB.Validate()
+		|| InA.IsEmpty() || InB.IsEmpty()
+		|| InA.SampleRate() != InB.SampleRate()
+		|| InA.Layout() != InB.Layout()
+		|| InA.AsMatrix().GetShape() != InB.AsMatrix().GetShape()
+		|| not std::isfinite(InGainA) || not std::isfinite(InGainB)) {
+		OA_LOG_ERROR(OaLogComponent::Core,
+			"OaFnAudio::Mix: inputs must have matching valid audio contracts");
+		return {};
+	}
+	const OaMatrix& a = InA.AsMatrix();
+	const OaMatrix& b = InB.AsMatrix();
+	OaMatrix out = OaFnMatrix::Empty(a.GetShape(), OaScalarType::Float32);
+	const OaU64 count64 = static_cast<OaU64>(a.NumElements());
+	if (count64 > std::numeric_limits<OaU32>::max()) {
+		OA_LOG_ERROR(OaLogComponent::Core,
+			"OaFnAudio::Mix: dispatch exceeds u32 limits");
+		return {};
+	}
+	struct {
+		OaU32 Count;
+		OaF32 GainA;
+		OaF32 GainB;
+	} push{
+		.Count = static_cast<OaU32>(count64),
+		.GainA = InGainA,
+		.GainB = InGainB,
+	};
+	OaBufferAccess access[] = {
+		OaBufferAccess::Read,
+		OaBufferAccess::Read,
+		OaBufferAccess::Write,
+	};
+	OaContext::GetDefault().Add(
+		"AudioMix", {&a, &b, &out}, access, &push, sizeof(push),
+		(push.Count + 255U) / 256U);
+	return WrapLike(OaStdMove(out), InA);
+}
+
+OaAudio Gain(const OaAudio& InAudio, OaF32 InGainDb) {
+	if (not InAudio.Validate() || InAudio.IsEmpty()) return {};
 	if (!std::isfinite(InGainDb) || InGainDb < -300.0F || InGainDb > 100.0F) return {};
-	return OaFnMatrix::Scale(InBuf, DbToLinear(InGainDb));
+	return WrapLike(
+		OaFnMatrix::Scale(InAudio.AsMatrix(), DbToLinear(InGainDb)), InAudio);
 }
 
-OaMatrix Clip(const OaAudioBuffer& InBuf, OaF32 InMin, OaF32 InMax) {
+OaAudio Clip(const OaAudio& InAudio, OaF32 InMin, OaF32 InMax) {
+	if (not InAudio.Validate() || InAudio.IsEmpty()) return {};
 	if (!std::isfinite(InMin) || !std::isfinite(InMax) || InMin > InMax) return {};
-	return OaFnMatrix::ClampMax(OaFnMatrix::ClampMin(InBuf, InMin), InMax);
+	return WrapLike(
+		OaFnMatrix::ClampMax(
+			OaFnMatrix::ClampMin(InAudio.AsMatrix(), InMin), InMax),
+		InAudio);
 }
 
-OaMatrix AmplitudeToDb(const OaAudioBuffer& InBuf, OaF32 InFloorDb) {
+OaMatrix AmplitudeToDb(const OaAudio& InAudio, OaF32 InFloorDb) {
+	if (not InAudio.Validate() || InAudio.IsEmpty()) return {};
 	if (!std::isfinite(InFloorDb) || InFloorDb < -300.0F || InFloorDb > 0.0F) return {};
 	// 20·log10(max(|x|, floor)) — floor keeps silence finite.
 	const OaF32 floorLin = DbToLinear(InFloorDb);
 	return OaFnMatrix::Scale(
-		OaFnMatrix::Log(OaFnMatrix::ClampMin(OaFnMatrix::Abs(InBuf), floorLin)),
+		OaFnMatrix::Log(OaFnMatrix::ClampMin(
+			OaFnMatrix::Abs(InAudio.AsMatrix()), floorLin)),
 		kLn10Over20Inv
 	);
 }
 
-OaMatrix PreEmphasis(const OaAudioBuffer& InBuf, OaF32 InAlpha) {
+OaAudio PreEmphasis(const OaAudio& InAudio, OaF32 InAlpha) {
+	if (not InAudio.Validate() || InAudio.IsEmpty()) return {};
+	const OaMatrix& InBuf = InAudio.AsMatrix();
 	// y[n] = x[n] − α·x[n−1], y[0] = x[0] (zero-padded left neighbor).
 	// Composed: shift right by one via Zeros+Slice+Concat, then Sub(x, α·shift).
 	const auto& shape = InBuf.GetShape();
@@ -133,29 +204,44 @@ OaMatrix PreEmphasis(const OaAudioBuffer& InBuf, OaF32 InAlpha) {
 		return {};
 	}
 	if (shape[1] < 2) {
-		return OaFnMatrix::Scale(InBuf, 1.0F);   // nothing to emphasize: copy
+		return WrapLike(OaFnMatrix::Scale(InBuf, 1.0F), InAudio);
 	}
 	auto z = OaFnMatrix::Zeros(OaMatrixShape{shape[0], 1}, OaScalarType::Float32);
 	auto head = OaFnMatrix::Slice(InBuf, 1, 0, shape[1] - 1);   // x[0 .. S−2]
 	OaMatrix parts[] = {z, head};
 	auto shifted = OaFnMatrix::Concat(OaSpan<OaMatrix>(parts, 2), 1);
-	return OaFnMatrix::Sub(InBuf, OaFnMatrix::Scale(shifted, InAlpha));
+	return WrapLike(
+		OaFnMatrix::Sub(InBuf, OaFnMatrix::Scale(shifted, InAlpha)),
+		InAudio);
 }
 
-OaMatrix ToMono(const OaAudioBuffer& InBuf) {
+OaAudio ToMono(const OaAudio& InAudio) {
+	if (not InAudio.Validate() || InAudio.IsEmpty()) return {};
+	const OaMatrix& InBuf = InAudio.AsMatrix();
 	const auto& shape = InBuf.GetShape();
 	if (shape.Rank != 2 || shape[0] <= 0 || shape[1] <= 0 || InBuf.GetDtype() != OaScalarType::Float32) {
 		OA_LOG_ERROR(OaLogComponent::Core, "OaFnAudio::ToMono: expected [Channels, Samples], rank=%d", shape.Rank);
 		return {};
 	}
 	if (shape[0] == 1) {
-		return OaFnMatrix::Scale(InBuf, 1.0F);   // already mono: copy
+		return OaAudio(
+			OaFnMatrix::Scale(InBuf, 1.0F),
+			InAudio.SampleRate(),
+			OaChannelLayout::Mono);
 	}
 	OaMatrix mean = OaFnMatrix::Mean(InBuf, 0);  // reduce channel dim
-	return OaFnMatrix::Reshape(mean, OaMatrixShape{1, shape[1]});
+	return OaAudio(
+		OaFnMatrix::Reshape(mean, OaMatrixShape{1, shape[1]}),
+		InAudio.SampleRate(),
+		OaChannelLayout::Mono);
 }
 
-OaMatrix Fade(const OaAudioBuffer& InBuf, OaU64 InFadeInSamples, OaU64 InFadeOutSamples) {
+OaAudio Fade(
+	const OaAudio& InAudio,
+	OaU64 InFadeInSamples,
+	OaU64 InFadeOutSamples) {
+	if (not InAudio.Validate() || InAudio.IsEmpty()) return {};
+	const OaMatrix& InBuf = InAudio.AsMatrix();
 	const auto& shape = InBuf.GetShape();
 	if (shape.Rank != 2 || shape[0] <= 0 || shape[1] <= 0 || InBuf.GetDtype() != OaScalarType::Float32) {
 		OA_LOG_ERROR(OaLogComponent::Core, "OaFnAudio::Fade: expected [Channels, Samples], rank=%d", shape.Rank);
@@ -180,10 +266,12 @@ OaMatrix Fade(const OaAudioBuffer& InBuf, OaU64 InFadeInSamples, OaU64 InFadeOut
 	OaBufferAccess access[] = {OaBufferAccess::Read, OaBufferAccess::Write};
 	OaContext::GetDefault().Add(
 		"AudioFade", {&InBuf, &out}, access, &push, sizeof(push), (push.Count + 255U) / 256U);
-	return out;
+	return WrapLike(OaStdMove(out), InAudio);
 }
 
-OaMatrix WaveformEnvelope(const OaAudioBuffer& InBuf, OaU32 InBins) {
+OaMatrix WaveformEnvelope(const OaAudio& InAudio, OaU32 InBins) {
+	if (not InAudio.Validate() || InAudio.IsEmpty()) return {};
+	const OaMatrix& InBuf = InAudio.AsMatrix();
 	const auto& shape = InBuf.GetShape();
 	if (shape.Rank != 2 || shape[0] <= 0 || shape[1] <= 0
 		|| InBuf.GetDtype() != OaScalarType::Float32 || InBins == 0U

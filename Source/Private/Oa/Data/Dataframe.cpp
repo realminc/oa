@@ -1,6 +1,6 @@
 #include <Oa/Data/Dataframe.h>
 
-#include <Oa/Core/FileIo.h>
+#include <Oa/Core/Filesystem.h>
 
 #include <algorithm>
 #include <cmath>
@@ -458,7 +458,7 @@ OaDataFrame OaDataFrame::FromOhlcvRecords(const OaVec<OaRecordOhlcv>& InRecords)
 }
 
 OaResult<OaDataFrame> OaDataFrame::FromCSV(const OaPath& InPath, char InDelimiter) {
-	auto lines = OaFileIo::ReadLines(InPath);
+	auto lines = OaFilesystem::ReadLines(InPath);
 	if (!lines.IsOk()) {
 		return lines.GetStatus();
 	}
@@ -628,7 +628,7 @@ OaStatus OaDataFrame::ToCsv(const OaPath& InPath, char InDelimiter) const {
 		}
 		file.PushBack('\n');
 	}
-	return OaFileIo::WriteText(InPath, file.View());
+	return OaFilesystem::WriteText(InPath, file.View());
 }
 
 OaStatus OaDataFrame::ToParquet(const OaPath& InPath) const {

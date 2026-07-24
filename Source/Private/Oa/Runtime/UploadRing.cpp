@@ -49,19 +49,12 @@ OaUploadRing& OaUploadRing::operator=(OaUploadRing&& InOther) noexcept {
 }
 OaUploadRing::~OaUploadRing() { Abandon_(); }
 
-OaResult<OaUploadRing> OaUploadRing::Create(
-	OaEngine& InEngine,
-	const OaUploadRingConfig& InConfig)
-{
-	if (InConfig.CapacityBytes == 0 || InConfig.FramesInFlight < 2
-		|| InConfig.Alignment == 0) {
-		return OaStatus::InvalidArgument(
-			"UploadRing: capacity/alignment must be non-zero and frames must be >= 2");
+OaResult<OaUploadRing> OaUploadRing::Create(OaEngine& InEngine,	const OaUploadRingConfig& InConfig) {
+	if (InConfig.CapacityBytes == 0 || InConfig.FramesInFlight < 2 || InConfig.Alignment == 0) {
+		return OaStatus::InvalidArgument("UploadRing: capacity/alignment must be non-zero and frames must be >= 2");
 	}
 
-	const OaU64 frameCapacity =
-		(InConfig.CapacityBytes / InConfig.FramesInFlight / InConfig.Alignment)
-		* InConfig.Alignment;
+	const OaU64 frameCapacity =	(InConfig.CapacityBytes / InConfig.FramesInFlight / InConfig.Alignment)	* InConfig.Alignment;
 	if (frameCapacity == 0) {
 		return OaStatus::InvalidArgument("UploadRing: capacity is too small for frame count");
 	}
@@ -79,8 +72,7 @@ OaResult<OaUploadRing> OaUploadRing::Create(
 	impl.Staging = OaStdMove(*staging);
 	if (impl.Staging.MappedPtr == nullptr) {
 		InEngine.FreeBuffer(impl.Staging);
-		return OaStatus::Error(
-			OaStatusCode::FailedPrecondition, "UploadRing: staging allocation is not mapped");
+		return OaStatus::Error(OaStatusCode::FailedPrecondition, "UploadRing: staging allocation is not mapped");
 	}
 
 	impl.Frames.Reserve(InConfig.FramesInFlight);
@@ -153,8 +145,8 @@ OaResult<OaUploadSlice> OaUploadRing::Reserve(OaU64 InSize, OaU64 InAlignment) {
 OaStatus OaUploadRing::EnqueueCopy(
 	const OaUploadSlice& InSlice,
 	const OaVkBuffer& InDst,
-	OaU64 InDstOffset)
-{
+	OaU64 InDstOffset
+) {
 	if (!Impl_ || !Impl_->BatchOpen) {
 		return OaStatus::Error(OaStatusCode::FailedPrecondition, "UploadRing batch is not open");
 	}
@@ -186,8 +178,8 @@ OaStatus OaUploadRing::Upload(
 	OaU64 InDstOffset,
 	const void* InData,
 	OaU64 InSize,
-	OaU64 InAlignment)
-{
+	OaU64 InAlignment
+) {
 	if (InData == nullptr) return OaStatus::InvalidArgument("UploadRing: source is null");
 	auto slice = Reserve(InSize, InAlignment);
 	if (!slice) return slice.GetStatus();
@@ -225,9 +217,9 @@ OaResult<OaCompletionToken> OaUploadRing::Submit() {
 		}
 		frame.Stream.RecordCopyBufferRegions(
 			Impl_->Staging, dst,
-			OaSpan<const OaBufferCopyRegion>(regions.Data(), regions.Size()));
-		frame.Stream.RecordTransferWriteBarrier(
-			dst, barrierBegin, barrierEnd - barrierBegin);
+			OaSpan<const OaBufferCopyRegion>(regions.Data(), regions.Size())
+		);
+		frame.Stream.RecordTransferWriteBarrier(dst, barrierBegin, barrierEnd - barrierBegin);
 		begin = end;
 	}
 	// Ring arenas protect staging reuse, but destination buffers can repeat
@@ -236,8 +228,7 @@ OaResult<OaCompletionToken> OaUploadRing::Submit() {
 	// This stays GPU-side and preserves host asynchrony.
 	if (Impl_->LastCompletion.IsValid()) {
 		const OaVkTimelineWait wait = Impl_->LastCompletion.TimelineWait();
-		OA_RETURN_IF_ERROR(frame.Stream.SubmitWithDependencies(
-			*Impl_->Engine, OaSpan<const OaVkTimelineWait>(&wait, 1)));
+		OA_RETURN_IF_ERROR(frame.Stream.SubmitWithDependencies(*Impl_->Engine, OaSpan<const OaVkTimelineWait>(&wait, 1)));
 	} else {
 		OA_RETURN_IF_ERROR(frame.Stream.Submit(*Impl_->Engine));
 	}
@@ -282,7 +273,8 @@ void OaUploadRing::Destroy() {
 	if (const auto status = Close(); !status.IsOk()) {
 		OA_LOG_ERROR(OaLogComponent::Core,
 			"OaUploadRing::Destroy: close failed: %s",
-			status.GetMessage().c_str());
+			status.GetMessage().c_str()
+		);
 	}
 }
 
@@ -298,9 +290,11 @@ void OaUploadRing::Abandon_() noexcept {
 		if (const auto status = active.Stream.ResetUnsubmitted(engine->Device);
 			not status.IsOk())
 		{
-			OA_LOG_ERROR(OaLogComponent::Core,
+			OA_LOG_ERROR(
+				OaLogComponent::Core,
 				"OaUploadRing abandonment failed to cancel open batch: %s",
-				status.GetMessage().c_str());
+				status.GetMessage().c_str()
+			);
 		}
 		Impl_->BatchOpen = false;
 		Impl_->Copies.Clear();

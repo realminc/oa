@@ -6,7 +6,6 @@
 #include <Oa/Ml.h>
 #include <Oa/Ml/Autograd.h>
 #include <Oa/Ml/Rl.h>
-#include <Oa/Runtime/Context.h>
 #include <Oa/Runtime/Engine.h>
 
 #include <cmath>
@@ -27,6 +26,7 @@ OaResult<std::vector<T>> Copy(const OaMatrix& InMatrix) {
 } // namespace
 
 struct OaTutorialCartPolePpo::Impl {
+	OaEngine* Engine = nullptr;
 	OaTutorialCartPolePpoConfig Config;
 	OaUniquePtr<OaCategoricalActorCritic> Model;
 	OaVec<OaParameter*> Parameters;
@@ -37,10 +37,12 @@ struct OaTutorialCartPolePpo::Impl {
 	OaTutorialCartPolePpoMetrics Metrics;
 
 	Impl(
+		OaEngine& InEngine,
 		const OaTutorialCartPolePpoConfig& InConfig,
 		OaUniquePtr<OaCategoricalActorCritic> InModel,
 		OaTutorialCartPole&& InEnvironment)
-		: Config(InConfig)
+		: Engine(&InEngine)
+		, Config(InConfig)
 		, Model(OaStdMove(InModel))
 		, Parameters(Model->AllParameterPtrs())
 		, Optimizer(Parameters, InConfig.LearningRate,
@@ -54,6 +56,7 @@ OaTutorialCartPolePpo::OaTutorialCartPolePpo(OaUniquePtr<Impl> InImpl)
 OaTutorialCartPolePpo::~OaTutorialCartPolePpo() = default;
 
 OaResult<OaUniquePtr<OaTutorialCartPolePpo>> OaTutorialCartPolePpo::Create(
+	OaEngine& InEngine,
 	const OaTutorialCartPolePpoConfig& InConfig) {
 	if (InConfig.Environments == 0 || InConfig.Horizon == 0
 		|| InConfig.Rollouts == 0 || InConfig.UpdateEpochs == 0
@@ -63,7 +66,10 @@ OaResult<OaUniquePtr<OaTutorialCartPolePpo>> OaTutorialCartPolePpo::Create(
 			"OaTutorialCartPolePpo requires non-zero dimensions and a positive finite learning rate");
 	}
 	OaFnMatrix::SetRngSeed(InConfig.TrainingSeed);
-	auto environment = OaTutorialCartPole::Create(OaTutorialCartPoleConfig{
+	if (!InEngine.IsReady()) return OaStatus::Error(
+		OaStatusCode::FailedPrecondition,
+		"OaTutorialCartPolePpo requires a ready engine");
+	auto environment = OaTutorialCartPole::Create(InEngine, OaTutorialCartPoleConfig{
 		.Environments = InConfig.Environments,
 		.MaxEpisodeSteps = 500,
 		.Seed = InConfig.TrainingSeed,
@@ -77,7 +83,7 @@ OaResult<OaUniquePtr<OaTutorialCartPolePpo>> OaTutorialCartPolePpo::Create(
 		});
 	if (model.IsError()) return model.GetStatus();
 	auto impl = OaMakeUniquePtr<Impl>(
-		InConfig, OaStdMove(*model), OaStdMove(*environment));
+		InEngine, InConfig, OaStdMove(*model), OaStdMove(*environment));
 	auto trainer = OaPpoTrainer::Create(
 		*impl->Model, impl->Optimizer, OaPpoTrainerConfig{
 			.Rollouts = InConfig.Rollouts,
@@ -107,22 +113,29 @@ OaStatus OaTutorialCartPolePpo::Advance() {
 	if (Impl_->Trainer->IsDone()) return OaStatus::Ok();
 	auto& impl = *Impl_;
 	if (impl.Trainer->NeedsCollection()) {
-		OA_RETURN_IF_ERROR(impl.Trainer->BeginCollection());
-		for (OaU32 step = 0; step < impl.Config.Horizon; ++step) {
-			const OaRlPolicyResult policy = impl.Trainer->Act(
-				impl.Environment.Observation());
-			if (!policy.IsValid()) return OaStatus::Error(
-				OaStatusCode::FailedPrecondition,
-				"CartPole PPO policy evaluation failed");
-			auto transition = impl.Environment.Step(policy.Action);
-			if (transition.IsError()) return transition.GetStatus();
-			OA_RETURN_IF_ERROR(impl.Trainer->Observe(
-				transition->Observation, transition->NextObservation,
-				transition->Reward, transition->Terminated,
-				transition->Truncated, policy));
-			impl.Environment.ResetDone();
-		}
-		OA_RETURN_IF_ERROR(impl.Trainer->EndCollection());
+		const OaStatus recorded = impl.Environment.RecordCommands(
+			[&]() -> OaStatus {
+				OA_RETURN_IF_ERROR(impl.Trainer->BeginCollection());
+				for (OaU32 step = 0; step < impl.Config.Horizon; ++step) {
+					const OaRlPolicyResult policy = impl.Trainer->Act(
+						impl.Environment.Observation());
+					if (!policy.IsValid()) return OaStatus::Error(
+						OaStatusCode::FailedPrecondition,
+						"CartPole PPO policy evaluation failed");
+					auto transition = impl.Environment.Step(policy.Action);
+					if (transition.IsError()) return transition.GetStatus();
+					OA_RETURN_IF_ERROR(impl.Trainer->Observe(
+						transition->Observation, transition->NextObservation,
+						transition->Reward, transition->Terminated,
+						transition->Truncated, policy));
+					OA_RETURN_IF_ERROR(impl.Environment.ResetDone());
+				}
+				return impl.Trainer->EndCollection();
+			});
+		if (recorded.IsError()) return recorded;
+		auto completion = impl.Environment.Submit();
+		if (completion.IsError()) return completion.GetStatus();
+		OA_RETURN_IF_ERROR(impl.Environment.Wait(*completion));
 	}
 	OA_RETURN_IF_ERROR(impl.Trainer->Update());
 	const OaPpoTrainerMetrics& metrics = impl.Trainer->Metrics();
@@ -160,7 +173,7 @@ OaResult<OaTutorialCartPoleSnapshot> OaTutorialCartPolePpo::SnapshotLane(
 			OaStatusCode::OutOfRange, "CartPole snapshot lane is out of range");
 	}
 	const OaMatrix& state = Impl_->Environment.Observation();
-	auto* runtime = OaEngine::GetGlobal();
+	auto* runtime = Impl_->Engine;
 	const OaU64 offset = static_cast<OaU64>(InLane) * 4U * sizeof(OaF32);
 	if (runtime == nullptr || !runtime->Allocator.InvalidateHostBuffer(
 		state.GetVkBuffer(), offset, 4U * sizeof(OaF32))) {
@@ -179,20 +192,23 @@ OaResult<OaTutorialCartPoleSnapshot> OaTutorialCartPolePpo::SnapshotLane(
 OaStatus OaTutorialCartPolePpo::Demonstrate() {
 	if (!Impl_) return OaStatus::Error(
 		OaStatusCode::FailedPrecondition, "CartPole PPO session is empty");
-	{
-		OaGradNo noGrad;
-		const OaMatrix logits = Impl_->Model->Forward(
-			Impl_->Environment.Observation());
-		const OaTopKResult best = OaFnMatrix::TopK(logits, 1, 1);
-		const OaMatrix action = OaFnMatrix::Reshape(
-			best.Indices,
-			{static_cast<OaI64>(Impl_->Config.Environments)});
-		auto transition = Impl_->Environment.Step(action);
-		if (transition.IsError()) return transition.GetStatus();
-		Impl_->Environment.ResetDone();
-	}
-	OA_RETURN_IF_ERROR(OaContext::GetDefault().Execute());
-	return OaContext::GetDefault().Sync();
+	const OaStatus recorded = Impl_->Environment.RecordCommands(
+		[&]() -> OaStatus {
+			OaGradNo noGrad;
+			const OaMatrix logits = Impl_->Model->Forward(
+				Impl_->Environment.Observation());
+			const OaTopKResult best = OaFnMatrix::TopK(logits, 1, 1);
+			const OaMatrix action = OaFnMatrix::Reshape(
+				best.Indices,
+				{static_cast<OaI64>(Impl_->Config.Environments)});
+			auto transition = Impl_->Environment.Step(action);
+			if (transition.IsError()) return transition.GetStatus();
+			return Impl_->Environment.ResetDone();
+		});
+	if (recorded.IsError()) return recorded;
+	auto completion = Impl_->Environment.Submit();
+	if (completion.IsError()) return completion.GetStatus();
+	return Impl_->Environment.Wait(*completion);
 }
 
 OaResult<OaTutorialCartPolePpoEvaluation> OaTutorialCartPolePpo::Evaluate(
@@ -202,67 +218,20 @@ OaResult<OaTutorialCartPolePpoEvaluation> OaTutorialCartPolePpo::Evaluate(
 	if (!Impl_ || InEnvironments == 0 || InHorizon == 0) {
 		return OaStatus::InvalidArgument("CartPole evaluation dimensions must be non-zero");
 	}
-	auto environment = OaTutorialCartPole::Create(OaTutorialCartPoleConfig{
+	auto environment = OaTutorialCartPole::Create(*Impl_->Engine,
+		OaTutorialCartPoleConfig{
 		.Environments = InEnvironments,
 		.MaxEpisodeSteps = 500,
 		.Seed = InSeed,
 	});
 	if (environment.IsError()) return environment.GetStatus();
-	auto rollout = OaRlRolloutBuffer::Create(OaRlRolloutConfig{
-		.Time = InHorizon,
-		.Environments = InEnvironments,
-		.ObservationShape = {4},
-	});
-	if (rollout.IsError()) return rollout.GetStatus();
-	const OaMatrix zero = OaFnMatrix::Zeros(
-		{static_cast<OaI64>(InEnvironments)}, OaScalarType::Float32);
-	{
-		OaGradNo noGrad;
-		for (OaU32 step = 0; step < InHorizon; ++step) {
-			const OaMatrix logits = Impl_->Model->Forward(environment->Observation());
-			const OaTopKResult best = OaFnMatrix::TopK(logits, 1, 1);
-			const OaMatrix action = OaFnMatrix::Reshape(
-				best.Indices, {static_cast<OaI64>(InEnvironments)});
-			auto transition = environment->Step(action);
-			if (transition.IsError()) return transition.GetStatus();
-			OA_RETURN_IF_ERROR(rollout->Append(OaRlTransition{
-				.Observation = transition->Observation,
-				.Action = action,
-				.Reward = transition->Reward,
-				.Value = zero,
-				.NextValue = zero,
-				.LogProbability = zero,
-				.Terminated = transition->Terminated,
-				.Truncated = transition->Truncated,
-			}));
-			environment->ResetDone();
-		}
-	}
-	OA_RETURN_IF_ERROR(OaContext::GetDefault().Execute());
-	OA_RETURN_IF_ERROR(OaContext::GetDefault().Sync());
-	auto reward = Copy<OaF32>(rollout->Batch().Reward);
-	if (reward.IsError()) return reward.GetStatus();
-	auto terminated = Copy<OaU8>(rollout->Batch().Terminated);
-	if (terminated.IsError()) return terminated.GetStatus();
-	auto truncated = Copy<OaU8>(rollout->Batch().Truncated);
-	if (truncated.IsError()) return truncated.GetStatus();
-	std::vector<OaF64> running(InEnvironments, 0.0);
-	std::vector<OaF64> completed;
-	for (OaU32 step = 0; step < InHorizon; ++step) {
-		for (OaU32 lane = 0; lane < InEnvironments; ++lane) {
-			const OaUsize index = static_cast<OaUsize>(step) * InEnvironments + lane;
-			running[lane] += (*reward)[index];
-			if ((*terminated)[index] != 0 || (*truncated)[index] != 0) {
-				completed.push_back(running[lane]);
-				running[lane] = 0.0;
-			}
-		}
-	}
-	const OaF64 sum = std::accumulate(completed.begin(), completed.end(), 0.0);
+	auto metrics = OaFnRl::EvaluateCategorical(
+		*environment, *Impl_->Model,
+		{.Horizon = InHorizon, .Seed = InSeed});
+	if (metrics.IsError()) return metrics.GetStatus();
 	OaTutorialCartPolePpoEvaluation result{
-		.MeanCompletedReturn = completed.empty()
-			? 0.0 : sum / static_cast<OaF64>(completed.size()),
-		.CompletedEpisodes = static_cast<OaU32>(completed.size()),
+		.MeanCompletedReturn = metrics->MeanCompletedReturn,
+		.CompletedEpisodes = static_cast<OaU32>(metrics->CompletedEpisodes),
 	};
 	Impl_->Metrics.EvaluationReturnHistory.PushBack(
 		static_cast<OaF32>(result.MeanCompletedReturn));

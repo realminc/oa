@@ -12,7 +12,7 @@ class OaMatrix;
 enum class OaOperationValueKind : OaU8 {
 	Matrix = 1,
 	Image = 2,
-	AudioBuffer = 3,
+	Audio = 3,
 	VideoFrame = 4,
 };
 
@@ -53,7 +53,7 @@ enum class OaOperationEffect : OaU8 {
 };
 
 // Ordered non-value inputs that affect operation meaning. Matrices, images,
-// audio buffers, and video frames remain semantic values; these attributes
+// audio values, and video frames remain semantic values; these attributes
 // preserve scalar/configuration data independently of runtime push layouts.
 enum class OaOperationAttributeKind : OaU8 {
 	Boolean = 1,
@@ -163,4 +163,4 @@ public:
 
 // Generated semantic contracts are publicly inspectable, while their source
 // of truth remains the FnAutogen schemas.
-#include "../../../Private/Oa/Core/OperationRegistry.gen.h"
+#include <Oa/Core/OperationRegistry.gen.h>

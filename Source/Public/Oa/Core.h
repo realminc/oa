@@ -25,7 +25,8 @@
 #include <Oa/Core/Validation.h> // Validation: OA_VALIDATE, OA_WARN_PERF, debug counters
 #include <Oa/Core/Cli.h>        // CLI: OaCli<T>, 3-way precedence (CLI11)
 #include <Oa/Core/Memory.h>     // Fast memcpy: OaMemcpy, OaMemset (AVX/SSE)
-#include <Oa/Core/FileIo.h>     // File I/O: OaFileIo, OaPath
+#include <Oa/Core/Filesystem.h> // Host filesystem I/O: OaFilesystem
+#include <Oa/Core/Paths.h>      // Named locations: OaPaths::Asset/Var/Temp
 #include <Oa/Core/MappedFile.h> // Read-only whole-file mapping with checked spans
 #include <Oa/Core/Thread.h>     // Threading: OaThreadPool, OaChannel, OaTask, OaRwLock, OaSpinlock
 #include <Oa/Core/Yaml.h>       // OaYaml: Get, GetList, LoadFile (yaml-cpp)

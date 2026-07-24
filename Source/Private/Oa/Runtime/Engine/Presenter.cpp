@@ -33,17 +33,15 @@
 
 // ─── Internal helpers ────────────────────────────────────────────────────────
 
-struct OaVkSharedQueueSubmitScope {
+struct OaVkQueueSubmitScope {
 	OaPresenter* Eng_ = nullptr;
-	explicit OaVkSharedQueueSubmitScope(OaPresenter* InEng) : Eng_(InEng) {
-		if (Eng_) {
-			Eng_->LockSharedQueueSubmit(Eng_->Engine().Device.Queues.GraphicsQueue);
-		}
+	void* Queue_ = nullptr;
+	OaVkQueueSubmitScope(OaPresenter* InEng, void* InQueue)
+		: Eng_(InEng), Queue_(InQueue) {
+		if (Eng_ and Queue_) Eng_->LockSharedQueueSubmit(Queue_);
 	}
-	~OaVkSharedQueueSubmitScope() {
-		if (Eng_) {
-			Eng_->UnlockSharedQueueSubmit(Eng_->Engine().Device.Queues.GraphicsQueue);
-		}
+	~OaVkQueueSubmitScope() {
+		if (Eng_ and Queue_) Eng_->UnlockSharedQueueSubmit(Queue_);
 	}
 };
 
@@ -177,7 +175,8 @@ void OaPresenter::Abandon_() noexcept {
 	retired->PresentQueue = Engine_.Device.Queues.PresentQueue != nullptr
 		? Engine_.Device.Queues.PresentQueue
 		: Engine_.Device.Queues.GraphicsQueue;
-	retired->UsesMergedGraphicsComputeQueue = UsesMergedGraphicsComputeQueue();
+	retired->PresentQueueRoute = OaClassifyQueueSubmitRoute(
+		Engine_.Device.Queues, retired->PresentQueue);
 	retired->HasSwapchainMaintenance1 =
 		Engine_.Device.Info.Software.HasSwapchainMaintenance1;
 	retired->OwnsAbandonedSurface = retired->Swapchain.Surface != nullptr;
@@ -227,7 +226,7 @@ OaStatus OaPresenter::BeginGraphicsBatch() {
 	return OaStatus::Ok();
 }
 
-OaStatus OaPresenter::FlushGraphicsBatch(
+OaResult<OaEvent> OaPresenter::FlushGraphicsBatch(
 	const OaVkTimelineSemaphore* InProducerSemaphore,
 	OaU64 InProducerValue) {
 	if (!GraphicsBatchStream_) {
@@ -257,8 +256,15 @@ OaStatus OaPresenter::FlushGraphicsBatch(
 		? current->SubmitWithDependencies(
 			Engine_, OaSpan<const OaVkTimelineWait>(waits, waitCount))
 		: current->Submit(Engine_);
-	if (status.IsOk()) ++GraphicsBatchRingIndex_;
-	return status;
+	if (not status.IsOk()) return status;
+	++GraphicsBatchRingIndex_;
+	OaEvent completion = current->Completion(Engine_.Device);
+	if (not completion.IsValid()) {
+		return OaStatus::Error(
+			OaStatusCode::Internal,
+			"FlushGraphicsBatch: submission returned no completion event");
+	}
+	return completion;
 }
 
 OaStatus OaPresenter::SyncGraphicsBatch() {
@@ -724,26 +730,12 @@ void OaPresenter::DestroySyncObjects() {
 void OaPresenter::LockSharedQueueSubmitCallback_(VkQueue InQueue, void* InUser) {
 	auto* engine = static_cast<OaEngine*>(InUser);
 	if (engine == nullptr || InQueue == VK_NULL_HANDLE) return;
-	const void* queue = static_cast<void*>(InQueue);
-	if (engine->Device.Queues.ComputeQueue != nullptr
-		&& engine->Device.Queues.ComputeQueue == engine->Device.Queues.GraphicsQueue
-		&& (queue == engine->Device.Queues.ComputeQueue
-			|| queue == engine->Device.Queues.GraphicsQueue
-			|| queue == engine->Device.Queues.PresentQueue)) {
-		engine->ComputeQueueMutex_.lock();
-	}
+	engine->LockQueueSubmit_(static_cast<void*>(InQueue));
 }
 void OaPresenter::UnlockSharedQueueSubmitCallback_(VkQueue InQueue, void* InUser) {
 	auto* engine = static_cast<OaEngine*>(InUser);
 	if (engine == nullptr || InQueue == VK_NULL_HANDLE) return;
-	const void* queue = static_cast<void*>(InQueue);
-	if (engine->Device.Queues.ComputeQueue != nullptr
-		&& engine->Device.Queues.ComputeQueue == engine->Device.Queues.GraphicsQueue
-		&& (queue == engine->Device.Queues.ComputeQueue
-			|| queue == engine->Device.Queues.GraphicsQueue
-			|| queue == engine->Device.Queues.PresentQueue)) {
-		engine->ComputeQueueMutex_.unlock();
-	}
+	engine->UnlockQueueSubmit_(static_cast<void*>(InQueue));
 }
 #endif
 
@@ -997,29 +989,11 @@ void OaPresenter::FinishPresent(
 }
 
 void OaPresenter::LockSharedQueueSubmit(void* InQueue) {
-	if (not UsesMergedGraphicsComputeQueue() or InQueue == nullptr) {
-		return;
-	}
-	const void* const qv = InQueue;
-	if (qv != Engine_.Device.Queues.ComputeQueue
-		and qv != Engine_.Device.Queues.GraphicsQueue
-		and qv != Engine_.Device.Queues.PresentQueue) {
-		return;
-	}
-	Engine_.ComputeQueueMutex_.lock();
+	Engine_.LockQueueSubmit_(InQueue);
 }
 
 void OaPresenter::UnlockSharedQueueSubmit(void* InQueue) {
-	if (not UsesMergedGraphicsComputeQueue() or InQueue == nullptr) {
-		return;
-	}
-	const void* const qv = InQueue;
-	if (qv != Engine_.Device.Queues.ComputeQueue
-		and qv != Engine_.Device.Queues.GraphicsQueue
-		and qv != Engine_.Device.Queues.PresentQueue) {
-		return;
-	}
-	Engine_.ComputeQueueMutex_.unlock();
+	Engine_.UnlockQueueSubmit_(InQueue);
 }
 
 void OaEngine::RetirePresenter(OaUniquePtr<OaRetiredPresenter>&& InPresenter) {
@@ -1076,19 +1050,41 @@ OaStatus OaEngine::CompleteRetiredPresenters_() {
 					}
 				}
 			} else if (presenter->PresentQueue != nullptr) {
-				if (presenter->UsesMergedGraphicsComputeQueue) {
-					ComputeQueueMutex_.lock();
+				std::mutex* queueMutex = nullptr;
+				switch (presenter->PresentQueueRoute) {
+				case OaQueueSubmitRoute::Compute:
+					queueMutex = &ComputeQueueMutex_;
+					break;
+				case OaQueueSubmitRoute::AsyncCompute:
+					queueMutex = &AsyncComputeQueueMutex_;
+					break;
+				case OaQueueSubmitRoute::Transfer:
+					queueMutex = &TransferQueueMutex_;
+					break;
+				case OaQueueSubmitRoute::Graphics:
+					queueMutex = &GraphicsQueueMutex_;
+					break;
+				case OaQueueSubmitRoute::Present:
+					queueMutex = &PresentQueueMutex_;
+					break;
+				case OaQueueSubmitRoute::Unknown:
+					break;
 				}
-				const VkResult wait = vkQueueWaitIdle(
-					static_cast<VkQueue>(presenter->PresentQueue));
-				if (presenter->UsesMergedGraphicsComputeQueue) {
-					ComputeQueueMutex_.unlock();
-				}
-				if (wait != VK_SUCCESS) {
+				if (queueMutex == nullptr) {
 					retainError(OaStatus::Error(
-						OaStatusCode::VulkanError,
-						OaString("retired presentation queue wait failed: VkResult=")
-							+ std::to_string(static_cast<int>(wait))));
+						OaStatusCode::Internal,
+						"retired presentation queue has no synchronization route"));
+				} else {
+					queueMutex->lock();
+					const VkResult wait = vkQueueWaitIdle(
+						static_cast<VkQueue>(presenter->PresentQueue));
+					queueMutex->unlock();
+					if (wait != VK_SUCCESS) {
+						retainError(OaStatus::Error(
+							OaStatusCode::VulkanError,
+							OaString("retired presentation queue wait failed: VkResult=")
+								+ std::to_string(static_cast<int>(wait))));
+					}
 				}
 			}
 		}
@@ -1235,9 +1231,6 @@ bool OaPresenter::DrawFrame() {
 	vkCmdEndRenderPass(cmd);
 	vkEndCommandBuffer(cmd);
 
-	// Same VkQueue as compute: serialize with SubmitToQueue + Dear ImGui texture submits.
-	OaVkSharedQueueSubmitScope sharedQueueSubmitScope(this);
-
 	VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 	VkSubmitInfo si{};
 	si.sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -1249,9 +1242,14 @@ bool OaPresenter::DrawFrame() {
 	si.signalSemaphoreCount = 1;
 	si.pSignalSemaphores    = &Swapchain_.RenderDoneSem[Swapchain_.FrameIndex];
 
-	const VkResult submitRes = vkQueueSubmit(
-		static_cast<VkQueue>(Engine_.Device.Queues.GraphicsQueue),
-		1, &si, Swapchain_.InFlightFence[Swapchain_.FrameIndex]);
+	VkResult submitRes = VK_ERROR_UNKNOWN;
+	{
+		OaVkQueueSubmitScope queueScope(
+			this, Engine_.Device.Queues.GraphicsQueue);
+		submitRes = vkQueueSubmit(
+			static_cast<VkQueue>(Engine_.Device.Queues.GraphicsQueue),
+			1, &si, Swapchain_.InFlightFence[Swapchain_.FrameIndex]);
+	}
 	if (submitRes != VK_SUCCESS) {
 		OA_LOG_ERROR(OaLogComponent::Core, "vkQueueSubmit failed (VkResult=%d)",
 			static_cast<int>(submitRes));
@@ -1274,8 +1272,13 @@ bool OaPresenter::DrawFrame() {
 		pi.pNext = &presentFenceInfo;
 	}
 
-	VkResult pres = vkQueuePresentKHR(
-		static_cast<VkQueue>(Engine_.Device.Queues.PresentQueue), &pi);
+	VkResult pres = VK_ERROR_UNKNOWN;
+	{
+		OaVkQueueSubmitScope queueScope(
+			this, Engine_.Device.Queues.PresentQueue);
+		pres = vkQueuePresentKHR(
+			static_cast<VkQueue>(Engine_.Device.Queues.PresentQueue), &pi);
+	}
 	FinishPresent(Swapchain_, static_cast<OaU32>(Swapchain_.FrameIndex), pres);
 
 	Swapchain_.FrameIndex = (Swapchain_.FrameIndex + 1) % OaSwapchain::kFramesInFlight;
@@ -1416,7 +1419,6 @@ bool OaPresenter::PresentSwapchainImage(
 		vkEndCommandBuffer(cmd);
 
 		// Submit + present — same semaphore chain as the transfer paths below.
-		OaVkSharedQueueSubmitScope sharedQueueSubmitScopeImgui(this);
 		VkSemaphore waitSemaphoresImgui[2] = {
 			InSwap.ImageAvailSem[InFrameSlot],
 			static_cast<VkSemaphore>(InArgs.WaitTimelineSemaphore),
@@ -1445,9 +1447,14 @@ bool OaPresenter::PresentSwapchainImage(
 		siImgui.pCommandBuffers      = &cmd;
 		siImgui.signalSemaphoreCount = 1;
 		siImgui.pSignalSemaphores    = &InSwap.RenderDoneSem[InFrameSlot];
-		const VkResult subImgui = vkQueueSubmit(
-			static_cast<VkQueue>(Engine_.Device.Queues.GraphicsQueue),
-			1, &siImgui, InSwap.InFlightFence[InFrameSlot]);
+		VkResult subImgui = VK_ERROR_UNKNOWN;
+		{
+			OaVkQueueSubmitScope queueScope(
+				this, Engine_.Device.Queues.GraphicsQueue);
+			subImgui = vkQueueSubmit(
+				static_cast<VkQueue>(Engine_.Device.Queues.GraphicsQueue),
+				1, &siImgui, InSwap.InFlightFence[InFrameSlot]);
+		}
 		if (subImgui != VK_SUCCESS) {
 			OA_LOG_ERROR(OaLogComponent::Core,
 				"PresentSwapchainImage(ImGui): vkQueueSubmit failed (VkResult=%d)",
@@ -1469,8 +1476,14 @@ bool OaPresenter::PresentSwapchainImage(
 			presentFenceInfoImgui.pFences = &InSwap.PresentFence[InFrameSlot];
 			piImgui.pNext = &presentFenceInfoImgui;
 		}
-		const VkResult presImgui = vkQueuePresentKHR(
-			static_cast<VkQueue>(Engine_.Device.Queues.PresentQueue), &piImgui);
+		VkResult presImgui = VK_ERROR_UNKNOWN;
+		{
+			OaVkQueueSubmitScope queueScope(
+				this, Engine_.Device.Queues.PresentQueue);
+			presImgui = vkQueuePresentKHR(
+				static_cast<VkQueue>(Engine_.Device.Queues.PresentQueue),
+				&piImgui);
+		}
 		FinishPresent(InSwap, InFrameSlot, presImgui);
 		InSwap.FrameIndex = (InSwap.FrameIndex + 1) % OaSwapchain::kFramesInFlight;
 		if (presImgui == VK_ERROR_OUT_OF_DATE_KHR or presImgui == VK_SUBOPTIMAL_KHR) {
@@ -1638,8 +1651,6 @@ bool OaPresenter::PresentSwapchainImage(
 
 	// Submit on graphics queue. Wait on ImageAvail, signal RenderDone,
 	// fence = InFlight[FrameSlot] — same model DrawFrame uses.
-	OaVkSharedQueueSubmitScope sharedQueueSubmitScope(this);
-
 	VkSemaphore waitSemaphores[2] = {
 		InSwap.ImageAvailSem[InFrameSlot],
 		static_cast<VkSemaphore>(InArgs.WaitTimelineSemaphore),
@@ -1670,9 +1681,14 @@ bool OaPresenter::PresentSwapchainImage(
 	si.signalSemaphoreCount = 1;
 	si.pSignalSemaphores    = &InSwap.RenderDoneSem[InFrameSlot];
 
-	const VkResult submitRes = vkQueueSubmit(
-		static_cast<VkQueue>(Engine_.Device.Queues.GraphicsQueue),
-		1, &si, InSwap.InFlightFence[InFrameSlot]);
+	VkResult submitRes = VK_ERROR_UNKNOWN;
+	{
+		OaVkQueueSubmitScope queueScope(
+			this, Engine_.Device.Queues.GraphicsQueue);
+		submitRes = vkQueueSubmit(
+			static_cast<VkQueue>(Engine_.Device.Queues.GraphicsQueue),
+			1, &si, InSwap.InFlightFence[InFrameSlot]);
+	}
 	if (submitRes != VK_SUCCESS) {
 		OA_LOG_ERROR(OaLogComponent::Core,
 			"PresentSwapchainImage: vkQueueSubmit failed (VkResult=%d)",
@@ -1695,8 +1711,13 @@ bool OaPresenter::PresentSwapchainImage(
 		pi.pNext = &presentFenceInfo;
 	}
 
-	const VkResult pres = vkQueuePresentKHR(
-		static_cast<VkQueue>(Engine_.Device.Queues.PresentQueue), &pi);
+	VkResult pres = VK_ERROR_UNKNOWN;
+	{
+		OaVkQueueSubmitScope queueScope(
+			this, Engine_.Device.Queues.PresentQueue);
+		pres = vkQueuePresentKHR(
+			static_cast<VkQueue>(Engine_.Device.Queues.PresentQueue), &pi);
+	}
 	FinishPresent(InSwap, InFrameSlot, pres);
 
 	InSwap.FrameIndex = (InSwap.FrameIndex + 1) % OaSwapchain::kFramesInFlight;

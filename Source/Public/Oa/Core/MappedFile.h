@@ -1,6 +1,6 @@
 #pragma once
 
-#include <Oa/Core/FileIo.h>
+#include <Oa/Core/Filesystem.h>
 
 // Read-only whole-file mapping with RAII ownership.
 //

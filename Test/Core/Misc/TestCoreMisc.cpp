@@ -1,4 +1,4 @@
-// Core: OaFileIo, OaDevice helpers, OaGetMemoryUsage (Host / no engine), OaSimd (Highway).
+// Core: OaFilesystem, OaDevice helpers, OaGetMemoryUsage (Host / no engine), OaSimd (Highway).
 
 #include "../../OaTest.h"
 
@@ -19,11 +19,11 @@ struct OaCoreMiscTestPod {
 static std::atomic<OaU64> gOaCoreMiscDirSeq{0};
 
 static OaPath OaCoreMiscMakeWorkDir() {
-	OaPath tmp = OaFileIo::GetTempDirectory();
+	OaPath tmp = OaPaths::Temp();
 	const auto tick = std::chrono::steady_clock::now().time_since_epoch().count();
 	OaString name = OaString("oa_core_misc_") + std::to_string(static_cast<long long>(++gOaCoreMiscDirSeq)) + "_"
 		+ std::to_string(static_cast<long long>(tick));
-	return OaFileIo::Join(tmp, OaPath(name));
+	return tmp / OaPath(name);
 }
 
 class CoreMiscFs : public ::testing::Test {
@@ -32,11 +32,11 @@ protected:
 
 	void SetUp() override {
 		WorkDir_ = OaCoreMiscMakeWorkDir();
-		ASSERT_TRUE(OaFileIo::CreateDirectories(WorkDir_).IsOk());
+		ASSERT_TRUE(OaFilesystem::CreateDirectories(WorkDir_).IsOk());
 	}
 
 	void TearDown() override {
-		(void)OaFileIo::RemoveDirectory(WorkDir_, true);
+		(void)OaFilesystem::RemoveDirectory(WorkDir_, true);
 	}
 };
 
@@ -166,19 +166,36 @@ TEST(CoreVlm, OrthographicUsesVulkanDepthRange) {
 	EXPECT_NEAR(farClip.Z, 1.0F, 1e-6F);
 }
 
+TEST(CorePaths, NamedLocationsAndLexicalOwnership) {
+	const OaPath asset = OaPaths::Asset(
+		"Image/VisionTestPattern320x180.jpg");
+	EXPECT_TRUE(OaFilesystem::IsFile(asset));
+	EXPECT_EQ(asset.Filename().String(), "VisionTestPattern320x180.jpg");
+	EXPECT_EQ(asset.Stem().String(), "VisionTestPattern320x180");
+	EXPECT_EQ(asset.Extension().String(), ".jpg");
+
+	const OaPath nested = OaPath("one") / "two" / ".." / "file.txt";
+	EXPECT_EQ(nested.LexicallyNormal().GenericString(), "one/file.txt");
+	EXPECT_FALSE(OaPaths::Current().Empty());
+	EXPECT_TRUE(OaFilesystem::IsDirectory(OaPaths::Temp()));
+	auto absolute = OaFilesystem::Absolute(OaPath("."));
+	ASSERT_TRUE(absolute.IsOk());
+	EXPECT_TRUE(absolute->IsAbsolute());
+}
+
 TEST_F(CoreMiscFs, ReadTextMissing) {
-	OaPath p = OaFileIo::Join(WorkDir_, OaPath("nope.txt"));
-	auto r = OaFileIo::ReadText(p);
+	OaPath p = WorkDir_ / "nope.txt";
+	auto r = OaFilesystem::ReadText(p);
 	EXPECT_FALSE(r.IsOk());
 }
 
 TEST_F(CoreMiscFs, TextRoundTrip) {
-	OaPath p = OaFileIo::Join(WorkDir_, OaPath("round.txt"));
-	ASSERT_TRUE(OaFileIo::WriteText(p, "hello\nline2\n").IsOk());
-	auto r = OaFileIo::ReadText(p);
+	OaPath p = WorkDir_ / "nested" / "round.txt";
+	ASSERT_TRUE(OaFilesystem::WriteText(p, "hello\nline2\n").IsOk());
+	auto r = OaFilesystem::ReadText(p);
 	ASSERT_TRUE(r.IsOk());
 	EXPECT_EQ(r.GetValue(), OaString("hello\nline2\n"));
-	auto lines = OaFileIo::ReadLines(p);
+	auto lines = OaFilesystem::ReadLines(p);
 	ASSERT_TRUE(lines.IsOk());
 	ASSERT_EQ(lines.GetValue().Size(), 2u);
 	EXPECT_EQ(lines.GetValue()[0], OaString("hello"));
@@ -186,22 +203,22 @@ TEST_F(CoreMiscFs, TextRoundTrip) {
 }
 
 TEST_F(CoreMiscFs, BinaryRoundTrip) {
-	OaPath p = OaFileIo::Join(WorkDir_, OaPath("b.bin"));
+	OaPath p = WorkDir_ / "b.bin";
 	const OaU8 src[] = {0x00, 0xFF, 0x42, 0x13};
-	ASSERT_TRUE(OaFileIo::WriteBinary(p, OaSpan<const OaU8>(src, 4)).IsOk());
-	auto r = OaFileIo::ReadBinary(p);
+	ASSERT_TRUE(OaFilesystem::WriteBinary(p, OaSpan<const OaU8>(src, 4)).IsOk());
+	auto r = OaFilesystem::ReadBinary(p);
 	ASSERT_TRUE(r.IsOk());
 	ASSERT_EQ(r.GetValue().Size(), 4u);
 	EXPECT_EQ(std::memcmp(r.GetValue().Data(), src, 4), 0);
 }
 
 TEST_F(CoreMiscFs, PodRoundTrip) {
-	OaPath p = OaFileIo::Join(WorkDir_, OaPath("pod.bin"));
+	OaPath p = WorkDir_ / "pod.bin";
 	OaVec<OaCoreMiscTestPod> in;
 	in.PushBack(OaCoreMiscTestPod{7, 42});
 	in.PushBack(OaCoreMiscTestPod{99, 1});
-	ASSERT_TRUE(OaFileIo::WritePod(p, OaSpan<const OaCoreMiscTestPod>(in.Data(), in.Size())).IsOk());
-	auto out = OaFileIo::ReadPod<OaCoreMiscTestPod>(p);
+	ASSERT_TRUE(OaFilesystem::WritePod(p, OaSpan<const OaCoreMiscTestPod>(in.Data(), in.Size())).IsOk());
+	auto out = OaFilesystem::ReadPod<OaCoreMiscTestPod>(p);
 	ASSERT_TRUE(out.IsOk());
 	ASSERT_EQ(out.GetValue().Size(), 2u);
 	EXPECT_EQ(out.GetValue()[0].A, 7u);
@@ -211,11 +228,13 @@ TEST_F(CoreMiscFs, PodRoundTrip) {
 }
 
 TEST_F(CoreMiscFs, GlobTxt) {
-	OaPath a = OaFileIo::Join(WorkDir_, OaPath("x.txt"));
-	OaPath b = OaFileIo::Join(WorkDir_, OaPath("y.txt"));
-	ASSERT_TRUE(OaFileIo::WriteText(a, "a").IsOk());
-	ASSERT_TRUE(OaFileIo::WriteText(b, "b").IsOk());
-	auto g = OaFileIo::Glob(WorkDir_, "*.txt");
+	OaPath a = WorkDir_ / "x.txt";
+	OaPath b = WorkDir_ / "y.txt";
+	ASSERT_TRUE(OaFilesystem::WriteText(a, "a").IsOk());
+	ASSERT_TRUE(OaFilesystem::WriteText(b, "b").IsOk());
+	auto g = OaFilesystem::Glob(WorkDir_, "*.txt");
 	ASSERT_TRUE(g.IsOk());
-	EXPECT_GE(g.GetValue().Size(), 2u);
+	ASSERT_EQ(g.GetValue().Size(), 2u);
+	EXPECT_EQ(g.GetValue()[0].Filename().String(), "x.txt");
+	EXPECT_EQ(g.GetValue()[1].Filename().String(), "y.txt");
 }
