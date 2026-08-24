@@ -4,6 +4,17 @@ All notable changes to OA are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is the single
 `VERSION` file at the repo root (read by CMake, `oa::version()`, and the Python package).
 
+## [0.7.16] — 2026-08-24 (host sanitizer gate repair)
+
+This patch preserves the `0.7.15` SDK, Audio, and Viewer surface while repairing
+the tagged host-sanitizer workflow. The `0.7.15` public tag remains immutable.
+
+### Fixed
+
+- The ASAN/UBSAN build target list now includes `TestVlm`, which is selected by
+  the `core` CTest label. The `0.7.15` workflow built and passed every requested
+  sanitizer executable but failed when CTest could not find this omitted target.
+
 ## [0.7.15] — 2026-08-24 (native audio reverb and executable SDK evidence)
 
 This preview turns the paired SDK examples into small, executable product proofs

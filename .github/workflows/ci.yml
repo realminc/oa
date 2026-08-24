@@ -295,7 +295,7 @@ jobs:
         run: |
           cmake --build build/${{ matrix.build_dir }} --parallel "$(nproc)" --target \
             TestTypes TestMemory TestContainers TestThreading TestCoreMisc \
-            TestValidation TestCamera TestMcp TestTransferWeights TestModelFileIntegrity TestTokenizer \
+            TestValidation TestVlm TestCamera TestMcp TestTransferWeights TestModelFileIntegrity TestTokenizer \
             TestGptOssConfig TestOaStd TestVkDispatch
 
       - name: Run host sanitizer suite
