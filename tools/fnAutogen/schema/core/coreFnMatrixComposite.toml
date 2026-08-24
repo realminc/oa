@@ -1,0 +1,98 @@
+# Fn schema — Core matrix composites and metadata views.
+category = "Composite"
+namespace = "oa::FnMatrix"
+file_prefix = "FnMatrix"
+cpp_subdir = "FnMatrix"
+
+[[ops]]
+name = "detach"
+kind = "unary"
+surface = "value_view"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = ["const oa::Matrix& inSelf"]
+notes = "Return a storage-sharing view with independent stop-gradient metadata."
+
+[ops.python]
+args = ["self"]
+doc = "Return a storage-sharing stop-gradient view of A."
+
+[[ops]]
+name = "dropout"
+kind = "unary"
+surface = "stable_composite"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inA",
+    "oa::F32 inP",
+    "oa::U64 inSeed = 0",
+]
+notes = "Apply inverted dropout using a recorded effective Philox seed."
+
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "conditional"
+differentiation = "reverse"
+lowering = "dispatch"
+attributes = [
+    { name = "probability", kind = "float", source = "inP" },
+    { name = "seed", kind = "unsigned_integer", source = "inSeed" },
+]
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inA"]
+outputs = ["out"]
+implementation = "source/cpp/lib/oa/Core/FnMatrix/Rng/FnMatrixRng.cpp:Dropout"
+
+[ops.python]
+args = ["a", "p", "seed"]
+doc = "Apply inverted dropout to A with an optional explicit Philox seed."
+
+[[ops]]
+name = "sampleLogits"
+kind = "unary"
+surface = "stable_composite"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inLogits",
+    "oa::F32 inTemperature = 1.0F",
+    "oa::I32 inTopK = 0",
+    "oa::F32 inTopP = 1.0F",
+    "oa::U64 inSeed = 0",
+]
+notes = "Sample one class per row with greedy, dense, top-k, or top-p lowering."
+
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "explicit"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "conditional"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "temperature", kind = "float", source = "inTemperature" },
+    { name = "topK", kind = "signed_integer", source = "inTopK" },
+    { name = "topP", kind = "float", source = "inTopP" },
+    { name = "seed", kind = "unsigned_integer", source = "inSeed" },
+]
+
+[ops.python]
+args = ["logits", "temperature", "topK", "topP", "seed"]
+doc = "Sample one class per final-axis row of Logits."

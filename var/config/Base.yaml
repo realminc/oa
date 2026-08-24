@@ -1,0 +1,91 @@
+# Base Training Configuration - Shared defaults
+# This file is automatically loaded and merged with model-specific configs.
+# Model configs override these values.
+
+# Training defaults
+training:
+  # Schedule convention for dataset-backed trainers:
+  # - Prefer epochs, not raw steps. One epoch means one shuffled pass over
+  #   train windows/batches, like Keras/PyTorch DataLoader.
+  # - The trainer derives:
+  #     steps_per_epoch = ceil(train_window_count / batch_size)
+  #     total_steps     = epochs * steps_per_epoch
+  # - Multiphase configs should use phase.epochs. phase.steps is legacy only
+  #   and is rounded back to whole epochs.
+  # - Checkpoint/validation callbacks run on epoch end, so avoid configs where
+  #   an epoch is accidentally one random step. For tiny overfit clips, lower
+  #   batch_size until each epoch has several steps.
+  #
+  # Multiphase example for model configs:
+  #
+  #   epochs: 340
+  #   phases:
+  #     - id: warmup
+  #       epochs: 20
+  #       lr: 0.003
+  #       min_lr_frac: 0.20
+  #       warmup_steps: 50
+  #     - id: main
+  #       epochs: 260
+  #       lr: 0.002
+  #       min_lr_frac: 0.10
+  #       warmup_steps: 30
+  #     - id: anneal
+  #       epochs: 60
+  #       lr: 0.0005
+  #       min_lr_frac: 0.05
+  #       warmup_steps: 0
+  #
+  # For CLIs based on OaConfigCli, precedence is:
+  #   struct defaults < var/config/Base.yaml < model YAML < explicit CLI args.
+  # Plain OaCli apps only load the provided --config unless they opt into this.
+
+  # Dataset (all models use same conversation corpus)
+  data: ../dataset/nlp/processed/dailydialog/train.txt
+
+  # Common training params
+  batch_size: 8
+  seq_len: 128
+
+  # Loss function (also names the loss metric in logs / final summary)
+  loss: cross_entropy
+
+  # Optimizer defaults (AdamW for LLMs)
+  optimizer: adamw        # adamw | adam | sgd
+  lr: 0.0006
+  min_lr: 0.00006
+  warmup_steps: 200
+  weight_decay: 0.1
+  beta1: 0.9              # Adam/AdamW
+  beta2: 0.95            # 0.95 preferred for LLMs (vs 0.999 default)
+  eps: 0.00000001         # 1e-8
+  momentum: 0.0           # SGD only
+
+  # Callbacks (TF/Keras-style). Each entry is a bool toggle or a map of params:
+  #   metrics: [loss]                       # quality metrics, or bool
+  #   early_stop: { patience: N, min_delta: D }
+  #   checkpoint: { restore_best: true, max_keep: N, save_every: 0 }
+  # Checkpoint policy:
+  #   save_every: 0   — save a resumable checkpoint at every epoch end.
+  #   save_every: N   — also save a resumable checkpoint every N completed steps.
+  # The master model is updated only when loss improves; restore_best reloads it
+  # after training. Incremental checkpoints are rotated using max_keep.
+  callbacks:
+    progress_bar: true
+    summary: true
+    phase: true
+    metrics: [loss]
+    early_stop: false       # opt-in per model (needs patience)
+    checkpoint:
+      restore_best: true
+      max_keep: 5
+      save_every: 0         # epoch-end only; >0 adds mid-epoch checkpoints
+
+# Engine defaults (single GPU)
+engine:
+  topology: single
+  device: discrete
+  max_devices: 8
+  mesh_indices: ""
+  vulkan_index: -1
+  precision: fp32        # fp32 | bf16 | tf32 | fp16 — globally accepted, settable in all configs

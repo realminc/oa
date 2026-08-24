@@ -1,0 +1,272 @@
+# Fn schema — semantic-image composites and terminal sink.
+category = "Semantic"
+namespace = "oa::FnImage"
+file_prefix = "FnImage"
+cpp_subdir = "FnImage"
+
+[[ops]]
+name = "convertColor"
+category = "Semantic"
+kind = "unary"
+surface = "public_operation"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Image"
+api_params = [
+    "const oa::Image& inImage",
+    "oa::ImageFormat inDstFormat",
+]
+notes = "Convert RGB and BGR semantic images while preserving layout."
+
+[ops.contract]
+input_kinds = ["image"]
+output_kinds = ["image"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "conditional"
+differentiation = "reverse"
+lowering = "dispatch"
+attributes = [
+    { name = "destinationFormat", kind = "unsigned_integer", source = "inDstFormat" },
+]
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inImage"]
+outputs = ["oa::Image"]
+implementation = "source/cpp/lib/oa/Vision/FnImage/FnImagePipeline.cpp:ConvertColor"
+
+[ops.python]
+args = ["image", "dstFormat"]
+doc = "Convert an RGB semantic image to BGR, or BGR to RGB."
+
+[[ops]]
+name = "resizeNormalize"
+category = "Semantic"
+kind = "unary"
+kernel_forward = "ResizeNormalizeNchw"
+surface = "public_operation"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Image"
+api_params = [
+    "const oa::Image& inImage",
+    "oa::U32 inWidth",
+    "oa::U32 inHeight",
+    "const oa::NormalizationParams& inParams",
+]
+notes = "Fused NCHW/CHW resize and three-channel normalization."
+
+[ops.kernel]
+id_prefix = "Vision"
+id_local = 42
+category = "Vision"
+origin = "oa"
+source = "conversion/resizeNormalizeNchw"
+
+[ops.contract]
+input_kinds = ["image"]
+output_kinds = ["image"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "conditional"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "width", kind = "unsigned_integer", source = "inWidth" },
+    { name = "height", kind = "unsigned_integer", source = "inHeight" },
+    { name = "mean0", kind = "float", source = "inParams.mean[0]" },
+    { name = "mean1", kind = "float", source = "inParams.mean[1]" },
+    { name = "mean2", kind = "float", source = "inParams.mean[2]" },
+    { name = "std0", kind = "float", source = "inParams.std[0]" },
+    { name = "std1", kind = "float", source = "inParams.std[1]" },
+    { name = "std2", kind = "float", source = "inParams.std[2]" },
+]
+
+[ops.python]
+args = ["image", "width", "height", "params"]
+doc = "Resize and normalize an NCHW or CHW semantic image in one dispatch."
+
+[[ops]]
+name = "segmentationOverlay"
+category = "Semantic"
+kind = "unary"
+surface = "public_operation"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inImage",
+    "const oa::Matrix& inMask",
+    "const oa::Matrix& inPalette",
+    "oa::F32 inAlpha = 0.5F",
+]
+notes = "Blend an Int32 semantic label map over an FP32 NCHW image."
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "alpha", kind = "float", source = "inAlpha" },
+]
+
+[ops.python]
+args = ["image", "mask", "palette", "alpha"]
+doc = "Blend a semantic segmentation label map over an image."
+
+[[ops]]
+name = "decodeFile"
+category = "Semantic"
+kind = "unary"
+surface = "host_utility"
+body = "cpu_util"
+generate_declaration = false
+api_return = "oa::Result<oa::Image>"
+api_params = [
+    "const oa::Path& inPath",
+    "oa::ImageFormat inFormat = oa::ImageFormat::Rgb",
+]
+notes = "Synchronously decode a still-image file and upload one normalized semantic image."
+
+[ops.python]
+binding = "manual"
+args = ["path", "format"]
+doc = "Decode a still-image file into a normalized semantic image."
+
+[[ops]]
+name = "decodeMemory"
+category = "Semantic"
+kind = "unary"
+surface = "host_utility"
+body = "cpu_util"
+generate_declaration = false
+api_return = "oa::Result<oa::Image>"
+api_params = [
+    "oa::Span<const oa::U8> inData",
+    "oa::ImageFormat inFormat = oa::ImageFormat::Rgb",
+]
+notes = "Synchronously decode still-image bytes and upload one normalized semantic image."
+
+[ops.python]
+binding = "manual"
+args = ["data", "format"]
+doc = "Decode still-image bytes into a normalized semantic image."
+
+[[ops]]
+name = "encode"
+category = "Semantic"
+kind = "unary"
+surface = "host_utility"
+body = "cpu_util"
+generate_declaration = false
+api_return = "oa::Result<oa::Vec<oa::U8>>"
+api_params = [
+    "const oa::Image& inImage",
+    "oa::ImageCodec inCodec",
+    "oa::U32 inQuality = 90U",
+]
+notes = "Synchronously read back and encode one semantic image to still-image bytes."
+
+[ops.python]
+binding = "manual"
+args = ["image", "codec", "quality"]
+doc = "Encode a semantic image to still-image bytes."
+
+[[ops]]
+name = "saveFile"
+category = "Semantic"
+kind = "unary"
+surface = "host_utility"
+body = "cpu_util"
+generate_declaration = false
+api_return = "oa::Status"
+api_params = [
+    "const oa::Path& inPath",
+    "const oa::Image& inImage",
+    "oa::U32 inQuality = 90U",
+]
+notes = "Synchronously read back and encode one semantic image to a file."
+
+[ops.python]
+binding = "manual"
+args = ["path", "image", "quality"]
+doc = "Encode a semantic image to a file selected by its extension."
+
+[[ops]]
+name = "canDecode"
+category = "Semantic"
+kind = "unary"
+surface = "host_utility"
+body = "cpu_util"
+generate_declaration = false
+api_return = "bool"
+api_params = ["oa::ImageCodec inCodec"]
+notes = "Report whether this build has a decoder backend for the image codec."
+
+[ops.python]
+binding = "manual"
+args = ["codec"]
+doc = "Return whether this build can decode the image codec."
+
+[[ops]]
+name = "canEncode"
+category = "Semantic"
+kind = "unary"
+surface = "host_utility"
+body = "cpu_util"
+generate_declaration = false
+api_return = "bool"
+api_params = ["oa::ImageCodec inCodec"]
+notes = "Report whether this build has an encoder backend for the image codec."
+
+[ops.python]
+binding = "manual"
+args = ["codec"]
+doc = "Return whether this build can encode the image codec."
+
+[[ops]]
+name = "saveTextureFile"
+category = "Semantic"
+kind = "unary"
+surface = "host_utility"
+body = "cpu_util"
+generate_declaration = false
+api_return = "oa::Status"
+api_params = [
+    "oa::Engine& inEngine",
+    "const oa::Texture& inTexture",
+    "oa::StringView inPath",
+]
+notes = "Synchronously complete, read back, and encode a texture to a file."
+
+[[ops]]
+name = "saveRgbaFile"
+category = "Semantic"
+kind = "unary"
+surface = "host_utility"
+body = "cpu_util"
+generate_declaration = false
+api_return = "oa::Status"
+api_params = [
+    "oa::Span<const oa::U8> inRgba",
+    "oa::U32 inWidth",
+    "oa::U32 inHeight",
+    "oa::StringView inPath",
+    "oa::U32 inQuality = 90U",
+]
+notes = "Synchronously encode one exact packed host RGBA8 image to a file."

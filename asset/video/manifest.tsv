@@ -1,0 +1,5 @@
+filename	codec	std_profile	picture_layout	film_grain	bit_depth	chroma	pixel_format	width	height	fps	frames	color_range	color_space	source	level	tier	sha256
+shibuya_720p_h264_high_8bit_420.mp4	h264	high	progressive	n/a	8	420	yuv420p	1280	720	30	60	tv	bt470bg	shibuya_crossing_1080p30_h264.mp4	3.1	n/a	4f9d04b3e67540c42d1a8b82b650ee26e5447126c0f1b78e58f38c9f250e9bcc
+shibuya_720p_h265_main_8bit_420.mp4	h265	main	n/a	n/a	8	420	yuv420p	1280	720	30	60	tv	bt470bg	shibuya_crossing_1080p30_h265.mp4	3.1	main	8bb97852b606cbce71b3c4608b8dc36424e17c63b4466dfcf19746099f1523c2
+shibuya_720p_av1_main_8bit_420.mp4	av1	main	n/a	false	8	420	yuv420p	1280	720	30	60	tv	bt470bg	shibuya_crossing_1080p30_av1.mp4	3.1	main	dd0097378581c9e2d3cb39efdd88e659eb53bb8bcd05c0237919fcf4b09c2441
+shibuya_720p_vp9_profile0_8bit_420.mp4	vp9	profile0	n/a	n/a	8	420	yuv420p	1280	720	30	60	tv	bt470bg	shibuya_crossing_1080p30_vp9.mp4	3.1	n/a	79eb63aa80e3e6481dcad07d1ece79c6be4597be0584018b989a5daa2e4a2bce

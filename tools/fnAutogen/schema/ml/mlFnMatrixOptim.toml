@@ -1,0 +1,99 @@
+# Fn schema — Ml/FnMatrix optimizer ops (5).
+surface = "kernel"
+#
+# This is the *source of truth* for ML optimizer operations. The generator
+# emits .h declarations, .cpp implementations, and .slang shaders from this file.
+# See tools/fnAutogen/rEADME.md and tools/fnAutogen/oafnautogen.py.
+#
+# oa::Optimizer operations update model parameters based on gradients.
+# These are in-place operations that modify the parameter tensors.
+
+# --- Sgd ---------------------------------------------------------------------
+[[ops]]
+name           = "sgd"
+category       = "Optim"
+kind           = "unary_scalar"
+kernel_forward = "Sgd"
+slang_path     = "Ml/Optim"
+log_component  = "ML"
+notes          = "oa::SGD optimizer step: Param -= LearningRate * Grad."
+body           = "manual_session"
+scalar_param   = { name = "learningRate", type = "oa::F32", push_field = "Lr" }
+
+# --- SgdMomentum -------------------------------------------------------------
+[[ops]]
+name           = "sgdMomentum"
+category       = "Optim"
+kind           = "binary"
+kernel_forward = "SgdMomentum"
+slang_path     = "Ml/Optim"
+log_component  = "ML"
+notes          = "oa::SGD with momentum: Velocity = Momentum * Velocity + Grad; Param -= Lr * Velocity."
+body           = "manual_session"
+extra_params   = [
+    { name = "velocity", type = "oa::Matrix&", default = "oa::Matrix{}" },
+    { name = "learningRate", type = "oa::F32", default = "0.01f" },
+    { name = "momentum", type = "oa::F32", default = "0.9f" }
+]
+
+# --- Adam --------------------------------------------------------------------
+[[ops]]
+name           = "adam"
+category       = "Optim"
+kind           = "unary"
+kernel_forward = "Adam"
+slang_path     = "Ml/Optim"
+log_component  = "ML"
+notes          = "Adam optimizer step with first and second moment estimates."
+body           = "manual_session"
+extra_params   = [
+    { name = "m", type = "oa::Matrix&", default = "oa::Matrix{}" },
+    { name = "v", type = "oa::Matrix&", default = "oa::Matrix{}" },
+    { name = "learningRate", type = "oa::F32", default = "0.001f" },
+    { name = "beta1", type = "oa::F32", default = "0.9f" },
+    { name = "beta2", type = "oa::F32", default = "0.999f" },
+    { name = "eps", type = "oa::F32", default = "1e-8f" },
+    { name = "step", type = "oa::I64", default = "1" }
+]
+
+# --- Adamw -------------------------------------------------------------------
+[[ops]]
+name           = "adamw"
+category       = "Optim"
+kind           = "unary"
+kernel_forward = "Adamw"
+slang_path     = "Ml/Optim"
+log_component  = "ML"
+notes          = "oa::AdamW optimizer step with decoupled weight decay."
+body           = "manual_session"
+extra_params   = [
+    { name = "m", type = "oa::Matrix&", default = "oa::Matrix{}" },
+    { name = "v", type = "oa::Matrix&", default = "oa::Matrix{}" },
+    { name = "learningRate", type = "oa::F32", default = "0.001f" },
+    { name = "beta1", type = "oa::F32", default = "0.9f" },
+    { name = "beta2", type = "oa::F32", default = "0.999f" },
+    { name = "eps", type = "oa::F32", default = "1e-8f" },
+    { name = "weightDecay", type = "oa::F32", default = "0.01f" },
+    { name = "step", type = "oa::I64", default = "1" }
+]
+
+# --- AdamwGraph --------------------------------------------------------------
+[[ops]]
+name           = "adamwGraph"
+category       = "Optim"
+kind           = "unary"
+kernel_forward = "AdamwGraph"
+slang_path     = "Ml/Optim"
+log_component  = "ML"
+notes          = "oa::AdamW optimizer for compute graph execution."
+body           = "manual_session"
+extra_params   = [
+    { name = "m", type = "oa::Matrix&", default = "oa::Matrix{}" },
+    { name = "v", type = "oa::Matrix&", default = "oa::Matrix{}" },
+    { name = "learningRate", type = "oa::F32", default = "0.001f" },
+    { name = "beta1", type = "oa::F32", default = "0.9f" },
+    { name = "beta2", type = "oa::F32", default = "0.999f" },
+    { name = "eps", type = "oa::F32", default = "1e-8f" },
+    { name = "weightDecay", type = "oa::F32", default = "0.01f" },
+    { name = "step", type = "oa::I64", default = "1" }
+]

@@ -1,0 +1,34 @@
+# Oa NN schema - container modules.
+
+[[layers]]
+name = "Sequential"
+constructor = "Sequential() = default;"
+constructor_args = "std::initializer_list<oa::SharedPtr<Module>> inLayers"
+constructor_body = [
+	"for (const auto& layer : inLayers) {",
+	"\tadd(layer);",
+	"}",
+]
+methods = [
+	"Sequential& add(oa::SharedPtr<Module> inModule);",
+	"Sequential& add(oa::StringView inName, oa::SharedPtr<Module> inModule);",
+]
+forward_body = """
+\toa::Matrix x = inInput;
+\tfor (auto& child : children_) {
+\t\tx = child.module->forward(x);
+\t}
+\treturn x;
+"""
+notes = "Sequential container that chains modules together."
+extra_methods = """
+oa::Sequential& oa::Sequential::add(oa::SharedPtr<oa::Module> inModule) {
+\toa::String name(oa::String("layer_") + oa::toString(static_cast<oa::U32>(children_.size())));
+\treturn add(name, std::move(inModule));
+}
+
+oa::Sequential& oa::Sequential::add(oa::StringView inName, oa::SharedPtr<oa::Module> inModule) {
+\tregisterModule(inName, std::move(inModule));
+\treturn *this;
+}
+"""

@@ -1,0 +1,71 @@
+# Fn schema — Core causal masking.
+category = "Mask"
+namespace = "oa::FnMatrix"
+file_prefix = "FnMatrix"
+cpp_subdir = "FnMatrix"
+
+[[ops]]
+name = "causalMask"
+kind = "unary"
+surface = "public_operation"
+kernel_forward = "CausalMaskApply"
+log_component = "ML"
+notes = "Apply an additive causal mask to the final two score dimensions."
+body = "manual_session"
+generate_declaration = false
+api_params = ["const oa::Matrix& inScores"]
+api_return = "oa::Matrix"
+
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "reverse"
+lowering = "dispatch"
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inScores"]
+outputs = ["out"]
+implementation = "source/cpp/lib/oa/Core/FnMatrix/Index/FnMatrixIndex.cpp:CausalMask"
+
+[ops.python]
+args = ["scores"]
+doc = "Apply an additive causal mask to Scores."
+
+[[ops]]
+name = "causalMaskBwd"
+kind = "unary"
+surface = "public_cpp_operation"
+kernel_forward = "CausalMaskBwd"
+log_component = "ML"
+notes = "Backward lowering for the causal-mask operation."
+body = "manual_session"
+generate_declaration = false
+api_params = ["const oa::Matrix& inGradOut"]
+api_return = "oa::Matrix"
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 312
+category = "Ml"
+origin = "oa"
+source = "flat/causalMaskBwd"
+
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"

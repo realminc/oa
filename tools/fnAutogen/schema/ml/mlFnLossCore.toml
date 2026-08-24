@@ -1,0 +1,417 @@
+# Fn schema — core loss forwards, explicit backward primitives, and telemetry.
+category = "Loss"
+namespace = "oa::FnLoss"
+file_prefix = "FnLoss"
+cpp_subdir = "FnLoss"
+
+[[ops]]
+name = "lastName"
+kind = "unary"
+surface = "host_utility"
+body = "cpu_util"
+generate_declaration = false
+api_return = "const char*"
+api_params = []
+notes = "Return thread-local telemetry for the most recently invoked loss."
+
+[[ops]]
+name = "setLastName"
+kind = "unary"
+surface = "host_utility"
+body = "cpu_util"
+generate_declaration = false
+api_return = "void"
+api_params = ["const char* inName"]
+notes = "Set thread-local loss-name telemetry."
+
+[[ops]]
+name = "crossEntropyBwd"
+kind = "binary"
+surface = "public_operation"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inLogits",
+    "const oa::Matrix& inTargets",
+]
+notes = "Compute the explicit cross-entropy gradient with respect to logits."
+
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "explicit"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+
+[ops.python]
+args = ["logits", "targets"]
+doc = "Compute the explicit cross-entropy gradient with respect to logits."
+
+[[ops]]
+name = "maskedCrossEntropy"
+kind = "unary"
+surface = "public_cpp_operation"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inLogits",
+    "const oa::Matrix& inTargets",
+    "const oa::Matrix& inMask",
+    "oa::I32 inValidCount",
+]
+notes = "Compute mean cross entropy over rows selected by a floating mask."
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "explicit"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "reverse"
+lowering = "dispatch"
+attributes = [
+    { name = "validCount", kind = "signed_integer", source = "inValidCount" },
+]
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inLogits"]
+outputs = ["Loss"]
+implementation = "source/cpp/lib/oa/Ml/FnLoss/FnLoss.cpp:MaskedCrossEntropy"
+
+[[ops]]
+name = "maskedCrossEntropyBwd"
+kind = "unary"
+surface = "internal_operation"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inLogits",
+    "const oa::Matrix& inTargets",
+    "const oa::Matrix& inMask",
+    "oa::I32 inValidCount",
+]
+notes = "Compute the explicit masked cross-entropy gradient for autograd."
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "explicit"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "validCount", kind = "signed_integer", source = "inValidCount" },
+]
+
+[[ops]]
+name = "smoothL1"
+kind = "binary"
+surface = "public_operation"
+body = "manual_session"
+generate_declaration = false
+kernel_forward = "SmoothL1"
+api_return = "oa::Matrix"
+api_params = ["const oa::Matrix& inA", "const oa::Matrix& inB"]
+notes = "Compute mean smooth-L1 loss with unit beta."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 297
+category = "Ml"
+origin = "oa"
+source = "loss/smoothL1"
+
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "reverse"
+lowering = "dispatch"
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inA", "inB"]
+outputs = ["Loss"]
+implementation = "source/cpp/lib/oa/Ml/FnLoss/FnLoss.cpp:SmoothL1"
+
+[ops.python]
+args = ["a", "b"]
+doc = "Compute mean smooth-L1 loss with unit beta."
+
+[[ops]]
+name = "mse"
+kind = "binary"
+surface = "public_operation"
+body = "manual_session"
+generate_declaration = false
+kernel_forward = "Mse"
+api_return = "oa::Matrix"
+api_params = ["const oa::Matrix& inA", "const oa::Matrix& inB"]
+notes = "Compute mean squared error."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 299
+category = "Ml"
+origin = "oa"
+source = "loss/mse"
+
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "reverse"
+lowering = "dispatch"
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inA", "inB"]
+outputs = ["Loss"]
+implementation = "source/cpp/lib/oa/Ml/FnLoss/FnLoss.cpp:Mse"
+
+[ops.python]
+args = ["a", "b"]
+doc = "Compute mean squared error."
+
+[[ops]]
+name = "l1"
+kind = "binary"
+surface = "public_operation"
+body = "manual_session"
+generate_declaration = false
+kernel_forward = "L1"
+api_return = "oa::Matrix"
+api_params = ["const oa::Matrix& inA", "const oa::Matrix& inB"]
+notes = "Compute mean absolute error."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 301
+category = "Ml"
+origin = "oa"
+source = "loss/l1"
+
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "reverse"
+lowering = "dispatch"
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inA", "inB"]
+outputs = ["Loss"]
+implementation = "source/cpp/lib/oa/Ml/FnLoss/FnLoss.cpp:L1"
+
+[ops.python]
+args = ["a", "b"]
+doc = "Compute mean absolute error."
+
+[[ops]]
+name = "bce"
+kind = "binary"
+surface = "public_operation"
+body = "manual_session"
+generate_declaration = false
+kernel_forward = "Bce"
+api_return = "oa::Matrix"
+api_params = ["const oa::Matrix& inA", "const oa::Matrix& inB"]
+notes = "Compute mean binary cross entropy over probabilities."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 303
+category = "Ml"
+origin = "oa"
+source = "loss/bce"
+
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "reverse"
+lowering = "dispatch"
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inA", "inB"]
+outputs = ["Loss"]
+implementation = "source/cpp/lib/oa/Ml/FnLoss/FnLoss.cpp:Bce"
+
+[ops.python]
+args = ["a", "b"]
+doc = "Compute mean binary cross entropy over probabilities."
+
+[[ops]]
+name = "smoothL1Bwd"
+kind = "binary"
+surface = "public_operation"
+body = "manual_session"
+generate_declaration = false
+kernel_forward = "SmoothL1Bwd"
+api_return = "oa::Matrix"
+api_params = ["const oa::Matrix& inA", "const oa::Matrix& inB"]
+notes = "Compute the explicit smooth-L1 gradient with respect to A."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 298
+category = "Ml"
+origin = "oa"
+source = "loss/smoothL1Bwd"
+
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+
+[ops.python]
+args = ["a", "b"]
+
+[[ops]]
+name = "mseBwd"
+kind = "binary"
+surface = "public_operation"
+body = "manual_session"
+generate_declaration = false
+kernel_forward = "MseBwd"
+api_return = "oa::Matrix"
+api_params = ["const oa::Matrix& inA", "const oa::Matrix& inB"]
+notes = "Compute the explicit MSE gradient with respect to A."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 300
+category = "Ml"
+origin = "oa"
+source = "loss/mseBwd"
+
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+
+[ops.python]
+args = ["a", "b"]
+
+[[ops]]
+name = "l1Bwd"
+kind = "binary"
+surface = "public_operation"
+body = "manual_session"
+generate_declaration = false
+kernel_forward = "L1Bwd"
+api_return = "oa::Matrix"
+api_params = ["const oa::Matrix& inA", "const oa::Matrix& inB"]
+notes = "Compute the explicit L1 gradient with respect to A."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 302
+category = "Ml"
+origin = "oa"
+source = "loss/l1Bwd"
+
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+
+[ops.python]
+args = ["a", "b"]
+
+[[ops]]
+name = "bceBwd"
+kind = "binary"
+surface = "public_operation"
+body = "manual_session"
+generate_declaration = false
+kernel_forward = "BceBwd"
+api_return = "oa::Matrix"
+api_params = ["const oa::Matrix& inA", "const oa::Matrix& inB"]
+notes = "Compute the explicit BCE gradient with respect to A."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 304
+category = "Ml"
+origin = "oa"
+source = "loss/bceBwd"
+
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+
+[ops.python]
+args = ["a", "b"]

@@ -1,0 +1,29 @@
+# Fn schema — synchronous host metric observations.
+#
+# These helpers cross the device-to-host boundary and therefore remain
+# host_observation rows rather than semantic device operations.
+surface = "host_observation"
+category = "Metric"
+namespace = "oa::FnMetric"
+file_prefix = "FnMetric"
+cpp_subdir = "FnMetric"
+
+[[ops]]
+name = "scalarLoss"
+category = "Metric"
+kind = "unary"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::F32"
+api_params = ["const oa::Matrix& inLossTensor"]
+notes = "Synchronously observe a scalar loss tensor on the host."
+
+[[ops]]
+name = "accuracy"
+category = "Metric"
+kind = "binary"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::F32"
+api_params = ["const oa::Matrix& inPreds", "const oa::Matrix& inLabels"]
+notes = "Synchronously compute and observe categorical accuracy."

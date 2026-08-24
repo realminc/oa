@@ -1,0 +1,33 @@
+# OA ML Types Schema
+# Machine learning types for the OA ML module
+
+domain = "ml"
+namespace = "oa"
+
+[[enums]]
+name = "Quantization"
+underlying_type = "U8"
+generate_tostring = true
+generate_fromstring = true
+values = [
+	{ name = "Q4", value = 0, comment = "Native symmetric four-bit block quantization" },
+	{ name = "Q8", value = 1, comment = "Native symmetric eight-bit block quantization" },
+]
+
+[[enums]]
+name = "Activation"
+underlying_type = "U8"
+values = [
+	{ name = "None", value = 0, comment = "No activation" },
+	{ name = "Relu", value = 1, comment = "ReLU" },
+	{ name = "Gelu", value = 2, comment = "GELU" },
+	{ name = "Silu", value = 3, comment = "SiLU (Swish)" },
+]
+
+[[enums]]
+name = "UpsampleMode"
+underlying_type = "U8"
+values = [
+	{ name = "Nearest", value = 0, comment = "Nearest neighbor" },
+	{ name = "Bilinear", value = 1, comment = "Bilinear interpolation" },
+]

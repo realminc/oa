@@ -1,0 +1,46 @@
+schema_version = 1
+generator_abi = 1
+
+# Non-templated correctness and device-specialized routes. These rows own the
+# compile source, stable fixed ID, exact router contract and capability gate.
+
+[[variant]]
+name = "GemmNaive"
+source = "gemm/gemmNaive"
+compile_group = "standard"
+local_id = 72
+public_id = true
+kernel = "Naive"
+path = "Standard"
+precisions = ["Fp32", "Fp32", "Fp32", "Fp32"]
+tile = [1, 1, 1]
+workgroup = 256
+requires_transposed_b = true
+caps = "kCapNaiveFp32"
+
+[[variant]]
+name = "GemmStrided"
+source = "gemm/gemmStrided"
+compile_group = "standard"
+local_id = 262
+kernel = "StridedFp32"
+path = "Standard"
+precisions = ["Fp32", "Fp32", "Fp32", "Fp32"]
+tile = [1, 1, 1]
+workgroup = 256
+supports_arbitrary_layout = true
+supports_batch = true
+caps = "kCapNaiveFp32"
+
+[[variant]]
+name = "GemmCoopVec"
+source = "util/gemmCoopVec"
+compile_group = "coopvec"
+local_id = 79
+kernel = "CoopVec"
+path = "CoopVec"
+precisions = ["Bf16", "Bf16", "Fp32", "Fp32"]
+tile = [1, 16, 16]
+workgroup = 32
+requires_transposed_b = true
+caps = "kCapCoopVec"

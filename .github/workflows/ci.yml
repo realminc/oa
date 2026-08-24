@@ -1,0 +1,690 @@
+# OA CI — Build, Test, Release
+#
+# GitHub-hosted runners use Lavapipe for a bounded, no-skip CPU-Vulkan smoke
+# profile. Full ML/crypto, Vulkan Video, WSI, validation, and performance tests
+# remain capability-gated to a discrete or integrated GPU.
+#
+# Triggers:
+#   realminc/oa tag (v*) on main → build + test + release
+#   realminc/oa pull request     → build + test
+#
+# Every job is repository-gated. The private empyrealm/oa staging repository
+# may receive the same refs, but it must not consume hosted or self-hosted
+# runner time.
+
+name: CI
+
+on:
+  push:
+    tags: ['v*']
+  pull_request:
+    branches: [dev, main]
+
+env:
+  SLANG_VERSION: "2026.5.2"
+  NANOBIND_VERSION: "2.14.0"
+
+jobs:
+  build:
+    name: Build & Test
+    if: github.repository == 'realminc/oa'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Tag validation needs the tagged commit's ancestry, not only the tag and
+          # current main tips. A depth-1 fetch makes a valid ancestor look unrelated.
+          fetch-depth: 0
+
+      - name: Verify release tag and version sources agree
+        if: github.repository == 'realminc/oa' && startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -euo pipefail
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          SOURCE_VERSION="$(tr -d '\r\n' < VERSION)"
+          VCPKG_VERSION="$(python3 -c 'import json; print(json.load(open("vcpkg.json"))["version"])')"
+          test "$SOURCE_VERSION" = "$TAG_VERSION" || {
+            echo "::error::VERSION=$SOURCE_VERSION does not match tag $TAG_VERSION"
+            exit 1
+          }
+          test "$VCPKG_VERSION" = "$TAG_VERSION" || {
+            echo "::error::vcpkg.json=$VCPKG_VERSION does not match tag $TAG_VERSION"
+            exit 1
+          }
+
+      - name: Architecture and diagnostic contract checks
+        run: |
+          python3 tools/architecture/test_oacheck.py
+          python3 tools/architecture/oacheck.py
+          python3 tools/diagnostics/test_oaevidence.py
+          python3 tools/diagnostics/test_run_validation.py
+          python3 tools/diagnostics/test_oabench.py
+          python3 tools/diagnostics/test_oabaseline.py
+          python3 tools/diagnostics/test_oabenchsuite.py
+          python3 tools/diagnostics/test_oadeterminism.py
+          python3 tools/test_audit_kernels.py
+          python3 tools/kernelAutogen/test_kernelautogen.py
+          python3 tools/diagnostics/run_validation.py --help >/dev/null
+
+      - name: Generated-source drift check
+        run: |
+          python3 tools/fnAutogen/check_schema_coverage.py
+          python3 tools/check_autogen_drift.py
+
+      - name: Verify tag is on main
+        if: github.repository == 'realminc/oa' && startsWith(github.ref, 'refs/tags/v')
+        run: |
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor ${{ github.sha }} origin/main; then
+            echo "::error::Tag must be on main branch"
+            exit 1
+          fi
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang ninja-build cmake \
+            libvulkan-dev mesa-vulkan-drivers \
+            libdrm-dev \
+            autoconf autoconf-archive automake libtool
+
+      - name: Install Slang
+        run: |
+          curl -fsSL -o slang.tar.gz \
+            "https://github.com/shader-slang/slang/releases/download/v${SLANG_VERSION}/slang-${SLANG_VERSION}-linux-x86_64.tar.gz"
+          sudo mkdir -p /opt/slang
+          sudo tar -xzf slang.tar.gz -C /opt/slang
+          test -x /opt/slang/bin/slangc || { echo "::error::slangc not found after extraction"; exit 1; }
+          echo "/opt/slang/bin" >> $GITHUB_PATH
+
+      - name: Setup vcpkg
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git $HOME/.vcpkg/vcpkg
+          $HOME/.vcpkg/vcpkg/bootstrap-vcpkg.sh -disableMetrics
+
+      # Split restore/save so the expensive vcpkg build is cached even if a LATER step
+      # (packaging, etc.) fails — actions/cache@v4 saves only on job success, which is why
+      # earlier failed/cancelled runs never populated it.
+      - name: Restore vcpkg cache
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.vcpkg/installed
+          key: vcpkg-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          restore-keys: vcpkg-
+
+      - name: Configure
+        run: |
+          cmake -B build/release -G Ninja \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE=$HOME/.vcpkg/vcpkg/scripts/buildsystems/vcpkg.cmake \
+            -DVCPKG_INSTALLED_DIR=$HOME/.vcpkg/installed \
+            -DSLANGC=/opt/slang/bin/slangc \
+            -DOA_EMBED_SHADERS=ON \
+            -DOA_BUILD_CRYPTO=ON \
+            -DOA_BUILD_SHARED=ON \
+            -DOA_BUILD_TESTS=OFF \
+            -DOA_ENABLE_NATIVE_ARCH=OFF \
+            -DOA_BUILD_TUTORIALS=ON
+
+      # vcpkg is built during Configure — persist it now, regardless of what follows.
+      - name: Save vcpkg cache
+        if: always() && steps.vcpkg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.vcpkg/installed
+          key: vcpkg-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+
+      - name: Build
+        run: ninja -C build/release -j$(nproc)
+
+      - name: Verify configured shader authority
+        run: python3 tools/audit_kernels.py --build-dir build/release --strict
+
+      # This packaging build intentionally omits tests. Host sanitizers and the
+      # bounded Lavapipe job below own hosted correctness; the complete ML/crypto
+      # suite remains a capability-profiled real-GPU release gate.
+
+      # ── Packaging (tags only) ──────────────────────────────────────────────
+      # Stage the `oa` (runtime .so) and `oa_sdk` (headers/cmake/shaders) install
+      # components into separate roots, tar each as the release asset the AUR
+      # `oa-bin` / `oa-sdk-bin` PKGBUILDs download. The emptiness guard makes the
+      # component split (CMakeLists install COMPONENT oa / oa_sdk) self-verifying:
+      # a regression that drops files from a component fails the build here.
+      - name: Package (staged component installs → tarballs)
+        if: github.repository == 'realminc/oa' && startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p dist stage/oa stage/oa-sdk
+
+          DESTDIR="$PWD/stage/oa"     cmake --install build/release --component oa      --prefix /usr
+          DESTDIR="$PWD/stage/oa-sdk" cmake --install build/release --component oa_sdk  --prefix /usr
+          # oa-* CLI tools (headless tutorials) ship inside the SDK package.
+          DESTDIR="$PWD/stage/oa-sdk" cmake --install build/release --component oa_tools --prefix /usr
+
+          test -n "$(find stage/oa     -type f)" || { echo "::error::oa runtime component installed nothing"; exit 1; }
+          test -n "$(find stage/oa-sdk -type f)" || { echo "::error::oa_sdk component installed nothing";    exit 1; }
+
+          # Prove the merged runtime + SDK install from a clean, external CMake project.
+          # The vcpkg prefix supplies third-party development packages consumed by oaConfig.cmake.
+          mkdir -p stage/consumer
+          cp -a stage/oa/. stage/consumer/
+          cp -a stage/oa-sdk/. stage/consumer/
+          cmake -S test/package/consumer -B build/installed-consumer -G Ninja \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_PREFIX_PATH="$PWD/stage/consumer/usr;$HOME/.vcpkg/installed/x64-linux" \
+            -DOA_EXPECTED_VERSION="$VERSION"
+          cmake --build build/installed-consumer --parallel "$(nproc)"
+
+          tar -czf "dist/oa-${VERSION}-linux-x86_64.tar.gz"     -C stage/oa .
+          tar -czf "dist/oa-sdk-${VERSION}-linux-x86_64.tar.gz" -C stage/oa-sdk .
+          ( cd dist && sha256sum *.tar.gz > SHA256SUMS.txt )
+          echo "### 📦 Universal tarballs (vk14, Vulkan 1.4)" >> "$GITHUB_STEP_SUMMARY"
+          ls -lh dist/*.tar.gz | awk '{print "- " $NF " (" $5 ")"}' >> "$GITHUB_STEP_SUMMARY"
+
+      # Repackage the SAME staged trees into native distro packages via fpm. One build,
+      # three formats. These are convenience prebuilts: binaries are linked against the
+      # runner's glibc (ubuntu-24.04, 2.39), so the .deb/.rpm require glibc ≥ 2.39
+      # (Ubuntu 24.04+ / Debian 13+ / Fedora 39+). Arch is rolling (newer glibc) so the
+      # .pkg.tar.zst runs there, but the canonical native Arch path remains the AUR.
+      - name: Build distro packages (.deb, .rpm, .pkg.tar.zst)
+        if: github.repository == 'realminc/oa' && startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          sudo apt-get install -y --no-install-recommends ruby ruby-dev build-essential rpm zstd libarchive-tools
+          sudo gem install --no-document fpm
+
+          MAINT="Empyrealm <realminc.depravity737@passinbox.com>"
+          URL="https://github.com/realminc/oa"; LIC="BUSL-1.1"
+          pkg() {  # pkg <target> <name> <root> <desc> <dep...>
+            local tgt="$1" name="$2" root="$3" desc="$4"; shift 4
+            local deps=(); local d; for d in "$@"; do deps+=(--depends "$d"); done
+            fpm -s dir -t "$tgt" -n "$name" -v "$VERSION" -a x86_64 --vendor "Realm" \
+              --license "$LIC" --maintainer "$MAINT" --url "$URL" --description "$desc" \
+              "${deps[@]}" -C "$root" -p dist/ usr
+          }
+          # runtime (oa): the Vulkan loader dependency name differs per distro.
+          pkg deb    oa     stage/oa     "OA — Vulkan 1.4 compute & ML runtime library" libvulkan1
+          pkg rpm    oa     stage/oa     "OA — Vulkan 1.4 compute & ML runtime library" vulkan-loader
+          pkg pacman oa     stage/oa     "OA — Vulkan 1.4 compute & ML runtime library" vulkan-icd-loader
+          # dev (oa-sdk): depends on the matching runtime version.
+          pkg deb    oa-sdk stage/oa-sdk "OA SDK — headers, CMake config, shader sources" "oa (= ${VERSION})"
+          pkg rpm    oa-sdk stage/oa-sdk "OA SDK — headers, CMake config, shader sources" "oa = ${VERSION}"
+          pkg pacman oa-sdk stage/oa-sdk "OA SDK — headers, CMake config, shader sources" "oa=${VERSION}"
+
+          ( cd dist && sha256sum *.tar.gz *.deb *.rpm *.pkg.tar.zst > SHA256SUMS.txt )
+          echo "### 📦 Distro packages" >> "$GITHUB_STEP_SUMMARY"
+          ls -lh dist/*.deb dist/*.rpm dist/*.pkg.tar.zst | awk '{print "- " $NF " (" $5 ")"}' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload packaged artifacts
+        if: github.repository == 'realminc/oa' && startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v4
+        with:
+          name: oa-dist
+          retention-days: 7
+          path: |
+            dist/*.tar.gz
+            dist/*.deb
+            dist/*.rpm
+            dist/*.pkg.tar.zst
+            dist/SHA256SUMS.txt
+
+  host-sanitizers:
+    name: Host Sanitizer (${{ matrix.name }})
+    if: github.repository == 'realminc/oa'
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: ASAN
+            preset: asan
+            build_dir: asan
+          - name: UBSAN
+            preset: ubsan
+            build_dir: ubsan
+    env:
+      ASAN_OPTIONS: detect_leaks=1:halt_on_error=1:strict_string_checks=1
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang ninja-build cmake ccache \
+            libvulkan-dev mesa-vulkan-drivers \
+            libdrm-dev \
+            autoconf autoconf-archive automake libtool
+
+      - name: Install Slang
+        run: |
+          curl -fsSL -o slang.tar.gz \
+            "https://github.com/shader-slang/slang/releases/download/v${SLANG_VERSION}/slang-${SLANG_VERSION}-linux-x86_64.tar.gz"
+          sudo mkdir -p /opt/slang
+          sudo tar -xzf slang.tar.gz -C /opt/slang
+          test -x /opt/slang/bin/slangc
+          echo "/opt/slang/bin" >> $GITHUB_PATH
+
+      - name: Setup vcpkg
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git $HOME/.vcpkg/vcpkg
+          $HOME/.vcpkg/vcpkg/bootstrap-vcpkg.sh -disableMetrics
+
+      - name: Restore isolated dependency profile
+        uses: actions/cache@v4
+        with:
+          path: ~/.vcpkg/oa/${{ matrix.preset }}/installed
+          key: vcpkg-${{ matrix.preset }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          restore-keys: vcpkg-${{ matrix.preset }}-
+
+      - name: Configure ${{ matrix.name }}
+        run: cmake --preset ${{ matrix.preset }}
+
+      - name: Build host ownership and parser tests
+        run: |
+          cmake --build build/${{ matrix.build_dir }} --parallel "$(nproc)" --target \
+            TestTypes TestMemory TestContainers TestThreading TestCoreMisc \
+            TestValidation TestCamera TestMcp TestTransferWeights TestModelFileIntegrity TestTokenizer \
+            TestGptOssConfig TestOaStd TestVkDispatch
+
+      - name: Run host sanitizer suite
+        run: |
+          ctest --test-dir build/${{ matrix.build_dir }} \
+            --output-on-failure --timeout 120 -L core
+
+  cpu-vulkan-smoke:
+    name: CPU Vulkan (Lavapipe)
+    if: github.repository == 'realminc/oa'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      LP_NUM_THREADS: "2"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang ninja-build cmake ccache \
+            libvulkan-dev mesa-vulkan-drivers vulkan-tools \
+            libdrm-dev \
+            autoconf autoconf-archive automake libtool
+
+      - name: Select Lavapipe and record capability evidence
+        run: |
+          set -euo pipefail
+          LVP_ICD="$(find /usr/share/vulkan/icd.d -maxdepth 1 -type f \
+            -name 'lvp_icd*.json' -print -quit)"
+          test -n "$LVP_ICD" || {
+            echo "::error::Mesa Lavapipe ICD manifest was not installed"
+            exit 1
+          }
+          echo "VK_DRIVER_FILES=$LVP_ICD" >> "$GITHUB_ENV"
+          mkdir -p var/report/cpu-vulkan
+          {
+            echo "VK_DRIVER_FILES=$LVP_ICD"
+            echo "LP_NUM_THREADS=$LP_NUM_THREADS"
+            apt-cache policy mesa-vulkan-drivers
+            VK_DRIVER_FILES="$LVP_ICD" vulkaninfo --summary
+          } | tee var/report/cpu-vulkan/vulkaninfo.txt
+
+      - name: Install Slang
+        run: |
+          curl -fsSL -o slang.tar.gz \
+            "https://github.com/shader-slang/slang/releases/download/v${SLANG_VERSION}/slang-${SLANG_VERSION}-linux-x86_64.tar.gz"
+          sudo mkdir -p /opt/slang
+          sudo tar -xzf slang.tar.gz -C /opt/slang
+          test -x /opt/slang/bin/slangc
+          echo "/opt/slang/bin" >> "$GITHUB_PATH"
+
+      - name: Setup vcpkg
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git "$HOME/.vcpkg/vcpkg"
+          "$HOME/.vcpkg/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
+
+      - name: Restore CPU-Vulkan dependencies
+        id: cpu-vulkan-vcpkg-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.vcpkg/oa/cpu-vulkan/installed
+          key: vcpkg-cpu-vulkan-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          restore-keys: vcpkg-cpu-vulkan-
+
+      - name: Configure CPU-Vulkan smoke
+        run: |
+          cmake -B build/cpu-vulkan -G Ninja \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$HOME/.vcpkg/vcpkg/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_INSTALLED_DIR="$HOME/.vcpkg/oa/cpu-vulkan/installed" \
+            -DSLANGC=/opt/slang/bin/slangc \
+            -DOA_EMBED_SHADERS=ON \
+            -DOA_BUILD_CRYPTO=OFF \
+            -DOA_BUILD_SHARED=OFF \
+            -DOA_BUILD_TESTS=ON \
+            -DOA_BUILD_TUTORIALS=OFF \
+            -DOA_ENABLE_NATIVE_ARCH=OFF \
+            -DOA_VULKAN_VALIDATION=OFF
+
+      - name: Save CPU-Vulkan dependencies
+        if: always() && steps.cpu-vulkan-vcpkg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.vcpkg/oa/cpu-vulkan/installed
+          key: vcpkg-cpu-vulkan-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+
+      - name: Build CPU-Vulkan smoke targets
+        run: |
+          cmake --build build/cpu-vulkan --parallel "$(nproc)" --target \
+            TestEngineInit TestExecutableGraph TestGru
+
+      - name: Run CPU-Vulkan smoke
+        run: |
+          ctest --test-dir build/cpu-vulkan \
+            --output-on-failure --timeout 180 \
+            --output-junit var/report/cpu-vulkan/ctest.xml \
+            -L cpu_vulkan_smoke
+
+      - name: Upload CPU-Vulkan evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: oa-cpu-vulkan-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 14
+          path: var/report/cpu-vulkan
+
+  gpu-smoke:
+    name: GPU Validation (self-hosted)
+    # The hosted Lavapipe job proves only its filtered CPU-Vulkan profile. This job
+    # runs the complete fp32 smoke executables (engine init -> compute-graph dispatch
+    # -> recurrent GRU kernel; label `gpu_smoke`) on a REAL GPU and adds validation
+    # evidence that a software Vulkan implementation cannot replace.
+    #
+    # Setup (one-time): register a self-hosted runner labeled [self-hosted, gpu] on a box
+    # with a Vulkan GPU + the OA build deps (clang, ninja, cmake, slangc on PATH, vcpkg at
+    # $VCPKG_ROOT), then set repo variable HAVE_GPU_RUNNER=true. Until then this job is
+    # skipped (not left pending). The job is the canonical functional + synchronization +
+    # GPU-assisted contract; once the runner is continuously available, make it a release need.
+    if: ${{ github.repository == 'realminc/oa' && vars.HAVE_GPU_RUNNER == 'true' }}
+    runs-on: [self-hosted, gpu]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Configure
+        run: |
+          cmake -B build/release -G Ninja \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake \
+            -DVCPKG_INSTALLED_DIR=$RUNNER_TEMP/oa-vcpkg-${{ github.run_id }}-${{ github.run_attempt }} \
+            -DOA_EMBED_SHADERS=ON
+      - name: Build smoke targets
+        run: ninja -C build/release TestEngineInit TestExecutableGraph TestGru
+      - name: GPU smoke (real device)
+        run: ctest --test-dir build/release --output-on-failure -L gpu_smoke
+      - name: Synchronization validation (real device)
+        run: |
+          python3 tools/diagnostics/run_validation.py \
+            --mode sync \
+            --cmake-cache build/release/CMakeCache.txt \
+            --output var/report/gpu-sync \
+            -- bin/release/test/runtime/graph/testExecutableGraph
+      - name: GPU-assisted validation (real device)
+        run: |
+          python3 tools/diagnostics/run_validation.py \
+            --mode gpu \
+            --cmake-cache build/release/CMakeCache.txt \
+            --output var/report/gpu-assisted \
+            -- bin/release/test/runtime/graph/testExecutableGraph
+      - name: Upload real-GPU evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: oa-gpu-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            var/report/gpu-sync
+            var/report/gpu-assisted
+
+  release:
+    name: Release
+    runs-on: ubuntu-24.04
+    needs: [build, host-sanitizers]
+    if: github.repository == 'realminc/oa' && startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Keep the full ancestry so a tag remains verifiable after main advances.
+          fetch-depth: 0
+
+      - name: Verify tag is on main
+        run: |
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor ${{ github.sha }} origin/main; then
+            echo "::error::Release tags must be on main branch"
+            exit 1
+          fi
+
+      - name: Download packaged artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: oa-dist
+          path: dist
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          draft: false
+          # 0.7 is a preview cycle: every 0.7.x tag ships as a prerelease.
+          # Flip to false (or a tag-pattern check) when cutting the first stable release.
+          prerelease: true
+          body: |
+            ## OA ${{ github.ref_name }} — development preview
+
+            This prerelease publishes the exact tagged OA source together with the
+            automated C++ runtime and SDK packages. When the independent wheel job
+            succeeds, it attaches and publishes the matching `oapython` wheel.
+
+            ⚠️ **Preview, not a stable API.** Read the README's *Honest preview
+            boundaries* and the changelog for this tag before depending on
+            experimental hardware paths.
+
+            ### Install (Arch / AUR)
+            ```bash
+            paru -S oa-bin oa-sdk-bin      # prebuilt (this release)
+            # or build from source:
+            paru -S oa-git oa-sdk-git
+            ```
+
+            ### Python
+            ```bash
+            python -m pip install oapython
+            ```
+
+            ### Verify automated C++ package assets
+            ```bash
+            sha256sum -c SHA256SUMS.txt
+            ```
+          files: |
+            dist/*.tar.gz
+            dist/*.deb
+            dist/*.rpm
+            dist/*.pkg.tar.zst
+            dist/SHA256SUMS.txt
+
+  # ── Python preview wheel ────────────────────────────────────────────────────
+  # Independent of `release` so a flaky experimental wheel can never block the C++
+  # artifacts. Builds the nanobind extension on ubuntu-24.04, then auditwheel-repairs
+  # to a manylinux perennial tag (manylinux_2_39). The Vulkan loader is dlopen'd at
+  # runtime, never linked — so it is explicitly excluded from bundling.
+  wheel:
+    name: Python preview wheel
+    if: github.repository == 'realminc/oa'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang ninja-build cmake libvulkan-dev mesa-vulkan-drivers libdrm-dev patchelf \
+            autoconf autoconf-archive automake libtool
+      - name: Install Slang
+        run: |
+          curl -fsSL -o slang.tar.gz \
+            "https://github.com/shader-slang/slang/releases/download/v${SLANG_VERSION}/slang-${SLANG_VERSION}-linux-x86_64.tar.gz"
+          sudo mkdir -p /opt/slang && sudo tar -xzf slang.tar.gz -C /opt/slang
+          test -x /opt/slang/bin/slangc
+      - name: Setup vcpkg
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git $HOME/.vcpkg/vcpkg
+          $HOME/.vcpkg/vcpkg/bootstrap-vcpkg.sh -disableMetrics
+      - name: Restore vcpkg cache
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.vcpkg/installed
+          key: vcpkg-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          restore-keys: vcpkg-
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build wheel + repair to manylinux
+        run: |
+          set -euo pipefail
+          # Build WITHOUT isolation and install the backend + nanobind in this env, so OA's
+          # CMake nanobind probe (`pip show nanobind`) resolves it. With `python -m build`'s
+          # default isolated env, CMake sees a throwaway venv that hides nanobind and bails.
+          python -m pip install --upgrade pip
+          python -m pip install build auditwheel scikit-build-core "nanobind==$NANOBIND_VERSION" numpy
+          # NOTE: SKBUILD_CMAKE_ARGS *replaces* pyproject's cmake.args, so OA_BUILD_PYTHON=ON
+          # (creates oa_core), OA_BUILD_SHARED=ON (liboa.so for $ORIGIN bundling), and
+          # OA_BUILD_TESTS=OFF must all be repeated here.
+          export SKBUILD_CMAKE_ARGS="-DCMAKE_C_COMPILER=clang;-DCMAKE_CXX_COMPILER=clang++;-DCMAKE_TOOLCHAIN_FILE=$HOME/.vcpkg/vcpkg/scripts/buildsystems/vcpkg.cmake;-DVCPKG_INSTALLED_DIR=$HOME/.vcpkg/installed;-DSLANGC=/opt/slang/bin/slangc;-DOA_EMBED_SHADERS=ON;-DOA_BUILD_CRYPTO=ON;-DOA_BUILD_PYTHON=ON;-DOA_BUILD_SHARED=ON;-DOA_BUILD_TESTS=OFF;-DOA_ENABLE_NATIVE_ARCH=OFF"
+          python -m build --wheel --no-isolation --outdir dist_raw
+          auditwheel repair dist_raw/*.whl --exclude libvulkan.so.1 -w dist
+          ls -lh dist/
+          python -m venv "$GITHUB_WORKSPACE/.venv-wheel-smoke"
+          "$GITHUB_WORKSPACE/.venv-wheel-smoke/bin/python" -m pip install dist/*.whl
+          "$GITHUB_WORKSPACE/.venv-wheel-smoke/bin/python" -m pip install pytest "nanobind==$NANOBIND_VERSION"
+          (
+            cd "$RUNNER_TEMP"
+            OA_EXPECTED_VERSION="$(tr -d '\r\n' < "$GITHUB_WORKSPACE/VERSION")" \
+              "$GITHUB_WORKSPACE/.venv-wheel-smoke/bin/python" -c \
+              'import os, pathlib, oa; assert oa.__version__ == os.environ["OA_EXPECTED_VERSION"]; assert all(hasattr(oa, name) for name in ("Matrix", "FnMatrix", "Image", "FnImage", "Audio", "FnAudio", "BiquadCoefficients", "AudioPlayer", "VideoDemuxer", "VideoPlayer", "Viewer", "NlpSuiteRecipe", "NlpSuiteModel", "NlpSuiteSampler")); assert all(hasattr(oa.FnAudio, name) for name in ("saturate", "biquad", "sosFilter")); assert all(hasattr(oa, name) for name in ("core", "runtime", "ml", "vision", "audio", "crypto")); assert oa.Matrix is oa.core.Matrix; assert oa.NlpSuiteRecipe is oa.ml.NlpSuiteRecipe; assert pathlib.Path(oa.__file__).with_suffix(".pyi").is_file()'
+          )
+          "$GITHUB_WORKSPACE/.venv-wheel-smoke/bin/python" -m pytest \
+            -q --strict-config --strict-markers \
+            --oa-profile=host --oa-forbid-skips test/py
+          "$GITHUB_WORKSPACE/.venv-wheel-smoke/bin/python" -m pytest \
+            -q --strict-config --strict-markers \
+            --oa-profile=crypto-host --oa-forbid-skips test/py
+      - name: Save vcpkg cache
+        if: always() && steps.vcpkg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.vcpkg/installed
+          key: vcpkg-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: oa-wheel
+          retention-days: 7
+          path: dist/*.whl
+
+  # Publish the experimental wheel to PyPI as `oapython` via Trusted Publishing (OIDC).
+  # Prereq (one-time, yours): logged in as PyPI user `empyrealm`, add a *pending*
+  # trusted publisher for project `oapython` → owner `realminc`, repo `oa`,
+  # workflow `ci.yml`, environment `pypi`. No token needed.
+  pypi:
+    name: Publish to PyPI (oapython preview)
+    runs-on: ubuntu-24.04
+    needs: [release, wheel]
+    if: github.repository == 'realminc/oa' && startsWith(github.ref, 'refs/tags/v')
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: oa-wheel
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
+
+  # Attach the wheel to the GitHub release too (best-effort; needs release + wheel,
+  # so a wheel failure leaves the C++ release intact).
+  release-wheel:
+    name: Attach wheel to release
+    runs-on: ubuntu-24.04
+    needs: [release, wheel]
+    if: github.repository == 'realminc/oa' && startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: oa-wheel
+          path: dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.whl
+      - name: Publish and anonymously verify complete checksum manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets public-assets
+          gh release download "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --dir release-assets
+          (
+            cd release-assets
+            rm -f SHA256SUMS.txt
+            manifest_tmp="$(mktemp)"
+            find . -maxdepth 1 -type f ! -name SHA256SUMS.txt -printf '%f\n' \
+              | LC_ALL=C sort \
+              | while IFS= read -r asset; do sha256sum "$asset"; done \
+              > "$manifest_tmp"
+            mv "$manifest_tmp" SHA256SUMS.txt
+            gh release upload "$GITHUB_REF_NAME" SHA256SUMS.txt \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+          )
+
+          release_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}"
+          curl -fsSL --retry 5 --retry-delay 2 \
+            -H 'Cache-Control: no-cache' \
+            "${release_url}/sHA256SUMS.txt?run=${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            -o public-assets/SHA256SUMS.txt
+          cmp release-assets/SHA256SUMS.txt public-assets/SHA256SUMS.txt
+          (
+            cd public-assets
+            while read -r digest asset; do
+              test -n "$digest"
+              test -n "$asset"
+              curl -fsSL --retry 5 --retry-delay 2 \
+                "${release_url}/${asset}" \
+                -o "$asset"
+            done < SHA256SUMS.txt
+            sha256sum -c SHA256SUMS.txt
+          )

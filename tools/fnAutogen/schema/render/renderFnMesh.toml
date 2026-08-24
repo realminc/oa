@@ -1,0 +1,119 @@
+# Fn schema — Render host mesh utilities.
+#
+# These functions create or transform CPU mesh values. Upload and rendering
+# remain explicit oa::Renderer session work.
+surface = "host_utility"
+category = "Mesh"
+namespace = "oa::FnMesh"
+file_prefix = "FnMesh"
+cpp_subdir = "FnMesh"
+
+[[ops]]
+name = "createQuad"
+category = "Mesh"
+kind = "unary"
+body = "cpu_util"
+generate_declaration = false
+api_return = "oa::MeshData"
+api_params = ["oa::F32 inWidth = 1.0f", "oa::F32 inHeight = 1.0f"]
+notes = "Create a centered CPU quad mesh."
+
+[[ops]]
+name = "createFullscreenQuad"
+category = "Mesh"
+kind = "unary"
+body = "cpu_util"
+generate_declaration = false
+api_return = "oa::MeshData"
+api_params = []
+notes = "Create a fullscreen CPU quad mesh."
+
+[[ops]]
+name = "createCube"
+category = "Mesh"
+kind = "unary"
+body = "cpu_util"
+generate_declaration = false
+api_return = "oa::MeshData"
+api_params = ["oa::F32 inSize = 1.0f"]
+notes = "Create a CPU cube mesh."
+
+[[ops]]
+name = "computeBounds"
+category = "Mesh"
+kind = "unary"
+body = "cpu_util"
+generate_declaration = false
+api_return = "void"
+api_params = ["oa::MeshData& inMesh"]
+notes = "Compute and cache CPU mesh bounds."
+
+[[ops]]
+name = "getVertexCount"
+category = "Mesh"
+kind = "unary"
+body = "cpu_util"
+generate_declaration = false
+api_return = "oa::U32"
+api_params = ["const oa::MeshData& inMesh"]
+notes = "Read the CPU mesh vertex count."
+
+[[ops]]
+name = "getIndexCount"
+category = "Mesh"
+kind = "unary"
+body = "cpu_util"
+generate_declaration = false
+api_return = "oa::U32"
+api_params = ["const oa::MeshData& inMesh"]
+notes = "Read the CPU mesh index count."
+
+[[ops]]
+name = "hasIndices"
+category = "Mesh"
+kind = "unary"
+body = "cpu_util"
+generate_declaration = false
+api_return = "bool"
+api_params = ["const oa::MeshData& inMesh"]
+notes = "Report whether the CPU mesh has indices."
+
+[[ops]]
+name = "transform"
+category = "Mesh"
+kind = "unary"
+body = "cpu_util"
+generate_declaration = false
+api_return = "void"
+api_params = ["oa::MeshData& inMesh", "const VlmMat4& inMatrix"]
+notes = "Transform CPU mesh positions in place."
+
+[[ops]]
+name = "translate"
+category = "Mesh"
+kind = "unary"
+body = "cpu_util"
+generate_declaration = false
+api_return = "void"
+api_params = ["oa::MeshData& inMesh", "const VlmVec3& inOffset"]
+notes = "Translate CPU mesh positions in place."
+
+[[ops]]
+name = "scale"
+category = "Mesh"
+kind = "unary"
+body = "cpu_util"
+generate_declaration = false
+api_return = "void"
+api_params = ["oa::MeshData& inMesh", "const VlmVec3& inScale"]
+notes = "Scale CPU mesh positions in place."
+
+[[ops]]
+name = "flipUvsY"
+category = "Mesh"
+kind = "unary"
+body = "cpu_util"
+generate_declaration = false
+api_return = "void"
+api_params = ["oa::MeshData& inMesh"]
+notes = "Flip CPU mesh texture coordinates vertically."

@@ -1,0 +1,78 @@
+# OA Core Types Schema
+# Foundational types for the OA library
+
+domain = "core"
+namespace = "oa"
+
+[[enums]]
+name = "DeterminismMode"
+underlying_type = "U8"
+generate_tostring = true
+generate_fromstring = true
+values = [
+	{ name = "Fast", value = 0, comment = "Vendor math, best throughput, non-deterministic reductions" },
+	{ name = "Stable", value = 1, comment = "Stable algorithms + FP32 accumulators, deterministic where possible" },
+	{ name = "Deterministic", value = 2, comment = "Fixed reduction order, deterministic seeds, no atomics with race-order dependence" },
+]
+
+[[enums]]
+name = "ScalarType"
+underlying_type = "U8"
+generate_tostring = true
+generate_fromstring = true
+values = [
+	{ name = "Float32", value = 0, comment = "32-bit float" },
+	{ name = "BFloat16", value = 1, comment = "Brain float 16" },
+	{ name = "Float16", value = 2, comment = "Half precision" },
+	{ name = "Int8", value = 3, comment = "8-bit signed integer" },
+	{ name = "Int32", value = 4, comment = "32-bit signed integer" },
+	{ name = "UInt8", value = 5, comment = "8-bit unsigned integer" },
+	{ name = "Float64", value = 6, comment = "64-bit float (extended)" },
+	{ name = "Int16", value = 7, comment = "16-bit signed integer (extended)" },
+	{ name = "Int64", value = 8, comment = "64-bit signed integer (extended)" },
+	{ name = "UInt16", value = 9, comment = "16-bit unsigned integer (extended)" },
+	{ name = "UInt32", value = 10, comment = "32-bit unsigned integer (extended)" },
+	{ name = "UInt64", value = 11, comment = "64-bit unsigned integer (extended)" },
+	{ name = "Bool", value = 12, comment = "Boolean (extended)" },
+	{ name = "Complex64", value = 13, comment = "64-bit complex (extended)" },
+	{ name = "Complex128", value = 14, comment = "128-bit complex (extended)" },
+]
+
+[[enums]]
+name = "Precision"
+underlying_type = "U8"
+generate_tostring = true
+generate_fromstring = true
+values = [
+	{ name = "FP32", value = 0, comment = "Float32 storage and compute policy" },
+	{ name = "BF16", value = 2, comment = "BFloat16 storage with Float32 accumulation policy" },
+	{ name = "FP64", value = 5, comment = "Requested Float64 scientific-compute policy; capability-gated" },
+]
+
+[[enums]]
+name = "MatMulPrecision"
+underlying_type = "U8"
+generate_tostring = true
+generate_fromstring = true
+values = [
+	{ name = "Auto", value = 0, comment = "Select the best supported MatMul precision for the device and problem" },
+	{ name = "Fp32", value = 1, comment = "Require the FP32 MatMul path" },
+	{ name = "Bf16", value = 2, comment = "Require the BF16 MatMul path" },
+]
+
+[[enums]]
+name = "Filter"
+underlying_type = "U8"
+generate_tostring = true
+generate_fromstring = true
+values = [
+	{ name = "Nearest", value = 0, comment = "Nearest neighbor filtering" },
+	{ name = "Linear", value = 1, comment = "Linear interpolation" },
+]
+
+[[structs]]
+name = "PrecisionConfig"
+fields = [
+	{ name = "mode", type = "Precision", default = "Precision::FP32", comment = "Computation precision" },
+	{ name = "determinism", type = "DeterminismMode", default = "DeterminismMode::Stable", comment = "Determinism mode" },
+]

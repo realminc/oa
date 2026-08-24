@@ -1,0 +1,37 @@
+# Fn schema — public Vision/FnImage normalization operation.
+surface = "public_operation"
+generate_python_bindings = true
+
+generate_engine_overloads = true
+generate_forwarders = true
+
+[[ops]]
+name = "normalize"
+category = "Color"
+kind = "unary"
+kernel_forward = "NormalizeImage"
+slang_path = "Vision/Conversion"
+log_component = "VISION"
+notes = "Apply per-channel normalization to an NCHW image tensor."
+body = "manual_session"
+api_params = ["const oa::Matrix& inImage", "const oa::NormalizationParams& inParams"]
+
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "mean0", kind = "float", source = "inParams.mean[0]" },
+    { name = "mean1", kind = "float", source = "inParams.mean[1]" },
+    { name = "mean2", kind = "float", source = "inParams.mean[2]" },
+    { name = "std0", kind = "float", source = "inParams.std[0]" },
+    { name = "std1", kind = "float", source = "inParams.std[1]" },
+    { name = "std2", kind = "float", source = "inParams.std[2]" },
+]

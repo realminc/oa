@@ -1,0 +1,798 @@
+# Fn schema — Core/FnMatrix elemwise ops (17).
+surface = "public_operation"
+generate_python_bindings = true
+autograd_node_header = "oa/core/autograd/matrix/autogradElemwise.h"
+#
+# This is the *source of truth* for these 17 ops. The generator emits:
+#   - .h declarations, .cpp implementations, .slang shaders (forward ops)
+#   - Autograd/matrix/AutogradElemwise.gen.h (gradient node classes)
+# See tools/fnAutogen/rEADME.md and tools/fnAutogen/oafnautogen.py.
+#
+# Fields per [[ops]] entry:
+#   name              op name (PascalCase, no Oa prefix — namespace adds it)
+#   category          Elemwise | Blas | Reduce | Shape | Index | Activation | ...
+#   kind              binary | unary | unary_scalar
+#   kernel_forward    Slang shader ID — must exist in kernelRegistry.h
+#   dispatch_id_macro optional: oa::ComputeKernelId::<Name> instead of "Name"
+#                     literal in oa::VkDispatch::Run (matches existing Scale)
+#   log_component     oa::LogComponent::* enum value
+#   notes             short docstring
+#   forward_op        Slang body — "a + b", "a - b", "abs(a)", "log(a)",
+#                     "a * pc.Alpha", "pow(a, pc.Exponent)" — used by
+#                     shader template; receives loaded scalars `a`, `b`
+#                     and emits oaStore(...)
+#   immediate.alias_of  optional: immediate-mode body delegates to another op
+#                       (e.g. Neg → Scale(-1)) — preserves existing behavior
+#   autograd.*        gradient wiring (see below)
+#
+# Autograd block:
+#   grad_class    name of the oa::GradXxx class (defined in Autograd.h or generated)
+#   inputs        list of parameter names; populates SetGraphInputs in slot order
+#   saved         list of saved tensor names (populates Saved_ vector)
+#   ctor_args     list of expressions passed to oa::makeShared<grad_class>(...)
+#   formula       "auto_elemwise" | "auto_unary" | "manual:<Op>" | "none"
+
+# --- Add ---------------------------------------------------------------------
+[[ops]]
+name           = "add"
+category       = "Elemwise"
+kind           = "binary"
+kernel_forward = "Add"
+log_component  = "ML"
+notes          = "Element-wise addition: out = A + B."
+forward_op     = "a + b"
+body           = "manual_session"
+api_params     = ["const oa::Matrix& inA", "const oa::Matrix& inB"]
+api_return     = "oa::Matrix"
+
+[ops.contract]
+input_kinds     = ["matrix", "matrix"]
+output_kinds    = ["matrix"]
+shape_rule      = "broadcast"
+dtype_rule      = "match_input"
+effects         = ["read_inputs", "write_outputs"]
+mutated_inputs  = []
+output_alias_inputs = [-1]
+control_flow    = "straight_line"
+differentiation = "reverse"
+lowering        = "dispatch"
+
+[ops.dnn]
+role = "add"
+
+[ops.python]
+args = ["a", "b"]
+doc = "Element-wise matrix addition with broadcasting."
+
+[ops.autograd]
+grad_class = "oa::GradAdd"
+inputs     = ["inA", "inB"]
+saved      = []
+formula    = "auto_binary_add"
+attach     = "broadcast_binary"
+broadcast_op = "Add"
+
+[ops.test]
+cpu_reference = "a_host[i] + b_host[i]"
+tolerance = "1e-4f"
+test_sizes = [256, 1024]
+edge_cases = ["zeros", "negatives"]
+numerical_grad = false
+benchmark = false
+
+# --- AddInPlace --------------------------------------------------------------
+# Contract-only entry for the handwritten compatibility API. The semantic
+# graph records an SSA output version that aliases and mutates inSelf; lowering
+# may execute it directly or fuse several independent updates into MultiAdd.
+[[ops]]
+name                 = "addInPlace"
+category             = "Elemwise"
+kind                 = "binary"
+kernel_forward       = "Add"
+log_component        = "ML"
+notes                = "In-place matrix addition with an explicit mutated/aliased output contract."
+body                 = "manual_session"
+generate_declaration = false
+api_params           = ["oa::Matrix& inSelf", "const oa::Matrix& inOther"]
+api_return           = "void"
+
+[ops.contract]
+input_kinds         = ["matrix", "matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "broadcast"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = [0]
+output_alias_inputs = [0]
+control_flow        = "straight_line"
+differentiation     = "none"
+lowering            = "dispatch"
+
+# --- Sub ---------------------------------------------------------------------
+[[ops]]
+name                 = "subInPlace"
+category             = "Elemwise"
+kind                 = "binary"
+kernel_forward       = "Sub"
+log_component        = "ML"
+notes                = "In-place matrix subtraction with an explicit mutated/aliased output contract."
+body                 = "manual_session"
+generate_declaration = false
+api_params           = ["oa::Matrix& inSelf", "const oa::Matrix& inOther"]
+api_return           = "void"
+
+[ops.contract]
+input_kinds         = ["matrix", "matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "broadcast"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = [0]
+output_alias_inputs = [0]
+control_flow        = "straight_line"
+differentiation     = "none"
+lowering            = "dispatch"
+
+[[ops]]
+name           = "sub"
+category       = "Elemwise"
+kind           = "binary"
+kernel_forward = "Sub"
+log_component  = "ML"
+notes          = "Element-wise subtraction: out = A - B."
+forward_op     = "a - b"
+body           = "manual_session"
+
+[ops.contract]
+input_kinds         = ["matrix", "matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "broadcast"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+
+[ops.autograd]
+grad_class = "oa::GradSub"
+inputs     = ["inA", "inB"]
+saved      = []
+formula    = "auto_binary_sub"
+attach     = "broadcast_binary"
+broadcast_op = "Sub"
+
+[ops.test]
+cpu_reference = "a_host[i] - b_host[i]"
+tolerance = "1e-4f"
+
+# --- Mul ---------------------------------------------------------------------
+[[ops]]
+name                 = "mulInPlace"
+category             = "Elemwise"
+kind                 = "binary"
+kernel_forward       = "Mul"
+log_component        = "ML"
+notes                = "In-place elementwise multiplication with an explicit mutated/aliased output contract."
+body                 = "manual_session"
+generate_declaration = false
+api_params           = ["oa::Matrix& inSelf", "const oa::Matrix& inOther"]
+api_return           = "void"
+
+[ops.contract]
+input_kinds         = ["matrix", "matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "broadcast"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = [0]
+output_alias_inputs = [0]
+control_flow        = "straight_line"
+differentiation     = "none"
+lowering            = "dispatch"
+
+[[ops]]
+name           = "mul"
+category       = "Elemwise"
+kind           = "binary"
+kernel_forward = "Mul"
+log_component  = "ML"
+notes          = "Element-wise multiplication: out = A * B."
+forward_op     = "a * b"
+body           = "manual_session"
+
+[ops.contract]
+input_kinds         = ["matrix", "matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "broadcast"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+
+[ops.dnn]
+role = "multiply"
+
+[ops.autograd]
+grad_class = "oa::GradMul"
+inputs     = ["inA", "inB"]
+saved      = ["inA", "inB"]
+formula    = "auto_binary_mul"
+attach     = "broadcast_binary"
+broadcast_op = "Mul"
+output_shape = true
+
+[ops.test]
+cpu_reference = "a_host[i] * b_host[i]"
+tolerance = "1e-4f"
+
+# --- Div ---------------------------------------------------------------------
+[[ops]]
+name                 = "divInPlace"
+category             = "Elemwise"
+kind                 = "binary"
+kernel_forward       = "Div"
+log_component        = "ML"
+notes                = "In-place matrix division with an explicit mutated/aliased output contract."
+body                 = "manual_session"
+generate_declaration = false
+api_params           = ["oa::Matrix& inSelf", "const oa::Matrix& inOther"]
+api_return           = "void"
+
+[ops.contract]
+input_kinds         = ["matrix", "matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "broadcast"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = [0]
+output_alias_inputs = [0]
+control_flow        = "straight_line"
+differentiation     = "none"
+lowering            = "dispatch"
+
+[[ops]]
+name           = "div"
+category       = "Elemwise"
+kind           = "binary"
+kernel_forward = "Div"
+log_component  = "ML"
+notes          = "Element-wise division: out = A / B."
+forward_op     = "a / b"
+body           = "manual_session"
+
+[ops.contract]
+input_kinds         = ["matrix", "matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "broadcast"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+
+[ops.autograd]
+grad_class = "oa::GradDiv"
+inputs     = ["inA", "inB"]
+saved      = ["inA", "inB"]
+formula    = "manual"
+attach     = "broadcast_binary"
+broadcast_op = "Div"
+
+[ops.test]
+cpu_reference = "a_host[i] / b_host[i]"
+tolerance = "1e-4f"
+
+# --- Scale -------------------------------------------------------------------
+[[ops]]
+name              = "scale"
+category          = "Elemwise"
+kind              = "unary_scalar"
+kernel_forward    = "Scale"
+dispatch_id_macro = "Scale"             # immediate uses oa::ComputeKernelId::Scale
+log_component     = "ML"
+notes             = "Scalar multiplication: out = A * Scalar."
+forward_op        = "a * pc.Alpha"
+scalar_param      = { name = "scalar", type = "oa::F32", push_field = "Alpha" }
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+
+[ops.autograd]
+grad_class = "oa::GradScale"
+inputs     = ["inA"]
+saved      = []
+ctor_args  = ["inScalar"]
+formula    = "auto_unary_scalar_scale"
+
+[ops.test]
+cpu_reference = "a_host[i] * kScalar"
+tolerance = "1e-4f"
+scalar_value = "1.5f"
+
+# --- Neg ---------------------------------------------------------------------
+[[ops]]
+name           = "neg"
+category       = "Elemwise"
+kind           = "unary"
+kernel_forward = "Neg"
+log_component  = "ML"
+notes          = "Element-wise negation: out = -A."
+forward_op     = "-a"
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+
+[ops.autograd]
+grad_class = "oa::GradNeg"
+inputs     = ["inA"]
+saved      = []
+formula    = "manual"
+
+[ops.test]
+cpu_reference = "-a_host[i]"
+tolerance = "1e-4f"
+
+# --- Abs ---------------------------------------------------------------------
+[[ops]]
+name           = "abs"
+category       = "Elemwise"
+kind           = "unary"
+kernel_forward = "Abs"
+log_component  = "ML"
+notes          = "Element-wise absolute value: out = |A|."
+forward_op     = "abs(a)"
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+
+[ops.autograd]
+grad_class = "oa::GradAbs"
+inputs     = ["inA"]
+saved      = ["inA"]
+formula    = "manual"
+
+[ops.test]
+cpu_reference = "std::abs(a_host[i])"
+tolerance = "1e-4f"
+
+# --- Log ---------------------------------------------------------------------
+[[ops]]
+name           = "log"
+category       = "Elemwise"
+kind           = "unary"
+kernel_forward = "Log"
+log_component  = "ML"
+notes          = "Element-wise natural log: out = log(A)."
+forward_op     = "log(a)"
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+
+[ops.autograd]
+grad_class = "oa::GradLog"
+inputs     = ["inA"]
+saved      = ["inA"]
+formula    = "auto_unary_log"
+
+[ops.test]
+cpu_reference = "std::log(a_host[i])"
+tolerance = "1e-3f"
+
+# --- Sqrt --------------------------------------------------------------------
+[[ops]]
+name           = "sqrt"
+category       = "Elemwise"
+kind           = "unary"
+kernel_forward = "Sqrt"
+slang_path     = "Ml/Nn/Math"   # historical: source/private/oa/ml/shader/compute/nn/math/
+log_component  = "ML"
+notes          = "Element-wise square root: out = sqrt(A)."
+forward_op     = "sqrt(a)"
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+
+[ops.autograd]
+grad_class = "oa::GradSqrt"
+inputs     = ["inA"]
+saved      = ["out"]
+formula    = "auto_unary_sqrt"
+
+[ops.test]
+cpu_reference = "std::sqrt(a_host[i])"
+tolerance = "1e-3f"
+
+# --- Pow ---------------------------------------------------------------------
+[[ops]]
+name           = "pow"
+category       = "Elemwise"
+kind           = "unary_scalar"
+kernel_forward = "Pow"
+slang_path     = "Ml/Nn/Math"   # historical: source/private/oa/ml/shader/compute/nn/math/
+log_component  = "ML"
+notes          = "Element-wise power: out = A^Exponent."
+forward_op     = "pow(a, pc.Exponent)"
+scalar_param   = { name = "exponent", type = "oa::F32", push_field = "Exponent" }
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+
+[ops.autograd]
+grad_class = "oa::GradPow"
+inputs     = ["inA"]
+saved      = ["inA"]
+ctor_args  = ["inExponent"]
+formula    = "auto_unary_scalar_pow"
+
+[ops.test]
+cpu_reference = "std::pow(a_host[i], kScalar)"
+tolerance = "1e-3f"
+scalar_value = "1.5f"
+
+# --- AddScalar ---------------------------------------------------------------
+[[ops]]
+name           = "addScalar"
+category       = "Elemwise"
+kind           = "unary_scalar"
+kernel_forward = "AddScalar"
+log_component  = "ML"
+notes          = "Scalar addition: out = A + Scalar."
+forward_op     = "a + pc.Scalar"
+scalar_param   = { name = "scalar", type = "oa::F32", push_field = "Scalar" }
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+
+[ops.autograd]
+grad_class = "oa::GradAddScalar"
+inputs     = ["inA"]
+saved      = []
+formula    = "auto_unary_scalar_identity"
+
+[ops.test]
+cpu_reference = "a_host[i] + kScalar"
+tolerance = "1e-4f"
+scalar_value = "1.5f"
+
+# --- SubScalar ---------------------------------------------------------------
+[[ops]]
+name           = "subScalar"
+category       = "Elemwise"
+kind           = "unary_scalar"
+kernel_forward = "SubScalar"
+log_component  = "ML"
+notes          = "Scalar subtraction: out = A - Scalar."
+forward_op     = "a - pc.Scalar"
+scalar_param   = { name = "scalar", type = "oa::F32", push_field = "Scalar" }
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+
+[ops.autograd]
+grad_class = "oa::GradSubScalar"
+inputs     = ["inA"]
+saved      = []
+formula    = "auto_unary_scalar_identity"
+
+[ops.test]
+cpu_reference = "a_host[i] - kScalar"
+tolerance = "1e-4f"
+scalar_value = "1.5f"
+
+# --- DivScalar ---------------------------------------------------------------
+[[ops]]
+name           = "divScalar"
+category       = "Elemwise"
+kind           = "unary_scalar"
+kernel_forward = "DivScalar"
+log_component  = "ML"
+notes          = "Scalar division: out = A / Scalar."
+forward_op     = "a / pc.Scalar"
+scalar_param   = { name = "scalar", type = "oa::F32", push_field = "Scalar" }
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+
+[ops.autograd]
+grad_class = "oa::GradDivScalar"
+inputs     = ["inA"]
+saved      = []
+ctor_args  = ["inScalar"]
+formula    = "auto_unary_scalar_div_scalar"
+
+[ops.test]
+cpu_reference = "a_host[i] / kScalar"
+tolerance = "1e-4f"
+scalar_value = "1.5f"
+
+# --- Exp ---------------------------------------------------------------------
+[[ops]]
+name           = "exp"
+category       = "Elemwise"
+kind           = "unary"
+kernel_forward = "Exp"
+slang_path     = "Core/Shader/Compute/Flat"
+log_component  = "ML"
+notes          = "Element-wise exponential: out = exp(A)."
+forward_op     = "exp(a)"
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+
+[ops.autograd]
+grad_class = "oa::GradExp"
+inputs     = ["inA"]
+saved      = ["out"]
+formula    = "auto_unary_exp"
+
+[ops.test]
+cpu_reference = "std::exp(a_host[i])"
+tolerance = "1e-3f"
+
+# --- Sin ---------------------------------------------------------------------
+[[ops]]
+name           = "sin"
+category       = "Elemwise"
+kind           = "unary"
+kernel_forward = "Sin"
+slang_path     = "Core/Shader/Compute/Flat"
+log_component  = "ML"
+notes          = "Element-wise sine: out = sin(A)."
+forward_op     = "sin(a)"
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+
+[ops.autograd]
+grad_class = "oa::GradSin"
+inputs     = ["inA"]
+saved      = ["inA"]
+formula    = "auto_unary_sin"
+
+[ops.test]
+cpu_reference = "std::sin(a_host[i])"
+tolerance = "1e-3f"
+
+# --- Cos ---------------------------------------------------------------------
+[[ops]]
+name           = "cos"
+category       = "Elemwise"
+kind           = "unary"
+kernel_forward = "Cos"
+slang_path     = "Core/Shader/Compute/Flat"
+log_component  = "ML"
+notes          = "Element-wise cosine: out = cos(A)."
+forward_op     = "cos(a)"
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+
+[ops.autograd]
+grad_class = "oa::GradCos"
+inputs     = ["inA"]
+saved      = ["inA"]
+formula    = "auto_unary_cos"
+
+[ops.test]
+cpu_reference = "std::cos(a_host[i])"
+tolerance = "1e-3f"
+
+# --- Reciprocal --------------------------------------------------------------
+[[ops]]
+name           = "reciprocal"
+category       = "Elemwise"
+kind           = "unary"
+kernel_forward = "Reciprocal"
+slang_path     = "Core/Shader/Compute/Flat"
+log_component  = "ML"
+notes          = "Element-wise reciprocal: out = 1 / A."
+forward_op     = "1.0f / a"
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+
+[ops.autograd]
+grad_class = "oa::GradReciprocal"
+inputs     = ["inA"]
+saved      = ["out"]
+formula    = "auto_unary_reciprocal"
+
+[ops.test]
+cpu_reference = "1.0f / a_host[i]"
+tolerance = "1e-3f"
+
+# --- ClampMax ---------------------------------------------------------------
+[[ops]]
+name           = "clampMax"
+category       = "Elemwise"
+kind           = "unary_scalar"
+kernel_forward = "ClampMax"
+slang_path     = "Core/Shader/Compute/Flat"
+log_component  = "ML"
+notes          = "Element-wise clamp max: out = min(A, Max)."
+forward_op     = "min(a, pc.Max)"
+scalar_param   = { name = "max", type = "oa::F32", push_field = "Max" }
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+
+[ops.autograd]
+grad_class = "oa::GradClampMax"
+inputs     = ["inA"]
+saved      = ["inA"]
+ctor_args  = ["inMax"]
+formula    = "manual"
+
+[ops.test]
+cpu_reference = "std::min(a_host[i], kScalar)"
+tolerance = "1e-4f"
+scalar_value = "0.5f"
+
+# --- ClampMin ---------------------------------------------------------------
+[[ops]]
+name           = "clampMin"
+category       = "Elemwise"
+kind           = "unary_scalar"
+kernel_forward = "ClampMin"
+slang_path     = "Core/Shader/Compute/Flat"
+log_component  = "ML"
+notes          = "Element-wise clamp min: out = max(A, Min)."
+forward_op     = "max(a, pc.Min)"
+scalar_param   = { name = "min", type = "oa::F32", push_field = "Min" }
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+
+[ops.autograd]
+grad_class = "oa::GradClampMin"
+inputs     = ["inA"]
+saved      = ["inA"]
+ctor_args  = ["inMin"]
+formula    = "manual"
+
+[ops.test]
+cpu_reference = "std::max(a_host[i], kScalar)"
+tolerance = "1e-4f"
+scalar_value = "-0.5f"

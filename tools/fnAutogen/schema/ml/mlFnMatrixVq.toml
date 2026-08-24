@@ -1,0 +1,97 @@
+# Fn schema — vector-quantization assignment and EMA codebook update.
+category = "Vq"
+namespace = "oa::FnMatrix"
+file_prefix = "FnMatrix"
+cpp_subdir = "Vq"
+surface = "public_operation"
+
+[[ops]]
+name = "vqAssign"
+kind = "binary"
+kernel_forward = "VqAssign"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::VqAssignResult"
+api_params = [
+    "const oa::Matrix& inZe",
+    "const oa::Matrix& inCodebook",
+]
+notes = "Assign every latent row to its nearest codebook row and return both Int32 indices and gathered values."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 349
+category = "Ml"
+origin = "oa"
+source = "ops/vqAssign"
+
+[ops.python_result]
+cpp_type = "oa::VqAssignResult"
+members = ["idx", "zq"]
+
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix", "matrix"]
+shape_rule = "explicit"
+dtype_rule = "explicit"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1, -1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+
+[ops.python]
+args = ["ze", "codebook"]
+doc = "Assign latent rows to their nearest vector-quantization codes."
+
+[[ops]]
+name = "vqEmaUpdate"
+kind = "unary"
+kernel_forward = "VqEmaUpdate"
+body = "manual_session"
+generate_declaration = false
+api_return = "void"
+api_params = [
+    "const oa::Matrix& inZe",
+    "const oa::Matrix& inIdx",
+    "oa::Matrix& inOutEmbedSum",
+    "oa::Matrix& inOutClusterSize",
+    "oa::Matrix& outCodebook",
+    "oa::F32 inDecay",
+    "oa::F32 inEps",
+    "oa::F32 inDeadThreshold",
+    "oa::U32 inSeed",
+    "bool inNormalize",
+]
+notes = "Update EMA vector-quantization statistics and codebook storage in place, including deterministic seed-controlled dead-code revival."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 350
+category = "Ml"
+origin = "oa"
+source = "ops/vqEmaUpdate"
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix", "matrix", "matrix"]
+output_kinds = []
+shape_rule = "explicit"
+dtype_rule = "explicit"
+effects = ["read_inputs"]
+mutated_inputs = [2, 3, 4]
+output_alias_inputs = []
+control_flow = "conditional"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "decay", kind = "float", source = "inDecay" },
+    { name = "eps", kind = "float", source = "inEps" },
+    { name = "deadThreshold", kind = "float", source = "inDeadThreshold" },
+    { name = "seed", kind = "unsigned_integer", source = "inSeed" },
+    { name = "normalize", kind = "boolean", source = "inNormalize" },
+]
+
+[ops.python]
+args = ["ze", "idx", "inOutEmbedSum", "inOutClusterSize", "codebook", "decay", "eps", "deadThreshold", "seed", "normalize"]
+doc = "Update vector-quantization EMA statistics and codebook storage in place."

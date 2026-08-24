@@ -1,0 +1,563 @@
+# Fn schema — verified Vision/FnImage filter ops.
+surface = "public_operation"
+generate_python_bindings = true
+#
+# This is the *source of truth* for image filtering operations. The generator
+# emits .h declarations, .cpp implementations, and .slang shaders from this file.
+# See tools/fnAutogen/rEADME.md and tools/fnAutogen/oafnautogen.py.
+#
+# Filter operations apply convolution kernels for blur, edge detection, etc.
+
+generate_engine_overloads = true
+generate_forwarders = true
+
+# The operations below use hand-written context bodies because their graph
+# lowering has multiple inputs and/or multiple dispatches. This manifest is
+# still the authoritative public inventory; generated files deliberately point
+# back to those implementations instead of producing an immediate path.
+
+[[ops]]
+name           = "convolve2d"
+category       = "Filter"
+kind           = "binary"
+kernel_forward = "ImageConvolve2d"
+slang_path     = "Vision/Filter"
+log_component  = "VISION"
+notes          = "Same-shape NCHW 2D cross-correlation with an odd shared kernel and explicit border semantics."
+body           = "manual_session"
+api_params = ["const oa::Matrix& inImage", "const oa::Matrix& inKernel", "oa::BorderMode inBorder = oa::BorderMode::Reflect101", "oa::F32 inBorderValue = 0.0F"]
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "border", kind = "unsigned_integer", source = "static_cast<oa::U64>(inBorder)" },
+    { name = "borderValue", kind = "float", source = "inBorderValue" },
+]
+
+[[ops]]
+name           = "separableConvolve2d"
+category       = "Filter"
+kind           = "binary"
+kernel_forward = "ImageSeparableConvolve"
+slang_path     = "Vision/Filter"
+log_component  = "VISION"
+notes          = "Same-shape NCHW separable cross-correlation with odd horizontal and vertical kernels."
+body           = "manual_session"
+api_params = ["const oa::Matrix& inImage", "const oa::Matrix& inKernelX", "const oa::Matrix& inKernelY", "oa::BorderMode inBorder = oa::BorderMode::Reflect101", "oa::F32 inBorderValue = 0.0F"]
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "border", kind = "unsigned_integer", source = "static_cast<oa::U64>(inBorder)" },
+    { name = "borderValue", kind = "float", source = "inBorderValue" },
+]
+
+[[ops]]
+name           = "averageBlur"
+category       = "Filter"
+kind           = "unary"
+kernel_forward = "ImageConvolve2d"
+slang_path     = "Vision/Filter"
+log_component  = "VISION"
+notes          = "Normalized box blur lowered through the generic 2D filter."
+body           = "manual_session"
+api_params = ["const oa::Matrix& inImage", "oa::U32 inKernelWidth = 3", "oa::U32 inKernelHeight = 3", "oa::BorderMode inBorder = oa::BorderMode::Reflect101"]
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "kernelWidth", kind = "unsigned_integer", source = "inKernelWidth" },
+    { name = "kernelHeight", kind = "unsigned_integer", source = "inKernelHeight" },
+    { name = "border", kind = "unsigned_integer", source = "static_cast<oa::U64>(inBorder)" },
+]
+
+[[ops]]
+name           = "sobel"
+category       = "Filter"
+kind           = "unary"
+kernel_forward = "ImageConvolve2d"
+slang_path     = "Vision/Filter"
+log_component  = "VISION"
+notes          = "Signed 3x3 Sobel x or y derivative lowered through the generic 2D filter."
+body           = "manual_session"
+api_params = ["const oa::Matrix& inImage", "oa::U32 inDx = 1", "oa::U32 inDy = 0", "oa::BorderMode inBorder = oa::BorderMode::Reflect101"]
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "dx", kind = "unsigned_integer", source = "inDx" },
+    { name = "dy", kind = "unsigned_integer", source = "inDy" },
+    { name = "border", kind = "unsigned_integer", source = "static_cast<oa::U64>(inBorder)" },
+]
+
+[[ops]]
+name           = "scharr"
+category       = "Filter"
+kind           = "unary"
+kernel_forward = "ImageConvolve2d"
+slang_path     = "Vision/Filter"
+log_component  = "VISION"
+notes          = "Signed 3x3 Scharr x or y derivative lowered through the generic 2D filter."
+body           = "manual_session"
+api_params = ["const oa::Matrix& inImage", "oa::U32 inDx = 1", "oa::U32 inDy = 0", "oa::BorderMode inBorder = oa::BorderMode::Reflect101"]
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "dx", kind = "unsigned_integer", source = "inDx" },
+    { name = "dy", kind = "unsigned_integer", source = "inDy" },
+    { name = "border", kind = "unsigned_integer", source = "static_cast<oa::U64>(inBorder)" },
+]
+
+[[ops]]
+name           = "laplacian"
+category       = "Filter"
+kind           = "unary"
+kernel_forward = "ImageConvolve2d"
+slang_path     = "Vision/Filter"
+log_component  = "VISION"
+notes          = "Signed four-neighbour discrete Laplacian lowered through the generic 2D filter."
+body           = "manual_session"
+api_params = ["const oa::Matrix& inImage", "oa::BorderMode inBorder = oa::BorderMode::Reflect101"]
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [{ name = "border", kind = "unsigned_integer", source = "static_cast<oa::U64>(inBorder)" }]
+
+[[ops]]
+name           = "erode"
+category       = "Filter"
+kind           = "unary"
+kernel_forward = "ImageMorphology"
+slang_path     = "Vision/Filter"
+log_component  = "VISION"
+notes          = "Rectangular NCHW erosion using the shared border contract."
+body           = "manual_session"
+api_params = ["const oa::Matrix& inImage", "oa::U32 inKernelWidth = 3", "oa::U32 inKernelHeight = 3", "oa::BorderMode inBorder = oa::BorderMode::Reflect101", "oa::F32 inBorderValue = 0.0F"]
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "kernelWidth", kind = "unsigned_integer", source = "inKernelWidth" },
+    { name = "kernelHeight", kind = "unsigned_integer", source = "inKernelHeight" },
+    { name = "border", kind = "unsigned_integer", source = "static_cast<oa::U64>(inBorder)" },
+    { name = "borderValue", kind = "float", source = "inBorderValue" },
+]
+
+[[ops]]
+name           = "dilate"
+category       = "Filter"
+kind           = "unary"
+kernel_forward = "ImageMorphology"
+slang_path     = "Vision/Filter"
+log_component  = "VISION"
+notes          = "Rectangular NCHW dilation using the shared border contract."
+body           = "manual_session"
+api_params = ["const oa::Matrix& inImage", "oa::U32 inKernelWidth = 3", "oa::U32 inKernelHeight = 3", "oa::BorderMode inBorder = oa::BorderMode::Reflect101", "oa::F32 inBorderValue = 0.0F"]
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "kernelWidth", kind = "unsigned_integer", source = "inKernelWidth" },
+    { name = "kernelHeight", kind = "unsigned_integer", source = "inKernelHeight" },
+    { name = "border", kind = "unsigned_integer", source = "static_cast<oa::U64>(inBorder)" },
+    { name = "borderValue", kind = "float", source = "inBorderValue" },
+]
+
+[[ops]]
+name           = "morphologyOpen"
+category       = "Filter"
+kind           = "unary"
+kernel_forward = "ImageMorphology"
+slang_path     = "Vision/Filter"
+log_component  = "VISION"
+notes          = "Erosion followed by dilation through the reusable morphology primitive."
+body           = "manual_session"
+api_params = ["const oa::Matrix& inImage", "oa::U32 inKernelWidth = 3", "oa::U32 inKernelHeight = 3", "oa::BorderMode inBorder = oa::BorderMode::Reflect101", "oa::F32 inBorderValue = 0.0F"]
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "kernelWidth", kind = "unsigned_integer", source = "inKernelWidth" },
+    { name = "kernelHeight", kind = "unsigned_integer", source = "inKernelHeight" },
+    { name = "border", kind = "unsigned_integer", source = "static_cast<oa::U64>(inBorder)" },
+    { name = "borderValue", kind = "float", source = "inBorderValue" },
+]
+
+[[ops]]
+name           = "morphologyClose"
+category       = "Filter"
+kind           = "unary"
+kernel_forward = "ImageMorphology"
+slang_path     = "Vision/Filter"
+log_component  = "VISION"
+notes          = "Dilation followed by erosion through the reusable morphology primitive."
+body           = "manual_session"
+api_params = ["const oa::Matrix& inImage", "oa::U32 inKernelWidth = 3", "oa::U32 inKernelHeight = 3", "oa::BorderMode inBorder = oa::BorderMode::Reflect101", "oa::F32 inBorderValue = 0.0F"]
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "kernelWidth", kind = "unsigned_integer", source = "inKernelWidth" },
+    { name = "kernelHeight", kind = "unsigned_integer", source = "inKernelHeight" },
+    { name = "border", kind = "unsigned_integer", source = "static_cast<oa::U64>(inBorder)" },
+    { name = "borderValue", kind = "float", source = "inBorderValue" },
+]
+
+[[ops]]
+name           = "morphologyGradient"
+category       = "Filter"
+kind           = "unary"
+kernel_forward = "ImageMorphology"
+slang_path     = "Vision/Filter"
+log_component  = "VISION"
+notes          = "Difference between dilation and erosion."
+body           = "manual_session"
+api_params = ["const oa::Matrix& inImage", "oa::U32 inKernelWidth = 3", "oa::U32 inKernelHeight = 3", "oa::BorderMode inBorder = oa::BorderMode::Reflect101", "oa::F32 inBorderValue = 0.0F"]
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "kernelWidth", kind = "unsigned_integer", source = "inKernelWidth" },
+    { name = "kernelHeight", kind = "unsigned_integer", source = "inKernelHeight" },
+    { name = "border", kind = "unsigned_integer", source = "static_cast<oa::U64>(inBorder)" },
+    { name = "borderValue", kind = "float", source = "inBorderValue" },
+]
+
+# --- GaussianBlur ------------------------------------------------------------
+[[ops]]
+name           = "gaussianBlur"
+category       = "Filter"
+kind           = "unary"
+kernel_forward = "ImageSeparableConvolve"
+slang_path     = "Vision/Filter"
+log_component  = "VISION"
+notes          = "Gaussian blur filter with configurable kernel size and sigma."
+body           = "manual_session"
+api_params = ["const oa::Matrix& inImage", "oa::F32 inSigma", "oa::U32 inKernelSize = 0"]
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "sigma", kind = "float", source = "inSigma" },
+    { name = "kernelSize", kind = "unsigned_integer", source = "inKernelSize" },
+]
+
+# Canny remains unadmitted: the retired experiment's in-place NMS ordering and
+# one-step hysteresis did not implement a valid public algorithm.
+
+[[ops]]
+name = "sharpen"
+category = "Filter"
+kind = "unary"
+kernel_forward = "ImageConvolve2d"
+slang_path = "Vision/Filter"
+log_component = "VISION"
+notes = "Parameterized 3x3 sharpening lowered through Convolve2d."
+body = "manual_session"
+api_params = ["const oa::Matrix& inImage", "oa::F32 inAmount = 1.0F", "oa::BorderMode inBorder = oa::BorderMode::Reflect101"]
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "amount", kind = "float", source = "inAmount" },
+    { name = "border", kind = "unsigned_integer", source = "static_cast<oa::U64>(inBorder)" },
+]
+
+[[ops]]
+name = "medianBlur"
+category = "Filter"
+kind = "unary"
+kernel_forward = "ImageNeighborhood"
+slang_path = "Vision/Filter"
+log_component = "VISION"
+notes = "Odd-window median filter with explicit border semantics."
+body = "manual_session"
+api_params = ["const oa::Matrix& inImage", "oa::U32 inKernelSize = 3", "oa::BorderMode inBorder = oa::BorderMode::Reflect101"]
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "kernelSize", kind = "unsigned_integer", source = "inKernelSize" },
+    { name = "border", kind = "unsigned_integer", source = "static_cast<oa::U64>(inBorder)" },
+]
+
+[[ops]]
+name = "bilateralFilter"
+category = "Filter"
+kind = "unary"
+kernel_forward = "ImageNeighborhood"
+slang_path = "Vision/Filter"
+log_component = "VISION"
+notes = "Edge-preserving bilateral neighborhood filter."
+body = "manual_session"
+api_params = ["const oa::Matrix& inImage", "oa::U32 inKernelSize = 5", "oa::F32 inSigmaColor = 0.1F", "oa::F32 inSigmaSpace = 1.0F", "oa::BorderMode inBorder = oa::BorderMode::Reflect101"]
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "kernelSize", kind = "unsigned_integer", source = "inKernelSize" },
+    { name = "sigmaColor", kind = "float", source = "inSigmaColor" },
+    { name = "sigmaSpace", kind = "float", source = "inSigmaSpace" },
+    { name = "border", kind = "unsigned_integer", source = "static_cast<oa::U64>(inBorder)" },
+]
+
+[[ops]]
+name = "unsharpMask"
+category = "Filter"
+kind = "unary"
+kernel_forward = "ImageSeparableConvolve"
+slang_path = "Vision/Filter"
+log_component = "VISION"
+notes = "Gaussian unsharp masking composed from graph-native primitives."
+body = "manual_session"
+api_params = ["const oa::Matrix& inImage", "oa::F32 inSigma = 1.0F", "oa::F32 inAmount = 1.0F", "oa::U32 inKernelSize = 0"]
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "sigma", kind = "float", source = "inSigma" },
+    { name = "amount", kind = "float", source = "inAmount" },
+    { name = "kernelSize", kind = "unsigned_integer", source = "inKernelSize" },
+]
+
+[[ops]]
+name = "morphologyTopHat"
+category = "Filter"
+kind = "unary"
+kernel_forward = "ImageMorphology"
+slang_path = "Vision/Filter"
+log_component = "VISION"
+notes = "Input minus morphological opening."
+body = "manual_session"
+api_params = ["const oa::Matrix& inImage", "oa::U32 inKernelWidth = 3", "oa::U32 inKernelHeight = 3", "oa::BorderMode inBorder = oa::BorderMode::Reflect101", "oa::F32 inBorderValue = 0.0F"]
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "kernelWidth", kind = "unsigned_integer", source = "inKernelWidth" },
+    { name = "kernelHeight", kind = "unsigned_integer", source = "inKernelHeight" },
+    { name = "border", kind = "unsigned_integer", source = "static_cast<oa::U64>(inBorder)" },
+    { name = "borderValue", kind = "float", source = "inBorderValue" },
+]
+
+[[ops]]
+name = "morphologyBlackHat"
+category = "Filter"
+kind = "unary"
+kernel_forward = "ImageMorphology"
+slang_path = "Vision/Filter"
+log_component = "VISION"
+notes = "Morphological closing minus input."
+body = "manual_session"
+api_params = ["const oa::Matrix& inImage", "oa::U32 inKernelWidth = 3", "oa::U32 inKernelHeight = 3", "oa::BorderMode inBorder = oa::BorderMode::Reflect101", "oa::F32 inBorderValue = 0.0F"]
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "kernelWidth", kind = "unsigned_integer", source = "inKernelWidth" },
+    { name = "kernelHeight", kind = "unsigned_integer", source = "inKernelHeight" },
+    { name = "border", kind = "unsigned_integer", source = "static_cast<oa::U64>(inBorder)" },
+    { name = "borderValue", kind = "float", source = "inBorderValue" },
+]
+
+[[ops]]
+name = "adaptiveThresholdMean"
+category = "Filter"
+kind = "unary"
+kernel_forward = "ImageNeighborhood"
+slang_path = "Vision/Filter"
+log_component = "VISION"
+notes = "Local mean adaptive binary threshold."
+body = "manual_session"
+api_params = ["const oa::Matrix& inImage", "oa::U32 inKernelSize = 11", "oa::F32 inC = 0.0F", "oa::F32 inMaxValue = 1.0F", "oa::BorderMode inBorder = oa::BorderMode::Reflect101"]
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "kernelSize", kind = "unsigned_integer", source = "inKernelSize" },
+    { name = "c", kind = "float", source = "inC" },
+    { name = "maxValue", kind = "float", source = "inMaxValue" },
+    { name = "border", kind = "unsigned_integer", source = "static_cast<oa::U64>(inBorder)" },
+]
+
+[[ops]]
+name = "adaptiveThresholdGaussian"
+category = "Filter"
+kind = "unary"
+kernel_forward = "ImageNeighborhood"
+slang_path = "Vision/Filter"
+log_component = "VISION"
+notes = "Local Gaussian adaptive binary threshold."
+body = "manual_session"
+api_params = ["const oa::Matrix& inImage", "oa::U32 inKernelSize = 11", "oa::F32 inC = 0.0F", "oa::F32 inMaxValue = 1.0F", "oa::F32 inSigma = 0.0F", "oa::BorderMode inBorder = oa::BorderMode::Reflect101"]
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "kernelSize", kind = "unsigned_integer", source = "inKernelSize" },
+    { name = "c", kind = "float", source = "inC" },
+    { name = "maxValue", kind = "float", source = "inMaxValue" },
+    { name = "sigma", kind = "float", source = "inSigma" },
+    { name = "border", kind = "unsigned_integer", source = "static_cast<oa::U64>(inBorder)" },
+]

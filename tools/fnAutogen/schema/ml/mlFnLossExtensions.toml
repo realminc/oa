@@ -1,0 +1,276 @@
+# Fn schema — optional animation-extension losses and host diagnostics.
+category = "LossExtensions"
+namespace = "oa::FnLoss"
+file_prefix = "FnLoss"
+cpp_subdir = "extensions"
+
+[[ops]]
+name = "smoothL1Mean"
+kind = "binary"
+kernel_forward = "SmoothL1Mean"
+surface = "public_cpp_operation"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = ["const oa::Matrix& inA", "const oa::Matrix& inB"]
+notes = "Compute fused scalar mean smooth-L1 loss."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 358
+category = "Ml"
+origin = "oa"
+source = "loss/smoothL1Mean"
+
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "conditional"
+differentiation = "reverse"
+lowering = "dispatch"
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inA"]
+outputs = ["Loss"]
+implementation = "sdk/cpp/lib/ml/fnLoss.cpp:SmoothL1Mean"
+
+[[ops]]
+name = "smoothL1MeanBwd"
+kind = "unary"
+kernel_forward = "SmoothL1MeanBwd"
+surface = "public_cpp_operation"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inA",
+    "const oa::Matrix& inB",
+    "const oa::Matrix& inDOut",
+]
+notes = "Compute the explicit fused smooth-L1 mean gradient."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 359
+category = "Ml"
+origin = "oa"
+source = "loss/smoothL1MeanBwd"
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+
+[[ops]]
+name = "velSmoothL1"
+kind = "binary"
+kernel_forward = "VelSmoothL1"
+surface = "public_cpp_operation"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = ["const oa::Matrix& inPred", "const oa::Matrix& inTarget"]
+notes = "Compute fused temporal-difference smooth-L1 loss."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 360
+category = "Ml"
+origin = "oa"
+source = "loss/velSmoothL1"
+
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "conditional"
+differentiation = "reverse"
+lowering = "dispatch"
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inPred"]
+outputs = ["Loss"]
+implementation = "sdk/cpp/lib/ml/fnLoss.cpp:VelSmoothL1"
+
+[[ops]]
+name = "velSmoothL1Bwd"
+kind = "unary"
+kernel_forward = "VelSmoothL1Bwd"
+surface = "public_cpp_operation"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inPred",
+    "const oa::Matrix& inTarget",
+    "const oa::Matrix& inDOut",
+]
+notes = "Compute the explicit temporal smooth-L1 gradient."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 361
+category = "Ml"
+origin = "oa"
+source = "loss/velSmoothL1Bwd"
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+
+[[ops]]
+name = "gen3dAnim"
+kind = "binary"
+surface = "public_cpp_operation"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inPredFlat",
+    "const oa::Matrix& inTargetFlat",
+    "const oa::Gen3dAnimLossConfig& inConfig",
+]
+notes = "Compose weighted pose, temporal, contact, and root-motion losses."
+
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "conditional"
+differentiation = "reverse"
+lowering = "dispatch"
+attributes = [
+    { name = "configIdentity", kind = "unsigned_integer", source = "Gen3dAnimConfigIdentity_(inConfig)" },
+]
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inPredFlat"]
+outputs = ["Loss"]
+implementation = "sdk/cpp/lib/ml/fnLoss.cpp:Gen3dAnim"
+
+[[ops]]
+name = "skPoseFkLoss"
+kind = "binary"
+surface = "public_cpp_operation"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inPredFlat",
+    "const oa::Matrix& inTargetWorld",
+    "const oa::Skeleton& inSkeleton",
+    "const oa::SkPoseFkLossConfig& inConfig",
+]
+notes = "Compute differentiable skeletal forward-kinematics world-position loss."
+
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "conditional"
+differentiation = "reverse"
+lowering = "dispatch"
+attributes = [
+    { name = "skeletonIdentity", kind = "unsigned_integer", source = "SkeletonIdentity_(inSkeleton)" },
+    { name = "poseDim", kind = "signed_integer", source = "inConfig.PoseDim" },
+    { name = "seqLen", kind = "signed_integer", source = "inConfig.SeqLen" },
+    { name = "positionWeight", kind = "float", source = "inConfig.PositionWeight" },
+    { name = "velWeight", kind = "float", source = "inConfig.VelWeight" },
+]
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inPredFlat"]
+outputs = ["Loss"]
+implementation = "sdk/cpp/lib/ml/fnLoss.cpp:SkPoseFkLoss"
+
+[[ops]]
+name = "skPoseFkTargetWorld"
+kind = "unary"
+surface = "host_utility"
+body = "cpu_util"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "oa::Span<const oa::F32> inRaw",
+    "oa::I32 inFrameCount",
+    "oa::I32 inPoseDim",
+    "oa::F32 inFps",
+    "const oa::Skeleton& inSkeleton",
+]
+notes = "Build a device target matrix from host pose channels and skeleton data."
+
+[[ops]]
+name = "skPoseFk"
+kind = "binary"
+surface = "host_observation"
+body = "cpu_util"
+generate_declaration = false
+api_return = "oa::SkPoseFkMetrics"
+api_params = [
+    "oa::Span<const oa::F32> inPredRaw",
+    "oa::Span<const oa::F32> inTargetRaw",
+    "oa::I32 inFrameCount",
+    "oa::I32 inPoseDim",
+    "oa::F32 inFps",
+    "const oa::Skeleton& inSkeleton",
+    "oa::F32 inContactThreshold = 0.5f",
+]
+notes = "Observe skeletal pose quality on host data."
+
+[[ops]]
+name = "gen3dAnimPoseMetrics"
+kind = "binary"
+surface = "host_observation"
+body = "cpu_util"
+generate_declaration = false
+api_return = "oa::SkPoseFkMetrics"
+api_params = [
+    "oa::Span<const oa::F32> inPredRaw",
+    "oa::Span<const oa::F32> inTargetRaw",
+    "oa::I32 inFrameCount",
+    "oa::I32 inPoseDim",
+    "oa::F32 inFps",
+    "const oa::Skeleton& inSkeleton",
+    "oa::F32 inContactThreshold = 0.5f",
+]
+notes = "Deprecated host alias for SkPoseFk."

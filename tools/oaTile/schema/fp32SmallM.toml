@@ -1,0 +1,20 @@
+schema_version = 1
+generator_abi = 1
+
+# Portable small-M schedules. One logical reduction group owns one output and
+# uses shared-memory reduction, so these variants require no fixed subgroup
+# width or vendor extension. max_m is an exact registry legality constraint.
+
+[[variant]]
+name = "GemmSmallM4R32"
+local_id = 365
+outputs_per_group = 4
+reduction_width = 32
+workgroup = 128
+max_m = 4
+epilogues = [
+  { kind = "bias", name = "GemmBiasSmallM4R32", local_id = 366 },
+  { kind = "bias_relu", name = "GemmBiasReluSmallM4R32", local_id = 367 },
+  { kind = "bias_gelu", name = "GemmBiasGeluSmallM4R32", local_id = 368 },
+  { kind = "bias_silu", name = "GemmBiasSiluSmallM4R32", local_id = 369 },
+]

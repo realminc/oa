@@ -1,0 +1,76 @@
+// Stable log-softmax: y_i = x_i - max(x) - log(sum(exp(x - max(x)))).
+
+import storage;
+
+struct PushConstants {
+	uint x_idx;
+	uint out_idx;
+	uint outer_size;
+	uint dim_size;
+	uint inner_size;
+};
+
+[[vk::push_constant]] PushConstants pc;
+[[vk::binding(0, 0)]] RWByteAddressBuffer heap[];
+
+// Ping-pong banks keep each reduction pass's reads and writes at distinct
+// shared addresses. This avoids same-address RMW ambiguity in older GPU-AV
+// instrumentation while preserving the barrier-separated reduction tree.
+groupshared float reduction[2][256];
+
+[shader("compute")]
+[numthreads(256, 1, 1)]
+void main(uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID) {
+	uint axisGroup = group.x;
+	uint lane = thread.x;
+	if (axisGroup >= pc.outer_size * pc.inner_size) return;
+	uint outer = axisGroup / pc.inner_size;
+	uint inner = axisGroup % pc.inner_size;
+	uint base = outer * pc.dim_size * pc.inner_size + inner;
+	uint readBank = 0u;
+	uint writeBank = 1u;
+
+	float localMax = -3.402823466e+38f;
+	for (uint column = lane; column < pc.dim_size; column += 256u) {
+		localMax = max(localMax, oaLoad(
+			heap[pc.x_idx], base + column * pc.inner_size));
+	}
+	reduction[readBank][lane] = localMax;
+	GroupMemoryBarrierWithGroupSync();
+	for (uint width = 128u; width > 0u; width >>= 1u) {
+		if (lane < width) reduction[writeBank][lane] = max(
+			reduction[readBank][lane], reduction[readBank][lane + width]);
+		GroupMemoryBarrierWithGroupSync();
+		uint previousReadBank = readBank;
+		readBank = writeBank;
+		writeBank = previousReadBank;
+	}
+	float rowMax = reduction[readBank][0];
+	// Every lane must finish reading the max before lane 0 can reuse
+	// its shared slot for the sum phase.
+	GroupMemoryBarrierWithGroupSync();
+
+	float localSum = 0.0f;
+	for (uint column = lane; column < pc.dim_size; column += 256u) {
+		localSum += exp(oaLoad(
+			heap[pc.x_idx], base + column * pc.inner_size) - rowMax);
+	}
+	readBank = 0u;
+	writeBank = 1u;
+	reduction[readBank][lane] = localSum;
+	GroupMemoryBarrierWithGroupSync();
+	for (uint width = 128u; width > 0u; width >>= 1u) {
+		if (lane < width) reduction[writeBank][lane] =
+			reduction[readBank][lane] + reduction[readBank][lane + width];
+		GroupMemoryBarrierWithGroupSync();
+		uint previousReadBank = readBank;
+		readBank = writeBank;
+		writeBank = previousReadBank;
+	}
+	float logNormalizer = rowMax + log(reduction[readBank][0]);
+	for (uint column = lane; column < pc.dim_size; column += 256u) {
+		uint index = base + column * pc.inner_size;
+		oaStore(heap[pc.out_idx], index,
+			oaLoad(heap[pc.x_idx], index) - logNormalizer);
+	}
+}

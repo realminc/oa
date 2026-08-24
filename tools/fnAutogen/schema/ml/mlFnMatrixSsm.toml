@@ -1,0 +1,875 @@
+# Fn schema — Mamba-3 and Empyrealm selective state-space operations.
+category = "Ssm"
+namespace = "oa::FnMatrix"
+file_prefix = "FnMatrix"
+cpp_subdir = "Ssm"
+surface = "public_operation"
+autograd_node_header = "oa/ml/autograd/matrix/autogradSsm.h"
+
+[[ops]]
+name = "mamba3Siso"
+kind = "unary"
+kernel_forward = "Mamba3SisoFwd"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inC",
+    "const oa::Matrix& inB",
+    "const oa::Matrix& inX",
+    "const oa::Matrix& inZ",
+    "const oa::Matrix& inAdt",
+    "const oa::Matrix& inDt",
+    "const oa::Matrix& inTrap",
+    "const oa::Matrix& inAngle",
+    "const oa::Matrix& inCBias",
+    "const oa::Matrix& inBBias",
+    "const oa::Matrix& inD",
+    "const oa::SsmConfig& inConfig",
+]
+notes = "Run the full-sequence Mamba-3 selective state-space scan. ConfigIdentity fingerprints every behavior-changing scan field."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 342
+category = "Ml"
+origin = "oa"
+source = "ssm/mamba3/mamba3SisoFwd"
+
+[ops.contract]
+input_kinds = []
+variadic_inputs = { kind = "matrix", minimum = 11 }
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "conditional"
+differentiation = "reverse"
+lowering = "dispatch"
+attributes = [
+    { name = "configIdentity", kind = "unsigned_integer", source = "oa::SsmConfigIdentity(inConfig)" },
+]
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inC", "inB", "inX", "inZ", "inAdt", "inDt", "inTrap", "inAngle", "inCBias", "inBBias", "inD"]
+outputs = ["out"]
+implementation = "source/cpp/lib/oa/Ml/FnMatrix/Ssm/FnMatrixMamba3.cpp:Mamba3Siso"
+
+[ops.python]
+args = ["c", "b", "x", "z", "adt", "dt", "trap", "angle", "cBias", "bBias", "d", "config"]
+doc = "Run the full-sequence Mamba-3 selective state-space scan."
+
+[[ops]]
+name = "mamba3SisoStep"
+kind = "unary"
+kernel_forward = "Mamba3SisoStep"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inC",
+    "const oa::Matrix& inB",
+    "const oa::Matrix& inX",
+    "const oa::Matrix& inZ",
+    "const oa::Matrix& inAdt",
+    "const oa::Matrix& inDt",
+    "const oa::Matrix& inTrap",
+    "const oa::Matrix& inAngle",
+    "const oa::Matrix& inCBias",
+    "const oa::Matrix& inBBias",
+    "const oa::Matrix& inD",
+    "const oa::Matrix& inSsmState",
+    "const oa::Matrix& inAngleState",
+    "const oa::Matrix& inKState",
+    "const oa::Matrix& inVState",
+    "const oa::SsmConfig& inConfig",
+]
+notes = "Run one autoregressive Mamba-3 step and mutate the four explicit recurrent-state values. The semantic recorder places those state values in the fixed contract slots and the eleven read-only operands in the homogeneous variadic tail."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 343
+category = "Ml"
+origin = "oa"
+source = "ssm/mamba3/mamba3SisoStep"
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix", "matrix"]
+variadic_inputs = { kind = "matrix", minimum = 11 }
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = [0, 1, 2, 3]
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "configIdentity", kind = "unsigned_integer", source = "oa::SsmConfigIdentity(inConfig)" },
+]
+
+[ops.python]
+args = ["c", "b", "x", "z", "adt", "dt", "trap", "angle", "cBias", "bBias", "d", "ssmState", "angleState", "kState", "vState", "config"]
+doc = "Run one autoregressive Mamba-3 step and update the supplied recurrent states."
+
+[[ops]]
+name = "mamba3SisoBwd"
+kind = "unary"
+kernel_forward = "Mamba3SisoBwd"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::SsmBwdResult"
+api_params = [
+    "const oa::Matrix& inDOut",
+    "const oa::Matrix& inC",
+    "const oa::Matrix& inB",
+    "const oa::Matrix& inX",
+    "const oa::Matrix& inZ",
+    "const oa::Matrix& inAdt",
+    "const oa::Matrix& inDt",
+    "const oa::Matrix& inTrap",
+    "const oa::Matrix& inAngle",
+    "const oa::Matrix& inCBias",
+    "const oa::Matrix& inBBias",
+    "const oa::Matrix& inD",
+    "const oa::SsmConfig& inConfig",
+]
+notes = "Compute all eleven explicit Mamba-3 selective-scan adjoints."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 341
+category = "Ml"
+origin = "oa"
+source = "ssm/mamba3/mamba3SisoBwd"
+
+[ops.python_result]
+cpp_type = "oa::SsmBwdResult"
+members = ["dC", "dB", "dX", "dZ", "dAdt", "dDt", "dTrap", "dAngle", "dCBias", "dBBias", "dD"]
+
+[ops.contract]
+input_kinds = []
+variadic_inputs = { kind = "matrix", minimum = 12 }
+output_kinds = []
+variadic_outputs = { kind = "matrix", minimum = 11 }
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = []
+control_flow = "conditional"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "configIdentity", kind = "unsigned_integer", source = "oa::SsmConfigIdentity(inConfig)" },
+]
+
+[ops.python]
+args = ["dOut", "c", "b", "x", "z", "adt", "dt", "trap", "angle", "cBias", "bBias", "d", "config"]
+doc = "Compute all explicit Mamba-3 selective-scan gradients."
+
+[[ops]]
+name = "mamba3Mimo"
+kind = "unary"
+kernel_forward = "Mamba3MimoFwd"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inC", "const oa::Matrix& inB",
+    "const oa::Matrix& inX", "const oa::Matrix& inZ",
+    "const oa::Matrix& inAdt", "const oa::Matrix& inDt",
+    "const oa::Matrix& inTrap", "const oa::Matrix& inAngle",
+    "const oa::Matrix& inCBias", "const oa::Matrix& inBBias",
+    "const oa::Matrix& inD", "const oa::Matrix& inMimoX",
+    "const oa::Matrix& inMimoZ", "const oa::Matrix& inMimoO",
+    "const oa::Matrix& inNormWeight", "const oa::SsmConfig& inConfig",
+]
+notes = "Run the shared-state Mamba-3 MIMO scan with rankwise gate/norm and contraction."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 399
+category = "Ml"
+origin = "oa"
+source = "ssm/mamba3/mamba3MimoFwd"
+
+[ops.contract]
+input_kinds = []
+variadic_inputs = { kind = "matrix", minimum = 15 }
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "reverse"
+lowering = "dispatch"
+attributes = [
+    { name = "configIdentity", kind = "unsigned_integer", source = "oa::SsmConfigIdentity(inConfig)" },
+]
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inC", "inB", "inX", "inZ", "inAdt", "inDt", "inTrap", "inAngle", "inCBias", "inBBias", "inD", "inMimoX", "inMimoZ", "inMimoO", "inNormWeight"]
+outputs = ["out"]
+implementation = "source/cpp/lib/oa/Ml/FnMatrix/Ssm/FnMatrixMamba3.cpp:Mamba3Mimo"
+
+[ops.python]
+args = ["c", "b", "x", "z", "adt", "dt", "trap", "angle", "cBias", "bBias", "d", "mimoX", "mimoZ", "mimoO", "normWeight", "config"]
+doc = "Run the shared-state Mamba-3 MIMO selective scan."
+
+[[ops]]
+name = "mamba3MimoBwd"
+kind = "unary"
+kernel_forward = "Mamba3MimoBwdCore"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Mamba3MimoBwdResult"
+api_params = [
+    "const oa::Matrix& inDOut", "const oa::Matrix& inC", "const oa::Matrix& inB",
+    "const oa::Matrix& inX", "const oa::Matrix& inZ",
+    "const oa::Matrix& inAdt", "const oa::Matrix& inDt",
+    "const oa::Matrix& inTrap", "const oa::Matrix& inAngle",
+    "const oa::Matrix& inCBias", "const oa::Matrix& inBBias",
+    "const oa::Matrix& inD", "const oa::Matrix& inMimoX",
+    "const oa::Matrix& inMimoZ", "const oa::Matrix& inMimoO",
+    "const oa::Matrix& inNormWeight", "const oa::SsmConfig& inConfig",
+]
+notes = "Compute all explicit shared-state Mamba-3 MIMO adjoints."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 401
+category = "Ml"
+origin = "oa"
+source = "ssm/mamba3/mamba3MimoBwdCore"
+
+[ops.python_result]
+cpp_type = "oa::Mamba3MimoBwdResult"
+members = ["dC", "dB", "dX", "dZ", "dAdt", "dDt", "dTrap", "dAngle", "dCBias", "dBBias", "dD", "dMimoX", "dMimoZ", "dMimoO", "dNormWeight"]
+
+[ops.contract]
+input_kinds = []
+variadic_inputs = { kind = "matrix", minimum = 16 }
+output_kinds = []
+variadic_outputs = { kind = "matrix", minimum = 15 }
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = []
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "configIdentity", kind = "unsigned_integer", source = "oa::SsmConfigIdentity(inConfig)" },
+]
+
+[ops.python]
+args = ["dOut", "c", "b", "x", "z", "adt", "dt", "trap", "angle", "cBias", "bBias", "d", "mimoX", "mimoZ", "mimoO", "normWeight", "config"]
+doc = "Compute all explicit Mamba-3 MIMO gradients."
+
+[[ops]]
+name = "mamba3MimoStep"
+kind = "unary"
+kernel_forward = "Mamba3MimoStep"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inC", "const oa::Matrix& inB",
+    "const oa::Matrix& inX", "const oa::Matrix& inZ",
+    "const oa::Matrix& inAdt", "const oa::Matrix& inDt",
+    "const oa::Matrix& inTrap", "const oa::Matrix& inAngle",
+    "const oa::Matrix& inCBias", "const oa::Matrix& inBBias",
+    "const oa::Matrix& inD", "const oa::Matrix& inMimoX",
+    "const oa::Matrix& inMimoZ", "const oa::Matrix& inMimoO",
+    "const oa::Matrix& inNormWeight", "const oa::Matrix& inSsmState",
+    "const oa::Matrix& inAngleState", "const oa::Matrix& inKState",
+    "const oa::Matrix& inVState", "const oa::SsmConfig& inConfig",
+]
+notes = "Run one Mamba-3 MIMO decode step while mutating the shared state and rank-expanded K/V caches."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 400
+category = "Ml"
+origin = "oa"
+source = "ssm/mamba3/mamba3MimoStep"
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix", "matrix"]
+variadic_inputs = { kind = "matrix", minimum = 15 }
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = [0, 1, 2, 3]
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "configIdentity", kind = "unsigned_integer", source = "oa::SsmConfigIdentity(inConfig)" },
+]
+
+[ops.python]
+args = ["c", "b", "x", "z", "adt", "dt", "trap", "angle", "cBias", "bBias", "d", "mimoX", "mimoZ", "mimoO", "normWeight", "ssmState", "angleState", "kState", "vState", "config"]
+doc = "Run one shared-state Mamba-3 MIMO decode step."
+
+[[ops]]
+name = "mamba3Preprocess"
+kind = "binary"
+kernel_forward = "Mamba3Preprocess"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Mamba3PreprocessResult"
+api_params = [
+    "const oa::Matrix& inProjected",
+    "const oa::Matrix& inDtBias",
+    "const oa::Mamba3PreprocessConfig& inConfig",
+]
+notes = "Split and normalize one Mamba-3 projection while producing all eight fused preprocess values. ConfigIdentity fingerprints every behavior-changing preprocess field."
+
+[ops.python_result]
+cpp_type = "oa::Mamba3PreprocessResult"
+members = ["x", "z", "bh", "ch", "dt", "adt", "trap", "angle"]
+
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix", "matrix", "matrix", "matrix", "matrix", "matrix", "matrix", "matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1, -1, -1, -1, -1, -1, -1, -1]
+control_flow = "straight_line"
+differentiation = "reverse"
+lowering = "dispatch"
+attributes = [
+    { name = "configIdentity", kind = "unsigned_integer", source = "oa::Mamba3PreprocessConfigIdentity(inConfig)" },
+]
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inProjected", "inDtBias"]
+outputs = ["X", "Z", "Bh", "Ch", "DT", "ADT", "Trap", "Angle"]
+implementation = "source/cpp/lib/oa/Ml/FnMatrix/Ssm/FnMatrixMamba3.cpp:Mamba3Preprocess"
+
+[ops.python]
+args = ["projected", "dtBias", "config"]
+doc = "Run the fused Mamba-3 projection preprocess."
+
+[[ops]]
+name = "mamba3PreprocessBwd"
+kind = "unary"
+kernel_forward = "Mamba3PreprocessBwd"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Mamba3PreprocessBwdResult"
+api_params = [
+    "const oa::Matrix& inProjected",
+    "const oa::Matrix& inDtBias",
+    "const oa::Matrix& inDZ",
+    "const oa::Matrix& inDX",
+    "const oa::Matrix& inDBh",
+    "const oa::Matrix& inDCh",
+    "const oa::Matrix& inDDT",
+    "const oa::Matrix& inDADT",
+    "const oa::Matrix& inDTrap",
+    "const oa::Matrix& inDAngle",
+    "const oa::Mamba3PreprocessConfig& inConfig",
+]
+notes = "Compute the fused projected-input and dt-bias gradients."
+
+[ops.python_result]
+cpp_type = "oa::Mamba3PreprocessBwdResult"
+members = ["dProjected", "dDtBias"]
+
+[ops.contract]
+input_kinds = []
+variadic_inputs = { kind = "matrix", minimum = 10 }
+output_kinds = ["matrix", "matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1, -1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "configIdentity", kind = "unsigned_integer", source = "oa::Mamba3PreprocessConfigIdentity(inConfig)" },
+]
+
+[ops.python]
+args = ["projected", "dtBias", "dZ", "dX", "dBh", "dCh", "dDT", "dADT", "dTrap", "dAngle", "config"]
+doc = "Compute the fused Mamba-3 preprocess gradients."
+
+[[ops]]
+name = "empyrealmSiso"
+kind = "unary"
+kernel_forward = "EmpyrealmSisoFwd"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inC",
+    "const oa::Matrix& inB",
+    "const oa::Matrix& inX",
+    "const oa::Matrix& inZ",
+    "const oa::Matrix& inAdt",
+    "const oa::Matrix& inDt",
+    "const oa::Matrix& inTrap",
+    "const oa::Matrix& inAngle",
+    "const oa::Matrix& inCBias",
+    "const oa::Matrix& inBBias",
+    "const oa::Matrix& inD",
+    "const oa::SsmConfig& inConfig",
+]
+notes = "Run the full-sequence Empyrealm selective state-space scan."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 337
+category = "Ml"
+origin = "oa"
+source = "ssm/empyrealm/empyrealmSisoFwd"
+
+[ops.contract]
+input_kinds = []
+variadic_inputs = { kind = "matrix", minimum = 11 }
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "conditional"
+differentiation = "reverse"
+lowering = "dispatch"
+attributes = [
+    { name = "configIdentity", kind = "unsigned_integer", source = "oa::SsmConfigIdentity(inConfig)" },
+]
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inC", "inB", "inX", "inZ", "inAdt", "inDt", "inTrap", "inAngle", "inCBias", "inBBias", "inD"]
+outputs = ["out"]
+implementation = "source/cpp/lib/oa/Ml/FnMatrix/Ssm/FnMatrixEmpyrealm.cpp:EmpyrealmSiso"
+
+[ops.python]
+args = ["c", "b", "x", "z", "adt", "dt", "trap", "angle", "cBias", "bBias", "d", "config"]
+doc = "Run the full-sequence Empyrealm selective state-space scan."
+
+[[ops]]
+name = "empyrealmSisoStep"
+kind = "unary"
+kernel_forward = "EmpyrealmSisoStep"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inC",
+    "const oa::Matrix& inB",
+    "const oa::Matrix& inX",
+    "const oa::Matrix& inZ",
+    "const oa::Matrix& inAdt",
+    "const oa::Matrix& inDt",
+    "const oa::Matrix& inTrap",
+    "const oa::Matrix& inAngle",
+    "const oa::Matrix& inCBias",
+    "const oa::Matrix& inBBias",
+    "const oa::Matrix& inD",
+    "const oa::Matrix& inSsmState",
+    "const oa::Matrix& inAngleState",
+    "const oa::Matrix& inKState",
+    "const oa::Matrix& inVState",
+    "const oa::SsmConfig& inConfig",
+]
+notes = "Run one autoregressive Empyrealm step and mutate the four explicit recurrent-state values."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 338
+category = "Ml"
+origin = "oa"
+source = "ssm/empyrealm/empyrealmSisoStep"
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix", "matrix"]
+variadic_inputs = { kind = "matrix", minimum = 11 }
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = [0, 1, 2, 3]
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "configIdentity", kind = "unsigned_integer", source = "oa::SsmConfigIdentity(inConfig)" },
+]
+
+[ops.python]
+args = ["c", "b", "x", "z", "adt", "dt", "trap", "angle", "cBias", "bBias", "d", "ssmState", "angleState", "kState", "vState", "config"]
+doc = "Run one autoregressive Empyrealm step and update the supplied recurrent states."
+
+[[ops]]
+name = "empyrealmSisoBwd"
+kind = "unary"
+kernel_forward = "EmpyrealmSisoBwd"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::SsmBwdResult"
+api_params = [
+    "const oa::Matrix& inDOut",
+    "const oa::Matrix& inC",
+    "const oa::Matrix& inB",
+    "const oa::Matrix& inX",
+    "const oa::Matrix& inZ",
+    "const oa::Matrix& inAdt",
+    "const oa::Matrix& inDt",
+    "const oa::Matrix& inTrap",
+    "const oa::Matrix& inAngle",
+    "const oa::Matrix& inCBias",
+    "const oa::Matrix& inBBias",
+    "const oa::Matrix& inD",
+    "const oa::SsmConfig& inConfig",
+]
+notes = "Compute all eleven explicit Empyrealm selective-scan adjoints."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 336
+category = "Ml"
+origin = "oa"
+source = "ssm/empyrealm/empyrealmSisoBwd"
+
+[ops.python_result]
+cpp_type = "oa::SsmBwdResult"
+members = ["dC", "dB", "dX", "dZ", "dAdt", "dDt", "dTrap", "dAngle", "dCBias", "dBBias", "dD"]
+
+[ops.contract]
+input_kinds = []
+variadic_inputs = { kind = "matrix", minimum = 12 }
+output_kinds = []
+variadic_outputs = { kind = "matrix", minimum = 11 }
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = []
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "configIdentity", kind = "unsigned_integer", source = "oa::SsmConfigIdentity(inConfig)" },
+]
+
+[ops.python]
+args = ["dOut", "c", "b", "x", "z", "adt", "dt", "trap", "angle", "cBias", "bBias", "d", "config"]
+doc = "Compute all explicit Empyrealm selective-scan gradients."
+
+[[ops]]
+name = "empyrealmAdt"
+kind = "binary"
+kernel_forward = "EmpyrealmAdt"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inDdA",
+    "const oa::Matrix& inDt",
+    "oa::F32 inAFloor",
+]
+notes = "Compute the fused Empyrealm heavy-tail A-times-dt term."
+
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "reverse"
+lowering = "dispatch"
+attributes = [
+    { name = "aFloor", kind = "float", source = "inAFloor" },
+]
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inDdA", "inDt"]
+outputs = ["out"]
+implementation = "source/cpp/lib/oa/Ml/FnMatrix/Ssm/FnMatrixEmpyrealm.cpp:EmpyrealmAdt"
+
+[ops.python]
+args = ["ddA", "dt", "aFloor"]
+doc = "Compute the fused Empyrealm heavy-tail A-times-dt term."
+
+[[ops]]
+name = "empyrealmAdtBwd"
+kind = "unary"
+kernel_forward = "EmpyrealmAdtBwd"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::EmpyrealmAdtBwdResult"
+api_params = [
+    "const oa::Matrix& inDOut",
+    "const oa::Matrix& inDdA",
+    "const oa::Matrix& inDt",
+    "oa::F32 inAFloor",
+]
+notes = "Compute explicit gradients of the fused Empyrealm A-times-dt term."
+
+[ops.python_result]
+cpp_type = "oa::EmpyrealmAdtBwdResult"
+members = ["dDdA", "dDt"]
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix"]
+output_kinds = ["matrix", "matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1, -1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "aFloor", kind = "float", source = "inAFloor" },
+]
+
+[ops.python]
+args = ["dOut", "ddA", "dt", "aFloor"]
+doc = "Compute explicit gradients of the fused Empyrealm A-times-dt term."
+
+[[ops]]
+name = "empyrealmDt"
+kind = "unary"
+kernel_forward = "EmpyrealmDt"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inX",
+    "oa::F32 inDtMin",
+    "oa::F32 inDtMax",
+]
+notes = "Apply the fused Empyrealm softplus and dt clamp."
+
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "reverse"
+lowering = "dispatch"
+attributes = [
+    { name = "dtMin", kind = "float", source = "inDtMin" },
+    { name = "dtMax", kind = "float", source = "inDtMax" },
+]
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inX"]
+outputs = ["out"]
+implementation = "source/cpp/lib/oa/Ml/FnMatrix/Ssm/FnMatrixEmpyrealm.cpp:EmpyrealmDt"
+
+[ops.python]
+args = ["x", "dtMin", "dtMax"]
+doc = "Apply the fused Empyrealm softplus and dt clamp."
+
+[[ops]]
+name = "empyrealmDtBwd"
+kind = "unary"
+kernel_forward = "EmpyrealmDtBwd"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inDOut",
+    "const oa::Matrix& inX",
+    "oa::F32 inDtMin",
+    "oa::F32 inDtMax",
+]
+notes = "Compute the explicit gradient of the fused Empyrealm dt term."
+
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "dtMin", kind = "float", source = "inDtMin" },
+    { name = "dtMax", kind = "float", source = "inDtMax" },
+]
+
+[ops.python]
+args = ["dOut", "x", "dtMin", "dtMax"]
+doc = "Compute the explicit gradient of the fused Empyrealm dt term."
+
+[[ops]]
+name = "empyrealmDtAdt"
+kind = "binary"
+kernel_forward = "EmpyrealmDtAdt"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::EmpyrealmDtAdtResult"
+api_params = [
+    "const oa::Matrix& inDtRaw",
+    "const oa::Matrix& inDdA",
+    "oa::F32 inDtMin",
+    "oa::F32 inDtMax",
+    "oa::F32 inAFloor",
+]
+notes = "Compute fused Empyrealm dt and A-times-dt values in one dispatch."
+
+[ops.python_result]
+cpp_type = "oa::EmpyrealmDtAdtResult"
+members = ["dt", "adt"]
+
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix", "matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1, -1]
+control_flow = "straight_line"
+differentiation = "reverse"
+lowering = "dispatch"
+attributes = [
+    { name = "dtMin", kind = "float", source = "inDtMin" },
+    { name = "dtMax", kind = "float", source = "inDtMax" },
+    { name = "aFloor", kind = "float", source = "inAFloor" },
+]
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inDtRaw", "inDdA"]
+outputs = ["DT", "ADT"]
+implementation = "source/cpp/lib/oa/Ml/FnMatrix/Ssm/FnMatrixEmpyrealm.cpp:EmpyrealmDtAdt"
+
+[ops.python]
+args = ["dtRaw", "ddA", "dtMin", "dtMax", "aFloor"]
+doc = "Compute fused Empyrealm dt and A-times-dt values."
+
+[[ops]]
+name = "empyrealmPreprocess"
+kind = "binary"
+kernel_forward = "EmpyrealmPreprocess"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Mamba3PreprocessResult"
+api_params = [
+    "const oa::Matrix& inProjected",
+    "const oa::Matrix& inDtBias",
+    "const oa::Mamba3PreprocessConfig& inConfig",
+]
+notes = "Split and normalize one Empyrealm projection while producing all eight fused preprocess values."
+
+[ops.python_result]
+cpp_type = "oa::Mamba3PreprocessResult"
+members = ["x", "z", "bh", "ch", "dt", "adt", "trap", "angle"]
+
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix", "matrix", "matrix", "matrix", "matrix", "matrix", "matrix", "matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1, -1, -1, -1, -1, -1, -1, -1]
+control_flow = "straight_line"
+differentiation = "reverse"
+lowering = "dispatch"
+attributes = [
+    { name = "configIdentity", kind = "unsigned_integer", source = "oa::Mamba3PreprocessConfigIdentity(inConfig)" },
+]
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inProjected", "inDtBias"]
+outputs = ["X", "Z", "Bh", "Ch", "DT", "ADT", "Trap", "Angle"]
+implementation = "source/cpp/lib/oa/Ml/FnMatrix/Ssm/FnMatrixEmpyrealm.cpp:EmpyrealmPreprocess"
+
+[ops.python]
+args = ["projected", "dtBias", "config"]
+doc = "Run the fused Empyrealm projection preprocess."
+
+[[ops]]
+name = "empyrealmPreprocessBwd"
+kind = "unary"
+kernel_forward = "EmpyrealmPreprocessBwd"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Mamba3PreprocessBwdResult"
+api_params = [
+    "const oa::Matrix& inProjected",
+    "const oa::Matrix& inDtBias",
+    "const oa::Matrix& inDZ",
+    "const oa::Matrix& inDX",
+    "const oa::Matrix& inDBh",
+    "const oa::Matrix& inDCh",
+    "const oa::Matrix& inDDT",
+    "const oa::Matrix& inDADT",
+    "const oa::Matrix& inDTrap",
+    "const oa::Matrix& inDAngle",
+    "const oa::Mamba3PreprocessConfig& inConfig",
+]
+notes = "Compute the fused Empyrealm projected-input and dt-bias gradients."
+
+[ops.python_result]
+cpp_type = "oa::Mamba3PreprocessBwdResult"
+members = ["dProjected", "dDtBias"]
+
+[ops.contract]
+input_kinds = []
+variadic_inputs = { kind = "matrix", minimum = 10 }
+output_kinds = ["matrix", "matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1, -1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "configIdentity", kind = "unsigned_integer", source = "oa::Mamba3PreprocessConfigIdentity(inConfig)" },
+]
+
+[ops.python]
+args = ["projected", "dtBias", "dZ", "dX", "dBh", "dCh", "dDT", "dADT", "dTrap", "dAngle", "config"]
+doc = "Compute the fused Empyrealm preprocess gradients."

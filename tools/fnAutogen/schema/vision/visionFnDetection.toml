@@ -1,0 +1,238 @@
+# Fn schema — object-detection and segmentation evaluation operations.
+surface = "public_operation"
+category = "Detection"
+namespace = "oa::FnDetection"
+file_prefix = "FnDetection"
+cpp_subdir = "FnDetection"
+
+[[ops]]
+name = "boxIou"
+category = "Detection"
+kind = "binary"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inA",
+    "const oa::Matrix& inB",
+]
+notes = "Compute pairwise IoU for FP32 center-coordinate box matrices."
+
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+
+[ops.python]
+args = ["a", "b"]
+doc = "Compute pairwise IoU for FP32 center-coordinate boxes."
+
+[[ops]]
+name = "nms"
+category = "Detection"
+kind = "unary"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::NmsResult"
+api_params = [
+    "const oa::Matrix& inBoxes",
+    "const oa::Matrix& inScores",
+    "const oa::Matrix& inClasses",
+    "const oa::NmsConfig& inConfig = {}",
+]
+notes = "Run deterministic class-aware non-maximum suppression."
+
+[ops.python_result]
+cpp_type = "oa::NmsResult"
+members = ["indices", "count"]
+bind_type = false
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix"]
+output_kinds = ["matrix", "matrix"]
+shape_rule = "explicit"
+dtype_rule = "explicit"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1, -1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "iouThreshold", kind = "float", source = "inConfig.IouThreshold" },
+    { name = "scoreThreshold", kind = "float", source = "inConfig.ScoreThreshold" },
+    { name = "maxDetections", kind = "signed_integer", source = "inConfig.MaxDetections" },
+    { name = "classAgnostic", kind = "boolean", source = "inConfig.ClassAgnostic" },
+]
+
+[ops.python]
+args = ["boxes", "scores", "classes", "config"]
+doc = "Run deterministic class-aware non-maximum suppression."
+
+[[ops]]
+name = "confusionMatrix"
+category = "Detection"
+kind = "binary"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inPredicted",
+    "const oa::Matrix& inTarget",
+    "oa::I32 inClassCount",
+]
+notes = "Accumulate a UInt32 classification confusion matrix."
+
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "explicit"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "classCount", kind = "signed_integer", source = "inClassCount" },
+]
+
+[ops.python]
+args = ["predicted", "target", "classCount"]
+doc = "Accumulate a UInt32 classification confusion matrix."
+
+[[ops]]
+name = "binaryMaskCounts"
+category = "Detection"
+kind = "binary"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inPredicted",
+    "const oa::Matrix& inTarget",
+]
+notes = "Count binary-mask true positives, false positives, false negatives, and true negatives."
+
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "explicit"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+
+[ops.python]
+args = ["predicted", "target"]
+doc = "Count binary-mask TP, FP, FN, and TN values."
+
+[[ops]]
+name = "evaluate"
+category = "Detection"
+kind = "unary"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::DetectionMetricsResult"
+api_params = [
+    "const oa::Matrix& inPredictedBoxes",
+    "const oa::Matrix& inPredictedScores",
+    "const oa::Matrix& inPredictedClasses",
+    "const oa::Matrix& inPredictedImageIds",
+    "const oa::Matrix& inTargetBoxes",
+    "const oa::Matrix& inTargetClasses",
+    "const oa::Matrix& inTargetImageIds",
+    "const oa::Matrix& inIouThresholds",
+    "oa::I32 inClassCount",
+    "oa::F32 inScoreThreshold = 0.0F",
+]
+notes = "Evaluate dataset-level object detection without host compaction."
+
+[ops.python_result]
+cpp_type = "oa::DetectionMetricsResult"
+members = [
+    "counts",
+    "perClass",
+    "meanAveragePrecisionByThreshold",
+    "meanAveragePrecision",
+]
+bind_type = false
+
+[ops.contract]
+input_kinds = [
+    "matrix",
+    "matrix",
+    "matrix",
+    "matrix",
+    "matrix",
+    "matrix",
+    "matrix",
+    "matrix",
+]
+output_kinds = ["matrix", "matrix", "matrix", "matrix"]
+shape_rule = "explicit"
+dtype_rule = "explicit"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1, -1, -1, -1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "classCount", kind = "signed_integer", source = "inClassCount" },
+    { name = "scoreThreshold", kind = "float", source = "inScoreThreshold" },
+]
+
+[ops.python]
+name = "evaluate"
+args = ["predictedBoxes", "predictedScores", "predictedClasses", "predictedImageIds", "targetBoxes", "targetClasses", "targetImageIds", "iouThresholds", "classCount", "scoreThreshold"]
+doc = "Evaluate object-detection precision, recall, F1, AP, and mAP."
+
+[[ops]]
+name = "evaluateSegmentation"
+category = "Detection"
+kind = "binary"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::SegmentationMetricsResult"
+api_params = [
+    "const oa::Matrix& inPredicted",
+    "const oa::Matrix& inTarget",
+    "oa::I32 inClassCount",
+]
+notes = "Evaluate multiclass semantic-segmentation metrics."
+
+[ops.python_result]
+cpp_type = "oa::SegmentationMetricsResult"
+members = ["confusion", "perClass", "meanIou", "pixelAccuracy"]
+bind_type = false
+
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix", "matrix", "matrix", "matrix"]
+shape_rule = "explicit"
+dtype_rule = "explicit"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1, -1, -1, -1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "classCount", kind = "signed_integer", source = "inClassCount" },
+]
+
+[ops.python]
+args = ["predicted", "target", "classCount"]
+doc = "Evaluate multiclass semantic-segmentation metrics."

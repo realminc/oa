@@ -1,0 +1,8 @@
+# SDL's Wayland window path dynamically loads libdecor's GTK plug-in. The
+# plug-in leaves GTK/Pango/fontconfig process-lifetime caches reachable from
+# its allocation stacks. Suppress that external root only; do not suppress
+# SDL, Vulkan, or OA frames.
+leak:libdecor-gtk.so
+# Pango's fontconfig worker retains the final font-match result after the
+# libdecor GTK plug-in has been unloaded.
+leak:match_in_thread

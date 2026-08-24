@@ -1,0 +1,82 @@
+name: Alm
+stage: both
+
+# iGPU-sized model. The Intel Iris Xe shares system RAM, so the reference 512³ tokenizer
+# + 384/6 LM OOMs the box (crashes the desktop). These values fit an integrated GPU and
+# match the verified test scale. Reference (dGPU) values are in trailing comments — restore
+# them when training on discrete hardware.
+model:
+  width: 128                   # reference 512 — conv FLOPs/mem ~ width²
+  code_dim: 128                # reference 512
+  num_codes: 512               # keep — codebook capacity is cheap; health at real K is the point
+  down_t: 2
+  depth: 2                     # reference 3
+  commit_beta: 0.25
+  ema_decay: 0.99
+  dead_thresh: 2.0
+  dmodel: 192                  # reference 384 — LM hidden size
+  lm_heads: 6                  # head dim 32 on Xe; reference 6 heads at D=384
+  lm_layers: 3                 # reference 6
+  lm_ffn: 512                  # reference 1536
+  lm_max_seq_len: 260          # architecture/checkpoint shape; >= train/generation length
+  lm_ffn_type: dense           # dense | moe | hybrid; same Transformer backbone
+  lm_moe_experts: 4
+  lm_moe_top_k: 2
+  lm_moe_every: 2              # hybrid only: replace every Nth dense FFN
+  lm_moe_balance_rate: 0.001   # aux-loss-free routing bias; 0 disables
+  lm_moe_aux_alpha: 0.01       # differentiable load-balance loss
+  lm_moe_z_beta: 0.001         # router-logit stabilization
+  text_conditioning: clip      # frozen precomputed CLIP prefix; use none only as ablation
+  clip_text_model: var/model/ref/ClipText/ClipText.oam
+  clip_merges: var/model/ref/ClipText/merges.txt
+
+training:
+  dataset: ../dataset/gen/3d/anim/ds/Cmp
+  split: train
+  val_split: val              # held-out split; evaluated after every epoch
+  val_batches: 0              # 0 = complete split; >0 caps validation cost
+  max_clips: 0
+  model_dir: var/model/dev
+  precision: fp32             # fp32 | bf16 | tf32 | fp16 — engine precision, no env flags
+  # X1 Carbon Gen 9 release run: about 100-120 minutes from scratch on the
+  # complete CMP train/val splits (369 tokenizer and ~230 LM steps/epoch).
+  # The tokenizer gets most of the budget because motion reconstruction is the
+  # hard quality floor: the LM cannot recover movement discarded by the VQ-VAE.
+  tok_epochs: 18              # Stage 1: ~70 min measured/estimated on Iris Xe
+  lm_epochs: 10               # Stage 2: ~35-40 min, plus corpus tokenization
+  batch: 64
+  seq_len: 64
+  lm_seq_len: 64
+  tok_lr: 0.0002              # T2M-GPT reference: 2e-4 (fallback when no tok_phases)
+  lm_lr: 0.0001               # GPT2 pretrain: 1e-4 (fallback when no lm_phases)
+  tok_min_lr: 0.00002         # cosine floor = 10% of peak (fallback)
+  lm_min_lr: 0.00001          # cosine floor = 10% of peak (fallback)
+  tok_warmup: 300             # <1 tokenizer epoch, then cosine decay
+  lm_warmup: 50               # ~0.2 LM epoch, then cosine decay
+  tok_weight_decay: 0.0       # reference uses 0.0 for VQ
+  lm_weight_decay: 0.01       # light regularization for small LM
+  lambda_velocity: 0.5
+  seed: 42
+
+  # Keep this time-boxed run on the single warmup + cosine schedules above.
+  # Non-empty tok_phases/lm_phases override the epoch fields, so long-form
+  # convergence schedules belong in a separate future training preset.
+
+callbacks:
+  ckpt_save_every: 0           # epoch-end only; >0 adds mid-epoch saves
+  ckpt_max_keep: 5
+  ckpt_restore_best: true      # restore best-loss weights at train end
+
+generation:
+  model: var/model/dev/Alm/Alm.oam
+  dataset: ../dataset/gen/3d/anim/ds/Cmp
+  out_dir: var/alm
+  count: 3
+  temperature: 1.0
+  max_len: 64
+  seed: 42
+  conditioning_clip: 0          # clip index in generation split
+  caption_index: 0              # one of that clip's precomputed CLIP rows
+  prompt: ""                    # arbitrary prompt; VS Code task/CLI supplies this
+  text_feature: ""              # reference-only precomputed feature override
+  precision: fp32             # fp32 | bf16 | tf32 | fp16 — match training precision

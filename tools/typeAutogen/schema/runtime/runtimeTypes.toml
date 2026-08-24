@@ -1,0 +1,45 @@
+# OA Runtime Types Schema
+# GPU and runtime types for the OA Runtime module
+
+domain = "runtime"
+namespace = "oa"
+
+[[enums]]
+name = "StoragePrecision"
+underlying_type = "U8"
+values = [
+	{ name = "Fp32", value = 0, comment = "FP32 master or output storage" },
+	{ name = "Bf16", value = 2, comment = "BF16 mirror or output storage; value 1 is retired" },
+]
+
+[[enums]]
+name = "GemmKernel"
+underlying_type = "U8"
+values = [
+	{ name = "Auto", value = 0, comment = "No fixed kernel family" },
+	{ name = "TiledFp32", value = 4, comment = "Generated tiled FP32 family" },
+	{ name = "Naive", value = 5, comment = "Naive FP32 fallback" },
+	{ name = "CoopVec", value = 6, comment = "Cooperative-vector GEMV family" },
+	{ name = "GemmCmSgBf16", value = 11, comment = "Subgroup-scope KHR cooperative-matrix BF16 family" },
+	{ name = "GemmCmWgBf16", value = 12, comment = "Workgroup-scope KHR cooperative-matrix BF16 family" },
+	{ name = "StridedFp32", value = 13, comment = "Arbitrary-stride FP32 fallback" },
+	{ name = "SmallMFp32", value = 14, comment = "Portable generated small-M FP32 family" },
+	{ name = "StridedTiledFp32", value = 15, comment = "Tiled arbitrary-stride and batched FP32 family" },
+]
+
+[[enums]]
+name = "GemmPath"
+underlying_type = "U8"
+values = [
+	{ name = "Standard", value = 0, comment = "Two-dimensional tiled dispatch" },
+	{ name = "CoopVec", value = 1, comment = "M=1 cooperative-vector dispatch" },
+]
+
+[[enums]]
+name = "GemmPrecision"
+underlying_type = "U8"
+values = [
+	{ name = "Auto", value = 0, comment = "Select a supported precision from the problem and device" },
+	{ name = "Fp32", value = 1, comment = "Require FP32 compute" },
+	{ name = "Bf16", value = 2, comment = "Require BF16 compute" },
+]

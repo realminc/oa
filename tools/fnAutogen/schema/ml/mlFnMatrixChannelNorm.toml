@@ -1,0 +1,217 @@
+# Fn schema — channel-wise normalization extension operations.
+category = "ChannelNorm"
+namespace = "oa::FnMatrix"
+file_prefix = "FnMatrix"
+cpp_subdir = "extensions"
+surface = "public_operation"
+
+[[ops]]
+name = "channelNorm"
+kind = "unary"
+kernel_forward = "ChannelNorm"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inX",
+    "const oa::Matrix& inWeight",
+    "const oa::Matrix& inBias",
+    "oa::I32 inBatch",
+    "oa::I32 inChannels",
+    "oa::I32 inSeqLen",
+    "oa::F32 inEps",
+]
+notes = "Normalize channels independently for every batch and sequence position of BCT storage."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 326
+category = "Ml"
+origin = "oa"
+source = "nn/channelNorm/channelNorm"
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "reverse"
+lowering = "dispatch"
+attributes = [
+    { name = "batch", kind = "signed_integer", source = "inBatch" },
+    { name = "channels", kind = "signed_integer", source = "inChannels" },
+    { name = "sequenceLength", kind = "signed_integer", source = "inSeqLen" },
+    { name = "eps", kind = "float", source = "inEps" },
+]
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inX", "inWeight", "inBias"]
+outputs = ["out"]
+implementation = "source/cpp/lib/oa/ml/fnmatrix/norm/fnMatrixChannelNorm.cpp:ChannelNorm"
+
+[ops.python]
+args = ["x", "weight", "bias", "batch", "channels", "seqLen", "eps"]
+doc = "Normalize channels independently for every BCT position."
+
+[[ops]]
+name = "channelNormBwd"
+kind = "unary"
+kernel_forward = "ChannelNormBwd"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::ChannelNormBwdResult"
+api_params = [
+    "const oa::Matrix& inX",
+    "const oa::Matrix& inWeight",
+    "const oa::Matrix& inGradOutput",
+    "oa::I32 inBatch",
+    "oa::I32 inChannels",
+    "oa::I32 inSeqLen",
+    "oa::F32 inEps",
+]
+notes = "Compute explicit channel-normalization input, weight, and bias adjoints."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 327
+category = "Ml"
+origin = "oa"
+source = "nn/channelNorm/channelNormBwd"
+
+[ops.python_result]
+cpp_type = "oa::ChannelNormBwdResult"
+members = ["dx", "dWeight", "dBias"]
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix"]
+output_kinds = ["matrix", "matrix", "matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1, -1, -1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "batch", kind = "signed_integer", source = "inBatch" },
+    { name = "channels", kind = "signed_integer", source = "inChannels" },
+    { name = "sequenceLength", kind = "signed_integer", source = "inSeqLen" },
+    { name = "eps", kind = "float", source = "inEps" },
+]
+
+[ops.python]
+args = ["x", "weight", "gradOutput", "batch", "channels", "seqLen", "eps"]
+doc = "Compute explicit channel-normalization gradients."
+
+[[ops]]
+name = "channelNormRelu"
+kind = "unary"
+kernel_forward = "ChannelNormRelu"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inX",
+    "const oa::Matrix& inWeight",
+    "const oa::Matrix& inBias",
+    "oa::I32 inBatch",
+    "oa::I32 inChannels",
+    "oa::I32 inSeqLen",
+    "oa::F32 inEps",
+]
+notes = "Fuse channel normalization and ReLU for BCT storage."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 328
+category = "Ml"
+origin = "oa"
+source = "nn/channelNorm/channelNormRelu"
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "reverse"
+lowering = "dispatch"
+attributes = [
+    { name = "batch", kind = "signed_integer", source = "inBatch" },
+    { name = "channels", kind = "signed_integer", source = "inChannels" },
+    { name = "sequenceLength", kind = "signed_integer", source = "inSeqLen" },
+    { name = "eps", kind = "float", source = "inEps" },
+]
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inX", "inWeight", "inBias"]
+outputs = ["out"]
+implementation = "source/cpp/lib/oa/ml/fnmatrix/norm/fnMatrixChannelNorm.cpp:ChannelNormRelu"
+
+[ops.python]
+args = ["x", "weight", "bias", "batch", "channels", "seqLen", "eps"]
+doc = "Apply fused channel normalization and ReLU."
+
+[[ops]]
+name = "channelNormReluBwd"
+kind = "unary"
+kernel_forward = "ChannelNormReluBwd"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::ChannelNormBwdResult"
+api_params = [
+    "const oa::Matrix& inX",
+    "const oa::Matrix& inWeight",
+    "const oa::Matrix& inFwdOut",
+    "const oa::Matrix& inGradOutput",
+    "oa::I32 inBatch",
+    "oa::I32 inChannels",
+    "oa::I32 inSeqLen",
+    "oa::F32 inEps",
+]
+notes = "Compute explicit fused channel-normalization and ReLU adjoints."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 329
+category = "Ml"
+origin = "oa"
+source = "nn/channelNorm/channelNormReluBwd"
+
+[ops.python_result]
+cpp_type = "oa::ChannelNormBwdResult"
+members = ["dx", "dWeight", "dBias"]
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix", "matrix"]
+output_kinds = ["matrix", "matrix", "matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1, -1, -1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "batch", kind = "signed_integer", source = "inBatch" },
+    { name = "channels", kind = "signed_integer", source = "inChannels" },
+    { name = "sequenceLength", kind = "signed_integer", source = "inSeqLen" },
+    { name = "eps", kind = "float", source = "inEps" },
+]
+
+[ops.python]
+args = ["x", "weight", "fwdOut", "gradOutput", "batch", "channels", "seqLen", "eps"]
+doc = "Compute explicit fused channel-normalization and ReLU gradients."

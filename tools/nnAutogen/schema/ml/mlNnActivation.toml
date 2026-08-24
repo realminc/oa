@@ -1,0 +1,27 @@
+# Oa NN schema - stateless activation layers.
+#
+# Generates one header/source pair per layer:
+#   source/cpp/include/oa/ml/nn/relu/relu.h
+#   source/cpp/lib/oa/ml/nn/relu/relu.cpp
+
+[[layers]]
+name = "Relu"
+fn = "oa::FnMatrix::relu(inInput)"
+notes = "ReLU activation layer."
+
+[[layers]]
+name = "Gelu"
+fn = "oa::FnMatrix::gelu(inInput)"
+notes = "GELU activation layer."
+
+[[layers]]
+name = "Silu"
+fn = "oa::FnMatrix::silu(inInput)"
+notes = "SiLU activation layer."
+
+[[layers]]
+name = "Softmax"
+constructor = "explicit Softmax(oa::I32 inDim = -1) : dim_(inDim) {}"
+members = ["oa::I32 dim_;"]
+fn = "oa::FnMatrix::softmax(inInput, dim_)"
+notes = "Softmax activation layer."

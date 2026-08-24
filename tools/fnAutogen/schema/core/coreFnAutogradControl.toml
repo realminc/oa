@@ -1,0 +1,73 @@
+# Fn schema — foundational autograd control and semantic bookkeeping.
+#
+# IsEnabled/SetEnabled are the deliberate public thread-local control surface.
+# Sequence and semantic attachment functions are implementation plumbing shared
+# by generated Core/ML operation bodies; they are classified here so their
+# declarations cannot disappear from the schema inventory.
+category = "AutogradControl"
+namespace = "oa::FnAutograd"
+file_prefix = "Autograd"
+cpp_subdir = "Autograd"
+
+[[ops]]
+name = "isEnabled"
+category = "AutogradControl"
+kind = "unary"
+surface = "host_utility"
+body = "cpu_util"
+generate_declaration = false
+api_return = "bool"
+api_params = []
+notes = "Read the current thread's reverse-mode recording state."
+
+[[ops]]
+name = "setEnabled"
+category = "AutogradControl"
+kind = "unary"
+surface = "host_utility"
+body = "cpu_util"
+generate_declaration = false
+api_return = "void"
+api_params = ["bool inEnabled"]
+notes = "Set the current thread's reverse-mode recording state."
+
+[[ops]]
+name = "nextSeq"
+category = "AutogradControl"
+kind = "unary"
+surface = "internal_operation"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::U64"
+api_params = []
+notes = "Allocate the next thread-local gradient-node sequence number."
+
+[[ops]]
+name = "attachSemantic"
+category = "AutogradControl"
+kind = "unary"
+surface = "internal_operation"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Status"
+api_params = [
+    "const oa::SharedPtr<oa::GradNode>& inNode",
+    "oa::U32 inForwardOp",
+    "oa::U32 inOutputIndex = 0",
+]
+notes = "Attach a private gradient node to its forward semantic operation."
+
+[[ops]]
+name = "completeSemantic"
+category = "AutogradControl"
+kind = "unary"
+surface = "internal_operation"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Status"
+api_params = [
+    "const oa::GradNode& inNode",
+    "oa::U32 inBackwardFirstOp",
+    "oa::U32 inBackwardOpCount",
+]
+notes = "Complete semantic provenance for one gradient-node expansion."

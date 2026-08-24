@@ -1,0 +1,52 @@
+# Fn schema — Ml/FnMatrix embedding and indexing ops.
+surface = "kernel"
+generate_python_bindings = true
+#
+# This is the *source of truth* for embedding and indexing operations. The generator
+# emits .h declarations, .cpp implementations, and .slang shaders from this file.
+# See tools/fnAutogen/rEADME.md and tools/fnAutogen/oafnautogen.py.
+#
+# Embedding operations map discrete indices to continuous vectors.
+# Gather operations select elements based on indices.
+
+# --- BiasAdd -----------------------------------------------------------------
+[[ops]]
+name           = "biasAdd"
+category       = "Embed"
+kind           = "binary"
+surface        = "public_operation"
+kernel_forward = "BiasAdd"
+slang_path     = "Ml/Nn/Linear"
+log_component  = "ML"
+notes          = "Add bias vector: out = A + Bias (broadcasted)."
+forward_op     = "a + b"
+body           = "bias_add_broadcast"
+
+[ops.contract]
+input_kinds     = ["matrix", "matrix"]
+output_kinds    = ["matrix"]
+shape_rule      = "broadcast"
+dtype_rule      = "match_input"
+effects         = ["read_inputs", "write_outputs"]
+mutated_inputs  = []
+output_alias_inputs = [-1]
+control_flow    = "straight_line"
+differentiation = "reverse"
+lowering        = "dispatch"
+
+[ops.dnn]
+role = "bias_add"
+
+[ops.autograd]
+grad_class   = "oa::GradBcastBinary"
+node_header = "oa/core/autograd/matrix/autogradElemwise.h"
+inputs       = ["inA", "inB"]
+saved        = ["inA", "inB"]
+formula      = "manual"
+attach       = "broadcast_binary"
+broadcast_op = "Add"
+
+[ops.test]
+cpu_reference = "a_host[i] + b_host[i]"
+tolerance = "1e-4f"
+test_sizes = [256]

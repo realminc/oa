@@ -1,0 +1,106 @@
+# Oa NN schema - dense/linear layers.
+
+[[layers]]
+name = "Linear"
+constructor_args = "oa::I32 inFeatures, oa::I32 outFeatures, bool inBias = true"
+constructor_init = "hasBias_(inBias)"
+constructor_body = [
+	"auto wd = oa::FnMatrix::weightDtype();",
+	"registerParameter(\"weight\", oa::FnMatrix::randXavier(MatrixShape{outFeatures, inFeatures}, wd));",
+	"if (inBias) registerParameter(\"bias\", oa::FnMatrix::zeros(MatrixShape{outFeatures}, wd));",
+]
+methods = [
+	"void setActivation(oa::Activation inAct) { activation_ = inAct; }",
+]
+members = [
+	"bool hasBias_;",
+	"oa::Activation activation_ = oa::Activation::None;",
+]
+forward_body = """
+\tauto& weight = params_[0].data;
+
+\tif (hasBias_ && params_.size() > 1) {
+\t\tauto& bias = params_[1].data;
+
+\t\tif (activation_ == oa::Activation::Relu) {
+\t\t\treturn oa::FnMatrix::linearRelu(inInput, weight, bias);
+\t\t}
+
+\t\tif (activation_ == oa::Activation::Gelu) {
+\t\t\treturn oa::FnMatrix::linearGelu(inInput, weight, bias);
+\t\t}
+
+\t\tif (activation_ == oa::Activation::Silu) {
+\t\t\treturn oa::FnMatrix::linearSilu(inInput, weight, bias);
+\t\t}
+
+\t\treturn oa::FnMatrix::linear(inInput, weight, bias);
+\t}
+
+\tauto out = oa::FnMatrix::linear(inInput, weight);
+
+\tif (activation_ == oa::Activation::Relu) {
+\t\treturn oa::FnMatrix::relu(out);
+\t}
+\tif (activation_ == oa::Activation::Gelu) {
+\t\treturn oa::FnMatrix::gelu(out);
+\t}
+\tif (activation_ == oa::Activation::Silu) {
+\t\treturn oa::FnMatrix::silu(out);
+\t}
+\treturn out;
+"""
+notes = "Fully connected linear layer."
+
+[[layers]]
+name = "Swiglu"
+constructor_args = "oa::I32 inFeatures, oa::I32 inIntermediateSize, bool inBias = false"
+constructor_init = "hasBias_(inBias)"
+constructor_body = [
+	"auto wd = oa::FnMatrix::weightDtype();",
+	"registerParameter(\"gate_weight\", oa::FnMatrix::randXavier(MatrixShape{inIntermediateSize, inFeatures}, wd));",
+	"registerParameter(\"up_weight\", oa::FnMatrix::randXavier(MatrixShape{inIntermediateSize, inFeatures}, wd));",
+	"registerParameter(\"down_weight\", oa::FnMatrix::randXavier(MatrixShape{inFeatures, inIntermediateSize}, wd));",
+	"if (inBias) {",
+	"\tregisterParameter(\"gate_bias\", oa::FnMatrix::zeros(MatrixShape{inIntermediateSize}, wd));",
+	"\tregisterParameter(\"up_bias\", oa::FnMatrix::zeros(MatrixShape{inIntermediateSize}, wd));",
+	"\tregisterParameter(\"down_bias\", oa::FnMatrix::zeros(MatrixShape{inFeatures}, wd));",
+	"}",
+]
+members = [
+	"bool hasBias_;",
+]
+forward_body = """
+	// Step 1: independently routed gate and up projections.
+	auto& gateWeight = params_[0].data;
+	auto& upWeight = params_[1].data;
+	auto& downWeight = params_[2].data;
+	oa::I64 rows = 1;
+	for (oa::I32 d = 0; d < inInput.rank() - 1; ++d) rows *= inInput.size(d);
+	auto flatInput = inInput.rank() == 2
+		? inInput : inInput.reshape(MatrixShape{rows, inInput.size(inInput.rank() - 1)});
+
+	auto gate = hasBias_
+		? oa::FnMatrix::linear(flatInput, gateWeight, params_[3].data)
+		: oa::FnMatrix::linear(flatInput, gateWeight);
+	auto up = hasBias_
+		? oa::FnMatrix::linear(flatInput, upWeight, params_[4].data)
+		: oa::FnMatrix::linear(flatInput, upWeight);
+
+	// Step 2: SwiGLU activation
+	auto glu = oa::FnMatrix::swiglu(gate, up);
+
+	// Step 3: Down projection
+	oa::Matrix result;
+	if (hasBias_ && params_.size() > 5) {
+		auto& downBias = params_[5].data;
+		result = oa::FnMatrix::linear(glu, downWeight, downBias);
+	} else {
+		result = oa::FnMatrix::matMulNt(glu, downWeight);
+	}
+	if (inInput.rank() == 2) return result;
+	auto outShape = inInput.getShape();
+	outShape[outShape.rank - 1] = downWeight.size(0);
+	return result.reshape(outShape);
+"""
+notes = "SwiGLU MLP layer with optional weight concatenation."

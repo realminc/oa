@@ -1,0 +1,23 @@
+---
+Checks: >
+  bugprone-*,
+  readability-*,
+  modernize-*,
+  performance-*,
+  -bugprone-easily-swappable-parameters,
+  -modernize-avoid-c-arrays,
+  -modernize-use-trailing-return-type,
+  -readability-braces-around-statements,
+  -readability-implicit-bool-conversion,
+  -readability-magic-numbers,
+  -readability-qualified-auto,
+  -readability-convert-member-functions-to-static
+
+WarningsAsErrors: >
+  readability-uppercase-literal-suffix,
+  readability-isolate-declaration,
+  modernize-use-designated-initializers
+
+CheckOptions:
+  - key: modernize-use-designated-initializers.IgnoreSingleElement
+    value: true

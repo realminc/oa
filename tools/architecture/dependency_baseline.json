@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "description": "Maximum include counts for dependency edges that violate the target architecture at v0.6.98. Counts may decrease but must never increase.",
+  "exceptions": {
+    "core->runtime": 19
+  }
+}

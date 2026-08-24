@@ -1,0 +1,26 @@
+# Fn schema — stateful policy evaluation.
+category = "PolicyEvaluator"
+namespace = "oa::PolicyEvaluator"
+surface = "session_command"
+file_prefix = "PolicyEvaluator"
+cpp_subdir = "PolicyEvaluator"
+
+[[ops]]
+name = "evaluateCategorical"
+kind = "session_command"
+surface = "session_command"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Result<oa::PolicyEvaluationMetrics>"
+api_params = [
+    "oa::Environment& inEnvironment",
+    "oa::ActorCritic& inModel",
+    "const oa::PolicyEvaluationConfig& inConfig = {}",
+]
+notes = "Run a synchronous categorical evaluation horizon and return host telemetry."
+
+[ops.session]
+owners = ["oa::Environment", "oa::ActorCritic"]
+transition = "Ready -> Completed"
+effects = ["read_state", "write_state", "device_work", "host_output"]
+completion = "synchronous"

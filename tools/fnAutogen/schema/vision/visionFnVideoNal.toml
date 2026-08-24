@@ -1,0 +1,74 @@
+# Fn schema — Vision/FnVideo NAL operations (7).
+surface = "host_utility"
+#
+# CPU-only Annex-B byte-stream split / emit / SPS+PPS extract.
+# body = "cpu_util" tells the generator there is no GPU kernel; bodies
+# are handwritten in source/private/oa/vision/fnVideo/nal/fnVideoNal.cpp.
+
+category    = "Nal"
+namespace   = "oa::FnVideo"
+file_prefix = "FnVideo"
+cpp_subdir  = "Video"
+
+# --- ParseNalAnnexB -----------------------------------------------------------
+[[ops]]
+name           = "parseNalAnnexB"
+category       = "Nal"
+kind           = "unary"
+log_component  = "VISION"
+notes          = "Parse Annex-B byte stream into NAL units (split by start codes 00 00 00 01)."
+body           = "cpu_util"
+
+# --- EmitNalAnnexB ------------------------------------------------------------
+[[ops]]
+name           = "emitNalAnnexB"
+category       = "Nal"
+kind           = "unary"
+log_component  = "VISION"
+notes          = "Emit NAL units as Annex-B byte stream with start codes."
+body           = "cpu_util"
+
+# --- ExtractSps ---------------------------------------------------------------
+[[ops]]
+name           = "extractSps"
+category       = "Nal"
+kind           = "unary"
+log_component  = "VISION"
+notes          = "Extract Sequence Parameter Set (SPS) from NAL units."
+body           = "cpu_util"
+
+# --- ExtractPps ---------------------------------------------------------------
+[[ops]]
+name           = "extractPps"
+category       = "Nal"
+kind           = "unary"
+log_component  = "VISION"
+notes          = "Extract Picture Parameter Set (PPS) from NAL units."
+body           = "cpu_util"
+
+# --- ExtractVpsH265 -----------------------------------------------------------
+[[ops]]
+name           = "extractVpsH265"
+category       = "Nal"
+kind           = "unary"
+log_component  = "VISION"
+notes          = "Extract HEVC Video Parameter Set (VPS) from Annex-B NAL units."
+body           = "cpu_util"
+
+# --- ExtractSpsH265 -----------------------------------------------------------
+[[ops]]
+name           = "extractSpsH265"
+category       = "Nal"
+kind           = "unary"
+log_component  = "VISION"
+notes          = "Extract HEVC Sequence Parameter Set (SPS) from Annex-B NAL units."
+body           = "cpu_util"
+
+# --- ExtractPpsH265 -----------------------------------------------------------
+[[ops]]
+name           = "extractPpsH265"
+category       = "Nal"
+kind           = "unary"
+log_component  = "VISION"
+notes          = "Extract HEVC Picture Parameter Set (PPS) from Annex-B NAL units."
+body           = "cpu_util"

@@ -1,0 +1,42 @@
+{
+	"$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+	"name": "oa",
+	"version": "0.7.14",
+	"description": "OA — cross-vendor Vulkan compute, ML, vision, audio, and cryptography",
+	"homepage": "https://github.com/realminc/oa",
+	"license": "BUSL-1.1",
+	"dependencies": [
+		"gtest",
+		"yaml-cpp",
+		"cli11",
+		"fmt",
+		"vulkan-headers",
+		"highway",
+		"utf8proc",
+		"harfbuzz",
+		"shader-slang",
+		{
+			"name": "libwebp",
+			"platform": "!android"
+		},
+		{
+			"name": "sdl3",
+			"default-features": false,
+			"features": ["vulkan", "x11", "wayland"]
+		}
+	],
+	"features": {
+		"crypto": {
+			"description": "Post-quantum ML-DSA-65 signing via liboqs (OA_BUILD_CRYPTO)",
+			"dependencies": [
+				"liboqs"
+			]
+		},
+		"python": {
+			"description": "Python bindings via nanobind (source/py — OA_BUILD_PYTHON)",
+			"dependencies": [
+				"nanobind"
+			]
+		}
+	}
+}

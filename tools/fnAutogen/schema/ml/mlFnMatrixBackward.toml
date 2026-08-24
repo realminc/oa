@@ -1,0 +1,460 @@
+# Fn schema — explicit ML backward and fused-adjoint operations.
+category = "Backward"
+namespace = "oa::FnMatrix"
+file_prefix = "FnMatrix"
+cpp_subdir = "FnMatrix"
+surface = "public_cpp_operation"
+
+[[ops]]
+name = "reluBwd"
+kind = "binary"
+kernel_forward = "ReluBwd"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = ["const oa::Matrix& inForwardOutput", "const oa::Matrix& inGradOutput"]
+notes = "Explicit ReLU adjoint."
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+[ops.python]
+args = ["forwardOutput", "gradOutput"]
+
+[[ops]]
+name = "tanhBwd"
+kind = "binary"
+kernel_forward = "TanhBwd"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = ["const oa::Matrix& inForwardOutput", "const oa::Matrix& inGradOutput"]
+notes = "Explicit tanh adjoint."
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+[ops.python]
+args = ["forwardOutput", "gradOutput"]
+
+[[ops]]
+name = "geluBwd"
+kind = "binary"
+kernel_forward = "GeluBwd"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = ["const oa::Matrix& inInput", "const oa::Matrix& inGradOutput"]
+notes = "Explicit GELU adjoint using the saved forward input."
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+[ops.python]
+args = ["input", "gradOutput"]
+
+[[ops]]
+name = "siluBwd"
+kind = "binary"
+kernel_forward = "SiluBwd"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = ["const oa::Matrix& inInput", "const oa::Matrix& inGradOutput"]
+notes = "Explicit SiLU adjoint using the saved forward input."
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+[ops.python]
+args = ["input", "gradOutput"]
+
+[[ops]]
+name = "softplusBwd"
+kind = "binary"
+kernel_forward = "SoftplusBwd"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = ["const oa::Matrix& inForwardOutput", "const oa::Matrix& inGradOutput"]
+notes = "Explicit Softplus adjoint using the saved forward output."
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+
+[[ops]]
+name = "softmaxScaledMasked"
+kind = "binary"
+surface = "public_operation"
+kernel_forward = "SoftmaxScaledMasked"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inScores",
+    "const oa::Matrix& inMask",
+    "oa::F32 inScale",
+]
+notes = "Fused scale, additive mask, and final-axis softmax."
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "conditional"
+differentiation = "reverse"
+lowering = "dispatch"
+attributes = [{ name = "scale", kind = "float", source = "inScale" }]
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inScores"]
+outputs = ["out"]
+implementation = "source/cpp/lib/oa/Ml/FnMatrix/Backward/FnMatrixBackward.cpp:SoftmaxScaledMasked"
+[ops.python]
+args = ["scores", "mask", "scale"]
+
+[[ops]]
+name = "softmaxScaledMaskedBwd"
+kind = "binary"
+kernel_forward = "SoftmaxScaledMaskedBwd"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inForwardOutput",
+    "const oa::Matrix& inGradOutput",
+    "oa::F32 inScale",
+]
+notes = "Explicit adjoint of fused scaled masked softmax."
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [{ name = "scale", kind = "float", source = "inScale" }]
+
+[[ops]]
+name = "sigmoidBwd"
+kind = "binary"
+kernel_forward = "SigmoidBwd"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = ["const oa::Matrix& inForwardOutput", "const oa::Matrix& inGradOutput"]
+notes = "Explicit sigmoid adjoint."
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+
+[[ops]]
+name = "leakyReluBwd"
+kind = "binary"
+kernel_forward = "LeakyReluBwd"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inForwardOutput",
+    "const oa::Matrix& inGradOutput",
+    "oa::F32 inAlpha = 0.01f",
+]
+notes = "Explicit LeakyReLU adjoint."
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [{ name = "alpha", kind = "float", source = "inAlpha" }]
+
+[[ops]]
+name = "eluBwd"
+kind = "binary"
+kernel_forward = "EluBwd"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inForwardOutput",
+    "const oa::Matrix& inGradOutput",
+    "oa::F32 inAlpha = 1.0f",
+]
+notes = "Explicit ELU adjoint."
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [{ name = "alpha", kind = "float", source = "inAlpha" }]
+
+[[ops]]
+name = "mishBwd"
+kind = "binary"
+kernel_forward = "MishBwd"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = ["const oa::Matrix& inInput", "const oa::Matrix& inGradOutput"]
+notes = "Explicit Mish adjoint using the saved forward input."
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+
+[[ops]]
+name = "siluMulBwd"
+kind = "binary"
+kernel_forward = "SiluMulBwd"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = ["const oa::Matrix& inInput", "const oa::Matrix& inGradOutput"]
+notes = "Explicit fused SiLU-multiply adjoint."
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+
+[[ops]]
+name = "gegluBwd"
+kind = "binary"
+kernel_forward = "GegluBwd"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = ["const oa::Matrix& inInput", "const oa::Matrix& inGradOutput"]
+notes = "Explicit GEGLU adjoint."
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+
+[[ops]]
+name = "linearDataReluBwd"
+kind = "unary"
+kernel_forward = "LinearDataReluBwd"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inGradOutput",
+    "const oa::Matrix& inWeight",
+    "const oa::Matrix& inActivation",
+]
+notes = "Fused linear-data and ReLU adjoint."
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+
+[[ops]]
+name = "linearReluBwdData"
+kind = "unary"
+kernel_forward = "LinearReluBwdData"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inGradOutput",
+    "const oa::Matrix& inWeight",
+    "const oa::Matrix& inActivation",
+]
+notes = "Fused in-layer LinearReLU data adjoint."
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+
+[[ops]]
+name = "maxPool2dBwd"
+kind = "unary"
+kernel_forward = "MaxPool2dBwd"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inX",
+    "const oa::Matrix& inIndices",
+    "const oa::Matrix& inGradOutput",
+    "oa::I32 inKernelSize",
+    "oa::I32 inStride",
+    "oa::I32 inPadding",
+]
+notes = "Explicit 2-D max-pooling adjoint."
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "kernelSize", kind = "signed_integer", source = "inKernelSize" },
+    { name = "stride", kind = "signed_integer", source = "inStride" },
+    { name = "padding", kind = "signed_integer", source = "inPadding" },
+]
+
+[[ops]]
+name = "avgPool2dBwd"
+kind = "binary"
+kernel_forward = "AvgPool2dBwd"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inX",
+    "const oa::Matrix& inGradOutput",
+    "oa::I32 inKernelSize",
+    "oa::I32 inStride",
+    "oa::I32 inPadding",
+]
+notes = "Explicit 2-D average-pooling adjoint."
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "kernelSize", kind = "signed_integer", source = "inKernelSize" },
+    { name = "stride", kind = "signed_integer", source = "inStride" },
+    { name = "padding", kind = "signed_integer", source = "inPadding" },
+]
+
+[[ops]]
+name = "upsampleBwd"
+kind = "binary"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inInput",
+    "const oa::Matrix& inDOut",
+    "oa::I32 inScaleFactor",
+    "bool inIsBilinear",
+]
+notes = "Explicit nearest or bilinear upsampling adjoint."
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "conditional"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "scaleFactor", kind = "signed_integer", source = "inScaleFactor" },
+    { name = "bilinear", kind = "boolean", source = "inIsBilinear" },
+]

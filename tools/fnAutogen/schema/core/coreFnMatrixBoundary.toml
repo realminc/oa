@@ -1,0 +1,201 @@
+# Fn schema — Core matrix value factories and host boundaries.
+#
+# These rows deliberately do not own semantic operation contracts:
+# - factories allocate/upload values outside the executable operation graph;
+# - aliases delegate to schema-owned Fill/Philox operations;
+# - observations cross the device/host boundary and force completion.
+category = "Boundary"
+namespace = "oa::FnMatrix"
+file_prefix = "FnMatrix"
+cpp_subdir = "FnMatrix"
+
+[[ops]]
+name = "weightDtype"
+kind = "unary"
+surface = "host_utility"
+body = "cpu_util"
+generate_declaration = false
+api_return = "oa::ScalarType"
+api_params = []
+notes = "Read the active engine precision dtype, or FP32 without an active context."
+
+[[ops]]
+name = "setRngSeed"
+kind = "unary"
+surface = "host_utility"
+body = "cpu_util"
+generate_declaration = false
+api_return = "void"
+api_params = ["oa::U64 inSeed"]
+notes = "Seed the thread-local host generator which supplies default Philox seeds."
+
+[[ops]]
+name = "empty"
+kind = "unary"
+surface = "host_utility"
+body = "cpu_util"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "oa::MatrixShape inShape",
+    "oa::ScalarType inDtype = weightDtype()",
+    "oa::MemoryPlacement inPlacement = oa::MemoryPlacement::Auto",
+]
+notes = "Allocate an uninitialized matrix value through execution-memory policy."
+
+[[ops]]
+name = "fromBytes"
+kind = "unary"
+surface = "host_utility"
+body = "cpu_util"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "oa::Span<const oa::U8> inData",
+    "oa::MatrixShape inShape",
+    "oa::ScalarType inDtype = weightDtype()",
+]
+notes = "Create a matrix value by validating, converting, and uploading host bytes."
+
+[[ops]]
+name = "fromInt32"
+kind = "unary"
+surface = "host_utility"
+body = "cpu_util"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "oa::Span<const oa::I32> inData",
+    "oa::MatrixShape inShape",
+    "oa::ScalarType inDtype = oa::ScalarType::Int32",
+]
+notes = "Create a matrix value by validating, converting, and uploading host integers."
+
+[[ops]]
+name = "copyToHost"
+kind = "unary"
+surface = "host_observation"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Status"
+api_params = [
+    "const oa::Matrix& inSrc",
+    "void* outHost",
+    "oa::U64 inBytes",
+]
+notes = "Complete pending work and copy a matrix value into caller-owned host memory."
+
+[[ops]]
+name = "scalar"
+kind = "unary"
+surface = "host_observation"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::F32"
+api_params = ["const oa::Matrix& inSrc"]
+notes = "Complete pending work and observe the first matrix element as a host scalar."
+
+[[ops]]
+name = "zeros"
+kind = "unary"
+surface = "alias"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "oa::MatrixShape inShape",
+    "oa::ScalarType inDtype = weightDtype()",
+]
+notes = "Allocate a matrix and initialize it through host-visible zeroing or FillInPlace."
+
+[[ops]]
+name = "ones"
+kind = "unary"
+surface = "alias"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "oa::MatrixShape inShape",
+    "oa::ScalarType inDtype = weightDtype()",
+]
+notes = "Allocate a matrix and delegate initialization to FillInPlace."
+
+[[ops]]
+name = "full"
+kind = "unary"
+surface = "alias"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "oa::MatrixShape inShape",
+    "oa::F64 inValue",
+    "oa::ScalarType inDtype = weightDtype()",
+]
+notes = "Allocate a matrix and delegate constant initialization to FillInPlace."
+
+[[ops]]
+name = "rand"
+kind = "unary"
+surface = "alias"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "oa::MatrixShape inShape",
+    "oa::ScalarType inDtype = weightDtype()",
+]
+notes = "Allocate a matrix and delegate uniform initialization to PhiloxUniform."
+
+[[ops]]
+name = "randN"
+kind = "unary"
+surface = "alias"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "oa::MatrixShape inShape",
+    "oa::ScalarType inDtype = weightDtype()",
+]
+notes = "Allocate a matrix and delegate shape-aware normal initialization to PhiloxNormal."
+
+[[ops]]
+name = "randXavier"
+kind = "unary"
+surface = "alias"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "oa::MatrixShape inShape",
+    "oa::ScalarType inDtype = weightDtype()",
+]
+notes = "Allocate a matrix and delegate Xavier-style initialization to PhiloxUniform."
+
+[[ops]]
+name = "randGlorotUniform"
+kind = "unary"
+surface = "alias"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "oa::MatrixShape inShape",
+    "oa::ScalarType inDtype = weightDtype()",
+]
+notes = "Allocate a matrix and delegate Glorot-uniform initialization to PhiloxUniform."
+
+[[ops]]
+name = "randKaimingUniform"
+kind = "unary"
+surface = "alias"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "oa::MatrixShape inShape",
+    "oa::ScalarType inDtype = weightDtype()",
+]
+notes = "Allocate a matrix and delegate Kaiming-uniform initialization to PhiloxUniform."

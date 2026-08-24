@@ -1,0 +1,98 @@
+# Fn schema — private UI lowering kernels without a one-to-one public
+# operation identity. These rows generate compilation and stable registry
+# metadata only.
+surface = "kernel"
+category = "KernelIdentity"
+namespace = "oa::FnMatrix"
+file_prefix = "FnMatrix"
+cpp_subdir = "FnMatrix"
+
+[[ops]]
+name = "clearRgba8"
+kind = "unary"
+kernel_forward = "ClearRgba8"
+body = "manual_session"
+generate_declaration = false
+notes = "Private packed-texture clear lowering used by oa::FnTexture::Clear."
+
+[ops.kernel]
+id_prefix = "Ui"
+id_local = 9
+category = "Ui"
+origin = "oa"
+source = "clearRgba8"
+
+[[ops]]
+name = "drawHeatmap"
+kind = "unary"
+kernel_forward = "DrawHeatmap"
+body = "manual_session"
+generate_declaration = false
+notes = "Private heatmap raster lowering owned by the UI command renderer."
+
+[ops.kernel]
+id_prefix = "Ui"
+id_local = 10
+category = "Ui"
+origin = "oa"
+source = "drawHeatmap"
+
+[[ops]]
+name = "drawLine"
+kind = "unary"
+kernel_forward = "DrawLine"
+body = "manual_session"
+generate_declaration = false
+notes = "Private line raster lowering owned by the UI command renderer."
+
+[ops.kernel]
+id_prefix = "Ui"
+id_local = 11
+category = "Ui"
+origin = "oa"
+source = "drawLine"
+
+[[ops]]
+name = "drawPlotLine"
+kind = "unary"
+kernel_forward = "DrawPlotLine"
+body = "manual_session"
+generate_declaration = false
+notes = "Private plot-line raster lowering owned by the UI command renderer."
+
+[ops.kernel]
+id_prefix = "Ui"
+id_local = 12
+category = "Ui"
+origin = "oa"
+source = "drawPlotLine"
+
+[[ops]]
+name = "matrixToRgba8"
+kind = "unary"
+kernel_forward = "MatrixToRgba8"
+body = "manual_session"
+generate_declaration = false
+notes = "Private semantic-image-to-packed-texture lowering used by oa::FnTexture::FromImage."
+
+[ops.kernel]
+id_prefix = "Ui"
+id_local = 13
+category = "Ui"
+origin = "oa"
+source = "matrixToRgba8"
+
+[[ops]]
+name = "drawCanvasGrid"
+kind = "unary"
+kernel_forward = "DrawCanvasGrid"
+body = "manual_session"
+generate_declaration = false
+notes = "Private adaptive node-canvas grid raster lowering owned by the UI command renderer."
+
+[ops.kernel]
+id_prefix = "Ui"
+id_local = 14
+category = "Ui"
+origin = "oa"
+source = "drawCanvasGrid"

@@ -1,0 +1,18 @@
+# OA UI Types Schema
+# User interface types for the OA UI module
+
+domain = "ui"
+namespace = "oa"
+
+[[enums]]
+name = "ViewerNavigationMode"
+underlying_type = "U8"
+generate_tostring = true
+generate_fromstring = true
+values = [
+	{ name = "Default", value = 0, comment = "Default viewer mode" },
+	{ name = "Orbit", value = 1, comment = "Orbit camera mode" },
+	{ name = "Fly", value = 2, comment = "Fly camera mode" },
+	{ name = "Pan", value = 3, comment = "Pan camera mode" },
+	{ name = "Zoom", value = 4, comment = "Zoom camera mode" },
+]

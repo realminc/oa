@@ -1,0 +1,509 @@
+# Fn schema — tensor-native Vision/FnImage pointwise, channel and composite ops.
+surface = "public_operation"
+generate_python_bindings = true
+
+generate_engine_overloads = true
+generate_forwarders = true
+
+[[ops]]
+name = "thresholdBinary"
+category = "Pixel"
+kind = "unary"
+kernel_forward = "ImagePointwise"
+slang_path = "Vision/color"
+log_component = "VISION"
+notes = "Global binary threshold."
+body = "manual_session"
+api_params = ["const oa::Matrix& inImage", "oa::F32 inThreshold", "oa::F32 inMaxValue = 1.0F"]
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "threshold", kind = "float", source = "inThreshold" },
+    { name = "maxValue", kind = "float", source = "inMaxValue" },
+]
+
+[[ops]]
+name = "thresholdBinaryInv"
+category = "Pixel"
+kind = "unary"
+kernel_forward = "ImagePointwise"
+slang_path = "Vision/color"
+log_component = "VISION"
+notes = "Global inverse binary threshold."
+body = "manual_session"
+api_params = ["const oa::Matrix& inImage", "oa::F32 inThreshold", "oa::F32 inMaxValue = 1.0F"]
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "threshold", kind = "float", source = "inThreshold" },
+    { name = "maxValue", kind = "float", source = "inMaxValue" },
+]
+
+[[ops]]
+name = "thresholdTruncate"
+category = "Pixel"
+kind = "unary"
+kernel_forward = "ImagePointwise"
+slang_path = "Vision/color"
+log_component = "VISION"
+notes = "Truncate values above a threshold."
+body = "manual_session"
+api_params = ["const oa::Matrix& inImage", "oa::F32 inThreshold"]
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [{ name = "threshold", kind = "float", source = "inThreshold" }]
+
+[[ops]]
+name = "thresholdToZero"
+category = "Pixel"
+kind = "unary"
+kernel_forward = "ImagePointwise"
+slang_path = "Vision/color"
+log_component = "VISION"
+notes = "Set values at or below a threshold to zero."
+body = "manual_session"
+api_params = ["const oa::Matrix& inImage", "oa::F32 inThreshold"]
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [{ name = "threshold", kind = "float", source = "inThreshold" }]
+
+[[ops]]
+name = "thresholdToZeroInv"
+category = "Pixel"
+kind = "unary"
+kernel_forward = "ImagePointwise"
+slang_path = "Vision/color"
+log_component = "VISION"
+notes = "Set values above a threshold to zero."
+body = "manual_session"
+api_params = ["const oa::Matrix& inImage", "oa::F32 inThreshold"]
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [{ name = "threshold", kind = "float", source = "inThreshold" }]
+
+[[ops]]
+name = "inRange"
+category = "Pixel"
+kind = "unary"
+kernel_forward = "ImagePointwise"
+slang_path = "Vision/color"
+log_component = "VISION"
+notes = "Inclusive scalar range mask."
+body = "manual_session"
+api_params = ["const oa::Matrix& inImage", "oa::F32 inLow", "oa::F32 inHigh", "oa::F32 inTrueValue = 1.0F"]
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "low", kind = "float", source = "inLow" },
+    { name = "high", kind = "float", source = "inHigh" },
+    { name = "trueValue", kind = "float", source = "inTrueValue" },
+]
+
+[[ops]]
+name = "clamp"
+category = "Pixel"
+kind = "unary"
+kernel_forward = "ImagePointwise"
+slang_path = "Vision/color"
+log_component = "VISION"
+notes = "Clamp image values to a scalar interval."
+body = "manual_session"
+api_params = ["const oa::Matrix& inImage", "oa::F32 inLow", "oa::F32 inHigh"]
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "low", kind = "float", source = "inLow" },
+    { name = "high", kind = "float", source = "inHigh" },
+]
+
+[[ops]]
+name = "invert"
+category = "Pixel"
+kind = "unary"
+kernel_forward = "ImagePointwise"
+slang_path = "Vision/color"
+log_component = "VISION"
+notes = "Invert values around a configurable maximum."
+body = "manual_session"
+api_params = ["const oa::Matrix& inImage", "oa::F32 inMaxValue = 1.0F"]
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [{ name = "maxValue", kind = "float", source = "inMaxValue" }]
+
+[[ops]]
+name = "brightnessContrast"
+category = "Pixel"
+kind = "unary"
+kernel_forward = "ImagePointwise"
+slang_path = "Vision/color"
+log_component = "VISION"
+notes = "Affine brightness and contrast adjustment."
+body = "manual_session"
+api_params = ["const oa::Matrix& inImage", "oa::F32 inBrightness = 0.0F", "oa::F32 inContrast = 1.0F"]
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "brightness", kind = "float", source = "inBrightness" },
+    { name = "contrast", kind = "float", source = "inContrast" },
+]
+
+[[ops]]
+name = "gammaContrast"
+category = "Pixel"
+kind = "unary"
+kernel_forward = "ImagePointwise"
+slang_path = "Vision/color"
+log_component = "VISION"
+notes = "Gamma and gain adjustment."
+body = "manual_session"
+api_params = ["const oa::Matrix& inImage", "oa::F32 inGamma", "oa::F32 inGain = 1.0F"]
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "gamma", kind = "float", source = "inGamma" },
+    { name = "gain", kind = "float", source = "inGain" },
+]
+
+[[ops]]
+name = "solarize"
+category = "Pixel"
+kind = "unary"
+kernel_forward = "ImagePointwise"
+slang_path = "Vision/color"
+log_component = "VISION"
+notes = "Invert values above a threshold."
+body = "manual_session"
+api_params = ["const oa::Matrix& inImage", "oa::F32 inThreshold = 0.5F", "oa::F32 inMaxValue = 1.0F"]
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "threshold", kind = "float", source = "inThreshold" },
+    { name = "maxValue", kind = "float", source = "inMaxValue" },
+]
+
+[[ops]]
+name = "posterize"
+category = "Pixel"
+kind = "unary"
+kernel_forward = "ImagePointwise"
+slang_path = "Vision/color"
+log_component = "VISION"
+notes = "Quantize an intensity interval to a fixed number of levels."
+body = "manual_session"
+api_params = ["const oa::Matrix& inImage", "oa::U32 inLevels", "oa::F32 inLow = 0.0F", "oa::F32 inHigh = 1.0F"]
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "levels", kind = "unsigned_integer", source = "inLevels" },
+    { name = "low", kind = "float", source = "inLow" },
+    { name = "high", kind = "float", source = "inHigh" },
+]
+
+[[ops]]
+name = "grayscale"
+category = "Pixel"
+kind = "unary"
+kernel_forward = "ImageChannelTransform"
+slang_path = "Vision/color"
+log_component = "VISION"
+notes = "Rec.709 RGB to single-channel grayscale conversion."
+body = "manual_session"
+api_params = ["const oa::Matrix& inImage"]
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+
+[[ops]]
+name = "channelReorder"
+category = "Pixel"
+kind = "unary"
+kernel_forward = "ImageChannelTransform"
+slang_path = "Vision/color"
+log_component = "VISION"
+notes = "Reorder one to four NCHW channels."
+body = "manual_session"
+api_params = ["const oa::Matrix& inImage", "oa::U32 inChannel0", "oa::U32 inChannel1 = 1", "oa::U32 inChannel2 = 2", "oa::U32 inChannel3 = 3"]
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "channel0", kind = "unsigned_integer", source = "inChannel0" },
+    { name = "channel1", kind = "unsigned_integer", source = "inChannel1" },
+    { name = "channel2", kind = "unsigned_integer", source = "inChannel2" },
+    { name = "channel3", kind = "unsigned_integer", source = "inChannel3" },
+]
+
+[[ops]]
+name = "alphaBlend"
+category = "Pixel"
+kind = "binary"
+kernel_forward = "ImageComposite"
+slang_path = "Vision/color"
+log_component = "VISION"
+notes = "Scalar alpha blend of equal-shaped images."
+body = "manual_session"
+api_params = ["const oa::Matrix& inA", "const oa::Matrix& inB", "oa::F32 inAlpha"]
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [{ name = "alpha", kind = "float", source = "inAlpha" }]
+
+[[ops]]
+name = "composite"
+category = "Pixel"
+kind = "binary"
+kernel_forward = "ImageComposite"
+slang_path = "Vision/color"
+log_component = "VISION"
+notes = "Per-pixel masked composite with one or C mask channels."
+body = "manual_session"
+api_params = ["const oa::Matrix& inA", "const oa::Matrix& inB", "const oa::Matrix& inMask"]
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+
+[[ops]]
+name = "erase"
+category = "Pixel"
+kind = "unary"
+kernel_forward = "ImageComposite"
+slang_path = "Vision/color"
+log_component = "VISION"
+notes = "Fill a rectangular region with a scalar value."
+body = "manual_session"
+api_params = ["const oa::Matrix& inImage", "oa::U32 inX", "oa::U32 inY", "oa::U32 inWidth", "oa::U32 inHeight", "oa::F32 inValue = 0.0F"]
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "x", kind = "unsigned_integer", source = "inX" },
+    { name = "y", kind = "unsigned_integer", source = "inY" },
+    { name = "width", kind = "unsigned_integer", source = "inWidth" },
+    { name = "height", kind = "unsigned_integer", source = "inHeight" },
+    { name = "value", kind = "float", source = "inValue" },
+]
+
+[[ops]]
+name = "colorTwist"
+category = "Pixel"
+kind = "binary"
+kernel_forward = "ImageColorMatrix"
+slang_path = "Vision/color"
+log_component = "VISION"
+notes = "Apply a shared 3x4 RGB color transform matrix."
+body = "manual_session"
+api_params = ["const oa::Matrix& inImage", "const oa::Matrix& inTransform"]
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+
+[[ops]]
+name = "gaussianNoise"
+category = "Pixel"
+kind = "unary"
+kernel_forward = "PhiloxNormal"
+slang_path = "Vision/color"
+log_component = "VISION"
+notes = "Add deterministic GPU-native Philox Gaussian noise."
+body = "manual_session"
+api_params = ["const oa::Matrix& inImage", "oa::F32 inMean = 0.0F", "oa::F32 inStddev = 0.01F", "oa::U64 inSeed = 0"]
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "mean", kind = "float", source = "inMean" },
+    { name = "stddev", kind = "float", source = "inStddev" },
+    { name = "seed", kind = "unsigned_integer", source = "inSeed" },
+]
+
+[[ops]]
+name = "saltPepperNoise"
+category = "Pixel"
+kind = "unary"
+kernel_forward = "ImageSaltPepper"
+slang_path = "Vision/color"
+log_component = "VISION"
+notes = "Apply deterministic GPU-native salt-and-pepper noise."
+body = "manual_session"
+api_params = ["const oa::Matrix& inImage", "oa::F32 inProbability = 0.01F", "oa::F32 inSaltValue = 1.0F", "oa::F32 inPepperValue = 0.0F", "oa::U64 inSeed = 0"]
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "probability", kind = "float", source = "inProbability" },
+    { name = "saltValue", kind = "float", source = "inSaltValue" },
+    { name = "pepperValue", kind = "float", source = "inPepperValue" },
+    { name = "seed", kind = "unsigned_integer", source = "inSeed" },
+]

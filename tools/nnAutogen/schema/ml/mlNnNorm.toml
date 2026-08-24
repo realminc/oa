@@ -1,0 +1,31 @@
+# Oa NN schema - normalization layers.
+
+[[layers]]
+name = "LayerNorm"
+constructor_explicit = true
+constructor_args = "oa::I32 inNormalizedShape, oa::F32 inEps = 1e-5f"
+constructor_init = "eps_(inEps)"
+constructor_body = [
+	"auto wd = oa::FnMatrix::weightDtype();",
+	"registerParameter(\"weight\", oa::FnMatrix::ones(MatrixShape{inNormalizedShape}, wd));",
+	"registerParameter(\"bias\", oa::FnMatrix::zeros(MatrixShape{inNormalizedShape}, wd));",
+]
+members = [
+	"oa::F32 eps_;",
+]
+fn = "oa::FnMatrix::layerNorm(inInput, params_[0].data, params_[1].data, eps_)"
+notes = "Layer normalization layer."
+
+[[layers]]
+name = "RmsNorm"
+constructor_explicit = true
+constructor_args = "oa::I32 inDim, oa::F32 inEps = 1e-6f"
+constructor_init = "eps_(inEps)"
+constructor_body = [
+	"registerParameter(\"weight\", oa::FnMatrix::ones(MatrixShape{inDim}, oa::FnMatrix::weightDtype()));",
+]
+members = [
+	"oa::F32 eps_;",
+]
+fn = "oa::FnMatrix::rmsNorm(inInput, params_[0].data, eps_)"
+notes = "RMS normalization layer."

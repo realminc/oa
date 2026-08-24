@@ -1,0 +1,422 @@
+# Fn schema — semantic Q4/Q8 quantization plus private plane lowerings.
+surface = "internal_operation"
+#
+# This schema owns the admitted public operation contracts and fixed-kernel
+# identities. The current manual lowering and Slang bodies remain intentional;
+# mechanically derivable declarations, registry rows and compilation lists are
+# generated from these rows.
+#
+# Q4 and Q8 use explicit payload and Float32-scale planes. Their MatMulNt
+# operations consume those planes directly and never materialize a Float32
+# weight matrix. GGML/GGUF interleaved-block import and Q4_K remain separate
+# format-conversion work; the two representations must not be conflated.
+
+# --- QuantizeQ4 ------------------------------------------------------------
+[[ops]]
+name           = "quantizeQ4"
+surface        = "internal_operation"
+category       = "Quantize"
+kind           = "unary"
+kernel_forward = "QuantizeQ4"
+slang_path     = "Ml/Quantize"
+log_component  = "ML"
+notes          = "Quantize Float32 into OA's native symmetric Q4 block plane using round-to-nearest-even."
+body           = "manual_session"
+generate_declaration = false
+api_params     = [
+    "const oa::Matrix& inInput",
+    "const oa::Matrix& inScale",
+]
+api_return     = "oa::Matrix"
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 138
+category = "Ml"
+origin = "oa"
+source = "quantize/quantizeQ4"
+
+[ops.contract]
+input_kinds         = ["matrix", "matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "explicit"
+dtype_rule          = "explicit"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "none"
+lowering            = "dispatch"
+
+# --- DequantizeQ4 ----------------------------------------------------------
+[[ops]]
+name           = "dequantizeQ4"
+surface        = "internal_operation"
+category       = "Quantize"
+kind           = "unary"
+kernel_forward = "DequantizeQ4"
+slang_path     = "Ml/Quantize"
+log_component  = "ML"
+notes          = "Dequantize OA's native symmetric Q4 block plane to Float32."
+body           = "manual_session"
+generate_declaration = false
+api_params     = [
+    "const oa::Matrix& inInput",
+    "const oa::Matrix& inScale",
+    "oa::I64 inCount",
+]
+api_return     = "oa::Matrix"
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 139
+category = "Ml"
+origin = "oa"
+source = "quantize/dequantizeQ4"
+
+[ops.contract]
+input_kinds         = ["matrix", "matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "explicit"
+dtype_rule          = "explicit"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "none"
+lowering            = "dispatch"
+attributes = [
+    { name = "count", kind = "signed_integer", source = "inCount" },
+]
+
+# --- ComputeScaleQ4 --------------------------------------------------------
+[[ops]]
+name           = "computeScaleQ4"
+surface        = "internal_operation"
+category       = "Quantize"
+kind           = "unary"
+kernel_forward = "ComputeScaleQ4"
+slang_path     = "Ml/Quantize"
+log_component  = "ML"
+notes          = "Compute per-block scale for Q4 quantization."
+body           = "manual_session"
+generate_declaration = false
+api_params     = ["const oa::Matrix& inInput"]
+api_return     = "oa::Matrix"
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 140
+category = "Ml"
+origin = "oa"
+source = "quantize/computeScaleQ4"
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "explicit"
+dtype_rule          = "explicit"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "none"
+lowering            = "dispatch"
+
+# --- QuantizeQ8 ------------------------------------------------------------
+[[ops]]
+name           = "quantizeQ8"
+surface        = "internal_operation"
+category       = "Quantize"
+kind           = "unary"
+kernel_forward = "QuantizeQ8"
+slang_path     = "Ml/Quantize"
+log_component  = "ML"
+notes          = "Quantize Float32 into OA's native symmetric Q8 block plane using round-to-nearest-even."
+body           = "manual_session"
+generate_declaration = false
+api_params     = [
+    "const oa::Matrix& inInput",
+    "const oa::Matrix& inScale",
+]
+api_return     = "oa::Matrix"
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 362
+category = "Ml"
+origin = "oa"
+source = "quantize/quantizeQ8"
+
+[ops.contract]
+input_kinds         = ["matrix", "matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "explicit"
+dtype_rule          = "explicit"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "none"
+lowering            = "dispatch"
+
+# --- DequantizeQ8 ----------------------------------------------------------
+[[ops]]
+name           = "dequantizeQ8"
+surface        = "internal_operation"
+category       = "Quantize"
+kind           = "unary"
+kernel_forward = "DequantizeQ8"
+slang_path     = "Ml/Quantize"
+log_component  = "ML"
+notes          = "Dequantize OA's native symmetric Q8 block plane to Float32."
+body           = "manual_session"
+generate_declaration = false
+api_params     = [
+    "const oa::Matrix& inInput",
+    "const oa::Matrix& inScale",
+    "oa::I64 inCount",
+]
+api_return     = "oa::Matrix"
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 363
+category = "Ml"
+origin = "oa"
+source = "quantize/dequantizeQ8"
+
+[ops.contract]
+input_kinds         = ["matrix", "matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "explicit"
+dtype_rule          = "explicit"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "none"
+lowering            = "dispatch"
+attributes = [
+    { name = "count", kind = "signed_integer", source = "inCount" },
+]
+
+# --- ComputeScaleQ8 --------------------------------------------------------
+[[ops]]
+name           = "computeScaleQ8"
+surface        = "internal_operation"
+category       = "Quantize"
+kind           = "unary"
+kernel_forward = "ComputeScaleQ8"
+slang_path     = "Ml/Quantize"
+log_component  = "ML"
+notes          = "Compute one Float32 Q8 scale per 32-value Float32 input block."
+body           = "manual_session"
+generate_declaration = false
+api_params     = ["const oa::Matrix& inInput"]
+api_return     = "oa::Matrix"
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 364
+category = "Ml"
+origin = "oa"
+source = "quantize/computeScaleQ8"
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "explicit"
+dtype_rule          = "explicit"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "none"
+lowering            = "dispatch"
+
+# --- MatMulNtQ4 ------------------------------------------------------------
+[[ops]]
+name           = "matMulNtQ4"
+surface        = "internal_operation"
+category       = "Quantize"
+kind           = "unary"
+kernel_forward = "MatMulNtQ4"
+slang_path     = "Ml/Quantize"
+log_component  = "ML"
+notes          = "Multiply Float32 activations by a transposed Q4 two-plane weight without materializing Float32 weights."
+body           = "manual_session"
+generate_declaration = false
+api_params     = [
+    "const oa::Matrix& inInput",
+    "const oa::Matrix& inPayload",
+    "const oa::Matrix& inScale",
+    "oa::I64 inOutputFeatures",
+]
+api_return     = "oa::Matrix"
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 385
+category = "Ml"
+origin = "oa"
+source = "quantize/matMulNtQ4"
+
+[ops.contract]
+input_kinds         = ["matrix", "matrix", "matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "explicit"
+dtype_rule          = "explicit"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "none"
+lowering            = "dispatch"
+attributes = [
+    { name = "outputFeatures", kind = "signed_integer", source = "inOutputFeatures" },
+]
+
+# --- MatMulNtQ8 ------------------------------------------------------------
+[[ops]]
+name           = "matMulNtQ8"
+surface        = "internal_operation"
+category       = "Quantize"
+kind           = "unary"
+kernel_forward = "MatMulNtQ8"
+slang_path     = "Ml/Quantize"
+log_component  = "ML"
+notes          = "Multiply Float32 activations by a transposed Q8 two-plane weight without materializing Float32 weights."
+body           = "manual_session"
+generate_declaration = false
+api_params     = [
+    "const oa::Matrix& inInput",
+    "const oa::Matrix& inPayload",
+    "const oa::Matrix& inScale",
+    "oa::I64 inOutputFeatures",
+]
+api_return     = "oa::Matrix"
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 386
+category = "Ml"
+origin = "oa"
+source = "quantize/matMulNtQ8"
+
+[ops.contract]
+input_kinds         = ["matrix", "matrix", "matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "explicit"
+dtype_rule          = "explicit"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "none"
+lowering            = "dispatch"
+attributes = [
+    { name = "outputFeatures", kind = "signed_integer", source = "inOutputFeatures" },
+]
+
+# --- Semantic public surface -------------------------------------------------
+
+[[ops]]
+name = "quantize"
+category = "Quantize"
+kind = "unary"
+surface = "stable_composite"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::QuantMatrix"
+api_params = [
+    "const oa::Matrix& inInput",
+    "oa::Quantization inQuantization",
+]
+notes = "Quantize Float32 storage into one native OA Q4 or Q8 semantic weight value."
+
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["quant_matrix"]
+shape_rule = "match_input"
+dtype_rule = "explicit"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "conditional"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "quantization", kind = "enum", source = "inQuantization" },
+]
+
+[ops.python]
+binding = "manual"
+args = ["input", "quantization"]
+doc = "Quantize a Float32 matrix into one native OA Q4 or Q8 weight value."
+
+[[ops]]
+name = "dequantize"
+category = "Quantize"
+kind = "unary"
+surface = "stable_composite"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = ["const oa::QuantMatrix& inInput"]
+notes = "Materialize a native OA quantized weight as Float32 with its logical shape."
+
+[ops.contract]
+input_kinds = ["quant_matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "explicit"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "conditional"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "quantization", kind = "enum", source = "inInput.getQuantization()" },
+]
+
+[ops.python]
+binding = "manual"
+args = ["input"]
+doc = "Materialize a native OA quantized weight as Float32."
+
+[[ops]]
+name = "matMulNtQuantized"
+category = "Quantize"
+kind = "binary"
+surface = "stable_composite"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inInput",
+    "const oa::QuantMatrix& inWeight",
+]
+notes = "Multiply Float32 activations by a native OA Q4/Q8 transposed weight without materializing Float32 weights."
+
+[ops.contract]
+input_kinds = ["matrix", "quant_matrix"]
+output_kinds = ["matrix"]
+shape_rule = "matmul_nt"
+dtype_rule = "explicit"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "conditional"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "quantization", kind = "enum", source = "inWeight.getQuantization()" },
+]
+
+[ops.python]
+binding = "manual"
+name = "matMulNt"
+args = ["input", "weight"]
+doc = "Multiply Float32 activations by a native OA Q4/Q8 transposed weight."

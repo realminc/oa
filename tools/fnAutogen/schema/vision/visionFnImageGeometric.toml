@@ -1,0 +1,240 @@
+# Fn schema — verified public Vision/FnImage geometric ops (8).
+surface = "public_operation"
+generate_python_bindings = true
+#
+# This is the *source of truth* for geometric image transformations. The generator
+# emits .h declarations, .cpp implementations, and .slang shaders from this file.
+# See tools/fnAutogen/rEADME.md and tools/fnAutogen/oafnautogen.py.
+#
+# Geometric operations perform spatial transformations on images.
+
+generate_engine_overloads = true
+generate_forwarders = true
+
+# --- CropNchw ----------------------------------------------------------------
+[[ops]]
+name           = "crop"
+category       = "Geometric"
+kind           = "unary"
+kernel_forward = "CropNchw"
+slang_path     = "Vision/Geometric"
+log_component  = "VISION"
+notes          = "Crop NCHW image: out = A[y:y+h, x:x+w]."
+body           = "manual_session"
+api_params = ["const oa::Matrix& inImage", "oa::U32 inX", "oa::U32 inY", "oa::U32 inWidth", "oa::U32 inHeight"]
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "x", kind = "unsigned_integer", source = "inX" },
+    { name = "y", kind = "unsigned_integer", source = "inY" },
+    { name = "width", kind = "unsigned_integer", source = "inWidth" },
+    { name = "height", kind = "unsigned_integer", source = "inHeight" },
+]
+
+# --- FlipNchw ----------------------------------------------------------------
+[[ops]]
+name           = "flip"
+category       = "Geometric"
+kind           = "unary"
+kernel_forward = "FlipNchw"
+slang_path     = "Vision/Geometric"
+log_component  = "VISION"
+notes          = "Flip NCHW image horizontally or vertically."
+body           = "manual_session"
+api_params = [
+    "const oa::Matrix& inImage",
+    "bool inHorizontal = false",
+    "bool inVertical = false",
+]
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "conditional"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "horizontal", kind = "boolean", source = "inHorizontal" },
+    { name = "vertical", kind = "boolean", source = "inVertical" },
+]
+
+# --- RotateNchw --------------------------------------------------------------
+[[ops]]
+name           = "rotate"
+category       = "Geometric"
+kind           = "unary"
+kernel_forward = "RotateNchw"
+slang_path     = "Vision/Geometric"
+log_component  = "VISION"
+notes          = "Rotate NCHW image by 90/180/270 degrees."
+body           = "manual_session"
+api_params = ["const oa::Matrix& inImage", "oa::U32 inDegrees"]
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "conditional"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [{ name = "degrees", kind = "unsigned_integer", source = "inDegrees" }]
+
+# Padding is exposed below through the generic ImagePad kernel; the original
+# constant-only one-off shader was retired.
+
+[[ops]]
+name = "pad"
+category = "Geometric"
+kind = "unary"
+kernel_forward = "ImagePad"
+slang_path = "Vision/Geometric"
+log_component = "VISION"
+notes = "Asymmetric NCHW padding with the shared border contract."
+body = "manual_session"
+api_params = ["const oa::Matrix& inImage", "oa::U32 inLeft", "oa::U32 inRight", "oa::U32 inTop", "oa::U32 inBottom", "oa::BorderMode inBorder = oa::BorderMode::Constant", "oa::F32 inBorderValue = 0.0F"]
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "left", kind = "unsigned_integer", source = "inLeft" },
+    { name = "right", kind = "unsigned_integer", source = "inRight" },
+    { name = "top", kind = "unsigned_integer", source = "inTop" },
+    { name = "bottom", kind = "unsigned_integer", source = "inBottom" },
+    { name = "border", kind = "unsigned_integer", source = "static_cast<oa::U64>(inBorder)" },
+    { name = "borderValue", kind = "float", source = "inBorderValue" },
+]
+
+[[ops]]
+name = "centerCrop"
+category = "Geometric"
+kind = "unary"
+kernel_forward = "CropNchw"
+slang_path = "Vision/Geometric"
+log_component = "VISION"
+notes = "Centered crop lowered through Crop."
+body = "manual_session"
+api_params = ["const oa::Matrix& inImage", "oa::U32 inWidth", "oa::U32 inHeight"]
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "width", kind = "unsigned_integer", source = "inWidth" },
+    { name = "height", kind = "unsigned_integer", source = "inHeight" },
+]
+
+[[ops]]
+name = "remap"
+category = "Geometric"
+kind = "binary"
+kernel_forward = "ImageWarp"
+slang_path = "Vision/Geometric"
+log_component = "VISION"
+notes = "Absolute-coordinate NCHW remapping with nearest or bilinear sampling."
+body = "manual_session"
+api_params = ["const oa::Matrix& inImage", "const oa::Matrix& inMap", "oa::InterpolationMode inInterpolation = oa::InterpolationMode::Bilinear", "oa::BorderMode inBorder = oa::BorderMode::Constant", "oa::F32 inBorderValue = 0.0F"]
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "interpolation", kind = "unsigned_integer", source = "static_cast<oa::U64>(inInterpolation)" },
+    { name = "border", kind = "unsigned_integer", source = "static_cast<oa::U64>(inBorder)" },
+    { name = "borderValue", kind = "float", source = "inBorderValue" },
+]
+
+[[ops]]
+name = "warpAffine"
+category = "Geometric"
+kind = "binary"
+kernel_forward = "ImageWarp"
+slang_path = "Vision/Geometric"
+log_component = "VISION"
+notes = "Inverse 2x3 affine warp with explicit interpolation and border semantics."
+body = "manual_session"
+api_params = ["const oa::Matrix& inImage", "const oa::Matrix& inTransform", "oa::U32 inWidth", "oa::U32 inHeight", "oa::InterpolationMode inInterpolation = oa::InterpolationMode::Bilinear", "oa::BorderMode inBorder = oa::BorderMode::Constant", "oa::F32 inBorderValue = 0.0F"]
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "width", kind = "unsigned_integer", source = "inWidth" },
+    { name = "height", kind = "unsigned_integer", source = "inHeight" },
+    { name = "interpolation", kind = "unsigned_integer", source = "static_cast<oa::U64>(inInterpolation)" },
+    { name = "border", kind = "unsigned_integer", source = "static_cast<oa::U64>(inBorder)" },
+    { name = "borderValue", kind = "float", source = "inBorderValue" },
+]
+
+[[ops]]
+name = "warpPerspective"
+category = "Geometric"
+kind = "binary"
+kernel_forward = "ImageWarp"
+slang_path = "Vision/Geometric"
+log_component = "VISION"
+notes = "Inverse 3x3 perspective warp with explicit interpolation and border semantics."
+body = "manual_session"
+api_params = ["const oa::Matrix& inImage", "const oa::Matrix& inTransform", "oa::U32 inWidth", "oa::U32 inHeight", "oa::InterpolationMode inInterpolation = oa::InterpolationMode::Bilinear", "oa::BorderMode inBorder = oa::BorderMode::Constant", "oa::F32 inBorderValue = 0.0F"]
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "width", kind = "unsigned_integer", source = "inWidth" },
+    { name = "height", kind = "unsigned_integer", source = "inHeight" },
+    { name = "interpolation", kind = "unsigned_integer", source = "static_cast<oa::U64>(inInterpolation)" },
+    { name = "border", kind = "unsigned_integer", source = "static_cast<oa::U64>(inBorder)" },
+    { name = "borderValue", kind = "float", source = "inBorderValue" },
+]

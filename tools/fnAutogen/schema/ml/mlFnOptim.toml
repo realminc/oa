@@ -1,0 +1,179 @@
+# Fn schema — low-level optimizer recording commands.
+#
+# These functions mutate caller-owned parameter and optimizer state and return
+# no semantic value. They are therefore session commands, not stateless value
+# operations, even though the mutation is fully explicit in their parameters.
+category = "Optim"
+namespace = "oa::FnOptim"
+file_prefix = "FnOptim"
+cpp_subdir = "FnOptim"
+surface = "session_command"
+
+[[ops]]
+name = "adamWAdvanceGraphState"
+kind = "session_command"
+body = "manual_session"
+generate_declaration = false
+api_return = "void"
+api_params = ["oa::Matrix& inOutState"]
+notes = "Record an increment of replay-safe oa::AdamW state."
+
+[ops.session]
+owners = ["oa::AdamW", "oa::TrainingProgram"]
+transition = "Recording -> Recorded"
+effects = ["read_state", "write_state", "device_work"]
+completion = "recorded"
+
+[[ops]]
+name = "adamWStep"
+kind = "session_command"
+body = "manual_session"
+generate_declaration = false
+api_return = "void"
+api_params = [
+    "oa::Matrix& inOutParam",
+    "oa::Matrix& inOutM",
+    "oa::Matrix& inOutV",
+    "const oa::Matrix& inGrad",
+    "oa::F32 inLr",
+    "oa::F32 inBeta1",
+    "oa::F32 inBeta2",
+    "oa::F32 inEps",
+    "oa::F32 inWeightDecay",
+    "oa::I32 inStep",
+]
+notes = "Record one eager oa::AdamW parameter-state update."
+
+[ops.session]
+owners = ["oa::AdamW"]
+transition = "Recording -> Recorded"
+effects = ["read_state", "write_state", "device_work"]
+completion = "recorded"
+
+[[ops]]
+name = "adamWStepGraph"
+kind = "session_command"
+body = "manual_session"
+generate_declaration = false
+api_return = "void"
+api_params = [
+    "oa::Matrix& inOutParam",
+    "oa::Matrix& inOutM",
+    "oa::Matrix& inOutV",
+    "const oa::Matrix& inGrad",
+    "const oa::Matrix& inState",
+]
+notes = "Record one replay-safe oa::AdamW parameter-state update."
+
+[ops.session]
+owners = ["oa::AdamW", "oa::TrainingProgram"]
+transition = "Recording -> Recorded"
+effects = ["read_state", "write_state", "device_work"]
+completion = "recorded"
+
+[[ops]]
+name = "adamWStepMany"
+kind = "session_command"
+body = "manual_session"
+generate_declaration = false
+api_return = "void"
+api_params = [
+    "oa::Span<const oa::FnOptim::AdamWParamSet> inParams",
+    "oa::F32 inLr",
+    "oa::F32 inBeta1",
+    "oa::F32 inBeta2",
+    "oa::F32 inEps",
+    "oa::F32 inWeightDecay",
+    "oa::I32 inStep",
+]
+notes = "Record eager oa::AdamW updates for a dynamic parameter-state collection."
+
+[ops.session]
+owners = ["oa::AdamW"]
+transition = "Recording -> Recorded"
+effects = ["read_state", "write_state", "device_work"]
+completion = "recorded"
+
+[[ops]]
+name = "adamWStepManyGraph"
+kind = "session_command"
+body = "manual_session"
+generate_declaration = false
+api_return = "void"
+api_params = [
+    "oa::Span<const oa::FnOptim::AdamWParamSet> inParams",
+    "const oa::Matrix& inState",
+]
+notes = "Record replay-safe oa::AdamW updates for a dynamic parameter-state collection."
+
+[ops.session]
+owners = ["oa::AdamW", "oa::TrainingProgram"]
+transition = "Recording -> Recorded"
+effects = ["read_state", "write_state", "device_work"]
+completion = "recorded"
+
+[[ops]]
+name = "sgdStep"
+kind = "session_command"
+body = "manual_session"
+generate_declaration = false
+api_return = "void"
+api_params = [
+    "oa::Matrix& inOutParam",
+    "oa::Matrix& inOutMomentum",
+    "const oa::Matrix& inGrad",
+    "oa::F32 inLr",
+    "oa::F32 inMomentum",
+    "oa::F32 inWeightDecay",
+]
+notes = "Record one oa::Sgd parameter-state update."
+
+[ops.session]
+owners = ["oa::Sgd"]
+transition = "Recording -> Recorded"
+effects = ["read_state", "write_state", "device_work"]
+completion = "recorded"
+
+[[ops]]
+name = "muonStep"
+kind = "session_command"
+body = "manual_session"
+generate_declaration = false
+api_return = "void"
+api_params = [
+    "oa::Matrix& inOutParam",
+    "oa::Matrix& inOutMomentum",
+    "const oa::Matrix& inGrad",
+    "oa::F32 inLr",
+    "oa::F32 inBeta",
+    "oa::F32 inWeightDecay",
+    "oa::F32 inEps",
+    "oa::I32 inNS5Iterations",
+]
+notes = "Record one oa::Muon parameter-state update."
+
+[ops.session]
+owners = ["oa::Muon"]
+transition = "Recording -> Recorded"
+effects = ["read_state", "write_state", "device_work"]
+completion = "recorded"
+
+[[ops]]
+name = "clipGradNorm"
+kind = "session_command"
+body = "manual_session"
+generate_declaration = false
+api_return = "void"
+api_params = [
+    "oa::Span<oa::Matrix*> inGrads",
+    "oa::F32 inMaxNorm",
+    "oa::Matrix& inOutParams",
+    "oa::Matrix& inOutPartials",
+]
+notes = "Record norm clipping over a dynamic gradient collection and persistent scratch."
+
+[ops.session]
+owners = ["oa::Optimizer", "oa::TrainingProgram"]
+transition = "Recording -> Recorded"
+effects = ["read_state", "write_state", "device_work", "host_input"]
+completion = "recorded"

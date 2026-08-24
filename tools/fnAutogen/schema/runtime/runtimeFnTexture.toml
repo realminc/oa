@@ -1,0 +1,91 @@
+# Fn schema — texture recording commands.
+category = "Texture"
+namespace = "oa::FnTexture"
+file_prefix = "FnTexture"
+cpp_subdir = "FnTexture"
+surface = "session_command"
+
+[[ops]]
+name = "fromPixels"
+kind = "unary"
+surface = "host_utility"
+body = "cpu_util"
+generate_declaration = false
+api_return = "oa::Result<oa::Texture>"
+api_params = [
+    "oa::Engine& inEngine",
+    "oa::Span<const oa::U8> inRgba",
+    "oa::I32 inWidth",
+    "oa::I32 inHeight",
+]
+notes = "Synchronously upload one exact packed-RGBA8 host image into a shared engine buffer lease."
+
+[[ops]]
+name = "fromImage"
+kind = "session_command"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Result<oa::Texture>"
+api_params = [
+    "oa::Engine& inEngine",
+    "const oa::Image& inImage",
+]
+notes = "Record explicit semantic image layout and channel-format conversion into a packed RGBA8 texture."
+
+[ops.session]
+owners = ["oa::Context", "oa::Texture"]
+transition = "Recording -> Recorded"
+effects = ["read_state", "write_state", "device_work"]
+completion = "recorded"
+
+[[ops]]
+name = "copyToHost"
+kind = "unary"
+surface = "host_observation"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Status"
+api_params = [
+    "oa::Engine& inEngine",
+    "const oa::Texture& inTexture",
+    "void* outHost",
+    "oa::U64 inBytes",
+]
+notes = "Complete pending work and copy one buffer-backed RGBA8 texture into caller-owned host memory."
+
+[[ops]]
+name = "blit"
+kind = "session_command"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Status"
+api_params = [
+    "oa::Context& inContext",
+    "const oa::BlitDesc& inDesc",
+]
+notes = "Record a buffer-backed texture blit; the ambient-context overload forwards to this command."
+
+[ops.session]
+owners = ["oa::Context", "oa::Texture"]
+transition = "Recording -> Recorded"
+effects = ["read_state", "write_state", "device_work"]
+completion = "recorded"
+
+[[ops]]
+name = "clear"
+kind = "session_command"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Status"
+api_params = [
+    "oa::Context& inContext",
+    "const oa::Texture& inTarget",
+    "oa::ClearColor inColor",
+]
+notes = "Record a clear of a buffer-backed texture; the ambient-context overload forwards to this command."
+
+[ops.session]
+owners = ["oa::Context", "oa::Texture"]
+transition = "Recording -> Recorded"
+effects = ["write_state", "device_work"]
+completion = "recorded"

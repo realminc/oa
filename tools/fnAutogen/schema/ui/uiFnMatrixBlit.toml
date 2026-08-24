@@ -1,0 +1,41 @@
+# Fn schema — UI/FnImage blit ops (3).
+surface = "kernel"
+#
+# This is the *source of truth* for image blitting/compositing operations. The generator
+# emits .h declarations, .cpp implementations, and .slang shaders from this file.
+# See tools/fnAutogen/rEADME.md and tools/fnAutogen/oafnautogen.py.
+#
+# Blit operations copy and composite images for presentation.
+
+# --- BlitRgba ----------------------------------------------------------------
+[[ops]]
+name           = "blitRgba"
+category       = "Blit"
+kind           = "unary"
+kernel_forward = "BlitRgba"
+slang_path     = "Ui/Blit"
+log_component  = "UI"
+notes          = "Blit RGBA image to destination with alpha blending."
+body           = "manual_session"
+
+# --- BlitPlanar --------------------------------------------------------------
+[[ops]]
+name           = "blitPlanar"
+category       = "Blit"
+kind           = "unary"
+kernel_forward = "BlitPlanar"
+slang_path     = "Ui/Blit"
+log_component  = "UI"
+notes          = "Blit planar YUV image to destination."
+body           = "manual_session"
+
+# --- BlitImageRgba -----------------------------------------------------------
+[[ops]]
+name           = "blitImageRgba"
+category       = "Blit"
+kind           = "unary"
+kernel_forward = "BlitImageRgba"
+slang_path     = "Ui/Blit"
+log_component  = "UI"
+notes          = "Blit RGBA image using Vulkan image operations."
+body           = "manual_session"

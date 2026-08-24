@@ -1,0 +1,34 @@
+# Fn schema — public Vision/FnImage resize operation.
+surface = "public_operation"
+generate_python_bindings = true
+
+generate_engine_overloads = true
+generate_forwarders = true
+
+[[ops]]
+name = "resize"
+category = "Resize"
+kind = "unary"
+kernel_forward = "ResizeBilinear"
+slang_path = "Vision/Geometric"
+log_component = "VISION"
+notes = "Resize an NCHW image using nearest or bilinear interpolation."
+body = "manual_session"
+api_params = ["const oa::Matrix& inImage", "oa::U32 inTargetWidth", "oa::U32 inTargetHeight", "oa::InterpolationMode inMode = oa::InterpolationMode::Bilinear"]
+
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "targetWidth", kind = "unsigned_integer", source = "inTargetWidth" },
+    { name = "targetHeight", kind = "unsigned_integer", source = "inTargetHeight" },
+    { name = "interpolation", kind = "unsigned_integer", source = "static_cast<oa::U64>(inMode)" },
+]

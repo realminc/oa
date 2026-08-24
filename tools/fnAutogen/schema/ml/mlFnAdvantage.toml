@@ -1,0 +1,125 @@
+# Fn schema — rollout advantage estimation.
+category = "Advantage"
+namespace = "oa::FnAdvantage"
+file_prefix = "FnAdvantage"
+cpp_subdir = "FnAdvantage"
+
+[[ops]]
+name = "normalize"
+kind = "unary"
+surface = "public_operation"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inAdvantage",
+    "oa::F32 inEpsilon = 1.0e-8F",
+]
+notes = "Standardize a rollout advantage tensor."
+
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "reverse"
+lowering = "dispatch"
+attributes = [
+    { name = "epsilon", kind = "float", source = "inEpsilon" },
+]
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inAdvantage"]
+outputs = ["Output"]
+implementation = "source/cpp/lib/oa/ml/advantage.cpp:normalize"
+
+[ops.python]
+args = ["advantage", "epsilon"]
+result_validation = "not_empty"
+error = "NormalizeAdvantages rejected its input"
+doc = "Standardize a rollout advantage tensor."
+
+[[ops]]
+name = "gae"
+kind = "unary"
+surface = "public_operation"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::GaeResult"
+api_params = [
+    "const oa::Matrix& inReward",
+    "const oa::Matrix& inValue",
+    "const oa::Matrix& inNextValue",
+    "const oa::Matrix& inTerminated",
+    "const oa::Matrix& inTruncated",
+    "const oa::GaeConfig& inConfig = {}",
+]
+notes = "Compute generalized advantage estimates and returns over a fixed rollout."
+
+[ops.python_result]
+cpp_type = "oa::GaeResult"
+members = ["advantage", "return"]
+bind_type = false
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix", "matrix", "matrix"]
+output_kinds = ["matrix", "matrix"]
+shape_rule = "explicit"
+dtype_rule = "explicit"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1, -1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "gamma", kind = "float", source = "inConfig.gamma" },
+    { name = "lambda", kind = "float", source = "inConfig.lambda" },
+]
+
+[ops.python]
+args = ["reward", "value", "nextValue", "terminated", "truncated", "config"]
+result_validation = "is_valid"
+error = "Gae rejected its input"
+doc = "Compute generalized advantage estimates and returns."
+
+[[ops]]
+name = "gaeInto"
+kind = "unary"
+surface = "public_cpp_operation"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Status"
+api_params = [
+    "const oa::Matrix& inReward",
+    "const oa::Matrix& inValue",
+    "const oa::Matrix& inNextValue",
+    "const oa::Matrix& inTerminated",
+    "const oa::Matrix& inTruncated",
+    "oa::Matrix& outAdvantage",
+    "oa::Matrix& outReturn",
+    "const oa::GaeConfig& inConfig = {}",
+]
+notes = "Allocation-free generalized advantage estimation into caller-owned outputs."
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix", "matrix", "matrix"]
+output_kinds = ["matrix", "matrix"]
+shape_rule = "explicit"
+dtype_rule = "explicit"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1, -1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "gamma", kind = "float", source = "inConfig.gamma" },
+    { name = "lambda", kind = "float", source = "inConfig.lambda" },
+]

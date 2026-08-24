@@ -1,0 +1,243 @@
+# oa::VideoDecoder session-command schema.
+surface = "session_command"
+
+category    = "Codec"
+namespace   = "oa::VideoDecoder"
+file_prefix = "VideoDecoder"
+cpp_subdir  = "Video/Decoder"
+
+[[ops]]
+name                 = "decode"
+category             = "Codec"
+kind                 = "session_command"
+body                 = "manual_session"
+generate_declaration = false
+api_return           = "oa::Result<oa::VideoFrame>"
+api_params           = [
+    "const oa::Span<const oa::U8>& inAccessUnit",
+    "oa::U64 inPts = 0ULL",
+]
+notes = "Decode an access unit through the owning session and its explicit compute-to-video dependency boundary."
+
+[ops.session]
+owners = ["oa::VideoDecoder", "oa::Context"]
+transition = "Ready -> Ready | Failed"
+effects = ["read_state", "write_state", "device_work", "host_input"]
+completion = "output_event"
+
+[[ops]]
+name                 = "decodeFrame"
+category             = "Codec"
+kind                 = "session_command"
+body                 = "manual_session"
+generate_declaration = false
+api_return           = "oa::Status"
+api_params           = [
+    "const oa::Span<const oa::U8>& inBitstream",
+    "oa::VideoFrame& outFrame",
+]
+notes = "Decode one access unit into a caller-provided frame descriptor."
+
+[ops.session]
+owners = ["oa::VideoDecoder"]
+transition = "Ready -> Ready | Failed"
+effects = ["read_state", "write_state", "device_work", "host_input"]
+completion = "output_event"
+
+[[ops]]
+name                 = "flush"
+category             = "Codec"
+kind                 = "session_command"
+body                 = "manual_session"
+generate_declaration = false
+api_return           = "oa::Status"
+api_params           = []
+notes = "Complete pending decoder work and reset stream-local codec state."
+
+[ops.session]
+owners = ["oa::VideoDecoder"]
+transition = "Ready -> Ready | Failed"
+effects = ["read_state", "write_state", "device_work"]
+completion = "synchronous"
+
+[[ops]]
+name                 = "convert"
+category             = "Color"
+kind                 = "session_command"
+body                 = "manual_session"
+generate_declaration = false
+api_return           = "oa::Result<oa::VideoFrame>"
+api_params           = [
+    "const oa::VideoFrame& inFrame",
+    "const oa::VideoConversionOptions& inOptions = {}",
+]
+notes = "Convert a decoder-owned frame to RGBA or return an RGB frame view."
+
+[ops.session]
+owners = ["oa::VideoDecoder"]
+transition = "Ready -> Ready | Failed"
+effects = ["read_state", "write_state", "device_work"]
+completion = "output_event"
+
+[[ops]]
+name                 = "convertInto"
+category             = "Color"
+kind                 = "session_command"
+body                 = "manual_session"
+generate_declaration = false
+api_return           = "oa::Status"
+api_params           = [
+    "const oa::VideoFrame& inNv12Frame",
+    "const oa::VideoConversionOptions& inOptions",
+    "oa::VideoFrame& inOutRgbTarget",
+]
+notes = "Convert NV12 into caller-held RGBA storage and wait for completion."
+
+[ops.session]
+owners = ["oa::VideoDecoder"]
+transition = "Ready -> Ready | Failed"
+effects = ["read_state", "write_state", "device_work"]
+completion = "synchronous"
+
+[[ops]]
+name                 = "convertIntoAsync"
+category             = "Color"
+kind                 = "session_command"
+body                 = "manual_session"
+generate_declaration = false
+api_return           = "oa::Result<oa::Event>"
+api_params           = [
+    "const oa::VideoFrame& inNv12Frame",
+    "const oa::VideoConversionOptions& inOptions",
+    "const oa::VideoFrame& inRgbTarget",
+]
+notes = "Convert NV12 into caller-held RGBA storage and return exact completion."
+
+[ops.session]
+owners = ["oa::VideoDecoder"]
+transition = "Ready -> inFlight | Failed"
+effects = ["read_state", "write_state", "device_work"]
+completion = "output_event"
+
+[[ops]]
+name                 = "allocateRgbaFrame"
+category             = "Color"
+kind                 = "session_command"
+body                 = "manual_session"
+generate_declaration = false
+api_return           = "oa::Result<oa::VideoFrame>"
+api_params           = ["oa::U32 inWidth", "oa::U32 inHeight"]
+notes = "Allocate a caller-held RGBA frame from decoder-owned storage."
+
+[ops.session]
+owners = ["oa::VideoDecoder"]
+transition = "Ready -> Ready | Failed"
+effects = ["read_state", "write_state"]
+completion = "recorded"
+
+[[ops]]
+name                 = "readbackLuma"
+category             = "Color"
+kind                 = "session_command"
+body                 = "manual_session"
+generate_declaration = false
+api_return           = "oa::Result<oa::Vec<oa::U8>>"
+api_params           = ["const oa::VideoFrame& inFrame"]
+notes = "Synchronously observe the luma plane on the host."
+
+[ops.session]
+owners = ["oa::VideoDecoder"]
+transition = "Ready -> Ready | Failed"
+effects = ["read_state", "write_state", "device_work", "host_output"]
+completion = "synchronous"
+
+[[ops]]
+name                 = "readbackNv12"
+category             = "Color"
+kind                 = "session_command"
+body                 = "manual_session"
+generate_declaration = false
+api_return           = "oa::Result<oa::Vec<oa::U8>>"
+api_params           = ["const oa::VideoFrame& inFrame"]
+notes = "Synchronously observe packed NV12 data on the host."
+
+[ops.session]
+owners = ["oa::VideoDecoder"]
+transition = "Ready -> Ready | Failed"
+effects = ["read_state", "write_state", "device_work", "host_output"]
+completion = "synchronous"
+
+[[ops]]
+name                 = "readbackRgba"
+category             = "Color"
+kind                 = "session_command"
+body                 = "manual_session"
+generate_declaration = false
+api_return           = "oa::Result<oa::Vec<oa::U8>>"
+api_params           = ["const oa::VideoFrame& inFrame"]
+notes = "Synchronously observe packed RGBA data on the host."
+
+[ops.session]
+owners = ["oa::VideoDecoder"]
+transition = "Ready -> Ready | Failed"
+effects = ["read_state", "write_state", "device_work", "host_output"]
+completion = "synchronous"
+
+[[ops]]
+name                 = "convertFrameToBf16"
+category             = "Preprocess"
+kind                 = "session_command"
+body                 = "manual_session"
+generate_declaration = false
+api_return           = "oa::Result<oa::Matrix>"
+api_params           = [
+    "const oa::VideoFrame& inFrame",
+    "bool inNormalizeImageNet = true",
+]
+notes = "Convert a decoder frame to BF16 NCHW with capability-selected lowering."
+
+[ops.session]
+owners = ["oa::VideoDecoder"]
+transition = "Ready -> Ready | Failed"
+effects = ["read_state", "write_state", "device_work", "host_output"]
+completion = "synchronous"
+
+[[ops]]
+name                 = "decodeFrameToBf16"
+category             = "Preprocess"
+kind                 = "session_command"
+body                 = "manual_session"
+generate_declaration = false
+api_return           = "oa::Result<oa::Matrix>"
+api_params           = [
+    "const oa::Span<const oa::U8>& inBitstream",
+    "bool inNormalizeImageNet = true",
+]
+notes = "Decode an access unit and convert it to a BF16 NCHW matrix."
+
+[ops.session]
+owners = ["oa::VideoDecoder"]
+transition = "Ready -> Ready | Failed"
+effects = ["read_state", "write_state", "device_work", "host_input"]
+completion = "synchronous"
+
+[[ops]]
+name                 = "decodeResizeNormalize"
+category             = "Preprocess"
+kind                 = "session_command"
+slang_path           = "Vision/Conversion"
+body                 = "manual_session"
+generate_declaration = false
+api_return           = "oa::Result<oa::Matrix>"
+api_params           = [
+    "const oa::Span<const oa::U8>& inAccessUnit",
+    "oa::U32 inWidth = 224U",
+    "oa::U32 inHeight = 224U",
+]
+notes = "Compose decode, resize, and normalization into a BF16 matrix; fused lowering remains planned."
+
+[ops.session]
+owners = ["oa::VideoDecoder"]
+transition = "Ready -> Ready | Failed"
+effects = ["read_state", "write_state", "device_work", "host_input"]
+completion = "recorded"

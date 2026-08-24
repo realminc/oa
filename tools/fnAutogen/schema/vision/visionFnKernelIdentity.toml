@@ -1,0 +1,38 @@
+# Fn schema — private Vision lowering kernels without a one-to-one public
+# operation identity. These rows generate compilation and stable registry
+# metadata only.
+surface = "kernel"
+category = "KernelIdentity"
+namespace = "oa::FnImage"
+file_prefix = "FnImage"
+cpp_subdir = "FnImage"
+
+[[ops]]
+name = "resizeBilinearBwd"
+kind = "unary"
+kernel_forward = "ResizeBilinearBwd"
+body = "manual_session"
+generate_declaration = false
+notes = "Private bilinear resize adjoint selected by the UpsampleBwd operation."
+
+[ops.kernel]
+id_prefix = "Vision"
+id_local = 40
+category = "Vision"
+origin = "oa"
+source = "geometric/resizeBilinearBwd"
+
+[[ops]]
+name = "resizeNearestBwd"
+kind = "unary"
+kernel_forward = "ResizeNearestBwd"
+body = "manual_session"
+generate_declaration = false
+notes = "Private nearest-neighbor resize adjoint selected by the UpsampleBwd operation."
+
+[ops.kernel]
+id_prefix = "Vision"
+id_local = 41
+category = "Vision"
+origin = "oa"
+source = "geometric/resizeNearestBwd"

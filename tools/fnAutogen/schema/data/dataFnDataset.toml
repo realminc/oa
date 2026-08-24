@@ -1,0 +1,41 @@
+# Fn schema — host-side dataset collection utilities.
+category = "Dataset"
+namespace = "oa::FnDataset"
+file_prefix = "FnDataset"
+cpp_subdir = "Dataset"
+surface = "host_utility"
+
+[[ops]]
+name = "shuffle"
+kind = "unary"
+body = "cpu_util"
+generate_declaration = false
+api_return = "void"
+api_params = [
+    "oa::Vec<oa::I64>& inOutIndices",
+    "oa::U64 inSeed = 0",
+]
+notes = "Shuffle a host index vector with explicit or nondeterministic seed selection."
+
+[[ops]]
+name = "randomSplit"
+kind = "unary"
+body = "cpu_util"
+generate_declaration = false
+api_return = "oa::FnDataset::SplitResult"
+api_params = [
+    "oa::I64 inTotalSize",
+    "oa::F32 inTrainRatio = 0.8f",
+    "oa::F32 inValRatio = 0.1f",
+    "oa::U64 inSeed = 42",
+]
+notes = "Shuffle and partition host indices into train, validation, and test subsets."
+
+[[ops]]
+name = "collate"
+kind = "unary"
+body = "cpu_util"
+generate_declaration = false
+api_return = "oa::FnDataset::Batch"
+api_params = ["oa::Span<const oa::Dataset::Sample> inSamples"]
+notes = "Collate completed host-visible samples into leading-dimension batches."

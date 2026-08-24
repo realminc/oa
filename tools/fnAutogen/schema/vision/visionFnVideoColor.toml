@@ -1,0 +1,21 @@
+# oa::FnVideo stateless frame-view schema.
+surface = "value_view"
+
+category    = "Color"
+namespace   = "oa::FnVideo"
+file_prefix = "FnVideo"
+cpp_subdir  = "Video"
+
+[[ops]]
+name                 = "fromTexture"
+category             = "Color"
+kind                 = "unary"
+body                 = "manual_session"
+generate_declaration = false
+api_return           = "oa::Result<oa::VideoFrame>"
+api_params           = [
+    "const oa::Texture& inTexture",
+    "oa::U64 inPts = 0ULL",
+    "oa::Event inReady = {}",
+]
+notes = "Wrap a producer-owned texture and readiness token as a non-owning video-frame view."

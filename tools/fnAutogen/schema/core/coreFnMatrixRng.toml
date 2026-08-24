@@ -1,0 +1,154 @@
+# Fn schema — Core/FnMatrix RNG and fill ops (4).
+surface = "public_operation"
+#
+# RNG uses Philox counter-based generation. A zero seed is resolved once on
+# the host and the effective 64-bit seed is recorded in the semantic graph.
+
+# --- PhiloxNormal ------------------------------------------------------------
+[[ops]]
+name           = "philoxNormal"
+category       = "Rng"
+kind           = "unary"
+kernel_forward = "PhiloxNormal"
+slang_path     = "Core/Rng"
+log_component  = "ML"
+notes          = "Generate normal-distribution random values with Philox."
+body           = "manual_session"
+api_params     = [
+    "const oa::Matrix& inA",
+    "oa::F32 inMean = 0.0F",
+    "oa::F32 inStddev = 1.0F",
+    "oa::U64 inSeed = 0",
+]
+api_return     = "oa::Matrix"
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "none"
+lowering            = "dispatch"
+attributes          = [
+	{ name = "mean", kind = "float", source = "inMean" },
+	{ name = "stddev", kind = "float", source = "inStddev" },
+	{ name = "seed", kind = "unsigned_integer", source = "inSeed" },
+]
+
+[ops.python]
+args = ["a", "mean", "stddev", "seed"]
+doc = "Generate a Philox normal sample with the input shape and dtype."
+
+# --- PhiloxUniform -----------------------------------------------------------
+[[ops]]
+name           = "philoxUniform"
+category       = "Rng"
+kind           = "unary"
+kernel_forward = "PhiloxUniform"
+slang_path     = "Core/Rng"
+log_component  = "ML"
+notes          = "Generate uniform-distribution random values with Philox."
+body           = "manual_session"
+api_params     = [
+    "const oa::Matrix& inA",
+    "oa::F32 inLow = 0.0F",
+    "oa::F32 inHigh = 1.0F",
+    "oa::U64 inSeed = 0",
+]
+api_return     = "oa::Matrix"
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "none"
+lowering            = "dispatch"
+attributes          = [
+	{ name = "low", kind = "float", source = "inLow" },
+	{ name = "high", kind = "float", source = "inHigh" },
+	{ name = "seed", kind = "unsigned_integer", source = "inSeed" },
+]
+
+[ops.python]
+args = ["a", "low", "high", "seed"]
+doc = "Generate a Philox uniform sample with the input shape and dtype."
+
+# --- Fill --------------------------------------------------------------------
+[[ops]]
+name           = "fill"
+category       = "Rng"
+kind           = "nullary_scalar"
+kernel_forward = "Fill"
+slang_path     = "Core/Shader/Compute/Flat"
+log_component  = "ML"
+notes          = "Create a Float32 matrix filled with a constant value."
+forward_op     = "pc.Value"
+scalar_param   = { name = "value", type = "oa::F32", push_field = "Value" }
+api_params     = [
+    "const oa::MatrixShape& inShape",
+    "oa::F32 inValue",
+]
+api_return     = "oa::Matrix"
+
+[ops.contract]
+input_kinds         = []
+output_kinds        = ["matrix"]
+shape_rule          = "explicit"
+dtype_rule          = "match_input"
+effects             = ["write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "none"
+lowering            = "dispatch"
+attributes          = [
+    { name = "shape", kind = "shape", source = "inShape" },
+]
+
+[ops.python]
+args = ["shape", "value"]
+doc = "Create a Float32 matrix of Shape filled with Value."
+
+[ops.test]
+cpu_reference = "3.14159f"
+tolerance = "1e-6f"
+test_sizes = [256, 1024]
+scalar_value = "3.14159f"
+
+# --- FillInPlace -------------------------------------------------------------
+[[ops]]
+name           = "fillInPlace"
+category       = "Rng"
+kind           = "unary_scalar"
+kernel_forward = "Fill"
+slang_path     = "Core/Shader/Compute/Flat"
+log_component  = "ML"
+notes          = "Replace every value in an existing matrix."
+body           = "manual_session"
+scalar_param   = { name = "value", type = "oa::F32", push_field = "Value" }
+api_params     = [
+    "oa::Matrix& inSelf",
+    "oa::F32 inValue",
+]
+api_return     = "void"
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["write_outputs"]
+mutated_inputs      = [0]
+output_alias_inputs = [0]
+control_flow        = "straight_line"
+differentiation     = "none"
+lowering            = "dispatch"

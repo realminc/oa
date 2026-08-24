@@ -1,0 +1,32 @@
+# Oa NN schema - embedding layers.
+
+[[layers]]
+name = "Embedding"
+autograd_node_header = "oa/core/autograd/matrix/autogradIndex.h"
+constructor_args = "oa::I32 inNumEmbeddings, oa::I32 inEmbeddingDim"
+constructor_init = "numEmbeddings_(inNumEmbeddings), embeddingDim_(inEmbeddingDim)"
+constructor_body = [
+	"registerParameter(\"weight\", oa::FnMatrix::randN(MatrixShape{inNumEmbeddings, inEmbeddingDim}, oa::FnMatrix::weightDtype()));",
+]
+methods = [
+	"[[nodiscard]] oa::I32 numEmbeddings() const { return numEmbeddings_; }",
+	"[[nodiscard]] oa::I32 embeddingDim() const { return embeddingDim_; }",
+]
+members = [
+	"oa::I32 numEmbeddings_;",
+	"oa::I32 embeddingDim_;",
+]
+forward_body = """
+	auto& weight = params_[0].data;
+	auto out = oa::FnMatrix::gather(weight, inInput);
+	if (oa::FnAutograd::isEnabled() and (weight.requiresGrad())) {
+		auto gradFn = oa::makeShared<oa::GradGather>();
+		gradFn->saveForBackward({inInput, weight});
+		gradFn->setGraphInputs(  oa::Vec<oa::Matrix>{weight, inInput});
+		gradFn->sequenceNr_    = oa::FnAutograd::nextSeq();
+		gradFn->outputShape_   = out.getShape();
+		out.mutAutograd().gradFn = gradFn;
+	}
+	return out;
+"""
+notes = "Embedding lookup layer."

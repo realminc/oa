@@ -1,0 +1,82 @@
+# Fn schema — stateless oa::Audio codec and file boundaries.
+category = "Codec"
+namespace = "oa::FnAudio"
+file_prefix = "FnAudio"
+cpp_subdir = "FnAudio"
+
+[[ops]]
+name = "decodeFile"
+kind = "unary"
+surface = "host_utility"
+body = "cpu_util"
+generate_declaration = false
+api_return = "oa::Result<oa::Audio>"
+api_params = ["const oa::Path& inPath"]
+notes = "Synchronously decode a WAV, FLAC, or MP3 file and upload one semantic audio value."
+
+[ops.python]
+binding = "manual"
+args = ["path"]
+doc = "Decode a WAV, FLAC, or MP3 file into semantic audio."
+
+[[ops]]
+name = "decodeMemory"
+kind = "unary"
+surface = "host_utility"
+body = "cpu_util"
+generate_declaration = false
+api_return = "oa::Result<oa::Audio>"
+api_params = ["oa::Span<const oa::U8> inData"]
+notes = "Synchronously decode WAV, FLAC, or MP3 bytes and upload one semantic audio value."
+
+[ops.python]
+binding = "manual"
+args = ["data"]
+doc = "Decode WAV, FLAC, or MP3 bytes into semantic audio."
+
+[[ops]]
+name = "encodeInterleavedWavF32"
+kind = "unary"
+surface = "host_utility"
+body = "cpu_util"
+generate_declaration = false
+api_return = "oa::Result<oa::Vec<oa::U8>>"
+api_params = [
+    "oa::Span<const oa::F32> inSamples",
+    "oa::U32 inSampleRate",
+    "oa::U32 inChannelCount",
+]
+notes = "Encode non-empty interleaved Float32 frames into an IEEE Float32 WAV byte stream."
+
+[[ops]]
+name = "encodeWavF32"
+kind = "unary"
+surface = "host_utility"
+body = "cpu_util"
+generate_declaration = false
+api_return = "oa::Result<oa::Vec<oa::U8>>"
+api_params = ["const oa::Audio& inAudio"]
+notes = "Synchronously read back and encode one semantic audio value to IEEE Float32 WAV bytes."
+
+[ops.python]
+binding = "manual"
+args = ["audio"]
+doc = "Encode semantic audio into IEEE Float32 WAV bytes."
+
+[[ops]]
+name = "saveWavF32"
+kind = "unary"
+surface = "host_utility"
+body = "cpu_util"
+generate_declaration = false
+api_return = "oa::Status"
+api_params = [
+    "const oa::Path& inPath",
+    "const oa::Audio& inAudio",
+]
+notes = "Synchronously read back and write one semantic audio value to an IEEE Float32 WAV file."
+
+[ops.python]
+binding = "manual"
+args = ["path", "audio"]
+doc = "Encode semantic audio into an IEEE Float32 WAV file."

@@ -1,0 +1,108 @@
+# Fn schema — semantic oa::Audio feature transforms.
+surface = "public_operation"
+generate_python_bindings = true
+#
+# Input rate and layout come from oa::Audio. Feature outputs are numerical
+# matrices and therefore intentionally do not pretend to remain audio values.
+
+[[ops]]
+name = "stft"
+category = "Transform"
+kind = "unary"
+body = "manual_session"
+kernel_forward = "Stft"
+notes = "Short-time Fourier magnitude transform to [Channels, Frames, Bins]."
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Audio& inAudio",
+    "const oa::StftConfig& inCfg = {}",
+]
+
+[ops.contract]
+input_kinds = ["audio"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "fftSize", kind = "unsigned_integer", source = "inCfg.FftSize" },
+    { name = "hopSize", kind = "unsigned_integer", source = "inCfg.HopSize" },
+    { name = "winSize", kind = "unsigned_integer", source = "inCfg.WinSize" },
+    { name = "window", kind = "unsigned_integer", source = "inCfg.Window" },
+    { name = "center", kind = "boolean", source = "inCfg.Center" },
+]
+
+[[ops]]
+name = "melSpectrogram"
+category = "Transform"
+kind = "unary"
+surface = "stable_composite"
+body = "manual_session"
+kernel_forward = "MelFilterbank"
+notes = "Mel feature matrix in [Channels, NumMels, Frames] layout."
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Audio& inAudio",
+    "const oa::MelConfig& inCfg = {}",
+]
+
+[ops.contract]
+input_kinds = ["audio"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "fftSize", kind = "unsigned_integer", source = "inCfg.FftSize" },
+    { name = "hopSize", kind = "unsigned_integer", source = "inCfg.HopSize" },
+    { name = "numMels", kind = "unsigned_integer", source = "inCfg.NumMels" },
+    { name = "fMin", kind = "float", source = "inCfg.FMin" },
+    { name = "fMax", kind = "float", source = "inCfg.FMax" },
+    { name = "logScale", kind = "boolean", source = "inCfg.LogScale" },
+    { name = "normalize", kind = "boolean", source = "inCfg.Normalize" },
+]
+
+[[ops]]
+name = "mfcc"
+category = "Transform"
+kind = "unary"
+surface = "stable_composite"
+body = "manual_session"
+notes = "Orthonormal DCT-II coefficients of the log-mel feature matrix."
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Audio& inAudio",
+    "const oa::MfccConfig& inCfg = {}",
+]
+
+[ops.contract]
+input_kinds = ["audio"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "numCoeffs", kind = "unsigned_integer", source = "inCfg.NumCoeffs" },
+    { name = "fftSize", kind = "unsigned_integer", source = "inCfg.Mel.FftSize" },
+    { name = "hopSize", kind = "unsigned_integer", source = "inCfg.Mel.HopSize" },
+    { name = "numMels", kind = "unsigned_integer", source = "inCfg.Mel.NumMels" },
+    { name = "fMin", kind = "float", source = "inCfg.Mel.FMin" },
+    { name = "fMax", kind = "float", source = "inCfg.Mel.FMax" },
+    { name = "logScale", kind = "boolean", source = "inCfg.Mel.LogScale" },
+    { name = "normalize", kind = "boolean", source = "inCfg.Mel.Normalize" },
+]

@@ -1,0 +1,30 @@
+#version 460
+#extension GL_KHR_memory_scope_semantics : require
+#extension GL_KHR_cooperative_matrix : require
+#extension GL_EXT_bfloat16 : require
+
+// Minimal probe for the pure-KHR bf16 SMEM GEMM kernel's exact feature set:
+// VK_KHR_cooperative_matrix at the universally-enumerated 16x16x16 shape with a
+// bfloat16_t A/B operand and an fp32 accumulator — no VK_NV_cooperative_matrix2,
+// no flex-dim, no tensor addressing. If glslang accepts this, the host can build
+// GemmCoopMat2SmemBf16Khr16 on any vendor (NVIDIA, AMD RDNA3.5/Strix).
+
+layout(local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) buffer InBuffer  { float x[]; } inputA;
+layout(set = 0, binding = 1) buffer OutBuffer { float x[]; } outputA;
+
+shared bfloat16_t sTile[16 * 16];
+
+void main() {
+	coopmat<bfloat16_t, gl_ScopeSubgroup, 16, 16, gl_MatrixUseA> a;
+	coopmat<bfloat16_t, gl_ScopeSubgroup, 16, 16, gl_MatrixUseB> b;
+	coopmat<float, gl_ScopeSubgroup, 16, 16, gl_MatrixUseAccumulator> acc =
+		coopmat<float, gl_ScopeSubgroup, 16, 16, gl_MatrixUseAccumulator>(0.0);
+	sTile[gl_LocalInvocationID.x] = bfloat16_t(inputA.x[gl_LocalInvocationID.x]);
+	barrier();
+	coopMatLoad(a, sTile, 0, 16, gl_CooperativeMatrixLayoutRowMajor);
+	coopMatLoad(b, sTile, 0, 16, gl_CooperativeMatrixLayoutRowMajor);
+	acc = coopMatMulAdd(a, b, acc);
+	coopMatStore(acc, outputA.x, 0, 16, gl_CooperativeMatrixLayoutRowMajor);
+}

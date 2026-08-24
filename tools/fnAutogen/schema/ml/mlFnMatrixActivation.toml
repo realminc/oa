@@ -1,0 +1,530 @@
+# Fn schema — Ml/FnMatrix activation ops (12).
+surface = "public_operation"
+autograd_node_header = "oa/ml/autograd/matrix/autogradActivation.h"
+#
+# This is the *source of truth* for ML activation functions. The generator emits:
+#   - .h declarations, .cpp implementations, .slang shaders (forward ops)
+#   - Autograd/matrix/AutogradActivation.gen.h (gradient node classes)
+# See tools/fnAutogen/rEADME.md and tools/fnAutogen/oafnautogen.py.
+#
+# All activations follow the unary pattern (except LeakyRelu/Elu which are
+# unary_scalar). Each has a forward kernel and a backward kernel for autograd.
+
+# --- Gelu --------------------------------------------------------------------
+[[ops]]
+name           = "gelu"
+category       = "Activation"
+kind           = "unary"
+kernel_forward = "Gelu"
+kernel_backward = "GeluBwd"
+slang_path     = "Ml/Nn/Activation"
+log_component  = "ML"
+notes          = "GELU activation: out = GELU(A)."
+# Keep the tanh approximation identical to Activations::Gelu and GeluBwd.
+forward_op     = "0.5f * a * (1.0f + tanh(0.7978845608f * (a + 0.044715f * a * a * a)))"
+api_params     = ["const oa::Matrix& inA"]
+api_return     = "oa::Matrix"
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+
+[ops.dnn]
+role = "gelu"
+
+[ops.python]
+args = ["a"]
+doc = "Gaussian error linear unit activation."
+
+[ops.autograd]
+grad_class = "oa::GradGelu"
+inputs     = ["inA"]
+# GeluBwd recomputes from the INPUT x (GeluGrad(x)); saving the output y would
+# compute Grad(y) ≠ Grad(x). Only sign-based (Relu/LeakyRelu) or output-defined
+# (Sigmoid/Tanh/Softplus/Elu) activations may save "out".
+saved      = ["inA"]
+formula    = "auto_bwd_kernel"
+[ops.test]
+cpu_reference = "0.5f * a_host[i] * (1.0f + std::tanh(0.7978845608f * (a_host[i] + 0.044715f * a_host[i] * a_host[i] * a_host[i])))"
+tolerance = "1e-3f"
+test_sizes = [256]
+
+
+
+# --- Silu --------------------------------------------------------------------
+[[ops]]
+name           = "silu"
+category       = "Activation"
+kind           = "unary"
+kernel_forward = "Silu"
+kernel_backward = "SiluBwd"
+slang_path     = "Ml/Nn/Activation"
+log_component  = "ML"
+notes          = "SiLU (Swish) activation: out = A * sigmoid(A)."
+forward_op     = "a / (1.0f + exp(-a))"
+api_params     = ["const oa::Matrix& inA"]
+api_return     = "oa::Matrix"
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+
+[ops.dnn]
+role = "silu"
+
+[ops.python]
+args = ["a"]
+doc = "SiLU (Swish) activation."
+
+[ops.autograd]
+grad_class = "oa::GradSilu"
+inputs     = ["inA"]
+# SiluBwd recomputes from the INPUT x (SiluGrad(x)); saving the output is wrong.
+saved      = ["inA"]
+formula    = "auto_bwd_kernel"
+[ops.test]
+cpu_reference = "a_host[i] / (1.0f + std::exp(-a_host[i]))"
+tolerance = "1e-3f"
+test_sizes = [256]
+
+# --- Relu --------------------------------------------------------------------
+[[ops]]
+name           = "relu"
+category       = "Activation"
+kind           = "unary"
+kernel_forward = "Relu"
+kernel_backward = "ReluBwd"
+slang_path     = "Ml/Nn/Activation"
+log_component  = "ML"
+notes          = "ReLU activation: out = max(0, A)."
+forward_op     = "max(a, 0.0f)"
+api_params     = ["const oa::Matrix& inA"]
+api_return     = "oa::Matrix"
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+
+[ops.dnn]
+role = "relu"
+
+[ops.python]
+args = ["a"]
+doc = "Rectified linear unit activation."
+
+[ops.autograd]
+grad_class = "oa::GradRelu"
+inputs     = ["inA"]
+saved      = ["out"]
+formula    = "auto_bwd_kernel"
+[ops.test]
+cpu_reference = "std::max(a_host[i], 0.0f)"
+tolerance = "1e-4f"
+test_sizes = [256]
+
+# --- Tanh --------------------------------------------------------------------
+[[ops]]
+name           = "tanh"
+category       = "Activation"
+kind           = "unary"
+kernel_forward = "Tanh"
+kernel_backward = "TanhBwd"
+slang_path     = "Ml/Nn/Activation"
+log_component  = "ML"
+notes          = "Tanh activation: out = tanh(A)."
+forward_op     = "tanh(a)"
+api_params     = ["const oa::Matrix& inA"]
+api_return     = "oa::Matrix"
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+
+[ops.python]
+args = ["a"]
+doc = "Hyperbolic tangent activation."
+
+[ops.autograd]
+grad_class = "oa::GradTanh"
+inputs     = ["inA"]
+saved      = ["out"]
+formula    = "auto_bwd_kernel"
+[ops.test]
+cpu_reference = "std::tanh(a_host[i])"
+tolerance = "1e-3f"
+test_sizes = [256]
+
+# --- Sigmoid -----------------------------------------------------------------
+[[ops]]
+name           = "sigmoid"
+category       = "Activation"
+kind           = "unary"
+kernel_forward = "Sigmoid"
+kernel_backward = "SigmoidBwd"
+slang_path     = "Ml/Nn/Activation"
+log_component  = "ML"
+notes          = "Sigmoid activation: out = 1 / (1 + exp(-A))."
+forward_op     = "1.0f / (1.0f + exp(-a))"
+api_params     = ["const oa::Matrix& inA"]
+api_return     = "oa::Matrix"
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+
+[ops.python]
+args = ["a"]
+doc = "Logistic sigmoid activation."
+
+[ops.autograd]
+grad_class = "oa::GradSigmoid"
+inputs     = ["inA"]
+saved      = ["out"]
+formula    = "auto_bwd_kernel"
+[ops.test]
+cpu_reference = "1.0f / (1.0f + std::exp(-a_host[i]))"
+tolerance = "1e-3f"
+test_sizes = [256]
+
+# --- LeakyRelu ---------------------------------------------------------------
+[[ops]]
+name           = "leakyRelu"
+category       = "Activation"
+kind           = "unary_scalar"
+kernel_forward = "LeakyRelu"
+kernel_backward = "LeakyReluBwd"
+slang_path     = "Ml/Nn/Activation"
+log_component  = "ML"
+notes          = "Leaky ReLU activation: out = max(Alpha * A, A)."
+forward_op     = "max(pc.Alpha * a, a)"
+scalar_param   = { name = "alpha", type = "oa::F32", push_field = "Alpha" }
+api_params     = ["const oa::Matrix& inA", "oa::F32 inAlpha"]
+api_return     = "oa::Matrix"
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+
+[ops.python]
+args = ["a", "alpha"]
+doc = "Leaky rectified linear unit activation."
+
+[ops.autograd]
+grad_class = "oa::GradLeakyRelu"
+inputs     = ["inA"]
+saved      = ["out"]
+ctor_args  = ["inAlpha"]   # thread alpha into LeakyReluBwd (else negative-side grad collapses to default 0.01)
+formula    = "auto_bwd_kernel"
+[ops.test]
+cpu_reference = "std::max(kScalar * a_host[i], a_host[i])"
+tolerance = "1e-4f"
+scalar_value = "0.01f"
+test_sizes = [256]
+
+# --- Elu ---------------------------------------------------------------------
+[[ops]]
+name           = "elu"
+category       = "Activation"
+kind           = "unary_scalar"
+kernel_forward = "Elu"
+kernel_backward = "EluBwd"
+slang_path     = "Ml/Nn/Activation"
+log_component  = "ML"
+notes          = "ELU activation: out = A if A > 0 else Alpha * (exp(A) - 1)."
+forward_op     = "a > 0.0f ? a : pc.Alpha * (exp(a) - 1.0f)"
+scalar_param   = { name = "alpha", type = "oa::F32", push_field = "Alpha" }
+api_params     = ["const oa::Matrix& inA", "oa::F32 inAlpha"]
+api_return     = "oa::Matrix"
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+
+[ops.python]
+args = ["a", "alpha"]
+doc = "Exponential linear unit activation."
+
+[ops.autograd]
+grad_class = "oa::GradElu"
+inputs     = ["inA"]
+saved      = ["out"]
+ctor_args  = ["inAlpha"]   # thread alpha into EluBwd (else negative-side grad uses default 1.0)
+formula    = "auto_bwd_kernel"
+[ops.test]
+cpu_reference = "a_host[i] > 0.0f ? a_host[i] : kScalar * (std::exp(a_host[i]) - 1.0f)"
+tolerance = "1e-3f"
+scalar_value = "1.0f"
+test_sizes = [256]
+
+# --- Mish --------------------------------------------------------------------
+[[ops]]
+name           = "mish"
+category       = "Activation"
+kind           = "unary"
+kernel_forward = "Mish"
+kernel_backward = "MishBwd"
+slang_path     = "Ml/Nn/Activation"
+log_component  = "ML"
+notes          = "Mish activation: out = A * tanh(softplus(A))."
+forward_op     = "a * tanh(log(1.0f + exp(a)))"
+api_params     = ["const oa::Matrix& inA"]
+api_return     = "oa::Matrix"
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+
+[ops.python]
+args = ["a"]
+doc = "Mish activation."
+
+[ops.autograd]
+grad_class = "oa::GradMish"
+inputs     = ["inA"]
+# MishBwd recomputes from the INPUT x (MishGrad(x)); saving the output is wrong.
+saved      = ["inA"]
+formula    = "auto_bwd_kernel"
+[ops.test]
+cpu_reference = "a_host[i] * std::tanh(std::log(1.0f + std::exp(a_host[i])))"
+tolerance = "1e-3f"
+test_sizes = [256]
+
+# --- SwiGLU ------------------------------------------------------------------
+[[ops]]
+name           = "swiglu"
+category       = "Activation"
+kind           = "binary"
+kernel_forward = "Swiglu"
+kernel_backward = "SwigluBwd"
+slang_path     = "Ml/Nn/Swiglu"
+log_component  = "ML"
+notes          = "SwiGLU activation: out = SiLU(gate) * up."
+forward_op     = "Swiglu(gate, up)"
+api_params     = ["const oa::Matrix& inA", "const oa::Matrix& inB"]
+api_return     = "oa::Matrix"
+
+[ops.contract]
+input_kinds         = ["matrix", "matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+
+[ops.dnn]
+role = "gated_multiply"
+
+[ops.python]
+args = ["a", "b"]
+doc = "SwiGLU activation from separate gate and up matrices."
+
+[ops.autograd]
+grad_class = "oa::GradSwiglu"
+inputs     = ["inA", "inB"]
+saved      = ["inA", "inB", "out"]
+formula    = "manual"
+[ops.test]
+# Note: Binary activation - test needs custom implementation
+skip_test = true
+
+# --- SiluMul -----------------------------------------------------------------
+[[ops]]
+name           = "siluMul"
+category       = "Activation"
+kind           = "unary_scalar"
+kernel_forward = "SiluMul"
+kernel_backward = "SiluMulBwd"
+slang_path     = "Ml/Nn/Swiglu"
+log_component  = "ML"
+notes          = "SiLU on first half, multiply with second half: out = SiLU(A[:N]) * A[N:]."
+forward_op     = "SiluMul(a)"
+scalar_param   = { name = "intermediateSize", type = "oa::U32", push_field = "intermediate_size" }
+output         = { shape = "last_dim_half" }
+dispatch_workgroups = "output_elemwise"
+api_params     = ["const oa::Matrix& inA", "oa::U32 inIntermediateSize"]
+api_return     = "oa::Matrix"
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "explicit"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+
+[ops.python]
+args = ["a", "intermediateSize"]
+doc = "Apply SiLU to the first half of the final dimension and multiply it by the second half."
+
+[ops.autograd]
+# SiluMulBwd needs the INPUT (gate||up); the forward output SiLU(gate)*up is
+# not invertible. Saving "out" silently fed the wrong tensor to the backward.
+grad_class = "oa::GradSiluMul"
+inputs     = ["inA"]
+saved      = ["inA"]
+formula    = "manual"
+[ops.test]
+# Note: This op splits input in half - test needs special handling
+# For now, skip test generation (requires custom test code)
+skip_test = true
+
+# --- Geglu -------------------------------------------------------------------
+[[ops]]
+name           = "geglu"
+category       = "Activation"
+kind           = "unary_scalar"
+kernel_forward = "Geglu"
+kernel_backward = "GegluBwd"
+slang_path     = "Ml/Nn/Geglu"
+log_component  = "ML"
+notes          = "GEGLU activation: out = A[:N] * GELU(A[N:])."
+forward_op     = "Geglu(a)"
+scalar_param   = { name = "intermediateSize", type = "oa::U32", push_field = "intermediate_size" }
+output         = { shape = "last_dim_half" }
+dispatch_workgroups = "output_elemwise"
+api_params     = ["const oa::Matrix& inA", "oa::U32 inIntermediateSize"]
+api_return     = "oa::Matrix"
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "explicit"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+
+[ops.python]
+args = ["a", "intermediateSize"]
+doc = "Apply GEGLU to two halves of the final matrix dimension."
+
+[ops.autograd]
+# GegluBwd needs the INPUT (up||gate); the forward output up*GELU(gate) is not
+# invertible. Saving "out" silently fed the wrong tensor to the backward.
+grad_class = "oa::GradGeglu"
+inputs     = ["inA"]
+saved      = ["inA"]
+formula    = "manual"
+[ops.test]
+# Note: This op splits input in half - test needs special handling
+# For now, skip test generation (requires custom test code)
+skip_test = true
+
+# --- Softplus ---------------------------------------------------------------
+# Numerically stable form: log(1+e^a) overflows f32 for a>~88 (e^a → inf).
+# The identity max(a,0)+log1p(e^-|a|) is mathematically exact and overflow-free
+# (the exp argument is always ≤ 0). Backward d/da softplus(a) = sigmoid(a); with
+# the saved output y=softplus(a)≥0 this equals 1-e^-y (stable). See SoftplusBwd.
+[[ops]]
+name           = "softplus"
+category       = "Activation"
+kind           = "unary"
+kernel_forward = "Softplus"
+kernel_backward = "SoftplusBwd"
+slang_path     = "Ml/Nn/Activation"
+log_component  = "ML"
+notes          = "Softplus: out = log(1+exp(A)), computed stably as max(A,0)+log1p(exp(-|A|)) (no f32 overflow)."
+forward_op     = "max(a, 0.0f) + log(1.0f + exp(-abs(a)))"
+api_params     = ["const oa::Matrix& inA"]
+api_return     = "oa::Matrix"
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+
+[ops.python]
+args = ["a"]
+doc = "Numerically stable softplus activation."
+
+[ops.autograd]
+grad_class = "oa::GradSoftplus"
+inputs     = ["inA"]
+saved      = ["out"]
+formula    = "auto_bwd_kernel"
+[ops.test]
+cpu_reference = "std::max(a_host[i], 0.0f) + std::log(1.0f + std::exp(-std::abs(a_host[i])))"
+tolerance = "1e-3f"
+test_sizes = [256]

@@ -1,0 +1,3 @@
+[submodule "sdk/android/oaMobileLab/third_party/libadrenotools"]
+	path = sdk/android/oaMobileLab/third_party/libadrenotools
+	url = https://github.com/bylaws/libadrenotools.git

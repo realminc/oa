@@ -1,0 +1,288 @@
+# Fn schema — reinforcement-learning loss compositions.
+category = "ReinforcementLoss"
+namespace = "oa::FnLoss"
+file_prefix = "FnLoss"
+cpp_subdir = "FnLoss"
+
+[[ops]]
+name = "ppoClippedPolicy"
+kind = "unary"
+surface = "public_operation"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inNewLogProbability",
+    "const oa::Matrix& inOldLogProbability",
+    "const oa::Matrix& inAdvantage",
+    "oa::F32 inClipEpsilon = 0.2F",
+]
+notes = "Compute the clipped PPO policy objective."
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "explicit"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "reverse"
+lowering = "dispatch"
+attributes = [
+    { name = "clipEpsilon", kind = "float", source = "inClipEpsilon" },
+]
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inNewLogProbability"]
+outputs = ["Loss"]
+implementation = "source/cpp/lib/oa/ml/fnloss/ppo.cpp:ppoClippedPolicy"
+
+[ops.python]
+args = ["newLogProbability", "oldLogProbability", "advantage", "clipEpsilon"]
+result_validation = "not_empty"
+error = "PpoClippedPolicy rejected its input"
+
+[[ops]]
+name = "ppoClippedPolicyBwd"
+kind = "unary"
+surface = "public_operation"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inNewLogProbability",
+    "const oa::Matrix& inOldLogProbability",
+    "const oa::Matrix& inAdvantage",
+    "oa::F32 inClipEpsilon = 0.2F",
+]
+notes = "Compute the explicit clipped PPO gradient with respect to new log probability."
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "clipEpsilon", kind = "float", source = "inClipEpsilon" },
+]
+
+[ops.python]
+args = ["newLogProbability", "oldLogProbability", "advantage", "clipEpsilon"]
+result_validation = "not_empty"
+error = "PpoClippedPolicyBwd rejected its input"
+
+[[ops]]
+name = "ppo"
+kind = "unary"
+surface = "public_operation"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::PpoLossResult"
+api_params = [
+    "const oa::Matrix& inNewLogProbability",
+    "const oa::Matrix& inOldLogProbability",
+    "const oa::Matrix& inAdvantage",
+    "const oa::Matrix& inValue",
+    "const oa::Matrix& inTargetReturn",
+    "const oa::Matrix& inEntropy",
+    "const oa::PpoLossConfig& inConfig = {}",
+]
+notes = "Compose PPO policy, value, entropy, and total losses."
+
+[ops.python_result]
+cpp_type = "oa::PpoLossResult"
+members = ["policyLoss", "valueLoss", "entropy", "totalLoss"]
+bind_type = false
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix", "matrix", "matrix", "matrix"]
+output_kinds = ["matrix", "matrix", "matrix", "matrix"]
+shape_rule = "explicit"
+dtype_rule = "explicit"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1, -1, -1, -1]
+control_flow = "straight_line"
+differentiation = "reverse"
+lowering = "dispatch"
+attributes = [
+    { name = "clipEpsilon", kind = "float", source = "inConfig.clipEpsilon" },
+    { name = "valueCoefficient", kind = "float", source = "inConfig.valueCoefficient" },
+    { name = "entropyCoefficient", kind = "float", source = "inConfig.entropyCoefficient" },
+]
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inNewLogProbability", "inValue", "inEntropy"]
+outputs = ["PolicyLoss", "ValueLoss", "Entropy", "TotalLoss"]
+implementation = "source/cpp/lib/oa/ml/fnloss/ppo.cpp:ppo"
+
+[ops.python]
+args = ["newLogProbability", "oldLogProbability", "advantage", "value", "targetReturn", "entropy", "config"]
+result_validation = "is_valid"
+error = "Ppo rejected its input"
+
+[[ops]]
+name = "dqn"
+kind = "unary"
+surface = "public_operation"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::DqnLossResult"
+api_params = [
+    "const oa::Matrix& inQ",
+    "const oa::Matrix& inAction",
+    "const oa::Matrix& inReward",
+    "const oa::Matrix& inNextQ",
+    "const oa::Matrix& inTerminated",
+    "const oa::Matrix& inTruncated",
+    "const oa::DqnLossConfig& inConfig = {}",
+]
+notes = "Compute the one-step DQN target and temporal-difference loss."
+
+[ops.python_result]
+cpp_type = "oa::DqnLossResult"
+members = ["selectedQ", "targetQ", "loss"]
+bind_type = false
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix", "matrix", "matrix", "matrix"]
+output_kinds = ["matrix", "matrix", "matrix"]
+shape_rule = "explicit"
+dtype_rule = "explicit"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1, -1, -1]
+control_flow = "straight_line"
+differentiation = "reverse"
+lowering = "dispatch"
+attributes = [
+    { name = "discount", kind = "float", source = "inConfig.discount" },
+]
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inQ"]
+outputs = ["SelectedQ", "TargetQ", "Loss"]
+implementation = "source/cpp/lib/oa/ml/fnloss/dqn.cpp:dqn"
+
+[ops.python]
+args = ["q", "action", "reward", "nextQ", "terminated", "truncated", "config"]
+result_validation = "is_valid"
+error = "Dqn rejected its input"
+
+[[ops]]
+name = "sacCritic"
+kind = "unary"
+surface = "public_operation"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::SacCriticLossResult"
+api_params = [
+    "const oa::Matrix& inQ1",
+    "const oa::Matrix& inQ2",
+    "const oa::Matrix& inReward",
+    "const oa::Matrix& inNextQ1",
+    "const oa::Matrix& inNextQ2",
+    "const oa::Matrix& inNextLogProbability",
+    "const oa::Matrix& inTerminated",
+    "const oa::Matrix& inTruncated",
+    "const oa::SacLossConfig& inConfig = {}",
+]
+notes = "Compute detached SAC critic targets and twin critic losses."
+
+[ops.python_result]
+cpp_type = "oa::SacCriticLossResult"
+members = ["targetQ", "q1Loss", "q2Loss", "totalLoss"]
+bind_type = false
+
+[ops.contract]
+input_kinds = [
+    "matrix",
+    "matrix",
+    "matrix",
+    "matrix",
+    "matrix",
+    "matrix",
+    "matrix",
+    "matrix",
+]
+output_kinds = ["matrix", "matrix", "matrix", "matrix"]
+shape_rule = "explicit"
+dtype_rule = "explicit"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1, -1, -1, -1]
+control_flow = "straight_line"
+differentiation = "reverse"
+lowering = "dispatch"
+attributes = [
+    { name = "discount", kind = "float", source = "inConfig.discount" },
+    { name = "entropyCoefficient", kind = "float", source = "inConfig.entropyCoefficient" },
+]
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inQ1", "inQ2"]
+outputs = ["TargetQ", "Q1Loss", "Q2Loss", "TotalLoss"]
+implementation = "source/cpp/lib/oa/ml/fnloss/sac.cpp:sacCritic"
+
+[ops.python]
+args = ["q1", "q2", "reward", "nextQ1", "nextQ2", "nextLogProbability", "terminated", "truncated", "config"]
+result_validation = "is_valid"
+error = "SacCritic rejected its input"
+
+[[ops]]
+name = "sacActor"
+kind = "unary"
+surface = "public_operation"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inQ1",
+    "const oa::Matrix& inQ2",
+    "const oa::Matrix& inLogProbability",
+    "oa::F32 inEntropyCoefficient = 0.2F",
+]
+notes = "Compute the entropy-regularized SAC actor loss."
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "reverse"
+lowering = "dispatch"
+attributes = [
+    { name = "entropyCoefficient", kind = "float", source = "inEntropyCoefficient" },
+]
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inQ1", "inQ2", "inLogProbability"]
+outputs = ["Loss"]
+implementation = "source/cpp/lib/oa/ml/fnloss/sac.cpp:sacActor"
+
+[ops.python]
+args = ["q1", "q2", "logProbability", "entropyCoefficient"]
+result_validation = "not_empty"
+error = "SacActor rejected its input"

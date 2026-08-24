@@ -1,0 +1,49 @@
+# Oa NN schema - vision layers.
+
+[[layers]]
+name = "Upsample"
+constructor_args = "oa::I32 inScaleFactor, oa::UpsampleMode inMode = oa::UpsampleMode::Bilinear"
+constructor_init = "scaleFactor_(inScaleFactor), mode_(inMode)"
+members = [
+	"oa::I32 scaleFactor_;",
+	"oa::UpsampleMode mode_;",
+]
+forward_body = """
+\tauto shape = inInput.getShape();
+\toa::U32 b = (oa::U32)shape[0];
+\toa::U32 c = (oa::U32)shape[1];
+\toa::U32 h = (oa::U32)shape[2];
+\toa::U32 w = (oa::U32)shape[3];
+\toa::U32 outH = h * scaleFactor_;
+\toa::U32 outW = w * scaleFactor_;
+
+\tauto output = oa::FnMatrix::empty(MatrixShape{b, c, outH, outW}, inInput.getDtype());
+
+\t// Use the Resize shaders: Bilinear for smooth upsampling, Nearest for pixel art
+\tconst char *shaderName = (mode_ == oa::UpsampleMode::Nearest) ? "ResizeNearest" : "ResizeBilinear";
+
+\tstruct Push {
+\t\toa::U32 batchSize, channels, hIn, wIn, hOut, wOut;
+\t};
+\tPush push = {};
+\tpush.batchSize = b;
+\tpush.channels = c;
+\tpush.hIn = h;
+\tpush.wIn = w;
+\tpush.hOut = outH;
+\tpush.wOut = outW;
+
+\toa::BufferAccess access[] = {oa::BufferAccess::Read, oa::BufferAccess::Write};
+\toa::U32 gx = divCeil(outW, 16), gy = divCeil(outH, 16), gz = b * c;
+\toa::ExecutionSession::getActive().add(shaderName,
+\t\t{&inInput, &output}, access, &push, sizeof(push), gx, gy, gz);
+
+\treturn output;
+"""
+notes = "Spatial upsampling layer (Nearest or Bilinear)."
+extra_includes = """
+#include <oa/runtime/executionSession.h>
+"""
+extra_methods = """
+static oa::U32 divCeil(oa::U32 inA, oa::U32 inB) { return (inA + inB - 1) / inB; }
+"""

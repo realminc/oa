@@ -1,0 +1,87 @@
+# oa::VideoEncoder session-command schema.
+surface = "session_command"
+
+category    = "Codec"
+namespace   = "oa::VideoEncoder"
+file_prefix = "VideoEncoder"
+cpp_subdir  = "Video/Encoder"
+
+[[ops]]
+name                 = "encode"
+category             = "Codec"
+kind                 = "session_command"
+body                 = "manual_session"
+generate_declaration = false
+api_return           = "oa::Status"
+api_params           = [
+    "const oa::Texture& inRgba",
+    "oa::EncodedVideoPacket& outFrame",
+    "oa::U64 inPts = 0ULL",
+]
+notes = "Complete a buffer-backed texture producer and encode it through the owning session."
+
+[ops.session]
+owners = ["oa::VideoEncoder", "oa::Context"]
+transition = "Ready -> Ready | Failed"
+effects = ["read_state", "write_state", "device_work", "host_output"]
+completion = "synchronous"
+
+[[ops]]
+name                 = "encodeFrame"
+category             = "Codec"
+kind                 = "session_command"
+body                 = "manual_session"
+generate_declaration = false
+api_return           = "oa::Status"
+api_params           = [
+    "VkImage inImage",
+    "oa::U64 inPts",
+    "oa::EncodedVideoPacket& outFrame",
+]
+notes = "Encode one prepared NV12 image into an Annex-B packet."
+
+[ops.session]
+owners = ["oa::VideoEncoder"]
+transition = "Ready -> Ready | Failed"
+effects = ["read_state", "write_state", "device_work", "host_output"]
+completion = "synchronous"
+
+[[ops]]
+name                 = "uploadInputRgba"
+category             = "Color"
+kind                 = "session_command"
+kernel_forward       = "CvtRgbaToNv12"
+slang_path           = "Vision/Conversion"
+body                 = "manual_session"
+generate_declaration = false
+api_return           = "oa::Status"
+api_params           = [
+    "const oavk::Buffer& inRgba",
+    "oa::U32 inVisibleWidth",
+    "oa::U32 inVisibleHeight",
+    "oa::YCbCrModel inColorSpace = oa::YCbCrModel::BT709",
+    "bool inFullRange = false",
+]
+notes = "Convert packed RGBA into this encoder session's NV12 input image."
+
+[ops.session]
+owners = ["oa::VideoEncoder"]
+transition = "Ready -> Ready | Failed"
+effects = ["read_state", "write_state", "device_work"]
+completion = "synchronous"
+
+[[ops]]
+name                 = "flush"
+category             = "Codec"
+kind                 = "session_command"
+body                 = "manual_session"
+generate_declaration = false
+api_return           = "oa::Status"
+api_params           = ["oa::Vec<oa::EncodedVideoPacket>& outFrames"]
+notes = "Drain reordered encoder output into caller-owned packets."
+
+[ops.session]
+owners = ["oa::VideoEncoder"]
+transition = "Ready -> Ready | Failed"
+effects = ["read_state", "write_state", "device_work", "host_output"]
+completion = "synchronous"

@@ -1,0 +1,27 @@
+# Oa NN schema - pooling layers.
+
+[[layers]]
+name = "MaxPool2d"
+constructor_args = "oa::I32 inKernelSize, oa::I32 inStride = -1, oa::I32 inPadding = 0"
+constructor_init = "kernelSize_(inKernelSize), stride_(inStride == -1 ? inKernelSize : inStride), padding_(inPadding)"
+members = [
+	"oa::I32 kernelSize_;",
+	"oa::I32 stride_;",
+	"oa::I32 padding_;",
+]
+# MaxPool2d returns MaxPool2dResult{out, indices}; the layer forward only
+# surfaces the pooled output (indices are recomputed in the backward kernel).
+fn = "oa::FnMatrix::maxPool2d(inInput, kernelSize_, stride_, padding_).out"
+notes = "2D max pooling layer."
+
+[[layers]]
+name = "AvgPool2d"
+constructor_args = "oa::I32 inKernelSize, oa::I32 inStride = -1, oa::I32 inPadding = 0"
+constructor_init = "kernelSize_(inKernelSize), stride_(inStride == -1 ? inKernelSize : inStride), padding_(inPadding)"
+members = [
+	"oa::I32 kernelSize_;",
+	"oa::I32 stride_;",
+	"oa::I32 padding_;",
+]
+fn = "oa::FnMatrix::avgPool2d(inInput, kernelSize_, stride_, padding_)"
+notes = "2D average pooling layer."

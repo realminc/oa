@@ -1,0 +1,109 @@
+# Oa NN schema - convolution layers.
+
+[[layers]]
+name = "Conv1d"
+constructor_args = "oa::I32 inChannels, oa::I32 outChannels, oa::I32 kernelSize, oa::I32 inStride = 1, oa::I32 inPadding = 0, oa::I32 inDilation = 1"
+constructor_init = "inChannels_(inChannels), outChannels_(outChannels), kernelSize_(kernelSize), stride_(inStride), padding_(inPadding), dilation_(inDilation)"
+constructor_body = [
+	"auto wd = oa::FnMatrix::weightDtype();",
+	"registerParameter(\"weight\", oa::FnMatrix::rand(MatrixShape{outChannels, inChannels, kernelSize}, wd));",
+	"registerParameter(\"bias\", oa::FnMatrix::zeros(MatrixShape{outChannels}, wd));",
+]
+members = [
+	"oa::I32 inChannels_;",
+	"oa::I32 outChannels_;",
+	"oa::I32 kernelSize_;",
+	"oa::I32 stride_;",
+	"oa::I32 padding_;",
+	"oa::I32 dilation_;",
+]
+methods = [
+	"[[nodiscard]] oa::I32 stride() const noexcept { return stride_; }",
+	"[[nodiscard]] oa::I32 padding() const noexcept { return padding_; }",
+	"[[nodiscard]] oa::I32 dilation() const noexcept { return dilation_; }",
+]
+forward_body = """
+	auto& weight = params_[0].data;
+	auto& bias = params_[1].data;
+	// im2col + GEMM path (conv1dGemm). It composes its own autograd graph from
+	// im2col1d + matMulNt + biasAdd, so no hand-written GradConv1d node is
+	// needed. The scalar direct-conv kernel it replaced was retired (proven
+	// equivalent by NN.Conv1dGemmMatchesScalar / NN.Conv1dGemmGradCheck).
+	return oa::FnMatrix::conv1dGemm(inInput, weight, bias, stride_, padding_, dilation_);
+"""
+notes = "1D convolution layer (im2col + GEMM)."
+
+[[layers]]
+name = "ConvTranspose1d"
+constructor_args = "oa::I32 inChannels, oa::I32 outChannels, oa::I32 kernelSize, oa::I32 inStride = 1, oa::I32 inPadding = 0"
+constructor_init = "inChannels_(inChannels), outChannels_(outChannels), kernelSize_(kernelSize), stride_(inStride), padding_(inPadding)"
+constructor_body = [
+	"auto wd = oa::FnMatrix::weightDtype();",
+	"registerParameter(\"weight\", oa::FnMatrix::rand(MatrixShape{inChannels, outChannels, kernelSize}, wd));",
+]
+members = [
+	"oa::I32 inChannels_;",
+	"oa::I32 outChannels_;",
+	"oa::I32 kernelSize_;",
+	"oa::I32 stride_;",
+	"oa::I32 padding_;",
+]
+forward_body = """
+	auto& weight = params_[0].data;
+	const oa::I64 lin = inInput.size(2);
+	const oa::I64 lout = (lin - 1) * stride_ - 2 * static_cast<oa::I64>(padding_) + kernelSize_;
+	const MatrixShape outShape = MatrixShape{inInput.size(0), outChannels_, lout};
+	return oa::FnMatrix::conv1dBwdData(
+		inInput, weight, stride_, padding_, 1, outShape);
+"""
+notes = "1D transposed convolution (learnable upsampling); adjoint of Conv1d, no bias."
+
+[[layers]]
+name = "Conv2d"
+constructor_args = "oa::I32 inChannels, oa::I32 outChannels, oa::I32 kernelSize, oa::I32 inStride = 1, oa::I32 inPadding = 0, oa::I32 inGroups = 1"
+constructor_init = "inChannels_(inChannels), outChannels_(outChannels), kernelSize_(kernelSize), stride_(inStride), padding_(inPadding), groups_(inGroups)"
+constructor_body = [
+	"assert(inGroups > 0 && inChannels % inGroups == 0 && outChannels % inGroups == 0);",
+	"auto wd = oa::FnMatrix::weightDtype();",
+	"registerParameter(\"weight\", oa::FnMatrix::rand(MatrixShape{outChannels, inChannels / inGroups, kernelSize, kernelSize}, wd));",
+	"registerParameter(\"bias\", oa::FnMatrix::zeros(MatrixShape{outChannels}, wd));",
+]
+members = [
+	"oa::I32 inChannels_;",
+	"oa::I32 outChannels_;",
+	"oa::I32 kernelSize_;",
+	"oa::I32 stride_;",
+	"oa::I32 padding_;",
+	"oa::I32 groups_;",
+]
+forward_body = """
+	auto& weight = params_[0].data;
+	auto& bias = params_[1].data;
+	return oa::FnMatrix::conv2d(
+		inInput, weight, bias, stride_, padding_, groups_);
+"""
+notes = "2D convolution layer."
+
+[[layers]]
+name = "ConvTranspose2d"
+constructor_args = "oa::I32 inChannels, oa::I32 outChannels, oa::I32 kernelSize, oa::I32 inStride = 1, oa::I32 inPadding = 0"
+constructor_init = "inChannels_(inChannels), outChannels_(outChannels), kernelSize_(kernelSize), stride_(inStride), padding_(inPadding)"
+constructor_body = [
+	"auto wd = oa::FnMatrix::weightDtype();",
+	"registerParameter(\"weight\", oa::FnMatrix::rand(MatrixShape{inChannels, outChannels, kernelSize, kernelSize}, wd));",
+	"registerParameter(\"bias\", oa::FnMatrix::zeros(MatrixShape{outChannels}, wd));",
+]
+members = [
+	"oa::I32 inChannels_;",
+	"oa::I32 outChannels_;",
+	"oa::I32 kernelSize_;",
+	"oa::I32 stride_;",
+	"oa::I32 padding_;",
+]
+forward_body = """
+	auto& weight = params_[0].data;
+	auto& bias = params_[1].data;
+	return oa::FnMatrix::convTranspose2d(
+		inInput, weight, bias, stride_, padding_);
+"""
+notes = "2D transposed convolution layer (learnable upsampling)."

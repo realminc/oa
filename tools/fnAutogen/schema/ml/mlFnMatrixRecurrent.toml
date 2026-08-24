@@ -1,0 +1,474 @@
+# Fn schema — fused recurrent cell and whole-sequence scan operations.
+category = "Recurrent"
+namespace = "oa::FnMatrix"
+file_prefix = "FnMatrix"
+cpp_subdir = "FnMatrix"
+surface = "public_operation"
+autograd_node_header = "oa/ml/autograd/matrix/autogradRecurrent.h"
+
+[[ops]]
+name = "gruCellPointwise"
+kind = "unary"
+kernel_forward = "GruCellPointwise"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inGatesI",
+    "const oa::Matrix& inGatesH",
+    "const oa::Matrix& inHidden",
+    "oa::I32 inHiddenSize",
+    "oa::U32 inTimeOffset = 0",
+    "oa::U32 inBatchStride = 1",
+]
+notes = "Fuse the reset, update, candidate, and hidden-state equations of one GRU timestep."
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "reverse"
+lowering = "dispatch"
+attributes = [
+    { name = "hiddenSize", kind = "signed_integer", source = "inHiddenSize" },
+    { name = "timeOffset", kind = "unsigned_integer", source = "inTimeOffset" },
+    { name = "batchStride", kind = "unsigned_integer", source = "inBatchStride" },
+]
+
+[ops.autograd]
+grad_class = "oa::GradGruCellPointwise"
+inputs = ["inGatesI", "inGatesH", "inHidden"]
+saved = ["inGatesI", "inGatesH", "inHidden"]
+attach = "standard"
+output_shape = true
+state = [
+    { member = "hiddenSize_", type = "oa::I32", source = "inHiddenSize" },
+    { member = "timeOffset_", type = "oa::U32", source = "inTimeOffset" },
+    { member = "batchStride_", type = "oa::U32", source = "inBatchStride" },
+]
+
+[ops.python]
+args = ["gatesI", "gatesH", "hidden", "hiddenSize", "timeOffset", "batchStride"]
+doc = "Apply one fused GRU pointwise update."
+
+[[ops]]
+name = "gruCellPointwiseBwd"
+kind = "unary"
+kernel_forward = "GruCellPointwiseBwd"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::GruCellPointwiseBwdResult"
+api_params = [
+    "const oa::Matrix& inGatesI",
+    "const oa::Matrix& inGatesH",
+    "const oa::Matrix& inHidden",
+    "const oa::Matrix& inGradOutput",
+    "oa::I32 inHiddenSize",
+    "oa::U32 inTimeOffset = 0",
+    "oa::U32 inBatchStride = 1",
+]
+notes = "Compute the explicit GRU pointwise adjoints for input gates, hidden gates, and previous hidden state."
+
+[ops.python_result]
+cpp_type = "oa::GruCellPointwiseBwdResult"
+members = ["dGatesI", "dGatesH", "dHidden"]
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix", "matrix"]
+output_kinds = ["matrix", "matrix", "matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1, -1, -1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "hiddenSize", kind = "signed_integer", source = "inHiddenSize" },
+    { name = "timeOffset", kind = "unsigned_integer", source = "inTimeOffset" },
+    { name = "batchStride", kind = "unsigned_integer", source = "inBatchStride" },
+]
+
+[ops.python]
+args = ["gatesI", "gatesH", "hidden", "gradOutput", "hiddenSize", "timeOffset", "batchStride"]
+doc = "Compute explicit GRU pointwise gradients."
+
+[[ops]]
+name = "gruCellLinear"
+kind = "unary"
+kernel_forward = "GruCellLinear"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inGatesI",
+    "const oa::Matrix& inHidden",
+    "const oa::Matrix& inWeightHh",
+    "oa::I32 inHiddenSize",
+    "oa::U32 inTimeOffset",
+    "oa::U32 inBatchStride",
+    "const oa::Matrix& inBiasHh = oa::Matrix{}",
+]
+notes = "Fuse the recurrent hidden projection and GRU pointwise update while retaining hidden projection state internally for reverse mode."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 339
+category = "Ml"
+origin = "oa"
+source = "nn/gru/gruCellLinear"
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix", "matrix"]
+optional_inputs = [3]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "reverse"
+lowering = "dispatch"
+attributes = [
+    { name = "hiddenSize", kind = "signed_integer", source = "inHiddenSize" },
+    { name = "timeOffset", kind = "unsigned_integer", source = "inTimeOffset" },
+    { name = "batchStride", kind = "unsigned_integer", source = "inBatchStride" },
+]
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inGatesI", "inHidden", "inWeightHh", "inBiasHh"]
+outputs = ["out"]
+implementation = "source/cpp/lib/oa/Ml/FnMatrix/Nn/FnMatrixGru.cpp:GruCellLinear"
+
+[ops.python]
+args = ["gatesI", "hidden", "weightHh", "hiddenSize", "timeOffset", "batchStride", "biasHh"]
+doc = "Apply one fused GRU recurrent projection and update."
+
+[[ops]]
+name = "gruScan"
+kind = "unary"
+kernel_forward = "GruScan"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::GruScanResult"
+api_params = [
+    "const oa::Matrix& inGatesI",
+    "const oa::Matrix& inWeightHh",
+    "oa::I32 inHiddenSize",
+    "oa::I32 inSeqLen",
+    "oa::I32 inBatch",
+    "const oa::Matrix& inBiasHh = oa::Matrix{}",
+]
+notes = "Run a whole GRU sequence in one recurrent scan dispatch and retain previous hidden states for reverse mode."
+
+[ops.python_result]
+cpp_type = "oa::GruScanResult"
+members = ["out", "hPrev"]
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix"]
+optional_inputs = [2]
+output_kinds = ["matrix", "matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1, -1]
+control_flow = "loop"
+differentiation = "reverse"
+lowering = "dispatch"
+attributes = [
+    { name = "hiddenSize", kind = "signed_integer", source = "inHiddenSize" },
+    { name = "sequenceLength", kind = "signed_integer", source = "inSeqLen" },
+    { name = "batch", kind = "signed_integer", source = "inBatch" },
+]
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inGatesI", "inWeightHh", "inBiasHh"]
+outputs = ["out", "Hprev"]
+implementation = "source/cpp/lib/oa/Ml/FnMatrix/Nn/FnMatrixGru.cpp:GruScan"
+
+[ops.python]
+args = ["gatesI", "weightHh", "hiddenSize", "seqLen", "batch", "biasHh"]
+doc = "Run a whole GRU sequence and return its output and saved previous hidden states."
+
+[[ops]]
+name = "gruScanBwd"
+kind = "unary"
+kernel_forward = "GruScanBwd"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::GruScanBwdResult"
+api_params = [
+    "const oa::Matrix& inDOut",
+    "const oa::Matrix& inGatesI",
+    "const oa::Matrix& inHprev",
+    "const oa::Matrix& inWeightHh",
+    "oa::I32 inHiddenSize",
+    "oa::I32 inSeqLen",
+    "oa::I32 inBatch",
+    "const oa::Matrix& inBiasHh = oa::Matrix{}",
+]
+notes = "Compute the explicit recurrent GRU scan adjoints for input and hidden projections."
+
+[ops.python_result]
+cpp_type = "oa::GruScanBwdResult"
+members = ["dGatesI", "dGatesH"]
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix", "matrix", "matrix"]
+optional_inputs = [4]
+output_kinds = ["matrix", "matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1, -1]
+control_flow = "loop"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "hiddenSize", kind = "signed_integer", source = "inHiddenSize" },
+    { name = "sequenceLength", kind = "signed_integer", source = "inSeqLen" },
+    { name = "batch", kind = "signed_integer", source = "inBatch" },
+]
+
+[ops.python]
+args = ["dOut", "gatesI", "hprev", "weightHh", "hiddenSize", "seqLen", "batch", "biasHh"]
+doc = "Compute explicit GRU scan projection gradients."
+
+[[ops]]
+name = "rnnCellPointwise"
+kind = "binary"
+kernel_forward = "RnnCellPointwise"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inGatesI",
+    "const oa::Matrix& inGatesH",
+]
+notes = "Fuse addition and tanh for one contiguous vanilla-RNN timestep."
+
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "reverse"
+lowering = "dispatch"
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inGatesI", "inGatesH"]
+outputs = ["out"]
+implementation = "source/cpp/lib/oa/Ml/FnMatrix/Nn/FnMatrixRnn.cpp:RnnCellPointwise"
+
+[ops.python]
+args = ["gatesI", "gatesH"]
+doc = "Apply the fused tanh update for one contiguous vanilla-RNN timestep."
+
+[[ops]]
+name = "rnnCellPointwiseBwd"
+kind = "unary"
+kernel_forward = "RnnCellPointwiseBwd"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::RnnCellPointwiseBwdResult"
+api_params = [
+    "const oa::Matrix& inGatesI",
+    "const oa::Matrix& inGatesH",
+    "const oa::Matrix& inGradOutput",
+    "oa::I32 inHiddenSize",
+    "oa::U32 inTimeOffset = 0",
+    "oa::U32 inBatchStride = 1",
+]
+notes = "Compute explicit vanilla-RNN pointwise adjoints, scattering the input projection gradient into its selected timestep rows."
+
+[ops.python_result]
+cpp_type = "oa::RnnCellPointwiseBwdResult"
+members = ["dGatesI", "dGatesH"]
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix"]
+output_kinds = ["matrix", "matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1, -1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "hiddenSize", kind = "signed_integer", source = "inHiddenSize" },
+    { name = "timeOffset", kind = "unsigned_integer", source = "inTimeOffset" },
+    { name = "batchStride", kind = "unsigned_integer", source = "inBatchStride" },
+]
+
+[ops.python]
+args = ["gatesI", "gatesH", "gradOutput", "hiddenSize", "timeOffset", "batchStride"]
+doc = "Compute explicit vanilla-RNN pointwise gradients."
+
+[[ops]]
+name = "rnnCellLinear"
+kind = "unary"
+kernel_forward = "RnnCellLinear"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inGatesI",
+    "const oa::Matrix& inHidden",
+    "const oa::Matrix& inWeightHh",
+    "oa::U32 inTimeOffset = 0",
+    "oa::U32 inBatchStride = 1",
+    "const oa::Matrix& inBiasHh = oa::Matrix{}",
+]
+notes = "Fuse the recurrent hidden projection and tanh update while retaining hidden projection state internally for reverse mode."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 347
+category = "Ml"
+origin = "oa"
+source = "nn/rnn/rnnCellLinear"
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix", "matrix"]
+optional_inputs = [3]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "reverse"
+lowering = "dispatch"
+attributes = [
+    { name = "timeOffset", kind = "unsigned_integer", source = "inTimeOffset" },
+    { name = "batchStride", kind = "unsigned_integer", source = "inBatchStride" },
+]
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inGatesI", "inHidden", "inWeightHh", "inBiasHh"]
+outputs = ["out"]
+implementation = "source/cpp/lib/oa/Ml/FnMatrix/Nn/FnMatrixRnn.cpp:RnnCellLinear"
+
+[ops.python]
+args = ["gatesI", "hidden", "weightHh", "timeOffset", "batchStride", "biasHh"]
+doc = "Apply one fused vanilla-RNN recurrent projection and update."
+
+[[ops]]
+name = "rnnScan"
+kind = "unary"
+kernel_forward = "RnnScan"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::RnnScanResult"
+api_params = [
+    "const oa::Matrix& inGatesI",
+    "const oa::Matrix& inWeightHh",
+    "oa::I32 inHiddenSize",
+    "oa::I32 inSeqLen",
+    "oa::I32 inBatch",
+    "const oa::Matrix& inBiasHh = oa::Matrix{}",
+]
+notes = "Run a whole vanilla-RNN sequence in one recurrent scan dispatch and retain previous hidden states for reverse mode."
+
+[ops.python_result]
+cpp_type = "oa::RnnScanResult"
+members = ["out", "hPrev"]
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix"]
+optional_inputs = [2]
+output_kinds = ["matrix", "matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1, -1]
+control_flow = "loop"
+differentiation = "reverse"
+lowering = "dispatch"
+attributes = [
+    { name = "hiddenSize", kind = "signed_integer", source = "inHiddenSize" },
+    { name = "sequenceLength", kind = "signed_integer", source = "inSeqLen" },
+    { name = "batch", kind = "signed_integer", source = "inBatch" },
+]
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inGatesI", "inWeightHh", "inBiasHh"]
+outputs = ["out", "Hprev"]
+implementation = "source/cpp/lib/oa/Ml/FnMatrix/Nn/FnMatrixRnn.cpp:RnnScan"
+
+[ops.python]
+args = ["gatesI", "weightHh", "hiddenSize", "seqLen", "batch", "biasHh"]
+doc = "Run a whole vanilla-RNN sequence and return its output and saved previous hidden states."
+
+[[ops]]
+name = "rnnScanBwd"
+kind = "unary"
+kernel_forward = "RnnScanBwd"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::RnnScanBwdResult"
+api_params = [
+    "const oa::Matrix& inDOut",
+    "const oa::Matrix& inGatesI",
+    "const oa::Matrix& inHprev",
+    "const oa::Matrix& inWeightHh",
+    "oa::I32 inHiddenSize",
+    "oa::I32 inSeqLen",
+    "oa::I32 inBatch",
+    "const oa::Matrix& inBiasHh = oa::Matrix{}",
+]
+notes = "Compute the explicit recurrent vanilla-RNN scan adjoints for input and hidden projections."
+
+[ops.python_result]
+cpp_type = "oa::RnnScanBwdResult"
+members = ["dGatesI", "dGatesH"]
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix", "matrix", "matrix"]
+optional_inputs = [4]
+output_kinds = ["matrix", "matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1, -1]
+control_flow = "loop"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "hiddenSize", kind = "signed_integer", source = "inHiddenSize" },
+    { name = "sequenceLength", kind = "signed_integer", source = "inSeqLen" },
+    { name = "batch", kind = "signed_integer", source = "inBatch" },
+]
+
+[ops.python]
+args = ["dOut", "gatesI", "hprev", "weightHh", "hiddenSize", "seqLen", "batch", "biasHh"]
+doc = "Compute explicit vanilla-RNN scan projection gradients."

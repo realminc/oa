@@ -1,0 +1,443 @@
+# Fn schema — private lowering kernels that do not have a one-to-one public
+# operation identity. These rows own compilation and stable registry metadata;
+# they do not generate a callable API.
+surface = "kernel"
+category = "KernelIdentity"
+namespace = "oa::FnMatrix"
+file_prefix = "FnMatrix"
+cpp_subdir = "FnMatrix"
+
+[[ops]]
+name = "scatterRowsBwd"
+kind = "unary"
+kernel_forward = "ScatterRowsBwd"
+body = "manual_session"
+generate_declaration = false
+notes = "Private source-gradient lowering used by the public ScatterRows adjoint."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 308
+category = "Ml"
+origin = "oa"
+source = "ops/scatterRowsBwd"
+
+[[ops]]
+name = "sampleSortedLogits"
+kind = "unary"
+kernel_forward = "SampleSortedLogits"
+body = "manual_session"
+generate_declaration = false
+notes = "Private sorted-logit categorical sampling lowering."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 313
+category = "Ml"
+origin = "oa"
+source = "flat/sampleSortedLogits"
+
+[[ops]]
+name = "sampleDenseLogits"
+kind = "unary"
+kernel_forward = "SampleDenseLogits"
+body = "manual_session"
+generate_declaration = false
+notes = "Private dense-logit categorical sampling lowering."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 314
+category = "Ml"
+origin = "oa"
+source = "flat/sampleDenseLogits"
+
+[[ops]]
+name = "groupedGemmMDataBwd"
+kind = "unary"
+kernel_forward = "GroupedGemmMDataBwd"
+body = "manual_session"
+generate_declaration = false
+notes = "Private data-gradient half of the public GroupedGemmM adjoint."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 317
+category = "Ml"
+origin = "oa"
+source = "blas/groupedGemmMDataBwd"
+
+[[ops]]
+name = "groupedGemmMWeightBwd"
+kind = "unary"
+kernel_forward = "GroupedGemmMWeightBwd"
+body = "manual_session"
+generate_declaration = false
+notes = "Private weight-gradient half of the public GroupedGemmM adjoint."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 318
+category = "Ml"
+origin = "oa"
+source = "blas/groupedGemmMWeightBwd"
+
+[[ops]]
+name = "clipGradNormReduce"
+kind = "unary"
+kernel_forward = "ClipGradNormReduce"
+body = "manual_session"
+generate_declaration = false
+notes = "Private reduction pass used by the ClipGradNorm session command."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 351
+category = "Ml"
+origin = "oa"
+source = "optim/gradclip/clipGradNormReduce"
+
+[[ops]]
+name = "clipGradNormScale"
+kind = "unary"
+kernel_forward = "ClipGradNormScale"
+body = "manual_session"
+generate_declaration = false
+notes = "Private scaling pass used by the ClipGradNorm session command."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 352
+category = "Ml"
+origin = "oa"
+source = "optim/gradclip/clipGradNormScale"
+
+[[ops]]
+name = "mamba3SisoBwdShortPrepare"
+kind = "unary"
+kernel_forward = "Mamba3SisoBwdShortPrepare"
+body = "manual_session"
+generate_declaration = false
+notes = "Private rotary preparation stage for the decomposed short Mamba-3 adjoint."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 381
+category = "Ml"
+origin = "oa"
+source = "ssm/mamba3/mamba3SisoBwdShortPrepare"
+
+[[ops]]
+name = "mamba3SisoBwdShortState"
+kind = "unary"
+kernel_forward = "Mamba3SisoBwdShortState"
+body = "manual_session"
+generate_declaration = false
+notes = "Private forward-state and gate-derivative stage for the short Mamba-3 adjoint."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 382
+category = "Ml"
+origin = "oa"
+source = "ssm/mamba3/mamba3SisoBwdShortState"
+
+[[ops]]
+name = "mamba3SisoBwdShortFinalize"
+kind = "unary"
+kernel_forward = "Mamba3SisoBwdShortFinalize"
+body = "manual_session"
+generate_declaration = false
+notes = "Private angle/dt/trap finalization stage for the decomposed short Mamba-3 adjoint."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 384
+category = "Ml"
+origin = "oa"
+source = "ssm/mamba3/mamba3SisoBwdShortFinalize"
+
+[[ops]]
+name = "mamba3SisoChunkSummary"
+kind = "unary"
+kernel_forward = "Mamba3SisoChunkSummary"
+body = "manual_session"
+generate_declaration = false
+notes = "Private affine forward-summary stage for the parallel Mamba-3 chunk scan."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 387
+category = "Ml"
+origin = "oa"
+source = "ssm/mamba3/mamba3SisoChunkSummary"
+
+[[ops]]
+name = "mamba3SisoChunkPrefix"
+kind = "unary"
+kernel_forward = "Mamba3SisoChunkPrefix"
+body = "manual_session"
+generate_declaration = false
+notes = "Private forward-prefix stage for the parallel Mamba-3 chunk scan."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 388
+category = "Ml"
+origin = "oa"
+source = "ssm/mamba3/mamba3SisoChunkPrefix"
+
+[[ops]]
+name = "mamba3SisoChunkFinalize"
+kind = "unary"
+kernel_forward = "Mamba3SisoChunkFinalize"
+body = "manual_session"
+generate_declaration = false
+notes = "Private angle/dt/trap finalization stage for the parallel Mamba-3 adjoint."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 389
+category = "Ml"
+origin = "oa"
+source = "ssm/mamba3/mamba3SisoChunkFinalize"
+
+[[ops]]
+name = "mamba3SisoChunkDpre"
+kind = "unary"
+kernel_forward = "Mamba3SisoChunkDpre"
+body = "manual_session"
+generate_declaration = false
+notes = "Private forward-recompute and gate-derivative stage for the parallel Mamba-3 adjoint."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 390
+category = "Ml"
+origin = "oa"
+source = "ssm/mamba3/mamba3SisoChunkDpre"
+
+[[ops]]
+name = "mamba3SisoChunkBwdSummary"
+kind = "unary"
+kernel_forward = "Mamba3SisoChunkBwdSummary"
+body = "manual_session"
+generate_declaration = false
+notes = "Private affine reverse-summary stage for the parallel Mamba-3 adjoint."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 391
+category = "Ml"
+origin = "oa"
+source = "ssm/mamba3/mamba3SisoChunkBwdSummary"
+
+[[ops]]
+name = "mamba3SisoChunkBwdPrefix"
+kind = "unary"
+kernel_forward = "Mamba3SisoChunkBwdPrefix"
+body = "manual_session"
+generate_declaration = false
+notes = "Private reverse-prefix stage for the parallel Mamba-3 adjoint."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 392
+category = "Ml"
+origin = "oa"
+source = "ssm/mamba3/mamba3SisoChunkBwdPrefix"
+
+[[ops]]
+name = "mamba3SisoChunkBwd"
+kind = "unary"
+kernel_forward = "Mamba3SisoChunkBwd"
+body = "manual_session"
+generate_declaration = false
+notes = "Private independent-chunk reverse stage for the parallel Mamba-3 adjoint."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 393
+category = "Ml"
+origin = "oa"
+source = "ssm/mamba3/mamba3SisoChunkBwd"
+
+[[ops]]
+name = "maskedMseBwd"
+kind = "unary"
+kernel_forward = "MaskedMseBwd"
+body = "manual_session"
+generate_declaration = false
+notes = "Private prediction-gradient lowering for the public MaskedMse operation."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 355
+category = "Ml"
+origin = "oa"
+source = "loss/maskedMseBwd"
+
+[[ops]]
+name = "rmsNormGatedN32"
+kind = "unary"
+kernel_forward = "RmsNormGatedN32"
+body = "manual_session"
+generate_declaration = false
+notes = "Private narrow-row schedule selected by the public RmsNormGated lowering."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 394
+category = "Ml"
+origin = "oa"
+source = "nn/rmsnorm/rmsNormGatedN32"
+
+[[ops]]
+name = "rmsNormGatedBwdN32"
+kind = "unary"
+kernel_forward = "RmsNormGatedBwdN32"
+body = "manual_session"
+generate_declaration = false
+notes = "Private narrow-row schedule selected by the public RmsNormGatedBwd lowering."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 395
+category = "Ml"
+origin = "oa"
+source = "nn/rmsnorm/rmsNormGatedBwdN32"
+
+[[ops]]
+name = "mamba3SisoBwdShortReverseP16"
+kind = "unary"
+kernel_forward = "Mamba3SisoBwdShortReverseP16"
+body = "manual_session"
+generate_declaration = false
+notes = "Private P<=16 reverse-scan schedule selected by Mamba3SisoBwd."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 396
+category = "Ml"
+origin = "oa"
+source = "nn/ssm/mamba3/mamba3SisoBwdShortReverseP16"
+
+[[ops]]
+name = "mamba3SisoBwdGroupReduce"
+kind = "unary"
+kernel_forward = "Mamba3SisoBwdGroupReduce"
+body = "manual_session"
+generate_declaration = false
+notes = "Private deterministic head-to-group gradient reduction selected by Mamba3SisoBwd."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 397
+category = "Ml"
+origin = "oa"
+source = "nn/ssm/mamba3/mamba3SisoBwdGroupReduce"
+
+[[ops]]
+name = "mamba3SisoBwdShortReduce"
+kind = "unary"
+kernel_forward = "Mamba3SisoBwdShortReduce"
+body = "manual_session"
+generate_declaration = false
+notes = "Private deterministic reduction for short Mamba-3 shared gradients."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 398
+category = "Ml"
+origin = "oa"
+source = "nn/ssm/mamba3/mamba3SisoBwdShortReduce"
+
+[[ops]]
+name = "mamba3MimoBwdPrepare"
+kind = "unary"
+kernel_forward = "Mamba3MimoBwdPrepare"
+body = "manual_session"
+generate_declaration = false
+notes = "Private deterministic forward-recompute stage for the Mamba-3 MIMO adjoint."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 402
+category = "Ml"
+origin = "oa"
+source = "nn/ssm/mamba3/mamba3MimoBwdPrepare"
+
+[[ops]]
+name = "mamba3MimoBwdPost"
+kind = "unary"
+kernel_forward = "Mamba3MimoBwdPost"
+body = "manual_session"
+generate_declaration = false
+notes = "Private rankwise gate, RMSNorm, and MIMO contraction adjoint."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 403
+category = "Ml"
+origin = "oa"
+source = "nn/ssm/mamba3/mamba3MimoBwdPost"
+
+[[ops]]
+name = "mamba3MimoBwdRotate"
+kind = "unary"
+kernel_forward = "Mamba3MimoBwdRotate"
+body = "manual_session"
+generate_declaration = false
+notes = "Private inverse-rotary and cumulative-angle stage for the Mamba-3 MIMO adjoint."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 404
+category = "Ml"
+origin = "oa"
+source = "nn/ssm/mamba3/mamba3MimoBwdRotate"
+
+[[ops]]
+name = "mamba3MimoBwdReduce"
+kind = "unary"
+kernel_forward = "Mamba3MimoBwdReduce"
+body = "manual_session"
+generate_declaration = false
+notes = "Private deterministic grouped-input and learned-parameter reduction for the Mamba-3 MIMO adjoint."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 405
+category = "Ml"
+origin = "oa"
+source = "nn/ssm/mamba3/mamba3MimoBwdReduce"
+
+[[ops]]
+name = "ropeApply"
+kind = "unary"
+kernel_forward = "RopeApply"
+body = "manual_session"
+generate_declaration = false
+notes = "Private forward lowering owned by the oa::RoPE module."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 356
+category = "Ml"
+origin = "oa"
+source = "nn/rope/ropeApply"
+
+[[ops]]
+name = "ropeApplyBwd"
+kind = "unary"
+kernel_forward = "RopeApplyBwd"
+body = "manual_session"
+generate_declaration = false
+notes = "Private input-gradient lowering owned by the oa::RoPE module."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 357
+category = "Ml"
+origin = "oa"
+source = "nn/rope/ropeApplyBwd"

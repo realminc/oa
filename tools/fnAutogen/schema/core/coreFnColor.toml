@@ -1,0 +1,84 @@
+# Fn schema — Core host color utilities.
+#
+# These operations transform CPU oa::Color values. They deliberately have no
+# semantic device contract, lowering, autograd policy, or Python exposure.
+# Inline constexpr bodies and overload wrappers remain in the public header.
+surface = "host_utility"
+category = "Color"
+namespace = "oa::FnColor"
+file_prefix = "Color"
+cpp_subdir = "FnColor"
+
+[[ops]]
+name = "lerp"
+category = "Color"
+kind = "binary"
+body = "cpu_util"
+generate_declaration = false
+api_return = "oa::Color"
+api_params = [
+    "const oa::Color& inA",
+    "const oa::Color& inB",
+    "oa::F32 inT",
+]
+notes = "Linearly interpolate two CPU color values."
+
+[[ops]]
+name = "add"
+category = "Color"
+kind = "binary"
+body = "cpu_util"
+generate_declaration = false
+api_return = "oa::Color"
+api_params = ["const oa::Color& inA", "const oa::Color& inB"]
+notes = "Add CPU color components."
+
+[[ops]]
+name = "sub"
+category = "Color"
+kind = "binary"
+body = "cpu_util"
+generate_declaration = false
+api_return = "oa::Color"
+api_params = ["const oa::Color& inA", "const oa::Color& inB"]
+notes = "Subtract CPU color components."
+
+[[ops]]
+name = "mul"
+category = "Color"
+kind = "binary"
+body = "cpu_util"
+generate_declaration = false
+api_return = "oa::Color"
+api_params = ["const oa::Color& inA", "const oa::Color& inB"]
+notes = "Multiply CPU color components."
+
+[[ops]]
+name = "scale"
+category = "Color"
+kind = "unary"
+body = "cpu_util"
+generate_declaration = false
+api_return = "oa::Color"
+api_params = ["const oa::Color& inColor", "oa::F32 inScalar"]
+notes = "Scale CPU color components."
+
+[[ops]]
+name = "div"
+category = "Color"
+kind = "unary"
+body = "cpu_util"
+generate_declaration = false
+api_return = "oa::Color"
+api_params = ["const oa::Color& inColor", "oa::F32 inScalar"]
+notes = "Divide CPU color components by a scalar."
+
+[[ops]]
+name = "clamp"
+category = "Color"
+kind = "unary"
+body = "cpu_util"
+generate_declaration = false
+api_return = "oa::Color"
+api_params = ["const oa::Color& inColor"]
+notes = "Clamp CPU color components to the unit interval."

@@ -1,0 +1,122 @@
+# Fn schema — structured-result ML backward operations.
+category = "BackwardStructured"
+namespace = "oa::FnMatrix"
+file_prefix = "FnMatrix"
+cpp_subdir = "FnMatrix"
+surface = "public_cpp_operation"
+
+[[ops]]
+name = "swigluBwd"
+kind = "unary"
+kernel_forward = "SwigluBwd"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::SwigluBwdResult"
+api_params = [
+    "const oa::Matrix& inGate",
+    "const oa::Matrix& inUp",
+    "const oa::Matrix& inOut",
+    "const oa::Matrix& inGradOutput",
+]
+notes = "Explicit SwiGLU adjoint returning gate and up gradients."
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix", "matrix"]
+output_kinds = ["matrix", "matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1, -1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+
+[[ops]]
+name = "layerNormBwd"
+kind = "unary"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::LayerNormBwdResult"
+api_params = [
+    "const oa::Matrix& inX",
+    "const oa::Matrix& inWeight",
+    "const oa::Matrix& inBias",
+    "const oa::Matrix& inOut",
+    "const oa::Matrix& inMean",
+    "const oa::Matrix& inRstd",
+    "const oa::Matrix& inGradOutput",
+    "oa::F32 inEps = 1e-5F",
+]
+notes = "LayerNorm adjoint returning data, weight, and bias gradients."
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix", "matrix", "matrix", "matrix", "matrix"]
+output_kinds = ["matrix", "matrix", "matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1, -1, -1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [{ name = "epsilon", kind = "float", source = "inEps" }]
+
+[[ops]]
+name = "rmsNormBwd"
+kind = "unary"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::RmsNormBwdResult"
+api_params = [
+    "const oa::Matrix& inX",
+    "const oa::Matrix& inWeight",
+    "const oa::Matrix& inGradOutput",
+    "oa::F32 inEps = 1e-5F",
+]
+notes = "RMSNorm adjoint returning data and weight gradients; the kernel recomputes reciprocal RMS from the input and epsilon."
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix"]
+output_kinds = ["matrix", "matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1, -1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [{ name = "epsilon", kind = "float", source = "inEps" }]
+
+[[ops]]
+name = "batchNorm2dBwd"
+kind = "unary"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::BatchNorm2dBwdResult"
+api_params = [
+    "const oa::Matrix& inX",
+    "const oa::Matrix& inGamma",
+    "const oa::Matrix& inBeta",
+    "const oa::Matrix& inMean",
+    "const oa::Matrix& inVar",
+    "const oa::Matrix& inOut",
+    "const oa::Matrix& inDOut",
+    "oa::F32 inEps",
+    "bool inIsTraining",
+]
+notes = "BatchNorm2d composite adjoint returning data, scale, and bias gradients."
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix", "matrix", "matrix", "matrix", "matrix"]
+output_kinds = ["matrix", "matrix", "matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1, -1, -1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "epsilon", kind = "float", source = "inEps" },
+    { name = "training", kind = "boolean", source = "inIsTraining" },
+]

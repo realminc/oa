@@ -1,0 +1,478 @@
+# Fn schema — sparse-MoE routing, packing, grouped projections, and fused
+# multi-projection operations.
+category = "Moe"
+namespace = "oa::FnMatrix"
+file_prefix = "FnMatrix"
+cpp_subdir = "FnMatrix"
+surface = "public_operation"
+autograd_node_header = "oa/ml/autograd/matrix/autogradMoe.h"
+
+[[ops]]
+name = "moeRouteWeights"
+kind = "binary"
+kernel_forward = "MoeRouteWeights"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inProbs",
+    "const oa::Matrix& inExpertIndices",
+]
+notes = "Normalize the selected expert probabilities from Probs[T,E] and Int32 expert indices[T,K] into route weights[T,K]."
+
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "reverse"
+lowering = "dispatch"
+
+[ops.autograd]
+grad_class = "oa::GradMoeRouteWeights"
+inputs = ["inProbs", "inExpertIndices"]
+saved = ["inProbs", "inExpertIndices", "out"]
+attach = "standard"
+output_shape = true
+
+[ops.python]
+args = ["probs", "expertIndices"]
+doc = "Normalize the probabilities of the selected experts for every token."
+
+[[ops]]
+name = "moeRouteWeightsBwd"
+kind = "unary"
+kernel_forward = "MoeRouteWeightsBwd"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inDOut",
+    "const oa::Matrix& inProbs",
+    "const oa::Matrix& inExpertIndices",
+    "const oa::Matrix& inRouteWeights",
+]
+notes = "Explicit dense probability adjoint for selected normalized MoE route weights."
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "explicit"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+
+[ops.python]
+args = ["dOut", "probs", "expertIndices", "routeWeights"]
+doc = "Compute the explicit dense probability adjoint for selected MoE routes."
+
+[[ops]]
+name = "groupedGemmM"
+kind = "unary"
+kernel_forward = "GroupedGemmM"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inX",
+    "const oa::Matrix& inWeight",
+    "const oa::Matrix& inOffsets",
+]
+notes = "Variable-M expert-major grouped GEMM: X[R,K], Weight[E,N,K], Offsets[E+1] -> out[R,N]."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 316
+category = "Ml"
+origin = "oa"
+source = "blas/groupedGemmM"
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "reverse"
+lowering = "dispatch"
+
+[ops.dnn]
+role = "grouped_gemm"
+
+[ops.autograd]
+grad_class = "oa::GradGroupedGemmM"
+inputs = ["inX", "inWeight", "inOffsets"]
+saved = ["inX", "inWeight", "inOffsets"]
+attach = "standard"
+output_shape = true
+
+[ops.python]
+args = ["x", "weight", "offsets"]
+doc = "Apply an expert-major variable-row grouped matrix multiplication."
+
+[[ops]]
+name = "groupedGemmMBwd"
+kind = "unary"
+kernel_forward = "GroupedGemmMDataBwd"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::GroupedGemmMBwdResult"
+api_params = [
+    "const oa::Matrix& inDOut",
+    "const oa::Matrix& inX",
+    "const oa::Matrix& inWeight",
+    "const oa::Matrix& inOffsets",
+]
+notes = "Grouped GEMM adjoint decomposed into data-gradient and weight-gradient dispatches."
+
+[ops.python_result]
+cpp_type = "oa::GroupedGemmMBwdResult"
+members = ["dInput", "dWeight"]
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix", "matrix"]
+output_kinds = ["matrix", "matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1, -1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+
+[ops.python]
+args = ["dOut", "x", "weight", "offsets"]
+doc = "Compute grouped GEMM input and weight adjoints."
+
+[[ops]]
+name = "groupedLinearM"
+kind = "unary"
+kernel_forward = "GroupedLinearM"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inX",
+    "const oa::Matrix& inWeight",
+    "const oa::Matrix& inBias",
+    "const oa::Matrix& inOffsets",
+]
+notes = "Variable-M expert-major grouped linear projection with one bias row per expert."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 321
+category = "Ml"
+origin = "oa"
+source = "blas/groupedLinearM"
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "reverse"
+lowering = "dispatch"
+
+[ops.dnn]
+role = "grouped_gemm"
+
+[ops.autograd]
+grad_class = "oa::GradGroupedLinearM"
+inputs = ["inX", "inWeight", "inBias", "inOffsets"]
+saved = ["inX", "inWeight", "inBias", "inOffsets"]
+attach = "standard"
+output_shape = true
+
+[ops.python]
+args = ["x", "weight", "bias", "offsets"]
+doc = "Apply an expert-major variable-row grouped linear projection."
+
+[[ops]]
+name = "groupedLinearMBwd"
+kind = "unary"
+kernel_forward = "GroupedGemmMDataBwd"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::GroupedLinearMBwdResult"
+api_params = [
+    "const oa::Matrix& inDOut",
+    "const oa::Matrix& inX",
+    "const oa::Matrix& inWeight",
+    "const oa::Matrix& inOffsets",
+]
+notes = "Grouped linear adjoint decomposed into data-gradient and fused weight/bias-gradient dispatches."
+
+[ops.python_result]
+cpp_type = "oa::GroupedLinearMBwdResult"
+members = ["dInput", "dWeight", "dBias"]
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix", "matrix"]
+output_kinds = ["matrix", "matrix", "matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1, -1, -1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+
+[ops.python]
+args = ["dOut", "x", "weight", "offsets"]
+doc = "Compute grouped linear input, weight, and bias adjoints."
+
+[[ops]]
+name = "groupedLinearMBiasBwd"
+kind = "binary"
+kernel_forward = "GroupedLinearMBiasBwd"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inDOut",
+    "const oa::Matrix& inOffsets",
+    "oa::I32 inNumExperts",
+]
+notes = "Reduce a grouped linear output adjoint into one bias-gradient row per expert."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 322
+category = "Ml"
+origin = "oa"
+source = "blas/groupedLinearMBiasBwd"
+
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "expertCount", kind = "signed_integer", source = "inNumExperts" },
+]
+
+[ops.python]
+args = ["dOut", "offsets", "numExperts"]
+doc = "Reduce grouped output gradients into one bias-gradient row per expert."
+
+[[ops]]
+name = "moeCombine"
+kind = "unary"
+kernel_forward = "MoeCombine"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inPacked",
+    "const oa::Matrix& inRouteGate",
+    "const oa::Matrix& inInverse",
+    "const oa::Matrix& inPackedSlot",
+]
+notes = "Combine expert-major packed rows into token-major output using normalized route gates."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 323
+category = "Ml"
+origin = "oa"
+source = "nn/moe/moeCombine"
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "reverse"
+lowering = "dispatch"
+
+[ops.autograd]
+grad_class = "oa::GradMoeCombine"
+inputs = ["inPacked", "inRouteGate", "inInverse", "inPackedSlot"]
+saved = ["inPacked", "inRouteGate", "inInverse", "inPackedSlot"]
+attach = "standard"
+output_shape = true
+
+[ops.python]
+args = ["packed", "routeGate", "inverse", "packedSlot"]
+doc = "Combine expert-major packed rows into token-major output."
+
+[[ops]]
+name = "moeCombineBwd"
+kind = "unary"
+kernel_forward = "MoeCombineBwd"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::MoeCombineBwdResult"
+api_params = [
+    "const oa::Matrix& inDOut",
+    "const oa::Matrix& inPacked",
+    "const oa::Matrix& inRouteGate",
+    "const oa::Matrix& inInverse",
+    "const oa::Matrix& inPackedSlot",
+]
+notes = "Explicit MoE combine adjoint producing packed-value and route-gate gradients."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 324
+category = "Ml"
+origin = "oa"
+source = "nn/moe/moeCombineBwd"
+
+[ops.python_result]
+cpp_type = "oa::MoeCombineBwdResult"
+members = ["dPacked", "dRouteGate"]
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix", "matrix", "matrix"]
+output_kinds = ["matrix", "matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1, -1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+
+[ops.python]
+args = ["dOut", "packed", "routeGate", "inverse", "packedSlot"]
+doc = "Compute packed-value and route-gate adjoints for MoE combine."
+
+[[ops]]
+name = "moeGather"
+kind = "unary"
+kernel_forward = "Gather"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inSelf",
+    "const oa::Matrix& inIndices",
+    "const oa::Matrix& inInverse",
+]
+notes = "Pack token rows into expert-major order; Inverse supplies its deterministic adjoint mapping."
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "reverse"
+lowering = "dispatch"
+
+[ops.autograd]
+grad_class = "oa::GradMoeGather"
+inputs = ["inSelf", "inIndices", "inInverse"]
+saved = ["inSelf", "inIndices", "inInverse"]
+attach = "standard"
+output_shape = true
+
+[ops.python]
+args = ["self", "indices", "inverse"]
+doc = "Pack token rows into expert-major order using a stable route plan."
+
+[[ops]]
+name = "moeGatherBwd"
+kind = "binary"
+kernel_forward = "MoeGatherBwd"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inSource",
+    "const oa::Matrix& inInverse",
+    "oa::I32 inOutRows",
+]
+notes = "Deterministically reduce packed row gradients back into token-major rows."
+
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "outputRows", kind = "signed_integer", source = "inOutRows" },
+]
+
+[ops.python]
+args = ["source", "inverse", "outRows"]
+doc = "Reduce packed row gradients back into token-major rows."
+
+[[ops]]
+name = "scatterAddRows"
+kind = "binary"
+kernel_forward = "ScatterAddRows"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inSource",
+    "const oa::Matrix& inIndices",
+    "oa::I32 inOutRows",
+]
+notes = "Atomically accumulate source rows into a zero-initialized output using UInt32 row indices."
+
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "reverse"
+lowering = "dispatch"
+attributes = [
+    { name = "outputRows", kind = "signed_integer", source = "inOutRows" },
+]
+
+[ops.autograd]
+grad_class = "oa::GradScatterAddRows"
+inputs = ["inSource", "inIndices"]
+saved = ["inIndices"]
+attach = "standard"
+output_shape = true
+
+[ops.python]
+args = ["source", "indices", "outRows"]
+doc = "Accumulate indexed source rows into a zero-initialized output."

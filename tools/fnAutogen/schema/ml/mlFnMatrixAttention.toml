@@ -1,0 +1,260 @@
+# Fn schema — batched algebra and attention operations.
+category = "Attention"
+namespace = "oa::FnMatrix"
+file_prefix = "FnMatrix"
+cpp_subdir = "FnMatrix"
+surface = "public_operation"
+
+[[ops]]
+name = "bmm"
+kind = "binary"
+kernel_forward = "Bmm"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inA",
+    "const oa::Matrix& inB",
+]
+notes = "Per-batch matrix multiplication: A[N,M,K] @ B[N,K,P] -> out[N,M,P]."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 325
+category = "Ml"
+origin = "oa"
+source = "ops/bmm"
+
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "reverse"
+lowering = "dispatch"
+
+[ops.autograd]
+grad_class = "oa::GradBmm"
+node_header = "oa/ml/autograd/matrix/autogradBlas.h"
+inputs = ["inA", "inB"]
+saved = ["inA", "inB"]
+attach = "standard"
+output_shape = true
+
+[ops.python]
+args = ["a", "b"]
+doc = "Multiply corresponding matrices in two rank-three batches."
+
+[[ops]]
+name = "bmmNt"
+kind = "binary"
+kernel_forward = "BmmNt"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inA",
+    "const oa::Matrix& inB",
+]
+notes = "Per-batch matrix multiplication with transposed right-operand storage: A[N,M,K] @ B[N,P,K]^T -> out[N,M,P]."
+
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "reverse"
+lowering = "dispatch"
+
+[ops.autograd]
+grad_class = "oa::GradBmmNt"
+node_header = "oa/ml/autograd/matrix/autogradBlas.h"
+inputs = ["inA", "inB"]
+saved = ["inA", "inB"]
+attach = "standard"
+output_shape = true
+
+[ops.python]
+args = ["a", "b"]
+doc = "Multiply corresponding rank-three batches with the right operand stored as [N,P,K]."
+
+[[ops]]
+name = "splitHeads"
+kind = "unary"
+kernel_forward = "SplitHeads"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inX",
+    "oa::I32 inBatch",
+    "oa::I32 inSeqLen",
+    "oa::I32 inNumHeads",
+]
+notes = "Transform contiguous [B*S,D] storage to [B*H,S,D/H]; H=1 is a metadata-only view."
+
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "conditional"
+differentiation = "reverse"
+lowering = "dispatch"
+attributes = [
+    { name = "batch", kind = "signed_integer", source = "inBatch" },
+    { name = "sequenceLength", kind = "signed_integer", source = "inSeqLen" },
+    { name = "headCount", kind = "signed_integer", source = "inNumHeads" },
+]
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inX"]
+outputs = ["out"]
+implementation = "source/cpp/lib/oa/Ml/FnMatrix/Attention/FnMatrixAttention.cpp:SplitHeads"
+
+[ops.python]
+args = ["x", "batch", "seqLen", "numHeads"]
+result_validation = "not_empty"
+error = "SplitHeads requires a compatible [B*S,D] matrix and positive dimensions"
+
+[[ops]]
+name = "mergeHeads"
+kind = "unary"
+kernel_forward = "MergeHeads"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inX",
+    "oa::I32 inBatch",
+    "oa::I32 inSeqLen",
+    "oa::I32 inNumHeads",
+]
+notes = "Inverse of SplitHeads: [B*H,S,D/H] -> [B*S,D]; H=1 is a metadata-only view."
+
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "conditional"
+differentiation = "reverse"
+lowering = "dispatch"
+attributes = [
+    { name = "batch", kind = "signed_integer", source = "inBatch" },
+    { name = "sequenceLength", kind = "signed_integer", source = "inSeqLen" },
+    { name = "headCount", kind = "signed_integer", source = "inNumHeads" },
+]
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inX"]
+outputs = ["out"]
+implementation = "source/cpp/lib/oa/Ml/FnMatrix/Attention/FnMatrixAttention.cpp:MergeHeads"
+
+[ops.python]
+args = ["x", "batch", "seqLen", "numHeads"]
+result_validation = "not_empty"
+error = "MergeHeads requires a compatible [B*H,S,D/H] matrix and positive dimensions"
+
+[[ops]]
+name = "flashAttentionCausal"
+kind = "unary"
+kernel_forward = "FlashCausal"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inQ",
+    "const oa::Matrix& inK",
+    "const oa::Matrix& inV",
+    "oa::F32 inScale",
+]
+notes = "Causal scaled dot-product attention. The lowering also produces hidden FP32 log-sum-exp state for its recomputing adjoint."
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix"]
+output_kinds = ["matrix", "matrix"]
+shape_rule = "explicit"
+dtype_rule = "explicit"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1, -1]
+control_flow = "straight_line"
+differentiation = "reverse"
+lowering = "dispatch"
+attributes = [
+    { name = "scale", kind = "float", source = "inScale" },
+]
+
+[ops.dnn]
+role = "flash_attention_causal"
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inQ", "inK", "inV"]
+outputs = ["Output", "LogSumExp"]
+implementation = "source/cpp/lib/oa/Ml/FnMatrix/Attention/FnMatrixFlashAttention.cpp:FlashAttentionCausal"
+
+[ops.python]
+args = ["q", "k", "v", "scale"]
+doc = "Apply causal scaled dot-product attention to contiguous [batchHeads, sequence, headDim] matrices."
+
+[[ops]]
+name = "flashAttentionCausalBwd"
+kind = "unary"
+kernel_forward = "FlashCausalBwdQ"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::FlashAttentionBwdResult"
+api_params = [
+    "const oa::Matrix& inQ",
+    "const oa::Matrix& inK",
+    "const oa::Matrix& inV",
+    "const oa::Matrix& inOutput",
+    "const oa::Matrix& inLogSumExp",
+    "const oa::Matrix& inGradOutput",
+    "oa::F32 inScale",
+]
+notes = "Explicit recomputing causal-attention adjoint returning Q, K, and V gradients."
+
+[ops.python_result]
+cpp_type = "oa::FlashAttentionBwdResult"
+members = ["dq", "dk", "dv"]
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix", "matrix", "matrix", "matrix"]
+output_kinds = ["matrix", "matrix", "matrix"]
+shape_rule = "explicit"
+dtype_rule = "explicit"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1, -1, -1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "scale", kind = "float", source = "inScale" },
+]
+
+[ops.python]
+args = ["q", "k", "v", "output", "logSumExp", "gradOutput", "scale"]
+doc = "Compute the explicit Q, K, and V adjoints for causal flash attention."

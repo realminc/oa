@@ -1,0 +1,141 @@
+{
+  "schema": 1,
+  "examples": [
+    {
+      "id": "core-matrix-add",
+      "title": "Add two device matrices",
+      "summary": "Create two GPU-resident matrices, add them, synchronize explicitly, and verify the host readback.",
+      "capability": "Vulkan compute",
+      "cppModules": [
+        "C++ · Core",
+		"oa::FnMatrix"
+      ],
+      "pythonModules": [
+        "oa root · Core values",
+		"FnMatrix"
+      ],
+      "symbols": [
+		"oa::Engine::create",
+		"oa::Engine::submit",
+		"oa::FnMatrix::add",
+		"oa::FnMatrix::copyToHost"
+      ],
+      "cpp": {
+        "path": "sdk/cpp/examples/core/matrixAdd.cpp",
+        "target": "ExampleCoreMatrixAdd"
+      },
+      "python": {
+        "path": "sdk/py/examples/core/matrixAdd.py",
+        "profile": "gpu"
+      }
+    },
+    {
+      "id": "audio-clip",
+      "title": "Clip a semantic audio buffer",
+      "summary": "Apply a GPU waveform operation while preserving sample rate and channel-layout metadata.",
+      "capability": "Vulkan compute",
+      "cppModules": [
+        "C++ · Audio",
+		"oa::FnAudio"
+      ],
+      "pythonModules": [
+        "oa root · Audio values",
+		"FnAudio"
+      ],
+      "symbols": [
+		"oa::Audio",
+		"oa::FnAudio::clip",
+		"oa::FnMatrix::copyToHost"
+      ],
+      "cpp": {
+        "path": "sdk/cpp/examples/audio/clip.cpp",
+        "target": "ExampleAudioClip"
+      },
+      "python": {
+        "path": "sdk/py/examples/audio/clip.py",
+        "profile": "gpu"
+      }
+    },
+    {
+      "id": "vision-resize",
+      "title": "Resize a semantic image",
+      "summary": "Resize GPU-resident pixels while preserving image layout and channel-format metadata.",
+      "capability": "Vulkan compute",
+      "cppModules": [
+        "C++ · Vision",
+		"oa::FnImage"
+      ],
+      "pythonModules": [
+        "oa root · Vision values",
+		"FnImage"
+      ],
+      "symbols": [
+		"oa::Image",
+		"oa::FnImage::resize",
+		"oa::FnMatrix::copyToHost"
+      ],
+      "cpp": {
+        "path": "sdk/cpp/examples/vision/resize.cpp",
+        "target": "ExampleVisionResize"
+      },
+      "python": {
+        "path": "sdk/py/examples/vision/resize.py",
+        "profile": "gpu"
+      }
+    },
+    {
+      "id": "crypto-shake256",
+      "title": "Hash a message batch with SHAKE-256",
+      "summary": "Run three SHAKE-256 digests on the GPU and compare every output byte with the independent CPU implementation.",
+      "capability": "Vulkan compute + Crypto",
+      "cppModules": [
+        "C++ · Crypto",
+		"oa::FnHash"
+      ],
+      "pythonModules": [
+        "oa root · Crypto values",
+		"FnHash"
+      ],
+      "symbols": [
+		"oa::FnHash::shake256",
+		"oa::shake256",
+		"oa::FnMatrix::copyToHost"
+      ],
+      "cpp": {
+        "path": "sdk/cpp/examples/crypto/shake256.cpp",
+        "target": "ExampleCryptoShake256"
+      },
+      "python": {
+        "path": "sdk/py/examples/crypto/shake256.py",
+        "profile": "crypto-gpu"
+      }
+    },
+    {
+      "id": "plot-line",
+      "title": "Render a retained line plot",
+	  "summary": "Record one training-loss series and render the retained figure through the headless GPU compositor into an oa::Image.",
+      "capability": "Vulkan graphics",
+      "cppModules": [
+        "C++ · Ui",
+		"oa::plot"
+      ],
+      "pythonModules": [
+        "oa root · Ui values",
+		"plot"
+      ],
+      "symbols": [
+		"oa::plot::Figure",
+		"oa::plot::Axes::plot",
+		"oa::plot::Figure::render"
+      ],
+      "cpp": {
+        "path": "sdk/cpp/examples/plot/line.cpp",
+        "target": "ExamplePlotLine"
+      },
+      "python": {
+        "path": "sdk/py/examples/plot/line.py",
+        "profile": "gpu"
+      }
+    }
+  ]
+}

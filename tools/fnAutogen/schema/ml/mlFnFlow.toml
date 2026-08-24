@@ -1,0 +1,116 @@
+# Fn schema — flow-matching operations.
+surface = "public_cpp_operation"
+category = "Flow"
+namespace = "oa::FnFlow"
+file_prefix = "FnFlow"
+cpp_subdir = "FnFlow"
+
+[[ops]]
+name = "linearMatch"
+category = "Flow"
+kind = "unary"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::FlowMatchBatch"
+api_params = [
+    "const oa::Matrix& inClean",
+    "const oa::Matrix& inNoise",
+    "const oa::Matrix& inTime",
+]
+notes = "Construct the linear flow state and velocity."
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix"]
+output_kinds = ["matrix", "matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1, -1]
+control_flow = "straight_line"
+differentiation = "reverse"
+lowering = "dispatch"
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inClean", "inNoise", "inTime"]
+outputs = ["State", "Velocity"]
+implementation = "source/cpp/lib/oa/Ml/FnFlow/FnFlow.cpp:LinearMatch"
+
+[[ops]]
+name = "eulerStep"
+category = "Flow"
+kind = "binary"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inState",
+    "const oa::Matrix& inVelocity",
+    "oa::F32 inDeltaTime",
+]
+notes = "Advance a flow state by one explicit Euler step."
+
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "reverse"
+lowering = "dispatch"
+attributes = [
+    { name = "deltaTime", kind = "float", source = "inDeltaTime" },
+]
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inState", "inVelocity"]
+outputs = ["Output"]
+implementation = "source/cpp/lib/oa/Ml/FnFlow/FnFlow.cpp:EulerStep"
+
+[[ops]]
+name = "maskedMse"
+category = "Flow"
+kind = "unary"
+kernel_forward = "MaskedMse"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inPrediction",
+    "const oa::Matrix& inTarget",
+    "const oa::Matrix& inMask",
+]
+notes = "Compute mean squared error over valid masked elements."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 354
+category = "Ml"
+origin = "oa"
+source = "loss/maskedMse"
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "reverse"
+lowering = "dispatch"
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inPrediction"]
+outputs = ["Loss"]
+implementation = "source/cpp/lib/oa/Ml/FnFlow/FnFlow.cpp:GradFlowMaskedMse"

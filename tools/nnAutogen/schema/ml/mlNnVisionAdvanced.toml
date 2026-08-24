@@ -1,0 +1,166 @@
+# Oa NN schema - advanced vision layers (BatchNorm, AdaptivePool).
+
+[[layers]]
+name = "BatchNorm2d"
+constructor_args = "oa::I32 inNumFeatures, oa::F32 inEps = 1e-5f, oa::F32 inMomentum = 0.1f"
+constructor_init = "numFeatures_(inNumFeatures), eps_(inEps), momentum_(inMomentum)"
+constructor_body = [
+	"auto wd = oa::FnMatrix::weightDtype();",
+	"registerParameter(\"weight\", oa::FnMatrix::ones(MatrixShape{inNumFeatures}, wd), true);",
+	"registerParameter(\"bias\", oa::FnMatrix::zeros(MatrixShape{inNumFeatures}, wd), true);",
+	"registerBuffer(\"running_mean\", oa::FnMatrix::zeros(MatrixShape{inNumFeatures}, wd));",
+	"registerBuffer(\"running_var\", oa::FnMatrix::ones(MatrixShape{inNumFeatures}, wd));",
+]
+members = [
+	"oa::I32 numFeatures_;",
+	"oa::F32 eps_;",
+	"oa::F32 momentum_;",
+]
+forward_body = """
+\tauto shape = inInput.getShape();
+\toa::U32 n = (oa::U32)shape[0];
+\toa::U32 c = (oa::U32)shape[1];
+\toa::U32 h = (oa::U32)shape[2];
+\toa::U32 w = (oa::U32)shape[3];
+
+\t// Get weights (gamma) and bias (beta)
+\tauto &gamma = params_[0].data;  // [C]
+\tauto &beta  = params_[1].data;  // [C]
+\tauto &runningMean = buffers_[0].data;  // [C]
+\tauto &runningVar  = buffers_[1].data;  // [C]
+
+\tauto& ctx = oa::ExecutionSession::getActive();
+\tconst bool training = isTraining();
+
+\t// Create output tensor
+\tauto output = oa::FnMatrix::empty(MatrixShape{n, c, h, w}, inInput.getDtype());
+
+\t// Allocate temporary per-channel statistics buffers
+\tauto meanBuf = oa::FnMatrix::empty(MatrixShape{c}, oa::ScalarType::Float32);
+\tauto varBuf  = oa::FnMatrix::empty(MatrixShape{c}, oa::ScalarType::Float32);
+
+\tif (training) {
+\t\t// Pass 1: Compute per-channel mean and variance
+\t\t{
+\t\t\tstruct StatsPush {
+\t\t\t\toa::U32 batchSize, channels, height, width;
+\t\t\t};
+\t\t\tStatsPush push = {};
+\t\t\tpush.batchSize = n;
+\t\t\tpush.channels = c;
+\t\t\tpush.height = h;
+\t\t\tpush.width = w;
+
+\t\t\toa::BufferAccess access[] = {
+\t\t\t\toa::BufferAccess::Read, oa::BufferAccess::Write, oa::BufferAccess::Write};
+\t\t\tctx.add("BatchNorm2dStats", {&inInput, &meanBuf, &varBuf},
+\t\t\t\taccess, &push, sizeof(push), c, 1, 1);
+\t\t}
+
+\t\t// Pass 2: Normalize + affine transform
+\t\t{
+\t\t\tstruct NormPush {
+\t\t\t\toa::U32 batchSize, channels, height, width;
+\t\t\t\tfloat eps;
+\t\t\t};
+\t\t\tNormPush push = {};
+\t\t\tpush.batchSize = n;
+\t\t\tpush.channels = c;
+\t\t\tpush.height = h;
+\t\t\tpush.width = w;
+\t\t\tpush.eps = eps_;
+
+\t\t\toa::U32 groupsX = divCeil(w, 16);
+\t\t\toa::U32 groupsY = divCeil(h, 16);
+\t\t\toa::U32 groupsZ = n * c;
+
+\t\t\toa::BufferAccess access[] = {
+\t\t\t\toa::BufferAccess::Read, oa::BufferAccess::Write,
+\t\t\t\toa::BufferAccess::Read, oa::BufferAccess::Read,
+\t\t\t\toa::BufferAccess::Read, oa::BufferAccess::Read};
+\t\t\tctx.add("BatchNorm2dNorm",
+\t\t\t\t{&inInput, &output, &meanBuf, &varBuf, &gamma, &beta},
+\t\t\t\taccess, &push, sizeof(push), groupsX, groupsY, groupsZ);
+\t\t}
+
+\t\t// Update running statistics (momentum-based EMA)
+\t\tauto momentumF = oa::FnMatrix::full(MatrixShape{c}, momentum_);
+\t\tauto oneMinusMomentum = oa::FnMatrix::full(MatrixShape{c}, 1.0f - momentum_);
+
+\t\tauto updatedMean = oa::FnMatrix::add(
+\t\t\toa::FnMatrix::mul(runningMean, oneMinusMomentum),
+\t\t\toa::FnMatrix::mul(meanBuf, momentumF));
+\t\tauto updatedVar = oa::FnMatrix::add(
+\t\t\toa::FnMatrix::mul(runningVar, oneMinusMomentum),
+\t\t\toa::FnMatrix::mul(varBuf, momentumF));
+
+\t\tstruct CopyPush { oa::U32 count; } copyPush{c};
+\t\toa::BufferAccess copyAccess[] = {oa::BufferAccess::Read, oa::BufferAccess::Write};
+\t\tctx.add("Copy", {&updatedMean, &runningMean}, copyAccess,
+\t\t\t&copyPush, sizeof(copyPush), divCeil(c, 256));
+\t\tctx.add("Copy", {&updatedVar, &runningVar}, copyAccess,
+\t\t\t&copyPush, sizeof(copyPush), divCeil(c, 256));
+\t} else {
+\t\t// Inference mode: use running statistics
+\t\tstruct NormPush {
+\t\t\toa::U32 batchSize, channels, height, width;
+\t\t\tfloat eps;
+\t\t};
+\t\tNormPush push = {};
+\t\tpush.batchSize = n;
+\t\tpush.channels = c;
+\t\tpush.height = h;
+\t\tpush.width = w;
+\t\tpush.eps = eps_;
+
+\t\toa::U32 groupsX = divCeil(w, 16);
+\t\toa::U32 groupsY = divCeil(h, 16);
+\t\toa::U32 groupsZ = n * c;
+
+\t\toa::BufferAccess access[] = {
+\t\t\toa::BufferAccess::Read, oa::BufferAccess::Write,
+\t\t\toa::BufferAccess::Read, oa::BufferAccess::Read,
+\t\t\toa::BufferAccess::Read, oa::BufferAccess::Read};
+\t\tctx.add("BatchNorm2dNorm",
+\t\t\t{&inInput, &output, &runningMean, &runningVar, &gamma, &beta},
+\t\t\taccess, &push, sizeof(push), groupsX, groupsY, groupsZ);
+\t}
+
+\treturn output;
+"""
+notes = "Batch normalization layer with running statistics."
+extra_includes = """
+#include <oa/runtime/executionSession.h>
+#include <cassert>
+"""
+extra_methods = """
+static oa::U32 divCeil(oa::U32 inA, oa::U32 inB) { return (inA + inB - 1) / inB; }
+"""
+
+[[layers]]
+name = "AdaptiveAvgPool2d"
+constructor_args = "oa::I32 inOutputSize"
+constructor_init = "outputSize_(inOutputSize)"
+members = [
+	"oa::I32 outputSize_;",
+]
+forward_body = """
+\tauto shape = inInput.getShape();
+\toa::I32 h = shape[2];
+\toa::I32 w = shape[3];
+
+\t// For global average pooling (outputSize=1)
+\tif (outputSize_ == 1)
+\t{
+\t\treturn oa::FnMatrix::avgPool2d(inInput, h, 1, 0);
+\t}
+
+\t// For general adaptive pooling, compute stride and kernel size
+\toa::I32 strideH = h / outputSize_;
+\toa::I32 strideW = w / outputSize_;
+\toa::I32 kernelH = h - (outputSize_ - 1) * strideH;
+
+\t// Use avgPool2d with computed kernel/stride
+\treturn oa::FnMatrix::avgPool2d(inInput, kernelH, strideH, 0);
+"""
+notes = "Adaptive average pooling layer."

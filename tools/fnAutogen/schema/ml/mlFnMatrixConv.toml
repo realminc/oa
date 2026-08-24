@@ -1,0 +1,648 @@
+# Fn schema — Ml/FnMatrix convolution and layout operations.
+surface = "kernel"
+autograd_node_header = "oa/ml/autograd/matrix/autogradConv.h"
+#
+# Public rows freeze semantic contracts for the existing hand-written
+# convolution lowerings. The legacy Conv1d/Im2Col/Col2Im rows at the end remain
+# internal kernel metadata and are not public operation identities.
+
+# --- Conv1d ------------------------------------------------------------------
+[[ops]]
+name           = "conv1d"
+category       = "Conv"
+kind           = "binary"
+slang_path     = "Ml/Nn/Conv"
+log_component  = "ML"
+notes          = "1D convolution: out = Conv(Input, Weight)."
+body           = "manual_session"
+extra_params   = [
+    { name = "stride", type = "oa::I32", default = "1" },
+    { name = "padding", type = "oa::I32", default = "0" },
+    { name = "dilation", type = "oa::I32", default = "1" },
+    { name = "groups", type = "oa::I32", default = "1" }
+]
+
+# --- Conv2d ------------------------------------------------------------------
+[[ops]]
+name           = "conv2d"
+category       = "Conv"
+kind           = "binary"
+surface        = "public_operation"
+kernel_forward = "Conv2d"
+slang_path     = "Ml/Nn/Conv"
+log_component  = "ML"
+notes          = "2D convolution: out = Conv(Input, Weight)."
+body           = "manual_session"
+generate_declaration = false
+api_params   = [
+    "const oa::Matrix& inX",
+    "const oa::Matrix& inWeight",
+    "const oa::Matrix& inBias",
+    "oa::U32 inStride",
+    "oa::U32 inPadding",
+    "oa::U32 inGroups = 1",
+]
+api_return     = "oa::Matrix"
+
+[ops.contract]
+input_kinds         = ["matrix", "matrix", "matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "explicit"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+attributes = [
+    { name = "stride", kind = "unsigned_integer", source = "inStride" },
+    { name = "padding", kind = "unsigned_integer", source = "inPadding" },
+    { name = "groups", kind = "unsigned_integer", source = "inGroups" },
+]
+
+[ops.autograd]
+grad_class   = "oa::GradConv2d"
+inputs       = ["inX", "inWeight", "inBias"]
+saved        = ["inX", "inWeight"]
+formula      = "manual"
+attach       = "standard"
+output_shape = true
+state = [
+    { member = "stride_", source = "inStride", type = "oa::U32" },
+    { member = "padding_", source = "inPadding", type = "oa::U32" },
+    { member = "groups_", source = "inGroups", type = "oa::U32" },
+]
+
+[ops.python]
+args = ["x", "weight", "bias", "stride", "padding", "groups"]
+doc = "Apply grouped 2D convolution to an NCHW input."
+
+# --- Conv1d GEMM path --------------------------------------------------------
+[[ops]]
+name = "conv1dGemm"
+category = "Conv"
+kind = "binary"
+surface = "public_operation"
+kernel_forward = "Im2Col1d"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inX",
+    "const oa::Matrix& inWeight",
+    "const oa::Matrix& inBias",
+    "oa::I32 inStride = 1",
+    "oa::I32 inPadding = 0",
+    "oa::I32 inDilation = 1",
+]
+notes = "Lower 1D convolution through Im2Col1d, MatMulNt, optional bias addition, reshape, and transpose."
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix"]
+optional_inputs = [2]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "conditional"
+differentiation = "reverse"
+lowering = "gemm"
+attributes = [
+    { name = "stride", kind = "signed_integer", source = "inStride" },
+    { name = "padding", kind = "signed_integer", source = "inPadding" },
+    { name = "dilation", kind = "signed_integer", source = "inDilation" },
+]
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inX", "inWeight", "inBias"]
+outputs = ["out"]
+implementation = "source/cpp/lib/oa/ml/fnmatrix/conv/fnMatrixConv1dGemm.cpp:Conv1dGemm"
+
+[ops.python]
+args = ["x", "weight", "bias", "stride", "padding", "dilation"]
+doc = "Apply 1D convolution through the canonical im2col and GEMM lowering."
+
+[[ops]]
+name = "conv1dReluGemm"
+category = "Conv"
+kind = "binary"
+surface = "public_operation"
+kernel_forward = "Im2Col1d"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inX",
+    "const oa::Matrix& inWeight",
+    "const oa::Matrix& inBias",
+    "oa::I32 inStride = 1",
+    "oa::I32 inPadding = 0",
+    "oa::I32 inDilation = 1",
+]
+notes = "Lower 1D convolution and ReLU through the canonical im2col and GEMM path."
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix"]
+optional_inputs = [2]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "conditional"
+differentiation = "reverse"
+lowering = "gemm"
+attributes = [
+    { name = "stride", kind = "signed_integer", source = "inStride" },
+    { name = "padding", kind = "signed_integer", source = "inPadding" },
+    { name = "dilation", kind = "signed_integer", source = "inDilation" },
+]
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inX", "inWeight", "inBias"]
+outputs = ["out"]
+implementation = "source/cpp/lib/oa/ml/fnmatrix/conv/fnMatrixConv1dGemm.cpp:Conv1dReluGemm"
+
+[ops.python]
+args = ["x", "weight", "bias", "stride", "padding", "dilation"]
+doc = "Apply 1D convolution followed by ReLU through the canonical GEMM lowering."
+
+[[ops]]
+name = "im2Col1d"
+category = "Conv"
+kind = "unary"
+surface = "public_operation"
+kernel_forward = "Im2Col1d"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inX",
+    "oa::I32 inK",
+    "oa::I32 inStride",
+    "oa::I32 inPadding",
+    "oa::I32 inDilation = 1",
+]
+notes = "Unfold NCL input storage into the row-major matrix consumed by Conv1dGemm."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 340
+category = "Ml"
+origin = "oa"
+source = "nn/conv/im2Col1d"
+
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "reverse"
+lowering = "dispatch"
+attributes = [
+    { name = "kernel", kind = "signed_integer", source = "inK" },
+    { name = "stride", kind = "signed_integer", source = "inStride" },
+    { name = "padding", kind = "signed_integer", source = "inPadding" },
+    { name = "dilation", kind = "signed_integer", source = "inDilation" },
+]
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inX"]
+outputs = ["out"]
+implementation = "source/cpp/lib/oa/ml/fnmatrix/conv/fnMatrixConv1dGemm.cpp:Im2Col1d"
+
+[ops.python]
+args = ["x", "k", "stride", "padding", "dilation"]
+doc = "Unfold an NCL tensor into the canonical 1D convolution column matrix."
+
+[[ops]]
+name = "col2Im1d"
+category = "Conv"
+kind = "unary"
+surface = "public_operation"
+kernel_forward = "Col2Im1d"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inDCols",
+    "oa::I32 inN",
+    "oa::I32 inC",
+    "oa::I32 inL",
+    "oa::I32 inK",
+    "oa::I32 inStride",
+    "oa::I32 inPadding",
+    "oa::I32 inDilation",
+    "oa::I32 inOutL",
+]
+notes = "Fold a Conv1d column gradient into NCL storage while accumulating overlapping windows."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 330
+category = "Ml"
+origin = "oa"
+source = "nn/conv/col2Im1d"
+
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "batch", kind = "signed_integer", source = "inN" },
+    { name = "channels", kind = "signed_integer", source = "inC" },
+    { name = "inputLength", kind = "signed_integer", source = "inL" },
+    { name = "kernel", kind = "signed_integer", source = "inK" },
+    { name = "stride", kind = "signed_integer", source = "inStride" },
+    { name = "padding", kind = "signed_integer", source = "inPadding" },
+    { name = "dilation", kind = "signed_integer", source = "inDilation" },
+    { name = "outputLength", kind = "signed_integer", source = "inOutL" },
+]
+
+[ops.python]
+args = ["dCols", "n", "c", "l", "k", "stride", "padding", "dilation", "outL"]
+doc = "Fold a 1D convolution column gradient back into NCL storage."
+
+# --- Explicit convolution adjoints ------------------------------------------
+[[ops]]
+name = "conv1dBwdData"
+category = "Conv"
+kind = "binary"
+surface = "public_operation"
+kernel_forward = "Conv1dBwdData"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inDOut",
+    "const oa::Matrix& inWeight",
+    "oa::U32 inStride",
+    "oa::U32 inPadding",
+    "oa::U32 inDilation",
+    "const oa::MatrixShape& inInputShape",
+]
+notes = "Compute the explicit 1D convolution data adjoint; this is also ConvTranspose1d without bias."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 331
+category = "Ml"
+origin = "oa"
+source = "nn/conv/conv1dBwdData"
+
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "reverse"
+lowering = "dispatch"
+attributes = [
+    { name = "stride", kind = "unsigned_integer", source = "inStride" },
+    { name = "padding", kind = "unsigned_integer", source = "inPadding" },
+    { name = "dilation", kind = "unsigned_integer", source = "inDilation" },
+    { name = "inputShape", kind = "shape", source = "inInputShape" },
+]
+
+[ops.autograd]
+grad_class = "oa::GradConvTranspose1d"
+inputs = ["inDOut", "inWeight"]
+saved = ["inDOut", "inWeight"]
+formula = "manual"
+attach = "standard"
+output_shape = true
+state = [
+    { member = "stride_", source = "inStride", type = "oa::U32" },
+    { member = "padding_", source = "inPadding", type = "oa::U32" },
+    { member = "dilation_", source = "inDilation", type = "oa::U32" },
+]
+
+[ops.python]
+args = ["dOut", "weight", "stride", "padding", "dilation", "inputShape"]
+doc = "Compute the explicit 1D convolution input gradient."
+
+[[ops]]
+name = "conv1dBwdWeight"
+category = "Conv"
+kind = "binary"
+surface = "public_operation"
+kernel_forward = "Conv1dBwdWeight"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Conv1dBwdWeightResult"
+api_params = [
+    "const oa::Matrix& inInput",
+    "const oa::Matrix& inDOut",
+    "const oa::Matrix& inWeight",
+    "oa::U32 inStride",
+    "oa::U32 inPadding",
+    "oa::U32 inDilation",
+]
+notes = "Compute explicit 1D convolution weight and bias adjoints."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 332
+category = "Ml"
+origin = "oa"
+source = "nn/conv/conv1dBwdWeight"
+
+[ops.python_result]
+cpp_type = "oa::Conv1dBwdWeightResult"
+members = ["gradWeight", "gradBias"]
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix"]
+output_kinds = ["matrix", "matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1, -1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "stride", kind = "unsigned_integer", source = "inStride" },
+    { name = "padding", kind = "unsigned_integer", source = "inPadding" },
+    { name = "dilation", kind = "unsigned_integer", source = "inDilation" },
+]
+
+[ops.python]
+args = ["input", "dOut", "weight", "stride", "padding", "dilation"]
+doc = "Compute explicit 1D convolution weight and bias gradients."
+
+[[ops]]
+name = "conv2dBwdData"
+category = "Conv"
+kind = "binary"
+surface = "public_operation"
+kernel_forward = "Conv2dBwdData"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inDOut",
+    "const oa::Matrix& inWeight",
+    "oa::U32 inStride",
+    "oa::U32 inPadding",
+    "const oa::MatrixShape& inInputShape",
+    "oa::U32 inGroups = 1",
+]
+notes = "Compute the explicit grouped 2D convolution data adjoint."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 333
+category = "Ml"
+origin = "oa"
+source = "nn/conv/conv2dBwdData"
+
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "stride", kind = "unsigned_integer", source = "inStride" },
+    { name = "padding", kind = "unsigned_integer", source = "inPadding" },
+    { name = "inputShape", kind = "shape", source = "inInputShape" },
+    { name = "groups", kind = "unsigned_integer", source = "inGroups" },
+]
+
+[ops.python]
+args = ["dOut", "weight", "stride", "padding", "inputShape", "groups"]
+doc = "Compute the explicit grouped 2D convolution input gradient."
+
+[[ops]]
+name = "conv2dBwdWeight"
+category = "Conv"
+kind = "binary"
+surface = "public_operation"
+kernel_forward = "Conv2dBwdWeight"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Conv2dBwdWeightResult"
+api_params = [
+    "const oa::Matrix& inInput",
+    "const oa::Matrix& inDOut",
+    "const oa::Matrix& inWeight",
+    "oa::U32 inStride",
+    "oa::U32 inPadding",
+    "oa::U32 inGroups = 1",
+]
+notes = "Compute explicit grouped 2D convolution weight and bias adjoints."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 334
+category = "Ml"
+origin = "oa"
+source = "nn/conv/conv2dBwdWeight"
+
+[ops.python_result]
+cpp_type = "oa::Conv2dBwdWeightResult"
+members = ["gradWeight", "gradBias"]
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix"]
+output_kinds = ["matrix", "matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1, -1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "stride", kind = "unsigned_integer", source = "inStride" },
+    { name = "padding", kind = "unsigned_integer", source = "inPadding" },
+    { name = "groups", kind = "unsigned_integer", source = "inGroups" },
+]
+
+[ops.python]
+args = ["input", "dOut", "weight", "stride", "padding", "groups"]
+doc = "Compute explicit grouped 2D convolution weight and bias gradients."
+
+# --- Transposed convolution --------------------------------------------------
+[[ops]]
+name = "convTranspose2d"
+category = "Conv"
+kind = "binary"
+surface = "public_operation"
+kernel_forward = "Conv2dBwdData"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inX",
+    "const oa::Matrix& inWeight",
+    "const oa::Matrix& inBias",
+    "oa::U32 inStride",
+    "oa::U32 inPadding",
+]
+notes = "Apply 2D transposed convolution as a composed data-adjoint and bias lowering."
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "reverse"
+lowering = "dispatch"
+attributes = [
+    { name = "stride", kind = "unsigned_integer", source = "inStride" },
+    { name = "padding", kind = "unsigned_integer", source = "inPadding" },
+]
+
+[ops.autograd]
+grad_class = "oa::GradConvTranspose2d"
+inputs = ["inX", "inWeight", "inBias"]
+saved = ["inX", "inWeight"]
+formula = "manual"
+attach = "standard"
+output_shape = true
+state = [
+    { member = "stride_", source = "inStride", type = "oa::U32" },
+    { member = "padding_", source = "inPadding", type = "oa::U32" },
+]
+
+[ops.python]
+args = ["x", "weight", "bias", "stride", "padding"]
+doc = "Apply 2D transposed convolution to an NCHW input."
+
+[[ops]]
+name = "convTranspose2dBwdData"
+category = "Conv"
+kind = "binary"
+surface = "public_operation"
+kernel_forward = "Conv2d"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inDOut",
+    "const oa::Matrix& inWeight",
+    "oa::U32 inStride",
+    "oa::U32 inPadding",
+    "const oa::MatrixShape& inInputShape",
+]
+notes = "Compute the explicit 2D transposed-convolution data adjoint through Conv2d."
+
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "reverse"
+lowering = "dispatch"
+attributes = [
+    { name = "stride", kind = "unsigned_integer", source = "inStride" },
+    { name = "padding", kind = "unsigned_integer", source = "inPadding" },
+    { name = "inputShape", kind = "shape", source = "inInputShape" },
+]
+
+[ops.autograd]
+grad_class = "oa::GradConv2d"
+inputs = ["inDOut", "inWeight"]
+saved = ["inDOut", "inWeight"]
+formula = "manual"
+attach = "standard"
+output_shape = true
+state = [
+    { member = "stride_", source = "inStride", type = "oa::U32" },
+    { member = "padding_", source = "inPadding", type = "oa::U32" },
+]
+
+[ops.python]
+args = ["dOut", "weight", "stride", "padding", "inputShape"]
+doc = "Compute the explicit 2D transposed-convolution input gradient."
+
+[[ops]]
+name = "convTranspose2dBwdWeight"
+category = "Conv"
+kind = "binary"
+surface = "public_operation"
+kernel_forward = "ConvTranspose2dBwdWeight"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::ConvTranspose2dBwdWeightResult"
+api_params = [
+    "const oa::Matrix& inInput",
+    "const oa::Matrix& inDOut",
+    "const oa::Matrix& inWeight",
+    "oa::U32 inStride",
+    "oa::U32 inPadding",
+]
+notes = "Compute explicit 2D transposed-convolution weight and bias adjoints."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 335
+category = "Ml"
+origin = "oa"
+source = "nn/conv/convTranspose2dBwdWeight"
+
+[ops.python_result]
+cpp_type = "oa::ConvTranspose2dBwdWeightResult"
+members = ["gradWeight", "gradBias"]
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix"]
+output_kinds = ["matrix", "matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1, -1]
+control_flow = "straight_line"
+differentiation = "none"
+lowering = "dispatch"
+attributes = [
+    { name = "stride", kind = "unsigned_integer", source = "inStride" },
+    { name = "padding", kind = "unsigned_integer", source = "inPadding" },
+]
+
+[ops.python]
+args = ["input", "dOut", "weight", "stride", "padding"]
+doc = "Compute explicit 2D transposed-convolution weight and bias gradients."

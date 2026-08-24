@@ -1,0 +1,60 @@
+# Fn schema — Lunar Lander 3D scalar reference operations.
+category = "LunarLander"
+namespace = "oa::FnLunarLander"
+file_prefix = "FnLunarLander"
+cpp_subdir = "LunarLander3d"
+
+[[ops]]
+name = "integrate"
+kind = "unary"
+surface = "host_utility"
+body = "cpu_util"
+generate_declaration = false
+api_return = "oa::LunarPhysicsResult"
+api_params = [
+    "const oa::LunarLander3dConfig& inConfig",
+    "const oa::LunarTerrain& inTerrain",
+    "oa::LunarAction inAction",
+    "oa::LunarLander3dState& inOutState",
+]
+notes = "Advance one deterministic scalar Lunar Lander 3D physics transition in explicit caller-owned state."
+
+[[ops]]
+name = "observe"
+kind = "unary"
+surface = "host_utility"
+body = "cpu_util"
+generate_declaration = false
+api_return = "std::array<float, OA_LUNAR_OBSERVATION_SIZE>"
+api_params = [
+    "const oa::LunarLander3dConfig& inConfig",
+    "const oa::LunarTerrain& inTerrain",
+    "const oa::LunarLander3dState& inState",
+]
+notes = "Derive the versioned scalar Lunar Lander 3D observation from explicit state."
+
+[[ops]]
+name = "potential"
+kind = "unary"
+surface = "host_utility"
+body = "cpu_util"
+generate_declaration = false
+api_return = "double"
+api_params = [
+    "const oa::LunarLander3dConfig& inConfig",
+    "const oa::LunarLander3dState& inState",
+]
+notes = "Evaluate the scalar Lunar Lander 3D reward-shaping potential."
+
+[[ops]]
+name = "supportWorldCenter"
+kind = "unary"
+surface = "host_utility"
+body = "cpu_util"
+generate_declaration = false
+api_return = "oa::LunarVec3"
+api_params = [
+    "const oa::LunarLander3dState& inState",
+    "const oa::LunarSupportSphere& inSupport",
+]
+notes = "Transform one lander support sphere center from body to world space."

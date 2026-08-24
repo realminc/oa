@@ -1,0 +1,203 @@
+# Fn schema — policy sampling and evaluation.
+category = "Policy"
+namespace = "oa::FnPolicy"
+file_prefix = "FnPolicy"
+cpp_subdir = "FnPolicy"
+
+[[ops]]
+name = "sampleCategorical"
+kind = "unary"
+surface = "public_operation"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::PolicyResult"
+api_params = [
+    "const oa::Matrix& inLogits",
+    "const oa::Matrix& inValue",
+    "oa::U64 inSeed = 0",
+]
+notes = "Sample and evaluate one categorical action per environment."
+
+[ops.python_result]
+cpp_type = "oa::PolicyResult"
+members = ["action", "logProbability", "entropy", "value"]
+bind_type = false
+
+[ops.contract]
+input_kinds = ["matrix", "matrix"]
+output_kinds = ["matrix", "matrix", "matrix", "matrix"]
+shape_rule = "explicit"
+dtype_rule = "explicit"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1, -1, -1, 1]
+control_flow = "straight_line"
+differentiation = "reverse"
+lowering = "dispatch"
+attributes = [
+    { name = "seed", kind = "unsigned_integer", source = "inSeed" },
+]
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inLogits", "inValue"]
+outputs = ["Action", "LogProbability", "Entropy", "Value"]
+implementation = "source/cpp/lib/oa/ml/policy.cpp:sampleCategorical"
+
+[ops.python]
+args = ["logits", "value", "seed"]
+result_validation = "is_valid"
+error = "SampleCategoricalPolicy rejected its input"
+doc = "Sample and evaluate one categorical action per environment."
+
+[[ops]]
+name = "evaluateCategorical"
+kind = "unary"
+surface = "public_operation"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::PolicyResult"
+api_params = [
+    "const oa::Matrix& inLogits",
+    "const oa::Matrix& inAction",
+    "const oa::Matrix& inValue",
+]
+notes = "Differentiably evaluate stored categorical actions."
+
+[ops.python_result]
+cpp_type = "oa::PolicyResult"
+members = ["action", "logProbability", "entropy", "value"]
+bind_type = false
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix"]
+output_kinds = ["matrix", "matrix", "matrix", "matrix"]
+shape_rule = "explicit"
+dtype_rule = "explicit"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [1, -1, -1, 2]
+control_flow = "straight_line"
+differentiation = "reverse"
+lowering = "dispatch"
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inLogits", "inValue"]
+outputs = ["Action", "LogProbability", "Entropy", "Value"]
+implementation = "source/cpp/lib/oa/ml/policy.cpp:evaluateCategorical"
+
+[ops.python]
+args = ["logits", "action", "value"]
+result_validation = "is_valid"
+error = "EvaluateCategoricalPolicy rejected its input"
+doc = "Differentiably evaluate stored categorical actions."
+
+[[ops]]
+name = "sampleTanhNormal"
+kind = "unary"
+surface = "public_operation"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::ContinuousPolicyResult"
+api_params = [
+    "const oa::Matrix& inMean",
+    "const oa::Matrix& inLogStddev",
+    "const oa::Matrix& inValue",
+    "oa::F32 inMinimum = -1.0F",
+    "oa::F32 inMaximum = 1.0F",
+    "oa::U64 inSeed = 0",
+    "oa::F32 inEpsilon = 1.0e-6F",
+]
+notes = "Sample a reparameterized tanh-normal policy."
+
+[ops.python_result]
+cpp_type = "oa::ContinuousPolicyResult"
+members = ["action", "rawAction", "logProbability", "entropy", "value"]
+bind_type = false
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix"]
+output_kinds = ["matrix", "matrix", "matrix", "matrix", "matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1, -1, -1, -1, 2]
+control_flow = "straight_line"
+differentiation = "reverse"
+lowering = "dispatch"
+attributes = [
+    { name = "minimum", kind = "float", source = "inMinimum" },
+    { name = "maximum", kind = "float", source = "inMaximum" },
+    { name = "seed", kind = "unsigned_integer", source = "inSeed" },
+    { name = "epsilon", kind = "float", source = "inEpsilon" },
+]
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inMean", "inLogStddev", "inValue"]
+outputs = ["Action", "RawAction", "LogProbability", "Entropy", "Value"]
+implementation = "source/cpp/lib/oa/ml/policy.cpp:sampleTanhNormal"
+
+[ops.python]
+args = ["mean", "logStddev", "value", "minimum", "maximum", "seed", "epsilon"]
+result_validation = "is_valid"
+error = "SampleTanhNormalPolicy rejected its input"
+doc = "Sample a reparameterized tanh-normal policy."
+
+[[ops]]
+name = "evaluateTanhNormal"
+kind = "unary"
+surface = "public_operation"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::ContinuousPolicyResult"
+api_params = [
+    "const oa::Matrix& inMean",
+    "const oa::Matrix& inLogStddev",
+    "const oa::Matrix& inRawAction",
+    "const oa::Matrix& inValue",
+    "oa::F32 inMinimum = -1.0F",
+    "oa::F32 inMaximum = 1.0F",
+    "oa::F32 inEpsilon = 1.0e-6F",
+]
+notes = "Differentiably evaluate a stored pre-tanh action."
+
+[ops.python_result]
+cpp_type = "oa::ContinuousPolicyResult"
+members = ["action", "rawAction", "logProbability", "entropy", "value"]
+bind_type = false
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix", "matrix"]
+output_kinds = ["matrix", "matrix", "matrix", "matrix", "matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1, 2, -1, -1, 3]
+control_flow = "straight_line"
+differentiation = "reverse"
+lowering = "dispatch"
+attributes = [
+    { name = "minimum", kind = "float", source = "inMinimum" },
+    { name = "maximum", kind = "float", source = "inMaximum" },
+    { name = "epsilon", kind = "float", source = "inEpsilon" },
+]
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inMean", "inLogStddev", "inRawAction", "inValue"]
+outputs = ["Action", "RawAction", "LogProbability", "Entropy", "Value"]
+implementation = "source/cpp/lib/oa/ml/policy.cpp:evaluateTanhNormal"
+
+[ops.python]
+args = ["mean", "logStddev", "rawAction", "value", "minimum", "maximum", "epsilon"]
+result_validation = "is_valid"
+error = "EvaluateTanhNormalPolicy rejected its input"
+doc = "Differentiably evaluate a stored pre-tanh action."
