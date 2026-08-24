@@ -31,7 +31,7 @@ model:
   clip_merges: var/model/ref/ClipText/merges.txt
 
 training:
-  dataset: ../dataset/gen/3d/anim/ds/Cmp
+  dataset: var/data/humanMl3d/Cmp
   split: train
   val_split: val              # held-out split; evaluated after every epoch
   val_batches: 0              # 0 = complete split; >0 caps validation cost
@@ -69,7 +69,7 @@ callbacks:
 
 generation:
   model: var/model/dev/Alm/Alm.oam
-  dataset: ../dataset/gen/3d/anim/ds/Cmp
+  dataset: var/data/humanMl3d/Cmp
   out_dir: var/alm
   count: 3
   temperature: 1.0

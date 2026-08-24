@@ -4,13 +4,16 @@
 // oa::Viewer and oa::DetectionOverlay path remains unchanged.
 
 #include <oa/ui/viewer.h>
+#include <oa/core/paths.h>
 
 #include <cstdlib>
 
 int main(int argc, char** argv) {
 	oa::ViewerConfig config;
 	config.title = "OA detection Image";
-	config.path = argc > 1 ? argv[1] : "asset/image/SpaceCathedral.jpg";
+	config.path = argc > 1
+		? oa::String(argv[1])
+		: oa::Paths::asset("image/coverMl.jpg").string();
 	config.annotations.pushBack({
 		.detection = {
 			.centerX = 0.50F,

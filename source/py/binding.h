@@ -109,6 +109,9 @@ inline oa::Path pathFromPython(nb::handle value) {
 [[nodiscard]] oa::Status pythonViewerShow(
     const oa::Image& image,
     const oa::ViewerConfig& config);
+[[nodiscard]] oa::Status pythonViewerPreview(
+    const oa::String& path,
+    const oa::ViewerConfig& config);
 // Register a process-finalization callback after native object registration.
 // It runs after Python-owned OA objects are released but before C++ static
 // destructors and loader teardown.

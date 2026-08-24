@@ -270,7 +270,7 @@ void vqEmaUpdate(const Matrix& inZe, const Matrix& inIdx,
 	bool inNormalize);
 
 // --- generated ML operations ---
-// Regenerate via: python3 tools/fnAutogen/oafnautogen.py --live
+// Regenerate via: python3 tools/gen/fn/generate.py --live
 #include <oa/ml/fnmatrix/fnMatrix.gen.h>
 
 // --- backward pass activations ---

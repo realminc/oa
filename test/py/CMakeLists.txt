@@ -19,7 +19,7 @@ function(oa_add_python_profile TARGET PROFILE LABELS)
 		LABELS "python;${LABELS}"
 		WORKING_DIRECTORY ${oa_SOURCE_DIR}
 		ENVIRONMENT
-			"OA_PYTHON_BUILD_DIR=$<TARGET_FILE_DIR:_oa>;PYTHONPATH=${OA_PYTHON_DIR}:$<TARGET_FILE_DIR:_oa>")
+			"OA_PYTHON_BUILD_DIR=$<TARGET_FILE_DIR:_oa>;PYTHONPATH=${OA_PYTHON_DIR}:$<TARGET_FILE_DIR:_oa>;OA_ASSET_DIR=${oa_SOURCE_DIR}/sdk/asset;OA_DATA_DIR=${OA_TEST_DATA_DIR}")
 endfunction()
 
 oa_add_python_profile(TestPythonHost host "host")

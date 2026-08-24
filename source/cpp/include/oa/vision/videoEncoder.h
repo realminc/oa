@@ -7,7 +7,7 @@
 // The encoder MANUFACTURES the H.264 SPS/PPS at session-parameter creation
 // time (the decoder parses them from the bitstream); see videoEncoderCodec.cpp
 // once the codec implementation lands.
-// session schema: Tools/FnAutogen/Schema/Vision/VisionVideoEncoder.toml.
+// Session schema: tools/gen/fn/schema/vision/visionVideoEncoder.toml.
 
 #pragma once
 

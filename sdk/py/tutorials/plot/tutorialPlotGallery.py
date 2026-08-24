@@ -348,7 +348,11 @@ def landscapeFigure() -> plot.Figure:
 
 def main() -> None:
 	parser = argparse.ArgumentParser(description=__doc__)
-	parser.add_argument("--output", type=FilePath, default=FilePath("docs/external/assets/plot/python"))
+	parser.add_argument(
+		"--output",
+		type=FilePath,
+		default=FilePath(Paths.var("artifact/plot/python")),
+	)
 	parser.add_argument("--headless", action="store_true")
 	arguments = parser.parse_args()
 	arguments.output.mkdir(parents=True, exist_ok=True)

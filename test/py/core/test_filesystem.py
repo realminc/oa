@@ -67,6 +67,14 @@ class TestFilesystem(unittest.TestCase):
 				override / "report.json",
 			)
 
+	def test_named_data_environment_override(self) -> None:
+		override = self.work / "custom-data"
+		with patch.dict(os.environ, {"OA_DATA_DIR": os.fspath(override)}):
+			self.assertEqual(
+				Paths.data("fashionMnist"),
+				override / "fashionMnist",
+			)
+
 
 if __name__ == "__main__":
 	unittest.main()

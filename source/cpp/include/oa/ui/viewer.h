@@ -92,7 +92,8 @@ struct ViewerConfig {
 	// Auto probes the actual decoders in a deterministic order. Explicit modes
 	// skip probing and return the source decoder's error directly.
 	ViewerMode mode = ViewerMode::Auto;
-	oa::String path = "asset/image/SpaceCathedral.jpg";
+	// Empty by default: reusable library code does not assume an SDK checkout.
+	oa::String path;
 	// Required when Mode == Live. The caller owns this object and must keep it
 	// alive until run() returns.
 	ViewerLiveSource* liveSource = nullptr;
@@ -182,9 +183,38 @@ public:
 	// The viewer borrows the engine and closes only its presenter/window state.
 	[[nodiscard]] oa::Status run(oa::Engine& inEngine);
 
-	// Blocking one-shot display sinks. Matrix and image overloads record the
+	// Unified blocking preview front door. Paths are decoder-probed as image,
+	// video, then audio. Direct GPU values borrow the caller's existing
+	// presentation-capable engine and retain the exact completion contract of
+	// show().
+	[[nodiscard]] static oa::Status preview(
+		const char* inPath,
+		const ViewerConfig& inConfig = {});
+	[[nodiscard]] static oa::Status preview(
+		const oa::String& inPath,
+		const ViewerConfig& inConfig = {});
+	[[nodiscard]] static oa::Status preview(
+		oa::Engine& inEngine,
+		const oa::Matrix& inMatrix,
+		const ViewerConfig& inConfig = {});
+	[[nodiscard]] static oa::Status preview(
+		oa::Engine& inEngine,
+		const oa::Image& inImage,
+		const ViewerConfig& inConfig = {});
+	[[nodiscard]] static oa::Status preview(
+		oa::Engine& inEngine,
+		const oa::Texture& inTexture,
+		const ViewerConfig& inConfig = {});
+	[[nodiscard]] static oa::Status preview(
+		oa::Engine& inEngine,
+		oa::Renderer& inRenderer,
+		const oa::RenderFrame& inFrame,
+		const ViewerConfig& inConfig = {});
+
+	// Compatibility spelling for blocking one-shot display sinks. Matrix and image overloads record the
 	// RGBA8 conversion into the engine's matching private recorder, submit it
-	// once, and pass its exact completion into presentation.
+	// once, and pass its exact completion into presentation. New code uses
+	// preview() so file-backed and direct values share one discoverable verb.
 	[[nodiscard]] static oa::Status show(
 		oa::Engine& inEngine,
 		const oa::Matrix& inMatrix,

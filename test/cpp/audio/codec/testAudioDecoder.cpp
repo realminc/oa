@@ -209,7 +209,7 @@ TEST_VK(TestAudioDecoder, StreamingPcmIsDeterministicForNonFiniteInput)
 TEST_VK(TestAudioDecoder, AudioPlayerPlayPauseSeek)
 {
 	oa::AudioPlayerConfig config;
-	config.uri = testAssetPath("audio/0_jackson_0.wav").string();
+	config.uri = testAssetPath("audio/oaNarration.wav").string();
 	config.ringMilliseconds = 100U;
 	auto opened = oa::AudioPlayer::open(*gRt, config);
 	if (not opened.isOk()) {
@@ -217,14 +217,13 @@ TEST_VK(TestAudioDecoder, AudioPlayerPlayPauseSeek)
 			<< opened.getStatus().getMessage();
 	}
 	oa::AudioPlayer stream = oa::move(*opened);
-	EXPECT_EQ(stream.sampleRate(), 8000U);
+	EXPECT_EQ(stream.sampleRate(), 24000U);
 	EXPECT_EQ(stream.channelCount(), 1U);
 	EXPECT_GT(stream.durationUs(), 0U);
 	ASSERT_TRUE(stream.play().isOk());
-	// A low-rate source can inherit a 1024-frame device quantum (128 ms at
-	// 8 kHz), and backend startup may miss the first callback deadline. Give
-	// the real device two complete quanta instead of baking workstation timing
-	// into the playback contract.
+	// Backend startup may miss the first callback deadline. Give the real device
+	// enough time for several complete quanta instead of baking workstation
+	// timing into the playback contract.
 	for (oa::I32 retry = 0; retry < 200 and stream.positionUs() == 0U; ++retry) {
 		std::this_thread::sleep_for(std::chrono::milliseconds(5));
 	}
@@ -236,18 +235,18 @@ TEST_VK(TestAudioDecoder, AudioPlayerPlayPauseSeek)
 	EXPECT_FALSE(stream.isOpen());
 }
 
-TEST_VK(TestAudioDecoder, RealSpeechDecodeProcessSaveReload)
+TEST_VK(TestAudioDecoder, RealNarrationDecodeProcessSaveReload)
 {
-	const oa::Path wavPath = testAssetPath("audio/0_jackson_0.wav");
-	const oa::Path inputPath = testAssetPath("audio/0_jackson_0.flac");
-	const oa::Path mp3Path = testAssetPath("audio/0_jackson_0.mp3");
+	const oa::Path wavPath = testAssetPath("audio/oaNarration.wav");
+	const oa::Path inputPath = testAssetPath("audio/oaNarration.flac");
+	const oa::Path mp3Path = testAssetPath("audio/oaNarration.mp3");
 	auto decoded = oa::FnAudio::decodeFile(inputPath);
 	ASSERT_TRUE(decoded.isOk()) << decoded.getStatus().getMessage();
 	auto wavDecoded = oa::FnAudio::decodeFile(wavPath);
 	ASSERT_TRUE(wavDecoded.isOk()) << wavDecoded.getStatus().getMessage();
-	ASSERT_EQ(decoded->sampleRate(), 8000U);
+	ASSERT_EQ(decoded->sampleRate(), 24000U);
 	ASSERT_EQ(decoded->channels(), 1);
-	ASSERT_GT(decoded->samples(), 4000);
+	ASSERT_GT(decoded->samples(), 240000);
 	ASSERT_EQ(decoded->samples(), wavDecoded->samples());
 	for (oa::I64 i = 0; i < decoded->samples(); i += 31) {
 		ASSERT_FLOAT_EQ(decoded->asMatrix().at(i),
@@ -255,9 +254,9 @@ TEST_VK(TestAudioDecoder, RealSpeechDecodeProcessSaveReload)
 	}
 	auto mp3Decoded = oa::FnAudio::decodeFile(mp3Path);
 	ASSERT_TRUE(mp3Decoded.isOk()) << mp3Decoded.getStatus().getMessage();
-	EXPECT_EQ(mp3Decoded->sampleRate(), 8000U);
+	EXPECT_EQ(mp3Decoded->sampleRate(), 24000U);
 	EXPECT_EQ(mp3Decoded->channels(), 1);
-	EXPECT_GT(mp3Decoded->samples(), 4000);
+	EXPECT_GT(mp3Decoded->samples(), 240000);
 	double mp3SquareSum = 0.0;
 	for (oa::I64 i = 0; i < mp3Decoded->samples(); ++i) {
 		const double sample = mp3Decoded->asMatrix().at(i);

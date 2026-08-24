@@ -1,10 +1,36 @@
+import org.gradle.api.tasks.Sync
+
 plugins {
 	id("com.android.application")
 }
 
 val oaRootDirectory = rootProject.file("../../..").canonicalFile
 val turnipAssetsDirectory =
-	oaRootDirectory.resolve("build/android/oaMobileLab/Assets")
+	oaRootDirectory.resolve("build/android/oaMobileLab/assets")
+val sharedFontDirectory = oaRootDirectory.resolve("sdk/asset/font")
+val stagedOaAssetsDirectory = layout.buildDirectory.dir("generated/oaAssets")
+
+val stageOaAssets by tasks.registering(Sync::class) {
+	group = "oa android"
+	description = "Stages the canonical OA SDK fonts and their licenses"
+	from(listOf(
+		sharedFontDirectory.resolve("IBMPlexSans/IBMPlexSans-Regular.ttf"),
+		sharedFontDirectory.resolve("IBMPlexSans/IBMPlexSans-SemiBold.ttf"),
+		sharedFontDirectory.resolve("IntelOneMono/IntelOneMono-Regular.ttf"),
+		sharedFontDirectory.resolve("IntelOneMono/IntelOneMono-Medium.ttf")
+	)) {
+		into("fonts")
+	}
+	from(sharedFontDirectory.resolve("IBMPlexSans/LICENSE.txt")) {
+		into("licenses")
+		rename { "IBMPlexSans-OFL.txt" }
+	}
+	from(sharedFontDirectory.resolve("IntelOneMono/OFL.txt")) {
+		into("licenses")
+		rename { "IntelOneMono-OFL.txt" }
+	}
+	into(stagedOaAssetsDirectory)
+}
 
 val releaseSigningEnvironment = mapOf(
 	"storeFile" to providers.environmentVariable("OA_ANDROID_KEYSTORE").orNull,
@@ -35,6 +61,7 @@ android {
 
 	sourceSets {
 		getByName("main").assets.srcDir(turnipAssetsDirectory)
+		getByName("main").assets.srcDir(stagedOaAssetsDirectory)
 	}
 
 	defaultConfig {
@@ -99,7 +126,7 @@ android {
 }
 
 tasks.named("preBuild").configure {
-	dependsOn(fetchTurnip)
+	dependsOn(fetchTurnip, stageOaAssets)
 }
 
 listOf("debug", "release").forEach { buildType ->

@@ -20,15 +20,15 @@ from ._surface import installSurface
 
 def _readVersion() -> str:
 	try:
-		return version("oapython")
-	except PackageNotFoundError:
-		pass
-
-	try:
 		return (_Path(__file__).resolve().parents[3] / "VERSION").read_text(
 			encoding="utf-8"
 		).strip()
 	except OSError:
+		pass
+
+	try:
+		return version("oapython")
+	except PackageNotFoundError:
 		return "0+unknown"
 
 

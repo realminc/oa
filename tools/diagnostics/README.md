@@ -1,20 +1,20 @@
 # OA Diagnostic Evidence
 
-`oaevidence.py` creates one machine-readable, checksummed directory containing
+`oaEvidence.py` creates one machine-readable, checksummed directory containing
 the evidence needed to reproduce an OA Vulkan result. It uses only the Python
 standard library and does not add a runtime dependency.
 
 Snapshot the current checkout and Vulkan device:
 
 ```bash
-python3 tools/diagnostics/oaevidence.py
+python3 tools/diagnostics/oaEvidence.py
 ```
 
 Wrap a workload, request validation, and have OA export the first completed
 training graph automatically:
 
 ```bash
-python3 tools/diagnostics/oaevidence.py \
+python3 tools/diagnostics/oaEvidence.py \
   --validation \
   --output var/report/transformer-validation \
   -- bin/release/tutorial/ml/nlp/tutorialNlpByteTransformerAg
@@ -24,8 +24,8 @@ Run the focused execution-graph suite under a named validation profile and
 require the exact feature set to be observed with zero validation errors:
 
 ```bash
-python3 tools/diagnostics/run_validation.py --mode sync
-python3 tools/diagnostics/run_validation.py --mode gpu
+python3 tools/diagnostics/runValidation.py --mode sync
+python3 tools/diagnostics/runValidation.py --mode gpu
 ```
 
 For a repository-local validation-layer build, pin both halves of the layer:
@@ -33,7 +33,7 @@ For a repository-local validation-layer build, pin both halves of the layer:
 ```bash
 VK_LAYER_PATH=/path/to/vvl/share/vulkan/explicit_layer.d \
 LD_LIBRARY_PATH=/path/to/vvl/lib \
-python3 tools/diagnostics/run_validation.py --mode gpu
+python3 tools/diagnostics/runValidation.py --mode gpu
 ```
 
 The runner rejects a custom manifest whose bare library soname is not resolved
@@ -60,7 +60,7 @@ red, and prints the required tool upgrade.
 Attach existing graph, validation, and benchmark artifacts:
 
 ```bash
-python3 tools/diagnostics/oaevidence.py \
+python3 tools/diagnostics/oaEvidence.py \
   --graph var/report/training_graph.json \
   --validation-log var/report/validation.log \
   --benchmark var/report/transformer.json \
@@ -71,7 +71,7 @@ Collect stable GEMM selection records and fail if an unapproved precision,
 layout, or naive fallback occurs:
 
 ```bash
-python3 tools/diagnostics/oaevidence.py \
+python3 tools/diagnostics/oaEvidence.py \
   --selection-trace \
   --output var/report/transformer-selection \
   -- bin/release/tutorial/ml/nlp/tutorialNlpByteTransformerAg
@@ -106,18 +106,18 @@ log confirms that the validation layer was active.
 Run its tests with:
 
 ```bash
-python3 tools/diagnostics/test_oaevidence.py
+python3 tools/diagnostics/testOaEvidence.py
 ```
 
 ## Rested benchmarks
 
-`oabench.py` is the canonical fresh-process performance protocol. Short
+`oaBench.py` is the canonical fresh-process performance protocol. Short
 workloads require at least seven measured runs. The runner preserves warm-up
 and measured logs; records Git, build, Vulkan, CPU-governor and power-profile
 metadata; and emits median, median absolute deviation, p10/p90 and total spread.
 
 ```bash
-python3 tools/diagnostics/oabench.py \
+python3 tools/diagnostics/oaBench.py \
   --output var/report/compute-graph-process.json \
   --name runtime.compute_graph_process \
   --contract tests=25 \
@@ -138,14 +138,14 @@ are identical. A faster number from another GPU or a differently compiled
 binary is evidence, but it is not a valid comparison.
 
 The satellite NLP helper supplies one complete installed-program process to
-`oabench.py`. Standalone mode runs the canonical 300-step Byte Transformer on
+`oaBench.py`. Standalone mode runs the canonical 300-step Byte Transformer on
 one engine. Split-batch mode starts an authenticated one-shot worker, waits for
 its explicit readiness line, and runs the same workload as a 32/32 coordinator
 split:
 
 ```bash
-python3 tools/diagnostics/run_satellite_nlp.py --mode standalone
-python3 tools/diagnostics/run_satellite_nlp.py --mode split-batch
+python3 tools/diagnostics/runSatelliteNlp.py --mode standalone
+python3 tools/diagnostics/runSatelliteNlp.py --mode split-batch
 ```
 
 Extract `wall_ms_per_step` for the training interval. Require `steps=300`,
@@ -157,8 +157,8 @@ The checked-in suite names eight hardware-scoped workloads and resolves a
 baseline directory from the selected hardware identity:
 
 ```bash
-python3 tools/diagnostics/oabenchsuite.py --list
-python3 tools/diagnostics/oabenchsuite.py \
+python3 tools/diagnostics/oaBenchSuite.py --list
+python3 tools/diagnostics/oaBenchSuite.py \
   --output-dir /tmp/oa-benchmark-candidate
 ```
 
@@ -184,7 +184,7 @@ a passing result captured from a clean repository with at least seven samples
 and a complete Vulkan platform identity:
 
 ```bash
-python3 tools/diagnostics/oabenchsuite.py \
+python3 tools/diagnostics/oaBenchSuite.py \
   --accept \
   --accept-reason 'initial Iris Xe release baseline' \
   --output-dir /tmp/oa-benchmark-accept
@@ -208,7 +208,7 @@ Volatile timestamps and unrelated diagnostics therefore cannot create false
 failures.
 
 ```bash
-python3 tools/diagnostics/oadeterminism.py \
+python3 tools/diagnostics/oaDeterminism.py \
   --output var/report/rnn-determinism.json \
   --name ml.rnn_copy_loss \
   --trace-regex 'step [0-9]+ loss=(?P<value>[0-9.]+)' \
@@ -271,9 +271,9 @@ dispatch, synchronization, or readback failed.
 Run the same canary under the two Vulkan correctness profiles with:
 
 ```bash
-python3 tools/diagnostics/run_validation.py --mode sync -- \
+python3 tools/diagnostics/runValidation.py --mode sync -- \
   bin/release/tutorial/core/tutorialCoreDeviceCanary
-python3 tools/diagnostics/run_validation.py --mode gpu -- \
+python3 tools/diagnostics/runValidation.py --mode gpu -- \
   bin/release/tutorial/core/tutorialCoreDeviceCanary
 ```
 

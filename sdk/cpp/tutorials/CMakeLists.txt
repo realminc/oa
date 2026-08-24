@@ -11,7 +11,10 @@ function(oa_add_tutorial TARGET SOURCE SUBDIR)
 	set_target_properties(${TARGET} PROPERTIES
 		RUNTIME_OUTPUT_DIRECTORY "${OA_BIN_DIR}/tutorial/${SUBDIR}")
 	add_test(NAME ${TARGET} COMMAND ${TARGET})
-	set_tests_properties(${TARGET} PROPERTIES LABELS "gpu_bindless;tutorial")
+	set_tests_properties(${TARGET} PROPERTIES
+		LABELS "gpu_bindless;tutorial"
+		ENVIRONMENT
+			"OA_ASSET_DIR=${oa_SOURCE_DIR}/sdk/asset;OA_DATA_DIR=${OA_TEST_DATA_DIR}")
 	if(TARGET oa_shaders)
 		add_dependencies(${TARGET} oa_shaders)
 	endif()
@@ -140,6 +143,8 @@ add_test(
 		"${_oa_lunar_headless_artifacts}")
 set_tests_properties(TutorialRlLunarLander3dHeadless PROPERTIES
 	LABELS "gpu_bindless;tutorial;ml;rl;render;headless_readback"
+	ENVIRONMENT
+		"OA_ASSET_DIR=${oa_SOURCE_DIR}/sdk/asset;OA_DATA_DIR=${OA_TEST_DATA_DIR}"
 	SKIP_RETURN_CODE 125
 	TIMEOUT 120
 	WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
@@ -177,6 +182,8 @@ add_test(
 	COMMAND TutorialCryptoCyberRangeIntegrity)
 set_tests_properties(TutorialCryptoCyberRangeIntegrity PROPERTIES
 	LABELS "gpu_bindless;tutorial;crypto;security"
+	ENVIRONMENT
+		"OA_ASSET_DIR=${oa_SOURCE_DIR}/sdk/asset;OA_DATA_DIR=${OA_TEST_DATA_DIR}"
 	SKIP_RETURN_CODE 125
 	TIMEOUT 60)
 
@@ -249,10 +256,12 @@ set(_oa_vision_augmentation_artifact
 add_test(
 	NAME TutorialVisionDataAugmentation
 	COMMAND TutorialVisionDataAugmentation
-		"${oa_SOURCE_DIR}/asset/image/visionTestPattern320x180.jpg"
+		"${oa_SOURCE_DIR}/sdk/asset/image/visionTestPattern320x180.jpg"
 		"${_oa_vision_augmentation_artifact}")
 set_tests_properties(TutorialVisionDataAugmentation PROPERTIES
 	LABELS "gpu_bindless;tutorial;vision;plot;ui;headless_readback"
+	ENVIRONMENT
+		"OA_ASSET_DIR=${oa_SOURCE_DIR}/sdk/asset;OA_DATA_DIR=${OA_TEST_DATA_DIR}"
 	TIMEOUT 120
 	WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
 oa_add_app_tutorial(TutorialScreenRecordH264 vision/tutorialScreenRecordH264.cpp vision)
@@ -275,5 +284,7 @@ add_test(
 		--output "${_oa_plot_gallery_artifacts}")
 set_tests_properties(TutorialPlotGalleryHeadless PROPERTIES
 	LABELS "gpu_bindless;tutorial;plot;ui;headless_readback"
+	ENVIRONMENT
+		"OA_ASSET_DIR=${oa_SOURCE_DIR}/sdk/asset;OA_DATA_DIR=${OA_TEST_DATA_DIR}"
 	TIMEOUT 120
 	WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")

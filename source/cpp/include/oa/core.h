@@ -26,12 +26,12 @@
 #include <oa/core/cli.h>        // CLI: oa::Cli<T>, 3-way precedence (CLI11)
 #include <oa/core/memory.h>     // Fast memcpy: oa::memcpy, oa::memset (AVX/SSE)
 #include <oa/core/filesystem.h> // Host filesystem I/O: oa::Filesystem
-#include <oa/core/paths.h>      // Named locations: oa::Paths::asset/var/temp
+#include <oa/core/paths.h>      // Named locations: oa::Paths::asset/data/var/temp
 #include <oa/core/mappedFile.h> // Read-only whole-file mapping with checked spans
 #include <oa/core/thread.h>     // Threading: oa::ThreadPool, oa::Channel, oa::Task, oa::RwLock, oa::Spinlock
 #include <oa/core/yaml.h>       // oa::Yaml: get, getList, loadFile (yaml-cpp)
 #include <oa/core/config.h>     // checkpoint/log YAML: oa::loadCheckpointYaml, oa::loadLogYaml
-#include <oa/core/simd.h>       // SIMD: oa::Simd::dotF32, oa::Simd::scaleF32 (Google Highway)
+#include <oa/core/simd.h>       // SIMD: oa::FnSimd::dotF32, oa::FnSimd::scaleF32
 #include <oa/core/matrixShape.h>      // oa::MatrixShape, OA_MAX_TENSOR_DIMS
 // Complex.h removed along with the SSM module.
 #include <oa/core/constant.h>   // Branding: ASCII banners, app subtitles, crypto info

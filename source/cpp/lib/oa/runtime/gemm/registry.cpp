@@ -12,10 +12,10 @@
 #include <oa/runtime/spirv.h>
 #include "../engine/deviceAccess.h"
 
-#include "oaTileBaseMetadata.gen.h"
-#include "oaTileMetadata.gen.h"
-#include "oaTileSmallMMetadata.gen.h"
-#include "oaTileBf16Metadata.gen.h"
+#include "gen/tileBaseMetadata.h"
+#include "gen/tileMetadata.h"
+#include "gen/tileSmallMMetadata.h"
+#include "gen/tileBf16Metadata.h"
 
 #include <array>
 
@@ -34,13 +34,13 @@ namespace {
 constexpr oa::MatmulVariant kVariants[] = {
 	// ── Raw GEMM (no bias, no activation) ────────────────────────────────────
 
-	#include "oaTileBf16Variants.gen.inc"
+	#include "gen/tileBf16Variants.inc"
 
-	#include "oaTileFp32Variants.gen.inc"
+	#include "gen/tileFp32Variants.inc"
 
-	#include "oaTileSmallMVariants.gen.inc"
+	#include "gen/tileSmallMVariants.inc"
 
-	#include "oaTileBaseVariants.gen.inc"
+	#include "gen/tileBaseVariants.inc"
 
 };
 

@@ -15,7 +15,9 @@ Source: `sdk/cpp/tutorials/vision/tutorialViewerImage.cpp`
 #include <oa/ui/viewer.h>
 
 int main(int argc, char** argv) {
-  const char* path = argc > 1 ? argv[1] : "asset/image/SpaceCathedral.jpg";
+  const oa::String path = argc > 1
+    ? oa::String(argv[1])
+    : oa::Paths::asset("image/coverMl.jpg").string();
   oa::Viewer viewer(path);
   return viewer.run().isOk() ? 0 : 1;
 }
@@ -25,7 +27,7 @@ Build and run:
 
 ```bash
 ninja -C build/release TutorialViewerImage
-bin/release/tutorial/vision/tutorialViewerImage asset/image/SpaceCathedral.jpg
+bin/release/tutorial/vision/tutorialViewerImage sdk/asset/image/coverMl.jpg
 ```
 
 The Viewer owns its UI, input and compose resources and borrows presentation
@@ -39,7 +41,7 @@ Source: `sdk/py/tutorials/vision/tutorialVisionViewer.py`
 ```python
 from oa import *
 
-asset = Paths.asset("image/SpaceCathedral.jpg")
+asset = Paths.asset("image/coverMl.jpg")
 image = FnImage.decodeFile(asset)
 Viewer.show(image, title="Space Cathedral · original")
 
@@ -70,7 +72,7 @@ result through `oa::FnImage::saveTextureFile`.
 ```bash
 ninja -C build/release TutorialViewerImageHeadless
 bin/release/tutorial/vision/tutorialViewerImageHeadless \
-  asset/image/SpaceCathedral.jpg /tmp/oa-image.png
+  sdk/asset/image/coverMl.jpg /tmp/oa-image.png
 ```
 
 Headless means no window or swapchain. It does not imply a CPU fallback or

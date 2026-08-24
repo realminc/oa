@@ -218,14 +218,11 @@ def evalAccuracy(model, loader):
 # ─── Main ────────────────────────────────────────────────────────────────────
 
 def main():
-	# Get dataset path
-	dataDir = os.getenv("OA_MNIST_DATA")
-	if not dataDir:
-		dataDir = os.path.join(os.getcwd(), "Data", "FashionMNIST", "raw")
+	dataDir = os.fspath(Paths.data("fashionMnist"))
 
 	if not os.path.exists(dataDir):
 		print(f"Fashion-MNIST not found at: {dataDir}")
-		print("Set OA_MNIST_DATA environment variable to dataset location")
+		print("Run: python3 tools/data/manage.py fetch fashionMnist")
 		sys.exit(1)
 
 	print()

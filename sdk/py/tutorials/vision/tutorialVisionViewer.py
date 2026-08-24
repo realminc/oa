@@ -6,7 +6,7 @@
 from oa import *
 
 
-asset = Paths.asset("image/SpaceCathedral.jpg")
+asset = Paths.asset("image/coverMl.jpg")
 image = FnImage.decodeFile(asset)
 Viewer.show(image, title="Space Cathedral · original")
 

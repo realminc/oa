@@ -16,7 +16,7 @@
 // usage:
 //   ./Tutorial/Plot/TutorialImageGridClassify [data_dir] [--save path.png]
 //
-// Default data dir: $OA_MNIST_DATA, then ../oapy/dataset/FashionMNIST/raw
+// Default data dir: $OA_DATA_DIR/fashionMnist
 // ═══════════════════════════════════════════════════════════════════════════
 
 #include <data/dsMnist.h>
@@ -28,6 +28,7 @@
 #include <oa/ui/viewer.h>
 #include <oa/runtime/engine.h>
 #include <oa/core/log.h>
+#include <oa/core/paths.h>
 
 #include <fstream>
 #include <cstring>
@@ -353,6 +354,7 @@ private:
 
 int main(int argc, char** argv) {
 	const char* dataDir  = nullptr;
+	oa::String defaultDataDir;
 	const char* savePath = nullptr;
 	oa::I32       trainSteps = 2000;
 
@@ -366,8 +368,10 @@ int main(int argc, char** argv) {
 			dataDir = argv[i];
 		}
 	}
-	if (dataDir == nullptr) { dataDir = std::getenv("OA_MNIST_DATA"); }
-	if (dataDir == nullptr) { dataDir = "../oapy/dataset/FashionMNIST/raw"; }
+	if (dataDir == nullptr) {
+		defaultDataDir = oa::Paths::data("fashionMnist").string();
+		dataDir = defaultDataDir.cStr();
+	}
 
 	std::printf("\n");
 	std::printf("╔══════════════════════════════════════════════════════════════════╗\n");

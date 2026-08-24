@@ -1,9 +1,9 @@
 // OA Runtime Types
 //
 // Private header for auto-generated Runtime lowering types.
-// generated from Tools/TypeAutogen/Schema/Runtime/RuntimeTypes.toml
+// Generated from tools/gen/type/schema/runtime/runtimeTypes.toml.
 //
-// Regenerate via: python3 Tools/TypeAutogen/oatypeautogen.py --live
+// Regenerate via: python3 tools/gen/type/generate.py --live
 
 #pragma once
 

@@ -104,7 +104,7 @@ def test_audio_import_surface():
 		"decodeFile", "decodeMemory", "encodeWavF32", "saveWavF32",
 		"stft", "melSpectrogram", "mfcc", "normalize", "resample", "gain",
 		"clip", "saturate", "biquad", "sosFilter", "amplitudeToDb",
-		"preEmphasis", "toMono", "fade", "mix",
+		"preEmphasis", "toMono", "fade", "mix", "reverb",
 	):
 		assert hasattr(oa.FnAudio, name), name
 
@@ -230,6 +230,17 @@ def test_saturate_matches_waveshaper(engine):
 	for source, actual in zip(dry, wet, strict=True):
 		expected = source + (math.tanh(source * drive) - source) * mix
 		assert actual == pytest.approx(expected, abs=2.0e-6)
+
+
+def test_reverb_renders_finite_tail(engine):
+	x = _makeSine()
+	reverberated = oa.FnAudio.reverb(x, 0.125, 0.4)
+	assert reverberated.sampleRate == SAMPLE_RATE
+	assert reverberated.layout == oa.AudioChannelLayout.Mono
+	assert reverberated.sampleCount == NUM_SAMPLES + SAMPLE_RATE // 8
+	values = oa.FnMatrix.copyToHost(reverberated.matrix)
+	assert all(math.isfinite(value) for value in values)
+	assert any(abs(value) > 1.0e-5 for value in values[NUM_SAMPLES:])
 
 
 def test_biquad_matches_zero_state_lowpass(engine):

@@ -10,7 +10,7 @@ void bindCoreFnMatrix(nb::module_& m) {
     // ═════════════════════════════════════════════════════════════════════════
 
     // Schema-v2 operations. Signatures, argument names/defaults and docs are
-    // emitted from Tools/FnAutogen/Schema alongside their C++ contracts.
+    // emitted from tools/gen/fn/schema alongside their C++ contracts.
 #include "fnMatrixOps.gen.inl"
 
     m.def("argmax", &oa::FnMatrix::argmax, nb::arg("a"), nb::arg("dim") = -1);

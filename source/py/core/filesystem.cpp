@@ -75,6 +75,11 @@ void bindCoreFilesystem(nb::module_& m) {
             const auto path = pathFromPython(relative);
             return oa::Paths::var(path.genericString());
         }, nb::arg("relative"))
+		.def_static("data", [] { return oa::Paths::data(); })
+		.def_static("data", [](nb::handle relative) {
+			const auto path = pathFromPython(relative);
+			return oa::Paths::data(path.genericString());
+		}, nb::arg("relative"))
         .def_static("current", &oa::Paths::current)
         .def_static("home", &oa::Paths::home)
         .def_static("temp", &oa::Paths::temp);

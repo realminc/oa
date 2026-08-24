@@ -1,7 +1,6 @@
 #include <gtest/gtest.h>
 #include "../../oaTest.h"
 
-#include <chrono>
 #include <cstdlib>
 #include <cstdio>
 #include <cstring>
@@ -19,99 +18,12 @@
 #include <oa/runtime/executionSession.h>
 #include <oa/runtime/executableGraph.h>
 
-#include <oa/runtime/vma/slab.h>
 #include <oa/core/thread.h>
 
 TEST(Preamble, SuiteInfo) {
 	fprintf(stderr,
-		"  [test_allocator] runtime: slab/spinlock (CPU) + OaVma (vulkan)\n");
+		"  [test_allocator] runtime: spinlock + engine cache + VMA\n");
 	SUCCEED();
-}
-
-// Slab tests (pure CPU, no vulkan)
-TEST(Slab, AllocFree64Slots) {
-	alignas(64) oa::U8 backing[64 * 1024];
-	oa::VkSlab slab;
-	slab.init(backing, 1024, 64);
-
-	EXPECT_EQ(slab.freeCount(), 64u);
-	EXPECT_FALSE(slab.isFull());
-	EXPECT_TRUE(slab.isEmpty());
-
-	oa::Vec<void*> ptrs;
-	for (oa::U32 i = 0; i < 64; ++i) {
-		void* p = slab.alloc();
-		ASSERT_NE(p, nullptr) << "alloc failed at slot " << i;
-		ptrs.pushBack(p);
-	}
-
-	EXPECT_EQ(slab.freeCount(), 0u);
-	EXPECT_TRUE(slab.isFull());
-	EXPECT_FALSE(slab.isEmpty());
-
-	EXPECT_EQ(slab.alloc(), nullptr);
-
-	for (void* p : ptrs) {
-		slab.free(p);
-	}
-	EXPECT_EQ(slab.freeCount(), 64u);
-	EXPECT_TRUE(slab.isEmpty());
-}
-
-TEST(Slab, SlotPointersAreDistinct) {
-	alignas(64) oa::U8 backing[32 * 256];
-	oa::VkSlab slab;
-	slab.init(backing, 256, 32);
-
-	oa::Vec<void*> ptrs;
-	for (oa::U32 i = 0; i < 32; ++i) {
-		ptrs.pushBack(slab.alloc());
-	}
-
-	for (oa::U32 i = 0; i < 32; ++i) {
-		for (oa::U32 j = i + 1; j < 32; ++j) {
-			EXPECT_NE(ptrs[i], ptrs[j]) << "slots " << i << " and " << j << " overlap";
-		}
-	}
-
-	for (void* p : ptrs) slab.free(p);
-}
-
-TEST(Slab, SmallCapacity) {
-	alignas(64) oa::U8 backing[8 * 64];
-	oa::VkSlab slab;
-	slab.init(backing, 64, 8);
-
-	EXPECT_EQ(slab.freeCount(), 8u);
-	for (oa::U32 i = 0; i < 8; ++i) {
-		ASSERT_NE(slab.alloc(), nullptr);
-	}
-	EXPECT_TRUE(slab.isFull());
-	EXPECT_EQ(slab.alloc(), nullptr);
-}
-
-TEST(Slab, BenchmarkAllocFree) {
-	alignas(64) oa::U8 backing[64 * 1024];
-	oa::VkSlab slab;
-	slab.init(backing, 1024, 64);
-
-	constexpr oa::U32 kIters = 100000;
-	void* ptrs[64];
-
-	auto t0 = std::chrono::high_resolution_clock::now();
-	for (oa::U32 iter = 0; iter < kIters; ++iter) {
-		for (oa::U32 i = 0; i < 64; ++i) {
-			ptrs[i] = slab.alloc();
-		}
-		for (oa::U32 i = 0; i < 64; ++i) {
-			slab.free(ptrs[i]);
-		}
-	}
-	auto t1 = std::chrono::high_resolution_clock::now();
-	auto us = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
-	oa::F64 nsPerOp = static_cast<oa::F64>(us * 1000) / static_cast<oa::F64>(kIters * 128);
-	fprintf(stderr, "  Slab alloc+free: %.1f ns/op (%u iters x 128 ops)\n", nsPerOp, kIters);
-	EXPECT_LT(nsPerOp, 50.0);
 }
 
 // Spinlock tests (pure CPU)
@@ -184,6 +96,36 @@ TEST(allocator, DescriptorRangeExposesPaddedVkBufferTail) {
 	legacy.size = 6U;
 	EXPECT_EQ(legacy.capacity, 0U);
 	EXPECT_EQ(legacy.descriptorRange(), legacy.size);
+}
+
+TEST(allocator, HostUploadCacheReusesSmallestSufficientBuffer) {
+	auto engine = createTestEngine(false);
+	auto smallResult = oa::EngineResourceAccess::allocBuffer(*engine, 1024U);
+	auto mediumResult = oa::EngineResourceAccess::allocBuffer(*engine, 2048U);
+	auto largeResult = oa::EngineResourceAccess::allocBuffer(*engine, 4096U);
+	ASSERT_TRUE(smallResult.isOk());
+	ASSERT_TRUE(mediumResult.isOk());
+	ASSERT_TRUE(largeResult.isOk());
+	auto small = std::move(*smallResult);
+	auto medium = std::move(*mediumResult);
+	auto large = std::move(*largeResult);
+	const void* mediumHandle = medium.buffer;
+
+	// Free out of size order so reuse cannot depend on insertion position.
+	oa::EngineResourceAccess::freeBuffer(*engine, large);
+	oa::EngineResourceAccess::freeBuffer(*engine, small);
+	oa::EngineResourceAccess::freeBuffer(*engine, medium);
+
+	const auto statsBefore = oa::EngineAllocatorAccess::get(*engine).getStats();
+	auto reuseResult = oa::EngineResourceAccess::allocBuffer(*engine, 1536U);
+	ASSERT_TRUE(reuseResult.isOk());
+	auto reused = std::move(*reuseResult);
+	const auto statsAfter = oa::EngineAllocatorAccess::get(*engine).getStats();
+	EXPECT_EQ(reused.buffer, mediumHandle);
+	EXPECT_EQ(reused.capacity, 2048U);
+	EXPECT_EQ(reused.size, 1536U);
+	EXPECT_EQ(statsAfter.allocationCount, statsBefore.allocationCount);
+	oa::EngineResourceAccess::freeBuffer(*engine, reused);
 }
 
 TEST(allocator, DescriptorAdmissionUsesLiveDeviceLimit) {
@@ -608,47 +550,6 @@ TEST(allocator, BudgetQuery) {
 	EXPECT_EQ(memory.freeBytes, memory.totalBytes - memory.usedBytes);
 	EXPECT_GE(memory.usedPercent, 0.0);
 	EXPECT_LE(memory.usedPercent, 100.0);
-
-	EXPECT_TRUE(rt.close().isOk());
-}
-
-TEST(allocator, BenchmarkVmaVsSlab) {
-	auto rtP = createTestEngine(); oa::Engine& rt = *rtP;
-
-	constexpr oa::U32 kVmaIters = 1000;
-	constexpr oa::U64 kBufSize = 1024;
-
-	auto t0 = std::chrono::high_resolution_clock::now();
-	for (oa::U32 i = 0; i < kVmaIters; ++i) {
-		auto r = oa::EngineAllocatorAccess::get(rt).allocHostVisible(kBufSize);
-		if (r.isOk()) {
-			auto& b = r.getValue();
-			oa::EngineAllocatorAccess::get(rt).free(b);
-		}
-	}
-	auto t1 = std::chrono::high_resolution_clock::now();
-	auto vmaUs = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
-	oa::F64 vmaNsPerOp = static_cast<oa::F64>(vmaUs * 1000) / static_cast<oa::F64>(kVmaIters);
-
-	alignas(64) oa::U8 backing[64 * kBufSize];
-	oa::VkSlab slab;
-	slab.init(backing, kBufSize, 64);
-
-	constexpr oa::U32 kSlabIters = 100000;
-	auto t2 = std::chrono::high_resolution_clock::now();
-	for (oa::U32 i = 0; i < kSlabIters; ++i) {
-		void* p = slab.alloc();
-		slab.free(p);
-	}
-	auto t3 = std::chrono::high_resolution_clock::now();
-	auto slabUs = std::chrono::duration_cast<std::chrono::microseconds>(t3 - t2).count();
-	oa::F64 slabNsPerOp = static_cast<oa::F64>(slabUs * 1000) / static_cast<oa::F64>(kSlabIters);
-
-	fprintf(stderr, "  VMA alloc+free: %.0f ns/op (%u iters)\n", vmaNsPerOp, kVmaIters);
-	fprintf(stderr, "  Slab alloc+free: %.1f ns/op (%u iters)\n", slabNsPerOp, kSlabIters);
-	if (slabNsPerOp > 0) {
-		fprintf(stderr, "  Speedup: %.0fx\n", vmaNsPerOp / slabNsPerOp);
-	}
 
 	EXPECT_TRUE(rt.close().isOk());
 }

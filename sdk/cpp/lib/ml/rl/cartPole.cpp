@@ -7,7 +7,7 @@
 #include <oa/runtime/engine.h>
 
 #include <ml/rl/environmentKernelPack.h>
-#include <ml/rl/environmentOpRegistry.gen.h>
+#include <ml/rl/gen/environmentOpRegistry.h>
 #include <oa/ml/environmentExecution.h>
 
 #include <bit>

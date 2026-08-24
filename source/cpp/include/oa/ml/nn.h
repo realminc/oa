@@ -12,7 +12,7 @@
 #include <oa/ml/nn/attention.h>
 
 // GENERATED LAYERS
-// Regenerate via: python3 Tools/NnAutogen/oannautogen.py --live
+// Regenerate via: python3 tools/gen/nn/generate.py --live
 #include <oa/ml/nn/layers.h>
 
 // MANUAL LAYERS

@@ -847,7 +847,8 @@ oa::Status oa::Engine::close() {
 
 	{
 		std::lock_guard<std::mutex> lock(impl_->hostVisibleBufferCacheMutex_);
-		for (auto& buf : impl_->hostVisibleBufferCache_) {
+		for (auto& [capacity, buf] : impl_->hostVisibleBufferCache_) {
+			(void)capacity;
 			access.deregisterBuffer(buf);
 			impl_->allocator_.free(buf);
 		}
@@ -1085,19 +1086,10 @@ oa::Result<oavk::Buffer> oa::EngineAccess::allocBuffer(
 
 	{
 		std::lock_guard<std::mutex> lock(impl_->hostVisibleBufferCacheMutex_);
-		oa::I32 best = -1;
-		oa::U64 bestSize = UINT64_MAX;
-		for (oa::U32 i = 0; i < impl_->hostVisibleBufferCache_.size(); ++i) {
-			const auto& candidate = impl_->hostVisibleBufferCache_[i];
-			const oa::U64 capacity = candidate.capacity != 0 ? candidate.capacity : candidate.size;
-			if (capacity >= inSize && capacity < bestSize) {
-				best = static_cast<oa::I32>(i);
-				bestSize = capacity;
-			}
-		}
-		if (best >= 0) {
-			oavk::Buffer reused = impl_->hostVisibleBufferCache_[static_cast<oa::U32>(best)];
-			impl_->hostVisibleBufferCache_.erase(impl_->hostVisibleBufferCache_.begin() + best);
+		auto best = impl_->hostVisibleBufferCache_.lower_bound(inSize);
+		if (best != impl_->hostVisibleBufferCache_.end()) {
+			oavk::Buffer reused = std::move(best->second);
+			impl_->hostVisibleBufferCache_.erase(best);
 			impl_->hostVisibleBufferCacheBytes_ -= reused.capacity;
 			reused.size = inSize;
 			const auto update = updateBufferDescriptor(reused);
@@ -1347,7 +1339,7 @@ void oa::EngineAccess::freeBuffer(oavk::Buffer& inOutBuffer) {
 			impl_->hostVisibleBufferCacheBytes_ + inOutBuffer.capacity <= kHostVisibleCacheMaxBytes;
 		if (canCache) {
 			impl_->hostVisibleBufferCacheBytes_ += inOutBuffer.capacity;
-			impl_->hostVisibleBufferCache_.pushBack(inOutBuffer);
+			impl_->hostVisibleBufferCache_.emplace(inOutBuffer.capacity, inOutBuffer);
 			inOutBuffer = oavk::Buffer{};
 			return;
 		}

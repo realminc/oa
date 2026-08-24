@@ -4,8 +4,8 @@
 on the CMake build. The checker and its policy files are the public executable contract.
 
 ```bash
-python3 tools/architecture/oacheck.py
-python3 tools/architecture/test_oacheck.py
+python3 tools/architecture/oaCheck.py
+python3 tools/architecture/testOaCheck.py
 ```
 
 `modules.json` is the target dependency graph. `dependency_baseline.json`

@@ -1,0 +1,234 @@
+schemaVersion = 1
+
+[[examples]]
+id = "core-matrix-add"
+module = "Core"
+directory = "core"
+stem = "matrix"
+title = "Add two device matrices"
+summary = "Create two GPU-resident matrices, add them, and verify the result after the language-appropriate completion boundary."
+capability = "Vulkan compute"
+cppTarget = "ExampleCoreMatrix"
+pythonProfile = "gpu"
+generated = true
+expectedOutput = "Matrix addition verified: every value is 3"
+cppSymbols = [
+	"oa::Engine::create",
+	"oa::Engine::submit",
+	"oa::FnMatrix::add",
+	"oa::FnMatrix::copyToHost",
+]
+pythonSymbols = [
+	"oa.FnMatrix.add",
+	"oa.FnMatrix.copyToHost",
+]
+
+[[examples.steps]]
+operation = "matrix.ones"
+result = "one"
+shape = [2, 3]
+
+[[examples.steps]]
+operation = "matrix.full"
+result = "two"
+shape = [2, 3]
+value = 2.0
+
+[[examples.steps]]
+operation = "matrix.add"
+result = "sum"
+inputs = ["one", "two"]
+
+[[examples.checks]]
+kind = "matrixAllClose"
+input = "sum"
+count = 6
+value = 3.0
+tolerance = 0.000001
+
+[[examples]]
+id = "audio-process"
+module = "Audio"
+directory = "audio"
+stem = "audio"
+title = "Add room reflections and save audio"
+summary = "Load the OA narration, convert it to mono, normalize it, render a native GPU reverberation tail, then save a checked WAV output."
+capability = "Vulkan compute"
+cppTarget = "ExampleAudio"
+pythonProfile = "gpu"
+generated = true
+expectedOutput = "Saved reverberated audio (1.5 s tail):"
+assets = [
+	"audio/oaNarration.wav",
+	"audio/oaNarration.mp3",
+	"documentation/examples/audio/oaNarrationRoom.wav",
+	"documentation/examples/audio/oaNarrationRoom.mp3",
+	"documentation/examples/audio/oaNarrationRoomViewer.jpg",
+]
+cppSymbols = [
+	"oa::Audio",
+	"oa::FnAudio::decodeFile",
+	"oa::FnAudio::toMono",
+	"oa::FnAudio::normalize",
+	"oa::FnAudio::fade",
+	"oa::FnAudio::reverb",
+	"oa::FnAudio::saveWavF32",
+	"oa::Viewer::preview",
+]
+pythonSymbols = [
+	"oa.Audio",
+	"oa.FnAudio.decodeFile",
+	"oa.FnAudio.toMono",
+	"oa.FnAudio.normalize",
+	"oa.FnAudio.fade",
+	"oa.FnAudio.reverb",
+	"oa.FnAudio.saveWavF32",
+	"oa.Viewer.preview",
+]
+
+[examples.preview]
+input = "output"
+title = "OA audio · room reverb"
+mode = "audio"
+width = 960
+height = 360
+
+[[examples.presentation]]
+kind = "audioComparison"
+title = "Before / after"
+description = "Play the authored narration beside the artifact produced by this exact SDK example. The processed WAV is copied byte-for-byte from var/example/audio/oaNarrationRoom.wav after a successful run."
+
+[[examples.presentation.items]]
+role = "source"
+label = "Source"
+description = "The unprocessed OA narration loaded by the example."
+asset = "audio/oaNarration.wav"
+fallbackAsset = "audio/oaNarration.mp3"
+mimeType = "audio/wav"
+fallbackMimeType = "audio/mpeg"
+sampleRate = 24000
+channelCount = 1
+sampleCount = 300480
+durationSeconds = 12.52
+generatedBy = "OA-authored narration asset"
+
+[[examples.presentation.items]]
+role = "processed"
+label = "Processed"
+description = "Normalized, faded, and rendered through oa::FnAudio::reverb with a 1.5 second tail."
+asset = "documentation/examples/audio/oaNarrationRoom.wav"
+fallbackAsset = "documentation/examples/audio/oaNarrationRoom.mp3"
+mimeType = "audio/wav"
+fallbackMimeType = "audio/mpeg"
+sampleRate = 24000
+channelCount = 1
+sampleCount = 336480
+durationSeconds = 14.02
+generatedBy = "sdk/py/examples/audio/audio.py"
+
+[[examples.presentation]]
+kind = "viewerCapture"
+title = "oa::Viewer"
+description = "The processed WAV opened by this example's optional --preview path in OA's native GPU waveform viewer."
+asset = "documentation/examples/audio/oaNarrationRoomViewer.jpg"
+mimeType = "image/jpeg"
+width = 960
+height = 434
+alt = "oa::Viewer displaying the processed OA narration as a GPU-rendered waveform"
+generatedBy = "bin/release/example/audio/exampleAudio --preview"
+
+[[examples.steps]]
+operation = "audio.decodeAsset"
+result = "audio"
+path = "audio/oaNarration.wav"
+
+[[examples.steps]]
+operation = "audio.toMono"
+result = "mono"
+input = "audio"
+
+[[examples.steps]]
+operation = "audio.normalize"
+result = "normalized"
+input = "mono"
+targetDb = -3.0
+
+[[examples.steps]]
+operation = "audio.fade"
+result = "faded"
+input = "normalized"
+fadeInSamples = 2400
+fadeOutSamples = 2400
+
+[[examples.steps]]
+operation = "audio.reverb"
+result = "reverberated"
+input = "faded"
+decaySeconds = 1.5
+wet = 0.40
+
+[[examples.steps]]
+operation = "audio.saveWavF32"
+result = "output"
+input = "reverberated"
+path = "example/audio/oaNarrationRoom.wav"
+
+[[examples.checks]]
+kind = "audioMetadata"
+input = "reverberated"
+sampleRate = 24000
+channels = 1
+
+[[examples.checks]]
+kind = "audioTail"
+input = "reverberated"
+source = "faded"
+tailMilliseconds = 1500
+
+[[examples.checks]]
+kind = "fileExists"
+input = "output"
+
+# Existing examples remain published while their code moves to the workflow
+# schema one vertical slice at a time.
+[[examples]]
+id = "vision-resize"
+module = "Vision"
+title = "Resize a semantic image"
+summary = "Resize GPU-resident pixels while preserving image layout and channel-format metadata."
+capability = "Vulkan compute"
+generated = false
+cppPath = "sdk/cpp/examples/vision/resize.cpp"
+cppTarget = "ExampleVisionResize"
+pythonPath = "sdk/py/examples/vision/resize.py"
+pythonProfile = "gpu"
+cppSymbols = ["oa::Image", "oa::FnImage::resize", "oa::FnMatrix::copyToHost"]
+pythonSymbols = ["oa.Image", "oa.FnImage.resize", "oa.FnMatrix.copyToHost"]
+
+[[examples]]
+id = "crypto-shake256"
+module = "Crypto"
+title = "Hash a message batch with SHAKE-256"
+summary = "Run three SHAKE-256 digests on the GPU and compare every output byte with the independent CPU implementation."
+capability = "Vulkan compute + Crypto"
+generated = false
+cppPath = "sdk/cpp/examples/crypto/shake256.cpp"
+cppTarget = "ExampleCryptoShake256"
+pythonPath = "sdk/py/examples/crypto/shake256.py"
+pythonProfile = "crypto-gpu"
+cppSymbols = ["oa::FnHash::shake256", "oa::FnMatrix::copyToHost"]
+pythonSymbols = ["oa.FnHash.shake256", "oa.FnMatrix.copyToHost", "oa.ScalarType"]
+
+[[examples]]
+id = "plot-line"
+module = "Ui"
+title = "Render a retained line plot"
+summary = "Record one training-loss series and render the retained figure through the headless GPU compositor into an oa::Image."
+capability = "Vulkan graphics"
+generated = false
+cppPath = "sdk/cpp/examples/plot/line.cpp"
+cppTarget = "ExamplePlotLine"
+pythonPath = "sdk/py/examples/plot/line.py"
+pythonProfile = "gpu"
+cppSymbols = ["oa::plot::Figure", "oa::plot::Axes::plot", "oa::plot::Figure::render"]
+pythonSymbols = ["oa.plot.Figure", "oa.plot.Axes.plot", "oa.plot.Figure.render"]

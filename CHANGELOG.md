@@ -4,6 +4,42 @@ All notable changes to OA are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is the single
 `VERSION` file at the repo root (read by CMake, `oa::version()`, and the Python package).
 
+## [0.7.15] — 2026-08-24 (native audio reverb and executable SDK evidence)
+
+This preview turns the paired SDK examples into small, executable product proofs
+while keeping C++ and Python generated from one checked inventory. It adds no new
+cross-vendor qualification or performance claim.
+
+### Added
+
+- **GPU-native room reverb** — `oa::FnAudio::reverb` and `oa.FnAudio.reverb`
+  apply the same Freeverb-derived comb/allpass topology through four schema-owned
+  Vulkan kernels, with an explicit output tail and a CPU differential oracle.
+- **Unified preview entry point** — `oa::Viewer::preview` and
+  `oa.Viewer.preview` open checked image, audio, or video paths; direct Matrix and
+  Image values retain the same presentation owner.
+- **Executable example evidence** — the Audio example decodes speech, normalizes,
+  fades, reverberates, saves WAV output, and optionally previews it. The checked
+  example manifest publishes playable before/after assets and a cropped,
+  GTK-framed JPEG captured from the exact generated C++ program.
+
+### Changed
+
+- Beginner examples use lazy Python runtime ownership and paired C++/Python
+  generation instead of maintaining independent snippets or manual DSP glue.
+- SDK module cover, audio, image, video, and documentation assets use one checked
+  inventory with camelCase filenames, exact hashes, dimensions, and provenance.
+- The public README now leads with the end-to-end One API/Open Architecture pitch
+  and presents Python as a front end over the same native Vulkan runtime.
+
+### Verification
+
+- The generated C++ and Python Audio programs both execute native reverb and the
+  960×360 Viewer path on the recorded Intel Iris Xe; generator, stub, asset,
+  documentation, drift, and focused Python example gates pass.
+- Broader build, sanitizer, packaging, and hosted release results remain owned by
+  the tagged public workflow.
+
 ## [0.7.14] — 2026-08-24 (unified ML and Vulkan-native spatial math)
 
 This source-breaking preview removes the remaining parallel RL, training,

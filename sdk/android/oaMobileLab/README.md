@@ -56,7 +56,7 @@ existing top-level output convention:
 ```text
 build/android/oaMobileLab/Gradle/   Gradle intermediates and reports
 build/android/oaMobileLab/CMake/    NDK/CMake/Ninja intermediates
-build/android/oaMobileLab/Assets/   verified generated Turnip asset
+build/android/oaMobileLab/assets/   verified generated Turnip and staged SDK assets
 bin/android/oaMobileLab/            installable APKs
 ```
 

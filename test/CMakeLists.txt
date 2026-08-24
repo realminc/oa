@@ -1,6 +1,12 @@
 # OA Test Suite
 # All unit tests, benchmarks, and kernel correctness tests
 
+function(oa_set_test_paths TARGET)
+	set_property(TEST ${TARGET} APPEND PROPERTY ENVIRONMENT
+		"OA_ASSET_DIR=${oa_SOURCE_DIR}/sdk/asset"
+		"OA_DATA_DIR=${OA_TEST_DATA_DIR}")
+endfunction()
+
 # Test helper for host tests. OA owns the main so capability profiles can turn
 # any selected GoogleTest skip into a process failure.
 function(oa_add_test TARGET SOURCE SUBDIR)
@@ -12,6 +18,7 @@ function(oa_add_test TARGET SOURCE SUBDIR)
 	string(REGEX REPLACE "^cpp/" "" _oa_output_subdir "${SUBDIR}")
 	set_target_properties(${TARGET} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${OA_BIN_DIR}/test/${_oa_output_subdir}")
 	add_test(NAME ${TARGET} COMMAND ${TARGET})
+	oa_set_test_paths(${TARGET})
 endfunction()
 
 # ML test helper (uses custom MlTestMain.cpp for Vulkan environment setup)
@@ -26,6 +33,7 @@ function(oa_add_ml_test TARGET SOURCE SUBDIR)
 	string(REGEX REPLACE "^cpp/" "" _oa_output_subdir "${SUBDIR}")
 	set_target_properties(${TARGET} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${OA_BIN_DIR}/test/${_oa_output_subdir}")
 	add_test(NAME ${TARGET} COMMAND ${TARGET})
+	oa_set_test_paths(${TARGET})
 	if(SOURCE MATCHES [[cpp/ml/]])
 		set_tests_properties(${TARGET} PROPERTIES LABELS "gpu_bindless;ml")
 	else()
@@ -52,7 +60,8 @@ function(oa_add_native_profile_test NAME TARGET PROFILE FILTER)
 		COMMAND $<TARGET_FILE:${TARGET}> --gtest_filter=${FILTER})
 	set_tests_properties(${NAME} PROPERTIES
 		LABELS ${PROFILE}
-		ENVIRONMENT "OA_TEST_FORBID_SKIPS=1")
+		ENVIRONMENT
+			"OA_TEST_FORBID_SKIPS=1;OA_ASSET_DIR=${oa_SOURCE_DIR}/sdk/asset;OA_DATA_DIR=${OA_TEST_DATA_DIR}")
 endfunction()
 
 # Crypto test helper (uses custom CryptoTestMain.cpp for Vulkan environment setup)
@@ -63,6 +72,7 @@ function(oa_add_crypto_test TARGET SOURCE SUBDIR)
 	string(REGEX REPLACE "^cpp/" "" _oa_output_subdir "${SUBDIR}")
 	set_target_properties(${TARGET} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${OA_BIN_DIR}/test/${_oa_output_subdir}")
 	add_test(NAME ${TARGET} COMMAND ${TARGET})
+	oa_set_test_paths(${TARGET})
 	if(TARGET oa_shaders)
 		add_dependencies(${TARGET} oa_shaders)
 	endif()
@@ -74,6 +84,22 @@ endfunction()
 oa_add_test(TestTypes            cpp/core/misc/testTypes.cpp            cpp/core/misc)
 oa_add_test(TestCoreMisc         cpp/core/misc/testCoreMisc.cpp         cpp/core/misc)
 oa_add_test(TestValidation       cpp/core/misc/testValidation.cpp       cpp/core/misc)
+oa_add_test(TestVlm              cpp/core/vlm/testVlm.cpp               cpp/core/vlm)
+
+# Host-only VLM microbenchmark. It is deliberately not a CTest: release claims
+# use fresh-process runs with pinned compiler, CPU, clocks, and thermal state.
+add_executable(BenchVlm cpp/core/vlm/benchVlm.cpp)
+target_link_libraries(BenchVlm PRIVATE oa)
+target_include_directories(BenchVlm SYSTEM PRIVATE
+	${PROJECT_SOURCE_DIR}/source/cpp/thirdparty/xsimd/include)
+set_target_properties(BenchVlm PROPERTIES
+	RUNTIME_OUTPUT_DIRECTORY "${OA_BIN_DIR}/test/core/vlm")
+set(OA_VLM_GLM_ROOT "" CACHE PATH
+	"Optional GLM include root for the historical VLM peer benchmark")
+if(OA_VLM_GLM_ROOT AND EXISTS "${OA_VLM_GLM_ROOT}/glm/glm.hpp")
+	target_include_directories(BenchVlm SYSTEM PRIVATE "${OA_VLM_GLM_ROOT}")
+	target_compile_definitions(BenchVlm PRIVATE OA_VLM_HAS_GLM=1)
+endif()
 
 # cpp/core/memory tests
 oa_add_test(TestMemory           cpp/core/memory/testMemory.cpp         cpp/core/memory)
@@ -137,7 +163,7 @@ oa_add_ml_test(TestClipText      cpp/ml/nn/testClipText.cpp             cpp/ml/n
 target_link_libraries(TestClipText PRIVATE oaSdkSupport)
 
 set_tests_properties(
-	TestTypes TestMemory TestContainers TestThreading TestCoreMisc TestValidation
+	TestTypes TestMemory TestContainers TestThreading TestCoreMisc TestValidation TestVlm
 	TestTransferWeights TestModelFileIntegrity TestTokenizer TestGptOssConfig
 	PROPERTIES LABELS "core"
 )
@@ -211,7 +237,7 @@ target_include_directories(TestGemmRouter PRIVATE ${oa_SOURCE_DIR}/source/cpp/li
 # CORE MATRIX TESTS (Generated from schemas)
 # ═══════════════════════════════════════════════════════════════════════════
 
-# Re-enabled: Fixed autogen test generator (swiglu/siluMul/geglu marked skip_test)
+# Re-enabled: fixed generated tests (swiglu/siluMul/geglu marked skip_test)
 oa_add_ml_test(TestFnMatrixBlas cpp/core/fnmatrix/blas/testFnMatrixBlas.cpp cpp/core/fnmatrix/blas)
 oa_add_ml_test(TestFnMatrixBlasSimple cpp/core/fnmatrix/blas/testFnMatrixBlasSimple.cpp cpp/core/fnmatrix/blas)
 oa_add_ml_test(TestFnMatrixElemwise cpp/core/fnmatrix/elemwise/testFnMatrixElemwise.gen.cpp cpp/core/fnmatrix/elemwise)
@@ -228,7 +254,7 @@ oa_add_ml_test(TestTopKBug cpp/core/fnmatrix/util/testTopKBug.cpp cpp/core/fnmat
 # ML MATRIX TESTS (Generated from schemas)
 # ═══════════════════════════════════════════════════════════════════════════
 
-# Re-enabled: Fixed autogen test generator (swiglu/siluMul/geglu marked skip_test)
+# Re-enabled: fixed generated tests (swiglu/siluMul/geglu marked skip_test)
 oa_add_ml_test(TestFnMatrixActivation cpp/ml/fnmatrix/activation/testFnMatrixActivation.gen.cpp cpp/ml/fnmatrix/activation)
 oa_add_ml_test(TestFnMatrixEmbed cpp/ml/fnmatrix/embed/testFnMatrixEmbed.gen.cpp cpp/ml/fnmatrix/embed)
 oa_add_ml_test(TestFnLoss cpp/ml/loss/testFnLoss.cpp cpp/ml/loss)
@@ -402,10 +428,10 @@ add_test(
 set_tests_properties(TestSpirvEmbedGenerator PROPERTIES LABELS "core;generation")
 find_program(OA_TEST_PYTHON_EXECUTABLE NAMES python3 python REQUIRED)
 add_test(
-	NAME TestKernelAutogen
+	NAME TestKernelGeneration
 	COMMAND ${OA_TEST_PYTHON_EXECUTABLE}
-		${oa_SOURCE_DIR}/tools/kernelAutogen/test_kernelautogen.py)
-set_tests_properties(TestKernelAutogen PROPERTIES LABELS "core;generation")
+		${oa_SOURCE_DIR}/tools/gen/kernel/testGenerate.py)
+set_tests_properties(TestKernelGeneration PROPERTIES LABELS "core;generation")
 oa_add_ml_test(TestEngineInit cpp/runtime/engine/testEngineInit.cpp cpp/runtime/engine)
 oa_add_test(TestVkDispatch cpp/runtime/engine/testVkDispatch.cpp cpp/runtime/engine)
 set_tests_properties(TestVkDispatch PROPERTIES LABELS "core;runtime")
@@ -466,6 +492,16 @@ add_executable(BenchMemory cpp/core/memory/benchMemory.cpp)
 target_link_libraries(BenchMemory PRIVATE oa)
 target_include_directories(BenchMemory PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/cpp)
 set_target_properties(BenchMemory PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${OA_BIN_DIR}/test/core/memory")
+
+# Engine-owned allocator-policy benchmark. Raw VMA internals remain the
+# upstream allocator's responsibility; OA measures its cache/reuse seam here.
+add_executable(BenchAllocator cpp/runtime/memory/benchAllocator.cpp)
+target_link_libraries(BenchAllocator PRIVATE oa)
+target_include_directories(BenchAllocator PRIVATE
+	${CMAKE_CURRENT_SOURCE_DIR}/cpp
+	${PROJECT_SOURCE_DIR}/source/cpp/lib)
+set_target_properties(BenchAllocator PROPERTIES
+	RUNTIME_OUTPUT_DIRECTORY "${OA_BIN_DIR}/test/runtime/memory")
 
 # Persistent mapped upload ring vs allocate/submit/wait/free per copy.
 # Deliberately not registered with ctest: this is a controlled benchmark.
@@ -551,7 +587,7 @@ endif()
 # Current-device empirical cpp/compute/memory ceilings with correctness oracles,
 # calibrated clocks, and structured execution counters. Deliberately not
 # registered with ctest: canonical evidence uses seven fresh processes through
-# tools/diagnostics/oabenchsuite.py.
+# tools/diagnostics/oaBenchSuite.py.
 add_executable(BenchDeviceRoofline
 	cpp/runtime/profiling/benchDeviceRoofline.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/cpp/ml/mlTestMain.cpp)
@@ -588,8 +624,9 @@ oa_add_native_profile_test(CpuVulkanGruSmoke TestGru cpu_vulkan_smoke
 # are separate from the portable host/GPU contracts.
 oa_require_no_skips(native_host
 	TestTypes TestMemory TestContainers TestThreading TestCoreMisc TestValidation
+	TestVlm
 	TestCamera TestTransferWeights TestModelFileIntegrity TestTokenizer TestGptOssConfig
-	TestOaStd TestSpirvEmbedGenerator TestKernelAutogen)
+	TestOaStd TestSpirvEmbedGenerator TestKernelGeneration)
 
 get_property(_oa_native_gpu_tests GLOBAL PROPERTY OA_NATIVE_GPU_TESTS)
 list(REMOVE_ITEM _oa_native_gpu_tests
@@ -612,7 +649,7 @@ if(TEST TestPresenterWsi)
 endif()
 
 find_program(OA_TEST_FFMPEG_EXECUTABLE ffmpeg)
-set(_oa_video_dataset "${oa_SOURCE_DIR}/../dataset/video")
+set(_oa_video_dataset "${OA_TEST_DATA_DIR}/video")
 if(OA_TEST_FFMPEG_EXECUTABLE
 	AND EXISTS "${_oa_video_dataset}/shibuya_crossing_1080p30_h264.mp4"
 	AND EXISTS "${_oa_video_dataset}/shibuya_crossing_1080p30_h265.mp4"
@@ -638,7 +675,7 @@ if(OA_TEST_FFMPEG_EXECUTABLE
 		NativeIrisXeVideoSessionLifecycle
 		PROPERTIES
 			ENVIRONMENT
-				"OA_TEST_FORBID_SKIPS=1;OA_REQUIRE_DEVICE_PROFILE=iris-xe-tgl"
+				"OA_TEST_FORBID_SKIPS=1;OA_REQUIRE_DEVICE_PROFILE=iris-xe-tgl;OA_ASSET_DIR=${oa_SOURCE_DIR}/sdk/asset;OA_DATA_DIR=${OA_TEST_DATA_DIR}"
 			WORKING_DIRECTORY "${oa_SOURCE_DIR}")
 else()
 	message(STATUS

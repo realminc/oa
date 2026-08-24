@@ -1,0 +1,60 @@
+schemaVersion = 1
+
+[[pack]]
+id = "fashionMnist"
+version = "1"
+license = "MIT"
+source = "https://github.com/zalandoresearch/fashion-mnist/tree/b2617bb6d3ffa2e429640350f613e3291e10b141/data/fashion"
+description = "Fashion-MNIST IDX training and test images and labels"
+
+[[pack.file]]
+path = "t10k-images-idx3-ubyte"
+url = "https://raw.githubusercontent.com/zalandoresearch/fashion-mnist/b2617bb6d3ffa2e429640350f613e3291e10b141/data/fashion/t10k-images-idx3-ubyte.gz"
+downloadBytes = 4422102
+downloadSha256 = "346e55b948d973a97e58d2351dde16a484bd415d4595297633bb08f03db6a073"
+compression = "gzip"
+bytes = 7840016
+sha256 = "5b4141f0afbad91edebe8549f8fcffe087ea10ca49f1dbef5c9a5cd8815ce37b"
+
+[[pack.file]]
+path = "t10k-labels-idx1-ubyte"
+url = "https://raw.githubusercontent.com/zalandoresearch/fashion-mnist/b2617bb6d3ffa2e429640350f613e3291e10b141/data/fashion/t10k-labels-idx1-ubyte.gz"
+downloadBytes = 5148
+downloadSha256 = "67da17c76eaffca5446c3361aaab5c3cd6d1c2608764d35dfb1850b086bf8dd5"
+compression = "gzip"
+bytes = 10008
+sha256 = "0402a96d92fd2663957122ceb108a494c5af83dab82d92729df917d7dec38c34"
+
+[[pack.file]]
+path = "train-images-idx3-ubyte"
+url = "https://raw.githubusercontent.com/zalandoresearch/fashion-mnist/b2617bb6d3ffa2e429640350f613e3291e10b141/data/fashion/train-images-idx3-ubyte.gz"
+downloadBytes = 26421880
+downloadSha256 = "3aede38d61863908ad78613f6a32ed271626dd12800ba2636569512369268a84"
+compression = "gzip"
+bytes = 47040016
+sha256 = "c59f468a2f672dc815687fe0f83887768d799fd8a3f3276145d20f83aa44d888"
+
+[[pack.file]]
+path = "train-labels-idx1-ubyte"
+url = "https://raw.githubusercontent.com/zalandoresearch/fashion-mnist/b2617bb6d3ffa2e429640350f613e3291e10b141/data/fashion/train-labels-idx1-ubyte.gz"
+downloadBytes = 29515
+downloadSha256 = "a04f17134ac03560a47e3764e11b92fc97de4d1bfaf8ba1a3aa29af54cc90845"
+compression = "gzip"
+bytes = 60008
+sha256 = "bad3541b69d912435c50bb6ba87bec294ff4f6a2e1246121d8633921760443d9"
+
+[[pack]]
+id = "tinyShakespeare"
+version = "1"
+license = "Public-domain source text; dataset assembly from MIT-licensed char-rnn"
+source = "https://github.com/karpathy/char-rnn/tree/6f9487a6fe5b420b7ca9afb0d7c078e37c1d1b4e/data/tinyshakespeare"
+description = "Pinned tiny Shakespeare corpus for language-model tutorials"
+
+[[pack.file]]
+path = "input.txt"
+url = "https://raw.githubusercontent.com/karpathy/char-rnn/6f9487a6fe5b420b7ca9afb0d7c078e37c1d1b4e/data/tinyshakespeare/input.txt"
+downloadBytes = 1115394
+downloadSha256 = "86c4e6aa9db7c042ec79f339dcb96d42b0075e16b8fc2e86bf0ca57e2dc565ed"
+compression = "none"
+bytes = 1115394
+sha256 = "86c4e6aa9db7c042ec79f339dcb96d42b0075e16b8fc2e86bf0ca57e2dc565ed"

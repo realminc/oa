@@ -1,11 +1,14 @@
 // OA Tutorial: TutorialViewerAudio — audio playback through oa::Viewer.
 
 #include <oa/ui/viewer.h>
+#include <oa/core/paths.h>
 
 int main(int argc, char** argv) {
 	oa::ViewerConfig config;
 	config.mode = oa::ViewerMode::Audio;
-	config.path = argc > 1 ? argv[1] : "Asset/Audio/0_jackson_0.flac";
+	config.path = argc > 1
+		? oa::String(argv[1])
+		: oa::Paths::asset("audio/oaNarration.flac").string();
 	if (argc > 2) {
 		const oa::StringView view(argv[2]);
 		if (view == "spectrum") config.audioView = oa::ViewerAudioView::Spectrum;

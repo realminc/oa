@@ -9,6 +9,7 @@
 // general 3D scene, camera, depth, or surface-plot API.
 
 #include <oa/core/filesystem.h>
+#include <oa/core/paths.h>
 #include <oa/runtime/engine.h>
 #include <oa/ui/plot/plot.h>
 
@@ -394,7 +395,7 @@ void usage(const char* inProgram) {
 } // namespace
 
 int main(int argc, char** argv) {
-	oa::Path output("docs/external/assets/plot");
+	oa::Path output = oa::Paths::var("artifact/plot");
 	bool show = true;
 	for (int i = 1; i < argc; ++i) {
 		if (std::strcmp(argv[i], "--headless") == 0) {

@@ -23,25 +23,18 @@
 
 namespace {
 
-#if defined(_WIN32)
-constexpr const char *kShibuyaH264 =
-    "../dataset/video/shibuya_crossing_1080p30_h264.mp4";
-constexpr const char *kShibuyaH265 =
-    "../dataset/video/shibuya_crossing_1080p30_h265.mp4";
-constexpr const char *kShibuyaAv1 =
-    "../dataset/video/shibuya_crossing_1080p30_av1.mp4";
-constexpr const char *kShibuyaVp9 =
-    "../dataset/video/shibuya_crossing_1080p30_vp9.mp4";
-#else
-constexpr const char *kShibuyaH264 =
-    "../dataset/video/shibuya_crossing_1080p30_h264.mp4";
-constexpr const char *kShibuyaH265 =
-    "../dataset/video/shibuya_crossing_1080p30_h265.mp4";
-constexpr const char *kShibuyaAv1 =
-    "../dataset/video/shibuya_crossing_1080p30_av1.mp4";
-constexpr const char *kShibuyaVp9 =
-    "../dataset/video/shibuya_crossing_1080p30_vp9.mp4";
-#endif
+const std::string kShibuyaH264Storage = oa::Paths::data(
+    "video/shibuya_crossing_1080p30_h264.mp4").string().stdStr();
+const std::string kShibuyaH265Storage = oa::Paths::data(
+    "video/shibuya_crossing_1080p30_h265.mp4").string().stdStr();
+const std::string kShibuyaAv1Storage = oa::Paths::data(
+    "video/shibuya_crossing_1080p30_av1.mp4").string().stdStr();
+const std::string kShibuyaVp9Storage = oa::Paths::data(
+    "video/shibuya_crossing_1080p30_vp9.mp4").string().stdStr();
+const char* kShibuyaH264 = kShibuyaH264Storage.c_str();
+const char* kShibuyaH265 = kShibuyaH265Storage.c_str();
+const char* kShibuyaAv1 = kShibuyaAv1Storage.c_str();
+const char* kShibuyaVp9 = kShibuyaVp9Storage.c_str();
 
 bool datasetAvailable(const char *inPath) {
   auto status = oa::Filesystem::readBinary(oa::Path(inPath));
@@ -190,7 +183,7 @@ TEST(VideoDemuxer, NativeContainerCoverage) {
 
   struct Fixture {
     const char *path;
-    const char *command;
+    std::string command;
     oa::VideoContainerKind kind;
     oa::VideoCodec codec;
     bool expectAnnexB;
@@ -198,18 +191,16 @@ TEST(VideoDemuxer, NativeContainerCoverage) {
   const Fixture fixtures[] = {
       {
           "/tmp/oa_video_demuxer_h264.mkv",
-          "ffmpeg -v error -y -i "
-          "../dataset/video/shibuya_crossing_1080p30_h264.mp4 -map 0:v:0 -c "
-          "copy -an /tmp/oa_video_demuxer_h264.mkv",
+          std::string("ffmpeg -v error -y -i \"") + kShibuyaH264 +
+          "\" -map 0:v:0 -c copy -an /tmp/oa_video_demuxer_h264.mkv",
           oa::VideoContainerKind::Matroska,
           oa::VideoCodec::H264,
           true,
       },
       {
           "/tmp/oa_video_demuxer_h264.ts",
-          "ffmpeg -v error -y -i "
-          "../dataset/video/shibuya_crossing_1080p30_h264.mp4 -map 0:v:0 -c "
-          "copy -an -bsf:v h264_mp4toannexb -f mpegts "
+          std::string("ffmpeg -v error -y -i \"") + kShibuyaH264 +
+          "\" -map 0:v:0 -c copy -an -bsf:v h264_mp4toannexb -f mpegts "
           "/tmp/oa_video_demuxer_h264.ts",
           oa::VideoContainerKind::MpegTs,
           oa::VideoCodec::H264,
@@ -217,9 +208,9 @@ TEST(VideoDemuxer, NativeContainerCoverage) {
       },
       {
           "/tmp/oa_video_demuxer_h264_fragmented.mp4",
-          "ffmpeg -v error -y -i "
-          "../dataset/video/shibuya_crossing_1080p30_h264.mp4 -map 0:v:0 -c "
-          "copy -an -movflags frag_keyframe+empty_moov+default_base_moof "
+          std::string("ffmpeg -v error -y -i \"") + kShibuyaH264 +
+          "\" -map 0:v:0 -c copy -an "
+          "-movflags frag_keyframe+empty_moov+default_base_moof "
           "/tmp/oa_video_demuxer_h264_fragmented.mp4",
           oa::VideoContainerKind::Mp4,
           oa::VideoCodec::H264,
@@ -227,9 +218,8 @@ TEST(VideoDemuxer, NativeContainerCoverage) {
       },
       {
           "/tmp/oa_video_demuxer_vp9.webm",
-          "ffmpeg -v error -y -i "
-          "../dataset/video/shibuya_crossing_1080p30_vp9.mp4 -map 0:v:0 -c "
-          "copy -an /tmp/oa_video_demuxer_vp9.webm",
+          std::string("ffmpeg -v error -y -i \"") + kShibuyaVp9 +
+          "\" -map 0:v:0 -c copy -an /tmp/oa_video_demuxer_vp9.webm",
           oa::VideoContainerKind::WebM,
           oa::VideoCodec::VP9,
           false,
@@ -237,7 +227,7 @@ TEST(VideoDemuxer, NativeContainerCoverage) {
   };
 
   for (const Fixture &fixture : fixtures) {
-    ASSERT_EQ(std::system(fixture.command), 0) << fixture.path;
+    ASSERT_EQ(std::system(fixture.command.c_str()), 0) << fixture.path;
     auto demuxerResult = oa::VideoDemuxer::open(fixture.path);
     ASSERT_TRUE(demuxerResult.isOk())
         << fixture.path << ": " << demuxerResult.getStatus().toString().cStr();

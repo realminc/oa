@@ -1,0 +1,275 @@
+# Fn schema — Ml/FnMatrix normalization operations.
+surface = "public_operation"
+generate_python_bindings = true
+autograd_node_header = "oa/ml/autograd/matrix/autogradNorm.h"
+#
+# This is the *source of truth* for ML normalization functions. The generator
+# emits .h declarations, .cpp implementations, and .slang shaders from this file.
+# See tools/gen/fn/rEADME.md and tools/gen/fn/generate.py.
+#
+# Normalization operations are per-row operations that normalize across features.
+# Each has a forward kernel and a backward kernel for autograd.
+
+# --- RmsNorm -----------------------------------------------------------------
+[[ops]]
+name           = "rmsNorm"
+category       = "Norm"
+kind           = "unary_scalar"
+kernel_forward = "RmsNorm"
+kernel_backward = "RmsNormBwd"
+slang_path     = "Ml/Nn/Norm"
+log_component  = "ML"
+notes          = "Weighted root mean square normalization over the last dimension: out = (A / sqrt(mean(A^2) + Eps)) * Weight."
+body           = "manual_session"
+scalar_param   = { name = "eps", type = "oa::F32", push_field = "Eps" }
+api_params     = [
+    "const oa::Matrix& inSelf",
+    "const oa::Matrix& inWeight",
+    "oa::F32 inEps",
+]
+api_return     = "oa::Matrix"
+
+[ops.contract]
+input_kinds         = ["matrix", "matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+
+[ops.dnn]
+role = "rms_norm"
+
+[ops.autograd]
+grad_class   = "oa::GradRmsNorm"
+inputs       = ["inSelf", "inWeight"]
+saved        = ["inSelf", "inWeight"]
+formula      = "manual"
+attach       = "standard"
+output_shape = true
+state        = [{ member = "eps_", source = "inEps", type = "oa::F32" }]
+
+# --- LayerNorm ---------------------------------------------------------------
+[[ops]]
+name           = "layerNorm"
+category       = "Norm"
+kind           = "unary_scalar"
+kernel_forward = "LayerNorm"
+kernel_backward = "LayerNormBwd"
+slang_path     = "Ml/Nn/Norm"
+log_component  = "ML"
+notes          = "Affine layer normalization over the last dimension: out = ((A - mean(A)) / sqrt(var(A) + Eps)) * Weight + Bias."
+body           = "manual_session"
+scalar_param   = { name = "eps", type = "oa::F32", push_field = "Eps" }
+api_params     = [
+    "const oa::Matrix& inSelf",
+    "const oa::Matrix& inWeight",
+    "const oa::Matrix& inBias",
+    "oa::F32 inEps",
+]
+api_return     = "oa::Matrix"
+
+[ops.contract]
+input_kinds         = ["matrix", "matrix", "matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+
+[ops.autograd]
+grad_class   = "oa::GradLayerNorm"
+inputs       = ["inSelf", "inWeight", "inBias"]
+saved        = ["inSelf", "inWeight", "inBias", "out"]
+formula      = "manual"
+attach       = "standard"
+output_shape = true
+state        = [{ member = "eps_", source = "inEps", type = "oa::F32" }]
+
+# --- ResidualRmsNorm ---------------------------------------------------------
+[[ops]]
+name           = "residualRmsNorm"
+category       = "Norm"
+kind           = "binary"
+kernel_forward = "ResidualRmsNorm"
+slang_path     = "Ml/Nn/Norm"
+log_component  = "ML"
+notes          = "Fused residual + RMS norm: out = (A + B) / sqrt(mean((A+B)^2) + Eps)."
+body           = "manual_session"
+generate_declaration = false
+api_params     = [
+    "const oa::Matrix& inA",
+    "const oa::Matrix& inB",
+    "const oa::Matrix& inWeight",
+    "oa::F32 inEps",
+]
+api_return     = "oa::ResidualRmsNormResult"
+
+[ops.python_result]
+cpp_type = "oa::ResidualRmsNormResult"
+members  = ["out", "residual"]
+
+[ops.contract]
+input_kinds         = ["matrix", "matrix", "matrix"]
+output_kinds        = ["matrix", "matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1, -1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+attributes = [
+    { name = "eps", kind = "float", source = "inEps" },
+]
+
+[ops.dnn]
+role = "residual_rms_norm"
+
+[ops.autograd]
+formula        = "manual"
+attach         = "manual"
+inputs         = ["inA", "inB", "inWeight"]
+outputs        = ["out", "Residual"]
+implementation = "source/cpp/lib/oa/Ml/FnMatrix/Norm/FnMatrixNorm.cpp"
+
+# --- Gated RMS normalization ------------------------------------------------
+[[ops]]
+name = "rmsNormGated"
+category = "Norm"
+kind = "unary"
+kernel_forward = "RmsNormGated"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inSelf",
+    "const oa::Matrix& inWeight",
+    "const oa::Matrix& inBias",
+    "const oa::Matrix& inZ",
+    "oa::F32 inEps",
+    "bool inNormBeforeGate",
+]
+notes = "Apply fused RMS normalization over the last dimension, broadcast affine weight and optional bias, and a SiLU gate; reverse mode is supported for the norm-before-gate path."
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix", "matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "conditional"
+differentiation = "reverse"
+lowering = "dispatch"
+optional_inputs = [2]
+attributes = [
+    { name = "eps", kind = "float", source = "inEps" },
+    { name = "normBeforeGate", kind = "boolean", source = "inNormBeforeGate" },
+]
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inSelf", "inWeight", "inBias", "inZ"]
+outputs = ["out"]
+implementation = "source/cpp/lib/oa/Ml/FnMatrix/Norm/FnMatrixNorm.cpp:RmsNormGated"
+
+[ops.python]
+args = ["self", "weight", "bias", "z", "eps", "normBeforeGate"]
+doc = "Apply fused gated RMS normalization."
+
+[[ops]]
+name = "rmsNormGatedBwd"
+category = "Norm"
+kind = "unary"
+kernel_forward = "RmsNormGatedBwd"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::RmsNormGatedBwdResult"
+api_params = [
+    "const oa::Matrix& inX",
+    "const oa::Matrix& inWeight",
+    "const oa::Matrix& inBias",
+    "const oa::Matrix& inZ",
+    "const oa::Matrix& inGradOutput",
+    "oa::F32 inEps",
+]
+notes = "Compute the explicit gated RMS normalization adjoints, including reductions for broadcast affine parameters."
+
+[ops.kernel]
+id_prefix = "Ml"
+id_local = 346
+category = "Ml"
+origin = "oa"
+source = "nn/rmsnorm/rmsNormGatedBwd"
+
+[ops.python_result]
+cpp_type = "oa::RmsNormGatedBwdResult"
+members = ["dX", "dWeight", "dBias", "dZ"]
+
+[ops.contract]
+input_kinds = ["matrix", "matrix", "matrix", "matrix", "matrix"]
+output_kinds = ["matrix", "matrix", "matrix", "matrix"]
+shape_rule = "explicit"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1, -1, -1, -1]
+control_flow = "conditional"
+differentiation = "none"
+lowering = "dispatch"
+optional_inputs = [2]
+attributes = [
+    { name = "eps", kind = "float", source = "inEps" },
+]
+
+[ops.python]
+args = ["x", "weight", "bias", "z", "gradOutput", "eps"]
+doc = "Compute explicit gated RMS normalization gradients."
+
+[[ops]]
+name = "heavyTailActivation"
+category = "Norm"
+kind = "unary"
+kernel_forward = "ClampMin"
+body = "manual_session"
+generate_declaration = false
+api_return = "oa::Matrix"
+api_params = [
+    "const oa::Matrix& inSelf",
+]
+notes = "Apply the positive piecewise heavy-tail activation used by state-space A parameterization."
+
+[ops.contract]
+input_kinds = ["matrix"]
+output_kinds = ["matrix"]
+shape_rule = "match_input"
+dtype_rule = "match_input"
+effects = ["read_inputs", "write_outputs"]
+mutated_inputs = []
+output_alias_inputs = [-1]
+control_flow = "straight_line"
+differentiation = "reverse"
+lowering = "dispatch"
+
+[ops.autograd]
+formula = "manual"
+attach = "manual"
+inputs = ["inSelf"]
+outputs = ["out"]
+implementation = "source/cpp/lib/oa/Ml/FnMatrix/Norm/FnMatrixNorm.cpp:HeavyTailActivation"
+
+[ops.python]
+args = ["self"]
+doc = "Apply the positive state-space heavy-tail activation."

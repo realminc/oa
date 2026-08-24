@@ -1,0 +1,103 @@
+# Fn schema — Ml/FnMatrix pooling ops (4).
+surface = "public_operation"
+generate_python_bindings = true
+autograd_node_header = "oa/ml/autograd/matrix/autogradPool.h"
+#
+# This is the *source of truth* for ML pooling functions. The generator
+# emits .h declarations, .cpp implementations, and .slang shaders from this file.
+# See tools/gen/fn/rEADME.md and tools/gen/fn/generate.py.
+#
+# Pooling operations downsample spatial dimensions by applying a reduction
+# operation (max or average) over local windows.
+
+# --- MaxPool2d ---------------------------------------------------------------
+[[ops]]
+name           = "maxPool2d"
+category       = "Pool"
+kind           = "unary"
+kernel_forward = "MaxPool2d"
+kernel_backward = "MaxPool2dBwd"
+slang_path     = "Ml/Nn/Pool"
+log_component  = "ML"
+notes          = "2D max pooling: out = max(A[window])."
+body           = "manual_session"
+generate_declaration = false
+api_params   = [
+    "const oa::Matrix& inX",
+    "oa::I32 inKernelSize",
+    "oa::I32 inStride",
+    "oa::I32 inPadding",
+]
+api_return     = "oa::MaxPool2dResult"
+
+[ops.python_result]
+cpp_type = "oa::MaxPool2dResult"
+members  = ["out", "indices"]
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix", "matrix"]
+shape_rule          = "explicit"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1, -1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+attributes = [
+    { name = "kernelSize", kind = "signed_integer", source = "inKernelSize" },
+    { name = "stride", kind = "signed_integer", source = "inStride" },
+    { name = "padding", kind = "signed_integer", source = "inPadding" },
+]
+
+[ops.autograd]
+grad_class = "oa::GradMaxPool2d"
+inputs     = ["inX"]
+saved      = ["inX", "out", "indices"]
+
+# --- AvgPool2d ---------------------------------------------------------------
+[[ops]]
+name           = "avgPool2d"
+category       = "Pool"
+kind           = "unary"
+kernel_forward = "AvgPool2d"
+kernel_backward = "AvgPool2dBwd"
+slang_path     = "Ml/Nn/Pool"
+log_component  = "ML"
+notes          = "2D average pooling: out = mean(A[window])."
+body           = "manual_session"
+generate_declaration = false
+api_params   = [
+    "const oa::Matrix& inX",
+    "oa::I32 inKernelSize",
+    "oa::I32 inStride",
+    "oa::I32 inPadding",
+]
+api_return     = "oa::Matrix"
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "explicit"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+attributes = [
+    { name = "kernelSize", kind = "signed_integer", source = "inKernelSize" },
+    { name = "stride", kind = "signed_integer", source = "inStride" },
+    { name = "padding", kind = "signed_integer", source = "inPadding" },
+]
+
+[ops.python]
+args = ["x", "kernelSize", "stride", "padding"]
+doc = "Apply 2D average pooling to an NCHW matrix."
+
+[ops.autograd]
+grad_class = "oa::GradAvgPool2d"
+inputs     = ["inX"]
+saved      = ["inX"]

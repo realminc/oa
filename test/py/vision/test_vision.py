@@ -75,7 +75,7 @@ def test_image_metadata_contract(engine):
 
 
 def test_still_image_codec_roundtrip(engine, tmp_path):
-	asset = REPO_ROOT / "asset" / "image" / "visionTestPattern320x180.png"
+	asset = REPO_ROOT / "sdk" / "asset" / "image" / "visionTestPattern320x180.png"
 	image = vision.decodeFile(asset)
 	assert image.validate()
 	assert image.asMatrix().shape() == [1, 3, 180, 320]
@@ -94,7 +94,7 @@ def test_still_image_codec_roundtrip(engine, tmp_path):
 
 
 def test_semantic_image_intro_pipeline(engine):
-	asset = REPO_ROOT / "asset" / "image" / "visionTestPattern320x180.jpg"
+	asset = REPO_ROOT / "sdk" / "asset" / "image" / "visionTestPattern320x180.jpg"
 	image = vision.decodeFile(asset)
 	small = vision.resize(image, 16, 9)
 	adjusted = vision.brightnessContrast(small, 0.05, 1.1)

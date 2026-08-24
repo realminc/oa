@@ -1733,7 +1733,7 @@ TEST(Simd, DotProduct) {
 		b[i] = static_cast<oa::F32>(N - i) * 0.01f;
 		expected += a[i] * b[i];
 	}
-	oa::F32 result = oa::Simd::dotF32(a, b, N);
+	oa::F32 result = oa::FnSimd::dotF32(a, b, N);
 	EXPECT_NEAR(result, expected, 0.1f);
 }
 
@@ -1741,7 +1741,7 @@ TEST(Simd, scale) {
 	constexpr oa::I64 N = 128;
 	oa::F32 data[N];
 	for (oa::I64 i = 0; i < N; ++i) data[i] = static_cast<oa::F32>(i);
-	oa::Simd::scaleF32(data, 2.0f, N);
+	oa::FnSimd::scaleF32(data, 2.0f, N);
 	for (oa::I64 i = 0; i < N; ++i) {
 		EXPECT_FLOAT_EQ(data[i], static_cast<oa::F32>(i) * 2.0f);
 	}
@@ -1754,7 +1754,7 @@ TEST(Simd, Add) {
 		a[i] = static_cast<oa::F32>(i);
 		b[i] = 1.0f;
 	}
-	oa::Simd::addF32(a, b, N);
+	oa::FnSimd::addF32(a, b, N);
 	for (oa::I64 i = 0; i < N; ++i) {
 		EXPECT_FLOAT_EQ(a[i], static_cast<oa::F32>(i) + 1.0f);
 	}

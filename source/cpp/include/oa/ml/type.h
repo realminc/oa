@@ -1,9 +1,9 @@
 // OA ML Types
 //
 // Public header for auto-generated ML types.
-// generated from Tools/TypeAutogen/Schema/Ml/MlTypes.toml
+// Generated from tools/gen/type/schema/ml/mlTypes.toml.
 //
-// Regenerate via: python3 Tools/TypeAutogen/oatypeautogen.py --live
+// Regenerate via: python3 tools/gen/type/generate.py --live
 
 #pragma once
 

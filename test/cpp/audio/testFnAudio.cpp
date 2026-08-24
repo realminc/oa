@@ -14,6 +14,8 @@
 #include <oa/runtime/engine.h>
 #include <oa/runtime/semanticGraph.h>
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 #include <vector>
@@ -119,6 +121,80 @@ std::vector<oa::F32> cpuBiquadPlanar(
 			output[index] = y;
 			state0 = next0;
 			state1 = next1;
+		}
+	}
+	return output;
+}
+
+std::vector<oa::F32> cpuReverbPlanar(
+	const std::vector<oa::F32>& inSamples,
+	oa::U32 inChannels,
+	oa::U32 inSamplesPerChannel,
+	oa::U32 inSampleRate,
+	oa::F32 inDecaySeconds,
+	oa::F32 inWet) {
+	constexpr std::array<double, 4> combDelaySeconds{
+		0.0297, 0.0371, 0.0411, 0.0437};
+	constexpr std::array<double, 2> allpassDelaySeconds{0.0050, 0.0017};
+	constexpr oa::F32 allpassGain = 0.7F;
+	const oa::U32 tailSamples = static_cast<oa::U32>(std::ceil(
+		static_cast<double>(inSampleRate) * inDecaySeconds));
+	const oa::U32 outSamples = inSamplesPerChannel + tailSamples;
+
+	std::array<std::vector<oa::F32>, 4> combs;
+	double normalizationDenominator = 0.0;
+	for (oa::Usize comb = 0; comb < combs.size(); ++comb) {
+		const oa::U32 delay = std::max<oa::U32>(1U, static_cast<oa::U32>(
+			std::llround(combDelaySeconds[comb] * inSampleRate)));
+		const oa::F32 feedback = static_cast<oa::F32>(std::pow(
+			0.001, (static_cast<double>(delay) / inSampleRate) / inDecaySeconds));
+		normalizationDenominator += 1.0 / (1.0 - feedback);
+		combs[comb].assign(
+			static_cast<size_t>(inChannels) * outSamples, 0.0F);
+		for (oa::U32 channel = 0; channel < inChannels; ++channel) {
+			for (oa::U32 sample = delay; sample < outSamples; ++sample) {
+				const oa::U32 source = sample - delay;
+				const oa::F32 input = source < inSamplesPerChannel
+					? inSamples[channel * inSamplesPerChannel + source] : 0.0F;
+				combs[comb][channel * outSamples + sample] = input
+					+ feedback * combs[comb][channel * outSamples + source];
+			}
+		}
+	}
+
+	const oa::F32 normalization = static_cast<oa::F32>(
+		1.0 / normalizationDenominator);
+	std::vector<oa::F32> diffused(
+		static_cast<size_t>(inChannels) * outSamples, 0.0F);
+	for (oa::U32 index = 0; index < diffused.size(); ++index) {
+		for (const auto& comb : combs) diffused[index] += comb[index];
+		diffused[index] *= normalization;
+	}
+	for (const double delaySeconds : allpassDelaySeconds) {
+		const oa::U32 delay = std::max<oa::U32>(1U, static_cast<oa::U32>(
+			std::llround(delaySeconds * inSampleRate)));
+		std::vector<oa::F32> output(diffused.size(), 0.0F);
+		for (oa::U32 channel = 0; channel < inChannels; ++channel) {
+			const oa::U32 base = channel * outSamples;
+			for (oa::U32 sample = 0; sample < outSamples; ++sample) {
+				const oa::F32 delayedInput = sample >= delay
+					? diffused[base + sample - delay] : 0.0F;
+				const oa::F32 delayedOutput = sample >= delay
+					? output[base + sample - delay] : 0.0F;
+				output[base + sample] = -allpassGain * diffused[base + sample]
+					+ delayedInput + allpassGain * delayedOutput;
+			}
+		}
+		diffused = std::move(output);
+	}
+
+	std::vector<oa::F32> output(diffused.size(), 0.0F);
+	for (oa::U32 channel = 0; channel < inChannels; ++channel) {
+		for (oa::U32 sample = 0; sample < outSamples; ++sample) {
+			const oa::F32 dry = sample < inSamplesPerChannel
+				? inSamples[channel * inSamplesPerChannel + sample] : 0.0F;
+			const oa::U32 index = channel * outSamples + sample;
+			output[index] = dry + (diffused[index] - dry) * inWet;
 		}
 	}
 	return output;
@@ -538,6 +614,66 @@ TEST_VK(TestFnAudio, SaturateMatchesCpuWaveshaper)
 	}
 }
 
+TEST_VK(TestFnAudio, ReverbMatchesSchroederCpuOracleAndOwnsOneOperation)
+{
+	constexpr oa::U32 channels = 2U;
+	constexpr oa::U32 samplesPerChannel = 257U;
+	constexpr oa::U32 sampleRate = 8'000U;
+	constexpr oa::F32 decaySeconds = 0.125F;
+	constexpr oa::F32 wet = 0.4F;
+	std::vector<oa::F32> samples(channels * samplesPerChannel, 0.0F);
+	samples[0] = 1.0F;
+	samples[samplesPerChannel + 17U] = -0.75F;
+	auto matrix = oa::FnMatrix::empty(
+		oa::MatrixShape{channels, samplesPerChannel}, oa::ScalarType::Float32);
+	oa::memcpy(
+		matrix.dataAs<oa::F32>(), samples.data(),
+		samples.size() * sizeof(oa::F32));
+	oa::Audio audio(oa::move(matrix), sampleRate, oa::AudioChannelLayout::Stereo);
+	const auto expected = cpuReverbPlanar(
+		samples, channels, samplesPerChannel, sampleRate, decaySeconds, wet);
+
+	auto& ctx = oa::ExecutionSession::getActive();
+	ctx.clear();
+	oa::Audio reverberated = oa::FnAudio::reverb(audio, decaySeconds, wet);
+	ASSERT_TRUE(reverberated.validate());
+	EXPECT_EQ(reverberated.sampleRate(), sampleRate);
+	EXPECT_EQ(reverberated.layout(), oa::AudioChannelLayout::Stereo);
+	EXPECT_EQ(reverberated.samples(), 1'257);
+
+	const auto* semantic = ctx.semanticGraph();
+	const auto* executable = ctx.graph();
+	ASSERT_NE(semantic, nullptr);
+	ASSERT_NE(executable, nullptr);
+	ASSERT_EQ(semantic->operationCount(), 1U);
+	ASSERT_EQ(executable->nodeCount(), 8U);
+	EXPECT_EQ(semantic->operations()[0].name, "oa::FnAudio::reverb");
+	ASSERT_EQ(semantic->operations()[0].attributes.size(), 2U);
+	const char* expectedShaders[] = {
+		"AudioReverbComb", "AudioReverbComb", "AudioReverbComb",
+		"AudioReverbComb", "AudioReverbSum", "AudioReverbAllpass",
+		"AudioReverbAllpass", "AudioReverbMix",
+	};
+	for (oa::U32 index = 0; index < executable->nodeCount(); ++index) {
+		const auto& node = executable->nodes()[index];
+		EXPECT_EQ(node.shader, expectedShaders[index]);
+		ASSERT_EQ(node.semanticOps.size(), 1U);
+		EXPECT_EQ(node.semanticOps[0], 0U);
+		EXPECT_EQ(node.operation, "oa::FnAudio::reverb");
+		EXPECT_EQ(
+			node.opContractHash,
+			oa::detail::opRegistry::FnAudio::reverb.hash);
+	}
+
+	sync();
+	ASSERT_EQ(reverberated.asMatrix().numElements(), expected.size());
+	for (oa::U32 index = 0; index < expected.size(); ++index) {
+		EXPECT_NEAR(reverberated.asMatrix().at(index), expected[index], 3.0e-5F)
+			<< "index " << index;
+	}
+	ctx.clear();
+}
+
 TEST_VK(TestFnAudio, BiquadMatchesCpuAcrossBlocksAndChannels)
 {
 	constexpr oa::U32 channels = 2U;
@@ -811,6 +947,8 @@ TEST_VK(TestFnAudio, InvalidConfigurationsReturnEmpty)
 	EXPECT_TRUE(oa::FnAudio::clip(buf, 1.0F, -1.0F).isEmpty());
 	EXPECT_TRUE(oa::FnAudio::saturate(buf, 61.0F, 1.0F).isEmpty());
 	EXPECT_TRUE(oa::FnAudio::saturate(buf, 0.0F, 1.01F).isEmpty());
+	EXPECT_TRUE(oa::FnAudio::reverb(buf, 0.09F, 0.5F).isEmpty());
+	EXPECT_TRUE(oa::FnAudio::reverb(buf, 1.0F, 1.01F).isEmpty());
 	oa::BiquadCoefficients unstable{};
 	unstable.a2 = 1.0F;
 	EXPECT_TRUE(oa::FnAudio::biquad(buf, unstable).isEmpty());

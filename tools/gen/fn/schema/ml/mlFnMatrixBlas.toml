@@ -1,0 +1,273 @@
+# Fn schema — Ml/FnMatrix BLAS ops (Linear layer operations).
+surface = "public_operation"
+autograd_node_header = "oa/ml/autograd/matrix/autogradBlas.h"
+#
+# This is the *source of truth* for ML-specific BLAS operations.
+# The generator emits .h declarations, .cpp implementations from this file.
+# See tools/gen/fn/rEADME.md and tools/gen/fn/generate.py.
+#
+# Note: MatMul is in Core (general-purpose BLAS operation)
+# Linear/LinearRelu are ML-specific neural network layers
+
+# --- Linear ------------------------------------------------------------------
+[[ops]]
+name                 = "linear"
+category             = "Blas"
+kind                 = "binary"
+kernel_backward_data = "LinearDataBwd"
+kernel_backward_weight = "LinearWeightBwd"
+slang_path           = "Core/Blas/Gemm"
+log_component        = "ML"
+notes                = "Linear layer: out = Input @ Weight^T + optional Bias. The semantic input tuple always reserves the Bias slot; an omitted bias is recorded as an absent optional value."
+body                 = "manual_session"
+generate_declaration = false
+api_return           = "oa::Matrix"
+api_params           = [
+    "const oa::Matrix& inX",
+    "const oa::Matrix& inWeight",
+    "const oa::Matrix& inBias = oa::Matrix{}",
+]
+
+[ops.contract]
+input_kinds         = ["matrix", "matrix", "matrix"]
+optional_inputs     = [2]
+output_kinds        = ["matrix"]
+shape_rule          = "explicit"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "gemm"
+
+[ops.dnn]
+role = "matmul"
+epilogue = "bias"
+epilogue_requires_input = 2
+
+[ops.python]
+args = ["x", "weight", "bias"]
+doc = "Apply a linear projection using the OA weight-layout convention and an optional bias."
+
+[ops.autograd]
+grad_class = "oa::GradLinear"
+inputs     = ["inX", "inWeight", "inBias"]
+saved      = ["inX", "inWeight"]
+attach     = "standard"
+output_shape = true
+
+# --- Fused Linear + activation epilogues ------------------------------------
+[[ops]]
+name                 = "linearRelu"
+category             = "Blas"
+kind                 = "binary"
+slang_path           = "Core/Blas/Gemm"
+log_component        = "ML"
+notes                = "Fused Linear + ReLU GEMM epilogue. Bias is required by the fused contract."
+body                 = "manual_session"
+generate_declaration = false
+api_return           = "oa::Matrix"
+api_params           = [
+    "const oa::Matrix& inX",
+    "const oa::Matrix& inWeight",
+    "const oa::Matrix& inBias",
+]
+
+[ops.contract]
+input_kinds         = ["matrix", "matrix", "matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "explicit"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "gemm"
+
+[ops.dnn]
+role = "matmul"
+epilogue = "bias_relu"
+
+[ops.python]
+args = ["x", "weight", "bias"]
+doc = "Apply a fused linear projection and ReLU activation."
+
+[ops.autograd]
+grad_class = "oa::GradLinearRelu"
+inputs     = ["inX", "inWeight", "inBias"]
+saved      = ["inX", "inWeight", "out"]
+attach     = "standard"
+output_shape = true
+
+[[ops]]
+name                 = "linearGelu"
+category             = "Blas"
+kind                 = "binary"
+slang_path           = "Core/Blas/Gemm"
+log_component        = "ML"
+notes                = "Fused Linear + GELU GEMM epilogue. Backward recomputes the pre-activation from the saved input, weight, and bias."
+body                 = "manual_session"
+generate_declaration = false
+api_return           = "oa::Matrix"
+api_params           = [
+    "const oa::Matrix& inX",
+    "const oa::Matrix& inWeight",
+    "const oa::Matrix& inBias",
+]
+
+[ops.contract]
+input_kinds         = ["matrix", "matrix", "matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "explicit"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "gemm"
+
+[ops.dnn]
+role = "matmul"
+epilogue = "bias_gelu"
+
+[ops.python]
+args = ["x", "weight", "bias"]
+doc = "Apply a fused linear projection and GELU activation."
+
+[ops.autograd]
+grad_class = "oa::GradLinearGelu"
+inputs     = ["inX", "inWeight", "inBias"]
+saved      = ["inX", "inWeight", "inBias"]
+attach     = "standard"
+output_shape = true
+
+[[ops]]
+name                 = "linearSilu"
+category             = "Blas"
+kind                 = "binary"
+slang_path           = "Core/Blas/Gemm"
+log_component        = "ML"
+notes                = "Fused Linear + SiLU GEMM epilogue. Backward recomputes the pre-activation from the saved input, weight, and bias."
+body                 = "manual_session"
+generate_declaration = false
+api_return           = "oa::Matrix"
+api_params           = [
+    "const oa::Matrix& inX",
+    "const oa::Matrix& inWeight",
+    "const oa::Matrix& inBias",
+]
+
+[ops.contract]
+input_kinds         = ["matrix", "matrix", "matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "explicit"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "gemm"
+
+[ops.dnn]
+role = "matmul"
+epilogue = "bias_silu"
+
+[ops.python]
+args = ["x", "weight", "bias"]
+doc = "Apply a fused linear projection and SiLU activation."
+
+[ops.autograd]
+grad_class = "oa::GradLinearSilu"
+inputs     = ["inX", "inWeight", "inBias"]
+saved      = ["inX", "inWeight", "inBias"]
+attach     = "standard"
+output_shape = true
+
+# --- MatMulNt adjoint primitives --------------------------------------------
+# These contracts are part of the schema-v2 architecture pilot. They make the
+# existing MatMulNt tape expansion visible in semantic IR without changing its
+# proven eager kernels or exposing a second public gradient API.
+[[ops]]
+name                 = "linearDataBwd"
+category             = "Blas"
+kind                 = "binary"
+surface              = "internal_operation"
+body                 = "manual_session"
+generate_declaration = false
+api_return           = "oa::Matrix"
+api_params           = [
+    "const oa::Matrix& inGradOutput",
+    "const oa::Matrix& inWeight",
+]
+notes = "MatMulNt data adjoint: dInput = dOutput @ Weight. Internal semantic backward primitive."
+
+[ops.contract]
+input_kinds         = ["matrix", "matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "explicit"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "none"
+lowering            = "dispatch"
+
+[[ops]]
+name                 = "linearWeightBwd"
+category             = "Blas"
+kind                 = "binary"
+surface              = "internal_operation"
+body                 = "manual_session"
+generate_declaration = false
+api_return           = "oa::Matrix"
+api_params           = [
+    "const oa::Matrix& inInput",
+    "const oa::Matrix& inGradOutput",
+]
+notes = "MatMulNt weight adjoint: dWeight = dOutput^T @ Input. Internal semantic backward primitive."
+
+[ops.contract]
+input_kinds         = ["matrix", "matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "explicit"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "none"
+lowering            = "dispatch"
+
+# --- Linear parameter adjoint -----------------------------------------------
+# Public declaration remains beside its result structure in oa/ml/fnMatrix.h;
+# this schema owns the semantic contract used by graph capture and lowering.
+[[ops]]
+name                 = "linearWeightBiasBwd"
+category             = "Blas"
+kind                 = "binary"
+surface              = "internal_operation"
+body                 = "manual_session"
+generate_declaration = false
+api_return           = "oa::LinearWeightBiasBwdResult"
+api_params           = [
+    "const oa::Matrix& inInput",
+    "const oa::Matrix& inGradOutput",
+]
+notes = "Fused Linear parameter adjoint producing dWeight and dBias. Output shapes are explicit and validated by private DNN lowering."
+
+[ops.contract]
+input_kinds        = ["matrix", "matrix"]
+output_kinds       = ["matrix", "matrix"]
+shape_rule         = "explicit"
+dtype_rule         = "match_input"
+effects            = ["read_inputs", "write_outputs"]
+mutated_inputs     = []
+output_alias_inputs = [-1, -1]
+control_flow       = "straight_line"
+differentiation    = "none"
+lowering           = "dispatch"

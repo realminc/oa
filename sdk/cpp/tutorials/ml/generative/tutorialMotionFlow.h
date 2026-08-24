@@ -5,6 +5,7 @@
 
 #include <data/dsHumanMl3d.h>
 #include <oa/core/filesystem.h>
+#include <oa/core/paths.h>
 #include <oa/ml.h>
 #include <oa/ml/autograd.h>
 #include <oa/runtime/engine.h>
@@ -251,7 +252,11 @@ inline void validateGeometryAndExport(
 
 inline void run(bool inMoe) {
 	const char* dataDirectory = std::getenv("OA_MOTION_DATA");
-	if (!dataDirectory) dataDirectory = "../dataset/gen/3d/anim/ds/Cmp";
+	if (!dataDirectory) {
+		static const oa::String defaultData =
+			oa::Paths::data("humanMl3d/Cmp").string();
+		dataDirectory = defaultData.cStr();
+	}
 	oa::DsCombatMotionProcessed train(dataDirectory, "train");
 	oa::DsCombatMotionProcessed validation(dataDirectory, "val");
 	if (!train.ok() || !validation.ok()) {

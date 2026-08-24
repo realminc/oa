@@ -173,7 +173,7 @@ namespace FnMatrix {
 
 	// --- Core operations ---
 	// Generated overloads from operation schemas.
-	// Regenerate via: python3 tools/fnAutogen/oafnautogen.py --live
+	// Regenerate via: python3 tools/gen/fn/generate.py --live
 	#include <oa/core/fnmatrix/fnMatrix.gen.h>
 
 	// in-place operations

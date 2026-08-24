@@ -40,7 +40,7 @@ set(OA_SDK_SUPPORT_SOURCES
 	lib/retarget/retarget.cpp
 )
 
-include(${CMAKE_CURRENT_LIST_DIR}/lib/ml/rl/environmentKernels.gen.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/../../cmake/gen/sdkEnvironmentKernels.cmake)
 
 if(SLANGC)
 	set(OA_SDK_ENVIRONMENT_SPIRV_DIR

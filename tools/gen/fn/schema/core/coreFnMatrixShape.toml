@@ -1,0 +1,100 @@
+# Fn schema — Core/FnMatrix materializing shape ops (2).
+surface = "public_operation"
+autograd_node_header = "oa/core/autograd/matrix/autogradShape.h"
+#
+# This is the *source of truth* for shape manipulation operations. The generator
+# emits .h declarations, .cpp implementations, and .slang shaders from this file.
+# See tools/gen/fn/rEADME.md and tools/gen/fn/generate.py.
+#
+# Shape operations here materialize tensor data in a new layout. Metadata-only
+# views are represented by value/view metadata rather than fake operations.
+
+# --- Transpose ---------------------------------------------------------------
+[[ops]]
+name           = "transpose"
+category       = "Shape"
+kind           = "unary"
+kernel_forward = "TransposeTiled"
+slang_path     = "Core/matrix"
+log_component  = "ML"
+notes          = "Materialize a swap of the last two axes for rank-2 or rank-3 matrices."
+body           = "manual_session"
+api_params     = [
+    "const oa::Matrix& inA",
+    "oa::I32 inDim0 = -2",
+    "oa::I32 inDim1 = -1",
+]
+api_return     = "oa::Matrix"
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "explicit"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+attributes          = [
+    { name = "dim0", kind = "signed_integer", source = "inDim0" },
+    { name = "dim1", kind = "signed_integer", source = "inDim1" },
+]
+
+[ops.autograd]
+grad_class   = "oa::GradTranspose"
+inputs       = ["inA"]
+saved        = []
+formula      = "manual:Transpose"
+attach       = "standard"
+output_shape = true
+state        = [
+    { member = "dim0_", source = "inDim0", type = "oa::I32" },
+    { member = "dim1_", source = "inDim1", type = "oa::I32" },
+]
+
+[ops.python]
+args = ["a", "dim0", "dim1"]
+doc = "Materialize a swap of the last two axes."
+
+# --- Copy --------------------------------------------------------------------
+[[ops]]
+name           = "copy"
+category       = "Shape"
+kind           = "unary"
+kernel_forward = "Copy"
+slang_path     = "Core/Shader/Compute/Flat"
+log_component  = "ML"
+notes          = "Copy tensor data: out = A."
+forward_op     = "a"
+api_params     = ["const oa::Matrix& inA"]
+api_return     = "oa::Matrix"
+
+[ops.contract]
+input_kinds         = ["matrix"]
+output_kinds        = ["matrix"]
+shape_rule          = "match_input"
+dtype_rule          = "match_input"
+effects             = ["read_inputs", "write_outputs"]
+mutated_inputs      = []
+output_alias_inputs = [-1]
+control_flow        = "straight_line"
+differentiation     = "reverse"
+lowering            = "dispatch"
+
+[ops.python]
+args = ["a"]
+doc = "Create an independent device copy of a matrix."
+
+[ops.autograd]
+grad_class = "oa::GradCopy"
+inputs     = ["inA"]
+saved      = []
+formula    = "manual:Copy"
+attach     = "standard"
+
+[ops.test]
+cpu_reference = "a_host[i]"
+tolerance = "1e-6f"
+test_sizes = [256, 1024]

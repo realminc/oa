@@ -1,31 +1,54 @@
 <p align="center">
-  <img src="/asset/image/oaSpaceCathedral.jpg" width="100%" alt="OA — one Vulkan-native foundation for compute, ML, media, and mobile">
+  <img src="sdk/asset/documentation/readme/oaSpaceCathedral.jpg" width="100%" alt="OA — one Vulkan-native foundation for compute, ML, media, and mobile">
 </p>
 
 # OA
 
-**GPU-first compute, machine learning, vision, audio, ui, plot, media, and cryptography on Vulkan.**
+**Powerful accelerators. Surrounded by glue.**
 
-OA is a C++20 and Slang development-preview library. One `oa::Engine` owns the Vulkan
-device, memory, queues, scheduling, kernels, and profiling; semantic values and stateless
-`oa::Fn*` operations build work for that engine, while sessions own stateful activities
-such as training, playback, capture, presentation, and MCP control.
+OA—One API, Open Architecture—is a unified, GPU-first C++20 and Python library:
+one execution system for numerical computing, machine learning, vision, audio,
+media, data, crypto, rendering, interfaces, and plotting.
+
+A useful intelligent system does not end at matrix multiplication. It captures or
+decodes data, transforms it, trains or executes a model, evaluates the result,
+preserves state, and then displays, plays, encodes, or transmits the output.
+Conventional workflows split that path across libraries, allocators, queues,
+runtimes, and language boundaries. Every handoff can add integration work,
+conversion, allocation, copying, synchronization, deployment dependencies, or an
+opaque fallback.
+
+OA answers with one library, one engine, one resource model, and one completion
+contract. `oa::Engine` owns the Vulkan device, memory, queues, scheduling, kernels,
+and profiling. Semantic values preserve their domain meaning, stateless `oa::Fn*`
+operations transform them, and sessions own stateful activity such as training,
+playback, capture, presentation, and MCP control.
 
 [![Release](https://img.shields.io/github/v/release/realminc/oa?include_prereleases&label=preview)](https://github.com/realminc/oa/releases)
 [![CI](https://github.com/realminc/oa/actions/workflows/ci.yml/badge.svg)](https://github.com/realminc/oa/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/oapython?label=pypi)](https://pypi.org/project/oapython/)
 [![License](https://img.shields.io/badge/license-BSL--1.1-3b3b3b)](LICENSE)
 
-> **Current preview.** [`v0.7.14`](https://github.com/realminc/oa/releases/tag/v0.7.14)
+> **Current preview.** [`v0.7.15`](https://github.com/realminc/oa/releases/tag/v0.7.15)
 > publishes the converged engine and event model, schema-owned C++/Python operations,
 > semantic Q4/Q8 inference values, the rewritten Mamba-3 SISO/MIMO paths, local MCP
 > training control, the unified Renderer/Ui/Plot presentation stack, per-engine Vulkan
 > dispatch isolation, GPU-native Audio processing, exact C++/Python naming parity,
 > executable C++/Python examples, a GPU-native Vision augmentation walkthrough,
-> unified ML reinforcement/training contracts, and Vulkan-native spatial math.
+> unified ML reinforcement/training contracts, Vulkan-native spatial math, native room
+> reverb, and checked `oa::Viewer::preview` presentation evidence.
 > The API and artifact formats remain pre-1.0 and may change.
 
-## What ships in 0.7.14
+## One runtime. Two front ends.
+
+Python is an authoring surface over the same native OA values, operations, and
+Vulkan execution as C++. Matrices, gradients, optimizer state, and graph execution
+remain inside OA rather than moving through a second host implementation between
+operations. Devices enter through Vulkan capability checks and qualified execution
+routes, never through a brand allow-list; unsupported paths fail closed instead of
+silently changing the workload.
+
+## What ships in 0.7.15
 
 | Area | Shipped surface |
 |---|---|
@@ -33,8 +56,8 @@ such as training, playback, capture, presentation, and MCP control.
 | **Ml** | Matrices, modules, autograd, AdamW/Muon/SGD, losses, metrics, model files, checkpoints, RNN, GRU, Transformer, Flash Attention, dropless sparse MoE, grouped-state Mamba-3 SISO/MIMO, and native environment/rollout/replay/PPO/DQN/SAC contracts |
 | **Quantized inference** | Semantic `oa::QuantMatrix`, explicit Q4/Q8 pack/dequantize, fused `matMulNt`, and `.oam` v3 Dense/Q4/Q8 storage; Q4/Q8 are inference encodings, not training dtypes |
 | **Vision / Media** | 50 graph-native image operations, JPEG/PNG/BMP/TGA and capability-gated WebP I/O, native container parsing, Vulkan Video decode/encode surfaces, capture, playback, recording, and transcoding sessions |
-| **Audio** | WAV/FLAC/MP3 decode, WAV-F32 output, deterministic PCM16 streaming, capture/playback sessions, and GPU-native feature extraction, normalization, resampling, saturation, block-parallel zero-state Biquad, and one-to-64-section SOS operations with Python parity |
-| **Render / Ui / Plot** | One bounded `oa::Renderer` for mesh or Ui composition, headless and swapchain presentation, `oa::Viewer`, GPU-composed retained figures, Line/Scatter/Bar/Histogram/Heatmap/Image artists, dark/light themes, and deterministic PNG output |
+| **Audio** | WAV/FLAC/MP3 decode, WAV-F32 output, deterministic PCM16 streaming, capture/playback sessions, and GPU-native feature extraction, normalization, resampling, saturation, native room reverb, block-parallel zero-state Biquad, and one-to-64-section SOS operations with Python parity |
+| **Render / Ui / Plot** | One bounded `oa::Renderer` for mesh or Ui composition, headless and swapchain presentation, unified `oa::Viewer::preview` for checked image/audio/video paths and direct GPU values, GPU-composed retained figures, Line/Scatter/Bar/Histogram/Heatmap/Image artists, dark/light themes, and deterministic PNG output |
 | **MCP** | Local newline-delimited stdio JSON-RPC/MCP server primitives and guarded live-training controls through `oa::McpTraining` |
 | **Python** | One C++-parity surface with PascalCase types, camelCase operations, lowercase modules, generated stubs, lazy engine creation, paired examples/tutorials, and the same native Vulkan implementation |
 | **Crypto** | Strict host cryptographic primitives plus Vulkan batch hashing and public-data acceleration; no independent security audit is claimed |
@@ -52,7 +75,7 @@ driver, and rejected runs.
 
 <p align="center">
   <a href="https://x.com/empyrealm1/status/2072364333909037178">
-    <img src="asset/image/motiongpt.gif" width="520" alt="OA ALM generating 3D character motion on Vulkan">
+    <img src="sdk/asset/documentation/readme/motiongpt.gif" width="520" alt="OA ALM generating 3D character motion on Vulkan">
   </a>
   <br>
   <em>OA ALM: text-conditioned motion tokens → decoded motion → USD. <a href="https://x.com/empyrealm1/status/2072364333909037178">full clip ↗</a></em>
@@ -105,17 +128,12 @@ python -m pip install oapython
 ```
 
 ```python
-from oa import FnMatrix, initComputeEngine, shutdownComputeEngine
+import oa
 
-if not initComputeEngine():
-	raise RuntimeError("OA could not create a Vulkan compute engine")
-try:
-	a = FnMatrix.ones([2, 3])
-	b = FnMatrix.full([2, 3], 2.0)
-	c = FnMatrix.add(a, b)
-	print(FnMatrix.copyToHost(c))
-finally:
-	shutdownComputeEngine()
+a = oa.FnMatrix.ones([2, 3])
+b = oa.FnMatrix.full([2, 3], 2.0)
+c = oa.FnMatrix.add(a, b)
+print(oa.FnMatrix.copyToHost(c))
 ```
 
 Import is host-only. The first device-backed request creates the binding host lazily.
@@ -189,8 +207,8 @@ under `source/cpp/lib/oa/`; vendored C/C++ dependencies under
 | Device class | Evidence for this release line |
 |---|---|
 | **Intel Iris Xe TGL GT2** | Current local acceptance pack: FP32 Core/Ml, the 15-workload NLP suite, Q4/Q8, grouped Mamba-3, Vision, Plot/Ui/Renderer, Python, and separate core/synchronization/GPU-assisted validation; exact video support remains profile-specific |
-| **Qualcomm Adreno 610** | Earlier physical OaMobileLab checkpoint ran the five Byte NLP models through training, generation, save, and reload; the complete 0.7.14 tree has not been requalified on this device |
-| **NVIDIA / AMD / newer Adreno / datacenter** | Capability-gated implementations exist, but the complete 0.7.14 tree is unverified on these hardware packs and no current performance claim is made |
+| **Qualcomm Adreno 610** | Earlier physical OaMobileLab checkpoint ran the five Byte NLP models through training, generation, save, and reload; the complete 0.7.15 tree has not been requalified on this device |
+| **NVIDIA / AMD / newer Adreno / datacenter** | Capability-gated implementations exist, but the complete 0.7.15 tree is unverified on these hardware packs and no current performance claim is made |
 | **CPU Vulkan** | Useful for selected correctness and hosted-CI work; not a performance target and not a substitute for the real-GPU gate |
 
 OA queries capabilities and fails closed when a route is unavailable. Native BF16 and

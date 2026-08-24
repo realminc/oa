@@ -591,7 +591,7 @@ oa::Status oa::Viewer::runApplication(oa::Engine* inBorrowedEngine) {
 	if (not platformStatus.isOk()) return platformStatus;
 
 	// Keep windowed applications inside the same validation contract as tests
-	// and headless workloads. Tools/Diagnostics/run_validation.py sets this
+	// and headless workloads. tools/diagnostics/runValidation.py sets this
 	// process-local flag and verifies that OA actually enabled the requested
 	// validation profile.
 	if (inBorrowedEngine == nullptr

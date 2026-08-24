@@ -81,7 +81,12 @@ struct Quat {
 	}
 	[[nodiscard]] detail::Vec3<T> rotate(
 		const detail::Vec3<T>& inVector) const noexcept {
-		const Quat unit = normalized();
+		const T squaredNorm = normSquared();
+		const T unitTolerance = std::numeric_limits<T>::epsilon() * T(8);
+		const Quat unit = std::isfinite(squaredNorm)
+			and std::abs(squaredNorm - T(1)) <= unitTolerance
+			? *this
+			: normalized();
 		const detail::Vec3<T> imaginary{unit.x, unit.y, unit.z};
 		const detail::Vec3<T> firstCross{
 			imaginary.y * inVector.z - imaginary.z * inVector.y,

@@ -291,13 +291,13 @@ void setOrbitDistance(oa::CameraState& inState, oa::F32 inDistance) {
 void orbitYawPitch(oa::CameraState& inState, oa::F32 inYawDelta, oa::F32 inPitchDelta) {
 	oa::vlm::Vec3 offset = oa::vlm::sub(inState.position, inState.orbitTarget);
 	oa::vlm::Vec3 sph = oa::vlm::cartesianToSpherical(offset);
-	if (sph.z < oa::vlm::kEpsilon) return;
+	if (sph.z < oa::vlm::Tolerance<oa::F32>) return;
 
-	sph.x += inYawDelta * oa::vlm::kPi / 180.0f;     // yaw
-	sph.y += inPitchDelta * oa::vlm::kPi / 180.0f;  // pitch
+	sph.x += oa::vlm::radians(inYawDelta);     // yaw
+	sph.y += oa::vlm::radians(inPitchDelta);  // pitch
 
 	// Clamp pitch
-	oa::F32 pitchLimit = 89.0f * oa::vlm::kPi / 180.0f;
+	oa::F32 pitchLimit = oa::vlm::radians(89.0F);
 	if (sph.y > pitchLimit) sph.y = pitchLimit;
 	if (sph.y < -pitchLimit) sph.y = -pitchLimit;
 
@@ -310,13 +310,13 @@ void orbitYawPitch(oa::CameraState& inState, oa::F32 inYawDelta, oa::F32 inPitch
 void orbitSetYawPitch(oa::CameraState& inState, oa::F32 inYaw, oa::F32 inPitch) {
 	oa::vlm::Vec3 offset = oa::vlm::sub(inState.position, inState.orbitTarget);
 	oa::vlm::Vec3 sph = oa::vlm::cartesianToSpherical(offset);
-	if (sph.z < oa::vlm::kEpsilon) return;
+	if (sph.z < oa::vlm::Tolerance<oa::F32>) return;
 
 	inState.position = oa::vlm::add(
 		inState.orbitTarget,
 		oa::vlm::sphericalToCartesian(
-			inYaw * oa::vlm::kPi / 180.0f,
-			inPitch * oa::vlm::kPi / 180.0f,
+			oa::vlm::radians(inYaw),
+			oa::vlm::radians(inPitch),
 			sph.z)
 	);
 	lookAt(inState, inState.orbitTarget);

@@ -19,14 +19,14 @@ configure time instead of producing a runtime skip.
 Build and run the registered profiles with:
 
 ```bash
-cmake --build Build/PythonEditable --target _oa
-ctest --test-dir Build/PythonEditable --output-on-failure -L python
+cmake --build build/python --target _oa
+ctest --test-dir build/python --output-on-failure -L python
 ```
 
 For a direct source-build run:
 
 ```bash
-OA_PYTHON_BUILD_DIR=Build/PythonEditable \
-  Build/PythonEnv/bin/python -m pytest \
+OA_PYTHON_BUILD_DIR=build/python \
+  .venv/bin/python -m pytest \
   --oa-profile=gpu --oa-forbid-skips test/py
 ```

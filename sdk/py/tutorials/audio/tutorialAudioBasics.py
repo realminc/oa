@@ -6,7 +6,7 @@
 from oa import *
 
 
-asset = Paths.asset("audio/0_jackson_0.flac")
+asset = Paths.asset("audio/oaNarration.flac")
 output = Paths.var("tutorial/audio/oa_audio_normalized.wav")
 
 audio = FnAudio.decodeFile(asset)

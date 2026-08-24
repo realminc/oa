@@ -113,6 +113,62 @@ oa::PixelRect viewerContentRect(
 
 } // namespace
 
+oa::Status oa::Viewer::preview(
+	const char* inPath,
+	const oa::ViewerConfig& inConfig)
+{
+	if (inPath == nullptr or inPath[0] == '\0') {
+		return oa::Status::invalidArgument("oa::Viewer::preview requires a non-empty path");
+	}
+	return preview(oa::String(inPath), inConfig);
+}
+
+oa::Status oa::Viewer::preview(
+	const oa::String& inPath,
+	const oa::ViewerConfig& inConfig)
+{
+	if (inPath.empty()) {
+		return oa::Status::invalidArgument("oa::Viewer::preview requires a non-empty path");
+	}
+	oa::ViewerConfig config = inConfig;
+	config.path = inPath;
+	oa::Viewer viewer(config);
+	return viewer.run();
+}
+
+oa::Status oa::Viewer::preview(
+	oa::Engine& inEngine,
+	const oa::Matrix& inMatrix,
+	const oa::ViewerConfig& inConfig)
+{
+	return show(inEngine, inMatrix, inConfig);
+}
+
+oa::Status oa::Viewer::preview(
+	oa::Engine& inEngine,
+	const oa::Image& inImage,
+	const oa::ViewerConfig& inConfig)
+{
+	return show(inEngine, inImage, inConfig);
+}
+
+oa::Status oa::Viewer::preview(
+	oa::Engine& inEngine,
+	const oa::Texture& inTexture,
+	const oa::ViewerConfig& inConfig)
+{
+	return show(inEngine, inTexture, inConfig);
+}
+
+oa::Status oa::Viewer::preview(
+	oa::Engine& inEngine,
+	oa::Renderer& inRenderer,
+	const oa::RenderFrame& inFrame,
+	const oa::ViewerConfig& inConfig)
+{
+	return show(inEngine, inRenderer, inFrame, inConfig);
+}
+
 oa::Status oa::Viewer::show(
 	oa::Engine& inEngine,
 	const oa::Matrix& inMatrix,

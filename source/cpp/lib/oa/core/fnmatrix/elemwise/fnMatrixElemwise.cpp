@@ -1,7 +1,7 @@
 // Manual implementations for element-wise matrix operations.
-// Autogenerator skips these because they have body = "manual_session" in
+// Generation skips these because they have body = "manual_session" in
 // CoreFnMatrixElemwise.toml. This file is the source of truth for Add/Sub/Mul/Div
-// broadcast dispatch — it will never be overwritten by oafnautogen.py.
+// broadcast dispatch; operation generation never overwrites this file.
 
 #include <oa/core/matrix.h>
 #include <oa/core/fnMatrix.h>

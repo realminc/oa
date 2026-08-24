@@ -1,13 +1,12 @@
-// OA SIMD — Portable vector math via Google Highway
+// OA SIMD — Portable compiled batch math via xsimd
 //
-// Highway wraps runtime CPU detection for math/vector ops.
 // memory ops (memcpy, memset, memzero, memequal) are in memory.h.
 //
 // usage:
 //   #include <oa/core/simd.h>
-//   Simd::dotF32(a, b, n);
-//   Simd::scaleF32(data, scale, n);
-//   Simd::addF32(data, other, n);
+//   oa::FnSimd::dotF32(a, b, n);
+//   oa::FnSimd::scaleF32(data, scale, n);
+//   oa::FnSimd::addF32(data, other, n);
 
 #pragma once
 
@@ -15,18 +14,18 @@
 
 namespace oa {
 
-class Simd {
-public:
-	// Oa vector math wrapper, currently via Google Highway.
+namespace FnSimd {
 
-  // Methods.
-	[[nodiscard]] static oa::F32 dotF32(const oa::F32* inA, const oa::F32* inB, oa::I64 inN);
-	static void scaleF32(oa::F32* inOut, oa::F32 inScale, oa::I64 inN);
-	static void addF32(oa::F32* inOut, const oa::F32* inB, oa::I64 inN);
-	static void subF32(oa::F32* inOut, const oa::F32* inB, oa::I64 inN);
-	static void mulF32(oa::F32* inOut, const oa::F32* inB, oa::I64 inN);
-	static void divF32(oa::F32* inOut, const oa::F32* inB, oa::I64 inN);
-	static void negF32(oa::F32* inOut, oa::I64 inN);
-};
+	// OA's backend-neutral array math. xsimd is private to the compiled source;
+	// callers never inherit its types, alignment, or headers.
+	[[nodiscard]] oa::F32 dotF32(const oa::F32* inA, const oa::F32* inB, oa::I64 inN);
+	void scaleF32(oa::F32* inOut, oa::F32 inScale, oa::I64 inN);
+	void addF32(oa::F32* inOut, const oa::F32* inB, oa::I64 inN);
+	void subF32(oa::F32* inOut, const oa::F32* inB, oa::I64 inN);
+	void mulF32(oa::F32* inOut, const oa::F32* inB, oa::I64 inN);
+	void divF32(oa::F32* inOut, const oa::F32* inB, oa::I64 inN);
+	void negF32(oa::F32* inOut, oa::I64 inN);
+
+} // namespace FnSimd
 
 } // namespace oa

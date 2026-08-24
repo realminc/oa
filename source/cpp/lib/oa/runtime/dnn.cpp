@@ -58,7 +58,7 @@ struct DnnOpRole {
 	oa::U8 epilogueRequiredInput = UINT8_MAX;
 };
 
-#include "dnn/opRoles.gen.inc"
+#include "gen/dnnOpRoles.inc"
 
 const DnnOpRole* findOpRole(
 	const oa::SemanticOpDesc& inOperation) {

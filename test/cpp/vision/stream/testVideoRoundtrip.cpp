@@ -290,13 +290,8 @@ TEST(VideoRoundtrip, TranscoderUsesGpuDecodeConvertEncodePath) {
 		or not testVideoEncodeSupported(*engine, oa::VideoCodec::H264)) {
 		GTEST_SKIP() << "H.264 decode+encode are not both supported";
 	}
-#if defined(_WIN32)
-	const char* sourcePath =
-		"../dataset/video/shibuya_crossing_1080p30_h264.mp4";
-#else
-	const char* sourcePath =
-		"../dataset/video/shibuya_crossing_1080p30_h264.mp4";
-#endif
+	const oa::String sourcePath = oa::Paths::data(
+		"video/shibuya_crossing_1080p30_h264.mp4").string();
 	auto streamResult = oa::VideoDemuxer::open(sourcePath);
 	if (not streamResult.isOk()) {
 		GTEST_SKIP() << "Shibuya H.264 source is unavailable";

@@ -3,7 +3,7 @@
 #include <cmath>
 
 oa::vlm::Quat oa::eulerXyzDegToQuat(const oa::vlm::Vec3& inDegXyz) noexcept {
-	const oa::F32 deg2rad = oa::vlm::kPi / 180.0f;
+	const oa::F32 deg2rad = oa::vlm::Pi<oa::F32> / 180.0f;
 	const oa::F32 hx = inDegXyz.x * deg2rad * 0.5f;
 	const oa::F32 hy = inDegXyz.y * deg2rad * 0.5f;
 	const oa::F32 hz = inDegXyz.z * deg2rad * 0.5f;
@@ -51,29 +51,12 @@ oa::vlm::Mat4 oa::trsMatrix(
 	const oa::vlm::Vec3& inScale,
 	const oa::vlm::Quat& inRot,
 	const oa::vlm::Vec3& inTrans) noexcept {
-	// VLM already returns the canonical row-vector rotation. Fold per-axis scale
-	// into its rows, then place translation in row 3.
-	const oa::vlm::Mat4 r = oa::vlm::quaternionToMatrix(inRot);
-	const oa::F32 s[3] = { inScale.x, inScale.y, inScale.z };
-	oa::vlm::Mat4 m = oa::vlm::Mat4::identity();
-	for (oa::I32 i = 0; i < 3; ++i) {
-		for (oa::I32 k = 0; k < 3; ++k) {
-			m.m[i][k] = s[i] * r.m[i][k];
-		}
-	}
-	m.m[3][0] = inTrans.x;
-	m.m[3][1] = inTrans.y;
-	m.m[3][2] = inTrans.z;
-	return m;
+	return oa::vlm::composeTrs(inTrans, inRot, inScale);
 }
 
 oa::vlm::Vec3 oa::transformPoint(
 	const oa::vlm::Mat4& inM,
 	const oa::vlm::Vec3& inP
 ) noexcept {
-	return {
-		inP.x * inM.m[0][0] + inP.y * inM.m[1][0] + inP.z * inM.m[2][0] + inM.m[3][0],
-		inP.x * inM.m[0][1] + inP.y * inM.m[1][1] + inP.z * inM.m[2][1] + inM.m[3][1],
-		inP.x * inM.m[0][2] + inP.y * inM.m[1][2] + inP.z * inM.m[2][2] + inM.m[3][2],
-	};
+	return oa::vlm::transformPoint(inP, inM);
 }

@@ -62,9 +62,9 @@ static constexpr oa::U32 App = 0x0000'3000; // oa apps (modelctl, etc.)
 // Stable names for fixed kernels. Each include is emitted by the authority
 // that owns the corresponding kernel family.
 namespace computeKernelId {
-#include <oa/runtime/kernelIdsStandalone.gen.inl>
-#include <oa/runtime/oaTileComputeKernel.gen.h>
-#include <oa/runtime/computeKernelIds.gen.inl>
+#include <oa/runtime/gen/kernelIdsStandalone.inl>
+#include <oa/runtime/gen/tileComputeKernel.h>
+#include <oa/runtime/gen/computeKernelIds.inl>
 
 } // namespace computeKernelId
 

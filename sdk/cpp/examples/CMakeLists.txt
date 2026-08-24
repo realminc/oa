@@ -8,7 +8,10 @@ function(oa_add_example TARGET SOURCE SUBDIR)
 	set_target_properties(${TARGET} PROPERTIES
 		RUNTIME_OUTPUT_DIRECTORY "${OA_BIN_DIR}/example/${SUBDIR}")
 	add_test(NAME ${TARGET} COMMAND ${TARGET})
-	set_tests_properties(${TARGET} PROPERTIES LABELS "example;gpu_bindless")
+	set_tests_properties(${TARGET} PROPERTIES
+		LABELS "example;gpu_bindless"
+		ENVIRONMENT
+			"OA_ASSET_DIR=${oa_SOURCE_DIR}/sdk/asset;OA_DATA_DIR=${OA_TEST_DATA_DIR}")
 	if(TARGET oa_shaders)
 		add_dependencies(${TARGET} oa_shaders)
 	endif()
@@ -23,17 +26,17 @@ function(oa_add_legacy_ml_example TARGET SOURCE SUBDIR)
 	set_target_properties(${TARGET} PROPERTIES
 		RUNTIME_OUTPUT_DIRECTORY "${OA_BIN_DIR}/example/${SUBDIR}")
 	add_test(NAME ${TARGET} COMMAND ${TARGET})
-	set_tests_properties(${TARGET} PROPERTIES LABELS "example;legacy;gpu_bindless")
+	set_tests_properties(${TARGET} PROPERTIES
+		LABELS "example;legacy;gpu_bindless"
+		ENVIRONMENT
+			"OA_ASSET_DIR=${oa_SOURCE_DIR}/sdk/asset;OA_DATA_DIR=${OA_TEST_DATA_DIR}")
 	if(TARGET oa_shaders)
 		add_dependencies(${TARGET} oa_shaders)
 	endif()
 endfunction()
 
-# Core — minimal GPU matrix operation with explicit engine submission.
-oa_add_example(ExampleCoreMatrixAdd core/matrixAdd.cpp core)
-
-# Audio — semantic waveform metadata around one GPU DSP operation.
-oa_add_example(ExampleAudioClip audio/clip.cpp audio)
+# Schema-owned beginner examples (currently Core and Audio).
+include(${oa_SOURCE_DIR}/sdk/cpp/examples/gen/examples.cmake)
 
 # Vision — semantic image metadata around one GPU resize operation.
 oa_add_example(ExampleVisionResize vision/resize.cpp vision)
@@ -60,6 +63,8 @@ set_target_properties(AlmAg PROPERTIES
 add_test(NAME AlmAg COMMAND AlmAg)
 set_tests_properties(AlmAg PROPERTIES
 	LABELS "example;legacy;gpu_bindless"
+	ENVIRONMENT
+		"OA_ASSET_DIR=${oa_SOURCE_DIR}/sdk/asset;OA_DATA_DIR=${OA_TEST_DATA_DIR}"
 	WORKING_DIRECTORY "${oa_SOURCE_DIR}")
 if(TARGET oa_shaders)
 	add_dependencies(AlmAg oa_shaders)

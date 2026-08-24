@@ -11,13 +11,14 @@
 //
 // compare the two side by side to see what the autograd machinery costs.
 //
-// Data: ../oapy/dataset/FashionMNIST/raw (override via OA_MNIST_DATA).
+// Data: $OA_DATA_DIR/fashionMnist (fetch with tools/data/manage.py).
 // ═══════════════════════════════════════════════════════════════════════════
 
 #include "oaTest.h"
 #include "tutorialMl.h"
 #include <data/dsMnist.h>
 #include <oa/core/envFlag.h>
+#include <oa/core/paths.h>
 #include <oa/ml.h>
 #include <oa/ml/autograd.h>
 #include <oa/runtime/engine.h>
@@ -106,15 +107,15 @@ static oa::F32 evalAccuracy(MnistClassifier& inModel, oa::DsMnist& inLoader) {
 // ─── Tutorial ──────────────────────────────────────────────────────────────
 
 TEST(TutorialMnistClassifierAg, FashionMnistClassification) {
-	const char* dataDir = std::getenv("OA_MNIST_DATA");
-	if (!dataDir) dataDir = "../oapy/dataset/FashionMNIST/raw";
+	const oa::String dataDir = oa::Paths::data("fashionMnist").string();
 
 	const oa::I32 kBatch = 64;
-	oa::DsMnist trainLoader(oa::String(dataDir), "train", kBatch, /*shuffle=*/true);
-	oa::DsMnist testLoader(oa::String(dataDir), "t10k", 100, /*shuffle=*/false);
+	oa::DsMnist trainLoader(dataDir, "train", kBatch, /*shuffle=*/true);
+	oa::DsMnist testLoader(dataDir, "t10k", 100, /*shuffle=*/false);
 
 	if (trainLoader.numSamples() == 0 || testLoader.numSamples() == 0) {
-		printf("Fashion-MNIST not found at: %s (set OA_MNIST_DATA).\n", dataDir);
+		printf("Fashion-MNIST not found at: %s (run tools/data/manage.py fetch fashionMnist).\n",
+			dataDir.cStr());
 		GTEST_SKIP() << "Dataset not found";
 	}
 

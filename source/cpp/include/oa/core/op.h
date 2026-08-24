@@ -8,7 +8,7 @@ namespace oa { class Matrix; }
 
 // Stable semantic metadata for an operation. This describes what an operation
 // means before lowering chooses a kernel, launch geometry, queue, or device.
-// generated registries provide these descriptors from FnAutogen schemas.
+// Generated registries provide these descriptors from operation schemas.
 
 namespace oa {
 
@@ -226,5 +226,5 @@ public:
 } // namespace oa
 
 // generated semantic contracts are publicly inspectable, while their source
-// of truth remains the FnAutogen schemas.
+// of truth remains the operation schemas.
 #include <oa/core/opRegistry.gen.h>

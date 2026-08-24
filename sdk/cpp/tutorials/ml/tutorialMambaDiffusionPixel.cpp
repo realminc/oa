@@ -18,6 +18,7 @@
 #include <oa/core/envFlag.h>
 #include <oa/core/filesystem.h>
 #include <oa/core/log.h>
+#include <oa/core/paths.h>
 #include <data/dsMnist.h>
 #include <oa/ml.h>
 #include <oa/ml/autograd.h>
@@ -219,14 +220,12 @@ static oa::Matrix sampleImages(PixelMambaDiffusion& inModel,
 // ─── Tutorial ────────────────────────────────────────────────────────────────
 
 TEST(TutorialMambaDiffusionPixel, FashionMnistFlowMatching) {
-	const char* dataDir = std::getenv("OA_MNIST_DATA");
-	if (dataDir == nullptr) {
-		dataDir = "../oapy/dataset/FashionMNIST/raw";
-	}
+	const oa::String dataDir = oa::Paths::data("fashionMnist").string();
 
-	oa::DsMnist trainLoader(oa::String(dataDir), "train", kBatch, /*inShuffle=*/true);
+	oa::DsMnist trainLoader(dataDir, "train", kBatch, /*inShuffle=*/true);
 	if (trainLoader.numSamples() == 0) {
-		printf("Fashion-MNIST not found at: %s (set OA_MNIST_DATA).\n", dataDir);
+		printf("Fashion-MNIST not found at: %s (run tools/data/manage.py fetch fashionMnist).\n",
+			dataDir.cStr());
 		GTEST_SKIP() << "Dataset not found";
 	}
 

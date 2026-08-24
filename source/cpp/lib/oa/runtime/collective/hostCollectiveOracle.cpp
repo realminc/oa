@@ -16,7 +16,7 @@ static void cpuReduceF32(
 	HostReduceOp inOp) {
 	switch (inOp) {
 		case HostReduceOp::Sum:
-			oa::Simd::addF32(inOutAcc, inB, inCount);
+			oa::FnSimd::addF32(inOutAcc, inB, inCount);
 			break;
 		case HostReduceOp::Max:
 			for (oa::I64 i = 0; i < inCount; ++i)

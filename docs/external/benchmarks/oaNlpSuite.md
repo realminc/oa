@@ -85,7 +85,7 @@ The complete fifteen-workload matrix was rebuilt from private dev commit
 `c372a1e9` (the working tree had only an unrelated pending
 `AudioCapture.h` formatting edit) with Clang Release, FP32, Intel Iris Xe TGL
 GT2, Mesa 26.1.5, and Vulkan 1.4.354. Each executable ran one excluded warm-up
-and seven measured fresh processes through `tools/diagnostics/oabench.py`.
+and seven measured fresh processes through `tools/diagnostics/oaBench.py`.
 All 120 processes completed training, evaluation, generation, checkpoint
 round-trip, and GoogleTest assertions. This is a correctness pass for all 15
 rows, including Mamba-3.
@@ -328,7 +328,7 @@ correctness.
 Build the 15 Release tutorials named `TutorialNlp{Byte,Bpe,Char}` ×
 `{Rnn,Gru,Transformer,Moe,Mamba3}Ag`. For a release comparison, run one excluded
 warm-up and at least seven sequential measured fresh processes per executable
-through `tools/diagnostics/oabench.py`, with the power profile and thermal
+through `tools/diagnostics/oaBench.py`, with the power profile and thermal
 conditions recorded. Do not compare these results with the historical
 three-process arithmetic means as if they used the same estimator.
 

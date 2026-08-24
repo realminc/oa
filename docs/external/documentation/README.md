@@ -12,8 +12,8 @@
 | Python names and signatures | nanobind registrations, generated stubs and checked `oa.__all__` | Python reference snapshot |
 | Schema operations | operation schemas and generators | matching C++, Python, validation and reference surfaces |
 | Tutorial excerpts | checked source between `OA_DOC_BEGIN` and `OA_DOC_END` markers | developer-site code examples |
-| Tutorial media | approved files under `docs/external/assets` with provenance | developer-site presentation assets |
-| API examples | `sdk/examples.json` plus checked source markers | generated inventory and API-linked code |
+| Tutorial media | approved files under `sdk/asset/documentation` with provenance | offline SDK and developer-site presentation assets |
+| API examples | `tools/gen/example/schema/examples.toml` plus checked generated source markers | generated inventory and API-linked code |
 
 Never hand-copy a signature into generated reference data. Committed generated
 files are reviewable snapshots for standalone site builds, not a second source.
@@ -66,7 +66,7 @@ A published tutorial contains:
 - C++ and Python source paths;
 - marker-derived excerpts from those files;
 - source assets with rights/provenance and generated output under
-  `docs/external/assets/<Topic>`;
+  `sdk/asset/documentation/<topic>`;
 - ownership, synchronization and failure behavior when relevant;
 - an automated correctness or smoke gate;
 - links to the API reference and the next useful tutorial.
@@ -82,8 +82,8 @@ After changing public code or documentation:
 
 1. build and run the narrow C++ and Python examples/tutorials involved;
 2. regenerate C++ and Python reference snapshots and tutorial data;
-3. regenerate `tools/documentation/generate_examples.py` and run its drift check;
-4. run `python3 tools/documentation/check_external_docs.py`;
+3. regenerate `tools/documentation/generateExamples.py` and run its drift check;
+4. run `python3 tools/documentation/checkExternalDocs.py`;
 5. build the developer site and inspect changed pages at desktop and narrow widths.
 
 From the sibling developer-site checkout:

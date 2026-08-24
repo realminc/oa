@@ -41,7 +41,7 @@ training:
   # Plain OaCli apps only load the provided --config unless they opt into this.
 
   # Dataset (all models use same conversation corpus)
-  data: ../dataset/nlp/processed/dailydialog/train.txt
+  data: var/data/dailyDialog/train.txt
 
   # Common training params
   batch_size: 8

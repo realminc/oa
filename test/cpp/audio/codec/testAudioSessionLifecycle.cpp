@@ -37,7 +37,7 @@ TEST(AudioSessionLifecycle, AbandonedLiveSessionsRetireAtEngineClose)
 	oa::String playbackSkipReason;
 	{
 		oa::AudioPlayerConfig config;
-		config.uri = testAssetPath("audio/0_jackson_0.wav").string();
+		config.uri = testAssetPath("audio/oaNarration.wav").string();
 		config.ringMilliseconds = 100U;
 		auto opened = oa::AudioPlayer::open(*engine, config);
 		if (not opened.isOk()) {

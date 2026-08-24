@@ -1,0 +1,1 @@
+"""Kernel authority generator."""

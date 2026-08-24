@@ -14,6 +14,8 @@
 #include <oa/core/op.h>
 #include <oa/runtime/executionSession.h>
 #include <oa/runtime/engine.h>
+#include <algorithm>
+#include <array>
 #include <bit>
 #include <cmath>
 #include <numeric>
@@ -290,6 +292,188 @@ Audio saturate(
 		{
 			oa::OpAttribute::fromFloat("driveDb", inDriveDb),
 			oa::OpAttribute::fromFloat("mix", inMix),
+		});
+	if (not status.isOk()) return {};
+	return result;
+}
+
+Audio reverb(
+	const Audio& inAudio,
+	oa::F32 inDecaySeconds,
+	oa::F32 inWet) {
+	if (not inAudio.validate() or inAudio.isEmpty()) return {};
+	const oa::Matrix& input = inAudio.asMatrix();
+	const auto& shape = input.getShape();
+	if (shape.rank != 2 or shape[0] <= 0 or shape[1] <= 0
+		or input.getDtype() != oa::ScalarType::Float32
+		or not std::isfinite(inDecaySeconds)
+		or inDecaySeconds < 0.1F or inDecaySeconds > 10.0F
+		or not std::isfinite(inWet) or inWet < 0.0F or inWet > 1.0F) {
+		OaLogError(oa::LogComponent::Audio,
+			"oa::FnAudio::reverb: expected non-empty F32 [channels, samples], decaySeconds in [0.1, 10], and wet in [0, 1]");
+		return {};
+	}
+
+	const oa::U64 channels64 = static_cast<oa::U64>(shape[0]);
+	const oa::U64 inSamples64 = static_cast<oa::U64>(shape[1]);
+	const oa::U64 tailSamples64 = static_cast<oa::U64>(std::ceil(
+		static_cast<oa::F64>(inAudio.sampleRate())
+		* static_cast<oa::F64>(inDecaySeconds)));
+	const oa::U64 maxAddressableSamples = std::numeric_limits<oa::U32>::max();
+	if (tailSamples64 == 0U or tailSamples64 > maxAddressableSamples
+		or inSamples64 > maxAddressableSamples - tailSamples64) {
+		OaLogError(oa::LogComponent::Audio,
+			"oa::FnAudio::reverb: rendered tail exceeds u32 sample addressing");
+		return {};
+	}
+	const oa::U64 outSamples64 = inSamples64 + tailSamples64;
+	if (channels64 > std::numeric_limits<oa::U32>::max()
+		or outSamples64 > std::numeric_limits<oa::U32>::max()
+		or channels64 > std::numeric_limits<oa::U32>::max() / outSamples64) {
+		OaLogError(oa::LogComponent::Audio,
+			"oa::FnAudio::reverb: output dispatch exceeds u32 addressing");
+		return {};
+	}
+
+	constexpr std::array<oa::F64, 4> combDelaySeconds{
+		0.0297, 0.0371, 0.0411, 0.0437};
+	constexpr std::array<oa::F64, 2> allpassDelaySeconds{0.0050, 0.0017};
+	constexpr oa::F32 allpassGain = 0.7F;
+	const oa::U32 channels = static_cast<oa::U32>(channels64);
+	const oa::U32 inSamples = static_cast<oa::U32>(inSamples64);
+	const oa::U32 outSamples = static_cast<oa::U32>(outSamples64);
+	const oa::U32 count = static_cast<oa::U32>(channels64 * outSamples64);
+
+	std::array<oa::U32, 4> combDelays{};
+	std::array<oa::F32, 4> combFeedback{};
+	oa::F64 normalizationDenominator = 0.0;
+	for (oa::Usize index = 0; index < combDelaySeconds.size(); ++index) {
+		const oa::U64 delay = std::max<oa::U64>(1U, static_cast<oa::U64>(
+			std::llround(combDelaySeconds[index] * inAudio.sampleRate())));
+		if (delay > std::numeric_limits<oa::U32>::max()
+			or channels64 > std::numeric_limits<oa::U32>::max() / delay) {
+			OaLogError(oa::LogComponent::Audio,
+				"oa::FnAudio::reverb: comb dispatch exceeds u32 addressing");
+			return {};
+		}
+		combDelays[index] = static_cast<oa::U32>(delay);
+		combFeedback[index] = static_cast<oa::F32>(std::pow(
+			0.001,
+			(static_cast<oa::F64>(delay) / inAudio.sampleRate())
+				/ static_cast<oa::F64>(inDecaySeconds)));
+		normalizationDenominator += 1.0 / (1.0 - combFeedback[index]);
+	}
+	std::array<oa::U32, 2> allpassDelays{};
+	for (oa::Usize index = 0; index < allpassDelaySeconds.size(); ++index) {
+		const oa::U64 delay = std::max<oa::U64>(1U, static_cast<oa::U64>(
+			std::llround(allpassDelaySeconds[index] * inAudio.sampleRate())));
+		if (delay > std::numeric_limits<oa::U32>::max()
+			or channels64 > std::numeric_limits<oa::U32>::max() / delay) {
+			OaLogError(oa::LogComponent::Audio,
+				"oa::FnAudio::reverb: all-pass dispatch exceeds u32 addressing");
+			return {};
+		}
+		allpassDelays[index] = static_cast<oa::U32>(delay);
+	}
+	const oa::F32 normalization = static_cast<oa::F32>(
+		1.0 / normalizationDenominator);
+
+	auto& ctx = oa::ExecutionSession::getActive();
+	oa::OpLoweringScope lowering(ctx);
+	const oa::MatrixShape outputShape{
+		static_cast<oa::I64>(channels), static_cast<oa::I64>(outSamples)};
+	std::array<oa::Matrix, 4> combs;
+	for (oa::Usize index = 0; index < combs.size(); ++index) {
+		combs[index] = oa::FnMatrix::empty(outputShape, oa::ScalarType::Float32);
+		if (combs[index].isEmpty()) return {};
+		struct {
+			oa::U32 channels;
+			oa::U32 inSamples;
+			oa::U32 outSamples;
+			oa::U32 delaySamples;
+			oa::F32 feedback;
+		} push{
+			.channels = channels,
+			.inSamples = inSamples,
+			.outSamples = outSamples,
+			.delaySamples = combDelays[index],
+			.feedback = combFeedback[index],
+		};
+		oa::BufferAccess access[] = {
+			oa::BufferAccess::Read, oa::BufferAccess::Write};
+		const oa::U32 tasks = channels * combDelays[index];
+		ctx.add(
+			"AudioReverbComb", {&input, &combs[index]}, access,
+			&push, sizeof(push), (tasks + 255U) / 256U);
+	}
+
+	oa::Matrix summed = oa::FnMatrix::empty(outputShape, oa::ScalarType::Float32);
+	if (summed.isEmpty()) return {};
+	struct {
+		oa::U32 count;
+		oa::F32 normalization;
+	} sumPush{.count = count, .normalization = normalization};
+	oa::BufferAccess sumAccess[] = {
+		oa::BufferAccess::Read, oa::BufferAccess::Read,
+		oa::BufferAccess::Read, oa::BufferAccess::Read,
+		oa::BufferAccess::Write};
+	ctx.add(
+		"AudioReverbSum",
+		{&combs[0], &combs[1], &combs[2], &combs[3], &summed},
+		sumAccess, &sumPush, sizeof(sumPush), (count + 255U) / 256U);
+
+	std::array<oa::Matrix, 2> diffused;
+	const oa::Matrix* diffuserInput = &summed;
+	for (oa::Usize index = 0; index < diffused.size(); ++index) {
+		diffused[index] = oa::FnMatrix::empty(outputShape, oa::ScalarType::Float32);
+		if (diffused[index].isEmpty()) return {};
+		struct {
+			oa::U32 channels;
+			oa::U32 samples;
+			oa::U32 delaySamples;
+			oa::F32 gain;
+		} push{
+			.channels = channels,
+			.samples = outSamples,
+			.delaySamples = allpassDelays[index],
+			.gain = allpassGain,
+		};
+		oa::BufferAccess access[] = {
+			oa::BufferAccess::Read, oa::BufferAccess::Write};
+		const oa::U32 tasks = channels * allpassDelays[index];
+		ctx.add(
+			"AudioReverbAllpass", {diffuserInput, &diffused[index]}, access,
+			&push, sizeof(push), (tasks + 255U) / 256U);
+		diffuserInput = &diffused[index];
+	}
+
+	oa::Matrix output = oa::FnMatrix::empty(outputShape, oa::ScalarType::Float32);
+	if (output.isEmpty()) return {};
+	struct {
+		oa::U32 channels;
+		oa::U32 inSamples;
+		oa::U32 outSamples;
+		oa::F32 wet;
+	} mixPush{
+		.channels = channels,
+		.inSamples = inSamples,
+		.outSamples = outSamples,
+		.wet = inWet,
+	};
+	oa::BufferAccess mixAccess[] = {
+		oa::BufferAccess::Read, oa::BufferAccess::Read,
+		oa::BufferAccess::Write};
+	ctx.add(
+		"AudioReverbMix", {&input, diffuserInput, &output}, mixAccess,
+		&mixPush, sizeof(mixPush), (count + 255U) / 256U);
+
+	Audio result(oa::move(output), inAudio.sampleRate(), inAudio.layout());
+	const auto status = lowering.commit(
+		oa::detail::opRegistry::FnAudio::reverb,
+		{&input}, {&result.asMatrix()},
+		{
+			oa::OpAttribute::fromFloat("decaySeconds", inDecaySeconds),
+			oa::OpAttribute::fromFloat("wet", inWet),
 		});
 	if (not status.isOk()) return {};
 	return result;

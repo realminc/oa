@@ -55,7 +55,7 @@ struct UsdNamedClip {
 namespace Usd {
 
 // Emit `clip` as a valid `.usda` SkelRoot/Skeleton/SkelAnimation stage (Z-up,
-// cm). Mirrors Tools/Gen3dAnim/walk_to_usda.py. `defaultPrim` names the
+// cm). Mirrors tools/gen/animation/walkToUsda.py. `defaultPrim` names the
 // SkelRoot prim.
 [[nodiscard]] oa::Status writeUsda(const oa::Path& inPath,
                                  const UsdSkelClip& inClip,

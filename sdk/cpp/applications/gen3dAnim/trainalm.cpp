@@ -57,7 +57,7 @@ struct PhaseConfig {
 
 struct AlmTrainConfig {
 	oa::String name      = "Alm";
-	oa::String dataset   = "../dataset/gen/3d/anim/ds/Cmp";
+	oa::String dataset   = oa::Paths::data("humanMl3d/Cmp").string();
 	oa::String split     = "train";
 	oa::String valSplit  = "val";
 	oa::I32    maxClips  = 0;

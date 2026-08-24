@@ -4,6 +4,7 @@
 #include "oaTest.h"
 
 #include <oa/core/filesystem.h>
+#include <oa/core/paths.h>
 #include <data/dsMnist.h>
 #include <oa/ml.h>
 #include <oa/ml/autograd.h>
@@ -307,12 +308,11 @@ inline oa::F32 validate(Model& inModel, oa::DsMnist& inValidation) {
 }
 
 inline void run(bool inMoe) {
-	const char* dataDirectory = std::getenv("OA_MNIST_DATA");
-	if (!dataDirectory) dataDirectory = "../oapy/dataset/FashionMNIST/raw";
+	const oa::String dataDirectory = oa::Paths::data("fashionMnist").string();
 	oa::DsMnist train(dataDirectory, "train", kBatch, true);
 	oa::DsMnist validation(dataDirectory, "t10k", kBatch, false);
 	if (train.numSamples() == 0 || validation.numSamples() == 0) {
-		GTEST_SKIP() << "Fashion-MNIST not found (set OA_MNIST_DATA)";
+		GTEST_SKIP() << "Fashion-MNIST not found (run tools/data/manage.py fetch fashionMnist)";
 	}
 
 	const oa::I32 steps = trainSteps();

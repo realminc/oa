@@ -4,8 +4,8 @@
 // session classes; do not add mirrored session commands to this namespace.
 //
 // Schema source of truth:
-//   Tools/FnAutogen/Schema/Vision/VisionFnVideoColor.toml
-//   Tools/FnAutogen/Schema/Vision/VisionFnVideoNal.toml
+//   tools/gen/fn/schema/vision/visionFnVideoColor.toml
+//   tools/gen/fn/schema/vision/visionFnVideoNal.toml
 //
 // The schemas own operation metadata. Runtime-specific declarations and
 // bodies remain handwritten and use the non-owning frame contract or NAL

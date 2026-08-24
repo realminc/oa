@@ -17,6 +17,7 @@
 #include <ml/nn/alm/almPriorAg.h>
 #include <anim/usd.h>
 #include <oa/core/filesystem.h>
+#include <oa/core/paths.h>
 #include <oa/core/vlm.h>
 #include <data/dsHumanMl3d.h>
 #include <oa/ml.h>
@@ -70,7 +71,7 @@ static bool hostAllFinite(const oa::Matrix& inMatrix) {
 oa::AlmDatasetConfig oa::AlmDatasetConfig::fromEnv() {
 	oa::AlmDatasetConfig cfg;
 	cfg.corpus = "cmp";
-	cfg.dataDir = "../dataset/gen/3d/anim/ds/Cmp";
+	cfg.dataDir = oa::Paths::data("humanMl3d/Cmp").string();
 	cfg.split = "train";
 	cfg.maxClips = 0;
 	
@@ -1647,7 +1648,7 @@ TEST(Alm, TokenizerLearnsCmp) {
 	oa::FnMatrix::setRngSeed(7);
 	auto& ctx = oa::ExecutionSession::getActive();
 
-	const oa::String dsPath = "../dataset/gen/3d/anim/ds/Cmp";
+	const oa::String dsPath = oa::Paths::data("humanMl3d/Cmp").string();
 	oa::DsCombatMotionProcessed ds(dsPath, "train", /*inMaxClips=*/128);
 	ASSERT_TRUE(ds.ok()) << "Failed to load CMP from " << dsPath.cStr();
 	ASSERT_GE(ds.numClips(), 128) << "Not enough clips in dataset";
@@ -1763,7 +1764,7 @@ TEST(Alm, TokenizerLearnsCmp) {
 }
 
 TEST(Alm, HumanMl3dLoads) {
-	const oa::String dsPath = "../dataset/gen/3d/anim/ds/HumanML3D/HumanML3D";
+	const oa::String dsPath = oa::Paths::data("humanMl3d/HumanML3D").string();
 	oa::DsHumanMl3d ds(dsPath, "train", /*inMaxClips=*/4);
 	ASSERT_TRUE(ds.ok()) << "Failed to load HumanML3D from " << dsPath.cStr();
 	ASSERT_GE(ds.numClips(), 1) << "HumanML3D dataset has no clips";
@@ -1789,7 +1790,7 @@ TEST(Alm, HumanMl3dLoads) {
 }
 
 TEST(Alm, CmpLoadsAllCaptions) {
-	const oa::String dsPath = "../dataset/gen/3d/anim/ds/Cmp";
+	const oa::String dsPath = oa::Paths::data("humanMl3d/Cmp").string();
 	oa::DsCombatMotionProcessed ds(dsPath, "train", /*inMaxClips=*/8);
 	ASSERT_TRUE(ds.ok());
 	ASSERT_GE(ds.numClips(), 1);
@@ -1885,7 +1886,7 @@ TEST(Alm, LmLearnsCmpTokens) {
 	oa::FnMatrix::setRngSeed(13);
 	auto& ctx = oa::ExecutionSession::getActive();
 
-	const oa::String dsPath = "../dataset/gen/3d/anim/ds/Cmp";
+	const oa::String dsPath = oa::Paths::data("humanMl3d/Cmp").string();
 	oa::DsCombatMotionProcessed ds(dsPath, "train", /*inMaxClips=*/128);
 	ASSERT_TRUE(ds.ok()) << "Failed to load CMP from " << dsPath.cStr();
 	ASSERT_GE(ds.numClips(), 128) << "Not enough clips in dataset";

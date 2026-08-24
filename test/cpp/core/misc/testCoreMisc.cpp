@@ -1,10 +1,9 @@
-// Core: oa::Filesystem, oa::Device helpers, oa::getMemoryUsage (Host / no engine), oa::Simd (Highway).
+// Core: oa::Filesystem, oa::Device helpers, oa::getMemoryUsage, and oa::FnSimd.
 
 #include "../../oaTest.h"
 
 #include <oa/core/device.h>
 #include <oa/core/log.h>
-#include <oa/core/vlm.h>
 #include <oa/core/simd.h>
 
 #include <atomic>
@@ -12,7 +11,6 @@
 #include <cstring>
 #include <string>
 #include <thread>
-#include <type_traits>
 #include <vector>
 
 struct CoreMiscTestPod {
@@ -122,13 +120,13 @@ TEST(CoreSimd, DotF32) {
 	for (oa::I64 i = 0; i < 5; ++i) {
 		ref += a[i] * b[i];
 	}
-	EXPECT_NEAR(oa::Simd::dotF32(a, b, 5), ref, 1e-5f);
-	EXPECT_FLOAT_EQ(oa::Simd::dotF32(a, b, 0), 0.0f);
+	EXPECT_NEAR(oa::FnSimd::dotF32(a, b, 5), ref, 1e-5f);
+	EXPECT_FLOAT_EQ(oa::FnSimd::dotF32(a, b, 0), 0.0f);
 }
 
 TEST(CoreSimd, ScaleF32) {
 	oa::F32 buf[] = {1.0f, -2.0f, 3.5f, 0.0f, 8.0f};
-	oa::Simd::scaleF32(buf, 2.0f, 5);
+	oa::FnSimd::scaleF32(buf, 2.0f, 5);
 	EXPECT_NEAR(buf[0], 2.0f, 1e-6f);
 	EXPECT_NEAR(buf[1], -4.0f, 1e-6f);
 	EXPECT_NEAR(buf[2], 7.0f, 1e-6f);
@@ -139,185 +137,47 @@ TEST(CoreSimd, ScaleF32) {
 TEST(CoreSimd, addF32) {
 	oa::F32 x[] = {1.0f, 2.0f, 3.0f};
 	const oa::F32 y[] = {10.0f, 20.0f, 30.0f};
-	oa::Simd::addF32(x, y, 3);
+	oa::FnSimd::addF32(x, y, 3);
 	EXPECT_NEAR(x[0], 11.0f, 1e-6f);
 	EXPECT_NEAR(x[1], 22.0f, 1e-6f);
 	EXPECT_NEAR(x[2], 33.0f, 1e-6f);
 }
 
-static oa::vlm::Vec4 transformRowVectorOracle(
-	const oa::vlm::Vec4& inV,
-	const oa::vlm::Mat4& inM
-) {
-	return {
-		inV.x * inM.m[0][0] + inV.y * inM.m[1][0] +
-			inV.z * inM.m[2][0] + inV.w * inM.m[3][0],
-		inV.x * inM.m[0][1] + inV.y * inM.m[1][1] +
-			inV.z * inM.m[2][1] + inV.w * inM.m[3][1],
-		inV.x * inM.m[0][2] + inV.y * inM.m[1][2] +
-			inV.z * inM.m[2][2] + inV.w * inM.m[3][2],
-		inV.x * inM.m[0][3] + inV.y * inM.m[1][3] +
-			inV.z * inM.m[2][3] + inV.w * inM.m[3][3],
-	};
-}
+TEST(CoreSimd, ArithmeticHandlesUnalignedPointersAndScalarTails) {
+	constexpr oa::I64 count = 19;
+	oa::F32 storageA[21] = {};
+	oa::F32 storageB[21] = {};
+	oa::F32* a = storageA + 1;
+	oa::F32* b = storageB + 1;
+	for (oa::I64 index = 0; index < count; ++index) {
+		a[index] = static_cast<oa::F32>(index + 1);
+		b[index] = static_cast<oa::F32>(index + 2);
+	}
 
-static_assert(std::is_standard_layout_v<oa::vlm::Vec2>);
-static_assert(std::is_standard_layout_v<oa::vlm::Vec3>);
-static_assert(std::is_standard_layout_v<oa::vlm::Vec4>);
-static_assert(std::is_standard_layout_v<oa::vlm::Quat>);
-static_assert(std::is_standard_layout_v<oa::vlm::Mat4>);
-static_assert(std::is_trivially_copyable_v<oa::vlm::Vec2>);
-static_assert(std::is_trivially_copyable_v<oa::vlm::Vec3>);
-static_assert(std::is_trivially_copyable_v<oa::vlm::Vec4>);
-static_assert(std::is_trivially_copyable_v<oa::vlm::Quat>);
-static_assert(std::is_trivially_copyable_v<oa::vlm::Mat4>);
-static_assert(sizeof(oa::vlm::Vec2) == sizeof(oa::F32) * 2);
-static_assert(sizeof(oa::vlm::Vec3) == sizeof(oa::F32) * 3);
-static_assert(sizeof(oa::vlm::Vec4) == sizeof(oa::F32) * 4);
-static_assert(sizeof(oa::vlm::Quat) == sizeof(oa::F32) * 4);
-static_assert(sizeof(oa::vlm::Mat4) == sizeof(oa::F32) * 16);
+	oa::FnSimd::subF32(a, b, count);
+	for (oa::I64 index = 0; index < count; ++index) EXPECT_FLOAT_EQ(a[index], -1.0F);
 
-TEST(CoreVlm, VectorOperatorsMatchNamedFunctions) {
-	const oa::vlm::Vec2 a2{1.0F, 2.0F};
-	const oa::vlm::Vec2 b2{3.0F, 4.0F};
-	EXPECT_EQ(a2 + b2, oa::vlm::add(a2, b2));
-	EXPECT_EQ(a2 - b2, oa::vlm::sub(a2, b2));
-	EXPECT_EQ(a2 * 2.0F, oa::vlm::scale(a2, 2.0F));
-	EXPECT_EQ(a2 / 2.0F, oa::vlm::divide(a2, 2.0F));
-	EXPECT_EQ(2.0F * a2, oa::vlm::scale(a2, 2.0F));
+	for (oa::I64 index = 0; index < count; ++index) {
+		a[index] = static_cast<oa::F32>(index + 1);
+	}
+	oa::FnSimd::mulF32(a, b, count);
+	for (oa::I64 index = 0; index < count; ++index) {
+		EXPECT_FLOAT_EQ(a[index], static_cast<oa::F32>((index + 1) * (index + 2)));
+	}
 
-	const oa::vlm::Vec3 a3{1.0F, 2.0F, 3.0F};
-	const oa::vlm::Vec3 b3{4.0F, 5.0F, 6.0F};
-	EXPECT_EQ(a3 + b3, oa::vlm::add(a3, b3));
-	EXPECT_EQ(-a3, oa::vlm::scale(a3, -1.0F));
-	EXPECT_EQ(a3 - b3, oa::vlm::sub(a3, b3));
-	EXPECT_EQ(a3 * 2.0F, oa::vlm::scale(a3, 2.0F));
-	EXPECT_EQ(a3 / 2.0F, oa::vlm::divide(a3, 2.0F));
+	oa::FnSimd::divF32(a, b, count);
+	for (oa::I64 index = 0; index < count; ++index) {
+		EXPECT_FLOAT_EQ(a[index], static_cast<oa::F32>(index + 1));
+	}
+	oa::FnSimd::negF32(a, count);
+	for (oa::I64 index = 0; index < count; ++index) {
+		EXPECT_FLOAT_EQ(a[index], -static_cast<oa::F32>(index + 1));
+	}
 
-	const oa::vlm::Vec4 a4{1.0F, 2.0F, 3.0F, 4.0F};
-	const oa::vlm::Vec4 b4{5.0F, 6.0F, 7.0F, 8.0F};
-	EXPECT_EQ(a4 + b4, oa::vlm::add(a4, b4));
-	EXPECT_EQ(a4 - b4, oa::vlm::sub(a4, b4));
-	EXPECT_EQ(a4 * 2.0F, oa::vlm::scale(a4, 2.0F));
-	EXPECT_EQ(a4 / 2.0F, oa::vlm::divide(a4, 2.0F));
-
-	oa::vlm::Vec3 compound = a3;
-	compound += b3;
-	compound -= b3;
-	compound *= 4.0F;
-	compound /= 2.0F;
-	EXPECT_EQ(compound, oa::vlm::scale(a3, 2.0F));
-}
-
-TEST(CoreVlm, QuaternionOperatorsMatchNamedFunctions) {
-	const oa::vlm::Quat a{1.0F, 2.0F, 3.0F, 4.0F};
-	const oa::vlm::Quat b{-2.0F, 1.0F, 0.5F, 3.0F};
-	EXPECT_EQ(a + b, oa::vlm::add(a, b));
-	EXPECT_EQ(-a, oa::vlm::scale(a, -1.0F));
-	EXPECT_EQ(a - b, oa::vlm::sub(a, b));
-	EXPECT_EQ(a * 2.0F, oa::vlm::scale(a, 2.0F));
-	EXPECT_EQ(a / 2.0F, oa::vlm::divide(a, 2.0F));
-	EXPECT_EQ(2.0F * a, oa::vlm::scale(a, 2.0F));
-	EXPECT_EQ(a * b, oa::vlm::quaternionMul(a, b));
-
-	oa::vlm::Quat compound = a;
-	compound += b;
-	compound -= b;
-	compound *= 2.0F;
-	compound /= 2.0F;
-	compound *= b;
-	EXPECT_EQ(compound, oa::vlm::quaternionMul(a, b));
-}
-
-TEST(CoreVlm, MatrixOperatorsMatchNamedFunctions) {
-	const oa::vlm::Mat4 a = oa::vlm::translation(
-		oa::vlm::Vec3{1.0F, 2.0F, 3.0F});
-	const oa::vlm::Mat4 b = oa::vlm::scaleMatrix(
-		oa::vlm::Vec3{2.0F, 3.0F, 4.0F});
-	EXPECT_EQ(a + b, oa::vlm::add(a, b));
-	EXPECT_EQ(-a, oa::vlm::scale(a, -1.0F));
-	EXPECT_EQ(a - b, oa::vlm::sub(a, b));
-	EXPECT_EQ(a * 2.0F, oa::vlm::scale(a, 2.0F));
-	EXPECT_EQ(a / 2.0F, oa::vlm::divide(a, 2.0F));
-	EXPECT_EQ(2.0F * a, oa::vlm::scale(a, 2.0F));
-	EXPECT_EQ(a * b, oa::vlm::matrixMul(a, b));
-
-	oa::vlm::Mat4 compound = a;
-	compound += b;
-	compound -= b;
-	compound *= 2.0F;
-	compound /= 2.0F;
-	compound *= b;
-	EXPECT_EQ(compound, oa::vlm::matrixMul(a, b));
-
-	const oa::vlm::Vec4 value{3.0F, 4.0F, 5.0F, 1.0F};
-	EXPECT_EQ(value * a, oa::vlm::transform(value, a));
-	EXPECT_EQ(value * a, transformRowVectorOracle(value, a));
-}
-
-TEST(CoreVlm, UsesRightHandedSpatialBasis) {
-	const oa::vlm::Vec3 z = oa::vlm::cross(
-		oa::vlm::Vec3{1.0F, 0.0F, 0.0F},
-		oa::vlm::Vec3{0.0F, 1.0F, 0.0F});
-	EXPECT_FLOAT_EQ(z.x, 0.0F);
-	EXPECT_FLOAT_EQ(z.y, 0.0F);
-	EXPECT_FLOAT_EQ(z.z, 1.0F);
-}
-
-TEST(CoreVlm, QuaternionAndRowMajorMatrixRotateIdentically) {
-	const oa::vlm::Quat rotation = oa::vlm::Quat::fromAxisAngle(
-		{0.0F, 0.0F, 1.0F}, oa::vlm::kPi * 0.5F);
-	const oa::vlm::Vec3 value{1.0F, 0.0F, 0.0F};
-	const oa::vlm::Vec3 byQuaternion = rotation.rotate(value);
-	const oa::vlm::Vec4 byMatrix = transformRowVectorOracle(
-		{value.x, value.y, value.z, 0.0F},
-		oa::vlm::quaternionToMatrix(rotation));
-
-	EXPECT_NEAR(byQuaternion.x, byMatrix.x, 1e-6F);
-	EXPECT_NEAR(byQuaternion.y, byMatrix.y, 1e-6F);
-	EXPECT_NEAR(byQuaternion.z, byMatrix.z, 1e-6F);
-	EXPECT_NEAR(byMatrix.x, 0.0F, 1e-6F);
-	EXPECT_NEAR(byMatrix.y, 1.0F, 1e-6F);
-}
-
-TEST(CoreVlm, QuaternionMatrixRoundTripPreservesRotation) {
-	const oa::vlm::Quat input = oa::vlm::Quat::fromAxisAngle(
-		{1.0F, 2.0F, -3.0F}, 1.234F);
-	const oa::vlm::Quat output = oa::vlm::quaternionFromMatrix(
-		oa::vlm::quaternionToMatrix(input));
-	const oa::F32 alignment = input.x * output.x + input.y * output.y
-		+ input.z * output.z + input.w * output.w;
-	EXPECT_NEAR(std::abs(alignment), 1.0F, 1e-5F);
-}
-
-TEST(CoreVlm, PerspectiveUsesVulkanDepthRange) {
-	const oa::F32 nearPlane = 0.1F;
-	const oa::F32 farPlane = 100.0F;
-	const oa::vlm::Mat4 projection =
-		oa::vlm::perspective(60.0F, 16.0F / 9.0F, nearPlane, farPlane);
-	const oa::vlm::Vec4 nearClip =
-		transformRowVectorOracle({0.0F, 0.0F, -nearPlane, 1.0F}, projection);
-	const oa::vlm::Vec4 farClip =
-		transformRowVectorOracle({0.0F, 0.0F, -farPlane, 1.0F}, projection);
-
-	ASSERT_NEAR(nearClip.w, nearPlane, 1e-6F);
-	ASSERT_NEAR(farClip.w, farPlane, 1e-4F);
-	EXPECT_NEAR(nearClip.z / nearClip.w, 0.0F, 1e-5F);
-	EXPECT_NEAR(farClip.z / farClip.w, 1.0F, 1e-5F);
-}
-
-TEST(CoreVlm, OrthographicUsesVulkanDepthRange) {
-	const oa::F32 nearPlane = -1.0F;
-	const oa::F32 farPlane = 1.0F;
-	const oa::vlm::Mat4 projection =
-		oa::vlm::orthographic(1920.0F, 1080.0F, nearPlane, farPlane);
-	const oa::vlm::Vec4 nearClip =
-		transformRowVectorOracle({0.0F, 0.0F, -nearPlane, 1.0F}, projection);
-	const oa::vlm::Vec4 farClip =
-		transformRowVectorOracle({0.0F, 0.0F, -farPlane, 1.0F}, projection);
-
-	EXPECT_NEAR(nearClip.z, 0.0F, 1e-6F);
-	EXPECT_NEAR(farClip.z, 1.0F, 1e-6F);
+	const oa::F32 sentinel = a[0];
+	oa::FnSimd::scaleF32(a, 2.0F, 0);
+	oa::FnSimd::addF32(a, b, -1);
+	EXPECT_FLOAT_EQ(a[0], sentinel);
 }
 
 TEST(CorePaths, NamedLocationsAndLexicalOwnership) {
@@ -327,6 +187,13 @@ TEST(CorePaths, NamedLocationsAndLexicalOwnership) {
 	EXPECT_EQ(asset.filename().string(), "visionTestPattern320x180.jpg");
 	EXPECT_EQ(asset.stem().string(), "visionTestPattern320x180");
 	EXPECT_EQ(asset.extension().string(), ".jpg");
+	const oa::Path sourceRoot = asset.parentPath().parentPath()
+		.parentPath().parentPath();
+	EXPECT_EQ(oa::Paths::var(), sourceRoot / "var");
+	const oa::Path data = oa::Paths::data("fashionMnist");
+	EXPECT_EQ(data.filename().string(), "fashionMnist");
+	EXPECT_EQ(data.parentPath(), oa::Paths::data());
+	EXPECT_EQ(oa::Paths::data(), sourceRoot / "var" / "data");
 
 	const oa::Path nested = oa::Path("one") / "two" / ".." / "file.txt";
 	EXPECT_EQ(nested.lexicallyNormal().genericString(), "one/file.txt");

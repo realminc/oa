@@ -1,5 +1,5 @@
 // Manual tests for Core/FnMatrix index operations
-// These operations are too complex for autogen (manual_session body, complex shapes)
+// These operations use manual session lowering because their shape rules are complex.
 
 #include <gtest/gtest.h>
 #include "../../../oaTest.h"

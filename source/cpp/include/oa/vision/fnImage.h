@@ -29,7 +29,7 @@ struct NormalizationParams {
 namespace FnImage {
 	// exact declarations for the 50 tensor-native image operations. Every op
 	// has an explicit-engine overload and an active-context convenience overload.
-	// Regenerate with: python3 tools/fnAutogen/oafnautogen.py --live
+	// Regenerate with: python3 tools/gen/fn/generate.py --live
 	#include <oa/vision/fnimage/fnImage.gen.h>
 
 	// Stateless still-image codec boundaries. Decode uploads one normalized

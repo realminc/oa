@@ -14,6 +14,7 @@
 #include "../timerRegistry.h"
 
 #include <atomic>
+#include <map>
 #include <mutex>
 
 namespace oa {
@@ -176,6 +177,6 @@ public:
 	std::mutex uploadRingMutex_;
 	std::mutex readbackMutex_;
 	std::mutex hostVisibleBufferCacheMutex_;
-	oa::Vec<oavk::Buffer> hostVisibleBufferCache_;
+	std::multimap<oa::U64, oavk::Buffer> hostVisibleBufferCache_;
 	oa::U64 hostVisibleBufferCacheBytes_ = 0;
 };

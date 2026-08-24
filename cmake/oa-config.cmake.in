@@ -3,7 +3,6 @@
 include(CMakeFindDependencyMacro)
 
 find_dependency(Vulkan)
-find_dependency(hwy CONFIG)
 find_dependency(yaml-cpp CONFIG)
 find_dependency(CLI11 CONFIG)
 find_dependency(fmt CONFIG)

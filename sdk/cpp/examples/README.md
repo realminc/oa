@@ -26,17 +26,20 @@ Each new example must:
 An example is not a scratch test. It remains versioned and must be updated when
 its public API changes.
 
-`sdk/examples.json` is the publication index. Each entry owns one stable ID, paired
-source paths, its CMake target or Python profile, API modules, symbols and the
-runtime capability it requires. The checked source between matching
-`OA_DOC_BEGIN` and `OA_DOC_END` markers is the only code published by the
-developer site.
+`tools/gen/example/schema/examples.toml` is the source of truth for the
+publication index. Generated beginner workflows emit paired C++ and Python
+source, build/test registration, and `sdk/examples.json` together. Each entry
+owns one stable ID, canonical module, paired source paths, build profile,
+language-specific API symbols and runtime capability. C++ and Python symbol
+inventories resolve through the same generated reference catalog; they are not
+assumed to use identical lifecycle helpers. The checked source between matching
+`OA_DOC_BEGIN` and `OA_DOC_END` markers is the only code published by the site.
 
 Generate and verify the public example snapshot with:
 
 ```bash
-python3 tools/documentation/generate_examples.py
-python3 tools/documentation/generate_examples.py --check
+python3 tools/documentation/generateExamples.py
+python3 tools/documentation/generateExamples.py --check
 ```
 
 The generator rejects missing pairs, duplicate IDs, unsafe paths, unregistered
@@ -62,8 +65,8 @@ template for new work.
 
 | Concept | C++ | Python | Gate |
 |---|---|---|---|
-| Device matrix addition | `cpp/core/matrixAdd.cpp` | `py/core/matrixAdd.py` | `ExampleCoreMatrixAdd`; GPU Python profile |
-| Audio clipping | `cpp/audio/clip.cpp` | `py/audio/clip.py` | `ExampleAudioClip`; GPU Python profile |
+| Device matrix addition | `cpp/core/matrix.cpp` | `py/core/matrix.py` | `ExampleCoreMatrix`; GPU Python profile |
+| Audio file processing | `cpp/audio/audio.cpp` | `py/audio/audio.py` | `ExampleAudio`; GPU Python profile |
 | Image resize | `cpp/vision/resize.cpp` | `py/vision/resize.py` | `ExampleVisionResize`; GPU Python profile |
 | Batch SHAKE-256 | `cpp/crypto/shake256.cpp` | `py/crypto/shake256.py` | `ExampleCryptoShake256`; crypto-GPU Python profile |
 | Retained line plot | `cpp/plot/line.cpp` | `py/plot/line.py` | `ExamplePlotLine`; GPU Python profile |

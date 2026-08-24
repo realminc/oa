@@ -32,3 +32,18 @@ assert not native.runtime._pythonEngineInitialized()
 assert not native.runtime._pythonEnginePresentationCapable()
 """
 	subprocess.run([sys.executable, "-c", probe], check=True)
+
+
+def test_first_device_factory_initializes_compute_engine() -> None:
+	probe = """
+import oa
+from oa._native import native
+
+assert not native.runtime._pythonEngineInitialized()
+one = oa.FnMatrix.ones([2, 3])
+two = oa.FnMatrix.full([2, 3], 2.0)
+values = oa.FnMatrix.copyToHost(oa.FnMatrix.add(one, two))
+assert values == [3.0] * 6
+assert native.runtime._pythonEngineInitialized()
+"""
+	subprocess.run([sys.executable, "-c", probe], check=True)

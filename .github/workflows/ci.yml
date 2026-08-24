@@ -54,22 +54,24 @@ jobs:
 
       - name: Architecture and diagnostic contract checks
         run: |
-          python3 tools/architecture/test_oacheck.py
-          python3 tools/architecture/oacheck.py
-          python3 tools/diagnostics/test_oaevidence.py
-          python3 tools/diagnostics/test_run_validation.py
-          python3 tools/diagnostics/test_oabench.py
-          python3 tools/diagnostics/test_oabaseline.py
-          python3 tools/diagnostics/test_oabenchsuite.py
-          python3 tools/diagnostics/test_oadeterminism.py
-          python3 tools/test_audit_kernels.py
-          python3 tools/kernelAutogen/test_kernelautogen.py
-          python3 tools/diagnostics/run_validation.py --help >/dev/null
+          python3 tools/architecture/testOaCheck.py
+          python3 tools/architecture/oaCheck.py
+          python3 tools/diagnostics/testOaEvidence.py
+          python3 tools/diagnostics/testRunValidation.py
+          python3 tools/diagnostics/testOaBench.py
+          python3 tools/diagnostics/testOaBaseline.py
+          python3 tools/diagnostics/testOaBenchSuite.py
+          python3 tools/diagnostics/testOaDeterminism.py
+          python3 tools/diagnostics/testAuditKernels.py
+          python3 tools/gen/kernel/testGenerate.py
+          python3 tools/data/checkAssets.py
+          python3 -m unittest tools/data/testManage.py
+          python3 tools/diagnostics/runValidation.py --help >/dev/null
 
       - name: Generated-source drift check
         run: |
-          python3 tools/fnAutogen/check_schema_coverage.py
-          python3 tools/check_autogen_drift.py
+          python3 tools/gen/fn/checkSchemaCoverage.py
+          python3 tools/gen/checkDrift.py
 
       - name: Verify tag is on main
         if: github.repository == 'realminc/oa' && startsWith(github.ref, 'refs/tags/v')
@@ -142,7 +144,7 @@ jobs:
         run: ninja -C build/release -j$(nproc)
 
       - name: Verify configured shader authority
-        run: python3 tools/audit_kernels.py --build-dir build/release --strict
+        run: python3 tools/diagnostics/auditKernels.py --build-dir build/release --strict
 
       # This packaging build intentionally omits tests. Host sanitizers and the
       # bounded Lavapipe job below own hosted correctness; the complete ML/crypto
@@ -439,14 +441,14 @@ jobs:
         run: ctest --test-dir build/release --output-on-failure -L gpu_smoke
       - name: Synchronization validation (real device)
         run: |
-          python3 tools/diagnostics/run_validation.py \
+          python3 tools/diagnostics/runValidation.py \
             --mode sync \
             --cmake-cache build/release/CMakeCache.txt \
             --output var/report/gpu-sync \
             -- bin/release/test/runtime/graph/testExecutableGraph
       - name: GPU-assisted validation (real device)
         run: |
-          python3 tools/diagnostics/run_validation.py \
+          python3 tools/diagnostics/runValidation.py \
             --mode gpu \
             --cmake-cache build/release/CMakeCache.txt \
             --output var/report/gpu-assisted \

@@ -15,35 +15,35 @@ struct KernelIdReservation {
 };
 
 static constexpr KernelIdReservation ReservedKernelIdRanges[] = {
-#include <oa/runtime/kernelReservations.gen.inl>
+#include <oa/runtime/gen/kernelReservations.inl>
 };
 
 static constexpr oa::ComputeKernel MlKernels[] = {
-#include <oa/runtime/kernelRegistryStandaloneMl.gen.inl>
-#include <oa/runtime/oaTileKernelRegistry.gen.inc>
-#include <oa/runtime/kernelRegistryMl.gen.inl>
+#include <oa/runtime/gen/kernelRegistryStandaloneMl.inl>
+#include <oa/runtime/gen/tileKernelRegistry.inc>
+#include <oa/runtime/gen/kernelRegistryMl.inl>
 };
 
 static constexpr oa::ComputeKernel VisionKernels[] = {
-#include <oa/runtime/kernelRegistryStandaloneVision.gen.inl>
-#include <oa/runtime/kernelRegistryVision.gen.inl>
+#include <oa/runtime/gen/kernelRegistryStandaloneVision.inl>
+#include <oa/runtime/gen/kernelRegistryVision.inl>
 };
 
 static constexpr oa::ComputeKernel UiKernels[] = {
-#include <oa/runtime/kernelRegistryStandaloneUi.gen.inl>
-#include <oa/runtime/kernelRegistryUi.gen.inl>
+#include <oa/runtime/gen/kernelRegistryStandaloneUi.inl>
+#include <oa/runtime/gen/kernelRegistryUi.inl>
 };
 
 static constexpr oa::ComputeKernel AudioKernels[] = {
-#include <oa/runtime/kernelRegistryStandaloneAudio.gen.inl>
+#include <oa/runtime/gen/kernelRegistryStandaloneAudio.inl>
 };
 
 static constexpr oa::ComputeKernel RenderKernels[] = {
-#include <oa/runtime/kernelRegistryStandaloneRender.gen.inl>
+#include <oa/runtime/gen/kernelRegistryStandaloneRender.inl>
 };
 
 static constexpr oa::ComputeKernel CryptoKernels[] = {
-#include <oa/runtime/kernelRegistryStandaloneCrypto.gen.inl>
+#include <oa/runtime/gen/kernelRegistryStandaloneCrypto.inl>
 };
 
 template <typename T, oa::Usize N>

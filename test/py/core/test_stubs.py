@@ -16,7 +16,7 @@ import oa
 pytestmark = pytest.mark.oa_crypto
 
 PACKAGE_ROOT = REPO_ROOT / "source" / "py" / "oa"
-STUB_GENERATOR = REPO_ROOT / "tools" / "python" / "oapystubgen.py"
+STUB_GENERATOR = REPO_ROOT / "tools" / "gen" / "python" / "generateStubs.py"
 
 
 def _declaredNames(path: Path) -> set[str]:

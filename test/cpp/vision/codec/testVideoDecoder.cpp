@@ -891,7 +891,7 @@ TEST_F(VkEngineTestFixture, VideoDecoder_UpdateH264SessionParametersFromAccessUn
 
 TEST_F(VkEngineTestFixture, VideoDecoder_DecodeH264FrameFromLocalFixture)
 {
-	auto fixtureResult = oa::Filesystem::readBinary(testAssetPath("video/VisionTestPattern128x72_idr.h264"));
+	auto fixtureResult = oa::Filesystem::readBinary(testAssetPath("video/visionTestPattern128x72Idr.h264"));
 	ASSERT_TRUE(fixtureResult.isOk()) << fixtureResult.getStatus().toString();
 
 	auto& engine = rt();
@@ -947,7 +947,7 @@ TEST_F(VkEngineTestFixture, VideoDecoder_DecodeH264FrameFromLocalFixture)
 
 		if (std::system("command -v ffmpeg >/dev/null 2>&1") == 0) {
 			const oa::Path fixturePath =
-				testAssetPath("video/VisionTestPattern128x72_idr.h264");
+				testAssetPath("video/visionTestPattern128x72Idr.h264");
 			const std::string referencePath =
 				testReferencePath("oa_h264_idr_reference_nv12");
 			const oa::String command = oa::String("ffmpeg -v error -y -i \"")
@@ -1122,7 +1122,7 @@ TEST_F(VkEngineTestFixture, VideoDecoder_DecodeH264FrameFromLocalFixture)
 TEST_F(VkEngineTestFixture, VideoDecoder_DecodeResizeNormalizeOwnedBySession)
 {
 	auto fixtureResult = oa::Filesystem::readBinary(
-		testAssetPath("video/VisionTestPattern128x72_idr.h264"));
+		testAssetPath("video/visionTestPattern128x72Idr.h264"));
 	ASSERT_TRUE(fixtureResult.isOk()) << fixtureResult.getStatus().toString();
 
 	auto& engine = rt();
@@ -1154,7 +1154,7 @@ TEST_F(VkEngineTestFixture, VideoDecoder_DecodeResizeNormalizeOwnedBySession)
 TEST_F(VkEngineTestFixture, VideoDecoder_PipelinesAsyncH264Conversion)
 {
 	auto fixtureResult = oa::Filesystem::readBinary(
-		testAssetPath("video/VisionTestPattern128x72_idr.h264"));
+		testAssetPath("video/visionTestPattern128x72Idr.h264"));
 	ASSERT_TRUE(fixtureResult.isOk()) << fixtureResult.getStatus().toString();
 
 	auto& engine = rt();
@@ -1218,7 +1218,7 @@ TEST_F(VkEngineTestFixture, VideoDecoder_PipelinesAsyncH264Conversion)
 TEST_F(VkEngineTestFixture, VideoDecoder_AsyncConversionEventRetiresResourcesSafely)
 {
 	auto fixtureResult = oa::Filesystem::readBinary(
-		testAssetPath("video/VisionTestPattern128x72_idr.h264"));
+		testAssetPath("video/visionTestPattern128x72Idr.h264"));
 	ASSERT_TRUE(fixtureResult.isOk()) << fixtureResult.getStatus().toString();
 
 	auto& engine = rt();
@@ -1280,7 +1280,7 @@ TEST_F(VkEngineTestFixture, VideoDecoder_AsyncConversionEventRetiresResourcesSaf
 TEST(VideoDecoderLifecycle, AbandonedSubmittedSessionRetiresAtEngineClose)
 {
 	auto fixtureResult = oa::Filesystem::readBinary(
-		testAssetPath("video/VisionTestPattern128x72_idr.h264"));
+		testAssetPath("video/visionTestPattern128x72Idr.h264"));
 	ASSERT_TRUE(fixtureResult.isOk()) << fixtureResult.getStatus().toString();
 
 	auto config = testEngineConfig(oa::Precision::FP32);
@@ -1317,7 +1317,7 @@ TEST(VideoDecoderLifecycle, AbandonedSubmittedSessionRetiresAtEngineClose)
 
 TEST_F(VkEngineTestFixture, VideoDecoder_DecodeH265FrameFromLocalFixture)
 {
-	auto fixtureResult = oa::Filesystem::readBinary(testAssetPath("video/VisionTestPattern128x72_idr.h265"));
+	auto fixtureResult = oa::Filesystem::readBinary(testAssetPath("video/visionTestPattern128x72Idr.h265"));
 	ASSERT_TRUE(fixtureResult.isOk()) << fixtureResult.getStatus().toString();
 
 	auto& engine = rt();
@@ -1347,7 +1347,7 @@ TEST_F(VkEngineTestFixture, VideoDecoder_DecodeH265FrameFromLocalFixture)
 		decoder,
 		frame,
 		profile,
-		"video/VisionTestPattern128x72_idr.h265",
+		"video/visionTestPattern128x72Idr.h265",
 		"oa_h265_idr_reference_nv12");
 
 	EXPECT_TRUE(decoder.close().isOk());
@@ -1355,7 +1355,7 @@ TEST_F(VkEngineTestFixture, VideoDecoder_DecodeH265FrameFromLocalFixture)
 
 TEST_F(VkEngineTestFixture, VideoDecoder_Av1FixturePresentAndCapabilityQueried)
 {
-	auto fixtureResult = oa::Filesystem::readBinary(testAssetPath("video/VisionTestPattern128x72_keyframe.ivf"));
+	auto fixtureResult = oa::Filesystem::readBinary(testAssetPath("video/visionTestPattern128x72KeyframeAv1.ivf"));
 	ASSERT_TRUE(fixtureResult.isOk()) << fixtureResult.getStatus().toString();
 	EXPECT_GT(fixtureResult->size(), 0u);
 
@@ -1404,7 +1404,7 @@ TEST_F(VkEngineTestFixture, VideoDecoder_CreateVp9Decoder)
 
 TEST_F(VkEngineTestFixture, VideoDecoder_Vp9FixturePresentAndCapabilityQueried)
 {
-	auto fixtureResult = oa::Filesystem::readBinary(testAssetPath("video/VisionTestPattern128x72_keyframe_vp9.ivf"));
+	auto fixtureResult = oa::Filesystem::readBinary(testAssetPath("video/visionTestPattern128x72KeyframeVp9.ivf"));
 	ASSERT_TRUE(fixtureResult.isOk()) << fixtureResult.getStatus().toString();
 	EXPECT_GT(fixtureResult->size(), 0u);
 
@@ -1419,7 +1419,7 @@ TEST_F(VkEngineTestFixture, VideoDecoder_Vp9FixturePresentAndCapabilityQueried)
 
 TEST_F(VkEngineTestFixture, VideoDecoder_DecodeVp9FrameFromLocalFixture)
 {
-	auto fixtureResult = oa::Filesystem::readBinary(testAssetPath("video/VisionTestPattern128x72_keyframe_vp9.ivf"));
+	auto fixtureResult = oa::Filesystem::readBinary(testAssetPath("video/visionTestPattern128x72KeyframeVp9.ivf"));
 	ASSERT_TRUE(fixtureResult.isOk()) << fixtureResult.getStatus().toString();
 
 	auto& engine = rt();
@@ -1445,7 +1445,7 @@ TEST_F(VkEngineTestFixture, VideoDecoder_DecodeVp9FrameFromLocalFixture)
 		decoder,
 		frame,
 		profile,
-		"video/VisionTestPattern128x72_keyframe_vp9.ivf",
+		"video/visionTestPattern128x72KeyframeVp9.ivf",
 		"oa_vp9_keyframe_reference_nv12");
 
 	EXPECT_TRUE(decoder.close().isOk());
@@ -1453,7 +1453,7 @@ TEST_F(VkEngineTestFixture, VideoDecoder_DecodeVp9FrameFromLocalFixture)
 
 TEST_F(VkEngineTestFixture, Av1Parser_ParseLocalFixture)
 {
-	auto fixtureResult = oa::Filesystem::readBinary(testAssetPath("video/VisionTestPattern128x72_keyframe.ivf"));
+	auto fixtureResult = oa::Filesystem::readBinary(testAssetPath("video/visionTestPattern128x72KeyframeAv1.ivf"));
 	ASSERT_TRUE(fixtureResult.isOk()) << fixtureResult.getStatus().toString();
 
 	oa::VcpAv1 parser;
@@ -1472,7 +1472,7 @@ TEST_F(VkEngineTestFixture, Av1Parser_ParseLocalFixture)
 
 TEST(Av1Parser, CountsEveryPictureInMultiFrameTemporalUnits)
 {
-	const oa::Path path = testAssetPath("video/shibuya_720p_av1_main_8bit_420.mp4");
+	const oa::Path path = testAssetPath("video/shibuya720pAv1MainEightBit420.mp4");
 	auto streamResult = oa::VideoDemuxer::open(path.cStr());
 	ASSERT_TRUE(streamResult.isOk()) << streamResult.getStatus().toString();
 	oa::VcpAv1 parser;
@@ -1493,7 +1493,7 @@ TEST(Av1Parser, CountsEveryPictureInMultiFrameTemporalUnits)
 
 TEST_F(VkEngineTestFixture, VideoDecoder_DecodeAv1FrameFromLocalFixture)
 {
-	auto fixtureResult = oa::Filesystem::readBinary(testAssetPath("video/VisionTestPattern128x72_keyframe.ivf"));
+	auto fixtureResult = oa::Filesystem::readBinary(testAssetPath("video/visionTestPattern128x72KeyframeAv1.ivf"));
 	ASSERT_TRUE(fixtureResult.isOk()) << fixtureResult.getStatus().toString();
 
 	auto& engine = rt();
@@ -1518,7 +1518,7 @@ TEST_F(VkEngineTestFixture, VideoDecoder_DecodeAv1FrameFromLocalFixture)
 		decoder,
 		frame,
 		profile,
-		"video/VisionTestPattern128x72_keyframe.ivf",
+		"video/visionTestPattern128x72KeyframeAv1.ivf",
 		"oa_av1_keyframe_reference_nv12");
 
 	EXPECT_TRUE(decoder.close().isOk());
@@ -1549,7 +1549,7 @@ TEST_F(VkEngineTestFixture, VideoDecoder_DpbInitialState)
 
 TEST_F(VkEngineTestFixture, VideoDecoder_DpbDecodeAndFlush)
 {
-	auto fixtureResult = oa::Filesystem::readBinary(testAssetPath("video/VisionTestPattern128x72_idr.h264"));
+	auto fixtureResult = oa::Filesystem::readBinary(testAssetPath("video/visionTestPattern128x72Idr.h264"));
 	ASSERT_TRUE(fixtureResult.isOk()) << fixtureResult.getStatus().toString();
 
 	auto& engine = rt();

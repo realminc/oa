@@ -18,20 +18,23 @@
 // usage:
 //   ./TutorialViewerImageHeadless [input.jpg] [output.png]
 //
-// Defaults: asset/image/SpaceCathedral.jpg → /tmp/oa_viewport_batch.png
+// Defaults: sdk/asset/image/coverMl.jpg → /tmp/oa_viewport_batch.png
 // ═══════════════════════════════════════════════════════════════════════════
 
 #include <oa/runtime/engine.h>
 #include <oa/ui/image.h>
 #include <oa/vision/fnImage.h>
 #include <oa/core/log.h>
+#include <oa/core/paths.h>
 
 #include <cstdio>
 #include <vector>
 
 
 int main(int argc, char** argv) {
-	const char* inPath  = (argc > 1) ? argv[1] : "asset/image/SpaceCathedral.jpg";
+	const oa::String defaultInput =
+		oa::Paths::asset("image/coverMl.jpg").string();
+	const char* inPath  = (argc > 1) ? argv[1] : defaultInput.cStr();
 	const char* outPath = (argc > 2) ? argv[2] : "/tmp/oa_viewport_batch.png";
 
 	// ─── Engine bring-up ─────────────────────────────────────────────────────

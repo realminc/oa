@@ -115,6 +115,21 @@ oa::Status pythonViewerShow(
     return oa::Viewer::show(*gEngine, image, config);
 }
 
+oa::Status pythonViewerPreview(
+    const oa::String& path,
+    const oa::ViewerConfig& config) {
+    std::lock_guard lock(gEngineMutex);
+    if (!initPythonEngineLocked()) {
+        return oa::Status::error(
+            oa::StatusCode::Unavailable,
+            "OA could not create a Vulkan engine for oa::Viewer");
+    }
+    oa::ViewerConfig resolved = config;
+    resolved.path = path;
+    oa::Viewer viewer(resolved);
+    return viewer.run(*gEngine);
+}
+
 void bindRuntime(nb::module_& m) {
     // ═════════════════════════════════════════════════════════════════════════
     // Engine init / teardown

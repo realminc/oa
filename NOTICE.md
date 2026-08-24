@@ -54,6 +54,7 @@ files. OA is grateful to their authors.
 | **Vulkan Memory Allocator (VMA)** | `source/cpp/lib/oa/runtime/vma/*` + `oaVma.{h,cpp}` (vendored; umbrella header split into modules, `vma*` → `OaVma*`) | Advanced Micro Devices, Inc. ([GPUOpen VMA](https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator)) | MIT |
 | **miniaudio** | `source/cpp/thirdparty/miniaudio/*` | David Reid ([mackron](https://github.com/mackron/miniaudio)) | Public domain or MIT-0 |
 | **stb** (`stb_image`, …) | `source/cpp/thirdparty/stb/*` | Sean Barrett ([nothings/stb](https://github.com/nothings/stb)) | Public domain or MIT |
+| **xsimd 14.1.0** | `source/cpp/thirdparty/xsimd/*` | QuantStack and xsimd contributors ([xtensor-stack/xsimd](https://github.com/xtensor-stack/xsimd)) | BSD-3-Clause |
 | **libadrenotools** | `sdk/android/oaMobileLab/third_party/libadrenotools/*` (Android only) | Billy Laws ([bylaws/libadrenotools](https://github.com/bylaws/libadrenotools)) | BSD-2-Clause |
 
 The volk and VMA copies are **modified** (fork/rename/split for OA's build); their MIT
@@ -73,7 +74,6 @@ the active vcpkg installation are copied into release packages automatically.
 | yaml-cpp | YAML configuration and model metadata | MIT |
 | CLI11 | command-line interfaces | BSD-3-Clause |
 | {fmt} | formatting | MIT |
-| Highway | host SIMD implementation | Apache-2.0 |
 | utf8proc | Unicode text processing | MIT |
 | Vulkan-Headers | Vulkan API declarations | Apache-2.0 OR MIT |
 | SDL3 | windows, input and camera integration | Zlib; selected configurations also contain MIT/Apache-2.0 code |
@@ -106,6 +106,6 @@ an FFmpeg build that enables its optional GPL components is covered by GPL-2.0-o
 ## Regenerating the derived data (maintainers)
 
 The baked tables in `sdk/cpp/lib/{rig,retarget}/*.inc` are checked in; building
-OA does **not** require the generators. `tools/gen3dAnim/*.py` can rebuild them from a
+OA does **not** require the generators. `tools/gen/animation/*.py` can rebuild them from a
 local, privately-held copy of the source definitions (pointed at via the `OA3D_*`
 environment variables). Those private sources are not distributed with OA.

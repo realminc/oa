@@ -9,8 +9,8 @@
 // against an INDEPENDENT ffmpeg decode of the same clip. This replaces
 // eyeballing four player windows with a headless pass/fail gate.
 //
-// Assets:   asset/video/shibuya_720p_<codec>_<profile>_8bit_420.mp4
-// Dataset:  ../dataset/video/profiles/ (canonical Git LFS copies + manifest)
+// Assets:   sdk/asset/video/shibuya720p<Codec><Profile>EightBit420.mp4
+// Dataset:  $OA_DATA_DIR/video/profiles/ (optional external conformance data)
 // Oracle:   ffmpeg on PATH (test skips if absent)
 //
 // PSNR note: OA's YCbCr→RGB conversion and ffmpeg's swscale differ slightly
@@ -117,19 +117,8 @@ std::vector<uint8_t> ffmpegRgba(const char* inPath, int inFrames) {
 
 std::string resolveVideoAsset(const char* inFixtureRelAsset, const char* inDatasetFilename) {
 	if (inDatasetFilename != nullptr && inDatasetFilename[0] != '\0') {
-		std::filesystem::path datasetDir;
-		if (const char* env = std::getenv("OA_VIDEO_DATA"); env != nullptr && env[0] != '\0') {
-			datasetDir = env;
-		} else {
-			const auto repoDir = std::filesystem::path(__FILE__)
-				.parent_path()
-				.parent_path()
-				.parent_path()
-				.parent_path();
-			datasetDir = repoDir.parent_path() / "dataset" / "video";
-		}
-
-		std::filesystem::path datasetPath = datasetDir / inDatasetFilename;
+		const std::filesystem::path datasetPath =
+			oa::Paths::data("video").stdPath() / inDatasetFilename;
 		if (std::filesystem::exists(datasetPath)) {
 			return datasetPath.lexically_normal().string();
 		}
@@ -283,11 +272,11 @@ void validateCodec(
 
 class VideoDecodeReference : public ::testing::Test {};
 
-TEST_VK(VideoDecodeReference, Av1)  { validateCodec(oa::VideoCodec::AV1, "video/shibuya_720p_av1_main_8bit_420.mp4",
-				  "profiles/shibuya_720p_av1_main_8bit_420.mp4",  "av1");  }
-TEST_VK(VideoDecodeReference, H264) { validateCodec(oa::VideoCodec::H264, "video/shibuya_720p_h264_high_8bit_420.mp4",
-				  "profiles/shibuya_720p_h264_high_8bit_420.mp4", "h264"); }
-TEST_VK(VideoDecodeReference, H265) { validateCodec(oa::VideoCodec::H265, "video/shibuya_720p_h265_main_8bit_420.mp4",
-				  "profiles/shibuya_720p_h265_main_8bit_420.mp4", "h265"); }
-TEST_VK(VideoDecodeReference, Vp9)  { validateCodec(oa::VideoCodec::VP9, "video/shibuya_720p_vp9_profile0_8bit_420.mp4",
-				  "profiles/shibuya_720p_vp9_profile0_8bit_420.mp4",  "vp9");  }
+TEST_VK(VideoDecodeReference, Av1)  { validateCodec(oa::VideoCodec::AV1, "video/shibuya720pAv1MainEightBit420.mp4",
+				  "profiles/shibuya720pAv1MainEightBit420.mp4",  "av1");  }
+TEST_VK(VideoDecodeReference, H264) { validateCodec(oa::VideoCodec::H264, "video/shibuya720pH264HighEightBit420.mp4",
+				  "profiles/shibuya720pH264HighEightBit420.mp4", "h264"); }
+TEST_VK(VideoDecodeReference, H265) { validateCodec(oa::VideoCodec::H265, "video/shibuya720pH265MainEightBit420.mp4",
+				  "profiles/shibuya720pH265MainEightBit420.mp4", "h265"); }
+TEST_VK(VideoDecodeReference, Vp9)  { validateCodec(oa::VideoCodec::VP9, "video/shibuya720pVp9Profile0EightBit420.mp4",
+				  "profiles/shibuya720pVp9Profile0EightBit420.mp4",  "vp9");  }

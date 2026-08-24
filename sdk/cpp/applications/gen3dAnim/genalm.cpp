@@ -36,7 +36,7 @@
 
 struct GenAlmConfig {
 	oa::String model    = "var/model/dev/Alm/Alm.oam";
-	oa::String dataset  = "../dataset/gen/3d/anim/ds/Cmp";
+	oa::String dataset  = oa::Paths::data("humanMl3d/Cmp").string();
 	oa::String split    = "train";
 	oa::String outDir   = oa::Paths::var("alm").string();
 	oa::String name     = "Alm";

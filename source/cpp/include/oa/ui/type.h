@@ -1,9 +1,9 @@
 // OA UI Types
 //
 // Public header for auto-generated UI types.
-// generated from Tools/TypeAutogen/Schema/Ui/UiTypes.toml
+// Generated from tools/gen/type/schema/ui/uiTypes.toml.
 //
-// Regenerate via: python3 Tools/TypeAutogen/oatypeautogen.py --live
+// Regenerate via: python3 tools/gen/type/generate.py --live
 
 #pragma once
 

@@ -19,7 +19,7 @@ TEST(VideoSessionLifecycle, AbandonedDecodedSourceRetiresAtEngineClose)
 	}
 
 	oa::VideoPlayerConfig config;
-	config.uri = testAssetPath("video/shibuya_720p_h264_high_8bit_420.mp4").string();
+	config.uri = testAssetPath("video/shibuya720pH264HighEightBit420.mp4").string();
 	config.audio = false;
 	config.startPlaying = false;
 	config.loop = false;

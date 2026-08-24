@@ -1,95 +1,161 @@
 {
-  "schema": 1,
+  "schema": 2,
   "examples": [
     {
       "id": "core-matrix-add",
       "title": "Add two device matrices",
-      "summary": "Create two GPU-resident matrices, add them, synchronize explicitly, and verify the host readback.",
+      "summary": "Create two GPU-resident matrices, add them, and verify the result after the language-appropriate completion boundary.",
+      "module": "Core",
       "capability": "Vulkan compute",
-      "cppModules": [
-        "C++ · Core",
-        "oa::FnMatrix"
-      ],
-      "pythonModules": [
-        "oa root · Core values",
-        "FnMatrix"
-      ],
-      "symbols": [
-        "oa::Engine::create",
-        "oa::Engine::submit",
-        "oa::FnMatrix::add",
-        "oa::FnMatrix::copyToHost"
-      ],
       "cpp": {
-        "path": "sdk/cpp/examples/core/matrixAdd.cpp",
-        "filename": "matrixAdd.cpp",
-        "target": "ExampleCoreMatrixAdd",
-        "sha256": "743f2184db8fc1bbf8e20cc6ef86702e82a6c19ffe0bac601f2d729a19e50850",
-        "code": "#include <oa/core/fnMatrix.h>\n#include <oa/runtime/engine.h>\n\n#include <array>\n#include <cmath>\n#include <cstdio>\n#include <utility>\n\nint main() {\n\toa::EngineConfig config;\n\tconfig.appName = \"ExampleCoreMatrixAdd\";\n\tconfig.presentationMode = oa::PresentationMode::None;\n\n\tauto created = oa::Engine::create(config);\n\tif (not created.isOk()) {\n\t\tstd::fprintf(stderr, \"Engine creation failed: %s\\n\",\n\t\t\tcreated.getStatus().getMessage().cStr());\n\t\treturn 1;\n\t}\n\tauto engine = std::move(created).getValue();\n\n\tauto one = oa::FnMatrix::ones({2, 3});\n\tauto two = oa::FnMatrix::full({2, 3}, 2.0F);\n\tauto sum = oa::FnMatrix::add(one, two);\n\n\tauto submitted = engine->submit();\n\tif (not submitted.isOk()) return 1;\n\tif (not engine->wait(submitted.getValue()).isOk()) return 1;\n\n\tstd::array<oa::F32, 6> values{};\n\tif (not oa::FnMatrix::copyToHost(\n\t\tsum, values.data(), sizeof(values)).isOk()) return 1;\n\tfor (const oa::F32 value : values) {\n\t\tif (std::abs(value - 3.0F) > 1.0e-6F) return 1;\n\t}\n\n\tstd::puts(\"[3, 3, 3, 3, 3, 3]\");\n\treturn 0;\n}"
+        "path": "sdk/cpp/examples/core/matrix.cpp",
+        "filename": "matrix.cpp",
+        "target": "ExampleCoreMatrix",
+        "symbols": [
+          "oa::Engine::create",
+          "oa::Engine::submit",
+          "oa::FnMatrix::add",
+          "oa::FnMatrix::copyToHost"
+        ],
+        "sha256": "b877cdf549cb65bccb904182489439a4fddcfbf911c742a96c9744bb3aff2bd1",
+        "code": "#include <oa/core/fnMatrix.h>\n#include <oa/runtime/engine.h>\n\n#include <array>\n#include <cmath>\n#include <cstdio>\n#include <utility>\n\nint main() {\n\toa::EngineConfig config;\n\tconfig.appName = \"ExampleCoreMatrix\";\n\tconfig.presentationMode = oa::PresentationMode::None;\n\n\tauto created = oa::Engine::create(config);\n\tif (not created.isOk()) return 1;\n\tauto engine = std::move(created).getValue();\n\n\tauto one = oa::FnMatrix::ones({2, 3});\n\n\tauto two = oa::FnMatrix::full({2, 3}, 2.0F);\n\n\tauto sum = oa::FnMatrix::add(one, two);\n\n\tauto submitted = engine->submit();\n\tif (not submitted.isOk()) return 1;\n\tif (not engine->wait(submitted.getValue()).isOk()) return 1;\n\n\tstd::array<oa::F32, 6> values{};\n\tif (not oa::FnMatrix::copyToHost(\n\t\tsum, values.data(), sizeof(values)).isOk()) return 1;\n\tfor (const oa::F32 value : values) {\n\t\tif (std::abs(value - 3.0F) > 1e-06F) return 1;\n\t}\n\n\tstd::puts(\"Matrix addition verified: every value is 3\");\n\treturn 0;\n}"
       },
       "python": {
-        "path": "sdk/py/examples/core/matrixAdd.py",
-        "filename": "matrixAdd.py",
+        "path": "sdk/py/examples/core/matrix.py",
+        "filename": "matrix.py",
         "profile": "gpu",
-        "sha256": "ed6a8d36074b3fce1b49c44a90d632abf415e37a57970a3a267bfdf83db62c33",
-        "code": "from oa import FnMatrix, initComputeEngine, shutdownComputeEngine\n\n\nif not initComputeEngine():\n\traise RuntimeError(\"OA could not create a Vulkan compute engine\")\n\ntry:\n\tone = FnMatrix.ones([2, 3])\n\ttwo = FnMatrix.full([2, 3], 2.0)\n\tsumMatrix = FnMatrix.add(one, two)\n\tvalues = FnMatrix.copyToHost(sumMatrix)\n\tassert values == [3.0, 3.0, 3.0, 3.0, 3.0, 3.0]\n\tprint(values)\nfinally:\n\tshutdownComputeEngine()"
+        "symbols": [
+          "oa.FnMatrix.add",
+          "oa.FnMatrix.copyToHost"
+        ],
+        "sha256": "662c04e0fa0feafb46923de3182cbcdc0761fc751c36b40cae30410c09da7159",
+        "code": "import oa\n\none = oa.FnMatrix.ones([2, 3])\n\ntwo = oa.FnMatrix.full([2, 3], 2.0)\n\nsum = oa.FnMatrix.add(one, two)\n\nvalues = oa.FnMatrix.copyToHost(sum)\nassert len(values) == 6\nassert all(abs(value - 3.0) <= 1e-06 for value in values)\n\nprint(\"Matrix addition verified: every value is 3\")"
       }
     },
     {
-      "id": "audio-clip",
-      "title": "Clip a semantic audio buffer",
-      "summary": "Apply a GPU waveform operation while preserving sample rate and channel-layout metadata.",
+      "id": "audio-process",
+      "title": "Add room reflections and save audio",
+      "summary": "Load the OA narration, convert it to mono, normalize it, render a native GPU reverberation tail, then save a checked WAV output.",
+      "module": "Audio",
       "capability": "Vulkan compute",
-      "cppModules": [
-        "C++ · Audio",
-        "oa::FnAudio"
-      ],
-      "pythonModules": [
-        "oa root · Audio values",
-        "FnAudio"
-      ],
-      "symbols": [
-        "oa::Audio",
-        "oa::FnAudio::clip",
-        "oa::FnMatrix::copyToHost"
-      ],
       "cpp": {
-        "path": "sdk/cpp/examples/audio/clip.cpp",
-        "filename": "clip.cpp",
-        "target": "ExampleAudioClip",
-        "sha256": "b83daccfdcb109b076787fcf72e2f313141a5b8d518b4fba8715942d8f74fdd6",
-        "code": "#include <oa/audio/fnAudio.h>\n#include <oa/core/fnMatrix.h>\n#include <oa/runtime/engine.h>\n\n#include <array>\n#include <cmath>\n#include <cstdio>\n#include <utility>\n\nint main() {\n\toa::EngineConfig config;\n\tconfig.appName = \"ExampleAudioClip\";\n\tconfig.presentationMode = oa::PresentationMode::None;\n\n\tauto created = oa::Engine::create(config);\n\tif (not created.isOk()) return 1;\n\tauto engine = std::move(created).getValue();\n\n\toa::Audio audio(\n\t\toa::FnMatrix::full({1, 8}, 0.75F),\n\t\t48'000U,\n\t\toa::AudioChannelLayout::Mono\n\t);\n\tauto clipped = oa::FnAudio::clip(audio, -0.5F, 0.5F);\n\n\tauto submitted = engine->submit();\n\tif (not submitted.isOk()) return 1;\n\tif (not engine->wait(submitted.getValue()).isOk()) return 1;\n\tif (not clipped.validate() || clipped.sampleRate() != 48'000U) return 1;\n\n\tstd::array<oa::F32, 8> values{};\n\tif (not oa::FnMatrix::copyToHost(\n\t\tclipped.asMatrix(), values.data(), sizeof(values)).isOk()) return 1;\n\tfor (const oa::F32 value : values) {\n\t\tif (std::abs(value - 0.5F) > 1.0e-6F) return 1;\n\t}\n\n\tstd::puts(\"8 mono samples clipped to 0.5\");\n\treturn 0;\n}"
+        "path": "sdk/cpp/examples/audio/audio.cpp",
+        "filename": "audio.cpp",
+        "target": "ExampleAudio",
+        "symbols": [
+          "oa::Audio",
+          "oa::FnAudio::decodeFile",
+          "oa::FnAudio::toMono",
+          "oa::FnAudio::normalize",
+          "oa::FnAudio::fade",
+          "oa::FnAudio::reverb",
+          "oa::FnAudio::saveWavF32",
+          "oa::Viewer::preview"
+        ],
+        "sha256": "689e3b974686eae2fbf465076b8325aff6f5a3b4553cc760b174872e03d56990",
+        "code": "#include <oa/audio/fnAudio.h>\n#include <oa/core/filesystem.h>\n#include <oa/core/paths.h>\n#include <oa/ui/viewer.h>\n#include <oa/runtime/engine.h>\n\n#include <cstdio>\n#include <utility>\n\nint main(int argc, char** argv) {\n\t{\n\t\toa::EngineConfig config;\n\t\tconfig.appName = \"ExampleAudio\";\n\t\tconfig.presentationMode = oa::PresentationMode::None;\n\n\t\tauto created = oa::Engine::create(config);\n\t\tif (not created.isOk()) return 1;\n\t\tauto engine = std::move(created).getValue();\n\n\t\tauto audioResult = oa::FnAudio::decodeFile(\n\t\t\toa::Paths::asset(\"audio/oaNarration.wav\"));\n\t\tif (not audioResult.isOk()) return 1;\n\t\tauto audio = std::move(audioResult).getValue();\n\n\t\tauto mono = oa::FnAudio::toMono(audio);\n\n\t\tauto normalized = oa::FnAudio::normalize(mono, -3.0F);\n\n\t\tauto faded = oa::FnAudio::fade(normalized, 2400U, 2400U);\n\n\t\tauto reverberated = oa::FnAudio::reverb(faded, 1.5F, 0.4F);\n\n\t\tconst oa::Path output = oa::Paths::var(\"example/audio/oaNarrationRoom.wav\");\n\t\tif (not oa::Filesystem::createDirectories(output.parentPath()).isOk()) return 1;\n\t\tif (not oa::FnAudio::saveWavF32(output, reverberated).isOk()) return 1;\n\n\t\tif (not reverberated.validate()) return 1;\n\t\tif (reverberated.sampleRate() != 24000U) return 1;\n\t\tif (reverberated.channels() != 1) return 1;\n\t\tif (reverberated.samples() != faded.samples() + static_cast<oa::I64>(reverberated.sampleRate()) * 1500 / 1'000) return 1;\n\t\tif (not oa::Filesystem::isFile(output)) return 1;\n\n\t\tstd::printf(\"Saved reverberated audio (1.5 s tail): %s\\n\", output.cStr());\n\t}\n\n\tif (argc > 1 and oa::StringView(argv[1]) == \"--preview\") {\n\t\toa::ViewerConfig previewConfig;\n\t\tpreviewConfig.mode = oa::ViewerMode::Audio;\n\t\tpreviewConfig.title = \"OA audio · room reverb\";\n\t\tpreviewConfig.width = 960U;\n\t\tpreviewConfig.height = 360U;\n\t\tif (not oa::Viewer::preview(oa::Paths::var(\"example/audio/oaNarrationRoom.wav\").string(), previewConfig).isOk()) return 1;\n\t}\n\treturn 0;\n}"
       },
       "python": {
-        "path": "sdk/py/examples/audio/clip.py",
-        "filename": "clip.py",
+        "path": "sdk/py/examples/audio/audio.py",
+        "filename": "audio.py",
         "profile": "gpu",
-        "sha256": "54d303af70786258fc1c80f6125b9cb4469c32e20f43e5462b86c02da192d2c6",
-        "code": "from oa import (\n\tAudio,\n\tAudioChannelLayout,\n\tFnAudio,\n\tFnMatrix,\n\tinitComputeEngine,\n\tshutdownComputeEngine,\n)\n\n\nif not initComputeEngine():\n\traise RuntimeError(\"OA could not create a Vulkan compute engine\")\n\ntry:\n\taudio = Audio(\n\t\tFnMatrix.full([1, 8], 0.75),\n\t\t48_000,\n\t\tAudioChannelLayout.Mono,\n\t)\n\tclipped = FnAudio.clip(audio, -0.5, 0.5)\n\tvalues = FnMatrix.copyToHost(clipped.matrix)\n\tassert clipped.isValid()\n\tassert clipped.sampleRate == 48_000\n\tassert values == [0.5] * 8\n\tprint(\"8 mono samples clipped to 0.5\")\nfinally:\n\tshutdownComputeEngine()"
-      }
+        "symbols": [
+          "oa.Audio",
+          "oa.FnAudio.decodeFile",
+          "oa.FnAudio.toMono",
+          "oa.FnAudio.normalize",
+          "oa.FnAudio.fade",
+          "oa.FnAudio.reverb",
+          "oa.FnAudio.saveWavF32",
+          "oa.Viewer.preview"
+        ],
+        "sha256": "1e7c1193097174b90fb94837d2126fcd68563a1777266462c6b928efcd76bd5f",
+        "code": "import sys\n\nimport oa\n\naudio = oa.FnAudio.decodeFile(oa.Paths.asset(\"audio/oaNarration.wav\"))\n\nmono = oa.FnAudio.toMono(audio)\n\nnormalized = oa.FnAudio.normalize(mono, -3.0)\n\nfaded = oa.FnAudio.fade(normalized, 2400, 2400)\n\nreverberated = oa.FnAudio.reverb(faded, 1.5, 0.4)\n\noutput = oa.Paths.var(\"example/audio/oaNarrationRoom.wav\")\noa.Filesystem.createDirectories(output.parentPath())\noa.FnAudio.saveWavF32(output, reverberated)\n\nassert reverberated.isValid()\nassert reverberated.sampleRate == 24000\nassert reverberated.channelCount == 1\nassert reverberated.sampleCount == faded.sampleCount + reverberated.sampleRate * 1500 // 1000\nassert oa.Filesystem.isFile(output)\n\nprint(f\"Saved reverberated audio (1.5 s tail): {output}\")\n\nif \"--preview\" in sys.argv:\n\toa.Viewer.preview(output, title=\"OA audio · room reverb\", width=960, height=360)"
+      },
+      "assets": [
+        "audio/oaNarration.wav",
+        "audio/oaNarration.mp3",
+        "documentation/examples/audio/oaNarrationRoom.wav",
+        "documentation/examples/audio/oaNarrationRoom.mp3",
+        "documentation/examples/audio/oaNarrationRoomViewer.jpg"
+      ],
+      "presentation": [
+        {
+          "kind": "audioComparison",
+          "title": "Before / after",
+          "description": "Play the authored narration beside the artifact produced by this exact SDK example. The processed WAV is copied byte-for-byte from var/example/audio/oaNarrationRoom.wav after a successful run.",
+          "items": [
+            {
+              "role": "source",
+              "label": "Source",
+              "description": "The unprocessed OA narration loaded by the example.",
+              "asset": "audio/oaNarration.wav",
+              "src": "/media/oa/audio/oaNarration.wav",
+              "mimeType": "audio/wav",
+              "sha256": "699cefa842202065d2d63ad43d3d06dc244bcae80664de58eeeacde2f57d3e21",
+              "bytes": 601038,
+              "fallbackAsset": "audio/oaNarration.mp3",
+              "fallbackSrc": "/media/oa/audio/oaNarration.mp3",
+              "fallbackMimeType": "audio/mpeg",
+              "fallbackSha256": "23bed62d7ca7866c16c78af85b77f3a138306b66754c2643d75cccd64eea7a87",
+              "sampleRate": 24000,
+              "channelCount": 1,
+              "sampleCount": 300480,
+              "durationSeconds": 12.52,
+              "generatedBy": "OA-authored narration asset"
+            },
+            {
+              "role": "processed",
+              "label": "Processed",
+              "description": "Normalized, faded, and rendered through oa::FnAudio::reverb with a 1.5 second tail.",
+              "asset": "documentation/examples/audio/oaNarrationRoom.wav",
+              "src": "/media/oa/documentation/examples/audio/oaNarrationRoom.wav",
+              "mimeType": "audio/wav",
+              "sha256": "b99343671d0b8c829bf495f40385a6287a78ef38deca58d3ad775c3de42a196b",
+              "bytes": 1345966,
+              "fallbackAsset": "documentation/examples/audio/oaNarrationRoom.mp3",
+              "fallbackSrc": "/media/oa/documentation/examples/audio/oaNarrationRoom.mp3",
+              "fallbackMimeType": "audio/mpeg",
+              "fallbackSha256": "9ba96428b579a8b7ee33216382d33016c890f6b143eea324e5cd0632239ff0fe",
+              "sampleRate": 24000,
+              "channelCount": 1,
+              "sampleCount": 336480,
+              "durationSeconds": 14.02,
+              "generatedBy": "sdk/py/examples/audio/audio.py"
+            }
+          ]
+        },
+        {
+          "kind": "viewerCapture",
+          "title": "oa::Viewer",
+          "description": "The processed WAV opened by this example's optional --preview path in OA's native GPU waveform viewer.",
+          "asset": "documentation/examples/audio/oaNarrationRoomViewer.jpg",
+          "src": "/media/oa/documentation/examples/audio/oaNarrationRoomViewer.jpg",
+          "mimeType": "image/jpeg",
+          "sha256": "d93cebbb536b382d3c04041e5e80957ef3d5d7c25f468fdf3ab6785d9db6799a",
+          "bytes": 46232,
+          "width": 960,
+          "height": 434,
+          "alt": "oa::Viewer displaying the processed OA narration as a GPU-rendered waveform",
+          "generatedBy": "bin/release/example/audio/exampleAudio --preview"
+        }
+      ]
     },
     {
       "id": "vision-resize",
       "title": "Resize a semantic image",
       "summary": "Resize GPU-resident pixels while preserving image layout and channel-format metadata.",
+      "module": "Vision",
       "capability": "Vulkan compute",
-      "cppModules": [
-        "C++ · Vision",
-        "oa::FnImage"
-      ],
-      "pythonModules": [
-        "oa root · Vision values",
-        "FnImage"
-      ],
-      "symbols": [
-        "oa::Image",
-        "oa::FnImage::resize",
-        "oa::FnMatrix::copyToHost"
-      ],
       "cpp": {
         "path": "sdk/cpp/examples/vision/resize.cpp",
         "filename": "resize.cpp",
         "target": "ExampleVisionResize",
+        "symbols": [
+          "oa::Image",
+          "oa::FnImage::resize",
+          "oa::FnMatrix::copyToHost"
+        ],
         "sha256": "af9473d3eadecb11daf05ce1b19fbe0e0b957f64dfbd7b9d9fb59f6c1ff2ea1c",
         "code": "#include <oa/core/fnMatrix.h>\n#include <oa/core/image.h>\n#include <oa/runtime/engine.h>\n#include <oa/vision/fnImage.h>\n\n#include <array>\n#include <cmath>\n#include <cstdio>\n#include <utility>\n\nint main() {\n\toa::EngineConfig config;\n\tconfig.appName = \"ExampleVisionResize\";\n\tconfig.presentationMode = oa::PresentationMode::None;\n\n\tauto created = oa::Engine::create(config);\n\tif (not created.isOk()) return 1;\n\tauto engine = std::move(created).getValue();\n\n\toa::Image image(\n\t\toa::FnMatrix::full({1, 3, 2, 2}, 0.25F),\n\t\toa::ImageLayout::Nchw,\n\t\toa::ImageFormat::Rgb);\n\tauto resized = oa::FnImage::resize(image, 4, 3);\n\n\tauto submitted = engine->submit();\n\tif (not submitted.isOk()) return 1;\n\tif (not engine->wait(submitted.getValue()).isOk()) return 1;\n\tif (not resized.validate() || resized.width() != 4 || resized.height() != 3) {\n\t\treturn 1;\n\t}\n\n\tstd::array<oa::F32, 36> values{};\n\tif (not oa::FnMatrix::copyToHost(\n\t\tresized.asMatrix(), values.data(), sizeof(values)).isOk()) return 1;\n\tfor (const oa::F32 value : values) {\n\t\tif (std::abs(value - 0.25F) > 1.0e-6F) return 1;\n\t}\n\n\tstd::puts(\"RGB NCHW image resized from 2x2 to 4x3\");\n\treturn 0;\n}"
       },
@@ -97,6 +163,11 @@
         "path": "sdk/py/examples/vision/resize.py",
         "filename": "resize.py",
         "profile": "gpu",
+        "symbols": [
+          "oa.Image",
+          "oa.FnImage.resize",
+          "oa.FnMatrix.copyToHost"
+        ],
         "sha256": "1ae8654435a93ded9d7bbaf85772bd6147bd5af4785fbb3e6f28fe55ce669202",
         "code": "from oa import (\n\tFnImage,\n\tFnMatrix,\n\tImage,\n\tImageFormat,\n\tImageLayout,\n\tinitComputeEngine,\n\tshutdownComputeEngine,\n)\n\n\nif not initComputeEngine():\n\traise RuntimeError(\"OA could not create a Vulkan compute engine\")\n\ntry:\n\timage = Image(\n\t\tFnMatrix.full([1, 3, 2, 2], 0.25),\n\t\tImageLayout.Nchw,\n\t\tImageFormat.Rgb,\n\t)\n\tresized = FnImage.resize(image, 4, 3)\n\tvalues = FnMatrix.copyToHost(resized.asMatrix())\n\tassert resized.validate()\n\tassert resized.width() == 4\n\tassert resized.height() == 3\n\tassert values == [0.25] * 36\n\tprint(\"RGB NCHW image resized from 2x2 to 4x3\")\nfinally:\n\tshutdownComputeEngine()"
       }
@@ -105,24 +176,16 @@
       "id": "crypto-shake256",
       "title": "Hash a message batch with SHAKE-256",
       "summary": "Run three SHAKE-256 digests on the GPU and compare every output byte with the independent CPU implementation.",
+      "module": "Crypto",
       "capability": "Vulkan compute + Crypto",
-      "cppModules": [
-        "C++ · Crypto",
-        "oa::FnHash"
-      ],
-      "pythonModules": [
-        "oa root · Crypto values",
-        "FnHash"
-      ],
-      "symbols": [
-        "oa::FnHash::shake256",
-        "oa::shake256",
-        "oa::FnMatrix::copyToHost"
-      ],
       "cpp": {
         "path": "sdk/cpp/examples/crypto/shake256.cpp",
         "filename": "shake256.cpp",
         "target": "ExampleCryptoShake256",
+        "symbols": [
+          "oa::FnHash::shake256",
+          "oa::FnMatrix::copyToHost"
+        ],
         "sha256": "343d11bceb15e121359779615c8e0ecc1a99a4b40dd61455c907ee935271a8da",
         "code": "#include <oa/core/fnMatrix.h>\n#include <oa/crypto/fnHash.h>\n#include <oa/crypto/keccak.h>\n#include <oa/runtime/engine.h>\n\n#include <array>\n#include <cstdio>\n#include <cstring>\n#include <utility>\n\nint main() {\n\toa::EngineConfig config;\n\tconfig.appName = \"ExampleCryptoShake256\";\n\tconfig.presentationMode = oa::PresentationMode::None;\n\n\tauto created = oa::Engine::create(config);\n\tif (not created.isOk()) return 1;\n\tauto engine = std::move(created).getValue();\n\n\tconstexpr std::array<oa::U8, 15> messages{\n\t\t'a', 'l', 'p', 'h', 'a',\n\t\t'b', 'r', 'a', 'v', 'o',\n\t\t'c', 'r', 'y', 'p', 't',\n\t};\n\tauto input = oa::FnMatrix::fromBytes(\n\t\toa::Span<const oa::U8>(messages.data(), messages.size()),\n\t\t{3, 5},\n\t\toa::ScalarType::UInt8\n\t);\n\tauto digests = oa::FnHash::shake256(input, 32);\n\n\tauto submitted = engine->submit();\n\tif (not submitted.isOk()) return 1;\n\tif (not engine->wait(submitted.getValue()).isOk()) return 1;\n\n\tstd::array<oa::U8, 96> gpu{};\n\tstd::array<oa::U8, 96> cpu{};\n\tif (not oa::FnMatrix::copyToHost(\n\t\tdigests, gpu.data(), gpu.size()).isOk()) return 1;\n\tfor (oa::Usize row = 0; row < 3; ++row) {\n\t\toa::shake256(\n\t\t\tmessages.data() + row * 5,\n\t\t\t5,\n\t\t\tcpu.data() + row * 32,\n\t\t\t32\n\t\t);\n\t}\n\tif (std::memcmp(gpu.data(), cpu.data(), gpu.size()) != 0) return 1;\n\n\tstd::puts(\"3 GPU SHAKE-256 digests match the CPU oracle\");\n\treturn 0;\n}"
       },
@@ -130,6 +193,11 @@
         "path": "sdk/py/examples/crypto/shake256.py",
         "filename": "shake256.py",
         "profile": "crypto-gpu",
+        "symbols": [
+          "oa.FnHash.shake256",
+          "oa.FnMatrix.copyToHost",
+          "oa.ScalarType"
+        ],
         "sha256": "2c53cc74ec3214ebddb53a1bc363c7440bfa032dd335aedf0a11eaa59c308dce",
         "code": "import hashlib\n\nfrom oa import (\n\tFnHash,\n\tFnMatrix,\n\tinitComputeEngine,\n\tScalarType,\n\tshutdownComputeEngine,\n)\n\n\nif not initComputeEngine():\n\traise RuntimeError(\"OA could not create a Vulkan compute engine\")\n\ntry:\n\trows = [b\"alpha\", b\"bravo\", b\"crypt\"]\n\tinputMatrix = FnMatrix.fromBytes(\n\t\tlist(b\"\".join(rows)),\n\t\t[3, 5],\n\t\tScalarType.UInt8,\n\t)\n\tdigests = FnHash.shake256(inputMatrix, 32)\n\tgpu = bytes(FnMatrix.copyToHost(digests))\n\tcpu = b\"\".join(hashlib.shake_256(row).digest(32) for row in rows)\n\tassert gpu == cpu\n\tprint(\"3 GPU SHAKE-256 digests match the CPU oracle\")\nfinally:\n\tshutdownComputeEngine()"
       }
@@ -138,24 +206,17 @@
       "id": "plot-line",
       "title": "Render a retained line plot",
       "summary": "Record one training-loss series and render the retained figure through the headless GPU compositor into an oa::Image.",
+      "module": "Ui",
       "capability": "Vulkan graphics",
-      "cppModules": [
-        "C++ · Ui",
-        "oa::plot"
-      ],
-      "pythonModules": [
-        "oa root · Ui values",
-        "plot"
-      ],
-      "symbols": [
-        "oa::plot::Figure",
-        "oa::plot::Axes::plot",
-        "oa::plot::Figure::render"
-      ],
       "cpp": {
         "path": "sdk/cpp/examples/plot/line.cpp",
         "filename": "line.cpp",
         "target": "ExamplePlotLine",
+        "symbols": [
+          "oa::plot::Figure",
+          "oa::plot::Axes::plot",
+          "oa::plot::Figure::render"
+        ],
         "sha256": "8046f7f1e30d7b18fe7faaaf56f31829b6e569527343f16ad036d0a59dac0e30",
         "code": "#include <oa/runtime/engine.h>\n#include <oa/ui/plot/plot.h>\n\n#include <array>\n#include <cstdio>\n#include <utility>\n\nint main() {\n\toa::EngineConfig engineConfig;\n\tengineConfig.appName = \"ExamplePlotLine\";\n\tengineConfig.presentationMode = oa::PresentationMode::Headless;\n\n\tauto created = oa::Engine::create(engineConfig);\n\tif (not created.isOk()) return 1;\n\tauto engine = std::move(created).getValue();\n\n\toa::plot::Figure figure({\n\t\t.title = \"training loss\",\n\t\t.width = 360,\n\t\t.height = 240,\n\t\t.theme = oa::plot::Theme::Dark,\n\t});\n\tconstexpr std::array<oa::F32, 6> loss{1.0F, 0.72F, 0.51F, 0.38F, 0.29F, 0.23F};\n\tfigure.ax(0, 0).xLabel(\"step\");\n\tfigure.ax(0, 0).yLabel(\"loss\");\n\tfigure.ax(0, 0).plot(loss);\n\n\tauto rendered = figure.render(*engine);\n\tif (not rendered.isOk()) return 1;\n\tauto image = std::move(rendered).getValue();\n\tif (not image.validate() || image.width() != 360 || image.height() != 240) {\n\t\treturn 1;\n\t}\n\n\tstd::puts(\"rendered a 360x240 training-loss figure\");\n\treturn 0;\n}"
       },
@@ -163,6 +224,11 @@
         "path": "sdk/py/examples/plot/line.py",
         "filename": "line.py",
         "profile": "gpu",
+        "symbols": [
+          "oa.plot.Figure",
+          "oa.plot.Axes.plot",
+          "oa.plot.Figure.render"
+        ],
         "sha256": "97a214b1221ae960cd73e9260f4708f70bd05e30df56a73c03d9d5eda9ac843a",
         "code": "from oa import initComputeEngine, plot, shutdownComputeEngine\n\n\nif not initComputeEngine():\n\traise RuntimeError(\"OA could not create a Vulkan compute engine\")\n\ntry:\n\tconfig = plot.FigureConfig()\n\tconfig.title = \"Training loss\"\n\tconfig.width = 360\n\tconfig.height = 240\n\tconfig.theme = plot.Theme.Dark\n\n\tfigure = plot.Figure(config)\n\tfigure.ax(0, 0).xLabel(\"step\")\n\tfigure.ax(0, 0).yLabel(\"loss\")\n\tfigure.ax(0, 0).plot([1.0, 0.72, 0.51, 0.38, 0.29, 0.23])\n\n\timage = figure.render()\n\tassert image.validate()\n\tassert image.width() == 360\n\tassert image.height() == 240\n\tprint(\"rendered a 360x240 training-loss figure\")\nfinally:\n\tshutdownComputeEngine()"
       }

@@ -26,11 +26,14 @@
 
 // OA_DOC_BEGIN: viewer-intro
 #include <oa/ui/viewer.h>
+#include <oa/core/paths.h>
 
 // ─── main ──────────────────────────────────────────────────────────────────
 
 int main(int argc, char** argv) {
-	const char* path = (argc > 1) ? argv[1] : "asset/image/SpaceCathedral.jpg";
+	const oa::String defaultPath =
+		oa::Paths::asset("image/coverMl.jpg").string();
+	const char* path = (argc > 1) ? argv[1] : defaultPath.cStr();
 
 	oa::Viewer viewer(path);
 
