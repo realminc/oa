@@ -13,6 +13,7 @@ void bindMl(
     bindMlFnMatrix(inFnMatrix);
     bindMlModule(m);
     bindMlNn(m);
+    bindMlTokenizer(m);
     bindMlAutograd(m, inFnAutograd);
     bindMlOptim(m);
     bindTraining(m);

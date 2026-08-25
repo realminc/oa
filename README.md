@@ -29,7 +29,7 @@ playback, capture, presentation, and MCP control.
 [![PyPI](https://img.shields.io/pypi/v/oapython?label=pypi)](https://pypi.org/project/oapython/)
 [![License](https://img.shields.io/badge/license-BSL--1.1-3b3b3b)](LICENSE)
 
-> **Current preview.** [`v0.7.17`](https://github.com/realminc/oa/releases/tag/v0.7.17)
+> **Current preview candidate.** `v0.7.18`
 > publishes the converged engine and event model, schema-owned C++/Python operations,
 > semantic Q4/Q8 inference values, the rewritten Mamba-3 SISO/MIMO paths, local MCP
 > training control, the unified Renderer/Ui/Plot presentation stack, per-engine Vulkan
@@ -49,7 +49,7 @@ operations. Devices enter through Vulkan capability checks and qualified executi
 routes, never through a brand allow-list; unsupported paths fail closed instead of
 silently changing the workload.
 
-## What ships in 0.7.17
+## What ships in 0.7.18
 
 | Area | Shipped surface |
 |---|---|
@@ -208,8 +208,8 @@ under `source/cpp/lib/oa/`; vendored C/C++ dependencies under
 | Device class | Evidence for this release line |
 |---|---|
 | **Intel Iris Xe TGL GT2** | Current local acceptance pack: FP32 Core/Ml, the 15-workload NLP suite, Q4/Q8, grouped Mamba-3, Vision, Plot/Ui/Renderer, Python, and separate core/synchronization/GPU-assisted validation; exact video support remains profile-specific |
-| **Qualcomm Adreno 610** | Earlier physical OaMobileLab checkpoint ran the five Byte NLP models through training, generation, save, and reload; the complete 0.7.17 tree has not been requalified on this device |
-| **NVIDIA / AMD / newer Adreno / datacenter** | Capability-gated implementations exist, but the complete 0.7.17 tree is unverified on these hardware packs and no current performance claim is made |
+| **Qualcomm Adreno 610** | Earlier physical OaMobileLab checkpoint ran the five Byte NLP models through training, generation, save, and reload; the complete 0.7.18 tree has not been requalified on this device |
+| **NVIDIA / AMD / newer Adreno / datacenter** | Capability-gated implementations exist, but the complete 0.7.18 tree is unverified on these hardware packs and no current performance claim is made |
 | **CPU Vulkan** | Useful for selected correctness and hosted-CI work; not a performance target and not a substitute for the real-GPU gate |
 
 OA queries capabilities and fails closed when a route is unavailable. Native BF16 and

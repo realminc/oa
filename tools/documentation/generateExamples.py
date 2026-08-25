@@ -22,7 +22,7 @@ CPP_REGISTRIES = (
     REPO / "sdk" / "cpp" / "examples" / "gen" / "examples.cmake",
 )
 PYTHON_REGISTRIES = (
-    REPO / "test" / "py" / "examples" / "test_generated_examples.py",
+    REPO / "test" / "py" / "examples" / "test_sdk_examples.py",
 )
 ID_PATTERN = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
 PUBLIC_MODULES = {"Audio", "Core", "Crypto", "Data", "Ml", "Ui", "Vision"}

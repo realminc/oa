@@ -140,6 +140,7 @@ void bindMl(
 void bindMlFnMatrix(nb::module_& m);
 void bindMlModule(nb::module_& m);
 void bindMlNn(nb::module_& m);
+void bindMlTokenizer(nb::module_& m);
 void bindMlLoss(nb::module_& m);
 void bindMlAutograd(nb::module_& m, nb::module_& inFnAutograd);
 void bindMlOptim(nb::module_& m);

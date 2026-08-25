@@ -1625,6 +1625,7 @@ if(OA_BUILD_PYTHON)
 		${OA_PYTHON_DIR}/ml/fnMatrix.cpp
 		${OA_PYTHON_DIR}/ml/module.cpp
 		${OA_PYTHON_DIR}/ml/nn.cpp
+		${OA_PYTHON_DIR}/ml/tokenizer.cpp
 		${OA_PYTHON_DIR}/ml/loss.cpp
 		${OA_PYTHON_DIR}/ml/autograd.cpp
 		${OA_PYTHON_DIR}/ml/optim.cpp

@@ -3,6 +3,7 @@
 
 oa_add_example(ExampleCoreMatrix core/matrix.cpp core)
 oa_add_example(ExampleAudio audio/audio.cpp audio)
+oa_add_example(ExampleMlTransformer ml/transformer.cpp ml)
 oa_add_example(ExampleVisionImage vision/image.cpp vision)
 if(OA_BUILD_CRYPTO)
 	oa_add_example(ExampleCryptoShake256 crypto/shake256.cpp crypto)

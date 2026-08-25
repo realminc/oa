@@ -20,6 +20,7 @@ class GenerateExamplesTest(unittest.TestCase):
             {
                 "core-matrix-add",
                 "audio-process",
+                "ml-transformer",
                 "vision-image",
                 "crypto-shake256",
                 "plot-line",
@@ -57,6 +58,26 @@ class GenerateExamplesTest(unittest.TestCase):
         self.assertTrue(viewerCapture["src"].startswith("/media/oa/"))
         self.assertEqual(len(viewerCapture["sha256"]), 64)
         self.assertGreater(viewerCapture["bytes"], 0)
+        ml = next(entry for entry in generated if entry["id"] == "ml-transformer")
+        self.assertEqual(
+            [presentation["title"] for presentation in ml["presentation"]],
+            ["C++", "Python"],
+        )
+        self.assertTrue(all(
+            presentation["kind"] == "terminalOutput"
+            for presentation in ml["presentation"]
+        ))
+        self.assertTrue(all(
+            "Loss: 5.8423 -> 0.0415" in presentation["code"]
+            for presentation in ml["presentation"]
+        ))
+        self.assertTrue(all(
+            "Summary:" in presentation["code"]
+            and "GPU: mean" in presentation["code"]
+            and "training phases: steps=300" in presentation["code"]
+            and "300/300" in presentation["code"]
+            for presentation in ml["presentation"]
+        ))
 
     def testExtractAcceptsOneOrderedPair(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

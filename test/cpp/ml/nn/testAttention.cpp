@@ -343,3 +343,28 @@ TEST_VK(AttentionTest, TransformerBlockUsesSharedMultiHeadAttention) {
 	const oa::MatrixShape expectedShape{4, 8};
 	EXPECT_EQ(shorter.getShape(), expectedShape);
 }
+
+TEST_VK(AttentionTest, NnTransformerComposesTrainableLanguageModel) {
+	auto& ctx = oa::ExecutionSession::getActive();
+	oa::ExecutionSession::RecordingScope scope(ctx);
+	oa::NnTransformer model(300, 4, 8, 16, 2, 2);
+	EXPECT_EQ(model.vocabSize(), 300);
+	EXPECT_EQ(model.contextLength(), 4);
+	EXPECT_EQ(model.numLayers(), 2);
+	EXPECT_EQ(model.numHeads(), 2);
+
+	const oa::I32 tokenValues[] = {1, 2, 3, 4, 4, 3, 2, 1};
+	auto tokens = oa::FnMatrix::fromInt32(
+		oa::Span<const oa::I32>(tokenValues, 8),
+		{2, 4}, oa::ScalarType::UInt32);
+	oa::GradientTape tape;
+	auto logits = model.forward(tokens);
+	auto loss = oa::FnLoss::crossEntropy(logits, tokens.reshape({8}));
+	tape.backward(loss);
+	ASSERT_TRUE(testSubmitAndWait(ctx).isOk());
+	EXPECT_EQ(logits.getShape(), (oa::MatrixShape{8, 300}));
+	EXPECT_GT(model.numParameters(), 0);
+	for (auto* parameter : model.allParameterPtrs()) {
+		ASSERT_FALSE(parameter->grad().isEmpty());
+	}
+}

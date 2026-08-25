@@ -17,7 +17,7 @@
           "oa::FnMatrix::add",
           "oa::FnMatrix::copyToHost"
         ],
-        "sha256": "534c1854a7f510c02eec294b9769e0e28a16e05e868fe0a17aa035b41e27d6c7",
+        "sha256": "7340542b3eb6a2d99b56820c14a3ef0d3c01e45db7efa2b8e06335f2d4ed3f37",
         "code": "#include <oa/oa.h>\n\n#include <array>\n#include <cmath>\n#include <cstdio>\n#include <utility>\n\nOA_MAIN(\"ExampleCoreMatrix\") {\n\tauto one = oa::FnMatrix::ones({2, 3});\n\n\tauto two = oa::FnMatrix::full({2, 3}, 2.0F);\n\n\tauto sum = oa::FnMatrix::add(one, two);\n\n\tstd::array<oa::F32, 6> values{};\n\tif (not oa::FnMatrix::copyToHost(sum, values.data(), sizeof(values)).isOk()) {\n\t\treturn 1;\n\t}\n\tfor (const oa::F32 value : values) {\n\t\tif (std::abs(value - 3.0F) > 1e-06F) {\n\t\t\treturn 1;\n\t\t}\n\t}\n\n\tstd::puts(\"Matrix addition verified: every value is 3\");\n\treturn 0;\n}"
       },
       "python": {
@@ -30,14 +30,14 @@
           "oa.FnMatrix.add",
           "oa.FnMatrix.copyToHost"
         ],
-        "sha256": "662c04e0fa0feafb46923de3182cbcdc0761fc751c36b40cae30410c09da7159",
+        "sha256": "a334f34463d16fca4e3d0b2ee5ebd1f6cf9ec2a2f640ef7e54a206bd5ac4dcab",
         "code": "import oa\n\none = oa.FnMatrix.ones([2, 3])\n\ntwo = oa.FnMatrix.full([2, 3], 2.0)\n\nsum = oa.FnMatrix.add(one, two)\n\nvalues = oa.FnMatrix.copyToHost(sum)\nassert len(values) == 6\nassert all(abs(value - 3.0) <= 1e-06 for value in values)\n\nprint(\"Matrix addition verified: every value is 3\")"
       },
       "presentation": [
         {
           "kind": "terminalOutput",
           "title": "Verified Python run",
-          "description": "Runtime evidence from the generated Python example on an Intel Iris Xe Vulkan device. The batch loader creates only the two shader pipelines required by this graph.",
+          "description": "Runtime evidence from the source-owned Python example on an Intel Iris Xe Vulkan device. The batch loader creates only the two shader pipelines required by this graph.",
           "filename": "matrix.py · output",
           "language": "bash",
           "generatedBy": ".venv/bin/python sdk/py/examples/core/matrix.py",
@@ -65,7 +65,7 @@
           "oa::FnAudio::saveWavF32",
           "oa::Viewer::preview"
         ],
-        "sha256": "07c69c7f801d77b222d9da77d50511c3e8c6a16f1f1d5ac81b35a2ae02a0d317",
+        "sha256": "61f923d36d1ecf6c488a5286603254bd0a2f66827f347b2691b76720e010b9e0",
         "code": "#include <oa/oa.h>\n\n#include <cstdio>\n#include <utility>\n\nOA_MAIN_PREVIEW(\"ExampleAudio\") {\n\tauto audioResult = oa::FnAudio::decodeFile(oa::Paths::asset(\"audio/oaNarration.wav\"));\n\tif (not audioResult.isOk()) {\n\t\treturn 1;\n\t}\n\tauto audio = std::move(audioResult).getValue();\n\n\tauto mono = oa::FnAudio::toMono(audio);\n\n\tauto normalized = oa::FnAudio::normalize(mono, -3.0F);\n\n\tauto faded = oa::FnAudio::fade(normalized, 2400U, 2400U);\n\n\tauto reverberated = oa::FnAudio::reverb(faded, 1.5F, 0.4F);\n\n\tconst oa::Path output = oa::Paths::var(\"example/audio/oaNarrationRoom.wav\");\n\tif (not oa::Filesystem::createDirectories(output.parentPath()).isOk()) {\n\t\treturn 1;\n\t}\n\tif (not oa::FnAudio::saveWavF32(output, reverberated).isOk()) {\n\t\treturn 1;\n\t}\n\n\tif (not reverberated.validate()) return 1;\n\tif (reverberated.sampleRate() != 24000U) return 1;\n\tif (reverberated.channels() != 1) return 1;\n\tif (reverberated.samples() != faded.samples()\n\t\t+ static_cast<oa::I64>(reverberated.sampleRate())\n\t\t\t* 1500 / 1'000) {\n\t\treturn 1;\n\t}\n\tif (not oa::Filesystem::isFile(output)) return 1;\n\n\tstd::printf(\"Saved reverberated audio (1.5 s tail): %s\\n\", output.cStr());\n\n\tif (argc > 1 and oa::StringView(argv[1]) == \"--preview\") {\n\t\toa::ViewerConfig previewConfig;\n\t\tpreviewConfig.mode = oa::ViewerMode::Audio;\n\t\tpreviewConfig.title = \"OA audio · room reverb\";\n\t\tpreviewConfig.width = 960U;\n\t\tpreviewConfig.height = 360U;\n\t\tif (not oa::Viewer::preview(engine, oa::Paths::var(\"example/audio/oaNarrationRoom.wav\").string(),\n\t\t\tpreviewConfig).isOk()) {\n\t\t\treturn 1;\n\t\t}\n\t}\n\treturn 0;\n}"
       },
       "python": {
@@ -82,7 +82,7 @@
           "oa.FnAudio.saveWavF32",
           "oa.Viewer.preview"
         ],
-        "sha256": "1e7c1193097174b90fb94837d2126fcd68563a1777266462c6b928efcd76bd5f",
+        "sha256": "ee4d349241354f1ee768146c5dae202c125681e8495b46895b851ee35c48b9b0",
         "code": "import sys\n\nimport oa\n\naudio = oa.FnAudio.decodeFile(oa.Paths.asset(\"audio/oaNarration.wav\"))\n\nmono = oa.FnAudio.toMono(audio)\n\nnormalized = oa.FnAudio.normalize(mono, -3.0)\n\nfaded = oa.FnAudio.fade(normalized, 2400, 2400)\n\nreverberated = oa.FnAudio.reverb(faded, 1.5, 0.4)\n\noutput = oa.Paths.var(\"example/audio/oaNarrationRoom.wav\")\noa.Filesystem.createDirectories(output.parentPath())\noa.FnAudio.saveWavF32(output, reverberated)\n\nassert reverberated.isValid()\nassert reverberated.sampleRate == 24000\nassert reverberated.channelCount == 1\nassert reverberated.sampleCount == faded.sampleCount + reverberated.sampleRate * 1500 // 1000\nassert oa.Filesystem.isFile(output)\n\nprint(f\"Saved reverberated audio (1.5 s tail): {output}\")\n\nif \"--preview\" in sys.argv:\n\toa.Viewer.preview(output, title=\"OA audio · room reverb\", width=960, height=360)"
       },
       "assets": [
@@ -155,6 +155,69 @@
       ]
     },
     {
+      "id": "ml-transformer",
+      "title": "Train a tiny Transformer language model",
+      "summary": "Learn a 300-token BPE vocabulary, train a causal Transformer for 300 optimizer steps, verify that cross-entropy falls, and generate text from the trained model.",
+      "module": "Ml",
+      "capability": "Vulkan compute + autograd",
+      "cpp": {
+        "path": "sdk/cpp/examples/ml/transformer.cpp",
+        "filename": "transformer.cpp",
+        "target": "ExampleMlTransformer",
+        "symbols": [
+          "oa::BpeTokenizer",
+          "oa::NnTransformer",
+          "oa::AdamW",
+          "oa::GradientTape",
+          "oa::ItTraining",
+          "oa::MetricLoss",
+          "oa::CbProgressBar",
+          "oa::CbSummary",
+          "oa::FnLoss::crossEntropy"
+        ],
+        "sha256": "bc756df3aa08f8d1881ef77dd4fd57ea4642ce7323b3d88922b55a177791879f",
+        "code": "#include <oa/oa.h>\n\n#include <algorithm>\n#include <cstdio>\n\nnamespace {\nconstexpr oa::I32 VocabSize = 300;\nconstexpr oa::I32 ContextLength = 16;\nconstexpr oa::I32 ModelWidth = 32;\nconstexpr oa::I32 HiddenWidth = 64;\nconstexpr oa::I32 BatchSize = 64;\nconstexpr oa::I32 TrainingSteps = 300;\nconstexpr const char* Corpus =\n\t\"to be or not to be that is the question whether tis nobler in the mind \"\n\t\"to suffer the slings and arrows of outrageous fortune or to take arms \"\n\t\"against a sea of troubles and by opposing end them to be or not to be \"\n\t\"that is the question whether tis nobler in the mind to suffer the slings \"\n\t\"and arrows of outrageous fortune or to take arms against a sea of \"\n\t\"troubles and by opposing end them to be or not to be that is the question \"\n\t\"whether tis nobler in the mind to suffer the slings and arrows of \"\n\t\"outrageous fortune or to take arms against a sea of troubles and by \"\n\t\"opposing end them \";\n\noa::Matrix tokenMatrix(const oa::Vec<oa::I32>& tokens, oa::I32 batch) {\n\treturn oa::FnMatrix::fromInt32(\n\t\toa::Span<const oa::I32>(tokens.data(), tokens.size()),\n\t\t{batch, ContextLength}, oa::ScalarType::UInt32\n\t);\n}\n\nvoid nextBatch(const oa::Vec<oa::I32>& tokens, oa::I64& cursor,\n\toa::Matrix& input, oa::Matrix& target) {\n\tconst oa::I64 limit = static_cast<oa::I64>(tokens.size()) - ContextLength - 1;\n\toa::Vec<oa::I32> x(static_cast<oa::Usize>(BatchSize * ContextLength));\n\toa::Vec<oa::I32> y(x.size());\n\tfor (oa::I32 batch = 0; batch < BatchSize; ++batch) {\n\t\tconst oa::I64 start = (cursor + static_cast<oa::I64>(batch) * 7) % limit;\n\t\tfor (oa::I32 position = 0; position < ContextLength; ++position) {\n\t\t\tconst auto output = static_cast<oa::Usize>(batch * ContextLength + position);\n\t\t\tx[output] = tokens[static_cast<oa::Usize>(start + position)];\n\t\t\ty[output] = tokens[static_cast<oa::Usize>(start + position + 1)];\n\t\t}\n\t}\n\tcursor = (cursor + BatchSize) % limit;\n\tinput = tokenMatrix(x, BatchSize);\n\ttarget = tokenMatrix(y, BatchSize);\n}\n\noa::String generate(oa::NnTransformer& model, const oa::BpeTokenizer& tokenizer) {\n\tconst oa::String prompt = \"to be\";\n\tauto promptTokens = tokenizer.encode(prompt.cStr());\n\toa::Vec<oa::I32> context(static_cast<oa::Usize>(ContextLength), 0);\n\tconst auto copied = std::min<oa::Usize>(promptTokens.size(), context.size());\n\tfor (oa::Usize index = 0; index < copied; ++index) context[index] = promptTokens[index];\n\toa::I32 filled = std::max<oa::I32>(1, static_cast<oa::I32>(copied));\n\toa::String result = prompt;\n\tfor (oa::I32 index = 0; index < 32; ++index) {\n\t\tauto logits = model.forward(tokenMatrix(context, 1));\n\t\tauto row = oa::FnMatrix::slice(logits, 0, filled - 1, filled);\n\t\tconst auto next = static_cast<oa::I32>(oa::FnMatrix::argmax(row.reshape({VocabSize})));\n\t\tresult += tokenizer.decode({next});\n\t\tif (filled < ContextLength) {\n\t\t\tcontext[static_cast<oa::Usize>(filled++)] = next;\n\t\t} else {\n\t\t\tfor (oa::Usize token = 1; token < context.size(); ++token) context[token - 1] = context[token];\n\t\t\tcontext[ContextLength - 1] = next;\n\t\t}\n\t}\n\treturn result;\n}\n} // namespace\n\nOA_MAIN(\"ExampleMlTransformer\") {\n\toa::FnMatrix::setRngSeed(20260714ULL);\n\toa::BpeTokenizer tokenizer(VocabSize);\n\ttokenizer.train(Corpus, VocabSize - 256);\n\tif (tokenizer.vocabSize() != VocabSize) return 1;\n\tconst auto corpusTokens = tokenizer.encode(Corpus);\n\n\toa::NnTransformer model(\n\t\tVocabSize, ContextLength, ModelWidth, HiddenWidth);\n\tauto parameters = model.allParameterPtrs();\n\toa::AdamW optimizer(parameters, 0.01F);\n\toa::MetricLoss lossMetric;\n\toa::CbProgressBar progress;\n\toa::CbSummary summary;\n\tprogress.addMetric(&lossMetric);\n\toa::ItTrainingConfig config;\n\tconfig.totalSteps = TrainingSteps;\n\tconfig.batchSize = BatchSize;\n\tconfig.sequenceLength = ContextLength;\n\tconfig.sequenceUnit = \"token\";\n\tconfig.timerName = \"example_transformer_step\";\n\toa::ItTraining training(engine, optimizer, config);\n\ttraining.addMetric(&lossMetric);\n\ttraining.addCallback(&progress);\n\ttraining.addCallback(&summary);\n\n\tstd::printf(\"\\nOA SDK Example — BPE Transformer · all-position LM\\n\");\n\tstd::printf(\"Tokenizer: byte BPE · vocab=%d · context=%d\\n\",\n\t\tVocabSize, ContextLength);\n\tstd::printf(\"Model: NnTransformer(width=%d, hidden=%d, layers=1, heads=1)\\n\",\n\t\tModelWidth, HiddenWidth);\n\tstd::printf(\"Params: %lld · AdamW(lr=0.01)\\n\",\n\t\tstatic_cast<long long>(model.numParameters()));\n\tstd::printf(\"Training: %d steps · batch=%d · sequence=%d tokens\\n\",\n\t\tTrainingSteps, BatchSize, ContextLength);\n\n\toa::I64 cursor = 0;\n\toa::Matrix input;\n\toa::Matrix target;\n\toa::F32 initialLoss = 0.0F;\n\twhile (not training.isDone()) {\n\t\tnextBatch(corpusTokens, cursor, input, target);\n\t\toptimizer.zeroGrad();\n\t\toa::GradientTape tape;\n\t\tauto logits = model.forward(input);\n\t\tauto loss = oa::FnLoss::crossEntropy(logits, target.reshape({target.numElements()}));\n\t\ttape.backward(loss);\n\t\ttraining.next(loss);\n\t\tif (training.index() == 1) initialLoss = training.lastLoss();\n\t}\n\tif (not training.finish().isOk()) return 1;\n\n\tconst oa::F32 finalLoss = training.lastLoss();\n\tif (not (finalLoss < initialLoss)) return 1;\n\tconst auto generated = generate(model, tokenizer);\n\tstd::printf(\"Transformer training verified: vocab=300, steps=300\\n\");\n\tstd::printf(\"Loss: %.4f -> %.4f\\n\", initialLoss, finalLoss);\n\tstd::printf(\"Generated: %s\\n\", generated.cStr());\n\treturn 0;\n}"
+      },
+      "python": {
+        "path": "sdk/py/examples/ml/transformer.py",
+        "filename": "transformer.py",
+        "profile": "gpu",
+        "symbols": [
+          "oa.BpeTokenizer",
+          "oa.NnTransformer",
+          "oa.AdamW",
+          "oa.GradientTape",
+          "oa.ItTraining",
+          "oa.MetricLoss",
+          "oa.CbProgressBar",
+          "oa.CbSummary",
+          "oa.FnLoss.crossEntropy"
+        ],
+        "sha256": "15deeb7747cf15a321b9dccd7cceee9b670533e8b31bfa8a0cf4ca113588b4d2",
+        "code": "import oa\n\nvocabSize = 300\ncontextLength = 16\nmodelWidth = 32\nhiddenWidth = 64\nbatchSize = 64\ntrainingSteps = 300\ncorpus = (\n\t\"to be or not to be that is the question whether tis nobler in the mind \"\n\t\"to suffer the slings and arrows of outrageous fortune or to take arms \"\n\t\"against a sea of troubles and by opposing end them to be or not to be \"\n\t\"that is the question whether tis nobler in the mind to suffer the slings \"\n\t\"and arrows of outrageous fortune or to take arms against a sea of \"\n\t\"troubles and by opposing end them to be or not to be that is the question \"\n\t\"whether tis nobler in the mind to suffer the slings and arrows of \"\n\t\"outrageous fortune or to take arms against a sea of troubles and by \"\n\t\"opposing end them \"\n)\n\noa.FnMatrix.setRngSeed(20260714)\ntokenizer = oa.BpeTokenizer(vocabSize)\ntokenizer.train(corpus, vocabSize - 256)\nassert tokenizer.vocabSize() == vocabSize\ncorpusTokens = tokenizer.encode(corpus)\n\nmodel = oa.NnTransformer(\n\tvocabSize, contextLength, modelWidth, hiddenWidth,\n)\nparameters = model.allParameterPtrs()\n\ndef tokenMatrix(tokens, batch):\n\treturn oa.FnMatrix.fromInt32(tokens, [batch, contextLength], oa.ScalarType.UInt32)\n\ndef nextBatch(tokens, cursor):\n\tlimit = len(tokens) - contextLength - 1\n\tx, y = [], []\n\tfor batch in range(batchSize):\n\t\tstart = (cursor + batch * 7) % limit\n\t\tx.extend(tokens[start:start + contextLength])\n\t\ty.extend(tokens[start + 1:start + contextLength + 1])\n\treturn tokenMatrix(x, batchSize), tokenMatrix(y, batchSize), (cursor + batchSize) % limit\n\ndef generate(tokenizer):\n\tprompt = \"to be\"\n\tcontext = (tokenizer.encode(prompt) + [0] * contextLength)[:contextLength]\n\tfilled = max(1, min(len(tokenizer.encode(prompt)), contextLength))\n\tresult = prompt\n\tfor _ in range(32):\n\t\tlogits = model.forward(tokenMatrix(context, 1))\n\t\trow = oa.FnMatrix.slice(logits, 0, filled - 1, filled)\n\t\tnextToken = int(oa.FnMatrix.argmax(row.reshape([vocabSize])))\n\t\tresult += tokenizer.decode([nextToken])\n\t\tif filled < contextLength:\n\t\t\tcontext[filled] = nextToken\n\t\t\tfilled += 1\n\t\telse:\n\t\t\tcontext = context[1:] + [nextToken]\n\treturn result\n\noptimizer = oa.AdamW(parameters, 0.01)\nlossMetric = oa.MetricLoss()\nprogress = oa.CbProgressBar()\nsummary = oa.CbSummary()\nprogress.addMetric(lossMetric)\nconfig = oa.ItTrainingConfig()\nconfig.totalSteps = trainingSteps\nconfig.batchSize = batchSize\nconfig.sequenceLength = contextLength\nconfig.sequenceUnit = \"token\"\nconfig.timerName = \"example_transformer_step\"\ntraining = oa.ItTraining(optimizer, config)\ntraining.addMetric(lossMetric)\ntraining.addCallback(progress)\ntraining.addCallback(summary)\n\nprint(\"\\nOA SDK Example — BPE Transformer · all-position LM\")\nprint(f\"Tokenizer: byte BPE · vocab={vocabSize} · context={contextLength}\")\nprint(f\"Model: NnTransformer(width={modelWidth}, hidden={hiddenWidth}, layers=1, heads=1)\")\nprint(f\"Params: {model.numParameters()} · AdamW(lr=0.01)\")\nprint(f\"Training: {trainingSteps} steps · batch={batchSize} · sequence={contextLength} tokens\")\n\ncursor = 0\ninitialLoss = 0.0\nwhile not training.isDone():\n\tinput, target, cursor = nextBatch(corpusTokens, cursor)\n\toptimizer.zeroGrad()\n\twith oa.GradientTape() as tape:\n\t\tlogits = model.forward(input)\n\t\tloss = oa.FnLoss.crossEntropy(logits, target.reshape([target.numElements()]))\n\t\ttape.backward(loss)\n\ttraining.next(loss)\n\tif training.index() == 1:\n\t\tinitialLoss = training.lastLoss()\ntraining.finish()\n\nfinalLoss = training.lastLoss()\nassert finalLoss < initialLoss\nprint(\"Transformer training verified: vocab=300, steps=300\")\nprint(f\"Loss: {initialLoss:.4f} -> {finalLoss:.4f}\")\nprint(f\"Generated: {generate(tokenizer)}\")"
+      },
+      "presentation": [
+        {
+          "kind": "terminalOutput",
+          "title": "C++",
+          "description": "Selected live progress redraws and the complete tutorial-style summary from one checked Intel Iris Xe run. Timings are single-run evidence, not a benchmark claim.",
+          "filename": "transformer.cpp · output",
+          "language": "bash",
+          "generatedBy": "OA_LOG_TRAINING_PHASES=1 bin/release/example/ml/exampleMlTransformer",
+          "code": "$ OA_LOG_TRAINING_PHASES=1 bin/release/example/ml/exampleMlTransformer\n14:15:29.239 [INFO ] [RT  ] ComputeDevice (0): Intel(R) Iris(R) Xe Graphics (TGL GT2), vulkan 1.4.354, 11 GB\n\nOA SDK Example — BPE Transformer · all-position LM\nTokenizer: byte BPE · vocab=300 · context=16\nModel: NnTransformer(width=32, hidden=64, layers=1, heads=1)\nParams: 28620 · AdamW(lr=0.01)\nTraining: 300 steps · batch=64 · sequence=16 tokens\n  2/300   |▏░░░░░░░░░| 0.05s · 23.57 ms/step · 2.72K sample/s · 43.45K token/s · cross_entropy: 5.5437\n  50/300  |█▋░░░░░░░░| 0.37s · 7.43 ms/step · 8.61K sample/s · 137.84K token/s · cross_entropy: 1.1568\n  153/300 |█████▏░░░░| 1.06s · 6.95 ms/step · 9.21K sample/s · 147.33K token/s · cross_entropy: 0.4138\n  300/300 |██████████| 2.02s · 6.74 ms/step · 9.50K sample/s · 151.94K token/s · cross_entropy: 0.2331\n\nSummary:\n  loss: initial 5.842306 · final 0.041481 · mean 0.233055\n  Wall: 6.74 ms/step · 9.50K sample/s · 151.94K token/s\n  GPU: mean 5.139 ms/step · p50 4.444 · p95 7.878 · 12.45K sample/s · 199.26K token/s · wall-GPU gap 24%\n  run: 2.02s · 300 steps · batch 64 · sequence 16 token/sample\n14:15:31.299 [INFO ] [ML  ] training phases: steps=300 total=6.735 ms/step body=0.640 optimizer=0.037 compile=0.048 record=0.124 submit=0.046 wait=5.617 scalar_metric=0.015 callbacks=0.007 unaccounted=0.202\nTransformer training verified: vocab=300, steps=300\nLoss: 5.8423 -> 0.0415\nGenerated: to bepposing end them to be or not to be that is the question whether tis\n"
+        },
+        {
+          "kind": "terminalOutput",
+          "title": "Python",
+          "description": "Selected live progress redraws and the complete Python summary. It resolves to the same Vulkan graph, seed, losses, and generated continuation as C++.",
+          "filename": "transformer.py · output",
+          "language": "bash",
+          "generatedBy": "OA_LOG_TRAINING_PHASES=1 .venv/bin/python sdk/py/examples/ml/transformer.py",
+          "code": "$ OA_LOG_TRAINING_PHASES=1 .venv/bin/python sdk/py/examples/ml/transformer.py\n14:15:36.804 [INFO ] [RT  ] ComputeDevice (0): Intel(R) Iris(R) Xe Graphics (TGL GT2), vulkan 1.4.354, 11 GB\n\nOA SDK Example — BPE Transformer · all-position LM\nTokenizer: byte BPE · vocab=300 · context=16\nModel: NnTransformer(width=32, hidden=64, layers=1, heads=1)\nParams: 28620 · AdamW(lr=0.01)\nTraining: 300 steps · batch=64 · sequence=16 tokens\n  3/300   |▏░░░░░░░░░| 0.05s · 15.11 ms/step · 4.24K sample/s · 67.79K token/s · cross_entropy: 5.2941\n  53/300  |█▊░░░░░░░░| 0.39s · 7.31 ms/step · 8.76K sample/s · 140.09K token/s · cross_entropy: 1.0947\n  151/300 |█████░░░░░| 1.04s · 6.89 ms/step · 9.29K sample/s · 148.66K token/s · cross_entropy: 0.4187\n  300/300 |██████████| 2.04s · 6.79 ms/step · 9.42K sample/s · 150.75K token/s · cross_entropy: 0.2331\n\nSummary:\n  loss: initial 5.842306 · final 0.041481 · mean 0.233055\n  Wall: 6.79 ms/step · 9.42K sample/s · 150.74K token/s\n  GPU: mean 4.895 ms/step · p50 4.421 · p95 7.812 · 13.07K sample/s · 209.19K token/s · wall-GPU gap 28%\n  run: 2.04s · 300 steps · batch 64 · sequence 16 token/sample\n14:15:38.875 [INFO ] [ML  ] training phases: steps=300 total=6.784 ms/step body=0.937 optimizer=0.043 compile=0.049 record=0.126 submit=0.047 wait=5.344 scalar_metric=0.023 callbacks=0.014 unaccounted=0.201\nTransformer training verified: vocab=300, steps=300\nLoss: 5.8423 -> 0.0415\nGenerated: to bepposing end them to be or not to be that is the question whether tis\n"
+        }
+      ]
+    },
+    {
       "id": "vision-image",
       "title": "Convert and save a grayscale image",
       "summary": "Load the Vision cover, convert its GPU-resident RGB pixels to Rec.709 grayscale, save the semantic Gray image, and optionally inspect it in Viewer.",
@@ -171,7 +234,7 @@
           "oa::FnImage::saveFile",
           "oa::Viewer::preview"
         ],
-        "sha256": "9444bfa75375073c4057dfd4ba689158b636b9e8c3ce701b554ee1e4fe76d396",
+        "sha256": "0eb4422777ca30d2aa750fc400b5f3186f819b2737a111dd69daa94cb99dc58b",
         "code": "#include <oa/oa.h>\n\n#include <cstdio>\n#include <utility>\n\nOA_MAIN_PREVIEW(\"ExampleVisionImage\") {\n\tauto sourceResult = oa::FnImage::decodeFile(\n\t\toa::Paths::asset(\"image/coverVision.jpg\"), oa::ImageFormat::Rgb);\n\tif (not sourceResult.isOk()) return 1;\n\tauto source = std::move(sourceResult).getValue();\n\n\tauto grayscale = oa::FnImage::grayscale(source);\n\n\tconst oa::Path output = oa::Paths::var(\"example/vision/coverVisionGrayscale.jpg\");\n\tif (not oa::Filesystem::createDirectories(output.parentPath()).isOk()) return 1;\n\tif (not oa::FnImage::saveFile(output, grayscale, 92U).isOk()) return 1;\n\n\tif (not grayscale.validate()) return 1;\n\tif (grayscale.width() != 1672 or grayscale.height() != 941) return 1;\n\tif (grayscale.format() != oa::ImageFormat::Gray) return 1;\n\tif (not oa::Filesystem::isFile(output)) return 1;\n\n\tstd::printf(\"Saved grayscale image: %s\\n\", output.cStr());\n\n\tif (argc > 1 and oa::StringView(argv[1]) == \"--preview\") {\n\t\toa::ViewerConfig previewConfig;\n\t\tpreviewConfig.mode = oa::ViewerMode::Image;\n\t\tpreviewConfig.title = \"OA vision · grayscale cover\";\n\t\tpreviewConfig.width = 1280U;\n\t\tpreviewConfig.height = 646U;\n\t\tif (not oa::Viewer::preview(engine, oa::Paths::var(\"example/vision/coverVisionGrayscale.jpg\").string(),\n\t\t\tpreviewConfig).isOk()) {\n\t\t\treturn 1;\n\t\t}\n\t}\n\treturn 0;\n}"
       },
       "python": {
@@ -185,7 +248,7 @@
           "oa.FnImage.saveFile",
           "oa.Viewer.preview"
         ],
-        "sha256": "e6c1dc79e0931e2ce6138fff7e4951196c4778fc75c612e12b51caa8ba5ec86b",
+        "sha256": "aef32ba6550f02799199d45f2f2d2b5a2dc72fce974d4a312d189fbbeab3146d",
         "code": "import sys\n\nimport oa\n\nsource = oa.FnImage.decodeFile(oa.Paths.asset(\"image/coverVision.jpg\"), oa.ImageFormat.Rgb)\n\ngrayscale = oa.FnImage.grayscale(source)\n\noutput = oa.Paths.var(\"example/vision/coverVisionGrayscale.jpg\")\noa.Filesystem.createDirectories(output.parentPath())\noa.FnImage.saveFile(output, grayscale, 92)\n\nassert grayscale.validate()\nassert grayscale.width() == 1672\nassert grayscale.height() == 941\nassert grayscale.format() == oa.ImageFormat.Gray\nassert oa.Filesystem.isFile(output)\n\nprint(f\"Saved grayscale image: {output}\")\n\nif \"--preview\" in sys.argv:\n\toa.Viewer.preview(output, title=\"OA vision · grayscale cover\", width=1280, height=646)"
       },
       "assets": [
@@ -216,7 +279,7 @@
             {
               "role": "processed",
               "label": "Grayscale output",
-              "description": "The full-resolution Rec.709 grayscale image converted on the GPU and saved by the generated example.",
+              "description": "The full-resolution Rec.709 grayscale image converted on the GPU and saved by the source-owned example.",
               "asset": "documentation/examples/vision/coverVisionGrayscale.jpg",
               "src": "/media/oa/documentation/examples/vision/coverVisionGrayscale.jpg",
               "mimeType": "image/jpeg",
@@ -259,7 +322,7 @@
           "oa::FnHash::shake256",
           "oa::FnMatrix::copyToHost"
         ],
-        "sha256": "f852cedc8f598c1e5f84f3f2da14c1e17f2a59cba5980b8e0f2a76f44de77537",
+        "sha256": "e96d2bace1de612dbe57fbe06df79f8bdf50edfd86a4680dcb8ca2287f493fc9",
         "code": "#include <oa/oa.h>\n\n#include <array>\n#include <cstring>\n#include <cstdio>\n#include <utility>\n\nOA_MAIN(\"ExampleCryptoShake256\") {\n\tconstexpr std::array<oa::U8, 15> messagesBytes{\n\t\t97U, 108U, 112U, 104U, 97U, 98U, 114U, 97U, 118U, 111U, 99U, 114U, 121U, 112U, 116U\n\t};\n\tauto messages = oa::FnMatrix::fromBytes(\n\t\toa::Span<const oa::U8>(messagesBytes.data(), messagesBytes.size()),\n\t\t{3, 5},\n\t\toa::ScalarType::UInt8);\n\n\tauto digests = oa::FnHash::shake256(messages, 32U);\n\n\tstd::array<oa::U8, 96> gpu{};\n\tstd::array<oa::U8, 96> cpu{};\n\tif (not oa::FnMatrix::copyToHost(digests, gpu.data(), gpu.size()).isOk()) return 1;\n\tfor (oa::Usize row = 0; row < 3U; ++row) {\n\t\toa::shake256(\n\t\t\tmessagesBytes.data() + row * 5U, 5U,\n\t\t\tcpu.data() + row * 32U, 32U);\n\t}\n\tif (std::memcmp(gpu.data(), cpu.data(), gpu.size()) != 0) return 1;\n\n\tstd::puts(\"3 GPU SHAKE-256 digests match the CPU oracle\");\n\treturn 0;\n}"
       },
       "python": {
@@ -271,14 +334,14 @@
           "oa.FnMatrix.copyToHost",
           "oa.ScalarType"
         ],
-        "sha256": "658b01ba5fd59b253b564967e20e23d9821034d97f999939297789844359cc70",
+        "sha256": "f833113e58fb26511c2594d0d430999d16923f090f08a0bcf33fe746ab525019",
         "code": "import hashlib\n\nimport oa\n\nmessagesRows = [b\"alpha\", b\"bravo\", b\"crypt\"]\nmessages = oa.FnMatrix.fromBytes(\n\tlist(b\"\".join(messagesRows)),\n\t[3, 5],\n\toa.ScalarType.UInt8,\n)\n\ndigests = oa.FnHash.shake256(messages, 32)\n\ngpu = bytes(oa.FnMatrix.copyToHost(digests))\ncpu = b\"\".join(hashlib.shake_256(row).digest(32) for row in messagesRows)\nassert gpu == cpu\n\nprint(\"3 GPU SHAKE-256 digests match the CPU oracle\")"
       },
       "presentation": [
         {
           "kind": "terminalOutput",
           "title": "Verified Python run",
-          "description": "Runtime evidence from the generated Python example on an Intel Iris Xe Vulkan device. One SHAKE-256 shader pipeline handles the complete three-message batch.",
+          "description": "Runtime evidence from the source-owned Python example on an Intel Iris Xe Vulkan device. One SHAKE-256 shader pipeline handles the complete three-message batch.",
           "filename": "shake256.py · output",
           "language": "bash",
           "generatedBy": ".venv/bin/python sdk/py/examples/crypto/shake256.py",
@@ -303,7 +366,7 @@
           "oa::FnImage::saveFile",
           "oa::Viewer::preview"
         ],
-        "sha256": "4b21bf973528d4d0be2812d49d01d5ed41218fc80a0850defe42e313f8d80502",
+        "sha256": "57bff7d8c652cbf31182ad1d4902409cc4855d1bdc251ded1e04d5e6e7bf2797",
         "code": "#include <oa/oa.h>\n\n#include <array>\n#include <cstdio>\n#include <utility>\n\nOA_MAIN_MODE(\"ExamplePlotLine\", argc > 1 and oa::StringView(argv[1]) == \"--preview\" ? oa::PresentationMode::Swapchain : oa::PresentationMode::Headless) {\n\toa::plot::Figure figure({\n\t\t.title = \"Training loss\",\n\t\t.width = 960U,\n\t\t.height = 540U,\n\t\t.theme = oa::plot::Theme::Dark,\n\t});\n\tconstexpr std::array<oa::F32, 6> figureValues{\n\t\t1.0F, 0.72F, 0.51F, 0.38F, 0.29F, 0.23F\n\t};\n\tfigure.ax(0, 0).xLabel(\"step\");\n\tfigure.ax(0, 0).yLabel(\"loss\");\n\tfigure.ax(0, 0).plot(figureValues);\n\n\tauto renderedResult = figure.render(engine);\n\tif (not renderedResult.isOk()) return 1;\n\tauto rendered = std::move(renderedResult).getValue();\n\n\tconst oa::Path output = oa::Paths::var(\"example/ui/trainingLoss.jpg\");\n\tif (not oa::Filesystem::createDirectories(output.parentPath()).isOk()) return 1;\n\tif (not oa::FnImage::saveFile(output, rendered, 92U).isOk()) return 1;\n\n\tif (not rendered.validate()) return 1;\n\tif (rendered.width() != 960 or rendered.height() != 540) return 1;\n\tif (rendered.format() != oa::ImageFormat::Rgba) return 1;\n\tif (not oa::Filesystem::isFile(output)) return 1;\n\n\tstd::printf(\"Saved training-loss plot: %s\\n\", output.cStr());\n\n\tif (argc > 1 and oa::StringView(argv[1]) == \"--preview\") {\n\t\toa::ViewerConfig previewConfig;\n\t\tpreviewConfig.mode = oa::ViewerMode::Image;\n\t\tpreviewConfig.title = \"OA plot · training loss\";\n\t\tpreviewConfig.width = 1280U;\n\t\tpreviewConfig.height = 646U;\n\t\tif (not oa::Viewer::preview(engine, oa::Paths::var(\"example/ui/trainingLoss.jpg\").string(),\n\t\t\tpreviewConfig).isOk()) {\n\t\t\treturn 1;\n\t\t}\n\t}\n\treturn 0;\n}"
       },
       "python": {
@@ -317,7 +380,7 @@
           "oa.FnImage.saveFile",
           "oa.Viewer.preview"
         ],
-        "sha256": "1b09d80844edbdbc79e8ba192e38253e754c83535ab0892bc4fa807fa3e3e649",
+        "sha256": "3c52487019253ae787fdc89151c167cd485c3ad06955b438898f4b87a4fb55c6",
         "code": "import sys\n\nimport oa\n\nfigureConfig = oa.plot.FigureConfig()\nfigureConfig.title = \"Training loss\"\nfigureConfig.width = 960\nfigureConfig.height = 540\nfigureConfig.theme = oa.plot.Theme.Dark\nfigure = oa.plot.Figure(figureConfig)\nfigure.ax(0, 0).xLabel(\"step\")\nfigure.ax(0, 0).yLabel(\"loss\")\nfigure.ax(0, 0).plot([1.0, 0.72, 0.51, 0.38, 0.29, 0.23])\n\nrendered = figure.render()\n\noutput = oa.Paths.var(\"example/ui/trainingLoss.jpg\")\noa.Filesystem.createDirectories(output.parentPath())\noa.FnImage.saveFile(output, rendered, 92)\n\nassert rendered.validate()\nassert rendered.width() == 960\nassert rendered.height() == 540\nassert rendered.format() == oa.ImageFormat.Rgba\nassert oa.Filesystem.isFile(output)\n\nprint(f\"Saved training-loss plot: {output}\")\n\nif \"--preview\" in sys.argv:\n\toa.Viewer.preview(output, title=\"OA plot · training loss\", width=1280, height=646)"
       },
       "assets": [
@@ -328,7 +391,7 @@
         {
           "kind": "imageGallery",
           "title": "Rendered plot",
-          "description": "This is the exact 960×540 JPEG produced by the retained figure in the generated example.",
+          "description": "This is the exact 960×540 JPEG produced by the retained figure in the source-owned example.",
           "items": [
             {
               "role": "output",

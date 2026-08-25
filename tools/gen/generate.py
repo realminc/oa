@@ -19,7 +19,7 @@ Generators = (
 	("nn", "neural-network modules", "tools/gen/nn/generate.py"),
 	("kernel", "standalone kernel authority", "tools/gen/kernel/generate.py"),
 	("tile", "linear-algebra kernel lattice", "tools/gen/tile/generate.py"),
-	("example", "paired SDK examples", "tools/gen/example/generate.py"),
+	("example", "SDK example inventories", "tools/gen/example/generate.py"),
 )
 
 

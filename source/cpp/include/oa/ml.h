@@ -26,6 +26,7 @@
 #include <oa/ml/module.h>
 #include <oa/ml/nn.h>
 #include <oa/ml/optim.h>
+#include <oa/ml/autograd.h>
 #include <oa/ml/itTraining.h>
 #include <oa/ml/trainingSession.h>
 #include <oa/ml/trainingProgram.h>

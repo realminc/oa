@@ -10,7 +10,6 @@ summary = "Create two GPU-resident matrices, add them, and verify the result aft
 capability = "Vulkan compute"
 cppTarget = "ExampleCoreMatrix"
 pythonProfile = "gpu"
-generated = true
 expectedOutput = "Matrix addition verified: every value is 3"
 cppSymbols = [
 	"oa::FnMatrix::ones",
@@ -25,33 +24,10 @@ pythonSymbols = [
 	"oa.FnMatrix.copyToHost",
 ]
 
-[[examples.steps]]
-operation = "matrix.ones"
-result = "one"
-shape = [2, 3]
-
-[[examples.steps]]
-operation = "matrix.full"
-result = "two"
-shape = [2, 3]
-value = 2.0
-
-[[examples.steps]]
-operation = "matrix.add"
-result = "sum"
-inputs = ["one", "two"]
-
-[[examples.checks]]
-kind = "matrixAllClose"
-input = "sum"
-count = 6
-value = 3.0
-tolerance = 0.000001
-
 [[examples.presentation]]
 kind = "terminalOutput"
 title = "Verified Python run"
-description = "Runtime evidence from the generated Python example on an Intel Iris Xe Vulkan device. The batch loader creates only the two shader pipelines required by this graph."
+description = "Runtime evidence from the source-owned Python example on an Intel Iris Xe Vulkan device. The batch loader creates only the two shader pipelines required by this graph."
 filename = "matrix.py · output"
 language = "bash"
 generatedBy = ".venv/bin/python sdk/py/examples/core/matrix.py"
@@ -74,7 +50,6 @@ summary = "Load the OA narration, convert it to mono, normalize it, render a nat
 capability = "Vulkan compute"
 cppTarget = "ExampleAudio"
 pythonProfile = "gpu"
-generated = true
 expectedOutput = "Saved reverberated audio (1.5 s tail):"
 assets = [
 	"audio/oaNarration.wav",
@@ -103,13 +78,6 @@ pythonSymbols = [
 	"oa.FnAudio.saveWavF32",
 	"oa.Viewer.preview",
 ]
-
-[examples.preview]
-input = "output"
-title = "OA audio · room reverb"
-mode = "audio"
-width = 960
-height = 360
 
 [[examples.presentation]]
 kind = "audioComparison"
@@ -155,57 +123,101 @@ height = 434
 alt = "oa::Viewer displaying the processed OA narration as a GPU-rendered waveform"
 generatedBy = "bin/release/example/audio/exampleAudio --preview"
 
-[[examples.steps]]
-operation = "audio.decodeAsset"
-result = "audio"
-path = "audio/oaNarration.wav"
+[[examples]]
+id = "ml-transformer"
+module = "Ml"
+directory = "ml"
+stem = "transformer"
+title = "Train a tiny Transformer language model"
+summary = "Learn a 300-token BPE vocabulary, train a causal Transformer for 300 optimizer steps, verify that cross-entropy falls, and generate text from the trained model."
+capability = "Vulkan compute + autograd"
+cppTarget = "ExampleMlTransformer"
+pythonProfile = "gpu"
+expectedOutput = "Transformer training verified: vocab=300, steps=300"
+cppSymbols = [
+	"oa::BpeTokenizer",
+	"oa::NnTransformer",
+	"oa::AdamW",
+	"oa::GradientTape",
+	"oa::ItTraining",
+	"oa::MetricLoss",
+	"oa::CbProgressBar",
+	"oa::CbSummary",
+	"oa::FnLoss::crossEntropy",
+]
+pythonSymbols = [
+	"oa.BpeTokenizer",
+	"oa.NnTransformer",
+	"oa.AdamW",
+	"oa.GradientTape",
+	"oa.ItTraining",
+	"oa.MetricLoss",
+	"oa.CbProgressBar",
+	"oa.CbSummary",
+	"oa.FnLoss.crossEntropy",
+]
 
-[[examples.steps]]
-operation = "audio.toMono"
-result = "mono"
-input = "audio"
+[[examples.presentation]]
+kind = "terminalOutput"
+title = "C++"
+description = "Selected live progress redraws and the complete tutorial-style summary from one checked Intel Iris Xe run. Timings are single-run evidence, not a benchmark claim."
+filename = "transformer.cpp · output"
+language = "bash"
+generatedBy = "OA_LOG_TRAINING_PHASES=1 bin/release/example/ml/exampleMlTransformer"
+code = '''$ OA_LOG_TRAINING_PHASES=1 bin/release/example/ml/exampleMlTransformer
+14:15:29.239 [INFO ] [RT  ] ComputeDevice (0): Intel(R) Iris(R) Xe Graphics (TGL GT2), vulkan 1.4.354, 11 GB
 
-[[examples.steps]]
-operation = "audio.normalize"
-result = "normalized"
-input = "mono"
-targetDb = -3.0
+OA SDK Example — BPE Transformer · all-position LM
+Tokenizer: byte BPE · vocab=300 · context=16
+Model: NnTransformer(width=32, hidden=64, layers=1, heads=1)
+Params: 28620 · AdamW(lr=0.01)
+Training: 300 steps · batch=64 · sequence=16 tokens
+  2/300   |▏░░░░░░░░░| 0.05s · 23.57 ms/step · 2.72K sample/s · 43.45K token/s · cross_entropy: 5.5437
+  50/300  |█▋░░░░░░░░| 0.37s · 7.43 ms/step · 8.61K sample/s · 137.84K token/s · cross_entropy: 1.1568
+  153/300 |█████▏░░░░| 1.06s · 6.95 ms/step · 9.21K sample/s · 147.33K token/s · cross_entropy: 0.4138
+  300/300 |██████████| 2.02s · 6.74 ms/step · 9.50K sample/s · 151.94K token/s · cross_entropy: 0.2331
 
-[[examples.steps]]
-operation = "audio.fade"
-result = "faded"
-input = "normalized"
-fadeInSamples = 2400
-fadeOutSamples = 2400
+Summary:
+  loss: initial 5.842306 · final 0.041481 · mean 0.233055
+  Wall: 6.74 ms/step · 9.50K sample/s · 151.94K token/s
+  GPU: mean 5.139 ms/step · p50 4.444 · p95 7.878 · 12.45K sample/s · 199.26K token/s · wall-GPU gap 24%
+  run: 2.02s · 300 steps · batch 64 · sequence 16 token/sample
+14:15:31.299 [INFO ] [ML  ] training phases: steps=300 total=6.735 ms/step body=0.640 optimizer=0.037 compile=0.048 record=0.124 submit=0.046 wait=5.617 scalar_metric=0.015 callbacks=0.007 unaccounted=0.202
+Transformer training verified: vocab=300, steps=300
+Loss: 5.8423 -> 0.0415
+Generated: to bepposing end them to be or not to be that is the question whether tis
+'''
 
-[[examples.steps]]
-operation = "audio.reverb"
-result = "reverberated"
-input = "faded"
-decaySeconds = 1.5
-wet = 0.40
+[[examples.presentation]]
+kind = "terminalOutput"
+title = "Python"
+description = "Selected live progress redraws and the complete Python summary. It resolves to the same Vulkan graph, seed, losses, and generated continuation as C++."
+filename = "transformer.py · output"
+language = "bash"
+generatedBy = "OA_LOG_TRAINING_PHASES=1 .venv/bin/python sdk/py/examples/ml/transformer.py"
+code = '''$ OA_LOG_TRAINING_PHASES=1 .venv/bin/python sdk/py/examples/ml/transformer.py
+14:15:36.804 [INFO ] [RT  ] ComputeDevice (0): Intel(R) Iris(R) Xe Graphics (TGL GT2), vulkan 1.4.354, 11 GB
 
-[[examples.steps]]
-operation = "audio.saveWavF32"
-result = "output"
-input = "reverberated"
-path = "example/audio/oaNarrationRoom.wav"
+OA SDK Example — BPE Transformer · all-position LM
+Tokenizer: byte BPE · vocab=300 · context=16
+Model: NnTransformer(width=32, hidden=64, layers=1, heads=1)
+Params: 28620 · AdamW(lr=0.01)
+Training: 300 steps · batch=64 · sequence=16 tokens
+  3/300   |▏░░░░░░░░░| 0.05s · 15.11 ms/step · 4.24K sample/s · 67.79K token/s · cross_entropy: 5.2941
+  53/300  |█▊░░░░░░░░| 0.39s · 7.31 ms/step · 8.76K sample/s · 140.09K token/s · cross_entropy: 1.0947
+  151/300 |█████░░░░░| 1.04s · 6.89 ms/step · 9.29K sample/s · 148.66K token/s · cross_entropy: 0.4187
+  300/300 |██████████| 2.04s · 6.79 ms/step · 9.42K sample/s · 150.75K token/s · cross_entropy: 0.2331
 
-[[examples.checks]]
-kind = "audioMetadata"
-input = "reverberated"
-sampleRate = 24000
-channels = 1
-
-[[examples.checks]]
-kind = "audioTail"
-input = "reverberated"
-source = "faded"
-tailMilliseconds = 1500
-
-[[examples.checks]]
-kind = "fileExists"
-input = "output"
+Summary:
+  loss: initial 5.842306 · final 0.041481 · mean 0.233055
+  Wall: 6.79 ms/step · 9.42K sample/s · 150.74K token/s
+  GPU: mean 4.895 ms/step · p50 4.421 · p95 7.812 · 13.07K sample/s · 209.19K token/s · wall-GPU gap 28%
+  run: 2.04s · 300 steps · batch 64 · sequence 16 token/sample
+14:15:38.875 [INFO ] [ML  ] training phases: steps=300 total=6.784 ms/step body=0.937 optimizer=0.043 compile=0.049 record=0.126 submit=0.047 wait=5.344 scalar_metric=0.023 callbacks=0.014 unaccounted=0.201
+Transformer training verified: vocab=300, steps=300
+Loss: 5.8423 -> 0.0415
+Generated: to bepposing end them to be or not to be that is the question whether tis
+'''
 
 [[examples]]
 id = "vision-image"
@@ -217,7 +229,6 @@ summary = "Load the Vision cover, convert its GPU-resident RGB pixels to Rec.709
 capability = "Vulkan compute"
 cppTarget = "ExampleVisionImage"
 pythonProfile = "gpu"
-generated = true
 expectedOutput = "Saved grayscale image:"
 assets = [
 	"image/coverVision.jpg",
@@ -239,13 +250,6 @@ pythonSymbols = [
 	"oa.Viewer.preview",
 ]
 
-[examples.preview]
-input = "output"
-title = "OA vision · grayscale cover"
-mode = "image"
-width = 1280
-height = 646
-
 [[examples.presentation]]
 kind = "imageGallery"
 title = "Before / after"
@@ -265,7 +269,7 @@ generatedBy = "OA-authored Vision module cover"
 [[examples.presentation.items]]
 role = "processed"
 label = "Grayscale output"
-description = "The full-resolution Rec.709 grayscale image converted on the GPU and saved by the generated example."
+description = "The full-resolution Rec.709 grayscale image converted on the GPU and saved by the source-owned example."
 asset = "documentation/examples/vision/coverVisionGrayscale.jpg"
 mimeType = "image/jpeg"
 width = 1672
@@ -284,35 +288,6 @@ height = 720
 alt = "oa::Viewer presenting the grayscale OA Vision cover in a 1280 by 720 window"
 generatedBy = "bin/release/example/vision/exampleVisionImage --preview"
 
-[[examples.steps]]
-operation = "image.decodeAsset"
-result = "source"
-path = "image/coverVision.jpg"
-format = "Rgb"
-
-[[examples.steps]]
-operation = "image.grayscale"
-result = "grayscale"
-input = "source"
-
-[[examples.steps]]
-operation = "image.save"
-result = "output"
-input = "grayscale"
-path = "example/vision/coverVisionGrayscale.jpg"
-quality = 92
-
-[[examples.checks]]
-kind = "imageMetadata"
-input = "grayscale"
-width = 1672
-height = 941
-format = "Gray"
-
-[[examples.checks]]
-kind = "fileExists"
-input = "output"
-
 [[examples]]
 id = "crypto-shake256"
 module = "Crypto"
@@ -323,7 +298,6 @@ summary = "Run three SHAKE-256 digests on the GPU and compare every output byte 
 capability = "Vulkan compute + Crypto"
 cppTarget = "ExampleCryptoShake256"
 pythonProfile = "crypto-gpu"
-generated = true
 expectedOutput = "3 GPU SHAKE-256 digests match the CPU oracle"
 cppSymbols = ["oa::FnHash::shake256", "oa::FnMatrix::copyToHost"]
 pythonSymbols = ["oa.FnHash.shake256", "oa.FnMatrix.copyToHost", "oa.ScalarType"]
@@ -331,7 +305,7 @@ pythonSymbols = ["oa.FnHash.shake256", "oa.FnMatrix.copyToHost", "oa.ScalarType"
 [[examples.presentation]]
 kind = "terminalOutput"
 title = "Verified Python run"
-description = "Runtime evidence from the generated Python example on an Intel Iris Xe Vulkan device. One SHAKE-256 shader pipeline handles the complete three-message batch."
+description = "Runtime evidence from the source-owned Python example on an Intel Iris Xe Vulkan device. One SHAKE-256 shader pipeline handles the complete three-message batch."
 filename = "shake256.py · output"
 language = "bash"
 generatedBy = ".venv/bin/python sdk/py/examples/crypto/shake256.py"
@@ -344,22 +318,6 @@ code = '''$ .venv/bin/python sdk/py/examples/crypto/shake256.py
 3 GPU SHAKE-256 digests match the CPU oracle
 '''
 
-[[examples.steps]]
-operation = "bytes.asciiRows"
-result = "messages"
-values = ["alpha", "bravo", "crypt"]
-
-[[examples.steps]]
-operation = "crypto.shake256"
-result = "digests"
-input = "messages"
-digestBytes = 32
-
-[[examples.checks]]
-kind = "shake256CpuOracle"
-input = "messages"
-output = "digests"
-
 [[examples]]
 id = "plot-line"
 module = "Ui"
@@ -370,7 +328,6 @@ summary = "Record one training-loss series, render the retained figure through O
 capability = "Vulkan graphics"
 cppTarget = "ExamplePlotLine"
 pythonProfile = "gpu"
-generated = true
 expectedOutput = "Saved training-loss plot:"
 assets = [
 	"documentation/examples/ui/trainingLoss.jpg",
@@ -391,17 +348,10 @@ pythonSymbols = [
 	"oa.Viewer.preview",
 ]
 
-[examples.preview]
-input = "output"
-title = "OA plot · training loss"
-mode = "image"
-width = 1280
-height = 646
-
 [[examples.presentation]]
 kind = "imageGallery"
 title = "Rendered plot"
-description = "This is the exact 960×540 JPEG produced by the retained figure in the generated example."
+description = "This is the exact 960×540 JPEG produced by the retained figure in the source-owned example."
 
 [[examples.presentation.items]]
 role = "output"
@@ -424,37 +374,3 @@ width = 1280
 height = 720
 alt = "oa::Viewer presenting the generated training-loss plot in a 1280 by 720 window"
 generatedBy = "bin/release/example/ui/examplePlotLine --preview"
-
-[[examples.steps]]
-operation = "plot.lineFigure"
-result = "figure"
-title = "Training loss"
-xLabel = "step"
-yLabel = "loss"
-width = 960
-height = 540
-theme = "Dark"
-values = [1.0, 0.72, 0.51, 0.38, 0.29, 0.23]
-
-[[examples.steps]]
-operation = "plot.render"
-result = "rendered"
-input = "figure"
-
-[[examples.steps]]
-operation = "image.save"
-result = "output"
-input = "rendered"
-path = "example/ui/trainingLoss.jpg"
-quality = 92
-
-[[examples.checks]]
-kind = "imageMetadata"
-input = "rendered"
-width = 960
-height = 540
-format = "Rgba"
-
-[[examples.checks]]
-kind = "fileExists"
-input = "output"

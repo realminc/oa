@@ -13,7 +13,7 @@
 | Schema operations | operation schemas and generators | matching C++, Python, validation and reference surfaces |
 | Tutorial excerpts | checked source between `OA_DOC_BEGIN` and `OA_DOC_END` markers | developer-site code examples |
 | Tutorial media | approved files under `sdk/asset/documentation` with provenance | offline SDK and developer-site presentation assets |
-| API examples | `tools/gen/example/schema/examples.toml` plus checked generated source markers | generated inventory and API-linked code |
+| API examples | checked SDK source markers plus `tools/gen/example/schema/examples.toml` publication metadata | generated inventory and API-linked source excerpts |
 
 Never hand-copy a signature into generated reference data. Committed generated
 files are reviewable snapshots for standalone site builds, not a second source.

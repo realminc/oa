@@ -4,6 +4,40 @@ All notable changes to OA are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is the single
 `VERSION` file at the repo root (read by CMake, `oa::version()`, and the Python package).
 
+## [0.7.18] — 2026-08-25 (paired Transformer SDK example)
+
+This patch adds one compact, source-owned ML training program with equivalent
+C++ and Python front ends over the same native Vulkan runtime.
+
+### Added
+
+- **Public Transformer module** — `oa::NnTransformer` and
+  `oa.NnTransformer` provide the ready-made single-layer language-model path
+  used by the beginner example instead of rebuilding attention from primitive
+  modules.
+- **Bound BPE tokenizer** — Python exposes the existing native
+  `oa::BpeTokenizer` contract used by C++ so both examples train the same
+  300-token vocabulary and consume the same encoded corpus.
+- **Executable ML proof** — paired 300-step C++ and Python examples report
+  loss, wall and GPU timings, throughput, phase timings, and generated text.
+
+### Changed
+
+- SDK example programs are source-owned teaching material. The example schema
+  now owns inventory and presentation metadata, while its generator validates
+  and indexes the checked C++ and Python source rather than synthesizing it.
+- The Transformer corpus is split into adjacent source literals for readable
+  code without changing the runtime training text.
+
+### Verification
+
+- The C++ and Python Transformer programs both complete 300 steps on the
+  recorded Intel Iris Xe Vulkan device with identical initial/final loss and
+  generated text. Generator, documentation, drift, C++ unit, and Python example
+  gates pass locally.
+- Hosted build, sanitizer, package, wheel, release, and PyPI results remain
+  owned by the tagged public workflow.
+
 ## [0.7.17] — 2026-08-25 (source-owned SDK example proof)
 
 This patch closes the beginner SDK example set as executable C++ and Python

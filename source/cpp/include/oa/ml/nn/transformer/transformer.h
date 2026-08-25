@@ -13,6 +13,7 @@
 #include <oa/ml/nn/attention.h>
 
 #include <oa/ml/nn/attention/multiheadattention/multiHeadAttention.h>
+#include <oa/ml/nn/embedding/embedding.h>
 #include <oa/ml/nn/layernorm/layerNorm.h>
 #include <oa/ml/nn/linear/linear.h>
 #include <oa/ml/nn/moe/moe.h>
@@ -87,6 +88,47 @@ private:
 
 	void initAttention(oa::I32 inNumHeads, oa::F32 inEps);
 	oa::Matrix forwardImpl(const oa::Matrix& inX, const oa::Matrix* inAdditiveMask);
+};
+
+/// Ready-to-train causal language model: token + position embeddings, a stack
+/// of Transformer blocks, final normalization, and vocabulary projection.
+/// Input token ids are [batch, contextLength]; logits are [batch*contextLength,
+/// vocabSize] for all-position next-token training.
+class NnTransformer final : public oa::Module {
+public:
+	NnTransformer(
+		oa::I32 inVocabSize,
+		oa::I32 inContextLength,
+		oa::I32 inModelWidth = 32,
+		oa::I32 inHiddenWidth = 64,
+		oa::I32 inNumLayers = 1,
+		oa::I32 inNumHeads = 1,
+		oa::F32 inEps = 1e-5F);
+
+	oa::Matrix forward(const oa::Matrix& inTokens) override;
+
+	[[nodiscard]] oa::I32 vocabSize() const { return vocabSize_; }
+	[[nodiscard]] oa::I32 contextLength() const { return contextLength_; }
+	[[nodiscard]] oa::I32 modelWidth() const { return modelWidth_; }
+	[[nodiscard]] oa::I32 hiddenWidth() const { return hiddenWidth_; }
+	[[nodiscard]] oa::I32 numLayers() const {
+		return static_cast<oa::I32>(blocks_.size());
+	}
+	[[nodiscard]] oa::I32 numHeads() const { return numHeads_; }
+
+private:
+	[[nodiscard]] oa::Matrix positionIds(oa::I32 inBatch) const;
+
+	oa::I32 vocabSize_ = 0;
+	oa::I32 contextLength_ = 0;
+	oa::I32 modelWidth_ = 0;
+	oa::I32 hiddenWidth_ = 0;
+	oa::I32 numHeads_ = 0;
+	oa::SharedPtr<oa::Embedding> tokenEmbedding_;
+	oa::SharedPtr<oa::Embedding> positionEmbedding_;
+	oa::Vec<oa::SharedPtr<oa::TransformerBlock>> blocks_;
+	oa::SharedPtr<oa::LayerNorm> finalNorm_;
+	oa::SharedPtr<oa::Linear> head_;
 };
 
 } // namespace oa

@@ -10,7 +10,11 @@ void bindMlNn(nb::module_& m) {
     // ═════════════════════════════════════════════════════════════════════════
 
     nb::class_<oa::Linear, oa::Module>(m, "Linear")
-        .def(nb::init<oa::I32, oa::I32, bool>(),
+        .def("__init__", [](oa::Linear* self, oa::I32 inFeatures,
+                            oa::I32 outFeatures, bool bias) {
+            (void)pythonEngine();
+            new (self) oa::Linear(inFeatures, outFeatures, bias);
+        },
              nb::arg("inFeatures"), nb::arg("outFeatures"), nb::arg("bias") = true,
              "Fully connected linear layer: y = x @ W.t + b")
         .def("forward", [](oa::Linear& self, const oa::Matrix& input) {
@@ -34,7 +38,11 @@ void bindMlNn(nb::module_& m) {
     // ═════════════════════════════════════════════════════════════════════════
 
     nb::class_<oa::Embedding, oa::Module>(m, "Embedding")
-        .def(nb::init<oa::I32, oa::I32>(),
+        .def("__init__", [](oa::Embedding* self, oa::I32 numEmbeddings,
+                            oa::I32 embeddingDim) {
+            (void)pythonEngine();
+            new (self) oa::Embedding(numEmbeddings, embeddingDim);
+        },
              nb::arg("numEmbeddings"), nb::arg("embeddingDim"),
              "Embedding lookup layer")
         .def("forward", [](oa::Embedding& self, const oa::Matrix& input) {
@@ -95,7 +103,11 @@ void bindMlNn(nb::module_& m) {
     // ═════════════════════════════════════════════════════════════════════════
 
     nb::class_<oa::LayerNorm, oa::Module>(m, "LayerNorm")
-        .def(nb::init<oa::I32, oa::F32>(),
+        .def("__init__", [](oa::LayerNorm* self, oa::I32 normalizedShape,
+                            oa::F32 eps) {
+            (void)pythonEngine();
+            new (self) oa::LayerNorm(normalizedShape, eps);
+        },
              nb::arg("normalizedShape"), nb::arg("eps") = 1e-5f,
              "Layer normalization over the last dimension");
 
@@ -105,15 +117,46 @@ void bindMlNn(nb::module_& m) {
     // ═════════════════════════════════════════════════════════════════════════
 
     nb::class_<oa::TransformerBlock, oa::Module>(m, "TransformerBlock")
-        .def(nb::init<oa::I32, oa::I32, oa::I32, oa::F32>(),
+        .def("__init__", [](oa::TransformerBlock* self, oa::I32 dModel,
+                            oa::I32 dFf, oa::I32 seqLen, oa::F32 eps) {
+            (void)pythonEngine();
+            new (self) oa::TransformerBlock(dModel, dFf, seqLen, eps);
+        },
              nb::arg("dModel"), nb::arg("dFf"), nb::arg("seqLen"), nb::arg("eps") = 1e-5f,
              "Pre-norm one-head transformer block (compatibility constructor)")
-        .def(nb::init<oa::I32, oa::I32, oa::I32, oa::I32, oa::F32>(),
+        .def("__init__", [](oa::TransformerBlock* self, oa::I32 dModel,
+                            oa::I32 dFf, oa::I32 seqLen, oa::I32 numHeads,
+                            oa::F32 eps) {
+            (void)pythonEngine();
+            new (self) oa::TransformerBlock(dModel, dFf, seqLen, numHeads, eps);
+        },
              nb::arg("dModel"), nb::arg("dFf"), nb::arg("seqLen"),
              nb::arg("numHeads"), nb::arg("eps") = 1e-5f,
              "Pre-norm multi-head transformer block (causal self-attention + FFN)")
         .def("setSeqLen", &oa::TransformerBlock::setSeqLen, nb::arg("seqLen"),
              "Update the runtime sequence length without replacing model weights");
+
+    nb::class_<oa::NnTransformer, oa::Module>(m, "NnTransformer")
+        .def("__init__", [](oa::NnTransformer* self,
+                            oa::I32 vocabSize, oa::I32 contextLength,
+                            oa::I32 modelWidth, oa::I32 hiddenWidth,
+                            oa::I32 numLayers, oa::I32 numHeads, oa::F32 eps) {
+            (void)pythonEngine();
+            new (self) oa::NnTransformer(
+                vocabSize, contextLength, modelWidth, hiddenWidth,
+                numLayers, numHeads, eps);
+        },
+             nb::arg("vocabSize"), nb::arg("contextLength"),
+             nb::arg("modelWidth") = 32, nb::arg("hiddenWidth") = 64,
+             nb::arg("numLayers") = 1, nb::arg("numHeads") = 1,
+             nb::arg("eps") = 1e-5F,
+             "Ready-to-train causal Transformer language model")
+        .def_prop_ro("vocabSize", &oa::NnTransformer::vocabSize)
+        .def_prop_ro("contextLength", &oa::NnTransformer::contextLength)
+        .def_prop_ro("modelWidth", &oa::NnTransformer::modelWidth)
+        .def_prop_ro("hiddenWidth", &oa::NnTransformer::hiddenWidth)
+        .def_prop_ro("numLayers", &oa::NnTransformer::numLayers)
+        .def_prop_ro("numHeads", &oa::NnTransformer::numHeads);
 
     // ═════════════════════════════════════════════════════════════════════════
     // oa::Mamba3Module — Mamba-3 SSM mixer (EXPERIMENTAL). [B, S, D] -> [B, S, D].

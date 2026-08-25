@@ -1,14 +1,14 @@
-# Paired SDK example generation
+# Paired SDK example inventory
 
-`examples.toml` owns the stable example inventory and the semantic workflows
-for generated beginner examples. A workflow lists typed operations and checks
-once; the generator emits idiomatic C++ and Python sources, CMake registration,
-Python test registration, and `sdk/examples.json`.
+Beginner examples are ordinary, source-owned C++ and Python programs under
+`sdk/*/examples`. They remain directly reviewable and runnable because tutorial
+control flow is not a mechanically derivable API surface.
 
-C++ emitters include explicit engine ownership and completion. Python emitters
-use the process-scoped lazy runtime and never expose engine initialization or
-shutdown in beginner code. Existing handwritten examples can remain indexed
-with `generated = false` while they migrate to the workflow vocabulary.
+`examples.toml` owns only stable publication metadata: pair identity, paths,
+build target, execution profile, API backlinks, checked assets, and captured
+evidence. The inventory tool validates both sources and their documentation
+markers, then generates CMake registration, Python test registration, and
+`sdk/examples.json`. It never writes example source.
 
 Run a preview, focused tests, or an intentional live update with:
 
@@ -18,5 +18,6 @@ python3 tools/gen/example/testGenerate.py
 python3 tools/gen/example/generate.py --live
 ```
 
-Generated files carry an ownership marker and unchanged generation preserves
-their timestamps. `python3 tools/gen/checkDrift.py` verifies the checked tree.
+Generated inventory files carry an ownership marker and unchanged generation
+preserves their timestamps. `python3 tools/gen/checkDrift.py` verifies them;
+the example programs themselves remain outside generator ownership.

@@ -3,6 +3,7 @@
 #include <oa/ml/nn/transformer/transformer.h>
 #include <oa/core/fnMatrix.h>
 #include <stdexcept>
+#include <string>
 
 oa::TransformerBlock::TransformerBlock(oa::I32 inDModel, oa::I32 inDFF, oa::I32 inSeqLen, oa::F32 inEps)
 	: dModel_(inDModel), dFF_(inDFF), seqLen_(inSeqLen)
@@ -182,4 +183,74 @@ void oa::TransformerBlock::setAttentionMode(oa::AttentionMode inMode) {
 	if (attentionMode_ == inMode) { return; }
 	attentionMode_ = inMode;
 	if (attention_) attention_->setMode(inMode);
+}
+
+oa::NnTransformer::NnTransformer(
+	oa::I32 inVocabSize,
+	oa::I32 inContextLength,
+	oa::I32 inModelWidth,
+	oa::I32 inHiddenWidth,
+	oa::I32 inNumLayers,
+	oa::I32 inNumHeads,
+	oa::F32 inEps)
+	: vocabSize_(inVocabSize)
+	, contextLength_(inContextLength)
+	, modelWidth_(inModelWidth)
+	, hiddenWidth_(inHiddenWidth)
+	, numHeads_(inNumHeads) {
+	if (vocabSize_ <= 0 or contextLength_ <= 0 or modelWidth_ <= 0
+		or hiddenWidth_ <= 0 or inNumLayers <= 0 or numHeads_ <= 0
+		or modelWidth_ % numHeads_ != 0) {
+		throw std::invalid_argument(
+			"oa::NnTransformer requires positive dimensions and "
+			"modelWidth divisible by numHeads");
+	}
+
+	tokenEmbedding_ = oa::makeShared<oa::Embedding>(vocabSize_, modelWidth_);
+	positionEmbedding_ = oa::makeShared<oa::Embedding>(contextLength_, modelWidth_);
+	registerModule("token_embedding", tokenEmbedding_);
+	registerModule("position_embedding", positionEmbedding_);
+
+	blocks_.reserve(static_cast<oa::Usize>(inNumLayers));
+	for (oa::I32 index = 0; index < inNumLayers; ++index) {
+		auto block = oa::makeShared<oa::TransformerBlock>(
+			modelWidth_, hiddenWidth_, contextLength_, numHeads_, inEps);
+		const std::string name = "block_" + std::to_string(index);
+		registerModule(name.c_str(), block);
+		blocks_.pushBack(oa::move(block));
+	}
+
+	finalNorm_ = oa::makeShared<oa::LayerNorm>(modelWidth_, inEps);
+	head_ = oa::makeShared<oa::Linear>(modelWidth_, vocabSize_);
+	registerModule("final_norm", finalNorm_);
+	registerModule("head", head_);
+
+	for (auto* parameter : allParameterPtrs()) {
+		parameter->data.setRequiresGrad(true);
+	}
+}
+
+oa::Matrix oa::NnTransformer::forward(const oa::Matrix& inTokens) {
+	if (inTokens.rank() != 2 or inTokens.size(1) != contextLength_) {
+		throw std::invalid_argument(
+			"oa::NnTransformer expects token ids shaped "
+			"[batch, contextLength]");
+	}
+	const auto batch = static_cast<oa::I32>(inTokens.size(0));
+	const auto rows = static_cast<oa::I64>(batch) * contextLength_;
+	auto value = tokenEmbedding_->forward(inTokens).reshape({rows, modelWidth_})
+		+ positionEmbedding_->forward(positionIds(batch));
+	for (auto& block : blocks_) value = block->forward(value);
+	return head_->forward(finalNorm_->forward(value));
+}
+
+oa::Matrix oa::NnTransformer::positionIds(oa::I32 inBatch) const {
+	oa::Vec<oa::I32> ids(static_cast<oa::Usize>(inBatch * contextLength_));
+	for (oa::Usize index = 0; index < ids.size(); ++index) {
+		ids[index] = static_cast<oa::I32>(index % static_cast<oa::Usize>(contextLength_));
+	}
+	return oa::FnMatrix::fromInt32(
+		oa::Span<const oa::I32>(ids.data(), ids.size()),
+		{inBatch * contextLength_},
+		oa::ScalarType::UInt32);
 }

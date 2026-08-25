@@ -21,6 +21,12 @@ def test_audio_process(tmp_path: Path):
 
 
 @pytest.mark.oa_gpu
+def test_ml_transformer(tmp_path: Path):
+	output = runExample("sdk/py/examples/ml/transformer.py", tmp_path)
+	assert "Transformer training verified: vocab=300, steps=300" in output
+
+
+@pytest.mark.oa_gpu
 def test_vision_image(tmp_path: Path):
 	output = runExample("sdk/py/examples/vision/image.py", tmp_path)
 	assert "Saved grayscale image:" in output

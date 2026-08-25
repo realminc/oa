@@ -872,6 +872,24 @@ class AdamW(Optimizer):
 	def zeroGrad(self) -> None:
 		"""Zero all parameter gradients"""
 
+class BpeTokenizer:
+	def __init__(self, targetVocab: int = ...) -> None:
+		"""Byte-pair tokenizer with a caller-selected vocabulary size"""
+
+	def train(self, text: str, numMerges: int) -> None: ...
+
+	def encode(self, text: str) -> list[int]: ...
+
+	def decode(self, tokens: Sequence[int]) -> str: ...
+
+	def save(self, path: object) -> None: ...
+
+	def load(self, path: object) -> None: ...
+
+	def vocabSize(self) -> int: ...
+
+	def numMerges(self) -> int: ...
+
 class ByteEmbedding(Module):
 	def __init__(self, dModel: int) -> None:
 		"""Byte-level embedding (256-symbol vocab, no tokenizer)"""
@@ -1483,6 +1501,28 @@ class NlpTokenizerKind(enum.Enum):
 	Bpe = 1
 
 	Char = 2
+
+class NnTransformer(Module):
+	def __init__(self, vocabSize: int, contextLength: int, modelWidth: int = ..., hiddenWidth: int = ..., numLayers: int = ..., numHeads: int = ..., eps: float = ...) -> None:
+		"""Ready-to-train causal Transformer language model"""
+
+	@property
+	def vocabSize(self) -> int: ...
+
+	@property
+	def contextLength(self) -> int: ...
+
+	@property
+	def modelWidth(self) -> int: ...
+
+	@property
+	def hiddenWidth(self) -> int: ...
+
+	@property
+	def numLayers(self) -> int: ...
+
+	@property
+	def numHeads(self) -> int: ...
 
 class Optimizer:
 	def step(self) -> None: ...
@@ -2838,4 +2878,4 @@ class YCbCrModel(enum.Enum):
 
 	BT2020 = 2
 
-__all__: list = ['Activation', 'Adam', 'AdamW', 'Audio', 'AudioCapture', 'AudioCaptureChunk', 'AudioCaptureConfig', 'AudioChannelLayout', 'AudioCodec', 'AudioEncodeProfile', 'AudioEncoder', 'AudioPlayer', 'AudioPlayerConfig', 'Axes', 'BarStyle', 'BiquadCoefficients', 'BorderMode', 'ByteEmbedding', 'Callback', 'CameraCapture', 'CameraCaptureConfig', 'CbProgressBar', 'CbSummary', 'CbTraining', 'ChannelNormBwdResult', 'CompactRowsResult', 'ContinuousPolicyResult', 'Conv1dBwdWeightResult', 'Conv2dBwdWeightResult', 'ConvTranspose2dBwdWeightResult', 'DetectionMetricsResult', 'DqnLossConfig', 'DqnLossResult', 'Embedding', 'EmpyrealmAdtBwdResult', 'EmpyrealmCore', 'EmpyrealmDtAdtResult', 'EncodedAudioPacket', 'EnvironmentSpace', 'EnvironmentSpaceKind', 'EnvironmentSpec', 'Figure', 'FigureConfig', 'Filesystem', 'Filter', 'FlashAttentionBwdResult', 'FnAdvantage', 'FnAudio', 'FnAutograd', 'FnDetection', 'FnEnvironment', 'FnHash', 'FnImage', 'FnLoss', 'FnMatrix', 'FnMetric', 'FnPolicy', 'GaeConfig', 'GaeResult', 'GpuTimingStats', 'GradientTape', 'GroupedGemmMBwdResult', 'GroupedLinearMBwdResult', 'Gru', 'GruCellPointwiseBwdResult', 'GruScanBwdResult', 'GruScanResult', 'Hash', 'Hasher', 'HeatmapStyle', 'Image', 'ImageBatch', 'ImageCodec', 'ImageFormat', 'ImageLayout', 'InterpolationMode', 'ItRolloutTraining', 'ItRolloutTrainingConfig', 'ItTraining', 'ItTrainingConfig', 'Keypair', 'LayerNorm', 'LineStyle', 'Linear', 'LinearWeightBiasBwdResult', 'Mamba3MimoBwdResult', 'Mamba3Module', 'Mamba3PreprocessBwdResult', 'Mamba3PreprocessConfig', 'Mamba3PreprocessResult', 'MatMulPrecision', 'Matrix', 'MatrixShape', 'MaxPool2dResult', 'MelConfig', 'Metric', 'MetricAccuracy', 'MetricLoss', 'MfccConfig', 'Module', 'MoeCombineBwdResult', 'MoeExpertPlan', 'Muon', 'NlpArchitecture', 'NlpSuiteBatchSize', 'NlpSuiteContextLength', 'NlpSuiteGenerationPrompt', 'NlpSuiteGenerationSourceUnits', 'NlpSuiteHiddenWidth', 'NlpSuiteModel', 'NlpSuiteModelWidth', 'NlpSuiteRecipe', 'NlpSuiteRngSeed', 'NlpSuiteSampler', 'NlpSuiteTrainingSteps', 'NlpTokenizerKind', 'NmsConfig', 'NmsResult', 'NormalizationParams', 'NormalizeAudioConfig', 'Optimizer', 'OptimizerNoOp', 'Parameter', 'Path', 'Paths', 'PixelFormat', 'PolicyResult', 'PpoLossConfig', 'PpoLossResult', 'PublicKey', 'QuantMatrix', 'Quantization', 'ReplayBatch', 'ReplayBuffer', 'ReplayConfig', 'ResampleConfig', 'ResidualRmsNormResult', 'RmsNormGatedBwdResult', 'Rnn', 'RnnCellPointwiseBwdResult', 'RnnScanBwdResult', 'RnnScanResult', 'RolloutBatch', 'RolloutBuffer', 'RolloutConfig', 'RolloutTrainingPhase', 'SacCriticLossResult', 'SacLossConfig', 'ScalarType', 'ScatterStyle', 'ScreenCapture', 'ScreenCaptureConfig', 'ScreenCaptureCursor', 'ScreenCaptureTarget', 'SecretKey', 'SegmentationMetricsResult', 'Sgd', 'Signature', 'SsmBwdResult', 'SsmConfig', 'StftConfig', 'Theme', 'TopKResult', 'TrainingCommandDisposition', 'TrainingCommandResult', 'TrainingMetricSample', 'TrainingSession', 'TrainingSnapshot', 'TrainingState', 'TransformerBlock', 'VideoCodec', 'VideoContainerInfo', 'VideoContainerKind', 'VideoDecodeCapabilities', 'VideoDemuxer', 'VideoDemuxerConfig', 'VideoDemuxerStats', 'VideoEncodeCapabilities', 'VideoEncodeProfile', 'VideoFrame', 'VideoFrameResource', 'VideoPacket', 'VideoPlayer', 'VideoPlayerConfig', 'VideoRateControl', 'VideoRecorder', 'VideoRecorderConfig', 'Viewer', 'VqAssignResult', 'YCbCrModel', 'audio', 'channelsForLayout', 'core', 'crypto', 'generateKeypair', 'imageFormatChannels', 'initComputeEngine', 'kmac256', 'layoutForChannels', 'merkleRoot', 'ml', 'plot', 'queryDecodeCapabilities', 'queryEncodeCapabilities', 'runtime', 'shake128', 'shake256', 'shutdownComputeEngine', 'sign', 'ui', 'verify', 'vision']
+__all__: list = ['Activation', 'Adam', 'AdamW', 'Audio', 'AudioCapture', 'AudioCaptureChunk', 'AudioCaptureConfig', 'AudioChannelLayout', 'AudioCodec', 'AudioEncodeProfile', 'AudioEncoder', 'AudioPlayer', 'AudioPlayerConfig', 'Axes', 'BarStyle', 'BiquadCoefficients', 'BorderMode', 'BpeTokenizer', 'ByteEmbedding', 'Callback', 'CameraCapture', 'CameraCaptureConfig', 'CbProgressBar', 'CbSummary', 'CbTraining', 'ChannelNormBwdResult', 'CompactRowsResult', 'ContinuousPolicyResult', 'Conv1dBwdWeightResult', 'Conv2dBwdWeightResult', 'ConvTranspose2dBwdWeightResult', 'DetectionMetricsResult', 'DqnLossConfig', 'DqnLossResult', 'Embedding', 'EmpyrealmAdtBwdResult', 'EmpyrealmCore', 'EmpyrealmDtAdtResult', 'EncodedAudioPacket', 'EnvironmentSpace', 'EnvironmentSpaceKind', 'EnvironmentSpec', 'Figure', 'FigureConfig', 'Filesystem', 'Filter', 'FlashAttentionBwdResult', 'FnAdvantage', 'FnAudio', 'FnAutograd', 'FnDetection', 'FnEnvironment', 'FnHash', 'FnImage', 'FnLoss', 'FnMatrix', 'FnMetric', 'FnPolicy', 'GaeConfig', 'GaeResult', 'GpuTimingStats', 'GradientTape', 'GroupedGemmMBwdResult', 'GroupedLinearMBwdResult', 'Gru', 'GruCellPointwiseBwdResult', 'GruScanBwdResult', 'GruScanResult', 'Hash', 'Hasher', 'HeatmapStyle', 'Image', 'ImageBatch', 'ImageCodec', 'ImageFormat', 'ImageLayout', 'InterpolationMode', 'ItRolloutTraining', 'ItRolloutTrainingConfig', 'ItTraining', 'ItTrainingConfig', 'Keypair', 'LayerNorm', 'LineStyle', 'Linear', 'LinearWeightBiasBwdResult', 'Mamba3MimoBwdResult', 'Mamba3Module', 'Mamba3PreprocessBwdResult', 'Mamba3PreprocessConfig', 'Mamba3PreprocessResult', 'MatMulPrecision', 'Matrix', 'MatrixShape', 'MaxPool2dResult', 'MelConfig', 'Metric', 'MetricAccuracy', 'MetricLoss', 'MfccConfig', 'Module', 'MoeCombineBwdResult', 'MoeExpertPlan', 'Muon', 'NlpArchitecture', 'NlpSuiteBatchSize', 'NlpSuiteContextLength', 'NlpSuiteGenerationPrompt', 'NlpSuiteGenerationSourceUnits', 'NlpSuiteHiddenWidth', 'NlpSuiteModel', 'NlpSuiteModelWidth', 'NlpSuiteRecipe', 'NlpSuiteRngSeed', 'NlpSuiteSampler', 'NlpSuiteTrainingSteps', 'NlpTokenizerKind', 'NmsConfig', 'NmsResult', 'NnTransformer', 'NormalizationParams', 'NormalizeAudioConfig', 'Optimizer', 'OptimizerNoOp', 'Parameter', 'Path', 'Paths', 'PixelFormat', 'PolicyResult', 'PpoLossConfig', 'PpoLossResult', 'PublicKey', 'QuantMatrix', 'Quantization', 'ReplayBatch', 'ReplayBuffer', 'ReplayConfig', 'ResampleConfig', 'ResidualRmsNormResult', 'RmsNormGatedBwdResult', 'Rnn', 'RnnCellPointwiseBwdResult', 'RnnScanBwdResult', 'RnnScanResult', 'RolloutBatch', 'RolloutBuffer', 'RolloutConfig', 'RolloutTrainingPhase', 'SacCriticLossResult', 'SacLossConfig', 'ScalarType', 'ScatterStyle', 'ScreenCapture', 'ScreenCaptureConfig', 'ScreenCaptureCursor', 'ScreenCaptureTarget', 'SecretKey', 'SegmentationMetricsResult', 'Sgd', 'Signature', 'SsmBwdResult', 'SsmConfig', 'StftConfig', 'Theme', 'TopKResult', 'TrainingCommandDisposition', 'TrainingCommandResult', 'TrainingMetricSample', 'TrainingSession', 'TrainingSnapshot', 'TrainingState', 'TransformerBlock', 'VideoCodec', 'VideoContainerInfo', 'VideoContainerKind', 'VideoDecodeCapabilities', 'VideoDemuxer', 'VideoDemuxerConfig', 'VideoDemuxerStats', 'VideoEncodeCapabilities', 'VideoEncodeProfile', 'VideoFrame', 'VideoFrameResource', 'VideoPacket', 'VideoPlayer', 'VideoPlayerConfig', 'VideoRateControl', 'VideoRecorder', 'VideoRecorderConfig', 'Viewer', 'VqAssignResult', 'YCbCrModel', 'audio', 'channelsForLayout', 'core', 'crypto', 'generateKeypair', 'imageFormatChannels', 'initComputeEngine', 'kmac256', 'layoutForChannels', 'merkleRoot', 'ml', 'plot', 'queryDecodeCapabilities', 'queryEncodeCapabilities', 'runtime', 'shake128', 'shake256', 'shutdownComputeEngine', 'sign', 'ui', 'verify', 'vision']
