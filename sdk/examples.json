@@ -8,12 +8,23 @@
       "summary": "Create two GPU-resident matrices, add them, and verify the result after the language-appropriate completion boundary.",
       "module": "Core",
       "capability": "Vulkan compute",
+      "presentation": [
+        {
+          "kind": "terminalOutput",
+          "title": "Verified Python run",
+          "description": "Runtime evidence from the generated Python example on an Intel Iris Xe Vulkan device. The batch loader creates only the two shader pipelines required by this graph.",
+          "filename": "matrix.py · output",
+          "language": "bash",
+          "generatedBy": ".venv/bin/python sdk/py/examples/core/matrix.py",
+          "code": "$ .venv/bin/python sdk/py/examples/core/matrix.py\n10:47:17.554 [INFO ] [RT  ] ComputeDevice (0): Intel(R) Iris(R) Xe Graphics (TGL GT2), vulkan 1.4.354, 11 GB\n10:47:17.563 [INFO ] [RT  ] bindless heap: buffers=262143 imageSlots=16383 samplerSlots=2047, UPDATE_AFTER_BIND\n10:47:17.577 [INFO ] [COMP] pipeline cache: loaded 10860399 bytes from $OA_ROOT/var/vk/pipeline.vcache\n10:47:17.589 [INFO ] [COMP] Loading 2 shader pipelines on demand (1 thread, warm cache)\n10:47:17.590 [INFO ] [COMP] Loaded 2/2 shader pipelines on demand (failed=0, threads=1, 0.96 ms)\nMatrix addition verified: every value is 3\n"
+        }
+      ],
       "cpp": {
         "path": "sdk/cpp/examples/core/matrix.cpp",
         "target": "ExampleCoreMatrix",
         "symbols": [
-          "oa::Engine::create",
-          "oa::Engine::submit",
+          "oa::FnMatrix::ones",
+          "oa::FnMatrix::full",
           "oa::FnMatrix::add",
           "oa::FnMatrix::copyToHost"
         ]
@@ -22,6 +33,8 @@
         "path": "sdk/py/examples/core/matrix.py",
         "profile": "gpu",
         "symbols": [
+          "oa.FnMatrix.ones",
+          "oa.FnMatrix.full",
           "oa.FnMatrix.add",
           "oa.FnMatrix.copyToHost"
         ]
@@ -118,27 +131,78 @@
       }
     },
     {
-      "id": "vision-resize",
-      "title": "Resize a semantic image",
-      "summary": "Resize GPU-resident pixels while preserving image layout and channel-format metadata.",
+      "id": "vision-image",
+      "title": "Convert and save a grayscale image",
+      "summary": "Load the Vision cover, convert its GPU-resident RGB pixels to Rec.709 grayscale, save the semantic Gray image, and optionally inspect it in Viewer.",
       "module": "Vision",
       "capability": "Vulkan compute",
+      "assets": [
+        "image/coverVision.jpg",
+        "documentation/examples/vision/coverVisionGrayscale.jpg",
+        "documentation/examples/vision/coverVisionGrayscaleViewer.jpg"
+      ],
+      "presentation": [
+        {
+          "kind": "imageGallery",
+          "title": "Before / after",
+          "description": "Compare the checked RGB source with the exact grayscale JPEG written by this example.",
+          "items": [
+            {
+              "role": "source",
+              "label": "Vision cover",
+              "description": "The full-resolution RGB source decoded through oa::FnImage.",
+              "asset": "image/coverVision.jpg",
+              "mimeType": "image/jpeg",
+              "width": 1672,
+              "height": 941,
+              "alt": "OA Vision cover showing a glitched figure in a modern room",
+              "generatedBy": "OA-authored Vision module cover"
+            },
+            {
+              "role": "processed",
+              "label": "Grayscale output",
+              "description": "The full-resolution Rec.709 grayscale image converted on the GPU and saved by the generated example.",
+              "asset": "documentation/examples/vision/coverVisionGrayscale.jpg",
+              "mimeType": "image/jpeg",
+              "width": 1672,
+              "height": 941,
+              "alt": "OA Vision cover converted from RGB to grayscale",
+              "generatedBy": "sdk/py/examples/vision/image.py"
+            }
+          ]
+        },
+        {
+          "kind": "viewerCapture",
+          "title": "oa::Viewer",
+          "description": "The grayscale output opened by this example's optional --preview path in OA's native GPU image viewer.",
+          "asset": "documentation/examples/vision/coverVisionGrayscaleViewer.jpg",
+          "mimeType": "image/jpeg",
+          "width": 1280,
+          "height": 720,
+          "alt": "oa::Viewer presenting the grayscale OA Vision cover in a 1280 by 720 window",
+          "generatedBy": "bin/release/example/vision/exampleVisionImage --preview"
+        }
+      ],
       "cpp": {
-        "path": "sdk/cpp/examples/vision/resize.cpp",
-        "target": "ExampleVisionResize",
+        "path": "sdk/cpp/examples/vision/image.cpp",
+        "target": "ExampleVisionImage",
         "symbols": [
           "oa::Image",
-          "oa::FnImage::resize",
-          "oa::FnMatrix::copyToHost"
+          "oa::FnImage::decodeFile",
+          "oa::FnImage::grayscale",
+          "oa::FnImage::saveFile",
+          "oa::Viewer::preview"
         ]
       },
       "python": {
-        "path": "sdk/py/examples/vision/resize.py",
+        "path": "sdk/py/examples/vision/image.py",
         "profile": "gpu",
         "symbols": [
           "oa.Image",
-          "oa.FnImage.resize",
-          "oa.FnMatrix.copyToHost"
+          "oa.FnImage.decodeFile",
+          "oa.FnImage.grayscale",
+          "oa.FnImage.saveFile",
+          "oa.Viewer.preview"
         ]
       }
     },
@@ -148,6 +212,17 @@
       "summary": "Run three SHAKE-256 digests on the GPU and compare every output byte with the independent CPU implementation.",
       "module": "Crypto",
       "capability": "Vulkan compute + Crypto",
+      "presentation": [
+        {
+          "kind": "terminalOutput",
+          "title": "Verified Python run",
+          "description": "Runtime evidence from the generated Python example on an Intel Iris Xe Vulkan device. One SHAKE-256 shader pipeline handles the complete three-message batch.",
+          "filename": "shake256.py · output",
+          "language": "bash",
+          "generatedBy": ".venv/bin/python sdk/py/examples/crypto/shake256.py",
+          "code": "$ .venv/bin/python sdk/py/examples/crypto/shake256.py\n11:43:46.471 [INFO ] [RT  ] ComputeDevice (0): Intel(R) Iris(R) Xe Graphics (TGL GT2), vulkan 1.4.354, 11 GB\n11:43:46.481 [INFO ] [RT  ] bindless heap: buffers=262143 imageSlots=16383 samplerSlots=2047, UPDATE_AFTER_BIND\n11:43:46.499 [INFO ] [COMP] pipeline cache: loaded 10860399 bytes from $OA_ROOT/var/vk/pipeline.vcache\n11:43:46.510 [INFO ] [COMP] Loading 1 shader pipeline on demand (1 thread, warm cache)\n11:43:46.511 [INFO ] [COMP] Loaded 1/1 shader pipeline on demand (failed=0, threads=1, 0.81 ms)\n3 GPU SHAKE-256 digests match the CPU oracle\n"
+        }
+      ],
       "cpp": {
         "path": "sdk/cpp/examples/crypto/shake256.cpp",
         "target": "ExampleCryptoShake256",
@@ -169,25 +244,64 @@
     {
       "id": "plot-line",
       "title": "Render a retained line plot",
-      "summary": "Record one training-loss series and render the retained figure through the headless GPU compositor into an oa::Image.",
+      "summary": "Record one training-loss series, render the retained figure through OA's GPU compositor, save it, and optionally inspect it in Viewer.",
       "module": "Ui",
       "capability": "Vulkan graphics",
+      "assets": [
+        "documentation/examples/ui/trainingLoss.jpg",
+        "documentation/examples/ui/trainingLossViewer.jpg"
+      ],
+      "presentation": [
+        {
+          "kind": "imageGallery",
+          "title": "Rendered plot",
+          "description": "This is the exact 960×540 JPEG produced by the retained figure in the generated example.",
+          "items": [
+            {
+              "role": "output",
+              "label": "Training loss",
+              "description": "A dark retained line plot rendered by OA's GPU compositor and saved through oa::FnImage.",
+              "asset": "documentation/examples/ui/trainingLoss.jpg",
+              "mimeType": "image/jpeg",
+              "width": 960,
+              "height": 540,
+              "alt": "Dark training-loss line plot rendered by OA",
+              "generatedBy": "sdk/py/examples/ui/plotFigure.py"
+            }
+          ]
+        },
+        {
+          "kind": "viewerCapture",
+          "title": "oa::Viewer",
+          "description": "The saved plot opened by this example's optional --preview path in OA's native GPU image viewer.",
+          "asset": "documentation/examples/ui/trainingLossViewer.jpg",
+          "mimeType": "image/jpeg",
+          "width": 1280,
+          "height": 720,
+          "alt": "oa::Viewer presenting the generated training-loss plot in a 1280 by 720 window",
+          "generatedBy": "bin/release/example/ui/examplePlotLine --preview"
+        }
+      ],
       "cpp": {
-        "path": "sdk/cpp/examples/plot/line.cpp",
+        "path": "sdk/cpp/examples/ui/plotFigure.cpp",
         "target": "ExamplePlotLine",
         "symbols": [
           "oa::plot::Figure",
           "oa::plot::Axes::plot",
-          "oa::plot::Figure::render"
+          "oa::plot::Figure::render",
+          "oa::FnImage::saveFile",
+          "oa::Viewer::preview"
         ]
       },
       "python": {
-        "path": "sdk/py/examples/plot/line.py",
+        "path": "sdk/py/examples/ui/plotFigure.py",
         "profile": "gpu",
         "symbols": [
           "oa.plot.Figure",
           "oa.plot.Axes.plot",
-          "oa.plot.Figure.render"
+          "oa.plot.Figure.render",
+          "oa.FnImage.saveFile",
+          "oa.Viewer.preview"
         ]
       }
     }

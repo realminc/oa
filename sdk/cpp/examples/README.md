@@ -16,6 +16,7 @@ published as examples.
 Each new example must:
 
 - use the current public API and its normal ownership model;
+- use `OA_MAIN` or `OA_MAIN_MODE` for a flat one-engine C++ entry point;
 - have one narrow purpose and no unrelated framework scaffolding;
 - check its result and return failure when the operation fails;
 - be registered in CMake/CTest or the applicable Python test profile;
@@ -67,9 +68,9 @@ template for new work.
 |---|---|---|---|
 | Device matrix addition | `cpp/core/matrix.cpp` | `py/core/matrix.py` | `ExampleCoreMatrix`; GPU Python profile |
 | Audio file processing | `cpp/audio/audio.cpp` | `py/audio/audio.py` | `ExampleAudio`; GPU Python profile |
-| Image resize | `cpp/vision/resize.cpp` | `py/vision/resize.py` | `ExampleVisionResize`; GPU Python profile |
+| Image grayscale | `cpp/vision/image.cpp` | `py/vision/image.py` | `ExampleVisionImage`; GPU Python profile |
 | Batch SHAKE-256 | `cpp/crypto/shake256.cpp` | `py/crypto/shake256.py` | `ExampleCryptoShake256`; crypto-GPU Python profile |
-| Retained line plot | `cpp/plot/line.cpp` | `py/plot/line.py` | `ExamplePlotLine`; GPU Python profile |
+| Retained line plot | `cpp/ui/plotFigure.cpp` | `py/ui/plotFigure.py` | `ExamplePlotLine`; GPU Python profile |
 
 ## Related paths
 

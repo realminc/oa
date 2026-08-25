@@ -92,6 +92,9 @@ namespace FnImage {
 		oa::F32 inBrightness = 0.0F,
 		oa::F32 inContrast = 1.0F
 	);
+	// Rec.709 conversion for semantic NCHW RGB/RGBA images. The result keeps
+	// the source extent and layout while updating its format to Gray.
+	[[nodiscard]] Image grayscale(const Image& inImage);
 	[[nodiscard]] Image convertColor(
 		const Image& inImage,
 		ImageFormat inDstFormat

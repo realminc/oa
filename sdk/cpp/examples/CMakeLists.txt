@@ -35,19 +35,8 @@ function(oa_add_legacy_ml_example TARGET SOURCE SUBDIR)
 	endif()
 endfunction()
 
-# Schema-owned beginner examples (currently Core and Audio).
+# Schema-owned beginner examples.
 include(${oa_SOURCE_DIR}/sdk/cpp/examples/gen/examples.cmake)
-
-# Vision — semantic image metadata around one GPU resize operation.
-oa_add_example(ExampleVisionResize vision/resize.cpp vision)
-
-# Crypto — GPU SHAKE batch checked against the CPU cryptographic oracle.
-if(OA_BUILD_CRYPTO)
-	oa_add_example(ExampleCryptoShake256 crypto/shake256.cpp crypto)
-endif()
-
-# Plot — retained commands rendered through the headless Ui compositor.
-oa_add_example(ExamplePlotLine plot/line.cpp plot)
 
 # Historical ML inventory pending conversion under this directory's README.
 oa_add_legacy_ml_example(ItTraining ml/itTraining.cpp ml)

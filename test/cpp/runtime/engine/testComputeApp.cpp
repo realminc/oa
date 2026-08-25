@@ -154,6 +154,49 @@ private:
 
 } // namespace oa
 
+TEST(WithEngine, OwnsOneLexicalEngineAndRestoresPreviousSelection) {
+	auto config = testEngineConfig(oa::Precision::FP32);
+	config.appName = "oa::withEngineTest";
+	config.preloadEmbeddedPipelines = false;
+	config.enablePipelineCache = false;
+	auto* previous = oa::ExecutionSession::getActivePtr();
+	oa::Engine* borrowed = nullptr;
+
+	const int result = oa::withEngine([&](oa::Engine& engine) {
+		borrowed = &engine;
+		EXPECT_TRUE(engine.isReady());
+		EXPECT_EQ(&oa::ExecutionSession::getActive().engine(), &engine);
+		return 23;
+	}, config);
+
+	EXPECT_EQ(result, 23);
+	EXPECT_NE(borrowed, nullptr);
+	EXPECT_EQ(oa::ExecutionSession::getActivePtr(), previous);
+}
+
+TEST(WithEngine, RejectsEmptyBodyWithoutChangingSelection) {
+	auto* previous = oa::ExecutionSession::getActivePtr();
+	EXPECT_EQ(oa::withEngine(oa::Fn<int(oa::Engine&)>{}), 1);
+	EXPECT_EQ(oa::ExecutionSession::getActivePtr(), previous);
+}
+
+TEST(WithEngine, EngineCreationFailureDoesNotInvokeBody) {
+	auto config = testEngineConfig(oa::Precision::FP32);
+	config.devicePref = oa::DevicePreference::ByIndex;
+	config.deviceIndex = 0xFFFFFFFEU;
+	config.preloadEmbeddedPipelines = false;
+	config.enablePipelineCache = false;
+	bool invoked = false;
+	auto* previous = oa::ExecutionSession::getActivePtr();
+
+	EXPECT_EQ(oa::withEngine([&](oa::Engine&) {
+		invoked = true;
+		return 0;
+	}, config), 1);
+	EXPECT_FALSE(invoked);
+	EXPECT_EQ(oa::ExecutionSession::getActivePtr(), previous);
+}
+
 TEST(ComputeApp, SetupFailurePreservesExitCodeWithoutCreatingEngine) {
 	oa::ComputeAppProbe app(oa::ComputeAppProbeMode::Success, 23);
 

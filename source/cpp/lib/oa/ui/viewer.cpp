@@ -138,6 +138,31 @@ oa::Status oa::Viewer::preview(
 
 oa::Status oa::Viewer::preview(
 	oa::Engine& inEngine,
+	const char* inPath,
+	const oa::ViewerConfig& inConfig)
+{
+	if (inPath == nullptr or inPath[0] == '\0') {
+		return oa::Status::invalidArgument("oa::Viewer::preview requires a non-empty path");
+	}
+	return preview(inEngine, oa::String(inPath), inConfig);
+}
+
+oa::Status oa::Viewer::preview(
+	oa::Engine& inEngine,
+	const oa::String& inPath,
+	const oa::ViewerConfig& inConfig)
+{
+	if (inPath.empty()) {
+		return oa::Status::invalidArgument("oa::Viewer::preview requires a non-empty path");
+	}
+	oa::ViewerConfig config = inConfig;
+	config.path = inPath;
+	oa::Viewer viewer(config);
+	return viewer.run(inEngine);
+}
+
+oa::Status oa::Viewer::preview(
+	oa::Engine& inEngine,
 	const oa::Matrix& inMatrix,
 	const oa::ViewerConfig& inConfig)
 {

@@ -1,5 +1,6 @@
 #include "lunarLander3dRender.h"
 
+#include <oa/render/renderer.h>
 #include <oa/runtime/engine.h>
 #include <oa/runtime/eventAccess.h>
 #include <oa/runtime/engine/deviceAccess.h>
@@ -132,6 +133,21 @@ TEST(LunarLander3dRender, HeadlessReadbackAndSlotLifecycle) {
 	ASSERT_TRUE(engineResult.isOk())
 		<< engineResult.getStatus().toString().cStr();
 	oa::UniquePtr<oa::Engine> engine = oa::move(*engineResult);
+
+	oa::RendererConfig rayTracingConfig;
+	rayTracingConfig.mode_ = oa::RendererMode::RayTracing;
+	auto rayTracingRenderer = oa::Renderer::create(*engine, rayTracingConfig);
+	ASSERT_TRUE(rayTracingRenderer.isError());
+	EXPECT_EQ(
+		rayTracingRenderer.getStatus().getCode(),
+		oa::StatusCode::Unavailable);
+	oa::RendererConfig invalidModeConfig;
+	invalidModeConfig.mode_ = static_cast<oa::RendererMode>(255U);
+	auto invalidModeRenderer = oa::Renderer::create(*engine, invalidModeConfig);
+	ASSERT_TRUE(invalidModeRenderer.isError());
+	EXPECT_EQ(
+		invalidModeRenderer.getStatus().getCode(),
+		oa::StatusCode::InvalidArgument);
 
 	oa::LunarLander3dConfig landerConfig;
 	const oa::LunarEpisodeManifest manifest = oa::LunarEpisodeManifest::derive(

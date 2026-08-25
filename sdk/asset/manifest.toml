@@ -65,6 +65,38 @@ source = "Cropped GTK-framed OA ExampleAudio --preview capture displaying the ch
 role = "processed audio example Viewer presentation evidence"
 
 [[asset]]
+path = "documentation/examples/ui/trainingLoss.jpg"
+bytes = 66639
+sha256 = "7c60f7dea23a4180641016ef05eae0c3672bb784570d52f1aa44fcaada2ba762"
+license = "LicenseRef-OA-Repository"
+source = "byte-identical output of sdk/py/examples/ui/plotFigure.py"
+role = "rendered UI figure example evidence"
+
+[[asset]]
+path = "documentation/examples/ui/trainingLossViewer.jpg"
+bytes = 92854
+sha256 = "26f7e9b1a9fd5adf24955ab2a39e2edb549778e31d57df592d0f7412ddf0ffb5"
+license = "LicenseRef-OA-Repository"
+source = "1280x720 GTK-framed OA ExamplePlotLine --preview capture displaying the checked trainingLoss.jpg output"
+role = "UI figure example Viewer presentation evidence"
+
+[[asset]]
+path = "documentation/examples/vision/coverVisionGrayscale.jpg"
+bytes = 408896
+sha256 = "163864805a449c278e1abd26b921e502cde9deacfa4dbf5179eef6b44b9b6ed9"
+license = "LicenseRef-OA-Repository"
+source = "byte-identical output of sdk/py/examples/vision/image.py"
+role = "Rec.709 grayscale Vision example evidence"
+
+[[asset]]
+path = "documentation/examples/vision/coverVisionGrayscaleViewer.jpg"
+bytes = 246888
+sha256 = "d378a00903391ba447827f7a6aa484524684e3e48a41a190582e97ec70259f0f"
+license = "LicenseRef-OA-Repository"
+source = "1280x720 GTK-framed OA ExampleVisionImage --preview capture displaying the checked coverVisionGrayscale.jpg output"
+role = "Vision example Viewer presentation evidence"
+
+[[asset]]
 path = "documentation/plot/oa-plot-diagnostics-dark.png"
 bytes = 111529
 sha256 = "00305e3a8b6801ef2fae2a74639ddbc99b9a150e9cdc318825943d246eba908c"

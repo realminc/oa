@@ -263,6 +263,25 @@ TEST(Image, VisionConvertColorRgbToBgr) {
 	EXPECT_EQ(converted.layout(), oa::ImageLayout::Nchw);
 }
 
+TEST(Image, VisionGrayscalePreservesSemanticsAndMatchesRec709) {
+	const std::array<oa::F32, 6> values{1, 0, 0, 1, 0, 0};
+	auto data = oa::FnMatrix::empty(oa::MatrixShape{1, 3, 1, 2});
+	for (oa::I64 index = 0; index < static_cast<oa::I64>(values.size()); ++index) {
+		data.set(index, values[static_cast<oa::Usize>(index)]);
+	}
+	oa::Image image(std::move(data), oa::ImageLayout::Nchw, oa::ImageFormat::Rgb);
+
+	oa::Image gray = oa::FnImage::grayscale(image);
+	materializeVisionGraph();
+
+	ASSERT_TRUE(gray.validate());
+	EXPECT_EQ(gray.layout(), oa::ImageLayout::Nchw);
+	EXPECT_EQ(gray.format(), oa::ImageFormat::Gray);
+	EXPECT_EQ(gray.asMatrix().getShape(), oa::MatrixShape({1, 1, 1, 2}));
+	EXPECT_NEAR(gray.asMatrix().at(0), 0.2126F, 1.0e-4F);
+	EXPECT_NEAR(gray.asMatrix().at(1), 0.7152F, 1.0e-4F);
+}
+
 TEST(Image, VisionConvertColorBgrToRgb) {
 	auto data = oa::FnMatrix::zeros(oa::MatrixShape{1, 3, 224, 224});
 	oa::Image img(std::move(data), oa::ImageLayout::Nchw, oa::ImageFormat::Bgr);

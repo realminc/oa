@@ -4,6 +4,45 @@ All notable changes to OA are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is the single
 `VERSION` file at the repo root (read by CMake, `oa::version()`, and the Python package).
 
+## [0.7.17] — 2026-08-25 (source-owned SDK example proof)
+
+This patch closes the beginner SDK example set as executable C++ and Python
+product evidence while preserving explicit engine ownership and hardware-scoped
+claims.
+
+### Added
+
+- **Minimal native application boundary** — `OA_MAIN`, `OA_MAIN_MODE`, and
+  `OA_MAIN_PREVIEW` create exactly one engine for a lexical application body
+  without introducing a singleton, implicit submission, or a second runtime.
+- **Complete beginner example set** — generated Core, Audio, Crypto, Vision, and
+  Ui programs use the umbrella `oa/oa.h` header and matching `import oa` surface.
+- **Semantic grayscale** — `oa::FnImage::grayscale` and
+  `oa.FnImage.grayscale` preserve `oa::Image` extent/layout while producing a
+  Rec.709 Gray image through the existing GPU kernel.
+- **Rendering mode seam** — the public renderer configuration distinguishes
+  rasterization from a reserved ray-tracing request; the latter fails closed
+  until a qualified implementation exists.
+
+### Changed
+
+- Shader pipelines loaded on demand report one compact batch summary instead of
+  one log pair per pipeline.
+- Vision and Ui examples save checked image outputs and publish exact 1280×720
+  Viewer captures. The retained figure example is now correctly owned by
+  `sdk/{cpp,py}/examples/ui` rather than a nonexistent Plot module.
+- Python native-extension discovery accepts the canonical lowercase `build/`
+  tree used by local VS Code example launches.
+
+### Verification
+
+- Generated C++ and Python Core, Audio, Crypto, Vision, and Ui examples execute
+  on the recorded Intel Iris Xe Vulkan device. Semantic grayscale matches an
+  independent Rec.709 CPU oracle; generated-source, asset, documentation, and
+  developer-site drift gates pass.
+- Hosted build, sanitizer, package, wheel, release, and PyPI results remain
+  owned by the tagged public workflow.
+
 ## [0.7.16] — 2026-08-24 (host sanitizer gate repair)
 
 This patch preserves the `0.7.15` SDK, Audio, and Viewer surface while repairing

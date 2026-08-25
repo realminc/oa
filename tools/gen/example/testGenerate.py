@@ -32,17 +32,53 @@ class ExampleGeneratorTests(unittest.TestCase):
 			result = self.runGenerator(output)
 			self.assertEqual(result.returncode, 0, result.stderr)
 			matrixPython = (output / "sdk/py/examples/core/matrix.py").read_text()
+			matrixCpp = (output / "sdk/cpp/examples/core/matrix.cpp").read_text()
 			audioCpp = (output / "sdk/cpp/examples/audio/audio.cpp").read_text()
+			cryptoCpp = (output / "sdk/cpp/examples/crypto/shake256.cpp").read_text()
+			cryptoPython = (output / "sdk/py/examples/crypto/shake256.py").read_text()
+			plotCpp = (output / "sdk/cpp/examples/ui/plotFigure.cpp").read_text()
+			plotPython = (output / "sdk/py/examples/ui/plotFigure.py").read_text()
+			visionCpp = (output / "sdk/cpp/examples/vision/image.cpp").read_text()
+			visionPython = (output / "sdk/py/examples/vision/image.py").read_text()
 			self.assertIn("import oa", matrixPython)
 			self.assertNotIn("initComputeEngine", matrixPython)
 			self.assertNotIn("shutdownComputeEngine", matrixPython)
-			self.assertIn("oa::Engine::create", audioCpp)
+			self.assertIn('OA_MAIN("ExampleCoreMatrix")', matrixCpp)
+			self.assertIn("#include <oa/oa.h>", matrixCpp)
+			self.assertNotIn("#include <oa/core/", matrixCpp)
+			self.assertNotIn("oa::withEngine", matrixCpp)
+			self.assertIn('OA_MAIN_PREVIEW("ExampleAudio")', audioCpp)
+			self.assertIn("#include <oa/oa.h>", audioCpp)
+			self.assertNotIn("#include <oa/audio/", audioCpp)
+			self.assertNotIn("oa::withEngine", audioCpp)
+			self.assertNotIn("oa::Engine::create", audioCpp)
+			self.assertNotIn("engine->submit", audioCpp)
 			self.assertIn("oa::FnAudio::saveWavF32", audioCpp)
 			self.assertIn("oa::FnAudio::reverb", audioCpp)
 			self.assertIn("oa::Viewer::preview", audioCpp)
+			self.assertIn("oa::Viewer::preview(engine,", audioCpp)
 			self.assertIn('"--preview"', audioCpp)
 			self.assertNotIn("reflectionMilliseconds", audioCpp)
 			self.assertNotIn("FnAudio::saturate", audioCpp)
+			for source in (cryptoPython, plotPython, visionPython):
+				self.assertIn("import oa", source)
+				self.assertNotIn("initComputeEngine", source)
+				self.assertNotIn("shutdownComputeEngine", source)
+			for source in (cryptoCpp, plotCpp, visionCpp):
+				self.assertIn("#include <oa/oa.h>", source)
+				self.assertNotIn("oa::withEngine", source)
+			self.assertIn('OA_MAIN("ExampleCryptoShake256")', cryptoCpp)
+			self.assertIn("oa::FnHash::shake256", cryptoCpp)
+			self.assertIn("oa.FnHash.shake256", cryptoPython)
+			self.assertIn('OA_MAIN_MODE("ExamplePlotLine"', plotCpp)
+			self.assertIn("oa::plot::Figure", plotCpp)
+			self.assertIn("oa::Viewer::preview", plotCpp)
+			self.assertIn("oa.Viewer.preview", plotPython)
+			self.assertIn('OA_MAIN_PREVIEW("ExampleVisionImage")', visionCpp)
+			self.assertIn("oa::FnImage::grayscale", visionCpp)
+			self.assertIn("oa::Viewer::preview", visionCpp)
+			self.assertIn("oa.FnImage.grayscale", visionPython)
+			self.assertIn("oa.Viewer.preview", visionPython)
 			manifest = json.loads((output / "sdk/examples.json").read_text())
 			self.assertEqual(len(manifest["examples"]), 5)
 			self.assertEqual(
@@ -59,6 +95,22 @@ class ExampleGeneratorTests(unittest.TestCase):
 			self.assertEqual(viewerCapture["kind"], "viewerCapture")
 			self.assertEqual(viewerCapture["width"], 960)
 			self.assertEqual(viewerCapture["height"], 434)
+			matrixOutput = manifest["examples"][0]["presentation"][0]
+			self.assertEqual(matrixOutput["kind"], "terminalOutput")
+			self.assertIn("Matrix addition verified", matrixOutput["code"])
+			visionPresentation = manifest["examples"][2]["presentation"]
+			self.assertEqual(
+				[presentation["kind"] for presentation in visionPresentation],
+				["imageGallery", "viewerCapture"],
+			)
+			self.assertEqual(visionPresentation[1]["width"], 1280)
+			self.assertEqual(visionPresentation[1]["height"], 720)
+			plotPresentation = manifest["examples"][4]["presentation"]
+			self.assertEqual(
+				[presentation["kind"] for presentation in plotPresentation],
+				["imageGallery", "viewerCapture"],
+			)
+			self.assertEqual(plotPresentation[0]["items"][0]["width"], 960)
 
 	def test_unchanged_generation_preserves_timestamps(self):
 		with tempfile.TemporaryDirectory() as temporary:

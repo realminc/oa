@@ -101,6 +101,11 @@ def test_semantic_image_intro_pipeline(engine):
 	assert isinstance(adjusted, oa.Image)
 	assert adjusted.asMatrix().shape() == [1, 3, 9, 16]
 	assert len(core.copyToHost(adjusted.asMatrix())) == 3 * 9 * 16
+	gray = vision.grayscale(small)
+	assert isinstance(gray, oa.Image)
+	assert gray.format() == oa.ImageFormat.Gray
+	assert gray.asMatrix().shape() == [1, 1, 9, 16]
+	assert len(core.copyToHost(gray.asMatrix())) == 9 * 16
 
 
 def test_normalization_params_require_three_channels():

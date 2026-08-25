@@ -13,7 +13,7 @@
 #include <oa/ui/platformInput.h>
 #include <oa/core/validation.h>
 
-#include "viewerPlatform.h"
+#include "../runtime/presentationPlatform.h"
 #include "windowDecoration.h"
 
 #include <algorithm>
@@ -585,7 +585,7 @@ oa::Status oa::Viewer::runApplication(oa::Engine* inBorrowedEngine) {
 	oa::U64 renderedFrames = 0;
 
 	oa::EngineConfig engineCfg;
-	oa::ViewerPlatformLease platform;
+	oa::PresentationPlatformLease platform;
 	const oa::Status platformStatus = platform.acquire(
 		inBorrowedEngine == nullptr ? &engineCfg : nullptr);
 	if (not platformStatus.isOk()) return platformStatus;

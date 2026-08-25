@@ -1438,6 +1438,17 @@ oa::Result<oa::UniquePtr<oa::Renderer>>
 oa::Renderer::create(
 	oa::Engine& inEngine,
 	const oa::RendererConfig& inRenderConfig) {
+	switch (inRenderConfig.mode_) {
+		case oa::RendererMode::Rasterization:
+			break;
+		case oa::RendererMode::RayTracing:
+			return oa::Status::error(
+				oa::StatusCode::Unavailable,
+				"oa::Renderer ray-tracing mode is not implemented");
+		default:
+			return oa::Status::invalidArgument(
+				"oa::Renderer mode is invalid");
+	}
 	oa::UniquePtr<oa::Renderer> session(new oa::Renderer());
 	auto* impl = new MeshImpl();
 	const oa::Status status = impl->initialize(inEngine, inRenderConfig);

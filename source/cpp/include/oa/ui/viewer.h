@@ -184,13 +184,21 @@ public:
 	[[nodiscard]] oa::Status run(oa::Engine& inEngine);
 
 	// Unified blocking preview front door. Paths are decoder-probed as image,
-	// video, then audio. Direct GPU values borrow the caller's existing
-	// presentation-capable engine and retain the exact completion contract of
-	// show().
+	// video, then audio and may either own an application engine or borrow the
+	// caller's presentation-capable engine. Direct GPU values always borrow the
+	// caller's engine and retain the exact completion contract of show().
 	[[nodiscard]] static oa::Status preview(
 		const char* inPath,
 		const ViewerConfig& inConfig = {});
 	[[nodiscard]] static oa::Status preview(
+		const oa::String& inPath,
+		const ViewerConfig& inConfig = {});
+	[[nodiscard]] static oa::Status preview(
+		oa::Engine& inEngine,
+		const char* inPath,
+		const ViewerConfig& inConfig = {});
+	[[nodiscard]] static oa::Status preview(
+		oa::Engine& inEngine,
 		const oa::String& inPath,
 		const ViewerConfig& inConfig = {});
 	[[nodiscard]] static oa::Status preview(

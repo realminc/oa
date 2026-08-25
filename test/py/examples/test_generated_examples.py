@@ -18,3 +18,22 @@ def test_core_matrix_add(tmp_path: Path):
 def test_audio_process(tmp_path: Path):
 	output = runExample("sdk/py/examples/audio/audio.py", tmp_path)
 	assert "Saved reverberated audio (1.5 s tail):" in output
+
+
+@pytest.mark.oa_gpu
+def test_vision_image(tmp_path: Path):
+	output = runExample("sdk/py/examples/vision/image.py", tmp_path)
+	assert "Saved grayscale image:" in output
+
+
+@pytest.mark.oa_crypto
+@pytest.mark.oa_gpu
+def test_crypto_shake256(tmp_path: Path):
+	output = runExample("sdk/py/examples/crypto/shake256.py", tmp_path)
+	assert "3 GPU SHAKE-256 digests match the CPU oracle" in output
+
+
+@pytest.mark.oa_gpu
+def test_plot_line(tmp_path: Path):
+	output = runExample("sdk/py/examples/ui/plotFigure.py", tmp_path)
+	assert "Saved training-loss plot:" in output

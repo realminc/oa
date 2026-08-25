@@ -12,25 +12,38 @@
         "filename": "matrix.cpp",
         "target": "ExampleCoreMatrix",
         "symbols": [
-          "oa::Engine::create",
-          "oa::Engine::submit",
+          "oa::FnMatrix::ones",
+          "oa::FnMatrix::full",
           "oa::FnMatrix::add",
           "oa::FnMatrix::copyToHost"
         ],
-        "sha256": "b877cdf549cb65bccb904182489439a4fddcfbf911c742a96c9744bb3aff2bd1",
-        "code": "#include <oa/core/fnMatrix.h>\n#include <oa/runtime/engine.h>\n\n#include <array>\n#include <cmath>\n#include <cstdio>\n#include <utility>\n\nint main() {\n\toa::EngineConfig config;\n\tconfig.appName = \"ExampleCoreMatrix\";\n\tconfig.presentationMode = oa::PresentationMode::None;\n\n\tauto created = oa::Engine::create(config);\n\tif (not created.isOk()) return 1;\n\tauto engine = std::move(created).getValue();\n\n\tauto one = oa::FnMatrix::ones({2, 3});\n\n\tauto two = oa::FnMatrix::full({2, 3}, 2.0F);\n\n\tauto sum = oa::FnMatrix::add(one, two);\n\n\tauto submitted = engine->submit();\n\tif (not submitted.isOk()) return 1;\n\tif (not engine->wait(submitted.getValue()).isOk()) return 1;\n\n\tstd::array<oa::F32, 6> values{};\n\tif (not oa::FnMatrix::copyToHost(\n\t\tsum, values.data(), sizeof(values)).isOk()) return 1;\n\tfor (const oa::F32 value : values) {\n\t\tif (std::abs(value - 3.0F) > 1e-06F) return 1;\n\t}\n\n\tstd::puts(\"Matrix addition verified: every value is 3\");\n\treturn 0;\n}"
+        "sha256": "534c1854a7f510c02eec294b9769e0e28a16e05e868fe0a17aa035b41e27d6c7",
+        "code": "#include <oa/oa.h>\n\n#include <array>\n#include <cmath>\n#include <cstdio>\n#include <utility>\n\nOA_MAIN(\"ExampleCoreMatrix\") {\n\tauto one = oa::FnMatrix::ones({2, 3});\n\n\tauto two = oa::FnMatrix::full({2, 3}, 2.0F);\n\n\tauto sum = oa::FnMatrix::add(one, two);\n\n\tstd::array<oa::F32, 6> values{};\n\tif (not oa::FnMatrix::copyToHost(sum, values.data(), sizeof(values)).isOk()) {\n\t\treturn 1;\n\t}\n\tfor (const oa::F32 value : values) {\n\t\tif (std::abs(value - 3.0F) > 1e-06F) {\n\t\t\treturn 1;\n\t\t}\n\t}\n\n\tstd::puts(\"Matrix addition verified: every value is 3\");\n\treturn 0;\n}"
       },
       "python": {
         "path": "sdk/py/examples/core/matrix.py",
         "filename": "matrix.py",
         "profile": "gpu",
         "symbols": [
+          "oa.FnMatrix.ones",
+          "oa.FnMatrix.full",
           "oa.FnMatrix.add",
           "oa.FnMatrix.copyToHost"
         ],
         "sha256": "662c04e0fa0feafb46923de3182cbcdc0761fc751c36b40cae30410c09da7159",
         "code": "import oa\n\none = oa.FnMatrix.ones([2, 3])\n\ntwo = oa.FnMatrix.full([2, 3], 2.0)\n\nsum = oa.FnMatrix.add(one, two)\n\nvalues = oa.FnMatrix.copyToHost(sum)\nassert len(values) == 6\nassert all(abs(value - 3.0) <= 1e-06 for value in values)\n\nprint(\"Matrix addition verified: every value is 3\")"
-      }
+      },
+      "presentation": [
+        {
+          "kind": "terminalOutput",
+          "title": "Verified Python run",
+          "description": "Runtime evidence from the generated Python example on an Intel Iris Xe Vulkan device. The batch loader creates only the two shader pipelines required by this graph.",
+          "filename": "matrix.py · output",
+          "language": "bash",
+          "generatedBy": ".venv/bin/python sdk/py/examples/core/matrix.py",
+          "code": "$ .venv/bin/python sdk/py/examples/core/matrix.py\n10:47:17.554 [INFO ] [RT  ] ComputeDevice (0): Intel(R) Iris(R) Xe Graphics (TGL GT2), vulkan 1.4.354, 11 GB\n10:47:17.563 [INFO ] [RT  ] bindless heap: buffers=262143 imageSlots=16383 samplerSlots=2047, UPDATE_AFTER_BIND\n10:47:17.577 [INFO ] [COMP] pipeline cache: loaded 10860399 bytes from $OA_ROOT/var/vk/pipeline.vcache\n10:47:17.589 [INFO ] [COMP] Loading 2 shader pipelines on demand (1 thread, warm cache)\n10:47:17.590 [INFO ] [COMP] Loaded 2/2 shader pipelines on demand (failed=0, threads=1, 0.96 ms)\nMatrix addition verified: every value is 3\n"
+        }
+      ]
     },
     {
       "id": "audio-process",
@@ -52,8 +65,8 @@
           "oa::FnAudio::saveWavF32",
           "oa::Viewer::preview"
         ],
-        "sha256": "689e3b974686eae2fbf465076b8325aff6f5a3b4553cc760b174872e03d56990",
-        "code": "#include <oa/audio/fnAudio.h>\n#include <oa/core/filesystem.h>\n#include <oa/core/paths.h>\n#include <oa/ui/viewer.h>\n#include <oa/runtime/engine.h>\n\n#include <cstdio>\n#include <utility>\n\nint main(int argc, char** argv) {\n\t{\n\t\toa::EngineConfig config;\n\t\tconfig.appName = \"ExampleAudio\";\n\t\tconfig.presentationMode = oa::PresentationMode::None;\n\n\t\tauto created = oa::Engine::create(config);\n\t\tif (not created.isOk()) return 1;\n\t\tauto engine = std::move(created).getValue();\n\n\t\tauto audioResult = oa::FnAudio::decodeFile(\n\t\t\toa::Paths::asset(\"audio/oaNarration.wav\"));\n\t\tif (not audioResult.isOk()) return 1;\n\t\tauto audio = std::move(audioResult).getValue();\n\n\t\tauto mono = oa::FnAudio::toMono(audio);\n\n\t\tauto normalized = oa::FnAudio::normalize(mono, -3.0F);\n\n\t\tauto faded = oa::FnAudio::fade(normalized, 2400U, 2400U);\n\n\t\tauto reverberated = oa::FnAudio::reverb(faded, 1.5F, 0.4F);\n\n\t\tconst oa::Path output = oa::Paths::var(\"example/audio/oaNarrationRoom.wav\");\n\t\tif (not oa::Filesystem::createDirectories(output.parentPath()).isOk()) return 1;\n\t\tif (not oa::FnAudio::saveWavF32(output, reverberated).isOk()) return 1;\n\n\t\tif (not reverberated.validate()) return 1;\n\t\tif (reverberated.sampleRate() != 24000U) return 1;\n\t\tif (reverberated.channels() != 1) return 1;\n\t\tif (reverberated.samples() != faded.samples() + static_cast<oa::I64>(reverberated.sampleRate()) * 1500 / 1'000) return 1;\n\t\tif (not oa::Filesystem::isFile(output)) return 1;\n\n\t\tstd::printf(\"Saved reverberated audio (1.5 s tail): %s\\n\", output.cStr());\n\t}\n\n\tif (argc > 1 and oa::StringView(argv[1]) == \"--preview\") {\n\t\toa::ViewerConfig previewConfig;\n\t\tpreviewConfig.mode = oa::ViewerMode::Audio;\n\t\tpreviewConfig.title = \"OA audio · room reverb\";\n\t\tpreviewConfig.width = 960U;\n\t\tpreviewConfig.height = 360U;\n\t\tif (not oa::Viewer::preview(oa::Paths::var(\"example/audio/oaNarrationRoom.wav\").string(), previewConfig).isOk()) return 1;\n\t}\n\treturn 0;\n}"
+        "sha256": "07c69c7f801d77b222d9da77d50511c3e8c6a16f1f1d5ac81b35a2ae02a0d317",
+        "code": "#include <oa/oa.h>\n\n#include <cstdio>\n#include <utility>\n\nOA_MAIN_PREVIEW(\"ExampleAudio\") {\n\tauto audioResult = oa::FnAudio::decodeFile(oa::Paths::asset(\"audio/oaNarration.wav\"));\n\tif (not audioResult.isOk()) {\n\t\treturn 1;\n\t}\n\tauto audio = std::move(audioResult).getValue();\n\n\tauto mono = oa::FnAudio::toMono(audio);\n\n\tauto normalized = oa::FnAudio::normalize(mono, -3.0F);\n\n\tauto faded = oa::FnAudio::fade(normalized, 2400U, 2400U);\n\n\tauto reverberated = oa::FnAudio::reverb(faded, 1.5F, 0.4F);\n\n\tconst oa::Path output = oa::Paths::var(\"example/audio/oaNarrationRoom.wav\");\n\tif (not oa::Filesystem::createDirectories(output.parentPath()).isOk()) {\n\t\treturn 1;\n\t}\n\tif (not oa::FnAudio::saveWavF32(output, reverberated).isOk()) {\n\t\treturn 1;\n\t}\n\n\tif (not reverberated.validate()) return 1;\n\tif (reverberated.sampleRate() != 24000U) return 1;\n\tif (reverberated.channels() != 1) return 1;\n\tif (reverberated.samples() != faded.samples()\n\t\t+ static_cast<oa::I64>(reverberated.sampleRate())\n\t\t\t* 1500 / 1'000) {\n\t\treturn 1;\n\t}\n\tif (not oa::Filesystem::isFile(output)) return 1;\n\n\tstd::printf(\"Saved reverberated audio (1.5 s tail): %s\\n\", output.cStr());\n\n\tif (argc > 1 and oa::StringView(argv[1]) == \"--preview\") {\n\t\toa::ViewerConfig previewConfig;\n\t\tpreviewConfig.mode = oa::ViewerMode::Audio;\n\t\tpreviewConfig.title = \"OA audio · room reverb\";\n\t\tpreviewConfig.width = 960U;\n\t\tpreviewConfig.height = 360U;\n\t\tif (not oa::Viewer::preview(engine, oa::Paths::var(\"example/audio/oaNarrationRoom.wav\").string(),\n\t\t\tpreviewConfig).isOk()) {\n\t\t\treturn 1;\n\t\t}\n\t}\n\treturn 0;\n}"
       },
       "python": {
         "path": "sdk/py/examples/audio/audio.py",
@@ -142,35 +155,95 @@
       ]
     },
     {
-      "id": "vision-resize",
-      "title": "Resize a semantic image",
-      "summary": "Resize GPU-resident pixels while preserving image layout and channel-format metadata.",
+      "id": "vision-image",
+      "title": "Convert and save a grayscale image",
+      "summary": "Load the Vision cover, convert its GPU-resident RGB pixels to Rec.709 grayscale, save the semantic Gray image, and optionally inspect it in Viewer.",
       "module": "Vision",
       "capability": "Vulkan compute",
       "cpp": {
-        "path": "sdk/cpp/examples/vision/resize.cpp",
-        "filename": "resize.cpp",
-        "target": "ExampleVisionResize",
+        "path": "sdk/cpp/examples/vision/image.cpp",
+        "filename": "image.cpp",
+        "target": "ExampleVisionImage",
         "symbols": [
           "oa::Image",
-          "oa::FnImage::resize",
-          "oa::FnMatrix::copyToHost"
+          "oa::FnImage::decodeFile",
+          "oa::FnImage::grayscale",
+          "oa::FnImage::saveFile",
+          "oa::Viewer::preview"
         ],
-        "sha256": "af9473d3eadecb11daf05ce1b19fbe0e0b957f64dfbd7b9d9fb59f6c1ff2ea1c",
-        "code": "#include <oa/core/fnMatrix.h>\n#include <oa/core/image.h>\n#include <oa/runtime/engine.h>\n#include <oa/vision/fnImage.h>\n\n#include <array>\n#include <cmath>\n#include <cstdio>\n#include <utility>\n\nint main() {\n\toa::EngineConfig config;\n\tconfig.appName = \"ExampleVisionResize\";\n\tconfig.presentationMode = oa::PresentationMode::None;\n\n\tauto created = oa::Engine::create(config);\n\tif (not created.isOk()) return 1;\n\tauto engine = std::move(created).getValue();\n\n\toa::Image image(\n\t\toa::FnMatrix::full({1, 3, 2, 2}, 0.25F),\n\t\toa::ImageLayout::Nchw,\n\t\toa::ImageFormat::Rgb);\n\tauto resized = oa::FnImage::resize(image, 4, 3);\n\n\tauto submitted = engine->submit();\n\tif (not submitted.isOk()) return 1;\n\tif (not engine->wait(submitted.getValue()).isOk()) return 1;\n\tif (not resized.validate() || resized.width() != 4 || resized.height() != 3) {\n\t\treturn 1;\n\t}\n\n\tstd::array<oa::F32, 36> values{};\n\tif (not oa::FnMatrix::copyToHost(\n\t\tresized.asMatrix(), values.data(), sizeof(values)).isOk()) return 1;\n\tfor (const oa::F32 value : values) {\n\t\tif (std::abs(value - 0.25F) > 1.0e-6F) return 1;\n\t}\n\n\tstd::puts(\"RGB NCHW image resized from 2x2 to 4x3\");\n\treturn 0;\n}"
+        "sha256": "9444bfa75375073c4057dfd4ba689158b636b9e8c3ce701b554ee1e4fe76d396",
+        "code": "#include <oa/oa.h>\n\n#include <cstdio>\n#include <utility>\n\nOA_MAIN_PREVIEW(\"ExampleVisionImage\") {\n\tauto sourceResult = oa::FnImage::decodeFile(\n\t\toa::Paths::asset(\"image/coverVision.jpg\"), oa::ImageFormat::Rgb);\n\tif (not sourceResult.isOk()) return 1;\n\tauto source = std::move(sourceResult).getValue();\n\n\tauto grayscale = oa::FnImage::grayscale(source);\n\n\tconst oa::Path output = oa::Paths::var(\"example/vision/coverVisionGrayscale.jpg\");\n\tif (not oa::Filesystem::createDirectories(output.parentPath()).isOk()) return 1;\n\tif (not oa::FnImage::saveFile(output, grayscale, 92U).isOk()) return 1;\n\n\tif (not grayscale.validate()) return 1;\n\tif (grayscale.width() != 1672 or grayscale.height() != 941) return 1;\n\tif (grayscale.format() != oa::ImageFormat::Gray) return 1;\n\tif (not oa::Filesystem::isFile(output)) return 1;\n\n\tstd::printf(\"Saved grayscale image: %s\\n\", output.cStr());\n\n\tif (argc > 1 and oa::StringView(argv[1]) == \"--preview\") {\n\t\toa::ViewerConfig previewConfig;\n\t\tpreviewConfig.mode = oa::ViewerMode::Image;\n\t\tpreviewConfig.title = \"OA vision · grayscale cover\";\n\t\tpreviewConfig.width = 1280U;\n\t\tpreviewConfig.height = 646U;\n\t\tif (not oa::Viewer::preview(engine, oa::Paths::var(\"example/vision/coverVisionGrayscale.jpg\").string(),\n\t\t\tpreviewConfig).isOk()) {\n\t\t\treturn 1;\n\t\t}\n\t}\n\treturn 0;\n}"
       },
       "python": {
-        "path": "sdk/py/examples/vision/resize.py",
-        "filename": "resize.py",
+        "path": "sdk/py/examples/vision/image.py",
+        "filename": "image.py",
         "profile": "gpu",
         "symbols": [
           "oa.Image",
-          "oa.FnImage.resize",
-          "oa.FnMatrix.copyToHost"
+          "oa.FnImage.decodeFile",
+          "oa.FnImage.grayscale",
+          "oa.FnImage.saveFile",
+          "oa.Viewer.preview"
         ],
-        "sha256": "1ae8654435a93ded9d7bbaf85772bd6147bd5af4785fbb3e6f28fe55ce669202",
-        "code": "from oa import (\n\tFnImage,\n\tFnMatrix,\n\tImage,\n\tImageFormat,\n\tImageLayout,\n\tinitComputeEngine,\n\tshutdownComputeEngine,\n)\n\n\nif not initComputeEngine():\n\traise RuntimeError(\"OA could not create a Vulkan compute engine\")\n\ntry:\n\timage = Image(\n\t\tFnMatrix.full([1, 3, 2, 2], 0.25),\n\t\tImageLayout.Nchw,\n\t\tImageFormat.Rgb,\n\t)\n\tresized = FnImage.resize(image, 4, 3)\n\tvalues = FnMatrix.copyToHost(resized.asMatrix())\n\tassert resized.validate()\n\tassert resized.width() == 4\n\tassert resized.height() == 3\n\tassert values == [0.25] * 36\n\tprint(\"RGB NCHW image resized from 2x2 to 4x3\")\nfinally:\n\tshutdownComputeEngine()"
-      }
+        "sha256": "e6c1dc79e0931e2ce6138fff7e4951196c4778fc75c612e12b51caa8ba5ec86b",
+        "code": "import sys\n\nimport oa\n\nsource = oa.FnImage.decodeFile(oa.Paths.asset(\"image/coverVision.jpg\"), oa.ImageFormat.Rgb)\n\ngrayscale = oa.FnImage.grayscale(source)\n\noutput = oa.Paths.var(\"example/vision/coverVisionGrayscale.jpg\")\noa.Filesystem.createDirectories(output.parentPath())\noa.FnImage.saveFile(output, grayscale, 92)\n\nassert grayscale.validate()\nassert grayscale.width() == 1672\nassert grayscale.height() == 941\nassert grayscale.format() == oa.ImageFormat.Gray\nassert oa.Filesystem.isFile(output)\n\nprint(f\"Saved grayscale image: {output}\")\n\nif \"--preview\" in sys.argv:\n\toa.Viewer.preview(output, title=\"OA vision · grayscale cover\", width=1280, height=646)"
+      },
+      "assets": [
+        "image/coverVision.jpg",
+        "documentation/examples/vision/coverVisionGrayscale.jpg",
+        "documentation/examples/vision/coverVisionGrayscaleViewer.jpg"
+      ],
+      "presentation": [
+        {
+          "kind": "imageGallery",
+          "title": "Before / after",
+          "description": "Compare the checked RGB source with the exact grayscale JPEG written by this example.",
+          "items": [
+            {
+              "role": "source",
+              "label": "Vision cover",
+              "description": "The full-resolution RGB source decoded through oa::FnImage.",
+              "asset": "image/coverVision.jpg",
+              "src": "/media/oa/image/coverVision.jpg",
+              "mimeType": "image/jpeg",
+              "sha256": "1a0739698875a91967f262254d08c660bf46fe5404a74a8e0d161a4ed72463bf",
+              "bytes": 328774,
+              "width": 1672,
+              "height": 941,
+              "alt": "OA Vision cover showing a glitched figure in a modern room",
+              "generatedBy": "OA-authored Vision module cover"
+            },
+            {
+              "role": "processed",
+              "label": "Grayscale output",
+              "description": "The full-resolution Rec.709 grayscale image converted on the GPU and saved by the generated example.",
+              "asset": "documentation/examples/vision/coverVisionGrayscale.jpg",
+              "src": "/media/oa/documentation/examples/vision/coverVisionGrayscale.jpg",
+              "mimeType": "image/jpeg",
+              "sha256": "163864805a449c278e1abd26b921e502cde9deacfa4dbf5179eef6b44b9b6ed9",
+              "bytes": 408896,
+              "width": 1672,
+              "height": 941,
+              "alt": "OA Vision cover converted from RGB to grayscale",
+              "generatedBy": "sdk/py/examples/vision/image.py"
+            }
+          ]
+        },
+        {
+          "kind": "viewerCapture",
+          "title": "oa::Viewer",
+          "description": "The grayscale output opened by this example's optional --preview path in OA's native GPU image viewer.",
+          "asset": "documentation/examples/vision/coverVisionGrayscaleViewer.jpg",
+          "src": "/media/oa/documentation/examples/vision/coverVisionGrayscaleViewer.jpg",
+          "mimeType": "image/jpeg",
+          "sha256": "d378a00903391ba447827f7a6aa484524684e3e48a41a190582e97ec70259f0f",
+          "bytes": 246888,
+          "width": 1280,
+          "height": 720,
+          "alt": "oa::Viewer presenting the grayscale OA Vision cover in a 1280 by 720 window",
+          "generatedBy": "bin/release/example/vision/exampleVisionImage --preview"
+        }
+      ]
     },
     {
       "id": "crypto-shake256",
@@ -186,8 +259,8 @@
           "oa::FnHash::shake256",
           "oa::FnMatrix::copyToHost"
         ],
-        "sha256": "343d11bceb15e121359779615c8e0ecc1a99a4b40dd61455c907ee935271a8da",
-        "code": "#include <oa/core/fnMatrix.h>\n#include <oa/crypto/fnHash.h>\n#include <oa/crypto/keccak.h>\n#include <oa/runtime/engine.h>\n\n#include <array>\n#include <cstdio>\n#include <cstring>\n#include <utility>\n\nint main() {\n\toa::EngineConfig config;\n\tconfig.appName = \"ExampleCryptoShake256\";\n\tconfig.presentationMode = oa::PresentationMode::None;\n\n\tauto created = oa::Engine::create(config);\n\tif (not created.isOk()) return 1;\n\tauto engine = std::move(created).getValue();\n\n\tconstexpr std::array<oa::U8, 15> messages{\n\t\t'a', 'l', 'p', 'h', 'a',\n\t\t'b', 'r', 'a', 'v', 'o',\n\t\t'c', 'r', 'y', 'p', 't',\n\t};\n\tauto input = oa::FnMatrix::fromBytes(\n\t\toa::Span<const oa::U8>(messages.data(), messages.size()),\n\t\t{3, 5},\n\t\toa::ScalarType::UInt8\n\t);\n\tauto digests = oa::FnHash::shake256(input, 32);\n\n\tauto submitted = engine->submit();\n\tif (not submitted.isOk()) return 1;\n\tif (not engine->wait(submitted.getValue()).isOk()) return 1;\n\n\tstd::array<oa::U8, 96> gpu{};\n\tstd::array<oa::U8, 96> cpu{};\n\tif (not oa::FnMatrix::copyToHost(\n\t\tdigests, gpu.data(), gpu.size()).isOk()) return 1;\n\tfor (oa::Usize row = 0; row < 3; ++row) {\n\t\toa::shake256(\n\t\t\tmessages.data() + row * 5,\n\t\t\t5,\n\t\t\tcpu.data() + row * 32,\n\t\t\t32\n\t\t);\n\t}\n\tif (std::memcmp(gpu.data(), cpu.data(), gpu.size()) != 0) return 1;\n\n\tstd::puts(\"3 GPU SHAKE-256 digests match the CPU oracle\");\n\treturn 0;\n}"
+        "sha256": "f852cedc8f598c1e5f84f3f2da14c1e17f2a59cba5980b8e0f2a76f44de77537",
+        "code": "#include <oa/oa.h>\n\n#include <array>\n#include <cstring>\n#include <cstdio>\n#include <utility>\n\nOA_MAIN(\"ExampleCryptoShake256\") {\n\tconstexpr std::array<oa::U8, 15> messagesBytes{\n\t\t97U, 108U, 112U, 104U, 97U, 98U, 114U, 97U, 118U, 111U, 99U, 114U, 121U, 112U, 116U\n\t};\n\tauto messages = oa::FnMatrix::fromBytes(\n\t\toa::Span<const oa::U8>(messagesBytes.data(), messagesBytes.size()),\n\t\t{3, 5},\n\t\toa::ScalarType::UInt8);\n\n\tauto digests = oa::FnHash::shake256(messages, 32U);\n\n\tstd::array<oa::U8, 96> gpu{};\n\tstd::array<oa::U8, 96> cpu{};\n\tif (not oa::FnMatrix::copyToHost(digests, gpu.data(), gpu.size()).isOk()) return 1;\n\tfor (oa::Usize row = 0; row < 3U; ++row) {\n\t\toa::shake256(\n\t\t\tmessagesBytes.data() + row * 5U, 5U,\n\t\t\tcpu.data() + row * 32U, 32U);\n\t}\n\tif (std::memcmp(gpu.data(), cpu.data(), gpu.size()) != 0) return 1;\n\n\tstd::puts(\"3 GPU SHAKE-256 digests match the CPU oracle\");\n\treturn 0;\n}"
       },
       "python": {
         "path": "sdk/py/examples/crypto/shake256.py",
@@ -198,40 +271,96 @@
           "oa.FnMatrix.copyToHost",
           "oa.ScalarType"
         ],
-        "sha256": "2c53cc74ec3214ebddb53a1bc363c7440bfa032dd335aedf0a11eaa59c308dce",
-        "code": "import hashlib\n\nfrom oa import (\n\tFnHash,\n\tFnMatrix,\n\tinitComputeEngine,\n\tScalarType,\n\tshutdownComputeEngine,\n)\n\n\nif not initComputeEngine():\n\traise RuntimeError(\"OA could not create a Vulkan compute engine\")\n\ntry:\n\trows = [b\"alpha\", b\"bravo\", b\"crypt\"]\n\tinputMatrix = FnMatrix.fromBytes(\n\t\tlist(b\"\".join(rows)),\n\t\t[3, 5],\n\t\tScalarType.UInt8,\n\t)\n\tdigests = FnHash.shake256(inputMatrix, 32)\n\tgpu = bytes(FnMatrix.copyToHost(digests))\n\tcpu = b\"\".join(hashlib.shake_256(row).digest(32) for row in rows)\n\tassert gpu == cpu\n\tprint(\"3 GPU SHAKE-256 digests match the CPU oracle\")\nfinally:\n\tshutdownComputeEngine()"
-      }
+        "sha256": "658b01ba5fd59b253b564967e20e23d9821034d97f999939297789844359cc70",
+        "code": "import hashlib\n\nimport oa\n\nmessagesRows = [b\"alpha\", b\"bravo\", b\"crypt\"]\nmessages = oa.FnMatrix.fromBytes(\n\tlist(b\"\".join(messagesRows)),\n\t[3, 5],\n\toa.ScalarType.UInt8,\n)\n\ndigests = oa.FnHash.shake256(messages, 32)\n\ngpu = bytes(oa.FnMatrix.copyToHost(digests))\ncpu = b\"\".join(hashlib.shake_256(row).digest(32) for row in messagesRows)\nassert gpu == cpu\n\nprint(\"3 GPU SHAKE-256 digests match the CPU oracle\")"
+      },
+      "presentation": [
+        {
+          "kind": "terminalOutput",
+          "title": "Verified Python run",
+          "description": "Runtime evidence from the generated Python example on an Intel Iris Xe Vulkan device. One SHAKE-256 shader pipeline handles the complete three-message batch.",
+          "filename": "shake256.py · output",
+          "language": "bash",
+          "generatedBy": ".venv/bin/python sdk/py/examples/crypto/shake256.py",
+          "code": "$ .venv/bin/python sdk/py/examples/crypto/shake256.py\n11:43:46.471 [INFO ] [RT  ] ComputeDevice (0): Intel(R) Iris(R) Xe Graphics (TGL GT2), vulkan 1.4.354, 11 GB\n11:43:46.481 [INFO ] [RT  ] bindless heap: buffers=262143 imageSlots=16383 samplerSlots=2047, UPDATE_AFTER_BIND\n11:43:46.499 [INFO ] [COMP] pipeline cache: loaded 10860399 bytes from $OA_ROOT/var/vk/pipeline.vcache\n11:43:46.510 [INFO ] [COMP] Loading 1 shader pipeline on demand (1 thread, warm cache)\n11:43:46.511 [INFO ] [COMP] Loaded 1/1 shader pipeline on demand (failed=0, threads=1, 0.81 ms)\n3 GPU SHAKE-256 digests match the CPU oracle\n"
+        }
+      ]
     },
     {
       "id": "plot-line",
       "title": "Render a retained line plot",
-      "summary": "Record one training-loss series and render the retained figure through the headless GPU compositor into an oa::Image.",
+      "summary": "Record one training-loss series, render the retained figure through OA's GPU compositor, save it, and optionally inspect it in Viewer.",
       "module": "Ui",
       "capability": "Vulkan graphics",
       "cpp": {
-        "path": "sdk/cpp/examples/plot/line.cpp",
-        "filename": "line.cpp",
+        "path": "sdk/cpp/examples/ui/plotFigure.cpp",
+        "filename": "plotFigure.cpp",
         "target": "ExamplePlotLine",
         "symbols": [
           "oa::plot::Figure",
           "oa::plot::Axes::plot",
-          "oa::plot::Figure::render"
+          "oa::plot::Figure::render",
+          "oa::FnImage::saveFile",
+          "oa::Viewer::preview"
         ],
-        "sha256": "8046f7f1e30d7b18fe7faaaf56f31829b6e569527343f16ad036d0a59dac0e30",
-        "code": "#include <oa/runtime/engine.h>\n#include <oa/ui/plot/plot.h>\n\n#include <array>\n#include <cstdio>\n#include <utility>\n\nint main() {\n\toa::EngineConfig engineConfig;\n\tengineConfig.appName = \"ExamplePlotLine\";\n\tengineConfig.presentationMode = oa::PresentationMode::Headless;\n\n\tauto created = oa::Engine::create(engineConfig);\n\tif (not created.isOk()) return 1;\n\tauto engine = std::move(created).getValue();\n\n\toa::plot::Figure figure({\n\t\t.title = \"training loss\",\n\t\t.width = 360,\n\t\t.height = 240,\n\t\t.theme = oa::plot::Theme::Dark,\n\t});\n\tconstexpr std::array<oa::F32, 6> loss{1.0F, 0.72F, 0.51F, 0.38F, 0.29F, 0.23F};\n\tfigure.ax(0, 0).xLabel(\"step\");\n\tfigure.ax(0, 0).yLabel(\"loss\");\n\tfigure.ax(0, 0).plot(loss);\n\n\tauto rendered = figure.render(*engine);\n\tif (not rendered.isOk()) return 1;\n\tauto image = std::move(rendered).getValue();\n\tif (not image.validate() || image.width() != 360 || image.height() != 240) {\n\t\treturn 1;\n\t}\n\n\tstd::puts(\"rendered a 360x240 training-loss figure\");\n\treturn 0;\n}"
+        "sha256": "4b21bf973528d4d0be2812d49d01d5ed41218fc80a0850defe42e313f8d80502",
+        "code": "#include <oa/oa.h>\n\n#include <array>\n#include <cstdio>\n#include <utility>\n\nOA_MAIN_MODE(\"ExamplePlotLine\", argc > 1 and oa::StringView(argv[1]) == \"--preview\" ? oa::PresentationMode::Swapchain : oa::PresentationMode::Headless) {\n\toa::plot::Figure figure({\n\t\t.title = \"Training loss\",\n\t\t.width = 960U,\n\t\t.height = 540U,\n\t\t.theme = oa::plot::Theme::Dark,\n\t});\n\tconstexpr std::array<oa::F32, 6> figureValues{\n\t\t1.0F, 0.72F, 0.51F, 0.38F, 0.29F, 0.23F\n\t};\n\tfigure.ax(0, 0).xLabel(\"step\");\n\tfigure.ax(0, 0).yLabel(\"loss\");\n\tfigure.ax(0, 0).plot(figureValues);\n\n\tauto renderedResult = figure.render(engine);\n\tif (not renderedResult.isOk()) return 1;\n\tauto rendered = std::move(renderedResult).getValue();\n\n\tconst oa::Path output = oa::Paths::var(\"example/ui/trainingLoss.jpg\");\n\tif (not oa::Filesystem::createDirectories(output.parentPath()).isOk()) return 1;\n\tif (not oa::FnImage::saveFile(output, rendered, 92U).isOk()) return 1;\n\n\tif (not rendered.validate()) return 1;\n\tif (rendered.width() != 960 or rendered.height() != 540) return 1;\n\tif (rendered.format() != oa::ImageFormat::Rgba) return 1;\n\tif (not oa::Filesystem::isFile(output)) return 1;\n\n\tstd::printf(\"Saved training-loss plot: %s\\n\", output.cStr());\n\n\tif (argc > 1 and oa::StringView(argv[1]) == \"--preview\") {\n\t\toa::ViewerConfig previewConfig;\n\t\tpreviewConfig.mode = oa::ViewerMode::Image;\n\t\tpreviewConfig.title = \"OA plot · training loss\";\n\t\tpreviewConfig.width = 1280U;\n\t\tpreviewConfig.height = 646U;\n\t\tif (not oa::Viewer::preview(engine, oa::Paths::var(\"example/ui/trainingLoss.jpg\").string(),\n\t\t\tpreviewConfig).isOk()) {\n\t\t\treturn 1;\n\t\t}\n\t}\n\treturn 0;\n}"
       },
       "python": {
-        "path": "sdk/py/examples/plot/line.py",
-        "filename": "line.py",
+        "path": "sdk/py/examples/ui/plotFigure.py",
+        "filename": "plotFigure.py",
         "profile": "gpu",
         "symbols": [
           "oa.plot.Figure",
           "oa.plot.Axes.plot",
-          "oa.plot.Figure.render"
+          "oa.plot.Figure.render",
+          "oa.FnImage.saveFile",
+          "oa.Viewer.preview"
         ],
-        "sha256": "97a214b1221ae960cd73e9260f4708f70bd05e30df56a73c03d9d5eda9ac843a",
-        "code": "from oa import initComputeEngine, plot, shutdownComputeEngine\n\n\nif not initComputeEngine():\n\traise RuntimeError(\"OA could not create a Vulkan compute engine\")\n\ntry:\n\tconfig = plot.FigureConfig()\n\tconfig.title = \"Training loss\"\n\tconfig.width = 360\n\tconfig.height = 240\n\tconfig.theme = plot.Theme.Dark\n\n\tfigure = plot.Figure(config)\n\tfigure.ax(0, 0).xLabel(\"step\")\n\tfigure.ax(0, 0).yLabel(\"loss\")\n\tfigure.ax(0, 0).plot([1.0, 0.72, 0.51, 0.38, 0.29, 0.23])\n\n\timage = figure.render()\n\tassert image.validate()\n\tassert image.width() == 360\n\tassert image.height() == 240\n\tprint(\"rendered a 360x240 training-loss figure\")\nfinally:\n\tshutdownComputeEngine()"
-      }
+        "sha256": "1b09d80844edbdbc79e8ba192e38253e754c83535ab0892bc4fa807fa3e3e649",
+        "code": "import sys\n\nimport oa\n\nfigureConfig = oa.plot.FigureConfig()\nfigureConfig.title = \"Training loss\"\nfigureConfig.width = 960\nfigureConfig.height = 540\nfigureConfig.theme = oa.plot.Theme.Dark\nfigure = oa.plot.Figure(figureConfig)\nfigure.ax(0, 0).xLabel(\"step\")\nfigure.ax(0, 0).yLabel(\"loss\")\nfigure.ax(0, 0).plot([1.0, 0.72, 0.51, 0.38, 0.29, 0.23])\n\nrendered = figure.render()\n\noutput = oa.Paths.var(\"example/ui/trainingLoss.jpg\")\noa.Filesystem.createDirectories(output.parentPath())\noa.FnImage.saveFile(output, rendered, 92)\n\nassert rendered.validate()\nassert rendered.width() == 960\nassert rendered.height() == 540\nassert rendered.format() == oa.ImageFormat.Rgba\nassert oa.Filesystem.isFile(output)\n\nprint(f\"Saved training-loss plot: {output}\")\n\nif \"--preview\" in sys.argv:\n\toa.Viewer.preview(output, title=\"OA plot · training loss\", width=1280, height=646)"
+      },
+      "assets": [
+        "documentation/examples/ui/trainingLoss.jpg",
+        "documentation/examples/ui/trainingLossViewer.jpg"
+      ],
+      "presentation": [
+        {
+          "kind": "imageGallery",
+          "title": "Rendered plot",
+          "description": "This is the exact 960×540 JPEG produced by the retained figure in the generated example.",
+          "items": [
+            {
+              "role": "output",
+              "label": "Training loss",
+              "description": "A dark retained line plot rendered by OA's GPU compositor and saved through oa::FnImage.",
+              "asset": "documentation/examples/ui/trainingLoss.jpg",
+              "src": "/media/oa/documentation/examples/ui/trainingLoss.jpg",
+              "mimeType": "image/jpeg",
+              "sha256": "7c60f7dea23a4180641016ef05eae0c3672bb784570d52f1aa44fcaada2ba762",
+              "bytes": 66639,
+              "width": 960,
+              "height": 540,
+              "alt": "Dark training-loss line plot rendered by OA",
+              "generatedBy": "sdk/py/examples/ui/plotFigure.py"
+            }
+          ]
+        },
+        {
+          "kind": "viewerCapture",
+          "title": "oa::Viewer",
+          "description": "The saved plot opened by this example's optional --preview path in OA's native GPU image viewer.",
+          "asset": "documentation/examples/ui/trainingLossViewer.jpg",
+          "src": "/media/oa/documentation/examples/ui/trainingLossViewer.jpg",
+          "mimeType": "image/jpeg",
+          "sha256": "26f7e9b1a9fd5adf24955ab2a39e2edb549778e31d57df592d0f7412ddf0ffb5",
+          "bytes": 92854,
+          "width": 1280,
+          "height": 720,
+          "alt": "oa::Viewer presenting the generated training-loss plot in a 1280 by 720 window",
+          "generatedBy": "bin/release/example/ui/examplePlotLine --preview"
+        }
+      ]
     }
   ]
 }

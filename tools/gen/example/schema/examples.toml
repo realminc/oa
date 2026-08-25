@@ -13,12 +13,14 @@ pythonProfile = "gpu"
 generated = true
 expectedOutput = "Matrix addition verified: every value is 3"
 cppSymbols = [
-	"oa::Engine::create",
-	"oa::Engine::submit",
+	"oa::FnMatrix::ones",
+	"oa::FnMatrix::full",
 	"oa::FnMatrix::add",
 	"oa::FnMatrix::copyToHost",
 ]
 pythonSymbols = [
+	"oa.FnMatrix.ones",
+	"oa.FnMatrix.full",
 	"oa.FnMatrix.add",
 	"oa.FnMatrix.copyToHost",
 ]
@@ -45,6 +47,22 @@ input = "sum"
 count = 6
 value = 3.0
 tolerance = 0.000001
+
+[[examples.presentation]]
+kind = "terminalOutput"
+title = "Verified Python run"
+description = "Runtime evidence from the generated Python example on an Intel Iris Xe Vulkan device. The batch loader creates only the two shader pipelines required by this graph."
+filename = "matrix.py · output"
+language = "bash"
+generatedBy = ".venv/bin/python sdk/py/examples/core/matrix.py"
+code = '''$ .venv/bin/python sdk/py/examples/core/matrix.py
+10:47:17.554 [INFO ] [RT  ] ComputeDevice (0): Intel(R) Iris(R) Xe Graphics (TGL GT2), vulkan 1.4.354, 11 GB
+10:47:17.563 [INFO ] [RT  ] bindless heap: buffers=262143 imageSlots=16383 samplerSlots=2047, UPDATE_AFTER_BIND
+10:47:17.577 [INFO ] [COMP] pipeline cache: loaded 10860399 bytes from $OA_ROOT/var/vk/pipeline.vcache
+10:47:17.589 [INFO ] [COMP] Loading 2 shader pipelines on demand (1 thread, warm cache)
+10:47:17.590 [INFO ] [COMP] Loaded 2/2 shader pipelines on demand (failed=0, threads=1, 0.96 ms)
+Matrix addition verified: every value is 3
+'''
 
 [[examples]]
 id = "audio-process"
@@ -189,46 +207,254 @@ tailMilliseconds = 1500
 kind = "fileExists"
 input = "output"
 
-# Existing examples remain published while their code moves to the workflow
-# schema one vertical slice at a time.
 [[examples]]
-id = "vision-resize"
+id = "vision-image"
 module = "Vision"
-title = "Resize a semantic image"
-summary = "Resize GPU-resident pixels while preserving image layout and channel-format metadata."
+directory = "vision"
+stem = "image"
+title = "Convert and save a grayscale image"
+summary = "Load the Vision cover, convert its GPU-resident RGB pixels to Rec.709 grayscale, save the semantic Gray image, and optionally inspect it in Viewer."
 capability = "Vulkan compute"
-generated = false
-cppPath = "sdk/cpp/examples/vision/resize.cpp"
-cppTarget = "ExampleVisionResize"
-pythonPath = "sdk/py/examples/vision/resize.py"
+cppTarget = "ExampleVisionImage"
 pythonProfile = "gpu"
-cppSymbols = ["oa::Image", "oa::FnImage::resize", "oa::FnMatrix::copyToHost"]
-pythonSymbols = ["oa.Image", "oa.FnImage.resize", "oa.FnMatrix.copyToHost"]
+generated = true
+expectedOutput = "Saved grayscale image:"
+assets = [
+	"image/coverVision.jpg",
+	"documentation/examples/vision/coverVisionGrayscale.jpg",
+	"documentation/examples/vision/coverVisionGrayscaleViewer.jpg",
+]
+cppSymbols = [
+	"oa::Image",
+	"oa::FnImage::decodeFile",
+	"oa::FnImage::grayscale",
+	"oa::FnImage::saveFile",
+	"oa::Viewer::preview",
+]
+pythonSymbols = [
+	"oa.Image",
+	"oa.FnImage.decodeFile",
+	"oa.FnImage.grayscale",
+	"oa.FnImage.saveFile",
+	"oa.Viewer.preview",
+]
+
+[examples.preview]
+input = "output"
+title = "OA vision · grayscale cover"
+mode = "image"
+width = 1280
+height = 646
+
+[[examples.presentation]]
+kind = "imageGallery"
+title = "Before / after"
+description = "Compare the checked RGB source with the exact grayscale JPEG written by this example."
+
+[[examples.presentation.items]]
+role = "source"
+label = "Vision cover"
+description = "The full-resolution RGB source decoded through oa::FnImage."
+asset = "image/coverVision.jpg"
+mimeType = "image/jpeg"
+width = 1672
+height = 941
+alt = "OA Vision cover showing a glitched figure in a modern room"
+generatedBy = "OA-authored Vision module cover"
+
+[[examples.presentation.items]]
+role = "processed"
+label = "Grayscale output"
+description = "The full-resolution Rec.709 grayscale image converted on the GPU and saved by the generated example."
+asset = "documentation/examples/vision/coverVisionGrayscale.jpg"
+mimeType = "image/jpeg"
+width = 1672
+height = 941
+alt = "OA Vision cover converted from RGB to grayscale"
+generatedBy = "sdk/py/examples/vision/image.py"
+
+[[examples.presentation]]
+kind = "viewerCapture"
+title = "oa::Viewer"
+description = "The grayscale output opened by this example's optional --preview path in OA's native GPU image viewer."
+asset = "documentation/examples/vision/coverVisionGrayscaleViewer.jpg"
+mimeType = "image/jpeg"
+width = 1280
+height = 720
+alt = "oa::Viewer presenting the grayscale OA Vision cover in a 1280 by 720 window"
+generatedBy = "bin/release/example/vision/exampleVisionImage --preview"
+
+[[examples.steps]]
+operation = "image.decodeAsset"
+result = "source"
+path = "image/coverVision.jpg"
+format = "Rgb"
+
+[[examples.steps]]
+operation = "image.grayscale"
+result = "grayscale"
+input = "source"
+
+[[examples.steps]]
+operation = "image.save"
+result = "output"
+input = "grayscale"
+path = "example/vision/coverVisionGrayscale.jpg"
+quality = 92
+
+[[examples.checks]]
+kind = "imageMetadata"
+input = "grayscale"
+width = 1672
+height = 941
+format = "Gray"
+
+[[examples.checks]]
+kind = "fileExists"
+input = "output"
 
 [[examples]]
 id = "crypto-shake256"
 module = "Crypto"
+directory = "crypto"
+stem = "shake256"
 title = "Hash a message batch with SHAKE-256"
 summary = "Run three SHAKE-256 digests on the GPU and compare every output byte with the independent CPU implementation."
 capability = "Vulkan compute + Crypto"
-generated = false
-cppPath = "sdk/cpp/examples/crypto/shake256.cpp"
 cppTarget = "ExampleCryptoShake256"
-pythonPath = "sdk/py/examples/crypto/shake256.py"
 pythonProfile = "crypto-gpu"
+generated = true
+expectedOutput = "3 GPU SHAKE-256 digests match the CPU oracle"
 cppSymbols = ["oa::FnHash::shake256", "oa::FnMatrix::copyToHost"]
 pythonSymbols = ["oa.FnHash.shake256", "oa.FnMatrix.copyToHost", "oa.ScalarType"]
+
+[[examples.presentation]]
+kind = "terminalOutput"
+title = "Verified Python run"
+description = "Runtime evidence from the generated Python example on an Intel Iris Xe Vulkan device. One SHAKE-256 shader pipeline handles the complete three-message batch."
+filename = "shake256.py · output"
+language = "bash"
+generatedBy = ".venv/bin/python sdk/py/examples/crypto/shake256.py"
+code = '''$ .venv/bin/python sdk/py/examples/crypto/shake256.py
+11:43:46.471 [INFO ] [RT  ] ComputeDevice (0): Intel(R) Iris(R) Xe Graphics (TGL GT2), vulkan 1.4.354, 11 GB
+11:43:46.481 [INFO ] [RT  ] bindless heap: buffers=262143 imageSlots=16383 samplerSlots=2047, UPDATE_AFTER_BIND
+11:43:46.499 [INFO ] [COMP] pipeline cache: loaded 10860399 bytes from $OA_ROOT/var/vk/pipeline.vcache
+11:43:46.510 [INFO ] [COMP] Loading 1 shader pipeline on demand (1 thread, warm cache)
+11:43:46.511 [INFO ] [COMP] Loaded 1/1 shader pipeline on demand (failed=0, threads=1, 0.81 ms)
+3 GPU SHAKE-256 digests match the CPU oracle
+'''
+
+[[examples.steps]]
+operation = "bytes.asciiRows"
+result = "messages"
+values = ["alpha", "bravo", "crypt"]
+
+[[examples.steps]]
+operation = "crypto.shake256"
+result = "digests"
+input = "messages"
+digestBytes = 32
+
+[[examples.checks]]
+kind = "shake256CpuOracle"
+input = "messages"
+output = "digests"
 
 [[examples]]
 id = "plot-line"
 module = "Ui"
+directory = "ui"
+stem = "plotFigure"
 title = "Render a retained line plot"
-summary = "Record one training-loss series and render the retained figure through the headless GPU compositor into an oa::Image."
+summary = "Record one training-loss series, render the retained figure through OA's GPU compositor, save it, and optionally inspect it in Viewer."
 capability = "Vulkan graphics"
-generated = false
-cppPath = "sdk/cpp/examples/plot/line.cpp"
 cppTarget = "ExamplePlotLine"
-pythonPath = "sdk/py/examples/plot/line.py"
 pythonProfile = "gpu"
-cppSymbols = ["oa::plot::Figure", "oa::plot::Axes::plot", "oa::plot::Figure::render"]
-pythonSymbols = ["oa.plot.Figure", "oa.plot.Axes.plot", "oa.plot.Figure.render"]
+generated = true
+expectedOutput = "Saved training-loss plot:"
+assets = [
+	"documentation/examples/ui/trainingLoss.jpg",
+	"documentation/examples/ui/trainingLossViewer.jpg",
+]
+cppSymbols = [
+	"oa::plot::Figure",
+	"oa::plot::Axes::plot",
+	"oa::plot::Figure::render",
+	"oa::FnImage::saveFile",
+	"oa::Viewer::preview",
+]
+pythonSymbols = [
+	"oa.plot.Figure",
+	"oa.plot.Axes.plot",
+	"oa.plot.Figure.render",
+	"oa.FnImage.saveFile",
+	"oa.Viewer.preview",
+]
+
+[examples.preview]
+input = "output"
+title = "OA plot · training loss"
+mode = "image"
+width = 1280
+height = 646
+
+[[examples.presentation]]
+kind = "imageGallery"
+title = "Rendered plot"
+description = "This is the exact 960×540 JPEG produced by the retained figure in the generated example."
+
+[[examples.presentation.items]]
+role = "output"
+label = "Training loss"
+description = "A dark retained line plot rendered by OA's GPU compositor and saved through oa::FnImage."
+asset = "documentation/examples/ui/trainingLoss.jpg"
+mimeType = "image/jpeg"
+width = 960
+height = 540
+alt = "Dark training-loss line plot rendered by OA"
+generatedBy = "sdk/py/examples/ui/plotFigure.py"
+
+[[examples.presentation]]
+kind = "viewerCapture"
+title = "oa::Viewer"
+description = "The saved plot opened by this example's optional --preview path in OA's native GPU image viewer."
+asset = "documentation/examples/ui/trainingLossViewer.jpg"
+mimeType = "image/jpeg"
+width = 1280
+height = 720
+alt = "oa::Viewer presenting the generated training-loss plot in a 1280 by 720 window"
+generatedBy = "bin/release/example/ui/examplePlotLine --preview"
+
+[[examples.steps]]
+operation = "plot.lineFigure"
+result = "figure"
+title = "Training loss"
+xLabel = "step"
+yLabel = "loss"
+width = 960
+height = 540
+theme = "Dark"
+values = [1.0, 0.72, 0.51, 0.38, 0.29, 0.23]
+
+[[examples.steps]]
+operation = "plot.render"
+result = "rendered"
+input = "figure"
+
+[[examples.steps]]
+operation = "image.save"
+result = "output"
+input = "rendered"
+path = "example/ui/trainingLoss.jpg"
+quality = 92
+
+[[examples.checks]]
+kind = "imageMetadata"
+input = "rendered"
+width = 960
+height = 540
+format = "Rgba"
+
+[[examples.checks]]
+kind = "fileExists"
+input = "output"

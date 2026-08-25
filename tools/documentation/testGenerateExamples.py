@@ -20,7 +20,7 @@ class GenerateExamplesTest(unittest.TestCase):
             {
                 "core-matrix-add",
                 "audio-process",
-                "vision-resize",
+                "vision-image",
                 "crypto-shake256",
                 "plot-line",
             },
@@ -33,6 +33,11 @@ class GenerateExamplesTest(unittest.TestCase):
             self.assertTrue(entry["python"]["code"])
             self.assertEqual(len(entry["cpp"]["sha256"]), 64)
             self.assertEqual(len(entry["python"]["sha256"]), 64)
+        matrix = next(entry for entry in generated if entry["id"] == "core-matrix-add")
+        terminalOutput = matrix["presentation"][0]
+        self.assertEqual(terminalOutput["kind"], "terminalOutput")
+        self.assertEqual(terminalOutput["language"], "bash")
+        self.assertIn("Matrix addition verified", terminalOutput["code"])
         audio = next(entry for entry in generated if entry["id"] == "audio-process")
         presentation = audio["presentation"][0]
         self.assertEqual(presentation["kind"], "audioComparison")

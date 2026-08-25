@@ -35,6 +35,12 @@ public:
 	oa::PipelineSpec spec;
 };
 
+class PipelineVariantRequest {
+public:
+	oa::String name;
+	oa::U32 dtype = 0;
+};
+
 class ComputePipeline {
 public:
 	void* pipeline = nullptr;
@@ -124,6 +130,8 @@ public:
 		oa::Span<const oa::PipelineLoadRequest> inRequests,
 		oa::U32 inWorkerCount,
 		oa::Vec<oa::Status>* outStatuses = nullptr);
+	[[nodiscard]] oa::Status ensurePipelinesOnDemand(
+		oa::Span<const oa::PipelineVariantRequest> inRequests);
 
 	[[nodiscard]] bool hasInitialCacheData() const noexcept {
 		return cache_.initialDataBytes != 0;
@@ -131,7 +139,8 @@ public:
 
 	[[nodiscard]] oa::ComputePipeline& getPipeline(oa::StringView inName, oa::U32 inDtype);
 	
-	// On-demand loading for known BLAS kernels
+	// Fallback single-variant loading for dispatch paths that do not compile an
+	// executable graph. Graph compilation uses ensurePipelinesOnDemand instead.
 	[[nodiscard]] oa::Status tryLoadOnDemand(
 		const oavk::Device& inDevice,
 		oa::StringView inName,

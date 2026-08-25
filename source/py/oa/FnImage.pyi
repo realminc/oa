@@ -77,8 +77,13 @@ def gaussianBlur(image: oa.Matrix, sigma: float, kernelSize: int = ...) -> oa.Ma
 def gaussianNoise(image: oa.Matrix, mean: float = ..., stddev: float = ..., seed: int = ...) -> oa.Matrix:
 	"""Add deterministic GPU-native Philox Gaussian noise."""
 
+@overload
 def grayscale(image: oa.Matrix) -> oa.Matrix:
 	"""Rec.709 RGB to single-channel grayscale conversion."""
+
+@overload
+def grayscale(image: oa.Image) -> oa.Image:
+	"""Convert a semantic NCHW RGB/RGBA image to Rec.709 grayscale."""
 
 def inRange(image: oa.Matrix, low: float, high: float, trueValue: float = ...) -> oa.Matrix:
 	"""Inclusive scalar range mask."""

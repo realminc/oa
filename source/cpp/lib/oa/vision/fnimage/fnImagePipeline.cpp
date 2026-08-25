@@ -94,6 +94,27 @@ oa::Image brightnessContrast(
 		inImage.format());
 }
 
+oa::Image grayscale(const oa::Image& inImage)
+{
+	if (inImage.layout() != oa::ImageLayout::Nchw) {
+		OaLogError(
+			oa::LogComponent::Vision,
+			"oa::FnImage::grayscale(oa::Image) requires Nchw layout");
+		return {};
+	}
+	if (inImage.format() != oa::ImageFormat::Rgb
+		and inImage.format() != oa::ImageFormat::Rgba) {
+		OaLogError(
+			oa::LogComponent::Vision,
+			"oa::FnImage::grayscale(oa::Image) requires RGB or RGBA input");
+		return {};
+	}
+	return oa::Image(
+		grayscale(inImage.asMatrix()),
+		inImage.layout(),
+		oa::ImageFormat::Gray);
+}
+
 oa::Image convertColor(const oa::Image& inImage, oa::ImageFormat inDstFormat)
 {
 	const bool isIdentity = inImage.format() == inDstFormat;

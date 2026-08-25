@@ -1092,6 +1092,19 @@ oa::Status oa::ExecutableGraph::compile(oa::Engine& inRt) {
 		return oa::Status::ok();
 	}
 
+	// Batch only the variants required by this graph. This preserves lazy startup
+	// while using the same bounded parallel loading and compact summary reporting
+	// as eager engine preload.
+	oa::Vec<oa::PipelineVariantRequest> pipelineRequests;
+	pipelineRequests.reserve(nodes_.size());
+	for (const auto& node : nodes_) {
+		pipelineRequests.pushBack({.name = node.shader, .dtype = node.dtype});
+	}
+	OA_RETURN_IF_ERROR(
+		oa::EnginePipelineAccess::get(inRt).ensurePipelinesOnDemand(
+			oa::Span<const oa::PipelineVariantRequest>(
+				pipelineRequests.data(), pipelineRequests.size())));
+
 	// validate the complete selected-engine descriptor set before resetting or
 	// beginning a command buffer.
 	for (const auto& node : nodes_) {

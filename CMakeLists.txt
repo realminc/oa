@@ -447,6 +447,7 @@ set(OA_SOURCES
 	source/cpp/lib/oa/runtime/device/features/renderFeatures.cpp
 	source/cpp/lib/oa/runtime/allocator.cpp
 	source/cpp/lib/oa/runtime/pipeline.cpp
+	source/cpp/lib/oa/runtime/presentationPlatform.cpp
 	source/cpp/lib/oa/runtime/bindless.cpp
 	source/cpp/lib/oa/runtime/cmd.cpp
 	source/cpp/lib/oa/runtime/sync.cpp
@@ -563,7 +564,6 @@ set(OA_SOURCES
 	source/cpp/lib/oa/ui/text.cpp
 	source/cpp/lib/oa/ui/ui.cpp
 	source/cpp/lib/oa/ui/renderBackend.cpp
-	source/cpp/lib/oa/ui/viewerPlatform.cpp
 	source/cpp/lib/oa/ui/viewerApplication.cpp
 	source/cpp/lib/oa/ui/viewerPresentation.cpp
 	source/cpp/lib/oa/ui/viewport.cpp

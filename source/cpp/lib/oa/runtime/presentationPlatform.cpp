@@ -1,7 +1,7 @@
 // Engine first — VK_NO_PROTOTYPES must precede SDL's vulkan declarations.
 #include <oa/runtime/engine.h>
 
-#include "viewerPlatform.h"
+#include "presentationPlatform.h"
 
 #include <oa/core/log.h>
 
@@ -68,15 +68,17 @@ void releasePlatformLocked() noexcept {
 
 } // namespace
 
-oa::ViewerPlatformLease::~ViewerPlatformLease() {
+oa::PresentationPlatformLease::~PresentationPlatformLease() {
 	release();
 }
 
-oa::Status oa::ViewerPlatformLease::acquire(oa::EngineConfig* inOutEngineConfig) {
+oa::Status oa::PresentationPlatformLease::acquire(
+	oa::EngineConfig* inOutEngineConfig)
+{
 	if (acquired_) {
 		return oa::Status::error(
 			oa::StatusCode::FailedPrecondition,
-			"oa::ViewerPlatformLease is already acquired");
+			"oa::PresentationPlatformLease is already acquired");
 	}
 
 	std::lock_guard lock(PlatformMutex);
@@ -107,8 +109,8 @@ oa::Status oa::ViewerPlatformLease::acquire(oa::EngineConfig* inOutEngineConfig)
 				"SDL_Vulkan_GetInstanceExtensions failed");
 		}
 		inOutEngineConfig->presentationMode = oa::PresentationMode::Swapchain;
-		for (oa::U32 i = 0U; i < extensionCount; ++i) {
-			inOutEngineConfig->instanceExtraExtensions.pushBack(extensions[i]);
+		for (oa::U32 index = 0U; index < extensionCount; ++index) {
+			inOutEngineConfig->instanceExtraExtensions.pushBack(extensions[index]);
 		}
 	}
 
@@ -117,7 +119,7 @@ oa::Status oa::ViewerPlatformLease::acquire(oa::EngineConfig* inOutEngineConfig)
 	return oa::Status::ok();
 }
 
-void oa::ViewerPlatformLease::release() noexcept {
+void oa::PresentationPlatformLease::release() noexcept {
 	if (not acquired_) return;
 	std::lock_guard lock(PlatformMutex);
 	acquired_ = false;

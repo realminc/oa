@@ -78,4 +78,9 @@ void bindVisionImage(nb::module_& inModule, nb::module_& m) {
 		nb::arg("image"), nb::arg("brightness") = 0.0F,
 		nb::arg("contrast") = 1.0F, nb::rv_policy::take_ownership);
 
+	m.def("grayscale", [](const oa::Image& image) {
+		return imagePtr(oa::FnImage::grayscale(image));
+	}, nb::arg("image"), nb::rv_policy::take_ownership,
+		"Convert a semantic NCHW RGB/RGBA image to Rec.709 grayscale.");
+
 }

@@ -5,13 +5,13 @@
 #include <oa/core/log.h>
 
 #include <oa/ui/viewer.h>
-#include <oa/ui/viewerPlatform.h>
+#include "../../cpp/lib/oa/runtime/presentationPlatform.h"
 
 #include <mutex>
 
 // Process-scoped engine / context lifetime. The engine is pinned (non-movable):
 // Create returns an owning oa::UniquePtr, which we hold directly.
-static oa::ViewerPlatformLease gViewerPlatform;
+static oa::PresentationPlatformLease gViewerPlatform;
 static oa::UniquePtr<oa::Engine> gEngine;
 static std::mutex gEngineMutex;
 static bool gPresentationCapable = false;

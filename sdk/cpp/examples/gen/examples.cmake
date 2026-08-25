@@ -3,3 +3,8 @@
 
 oa_add_example(ExampleCoreMatrix core/matrix.cpp core)
 oa_add_example(ExampleAudio audio/audio.cpp audio)
+oa_add_example(ExampleVisionImage vision/image.cpp vision)
+if(OA_BUILD_CRYPTO)
+	oa_add_example(ExampleCryptoShake256 crypto/shake256.cpp crypto)
+endif()
+oa_add_example(ExamplePlotLine ui/plotFigure.cpp ui)

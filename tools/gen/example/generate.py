@@ -51,6 +51,15 @@ def requireStrings(owner: dict[str, Any], key: str, context: str) -> list[str]:
 	return value
 
 
+def requireNumbers(owner: dict[str, Any], key: str, context: str) -> list[int | float]:
+	value = owner.get(key)
+	if not isinstance(value, list) or len(value) < 2 or any(
+		isinstance(item, bool) or not isinstance(item, (int, float)) for item in value
+	):
+		raise ExampleError(f"{context}: {key} must contain at least two numbers")
+	return value
+
+
 def safeRelative(value: str, context: str) -> PurePosixPath:
 	path = PurePosixPath(value)
 	if path.is_absolute() or not path.parts or ".." in path.parts:
@@ -92,6 +101,14 @@ def cppShape(shape: list[int]) -> str:
 
 def pythonShape(shape: list[int]) -> str:
 	return "[" + ", ".join(str(dimension) for dimension in shape) + "]"
+
+
+def quoted(value: str) -> str:
+	return json.dumps(value, ensure_ascii=False)
+
+
+def stepForResult(example: dict[str, Any], result: str) -> dict[str, Any]:
+	return next(step for step in example["steps"] if step.get("result") == result)
 
 
 def assetInventory() -> set[str]:
@@ -184,6 +201,53 @@ def validateGenerated(example: dict[str, Any], context: str, assets: set[str]) -
 				if not isinstance(inputName, str) or variables.get(inputName) != "Matrix":
 					raise ExampleError(f"{stepContext}: matrix.add inputs must be matrices")
 			declareVariable(variables, step, "Matrix", stepContext)
+		elif operation == "bytes.asciiRows":
+			rows = requireStrings(step, "values", stepContext)
+			if any(not row.isascii() for row in rows):
+				raise ExampleError(f"{stepContext}: values must be ASCII")
+			if len({len(row.encode("ascii")) for row in rows}) != 1:
+				raise ExampleError(f"{stepContext}: values must have equal byte lengths")
+			declareVariable(variables, step, "ByteRows", stepContext)
+		elif operation == "crypto.shake256":
+			requireVariable(variables, step, "input", "ByteRows", stepContext)
+			if integer(step, "digestBytes", stepContext) <= 0:
+				raise ExampleError(f"{stepContext}: digestBytes must be positive")
+			declareVariable(variables, step, "Matrix", stepContext)
+		elif operation == "image.decodeAsset":
+			path = requireString(step, "path", stepContext)
+			if path not in declaredAssets:
+				raise ExampleError(f"{stepContext}: decoded asset must be declared by the example")
+			if requireString(step, "format", stepContext) not in {"Rgb", "Rgba"}:
+				raise ExampleError(f"{stepContext}: unsupported beginner image format")
+			declareVariable(variables, step, "Image", stepContext)
+		elif operation == "image.resize":
+			requireVariable(variables, step, "input", "Image", stepContext)
+			if integer(step, "width", stepContext) <= 0 or integer(step, "height", stepContext) <= 0:
+				raise ExampleError(f"{stepContext}: image extent must be positive")
+			declareVariable(variables, step, "Image", stepContext)
+		elif operation == "image.grayscale":
+			requireVariable(variables, step, "input", "Image", stepContext)
+			declareVariable(variables, step, "Image", stepContext)
+		elif operation == "image.save":
+			requireVariable(variables, step, "input", "Image", stepContext)
+			safeRelative(requireString(step, "path", stepContext), stepContext)
+			quality = integer(step, "quality", stepContext)
+			if not 1 <= quality <= 100:
+				raise ExampleError(f"{stepContext}: quality must be in [1, 100]")
+			declareVariable(variables, step, "Path", stepContext)
+		elif operation == "plot.lineFigure":
+			requireString(step, "title", stepContext)
+			requireString(step, "xLabel", stepContext)
+			requireString(step, "yLabel", stepContext)
+			if requireString(step, "theme", stepContext) not in {"Dark", "Light"}:
+				raise ExampleError(f"{stepContext}: unsupported plot theme")
+			if integer(step, "width", stepContext) <= 0 or integer(step, "height", stepContext) <= 0:
+				raise ExampleError(f"{stepContext}: figure extent must be positive")
+			requireNumbers(step, "values", stepContext)
+			declareVariable(variables, step, "Figure", stepContext)
+		elif operation == "plot.render":
+			requireVariable(variables, step, "input", "Figure", stepContext)
+			declareVariable(variables, step, "Image", stepContext)
 		elif operation == "audio.decodeAsset":
 			path = requireString(step, "path", stepContext)
 			if path not in declaredAssets:
@@ -226,6 +290,15 @@ def validateGenerated(example: dict[str, Any], context: str, assets: set[str]) -
 			number(check, "value", checkContext)
 			if float(number(check, "tolerance", checkContext)) <= 0.0:
 				raise ExampleError(f"{checkContext}: tolerance must be positive")
+		elif kind == "shake256CpuOracle":
+			requireVariable(variables, check, "input", "ByteRows", checkContext)
+			requireVariable(variables, check, "output", "Matrix", checkContext)
+		elif kind == "imageMetadata":
+			requireVariable(variables, check, "input", "Image", checkContext)
+			if integer(check, "width", checkContext) <= 0 or integer(check, "height", checkContext) <= 0:
+				raise ExampleError(f"{checkContext}: image extent must be positive")
+			if requireString(check, "format", checkContext) not in {"Gray", "Rgb", "Rgba"}:
+				raise ExampleError(f"{checkContext}: unsupported image format")
 		elif kind == "audioMetadata":
 			requireVariable(variables, check, "input", "Audio", checkContext)
 			if integer(check, "sampleRate", checkContext) <= 0 or integer(check, "channels", checkContext) <= 0:
@@ -268,6 +341,10 @@ def validatePresentation(example: dict[str, Any], context: str, assets: set[str]
 		kind = requireString(presentation, "kind", presentationContext)
 		requireString(presentation, "title", presentationContext)
 		requireString(presentation, "description", presentationContext)
+		if kind == "terminalOutput":
+			for key in ("filename", "language", "generatedBy", "code"):
+				requireString(presentation, key, presentationContext)
+			continue
 		if kind == "viewerCapture":
 			asset = requireString(presentation, "asset", presentationContext)
 			safeRelative(asset, presentationContext)
@@ -278,6 +355,29 @@ def validatePresentation(example: dict[str, Any], context: str, assets: set[str]
 			for key in ("width", "height"):
 				if integer(presentation, key, presentationContext) <= 0:
 					raise ExampleError(f"{presentationContext}: {key} must be positive")
+			continue
+		if kind == "imageGallery":
+			items = presentation.get("items")
+			if not isinstance(items, list) or not items:
+				raise ExampleError(f"{presentationContext}: imageGallery requires at least one item")
+			roles: set[str] = set()
+			for itemIndex, item in enumerate(items):
+				itemContext = f"{presentationContext}.items[{itemIndex}]"
+				if not isinstance(item, dict):
+					raise ExampleError(f"{itemContext}: item must be a table")
+				role = requireString(item, "role", itemContext)
+				if role in roles:
+					raise ExampleError(f"{itemContext}: image roles must be unique")
+				roles.add(role)
+				for key in ("label", "description", "mimeType", "alt", "generatedBy"):
+					requireString(item, key, itemContext)
+				asset = requireString(item, "asset", itemContext)
+				safeRelative(asset, itemContext)
+				if asset not in declaredAssets or asset not in assets:
+					raise ExampleError(f"{itemContext}: image must be a declared checked asset")
+				for key in ("width", "height"):
+					if integer(item, key, itemContext) <= 0:
+						raise ExampleError(f"{itemContext}: {key} must be positive")
 			continue
 		if kind != "audioComparison":
 			raise ExampleError(f"{presentationContext}: unsupported presentation kind")
@@ -374,39 +474,31 @@ def generatedHeader(comment: str, schemaPath: Path) -> list[str]:
 
 
 def emitCpp(example: dict[str, Any], schemaPath: Path) -> str:
-	requiresExplicitSubmit = any(
-		step["operation"].startswith("matrix.") for step in example["steps"]
-	)
 	hasMatrix = any(step["operation"].startswith("matrix.") for step in example["steps"])
 	hasAudio = any(step["operation"].startswith("audio.") for step in example["steps"])
+	hasCrypto = any(step["operation"].startswith("crypto.") for step in example["steps"])
+	hasImage = any(step["operation"].startswith("image.") for step in example["steps"])
+	hasPlot = any(step["operation"].startswith("plot.") for step in example["steps"])
 	preview = example.get("preview")
 	lines = [GENERATED_CPP, f"// Source: {schemaPath.relative_to(REPO_ROOT).as_posix()}",
-		f"// OA_DOC_BEGIN: {example['id']}"]
-	if hasAudio:
-		lines.extend([
-			"#include <oa/audio/fnAudio.h>",
-			"#include <oa/core/filesystem.h>",
-			"#include <oa/core/paths.h>",
-		])
-	if preview is not None:
-		lines.append("#include <oa/ui/viewer.h>")
+		f"// OA_DOC_BEGIN: {example['id']}", "#include <oa/oa.h>", ""]
+	if hasMatrix or hasCrypto or hasPlot:
+		lines.append("#include <array>")
 	if hasMatrix:
-		lines.append("#include <oa/core/fnMatrix.h>")
-	lines.append("#include <oa/runtime/engine.h>")
-	lines.append("")
-	if hasMatrix:
-		lines.extend(["#include <array>", "#include <cmath>"])
-	lines.extend(["#include <cstdio>", "#include <utility>", "", "int main() {"])
-	lines.extend([
-		"\toa::EngineConfig config;",
-		f"\tconfig.appName = \"{example['cppTarget']}\";",
-		"\tconfig.presentationMode = oa::PresentationMode::None;",
-		"",
-		"\tauto created = oa::Engine::create(config);",
-		"\tif (not created.isOk()) return 1;",
-		"\tauto engine = std::move(created).getValue();",
-		"",
-	])
+		lines.append("#include <cmath>")
+	if hasCrypto:
+		lines.append("#include <cstring>")
+	lines.extend(["#include <cstdio>", "#include <utility>", ""])
+	if preview is not None and hasPlot:
+		lines.append(
+			f'OA_MAIN_MODE("{example["cppTarget"]}", argc > 1 '
+			'and oa::StringView(argv[1]) == "--preview" '
+			'? oa::PresentationMode::Swapchain : oa::PresentationMode::Headless) {'
+		)
+	elif preview is not None:
+		lines.append(f'OA_MAIN_PREVIEW("{example["cppTarget"]}") {{')
+	else:
+		lines.append(f'OA_MAIN("{example["cppTarget"]}") {{')
 
 	for step in example["steps"]:
 		op = step["operation"]
@@ -417,11 +509,68 @@ def emitCpp(example: dict[str, Any], schemaPath: Path) -> str:
 			lines.append(f"\tauto {result} = oa::FnMatrix::full({cppShape(step['shape'])}, {cppFloat(step['value'])});")
 		elif op == "matrix.add":
 			lines.append(f"\tauto {result} = oa::FnMatrix::add({step['inputs'][0]}, {step['inputs'][1]});")
+		elif op == "bytes.asciiRows":
+			rows = step["values"]
+			values = [byte for row in rows for byte in row.encode("ascii")]
+			lines.extend([
+				f"\tconstexpr std::array<oa::U8, {len(values)}> {result}Bytes{{",
+				"\t\t" + ", ".join(f"{value}U" for value in values),
+				"\t};",
+				f"\tauto {result} = oa::FnMatrix::fromBytes(",
+				f"\t\toa::Span<const oa::U8>({result}Bytes.data(), {result}Bytes.size()),",
+				f"\t\t{{{len(rows)}, {len(rows[0].encode('ascii'))}}},",
+				"\t\toa::ScalarType::UInt8);",
+			])
+		elif op == "crypto.shake256":
+			lines.append(
+				f"\tauto {result} = oa::FnHash::shake256({step['input']}, {step['digestBytes']}U);"
+			)
+		elif op == "image.decodeAsset":
+			lines.extend([
+				f"\tauto {result}Result = oa::FnImage::decodeFile(",
+				f"\t\toa::Paths::asset({quoted(step['path'])}), oa::ImageFormat::{step['format']});",
+				f"\tif (not {result}Result.isOk()) return 1;",
+				f"\tauto {result} = std::move({result}Result).getValue();",
+			])
+		elif op == "image.resize":
+			lines.append(
+				f"\tauto {result} = oa::FnImage::resize({step['input']}, {step['width']}U, {step['height']}U);"
+			)
+		elif op == "image.grayscale":
+			lines.append(f"\tauto {result} = oa::FnImage::grayscale({step['input']});")
+		elif op == "image.save":
+			lines.extend([
+				f"\tconst oa::Path {result} = oa::Paths::var({quoted(step['path'])});",
+				f"\tif (not oa::Filesystem::createDirectories({result}.parentPath()).isOk()) return 1;",
+				f"\tif (not oa::FnImage::saveFile({result}, {step['input']}, {step['quality']}U).isOk()) return 1;",
+			])
+		elif op == "plot.lineFigure":
+			lines.extend([
+				f"\toa::plot::Figure {result}({{",
+				f"\t\t.title = {quoted(step['title'])},",
+				f"\t\t.width = {step['width']}U,",
+				f"\t\t.height = {step['height']}U,",
+				f"\t\t.theme = oa::plot::Theme::{step['theme']},",
+				"\t});",
+				f"\tconstexpr std::array<oa::F32, {len(step['values'])}> {result}Values{{",
+				"\t\t" + ", ".join(cppFloat(value) for value in step["values"]),
+				"\t};",
+				f"\t{result}.ax(0, 0).xLabel({quoted(step['xLabel'])});",
+				f"\t{result}.ax(0, 0).yLabel({quoted(step['yLabel'])});",
+				f"\t{result}.ax(0, 0).plot({result}Values);",
+			])
+		elif op == "plot.render":
+			lines.extend([
+				f"\tauto {result}Result = {step['input']}.render(engine);",
+				f"\tif (not {result}Result.isOk()) return 1;",
+				f"\tauto {result} = std::move({result}Result).getValue();",
+			])
 		elif op == "audio.decodeAsset":
 			lines.extend([
-				f"\tauto {result}Result = oa::FnAudio::decodeFile(",
-				f"\t\toa::Paths::asset(\"{step['path']}\"));",
-				f"\tif (not {result}Result.isOk()) return 1;",
+				f"\tauto {result}Result = oa::FnAudio::decodeFile(oa::Paths::asset(\"{step['path']}\"));",
+				f"\tif (not {result}Result.isOk()) {{",
+				"\t\treturn 1;",
+				"\t}",
 				f"\tauto {result} = std::move({result}Result).getValue();",
 			])
 		elif op == "audio.toMono":
@@ -446,27 +595,51 @@ def emitCpp(example: dict[str, Any], schemaPath: Path) -> str:
 		elif op == "audio.saveWavF32":
 			lines.extend([
 				f"\tconst oa::Path {result} = oa::Paths::var(\"{step['path']}\");",
-				f"\tif (not oa::Filesystem::createDirectories({result}.parentPath()).isOk()) return 1;",
-				f"\tif (not oa::FnAudio::saveWavF32({result}, {step['input']}).isOk()) return 1;",
+				f"\tif (not oa::Filesystem::createDirectories({result}.parentPath()).isOk()) {{",
+				"\t\treturn 1;",
+				"\t}",
+				f"\tif (not oa::FnAudio::saveWavF32({result}, {step['input']}).isOk()) {{",
+				"\t\treturn 1;",
+				"\t}",
 			])
 		lines.append("")
 
-	if requiresExplicitSubmit:
-		lines.extend([
-			"\tauto submitted = engine->submit();",
-			"\tif (not submitted.isOk()) return 1;",
-			"\tif (not engine->wait(submitted.getValue()).isOk()) return 1;",
-			"",
-		])
 	for check in example["checks"]:
 		if check["kind"] == "matrixAllClose":
 			lines.extend([
 				f"\tstd::array<oa::F32, {check['count']}> values{{}};",
-				"\tif (not oa::FnMatrix::copyToHost(",
-				f"\t\t{check['input']}, values.data(), sizeof(values)).isOk()) return 1;",
-				"\tfor (const oa::F32 value : values) {",
-				f"\t\tif (std::abs(value - {cppFloat(check['value'])}) > {cppFloat(check['tolerance'])}) return 1;",
+				f"\tif (not oa::FnMatrix::copyToHost({check['input']}, values.data(), sizeof(values)).isOk()) {{",
+				"\t\treturn 1;",
 				"\t}",
+				"\tfor (const oa::F32 value : values) {",
+				f"\t\tif (std::abs(value - {cppFloat(check['value'])}) > {cppFloat(check['tolerance'])}) {{",
+				"\t\t\treturn 1;",
+				"\t\t}",
+				"\t}",
+			])
+		elif check["kind"] == "shake256CpuOracle":
+			inputStep = stepForResult(example, check["input"])
+			outputStep = stepForResult(example, check["output"])
+			rowCount = len(inputStep["values"])
+			rowBytes = len(inputStep["values"][0].encode("ascii"))
+			digestBytes = outputStep["digestBytes"]
+			totalBytes = rowCount * digestBytes
+			lines.extend([
+				f"\tstd::array<oa::U8, {totalBytes}> gpu{{}};",
+				f"\tstd::array<oa::U8, {totalBytes}> cpu{{}};",
+				f"\tif (not oa::FnMatrix::copyToHost({check['output']}, gpu.data(), gpu.size()).isOk()) return 1;",
+				f"\tfor (oa::Usize row = 0; row < {rowCount}U; ++row) {{",
+				"\t\toa::shake256(",
+				f"\t\t\t{check['input']}Bytes.data() + row * {rowBytes}U, {rowBytes}U,",
+				f"\t\t\tcpu.data() + row * {digestBytes}U, {digestBytes}U);",
+				"\t}",
+				"\tif (std::memcmp(gpu.data(), cpu.data(), gpu.size()) != 0) return 1;",
+			])
+		elif check["kind"] == "imageMetadata":
+			lines.extend([
+				f"\tif (not {check['input']}.validate()) return 1;",
+				f"\tif ({check['input']}.width() != {check['width']} or {check['input']}.height() != {check['height']}) return 1;",
+				f"\tif ({check['input']}.format() != oa::ImageFormat::{check['format']}) return 1;",
 			])
 		elif check["kind"] == "audioMetadata":
 			lines.extend([
@@ -477,39 +650,49 @@ def emitCpp(example: dict[str, Any], schemaPath: Path) -> str:
 		elif check["kind"] == "fileExists":
 			lines.append(f"\tif (not oa::Filesystem::isFile({check['input']})) return 1;")
 		elif check["kind"] == "audioTail":
-			lines.append(
-				f"\tif ({check['input']}.samples() != {check['source']}.samples() "
-				f"+ static_cast<oa::I64>({check['input']}.sampleRate()) * {check['tailMilliseconds']} / 1'000) return 1;"
-			)
+			lines.extend([
+				f"\tif ({check['input']}.samples() != {check['source']}.samples()",
+				f"\t\t+ static_cast<oa::I64>({check['input']}.sampleRate())",
+				f"\t\t\t* {check['tailMilliseconds']} / 1'000) {{",
+				"\t\treturn 1;",
+				"\t}",
+			])
 	lines.append("")
 	if hasAudio:
 		output = next(step["result"] for step in example["steps"] if step["operation"] == "audio.saveWavF32")
+		lines.append(f"\tstd::printf(\"{example['expectedOutput']} %s\\n\", {output}.cStr());")
+	elif hasImage:
+		output = next(step["result"] for step in example["steps"] if step["operation"] == "image.save")
 		lines.append(f"\tstd::printf(\"{example['expectedOutput']} %s\\n\", {output}.cStr());")
 	else:
 		lines.append(f"\tstd::puts(\"{example['expectedOutput']}\");")
 	if preview is not None:
 		previewStep = next(step for step in example["steps"] if step["result"] == preview["input"])
-		mainIndex = lines.index("int main() {")
-		body = [("\t" + line) if line else line for line in lines[mainIndex + 1:]]
-		lines = lines[:mainIndex] + ["int main(int argc, char** argv) {", "\t{", *body, "\t}", ""]
 		viewerMode = preview["mode"].capitalize()
 		lines.extend([
+			"",
 			'\tif (argc > 1 and oa::StringView(argv[1]) == "--preview") {',
 			"\t\toa::ViewerConfig previewConfig;",
 			f"\t\tpreviewConfig.mode = oa::ViewerMode::{viewerMode};",
 			f'\t\tpreviewConfig.title = "{preview["title"]}";',
 			f'\t\tpreviewConfig.width = {preview["width"]}U;',
 			f'\t\tpreviewConfig.height = {preview["height"]}U;',
-			f'\t\tif (not oa::Viewer::preview(oa::Paths::var("{previewStep["path"]}").string(), previewConfig).isOk()) return 1;',
+			f'\t\tif (not oa::Viewer::preview(engine, oa::Paths::var("{previewStep["path"]}").string(),',
+			"\t\t\tpreviewConfig).isOk()) {",
+			"\t\t\treturn 1;",
+			"\t\t}",
 			"\t}",
 		])
-	lines.extend(["\treturn 0;", "}", f"// OA_DOC_END: {example['id']}", ""])
+	lines.append("\treturn 0;")
+	lines.extend(["}", f"// OA_DOC_END: {example['id']}", ""])
 	return "\n".join(lines)
 
 
 def emitPython(example: dict[str, Any], schemaPath: Path) -> str:
 	lines = [GENERATED_PYTHON, f"# Source: {schemaPath.relative_to(REPO_ROOT).as_posix()}",
 		f"# OA_DOC_BEGIN: {example['id']}"]
+	if any(step["operation"].startswith("crypto.") for step in example["steps"]):
+		lines.extend(["import hashlib", ""])
 	if example.get("preview") is not None:
 		lines.extend(["import sys", ""])
 	lines.extend(["import oa", ""])
@@ -522,6 +705,47 @@ def emitPython(example: dict[str, Any], schemaPath: Path) -> str:
 			lines.append(f"{result} = oa.FnMatrix.full({pythonShape(step['shape'])}, {pythonFloat(step['value'])})")
 		elif op == "matrix.add":
 			lines.append(f"{result} = oa.FnMatrix.add({step['inputs'][0]}, {step['inputs'][1]})")
+		elif op == "bytes.asciiRows":
+			rows = ", ".join(f"b{quoted(row)}" for row in step["values"])
+			rowBytes = len(step["values"][0].encode("ascii"))
+			lines.extend([
+				f"{result}Rows = [{rows}]",
+				f"{result} = oa.FnMatrix.fromBytes(",
+				f"\tlist(b\"\".join({result}Rows)),",
+				f"\t[{len(step['values'])}, {rowBytes}],",
+				"\toa.ScalarType.UInt8,",
+				")",
+			])
+		elif op == "crypto.shake256":
+			lines.append(f"{result} = oa.FnHash.shake256({step['input']}, {step['digestBytes']})")
+		elif op == "image.decodeAsset":
+			lines.append(
+				f"{result} = oa.FnImage.decodeFile(oa.Paths.asset({quoted(step['path'])}), oa.ImageFormat.{step['format']})"
+			)
+		elif op == "image.resize":
+			lines.append(f"{result} = oa.FnImage.resize({step['input']}, {step['width']}, {step['height']})")
+		elif op == "image.grayscale":
+			lines.append(f"{result} = oa.FnImage.grayscale({step['input']})")
+		elif op == "image.save":
+			lines.extend([
+				f"{result} = oa.Paths.var({quoted(step['path'])})",
+				f"oa.Filesystem.createDirectories({result}.parentPath())",
+				f"oa.FnImage.saveFile({result}, {step['input']}, {step['quality']})",
+			])
+		elif op == "plot.lineFigure":
+			lines.extend([
+				f"{result}Config = oa.plot.FigureConfig()",
+				f"{result}Config.title = {quoted(step['title'])}",
+				f"{result}Config.width = {step['width']}",
+				f"{result}Config.height = {step['height']}",
+				f"{result}Config.theme = oa.plot.Theme.{step['theme']}",
+				f"{result} = oa.plot.Figure({result}Config)",
+				f"{result}.ax(0, 0).xLabel({quoted(step['xLabel'])})",
+				f"{result}.ax(0, 0).yLabel({quoted(step['yLabel'])})",
+				f"{result}.ax(0, 0).plot({step['values']!r})",
+			])
+		elif op == "plot.render":
+			lines.append(f"{result} = {step['input']}.render()")
 		elif op == "audio.decodeAsset":
 			lines.append(f"{result} = oa.FnAudio.decodeFile(oa.Paths.asset(\"{step['path']}\"))")
 		elif op == "audio.toMono":
@@ -557,6 +781,20 @@ def emitPython(example: dict[str, Any], schemaPath: Path) -> str:
 				f"assert len(values) == {check['count']}",
 				f"assert all(abs(value - {pythonFloat(check['value'])}) <= {pythonFloat(check['tolerance'])} for value in values)",
 			])
+		elif check["kind"] == "shake256CpuOracle":
+			outputStep = stepForResult(example, check["output"])
+			lines.extend([
+				f"gpu = bytes(oa.FnMatrix.copyToHost({check['output']}))",
+				f"cpu = b\"\".join(hashlib.shake_256(row).digest({outputStep['digestBytes']}) for row in {check['input']}Rows)",
+				"assert gpu == cpu",
+			])
+		elif check["kind"] == "imageMetadata":
+			lines.extend([
+				f"assert {check['input']}.validate()",
+				f"assert {check['input']}.width() == {check['width']}",
+				f"assert {check['input']}.height() == {check['height']}",
+				f"assert {check['input']}.format() == oa.ImageFormat.{check['format']}",
+			])
 		elif check["kind"] == "audioMetadata":
 			lines.extend([
 				f"assert {check['input']}.isValid()",
@@ -573,6 +811,9 @@ def emitPython(example: dict[str, Any], schemaPath: Path) -> str:
 	lines.append("")
 	if any(step["operation"] == "audio.saveWavF32" for step in example["steps"]):
 		output = next(step["result"] for step in example["steps"] if step["operation"] == "audio.saveWavF32")
+		lines.append(f"print(f\"{example['expectedOutput']} {{{output}}}\")")
+	elif any(step["operation"] == "image.save" for step in example["steps"]):
+		output = next(step["result"] for step in example["steps"] if step["operation"] == "image.save")
 		lines.append(f"print(f\"{example['expectedOutput']} {{{output}}}\")")
 	else:
 		lines.append(f"print(\"{example['expectedOutput']}\")")
@@ -598,9 +839,13 @@ def emitCmake(examples: list[dict[str, Any]], schemaPath: Path) -> str:
 			continue
 		cppPath, _ = sourcePaths(example, example["id"])
 		relative = PurePosixPath(cppPath).relative_to("sdk/cpp/examples")
-		lines.append(
+		registration = (
 			f"oa_add_example({example['cppTarget']} {relative.as_posix()} {example['directory']})"
 		)
+		if example["module"] == "Crypto":
+			lines.extend(["if(OA_BUILD_CRYPTO)", f"\t{registration}", "endif()"])
+		else:
+			lines.append(registration)
 	lines.append("")
 	return "\n".join(lines)
 

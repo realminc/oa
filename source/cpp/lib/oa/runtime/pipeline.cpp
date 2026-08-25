@@ -1,6 +1,7 @@
 #include <mutex>
 #include <shared_mutex>
 #include <atomic>
+#include <chrono>
 #include <thread>
 #include <algorithm>
 #include <vector>
@@ -725,6 +726,103 @@ oa::Status oa::PipelineRegistry::ensurePipelinesParallel(
 	return firstError;
 }
 
+oa::Status oa::PipelineRegistry::ensurePipelinesOnDemand(
+	oa::Span<const oa::PipelineVariantRequest> inRequests)
+{
+	if (device_ == nullptr or inRequests.empty()) return oa::Status::ok();
+
+	oa::Vec<oa::PipelineLoadRequest> requests;
+	oa::HashMap<oa::String, oa::Bool> planned;
+	requests.reserve(inRequests.size());
+	for (const auto& request : inRequests) {
+		if (request.dtype > 1U) {
+			return oa::Status::invalidArgument(
+				"on-demand pipeline request has invalid storage DTYPE");
+		}
+		if (request.name.empty()
+			or not oa::computeKernelUsesDefaultBindlessPipeline(request.name.cStr())) {
+			continue;
+		}
+
+		oa::PipelineSpec spec;
+		spec.numBindings = 16;
+		spec.pushConstantBytes = 128;
+		spec.specConstants = {{.id = 0, .value = request.dtype}};
+		oa::String key = makePipelineKey(request.name, spec);
+		{
+			std::shared_lock lock(*mutex_);
+			const auto exact = registry_.find(key);
+			if (exact != registry_.end()) continue;
+			const auto bare = registry_.find(request.name);
+			if (bare != registry_.end() and bare->second.nativeDtype == request.dtype) {
+				continue;
+			}
+		}
+		if (planned.contains(key)) continue;
+
+		const auto* spirv = oavk::findSpirv(request.name.cStr());
+		if (spirv == nullptr) {
+			OaLogWarn(oa::LogComponent::Compute,
+				"SPIR-V not found for on-demand shader '%s'",
+				request.name.cStr());
+			return oa::Status::notFound("SPIR-V not found in registry");
+		}
+		planned.emplace(oa::move(key), true);
+		requests.pushBack({
+			.name = request.name,
+			.spirv = oa::Span<const oa::U8>(spirv->data, spirv->size),
+			.spec = oa::move(spec),
+		});
+	}
+	if (requests.empty()) return oa::Status::ok();
+
+	const oa::I64 configuredThreads = oa::EnvFlag::getInt("OA_SHADER_LOAD_THREADS", 0);
+	const oa::U32 hardwareThreads = std::max(1u, std::thread::hardware_concurrency());
+	oa::U32 loadThreads = 1;
+	if (configuredThreads > 0) {
+		loadThreads = static_cast<oa::U32>(std::min<oa::I64>(configuredThreads, 64));
+	} else if (not hasInitialCacheData()) {
+		loadThreads = std::min<oa::U32>(
+			std::max<oa::U32>(1u, hardwareThreads / 2u), 8u);
+	}
+	loadThreads = std::max<oa::U32>(1u,
+		std::min<oa::U32>(loadThreads, static_cast<oa::U32>(requests.size())));
+
+	OaLogInfo(oa::LogComponent::Compute,
+		"Loading %zu shader pipeline%s on demand (%u thread%s, %s cache)",
+		requests.size(), requests.size() == 1 ? "" : "s",
+		loadThreads, loadThreads == 1 ? "" : "s",
+		hasInitialCacheData() ? "warm" : "cold");
+
+	const auto loadBegin = std::chrono::steady_clock::now();
+	oa::Vec<oa::Status> statuses;
+	const oa::Status loadStatus = ensurePipelinesParallel(
+		*device_,
+		oa::Span<const oa::PipelineLoadRequest>(requests.data(), requests.size()),
+		loadThreads,
+		&statuses);
+	const oa::F64 loadMs = std::chrono::duration<oa::F64, std::milli>(
+		std::chrono::steady_clock::now() - loadBegin).count();
+
+	oa::U32 loaded = 0;
+	oa::U32 failed = 0;
+	for (oa::Usize index = 0; index < statuses.size(); ++index) {
+		if (statuses[index].isOk()) {
+			++loaded;
+		} else {
+			++failed;
+			OaLogWarn(oa::LogComponent::Compute,
+				"Failed to load shader '%s' on demand: %s",
+				requests[index].name.cStr(), statuses[index].getMessage().cStr());
+		}
+	}
+	OaLogInfo(oa::LogComponent::Compute,
+		"Loaded %u/%zu shader pipeline%s on demand (failed=%u, threads=%u, %.2f ms)",
+		loaded, requests.size(), requests.size() == 1 ? "" : "s",
+		failed, loadThreads, loadMs);
+	return loadStatus;
+}
+
 oa::Status oa::PipelineRegistry::tryLoadOnDemand(
 	const oavk::Device& inDevice,
 	oa::StringView inName,
@@ -742,8 +840,6 @@ oa::Status oa::PipelineRegistry::tryLoadOnDemand(
 		return oa::Status::notFound("SPIR-V not found in registry");
 	}
 	
-	OaLogInfo(oa::LogComponent::Compute, "TryLoadOnDemand: Loading '%s' with DTYPE=%u (spirv size=%u)",
-		kernelName.cStr(), inDtype, spirv->size);
 	#ifdef __ANDROID__
 	__android_log_print(ANDROID_LOG_INFO, "OA", "Loading pipeline %s dtype=%u (%u bytes)",
 		kernelName.cStr(), inDtype, spirv->size);
@@ -767,8 +863,6 @@ oa::Status oa::PipelineRegistry::tryLoadOnDemand(
 		__android_log_print(ANDROID_LOG_INFO, "OA", "Loaded pipeline %s dtype=%u",
 			kernelName.cStr(), inDtype);
 		#endif
-		OaLogInfo(oa::LogComponent::Compute, "TryLoadOnDemand: Successfully loaded '%s' with DTYPE=%u",
-			kernelName.cStr(), inDtype);
 	} else {
 		OaLogWarn(oa::LogComponent::Compute, "TryLoadOnDemand: Failed to load '%s'",
 			kernelName.cStr());

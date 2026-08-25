@@ -22,7 +22,6 @@ CPP_REGISTRIES = (
     REPO / "sdk" / "cpp" / "examples" / "gen" / "examples.cmake",
 )
 PYTHON_REGISTRIES = (
-    REPO / "test" / "py" / "examples" / "test_examples.py",
     REPO / "test" / "py" / "examples" / "test_generated_examples.py",
 )
 ID_PATTERN = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
@@ -130,6 +129,17 @@ def _publishPresentation(
         if not isinstance(presentation, dict):
             raise ExampleError(f"{presentationContext}: presentation must be an object")
         kind = _requireString(presentation, "kind", presentationContext)
+        if kind == "terminalOutput":
+            published.append({
+                "kind": kind,
+                "title": _requireString(presentation, "title", presentationContext),
+                "description": _requireString(presentation, "description", presentationContext),
+                "filename": _requireString(presentation, "filename", presentationContext),
+                "language": _requireString(presentation, "language", presentationContext),
+                "generatedBy": _requireString(presentation, "generatedBy", presentationContext),
+                "code": _requireString(presentation, "code", presentationContext),
+            })
+            continue
         if kind == "viewerCapture":
             asset = _requireString(presentation, "asset", presentationContext)
             if asset not in declaredAssets or asset not in inventory:
@@ -163,6 +173,62 @@ def _publishPresentation(
                 "height": height,
                 "alt": _requireString(presentation, "alt", presentationContext),
                 "generatedBy": _requireString(presentation, "generatedBy", presentationContext),
+            })
+            continue
+        if kind == "imageGallery":
+            items = presentation.get("items")
+            if not isinstance(items, list) or not items:
+                raise ExampleError(
+                    f"{presentationContext}: imageGallery requires at least one item"
+                )
+            publishedItems = []
+            roles: set[str] = set()
+            for itemIndex, item in enumerate(items):
+                itemContext = f"{presentationContext}.items[{itemIndex}]"
+                if not isinstance(item, dict):
+                    raise ExampleError(f"{itemContext}: item must be an object")
+                role = _requireString(item, "role", itemContext)
+                if role in roles:
+                    raise ExampleError(f"{itemContext}: image roles must be unique")
+                roles.add(role)
+                asset = _requireString(item, "asset", itemContext)
+                if asset not in declaredAssets or asset not in inventory:
+                    raise ExampleError(
+                        f"{itemContext}: image must be a declared checked asset"
+                    )
+                width = item.get("width")
+                height = item.get("height")
+                if (
+                    isinstance(width, bool)
+                    or not isinstance(width, int)
+                    or width <= 0
+                    or isinstance(height, bool)
+                    or not isinstance(height, int)
+                    or height <= 0
+                ):
+                    raise ExampleError(
+                        f"{itemContext}: image dimensions must be positive integers"
+                    )
+                assetRecord = inventory[asset]
+                publishedItems.append({
+                    "role": role,
+                    "label": _requireString(item, "label", itemContext),
+                    "description": _requireString(item, "description", itemContext),
+                    "asset": asset,
+                    "src": f"/media/oa/{asset}",
+                    "mimeType": _requireString(item, "mimeType", itemContext),
+                    "sha256": assetRecord["sha256"],
+                    "bytes": assetRecord["bytes"],
+                    "width": width,
+                    "height": height,
+                    "alt": _requireString(item, "alt", itemContext),
+                    "generatedBy": _requireString(item, "generatedBy", itemContext),
+                })
+            published.append({
+                "kind": kind,
+                "title": _requireString(presentation, "title", presentationContext),
+                "description": _requireString(presentation, "description", presentationContext),
+                "items": publishedItems,
             })
             continue
         if kind != "audioComparison":

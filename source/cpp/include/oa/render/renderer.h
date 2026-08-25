@@ -25,8 +25,16 @@ class Viewer;
 
 // ─── 3D mesh renderer ────────────────────────────────────────────────────────
 
+enum class RendererMode : oa::U8 {
+	Rasterization,
+	RayTracing,
+};
+
 class RendererConfig {
 public:
+	// Rendering algorithms are exact requests. Unsupported or unavailable
+	// modes fail create() and never fall back to a different algorithm.
+	RendererMode mode_ = RendererMode::Rasterization;
 	oa::U32 width_ = 256U;
 	oa::U32 height_ = 192U;
 	oa::U32 targetSlotCount_ = 3U;
