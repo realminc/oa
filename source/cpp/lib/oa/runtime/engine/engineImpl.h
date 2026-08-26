@@ -13,9 +13,8 @@
 #include "../../core/logAccess.h"
 #include "../timerRegistry.h"
 
-#include <atomic>
-#include <map>
-#include <mutex>
+#include <oa/core/std/atomic.h>
+#include <oa/core/std/sync.h>
 
 namespace oa {
 
@@ -32,6 +31,11 @@ struct RetiredImageDispatch {
 	oa::Vec<oa::U32> sampledImageSlots;
 	oa::Vec<oa::U32> samplerSlots;
 	oa::Vec<VkImageView> imageViews;
+};
+
+struct HostVisibleBufferCacheEntry {
+	oa::U64 capacity = 0;
+	oavk::Buffer buffer;
 };
 
 } // namespace oa
@@ -140,13 +144,13 @@ public:
 	oa::SharedPtr<BufferLeaseRegistry> bufferLeaseRegistry_;
 	oa::Precision precision_ = oa::Precision::FP32;
 	oa::MemoryPlacement matrixPlacement_ = oa::MemoryPlacement::HostUpload;
-	mutable std::atomic<oa::U64> gemmCapsMask_{0};
+	mutable oa::Atomic<oa::U64> gemmCapsMask_{0};
 
 	oa::Vec<oa::UniquePtr<oavk::Stream>> streamPool_;
 	oa::Vec<oa::U32> freeStack_;
 	oa::Spinlock streamPoolLock_;
 	oa::Vec<oa::RetiredImageDispatch> retiredImageDispatches_;
-	std::mutex retiredImageDispatchMutex_;
+	oa::Mutex retiredImageDispatchMutex_;
 	oa::Vec<oa::UniquePtr<oa::ExecutableGraph>> retiredExecutionPlans_;
 	oa::Mutex retiredExecutionPlanMutex_;
 	oa::Vec<RetiredSessionBatch> retiredSessionBatches_;
@@ -162,21 +166,21 @@ public:
 	oa::Vec<oa::U32> asyncFreeStack_;
 	oa::Spinlock asyncStreamPoolLock_;
 	oa::Vec<GraphicsStreamSlot> graphicsStreamPool_;
-	std::mutex graphicsStreamPoolMutex_;
+	oa::Mutex graphicsStreamPoolMutex_;
 
 	oavk::Stream transferStream_;
 	oavk::Stream readbackStream_;
 	oavk::Buffer readbackStaging_;
 	oa::UniquePtr<oa::UploadRing> uploadRing_;
-	std::mutex computeQueueMutex_;
-	std::mutex asyncComputeQueueMutex_;
-	std::mutex transferQueueMutex_;
-	std::mutex graphicsQueueMutex_;
-	std::mutex presentQueueMutex_;
-	std::mutex transferStreamMutex_;
-	std::mutex uploadRingMutex_;
-	std::mutex readbackMutex_;
-	std::mutex hostVisibleBufferCacheMutex_;
-	std::multimap<oa::U64, oavk::Buffer> hostVisibleBufferCache_;
+	oa::Mutex computeQueueMutex_;
+	oa::Mutex asyncComputeQueueMutex_;
+	oa::Mutex transferQueueMutex_;
+	oa::Mutex graphicsQueueMutex_;
+	oa::Mutex presentQueueMutex_;
+	oa::Mutex transferStreamMutex_;
+	oa::Mutex uploadRingMutex_;
+	oa::Mutex readbackMutex_;
+	oa::Mutex hostVisibleBufferCacheMutex_;
+	oa::Vec<oa::HostVisibleBufferCacheEntry> hostVisibleBufferCache_;
 	oa::U64 hostVisibleBufferCacheBytes_ = 0;
 };

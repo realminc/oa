@@ -1,6 +1,11 @@
 #include <oa/vision/screenCapture.h>
 
 #include <oa/core/log.h>
+#include <oa/core/memory.h>
+#include <oa/core/std/algo.h>
+#include <oa/core/std/pair.h>
+#include <oa/core/std/vec.h>
+#include <oa/core/thread.h>
 #include <oa/runtime/allocator.h>
 #include <oa/runtime/engine.h>
 #include <oa/runtime/engine/resourceAccess.h>
@@ -10,13 +15,8 @@
 #include "../../core/logAccess.h"
 #include "oa/runtime/engine/borrowedServiceRetirement.h"
 
-#include <algorithm>
-#include <atomic>
-#include <cerrno>
-#include <cstring>
-#include <mutex>
-#include <thread>
-#include <vector>
+#include <errno.h>
+#include <string.h>
 
 #if defined(__linux__)
 #include <unistd.h>
@@ -42,7 +42,7 @@ struct oa::ScreenCapture::Impl {
 	oa::U32 width = 0;
 	oa::U32 height = 0;
 	oa::U64 uploadedCpuSequence = 0;
-	std::atomic<bool> streaming = false;
+	oa::Atomic<bool> streaming{false};
 
 #if defined(OA_HAS_PIPEWIRE_SCREEN_CAPTURE)
 	XdpPortal* portal = nullptr;
@@ -57,9 +57,9 @@ struct oa::ScreenCapture::Impl {
 	pw_core* pwCore = nullptr;
 	pw_stream* pwStream = nullptr;
 	spa_hook streamListener = {};
-	std::thread pwThread;
+	oa::Thread pwThread;
 
-	std::mutex frameMutex;
+	oa::Mutex frameMutex;
 	oa::Vec<oa::U8> cpuFrame;
 	oa::U32 cpuWidth = 0;
 	oa::U32 cpuHeight = 0;
@@ -137,7 +137,7 @@ struct oa::ScreenCapture::Impl {
 		freeRing();
 		width = inWidth;
 		height = inHeight;
-		const oa::U32 ringCount = std::max(2U, config.ringFrames);
+		const oa::U32 ringCount = oa::max(2U, config.ringFrames);
 		const oa::U64 bytes = static_cast<oa::U64>(width) * height * 4ULL;
 		ring.resize(ringCount);
 		ringConsumers.resize(ringCount);
@@ -224,7 +224,7 @@ bool isImportableCaptureModifier(
 			& VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT) != 0U;
 }
 
-std::vector<oa::U64> captureDmaBufModifiers(
+oa::Vec<oa::U64> captureDmaBufModifiers(
 	const oa::Engine& inEngine, VkFormat inFormat)
 {
 	const auto& device = oa::EngineDeviceAccess::get(inEngine);
@@ -241,12 +241,12 @@ std::vector<oa::U64> captureDmaBufModifiers(
 	device.instanceDispatch.vkGetPhysicalDeviceFormatProperties2(
 		static_cast<VkPhysicalDevice>(device.physicalDevice), inFormat, &properties);
 	if (list.drmFormatModifierCount == 0U) return {};
-	std::vector<VkDrmFormatModifierPropertiesEXT> candidates(list.drmFormatModifierCount);
+	oa::Vec<VkDrmFormatModifierPropertiesEXT> candidates(list.drmFormatModifierCount);
 	list.pDrmFormatModifierProperties = candidates.data();
 	device.instanceDispatch.vkGetPhysicalDeviceFormatProperties2(
 		static_cast<VkPhysicalDevice>(device.physicalDevice), inFormat, &properties);
 
-	std::vector<oa::U64> result;
+	oa::Vec<oa::U64> result;
 	result.reserve(candidates.size());
 	for (const auto& candidate : candidates) {
 		if (candidate.drmFormatModifierPlaneCount != 1U
@@ -256,7 +256,7 @@ std::vector<oa::U64> captureDmaBufModifiers(
 		}
 		if (isImportableCaptureModifier(
 			inEngine, inFormat, candidate.drmFormatModifier)) {
-			result.push_back(candidate.drmFormatModifier);
+			result.pushBack(candidate.drmFormatModifier);
 		}
 	}
 	return result;
@@ -312,7 +312,7 @@ void returnDmaBuffer(oa::ScreenCapture::Impl& inImpl, pw_buffer* inBuffer) {
 	if (result < 0) {
 		OaLogError(oa::LogComponent::Vision,
 			"PipeWire screen capture could not return DMA-BUF: %s",
-			std::strerror(-result));
+			::strerror(-result));
 	}
 }
 
@@ -387,7 +387,7 @@ void streamParamChanged(void* inData, oa::U32 inId, const spa_pod* inParam) {
 			return;
 	}
 	{
-		std::lock_guard<std::mutex> lock(impl->frameMutex);
+		oa::ScopedLock<oa::Mutex> lock(impl->frameMutex);
 		impl->cpuWidth = impl->rawFormat.size.width;
 		impl->cpuHeight = impl->rawFormat.size.height;
 		impl->cpuStride = impl->cpuWidth * 4U;
@@ -438,7 +438,7 @@ void streamProcess(void* inData) {
 	}
 	if (data.type == SPA_DATA_DmaBuf and data.fd >= 0
 		and (impl->rawFormat.flags & SPA_VIDEO_FLAG_MODIFIER) != 0U) {
-		std::lock_guard<std::mutex> lock(impl->frameMutex);
+		oa::ScopedLock<oa::Mutex> lock(impl->frameMutex);
 		if (impl->heldDmaBuffer != nullptr) {
 			// One explicitly-held producer frame at a time. Returning additional
 			// buffers keeps PipeWire live while the consumer finishes the held one.
@@ -465,7 +465,7 @@ void streamProcess(void* inData) {
 		: impl->cpuWidth * impl->sourceBytesPerPixel;
 	const oa::U64 required = static_cast<oa::U64>(impl->cpuWidth) * impl->cpuHeight * 4ULL;
 	{
-		std::lock_guard<std::mutex> lock(impl->frameMutex);
+		oa::ScopedLock<oa::Mutex> lock(impl->frameMutex);
 		impl->cpuFrame.resize(static_cast<oa::Usize>(required));
 		const bool swapRedBlue = impl->rawFormat.format == SPA_VIDEO_FORMAT_BGRA
 			or impl->rawFormat.format == SPA_VIDEO_FORMAT_BGRx;
@@ -475,7 +475,7 @@ void streamProcess(void* inData) {
 			oa::U8* destination = impl->cpuFrame.data() + static_cast<oa::U64>(y) * impl->cpuWidth * 4ULL;
 			const oa::U8* row = source + static_cast<oa::U64>(y) * sourceStride;
 			if (not swapRedBlue and not forceAlpha) {
-				std::memcpy(destination, row, static_cast<oa::Usize>(impl->cpuWidth) * 4U);
+				oa::memcpy(destination, row, static_cast<oa::Usize>(impl->cpuWidth) * 4U);
 				continue;
 			}
 			for (oa::U32 x = 0; x < impl->cpuWidth; ++x) {
@@ -658,10 +658,10 @@ oa::Result<oa::ScreenCapture> oa::ScreenCapture::open(
 		{ SPA_VIDEO_FORMAT_BGRA, VK_FORMAT_B8G8R8A8_UNORM },
 		{ SPA_VIDEO_FORMAT_BGRx, VK_FORMAT_B8G8R8A8_UNORM },
 	};
-	std::vector<std::pair<spa_video_format, oa::U64>> dmaFormats;
+	oa::Vec<oa::Pair<spa_video_format, oa::U64>> dmaFormats;
 	for (const auto& format : formats) {
 		for (const oa::U64 modifier : captureDmaBufModifiers(inEngine, format.vk)) {
-			dmaFormats.emplace_back(format.spa, modifier);
+			dmaFormats.emplaceBack(format.spa, modifier);
 		}
 	}
 	OaLogInfo(oa::LogComponent::Vision,
@@ -669,20 +669,20 @@ oa::Result<oa::ScreenCapture> oa::ScreenCapture::open(
 		dmaFormats.size());
 	// Each pod is small, but use dynamically-sized stable storage so every
 	// importable modifier can be offered without a fixed stack limit.
-	std::vector<oa::U8> storage(2048U + (dmaFormats.size() + 4U) * 512U);
+	oa::Vec<oa::U8> storage(2048U + (dmaFormats.size() + 4U) * 512U);
 	spa_pod_builder builder = SPA_POD_BUILDER_INIT(
 		storage.data(), static_cast<oa::U32>(storage.size()));
-	std::vector<const spa_pod*> params;
+	oa::Vec<const spa_pod*> params;
 	params.reserve(dmaFormats.size() + 4U);
 	for (const auto& [format, modifier] : dmaFormats) {
-		params.push_back(addCaptureFormat(
+		params.pushBack(addCaptureFormat(
 			builder, format, &modifier, preferred, minimum, maximum,
 			fps, minFps, maxFps));
 	}
 	// mapped-memory formats are the universal fallback when the compositor
 	// cannot allocate a modifier shared with the vulkan device.
 	for (const auto& format : formats) {
-		params.push_back(addCaptureFormat(
+		params.pushBack(addCaptureFormat(
 			builder, format.spa, nullptr, preferred, minimum, maximum,
 			fps, minFps, maxFps));
 	}
@@ -696,10 +696,15 @@ oa::Result<oa::ScreenCapture> oa::ScreenCapture::open(
 			"Could not connect the PipeWire screen stream"));
 	}
 	const oa::LogSelection logSelection = oa::LogAccess::currentSelection();
-	impl.pwThread = std::thread([loop = impl.pwLoop, logSelection] {
+	auto pipeWireThread = oa::Thread::create([loop = impl.pwLoop, logSelection] {
 		oa::LogAccess::Scope logScope(logSelection);
 		pw_main_loop_run(loop);
 	});
+	if (pipeWireThread.isError()) {
+		return closeScreenCaptureAfterOpenFailure(
+			capture, pipeWireThread.getStatus());
+	}
+	impl.pwThread = oa::move(*pipeWireThread);
 	return oa::Result<oa::ScreenCapture>(oa::move(capture));
 #endif
 }
@@ -723,7 +728,7 @@ bool oa::ScreenCapture::poll(oa::VideoFrame& outFrame) {
 	}
 	pw_buffer* rejectedDmaBuffer = nullptr;
 	{
-		std::lock_guard<std::mutex> lock(impl.frameMutex);
+		oa::ScopedLock<oa::Mutex> lock(impl.frameMutex);
 		if (impl.heldDmaBuffer != nullptr
 			and impl.dmaSequence != impl.uploadedDmaSequence) {
 			oa::DmaBufImageDesc description;
@@ -774,7 +779,7 @@ bool oa::ScreenCapture::poll(oa::VideoFrame& outFrame) {
 		return false;
 	}
 
-	std::lock_guard<std::mutex> lock(impl.frameMutex);
+	oa::ScopedLock<oa::Mutex> lock(impl.frameMutex);
 	if (impl.cpuSequence == 0U or impl.cpuSequence == impl.uploadedCpuSequence) return false;
 	if (not impl.ensureRing(impl.cpuWidth, impl.cpuHeight).isOk()) return false;
 	auto& consumer = impl.ringConsumers[impl.head];
@@ -782,7 +787,7 @@ bool oa::ScreenCapture::poll(oa::VideoFrame& outFrame) {
 	consumer = {};
 	auto& destination = impl.ring[impl.head];
 	if (destination.mappedPtr == nullptr) return false;
-	std::memcpy(destination.mappedPtr, impl.cpuFrame.data(), impl.cpuFrame.size());
+	oa::memcpy(destination.mappedPtr, impl.cpuFrame.data(), impl.cpuFrame.size());
 	impl.latest = impl.head;
 	impl.head = (impl.head + 1U) % static_cast<oa::U32>(impl.ring.size());
 	impl.uploadedCpuSequence = impl.cpuSequence;
@@ -825,7 +830,7 @@ void oa::ScreenCapture::release(
 	pw_buffer* buffer = nullptr;
 	oa::ImportedDmaBufImage imported;
 	{
-		std::lock_guard<std::mutex> lock(impl.frameMutex);
+		oa::ScopedLock<oa::Mutex> lock(impl.frameMutex);
 		if (not impl.importedDmaImage.isValid()
 			or inFrame.image != impl.importedDmaImage.image()) return;
 		imported = oa::move(impl.importedDmaImage);
@@ -866,10 +871,10 @@ oa::Status oa::ScreenCapture::close() {
 				"PipeWire screen capture loop could not be stopped"));
 		}
 	}
-	if (impl.pwThread.joinable()) impl.pwThread.join();
+	if (impl.pwThread.joinable()) retainError(impl.pwThread.join());
 	oa::ImportedDmaBufImage importedDmaImage;
 	{
-		std::lock_guard<std::mutex> lock(impl.frameMutex);
+		oa::ScopedLock<oa::Mutex> lock(impl.frameMutex);
 		importedDmaImage = oa::move(impl.importedDmaImage);
 		impl.heldDmaBuffer = nullptr;
 	}

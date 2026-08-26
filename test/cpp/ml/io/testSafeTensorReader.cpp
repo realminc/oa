@@ -11,9 +11,12 @@ std::atomic<oa::U64> GSafeTensorTestSequence{0};
 
 oa::Path makeTestDirectory() {
 	const auto tick = std::chrono::steady_clock::now().time_since_epoch().count();
-	const oa::String name = oa::String("oa_safetensor_") +
-		std::to_string(static_cast<unsigned long long>(++GSafeTensorTestSequence)) + "_" +
-		std::to_string(static_cast<long long>(tick));
+	const std::string sequence =
+		std::to_string(static_cast<unsigned long long>(++GSafeTensorTestSequence));
+	const std::string timestamp = std::to_string(static_cast<long long>(tick));
+	const oa::String name = oa::String("oa_safetensor_")
+		+ oa::String(sequence.data(), sequence.size()) + "_"
+		+ oa::String(timestamp.data(), timestamp.size());
 	return oa::Paths::temp() / oa::Path(name);
 }
 

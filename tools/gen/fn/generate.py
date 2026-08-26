@@ -755,6 +755,7 @@ def _emitManualAutogradAttachDefinition(op: dict) -> list[str]:
 	params, _, _ = _manualAutogradAttachContract(op)
 	inputsInit = "{" + ", ".join(inputs) + "}"
 	savedInit = "{" + ", ".join(savedExpressions) + "}"
+	savedArgs = ", ".join(savedExpressions)
 	lines = [
 	 f"oa::Status {op['name']}Enabled({params}) {{",
 	]
@@ -763,7 +764,7 @@ def _emitManualAutogradAttachDefinition(op: dict) -> list[str]:
 		 f"\tif ({inputs[0]}.getShape() != {inputs[1]}.getShape()) {{",
 		 "\t\tauto gradFn = oa::makeShared<oa::GradBcastBinary>();",
 		 f"\t\tgradFn->op_ = oa::BcastBinOp::{ag['broadcast_op']};",
-		 f"\t\tgradFn->saveForBackward({inputsInit});",
+		 f"\t\tgradFn->saveForBackward({', '.join(inputs)});",
 		 f"\t\tgradFn->setGraphInputs(oa::Vec<oa::Matrix>{inputsInit});",
 		 "\t\tgradFn->sequenceNr_ = oa::FnAutograd::nextSeq();",
 		 "\t\tgradFn->outputShape_ = out.getShape();",
@@ -774,7 +775,7 @@ def _emitManualAutogradAttachDefinition(op: dict) -> list[str]:
 		]
 	lines += [
 	 f"\tauto gradFn = oa::makeShared<{gradClass}>();",
-	 f"\tgradFn->saveForBackward({savedInit});",
+	 f"\tgradFn->saveForBackward({savedArgs});",
 	]
 	if optionalInputs:
 		optionalSet = set(optionalInputs)
@@ -789,7 +790,7 @@ def _emitManualAutogradAttachDefinition(op: dict) -> list[str]:
 				)
 			else:
 				lines.append(f"\tgraphInputs.pushBack({name});")
-		lines.append("\tgradFn->setGraphInputs(std::move(graphInputs));")
+		lines.append("\tgradFn->setGraphInputs(oa::move(graphInputs));")
 	else:
 		lines.append(
 		 f"\tgradFn->setGraphInputs(oa::Vec<oa::Matrix>{inputsInit});"
@@ -976,10 +977,10 @@ def emitPythonBinding(namespace: str, op: dict) -> list[str]:
 	apiReturn = op.get("api_return", "oa::Matrix")
 	if apiReturn == "oa::Matrix":
 		result = f"matrixPtr({call})"
-		ownedResult = "matrixPtr(std::move(result))"
+		ownedResult = "matrixPtr(oa::move(result))"
 	elif apiReturn == "oa::Image":
 		result = f"imagePtr({call})"
-		ownedResult = "imagePtr(std::move(result))"
+		ownedResult = "imagePtr(oa::move(result))"
 	elif apiReturn == "void":
 		result = call
 		ownedResult = ""
@@ -991,7 +992,7 @@ def emitPythonBinding(namespace: str, op: dict) -> list[str]:
 		 "cpp_type", apiReturn
 		)
 		result = f"new {resultType}({call})"
-		ownedResult = f"new {resultType}(std::move(result))"
+		ownedResult = f"new {resultType}(oa::move(result))"
 	lines = [
 	 f'\tm.def("{pythonName}", []({params}) {{',
 	]
@@ -1002,7 +1003,7 @@ def emitPythonBinding(namespace: str, op: dict) -> list[str]:
 		 "\t\tnb::list values;",
 		 "\t\tfor (auto& value : result) {",
 		 "\t\t\tvalues.append(nb::cast(",
-		 "\t\t\t\tmatrixPtr(std::move(value)),",
+			 "\t\t\t\tmatrixPtr(oa::move(value)),",
 		 "\t\t\t\tnb::rv_policy::take_ownership));",
 		 "\t\t}",
 		 "\t\treturn values;",
@@ -1473,6 +1474,7 @@ def emitAutogradAttach(
 	reqCheck = " or ".join(f"{i}.requiresGrad()" for i in inputs)
 	ctorCall = "(" + ", ".join(ctorArgs) + ")" if ctorArgs else "()"
 	savedInit = "{" + ", ".join(saved) + "}"
+	savedArgs = ", ".join(saved)
 	inputsInit = "{" + ", ".join(inputs) + "}"
 	semanticAttach = ""
 	if semanticOperation is not None:
@@ -1490,7 +1492,7 @@ def emitAutogradAttach(
 	 f"\tif (oa::FnAutograd::isEnabled() and ({reqCheck})) {{\n"
 	 f"\t\tauto _gradFn = oa::makeShared<{gradClass}>{ctorCall};\n"
 	 f"{broadcastOperation}"
-	 f"\t\t_gradFn->saveForBackward({savedInit});\n"
+	 f"\t\t_gradFn->saveForBackward({savedArgs});\n"
 	 f"\t\t_gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inputsInit});\n"
 	 f"\t\t_gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();\n"
 	 f"\t\t_gradFn->outputShape_ = out.getShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads\n"
@@ -1761,7 +1763,7 @@ def emitCppFile(ops: list[dict], schemaName: str, category: str,
 	 for op in ops
 	)
 	if needsAssert:
-		out.append("#include <cassert>\n\n")
+		out.append("#include <assert.h>\n\n")
 	needsDivCeil = any(
 	 op.get("body", "auto") not in ("manual_session", "cpu_util", "cpp_expr")
 	 for op in ops
@@ -2151,7 +2153,7 @@ protected:
 \t\tconfig.appName = "TestFnMatrix{category}";
 \t\tauto result = oa::Engine::create(config);
 \t\tASSERT_TRUE(result.isOk()) << result.getStatus().getMessage();
-\t\tstatic oa::UniquePtr<oa::Engine> engine = std::move(*result);
+\t\tstatic oa::UniquePtr<oa::Engine> engine = oa::move(*result);
 \t\truntime = engine.get();
 \t}}
 }};

@@ -24,8 +24,11 @@ inline constexpr oa::LogComponent TestLogComponent{"TST"};
 static oa::Path coreMiscMakeWorkDir() {
 	oa::Path tmp = oa::Paths::temp();
 	const auto tick = std::chrono::steady_clock::now().time_since_epoch().count();
-	oa::String name = oa::String("oa_core_misc_") + std::to_string(static_cast<long long>(++gOaCoreMiscDirSeq)) + "_"
-		+ std::to_string(static_cast<long long>(tick));
+	const std::string sequence = std::to_string(static_cast<long long>(++gOaCoreMiscDirSeq));
+	const std::string timestamp = std::to_string(static_cast<long long>(tick));
+	oa::String name = oa::String("oa_core_misc_")
+		+ oa::String(sequence.data(), sequence.size()) + "_"
+		+ oa::String(timestamp.data(), timestamp.size());
 	return tmp / oa::Path(name);
 }
 
@@ -268,8 +271,9 @@ TEST_F(CoreMiscFs, LogSessionOwnsFileAndReportsClosedWrites) {
 	ASSERT_TRUE(oa::Filesystem::isFile(path));
 	auto contents = oa::Filesystem::readText(path);
 	ASSERT_TRUE(contents.isOk());
-	EXPECT_NE(contents->stdStr().find("[TST ]"), std::string::npos);
-	EXPECT_NE(contents->stdStr().find("owned record 7"), std::string::npos);
+	const std::string hostedContents = testStdString(*contents);
+	EXPECT_NE(hostedContents.find("[TST ]"), std::string::npos);
+	EXPECT_NE(hostedContents.find("owned record 7"), std::string::npos);
 	ASSERT_TRUE(log->close().isOk());
 	EXPECT_EQ(log->write(
 		oa::LogLevel::Info, oa::LogComponent::Core, "after close").getCode(),
@@ -304,6 +308,34 @@ TEST_F(CoreMiscFs, LogSessionSerializesWritersAndLevelChanges) {
 	EXPECT_FALSE(failed.load(std::memory_order_relaxed));
 	EXPECT_TRUE(log->flush().isOk());
 	EXPECT_TRUE(log->close().isOk());
+}
+
+TEST_F(CoreMiscFs, LogMetricsSerializesWritersFlushAndClose) {
+	oa::LogMetrics metrics(workDir_.string());
+	ASSERT_TRUE(metrics.isOpen());
+	metrics.setFlushInterval(7);
+
+	std::vector<std::thread> writers;
+	for (oa::I32 thread = 0; thread < 4; ++thread) {
+		writers.emplace_back([&, thread] {
+			for (oa::I32 record = 0; record < 100; ++record) {
+				metrics.logScalar("loss", thread * 100 + record,
+					static_cast<oa::F64>(record));
+			}
+		});
+	}
+	for (auto& writer : writers) writer.join();
+	metrics.flush();
+	metrics.close();
+	EXPECT_FALSE(metrics.isOpen());
+
+	auto contents = oa::Filesystem::readText(workDir_ / "events.jsonl");
+	ASSERT_TRUE(contents.isOk()) << contents.getStatus().toString();
+	oa::Usize lineCount = 0;
+	for (char character : *contents) {
+		if (character == '\n') ++lineCount;
+	}
+	EXPECT_EQ(lineCount, 400U);
 }
 
 TEST_F(CoreMiscFs, BinaryRoundTrip) {

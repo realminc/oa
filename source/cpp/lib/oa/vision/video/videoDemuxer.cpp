@@ -3,12 +3,8 @@
 #include <oa/vision/videoDemuxer.h>
 #include "codec/nalParser.h"
 #include "codec/vcpAv1.h"
-#include <algorithm>
-#include <cerrno>
-#include <cstdio>
-#include <cstring>
-#include <limits>
-#include <string_view>
+#include <errno.h>
+#include <stdio.h>
 
 struct oa::VideoDemuxer::MediaImpl {
 	enum class NativeKind : oa::U8 { None, MpegTs };
@@ -194,10 +190,10 @@ struct EbmlElement {
 	bool unknownSize = false;
 };
 
-bool readEbmlVint(std::FILE* inFile, bool inKeepMarker,
+bool readEbmlVint(::FILE* inFile, bool inKeepMarker,
 	oa::U64& outValue, oa::U32& outLength, bool& outUnknown)
 {
-	const int firstInt = std::fgetc(inFile);
+	const int firstInt = ::fgetc(inFile);
 	if (firstInt == EOF) return false;
 	const oa::U8 first = static_cast<oa::U8>(firstInt);
 	oa::U8 marker = 0x80U;
@@ -209,7 +205,7 @@ bool readEbmlVint(std::FILE* inFile, bool inKeepMarker,
 	if (length > 8U or (inKeepMarker and length > 4U)) return false;
 	oa::U64 value = inKeepMarker ? first : static_cast<oa::U64>(first & (marker - 1U));
 	for (oa::U32 i = 1U; i < length; ++i) {
-		const int byte = std::fgetc(inFile);
+		const int byte = ::fgetc(inFile);
 		if (byte == EOF) return false;
 		value = (value << 8U) | static_cast<oa::U8>(byte);
 	}
@@ -222,7 +218,7 @@ bool readEbmlVint(std::FILE* inFile, bool inKeepMarker,
 	return true;
 }
 
-bool readEbmlElement(std::FILE* inFile, oa::U64 inLimit, EbmlElement& out)
+bool readEbmlElement(::FILE* inFile, oa::U64 inLimit, EbmlElement& out)
 {
 	const off_t start = ::ftello(inFile);
 	if (start < 0 or static_cast<oa::U64>(start) >= inLimit) return false;
@@ -238,23 +234,23 @@ bool readEbmlElement(std::FILE* inFile, oa::U64 inLimit, EbmlElement& out)
 	return out.dataOffset <= inLimit and out.size <= inLimit - out.dataOffset;
 }
 
-oa::U64 readEbmlUnsigned(std::FILE* inFile, oa::U64 inSize)
+oa::U64 readEbmlUnsigned(::FILE* inFile, oa::U64 inSize)
 {
 	if (inSize == 0U or inSize > 8U) return 0U;
 	oa::U64 value = 0U;
 	for (oa::U64 i = 0U; i < inSize; ++i) {
-		const int byte = std::fgetc(inFile);
+		const int byte = ::fgetc(inFile);
 		if (byte == EOF) return 0U;
 		value = (value << 8U) | static_cast<oa::U8>(byte);
 	}
 	return value;
 }
 
-oa::String readEbmlString(std::FILE* inFile, oa::U64 inSize)
+oa::String readEbmlString(::FILE* inFile, oa::U64 inSize)
 {
 	if (inSize > 1024U) return {};
 	oa::Vec<char> bytes(static_cast<oa::Usize>(inSize + 1U), '\0');
-	if (inSize > 0U and std::fread(bytes.data(), 1U, static_cast<oa::Usize>(inSize), inFile)
+	if (inSize > 0U and ::fread(bytes.data(), 1U, static_cast<oa::Usize>(inSize), inFile)
 		!= inSize) return {};
 	return oa::String(bytes.data());
 }
@@ -470,7 +466,7 @@ struct MatroskaTrack {
 	oa::U64 defaultDurationNs = 0U;
 };
 
-void parseMatroskaVideo(std::FILE* inFile, oa::U64 inEnd, MatroskaTrack& out)
+void parseMatroskaVideo(::FILE* inFile, oa::U64 inEnd, MatroskaTrack& out)
 {
 	while (static_cast<oa::U64>(::ftello(inFile)) < inEnd) {
 		EbmlElement element;
@@ -481,7 +477,7 @@ void parseMatroskaVideo(std::FILE* inFile, oa::U64 inEnd, MatroskaTrack& out)
 	}
 }
 
-MatroskaTrack parseMatroskaTrack(std::FILE* inFile, oa::U64 inEnd)
+MatroskaTrack parseMatroskaTrack(::FILE* inFile, oa::U64 inEnd)
 {
 	MatroskaTrack track;
 	while (static_cast<oa::U64>(::ftello(inFile)) < inEnd) {
@@ -493,7 +489,7 @@ MatroskaTrack parseMatroskaTrack(std::FILE* inFile, oa::U64 inEnd)
 		else if (element.id == 0x63A2U and element.size <= 16U * 1024U * 1024U) {
 			track.codecPrivate.resize(static_cast<oa::Usize>(element.size));
 			if (element.size > 0U) {
-				(void)std::fread(track.codecPrivate.data(), 1U, track.codecPrivate.size(), inFile);
+				(void)::fread(track.codecPrivate.data(), 1U, track.codecPrivate.size(), inFile);
 			}
 		} else if (element.id == 0x23E383U) {
 			track.defaultDurationNs = readEbmlUnsigned(inFile, element.size);
@@ -505,7 +501,7 @@ MatroskaTrack parseMatroskaTrack(std::FILE* inFile, oa::U64 inEnd)
 	return track;
 }
 
-oa::Status parseMatroskaCluster(std::FILE* inFile, oa::U64 inEnd,
+oa::Status parseMatroskaCluster(::FILE* inFile, oa::U64 inEnd,
 	oa::U64 inVideoTrack, oa::U64 inTimecodeScale, oa::U64 inDefaultDurationNs,
 	oa::VideoDemuxer& out)
 {
@@ -522,7 +518,7 @@ oa::Status parseMatroskaCluster(std::FILE* inFile, oa::U64 inEnd,
 			bool unknown = false;
 			if (blockStart >= 0 and readEbmlVint(inFile, false, track, trackBytes, unknown)) {
 				oa::U8 header[3] = {};
-				if (std::fread(header, 1U, sizeof(header), inFile) == sizeof(header)) {
+				if (::fread(header, 1U, sizeof(header), inFile) == sizeof(header)) {
 					const oa::I16 relative = static_cast<oa::I16>(
 						(static_cast<oa::U16>(header[0]) << 8U) | header[1]);
 					const oa::U8 flags = header[2];
@@ -533,9 +529,9 @@ oa::Status parseMatroskaCluster(std::FILE* inFile, oa::U64 inEnd,
 						oa::VideoDemuxer::Sample sample;
 						sample.offset = element.dataOffset + headerSize;
 						sample.size = static_cast<oa::U32>(element.size - headerSize);
-						sample.dts = static_cast<oa::U64>(std::max<oa::I64>(0, signedTimestamp));
+						sample.dts = static_cast<oa::U64>(oa::max<oa::I64>(0, signedTimestamp));
 						sample.duration = inDefaultDurationNs > 0U and inTimecodeScale > 0U
-							? std::max<oa::U64>(1U, inDefaultDurationNs / inTimecodeScale) : 1U;
+							? oa::max<oa::U64>(1U, inDefaultDurationNs / inTimecodeScale) : 1U;
 						sample.isKeyframe = (flags & 0x80U) != 0U;
 						out.samples_.pushBack(sample);
 					}
@@ -547,7 +543,7 @@ oa::Status parseMatroskaCluster(std::FILE* inFile, oa::U64 inEnd,
 	return oa::Status::ok();
 }
 
-oa::Status parseMatroskaFile(std::FILE* inFile, oa::U64 inFileSize,
+oa::Status parseMatroskaFile(::FILE* inFile, oa::U64 inFileSize,
 	oa::StringView inPath, oa::VideoDemuxer& out)
 {
 	::fseeko(inFile, 0, SEEK_SET);
@@ -606,7 +602,7 @@ oa::Status parseMatroskaFile(std::FILE* inFile, oa::U64 inFileSize,
 		OA_RETURN_IF_ERROR(parseMatroskaCluster(inFile, clusters[i + 1U],
 			selected.number, timecodeScale, selected.defaultDurationNs, out));
 	}
-	const std::string_view codec(selected.codec.data(), selected.codec.size());
+	const oa::StringView codec(selected.codec.data(), selected.codec.size());
 	if (codec == "V_MPEG4/ISO/AVC") {
 		out.info_.codec = oa::VideoCodec::H264;
 		if (not parseAvcDecoderConfig(selected.codecPrivate.data(),
@@ -627,8 +623,9 @@ oa::Status parseMatroskaFile(std::FILE* inFile, oa::U64 inFileSize,
 		out.info_.codec = oa::VideoCodec::VP9;
 	} else return oa::Status::error(oa::StatusCode::Unimplemented,
 		"Matroska video codec is not supported by OA vulkan Video");
-	const std::string_view path(inPath.data(), inPath.size());
-	out.info_.kind = path.ends_with(".webm") ? oa::VideoContainerKind::WebM : oa::VideoContainerKind::Matroska;
+	const oa::StringView path(inPath.data(), inPath.size());
+	const bool isWebM = path.size() >= 5U and path.subStr(path.size() - 5U) == ".webm";
+	out.info_.kind = isWebM ? oa::VideoContainerKind::WebM : oa::VideoContainerKind::Matroska;
 	out.info_.width = selected.width;
 	out.info_.height = selected.height;
 	out.info_.timebaseNum = timecodeScale;
@@ -771,10 +768,10 @@ void parseH264AccessUnitGeometry(oa::Span<const oa::U8> inData, oa::VideoContain
 	}
 }
 
-oa::Status readMpegTsPes(std::FILE* inFile, oa::VideoDemuxer::MediaImpl& inMedia, oa::VideoCodec inCodec, oa::VideoPacket& out)
+oa::Status readMpegTsPes(::FILE* inFile, oa::VideoDemuxer::MediaImpl& inMedia, oa::VideoCodec inCodec, oa::VideoPacket& out)
 {
 	oa::U8 packet[188] = {};
-	while (std::fread(packet, 1U, sizeof(packet), inFile) == sizeof(packet)) {
+	while (::fread(packet, 1U, sizeof(packet), inFile) == sizeof(packet)) {
 		TsPayload payload;
 		if (not parseTsPayload(packet, payload) or payload.pid != inMedia.videoPid or payload.data == nullptr) continue;
 		if (payload.start and not inMedia.pes.empty()) {
@@ -816,14 +813,14 @@ oa::Status readMpegTsPes(std::FILE* inFile, oa::VideoDemuxer::MediaImpl& inMedia
 	return oa::Status::ok();
 }
 
-oa::Status initMpegTs(std::FILE* inFile, oa::U64 inFileSize, oa::VideoDemuxer::MediaImpl& outMedia, oa::VideoContainerInfo& outInfo)
+oa::Status initMpegTs(::FILE* inFile, oa::U64 inFileSize, oa::VideoDemuxer::MediaImpl& outMedia, oa::VideoContainerInfo& outInfo)
 {
 	::fseeko(inFile, 0, SEEK_SET);
 	oa::U8 packet[188] = {};
 	oa::VideoCodec codec = oa::VideoCodec::H264;
-	const oa::U64 scanPackets = std::min<oa::U64>(inFileSize / sizeof(packet), 8192U);
+	const oa::U64 scanPackets = oa::min<oa::U64>(inFileSize / sizeof(packet), 8192U);
 	for (oa::U64 i = 0U; i < scanPackets; ++i) {
-		if (std::fread(packet, 1U, sizeof(packet), inFile) != sizeof(packet)) break;
+		if (::fread(packet, 1U, sizeof(packet), inFile) != sizeof(packet)) break;
 		TsPayload payload;
 		if (not parseTsPayload(packet, payload)) continue;
 		if (payload.pid == 0U)
@@ -886,7 +883,7 @@ bool parseBoxHeader(const oa::U8* inData, oa::U64 inOffset, oa::U64 inDataSize, 
 }
 
 bool readTopLevelBoxHeader(
-	std::FILE* inFile,
+	::FILE* inFile,
 	oa::U64 inOffset,
 	oa::U64 inFileSize,
 	BoxHeader& outHeader,
@@ -895,12 +892,12 @@ bool readTopLevelBoxHeader(
 	if (inFile == nullptr || inOffset + 8U > inFileSize
 		|| ::fseeko(inFile, static_cast<off_t>(inOffset), SEEK_SET) != 0) return false;
 	oa::U8 bytes[16] = {};
-	if (std::fread(bytes, 1U, 8U, inFile) != 8U) return false;
+	if (::fread(bytes, 1U, 8U, inFile) != 8U) return false;
 	outHeader.size = readU32BE(bytes);
 	outHeader.type = readU32BE(bytes + 4U);
 	outHeaderSize = 8U;
 	if (outHeader.size == 1U) {
-		if (inOffset + 16U > inFileSize || std::fread(bytes + 8U, 1U, 8U, inFile) != 8U) {
+		if (inOffset + 16U > inFileSize || ::fread(bytes + 8U, 1U, 8U, inFile) != 8U) {
 			return false;
 		}
 		outHeader.size = readU64BE(bytes + 8U);
@@ -943,7 +940,7 @@ void oa::VideoDemuxer::reset_() noexcept
 	if (media_) {
 		media_.reset();
 	}
-	if (file_ != nullptr) std::fclose(file_);
+	if (file_ != nullptr) ::fclose(file_);
 	file_ = nullptr;
 	fileSize_ = 0U;
 	info_ = {};
@@ -970,11 +967,11 @@ void oa::VideoDemuxer::reset_() noexcept
 
 
 oa::VideoDemuxer::VideoDemuxer(oa::VideoDemuxer&& inOther) noexcept
-	: samples_(std::move(inOther.samples_))
+	: samples_(oa::move(inOther.samples_))
 	, info_(inOther.info_)
-	, avc_(std::move(inOther.avc_))
-	, hvc_(std::move(inOther.hvc_))
-	, av1_(std::move(inOther.av1_)), vp9_(std::move(inOther.vp9_))
+	, avc_(oa::move(inOther.avc_))
+	, hvc_(oa::move(inOther.hvc_))
+	, av1_(oa::move(inOther.av1_)), vp9_(oa::move(inOther.vp9_))
 	, fragment_(inOther.fragment_)
 	, media_(oa::move(inOther.media_))
 	, uri_(oa::move(inOther.uri_))
@@ -984,7 +981,7 @@ oa::VideoDemuxer::VideoDemuxer(oa::VideoDemuxer&& inOther) noexcept
 	, hasLastDecodeTimestamp_(inOther.hasLastDecodeTimestamp_)
 	, file_(inOther.file_)
 	, fileSize_(inOther.fileSize_)
-	, sampleData_(std::move(inOther.sampleData_))
+	, sampleData_(oa::move(inOther.sampleData_))
 	, currentOffset_(inOther.currentOffset_)
 	, eos_(inOther.eos_)
 	, currentSampleIndex_(inOther.currentSampleIndex_)
@@ -1003,10 +1000,10 @@ oa::VideoDemuxer& oa::VideoDemuxer::operator=(oa::VideoDemuxer&& inOther) noexce
 	if (this != &inOther) {
 		reset_();
 		info_ = inOther.info_;
-		avc_ = std::move(inOther.avc_);
-		hvc_ = std::move(inOther.hvc_);
-		av1_ = std::move(inOther.av1_);
-		vp9_ = std::move(inOther.vp9_);
+		avc_ = oa::move(inOther.avc_);
+		hvc_ = oa::move(inOther.hvc_);
+		av1_ = oa::move(inOther.av1_);
+		vp9_ = oa::move(inOther.vp9_);
 		fragment_ = inOther.fragment_;
 		media_ = oa::move(inOther.media_);
 		uri_ = oa::move(inOther.uri_);
@@ -1016,10 +1013,10 @@ oa::VideoDemuxer& oa::VideoDemuxer::operator=(oa::VideoDemuxer&& inOther) noexce
 		hasLastDecodeTimestamp_ = inOther.hasLastDecodeTimestamp_;
 		file_ = inOther.file_;
 		fileSize_ = inOther.fileSize_;
-		sampleData_ = std::move(inOther.sampleData_);
+		sampleData_ = oa::move(inOther.sampleData_);
 		currentOffset_ = inOther.currentOffset_;
 		eos_ = inOther.eos_;
-		samples_ = std::move(inOther.samples_);
+		samples_ = oa::move(inOther.samples_);
 		currentSampleIndex_ = inOther.currentSampleIndex_;
 		needParameterSets_ = inOther.needParameterSets_;
 		bufferedPictureNals_ = oa::move(inOther.bufferedPictureNals_);
@@ -1042,7 +1039,7 @@ oa::Status oa::VideoDemuxer::close()
 {
 	int closeResult = 0;
 	if (file_ != nullptr) {
-		closeResult = std::fclose(file_);
+		closeResult = ::fclose(file_);
 		file_ = nullptr;
 	}
 	reset_();
@@ -1062,14 +1059,14 @@ oa::Result<oa::VideoContainerInfo> oa::VideoDemuxer::probe(const char* inPath)
 	if (inPath == nullptr || inPath[0] == '\0') {
 		return oa::Status::invalidArgument("VideoDemuxer::probe requires a path");
 	}
-	std::FILE* file = std::fopen(inPath, "rb");
+	::FILE* file = ::fopen(inPath, "rb");
 	if (file == nullptr) {
 		return oa::Status::notFound(
 			oa::String("Cannot open video container: ") + inPath);
 	}
 	oa::U8 bytes[12] = {};
-	const oa::Usize read = std::fread(bytes, 1U, sizeof(bytes), file);
-	std::fclose(file);
+	const oa::Usize read = ::fread(bytes, 1U, sizeof(bytes), file);
+	::fclose(file);
 	if (read < sizeof(bytes)) {
 		return oa::Status::error("file too small to be a valid container");
 	}
@@ -1107,7 +1104,7 @@ oa::Result<oa::VideoDemuxer> oa::VideoDemuxer::open(
 		return oa::Status::invalidArgument("VideoDemuxer::open requires a URI");
 	}
 	const oa::String uri(inUri);
-	if (std::string_view(uri.data(), uri.size()).find("://") != std::string_view::npos) {
+	if (uri.view().find("://") != oa::StringView::Npos) {
 		return openMedia_(inUri, inConfig);
 	}
 	// openLocal_ owns local-container routing, including the native fallback for
@@ -1123,12 +1120,12 @@ oa::Result<oa::VideoDemuxer> oa::VideoDemuxer::openMedia_(
 	oa::StringView inUri, const oa::VideoDemuxerConfig& inConfig)
 {
 	const oa::String uri(inUri);
-	const std::string_view uriView(uri.data(), uri.size());
-	if (uriView.find("://") == std::string_view::npos) {
-		std::FILE* file = std::fopen(uri.cStr(), "rb");
+	const oa::StringView uriView = uri.view();
+	if (uriView.find("://") == oa::StringView::Npos) {
+		::FILE* file = ::fopen(uri.cStr(), "rb");
 		if (file != nullptr) {
 			oa::U8 signature[189] = {};
-			const oa::Usize signatureSize = std::fread(signature, 1U, sizeof(signature), file);
+			const oa::Usize signatureSize = ::fread(signature, 1U, sizeof(signature), file);
 			if (::fseeko(file, 0, SEEK_END) == 0) {
 				const off_t end = ::ftello(file);
 				if (end >= 0 and signatureSize >= 4U
@@ -1158,11 +1155,11 @@ oa::Result<oa::VideoDemuxer> oa::VideoDemuxer::openMedia_(
 					return oa::move(stream);
 				}
 			}
-			std::fclose(file);
+			::fclose(file);
 		}
 	}
 	return oa::Status::error(oa::StatusCode::Unimplemented,
-		uriView.find("://") != std::string_view::npos
+		uriView.find("://") != oa::StringView::Npos
 			? "OA-native network transports are not implemented yet"
 			: "Unsupported native media container or codec");
 }
@@ -1190,7 +1187,7 @@ oa::Result<oa::VideoDemuxer> oa::VideoDemuxer::openLocal_(oa::StringView inPath)
 	stream.info_.timebaseDen = info.timebaseDen;
 	stream.info_.trackCount = info.trackCount;
 	
-	stream.file_ = std::fopen(path.cStr(), "rb");
+	stream.file_ = ::fopen(path.cStr(), "rb");
 	if (stream.file_ == nullptr) {
 		return oa::Status::error(oa::StatusCode::NotFound, "Cannot open video container");
 	}
@@ -1216,7 +1213,7 @@ oa::Result<oa::VideoDemuxer> oa::VideoDemuxer::openLocal_(oa::StringView inPath)
 			}
 			oa::Vec<oa::U8> metadata(static_cast<oa::Usize>(payloadSize));
 			if (::fseeko(stream.file_, static_cast<off_t>(offset + headerSize), SEEK_SET) != 0
-				|| std::fread(metadata.data(), 1U, metadata.size(), stream.file_) != metadata.size()) {
+				|| ::fread(metadata.data(), 1U, metadata.size(), stream.file_) != metadata.size()) {
 				return oa::Status::error("Cannot read MP4 moov metadata");
 			}
 			parseMoovBox(metadata.data(), metadata.size(), stream);
@@ -1227,7 +1224,7 @@ oa::Result<oa::VideoDemuxer> oa::VideoDemuxer::openLocal_(oa::StringView inPath)
 			}
 			oa::Vec<oa::U8> fragment(static_cast<oa::Usize>(payloadSize));
 			if (::fseeko(stream.file_, static_cast<off_t>(offset + headerSize), SEEK_SET) != 0
-				or std::fread(fragment.data(), 1U, fragment.size(), stream.file_) != fragment.size()) {
+				or ::fread(fragment.data(), 1U, fragment.size(), stream.file_) != fragment.size()) {
 				return oa::Status::error("Cannot read MP4 fragment metadata");
 			}
 			OA_RETURN_IF_ERROR(parseMoofBox(fragment.data(), fragment.size(), offset,
@@ -1275,7 +1272,7 @@ oa::Status oa::VideoDemuxer::readNextPacket(oa::VideoPacket& outPacket)
 	}
 	sampleData_.resize(sample.size);
 	if (::fseeko(file_, static_cast<off_t>(sample.offset), SEEK_SET) != 0
-		|| std::fread(sampleData_.data(), 1U, sample.size, file_) != sample.size) {
+		|| ::fread(sampleData_.data(), 1U, sample.size, file_) != sample.size) {
 		eos_ = true;
 		return oa::Status::error("Failed to read compressed video sample");
 	}
@@ -1997,7 +1994,7 @@ void parseStblBox(const oa::U8* inData, oa::U64 inSize, oa::VideoDemuxer& outStr
 				const oa::U32 rawOffset = readU32BE(boxData + 8 + i * 8 + 4);
 				cttsEntries[i * 2 + 1] = version == 1U
 					? static_cast<oa::I32>(rawOffset)
-					: static_cast<oa::I32>(std::min<oa::U32>(rawOffset, 0x7FFFFFFFU));
+					: static_cast<oa::I32>(oa::min<oa::U32>(rawOffset, 0x7FFFFFFFU));
 			}
 		}
 		
@@ -2231,7 +2228,7 @@ oa::Status parseMoofBox(const oa::U8* inData, oa::U64 inSize, oa::U64 inMoofOffs
 					if (p + 4U > runPayloadSize) return oa::Status::error("truncated composition offset");
 					const oa::U32 raw = readU32BE(run + p); p += 4U;
 					ctsOffset = version == 1U ? static_cast<oa::I32>(raw)
-						: static_cast<oa::I32>(std::min<oa::U32>(raw, 0x7FFFFFFFU));
+						: static_cast<oa::I32>(oa::min<oa::U32>(raw, 0x7FFFFFFFU));
 				}
 				if (size == 0U) return oa::Status::error("Fragment sample has no declared size");
 				oa::VideoDemuxer::Sample sample;

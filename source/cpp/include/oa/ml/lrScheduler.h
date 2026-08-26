@@ -44,7 +44,7 @@ private:
 class WarmupScheduler : public LRScheduler {
 public:
 	WarmupScheduler(oa::F32 inTargetLr, oa::U64 inWarmupSteps, oa::SharedPtr<LRScheduler> inAfter = nullptr)
-		: targetLr_(inTargetLr), warmupSteps_(inWarmupSteps), after_(std::move(inAfter))
+		: targetLr_(inTargetLr), warmupSteps_(inWarmupSteps), after_(oa::move(inAfter))
 	{}
 
 	[[nodiscard]] oa::F32 getLr(oa::U64 inStep) const override;
@@ -149,7 +149,7 @@ private:
 class SequentialScheduler : public LRScheduler {
 public:
 	SequentialScheduler(oa::Vec<oa::SharedPtr<LRScheduler>> inSchedulers, oa::Vec<oa::U64> inMilestones)
-		: schedulers_(std::move(inSchedulers)), milestones_(std::move(inMilestones)) {}
+		: schedulers_(oa::move(inSchedulers)), milestones_(oa::move(inMilestones)) {}
 
 	[[nodiscard]] oa::F32 getLr(oa::U64 inStep) const override;
 

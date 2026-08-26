@@ -9,8 +9,6 @@
 
 #pragma once
 
-#include <cstring>
-
 #include <oa/core.h>
 #include <oa/crypto/hash.h>
 
@@ -72,14 +70,14 @@ public:
 	SecretKey& operator=(const SecretKey&) = delete;
 
 	SecretKey(SecretKey&& inOther) noexcept {
-		std::memcpy(bytes.data(), inOther.bytes.data(), OA_SIGN_SECRET_SIZE);
+		oa::memcpy(bytes.data(), inOther.bytes.data(), OA_SIGN_SECRET_SIZE);
 		inOther.secureZero();
 	}
 
 	SecretKey& operator=(SecretKey&& inOther) noexcept {
 		if (this != &inOther) {
 			secureZero();
-			std::memcpy(bytes.data(), inOther.bytes.data(), OA_SIGN_SECRET_SIZE);
+			oa::memcpy(bytes.data(), inOther.bytes.data(), OA_SIGN_SECRET_SIZE);
 			inOther.secureZero();
 		}
 		return *this;
@@ -173,7 +171,7 @@ public:
 		return oa::Status::invalidArgument("ML-DSA-65 public key must contain exactly 1952 bytes");
 	}
 	PublicKey key;
-	std::memcpy(key.bytes.data(), inBuffer.data(), OA_SIGN_PUBKEY_SIZE);
+	oa::memcpy(key.bytes.data(), inBuffer.data(), OA_SIGN_PUBKEY_SIZE);
 	return key;
 }
 
@@ -188,7 +186,7 @@ public:
 		return oa::Status::invalidArgument("ML-DSA-65 signature must contain exactly 3309 bytes");
 	}
 	Signature sig;
-	std::memcpy(sig.bytes.data(), inBuffer.data(), OA_SIGN_SIG_SIZE);
+	oa::memcpy(sig.bytes.data(), inBuffer.data(), OA_SIGN_SIG_SIZE);
 	return sig;
 }
 

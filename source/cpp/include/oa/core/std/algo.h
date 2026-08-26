@@ -2,7 +2,9 @@
 
 // OA iterator algorithms with `oa::Span` overloads.
 //
-// sort: in-place heapsort, **O(n log n)**, unstable. Bounds APIs match `std` for the given comparator.
+// sort: in-place introsort, **O(n log n)** worst case, unstable. Median-of-three
+// partitioning handles the common path, insertion sort closes small partitions,
+// and heapsort is the bounded-depth fallback.
 // `lower_bound` / `upper_bound` / `binary_search` use **`distance` / `advance` / `next`** (`Iter.h`).
 
 #include <oa/core/std/iter.h>
@@ -10,6 +12,16 @@
 #include <oa/core/std/utility.h>
 
 namespace oa {
+
+template<typename T>
+[[nodiscard]] constexpr T gcd(T inA, T inB) noexcept {
+	while (inB != 0) {
+		const T remainder = inA % inB;
+		inA = inB;
+		inB = remainder;
+	}
+	return inA < 0 ? -inA : inA;
+}
 
 struct DefaultLess {
 	template<typename A, typename B>
@@ -56,6 +68,84 @@ struct AlgoHeapSort {
 			oa::swapValues(*inFirst, *(inFirst + (heapEnd - 1)));
 			siftDown(inFirst, 0, heapEnd - 1, inCmp);
 		}
+	}
+};
+
+struct AlgoIntroSort {
+	static constexpr __PTRDIFF_TYPE__ insertionThreshold = 24;
+
+	template<typename RandIt, typename Cmp>
+	static void insertionSort(RandIt inFirst, RandIt inLast, Cmp inCmp) {
+		if (inFirst == inLast) return;
+		for (RandIt current = inFirst + 1; current != inLast; ++current) {
+			typename IterTraits<RandIt>::value_type value = oa::move(*current);
+			RandIt insertion = current;
+			while (insertion != inFirst and inCmp(value, *(insertion - 1))) {
+				*insertion = oa::move(*(insertion - 1));
+				--insertion;
+			}
+			*insertion = oa::move(value);
+		}
+	}
+
+	template<typename RandIt, typename Cmp>
+	[[nodiscard]] static RandIt partition(RandIt inFirst, RandIt inLast, Cmp inCmp) {
+		RandIt middle = inFirst + (inLast - inFirst) / 2;
+		RandIt lastValue = inLast - 1;
+		if (inCmp(*middle, *inFirst)) oa::swapValues(*middle, *inFirst);
+		if (inCmp(*lastValue, *middle)) oa::swapValues(*lastValue, *middle);
+		if (inCmp(*middle, *inFirst)) oa::swapValues(*middle, *inFirst);
+		oa::swapValues(*inFirst, *middle);
+
+		RandIt left = inFirst + 1;
+		RandIt right = lastValue;
+		for (;;) {
+			while (left <= right and inCmp(*left, *inFirst)) ++left;
+			while (left <= right and inCmp(*inFirst, *right)) --right;
+			if (left > right) break;
+			oa::swapValues(*left, *right);
+			++left;
+			--right;
+		}
+		oa::swapValues(*inFirst, *right);
+		return right;
+	}
+
+	template<typename RandIt, typename Cmp>
+	static void sortLoop(
+		RandIt inFirst,
+		RandIt inLast,
+		typename IterTraits<RandIt>::difference_type inDepth,
+		Cmp inCmp
+	) {
+		using Diff = typename IterTraits<RandIt>::difference_type;
+		while (inLast - inFirst > static_cast<Diff>(insertionThreshold)) {
+			if (inDepth == 0) {
+				AlgoHeapSort::sort(inFirst, inLast, inCmp);
+				return;
+			}
+			--inDepth;
+			RandIt pivot = partition(inFirst, inLast, inCmp);
+			RandIt rightFirst = pivot + 1;
+			if (pivot - inFirst < inLast - rightFirst) {
+				sortLoop(inFirst, pivot, inDepth, inCmp);
+				inFirst = rightFirst;
+			} else {
+				sortLoop(rightFirst, inLast, inDepth, inCmp);
+				inLast = pivot;
+			}
+		}
+		insertionSort(inFirst, inLast, inCmp);
+	}
+
+	template<typename RandIt, typename Cmp>
+	static void sort(RandIt inFirst, RandIt inLast, Cmp inCmp) {
+		using Diff = typename IterTraits<RandIt>::difference_type;
+		const Diff count = inLast - inFirst;
+		if (count < 2) return;
+		Diff depth = 0;
+		for (Diff value = count; value > 1; value /= 2) ++depth;
+		sortLoop(inFirst, inLast, depth * 2, inCmp);
 	}
 };
 
@@ -148,12 +238,34 @@ template<typename T, typename Pred>
 
 template<typename It, typename Cmp>
 void sort(It inFirst, It inLast, Cmp inCmp) {
-	AlgoHeapSort::sort(inFirst, inLast, inCmp);
+	AlgoIntroSort::sort(inFirst, inLast, inCmp);
 }
 
 template<typename It>
 void sort(It inFirst, It inLast) {
 	oa::sort(inFirst, inLast, DefaultLess{});
+}
+
+// Stable insertion sort is intentionally used for the small control-plane
+// collections that require stable ordering. It performs no allocation and
+// keeps equal elements in their original order.
+template<typename RandIt, typename Cmp>
+void stableSort(RandIt inFirst, RandIt inLast, Cmp inCmp) {
+	if (inFirst == inLast) return;
+	for (RandIt current = inFirst + 1; current != inLast; ++current) {
+		auto value = oa::move(*current);
+		RandIt insertion = current;
+		while (insertion != inFirst && inCmp(value, *(insertion - 1))) {
+			*insertion = oa::move(*(insertion - 1));
+			--insertion;
+		}
+		*insertion = oa::move(value);
+	}
+}
+
+template<typename RandIt>
+void stableSort(RandIt inFirst, RandIt inLast) {
+	oa::stableSort(inFirst, inLast, DefaultLess{});
 }
 
 template<typename T, typename Cmp>
@@ -274,7 +386,7 @@ template<typename T, typename Pred>
 	return noneOf(inSpan.data(), inSpan.data() + inSpan.size(), inPred);
 }
 
-// Scalar two-argument min/max (the std::min / std::max replacement — distinct
+// Scalar two-argument min/max (the oa::min / oa::max replacement — distinct
 // from minElement/maxElement which scan a range). Returns by const&
 // like std, so ties return the first argument.
 template<typename T>
@@ -315,6 +427,19 @@ void reverse(It inFirst, It inLast) {
 template<typename T>
 void reverse(oa::Span<T> inSpan) {
 	reverse(inSpan.data(), inSpan.data() + inSpan.size());
+}
+
+template<typename It, typename Pred>
+[[nodiscard]] It removeIf(It inFirst, It inLast, Pred inPred) {
+	inFirst = oa::findIf(inFirst, inLast, inPred);
+	if (inFirst == inLast) return inLast;
+	for (It current = inFirst; ++current != inLast;) {
+		if (not inPred(*current)) {
+			*inFirst = oa::move(*current);
+			++inFirst;
+		}
+	}
+	return inFirst;
 }
 
 template<typename It>

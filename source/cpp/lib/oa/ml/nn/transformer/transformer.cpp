@@ -1,9 +1,9 @@
 // oa::TransformerBlock — pre-norm transformer block implementation
 
 #include <oa/ml/nn/transformer/transformer.h>
+#include <oa/core/assert.h>
 #include <oa/core/fnMatrix.h>
-#include <stdexcept>
-#include <string>
+#include <oa/core/std/format.h>
 
 oa::TransformerBlock::TransformerBlock(oa::I32 inDModel, oa::I32 inDFF, oa::I32 inSeqLen, oa::F32 inEps)
 	: dModel_(inDModel), dFF_(inDFF), seqLen_(inSeqLen)
@@ -72,9 +72,9 @@ void oa::TransformerBlock::initMoe(oa::I32 inDModel, oa::I32 inExpertDFF, oa::I3
 }
 
 void oa::TransformerBlock::initAttention(oa::I32 inNumHeads, oa::F32 inEps) {
-	if (dModel_ <= 0 or seqLen_ <= 0 or inNumHeads <= 0 or dModel_ % inNumHeads != 0) {
-		throw std::invalid_argument("oa::TransformerBlock requires positive dimensions and dModel divisible by numHeads");
-	}
+	OA_REQUIRE_MSG(dModel_ > 0 && seqLen_ > 0 && inNumHeads > 0
+		&& dModel_ % inNumHeads == 0,
+		"oa::TransformerBlock requires positive dimensions and dModel divisible by numHeads");
 	lnAttn_ = oa::makeShared<oa::LayerNorm>(dModel_, inEps);
 	registerModule("ln_attn", lnAttn_);
 	attention_ = oa::makeShared<oa::MultiHeadAttention>(dModel_, inNumHeads, 0.0F, true);
@@ -92,13 +92,11 @@ oa::Matrix oa::TransformerBlock::forwardMasked(const oa::Matrix& inX, const oa::
 }
 
 void oa::TransformerBlock::enableAdaptiveConditioning(oa::I32 inConditionDim) {
-	if (inConditionDim <= 0) {
-		throw std::invalid_argument("oa::TransformerBlock adaptive condition dimension must be positive");
-	}
+	OA_REQUIRE_MSG(inConditionDim > 0,
+		"oa::TransformerBlock adaptive condition dimension must be positive");
 	if (adaptiveModulation_) {
-		if (conditionDim_ != inConditionDim) {
-			throw std::invalid_argument("oa::TransformerBlock adaptive conditioning is already configured with a different dimension");
-		}
+		OA_REQUIRE_MSG(conditionDim_ == inConditionDim,
+			"oa::TransformerBlock adaptive conditioning is already configured with a different dimension");
 		return;
 	}
 	conditionDim_ = inConditionDim;
@@ -114,16 +112,14 @@ void oa::TransformerBlock::enableAdaptiveConditioning(oa::I32 inConditionDim) {
 }
 
 oa::Matrix oa::TransformerBlock::forwardConditioned(const oa::Matrix& inX, const oa::Matrix& inCondition,	const oa::Matrix& inAdditiveMask) {
-	if (!adaptiveModulation_) {
-		throw std::invalid_argument("oa::TransformerBlock adaptive conditioning must be enabled before forwardConditioned");
-	}
+	OA_REQUIRE_MSG(adaptiveModulation_,
+		"oa::TransformerBlock adaptive conditioning must be enabled before forwardConditioned");
 	const oa::I64 rows = inX.size(0);
-	if (inX.rank() != 2 || inX.size(1) != dModel_ || seqLen_ <= 0
-		|| rows % seqLen_ != 0 || inCondition.rank() != 2
-		|| inCondition.size(0) != rows / seqLen_
-		|| inCondition.size(1) != conditionDim_) {
-		throw std::invalid_argument("oa::TransformerBlock conditioned input must be [B*S,D] with condition [B,C]");
-	}
+	OA_REQUIRE_MSG(inX.rank() == 2 && inX.size(1) == dModel_ && seqLen_ > 0
+		&& rows % seqLen_ == 0 && inCondition.rank() == 2
+		&& inCondition.size(0) == rows / seqLen_
+		&& inCondition.size(1) == conditionDim_,
+		"oa::TransformerBlock conditioned input must be [B*S,D] with condition [B,C]");
 	auto modulation = adaptiveModulation_->forward(inCondition);
 	modulation = oa::FnMatrix::repeatInterleave(modulation, seqLen_, 0);
 	oa::I64 sizes[] = {dModel_, dModel_, dModel_, dModel_, dModel_, dModel_};
@@ -149,9 +145,8 @@ oa::Matrix oa::TransformerBlock::forwardConditioned(const oa::Matrix& inX, const
 
 oa::Matrix oa::TransformerBlock::forwardImpl(const oa::Matrix& inX, const oa::Matrix* inAdditiveMask) {
 	const oa::I32 n = static_cast<oa::I32>(inX.size(0));
-	if (seqLen_ <= 0 or n % seqLen_ != 0) {
-		throw std::invalid_argument("oa::TransformerBlock input rows must be divisible by a positive sequence length");
-	}
+	OA_REQUIRE_MSG(seqLen_ > 0 && n % seqLen_ == 0,
+		"oa::TransformerBlock input rows must be divisible by a positive sequence length");
 	// Pre-norm attention + residual.
 	auto xn = lnAttn_->forward(inX);
 	auto attention = inAdditiveMask
@@ -170,9 +165,8 @@ oa::Matrix oa::TransformerBlock::forwardImpl(const oa::Matrix& inX, const oa::Ma
 }
 
 void oa::TransformerBlock::setSeqLen(oa::I32 inSeqLen) {
-	if (inSeqLen <= 0) {
-		throw std::invalid_argument("oa::TransformerBlock sequence length must be positive");
-	}
+	OA_REQUIRE_MSG(inSeqLen > 0,
+		"oa::TransformerBlock sequence length must be positive");
 
 	if (seqLen_ == inSeqLen) { return; }
 	seqLen_ = inSeqLen;
@@ -198,13 +192,10 @@ oa::NnTransformer::NnTransformer(
 	, modelWidth_(inModelWidth)
 	, hiddenWidth_(inHiddenWidth)
 	, numHeads_(inNumHeads) {
-	if (vocabSize_ <= 0 or contextLength_ <= 0 or modelWidth_ <= 0
-		or hiddenWidth_ <= 0 or inNumLayers <= 0 or numHeads_ <= 0
-		or modelWidth_ % numHeads_ != 0) {
-		throw std::invalid_argument(
-			"oa::NnTransformer requires positive dimensions and "
-			"modelWidth divisible by numHeads");
-	}
+	OA_REQUIRE_MSG(vocabSize_ > 0 && contextLength_ > 0 && modelWidth_ > 0
+		&& hiddenWidth_ > 0 && inNumLayers > 0 && numHeads_ > 0
+		&& modelWidth_ % numHeads_ == 0,
+		"oa::NnTransformer requires positive dimensions and modelWidth divisible by numHeads");
 
 	tokenEmbedding_ = oa::makeShared<oa::Embedding>(vocabSize_, modelWidth_);
 	positionEmbedding_ = oa::makeShared<oa::Embedding>(contextLength_, modelWidth_);
@@ -215,8 +206,8 @@ oa::NnTransformer::NnTransformer(
 	for (oa::I32 index = 0; index < inNumLayers; ++index) {
 		auto block = oa::makeShared<oa::TransformerBlock>(
 			modelWidth_, hiddenWidth_, contextLength_, numHeads_, inEps);
-		const std::string name = "block_" + std::to_string(index);
-		registerModule(name.c_str(), block);
+		const oa::String name = oa::format("block_%d", index);
+		registerModule(name.cStr(), block);
 		blocks_.pushBack(oa::move(block));
 	}
 
@@ -231,11 +222,8 @@ oa::NnTransformer::NnTransformer(
 }
 
 oa::Matrix oa::NnTransformer::forward(const oa::Matrix& inTokens) {
-	if (inTokens.rank() != 2 or inTokens.size(1) != contextLength_) {
-		throw std::invalid_argument(
-			"oa::NnTransformer expects token ids shaped "
-			"[batch, contextLength]");
-	}
+	OA_REQUIRE_MSG(inTokens.rank() == 2 && inTokens.size(1) == contextLength_,
+		"oa::NnTransformer expects token ids shaped [batch, contextLength]");
 	const auto batch = static_cast<oa::I32>(inTokens.size(0));
 	const auto rows = static_cast<oa::I64>(batch) * contextLength_;
 	auto value = tokenEmbedding_->forward(inTokens).reshape({rows, modelWidth_})

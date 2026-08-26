@@ -4,6 +4,9 @@
 #include "../render/rendererInternal.h"
 
 #include <oa/core/log.h>
+#include <oa/core/memory.h>
+#include <oa/core/std/limits.h>
+#include <oa/core/std/optional.h>
 #include <oa/runtime/engine/allocatorAccess.h>
 #include <oa/runtime/engine/bindlessAccess.h>
 #include <oa/runtime/engine/deviceAccess.h>
@@ -18,15 +21,11 @@
 
 #include "../runtime/textureAccess.h"
 
-#include <cstring>
-#include <limits>
-#include <optional>
-
 namespace {
 
 constexpr VkFormat TargetFormat = VK_FORMAT_R8G8B8A8_UNORM;
 constexpr oa::U32 MaxTargetSlots = 4U;
-constexpr oa::U32 NoActiveSlot = std::numeric_limits<oa::U32>::max();
+constexpr oa::U32 NoActiveSlot = oa::Limits<oa::U32>::max();
 
 enum class UiSlotState : oa::U8 {
 	Free,
@@ -56,7 +55,7 @@ struct UiSlot {
 	oa::U64 generation = 0U;
 	UiTarget target;
 	oavk::Stream* computeStream = nullptr;
-	std::optional<oa::GraphicsStreamLease> graphicsLease;
+	oa::Optional<oa::GraphicsStreamLease> graphicsLease;
 	oa::Event producer;
 	oa::Event consumer;
 };
@@ -70,7 +69,7 @@ struct UiSlot {
 	oa::U64 inA,
 	oa::U64 inB,
 	oa::U64& outResult) noexcept {
-	if (inA != 0U && inB > std::numeric_limits<oa::U64>::max() / inA) {
+	if (inA != 0U && inB > oa::Limits<oa::U64>::max() / inA) {
 		return false;
 	}
 	outResult = inA * inB;
@@ -86,8 +85,8 @@ struct UiSlot {
 		return oa::Status::invalidArgument(
 			"oa::Renderer target dimensions must be non-zero");
 	}
-	if (inWidth > static_cast<oa::U32>(std::numeric_limits<oa::I32>::max())
-		|| inHeight > static_cast<oa::U32>(std::numeric_limits<oa::I32>::max())) {
+	if (inWidth > static_cast<oa::U32>(oa::Limits<oa::I32>::max())
+		|| inHeight > static_cast<oa::U32>(oa::Limits<oa::I32>::max())) {
 		return oa::Status::error(
 			oa::StatusCode::OutOfRange,
 			"oa::Renderer target dimensions exceed signed UI coordinates");
@@ -113,8 +112,7 @@ struct UiSlot {
 	oa::U64 bytes = 0U;
 	if (!checkedMultiply(inWidth, inHeight, pixels)
 		|| !checkedMultiply(pixels, 4U, bytes)
-		|| bytes > static_cast<oa::U64>(
-			std::numeric_limits<std::size_t>::max())) {
+		|| bytes > static_cast<oa::U64>(oa::Limits<oa::Usize>::max())) {
 		return oa::Status::error(
 			oa::StatusCode::OutOfRange,
 			"oa::Renderer readback size overflows host address space");
@@ -438,7 +436,7 @@ public:
 	oa::UiRenderConfig config_;
 	oa::TextAtlas textAtlas;
 	oa::Ui uiSession_;
-	std::vector<UiSlot> slots;
+	oa::Vec<UiSlot> slots;
 	oa::U32 activeSlot = NoActiveSlot;
 	oa::U64 targetGeneration_ = 1U;
 
@@ -521,7 +519,7 @@ oa::Status oa::Renderer::UiImpl::initialize(
 oa::Status oa::Renderer::UiImpl::createSlots() {
 	slots.reserve(config_.targetSlotCount_);
 	for (oa::U32 index = 0U; index < config_.targetSlotCount_; ++index) {
-		slots.emplace_back();
+		slots.emplaceBack();
 		const oa::Status status = createTarget(
 			*engine, config_.width_, config_.height_, slots.back().target);
 		if (!status.isOk()) return status;
@@ -606,7 +604,7 @@ oa::Status oa::Renderer::UiImpl::acquireRecording(
 
 oa::Status oa::Renderer::UiImpl::cancelRecording(UiSlot& inSlot) {
 	oa::Status status = oa::Status::ok();
-	if (inSlot.graphicsLease.has_value()) {
+	if (inSlot.graphicsLease.hasValue()) {
 		status = inSlot.graphicsLease->cancel();
 		if (!status.isOk()) (void)inSlot.graphicsLease->close();
 		inSlot.graphicsLease.reset();
@@ -630,7 +628,7 @@ oa::Status oa::Renderer::UiImpl::releaseProducer(UiSlot& inSlot) {
 			*engine, inSlot.computeStream);
 		inSlot.computeStream = nullptr;
 	}
-	if (inSlot.graphicsLease.has_value()) {
+	if (inSlot.graphicsLease.hasValue()) {
 		OA_RETURN_IF_ERROR(inSlot.graphicsLease->recycle(inSlot.producer));
 		inSlot.graphicsLease.reset();
 	}
@@ -719,7 +717,7 @@ bool oa::Renderer::UiImpl::prepareNonWaitingRetirement() noexcept {
 	if (activeSlot < slots.size()) {
 		uiSession_.endFrame();
 		UiSlot& slot = slots[activeSlot];
-		if (slot.computeStream != nullptr || slot.graphicsLease.has_value()) {
+		if (slot.computeStream != nullptr || slot.graphicsLease.hasValue()) {
 			(void)cancelRecording(slot);
 		}
 		slot.state = UiSlotState::Free;
@@ -730,7 +728,7 @@ bool oa::Renderer::UiImpl::prepareNonWaitingRetirement() noexcept {
 	bool hasSubmission = false;
 	for (UiSlot& slot : slots) {
 		if (slot.state == UiSlotState::Submitted) {
-			if (slot.graphicsLease.has_value()) {
+			if (slot.graphicsLease.hasValue()) {
 				(void)slot.graphicsLease->close();
 				slot.graphicsLease.reset();
 			}
@@ -888,7 +886,7 @@ oa::Result<oa::RenderFrame> oa::Renderer::UiImpl::submitFrame(
 				*engine, slot.computeStream);
 			slot.computeStream = nullptr;
 		}
-		if (slot.graphicsLease.has_value()) {
+		if (slot.graphicsLease.hasValue()) {
 			(void)slot.graphicsLease->close();
 			slot.graphicsLease.reset();
 		}
@@ -905,7 +903,7 @@ oa::Result<oa::RenderFrame> oa::Renderer::UiImpl::submitFrame(
 				*engine, slot.computeStream);
 			slot.computeStream = nullptr;
 		}
-		if (slot.graphicsLease.has_value()) {
+		if (slot.graphicsLease.hasValue()) {
 			(void)slot.graphicsLease->close();
 			slot.graphicsLease.reset();
 		}
@@ -924,7 +922,7 @@ oa::Result<oa::RenderFrame> oa::Renderer::UiImpl::submitFrame(
 	activeSlot = NoActiveSlot;
 	status = uiSession_.markFrameSubmitted(slot.producer);
 	if (!status.isOk()) {
-		if (slot.graphicsLease.has_value()) {
+		if (slot.graphicsLease.hasValue()) {
 			(void)slot.graphicsLease->close();
 			slot.graphicsLease.reset();
 		}
@@ -961,7 +959,7 @@ oa::Status oa::Renderer::UiImpl::cancelFrame() {
 	UiSlot& slot = slots[activeSlot];
 	uiSession_.endFrame();
 	oa::Status status = oa::Status::ok();
-	if (slot.computeStream != nullptr || slot.graphicsLease.has_value()) {
+	if (slot.computeStream != nullptr || slot.graphicsLease.hasValue()) {
 		status = cancelRecording(slot);
 	}
 	slot.state = UiSlotState::Free;
@@ -1024,7 +1022,7 @@ oa::Result<oa::RenderReadback> oa::Renderer::UiImpl::consumeReadback(
 		// completion even when the synchronous wait reports a device failure, so
 		// abandonFrame cannot make the target reusable underneath that copy.
 		if (readbackCompletion.isValid()) {
-			if (slot->graphicsLease.has_value()) {
+			if (slot->graphicsLease.hasValue()) {
 				(void)slot->graphicsLease->close();
 				slot->graphicsLease.reset();
 			}
@@ -1052,11 +1050,11 @@ oa::Result<oa::RenderReadback> oa::Renderer::UiImpl::consumeReadback(
 	oa::RenderReadback readback;
 	readback.width_ = config_.width_;
 	readback.height_ = config_.height_;
-	readback.colorRgba8_.resize(static_cast<std::size_t>(bytes));
-	std::memcpy(
+	readback.colorRgba8_.resize(static_cast<oa::Usize>(bytes));
+	oa::memcpy(
 		readback.colorRgba8_.data(),
 		slot->target.readback.mappedPtr,
-		static_cast<std::size_t>(bytes));
+		static_cast<oa::Usize>(bytes));
 	OA_RETURN_IF_ERROR(releaseProducer(*slot));
 	slot->producer = {};
 	slot->consumer = {};
@@ -1106,7 +1104,7 @@ oa::Status oa::Renderer::UiImpl::markConsumed(
 			"oa::Renderer consumer completion must follow its producer on a shared timeline");
 	}
 	oa::Status closeStatus = oa::Status::ok();
-	if (slot->graphicsLease.has_value()) {
+	if (slot->graphicsLease.hasValue()) {
 		closeStatus = slot->graphicsLease->close();
 		slot->graphicsLease.reset();
 	}
@@ -1125,7 +1123,7 @@ oa::Status oa::Renderer::UiImpl::abandonFrame(const oa::RenderFrame& inFrame) {
 	OA_RETURN_IF_ERROR(validateFrame(
 		inFrame, UiSlotState::Submitted, slot));
 	oa::Status closeStatus = oa::Status::ok();
-	if (slot->graphicsLease.has_value()) {
+	if (slot->graphicsLease.hasValue()) {
 		closeStatus = slot->graphicsLease->close();
 		slot->graphicsLease.reset();
 	}
@@ -1167,7 +1165,7 @@ oa::Status oa::Renderer::UiImpl::resize(oa::U32 inWidth, oa::U32 inHeight) {
 	if (inWidth == config_.width_
 		&& inHeight == config_.height_) return oa::Status::ok();
 
-	std::vector<UiTarget> replacements(slots.size());
+	oa::Vec<UiTarget> replacements(slots.size());
 	for (UiTarget& target : replacements) {
 		const oa::Status status = createTarget(
 			*engine, inWidth, inHeight, target);
@@ -1178,7 +1176,7 @@ oa::Status oa::Renderer::UiImpl::resize(oa::U32 inWidth, oa::U32 inHeight) {
 			return status;
 		}
 	}
-	for (std::size_t index = 0U; index < slots.size(); ++index) {
+	for (oa::Usize index = 0U; index < slots.size(); ++index) {
 		destroyTarget(*engine, slots[index].target);
 		slots[index].target = replacements[index];
 		replacements[index] = {};

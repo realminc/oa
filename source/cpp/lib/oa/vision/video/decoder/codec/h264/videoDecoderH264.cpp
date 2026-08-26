@@ -3,7 +3,7 @@
 #include "../videoDecoderCodecAccess.h"
 #include "../../../codec/vcpH264.h"
 
-#include <cstdio>
+#include <stdio.h>
 
 namespace {
 

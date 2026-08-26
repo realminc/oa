@@ -2,27 +2,26 @@
 
 // Native Span — non-owning `T*` + size (dynamic extent).
 //
-// Iterators: raw pointers; `first`/`Last`/`subSpan` use `assert` on bounds (debug).
-// Interop: `stdSpan()` → `std::span`; template ctors from `std::array` / `oa::Array`; explicit ctor from `std::span`.
+// Iterators are raw pointers. Construction and slicing use the always-on OA
+// contract. A null pointer is valid only for an empty span.
 
 #include <oa/core/std/array.h>
-
-#include <array>
-#include <cassert>
-#include <cstddef>
-#include <span>
-#include <type_traits>
+#include <oa/core/assert.h>
+#include <oa/core/std/typeTraits.h>
 
 namespace oa {
 
 template<typename T>
+class Vec;
+
+template<typename T>
 class Span {
 public:
-	static constexpr std::size_t DynamicExtent = static_cast<std::size_t>(-1);
+	static constexpr oa::Usize DynamicExtent = static_cast<oa::Usize>(-1);
 
 	using element_type = T;
-	using value_type = std::remove_cv_t<T>;
-	using size_type = std::size_t;
+	using value_type = oa::RemoveCvT<T>;
+	using size_type = oa::Usize;
 	using pointer = T*;
 	using const_pointer = const T*;
 	using reference = T&;
@@ -32,34 +31,32 @@ public:
 
 	Span() noexcept = default;
 
-	Span(pointer inPtr, size_type inCount) noexcept : ptr_(inPtr), size_(inCount) {}
+	Span(pointer inPtr, size_type inCount) noexcept : ptr_(inPtr), size_(inCount) {
+		OA_REQUIRE(inPtr != nullptr || inCount == 0);
+	}
 
-	template<std::size_t N>
-	Span(std::array<value_type, N>& inArr) noexcept
-		requires(!std::is_const_v<T>)
-		: ptr_(inArr.data()), size_(N) {}
+	template<typename U>
+	Span(oa::Vec<U>& inVec) noexcept
+		requires(oa::IsConvertibleV<U*, pointer>)
+		: Span(inVec.data(), inVec.size()) {}
 
-	template<std::size_t N>
-	Span(const std::array<value_type, N>& inArr) noexcept
-		requires(std::is_const_v<T>)
-		: ptr_(inArr.data()), size_(N) {}
+	template<typename U>
+	Span(const oa::Vec<U>& inVec) noexcept
+		requires(oa::IsConvertibleV<const U*, pointer>)
+		: Span(inVec.data(), inVec.size()) {}
 
-	template<std::size_t N>
+	template<oa::Usize N>
 	Span(oa::Array<value_type, N>& inArr) noexcept
-		requires(!std::is_const_v<T>)
+		requires(!oa::IsConstV<T>)
 		: ptr_(inArr.data()), size_(N) {}
 
-	template<std::size_t N>
+	template<oa::Usize N>
 	Span(const oa::Array<value_type, N>& inArr) noexcept
-		requires(std::is_const_v<T>)
+		requires(oa::IsConstV<T>)
 		: ptr_(inArr.data()), size_(N) {}
 
-	template<std::size_t N>
+	template<oa::Usize N>
 	Span(T (&inArr)[N]) noexcept : ptr_(inArr), size_(N) {}
-
-	explicit Span(std::span<T> inS) noexcept : ptr_(inS.data()), size_(inS.size()) {}
-
-	[[nodiscard]] std::span<T> stdSpan() const noexcept { return std::span<T>(ptr_, size_); }
 
 	[[nodiscard]] size_type size() const noexcept { return size_; }
 	[[nodiscard]] size_type sizeBytes() const noexcept { return size_ * sizeof(T); }
@@ -67,25 +64,36 @@ public:
 
 	[[nodiscard]] pointer data() const noexcept { return ptr_; }
 
-	[[nodiscard]] reference front() const { return *ptr_; }
-	[[nodiscard]] reference back() const { return ptr_[size_ - 1U]; }
+	[[nodiscard]] reference front() const noexcept {
+		OA_REQUIRE(!empty());
+		return *ptr_;
+	}
+	[[nodiscard]] reference back() const noexcept {
+		OA_REQUIRE(!empty());
+		return ptr_[size_ - 1U];
+	}
 	[[nodiscard]] reference operator[](size_type inIdx) const { return ptr_[inIdx]; }
 
-	[[nodiscard]] Span<T> first(size_type inCount) const {
-		assert(inCount <= size_);
+	[[nodiscard]] Span<T> first(size_type inCount) const noexcept {
+		OA_REQUIRE(inCount <= size_);
 		return Span<T>(ptr_, inCount);
 	}
 
-	[[nodiscard]] Span<T> subSpan(size_type inOffset, size_type inCount = DynamicExtent) const {
-		assert(inOffset <= size_);
+	[[nodiscard]] Span<T> subSpan(
+		size_type inOffset,
+		size_type inCount = DynamicExtent
+	) const noexcept {
+		OA_REQUIRE(inOffset <= size_);
 		size_type const rem = size_ - inOffset;
 		size_type const ext = inCount == DynamicExtent ? rem : inCount;
-		assert(inCount == DynamicExtent || ext <= rem);
-		return Span<T>(ptr_ + inOffset, ext);
+		OA_REQUIRE(inCount == DynamicExtent || ext <= rem);
+		return Span<T>(ptr_ == nullptr ? nullptr : ptr_ + inOffset, ext);
 	}
 
 	[[nodiscard]] iterator begin() const noexcept { return ptr_; }
-	[[nodiscard]] iterator end() const noexcept { return ptr_ + size_; }
+	[[nodiscard]] iterator end() const noexcept {
+		return ptr_ == nullptr ? nullptr : ptr_ + size_;
+	}
 
 private:
 	pointer ptr_ = nullptr;

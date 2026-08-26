@@ -16,15 +16,6 @@
 #include <oa/core/autograd.h>
 #include <oa/core/op.h>
 
-namespace {
-
-oa::U32 divCeil(oa::U32 inA, oa::U32 inB)
-{
-	return (inA + inB - 1U) / inB;
-}
-
-} // namespace
-
 namespace oa {
 
 namespace FnImage {
@@ -48,7 +39,7 @@ oa::Image resize(const oa::Image& inImage, oa::U32 inWidth, oa::U32 inHeight)
 		resized = oa::FnMatrix::reshape(resized,
 			oa::MatrixShape{inImage.channels(), inHeight, inWidth});
 	}
-	return oa::Image(std::move(resized), inImage.layout(), inImage.format());
+	return oa::Image(oa::move(resized), inImage.layout(), inImage.format());
 }
 
 oa::Image normalize(
@@ -70,7 +61,7 @@ oa::Image normalize(
 	if (unbatched) {
 		normalized = oa::FnMatrix::reshape(normalized, inImage.asMatrix().getShape());
 	}
-	return oa::Image(std::move(normalized), inImage.layout(), inImage.format());
+	return oa::Image(oa::move(normalized), inImage.layout(), inImage.format());
 }
 
 oa::Image brightnessContrast(
@@ -172,7 +163,7 @@ oa::Image convertColor(const oa::Image& inImage, oa::ImageFormat inDstFormat)
 			return {};
 		}
 	}
-	return oa::Image(std::move(result), inImage.layout(), inDstFormat);
+	return oa::Image(oa::move(result), inImage.layout(), inDstFormat);
 }
 
 // ─── phase 3: Fused Preprocess ─────────────────────────────────────────
@@ -235,7 +226,7 @@ oa::Image resizeNormalize(const oa::Image& inImage, oa::U32 inWidth, oa::U32 inH
 	if (not status.isOk()) return {};
 
 	// Preserve layout and format from input
-	return oa::Image(std::move(result), inImage.layout(), inImage.format());
+	return oa::Image(oa::move(result), inImage.layout(), inImage.format());
 }
 
 } // namespace FnImage

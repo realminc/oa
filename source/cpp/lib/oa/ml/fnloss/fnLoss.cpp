@@ -18,12 +18,9 @@
 #include <oa/runtime/engine/deviceAccess.h>
 #include "../autograd/autogradAttach.gen.h"
 #include <oa/core/fnmatrix/reduce/fnMatrixReduceLowering.h>
+#include <oa/core/std/algo.h>
+#include <oa/core/std/limits.h>
 #include "../../runtime/descriptorValidation.h"
-
-#include <algorithm>
-#include <cassert>
-#include <limits>
-#include <utility>
 
 namespace {
 thread_local const char* gLastLossName = nullptr;
@@ -59,7 +56,7 @@ oa::Status recordLossDispatch(
 
 bool checkedShaderBytes(const oa::Matrix& inMatrix, oa::U64 inElements, oa::U64& outBytes) {
 	constexpr oa::U64 kShaderByteAddressSpace =
-		static_cast<oa::U64>(std::numeric_limits<oa::U32>::max()) + 1U;
+		static_cast<oa::U64>(oa::Limits<oa::U32>::max()) + 1U;
 	const oa::U64 elementBytes = static_cast<oa::U64>(oa::scalarSize(inMatrix.getDtype()));
 	if (elementBytes == 0 or inElements > kShaderByteAddressSpace / elementBytes) {
 		return false;
@@ -84,7 +81,7 @@ bool hasDirectShaderStorage(
 	}
 	oa::U64 descriptorBytes = inLogicalBytes;
 	if (inNeedsWordTail) {
-		if (descriptorBytes > std::numeric_limits<oa::U64>::max() - 3U) return false;
+		if (descriptorBytes > oa::Limits<oa::U64>::max() - 3U) return false;
 		descriptorBytes = (descriptorBytes + 3U) & ~oa::U64{3U};
 	}
 	const oa::U64 descriptorRange = buffer.descriptorRange();
@@ -124,13 +121,13 @@ bool validateCrossEntropyInputs(const char* inOperation,
 	if (shapeAndDtypeValid) {
 		const oa::U64 rows = static_cast<oa::U64>(inLogits.size(0));
 		const oa::U64 classes = static_cast<oa::U64>(inLogits.size(1));
-		const oa::U64 maxShaderIndex = std::numeric_limits<oa::U32>::max();
+		const oa::U64 maxShaderIndex = oa::Limits<oa::U32>::max();
 		const oa::U64 maxPortableRows =
 			static_cast<oa::U64>(kPortableDispatchTileWidthX)
 			* kPortableDispatchTileWidthX;
 		oa::U64 logitsElements = 0;
 		if (rows <= maxPortableRows and classes <= maxShaderIndex
-			and rows <= std::numeric_limits<oa::U64>::max() / classes)
+			and rows <= oa::Limits<oa::U64>::max() / classes)
 		{
 			logitsElements = rows * classes;
 			if (rows <= (maxShaderIndex + oa::U64{1U}) / sizeof(oa::F32)
@@ -199,8 +196,8 @@ oa::Matrix commitLossResult(
 	oa::Matrix inResult,
 	oa::OpLoweringScope& inLowering,
 	const oa::OpContract& inContract,
-	std::initializer_list<const oa::Matrix*> inInputs,
-	std::initializer_list<oa::OpAttribute> inAttributes = {}) {
+	oa::MatrixArgs inInputs,
+	oa::OpAttributeArgs inAttributes = {}) {
 	auto semantic = inLowering.commitWithId(
 		inContract, inInputs, {&inResult}, inAttributes);
 	if (not semantic.isOk()) return {};
@@ -269,7 +266,7 @@ oa::Matrix oa::FnLoss::crossEntropy(const oa::Matrix& inLogits, const oa::Matrix
 	oa::BufferAccess access[] = {
 		oa::BufferAccess::Read, oa::BufferAccess::Read, oa::BufferAccess::Write};
 	const oa::Matrix* matrices[] = {&inLogits, &inTargets, &perSample};
-	const oa::U32 groupsX = std::min(batch, kPortableDispatchTileWidthX);
+	const oa::U32 groupsX = oa::min(batch, kPortableDispatchTileWidthX);
 	const oa::U32 groupsY =
 		1U + (batch - 1U) / kPortableDispatchTileWidthX;
 	const auto dispatch = recordLossDispatch(
@@ -332,7 +329,7 @@ oa::Matrix oa::FnLoss::crossEntropyBwd(const oa::Matrix& inLogits, const oa::Mat
 	oa::BufferAccess access[] = {
 		oa::BufferAccess::Read, oa::BufferAccess::Read, oa::BufferAccess::Write};
 	const oa::Matrix* matrices[] = {&inLogits, &inTargets, &gradLogits};
-	const oa::U32 groupsX = std::min(batch, kPortableDispatchTileWidthX);
+	const oa::U32 groupsX = oa::min(batch, kPortableDispatchTileWidthX);
 	const oa::U32 groupsY =
 		1U + (batch - 1U) / kPortableDispatchTileWidthX;
 	const auto dispatch = recordLossDispatch(
@@ -371,7 +368,7 @@ oa::Matrix oa::FnLoss::maskedCrossEntropy(const oa::Matrix& inLogits,
 		oa::BufferAccess::Read, oa::BufferAccess::Write};
 	const oa::Matrix* matrices[] = {
 		&inLogits, &inTargets, &inMask, &perSample};
-	const oa::U32 groupsX = std::min(rows, kPortableDispatchTileWidthX);
+	const oa::U32 groupsX = oa::min(rows, kPortableDispatchTileWidthX);
 	const oa::U32 groupsY =
 		1U + (rows - 1U) / kPortableDispatchTileWidthX;
 	const auto dispatch = recordLossDispatch(
@@ -389,7 +386,7 @@ oa::Matrix oa::FnLoss::maskedCrossEntropy(const oa::Matrix& inLogits,
 		1.0F / static_cast<oa::F32>(inValidCount));
 	if (oa::FnAutograd::isEnabled() and inLogits.requiresGrad()) {
 		auto gradFn = oa::makeShared<oa::GradMaskedCrossEntropy>();
-		gradFn->saveForBackward({inLogits, inTargets, inMask});
+		gradFn->saveForBackward(inLogits, inTargets, inMask);
 		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inLogits, inTargets, inMask});
 		gradFn->validCount_ = inValidCount;
 		gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
@@ -424,7 +421,7 @@ oa::Matrix oa::FnLoss::maskedCrossEntropyBwd(const oa::Matrix& inLogits,
 		oa::BufferAccess::Read, oa::BufferAccess::Write};
 	const oa::Matrix* matrices[] = {
 		&inLogits, &inTargets, &inMask, &gradLogits};
-	const oa::U32 groupsX = std::min(rows, kPortableDispatchTileWidthX);
+	const oa::U32 groupsX = oa::min(rows, kPortableDispatchTileWidthX);
 	const oa::U32 groupsY =
 		1U + (rows - 1U) / kPortableDispatchTileWidthX;
 	const auto dispatch = recordLossDispatch(
@@ -474,7 +471,7 @@ oa::Matrix oa::FnLoss::smoothL1(const oa::Matrix& inA, const oa::Matrix& inB) {
 
 	if (oa::FnAutograd::isEnabled() and inA.requiresGrad()) {
 		auto gradFn = oa::makeShared<oa::GradSmoothL1>();
-		gradFn->saveForBackward({inA, inB});
+		gradFn->saveForBackward(inA, inB);
 		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA, inB});
 		gradFn->sequenceNr_  = oa::FnAutograd::nextSeq();
 		loss.mutAutograd().gradFn = gradFn;
@@ -524,7 +521,7 @@ oa::Matrix oa::FnLoss::mse(const oa::Matrix& inA, const oa::Matrix& inB) {
 
 	if (oa::FnAutograd::isEnabled() and inA.requiresGrad()) {
 		auto gradFn = oa::makeShared<oa::GradMse>();
-		gradFn->saveForBackward({inA, inB});
+		gradFn->saveForBackward(inA, inB);
 		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA, inB});
 		gradFn->sequenceNr_  = oa::FnAutograd::nextSeq();
 		loss.mutAutograd().gradFn = gradFn;
@@ -574,7 +571,7 @@ oa::Matrix oa::FnLoss::l1(const oa::Matrix& inA, const oa::Matrix& inB) {
 
 	if (oa::FnAutograd::isEnabled() and inA.requiresGrad()) {
 		auto gradFn = oa::makeShared<oa::GradL1>();
-		gradFn->saveForBackward({inA, inB});
+		gradFn->saveForBackward(inA, inB);
 		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA, inB});
 		gradFn->sequenceNr_  = oa::FnAutograd::nextSeq();
 		loss.mutAutograd().gradFn = gradFn;
@@ -624,7 +621,7 @@ oa::Matrix oa::FnLoss::bce(const oa::Matrix& inA, const oa::Matrix& inB) {
 
 	if (oa::FnAutograd::isEnabled() and inA.requiresGrad()) {
 		auto gradFn = oa::makeShared<oa::GradBce>();
-		gradFn->saveForBackward({inA, inB});
+		gradFn->saveForBackward(inA, inB);
 		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA, inB});
 		gradFn->sequenceNr_  = oa::FnAutograd::nextSeq();
 		loss.mutAutograd().gradFn = gradFn;

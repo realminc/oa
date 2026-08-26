@@ -2,27 +2,43 @@
 
 
 TEST(Span, FromArray) {
-	std::array<int, 3> data = {1, 2, 3};
+	oa::Array<int, 3> data;
+	data[0] = 1;
+	data[1] = 2;
+	data[2] = 3;
 	oa::Span<int> sp(data);
 	ASSERT_EQ(sp.size(), 3U);
 	EXPECT_EQ(sp[1], 2);
 }
 
+TEST(Span, FromVecPreservesConstness) {
+	oa::Vec<int> data{1, 2, 3};
+	oa::Span<int> mutableSpan(data);
+	oa::Span<const int> constSpan(data);
+	const oa::Vec<int>& constData = data;
+	oa::Span<const int> constSourceSpan(constData);
+
+	mutableSpan[1] = 7;
+	EXPECT_EQ(data[1], 7);
+	EXPECT_EQ(constSpan.data(), data.data());
+	EXPECT_EQ(constSourceSpan.size(), data.size());
+}
+
 TEST(Span, StdSpanParity) {
 	std::array<int, 4> data = {10, 20, 30, 40};
-	oa::Span<int> oa(data);
+	oa::Span<int> oa(data.data(), data.size());
 	std::span<int> st(data.data(), data.size());
-	EXPECT_EQ(oa.stdSpan().data(), st.data());
-	EXPECT_EQ(oa.stdSpan().size(), st.size());
+	EXPECT_EQ(oa.data(), st.data());
+	EXPECT_EQ(oa.size(), st.size());
 }
 
 TEST(Span, FirstSubSpanMatchesStd) {
 	std::array<int, 5> data = {1, 2, 3, 4, 5};
-	oa::Span<int> oa(data);
+	oa::Span<int> oa(data.data(), data.size());
 	std::span<int> st(data.data(), data.size());
 	auto oaF = oa.first(3);
 	auto stF = st.first<3>();
-	EXPECT_EQ(oaF.stdSpan().size(), stF.size());
+	EXPECT_EQ(oaF.size(), stF.size());
 	EXPECT_EQ(oaF[0], stF[0]);
 	auto oaS = oa.subSpan(1, oa::Span<int>::DynamicExtent);
 	auto stS = st.subspan(1);
@@ -30,12 +46,32 @@ TEST(Span, FirstSubSpanMatchesStd) {
 	EXPECT_EQ(oaS[0], stS[0]);
 }
 
+TEST(Span, InvalidRangesRejectContract) {
+	int value = 1;
+	oa::Span<int> span(&value, 1);
+	EXPECT_DEATH((void)oa::Span<int>(nullptr, 1),
+		"OA contract failed: inPtr != nullptr \\|\\| inCount == 0");
+	EXPECT_DEATH((void)span.first(2), "OA contract failed: inCount <= size_");
+	EXPECT_DEATH((void)span.subSpan(2), "OA contract failed: inOffset <= size_");
+	EXPECT_DEATH((void)span.subSpan(0, 2),
+		"OA contract failed: inCount == DynamicExtent \\|\\| ext <= rem");
+}
+
+TEST(Span, EmptyAccessRejectsContractWithoutNullArithmetic) {
+	oa::Span<int> span;
+	EXPECT_EQ(span.begin(), nullptr);
+	EXPECT_EQ(span.end(), nullptr);
+	EXPECT_EQ(span.subSpan(0).data(), nullptr);
+	EXPECT_DEATH((void)span.front(), "OA contract failed: !empty\\(\\)");
+	EXPECT_DEATH((void)span.back(), "OA contract failed: !empty\\(\\)");
+}
+
 TEST(Span, SubSpanMicrobenchVsStd) {
 	std::array<int, 256> data{};
 	for (std::size_t i = 0; i < data.size(); ++i) {
 		data[i] = static_cast<int>(i);
 	}
-	oa::Span<int> oa(data);
+	oa::Span<int> oa(data.data(), data.size());
 	std::span<int> st(data.data(), data.size());
 	constexpr int kLoops = 200'000;
 

@@ -1,9 +1,8 @@
 #include <oa/core/thread.h>
 #include <oa/core/log.h>
 
-#include <cstdio>
-#include <cstring>
-#include <thread>
+#include <stdio.h>
+#include <string.h>
 
 #ifdef OA_PLATFORM_LINUX
 #include <dirent.h>
@@ -39,16 +38,16 @@ static oa::I32 countOnlineCpus() {
 		if (fscanf(f, "%d", &online) == 1 && online) ++count;
 		fclose(f);
 	}
-	if (count == 0) count = static_cast<oa::I32>(std::thread::hardware_concurrency());
+	if (count == 0) count = static_cast<oa::I32>(oa::Thread::hardwareConcurrency());
 	return count;
 #else
-	return static_cast<oa::I32>(std::thread::hardware_concurrency());
+	return static_cast<oa::I32>(oa::Thread::hardwareConcurrency());
 #endif
 }
 
 oa::CpuTopology oa::CpuTopology::detect() {
 	oa::CpuTopology topo;
-	topo.numLogicalCores = static_cast<oa::I32>(std::thread::hardware_concurrency());
+	topo.numLogicalCores = static_cast<oa::I32>(oa::Thread::hardwareConcurrency());
 	if (topo.numLogicalCores <= 0) topo.numLogicalCores = 1;
 
 #ifdef OA_PLATFORM_LINUX

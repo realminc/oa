@@ -560,7 +560,7 @@ TEST(VideoProfile, AssetManifestDrivesExactStreamProfiles)
 		}
 
 		oa::String relativePath = "video/";
-		relativePath += columns[0];
+		relativePath += oa::StringView(columns[0].data(), columns[0].size());
 		const oa::Path fixturePath = testAssetPath(relativePath);
 		auto streamResult = oa::VideoDemuxer::open(fixturePath.cStr());
 		ASSERT_TRUE(streamResult.isOk()) << columns[0] << ": " << streamResult.getStatus().toString();

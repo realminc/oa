@@ -1,5 +1,7 @@
 #include "oaStdTest.h"
 
+#include <oa/core/std/typeTraits.h>
+
 #include <random>
 #include <string>
 #include <unordered_map>
@@ -8,6 +10,34 @@ TEST(HashMap, TypesAliasMatchesOaStdHashMap) {
 	oa::HashMap<int, int> m;
 	m.emplace(7, 42);
 	EXPECT_EQ(m.at(7), 42);
+}
+
+TEST(HashMap, IteratorKeyIsImmutable) {
+	oa::HashMap<oa::I32, oa::I32> values;
+	values.emplace(7, 9);
+	auto iterator = values.begin();
+	static_assert(oa::IsSameV<decltype((iterator->first)), const oa::I32&>);
+	EXPECT_EQ(iterator->first, 7);
+	iterator->second = 11;
+	EXPECT_EQ(values.at(7), 11);
+}
+
+TEST(HashMap, NativeStringHashMatchesViewAndRoutesEqualTextTogether) {
+	const oa::String key("alpha");
+	EXPECT_EQ(oa::KeyHash<oa::String>{}(key), oa::KeyHash<oa::StringView>{}(key.view()));
+
+	oa::HashMap<oa::String, int> values;
+	EXPECT_TRUE(values.emplace(key, 7).second);
+	EXPECT_FALSE(values.emplace(oa::String("alpha"), 9).second);
+	EXPECT_EQ(values.at(oa::String("alpha")), 7);
+}
+
+TEST(HashMap, NativeScalarEnumAndPointerHashAreStable) {
+	enum class Key : oa::U32 { Example = 17 };
+	int value = 0;
+	EXPECT_EQ(oa::KeyHash<int>{}(42), oa::KeyHash<int>{}(42));
+	EXPECT_EQ(oa::KeyHash<Key>{}(Key::Example), oa::KeyHash<Key>{}(Key::Example));
+	EXPECT_EQ(oa::KeyHash<int*>{}(&value), oa::KeyHash<int*>{}(&value));
 }
 
 TEST(HashMap, EmplaceAt) {
@@ -32,7 +62,7 @@ TEST(HashMap, RangeFor) {
 	EXPECT_EQ(sumV, 30);
 }
 
-TEST(HashMap, DuplicateInsertEraseStdMap) {
+TEST(HashMap, DuplicateInsertEraseAndIteration) {
 	oa::HashMap<int, int> m;
 	EXPECT_TRUE(m.insert({2, 20}).second);
 	EXPECT_FALSE(m.insert({2, 99}).second);
@@ -43,9 +73,17 @@ TEST(HashMap, DuplicateInsertEraseStdMap) {
 	for (int i = 0; i < 50; ++i) {
 		m.emplace(i, i * 10);
 	}
-	auto stdm = m.stdMap();
-	EXPECT_EQ(stdm.size(), 50u);
-	EXPECT_EQ(stdm.at(7), 70);
+	int visited = 0;
+	for (const auto& item : m) {
+		EXPECT_EQ(item.second, item.first * 10);
+		++visited;
+	}
+	EXPECT_EQ(visited, 50);
+}
+
+TEST(HashMap, MissingAtIsContractFailure) {
+	oa::HashMap<int, int> map;
+	EXPECT_DEATH(static_cast<void>(map.at(7)), "OA contract failed: it != end\\(\\)");
 }
 
 TEST(HashMap, InsertMovePair) {
@@ -64,6 +102,41 @@ TEST(HashMap, IteratorPostfix) {
 	auto old = it++;
 	EXPECT_EQ(old->first, 42);
 	EXPECT_EQ(it, m.end());
+}
+
+namespace {
+
+struct CollidingHash {
+	[[nodiscard]] oa::Usize operator()(int) const noexcept { return 3; }
+};
+
+} // namespace
+
+TEST(HashMap, CollisionChainSurvivesEraseAndTombstoneReuse) {
+	oa::HashMap<int, int, CollidingHash> map;
+	for (int key = 0; key < 32; ++key) map.emplace(key, key * 7);
+
+	EXPECT_EQ(map.erase(11), 1U);
+	EXPECT_FALSE(map.contains(11));
+	for (int key = 0; key < 32; ++key) {
+		if (key != 11) EXPECT_EQ(map.at(key), key * 7);
+	}
+
+	EXPECT_TRUE(map.emplace(47, 329).second);
+	EXPECT_EQ(map.at(47), 329);
+	EXPECT_EQ(map.size(), 32U);
+}
+
+TEST(HashMap, RehashPreservesEntriesAfterErases) {
+	oa::HashMap<int, int> map;
+	for (int key = 0; key < 300; ++key) map.emplace(key, key + 5);
+	for (int key = 0; key < 300; key += 3) EXPECT_EQ(map.erase(key), 1U);
+	map.reserve(2'000);
+
+	for (int key = 0; key < 300; ++key) {
+		if (key % 3 == 0) EXPECT_FALSE(map.contains(key));
+		else EXPECT_EQ(map.at(key), key + 5);
+	}
 }
 
 TEST(StdHashMapVsStd, AtMatchesUnorderedMapForSameKeys) {

@@ -6,9 +6,8 @@
 #include <oa/core/op.h>
 #include <oa/ml/autograd.h>
 #include <oa/runtime/executionSession.h>
-
-#include <cmath>
-#include <limits>
+#include <oa/core/std/limits.h>
+#include <oa/core/std/scalarMath.h>
 
 namespace {
 
@@ -26,13 +25,13 @@ oa::Status validateGaeInputs(
 	const oa::Matrix& inTruncated,
 	const oa::GaeConfig& inConfig) {
 	const oa::MatrixShape shape = inReward.getShape();
-	const bool configValid = std::isfinite(inConfig.gamma)
-		&& std::isfinite(inConfig.lambda)
+	const bool configValid = oa::isFinite(inConfig.gamma)
+		&& oa::isFinite(inConfig.lambda)
 		&& inConfig.gamma >= 0.0F && inConfig.gamma <= 1.0F
 		&& inConfig.lambda >= 0.0F && inConfig.lambda <= 1.0F;
 	const bool shapeValid = shape.rank == 2 && shape[0] > 0 && shape[1] > 0
-		&& shape[0] <= static_cast<oa::I64>(std::numeric_limits<oa::U32>::max())
-		&& shape[1] <= static_cast<oa::I64>(std::numeric_limits<oa::U32>::max());
+		&& shape[0] <= static_cast<oa::I64>(oa::Limits<oa::U32>::max())
+		&& shape[1] <= static_cast<oa::I64>(oa::Limits<oa::U32>::max());
 	const bool valuesValid = isRolloutF32(inReward, shape)
 		&& isRolloutF32(inValue, shape)
 		&& isRolloutF32(inNextValue, shape);
@@ -51,7 +50,7 @@ oa::Status validateGaeInputs(
 oa::Matrix oa::FnAdvantage::normalize(const oa::Matrix& inAdvantage,	oa::F32 inEpsilon) {
 	if (inAdvantage.isEmpty()
 		|| inAdvantage.getDtype() != oa::ScalarType::Float32
-		|| !std::isfinite(inEpsilon) || inEpsilon <= 0.0F) {
+		|| !oa::isFinite(inEpsilon) || inEpsilon <= 0.0F) {
 		OaLogError(oa::LogComponent::Ml,
 			"oa::FnAdvantage::normalize expects non-empty FP32 input and positive finite epsilon");
 		return {};

@@ -16,7 +16,7 @@ oa::RefPose buildPose(const RtgRefJoint* inTable) {
 		j.name        = r.name;
 		j.localOrient = oa::eulerXyzDegToQuat({ r.rx, r.ry, r.rz });
 		j.localTrans  = { r.tx, r.ty, r.tz };
-		pose.joints.pushBack(std::move(j));
+		pose.joints.pushBack(oa::move(j));
 	}
 	return pose;
 }
@@ -29,7 +29,7 @@ oa::Vec<oa::HumanIkSlot> buildCharacterization() {
 		o.slot = s.slot;
 		o.id   = s.id;
 		o.node = s.node;
-		slots.pushBack(std::move(o));
+		slots.pushBack(oa::move(o));
 	}
 	return slots;
 }

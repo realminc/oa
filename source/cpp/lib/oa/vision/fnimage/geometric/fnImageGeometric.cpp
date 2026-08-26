@@ -17,9 +17,8 @@
 #include <oa/core/log.h>
 #include <oa/core/matrix.h>
 #include <oa/core/fnMatrix.h>
-
-#include <cmath>
-#include <limits>
+#include <oa/core/std/limits.h>
+#include <oa/core/std/scalarMath.h>
 
 namespace {
 
@@ -229,13 +228,13 @@ oa::Matrix oa::FnImage::pad(oa::Engine& inRt, const oa::Matrix& inImage,
 	oa::BorderMode inBorder, oa::F32 inBorderValue) {
 	(void)inRt;
 	if (!validateNchwImage(inImage, "pad") || !validBorder(inBorder) ||
-		!std::isfinite(inBorderValue)) return inImage;
+		!oa::isFinite(inBorderValue)) return inImage;
 	const auto shape = inImage.getShape();
 	const oa::U64 outWidth = static_cast<oa::U64>(shape[3]) + inLeft + inRight;
 	const oa::U64 outHeight = static_cast<oa::U64>(shape[2]) + inTop + inBottom;
 	if (outWidth == 0 || outHeight == 0 ||
-		outWidth > std::numeric_limits<oa::U32>::max() ||
-		outHeight > std::numeric_limits<oa::U32>::max()) return inImage;
+		outWidth > oa::Limits<oa::U32>::max() ||
+		outHeight > oa::Limits<oa::U32>::max()) return inImage;
 	auto output = oa::FnMatrix::empty({shape[0], shape[1],
 		static_cast<oa::I64>(outHeight), static_cast<oa::I64>(outWidth)}, inImage.getDtype());
 	struct Push {
@@ -271,7 +270,7 @@ oa::Matrix oa::FnImage::remap(oa::Engine& inRt, const oa::Matrix& inImage,
 	(void)inRt;
 	if (!validateNchwImage(inImage, "Remap") || !inMap.hasStorage() ||
 		inMap.getDtype() != inImage.getDtype() || !validInterpolation(inInterpolation) ||
-		!validBorder(inBorder) || !std::isfinite(inBorderValue)) return inImage;
+		!validBorder(inBorder) || !oa::isFinite(inBorderValue)) return inImage;
 	const auto map = inMap.getShape();
 	const auto image = inImage.getShape();
 	if (map.rank != 4 || map[1] != 2 || map[2] <= 0 || map[3] <= 0 ||
@@ -291,7 +290,7 @@ oa::Matrix oa::FnImage::warpAffine(oa::Engine& inRt, const oa::Matrix& inImage,
 		transform.rank != 2 || transform[0] != 2 || transform[1] != 3 ||
 		inTransform.getDtype() != inImage.getDtype() || inWidth == 0 || inHeight == 0 ||
 		!validInterpolation(inInterpolation) || !validBorder(inBorder) ||
-		!std::isfinite(inBorderValue)) return inImage;
+		!oa::isFinite(inBorderValue)) return inImage;
 	return warpPass(inImage, inTransform, inWidth, inHeight, 1, 1,
 		inInterpolation, inBorder, inBorderValue);
 }
@@ -306,7 +305,7 @@ oa::Matrix oa::FnImage::warpPerspective(oa::Engine& inRt, const oa::Matrix& inIm
 		transform.rank != 2 || transform[0] != 3 || transform[1] != 3 ||
 		inTransform.getDtype() != inImage.getDtype() || inWidth == 0 || inHeight == 0 ||
 		!validInterpolation(inInterpolation) || !validBorder(inBorder) ||
-		!std::isfinite(inBorderValue)) return inImage;
+		!oa::isFinite(inBorderValue)) return inImage;
 	return warpPass(inImage, inTransform, inWidth, inHeight, 2, 1,
 		inInterpolation, inBorder, inBorderValue);
 }

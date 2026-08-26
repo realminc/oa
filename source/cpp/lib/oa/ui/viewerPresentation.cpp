@@ -12,7 +12,6 @@
 #include <oa/ui/image.h>
 #include <oa/core/log.h>
 
-#include <algorithm>
 
 
 oa::Status oa::Viewer::initPresentation(
@@ -285,7 +284,7 @@ void oa::Viewer::beginFrame(oa::F32 inDeltaMs) {
 		0,
 		static_cast<oa::I32>(composeWidth_),
 		static_cast<oa::I32>(composeHeight_),
-	}, std::max(0.01F,
+	}, oa::max(0.01F,
 		(windowPixelScaleX_ + windowPixelScaleY_) * 0.5F));
 }
 

@@ -5,7 +5,7 @@
 #include <webp/encode.h>
 #endif
 
-#include <cstring>
+#include <oa/core/memory.h>
 
 namespace oa::imageCodec {
 
@@ -62,7 +62,7 @@ oa::Result<Pixels> decodeWebp(
 		* static_cast<oa::U64>(channels);
 	Pixels result;
 	result.data.resize(static_cast<oa::Usize>(byteCount));
-	std::memcpy(
+	oa::memcpy(
 		result.data.data(),
 		decoded,
 		static_cast<oa::Usize>(byteCount));
@@ -127,7 +127,7 @@ oa::Result<oa::Vec<oa::U8>> encodeWebp(
 
 	oa::Vec<oa::U8> encoded;
 	encoded.resize(encodedSize);
-	std::memcpy(encoded.data(), encodedData, encodedSize);
+	oa::memcpy(encoded.data(), encodedData, encodedSize);
 	WebPFree(encodedData);
 	return encoded;
 #else

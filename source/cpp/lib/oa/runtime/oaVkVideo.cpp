@@ -315,13 +315,13 @@ oa::Result<VideoSession> VideoSession::create(
 
 VideoSession::VideoSession(VideoSession&& inOther) noexcept
 {
-	moveFrom(std::move(inOther));
+	moveFrom(oa::move(inOther));
 }
 
 VideoSession& VideoSession::operator=(VideoSession&& inOther) noexcept
 {
 	destroy();
-	moveFrom(std::move(inOther));
+	moveFrom(oa::move(inOther));
 	return *this;
 }
 
@@ -358,7 +358,7 @@ void VideoSession::moveFrom(VideoSession&& inOther) noexcept
 {
 	rt_ = inOther.rt_;
 	session_ = inOther.session_;
-	allocations_ = std::move(inOther.allocations_);
+	allocations_ = oa::move(inOther.allocations_);
 	codedExtent_ = inOther.codedExtent_;
 	maxDpbSlots_ = inOther.maxDpbSlots_;
 	maxActiveReferences_ = inOther.maxActiveReferences_;
@@ -394,13 +394,13 @@ oa::Result<VideoParameters> VideoParameters::create(
 
 VideoParameters::VideoParameters(VideoParameters&& inOther) noexcept
 {
-	moveFrom(std::move(inOther));
+	moveFrom(oa::move(inOther));
 }
 
 VideoParameters& VideoParameters::operator=(VideoParameters&& inOther) noexcept
 {
 	destroy();
-	moveFrom(std::move(inOther));
+	moveFrom(oa::move(inOther));
 	return *this;
 }
 
@@ -554,13 +554,13 @@ oa::Result<VideoDpb> VideoDpb::create(
 
 VideoDpb::VideoDpb(VideoDpb&& inOther) noexcept
 {
-	moveFrom(std::move(inOther));
+	moveFrom(oa::move(inOther));
 }
 
 VideoDpb& VideoDpb::operator=(VideoDpb&& inOther) noexcept
 {
 	destroy();
-	moveFrom(std::move(inOther));
+	moveFrom(oa::move(inOther));
 	return *this;
 }
 
@@ -672,13 +672,13 @@ oa::Result<VideoBitstream> VideoBitstream::create(
 
 VideoBitstream::VideoBitstream(VideoBitstream&& inOther) noexcept
 {
-	moveFrom(std::move(inOther));
+	moveFrom(oa::move(inOther));
 }
 
 VideoBitstream& VideoBitstream::operator=(VideoBitstream&& inOther) noexcept
 {
 	destroy();
-	moveFrom(std::move(inOther));
+	moveFrom(oa::move(inOther));
 	return *this;
 }
 
@@ -699,7 +699,7 @@ oa::Status VideoBitstream::resize(oa::U64 inNewSize)
 	if (!result.isOk()) {
 		return result.getStatus();
 	}
-	*this = std::move(result.getValue());
+	*this = oa::move(result.getValue());
 	return oa::Status::ok();
 }
 
@@ -788,13 +788,13 @@ oa::Result<VideoQueue> VideoQueue::create(
 
 VideoQueue::VideoQueue(VideoQueue&& inOther) noexcept
 {
-	moveFrom(std::move(inOther));
+	moveFrom(oa::move(inOther));
 }
 
 VideoQueue& VideoQueue::operator=(VideoQueue&& inOther) noexcept
 {
 	destroy();
-	moveFrom(std::move(inOther));
+	moveFrom(oa::move(inOther));
 	return *this;
 }
 

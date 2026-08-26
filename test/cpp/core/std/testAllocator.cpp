@@ -24,6 +24,59 @@ TEST(Allocator, AllocBytes) {
 	oa::freeBytes(p, alignof(std::max_align_t));
 }
 
+TEST(Allocator, TryAllocReportsInvalidAlignment) {
+	const oa::AllocationResult result = oa::tryAllocBytes(256, 3);
+	EXPECT_TRUE(result.isError());
+	EXPECT_EQ(result.error, oa::AllocationError::InvalidAlignment);
+	EXPECT_EQ(result.data, nullptr);
+}
+
+TEST(Allocator, TryAllocReportsArraySizeOverflow) {
+	const oa::AllocationResult result = oa::tryAllocArray(
+		std::numeric_limits<oa::Usize>::max(), 2, alignof(oa::U64));
+	EXPECT_TRUE(result.isError());
+	EXPECT_EQ(result.error, oa::AllocationError::SizeOverflow);
+	EXPECT_EQ(result.data, nullptr);
+}
+
+TEST(Allocator, TryAllocZeroSizeIsSuccessfulAndNull) {
+	const oa::AllocationResult result = oa::tryAllocBytes(0, 64);
+	EXPECT_TRUE(result.isOk());
+	EXPECT_EQ(result.data, nullptr);
+}
+
+TEST(Allocator, ReallocPreservesDefaultAlignedBytes) {
+	constexpr oa::Usize kInitialBytes = 64;
+	constexpr oa::Usize kExpandedBytes = 4096;
+	auto* bytes = static_cast<oa::U8*>(oa::allocBytes(kInitialBytes));
+	ASSERT_NE(bytes, nullptr);
+	for (oa::Usize index = 0; index < kInitialBytes; ++index) {
+		bytes[index] = static_cast<oa::U8>(index ^ 0xA5U);
+	}
+
+	bytes = static_cast<oa::U8*>(oa::reallocBytes(bytes, kExpandedBytes));
+	ASSERT_NE(bytes, nullptr);
+	for (oa::Usize index = 0; index < kInitialBytes; ++index) {
+		EXPECT_EQ(bytes[index], static_cast<oa::U8>(index ^ 0xA5U));
+	}
+	oa::freeBytes(bytes);
+}
+
+TEST(Allocator, TryReallocRejectsOverAlignment) {
+	const oa::AllocationResult result = oa::tryReallocBytes(nullptr, 64, 128);
+	EXPECT_TRUE(result.isError());
+	EXPECT_EQ(result.error, oa::AllocationError::InvalidAlignment);
+	EXPECT_EQ(result.data, nullptr);
+}
+
+TEST(Allocator, ReallocZeroSizeReleasesAndReturnsNull) {
+	void* bytes = oa::allocBytes(64);
+	ASSERT_NE(bytes, nullptr);
+	const oa::AllocationResult result = oa::tryReallocBytes(bytes, 0);
+	EXPECT_TRUE(result.isOk());
+	EXPECT_EQ(result.data, nullptr);
+}
+
 // Raw bytes: same fill pattern as std::allocator<char> for default-aligned size.
 TEST(StdAllocatorVsStd, AllocBytesMatchesStdAllocatorChar) {
 	constexpr std::size_t kBytes = 4096;
@@ -194,16 +247,11 @@ TEST(StdAllocatorVsStd, AllocatorTraitsRoundTrip) {
 	Traits::deallocate(a, p, n);
 }
 
-TEST(StdAllocatorVsStd, AllocateZeroCountNonNull) {
+TEST(Allocator, AllocateZeroCountIsSuccessfulAndNull) {
 	oa::Allocator<int> oa;
-	std::allocator<int> st;
-	using StTraits = std::allocator_traits<std::allocator<int>>;
 	int* const po = oa.allocate(0);
-	int* const ps = StTraits::allocate(st, 0);
-	ASSERT_NE(po, nullptr);
-	ASSERT_NE(ps, nullptr);
+	EXPECT_EQ(po, nullptr);
 	oa.deallocate(po, 0);
-	StTraits::deallocate(st, ps, 0);
 }
 
 TEST(StdAllocatorVsStd, AllocateWithHintIgnoresHintLikeStd) {
@@ -223,23 +271,17 @@ TEST(StdAllocatorVsStd, AllocateWithHintIgnoresHintLikeStd) {
 	StTraits::deallocate(st, ps, 8);
 }
 
-TEST(StdAllocatorVsStd, BadArrayNewLengthOverflowMatchesStd) {
+TEST(Allocator, OverflowTerminatesThroughFatalPath) {
 	oa::Allocator<std::uint64_t> oa;
-	std::allocator<std::uint64_t> st;
-	using StTraits = std::allocator_traits<std::allocator<std::uint64_t>>;
 	const std::size_t bad =
 		std::numeric_limits<std::size_t>::max() / sizeof(std::uint64_t) + 1;
-	EXPECT_THROW(static_cast<void>(oa.allocate(bad)), std::bad_array_new_length);
-	EXPECT_THROW(static_cast<void>(StTraits::allocate(st, bad)), std::bad_array_new_length);
+	EXPECT_DEATH(static_cast<void>(oa.allocate(bad)), "OA allocation failure: size overflow");
 }
 
-TEST(StdAllocatorVsStd, BadArrayNewLengthMaxSizePlusOne) {
+TEST(Allocator, MaxSizePlusOneTerminatesThroughFatalPath) {
 	oa::Allocator<int> oa;
-	std::allocator<int> st;
-	using StTraits = std::allocator_traits<std::allocator<int>>;
 	const std::size_t bad = oa.maxSize() + 1;
-	EXPECT_THROW(static_cast<void>(oa.allocate(bad)), std::bad_array_new_length);
-	EXPECT_THROW(static_cast<void>(StTraits::allocate(st, bad)), std::bad_array_new_length);
+	EXPECT_DEATH(static_cast<void>(oa.allocate(bad)), "OA allocation failure: size overflow");
 }
 
 TEST(Allocator, DeallocateNullNoCrash) {
@@ -351,8 +393,8 @@ TEST(StdAllocatorVsStd, TimedStressWallMs) {
 	runStd();
 	const auto t2 = oa::highResolutionNow();
 
-	const auto oaMs = oa::chronoMillisCount(t1 - t0);
-	const auto stMs = oa::chronoMillisCount(t2 - t1);
+	const auto oaMs = (t1 - t0).milliseconds();
+	const auto stMs = (t2 - t1).milliseconds();
 	fprintf(stderr,
 		"  [oastd] TimedStress: OaStd=%lld ms  std=%lld ms  iters=%zu  ratio=%.2f (Oa/std)\n",
 		static_cast<long long>(oaMs), static_cast<long long>(stMs), kTimedIters,

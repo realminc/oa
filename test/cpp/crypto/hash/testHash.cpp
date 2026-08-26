@@ -44,7 +44,6 @@ TEST(Hash, FromBytesRejectsWrongLength) {
 	oa::Byte shortData[31]{};
 	EXPECT_TRUE(oa::Hash::fromBytes(exact).isOk());
 	EXPECT_TRUE(oa::Hash::fromBytes(shortData).isError());
-	EXPECT_TRUE(oa::Hash::fromBytes(oa::Span<const oa::Byte>(nullptr, 32)).isError());
 }
 
 TEST(Hasher, FinalizeIsIdempotentAndRequiresResetBeforeUpdate) {

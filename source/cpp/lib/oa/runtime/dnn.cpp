@@ -1,8 +1,8 @@
 #include <oa/runtime/dnn.h>
 #include <oa/runtime/semanticGraph.h>
-
-#include <algorithm>
-#include <cstring>
+#include <oa/core/memory.h>
+#include <oa/core/std/algo.h>
+#include <oa/core/std/utility.h>
 
 namespace {
 
@@ -38,7 +38,7 @@ void hashAttribute(oa::U64& inOut, const oa::OpAttribute& inAttribute) {
 		case oa::OpAttributeKind::Float: {
 			oa::U64 bits = 0;
 			static_assert(sizeof(bits) == sizeof(inAttribute.floatVal));
-			std::memcpy(&bits, &inAttribute.floatVal, sizeof(bits));
+			oa::memcpy(&bits, &inAttribute.floatVal, sizeof(bits));
 			hashMix(inOut, bits); break;
 		}
 		case oa::OpAttributeKind::String:
@@ -86,7 +86,7 @@ oa::GemmEpilogue capturedEpilogue(
 }
 
 bool consumes(const oa::DnnOpDesc& inConsumer, oa::U32 inValue) {
-	return std::find(inConsumer.inputs.begin(), inConsumer.inputs.end(), inValue)	!= inConsumer.inputs.end();
+	return oa::find(inConsumer.inputs.begin(), inConsumer.inputs.end(), inValue)	!= inConsumer.inputs.end();
 }
 
 bool singleEdge(const oa::DnnOpDesc& inA, const oa::DnnOpDesc& inB) {
@@ -235,7 +235,7 @@ oa::Status oa::DnnGraph::validate() const {
 		for (auto id : op.inputs) {
 			const auto* matrix = findMatrix(id);
 			if (matrix == nullptr) return oa::Status::invalidArgument("DNN op has a dangling input");
-			const bool hasProducer = std::find(produced.begin(), produced.end(), id) != produced.end();
+			const bool hasProducer = oa::find(produced.begin(), produced.end(), id) != produced.end();
 			if (not matrix->external and not hasProducer) {
 				return oa::Status::invalidArgument("DNN op consumes a value before its producer");
 			}
@@ -243,7 +243,7 @@ oa::Status oa::DnnGraph::validate() const {
 		for (auto id : op.outputs) {
 			const auto* matrix = findMatrix(id);
 			if (matrix == nullptr) return oa::Status::invalidArgument("DNN op has a dangling output");
-			if (std::find(produced.begin(), produced.end(), id) != produced.end()) {
+			if (oa::find(produced.begin(), produced.end(), id) != produced.end()) {
 				return oa::Status::invalidArgument("DNN graph violates single-assignment output semantics");
 			}
 			produced.pushBack(id);
@@ -303,7 +303,7 @@ oa::Result<oa::DnnPlan> oa::DnnPlanner::plan(const oa::DnnGraph& inGraph, const 
 				sourceOp(ops[i + 1U], i + 1U),
 				sourceOp(ops[i + 2U], i + 2U)};
 			if (op.training) p.savedForBackward.pushBack(op.inputs[0]);
-			plan.partitions.pushBack(std::move(p)); i += 3U; continue;
+			plan.partitions.pushBack(oa::move(p)); i += 3U; continue;
 		}
 
 		// gate matmul, up matmul, siLU(gate), multiply(silu, up)
@@ -323,7 +323,7 @@ oa::Result<oa::DnnPlan> oa::DnnPlanner::plan(const oa::DnnGraph& inGraph, const 
 				sourceOp(ops[i + 2U], i + 2U),
 				sourceOp(ops[i + 3U], i + 3U)};
 			if (op.training) p.savedForBackward.pushBack(op.inputs[0]);
-			plan.partitions.pushBack(std::move(p)); i += 4U; continue;
+			plan.partitions.pushBack(oa::move(p)); i += 4U; continue;
 		}
 		// Shipping two-input SwiGLU is already one semantic gated-multiply op.
 		if (i + 2U < ops.size() and op.type == oa::DnnOpType::Matmul
@@ -339,7 +339,7 @@ oa::Result<oa::DnnPlan> oa::DnnPlanner::plan(const oa::DnnGraph& inGraph, const 
 				sourceOp(ops[i + 1U], i + 1U),
 				sourceOp(ops[i + 2U], i + 2U)};
 			if (op.training) p.savedForBackward.pushBack(op.inputs[0]);
-			plan.partitions.pushBack(std::move(p)); i += 3U; continue;
+			plan.partitions.pushBack(oa::move(p)); i += 3U; continue;
 		}
 
 		// generated Linear* contracts already carry the exact epilogue and do
@@ -372,7 +372,7 @@ oa::Result<oa::DnnPlan> oa::DnnPlanner::plan(const oa::DnnGraph& inGraph, const 
 				}
 			}
 			const oa::U32 consumed = static_cast<oa::U32>(p.ops.size());
-			plan.partitions.pushBack(std::move(p)); i += consumed; continue;
+			plan.partitions.pushBack(oa::move(p)); i += consumed; continue;
 		}
 
 		if (op.type == oa::DnnOpType::FlashAttentionCausal) {
@@ -380,12 +380,12 @@ oa::Result<oa::DnnPlan> oa::DnnPlanner::plan(const oa::DnnGraph& inGraph, const 
 			if (op.training) {
 				for (auto id : op.outputs) p.savedForBackward.pushBack(id);
 			}
-			plan.partitions.pushBack(std::move(p)); ++i; continue;
+			plan.partitions.pushBack(oa::move(p)); ++i; continue;
 		}
 		if (op.type == oa::DnnOpType::GroupedGemm) {
 			auto p = portable(op, i); p.engine = oa::DnnEngineType::GroupedMoe;
 			if (op.training and not op.inputs.empty()) p.savedForBackward.pushBack(op.inputs[0]);
-			plan.partitions.pushBack(std::move(p)); ++i; continue;
+			plan.partitions.pushBack(oa::move(p)); ++i; continue;
 		}
 		if (op.type == oa::DnnOpType::Add and i + 1U < ops.size()
 			and ops[i + 1U].type == oa::DnnOpType::RmsNorm and singleEdge(op, ops[i + 1U])) {
@@ -393,7 +393,7 @@ oa::Result<oa::DnnPlan> oa::DnnPlanner::plan(const oa::DnnGraph& inGraph, const 
 			p.ops = {
 				sourceOp(op, i),
 				sourceOp(ops[i + 1U], i + 1U)};
-			plan.partitions.pushBack(std::move(p)); i += 2U; continue;
+			plan.partitions.pushBack(oa::move(p)); i += 2U; continue;
 		}
 		if (op.type == oa::DnnOpType::ResidualRmsNorm) {
 			auto p = portable(op, i); p.engine = oa::DnnEngineType::ResidualNorm;

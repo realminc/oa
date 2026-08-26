@@ -571,7 +571,7 @@
 		if (result.isEmpty()) {
 			throw std::runtime_error("MergeHeads requires a compatible [B*H,S,D/H] matrix and positive dimensions");
 		}
-		return matrixPtr(std::move(result));
+		return matrixPtr(oa::move(result));
 	},
 	  nb::arg("x"), nb::arg("batch"), nb::arg("seqLen"), nb::arg("numHeads"),
 	  nb::rv_policy::take_ownership,
@@ -757,7 +757,7 @@
 		if (result.isEmpty()) {
 			throw std::runtime_error("SplitHeads requires a compatible [B*S,D] matrix and positive dimensions");
 		}
-		return matrixPtr(std::move(result));
+		return matrixPtr(oa::move(result));
 	},
 	  nb::arg("x"), nb::arg("batch"), nb::arg("seqLen"), nb::arg("numHeads"),
 	  nb::rv_policy::take_ownership,

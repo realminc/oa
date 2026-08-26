@@ -16,7 +16,7 @@
 #include <oa/core/types.h>
 #include <oa/ml/quantMatrix.h>
 
-#include <cstring>
+#include <oa/core/std/cString.h>
 
 namespace oa {
 
@@ -213,7 +213,7 @@ public:
 
 [[nodiscard]] inline bool modelFileOptimizerTypeIs(const ModelOptimizerState& inHeader,
 												   const char* inType) {
-	return std::strncmp(inHeader.type, inType, sizeof(inHeader.type)) == 0;
+	return oa::strncmp(inHeader.type, inType, sizeof(inHeader.type)) == 0;
 }
 
 [[nodiscard]] inline bool modelFileHasKnownOptimizer(const ModelOptimizerState& inHeader) {

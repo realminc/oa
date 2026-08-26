@@ -3,11 +3,9 @@
 #include <oa/runtime/executionSession.h>
 #include <oa/core/bufferAccess.h>
 #include <oa/core/fnMatrix.h>
+#include <oa/core/memory.h>
+#include <oa/core/std/cString.h>
 #include <oa/core/validation.h>
-
-#include <cstring>
-
-static oa::U32 divCeil(oa::U32 inA, oa::U32 inB) { return (inA + inB - 1) / inB; }
 
 static oa::Matrix getParamGrad(oa::Parameter* inP) {
 	return inP->grad();  // live grad (single source of truth: Data's autograd meta)
@@ -32,7 +30,7 @@ void oa::Sgd::step() {
 		struct { oa::U32 Count; oa::F32 lr; oa::F32 weightDecay; }
 			push{n, lr_, weightDecay_};
 		oa::BufferAccess access[] = {oa::BufferAccess::ReadWrite, oa::BufferAccess::Read};
-		ctx.add( "Sgd", {&weight, &gradUse}, access, &push, sizeof(push), divCeil(n, 256));
+		ctx.add( "Sgd", {&weight, &gradUse}, access, &push, sizeof(push), oa::divCeil(n, 256));
 		writebackMaster(i);
 	}
 }
@@ -53,7 +51,8 @@ oa::Status oa::Sgd::saveTo(oa::Engine& inEngine, ModelFile& outFile) const {
 	(void)inEngine;
 	outFile.optimizerPresent = true;
 	outFile.optimizer = ModelOptimizerState{};
-	std::strncpy(outFile.optimizer.type, "SGD", sizeof(outFile.optimizer.type) - 1);
+	constexpr char kType[] = "SGD";
+	oa::memcpy(outFile.optimizer.type, kType, sizeof(kType));
 	outFile.optimizer.lr          = lr_;
 	outFile.optimizer.beta1       = momentum_;  // repurposed: SGD has no beta1
 	outFile.optimizer.weightDecay = weightDecay_;
@@ -66,7 +65,7 @@ oa::Status oa::Sgd::saveTo(oa::Engine& inEngine, ModelFile& outFile) const {
 
 oa::Status oa::Sgd::validateLoad(const ModelFile& inFile) const {
 	if (not inFile.hasOptimizer()
-		or std::strncmp(inFile.optimizer.type, "SGD", sizeof(inFile.optimizer.type)) != 0)
+		or oa::strncmp(inFile.optimizer.type, "SGD", sizeof(inFile.optimizer.type)) != 0)
 	{
 		return oa::Status::error(oa::StatusCode::FailedPrecondition,
 			"SGD checkpoint optimizer state is missing or has the wrong type");

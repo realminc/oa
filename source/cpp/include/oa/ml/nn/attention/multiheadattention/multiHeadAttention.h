@@ -7,8 +7,6 @@
 #include <oa/ml/module.h>
 #include <oa/ml/nn/attention.h>
 
-#include <initializer_list>
-
 namespace oa {
 
 /// MultiHeadAttention: Multi-head scaled dot-product self-attention with explicit causal/bidirectional visibility and interchangeable standard/fused causal Flash backends.

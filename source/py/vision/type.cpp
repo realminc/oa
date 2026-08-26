@@ -1,5 +1,6 @@
 // OA Python bindings — Vision enums, metadata, and configuration records.
 #include "../binding.h"
+#include <oa/core/hostText.h>
 
 #include <oa/core/image.h>
 #include <oa/core/type.h>
@@ -116,16 +117,16 @@ void bindVisionType(nb::module_& m) {
         .def_rw("reorderQueuePackets", &oa::VideoDemuxerConfig::reorderQueuePackets)
         .def_rw("maxTimestampDiscontinuityMs", &oa::VideoDemuxerConfig::maxTimestampDiscontinuityMs)
         .def_prop_rw("rtspTransport",
-            [](const oa::VideoDemuxerConfig& v) { return v.rtspTransport.stdStr(); },
-            [](oa::VideoDemuxerConfig& v, const std::string& s) {
-                v.rtspTransport = oa::String(s);
+			[](const oa::VideoDemuxerConfig& v) { return oa::hostText::copy(v.rtspTransport); },
+			[](oa::VideoDemuxerConfig& v, const std::string& s) {
+				v.rtspTransport = oa::hostText::copy(s);
             });
 
     nb::class_<oa::VideoPlayerConfig>(m, "VideoPlayerConfig")
         .def(nb::init<>())
         .def_prop_rw("uri",
-            [](const oa::VideoPlayerConfig& v) { return v.uri.stdStr(); },
-            [](oa::VideoPlayerConfig& v, const std::string& s) { v.uri = oa::String(s); })
+			[](const oa::VideoPlayerConfig& v) { return oa::hostText::copy(v.uri); },
+			[](oa::VideoPlayerConfig& v, const std::string& s) { v.uri = oa::hostText::copy(s); })
         .def_rw("maxDpbSlots", &oa::VideoPlayerConfig::maxDpbSlots)
         .def_rw("loop", &oa::VideoPlayerConfig::loop)
         .def_rw("preferHardwareYCbCr", &oa::VideoPlayerConfig::preferHardwareYCbCr)
@@ -155,9 +156,9 @@ void bindVisionType(nb::module_& m) {
     nb::class_<oa::VideoRecorderConfig>(m, "VideoRecorderConfig")
         .def(nb::init<>())
         .def_prop_rw("outputPath",
-            [](const oa::VideoRecorderConfig& v) { return v.outputPath.stdStr(); },
-            [](oa::VideoRecorderConfig& v, const std::string& s) {
-                v.outputPath = oa::String(s);
+			[](const oa::VideoRecorderConfig& v) { return oa::hostText::copy(v.outputPath); },
+			[](oa::VideoRecorderConfig& v, const std::string& s) {
+				v.outputPath = oa::hostText::copy(s);
             })
         .def_rw("encode", &oa::VideoRecorderConfig::encode)
         .def_rw("colorSpace", &oa::VideoRecorderConfig::colorSpace)
@@ -181,9 +182,9 @@ void bindVisionType(nb::module_& m) {
         .def_rw("fps", &oa::CameraCaptureConfig::fps)
         .def_rw("ringFrames", &oa::CameraCaptureConfig::ringFrames)
         .def_prop_rw("devicePath",
-            [](const oa::CameraCaptureConfig& v) { return v.devicePath.stdStr(); },
-            [](oa::CameraCaptureConfig& v, const std::string& s) {
-                v.devicePath = oa::String(s);
+			[](const oa::CameraCaptureConfig& v) { return oa::hostText::copy(v.devicePath); },
+			[](oa::CameraCaptureConfig& v, const std::string& s) {
+				v.devicePath = oa::hostText::copy(s);
             })
         .def_rw("preferDmaBuf", &oa::CameraCaptureConfig::preferDmaBuf)
         .def_rw("reconnectAttempts", &oa::CameraCaptureConfig::reconnectAttempts)

@@ -1,15 +1,15 @@
 #include <oa/ui/trainingViewer.h>
 
 #include <oa/core/log.h>
+#include <oa/core/std/algo.h>
+#include <oa/core/std/array.h>
+#include <oa/core/std/limits.h>
+#include <oa/core/std/scalarMath.h>
+#include <oa/core/std/sync.h>
 #include <oa/ui/text.h>
 #include <oa/ui/ui.h>
 
-#include <algorithm>
-#include <array>
-#include <cmath>
-#include <cstdio>
-#include <limits>
-#include <mutex>
+#include <stdio.h>
 
 namespace {
 
@@ -60,7 +60,7 @@ struct oa::TrainingViewerSource::Impl {
 	oa::I32 selectedMetric = 0;
 	oa::UiTabBarState compactTabs{.selected = 0};
 	oa::F32 previewSplitRatio = 0.60F;
-	mutable std::mutex previewMutex;
+	mutable oa::Mutex previewMutex;
 	oa::Optional<oa::TrainingPreviewFrame> pendingPreview;
 	oa::Optional<oa::TrainingPreviewFrame> preview;
 
@@ -72,7 +72,7 @@ struct oa::TrainingViewerSource::Impl {
 	}
 
 	void appendSeries(oa::StringView inName, oa::F64 inValue, oa::Color inColor) {
-		if (!std::isfinite(inValue)) return;
+		if (!oa::isFinite(inValue)) return;
 		Series* series = findSeries(inName);
 		if (series == nullptr) {
 			if (seriesList.size() >= config.maxMetricPlots) return;
@@ -84,7 +84,7 @@ struct oa::TrainingViewerSource::Impl {
 			series = &seriesList.back();
 		}
 		series->values.pushBack(static_cast<oa::F32>(inValue));
-		const oa::Usize capacity = std::max<oa::U32>(config.historyCapacity, 2U);
+		const oa::Usize capacity = oa::max<oa::U32>(config.historyCapacity, 2U);
 		if (series->values.size() > capacity) {
 			const oa::Usize excess = series->values.size() - capacity;
 			series->values.erase(
@@ -105,13 +105,13 @@ struct oa::TrainingViewerSource::Impl {
 				appendSeries("wall_ms", inSnapshot.wallMs,
 					oa::Color::warning());
 			}
-			constexpr std::array<oa::Color, 5> colors{{
+			constexpr oa::Array<oa::Color, 5> colors{
 				oa::Color::success(),
-				{0.30F, 0.72F, 0.94F, 1.0F},
-				{0.95F, 0.43F, 0.36F, 1.0F},
-				{0.85F, 0.67F, 0.24F, 1.0F},
-				{0.55F, 0.78F, 0.42F, 1.0F},
-			}};
+				oa::Color{0.30F, 0.72F, 0.94F, 1.0F},
+				oa::Color{0.95F, 0.43F, 0.36F, 1.0F},
+				oa::Color{0.85F, 0.67F, 0.24F, 1.0F},
+				oa::Color{0.55F, 0.78F, 0.42F, 1.0F},
+			};
 			oa::U32 colorIndex = 0;
 			for (const auto& metric : inSnapshot.metrics) {
 				appendSeries(metric.name, metric.value,
@@ -140,7 +140,7 @@ struct oa::TrainingViewerSource::Impl {
 
 	void pollResults() {
 		for (const auto& result : session->resultsAfter(lastResultSequence)) {
-			lastResultSequence = std::max(lastResultSequence, result.sequence);
+			lastResultSequence = oa::max(lastResultSequence, result.sequence);
 			lastCommand = result;
 		}
 	}
@@ -153,8 +153,8 @@ oa::TrainingViewerSource::TrainingViewerSource(
 	: impl_(oa::makeUnique<Impl>()) {
 	impl_->session = &inSession;
 	impl_->config = oa::move(inConfig);
-	impl_->config.historyCapacity = std::max(impl_->config.historyCapacity, 2U);
-	impl_->config.maxMetricPlots = std::clamp(
+	impl_->config.historyCapacity = oa::max(impl_->config.historyCapacity, 2U);
+	impl_->config.maxMetricPlots = oa::clamp(
 		impl_->config.maxMetricPlots, 1U, 12U);
 }
 
@@ -203,7 +203,7 @@ oa::Status oa::TrainingViewerSource::init(
 }
 
 oa::Status oa::TrainingViewerSource::update(oa::F32 inDeltaMs) {
-	if (!std::isfinite(inDeltaMs) || inDeltaMs < 0.0F) {
+	if (!oa::isFinite(inDeltaMs) || inDeltaMs < 0.0F) {
 		return oa::Status::invalidArgument(
 			"oa::TrainingViewerSource::update requires a finite non-negative delta");
 	}
@@ -220,7 +220,7 @@ oa::Status oa::TrainingViewerSource::update(oa::F32 inDeltaMs) {
 		if (changed) impl_->appendSnapshot(*snapshot);
 	}
 	{
-		std::lock_guard<std::mutex> lock(impl_->previewMutex);
+		oa::ScopedLock<oa::Mutex> lock(impl_->previewMutex);
 		if (impl_->pendingPreview.hasValue()
 			&& impl_->pendingPreview->completion.isComplete()) {
 			impl_->preview = oa::move(impl_->pendingPreview);
@@ -236,8 +236,8 @@ oa::Status oa::TrainingViewerSource::render(
 	const oa::TextAtlas& /*inTextAtlas*/,
 	oa::U32 inWidth,
 	oa::U32 inHeight) {
-	if (inWidth > static_cast<oa::U32>(std::numeric_limits<oa::I32>::max())
-		|| inHeight > static_cast<oa::U32>(std::numeric_limits<oa::I32>::max())) {
+	if (inWidth > static_cast<oa::U32>(oa::Limits<oa::I32>::max())
+		|| inHeight > static_cast<oa::U32>(oa::Limits<oa::I32>::max())) {
 		return oa::Status::invalidArgument(
 			"oa::TrainingViewerSource::render extent exceeds signed UI coordinates");
 	}
@@ -245,7 +245,7 @@ oa::Status oa::TrainingViewerSource::render(
 	const oa::I32 height = static_cast<oa::I32>(inHeight);
 	const oa::F32 contentScale = inUi.contentScale();
 	const auto px = [contentScale](oa::I32 inLogical) {
-		return std::max<oa::I32>(1, static_cast<oa::I32>(std::lround(
+		return oa::max<oa::I32>(1, static_cast<oa::I32>(oa::lround(
 			static_cast<oa::F32>(inLogical) * contentScale)));
 	};
 	if (width < px(320) || height < px(240)) return oa::Status::ok();
@@ -279,27 +279,27 @@ oa::Status oa::TrainingViewerSource::render(
 	};
 	drawLabel("training-title", {
 		header.x + px(22), header.y + px(10),
-		std::max(1, header.w - px(240)), px(24)},
+		oa::max(1, header.w - px(240)), px(24)},
 		impl_->config.title, 18.0F, {0.96F, 0.96F, 0.96F, 1.0F});
-	static const std::array<oa::StringView, 3> metricLayouts{
+	static const oa::Array<oa::StringView, 3> metricLayouts{
 		"Auto", "1 column", "2 columns",
 	};
 	oa::UiLayout metricLayout;
 	metricLayout.padding = oa::UiEdge{};
 	metricLayout.gap = 0.0F;
 	inUi.beginPanel("training-metric-layout", {
-		header.x + std::max(0, header.w - px(194)),
+		header.x + oa::max(0, header.w - px(194)),
 		header.y + px(8), px(174), px(30)},
 		metricLayout);
 	(void)inUi.dropdown(
 		"metrics",
-		oa::Span<const oa::StringView>(metricLayouts),
+		oa::Span<const oa::StringView>(metricLayouts.data(), metricLayouts.size()),
 		impl_->metricColumns,
 		{.maxVisibleItems = 3});
 	inUi.tooltip("Choose responsive, one-column, or two-column metric cards.");
 	inUi.endPanel();
 	char summary[256]{};
-	std::snprintf(summary, sizeof(summary),
+	::snprintf(summary, sizeof(summary),
 		"%s   step %lld   epoch %lld   loss %.6f   lr %.6g",
 		stateName(snapshot.state),
 		static_cast<long long>(snapshot.step),
@@ -312,7 +312,7 @@ oa::Status oa::TrainingViewerSource::render(
 	char timing[192]{};
 	const oa::F32 fps = impl_->viewerFrameMs > 0.0F
 		? 1000.0F / impl_->viewerFrameMs : 0.0F;
-	std::snprintf(timing, sizeof(timing),
+	::snprintf(timing, sizeof(timing),
 		"GPU %.3f ms   wall %.3f ms   viewer %.1f FPS   Space pause/resume   C checkpoint   E evaluate   S stop",
 		snapshot.gpuMs, snapshot.wallMs,
 		static_cast<double>(fps));
@@ -322,32 +322,32 @@ oa::Status oa::TrainingViewerSource::render(
 
 	oa::Optional<oa::TrainingPreviewFrame> preview;
 	{
-		std::lock_guard<std::mutex> lock(impl_->previewMutex);
+		oa::ScopedLock<oa::Mutex> lock(impl_->previewMutex);
 		preview = impl_->preview;
 	}
 	const bool previewAvailable = impl_->config.showPreview
 		&& preview.hasValue() && preview->texture
 		&& preview->texture->isValid();
 	const bool showSplitPreview = width >= px(720) && previewAvailable;
-	const oa::U32 plotCount = std::min<oa::U32>(
+	const oa::U32 plotCount = oa::min<oa::U32>(
 		static_cast<oa::U32>(impl_->seriesList.size()),
 		impl_->config.maxMetricPlots);
 	oa::I32 plotTop = header.y + header.h + gap;
 	const bool compactTabs = width < px(720) && previewAvailable;
 	if (compactTabs) {
-		static const std::array<oa::UiTabItem, 2> tabs{{
-			{.id = "metrics", .label = "metrics", .closable = false},
-			{.id = "preview", .label = "preview", .closable = false},
-		}};
+		static const oa::Array<oa::UiTabItem, 2> tabs{
+			oa::UiTabItem{.id = "metrics", .label = "metrics", .closable = false},
+			oa::UiTabItem{.id = "preview", .label = "preview", .closable = false},
+		};
 		(void)inUi.tabBar(
 			"training-compact-tabs",
 			{margin, plotTop, width - margin * 2, px(28)},
-			oa::Span<const oa::UiTabItem>(tabs),
+			oa::Span<const oa::UiTabItem>(tabs.data(), tabs.size()),
 			impl_->compactTabs,
 			{.minimumTabWidth = px(96), .maximumTabWidth = px(180)});
 		plotTop += px(28) + gap;
 	}
-	const oa::I32 availableHeight = std::max<oa::I32>(
+	const oa::I32 availableHeight = oa::max<oa::I32>(
 		px(80), height - plotTop - margin);
 	oa::PixelRect plotViewport{
 		margin, plotTop, width - margin * 2, availableHeight};
@@ -379,11 +379,11 @@ oa::Status oa::TrainingViewerSource::render(
 	const oa::I32 columns = impl_->metricColumns == 0
 		? (plotAreaWidth >= px(760) ? 2 : 1)
 		: impl_->metricColumns;
-	const oa::I32 rows = std::max<oa::I32>(1,
+	const oa::I32 rows = oa::max<oa::I32>(1,
 		(static_cast<oa::I32>(plotCount) + columns - 1) / columns);
 	const oa::I32 plotHeight = rows <= 1
 		? availableHeight
-		: std::clamp(availableHeight * 3 / 7, px(128), px(240));
+		: oa::clamp(availableHeight * 3 / 7, px(128), px(240));
 	const oa::I32 contentHeight = plotCount == 0U
 		? availableHeight
 		: rows * plotHeight + gap * (rows - 1);
@@ -395,7 +395,7 @@ oa::Status oa::TrainingViewerSource::render(
 		plotViewport,
 		contentHeight,
 		scrollLayout);
-	const oa::I32 plotWidth = std::max<oa::I32>(1,
+	const oa::I32 plotWidth = oa::max<oa::I32>(1,
 		(plots.content.w - gap * (columns - 1)) / columns);
 	const oa::UiVirtualRange visibleRows = inUi.virtualRows(
 		rows, plotHeight, gap);
@@ -414,7 +414,7 @@ oa::Status oa::TrainingViewerSource::render(
 			const oa::UiTreeRowResult tree = inUi.treeRow(
 				series.name,
 				{rect.x + px(8), rect.y + px(6),
-					std::max(1, rect.w - px(16)), px(26)},
+					oa::max(1, rect.w - px(16)), px(26)},
 				series.name,
 				{
 					.hasChildren = true,
@@ -429,20 +429,20 @@ oa::Status oa::TrainingViewerSource::render(
 			char latestText[160]{};
 			const oa::F32 latest = series.values.empty()
 				? 0.0F : series.values.back();
-			std::snprintf(latestText, sizeof(latestText), "%.6g · %zu samples",
+			::snprintf(latestText, sizeof(latestText), "%.6g · %zu samples",
 				static_cast<double>(latest),
 				static_cast<size_t>(series.values.size()));
 			(void)inUi.propertyRow(
 				series.name,
 				{rect.x + px(8), rect.y + px(34),
-					std::max(1, rect.w - px(16)), px(22)},
+					oa::max(1, rect.w - px(16)), px(22)},
 				"latest",
 				latestText,
 				{.alternate = (index & 1U) != 0U});
 			const oa::PixelRect graph{
 				rect.x + px(8), rect.y + px(62),
-				std::max<oa::I32>(1, rect.w - px(16)),
-				std::max<oa::I32>(1, rect.h - px(70)),
+				oa::max<oa::I32>(1, rect.w - px(16)),
+				oa::max<oa::I32>(1, rect.h - px(70)),
 			};
 			if (series.expanded && !series.values.empty()) {
 				inUi.beginPanel(series.name, graph);
@@ -472,7 +472,7 @@ oa::Status oa::TrainingViewerSource::publishPreview(
 		return oa::Status::invalidArgument(
 			"OaTrainingViewer preview requires a valid texture");
 	}
-	std::lock_guard<std::mutex> lock(impl_->previewMutex);
+	oa::ScopedLock<oa::Mutex> lock(impl_->previewMutex);
 	impl_->pendingPreview = oa::move(inFrame);
 	return oa::Status::ok();
 }
@@ -486,7 +486,7 @@ oa::Optional<oa::TrainingSnapshot> oa::TrainingViewerSource::latestSnapshot() co
 }
 
 oa::Optional<oa::TrainingPreviewFrame> oa::TrainingViewerSource::latestPreview() const {
-	std::lock_guard<std::mutex> lock(impl_->previewMutex);
+	oa::ScopedLock<oa::Mutex> lock(impl_->previewMutex);
 	return impl_->preview;
 }
 

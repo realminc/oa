@@ -11,7 +11,7 @@
 #include <oa/runtime/executionSession.h>
 #include <oa/core/validation.h>
 
-#include <cassert>
+#include <assert.h>
 static oa::U32 divCeil(oa::U32 inA, oa::U32 inB) { return (inA + inB - 1) / inB; }
 
 // Pooling
@@ -69,7 +69,7 @@ oa::Matrix oa::FnMatrix::avgPool2d(const oa::Matrix& inX, oa::I32 inKernelSize, 
 
 	if (oa::FnAutograd::isEnabled() and (inX.requiresGrad())) {
 		auto gradFn = oa::makeShared<oa::GradAvgPool2d>();
-		gradFn->saveForBackward({inX});
+		gradFn->saveForBackward(inX);
 		gradFn->kernelSize_ = inKernelSize;
 		gradFn->stride_ = inStride;
 		gradFn->padding_ = inPadding;
@@ -142,7 +142,7 @@ oa::MaxPool2dResult oa::FnMatrix::maxPool2d(
 
 	if (oa::FnAutograd::isEnabled() and (inX.requiresGrad())) {
 		auto gradFn = oa::makeShared<oa::GradMaxPool2d>();
-		gradFn->saveForBackward({inX, out, indices});
+		gradFn->saveForBackward(inX, out, indices);
 		gradFn->kernelSize_ = inKernelSize;
 		gradFn->stride_ = inStride;
 		gradFn->padding_ = inPadding;

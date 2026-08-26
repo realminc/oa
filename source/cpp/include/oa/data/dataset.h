@@ -18,8 +18,8 @@ public:
 		Matrix y;  // Optional: empty if dataset has no labels
 
 		Sample() = default;
-		explicit Sample(Matrix inX) : x(std::move(inX)) {}
-		Sample(Matrix inX, Matrix inY) : x(std::move(inX)), y(std::move(inY)) {}
+		explicit Sample(Matrix inX) : x(oa::move(inX)) {}
+		Sample(Matrix inX, Matrix inY) : x(oa::move(inX)), y(oa::move(inY)) {}
 
 		[[nodiscard]] bool hasLabel() const { return !y.isEmpty(); }
 	};

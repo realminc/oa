@@ -44,7 +44,7 @@ oa::Matrix oa::FnMatrix::biasAdd(const oa::Matrix& inA, const oa::Matrix& inB) {
 	if (oa::FnAutograd::isEnabled() and (inA.requiresGrad() or inB.requiresGrad())) {
 		auto _gradFn = oa::makeShared<oa::GradBcastBinary>();
 		_gradFn->op_ = oa::BcastBinOp::Add;
-		_gradFn->saveForBackward({inA, inB});
+		_gradFn->saveForBackward(inA, inB);
 		_gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA, inB});
 		_gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		_gradFn->outputShape_ = out.getShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads

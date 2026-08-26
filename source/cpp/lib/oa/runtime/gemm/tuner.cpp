@@ -23,11 +23,6 @@
 #include <oa/runtime/timer.h>
 #include <oa/core/log.h>
 
-#include <algorithm>
-#include <cmath>
-#include <limits>
-#include <vector>
-
 static constexpr oa::F32 kInvalidMeasurementMs = 1e9F;
 
 // Candidate entry for benchmarking
@@ -57,11 +52,11 @@ private:
 	oa::UniquePtr<oa::ExecutionSession> session_;
 };
 
-bool checkedProduct(oa::U32 inA, oa::U32 inB, size_t& outProduct) {
+bool checkedProduct(oa::U32 inA, oa::U32 inB, oa::Usize& outProduct) {
 	if (inA == 0U or inB == 0U) return false;
-	const size_t a = static_cast<size_t>(inA);
-	const size_t b = static_cast<size_t>(inB);
-	if (a > std::numeric_limits<size_t>::max() / b) return false;
+	const oa::Usize a = static_cast<oa::Usize>(inA);
+	const oa::Usize b = static_cast<oa::Usize>(inB);
+	if (a > oa::Limits<oa::Usize>::max() / b) return false;
 	outProduct = a * b;
 	return true;
 }
@@ -72,18 +67,18 @@ oa::F32 applyEpilogue(oa::F32 inValue, oa::GemmEpilogue inEpilogue) {
 		case oa::GemmEpilogue::Bias:
 			return inValue;
 		case oa::GemmEpilogue::BiasRelu:
-			return std::max(0.0F, inValue);
+			return oa::max(0.0F, inValue);
 		case oa::GemmEpilogue::BiasGelu: {
 			const oa::F32 x3 = inValue * inValue * inValue;
-			return 0.5F * inValue * (1.0F + std::tanh(
+			return 0.5F * inValue * (1.0F + oa::tanh(
 				0.7978845608F * (inValue + 0.044715F * x3)));
 		}
 		case oa::GemmEpilogue::BiasSilu:
-			return inValue / (1.0F + std::exp(-inValue));
+			return inValue / (1.0F + oa::exp(-inValue));
 		case oa::GemmEpilogue::SiluDual:
 			break;
 	}
-	return std::numeric_limits<oa::F32>::quiet_NaN();
+	return oa::Limits<oa::F32>::quietNaN();
 }
 
 oa::Status validateCandidate(
@@ -92,9 +87,9 @@ oa::Status validateCandidate(
 	oa::U64 inVariant,
 	const oa::GemmTunerShape& inShape)
 {
-	size_t aCount = 0U;
-	size_t bCount = 0U;
-	size_t outputCount = 0U;
+	oa::Usize aCount = 0U;
+	oa::Usize bCount = 0U;
+	oa::Usize outputCount = 0U;
 	if (not checkedProduct(inProblem.m, inProblem.k, aCount)
 		or not checkedProduct(inProblem.n, inProblem.k, bCount)
 		or not checkedProduct(inProblem.m, inProblem.n, outputCount))
@@ -103,19 +98,19 @@ oa::Status validateCandidate(
 			"oa::GemmTuner: numerical validation received an invalid shape");
 	}
 
-	std::vector<oa::F32> aData(aCount);
-	std::vector<oa::F32> bData(bCount);
-	std::vector<oa::F32> biasData(
+	oa::Vec<oa::F32> aData(aCount);
+	oa::Vec<oa::F32> bData(bCount);
+	oa::Vec<oa::F32> biasData(
 		inProblem.epilogue == oa::GemmEpilogue::None ? 0U : inProblem.n);
-	for (size_t i = 0U; i < aData.size(); ++i) {
+	for (oa::Usize i = 0U; i < aData.size(); ++i) {
 		aData[i] = static_cast<oa::F32>(
 			static_cast<oa::I32>((i % 29U) * 17U % 29U) - 14) * 0.03125F;
 	}
-	for (size_t i = 0U; i < bData.size(); ++i) {
+	for (oa::Usize i = 0U; i < bData.size(); ++i) {
 		bData[i] = static_cast<oa::F32>(
 			static_cast<oa::I32>((i % 23U) * 11U % 23U) - 11) * 0.025F;
 	}
-	for (size_t i = 0U; i < biasData.size(); ++i) {
+	for (oa::Usize i = 0U; i < biasData.size(); ++i) {
 		biasData[i] = static_cast<oa::F32>(
 			static_cast<oa::I32>((i % 13U) * 7U % 13U) - 6) * 0.02F;
 	}
@@ -162,7 +157,7 @@ oa::Status validateCandidate(
 	if (not submitted.isOk()) return submitted.getStatus();
 	OA_RETURN_IF_ERROR(inContext.wait(submitted.getValue()));
 
-	std::vector<oa::F32> outputData(outputCount);
+	oa::Vec<oa::F32> outputData(outputCount);
 	OA_RETURN_IF_ERROR(oa::FnMatrix::copyToHost(
 		output, outputData.data(), outputData.size() * sizeof(oa::F32)));
 	return oa::GemmTuner::validateNumericalOutput(
@@ -284,7 +279,7 @@ static oa::F32 benchmarkCandidate(
 			break;
 		}
 		const oa::F64 sampleMs = committed.getValue();
-		if (not std::isfinite(sampleMs) or sampleMs <= 0.0) {
+		if (not oa::isFinite(sampleMs) or sampleMs <= 0.0) {
 			timingValid = false;
 			break;
 		}
@@ -413,9 +408,9 @@ oa::Status oa::GemmTuner::validateNumericalOutput(
 		const oa::F32 actual = inOutput[static_cast<size_t>(row) * inShape.n + col];
 		const oa::F32 tolerance = 2.0e-4F
 			+ 4.0e-6F * static_cast<oa::F32>(inShape.k)
-			+ 2.0e-4F * std::abs(expected);
-		if (not std::isfinite(expected) or not std::isfinite(actual)
-			or std::abs(actual - expected) > tolerance)
+			+ 2.0e-4F * oa::abs(expected);
+		if (not oa::isFinite(expected) or not oa::isFinite(actual)
+			or oa::abs(actual - expected) > tolerance)
 		{
 			return oa::Status::error(oa::StatusCode::DataLoss,
 				oa::String("oa::GemmTuner: numerical validation failed at row=")
@@ -441,11 +436,11 @@ oa::Status oa::GemmTuner::validateNumericalOutput(
 	// coordinates. This keeps validation bounded for product-sized tune shapes
 	// while covering the regions most likely to expose dispatch/tail defects.
 	const oa::U32 rows[] = {
-		0U, std::min(1U, inShape.m - 1U), inShape.m / 2U,
+		0U, oa::min(1U, inShape.m - 1U), inShape.m / 2U,
 		inShape.m > 1U ? inShape.m - 2U : 0U, inShape.m - 1U,
 	};
 	const oa::U32 cols[] = {
-		0U, std::min(1U, inShape.n - 1U), inShape.n / 2U,
+		0U, oa::min(1U, inShape.n - 1U), inShape.n / 2U,
 		inShape.n > 1U ? inShape.n - 2U : 0U, inShape.n - 1U,
 	};
 	for (const oa::U32 row : rows) {
@@ -517,17 +512,17 @@ oa::Status oa::GemmTuner::benchmarkShape(
 	// short blocks preserve the requested approximate sample count while making
 	// each candidate appear early and late in the sweep. The median block mean
 	// rejects a single scheduler/clock excursion without hiding stable changes.
-	const oa::U32 blockCount = std::min<oa::U32>(4U, inBenchIterations);
+	const oa::U32 blockCount = oa::min<oa::U32>(4U, inBenchIterations);
 	const oa::U32 iterationsPerBlock =
 		(inBenchIterations + blockCount - 1U) / blockCount;
-	std::vector<std::vector<oa::F32>> blockMeans(candidates.size());
+	oa::Vec<oa::Vec<oa::F32>> blockMeans(candidates.size());
 	for (oa::U32 block = 0; block < blockCount; ++block) {
 		for (oa::U32 order = 0; order < candidates.size(); ++order) {
 			const oa::U32 candidateIdx = (block & 1U) == 0U
 				? order
 				: static_cast<oa::U32>(candidates.size() - 1U - order);
 			const auto& candidate = candidates[candidateIdx];
-			blockMeans[candidateIdx].push_back(benchmarkCandidate(
+			blockMeans[candidateIdx].pushBack(benchmarkCandidate(
 				inRt, tuningScope.session(), problem,
 				candidate.variant->id, inWarmIterations, iterationsPerBlock));
 		}
@@ -537,8 +532,8 @@ oa::Status oa::GemmTuner::benchmarkShape(
 		const auto& cand = candidates[candidateIdx];
 		auto samples = blockMeans[candidateIdx];
 		samples.erase(
-			std::remove_if(samples.begin(), samples.end(), [](oa::F32 sample) {
-				return not std::isfinite(sample) or sample <= 0.0F or
+			oa::removeIf(samples.begin(), samples.end(), [](oa::F32 sample) {
+				return not oa::isFinite(sample) or sample <= 0.0F or
 					sample >= kInvalidMeasurementMs;
 			}),
 			samples.end());
@@ -548,14 +543,14 @@ oa::Status oa::GemmTuner::benchmarkShape(
 				cand.name);
 			continue;
 		}
-		std::sort(samples.begin(), samples.end());
+		oa::sort(samples.begin(), samples.end());
 		const oa::U32 middle = static_cast<oa::U32>(samples.size() / 2U);
 		const oa::F32 ms = (samples.size() & 1U) != 0U
 			? samples[middle]
 			: 0.5F * (samples[middle - 1U] + samples[middle]);
-		const auto p95Index = static_cast<size_t>(std::ceil(
+		const auto p95Index = static_cast<oa::Usize>(oa::ceil(
 			0.95 * static_cast<double>(samples.size()))) - 1U;
-		const oa::F32 p95Ms = samples[std::min(p95Index, samples.size() - 1U)];
+		const oa::F32 p95Ms = samples[oa::min(p95Index, samples.size() - 1U)];
 		outResult.rankedCandidates.pushBack({
 			.variant = cand.variant->id,
 			.kernel = cand.variant->kernel,
@@ -581,12 +576,12 @@ oa::Status oa::GemmTuner::benchmarkShape(
 			bestSampleCount = static_cast<oa::U32>(samples.size());
 		}
 	}
-	std::sort(outResult.rankedCandidates.begin(), outResult.rankedCandidates.end(),
+	oa::sort(outResult.rankedCandidates.begin(), outResult.rankedCandidates.end(),
 		[](const oa::GemmTunerCandidateResult& a, const oa::GemmTunerCandidateResult& b) {
 			return a.medianTimeMs < b.medianTimeMs;
 		});
 
-	if (bestVariant == oa::invalidMatmulVariantId or not std::isfinite(bestMs) or
+	if (bestVariant == oa::invalidMatmulVariantId or not oa::isFinite(bestMs) or
 		bestMs <= 0.0F or bestMs >= kInvalidMeasurementMs) {
 		return oa::Status::error("oa::GemmTuner: every legal candidate failed GPU timing");
 	}

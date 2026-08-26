@@ -22,13 +22,6 @@ set(OA_SDK_SUPPORT_SOURCES
 	lib/ml/rl/lunarlander3d/lunarLander3dVector.cpp
 	lib/ml/fnLoss.cpp
 	lib/ml/nn/gptOss/gptOss.cpp
-	# OaAlm — autograd motion pipeline (Conv1d VQ-VAE tokenizer + Transformer token LM).
-	lib/ml/nn/alm/almAg.cpp
-	lib/ml/nn/alm/clipTextAg.cpp
-	lib/ml/nn/alm/clipTextModelTranslator.cpp
-	lib/ml/nn/alm/clipTokenizer.cpp
-	lib/ml/nn/alm/almTokenizerAg.cpp
-	lib/ml/nn/alm/almPriorAg.cpp
 	# 3D anim engine: Core (transform/joint) → Rig (skeleton) → Anim (IO) → Retarget.
 	lib/core/transform.cpp
 	lib/rig/skeleton.cpp
@@ -39,6 +32,17 @@ set(OA_SDK_SUPPORT_SOURCES
 	lib/retarget/humanIk.cpp
 	lib/retarget/retarget.cpp
 )
+
+if(OA_ENABLE_ALM)
+	list(APPEND OA_SDK_SUPPORT_SOURCES
+		# Experimental autograd motion pipeline: VQ-VAE tokenizer + token LM.
+		lib/ml/nn/alm/almAg.cpp
+		lib/ml/nn/alm/clipTextAg.cpp
+		lib/ml/nn/alm/clipTextModelTranslator.cpp
+		lib/ml/nn/alm/clipTokenizer.cpp
+		lib/ml/nn/alm/almTokenizerAg.cpp
+		lib/ml/nn/alm/almPriorAg.cpp)
+endif()
 
 include(${CMAKE_CURRENT_LIST_DIR}/../../cmake/gen/sdkEnvironmentKernels.cmake)
 
@@ -92,7 +96,8 @@ target_include_directories(oaSdkSupport
 	PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/include>
 	PRIVATE
 		${CMAKE_CURRENT_LIST_DIR}/lib
-		${oa_SOURCE_DIR}/source/cpp/lib)
+		${oa_SOURCE_DIR}/source/cpp/lib
+		${oa_SOURCE_DIR}/source/cpp/thirdparty/utf8proc)
 set_target_properties(oaSdkSupport PROPERTIES
 	POSITION_INDEPENDENT_CODE ON)
 

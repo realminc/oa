@@ -3,9 +3,8 @@
 #include <oa/core/bufferAccess.h>
 #include <oa/core/fnMatrix.h>
 #include <oa/runtime/executionSession.h>
-
-#include <algorithm>
-#include <limits>
+#include <oa/core/std/algo.h>
+#include <oa/core/std/limits.h>
 
 namespace {
 
@@ -30,7 +29,7 @@ oa::Result<oa::U32> elements(const oa::MatrixShape& inShape, bool inAllowScalar)
 			return oa::Status::invalidArgument("replay field dimensions must be positive");
 		}
 		count *= static_cast<oa::U64>(inShape[dim]);
-		if (count > std::numeric_limits<oa::U32>::max()) {
+		if (count > oa::Limits<oa::U32>::max()) {
 			return oa::Status::error(oa::StatusCode::OutOfRange,
 				"replay field exceeds 32-bit GPU indexing");
 		}
@@ -123,8 +122,8 @@ oa::Status oa::ReplayBuffer::append(const oa::ReplayTransition& inTransition) {
 		oa::BufferAccess::Read, oa::BufferAccess::Read, oa::BufferAccess::Read,
 		oa::BufferAccess::Write, oa::BufferAccess::Write, oa::BufferAccess::Write,
 		oa::BufferAccess::Write, oa::BufferAccess::Write, oa::BufferAccess::Write};
-	const oa::U32 work = std::max({batch * observationElements_,
-		batch * actionElements_, batch});
+	const oa::U32 work = oa::max(
+		oa::max(batch * observationElements_, batch * actionElements_), batch);
 	oa::ExecutionSession::getActive().add( "RlReplayAppend",
 		{&inTransition.observation, &inTransition.action,
 		 &inTransition.nextObservation, &inTransition.reward,
@@ -133,7 +132,7 @@ oa::Status oa::ReplayBuffer::append(const oa::ReplayTransition& inTransition) {
 		 &storage_.reward, &storage_.terminated, &storage_.truncated},
 		access, &push, sizeof(push), (work + 255U) / 256U);
 	cursor_ = (cursor_ + batch) % config_.capacity;
-	size_ = std::min(config_.capacity, size_ + batch);
+	size_ = oa::min(config_.capacity, size_ + batch);
 	return oa::Status::ok();
 }
 
@@ -169,8 +168,9 @@ oa::Result<oa::ReplayBatch> oa::ReplayBuffer::sample(
 		oa::BufferAccess::Write, oa::BufferAccess::Write, oa::BufferAccess::Write,
 		oa::BufferAccess::Write, oa::BufferAccess::Write, oa::BufferAccess::Write,
 		oa::BufferAccess::Write};
-	const oa::U32 work = std::max({inBatchSize * observationElements_,
-		inBatchSize * actionElements_, inBatchSize});
+	const oa::U32 work = oa::max(
+		oa::max(inBatchSize * observationElements_,
+			inBatchSize * actionElements_), inBatchSize);
 	oa::ExecutionSession::getActive().add( "RlReplaySample",
 		{&storage_.observation, &storage_.action, &storage_.nextObservation,
 		 &storage_.reward, &storage_.terminated, &storage_.truncated,

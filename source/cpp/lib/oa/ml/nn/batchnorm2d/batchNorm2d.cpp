@@ -7,7 +7,7 @@
 #include <oa/core/fnMatrix.h>
 #include <oa/core/validation.h>
 #include <oa/runtime/executionSession.h>
-#include <cassert>
+#include <assert.h>
 
 oa::BatchNorm2d::BatchNorm2d(oa::I32 inNumFeatures, oa::F32 inEps, oa::F32 inMomentum)
 	: numFeatures_(inNumFeatures), eps_(inEps), momentum_(inMomentum) {

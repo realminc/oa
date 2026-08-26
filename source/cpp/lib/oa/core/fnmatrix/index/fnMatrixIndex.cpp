@@ -21,7 +21,7 @@
 
 #include <oa/core/validation.h>
 
-#include <cassert>
+#include <assert.h>
 
 static oa::U32 divCeil(oa::U32 inA, oa::U32 inB) { return (inA + inB - 1) / inB; }
 
@@ -178,7 +178,7 @@ oa::Matrix oa::FnMatrix::gatherLastDim(const oa::Matrix& inSelf, const oa::Matri
 	if (not semantic.isOk()) return {};
 	if (oa::FnAutograd::isEnabled() and inSelf.requiresGrad()) {
 		auto gradFn = oa::makeShared<oa::GradGatherLastDim>();
-		gradFn->saveForBackward({inSelf, inIndices});
+		gradFn->saveForBackward(inSelf, inIndices);
 		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inSelf, inIndices});
 		gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		gradFn->outputShape_ = out.getShape();
@@ -622,7 +622,7 @@ oa::Matrix oa::FnMatrix::repeatInterleave(const oa::Matrix& inA, oa::I32 inRepea
 		auto gradFn = oa::makeShared<oa::GradRepeatInterleave>();
 		gradFn->repeats_ = inRepeats;
 		gradFn->dim_ = inDim;
-		gradFn->saveForBackward({inA});
+		gradFn->saveForBackward(inA);
 		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA});
 		gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		gradFn->outputShape_ = out.getShape();
@@ -710,7 +710,7 @@ oa::Matrix oa::FnMatrix::causalMask(const oa::Matrix& inScores) {
 	if (not semantic.isOk()) return {};
 	if (oa::FnAutograd::isEnabled() and inScores.requiresGrad()) {
 		auto gradFn = oa::makeShared<oa::GradCausalMask>();
-		gradFn->saveForBackward({inScores});
+		gradFn->saveForBackward(inScores);
 		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inScores});
 		gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		gradFn->outputShape_ = out.getShape();
@@ -875,7 +875,7 @@ oa::CompactRowsResult oa::FnMatrix::compactRows(const oa::Matrix& inSelf, const 
 		gradFn->rowMap_ = result.rowMap;
 		gradFn->count_ = result.count;
 		gradFn->dispatchArgs_ = result.dispatchArgs;
-		gradFn->saveForBackward({inSelf});
+		gradFn->saveForBackward(inSelf);
 		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inSelf});
 		gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		gradFn->outputShape_ = result.values.getShape();
@@ -978,7 +978,7 @@ oa::Matrix oa::FnMatrix::scatterRows(const oa::Matrix& inSelf, const oa::Matrix&
 		auto gradFn = oa::makeShared<oa::GradScatterRows>();
 		gradFn->rowMap_ = inRowMap;
 		gradFn->count_ = inCount;
-		gradFn->saveForBackward({inSelf, inSource});
+		gradFn->saveForBackward(inSelf, inSource);
 		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inSelf, inSource});
 		gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		gradFn->outputShape_ = out.getShape();
@@ -1043,7 +1043,7 @@ oa::Matrix oa::FnMatrix::scatterRows(const oa::Matrix& inSelf, const oa::Matrix&
 		gradFn->rowMap_ = inPlan.rowMap;
 		gradFn->count_ = inPlan.count;
 		gradFn->dispatchArgs_ = inPlan.dispatchArgs;
-		gradFn->saveForBackward({inSelf, inSource});
+		gradFn->saveForBackward(inSelf, inSource);
 		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inSelf, inSource});
 		gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		gradFn->outputShape_ = out.getShape();

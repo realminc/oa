@@ -5,13 +5,8 @@
 #include <oa/core/filesystem.h>
 #include <oa/core/time.h>
 
-#include <cstdarg>
-#include <cstdio>
-#include <cstring>
-#include <ctime>
-#include <chrono>
-#include <fstream>
-#include <mutex>
+#include <stdarg.h>
+#include <stdio.h>
 
 namespace oa {
 
@@ -187,7 +182,7 @@ void logWrite(LogLevel inLevel, LogComponent inComponent, const char* inFormat, 
 	}
 	if (inN < 1000) {
 		char smallBuf[16];
-		if (std::snprintf(smallBuf, sizeof(smallBuf), "%lld", static_cast<long long>(inN)) <= 0) {
+		if (::snprintf(smallBuf, sizeof(smallBuf), "%lld", static_cast<long long>(inN)) <= 0) {
 			return oa::String();
 		}
 		return oa::String(smallBuf);
@@ -214,7 +209,7 @@ void logWrite(LogLevel inLevel, LogComponent inComponent, const char* inFormat, 
 // Uppercase hex with 0x prefix (PCI / vulkan id style, no leading-zero padding).
 [[nodiscard]] inline oa::String formatHexU32(oa::U32 inVal) {
 	char buf[16];
-	if (std::snprintf(
+	if (::snprintf(
 			buf, sizeof(buf), "0x%X", static_cast<unsigned>(inVal)) <= 0) {
 		return oa::String("0x0");
 	}
@@ -247,13 +242,15 @@ void logWrite(LogLevel inLevel, LogComponent inComponent, const char* inFormat, 
 // width 60 between left text and right value. Used by model summaries and device info.
 inline void logSummary(LogComponent inComp, const char* inLeft, oa::I64 inParams) {
 	auto val = formatNumber(inParams);
-	oa::I32 pad = 60 - static_cast<oa::I32>(strlen(inLeft)) - static_cast<oa::I32>(val.size());
+	oa::I32 pad = 60 - static_cast<oa::I32>(oa::strlen(inLeft))
+		- static_cast<oa::I32>(val.size());
 	if (pad < 1) pad = 1;
 	OaLogInfo(inComp, "%s%*s%s", inLeft, pad, "", val.cStr());
 }
 
 inline void logSummary(LogComponent inComp, const char* inLeft, const char* inRight) {
-	oa::I32 pad = 60 - static_cast<oa::I32>(strlen(inLeft)) - static_cast<oa::I32>(strlen(inRight));
+	oa::I32 pad = 60 - static_cast<oa::I32>(oa::strlen(inLeft))
+		- static_cast<oa::I32>(oa::strlen(inRight));
 	if (pad < 1) pad = 1;
 	OaLogInfo(inComp, "%s%*s%s", inLeft, pad, "", inRight);
 }
@@ -261,7 +258,8 @@ inline void logSummary(LogComponent inComp, const char* inLeft, const char* inRi
 class LogMetrics {
 public:
 	// Structured metrics to JSONL. For numerical time-series (loss, tok/s, etc.).
-	// Thread-safe. Reusable across ML training, backtesting, benchmarks.
+	// Writes, flush, and close are serialized. Configuration and path access
+	// belong to the owning thread before concurrent producers start.
 
 	// Constructors.
 	LogMetrics() = default;
@@ -272,6 +270,8 @@ public:
 
 	// Methods.
 	oa::Status open(const oa::String& inLogDir) {
+		oa::ScopedLock<oa::Mutex> lock(mutex_);
+		flushUnlocked_();
 		logDir_ = inLogDir;
 		(void)oa::Filesystem::createDirectories(oa::Path(logDir_));
 		eventsPath_ = logDir_ + "/events.jsonl";
@@ -281,17 +281,20 @@ public:
 	}
 
 	void close() {
-		std::lock_guard<std::mutex> lock(mutex_);
-		flush();
-		isOpen_ = false;
+		oa::ScopedLock<oa::Mutex> lock(mutex_);
+		flushUnlocked_();
+		isOpen_.store(false, oa::MemoryOrder::Release);
 	}
 
-	[[nodiscard]] bool isOpen() const { return isOpen_; }
+	[[nodiscard]] bool isOpen() const {
+		return isOpen_.load(oa::MemoryOrder::Acquire);
+	}
 	[[nodiscard]] const oa::String& getLogDir() const { return logDir_; }
 
 	void logScalar(const oa::String& inTag, oa::I64 inStep, oa::F64 inValue) {
-		if (!isOpen_) return;
-		std::lock_guard<std::mutex> lock(mutex_);
+		if (!isOpen()) return;
+		oa::ScopedLock<oa::Mutex> lock(mutex_);
+		if (!isOpen_.load(oa::MemoryOrder::Relaxed)) return;
 
 		oa::F64 wallTime = (oa::now() - startTime_).toSeconds();
 
@@ -305,7 +308,7 @@ public:
 		++bufferCount_;
 
 		if (bufferCount_ >= flushInterval_) {
-			flush();
+			flushUnlocked_();
 		}
 	}
 
@@ -316,15 +319,14 @@ public:
 	}
 
 	void flush() {
-		if (buffer_.empty()) {
-			return;
-		}
-		(void)oa::Filesystem::appendText(oa::Path(eventsPath_), buffer_);
-		buffer_.clear();
-		bufferCount_ = 0;
+		oa::ScopedLock<oa::Mutex> lock(mutex_);
+		flushUnlocked_();
 	}
 
-	void setFlushInterval(oa::I32 inN) { flushInterval_ = inN; }
+	void setFlushInterval(oa::I32 inN) {
+		oa::ScopedLock<oa::Mutex> lock(mutex_);
+		flushInterval_ = inN;
+	}
 
 	// Operators.
 	LogMetrics(const LogMetrics&) = delete;
@@ -333,11 +335,19 @@ public:
 	LogMetrics& operator=(LogMetrics&&) = delete;
 
 private:
+	void flushUnlocked_() {
+		if (buffer_.empty()) {
+			return;
+		}
+		(void)oa::Filesystem::appendText(oa::Path(eventsPath_), buffer_);
+		buffer_.clear();
+		bufferCount_ = 0;
+	}
 	oa::String logDir_;
 	oa::String eventsPath_;
 	oa::Timestamp startTime_;
-	std::mutex mutex_;
-	bool isOpen_ = false;
+	oa::Mutex mutex_;
+	oa::Atomic<bool> isOpen_{false};
 	oa::String buffer_;
 	oa::I32 bufferCount_ = 0;
 	oa::I32 flushInterval_ = 16;

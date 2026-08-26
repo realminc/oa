@@ -2,23 +2,19 @@
 
 // Native StringView — non-owning `const char*` + length.
 //
-// `Npos` for find failures; `at` / `subStr` throw `std::out_of_range`; `operator[]` unchecked.
-// Interop: `stdView()` → `std::string_view`; explicit ctor from `std::string_view`.
+// `Npos` for find failures; `at` / `subStr` use the always-on OA contract;
+// `operator[]` has a debug assertion.
 
-#include <cassert>
-#include <cstddef>
-#include <cstring>
-#include <ostream>
-#include <stdexcept>
-#include <string_view>
-#include <type_traits>
+#include <oa/core/assert.h>
+#include <oa/core/memory.h>
+#include <oa/core/std/cString.h>
 
 namespace oa {
 
 class StringView {
 public:
 	using value_type = char;
-	using size_type = std::size_t;
+	using size_type = oa::Usize;
 	using const_iterator = const char*;
 
 	static constexpr size_type Npos = static_cast<size_type>(-1);
@@ -32,7 +28,7 @@ public:
 	// buffer (e.g. snprintf into char[16]) it stops at the real terminator instead
 	// of capturing the embedded NUL + uninitialised tail (which silently corrupted
 	// dotted module paths in checkpoint serialization).
-	template<std::size_t N>
+	template<oa::Usize N>
 	constexpr StringView(const char (&ins)[N]) noexcept
 		: ptr_(ins),
 		  len_(boundedCStrLen(ins, N)) {}
@@ -41,59 +37,64 @@ public:
 
 	StringView(const char* innullTerminated) noexcept
 		: ptr_(innullTerminated),
-		  len_(innullTerminated != nullptr ? std::strlen(innullTerminated) : 0) {}
-
-	explicit StringView(std::string_view inv) noexcept : ptr_(inv.data()), len_(inv.size()) {}
-
-	[[nodiscard]] std::string_view stdView() const noexcept { return std::string_view(ptr_, len_); }
+		  len_(oa::strlen(innullTerminated)) {}
 
 	[[nodiscard]] size_type size() const noexcept { return len_; }
 	[[nodiscard]] bool empty() const noexcept { return len_ == 0; }
 	[[nodiscard]] const char* data() const noexcept { return ptr_; }
 
-	[[nodiscard]] char operator[](size_type inidx) const noexcept { return ptr_[inidx]; }
-
-	[[nodiscard]] char at(size_type inidx) const {
-		if (inidx >= len_) {
-			throw std::out_of_range("StringView::at");
-		}
+	[[nodiscard]] char operator[](size_type inidx) const noexcept {
+		OA_ASSERT(inidx < len_);
 		return ptr_[inidx];
 	}
 
-	[[nodiscard]] char front() const noexcept { return *ptr_; }
-	[[nodiscard]] char back() const noexcept { return ptr_[len_ - 1U]; }
+	[[nodiscard]] char at(size_type inidx) const noexcept {
+		OA_REQUIRE(inidx < len_);
+		return ptr_[inidx];
+	}
 
-	[[nodiscard]] StringView subStr(size_type inpos = 0, size_type incount = Npos) const {
-		if (inpos > len_) {
-			throw std::out_of_range("StringView::subStr");
-		}
+	[[nodiscard]] char front() const noexcept {
+		OA_REQUIRE(!empty());
+		return *ptr_;
+	}
+	[[nodiscard]] char back() const noexcept {
+		OA_REQUIRE(!empty());
+		return ptr_[len_ - 1U];
+	}
+
+	[[nodiscard]] StringView subStr(size_type inpos = 0, size_type incount = Npos) const noexcept {
+		OA_REQUIRE(inpos <= len_);
 		size_type const avail = len_ - inpos;
 		size_type n = avail;
 		if (incount != Npos) {
 			n = incount < avail ? incount : avail;
 		}
-		return StringView(ptr_ + inpos, n);
+		return StringView(ptr_ == nullptr ? nullptr : ptr_ + inpos, n);
 	}
 
 	void removePrefix(size_type inn) noexcept {
-		assert(inn <= len_);
-		ptr_ += inn;
+		OA_REQUIRE(inn <= len_);
+		if (inn != 0) {
+			ptr_ += inn;
+		}
 		len_ -= inn;
 	}
 
 	void removeSuffix(size_type inn) noexcept {
-		assert(inn <= len_);
+		OA_REQUIRE(inn <= len_);
 		len_ -= inn;
 	}
 
 	[[nodiscard]] const_iterator begin() const noexcept { return ptr_; }
-	[[nodiscard]] const_iterator end() const noexcept { return ptr_ + len_; }
+	[[nodiscard]] const_iterator end() const noexcept {
+		return ptr_ == nullptr ? nullptr : ptr_ + len_;
+	}
 
 	[[nodiscard]] bool equals(StringView ino) const noexcept {
 		if (len_ != ino.len_) {
 			return false;
 		}
-		return len_ == 0 || std::memcmp(ptr_, ino.ptr_, len_) == 0;
+		return len_ == 0 || oa::memcmp(ptr_, ino.ptr_, len_) == 0;
 	}
 
 	[[nodiscard]] size_type find(char inch, size_type inpos = 0) const noexcept {
@@ -108,6 +109,25 @@ public:
 		return Npos;
 	}
 
+	[[nodiscard]] size_type rfind(
+		char inChar,
+		size_type inPosition = Npos
+	) const noexcept {
+		if (len_ == 0) {
+			return Npos;
+		}
+		size_type index = inPosition < len_ ? inPosition : len_ - 1U;
+		for (;;) {
+			if (ptr_[index] == inChar) {
+				return index;
+			}
+			if (index == 0) {
+				return Npos;
+			}
+			--index;
+		}
+	}
+
 	[[nodiscard]] size_type find(StringView inneedle, size_type inpos = 0) const noexcept {
 		const size_type nl = inneedle.size();
 		if (nl == 0) {
@@ -117,7 +137,7 @@ public:
 			return Npos;
 		}
 		for (size_type i = inpos; i + nl <= len_; ++i) {
-			if (std::memcmp(ptr_ + i, inneedle.data(), nl) == 0) {
+			if (oa::memcmp(ptr_ + i, inneedle.data(), nl) == 0) {
 				return i;
 			}
 		}
@@ -142,7 +162,7 @@ public:
 		size_type const lhs = len_;
 		size_type const rhs = ino.len_;
 		size_type const n = lhs < rhs ? lhs : rhs;
-		int const c = n == 0 ? 0 : std::memcmp(ptr_, ino.ptr_, n);
+		int const c = n == 0 ? 0 : oa::memcmp(ptr_, ino.ptr_, n);
 		if (c != 0) {
 			return c < 0 ? -1 : 1;
 		}
@@ -195,9 +215,5 @@ inline bool operator!=(const char* ina, StringView inb) noexcept {
 
 inline StringView::const_iterator begin(StringView inv) noexcept { return inv.begin(); }
 inline StringView::const_iterator end(StringView inv) noexcept { return inv.end(); }
-
-inline std::ostream& operator<<(std::ostream& inos, StringView inv) {
-	return inos.write(inv.data(), static_cast<std::streamsize>(inv.size()));
-}
 
 } // namespace oa

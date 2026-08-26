@@ -6,19 +6,17 @@
 #include <oa/runtime/stream.h>
 #include <oa/core/envFlag.h>
 #include <oa/core/log.h>
-
-#include <atomic>
-#include <chrono>
+#include <oa/core/std/atomic.h>
+#include <oa/core/std/chrono.h>
 
 static oa::F64 executionSessionElapsedMs(
-	const std::chrono::steady_clock::time_point& inBegin) noexcept
+	oa::SteadyTimePoint inBegin) noexcept
 {
-	return std::chrono::duration<oa::F64, std::milli>(
-		std::chrono::steady_clock::now() - inBegin).count();
+	return (oa::steadyNow() - inBegin).toMilliseconds();
 }
 
 static void executionSessionMaybeLogGraph(const oa::ExecutableGraph& inGraph) {
-	static std::atomic<oa::U32> sLoggedGraphs{0};
+	static oa::Atomic<oa::U32> sLoggedGraphs{0};
 
 	const oa::I64 requested = oa::EnvFlag::getInt("OA_LOG_SESSION_GRAPH", 0);
 	if (requested <= 0) {
@@ -26,7 +24,7 @@ static void executionSessionMaybeLogGraph(const oa::ExecutableGraph& inGraph) {
 	}
 
 	const oa::U32 limit = static_cast<oa::U32>(requested);
-	const oa::U32 index = sLoggedGraphs.fetch_add(1, std::memory_order_relaxed);
+	const oa::U32 index = sLoggedGraphs.fetchAdd(1, oa::MemoryOrder::Relaxed);
 	if (index >= limit) {
 		return;
 	}
@@ -50,7 +48,7 @@ static void executionSessionMaybeLogGraph(const oa::ExecutableGraph& inGraph) {
 }
 
 oa::Status oa::ExecutionSession::recordActiveGraph_() {
-	assert(engine_ and "Engine is null");
+	OA_ASSERT(engine_ and "Engine is null");
 	const auto recordingStatus = consumeRecordingFailure();
 	if (not recordingStatus.isOk()) {
 		OaLogError(oa::LogComponent::Compute,
@@ -59,7 +57,7 @@ oa::Status oa::ExecutionSession::recordActiveGraph_() {
 		return recordingStatus;
 	}
 	auto* activeGraph = graph();
-	assert(activeGraph and "graph is null");
+	OA_ASSERT(activeGraph and "graph is null");
 	const auto loweringStatus = validateLowering();
 	if (not loweringStatus.isOk()) {
 		OaLogError(oa::LogComponent::Compute,
@@ -73,7 +71,7 @@ oa::Status oa::ExecutionSession::recordActiveGraph_() {
 		markExecuted();
 		return oa::Status::ok();
 	}
-	assert(isBatchActive()
+	OA_ASSERT(isBatchActive()
 		and "non-empty session recording requires an explicit submission");
 
 	executionSessionMaybeLogGraph(*activeGraph);
@@ -86,7 +84,7 @@ oa::Status oa::ExecutionSession::recordActiveGraph_() {
 	// session's secondary graph into it; no engine-global ambient batch can
 	// absorb work from another session.
 	if (!activeGraph->isCompiled()) {
-		const auto compileBegin = std::chrono::steady_clock::now();
+		const auto compileBegin = oa::steadyNow();
 		auto compileStatus = activeGraph->compile(*engine_);
 		stats().compileMs += executionSessionElapsedMs(compileBegin);
 		if (activeGraph->lastCompileReused()) ++stats().compileCacheHits;
@@ -104,7 +102,7 @@ oa::Status oa::ExecutionSession::recordActiveGraph_() {
 
 	// Secondary-command-buffer boundaries provide no implicit dependency.
 	// Insert the boundary barrier immediately before a following graph.
-	const auto recordBegin = std::chrono::steady_clock::now();
+	const auto recordBegin = oa::steadyNow();
 	auto recordResult = recordActiveGraphInBatch_(
 		stream->commandBuffer);
 	stats().recordMs += executionSessionElapsedMs(recordBegin);
@@ -178,7 +176,7 @@ oa::Result<oa::Event> oa::ExecutionSession::submit(oa::Timer* inTimer) {
 }
 
 oa::Status oa::ExecutionSession::beginSubmission_() {
-	assert(engine_ and "Engine is null");
+	OA_ASSERT(engine_ and "Engine is null");
 	const auto recordingStatus = consumeRecordingFailure();
 	if (not recordingStatus.isOk()) return recordingStatus;
 	if (isBatchActive()) {
@@ -189,11 +187,11 @@ oa::Status oa::ExecutionSession::beginSubmission_() {
 }
 
 oa::Status oa::ExecutionSession::recordSubmission_(oa::Timer* inTimer) {
-	assert(engine_ and "Engine is null");
+	OA_ASSERT(engine_ and "Engine is null");
 	const auto recordingStatus = consumeRecordingFailure();
 	if (not recordingStatus.isOk()) return recordingStatus;
 	auto* activeGraph = graph();
-	assert(activeGraph and "graph is null");
+	OA_ASSERT(activeGraph and "graph is null");
 
 	if (activeGraph->nodeCount() == 0) {
 		// Recording validation still rejects a semantic operation with a
@@ -223,10 +221,10 @@ oa::Status oa::ExecutionSession::recordSubmission_(oa::Timer* inTimer) {
 }
 
 oa::Result<oa::Event> oa::ExecutionSession::submitRecorded_() {
-	assert(engine_ and "Engine is null");
+	OA_ASSERT(engine_ and "Engine is null");
 	const auto recordingStatus = consumeRecordingFailure();
 	if (not recordingStatus.isOk()) return recordingStatus;
-	const auto submitBegin = std::chrono::steady_clock::now();
+	const auto submitBegin = oa::steadyNow();
 	auto completion = submitBatch_();
 	stats().submitMs += executionSessionElapsedMs(submitBegin);
 	if (completion.isOk()) {
@@ -244,7 +242,7 @@ oa::Bool oa::ExecutionSession::isPendingEvent(
 }
 
 oa::Status oa::ExecutionSession::wait(const oa::Event& inEvent) {
-	const auto waitBegin = std::chrono::steady_clock::now();
+	const auto waitBegin = oa::steadyNow();
 	const auto status = waitBatch_(inEvent);
 	stats().waitMs += executionSessionElapsedMs(waitBegin);
 	if (status.isOk() and oa::EnvFlag::isSet("OA_LOG_RUNTIME_PHASES")) {

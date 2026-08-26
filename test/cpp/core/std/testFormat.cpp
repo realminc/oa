@@ -8,6 +8,8 @@
 TEST(format, IntegerToString) {
 	EXPECT_STREQ(oa::toString(oa::U32{0}).cStr(), "0");
 	EXPECT_STREQ(oa::toString(oa::U32{4294967295u}).cStr(), "4294967295");
+	EXPECT_STREQ(oa::toString(oa::U64{18446744073709551615ULL}).cStr(),
+		"18446744073709551615");
 	EXPECT_STREQ(oa::toString(oa::I64{-9223372036854775807LL}).cStr(), "-9223372036854775807");
 }
 

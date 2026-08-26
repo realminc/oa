@@ -15,7 +15,13 @@
 #include <oa/runtime/window.h>
 #include <oa/runtime/oaVk.h>
 #include <oa/runtime/device.h>
+#include <oa/core/assert.h>
 #include <oa/core/log.h>
+#include <oa/core/std/algo.h>
+#include <oa/core/std/format.h>
+#include <oa/core/std/limits.h>
+#include <oa/core/std/utility.h>
+#include <oa/core/std/vec.h>
 
 #include "../presenterRetirement.h"
 
@@ -26,12 +32,6 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
 #endif
-
-#include <algorithm>
-#include <cassert>
-#include <limits>
-#include <vector>
-
 
 // ─── Internal helpers ────────────────────────────────────────────────────────
 
@@ -210,11 +210,11 @@ void oa::Presenter::abandon_() noexcept {
 	}
 
 	auto retired = oa::makeUnique<oa::RetiredPresenter>();
-	retired->swapchain = std::move(swapchain_);
+	retired->swapchain = oa::move(swapchain_);
 	retired->renderPass = renderPass_;
-	retired->framebuffers = std::move(framebuffers_);
+	retired->framebuffers = oa::move(framebuffers_);
 	retired->commandPool = cmdPool_;
-	retired->commandBuffers = std::move(cmdBufs_);
+	retired->commandBuffers = oa::move(cmdBufs_);
 	retired->imGuiPool = imGuiPool_;
 	retired->imGuiReady = imGuiReady_;
 	retired->presentQueue = oa::EngineDeviceAccess::get(engine_).queues.presentQueue != nullptr
@@ -470,10 +470,10 @@ bool oa::Presenter::buildSwapchainObjects() {
 	}
 
 	VkExtent2D extent = caps.currentExtent;
-	if (extent.width == std::numeric_limits<uint32_t>::max()) {
-		extent.width  = std::clamp(swapchain_.extent.width,
+	if (extent.width == oa::Limits<oa::U32>::max()) {
+		extent.width  = oa::clamp(swapchain_.extent.width,
 			caps.minImageExtent.width,  caps.maxImageExtent.width);
-		extent.height = std::clamp(swapchain_.extent.height,
+		extent.height = oa::clamp(swapchain_.extent.height,
 			caps.minImageExtent.height, caps.maxImageExtent.height);
 	}
 	swapchain_.extent = extent;
@@ -486,7 +486,7 @@ bool oa::Presenter::buildSwapchainObjects() {
 	uint32_t fmtCount = 0;
 	reInstanceVk(*this).vkGetPhysicalDeviceSurfaceFormatsKHR(
 		rePhys(*this), surf, &fmtCount, nullptr);
-	std::vector<VkSurfaceFormatKHR> formats(fmtCount);
+	oa::Vec<VkSurfaceFormatKHR> formats(fmtCount);
 	if (fmtCount) {
 		reInstanceVk(*this).vkGetPhysicalDeviceSurfaceFormatsKHR(
 			rePhys(*this), surf, &fmtCount, formats.data());
@@ -514,7 +514,7 @@ bool oa::Presenter::buildSwapchainObjects() {
 		uint32_t modeCount = 0;
 		reInstanceVk(*this).vkGetPhysicalDeviceSurfacePresentModesKHR(
 			rePhys(*this), surf, &modeCount, nullptr);
-		std::vector<VkPresentModeKHR> modes(modeCount);
+		oa::Vec<VkPresentModeKHR> modes(modeCount);
 		if (modeCount) {
 			reInstanceVk(*this).vkGetPhysicalDeviceSurfacePresentModesKHR(
 				rePhys(*this), surf, &modeCount, modes.data());
@@ -530,7 +530,7 @@ bool oa::Presenter::buildSwapchainObjects() {
 	}
 
 	uint32_t imgCount = caps.minImageCount + 1;
-	if (caps.maxImageCount > 0) imgCount = std::min(imgCount, caps.maxImageCount);
+	if (caps.maxImageCount > 0) imgCount = oa::min(imgCount, caps.maxImageCount);
 
 	VkSwapchainCreateInfoKHR sci{};
 	sci.sType            = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
@@ -811,7 +811,7 @@ bool oa::Presenter::initImGui(void* inNativeWindow) {
 	dpci.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
 	dpci.flags         = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
 	dpci.maxSets       = 1024;
-	dpci.poolSizeCount = static_cast<uint32_t>(std::size(poolSizes));
+	dpci.poolSizeCount = static_cast<uint32_t>(sizeof(poolSizes) / sizeof(poolSizes[0]));
 	dpci.pPoolSizes    = poolSizes;
 	if (reVk(*this).vkCreateDescriptorPool(reDev(*this), &dpci, nullptr, &imGuiPool_) != VK_SUCCESS) {
 		OaLogError(oa::LogComponent::Engine, "ImGui: descriptor pool creation failed");
@@ -912,7 +912,7 @@ void oa::Presenter::shutdownImGuiResources_() {
 
 void oa::Presenter::beginImGuiFrame() {
 #ifdef OA_IMGUI
-	assert(imGuiReady_ && "call InitImGui before BeginImGuiFrame");
+	OA_ASSERT(imGuiReady_ && "call InitImGui before BeginImGuiFrame");
 	imGui_ImplVulkan_NewFrame();
 	imGui_ImplSDL3_NewFrame();
 	ImGui::newFrame();
@@ -922,7 +922,7 @@ void oa::Presenter::beginImGuiFrame() {
 
 void oa::Presenter::endImGuiFrame() {
 #ifdef OA_IMGUI
-	assert(imGuiReady_ && "call InitImGui before EndImGuiFrame");
+	OA_ASSERT(imGuiReady_ && "call InitImGui before EndImGuiFrame");
 	ImGui::render();
 #endif
 }
@@ -951,12 +951,12 @@ oa::Status oa::Presenter::waitPresentationIdle() {
 	if (oa::EngineDeviceAccess::get(engine_).info.software.hasSwapchainMaintenance1
 		&& !swapchain_.presentCompletionUncertain
 		&& !swapchain_.presentFence.empty()) {
-		std::vector<VkFence> pending;
+		oa::Vec<VkFence> pending;
 		pending.reserve(swapchain_.presentFence.size());
 		for (oa::Usize i = 0; i < swapchain_.presentFence.size(); ++i) {
 			if (i < swapchain_.presentFencePending.size()
 				&& swapchain_.presentFencePending[i]) {
-				pending.push_back(swapchain_.presentFence[i]);
+				pending.pushBack(swapchain_.presentFence[i]);
 			}
 		}
 		if (!pending.empty()) {
@@ -966,9 +966,9 @@ oa::Status oa::Presenter::waitPresentationIdle() {
 			if (result != VK_SUCCESS) {
 				return oa::Status::error(oa::StatusCode::VulkanError,
 					oa::String("presentation fence wait failed: VkResult=")
-						+ std::to_string(static_cast<int>(result)));
+						+ oa::toString(static_cast<oa::I64>(result)));
 			}
-			std::fill(swapchain_.presentFencePending.begin(),
+			oa::fill(swapchain_.presentFencePending.begin(),
 				swapchain_.presentFencePending.end(), false);
 		}
 		return oa::Status::ok();
@@ -987,9 +987,9 @@ oa::Status oa::Presenter::waitPresentationIdle() {
 	if (result != VK_SUCCESS) {
 		return oa::Status::error(oa::StatusCode::VulkanError,
 			oa::String("presentation queue wait failed: VkResult=")
-				+ std::to_string(static_cast<int>(result)));
+				+ oa::toString(static_cast<oa::I64>(result)));
 	}
-	std::fill(swapchain_.presentFencePending.begin(),
+	oa::fill(swapchain_.presentFencePending.begin(),
 		swapchain_.presentFencePending.end(), false);
 	swapchain_.presentCompletionUncertain = false;
 	return oa::Status::ok();
@@ -1018,14 +1018,14 @@ oa::Status oa::Presenter::preparePresentFence(
 		if (wait != VK_SUCCESS) {
 			return oa::Status::error(oa::StatusCode::VulkanError,
 				oa::String("presentation fence reuse wait failed: VkResult=")
-					+ std::to_string(static_cast<int>(wait)));
+					+ oa::toString(static_cast<oa::I64>(wait)));
 		}
 	}
 	const VkResult reset = reVk(*this).vkResetFences(reDev(*this), 1, &fence);
 	if (reset != VK_SUCCESS) {
 		return oa::Status::error(oa::StatusCode::VulkanError,
 			oa::String("presentation fence reset failed: VkResult=")
-				+ std::to_string(static_cast<int>(reset)));
+				+ oa::toString(static_cast<oa::I64>(reset)));
 	}
 	inSwap.presentFencePending[inFrameSlot] = false;
 	return oa::Status::ok();
@@ -1087,12 +1087,12 @@ oa::Status oa::EngineAccess::completeRetiredPresenters() {
 			if (presenter->hasSwapchainMaintenance1
 				&& !presenter->swapchain.presentCompletionUncertain
 				&& !presenter->swapchain.presentFence.empty()) {
-				std::vector<VkFence> fences;
+				oa::Vec<VkFence> fences;
 				for (oa::Usize i = 0;
 					i < presenter->swapchain.presentFence.size(); ++i) {
 					if (i < presenter->swapchain.presentFencePending.size()
 						&& presenter->swapchain.presentFencePending[i]) {
-						fences.push_back(presenter->swapchain.presentFence[i]);
+						fences.pushBack(presenter->swapchain.presentFence[i]);
 					}
 				}
 				if (!fences.empty()) {
@@ -1104,11 +1104,11 @@ oa::Status oa::EngineAccess::completeRetiredPresenters() {
 						retainError(oa::Status::error(
 							oa::StatusCode::VulkanError,
 							oa::String("retired presentation fence wait failed: VkResult=")
-								+ std::to_string(static_cast<int>(wait))));
+								+ oa::toString(static_cast<oa::I64>(wait))));
 					}
 				}
 			} else if (presenter->presentQueue != nullptr) {
-				std::mutex* queueMutex = nullptr;
+				oa::Mutex* queueMutex = nullptr;
 				switch (presenter->presentQueueRoute) {
 				case oavk::QueueSubmitRoute::Compute:
 					queueMutex = &impl_->computeQueueMutex_;
@@ -1141,7 +1141,7 @@ oa::Status oa::EngineAccess::completeRetiredPresenters() {
 						retainError(oa::Status::error(
 							oa::StatusCode::VulkanError,
 							oa::String("retired presentation queue wait failed: VkResult=")
-								+ std::to_string(static_cast<int>(wait))));
+								+ oa::toString(static_cast<oa::I64>(wait))));
 					}
 				}
 			}

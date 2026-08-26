@@ -13,11 +13,7 @@
 
 #include "../runtime/textureAccess.h"
 
-#include <cmath>
-#include <cstddef>
-#include <cstring>
-#include <limits>
-#include <optional>
+#include <stddef.h>
 
 namespace {
 
@@ -66,7 +62,7 @@ struct RenderSlot {
 	oavk::Buffer vertexBuffer;
 	oavk::Buffer indexBuffer;
 	oa::U32 indexCount = 0U;
-	std::optional<oa::GraphicsStreamLease> streamLease;
+	oa::Optional<oa::GraphicsStreamLease> streamLease;
 	oa::Event producer;
 	oa::Event consumer;
 };
@@ -78,7 +74,7 @@ struct RenderSlot {
 
 [[nodiscard]] bool checkedMultiply(
 	oa::U64 inA, oa::U64 inB, oa::U64& outResult) noexcept {
-	if (inA != 0U && inB > std::numeric_limits<oa::U64>::max() / inA) {
+	if (inA != 0U && inB > oa::Limits<oa::U64>::max() / inA) {
 		return false;
 	}
 	outResult = inA * inB;
@@ -102,16 +98,16 @@ struct RenderSlot {
 [[nodiscard]] bool isFiniteVlm(const oa::vlm::Mat4& inMatrix) noexcept {
 	for (oa::U32 row = 0U; row < 4U; ++row) {
 		for (oa::U32 column = 0U; column < 4U; ++column) {
-			if (not std::isfinite(inMatrix.m[row][column])) return false;
+			if (not oa::isFinite(inMatrix.m[row][column])) return false;
 		}
 	}
 	return true;
 }
 
 [[nodiscard]] bool isFiniteVlm(const oa::vlm::Vec3& inVector) noexcept {
-	return std::isfinite(inVector.x)
-		and std::isfinite(inVector.y)
-		and std::isfinite(inVector.z);
+	return oa::isFinite(inVector.x)
+		and oa::isFinite(inVector.y)
+		and oa::isFinite(inVector.z);
 }
 
 [[nodiscard]] oa::Status validateTargetExtent(
@@ -526,8 +522,8 @@ public:
 	OaVkInstanceTable InstanceTable{};
 	OaVkDeviceTable DeviceTable{};
 	oa::RendererConfig renderConfig;
-	std::vector<RenderSlot> slots;
-	oa::U32 activeSlot = std::numeric_limits<oa::U32>::max();
+	oa::Vec<RenderSlot> slots;
+	oa::U32 activeSlot = oa::Limits<oa::U32>::max();
 	oa::U64 TargetGeneration = 1U;
 	VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
 	VkPipeline pipeline = VK_NULL_HANDLE;
@@ -771,7 +767,7 @@ oa::Status oa::Renderer::MeshImpl::createSlots() {
 
 	slots.reserve(renderConfig.targetSlotCount_);
 	for (oa::U32 index = 0U; index < renderConfig.targetSlotCount_; ++index) {
-		slots.emplace_back();
+		slots.emplaceBack();
 		RenderSlot& slot = slots.back();
 		auto vertices = createMappedVertexOrIndexBuffer(
 			*engine, vertexBytes, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
@@ -813,12 +809,12 @@ oa::Status oa::Renderer::MeshImpl::initialize(
 		return oa::Status::invalidArgument(
 			"oa::Renderer: sample count must be one of 1, 2, 4, 8, 16, 32, or 64");
 	}
-	if (not std::isfinite(renderConfig.clearColor_.x)
-		or not std::isfinite(renderConfig.clearColor_.y)
-		or not std::isfinite(renderConfig.clearColor_.z)
-		or not std::isfinite(renderConfig.clearColor_.w)
+	if (not oa::isFinite(renderConfig.clearColor_.x)
+		or not oa::isFinite(renderConfig.clearColor_.y)
+		or not oa::isFinite(renderConfig.clearColor_.z)
+		or not oa::isFinite(renderConfig.clearColor_.w)
 		or not isFiniteVlm(renderConfig.lightDirection_)
-		or not std::isfinite(renderConfig.ambientLight_)
+		or not oa::isFinite(renderConfig.ambientLight_)
 		or renderConfig.ambientLight_ < 0.0F
 		or renderConfig.ambientLight_ > 1.0F) {
 		return oa::Status::invalidArgument(
@@ -857,10 +853,10 @@ oa::Status oa::Renderer::MeshImpl::writeFrameGeometry(
 	for (const oa::MeshVertex& vertex : inMesh.vertices) {
 		if (not isFiniteVlm(vertex.position)
 			or not isFiniteVlm(vertex.normal)
-			or not std::isfinite(vertex.color.x)
-			or not std::isfinite(vertex.color.y)
-			or not std::isfinite(vertex.color.z)
-			or not std::isfinite(vertex.color.w)) {
+			or not oa::isFinite(vertex.color.x)
+			or not oa::isFinite(vertex.color.y)
+			or not oa::isFinite(vertex.color.z)
+			or not oa::isFinite(vertex.color.w)) {
 			return oa::Status::invalidArgument(
 				"oa::Renderer: mesh contains non-finite vertex data");
 		}
@@ -876,14 +872,14 @@ oa::Status oa::Renderer::MeshImpl::writeFrameGeometry(
 		static_cast<oa::U64>(inMesh.vertices.size()) * sizeof(oa::MeshVertex);
 	const oa::U64 indexBytes =
 		static_cast<oa::U64>(inMesh.indices.size()) * sizeof(oa::U32);
-	std::memcpy(
+	oa::memcpy(
 		inSlot.vertexBuffer.mappedPtr,
 		inMesh.vertices.data(),
-		static_cast<std::size_t>(vertexBytes));
-	std::memcpy(
+		static_cast<oa::Usize>(vertexBytes));
+	oa::memcpy(
 		inSlot.indexBuffer.mappedPtr,
 		inMesh.indices.data(),
-		static_cast<std::size_t>(indexBytes));
+		static_cast<oa::Usize>(indexBytes));
 	if (not oa::EngineAllocatorAccess::get(*engine).flushHostBuffer(
 			inSlot.vertexBuffer, 0U, vertexBytes)
 		or not oa::EngineAllocatorAccess::get(*engine).flushHostBuffer(
@@ -902,7 +898,7 @@ oa::Status oa::Renderer::MeshImpl::recordFrame(
 		return oa::Status::invalidArgument(
 			"oa::Renderer camera matrix must be finite");
 	}
-	if (not inSlot.streamLease.has_value()) {
+	if (not inSlot.streamLease.hasValue()) {
 		return oa::Status::error(
 			oa::StatusCode::Internal,
 			"oa::Renderer has no active graphics lease");
@@ -1374,7 +1370,7 @@ bool oa::Renderer::MeshImpl::prepareNonWaitingRetirement() noexcept {
 	bool hasSubmission = false;
 	if (activeSlot < slots.size()) {
 		RenderSlot& slot = slots[activeSlot];
-		if (slot.streamLease.has_value()) {
+		if (slot.streamLease.hasValue()) {
 			const oa::Status status = slot.streamLease->cancel();
 			if (not status.isOk()) {
 				(void)slot.streamLease->close();
@@ -1385,10 +1381,10 @@ bool oa::Renderer::MeshImpl::prepareNonWaitingRetirement() noexcept {
 		slot.producer = {};
 		slot.consumer = {};
 	}
-	activeSlot = std::numeric_limits<oa::U32>::max();
+	activeSlot = oa::Limits<oa::U32>::max();
 	for (RenderSlot& slot : slots) {
 		if (slot.state == RenderSlotState::Submitted) {
-			if (slot.streamLease.has_value()) {
+			if (slot.streamLease.hasValue()) {
 				(void)slot.streamLease->close();
 				slot.streamLease.reset();
 			}
@@ -1523,7 +1519,7 @@ oa::Renderer::MeshImpl::submitFrame(
 	}
 	RenderSlot& slot = slots[activeSlot];
 	if (slot.state != RenderSlotState::Recording
-		or not slot.streamLease.has_value()) {
+		or not slot.streamLease.hasValue()) {
 		return oa::Status::error(
 			oa::StatusCode::Internal,
 			"oa::Renderer active target lost its graphics recording");
@@ -1539,7 +1535,7 @@ oa::Renderer::MeshImpl::submitFrame(
 			(void)slot.streamLease->close();
 			slot.streamLease.reset();
 			slot.state = RenderSlotState::Free;
-			activeSlot = std::numeric_limits<oa::U32>::max();
+			activeSlot = oa::Limits<oa::U32>::max();
 		}
 		return submission.getStatus();
 	}
@@ -1555,7 +1551,7 @@ oa::Renderer::MeshImpl::submitFrame(
 	}
 	slot.state = RenderSlotState::Submitted;
 	const oa::U32 submittedSlot = activeSlot;
-	activeSlot = std::numeric_limits<oa::U32>::max();
+	activeSlot = oa::Limits<oa::U32>::max();
 	oa::RenderFrame frame;
 	frame.slot_ = submittedSlot;
 	frame.slotGeneration_ = slot.generation;
@@ -1583,19 +1579,19 @@ oa::Status oa::Renderer::MeshImpl::cancelFrame() {
 			"oa::Renderer has no active recording to cancel");
 	}
 	RenderSlot& slot = slots[activeSlot];
-	oa::Status status = slot.streamLease.has_value()
+	oa::Status status = slot.streamLease.hasValue()
 		? slot.streamLease->cancel()
 		: oa::Status::error(
 			oa::StatusCode::Internal,
 			"oa::Renderer active target has no graphics lease");
-	if (not status.isOk() and slot.streamLease.has_value()) {
+	if (not status.isOk() and slot.streamLease.hasValue()) {
 		(void)slot.streamLease->close();
 	}
 	slot.streamLease.reset();
 	slot.state = RenderSlotState::Free;
 	slot.producer = {};
 	slot.consumer = {};
-	activeSlot = std::numeric_limits<oa::U32>::max();
+	activeSlot = oa::Limits<oa::U32>::max();
 	return status;
 }
 
@@ -1611,7 +1607,7 @@ oa::Renderer::MeshImpl::consumeReadback(
 	const oa::Status validation = validateFrame(
 		inFrame, RenderSlotState::Submitted, slot);
 	if (not validation.isOk()) return validation;
-	if (not slot->streamLease.has_value()) {
+	if (not slot->streamLease.hasValue()) {
 		return oa::Status::error(
 			oa::StatusCode::Internal,
 			"oa::Renderer submitted target lost its graphics lease");
@@ -1675,16 +1671,16 @@ oa::Renderer::MeshImpl::consumeReadback(
 	oa::RenderReadback readback;
 	readback.width_ = renderConfig.width_;
 	readback.height_ = renderConfig.height_;
-	readback.colorRgba8_.resize(static_cast<std::size_t>(colorBytes));
-	readback.depth32_.resize(static_cast<std::size_t>(pixelCount));
-	std::memcpy(
+	readback.colorRgba8_.resize(static_cast<oa::Usize>(colorBytes));
+	readback.depth32_.resize(static_cast<oa::Usize>(pixelCount));
+	oa::memcpy(
 		readback.colorRgba8_.data(),
 		slot->target.colorReadback.mappedPtr,
-		static_cast<std::size_t>(colorBytes));
-	std::memcpy(
+		static_cast<oa::Usize>(colorBytes));
+	oa::memcpy(
 		readback.depth32_.data(),
 		slot->target.depthReadback.mappedPtr,
-		static_cast<std::size_t>(depthBytes));
+		static_cast<oa::Usize>(depthBytes));
 
 	const oa::Status recycleStatus =
 		slot->streamLease->recycle(inFrame.producer_);
@@ -1734,7 +1730,7 @@ oa::Status oa::Renderer::MeshImpl::markConsumed(
 	}
 
 	oa::Status closeStatus = oa::Status::ok();
-	if (slot->streamLease.has_value()) {
+	if (slot->streamLease.hasValue()) {
 		closeStatus = slot->streamLease->close();
 		slot->streamLease.reset();
 	}
@@ -1757,7 +1753,7 @@ oa::Status oa::Renderer::MeshImpl::abandonFrame(
 	OA_RETURN_IF_ERROR(validateFrame(
 		inFrame, RenderSlotState::Submitted, slot));
 	oa::Status closeStatus = oa::Status::ok();
-	if (slot->streamLease.has_value()) {
+	if (slot->streamLease.hasValue()) {
 		closeStatus = slot->streamLease->close();
 		slot->streamLease.reset();
 	}
@@ -1812,8 +1808,8 @@ oa::Status oa::Renderer::MeshImpl::resize(
 
 	// allocate a full replacement generation first. A Busy or allocation-failure
 	// path does not mutate old resources, layouts, dimensions, or generations.
-	std::vector<RenderTarget> replacements(slots.size());
-	for (std::size_t index = 0U; index < replacements.size(); ++index) {
+	oa::Vec<RenderTarget> replacements(slots.size());
+	for (oa::Usize index = 0U; index < replacements.size(); ++index) {
 		const oa::Status status = createTarget(
 			*engine, DeviceTable,
 			inWidth, inHeight,
@@ -1826,7 +1822,7 @@ oa::Status oa::Renderer::MeshImpl::resize(
 			return status;
 		}
 	}
-	for (std::size_t index = 0U; index < slots.size(); ++index) {
+	for (oa::Usize index = 0U; index < slots.size(); ++index) {
 		destroyTarget(
 			*engine, DeviceTable,
 			slots[index].target);
@@ -1851,7 +1847,7 @@ oa::Status oa::Renderer::MeshImpl::close() {
 		if (slot.state == RenderSlotState::Submitted) {
 			const oa::Status waitStatus = slot.producer.wait();
 			if (not waitStatus.isOk()) return waitStatus;
-			if (not slot.streamLease.has_value()) {
+			if (not slot.streamLease.hasValue()) {
 				return oa::Status::error(
 					oa::StatusCode::Internal,
 					"oa::Renderer submitted target lost its graphics lease during Close");

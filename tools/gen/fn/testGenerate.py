@@ -220,7 +220,7 @@ lowering = "dispatch"
 		self.assertIn("const oa::Matrix& inTargets", emitted)
 		self.assertNotIn("const oa::Matrix& out", emitted)
 		self.assertIn(
-		 "gradFn->saveForBackward({inLogits, inTargets, out});",
+		 "gradFn->saveForBackward(inLogits, inTargets, out);",
 		 emitted,
 		)
 		self.assertIn(
@@ -646,7 +646,7 @@ lowering = "dispatch"
 		 emitted,
 		)
 		self.assertIn("if (result.isEmpty())", emitted)
-		self.assertIn("matrixPtr(std::move(result))", emitted)
+		self.assertIn("matrixPtr(oa::move(result))", emitted)
 
 	def testGeneratedPythonDefaultIsTyped(self) -> None:
 		op = {

@@ -8,8 +8,6 @@
 #include <oa/runtime/engine.h>
 #include <oa/runtime/engine/resourceAccess.h>
 
-#include <cstring>
-
 static oa::Matrix getParamGrad(oa::Parameter* inP) {
 	return inP->grad();  // live grad (single source of truth: Data's autograd meta)
 }
@@ -61,7 +59,8 @@ oa::Status oa::Muon::saveTo(oa::Engine& inEngine, ModelFile& outFile) const {
 	// header (hyperparams + step count). numParams is total flat element count.
 	outFile.optimizerPresent = true;
 	outFile.optimizer = ModelOptimizerState{};
-	std::strncpy(outFile.optimizer.type, "Muon", sizeof(outFile.optimizer.type) - 1);
+	constexpr char optimizerName[] = "Muon";
+	oa::memcpy(outFile.optimizer.type, optimizerName, sizeof(optimizerName));
 	outFile.optimizer.lr = lr_;
 	outFile.optimizer.beta1 = beta_;  // Repurposed: Muon has no beta1/beta2, store Beta in beta1
 	outFile.optimizer.beta2 = 0.0f;   // Not used by Muon

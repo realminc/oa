@@ -10,7 +10,7 @@ TEST(UniquePtr, MakeUnique) {
 
 TEST(UniquePtr, MoveAndReset) {
 	auto a = oa::makeUnique<int>(7);
-	oa::UniquePtr<int> b = std::move(a);
+	oa::UniquePtr<int> b = oa::move(a);
 	EXPECT_FALSE(static_cast<bool>(a));
 	ASSERT_TRUE(static_cast<bool>(b));
 	EXPECT_EQ(*b, 7);
@@ -18,11 +18,13 @@ TEST(UniquePtr, MoveAndReset) {
 	EXPECT_FALSE(static_cast<bool>(b));
 }
 
-TEST(UniquePtr, StdPtrRvalue) {
+TEST(UniquePtr, ReleaseTransfersOwnership) {
 	auto p = oa::makeUnique<int>(99);
-	auto s = std::move(p).stdPtr();
-	ASSERT_TRUE(s);
-	EXPECT_EQ(*s, 99);
+	int* released = p.release();
+	ASSERT_NE(released, nullptr);
+	EXPECT_FALSE(static_cast<bool>(p));
+	EXPECT_EQ(*released, 99);
+	delete released;
 }
 
 TEST(StdUniquePtrVsStd, DerefMatchesParallelStdUniquePtr) {

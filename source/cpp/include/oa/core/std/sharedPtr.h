@@ -1,18 +1,17 @@
 #pragma once
 
-// Native SharedPtr / WeakPtr — atomic strong + weak counts, type-erased control block.
+// Native SharedPtr / WeakPtr — atomic strong + weak counts and a type-erased
+// control block allocated through OA's host-allocation boundary.
 //
 // `makeShared<T>(...)` allocates control block + `T` in one slab (inline storage).
 // Thread-safe refcounting; `lock()` from weak promotes only if object still alive.
 
+#include <oa/core/std/allocator.h>
+#include <oa/core/std/atomic.h>
+#include <oa/core/std/lifetime.h>
 #include <oa/core/std/typeTraits.h>
+#include <oa/core/std/uniquePtr.h>
 #include <oa/core/std/utility.h>
-
-#include <atomic>
-#include <cstddef>
-#include <memory>
-#include <new>
-#include <type_traits>
 
 namespace oa {
 
@@ -20,41 +19,52 @@ template<typename T>
 class WeakPtr;
 
 struct SharedControl {
-	std::atomic<long> strong{1};
+	// 32-bit counters keep the common inline control block in the smaller
+	// allocator size class while still admitting more owners than OA can use.
+	oa::Atomic<oa::I32> strong{1};
 	// One implicit weak reference keeps the control block alive while any
 	// strong owner exists. Explicit WeakPtr instances add to this count.
-	std::atomic<long> weak{1};
+	oa::Atomic<oa::I32> weak{1};
 
 	void incStrong() noexcept {
-		strong.fetch_add(1, std::memory_order_relaxed);
+		strong.fetchAdd(1, oa::MemoryOrder::Relaxed);
 	}
 
 	bool incStrongIfNonzero() noexcept {
-		long n = strong.load(std::memory_order_relaxed);
+		oa::I32 n = strong.load(oa::MemoryOrder::Relaxed);
 		for (;;) {
 			if (n == 0) {
 				return false;
 			}
-			if (strong.compare_exchange_weak(n, n + 1, std::memory_order_acq_rel, std::memory_order_relaxed)) {
+			if (strong.compareExchangeWeak(
+				n, n + 1, oa::MemoryOrder::AcquireRelease)) {
 				return true;
 			}
 		}
 	}
 
 	void incWeak() noexcept {
-		weak.fetch_add(1, std::memory_order_relaxed);
+		weak.fetchAdd(1, oa::MemoryOrder::Relaxed);
 	}
 
 	void decStrong() noexcept {
-		if (strong.fetch_sub(1, std::memory_order_acq_rel) != 1) {
+		if (strong.fetchSub(1, oa::MemoryOrder::AcquireRelease) != 1) {
 			return;
 		}
 		releaseObject();
+		// The implicit weak owner is the only remaining weak reference in the
+		// common make/release path. Once the final strong owner is gone, no new
+		// WeakPtr can be created unless one already exists, so a count of one
+		// permits direct destruction without a second locked decrement.
+		if (weak.load(oa::MemoryOrder::Acquire) == 1) {
+			destroyControl();
+			return;
+		}
 		decWeak();
 	}
 
 	void decWeak() noexcept {
-		if (weak.fetch_sub(1, std::memory_order_acq_rel) != 1) {
+		if (weak.fetchSub(1, oa::MemoryOrder::AcquireRelease) != 1) {
 			return;
 		}
 		destroyControl();
@@ -74,7 +84,8 @@ struct SharedControlDeleter final : SharedControl {
 
 	SharedControlDeleter(T* inP, const Deleter& inD) : ptr(inP), deleter(inD) {}
 
-	SharedControlDeleter(T* inP, Deleter&& inD) noexcept(std::is_nothrow_move_constructible_v<Deleter>)
+	SharedControlDeleter(T* inP, Deleter&& inD) noexcept(
+		oa::IsNothrowMoveConstructibleV<Deleter>)
 		: ptr(inP), deleter(oa::move(inD)) {}
 
 	void releaseObject() noexcept override {
@@ -85,32 +96,62 @@ struct SharedControlDeleter final : SharedControl {
 	}
 
 	void destroyControl() noexcept override {
-		delete this;
+		auto* self = this;
+		oa::destroyAt(self);
+		oa::freeBytes(self, alignof(SharedControlDeleter));
 	}
 };
+
+template<typename Control, typename... Args>
+[[nodiscard]] Control* allocateSharedControl_(Args&&... inArgs) {
+	class StorageGuard final {
+	public:
+		explicit StorageGuard(void* inStorage) noexcept : storage_(inStorage) {}
+		~StorageGuard() { oa::freeBytes(storage_, alignof(Control)); }
+
+		StorageGuard(const StorageGuard&) = delete;
+		StorageGuard& operator=(const StorageGuard&) = delete;
+
+		void release() noexcept { storage_ = nullptr; }
+
+	private:
+		void* storage_;
+	};
+
+	void* storage = oa::allocBytes(sizeof(Control), alignof(Control));
+	StorageGuard guard(storage);
+	Control* control = oa::constructAt(
+		static_cast<Control*>(storage), oa::forward<Args>(inArgs)...);
+	guard.release();
+	return control;
+}
 
 template<typename T, typename Deleter>
 [[nodiscard]] SharedControl* createSharedControl_(T* inP, Deleter& inD) {
 	using StoredDeleter = oa::DecayT<Deleter>;
-	try {
-		if constexpr (std::is_copy_constructible_v<StoredDeleter>) {
-			return new SharedControlDeleter<T, StoredDeleter>(
-				inP, static_cast<const StoredDeleter&>(inD));
-		} else {
-			static_assert(std::is_nothrow_move_constructible_v<StoredDeleter>,
-				"A move-only SharedPtr deleter must be nothrow move constructible");
-			return new SharedControlDeleter<T, StoredDeleter>(
-				inP, oa::move(inD));
-		}
-	} catch (...) {
-		inD(inP);
-		throw;
+	if constexpr (oa::IsCopyConstructibleV<StoredDeleter>) {
+		static_assert(oa::IsNothrowCopyConstructibleV<StoredDeleter>,
+			"A SharedPtr deleter must be nothrow copy constructible");
+		return allocateSharedControl_<SharedControlDeleter<T, StoredDeleter>>(
+			inP, static_cast<const StoredDeleter&>(inD));
+	} else {
+		static_assert(oa::IsNothrowMoveConstructibleV<StoredDeleter>,
+			"A move-only SharedPtr deleter must be nothrow move constructible");
+		return allocateSharedControl_<SharedControlDeleter<T, StoredDeleter>>(
+			inP, oa::move(inD));
 	}
 }
 
+template<typename Deleter>
+inline constexpr bool IsSharedDeleterV =
+	(oa::IsCopyConstructibleV<oa::DecayT<Deleter>>
+		&& oa::IsNothrowCopyConstructibleV<oa::DecayT<Deleter>>)
+	|| (!oa::IsCopyConstructibleV<oa::DecayT<Deleter>>
+		&& oa::IsNothrowMoveConstructibleV<oa::DecayT<Deleter>>);
+
 template<typename T>
 [[nodiscard]] SharedControl* createDefaultSharedControl_(T* inP) {
-	std::default_delete<T> deleter;
+	oa::DefaultDelete<T> deleter;
 	return createSharedControl_(inP, deleter);
 }
 
@@ -120,19 +161,21 @@ struct SharedControlInline final : SharedControl {
 
 	template<typename... Args>
 	explicit SharedControlInline(Args&&... inArgs) {
-		new (buffer) T(oa::forward<Args>(inArgs)...);
+		oa::constructAt(reinterpret_cast<T*>(buffer), oa::forward<Args>(inArgs)...);
 	}
 
 	T* objectPtr_() noexcept {
-		return std::launder(reinterpret_cast<T*>(buffer));
+		return oa::launder(reinterpret_cast<T*>(buffer));
 	}
 
 	void releaseObject() noexcept override {
-		objectPtr_()->~T();
+		oa::destroyAt(objectPtr_());
 	}
 
 	void destroyControl() noexcept override {
-		delete this;
+		auto* self = this;
+		oa::destroyAt(self);
+		oa::freeBytes(self, alignof(SharedControlInline));
 	}
 };
 
@@ -143,7 +186,7 @@ public:
 	using weak_type = WeakPtr<T>;
 
 	template<typename U, typename... Args>
-	requires (!std::is_void_v<U>)
+	requires (!oa::IsVoidV<U>)
 	friend SharedPtr<U> makeShared(Args&&... inArgs);
 
 	friend class WeakPtr<T>;
@@ -153,13 +196,14 @@ public:
 
 	SharedPtr() noexcept = default;
 
-	SharedPtr(std::nullptr_t) noexcept {}
+	SharedPtr(decltype(nullptr)) noexcept {}
 
-	explicit SharedPtr(T* inP) requires (!std::is_void_v<T>)
+	explicit SharedPtr(T* inP) requires (!oa::IsVoidV<T>)
 		: control_(inP ? createDefaultSharedControl_(inP) : nullptr)
 		, ptr_(inP) {}
 
 	template<typename Deleter>
+	requires oa::IsSharedDeleterV<Deleter>
 	SharedPtr(T* inP, Deleter inD)
 		: control_(inP ? createSharedControl_(inP, inD) : nullptr)
 		, ptr_(inP) {}
@@ -191,7 +235,8 @@ public:
 	}
 
 	template<typename U>
-	requires (!std::is_void_v<T> && !std::is_same_v<T, U> && std::is_convertible_v<U*, T*>)
+	requires (!oa::IsVoidV<T> && !oa::IsSameV<T, U>
+		&& oa::IsConvertibleV<U*, T*>)
 	SharedPtr(const SharedPtr<U>& inO) noexcept
 		: control_(inO.control_), ptr_(static_cast<T*>(inO.ptr_)) {
 		if (control_) {
@@ -200,7 +245,8 @@ public:
 	}
 
 	template<typename U>
-	requires (!std::is_void_v<T> && !std::is_same_v<T, U> && std::is_convertible_v<U*, T*>)
+	requires (!oa::IsVoidV<T> && !oa::IsSameV<T, U>
+		&& oa::IsConvertibleV<U*, T*>)
 	SharedPtr(SharedPtr<U>&& inO) noexcept
 		: control_(inO.control_), ptr_(static_cast<T*>(inO.ptr_)) {
 		inO.control_ = nullptr;
@@ -220,7 +266,7 @@ public:
 		return *this;
 	}
 
-	SharedPtr& operator=(std::nullptr_t) noexcept {
+	SharedPtr& operator=(decltype(nullptr)) noexcept {
 		reset();
 		return *this;
 	}
@@ -233,13 +279,13 @@ public:
 
 	[[nodiscard]] T* get() const noexcept { return ptr_; }
 	[[nodiscard]] long useCount() const noexcept {
-		return control_ ? control_->strong.load(std::memory_order_relaxed) : 0;
+		return control_ ? control_->strong.load(oa::MemoryOrder::Relaxed) : 0;
 	}
 
 	explicit operator bool() const noexcept { return ptr_ != nullptr; }
 
-	[[nodiscard]] T& operator*() const requires (!std::is_void_v<T>) { return *ptr_; }
-	[[nodiscard]] T* operator->() const noexcept requires (!std::is_void_v<T>) { return ptr_; }
+	[[nodiscard]] T& operator*() const requires (!oa::IsVoidV<T>) { return *ptr_; }
+	[[nodiscard]] T* operator->() const noexcept requires (!oa::IsVoidV<T>) { return ptr_; }
 
 	void reset() noexcept {
 		if (control_) {
@@ -249,12 +295,13 @@ public:
 		}
 	}
 
-	void reset(T* inP) requires (!std::is_void_v<T>) {
+	void reset(T* inP) requires (!oa::IsVoidV<T>) {
 		SharedPtr replacement(inP);
 		swap(replacement);
 	}
 
 	template<typename Deleter>
+	requires oa::IsSharedDeleterV<Deleter>
 	void reset(T* inP, Deleter inD) {
 		SharedPtr replacement(inP, oa::move(inD));
 		swap(replacement);
@@ -277,19 +324,31 @@ private:
 };
 
 template<typename T>
-[[nodiscard]] inline bool operator==(const SharedPtr<T>& inP, std::nullptr_t) noexcept {
+[[nodiscard]] inline bool operator==(
+	const SharedPtr<T>& inP,
+	decltype(nullptr)
+) noexcept {
 	return inP.get() == nullptr;
 }
 template<typename T>
-[[nodiscard]] inline bool operator==(std::nullptr_t, const SharedPtr<T>& inP) noexcept {
+[[nodiscard]] inline bool operator==(
+	decltype(nullptr),
+	const SharedPtr<T>& inP
+) noexcept {
 	return inP.get() == nullptr;
 }
 template<typename T>
-[[nodiscard]] inline bool operator!=(const SharedPtr<T>& inP, std::nullptr_t) noexcept {
+[[nodiscard]] inline bool operator!=(
+	const SharedPtr<T>& inP,
+	decltype(nullptr)
+) noexcept {
 	return inP.get() != nullptr;
 }
 template<typename T>
-[[nodiscard]] inline bool operator!=(std::nullptr_t, const SharedPtr<T>& inP) noexcept {
+[[nodiscard]] inline bool operator!=(
+	decltype(nullptr),
+	const SharedPtr<T>& inP
+) noexcept {
 	return inP.get() != nullptr;
 }
 
@@ -352,11 +411,12 @@ public:
 	}
 
 	[[nodiscard]] long useCount() const noexcept {
-		return control_ ? control_->strong.load(std::memory_order_relaxed) : 0;
+		return control_ ? control_->strong.load(oa::MemoryOrder::Relaxed) : 0;
 	}
 
 	[[nodiscard]] bool expired() const noexcept {
-		return !control_ || control_->strong.load(std::memory_order_acquire) == 0;
+		return !control_
+			|| control_->strong.load(oa::MemoryOrder::Acquire) == 0;
 	}
 
 	[[nodiscard]] SharedPtr<T> lock() const noexcept {
@@ -398,9 +458,10 @@ public:
 
 	SharedPtr() noexcept = default;
 
-	SharedPtr(std::nullptr_t) noexcept {}
+	SharedPtr(decltype(nullptr)) noexcept {}
 
 	template<typename Deleter>
+	requires oa::IsSharedDeleterV<Deleter>
 	SharedPtr(void* inP, Deleter inD)
 		: control_(inP ? createSharedControl_(inP, inD) : nullptr)
 		, ptr_(inP) {}
@@ -444,7 +505,7 @@ public:
 		return *this;
 	}
 
-	SharedPtr& operator=(std::nullptr_t) noexcept {
+	SharedPtr& operator=(decltype(nullptr)) noexcept {
 		reset();
 		return *this;
 	}
@@ -457,7 +518,7 @@ public:
 
 	[[nodiscard]] void* get() const noexcept { return ptr_; }
 	[[nodiscard]] long useCount() const noexcept {
-		return control_ ? control_->strong.load(std::memory_order_relaxed) : 0;
+		return control_ ? control_->strong.load(oa::MemoryOrder::Relaxed) : 0;
 	}
 
 	explicit operator bool() const noexcept { return ptr_ != nullptr; }
@@ -471,6 +532,7 @@ public:
 	}
 
 	template<typename Deleter>
+	requires oa::IsSharedDeleterV<Deleter>
 	void reset(void* inP, Deleter inD) {
 		SharedPtr replacement(inP, oa::move(inD));
 		swap(replacement);
@@ -551,11 +613,12 @@ public:
 	}
 
 	[[nodiscard]] long useCount() const noexcept {
-		return control_ ? control_->strong.load(std::memory_order_relaxed) : 0;
+		return control_ ? control_->strong.load(oa::MemoryOrder::Relaxed) : 0;
 	}
 
 	[[nodiscard]] bool expired() const noexcept {
-		return !control_ || control_->strong.load(std::memory_order_acquire) == 0;
+		return !control_
+			|| control_->strong.load(oa::MemoryOrder::Acquire) == 0;
 	}
 
 	[[nodiscard]] SharedPtr<void> lock() const noexcept {
@@ -588,9 +651,10 @@ private:
 };
 
 template<typename T, typename... Args>
-requires (!std::is_void_v<T>)
+requires (!oa::IsVoidV<T>)
 [[nodiscard]] SharedPtr<T> makeShared(Args&&... inArgs) {
-	auto* cb = new SharedControlInline<T>(oa::forward<Args>(inArgs)...);
+	auto* cb = allocateSharedControl_<SharedControlInline<T>>(
+		oa::forward<Args>(inArgs)...);
 	return SharedPtr<T>(cb, cb->objectPtr_());
 }
 

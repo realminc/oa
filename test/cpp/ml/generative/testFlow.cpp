@@ -130,9 +130,9 @@ TEST_VK(FlowTest, MaskedMseAllPaddingReturnsZeroAndRejectsBadShape) {
 	auto loss = oa::FnFlow::maskedMse(prediction, target, mask);
 	ASSERT_TRUE(testSubmitAndWait(ctx).isOk());
 	EXPECT_FLOAT_EQ(loss.dataAs<const oa::F32>()[0], 0.0F);
-	EXPECT_THROW((void)oa::FnFlow::maskedMse(
+	EXPECT_DEATH((void)oa::FnFlow::maskedMse(
 		prediction, target, oa::FnMatrix::ones({2, 2}, oa::ScalarType::Float32)),
-		std::invalid_argument);
+		"OA contract failed");
 }
 
 TEST_VK(FlowTest, MaskedMseLargeMotionShapeRemainsNonNegative) {
@@ -147,7 +147,7 @@ TEST_VK(FlowTest, MaskedMseLargeMotionShapeRemainsNonNegative) {
 }
 
 TEST_VK(FlowTest, RejectsInvalidContracts) {
-	EXPECT_THROW((void)oa::FlowTimeEmbedding(3), std::invalid_argument);
+	EXPECT_DEATH((void)oa::FlowTimeEmbedding(3), "OA contract failed");
 }
 
 TEST_VK(FlowTest, HumanMl3dGeometryMetricsHaveExactIdentityOracle) {
@@ -225,21 +225,21 @@ TEST_VK(FlowTest, DenseAndMoeTransformersShareBidirectionalContract) {
 }
 
 TEST_VK(FlowTest, TransformerRejectsAmbiguousShapesAndMoeConfig) {
-	EXPECT_THROW((void)oa::FlowTransformer(oa::FlowTransformerConfig{
+	EXPECT_DEATH((void)oa::FlowTransformer(oa::FlowTransformerConfig{
 		.dModel = 4,
 		.hiddenDim = 8,
 		.sequenceLength = 2,
 		.numExperts = 2,
 		.expertsPerToken = 3,
-	}), std::invalid_argument);
+	}), "OA contract failed");
 	oa::FlowTransformer model(oa::FlowTransformerConfig{
 		.dModel = 4,
 		.hiddenDim = 8,
 		.sequenceLength = 2,
 	});
-	EXPECT_THROW((void)model.forward(oa::FnMatrix::zeros({2, 3, 4})),
-		std::invalid_argument);
-	EXPECT_THROW((void)model.block(1), std::out_of_range);
+	EXPECT_DEATH((void)model.forward(oa::FnMatrix::zeros({2, 3, 4})),
+		"OA contract failed");
+	EXPECT_DEATH((void)model.block(1), "OA contract failed");
 }
 
 TEST_VK(FlowTest, PaddingMaskPreventsInvalidKeysFromChangingValidTokens) {
@@ -280,9 +280,9 @@ TEST_VK(FlowTest, PaddingMaskPreventsInvalidKeysFromChangingValidTokens) {
 
 	oa::FlowTransformer model(oa::FlowTransformerConfig{
 		.dModel = 4, .hiddenDim = 8, .sequenceLength = 2});
-	EXPECT_THROW((void)model.forwardMasked(first,
+	EXPECT_DEATH((void)model.forwardMasked(first,
 		oa::FnMatrix::ones({1, 3}, oa::ScalarType::Float32)),
-		std::invalid_argument);
+		"OA contract failed");
 }
 
 TEST_VK(FlowTest, DenoiserSharesConditionedDenseAndMoeContract) {
@@ -370,12 +370,12 @@ TEST_VK(FlowTest, AdaLnZeroAndClassifierFreeGuidanceAreSharedContracts) {
 		EXPECT_NEAR(guidanceOne.dataAs<const oa::F32>()[index],
 			conditional.dataAs<const oa::F32>()[index], 2e-5F);
 	}
-	EXPECT_THROW((void)model.forwardGuided(
-		sample, time, condition, -1.0F), std::invalid_argument);
-	EXPECT_THROW((void)oa::FlowDenoiser(oa::FlowDenoiserConfig{
+	EXPECT_DEATH((void)model.forwardGuided(
+		sample, time, condition, -1.0F), "OA contract failed");
+	EXPECT_DEATH((void)oa::FlowDenoiser(oa::FlowDenoiserConfig{
 		.inputDim = 2,
 		.conditionDim = 3,
 		.backbone = {.dModel = 4, .hiddenDim = 8, .sequenceLength = 2},
 		.conditionDropoutP = 1.0F,
-	}), std::invalid_argument);
+	}), "OA contract failed");
 }

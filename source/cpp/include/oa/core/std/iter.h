@@ -1,21 +1,13 @@
 #pragma once
 
-// IterTraits, distance, advance, next — no `<iterator>` for those.
-// Random-access iterators use `last - first` and `it + n`; otherwise forward stepping.
-// Primary **`IterTraits<It>`** (like `std::iterator_traits`) expects nested `difference_type` / `value_type` /
-// `pointer` / `reference`;
-// raw pointers use partial specializations.
-//
-// **`#include <iterator>`** (below) only for `ReverseIterator`, `IterValueT` (via traits),
-// and C++20 **`IsContiguousIteratorV`** (`std::contiguous_iterator`). Prefer **`distance`** over
-// `std::distance` at call sites.
+// OA iterator primitives. This header is freestanding: it does not import the
+// C++ standard iterator machinery into public OA headers.
 
 #include <oa/core/std/typeTraits.h>
 
-#include <cstddef>
-#include <iterator>
-
 namespace oa {
+
+struct ForwardIteratorTag {};
 
 template<typename It>
 struct IterTraits {
@@ -27,7 +19,7 @@ struct IterTraits {
 
 template<typename T>
 struct IterTraits<T*> {
-	using difference_type = std::ptrdiff_t;
+	using difference_type = __PTRDIFF_TYPE__;
 	using value_type = oa::RemoveCvT<T>;
 	using pointer = T*;
 	using reference = T&;
@@ -35,15 +27,18 @@ struct IterTraits<T*> {
 
 template<typename T>
 struct IterTraits<const T*> {
-	using difference_type = std::ptrdiff_t;
+	using difference_type = __PTRDIFF_TYPE__;
 	using value_type = oa::RemoveCvT<T>;
 	using pointer = const T*;
 	using reference = const T&;
 };
 
 template<typename It>
-inline constexpr bool IsRandomAccessIteratorV = requires(const It& inA, const It& inB,
-	typename IterTraits<It>::difference_type inN) {
+inline constexpr bool IsRandomAccessIteratorV = requires(
+	const It& inA,
+	const It& inB,
+	typename IterTraits<It>::difference_type inN
+) {
 	inB - inA;
 	inA + inN;
 };
@@ -57,7 +52,9 @@ inline constexpr bool IsBidirectionalIteratorV = requires(It inIt) {
 
 template<typename It>
 [[nodiscard]] constexpr typename IterTraits<It>::difference_type distance(
-	It inFirst, It inLast) {
+	It inFirst,
+	It inLast
+) {
 	using Diff = typename IterTraits<It>::difference_type;
 	if constexpr (IsRandomAccessIteratorV<It>) {
 		return inLast - inFirst;
@@ -91,23 +88,169 @@ constexpr void advance(It& inIt, Diff inN) {
 }
 
 template<typename It>
-[[nodiscard]] constexpr It next(It inIt, typename IterTraits<It>::difference_type inN = 1) {
+[[nodiscard]] constexpr It next(
+	It inIt,
+	typename IterTraits<It>::difference_type inN = 1
+) {
 	advance(inIt, inN);
 	return inIt;
 }
 
 template<typename It>
-using ReverseIterator = std::reverse_iterator<It>;
+class ReverseIterator {
+public:
+	using iterator_type = It;
+	using difference_type = typename IterTraits<It>::difference_type;
+	using value_type = typename IterTraits<It>::value_type;
+	using pointer = typename IterTraits<It>::pointer;
+	using reference = typename IterTraits<It>::reference;
+
+	constexpr ReverseIterator() = default;
+	explicit constexpr ReverseIterator(It inCurrent) : current_(inCurrent) {}
+
+	template<typename Other>
+	requires oa::IsConvertibleV<const Other&, It>
+	constexpr ReverseIterator(const ReverseIterator<Other>& inOther)
+		: current_(inOther.base()) {}
+
+	[[nodiscard]] constexpr It base() const { return current_; }
+
+	[[nodiscard]] constexpr reference operator*() const {
+		It value = current_;
+		--value;
+		return *value;
+	}
+
+	[[nodiscard]] constexpr pointer operator->() const { return &operator*(); }
+
+	constexpr ReverseIterator& operator++() {
+		--current_;
+		return *this;
+	}
+
+	constexpr ReverseIterator operator++(int) {
+		ReverseIterator value(*this);
+		--current_;
+		return value;
+	}
+
+	constexpr ReverseIterator& operator--() {
+		++current_;
+		return *this;
+	}
+
+	constexpr ReverseIterator operator--(int) {
+		ReverseIterator value(*this);
+		++current_;
+		return value;
+	}
+
+	constexpr ReverseIterator& operator+=(difference_type inOffset) {
+		current_ -= inOffset;
+		return *this;
+	}
+
+	constexpr ReverseIterator& operator-=(difference_type inOffset) {
+		current_ += inOffset;
+		return *this;
+	}
+
+	[[nodiscard]] constexpr ReverseIterator operator+(difference_type inOffset) const {
+		return ReverseIterator(current_ - inOffset);
+	}
+
+	[[nodiscard]] constexpr ReverseIterator operator-(difference_type inOffset) const {
+		return ReverseIterator(current_ + inOffset);
+	}
+
+	[[nodiscard]] constexpr reference operator[](difference_type inOffset) const {
+		return *(*this + inOffset);
+	}
+
+private:
+	It current_{};
+};
+
+template<typename Left, typename Right>
+[[nodiscard]] constexpr bool operator==(
+	const ReverseIterator<Left>& inLeft,
+	const ReverseIterator<Right>& inRight
+) {
+	return inLeft.base() == inRight.base();
+}
+
+template<typename Left, typename Right>
+[[nodiscard]] constexpr bool operator!=(
+	const ReverseIterator<Left>& inLeft,
+	const ReverseIterator<Right>& inRight
+) {
+	return !(inLeft == inRight);
+}
+
+template<typename Left, typename Right>
+[[nodiscard]] constexpr bool operator<(
+	const ReverseIterator<Left>& inLeft,
+	const ReverseIterator<Right>& inRight
+) {
+	return inRight.base() < inLeft.base();
+}
+
+template<typename Left, typename Right>
+[[nodiscard]] constexpr bool operator>(
+	const ReverseIterator<Left>& inLeft,
+	const ReverseIterator<Right>& inRight
+) {
+	return inRight < inLeft;
+}
+
+template<typename Left, typename Right>
+[[nodiscard]] constexpr bool operator<=(
+	const ReverseIterator<Left>& inLeft,
+	const ReverseIterator<Right>& inRight
+) {
+	return !(inRight < inLeft);
+}
+
+template<typename Left, typename Right>
+[[nodiscard]] constexpr bool operator>=(
+	const ReverseIterator<Left>& inLeft,
+	const ReverseIterator<Right>& inRight
+) {
+	return !(inLeft < inRight);
+}
+
+template<typename Left, typename Right>
+[[nodiscard]] constexpr auto operator-(
+	const ReverseIterator<Left>& inLeft,
+	const ReverseIterator<Right>& inRight
+) -> decltype(inRight.base() - inLeft.base()) {
+	return inRight.base() - inLeft.base();
+}
+
+template<typename It>
+[[nodiscard]] constexpr ReverseIterator<It> operator+(
+	typename ReverseIterator<It>::difference_type inOffset,
+	const ReverseIterator<It>& inIterator
+) {
+	return inIterator + inOffset;
+}
 
 template<typename It>
 using IterValueT = typename IterTraits<It>::value_type;
 
-#if __cplusplus >= 202002L
+template<typename T>
+[[nodiscard]] constexpr T* toAddress(T* inPointer) noexcept {
+	return inPointer;
+}
+
+template<typename Pointer>
+[[nodiscard]] constexpr auto toAddress(const Pointer& inPointer) noexcept {
+	return oa::toAddress(inPointer.operator->());
+}
+
+// Pointers are the only iterators for which OA currently promises contiguous
+// storage. Other iterator families remain correct through element-wise copy.
 template<typename It>
-inline constexpr bool IsContiguousIteratorV = std::contiguous_iterator<It>;
-#else
-template<typename It>
-inline constexpr bool IsContiguousIteratorV = false;
-#endif
+inline constexpr bool IsContiguousIteratorV = oa::IsPointerV<It>;
 
 } // namespace oa

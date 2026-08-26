@@ -1815,12 +1815,12 @@ TEST(NN, Sequential) {
 	expectShape(out, {3, 2});
 }
 
-TEST(NN, SequentialInitializerListAndFlatten) {
-	oa::Sequential model({
+TEST(NN, SequentialVariadicAndFlatten) {
+	oa::Sequential model(
 		oa::makeShared<oa::Flatten>(),
 		oa::makeShared<oa::Linear>(4, 2),
-		oa::makeShared<oa::Identity>(),
-	});
+		oa::makeShared<oa::Identity>()
+	);
 	EXPECT_EQ(model.children().size(), 3u);
 	EXPECT_GT(model.numParameters(), 0);
 	auto out = model.forward(oa::FnMatrix::rand(oa::MatrixShape{3, 2, 2}));

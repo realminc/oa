@@ -4,6 +4,7 @@
 #include <oa/ml/module.h>
 #include <oa/ml/modelFile.h>
 #include <oa/ml/optim.h>
+#include <oa/core/std/format.h>
 
 #include <chrono>
 
@@ -14,7 +15,8 @@ class EmptyCheckpointModule final : public oa::Module {};
 oa::Path makeCheckpointDirectory() {
 	const auto tick = std::chrono::steady_clock::now().time_since_epoch().count();
 	return oa::Paths::temp() /
-		oa::Path("oa_checkpoint_" + std::to_string(static_cast<long long>(tick)));
+		oa::Path(oa::String("oa_checkpoint_")
+			+ oa::toString(static_cast<oa::I64>(tick)));
 }
 
 class CheckpointTest : public ::testing::Test {

@@ -29,6 +29,7 @@
 #include <oa/ml/metric.h>
 #include <oa/ml/lrScheduler.h>
 #include <data/dsHumanMl3d.h>
+#include <core/streamText.h>
 
 #include <algorithm>
 #include <csignal>
@@ -255,7 +256,7 @@ public:
 	static void loadPhases(const oa::Yaml::Node& inTraining, const oa::String& inKey,
 		oa::Vec<PhaseConfig>& outPhases, oa::F32 inFallbackLr, oa::F32 inFallbackMinLr, oa::I32 inFallbackWarmup) {
 		outPhases.clear();
-		const oa::Yaml::Node seq = inTraining[inKey.stdStr()];
+		const oa::Yaml::Node seq = inTraining[oa::sdk::toStdString(inKey)];
 		if (not(seq and seq.IsSequence())) return;
 		for (const auto& item : seq) {
 			PhaseConfig ph;

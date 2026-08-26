@@ -124,7 +124,8 @@ def emitHeader(layer: dict, schemaName: str) -> str:
 	for include in layer.get("header_includes", []):
 		lines.append(f"#include <{include}>")
 	lines.append("")
-	lines.append("#include <initializer_list>\n")
+	if "std::initializer_list" in (constructorArgs or ""):
+		lines.append("#include <initializer_list>\n")
 	lines.append("namespace oa {")
 	lines.append("")
 	lines.append(f"/// {name}: {notes}")

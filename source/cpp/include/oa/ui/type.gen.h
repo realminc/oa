@@ -5,7 +5,7 @@
 #pragma once
 
 #include <oa/core/types.h>
-#include <cstring>
+#include <oa/core/std/cString.h>
 
 namespace oa {
 
@@ -28,11 +28,11 @@ enum class ViewerNavigationMode : U8 {
 }
 [[nodiscard]] inline ViewerNavigationMode viewerNavigationModeFromString(const char* inString) noexcept {
 	if (inString == nullptr) return ViewerNavigationMode::Default;
-	if (std::strcmp(inString, "Default") == 0) return ViewerNavigationMode::Default;
-	if (std::strcmp(inString, "Orbit") == 0) return ViewerNavigationMode::Orbit;
-	if (std::strcmp(inString, "Fly") == 0) return ViewerNavigationMode::Fly;
-	if (std::strcmp(inString, "Pan") == 0) return ViewerNavigationMode::Pan;
-	if (std::strcmp(inString, "Zoom") == 0) return ViewerNavigationMode::Zoom;
+	if (oa::strcmp(inString, "Default") == 0) return ViewerNavigationMode::Default;
+	if (oa::strcmp(inString, "Orbit") == 0) return ViewerNavigationMode::Orbit;
+	if (oa::strcmp(inString, "Fly") == 0) return ViewerNavigationMode::Fly;
+	if (oa::strcmp(inString, "Pan") == 0) return ViewerNavigationMode::Pan;
+	if (oa::strcmp(inString, "Zoom") == 0) return ViewerNavigationMode::Zoom;
 	return ViewerNavigationMode::Default;
 }
 

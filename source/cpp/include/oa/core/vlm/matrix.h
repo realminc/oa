@@ -2,7 +2,7 @@
 
 #include <oa/core/vlm/quaternion.h>
 
-#include <type_traits>
+#include <oa/core/std/typeTraits.h>
 
 namespace oa {
 
@@ -41,7 +41,7 @@ namespace detail {
 
 template <typename T>
 struct Mat4 {
-	static_assert(std::is_floating_point_v<T>);
+	static_assert(oa::IsFloatingPointV<T>);
 
 	// Row-major storage and row-vector multiplication: transformed = value * M.
 	T m[4][4] = {};

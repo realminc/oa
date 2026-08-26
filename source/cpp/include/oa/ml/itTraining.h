@@ -23,16 +23,15 @@
 #pragma once
 
 #include <oa/core/callback.h>
+#include <oa/core/std/algo.h>
+#include <oa/core/std/chrono.h>
+#include <oa/core/std/function.h>
+#include <oa/core/std/limits.h>
+#include <oa/core/std/vec.h>
 #include <oa/core/iterator.h>
 #include <oa/core/matrix.h>
 #include <oa/core/status.h>
 #include <oa/runtime/timer.h>
-
-#include <chrono>
-#include <algorithm>
-#include <functional>
-#include <limits>
-#include <vector>
 
 namespace oa { class ExecutionSession; }
 
@@ -53,7 +52,7 @@ struct ItTrainingConfig {
 	oa::I64 stepsPerEpoch   = 0;
 	// Variable-length epoch schedule: epochSteps[i] = steps in epoch i+1.
 	// Overrides stepsPerEpoch when non-empty. totalSteps is forced to the sum.
-	std::vector<oa::I64> epochSteps;
+	oa::Vec<oa::I64> epochSteps;
 	oa::I32 batchSize       = 1;
 	// Optional sequence work per sample (for throughput reporting).
 	oa::I32 sequenceLength  = 0;
@@ -63,9 +62,9 @@ struct ItTrainingConfig {
 	oa::String timerName    = "training_step";
 	oa::Bool enableGpuTiming = true;
 	// Stateful metrics updated once after each completed step. Non-owning.
-	std::vector<Metric*> metrics;
+	oa::Vec<Metric*> metrics;
 	// callbacks registered at construction. Non-owning.
-	std::vector<CbTraining*> callbacks;
+	oa::Vec<CbTraining*> callbacks;
 	// Optional fixed-shape program for capture/replay. Non-owning.
 	TrainingProgram* program = nullptr;
 };
@@ -112,14 +111,14 @@ public:
 	[[nodiscard]] oa::I64 index() const override { return index_; }
 
 	// ─── training step (lambda sugar) ─────────────────────────────────────
-	void step(const std::function<void()>& inOpFn);
+	void step(const oa::Fn<void()>& inOpFn);
 	void step(
-		const std::function<void()>& inPrepareFn,
-		const std::function<void()>& inRecordFn);
+		const oa::Fn<void()>& inPrepareFn,
+		const oa::Fn<void()>& inRecordFn);
 
 	void recordLoss(const Matrix& inLoss);
 	void recordAccuracy(oa::F32 inAcc) { liveAccuracy_ = inAcc; }
-	void recordSourceUnits(oa::I64 inUnits) { pendingSourceUnits_ = std::max<oa::I64>(inUnits, 0); }
+	void recordSourceUnits(oa::I64 inUnits) { pendingSourceUnits_ = oa::max<oa::I64>(inUnits, 0); }
 
 	[[nodiscard]] oa::Status finish();
 	[[nodiscard]] oa::Status requestProgramRecapture();
@@ -201,7 +200,7 @@ private:
 	oa::ExecutionSession* executionSession_ = nullptr;
 	Engine*              rt_                 = nullptr;
 	ItTrainingConfig     cfg_;
-	std::vector<oa::I64>   epochOffsets_;
+	oa::Vec<oa::I64>       epochOffsets_;
 	bool                 stopRequested_        = false;
 	oa::Status             lastStatus_           = oa::Status::ok();
 	oa::I64                totalSamples_         = 0;
@@ -213,12 +212,12 @@ private:
 	oa::I64                epochSourceUnits_     = 0;
 	Matrix               pendingLoss_;
 	Matrix               programLoss_;
-	oa::F32                liveAccuracy_         = std::numeric_limits<oa::F32>::quiet_NaN();
+	oa::F32                liveAccuracy_         = oa::Limits<oa::F32>::quietNaN();
 	oa::F32                lastLoss_             = 0.0F;
 	oa::F64                lastGpuMs_            = 0.0;
 	oa::I64                lastLossStep_         = 0;
 	oa::I64                lastGpuTimeStep_      = 0;
-	std::vector<oa::F64>   gpuTimingSamples_;
+	oa::Vec<oa::F64>       gpuTimingSamples_;
 	oa::F64                gpuTimingSumMs_       = 0.0;
 	oa::Timer              timer_;
 	bool                 timerReady_           = false;
@@ -229,18 +228,18 @@ private:
 	oa::I64                epochLossCount_       = 0;
 	oa::F64                trainingLossSum_      = 0.0;
 	oa::I64                trainingLossCount_    = 0;
-	std::chrono::high_resolution_clock::time_point t0_;
-	std::chrono::high_resolution_clock::time_point epochT0_;
-	std::chrono::high_resolution_clock::time_point lastStepT_;
-	std::chrono::high_resolution_clock::time_point phaseBodyT0_;
+	oa::HighResolutionTimePoint t0_;
+	oa::HighResolutionTimePoint epochT0_;
+	oa::HighResolutionTimePoint lastStepT_;
+	oa::HighResolutionTimePoint phaseBodyT0_;
 	TrainingPhaseStats   trainingPhaseStats_;
 	bool                 trainingPhaseTiming_ = false;
 	bool                 phaseBodyStarted_    = false;
 	bool                 stableResourceFrameOpen_ = false;
 	bool                 programCaptureDisabled_  = false;
 	bool                 programReportWritten_    = false;
-	std::vector<Metric*>     metrics_;
-	std::vector<CbTraining*> callbacks_;
+	oa::Vec<Metric*>       metrics_;
+	oa::Vec<CbTraining*>   callbacks_;
 	TrainingSession* session_ = nullptr;
 };
 

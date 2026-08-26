@@ -63,6 +63,8 @@ jobs:
           python3 tools/diagnostics/testOaBenchSuite.py
           python3 tools/diagnostics/testOaDeterminism.py
           python3 tools/diagnostics/testAuditKernels.py
+          python3 tools/diagnostics/testOaStdAudit.py
+          python3 tools/diagnostics/oaStdAudit.py --check
           python3 tools/gen/kernel/testGenerate.py
           python3 tools/data/checkAssets.py
           python3 -m unittest tools/data/testManage.py

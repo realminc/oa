@@ -10,7 +10,7 @@
 #include <oa/runtime/eventAccess.h>
 #include <oa/runtime/engine/allocatorAccess.h>
 #include <oa/runtime/engine/deviceAccess.h>
-#include <array>
+#include <oa/core/std/array.h>
 #include <oa/runtime/init.h>
 #include <oa/runtime/oaVma.h>
 #include <oa/core/fnMatrix.h>
@@ -1052,13 +1052,13 @@ oa::Result<oa::VideoDecoder> oa::VideoDecoder::create(
 	decoder.impl_->dpb = oa::move(dpbResult.getValue());
 
 	// --- Create path-specific resources ---
-	static constexpr std::array<const char*, 5> kResourcePathNames = {{
+	static constexpr oa::Array<const char*, 5> kResourcePathNames{
 		"CoincidentFastStaging",
 		"DistinctComputeConvert",
 		"CoincidentComputeStaging",
 		"DirectCoincidentSampling",
 		"Unavailable",
-	}};
+	};
 
 	if (useCoincideStaging or useCoincideComputeStaging) {
 		oa::Status stagingStatus = decoder.createSampleStagingImages(

@@ -1,52 +1,84 @@
 #pragma once
 
-// Native Variant<Ts...> — tagged union with an OA-named value API.
-// `stdVariant()` builds `std::variant<Ts...>` for std boundaries.
+// Native Variant<Ts...> — bounded tagged storage for OA value alternatives.
 
-#include <algorithm>
-#include <cstddef>
-#include <limits>
-#include <new>
-#include <stdexcept>
-#include <tuple>
-#include <type_traits>
-#include <utility>
-#include <variant>
+#include <oa/core/assert.h>
+#include <oa/core/std/lifetime.h>
+#include <oa/core/std/typeTraits.h>
+#include <oa/core/std/utility.h>
 
 namespace oa {
 
 namespace variantDetail {
 
-template<typename Tuple, std::size_t... Is>
-constexpr std::size_t maxSize(std::index_sequence<Is...>) {
-	return (std::max)({sizeof(std::tuple_element_t<Is, Tuple>)...});
-}
+using Size = decltype(sizeof(0));
+inline constexpr Size Npos = static_cast<Size>(-1);
 
-template<typename Tuple, std::size_t... Is>
-constexpr std::size_t maxAlign(std::index_sequence<Is...>) {
-	return (std::max)({alignof(std::tuple_element_t<Is, Tuple>)...});
-}
+template<Size Index, typename Head, typename... Tail>
+struct TypeAt : TypeAt<Index - 1, Tail...> {};
 
-template<typename U, typename Tuple, std::size_t... Is>
-constexpr std::size_t firstIndexOf(std::index_sequence<Is...>) {
-	std::size_t r = std::numeric_limits<std::size_t>::max();
-	((void)(std::is_same_v<U, std::tuple_element_t<Is, Tuple>> && r == std::numeric_limits<std::size_t>::max()
-			 ? (r = Is, 0)
-			 : 0),
-		...);
-	return r;
-}
+template<typename Head, typename... Tail>
+struct TypeAt<0, Head, Tail...> {
+	using Type = Head;
+};
 
-template<typename D, typename Tuple, std::size_t... Is>
-constexpr std::size_t indexOfDecay(std::index_sequence<Is...>) {
-	std::size_t r = std::numeric_limits<std::size_t>::max();
-	((void)(std::is_same_v<D, std::decay_t<std::tuple_element_t<Is, Tuple>>> &&
-					r == std::numeric_limits<std::size_t>::max()
-			 ? (r = Is, 0)
-			 : 0),
-		...);
-	return r;
-}
+template<typename... Ts>
+struct MaxSize;
+
+template<typename T>
+struct MaxSize<T> {
+	static constexpr Size value = sizeof(T);
+};
+
+template<typename Head, typename... Tail>
+struct MaxSize<Head, Tail...> {
+	static constexpr Size tail = MaxSize<Tail...>::value;
+	static constexpr Size value = sizeof(Head) > tail ? sizeof(Head) : tail;
+};
+
+template<typename... Ts>
+struct MaxAlign;
+
+template<typename T>
+struct MaxAlign<T> {
+	static constexpr Size value = alignof(T);
+};
+
+template<typename Head, typename... Tail>
+struct MaxAlign<Head, Tail...> {
+	static constexpr Size tail = MaxAlign<Tail...>::value;
+	static constexpr Size value = alignof(Head) > tail ? alignof(Head) : tail;
+};
+
+template<typename U, Size Index, typename... Ts>
+struct FirstIndex;
+
+template<typename U, Size Index>
+struct FirstIndex<U, Index> {
+	static constexpr Size value = Npos;
+};
+
+template<typename U, Size Index, typename Head, typename... Tail>
+struct FirstIndex<U, Index, Head, Tail...> {
+	static constexpr Size value = oa::IsSameV<U, Head>
+		? Index
+		: FirstIndex<U, Index + 1, Tail...>::value;
+};
+
+template<typename U, Size Index, typename... Ts>
+struct FirstDecayIndex;
+
+template<typename U, Size Index>
+struct FirstDecayIndex<U, Index> {
+	static constexpr Size value = Npos;
+};
+
+template<typename U, Size Index, typename Head, typename... Tail>
+struct FirstDecayIndex<U, Index, Head, Tail...> {
+	static constexpr Size value = oa::IsSameV<U, oa::DecayT<Head>>
+		? Index
+		: FirstDecayIndex<U, Index + 1, Tail...>::value;
+};
 
 } // namespace variantDetail
 
@@ -55,280 +87,257 @@ class Variant {
 public:
 	static_assert(sizeof...(Ts) > 0, "Variant requires at least one alternative");
 
-	static constexpr std::size_t Npos = std::numeric_limits<std::size_t>::max();
-	using Tuple = std::tuple<Ts...>;
-	static constexpr std::size_t Count = sizeof...(Ts);
-	using Indices = std::index_sequence_for<Ts...>;
+	using Size = variantDetail::Size;
+	static constexpr Size Npos = variantDetail::Npos;
+	static constexpr Size Count = sizeof...(Ts);
+	static constexpr Size StorageSize = variantDetail::MaxSize<Ts...>::value;
+	static constexpr Size StorageAlign = variantDetail::MaxAlign<Ts...>::value;
 
-	static constexpr std::size_t StorageSize = variantDetail::maxSize<Tuple>(Indices{});
-	static constexpr std::size_t StorageAlign = variantDetail::maxAlign<Tuple>(Indices{});
-
-	template<std::size_t I>
-	using Alt = std::tuple_element_t<I, Tuple>;
+	template<Size Index>
+	using Alt = typename variantDetail::TypeAt<Index, Ts...>::Type;
 
 private:
-
 	void* raw_() noexcept { return storage_; }
 	const void* raw_() const noexcept { return storage_; }
 
-	template<std::size_t... Is>
-	static void destroyAt_(std::size_t inIdx, void* inP, std::index_sequence<Is...>) {
-		bool matched = false;
-		((void)(matched || (inIdx == Is ? (reinterpret_cast<Alt<Is>*>(inP)->~Alt<Is>(), matched = true, true) : false)),
-			...);
-		(void)matched;
+	template<Size Index = 0>
+	static void destroyAt_(Size inIndex, void* inStorage) noexcept {
+		if constexpr (Index < Count) {
+			if (inIndex == Index) {
+				oa::destroyAt(reinterpret_cast<Alt<Index>*>(inStorage));
+				return;
+			}
+			destroyAt_<Index + 1>(inIndex, inStorage);
+		} else {
+			OA_REQUIRE(false);
+		}
 	}
-
-	static void destroyAt_(std::size_t inIdx, void* inP) { destroyAt_(inIdx, inP, Indices{}); }
 
 	void destroy_() noexcept {
-		if (index_ == Npos) {
-			return;
-		}
-		destroyAt_(index_, raw_());
-		index_ = Npos;
-	}
-
-	template<std::size_t... Is>
-	static void copyConstructAt_(std::size_t inIdx, void* inDst, const void* inSrc, std::index_sequence<Is...>) {
-		bool matched = false;
-		((void)(matched ||
-				 (inIdx == Is ? (new (inDst) Alt<Is>(*reinterpret_cast<const Alt<Is>*>(inSrc)), matched = true, true)
-							  : false)),
-			...);
-		(void)matched;
-	}
-
-	static void copyConstructAt_(std::size_t inIdx, void* inDst, const void* inSrc) {
-		copyConstructAt_(inIdx, inDst, inSrc, Indices{});
-	}
-
-	template<std::size_t... Is>
-	static void moveConstructAt_(std::size_t inIdx, void* inDst, void* inSrc, std::index_sequence<Is...>) {
-		bool matched = false;
-		((void)(matched ||
-				 (inIdx == Is ? (new (inDst) Alt<Is>(std::move(*reinterpret_cast<Alt<Is>*>(inSrc))), matched = true, true)
-							  : false)),
-			...);
-		(void)matched;
-	}
-
-	static void moveConstructAt_(std::size_t inIdx, void* inDst, void* inSrc) {
-		moveConstructAt_(inIdx, inDst, inSrc, Indices{});
-	}
-
-	template<typename F, std::size_t... Is>
-	static void dispatchVoidMut_(std::size_t inIdx, F&& inF, void* inP, std::index_sequence<Is...>) {
-		bool done = false;
-		((void)(done || (inIdx == Is ? (std::forward<F>(inF)(*reinterpret_cast<Alt<Is>*>(inP)), done = true, false) : false)),
-			...);
-		if (!done) {
-			throw std::bad_variant_access();
+		if (index_ != Npos) {
+			destroyAt_(index_, raw_());
+			index_ = Npos;
 		}
 	}
 
-	template<typename F, std::size_t... Is>
-	static void dispatchVoidConst_(std::size_t inIdx, F&& inF, const void* inP, std::index_sequence<Is...>) {
-		bool done = false;
-		((void)(done ||
-				 (inIdx == Is ? (std::forward<F>(inF)(*reinterpret_cast<const Alt<Is>*>(inP)), done = true, false) : false)),
-			...);
-		if (!done) {
-			throw std::bad_variant_access();
+	template<Size Index = 0>
+	static void copyConstructAt_(Size inIndex, void* inDst, const void* inSrc) {
+		if constexpr (Index < Count) {
+			if (inIndex == Index) {
+				oa::constructAt(
+					reinterpret_cast<Alt<Index>*>(inDst),
+					*reinterpret_cast<const Alt<Index>*>(inSrc));
+				return;
+			}
+			copyConstructAt_<Index + 1>(inIndex, inDst, inSrc);
+		} else {
+			OA_REQUIRE(false);
 		}
 	}
 
-	template<std::size_t... Is>
-	static std::variant<Ts...> toStdVariant_(std::size_t inIdx, const void* inP, std::index_sequence<Is...>) {
-		std::variant<Ts...> out{};
-		bool has = false;
-		((void)(has || (inIdx == Is
-							? (out.template emplace<Is>(*reinterpret_cast<const Alt<Is>*>(inP)), has = true, false)
-							: false)),
-			...);
-		if (!has) {
-			throw std::bad_variant_access();
+	template<Size Index = 0>
+	static void moveConstructAt_(Size inIndex, void* inDst, void* inSrc) {
+		if constexpr (Index < Count) {
+			if (inIndex == Index) {
+				oa::constructAt(
+					reinterpret_cast<Alt<Index>*>(inDst),
+					oa::move(*reinterpret_cast<Alt<Index>*>(inSrc)));
+				return;
+			}
+			moveConstructAt_<Index + 1>(inIndex, inDst, inSrc);
+		} else {
+			OA_REQUIRE(false);
 		}
-		return out;
 	}
 
-	template<typename F, std::size_t... Is>
-	static void dispatchVoidRValue_(std::size_t inIdx, F&& inF, void* inP, std::index_sequence<Is...>) {
-		bool done = false;
-		((void)(done || (inIdx == Is
-							? (std::forward<F>(inF)(std::move(*reinterpret_cast<Alt<Is>*>(inP))), done = true, false)
-							: false)),
-			...);
-		if (!done) {
-			throw std::bad_variant_access();
+	template<Size Index = 0, typename F>
+	static void visitMut_(Size inIndex, F&& inFunction, void* inStorage) {
+		if constexpr (Index < Count) {
+			if (inIndex == Index) {
+				oa::forward<F>(inFunction)(*reinterpret_cast<Alt<Index>*>(inStorage));
+				return;
+			}
+			visitMut_<Index + 1>(inIndex, oa::forward<F>(inFunction), inStorage);
+		} else {
+			OA_REQUIRE(false);
 		}
+	}
+
+	template<Size Index = 0, typename F>
+	static void visitConst_(Size inIndex, F&& inFunction, const void* inStorage) {
+		if constexpr (Index < Count) {
+			if (inIndex == Index) {
+				oa::forward<F>(inFunction)(
+					*reinterpret_cast<const Alt<Index>*>(inStorage));
+				return;
+			}
+			visitConst_<Index + 1>(inIndex, oa::forward<F>(inFunction), inStorage);
+		} else {
+			OA_REQUIRE(false);
+		}
+	}
+
+	template<Size Index = 0, typename F>
+	static void visitMove_(Size inIndex, F&& inFunction, void* inStorage) {
+		if constexpr (Index < Count) {
+			if (inIndex == Index) {
+				oa::forward<F>(inFunction)(
+					oa::move(*reinterpret_cast<Alt<Index>*>(inStorage)));
+				return;
+			}
+			visitMove_<Index + 1>(inIndex, oa::forward<F>(inFunction), inStorage);
+		} else {
+			OA_REQUIRE(false);
+		}
+	}
+
+	template<typename T>
+	static constexpr Size decayIndex_() {
+		return variantDetail::FirstDecayIndex<oa::DecayT<T>, 0, Ts...>::value;
 	}
 
 	alignas(StorageAlign) unsigned char storage_[StorageSize]{};
-	std::size_t index_{Npos};
-
-	template<typename T, typename D = std::decay_t<T>>
-	static constexpr std::size_t decayIndex_() {
-		return variantDetail::indexOfDecay<D, Tuple>(Indices{});
-	}
+	Size index_{Npos};
 
 public:
-	Variant() noexcept(std::is_nothrow_default_constructible_v<Alt<0>>) : index_(0) {
-		new (raw_()) Alt<0>{};
+	Variant() noexcept(oa::IsNothrowConstructibleV<Alt<0>>) : index_(0) {
+		oa::constructAt(reinterpret_cast<Alt<0>*>(raw_()));
 	}
 
-	Variant(const Variant& inO) : index_(inO.index_) {
+	Variant(const Variant& inOther) : index_(inOther.index_) {
 		if (index_ != Npos) {
-			copyConstructAt_(index_, raw_(), inO.raw_());
+			copyConstructAt_(index_, raw_(), inOther.raw_());
 		}
 	}
 
-	Variant(Variant&& inO) noexcept((std::is_nothrow_move_constructible_v<Ts> && ...)) : index_(inO.index_) {
+	Variant(Variant&& inOther) noexcept((oa::IsNothrowMoveConstructibleV<Ts> && ...))
+		: index_(inOther.index_) {
 		if (index_ != Npos) {
-			moveConstructAt_(index_, raw_(), inO.raw_());
-			destroyAt_(inO.index_, inO.raw_());
-			inO.index_ = Npos;
+			moveConstructAt_(index_, raw_(), inOther.raw_());
+			destroyAt_(inOther.index_, inOther.raw_());
+			inOther.index_ = Npos;
 		}
 	}
 
-	template<typename T, typename D = std::decay_t<T>,
-		typename = std::enable_if_t<!std::is_same_v<D, Variant>>,
-		typename = std::enable_if_t<decayIndex_<T>() != Npos>>
-	Variant(T&& inT) : index_(decayIndex_<T>()) {
-		constexpr std::size_t I = decayIndex_<T>();
-		new (raw_()) Alt<I>(std::forward<T>(inT));
+	template<typename T>
+	requires (!oa::IsSameV<oa::DecayT<T>, Variant> && decayIndex_<T>() != Npos)
+	Variant(T&& inValue) : index_(decayIndex_<T>()) {
+		constexpr Size Index = decayIndex_<T>();
+		oa::constructAt(
+			reinterpret_cast<Alt<Index>*>(raw_()), oa::forward<T>(inValue));
 	}
 
 	~Variant() { destroy_(); }
 
-	Variant& operator=(const Variant& inO) {
-		if (this == &inO) {
-			return *this;
-		}
-		Variant tmp(inO);
-		*this = std::move(tmp);
-		return *this;
-	}
-
-	Variant& operator=(Variant&& inO) noexcept(
-		(std::is_nothrow_move_constructible_v<Ts> && ...) && (std::is_nothrow_destructible_v<Ts> && ...)) {
-		if (this == &inO) {
-			return *this;
-		}
-		destroy_();
-		index_ = inO.index_;
-		if (index_ != Npos) {
-			moveConstructAt_(index_, raw_(), inO.raw_());
-			destroyAt_(inO.index_, inO.raw_());
-			inO.index_ = Npos;
+	Variant& operator=(const Variant& inOther) {
+		if (this != &inOther) {
+			Variant temporary(inOther);
+			*this = oa::move(temporary);
 		}
 		return *this;
 	}
 
-	[[nodiscard]] std::size_t index() const noexcept { return index_; }
-
-	[[nodiscard]] bool valuelessByException() const noexcept { return index_ == Npos; }
-
-	template<std::size_t I>
-	[[nodiscard]] Alt<I>& get() & {
-		if (index_ != I) {
-			throw std::bad_variant_access();
+	Variant& operator=(Variant&& inOther) noexcept(
+		(oa::IsNothrowMoveConstructibleV<Ts> && ...) &&
+		(oa::IsNothrowMoveAssignableV<Ts> && ...)) {
+		if (this != &inOther) {
+			destroy_();
+			index_ = inOther.index_;
+			if (index_ != Npos) {
+				moveConstructAt_(index_, raw_(), inOther.raw_());
+				destroyAt_(inOther.index_, inOther.raw_());
+				inOther.index_ = Npos;
+			}
 		}
-		return *reinterpret_cast<Alt<I>*>(raw_());
+		return *this;
 	}
-	template<std::size_t I>
-	[[nodiscard]] const Alt<I>& get() const& {
-		if (index_ != I) {
-			throw std::bad_variant_access();
-		}
-		return *reinterpret_cast<const Alt<I>*>(raw_());
+
+	[[nodiscard]] Size index() const noexcept { return index_; }
+	[[nodiscard]] bool empty() const noexcept { return index_ == Npos; }
+
+	template<Size Index>
+	[[nodiscard]] Alt<Index>& get() & {
+		OA_REQUIRE(index_ == Index);
+		return *reinterpret_cast<Alt<Index>*>(raw_());
 	}
-	template<std::size_t I>
-	[[nodiscard]] Alt<I>&& get() && {
-		if (index_ != I) {
-			throw std::bad_variant_access();
-		}
-		return std::move(*reinterpret_cast<Alt<I>*>(raw_()));
+
+	template<Size Index>
+	[[nodiscard]] const Alt<Index>& get() const& {
+		OA_REQUIRE(index_ == Index);
+		return *reinterpret_cast<const Alt<Index>*>(raw_());
+	}
+
+	template<Size Index>
+	[[nodiscard]] Alt<Index>&& get() && {
+		OA_REQUIRE(index_ == Index);
+		return oa::move(*reinterpret_cast<Alt<Index>*>(raw_()));
 	}
 
 	template<typename U>
 	[[nodiscard]] U& get() & {
-		constexpr std::size_t I = variantDetail::firstIndexOf<U, Tuple>(Indices{});
-		static_assert(I != Npos, "U not in variant");
-		return get<I>();
+		constexpr Size Index = variantDetail::FirstIndex<U, 0, Ts...>::value;
+		static_assert(Index != Npos, "Variant::get type is not an alternative");
+		return get<Index>();
 	}
+
 	template<typename U>
 	[[nodiscard]] const U& get() const& {
-		constexpr std::size_t I = variantDetail::firstIndexOf<U, Tuple>(Indices{});
-		static_assert(I != Npos, "U not in variant");
-		return get<I>();
+		constexpr Size Index = variantDetail::FirstIndex<U, 0, Ts...>::value;
+		static_assert(Index != Npos, "Variant::get type is not an alternative");
+		return get<Index>();
 	}
+
 	template<typename U>
 	[[nodiscard]] U&& get() && {
-		constexpr std::size_t I = variantDetail::firstIndexOf<U, Tuple>(Indices{});
-		static_assert(I != Npos, "U not in variant");
-		return std::move(get<I>());
+		constexpr Size Index = variantDetail::FirstIndex<U, 0, Ts...>::value;
+		static_assert(Index != Npos, "Variant::get type is not an alternative");
+		return oa::move(get<Index>());
 	}
 
 	template<typename U>
 	[[nodiscard]] bool holdsAlternative() const noexcept {
-		constexpr std::size_t I = variantDetail::firstIndexOf<U, Tuple>(Indices{});
-		static_assert(I != Npos, "U not in variant");
-		return index_ == I;
+		constexpr Size Index = variantDetail::FirstIndex<U, 0, Ts...>::value;
+		static_assert(Index != Npos,
+			"Variant::holdsAlternative type is not an alternative");
+		return index_ == Index;
 	}
 
 	template<typename F>
-	void visit(F&& inF) & {
-		if (index_ == Npos) {
-			throw std::bad_variant_access();
-		}
-		dispatchVoidMut_(index_, std::forward<F>(inF), raw_(), Indices{});
+	void visit(F&& inFunction) & {
+		OA_REQUIRE(index_ != Npos);
+		visitMut_(index_, oa::forward<F>(inFunction), raw_());
 	}
 
 	template<typename F>
-	void visit(F&& inF) const& {
-		if (index_ == Npos) {
-			throw std::bad_variant_access();
-		}
-		dispatchVoidConst_(index_, std::forward<F>(inF), raw_(), Indices{});
+	void visit(F&& inFunction) const& {
+		OA_REQUIRE(index_ != Npos);
+		visitConst_(index_, oa::forward<F>(inFunction), raw_());
 	}
 
 	template<typename F>
-	void visit(F&& inF) && {
-		if (index_ == Npos) {
-			throw std::bad_variant_access();
-		}
-		dispatchVoidRValue_(index_, std::forward<F>(inF), raw_(), Indices{});
+	void visit(F&& inFunction) && {
+		OA_REQUIRE(index_ != Npos);
+		visitMove_(index_, oa::forward<F>(inFunction), raw_());
 		destroy_();
 	}
 
 	template<typename U, typename... Args>
 	U& emplace(Args&&... inArgs) {
+		constexpr Size Index = variantDetail::FirstIndex<U, 0, Ts...>::value;
+		static_assert(Index != Npos, "Variant::emplace type is not an alternative");
 		destroy_();
-		constexpr std::size_t I = variantDetail::firstIndexOf<U, Tuple>(Indices{});
-		static_assert(I != Npos, "U not in variant");
-		new (raw_()) U(std::forward<Args>(inArgs)...);
-		index_ = I;
+		oa::constructAt(
+			reinterpret_cast<U*>(raw_()), oa::forward<Args>(inArgs)...);
+		index_ = Index;
 		return *reinterpret_cast<U*>(raw_());
 	}
 
-	void swap(Variant& inO) noexcept(
-		(std::is_nothrow_move_constructible_v<Ts> && ...) && (std::is_nothrow_swappable_v<Ts> && ...)) {
-		Variant tmp(std::move(*this));
-		*this = std::move(inO);
-		inO = std::move(tmp);
-	}
-
-	[[nodiscard]] std::variant<Ts...> stdVariant() const& {
-		if (index_ == Npos) {
-			return std::variant<Ts...>{};
-		}
-		return toStdVariant_(index_, raw_(), Indices{});
-	}
-
-	[[nodiscard]] std::variant<Ts...> stdVariant() && {
-		Variant tmp(std::move(*this));
-		return tmp.stdVariant();
+	void swap(Variant& inOther) noexcept(
+		(oa::IsNothrowMoveConstructibleV<Ts> && ...) &&
+		(oa::IsNothrowMoveAssignableV<Ts> && ...)) {
+		Variant temporary(oa::move(*this));
+		*this = oa::move(inOther);
+		inOther = oa::move(temporary);
 	}
 };
 

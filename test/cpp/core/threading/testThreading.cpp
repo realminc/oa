@@ -6,6 +6,30 @@
 #include <chrono>
 #include <thread>
 
+TEST(Thread, CreateMoveAndJoin) {
+	oa::Atomic<bool> executed{false};
+	auto created = oa::Thread::create([&] {
+		executed.store(true, oa::MemoryOrder::Release);
+	});
+	ASSERT_TRUE(created.isOk()) << created.getStatus().toString().cStr();
+
+	oa::Thread thread = oa::move(*created);
+	EXPECT_TRUE(thread.joinable());
+	const oa::Status status = thread.join();
+	EXPECT_TRUE(status.isOk()) << status.toString().cStr();
+	EXPECT_FALSE(thread.joinable());
+	EXPECT_TRUE(executed.load(oa::MemoryOrder::Acquire));
+}
+
+TEST(Thread, RejectsEmptyEntryAndReportsHardware) {
+	auto created = oa::Thread::create({});
+	EXPECT_TRUE(created.isError());
+	EXPECT_EQ(created.getStatus().getCode(), oa::StatusCode::InvalidArgument);
+	EXPECT_GE(oa::Thread::hardwareConcurrency(), 1U);
+	oa::Thread::yield();
+	oa::Thread::sleepFor(oa::Duration::fromNanoseconds(1));
+}
+
 // =============================================================================
 // oa::Channel
 // =============================================================================

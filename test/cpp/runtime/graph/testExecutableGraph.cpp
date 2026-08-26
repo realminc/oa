@@ -296,7 +296,7 @@ TEST(ExecutableGraph, SemanticGraphOwnsHandleFreeOperationTopology) {
 	const auto first = graph.debugReportJson("pilot");
 	const auto second = graph.debugReportJson("pilot");
 	EXPECT_EQ(first, second);
-	const auto text = first.stdStr();
+	const auto text = testStdString(first);
 	EXPECT_NE(text.find("\"schema\": \"oa.semantic_graph.v2\""),
 		std::string::npos);
 	EXPECT_NE(text.find("\"name\": \"oa::FnMatrix::add\""), std::string::npos);
@@ -341,7 +341,7 @@ TEST(ExecutableGraph, SemanticGraphOwnsMetadataViewTopology) {
 	EXPECT_EQ(recorded->strides[1], 1);
 
 	const auto report = graph.debugReportJson("view");
-	const auto text = report.stdStr();
+	const auto text = testStdString(report);
 	EXPECT_NE(text.find("\"strides\": [2, 1]"), std::string::npos);
 	EXPECT_NE(text.find("\"view_source\": 0"), std::string::npos);
 	EXPECT_NE(text.find("\"view_byte_offset\": 16"), std::string::npos);
@@ -503,7 +503,7 @@ TEST(ExecutableGraph, SemanticGraphPreservesAbsentOptionalInputs) {
 	EXPECT_EQ(recorded.inputs[2], oa::invalidSemanticValueId);
 	ASSERT_EQ(recorded.accesses.size(), 3U);
 
-	const auto report = graph.debugReportJson("optional-input").stdStr();
+	const auto report = testStdString(graph.debugReportJson("optional-input"));
 	EXPECT_NE(report.find("\"inputs\": [0, 1, null]"), std::string::npos);
 
 	auto required = oa::detail::opRegistry::FnMatrix::linear;
@@ -618,7 +618,7 @@ TEST(ExecutableGraph, SemanticGraphOwnsTypedOperationAttributes) {
 	ASSERT_EQ(graph.operations()[0].attributes.size(), 7U);
 	EXPECT_EQ(graph.operations()[0].attributes[5].shape,
 		(oa::MatrixShape{2, 3}));
-	const auto report = graph.debugReportJson("typed-attributes").stdStr();
+	const auto report = testStdString(graph.debugReportJson("typed-attributes"));
 	EXPECT_NE(report.find("\"kind\": \"boolean\", \"value\": true"),
 		std::string::npos);
 	EXPECT_NE(report.find("\"kind\": \"signed_integer\", \"value\": -2"),
@@ -1066,7 +1066,7 @@ TEST(ExecutableGraph, PilotFunctionsRecordSemanticContracts) {
 		oa::OpAttributeKind::Float);
 	EXPECT_DOUBLE_EQ(scaleOperation.attributes[0].floatVal, ScaleValue);
 	const auto scaleReport = ctx.semanticGraph()->debugReportJson("scale");
-	EXPECT_NE(scaleReport.stdStr().find(
+	EXPECT_NE(testStdString(scaleReport).find(
 		"\"attributes\": [{\"name\": \"scalar\", \"kind\": \"float\", "
 		"\"value\": 1.25}]"), std::string::npos);
 
@@ -3314,7 +3314,7 @@ TEST(ExecutableGraph, DebugReportIsDeterministicAndHandleFree) {
 	const oa::String first = graph.debugReportJson("unit-matmul");
 	const oa::String second = graph.debugReportJson("unit-matmul");
 	EXPECT_EQ(first, second);
-	const auto text = first.stdStr();
+	const auto text = testStdString(first);
 	EXPECT_NE(text.find("\"schema\": \"oa.execution_graph.v3\""), std::string::npos);
 	EXPECT_NE(text.find("\"operation\": \"MatMulNt\""), std::string::npos);
 	EXPECT_NE(text.find("\"semantic_operations\": [5]"), std::string::npos);
@@ -3608,8 +3608,8 @@ TEST(ExecutableGraph, DeviceAdmissionCanaryUsesIndependentKnownAnswers) {
 		EXPECT_NE(check.expectedHash, 0U);
 		EXPECT_NE(check.actualHash, 0U);
 	}
-	const auto first = report.debugReportJson().stdStr();
-	const auto second = report.debugReportJson().stdStr();
+	const auto first = testStdString(report.debugReportJson());
+	const auto second = testStdString(report.debugReportJson());
 	EXPECT_EQ(first, second);
 	EXPECT_NE(first.find("\"schema\": \"oa.device_canary.v1\""),
 		std::string::npos);
@@ -4083,18 +4083,17 @@ TEST(ExecutableGraph, StructuredKernelSelectionsAreCountedAndDumped) {
 	EXPECT_EQ(stats.naiveFallbackCount, 1U);
 
 	const auto report = graph.debugReportJson("selection-contract");
-	EXPECT_NE(report.view().stdView().find("\"kernel_selections\": 4"),
-		std::string::npos);
-	EXPECT_NE(report.view().stdView().find("\"kernel_fallbacks\": 3"),
-		std::string::npos);
-	EXPECT_NE(report.view().stdView().find(
-		"\"kernel_selection\": \"precision_fallback\""), std::string::npos);
-	EXPECT_NE(report.view().stdView().find(
-		"\"kernel_selection\": \"layout_fallback\""), std::string::npos);
-	EXPECT_NE(report.view().stdView().find(
-		"\"kernel_selection\": \"naive_fallback\""), std::string::npos);
-	EXPECT_NE(report.view().stdView().find(
-		"\"kernel_selection\": null"), std::string::npos);
+	const oa::StringView reportView = report.view();
+	EXPECT_NE(reportView.find("\"kernel_selections\": 4"), oa::StringView::Npos);
+	EXPECT_NE(reportView.find("\"kernel_fallbacks\": 3"), oa::StringView::Npos);
+	EXPECT_NE(reportView.find("\"kernel_selection\": \"precision_fallback\""),
+		oa::StringView::Npos);
+	EXPECT_NE(reportView.find("\"kernel_selection\": \"layout_fallback\""),
+		oa::StringView::Npos);
+	EXPECT_NE(reportView.find("\"kernel_selection\": \"naive_fallback\""),
+		oa::StringView::Npos);
+	EXPECT_NE(reportView.find("\"kernel_selection\": null"),
+		oa::StringView::Npos);
 }
 
 TEST(ExecutableGraph, HostReadbackBarrierIsAnExplicitCompletionPolicy) {
@@ -4334,7 +4333,7 @@ TEST(ExecutableGraph, AllocatorBackedAliasesExecuteCorrectly) {
 	// dependency when the physical bytes are handed from the first alias to the
 	// second; a per-buffer barrier cannot scope both handles.
 	EXPECT_EQ(graph.getStats().aliasBarrierCount, 1U);
-	const auto debugReport = graph.debugReportJson("allocator-alias").stdStr();
+	const auto debugReport = testStdString(graph.debugReportJson("allocator-alias"));
 	EXPECT_NE(debugReport.find("\"scope\": \"memory_alias\""), std::string::npos);
 	EXPECT_NE(debugReport.find("\"reason\": \"read_after_write\""),
 		std::string::npos);

@@ -22,12 +22,12 @@
 #include <oa/ml/nn/moe/moe.h>
 #include <oa/ml/nn.h>
 #include <oa/ml/module.h>
+#include <oa/core/assert.h>
 #include <oa/core/fnMatrix.h>
 #include <oa/ml/fnMatrix.h>
 #include <oa/core/std/format.h>
+#include <oa/core/std/scalarMath.h>
 #include <oa/runtime/executionSession.h>
-#include <cmath>
-#include <stdexcept>
 
 oa::Matrix oa::Moe::denseExpertDelta(const oa::Matrix& inNormed, const oa::Matrix& inGate) const {
 	const oa::I64 T = inNormed.size(0);
@@ -54,7 +54,7 @@ oa::Matrix oa::Moe::denseExpertDelta(const oa::Matrix& inNormed, const oa::Matri
 		auto expertOut = oa::FnMatrix::add(oa::FnMatrix::matMulNt(hidden, downW), downB);
 		expertOutputs.pushBack(oa::FnMatrix::reshape(expertOut,	oa::MatrixShape{T, 1, dModel_}));
 	}
-	auto allExperts = oa::FnMatrix::concat(oa::Span<oa::Matrix>(expertOutputs), 1);
+	auto allExperts = oa::FnMatrix::concat(expertOutputs.span(), 1);
 	auto gate3d = oa::FnMatrix::reshape(inGate, oa::MatrixShape{T, numExperts_, 1});
 	auto weighted = oa::FnMatrix::mul(allExperts, gate3d);
 	return oa::FnMatrix::reshape(oa::FnMatrix::sum(weighted, 1),	oa::MatrixShape{T, dModel_});
@@ -79,9 +79,8 @@ oa::Moe::Moe(oa::I32 inDModel, oa::I32 inDFF, oa::I32 inNumExperts, oa::I32 inEx
 
 void oa::Moe::init(oa::I32 inDModel, oa::I32 inDFF, oa::I32 inNumExperts, oa::I32 inExpertsPerToken,
 	oa::F32 inRmsEps, oa::I32 inNumSharedExperts) {
-	if (inDModel <= 0 or inDFF <= 0 or inNumExperts <= 0) {
-		throw std::invalid_argument("oa::Moe dimensions and expert count must be positive");
-	}
+	OA_REQUIRE_MSG(inDModel > 0 && inDFF > 0 && inNumExperts > 0,
+		"oa::Moe dimensions and expert count must be positive");
 	dModel_ = inDModel;
 	dFF_ = inDFF;
 	numExperts_ = inNumExperts;
@@ -111,8 +110,8 @@ void oa::Moe::init(oa::I32 inDModel, oa::I32 inDFF, oa::I32 inNumExperts, oa::I3
 	// truth and are consumed directly by grouped sparse kernels. initialize with
 	// the same per-linear fan-in bounds as oa::Linear without constructing temporary
 	// expert modules or a per-forward packing graph.
-	const oa::F32 gateBound = std::sqrt(1.0F / static_cast<oa::F32>(dModel_));
-	const oa::F32 downBound = std::sqrt(1.0F / static_cast<oa::F32>(dFF_));
+	const oa::F32 gateBound = oa::sqrt(1.0F / static_cast<oa::F32>(dModel_));
+	const oa::F32 downBound = oa::sqrt(1.0F / static_cast<oa::F32>(dFF_));
 	auto gateW = oa::FnMatrix::empty(
 		oa::MatrixShape{numExperts_, 2 * dFF_, dModel_}, wd);
 	gateW = oa::FnMatrix::philoxUniform(gateW, -gateBound, gateBound, 0);
@@ -284,11 +283,11 @@ oa::MoeRouteStats oa::Moe::routeStats() const {
 	oa::F64 ent = 0.0, maxLoad = 0.0;
 	for (oa::I32 e = 0; e < E; ++e) {
 		const oa::F64 f = s.loadFraction[e];
-		if (f > 0.0) ent -= f * std::log(f);
+		if (f > 0.0) ent -= f * oa::log(f);
 		else ++s.deadExperts;
 		if (f > maxLoad) maxLoad = f;
 	}
-	s.entropy = (E > 1) ? static_cast<oa::F32>(ent / std::log(static_cast<oa::F64>(E))) : 1.0f;
+	s.entropy = (E > 1) ? static_cast<oa::F32>(ent / oa::log(static_cast<oa::F64>(E))) : 1.0f;
 	s.maxLoadRatio = static_cast<oa::F32>(maxLoad * static_cast<oa::F64>(E));
 	return s;
 }

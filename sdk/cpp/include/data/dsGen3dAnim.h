@@ -14,10 +14,9 @@
 
 #include <oa/data/dataset.h>
 #include <oa/core/filesystem.h>
+#include <oa/core/std/random.h>
 #include <oa/core/types.h>
 #include <anim/poseClip.h>
-
-#include <random>
 
 namespace oa {
 
@@ -111,9 +110,9 @@ private:
 	oa::Usize splitCursor_[3] = {0, 0, 0};
 	
 	// Per-split RNGs for deterministic, independent sampling
-	std::mt19937_64 trainRng_{1234};
-	std::mt19937_64 valRng_{5678};
-	std::mt19937_64 testRng_{9012};
+	oa::Random trainRng_{1234};
+	oa::Random valRng_{5678};
+	oa::Random testRng_{9012};
 
 	bool loadInternal_();
 	bool loadUsd_();        // load a combined .usd (multi-SkelAnimation) dataset

@@ -16,7 +16,7 @@
 
 #include "fnMatrixSsmInternal.h"
 
-#include <cassert>
+#include <assert.h>
 
 // ============================================================================
 // EmpyrealmAdt — fused per-token A·dt term (Ssm/empyrealm/EmpyrealmAdt.slang)
@@ -45,7 +45,7 @@ oa::Matrix oa::FnMatrix::empyrealmAdt(const oa::Matrix& inDdA, const oa::Matrix&
 
 	if (oa::FnAutograd::isEnabled() and (inDdA.requiresGrad() or inDt.requiresGrad())) {
 		auto gradFn = oa::makeShared<oa::GradEmpyrealmAdt>(inAFloor);
-		gradFn->saveForBackward({inDdA, inDt});
+		gradFn->saveForBackward(inDdA, inDt);
 		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inDdA, inDt});
 		gradFn->sequenceNr_  = oa::FnAutograd::nextSeq();
 		gradFn->outputShape_ = out.getShape();
@@ -122,7 +122,7 @@ oa::Matrix oa::FnMatrix::empyrealmDt(
 
 	if (oa::FnAutograd::isEnabled() and inX.requiresGrad()) {
 		auto gradFn = oa::makeShared<oa::GradEmpyrealmDt>(inDtMin, inDtMax);
-		gradFn->saveForBackward({inX});
+		gradFn->saveForBackward(inX);
 		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inX});
 		gradFn->sequenceNr_  = oa::FnAutograd::nextSeq();
 		gradFn->outputShape_ = out.getShape();
@@ -269,8 +269,8 @@ oa::Matrix oa::FnMatrix::empyrealmSiso(
 		 inTrap.requiresGrad() or inAngle.requiresGrad() or inCBias.requiresGrad() or
 		 inBBias.requiresGrad() or inD.requiresGrad())) {
 		auto gradFn = oa::makeShared<oa::GradEmpyrealmSiso>();
-		gradFn->saveForBackward({inC, inB, inX, inZ, inAdt, inDt, inTrap,
-			inAngle, inCBias, inBBias, inD});
+		gradFn->saveForBackward(inC, inB, inX, inZ, inAdt, inDt, inTrap,
+			inAngle, inCBias, inBBias, inD);
 		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inC, inB, inX, inZ, inAdt, inDt, inTrap,
 			inAngle, inCBias, inBBias, inD});
 		gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
@@ -524,7 +524,7 @@ oa::EmpyrealmDtAdtResult oa::FnMatrix::empyrealmDtAdt(
 
 	if (oa::FnAutograd::isEnabled() and (inDtRaw.requiresGrad() or inDdA.requiresGrad())) {
 		auto dtGrad = oa::makeShared<oa::GradEmpyrealmDt>(inDtMin, inDtMax);
-		dtGrad->saveForBackward({inDtRaw});
+		dtGrad->saveForBackward(inDtRaw);
 		dtGrad->setGraphInputs(oa::Vec<oa::Matrix>{inDtRaw});
 		dtGrad->sequenceNr_  = oa::FnAutograd::nextSeq();
 		dtGrad->outputShape_ = dt.getShape();
@@ -536,7 +536,7 @@ oa::EmpyrealmDtAdtResult oa::FnMatrix::empyrealmDtAdt(
 		dt.mutAutograd().gradFn = dtGrad;
 
 		auto adtGrad = oa::makeShared<oa::GradEmpyrealmAdt>(inAFloor);
-		adtGrad->saveForBackward({inDdA, dt});
+		adtGrad->saveForBackward(inDdA, dt);
 		adtGrad->setGraphInputs(oa::Vec<oa::Matrix>{inDdA, dt});
 		adtGrad->sequenceNr_  = oa::FnAutograd::nextSeq();
 		adtGrad->outputShape_ = adt.getShape();

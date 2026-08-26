@@ -15,8 +15,8 @@
 #include <oa/runtime/executionSession.h>
 #include <oa/runtime/engine.h>
 #include <oa/runtime/kernelRegistry.h>
-#include <cmath>
-#include <limits>
+#include <oa/core/std/limits.h>
+#include <oa/core/std/scalarMath.h>
 
 namespace oa {
 
@@ -45,8 +45,8 @@ static oa::Matrix buildMelFilterbank(const MelConfig& inCfg, oa::U32 inSampleRat
 	const oa::F32 fMin       = inCfg.fMin;
 
 	// Hz ↔ Mel conversions (HTK: 2595 log10(1 + f/700))
-	auto hzToMel = [](float f) { return 2595.0F * std::log10(1.0F + f / 700.0F); };
-	auto melToHz = [](float m) { return 700.0F * (std::pow(10.0F, m / 2595.0F) - 1.0F); };
+	auto hzToMel = [](float f) { return 2595.0F * oa::log10(1.0F + f / 700.0F); };
+	auto melToHz = [](float m) { return 700.0F * (oa::pow(10.0F, m / 2595.0F) - 1.0F); };
 
 	// Triangular filters [numMels, freqBins]
 	oa::Vec<oa::F32> fb(numMels * freqBins, 0.0F);
@@ -83,7 +83,7 @@ static bool isValidMelConfig(const MelConfig& inCfg, oa::U32 inSampleRate) {
 	return inSampleRate > 0 && isPow2(inCfg.fftSize) &&
 		inCfg.fftSize >= 16 && inCfg.fftSize <= 1024 && inCfg.hopSize > 0 &&
 		inCfg.numMels > 0 && inCfg.numMels <= 4096 &&
-		std::isfinite(inCfg.fMin) && std::isfinite(fMax) &&
+		oa::isFinite(inCfg.fMin) && oa::isFinite(fMax) &&
 		inCfg.fMin >= 0.0F && inCfg.fMin < fMax && fMax <= nyquist;
 }
 
@@ -91,12 +91,12 @@ static bool isValidMelConfig(const MelConfig& inCfg, oa::U32 inSampleRate) {
 // what librosa MFCC uses).
 static oa::Matrix buildDctIiMatrix(oa::U32 inNumCoeffs, oa::U32 inNumMels) {
 	oa::Vec<oa::F32> d(inNumCoeffs * inNumMels, 0.0F);
-	const oa::F32 scale0 = std::sqrt(1.0F / static_cast<oa::F32>(inNumMels));
-	const oa::F32 scale  = std::sqrt(2.0F / static_cast<oa::F32>(inNumMels));
+	const oa::F32 scale0 = oa::sqrt(1.0F / static_cast<oa::F32>(inNumMels));
+	const oa::F32 scale  = oa::sqrt(2.0F / static_cast<oa::F32>(inNumMels));
 	for (oa::U32 k = 0; k < inNumCoeffs; ++k) {
 		for (oa::U32 m = 0; m < inNumMels; ++m) {
-			const oa::F32 v = std::cos(
-				static_cast<oa::F32>(M_PI) / static_cast<oa::F32>(inNumMels)
+			const oa::F32 v = oa::cos(
+				oa::PiF / static_cast<oa::F32>(inNumMels)
 				* (static_cast<oa::F32>(m) + 0.5F) * static_cast<oa::F32>(k));
 			d[k * inNumMels + m] = v * (k == 0 ? scale0 : scale);
 		}
@@ -173,7 +173,7 @@ oa::Matrix stft(const Audio& inAudio, const StftConfig& inCfg) {
 		return {};
 	}
 	if (shape[0] <= 0 || shape[1] <= 0 || inBuf.getDtype() != oa::ScalarType::Float32 ||
-		shape[0] > std::numeric_limits<oa::U32>::max() || shape[1] > std::numeric_limits<oa::U32>::max()) {
+		shape[0] > oa::Limits<oa::U32>::max() || shape[1] > oa::Limits<oa::U32>::max()) {
 		OaLogError(oa::LogComponent::Audio, "oa::FnAudio::stft: expected non-empty u32-addressable F32 audio");
 		return {};
 	}

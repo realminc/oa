@@ -5,7 +5,7 @@
 #pragma once
 
 #include <oa/core/types.h>
-#include <cstring>
+#include <oa/core/std/cString.h>
 
 namespace oa {
 
@@ -22,8 +22,8 @@ enum class Quantization : U8 {
 }
 [[nodiscard]] inline Quantization quantizationFromString(const char* inString) noexcept {
 	if (inString == nullptr) return Quantization::Q4;
-	if (std::strcmp(inString, "Q4") == 0) return Quantization::Q4;
-	if (std::strcmp(inString, "Q8") == 0) return Quantization::Q8;
+	if (oa::strcmp(inString, "Q4") == 0) return Quantization::Q4;
+	if (oa::strcmp(inString, "Q8") == 0) return Quantization::Q8;
 	return Quantization::Q4;
 }
 

@@ -1,6 +1,7 @@
 #include <oa/runtime/kernelRegistry.h>
 #include <oa/core/types.h>
-#include <cstring>
+#include <oa/core/std/cString.h>
+#include <oa/core/std/stringView.h>
 
 // ─── C API implementations ────────────────────────────────────────────────────
 // These replace the old inline bodies in KernelRegistry.h.
@@ -30,22 +31,22 @@ const oa::ComputeKernel* oa::computeKernelFindByPackedId(oa::U64 inPackedId) {
 const oa::ComputeKernel* oa::computeKernelFindByName(const char* inName) {
 	if (!inName) { return nullptr; }
 	for (const auto& k : oa::kernelRegistry::MlKernels) {
-		if (std::strcmp(k.name, inName) == 0) { return &k; }
+		if (oa::strcmp(k.name, inName) == 0) { return &k; }
 	}
 	for (const auto& k : oa::kernelRegistry::VisionKernels) {
-		if (std::strcmp(k.name, inName) == 0) { return &k; }
+		if (oa::strcmp(k.name, inName) == 0) { return &k; }
 	}
 	for (const auto& k : oa::kernelRegistry::UiKernels) {
-		if (std::strcmp(k.name, inName) == 0) { return &k; }
+		if (oa::strcmp(k.name, inName) == 0) { return &k; }
 	}
 	for (const auto& k : oa::kernelRegistry::CryptoKernels) {
-		if (std::strcmp(k.name, inName) == 0) { return &k; }
+		if (oa::strcmp(k.name, inName) == 0) { return &k; }
 	}
 	for (const auto& k : oa::kernelRegistry::AudioKernels) {
-		if (std::strcmp(k.name, inName) == 0) { return &k; }
+		if (oa::strcmp(k.name, inName) == 0) { return &k; }
 	}
 	for (const auto& k : oa::kernelRegistry::RenderKernels) {
-		if (std::strcmp(k.name, inName) == 0) { return &k; }
+		if (oa::strcmp(k.name, inName) == 0) { return &k; }
 	}
 	return nullptr;
 }
@@ -54,9 +55,12 @@ bool oa::computeKernelUsesDefaultBindlessPipeline(const char* inName)
 {
 	// Render shaders (vertex/fragment) use a graphics pipeline layout,
 	// not the compute bindless pipeline. Exclude from compute dispatch.
-	if (std::strstr(inName, ".vert") || std::strstr(inName, ".frag") ||
-	    std::strstr(inName, ".geom") || std::strstr(inName, ".tesc") ||
-	    std::strstr(inName, ".tese")) {
+	const oa::StringView name(inName);
+	if (name.find(".vert") != oa::StringView::Npos
+		|| name.find(".frag") != oa::StringView::Npos
+		|| name.find(".geom") != oa::StringView::Npos
+		|| name.find(".tesc") != oa::StringView::Npos
+		|| name.find(".tese") != oa::StringView::Npos) {
 		return false;
 	}
 	// The default bindless pipeline layout now includes storage buffers,

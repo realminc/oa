@@ -1,5 +1,32 @@
 # OA Diagnostic Evidence
 
+## Standard-library dependency ratchet
+
+`oaStdAudit.py` inventories every live C++ standard-library namespace symbol,
+standard header, exception token, and RTTI token in OA's installed headers,
+owned implementation, generated sources, and vendored closure. Comments and
+quoted literals are excluded. The checked policy is per file and per symbol:
+removal is always accepted, while a count increase, new symbol, or dependency
+in a new file fails.
+
+```bash
+python3 tools/diagnostics/testOaStdAudit.py
+python3 tools/diagnostics/oaStdAudit.py --check
+```
+
+After a reviewed migration strictly reduces dependencies, refresh the ratchet
+and prove that the regenerated policy immediately checks cleanly:
+
+```bash
+python3 tools/diagnostics/oaStdAudit.py --write-policy
+python3 tools/diagnostics/oaStdAudit.py --check
+```
+
+The policy is a migration ceiling, not evidence that current dependencies are
+approved forever or that OA is already standard-library independent. The final
+gate is compilation without C++ standard-library include paths plus linker
+inspection proving no `libstdc++`/`libc++` dependency.
+
 `oaEvidence.py` creates one machine-readable, checksummed directory containing
 the evidence needed to reproduce an OA Vulkan result. It uses only the Python
 standard library and does not add a runtime dependency.

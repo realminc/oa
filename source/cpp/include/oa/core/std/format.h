@@ -11,15 +11,32 @@
 
 #include <oa/core/std/string.h>
 
-#include <cstdarg>
-#include <cstdio>
-#include <cstdlib>
+#include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 namespace oa {
 
+// Locale-independent, allocation-free numeric conversion contracts. Integer
+// parsers require the complete view to contain one canonical base-10 value.
+// Floating conversion uses an explicit C numeric locale in the private host
+// adapter, never the process-global locale.
+[[nodiscard]] bool parseU64(StringView inText, U64& outValue) noexcept;
+[[nodiscard]] bool parseI64(StringView inText, I64& outValue) noexcept;
+[[nodiscard]] bool parseF64(StringView inText, F64& outValue) noexcept;
+[[nodiscard]] bool formatF64(F64 inValue, String& outText, I32 inPrecision = 17) noexcept;
+
 [[nodiscard]] inline String toString(U32 inV) {
 	char buf[16];
-	if (std::snprintf(buf, sizeof(buf), "%u", static_cast<unsigned>(inV)) <= 0) {
+	if (::snprintf(buf, sizeof(buf), "%u", static_cast<unsigned>(inV)) <= 0) {
+		return {};
+	}
+	return oa::String(buf);
+}
+
+[[nodiscard]] inline String toString(U64 inV) {
+	char buf[24];
+	if (::snprintf(buf, sizeof(buf), "%llu", static_cast<unsigned long long>(inV)) <= 0) {
 		return {};
 	}
 	return oa::String(buf);
@@ -27,7 +44,7 @@ namespace oa {
 
 [[nodiscard]] inline String toString(I64 inV) {
 	char buf[24];
-	if (std::snprintf(buf, sizeof(buf), "%lld", static_cast<long long>(inV)) <= 0) {
+	if (::snprintf(buf, sizeof(buf), "%lld", static_cast<long long>(inV)) <= 0) {
 		return {};
 	}
 	return oa::String(buf);
@@ -38,7 +55,7 @@ namespace oa {
 // "%g" output, so there is no truncation.
 [[nodiscard]] inline String toString(double inV) {
 	char buf[32];
-	if (std::snprintf(buf, sizeof(buf), "%g", inV) <= 0) {
+	if (::snprintf(buf, sizeof(buf), "%g", inV) <= 0) {
 		return {};
 	}
 	return oa::String(buf);
@@ -63,7 +80,7 @@ inline String format(const char* inFmt, ...) {
 	va_list argsCopy;
 	va_copy(argsCopy, args);
 
-	const int needed = std::vsnprintf(nullptr, 0, inFmt, args);
+	const int needed = ::vsnprintf(nullptr, 0, inFmt, args);
 	va_end(args);
 	if (needed <= 0) {
 		va_end(argsCopy);
@@ -73,20 +90,20 @@ inline String format(const char* inFmt, ...) {
 
 	char stack[256];
 	if (len < sizeof(stack)) {
-		std::vsnprintf(stack, sizeof(stack), inFmt, argsCopy);
+		::vsnprintf(stack, sizeof(stack), inFmt, argsCopy);
 		va_end(argsCopy);
 		return oa::String(stack, len);
 	}
 
-	char* heap = static_cast<char*>(std::malloc(len + 1));
+	char* heap = static_cast<char*>(::malloc(len + 1));
 	if (heap == nullptr) {
 		va_end(argsCopy);
 		return {};
 	}
-	std::vsnprintf(heap, len + 1, inFmt, argsCopy);
+	::vsnprintf(heap, len + 1, inFmt, argsCopy);
 	va_end(argsCopy);
 	oa::String out(heap, len);
-	std::free(heap);
+	::free(heap);
 	return out;
 }
 

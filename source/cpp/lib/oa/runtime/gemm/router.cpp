@@ -14,8 +14,8 @@
 #include "../engine/engineAccess.h"
 #include "../engine/deviceAccess.h"
 
-#include <atomic>
-#include <cstring>
+#include <oa/core/std/atomic.h>
+#include <oa/core/std/cString.h>
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Internal helpers
@@ -305,11 +305,11 @@ oa::GemmRouteResult routeForPlan(const oa::MatmulPlan& inPlan) {
 // so hot-path cost is one acquire-load of a bool.
 
 bool gemmRouterLogEnabled() {
-	static std::atomic<int> sCached{-1};  // -1=unread, 0=off, 1=on
-	int c = sCached.load(std::memory_order_acquire);
+	static oa::Atomic<int> sCached{-1};  // -1=unread, 0=off, 1=on
+	int c = sCached.load(oa::MemoryOrder::Acquire);
 	if (c < 0) {
 		c = oa::EnvFlag::isSet("OA_LOG_GEMM_ROUTER") ? 1 : 0;
-		sCached.store(c, std::memory_order_release);
+		sCached.store(c, oa::MemoryOrder::Release);
 	}
 	return c == 1;
 }
@@ -428,18 +428,18 @@ oa::GemmRouteResult oa::GemmRouter::select(
 // The mask depends only on software/hardware info populated at device init,
 // so we compute it once and stash it on the engine. Two threads racing the
 // first read will both compute the same value and CAS the result; the
-// std::memory_order_relaxed loads/stores are fine because the cap mask is
+// Relaxed loads/stores are sufficient because the cap mask is
 // idempotent — there is no payload the reader depends on through the atomic.
 // ─────────────────────────────────────────────────────────────────────────────
 
 oa::U64 oa::EngineAccess::gemmCapsMask(const oa::Engine& inEngine) {
 	auto& impl = get(inEngine);
-	oa::U64 cached = impl.gemmCapsMask_.load(std::memory_order_relaxed);
+	oa::U64 cached = impl.gemmCapsMask_.load(oa::MemoryOrder::Relaxed);
 	if (cached != 0U) {
 		return cached;
 	}
 	const oa::U64 computed = oa::matmulRegistry::computeCapsMask(inEngine);
-	impl.gemmCapsMask_.store(computed, std::memory_order_relaxed);
+	impl.gemmCapsMask_.store(computed, oa::MemoryOrder::Relaxed);
 	return computed;
 }
 
@@ -510,9 +510,10 @@ oa::MatmulPlan oa::GemmRouter::plan(
 	// registry supplies exact epilogue rows, so the same code covers raw, Bias,
 	// Bias+ReLU, Bias+GELU and dual-output SiLU without name construction.
 	if (precision != oa::GemmPrecision::Fp32) {
-		for (const oa::GemmKernel family : {
+		const oa::Array<oa::GemmKernel, 2> tensorCoreFamilies{
 			oa::GemmKernel::GemmCmWgBf16,
-			oa::GemmKernel::GemmCmSgBf16}) {
+			oa::GemmKernel::GemmCmSgBf16};
+		for (const oa::GemmKernel family : tensorCoreFamilies) {
 			for (const auto& variant : oa::matmulRegistry::all()) {
 				if (variant.kernel == family
 					and variantLegalResolved(inRt, variant, problem, precision)) {
@@ -544,7 +545,8 @@ oa::MatmulPlan oa::GemmRouter::plan(
 		const oa::GemmKernel second = first == oa::GemmKernel::StridedTiledFp32
 			? oa::GemmKernel::StridedFp32
 			: oa::GemmKernel::StridedTiledFp32;
-		for (const oa::GemmKernel family : {first, second}) {
+		const oa::Array<oa::GemmKernel, 2> stridedFamilies{first, second};
+		for (const oa::GemmKernel family : stridedFamilies) {
 			for (const auto& variant : oa::matmulRegistry::all()) {
 				if (variant.kernel == family and variantLegalResolved(
 					inRt, variant, problem, oa::GemmPrecision::Fp32)) {
@@ -568,9 +570,10 @@ oa::MatmulPlan oa::GemmRouter::plan(
 			}
 		}
 	}
-	for (const oa::GemmKernel family : preferNaive
-		? std::initializer_list<oa::GemmKernel>{oa::GemmKernel::Naive, oa::GemmKernel::TiledFp32}
-		: std::initializer_list<oa::GemmKernel>{oa::GemmKernel::TiledFp32, oa::GemmKernel::Naive}) {
+	const oa::Array<oa::GemmKernel, 2> fallbackFamilies = preferNaive
+		? oa::Array<oa::GemmKernel, 2>{oa::GemmKernel::Naive, oa::GemmKernel::TiledFp32}
+		: oa::Array<oa::GemmKernel, 2>{oa::GemmKernel::TiledFp32, oa::GemmKernel::Naive};
+	for (const oa::GemmKernel family : fallbackFamilies) {
 		for (const auto& variant : oa::matmulRegistry::all()) {
 			if (variant.kernel == family
 				and variant.aPrecision == oa::StoragePrecision::Fp32
@@ -599,7 +602,7 @@ bool oa::GemmRouter::validatePlan(
 	}
 	const auto* variant = oa::matmulRegistry::find(inPlan.variant);
 	if (variant == nullptr
-		or std::strcmp(variant->kernelName, inPlan.kernelName) != 0
+		or oa::strcmp(variant->kernelName, inPlan.kernelName) != 0
 		or variant->kernel != inPlan.kernel
 		or variant->path != inPlan.path
 		or inPlan.shaderContentHash == 0U

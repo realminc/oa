@@ -18,20 +18,22 @@
 #include <oa/runtime/engine/resourceAccess.h>
 #include <oa/runtime/engine/bindlessAccess.h>
 #include <oa/core/log.h>
+#include <oa/core/memory.h>
+#include <oa/core/std/algo.h>
+#include <oa/core/std/chrono.h>
+#include <oa/core/std/format.h>
 #include <oa/core/std/uniquePtr.h>
+#include <oa/core/std/utility.h>
 #include <oa/runtime/externalMemory.h>
 #include "oa/runtime/engine/borrowedServiceRetirement.h"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_camera.h>
 
-#include <cstring>
-#include <cstdio>
-#include <algorithm>
-#include <chrono>
+#include <stdio.h>
 
 #if defined(__linux__)
-#include <cerrno>
+#include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
 #include <sys/ioctl.h>
@@ -76,7 +78,7 @@ struct oa::CameraCapture::Impl {
 	bool v4l2Streaming = false;
 	bool v4l2ReconnectEnabled = false;
 	oa::U32 consecutiveFailures = 0U;
-	std::chrono::steady_clock::time_point nextReconnect = {};
+	oa::SteadyTimePoint nextReconnect = {};
 
 	bool initV4l2();
 	[[nodiscard]] oa::Status destroyV4l2(bool inWaitConsumers = true);
@@ -149,7 +151,10 @@ bool oa::CameraCapture::Impl::initV4l2()
 {
 	(void)destroyV4l2(true);
 	oa::String path = config.devicePath;
-	if (path.empty()) path = oa::String("/dev/video" + std::to_string(config.deviceIndex));
+	if (path.empty()) {
+		path = oa::String("/dev/video")
+			+ oa::toString(static_cast<oa::I64>(config.deviceIndex));
+	}
 	v4l2Fd = ::open(path.cStr(), O_RDWR | O_NONBLOCK | O_CLOEXEC);
 	if (v4l2Fd < 0) return false;
 
@@ -191,7 +196,7 @@ bool oa::CameraCapture::Impl::initV4l2()
 	(void)v4l2Ioctl(v4l2Fd, VIDIOC_SUBSCRIBE_EVENT, &subscription);
 
 	v4l2_requestbuffers request = {};
-	request.count = static_cast<oa::U32>(std::max(2, config.ringFrames));
+	request.count = static_cast<oa::U32>(oa::max(2, config.ringFrames));
 	request.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	request.memory = V4L2_MEMORY_MMAP;
 	if (v4l2Ioctl(v4l2Fd, VIDIOC_REQBUFS, &request) < 0 or request.count < 2U) {
@@ -450,7 +455,7 @@ oa::Status oa::CameraCapture::init_(
 	impl_->w    = inConfig.width;
 	impl_->h    = inConfig.height;
 	impl_->fps  = inConfig.fps;
-	impl_->ringN = std::max(2, inConfig.ringFrames);
+	impl_->ringN = oa::max(2, inConfig.ringFrames);
 
 #if defined(__linux__)
 	if (inConfig.preferDmaBuf and impl_->initV4l2()) {
@@ -478,7 +483,7 @@ oa::Status oa::CameraCapture::init_(
 		return oa::Status::error("oa::CameraCapture: no cameras found");
 	}
 
-	oa::I32 devIdx = std::min(inConfig.deviceIndex, numCams - 1);
+	oa::I32 devIdx = oa::min(inConfig.deviceIndex, numCams - 1);
 	SDL_CameraID id = camIds[devIdx];
 	SDL_free(camIds);
 
@@ -563,7 +568,7 @@ oa::Status oa::CameraCapture::init_(
 				res.getStatus().toString().cStr());
 			return oa::Status::error("oa::CameraCapture: ring buffer alloc failed");
 		}
-		impl_->ring[static_cast<size_t>(i)] = std::move(res.getValue());
+		impl_->ring[static_cast<oa::Usize>(i)] = oa::move(res.getValue());
 		if (oa::EngineBindlessAccess::registerBuffer(
 			inRt,
 			impl_->ring[static_cast<size_t>(i)]) == OA_BINDLESS_INVALID)
@@ -640,8 +645,8 @@ bool oa::CameraCapture::poll() {
 		const oa::I32 expectedPitch = impl_->w * 4;
 		bool copied = false;
 		if (src->format == SDL_PIXELFORMAT_RGBA32 && src->pitch == expectedPitch) {
-			std::memcpy(dst.mappedPtr, src->pixels,
-				static_cast<size_t>(impl_->h) * static_cast<size_t>(expectedPitch));
+			oa::memcpy(dst.mappedPtr, src->pixels,
+				static_cast<oa::Usize>(impl_->h) * static_cast<oa::Usize>(expectedPitch));
 			copied = true;
 		} else {
 			// convert to RGBA8 via SDL
@@ -652,7 +657,7 @@ bool oa::CameraCapture::poll() {
 						+ static_cast<size_t>(y) * static_cast<size_t>(conv->pitch);
 					auto* destination = static_cast<oa::U8*>(dst.mappedPtr)
 						+ static_cast<size_t>(y) * static_cast<size_t>(expectedPitch);
-					std::memcpy(destination, source, static_cast<size_t>(expectedPitch));
+					oa::memcpy(destination, source, static_cast<oa::Usize>(expectedPitch));
 				}
 				copied = true;
 				SDL_DestroySurface(conv);
@@ -689,12 +694,12 @@ bool oa::CameraCapture::pollFrame(oa::VideoFrame& outFrame) {
 		// exponential backoff; the SDL fallback remains available at init.
 		if (impl_->v4l2ReconnectEnabled
 			and impl_->config.reconnectAttempts > 0U) {
-			const auto now = std::chrono::steady_clock::now();
+			const auto now = oa::steadyNow();
 			if (now >= impl_->nextReconnect
 				and impl_->reconnects < impl_->config.reconnectAttempts) {
-				const oa::U64 shift = std::min<oa::U64>(impl_->reconnects, 5U);
-				impl_->nextReconnect = now + std::chrono::milliseconds(
-					impl_->config.reconnectBackoffMs * (1ULL << shift));
+				const oa::U64 shift = oa::min<oa::U64>(impl_->reconnects, 5U);
+				impl_->nextReconnect = now + oa::Duration::fromMilliseconds(
+					static_cast<oa::I64>(impl_->config.reconnectBackoffMs * (1ULL << shift)));
 				++impl_->reconnects;
 				if (impl_->initV4l2()) {
 					streaming_ = true;

@@ -13,20 +13,22 @@
 #include <oa/ui/cv.h>
 #include <oa/ui/image.h>
 #include <oa/core/color.h>
+#include <oa/core/memory.h>
 #include <oa/core/status.h>
-#include <algorithm>
-#include <cstring>
-#include <cstdio>
-#include <cmath>
-#include <limits>
+#include <oa/core/std/algo.h>
+#include <oa/core/std/cString.h>
+#include <oa/core/std/limits.h>
+#include <oa/core/std/scalarMath.h>
+#include <oa/core/std/utility.h>
+#include <stdio.h>
 
 // ─── oa::CvFrame method bodies ──────────────────────────────────────────────────
 
 void oa::CvFrame::addBboxes(oa::Vec<oa::CvBbox> inBoxes, const oa::CvBboxesConfig& inCfg) {
 	oa::CvOverlayBboxes ov;
 	ov.config = inCfg;
-	ov.boxes  = std::move(inBoxes);
-	overlays.pushBack(std::move(ov));
+	ov.boxes  = oa::move(inBoxes);
+	overlays.pushBack(oa::move(ov));
 }
 
 // ─── CPU drawing helpers ─────────────────────────────────────────────────────
@@ -56,8 +58,8 @@ static void drawHLine(oa::Vec<oa::U8>& buf, oa::I32 W, oa::I32 H,
 	oa::U8 R, oa::U8 G, oa::U8 B, oa::U8 A)
 {
 	if (Y < 0 || Y >= H) return;
-	const oa::I64 x0 = std::max<oa::I64>(0, X0);
-	const oa::I64 x1 = std::min<oa::I64>(static_cast<oa::I64>(W) - 1, X1);
+	const oa::I64 x0 = oa::max<oa::I64>(0, X0);
+	const oa::I64 x1 = oa::min<oa::I64>(static_cast<oa::I64>(W) - 1, X1);
 	for (oa::I64 x = x0; x <= x1; ++x) {
 		const oa::Usize offset =
 			(static_cast<oa::Usize>(Y) * static_cast<oa::Usize>(W)
@@ -71,8 +73,8 @@ static void drawVLine(oa::Vec<oa::U8>& buf, oa::I32 W, oa::I32 H,
 	oa::U8 R, oa::U8 G, oa::U8 B, oa::U8 A)
 {
 	if (X < 0 || X >= W) return;
-	const oa::I64 y0 = std::max<oa::I64>(0, Y0);
-	const oa::I64 y1 = std::min<oa::I64>(static_cast<oa::I64>(H) - 1, Y1);
+	const oa::I64 y0 = oa::max<oa::I64>(0, Y0);
+	const oa::I64 y1 = oa::min<oa::I64>(static_cast<oa::I64>(H) - 1, Y1);
 	for (oa::I64 y = y0; y <= y1; ++y) {
 		const oa::Usize offset =
 			(static_cast<oa::Usize>(y) * static_cast<oa::Usize>(W)
@@ -98,8 +100,8 @@ static void fillRect(oa::Vec<oa::U8>& buf, oa::I32 W, oa::I32 H,
 	oa::I64 X, oa::I64 Y, oa::I64 RW, oa::I64 RH,
 	oa::U8 R, oa::U8 G, oa::U8 B, oa::U8 A)
 {
-	const oa::I64 y0 = std::max<oa::I64>(0, Y);
-	const oa::I64 y1 = std::min<oa::I64>(H, Y + RH);
+	const oa::I64 y0 = oa::max<oa::I64>(0, Y);
+	const oa::I64 y1 = oa::min<oa::I64>(H, Y + RH);
 	for (oa::I64 y = y0; y < y1; ++y) {
 		drawHLine(buf, W, H, X, X + RW - 1, y, R, G, B, A);
 	}
@@ -230,7 +232,7 @@ static oa::Result<oa::Texture> renderFrame(
 
 	oa::Vec<oa::U8> pixels;
 	const oa::U64 nBytes = static_cast<oa::U64>(W) * static_cast<oa::U64>(H) * 4U;
-	if (nBytes > static_cast<oa::U64>(std::numeric_limits<oa::I64>::max())) {
+	if (nBytes > static_cast<oa::U64>(oa::Limits<oa::I64>::max())) {
 		return oa::Status::error(oa::StatusCode::ResourceExhausted,
 			"oa::CvFrame: image is too large for host composition");
 	}
@@ -241,7 +243,7 @@ static oa::Result<oa::Texture> renderFrame(
 			"oa::CvFrame::render: host base is smaller than W*H*4");
 	}
 	if (inBaseRgba.size() >= nBytes) {
-		std::memcpy(pixels.data(), inBaseRgba.data(), nBytes);
+		oa::memcpy(pixels.data(), inBaseRgba.data(), nBytes);
 	} else if (inFrame.base != nullptr) {
 		if (inFrame.base->buffer == nullptr or inFrame.base->size < nBytes) {
 			return oa::Status::invalidArgument(
@@ -259,36 +261,36 @@ static oa::Result<oa::Texture> renderFrame(
 	// apply overlays in order
 	for (const auto& ov : inFrame.overlays) {
 		const auto& inOverlay = ov;
-		if (not std::isfinite(inOverlay.config.alpha)
+		if (not oa::isFinite(inOverlay.config.alpha)
 			or inOverlay.config.alpha < 0.0F or inOverlay.config.alpha > 1.0F
-			or not std::isfinite(inOverlay.config.lineWidth)
+			or not oa::isFinite(inOverlay.config.lineWidth)
 			or inOverlay.config.lineWidth <= 0.0F
 			or inOverlay.config.lineWidth > 1024.0F
 			or inOverlay.config.labelScale <= 0
 			or inOverlay.config.labelScale > 16
-			or not std::isfinite(inOverlay.config.color.r)
-			or not std::isfinite(inOverlay.config.color.g)
-			or not std::isfinite(inOverlay.config.color.b)
-			or not std::isfinite(inOverlay.config.color.a)) {
+			or not oa::isFinite(inOverlay.config.color.r)
+			or not oa::isFinite(inOverlay.config.color.g)
+			or not oa::isFinite(inOverlay.config.color.b)
+			or not oa::isFinite(inOverlay.config.color.a)) {
 			return oa::Status::invalidArgument(
 				"oa::CvFrame: invalid bounding-box overlay config");
 		}
 		oa::U8 r, g, b, a;
 		unpackColor(inOverlay.config.color, r, g, b, a);
 		a = static_cast<oa::U8>(inOverlay.config.alpha * 255.0F);
-		const oa::I32 thickness = static_cast<oa::I32>(std::max(
+		const oa::I32 thickness = static_cast<oa::I32>(oa::max(
 			1.0F, inOverlay.config.lineWidth));
 
 		for (const auto& box : inOverlay.boxes) {
 			const oa::F64 right = static_cast<oa::F64>(box.x) + box.w;
 			const oa::F64 bottom = static_cast<oa::F64>(box.y) + box.h;
 			constexpr oa::F64 minCoordinate =
-				static_cast<oa::F64>(std::numeric_limits<oa::I32>::min());
+				static_cast<oa::F64>(oa::Limits<oa::I32>::min());
 			constexpr oa::F64 maxCoordinate =
-				static_cast<oa::F64>(std::numeric_limits<oa::I32>::max());
-			if (not std::isfinite(box.x) or not std::isfinite(box.y)
-				or not std::isfinite(box.w) or not std::isfinite(box.h)
-				or not std::isfinite(box.score) or box.w <= 0.0F or box.h <= 0.0F
+				static_cast<oa::F64>(oa::Limits<oa::I32>::max());
+			if (not oa::isFinite(box.x) or not oa::isFinite(box.y)
+				or not oa::isFinite(box.w) or not oa::isFinite(box.h)
+				or not oa::isFinite(box.score) or box.w <= 0.0F or box.h <= 0.0F
 				or box.x < minCoordinate or box.y < minCoordinate
 				or box.w > maxCoordinate or box.h > maxCoordinate
 				or right > maxCoordinate or bottom > maxCoordinate) {
@@ -308,18 +310,18 @@ static oa::Result<oa::Texture> renderFrame(
 			if (inOverlay.config.showLabels || inOverlay.config.showScores) {
 				char label[64];
 				if (inOverlay.config.showLabels && inOverlay.config.showScores) {
-					std::snprintf(label, sizeof(label), "%s %.0f%%",
+					::snprintf(label, sizeof(label), "%s %.0f%%",
 						box.label.empty() ? "obj" : box.label.cStr(),
 						box.score * 100.0F);
 				} else if (inOverlay.config.showLabels) {
-					std::snprintf(label, sizeof(label), "%s",
+					::snprintf(label, sizeof(label), "%s",
 						box.label.empty() ? "obj" : box.label.cStr());
 				} else {
-					std::snprintf(label, sizeof(label), "%.0f%%", box.score * 100.0F);
+					::snprintf(label, sizeof(label), "%.0f%%", box.score * 100.0F);
 				}
-				const oa::I32 labelScale = std::max(1, inOverlay.config.labelScale);
+				const oa::I32 labelScale = oa::max(1, inOverlay.config.labelScale);
 				const oa::I64 labelWidth =
-					static_cast<oa::I64>(std::strlen(label)) * 6 * labelScale + 4;
+					static_cast<oa::I64>(oa::strlen(label)) * 6 * labelScale + 4;
 				const oa::I64 labelHeight = 7 * labelScale + 4;
 				const oa::I64 lx = bx + 2;
 				oa::I64 ly = by - labelHeight;

@@ -271,11 +271,9 @@ void bindTraining(nb::module_& m) {
 
     nb::class_<oa::MetricLoss, oa::Metric>(m, "MetricLoss")
         .def(nb::init<>())
-        // oa::MetricLoss(oa::String); oa::String(std::string) is explicit, so build it
-        // by hand rather than nb::init<const std::string&> (which needs an
-        // implicit conversion).
-        .def("__init__", [](oa::MetricLoss* self, const std::string& name) {
-            new (self) oa::MetricLoss(oa::String(name.c_str()));
+		// Bind the hosted Python string explicitly at the OA text boundary.
+		.def("__init__", [](oa::MetricLoss* self, const std::string& name) {
+			new (self) oa::MetricLoss(oa::String(name.data(), name.size()));
         }, nb::arg("name"));
 
     nb::class_<oa::MetricAccuracy, oa::Metric>(m, "MetricAccuracy")

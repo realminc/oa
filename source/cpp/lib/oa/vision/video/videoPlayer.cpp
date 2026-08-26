@@ -7,8 +7,8 @@
 #include <oa/runtime/engine.h>
 #include "oa/runtime/engine/borrowedServiceRetirement.h"
 
-#include <algorithm>
-#include <limits>
+#include <oa/core/std/algo.h>
+#include <oa/core/std/limits.h>
 
 oa::Result<oa::VideoPlayer> oa::VideoPlayer::open(oa::Engine& inEngine, const oa::VideoPlayerConfig& inCfg)
 {
@@ -56,7 +56,7 @@ oa::Result<oa::VideoPlayer> oa::VideoPlayer::open(oa::Engine& inEngine, const oa
 			sample.dts + static_cast<oa::U64>(sample.ctsOffset));
 	}
 	if (not it.displayPts_.empty()) {
-		std::sort(it.displayPts_.data(),
+		oa::sort(it.displayPts_.data(),
 			it.displayPts_.data() + it.displayPts_.size());
 	}
 
@@ -261,8 +261,8 @@ oa::U64 oa::VideoPlayer::durationUs() const
 	const long double us = static_cast<long double>(durationTicks)
 		* static_cast<long double>(info.timebaseNum) * 1'000'000.0L
 		/ static_cast<long double>(info.timebaseDen);
-	return us >= static_cast<long double>(std::numeric_limits<oa::U64>::max())
-		? std::numeric_limits<oa::U64>::max()
+	return us >= static_cast<long double>(oa::Limits<oa::U64>::max())
+		? oa::Limits<oa::U64>::max()
 		: static_cast<oa::U64>(us + 0.5L);
 }
 
@@ -274,8 +274,8 @@ oa::U64 oa::VideoPlayer::positionUs() const
 	const long double us = static_cast<long double>(frame_.presentationTimestamp)
 		* static_cast<long double>(info.timebaseNum) * 1'000'000.0L
 		/ static_cast<long double>(info.timebaseDen);
-	return us >= static_cast<long double>(std::numeric_limits<oa::U64>::max())
-		? std::numeric_limits<oa::U64>::max()
+	return us >= static_cast<long double>(oa::Limits<oa::U64>::max())
+		? oa::Limits<oa::U64>::max()
 		: static_cast<oa::U64>(us + 0.5L);
 }
 
@@ -292,13 +292,13 @@ oa::Status oa::VideoPlayer::seekUs(oa::U64 inTimestampUs)
 	}
 	const oa::U64 totalDurationUs = durationUs();
 	if (totalDurationUs > 0U) {
-		inTimestampUs = std::min(inTimestampUs, totalDurationUs);
+		inTimestampUs = oa::min(inTimestampUs, totalDurationUs);
 	}
 	const long double ticks = static_cast<long double>(inTimestampUs)
 		* static_cast<long double>(info.timebaseDen)
 		/ (static_cast<long double>(info.timebaseNum) * 1'000'000.0L);
-	const oa::U64 timestamp = ticks >= static_cast<long double>(std::numeric_limits<oa::U64>::max())
-		? std::numeric_limits<oa::U64>::max()
+	const oa::U64 timestamp = ticks >= static_cast<long double>(oa::Limits<oa::U64>::max())
+		? oa::Limits<oa::U64>::max()
 		: static_cast<oa::U64>(ticks + 0.5L);
 	return seek(timestamp);
 }
@@ -369,8 +369,8 @@ oa::Status oa::VideoPlayer::stepFrames(oa::I32 inFrameDelta)
 			"Reverse frame stepping requires an indexed seekable source");
 	}
 
-	const oa::I64 current = std::max<oa::I64>(0, index_ - 1);
-	const oa::I64 target = std::max<oa::I64>(
+	const oa::I64 current = oa::max<oa::I64>(0, index_ - 1);
+	const oa::I64 target = oa::max<oa::I64>(
 		0, current + static_cast<oa::I64>(inFrameDelta));
 	if (target == current) {
 		return oa::Status::ok();

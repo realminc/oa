@@ -26,7 +26,11 @@ static inline void stdEchoCurrentTest() {
 
 template <typename Rep, typename Period>
 inline double stdWallMs(std::chrono::duration<Rep, Period> inD) {
-	return oa::chronoToMilli(inD);
+	return std::chrono::duration<double, std::milli>(inD).count();
+}
+
+inline double stdWallMs(oa::Duration inDuration) {
+	return inDuration.toMilliseconds();
 }
 
 // Oa/std_time > 1 means Oa wall clock is slower (more ms than std).
@@ -60,13 +64,13 @@ static inline void stdReportOaMsOnly(const char* inOaOp, double inOaMs) {
 }
 
 // After timing Oa work from inT0→inT1 and std work from inT1→inT2 (same clock).
-template <typename Clock>
+template <typename TimePoint>
 static inline void stdReportCompareSequentialRuns(
 	const char* inOaLabel,
-	std::chrono::time_point<Clock> inT0,
-	std::chrono::time_point<Clock> inT1,
+	TimePoint inT0,
+	TimePoint inT1,
 	const char* inStdLabel,
-	std::chrono::time_point<Clock> inT2) {
+	TimePoint inT2) {
 	stdReportCompareMs(inOaLabel, stdWallMs(inT1 - inT0), inStdLabel, stdWallMs(inT2 - inT1));
 }
 

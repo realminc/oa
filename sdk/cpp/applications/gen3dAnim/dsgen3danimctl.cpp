@@ -33,6 +33,7 @@
 
 #include <anim/fbxWriter.h>
 #include <anim/poseClip.h>
+#include <core/streamText.h>
 #include <anim/posePack.h>
 #include <anim/usd.h>
 #include <data/dsGen3dAnim.h>
@@ -217,7 +218,7 @@ static std::set<std::string> parseList(const oa::String& inCsv) {
 
 // "…/MM_Unarmed_Walk_Fwd.usd" → stem "MM_Unarmed_Walk_Fwd".
 static std::string stem(const oa::String& inPath) {
-	std::string p = inPath.stdStr();
+	std::string p = oa::sdk::toStdString(inPath);
 	std::size_t slash = p.find_last_of("/\\");
 	std::string base = (slash == std::string::npos) ? p : p.substr(slash + 1);
 	std::size_t dot = base.find_last_of('.');
@@ -239,7 +240,7 @@ static oa::Vec<oa::String> readClipList(const oa::String& inPath) {
 	oa::Vec<oa::String> out;
 	auto text = oa::Filesystem::readText(oa::Path(inPath));
 	if (!text.isOk()) { return out; }
-	std::string s = text->stdStr();
+	std::string s = oa::sdk::toStdString(*text);
 	std::string line;
 	auto flush = [&]() {
 		std::size_t a = line.find_first_not_of(" \t\r\n");
@@ -272,7 +273,7 @@ static int cmdPack(const oa::String& inIn, const oa::String& inClips, const oa::
 			return 1;
 		}
 		for (const oa::Path& p : *listing) {
-			const std::string path = p.string().stdStr();
+			const std::string path = oa::sdk::toStdString(p.string());
 			if (path.size() >= 4 && path.substr(path.size() - 4) == ".usd") {
 				sources.pushBack(p.string());
 			}
@@ -359,7 +360,7 @@ static int cmdStrip(const oa::String& inIn, const oa::String& inDir,
 			return 1;
 		}
 		for (const oa::Path& p : *listing) {
-			const std::string path = p.string().stdStr();
+			const std::string path = oa::sdk::toStdString(p.string());
 			if (path.size() < 4 || path.substr(path.size() - 4) != ".usd") { continue; }
 			bool skip = false;
 			for (const std::string& e : excl) { if (path.find(e) != std::string::npos) { skip = true; break; } }
@@ -623,34 +624,34 @@ public:
 		);
 
 		auto* clean = addSubcommand("clean", "Ingest a retargeted MetaHuman USD clip into the clean canonical form");
-		clean->add_option("--in,-i", cfg_.cleanIn,   "input .usda clip (retargeted MetaHuman)")->required();
-		clean->add_option("--save",  cfg_.cleanSave, "Write canonical .3danim");
-		clean->add_option("--usda",  cfg_.cleanUsda, "Write round-tripped .usda (clean base only)");
-		clean->add_option("--fbx",   cfg_.cleanFbx,  "Write FBX (DCC review)");
+		clean->addOption("--in,-i", cfg_.cleanIn,   "input .usda clip (retargeted MetaHuman)")->required();
+		clean->addOption("--save",  cfg_.cleanSave, "Write canonical .3danim");
+		clean->addOption("--usda",  cfg_.cleanUsda, "Write round-tripped .usda (clean base only)");
+		clean->addOption("--fbx",   cfg_.cleanFbx,  "Write FBX (DCC review)");
 
 		auto* pack = addSubcommand("pack", "Combine source UsdSkel clips into one .usd dataset");
-		pack->add_option("--in,-i",  cfg_.packIn,    "root dir of source .usd clips (recursive)");
-		pack->add_option("--clips",  cfg_.packClips, "list file: one source .usd path per line (alt to --in)");
-		pack->add_option("--out,-o", cfg_.packOut,   "output combined .usd dataset")->required();
-		pack->add_option("--val",    cfg_.packVal,   "Comma-separated content names for the val split");
-		pack->add_option("--test",   cfg_.packTest,  "Comma-separated content names for the test split");
-		pack->add_flag("--raw",      cfg_.packRaw,   "Keep source junk joints (default: strip to the clean 64-joint base)");
+		pack->addOption("--in,-i",  cfg_.packIn,    "root dir of source .usd clips (recursive)");
+		pack->addOption("--clips",  cfg_.packClips, "list file: one source .usd path per line (alt to --in)");
+		pack->addOption("--out,-o", cfg_.packOut,   "output combined .usd dataset")->required();
+		pack->addOption("--val",    cfg_.packVal,   "Comma-separated content names for the val split");
+		pack->addOption("--test",   cfg_.packTest,  "Comma-separated content names for the test split");
+		pack->addFlag("--raw",      cfg_.packRaw,   "Keep source junk joints (default: strip to the clean 64-joint base)");
 
 		auto* strip = addSubcommand("strip", "Losslessly remove junk joints (IK/weapon/COM) from source .usd clips, in place");
-		strip->add_option("--in,-i",   cfg_.stripIn,      "Single input .usd to strip in place");
-		strip->add_option("--dir",     cfg_.stripDir,     "root dir: strip every .usd in place (recursive)");
-		strip->add_option("--exclude", cfg_.stripExclude, "Comma-separated path substrings to skip (default AimOffset)");
-		strip->add_flag("--dry-run",   cfg_.stripDryRun,  "Report what would change without writing");
+		strip->addOption("--in,-i",   cfg_.stripIn,      "Single input .usd to strip in place");
+		strip->addOption("--dir",     cfg_.stripDir,     "root dir: strip every .usd in place (recursive)");
+		strip->addOption("--exclude", cfg_.stripExclude, "Comma-separated path substrings to skip (default AimOffset)");
+		strip->addFlag("--dry-run",   cfg_.stripDryRun,  "Report what would change without writing");
 
 		auto* info = addSubcommand("info", "Inspect a combined .usd dataset");
-		info->add_option("--dataset,-d", cfg_.infoPath,    "Combined .usd dataset path")->required();
-		info->add_option("--context",    cfg_.infoContext, "context length used for window counts (default 32)");
+		info->addOption("--dataset,-d", cfg_.infoPath,    "Combined .usd dataset path")->required();
+		info->addOption("--context",    cfg_.infoContext, "context length used for window counts (default 32)");
 
 		auto* bake = addSubcommand("bake", "Bake a combined .usd dataset into a C++ header");
-		bake->add_option("--dataset,-d", cfg_.bakePath, "Combined .usd dataset path")->required();
-		bake->add_option("--out,-o",     cfg_.bakeOut,  "output header path")->required();
-		bake->add_option("--ns",         cfg_.bakeNs,   "header namespace (default walkFwdClip)");
-		bake->add_flag("--root-delta",   cfg_.bakeRootDelta,
+		bake->addOption("--dataset,-d", cfg_.bakePath, "Combined .usd dataset path")->required();
+		bake->addOption("--out,-o",     cfg_.bakeOut,  "output header path")->required();
+		bake->addOption("--ns",         cfg_.bakeNs,   "header namespace (default walkFwdClip)");
+		bake->addFlag("--root-delta",   cfg_.bakeRootDelta,
 			"Bake root translation xyz as per-frame displacement (stable autoregressive root)");
 
 		requireSubcommand(1, 1);
@@ -659,7 +660,7 @@ public:
 
 int main(int argc, char** argv) {
 	DsCtlCli cli;
-	if (!cli.parse(argc, argv)) { return 1; }
+	if (!cli.parse(argc, argv)) { return cli.helpRequested() ? 0 : 1; }
 
 	const DsCtlConfig& c = cli.getConfig();
 	const auto cmd = cli.getSubcommand();

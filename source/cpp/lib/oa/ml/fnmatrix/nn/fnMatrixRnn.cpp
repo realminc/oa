@@ -27,10 +27,10 @@ void attachLinearProjection(
 		return;
 	}
 	auto grad = oa::makeShared<oa::GradLinear>();
-	grad->saveForBackward({inHidden, inWeightHh});
+	grad->saveForBackward(inHidden, inWeightHh);
 	oa::Vec<oa::Matrix> inputs{inHidden, inWeightHh};
 	if (hasBias) inputs.pushBack(inBiasHh);
-	grad->setGraphInputs(std::move(inputs));
+	grad->setGraphInputs(oa::move(inputs));
 	grad->sequenceNr_ = oa::FnAutograd::nextSeq();
 	grad->outputShape_ = outGatesH.getShape();
 	outGatesH.mutAutograd().gradFn = grad;
@@ -48,7 +48,7 @@ oa::Status attachRnnPointwise(
 		return oa::Status::ok();
 	}
 	auto grad = oa::makeShared<oa::GradRnnCellPointwise>();
-	grad->saveForBackward({inGatesI, inGatesH});
+	grad->saveForBackward(inGatesI, inGatesH);
 	grad->setGraphInputs({inGatesI, inGatesH});
 	grad->sequenceNr_ = oa::FnAutograd::nextSeq();
 	grad->outputShape_ = out.getShape();
@@ -79,7 +79,7 @@ oa::Status attachRnnCellLinear(
 		return oa::Status::ok();
 	}
 	auto grad = oa::makeShared<oa::GradRnnCellPointwise>();
-	grad->saveForBackward({inGatesI, inOutGatesH});
+	grad->saveForBackward(inGatesI, inOutGatesH);
 	grad->setGraphInputs({inGatesI, inOutGatesH});
 	grad->sequenceNr_ = oa::FnAutograd::nextSeq();
 	grad->outputShape_ = out.getShape();
@@ -111,10 +111,11 @@ oa::Status attachRnnScan(
 		return oa::Status::ok();
 	}
 	auto grad = oa::makeShared<oa::GradRnnScan>();
-	grad->saveForBackward({inGatesI, inWeightHh, hasBias ? inBiasHh : inGatesI, inHprev});
+	grad->saveForBackward(inGatesI, inWeightHh,
+		hasBias ? inBiasHh : inGatesI, inHprev);
 	oa::Vec<oa::Matrix> inputs{inGatesI, inWeightHh};
 	if (hasBias) inputs.pushBack(inBiasHh);
-	grad->setGraphInputs(std::move(inputs));
+	grad->setGraphInputs(oa::move(inputs));
 	grad->sequenceNr_ = oa::FnAutograd::nextSeq();
 	grad->outputShape_ = out.getShape();
 	grad->hiddenSize_ = inHiddenSize;

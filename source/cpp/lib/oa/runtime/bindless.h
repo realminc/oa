@@ -67,10 +67,10 @@ public:
 		, descriptorSetLayout(inOther.descriptorSetLayout)
 		, descriptorSet(inOther.descriptorSet)
 		, pipelineLayout(inOther.pipelineLayout)
-		, freeList_(std::move(inOther.freeList_))
-		, storageImageFreeList_(std::move(inOther.storageImageFreeList_))
-		, sampledImageFreeList_(std::move(inOther.sampledImageFreeList_))
-		, samplerFreeList_(std::move(inOther.samplerFreeList_))
+		, freeList_(oa::move(inOther.freeList_))
+		, storageImageFreeList_(oa::move(inOther.storageImageFreeList_))
+		, sampledImageFreeList_(oa::move(inOther.sampledImageFreeList_))
+		, samplerFreeList_(oa::move(inOther.samplerFreeList_))
 		, capacities_(inOther.capacities_)
 	{
 		inOther.descriptorPool = nullptr;
@@ -85,10 +85,10 @@ public:
 			descriptorSetLayout = inOther.descriptorSetLayout;
 			descriptorSet = inOther.descriptorSet;
 			pipelineLayout = inOther.pipelineLayout;
-			freeList_ = std::move(inOther.freeList_);
-			storageImageFreeList_ = std::move(inOther.storageImageFreeList_);
-			sampledImageFreeList_ = std::move(inOther.sampledImageFreeList_);
-			samplerFreeList_ = std::move(inOther.samplerFreeList_);
+			freeList_ = oa::move(inOther.freeList_);
+			storageImageFreeList_ = oa::move(inOther.storageImageFreeList_);
+			sampledImageFreeList_ = oa::move(inOther.sampledImageFreeList_);
+			samplerFreeList_ = oa::move(inOther.samplerFreeList_);
 			capacities_ = inOther.capacities_;
 			inOther.descriptorPool = nullptr;
 			inOther.descriptorSetLayout = nullptr;

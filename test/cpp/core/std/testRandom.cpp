@@ -104,12 +104,12 @@ TEST(Random, ShuffleIsPermutation) {
 	oa::Random rng(77u);
 	std::vector<int> v(100);
 	for (int i = 0; i < 100; ++i) {
-		v[i] = i;
+		v[static_cast<std::size_t>(i)] = i;
 	}
 	rng.shuffle(v.data(), v.size());
 	std::sort(v.begin(), v.end());
 	for (int i = 0; i < 100; ++i) {
-		EXPECT_EQ(v[i], i);  // same multiset → a real permutation
+		EXPECT_EQ(v[static_cast<std::size_t>(i)], i);  // same multiset → a real permutation
 	}
 }
 

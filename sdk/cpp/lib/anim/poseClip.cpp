@@ -1,4 +1,5 @@
 #include <anim/poseClip.h>
+#include <core/streamText.h>
 
 #include <cstring>
 #include <iomanip>
@@ -154,5 +155,5 @@ oa::Status oa::PoseClip::writeTxt(const oa::Path& inPath) const {
 		out << '\n';
 	}
 
-	return oa::Filesystem::writeText(inPath, oa::String(out.str()));
+	return oa::Filesystem::writeText(inPath, oa::sdk::fromStdString(out.str()));
 }

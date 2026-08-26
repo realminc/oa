@@ -1,69 +1,132 @@
 #pragma once
 
-// OA standard library — raw bytes + stateless allocator (libc++/libstdc++ parity for operator new/delete).
-//
-// OOM / errors
-// - allocBytes: uses ::operator new (and std::align_val_t when inAlignment exceeds
-//   defaultNewAlignment()). On failure throws std::bad_alloc (never returns nullptr).
-// - Allocator::allocate(inCount): overflow throws std::bad_array_new_length(); else
-//   delegates to allocBytes(inCount * sizeof(T), alignof(T)).
-// oa::Vec (vec.h) keeps a separate fast path: malloc/realloc when trivial T and alignment
-// ≤ max_align_t (realloc in-place growth). Over-aligned / non-trivial vec storage uses
-// allocBytes / freeBytes so control blocks and vec agree on operator-new freeing.
-//
-// Why std::numeric_limits / std::type_traits: C++17 allocator requirements (max_size,
-// rebind, propagate_on_* typedefs) and overflow checks — intentional parity with
-// std::allocator_traits consumers.
+// OA host allocation boundary. Fallible operations report an explicit error;
+// convenience allocation terminates through one documented fatal path. No
+// exception or hosted C++ standard-library contract crosses this header.
 
-#include <cstddef>
-#include <limits>
-#include <new>
-#include <type_traits>
+#define OA_TYPES_H_SKIP_REST
+#include <oa/core/types.h>
+#undef OA_TYPES_H_SKIP_REST
+
+#include <oa/core/std/typeTraits.h>
 
 namespace oa {
 
-static constexpr std::size_t defaultNewAlignment() noexcept {
+enum class AllocationError : oa::U8 {
+	None = 0,
+	InvalidAlignment,
+	SizeOverflow,
+	OutOfMemory,
+};
+
+[[nodiscard]] constexpr const char* allocationErrorName(
+	AllocationError inError
+) noexcept {
+	switch (inError) {
+		case AllocationError::None:             return "none";
+		case AllocationError::InvalidAlignment: return "invalid alignment";
+		case AllocationError::SizeOverflow:     return "size overflow";
+		case AllocationError::OutOfMemory:      return "out of memory";
+		default:                                return "unknown allocation error";
+	}
+}
+
+struct AllocationResult {
+	void* data = nullptr;
+	AllocationError error = AllocationError::None;
+
+	[[nodiscard]] constexpr bool isOk() const noexcept {
+		return error == AllocationError::None;
+	}
+	[[nodiscard]] constexpr bool isError() const noexcept { return !isOk(); }
+	explicit constexpr operator bool() const noexcept { return isOk(); }
+};
+
+[[nodiscard]] constexpr oa::Usize defaultAllocationAlignment() noexcept {
 #if defined(__STDCPP_DEFAULT_NEW_ALIGNMENT__)
-	return static_cast<std::size_t>(__STDCPP_DEFAULT_NEW_ALIGNMENT__);
+	return static_cast<oa::Usize>(__STDCPP_DEFAULT_NEW_ALIGNMENT__);
+#elif defined(__BIGGEST_ALIGNMENT__)
+	return static_cast<oa::Usize>(__BIGGEST_ALIGNMENT__);
 #else
-	return alignof(std::max_align_t);
+	return alignof(void*);
 #endif
 }
 
-// Raw bytes (containers, tools). inAlignment must be a power of two, ≥ 1.
-// Pair with freeBytes(ptr, inAlignment); the one-arg freeBytes is only valid
-// when the block was allocated with inAlignment ≤ defaultNewAlignment().
-[[nodiscard]] inline void* allocBytes(std::size_t inBytes, std::size_t inAlignment) {
-	std::size_t const al = inAlignment == 0 ? 1U : inAlignment;
-	if (al <= defaultNewAlignment()) {
-		return ::operator new(inBytes);
+[[nodiscard]] AllocationResult tryAllocBytes(
+	oa::Usize inBytes,
+	oa::Usize inAlignment = defaultAllocationAlignment()
+) noexcept;
+
+[[nodiscard]] AllocationResult tryAllocArray(
+	oa::Usize inCount,
+	oa::Usize inElementSize,
+	oa::Usize inAlignment
+) noexcept;
+
+// Resize default-aligned storage while preserving its bytes. This is the
+// explicit reallocation seam used by trivially copyable containers; callers
+// must not pass over-aligned storage.
+[[nodiscard]] AllocationResult tryReallocBytes(
+	void* inPtr,
+	oa::Usize inBytes,
+	oa::Usize inAlignment = defaultAllocationAlignment()
+) noexcept;
+
+[[noreturn]] void allocationFailed(
+	AllocationError inError,
+	oa::Usize inBytes,
+	oa::Usize inAlignment
+) noexcept;
+
+[[nodiscard]] inline void* allocBytes(
+	oa::Usize inBytes,
+	oa::Usize inAlignment = defaultAllocationAlignment()
+) {
+	const AllocationResult result = tryAllocBytes(inBytes, inAlignment);
+	if (result.isError()) {
+		allocationFailed(result.error, inBytes, inAlignment);
 	}
-	return ::operator new(inBytes, std::align_val_t{al});
+	return result.data;
 }
 
-inline void freeBytes(void* inPtr, std::size_t inAlignment) noexcept {
-	if (!inPtr) {
-		return;
-	}
-	std::size_t const al = inAlignment == 0 ? 1U : inAlignment;
-	if (al <= defaultNewAlignment()) {
-		::operator delete(inPtr);
-	} else {
-		::operator delete(inPtr, std::align_val_t{al});
-	}
+namespace detail {
+
+// Keep this fresh-allocation call visible to optimizers that must prove a
+// container's element storage disjoint from the container object. The ordinary
+// allocation API remains inline; only this private optimizer seam is outlined.
+[[nodiscard]]
+#if defined(__clang__) || defined(__GNUC__)
+__attribute__((malloc, alloc_size(1), alloc_align(2), noinline))
+#endif
+inline void* allocFreshBytes(
+	oa::Usize inBytes,
+	oa::Usize inAlignment = defaultAllocationAlignment()
+) {
+	return oa::allocBytes(inBytes, inAlignment);
 }
 
-inline void freeBytes(void* inPtr) noexcept {
-	freeBytes(inPtr, defaultNewAlignment());
+} // namespace detail
+
+[[nodiscard]] inline void* reallocBytes(
+	void* inPtr,
+	oa::Usize inBytes,
+	oa::Usize inAlignment = defaultAllocationAlignment()
+) {
+	const AllocationResult result = tryReallocBytes(inPtr, inBytes, inAlignment);
+	if (result.isError()) {
+		allocationFailed(result.error, inBytes, inAlignment);
+	}
+	return result.data;
 }
+
+void freeBytes(
+	void* inPtr,
+	oa::Usize inAlignment = defaultAllocationAlignment()
+) noexcept;
 
 template<typename T>
 class Allocator {
 public:
-	// C++17 Allocator requirements: typedef names and `std::allocator_traits` hook names
-	// (`allocate`, `deallocate`, `max_size`, …) are fixed by the standard. Primary API is
-	// PascalCase (`allocate`, `deallocate`, `maxSize`, …); snake_case members forward so
-	// `std::vector<T, Allocator<T>>` and `allocator_traits` keep working.
 	using value_type = T;
 	using pointer = T*;
 	using const_pointer = const T*;
@@ -71,12 +134,12 @@ public:
 	using const_reference = const T&;
 	using void_pointer = void*;
 	using const_void_pointer = const void*;
-	using size_type = std::size_t;
-	using difference_type = std::ptrdiff_t;
-	using propagate_on_container_copy_assignment = std::false_type;
-	using propagate_on_container_move_assignment = std::true_type;
-	using propagate_on_container_swap = std::false_type;
-	using is_always_equal = std::true_type;
+	using size_type = oa::Usize;
+	using difference_type = oa::Isize;
+	using propagate_on_container_copy_assignment = oa::FalseType;
+	using propagate_on_container_move_assignment = oa::TrueType;
+	using propagate_on_container_swap = oa::FalseType;
+	using is_always_equal = oa::TrueType;
 
 	constexpr Allocator() noexcept = default;
 
@@ -88,30 +151,37 @@ public:
 	[[nodiscard]] Allocator selectOnContainerCopyConstruction() const noexcept {
 		return *this;
 	}
-	Allocator select_on_container_copy_construction() const noexcept {
+	[[nodiscard]] Allocator select_on_container_copy_construction() const noexcept {
 		return selectOnContainerCopyConstruction();
 	}
 
 	[[nodiscard]] pointer allocate(size_type inCount) {
-		if (inCount > std::numeric_limits<size_type>::max() / sizeof(T)) {
-			throw std::bad_array_new_length();
+		const AllocationResult result = tryAllocArray(inCount, sizeof(T), alignof(T));
+		if (result.isError()) {
+			const size_type bytes = inCount <= maxSize() ? inCount * sizeof(T) : 0;
+			allocationFailed(result.error, bytes, alignof(T));
 		}
-		const size_type bytes = inCount * sizeof(T);
-		void* const raw = allocBytes(bytes, alignof(T));
-		return static_cast<pointer>(raw);
+		return static_cast<pointer>(result.data);
 	}
-	// Deprecated in the standard; retained for allocator_traits / legacy containers.
-	[[nodiscard]] pointer allocate(size_type inCount, const_void_pointer /*inHint*/) {
+
+	[[nodiscard]] pointer allocate(
+		size_type inCount,
+		const_void_pointer /*inHint*/
+	) {
 		return allocate(inCount);
 	}
+
 	void deallocate(pointer inPtr, size_type inCount) noexcept {
 		(void)inCount;
 		freeBytes(inPtr, alignof(T));
 	}
-	[[nodiscard]] constexpr size_type maxSize() const noexcept {
-		return std::numeric_limits<size_type>::max() / sizeof(T);
+
+	[[nodiscard]] static constexpr size_type maxSize() noexcept {
+		return static_cast<size_type>(-1) / sizeof(T);
 	}
-	[[nodiscard]] constexpr size_type max_size() const noexcept { return maxSize(); }
+	[[nodiscard]] static constexpr size_type max_size() noexcept {
+		return maxSize();
+	}
 
 	template<typename U>
 	struct rebind {
@@ -119,13 +189,18 @@ public:
 	};
 
 	friend constexpr bool operator==(
-		const Allocator& inLhs, const Allocator& inRhs) noexcept {
+		const Allocator& inLhs,
+		const Allocator& inRhs
+	) noexcept {
 		(void)inLhs;
 		(void)inRhs;
 		return true;
 	}
+
 	friend constexpr bool operator!=(
-		const Allocator& inLhs, const Allocator& inRhs) noexcept {
+		const Allocator& inLhs,
+		const Allocator& inRhs
+	) noexcept {
 		(void)inLhs;
 		(void)inRhs;
 		return false;
@@ -134,7 +209,9 @@ public:
 
 template<typename T, typename U>
 constexpr bool operator==(
-	const Allocator<T>& inLhs, const Allocator<U>& inRhs) noexcept {
+	const Allocator<T>& inLhs,
+	const Allocator<U>& inRhs
+) noexcept {
 	(void)inLhs;
 	(void)inRhs;
 	return true;
@@ -142,7 +219,9 @@ constexpr bool operator==(
 
 template<typename T, typename U>
 constexpr bool operator!=(
-	const Allocator<T>& inLhs, const Allocator<U>& inRhs) noexcept {
+	const Allocator<T>& inLhs,
+	const Allocator<U>& inRhs
+) noexcept {
 	(void)inLhs;
 	(void)inRhs;
 	return false;

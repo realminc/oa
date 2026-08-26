@@ -57,8 +57,10 @@ public:
 		OA_RETURN_IF_ERROR(add("text_model.embeddings.position_embedding.weight",
 							   {cfg.contextLength, cfg.hiddenSize}));
 		for (oa::I32 layer = 0; layer < cfg.numLayers; ++layer) {
+			const std::string layerText = std::to_string(layer);
 			const oa::String root =
-				"text_model.encoder.layers." + oa::String(std::to_string(layer).c_str());
+				"text_model.encoder.layers."
+				+ oa::String(layerText.data(), layerText.size());
 			for (const char* projection : {"q_proj", "k_proj", "v_proj", "out_proj"}) {
 				const oa::String base = root + ".self_attn." + projection;
 				OA_RETURN_IF_ERROR(add(base + ".weight", {cfg.hiddenSize, cfg.hiddenSize}));
@@ -92,8 +94,9 @@ public:
 				}
 				continue;
 			}
-			const bool textTensor = info.name.stdStr().starts_with("text_model.") or
-									info.name.stdStr().starts_with("text_projection");
+			const oa::StringView name = info.name;
+			const bool textTensor = name.find("text_model.") == 0 or
+				name.find("text_projection") == 0;
 			if (textTensor and not expected.contains(info.name)) {
 				return oa::Status::error(oa::StatusCode::FailedPrecondition,
 										 oa::String("unexpected CLIP text tensor: ") + info.name);

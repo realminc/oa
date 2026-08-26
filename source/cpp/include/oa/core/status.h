@@ -128,28 +128,28 @@ public:
 	{}
 	Status(StatusCode inCode, String inMessage = "")
 		: code_(inCode)
-		, message_(std::move(inMessage))
+		, message_(oa::move(inMessage))
 	{}
 
 	// Methods.
 	[[nodiscard]] static Status ok() { return Status(); }
 	[[nodiscard]] static Status error(String inMessage) {
-		return Status(StatusCode::Internal, std::move(inMessage));
+		return Status(StatusCode::Internal, oa::move(inMessage));
 	}
 	[[nodiscard]] static Status error(StatusCode inCode, String inMessage = "") {
-		return Status(inCode, std::move(inMessage));
+		return Status(inCode, oa::move(inMessage));
 	}
 	[[nodiscard]] static Status cancelled(String inMessage = "Operation cancelled") {
-		return Status(StatusCode::Cancelled, std::move(inMessage));
+		return Status(StatusCode::Cancelled, oa::move(inMessage));
 	}
 	[[nodiscard]] static Status invalidArgument(String inMessage) {
-		return Status(StatusCode::InvalidArgument, std::move(inMessage));
+		return Status(StatusCode::InvalidArgument, oa::move(inMessage));
 	}
 	[[nodiscard]] static Status notFound(String inMessage) {
-		return Status(StatusCode::NotFound, std::move(inMessage));
+		return Status(StatusCode::NotFound, oa::move(inMessage));
 	}
 	[[nodiscard]] static Status unimplemented(String inMessage = "Not implemented") {
-		return Status(StatusCode::Unimplemented, std::move(inMessage));
+		return Status(StatusCode::Unimplemented, oa::move(inMessage));
 	}
 	
 	[[nodiscard]] bool isOk() const noexcept { return code_ == StatusCode::Ok; }
@@ -182,17 +182,17 @@ public:
 
 	// Constructors.
 	Result(T inValue)
-		: value_(std::move(inValue))
+		: value_(oa::move(inValue))
 		, status_(Status::ok())
 	{}
 	Result(Status inStatus)
-		: status_(std::move(inStatus))
+		: status_(oa::move(inStatus))
 	{
-		assert(!status_.isOk() && "Result from status must be an error");
+		OA_ASSERT(!status_.isOk() && "Result from status must be an error");
 	}
 	Result(Result&& inOther) noexcept
-		: value_(std::move(inOther.value_))
-		, status_(std::move(inOther.status_))
+		: value_(oa::move(inOther.value_))
+		, status_(oa::move(inOther.status_))
 	{}
 
 	// Methods.
@@ -200,31 +200,31 @@ public:
 	[[nodiscard]] bool isError() const noexcept { return status_.isError(); }
 	[[nodiscard]] const Status& getStatus() const noexcept { return status_; }
 
-	[[nodiscard]] T& getValue() & { assert(isOk()); return *value_; }
-	[[nodiscard]] const T& getValue() const & { assert(isOk()); return *value_; }
-	[[nodiscard]] T&& getValue() && { assert(isOk()); return std::move(*value_); }
+	[[nodiscard]] T& getValue() & { OA_ASSERT(isOk()); return *value_; }
+	[[nodiscard]] const T& getValue() const & { OA_ASSERT(isOk()); return *value_; }
+	[[nodiscard]] T&& getValue() && { OA_ASSERT(isOk()); return oa::move(*value_); }
 
-	[[nodiscard]] T valueOr(T inDefault) const & { return isOk() ? *value_ : std::move(inDefault); }
-	[[nodiscard]] T valueOr(T inDefault) && { return isOk() ? std::move(*value_) : std::move(inDefault); }
+	[[nodiscard]] T valueOr(T inDefault) const & { return isOk() ? *value_ : oa::move(inDefault); }
+	[[nodiscard]] T valueOr(T inDefault) && { return isOk() ? oa::move(*value_) : oa::move(inDefault); }
 
 	template<typename F>
-	[[nodiscard]] auto map(F&& inFunc) && -> Result<decltype(inFunc(std::declval<T>()))> {
-		using U = decltype(inFunc(std::declval<T>()));
-		if (isOk()) return Result<U>(inFunc(std::move(*value_)));
-		return Result<U>(std::move(status_));
+	[[nodiscard]] auto map(F&& inFunc) && -> Result<decltype(inFunc(oa::declval<T>()))> {
+		using U = decltype(inFunc(oa::declval<T>()));
+		if (isOk()) return Result<U>(inFunc(oa::move(*value_)));
+		return Result<U>(oa::move(status_));
 	}
 
 	template<typename F>
-	[[nodiscard]] auto andThen(F&& inFunc) && -> decltype(inFunc(std::declval<T>())) {
-		if (isOk()) return inFunc(std::move(*value_));
-		return decltype(inFunc(std::declval<T>()))(std::move(status_));
+	[[nodiscard]] auto andThen(F&& inFunc) && -> decltype(inFunc(oa::declval<T>())) {
+		if (isOk()) return inFunc(oa::move(*value_));
+		return decltype(inFunc(oa::declval<T>()))(oa::move(status_));
 	}
 
 	// Operators.
 	Result& operator=(Result&& inOther) noexcept {
 		if (this != &inOther) {
-			value_ = std::move(inOther.value_);
-			status_ = std::move(inOther.status_);
+			value_ = oa::move(inOther.value_);
+			status_ = oa::move(inOther.status_);
 		}
 		return *this;
 	}
@@ -233,7 +233,7 @@ public:
 	explicit operator bool() const noexcept { return isOk(); }
 	[[nodiscard]] T& operator*() & { return getValue(); }
 	[[nodiscard]] const T& operator*() const & { return getValue(); }
-	[[nodiscard]] T&& operator*() && { return std::move(getValue()); }
+	[[nodiscard]] T&& operator*() && { return oa::move(getValue()); }
 	[[nodiscard]] T* operator->() { return &getValue(); }
 	[[nodiscard]] const T* operator->() const { return &getValue(); }
 
@@ -256,7 +256,7 @@ private:
 #define OA_ASSIGN_OR_RETURN(lhs, expr) \
 	auto OA_PP_LINE_VAR(_oa_ar_) = (expr); \
 	if (!OA_PP_LINE_VAR(_oa_ar_).isOk()) return OA_PP_LINE_VAR(_oa_ar_).getStatus(); \
-	lhs = std::move(OA_PP_LINE_VAR(_oa_ar_)).getValue()
+	lhs = oa::move(OA_PP_LINE_VAR(_oa_ar_)).getValue()
 
 #define OA_CHECK_OK(expr) \
-	do { auto _status = (expr); assert(_status.isOk()); } while (0)
+	do { auto _status = (expr); OA_ASSERT(_status.isOk()); } while (0)

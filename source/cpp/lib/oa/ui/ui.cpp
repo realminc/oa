@@ -17,14 +17,14 @@
 #include "../runtime/engine/borrowedServiceRetirement.h"
 #include "../runtime/textureAccess.h"
 
-#include <algorithm>
-#include <array>
-#include <cstdarg>
-#include <cmath>
-#include <cstdio>
-#include <cstring>
-#include <limits>
-#include <vector>
+#include <oa/core/std/algo.h>
+#include <oa/core/std/array.h>
+#include <stdarg.h>
+#include <oa/core/std/scalarMath.h>
+#include <stdio.h>
+#include <oa/core/std/cString.h>
+#include <oa/core/std/limits.h>
+#include <oa/core/std/vec.h>
 
 // ─── blitRgba push constants (must match blitRgba.slang) ─────────────────────
 struct BlitRgbaPc {
@@ -311,7 +311,7 @@ namespace {
 constexpr oa::U32 kWidgetHashOffset = 2166136261U;
 
 oa::Color mixColor(oa::Color inA, oa::Color inB, oa::F32 inT) noexcept {
-	const oa::F32 t = std::clamp(inT, 0.0F, 1.0F);
+	const oa::F32 t = oa::clamp(inT, 0.0F, 1.0F);
 	return {
 		inA.r + (inB.r - inA.r) * t,
 		inA.g + (inB.g - inA.g) * t,
@@ -333,13 +333,13 @@ oa::UiGridConfig resolveChartGridConfig(
 	oa::F32 inContentScale,
 	bool inFillBackground,
 	bool inDrawGrid) noexcept {
-	const oa::F32 shortSide = static_cast<oa::F32>(std::max(
-		1, std::min(inRect.w - 1, inRect.h - 1)));
-	const oa::F32 targetMajorPixels = std::max(1.0F,
+	const oa::F32 shortSide = static_cast<oa::F32>(oa::max(
+		1, oa::min(inRect.w - 1, inRect.h - 1)));
+	const oa::F32 targetMajorPixels = oa::max(1.0F,
 		144.0F * inContentScale);
-	const oa::I32 shortSideCells = std::clamp(
-		static_cast<oa::I32>(std::lround(shortSide / targetMajorPixels)), 4, 6);
-	const oa::F32 minorSpacing = std::max(1.0F,
+	const oa::I32 shortSideCells = oa::clamp(
+		static_cast<oa::I32>(oa::round(shortSide / targetMajorPixels)), 4, 6);
+	const oa::F32 minorSpacing = oa::max(1.0F,
 		shortSide / static_cast<oa::F32>(shortSideCells * 10));
 	return {
 		.origin = {
@@ -360,12 +360,12 @@ oa::PixelRect intersectPixelRects(
 	oa::PixelRect inA,
 	oa::PixelRect inB) noexcept {
 	if (inA.w <= 0 || inA.h <= 0 || inB.w <= 0 || inB.h <= 0) return {};
-	const oa::I64 left = std::max<oa::I64>(inA.x, inB.x);
-	const oa::I64 top = std::max<oa::I64>(inA.y, inB.y);
-	const oa::I64 right = std::min<oa::I64>(
+	const oa::I64 left = oa::max<oa::I64>(inA.x, inB.x);
+	const oa::I64 top = oa::max<oa::I64>(inA.y, inB.y);
+	const oa::I64 right = oa::min<oa::I64>(
 		static_cast<oa::I64>(inA.x) + inA.w,
 		static_cast<oa::I64>(inB.x) + inB.w);
-	const oa::I64 bottom = std::min<oa::I64>(
+	const oa::I64 bottom = oa::min<oa::I64>(
 		static_cast<oa::I64>(inA.y) + inA.h,
 		static_cast<oa::I64>(inB.y) + inB.h);
 	if (right <= left || bottom <= top) return {};
@@ -381,16 +381,16 @@ oa::PixelRect clipToNonNegative(oa::PixelRect inRect) noexcept {
 	if (inRect.w <= 0 || inRect.h <= 0) return {};
 	const oa::I64 right = static_cast<oa::I64>(inRect.x) + inRect.w;
 	const oa::I64 bottom = static_cast<oa::I64>(inRect.y) + inRect.h;
-	const oa::I64 left = std::max<oa::I64>(0, inRect.x);
-	const oa::I64 top = std::max<oa::I64>(0, inRect.y);
+	const oa::I64 left = oa::max<oa::I64>(0, inRect.x);
+	const oa::I64 top = oa::max<oa::I64>(0, inRect.y);
 	if (right <= left || bottom <= top) return {};
 	return {
 		static_cast<oa::I32>(left),
 		static_cast<oa::I32>(top),
-		static_cast<oa::I32>(std::min<oa::I64>(
-			right - left, std::numeric_limits<oa::I32>::max())),
-		static_cast<oa::I32>(std::min<oa::I64>(
-			bottom - top, std::numeric_limits<oa::I32>::max())),
+		static_cast<oa::I32>(oa::min<oa::I64>(
+			right - left, oa::Limits<oa::I32>::max())),
+		static_cast<oa::I32>(oa::min<oa::I64>(
+			bottom - top, oa::Limits<oa::I32>::max())),
 	};
 }
 
@@ -479,7 +479,7 @@ bool isValidUtf8(oa::StringView inText) noexcept {
 }
 
 oa::Usize utf8Previous(oa::StringView inText, oa::Usize inOffset) noexcept {
-	oa::Usize offset = std::min(inOffset, inText.size());
+	oa::Usize offset = oa::min(inOffset, inText.size());
 	if (offset == 0U) return 0U;
 	--offset;
 	while (offset > 0U
@@ -637,7 +637,7 @@ struct oa::Ui::Impl {
 	};
 	struct PlotCache {
 		oa::U32 id = 0;
-		std::array<PlotSlot, kPlotSlotCount> slots;
+		oa::Array<PlotSlot, kPlotSlotCount> slots;
 		oa::U32 lastSlot = 0;
 		oa::U32 nextSlot = 0;
 	};
@@ -705,8 +705,8 @@ struct oa::Ui::Impl {
 		}
 		if (outSlotIndex < kPlotSlotCount) {
 			auto& slot = cache.slots[outSlotIndex];
-			slot.count = std::min(inCount, kPlotCapacity);
-			std::memcpy(slot.buffer.mappedPtr, inData,
+			slot.count = oa::min(inCount, kPlotCapacity);
+			oa::memcpy(slot.buffer.mappedPtr, inData,
 				static_cast<oa::Usize>(slot.count) * sizeof(oa::F32));
 			if (!oa::EngineAllocatorAccess::get(*rt).flushHostBuffer(slot.buffer, 0,
 				static_cast<oa::U64>(slot.count) * sizeof(oa::F32))) return nullptr;
@@ -846,7 +846,7 @@ struct oa::Ui::Impl {
 	static constexpr oa::U32 kTextSlotCount = 4;
 	static constexpr oa::U32 kTextGlyphCapacity = 16384;
 	const oa::TextAtlas* textAtlas = nullptr;
-	std::array<oa::GlyphBuffer, kTextSlotCount> textSlots;
+	oa::Array<oa::GlyphBuffer, kTextSlotCount> textSlots;
 	oa::Vec<oa::GlyphInstance> textGlyphs;
 	oa::Vec<oa::PositionedGlyph> textScratch;
 	oa::U32 nextTextSlot = 0U;
@@ -913,20 +913,20 @@ struct oa::Ui::Impl {
 		oa::PixelRect inAnchor,
 		const oa::UiPopupConfig& inConfig) const noexcept {
 		if (frameViewport.w <= 0 || frameViewport.h <= 0) return {};
-		const oa::I64 margin = std::min<oa::I32>(4,
-			std::min(frameViewport.w, frameViewport.h) / 2);
+		const oa::I64 margin = oa::min<oa::I32>(4,
+			oa::min(frameViewport.w, frameViewport.h) / 2);
 		const oa::I64 left = static_cast<oa::I64>(frameViewport.x) + margin;
 		const oa::I64 top = static_cast<oa::I64>(frameViewport.y) + margin;
 		const oa::I64 right = static_cast<oa::I64>(frameViewport.x)
 			+ frameViewport.w - margin;
 		const oa::I64 bottom = static_cast<oa::I64>(frameViewport.y)
 			+ frameViewport.h - margin;
-		const oa::I64 width = std::clamp<oa::I64>(
-			std::max(inAnchor.w, inConfig.width), 1, std::max<oa::I64>(1, right - left));
-		const oa::I64 height = std::clamp<oa::I64>(
-			inConfig.height, 1, std::max<oa::I64>(1, bottom - top));
-		const oa::I64 x = std::clamp<oa::I64>(
-			inAnchor.x, left, std::max(left, right - width));
+		const oa::I64 width = oa::clamp<oa::I64>(
+			oa::max(inAnchor.w, inConfig.width), 1, oa::max<oa::I64>(1, right - left));
+		const oa::I64 height = oa::clamp<oa::I64>(
+			inConfig.height, 1, oa::max<oa::I64>(1, bottom - top));
+		const oa::I64 x = oa::clamp<oa::I64>(
+			inAnchor.x, left, oa::max(left, right - width));
 		const oa::I64 below = static_cast<oa::I64>(inAnchor.y) + inAnchor.h
 			+ inConfig.gap;
 		const oa::I64 above = static_cast<oa::I64>(inAnchor.y) - inConfig.gap - height;
@@ -936,15 +936,15 @@ struct oa::Ui::Impl {
 		} else if (above >= top) {
 			y = above;
 		} else {
-			y = std::clamp(below, top, std::max(top, bottom - height));
+			y = oa::clamp(below, top, oa::max(top, bottom - height));
 		}
 		return {
-			static_cast<oa::I32>(std::clamp<oa::I64>(
-				x, std::numeric_limits<oa::I32>::min(),
-				std::numeric_limits<oa::I32>::max())),
-			static_cast<oa::I32>(std::clamp<oa::I64>(
-				y, std::numeric_limits<oa::I32>::min(),
-				std::numeric_limits<oa::I32>::max())),
+			static_cast<oa::I32>(oa::clamp<oa::I64>(
+				x, oa::Limits<oa::I32>::min(),
+				oa::Limits<oa::I32>::max())),
+			static_cast<oa::I32>(oa::clamp<oa::I64>(
+				y, oa::Limits<oa::I32>::min(),
+				oa::Limits<oa::I32>::max())),
 			static_cast<oa::I32>(width),
 			static_cast<oa::I32>(height),
 		};
@@ -1026,7 +1026,7 @@ struct oa::Ui::Impl {
 	[[nodiscard]] oa::vlm::Vec2 measureText(
 		oa::StringView inText,
 		const oa::UiStyle& inStyle) {
-		if (!std::isfinite(inStyle.fontSize) || inStyle.fontSize <= 0.0F) {
+		if (!oa::isFinite(inStyle.fontSize) || inStyle.fontSize <= 0.0F) {
 			setFrameError(oa::Status::invalidArgument(
 				"oa::Ui text requires a finite positive font size"));
 			return {};
@@ -1057,7 +1057,7 @@ struct oa::Ui::Impl {
 				"oa::Ui widgets require an active panel"));
 			return {};
 		}
-		if (!std::isfinite(inHugWidth) || !std::isfinite(inHeight)
+		if (!oa::isFinite(inHugWidth) || !oa::isFinite(inHeight)
 			|| inHugWidth <= 0.0F || inHeight <= 0.0F) {
 			setFrameError(oa::Status::invalidArgument(
 				"oa::Ui widget dimensions must be finite and positive"));
@@ -1067,30 +1067,30 @@ struct oa::Ui::Impl {
 		auto& panel = panelStack.back();
 		const bool row = isRow(panel);
 		const oa::F32 left = panel.layout.padding.left;
-		const oa::F32 right = std::max(
+		const oa::F32 right = oa::max(
 			left,
 			static_cast<oa::F32>(panel.rect.w) - panel.layout.padding.right);
-		const oa::F32 bottom = std::max(
+		const oa::F32 bottom = oa::max(
 			panel.layout.padding.top,
 			static_cast<oa::F32>(panel.rect.h) - panel.layout.padding.bottom);
 		const oa::F32 localX = row ? panel.rowX : left;
 		const oa::F32 localY = row ? panel.rowY : panel.cursor;
 		const oa::F32 desiredWidth = row ? inHugWidth : right - left;
-		const oa::F32 width = std::max(0.0F, std::min(desiredWidth, right - localX));
-		const oa::F32 height = std::max(0.0F, std::min(inHeight, bottom - localY));
+		const oa::F32 width = oa::max(0.0F, oa::min(desiredWidth, right - localX));
+		const oa::F32 height = oa::max(0.0F, oa::min(inHeight, bottom - localY));
 
 		if (row) {
 			panel.rowX = localX + inHugWidth + panel.layout.gap;
-			panel.rowHeight = std::max(panel.rowHeight, inHeight);
+			panel.rowHeight = oa::max(panel.rowHeight, inHeight);
 		} else {
 			panel.cursor = localY + inHeight + panel.layout.gap;
 		}
 
 		return {
-			panel.rect.x + static_cast<oa::I32>(std::floor(localX + 0.5F)),
-			panel.rect.y + static_cast<oa::I32>(std::floor(localY + 0.5F)),
-			static_cast<oa::I32>(std::floor(width + 0.5F)),
-			static_cast<oa::I32>(std::floor(height + 0.5F)),
+			panel.rect.x + static_cast<oa::I32>(oa::floor(localX + 0.5F)),
+			panel.rect.y + static_cast<oa::I32>(oa::floor(localY + 0.5F)),
+			static_cast<oa::I32>(oa::floor(width + 0.5F)),
+			static_cast<oa::I32>(oa::floor(height + 0.5F)),
 		};
 	}
 
@@ -1284,7 +1284,7 @@ struct oa::Ui::Impl {
 		} else if (inReverse) {
 			index = index == 0U ? 0U : index - 1U;
 		} else {
-			index = std::min(index + 1U, priorTreeOrder.size() - 1U);
+			index = oa::min(index + 1U, priorTreeOrder.size() - 1U);
 		}
 		inInput.focusId = priorTreeOrder[index];
 		return inInput.focusId;
@@ -1323,7 +1323,7 @@ struct oa::Ui::Impl {
 				"oa::Ui text cannot be appended after recordRender"));
 			return;
 		}
-		if (!std::isfinite(inStyle.fontSize) || inStyle.fontSize <= 0.0F) {
+		if (!oa::isFinite(inStyle.fontSize) || inStyle.fontSize <= 0.0F) {
 			setFrameError(oa::Status::invalidArgument(
 				"oa::Ui text requires a finite positive font size"));
 			return;
@@ -1344,7 +1344,7 @@ struct oa::Ui::Impl {
 		auto& panel = panelStack.back();
 		if (panel.rect.w <= 0 || panel.rect.h <= 0
 			|| panel.clip.w <= 0 || panel.clip.h <= 0) return;
-		const oa::F32 innerWidth = std::max(
+		const oa::F32 innerWidth = oa::max(
 			0.0F,
 			static_cast<oa::F32>(panel.rect.w)
 				- panel.layout.padding.left - panel.layout.padding.right);
@@ -1352,7 +1352,7 @@ struct oa::Ui::Impl {
 		const bool row = isRow(panel);
 		const oa::F32 localX = row ? panel.rowX : panel.layout.padding.left;
 		const oa::F32 localY = row ? panel.rowY : panel.cursor;
-		const oa::F32 availableWidth = std::max(
+		const oa::F32 availableWidth = oa::max(
 			0.0F,
 			static_cast<oa::F32>(panel.rect.w)
 				- panel.layout.padding.right - localX);
@@ -1376,7 +1376,7 @@ struct oa::Ui::Impl {
 		const auto advance = [&] {
 			if (row) {
 				panel.rowX = localX + extent.x + panel.layout.gap;
-				panel.rowHeight = std::max(panel.rowHeight, extent.y);
+				panel.rowHeight = oa::max(panel.rowHeight, extent.y);
 			} else {
 				panel.cursor = localY + extent.y + inStyle.itemSpacing;
 			}
@@ -1463,12 +1463,12 @@ struct oa::Ui::Impl {
 		const bool validDirection =
 			inConfig.direction == oa::UiTextDirection::LeftToRight
 			or inConfig.direction == oa::UiTextDirection::BottomToTop;
-		if (not std::isfinite(inConfig.fontSize)
+		if (not oa::isFinite(inConfig.fontSize)
 			or inConfig.fontSize <= 0.0F
-			or not std::isfinite(inConfig.color.r)
-			or not std::isfinite(inConfig.color.g)
-			or not std::isfinite(inConfig.color.b)
-			or not std::isfinite(inConfig.color.a)
+			or not oa::isFinite(inConfig.color.r)
+			or not oa::isFinite(inConfig.color.g)
+			or not oa::isFinite(inConfig.color.b)
+			or not oa::isFinite(inConfig.color.a)
 			or not validAlign(inConfig.horizontalAlign)
 			or not validAlign(inConfig.verticalAlign)
 			or not validDirection) {
@@ -1492,7 +1492,7 @@ struct oa::Ui::Impl {
 		};
 		oa::TextLayout layout;
 		const oa::vlm::Vec2 extent = layout.measure(*textAtlas, inText, textConfig);
-		if (not std::isfinite(extent.x) or not std::isfinite(extent.y)
+		if (not oa::isFinite(extent.x) or not oa::isFinite(extent.y)
 			or extent.x <= 0.0F or extent.y <= 0.0F) {
 			setFrameError(oa::Status::invalidArgument(
 				"oa::Ui positioned text produced an invalid measured extent"));
@@ -1630,19 +1630,19 @@ struct oa::Ui::Impl {
 				const bool bottomToTop = (glyph.flags & 1U) != 0U;
 				const oa::F32 width = bottomToTop ? glyph.height : glyph.width;
 				const oa::F32 height = bottomToTop ? glyph.width : glyph.height;
-				const oa::I32 x = static_cast<oa::I32>(std::floor(
+				const oa::I32 x = static_cast<oa::I32>(oa::floor(
 					static_cast<oa::F32>(command.glyphs.dst_x)
 					+ glyph.anchorX * static_cast<oa::F32>(command.glyphs.dst_w)
 					+ glyph.offsetX));
-				const oa::I32 y = static_cast<oa::I32>(std::floor(
+				const oa::I32 y = static_cast<oa::I32>(oa::floor(
 					static_cast<oa::F32>(command.glyphs.dst_y)
 					+ glyph.anchorY * static_cast<oa::F32>(command.glyphs.dst_h)
 					+ glyph.offsetY));
 				bounds[local] = {
 					x,
 					y,
-					std::max(1, static_cast<oa::I32>(std::ceil(width))),
-					std::max(1, static_cast<oa::I32>(std::ceil(height))),
+					oa::max(1, static_cast<oa::I32>(oa::ceil(width))),
+					oa::max(1, static_cast<oa::I32>(oa::ceil(height))),
 				};
 				oa::U32 batch = 0U;
 				for (; batch < local + 1U; ++batch) {
@@ -1657,7 +1657,7 @@ struct oa::Ui::Impl {
 					if (!overlaps) break;
 				}
 				batches[local] = batch;
-				batchCount = std::max(batchCount, batch + 1U);
+				batchCount = oa::max(batchCount, batch + 1U);
 				glyph.flags = (glyph.flags & 1U) | (batch << 1U);
 			}
 			command.glyphs.batch = 0U;
@@ -1744,7 +1744,7 @@ oa::Status oa::Ui::bindTextAtlas(const oa::TextAtlas& inAtlas) {
 			"oa::Ui::bindTextAtlas requires an initialized atlas");
 	}
 
-	std::array<oa::GlyphBuffer, Impl::kTextSlotCount> slots;
+	oa::Array<oa::GlyphBuffer, Impl::kTextSlotCount> slots;
 	for (auto& slot : slots) {
 		auto buffer = oa::GlyphBuffer::createHostUpload(
 			*impl_->rt, Impl::kTextGlyphCapacity);
@@ -1889,7 +1889,7 @@ void oa::Ui::beginFrame(
 	oa::F32 inContentScale) {
 	if (!impl_) return;
 	++impl_->frameIndex;
-	const bool validScale = std::isfinite(inContentScale)
+	const bool validScale = oa::isFinite(inContentScale)
 		&& inContentScale > 0.0F;
 	impl_->contentScale = validScale ? inContentScale : 1.0F;
 	impl_->defaultStyle = scaleUiStyleGeometry(
@@ -1898,13 +1898,13 @@ void oa::Ui::beginFrame(
 		? impl_->defaultStyle.validate()
 		: oa::Status::invalidArgument(
 			"oa::Ui::beginFrame requires a finite positive content scale");
-	const oa::F32 deltaMs = std::isfinite(inDeltaMs)
-		? std::clamp(inDeltaMs, 0.0F, 1000.0F) : 0.0F;
+	const oa::F32 deltaMs = oa::isFinite(inDeltaMs)
+		? oa::clamp(inDeltaMs, 0.0F, 1000.0F) : 0.0F;
 	impl_->frameDeltaMs = deltaMs;
 	impl_->frameViewport = inViewport.w > 0 && inViewport.h > 0
 		? clipToNonNegative(inViewport) : oa::PixelRect{};
 	for (auto& state : impl_->textEditStates) {
-		state.blinkMs = std::fmod(state.blinkMs + deltaMs, 1200.0F);
+		state.blinkMs = oa::fmod(state.blinkMs + deltaMs, 1200.0F);
 	}
 	for (oa::Usize index = impl_->textEditStates.size(); index > 0U; --index) {
 		const auto& state = impl_->textEditStates[index - 1U];
@@ -2037,7 +2037,7 @@ bool oa::Ui::routeEvent(const oa::UiEvent& inEvent) {
 			if (inEvent.button == 1) {
 				input_.lButton = true;
 				input_.lPressed = true;
-				input_.lClickCount = std::max(1, inEvent.clickCount);
+				input_.lClickCount = oa::max(1, inEvent.clickCount);
 			} else if (inEvent.button == 2) {
 				input_.mButton = true;
 			} else if (inEvent.button == 3) {
@@ -2065,9 +2065,9 @@ bool oa::Ui::routeEvent(const oa::UiEvent& inEvent) {
 			pointerEvent = true;
 			input_.mouseX = inEvent.mouseX;
 			input_.mouseY = inEvent.mouseY;
-			if (std::isfinite(inEvent.scrollX)) input_.scrollX += inEvent.scrollX;
-			if (std::isfinite(inEvent.scrollY)) input_.scrollY += inEvent.scrollY;
-			if (impl_ && std::isfinite(inEvent.scrollY)
+			if (oa::isFinite(inEvent.scrollX)) input_.scrollX += inEvent.scrollX;
+			if (oa::isFinite(inEvent.scrollY)) input_.scrollY += inEvent.scrollY;
+			if (impl_ && oa::isFinite(inEvent.scrollY)
 				&& inEvent.scrollY != 0.0F) {
 				for (oa::Usize index = impl_->priorScrollRecords.size();
 					index > 0U; --index) {
@@ -2080,13 +2080,13 @@ bool oa::Ui::routeEvent(const oa::UiEvent& inEvent) {
 					}
 					auto* state = impl_->findScrollState(record.id);
 					if (state == nullptr) continue;
-					const oa::F64 scaled = std::clamp<oa::F64>(
+					const oa::F64 scaled = oa::clamp<oa::F64>(
 						-static_cast<oa::F64>(inEvent.scrollY) * record.wheelStep,
-						std::numeric_limits<oa::I32>::min(),
-						std::numeric_limits<oa::I32>::max());
-					oa::I64 delta = static_cast<oa::I64>(std::llround(scaled));
+						oa::Limits<oa::I32>::min(),
+						oa::Limits<oa::I32>::max());
+					oa::I64 delta = static_cast<oa::I64>(oa::round(scaled));
 					if (delta == 0) delta = inEvent.scrollY > 0.0F ? -1 : 1;
-					const oa::I32 next = static_cast<oa::I32>(std::clamp<oa::I64>(
+					const oa::I32 next = static_cast<oa::I32>(oa::clamp<oa::I64>(
 						static_cast<oa::I64>(state->offsetY) + delta,
 						0,
 						record.maxOffsetY));
@@ -2634,7 +2634,7 @@ oa::Status oa::Ui::recordRender(
 			pc.dst_idx = inDstBindlessIdx;
 			oa::EngineDeviceAccess::get(*impl_->rt).deviceDispatch.vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
 				static_cast<VkPipeline>(impl_->drawGlyphs.pipeline));
-			const oa::U32 batchCount = std::max(1U, pc.batch_count);
+			const oa::U32 batchCount = oa::max(1U, pc.batch_count);
 			for (oa::U32 batch = 0U; batch < batchCount; ++batch) {
 				pc.batch = batch;
 				oa::EngineDeviceAccess::get(*impl_->rt).deviceDispatch.vkCmdPushConstants(cmd, layout, VK_SHADER_STAGE_COMPUTE_BIT, 0,
@@ -2858,9 +2858,9 @@ oa::UiScrollRegion oa::Ui::beginScrollPanel(
 
 	const oa::U32 id = hashWidgetScope(impl_->currentScope(), inId);
 	auto& state = impl_->getScrollState(id);
-	const oa::I32 contentHeight = std::max(inViewport.h, inContentHeight);
-	const oa::I32 maxOffset = std::max(0, contentHeight - inViewport.h);
-	state.offsetY = std::clamp(state.offsetY, 0, maxOffset);
+	const oa::I32 contentHeight = oa::max(inViewport.h, inContentHeight);
+	const oa::I32 maxOffset = oa::max(0, contentHeight - inViewport.h);
+	state.offsetY = oa::clamp(state.offsetY, 0, maxOffset);
 
 	oa::PixelRect inheritedViewport = clipToNonNegative(inViewport);
 	if (!impl_->panelStack.empty()) {
@@ -2886,17 +2886,17 @@ oa::UiScrollRegion oa::Ui::beginScrollPanel(
 			inConfig.scrollbarWidth,
 			inViewport.h,
 		};
-		const oa::I32 thumbHeight = std::clamp<oa::I32>(
-			static_cast<oa::I32>(std::lround(
+		const oa::I32 thumbHeight = oa::clamp<oa::I32>(
+			static_cast<oa::I32>(oa::round(
 				static_cast<oa::F64>(track.h)
 					* static_cast<oa::F64>(inViewport.h)
 					/ static_cast<oa::F64>(contentHeight))),
-			std::min(24, track.h),
+			oa::min(24, track.h),
 			track.h);
-		const oa::I32 travel = std::max(0, track.h - thumbHeight);
+		const oa::I32 travel = oa::max(0, track.h - thumbHeight);
 		auto thumbY = [&] {
 			return track.y + (maxOffset > 0
-				? static_cast<oa::I32>(std::lround(
+				? static_cast<oa::I32>(oa::round(
 					static_cast<oa::F64>(travel)
 						* static_cast<oa::F64>(state.offsetY)
 						/ static_cast<oa::F64>(maxOffset)))
@@ -2912,16 +2912,16 @@ oa::UiScrollRegion oa::Ui::beginScrollPanel(
 			input_.activeId = thumbId;
 			impl_->pointerPressClaimed = true;
 			state.dragGrabY = thumb.contains(input_.mouseX, input_.mouseY)
-				? static_cast<oa::I32>(std::floor(input_.mouseY)) - thumb.y
+				? static_cast<oa::I32>(oa::floor(input_.mouseY)) - thumb.y
 				: thumb.h / 2;
 		}
 		if (input_.activeId == thumbId
 			&& (input_.lButton || input_.lReleased)) {
-			const oa::I32 desired = static_cast<oa::I32>(std::floor(input_.mouseY))
+			const oa::I32 desired = static_cast<oa::I32>(oa::floor(input_.mouseY))
 				- state.dragGrabY - track.y;
 			state.offsetY = travel > 0
-				? std::clamp<oa::I32>(static_cast<oa::I32>(std::lround(
-					static_cast<oa::F64>(std::clamp(desired, 0, travel))
+				? oa::clamp<oa::I32>(static_cast<oa::I32>(oa::round(
+					static_cast<oa::F64>(oa::clamp(desired, 0, travel))
 						* static_cast<oa::F64>(maxOffset)
 						/ static_cast<oa::F64>(travel))), 0, maxOffset)
 				: 0;
@@ -2940,7 +2940,7 @@ oa::UiScrollRegion oa::Ui::beginScrollPanel(
 	const oa::PixelRect contentViewport{
 		inViewport.x,
 		inViewport.y,
-		std::max(1, inViewport.w - reservedWidth),
+		oa::max(1, inViewport.w - reservedWidth),
 		inViewport.h,
 	};
 	Impl::PanelState panel;
@@ -3008,25 +3008,25 @@ oa::UiVirtualRange oa::Ui::virtualRows(
 	}
 	if (inItemCount == 0) return {};
 	const auto& panel = impl_->panelStack.back();
-	if (!std::isfinite(panel.layout.padding.top)) {
+	if (!oa::isFinite(panel.layout.padding.top)) {
 		impl_->setFrameError(oa::Status::invalidArgument(
 			"oa::Ui::virtualRows requires finite scroll-panel padding"));
 		return {};
 	}
 	const oa::I64 stride = static_cast<oa::I64>(inRowHeight) + inRowGap;
-	const oa::I64 paddingTop = static_cast<oa::I64>(std::clamp<oa::F64>(
-		std::floor(panel.layout.padding.top),
+	const oa::I64 paddingTop = static_cast<oa::I64>(oa::clamp<oa::F64>(
+		oa::floor(panel.layout.padding.top),
 		0.0,
-		std::numeric_limits<oa::I32>::max()));
-	const oa::I64 visibleBegin = std::max<oa::I64>(
+		oa::Limits<oa::I32>::max()));
+	const oa::I64 visibleBegin = oa::max<oa::I64>(
 		0, static_cast<oa::I64>(panel.scrollOffsetY) - paddingTop);
-	const oa::I64 visibleEnd = std::max(
+	const oa::I64 visibleEnd = oa::max(
 		visibleBegin,
 		static_cast<oa::I64>(panel.scrollOffsetY)
 			+ panel.scrollViewport.h - paddingTop);
-	const oa::I64 first = std::max<oa::I64>(
+	const oa::I64 first = oa::max<oa::I64>(
 		0, visibleBegin / stride - inOverscanRows);
-	const oa::I64 onePastLast = std::min<oa::I64>(
+	const oa::I64 onePastLast = oa::min<oa::I64>(
 		inItemCount,
 		(visibleEnd + stride - 1) / stride + inOverscanRows);
 	return {
@@ -3057,8 +3057,8 @@ oa::UiSplitRegion oa::Ui::splitPane(
 		|| inConfig.handleSize <= 0
 		|| inConfig.minimumFirst < 0 || inConfig.minimumSecond < 0
 		|| static_cast<oa::I64>(axisExtent) < minimumExtent
-		|| !std::isfinite(inOutRatio)
-		|| !std::isfinite(inConfig.keyboardStep)
+		|| !oa::isFinite(inOutRatio)
+		|| !oa::isFinite(inConfig.keyboardStep)
 		|| inConfig.keyboardStep <= 0.0F) {
 		impl_->setFrameError(oa::Status::invalidArgument(
 			"oa::Ui::splitPane requires a positive rectangle, valid direction, finite ratio/keyboard step, positive handle, and satisfiable non-negative minima"));
@@ -3072,7 +3072,7 @@ oa::UiSplitRegion oa::Ui::splitPane(
 		- static_cast<oa::F32>(inConfig.minimumSecond)
 			/ static_cast<oa::F32>(available);
 	const auto clampRatio = [&](oa::F32 inRatio) {
-		return std::clamp(inRatio, minimumRatio, maximumRatio);
+		return oa::clamp(inRatio, minimumRatio, maximumRatio);
 	};
 	const oa::F32 clamped = clampRatio(inOutRatio);
 	if (clamped != inOutRatio) {
@@ -3081,8 +3081,8 @@ oa::UiSplitRegion oa::Ui::splitPane(
 	}
 
 	const auto resolveRegions = [&] {
-		const oa::I32 firstExtent = std::clamp<oa::I32>(
-			static_cast<oa::I32>(std::lround(
+		const oa::I32 firstExtent = oa::clamp<oa::I32>(
+			static_cast<oa::I32>(oa::round(
 				static_cast<oa::F64>(available) * inOutRatio)),
 			inConfig.minimumFirst,
 			available - inConfig.minimumSecond);
@@ -3155,7 +3155,7 @@ oa::UiSplitRegion oa::Ui::splitPane(
 	this->rect(result.handle,
 		held ? style.surfaceActive
 			: interaction.hovered ? style.surfaceHover : style.surface);
-	const oa::I32 guideSize = std::min<oa::I32>(
+	const oa::I32 guideSize = oa::min<oa::I32>(
 		row ? result.handle.w : result.handle.h,
 		held || interaction.hovered || input_.focusId == id ? 2 : 1);
 	const oa::Color guideColor = held ? style.accentActive
@@ -3211,7 +3211,7 @@ oa::UiTabBarResult oa::Ui::tabBar(
 	}
 	if (inRect.w <= 0 || inRect.h <= 0
 		|| inItems.size() > static_cast<oa::Usize>(
-			std::numeric_limits<oa::I32>::max())
+			oa::Limits<oa::I32>::max())
 		|| inConfig.minimumTabWidth <= 0
 		|| inConfig.maximumTabWidth < inConfig.minimumTabWidth
 		|| inConfig.overflowButtonWidth <= 0
@@ -3257,7 +3257,7 @@ oa::UiTabBarResult oa::Ui::tabBar(
 		return result;
 	}
 
-	std::vector<oa::U32> itemIds(static_cast<oa::Usize>(count));
+	oa::Vec<oa::U32> itemIds(static_cast<oa::Usize>(count));
 	for (oa::I32 index = 0; index < count; ++index) {
 		const oa::UiTabItem& item = inItems[static_cast<oa::Usize>(index)];
 		const oa::U32 itemId = hashWidgetScope(barId, item.id);
@@ -3284,9 +3284,9 @@ oa::UiTabBarResult oa::Ui::tabBar(
 	oa::PixelRect nextRect;
 	result.tabs = inRect;
 	if (overflow) {
-		const oa::I32 buttonWidth = std::min<oa::I32>(
+		const oa::I32 buttonWidth = oa::min<oa::I32>(
 			inConfig.overflowButtonWidth,
-			std::max(1, inRect.w / 3));
+			oa::max(1, inRect.w / 3));
 		previousRect = {inRect.x, inRect.y, buttonWidth, inRect.h};
 		nextRect = {
 			inRect.x + inRect.w - buttonWidth,
@@ -3297,29 +3297,29 @@ oa::UiTabBarResult oa::Ui::tabBar(
 		result.tabs = {
 			previousRect.x + previousRect.w,
 			inRect.y,
-			std::max(1, inRect.w - previousRect.w - nextRect.w),
+			oa::max(1, inRect.w - previousRect.w - nextRect.w),
 			inRect.h,
 		};
 	}
 
 	const oa::I32 tabWidth = overflow
-		? std::min(inConfig.minimumTabWidth, result.tabs.w)
-		: std::clamp(
+		? oa::min(inConfig.minimumTabWidth, result.tabs.w)
+		: oa::clamp(
 			inRect.w / count,
 			inConfig.minimumTabWidth,
 			inConfig.maximumTabWidth);
 	const oa::I32 visibleCapacity = overflow
-		? std::max(1, result.tabs.w / std::max(1, tabWidth))
+		? oa::max(1, result.tabs.w / oa::max(1, tabWidth))
 		: count;
-	const oa::I32 maximumFirst = std::max(0, count - visibleCapacity);
-	inOutState.firstVisible = std::clamp(
+	const oa::I32 maximumFirst = oa::max(0, count - visibleCapacity);
+	inOutState.firstVisible = oa::clamp(
 		inOutState.firstVisible, 0, maximumFirst);
 	if (inOutState.selected >= 0) {
 		if (inOutState.selected < inOutState.firstVisible) {
 			inOutState.firstVisible = inOutState.selected;
 		} else if (inOutState.selected
 			>= inOutState.firstVisible + visibleCapacity) {
-			inOutState.firstVisible = std::min(
+			inOutState.firstVisible = oa::min(
 				maximumFirst,
 				inOutState.selected - visibleCapacity + 1);
 		}
@@ -3345,28 +3345,28 @@ oa::UiTabBarResult oa::Ui::tabBar(
 			return interaction.activated;
 		};
 		if (drawOverflowButton("__tab_previous", previousRect, true)) {
-			inOutState.firstVisible = std::max(
+			inOutState.firstVisible = oa::max(
 				0, inOutState.firstVisible - 1);
 		}
 		if (drawOverflowButton("__tab_next", nextRect, false)) {
-			inOutState.firstVisible = std::min(
+			inOutState.firstVisible = oa::min(
 				maximumFirst, inOutState.firstVisible + 1);
 		}
 	}
 
 	result.firstVisible = inOutState.firstVisible;
-	result.onePastLast = std::min(
+	result.onePastLast = oa::min(
 		count, result.firstVisible + visibleCapacity);
-	std::vector<oa::PixelRect> tabRects;
+	oa::Vec<oa::PixelRect> tabRects;
 	tabRects.reserve(static_cast<oa::Usize>(
 		result.onePastLast - result.firstVisible));
 	for (oa::I32 index = result.firstVisible;
 		index < result.onePastLast; ++index) {
 		const oa::I32 localIndex = index - result.firstVisible;
 		const oa::I32 x = result.tabs.x + localIndex * tabWidth;
-		const oa::I32 width = std::min(
+		const oa::I32 width = oa::min(
 			tabWidth, result.tabs.x + result.tabs.w - x);
-		tabRects.push_back({x, result.tabs.y, std::max(0, width), result.tabs.h});
+		tabRects.pushBack({x, result.tabs.y, oa::max(0, width), result.tabs.h});
 	}
 
 	oa::I32 dragSource = -1;
@@ -3421,15 +3421,15 @@ oa::UiTabBarResult oa::Ui::tabBar(
 		this->rect({tabRect.x + tabRect.w - 1, tabRect.y, 1, tabRect.h},
 			style.borderSubtle);
 		if (selected) {
-			this->rect({tabRect.x, tabRect.y + std::max(0, tabRect.h - 2),
-				tabRect.w, std::min(2, tabRect.h)}, style.accent);
+			this->rect({tabRect.x, tabRect.y + oa::max(0, tabRect.h - 2),
+				tabRect.w, oa::min(2, tabRect.h)}, style.accent);
 		}
 		if (item.enabled && input_.focusId == itemId) {
 			rectOutline(tabRect, style.accentHover, 1U);
 		}
 
 		const oa::I32 closeWidth = item.closable
-			? std::min(inConfig.closeWidth, std::max(0, tabRect.w / 2)) : 0;
+			? oa::min(inConfig.closeWidth, oa::max(0, tabRect.w / 2)) : 0;
 		const oa::PixelRect closeRect{
 			tabRect.x + tabRect.w - closeWidth,
 			tabRect.y,
@@ -3440,7 +3440,7 @@ oa::UiTabBarResult oa::Ui::tabBar(
 		const oa::PixelRect labelRect{
 			tabRect.x,
 			tabRect.y,
-			std::max(0, tabRect.w - closeWidth - dirtyWidth),
+			oa::max(0, tabRect.w - closeWidth - dirtyWidth),
 			tabRect.h,
 		};
 		if (item.dirty && tabRect.w > closeWidth + 4) {
@@ -3496,9 +3496,9 @@ oa::UiTabBarResult oa::Ui::tabBar(
 				: style.textDisabled;
 			oa::UiLayout textLayout;
 			textLayout.padding = oa::UiEdge{};
-			textLayout.padding.left = std::min<oa::F32>(
+			textLayout.padding.left = oa::min<oa::F32>(
 				6.0F, static_cast<oa::F32>(labelRect.w));
-			textLayout.padding.top = std::max(
+			textLayout.padding.top = oa::max(
 				0.0F,
 				(static_cast<oa::F32>(labelRect.h) - style.fontSize) * 0.5F);
 			beginPanel(item.id, labelRect, textLayout);
@@ -3550,7 +3550,7 @@ oa::UiTreeRowResult oa::Ui::treeRow(
 		* inConfig.indent;
 	if (inRect.w <= 0 || inRect.h <= 0 || inConfig.depth < 0
 		|| inConfig.indent <= 0 || inConfig.disclosureWidth <= 0
-		|| indentation > std::numeric_limits<oa::I32>::max()) {
+		|| indentation > oa::Limits<oa::I32>::max()) {
 		impl_->setFrameError(oa::Status::invalidArgument(
 			"oa::Ui::treeRow requires a positive rectangle, non-negative depth, and positive bounded indent/disclosure metrics"));
 		return result;
@@ -3558,27 +3558,27 @@ oa::UiTreeRowResult oa::Ui::treeRow(
 
 	result.row = inRect;
 	const oa::UiStyle& style = currentStyle();
-	const oa::F32 finitePadding = std::isfinite(style.framePaddingX)
-		? std::max(0.0F, style.framePaddingX) : 0.0F;
-	const oa::F64 boundedPadding = std::min(
+	const oa::F32 finitePadding = oa::isFinite(style.framePaddingX)
+		? oa::max(0.0F, style.framePaddingX) : 0.0F;
+	const oa::F64 boundedPadding = oa::min(
 		static_cast<oa::F64>(finitePadding),
 		static_cast<oa::F64>(inRect.w));
 	const oa::I32 padding = static_cast<oa::I32>(
-		std::floor(boundedPadding + 0.5F));
-	const oa::I32 disclosureOffset = static_cast<oa::I32>(std::min<oa::I64>(
+		oa::floor(boundedPadding + 0.5F));
+	const oa::I32 disclosureOffset = static_cast<oa::I32>(oa::min<oa::I64>(
 		indentation + static_cast<oa::I64>(padding),
 		static_cast<oa::I64>(inRect.w)));
 	result.disclosure = {
 		inRect.x + disclosureOffset,
 		inRect.y,
-		std::min(inConfig.disclosureWidth, inRect.w - disclosureOffset),
+		oa::min(inConfig.disclosureWidth, inRect.w - disclosureOffset),
 		inRect.h,
 	};
 	const oa::I32 labelOffset = disclosureOffset + result.disclosure.w;
 	result.label = {
 		inRect.x + labelOffset,
 		inRect.y,
-		std::max(0, inRect.w - labelOffset - padding),
+		oa::max(0, inRect.w - labelOffset - padding),
 		inRect.h,
 	};
 
@@ -3623,7 +3623,7 @@ oa::UiTreeRowResult oa::Ui::treeRow(
 	if (inConfig.selected) {
 		this->rect(inRect, style.accent.withAlpha(
 			interaction.held ? 0.48F : interaction.hovered ? 0.38F : 0.28F));
-		this->rect({inRect.x, inRect.y, std::min(3, inRect.w), inRect.h}, style.accent);
+		this->rect({inRect.x, inRect.y, oa::min(3, inRect.w), inRect.h}, style.accent);
 	} else if (interaction.held || interaction.hovered) {
 		this->rect(inRect,
 			interaction.held ? style.surfaceActive : style.surfaceHover);
@@ -3634,8 +3634,8 @@ oa::UiTreeRowResult oa::Ui::treeRow(
 
 	if (inConfig.hasChildren && result.disclosure.w > 4
 		&& result.disclosure.h > 4) {
-		const oa::I32 marker = std::max<oa::I32>(3, std::min<oa::I32>(
-			7, std::min(result.disclosure.w - 4, result.disclosure.h - 4)));
+		const oa::I32 marker = oa::max<oa::I32>(3, oa::min<oa::I32>(
+			7, oa::min(result.disclosure.w - 4, result.disclosure.h - 4)));
 		const oa::I32 centerX = result.disclosure.x + result.disclosure.w / 2;
 		const oa::I32 centerY = result.disclosure.y + result.disclosure.h / 2;
 		const oa::Color markerColor = inConfig.enabled
@@ -3683,7 +3683,7 @@ oa::UiTreeRowResult oa::Ui::treeRow(
 			: style.textDisabled;
 		oa::UiLayout textLayout;
 		textLayout.padding = oa::UiEdge{};
-		textLayout.padding.top = std::max(
+		textLayout.padding.top = oa::max(
 			0.0F,
 			(static_cast<oa::F32>(result.label.h) - style.fontSize) * 0.5F);
 		beginPanel(inId, result.label, textLayout);
@@ -3710,11 +3710,11 @@ oa::UiPropertyRegion oa::Ui::propertyRow(
 	const oa::I64 distributableWide = static_cast<oa::I64>(inRect.w)
 		- static_cast<oa::I64>(inConfig.gap);
 	if (inRect.w <= 0 || inRect.h <= 0
-		|| !std::isfinite(inConfig.labelFraction)
+		|| !oa::isFinite(inConfig.labelFraction)
 		|| inConfig.labelFraction <= 0.0F || inConfig.labelFraction >= 1.0F
 		|| inConfig.gap < 0 || inConfig.paddingX < 0
 		|| distributableWide < 2
-		|| distributableWide > std::numeric_limits<oa::I32>::max()) {
+		|| distributableWide > oa::Limits<oa::I32>::max()) {
 		impl_->setFrameError(oa::Status::invalidArgument(
 			"oa::Ui::propertyRow requires a positive rectangle, label fraction inside (0,1), non-negative gap/padding, and room for both columns"));
 		return result;
@@ -3722,8 +3722,8 @@ oa::UiPropertyRegion oa::Ui::propertyRow(
 	const oa::I32 distributable = static_cast<oa::I32>(distributableWide);
 
 	result.row = inRect;
-	const oa::I32 labelWidth = std::clamp<oa::I32>(
-		static_cast<oa::I32>(std::lround(
+	const oa::I32 labelWidth = oa::clamp<oa::I32>(
+		static_cast<oa::I32>(oa::round(
 			static_cast<oa::F64>(distributable) * inConfig.labelFraction)),
 		1,
 		distributable - 1);
@@ -3753,10 +3753,10 @@ oa::UiPropertyRegion oa::Ui::propertyRow(
 		textStyle.text = inColor;
 		oa::UiLayout textLayout;
 		textLayout.padding = oa::UiEdge{};
-		textLayout.padding.left = static_cast<oa::F32>(std::min(
+		textLayout.padding.left = static_cast<oa::F32>(oa::min(
 			inConfig.paddingX, inCell.w));
 		textLayout.padding.right = textLayout.padding.left;
-		textLayout.padding.top = std::max(
+		textLayout.padding.top = oa::max(
 			0.0F,
 			(static_cast<oa::F32>(inCell.h) - style.fontSize) * 0.5F);
 		beginPanel(inCellId, inCell, textLayout);
@@ -3816,9 +3816,9 @@ void oa::Ui::spacing(oa::F32 inPixels) {
 	if (!impl_ || impl_->panelStack.empty()) return;
 	auto& panel = impl_->panelStack.back();
 	if (impl_->isRow(panel)) {
-		panel.rowX += std::max(0.0F, inPixels);
+		panel.rowX += oa::max(0.0F, inPixels);
 	} else {
-		panel.cursor += std::max(0.0F, inPixels);
+		panel.cursor += oa::max(0.0F, inPixels);
 	}
 }
 void oa::Ui::separator() {
@@ -3826,8 +3826,8 @@ void oa::Ui::separator() {
 	const oa::UiStyle& style = currentStyle();
 	const bool row = !impl_->panelStack.empty()
 		&& impl_->isRow(impl_->panelStack.back());
-	const oa::F32 rowHeight = std::max(style.fontSize, 1.0F)
-		+ std::max(0.0F, style.framePaddingY) * 2.0F;
+	const oa::F32 rowHeight = oa::max(style.fontSize, 1.0F)
+		+ oa::max(0.0F, style.framePaddingY) * 2.0F;
 	const oa::PixelRect rect = impl_->placeItem(1.0F, row ? rowHeight : 1.0F);
 	if (rect.w > 0 && rect.h > 0) this->rect(rect, style.borderStrong);
 }
@@ -3881,8 +3881,8 @@ bool oa::Ui::beginPopup(
 	const oa::U32 id = hashWidgetScope(impl_->currentScope(), inId);
 	if (impl_->openPopupId != id) return false;
 	const auto finiteEdge = [](const oa::UiEdge& inEdge) noexcept {
-		return std::isfinite(inEdge.top) && std::isfinite(inEdge.right)
-			&& std::isfinite(inEdge.bottom) && std::isfinite(inEdge.left)
+		return oa::isFinite(inEdge.top) && oa::isFinite(inEdge.right)
+			&& oa::isFinite(inEdge.bottom) && oa::isFinite(inEdge.left)
 			&& inEdge.top >= 0.0F && inEdge.right >= 0.0F
 			&& inEdge.bottom >= 0.0F && inEdge.left >= 0.0F;
 	};
@@ -3913,7 +3913,7 @@ bool oa::Ui::beginPopup(
 	panel.clip = intersectPixelRects(
 		clipToNonNegative(rect), impl_->frameViewport);
 	panel.layout.padding = inConfig.padding;
-	panel.layout.gap = std::max(0.0F, currentStyle().itemSpacing);
+	panel.layout.gap = oa::max(0.0F, currentStyle().itemSpacing);
 	panel.cursor = panel.layout.padding.top;
 	panel.rowX = panel.layout.padding.left;
 	panel.rowY = panel.layout.padding.top;
@@ -3971,11 +3971,11 @@ bool oa::Ui::menuItem(
 	}
 	const oa::UiStyle& style = currentStyle();
 	const oa::vlm::Vec2 textExtent = impl_->measureText(inLabel, style);
-	const oa::F32 padX = std::max(0.0F, style.framePaddingX);
-	const oa::F32 padY = std::max(0.0F, style.framePaddingY);
-	const oa::F32 height = std::max(style.fontSize, textExtent.y) + padY * 2.0F;
+	const oa::F32 padX = oa::max(0.0F, style.framePaddingX);
+	const oa::F32 padY = oa::max(0.0F, style.framePaddingY);
+	const oa::F32 height = oa::max(style.fontSize, textExtent.y) + padY * 2.0F;
 	const oa::PixelRect rect = impl_->placeItem(
-		std::max(height, textExtent.x + padX * 2.0F), height);
+		oa::max(height, textExtent.x + padX * 2.0F), height);
 	if (rect.w <= 0 || rect.h <= 0) return false;
 
 	const oa::U32 id = hashWidgetScope(impl_->currentScope(), inLabel);
@@ -3988,7 +3988,7 @@ bool oa::Ui::menuItem(
 	}
 	if (inSelected) {
 		this->rect(rect, style.accent.withAlpha(interaction.hovered ? 0.35F : 0.22F));
-		this->rect({rect.x, rect.y, std::min(3, rect.w), rect.h}, style.accent);
+		this->rect({rect.x, rect.y, oa::min(3, rect.w), rect.h}, style.accent);
 	} else if (interaction.held || interaction.hovered) {
 		this->rect(rect, interaction.held ? style.surfaceActive : style.surfaceHover);
 	}
@@ -4016,7 +4016,7 @@ bool oa::Ui::menuItem(
 	textStyle.text = inEnabled ? style.text : style.textDisabled;
 	oa::UiLayout textLayout;
 	textLayout.padding = oa::UiEdge{};
-	textLayout.padding.top = std::max(
+	textLayout.padding.top = oa::max(
 		0.0F, (static_cast<oa::F32>(rect.h) - textExtent.y) * 0.5F);
 	textLayout.padding.left = padX + (inSelected ? 4.0F : 0.0F);
 	beginPanel("__menu_item_text", rect, textLayout);
@@ -4044,13 +4044,13 @@ void drawSliderVisual(
 	bool inFocused) {
 	if (inRect.w <= 0 || inRect.h <= 0) return;
 	const oa::UiStyle& style = inUi.currentStyle();
-	const oa::F32 fraction = std::clamp(inFraction, 0.0F, 1.0F);
+	const oa::F32 fraction = oa::clamp(inFraction, 0.0F, 1.0F);
 	inUi.rect(
 		inRect,
 		inHeld ? style.surfaceActive
 			: inHovered ? style.surfaceHover : style.surface);
-	const oa::I32 fillWidth = std::clamp(
-		static_cast<oa::I32>(std::floor(
+	const oa::I32 fillWidth = oa::clamp(
+		static_cast<oa::I32>(oa::floor(
 			static_cast<oa::F32>(inRect.w) * fraction + 0.5F)),
 		0,
 		inRect.w);
@@ -4059,16 +4059,16 @@ void drawSliderVisual(
 			{inRect.x, inRect.y, fillWidth, inRect.h},
 			style.accent.withAlpha(inHeld ? 0.82F : 0.62F));
 	}
-	const oa::I32 grabWidth = std::min<oa::I32>(3, inRect.w);
-	const oa::I32 grabTravel = std::max<oa::I32>(0, inRect.w - grabWidth);
-	const oa::I32 grabX = inRect.x + static_cast<oa::I32>(std::floor(
+	const oa::I32 grabWidth = oa::min<oa::I32>(3, inRect.w);
+	const oa::I32 grabTravel = oa::max<oa::I32>(0, inRect.w - grabWidth);
+	const oa::I32 grabX = inRect.x + static_cast<oa::I32>(oa::floor(
 		static_cast<oa::F32>(grabTravel) * fraction + 0.5F));
 	inUi.rect(
 		{grabX, inRect.y, grabWidth, inRect.h},
 		inHeld ? style.text : style.accentHover);
-	const oa::U32 borderWidth = static_cast<oa::U32>(std::clamp(
-		std::isfinite(style.borderWidth)
-			? std::floor(style.borderWidth + 0.5F) : 1.0F,
+	const oa::U32 borderWidth = static_cast<oa::U32>(oa::clamp(
+		oa::isFinite(style.borderWidth)
+			? oa::floor(style.borderWidth + 0.5F) : 1.0F,
 		1.0F,
 		8.0F));
 	inUi.rectOutline(
@@ -4076,26 +4076,26 @@ void drawSliderVisual(
 		inFocused ? style.accentHover : style.border,
 		borderWidth);
 
-	const oa::F32 padX = std::max(0.0F, style.framePaddingX);
-	const oa::F32 innerGap = std::max(4.0F, style.itemSpacing);
-	const oa::F32 valueStart = std::max(
+	const oa::F32 padX = oa::max(0.0F, style.framePaddingX);
+	const oa::F32 innerGap = oa::max(4.0F, style.itemSpacing);
+	const oa::F32 valueStart = oa::max(
 		padX,
 		static_cast<oa::F32>(inRect.w) - padX - inValueExtent.x);
 	const oa::F32 labelStart = padX;
-	const oa::F32 labelWidth = std::max(
+	const oa::F32 labelWidth = oa::max(
 		0.0F,
 		valueStart - innerGap - labelStart);
-	const oa::F32 textTop = std::max(
+	const oa::F32 textTop = oa::max(
 		0.0F,
 		(static_cast<oa::F32>(inRect.h)
-			- std::max(inLabelExtent.y, inValueExtent.y)) * 0.5F);
+			- oa::max(inLabelExtent.y, inValueExtent.y)) * 0.5F);
 	oa::UiLayout textLayout;
 	textLayout.padding = oa::UiEdge{};
 	textLayout.padding.top = textTop;
 	const oa::PixelRect labelRect{
-		inRect.x + static_cast<oa::I32>(std::floor(labelStart + 0.5F)),
+		inRect.x + static_cast<oa::I32>(oa::floor(labelStart + 0.5F)),
 		inRect.y,
-		std::max<oa::I32>(0, static_cast<oa::I32>(std::floor(labelWidth))),
+		oa::max<oa::I32>(0, static_cast<oa::I32>(oa::floor(labelWidth))),
 		inRect.h,
 	};
 	if (!inLabel.empty() && labelRect.w > 0) {
@@ -4103,8 +4103,8 @@ void drawSliderVisual(
 		inUi.label(inLabel);
 		inUi.endPanel();
 	}
-	const oa::I32 valueOffset = std::clamp(
-		static_cast<oa::I32>(std::floor(valueStart + 0.5F)),
+	const oa::I32 valueOffset = oa::clamp(
+		static_cast<oa::I32>(oa::floor(valueStart + 0.5F)),
 		0,
 		inRect.w);
 	const oa::PixelRect valueRect{
@@ -4126,10 +4126,10 @@ bool oa::Ui::button(oa::StringView inLabel) {
 	if (!impl_) return false;
 	const oa::UiStyle& style = currentStyle();
 	const oa::vlm::Vec2 textExtent = impl_->measureText(inLabel, style);
-	const oa::F32 padX = std::max(0.0F, style.framePaddingX);
-	const oa::F32 padY = std::max(0.0F, style.framePaddingY);
-	const oa::F32 height = std::max(style.fontSize, textExtent.y) + padY * 2.0F;
-	const oa::F32 hugWidth = std::max(height, textExtent.x + padX * 2.0F);
+	const oa::F32 padX = oa::max(0.0F, style.framePaddingX);
+	const oa::F32 padY = oa::max(0.0F, style.framePaddingY);
+	const oa::F32 height = oa::max(style.fontSize, textExtent.y) + padY * 2.0F;
+	const oa::F32 hugWidth = oa::max(height, textExtent.x + padX * 2.0F);
 	const oa::U32 id = hashWidgetScope(impl_->currentScope(), inLabel);
 	const oa::PixelRect rect = impl_->placeItem(hugWidth, height);
 	if (rect.w <= 0 || rect.h <= 0) return false;
@@ -4139,8 +4139,8 @@ bool oa::Ui::button(oa::StringView inLabel) {
 		? style.accentActive
 		: interaction.hovered ? style.surfaceActive : style.surfaceHover;
 	this->rect(rect, fill);
-	const oa::U32 borderWidth = static_cast<oa::U32>(std::clamp(
-		std::isfinite(style.borderWidth) ? std::floor(style.borderWidth + 0.5F) : 1.0F,
+	const oa::U32 borderWidth = static_cast<oa::U32>(oa::clamp(
+		oa::isFinite(style.borderWidth) ? oa::floor(style.borderWidth + 0.5F) : 1.0F,
 		1.0F,
 		8.0F));
 	rectOutline(
@@ -4159,10 +4159,10 @@ bool oa::Ui::button(oa::StringView inLabel) {
 
 	oa::UiLayout textLayout;
 	textLayout.padding = oa::UiEdge{};
-	textLayout.padding.top = std::max(
+	textLayout.padding.top = oa::max(
 		0.0F,
 		(static_cast<oa::F32>(rect.h) - textExtent.y) * 0.5F);
-	textLayout.padding.left = std::max(
+	textLayout.padding.left = oa::max(
 		0.0F,
 		(static_cast<oa::F32>(rect.w) - textExtent.x) * 0.5F);
 	beginPanel("__button_text", rect, textLayout);
@@ -4195,7 +4195,7 @@ bool oa::Ui::chevronButton(
 		impl_->lastItemHovered = false;
 	}
 	const oa::F32 radius = 0.5F
-		* static_cast<oa::F32>(std::min(inRect.w, inRect.h));
+		* static_cast<oa::F32>(oa::min(inRect.w, inRect.h));
 	const oa::Color fill = !inEnabled
 		? oa::Color{0.04F, 0.04F, 0.04F, 0.42F}
 		: interaction.held || interaction.activated
@@ -4216,9 +4216,9 @@ bool oa::Ui::chevronButton(
 		+ 0.5F * static_cast<oa::F32>(inRect.w);
 	const oa::F32 centerY = static_cast<oa::F32>(inRect.y)
 		+ 0.5F * static_cast<oa::F32>(inRect.h);
-	const oa::F32 span = std::max(
+	const oa::F32 span = oa::max(
 		2.0F,
-		0.18F * static_cast<oa::F32>(std::min(inRect.w, inRect.h)));
+		0.18F * static_cast<oa::F32>(oa::min(inRect.w, inRect.h)));
 	const oa::F32 direction = inDirection == oa::UiChevronDirection::Previous
 		? -1.0F : 1.0F;
 	const oa::vlm::Vec2 tip{centerX + direction * span, centerY};
@@ -4226,9 +4226,9 @@ bool oa::Ui::chevronButton(
 	const oa::Color icon = inEnabled
 		? oa::Color{1.0F, 1.0F, 1.0F, 0.94F}
 		: oa::Color{1.0F, 1.0F, 1.0F, 0.38F};
-	const oa::F32 thickness = std::max(
+	const oa::F32 thickness = oa::max(
 		1.5F,
-		0.055F * static_cast<oa::F32>(std::min(inRect.w, inRect.h)));
+		0.055F * static_cast<oa::F32>(oa::min(inRect.w, inRect.h)));
 	line({tailX, centerY - span}, tip, icon, thickness);
 	line(tip, {tailX, centerY + span}, icon, thickness);
 
@@ -4254,11 +4254,11 @@ bool oa::Ui::checkbox(oa::StringView inLabel, bool& inOutValue) {
 	if (!impl_) return false;
 	const oa::UiStyle& style = currentStyle();
 	const oa::vlm::Vec2 textExtent = impl_->measureText(inLabel, style);
-	const oa::F32 padX = std::max(0.0F, style.framePaddingX);
-	const oa::F32 padY = std::max(0.0F, style.framePaddingY);
-	const oa::F32 boxSize = std::max(12.0F, std::ceil(style.fontSize));
-	const oa::F32 innerGap = std::max(4.0F, style.itemSpacing);
-	const oa::F32 height = std::max(boxSize, textExtent.y) + padY * 2.0F;
+	const oa::F32 padX = oa::max(0.0F, style.framePaddingX);
+	const oa::F32 padY = oa::max(0.0F, style.framePaddingY);
+	const oa::F32 boxSize = oa::max(12.0F, oa::ceil(style.fontSize));
+	const oa::F32 innerGap = oa::max(4.0F, style.itemSpacing);
+	const oa::F32 height = oa::max(boxSize, textExtent.y) + padY * 2.0F;
 	const oa::F32 hugWidth = padX * 2.0F + boxSize + innerGap + textExtent.x;
 	const oa::U32 id = hashWidgetScope(impl_->currentScope(), inLabel);
 	const oa::PixelRect rect = impl_->placeItem(hugWidth, height);
@@ -4271,12 +4271,12 @@ bool oa::Ui::checkbox(oa::StringView inLabel, bool& inOutValue) {
 	}
 	if (input_.focusId == id) rectOutline(rect, style.accentHover, 1U);
 
-	const oa::I32 box = std::max<oa::I32>(1, static_cast<oa::I32>(boxSize + 0.5F));
+	const oa::I32 box = oa::max<oa::I32>(1, static_cast<oa::I32>(boxSize + 0.5F));
 	const oa::PixelRect boxRect{
 		rect.x + static_cast<oa::I32>(padX + 0.5F),
-		rect.y + std::max<oa::I32>(0, (rect.h - box) / 2),
-		std::min(box, rect.w),
-		std::min(box, rect.h),
+		rect.y + oa::max<oa::I32>(0, (rect.h - box) / 2),
+		oa::min(box, rect.w),
+		oa::min(box, rect.h),
 	};
 	this->rect(boxRect, inOutValue ? style.accent : style.surfaceActive);
 	rectOutline(boxRect, interaction.hovered ? style.borderStrong : style.border, 1U);
@@ -4304,10 +4304,10 @@ bool oa::Ui::checkbox(oa::StringView inLabel, bool& inOutValue) {
 
 	oa::UiLayout textLayout;
 	textLayout.padding = oa::UiEdge{};
-	textLayout.padding.top = std::max(
+	textLayout.padding.top = oa::max(
 		0.0F,
 		(static_cast<oa::F32>(rect.h) - textExtent.y) * 0.5F);
-	textLayout.padding.left = std::min(
+	textLayout.padding.left = oa::min(
 		static_cast<oa::F32>(rect.w),
 		padX + boxSize + innerGap);
 	beginPanel("__checkbox_text", rect, textLayout);
@@ -4327,8 +4327,8 @@ bool oa::Ui::sliderF32(
 			"oa::Ui::sliderF32 requires a value pointer"));
 		return false;
 	}
-	if (!std::isfinite(inMin) || !std::isfinite(inMax)
-		|| !std::isfinite(*inOutValue) || inMin > inMax) {
+	if (!oa::isFinite(inMin) || !oa::isFinite(inMax)
+		|| !oa::isFinite(*inOutValue) || inMin > inMax) {
 		impl_->setFrameError(oa::Status::invalidArgument(
 			"oa::Ui::sliderF32 requires finite values and min <= max"));
 		return false;
@@ -4340,14 +4340,14 @@ bool oa::Ui::sliderF32(
 	}
 
 	bool changed = false;
-	const oa::F32 clamped = std::clamp(*inOutValue, inMin, inMax);
+	const oa::F32 clamped = oa::clamp(*inOutValue, inMin, inMax);
 	if (*inOutValue != clamped) {
 		*inOutValue = clamped;
 		changed = true;
 	}
-	std::array<char, 128> valueBuffer{};
+	oa::Array<char, 128> valueBuffer{};
 	auto formatValue = [&](oa::F32 inValue) -> oa::StringView {
-		const int written = std::snprintf(
+		const int written = ::snprintf(
 			valueBuffer.data(), valueBuffer.size(), inFmt,
 			static_cast<double>(inValue));
 		if (written < 0) {
@@ -4373,15 +4373,15 @@ bool oa::Ui::sliderF32(
 	const oa::vlm::Vec2 labelExtent = impl_->measureText(inLabel, style);
 	oa::StringView valueText = formatValue(*inOutValue);
 	oa::vlm::Vec2 valueExtent = impl_->measureText(valueText, style);
-	const oa::F32 padX = std::max(0.0F, style.framePaddingX);
-	const oa::F32 padY = std::max(0.0F, style.framePaddingY);
-	const oa::F32 height = std::max(
+	const oa::F32 padX = oa::max(0.0F, style.framePaddingX);
+	const oa::F32 padY = oa::max(0.0F, style.framePaddingY);
+	const oa::F32 height = oa::max(
 		style.fontSize,
-		std::max(labelExtent.y, valueExtent.y)) + padY * 2.0F;
-	const oa::F32 hugWidth = std::max(
+		oa::max(labelExtent.y, valueExtent.y)) + padY * 2.0F;
+	const oa::F32 hugWidth = oa::max(
 		180.0F,
 		labelExtent.x + valueExtent.x + padX * 2.0F
-			+ std::max(4.0F, style.itemSpacing));
+			+ oa::max(4.0F, style.itemSpacing));
 	const oa::U32 id = hashWidgetScope(impl_->currentScope(), inLabel);
 	const oa::PixelRect rect = impl_->placeItem(hugWidth, height);
 	if (rect.w <= 0 || rect.h <= 0) return changed;
@@ -4391,8 +4391,8 @@ bool oa::Ui::sliderF32(
 	const bool pointerAdjust = interaction.held
 		|| (interaction.hovered && input_.lPressed);
 	if (pointerAdjust && range > 0.0) {
-		const double denominator = static_cast<double>(std::max(1, rect.w - 1));
-		const double fraction = std::clamp(
+		const double denominator = static_cast<double>(oa::max(1, rect.w - 1));
+		const double fraction = oa::clamp(
 			(static_cast<double>(input_.mouseX) - static_cast<double>(rect.x))
 				/ denominator,
 			0.0,
@@ -4405,7 +4405,7 @@ bool oa::Ui::sliderF32(
 		}
 	}
 	if (input_.focusId == id && impl_->keyboardAdjust != 0.0F) {
-		const double next = std::clamp(
+		const double next = oa::clamp(
 			static_cast<double>(*inOutValue)
 				+ range * 0.01 * static_cast<double>(impl_->keyboardAdjust),
 			static_cast<double>(inMin),
@@ -4463,14 +4463,14 @@ bool oa::Ui::sliderI32(
 		return false;
 	}
 	bool changed = false;
-	const oa::I32 clamped = std::clamp(*inOutValue, inMin, inMax);
+	const oa::I32 clamped = oa::clamp(*inOutValue, inMin, inMax);
 	if (*inOutValue != clamped) {
 		*inOutValue = clamped;
 		changed = true;
 	}
-	std::array<char, 32> valueBuffer{};
+	oa::Array<char, 32> valueBuffer{};
 	auto formatValue = [&]() -> oa::StringView {
-		const int written = std::snprintf(
+		const int written = ::snprintf(
 			valueBuffer.data(), valueBuffer.size(), "%d",
 			static_cast<int>(*inOutValue));
 		if (written < 0 || static_cast<oa::Usize>(written) >= valueBuffer.size()) {
@@ -4489,15 +4489,15 @@ bool oa::Ui::sliderI32(
 	const oa::vlm::Vec2 labelExtent = impl_->measureText(inLabel, style);
 	oa::StringView valueText = formatValue();
 	oa::vlm::Vec2 valueExtent = impl_->measureText(valueText, style);
-	const oa::F32 padX = std::max(0.0F, style.framePaddingX);
-	const oa::F32 padY = std::max(0.0F, style.framePaddingY);
-	const oa::F32 height = std::max(
+	const oa::F32 padX = oa::max(0.0F, style.framePaddingX);
+	const oa::F32 padY = oa::max(0.0F, style.framePaddingY);
+	const oa::F32 height = oa::max(
 		style.fontSize,
-		std::max(labelExtent.y, valueExtent.y)) + padY * 2.0F;
-	const oa::F32 hugWidth = std::max(
+		oa::max(labelExtent.y, valueExtent.y)) + padY * 2.0F;
+	const oa::F32 hugWidth = oa::max(
 		180.0F,
 		labelExtent.x + valueExtent.x + padX * 2.0F
-			+ std::max(4.0F, style.itemSpacing));
+			+ oa::max(4.0F, style.itemSpacing));
 	const oa::U32 id = hashWidgetScope(impl_->currentScope(), inLabel);
 	const oa::PixelRect rect = impl_->placeItem(hugWidth, height);
 	if (rect.w <= 0 || rect.h <= 0) return changed;
@@ -4507,15 +4507,15 @@ bool oa::Ui::sliderI32(
 	const bool pointerAdjust = interaction.held
 		|| (interaction.hovered && input_.lPressed);
 	if (pointerAdjust && range > 0) {
-		const double denominator = static_cast<double>(std::max(1, rect.w - 1));
-		const double fraction = std::clamp(
+		const double denominator = static_cast<double>(oa::max(1, rect.w - 1));
+		const double fraction = oa::clamp(
 			(static_cast<double>(input_.mouseX) - static_cast<double>(rect.x))
 				/ denominator,
 			0.0,
 			1.0);
-		const oa::I64 next = std::clamp<oa::I64>(
+		const oa::I64 next = oa::clamp<oa::I64>(
 			static_cast<oa::I64>(inMin)
-				+ static_cast<oa::I64>(std::llround(static_cast<double>(range) * fraction)),
+				+ static_cast<oa::I64>(oa::round(static_cast<double>(range) * fraction)),
 			static_cast<oa::I64>(inMin),
 			static_cast<oa::I64>(inMax));
 		const oa::I32 adjusted = static_cast<oa::I32>(next);
@@ -4525,13 +4525,13 @@ bool oa::Ui::sliderI32(
 		}
 	}
 	if (input_.focusId == id && impl_->keyboardAdjust != 0.0F) {
-		const oa::I64 magnitude = std::max<oa::I64>(
+		const oa::I64 magnitude = oa::max<oa::I64>(
 			1,
-			static_cast<oa::I64>(std::llround(
+			static_cast<oa::I64>(oa::round(
 				static_cast<double>(range) * 0.01
-					* std::fabs(static_cast<double>(impl_->keyboardAdjust)))));
+					* oa::abs(static_cast<double>(impl_->keyboardAdjust)))));
 		const oa::I64 direction = impl_->keyboardAdjust > 0.0F ? 1 : -1;
-		const oa::I64 next = std::clamp<oa::I64>(
+		const oa::I64 next = oa::clamp<oa::I64>(
 			static_cast<oa::I64>(*inOutValue) + direction * magnitude,
 			static_cast<oa::I64>(inMin),
 			static_cast<oa::I64>(inMax));
@@ -4582,13 +4582,13 @@ bool oa::Ui::inputText(oa::StringView inLabel, oa::String& inOutText) {
 	const oa::UiStyle& style = currentStyle();
 	const oa::vlm::Vec2 labelExtent = impl_->measureText(inLabel, style);
 	oa::vlm::Vec2 valueExtent = impl_->measureText(inOutText.view(), style);
-	const oa::F32 padX = std::max(0.0F, style.framePaddingX);
-	const oa::F32 padY = std::max(0.0F, style.framePaddingY);
-	const oa::F32 innerGap = std::max(4.0F, style.itemSpacing);
-	const oa::F32 height = std::max(
+	const oa::F32 padX = oa::max(0.0F, style.framePaddingX);
+	const oa::F32 padY = oa::max(0.0F, style.framePaddingY);
+	const oa::F32 innerGap = oa::max(4.0F, style.itemSpacing);
+	const oa::F32 height = oa::max(
 		style.fontSize,
-		std::max(labelExtent.y, valueExtent.y)) + padY * 2.0F;
-	const oa::F32 hugWidth = std::max(
+		oa::max(labelExtent.y, valueExtent.y)) + padY * 2.0F;
+	const oa::F32 hugWidth = oa::max(
 		220.0F,
 		labelExtent.x + 128.0F + padX * 3.0F + innerGap);
 	const oa::U32 id = hashWidgetScope(impl_->currentScope(), inLabel);
@@ -4609,8 +4609,8 @@ bool oa::Ui::inputText(oa::StringView inLabel, oa::String& inOutText) {
 		state.redo.clear();
 		state.lastValue = inOutText;
 	}
-	state.cursor = std::min(state.cursor, inOutText.size());
-	state.anchor = std::min(state.anchor, inOutText.size());
+	state.cursor = oa::min(state.cursor, inOutText.size());
+	state.anchor = oa::min(state.anchor, inOutText.size());
 	while (state.cursor > 0U && state.cursor < inOutText.size()
 		&& isUtf8Continuation(static_cast<oa::U8>(inOutText[state.cursor]))) {
 		--state.cursor;
@@ -4623,34 +4623,34 @@ bool oa::Ui::inputText(oa::StringView inLabel, oa::String& inOutText) {
 	const auto interaction = impl_->interact(input_, id, rect);
 	const bool focused = input_.focusId == id;
 	if (!focused) state.preedit.clear();
-	const oa::I32 minimumEditorWidth = std::min<oa::I32>(48, rect.w);
-	const oa::I32 labelPixels = static_cast<oa::I32>(std::ceil(
+	const oa::I32 minimumEditorWidth = oa::min<oa::I32>(48, rect.w);
+	const oa::I32 labelPixels = static_cast<oa::I32>(oa::ceil(
 		padX + labelExtent.x + innerGap));
-	const oa::I32 proportional = static_cast<oa::I32>(std::floor(
+	const oa::I32 proportional = static_cast<oa::I32>(oa::floor(
 		static_cast<oa::F32>(rect.w) * 0.38F));
-	const oa::I32 valueOffset = std::clamp(
-		std::max(labelPixels, proportional),
+	const oa::I32 valueOffset = oa::clamp(
+		oa::max(labelPixels, proportional),
 		0,
-		std::max(0, rect.w - minimumEditorWidth));
+		oa::max(0, rect.w - minimumEditorWidth));
 	const oa::PixelRect editRect{
 		rect.x + valueOffset,
 		rect.y,
 		rect.w - valueOffset,
 		rect.h,
 	};
-	const oa::I32 textPad = std::max<oa::I32>(
-		2, static_cast<oa::I32>(std::floor(padX + 0.5F)));
+	const oa::I32 textPad = oa::max<oa::I32>(
+		2, static_cast<oa::I32>(oa::floor(padX + 0.5F)));
 	const oa::PixelRect textRect{
 		editRect.x + textPad,
 		editRect.y,
-		std::max(0, editRect.w - textPad * 2),
+		oa::max(0, editRect.w - textPad * 2),
 		editRect.h,
 	};
 
 	const auto selection = [&] {
-		return std::pair<oa::Usize, oa::Usize>{
-			std::min(state.cursor, state.anchor),
-			std::max(state.cursor, state.anchor),
+		return oa::Pair<oa::Usize, oa::Usize>{
+			oa::min(state.cursor, state.anchor),
+			oa::max(state.cursor, state.anchor),
 		};
 	};
 	const auto replaceRange = [&](oa::Usize inBegin, oa::Usize inEnd,
@@ -4679,7 +4679,7 @@ bool oa::Ui::inputText(oa::StringView inLabel, oa::String& inOutText) {
 			|| byte == '_';
 	};
 	const auto previousWord = [&](oa::Usize inOffset) {
-		oa::Usize offset = std::min(inOffset, inOutText.size());
+		oa::Usize offset = oa::min(inOffset, inOutText.size());
 		while (offset > 0U) {
 			const oa::Usize previous = utf8Previous(inOutText.view(), offset);
 			if (isWordAt(previous)) break;
@@ -4693,7 +4693,7 @@ bool oa::Ui::inputText(oa::StringView inLabel, oa::String& inOutText) {
 		return offset;
 	};
 	const auto nextWord = [&](oa::Usize inOffset) {
-		oa::Usize offset = std::min(inOffset, inOutText.size());
+		oa::Usize offset = oa::min(inOffset, inOutText.size());
 		while (offset < inOutText.size() && !isWordAt(offset)) {
 			offset = utf8ScalarEnd(inOutText.view(), offset);
 		}
@@ -4704,25 +4704,25 @@ bool oa::Ui::inputText(oa::StringView inLabel, oa::String& inOutText) {
 	};
 	const auto wordBounds = [&](oa::Usize inOffset) {
 		if (inOutText.empty()) {
-			return std::pair<oa::Usize, oa::Usize>{0U, 0U};
+			return oa::Pair<oa::Usize, oa::Usize>{0U, 0U};
 		}
-		oa::Usize probe = std::min(inOffset, inOutText.size());
+		oa::Usize probe = oa::min(inOffset, inOutText.size());
 		if (probe == inOutText.size()) probe = utf8Previous(inOutText.view(), probe);
 		if (!isWordAt(probe) && probe > 0U) {
 			const oa::Usize prior = utf8Previous(inOutText.view(), probe);
 			if (isWordAt(prior)) probe = prior;
 		}
 		if (isWordAt(probe)) {
-			return std::pair<oa::Usize, oa::Usize>{
+			return oa::Pair<oa::Usize, oa::Usize>{
 				previousWord(utf8ScalarEnd(inOutText.view(), probe)),
 				nextWord(probe),
 			};
 		}
-		return std::pair<oa::Usize, oa::Usize>{
+		return oa::Pair<oa::Usize, oa::Usize>{
 			probe, utf8ScalarEnd(inOutText.view(), probe)};
 	};
 	const auto moveCursor = [&](oa::Usize inOffset, bool inExtend) {
-		state.cursor = std::min(inOffset, inOutText.size());
+		state.cursor = oa::min(inOffset, inOutText.size());
 		if (!inExtend) state.anchor = state.cursor;
 	};
 
@@ -4759,8 +4759,8 @@ bool oa::Ui::inputText(oa::StringView inLabel, oa::String& inOutText) {
 		inFrom.popBack();
 		pushHistory(inTo, oa::move(current));
 		inOutText = oa::move(restore.text);
-		state.cursor = std::min(restore.cursor, inOutText.size());
-		state.anchor = std::min(restore.anchor, inOutText.size());
+		state.cursor = oa::min(restore.cursor, inOutText.size());
+		state.anchor = oa::min(restore.anchor, inOutText.size());
 		state.preedit.clear();
 		changed = true;
 		caretActivity = true;
@@ -4810,9 +4810,9 @@ bool oa::Ui::inputText(oa::StringView inLabel, oa::String& inOutText) {
 					} else {
 						const oa::I32 start = event.selectionStart;
 						const oa::I64 end64 = static_cast<oa::I64>(start)
-							+ std::max<oa::I64>(0, event.selectionLength);
-						const oa::I32 end = static_cast<oa::I32>(std::min<oa::I64>(
-							end64, std::numeric_limits<oa::I32>::max()));
+							+ oa::max<oa::I64>(0, event.selectionLength);
+						const oa::I32 end = static_cast<oa::I32>(oa::min<oa::I64>(
+							end64, oa::Limits<oa::I32>::max()));
 						state.preeditSelectionBegin = utf8ByteOffsetForScalarIndex(
 							state.preedit.view(), start);
 						state.preeditSelectionEnd = utf8ByteOffsetForScalarIndex(
@@ -4912,7 +4912,7 @@ bool oa::Ui::inputText(oa::StringView inLabel, oa::String& inOutText) {
 
 	const auto measureCommittedPrefix = [&](oa::Usize inEnd) {
 		return impl_->measureText(
-			oa::StringView(inOutText.data(), std::min(inEnd, inOutText.size())),
+			oa::StringView(inOutText.data(), oa::min(inEnd, inOutText.size())),
 			style).x;
 	};
 	const auto cursorFromPointer = [&] {
@@ -4972,22 +4972,22 @@ bool oa::Ui::inputText(oa::StringView inLabel, oa::String& inOutText) {
 	valueExtent = impl_->measureText(displayText.view(), style);
 	const auto measureDisplayPrefix = [&](oa::Usize inEnd) {
 		return impl_->measureText(
-			oa::StringView(displayText.data(), std::min(inEnd, displayText.size())),
+			oa::StringView(displayText.data(), oa::min(inEnd, displayText.size())),
 			style).x;
 	};
 
 	const oa::F32 caretX = measureDisplayPrefix(displayCaret);
-	const oa::F32 availableWidth = static_cast<oa::F32>(std::max(1, textRect.w));
+	const oa::F32 availableWidth = static_cast<oa::F32>(oa::max(1, textRect.w));
 	if (caretX < state.scrollX) state.scrollX = caretX;
 	if (caretX - state.scrollX > availableWidth - 1.0F) {
 		state.scrollX = caretX - availableWidth + 1.0F;
 	}
 	const oa::F32 textWidth = valueExtent.x;
-	state.scrollX = std::clamp(
-		state.scrollX, 0.0F, std::max(0.0F, textWidth - availableWidth));
+	state.scrollX = oa::clamp(
+		state.scrollX, 0.0F, oa::max(0.0F, textWidth - availableWidth));
 	const oa::I32 caretPixel = textRect.w > 0
-		? std::clamp(
-			textRect.x + static_cast<oa::I32>(std::floor(
+		? oa::clamp(
+			textRect.x + static_cast<oa::I32>(oa::floor(
 				caretX - state.scrollX + 0.5F)),
 			textRect.x,
 			textRect.x + textRect.w - 1)
@@ -5007,46 +5007,46 @@ bool oa::Ui::inputText(oa::StringView inLabel, oa::String& inOutText) {
 		&& textRect.w > 0) {
 		const oa::F32 beginX = measureDisplayPrefix(selectionBegin) - state.scrollX;
 		const oa::F32 endX = measureDisplayPrefix(selectionEnd) - state.scrollX;
-		const oa::I32 left = std::clamp(
-			textRect.x + static_cast<oa::I32>(std::floor(beginX)),
+		const oa::I32 left = oa::clamp(
+			textRect.x + static_cast<oa::I32>(oa::floor(beginX)),
 			textRect.x,
 			textRect.x + textRect.w);
-		const oa::I32 right = std::clamp(
-			textRect.x + static_cast<oa::I32>(std::ceil(endX)),
+		const oa::I32 right = oa::clamp(
+			textRect.x + static_cast<oa::I32>(oa::ceil(endX)),
 			textRect.x,
 			textRect.x + textRect.w);
 		if (right > left) {
 			this->rect({left, textRect.y + 2, right - left,
-				std::max(1, textRect.h - 4)}, style.accent.withAlpha(0.45F));
+				oa::max(1, textRect.h - 4)}, style.accent.withAlpha(0.45F));
 		}
 	}
 	if (composing && textRect.w > 0) {
 		const oa::Usize selectedBegin = compositionBegin
-			+ std::min(state.preeditSelectionBegin, state.preedit.size());
+			+ oa::min(state.preeditSelectionBegin, state.preedit.size());
 		const oa::Usize selectedEnd = compositionBegin
-			+ std::min(state.preeditSelectionEnd, state.preedit.size());
+			+ oa::min(state.preeditSelectionEnd, state.preedit.size());
 		const oa::F32 compositionX = measureDisplayPrefix(compositionBegin)
 			- state.scrollX;
 		const oa::F32 compositionRight = measureDisplayPrefix(compositionEnd)
 			- state.scrollX;
-		const oa::I32 underlineLeft = std::clamp(
-			textRect.x + static_cast<oa::I32>(std::floor(compositionX)),
+		const oa::I32 underlineLeft = oa::clamp(
+			textRect.x + static_cast<oa::I32>(oa::floor(compositionX)),
 			textRect.x, textRect.x + textRect.w);
-		const oa::I32 underlineRight = std::clamp(
-			textRect.x + static_cast<oa::I32>(std::ceil(compositionRight)),
+		const oa::I32 underlineRight = oa::clamp(
+			textRect.x + static_cast<oa::I32>(oa::ceil(compositionRight)),
 			textRect.x, textRect.x + textRect.w);
 		if (selectedEnd > selectedBegin) {
-			const oa::I32 left = std::clamp(
-				textRect.x + static_cast<oa::I32>(std::floor(
+			const oa::I32 left = oa::clamp(
+				textRect.x + static_cast<oa::I32>(oa::floor(
 					measureDisplayPrefix(selectedBegin) - state.scrollX)),
 				textRect.x, textRect.x + textRect.w);
-			const oa::I32 right = std::clamp(
-				textRect.x + static_cast<oa::I32>(std::ceil(
+			const oa::I32 right = oa::clamp(
+				textRect.x + static_cast<oa::I32>(oa::ceil(
 					measureDisplayPrefix(selectedEnd) - state.scrollX)),
 				textRect.x, textRect.x + textRect.w);
 			if (right > left) {
 				this->rect({left, textRect.y + 2, right - left,
-					std::max(1, textRect.h - 4)}, style.accent.withAlpha(0.38F));
+					oa::max(1, textRect.h - 4)}, style.accent.withAlpha(0.38F));
 			}
 		}
 		if (underlineRight > underlineLeft) {
@@ -5060,7 +5060,7 @@ bool oa::Ui::inputText(oa::StringView inLabel, oa::String& inOutText) {
 	oa::UiLayout labelLayout;
 	labelLayout.padding = oa::UiEdge{};
 	labelLayout.padding.left = padX;
-	labelLayout.padding.top = std::max(
+	labelLayout.padding.top = oa::max(
 		0.0F, (static_cast<oa::F32>(rect.h) - labelExtent.y) * 0.5F);
 	const oa::PixelRect labelRect{rect.x, rect.y, valueOffset, rect.h};
 	if (!inLabel.empty() && labelRect.w > 0) {
@@ -5072,22 +5072,22 @@ bool oa::Ui::inputText(oa::StringView inLabel, oa::String& inOutText) {
 		oa::UiLayout textLayout;
 		textLayout.padding = oa::UiEdge{};
 		textLayout.padding.left = -state.scrollX;
-		textLayout.padding.top = std::max(
+		textLayout.padding.top = oa::max(
 			0.0F, (static_cast<oa::F32>(textRect.h) - valueExtent.y) * 0.5F);
 		beginPanel("__input_value", textRect, textLayout);
 		impl_->appendText(displayText.view(), style, false);
 		endPanel();
 	}
 	if (focused && state.blinkMs < 600.0F && textRect.w > 0) {
-		const oa::I32 caretHeight = std::max(
-			1, std::min(textRect.h - 4,
-				static_cast<oa::I32>(std::ceil(style.fontSize))));
-		this->rect({caretPixel, textRect.y + std::max(2, (textRect.h - caretHeight) / 2),
+		const oa::I32 caretHeight = oa::max(
+			1, oa::min(textRect.h - 4,
+				static_cast<oa::I32>(oa::ceil(style.fontSize))));
+		this->rect({caretPixel, textRect.y + oa::max(2, (textRect.h - caretHeight) / 2),
 			1, caretHeight}, style.text);
 	}
-	const oa::U32 borderWidth = static_cast<oa::U32>(std::clamp(
-		std::isfinite(style.borderWidth)
-			? std::floor(style.borderWidth + 0.5F) : 1.0F,
+	const oa::U32 borderWidth = static_cast<oa::U32>(oa::clamp(
+		oa::isFinite(style.borderWidth)
+			? oa::floor(style.borderWidth + 0.5F) : 1.0F,
 		1.0F,
 		8.0F));
 	rectOutline(rect, focused ? style.accentHover : style.border, borderWidth);
@@ -5111,7 +5111,7 @@ bool oa::Ui::dropdown(
 	const oa::UiDropdownConfig& inConfig) {
 	if (!impl_) return false;
 	if (inItems.empty()
-		|| inItems.size() > static_cast<oa::Usize>(std::numeric_limits<oa::I32>::max())
+		|| inItems.size() > static_cast<oa::Usize>(oa::Limits<oa::I32>::max())
 		|| inOutSelected < 0
 		|| static_cast<oa::Usize>(inOutSelected) >= inItems.size()
 		|| inConfig.maxVisibleItems <= 0 || inConfig.popupWidth < 0
@@ -5127,11 +5127,11 @@ bool oa::Ui::dropdown(
 	if (!inLabel.empty()) display.append(oa::StringView("  "));
 	display.append(inItems[static_cast<oa::Usize>(inOutSelected)]);
 	const oa::vlm::Vec2 textExtent = impl_->measureText(display.view(), style);
-	const oa::F32 padX = std::max(0.0F, style.framePaddingX);
-	const oa::F32 padY = std::max(0.0F, style.framePaddingY);
-	const oa::F32 height = std::max(style.fontSize, textExtent.y) + padY * 2.0F;
-	const oa::F32 arrowWidth = std::max(10.0F, style.fontSize * 0.75F);
-	const oa::F32 hugWidth = std::max(
+	const oa::F32 padX = oa::max(0.0F, style.framePaddingX);
+	const oa::F32 padY = oa::max(0.0F, style.framePaddingY);
+	const oa::F32 height = oa::max(style.fontSize, textExtent.y) + padY * 2.0F;
+	const oa::F32 arrowWidth = oa::max(10.0F, style.fontSize * 0.75F);
+	const oa::F32 hugWidth = oa::max(
 		height, textExtent.x + padX * 3.0F + arrowWidth);
 	const oa::U32 id = hashWidgetScope(impl_->currentScope(), inLabel);
 	const oa::PixelRect rect = impl_->placeItem(hugWidth, height);
@@ -5160,7 +5160,7 @@ bool oa::Ui::dropdown(
 	textLayout.padding = oa::UiEdge{};
 	textLayout.padding.left = padX;
 	textLayout.padding.right = padX * 2.0F + arrowWidth;
-	textLayout.padding.top = std::max(
+	textLayout.padding.top = oa::max(
 		0.0F, (static_cast<oa::F32>(rect.h) - textExtent.y) * 0.5F);
 	beginPanel("__dropdown_text", rect, textLayout);
 	impl_->appendText(display.view(), style, false);
@@ -5169,7 +5169,7 @@ bool oa::Ui::dropdown(
 		- padX - arrowWidth * 0.5F;
 	const oa::F32 centerY = static_cast<oa::F32>(rect.y)
 		+ static_cast<oa::F32>(rect.h) * 0.5F;
-	const oa::F32 half = std::max(2.0F, arrowWidth * 0.24F);
+	const oa::F32 half = oa::max(2.0F, arrowWidth * 0.24F);
 	const oa::F32 direction = open ? -1.0F : 1.0F;
 	line({centerX - half, centerY - direction * half * 0.5F},
 		{centerX, centerY + direction * half * 0.5F}, style.textSecondary, 1.25F);
@@ -5178,20 +5178,20 @@ bool oa::Ui::dropdown(
 		style.textSecondary, 1.25F);
 
 	bool changed = false;
-	const oa::I32 itemHeight = std::max<oa::I32>(1,
-		static_cast<oa::I32>(std::ceil(height)));
+	const oa::I32 itemHeight = oa::max<oa::I32>(1,
+		static_cast<oa::I32>(oa::ceil(height)));
 	if (inItems.size() > static_cast<oa::Usize>(
-		(std::numeric_limits<oa::I32>::max() - 8) / itemHeight)) {
+		(oa::Limits<oa::I32>::max() - 8) / itemHeight)) {
 		impl_->setFrameError(oa::Status::error(
 			oa::StatusCode::OutOfRange,
 			"oa::Ui::dropdown item geometry exceeds signed layout capacity"));
 		return false;
 	}
-	const oa::I32 visibleItems = std::min<oa::I32>(
+	const oa::I32 visibleItems = oa::min<oa::I32>(
 		inConfig.maxVisibleItems, static_cast<oa::I32>(inItems.size()));
 	const oa::I32 popupPadding = 4;
 	const oa::UiPopupConfig popupConfig{
-		.width = std::max(rect.w, inConfig.popupWidth),
+		.width = oa::max(rect.w, inConfig.popupWidth),
 		.height = visibleItems * itemHeight + popupPadding * 2,
 		.gap = inConfig.popupGap,
 		.padding = oa::UiEdge{},
@@ -5201,8 +5201,8 @@ bool oa::Ui::dropdown(
 		const oa::PixelRect scrollViewport{
 			popup.x + popupPadding,
 			popup.y + popupPadding,
-			std::max(1, popup.w - popupPadding * 2),
-			std::max(1, popup.h - popupPadding * 2),
+			oa::max(1, popup.w - popupPadding * 2),
+			oa::max(1, popup.h - popupPadding * 2),
 		};
 		const oa::U32 scrollId = hashWidgetScope(
 			impl_->currentScope(), "__dropdown_scroll");
@@ -5292,12 +5292,12 @@ void oa::Ui::tooltip(
 	const oa::UiTooltipConfig& inConfig) {
 	if (!impl_ || inText.empty()) return;
 	const auto finiteEdge = [](const oa::UiEdge& inEdge) noexcept {
-		return std::isfinite(inEdge.top) && std::isfinite(inEdge.right)
-			&& std::isfinite(inEdge.bottom) && std::isfinite(inEdge.left)
+		return oa::isFinite(inEdge.top) && oa::isFinite(inEdge.right)
+			&& oa::isFinite(inEdge.bottom) && oa::isFinite(inEdge.left)
 			&& inEdge.top >= 0.0F && inEdge.right >= 0.0F
 			&& inEdge.bottom >= 0.0F && inEdge.left >= 0.0F;
 	};
-	if (!std::isfinite(inConfig.delayMs) || inConfig.delayMs < 0.0F
+	if (!oa::isFinite(inConfig.delayMs) || inConfig.delayMs < 0.0F
 		|| inConfig.maxWidth <= 0 || inConfig.gap < 0
 		|| !finiteEdge(inConfig.padding)) {
 		impl_->setFrameError(oa::Status::invalidArgument(
@@ -5342,12 +5342,12 @@ void oa::Ui::tooltip(
 	}
 
 	const oa::UiStyle& style = currentStyle();
-	if (!std::isfinite(style.fontSize) || style.fontSize <= 0.0F) {
+	if (!oa::isFinite(style.fontSize) || style.fontSize <= 0.0F) {
 		impl_->setFrameError(oa::Status::invalidArgument(
 			"oa::Ui tooltips require a finite positive font size"));
 		return;
 	}
-	const oa::F32 contentWidth = std::max(
+	const oa::F32 contentWidth = oa::max(
 		1.0F,
 		static_cast<oa::F32>(inConfig.maxWidth)
 			- inConfig.padding.left - inConfig.padding.right);
@@ -5357,13 +5357,13 @@ void oa::Ui::tooltip(
 		inText,
 		{.font = oa::FontId::Sans, .size = style.fontSize,
 		 .wrapWidth = contentWidth});
-	const oa::I32 width = std::clamp<oa::I32>(
-		static_cast<oa::I32>(std::ceil(
+	const oa::I32 width = oa::clamp<oa::I32>(
+		static_cast<oa::I32>(oa::ceil(
 			extent.x + inConfig.padding.left + inConfig.padding.right)),
 		1,
-		std::min(inConfig.maxWidth, impl_->frameViewport.w));
-	const oa::I32 height = std::clamp<oa::I32>(
-		static_cast<oa::I32>(std::ceil(
+		oa::min(inConfig.maxWidth, impl_->frameViewport.w));
+	const oa::I32 height = oa::clamp<oa::I32>(
+		static_cast<oa::I32>(oa::ceil(
 			extent.y + inConfig.padding.top + inConfig.padding.bottom)),
 		1,
 		impl_->frameViewport.h);
@@ -5371,17 +5371,17 @@ void oa::Ui::tooltip(
 	const oa::I32 top = impl_->frameViewport.y;
 	const oa::I32 right = left + impl_->frameViewport.w;
 	const oa::I32 bottom = top + impl_->frameViewport.h;
-	oa::I32 x = static_cast<oa::I32>(std::floor(input_.mouseX)) + inConfig.gap;
+	oa::I32 x = static_cast<oa::I32>(oa::floor(input_.mouseX)) + inConfig.gap;
 	if (x + width > right) {
-		x = static_cast<oa::I32>(std::floor(input_.mouseX))
+		x = static_cast<oa::I32>(oa::floor(input_.mouseX))
 			- inConfig.gap - width;
 	}
-	x = std::clamp(x, left, std::max(left, right - width));
+	x = oa::clamp(x, left, oa::max(left, right - width));
 	oa::I32 y = impl_->lastItemRect.y + impl_->lastItemRect.h + inConfig.gap;
 	if (y + height > bottom) {
 		y = impl_->lastItemRect.y - inConfig.gap - height;
 	}
-	y = std::clamp(y, top, std::max(top, bottom - height));
+	y = oa::clamp(y, top, oa::max(top, bottom - height));
 	const oa::PixelRect rect{x, y, width, height};
 
 	const bool previousOverlay = impl_->recordingOverlay;
@@ -5421,7 +5421,7 @@ void oa::Ui::labelFmt(const char* inFmt, ...) {
 	va_start(args, inFmt);
 	va_list copy;
 	va_copy(copy, args);
-	const int required = std::vsnprintf(nullptr, 0, inFmt, args);
+	const int required = ::vsnprintf(nullptr, 0, inFmt, args);
 	va_end(args);
 	if (required < 0) {
 		va_end(copy);
@@ -5429,8 +5429,8 @@ void oa::Ui::labelFmt(const char* inFmt, ...) {
 			"oa::Ui::labelFmt could not format the label"));
 		return;
 	}
-	std::vector<char> text(static_cast<oa::Usize>(required) + 1U);
-	(void)std::vsnprintf(text.data(), text.size(), inFmt, copy);
+	oa::Vec<char> text(static_cast<oa::Usize>(required) + 1U);
+	(void)::vsnprintf(text.data(), text.size(), inFmt, copy);
 	va_end(copy);
 	label(oa::StringView(text.data(), static_cast<oa::Usize>(required)));
 }
@@ -5450,7 +5450,7 @@ void oa::Ui::textAt(
 
 void oa::Ui::colorSwatch(oa::Color inColor, oa::vlm::Vec2 inSize) {
 	if (!impl_) return;
-	if (!std::isfinite(inSize.x) || !std::isfinite(inSize.y)
+	if (!oa::isFinite(inSize.x) || !oa::isFinite(inSize.y)
 		|| inSize.x <= 0.0F || inSize.y <= 0.0F) {
 		impl_->setFrameError(oa::Status::invalidArgument(
 			"oa::Ui::colorSwatch requires a finite positive size"));
@@ -5463,18 +5463,18 @@ void oa::Ui::colorSwatch(oa::Color inColor, oa::vlm::Vec2 inSize) {
 }
 void oa::Ui::progressBar(oa::F32 inFraction, oa::StringView inOverlay) {
 	if (!impl_) return;
-	if (!std::isfinite(inFraction)) {
+	if (!oa::isFinite(inFraction)) {
 		impl_->setFrameError(oa::Status::invalidArgument(
 			"oa::Ui::progressBar requires a finite fraction"));
 		return;
 	}
-	const oa::F32 fraction = std::clamp(inFraction, 0.0F, 1.0F);
-	std::array<char, 16> generatedOverlay{};
+	const oa::F32 fraction = oa::clamp(inFraction, 0.0F, 1.0F);
+	oa::Array<char, 16> generatedOverlay{};
 	oa::StringView overlay = inOverlay;
 	if (overlay.empty()) {
-		const int written = std::snprintf(
+		const int written = ::snprintf(
 			generatedOverlay.data(), generatedOverlay.size(), "%d%%",
-			static_cast<int>(std::lround(fraction * 100.0F)));
+			static_cast<int>(oa::round(fraction * 100.0F)));
 		if (written < 0
 			|| static_cast<oa::Usize>(written) >= generatedOverlay.size()) {
 			impl_->setFrameError(oa::Status::error(
@@ -5488,15 +5488,15 @@ void oa::Ui::progressBar(oa::F32 inFraction, oa::StringView inOverlay) {
 
 	const oa::UiStyle& style = currentStyle();
 	const oa::vlm::Vec2 textExtent = impl_->measureText(overlay, style);
-	const oa::F32 padX = std::max(0.0F, style.framePaddingX);
-	const oa::F32 padY = std::max(0.0F, style.framePaddingY);
-	const oa::F32 height = std::max(style.fontSize, textExtent.y) + padY * 2.0F;
-	const oa::F32 hugWidth = std::max(140.0F, textExtent.x + padX * 2.0F);
+	const oa::F32 padX = oa::max(0.0F, style.framePaddingX);
+	const oa::F32 padY = oa::max(0.0F, style.framePaddingY);
+	const oa::F32 height = oa::max(style.fontSize, textExtent.y) + padY * 2.0F;
+	const oa::F32 hugWidth = oa::max(140.0F, textExtent.x + padX * 2.0F);
 	const oa::PixelRect rect = impl_->placeItem(hugWidth, height);
 	if (rect.w <= 0 || rect.h <= 0) return;
 	this->rect(rect, style.surface);
-	const oa::I32 fillWidth = std::clamp(
-		static_cast<oa::I32>(std::floor(
+	const oa::I32 fillWidth = oa::clamp(
+		static_cast<oa::I32>(oa::floor(
 			static_cast<oa::F32>(rect.w) * fraction + 0.5F)),
 		0,
 		rect.w);
@@ -5508,10 +5508,10 @@ void oa::Ui::progressBar(oa::F32 inFraction, oa::StringView inOverlay) {
 	rectOutline(rect, style.border, 1U);
 	oa::UiLayout textLayout;
 	textLayout.padding = oa::UiEdge{};
-	textLayout.padding.top = std::max(
+	textLayout.padding.top = oa::max(
 		0.0F,
 		(static_cast<oa::F32>(rect.h) - textExtent.y) * 0.5F);
-	textLayout.padding.left = std::max(
+	textLayout.padding.left = oa::max(
 		0.0F,
 		(static_cast<oa::F32>(rect.w) - textExtent.x) * 0.5F);
 	beginPanel("__progress_text", rect, textLayout);
@@ -5531,7 +5531,7 @@ bool oa::Ui::timeline(
 
 	bool changed = false;
 	if (interaction.held || interaction.activated) {
-		const oa::F32 next = std::clamp(
+		const oa::F32 next = oa::clamp(
 			(input_.mouseX - static_cast<oa::F32>(inRect.x))
 				/ static_cast<oa::F32>(inRect.w),
 			0.0F,
@@ -5540,14 +5540,14 @@ bool oa::Ui::timeline(
 		inOutFraction = next;
 	}
 	if (input_.focusId == id && impl_->keyboardAdjust != 0.0F) {
-		const oa::F32 next = std::clamp(
+		const oa::F32 next = oa::clamp(
 			inOutFraction + impl_->keyboardAdjust * 0.01F, 0.0F, 1.0F);
 		changed = changed || next != inOutFraction;
 		inOutFraction = next;
 		impl_->keyboardAdjust = 0.0F;
 	}
 
-	inOutFraction = std::clamp(inOutFraction, 0.0F, 1.0F);
+	inOutFraction = oa::clamp(inOutFraction, 0.0F, 1.0F);
 	const oa::UiStyle& style = currentStyle();
 	this->rect(inRect, style.surface.withAlpha(0.94F));
 	const oa::I32 fillWidth = static_cast<oa::I32>(
@@ -5555,17 +5555,17 @@ bool oa::Ui::timeline(
 	if (fillWidth > 0) {
 		this->rect({inRect.x, inRect.y, fillWidth, inRect.h}, style.accent);
 	}
-	const oa::I32 maximumHandle = std::max<oa::I32>(1,
-		static_cast<oa::I32>(std::lround(6.0F * impl_->contentScale)));
-	const oa::I32 handleWidth = std::max<oa::I32>(1,
-		std::min<oa::I32>(inRect.w, std::min<oa::I32>(
-			maximumHandle, std::max<oa::I32>(1, inRect.h / 2))));
-	const oa::I32 handleX = std::clamp(
+	const oa::I32 maximumHandle = oa::max<oa::I32>(1,
+		static_cast<oa::I32>(oa::round(6.0F * impl_->contentScale)));
+	const oa::I32 handleWidth = oa::max<oa::I32>(1,
+		oa::min<oa::I32>(inRect.w, oa::min<oa::I32>(
+			maximumHandle, oa::max<oa::I32>(1, inRect.h / 2))));
+	const oa::I32 handleX = oa::clamp(
 		inRect.x + fillWidth - handleWidth / 2,
 		inRect.x,
 		inRect.x + inRect.w - handleWidth);
-	const oa::I32 handleOverhang = std::max<oa::I32>(1,
-		static_cast<oa::I32>(std::lround(3.0F * impl_->contentScale)));
+	const oa::I32 handleOverhang = oa::max<oa::I32>(1,
+		static_cast<oa::I32>(oa::round(3.0F * impl_->contentScale)));
 	this->rect({handleX, inRect.y - handleOverhang,
 		handleWidth, inRect.h + handleOverhang * 2},
 		interaction.hovered || interaction.held
@@ -5609,7 +5609,7 @@ bool oa::Ui::waveformTimeline(
 
 	bool changed = false;
 	if (interaction.held || interaction.activated) {
-		const oa::F32 next = std::clamp(
+		const oa::F32 next = oa::clamp(
 			(input_.mouseX - static_cast<oa::F32>(inRect.x))
 				/ static_cast<oa::F32>(inRect.w),
 			0.0F,
@@ -5618,13 +5618,13 @@ bool oa::Ui::waveformTimeline(
 		inOutFraction = next;
 	}
 	if (input_.focusId == id && impl_->keyboardAdjust != 0.0F) {
-		const oa::F32 next = std::clamp(
+		const oa::F32 next = oa::clamp(
 			inOutFraction + impl_->keyboardAdjust * 0.01F, 0.0F, 1.0F);
 		changed = changed || next != inOutFraction;
 		inOutFraction = next;
 		impl_->keyboardAdjust = 0.0F;
 	}
-	inOutFraction = std::clamp(inOutFraction, 0.0F, 1.0F);
+	inOutFraction = oa::clamp(inOutFraction, 0.0F, 1.0F);
 
 	const oa::UiStyle& style = currentStyle();
 	this->rect(inRect, style.surface.withAlpha(0.55F));
@@ -5647,14 +5647,14 @@ bool oa::Ui::waveformTimeline(
 	if (clip.w <= 0 || clip.h <= 0) return changed;
 	impl_->appendBlit(oa::move(command));
 
-	const oa::I32 playheadX = std::clamp(
+	const oa::I32 playheadX = oa::clamp(
 		inRect.x + static_cast<oa::I32>(static_cast<oa::F32>(inRect.w) * inOutFraction),
 		inRect.x,
 		inRect.x + inRect.w - 1);
-	const oa::I32 idlePlayhead = std::max<oa::I32>(1,
-		static_cast<oa::I32>(std::lround(2.0F * impl_->contentScale)));
-	const oa::I32 activePlayhead = std::max<oa::I32>(idlePlayhead,
-		static_cast<oa::I32>(std::lround(3.0F * impl_->contentScale)));
+	const oa::I32 idlePlayhead = oa::max<oa::I32>(1,
+		static_cast<oa::I32>(oa::round(2.0F * impl_->contentScale)));
+	const oa::I32 activePlayhead = oa::max<oa::I32>(idlePlayhead,
+		static_cast<oa::I32>(oa::round(3.0F * impl_->contentScale)));
 	this->rect({playheadX, inRect.y,
 		interaction.hovered || interaction.held
 			? activePlayhead : idlePlayhead, inRect.h},
@@ -5788,7 +5788,7 @@ void oa::Ui::rect(
 	if (!impl_ || inRect.w <= 0 || inRect.h <= 0) {
 		return;
 	}
-	if (!std::isfinite(inCornerRadius) || inCornerRadius < 0.0F) {
+	if (!oa::isFinite(inCornerRadius) || inCornerRadius < 0.0F) {
 		impl_->setFrameError(oa::Status::invalidArgument(
 			"oa::Ui::rect requires a finite non-negative corner radius"));
 		return;
@@ -5807,9 +5807,9 @@ void oa::Ui::rect(
 	bc.rect.clip_y = clip.y;
 	bc.rect.clip_w = static_cast<oa::U32>(clip.w);
 	bc.rect.clip_h = static_cast<oa::U32>(clip.h);
-	bc.rect.corner_radius = std::min(
+	bc.rect.corner_radius = oa::min(
 		inCornerRadius,
-		0.5F * static_cast<oa::F32>(std::min(inRect.w, inRect.h)));
+		0.5F * static_cast<oa::F32>(oa::min(inRect.w, inRect.h)));
 	impl_->appendBlit(oa::move(bc));
 }
 
@@ -5821,7 +5821,7 @@ void oa::Ui::rectOutline(
 	if (!impl_ || inRect.w <= 0 || inRect.h <= 0) {
 		return;
 	}
-	if (!std::isfinite(inCornerRadius) || inCornerRadius < 0.0F) {
+	if (!oa::isFinite(inCornerRadius) || inCornerRadius < 0.0F) {
 		impl_->setFrameError(oa::Status::invalidArgument(
 			"oa::Ui::rectOutline requires a finite non-negative corner radius"));
 		return;
@@ -5835,15 +5835,15 @@ void oa::Ui::rectOutline(
 	bc.rectOutline.dst_y = inRect.y;
 	bc.rectOutline.dst_w = static_cast<oa::U32>(inRect.w);
 	bc.rectOutline.dst_h = static_cast<oa::U32>(inRect.h);
-	bc.rectOutline.thickness = std::max<oa::U32>(1, inThickness);
+	bc.rectOutline.thickness = oa::max<oa::U32>(1, inThickness);
 	bc.rectOutline.rgba = inColor.toU32();
 	bc.rectOutline.clip_x = clip.x;
 	bc.rectOutline.clip_y = clip.y;
 	bc.rectOutline.clip_w = static_cast<oa::U32>(clip.w);
 	bc.rectOutline.clip_h = static_cast<oa::U32>(clip.h);
-	bc.rectOutline.corner_radius = std::min(
+	bc.rectOutline.corner_radius = oa::min(
 		inCornerRadius,
-		0.5F * static_cast<oa::F32>(std::min(inRect.w, inRect.h)));
+		0.5F * static_cast<oa::F32>(oa::min(inRect.w, inRect.h)));
 	impl_->appendBlit(oa::move(bc));
 }
 
@@ -5852,18 +5852,18 @@ void oa::Ui::line(
 	oa::vlm::Vec2 inEnd,
 	oa::Color inColor,
 	oa::F32 inThickness) {
-	if (!impl_ || !std::isfinite(inBegin.x) || !std::isfinite(inBegin.y)
-		|| !std::isfinite(inEnd.x) || !std::isfinite(inEnd.y)
-		|| !std::isfinite(inThickness) || inThickness <= 0.0F) return;
+	if (!impl_ || !oa::isFinite(inBegin.x) || !oa::isFinite(inBegin.y)
+		|| !oa::isFinite(inEnd.x) || !oa::isFinite(inEnd.y)
+		|| !oa::isFinite(inThickness) || inThickness <= 0.0F) return;
 	const oa::F32 padding = inThickness * 0.5F + 1.5F;
 	const oa::I32 x = static_cast<oa::I32>(
-		std::floor(std::min(inBegin.x, inEnd.x) - padding));
+		oa::floor(oa::min(inBegin.x, inEnd.x) - padding));
 	const oa::I32 y = static_cast<oa::I32>(
-		std::floor(std::min(inBegin.y, inEnd.y) - padding));
+		oa::floor(oa::min(inBegin.y, inEnd.y) - padding));
 	const oa::I32 right = static_cast<oa::I32>(
-		std::ceil(std::max(inBegin.x, inEnd.x) + padding));
+		oa::ceil(oa::max(inBegin.x, inEnd.x) + padding));
 	const oa::I32 bottom = static_cast<oa::I32>(
-		std::ceil(std::max(inBegin.y, inEnd.y) + padding));
+		oa::ceil(oa::max(inBegin.y, inEnd.y) + padding));
 	if (right <= x || bottom <= y) return;
 	const oa::PixelRect bounds = impl_->clipFor({x, y, right - x, bottom - y});
 	if (bounds.w <= 0 || bounds.h <= 0) return;
@@ -5918,10 +5918,10 @@ void oa::Ui::nodeCanvasGrid(
 void oa::Ui::grid(oa::PixelRect inRect, const oa::UiGridConfig& inConfig) {
 	if (!impl_) return;
 	const bool validThickness =
-		std::isfinite(inConfig.minorThickness)
-		and std::isfinite(inConfig.majorThickness)
-		and std::isfinite(inConfig.superMajorThickness)
-		and std::isfinite(inConfig.axisThickness)
+		oa::isFinite(inConfig.minorThickness)
+		and oa::isFinite(inConfig.majorThickness)
+		and oa::isFinite(inConfig.superMajorThickness)
+		and oa::isFinite(inConfig.axisThickness)
 		and inConfig.minorThickness > 0.0F
 		and inConfig.majorThickness > 0.0F
 		and inConfig.superMajorThickness > 0.0F
@@ -5930,11 +5930,11 @@ void oa::Ui::grid(oa::PixelRect inRect, const oa::UiGridConfig& inConfig) {
 		and inConfig.majorThickness <= 16.0F
 		and inConfig.superMajorThickness <= 16.0F
 		and inConfig.axisThickness <= 16.0F;
-	const bool validSpacing = std::isfinite(inConfig.origin.x)
-		and std::isfinite(inConfig.origin.y)
-		and std::isfinite(inConfig.minorSpacing.x)
-		and std::isfinite(inConfig.minorSpacing.y)
-		and std::isfinite(inConfig.opacity)
+	const bool validSpacing = oa::isFinite(inConfig.origin.x)
+		and oa::isFinite(inConfig.origin.y)
+		and oa::isFinite(inConfig.minorSpacing.x)
+		and oa::isFinite(inConfig.minorSpacing.y)
+		and oa::isFinite(inConfig.opacity)
 		and inConfig.minorSpacing.x > 0.0F
 		and inConfig.minorSpacing.y > 0.0F
 		and inConfig.opacity >= 0.0F and inConfig.opacity <= 1.0F
@@ -6037,7 +6037,7 @@ void oa::Ui::rectOutlines(
 	bc.rectOutlines.clip_y = clip.y;
 	bc.rectOutlines.clip_w = static_cast<oa::U32>(clip.w);
 	bc.rectOutlines.clip_h = static_cast<oa::U32>(clip.h);
-	bc.rectOutlines.thickness = std::max<oa::U32>(1, inThickness);
+	bc.rectOutlines.thickness = oa::max<oa::U32>(1, inThickness);
 	bc.rectOutlines.rgba = inColor.toU32();
 	impl_->appendBlit(oa::move(bc));
 }
@@ -6211,18 +6211,18 @@ void oa::Ui::plotLine(
 	oa::F32 yMin = inCfg.yMin;
 	oa::F32 yMax = inCfg.yMax;
 	if (inCfg.autoScale) {
-		yMin = std::numeric_limits<oa::F32>::infinity();
-		yMax = -std::numeric_limits<oa::F32>::infinity();
+		yMin = oa::Limits<oa::F32>::infinity();
+		yMax = -oa::Limits<oa::F32>::infinity();
 		const auto* values = static_cast<const oa::F32*>(slot->buffer.mappedPtr);
 		for (oa::U32 index = 0; index < slot->count; ++index) {
-			if (!std::isfinite(values[index])) continue;
-			yMin = std::min(yMin, values[index]);
-			yMax = std::max(yMax, values[index]);
+			if (!oa::isFinite(values[index])) continue;
+			yMin = oa::min(yMin, values[index]);
+			yMax = oa::max(yMax, values[index]);
 		}
 	}
-	if (!std::isfinite(yMin) || !std::isfinite(yMax)) return;
+	if (!oa::isFinite(yMin) || !oa::isFinite(yMax)) return;
 	if (yMax <= yMin) {
-		const oa::F32 margin = std::max(1.0e-4F, std::abs(yMin) * 0.05F);
+		const oa::F32 margin = oa::max(1.0e-4F, oa::abs(yMin) * 0.05F);
 		yMin -= margin;
 		yMax += margin;
 	}
@@ -6248,8 +6248,8 @@ void oa::Ui::plotLine(
 	command.plotLine.flags = inCfg.fill ? 2U : 0U;
 	command.plotLine.antialias_samples = resolveLineSampleCount(
 		inCfg.antialiasSamples);
-	command.plotLine.line_width = std::clamp(
-		std::isfinite(inCfg.lineWidth) ? inCfg.lineWidth : 1.35F,
+	command.plotLine.line_width = oa::clamp(
+		oa::isFinite(inCfg.lineWidth) ? inCfg.lineWidth : 1.35F,
 		0.5F, 16.0F);
 	command.plotLine.clip_x = clip.x;
 	command.plotLine.clip_y = clip.y;
@@ -6271,14 +6271,14 @@ void oa::Ui::plotLineXY(
 	const oa::PixelRect rect = impl_->panelStack.back().rect;
 	const oa::PixelRect clip = impl_->clipFor(rect);
 	if (rect.w <= 0 || rect.h <= 0 || clip.w <= 0 || clip.h <= 0) return;
-	if (!std::isfinite(inCfg.xMin) || !std::isfinite(inCfg.xMax)
-		|| !std::isfinite(inCfg.yMin) || !std::isfinite(inCfg.yMax)
+	if (!oa::isFinite(inCfg.xMin) || !oa::isFinite(inCfg.xMax)
+		|| !oa::isFinite(inCfg.yMin) || !oa::isFinite(inCfg.yMax)
 		|| inCfg.xMax <= inCfg.xMin || inCfg.yMax <= inCfg.yMin) return;
 
 	oa::Vec<oa::F32> packed(static_cast<oa::Usize>(inCount) * 2U);
-	std::memcpy(packed.data(), inX,
+	oa::memcpy(packed.data(), inX,
 		static_cast<oa::Usize>(inCount) * sizeof(oa::F32));
-	std::memcpy(packed.data() + inCount, inY,
+	oa::memcpy(packed.data() + inCount, inY,
 		static_cast<oa::Usize>(inCount) * sizeof(oa::F32));
 	oa::U32 cacheIndex = 0U;
 	oa::U32 slotIndex = 0U;
@@ -6306,8 +6306,8 @@ void oa::Ui::plotLineXY(
 	command.plotLine.flags = 4U;
 	command.plotLine.antialias_samples = resolveLineSampleCount(
 		inCfg.antialiasSamples);
-	command.plotLine.line_width = std::clamp(
-		std::isfinite(inCfg.lineWidth) ? inCfg.lineWidth : 1.35F,
+	command.plotLine.line_width = oa::clamp(
+		oa::isFinite(inCfg.lineWidth) ? inCfg.lineWidth : 1.35F,
 		0.5F, 16.0F);
 	command.plotLine.clip_x = clip.x;
 	command.plotLine.clip_y = clip.y;
@@ -6324,7 +6324,7 @@ void oa::Ui::plotLineRing(
 	oa::I32 inOffset,
 	const oa::UiPlotConfig& inCfg) {
 	if (inData == nullptr || inCount <= 0) return;
-	std::vector<oa::F32> ordered(static_cast<oa::Usize>(inCount));
+	oa::Vec<oa::F32> ordered(static_cast<oa::Usize>(inCount));
 	const oa::I32 offset = ((inOffset % inCount) + inCount) % inCount;
 	for (oa::I32 index = 0; index < inCount; ++index) {
 		ordered[static_cast<oa::Usize>(index)] =
@@ -6340,7 +6340,7 @@ void oa::Ui::heatmap(oa::StringView /*inLabel*/, const oavk::Buffer& inBuffer,
 	const oa::U64 elementCount = static_cast<oa::U64>(inCfg.rows)
 		* static_cast<oa::U64>(inCfg.cols);
 	const oa::U64 firstElement = inCfg.offsetElements;
-	if (elementCount > std::numeric_limits<oa::U64>::max() - firstElement
+	if (elementCount > oa::Limits<oa::U64>::max() - firstElement
 		|| firstElement + elementCount > inBuffer.size / sizeof(oa::U32)) {
 		impl_->setFrameError(oa::Status::invalidArgument(
 			"oa::Ui::heatmap source buffer is smaller than its declared matrix range"));
@@ -6351,9 +6351,9 @@ void oa::Ui::heatmap(oa::StringView /*inLabel*/, const oavk::Buffer& inBuffer,
 	if (rect.w <= 0 || rect.h <= 0 || clip.w <= 0 || clip.h <= 0) return;
 	oa::F32 vMin = inCfg.vMin;
 	oa::F32 vMax = inCfg.vMax;
-	if (!std::isfinite(vMin) || !std::isfinite(vMax)) return;
+	if (!oa::isFinite(vMin) || !oa::isFinite(vMax)) return;
 	if (vMax <= vMin) {
-		const oa::F32 margin = std::max(1.0e-4F, std::abs(vMin) * 0.05F);
+		const oa::F32 margin = oa::max(1.0e-4F, oa::abs(vMin) * 0.05F);
 		vMin -= margin;
 		vMax += margin;
 	}
@@ -6369,8 +6369,8 @@ void oa::Ui::heatmap(oa::StringView /*inLabel*/, const oavk::Buffer& inBuffer,
 	command.heatmap.dst_h = static_cast<oa::U32>(rect.h);
 	command.heatmap.v_min = vMin;
 	command.heatmap.v_max = vMax;
-	command.heatmap.colormap = std::min(inCfg.colormap, 3U);
-	command.heatmap.value_type = std::min(inCfg.valueType, 2U);
+	command.heatmap.colormap = oa::min(inCfg.colormap, 3U);
+	command.heatmap.value_type = oa::min(inCfg.valueType, 2U);
 	command.heatmap.offset_elements = inCfg.offsetElements;
 	command.heatmap.flags = inCfg.showGrid ? 1U : 0U;
 	command.heatmap.clip_x = clip.x;
@@ -6394,7 +6394,7 @@ void oa::Ui::heatmap(oa::StringView inLabel, const oa::Matrix& inMatrix,
 	}
 	const oa::U64 offsetElements = static_cast<oa::U64>(config.offsetElements)
 		+ inMatrix.byteOffset() / sizeof(oa::U32);
-	if (offsetElements > std::numeric_limits<oa::U32>::max()) {
+	if (offsetElements > oa::Limits<oa::U32>::max()) {
 		if (impl_) {
 			impl_->setFrameError(oa::Status::error(
 				oa::StatusCode::OutOfRange,

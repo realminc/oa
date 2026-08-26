@@ -1,24 +1,23 @@
 #include <oa/ml/nn/flow/flowTransformer.h>
-
-#include <stdexcept>
+#include <oa/core/assert.h>
+#include <oa/core/std/format.h>
 
 namespace oa {
 
 namespace {
 
 void validate(const FlowTransformerConfig& inConfig) {
-	if (inConfig.dModel <= 0 || inConfig.hiddenDim <= 0
-		|| inConfig.sequenceLength <= 0 || inConfig.numLayers <= 0
-		|| inConfig.numHeads <= 0
-		|| (inConfig.dModel % inConfig.numHeads) != 0
-		|| inConfig.epsilon <= 0.0F) {
-		throw std::invalid_argument("FlowTransformer requires positive dimensions, layers and epsilon, with dModel divisible by numHeads");
-	}
-	if (inConfig.numExperts < 0 || inConfig.expertsPerToken < 0
-		|| (inConfig.numExperts == 0 && inConfig.expertsPerToken != 0)
-		|| (inConfig.numExperts > 0	&& (inConfig.expertsPerToken == 0	|| inConfig.expertsPerToken > inConfig.numExperts))) {
-		throw std::invalid_argument("FlowTransformer MoE requires 0/0 experts for dense or 0 < expertsPerToken <= numExperts");
-	}
+	OA_REQUIRE_MSG(inConfig.dModel > 0 && inConfig.hiddenDim > 0
+		&& inConfig.sequenceLength > 0 && inConfig.numLayers > 0
+		&& inConfig.numHeads > 0
+		&& (inConfig.dModel % inConfig.numHeads) == 0
+		&& inConfig.epsilon > 0.0F,
+		"FlowTransformer requires positive dimensions, layers and epsilon, with dModel divisible by numHeads");
+	OA_REQUIRE_MSG(inConfig.numExperts >= 0 && inConfig.expertsPerToken >= 0
+		&& ((inConfig.numExperts == 0 && inConfig.expertsPerToken == 0)
+			|| (inConfig.numExperts > 0 && inConfig.expertsPerToken > 0
+				&& inConfig.expertsPerToken <= inConfig.numExperts)),
+		"FlowTransformer MoE requires 0/0 experts for dense or 0 < expertsPerToken <= numExperts");
 }
 
 } // namespace
@@ -44,7 +43,8 @@ FlowTransformer::FlowTransformer(const FlowTransformerConfig& inConfig)	: config
 		if (config_.adaptiveConditioning) {
 			block->enableAdaptiveConditioning(config_.dModel);
 		}
-		registerModule((oa::String("block") + std::to_string(index)).cStr(), block);
+		const oa::String name = oa::format("block%d", index);
+		registerModule(name.cStr(), block);
 		blocks_.pushBack(oa::move(block));
 	}
 	outputNorm_ = oa::makeShared<oa::LayerNorm>(config_.dModel, config_.epsilon);
@@ -67,28 +67,24 @@ oa::Matrix FlowTransformer::forwardConditioned(
 }
 
 oa::Matrix FlowTransformer::forwardImpl(const oa::Matrix& inTokens,	const oa::Matrix* inTokenMask, const oa::Matrix* inCondition) {
-	if (inTokens.rank() != 2 && inTokens.rank() != 3) {
-		throw std::invalid_argument("FlowTransformer expects [B*S,D] or [B,S,D] tokens");
-	}
+	OA_REQUIRE_MSG(inTokens.rank() == 2 || inTokens.rank() == 3,
+		"FlowTransformer expects [B*S,D] or [B,S,D] tokens");
 	const bool batched = inTokens.rank() == 3;
 	const oa::I64 rows = batched ? inTokens.size(0) * inTokens.size(1) : inTokens.size(0);
 	const oa::I64 sequence = batched ? inTokens.size(1) : config_.sequenceLength;
 	const oa::I64 features = inTokens.size(inTokens.rank() - 1);
-	if (sequence != config_.sequenceLength || features != config_.dModel
-		|| rows % config_.sequenceLength != 0) {
-		throw std::invalid_argument(
-			"FlowTransformer token shape does not match configured sequence length and model dimension");
-	}
+	OA_REQUIRE_MSG(sequence == config_.sequenceLength
+		&& features == config_.dModel
+		&& rows % config_.sequenceLength == 0,
+		"FlowTransformer token shape does not match configured sequence length and model dimension");
 
 	const oa::I64 batch = rows / config_.sequenceLength;
 	if (inCondition) {
-		if (!config_.adaptiveConditioning || inCondition->rank() != 2
-			|| inCondition->size(0) != batch
-			|| inCondition->size(1) != config_.dModel
-			|| inCondition->getDtype() != inTokens.getDtype()
-		) {
-			throw std::invalid_argument("FlowTransformer condition must match enabled [B,dModel] adaptive conditioning");
-		}
+		OA_REQUIRE_MSG(config_.adaptiveConditioning && inCondition->rank() == 2
+			&& inCondition->size(0) == batch
+			&& inCondition->size(1) == config_.dModel
+			&& inCondition->getDtype() == inTokens.getDtype(),
+			"FlowTransformer condition must match enabled [B,dModel] adaptive conditioning");
 	}
 	oa::Matrix additiveMask;
 	if (inTokenMask) {
@@ -99,11 +95,9 @@ oa::Matrix FlowTransformer::forwardImpl(const oa::Matrix& inTokens,	const oa::Ma
 			&& inTokenMask->size(0) == batch
 			&& inTokenMask->size(1) == config_.sequenceLength
 			&& inTokenMask->size(2) == 1;
-		if ((!mask2 && !mask3)
-			|| inTokenMask->getDtype() != inTokens.getDtype()) {
-			throw std::invalid_argument(
-				"FlowTransformer token mask must match [B,S] or [B,S,1] and token dtype");
-		}
+		OA_REQUIRE_MSG((mask2 || mask3)
+			&& inTokenMask->getDtype() == inTokens.getDtype(),
+			"FlowTransformer token mask must match [B,S] or [B,S,1] and token dtype");
 		auto keyMask = inTokenMask->reshape(oa::MatrixShape{
 			batch, 1, config_.sequenceLength});
 		keyMask = (keyMask - 1.0F) * 1.0e4F;
@@ -131,26 +125,23 @@ oa::Matrix FlowTransformer::forwardImpl(const oa::Matrix& inTokens,	const oa::Ma
 }
 
 void FlowTransformer::setSequenceLength(oa::I32 inSequenceLength) {
-	if (inSequenceLength <= 0) {
-		throw std::invalid_argument("FlowTransformer sequence length must be positive");
-	}
+	OA_REQUIRE_MSG(inSequenceLength > 0,
+		"FlowTransformer sequence length must be positive");
 	if (config_.sequenceLength == inSequenceLength) return;
 	config_.sequenceLength = inSequenceLength;
 	for (auto& block : blocks_) block->setSeqLen(inSequenceLength);
 }
 
 oa::TransformerBlock& FlowTransformer::block(oa::I32 inIndex) {
-	if (inIndex < 0 || inIndex >= config_.numLayers) {
-		throw std::out_of_range("FlowTransformer block index is out of range");
-	}
-	return *blocks_[static_cast<size_t>(inIndex)];
+	OA_REQUIRE_MSG(inIndex >= 0 && inIndex < config_.numLayers,
+		"FlowTransformer block index is out of range");
+	return *blocks_[static_cast<oa::Usize>(inIndex)];
 }
 
 const oa::TransformerBlock& FlowTransformer::block(oa::I32 inIndex) const {
-	if (inIndex < 0 || inIndex >= config_.numLayers) {
-		throw std::out_of_range("FlowTransformer block index is out of range");
-	}
-	return *blocks_[static_cast<size_t>(inIndex)];
+	OA_REQUIRE_MSG(inIndex >= 0 && inIndex < config_.numLayers,
+		"FlowTransformer block index is out of range");
+	return *blocks_[static_cast<oa::Usize>(inIndex)];
 }
 
 } // namespace oa

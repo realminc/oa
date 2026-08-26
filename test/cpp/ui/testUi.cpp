@@ -33,7 +33,6 @@
 #include <SDL3/SDL_scancode.h>
 
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <cstdio>
 #include <fstream>
@@ -533,7 +532,7 @@ TEST_F(TestUi, NodeCanvasNavigationHitTestingAndGridMetricsAreTransactional)
 		.zoom = 1.0F,
 		.viewSize = {200.0F, 100.0F},
 	}).isOk());
-	const std::array<oa::NodeCanvasHitItem, 4> items{
+	const oa::Array<oa::NodeCanvasHitItem, 4> items{
 		oa::NodeCanvasHitItem{
 			.id = 11U,
 			.bounds = {{-10.0F, -10.0F}, {10.0F, 10.0F}},
@@ -809,7 +808,7 @@ TEST_VK(TestUi, NodeCanvasGridRendersAdaptiveDecimalHierarchyInOneClip)
 	ASSERT_TRUE(ui.markFrameSubmitted(completion).isOk());
 	ui.endFrame();
 
-	std::array<oa::U8, 32U * 32U * 4U> pixels{};
+	oa::Array<oa::U8, 32U * 32U * 4U> pixels{};
 	ASSERT_TRUE(oa::EngineResourceAccess::readbackBuffer(
 		*engine, target.readback, 0U, pixels.data(), pixels.size()).isOk());
 	const auto pixel = [&](oa::U32 x, oa::U32 y, oa::U32 channel) {
@@ -848,8 +847,8 @@ TEST_VK(TestUi, RoundedRectsAndChevronButtonsComposeAccessibleOsdGeometry)
 	const auto nodes = ui.accessibilitySnapshot();
 	ASSERT_EQ(nodes.size(), 2U);
 	EXPECT_EQ(nodes[0].role, oa::UiAccessibilityRole::Button);
-	EXPECT_EQ(nodes[0].label.stdStr(), "Previous");
-	EXPECT_EQ(nodes[1].label.stdStr(), "Next");
+	EXPECT_EQ(testStdString(nodes[0].label), "Previous");
+	EXPECT_EQ(testStdString(nodes[1].label), "Next");
 
 	auto streamResult = oavk::Stream::createCompute(
 		oa::EngineDeviceAccess::get(*engine));
@@ -869,7 +868,7 @@ TEST_VK(TestUi, RoundedRectsAndChevronButtonsComposeAccessibleOsdGeometry)
 	ASSERT_TRUE(ui.markFrameSubmitted(completion).isOk());
 	ui.endFrame();
 
-	std::array<oa::U8, 88U * 32U * 4U> pixels{};
+	oa::Array<oa::U8, 88U * 32U * 4U> pixels{};
 	ASSERT_TRUE(oa::EngineResourceAccess::readbackBuffer(
 		*engine, target.readback, 0U, pixels.data(), pixels.size()).isOk());
 	const auto pixel = [&](oa::U32 x, oa::U32 y, oa::U32 channel) {
@@ -1213,7 +1212,7 @@ TEST_VK(TestUi, SplitPaneHandleRendersThroughInheritedClipOnGpu)
 	ASSERT_TRUE(ui.markFrameSubmitted(completion).isOk());
 	ui.endFrame();
 
-	std::array<oa::U8, 32U * 16U * 4U> pixels{};
+	oa::Array<oa::U8, 32U * 16U * 4U> pixels{};
 	ASSERT_TRUE(oa::EngineResourceAccess::readbackBuffer(
 		*engine,
 		target.readback,
@@ -1464,7 +1463,7 @@ TEST_VK(TestUi, TreeAndPropertyRowsRenderSelectedDisclosureAndClipOnGpu)
 	ASSERT_TRUE(ui.markFrameSubmitted(completion).isOk());
 	ui.endFrame();
 
-	std::array<oa::U8, 40U * 28U * 4U> pixels{};
+	oa::Array<oa::U8, 40U * 28U * 4U> pixels{};
 	ASSERT_TRUE(oa::EngineResourceAccess::readbackBuffer(
 		*engine,
 		target.readback,
@@ -1499,13 +1498,13 @@ TEST_VK(TestUi, TabBarsKeepWorkspaceStateAndReturnCloseReorderRequests)
 	oa::Ui ui;
 	ASSERT_TRUE(ui.init(*engine).isOk());
 	const oa::PixelRect rect{10, 20, 240, 24};
-	const std::array<oa::UiTabItem, 5> items{{
-		{.id = "a", .label = {}, .dirty = true},
-		{.id = "b", .label = {}},
-		{.id = "c", .label = {}},
-		{.id = "d", .label = {}, .closable = false},
-		{.id = "e", .label = {}},
-	}};
+	const oa::Array<oa::UiTabItem, 5> items{
+		oa::UiTabItem{.id = "a", .label = {}, .dirty = true},
+		oa::UiTabItem{.id = "b", .label = {}},
+		oa::UiTabItem{.id = "c", .label = {}},
+		oa::UiTabItem{.id = "d", .label = {}, .closable = false},
+		oa::UiTabItem{.id = "e", .label = {}},
+	};
 	const oa::UiTabBarConfig config{
 		.minimumTabWidth = 80,
 		.maximumTabWidth = 120,
@@ -1614,9 +1613,10 @@ TEST_VK(TestUi, TabBarsKeepWorkspaceStateAndReturnCloseReorderRequests)
 	EXPECT_EQ(tabs.activatedIndex, -1);
 	ui.endFrame();
 
-	const std::array<oa::UiTabItem, 2> duplicate{{
-		{.id = "same", .label = {}}, {.id = "same", .label = {}},
-	}};
+	const oa::Array<oa::UiTabItem, 2> duplicate{
+		oa::UiTabItem{.id = "same", .label = {}},
+		oa::UiTabItem{.id = "same", .label = {}},
+	};
 	state = {.selected = 0};
 	ui.beginFrame(16.0F);
 	(void)ui.tabBar(
@@ -1646,10 +1646,10 @@ TEST_VK(TestUi, TabBarsRenderSelectionDirtyCloseAndInheritedClipOnGpu)
 	style.warning = {1.0F, 1.0F, 0.0F, 1.0F};
 	style.textMuted = {1.0F, 0.0F, 0.0F, 1.0F};
 	style.borderSubtle = {1.0F, 0.0F, 1.0F, 1.0F};
-	const std::array<oa::UiTabItem, 2> items{{
-		{.id = "selected", .label = {}, .dirty = true},
-		{.id = "other", .label = {}},
-	}};
+	const oa::Array<oa::UiTabItem, 2> items{
+		oa::UiTabItem{.id = "selected", .label = {}, .dirty = true},
+		oa::UiTabItem{.id = "other", .label = {}},
+	};
 	oa::UiTabBarState state{.selected = 0};
 
 	ui.beginFrame(16.0F, {0, 0, 64, 24});
@@ -1687,7 +1687,7 @@ TEST_VK(TestUi, TabBarsRenderSelectionDirtyCloseAndInheritedClipOnGpu)
 	ASSERT_TRUE(ui.markFrameSubmitted(completion).isOk());
 	ui.endFrame();
 
-	std::array<oa::U8, 64U * 24U * 4U> pixels{};
+	oa::Array<oa::U8, 64U * 24U * 4U> pixels{};
 	ASSERT_TRUE(oa::EngineResourceAccess::readbackBuffer(
 		*engine,
 		target.readback,
@@ -1755,11 +1755,11 @@ TEST_VK(TestUi, AccessibilitySnapshotExportsStableClippedRolesStatesAndValues)
 	auto nodes = ui.accessibilitySnapshot();
 	ASSERT_EQ(nodes.size(), 4U);
 	EXPECT_EQ(nodes[0].role, oa::UiAccessibilityRole::Button);
-	EXPECT_EQ(nodes[0].label.stdStr(), "run");
+	EXPECT_EQ(testStdString(nodes[0].label), "run");
 	EXPECT_TRUE(hasAction(nodes[0], oa::UiAccessibilityAction::Activate));
 	EXPECT_EQ(nodes[1].role, oa::UiAccessibilityRole::Checkbox);
 	EXPECT_TRUE(hasState(nodes[1], oa::UiAccessibilityState::Checked));
-	EXPECT_EQ(nodes[1].value.stdStr(), "true");
+	EXPECT_EQ(testStdString(nodes[1].value), "true");
 	EXPECT_EQ(nodes[2].role, oa::UiAccessibilityRole::Slider);
 	EXPECT_TRUE(nodes[2].hasNumericValue);
 	EXPECT_DOUBLE_EQ(nodes[2].minimum, 0.0);
@@ -1768,8 +1768,8 @@ TEST_VK(TestUi, AccessibilitySnapshotExportsStableClippedRolesStatesAndValues)
 	EXPECT_TRUE(hasAction(nodes[2], oa::UiAccessibilityAction::SetValue));
 	EXPECT_EQ(nodes[3].role, oa::UiAccessibilityRole::TextField);
 	EXPECT_TRUE(hasState(nodes[3], oa::UiAccessibilityState::Editable));
-	EXPECT_EQ(nodes[3].value.stdStr(), "worker");
-	std::array<oa::U32, 4> stableIds{};
+	EXPECT_EQ(testStdString(nodes[3].value), "worker");
+	oa::Array<oa::U32, 4> stableIds{};
 	for (oa::Usize index = 0U; index < nodes.size(); ++index) {
 		stableIds[index] = nodes[index].id;
 		EXPECT_NE(nodes[index].id, 0U);
@@ -1869,7 +1869,7 @@ TEST_VK(TestUi, NestedClipPreservesGeometryAndImageSourceCoordinatesOnGpu)
 {
 	auto* engine = testEnginePtr();
 	ASSERT_NE(engine, nullptr);
-	const std::array<oa::U8, 16> sourcePixels{
+	const oa::Array<oa::U8, 16> sourcePixels{
 		255U, 0U, 0U, 255U,
 		0U, 255U, 0U, 255U,
 		0U, 0U, 255U, 255U,
@@ -1916,14 +1916,14 @@ TEST_VK(TestUi, NestedClipPreservesGeometryAndImageSourceCoordinatesOnGpu)
 	ASSERT_TRUE(ui.markFrameSubmitted(completion).isOk());
 	ui.endFrame();
 
-	std::array<oa::U8, 48> pixels{};
+	oa::Array<oa::U8, 48> pixels{};
 	ASSERT_TRUE(oa::EngineResourceAccess::readbackBuffer(
 		*engine,
 		target.readback,
 		0U,
 		pixels.data(),
 		pixels.size()).isOk());
-	const std::array<oa::U8, 48> expected{
+	const oa::Array<oa::U8, 48> expected{
 		0U, 0U, 0U, 0U,
 		255U, 255U, 255U, 255U,
 		0U, 0U, 0U, 0U,
@@ -1956,10 +1956,10 @@ TEST_VK(TestUi, CompletionTrackedUploadValuesRetireThroughExactEvents)
 	{
 		auto detections = oa::DetectionBuffer::createHostUpload(*engine, 4U);
 		auto glyphs = oa::GlyphBuffer::createHostUpload(*engine, 4U);
-		const std::array<oa::U8, 1> gray = {255U};
-		const std::array<oa::Span<const oa::U8>, 1> planeBytes = {
+		const oa::Array<oa::U8, 1> gray = {255U};
+		const oa::Array<oa::Span<const oa::U8>, 1> planeBytes = {
 			oa::Span<const oa::U8>(gray.data(), gray.size())};
-		const std::array<oa::ImageDtype, 1> planeDtypes = {
+		const oa::Array<oa::ImageDtype, 1> planeDtypes = {
 			oa::ImageDtype::U8};
 		auto planes = oa::ImagePlanes::fromPlanes(
 			*engine,
@@ -2009,15 +2009,15 @@ TEST_VK(TestUi, PlanarImageValidatesOwnershipAndRendersWholeAndSinglePlanes)
 {
 	auto* engine = testEnginePtr();
 	ASSERT_NE(engine, nullptr);
-	const std::array<oa::U8, 2> red = {255U, 0U};
-	const std::array<oa::U8, 2> green = {0U, 255U};
-	const std::array<oa::U8, 2> blue = {0U, 0U};
-	const std::array<oa::Span<const oa::U8>, 3> planeBytes = {
+	const oa::Array<oa::U8, 2> red = {255U, 0U};
+	const oa::Array<oa::U8, 2> green = {0U, 255U};
+	const oa::Array<oa::U8, 2> blue = {0U, 0U};
+	const oa::Array<oa::Span<const oa::U8>, 3> planeBytes = {
 		oa::Span<const oa::U8>(red.data(), red.size()),
 		oa::Span<const oa::U8>(green.data(), green.size()),
 		oa::Span<const oa::U8>(blue.data(), blue.size()),
 	};
-	const std::array<oa::ImageDtype, 3> planeDtypes = {
+	const oa::Array<oa::ImageDtype, 3> planeDtypes = {
 		oa::ImageDtype::U8, oa::ImageDtype::U8, oa::ImageDtype::U8};
 	auto planes = oa::ImagePlanes::fromPlanes(
 		*engine,
@@ -2031,13 +2031,13 @@ TEST_VK(TestUi, PlanarImageValidatesOwnershipAndRendersWholeAndSinglePlanes)
 	EXPECT_EQ(planes->width(), 2);
 	EXPECT_EQ(planes->height(), 1);
 	EXPECT_EQ(planes->channelCount(), 3U);
-	const std::array<oa::U8, 2> gray = {64U, 192U};
-	const std::array<oa::U8, 2> alpha = {128U, 255U};
-	const std::array<oa::Span<const oa::U8>, 2> grayAlphaBytes = {
+	const oa::Array<oa::U8, 2> gray = {64U, 192U};
+	const oa::Array<oa::U8, 2> alpha = {128U, 255U};
+	const oa::Array<oa::Span<const oa::U8>, 2> grayAlphaBytes = {
 		oa::Span<const oa::U8>(gray.data(), gray.size()),
 		oa::Span<const oa::U8>(alpha.data(), alpha.size()),
 	};
-	const std::array<oa::ImageDtype, 2> grayAlphaDtypes = {
+	const oa::Array<oa::ImageDtype, 2> grayAlphaDtypes = {
 		oa::ImageDtype::U8, oa::ImageDtype::U8};
 	auto grayAlpha = oa::ImagePlanes::fromPlanes(
 		*engine,
@@ -2049,9 +2049,9 @@ TEST_VK(TestUi, PlanarImageValidatesOwnershipAndRendersWholeAndSinglePlanes)
 		1);
 	ASSERT_TRUE(grayAlpha.isOk()) << grayAlpha.getStatus().toString();
 
-	const std::array<oa::Span<const oa::U8>, 1> shortPlane = {
+	const oa::Array<oa::Span<const oa::U8>, 1> shortPlane = {
 		oa::Span<const oa::U8>(red.data(), 1U)};
-	const std::array<oa::ImageDtype, 1> oneDtype = {oa::ImageDtype::U8};
+	const oa::Array<oa::ImageDtype, 1> oneDtype = {oa::ImageDtype::U8};
 	EXPECT_EQ(
 		oa::ImagePlanes::fromPlanes(
 			*engine,
@@ -2092,14 +2092,14 @@ TEST_VK(TestUi, PlanarImageValidatesOwnershipAndRendersWholeAndSinglePlanes)
 	ASSERT_TRUE(ui.markFrameSubmitted(completion).isOk());
 	ui.endFrame();
 
-	std::array<oa::U8, 24> pixels{};
+	oa::Array<oa::U8, 24> pixels{};
 	ASSERT_TRUE(oa::EngineResourceAccess::readbackBuffer(
 		*engine,
 		target.readback,
 		0U,
 		pixels.data(),
 		pixels.size()).isOk());
-	const std::array<oa::U8, 24> expected = {
+	const oa::Array<oa::U8, 24> expected = {
 		255U, 0U, 0U, 255U,
 		0U, 255U, 0U, 255U,
 		0U, 0U, 0U, 255U,
@@ -2261,7 +2261,7 @@ TEST_VK(TestUi, RendererUiModeProducesBoundedGenerationSafeTextureFrames)
 
 TEST_F(TestUi, RgbaFileSinkValidatesAndEncodesOneExactHostImage)
 {
-	const std::array<oa::U8, 16U> rgba{
+	const oa::Array<oa::U8, 16U> rgba{
 		255U, 0U, 0U, 255U,
 		0U, 255U, 0U, 255U,
 		0U, 0U, 255U, 255U,
@@ -2291,13 +2291,13 @@ TEST_F(TestUi, RgbaFileSinkValidatesAndEncodesOneExactHostImage)
 	ASSERT_TRUE(oa::FnImage::saveRgbaFile(pixels, 2U, 2U, path).isOk());
 	std::ifstream file(path, std::ios::binary);
 	ASSERT_TRUE(file.good());
-	std::array<unsigned char, 8U> signature{};
+	oa::Array<unsigned char, 8U> signature{};
 	file.read(
 		reinterpret_cast<char*>(signature.data()),
 		static_cast<std::streamsize>(signature.size()));
 	EXPECT_EQ(
 		signature,
-		(std::array<unsigned char, 8U>{
+		(oa::Array<unsigned char, 8U>{
 			0x89U, 0x50U, 0x4EU, 0x47U, 0x0DU, 0x0AU, 0x1AU, 0x0AU}));
 	file.close();
 	EXPECT_EQ(std::remove(path), 0);
@@ -2646,7 +2646,7 @@ TEST_VK(TestUi, TextRendererExecutesDistinctGlyphRangesOnGpu)
 	ASSERT_TRUE(ui.markFrameSubmitted(completion).isOk());
 	ui.endFrame();
 
-	std::array<oa::U8, 128U * 32U * 4U> pixels{};
+	oa::Array<oa::U8, 128U * 32U * 4U> pixels{};
 	ASSERT_TRUE(oa::EngineResourceAccess::readbackBuffer(*engine,
 		target.readback,
 		0U,
@@ -2700,7 +2700,7 @@ TEST_VK(TestUi, ButtonsCheckboxesRowsAndKeyboardFocusAreInteractive)
 	ui.endFrame();
 
 	const auto drawControls = [&] {
-		std::array<bool, 3> activated{};
+		oa::Array<bool, 3> activated{};
 		oa::UiLayout layout;
 		layout.padding = oa::UiEdge{4.0F};
 		layout.gap = 6.0F;
@@ -2722,7 +2722,7 @@ TEST_VK(TestUi, ButtonsCheckboxesRowsAndKeyboardFocusAreInteractive)
 	down.mouseY = 15.0F;
 	EXPECT_FALSE(ui.routeEvent(down));
 	auto activated = drawControls();
-	EXPECT_EQ(activated, (std::array<bool, 3>{false, false, false}));
+	EXPECT_EQ(activated, (oa::Array<bool, 3>{false, false, false}));
 	EXPECT_NE(ui.input().activeId, 0U);
 	EXPECT_EQ(ui.input().focusId, ui.input().activeId);
 	ui.endFrame();
@@ -2732,7 +2732,7 @@ TEST_VK(TestUi, ButtonsCheckboxesRowsAndKeyboardFocusAreInteractive)
 	up.type = oa::UiEventType::MouseUp;
 	EXPECT_TRUE(ui.routeEvent(up));
 	activated = drawControls();
-	EXPECT_EQ(activated, (std::array<bool, 3>{false, true, false}));
+	EXPECT_EQ(activated, (oa::Array<bool, 3>{false, true, false}));
 	EXPECT_EQ(ui.input().activeId, 0U);
 	ui.endFrame();
 
@@ -2750,7 +2750,7 @@ TEST_VK(TestUi, ButtonsCheckboxesRowsAndKeyboardFocusAreInteractive)
 	up.mouseY = 70.0F;
 	EXPECT_TRUE(ui.routeEvent(up));
 	activated = drawControls();
-	EXPECT_EQ(activated, (std::array<bool, 3>{false, false, false}));
+	EXPECT_EQ(activated, (oa::Array<bool, 3>{false, false, false}));
 	EXPECT_EQ(ui.input().activeId, 0U);
 	ui.endFrame();
 
@@ -2799,7 +2799,7 @@ TEST_VK(TestUi, ButtonsCheckboxesRowsAndKeyboardFocusAreInteractive)
 	key.key = oa::UiKey::Return;
 	EXPECT_TRUE(ui.routeEvent(key));
 	activated = drawControls();
-	EXPECT_EQ(activated, (std::array<bool, 3>{false, true, false}));
+	EXPECT_EQ(activated, (oa::Array<bool, 3>{false, true, false}));
 	ui.endFrame();
 
 	ui.beginFrame(16.0F);
@@ -2815,7 +2815,7 @@ TEST_VK(TestUi, ButtonsCheckboxesRowsAndKeyboardFocusAreInteractive)
 	key.modifiers = oa::UiModifierNone;
 	EXPECT_TRUE(ui.routeEvent(key));
 	activated = drawControls();
-	EXPECT_EQ(activated, (std::array<bool, 3>{true, false, false}));
+	EXPECT_EQ(activated, (oa::Array<bool, 3>{true, false, false}));
 	ui.endFrame();
 
 	ui.beginFrame(16.0F);
@@ -2857,7 +2857,7 @@ TEST_VK(TestUi, PopupMenusAndDropdownsOwnDismissalFocusAndSelection)
 	ASSERT_TRUE(ui.bindTextAtlas(atlas).isOk());
 	const oa::PixelRect viewport{0, 0, 320, 240};
 
-	std::array<bool, 2> menuActivated{};
+	oa::Array<bool, 2> menuActivated{};
 	const auto drawMenu = [&] {
 		menuActivated = {};
 		oa::UiLayout layout;
@@ -2944,7 +2944,7 @@ TEST_VK(TestUi, PopupMenusAndDropdownsOwnDismissalFocusAndSelection)
 	EXPECT_EQ(ui.input().activeId, 0U);
 	ui.endFrame();
 
-	const std::array<oa::StringView, 3> choices{
+	const oa::Array<oa::StringView, 3> choices{
 		"Auto", "One", "Two",
 	};
 	oa::I32 selected = 0;
@@ -3021,7 +3021,7 @@ TEST_VK(TestUi, PopupMenusAndDropdownsOwnDismissalFocusAndSelection)
 
 	// A selected item outside the first page is focused and virtualized into
 	// view; keyboard traversal still reaches the preceding option.
-	const std::array<oa::StringView, 12> longChoices{
+	const oa::Array<oa::StringView, 12> longChoices{
 		"00", "01", "02", "03", "04", "05",
 		"06", "07", "08", "09", "10", "11",
 	};
@@ -3111,7 +3111,7 @@ TEST_VK(TestUi, PopupCommandsRenderAfterLaterBaseCommandsOnGpu)
 	ASSERT_TRUE(ui.markFrameSubmitted(completion).isOk());
 	ui.endFrame();
 
-	std::array<oa::U8, 64U * 64U * 4U> pixels{};
+	oa::Array<oa::U8, 64U * 64U * 4U> pixels{};
 	ASSERT_TRUE(oa::EngineResourceAccess::readbackBuffer(
 		*engine,
 		target.readback,
@@ -3174,7 +3174,7 @@ TEST_VK(TestUi, InputTextEditsUtf8SelectionClipboardAndNativeFocus)
 	ui.beginFrame(16.0F);
 	EXPECT_TRUE(ui.routeEvent(textEvent));
 	EXPECT_TRUE(drawInput());
-	EXPECT_EQ(text.stdStr(), "A\xC3\xA9" "B\xCE\xA9");
+	EXPECT_EQ(testStdString(text), "A\xC3\xA9" "B\xCE\xA9");
 	ui.endFrame();
 
 	// scalar navigation never splits the two-byte UTF-8 codepoints.
@@ -3187,7 +3187,7 @@ TEST_VK(TestUi, InputTextEditsUtf8SelectionClipboardAndNativeFocus)
 	ui.beginFrame(16.0F);
 	EXPECT_TRUE(ui.routeEvent(key));
 	EXPECT_TRUE(drawInput());
-	EXPECT_EQ(text.stdStr(), "A\xC3\xA9\xCE\xA9");
+	EXPECT_EQ(testStdString(text), "A\xC3\xA9\xCE\xA9");
 	ui.endFrame();
 
 	// Selection is retained across frames for copy/cut. The UI emits a platform
@@ -3204,7 +3204,7 @@ TEST_VK(TestUi, InputTextEditsUtf8SelectionClipboardAndNativeFocus)
 	EXPECT_FALSE(drawInput());
 	oa::String clipboard;
 	EXPECT_TRUE(ui.takeClipboardWrite(clipboard));
-	EXPECT_EQ(clipboard.stdStr(), "A\xC3\xA9\xCE\xA9");
+	EXPECT_EQ(testStdString(clipboard), "A\xC3\xA9\xCE\xA9");
 	EXPECT_FALSE(ui.takeClipboardWrite(clipboard));
 	ui.endFrame();
 	key.key = oa::UiKey::X;
@@ -3220,7 +3220,7 @@ TEST_VK(TestUi, InputTextEditsUtf8SelectionClipboardAndNativeFocus)
 	ui.beginFrame(16.0F);
 	EXPECT_TRUE(ui.routeEvent(textEvent));
 	EXPECT_TRUE(drawInput());
-	EXPECT_EQ(text.stdStr(), "caf\xC3\xA9");
+	EXPECT_EQ(testStdString(text), "caf\xC3\xA9");
 	ui.endFrame();
 
 	key.modifiers = oa::UiModifierNone;
@@ -3233,7 +3233,7 @@ TEST_VK(TestUi, InputTextEditsUtf8SelectionClipboardAndNativeFocus)
 	ui.beginFrame(16.0F);
 	EXPECT_TRUE(ui.routeEvent(key));
 	EXPECT_TRUE(drawInput());
-	EXPECT_EQ(text.stdStr(), "af\xC3\xA9");
+	EXPECT_EQ(testStdString(text), "af\xC3\xA9");
 	ui.endFrame();
 
 	// Per-field history restores scalar-safe text and caret state. Redo accepts
@@ -3243,26 +3243,26 @@ TEST_VK(TestUi, InputTextEditsUtf8SelectionClipboardAndNativeFocus)
 	ui.beginFrame(16.0F);
 	EXPECT_TRUE(ui.routeEvent(key));
 	EXPECT_TRUE(drawInput());
-	EXPECT_EQ(text.stdStr(), "caf\xC3\xA9");
+	EXPECT_EQ(testStdString(text), "caf\xC3\xA9");
 	ui.endFrame();
 	key.modifiers = oa::UiModifierCtrl | oa::UiModifierShift;
 	ui.beginFrame(16.0F);
 	EXPECT_TRUE(ui.routeEvent(key));
 	EXPECT_TRUE(drawInput());
-	EXPECT_EQ(text.stdStr(), "af\xC3\xA9");
+	EXPECT_EQ(testStdString(text), "af\xC3\xA9");
 	ui.endFrame();
 	key.key = oa::UiKey::Z;
 	key.modifiers = oa::UiModifierCtrl;
 	ui.beginFrame(16.0F);
 	EXPECT_TRUE(ui.routeEvent(key));
 	EXPECT_TRUE(drawInput());
-	EXPECT_EQ(text.stdStr(), "caf\xC3\xA9");
+	EXPECT_EQ(testStdString(text), "caf\xC3\xA9");
 	ui.endFrame();
 	key.key = oa::UiKey::Y;
 	ui.beginFrame(16.0F);
 	EXPECT_TRUE(ui.routeEvent(key));
 	EXPECT_TRUE(drawInput());
-	EXPECT_EQ(text.stdStr(), "af\xC3\xA9");
+	EXPECT_EQ(testStdString(text), "af\xC3\xA9");
 	ui.endFrame();
 
 	// IME pre-edit is visible interaction state, not caller data. Editing keys
@@ -3276,7 +3276,7 @@ TEST_VK(TestUi, InputTextEditsUtf8SelectionClipboardAndNativeFocus)
 	ui.beginFrame(16.0F);
 	EXPECT_TRUE(ui.routeEvent(preedit));
 	EXPECT_FALSE(drawInput());
-	EXPECT_EQ(text.stdStr(), "af\xC3\xA9");
+	EXPECT_EQ(testStdString(text), "af\xC3\xA9");
 	EXPECT_TRUE(ui.wantsTextInput());
 	ui.endFrame();
 	key.key = oa::UiKey::Backspace;
@@ -3284,7 +3284,7 @@ TEST_VK(TestUi, InputTextEditsUtf8SelectionClipboardAndNativeFocus)
 	ui.beginFrame(16.0F);
 	EXPECT_TRUE(ui.routeEvent(key));
 	EXPECT_FALSE(drawInput());
-	EXPECT_EQ(text.stdStr(), "af\xC3\xA9");
+	EXPECT_EQ(testStdString(text), "af\xC3\xA9");
 	ui.endFrame();
 	key.key = oa::UiKey::Escape;
 	ui.beginFrame(16.0F);
@@ -3300,14 +3300,14 @@ TEST_VK(TestUi, InputTextEditsUtf8SelectionClipboardAndNativeFocus)
 	ui.beginFrame(16.0F);
 	EXPECT_TRUE(ui.routeEvent(textEvent));
 	EXPECT_TRUE(drawInput());
-	EXPECT_EQ(text.stdStr(), "\xE4\xB8\x96" "af\xC3\xA9");
+	EXPECT_EQ(testStdString(text), "\xE4\xB8\x96" "af\xC3\xA9");
 	ui.endFrame();
 	key.key = oa::UiKey::Z;
 	key.modifiers = oa::UiModifierCtrl;
 	ui.beginFrame(16.0F);
 	EXPECT_TRUE(ui.routeEvent(key));
 	EXPECT_TRUE(drawInput());
-	EXPECT_EQ(text.stdStr(), "af\xC3\xA9");
+	EXPECT_EQ(testStdString(text), "af\xC3\xA9");
 	ui.endFrame();
 	preedit.text = oa::String("\xC3", 1U);
 	ui.beginFrame(16.0F);
@@ -3328,7 +3328,7 @@ TEST_VK(TestUi, InputTextEditsUtf8SelectionClipboardAndNativeFocus)
 	ui.beginFrame(16.0F);
 	EXPECT_TRUE(ui.routeEvent(key));
 	EXPECT_FALSE(drawInput());
-	EXPECT_EQ(text.stdStr(), "alpha beta");
+	EXPECT_EQ(testStdString(text), "alpha beta");
 	ui.endFrame();
 
 	// Double click selects one word and triple click selects the complete
@@ -3350,7 +3350,7 @@ TEST_VK(TestUi, InputTextEditsUtf8SelectionClipboardAndNativeFocus)
 	EXPECT_TRUE(ui.routeEvent(key));
 	EXPECT_FALSE(drawInput());
 	ASSERT_TRUE(ui.takeClipboardWrite(clipboard));
-	EXPECT_EQ(clipboard.stdStr(), "alpha");
+	EXPECT_EQ(testStdString(clipboard), "alpha");
 	ui.endFrame();
 	pointer.clickCount = 3;
 	ui.beginFrame(16.0F);
@@ -3361,7 +3361,7 @@ TEST_VK(TestUi, InputTextEditsUtf8SelectionClipboardAndNativeFocus)
 	EXPECT_TRUE(ui.routeEvent(key));
 	EXPECT_FALSE(drawInput());
 	ASSERT_TRUE(ui.takeClipboardWrite(clipboard));
-	EXPECT_EQ(clipboard.stdStr(), "alpha beta");
+	EXPECT_EQ(testStdString(clipboard), "alpha beta");
 	ui.endFrame();
 
 	oa::UiEvent pointerUp = pointer;
@@ -3459,7 +3459,7 @@ TEST_VK(TestUi, InputTextRendersImeCompositionSelectionAndUnderlineOnGpu)
 	ui.beginFrame(16.0F, {0, 0, 128, 32});
 	EXPECT_TRUE(ui.routeEvent(preedit));
 	EXPECT_FALSE(drawInput());
-	EXPECT_EQ(text.stdStr(), "ab");
+	EXPECT_EQ(testStdString(text), "ab");
 	const oa::PixelRect nativeCaret = ui.textInputRect();
 	EXPECT_GT(nativeCaret.x, 0);
 	EXPECT_GT(nativeCaret.h, 0);
@@ -3482,7 +3482,7 @@ TEST_VK(TestUi, InputTextRendersImeCompositionSelectionAndUnderlineOnGpu)
 	ASSERT_TRUE(ui.markFrameSubmitted(completion).isOk());
 	ui.endFrame();
 
-	std::array<oa::U8, 128U * 32U * 4U> pixels{};
+	oa::Array<oa::U8, 128U * 32U * 4U> pixels{};
 	ASSERT_TRUE(oa::EngineResourceAccess::readbackBuffer(
 		*engine,
 		target.readback,
@@ -3896,13 +3896,13 @@ TEST_VK(TestUi, TextureBlitAndClearAreByteExact)
 {
 	auto* engine = testEnginePtr();
 	ASSERT_NE(engine, nullptr);
-	const std::array<oa::U8, 16> sourcePixels{
+	const oa::Array<oa::U8, 16> sourcePixels{
 		1, 2, 3, 4,
 		5, 6, 7, 8,
 		9, 10, 11, 12,
 		13, 14, 15, 16,
 	};
-	const std::array<oa::U8, 16> zeroPixels{};
+	const oa::Array<oa::U8, 16> zeroPixels{};
 	auto sourceResult = oa::FnTexture::fromPixels(
 		*engine,
 		oa::Span<const oa::U8>(sourcePixels.data(), sourcePixels.size()),
@@ -3930,7 +3930,7 @@ TEST_VK(TestUi, TextureBlitAndClearAreByteExact)
 	auto blitEvent = engine->submit();
 	ASSERT_TRUE(blitEvent.isOk()) << blitEvent.getStatus().toString();
 	ASSERT_TRUE(engine->wait(*blitEvent).isOk());
-	std::array<oa::U8, 16> readback{};
+	oa::Array<oa::U8, 16> readback{};
 	ASSERT_TRUE(oa::FnTexture::copyToHost(
 		*engine, targetReadback, readback.data(), readback.size()).isOk());
 	EXPECT_EQ(readback, sourcePixels);
@@ -3959,7 +3959,7 @@ TEST_VK(TestUi, SemanticImageLayoutsAndFormatsConvertByteExactly)
 		oa::MatrixShape inShape,
 		oa::ImageLayout inLayout,
 		oa::ImageFormat inFormat,
-		const std::array<oa::U8, 8>& inExpected) {
+		const oa::Array<oa::U8, 8>& inExpected) {
 		auto matrix = oa::FnMatrix::fromBytes(
 			oa::Span<const oa::U8>(
 				reinterpret_cast<const oa::U8*>(inValues.data()),
@@ -3971,37 +3971,37 @@ TEST_VK(TestUi, SemanticImageLayoutsAndFormatsConvertByteExactly)
 		auto textureResult = oa::FnTexture::fromImage(*engine, image);
 		ASSERT_TRUE(textureResult.isOk())
 			<< textureResult.getStatus().toString();
-		std::array<oa::U8, 8> actual{};
+		oa::Array<oa::U8, 8> actual{};
 		ASSERT_TRUE(oa::FnTexture::copyToHost(
 			*engine, *textureResult, actual.data(), actual.size()).isOk());
 		EXPECT_EQ(actual, inExpected);
 	};
 
-	const std::array<oa::F32, 6> nchwRgb{
+	const oa::Array<oa::F32, 6> nchwRgb{
 		1.0F, 0.0F, 0.0F, 1.0F, 0.5F, 0.25F};
 	check(nchwRgb, {1, 3, 1, 2}, oa::ImageLayout::Nchw, oa::ImageFormat::Rgb,
 		{255U, 0U, 128U, 255U, 0U, 255U, 64U, 255U});
 
-	const std::array<oa::F32, 6> nhwcBgr{
+	const oa::Array<oa::F32, 6> nhwcBgr{
 		0.5F, 0.0F, 1.0F, 0.25F, 1.0F, 0.0F};
 	check(nhwcBgr, {1, 1, 2, 3}, oa::ImageLayout::Nhwc, oa::ImageFormat::Bgr,
 		{255U, 0U, 128U, 255U, 0U, 255U, 64U, 255U});
 
-	const std::array<oa::F32, 4> chwGrayAlpha{0.25F, 0.75F, 0.5F, 1.0F};
+	const oa::Array<oa::F32, 4> chwGrayAlpha{0.25F, 0.75F, 0.5F, 1.0F};
 	check(chwGrayAlpha, {2, 1, 2}, oa::ImageLayout::Chw,
 		oa::ImageFormat::GrayAlpha,
 		{64U, 64U, 64U, 128U, 191U, 191U, 191U, 255U});
 
-	const std::array<oa::F32, 8> hwcBgra{
+	const oa::Array<oa::F32, 8> hwcBgra{
 		0.5F, 0.0F, 1.0F, 0.25F, 0.25F, 1.0F, 0.0F, 0.75F};
 	check(hwcBgra, {1, 2, 4}, oa::ImageLayout::Hwc, oa::ImageFormat::Bgra,
 		{255U, 0U, 128U, 64U, 0U, 255U, 64U, 191U});
 
-	const std::array<oa::F32, 2> hwGray{-1.0F, 2.0F};
+	const oa::Array<oa::F32, 2> hwGray{-1.0F, 2.0F};
 	check(hwGray, {1, 2}, oa::ImageLayout::Hw, oa::ImageFormat::Gray,
 		{0U, 0U, 0U, 255U, 255U, 255U, 255U, 255U});
 
-	const std::array<oa::F32, 8> nchwRgba{
+	const oa::Array<oa::F32, 8> nchwRgba{
 		1.0F, 0.0F, 0.0F, 1.0F, 0.5F, 0.25F, 0.25F, 0.75F};
 	check(nchwRgba, {1, 4, 1, 2}, oa::ImageLayout::Nchw, oa::ImageFormat::Rgba,
 		{255U, 0U, 128U, 64U, 0U, 255U, 64U, 191U});
@@ -4011,14 +4011,14 @@ TEST_VK(TestUi, TextureCopiesShareOneLease)
 {
 	auto* engine = testEnginePtr();
 	ASSERT_NE(engine, nullptr);
-	const std::array<oa::U8, 8> pixels{
+	const oa::Array<oa::U8, 8> pixels{
 		1U, 2U, 3U, 4U, 5U, 6U, 7U, 8U};
 	auto result = oa::FnTexture::fromPixels(
 		*engine, oa::Span<const oa::U8>(pixels.data(), pixels.size()), 2, 1);
 	ASSERT_TRUE(result.isOk()) << result.getStatus().toString();
 	oa::Texture retained = *result;
 	*result = {};
-	std::array<oa::U8, 8> actual{};
+	oa::Array<oa::U8, 8> actual{};
 	ASSERT_TRUE(oa::FnTexture::copyToHost(
 		*engine, retained, actual.data(), actual.size()).isOk());
 	EXPECT_EQ(actual, pixels);
@@ -4026,9 +4026,9 @@ TEST_VK(TestUi, TextureCopiesShareOneLease)
 
 TEST_VK(TestUi, MetricFigureSavesCurvesAndConfusionHeatmap)
 {
-	const std::array<oa::F32, 8> loss{
+	const oa::Array<oa::F32, 8> loss{
 		1.0F, 0.78F, 0.61F, 0.49F, 0.40F, 0.34F, 0.30F, 0.27F};
-	const std::array<oa::F32, 9> confusion{
+	const oa::Array<oa::F32, 9> confusion{
 		12.0F, 1.0F, 0.0F,
 		2.0F, 10.0F, 1.0F,
 		0.0F, 1.0F, 11.0F};
@@ -4058,7 +4058,7 @@ TEST_VK(TestUi, MetricFigureSavesCurvesAndConfusionHeatmap)
 
 TEST_VK(TestUi, MetricFigureRendersSemanticImage)
 {
-	const std::array<oa::F32, 8> loss{
+	const oa::Array<oa::F32, 8> loss{
 		1.0F, 0.78F, 0.61F, 0.49F, 0.40F, 0.34F, 0.30F, 0.27F};
 	oa::plot::Figure figure({
 		.title = "training metrics",
@@ -4129,12 +4129,12 @@ TEST_VK(TestUi, PlotThemesResolveDarkByDefaultAndLightExplicitly)
 
 TEST_VK(TestUi, OrderedPlotArtistsComposeExplicitLinesScatterBarsAndLegend)
 {
-	const std::array<oa::F32, 6> x{0.0F, 0.12F, 0.27F, 0.48F, 0.74F, 1.0F};
-	const std::array<oa::F32, 6> roc{0.0F, 0.48F, 0.71F, 0.86F, 0.95F, 1.0F};
-	const std::array<oa::F32, 6> pr{1.0F, 0.94F, 0.88F, 0.81F, 0.72F, 0.61F};
-	const std::array<oa::F32, 5> sx{0.1F, 0.3F, 0.5F, 0.7F, 0.9F};
-	const std::array<oa::F32, 5> sy{0.2F, 0.6F, 0.45F, 0.82F, 0.68F};
-	const std::array<oa::F32, 8> samples{
+	const oa::Array<oa::F32, 6> x{0.0F, 0.12F, 0.27F, 0.48F, 0.74F, 1.0F};
+	const oa::Array<oa::F32, 6> roc{0.0F, 0.48F, 0.71F, 0.86F, 0.95F, 1.0F};
+	const oa::Array<oa::F32, 6> pr{1.0F, 0.94F, 0.88F, 0.81F, 0.72F, 0.61F};
+	const oa::Array<oa::F32, 5> sx{0.1F, 0.3F, 0.5F, 0.7F, 0.9F};
+	const oa::Array<oa::F32, 5> sy{0.2F, 0.6F, 0.45F, 0.82F, 0.68F};
+	const oa::Array<oa::F32, 8> samples{
 		0.08F, 0.12F, 0.18F, 0.42F, 0.46F, 0.51F, 0.76F, 0.88F};
 	oa::plot::Figure figure({
 		.rows = 1,
@@ -4315,7 +4315,7 @@ TEST_VK(TestUi, FigureAndAxesLabelsReserveAndComposeCoverageBands)
 				++count;
 			}
 		}
-		return std::array<oa::Usize, 3>{
+		return oa::Array<oa::Usize, 3>{
 			count,
 			count > 0U ? maxX - minX + 1U : 0U,
 			count > 0U ? maxY - minY + 1U : 0U};
@@ -4335,7 +4335,7 @@ TEST_VK(TestUi, TextureReadbackFeedsCvFigureAndImageFileSinks)
 {
 	auto* engine = testEnginePtr();
 	ASSERT_NE(engine, nullptr);
-	const std::array<oa::U8, 16> sourcePixels{
+	const oa::Array<oa::U8, 16> sourcePixels{
 		255, 0, 0, 255,
 		0, 255, 0, 255,
 		0, 0, 255, 255,
@@ -4357,7 +4357,7 @@ TEST_VK(TestUi, TextureReadbackFeedsCvFigureAndImageFileSinks)
 	ASSERT_TRUE(compositeResult.isOk())
 		<< compositeResult.getStatus().toString();
 	oa::Texture composite = oa::move(*compositeResult);
-	std::array<oa::U8, 16> compositePixels{};
+	oa::Array<oa::U8, 16> compositePixels{};
 	ASSERT_TRUE(oa::FnTexture::copyToHost(*engine, composite,
 		compositePixels.data(), compositePixels.size()).isOk());
 	EXPECT_EQ(compositePixels, sourcePixels);
@@ -4407,7 +4407,7 @@ TEST_VK(TestUi, CvFrameCompositesOnlyValidatedCpuBoundingBoxes)
 
 	constexpr oa::I32 width = 12;
 	constexpr oa::I32 height = 10;
-	std::array<oa::U8, width * height * 4> source{};
+	oa::Array<oa::U8, width * height * 4> source{};
 	for (oa::Usize i = 3U; i < source.size(); i += 4U) source[i] = 255U;
 
 	oa::CvFrame frame;
@@ -4424,7 +4424,7 @@ TEST_VK(TestUi, CvFrameCompositesOnlyValidatedCpuBoundingBoxes)
 	auto result = frame.render(
 		*engine, oa::Span<const oa::U8>(source.data(), source.size()));
 	ASSERT_TRUE(result.isOk()) << result.getStatus().toString();
-	std::array<oa::U8, width * height * 4> actual{};
+	oa::Array<oa::U8, width * height * 4> actual{};
 	ASSERT_TRUE(oa::FnTexture::copyToHost(
 		*engine, *result, actual.data(), actual.size()).isOk());
 
@@ -4486,19 +4486,19 @@ TEST_VK(TestUi, DeferredSemanticTextureCompletesAtSinks)
 	ASSERT_NE(context, nullptr);
 	oa::ExecutionSession::RecordingScope recording(*context);
 
-	const std::array<oa::F32, 16> nchw{
+	const oa::Array<oa::F32, 16> nchw{
 		-1.0F, 0.0F, 0.5F, 2.0F,
 		1.0F, 0.25F, 0.75F, 0.0F,
 		0.0F, 0.5F, 1.0F, 0.25F,
 		0.0F, 0.5F, 1.0F, 2.0F,
 	};
-	const std::array<oa::U8, 16> expected{
+	const oa::Array<oa::U8, 16> expected{
 		0U, 255U, 0U, 0U,
 		0U, 64U, 128U, 128U,
 		128U, 191U, 255U, 255U,
 		255U, 0U, 64U, 255U,
 	};
-	const std::array<oa::U8, 16> poison{
+	const oa::Array<oa::U8, 16> poison{
 		0xA5U, 0xA5U, 0xA5U, 0xA5U,
 		0xA5U, 0xA5U, 0xA5U, 0xA5U,
 		0xA5U, 0xA5U, 0xA5U, 0xA5U,
@@ -4540,7 +4540,7 @@ TEST_VK(TestUi, DeferredSemanticTextureCompletesAtSinks)
 	ASSERT_TRUE(compositeResult.isOk())
 		<< compositeResult.getStatus().toString();
 	oa::Texture composite = oa::move(*compositeResult);
-	std::array<oa::U8, 16> compositePixels{};
+	oa::Array<oa::U8, 16> compositePixels{};
 	ASSERT_TRUE(oa::FnTexture::copyToHost(*engine, composite,
 		compositePixels.data(), compositePixels.size()).isOk());
 	EXPECT_EQ(compositePixels, expected);
@@ -4555,7 +4555,7 @@ TEST_VK(TestUi, DeferredSemanticTextureCompletesAtSinks)
 	auto loadedImageResult = oa::FnTexture::fromImage(*engine, *decodedImage);
 	ASSERT_TRUE(loadedImageResult.isOk()) << loadedImageResult.getStatus().toString();
 	oa::Texture loadedImage = oa::move(*loadedImageResult);
-	std::array<oa::U8, 16> loadedPixels{};
+	oa::Array<oa::U8, 16> loadedPixels{};
 	ASSERT_TRUE(oa::FnTexture::copyToHost(*engine, loadedImage,
 		loadedPixels.data(), loadedPixels.size()).isOk());
 	EXPECT_EQ(loadedPixels, expected);
@@ -4582,7 +4582,7 @@ TEST_VK(TestUi, DeferredSemanticTextureCompletesAtSinks)
 	auto loadedFigureResult = oa::FnTexture::fromImage(*engine, *decodedFigure);
 	ASSERT_TRUE(loadedFigureResult.isOk()) << loadedFigureResult.getStatus().toString();
 	oa::Texture loadedFigure = oa::move(*loadedFigureResult);
-	std::array<oa::U8, 32U * 32U * 4U> figurePixels{};
+	oa::Array<oa::U8, 32U * 32U * 4U> figurePixels{};
 	ASSERT_TRUE(oa::FnTexture::copyToHost(*engine, loadedFigure,
 		figurePixels.data(), figurePixels.size()).isOk());
 	const auto expectPixel = [&](oa::U32 inX, oa::U32 inY, oa::U32 inSourcePixel) {

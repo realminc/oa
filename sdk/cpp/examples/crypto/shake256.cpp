@@ -13,7 +13,8 @@ OA_MAIN("ExampleCryptoShake256") {
 	auto messages = oa::FnMatrix::fromBytes(
 		oa::Span<const oa::U8>(messagesBytes.data(), messagesBytes.size()),
 		{3, 5},
-		oa::ScalarType::UInt8);
+		oa::ScalarType::UInt8
+	);
 
 	auto digests = oa::FnHash::shake256(messages, 32U);
 
@@ -22,10 +23,15 @@ OA_MAIN("ExampleCryptoShake256") {
 	if (not oa::FnMatrix::copyToHost(digests, gpu.data(), gpu.size()).isOk()) return 1;
 	for (oa::Usize row = 0; row < 3U; ++row) {
 		oa::shake256(
-			messagesBytes.data() + row * 5U, 5U,
-			cpu.data() + row * 32U, 32U);
+			messagesBytes.data() + row * 5U,
+			5U,
+			cpu.data() + row * 32U,
+			32U
+		);
 	}
-	if (std::memcmp(gpu.data(), cpu.data(), gpu.size()) != 0) return 1;
+	if (std::memcmp(gpu.data(), cpu.data(), gpu.size()) != 0) {
+		return 1;
+	}
 
 	std::puts("3 GPU SHAKE-256 digests match the CPU oracle");
 	return 0;

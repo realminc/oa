@@ -12,10 +12,16 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 
 #include <oa/core/memory.h>
+#include <oa/core/std/allocator.h>
 
-#include <cctype>
-#include <cerrno>
-#include <cstdlib>
+#include <ctype.h>
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+#if defined(_WIN32)
+	#include <malloc.h>
+#endif
 
 // SIMD intrinsics
 #if defined(__x86_64__) || defined(_M_X64)
@@ -42,14 +48,14 @@ static const bool g_HasAVX512 = hasAVX512F();
 static oa::Usize initOaMemcpyNtPrefetchBytes() {
 	constexpr oa::Usize kDefault = 0;
 	constexpr oa::Usize kMax = 8192;
-	const char* env = std::getenv("OA_MEMCPY_NT_PREFETCH");
+	const char* env = ::getenv("OA_MEMCPY_NT_PREFETCH");
 	if (!env || !*env) return kDefault;
 	char* end = nullptr;
 	errno = 0;
-	unsigned long long val = std::strtoull(env, &end, 10);
+	unsigned long long val = ::strtoull(env, &end, 10);
 	if (errno == ERANGE) return kMax;
 	if (end == env) return kDefault;
-	while (*end != '\0' && std::isspace(static_cast<unsigned char>(*end))) ++end;
+	while (*end != '\0' && ::isspace(static_cast<unsigned char>(*end))) ++end;
 	if (*end != '\0') return kDefault;
 	if (val == 0ULL) return 0;
 	if (val > static_cast<unsigned long long>(kMax)) return kMax;
@@ -74,7 +80,7 @@ static void* memcpyNT_AVX512(void* inDst, const void* inSrc, oa::Usize inSize) {
 	// Align destination to 64B
 	oa::Usize Align = (64 - (reinterpret_cast<oa::Usize>(dst) & 63)) & 63;
 	if (Align > 0 && Align <= inSize) {
-		std::memcpy(dst, src, Align);
+		oa::memcpy(dst, src, Align);
 		dst += Align; src += Align; inSize -= Align;
 	}
 
@@ -99,7 +105,7 @@ static void* memcpyNT_AVX512(void* inDst, const void* inSrc, oa::Usize inSize) {
 	}
 
 	_mm_sfence();
-	if (inSize > 0) std::memcpy(dst, src, inSize);
+	if (inSize > 0) oa::memcpy(dst, src, inSize);
 	return inDst;
 }
 #endif
@@ -112,7 +118,7 @@ static void* memcpyNT_AVX2(void* inDst, const void* inSrc, oa::Usize inSize) {
 	// Align destination to 32B
 	oa::Usize Align = (32 - (reinterpret_cast<oa::Usize>(dst) & 31)) & 31;
 	if (Align > 0 && Align <= inSize) {
-		std::memcpy(dst, src, Align);
+		oa::memcpy(dst, src, Align);
 		dst += Align; src += Align; inSize -= Align;
 	}
 
@@ -135,7 +141,7 @@ static void* memcpyNT_AVX2(void* inDst, const void* inSrc, oa::Usize inSize) {
 	}
 
 	_mm_sfence();
-	if (inSize > 0) std::memcpy(dst, src, inSize);
+	if (inSize > 0) oa::memcpy(dst, src, inSize);
 	return inDst;
 }
 #endif
@@ -148,7 +154,7 @@ void* oa::memcpyNt(void* inDst, const void* inSrc, oa::Usize inSize) {
 #if defined(__AVX2__)
 	return memcpyNT_AVX2(inDst, inSrc, inSize);
 #else
-	return std::memcpy(inDst, inSrc, inSize);
+	return oa::memcpy(inDst, inSrc, inSize);
 #endif
 }
 
@@ -169,7 +175,7 @@ bool oa::memEqual(const void* inA, const void* inB, oa::Usize inSize) {
 			if (_mm512_cmpeq_epi8_mask(Va, Vb) != 0xFFFFFFFFFFFFFFFFULL) return false;
 			A += 64; B += 64; inSize -= 64;
 		}
-		if (inSize > 0) return std::memcmp(A, B, inSize) == 0;
+		if (inSize > 0) return oa::memcmp(A, B, inSize) == 0;
 		return true;
 	}
 #endif
@@ -184,11 +190,11 @@ bool oa::memEqual(const void* inA, const void* inB, oa::Usize inSize) {
 			if (_mm256_movemask_epi8(_mm256_cmpeq_epi8(Va, Vb)) != -1) return false;
 			A += 32; B += 32; inSize -= 32;
 		}
-		if (inSize > 0) return std::memcmp(A, B, inSize) == 0;
+		if (inSize > 0) return oa::memcmp(A, B, inSize) == 0;
 		return true;
 	}
 #else
-	return std::memcmp(inA, inB, inSize) == 0;
+	return oa::memcmp(inA, inB, inSize) == 0;
 #endif
 }
 
@@ -196,22 +202,115 @@ bool oa::memEqual(const void* inA, const void* inB, oa::Usize inSize) {
 // ALIGNED ALLOCATION
 // ═══════════════════════════════════════════════════════════════════════════════
 
-void* oa::alignedAlloc(oa::Usize inSize, oa::Usize inAlignment) {
+oa::AllocationResult oa::tryAllocBytes(
+	oa::Usize inBytes,
+	oa::Usize inAlignment
+) noexcept {
+	const oa::Usize requestedAlignment = inAlignment == 0 ? 1 : inAlignment;
+	if ((requestedAlignment & (requestedAlignment - 1)) != 0) {
+		return {nullptr, oa::AllocationError::InvalidAlignment};
+	}
+	if (inBytes == 0) {
+		return {nullptr, oa::AllocationError::None};
+	}
+
+	const oa::Usize effectiveAlignment =
+		requestedAlignment < sizeof(void*) ? sizeof(void*) : requestedAlignment;
 #if defined(_WIN32)
-	return _aligned_malloc(inSize, inAlignment);
+	void* const ptr = _aligned_malloc(inBytes, effectiveAlignment);
+	return ptr != nullptr
+		? oa::AllocationResult{ptr, oa::AllocationError::None}
+		: oa::AllocationResult{nullptr, oa::AllocationError::OutOfMemory};
 #else
+	if (effectiveAlignment <= oa::defaultAllocationAlignment()) {
+		void* const ptr = ::malloc(inBytes);
+		return ptr != nullptr
+			? oa::AllocationResult{ptr, oa::AllocationError::None}
+			: oa::AllocationResult{nullptr, oa::AllocationError::OutOfMemory};
+	}
 	void* ptr = nullptr;
-	if (posix_memalign(&ptr, inAlignment, inSize) != 0) return nullptr;
-	return ptr;
+	const int result = ::posix_memalign(&ptr, effectiveAlignment, inBytes);
+	if (result == 0) {
+		return {ptr, oa::AllocationError::None};
+	}
+	return {
+		nullptr,
+		result == EINVAL
+			? oa::AllocationError::InvalidAlignment
+			: oa::AllocationError::OutOfMemory,
+	};
 #endif
 }
 
-void oa::alignedFree(void* inPtr) {
-	if (inPtr) {
-#if defined(_WIN32)
-		_aligned_free(inPtr);
-#else
-		free(inPtr);
-#endif
+oa::AllocationResult oa::tryAllocArray(
+	oa::Usize inCount,
+	oa::Usize inElementSize,
+	oa::Usize inAlignment
+) noexcept {
+	if (inCount != 0 && inElementSize > static_cast<oa::Usize>(-1) / inCount) {
+		return {nullptr, oa::AllocationError::SizeOverflow};
 	}
+	return oa::tryAllocBytes(inCount * inElementSize, inAlignment);
+}
+
+oa::AllocationResult oa::tryReallocBytes(
+	void* inPtr,
+	oa::Usize inBytes,
+	oa::Usize inAlignment
+) noexcept {
+	const oa::Usize requestedAlignment = inAlignment == 0 ? 1 : inAlignment;
+	if ((requestedAlignment & (requestedAlignment - 1)) != 0
+		|| requestedAlignment > oa::defaultAllocationAlignment()) {
+		return {nullptr, oa::AllocationError::InvalidAlignment};
+	}
+	if (inBytes == 0) {
+		oa::freeBytes(inPtr, inAlignment);
+		return {nullptr, oa::AllocationError::None};
+	}
+
+#if defined(_WIN32)
+	const oa::Usize effectiveAlignment = requestedAlignment < sizeof(void*)
+		? sizeof(void*)
+		: requestedAlignment;
+	void* const ptr = _aligned_realloc(inPtr, inBytes, effectiveAlignment);
+#else
+	void* const ptr = ::realloc(inPtr, inBytes);
+#endif
+	return ptr != nullptr
+		? oa::AllocationResult{ptr, oa::AllocationError::None}
+		: oa::AllocationResult{nullptr, oa::AllocationError::OutOfMemory};
+}
+
+[[noreturn]] void oa::allocationFailed(
+	oa::AllocationError inError,
+	oa::Usize inBytes,
+	oa::Usize inAlignment
+) noexcept {
+	::fprintf(
+		stderr,
+		"OA allocation failure: %s (bytes=%zu, alignment=%zu)\n",
+		oa::allocationErrorName(inError),
+		inBytes,
+		inAlignment);
+	::abort();
+}
+
+void oa::freeBytes(void* inPtr, oa::Usize inAlignment) noexcept {
+	(void)inAlignment;
+	if (inPtr == nullptr) {
+		return;
+	}
+#if defined(_WIN32)
+	_aligned_free(inPtr);
+#else
+	::free(inPtr);
+#endif
+}
+
+void* oa::alignedAlloc(oa::Usize inSize, oa::Usize inAlignment) {
+	return oa::tryAllocBytes(inSize, inAlignment).data;
+}
+
+void oa::alignedFree(void* inPtr) {
+	oa::freeBytes(inPtr);
 }

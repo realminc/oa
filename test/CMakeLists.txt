@@ -83,6 +83,7 @@ endfunction()
 # cpp/core/misc tests
 oa_add_test(TestTypes            cpp/core/misc/testTypes.cpp            cpp/core/misc)
 oa_add_test(TestCoreMisc         cpp/core/misc/testCoreMisc.cpp         cpp/core/misc)
+oa_add_test(TestCli              cpp/core/misc/testCli.cpp              cpp/core/misc)
 oa_add_test(TestValidation       cpp/core/misc/testValidation.cpp       cpp/core/misc)
 oa_add_test(TestVlm              cpp/core/vlm/testVlm.cpp               cpp/core/vlm)
 
@@ -159,11 +160,13 @@ target_link_libraries(TestGptOssConfig PRIVATE oaSdkSupport)
 oa_add_ml_test(TestAttention     cpp/ml/nn/testAttention.cpp            cpp/ml/nn)
 oa_add_ml_test(TestFlow          cpp/ml/generative/testFlow.cpp         cpp/ml/generative)
 target_link_libraries(TestFlow PRIVATE oaSdkSupport)
-oa_add_ml_test(TestClipText      cpp/ml/nn/testClipText.cpp             cpp/ml/nn)
-target_link_libraries(TestClipText PRIVATE oaSdkSupport)
+if(OA_ENABLE_ALM)
+	oa_add_ml_test(TestClipText cpp/ml/nn/testClipText.cpp cpp/ml/nn)
+	target_link_libraries(TestClipText PRIVATE oaSdkSupport)
+endif()
 
 set_tests_properties(
-	TestTypes TestMemory TestContainers TestThreading TestCoreMisc TestValidation TestVlm
+	TestTypes TestMemory TestContainers TestThreading TestCoreMisc TestCli TestValidation TestVlm
 	TestTransferWeights TestModelFileIntegrity TestTokenizer TestGptOssConfig
 	PROPERTIES LABELS "core"
 )
@@ -174,8 +177,10 @@ set_tests_properties(
 
 add_executable(TestOaStd
 	cpp/oaGtestMain.cpp
+	cpp/core/std/testChrono.cpp
 	cpp/core/std/testAllocator.cpp
 	cpp/core/std/testArray.cpp
+	cpp/core/std/testAssert.cpp
 	cpp/core/std/testOptional.cpp
 	cpp/core/std/testStringView.cpp
 	cpp/core/std/testString.cpp
@@ -194,12 +199,21 @@ add_executable(TestOaStd
 	cpp/core/std/testSync.cpp
 	cpp/core/std/testCString.cpp
 	cpp/core/std/testPairLimits.cpp
+	cpp/core/std/testScalarMath.cpp
 )
 target_link_libraries(TestOaStd PRIVATE oa GTest::gtest)
 target_include_directories(TestOaStd PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/cpp)
 set_target_properties(TestOaStd PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${OA_BIN_DIR}/test/core/std")
 add_test(NAME TestOaStd COMMAND TestOaStd)
 set_tests_properties(TestOaStd PROPERTIES LABELS "core;oastd")
+
+# Correctness-gated OA foundation versus hosted standard-library benchmark.
+# It is deliberately not a CTest: release comparisons use the canonical
+# fresh-process benchmark runner with fixed CPU, compiler and thermal evidence.
+add_executable(BenchStd cpp/core/std/benchStd.cpp)
+target_link_libraries(BenchStd PRIVATE oa)
+set_target_properties(BenchStd PROPERTIES
+	RUNTIME_OUTPUT_DIRECTORY "${OA_BIN_DIR}/test/core/std")
 
 if(OA_OASTD_EXTRA_TARGETS)
 	set(_OA_OASTD_STD_HDRS
@@ -217,7 +231,6 @@ if(OA_OASTD_EXTRA_TARGETS)
 		"${oa_SOURCE_DIR}/source/cpp/include/oa/core/std/stringView.h"
 		"${oa_SOURCE_DIR}/source/cpp/include/oa/core/std/typeTraits.h"
 		"${oa_SOURCE_DIR}/source/cpp/include/oa/core/std/path.h"
-		"${oa_SOURCE_DIR}/source/cpp/include/oa/core/std/filesystem.h"
 		"${oa_SOURCE_DIR}/source/cpp/include/oa/core/std/algo.h"
 		"${oa_SOURCE_DIR}/source/cpp/include/oa/core/std/vec.h"
 	)

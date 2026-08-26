@@ -14,7 +14,6 @@
 #include <oa/ui/plot/plot.h>
 
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -71,17 +70,17 @@ oa::plot::Figure introFigure() {
 	});
 	figure.title("One retained figure - C++ and Python parity");
 
-	constexpr std::array<oa::F32, 8> steps{
+	constexpr oa::Array<oa::F32, 8> steps{
 		0.0F, 1.0F, 2.0F, 3.0F, 4.0F, 5.0F, 6.0F, 7.0F};
-	constexpr std::array<oa::F32, 8> train{
+	constexpr oa::Array<oa::F32, 8> train{
 		1.00F, 0.78F, 0.61F, 0.48F, 0.37F, 0.29F, 0.23F, 0.19F};
-	constexpr std::array<oa::F32, 8> validation{
+	constexpr oa::Array<oa::F32, 8> validation{
 		1.04F, 0.83F, 0.66F, 0.53F, 0.43F, 0.35F, 0.30F, 0.27F};
-	constexpr std::array<oa::F32, 5> ideal{
+	constexpr oa::Array<oa::F32, 5> ideal{
 		0.0F, 0.25F, 0.50F, 0.75F, 1.0F};
-	constexpr std::array<oa::F32, 5> confidence{
+	constexpr oa::Array<oa::F32, 5> confidence{
 		0.10F, 0.30F, 0.50F, 0.70F, 0.90F};
-	constexpr std::array<oa::F32, 5> accuracy{
+	constexpr oa::Array<oa::F32, 5> accuracy{
 		0.08F, 0.34F, 0.47F, 0.74F, 0.88F};
 
 	auto& curves = figure.ax(0, 0);
@@ -109,8 +108,8 @@ oa::plot::Figure introFigure() {
 // [oa-plot-intro-end]
 
 void trainingPlot(oa::plot::Axes& inAxes) {
-	std::array<oa::F32, 72> train{};
-	std::array<oa::F32, 72> validation{};
+	oa::Array<oa::F32, 72> train{};
+	oa::Array<oa::F32, 72> validation{};
 	for (oa::Usize i = 0U; i < train.size(); ++i) {
 		const oa::F32 step = static_cast<oa::F32>(i);
 		train[i] = 1.55F * std::exp(-step / 18.0F)
@@ -126,10 +125,10 @@ void trainingPlot(oa::plot::Axes& inAxes) {
 }
 
 void rocPlot(oa::plot::Axes& inAxes) {
-	std::array<oa::F32, 33> rate{};
-	std::array<oa::F32, 33> vision{};
-	std::array<oa::F32, 33> fusion{};
-	std::array<oa::F32, 33> chance{};
+	oa::Array<oa::F32, 33> rate{};
+	oa::Array<oa::F32, 33> vision{};
+	oa::Array<oa::F32, 33> fusion{};
+	oa::Array<oa::F32, 33> chance{};
 	for (oa::Usize i = 0U; i < rate.size(); ++i) {
 		const oa::F32 x = static_cast<oa::F32>(i)
 			/ static_cast<oa::F32>(rate.size() - 1U);
@@ -149,9 +148,9 @@ void rocPlot(oa::plot::Axes& inAxes) {
 }
 
 void precisionRecallPlot(oa::plot::Axes& inAxes) {
-	std::array<oa::F32, 33> recall{};
-	std::array<oa::F32, 33> vision{};
-	std::array<oa::F32, 33> fusion{};
+	oa::Array<oa::F32, 33> recall{};
+	oa::Array<oa::F32, 33> vision{};
+	oa::Array<oa::F32, 33> fusion{};
 	for (oa::Usize i = 0U; i < recall.size(); ++i) {
 		const oa::F32 x = static_cast<oa::F32>(i)
 			/ static_cast<oa::F32>(recall.size() - 1U);
@@ -170,7 +169,7 @@ void precisionRecallPlot(oa::plot::Axes& inAxes) {
 }
 
 void scoreHistogram(oa::plot::Axes& inAxes) {
-	std::array<oa::F32, 192> scores{};
+	oa::Array<oa::F32, 192> scores{};
 	for (oa::Usize i = 0U; i < scores.size(); ++i) {
 		const oa::F32 phase = static_cast<oa::F32>(i);
 		const oa::F32 cluster = i % 3U == 0U ? 0.28F : 0.74F;
@@ -186,9 +185,9 @@ void scoreHistogram(oa::plot::Axes& inAxes) {
 }
 
 void calibrationScatter(oa::plot::Axes& inAxes) {
-	std::array<oa::F32, 24> confidence{};
-	std::array<oa::F32, 24> accuracy{};
-	std::array<oa::F32, 24> ideal{};
+	oa::Array<oa::F32, 24> confidence{};
+	oa::Array<oa::F32, 24> accuracy{};
+	oa::Array<oa::F32, 24> ideal{};
 	for (oa::Usize i = 0U; i < confidence.size(); ++i) {
 		const oa::F32 x = (static_cast<oa::F32>(i) + 0.5F)
 			/ static_cast<oa::F32>(confidence.size());
@@ -208,7 +207,7 @@ void calibrationScatter(oa::plot::Axes& inAxes) {
 }
 
 void throughputBars(oa::plot::Axes& inAxes) {
-	constexpr std::array<oa::F32, 6> throughput{
+	constexpr oa::Array<oa::F32, 6> throughput{
 		0.42F, 0.58F, 0.71F, 0.86F, 0.79F, 0.94F};
 	inAxes.title("normalized throughput");
 	inAxes.xLabel("kernel route");
@@ -219,7 +218,7 @@ void throughputBars(oa::plot::Axes& inAxes) {
 }
 
 void confusionHeatmap(oa::plot::Axes& inAxes) {
-	constexpr std::array<oa::F32, 25> confusion{
+	constexpr oa::Array<oa::F32, 25> confusion{
 		42.0F, 2.0F, 0.0F, 1.0F, 0.0F,
 		3.0F, 37.0F, 2.0F, 0.0F, 1.0F,
 		0.0F, 2.0F, 40.0F, 3.0F, 0.0F,
@@ -245,8 +244,8 @@ void wireframe(
 	for (oa::I32 row = 0; row < lines; ++row) {
 		const oa::F32 v = -1.0F + 2.0F * static_cast<oa::F32>(row)
 			/ static_cast<oa::F32>(lines - 1);
-		std::array<oa::F32, samples> px{};
-		std::array<oa::F32, samples> py{};
+		oa::Array<oa::F32, samples> px{};
+		oa::Array<oa::F32, samples> py{};
 		for (oa::I32 column = 0; column < samples; ++column) {
 			const oa::F32 u = -1.0F + 2.0F * static_cast<oa::F32>(column)
 				/ static_cast<oa::F32>(samples - 1);
@@ -263,8 +262,8 @@ void wireframe(
 	for (oa::I32 column = 0; column < lines; ++column) {
 		const oa::F32 u = -1.0F + 2.0F * static_cast<oa::F32>(column)
 			/ static_cast<oa::F32>(lines - 1);
-		std::array<oa::F32, samples> px{};
-		std::array<oa::F32, samples> py{};
+		oa::Array<oa::F32, samples> px{};
+		oa::Array<oa::F32, samples> py{};
 		for (oa::I32 row = 0; row < samples; ++row) {
 			const oa::F32 v = -1.0F + 2.0F * static_cast<oa::F32>(row)
 				/ static_cast<oa::F32>(samples - 1);

@@ -6,8 +6,6 @@
 
 #pragma once
 
-#include <cstddef>
-
 #include <oa/core/status.h>
 #include <oa/core/std/uniquePtr.h>
 #include <oa/core/types.h>
@@ -31,8 +29,8 @@ struct Detection {
 	U32 trackId = 0;
 };
 static_assert(sizeof(Detection) == 32);
-static_assert(offsetof(Detection, colorRgba) == 24);
-static_assert(offsetof(Detection, trackId) == 28);
+static_assert(__builtin_offsetof(Detection, colorRgba) == 24);
+static_assert(__builtin_offsetof(Detection, trackId) == 28);
 
 class DetectionBuffer {
 public:

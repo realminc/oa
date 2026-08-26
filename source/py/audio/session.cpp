@@ -1,5 +1,6 @@
 // OA Python bindings — stateful audio capture, codec, and playback sessions.
 #include "../binding.h"
+#include <oa/core/hostText.h>
 
 #include <oa/audio/audioCapture.h>
 #include <oa/audio/audioEncoder.h>
@@ -136,10 +137,10 @@ void bindAudioSession(nb::module_ &inModule) {
       .def_prop_rw(
           "uri",
           [](const oa::AudioPlayerConfig &inConfig) {
-            return inConfig.uri.stdStr();
+			return oa::hostText::copy(inConfig.uri);
           },
           [](oa::AudioPlayerConfig &inConfig, const std::string &inUri) {
-            inConfig.uri = oa::String(inUri);
+			inConfig.uri = oa::hostText::copy(inUri);
           })
       .def_rw("loop", &oa::AudioPlayerConfig::loop)
       .def_rw("ringMilliseconds", &oa::AudioPlayerConfig::ringMilliseconds);

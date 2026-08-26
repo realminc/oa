@@ -3,7 +3,7 @@
 #include <oa/runtime/executionSession.h>
 #include <oa/runtime/engine.h>
 
-#include <cassert>
+#include <assert.h>
 
 oa::EnvironmentExecution::EnvironmentExecution(oa::Engine& inEngine)
 	: engine_(&inEngine) {
@@ -182,7 +182,7 @@ oa::Status oa::Environment::begin() {
 }
 
 oa::Status oa::Environment::recordCommands(
-	const std::function<oa::Status()>& inCommands) {
+	const oa::Fn<oa::Status()>& inCommands) {
 	if (!inCommands) {
 		return oa::Status::invalidArgument(
 			"RL environment command callback must not be empty");

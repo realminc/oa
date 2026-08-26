@@ -8,12 +8,12 @@
 // tutorialNlpMamba3Ag (Mamba-3 reference + flat residual + gated out-norm).
 
 #include <oa/ml/nn/mamba3/mamba3.h>
+#include <oa/core/assert.h>
 #include <oa/core/fnMatrix.h>
+#include <oa/core/std/limits.h>
+#include <oa/core/std/scalarMath.h>
 #include <oa/ml/nn.h>
 #include <oa/runtime/executionSession.h>
-#include <cmath>
-#include <limits>
-#include <stdexcept>
 
 #if __has_include(<nvtx3/nvToolsExt.h>)
 #include <nvtx3/nvToolsExt.h>
@@ -30,13 +30,13 @@ oa::I32 mamba3InnerDim(oa::I32 inDModel, oa::I32 inExpand) noexcept
 {
 	if (inDModel <= 0 || inExpand <= 0) return 0;
 	const oa::I64 product = static_cast<oa::I64>(inDModel) * inExpand;
-	return product <= std::numeric_limits<oa::I32>::max()
+	return product <= oa::Limits<oa::I32>::max()
 		? static_cast<oa::I32>(product) : 0;
 }
 
 oa::I32 mamba3RopeDim(oa::I32 inDState, oa::F32 inFraction) noexcept
 {
-	if (inDState <= 0 || not std::isfinite(inFraction)
+	if (inDState <= 0 || not oa::isFinite(inFraction)
 		|| inFraction < 0.0F || inFraction > 1.0F)
 	{
 		return 0;
@@ -78,46 +78,41 @@ oa::Mamba3Module::Mamba3Module(
 	, dtInitFloor_(inDtInitFloor)
 	, aFloor_(inAFloor)
 {
-	if (dModel_ <= 0 || dState_ <= 0 || expand_ <= 0 || headDim_ <= 0
-		|| dInner_ <= 0 || nHeads_ <= 0
-		|| nGroups_ <= 0 || dInner_ % headDim_ != 0
-		|| nHeads_ % nGroups_ != 0 || mimoRank_ <= 0
-		|| mimoRank_ > 8
-		|| not std::isfinite(ropeFraction_) || ropeFraction_ < 0.0F
-		|| ropeFraction_ > 1.0F
-		|| not std::isfinite(dtMin_) || not std::isfinite(dtMax_)
-		|| not std::isfinite(dtInitFloor_) || not std::isfinite(aFloor_)
-		|| dtMin_ <= 0.0F || dtMax_ < dtMin_ || dtInitFloor_ <= 0.0F
-		|| aFloor_ <= 0.0F)
-	{
-		throw std::invalid_argument(
+	OA_REQUIRE_MSG(dModel_ > 0 && dState_ > 0 && expand_ > 0 && headDim_ > 0
+		&& dInner_ > 0 && nHeads_ > 0
+		&& nGroups_ > 0 && dInner_ % headDim_ == 0
+		&& nHeads_ % nGroups_ == 0 && mimoRank_ > 0
+		&& mimoRank_ <= 8
+		&& oa::isFinite(ropeFraction_) && ropeFraction_ >= 0.0F
+		&& ropeFraction_ <= 1.0F
+		&& oa::isFinite(dtMin_) && oa::isFinite(dtMax_)
+		&& oa::isFinite(dtInitFloor_) && oa::isFinite(aFloor_)
+		&& dtMin_ > 0.0F && dtMax_ >= dtMin_ && dtInitFloor_ > 0.0F
+		&& aFloor_ > 0.0F,
 			"oa::Mamba3Module: dimensions and stability bounds are invalid; dimensions "
 			"must be positive, d_inner/head_dim and n_heads/n_groups must divide "
 			"exactly, rope_fraction must be in [0,1], dt bounds must be positive and "
 			"ordered, A_floor must be positive, and MIMO rank must be in [1,8]");
-	}
 	auto wd = oa::FnMatrix::weightDtype();
 
 	// in_proj weight: [dInProj, d_model]
 	// output order: [z, x, B, C, dd_dt, dd_A, trap, angle]
 	const oa::I64 groupedState = static_cast<oa::I64>(dState_) * nGroups_;
-	if (groupedState > std::numeric_limits<oa::I64>::max() / mimoRank_) {
-		throw std::invalid_argument("oa::Mamba3Module: projected dimension overflows");
-	}
+	OA_REQUIRE_MSG(groupedState <= oa::Limits<oa::I64>::max() / mimoRank_,
+		"oa::Mamba3Module: projected dimension overflows");
 	const oa::I64 groupedMimoState = groupedState * mimoRank_;
 	const oa::I64 dInProj64 = 2 * static_cast<oa::I64>(dInner_)
 		+ 2 * groupedMimoState + numRopeAngles_
 		+ 3 * static_cast<oa::I64>(nHeads_);
-	if (dInProj64 > std::numeric_limits<oa::I32>::max()) {
-		throw std::invalid_argument("oa::Mamba3Module: projected dimension exceeds oa::I32");
-	}
+	OA_REQUIRE_MSG(dInProj64 <= oa::Limits<oa::I32>::max(),
+		"oa::Mamba3Module: projected dimension exceeds oa::I32");
 	const oa::I32 dInProj = static_cast<oa::I32>(dInProj64);
 	inProj_ = oa::FnMatrix::randGlorotUniform(oa::MatrixShape{dInProj, dModel_}, wd);
 
 	// dt_bias: [n_heads]
 	auto dtRand = oa::FnMatrix::rand(oa::MatrixShape{nHeads_}, oa::ScalarType::Float32);
-	auto dtLogMin = std::log(dtMin_);
-	auto dtLogMax = std::log(dtMax_);
+	auto dtLogMin = oa::log(dtMin_);
+	auto dtLogMax = oa::log(dtMax_);
 	auto dtLog = dtRand * (dtLogMax - dtLogMin) + dtLogMin;
 	auto dtExp = oa::FnMatrix::exp(dtLog);
 	auto dtClamped = oa::FnMatrix::clampMin(dtExp, dtInitFloor_);
@@ -208,11 +203,10 @@ oa::Matrix oa::Mamba3Module::forward(const oa::Matrix& inInput) {
 	// and produces internally inconsistent shapes that only blow up later in
 	// backward. Reject it loudly here instead — callers must reshape to 3D first
 	// (e.g. emb.reshape([B, S, D]), as EmpyrealmCore::forwardEmbedded does).
-	if (inInput.rank() != 3 || inInput.size(2) != static_cast<oa::I64>(dModel_)) {
-		throw std::invalid_argument(
+	OA_REQUIRE_MSG(inInput.rank() == 3
+		&& inInput.size(2) == static_cast<oa::I64>(dModel_),
 			"oa::Mamba3Module::forward expects a 3D [batch, seqLen, d_model] input; "
 			"reshape a flat [B*S, D] embedding to [B, S, D] before calling.");
-	}
 	oa::I32 batch = static_cast<oa::I32>(inInput.size(0));
 	oa::I32 seqLen = static_cast<oa::I32>(inInput.size(1));
 

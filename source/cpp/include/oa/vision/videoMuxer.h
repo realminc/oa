@@ -11,7 +11,7 @@
 #include <oa/core/types.h>
 #include <oa/vision/videoEncoder.h>
 
-#include <cstdio>
+#include <stdio.h>
 
 namespace oa {
 
@@ -72,7 +72,7 @@ private:
 
   VideoMuxerConfig config_ = {};
   oa::Vec<oa::U8> mdatData_;
-  std::FILE *outputFile_ = nullptr;
+  FILE* outputFile_ = nullptr;
   oa::U64 mdatPayloadBytes_ = 0U;
   oa::Vec<oa::U64> packetOffsets_;
   oa::Vec<oa::U32> packetSizes_;

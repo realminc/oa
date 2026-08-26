@@ -1,12 +1,11 @@
 #include <oa/ml/fnFlow.h>
 
 #include <oa/core/bufferAccess.h>
+#include <oa/core/assert.h>
 #include <oa/core/fnMatrix.h>
 #include <oa/core/op.h>
 #include <oa/ml/autograd.h>
 #include <oa/runtime/executionSession.h>
-
-#include <stdexcept>
 
 namespace {
 
@@ -79,10 +78,8 @@ public:
 };
 
 oa::Matrix broadcastTime(const oa::Matrix& inTime, const oa::Matrix& inState) {
-	if (inTime.isEmpty() || inState.isEmpty()) {
-		throw std::invalid_argument(
-			"Flow matching requires non-empty state and time matrices");
-	}
+	OA_REQUIRE_MSG(!inTime.isEmpty() && !inState.isEmpty(),
+		"Flow matching requires non-empty state and time matrices");
 
 	oa::Matrix time = inTime;
 	if (inTime.rank() == 1 && inState.rank() > 1 &&
@@ -95,10 +92,8 @@ oa::Matrix broadcastTime(const oa::Matrix& inTime, const oa::Matrix& inState) {
 	}
 
 	auto broadcast = time.getShape().broadcast(inState.getShape());
-	if (!broadcast.isOk() || *broadcast != inState.getShape()) {
-		throw std::invalid_argument(
-			"Flow time must be scalar, [B], or broadcastable to the state");
-	}
+	OA_REQUIRE_MSG(broadcast.isOk() && *broadcast == inState.getShape(),
+		"Flow time must be scalar, [B], or broadcastable to the state");
 	return time;
 }
 
@@ -108,11 +103,9 @@ oa::FlowMatchBatch oa::FnFlow::linearMatch(
 	const oa::Matrix& inClean,
 	const oa::Matrix& inNoise,
 	const oa::Matrix& inTime) {
-	if (inClean.getShape() != inNoise.getShape() ||
-		inClean.getDtype() != inNoise.getDtype()) {
-		throw std::invalid_argument(
-			"Flow clean/noise matrices require identical shape and dtype");
-	}
+	OA_REQUIRE_MSG(inClean.getShape() == inNoise.getShape()
+		&& inClean.getDtype() == inNoise.getDtype(),
+		"Flow clean/noise matrices require identical shape and dtype");
 	auto& context = oa::ExecutionSession::getActive();
 	oa::OpLoweringScope lowering(context);
 	auto time = broadcastTime(inTime, inClean);
@@ -150,11 +143,9 @@ oa::Matrix oa::FnFlow::eulerStep(
 	const oa::Matrix& inState,
 	const oa::Matrix& inVelocity,
 	oa::F32 inDeltaTime) {
-	if (inState.getShape() != inVelocity.getShape() ||
-		inState.getDtype() != inVelocity.getDtype()) {
-		throw std::invalid_argument(
-			"Flow Euler state/velocity require identical shape and dtype");
-	}
+	OA_REQUIRE_MSG(inState.getShape() == inVelocity.getShape()
+		&& inState.getDtype() == inVelocity.getDtype(),
+		"Flow Euler state/velocity require identical shape and dtype");
 	auto& context = oa::ExecutionSession::getActive();
 	oa::OpLoweringScope lowering(context);
 	auto result = inState + (inVelocity * inDeltaTime);
@@ -177,20 +168,15 @@ oa::Matrix oa::FnFlow::maskedMse(
 	const oa::Matrix& inPrediction,
 	const oa::Matrix& inTarget,
 	const oa::Matrix& inMask) {
-	if (inPrediction.isEmpty() || inTarget.isEmpty() || inMask.isEmpty()) {
-		throw std::invalid_argument(
-			"Flow masked MSE requires non-empty matrices");
-	}
-	if (inPrediction.getShape() != inTarget.getShape()
-		|| inPrediction.getDtype() != inTarget.getDtype()) {
-		throw std::invalid_argument(
-			"Flow masked MSE prediction/target require identical shape and dtype");
-	}
+	OA_REQUIRE_MSG(!inPrediction.isEmpty() && !inTarget.isEmpty()
+		&& !inMask.isEmpty(),
+		"Flow masked MSE requires non-empty matrices");
+	OA_REQUIRE_MSG(inPrediction.getShape() == inTarget.getShape()
+		&& inPrediction.getDtype() == inTarget.getDtype(),
+		"Flow masked MSE prediction/target require identical shape and dtype");
 	auto broadcast = inMask.getShape().broadcast(inPrediction.getShape());
-	if (!broadcast.isOk() || *broadcast != inPrediction.getShape()) {
-		throw std::invalid_argument(
-			"Flow masked MSE mask must be broadcastable to prediction");
-	}
+	OA_REQUIRE_MSG(broadcast.isOk() && *broadcast == inPrediction.getShape(),
+		"Flow masked MSE mask must be broadcastable to prediction");
 
 	auto& context = oa::ExecutionSession::getActive();
 	oa::OpLoweringScope lowering(context);
@@ -220,8 +206,8 @@ oa::Matrix oa::FnFlow::maskedMse(
 
 	if (oa::FnAutograd::isEnabled() && inPrediction.requiresGrad()) {
 		auto gradFn = oa::makeShared<GradFlowMaskedMse>();
-		gradFn->saveForBackward({
-			inPrediction, inTarget, mask, denominator});
+		gradFn->saveForBackward(
+			inPrediction, inTarget, mask, denominator);
 		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inPrediction});
 		gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		gradFn->outputShape_ = loss.getShape();

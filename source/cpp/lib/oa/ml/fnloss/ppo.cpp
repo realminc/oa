@@ -7,9 +7,8 @@
 #include <oa/ml/autograd.h>
 #include <oa/ml/fnLoss.h>
 #include <oa/runtime/executionSession.h>
-
-#include <cmath>
-#include <limits>
+#include <oa/core/std/limits.h>
+#include <oa/core/std/scalarMath.h>
 
 namespace {
 
@@ -27,11 +26,11 @@ bool validatePolicyInputs(
 	const oa::MatrixShape shape = inNewLogProbability.getShape();
 	return shape.rank > 0 && inNewLogProbability.numElements() > 0
 		&& inNewLogProbability.numElements()
-			<= static_cast<oa::I64>(std::numeric_limits<oa::U32>::max())
+			<= static_cast<oa::I64>(oa::Limits<oa::U32>::max())
 		&& isMatchingF32(inNewLogProbability, shape)
 		&& isMatchingF32(inOldLogProbability, shape)
 		&& isMatchingF32(inAdvantage, shape)
-		&& std::isfinite(inClipEpsilon)
+		&& oa::isFinite(inClipEpsilon)
 		&& inClipEpsilon > 0.0F && inClipEpsilon < 1.0F;
 }
 
@@ -92,7 +91,8 @@ oa::Matrix oa::FnLoss::ppoClippedPolicy(
 	oa::Matrix loss = oa::FnMatrix::mean(perSample);
 	if (oa::FnAutograd::isEnabled() && inNewLogProbability.requiresGrad()) {
 		auto grad = oa::makeShared<GradPpoClippedPolicy>();
-		grad->saveForBackward({inNewLogProbability, inOldLogProbability, inAdvantage});
+		grad->saveForBackward(
+			inNewLogProbability, inOldLogProbability, inAdvantage);
 		grad->setGraphInputs(oa::Vec<oa::Matrix>{inNewLogProbability, inOldLogProbability, inAdvantage});
 		grad->clipEpsilon = inClipEpsilon;
 		grad->sequenceNr_ = oa::FnAutograd::nextSeq();
@@ -161,8 +161,8 @@ oa::PpoLossResult oa::FnLoss::ppo(
 	const oa::Matrix& inEntropy,
 	const oa::PpoLossConfig& inConfig) {
 	const oa::MatrixShape shape = inNewLogProbability.getShape();
-	const bool configValid = std::isfinite(inConfig.valueCoefficient)
-		&& std::isfinite(inConfig.entropyCoefficient)
+	const bool configValid = oa::isFinite(inConfig.valueCoefficient)
+		&& oa::isFinite(inConfig.entropyCoefficient)
 		&& inConfig.valueCoefficient >= 0.0F
 		&& inConfig.entropyCoefficient >= 0.0F;
 	if (!configValid

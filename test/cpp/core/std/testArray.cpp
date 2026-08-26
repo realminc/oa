@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <random>
-#include <stdexcept>
 
 TEST(Array, FillAndIndex) {
 	oa::Array<int, 4> arr;
@@ -28,10 +27,17 @@ TEST(Array, FillAndIndex) {
 	stdExpectGotInt("fill spot check", static_cast<long long>(st[0]), static_cast<long long>(oa[0]));
 }
 
-TEST(Array, AtThrows) {
+TEST(Array, ValueInitialization) {
+	constexpr oa::Array<oa::I32, 4> values{3, 5, 7, 11};
+	static_assert(values.size() == 4);
+	EXPECT_EQ(values[0], 3);
+	EXPECT_EQ(values[3], 11);
+}
+
+TEST(Array, AtRejectsOutOfRange) {
 	oa::Array<int, 2> arr{};
 	EXPECT_EQ(arr.at(0), 0);
-	EXPECT_THROW(static_cast<void>(arr.at(2)), std::out_of_range);
+	EXPECT_DEATH(static_cast<void>(arr.at(2)), "OA contract failed: inIndex < N");
 
 	constexpr int kLoops = 400'000;
 	const auto t0 = oa::highResolutionNow();
@@ -52,7 +58,7 @@ TEST(Array, AtThrows) {
 	EXPECT_EQ(sinkOa, sinkSt);
 }
 
-TEST(Array, SwapAndStdArray) {
+TEST(Array, Swap) {
 	oa::Array<int, 3> a{};
 	oa::Array<int, 3> b{};
 	a.fill(1);
@@ -60,8 +66,6 @@ TEST(Array, SwapAndStdArray) {
 	a.swap(b);
 	EXPECT_EQ(a[0], 2);
 	EXPECT_EQ(b[0], 1);
-	std::array<int, 3> s = a.stdArray();
-	EXPECT_EQ(s[0], 2);
 
 	constexpr int kSwaps = 200'000;
 	const auto t0 = oa::highResolutionNow();
@@ -130,8 +134,7 @@ TEST(Array, ZeroSize) {
 	EXPECT_EQ(z.size(), 0U);
 	EXPECT_TRUE(z.empty());
 	EXPECT_EQ(z.data(), nullptr);
-	std::array<int, 0> s = z.stdArray();
-	(void)s;
+	EXPECT_DEATH(static_cast<void>(z.at(0)), "OA contract failed: false");
 
 	const auto t0 = oa::highResolutionNow();
 	for (int i = 0; i < 500'000; ++i) {
@@ -161,8 +164,6 @@ TEST(StdArrayVsStd, SameSequenceAsStdArray) {
 		EXPECT_EQ(oa[i], st[i]) << "i=" << i;
 	}
 	EXPECT_TRUE(std::equal(oa.data(), oa.data() + oa.size(), st.begin(), st.end()));
-	auto s2 = oa.stdArray();
-	EXPECT_EQ(s2, st);
 	stdEchoCurrentTest();
 	stdExpectGotSize("StdArrayVsStd::size", st.size(), oa.size());
 }

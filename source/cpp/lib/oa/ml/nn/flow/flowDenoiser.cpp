@@ -1,22 +1,19 @@
 #include <oa/ml/nn/flow/flowDenoiser.h>
-
-#include <cmath>
-#include <stdexcept>
+#include <oa/core/assert.h>
+#include <oa/core/std/scalarMath.h>
 
 namespace oa {
 
 namespace {
 
 void validate(const FlowDenoiserConfig& inConfig) {
-	if (inConfig.inputDim <= 0 || inConfig.conditionDim < 0
-		|| inConfig.backbone.dModel <= 0
-		|| inConfig.backbone.sequenceLength <= 0
-		|| inConfig.timeMaxPeriod <= 1.0F || inConfig.timeScale <= 0.0F
-		|| inConfig.conditionDropoutP < 0.0F
-		|| inConfig.conditionDropoutP >= 1.0F) {
-		throw std::invalid_argument(
-			"FlowDenoiser requires positive input/model/sequence/time dimensions and non-negative condition dimension");
-	}
+	OA_REQUIRE_MSG(inConfig.inputDim > 0 && inConfig.conditionDim >= 0
+		&& inConfig.backbone.dModel > 0
+		&& inConfig.backbone.sequenceLength > 0
+		&& inConfig.timeMaxPeriod > 1.0F && inConfig.timeScale > 0.0F
+		&& inConfig.conditionDropoutP >= 0.0F
+		&& inConfig.conditionDropoutP < 1.0F,
+		"FlowDenoiser requires positive input/model/sequence/time dimensions and non-negative condition dimension");
 }
 
 } // namespace
@@ -50,9 +47,8 @@ FlowDenoiser::FlowDenoiser(const FlowDenoiserConfig& inConfig)
 }
 
 oa::Matrix FlowDenoiser::forward(const oa::Matrix& inSample) {
-	if (inSample.rank() != 3) {
-		throw std::invalid_argument("FlowDenoiser expects [B,S,inputDim]");
-	}
+	OA_REQUIRE_MSG(inSample.rank() == 3,
+		"FlowDenoiser expects [B,S,inputDim]");
 	auto time = oa::FnMatrix::zeros(
 		oa::MatrixShape{inSample.size(0), 1}, inSample.getDtype());
 	oa::Matrix condition;
@@ -69,26 +65,21 @@ oa::Matrix FlowDenoiser::forwardConditioned(
 	const oa::Matrix& inTime,
 	const oa::Matrix& inCondition,
 	const oa::Matrix& inTokenMask) {
-	if (inSample.rank() != 3
-		|| inSample.size(1) != config_.backbone.sequenceLength
-		|| inSample.size(2) != config_.inputDim) {
-		throw std::invalid_argument(
-			"FlowDenoiser sample must match configured [B,S,inputDim]");
-	}
+	OA_REQUIRE_MSG(inSample.rank() == 3
+		&& inSample.size(1) == config_.backbone.sequenceLength
+		&& inSample.size(2) == config_.inputDim,
+		"FlowDenoiser sample must match configured [B,S,inputDim]");
 	const oa::I64 batch = inSample.size(0);
-	if (inTime.rank() < 1 || inTime.rank() > 2
-		|| inTime.size(0) != batch
-		|| (inTime.rank() == 2 && inTime.size(1) != 1)) {
-		throw std::invalid_argument("FlowDenoiser time must be [B] or [B,1]");
-	}
+	OA_REQUIRE_MSG(inTime.rank() >= 1 && inTime.rank() <= 2
+		&& inTime.size(0) == batch
+		&& (inTime.rank() != 2 || inTime.size(1) == 1),
+		"FlowDenoiser time must be [B] or [B,1]");
 	if (config_.conditionDim == 0) {
-		if (!inCondition.isEmpty()) {
-			throw std::invalid_argument(
-				"FlowDenoiser was configured without condition features");
-		}
+		OA_REQUIRE_MSG(inCondition.isEmpty(),
+			"FlowDenoiser was configured without condition features");
 	} else if (inCondition.rank() != 2 || inCondition.size(0) != batch
 		|| inCondition.size(1) != config_.conditionDim) {
-		throw std::invalid_argument(
+		OA_REQUIRE_MSG(false,
 			"FlowDenoiser condition must match configured [B,conditionDim]");
 	}
 
@@ -128,11 +119,9 @@ oa::Matrix FlowDenoiser::forwardGuided(
 	const oa::Matrix& inCondition,
 	oa::F32 inGuidanceScale,
 	const oa::Matrix& inTokenMask) {
-	if (!conditionProjection_ || !std::isfinite(inGuidanceScale)
-		|| inGuidanceScale < 0.0F) {
-		throw std::invalid_argument(
-			"FlowDenoiser guidance requires configured conditions and a finite non-negative scale");
-	}
+	OA_REQUIRE_MSG(conditionProjection_ && oa::isFinite(inGuidanceScale)
+		&& inGuidanceScale >= 0.0F,
+		"FlowDenoiser guidance requires configured conditions and a finite non-negative scale");
 	oa::Module::ScopedEval eval(*this);
 	auto unconditional = forwardConditioned(
 		inSample, inTime,

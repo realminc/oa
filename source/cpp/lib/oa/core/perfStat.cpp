@@ -1,8 +1,8 @@
 // OA CORE - Performance statistics Accumulator
 
 #include <oa/core/perfStat.h>
-#include <algorithm>
-#include <cmath>
+#include <oa/core/std/algo.h>
+#include <oa/core/std/scalarMath.h>
 
 oa::PerfStat::PerfStat(const char* inName, oa::U32 inWindow, oa::U32 inWarmup)
     : name_(inName), window_(inWindow), warmup_(inWarmup) {
@@ -45,7 +45,7 @@ oa::F64 oa::PerfStat::stddev() const {
     if (filled_ < 2) { return 0.0; }
     oa::F64 n   = static_cast<oa::F64>(filled_);
     oa::F64 var = (sumSq_ - (sum_ * sum_) / n) / (n - 1.0);
-    return var > 0.0 ? std::sqrt(var) : 0.0;
+    return var > 0.0 ? oa::sqrt(var) : 0.0;
 }
 
 oa::F64 oa::PerfStat::min() const {
@@ -84,7 +84,7 @@ void oa::PerfStat::ensureSorted() const {
     for (oa::U32 i = 0; i < filled_; ++i) {
         sortedBuf_.pushBack(ring_[i]);
     }
-    std::sort(sortedBuf_.data(), sortedBuf_.data() + sortedBuf_.size());
+    oa::sort(sortedBuf_.data(), sortedBuf_.data() + sortedBuf_.size());
     dirty_ = false;
 }
 

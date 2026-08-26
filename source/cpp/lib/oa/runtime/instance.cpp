@@ -1,10 +1,10 @@
 #include <oa/runtime/instance.h>
 
 #include <oa/core/log.h>
+#include <oa/core/std/cString.h>
 #include <oa/core/std/string.h>
 
-#include <cstdlib>
-#include <cstring>
+#include <stdlib.h>
 
 namespace {
 
@@ -16,17 +16,17 @@ enum class ValidationMode {
 };
 
 oa::Result<ValidationMode> requestedValidationMode() {
-	const char* value = std::getenv("OA_VK_VALIDATION_MODE");
-	if (value == nullptr || value[0] == '\0' || std::strcmp(value, "sync") == 0) {
+	const char* value = ::getenv("OA_VK_VALIDATION_MODE");
+	if (value == nullptr || value[0] == '\0' || oa::strcmp(value, "sync") == 0) {
 		return ValidationMode::Synchronization;
 	}
-	if (std::strcmp(value, "core") == 0) {
+	if (oa::strcmp(value, "core") == 0) {
 		return ValidationMode::Core;
 	}
-	if (std::strcmp(value, "gpu") == 0) {
+	if (oa::strcmp(value, "gpu") == 0) {
 		return ValidationMode::GpuAssisted;
 	}
-	if (std::strcmp(value, "all") == 0) {
+	if (oa::strcmp(value, "all") == 0) {
 		return ValidationMode::All;
 	}
 	return oa::Status::error(
@@ -80,12 +80,12 @@ oa::Result<VkInstance> oavk::Instance::createInstance(
 	oa::Vec<const char*> extNames;
 	auto appendUnique = [&extNames](const char* inName) {
 		for (const char* existing : extNames) {
-			if (std::strcmp(existing, inName) == 0) return;
+			if (oa::strcmp(existing, inName) == 0) return;
 		}
 		extNames.pushBack(inName);
 	};
 	for (oa::U32 bi = 0; bi < oavk::NumInstanceExtensions; ++bi) {
-		appendUnique(oavk::InstanceExtensionNames[bi]);
+		appendUnique(oavk::InstanceExtensionNames.data()[bi]);
 	}
 	for (oa::U32 ei = 0; ei < inExtraInstanceExtensions.size(); ++ei) {
 		const char* extra = inExtraInstanceExtensions.data()[ei];
@@ -109,11 +109,11 @@ oa::Result<VkInstance> oavk::Instance::createInstance(
 				bool hasKhrMaintenance = false;
 				bool hasExtMaintenance = false;
 				for (const auto& property : properties) {
-					hasSurfaceCaps2 |= std::strcmp(property.extensionName,
+					hasSurfaceCaps2 |= oa::strcmp(property.extensionName,
 						VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME) == 0;
-					hasKhrMaintenance |= std::strcmp(property.extensionName,
+					hasKhrMaintenance |= oa::strcmp(property.extensionName,
 						VK_KHR_SURFACE_MAINTENANCE_1_EXTENSION_NAME) == 0;
-					hasExtMaintenance |= std::strcmp(property.extensionName,
+					hasExtMaintenance |= oa::strcmp(property.extensionName,
 						VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME) == 0;
 				}
 				if (hasSurfaceCaps2) {
@@ -150,7 +150,7 @@ oa::Result<VkInstance> oavk::Instance::createInstance(
 					oavk::InstanceLayerNames[0], &propertyCount, properties.data()) == VK_SUCCESS)
 			{
 				for (const auto& property : properties) {
-					if (std::strcmp(property.extensionName,
+					if (oa::strcmp(property.extensionName,
 							VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME) == 0)
 					{
 						enableValidationFeatures = true;

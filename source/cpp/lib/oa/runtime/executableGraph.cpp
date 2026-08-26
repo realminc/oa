@@ -1,4 +1,5 @@
 #include <oa/runtime/executableGraph.h>
+#include <oa/core/jsonWriter.h>
 #include <oa/runtime/eventAccess.h>
 #include "engine/deviceAccess.h"
 #include "engine/engineAccess.h"
@@ -20,13 +21,6 @@
 #include <oa/core/validation.h>
 #include "descriptorValidation.h"
 #include "dispatchValidation.h"
-
-#include <algorithm>
-#include <cstring>
-#include <iomanip>
-#include <sstream>
-#include <unordered_map>
-#include <utility>
 
 struct GraphBufferState {
 	VkPipelineStageFlags2 stageMask = 0;
@@ -134,36 +128,15 @@ static const char* hazardName(GraphHazard inHazard) {
 	return "unknown";
 }
 
-static void writeJsonString(std::ostringstream& out, oa::StringView inValue) {
-	out << '"';
-	for (oa::Usize i = 0; i < inValue.size(); ++i) {
-		const auto value = static_cast<unsigned char>(inValue[i]);
-		switch (value) {
-		case '"': out << "\\\""; break;
-		case '\\': out << "\\\\"; break;
-		case '\b': out << "\\b"; break;
-		case '\f': out << "\\f"; break;
-		case '\n': out << "\\n"; break;
-		case '\r': out << "\\r"; break;
-		case '\t': out << "\\t"; break;
-		default:
-			if (value < 0x20U) {
-				out << "\\u" << std::hex << std::setw(4) << std::setfill('0')
-					<< static_cast<unsigned>(value) << std::dec << std::setfill(' ');
-			} else {
-				out << static_cast<char>(value);
-			}
-		}
-	}
-	out << '"';
+static void writeJsonString(oa::internal::JsonWriter& out, oa::StringView inValue) {
+	out.writeString(inValue);
 }
 
-static void writeHexId(std::ostringstream& out, oa::U64 inValue) {
-	out << '"' << "0x" << std::hex << std::setw(16) << std::setfill('0')
-		<< inValue << std::dec << std::setfill(' ') << '"';
+static void writeHexId(oa::internal::JsonWriter& out, oa::U64 inValue) {
+	out.writeHexId(inValue);
 }
 
-static void writeStageNames(std::ostringstream& out, VkPipelineStageFlags2 inMask) {
+static void writeStageNames(oa::internal::JsonWriter& out, VkPipelineStageFlags2 inMask) {
 	out << '[';
 	bool separator = false;
 	auto write = [&](VkPipelineStageFlags2 bit, const char* name) {
@@ -178,7 +151,7 @@ static void writeStageNames(std::ostringstream& out, VkPipelineStageFlags2 inMas
 	out << ']';
 }
 
-static void writeAccessNames(std::ostringstream& out, VkAccessFlags2 inMask) {
+static void writeAccessNames(oa::internal::JsonWriter& out, VkAccessFlags2 inMask) {
 	out << '[';
 	bool separator = false;
 	auto write = [&](VkAccessFlags2 bit, const char* name) {
@@ -440,7 +413,7 @@ static oa::ComputeNode makeComputeNode(const oa::ComputeDispatchDesc& inDesc) {
 	node.indirect = inDesc.indirect;
 	node.queue = inDesc.queue;
 	if (inDesc.pushData and inDesc.pushSize > 0) {
-		std::memcpy(node.pushData, inDesc.pushData, inDesc.pushSize);
+		oa::memcpy(node.pushData, inDesc.pushData, inDesc.pushSize);
 		node.pushSize = inDesc.pushSize;
 	}
 	return node;
@@ -1145,7 +1118,7 @@ oa::Status oa::ExecutableGraph::compile(oa::Engine& inRt) {
 	if (replayTimingEnabled_ and not replayTimestamp_.pool) {
 		auto timestamp = oavk::Timestamp::create(inRt, 2);
 		if (not timestamp) return timestamp.getStatus();
-		replayTimestamp_ = std::move(timestamp).getValue();
+		replayTimestamp_ = oa::move(timestamp).getValue();
 	}
 
 	// Reuse existing command pool + secondary CB if available. This avoids
@@ -1321,7 +1294,7 @@ oa::Status oa::ExecutableGraph::compile(oa::Engine& inRt) {
 					indices[b] = node.buffers[b].bindlessIndex;
 				}
 				if (node.pushSize > 0) {
-					std::memcpy(pushBuf + headerBytes, node.pushData, node.pushSize);
+					oa::memcpy(pushBuf + headerBytes, node.pushData, node.pushSize);
 				}
 				oa::EngineDeviceAccess::get(inRt).deviceDispatch.vkCmdPushConstants(static_cast<VkCommandBuffer>(secondaryCb_),
 					static_cast<VkPipelineLayout>(pipeline.pipelineLayout),
@@ -1409,7 +1382,7 @@ oa::Status oa::ExecutableGraph::compile(oa::Engine& inRt) {
 				return oa::Status::error(oa::StatusCode::VulkanError,
 					"graph compile: timeline semaphore creation failed");
 			}
-			replayTimelineSem_ = std::move(semRes).getValue();
+			replayTimelineSem_ = oa::move(semRes).getValue();
 		}
 	}
 	{
@@ -1657,7 +1630,7 @@ oa::Vec<oa::BufferLifetime> oa::ExecutableGraph::computeLifetimes() const {
 		result.pushBack(lt);
 	}
 
-	std::sort(result.begin(), result.end(),
+	oa::sort(result.begin(), result.end(),
 		[](const oa::BufferLifetime& a, const oa::BufferLifetime& b) {
 			if (a.firstAccess != b.firstAccess) return a.firstAccess < b.firstAccess;
 			return a.resourceOrder < b.resourceOrder;
@@ -1696,7 +1669,7 @@ oa::Vec<oa::AliasGroup> oa::ExecutableGraph::computeAliasGroups() const {
 			oa::AliasGroup newGroup;
 			newGroup.members.pushBack(lt);
 			newGroup.requiredSize = lt.size;
-			groups.pushBack(std::move(newGroup));
+			groups.pushBack(oa::move(newGroup));
 		}
 	}
 
@@ -1787,7 +1760,7 @@ oa::Status oa::ExecutableGraph::materializeAliases(
 			}
 			if (not overlaps) {
 				group.alias.members.pushBack(lt);
-				group.alias.requiredSize = std::max(group.alias.requiredSize, lt.size);
+				group.alias.requiredSize = oa::max(group.alias.requiredSize, lt.size);
 				placed = true; break;
 			}
 		}
@@ -1796,7 +1769,7 @@ oa::Status oa::ExecutableGraph::materializeAliases(
 			group.placement = placement;
 			group.alias.members.pushBack(lt);
 			group.alias.requiredSize = lt.size;
-			groups.pushBack(std::move(group));
+			groups.pushBack(oa::move(group));
 		}
 	}
 
@@ -1838,14 +1811,14 @@ oa::Status oa::ExecutableGraph::materializeAliases(
 	}
 
 	auto ownBacking = [&](oavk::Buffer&& buffer) {
-		return oa::EngineAccess(inRt).adoptBufferLease(std::move(buffer));
+		return oa::EngineAccess(inRt).adoptBufferLease(oa::move(buffer));
 	};
 	auto ownView = [&](oavk::Buffer&& buffer, oa::SharedPtr<oavk::Buffer> backing) {
 		return oa::EngineAccess(inRt).adoptBufferLease(
-			std::move(buffer), std::move(backing));
+			oa::move(buffer), oa::move(backing));
 	};
 
-	std::unordered_map<void*, oa::SharedPtr<oavk::Buffer>> replacements;
+	oa::HashMap<void*, oa::SharedPtr<oavk::Buffer>> replacements;
 	oa::U64 originalBytes = 0, arenaBytes = 0;
 	for (const auto& group : groups) {
 		if (group.alias.members.size() < 2U) continue;
@@ -1856,14 +1829,14 @@ oa::Status oa::ExecutableGraph::materializeAliases(
 		if (not backingResult.isOk()) {
 			destroyAliasArena(); return backingResult.getStatus();
 		}
-		auto backingBuffer = std::move(backingResult.getValue());
+		auto backingBuffer = oa::move(backingResult.getValue());
 		if (oa::EngineBindlessAccess::registerBuffer(inRt, backingBuffer) == OA_BINDLESS_INVALID) {
 			oa::EngineAllocatorAccess::get(inRt).free(backingBuffer);
 			destroyAliasArena();
 			return oa::Status::error(oa::StatusCode::ResourceExhausted,
 				"graph alias backing bindless registration failed");
 		}
-		auto backing = ownBacking(std::move(backingBuffer));
+		auto backing = ownBacking(oa::move(backingBuffer));
 		if (not backing) {
 			destroyAliasArena();
 			return oa::Status::error(oa::StatusCode::FailedPrecondition,
@@ -1877,21 +1850,21 @@ oa::Status oa::ExecutableGraph::materializeAliases(
 			auto aliasResult = oa::EngineAllocatorAccess::get(inRt).createAliasingBuffer(
 				*backing, group.alias.members[memberIdx].size);
 			if (not aliasResult.isOk()) { destroyAliasArena(); return aliasResult.getStatus(); }
-			auto alias = std::move(aliasResult.getValue());
+			auto alias = oa::move(aliasResult.getValue());
 			if (oa::EngineBindlessAccess::registerBuffer(inRt, alias) == OA_BINDLESS_INVALID) {
 				oa::EngineAllocatorAccess::get(inRt).freeAlias(alias);
 				destroyAliasArena();
 				return oa::Status::error(oa::StatusCode::ResourceExhausted,
 					"graph alias view bindless registration failed");
 			}
-			auto owner = ownView(std::move(alias), backing);
+			auto owner = ownView(oa::move(alias), backing);
 			if (not owner) {
 				destroyAliasArena();
 				return oa::Status::error(oa::StatusCode::FailedPrecondition,
 					"graph alias view lease unavailable during engine shutdown");
 			}
 			replacements.emplace(group.alias.members[memberIdx].buffer, owner);
-			aliasOwners_.pushBack(std::move(owner));
+			aliasOwners_.pushBack(oa::move(owner));
 		}
 	}
 	for (auto& node : nodes_) {
@@ -1987,12 +1960,12 @@ oa::String oa::ExecutableGraph::debugReportJson(oa::StringView inName) const {
 	const auto stats = getStats();
 	const auto lifetimes = computeLifetimes();
 	const auto aliasGroups = computeAliasGroups();
-	std::unordered_map<void*, oa::U32> resourceIds;
+	oa::HashMap<void*, oa::U32> resourceIds;
 	for (const auto& lifetime : lifetimes) {
 		resourceIds.emplace(lifetime.buffer, lifetime.resourceOrder);
 	}
-	std::unordered_map<void*, oa::U32> hazardDomainIds;
-	std::unordered_map<void*, oa::U32> resourceHazardDomains;
+	oa::HashMap<void*, oa::U32> hazardDomainIds;
+	oa::HashMap<void*, oa::U32> resourceHazardDomains;
 	oa::U32 nextHazardDomain = 0;
 	auto registerHazardDomain = [&](const oavk::Buffer& buffer) {
 		if (not buffer.buffer) return;
@@ -2022,7 +1995,7 @@ oa::String oa::ExecutableGraph::debugReportJson(oa::StringView inName) const {
 		updateBufferStates(node, nodeIdx, bufferStates);
 	}
 
-	std::ostringstream out;
+	oa::internal::JsonWriter out;
 	out << "{\n  \"schema\": \"oa.execution_graph.v3\",\n  \"name\": ";
 	writeJsonString(out, inName);
 	out << ",\n  \"compiled\": " << (compiled_ ? "true" : "false")
@@ -2051,7 +2024,7 @@ oa::String oa::ExecutableGraph::debugReportJson(oa::StringView inName) const {
 		out << (i == 0 ? "\n" : ",\n")
 			<< "    {\"id\": " << lifetime.resourceOrder
 			<< ", \"hazard_domain\": "
-			<< resourceHazardDomains[lifetime.buffer]
+			<< resourceHazardDomains.at(lifetime.buffer)
 			<< ", \"bytes\": " << lifetime.size
 			<< ", \"first_node\": " << lifetime.firstAccess
 			<< ", \"last_node\": " << lifetime.lastAccess << "}";
@@ -2201,7 +2174,7 @@ oa::String oa::ExecutableGraph::debugReportJson(oa::StringView inName) const {
 	}
 	if (not nodes_.empty()) out << '\n';
 	out << "  ]\n}\n";
-	return oa::String(out.str());
+	return out.take();
 }
 
 // ─── Lifecycle ────────────────────────────────────────────────────────────────
@@ -2228,32 +2201,31 @@ bool oa::ExecutableGraph::hasDeviceState_() const noexcept {
 }
 
 void oa::ExecutableGraph::swapState_(oa::ExecutableGraph& inOther) noexcept {
-	using std::swap;
-	swap(nodes_, inOther.nodes_);
-	swap(owner_, inOther.owner_);
-	swap(secondaryPool_, inOther.secondaryPool_);
-	swap(secondaryCb_, inOther.secondaryCb_);
-	swap(primaryPool_, inOther.primaryPool_);
-	swap(primaryCb_, inOther.primaryCb_);
-	swap(replayTimelineSem_, inOther.replayTimelineSem_);
-	swap(replayTimelineValue_, inOther.replayTimelineValue_);
-	swap(replayTimestamp_, inOther.replayTimestamp_);
-	swap(replayTimestampReadValue_, inOther.replayTimestampReadValue_);
-	swap(lastReplayGpuMs_, inOther.lastReplayGpuMs_);
-	swap(replayTimingEnabled_, inOther.replayTimingEnabled_);
-	swap(descriptorPools_, inOther.descriptorPools_);
-	swap(queueFamily_, inOther.queueFamily_);
-	swap(compiled_, inOther.compiled_);
-	swap(lastCompileHash_, inOther.lastCompileHash_);
-	swap(lastCompileReused_, inOther.lastCompileReused_);
-	swap(compiledBufferOwners_, inOther.compiledBufferOwners_);
-	swap(barrierCount_, inOther.barrierCount_);
-	swap(warBarrierCount_, inOther.warBarrierCount_);
-	swap(indirectBarrierCount_, inOther.indirectBarrierCount_);
-	swap(aliasBarrierCount_, inOther.aliasBarrierCount_);
-	swap(hostReadbackRequired_, inOther.hostReadbackRequired_);
-	swap(aliasOwners_, inOther.aliasOwners_);
-	swap(materializedAliasSavings_, inOther.materializedAliasSavings_);
+	oa::swapValues(nodes_, inOther.nodes_);
+	oa::swapValues(owner_, inOther.owner_);
+	oa::swapValues(secondaryPool_, inOther.secondaryPool_);
+	oa::swapValues(secondaryCb_, inOther.secondaryCb_);
+	oa::swapValues(primaryPool_, inOther.primaryPool_);
+	oa::swapValues(primaryCb_, inOther.primaryCb_);
+	oa::swapValues(replayTimelineSem_, inOther.replayTimelineSem_);
+	oa::swapValues(replayTimelineValue_, inOther.replayTimelineValue_);
+	oa::swapValues(replayTimestamp_, inOther.replayTimestamp_);
+	oa::swapValues(replayTimestampReadValue_, inOther.replayTimestampReadValue_);
+	oa::swapValues(lastReplayGpuMs_, inOther.lastReplayGpuMs_);
+	oa::swapValues(replayTimingEnabled_, inOther.replayTimingEnabled_);
+	oa::swapValues(descriptorPools_, inOther.descriptorPools_);
+	oa::swapValues(queueFamily_, inOther.queueFamily_);
+	oa::swapValues(compiled_, inOther.compiled_);
+	oa::swapValues(lastCompileHash_, inOther.lastCompileHash_);
+	oa::swapValues(lastCompileReused_, inOther.lastCompileReused_);
+	oa::swapValues(compiledBufferOwners_, inOther.compiledBufferOwners_);
+	oa::swapValues(barrierCount_, inOther.barrierCount_);
+	oa::swapValues(warBarrierCount_, inOther.warBarrierCount_);
+	oa::swapValues(indirectBarrierCount_, inOther.indirectBarrierCount_);
+	oa::swapValues(aliasBarrierCount_, inOther.aliasBarrierCount_);
+	oa::swapValues(hostReadbackRequired_, inOther.hostReadbackRequired_);
+	oa::swapValues(aliasOwners_, inOther.aliasOwners_);
+	oa::swapValues(materializedAliasSavings_, inOther.materializedAliasSavings_);
 }
 
 void oa::ExecutableGraph::release_() noexcept {

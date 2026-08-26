@@ -1,14 +1,11 @@
 #pragma once
 
-// phase 2b OA standard library — `alignas(T)` untyped storage + engaged flag; `stdOptional()` copies/moves to `std::optional`.
-//
-// Lifecycle: placement new on construct/assign; explicit destroy when clearing or replacing.
-// Interop: `std::nullopt`, `std::optional<T>` in/out; no `std::optional` in the hot storage path.
+// Inline optional value with explicit lifetime and no standard-library optional
+// interop. Empty checked access terminates through the always-on OA contract.
 
+#include <oa/core/assert.h>
+#include <oa/core/std/lifetime.h>
 #include <oa/core/std/typeTraits.h>
-
-#include <new>
-#include <optional>
 
 namespace oa {
 
@@ -17,37 +14,23 @@ class Optional {
 public:
 	Optional() noexcept = default;
 
-	Optional([[maybe_unused]] std::nullopt_t inNullopt) noexcept {}
+	Optional(const T& inValue) : engaged_(true) { oa::constructAt(ptr_(), inValue); }
 
-	Optional(const T& inValue) : engaged_(true) { new (storage_) T(inValue); }
-
-	Optional(T&& inValue) : engaged_(true) { new (storage_) T(oa::move(inValue)); }
-
-	explicit Optional(const std::optional<T>& inOther) {
-		if (inOther.has_value()) {
-			new (storage_) T(*inOther);
-			engaged_ = true;
-		}
-	}
+	Optional(T&& inValue) : engaged_(true) { oa::constructAt(ptr_(), oa::move(inValue)); }
 
 	Optional(const Optional& inOther) : engaged_(inOther.engaged_) {
 		if (engaged_) {
-			new (storage_) T(*inOther.ptr_());
+			oa::constructAt(ptr_(), *inOther.ptr_());
 		}
 	}
 
 	Optional(Optional&& inOther) noexcept(oa::IsNothrowMoveConstructibleV<T>)
 		: engaged_(inOther.engaged_) {
 		if (engaged_) {
-			new (storage_) T(oa::move(*inOther.ptr_()));
-			inOther.ptr_()->~T();
+			oa::constructAt(ptr_(), oa::move(*inOther.ptr_()));
+			oa::destroyAt(inOther.ptr_());
 			inOther.engaged_ = false;
 		}
-	}
-
-	Optional& operator=([[maybe_unused]] std::nullopt_t inNullopt) noexcept {
-		reset();
-		return *this;
 	}
 
 	Optional& operator=(const Optional& inOther) {
@@ -58,7 +41,7 @@ public:
 			if (engaged_) {
 				*ptr_() = *inOther.ptr_();
 			} else {
-				new (storage_) T(*inOther.ptr_());
+				oa::constructAt(ptr_(), *inOther.ptr_());
 				engaged_ = true;
 			}
 		} else {
@@ -76,10 +59,10 @@ public:
 			if (engaged_) {
 				*ptr_() = oa::move(*inOther.ptr_());
 			} else {
-				new (storage_) T(oa::move(*inOther.ptr_()));
+				oa::constructAt(ptr_(), oa::move(*inOther.ptr_()));
 				engaged_ = true;
 			}
-			inOther.ptr_()->~T();
+			oa::destroyAt(inOther.ptr_());
 			inOther.engaged_ = false;
 		} else {
 			reset();
@@ -93,24 +76,30 @@ public:
 
 	explicit operator bool() const noexcept { return engaged_; }
 
-	[[nodiscard]] T& value() {
-		if (!engaged_) {
-			throw std::bad_optional_access();
-		}
+	[[nodiscard]] T* get() noexcept { return engaged_ ? ptr_() : nullptr; }
+
+	[[nodiscard]] const T* get() const noexcept { return engaged_ ? ptr_() : nullptr; }
+
+	[[nodiscard]] T& value() noexcept {
+		OA_REQUIRE(engaged_);
 		return *ptr_();
 	}
 
-	[[nodiscard]] const T& value() const {
-		if (!engaged_) {
-			throw std::bad_optional_access();
-		}
+	[[nodiscard]] const T& value() const noexcept {
+		OA_REQUIRE(engaged_);
 		return *ptr_();
 	}
 
-	[[nodiscard]] T& operator*() { return value(); }
-	[[nodiscard]] const T& operator*() const { return value(); }
-	[[nodiscard]] T* operator->() { return ptr_(); }
-	[[nodiscard]] const T* operator->() const { return ptr_(); }
+	[[nodiscard]] T& operator*() noexcept { return value(); }
+	[[nodiscard]] const T& operator*() const noexcept { return value(); }
+	[[nodiscard]] T* operator->() noexcept {
+		OA_REQUIRE(engaged_);
+		return ptr_();
+	}
+	[[nodiscard]] const T* operator->() const noexcept {
+		OA_REQUIRE(engaged_);
+		return ptr_();
+	}
 
 	template<typename U>
 	[[nodiscard]] T valueOr(U&& inDefault) const& {
@@ -125,33 +114,16 @@ public:
 	template<typename... Args>
 	T& emplace(Args&&... inArgs) {
 		reset();
-		new (storage_) T(oa::forward<Args>(inArgs)...);
+		oa::constructAt(ptr_(), oa::forward<Args>(inArgs)...);
 		engaged_ = true;
 		return *ptr_();
 	}
 
 	void reset() noexcept {
 		if (engaged_) {
-			ptr_()->~T();
+			oa::destroyAt(ptr_());
 			engaged_ = false;
 		}
-	}
-
-	[[nodiscard]] std::optional<T> stdOptional() const& {
-		if (!engaged_) {
-			return std::nullopt;
-		}
-		return *ptr_();
-	}
-
-	[[nodiscard]] std::optional<T> stdOptional() && {
-		if (!engaged_) {
-			return std::nullopt;
-		}
-		std::optional<T> out(oa::move(*ptr_()));
-		ptr_()->~T();
-		engaged_ = false;
-		return out;
 	}
 
 private:

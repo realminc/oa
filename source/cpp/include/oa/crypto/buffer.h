@@ -6,8 +6,6 @@
 
 #pragma once
 
-#include <cstring>
-
 #include <oa/core/types.h>
 #include <oa/core/memory.h>
 

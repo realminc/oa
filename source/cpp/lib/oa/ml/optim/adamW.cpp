@@ -5,12 +5,13 @@
 #include <oa/core/fnmatrix/fnMatrixInternal.h>
 #include <oa/core/log.h>
 #include <oa/core/matrixAccess.h>
+#include <oa/core/memory.h>
+#include <oa/core/std/algo.h>
+#include <oa/core/std/cString.h>
 #include <oa/runtime/executionSession.h>
 #include <oa/runtime/engine.h>
 #include <oa/runtime/engine/resourceAccess.h>
 #include <oa/runtime/executionSession.h>
-
-#include <cstring>
 
 static oa::Matrix getParamGrad(oa::Parameter* inP) {
 	return inP->grad();  // live grad (single source of truth: Data's autograd meta)
@@ -65,7 +66,7 @@ void oa::AdamW::step() {
 		// without a host rewrite.
 		oa::U32 state[6] = {static_cast<oa::U32>(step_ - 1U)};
 		const oa::F32 scalars[] = {lr_, beta1_, beta2_, eps_, weightDecay_};
-		std::memcpy(state + 1, scalars, sizeof(scalars));
+		oa::memcpy(state + 1, scalars, sizeof(scalars));
 		(void)oa::EngineResourceAccess::uploadBuffer(
 			ctx.engine(), oa::MatrixAccess::descriptor(graphState_), 0,
 			state, sizeof(state));
@@ -146,7 +147,7 @@ void oa::AdamW::zeroGrad() {
 		if (g.hasStorage()) grads.pushBack(g);
 	}
 	for (oa::Usize i = 0; i < grads.size(); i += 4) {
-		oa::Usize end = std::min(i + 4, grads.size());
+		oa::Usize end = oa::min(i + 4, grads.size());
 		oa::FnMatrix::multiFill(oa::Span<oa::Matrix>(grads.data() + i, end - i), 0.0F);
 	}
 }
@@ -159,7 +160,8 @@ oa::Status oa::AdamW::saveTo(oa::Engine& inEngine, ModelFile& outFile) const {
 	// header (hyperparams + step count). numParams is total flat element count.
 	outFile.optimizerPresent = true;
 	outFile.optimizer = ModelOptimizerState{};
-	std::strncpy(outFile.optimizer.type, "AdamW", sizeof(outFile.optimizer.type) - 1);
+	constexpr char kType[] = "AdamW";
+	oa::memcpy(outFile.optimizer.type, kType, sizeof(kType));
 	outFile.optimizer.lr = lr_;
 	outFile.optimizer.beta1 = beta1_;
 	outFile.optimizer.beta2 = beta2_;
@@ -199,7 +201,7 @@ oa::Status oa::AdamW::saveTo(oa::Engine& inEngine, ModelFile& outFile) const {
 
 oa::Status oa::AdamW::validateLoad(const ModelFile& inFile) const {
 	if (not inFile.hasOptimizer()
-		or std::strncmp(inFile.optimizer.type, "AdamW", sizeof(inFile.optimizer.type)) != 0)
+		or oa::strncmp(inFile.optimizer.type, "AdamW", sizeof(inFile.optimizer.type)) != 0)
 	{
 		return oa::Status::error(oa::StatusCode::FailedPrecondition,
 			"AdamW checkpoint optimizer state is missing or has the wrong type");

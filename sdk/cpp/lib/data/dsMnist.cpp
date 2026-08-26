@@ -2,6 +2,7 @@
 
 #include <data/dsMnist.h>
 #include <oa/core/log.h>
+#include <oa/core/memory.h>
 #include <fstream>
 #include <algorithm>
 
@@ -132,7 +133,7 @@ bool DsMnist::nextBatch(oa::Matrix& outX, oa::Matrix& outY) {
 	// Copy batch from shuffled indices
 	for (oa::I32 i = 0; i < batchSize_; ++i) {
 		oa::I32 idx = indices_[cursor_ + i];
-		std::memcpy(imgBuf_.data() + oa::I64(i) * 784,
+		oa::memcpy(imgBuf_.data() + oa::I64(i) * 784,
 			images_.data() + oa::I64(idx) * 784, 784);
 		lblBuf_[i] = labels_[idx];
 	}

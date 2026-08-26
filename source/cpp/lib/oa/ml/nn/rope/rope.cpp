@@ -8,8 +8,7 @@
 #include <oa/ml/nn/rope/rope.h>
 #include <oa/runtime/executionSession.h>
 
-#include <cassert>
-#include <cmath>
+#include <assert.h>
 
 static oa::U32 divCeil(oa::U32 inA, oa::U32 inB) { return (inA + inB - 1) / inB; }
 
@@ -48,7 +47,7 @@ oa::Matrix oa::Rope::forward(const oa::Matrix& inInput) {
 
 	if (oa::FnAutograd::isEnabled() and inInput.requiresGrad()) {
 		auto gradFn = oa::makeShared<oa::GradRoPE>();
-		gradFn->saveForBackward({inInput});
+		gradFn->saveForBackward(inInput);
 		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inInput});
 		gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		gradFn->numHeads_ = numHeads_;

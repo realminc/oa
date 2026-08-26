@@ -4,12 +4,12 @@
 #include <oa/core/fnMatrix.h>
 #include <oa/core/log.h>
 #include <oa/core/op.h>
+#include <oa/core/std/limits.h>
+#include <oa/core/std/scalarMath.h>
 #include <oa/ml/autograd.h>
 #include <oa/ml/fnLoss.h>
 #include <oa/runtime/executionSession.h>
 
-#include <cmath>
-#include <limits>
 
 oa::DqnLossResult oa::FnLoss::dqn(
 	const oa::Matrix& inQ,
@@ -32,9 +32,9 @@ oa::DqnLossResult oa::FnLoss::dqn(
 		&& inTerminated.getDtype() == oa::ScalarType::UInt8
 		&& inTruncated.getShape() == inReward.getShape()
 		&& inTruncated.getDtype() == oa::ScalarType::UInt8
-		&& std::isfinite(inConfig.discount)
+		&& oa::isFinite(inConfig.discount)
 		&& inConfig.discount >= 0.0F && inConfig.discount <= 1.0F
-		&& inQ.numElements() <= std::numeric_limits<oa::U32>::max();
+		&& inQ.numElements() <= oa::Limits<oa::U32>::max();
 	if (!valid) {
 		OaLogError(oa::LogComponent::Ml,
 			"oa::FnLoss::dqn expects FP32 Q/next-Q [B,A], Int32 action [B], FP32 reward [B], UInt8 boundaries [B], detached next-Q and discount in [0,1]");

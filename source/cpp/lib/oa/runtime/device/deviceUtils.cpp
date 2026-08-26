@@ -4,9 +4,7 @@
 #include <oa/runtime/init.h>     // oavk::VendorId*, oavk::coopMatTrust forward decl
 #include <oa/core/envFlag.h>
 
-#include <algorithm>
-#include <cstring>
-#include <vector>
+#include <oa/core/std/cString.h>
 
 #ifdef __linux__
 #include <unistd.h>
@@ -485,7 +483,7 @@ oa::U64 oavk::physicalDevicePickScore(
 	}
 	const oa::U64 tierPart = static_cast<oa::U64>(tierRank) << 60;
 	const oa::U64 heapMb = inLocalHeapBytes / (1024 * 1024);
-	const oa::U64 heapPart = std::min(heapMb, (oa::U64{1} << 20) - oa::U64{1}) << 12;
+	const oa::U64 heapPart = oa::min(heapMb, (oa::U64{1} << 20) - oa::U64{1}) << 12;
 	const oa::U64 idPart = static_cast<oa::U64>(inDeviceId) & 0xFFFu;
 	return tierPart + heapPart + idPart;
 }
@@ -505,7 +503,7 @@ static bool physicalDeviceHasExtension(
 	inDispatch.vkEnumerateDeviceExtensionProperties(
 		inPhys, nullptr, &extCount, extensions.data());
 	for (oa::U32 i = 0; i < extCount; ++i) {
-		if (strcmp(extensions[i].extensionName, inName) == 0) {
+		if (oa::strcmp(extensions[i].extensionName, inName) == 0) {
 			return true;
 		}
 	}
@@ -600,7 +598,7 @@ oa::U64 oavk::physicalDeviceRate(
 	score += static_cast<oa::U64>(computeSlots) * 50'000ULL;
 
 	const oa::U32 sharedKib = lim.maxComputeSharedMemorySize / 1024u;
-	score += static_cast<oa::U64>(std::min(sharedKib, 256u)) * 1000ULL;
+	score += static_cast<oa::U64>(oa::min(sharedKib, 256u)) * 1000ULL;
 
 	oa::U32 subgroupSize = 0;
 	if (inDispatch.vkGetPhysicalDeviceProperties2) {
@@ -717,12 +715,12 @@ oa::U64 oavk::physicalDeviceRate(
 	const oa::F64 bw = oavk::estimateMemBandwidthGbpsForDevice(
 		props.vendorID, props.deviceID, oaType, localBytes
 	);
-	score += static_cast<oa::U64>(std::min(bw * 500.0, 500'000.0));
+	score += static_cast<oa::U64>(oa::min(bw * 500.0, 500'000.0));
 
 	const oa::F64 tflops = oavk::estimatePeakTflopsF32ForDevice(
 		props.vendorID, props.deviceID, oaType, localBytes
 	);
-	score += static_cast<oa::U64>(std::min(tflops * 8000.0, 2'000'000.0));
+	score += static_cast<oa::U64>(oa::min(tflops * 8000.0, 2'000'000.0));
 
 	score <<= 16;
 	score |= static_cast<oa::U64>(props.deviceID & 0xFFFFu);

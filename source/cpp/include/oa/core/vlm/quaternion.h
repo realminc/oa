@@ -2,9 +2,9 @@
 
 #include <oa/core/vlm/vector.h>
 
-#include <cmath>
-#include <limits>
-#include <type_traits>
+#include <oa/core/std/limits.h>
+#include <oa/core/std/scalarMath.h>
+#include <oa/core/std/typeTraits.h>
 
 namespace oa {
 
@@ -39,7 +39,7 @@ namespace detail {
 
 template <typename T>
 struct Quat {
-	static_assert(std::is_floating_point_v<T>);
+	static_assert(oa::IsFloatingPointV<T>);
 
 	// Vector-first storage matches shader and animation payloads: (x, y, z, w).
 	T x = T(0);
@@ -52,25 +52,25 @@ struct Quat {
 		const detail::Vec3<T>& inAxis,
 		T inRadians) noexcept {
 		const detail::Vec3<T> axis = inAxis.normalized();
-		if (axis.lengthSquared() == T(0) or not std::isfinite(inRadians)) {
+		if (axis.lengthSquared() == T(0) or not oa::isFinite(inRadians)) {
 			return identity();
 		}
 		const T halfAngle = inRadians * T(0.5);
-		const T sine = std::sin(halfAngle);
-		return {axis.x * sine, axis.y * sine, axis.z * sine, std::cos(halfAngle)};
+		const T sine = oa::sin(halfAngle);
+		return {axis.x * sine, axis.y * sine, axis.z * sine, oa::cos(halfAngle)};
 	}
 
 	[[nodiscard]] bool isFinite() const noexcept {
-		return std::isfinite(x) and std::isfinite(y) and std::isfinite(z) and std::isfinite(w);
+		return oa::isFinite(x) and oa::isFinite(y) and oa::isFinite(z) and oa::isFinite(w);
 	}
 	[[nodiscard]] constexpr T normSquared() const noexcept {
 		return x * x + y * y + z * z + w * w;
 	}
-	[[nodiscard]] T norm() const noexcept { return std::sqrt(normSquared()); }
+	[[nodiscard]] T norm() const noexcept { return oa::sqrt(normSquared()); }
 	[[nodiscard]] Quat normalized() const noexcept {
 		const T normValue = norm();
-		if (not std::isfinite(normValue)
-			or normValue <= std::numeric_limits<T>::epsilon()) {
+		if (not oa::isFinite(normValue)
+			or normValue <= oa::Limits<T>::epsilon()) {
 			return identity();
 		}
 		const T inverse = T(1) / normValue;
@@ -82,9 +82,9 @@ struct Quat {
 	[[nodiscard]] detail::Vec3<T> rotate(
 		const detail::Vec3<T>& inVector) const noexcept {
 		const T squaredNorm = normSquared();
-		const T unitTolerance = std::numeric_limits<T>::epsilon() * T(8);
-		const Quat unit = std::isfinite(squaredNorm)
-			and std::abs(squaredNorm - T(1)) <= unitTolerance
+		const T unitTolerance = oa::Limits<T>::epsilon() * T(8);
+		const Quat unit = oa::isFinite(squaredNorm)
+			and oa::abs(squaredNorm - T(1)) <= unitTolerance
 			? *this
 			: normalized();
 		const detail::Vec3<T> imaginary{unit.x, unit.y, unit.z};

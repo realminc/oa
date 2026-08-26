@@ -1,0 +1,1005 @@
+{
+  "schema": "oa.std_dependency_policy.v1",
+  "trackedRoots": [
+    "source/cpp/include/oa",
+    "source/cpp/lib/oa",
+    "source/cpp/thirdparty"
+  ],
+  "files": {
+    "source/cpp/include/oa/core/cli.h": {
+      "exceptions": {
+        "catch": 1,
+        "try": 1
+      }
+    },
+    "source/cpp/include/oa/core/std/vec.h": {
+      "stdSymbols": {
+        "initializer_list": 2
+      },
+      "stdIncludes": {
+        "initializer_list": 1
+      }
+    },
+    "source/cpp/include/oa/core/yaml.h": {
+      "stdSymbols": {
+        "exception": 1,
+        "string": 7
+      },
+      "exceptions": {
+        "catch": 1,
+        "try": 1
+      }
+    },
+    "source/cpp/lib/oa/core/hostText.h": {
+      "stdSymbols": {
+        "string": 3
+      },
+      "stdIncludes": {
+        "string": 1
+      }
+    },
+    "source/cpp/lib/oa/ml/io/shardedWeightSource.cpp": {
+      "stdSymbols": {
+        "exception": 1
+      },
+      "exceptions": {
+        "catch": 1,
+        "try": 1
+      }
+    },
+    "source/cpp/lib/oa/runtime/executionSession.h": {
+      "stdSymbols": {
+        "initializer_list": 2
+      },
+      "stdIncludes": {
+        "initializer_list": 1
+      }
+    },
+    "source/cpp/lib/oa/runtime/vma/classes.h": {
+      "stdSymbols": {
+        "forward": 1
+      }
+    },
+    "source/cpp/lib/oa/runtime/vma/config.h": {
+      "stdSymbols": {
+        "atomic": 2,
+        "countl_zero": 2,
+        "countr_zero": 2,
+        "max": 1,
+        "min": 1,
+        "mutex": 1,
+        "popcount": 1,
+        "shared_mutex": 1,
+        "sort": 1,
+        "swap": 1
+      },
+      "stdIncludes": {
+        "algorithm": 1,
+        "atomic": 2,
+        "bit": 1,
+        "cassert": 1,
+        "cinttypes": 1,
+        "cstdint": 1,
+        "cstdio": 1,
+        "cstdlib": 3,
+        "cstring": 1,
+        "mutex": 1,
+        "shared_mutex": 1,
+        "type_traits": 1,
+        "utility": 1
+      }
+    },
+    "source/cpp/lib/oa/runtime/vma/containers.h": {
+      "stdSymbols": {
+        "forward": 2
+      }
+    },
+    "source/cpp/lib/oa/runtime/vma/impl.h": {
+      "stdSymbols": {
+        "swap": 6
+      }
+    },
+    "source/cpp/lib/oa/ui/input.cpp": {
+      "exceptions": {
+        "catch": 1,
+        "try": 1
+      }
+    },
+    "source/cpp/thirdparty/miniaudio/miniaudio.h": {
+      "exceptions": {
+        "catch": 3,
+        "try": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/arch/common/xsimd_common_arithmetic.hpp": {
+      "stdSymbols": {
+        "complex": 16,
+        "enable_if_t": 1,
+        "is_integral": 1,
+        "is_signed": 2,
+        "numeric_limits": 15
+      },
+      "stdIncludes": {
+        "complex": 1,
+        "limits": 1,
+        "type_traits": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/arch/common/xsimd_common_bit.hpp": {
+      "stdSymbols": {
+        "countl_one": 1,
+        "countl_zero": 1,
+        "countr_one": 1,
+        "countr_zero": 1,
+        "enable_if_t": 5,
+        "is_unsigned": 5,
+        "popcount": 1
+      },
+      "stdIncludes": {
+        "bit": 1,
+        "climits": 1,
+        "type_traits": 1,
+        "version": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/arch/common/xsimd_common_cast.hpp": {
+      "stdSymbols": {
+        "array": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/arch/common/xsimd_common_complex.hpp": {
+      "stdSymbols": {
+        "complex": 5
+      },
+      "stdIncludes": {
+        "complex": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/arch/common/xsimd_common_details.hpp": {
+      "stdSymbols": {
+        "complex": 4,
+        "declval": 7,
+        "enable_if_t": 1,
+        "is_arithmetic": 1,
+        "pair": 1,
+        "size_t": 5
+      },
+      "stdIncludes": {
+        "complex": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/arch/common/xsimd_common_logical.hpp": {
+      "stdSymbols": {
+        "enable_if_t": 6,
+        "is_integral": 4,
+        "is_same": 1,
+        "numeric_limits": 2
+      },
+      "stdIncludes": {
+        "climits": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/arch/common/xsimd_common_math.hpp": {
+      "stdSymbols": {
+        "complex": 44,
+        "enable_if_t": 8,
+        "false_type": 3,
+        "get": 3,
+        "index_sequence": 1,
+        "integral_constant": 5,
+        "is_floating_point": 2,
+        "is_integral": 10,
+        "is_same": 3,
+        "is_signed": 2,
+        "is_unsigned": 2,
+        "log": 2,
+        "make_index_sequence": 1,
+        "make_tuple": 4,
+        "make_unsigned_t": 1,
+        "nearbyint": 1,
+        "nearbyintf": 1,
+        "true_type": 5,
+        "tuple": 4,
+        "tuple_cat": 3
+      },
+      "stdIncludes": {
+        "type_traits": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/arch/common/xsimd_common_memory.hpp": {
+      "stdSymbols": {
+        "array": 1,
+        "begin": 2,
+        "complex": 30,
+        "copy": 2,
+        "enable_if_t": 10,
+        "end": 1,
+        "index_sequence": 1,
+        "is_same": 7,
+        "make_index_sequence": 1,
+        "size_t": 13,
+        "swap": 2
+      },
+      "stdIncludes": {
+        "algorithm": 1,
+        "array": 1,
+        "complex": 1,
+        "stdexcept": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/arch/common/xsimd_common_rounding.hpp": {
+      "stdSymbols": {
+        "enable_if_t": 1,
+        "is_integral": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/arch/common/xsimd_common_swizzle.hpp": {
+      "stdSymbols": {
+        "enable_if_t": 4,
+        "is_integral": 1,
+        "size_t": 26
+      },
+      "stdIncludes": {
+        "cstddef": 1,
+        "cstdint": 1,
+        "type_traits": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/arch/common/xsimd_common_trigo.hpp": {
+      "stdSymbols": {
+        "array": 3,
+        "complex": 36,
+        "enable_if_t": 1,
+        "int32_t": 1,
+        "is_integral": 1,
+        "make_pair": 2,
+        "numeric_limits": 2,
+        "pair": 2,
+        "size_t": 2
+      },
+      "stdIncludes": {
+        "array": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/arch/utils/shifts.hpp": {
+      "stdSymbols": {
+        "integral_constant": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/arch/xsimd_avx.hpp": {
+      "stdSymbols": {
+        "array": 2,
+        "common_type_t": 1,
+        "complex": 6,
+        "enable_if_t": 58,
+        "integral_constant": 4,
+        "is_floating_point": 1,
+        "is_integral": 53,
+        "is_scalar": 2,
+        "is_signed": 2,
+        "numeric_limits": 3
+      },
+      "stdIncludes": {
+        "complex": 1,
+        "limits": 1,
+        "type_traits": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/arch/xsimd_avx2.hpp": {
+      "stdSymbols": {
+        "array": 2,
+        "complex": 4,
+        "conditional_t": 1,
+        "enable_if_t": 38,
+        "integral_constant": 2,
+        "is_integral": 36,
+        "is_signed": 12,
+        "is_unsigned": 2,
+        "make_unsigned": 1,
+        "memcpy": 1,
+        "numeric_limits": 4,
+        "size_t": 2
+      },
+      "stdIncludes": {
+        "complex": 1,
+        "limits": 1,
+        "type_traits": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/arch/xsimd_avx512bw.hpp": {
+      "stdSymbols": {
+        "array": 2,
+        "enable_if_t": 28,
+        "is_integral": 24,
+        "is_signed": 6,
+        "is_unsigned": 3
+      },
+      "stdIncludes": {
+        "array": 1,
+        "type_traits": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/arch/xsimd_avx512dq.hpp": {
+      "stdSymbols": {
+        "conditional_t": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/arch/xsimd_avx512er.hpp": {
+      "stdIncludes": {
+        "array": 1,
+        "type_traits": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/arch/xsimd_avx512f.hpp": {
+      "stdSymbols": {
+        "array": 2,
+        "common_type_t": 1,
+        "complex": 6,
+        "conditional": 1,
+        "conditional_t": 1,
+        "enable_if_t": 60,
+        "false_type": 1,
+        "initializer_list": 1,
+        "is_integral": 53,
+        "is_same": 4,
+        "is_signed": 9,
+        "is_unsigned": 4,
+        "numeric_limits": 7,
+        "size_t": 2,
+        "true_type": 1
+      },
+      "stdIncludes": {
+        "complex": 1,
+        "limits": 1,
+        "type_traits": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/arch/xsimd_avx512ifma.hpp": {
+      "stdIncludes": {
+        "array": 1,
+        "type_traits": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/arch/xsimd_avx512pf.hpp": {
+      "stdIncludes": {
+        "array": 1,
+        "type_traits": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/arch/xsimd_avx512vbmi.hpp": {
+      "stdSymbols": {
+        "enable_if_t": 2
+      },
+      "stdIncludes": {
+        "array": 1,
+        "type_traits": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/arch/xsimd_avx512vbmi2.hpp": {
+      "stdSymbols": {
+        "enable_if_t": 4,
+        "is_integral": 4,
+        "numeric_limits": 4
+      },
+      "stdIncludes": {
+        "array": 1,
+        "type_traits": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/arch/xsimd_avx512vnni_avx512bw.hpp": {
+      "stdIncludes": {
+        "array": 1,
+        "type_traits": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/arch/xsimd_avx512vnni_avx512vbmi2.hpp": {
+      "stdIncludes": {
+        "array": 1,
+        "type_traits": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/arch/xsimd_avxvnni.hpp": {
+      "stdIncludes": {
+        "array": 1,
+        "type_traits": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/arch/xsimd_common_fwd.hpp": {
+      "stdSymbols": {
+        "enable_if_t": 14,
+        "is_integral": 8,
+        "is_scalar": 2
+      },
+      "stdIncludes": {
+        "cstdint": 1,
+        "type_traits": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/arch/xsimd_constants.hpp": {
+      "stdSymbols": {
+        "is_integral": 1,
+        "numeric_limits": 7
+      },
+      "stdIncludes": {
+        "limits": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/arch/xsimd_emulated.hpp": {
+      "stdSymbols": {
+        "accumulate": 5,
+        "all_of": 1,
+        "any_of": 1,
+        "array": 19,
+        "complex": 3,
+        "copy": 4,
+        "enable_if_t": 1,
+        "fill": 1,
+        "index_sequence": 1,
+        "is_floating_point": 1,
+        "make_index_sequence": 1,
+        "multiplies": 1
+      },
+      "stdIncludes": {
+        "complex": 1,
+        "limits": 1,
+        "numeric": 1,
+        "type_traits": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/arch/xsimd_neon.hpp": {
+      "stdSymbols": {
+        "all_of": 1,
+        "array": 8,
+        "complex": 18,
+        "enable_if_t": 4,
+        "false_type": 1,
+        "get": 5,
+        "index_sequence": 21,
+        "integral_constant": 4,
+        "is_integral": 2,
+        "is_same": 2,
+        "is_unsigned": 2,
+        "make_index_sequence": 1,
+        "make_signed_t": 1,
+        "make_tuple": 25,
+        "numeric_limits": 4,
+        "size_t": 14,
+        "true_type": 1,
+        "tuple": 5
+      },
+      "stdIncludes": {
+        "algorithm": 1,
+        "array": 1,
+        "cassert": 1,
+        "complex": 1,
+        "tuple": 1,
+        "type_traits": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/arch/xsimd_neon64.hpp": {
+      "stdSymbols": {
+        "array": 1,
+        "complex": 17,
+        "enable_if_t": 1,
+        "get": 1,
+        "index_sequence": 2,
+        "integer_sequence": 3,
+        "is_integral": 1,
+        "is_same": 2,
+        "make_index_sequence": 1,
+        "make_integer_sequence": 1,
+        "make_tuple": 5,
+        "max": 2,
+        "min": 2,
+        "size_t": 3,
+        "tuple": 1
+      },
+      "stdIncludes": {
+        "cassert": 1,
+        "complex": 1,
+        "cstddef": 1,
+        "tuple": 1,
+        "utility": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/arch/xsimd_rvv.hpp": {
+      "stdSymbols": {
+        "array": 1,
+        "complex": 17,
+        "enable_if_t": 14,
+        "is_arithmetic": 1,
+        "is_floating_point": 5,
+        "is_integral": 2,
+        "is_signed": 2,
+        "is_unsigned": 1,
+        "numeric_limits": 2,
+        "size_t": 2
+      },
+      "stdIncludes": {
+        "complex": 1,
+        "type_traits": 1,
+        "utility": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/arch/xsimd_scalar.hpp": {
+      "stdSymbols": {
+        "abs": 1,
+        "acos": 1,
+        "acosh": 1,
+        "arg": 1,
+        "asin": 1,
+        "asinh": 1,
+        "atan": 1,
+        "atan2": 1,
+        "atanh": 1,
+        "cbrt": 1,
+        "ceil": 1,
+        "common_type_t": 10,
+        "complex": 46,
+        "conj": 1,
+        "copysign": 1,
+        "cos": 4,
+        "cosh": 1,
+        "declval": 3,
+        "enable_if_t": 60,
+        "erf": 1,
+        "erfc": 1,
+        "exp": 3,
+        "exp2": 1,
+        "expm1": 2,
+        "fabs": 1,
+        "false_type": 1,
+        "fdim": 1,
+        "floor": 1,
+        "fma": 3,
+        "fmax": 1,
+        "fmin": 1,
+        "fmod": 1,
+        "frexp": 1,
+        "hypot": 1,
+        "imag": 3,
+        "is_floating_point": 10,
+        "is_integral": 29,
+        "is_same": 1,
+        "is_scalar": 25,
+        "is_signed": 1,
+        "is_unsigned": 2,
+        "isfinite": 4,
+        "isinf": 4,
+        "isnan": 5,
+        "ldexp": 1,
+        "lgamma": 1,
+        "log": 4,
+        "log10": 1,
+        "log1p": 1,
+        "log2": 1,
+        "make_pair": 4,
+        "make_unsigned_t": 1,
+        "memcpy": 23,
+        "modf": 1,
+        "nearbyint": 3,
+        "nextafter": 1,
+        "norm": 1,
+        "numeric_limits": 21,
+        "pair": 4,
+        "polar": 1,
+        "pow": 4,
+        "proj": 1,
+        "real": 3,
+        "remainder": 1,
+        "rint": 1,
+        "round": 1,
+        "signbit": 3,
+        "sin": 6,
+        "sinh": 1,
+        "sqrt": 3,
+        "tan": 1,
+        "tanh": 1,
+        "tgamma": 1,
+        "true_type": 1,
+        "trunc": 3
+      },
+      "stdIncludes": {
+        "cassert": 1,
+        "cmath": 1,
+        "complex": 1,
+        "cstdint": 1,
+        "cstring": 1,
+        "limits": 1,
+        "type_traits": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/arch/xsimd_sse2.hpp": {
+      "stdSymbols": {
+        "common_type_t": 1,
+        "complex": 6,
+        "enable_if_t": 63,
+        "integral_constant": 1,
+        "is_integral": 59,
+        "is_signed": 6,
+        "is_unsigned": 2,
+        "make_unsigned": 1,
+        "memcpy": 3,
+        "numeric_limits": 12
+      },
+      "stdIncludes": {
+        "complex": 1,
+        "limits": 1,
+        "type_traits": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/arch/xsimd_sse3.hpp": {
+      "stdSymbols": {
+        "enable_if_t": 1,
+        "is_integral": 1
+      },
+      "stdIncludes": {
+        "type_traits": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/arch/xsimd_sse4_1.hpp": {
+      "stdSymbols": {
+        "array": 2,
+        "enable_if_t": 9,
+        "is_integral": 9,
+        "is_signed": 5
+      },
+      "stdIncludes": {
+        "type_traits": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/arch/xsimd_sse4_2.hpp": {
+      "stdSymbols": {
+        "numeric_limits": 2
+      },
+      "stdIncludes": {
+        "limits": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/arch/xsimd_ssse3.hpp": {
+      "stdSymbols": {
+        "enable_if_t": 4,
+        "index_sequence": 3,
+        "is_arithmetic": 1,
+        "is_integral": 3,
+        "is_signed": 1,
+        "make_index_sequence": 1,
+        "size_t": 6
+      },
+      "stdIncludes": {
+        "cstddef": 1,
+        "type_traits": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/arch/xsimd_sve.hpp": {
+      "stdSymbols": {
+        "complex": 21,
+        "conditional_t": 3,
+        "decay_t": 1,
+        "enable_if_t": 7,
+        "index_sequence": 5,
+        "is_arithmetic": 1,
+        "is_floating_point": 1,
+        "is_integral": 2,
+        "is_same": 1,
+        "is_signed": 4,
+        "make_index_sequence": 1,
+        "size_t": 13
+      },
+      "stdIncludes": {
+        "complex": 1,
+        "type_traits": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/arch/xsimd_vsx.hpp": {
+      "stdSymbols": {
+        "array": 2,
+        "complex": 6,
+        "declval": 1,
+        "enable_if_t": 53,
+        "is_floating_point": 4,
+        "is_integral": 5,
+        "is_scalar": 44,
+        "is_signed": 1
+      },
+      "stdIncludes": {
+        "complex": 1,
+        "limits": 1,
+        "type_traits": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/arch/xsimd_wasm.hpp": {
+      "stdSymbols": {
+        "array": 7,
+        "complex": 6,
+        "enable_if_t": 42,
+        "is_integral": 40,
+        "is_signed": 7,
+        "is_unsigned": 2,
+        "numeric_limits": 2
+      },
+      "stdIncludes": {
+        "type_traits": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/config/xsimd_arch.hpp": {
+      "stdSymbols": {
+        "conditional": 1,
+        "conditional_t": 1,
+        "false_type": 1,
+        "forward": 5,
+        "initializer_list": 1,
+        "is_same": 1,
+        "size_t": 2,
+        "true_type": 1
+      },
+      "stdIncludes": {
+        "initializer_list": 1,
+        "type_traits": 1,
+        "utility": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/config/xsimd_cpu_features_x86.hpp": {
+      "stdSymbols": {
+        "array": 1,
+        "memcpy": 2,
+        "uint32_t": 2
+      },
+      "stdIncludes": {
+        "array": 1,
+        "cassert": 1,
+        "cstdint": 1,
+        "cstring": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/math/xsimd_rem_pio2.hpp": {
+      "stdSymbols": {
+        "fabs": 1,
+        "floor": 1,
+        "int32_t": 6,
+        "memcpy": 4,
+        "scalbn": 3,
+        "uint32_t": 10
+      },
+      "stdIncludes": {
+        "cmath": 1,
+        "cstdint": 1,
+        "cstring": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/memory/xsimd_aligned_allocator.hpp": {
+      "stdSymbols": {
+        "allocator": 1,
+        "bad_alloc": 1,
+        "conditional": 1,
+        "conditional_t": 1,
+        "forward": 1,
+        "is_same": 1,
+        "min": 1
+      },
+      "stdIncludes": {
+        "algorithm": 1,
+        "cassert": 1,
+        "cstddef": 1,
+        "cstdlib": 1,
+        "memory": 1,
+        "utility": 1
+      },
+      "exceptions": {
+        "throw": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/types/xsimd_api.hpp": {
+      "stdSymbols": {
+        "array": 1,
+        "complex": 31,
+        "conditional_t": 1,
+        "declval": 2,
+        "enable_if_t": 7,
+        "false_type": 2,
+        "forward": 1,
+        "integral_constant": 1,
+        "is_arithmetic": 3,
+        "is_floating_point": 2,
+        "is_integral": 4,
+        "is_same": 1,
+        "is_unsigned": 2,
+        "memcpy": 1,
+        "numeric_limits": 2,
+        "ostream": 4,
+        "pair": 1,
+        "size_t": 3,
+        "true_type": 2
+      },
+      "stdIncludes": {
+        "complex": 1,
+        "cstddef": 1,
+        "limits": 1,
+        "ostream": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/types/xsimd_avx512f_register.hpp": {
+      "stdSymbols": {
+        "conditional_t": 3,
+        "size_t": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/types/xsimd_avx_register.hpp": {
+      "stdSymbols": {
+        "size_t": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/types/xsimd_batch.hpp": {
+      "stdSymbols": {
+        "complex": 75,
+        "conditional_t": 1,
+        "index_sequence": 5,
+        "is_convertible": 2,
+        "is_same": 6,
+        "make_index_sequence": 1,
+        "size_t": 19
+      },
+      "stdIncludes": {
+        "cassert": 1,
+        "complex": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/types/xsimd_batch_constant.hpp": {
+      "stdSymbols": {
+        "array": 7,
+        "bit_and": 1,
+        "bit_or": 1,
+        "bit_xor": 1,
+        "divides": 1,
+        "equal_to": 1,
+        "greater": 1,
+        "greater_equal": 1,
+        "index_sequence": 10,
+        "integral_constant": 9,
+        "is_same_v": 1,
+        "less": 1,
+        "less_equal": 1,
+        "make_index_sequence": 12,
+        "minus": 1,
+        "modulus": 1,
+        "multiplies": 1,
+        "not_equal_to": 1,
+        "plus": 1,
+        "size_t": 35,
+        "tuple": 7,
+        "tuple_element": 7
+      },
+      "stdIncludes": {
+        "cstddef": 1,
+        "functional": 1,
+        "utility": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/types/xsimd_common_arch.hpp": {
+      "stdSymbols": {
+        "size_t": 1
+      },
+      "stdIncludes": {
+        "cstddef": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/types/xsimd_emulated_register.hpp": {
+      "stdSymbols": {
+        "array": 2,
+        "complex": 1,
+        "is_scalar": 1,
+        "size_t": 1,
+        "true_type": 2
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/types/xsimd_neon64_register.hpp": {
+      "stdSymbols": {
+        "size_t": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/types/xsimd_neon_register.hpp": {
+      "stdSymbols": {
+        "conditional_t": 2,
+        "is_signed": 2,
+        "size_t": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/types/xsimd_register.hpp": {
+      "stdSymbols": {
+        "add_const_t": 1,
+        "add_lvalue_reference_t": 1,
+        "false_type": 2,
+        "true_type": 1
+      },
+      "stdIncludes": {
+        "type_traits": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/types/xsimd_rvv_register.hpp": {
+      "stdSymbols": {
+        "conditional_t": 5,
+        "decay_t": 1,
+        "enable_if_t": 2,
+        "integral_constant": 8,
+        "is_floating_point": 1,
+        "is_same": 2,
+        "is_signed": 2,
+        "is_void": 2,
+        "size_t": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/types/xsimd_sse2_register.hpp": {
+      "stdSymbols": {
+        "size_t": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/types/xsimd_sve_register.hpp": {
+      "stdSymbols": {
+        "conditional_t": 2,
+        "is_floating_point": 1,
+        "is_signed": 1,
+        "size_t": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/types/xsimd_traits.hpp": {
+      "stdSymbols": {
+        "complex": 17,
+        "enable_if": 9,
+        "integral_constant": 4,
+        "is_same": 15,
+        "make_signed_t": 1,
+        "make_unsigned_t": 1
+      },
+      "stdIncludes": {
+        "cstdint": 1,
+        "type_traits": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/types/xsimd_utils.hpp": {
+      "stdSymbols": {
+        "array": 6,
+        "complex": 5,
+        "enable_if": 1,
+        "enable_if_t": 9,
+        "false_type": 1,
+        "index_sequence": 3,
+        "integer_sequence": 1,
+        "integral_constant": 1,
+        "is_convertible": 1,
+        "is_integral": 5,
+        "is_same": 2,
+        "is_signed": 3,
+        "make_index_sequence": 3,
+        "make_integer_sequence": 1,
+        "make_signed": 3,
+        "make_unsigned": 2,
+        "memcpy": 1,
+        "size_t": 8,
+        "true_type": 2
+      },
+      "stdIncludes": {
+        "complex": 1,
+        "cstdint": 1,
+        "cstring": 1,
+        "tuple": 1,
+        "type_traits": 1,
+        "utility": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/types/xsimd_vsx_register.hpp": {
+      "stdSymbols": {
+        "size_t": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/types/xsimd_wasm_register.hpp": {
+      "stdSymbols": {
+        "size_t": 1
+      }
+    },
+    "source/cpp/thirdparty/xsimd/include/xsimd/utils/bits.hpp": {
+      "stdIncludes": {
+        "cassert": 1
+      }
+    }
+  }
+}

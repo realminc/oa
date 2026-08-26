@@ -13,20 +13,19 @@
 #include <oa/runtime/dispatchDesc.h>
 #include <oa/core/validation.h>
 #include <oa/core/op.h>
+#include <oa/core/std/limits.h>
 #include "../../autograd/autogradAttach.gen.h"
 #include "../fnMatrixAxis.h"
 #include "fnMatrixReduceLowering.h"
 
-#include <cassert>
-
-static oa::U32 divCeil(oa::U32 inA, oa::U32 inB) { return (inA + inB - 1) / inB; }
+#include <assert.h>
 
 static oa::Matrix commitCoreReductionResult(
 	oa::Matrix inResult,
 	oa::OpLoweringScope& inLowering,
 	const oa::OpContract& inContract,
-	std::initializer_list<const oa::Matrix*> inInputs,
-	std::initializer_list<oa::OpAttribute> inAttributes = {}
+	oa::MatrixArgs inInputs,
+	oa::OpAttributeArgs inAttributes = {}
 ) {
 	const auto status = inLowering.commit(inContract, inInputs, {&inResult}, inAttributes);
 	return status.isOk() ? inResult : oa::Matrix{};
@@ -157,7 +156,7 @@ oa::Status oa::FnMatrixPrivate::lowerFullMean(
 ) {
 	const oa::I64 elementCount = inInput.numElements();
 	if (elementCount <= 0
-		or static_cast<oa::U64>(elementCount) > std::numeric_limits<oa::U32>::max()
+		or static_cast<oa::U64>(elementCount) > oa::Limits<oa::U32>::max()
 		or outMean.numElements() != 1
 		or outMean.getDtype() != inInput.getDtype()
 		or not inInput.hasStorage() or not outMean.hasStorage()
@@ -279,7 +278,7 @@ oa::Matrix oa::FnMatrix::mean(const oa::Matrix& inA, oa::I32 inDim) {
 	const oa::I64 elementCount = inA.numElements();
 	if (inA.rank() <= 0 or elementCount <= 0 or inDim < -1
 		or inDim >= inA.rank()
-		or static_cast<oa::U64>(elementCount) > std::numeric_limits<oa::U32>::max()
+		or static_cast<oa::U64>(elementCount) > oa::Limits<oa::U32>::max()
 	)	{
 		OaLogError(oa::LogComponent::Compute,
 			"Mean: expected a non-empty matrix and dim=-1 or a valid axis");

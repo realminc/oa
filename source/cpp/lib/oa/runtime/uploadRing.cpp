@@ -14,15 +14,7 @@
 
 #include "uploadRingRetirement.h"
 
-#include <algorithm>
-
 namespace {
-
-oa::U64 alignUp(oa::U64 inValue, oa::U64 inAlignment) {
-	if (inAlignment <= 1) return inValue;
-	const oa::U64 remainder = inValue % inAlignment;
-	return remainder == 0 ? inValue : inValue + (inAlignment - remainder);
-}
 
 struct PendingUploadCopy {
 	oavk::Buffer dst;
@@ -140,7 +132,7 @@ oa::Result<oa::UploadSlice> oa::UploadRing::reserve(oa::U64 inSize, oa::U64 inAl
 	if (inSize == 0) return oa::Status::invalidArgument("UploadRing: zero-byte reservation");
 	const oa::U64 alignment = inAlignment == 0 ? impl_->config.alignment : inAlignment;
 	auto& frame = *impl_->frames[impl_->activeFrame];
-	const oa::U64 offset = alignUp(frame.cursor, std::max<oa::U64>(alignment, 4));
+	const oa::U64 offset = alignUp(frame.cursor, oa::max<oa::U64>(alignment, 4));
 	if (offset > frame.end || inSize > frame.end - offset) {
 		return oa::Status::error(oa::StatusCode::ResourceExhausted,
 			"UploadRing: active frame capacity exhausted; submit or increase capacity");
@@ -220,8 +212,8 @@ oa::Result<oa::Event> oa::UploadRing::submit() {
 			&& impl_->copies[end].dst.buffer == dst.buffer) {
 			const oavk::BufferCopyRegion& region = impl_->copies[end].region;
 			regions.pushBack(region);
-			barrierBegin = std::min(barrierBegin, region.dstOffset);
-			barrierEnd = std::max(barrierEnd, region.dstOffset + region.size);
+			barrierBegin = oa::min(barrierBegin, region.dstOffset);
+			barrierEnd = oa::max(barrierEnd, region.dstOffset + region.size);
 			++end;
 		}
 		frame.stream.recordCopyBufferRegions(

@@ -5,8 +5,6 @@
 #include <oa/runtime/sync.h>
 #include <oa/runtime/timestamp.h>
 
-#include <mutex>
-
 namespace oa { class Engine; }
 namespace oavk { class Device; }
 namespace oavk { class Stream; }
@@ -70,7 +68,7 @@ private:
 
 	oa::Engine* owner_ = nullptr;
 	oa::Vec<oa::UniquePtr<Slot>> slots_;
-	mutable std::mutex mutex_;
+	mutable oa::Mutex mutex_;
 	oa::Bool open_ = true;
 };
 

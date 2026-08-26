@@ -6,7 +6,7 @@
 #include <oa/runtime/executionSession.h>
 #include <oa/runtime/dispatchDesc.h>
 
-#include <climits>
+#include <limits.h>
 
 oa::Status oa::DnnGraphLowering::recordLinearWeightBiasBackward(
 	oa::ExecutionSession& inContext,

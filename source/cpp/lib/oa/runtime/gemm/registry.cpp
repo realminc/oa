@@ -17,8 +17,6 @@
 #include "gen/tileSmallMMetadata.h"
 #include "gen/tileBf16Metadata.h"
 
-#include <array>
-
 namespace oa::matmulRegistry {
 
 namespace {

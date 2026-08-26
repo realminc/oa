@@ -24,7 +24,7 @@
 #include <oa/ml/autograd.h>
 #include <oa/ml/autograd/matrix/autogradConv.h>
 
-#include <cassert>
+#include <assert.h>
 
 namespace {
 

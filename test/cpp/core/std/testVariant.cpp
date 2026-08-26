@@ -3,6 +3,31 @@
 #include <type_traits>
 #include <variant>
 
+namespace {
+
+struct alignas(64) OverAlignedVariantValue {
+	int value{0};
+};
+
+struct TrackedVariantValue {
+	static inline int alive = 0;
+	int value{0};
+
+	TrackedVariantValue() { ++alive; }
+	explicit TrackedVariantValue(int inValue) : value(inValue) { ++alive; }
+	TrackedVariantValue(const TrackedVariantValue& inOther) : value(inOther.value) {
+		++alive;
+	}
+	TrackedVariantValue(TrackedVariantValue&& inOther) noexcept : value(inOther.value) {
+		++alive;
+		inOther.value = 0;
+	}
+	TrackedVariantValue& operator=(TrackedVariantValue&&) noexcept = default;
+	~TrackedVariantValue() { --alive; }
+};
+
+} // namespace
+
 TEST(Variant, IndexAndGet) {
 	oa::Variant<int, float> v{3.14f};
 	EXPECT_EQ(v.index(), 1U);
@@ -28,6 +53,11 @@ TEST(Variant, IndexAndGet) {
 		"oa::Variant::get<float> x300k", t0, t1, "std::get<float> x300k", t2);
 	stdExpectGotFloat("variant float sum (scaled)", sinkSt / 1000.f, sinkOa / 1000.f);
 	EXPECT_FLOAT_EQ(sinkOa, sinkSt);
+}
+
+TEST(Variant, WrongAlternativeRejectsContract) {
+	oa::Variant<int, float> value{3};
+	EXPECT_DEATH((void)value.get<float>(), "OA contract failed: index_ == Index");
 }
 
 TEST(Variant, HoldsAlternativeAndVisit) {
@@ -81,39 +111,66 @@ TEST(Variant, EmplaceAndSwap) {
 	EXPECT_FLOAT_EQ(b.get<float>(), 1.5f);
 
 	constexpr int kSwaps = 500'000;
+	volatile oa::Usize sinkOa = 0;
 	const auto t0 = oa::highResolutionNow();
 	for (int i = 0; i < kSwaps; ++i) {
 		oa::Variant<int, float> x{1};
 		oa::Variant<int, float> y{2.0f};
 		x.swap(y);
-		(void)x.index();
+		sinkOa += x.index();
 	}
 	const auto t1 = oa::highResolutionNow();
+	volatile std::size_t sinkStd = 0;
 	for (int i = 0; i < kSwaps; ++i) {
 		std::variant<int, float> x{1};
 		std::variant<int, float> y{2.0f};
 		std::swap(x, y);
-		(void)x.index();
+		sinkStd += x.index();
 	}
 	const auto t2 = oa::highResolutionNow();
 	stdReportCompareSequentialRuns(
 		"oa::Variant::swap x500k", t0, t1, "std::swap(variant) x500k", t2);
+	EXPECT_EQ(sinkOa, sinkStd);
 }
 
-TEST(StdVariantVsStd, StdVariantMatchesStdVariantState) {
-	oa::Variant<int, double> oa{3.141592653589793};
-	std::variant<int, double> st{3.141592653589793};
-	auto conv = oa.stdVariant();
-	stdEchoCurrentTest();
-	stdExpectGotInt("variant index std", static_cast<long long>(st.index()),
-		static_cast<long long>(conv.index()));
-	EXPECT_EQ(conv.index(), st.index());
-	EXPECT_DOUBLE_EQ(std::get<double>(conv), std::get<double>(st));
-	oa.emplace<int>(-7);
-	st.emplace<int>(-7);
-	conv = oa.stdVariant();
-	EXPECT_EQ(conv.index(), st.index());
-	EXPECT_EQ(std::get<int>(conv), std::get<int>(st));
+TEST(Variant, CopyMoveAndEmptyState) {
+	oa::Variant<int, oa::String> original{oa::String("realm")};
+	oa::Variant<int, oa::String> copy{original};
+	oa::Variant<int, oa::String> moved{oa::move(original)};
+
+	EXPECT_EQ(copy.get<oa::String>(), "realm");
+	EXPECT_EQ(moved.get<oa::String>(), "realm");
+	EXPECT_TRUE(original.empty());
+	EXPECT_DEATH(original.visit([](auto&&) {}),
+		"OA contract failed: index_ != Npos");
+}
+
+TEST(Variant, PreservesOverAlignment) {
+	using Value = oa::Variant<int, OverAlignedVariantValue>;
+	static_assert(alignof(Value) >= alignof(OverAlignedVariantValue));
+
+	Value value{OverAlignedVariantValue{.value = 19}};
+	EXPECT_EQ(value.get<OverAlignedVariantValue>().value, 19);
+}
+
+TEST(Variant, OwnsEachAlternativeLifetimeOnce) {
+	TrackedVariantValue::alive = 0;
+	{
+		oa::Variant<TrackedVariantValue, int> first{TrackedVariantValue{7}};
+		EXPECT_EQ(TrackedVariantValue::alive, 1);
+		{
+			auto copy = first;
+			auto moved = oa::move(first);
+			EXPECT_EQ(TrackedVariantValue::alive, 2);
+			EXPECT_TRUE(first.empty());
+			EXPECT_EQ(copy.get<TrackedVariantValue>().value, 7);
+			EXPECT_EQ(moved.get<TrackedVariantValue>().value, 7);
+			moved.emplace<int>(11);
+			EXPECT_EQ(TrackedVariantValue::alive, 1);
+		}
+		EXPECT_EQ(TrackedVariantValue::alive, 0);
+	}
+	EXPECT_EQ(TrackedVariantValue::alive, 0);
 }
 
 TEST(StdVariantVsStd, VisitSumMatchesStdVisit) {

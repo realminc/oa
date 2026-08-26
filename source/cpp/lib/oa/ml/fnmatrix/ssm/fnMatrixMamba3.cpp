@@ -12,25 +12,25 @@
 #include <oa/core/log.h>
 #include <oa/core/op.h>
 #include <oa/core/status.h>
+#include <oa/core/std/limits.h>
+#include <oa/core/std/utility.h>
 #include <oa/core/types.h>
 #include <oa/runtime/executionSession.h>
 
 #include "fnMatrixSsmInternal.h"
 
-#include <cassert>
-#include <initializer_list>
-#include <iterator>
-#include <limits>
-
+#include <assert.h>
 namespace {
 
 constexpr oa::U32 kMamba3Chunk = 16u;
 constexpr oa::U64 kMamba3ChunkHistoryLimit = 256ull * 1024ull * 1024ull;
 constexpr oa::U64 kMamba3MaxF32Elements = 1ull << 30u;
 
-bool isMamba3ProductAddressable(std::initializer_list<oa::U32> inDimensions) {
+template<typename... Dimensions>
+bool isMamba3ProductAddressable(Dimensions... inDimensions) {
 	oa::U64 elements = 1u;
-	for (const oa::U32 dimension : inDimensions) {
+	const oa::U32 dimensions[] = {static_cast<oa::U32>(inDimensions)...};
+	for (const oa::U32 dimension : dimensions) {
 		if (dimension != 0u && elements > kMamba3MaxF32Elements / dimension)
 			return false;
 		elements *= dimension;
@@ -77,14 +77,14 @@ bool isMamba3MimoConfigValid(
 	const oa::U32 H = inConfig.nHeads, G = groups;
 	const oa::U32 P = inConfig.headDim, N = inConfig.stateSize;
 	const oa::U32 A = inConfig.numRopeAngles, R = inConfig.mimoRank;
-	if (not isMamba3ProductAddressable({B, L, R, G, N})
-		or not isMamba3ProductAddressable({B, L, H, R, N})
-		or not isMamba3ProductAddressable({B, H, L, P, N})
-		or not isMamba3ProductAddressable({B, H, L, A})
-		or not isMamba3ProductAddressable({B, H, R, P})
-		or not isMamba3ProductAddressable({H, R, N})
-		or not isMamba3ProductAddressable({H, R, P})
-		or not isMamba3ProductAddressable({H, P}))
+	if (not isMamba3ProductAddressable(B, L, R, G, N)
+		or not isMamba3ProductAddressable(B, L, H, R, N)
+		or not isMamba3ProductAddressable(B, H, L, P, N)
+		or not isMamba3ProductAddressable(B, H, L, A)
+		or not isMamba3ProductAddressable(B, H, R, P)
+		or not isMamba3ProductAddressable(H, R, N)
+		or not isMamba3ProductAddressable(H, R, P)
+		or not isMamba3ProductAddressable(H, P))
 	{
 		return false;
 	}
@@ -97,7 +97,7 @@ bool isMamba3MimoConfigValid(
 	const oa::U64 reduceCount = groupCount + angleCount + biasCount + H
 		+ mimoCount + normCount;
 	return reduceCount
-		<= static_cast<oa::U64>(std::numeric_limits<oa::U32>::max() - 255u);
+		<= static_cast<oa::U64>(oa::Limits<oa::U32>::max() - 255u);
 }
 
 void logInvalidMamba3Mimo(const char* inOperation) {
@@ -301,8 +301,8 @@ oa::Matrix oa::FnMatrix::mamba3Siso(
 		 inTrap.requiresGrad() or inAngle.requiresGrad() or inCBias.requiresGrad() or
 		 inBBias.requiresGrad() or inD.requiresGrad())) {
 		auto gradFn = oa::makeShared<oa::GradMamba3Siso>();
-		gradFn->saveForBackward({inC, inB, inX, inZ, inAdt, inDt, inTrap,
-			inAngle, inCBias, inBBias, inD});
+		gradFn->saveForBackward(inC, inB, inX, inZ, inAdt, inDt, inTrap,
+			inAngle, inCBias, inBBias, inD);
 		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inC, inB, inX, inZ, inAdt, inDt, inTrap,
 			inAngle, inCBias, inBBias, inD});
 		gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
@@ -759,7 +759,7 @@ oa::Matrix oa::FnMatrix::mamba3Mimo(
 		&inCBias, &inBBias, &inD, &inMimoX, &inMimoZ, &inMimoO,
 		&inNormWeight};
 	if (not isMamba3MimoConfigValid(inConfig, inNormWeight)
-		or not areMamba3MimoInputsFloat32(inputs, std::size(inputs))
+		or not areMamba3MimoInputsFloat32(inputs, oa::arraySize(inputs))
 		or inC.getShape() != oa::MatrixShape{B, L, R * G, N}
 		or inB.getShape() != oa::MatrixShape{B, L, R * G, N}
 		or inX.getShape() != oa::MatrixShape{B, L, H, P}
@@ -814,9 +814,9 @@ oa::Matrix oa::FnMatrix::mamba3Mimo(
 		 inNormWeight.requiresGrad()))
 	{
 		auto gradFn = oa::makeShared<oa::GradMamba3Mimo>();
-		gradFn->saveForBackward({inC, inB, inX, inZ, inAdt, inDt,
+		gradFn->saveForBackward(inC, inB, inX, inZ, inAdt, inDt,
 			inTrap, inAngle, inCBias, inBBias, inD, inMimoX, inMimoZ, inMimoO,
-			inNormWeight});
+			inNormWeight);
 		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inC, inB, inX, inZ, inAdt,
 			inDt, inTrap, inAngle, inCBias, inBBias, inD, inMimoX, inMimoZ,
 			inMimoO, inNormWeight});
@@ -849,7 +849,7 @@ oa::Mamba3MimoBwdResult oa::FnMatrix::mamba3MimoBwd(
 		&inAngle, &inCBias, &inBBias, &inD, &inMimoX, &inMimoZ,
 		&inMimoO, &inNormWeight};
 	if (not isMamba3MimoConfigValid(inConfig, inNormWeight)
-		or not areMamba3MimoInputsFloat32(inputs, std::size(inputs))
+		or not areMamba3MimoInputsFloat32(inputs, oa::arraySize(inputs))
 		or inDOut.getShape() != oa::MatrixShape{B, L, H, P}
 		or inC.getShape() != oa::MatrixShape{B, L, R * G, N}
 		or inB.getShape() != oa::MatrixShape{B, L, R * G, N}
@@ -1039,7 +1039,7 @@ oa::Matrix oa::FnMatrix::mamba3MimoStep(
 		&inNormWeight, &inSsmState, &inAngleState, &inKState, &inVState};
 	if (inConfig.seqLen != 1u
 		or not isMamba3MimoConfigValid(inConfig, inNormWeight)
-		or not areMamba3MimoInputsFloat32(inputs, std::size(inputs))
+		or not areMamba3MimoInputsFloat32(inputs, oa::arraySize(inputs))
 		or inC.getShape() != oa::MatrixShape{B, 1, R * G, N}
 		or inB.getShape() != oa::MatrixShape{B, 1, R * G, N}
 		or inX.getShape() != oa::MatrixShape{B, 1, H, P}

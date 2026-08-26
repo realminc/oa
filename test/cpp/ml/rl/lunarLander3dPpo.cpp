@@ -441,10 +441,11 @@ oa::Status TestLunarLander3dPpo::pretrainScriptedTeacher(
 		auto environment = oa::LunarScalarEnvironment::createFlat(
 			environmentConfig, manifest);
 		if (not environment.isValid()) {
+			const std::string& error = environment.error();
 			return oa::Status::error(
 				oa::StatusCode::FailedPrecondition,
 				oa::String("Lunar Lander 3D teacher environment creation failed: ")
-					+ environment.error());
+					+ oa::StringView(error.data(), error.size()));
 		}
 		while (not environment.state().terminated_
 			and not environment.state().truncated_
@@ -471,7 +472,8 @@ oa::Status TestLunarLander3dPpo::pretrainScriptedTeacher(
 				return oa::Status::error(
 					oa::StatusCode::DataLoss,
 					oa::String("Lunar Lander 3D teacher transition failed: ")
-						+ transition.error_);
+						+ oa::StringView(
+							transition.error_.data(), transition.error_.size()));
 			}
 		}
 		if (environment.state().terminated_ or environment.state().truncated_) {

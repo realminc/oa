@@ -7,9 +7,7 @@
 
 #include <oa/core/matrix.h>
 #include <oa/core/status.h>
-
-#include <initializer_list>
-#include <utility>
+#include <oa/core/std/utility.h>
 
 namespace oa {
 
@@ -31,14 +29,20 @@ public:
 	}
 	[[nodiscard]] oa::Vec<Matrix>& mutGraphInputs() { return inputs_; }
 	void setGraphInputs(oa::Vec<Matrix> inInputs) {
-		inputs_ = std::move(inInputs);
+		inputs_ = oa::move(inInputs);
 	}
 
 	/// Retains matrices required by backward and snapshots their storage
 	/// mutation versions. Backward fails before recording any kernels if a
 	/// retained matrix was modified in place.
 	void saveForBackward(oa::Vec<Matrix> inMatrices);
-	void saveForBackward(std::initializer_list<Matrix> inMatrices);
+	template<typename... Matrices>
+	void saveForBackward(Matrices&&... inMatrices) {
+		oa::Vec<Matrix> values;
+		values.reserve(sizeof...(Matrices));
+		(values.pushBack(Matrix(oa::forward<Matrices>(inMatrices))), ...);
+		saveForBackward(oa::move(values));
+	}
 
 	void clearTensors() {
 		savedMatrices_.clear();

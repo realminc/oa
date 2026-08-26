@@ -7,7 +7,7 @@
 #include "../featureModule.h"
 #include <oa/core/log.h>
 #include <oa/runtime/init.h>
-#include <cstring>
+#include <string.h>
 
 
 class RenderFeatures : public oavk::FeatureModule {

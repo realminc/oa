@@ -13,6 +13,8 @@
 #include <oa/core/log.h>
 #include <oa/runtime/engine.h>
 
+#include <core/streamText.h>
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -412,7 +414,7 @@ static oa::Result<LunarHeadlessSummary> lunarHeadlessRun(
 	if (not environment.isValid()) {
 		return oa::Status::error(oa::StatusCode::FailedPrecondition,
 			oa::String("lunar scalar environment creation failed: ")
-				+ environment.error());
+				+ oa::sdk::fromStdString(environment.error()));
 	}
 	oa::LunarLander3dState initialState;
 	initialState.position_ = {0.0, 4.0, 0.0};
@@ -483,7 +485,7 @@ static oa::Result<LunarHeadlessSummary> lunarHeadlessRun(
 			runStatus = oa::Status::error(
 				oa::StatusCode::DataLoss,
 				oa::String("lunar scalar transition failed: ")
-					+ transition.error_);
+					+ oa::sdk::fromStdString(transition.error_));
 			break;
 		}
 		lunarHeadlessDigestState(traceDigest, environment.state());

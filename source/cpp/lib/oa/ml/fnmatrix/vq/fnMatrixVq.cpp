@@ -16,7 +16,7 @@
 #include <oa/core/bufferAccess.h>
 #include <oa/runtime/executionSession.h>
 
-#include <cassert>
+#include <assert.h>
 
 static oa::U32 vqDivCeil(oa::U32 inA, oa::U32 inB) { return (inA + inB - 1u) / inB; }
 

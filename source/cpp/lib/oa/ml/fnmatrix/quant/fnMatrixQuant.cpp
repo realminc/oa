@@ -10,11 +10,10 @@
 #include <oa/core/bufferAccess.h>
 #include <oa/core/matrixAccess.h>
 #include <oa/runtime/executionSession.h>
+#include <oa/core/std/limits.h>
 
 #include "fnMatrixQuantInternal.h"
 #include "../../quantMatrixAccess.h"
-
-#include <limits>
 
 namespace {
 
@@ -27,7 +26,7 @@ constexpr oa::U32 Q8WordsPerBlock = 8;
 constexpr oa::U32 QuantizeWorkgroupSize = 64;
 constexpr oa::U32 ElementWorkgroupSize = 256;
 constexpr oa::U64 MaxFloat32ElementCount =
-	std::numeric_limits<oa::U32>::max() / sizeof(oa::F32);
+	oa::Limits<oa::U32>::max() / sizeof(oa::F32);
 
 enum class QuantPlaneFormat : oa::U8 {
 	Q4,
@@ -58,7 +57,7 @@ enum class QuantPlaneFormat : oa::U8 {
 	oa::U64 inB,
 	oa::U64& outProduct)
 {
-	if (inA != 0 and inB > std::numeric_limits<oa::U64>::max() / inA) {
+	if (inA != 0 and inB > oa::Limits<oa::U64>::max() / inA) {
 		return false;
 	}
 	outProduct = inA * inB;
@@ -130,7 +129,7 @@ enum class QuantPlaneFormat : oa::U8 {
 	}
 	if (inOutputFeatures < 0
 		or static_cast<oa::U64>(inOutputFeatures)
-			> std::numeric_limits<oa::U32>::max())
+			> oa::Limits<oa::U32>::max())
 	{
 		return fail("OutputFeatures must fit the UInt32 kernel ABI");
 	}
@@ -138,7 +137,7 @@ enum class QuantPlaneFormat : oa::U8 {
 	const oa::I64 inputFeatures = inInput.size(inInput.rank() - 1);
 	if (inputFeatures <= 0
 		or static_cast<oa::U64>(inputFeatures)
-			> std::numeric_limits<oa::U32>::max())
+			> oa::Limits<oa::U32>::max())
 	{
 		return fail("the input K dimension must be positive and fit UInt32");
 	}
@@ -153,7 +152,7 @@ enum class QuantPlaneFormat : oa::U8 {
 		}
 		rows = nextRows;
 	}
-	if (rows > std::numeric_limits<oa::U32>::max()) {
+	if (rows > oa::Limits<oa::U32>::max()) {
 		return fail("flattened input row count must fit UInt32");
 	}
 
@@ -182,7 +181,7 @@ enum class QuantPlaneFormat : oa::U8 {
 		: Q8BytesPerBlock;
 	oa::U64 payloadBytes = 0;
 	if (not tryMultiply(blocks, bytesPerBlock, payloadBytes)
-		or payloadBytes > static_cast<oa::U64>(std::numeric_limits<oa::I64>::max()))
+		or payloadBytes > static_cast<oa::U64>(oa::Limits<oa::I64>::max()))
 	{
 		return fail("quantized payload size overflows the matrix ABI");
 	}

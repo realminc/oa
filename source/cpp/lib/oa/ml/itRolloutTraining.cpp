@@ -3,7 +3,7 @@
 #include <oa/ml/optim.h>
 #include <oa/ml/trainingSession.h>
 
-#include <limits>
+#include <oa/core/std/limits.h>
 
 namespace {
 
@@ -14,8 +14,8 @@ bool isValidConfig(const oa::ItRolloutTrainingConfig& inConfig) {
 		* inConfig.updateEpochs;
 	return inConfig.rollouts > 0 && inConfig.horizon > 0
 		&& inConfig.environments > 0 && inConfig.updateEpochs > 0
-		&& batch <= static_cast<oa::U64>(std::numeric_limits<oa::I32>::max())
-		&& updates <= static_cast<oa::U64>(std::numeric_limits<oa::I64>::max());
+		&& batch <= static_cast<oa::U64>(oa::Limits<oa::I32>::max())
+		&& updates <= static_cast<oa::U64>(oa::Limits<oa::I64>::max());
 }
 
 oa::ItTrainingConfig makeUpdateConfig(const oa::ItRolloutTrainingConfig& inConfig) {

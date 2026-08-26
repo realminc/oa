@@ -48,7 +48,8 @@ oa::I32 detectionExtent(oa::F64 inValue) noexcept {
 
 class DetectionVideoSource final : public oa::ViewerLiveSource {
 public:
-	oa::String path = tutorialVideoPath("shibuya_crossing_1080p30_av1.mp4");
+	oa::String path = oa::sdk::fromStdString(
+		tutorialVideoPath("shibuya_crossing_1080p30_av1.mp4"));
 	[[nodiscard]] oa::ViewerLiveCapabilities capabilities() const noexcept override {
 		return {
 			.receivesEvents = true,

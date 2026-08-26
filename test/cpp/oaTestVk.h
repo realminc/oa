@@ -16,5 +16,31 @@
 #pragma once
 
 #include <gtest/gtest.h>
+#include <oa/core/std/string.h>
+
+#include <ostream>
+
+// GoogleTest formats assertion diagnostics through hosted iostreams. Keep
+// that adapter in the test harness so oa::String itself remains independent
+// of the hosted standard string and stream surface.
+#ifndef OA_HOSTED_TEXT_STREAM_OPERATORS
+#define OA_HOSTED_TEXT_STREAM_OPERATORS
+
+namespace oa {
+
+inline std::ostream& operator<<(std::ostream& inOut, oa::StringView inValue) {
+	if (not inValue.empty()) {
+		inOut.write(inValue.data(), static_cast<std::streamsize>(inValue.size()));
+	}
+	return inOut;
+}
+
+inline std::ostream& operator<<(std::ostream& inOut, const oa::String& inValue) {
+	return inOut << inValue.view();
+}
+
+} // namespace oa
+
+#endif // OA_HOSTED_TEXT_STREAM_OPERATORS
 
 #define TEST_VK(Fixture, Name) TEST_F(Fixture, Name)

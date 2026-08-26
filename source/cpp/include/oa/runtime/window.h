@@ -6,9 +6,6 @@
 
 #include <oa/core/types.h>
 
-#include <memory>
-#include <vector>
-
 #include <oa/runtime/oaVk.h>
 
 
@@ -67,7 +64,8 @@ public:
 
 	// Presenter path: returns the VK_KHR_surface + platform extension names
 	// required for VkInstance creation (e.g. from SDL_Vulkan_GetInstanceExtensions).
-	[[nodiscard]] virtual bool getPresenterInstanceExtensions(std::vector<const char*>* out_extensions) const;
+	[[nodiscard]] virtual bool getPresenterInstanceExtensions(
+		oa::Vec<const char*>* outExtensions) const;
 
 	// Returns the platform-native window handle (e.g. SDL_Window*).
 	// Used by ImGui backends (ImGui_ImplSDL3_InitForVulkan).

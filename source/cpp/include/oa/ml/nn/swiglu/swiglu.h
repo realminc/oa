@@ -6,8 +6,6 @@
 
 #include <oa/ml/module.h>
 
-#include <initializer_list>
-
 namespace oa {
 
 /// Swiglu: SwiGLU MLP layer with optional weight concatenation.

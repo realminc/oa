@@ -14,10 +14,9 @@
 // and the caller simply skips the assert when 0.
 
 #include <oa/runtime/spirv.h>
-
-#include <mutex>
-#include <unordered_map>
-#include <vector>
+#include <oa/core/std/hashMap.h>
+#include <oa/core/std/sync.h>
+#include <oa/core/std/vec.h>
 
 namespace {
 
@@ -34,12 +33,12 @@ constexpr oa::U32 kDecorationOffset = 35;
 
 struct ReflectState {
 	// Indexed by SPIR-V result id (< bound).
-	std::vector<oa::U8>  kind;        // 0=unknown, 1=scalar, 2=vector, 3=struct
-	std::vector<oa::U32> scalarSize;  // bytes, for kind==1
-	std::vector<oa::U32> vecComp;     // component type id, for kind==2
-	std::vector<oa::U32> vecCount;    // component count, for kind==2
-	std::vector<std::vector<oa::U32>> structMembers;  // member type ids
-	std::vector<std::vector<oa::U32>> memberOffset;   // byte offset per member
+	oa::Vec<oa::U8> kind;        // 0=unknown, 1=scalar, 2=vector, 3=struct
+	oa::Vec<oa::U32> scalarSize; // bytes, for kind==1
+	oa::Vec<oa::U32> vecComp;    // component type id, for kind==2
+	oa::Vec<oa::U32> vecCount;   // component count, for kind==2
+	oa::Vec<oa::Vec<oa::U32>> structMembers; // member type ids
+	oa::Vec<oa::Vec<oa::U32>> memberOffset;  // byte offset per member
 	oa::U32 pushStructId = 0;
 
 	oa::U32 sizeOfType(oa::U32 inId) const {
@@ -69,8 +68,8 @@ oa::U32 oavk::spirvPushConstantBlockSize(const oa::U8* inSpirv, oa::U32 inSizeBy
 	s.scalarSize.assign(bound, 0);
 	s.vecComp.assign(bound, 0);
 	s.vecCount.assign(bound, 0);
-	s.structMembers.assign(bound, {});
-	s.memberOffset.assign(bound, {});
+	s.structMembers.assign(bound, oa::Vec<oa::U32>{});
+	s.memberOffset.assign(bound, oa::Vec<oa::U32>{});
 
 	auto safeId = [&](oa::U32 id) -> bool { return id != 0 && id < bound; };
 
@@ -138,7 +137,7 @@ oa::U32 oavk::spirvPushConstantBlockSize(const oa::U8* inSpirv, oa::U32 inSizeBy
 	if (offsets.size() != members.size()) return 0;
 
 	oa::U32 total = 0;
-	for (size_t m = 0; m < members.size(); ++m) {
+	for (oa::Usize m = 0; m < members.size(); ++m) {
 		const oa::U32 msz = s.sizeOfType(members[m]);
 		if (msz == 0) return 0;  // unsizeable member → bail conservatively
 		const oa::U32 end = offsets[m] + msz;
@@ -149,18 +148,19 @@ oa::U32 oavk::spirvPushConstantBlockSize(const oa::U8* inSpirv, oa::U32 inSizeBy
 
 oa::U32 oavk::spirvPushConstantBlockSizeByName(const char* inName) {
 	if (!inName) return 0;
-	static std::mutex mtx;
-	static std::unordered_map<std::string, oa::U32> cache;
+	static oa::Mutex mutex;
+	static oa::HashMap<oa::String, oa::U32> cache;
+	const oa::String name(inName);
 	{
-		std::lock_guard<std::mutex> lock(mtx);
-		auto it = cache.find(inName);
+		oa::ScopedLock lock(mutex);
+		auto it = cache.find(name);
 		if (it != cache.end()) return it->second;
 	}
 	const oavk::SpirvEntry* entry = oavk::findSpirv(inName);
 	const oa::U32 size = entry ? oavk::spirvPushConstantBlockSize(entry->data, entry->size) : 0;
 	{
-		std::lock_guard<std::mutex> lock(mtx);
-		cache[inName] = size;
+		oa::ScopedLock lock(mutex);
+		cache.emplace(name, size);
 	}
 	return size;
 }

@@ -4,17 +4,17 @@
 #include "presentationPlatform.h"
 
 #include <oa/core/log.h>
+#include <oa/core/std/cString.h>
+#include <oa/core/std/sync.h>
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
 
-#include <cstdlib>
-#include <cstring>
-#include <mutex>
+#include <stdlib.h>
 
 namespace {
 
-std::mutex PlatformMutex;
+oa::Mutex PlatformMutex;
 oa::U32 PlatformLeaseCount = 0;
 bool PlatformOwnsVideo = false;
 bool PlatformLoadedVulkan = false;
@@ -37,19 +37,19 @@ void configureVideoBackend() {
 			"SDL IME composition hint was rejected: %s", SDL_GetError());
 	}
 
-	if (const char* backend = std::getenv("OA_UI_BACKEND");
+	if (const char* backend = ::getenv("OA_UI_BACKEND");
 		backend != nullptr and backend[0] != '\0') {
 		if (not SDL_SetHint(SDL_HINT_VIDEO_DRIVER, backend)) {
 			OaLogWarn(oa::LogComponent::Ui,
 				"SDL video backend override '%s' was rejected", backend);
 		}
-	} else if (const char* session = std::getenv("XDG_SESSION_TYPE");
-		session != nullptr and std::strcmp(session, "wayland") == 0) {
+	} else if (const char* session = ::getenv("XDG_SESSION_TYPE");
+		session != nullptr and oa::strcmp(session, "wayland") == 0) {
 		(void)SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "wayland");
 	}
 
 #if !defined(_WIN32)
-	if (std::getenv("LC_ALL") == nullptr and std::getenv("LANG") == nullptr) {
+	if (::getenv("LC_ALL") == nullptr and ::getenv("LANG") == nullptr) {
 		::setenv("LC_ALL", "C.uTF-8", 0);
 	}
 #endif
@@ -81,7 +81,7 @@ oa::Status oa::PresentationPlatformLease::acquire(
 			"oa::PresentationPlatformLease is already acquired");
 	}
 
-	std::lock_guard lock(PlatformMutex);
+	oa::ScopedLock lock(PlatformMutex);
 	if (PlatformLeaseCount == 0U) {
 		configureVideoBackend();
 		if ((SDL_WasInit(SDL_INIT_VIDEO) & SDL_INIT_VIDEO) == 0U) {
@@ -121,7 +121,7 @@ oa::Status oa::PresentationPlatformLease::acquire(
 
 void oa::PresentationPlatformLease::release() noexcept {
 	if (not acquired_) return;
-	std::lock_guard lock(PlatformMutex);
+	oa::ScopedLock lock(PlatformMutex);
 	acquired_ = false;
 	if (PlatformLeaseCount == 0U) return;
 	--PlatformLeaseCount;

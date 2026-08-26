@@ -41,8 +41,8 @@ void usage() {
 }
 
 oa::Result<Endpoint> parseEndpoint(oa::StringView inText) {
-	const auto separator = inText.stdView().rfind(':');
-	if (separator == std::string_view::npos or separator == 0U
+	const auto separator = inText.rfind(':');
+	if (separator == oa::StringView::Npos or separator == 0U
 		or separator + 1U >= inText.size())
 	{
 		return oa::Status::invalidArgument("endpoint must be host:port");

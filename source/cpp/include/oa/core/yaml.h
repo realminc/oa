@@ -11,13 +11,16 @@ namespace YAML {
 
 template<>
 struct convert<oa::String> {
-	static Node encode(const oa::String& inRhs) { return Node(inRhs.stdStr()); }
+	static Node encode(const oa::String& inRhs) {
+		return Node(std::string(inRhs.data(), inRhs.size()));
+	}
 
 	static bool decode(const Node& inNode, oa::String& outRhs) {
 		if (!inNode.IsScalar()) {
 			return false;
 		}
-		outRhs = oa::String(inNode.as<std::string>());
+		const std::string value = inNode.as<std::string>();
+		outRhs = oa::String(value.data(), value.size());
 		return true;
 	}
 };
@@ -32,14 +35,15 @@ public:
 	using Exception = YAML::Exception;
 
 	[[nodiscard]] static Node loadFile(const oa::String& inPath) {
-		return YAML::LoadFile(inPath.stdStr());
+		return YAML::LoadFile(std::string(inPath.data(), inPath.size()));
 	}
 
 	template<typename T>
 	[[nodiscard]] static T get(const Node& inNode, const oa::String& inKey, const T& inDefault) {
-		if (inNode && inNode[inKey.stdStr()]) {
+		const std::string key(inKey.data(), inKey.size());
+		if (inNode && inNode[key]) {
 			try {
-				return inNode[inKey.stdStr()].as<T>();
+				return inNode[key].as<T>();
 			} catch (...) {
 				return inDefault;
 			}
@@ -49,8 +53,9 @@ public:
 
 	[[nodiscard]] static oa::Vec<oa::String> getList(const Node& inNode, const oa::String& inKey) {
 		oa::Vec<oa::String> result;
-		if (inNode && inNode[inKey.stdStr()] && inNode[inKey.stdStr()].IsSequence()) {
-			for (const auto& item : inNode[inKey.stdStr()]) {
+		const std::string key(inKey.data(), inKey.size());
+		if (inNode && inNode[key] && inNode[key].IsSequence()) {
+			for (const auto& item : inNode[key]) {
 				result.pushBack(item.as<oa::String>());
 			}
 		}

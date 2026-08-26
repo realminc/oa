@@ -1,29 +1,29 @@
 #pragma once
 
-// phase 2b OA standard library — bucket chaining via oa::Vec; `stdMap`/`stdSet` copy to std for boundaries.
-// Iterators: forward category, prefix and postfix ++. insert(pair&&) moves the mapped value into storage.
+// OA-owned open-addressed hash containers. Entries and probe metadata live in
+// one allocation so lookup does not chase per-bucket allocations. Empty and
+// erased slots remain distinct to preserve linear-probe search chains.
 
+#include <oa/core/assert.h>
+#include <oa/core/std/iter.h>
+#include <oa/core/std/keyHash.h>
+#include <oa/core/std/optional.h>
+#include <oa/core/std/pair.h>
+#include <oa/core/std/utility.h>
 #include <oa/core/std/vec.h>
-
-#include <cstddef>
-#include <functional>
-#include <stdexcept>
-#include <unordered_map>
-#include <unordered_set>
-#include <utility>
 
 namespace oa {
 
-template<typename K, typename V, typename Hash = std::hash<K>, typename KeyEq = std::equal_to<K>>
+template<typename K, typename V, typename Hash = oa::KeyHash<K>, typename KeyEq = oa::KeyEqual<K>>
 class HashMap {
 public:
 	using KeyType = K;
 	using MappedType = V;
-	using ValueType = std::pair<const K, V>;
-	using SizeType = std::size_t;
+	using ValueType = oa::Pair<const K, V>;
+	using SizeType = oa::Usize;
 	using HasherType = Hash;
 	using KeyEqualType = KeyEq;
-	using SlotType = std::pair<K, V>;
+	using SlotType = ValueType;
 
 	using key_type = KeyType;
 	using mapped_type = MappedType;
@@ -33,65 +33,73 @@ public:
 	using key_equal = KeyEqualType;
 	using slot_type = SlotType;
 
+private:
+	struct Slot {
+		oa::Optional<SlotType> value{};
+		bool erased{false};
+	};
+
+public:
+	class const_iterator;
+
 	class iterator {
 		friend class HashMap;
 		friend class const_iterator;
 
 	public:
-		using iterator_category = std::forward_iterator_tag;
-		using difference_type = std::ptrdiff_t;
+		using iterator_category = oa::ForwardIteratorTag;
+		using difference_type = oa::Isize;
 		using value_type = ValueType;
-		using reference = SlotType&;
-		using pointer = SlotType*;
+		using reference = ValueType&;
+		using pointer = ValueType*;
 
 		iterator() noexcept = default;
 
-		reference operator*() const { return map_->buckets_[bucket_][slot_]; }
+		reference operator*() const { return *value_; }
 
-		pointer operator->() const { return &map_->buckets_[bucket_][slot_]; }
+		pointer operator->() const { return value_; }
 
 		iterator& operator++() {
-			++slot_;
-			skip_();
+			++index_;
+			skipEmpty_();
 			return *this;
 		}
 
 		iterator operator++(int) {
-			iterator tmp = *this;
+			iterator previous = *this;
 			++*this;
-			return tmp;
+			return previous;
 		}
 
-		bool operator==(const iterator& inO) const noexcept {
-			return map_ == inO.map_ && bucket_ == inO.bucket_ && slot_ == inO.slot_;
+		bool operator==(const iterator& inOther) const noexcept {
+			return slots_ == inOther.slots_ and index_ == inOther.index_;
 		}
 
-		bool operator!=(const iterator& inO) const noexcept { return !(*this == inO); }
+		bool operator!=(const iterator& inOther) const noexcept { return not (*this == inOther); }
 
 	private:
-		HashMap* map_{nullptr};
-		SizeType bucket_{0};
-		SizeType slot_{0};
+		oa::Vec<Slot>* slots_{nullptr};
+		SizeType index_{0};
+		pointer value_{nullptr};
 
-		iterator(HashMap* inMap, SizeType inB, SizeType inS) noexcept
-			: map_(inMap), bucket_(inB), slot_(inS) {
-			skip_();
+		iterator(
+			oa::Vec<Slot>* inSlots,
+			SizeType inIndex,
+			pointer inValue,
+			bool inScan
+		) noexcept
+			: slots_(inSlots), index_(inIndex), value_(inValue) {
+			if (inScan) skipEmpty_();
 		}
 
-		void skip_() noexcept {
-			if (!map_) {
-				return;
+		void skipEmpty_() noexcept {
+			if (slots_ == nullptr) return;
+			while (index_ < slots_->size()) {
+				value_ = (*slots_)[index_].value.get();
+				if (value_ != nullptr) return;
+				++index_;
 			}
-			for (;;) {
-				if (bucket_ >= map_->buckets_.size()) {
-					return;
-				}
-				if (slot_ < map_->buckets_[bucket_].size()) {
-					return;
-				}
-				++bucket_;
-				slot_ = 0;
-			}
+			value_ = nullptr;
 		}
 	};
 
@@ -99,258 +107,279 @@ public:
 		friend class HashMap;
 
 	public:
-		using iterator_category = std::forward_iterator_tag;
-		using difference_type = std::ptrdiff_t;
+		using iterator_category = oa::ForwardIteratorTag;
+		using difference_type = oa::Isize;
 		using value_type = ValueType;
-		using reference = const SlotType&;
-		using pointer = const SlotType*;
+		using reference = const ValueType&;
+		using pointer = const ValueType*;
 
 		const_iterator() noexcept = default;
 
-		const_iterator(iterator inIt) noexcept
-			: map_(inIt.map_), bucket_(inIt.bucket_), slot_(inIt.slot_) {}
+		const_iterator(iterator inIterator) noexcept
+			: slots_(inIterator.slots_), index_(inIterator.index_), value_(inIterator.value_) {}
 
-		reference operator*() const { return map_->buckets_[bucket_][slot_]; }
+		reference operator*() const { return *value_; }
 
-		pointer operator->() const { return &map_->buckets_[bucket_][slot_]; }
+		pointer operator->() const { return value_; }
 
 		const_iterator& operator++() {
-			++slot_;
-			skip_();
+			++index_;
+			skipEmpty_();
 			return *this;
 		}
 
 		const_iterator operator++(int) {
-			const_iterator tmp = *this;
+			const_iterator previous = *this;
 			++*this;
-			return tmp;
+			return previous;
 		}
 
-		bool operator==(const const_iterator& inO) const noexcept {
-			return map_ == inO.map_ && bucket_ == inO.bucket_ && slot_ == inO.slot_;
+		bool operator==(const const_iterator& inOther) const noexcept {
+			return slots_ == inOther.slots_ and index_ == inOther.index_;
 		}
 
-		bool operator!=(const const_iterator& inO) const noexcept { return !(*this == inO); }
+		bool operator!=(const const_iterator& inOther) const noexcept {
+			return not (*this == inOther);
+		}
 
 	private:
-		const HashMap* map_{nullptr};
-		SizeType bucket_{0};
-		SizeType slot_{0};
+		const oa::Vec<Slot>* slots_{nullptr};
+		SizeType index_{0};
+		pointer value_{nullptr};
 
-		const_iterator(const HashMap* inMap, SizeType inB, SizeType inS) noexcept
-			: map_(inMap), bucket_(inB), slot_(inS) {
-			skip_();
+		const_iterator(
+			const oa::Vec<Slot>* inSlots,
+			SizeType inIndex,
+			pointer inValue,
+			bool inScan
+		) noexcept
+			: slots_(inSlots), index_(inIndex), value_(inValue) {
+			if (inScan) skipEmpty_();
 		}
 
-		void skip_() noexcept {
-			if (!map_) {
-				return;
+		void skipEmpty_() noexcept {
+			if (slots_ == nullptr) return;
+			while (index_ < slots_->size()) {
+				value_ = (*slots_)[index_].value.get();
+				if (value_ != nullptr) return;
+				++index_;
 			}
-			for (;;) {
-				if (bucket_ >= map_->buckets_.size()) {
-					return;
-				}
-				if (slot_ < map_->buckets_[bucket_].size()) {
-					return;
-				}
-				++bucket_;
-				slot_ = 0;
-			}
+			value_ = nullptr;
 		}
 	};
-
-	friend class iterator;
-	friend class const_iterator;
 
 	[[nodiscard]] SizeType size() const noexcept { return size_; }
 
 	[[nodiscard]] bool empty() const noexcept { return size_ == 0; }
 
 	void clear() noexcept {
-		for (SizeType i = 0; i < buckets_.size(); ++i) {
-			buckets_[i].clear();
+		for (SizeType index = 0; index < slots_.size(); ++index) {
+			slots_[index].value.reset();
+			slots_[index].erased = false;
 		}
 		size_ = 0;
+		erased_ = 0;
 	}
 
-	void reserve(SizeType inN) {
-		if (inN <= buckets_.size()) {
-			return;
-		}
-		rehash_(inN);
+	void reserve(SizeType inCount) {
+		const SizeType capacity = capacityForCount_(inCount);
+		if (capacity > slots_.size()) rehash_(capacity);
 	}
 
 	template<typename... Args>
-	std::pair<iterator, bool> emplace(Args&&... inArgs) {
-		SlotType slot(std::forward<Args>(inArgs)...);
-		return insertStorage_(std::move(slot));
+	oa::Pair<iterator, bool> emplace(Args&&... inArgs) {
+		SlotType value(oa::forward<Args>(inArgs)...);
+		return insertStorage_(oa::move(value));
 	}
 
-	std::pair<iterator, bool> insert(const value_type& inVal) {
-		SlotType slot(inVal.first, inVal.second);
-		return insertStorage_(std::move(slot));
+	oa::Pair<iterator, bool> insert(const value_type& inValue) {
+		SlotType value(inValue.first, inValue.second);
+		return insertStorage_(oa::move(value));
 	}
 
-	std::pair<iterator, bool> insert(value_type&& inVal) {
-		SlotType slot(inVal.first, std::move(inVal.second));
-		return insertStorage_(std::move(slot));
+	oa::Pair<iterator, bool> insert(value_type&& inValue) {
+		SlotType value(inValue.first, oa::move(inValue.second));
+		return insertStorage_(oa::move(value));
 	}
 
 	[[nodiscard]] V& at(const K& inKey) {
 		iterator it = find(inKey);
-		if (it == end()) {
-			throw std::out_of_range("HashMap::at");
-		}
+		OA_REQUIRE(it != end());
 		return it->second;
 	}
 
 	[[nodiscard]] const V& at(const K& inKey) const {
 		const_iterator it = find(inKey);
-		if (it == end()) {
-			throw std::out_of_range("HashMap::at");
-		}
+		OA_REQUIRE(it != end());
 		return it->second;
 	}
 
 	[[nodiscard]] iterator find(const K& inKey) {
-		ensureBuckets_();
-		const SizeType b = bucketIndex_(inKey);
-		oa::Vec<SlotType>& ch = buckets_[b];
-		for (SizeType i = 0; i < ch.size(); ++i) {
-			if (equal_(ch[i].first, inKey)) {
-				return iterator(this, b, i);
-			}
-		}
-		return end();
+		const SizeType index = findIndex_(inKey);
+		SlotType* value = index == slots_.size() ? nullptr : slots_[index].value.get();
+		return iterator(&slots_, index, value, false);
 	}
 
 	[[nodiscard]] const_iterator find(const K& inKey) const {
-		if (buckets_.empty()) {
-			return end();
-		}
-		const SizeType b = bucketIndex_(inKey);
-		const oa::Vec<SlotType>& ch = buckets_[b];
-		for (SizeType i = 0; i < ch.size(); ++i) {
-			if (equal_(ch[i].first, inKey)) {
-				return const_iterator(this, b, i);
-			}
-		}
-		return end();
+		const SizeType index = findIndex_(inKey);
+		const SlotType* value = index == slots_.size() ? nullptr : slots_[index].value.get();
+		return const_iterator(&slots_, index, value, false);
 	}
 
-	[[nodiscard]] bool contains(const K& inKey) const { return find(inKey) != end(); }
+	[[nodiscard]] bool contains(const K& inKey) const {
+		return findIndex_(inKey) != slots_.size();
+	}
 
 	SizeType erase(const K& inKey) {
-		ensureBuckets_();
-		const SizeType b = bucketIndex_(inKey);
-		oa::Vec<SlotType>& ch = buckets_[b];
-		for (SizeType i = 0; i < ch.size(); ++i) {
-			if (equal_(ch[i].first, inKey)) {
-				ch[i] = std::move(ch.back());
-				ch.popBack();
-				--size_;
-				return 1;
-			}
-		}
-		return 0;
+		const SizeType index = findIndex_(inKey);
+		if (index == slots_.size()) return 0;
+		slots_[index].value.reset();
+		slots_[index].erased = true;
+		--size_;
+		++erased_;
+		return 1;
 	}
 
-	[[nodiscard]] iterator begin() noexcept {
-		ensureBuckets_();
-		return iterator(this, 0, 0);
-	}
+	[[nodiscard]] iterator begin() noexcept { return iterator(&slots_, 0, nullptr, true); }
 
 	[[nodiscard]] const_iterator begin() const noexcept {
-		if (buckets_.empty()) {
-			return end();
-		}
-		return const_iterator(this, 0, 0);
+		return const_iterator(&slots_, 0, nullptr, true);
 	}
 
 	[[nodiscard]] iterator end() noexcept {
-		ensureBuckets_();
-		return iterator(this, buckets_.size(), 0);
+		return iterator(&slots_, slots_.size(), nullptr, false);
 	}
 
 	[[nodiscard]] const_iterator end() const noexcept {
-		if (buckets_.empty()) {
-			return const_iterator(nullptr, 0, 0);
-		}
-		return const_iterator(this, buckets_.size(), 0);
-	}
-
-
-	[[nodiscard]] std::unordered_map<K, V, Hash, KeyEq> stdMap() const {
-		std::unordered_map<K, V, Hash, KeyEq> out;
-		out.reserve(static_cast<std::size_t>(size_));
-		for (const_iterator it = begin(), e = end(); it != e; ++it) {
-			out.emplace(it->first, it->second);
-		}
-		return out;
+		return const_iterator(&slots_, slots_.size(), nullptr, false);
 	}
 
 private:
-	oa::Vec<oa::Vec<SlotType>> buckets_{};
+	static constexpr SizeType MinCapacity = 8;
+	static constexpr SizeType LoadNumerator = 3;
+	static constexpr SizeType LoadDenominator = 4;
+
+	oa::Vec<Slot> slots_{};
 	Hash hasher_{};
 	KeyEq equal_{};
 	SizeType size_{0};
-	float maxLoad_{0.75F};
+	SizeType erased_{0};
 
-	void ensureBuckets_() {
-		if (buckets_.empty()) {
-			buckets_.resize(8);
+	[[nodiscard]] static SizeType capacityForCount_(SizeType inCount) {
+		if (inCount == 0) return 0;
+		if (inCount > (static_cast<SizeType>(-1) - LoadNumerator + 1)
+			/ LoadDenominator) {
+			oa::allocationFailed(oa::AllocationError::SizeOverflow, inCount, alignof(Slot));
 		}
+		const SizeType required = (inCount * LoadDenominator + LoadNumerator - 1)
+			/ LoadNumerator;
+		SizeType capacity = MinCapacity;
+		while (capacity < required) {
+			if (capacity > static_cast<SizeType>(-1) / 2) {
+				oa::allocationFailed(
+					oa::AllocationError::SizeOverflow,
+					required,
+					alignof(Slot)
+				);
+			}
+			capacity *= 2;
+		}
+		return capacity;
 	}
 
-	[[nodiscard]] SizeType bucketIndex_(const K& inKey) const noexcept {
-		return static_cast<SizeType>(hasher_(inKey)) % buckets_.size();
+	[[nodiscard]] SizeType findIndex_(const K& inKey) const noexcept {
+		if (slots_.empty()) return 0;
+		const SizeType mask = slots_.size() - 1;
+		SizeType index = static_cast<SizeType>(hasher_(inKey)) & mask;
+		for (SizeType probes = 0; probes < slots_.size(); ++probes) {
+			const Slot& slot = slots_[index];
+			if (slot.value.hasValue()) {
+				if (equal_(slot.value->first, inKey)) return index;
+			} else if (not slot.erased) {
+				return slots_.size();
+			}
+			index = (index + 1) & mask;
+		}
+		return slots_.size();
 	}
 
-	void rehash_(SizeType inNewCap) {
-		oa::Vec<oa::Vec<SlotType>> old = std::move(buckets_);
-		buckets_.resize(inNewCap);
+	void rehash_(SizeType inCapacity) {
+		oa::Vec<Slot> old = oa::move(slots_);
+		slots_.resize(inCapacity);
 		size_ = 0;
-		for (SizeType bi = 0; bi < old.size(); ++bi) {
-			oa::Vec<SlotType>& chain = old[bi];
-			const SizeType cnt = chain.size();
-			for (SizeType si = 0; si < cnt; ++si) {
-				insertNoGrow_(std::move(chain[si]));
+		erased_ = 0;
+		for (SizeType index = 0; index < old.size(); ++index) {
+			if (old[index].value.hasValue()) {
+				insertNoGrow_(oa::move(old[index].value.value()));
 			}
 		}
 	}
 
-	void insertNoGrow_(SlotType&& inSlot) {
-		const SizeType b = static_cast<SizeType>(hasher_(inSlot.first)) % buckets_.size();
-		buckets_[b].emplaceBack(std::move(inSlot));
+	void insertNoGrow_(SlotType&& inValue) {
+		const SizeType mask = slots_.size() - 1;
+		SizeType index = static_cast<SizeType>(hasher_(inValue.first)) & mask;
+		while (slots_[index].value.hasValue()) index = (index + 1) & mask;
+		if (slots_[index].erased) {
+			slots_[index].erased = false;
+			--erased_;
+		}
+		slots_[index].value.emplace(oa::move(inValue));
 		++size_;
 	}
 
-	std::pair<iterator, bool> insertStorage_(SlotType&& inSlot) {
-		ensureBuckets_();
-		const K& key = inSlot.first;
-		if (buckets_.size() > 0 &&
-			static_cast<float>(size_ + 1) > maxLoad_ * static_cast<float>(buckets_.size())) {
-			rehash_(buckets_.size() * 2);
+	oa::Pair<iterator, bool> insertStorage_(SlotType&& inValue) {
+		if (slots_.empty()) {
+			rehash_(MinCapacity);
+		} else if ((size_ + erased_ + 1) * LoadDenominator
+			> slots_.size() * LoadNumerator) {
+			const SizeType liveCapacity = capacityForCount_(size_ + 1);
+			const SizeType nextCapacity = liveCapacity > slots_.size()
+				? liveCapacity
+				: slots_.size();
+			rehash_(nextCapacity);
 		}
-		SizeType b = static_cast<SizeType>(hasher_(key)) % buckets_.size();
-		oa::Vec<SlotType>& ch = buckets_[b];
-		for (SizeType i = 0; i < ch.size(); ++i) {
-			if (equal_(ch[i].first, key)) {
-				return {iterator(this, b, i), false};
+
+		const SizeType mask = slots_.size() - 1;
+		SizeType index = static_cast<SizeType>(hasher_(inValue.first)) & mask;
+		SizeType insertion = slots_.size();
+		for (;;) {
+			Slot& slot = slots_[index];
+			if (slot.value.hasValue()) {
+				if (equal_(slot.value->first, inValue.first)) {
+					return {iterator(&slots_, index, slot.value.get(), false), false};
+				}
+			} else if (slot.erased) {
+				if (insertion == slots_.size()) insertion = index;
+			} else {
+				if (insertion == slots_.size()) insertion = index;
+				break;
 			}
+			index = (index + 1) & mask;
 		}
-		const SizeType idx = ch.size();
-		ch.emplaceBack(std::move(inSlot));
+
+		Slot& destination = slots_[insertion];
+		if (destination.erased) {
+			destination.erased = false;
+			--erased_;
+		}
+		destination.value.emplace(oa::move(inValue));
 		++size_;
-		return {iterator(this, b, idx), true};
+		return {
+			iterator(&slots_, insertion, destination.value.get(), false),
+			true
+		};
 	}
 };
 
-template<typename K, typename Hash = std::hash<K>, typename KeyEq = std::equal_to<K>>
+template<typename K, typename Hash = oa::KeyHash<K>, typename KeyEq = oa::KeyEqual<K>>
 class HashSet {
+private:
+	struct EmptyValue {};
+	using Map = oa::HashMap<K, EmptyValue, Hash, KeyEq>;
+
 public:
 	using KeyType = K;
-	using SizeType = std::size_t;
+	using SizeType = oa::Usize;
 	using HasherType = Hash;
 	using KeyEqualType = KeyEq;
 
@@ -359,328 +388,179 @@ public:
 	using hasher = HasherType;
 	using key_equal = KeyEqualType;
 
+	class const_iterator;
+
 	class iterator {
 		friend class HashSet;
 		friend class const_iterator;
 
 	public:
-		using iterator_category = std::forward_iterator_tag;
-		using difference_type = std::ptrdiff_t;
+		using iterator_category = oa::ForwardIteratorTag;
+		using difference_type = oa::Isize;
 		using value_type = KeyType;
-		using reference = KeyType&;
-		using pointer = KeyType*;
+		using reference = const KeyType&;
+		using pointer = const KeyType*;
 
 		iterator() noexcept = default;
 
-		reference operator*() const { return map_->buckets_[bucket_][slot_]; }
+		reference operator*() const { return inner_->first; }
 
-		pointer operator->() const { return &map_->buckets_[bucket_][slot_]; }
+		pointer operator->() const { return &inner_->first; }
 
-		iterator& operator++() {
-			++slot_;
-			skip_();
-			return *this;
-		}
+		iterator& operator++() { ++inner_; return *this; }
 
 		iterator operator++(int) {
-			iterator tmp = *this;
-			++*this;
-			return tmp;
+			iterator previous = *this;
+			++inner_;
+			return previous;
 		}
 
-		bool operator==(const iterator& inO) const noexcept {
-			return map_ == inO.map_ && bucket_ == inO.bucket_ && slot_ == inO.slot_;
+		bool operator==(const iterator& inOther) const noexcept {
+			return inner_ == inOther.inner_;
 		}
 
-		bool operator!=(const iterator& inO) const noexcept { return !(*this == inO); }
+		bool operator!=(const iterator& inOther) const noexcept { return not (*this == inOther); }
 
 	private:
-		HashSet* map_{nullptr};
-		SizeType bucket_{0};
-		SizeType slot_{0};
+		typename Map::iterator inner_{};
 
-		iterator(HashSet* inMap, SizeType inB, SizeType inS) noexcept
-			: map_(inMap), bucket_(inB), slot_(inS) {
-			skip_();
-		}
-
-		void skip_() noexcept {
-			if (!map_) {
-				return;
-			}
-			for (;;) {
-				if (bucket_ >= map_->buckets_.size()) {
-					return;
-				}
-				if (slot_ < map_->buckets_[bucket_].size()) {
-					return;
-				}
-				++bucket_;
-				slot_ = 0;
-			}
-		}
+		explicit iterator(typename Map::iterator inInner) noexcept : inner_(inInner) {}
 	};
 
 	class const_iterator {
 		friend class HashSet;
 
 	public:
-		using iterator_category = std::forward_iterator_tag;
-		using difference_type = std::ptrdiff_t;
+		using iterator_category = oa::ForwardIteratorTag;
+		using difference_type = oa::Isize;
 		using value_type = KeyType;
 		using reference = const KeyType&;
 		using pointer = const KeyType*;
 
 		const_iterator() noexcept = default;
 
-		const_iterator(iterator inIt) noexcept
-			: map_(inIt.map_), bucket_(inIt.bucket_), slot_(inIt.slot_) {}
+		const_iterator(iterator inIterator) noexcept : inner_(inIterator.inner_) {}
 
-		reference operator*() const { return map_->buckets_[bucket_][slot_]; }
+		reference operator*() const { return inner_->first; }
 
-		pointer operator->() const { return &map_->buckets_[bucket_][slot_]; }
+		pointer operator->() const { return &inner_->first; }
 
-		const_iterator& operator++() {
-			++slot_;
-			skip_();
-			return *this;
-		}
+		const_iterator& operator++() { ++inner_; return *this; }
 
 		const_iterator operator++(int) {
-			const_iterator tmp = *this;
-			++*this;
-			return tmp;
+			const_iterator previous = *this;
+			++inner_;
+			return previous;
 		}
 
-		bool operator==(const const_iterator& inO) const noexcept {
-			return map_ == inO.map_ && bucket_ == inO.bucket_ && slot_ == inO.slot_;
+		bool operator==(const const_iterator& inOther) const noexcept {
+			return inner_ == inOther.inner_;
 		}
 
-		bool operator!=(const const_iterator& inO) const noexcept { return !(*this == inO); }
+		bool operator!=(const const_iterator& inOther) const noexcept {
+			return not (*this == inOther);
+		}
 
 	private:
-		const HashSet* map_{nullptr};
-		SizeType bucket_{0};
-		SizeType slot_{0};
+		typename Map::const_iterator inner_{};
 
-		const_iterator(const HashSet* inMap, SizeType inB, SizeType inS) noexcept
-			: map_(inMap), bucket_(inB), slot_(inS) {
-			skip_();
-		}
-
-		void skip_() noexcept {
-			if (!map_) {
-				return;
-			}
-			for (;;) {
-				if (bucket_ >= map_->buckets_.size()) {
-					return;
-				}
-				if (slot_ < map_->buckets_[bucket_].size()) {
-					return;
-				}
-				++bucket_;
-				slot_ = 0;
-			}
-		}
+		explicit const_iterator(typename Map::const_iterator inInner) noexcept : inner_(inInner) {}
 	};
 
-	friend class iterator;
-	friend class const_iterator;
+	[[nodiscard]] SizeType size() const noexcept { return map_.size(); }
 
-	[[nodiscard]] SizeType size() const noexcept { return size_; }
+	[[nodiscard]] bool empty() const noexcept { return map_.empty(); }
 
-	[[nodiscard]] bool empty() const noexcept { return size_ == 0; }
+	void clear() noexcept { map_.clear(); }
 
-	void clear() noexcept {
-		for (SizeType i = 0; i < buckets_.size(); ++i) {
-			buckets_[i].clear();
-		}
-		size_ = 0;
+	void reserve(SizeType inCount) { map_.reserve(inCount); }
+
+	oa::Pair<iterator, bool> insert(const K& inKey) {
+		auto inserted = map_.emplace(inKey, EmptyValue{});
+		return {iterator(inserted.first), inserted.second};
 	}
 
-	void reserve(SizeType inN) {
-		if (inN <= buckets_.size()) {
-			return;
-		}
-		rehash_(inN);
+	oa::Pair<iterator, bool> insert(K&& inKey) {
+		auto inserted = map_.emplace(oa::move(inKey), EmptyValue{});
+		return {iterator(inserted.first), inserted.second};
 	}
 
-	std::pair<iterator, bool> insert(const K& inKey) {
-		return insertKey_(K(inKey));
-	}
-
-	std::pair<iterator, bool> insert(K&& inKey) { return insertKey_(std::move(inKey)); }
-
-	[[nodiscard]] iterator find(const K& inKey) {
-		ensureBuckets_();
-		const SizeType b = bucketIndex_(inKey);
-		oa::Vec<K>& ch = buckets_[b];
-		for (SizeType i = 0; i < ch.size(); ++i) {
-			if (equal_(ch[i], inKey)) {
-				return iterator(this, b, i);
-			}
-		}
-		return end();
-	}
+	[[nodiscard]] iterator find(const K& inKey) { return iterator(map_.find(inKey)); }
 
 	[[nodiscard]] const_iterator find(const K& inKey) const {
-		if (buckets_.empty()) {
-			return end();
-		}
-		const SizeType b = bucketIndex_(inKey);
-		const oa::Vec<K>& ch = buckets_[b];
-		for (SizeType i = 0; i < ch.size(); ++i) {
-			if (equal_(ch[i], inKey)) {
-				return const_iterator(this, b, i);
-			}
-		}
-		return end();
+		return const_iterator(map_.find(inKey));
 	}
 
-	[[nodiscard]] bool contains(const K& inKey) const { return find(inKey) != end(); }
+	[[nodiscard]] bool contains(const K& inKey) const { return map_.contains(inKey); }
 
-	SizeType erase(const K& inKey) {
-		ensureBuckets_();
-		const SizeType b = bucketIndex_(inKey);
-		oa::Vec<K>& ch = buckets_[b];
-		for (SizeType i = 0; i < ch.size(); ++i) {
-			if (equal_(ch[i], inKey)) {
-				ch[i] = std::move(ch.back());
-				ch.popBack();
-				--size_;
-				return 1;
-			}
-		}
-		return 0;
-	}
+	SizeType erase(const K& inKey) { return map_.erase(inKey); }
 
-	[[nodiscard]] iterator begin() noexcept {
-		ensureBuckets_();
-		return iterator(this, 0, 0);
-	}
+	[[nodiscard]] iterator begin() noexcept { return iterator(map_.begin()); }
 
-	[[nodiscard]] const_iterator begin() const noexcept {
-		if (buckets_.empty()) {
-			return end();
-		}
-		return const_iterator(this, 0, 0);
-	}
+	[[nodiscard]] const_iterator begin() const noexcept { return const_iterator(map_.begin()); }
 
-	[[nodiscard]] iterator end() noexcept {
-		ensureBuckets_();
-		return iterator(this, buckets_.size(), 0);
-	}
+	[[nodiscard]] iterator end() noexcept { return iterator(map_.end()); }
 
-	[[nodiscard]] const_iterator end() const noexcept {
-		if (buckets_.empty()) {
-			return const_iterator(nullptr, 0, 0);
-		}
-		return const_iterator(this, buckets_.size(), 0);
-	}
-
-
-	[[nodiscard]] std::unordered_set<K, Hash, KeyEq> stdSet() const {
-		std::unordered_set<K, Hash, KeyEq> out;
-		out.reserve(static_cast<std::size_t>(size_));
-		for (const_iterator it = begin(), e = end(); it != e; ++it) {
-			out.insert(*it);
-		}
-		return out;
-	}
+	[[nodiscard]] const_iterator end() const noexcept { return const_iterator(map_.end()); }
 
 private:
-	oa::Vec<oa::Vec<K>> buckets_{};
-	Hash hasher_{};
-	KeyEq equal_{};
-	SizeType size_{0};
-	float maxLoad_{0.75F};
-
-	void ensureBuckets_() {
-		if (buckets_.empty()) {
-			buckets_.resize(8);
-		}
-	}
-
-	[[nodiscard]] SizeType bucketIndex_(const K& inKey) const noexcept {
-		return static_cast<SizeType>(hasher_(inKey)) % buckets_.size();
-	}
-
-	void rehash_(SizeType inNewCap) {
-		oa::Vec<oa::Vec<K>> old = std::move(buckets_);
-		buckets_.resize(inNewCap);
-		size_ = 0;
-		for (SizeType bi = 0; bi < old.size(); ++bi) {
-			oa::Vec<K>& chain = old[bi];
-			const SizeType cnt = chain.size();
-			for (SizeType si = 0; si < cnt; ++si) {
-				insertNoGrow_(std::move(chain[si]));
-			}
-		}
-	}
-
-	void insertNoGrow_(K&& inKey) {
-		const SizeType b = static_cast<SizeType>(hasher_(inKey)) % buckets_.size();
-		buckets_[b].emplaceBack(std::move(inKey));
-		++size_;
-	}
-
-	std::pair<iterator, bool> insertKey_(K&& inKey) {
-		ensureBuckets_();
-		if (buckets_.size() > 0 &&
-			static_cast<float>(size_ + 1) > maxLoad_ * static_cast<float>(buckets_.size())) {
-			rehash_(buckets_.size() * 2);
-		}
-		SizeType b = static_cast<SizeType>(hasher_(inKey)) % buckets_.size();
-		oa::Vec<K>& ch = buckets_[b];
-		for (SizeType i = 0; i < ch.size(); ++i) {
-			if (equal_(ch[i], inKey)) {
-				return {iterator(this, b, i), false};
-			}
-		}
-		const SizeType idx = ch.size();
-		ch.emplaceBack(std::move(inKey));
-		++size_;
-		return {iterator(this, b, idx), true};
-	}
+	Map map_{};
 };
 
 template<typename K, typename V, typename Hash, typename KeyEq>
-inline typename HashMap<K, V, Hash, KeyEq>::iterator begin(HashMap<K, V, Hash, KeyEq>& inM) noexcept {
-	return inM.begin();
+inline typename HashMap<K, V, Hash, KeyEq>::iterator begin(
+	HashMap<K, V, Hash, KeyEq>& inMap
+) noexcept {
+	return inMap.begin();
 }
+
 template<typename K, typename V, typename Hash, typename KeyEq>
 inline typename HashMap<K, V, Hash, KeyEq>::const_iterator begin(
-	const HashMap<K, V, Hash, KeyEq>& inM) noexcept {
-	return inM.begin();
+	const HashMap<K, V, Hash, KeyEq>& inMap
+) noexcept {
+	return inMap.begin();
 }
+
 template<typename K, typename V, typename Hash, typename KeyEq>
-inline typename HashMap<K, V, Hash, KeyEq>::iterator end(HashMap<K, V, Hash, KeyEq>& inM) noexcept {
-	return inM.end();
+inline typename HashMap<K, V, Hash, KeyEq>::iterator end(
+	HashMap<K, V, Hash, KeyEq>& inMap
+) noexcept {
+	return inMap.end();
 }
+
 template<typename K, typename V, typename Hash, typename KeyEq>
 inline typename HashMap<K, V, Hash, KeyEq>::const_iterator end(
-	const HashMap<K, V, Hash, KeyEq>& inM) noexcept {
-	return inM.end();
+	const HashMap<K, V, Hash, KeyEq>& inMap
+) noexcept {
+	return inMap.end();
 }
 
 template<typename K, typename Hash, typename KeyEq>
-inline typename HashSet<K, Hash, KeyEq>::iterator begin(HashSet<K, Hash, KeyEq>& inS) noexcept {
-	return inS.begin();
+inline typename HashSet<K, Hash, KeyEq>::iterator begin(
+	HashSet<K, Hash, KeyEq>& inSet
+) noexcept {
+	return inSet.begin();
 }
+
 template<typename K, typename Hash, typename KeyEq>
 inline typename HashSet<K, Hash, KeyEq>::const_iterator begin(
-	const HashSet<K, Hash, KeyEq>& inS) noexcept {
-	return inS.begin();
+	const HashSet<K, Hash, KeyEq>& inSet
+) noexcept {
+	return inSet.begin();
 }
+
 template<typename K, typename Hash, typename KeyEq>
-inline typename HashSet<K, Hash, KeyEq>::iterator end(HashSet<K, Hash, KeyEq>& inS) noexcept {
-	return inS.end();
+inline typename HashSet<K, Hash, KeyEq>::iterator end(
+	HashSet<K, Hash, KeyEq>& inSet
+) noexcept {
+	return inSet.end();
 }
+
 template<typename K, typename Hash, typename KeyEq>
 inline typename HashSet<K, Hash, KeyEq>::const_iterator end(
-	const HashSet<K, Hash, KeyEq>& inS) noexcept {
-	return inS.end();
+	const HashSet<K, Hash, KeyEq>& inSet
+) noexcept {
+	return inSet.end();
 }
 
 } // namespace oa

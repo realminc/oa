@@ -29,7 +29,9 @@ oa::String modernRequest(oa::StringView inMethod, oa::StringView inId,
 std::string handle(oa::McpServer &inServer, oa::StringView inRequest) {
   auto response = inServer.handleMessage(inRequest);
   EXPECT_TRUE(response.isOk()) << response.getStatus().toString().cStr();
-  return response.isOk() ? response->stdStr() : std::string{};
+  return response.isOk()
+      ? std::string(response->data(), response->size())
+      : std::string{};
 }
 
 oa::McpTool echoTool(oa::String inName = "echo") {
@@ -74,7 +76,8 @@ oa::McpTool echoTool(oa::String inName = "echo") {
       return oa::Result<oa::McpToolResult>(nested.getStatus());
     oa::String output = *text;
     output += ':';
-    output += std::to_string(*count);
+    const std::string countText = std::to_string(*count);
+    output += oa::StringView(countText.data(), countText.size());
     output += ':';
     output += *enabled ? "true" : "false";
     output += ':';

@@ -25,8 +25,7 @@
 #include <oa/core/op.h>
 #include <oa/core/types.h>
 #include <oa/runtime/executionSession.h>
-
-#include <limits>
+#include <oa/core/std/limits.h>
 
 namespace oa {
 
@@ -65,8 +64,8 @@ static oa::Matrix shakeBatch(
 			"oa::FnHash::%s: empty input", inName);
 		return {};
 	}
-	if (static_cast<oa::U64>(n) > std::numeric_limits<oa::U32>::max() ||
-		static_cast<oa::U64>(msgLen) > std::numeric_limits<oa::U32>::max()) {
+	if (static_cast<oa::U64>(n) > oa::Limits<oa::U32>::max() ||
+		static_cast<oa::U64>(msgLen) > oa::Limits<oa::U32>::max()) {
 		OaLogError(oa::LogComponent::Crypto,
 			"oa::FnHash::%s: dimensions exceed the shader ABI", inName);
 		return {};
@@ -133,7 +132,7 @@ oa::Matrix keccakF1600(const oa::Matrix& inA) {
 	if (!isByteMatrix(inA, "KeccakF1600")) return {};
 	const oa::I64 n = inA.size(0);
 	if (n <= 0) return {};
-	if (static_cast<oa::U64>(n) > std::numeric_limits<oa::U32>::max()) return {};
+	if (static_cast<oa::U64>(n) > oa::Limits<oa::U32>::max()) return {};
 
 	oa::Matrix a = inA;
 	oa::Matrix out = oa::FnMatrix::empty(inA.getShape(), oa::ScalarType::UInt8);
@@ -166,7 +165,7 @@ oa::Matrix merkleRoot(const oa::Matrix& inA) {
 	if (!isByteMatrix(inA, "MerkleRoot")) return {};
 	oa::I64 nodes = inA.size(0);
 	if (nodes <= 0) return {};
-	if (static_cast<oa::U64>(nodes) > std::numeric_limits<oa::U32>::max()) return {};
+	if (static_cast<oa::U64>(nodes) > oa::Limits<oa::U32>::max()) return {};
 	if ((nodes & (nodes - 1)) != 0) {
 		OaLogError(oa::LogComponent::Crypto,
 			"oa::FnHash::merkleRoot: leaf count must be a power of two (got %lld); "

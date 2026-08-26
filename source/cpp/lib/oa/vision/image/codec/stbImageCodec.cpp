@@ -3,8 +3,8 @@
 #include "../../../../../thirdparty/stb/stb_image.h"
 #include "../../../../../thirdparty/stb/stb_image_write.h"
 
-#include <cstring>
-#include <limits>
+#include <oa/core/memory.h>
+#include <oa/core/std/limits.h>
 
 namespace oa::imageCodec {
 
@@ -26,7 +26,7 @@ void appendEncodedBytes(void* inContext, void* inData, int inSize)
 	if (inData == nullptr or inSize <= 0) return;
 	const oa::Usize oldSize = output.size();
 	output.resize(oldSize + static_cast<oa::Usize>(inSize));
-	std::memcpy(
+	oa::memcpy(
 		output.data() + oldSize,
 		inData,
 		static_cast<oa::Usize>(inSize));
@@ -61,7 +61,7 @@ oa::Result<Pixels> decodeStb(
 			"oa::FnImage::decodeMemory: compressed data is empty");
 	}
 	if (inData.size() > static_cast<oa::Usize>(
-		std::numeric_limits<int>::max())) {
+		oa::Limits<int>::max())) {
 		return oa::Status::error(
 			oa::StatusCode::OutOfRange,
 			"oa::FnImage::decodeMemory: compressed data exceeds stb_image limits");
@@ -91,7 +91,7 @@ oa::Result<Pixels> decodeStb(
 		* static_cast<oa::U64>(requestedChannelCount);
 	Pixels result;
 	result.data.resize(static_cast<oa::Usize>(byteCount));
-	std::memcpy(
+	oa::memcpy(
 		result.data.data(),
 		decoded,
 		static_cast<oa::Usize>(byteCount));

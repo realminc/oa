@@ -27,7 +27,7 @@ const TimerRegistry::Slot* TimerRegistry::resolve_(
 }
 
 oa::Result<TimerSlot> TimerRegistry::acquire() {
-	std::lock_guard<std::mutex> lock(mutex_);
+	oa::ScopedLock lock(mutex_);
 	if (not open_ or owner_ == nullptr or not owner_->isReady()) {
 		return oa::Status::error(oa::StatusCode::FailedPrecondition,
 			"device timer requires a ready engine timer registry");
@@ -62,7 +62,7 @@ oa::Result<TimerSlot> TimerRegistry::acquire() {
 }
 
 void TimerRegistry::release(TimerSlot inSlot) noexcept {
-	std::lock_guard<std::mutex> lock(mutex_);
+	oa::ScopedLock lock(mutex_);
 	auto* slot = resolve_(inSlot);
 	if (slot == nullptr) return;
 	if (slot->state == SlotState::Submitted
@@ -84,7 +84,7 @@ void TimerRegistry::release(TimerSlot inSlot) noexcept {
 }
 
 oa::Status TimerRegistry::begin(TimerSlot inSlot, oavk::Stream* inStream) {
-	std::lock_guard<std::mutex> lock(mutex_);
+	oa::ScopedLock lock(mutex_);
 	auto* slot = resolve_(inSlot);
 	if (not open_ or slot == nullptr) {
 		return oa::Status::error(oa::StatusCode::FailedPrecondition,
@@ -104,7 +104,7 @@ oa::Status TimerRegistry::begin(TimerSlot inSlot, oavk::Stream* inStream) {
 }
 
 oa::Status TimerRegistry::end(TimerSlot inSlot, oavk::Stream* inStream) {
-	std::lock_guard<std::mutex> lock(mutex_);
+	oa::ScopedLock lock(mutex_);
 	auto* slot = resolve_(inSlot);
 	if (not open_ or slot == nullptr or inStream == nullptr) {
 		return oa::Status::error(oa::StatusCode::FailedPrecondition,
@@ -122,7 +122,7 @@ oa::Status TimerRegistry::end(TimerSlot inSlot, oavk::Stream* inStream) {
 oa::Status TimerRegistry::attach(
 	TimerSlot inSlot, const oa::Event& inCompletion)
 {
-	std::lock_guard<std::mutex> lock(mutex_);
+	oa::ScopedLock lock(mutex_);
 	auto* slot = resolve_(inSlot);
 	if (slot == nullptr or slot->state != SlotState::Recorded) {
 		return oa::Status::error(oa::StatusCode::FailedPrecondition,
@@ -139,7 +139,7 @@ oa::Status TimerRegistry::attach(
 }
 
 oa::Status TimerRegistry::markSynchronousComplete(TimerSlot inSlot) {
-	std::lock_guard<std::mutex> lock(mutex_);
+	oa::ScopedLock lock(mutex_);
 	auto* slot = resolve_(inSlot);
 	if (slot == nullptr or slot->state != SlotState::Recorded) {
 		return oa::Status::error(oa::StatusCode::FailedPrecondition,
@@ -152,7 +152,7 @@ oa::Status TimerRegistry::markSynchronousComplete(TimerSlot inSlot) {
 }
 
 void TimerRegistry::cancel(TimerSlot inSlot) noexcept {
-	std::lock_guard<std::mutex> lock(mutex_);
+	oa::ScopedLock lock(mutex_);
 	auto* slot = resolve_(inSlot);
 	if (slot == nullptr) return;
 	if (slot->state == SlotState::Recording
@@ -166,7 +166,7 @@ void TimerRegistry::cancel(TimerSlot inSlot) noexcept {
 oa::Result<oa::F64> TimerRegistry::commitMilliseconds(
 	TimerSlot inSlot, const oa::Engine& inEngine)
 {
-	std::lock_guard<std::mutex> lock(mutex_);
+	oa::ScopedLock lock(mutex_);
 	if (owner_ != &inEngine) {
 		return oa::Status::invalidArgument(
 			"device timer commit requires its owning engine");
@@ -191,7 +191,7 @@ oa::Result<oa::F64> TimerRegistry::commitMilliseconds(
 }
 
 oa::Bool TimerRegistry::isPending(TimerSlot inSlot) const noexcept {
-	std::lock_guard<std::mutex> lock(mutex_);
+	oa::ScopedLock lock(mutex_);
 	const auto* slot = resolve_(inSlot);
 	return slot != nullptr and (
 		slot->state == SlotState::Recording
@@ -201,7 +201,7 @@ oa::Bool TimerRegistry::isPending(TimerSlot inSlot) const noexcept {
 }
 
 oa::Status TimerRegistry::close(const oavk::Device& inDevice) {
-	std::lock_guard<std::mutex> lock(mutex_);
+	oa::ScopedLock lock(mutex_);
 	if (not open_) return oa::Status::ok();
 	for (auto& slot : slots_) {
 		if (slot and slot->timestamp.isInitialized()) {

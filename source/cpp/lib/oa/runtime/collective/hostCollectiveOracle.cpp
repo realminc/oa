@@ -1,9 +1,8 @@
 #include "oa/runtime/collective/hostCollectiveOracle.h"
 #include <oa/core/memory.h>
 #include <oa/core/simd.h>
-
-#include <cmath>
-#include <limits>
+#include <oa/core/std/limits.h>
+#include <oa/core/std/scalarMath.h>
 
 namespace oa {
 
@@ -20,11 +19,11 @@ static void cpuReduceF32(
 			break;
 		case HostReduceOp::Max:
 			for (oa::I64 i = 0; i < inCount; ++i)
-				inOutAcc[i] = std::fmax(inOutAcc[i], inB[i]);
+				inOutAcc[i] = oa::fmax(inOutAcc[i], inB[i]);
 			break;
 		case HostReduceOp::Min:
 			for (oa::I64 i = 0; i < inCount; ++i)
-				inOutAcc[i] = std::fmin(inOutAcc[i], inB[i]);
+				inOutAcc[i] = oa::fmin(inOutAcc[i], inB[i]);
 			break;
 	}
 }
@@ -37,7 +36,7 @@ static oa::Status validateEqualHostBuffers(oa::Span<oavk::Buffer> inBufs) {
 	}
 	const oa::U64 size = inBufs[0].size;
 	if (size > static_cast<oa::U64>(
-			std::numeric_limits<oa::Vec<oa::U8>::size_type>::max())) {
+			oa::Limits<oa::Vec<oa::U8>::size_type>::max())) {
 		return oa::Status::error(oa::StatusCode::InvalidArgument,
 			"collective buffer size exceeds the host staging limit");
 	}
@@ -69,7 +68,7 @@ static oa::Status validateReduceBuffers(
 			"collective reduction buffer size must be a multiple of sizeof(f32)");
 	}
 	if (inBufs[0].size / sizeof(oa::F32)
-		> static_cast<oa::U64>(std::numeric_limits<oa::I64>::max())) {
+		> static_cast<oa::U64>(oa::Limits<oa::I64>::max())) {
 		return oa::Status::error(oa::StatusCode::InvalidArgument,
 			"collective reduction element count exceeds the SIMD backend limit");
 	}
@@ -137,13 +136,13 @@ oa::Status HostCollectiveOracle::allGather(
 			"AllGather: partials and full buffer counts must match");
 
 	const oa::U64 partialSize = inPartials[0].size;
-	if (partialSize > std::numeric_limits<oa::U64>::max() / n) {
+	if (partialSize > oa::Limits<oa::U64>::max() / n) {
 		return oa::Status::error(oa::StatusCode::InvalidArgument,
 			"AllGather: total output size overflows");
 	}
 	const oa::U64 fullSize = partialSize * n;
 	if (fullSize > static_cast<oa::U64>(
-			std::numeric_limits<oa::Vec<oa::U8>::size_type>::max())) {
+			oa::Limits<oa::Vec<oa::U8>::size_type>::max())) {
 		return oa::Status::error(oa::StatusCode::InvalidArgument,
 			"AllGather: output size exceeds the host staging limit");
 	}

@@ -18,14 +18,7 @@
 #include <oa/ml/optim.h>
 #include <oa/ml/metric.h>
 
-#include <chrono>
-#include <cmath>
-#include <cstdio>
-#include <cstring>
-#include <fstream>
-#include <functional>
-#include <limits>
-#include <vector>
+#include <stdio.h>
 
 namespace oa {
 
@@ -55,7 +48,7 @@ public:
 
 	// Add a metric to render in the progress bar. Non-owning pointer.
 	void addMetric(oa::Metric* inMetric) {
-		metrics_.push_back(inMetric);
+		metrics_.pushBack(inMetric);
 	}
 
 	// Suppress the "epoch N/M" header line — used with oa::CbPhase, which prints
@@ -64,12 +57,12 @@ public:
 
 	void onTrainBegin(oa::ItTraining& inIter) override {
 		(void)inIter;
-		lastPrintT_ = std::chrono::steady_clock::now();
+		lastPrintT_ = oa::steadyNow();
 	}
 
 	void onEpochBegin(oa::ItTraining& inIter) override {
 		if (showEpochHeader_ and inIter.totalEpochs() > 0) {
-			std::printf("epoch %lld/%lld\n",
+			::printf("epoch %lld/%lld\n",
 				static_cast<long long>(inIter.epoch()),
 				static_cast<long long>(inIter.totalEpochs()));
 		}
@@ -79,8 +72,8 @@ public:
 		// EpochEnd owns the boundary redraw/newline; do not render it twice.
 		if (inIter.isEpochBoundary()) return;
 		// Throttle to ~30 redraws/sec so printf doesn't slow training down.
-		auto now = std::chrono::steady_clock::now();
-		const oa::F64 sinceMs = std::chrono::duration<double, std::milli>(now - lastPrintT_).count();
+		auto now = oa::steadyNow();
+		const oa::F64 sinceMs = (now - lastPrintT_).toMilliseconds();
 		const bool isBoundary = inIter.isEpochBoundary() or inIter.isLastStep();
 		if (not isBoundary and sinceMs < 33.0) return;
 		lastPrintT_ = now;
@@ -88,42 +81,42 @@ public:
 		render(inIter, /*inFinalize=*/isBoundary);
 		if (isBoundary) {
 			lastFinalizedStep_ = inIter.stepCount();
-			std::fputc('\n', stdout);
-			std::fflush(stdout);
+			::fputc('\n', stdout);
+			::fflush(stdout);
 		}
 	}
 
 	void onEpochEnd(oa::ItTraining& inIter) override {
 		render(inIter, /*inFinalize=*/true);
 		lastFinalizedStep_ = inIter.stepCount();
-		std::fputc('\n', stdout);
-		std::fflush(stdout);
+		::fputc('\n', stdout);
+		::fflush(stdout);
 	}
 
 	void onTrainEnd(oa::ItTraining& inIter) override {
 		if (lastFinalizedStep_ == inIter.stepCount()) return;
 		if (inIter.totalEpochs() == 0 or (inIter.epoch() == inIter.totalEpochs() and not inIter.isEpochBoundary())) {
 			render(inIter, /*inFinalize=*/true);
-			std::fputc('\n', stdout);
+			::fputc('\n', stdout);
 		}
 	}
 
 private:
 	// format any per-second rate with compact SI suffixes.
-	static const char* formatRate(oa::F64 inRate, char* outBuf, size_t inBufSize) {
+	static const char* formatRate(oa::F64 inRate, char* outBuf, oa::Usize inBufSize) {
 		if (inRate >= 1e6) {
-			std::snprintf(outBuf, inBufSize, "%.2fM", inRate / 1e6);
+			::snprintf(outBuf, inBufSize, "%.2fM", inRate / 1e6);
 		} else if (inRate >= 1e3) {
-			std::snprintf(outBuf, inBufSize, "%.2fK", inRate / 1e3);
+			::snprintf(outBuf, inBufSize, "%.2fK", inRate / 1e3);
 		} else {
-			std::snprintf(outBuf, inBufSize, "%.0f", inRate);
+			::snprintf(outBuf, inBufSize, "%.0f", inRate);
 		}
 		return outBuf;
 	}
 
 	static void renderRate(oa::F64 inRate, const char* inUnit) {
 		char buf[32];
-		std::printf("%s %s/s", formatRate(inRate, buf, sizeof(buf)), inUnit);
+		::printf("%s %s/s", formatRate(inRate, buf, sizeof(buf)), inUnit);
 	}
 
 	// tqdm-style 8-level partial-fill chars (1/8 .. 8/8 of a cell).
@@ -146,24 +139,24 @@ private:
 		const oa::I64 stepTotal = inIter.hasEpochs() ? inIter.stepsInCurrentEpoch() : inIter.totalSteps();
 		const oa::I64 width     = static_cast<oa::I64>(barWidth_);
 
-		std::printf("\r  ");
+		::printf("\r  ");
 		if (stepTotal > 0) {
-			std::printf("%lld/%lld ", static_cast<long long>(stepNow), static_cast<long long>(stepTotal));
+			::printf("%lld/%lld ", static_cast<long long>(stepNow), static_cast<long long>(stepTotal));
 			// Smooth fill: progress in eighths of a cell across the bar.
 			const oa::I64 totalEighths = (stepNow * width * 8 + (stepTotal / 2)) / stepTotal;
 			const oa::I64 fullCells    = totalEighths / 8;
 			const oa::I32 partial      = static_cast<oa::I32>(totalEighths % 8);
-			std::printf("|");
-			for (oa::I64 i = 0; i < fullCells and i < width; ++i) std::printf("█");
+			::printf("|");
+			for (oa::I64 i = 0; i < fullCells and i < width; ++i) ::printf("█");
 			if (fullCells < width and partial > 0) {
-				std::printf("%s", partialChar(partial));
-				for (oa::I64 i = fullCells + 1; i < width; ++i) std::printf("░");
+				::printf("%s", partialChar(partial));
+				for (oa::I64 i = fullCells + 1; i < width; ++i) ::printf("░");
 			} else {
-				for (oa::I64 i = fullCells; i < width; ++i) std::printf("░");
+				for (oa::I64 i = fullCells; i < width; ++i) ::printf("░");
 			}
-			std::printf("| ");
+			::printf("| ");
 		} else {
-			std::printf("step %lld ", static_cast<long long>(stepNow));
+			::printf("step %lld ", static_cast<long long>(stepNow));
 		}
 
 		const oa::F64 elapsed = inIter.hasEpochs() ? inIter.epochSeconds() : inIter.elapsedSeconds();
@@ -172,46 +165,46 @@ private:
 			? elapsed * 1000.0 / completedSteps : 0.0;
 		const oa::F64 samplesPerSecond = elapsed > 0.0
 			? completedSteps * inIter.cfg().batchSize / elapsed : 0.0;
-		std::printf("%.2fs · %.2f ms/step · ", elapsed, msPerStep);
+		::printf("%.2fs · %.2f ms/step · ", elapsed, msPerStep);
 		renderRate(samplesPerSecond, "sample");
 		if (inIter.cfg().sequenceLength > 0) {
-			std::printf(" · ");
+			::printf(" · ");
 			renderRate(samplesPerSecond * inIter.cfg().sequenceLength,
 				inIter.cfg().sequenceUnit.cStr());
 		}
 		if (inIter.totalSourceUnits() > 0) {
-			std::printf(" · ");
+			::printf(" · ");
 			renderRate(inIter.hasEpochs() ? inIter.epochSourceUnitsPerSecond()
 				: inIter.wallSourceUnitsPerSecond(), inIter.cfg().sourceUnit.cStr());
 		}
 
 		// Render custom metrics
 		if (!metrics_.empty()) {
-			std::printf(" · ");
+			::printf(" · ");
 		}
-		for (size_t i = 0; i < metrics_.size(); ++i) {
+		for (oa::Usize i = 0; i < metrics_.size(); ++i) {
 			char metricBuf[64];
 			const oa::I32 written = metrics_[i]->render(metricBuf, sizeof(metricBuf), false);
 			if (written > 0) {
-				std::printf("%s", metricBuf);
+				::printf("%s", metricBuf);
 				// Add separator between metrics, not after the last one
 				if (i < metrics_.size() - 1) {
-					std::printf(" · ");
+					::printf(" · ");
 				}
 			}
 		}
 
 		// Trim trailing spaces so partial redraws don't leave stale chars.
-		std::printf("        ");
-		std::fflush(stdout);
+		::printf("        ");
+		::fflush(stdout);
 		(void)inFinalize;
 	}
 
 	oa::I32 barWidth_;
 	bool  showEpochHeader_ = true;
-	std::chrono::steady_clock::time_point lastPrintT_;
+	oa::SteadyTimePoint lastPrintT_;
 	oa::I64 lastFinalizedStep_ = 0;
-	std::vector<oa::Metric*> metrics_;
+	oa::Vec<oa::Metric*> metrics_;
 };
 
 // ─── oa::CbValidation ───────────────────────────────────────────────────────
@@ -224,27 +217,27 @@ private:
 // metricPtr() to both.
 
 struct ValidationResult {
-	oa::F64 loss = std::numeric_limits<oa::F64>::quiet_NaN();
+	oa::F64 loss = oa::Limits<oa::F64>::quietNaN();
 	oa::I64 batches = 0;
 	oa::I64 samples = 0;
 };
 
 class ValidationMetric final : public oa::MetricLoss {
 public:
-	explicit ValidationMetric(oa::String inName) : oa::MetricLoss(std::move(inName)) {}
+	explicit ValidationMetric(oa::String inName) : oa::MetricLoss(oa::move(inName)) {}
 	[[nodiscard]] oa::F64 result() const override {
 		return count() > 0 ? oa::MetricLoss::result()
-			: std::numeric_limits<oa::F64>::quiet_NaN();
+			: oa::Limits<oa::F64>::quietNaN();
 	}
 };
 
 class CbValidation : public oa::CbTraining {
 public:
-	using EvalFn = std::function<ValidationResult(oa::ItTraining&)>;
+	using EvalFn = oa::Fn<ValidationResult(oa::ItTraining&)>;
 
 	explicit CbValidation(EvalFn inEval, oa::String inMetricName = "val_loss",
 		oa::I64 inStepInterval = 0)
-		: eval_(std::move(inEval)), metric_(std::move(inMetricName)),
+		: eval_(oa::move(inEval)), metric_(oa::move(inMetricName)),
 		  stepInterval_(inStepInterval) {}
 
 	void onStepEnd(oa::ItTraining& inIter) override {
@@ -263,23 +256,23 @@ public:
 
 private:
 	void run(oa::ItTraining& inIter) {
-		const auto begin = std::chrono::steady_clock::now();
+		const auto begin = oa::steadyNow();
 		lastResult_ = eval_(inIter);
-		lastSeconds_ = std::chrono::duration<oa::F64>(std::chrono::steady_clock::now() - begin).count();
+		lastSeconds_ = (oa::steadyNow() - begin).toSeconds();
 		inIter.excludeWallTime(lastSeconds_);
 		lastEvalStep_ = inIter.stepCount();
 
 		metric_.reset();
-		if (std::isfinite(lastResult_.loss) and lastResult_.batches > 0) {
+		if (oa::isFinite(lastResult_.loss) and lastResult_.batches > 0) {
 			metric_.update(static_cast<oa::F32>(lastResult_.loss));
-			std::printf("Validation: %s %.6f · %lld batches · %lld samples · %.2fs\n",
+			::printf("Validation: %s %.6f · %lld batches · %lld samples · %.2fs\n",
 				metric_.name(), lastResult_.loss,
 				static_cast<long long>(lastResult_.batches),
 				static_cast<long long>(lastResult_.samples), lastSeconds_);
 		} else {
-			std::printf("Validation: %s n/a · %.2fs\n", metric_.name(), lastSeconds_);
+			::printf("Validation: %s n/a · %.2fs\n", metric_.name(), lastSeconds_);
 		}
-		std::fflush(stdout);
+		::fflush(stdout);
 	}
 
 	EvalFn eval_;
@@ -331,8 +324,8 @@ public:
 			const long long step = static_cast<long long>(inIter.stepCount());
 			// Leading \n breaks out of the progress bar's \r line so the
 			// message isn't immediately overwritten by the next bar redraw.
-			std::printf("\nStep %lld: loss = %.6f — saving resumable checkpoint\n", step, metric);
-			std::fflush(stdout);
+			::printf("\nStep %lld: loss = %.6f — saving resumable checkpoint\n", step, metric);
+			::fflush(stdout);
 		}
 		status_ = mgr_.saveIncremental(model_, opt_,
 			static_cast<oa::U64>(inIter.stepCount()), metric, "loss");
@@ -347,16 +340,16 @@ public:
 			const long long epoch = static_cast<long long>(inIter.epoch());
 			// Leading \n breaks out of the progress bar's \r line.
 			if (improved and not haveBest_) {
-				std::printf("\nEpoch %lld: %s = %.6f — saving model\n",
+				::printf("\nEpoch %lld: %s = %.6f — saving model\n",
 					epoch, metricName(), metric);
 			} else if (improved) {
-				std::printf("\nEpoch %lld: %s improved from %.6f to %.6f — saving model\n",
+				::printf("\nEpoch %lld: %s improved from %.6f to %.6f — saving model\n",
 					epoch, metricName(), prevBest, metric);
 			} else {
-				std::printf("\nEpoch %lld: %s did not improve from %.6f\n",
+				::printf("\nEpoch %lld: %s did not improve from %.6f\n",
 					epoch, metricName(), prevBest);
 			}
-			std::fflush(stdout);
+			::fflush(stdout);
 		}
 		lastEpoch_ = inIter.epoch();
 		// Every epoch produces a resumable checkpoint. The manager updates the
@@ -394,11 +387,11 @@ public:
 		if (inIter.isEpochBoundary() and bestEpoch_ == lastEpoch_) return;
 		auto status = mgr_.loadBestInto(model_, opt_);
 		if (status.isOk()) {
-			std::printf("Restoring model weights from the end of the best epoch: %lld (%s %.6f)\n",
+			::printf("Restoring model weights from the end of the best epoch: %lld (%s %.6f)\n",
 				static_cast<long long>(bestEpoch_), metricName(), mgr_.bestMetric());
 		} else {
 			status_ = status;
-			std::printf("Restore best weights failed: %s\n", status.getMessage().cStr());
+			::printf("Restore best weights failed: %s\n", status.getMessage().cStr());
 		}
 	}
 
@@ -463,7 +456,7 @@ public:
 		}
 		++badEpochs_;
 		if (badEpochs_ >= patience_) {
-			std::printf("epoch %lld: early stopping — %s did not improve for %lld epochs (best %.6f)\n",
+			::printf("epoch %lld: early stopping — %s did not improve for %lld epochs (best %.6f)\n",
 				static_cast<long long>(inIter.epoch()), metricName(),
 				static_cast<long long>(badEpochs_), bestMetric_);
 			stop_ = true;
@@ -491,8 +484,8 @@ private:
 	EarlyStopMode mode_;
 	oa::Metric* metric_;
 	oa::F64 bestMetric_ = mode_ == EarlyStopMode::Min
-		? std::numeric_limits<oa::F64>::max()
-		: std::numeric_limits<oa::F64>::lowest();
+		? oa::Limits<oa::F64>::max()
+		: oa::Limits<oa::F64>::lowest();
 	oa::I64 badEpochs_ = 0;
 	bool  stop_      = false;
 };
@@ -526,50 +519,17 @@ private:
 
 class CbCsvLogger : public oa::CbTraining {
 public:
-	explicit CbCsvLogger(const oa::String& inPath) : path_(inPath) {}
+	explicit CbCsvLogger(const oa::String& inPath);
+	~CbCsvLogger() override;
 
-	void onTrainBegin(oa::ItTraining& inIter) override {
-		(void)inIter;
-		file_.open(path_.cStr(), std::ios::out | std::ios::trunc);
-		if (file_.is_open()) {
-			file_ << "epoch,step,batch_size,sequence_length,sequence_unit,source_unit,loss,gpu_ms,wall_ms_per_step,"
-			         "wall_samples_per_second,gpu_samples_per_second,wall_units_per_second,gpu_units_per_second,"
-			         "wall_source_units_per_second,gpu_source_units_per_second\n";
-			file_.flush();
-		}
-	}
-
-	void onStepEnd(oa::ItTraining& inIter) override {
-		if (not file_.is_open()) return;
-		file_ << inIter.epoch() << ","
-		      << inIter.stepCount() << ","
-		      << inIter.cfg().batchSize << ","
-		      << inIter.cfg().sequenceLength << ","
-		      << inIter.cfg().sequenceUnit.cStr() << ","
-		      << inIter.cfg().sourceUnit.cStr() << ","
-		      << inIter.lastLoss() << ","
-		      << inIter.lastGpuMs() << ","
-		      << inIter.wallMsPerStep() << ","
-		      << inIter.wallSamplesPerSecond() << ","
-		      << inIter.gpuSamplesPerSecond() << ","
-		      << inIter.wallUnitsPerSecond() << ","
-		      << inIter.gpuUnitsPerSecond() << ","
-		      << inIter.wallSourceUnitsPerSecond() << ","
-		      << inIter.gpuSourceUnitsPerSecond() << "\n";
-	}
-
-	void onEpochEnd(oa::ItTraining&) override {
-		if (file_.is_open()) file_.flush();
-	}
-
-	void onTrainEnd(oa::ItTraining& inIter) override {
-		(void)inIter;
-		if (file_.is_open()) file_.close();
-	}
+	void onTrainBegin(oa::ItTraining& inIter) override;
+	void onStepEnd(oa::ItTraining& inIter) override;
+	void onEpochEnd(oa::ItTraining& inIter) override;
+	void onTrainEnd(oa::ItTraining& inIter) override;
 
 private:
-	oa::String      path_;
-	std::ofstream file_;
+	class Impl;
+	oa::UniquePtr<Impl> impl_;
 };
 
 // ─── oa::CbSummary ─────────────────────────────────────────────────────────
@@ -615,64 +575,64 @@ public:
 			: (rawWallGpuGap > 100.0 ? 100.0 : rawWallGpuGap);
 
 		char spsBuf[32];
-		auto formatSps = [](oa::F64 sps, char* buf, size_t sz) -> const char* {
-			if (sps >= 1e6) std::snprintf(buf, sz, "%.2fM", sps / 1e6);
-			else if (sps >= 1e3) std::snprintf(buf, sz, "%.2fK", sps / 1e3);
-			else std::snprintf(buf, sz, "%.0f", sps);
+		auto formatSps = [](oa::F64 sps, char* buf, oa::Usize sz) -> const char* {
+			if (sps >= 1e6) ::snprintf(buf, sz, "%.2fM", sps / 1e6);
+			else if (sps >= 1e3) ::snprintf(buf, sz, "%.2fK", sps / 1e3);
+			else ::snprintf(buf, sz, "%.0f", sps);
 			return buf;
 		};
 
 		const oa::F64 finalLoss = static_cast<oa::F64>(inIter.lastLoss());
 		const oa::F64 meanLoss = inIter.trainingMeanLoss();
-		std::printf("\nSummary:\n");
+		::printf("\nSummary:\n");
 		if (inIter.lastLossStep() == 0) {
-			std::printf("  loss: n/a (no loss recorded)\n");
+			::printf("  loss: n/a (no loss recorded)\n");
 		} else if (trackInitialLoss_ && initialLossRecorded_) {
-			std::printf("  loss: initial %.6f · final %.6f · mean %.6f\n",
+			::printf("  loss: initial %.6f · final %.6f · mean %.6f\n",
 				static_cast<double>(initialLoss_), finalLoss, meanLoss);
 		} else {
-			std::printf("  loss: final %.6f · mean %.6f\n", finalLoss, meanLoss);
+			::printf("  loss: final %.6f · mean %.6f\n", finalLoss, meanLoss);
 		}
-		if (validationMetric_ and std::isfinite(validationMetric_->result())) {
-			std::printf("  Validation: %s %.6f\n", validationMetric_->name(),
+		if (validationMetric_ and oa::isFinite(validationMetric_->result())) {
+			::printf("  Validation: %s %.6f\n", validationMetric_->name(),
 				validationMetric_->result());
 		}
-		std::printf("  Wall: %.2f ms/step · %s sample/s",
+		::printf("  Wall: %.2f ms/step · %s sample/s",
 			wallMsPerStep, formatSps(wallSps, spsBuf, sizeof(spsBuf)));
 		if (inIter.cfg().sequenceLength > 0) {
-			std::printf(" · %s %s/s", formatSps(wallUps, spsBuf, sizeof(spsBuf)),
+			::printf(" · %s %s/s", formatSps(wallUps, spsBuf, sizeof(spsBuf)),
 				inIter.cfg().sequenceUnit.cStr());
 		}
 		if (inIter.totalSourceUnits() > 0) {
-			std::printf(" · %s %s/s",
+			::printf(" · %s %s/s",
 				formatSps(inIter.wallSourceUnitsPerSecond(), spsBuf, sizeof(spsBuf)),
 				inIter.cfg().sourceUnit.cStr());
 		}
-		std::fputc('\n', stdout);
+		::fputc('\n', stdout);
 			if (inIter.lastGpuTimeStep() == 0) {
-				std::printf("  GPU: n/a (timer unavailable)\n");
+				::printf("  GPU: n/a (timer unavailable)\n");
 			} else {
-				std::printf("  GPU: mean %.3f ms/step · p50 %.3f · p95 %.3f · %s sample/s",
+				::printf("  GPU: mean %.3f ms/step · p50 %.3f · p95 %.3f · %s sample/s",
 					gpuMs, gpuStats.medianMs, gpuStats.p95Ms,
 					formatSps(gpuSps, spsBuf, sizeof(spsBuf)));
 				if (inIter.cfg().sequenceLength > 0) {
-					std::printf(" · %s %s/s", formatSps(gpuUps, spsBuf, sizeof(spsBuf)),
+					::printf(" · %s %s/s", formatSps(gpuUps, spsBuf, sizeof(spsBuf)),
 						inIter.cfg().sequenceUnit.cStr());
 				}
 				if (inIter.totalSourceUnits() > 0) {
-					std::printf(" · %s %s/s",
+					::printf(" · %s %s/s",
 						formatSps(inIter.gpuSourceUnitsPerSecond(), spsBuf, sizeof(spsBuf)),
 						inIter.cfg().sourceUnit.cStr());
 				}
-				std::printf(" · wall-GPU gap %.0f%%\n", wallGpuGap);
+				::printf(" · wall-GPU gap %.0f%%\n", wallGpuGap);
 			}
-		std::printf("  run: %.2fs · %lld steps · batch %d",
+		::printf("  run: %.2fs · %lld steps · batch %d",
 			totalSec, static_cast<long long>(inIter.stepCount()), inIter.cfg().batchSize);
 		if (inIter.cfg().sequenceLength > 0) {
-			std::printf(" · sequence %d %s/sample", inIter.cfg().sequenceLength,
+			::printf(" · sequence %d %s/sample", inIter.cfg().sequenceLength,
 				inIter.cfg().sequenceUnit.cStr());
 		}
-		std::fputc('\n', stdout);
+		::fputc('\n', stdout);
 	}
 
 private:
@@ -709,23 +669,23 @@ public:
 		oa::I64 epochs = 0;
 		oa::I64 steps  = 0;  // total steps across the phase's epochs
 	};
-	using PhaseBeginFn = std::function<void(oa::I32 inPhaseIdx, const Phase& inPhase)>;
+	using PhaseBeginFn = oa::Fn<void(oa::I32 inPhaseIdx, const Phase& inPhase)>;
 
 	void addPhase(oa::String inId, oa::I64 inEpochs, oa::I64 inSteps) {
-		phases_.push_back({.id = std::move(inId), .epochs = inEpochs, .steps = inSteps});
+		phases_.pushBack({.id = oa::move(inId), .epochs = inEpochs, .steps = inSteps});
 	}
 
-	void setOnPhaseBegin(PhaseBeginFn inFn) { onPhaseBegin_ = std::move(inFn); }
+	void setOnPhaseBegin(PhaseBeginFn inFn) { onPhaseBegin_ = oa::move(inFn); }
 
 	[[nodiscard]] oa::I32 currentPhase() const { return currentPhase_; }
 
 	void onTrainBegin(oa::ItTraining& inIter) override {
 		(void)inIter;
 		if (phases_.empty()) return;
-		std::printf("phase schedule:\n");
-		for (size_t i = 0; i < phases_.size(); ++i) {
+		::printf("phase schedule:\n");
+		for (oa::Usize i = 0; i < phases_.size(); ++i) {
 			const Phase& p = phases_[i];
-			std::printf("  %zu. %-8s — %lld epoch%s (%lld steps)\n",
+			::printf("  %zu. %-8s — %lld epoch%s (%lld steps)\n",
 				i + 1, p.id.cStr(), static_cast<long long>(p.epochs),
 				p.epochs == 1 ? "" : "s", static_cast<long long>(p.steps));
 		}
@@ -738,32 +698,32 @@ public:
 		// map global epoch -> (phase, epoch within phase).
 		oa::I64 epochsBefore = 0;
 		oa::I32 phaseIdx = static_cast<oa::I32>(phases_.size()) - 1;
-		for (size_t i = 0; i < phases_.size(); ++i) {
+		for (oa::Usize i = 0; i < phases_.size(); ++i) {
 			if (epoch <= epochsBefore + phases_[i].epochs) {
 				phaseIdx = static_cast<oa::I32>(i);
 				break;
 			}
 			epochsBefore += phases_[i].epochs;
 		}
-		const Phase& phase = phases_[static_cast<size_t>(phaseIdx)];
+		const Phase& phase = phases_[static_cast<oa::Usize>(phaseIdx)];
 
 		if (phaseIdx != currentPhase_) {
 			currentPhase_ = phaseIdx;
 			const oa::I64 stepsPerEpoch = phase.epochs > 0 ? phase.steps / phase.epochs : phase.steps;
-			std::printf("\nPhase %d/%zu — %s · %lld epoch%s × %lld steps\n",
+			::printf("\nPhase %d/%zu — %s · %lld epoch%s × %lld steps\n",
 				phaseIdx + 1, phases_.size(), phase.id.cStr(),
 				static_cast<long long>(phase.epochs), phase.epochs == 1 ? "" : "s",
 				static_cast<long long>(stepsPerEpoch));
 			if (onPhaseBegin_) onPhaseBegin_(phaseIdx, phase);
 		}
 
-		std::printf("epoch %lld/%lld\n",
+		::printf("epoch %lld/%lld\n",
 			static_cast<long long>(epoch - epochsBefore),
 			static_cast<long long>(phase.epochs));
 	}
 
 private:
-	std::vector<Phase> phases_;
+	oa::Vec<Phase> phases_;
 	PhaseBeginFn       onPhaseBegin_;
 	oa::I32              currentPhase_ = -1;
 };

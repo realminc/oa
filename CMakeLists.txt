@@ -51,6 +51,8 @@ endif()
 
 # OPTIONS
 option(OA_BUILD_TESTS "Build unit tests" ON)
+option(OA_ENABLE_ALM
+	"Build the experimental ALM support library, applications, and tests" OFF)
 option(OA_OASTD_EXTRA_TARGETS "Optional: oa_oastd_headers (IDE file list) + oastd -> TestOaStd" ON)
 option(OA_VULKAN_VALIDATION "Enable Vulkan validation layers" OFF)
 option(OA_BUILD_CRYPTO "Build crypto implementations (requires pqcrypto)" OFF)
@@ -328,30 +330,19 @@ endif()
 # DEPENDENCIES
 if(NOT ANDROID)
 	find_package(yaml-cpp CONFIG)
-	find_package(CLI11 CONFIG)
-	find_package(fmt CONFIG)
-	find_package(utf8proc CONFIG REQUIRED)
 	# The vcpkg HarfBuzz config imports FreeType, whose exported static target
 	# links ZLIB::ZLIB without declaring that dependency itself.
 	find_package(ZLIB REQUIRED)
 	find_package(harfbuzz CONFIG REQUIRED)
 endif()
 
-# HEADER-ONLY INTERFACE LIBRARY (transitive oa_api + optional CLI/YAML/fmt)
+# HEADER-ONLY INTERFACE LIBRARY (transitive oa_api + optional YAML)
 add_library(oa_headers INTERFACE)
 target_link_libraries(oa_headers INTERFACE oa_api)
 target_compile_features(oa_headers INTERFACE cxx_std_20)
 if(yaml-cpp_FOUND)
 	target_link_libraries(oa_headers INTERFACE yaml-cpp::yaml-cpp)
 	target_compile_definitions(oa_headers INTERFACE OA_HAS_YAML_CPP)
-endif()
-if(CLI11_FOUND)
-	target_link_libraries(oa_headers INTERFACE CLI11::CLI11)
-	target_compile_definitions(oa_headers INTERFACE OA_HAS_CLI11)
-endif()
-if(fmt_FOUND)
-	target_link_libraries(oa_headers INTERFACE fmt::fmt)
-	target_compile_definitions(oa_headers INTERFACE OA_HAS_FMT)
 endif()
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/gen/coreFnMatrixSources.cmake)
@@ -367,11 +358,19 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/source/cpp/lib/oa/crypto/hash/fnsources.gen.
 
 # OA LIBRARY (implementation: source/cpp/lib/oa)
 set(OA_SOURCES
+	# Pinned private C implementation dependencies
+	source/cpp/thirdparty/utf8proc/utf8proc.c
+
 	# Core
+	source/cpp/lib/oa/core/assert.cpp
+	source/cpp/lib/oa/core/chrono.cpp
 	source/cpp/lib/oa/core/envFlag.cpp
+	source/cpp/lib/oa/core/time.cpp
 	source/cpp/lib/oa/core/log.cpp
 	source/cpp/lib/oa/core/validation.cpp
 	source/cpp/lib/oa/core/memory.cpp
+	source/cpp/lib/oa/core/sync.cpp
+	source/cpp/lib/oa/core/thread.cpp
 	source/cpp/lib/oa/core/image.cpp
 	source/cpp/lib/oa/core/color.cpp
 	source/cpp/lib/oa/core/matrix.cpp
@@ -400,6 +399,8 @@ set(OA_SOURCES
 	source/cpp/lib/oa/runtime/gemm/router.cpp
 	source/cpp/lib/oa/runtime/gemm/tuner.cpp
 	source/cpp/lib/oa/core/filesystem.cpp
+	source/cpp/lib/oa/core/paths.cpp
+	source/cpp/lib/oa/core/numberText.cpp
 	source/cpp/lib/oa/core/mappedFile.cpp
 	source/cpp/lib/oa/core/perfStat.cpp
 	source/cpp/lib/oa/core/perfStore.cpp
@@ -527,6 +528,7 @@ set(OA_SOURCES
 	# ML — nn modules (Vulkan dispatch)
 	source/cpp/lib/oa/ml/nn/module.cpp
 	source/cpp/lib/oa/ml/itTraining.cpp
+	source/cpp/lib/oa/ml/callbacks.cpp
 	source/cpp/lib/oa/ml/trainingSession.cpp
 	source/cpp/lib/oa/ml/mcpTraining.cpp
 	source/cpp/lib/oa/ml/trainingProgram.cpp
@@ -732,6 +734,7 @@ if(WIN32)
 	target_link_libraries(oa PUBLIC ws2_32 PRIVATE bcrypt)
 endif()
 target_include_directories(oa PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/source/cpp/thirdparty/miniaudio)
+target_include_directories(oa PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/source/cpp/thirdparty/utf8proc)
 target_include_directories(oa SYSTEM PRIVATE
 	${CMAKE_CURRENT_SOURCE_DIR}/source/cpp/thirdparty/xsimd/include)
 target_include_directories(oa PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/source/cpp/lib)
@@ -742,7 +745,6 @@ target_include_directories(oa PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/source/cpp/lib
 message(STATUS "xsimd: vendored 14.1.0")
 
 if(NOT ANDROID)
-	target_link_libraries(oa PRIVATE utf8proc::utf8proc)
 	target_link_libraries(oa PRIVATE harfbuzz::harfbuzz)
 endif()
 get_target_property(_oa_library_type oa TYPE)
@@ -755,10 +757,8 @@ if(UNIX AND NOT APPLE AND _oa_library_type STREQUAL "SHARED_LIBRARY")
 	target_link_options(oa PRIVATE
 		"LINKER:--exclude-libs=libpng16.a:libharfbuzz.a:libfreetype.a:libz.a:libbz2.a:libbrotlidec.a:libbrotlicommon.a")
 endif()
-set(OA_PACKAGE_NEEDS_UTF8PROC OFF)
 set(OA_PACKAGE_NEEDS_HARFBUZZ OFF)
 if(NOT ANDROID AND _oa_library_type STREQUAL "STATIC_LIBRARY")
-	set(OA_PACKAGE_NEEDS_UTF8PROC ON)
 	set(OA_PACKAGE_NEEDS_HARFBUZZ ON)
 endif()
 
@@ -1428,6 +1428,11 @@ install(FILES source/cpp/thirdparty/xsimd/LICENSE
 	RENAME xsimd.txt
 	COMPONENT oa
 )
+install(FILES source/cpp/thirdparty/utf8proc/LICENSE
+	DESTINATION "${OA_LICENSE_INSTALL_DIR}/third-party"
+	RENAME utf8proc.txt
+	COMPONENT oa
+)
 if(DEFINED VCPKG_INSTALLED_DIR AND DEFINED VCPKG_TARGET_TRIPLET)
 	file(GLOB _OA_VCPKG_NOTICE_FILES
 		"${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/share/*/copyright")
@@ -1695,6 +1700,10 @@ if(OA_BUILD_PYTHON)
 		install(FILES source/cpp/thirdparty/xsimd/LICENSE
 			DESTINATION oa/licenses/third-party
 			RENAME xsimd.txt
+			COMPONENT PythonWheel)
+		install(FILES source/cpp/thirdparty/utf8proc/LICENSE
+			DESTINATION oa/licenses/third-party
+			RENAME utf8proc.txt
 			COMPONENT PythonWheel)
 		foreach(_OA_NOTICE_FILE IN LISTS _OA_VCPKG_NOTICE_FILES)
 			get_filename_component(_OA_NOTICE_DIR "${_OA_NOTICE_FILE}" DIRECTORY)

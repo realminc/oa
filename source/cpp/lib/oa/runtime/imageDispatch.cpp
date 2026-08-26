@@ -13,7 +13,7 @@
 #include "dispatchValidation.h"
 #include "storageDtype.h"
 
-#include <cstring>
+#include <oa/core/memory.h>
 
 oavk::ImageDispatchTicket::ImageDispatchTicket(oavk::ImageDispatchTicket&& inOther) noexcept
 	: engine_(inOther.engine_)
@@ -208,7 +208,8 @@ static oavk::Stream* imageDispatchSetupAndRecord(
 	}
 
 	oa::PipelineSpec spec{.numBindings = 16, .pushConstantBytes = 128,
-		.specConstants = {{.id = 0, .value = dtype.getValue()}}};
+		.specConstants = oa::Vec<oa::SpecConstant>{
+			oa::SpecConstant{.id = 0, .value = dtype.getValue()}}};
 	outStatus = oa::EnginePipelineAccess::ensure(
 		inRt,
 		inShaderName,
@@ -371,10 +372,10 @@ static oavk::Stream* imageDispatchSetupAndRecord(
 	const oa::U32 totalPush = headerBytes + inPushSize;
 	alignas(16) oa::U8 pushBuf[oavk::OA_VK_MAX_PUSH_CONSTANT_BYTES] = {};
 	if (!resourceIndices.empty()) {
-		std::memcpy(pushBuf, resourceIndices.data(), headerBytes);
+		oa::memcpy(pushBuf, resourceIndices.data(), headerBytes);
 	}
 	if (inPushData && inPushSize > 0) {
-		std::memcpy(pushBuf + headerBytes, inPushData, inPushSize);
+		oa::memcpy(pushBuf + headerBytes, inPushData, inPushSize);
 	}
 	oa::EngineDeviceAccess::get(inRt).deviceDispatch.vkCmdPushConstants(
 		cmd,

@@ -18,15 +18,13 @@
 #include <oa/runtime/executionSession.h>
 #include <oa/runtime/allocator.h>
 #include <oa/core/log.h>
+#include <oa/core/memory.h>
+#include <oa/core/std/cString.h>
+#include <oa/core/std/limits.h>
 
 #include "../runtime/textureAccess.h"
 
 #include "../../thirdparty/stb/stb_image_write.h"
-
-#include <cstring>
-#include <cctype>
-#include <limits>
-
 
 namespace {
 
@@ -38,8 +36,8 @@ enum class SaveFmt { Png, Jpg, Bmp, Tga, Unknown };
 	if (n == 0) return SaveFmt::Unknown;
 
 	// find the last '.', stopping at any path separator.
-	size_t dot = n;
-	for (size_t i = n; i-- > 0; ) {
+	oa::Usize dot = n;
+	for (oa::Usize i = n; i-- > 0; ) {
 		const char c = s[i];
 		if (c == '/' or c == '\\') break;
 		if (c == '.') { dot = i; break; }
@@ -47,11 +45,15 @@ enum class SaveFmt { Png, Jpg, Bmp, Tga, Unknown };
 	if (dot == n) return SaveFmt::Unknown;
 
 	auto eqICase = [&](const char* lit) -> bool {
-		const size_t litLen = std::strlen(lit);
+		auto lowerAscii = [](char inValue) {
+			return inValue >= 'A' and inValue <= 'Z'
+				? static_cast<char>(inValue + ('a' - 'A')) : inValue;
+		};
+		const oa::Usize litLen = oa::strlen(lit);
 		if (n - dot != litLen) return false;
-		for (size_t i = 0; i < litLen; ++i) {
-			const char a = static_cast<char>(std::tolower(static_cast<unsigned char>(s[dot + i])));
-			const char b = static_cast<char>(std::tolower(static_cast<unsigned char>(lit[i])));
+		for (oa::Usize i = 0; i < litLen; ++i) {
+			const char a = lowerAscii(s[dot + i]);
+			const char b = lowerAscii(lit[i]);
 			if (a != b) return false;
 		}
 		return true;
@@ -127,13 +129,13 @@ oa::Status saveRgbaFileReady(
 			"oa::FnImage::saveRgbaFile: unknown extension (expected .png, .jpg, .bmp, .tga)");
 	}
 	if (inWidth == 0U or inHeight == 0U
-		or inWidth > static_cast<oa::U32>(std::numeric_limits<int>::max())
-		or inHeight > static_cast<oa::U32>(std::numeric_limits<int>::max())) {
+		or inWidth > static_cast<oa::U32>(oa::Limits<int>::max())
+		or inHeight > static_cast<oa::U32>(oa::Limits<int>::max())) {
 		return oa::Status::invalidArgument(
 			"oa::FnImage::saveRgbaFile: extent must be positive and int-addressable");
 	}
 	const oa::U64 pixels = static_cast<oa::U64>(inWidth) * inHeight;
-	if (pixels > std::numeric_limits<oa::U64>::max() / 4U
+	if (pixels > oa::Limits<oa::U64>::max() / 4U
 		or pixels * 4U != inRgba.size()) {
 		return oa::Status::invalidArgument(
 			"oa::FnImage::saveRgbaFile: byte span must equal width*height*4");
@@ -145,12 +147,12 @@ oa::Status saveRgbaFileReady(
 
 	// stb_image_write wants a null-terminated C string. stage into a stack
 	// buffer (paths > 1023 chars are pathological and rejected).
-	constexpr size_t kPathBufSize = 1024;
+	constexpr oa::Usize kPathBufSize = 1024;
 	char pathBuf[kPathBufSize];
 	if (inPath.size() >= kPathBufSize) {
 		return oa::Status::invalidArgument("oa::FnImage::saveRgbaFile: path too long");
 	}
-	std::memcpy(pathBuf, inPath.data(), inPath.size());
+	oa::memcpy(pathBuf, inPath.data(), inPath.size());
 	pathBuf[inPath.size()] = '\0';
 
 	const int W = static_cast<int>(inWidth);

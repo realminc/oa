@@ -20,10 +20,10 @@
 #include <oa/runtime/engine/resourceAccess.h>
 #include <oa/runtime/executionSession.h>
 
-#include <cassert>
-#include <cstddef>
-#include <cstdlib>
-#include <cstring>
+#include <assert.h>
+#include <stddef.h>
+#include <stdlib.h>
+#include <string.h>
 
 namespace {
 
@@ -116,7 +116,7 @@ oa::Matrix oa::FnMatrix::randN(oa::MatrixShape inShape, oa::ScalarType inDtype) 
 	oa::F32 std_dev = 1.0F;
 	if (inShape.rank == 2) {
 		oa::I64 fan_in = inShape[1];  // embed_dim for embeddings
-		std_dev = std::sqrt(2.0F / static_cast<oa::F32>(fan_in));
+		std_dev = oa::sqrt(2.0F / static_cast<oa::F32>(fan_in));
 	} else {
 		// For other shapes, use small std_dev
 		std_dev = 0.02F;
@@ -132,7 +132,7 @@ oa::Matrix oa::FnMatrix::randXavier(oa::MatrixShape inShape, oa::ScalarType inDt
 	oa::F32 bound = 1.0F;
 	if (inShape.rank == 2) {
 		oa::I64 fan_in = inShape[1];  // For weight matrix [out_features, in_features]
-		bound = std::sqrt(1.0F / static_cast<oa::F32>(fan_in));
+		bound = oa::sqrt(1.0F / static_cast<oa::F32>(fan_in));
 	} else {
 		// For other shapes, use small uniform range
 		bound = 0.1F;
@@ -149,7 +149,7 @@ oa::Matrix oa::FnMatrix::randGlorotUniform(oa::MatrixShape inShape, oa::ScalarTy
 	if (inShape.rank == 2) {
 		oa::I64 fan_out = inShape[0];
 		oa::I64 fan_in = inShape[1];
-		bound = std::sqrt(6.0F / static_cast<oa::F32>(fan_in + fan_out));
+		bound = oa::sqrt(6.0F / static_cast<oa::F32>(fan_in + fan_out));
 	}
 
 	auto t = oa::FnMatrix::empty(inShape, inDtype);
@@ -162,7 +162,7 @@ oa::Matrix oa::FnMatrix::randKaimingUniform(oa::MatrixShape inShape, oa::ScalarT
 	oa::F32 bound = 0.1F;
 	if (inShape.rank == 2) {
 		oa::I64 fan_in = inShape[1];
-		bound = std::sqrt(6.0F / static_cast<oa::F32>(fan_in));
+		bound = oa::sqrt(6.0F / static_cast<oa::F32>(fan_in));
 	}
 
 	auto t = oa::FnMatrix::empty(inShape, inDtype);

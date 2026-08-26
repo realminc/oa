@@ -9,7 +9,7 @@
 #include <oa/core/fnMatrix.h>
 #include <oa/core/fnmatrix/fnMatrixInternal.h>
 
-#include <algorithm>
+#include <oa/core/std/utility.h>
 
 namespace {
 
@@ -34,12 +34,8 @@ void oa::GradNode::saveForBackward(oa::Vec<oa::Matrix> inMatrices) {
 	savedMatrices_.reserve(inMatrices.size());
 	for (auto& matrix : inMatrices) {
 		const oa::U64 mutationVersion = matrix.observeStorageMutationVersion();
-		savedMatrices_.pushBack({std::move(matrix), mutationVersion});
+		savedMatrices_.pushBack({oa::move(matrix), mutationVersion});
 	}
-}
-
-void oa::GradNode::saveForBackward(std::initializer_list<oa::Matrix> inMatrices) {
-	saveForBackward(oa::Vec<oa::Matrix>(inMatrices));
 }
 
 oa::Status oa::GradNode::validateSavedVersions() const {

@@ -2,6 +2,17 @@
 
 #include <functional>
 
+namespace {
+
+struct LargeCallable {
+	int padding[16]{};
+	int bias{0};
+
+	int operator()(int inValue) { return inValue + bias; }
+};
+
+} // namespace
+
 TEST(Fn, Call) {
 	oa::Fn<int(int)> fn = [](int x) { return x * 2; };
 	EXPECT_EQ(fn(21), 42);
@@ -12,16 +23,26 @@ TEST(Fn, EmptyAndSwap) {
 	oa::Fn<int()> b = [] { return 1; };
 	EXPECT_TRUE(a.empty());
 	EXPECT_FALSE(b.empty());
-	EXPECT_THROW((void)a(), std::bad_function_call);
+	EXPECT_DEATH((void)a(), "OA contract failed: vtable_ != nullptr");
 	a.swap(b);
 	EXPECT_FALSE(a.empty());
 	EXPECT_TRUE(b.empty());
-	EXPECT_THROW((void)b(), std::bad_function_call);
+	EXPECT_DEATH((void)b(), "OA contract failed: vtable_ != nullptr");
 }
 
-TEST(Fn, StdFn) {
-	oa::Fn<int()> fn = [] { return 99; };
-	EXPECT_EQ(fn.stdFn()(), 99);
+TEST(Fn, NullptrConstructionIsEmpty) {
+	oa::Fn<int()> fn = nullptr;
+	EXPECT_TRUE(fn.empty());
+}
+
+TEST(Fn, HeapFallbackCopiesAndMoves) {
+	oa::Fn<int(int)> original = LargeCallable{.bias = 7};
+	oa::Fn<int(int)> copy = original;
+	oa::Fn<int(int)> moved = oa::move(original);
+
+	EXPECT_EQ(copy(5), 12);
+	EXPECT_EQ(moved(9), 16);
+	EXPECT_TRUE(original.empty());
 }
 
 TEST(StdFnVsStd, SameLambdaResultAsStdFunction) {

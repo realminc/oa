@@ -7,7 +7,7 @@
 
 #include "../featureModule.h"
 #include <oa/core/log.h>
-#include <cstring>
+#include <string.h>
 
 
 class CoreFeatures : public oavk::FeatureModule {

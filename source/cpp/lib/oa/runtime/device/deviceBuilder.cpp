@@ -4,7 +4,7 @@
 #include <oa/core/envFlag.h>
 #include <oa/runtime/init.h>
 #include <oa/runtime/bindless.h>
-#include <algorithm>
+#include <oa/core/std/algo.h>
 
 // forward declarations from Device.cpp
 oa::Status oavk::planDeviceQueues(
@@ -155,7 +155,7 @@ oa::Status oavk::DeviceBuilder::validateDependencies() const {
 void oavk::DeviceBuilder::sortModulesByDependencies() {
 	// Simple topological sort: move modules with no dependencies first
 	// This is sufficient for our small module count
-	std::stable_sort(modules_.begin(), modules_.end(),
+	oa::stableSort(modules_.begin(), modules_.end(),
 		[](const oa::UniquePtr<oavk::FeatureModule>& a, const oa::UniquePtr<oavk::FeatureModule>& b) {
 			return a->dependencies().size() < b->dependencies().size();
 		}
@@ -218,7 +218,7 @@ oa::Result<oavk::Device> oavk::DeviceBuilder::buildBase(
 	// swapchain is ever created (VUID-vkCreateDevice-ppEnabledExtensionNames-01387).
 	if (!inWantsPresentation) {
 		for (oa::Usize i = 0; i < enabledExtensions_.size();) {
-			if (strcmp(enabledExtensions_[i], VK_KHR_SWAPCHAIN_EXTENSION_NAME) == 0) {
+			if (oa::strcmp(enabledExtensions_[i], VK_KHR_SWAPCHAIN_EXTENSION_NAME) == 0) {
 				enabledExtensions_.erase(enabledExtensions_.begin() + i);
 			} else {
 				++i;
@@ -403,7 +403,7 @@ oa::Result<oavk::RenderDevice> oavk::DeviceBuilder::buildRender(
 	collectExtensions();
 	if (inSurface == VK_NULL_HANDLE) {
 		for (oa::Usize i = 0; i < enabledExtensions_.size();) {
-			if (strcmp(enabledExtensions_[i], VK_KHR_SWAPCHAIN_EXTENSION_NAME) == 0) {
+			if (oa::strcmp(enabledExtensions_[i], VK_KHR_SWAPCHAIN_EXTENSION_NAME) == 0) {
 				enabledExtensions_.erase(enabledExtensions_.begin() + i);
 			} else {
 				++i;
@@ -670,15 +670,15 @@ void oavk::DeviceBuilder::populateDeviceInfo(
 			static_cast<long long>(envBufferCap));
 	}
 
-	outDevice.info.hardware.bindlessBufferCapacity = std::min(
+	outDevice.info.hardware.bindlessBufferCapacity = oa::min(
 		static_cast<oa::U32>(indexingProps.maxPerStageDescriptorUpdateAfterBindStorageBuffers),
 		bufferLimit
 	);
-	outDevice.info.hardware.bindlessImageCapacity = std::min(
+	outDevice.info.hardware.bindlessImageCapacity = oa::min(
 		static_cast<oa::U32>(indexingProps.maxPerStageDescriptorUpdateAfterBindSampledImages),
 		kSafeImageLimit
 	);
-	outDevice.info.hardware.bindlessSamplerCapacity = std::min(
+	outDevice.info.hardware.bindlessSamplerCapacity = oa::min(
 		static_cast<oa::U32>(indexingProps.maxPerStageDescriptorUpdateAfterBindSamplers),
 		kSafeSamplerLimit
 	);

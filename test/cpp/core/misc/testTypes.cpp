@@ -5,6 +5,18 @@
 #include "../../oaTest.h"
 
 static_assert(oa::scalarTypeToString(oa::ScalarType::Float32)[0] == 'F');
+static_assert(not oa::IsConstructibleV<
+	oa::MatrixShape,
+	oa::I32,
+	oa::I32,
+	oa::I32,
+	oa::I32,
+	oa::I32,
+	oa::I32,
+	oa::I32,
+	oa::I32,
+	oa::I32
+>);
 
 // ─── scalar Types ──────────────────────────────────────────────────────────────
 
@@ -146,10 +158,4 @@ TEST(CoreShape, AcceptsMaximumRank) {
 	EXPECT_EQ(shape.rank, OA_MAX_TENSOR_DIMS);
 	EXPECT_EQ(shape[0], 1);
 	EXPECT_EQ(shape[OA_MAX_TENSOR_DIMS - 1], 8);
-}
-
-TEST(CoreShape, RejectsRankBeyondStorage) {
-	EXPECT_THROW(
-		static_cast<void>(oa::MatrixShape({1, 2, 3, 4, 5, 6, 7, 8, 9})),
-		std::length_error);
 }

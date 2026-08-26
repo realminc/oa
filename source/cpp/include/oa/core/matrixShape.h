@@ -3,9 +3,6 @@
 #include <oa/core/status.h>
 #include <oa/core/types.h>
 
-#include <initializer_list>
-#include <stdexcept>
-
 constexpr oa::I32 OA_MAX_TENSOR_DIMS = 8;
 
 namespace oa {
@@ -14,20 +11,24 @@ namespace oa {
 // OA_MAX_TENSOR_DIMS. Construct with brace-init for any rank:
 //   MatrixShape{m, n}            // rank-2
 //   MatrixShape{n, c, h, w}      // rank-4 (e.g. conv NCHW)
-// (No per-rank helper functions — the initializer_list constructor covers every rank.)
+// The variadic constructor keeps brace initialization without importing the
+// hosted initializer-list or exception runtime.
 struct MatrixShape {
 	oa::Array<oa::I64, OA_MAX_TENSOR_DIMS> dims = {};
 	oa::I32 rank = 0;
 
 	MatrixShape() = default;
 
-	MatrixShape(std::initializer_list<oa::I64> inDims) {
-		if (inDims.size() > static_cast<oa::Usize>(OA_MAX_TENSOR_DIMS)) {
-			throw std::length_error("MatrixShape rank exceeds OA_MAX_TENSOR_DIMS");
+	template<typename First, typename... Rest>
+		requires (sizeof...(Rest) + 1U <= OA_MAX_TENSOR_DIMS)
+	constexpr MatrixShape(First inFirst, Rest... inRest)
+		: rank(static_cast<oa::I32>(sizeof...(Rest) + 1U)) {
+		const oa::I64 values[] = {
+			static_cast<oa::I64>(inFirst), static_cast<oa::I64>(inRest)...
+		};
+		for (oa::Usize index = 0; index < sizeof...(Rest) + 1U; ++index) {
+			dims[index] = values[index];
 		}
-		rank = static_cast<oa::I32>(inDims.size());
-		oa::Usize idx = 0;
-		for (auto dimVal : inDims) dims[idx++] = dimVal;
 	}
 
 	[[nodiscard]] oa::I64 operator[](oa::I32 inDim) const {

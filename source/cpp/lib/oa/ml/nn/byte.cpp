@@ -1,4 +1,4 @@
-#include <cassert>
+#include <assert.h>
 
 #include <oa/ml/byte.h>
 #include <oa/ml/autograd/matrix/autogradBlas.h>
@@ -22,7 +22,7 @@ oa::Matrix oa::ByteHead::forward(const oa::Matrix& inHidden) {
 	auto out = oa::FnMatrix::linear(inHidden, weight, bias);
 	if (oa::FnAutograd::isEnabled() and (inHidden.requiresGrad() or weight.requiresGrad() or bias.requiresGrad())) {
 		auto gradFn = oa::makeShared<oa::GradLinear>();
-		gradFn->saveForBackward({inHidden, weight});
+		gradFn->saveForBackward(inHidden, weight);
 		gradFn->setGraphInputs(  oa::Vec<oa::Matrix>{inHidden, weight, bias});
 		gradFn->sequenceNr_    = oa::FnAutograd::nextSeq();
 		gradFn->outputShape_   = out.getShape();  // tape normalizes viewed upstream (e.g. 3D loss reshape) back to [rows,out] before LinearBwd

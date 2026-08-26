@@ -3,9 +3,8 @@
 #include <oa/core/bufferAccess.h>
 #include <oa/core/fnMatrix.h>
 #include <oa/runtime/executionSession.h>
-
-#include <algorithm>
-#include <limits>
+#include <oa/core/std/algo.h>
+#include <oa/core/std/limits.h>
 
 namespace {
 
@@ -75,7 +74,7 @@ oa::Result<oa::RolloutBuffer> oa::RolloutBuffer::create(
 	for (oa::I32 dim = 0; dim < inConfig.observationShape.rank; ++dim) {
 		const oa::U64 dimension = static_cast<oa::U64>(inConfig.observationShape[dim]);
 		if (observationElements
-			> static_cast<oa::U64>(std::numeric_limits<oa::U32>::max()) / dimension) {
+			> static_cast<oa::U64>(oa::Limits<oa::U32>::max()) / dimension) {
 			return oa::Status::error(
 				oa::StatusCode::OutOfRange,
 				"oa::RolloutBuffer::create observation size exceeds the current 32-bit GPU indexing limit");
@@ -84,9 +83,9 @@ oa::Result<oa::RolloutBuffer> oa::RolloutBuffer::create(
 	}
 	const oa::U64 rolloutElements = static_cast<oa::U64>(inConfig.time)
 		* inConfig.environments;
-	if (rolloutElements > std::numeric_limits<oa::U32>::max()
+	if (rolloutElements > oa::Limits<oa::U32>::max()
 		|| observationElements
-			> static_cast<oa::U64>(std::numeric_limits<oa::U32>::max())
+			> static_cast<oa::U64>(oa::Limits<oa::U32>::max())
 				/ rolloutElements) {
 		return oa::Status::error(
 			oa::StatusCode::OutOfRange,
@@ -178,7 +177,7 @@ oa::Status oa::RolloutBuffer::append(const oa::RolloutTransition& inTransition) 
 		oa::BufferAccess::Write, oa::BufferAccess::Write,
 		oa::BufferAccess::Write,
 	};
-	const oa::U32 workItems = std::max(
+	const oa::U32 workItems = oa::max(
 		config_.environments * observationElements_, config_.environments);
 	oa::ExecutionSession::getActive().add(
 		"RlRolloutAppend",

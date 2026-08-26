@@ -10,17 +10,17 @@
 #include <oa/runtime/stream.h>
 #include <oa/ui/viewer.h>
 #include <oa/core/envFlag.h>
+#include <oa/core/std/algo.h>
+#include <oa/core/std/chrono.h>
+#include <oa/core/std/cString.h>
+#include <oa/core/std/scalarMath.h>
 #include <oa/ui/platformInput.h>
 #include <oa/core/validation.h>
 
 #include "../runtime/presentationPlatform.h"
 #include "windowDecoration.h"
 
-#include <algorithm>
-#include <chrono>
-#include <cmath>
-#include <cstdlib>
-#include <cstring>
+#include <stdlib.h>
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
@@ -274,7 +274,7 @@ oa::Status oa::Viewer::rebuildWindowTitleGlyphs() {
 			"oa::Viewer window title glyph buffer is not initialized");
 	}
 	oa::Vec<oa::GlyphInstance> glyphs;
-	glyphs.reserve(std::min<oa::Usize>(
+	glyphs.reserve(oa::min<oa::Usize>(
 		config_.title.size(),
 		static_cast<oa::Usize>(kMaxWindowTitleGlyphs)));
 	appendWindowTitleGlyphs(
@@ -305,8 +305,8 @@ void oa::Viewer::refreshWindowDecorationScale() {
 	const oa::F32 nextScaleY =
 		static_cast<oa::F32>(pixelHeight) / static_cast<oa::F32>(logicalHeight);
 	const bool changed =
-		std::fabs(nextScaleX - windowPixelScaleX_) > 0.001F
-		or std::fabs(nextScaleY - windowPixelScaleY_) > 0.001F;
+		oa::abs(nextScaleX - windowPixelScaleX_) > 0.001F
+		or oa::abs(nextScaleY - windowPixelScaleY_) > 0.001F;
 	windowPixelScaleX_ = nextScaleX;
 	windowPixelScaleY_ = nextScaleY;
 	if (changed and windowDecorationActive_ and windowTitleGlyphs_.isValid()) {
@@ -328,8 +328,8 @@ oa::Status oa::Viewer::initWindowDecoration() {
 			"oa::Viewer window decoration requires a window and engine");
 	}
 	if (config_.title.empty()) return oa::Status::ok();
-	const oa::Usize requestedCapacity = std::min<oa::Usize>(
-		std::max<oa::Usize>(config_.title.size(), 1U),
+	const oa::Usize requestedCapacity = oa::min<oa::Usize>(
+		oa::max<oa::Usize>(config_.title.size(), 1U),
 		static_cast<oa::Usize>(kMaxWindowTitleGlyphs));
 	auto buffer = oa::GlyphBuffer::createHostUpload(
 		*engine_, static_cast<oa::U32>(requestedCapacity));
@@ -429,9 +429,9 @@ bool oa::Viewer::routeWindowDecorationEvent(void* inEvent) {
 
 oa::U32 oa::Viewer::windowDecorationHeight() const noexcept {
 	if (not windowDecorationActive_) return 0U;
-	return static_cast<oa::U32>(std::max(
+	return static_cast<oa::U32>(oa::max(
 		1.0F,
-		std::ceil(
+		oa::ceil(
 			static_cast<oa::F32>(kWindowDecorationMetrics.titleHeight)
 			* windowPixelScaleY_)));
 }
@@ -442,9 +442,9 @@ void oa::Viewer::renderWindowDecoration(oa::Ui& inUi) {
 	const oa::I32 height = static_cast<oa::I32>(windowDecorationHeight());
 	if (width <= 0 or height <= 0) return;
 
-	const oa::I32 controlWidth = std::max(
+	const oa::I32 controlWidth = oa::max(
 		1,
-		static_cast<oa::I32>(std::ceil(
+		static_cast<oa::I32>(oa::ceil(
 			static_cast<oa::F32>(kWindowDecorationMetrics.controlWidth)
 			* windowPixelScaleX_)));
 	const oa::I32 controlsBegin = width - controlWidth * 3;
@@ -458,10 +458,10 @@ void oa::Viewer::renderWindowDecoration(oa::Ui& inUi) {
 	inUi.rect({0, 0, width, height}, titleBackground);
 	inUi.rect({0, height - 1, width, 1}, style.border);
 	inUi.rect({
-		std::max(8, static_cast<oa::I32>(12.0F * windowPixelScaleX_)),
-		std::max(7, static_cast<oa::I32>(9.0F * windowPixelScaleY_)),
-		std::max(2, static_cast<oa::I32>(3.0F * windowPixelScaleX_)),
-		std::max(12, static_cast<oa::I32>(18.0F * windowPixelScaleY_))},
+		oa::max(8, static_cast<oa::I32>(12.0F * windowPixelScaleX_)),
+		oa::max(7, static_cast<oa::I32>(9.0F * windowPixelScaleY_)),
+		oa::max(2, static_cast<oa::I32>(3.0F * windowPixelScaleX_)),
+		oa::max(12, static_cast<oa::I32>(18.0F * windowPixelScaleY_))},
 		style.accent);
 
 	for (oa::I32 index = 0; index < 3; ++index) {
@@ -482,7 +482,7 @@ void oa::Viewer::renderWindowDecoration(oa::Ui& inUi) {
 			static_cast<oa::F32>(rect.x) + static_cast<oa::F32>(rect.w) * 0.5F;
 		const oa::F32 centerY =
 			static_cast<oa::F32>(rect.h) * 0.5F;
-		const oa::F32 half = std::max(4.0F, 5.0F * windowPixelScaleX_);
+		const oa::F32 half = oa::max(4.0F, 5.0F * windowPixelScaleX_);
 		if (control == static_cast<oa::I32>(
 			oa::WindowDecorationControl::Minimize)) {
 			inUi.line(
@@ -491,7 +491,7 @@ void oa::Viewer::renderWindowDecoration(oa::Ui& inUi) {
 				icon, 1.0F);
 		} else if (control == static_cast<oa::I32>(
 			oa::WindowDecorationControl::Maximize)) {
-			const oa::I32 box = std::max(
+			const oa::I32 box = oa::max(
 				8, static_cast<oa::I32>(10.0F * windowPixelScaleX_));
 			const oa::I32 boxX = static_cast<oa::I32>(centerX) - box / 2;
 			const oa::I32 boxY = static_cast<oa::I32>(centerY) - box / 2;
@@ -516,7 +516,7 @@ void oa::Viewer::renderWindowDecoration(oa::Ui& inUi) {
 	}
 
 	if (windowTitleGlyphs_.isValid()) {
-		const oa::I32 titleClipWidth = std::max(1, controlsBegin - 8);
+		const oa::I32 titleClipWidth = oa::max(1, controlsBegin - 8);
 		const oa::PixelRect screen{
 			0, 0, width, static_cast<oa::I32>(this->height())};
 		inUi.glyphs(
@@ -575,9 +575,9 @@ oa::Status oa::Viewer::runApplication(oa::Engine* inBorrowedEngine) {
 	// Deterministic, graceful smoke-test boundary for windowed tutorials. Zero
 	// or an invalid value preserves the normal interactive run-until-closed loop.
 	oa::U64 maxFrames = 0;
-	if (const char* value = std::getenv("OA_UI_MAX_FRAMES"); value and *value) {
+	if (const char* value = ::getenv("OA_UI_MAX_FRAMES"); value and *value) {
 		char* end = nullptr;
-		const unsigned long long parsed = std::strtoull(value, &end, 10);
+		const unsigned long long parsed = ::strtoull(value, &end, 10);
 		if (end != value and *end == '\0') {
 			maxFrames = static_cast<oa::U64>(parsed);
 		}
@@ -601,18 +601,18 @@ oa::Status oa::Viewer::runApplication(oa::Engine* inBorrowedEngine) {
 
 	// Respect OA_DEVICE env var (same semantics as gtest harness).
 	if (inBorrowedEngine == nullptr) {
-		if (const char* dev = std::getenv("OA_DEVICE"); dev and *dev) {
-			if (std::strcmp(dev, "integrated") == 0
-				or std::strcmp(dev, "igpu") == 0) {
+		if (const char* dev = ::getenv("OA_DEVICE"); dev and *dev) {
+			if (oa::strcmp(dev, "integrated") == 0
+				or oa::strcmp(dev, "igpu") == 0) {
 				engineCfg.devicePref = oa::DevicePreference::Integrated;
-			} else if (std::strcmp(dev, "discrete") == 0
-				or std::strcmp(dev, "dgpu") == 0) {
+			} else if (oa::strcmp(dev, "discrete") == 0
+				or oa::strcmp(dev, "dgpu") == 0) {
 				engineCfg.devicePref = oa::DevicePreference::Discrete;
-			} else if (std::strcmp(dev, "cpu") == 0) {
+			} else if (oa::strcmp(dev, "cpu") == 0) {
 				engineCfg.devicePref = oa::DevicePreference::Cpu;
 			} else {
 				char* end = nullptr;
-				unsigned long idx = std::strtoul(dev, &end, 10);
+				unsigned long idx = ::strtoul(dev, &end, 10);
 				if (end != dev and *end == '\0' and idx <= 0xFFFFu) {
 					engineCfg.devicePref = oa::DevicePreference::ByIndex;
 					engineCfg.deviceIndex = static_cast<oa::U32>(idx);
@@ -771,7 +771,7 @@ oa::Status oa::Viewer::runApplication(oa::Engine* inBorrowedEngine) {
 		return s;
 	}
 	oa::Vec<oa::UiEvent> events;
-	using Clock = std::chrono::steady_clock;
+	using Clock = oa::SteadyClock;
 	auto tPrev = Clock::now();
 	oa::Status runStatus = oa::Status::ok();
 	bool nativeTextInputActive = false;
@@ -816,8 +816,7 @@ oa::Status oa::Viewer::runApplication(oa::Engine* inBorrowedEngine) {
 		if (runStatus.isError()) break;
 
 		auto tNow = Clock::now();
-		oa::F32 deltaMs = static_cast<oa::F32>(
-			std::chrono::duration<double, std::milli>(tNow - tPrev).count());
+		oa::F32 deltaMs = static_cast<oa::F32>((tNow - tPrev).toMilliseconds());
 		tPrev = tNow;
 
 		if (const oa::Status updateStatus = update(deltaMs); not updateStatus.isOk()) {
@@ -874,13 +873,13 @@ oa::Status oa::Viewer::runApplication(oa::Engine* inBorrowedEngine) {
 				const oa::F32 inverseScaleY = static_cast<oa::F32>(logicalHeight)
 					/ static_cast<oa::F32>(pixelHeight);
 				const SDL_Rect area{
-					.x = static_cast<int>(std::floor(
+					.x = static_cast<int>(oa::floor(
 						static_cast<oa::F32>(caret.x) * inverseScaleX)),
-					.y = static_cast<int>(std::floor(
+					.y = static_cast<int>(oa::floor(
 						static_cast<oa::F32>(caret.y) * inverseScaleY)),
-					.w = std::max(1, static_cast<int>(std::ceil(
+					.w = oa::max(1, static_cast<int>(oa::ceil(
 						static_cast<oa::F32>(caret.w) * inverseScaleX))),
-					.h = std::max(1, static_cast<int>(std::ceil(
+					.h = oa::max(1, static_cast<int>(oa::ceil(
 						static_cast<oa::F32>(caret.h) * inverseScaleY))),
 				};
 				(void)SDL_SetTextInputArea(win, &area, 0);

@@ -5,7 +5,6 @@
 #include <oa/runtime/swapchain.h>
 #include "engine/queueSubmitRoute.h"
 
-#include <vector>
 #include <vulkan/vulkan.h>
 
 namespace oa {
@@ -18,9 +17,9 @@ namespace oa {
 struct RetiredPresenter {
 	oa::Swapchain swapchain;
 	VkRenderPass renderPass = VK_NULL_HANDLE;
-	std::vector<VkFramebuffer> framebuffers;
+	oa::Vec<VkFramebuffer> framebuffers;
 	VkCommandPool commandPool = VK_NULL_HANDLE;
-	std::vector<VkCommandBuffer> commandBuffers;
+	oa::Vec<VkCommandBuffer> commandBuffers;
 	VkDescriptorPool imGuiPool = VK_NULL_HANDLE;
 	oa::Bool imGuiReady = false;
 	oa::Vec<oa::UniquePtr<oavk::Stream>> graphicsStreams;

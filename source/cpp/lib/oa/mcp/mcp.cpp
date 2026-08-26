@@ -1,17 +1,10 @@
 #include <oa/mcp.h>
 
+#include <oa/core/std/algo.h>
+#include <oa/core/std/format.h>
 #include <oa/core/version.h>
 
-#include <algorithm>
-#include <charconv>
-#include <cmath>
-#include <cstdio>
-#include <cstdlib>
-#include <limits>
-#include <string>
-#include <string_view>
-#include <utility>
-#include <vector>
+#include <stdio.h>
 
 namespace {
 
@@ -24,24 +17,34 @@ enum class JsonKind : oa::U8 {
   Object,
 };
 
-struct JsonMember;
+struct JsonValue;
+
+struct JsonMember {
+  oa::String name;
+  oa::UniquePtr<JsonValue> value;
+
+  JsonMember(oa::String inName, oa::UniquePtr<JsonValue> inValue) noexcept
+      : name(oa::move(inName)), value(oa::move(inValue)) {}
+  JsonMember(JsonMember &&) noexcept = default;
+  JsonMember &operator=(JsonMember &&) noexcept = default;
+  JsonMember(const JsonMember &) = delete;
+  JsonMember &operator=(const JsonMember &) = delete;
+  ~JsonMember();
+};
 
 struct JsonValue {
   JsonKind kind = JsonKind::Null;
   oa::Bool boolean = false;
-  std::string text;
-  std::vector<JsonValue> array;
-  std::vector<JsonMember> object;
+  oa::String text;
+  oa::Vec<oa::UniquePtr<JsonValue>> array;
+  oa::Vec<JsonMember> object;
 };
 
-struct JsonMember {
-  std::string name;
-  JsonValue value;
-};
+JsonMember::~JsonMember() = default;
 
 class JsonParser {
 public:
-  JsonParser(std::string_view inText, oa::U32 inMaxDepth, oa::U32 inMaxNodes)
+  JsonParser(oa::StringView inText, oa::U32 inMaxDepth, oa::U32 inMaxNodes)
       : text_(inText), maxDepth_(inMaxDepth), maxNodes_(inMaxNodes) {}
 
   [[nodiscard]] oa::Bool parse(JsonValue &outValue) {
@@ -54,7 +57,7 @@ public:
     return true;
   }
 
-  [[nodiscard]] const std::string &error() const noexcept { return error_; }
+  [[nodiscard]] const oa::String &error() const noexcept { return error_; }
 
 private:
   [[nodiscard]] oa::Bool parseValue(JsonValue &outValue, oa::U32 inDepth) {
@@ -91,9 +94,9 @@ private:
     return fail("invalid JSON value");
   }
 
-  [[nodiscard]] oa::Bool parseLiteral(std::string_view inLiteral,
+  [[nodiscard]] oa::Bool parseLiteral(oa::StringView inLiteral,
                                       JsonKind inKind, JsonValue &outValue) {
-    if (text_.substr(pos_, inLiteral.size()) != inLiteral) {
+    if (text_.subStr(pos_, inLiteral.size()) != inLiteral) {
       return fail("invalid JSON literal");
     }
     pos_ += inLiteral.size();
@@ -113,7 +116,7 @@ private:
       JsonValue item;
       if (not parseValue(item, inDepth + 1))
         return false;
-      outValue.array.push_back(std::move(item));
+      outValue.array.pushBack(oa::makeUnique<JsonValue>(oa::move(item)));
       skipWhitespace();
       if (consume(']'))
         return true;
@@ -135,7 +138,7 @@ private:
       if (pos_ >= text_.size() or text_[pos_] != '"') {
         return fail("expected object member name");
       }
-      std::string name;
+      oa::String name;
       if (not parseString(name))
         return false;
       for (const auto &member : outValue.object) {
@@ -149,7 +152,8 @@ private:
       JsonValue value;
       if (not parseValue(value, inDepth + 1))
         return false;
-      outValue.object.push_back({std::move(name), std::move(value)});
+      outValue.object.emplaceBack(
+          oa::move(name), oa::makeUnique<JsonValue>(oa::move(value)));
       skipWhitespace();
       if (consume('}'))
         return true;
@@ -159,7 +163,7 @@ private:
     }
   }
 
-  [[nodiscard]] oa::Bool parseString(std::string &outText) {
+  [[nodiscard]] oa::Bool parseString(oa::String &outText) {
     if (not consume('"'))
       return fail("expected JSON string");
     while (pos_ < text_.size()) {
@@ -172,28 +176,28 @@ private:
         const char escape = text_[pos_++];
         switch (escape) {
         case '"':
-          outText.push_back('"');
+          outText.pushBack('"');
           break;
         case '\\':
-          outText.push_back('\\');
+          outText.pushBack('\\');
           break;
         case '/':
-          outText.push_back('/');
+          outText.pushBack('/');
           break;
         case 'b':
-          outText.push_back('\b');
+          outText.pushBack('\b');
           break;
         case 'f':
-          outText.push_back('\f');
+          outText.pushBack('\f');
           break;
         case 'n':
-          outText.push_back('\n');
+          outText.pushBack('\n');
           break;
         case 'r':
-          outText.push_back('\r');
+          outText.pushBack('\r');
           break;
         case 't':
-          outText.push_back('\t');
+          outText.pushBack('\t');
           break;
         case 'u': {
           oa::U32 codepoint = 0;
@@ -227,7 +231,7 @@ private:
       if (c < 0x20U)
         return fail("unescaped control character in string");
       if (c < 0x80U) {
-        outText.push_back(static_cast<char>(c));
+        outText.pushBack(static_cast<char>(c));
         continue;
       }
       --pos_;
@@ -237,7 +241,7 @@ private:
     return fail("unterminated JSON string");
   }
 
-  [[nodiscard]] oa::Bool parseUtf8Sequence(std::string &outText) {
+  [[nodiscard]] oa::Bool parseUtf8Sequence(oa::String &outText) {
     const oa::Usize start = pos_;
     const unsigned char first = static_cast<unsigned char>(text_[pos_]);
     oa::U32 codepoint = 0;
@@ -270,7 +274,7 @@ private:
         codepoint > 0x10FFFFU) {
       return fail("invalid UTF-8 code point");
     }
-    outText.append(text_.substr(start, count));
+    outText.append(text_.subStr(start, count));
     pos_ += count;
     return true;
   }
@@ -294,24 +298,24 @@ private:
     return true;
   }
 
-  static void appendUtf8(std::string &outText, oa::U32 inCodepoint) {
+  static void appendUtf8(oa::String &outText, oa::U32 inCodepoint) {
     if (inCodepoint <= 0x7FU) {
-      outText.push_back(static_cast<char>(inCodepoint));
+      outText.pushBack(static_cast<char>(inCodepoint));
     } else if (inCodepoint <= 0x7FFU) {
-      outText.push_back(static_cast<char>(0xC0U | (inCodepoint >> 6U)));
-      outText.push_back(static_cast<char>(0x80U | (inCodepoint & 0x3FU)));
+      outText.pushBack(static_cast<char>(0xC0U | (inCodepoint >> 6U)));
+      outText.pushBack(static_cast<char>(0x80U | (inCodepoint & 0x3FU)));
     } else if (inCodepoint <= 0xFFFFU) {
-      outText.push_back(static_cast<char>(0xE0U | (inCodepoint >> 12U)));
-      outText.push_back(
+      outText.pushBack(static_cast<char>(0xE0U | (inCodepoint >> 12U)));
+      outText.pushBack(
           static_cast<char>(0x80U | ((inCodepoint >> 6U) & 0x3FU)));
-      outText.push_back(static_cast<char>(0x80U | (inCodepoint & 0x3FU)));
+      outText.pushBack(static_cast<char>(0x80U | (inCodepoint & 0x3FU)));
     } else {
-      outText.push_back(static_cast<char>(0xF0U | (inCodepoint >> 18U)));
-      outText.push_back(
+      outText.pushBack(static_cast<char>(0xF0U | (inCodepoint >> 18U)));
+      outText.pushBack(
           static_cast<char>(0x80U | ((inCodepoint >> 12U) & 0x3FU)));
-      outText.push_back(
+      outText.pushBack(
           static_cast<char>(0x80U | ((inCodepoint >> 6U) & 0x3FU)));
-      outText.push_back(static_cast<char>(0x80U | (inCodepoint & 0x3FU)));
+      outText.pushBack(static_cast<char>(0x80U | (inCodepoint & 0x3FU)));
     }
   }
 
@@ -350,7 +354,7 @@ private:
         ++pos_;
     }
     outValue.kind = JsonKind::Number;
-    outValue.text.assign(text_.substr(start, pos_ - start));
+    outValue.text = oa::String(text_.subStr(start, pos_ - start));
     return true;
   }
 
@@ -374,34 +378,33 @@ private:
     if (error_.empty()) {
       error_ = inMessage;
       error_ += " at byte ";
-      error_ += std::to_string(pos_);
+      error_ += oa::toString(static_cast<oa::U64>(pos_));
     }
     return false;
   }
 
-  std::string_view text_;
+  oa::StringView text_;
   oa::Usize pos_ = 0;
   oa::U32 maxDepth_ = 0;
   oa::U32 maxNodes_ = 0;
   oa::U32 nodes_ = 0;
-  std::string error_;
+  oa::String error_;
 };
 
 [[nodiscard]] oa::Result<JsonValue>
 parseJson(oa::StringView inText, oa::U32 inMaxDepth, oa::U32 inMaxNodes) {
   JsonValue value;
-  JsonParser parser(std::string_view(inText.data(), inText.size()), inMaxDepth,
-                    inMaxNodes);
+  JsonParser parser(inText, inMaxDepth, inMaxNodes);
   if (not parser.parse(value)) {
-    return oa::Result<JsonValue>(
-        oa::Status::invalidArgument(oa::String(parser.error())));
+	return oa::Result<JsonValue>(
+		oa::Status::invalidArgument(parser.error()));
   }
-  return oa::Result<JsonValue>(std::move(value));
+  return oa::Result<JsonValue>(oa::move(value));
 }
 
-void writeJsonString(std::string &out, std::string_view inText) {
+void writeJsonString(oa::String &out, oa::StringView inText) {
   static constexpr char Hex[] = "0123456789abcdef";
-  out.push_back('"');
+  out.pushBack('"');
   for (const char byte : inText) {
     const unsigned char c = static_cast<unsigned char>(byte);
     switch (c) {
@@ -429,22 +432,18 @@ void writeJsonString(std::string &out, std::string_view inText) {
     default:
       if (c < 0x20U) {
         out += "\\u00";
-        out.push_back(Hex[c >> 4U]);
-        out.push_back(Hex[c & 0x0FU]);
+        out.pushBack(Hex[c >> 4U]);
+        out.pushBack(Hex[c & 0x0FU]);
       } else {
-        out.push_back(static_cast<char>(c));
+        out.pushBack(static_cast<char>(c));
       }
       break;
     }
   }
-  out.push_back('"');
+  out.pushBack('"');
 }
 
-void writeJsonString(std::string &out, oa::StringView inText) {
-  writeJsonString(out, std::string_view(inText.data(), inText.size()));
-}
-
-void writeJson(std::string &out, const JsonValue &inValue) {
+void writeJson(oa::String &out, const JsonValue &inValue) {
   switch (inValue.kind) {
   case JsonKind::Null:
     out += "null";
@@ -459,71 +458,71 @@ void writeJson(std::string &out, const JsonValue &inValue) {
     writeJsonString(out, inValue.text);
     break;
   case JsonKind::Array:
-    out.push_back('[');
+    out.pushBack('[');
     for (oa::Usize i = 0; i < inValue.array.size(); ++i) {
       if (i != 0)
-        out.push_back(',');
-      writeJson(out, inValue.array[i]);
+        out.pushBack(',');
+      writeJson(out, *inValue.array[i]);
     }
-    out.push_back(']');
+    out.pushBack(']');
     break;
   case JsonKind::Object:
-    out.push_back('{');
+    out.pushBack('{');
     for (oa::Usize i = 0; i < inValue.object.size(); ++i) {
       if (i != 0)
-        out.push_back(',');
+        out.pushBack(',');
       writeJsonString(out, inValue.object[i].name);
-      out.push_back(':');
-      writeJson(out, inValue.object[i].value);
+      out.pushBack(':');
+      writeJson(out, *inValue.object[i].value);
     }
-    out.push_back('}');
+    out.pushBack('}');
     break;
   }
 }
 
 [[nodiscard]] oa::String serializeJson(const JsonValue &inValue) {
-  std::string json;
+  oa::String json;
   writeJson(json, inValue);
-  return oa::String(std::move(json));
+  return json;
 }
 
 [[nodiscard]] const JsonValue *findMember(const JsonValue &inObject,
-                                          std::string_view inName) {
+                                          oa::StringView inName) {
   if (inObject.kind != JsonKind::Object)
     return nullptr;
   for (const auto &member : inObject.object) {
     if (member.name == inName)
-      return &member.value;
+      return member.value.get();
   }
   return nullptr;
 }
 
 [[nodiscard]] const JsonValue *findMemberOa(const JsonValue &inObject,
                                             oa::StringView inName) {
-  return findMember(inObject, std::string_view(inName.data(), inName.size()));
+  return findMember(inObject, inName);
 }
 
 [[nodiscard]] oa::String jsonString(oa::StringView inText) {
-  std::string json;
+  oa::String json;
   writeJsonString(json, inText);
-  return oa::String(std::move(json));
+  return json;
 }
 
 [[nodiscard]] oa::String makeError(oa::StringView inIdJson, oa::I32 inCode,
                                    oa::StringView inMessage,
                                    oa::StringView inDataJson = {}) {
-  std::string json = R"({"jsonrpc":"2.0","id":)";
-  json.append(inIdJson.data(), inIdJson.size());
+  oa::String json = R"({"jsonrpc":"2.0","id":)";
+  json.append(inIdJson);
   json += R"(,"error":{"code":)";
-  json += std::to_string(inCode);
+  json += oa::toString(static_cast<oa::I64>(inCode));
   json += R"(,"message":)";
   writeJsonString(json, inMessage);
   if (not inDataJson.empty()) {
     json += R"(,"data":)";
-    json.append(inDataJson.data(), inDataJson.size());
+    json.append(inDataJson);
   }
   json += "}}";
-  return oa::String(std::move(json));
+  return json;
 }
 
 [[nodiscard]] oa::String makeSuccess(oa::StringView inIdJson,
@@ -578,7 +577,7 @@ void writeJson(std::string &out, const JsonValue &inValue) {
 
 [[nodiscard]] oa::Status validateUtf8Text(oa::StringView inText,
                                           oa::StringView inField) {
-  std::string quoted;
+  oa::String quoted;
   writeJsonString(quoted, inText);
   const auto parsed =
       parseJson(oa::StringView(quoted.data(), quoted.size()), 1, 1);
@@ -639,18 +638,18 @@ canonicalSchema(oa::StringView inSchema, oa::Bool inRequireObjectType,
   return json;
 }
 
-void appendModernResultFields(std::string &out,
+void appendModernResultFields(oa::String &out,
                               const oa::McpServerConfig &inConfig) {
   out +=
       R"("resultType":"complete","_meta":{"io.modelcontextprotocol/serverInfo":)";
   const oa::String serverInfo = serverInfoJson(inConfig);
-  out.append(serverInfo.data(), serverInfo.size());
+  out.append(serverInfo);
   out += '}';
 }
 
-void appendCacheFields(std::string &out, const oa::McpServerConfig &inConfig) {
+void appendCacheFields(oa::String &out, const oa::McpServerConfig &inConfig) {
   out += R"(,"ttlMs":)";
-  out += std::to_string(inConfig.cacheTtlMs);
+  out += oa::toString(inConfig.cacheTtlMs);
   out += R"(,"cacheScope":")";
   out +=
       inConfig.cacheScope == oa::McpCacheScope::Public ? "public" : "private";
@@ -665,7 +664,7 @@ void appendCacheFields(std::string &out, const oa::McpServerConfig &inConfig) {
   return data;
 }
 
-[[nodiscard]] oa::Bool isLegacyVersion(std::string_view inVersion) {
+[[nodiscard]] oa::Bool isLegacyVersion(oa::StringView inVersion) {
   return inVersion == "2025-11-25" or inVersion == "2025-06-18" or
          inVersion == "2025-03-26" or inVersion == "2024-11-05";
 }
@@ -673,7 +672,7 @@ void appendCacheFields(std::string &out, const oa::McpServerConfig &inConfig) {
 struct RequestEnvelope {
   const JsonValue *params = nullptr;
   oa::String idJson = "null";
-  std::string method;
+  oa::String method;
   oa::Bool isNotification = false;
 };
 
@@ -721,7 +720,7 @@ parseEnvelope(const JsonValue &inRoot) {
 }
 
 [[nodiscard]] oa::Result<const JsonValue *>
-requiredMember(const JsonValue *inObject, std::string_view inName,
+requiredMember(const JsonValue *inObject, oa::StringView inName,
                JsonKind inKind) {
   if (inObject == nullptr or inObject->kind != JsonKind::Object) {
     return oa::Result<const JsonValue *>(
@@ -731,7 +730,7 @@ requiredMember(const JsonValue *inObject, std::string_view inName,
   if (value == nullptr or value->kind != inKind) {
     return oa::Result<const JsonValue *>(oa::Status::invalidArgument(
         oa::String("missing or invalid request parameter: ") +
-        oa::String(inName.data(), inName.size())));
+        oa::String(inName)));
   }
   return oa::Result<const JsonValue *>(value);
 }
@@ -770,7 +769,7 @@ validateModernMetadata(const JsonValue *inParams,
     return oa::Status::invalidArgument(
         "current MCP request metadata requires protocolVersion");
   }
-  outRequestedVersion = oa::String(version->text);
+  outRequestedVersion = version->text;
   const JsonValue *capabilities =
       findMember(*meta, "io.modelcontextprotocol/clientCapabilities");
   if (capabilities == nullptr or capabilities->kind != JsonKind::Object) {
@@ -839,7 +838,7 @@ oa::Result<oa::String> oa::McpArguments::string(oa::StringView inName) const {
     return oa::Result<oa::String>(oa::Status::invalidArgument(
         oa::String("MCP argument must be a string: ") + oa::String(inName)));
   }
-  return oa::Result<oa::String>(oa::String((*value)->text));
+  return oa::Result<oa::String>((*value)->text);
 }
 
 oa::Result<oa::I64> oa::McpArguments::integer(oa::StringView inName) const {
@@ -854,10 +853,7 @@ oa::Result<oa::I64> oa::McpArguments::integer(oa::StringView inName) const {
         oa::String("MCP argument must be an integer: ") + oa::String(inName)));
   }
   oa::I64 result = 0;
-  const char *begin = (*value)->text.data();
-  const char *end = begin + (*value)->text.size();
-  const auto parsedInteger = std::from_chars(begin, end, result);
-  if (parsedInteger.ec != std::errc{} or parsedInteger.ptr != end) {
+  if (not oa::parseI64((*value)->text.view(), result)) {
     return oa::Result<oa::I64>(oa::Status::invalidArgument(
         oa::String("MCP argument is not a representable integer: ") +
         oa::String(inName)));
@@ -879,10 +875,7 @@ oa::McpArguments::unsignedInteger(oa::StringView inName) const {
         oa::String(inName)));
   }
   oa::U64 result = 0;
-  const char *begin = (*value)->text.data();
-  const char *end = begin + (*value)->text.size();
-  const auto parsedInteger = std::from_chars(begin, end, result);
-  if (parsedInteger.ec != std::errc{} or parsedInteger.ptr != end) {
+  if (not oa::parseU64((*value)->text.view(), result)) {
     return oa::Result<oa::U64>(oa::Status::invalidArgument(
         oa::String("MCP argument is not a representable unsigned integer: ") +
         oa::String(inName)));
@@ -902,12 +895,7 @@ oa::Result<oa::F64> oa::McpArguments::number(oa::StringView inName) const {
         oa::String("MCP argument must be a number: ") + oa::String(inName)));
   }
   oa::F64 result = 0.0;
-  const char *begin = (*value)->text.data();
-  const char *end = begin + (*value)->text.size();
-  const auto parsedFloat =
-      std::from_chars(begin, end, result, std::chars_format::general);
-  if (parsedFloat.ec != std::errc{} or parsedFloat.ptr != end or
-      not std::isfinite(result)) {
+  if (not oa::parseF64((*value)->text.view(), result) or not oa::isFinite(result)) {
     return oa::Result<oa::F64>(oa::Status::invalidArgument(
         oa::String("MCP argument is not a finite number: ") +
         oa::String(inName)));
@@ -1012,7 +1000,7 @@ oa::Status oa::McpServer::addTool(oa::McpTool inTool) {
                                    inTool.name);
     }
   }
-  auto position = std::lower_bound(
+  auto position = oa::lowerBound(
       tools_.begin(), tools_.end(), inTool.name,
       [](const oa::McpTool &inExisting, const oa::String &inName) {
         return inExisting.name.compare(inName) < 0;
@@ -1050,7 +1038,7 @@ oa::Status oa::McpServer::addTextResource(oa::McpTextResource inResource) {
                                    inResource.uri);
     }
   }
-  auto position = std::lower_bound(
+  auto position = oa::lowerBound(
       resources_.begin(), resources_.end(), inResource.uri,
       [](const oa::McpTextResource &inExisting, const oa::String &inUri) {
         return inExisting.uri.compare(inUri) < 0;
@@ -1139,9 +1127,9 @@ oa::Result<oa::String> oa::McpServer::handleMessage(oa::StringView inMessage) {
       return oa::Result<oa::String>(
           requestError(request, -32602, clientInfoStatus.getMessage()));
     }
-    const std::string requested = (*version)->text;
+    const oa::String requested = (*version)->text;
     legacyProtocolVersion_ = isLegacyVersion(requested)
-                                 ? oa::String(requested)
+                                 ? requested
                                  : oa::String("2025-11-25");
     legacyInitializeSeen_ = true;
     legacyReady_ = false;
@@ -1196,38 +1184,38 @@ oa::Result<oa::String> oa::McpServer::handleMessage(oa::StringView inMessage) {
   if (request.method == "ping") {
     if (request.isNotification)
       return oa::Result<oa::String>(oa::String{});
-    std::string result = "{";
+    oa::String result = "{";
     if (modern)
       appendModernResultFields(result, config_);
     result += '}';
     return oa::Result<oa::String>(boundResponse(
-        makeSuccess(request.idJson, oa::String(result)), request.idJson));
+        makeSuccess(request.idJson, result), request.idJson));
   }
 
   if (modern and request.method == "server/discover") {
     if (request.isNotification)
       return oa::Result<oa::String>(oa::String{});
-    std::string result = "{";
+    oa::String result = "{";
     appendModernResultFields(result, config_);
     appendCacheFields(result, config_);
     result +=
         R"(,"supportedVersions":["2026-07-28","2025-11-25","2025-06-18","2025-03-26","2024-11-05"],"capabilities":)";
     const oa::String capabilities =
         capabilitiesJson(not tools_.empty(), not resources_.empty());
-    result.append(capabilities.data(), capabilities.size());
+    result.append(capabilities);
     if (not config_.instructions.empty()) {
       result += R"(,"instructions":)";
       writeJsonString(result, config_.instructions);
     }
     result += '}';
     return oa::Result<oa::String>(boundResponse(
-        makeSuccess(request.idJson, oa::String(result)), request.idJson));
+        makeSuccess(request.idJson, result), request.idJson));
   }
 
   if (request.method == "tools/list") {
     if (request.isNotification)
       return oa::Result<oa::String>(oa::String{});
-    std::string result = "{";
+    oa::String result = "{";
     if (modern)
       appendModernResultFields(result, config_);
     if (modern)
@@ -1250,11 +1238,10 @@ oa::Result<oa::String> oa::McpServer::handleMessage(oa::StringView inMessage) {
         writeJsonString(result, tool.description);
       }
       result += R"(,"inputSchema":)";
-      result.append(tool.inputSchemaJson.data(), tool.inputSchemaJson.size());
+      result.append(tool.inputSchemaJson);
       if (not tool.outputSchemaJson.empty()) {
         result += R"(,"outputSchema":)";
-        result.append(tool.outputSchemaJson.data(),
-                      tool.outputSchemaJson.size());
+        result.append(tool.outputSchemaJson);
       }
       result += R"(,"annotations":{"readOnlyHint":)";
       result += tool.readOnly ? "true" : "false";
@@ -1268,7 +1255,7 @@ oa::Result<oa::String> oa::McpServer::handleMessage(oa::StringView inMessage) {
     }
     result += "]}";
     return oa::Result<oa::String>(boundResponse(
-        makeSuccess(request.idJson, oa::String(result)), request.idJson));
+        makeSuccess(request.idJson, result), request.idJson));
   }
 
   if (request.method == "tools/call") {
@@ -1281,7 +1268,7 @@ oa::Result<oa::String> oa::McpServer::handleMessage(oa::StringView inMessage) {
     }
     const oa::McpTool *selected = nullptr;
     for (const auto &tool : tools_) {
-      if (tool.name == (*name)->text) {
+      if (tool.name == oa::StringView((*name)->text.data(), (*name)->text.size())) {
         selected = &tool;
         break;
       }
@@ -1323,7 +1310,7 @@ oa::Result<oa::String> oa::McpServer::handleMessage(oa::StringView inMessage) {
       structured = serializeJson(*parsed);
     }
 
-    std::string result = "{";
+    oa::String result = "{";
     if (modern)
       appendModernResultFields(result, config_);
     if (result.size() > 1)
@@ -1333,19 +1320,19 @@ oa::Result<oa::String> oa::McpServer::handleMessage(oa::StringView inMessage) {
     result += "}]";
     if (not structured.empty()) {
       result += R"(,"structuredContent":)";
-      result.append(structured.data(), structured.size());
+      result.append(structured);
     }
     if (toolResult.isError)
       result += R"(,"isError":true)";
     result += '}';
     return oa::Result<oa::String>(boundResponse(
-        makeSuccess(request.idJson, oa::String(result)), request.idJson));
+        makeSuccess(request.idJson, result), request.idJson));
   }
 
   if (request.method == "resources/list") {
     if (request.isNotification)
       return oa::Result<oa::String>(oa::String{});
-    std::string result = "{";
+    oa::String result = "{";
     if (modern)
       appendModernResultFields(result, config_);
     if (modern)
@@ -1377,7 +1364,7 @@ oa::Result<oa::String> oa::McpServer::handleMessage(oa::StringView inMessage) {
     }
     result += "]}";
     return oa::Result<oa::String>(boundResponse(
-        makeSuccess(request.idJson, oa::String(result)), request.idJson));
+        makeSuccess(request.idJson, result), request.idJson));
   }
 
   if (request.method == "resources/read") {
@@ -1390,7 +1377,7 @@ oa::Result<oa::String> oa::McpServer::handleMessage(oa::StringView inMessage) {
     }
     const oa::McpTextResource *selected = nullptr;
     for (const auto &resource : resources_) {
-      if (resource.uri == (*uri)->text) {
+      if (resource.uri == oa::StringView((*uri)->text.data(), (*uri)->text.size())) {
         selected = &resource;
         break;
       }
@@ -1410,7 +1397,7 @@ oa::Result<oa::String> oa::McpServer::handleMessage(oa::StringView inMessage) {
       return oa::Result<oa::String>(
           requestError(request, -32603, status.getMessage()));
     }
-    std::string result = "{";
+    oa::String result = "{";
     if (modern)
       appendModernResultFields(result, config_);
     if (modern)
@@ -1427,7 +1414,7 @@ oa::Result<oa::String> oa::McpServer::handleMessage(oa::StringView inMessage) {
     writeJsonString(result, *content);
     result += "}]}";
     return oa::Result<oa::String>(boundResponse(
-        makeSuccess(request.idJson, oa::String(result)), request.idJson));
+        makeSuccess(request.idJson, result), request.idJson));
   }
 
   return oa::Result<oa::String>(
@@ -1442,12 +1429,12 @@ oa::Status oa::McpServer::runStdio() {
                              "MCP server is closed");
   }
   oa::String line;
-  line.reserve(std::min<oa::Usize>(config_.maxMessageBytes, 64U * 1024U));
+  line.reserve(oa::min<oa::Usize>(config_.maxMessageBytes, 64U * 1024U));
   oa::Bool oversized = false;
   for (;;) {
-    const int value = std::fgetc(stdin);
+    const int value = ::fgetc(stdin);
     if (value == EOF) {
-      if (std::ferror(stdin) != 0) {
+      if (::ferror(stdin) != 0) {
         return oa::Status::error(oa::StatusCode::Unavailable,
                                  "failed to read MCP stdio input");
       }
@@ -1477,9 +1464,9 @@ oa::Status oa::McpServer::runStdio() {
       response = oa::move(*handled);
     }
     if (not response.empty()) {
-      if (std::fwrite(response.data(), 1, response.size(), stdout) !=
+      if (::fwrite(response.data(), 1, response.size(), stdout) !=
               response.size() or
-          std::fputc('\n', stdout) == EOF or std::fflush(stdout) != 0) {
+          ::fputc('\n', stdout) == EOF or ::fflush(stdout) != 0) {
         return oa::Status::error(oa::StatusCode::Unavailable,
                                  "failed to write MCP stdio output");
       }

@@ -9,7 +9,7 @@
 
 oa::Conv2d::Conv2d(oa::I32 inChannels, oa::I32 outChannels, oa::I32 kernelSize, oa::I32 inStride, oa::I32 inPadding, oa::I32 inGroups)
 	: inChannels_(inChannels), outChannels_(outChannels), kernelSize_(kernelSize), stride_(inStride), padding_(inPadding), groups_(inGroups) {
-	assert(inGroups > 0 && inChannels % inGroups == 0 && outChannels % inGroups == 0);
+	OA_ASSERT(inGroups > 0 && inChannels % inGroups == 0 && outChannels % inGroups == 0);
 	auto wd = oa::FnMatrix::weightDtype();
 	registerParameter("weight", oa::FnMatrix::rand(MatrixShape{outChannels, inChannels / inGroups, kernelSize, kernelSize}, wd));
 	registerParameter("bias", oa::FnMatrix::zeros(MatrixShape{outChannels}, wd));

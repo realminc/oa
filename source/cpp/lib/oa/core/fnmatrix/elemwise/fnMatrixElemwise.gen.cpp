@@ -34,7 +34,7 @@ oa::Matrix oa::FnMatrix::scale(const oa::Matrix& inA, oa::F32 inScalar) {
 		oa::detail::opRegistry::FnMatrix::scale.hash, 0, 0, semantic.getValue());
 	if (oa::FnAutograd::isEnabled() and (inA.requiresGrad())) {
 		auto _gradFn = oa::makeShared<oa::GradScale>(inScalar);
-		_gradFn->saveForBackward({});
+		_gradFn->saveForBackward();
 		_gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA});
 		_gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		_gradFn->outputShape_ = out.getShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads
@@ -65,7 +65,7 @@ oa::Matrix oa::FnMatrix::neg(const oa::Matrix& inA) {
 		oa::detail::opRegistry::FnMatrix::neg.hash, 0, 0, semantic.getValue());
 	if (oa::FnAutograd::isEnabled() and (inA.requiresGrad())) {
 		auto _gradFn = oa::makeShared<oa::GradNeg>();
-		_gradFn->saveForBackward({});
+		_gradFn->saveForBackward();
 		_gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA});
 		_gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		_gradFn->outputShape_ = out.getShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads
@@ -96,7 +96,7 @@ oa::Matrix oa::FnMatrix::abs(const oa::Matrix& inA) {
 		oa::detail::opRegistry::FnMatrix::abs.hash, 0, 0, semantic.getValue());
 	if (oa::FnAutograd::isEnabled() and (inA.requiresGrad())) {
 		auto _gradFn = oa::makeShared<oa::GradAbs>();
-		_gradFn->saveForBackward({inA});
+		_gradFn->saveForBackward(inA);
 		_gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA});
 		_gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		_gradFn->outputShape_ = out.getShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads
@@ -127,7 +127,7 @@ oa::Matrix oa::FnMatrix::log(const oa::Matrix& inA) {
 		oa::detail::opRegistry::FnMatrix::log.hash, 0, 0, semantic.getValue());
 	if (oa::FnAutograd::isEnabled() and (inA.requiresGrad())) {
 		auto _gradFn = oa::makeShared<oa::GradLog>();
-		_gradFn->saveForBackward({inA});
+		_gradFn->saveForBackward(inA);
 		_gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA});
 		_gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		_gradFn->outputShape_ = out.getShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads
@@ -158,7 +158,7 @@ oa::Matrix oa::FnMatrix::sqrt(const oa::Matrix& inA) {
 		oa::detail::opRegistry::FnMatrix::sqrt.hash, 0, 0, semantic.getValue());
 	if (oa::FnAutograd::isEnabled() and (inA.requiresGrad())) {
 		auto _gradFn = oa::makeShared<oa::GradSqrt>();
-		_gradFn->saveForBackward({out});
+		_gradFn->saveForBackward(out);
 		_gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA});
 		_gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		_gradFn->outputShape_ = out.getShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads
@@ -189,7 +189,7 @@ oa::Matrix oa::FnMatrix::pow(const oa::Matrix& inA, oa::F32 inExponent) {
 		oa::detail::opRegistry::FnMatrix::pow.hash, 0, 0, semantic.getValue());
 	if (oa::FnAutograd::isEnabled() and (inA.requiresGrad())) {
 		auto _gradFn = oa::makeShared<oa::GradPow>(inExponent);
-		_gradFn->saveForBackward({inA});
+		_gradFn->saveForBackward(inA);
 		_gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA});
 		_gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		_gradFn->outputShape_ = out.getShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads
@@ -220,7 +220,7 @@ oa::Matrix oa::FnMatrix::addScalar(const oa::Matrix& inA, oa::F32 inScalar) {
 		oa::detail::opRegistry::FnMatrix::addScalar.hash, 0, 0, semantic.getValue());
 	if (oa::FnAutograd::isEnabled() and (inA.requiresGrad())) {
 		auto _gradFn = oa::makeShared<oa::GradAddScalar>();
-		_gradFn->saveForBackward({});
+		_gradFn->saveForBackward();
 		_gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA});
 		_gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		_gradFn->outputShape_ = out.getShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads
@@ -251,7 +251,7 @@ oa::Matrix oa::FnMatrix::subScalar(const oa::Matrix& inA, oa::F32 inScalar) {
 		oa::detail::opRegistry::FnMatrix::subScalar.hash, 0, 0, semantic.getValue());
 	if (oa::FnAutograd::isEnabled() and (inA.requiresGrad())) {
 		auto _gradFn = oa::makeShared<oa::GradSubScalar>();
-		_gradFn->saveForBackward({});
+		_gradFn->saveForBackward();
 		_gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA});
 		_gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		_gradFn->outputShape_ = out.getShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads
@@ -282,7 +282,7 @@ oa::Matrix oa::FnMatrix::divScalar(const oa::Matrix& inA, oa::F32 inScalar) {
 		oa::detail::opRegistry::FnMatrix::divScalar.hash, 0, 0, semantic.getValue());
 	if (oa::FnAutograd::isEnabled() and (inA.requiresGrad())) {
 		auto _gradFn = oa::makeShared<oa::GradDivScalar>(inScalar);
-		_gradFn->saveForBackward({});
+		_gradFn->saveForBackward();
 		_gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA});
 		_gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		_gradFn->outputShape_ = out.getShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads
@@ -313,7 +313,7 @@ oa::Matrix oa::FnMatrix::exp(const oa::Matrix& inA) {
 		oa::detail::opRegistry::FnMatrix::exp.hash, 0, 0, semantic.getValue());
 	if (oa::FnAutograd::isEnabled() and (inA.requiresGrad())) {
 		auto _gradFn = oa::makeShared<oa::GradExp>();
-		_gradFn->saveForBackward({out});
+		_gradFn->saveForBackward(out);
 		_gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA});
 		_gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		_gradFn->outputShape_ = out.getShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads
@@ -344,7 +344,7 @@ oa::Matrix oa::FnMatrix::sin(const oa::Matrix& inA) {
 		oa::detail::opRegistry::FnMatrix::sin.hash, 0, 0, semantic.getValue());
 	if (oa::FnAutograd::isEnabled() and (inA.requiresGrad())) {
 		auto _gradFn = oa::makeShared<oa::GradSin>();
-		_gradFn->saveForBackward({inA});
+		_gradFn->saveForBackward(inA);
 		_gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA});
 		_gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		_gradFn->outputShape_ = out.getShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads
@@ -375,7 +375,7 @@ oa::Matrix oa::FnMatrix::cos(const oa::Matrix& inA) {
 		oa::detail::opRegistry::FnMatrix::cos.hash, 0, 0, semantic.getValue());
 	if (oa::FnAutograd::isEnabled() and (inA.requiresGrad())) {
 		auto _gradFn = oa::makeShared<oa::GradCos>();
-		_gradFn->saveForBackward({inA});
+		_gradFn->saveForBackward(inA);
 		_gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA});
 		_gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		_gradFn->outputShape_ = out.getShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads
@@ -406,7 +406,7 @@ oa::Matrix oa::FnMatrix::reciprocal(const oa::Matrix& inA) {
 		oa::detail::opRegistry::FnMatrix::reciprocal.hash, 0, 0, semantic.getValue());
 	if (oa::FnAutograd::isEnabled() and (inA.requiresGrad())) {
 		auto _gradFn = oa::makeShared<oa::GradReciprocal>();
-		_gradFn->saveForBackward({out});
+		_gradFn->saveForBackward(out);
 		_gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA});
 		_gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		_gradFn->outputShape_ = out.getShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads
@@ -437,7 +437,7 @@ oa::Matrix oa::FnMatrix::clampMax(const oa::Matrix& inA, oa::F32 inMax) {
 		oa::detail::opRegistry::FnMatrix::clampMax.hash, 0, 0, semantic.getValue());
 	if (oa::FnAutograd::isEnabled() and (inA.requiresGrad())) {
 		auto _gradFn = oa::makeShared<oa::GradClampMax>(inMax);
-		_gradFn->saveForBackward({inA});
+		_gradFn->saveForBackward(inA);
 		_gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA});
 		_gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		_gradFn->outputShape_ = out.getShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads
@@ -468,7 +468,7 @@ oa::Matrix oa::FnMatrix::clampMin(const oa::Matrix& inA, oa::F32 inMin) {
 		oa::detail::opRegistry::FnMatrix::clampMin.hash, 0, 0, semantic.getValue());
 	if (oa::FnAutograd::isEnabled() and (inA.requiresGrad())) {
 		auto _gradFn = oa::makeShared<oa::GradClampMin>(inMin);
-		_gradFn->saveForBackward({inA});
+		_gradFn->saveForBackward(inA);
 		_gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA});
 		_gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		_gradFn->outputShape_ = out.getShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads

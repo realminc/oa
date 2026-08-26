@@ -29,10 +29,10 @@ void attachLinearProjection(
 		return;
 	}
 	auto grad = oa::makeShared<oa::GradLinear>();
-	grad->saveForBackward({inHidden, inWeightHh});
+	grad->saveForBackward(inHidden, inWeightHh);
 	oa::Vec<oa::Matrix> inputs{inHidden, inWeightHh};
 	if (hasBias) inputs.pushBack(inBiasHh);
-	grad->setGraphInputs(std::move(inputs));
+	grad->setGraphInputs(oa::move(inputs));
 	grad->sequenceNr_ = oa::FnAutograd::nextSeq();
 	grad->outputShape_ = outGatesH.getShape();
 	outGatesH.mutAutograd().gradFn = grad;
@@ -58,7 +58,7 @@ oa::Status attachGruCellLinear(
 		return oa::Status::ok();
 	}
 	auto grad = oa::makeShared<oa::GradGruCellPointwise>();
-	grad->saveForBackward({inGatesI, inOutGatesH, inHidden});
+	grad->saveForBackward(inGatesI, inOutGatesH, inHidden);
 	grad->setGraphInputs({inGatesI, inOutGatesH, inHidden});
 	grad->sequenceNr_ = oa::FnAutograd::nextSeq();
 	grad->outputShape_ = out.getShape();
@@ -90,10 +90,11 @@ oa::Status attachGruScan(
 		return oa::Status::ok();
 	}
 	auto grad = oa::makeShared<oa::GradGruScan>();
-	grad->saveForBackward({inGatesI, inWeightHh, hasBias ? inBiasHh : inGatesI, inHprev});
+	grad->saveForBackward(inGatesI, inWeightHh,
+		hasBias ? inBiasHh : inGatesI, inHprev);
 	oa::Vec<oa::Matrix> inputs{inGatesI, inWeightHh};
 	if (hasBias) inputs.pushBack(inBiasHh);
-	grad->setGraphInputs(std::move(inputs));
+	grad->setGraphInputs(oa::move(inputs));
 	grad->sequenceNr_ = oa::FnAutograd::nextSeq();
 	grad->outputShape_ = out.getShape();
 	grad->hiddenSize_ = inHiddenSize;

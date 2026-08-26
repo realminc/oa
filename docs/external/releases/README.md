@@ -11,7 +11,8 @@ introduction.
 
 ## Releases
 
-- [v0.7.18](v0.7.18.md) — current public development preview
+- [v0.7.19](v0.7.19.md) — current public development preview
+- [v0.7.18](v0.7.18.md) — paired Transformer SDK example
 
 OA follows semantic versioning for public releases:
 

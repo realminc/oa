@@ -1,17 +1,47 @@
 #include <oa/ml/trainingSession.h>
 
+#include <oa/core/std/sync.h>
 #include <oa/ml/itTraining.h>
 #include <oa/ml/optim.h>
 
-#include <algorithm>
-#include <cmath>
-#include <condition_variable>
-#include <deque>
-#include <limits>
-#include <mutex>
-#include <vector>
-
 namespace oa {
+
+namespace {
+
+template<typename T>
+class BoundedHistory {
+public:
+  [[nodiscard]] bool empty() const noexcept { return values_.empty(); }
+  [[nodiscard]] oa::Usize size() const noexcept { return values_.size(); }
+
+  void push(T inValue, oa::Usize inCapacity) {
+    OA_REQUIRE(inCapacity > 0U);
+    if (values_.size() < inCapacity) {
+      values_.pushBack(oa::move(inValue));
+      return;
+    }
+    values_[head_] = oa::move(inValue);
+    head_ = (head_ + 1U) % values_.size();
+  }
+
+  [[nodiscard]] const T& back() const noexcept {
+    OA_REQUIRE(not values_.empty());
+    return values_[(head_ + values_.size() - 1U) % values_.size()];
+  }
+
+  template<typename Fn>
+  void forEach(Fn&& inFn) const {
+    for (oa::Usize offset = 0; offset < values_.size(); ++offset) {
+      inFn(values_[(head_ + offset) % values_.size()]);
+    }
+  }
+
+private:
+  oa::Vec<T> values_;
+  oa::Usize head_ = 0;
+};
+
+} // namespace
 
 TrainingValue TrainingValue::fromBool(oa::Bool inValue) {
   TrainingValue value;
@@ -53,27 +83,17 @@ oa::Optional<oa::F64> TrainingValue::asNumber() const {
 struct TrainingSession::Impl {
   oa::ItTraining *training = nullptr;
   TrainingSessionConfig config;
-  mutable std::mutex mutex;
-  std::condition_variable wake;
+  mutable oa::Mutex mutex;
+  oa::Condition wake;
   TrainingState state = TrainingState::Running;
   oa::U64 revision = 0;
   oa::U64 nextSequence = 1;
   oa::U64 takeSequence = 0;
-  std::deque<TrainingCommand> commands;
-  std::deque<TrainingCommandResult> results;
-  std::deque<TrainingSnapshot> snapshots;
-  std::vector<TrainingParameterDesc> parameters;
-  std::vector<TrainingMetricSample> pendingMetrics;
-
-  void boundResults() {
-    while (results.size() > config.resultCapacity)
-      results.pop_front();
-  }
-
-  void boundSnapshots() {
-    while (snapshots.size() > config.snapshotCapacity)
-      snapshots.pop_front();
-  }
+  oa::Vec<TrainingCommand> commands;
+  BoundedHistory<TrainingCommandResult> results;
+  BoundedHistory<TrainingSnapshot> snapshots;
+  oa::Vec<TrainingParameterDesc> parameters;
+  oa::Vec<TrainingMetricSample> pendingMetrics;
 };
 
 namespace {
@@ -98,25 +118,25 @@ TrainingSession::TrainingSession(oa::ItTraining &inTraining,
   impl_->training = &inTraining;
   impl_->config = oa::move(inConfig);
   impl_->config.commandCapacity =
-      std::max<oa::U32>(impl_->config.commandCapacity, 1);
+      oa::max<oa::U32>(impl_->config.commandCapacity, 1);
   impl_->config.resultCapacity =
-      std::max<oa::U32>(impl_->config.resultCapacity, 1);
+      oa::max<oa::U32>(impl_->config.resultCapacity, 1);
   impl_->config.snapshotCapacity =
-      std::max<oa::U32>(impl_->config.snapshotCapacity, 1);
+      oa::max<oa::U32>(impl_->config.snapshotCapacity, 1);
   inTraining.attachSession(this);
 
   TrainingParameterDesc learningRate;
   learningRate.name = "learning_rate";
   learningRate.parameterClass = TrainingParameterClass::Hot;
   learningRate.kind = TrainingValueKind::Float;
-  learningRate.minimum = std::numeric_limits<oa::F64>::min();
+  learningRate.minimum = oa::Limits<oa::F64>::min();
   learningRate.get = [&inTraining]() {
     return TrainingValue::fromFloat(inTraining.optimizer().getLr());
   };
   learningRate.set = [&inTraining](const TrainingValue &inValue) {
     const auto number = inValue.asNumber();
-    if (!number.hasValue() || !std::isfinite(*number) || *number <= 0.0 ||
-        *number > static_cast<oa::F64>(std::numeric_limits<oa::F32>::max())) {
+    if (!number.hasValue() || !oa::isFinite(*number) || *number <= 0.0 ||
+        *number > static_cast<oa::F64>(oa::Limits<oa::F32>::max())) {
       return oa::Status::invalidArgument(
           "learning_rate expects one finite positive Float value");
     }
@@ -134,7 +154,7 @@ TrainingSession::~TrainingSession() {
 }
 
 oa::Result<oa::U64> TrainingSession::enqueue(TrainingCommand inCommand) {
-  std::lock_guard<std::mutex> lock(impl_->mutex);
+  oa::ScopedLock<oa::Mutex> lock(impl_->mutex);
   if (impl_->commands.size() >= impl_->config.commandCapacity) {
     return oa::Result<oa::U64>(
         oa::Status::error(oa::StatusCode::ResourceExhausted,
@@ -144,8 +164,8 @@ oa::Result<oa::U64> TrainingSession::enqueue(TrainingCommand inCommand) {
   // values cannot break independent result cursors.
   inCommand.sequence = impl_->nextSequence++;
   const oa::U64 sequence = inCommand.sequence;
-  impl_->commands.push_back(oa::move(inCommand));
-  impl_->wake.notify_all();
+  impl_->commands.pushBack(oa::move(inCommand));
+  impl_->wake.notifyAll();
   return oa::Result<oa::U64>(sequence);
 }
 
@@ -213,7 +233,7 @@ oa::Status TrainingSession::registerParameter(TrainingParameterDesc inDesc) {
     return oa::Status::invalidArgument(
         "oa::TrainingSession parameter minimum exceeds maximum");
   }
-  std::lock_guard<std::mutex> lock(impl_->mutex);
+  oa::ScopedLock<oa::Mutex> lock(impl_->mutex);
   for (const auto &parameter : impl_->parameters) {
     if (parameter.name == inDesc.name) {
       return oa::Status::error(oa::StatusCode::AlreadyExists,
@@ -221,7 +241,7 @@ oa::Status TrainingSession::registerParameter(TrainingParameterDesc inDesc) {
                                  inDesc.name);
     }
   }
-  impl_->parameters.push_back(oa::move(inDesc));
+  impl_->parameters.pushBack(oa::move(inDesc));
   return oa::Status::ok();
 }
 
@@ -229,7 +249,7 @@ oa::Optional<TrainingValue>
 TrainingSession::parameter(oa::StringView inName) const {
   oa::Fn<TrainingValue()> getter;
   {
-    std::lock_guard<std::mutex> lock(impl_->mutex);
+  oa::ScopedLock<oa::Mutex> lock(impl_->mutex);
     for (const auto &parameter : impl_->parameters) {
       if (parameter.name == inName) {
         getter = parameter.get;
@@ -243,23 +263,23 @@ TrainingSession::parameter(oa::StringView inName) const {
 }
 
 void TrainingSession::publishMetric(oa::String inName, oa::F64 inValue) {
-  if (inName.empty() || !std::isfinite(inValue))
+  if (inName.empty() || !oa::isFinite(inValue))
     return;
-  std::lock_guard<std::mutex> lock(impl_->mutex);
+  oa::ScopedLock<oa::Mutex> lock(impl_->mutex);
   for (auto &metric : impl_->pendingMetrics) {
     if (metric.name == inName) {
       metric.value = inValue;
       return;
     }
   }
-  impl_->pendingMetrics.push_back(
+  impl_->pendingMetrics.pushBack(
       {.name = oa::move(inName), .value = inValue});
 }
 
 oa::Status TrainingSession::poll() {
-  std::deque<TrainingCommand> commands;
+  oa::Vec<TrainingCommand> commands;
   {
-    std::lock_guard<std::mutex> lock(impl_->mutex);
+  oa::ScopedLock<oa::Mutex> lock(impl_->mutex);
     commands.swap(impl_->commands);
   }
 
@@ -270,7 +290,7 @@ oa::Status TrainingSession::poll() {
     TrainingState state;
     oa::U64 revision;
     {
-      std::lock_guard<std::mutex> lock(impl_->mutex);
+  oa::ScopedLock<oa::Mutex> lock(impl_->mutex);
       state = impl_->state;
       revision = impl_->revision;
       if (command.expectedRevision != 0 &&
@@ -384,7 +404,7 @@ oa::Status TrainingSession::poll() {
     }
 
     {
-      std::lock_guard<std::mutex> lock(impl_->mutex);
+  oa::ScopedLock<oa::Mutex> lock(impl_->mutex);
       if (status.isOk()) {
         switch (command.kind) {
         case TrainingCommandKind::Pause:
@@ -401,16 +421,15 @@ oa::Status TrainingSession::poll() {
         }
         ++impl_->revision;
       }
-      impl_->results.push_back({
+      impl_->results.push({
           .sequence = command.sequence,
           .revision = impl_->revision,
           .disposition = status.isOk() ? TrainingCommandDisposition::Applied
                                        : TrainingCommandDisposition::Rejected,
           .state = impl_->state,
           .status = status,
-      });
-      impl_->boundResults();
-      impl_->wake.notify_all();
+      }, impl_->config.resultCapacity);
+  impl_->wake.notifyAll();
     }
   }
   return oa::Status::ok();
@@ -419,7 +438,7 @@ oa::Status TrainingSession::poll() {
 bool TrainingSession::tryBeginStep() {
   (void)poll();
   {
-    std::lock_guard<std::mutex> lock(impl_->mutex);
+  oa::ScopedLock<oa::Mutex> lock(impl_->mutex);
     if (impl_->state != TrainingState::Running)
       return false;
   }
@@ -430,7 +449,7 @@ bool TrainingSession::waitBeginStep() {
   for (;;) {
     (void)poll();
     {
-      std::unique_lock<std::mutex> lock(impl_->mutex);
+      oa::UniqueLock<oa::Mutex> lock(impl_->mutex);
       if (isTerminal(impl_->state))
         return false;
       if (impl_->state == TrainingState::Running)
@@ -445,17 +464,17 @@ bool TrainingSession::waitBeginStep() {
 }
 
 TrainingState TrainingSession::state() const {
-  std::lock_guard<std::mutex> lock(impl_->mutex);
+  oa::ScopedLock<oa::Mutex> lock(impl_->mutex);
   return impl_->state;
 }
 
 oa::U64 TrainingSession::revision() const {
-  std::lock_guard<std::mutex> lock(impl_->mutex);
+  oa::ScopedLock<oa::Mutex> lock(impl_->mutex);
   return impl_->revision;
 }
 
 TrainingSnapshot TrainingSession::currentSnapshot() const {
-  std::lock_guard<std::mutex> lock(impl_->mutex);
+  oa::ScopedLock<oa::Mutex> lock(impl_->mutex);
   TrainingSnapshot snapshot;
   if (not impl_->snapshots.empty())
     snapshot = impl_->snapshots.back();
@@ -465,7 +484,7 @@ TrainingSnapshot TrainingSession::currentSnapshot() const {
 }
 
 oa::Optional<TrainingSnapshot> TrainingSession::latestSnapshot() const {
-  std::lock_guard<std::mutex> lock(impl_->mutex);
+  oa::ScopedLock<oa::Mutex> lock(impl_->mutex);
   if (impl_->snapshots.empty())
     return {};
   return impl_->snapshots.back();
@@ -474,24 +493,24 @@ oa::Optional<TrainingSnapshot> TrainingSession::latestSnapshot() const {
 oa::Vec<TrainingCommandResult>
 TrainingSession::resultsAfter(oa::U64 inSequence) const {
   oa::Vec<TrainingCommandResult> results;
-  std::lock_guard<std::mutex> lock(impl_->mutex);
-  for (const auto &result : impl_->results) {
+  oa::ScopedLock<oa::Mutex> lock(impl_->mutex);
+  impl_->results.forEach([&](const TrainingCommandResult& result) {
     if (result.sequence > inSequence)
       results.pushBack(result);
-  }
+  });
   return results;
 }
 
 oa::Vec<TrainingCommandResult> TrainingSession::takeResults() {
   oa::Vec<TrainingCommandResult> results;
-  std::lock_guard<std::mutex> lock(impl_->mutex);
+  oa::ScopedLock<oa::Mutex> lock(impl_->mutex);
   results.reserve(impl_->results.size());
-  for (const auto &result : impl_->results) {
+  impl_->results.forEach([&](const TrainingCommandResult& result) {
     if (result.sequence <= impl_->takeSequence)
-      continue;
+      return;
     results.pushBack(result);
-    impl_->takeSequence = std::max(impl_->takeSequence, result.sequence);
-  }
+    impl_->takeSequence = oa::max(impl_->takeSequence, result.sequence);
+  });
   return results;
 }
 
@@ -504,7 +523,7 @@ void TrainingSession::onStepCompleted(const oa::ItTraining &inTraining) {
   snapshot.gpuMs = inTraining.lastGpuMs();
   snapshot.wallMs = inTraining.wallMsPerStep();
   {
-    std::lock_guard<std::mutex> lock(impl_->mutex);
+  oa::ScopedLock<oa::Mutex> lock(impl_->mutex);
     snapshot.revision = impl_->revision;
     snapshot.state = impl_->state;
     snapshot.metrics.reserve(static_cast<oa::I64>(impl_->pendingMetrics.size()));
@@ -512,8 +531,7 @@ void TrainingSession::onStepCompleted(const oa::ItTraining &inTraining) {
       metric.step = snapshot.step;
       snapshot.metrics.pushBack(oa::move(metric));
     }
-    impl_->snapshots.push_back(oa::move(snapshot));
-    impl_->boundSnapshots();
+    impl_->snapshots.push(oa::move(snapshot), impl_->config.snapshotCapacity);
   }
 }
 
@@ -522,14 +540,13 @@ void TrainingSession::onReset(const oa::ItTraining &inTraining) {
   snapshot.step = inTraining.stepCount();
   snapshot.epoch = inTraining.epoch();
   snapshot.learningRate = inTraining.optimizer().getLr();
-  std::lock_guard<std::mutex> lock(impl_->mutex);
+  oa::ScopedLock<oa::Mutex> lock(impl_->mutex);
   impl_->state = TrainingState::Running;
   ++impl_->revision;
   snapshot.revision = impl_->revision;
   snapshot.state = impl_->state;
-  impl_->snapshots.push_back(oa::move(snapshot));
-  impl_->boundSnapshots();
-  impl_->wake.notify_all();
+  impl_->snapshots.push(oa::move(snapshot), impl_->config.snapshotCapacity);
+  impl_->wake.notifyAll();
 }
 
 void TrainingSession::onFinished(const oa::Status &inStatus,
@@ -541,15 +558,14 @@ void TrainingSession::onFinished(const oa::Status &inStatus,
   snapshot.loss = inTraining.lastLoss();
   snapshot.gpuMs = inTraining.lastGpuMs();
   snapshot.wallMs = inTraining.wallMsPerStep();
-  std::lock_guard<std::mutex> lock(impl_->mutex);
+  oa::ScopedLock<oa::Mutex> lock(impl_->mutex);
   impl_->state =
       inStatus.isOk() ? TrainingState::Completed : TrainingState::Failed;
   ++impl_->revision;
   snapshot.revision = impl_->revision;
   snapshot.state = impl_->state;
-  impl_->snapshots.push_back(oa::move(snapshot));
-  impl_->boundSnapshots();
-  impl_->wake.notify_all();
+  impl_->snapshots.push(oa::move(snapshot), impl_->config.snapshotCapacity);
+  impl_->wake.notifyAll();
 }
 
 } // namespace oa

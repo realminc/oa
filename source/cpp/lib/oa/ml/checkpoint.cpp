@@ -6,13 +6,25 @@
 #include <oa/ml/modelFile.h>
 #include <oa/ml/optim.h>
 #include <oa/core/log.h>
+#include <oa/core/memory.h>
+#include <oa/core/std/algo.h>
+#include <oa/core/std/limits.h>
+#include <oa/core/std/utility.h>
 
-#include <algorithm>
-#include <charconv>
-#include <cstdio>
-#include <cstring>
-#include <limits>
-#include <string>
+#include <stdio.h>
+
+static bool parseU64(oa::StringView inText, oa::U64& outValue) {
+	if (inText.empty()) return false;
+	oa::U64 value = 0;
+	for (char character : inText) {
+		if (character < '0' || character > '9') return false;
+		const oa::U64 digit = static_cast<oa::U64>(character - '0');
+		if (value > (oa::Limits<oa::U64>::max() - digit) / 10U) return false;
+		value = value * 10U + digit;
+	}
+	outValue = value;
+	return true;
+}
 
 static oa::Status ensureDirectoryTree(const oa::String& inPath) {
 	if (inPath.empty()) return oa::Status::ok();
@@ -45,7 +57,7 @@ static oa::Status saveCheckpointFile(
 	const oa::String& inMetricName,
 	bool inLowerIsBetter)
 {
-	if (inStep > static_cast<oa::U64>(std::numeric_limits<oa::I64>::max())) {
+	if (inStep > static_cast<oa::U64>(oa::Limits<oa::I64>::max())) {
 		return oa::Status::error(oa::StatusCode::OutOfRange,
 			"checkpoint step exceeds the .oam progress range");
 	}
@@ -56,10 +68,10 @@ static oa::Status saveCheckpointFile(
 	checkpoint.progress.lr = inOpt.getLr();
 	checkpoint.progress.bestMetric = static_cast<oa::F32>(inMetric);
 	checkpoint.progress.lowerIsBetter = inLowerIsBetter ? 1 : 0;
-	std::memset(checkpoint.progress.metricName, 0,
-		sizeof(checkpoint.progress.metricName));
-	std::strncpy(checkpoint.progress.metricName, inMetricName.cStr(),
-		sizeof(checkpoint.progress.metricName) - 1);
+	oa::memzero(checkpoint.progress.metricName, sizeof(checkpoint.progress.metricName));
+	const oa::Usize metricBytes = oa::min(
+		inMetricName.size(), sizeof(checkpoint.progress.metricName) - 1U);
+	oa::memcpy(checkpoint.progress.metricName, inMetricName.data(), metricBytes);
 	return checkpoint.save(inPath);
 }
 
@@ -73,7 +85,7 @@ static oa::Status restoreCheckpointFile(
 {
 	auto loaded = oa::ModelFile::load(inPath);
 	if (not loaded.isOk()) return loaded.getStatus();
-	auto checkpoint = std::move(loaded).getValue();
+	auto checkpoint = oa::move(loaded).getValue();
 	if (inCheckStep and checkpoint.formatVersion >= 2
 		and (checkpoint.progress.step < 0
 			or static_cast<oa::U64>(checkpoint.progress.step) != inExpectedStep))
@@ -90,10 +102,10 @@ static oa::Status restoreCheckpointFile(
 
 oa::CheckpointManager::CheckpointManager(
 	oa::Engine& inEngine, oa::CheckpointManagerConfig inConfig)
-	: config_(std::move(inConfig)), engine_(&inEngine) {
+	: config_(oa::move(inConfig)), engine_(&inEngine) {
 	bestMetric_ = config_.lowerIsBetter
-		? std::numeric_limits<oa::F64>::max()
-		: -std::numeric_limits<oa::F64>::max();
+		? oa::Limits<oa::F64>::max()
+		: -oa::Limits<oa::F64>::max();
 }
 
 oa::String oa::CheckpointManager::modelDir() const {
@@ -144,7 +156,7 @@ void oa::CheckpointManager::rotateCheckpoints() {
 	auto compare = [](const SavedCheckpoint& inA, const SavedCheckpoint& inB) {
 		return inA.step > inB.step;  // newest first; pop the oldest from the back
 	};
-	std::sort(saved_.begin(), saved_.end(), compare);
+	oa::sort(saved_.begin(), saved_.end(), compare);
 
 	while (static_cast<oa::I32>(saved_.size()) > config_.maxKeep) {
 		const auto& worst = saved_.back();
@@ -240,10 +252,7 @@ oa::Status oa::CheckpointManager::loadLatestInto(oa::Module& inOutModel, oa::Opt
 			if (stepEnd == oa::String::Npos) continue;
 			const oa::String stepText = name.substr(stepStart, stepEnd - stepStart);
 			oa::U64 step = 0;
-			const char* first = stepText.cStr();
-			const char* last = first + stepText.size();
-			const auto parsed = std::from_chars(first, last, step);
-			if (parsed.ec != std::errc{} or parsed.ptr != last) continue;
+			if (!parseU64(stepText.view(), step)) continue;
 			if (not found or step > expectedStep) {
 				expectedStep = step;
 				latestPath = filePath.string();

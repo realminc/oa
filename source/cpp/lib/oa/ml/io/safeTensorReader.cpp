@@ -2,10 +2,9 @@
 #include <oa/core/log.h>
 #include <oa/core/validation.h>
 #include <oa/core/fnMatrix.h>
-#include <algorithm>
-#include <cstring>
-#include <cstdlib>
-#include <limits>
+#include <oa/core/std/algo.h>
+#include <oa/core/std/cString.h>
+#include <oa/core/std/limits.h>
 
 namespace oa {
 
@@ -101,7 +100,7 @@ private:
 	}
 
 	JsonToken parseLiteral(const char* inExp, oa::Usize inLen, JsonTokenType inType) {
-		if (pos_ + inLen <= len_ and std::strncmp(&data_[pos_], inExp, inLen) == 0) {
+		if (pos_ + inLen <= len_ and oa::strncmp(&data_[pos_], inExp, inLen) == 0) {
 			pos_ += inLen;
 			return {.type = inType, .data = inExp, .len = inLen};
 		}
@@ -369,7 +368,7 @@ oa::Status SafeTensorsWeightSource::parseHeader(oa::Span<const oa::U8> inHeaderD
 			const char c = inToken.data[i];
 			if (c < '0' || c > '9') return false;
 			const oa::U64 digit = static_cast<oa::U64>(c - '0');
-			if (value > (std::numeric_limits<oa::U64>::max() - digit) / 10) return false;
+			if (value > (oa::Limits<oa::U64>::max() - digit) / 10) return false;
 			value = value * 10 + digit;
 		}
 		outValue = value;
@@ -484,7 +483,7 @@ oa::Status SafeTensorsWeightSource::parseHeader(oa::Span<const oa::U8> inHeaderD
 					JsonToken dimNext = lexer.nextToken();
 					if (dimNext.type != JsonTokenType::ArrayEnd) while (true) {
 						oa::U64 dim = 0;
-						if (!parseUnsigned(dimNext, dim) || dim > static_cast<oa::U64>(std::numeric_limits<oa::I64>::max())) {
+						if (!parseUnsigned(dimNext, dim) || dim > static_cast<oa::U64>(oa::Limits<oa::I64>::max())) {
 							return oa::Status::error(oa::StatusCode::FileCorrupt, "shape dimensions must be non-negative integers");
 						}
 						info.shape.pushBack(static_cast<oa::I64>(dim));
@@ -595,7 +594,7 @@ oa::Status SafeTensorsWeightSource::validateEntries() {
 				break;
 			}
 			const oa::U64 uDim = static_cast<oa::U64>(dim);
-			if (count > std::numeric_limits<oa::U64>::max() / uDim) {
+			if (count > oa::Limits<oa::U64>::max() / uDim) {
 				return oa::Status::error(oa::StatusCode::FileCorrupt,
 					oa::String("Element count overflow for entry: ") + info.name);
 			}
@@ -603,7 +602,7 @@ oa::Status SafeTensorsWeightSource::validateEntries() {
 		}
 		if (info.shape.empty()) count = 1;
 		info.elementCount = count;
-		if (count > std::numeric_limits<oa::U64>::max() / dtypeSize ||
+		if (count > oa::Limits<oa::U64>::max() / dtypeSize ||
 			count * dtypeSize != info.byteSize) {
 			return oa::Status::error(oa::StatusCode::FileCorrupt,
 				oa::String("Shape and byte length disagree for entry: ") + info.name);
@@ -615,7 +614,7 @@ oa::Status SafeTensorsWeightSource::validateEntries() {
 		sorted.pushBack(&entry);
 	}
 
-	std::sort(sorted.begin(), sorted.end(), [](const auto* inA, const auto* inB) {
+	oa::sort(sorted.begin(), sorted.end(), [](const auto* inA, const auto* inB) {
 		if (inA->dataOffset != inB->dataOffset) return inA->dataOffset < inB->dataOffset;
 		return inA->info.byteSize < inB->info.byteSize;
 	});
@@ -701,7 +700,7 @@ oa::Status SafeTensorsWeightSource::read(
 
 	// dtype conversion needed
 	const oa::U64 targetDtypeSize = oa::scalarSize(inTargetDtype);
-	if (targetDtypeSize == 0 || info->elementCount > std::numeric_limits<oa::U64>::max() / targetDtypeSize) {
+	if (targetDtypeSize == 0 || info->elementCount > oa::Limits<oa::U64>::max() / targetDtypeSize) {
 		return oa::Status::error(oa::StatusCode::DtypeMismatch, "Invalid target dtype");
 	}
 	oa::U64 targetBytes = info->elementCount * targetDtypeSize;

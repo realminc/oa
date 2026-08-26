@@ -182,7 +182,8 @@ TEST_VK(AttentionTest, FlashCausalBackwardMatchesStandard) {
 
 TEST_VK(AttentionTest, FlashRejectsUnverifiedBfloat16Storage) {
 	auto q = oa::FnMatrix::empty({1, 4, 4}, oa::ScalarType::BFloat16);
-	EXPECT_THROW((void)oa::FnMatrix::flashAttentionCausal(q, q, q, 0.5F), std::invalid_argument);
+	EXPECT_DEATH((void)oa::FnMatrix::flashAttentionCausal(q, q, q, 0.5F),
+		"OA contract failed");
 }
 
 TEST_VK(AttentionTest, MultiHeadBackendPolicyIsExplicit) {
@@ -271,8 +272,8 @@ TEST_VK(AttentionTest, MultiHeadBidirectionalVisibilityIsExplicit) {
 	}
 
 	attention.setBackend(oa::AttentionBackend::Flash);
-	EXPECT_THROW((void)attention.forward(fromF32(values, oa::MatrixShape{2, 4})),
-		std::invalid_argument);
+	EXPECT_DEATH((void)attention.forward(fromF32(values, oa::MatrixShape{2, 4})),
+		"OA contract failed");
 }
 
 TEST_VK(AttentionTest, MultiHeadBackwardReachesInput) {

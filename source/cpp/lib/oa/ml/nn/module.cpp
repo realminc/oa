@@ -5,11 +5,10 @@
 #include <oa/ml/optim.h>
 #include <oa/core/log.h>
 #include <oa/core/matrixAccess.h>
+#include <oa/core/std/utility.h>
 #include <oa/runtime/executionSession.h>
 #include <oa/runtime/engine.h>
 #include <oa/runtime/engine/resourceAccess.h>
-
-#include <cstring>
 
 oa::Matrix oa::Module::forward(const oa::Matrix& inInput) { return inInput; }
 
@@ -28,7 +27,7 @@ oa::Vec<oa::Parameter> oa::Module::allParameters() {
 	for (auto& child : children_) {
 		auto childParams = child.module->allParameters();
 		for (auto& cp : childParams) {
-			all.pushBack(std::move(cp));
+			all.pushBack(oa::move(cp));
 		}
 	}
 	return all;
@@ -79,7 +78,7 @@ oa::I64 oa::Module::numParameters() const {
 
 void oa::Module::registerModule(oa::StringView inName, oa::SharedPtr<oa::Module> inModule) {
 	inModule->train(training_);
-	children_.pushBack({oa::String(inName), std::move(inModule)});
+	children_.pushBack({oa::String(inName), oa::move(inModule)});
 }
 
 void oa::Module::registerParameter(oa::StringView inName, oa::Matrix inData, bool inRequiresGrad) {
@@ -90,12 +89,12 @@ void oa::Module::registerParameter(oa::StringView inName, oa::Matrix inData, boo
 	if (inRequiresGrad) {
 		inData.setRequiresGrad(true);
 	}
-	params_.pushBack({oa::String(inName), std::move(inData), inRequiresGrad});
+	params_.pushBack({oa::String(inName), oa::move(inData), inRequiresGrad});
 }
 
 void oa::Module::registerBuffer(oa::StringView inName, oa::Matrix inData, bool inPersistent) {
 	inData.setRequiresGrad(false);
-	buffers_.pushBack({oa::String(inName), std::move(inData), inPersistent});
+	buffers_.pushBack({oa::String(inName), oa::move(inData), inPersistent});
 }
 
 // ─── Persistence: non-virtual tree walks ──────────────────────────────────
@@ -323,7 +322,7 @@ oa::Status oa::Module::loadFrom(oa::Engine& inEngine, const ModelFile& inFile) {
 oa::Status oa::Module::load(oa::Engine& inEngine, const oa::String& inPath) {
 	auto result = ModelFile::load(inPath);
 	if (not result.isOk()) return result.getStatus();
-	auto oam = std::move(result).getValue();
+	auto oam = oa::move(result).getValue();
 	return loadFrom(inEngine, oam);
 }
 
@@ -333,7 +332,7 @@ oa::Status oa::Module::load(
 {
 	auto result = ModelFile::load(inPath);
 	if (not result.isOk()) return result.getStatus();
-	auto oam = std::move(result).getValue();
+	auto oam = oa::move(result).getValue();
 	OA_RETURN_IF_ERROR(validateLoadWalk(oam, oa::String()));
 	OA_RETURN_IF_ERROR(inOptimizer.validateLoad(oam));
 	OA_RETURN_IF_ERROR(loadFrom(inEngine, oam));

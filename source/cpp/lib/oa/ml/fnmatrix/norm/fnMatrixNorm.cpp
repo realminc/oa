@@ -15,7 +15,7 @@
 #include <oa/core/validation.h>
 #include "../../autograd/autogradAttach.gen.h"
 
-#include <cassert>
+#include <assert.h>
 
 // Normalization
 oa::Matrix oa::FnMatrix::layerNorm(
@@ -157,7 +157,7 @@ oa::Matrix oa::FnMatrix::rmsNormGated(
 	if (inNormBeforeGate and oa::FnAutograd::isEnabled() and
 		(inSelf.requiresGrad() or inWeight.requiresGrad() or inBias.requiresGrad() or inZ.requiresGrad())) {
 		auto gradFn = oa::makeShared<oa::GradRmsNormGated>();
-		gradFn->saveForBackward({inSelf, inWeight, inBias, inZ});
+		gradFn->saveForBackward(inSelf, inWeight, inBias, inZ);
 		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inSelf, inWeight, inBias, inZ});
 		gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		gradFn->eps_ = inEps;
@@ -336,8 +336,7 @@ oa::ResidualRmsNormResult oa::FnMatrix::residualRmsNorm(
 		(residual.requiresGrad() or inWeight.requiresGrad()))
 	{
 		auto outGrad = oa::makeShared<oa::GradRmsNorm>();
-		outGrad->saveForBackward({
-			residual, inWeight, out, out});
+		outGrad->saveForBackward(residual, inWeight, out, out);
 		outGrad->setGraphInputs(oa::Vec<oa::Matrix>{residual, inWeight});
 		outGrad->sequenceNr_ = oa::FnAutograd::nextSeq();
 		outGrad->eps_ = inEps;

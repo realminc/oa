@@ -21,10 +21,38 @@
 #include <chrono>
 #include <cassert>
 #include <functional>
+#include <ostream>
+#include <string>
+
+[[nodiscard]] inline std::string testStdString(oa::StringView inText) {
+	return std::string(inText.data(), inText.size());
+}
 #include <cstdio>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+
+// Test-only diagnostic interop. Production OA text types deliberately do not
+// include or expose hosted iostream machinery.
+#ifndef OA_HOSTED_TEXT_STREAM_OPERATORS
+#define OA_HOSTED_TEXT_STREAM_OPERATORS
+
+namespace oa {
+
+inline std::ostream& operator<<(std::ostream& inOut, oa::StringView inValue) {
+	if (!inValue.empty()) {
+		inOut.write(inValue.data(), static_cast<std::streamsize>(inValue.size()));
+	}
+	return inOut;
+}
+
+inline std::ostream& operator<<(std::ostream& inOut, const oa::String& inValue) {
+	return inOut << inValue.view();
+}
+
+} // namespace oa
+
+#endif // OA_HOSTED_TEXT_STREAM_OPERATORS
 
 // OA_DEVICE — optional vulkan device selection for tests/benches (same semantics as oa::EngineConfig).
 //   integrated | igpu  → oa::DevicePreference::Integrated
@@ -201,7 +229,12 @@ static inline void expectMatrixNear(const oa::Matrix& inA, const oa::Matrix& inB
 }
 
 static inline void expectShape(const oa::Matrix& inMatrix, std::initializer_list<oa::I64> inExpected) {
-	oa::MatrixShape expected(inExpected);
+	oa::MatrixShape expected;
+	expected.rank = static_cast<oa::I32>(inExpected.size());
+	oa::Usize index = 0;
+	for (const oa::I64 dimension : inExpected) {
+		expected.dims[index++] = dimension;
+	}
 	EXPECT_EQ(inMatrix.getShape(), expected) << "Shape mismatch";
 }
 

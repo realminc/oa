@@ -9,9 +9,8 @@
 #include <oa/core/log.h>
 #include <oa/core/matrix.h>
 #include <oa/core/fnMatrix.h>
+#include <oa/core/std/scalarMath.h>
 #include <oa/core/validation.h>
-
-#include <cmath>
 
 namespace {
 
@@ -74,8 +73,8 @@ oa::Matrix oa::FnImage::normalize(
         return inImage;
     }
     for (oa::U32 c = 0; c < C; ++c) {
-        if (!std::isfinite(inParams.mean[c]) ||
-            !std::isfinite(inParams.std[c]) ||
+        if (!oa::isFinite(inParams.mean[c]) ||
+            !oa::isFinite(inParams.std[c]) ||
             inParams.std[c] <= 0.0F) {
             reportVisionValidation(
                 oa::ValidationSeverity::Error,

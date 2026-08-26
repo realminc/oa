@@ -11,8 +11,7 @@
 
 #include <oa/core/vlm.h>
 #include <oa/core/status.h>
-
-#include <cmath>
+#include <oa/core/std/scalarMath.h>
 
 
 // ─── PixelRect ──────────────────────────────────────────────────────────────
@@ -60,13 +59,13 @@ struct WorldAabb {
 	oa::vlm::Vec2 max;
 
 	[[nodiscard]] bool isValid() const noexcept {
-		return std::isfinite(min.x) and std::isfinite(min.y)
-			and std::isfinite(max.x) and std::isfinite(max.y)
+		return oa::isFinite(min.x) and oa::isFinite(min.y)
+			and oa::isFinite(max.x) and oa::isFinite(max.y)
 			and min.x <= max.x and min.y <= max.y;
 	}
 
 	[[nodiscard]] bool contains(oa::vlm::Vec2 inP) const noexcept {
-		return isValid() and std::isfinite(inP.x) and std::isfinite(inP.y)
+		return isValid() and oa::isFinite(inP.x) and oa::isFinite(inP.y)
 			and inP.x >= min.x and inP.x <= max.x
 		   and inP.y >= min.y and inP.y <= max.y;
 	}

@@ -11,7 +11,7 @@
 
 #include <oa/core/matrixAccess.h>
 #include <oa/core/op.h>
-#include <oa/runtime/executionSession.h>
+#include <oa/core/thread.h>
 #include <oa/runtime/executionSession.h>
 
 #include <cmath>
@@ -54,7 +54,8 @@ private:
 oa::String mcpToolRequest(oa::I64 inId, oa::StringView inName,
                         oa::StringView inArguments) {
   oa::String request = R"({"jsonrpc":"2.0","id":)";
-  request += std::to_string(inId);
+  const std::string idText = std::to_string(inId);
+  request += oa::StringView(idText.data(), idText.size());
   request +=
       R"(,"method":"tools/call","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}},"name":")";
   request += inName;
@@ -67,7 +68,9 @@ oa::String mcpToolRequest(oa::I64 inId, oa::StringView inName,
 std::string handleMcp(oa::McpServer &inServer, oa::StringView inRequest) {
   auto result = inServer.handleMessage(inRequest);
   EXPECT_TRUE(result.isOk()) << result.getStatus().toString();
-  return result.isOk() ? result->stdStr() : std::string{};
+  return result.isOk()
+      ? std::string(result->data(), result->size())
+      : std::string{};
 }
 
 } // namespace
@@ -157,6 +160,42 @@ TEST(TrainingSession, CommandsAreTypedRevisionedAndSafePointApplied) {
   EXPECT_EQ(results[0].disposition, oa::TrainingCommandDisposition::Applied);
   EXPECT_EQ(results[5].disposition, oa::TrainingCommandDisposition::Rejected);
   EXPECT_EQ(results[5].status.getCode(), oa::StatusCode::Aborted);
+}
+
+TEST(TrainingSession, BlockingSafePointWakesForResume) {
+  if (not vkTestEngineOk())
+    GTEST_SKIP();
+  oa::OptimizerNoOp optimizer;
+  oa::ItTraining training(testEngine(), optimizer,
+                        oa::ItTrainingConfig{.totalSteps = 1});
+  oa::TrainingSession session(training);
+
+  ASSERT_TRUE(session.pause().isOk());
+  ASSERT_TRUE(session.poll().isOk());
+  ASSERT_EQ(session.state(), oa::TrainingState::Paused);
+
+  oa::Atomic<oa::Bool> entered{false};
+  oa::Atomic<oa::Bool> returned{false};
+  oa::Atomic<oa::Bool> mayBegin{false};
+  auto waiterResult = oa::Thread::create([&] {
+    entered.store(true, oa::MemoryOrder::Release);
+    mayBegin.store(session.waitBeginStep(), oa::MemoryOrder::Release);
+    returned.store(true, oa::MemoryOrder::Release);
+  });
+  ASSERT_TRUE(waiterResult.isOk())
+      << waiterResult.getStatus().toString();
+  oa::Thread waiter = oa::move(*waiterResult);
+
+  while (not entered.load(oa::MemoryOrder::Acquire))
+    oa::Thread::yield();
+  oa::Thread::sleepFor(oa::Duration::fromMilliseconds(5));
+  EXPECT_FALSE(returned.load(oa::MemoryOrder::Acquire));
+
+  ASSERT_TRUE(session.resume().isOk());
+  ASSERT_TRUE(waiter.join().isOk());
+  EXPECT_TRUE(returned.load(oa::MemoryOrder::Acquire));
+  EXPECT_TRUE(mayBegin.load(oa::MemoryOrder::Acquire));
+  EXPECT_EQ(session.state(), oa::TrainingState::Running);
 }
 
 TEST(TrainingSession, IteratorPublishesBoundedSnapshotsAndStop) {
@@ -437,13 +476,13 @@ TEST(TrainingProgram, CaptureOwnsSemanticAndExecutableRecordingTogether) {
   EXPECT_EQ(ctx.semanticGraph()->valueCount(), 0U);
 
   const auto semanticReport =
-      program.semanticDebugReportJson("captured-training-step").stdStr();
+      testStdString(program.semanticDebugReportJson("captured-training-step"));
   const auto executionReport =
-      program.debugReportJson("captured-training-step").stdStr();
+      testStdString(program.debugReportJson("captured-training-step"));
   const auto compilationReport =
-      program.compilationDebugReportJson("captured-training-step").stdStr();
+      testStdString(program.compilationDebugReportJson("captured-training-step"));
   const auto compilationReportAgain =
-      program.compilationDebugReportJson("captured-training-step").stdStr();
+      testStdString(program.compilationDebugReportJson("captured-training-step"));
   EXPECT_NE(semanticReport.find("\"schema\": \"oa.semantic_graph.v2\""),
             std::string::npos);
   EXPECT_NE(semanticReport.find("\"name\": \"oa::FnMatrix::add\""),
@@ -540,7 +579,7 @@ TEST(TrainingProgram, AutomaticallyCapturesSemanticDnnPartitions) {
   options.observedOutputs = observed;
   ASSERT_TRUE(program.capture(ctx.engine(), options).isOk());
   const auto report =
-      program.compilationDebugReportJson("automatic-dnn-capture").stdStr();
+      testStdString(program.compilationDebugReportJson("automatic-dnn-capture"));
   EXPECT_NE(report.find("\"stage\": \"fusion\", \"state\": \"analyzed\", "
                         "\"input_count\": 3, \"output_count\": 1"),
             std::string::npos);
@@ -601,7 +640,7 @@ TEST(TrainingProgram, RejectedCapturePreservesBothSourceGraphs) {
   EXPECT_EQ(failedStages[1].stage, oa::TrainingCompilationStage::ReplaySafety);
   EXPECT_EQ(failedStages[1].state, oa::TrainingCompilationState::Failed);
   const auto failedReport =
-      program.compilationDebugReportJson("rejected-training-step").stdStr();
+      testStdString(program.compilationDebugReportJson("rejected-training-step"));
   EXPECT_NE(failedReport.find("\"captured\": false"), std::string::npos);
   EXPECT_NE(
       failedReport.find("\"stage\": \"replay_safety\", \"state\": \"failed\""),
@@ -758,7 +797,7 @@ TEST(TrainingProgram, TwoPhaseStepClassifiesStableReplayInputs) {
   EXPECT_EQ(program.stats().aliasBarrierCount, 1U);
   EXPECT_FLOAT_EQ(loss.item(), 16.0F);
   const auto report =
-      program.compilationDebugReportJson("captured-memory-analysis").stdStr();
+      testStdString(program.compilationDebugReportJson("captured-memory-analysis"));
   EXPECT_NE(report.find("\"candidate_count\": 3"), std::string::npos);
   EXPECT_NE(report.find("\"materialization_eligible_count\": 3"),
             std::string::npos);
@@ -819,7 +858,7 @@ TEST(TrainingProgram, RetainedTransientMatrixPreventsAliasMaterialization) {
     EXPECT_FALSE(program.capturedResources()[index].aliasMaterialized);
   }
   const auto report =
-      program.compilationDebugReportJson("retained-transient").stdStr();
+      testStdString(program.compilationDebugReportJson("retained-transient"));
   EXPECT_NE(report.find("\"materialization_eligible_count\": 0"),
             std::string::npos);
   EXPECT_NE(report.find("\"fallback_reason\": \"\""), std::string::npos);

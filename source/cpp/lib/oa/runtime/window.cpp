@@ -1,7 +1,8 @@
 #include <oa/runtime/window.h>
 
-bool oa::VulkanWindow::getPresenterInstanceExtensions(std::vector<char const *> *out_extensions) const {
-	(void)out_extensions;
+bool oa::VulkanWindow::getPresenterInstanceExtensions(
+	oa::Vec<const char*>* outExtensions) const {
+	(void)outExtensions;
 	return false;
 }
 

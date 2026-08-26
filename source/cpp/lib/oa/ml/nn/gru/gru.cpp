@@ -2,9 +2,9 @@
 #include <oa/core/fnMatrix.h>
 #include <oa/core/envFlag.h>
 #include <oa/core/log.h>
+#include <oa/core/std/format.h>
 
-#include <cassert>
-#include <cstdio>
+#include <assert.h>
 
 oa::GruCell::GruCell(oa::I32 inInputSize, oa::I32 inHiddenSize, bool inBias)
 	: inputSize_(inInputSize)
@@ -67,9 +67,8 @@ oa::Gru::Gru(oa::I32 inInputSize, oa::I32 inHiddenSize, oa::I32 inNumLayers, boo
 		const oa::I32 layerInputSize = (i == 0) ? inputSize_ : hiddenSize_;
 		auto layer = oa::makeShared<oa::GruCell>(layerInputSize, hiddenSize_, hasBias_);
 		layers_.pushBack(layer);
-		char layerName[32];
-		std::snprintf(layerName, sizeof(layerName), "layer%d", i);
-		registerModule(layerName, layer);
+		const oa::String layerName = oa::format("layer%d", i);
+		registerModule(layerName.cStr(), layer);
 	}
 }
 
@@ -144,7 +143,7 @@ oa::Matrix oa::Gru::forward(const oa::Matrix& inInput) {
 				 	gatesIAll, hidden, static_cast<oa::U32>(time), static_cast<oa::U32>(seqLen));
 				outputs.pushBack(oa::FnMatrix::reshape(hidden, oa::MatrixShape{batch, 1, hiddenSize_}));
 			}
-			layerInput = oa::FnMatrix::concat(oa::Span<oa::Matrix>(outputs), 1);
+			layerInput = oa::FnMatrix::concat(outputs.span(), 1);
 		}
 	}
 

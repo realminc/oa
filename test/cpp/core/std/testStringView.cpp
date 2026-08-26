@@ -1,13 +1,12 @@
 #include "oaStdTest.h"
 
-#include <stdexcept>
 #include <string_view>
 
 TEST(StringView, SubStr) {
 	oa::StringView v("hello");
 	EXPECT_EQ(v.size(), 5U);
 	oa::StringView sub = v.subStr(1, 3);
-	EXPECT_EQ(sub.stdView(), "ell");
+	EXPECT_EQ(sub, "ell");
 }
 
 TEST(StringView, SubStrMatchesStdStringView) {
@@ -18,8 +17,18 @@ TEST(StringView, SubStrMatchesStdStringView) {
 	auto stSub = st.substr(1, 3);
 	stdEchoCurrentTest();
 	stdExpectGotSize("string_view substr len", stSub.size(), oaSub.size());
-	EXPECT_EQ(oaSub.stdView(), stSub);
-	EXPECT_EQ(oa.subStr(2).stdView(), st.substr(2));
+	EXPECT_EQ(oaSub, oa::StringView(stSub.data(), stSub.size()));
+	auto stTail = st.substr(2);
+	EXPECT_EQ(oa.subStr(2), oa::StringView(stTail.data(), stTail.size()));
+}
+
+TEST(StringView, ReverseFindMatchesStdStringView) {
+	oa::StringView value("host:port:tail");
+	std::string_view standard("host:port:tail");
+	EXPECT_EQ(value.rfind(':'), standard.rfind(':'));
+	EXPECT_EQ(value.rfind(':', 7U), standard.rfind(':', 7U));
+	EXPECT_EQ(value.rfind('x'), oa::StringView::Npos);
+	EXPECT_EQ(oa::StringView{}.rfind('x'), oa::StringView::Npos);
 }
 
 TEST(StringView, CompareEqualsMatchStd) {
@@ -32,16 +41,34 @@ TEST(StringView, CompareEqualsMatchStd) {
 	EXPECT_TRUE(a.equals(oa::StringView("abc")));
 }
 
-TEST(StringView, AtThrowsOutOfRange) {
+TEST(StringView, AtRejectsOutOfRange) {
 	oa::StringView v("x");
 	EXPECT_EQ(v.at(0), 'x');
-	EXPECT_THROW((void)v.at(1), std::out_of_range);
+	EXPECT_DEATH((void)v.at(1), "OA contract failed: inidx < len_");
+}
+
+TEST(StringView, SubStrRejectsOutOfRange) {
+	oa::StringView view("x");
+	EXPECT_DEATH((void)view.subStr(2), "OA contract failed: inpos <= len_");
 }
 
 TEST(StringView, NullPtrIsEmpty) {
 	oa::StringView v(nullptr);
 	EXPECT_TRUE(v.empty());
 	EXPECT_EQ(v.data(), nullptr);
+	v.removePrefix(0);
+	EXPECT_EQ(v.data(), nullptr);
+}
+
+TEST(StringView, NativeEmptyHashMatchesEmptyText) {
+	const oa::StringView value;
+	EXPECT_EQ(oa::KeyHash<oa::StringView>{}(value), oa::hashTextKey(""));
+}
+
+TEST(StringView, EmptyElementAccessRejectsContract) {
+	oa::StringView view;
+	EXPECT_DEATH(static_cast<void>(view.front()), "OA contract failed: !empty\\(\\)");
+	EXPECT_DEATH(static_cast<void>(view.back()), "OA contract failed: !empty\\(\\)");
 }
 
 TEST(StringView, SubStrCompareMicrobenchVsStd) {

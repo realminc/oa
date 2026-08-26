@@ -81,7 +81,8 @@ inline oa::Path pathFromPython(nb::handle value) {
             PyErr_SetString(PyExc_ValueError, "path contains an embedded null");
             throw nb::python_error();
         }
-        return oa::Path(std::move(path));
+        return oa::Path(oa::String(path.data(),
+            static_cast<oa::Usize>(path.size())));
     }
     if (PyBytes_Check(rawPath)) {
         std::string path(
@@ -91,7 +92,8 @@ inline oa::Path pathFromPython(nb::handle value) {
             PyErr_SetString(PyExc_ValueError, "path contains an embedded null");
             throw nb::python_error();
         }
-        return oa::Path(std::move(path));
+        return oa::Path(oa::String(path.data(),
+            static_cast<oa::Usize>(path.size())));
     }
 
     PyErr_SetString(PyExc_TypeError, "__fspath__ must return str or bytes");

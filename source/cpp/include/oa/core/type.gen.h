@@ -5,7 +5,7 @@
 #pragma once
 
 #include <oa/core/types.h>
-#include <cstring>
+#include <oa/core/std/cString.h>
 
 namespace oa {
 
@@ -24,9 +24,9 @@ enum class DeterminismMode : U8 {
 }
 [[nodiscard]] inline DeterminismMode determinismModeFromString(const char* inString) noexcept {
 	if (inString == nullptr) return DeterminismMode::Fast;
-	if (std::strcmp(inString, "Fast") == 0) return DeterminismMode::Fast;
-	if (std::strcmp(inString, "Stable") == 0) return DeterminismMode::Stable;
-	if (std::strcmp(inString, "Deterministic") == 0) return DeterminismMode::Deterministic;
+	if (oa::strcmp(inString, "Fast") == 0) return DeterminismMode::Fast;
+	if (oa::strcmp(inString, "Stable") == 0) return DeterminismMode::Stable;
+	if (oa::strcmp(inString, "Deterministic") == 0) return DeterminismMode::Deterministic;
 	return DeterminismMode::Fast;
 }
 
@@ -69,21 +69,21 @@ enum class ScalarType : U8 {
 }
 [[nodiscard]] inline ScalarType scalarTypeFromString(const char* inString) noexcept {
 	if (inString == nullptr) return ScalarType::Float32;
-	if (std::strcmp(inString, "Float32") == 0) return ScalarType::Float32;
-	if (std::strcmp(inString, "BFloat16") == 0) return ScalarType::BFloat16;
-	if (std::strcmp(inString, "Float16") == 0) return ScalarType::Float16;
-	if (std::strcmp(inString, "Int8") == 0) return ScalarType::Int8;
-	if (std::strcmp(inString, "Int32") == 0) return ScalarType::Int32;
-	if (std::strcmp(inString, "UInt8") == 0) return ScalarType::UInt8;
-	if (std::strcmp(inString, "Float64") == 0) return ScalarType::Float64;
-	if (std::strcmp(inString, "Int16") == 0) return ScalarType::Int16;
-	if (std::strcmp(inString, "Int64") == 0) return ScalarType::Int64;
-	if (std::strcmp(inString, "UInt16") == 0) return ScalarType::UInt16;
-	if (std::strcmp(inString, "UInt32") == 0) return ScalarType::UInt32;
-	if (std::strcmp(inString, "UInt64") == 0) return ScalarType::UInt64;
-	if (std::strcmp(inString, "Bool") == 0) return ScalarType::Bool;
-	if (std::strcmp(inString, "Complex64") == 0) return ScalarType::Complex64;
-	if (std::strcmp(inString, "Complex128") == 0) return ScalarType::Complex128;
+	if (oa::strcmp(inString, "Float32") == 0) return ScalarType::Float32;
+	if (oa::strcmp(inString, "BFloat16") == 0) return ScalarType::BFloat16;
+	if (oa::strcmp(inString, "Float16") == 0) return ScalarType::Float16;
+	if (oa::strcmp(inString, "Int8") == 0) return ScalarType::Int8;
+	if (oa::strcmp(inString, "Int32") == 0) return ScalarType::Int32;
+	if (oa::strcmp(inString, "UInt8") == 0) return ScalarType::UInt8;
+	if (oa::strcmp(inString, "Float64") == 0) return ScalarType::Float64;
+	if (oa::strcmp(inString, "Int16") == 0) return ScalarType::Int16;
+	if (oa::strcmp(inString, "Int64") == 0) return ScalarType::Int64;
+	if (oa::strcmp(inString, "UInt16") == 0) return ScalarType::UInt16;
+	if (oa::strcmp(inString, "UInt32") == 0) return ScalarType::UInt32;
+	if (oa::strcmp(inString, "UInt64") == 0) return ScalarType::UInt64;
+	if (oa::strcmp(inString, "Bool") == 0) return ScalarType::Bool;
+	if (oa::strcmp(inString, "Complex64") == 0) return ScalarType::Complex64;
+	if (oa::strcmp(inString, "Complex128") == 0) return ScalarType::Complex128;
 	return ScalarType::Float32;
 }
 
@@ -102,9 +102,9 @@ enum class Precision : U8 {
 }
 [[nodiscard]] inline Precision precisionFromString(const char* inString) noexcept {
 	if (inString == nullptr) return Precision::FP32;
-	if (std::strcmp(inString, "FP32") == 0) return Precision::FP32;
-	if (std::strcmp(inString, "BF16") == 0) return Precision::BF16;
-	if (std::strcmp(inString, "FP64") == 0) return Precision::FP64;
+	if (oa::strcmp(inString, "FP32") == 0) return Precision::FP32;
+	if (oa::strcmp(inString, "BF16") == 0) return Precision::BF16;
+	if (oa::strcmp(inString, "FP64") == 0) return Precision::FP64;
 	return Precision::FP32;
 }
 
@@ -123,9 +123,9 @@ enum class MatMulPrecision : U8 {
 }
 [[nodiscard]] inline MatMulPrecision matMulPrecisionFromString(const char* inString) noexcept {
 	if (inString == nullptr) return MatMulPrecision::Auto;
-	if (std::strcmp(inString, "Auto") == 0) return MatMulPrecision::Auto;
-	if (std::strcmp(inString, "Fp32") == 0) return MatMulPrecision::Fp32;
-	if (std::strcmp(inString, "Bf16") == 0) return MatMulPrecision::Bf16;
+	if (oa::strcmp(inString, "Auto") == 0) return MatMulPrecision::Auto;
+	if (oa::strcmp(inString, "Fp32") == 0) return MatMulPrecision::Fp32;
+	if (oa::strcmp(inString, "Bf16") == 0) return MatMulPrecision::Bf16;
 	return MatMulPrecision::Auto;
 }
 
@@ -142,8 +142,8 @@ enum class Filter : U8 {
 }
 [[nodiscard]] inline Filter filterFromString(const char* inString) noexcept {
 	if (inString == nullptr) return Filter::Nearest;
-	if (std::strcmp(inString, "Nearest") == 0) return Filter::Nearest;
-	if (std::strcmp(inString, "Linear") == 0) return Filter::Linear;
+	if (oa::strcmp(inString, "Nearest") == 0) return Filter::Nearest;
+	if (oa::strcmp(inString, "Linear") == 0) return Filter::Linear;
 	return Filter::Nearest;
 }
 

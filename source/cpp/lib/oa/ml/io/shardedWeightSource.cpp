@@ -1,10 +1,11 @@
 #include "shardedWeightSource.h"
 
 #include <oa/core/filesystem.h>
+#include <oa/core/hostText.h>
+#include <oa/core/std/limits.h>
+#include <oa/core/std/pair.h>
 
 #include <yaml-cpp/yaml.h>
-
-#include <limits>
 
 namespace oa {
 
@@ -18,7 +19,7 @@ oa::Status ShardedWeightSource::open(const oa::Path& inIndexPath) {
 
 	YAML::Node root;
 	try {
-		root = YAML::LoadFile(inIndexPath.string().stdStr());
+		root = YAML::LoadFile(oa::hostText::copy(inIndexPath.string()));
 	} catch (const std::exception& error) {
 		return oa::Status::error(oa::StatusCode::FileCorrupt,
 			oa::String("Cannot parse weight index: ") + error.what());
@@ -31,21 +32,24 @@ oa::Status ShardedWeightSource::open(const oa::Path& inIndexPath) {
 	if (metadata && metadata.IsMap()) {
 		for (const auto& item : metadata) {
 			if (item.first.IsScalar() && item.second.IsScalar()) {
-				metadata_.insert({oa::String(item.first.Scalar()), oa::String(item.second.Scalar())});
+				metadata_.insert({
+					oa::hostText::copy(item.first.Scalar()),
+					oa::hostText::copy(item.second.Scalar())
+				});
 			}
 		}
 	}
 
 	oa::HashMap<oa::String, oa::Usize> shardIndices;
 	oa::HashSet<oa::String> indexedNames;
-	oa::Vec<std::pair<oa::String, oa::String>> indexedWeights;
+	oa::Vec<oa::Pair<oa::String, oa::String>> indexedWeights;
 	indexedWeights.reserve(weightMap.size());
 	for (const auto& item : weightMap) {
 		if (!item.first.IsScalar() || !item.second.IsScalar()) {
 			return oa::Status::error(oa::StatusCode::FileCorrupt, "weight_map names and shards must be strings");
 		}
-		const oa::String name(item.first.Scalar());
-		const oa::String shard(item.second.Scalar());
+		const oa::String name = oa::hostText::copy(item.first.Scalar());
+		const oa::String shard = oa::hostText::copy(item.second.Scalar());
 		if (name.empty() || shard.empty()) {
 			return oa::Status::error(oa::StatusCode::FileCorrupt, "weight_map contains an empty name or shard");
 		}
@@ -60,7 +64,7 @@ oa::Status ShardedWeightSource::open(const oa::Path& inIndexPath) {
 			if (sourceResult.isError()) return sourceResult.getStatus();
 			const oa::Usize index = sources_.size();
 			const oa::U64 shardBytes = sourceResult.getValue()->sourceBytes();
-			if (sourceBytes_ > std::numeric_limits<oa::U64>::max() - shardBytes) {
+			if (sourceBytes_ > oa::Limits<oa::U64>::max() - shardBytes) {
 				return oa::Status::error(oa::StatusCode::OutOfRange, "weight package byte count overflow");
 			}
 			sourceBytes_ += shardBytes;
@@ -71,7 +75,7 @@ oa::Status ShardedWeightSource::open(const oa::Path& inIndexPath) {
 	auto indexSize = oa::Filesystem::getFileSize(inIndexPath);
 	if (indexSize.isOk()) {
 		const oa::U64 indexBytes = static_cast<oa::U64>(indexSize.getValue());
-		if (sourceBytes_ > std::numeric_limits<oa::U64>::max() - indexBytes) {
+		if (sourceBytes_ > oa::Limits<oa::U64>::max() - indexBytes) {
 			return oa::Status::error(oa::StatusCode::OutOfRange, "weight package byte count overflow");
 		}
 		sourceBytes_ += indexBytes;

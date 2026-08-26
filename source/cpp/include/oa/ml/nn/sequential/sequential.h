@@ -6,16 +6,14 @@
 
 #include <oa/ml/module.h>
 
-#include <initializer_list>
-
 namespace oa {
 
 /// Sequential: Sequential container that chains modules together.
 class Sequential : public Module {
 public:
 	Sequential() = default;
-	Sequential(std::initializer_list<oa::SharedPtr<Module>> inLayers);
 	Matrix forward(const Matrix& inInput) override;
+	template<typename First, typename... Rest> Sequential(First&& inFirst, Rest&&... inRest) { add(oa::forward<First>(inFirst)); (add(oa::forward<Rest>(inRest)), ...); }
 	Sequential& add(oa::SharedPtr<Module> inModule);
 	Sequential& add(oa::StringView inName, oa::SharedPtr<Module> inModule);
 };

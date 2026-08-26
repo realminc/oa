@@ -1,9 +1,7 @@
 #include <oa/core/envFlag.h>
 #include <oa/core/log.h>
 
-#include <cstdlib>
-#include <cctype>
-#include <cstring>
+#include <stdlib.h>
 
 namespace {
 
@@ -12,9 +10,13 @@ bool isFalsy(const char* v) {
 	if (v[0] == '\0') return true;
 	// Lowercase compare against {"0", "false", "no", "off"}
 	auto eq = [](const char* a, const char* b) {
+		auto lowerAscii = [](char inValue) {
+			return inValue >= 'A' and inValue <= 'Z'
+				? static_cast<char>(inValue + ('a' - 'A')) : inValue;
+		};
 		while (*a != '\0' && *b != '\0') {
-			char ca = static_cast<char>(std::tolower(static_cast<unsigned char>(*a)));
-			char cb = static_cast<char>(std::tolower(static_cast<unsigned char>(*b)));
+			const char ca = lowerAscii(*a);
+			const char cb = lowerAscii(*b);
 			if (ca != cb) return false;
 			++a; ++b;
 		}
@@ -26,12 +28,12 @@ bool isFalsy(const char* v) {
 } // namespace
 
 bool oa::EnvFlag::isSet(const char* inName) {
-	const char* v = std::getenv(inName);
+	const char* v = ::getenv(inName);
 	return !isFalsy(v);
 }
 
 oa::String oa::EnvFlag::getString(const char* inName, const char* inDefault) {
-	const char* v = std::getenv(inName);
+	const char* v = ::getenv(inName);
 	if (v == nullptr || v[0] == '\0') {
 		return oa::String(inDefault != nullptr ? inDefault : "");
 	}
@@ -39,16 +41,16 @@ oa::String oa::EnvFlag::getString(const char* inName, const char* inDefault) {
 }
 
 oa::I64 oa::EnvFlag::getInt(const char* inName, oa::I64 inDefault) {
-	const char* v = std::getenv(inName);
+	const char* v = ::getenv(inName);
 	if (v == nullptr || v[0] == '\0') return inDefault;
 	char* end = nullptr;
-	long long parsed = std::strtoll(v, &end, 10);
+	long long parsed = ::strtoll(v, &end, 10);
 	if (end == v || *end != '\0') return inDefault;  // not fully consumed
 	return static_cast<oa::I64>(parsed);
 }
 
 bool oa::EnvFlag::setIfUnset(const char* inName, const char* inValue) {
-	const char* existing = std::getenv(inName);
+	const char* existing = ::getenv(inName);
 	if (existing != nullptr && existing[0] != '\0') {
 		// User-supplied env wins.
 		return false;

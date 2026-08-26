@@ -2,10 +2,9 @@
 
 #include <oa/core/matrix.h>
 #include <oa/core/status.h>
+#include <oa/core/std/function.h>
+#include <oa/core/std/limits.h>
 #include <oa/runtime/event.h>
-
-#include <functional>
-#include <limits>
 
 namespace oa {
 
@@ -28,16 +27,16 @@ struct EnvironmentSpace {
 	EnvironmentSpaceKind kind = EnvironmentSpaceKind::Box;
 	oa::MatrixShape shape;
 	oa::ScalarType dtype = oa::ScalarType::Float32;
-	oa::F64 minimum = -std::numeric_limits<oa::F64>::infinity();
-	oa::F64 maximum = std::numeric_limits<oa::F64>::infinity();
+	oa::F64 minimum = -oa::Limits<oa::F64>::infinity();
+	oa::F64 maximum = oa::Limits<oa::F64>::infinity();
 	oa::I64 cardinality = 0;
 
 	[[nodiscard]] static EnvironmentSpace box(
 		oa::StringView inName,
 		oa::MatrixShape inShape,
 		oa::ScalarType inDtype = oa::ScalarType::Float32,
-		oa::F64 inMinimum = -std::numeric_limits<oa::F64>::infinity(),
-		oa::F64 inMaximum = std::numeric_limits<oa::F64>::infinity()
+		oa::F64 inMinimum = -oa::Limits<oa::F64>::infinity(),
+		oa::F64 inMaximum = oa::Limits<oa::F64>::infinity()
 	);
 	[[nodiscard]] static EnvironmentSpace discrete(
 		oa::StringView inName,
@@ -130,7 +129,7 @@ public:
 	// whole unsubmitted transaction.
 	[[nodiscard]] oa::Status begin();
 	[[nodiscard]] oa::Status recordCommands(
-		const std::function<oa::Status()>& inCommands);
+		const oa::Fn<oa::Status()>& inCommands);
 	[[nodiscard]] oa::Status reset(oa::U64 inSeed);
 	[[nodiscard]] oa::Result<EnvironmentTransition> step(
 		const oa::Matrix& inAction);

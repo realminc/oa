@@ -18,12 +18,12 @@
 #include <oa/core/types.h>      // Foundation: scalars, strings, containers (includes type.gen.h)
 #include <oa/core/status.h>     // Error handling: oa::Status, oa::Result
 #include <oa/core/math.h>       // Fixed-point: oa::Price, oa::Qty, oa::Balance
-#include <oa/core/std/chrono.h> // std::chrono aliases: oa::steadyNow, oa::chronoToMilli, ...
+#include <oa/core/std/chrono.h> // OA clock values: oa::steadyNow, oa::Duration, ...
 #include <oa/core/time.h>       // Timestamps: oa::Timestamp, oa::Stopwatch
 #include <oa/core/device.h>     // Device placement: oa::Device, oa::DeviceType
 #include <oa/core/log.h>        // Logging: oa::Log, oa::LogMetrics, OaLog* macros
 #include <oa/core/validation.h> // Validation: OA_VALIDATE, OA_WARN_PERF, debug counters
-#include <oa/core/cli.h>        // CLI: oa::Cli<T>, 3-way precedence (CLI11)
+#include <oa/core/cli.h>        // CLI: oa::Cli<T>, native 3-way precedence
 #include <oa/core/memory.h>     // Fast memcpy: oa::memcpy, oa::memset (AVX/SSE)
 #include <oa/core/filesystem.h> // Host filesystem I/O: oa::Filesystem
 #include <oa/core/paths.h>      // Named locations: oa::Paths::asset/data/var/temp

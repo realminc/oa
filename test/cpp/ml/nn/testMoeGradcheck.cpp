@@ -639,9 +639,9 @@ TEST(MoeGradcheck, TopKRouterAndExpertsLearn) {
 }
 
 TEST(MoeConfiguration, RejectsInvalidAndClampsTopK) {
-	EXPECT_THROW((void)oa::Moe(0, 8, 2, 1), std::invalid_argument);
-	EXPECT_THROW((void)oa::Moe(4, 0, 2, 1), std::invalid_argument);
-	EXPECT_THROW((void)oa::Moe(4, 8, 0, 1), std::invalid_argument);
+	EXPECT_DEATH((void)oa::Moe(0, 8, 2, 1), "OA contract failed");
+	EXPECT_DEATH((void)oa::Moe(4, 0, 2, 1), "OA contract failed");
+	EXPECT_DEATH((void)oa::Moe(4, 8, 0, 1), "OA contract failed");
 
 	oa::Moe low(4, 8, 3, 0);
 	EXPECT_EQ(low.expertsPerToken(), 1);

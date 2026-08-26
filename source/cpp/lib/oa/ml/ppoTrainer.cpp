@@ -6,8 +6,6 @@
 #include <oa/ml/trainingSession.h>
 #include <oa/runtime/executionSession.h>
 
-#include <cmath>
-
 namespace {
 
 oa::I64 numObservationElements(const oa::MatrixShape& inShape) {

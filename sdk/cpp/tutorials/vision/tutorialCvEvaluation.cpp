@@ -107,10 +107,10 @@ int main(int argc, char** argv) {
 	}
 	std::vector<oa::F32> confusionF32(confusionU32.begin(), confusionU32.end());
 
-	const std::array<oa::F32, 10> trainLoss{
+	const oa::Array<oa::F32, 10> trainLoss{
 		1.20F, 0.94F, 0.78F, 0.65F, 0.55F,
 		0.48F, 0.42F, 0.38F, 0.35F, 0.33F};
-	const std::array<oa::F32, 10> valLoss{
+	const oa::Array<oa::F32, 10> valLoss{
 		1.25F, 1.01F, 0.84F, 0.72F, 0.63F,
 		0.57F, 0.52F, 0.49F, 0.47F, 0.46F};
 
@@ -126,9 +126,11 @@ int main(int argc, char** argv) {
 		.background = {0.035F, 0.035F, 0.045F, 1.0F},
 	});
 	figure.ax(0, 0).title("training loss");
-	figure.ax(0, 0).plot(trainLoss);
+	figure.ax(0, 0).plot(
+		oa::Span<const oa::F32>(trainLoss.data(), trainLoss.size()));
 	figure.ax(0, 1).title("Validation loss");
-	figure.ax(0, 1).plot(valLoss,
+	figure.ax(0, 1).plot(
+		oa::Span<const oa::F32>(valLoss.data(), valLoss.size()),
 		{.color = {0.16F, 0.78F, 0.67F, 1.0F}});
 	figure.ax(1, 0).title("Classification confusion");
 	figure.ax(1, 0).heatmap(

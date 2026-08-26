@@ -11,7 +11,7 @@
 #include <oa/runtime/executionSession.h>
 #include "../../autograd/autogradAttach.gen.h"
 
-#include <cassert>
+#include <assert.h>
 
 static oa::U32 divCeil(oa::U32 inA, oa::U32 inB) { return (inA + inB - 1) / inB; }
 

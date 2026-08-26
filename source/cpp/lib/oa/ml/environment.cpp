@@ -1,7 +1,5 @@
 #include <oa/ml/environment.h>
-
-#include <cmath>
-#include <limits>
+#include <oa/core/std/scalarMath.h>
 
 namespace {
 
@@ -99,7 +97,7 @@ oa::Status oa::EnvironmentSpace::validateDefinition() const {
 				fieldMessage(*this, "all dimensions must be positive"));
 		}
 	}
-	if (std::isnan(minimum) || std::isnan(maximum) || minimum > maximum) {
+	if (oa::isNan(minimum) || oa::isNan(maximum) || minimum > maximum) {
 		return oa::Status::invalidArgument(
 			fieldMessage(*this, "bounds must be ordered and not NaN"));
 	}

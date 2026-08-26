@@ -1,13 +1,12 @@
 #include <oa/ui/style.h>
-
-#include <array>
-#include <cmath>
+#include <oa/core/std/array.h>
+#include <oa/core/std/scalarMath.h>
 
 namespace {
 
 [[nodiscard]] bool isUnitColor(const oa::Color& inColor) noexcept {
-	return std::isfinite(inColor.r) && std::isfinite(inColor.g)
-		&& std::isfinite(inColor.b) && std::isfinite(inColor.a)
+	return oa::isFinite(inColor.r) && oa::isFinite(inColor.g)
+		&& oa::isFinite(inColor.b) && oa::isFinite(inColor.a)
 		&& inColor.r >= 0.0F && inColor.r <= 1.0F
 		&& inColor.g >= 0.0F && inColor.g <= 1.0F
 		&& inColor.b >= 0.0F && inColor.b <= 1.0F
@@ -21,7 +20,7 @@ namespace {
 } // namespace
 
 oa::Status oa::UiStyle::validate() const {
-	const std::array<oa::F32, 9> geometry{{
+	const oa::Array<oa::F32, 9> geometry{
 		cornerRadius,
 		borderWidth,
 		shadowBlur,
@@ -31,9 +30,9 @@ oa::Status oa::UiStyle::validate() const {
 		padding,
 		framePaddingX,
 		framePaddingY,
-	}};
+	};
 	for (const oa::F32 value : geometry) {
-		if (!std::isfinite(value)) {
+		if (!oa::isFinite(value)) {
 			return oa::Status::invalidArgument(
 				"oa::UiStyle geometry must be finite");
 		}
@@ -46,7 +45,7 @@ oa::Status oa::UiStyle::validate() const {
 			"oa::UiStyle requires positive font size and non-negative geometry");
 	}
 
-	const std::array<oa::Color, 17> colors{{
+	const oa::Array<oa::Color, 17> colors{
 		background,
 		surface,
 		surfaceHover,
@@ -64,7 +63,7 @@ oa::Status oa::UiStyle::validate() const {
 		success,
 		warning,
 		error,
-	}};
+	};
 	for (const oa::Color& color : colors) {
 		if (!isUnitColor(color)) {
 			return oa::Status::invalidArgument(

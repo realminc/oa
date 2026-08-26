@@ -1,10 +1,8 @@
 #pragma once
 
-#include <memory>
-#include <shared_mutex>
-
 #include <oa/core/types.h>
 #include <oa/core/status.h>
+#include <oa/core/std/sync.h>
 #include <oa/runtime/spirv.h>
 
 namespace oavk { class Device; }
@@ -106,7 +104,7 @@ public:
 	~PipelineRegistry() = default;
 	PipelineRegistry(const PipelineRegistry&) = delete;
 	PipelineRegistry& operator=(const PipelineRegistry&) = delete;
-	// Allow move despite std::mutex member (will use default move which is safe for mutex)
+	// The lock is independently owned so moving the registry keeps synchronization valid.
 	PipelineRegistry(PipelineRegistry&&) noexcept = default;
 	PipelineRegistry& operator=(PipelineRegistry&&) noexcept = default;
 
@@ -148,7 +146,7 @@ public:
 
 private:
 	oa::HashMap<oa::String, oa::ComputePipeline> registry_;
-	mutable oa::UniquePtr<std::shared_mutex> mutex_ = oa::makeUnique<std::shared_mutex>();
+	mutable oa::UniquePtr<oa::SharedMutex> mutex_ = oa::makeUnique<oa::SharedMutex>();
 	oa::PipelineCache cache_;
 	oa::String cacheDir_;
 	void* bindlessPipelineLayout_ = nullptr;

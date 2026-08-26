@@ -5,42 +5,17 @@
 
 #include <oa/core/types.h>
 #include <oa/core/std/chrono.h>
-#include <cctype>
-#include <cstdio>
-#include <ctime>
 
 namespace oa {
 
-[[nodiscard]] inline std::time_t timeGm(std::tm* inTm) {
-#if defined(_WIN32)
-	return _mkgmtime(inTm);
-#else
-	return timegm(inTm);
-#endif
-}
-
-[[nodiscard]] inline std::tm gmTime(std::time_t inTime) {
-	std::tm tm{};
-#if defined(_WIN32)
-	gmtime_s(&tm, &inTime);
-#else
-	gmtime_r(&inTime, &tm);
-#endif
-	return tm;
-}
-
 class Timestamp {
 public:
-	using Clock     = oa::SteadyClock;
-	using Duration  = std::chrono::nanoseconds;
-	using TimePoint = std::chrono::time_point<Clock, Duration>;
-
 	constexpr Timestamp() noexcept : nanos_(0) {}
 	constexpr explicit Timestamp(oa::I64 inNanos) noexcept : nanos_(inNanos) {}
-	explicit Timestamp(TimePoint inTp) noexcept
-		: nanos_(std::chrono::duration_cast<Duration>(inTp.time_since_epoch()).count()) {}
+	explicit constexpr Timestamp(oa::SteadyTimePoint inTime) noexcept
+		: nanos_(inTime.nanosecondsSinceEpoch()) {}
 
-	[[nodiscard]] static Timestamp now() noexcept { return Timestamp(Clock::now()); }
+	[[nodiscard]] static Timestamp now() noexcept { return Timestamp(oa::steadyNow()); }
 	[[nodiscard]] static constexpr Timestamp fromSeconds(oa::I64 inSeconds) noexcept { return Timestamp(inSeconds * 1'000'000'000LL); }
 	[[nodiscard]] static constexpr Timestamp fromMilliseconds(oa::I64 inMillis) noexcept { return Timestamp(inMillis * 1'000'000LL); }
 	[[nodiscard]] static constexpr Timestamp fromMicroseconds(oa::I64 inMicros) noexcept { return Timestamp(inMicros * 1'000LL); }
@@ -104,98 +79,89 @@ private:
 	bool running_ = false;
 };
 
-// Datetime — human-readable date/time over Timestamp.
+// Datetime — human-readable UTC date/time over the system clock.
 // For logs, debugging, display. NEVER for consensus or deterministic math.
 class Datetime {
 public:
-	Datetime() noexcept : ts_() {}
-	explicit Datetime(Timestamp inTs) noexcept : ts_(inTs) {}
+	Datetime() noexcept = default;
+	explicit constexpr Datetime(oa::SystemTimePoint inTime) noexcept : time_(inTime) {}
 
-	Datetime(oa::I32 inYear, oa::I32 inMonth, oa::I32 inDay, oa::I32 inHour = 0, oa::I32 inMinute = 0, oa::I32 inSecond = 0) {
-		std::tm tm = {};
-		tm.tm_year = inYear - 1900;
-		tm.tm_mon = inMonth - 1;
-		tm.tm_mday = inDay;
-		tm.tm_hour = inHour;
-		tm.tm_min = inMinute;
-		tm.tm_sec = inSecond;
-		tm.tm_isdst = 0;
-		std::time_t t = timeGm(&tm);
-		ts_ = Timestamp::fromSeconds(static_cast<oa::I64>(t));
+	Datetime(
+		oa::I32 inYear,
+		oa::I32 inMonth,
+		oa::I32 inDay,
+		oa::I32 inHour = 0,
+		oa::I32 inMinute = 0,
+		oa::I32 inSecond = 0
+	);
+
+	[[nodiscard]] static Datetime now() noexcept;
+	[[nodiscard]] static constexpr Datetime fromUnixSeconds(oa::I64 inSeconds) noexcept {
+		return Datetime(oa::SystemTimePoint(inSeconds * 1'000'000'000LL));
+	}
+	[[nodiscard]] static constexpr Datetime fromUnixNanoseconds(oa::I64 inNanoseconds) noexcept {
+		return Datetime(oa::SystemTimePoint(inNanoseconds));
+	}
+	[[nodiscard]] static constexpr Datetime fromDouble(oa::F64 inSeconds) noexcept {
+		return fromUnixNanoseconds(static_cast<oa::I64>(inSeconds * 1'000'000'000.0));
 	}
 
-	[[nodiscard]] static Datetime now() noexcept { return Datetime(Timestamp::now()); }
-	[[nodiscard]] static Datetime fromTimestamp(Timestamp inTs) noexcept { return Datetime(inTs); }
-	[[nodiscard]] static Datetime fromUnixSeconds(oa::I64 inSeconds) noexcept { return Datetime(Timestamp::fromSeconds(inSeconds)); }
-	[[nodiscard]] static Datetime fromDouble(oa::F64 inSeconds) noexcept { return Datetime(Timestamp::fromDouble(inSeconds)); }
+	[[nodiscard]] oa::SystemTimePoint getTimePoint() const noexcept { return time_; }
+	[[nodiscard]] oa::I64 unixNanoseconds() const noexcept {
+		return time_.nanosecondsSinceEpoch();
+	}
+	[[nodiscard]] oa::I64 unixSeconds() const noexcept {
+		return unixNanoseconds() / 1'000'000'000LL;
+	}
+	[[nodiscard]] oa::F64 toSeconds() const noexcept {
+		return static_cast<oa::F64>(unixNanoseconds()) / 1'000'000'000.0;
+	}
 
-	[[nodiscard]] Timestamp getTimestamp() const noexcept { return ts_; }
-	[[nodiscard]] oa::I64 unixSeconds() const noexcept { return ts_.secs(); }
-	[[nodiscard]] oa::F64 toSeconds() const noexcept { return ts_.toSeconds(); }
-
-	[[nodiscard]] oa::I32 year() const { return toTm().tm_year + 1900; }
-	[[nodiscard]] oa::I32 month() const { return toTm().tm_mon + 1; }
-	[[nodiscard]] oa::I32 day() const { return toTm().tm_mday; }
-	[[nodiscard]] oa::I32 hour() const { return toTm().tm_hour; }
-	[[nodiscard]] oa::I32 minute() const { return toTm().tm_min; }
-	[[nodiscard]] oa::I32 second() const { return toTm().tm_sec; }
+	[[nodiscard]] oa::I32 year() const;
+	[[nodiscard]] oa::I32 month() const;
+	[[nodiscard]] oa::I32 day() const;
+	[[nodiscard]] oa::I32 hour() const;
+	[[nodiscard]] oa::I32 minute() const;
+	[[nodiscard]] oa::I32 second() const;
 	[[nodiscard]] oa::I32 microsecond() const {
-		return static_cast<oa::I32>((ts_.nanos() % 1'000'000'000) / 1'000);
+		return static_cast<oa::I32>((unixNanoseconds() % 1'000'000'000LL) / 1'000LL);
 	}
-	[[nodiscard]] oa::I32 dayOfWeek() const { return toTm().tm_wday; }
-	[[nodiscard]] oa::I32 dayOfYear() const { return toTm().tm_yday + 1; }
+	[[nodiscard]] oa::I32 dayOfWeek() const;
+	[[nodiscard]] oa::I32 dayOfYear() const;
 
-	[[nodiscard]] oa::String format(const char* inFmt = "%Y-%m-%dT%H:%M:%SZ") const {
-		std::tm tm = toTm();
-		char buf[128];
-		const size_t n = std::strftime(buf, sizeof(buf), inFmt, &tm);
-		if (n == 0) {
-			return oa::String();
-		}
-		return oa::String(oa::StringView(buf, n));
-	}
+	[[nodiscard]] oa::String format(const char* inFmt = "%Y-%m-%dT%H:%M:%SZ") const;
 	[[nodiscard]] oa::String toIso() const { return format("%Y-%m-%dT%H:%M:%SZ"); }
 	[[nodiscard]] oa::String toDate() const { return format("%Y-%m-%d"); }
 	[[nodiscard]] oa::String toTime() const { return format("%H:%M:%S"); }
-	[[nodiscard]] oa::String toIsoMicro() const {
-		std::tm tm = toTm();
-		char buf[64];
-		const size_t n = std::strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S", &tm);
-		if (n == 0) {
-			return oa::String();
-		}
-		oa::String out(oa::StringView(buf, n));
-		char tail[16];
-		if (std::snprintf(tail, sizeof(tail), ".%06dZ", static_cast<int>(microsecond())) > 0) {
-			out += tail;
-		}
-		return out;
+	[[nodiscard]] oa::String toIsoMicro() const;
+
+	[[nodiscard]] Datetime add(oa::Duration inDuration) const noexcept {
+		return Datetime(time_ + inDuration);
+	}
+	[[nodiscard]] Datetime subtract(oa::Duration inDuration) const noexcept {
+		return Datetime(time_ - inDuration);
+	}
+	[[nodiscard]] oa::Duration diff(const Datetime& inOther) const noexcept {
+		return time_ - inOther.time_;
 	}
 
-	[[nodiscard]] Datetime add(Timestamp inDuration) const noexcept { return Datetime(ts_ + inDuration); }
-	[[nodiscard]] Datetime subtract(Timestamp inDuration) const noexcept { return Datetime(ts_ - inDuration); }
-	[[nodiscard]] Timestamp diff(const Datetime& inOther) const noexcept { return ts_ - inOther.ts_; }
+	[[nodiscard]] bool operator==(const Datetime& inOther) const noexcept { return time_ == inOther.time_; }
+	[[nodiscard]] bool operator!=(const Datetime& inOther) const noexcept { return not (*this == inOther); }
+	[[nodiscard]] bool operator<(const Datetime& inOther) const noexcept { return time_ < inOther.time_; }
+	[[nodiscard]] bool operator<=(const Datetime& inOther) const noexcept { return time_ <= inOther.time_; }
+	[[nodiscard]] bool operator>(const Datetime& inOther) const noexcept { return time_ > inOther.time_; }
+	[[nodiscard]] bool operator>=(const Datetime& inOther) const noexcept { return time_ >= inOther.time_; }
 
-	[[nodiscard]] bool operator==(const Datetime& inOther) const noexcept { return ts_ == inOther.ts_; }
-	[[nodiscard]] bool operator!=(const Datetime& inOther) const noexcept { return ts_ != inOther.ts_; }
-	[[nodiscard]] bool operator<(const Datetime& inOther) const noexcept { return ts_ < inOther.ts_; }
-	[[nodiscard]] bool operator<=(const Datetime& inOther) const noexcept { return ts_ <= inOther.ts_; }
-	[[nodiscard]] bool operator>(const Datetime& inOther) const noexcept { return ts_ > inOther.ts_; }
-	[[nodiscard]] bool operator>=(const Datetime& inOther) const noexcept { return ts_ >= inOther.ts_; }
-
-	[[nodiscard]] bool isValid() const noexcept { return ts_.isValid(); }
+	[[nodiscard]] bool isValid() const noexcept { return unixNanoseconds() > 0; }
 
 private:
-	Timestamp ts_;
-
-	[[nodiscard]] std::tm toTm() const {
-		std::time_t t = static_cast<std::time_t>(ts_.secs());
-		return gmTime(t);
-	}
+	oa::SystemTimePoint time_;
 };
 
 [[nodiscard]] inline Datetime datetimeNow() noexcept { return Datetime::now(); }
-[[nodiscard]] inline oa::String formatTimestamp(Timestamp inTs) { return Datetime(inTs).toIsoMicro(); }
+[[nodiscard]] inline oa::String formatTimestamp(oa::SystemTimePoint inTime) {
+	return Datetime(inTime).toIsoMicro();
+}
 
 // Smart human-readable duration: "3s", "45s", "2m 30s", "1h 15m", "2d 6h"
 [[nodiscard]] inline oa::String formatDuration(oa::F64 inSeconds) {
@@ -244,7 +210,7 @@ private:
 // Bare number (no suffix) treated as seconds. Returns 0 on parse failure.
 [[nodiscard]] inline oa::F64 parseDuration(oa::StringView inStr) {
 	if (inStr.empty()) return 0.0;
-	size_t i = 0;
+	oa::Usize i = 0;
 	while (i < inStr.size() && (inStr[i] == ' ' || inStr[i] == '\t')) ++i;
 	oa::F64 num = 0.0;
 	bool hasDigit = false;
@@ -253,7 +219,7 @@ private:
 		hasDigit = true;
 		++i;
 	}
-	if (inStr[i] == '.') {
+	if (i < inStr.size() and inStr[i] == '.') {
 		++i;
 		oa::F64 frac = 0.1;
 		while (i < inStr.size() && inStr[i] >= '0' && inStr[i] <= '9') {
@@ -267,7 +233,9 @@ private:
 	if (i >= inStr.size()) return num;
 	oa::String suffix;
 	while (i < inStr.size() && inStr[i] != ' ' && inStr[i] != '\t') {
-		suffix += static_cast<char>(std::tolower(static_cast<unsigned char>(inStr[i])));
+		const char character = inStr[i];
+		suffix += character >= 'A' and character <= 'Z'
+			? static_cast<char>(character - 'A' + 'a') : character;
 		++i;
 	}
 	if (suffix == "s" || suffix == "sec") return num;

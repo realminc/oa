@@ -8,9 +8,9 @@
 
 #include <oa/core/math.h>
 
-#include <cmath>
-#include <limits>
-#include <type_traits>
+#include <oa/core/std/limits.h>
+#include <oa/core/std/scalarMath.h>
+#include <oa/core/std/typeTraits.h>
 
 namespace oa {
 
@@ -62,23 +62,23 @@ namespace detail {
 
 template <typename T>
 struct Vec2 {
-	static_assert(std::is_floating_point_v<T>);
+	static_assert(oa::IsFloatingPointV<T>);
 
 	T x = T(0);
 	T y = T(0);
 
 	[[nodiscard]] bool isFinite() const noexcept {
-		return std::isfinite(x) and std::isfinite(y);
+		return oa::isFinite(x) and oa::isFinite(y);
 	}
 	[[nodiscard]] constexpr T lengthSquared() const noexcept {
 		return x * x + y * y;
 	}
 	[[nodiscard]] T length() const noexcept {
-		return std::sqrt(lengthSquared());
+		return oa::sqrt(lengthSquared());
 	}
 	[[nodiscard]] Vec2 normalized() const noexcept {
 		const T valueLength = length();
-		if (not std::isfinite(valueLength) or valueLength <= std::numeric_limits<T>::epsilon()) {
+		if (not oa::isFinite(valueLength) or valueLength <= oa::Limits<T>::epsilon()) {
 			return {};
 		}
 		return *this / valueLength;
@@ -128,24 +128,24 @@ template <typename T>
 
 template <typename T>
 struct Vec3 {
-	static_assert(std::is_floating_point_v<T>);
+	static_assert(oa::IsFloatingPointV<T>);
 
 	T x = T(0);
 	T y = T(0);
 	T z = T(0);
 
 	[[nodiscard]] bool isFinite() const noexcept {
-		return std::isfinite(x) and std::isfinite(y) and std::isfinite(z);
+		return oa::isFinite(x) and oa::isFinite(y) and oa::isFinite(z);
 	}
 	[[nodiscard]] constexpr T lengthSquared() const noexcept {
 		return x * x + y * y + z * z;
 	}
 	[[nodiscard]] T length() const noexcept {
-		return std::sqrt(lengthSquared());
+		return oa::sqrt(lengthSquared());
 	}
 	[[nodiscard]] Vec3 normalized() const noexcept {
 		const T valueLength = length();
-		if (not std::isfinite(valueLength) or valueLength <= std::numeric_limits<T>::epsilon()) {
+		if (not oa::isFinite(valueLength) or valueLength <= oa::Limits<T>::epsilon()) {
 			return {};
 		}
 		return *this / valueLength;
@@ -195,7 +195,7 @@ template <typename T>
 
 template <typename T>
 struct Vec4 {
-	static_assert(std::is_floating_point_v<T>);
+	static_assert(oa::IsFloatingPointV<T>);
 
 	T x = T(0);
 	T y = T(0);
@@ -203,17 +203,17 @@ struct Vec4 {
 	T w = T(0);
 
 	[[nodiscard]] bool isFinite() const noexcept {
-		return std::isfinite(x) and std::isfinite(y) and std::isfinite(z) and std::isfinite(w);
+		return oa::isFinite(x) and oa::isFinite(y) and oa::isFinite(z) and oa::isFinite(w);
 	}
 	[[nodiscard]] constexpr T lengthSquared() const noexcept {
 		return x * x + y * y + z * z + w * w;
 	}
 	[[nodiscard]] T length() const noexcept {
-		return std::sqrt(lengthSquared());
+		return oa::sqrt(lengthSquared());
 	}
 	[[nodiscard]] Vec4 normalized() const noexcept {
 		const T valueLength = length();
-		if (not std::isfinite(valueLength) or valueLength <= std::numeric_limits<T>::epsilon()) {
+		if (not oa::isFinite(valueLength) or valueLength <= oa::Limits<T>::epsilon()) {
 			return {};
 		}
 		return *this / valueLength;

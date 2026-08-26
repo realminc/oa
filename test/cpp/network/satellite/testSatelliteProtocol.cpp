@@ -197,12 +197,12 @@ TEST(SatelliteProtocol, EverySchemaMessageRoundTripsCanonically) {
 	for (const auto type : types) {
 		const auto message = makeMessage(type);
 		auto encoded = oa::SatelliteProtocol::encode(message);
-		ASSERT_TRUE(encoded.isOk()) << encoded.getStatus().getMessage();
+		ASSERT_TRUE(encoded.isOk()) << encoded.getStatus().getMessage().cStr();
 		auto decoded = oa::SatelliteProtocol::decode(oa::Span<const oa::Byte>(
 			encoded.getValue().data(), encoded.getValue().size()));
-		ASSERT_TRUE(decoded.isOk()) << decoded.getStatus().getMessage();
+		ASSERT_TRUE(decoded.isOk()) << decoded.getStatus().getMessage().cStr();
 		auto reencoded = oa::SatelliteProtocol::encode(decoded.getValue());
-		ASSERT_TRUE(reencoded.isOk()) << reencoded.getStatus().getMessage();
+		ASSERT_TRUE(reencoded.isOk()) << reencoded.getStatus().getMessage().cStr();
 		ASSERT_EQ(encoded.getValue().size(), reencoded.getValue().size());
 		EXPECT_EQ(std::memcmp(encoded.getValue().data(), reencoded.getValue().data(),
 			encoded.getValue().size()), 0);

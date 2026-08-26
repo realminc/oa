@@ -3,13 +3,8 @@
 [[layers]]
 name = "Sequential"
 constructor = "Sequential() = default;"
-constructor_args = "std::initializer_list<oa::SharedPtr<Module>> inLayers"
-constructor_body = [
-	"for (const auto& layer : inLayers) {",
-	"\tadd(layer);",
-	"}",
-]
 methods = [
+	"template<typename First, typename... Rest> Sequential(First&& inFirst, Rest&&... inRest) { add(oa::forward<First>(inFirst)); (add(oa::forward<Rest>(inRest)), ...); }",
 	"Sequential& add(oa::SharedPtr<Module> inModule);",
 	"Sequential& add(oa::StringView inName, oa::SharedPtr<Module> inModule);",
 ]
@@ -24,11 +19,11 @@ notes = "Sequential container that chains modules together."
 extra_methods = """
 oa::Sequential& oa::Sequential::add(oa::SharedPtr<oa::Module> inModule) {
 \toa::String name(oa::String("layer_") + oa::toString(static_cast<oa::U32>(children_.size())));
-\treturn add(name, std::move(inModule));
+\treturn add(name, oa::move(inModule));
 }
 
 oa::Sequential& oa::Sequential::add(oa::StringView inName, oa::SharedPtr<oa::Module> inModule) {
-\tregisterModule(inName, std::move(inModule));
+\tregisterModule(inName, oa::move(inModule));
 \treturn *this;
 }
 """

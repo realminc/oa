@@ -1,5 +1,4 @@
-#include <cassert>
-#include <algorithm>
+#include <assert.h>
 
 #include <oa/runtime/allocator.h>
 #include <oa/runtime/device.h>
@@ -10,7 +9,7 @@
 namespace {
 
 constexpr oa::U64 transferCapacity(oa::U64 inSize) {
-	return (std::max<oa::U64>(inSize, 1ULL) + 3ULL) & ~3ULL;
+	return (oa::max<oa::U64>(inSize, 1ULL) + 3ULL) & ~3ULL;
 }
 
 } // namespace

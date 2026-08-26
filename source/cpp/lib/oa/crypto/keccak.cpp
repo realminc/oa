@@ -4,12 +4,11 @@
 // State: 25 x uint64_t, little-endian lane ordering.
 
 #include <oa/crypto/keccak.h>
-
-#include <algorithm>
-#include <cstring>
-#include <limits>
-#include <new>
-#include <vector>
+#include <oa/core/memory.h>
+#include <oa/core/std/algo.h>
+#include <oa/core/std/allocator.h>
+#include <oa/core/std/limits.h>
+#include <oa/core/std/utility.h>
 
 namespace {
 
@@ -28,6 +27,64 @@ public:
 private:
 	volatile oa::Byte* data_;
 	oa::Usize size_;
+};
+
+class SecureByteBuffer {
+public:
+	SecureByteBuffer() = default;
+	SecureByteBuffer(const SecureByteBuffer&) = delete;
+	SecureByteBuffer& operator=(const SecureByteBuffer&) = delete;
+
+	SecureByteBuffer(SecureByteBuffer&& inOther) noexcept
+		: data_(inOther.data_), size_(inOther.size_) {
+		inOther.data_ = nullptr;
+		inOther.size_ = 0;
+	}
+
+	SecureByteBuffer& operator=(SecureByteBuffer&& inOther) noexcept {
+		if (this != &inOther) {
+			reset();
+			data_ = inOther.data_;
+			size_ = inOther.size_;
+			inOther.data_ = nullptr;
+			inOther.size_ = 0;
+		}
+		return *this;
+	}
+
+	~SecureByteBuffer() { reset(); }
+
+	[[nodiscard]] static oa::Result<SecureByteBuffer> create(oa::Usize inSize) {
+		const oa::AllocationResult allocation = oa::tryAllocArray(
+			inSize, sizeof(oa::Byte), alignof(oa::Byte));
+		if (allocation.isError()) {
+			return oa::Status::error(
+				oa::StatusCode::ResourceExhausted,
+				"KMAC temporary encoding allocation failed");
+		}
+		SecureByteBuffer out;
+		out.data_ = static_cast<oa::Byte*>(allocation.data);
+		out.size_ = inSize;
+		oa::memzero(out.data_, out.size_);
+		return oa::move(out);
+	}
+
+	[[nodiscard]] oa::Byte* data() noexcept { return data_; }
+	[[nodiscard]] const oa::Byte* data() const noexcept { return data_; }
+	[[nodiscard]] oa::Usize size() const noexcept { return size_; }
+
+private:
+	void reset() noexcept {
+		if (data_ == nullptr) return;
+		volatile oa::Byte* secure = data_;
+		for (oa::Usize i = 0; i < size_; ++i) secure[i] = 0;
+		oa::freeBytes(data_, alignof(oa::Byte));
+		data_ = nullptr;
+		size_ = 0;
+	}
+
+	oa::Byte* data_ = nullptr;
+	oa::Usize size_ = 0;
 };
 
 } // namespace
@@ -115,13 +172,13 @@ static void xorBytesIntoState(oa::U64* inOutState, const oa::Byte* inData, oa::U
 	oa::Usize fullLanes = inLen / 8;
 	for (oa::Usize i = 0; i < fullLanes; ++i) {
 		oa::U64 lane;
-		std::memcpy(&lane, inData + (i * 8), 8);
+		oa::memcpy(&lane, inData + (i * 8), 8);
 		inOutState[i] ^= lane;
 	}
 	oa::Usize tail = inLen % 8;
 	if (tail > 0) {
 		oa::U64 lane = 0;
-		std::memcpy(&lane, inData + (fullLanes * 8), tail);
+		oa::memcpy(&lane, inData + (fullLanes * 8), tail);
 		inOutState[fullLanes] ^= lane;
 	}
 }
@@ -130,11 +187,11 @@ static void xorBytesIntoState(oa::U64* inOutState, const oa::Byte* inData, oa::U
 static void extractBytesFromState(const oa::U64* inState, oa::Byte* outData, oa::Usize inLen) {
 	oa::Usize fullLanes = inLen / 8;
 	for (oa::Usize i = 0; i < fullLanes; ++i) {
-		std::memcpy(outData + (i * 8), &inState[i], 8);
+		oa::memcpy(outData + (i * 8), &inState[i], 8);
 	}
 	oa::Usize tail = inLen % 8;
 	if (tail > 0) {
-		std::memcpy(outData + (fullLanes * 8), &inState[fullLanes], tail);
+		oa::memcpy(outData + (fullLanes * 8), &inState[fullLanes], tail);
 	}
 }
 
@@ -158,7 +215,7 @@ static void sponge(
 	oa::Usize remaining = inLen - offset;
 	oa::Byte lastBlock[200] = {};
 	if (remaining != 0) {
-		std::memcpy(lastBlock, inData + offset, remaining);
+		oa::memcpy(lastBlock, inData + offset, remaining);
 	}
 	lastBlock[remaining] = inDomainByte;
 	lastBlock[inRate - 1] |= 0x80;
@@ -168,7 +225,7 @@ static void sponge(
 	// squeeze
 	oa::Usize squeezed = 0;
 	while (squeezed < inOutLen) {
-		oa::Usize chunk = std::min(inOutLen - squeezed, static_cast<oa::Usize>(inRate));
+		oa::Usize chunk = oa::min(inOutLen - squeezed, static_cast<oa::Usize>(inRate));
 		extractBytesFromState(state, outDigest + squeezed, chunk);
 		squeezed += chunk;
 		if (squeezed < inOutLen) {
@@ -194,13 +251,13 @@ void shake256(
 // Incremental API
 
 void shake128Init(ShakeContext& inOutCtx) {
-	std::memset(&inOutCtx, 0, sizeof(ShakeContext));
+	oa::memzero(&inOutCtx, sizeof(ShakeContext));
 	inOutCtx.rate = 168;
 	inOutCtx.squeezing = false;
 }
 
 void shake256Init(ShakeContext& inOutCtx) {
-	std::memset(&inOutCtx, 0, sizeof(ShakeContext));
+	oa::memzero(&inOutCtx, sizeof(ShakeContext));
 	inOutCtx.rate = 136;
 	inOutCtx.squeezing = false;
 }
@@ -209,8 +266,8 @@ void shakeAbsorb(ShakeContext& inOutCtx, const oa::Byte* inData, oa::Usize inLen
 	oa::Usize offset = 0;
 	while (offset < inLen) {
 		oa::Usize space = inOutCtx.rate - inOutCtx.bufLen;
-		oa::Usize chunk = std::min(inLen - offset, space);
-		std::memcpy(inOutCtx.buf + inOutCtx.bufLen, inData + offset, chunk);
+		oa::Usize chunk = oa::min(inLen - offset, space);
+		oa::memcpy(inOutCtx.buf + inOutCtx.bufLen, inData + offset, chunk);
 		inOutCtx.bufLen += static_cast<oa::U32>(chunk);
 		offset += chunk;
 
@@ -226,7 +283,7 @@ void shakeSqueeze(ShakeContext& inOutCtx, oa::Byte* outData, oa::Usize inOutLen)
 	if (!inOutCtx.squeezing) {
 		// finalize: pad remaining buffer
 		inOutCtx.buf[inOutCtx.bufLen] = 0x1F;
-		std::memset(inOutCtx.buf + inOutCtx.bufLen + 1, 0,
+		oa::memzero(inOutCtx.buf + inOutCtx.bufLen + 1,
 			inOutCtx.rate - inOutCtx.bufLen - 1);
 		inOutCtx.buf[inOutCtx.rate - 1] |= 0x80;
 		xorBytesIntoState(inOutCtx.state, inOutCtx.buf, inOutCtx.rate);
@@ -239,10 +296,10 @@ void shakeSqueeze(ShakeContext& inOutCtx, oa::Byte* outData, oa::Usize inOutLen)
 	// drain any leftover from a partial previous squeeze
 	if (inOutCtx.bufLen > 0) {
 		oa::Usize avail = inOutCtx.rate - inOutCtx.bufLen;
-		oa::Usize chunk = std::min(inOutLen, avail);
+		oa::Usize chunk = oa::min(inOutLen, avail);
 		oa::Byte rateBuf[200];
 		extractBytesFromState(inOutCtx.state, rateBuf, inOutCtx.rate);
-		std::memcpy(outData, rateBuf + inOutCtx.bufLen, chunk);
+		oa::memcpy(outData, rateBuf + inOutCtx.bufLen, chunk);
 		inOutCtx.bufLen += static_cast<oa::U32>(chunk);
 		offset += chunk;
 		if (inOutCtx.bufLen == inOutCtx.rate) {
@@ -290,7 +347,7 @@ static oa::Usize leftEncode(oa::U64 inVal, oa::Byte* outBuf) {
 		}
 	}
 	outBuf[0] = static_cast<oa::Byte>(n);
-	std::memcpy(outBuf + 1, tmp, n);
+	oa::memcpy(outBuf + 1, tmp, n);
 	return 1 + n;
 }
 
@@ -311,7 +368,7 @@ static oa::Usize rightEncode(oa::U64 inVal, oa::Byte* outBuf) {
 			oa::Byte t = tmp[i]; tmp[i] = tmp[n - 1 - i]; tmp[n - 1 - i] = t;
 		}
 	}
-	std::memcpy(outBuf, tmp, n);
+	oa::memcpy(outBuf, tmp, n);
 	outBuf[n] = static_cast<oa::Byte>(n);
 	return n + 1;
 }
@@ -320,7 +377,7 @@ static oa::Usize rightEncode(oa::U64 inVal, oa::Byte* outBuf) {
 static oa::Usize encodeString(const oa::Byte* inStr, oa::Usize inLen, oa::Byte* outBuf) {
 	oa::Usize hLen = leftEncode(inLen * 8, outBuf);
 	if (inLen != 0) {
-		std::memcpy(outBuf + hLen, inStr, inLen);
+		oa::memcpy(outBuf + hLen, inStr, inLen);
 	}
 	return hLen + inLen;
 }
@@ -335,24 +392,24 @@ oa::Status kmac256(
 	oa::Byte* outMac, oa::Usize inOutLen)
 {
 	const oa::U32 rate = 136;
-	constexpr oa::Usize kMax = std::numeric_limits<oa::Usize>::max();
+	constexpr oa::Usize kMax = oa::Limits<oa::Usize>::max();
 	if ((inKey == nullptr && inKeyLen != 0) || (inData == nullptr && inDataLen != 0) ||
 		(inCustom == nullptr && inCustomLen != 0) || (outMac == nullptr && inOutLen != 0)) {
 		return oa::Status::invalidArgument("KMAC pointer is null with a non-zero length");
 	}
-	if (inKeyLen > std::numeric_limits<oa::U64>::max() / 8 ||
-		inCustomLen > std::numeric_limits<oa::U64>::max() / 8 ||
-		inOutLen > std::numeric_limits<oa::U64>::max() / 8) {
+	if (inKeyLen > oa::Limits<oa::U64>::max() / 8 ||
+		inCustomLen > oa::Limits<oa::U64>::max() / 8 ||
+		inOutLen > oa::Limits<oa::U64>::max() / 8) {
 		return oa::Status::error(oa::StatusCode::OutOfRange,
 			"KMAC bit length exceeds SP 800-185 encoding");
 	}
 	auto paddedSize = [](oa::Usize inSize) -> oa::Result<oa::Usize> {
-		if (inSize > std::numeric_limits<oa::Usize>::max() - (rate - 1)) {
+		if (inSize > oa::Limits<oa::Usize>::max() - (rate - 1)) {
 			return oa::Status::error(oa::StatusCode::OutOfRange, "KMAC encoded input is too large");
 		}
 		return ((inSize + rate - 1) / rate) * rate;
 	};
-	try {
+	{
 		oa::U64 state[25] = {};
 		SecureEraseGuard stateGuard(state, sizeof(state));
 
@@ -370,7 +427,9 @@ oa::Status kmac256(
 		const oa::Usize prefixRawLen = headerLen + customHeaderLen + inCustomLen;
 		auto prefixSize = paddedSize(prefixRawLen);
 		if (!prefixSize) return prefixSize.getStatus();
-		std::vector<oa::Byte> prefix(prefixSize.getValue(), 0);
+		auto prefixResult = SecureByteBuffer::create(prefixSize.getValue());
+		if (!prefixResult) return prefixResult.getStatus();
+		SecureByteBuffer prefix = oa::move(*prefixResult);
 		oa::Usize pLen = 0;
 
 		// left_encode(rate) for bytepad header
@@ -402,8 +461,9 @@ oa::Status kmac256(
 		const oa::Usize keyHeaderLen = leftEncode(inKeyLen * 8, keyLenEncoding);
 		auto keySize = paddedSize(leftEncode(rate, header) + keyHeaderLen + inKeyLen);
 		if (!keySize) return keySize.getStatus();
-		std::vector<oa::Byte> keyBuf(keySize.getValue(), 0);
-		SecureEraseGuard keyGuard(keyBuf.data(), keyBuf.size());
+		auto keyResult = SecureByteBuffer::create(keySize.getValue());
+		if (!keyResult) return keyResult.getStatus();
+		SecureByteBuffer keyBuf = oa::move(*keyResult);
 		oa::Usize kLen = 0;
 		kLen += leftEncode(rate, keyBuf.data() + kLen);
 		kLen += encodeString(inKey, inKeyLen, keyBuf.data() + kLen);
@@ -433,13 +493,13 @@ oa::Status kmac256(
 		SecureEraseGuard tailGuard(tail, sizeof(tail));
 		oa::Usize tLen = inDataLen - offset;
 		if (tLen != 0) {
-			std::memcpy(tail, inData + offset, tLen);
+			oa::memcpy(tail, inData + offset, tLen);
 		}
 		tLen += rightEncode(inOutLen * 8, tail + tLen);
 
 		// cSHAKE domain: 0x04 (not SHAKE's 0x1F)
 		tail[tLen] = 0x04;
-		std::memset(tail + tLen + 1, 0, rate - tLen - 1);
+		oa::memzero(tail + tLen + 1, rate - tLen - 1);
 		tail[rate - 1] |= 0x80;
 		xorBytesIntoState(state, tail, rate);
 		oa::keccakF1600(state);
@@ -447,7 +507,7 @@ oa::Status kmac256(
 		// squeeze
 		oa::Usize squeezed = 0;
 		while (squeezed < inOutLen) {
-			oa::Usize chunk = std::min(inOutLen - squeezed, static_cast<oa::Usize>(rate));
+			oa::Usize chunk = oa::min(inOutLen - squeezed, static_cast<oa::Usize>(rate));
 			extractBytesFromState(state, outMac + squeezed, chunk);
 			squeezed += chunk;
 			if (squeezed < inOutLen) {
@@ -455,9 +515,6 @@ oa::Status kmac256(
 			}
 		}
 		return oa::Status::ok();
-	} catch (const std::bad_alloc&) {
-		return oa::Status::error(oa::StatusCode::ResourceExhausted,
-			"KMAC temporary encoding allocation failed");
 	}
 }
 

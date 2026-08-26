@@ -2,7 +2,7 @@
 
 #include <oa/core/image.h>
 
-#include <cassert>
+#include <assert.h>
 
 oa::I32 oa::imageFormatChannels(oa::ImageFormat inFormat) {
 	switch (inFormat) {
@@ -59,7 +59,7 @@ oa::I32 dimAt(const oa::Matrix& inData, oa::I32 inAxis) {
 } // namespace
 
 oa::Image::Image(oa::Matrix inData, oa::ImageLayout inLayout, oa::ImageFormat inFormat)
-	: data_(std::move(inData))
+	: data_(oa::move(inData))
 	, layout_(inLayout)
 	, format_(inFormat)
 {
@@ -111,7 +111,7 @@ oa::I32 oa::Image::batchSize() const {
 // ─── oa::ImageBatch implementation ─────────────────────────────────────────────
 
 oa::ImageBatch::ImageBatch(oa::Matrix inData, oa::ImageLayout inLayout, oa::ImageFormat inFormat)
-	: data_(std::move(inData))
+	: data_(oa::move(inData))
 	, layout_(inLayout)
 	, format_(inFormat)
 {

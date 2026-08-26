@@ -1,19 +1,18 @@
 #include <oa/core/fnMatrix.h>
+#include <oa/core/filesystem.h>
 #include <oa/core/log.h>
+#include <oa/core/std/algo.h>
+#include <oa/core/std/array.h>
+#include <oa/core/std/atomic.h>
+#include <oa/core/std/chrono.h>
+#include <oa/core/std/format.h>
+#include <oa/core/std/scalarMath.h>
 #include <oa/ml/modelFile.h>
 #include <oa/ml/quantMatrixAccess.h>
 #include <oa/runtime/engine.h>
 #include <oa/runtime/executionSession.h>
 
-#include <algorithm>
-#include <array>
-#include <atomic>
-#include <chrono>
-#include <cmath>
-#include <cstring>
-#include <filesystem>
-#include <fstream>
-#include <limits>
+#include <stdio.h>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -63,40 +62,83 @@ oa::U64 modelFileManifestHash(const ModelFileHeader& inHeader, const oa::Vec<Mod
 }
 
 bool modelFileCheckedAdd(oa::U64 inA, oa::U64 inB, oa::U64& out) {
-	if (inB > std::numeric_limits<oa::U64>::max() - inA)
+	if (inB > oa::Limits<oa::U64>::max() - inA)
 		return false;
 	out = inA + inB;
 	return true;
 }
 
 bool modelFileCheckedMul(oa::U64 inA, oa::U64 inB, oa::U64& out) {
-	if (inA != 0 and inB > std::numeric_limits<oa::U64>::max() / inA)
+	if (inA != 0 and inB > oa::Limits<oa::U64>::max() / inA)
 		return false;
 	out = inA * inB;
 	return true;
 }
 
-bool modelFileReadExact(std::ifstream& inFile, oa::U64 inOffset, void* outData, oa::U64 inBytes) {
-	if (inOffset > static_cast<oa::U64>(std::numeric_limits<std::streamoff>::max()) or
-		inBytes > static_cast<oa::U64>(std::numeric_limits<std::streamsize>::max())) {
-		return false;
+struct ModelFileHandle {
+	FILE* value = nullptr;
+
+	ModelFileHandle() = default;
+	explicit ModelFileHandle(FILE* inValue) noexcept : value(inValue) {}
+	ModelFileHandle(const ModelFileHandle&) = delete;
+	ModelFileHandle& operator=(const ModelFileHandle&) = delete;
+	~ModelFileHandle() {
+		if (value != nullptr) ::fclose(value);
 	}
-	inFile.clear();
-	inFile.seekg(static_cast<std::streamoff>(inOffset), std::ios::beg);
-	if (not inFile)
-		return false;
-	if (inBytes == 0)
-		return true;
-	inFile.read(static_cast<char*>(outData), static_cast<std::streamsize>(inBytes));
-	return inFile.good() or (inFile.eof() and static_cast<oa::U64>(inFile.gcount()) == inBytes);
+
+	[[nodiscard]] bool isOpen() const noexcept { return value != nullptr; }
+
+	[[nodiscard]] bool close() noexcept {
+		if (value == nullptr) return true;
+		FILE* closing = value;
+		value = nullptr;
+		return ::fclose(closing) == 0;
+	}
+};
+
+bool modelFileSeek(FILE* inFile, oa::U64 inOffset) {
+#ifdef _WIN32
+	if (inOffset > static_cast<oa::U64>(oa::Limits<__int64>::max())) return false;
+	return ::_fseeki64(inFile, static_cast<__int64>(inOffset), SEEK_SET) == 0;
+#else
+	if (inOffset > static_cast<oa::U64>(oa::Limits<off_t>::max())) return false;
+	return ::fseeko(inFile, static_cast<off_t>(inOffset), SEEK_SET) == 0;
+#endif
 }
 
-oa::Result<oa::U64> modelFileHashRange(std::ifstream& inFile, oa::U64 inOffset, oa::U64 inBytes) {
-	oa::Vec<oa::U8> chunk(std::min<oa::U64>(inBytes, kHashChunkBytes));
+bool modelFileReadExact(FILE* inFile, oa::U64 inOffset, void* outData, oa::U64 inBytes) {
+	if (not modelFileSeek(inFile, inOffset)) return false;
+	auto* destination = static_cast<oa::U8*>(outData);
+	while (inBytes != 0) {
+		const oa::Usize chunk = static_cast<oa::Usize>(
+			oa::min<oa::U64>(inBytes, oa::Limits<oa::Usize>::max()));
+		const oa::Usize read = ::fread(destination, 1, chunk, inFile);
+		if (read != chunk) return false;
+		destination += read;
+		inBytes -= read;
+	}
+	return true;
+}
+
+bool modelFileWriteExact(FILE* inFile, const void* inData, oa::U64 inBytes) {
+	const auto* source = static_cast<const oa::U8*>(inData);
+	while (inBytes != 0) {
+		const oa::Usize chunk = static_cast<oa::Usize>(
+			oa::min<oa::U64>(inBytes, oa::Limits<oa::Usize>::max()));
+		const oa::Usize written = ::fwrite(source, 1, chunk, inFile);
+		if (written != chunk) return false;
+		source += written;
+		inBytes -= written;
+	}
+	return true;
+}
+
+oa::Result<oa::U64> modelFileHashRange(FILE* inFile, oa::U64 inOffset, oa::U64 inBytes) {
+	oa::Vec<oa::U8> chunk(oa::min<oa::U64>(inBytes, kHashChunkBytes));
 	oa::U64 hash = 0xcbf29ce484222325ULL;
 	oa::U64 consumed = 0;
 	while (consumed < inBytes) {
-		const oa::U64 bytes = std::min<oa::U64>(chunk.size(), inBytes - consumed);
+		const oa::U64 bytes = oa::min<oa::U64>(chunk.size(), inBytes - consumed);
 		if (not modelFileReadExact(inFile, inOffset + consumed, chunk.data(), bytes)) {
 			return modelFileCorrupt("truncated section payload");
 		}
@@ -107,27 +149,26 @@ oa::Result<oa::U64> modelFileHashRange(std::ifstream& inFile, oa::U64 inOffset, 
 }
 
 oa::String modelFileTemporaryPath(const oa::String& inFinalPath) {
-	static std::atomic<oa::U64> sequence{0};
-	const auto ticks = std::chrono::steady_clock::now().time_since_epoch().count();
-	return inFinalPath + ".tmp." + std::to_string(static_cast<unsigned long long>(ticks)) + "." +
-		   std::to_string(static_cast<unsigned long long>(++sequence));
+	static oa::Atomic<oa::U64> sequence{0};
+	const auto ticks = oa::steadyNow().nanosecondsSinceEpoch();
+	return inFinalPath + ".tmp."
+		+ oa::toString(static_cast<oa::I64>(ticks)) + "."
+		+ oa::toString(static_cast<oa::I64>(++sequence));
 }
 
 oa::Status modelFileAtomicReplace(const oa::String& inTemporaryPath,
 								  const oa::String& inFinalPath) {
 #ifdef _WIN32
-	const std::filesystem::path temporary(inTemporaryPath.stdStr());
-	const std::filesystem::path final(inFinalPath.stdStr());
-	HANDLE handle = createFileW(temporary.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
-								OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+	HANDLE handle = ::CreateFileA(inTemporaryPath.cStr(), GENERIC_READ, FILE_SHARE_READ, nullptr,
+								 OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
 	if (handle == INVALID_HANDLE_VALUE) {
 		return oa::Status::error(oa::StatusCode::Unavailable,
 								 "cannot open temporary .oam for durable commit");
 	}
-	const BOOL flushed = flushFileBuffers(handle);
-	closeHandle(handle);
-	if (not flushed or not moveFileExW(temporary.c_str(), final.c_str(),
-									   MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+	const BOOL flushed = ::FlushFileBuffers(handle);
+	::CloseHandle(handle);
+	if (not flushed or not ::MoveFileExA(inTemporaryPath.cStr(), inFinalPath.cStr(),
+										 MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
 		return oa::Status::error(oa::StatusCode::Unavailable, "atomic .oam replacement failed");
 	}
 #else
@@ -141,8 +182,8 @@ oa::Status modelFileAtomicReplace(const oa::String& inTemporaryPath,
 	if (syncResult != 0 or ::rename(inTemporaryPath.cStr(), inFinalPath.cStr()) != 0) {
 		return oa::Status::error(oa::StatusCode::Unavailable, "atomic .oam replacement failed");
 	}
-	const auto parent = std::filesystem::path(inFinalPath.stdStr()).parent_path();
-	const oa::String parentString(parent.empty() ? "." : parent.string());
+	const oa::Path parent = oa::Path(inFinalPath).parentPath();
+	const oa::String parentString = parent.empty() ? oa::String(".") : parent.string();
 	const int dirFd = ::open(parentString.cStr(), O_RDONLY | O_DIRECTORY | O_CLOEXEC);
 	if (dirFd >= 0) {
 		(void)::fsync(dirFd);
@@ -153,7 +194,10 @@ oa::Status modelFileAtomicReplace(const oa::String& inTemporaryPath,
 }
 
 bool modelFileHasTerminator(const char* inData, oa::Usize inSize) {
-	return std::memchr(inData, '\0', inSize) != nullptr;
+	for (oa::Usize index = 0; index < inSize; ++index) {
+		if (inData[index] == '\0') return true;
+	}
+	return false;
 }
 
 bool modelFileValidScalarType(oa::ScalarType inType) {
@@ -241,14 +285,14 @@ oa::Result<oa::U64> modelFileExpectedTensorBytes(const ModelTensorEntry& inEntry
 }
 
 oa::I32 modelFileRoundNearestEven(oa::F32 inValue) {
-	const oa::F32 lowerValue = std::floor(inValue);
+	const oa::F32 lowerValue = oa::floor(inValue);
 	const auto lower = static_cast<oa::I32>(lowerValue);
 	const oa::F32 fraction = inValue - lowerValue;
 	if (fraction < 0.5F)
 		return lower;
 	if (fraction > 0.5F)
 		return lower + 1;
-	return std::abs(lower) % 2 == 0 ? lower : lower + 1;
+	return oa::abs(lower) % 2 == 0 ? lower : lower + 1;
 }
 
 oa::Result<oa::Vec<oa::U8>> modelFileQuantizeFloat32(const oa::U8* inData, oa::U64 inElements,
@@ -264,7 +308,7 @@ oa::Result<oa::Vec<oa::U8>> modelFileQuantizeFloat32(const oa::U8* inData, oa::U
 	if (not modelFileCheckedMul(blocks, payloadPerBlock, payloadBytes) or
 		not modelFileCheckedMul(blocks, sizeof(oa::F32), scaleBytes) or
 		not modelFileCheckedAdd(payloadBytes, scaleBytes, totalBytes) or
-		totalBytes > std::numeric_limits<oa::Usize>::max()) {
+		totalBytes > oa::Limits<oa::Usize>::max()) {
 		return oa::Status::error(oa::StatusCode::ResourceExhausted,
 								 "quantized weight size overflow");
 	}
@@ -276,27 +320,27 @@ oa::Result<oa::Vec<oa::U8>> modelFileQuantizeFloat32(const oa::U8* inData, oa::U
 			if (index >= inElements)
 				break;
 			oa::F32 value = 0.0F;
-			std::memcpy(&value, inData + index * sizeof(oa::F32), sizeof(value));
-			if (std::isfinite(value))
-				maximum = std::max(maximum, std::abs(value));
+			oa::memcpy(&value, inData + index * sizeof(oa::F32), sizeof(value));
+			if (oa::isFinite(value))
+				maximum = oa::max(maximum, oa::abs(value));
 		}
 		const oa::F32 divisor = inQuantization == oa::Quantization::Q4 ? 7.0F : 127.0F;
 		oa::F32 scale = maximum / divisor;
-		if (not(scale > 0.0F) or not std::isfinite(scale))
+		if (not(scale > 0.0F) or not oa::isFinite(scale))
 			scale = 1.0F;
-		std::memcpy(encoded.data() + payloadBytes + block * sizeof(oa::F32), &scale, sizeof(scale));
+		oa::memcpy(encoded.data() + payloadBytes + block * sizeof(oa::F32), &scale, sizeof(scale));
 
 		for (oa::U64 lane = 0; lane < 32; ++lane) {
 			const oa::U64 index = block * 32 + lane;
 			oa::F32 value = 0.0F;
 			if (index < inElements) {
-				std::memcpy(&value, inData + index * sizeof(oa::F32), sizeof(value));
-				if (not std::isfinite(value))
+				oa::memcpy(&value, inData + index * sizeof(oa::F32), sizeof(value));
+				if (not oa::isFinite(value))
 					value = 0.0F;
 			}
 			const oa::I32 limit = inQuantization == oa::Quantization::Q4 ? 7 : 127;
 			const oa::I32 quantized =
-				std::clamp(modelFileRoundNearestEven(value / scale), -limit, limit);
+				oa::clamp(modelFileRoundNearestEven(value / scale), -limit, limit);
 			if (inQuantization == oa::Quantization::Q4) {
 				const oa::U64 byte = block * 16 + lane / 2;
 				const oa::U8 nibble = static_cast<oa::U8>(quantized + 7);
@@ -349,7 +393,7 @@ const char* modelFileTensorEncodingName(ModelTensorEncoding inEncoding) {
 // ModelFile methods
 const ModelTensorEntry* ModelFile::findWeight(const char* inName) const {
 	for (const auto& e : weightIndex) {
-		if (std::strncmp(e.name, inName, kModelFileMaxName) == 0) {
+		if (oa::strncmp(e.name, inName, kModelFileMaxName) == 0) {
 			return &e;
 		}
 	}
@@ -366,7 +410,7 @@ const void* ModelFile::weightPtr(const char* inName) const {
 
 const ModelTensorEntry* ModelFile::findState(const char* inName) const {
 	for (const auto& e : stateIndex) {
-		if (std::strncmp(e.name, inName, kModelFileMaxName) == 0) {
+		if (oa::strncmp(e.name, inName, kModelFileMaxName) == 0) {
 			return &e;
 		}
 	}
@@ -390,10 +434,12 @@ static void addTensor(oa::Vec<ModelTensorEntry>& outIndex, oa::Vec<oa::U8>& outB
 					  const void* inData, oa::U64 inBytes,
 					  ModelTensorEncoding inEncoding = ModelTensorEncoding::Dense,
 					  oa::U8 inBlockSize = 0) {
-	assert(inShape.size() <= kModelFileMaxRank);
-	assert(inData != nullptr || inBytes == 0);
+	OA_ASSERT(inShape.size() <= kModelFileMaxRank);
+	OA_ASSERT(inData != nullptr || inBytes == 0);
 	ModelTensorEntry entry;
-	std::strncpy(entry.name, inName, kModelFileMaxName - 1);
+	for (oa::Usize index = 0; index + 1U < kModelFileMaxName and inName[index] != '\0'; ++index) {
+		entry.name[index] = inName[index];
+	}
 	entry.blobOffset = outBlob.size();
 	entry.numBytes = inBytes;
 	entry.dtype = inDtype;
@@ -407,7 +453,7 @@ static void addTensor(oa::Vec<ModelTensorEntry>& outIndex, oa::Vec<oa::U8>& outB
 	oa::Usize oldSize = outBlob.size();
 	outBlob.resize(oldSize + inBytes);
 	if (inBytes > 0) {
-		std::memcpy(outBlob.data() + oldSize, inData, inBytes);
+		oa::memcpy(outBlob.data() + oldSize, inData, inBytes);
 	}
 }
 
@@ -513,8 +559,8 @@ oa::Result<oa::QuantMatrix> ModelFile::loadQuantMatrix(oa::Engine& inEngine,
 	oa::U64 scaleBytes = 0;
 	oa::U64 elements = 0;
 	if (not modelFileQuantizedLayout(*entry, payloadBytes, scaleBytes, elements) or
-		payloadBytes > static_cast<oa::U64>(std::numeric_limits<oa::I64>::max()) or
-		scaleBytes / sizeof(oa::F32) > static_cast<oa::U64>(std::numeric_limits<oa::I64>::max())) {
+		payloadBytes > static_cast<oa::U64>(oa::Limits<oa::I64>::max()) or
+		scaleBytes / sizeof(oa::F32) > static_cast<oa::U64>(oa::Limits<oa::I64>::max())) {
 		return oa::Status::error(oa::StatusCode::CheckpointCorrupt,
 								 oa::String("quantized weight dimensions are not representable: ") +
 									 inName);
@@ -522,7 +568,7 @@ oa::Result<oa::QuantMatrix> ModelFile::loadQuantMatrix(oa::Engine& inEngine,
 	oa::MatrixShape logicalShape;
 	logicalShape.rank = entry->rank;
 	for (oa::U8 dim = 0; dim < entry->rank; ++dim) {
-		if (entry->shape[dim] > static_cast<oa::U64>(std::numeric_limits<oa::I64>::max())) {
+		if (entry->shape[dim] > static_cast<oa::U64>(oa::Limits<oa::I64>::max())) {
 			return oa::Status::error(oa::StatusCode::CheckpointCorrupt,
 									 oa::String("quantized weight shape is not representable: ") +
 										 inName);
@@ -559,32 +605,27 @@ static oa::Vec<oa::U8> serializeTensorIndex(const oa::Vec<ModelTensorEntry>& inI
 
 	oa::Vec<oa::U8> raw(indexBytes + inBlob.size());
 	oa::U8* p = raw.data();
-	std::memcpy(p, &count, sizeof(oa::U32));
+	oa::memcpy(p, &count, sizeof(oa::U32));
 	p += sizeof(oa::U32);
-	std::memcpy(p, &reserved, sizeof(oa::U32));
+	oa::memcpy(p, &reserved, sizeof(oa::U32));
 	p += sizeof(oa::U32);
 	for (const auto& e : inIndex) {
-		std::memcpy(p, &e, sizeof(ModelTensorEntry));
+		oa::memcpy(p, &e, sizeof(ModelTensorEntry));
 		p += sizeof(ModelTensorEntry);
 	}
-	std::memcpy(p, inBlob.data(), inBlob.size());
+	oa::memcpy(p, inBlob.data(), inBlob.size());
 	return raw;
 }
 
 // save
 
 oa::Status ModelFile::save(const oa::String& inPath) const {
-	{
-		auto parent = std::filesystem::path(inPath.stdStr()).parent_path();
-		if (!parent.empty()) {
-			std::error_code ec;
-			std::filesystem::create_directories(parent, ec);
-		}
-	}
+	const oa::Path parent = oa::Path(inPath).parentPath();
+	if (not parent.empty()) OA_RETURN_IF_ERROR(oa::Filesystem::createDirectories(parent));
 	auto validateTensors = [&](const oa::Vec<ModelTensorEntry>& inIndex,
 							   const oa::Vec<oa::U8>& inBlob, bool inIsWeight) -> oa::Status {
 		oa::HashSet<oa::String> names;
-		std::vector<std::pair<oa::U64, oa::U64>> tensorRanges;
+		oa::Vec<oa::Pair<oa::U64, oa::U64>> tensorRanges;
 		for (const auto& entry : inIndex) {
 			if (not modelFileHasTerminator(entry.name, sizeof(entry.name)) or
 				entry.name[0] == '\0' or entry.rank > kModelFileMaxRank or
@@ -607,9 +648,12 @@ oa::Status ModelFile::save(const oa::String& inPath) const {
 											 entry.name);
 			}
 			if (entry.numBytes != 0)
-				tensorRanges.emplace_back(entry.blobOffset, end);
+				tensorRanges.emplaceBack(entry.blobOffset, end);
 		}
-		std::sort(tensorRanges.begin(), tensorRanges.end());
+		oa::sort(tensorRanges.begin(), tensorRanges.end(),
+			[](const auto& inLeft, const auto& inRight) {
+				return inLeft.first < inRight.first;
+			});
 		for (oa::Usize i = 1; i < tensorRanges.size(); ++i) {
 			if (tensorRanges[i].first < tensorRanges[i - 1].second) {
 				return oa::Status::error(oa::StatusCode::InvalidArgument, "cannot save .oam with overlapping tensor payload ranges");
@@ -629,10 +673,10 @@ oa::Status ModelFile::save(const oa::String& inPath) const {
 	// Config + optional archConfig
 	{
 		oa::Vec<oa::U8> raw(sizeof(ModelFileConfig) + archConfig.size());
-		std::memcpy(raw.data(), &config, sizeof(ModelFileConfig));
+		oa::memcpy(raw.data(), &config, sizeof(ModelFileConfig));
 		if (!archConfig.empty())
-			std::memcpy(raw.data() + sizeof(ModelFileConfig), archConfig.data(), archConfig.size());
-		payloads.pushBack({ModelFileSection::Config, std::move(raw)});
+			oa::memcpy(raw.data() + sizeof(ModelFileConfig), archConfig.data(), archConfig.size());
+		payloads.pushBack({ModelFileSection::Config, oa::move(raw)});
 	}
 
 	if (hasWeights()) {
@@ -655,23 +699,23 @@ oa::Status ModelFile::save(const oa::String& inPath) const {
 		const oa::Usize adamVBytes = adamV.size() * sizeof(oa::F32);
 		oa::Vec<oa::U8> raw(sizeof(ModelOptimizerState) + adamMBytes + adamVBytes);
 		oa::U8* p = raw.data();
-		std::memcpy(p, &hdr, sizeof(ModelOptimizerState));
+		oa::memcpy(p, &hdr, sizeof(ModelOptimizerState));
 		p += sizeof(ModelOptimizerState);
 		if (adamMBytes > 0) {
-			std::memcpy(p, adamM.data(), adamMBytes);
+			oa::memcpy(p, adamM.data(), adamMBytes);
 			p += adamMBytes;
 		}
 		if (adamVBytes > 0) {
-			std::memcpy(p, adamV.data(), adamVBytes);
+			oa::memcpy(p, adamV.data(), adamVBytes);
 			p += adamVBytes;
 		}
-		payloads.pushBack({ModelFileSection::Optimizer, std::move(raw)});
+		payloads.pushBack({ModelFileSection::Optimizer, oa::move(raw)});
 	}
 
 	{
 		oa::Vec<oa::U8> raw(sizeof(ModelTrainingProgress));
-		std::memcpy(raw.data(), &progress, sizeof(ModelTrainingProgress));
-		payloads.pushBack({ModelFileSection::Progress, std::move(raw)});
+		oa::memcpy(raw.data(), &progress, sizeof(ModelTrainingProgress));
+		payloads.pushBack({ModelFileSection::Progress, oa::move(raw)});
 	}
 
 	oa::U32 numSections = static_cast<oa::U32>(payloads.size());
@@ -702,52 +746,49 @@ oa::Status ModelFile::save(const oa::String& inPath) const {
 	fileHeader.checksum = modelFileManifestHash(fileHeader, sectionHeaders);
 
 	const oa::String temporaryPath = modelFileTemporaryPath(inPath);
-	std::ofstream file(temporaryPath.cStr(), std::ios::binary | std::ios::trunc);
-	if (!file)
+	ModelFileHandle file(::fopen(temporaryPath.cStr(), "wb"));
+	if (not file.isOpen())
 		return oa::Status::error("Failed to open for write: " + temporaryPath);
 
-	file.write(reinterpret_cast<const char*>(&fileHeader), sizeof(fileHeader));
-	for (const auto& sh : sectionHeaders)
-		file.write(reinterpret_cast<const char*>(&sh), sizeof(sh));
+	bool complete = modelFileWriteExact(file.value, &fileHeader, sizeof(fileHeader));
+	for (const auto& sh : sectionHeaders) {
+		complete = complete and modelFileWriteExact(file.value, &sh, sizeof(sh));
+	}
 
 	{
 		oa::Usize written = kModelFileHeaderSize + numSections * kModelFileSectionHeaderSize;
 		oa::Vec<oa::U8> zeros(dataStart - written, 0);
-		file.write(reinterpret_cast<const char*>(zeros.data()), zeros.size());
+		complete = complete and modelFileWriteExact(file.value, zeros.data(), zeros.size());
 	}
 
 	for (oa::U32 i = 0; i < numSections; ++i) {
 		const auto& sp = payloads[i];
-		file.write(reinterpret_cast<const char*>(sp.data.data()), sp.data.size());
+		complete = complete and modelFileWriteExact(file.value, sp.data.data(), sp.data.size());
 		bool needsAlign =
 			(sp.type == ModelFileSection::Weights || sp.type == ModelFileSection::State);
 		if (needsAlign) {
 			oa::Usize pad = modelFilePageAlign(sp.data.size()) - sp.data.size();
 			if (pad > 0) {
 				oa::Vec<oa::U8> zeros(pad, 0);
-				file.write(reinterpret_cast<const char*>(zeros.data()), pad);
+				complete = complete and modelFileWriteExact(file.value, zeros.data(), pad);
 			}
 		}
 	}
-	file.flush();
-	if (not file.good()) {
-		file.close();
-		std::error_code ignored;
-		std::filesystem::remove(temporaryPath.stdStr(), ignored);
+	complete = complete and ::fflush(file.value) == 0;
+	if (not complete) {
+		(void)file.close();
+		(void)oa::Filesystem::removeFile(oa::Path(temporaryPath));
 		return oa::Status::error(oa::StatusCode::DiskFull,
 								 "failed to write complete .oam: " + inPath);
 	}
-	file.close();
-	if (file.fail()) {
-		std::error_code ignored;
-		std::filesystem::remove(temporaryPath.stdStr(), ignored);
+	if (not file.close()) {
+		(void)oa::Filesystem::removeFile(oa::Path(temporaryPath));
 		return oa::Status::error(oa::StatusCode::Unavailable,
 								 "failed to close .oam temporary file: " + inPath);
 	}
 	const auto commitStatus = modelFileAtomicReplace(temporaryPath, inPath);
 	if (not commitStatus.isOk()) {
-		std::error_code ignored;
-		std::filesystem::remove(temporaryPath.stdStr(), ignored);
+		(void)oa::Filesystem::removeFile(oa::Path(temporaryPath));
 		return commitStatus;
 	}
 
@@ -759,20 +800,18 @@ oa::Status ModelFile::save(const oa::String& inPath) const {
 // load
 
 oa::Result<ModelFile> ModelFile::load(const oa::String& inPath) {
-	std::ifstream file(inPath.cStr(), std::ios::binary);
-	if (!file)
+	ModelFileHandle file(::fopen(inPath.cStr(), "rb"));
+	if (not file.isOpen())
 		return oa::Status::error("Cannot open: " + inPath);
 
-	file.seekg(0, std::ios::end);
-	const auto end = file.tellg();
-	if (end < 0)
-		return modelFileCorrupt("cannot determine file size");
-	const oa::U64 fileSize = static_cast<oa::U64>(end);
+	auto sizeResult = oa::Filesystem::getFileSize(oa::Path(inPath));
+	if (not sizeResult.isOk()) return sizeResult.getStatus();
+	const oa::U64 fileSize = sizeResult.getValue();
 	if (fileSize < sizeof(ModelFileHeader))
 		return modelFileCorrupt("truncated file header");
 
 	ModelFileHeader fh;
-	if (not modelFileReadExact(file, 0, &fh, sizeof(fh))) {
+	if (not modelFileReadExact(file.value, 0, &fh, sizeof(fh))) {
 		return modelFileCorrupt("failed to read file header");
 	}
 	if (fh.magic != kModelFileMagic)
@@ -797,7 +836,7 @@ oa::Result<ModelFile> ModelFile::load(const oa::String& inPath) {
 		return modelFileCorrupt("file size does not match header");
 
 	oa::Vec<ModelFileSectionHeader> sections(fh.numSections);
-	if (not modelFileReadExact(file, sizeof(ModelFileHeader), sections.data(), sectionTableBytes)) {
+	if (not modelFileReadExact(file.value, sizeof(ModelFileHeader), sections.data(), sectionTableBytes)) {
 		return modelFileCorrupt("failed to read section table");
 	}
 	if (fh.version >= 2 and fh.checksum != modelFileManifestHash(fh, sections)) {
@@ -805,8 +844,8 @@ oa::Result<ModelFile> ModelFile::load(const oa::String& inPath) {
 	}
 
 	const oa::U64 dataStart = modelFilePageAlign(static_cast<oa::Usize>(headerBytes));
-	std::array<bool, static_cast<oa::Usize>(ModelFileSection::LegacyKernelCache) + 1> seen{};
-	std::vector<std::pair<oa::U64, oa::U64>> ranges;
+	oa::Array<bool, static_cast<oa::Usize>(ModelFileSection::LegacyKernelCache) + 1> seen{};
+	oa::Vec<oa::Pair<oa::U64, oa::U64>> ranges;
 	oa::U64 legacyFileChecksum = 0;
 	for (const auto& sh : sections) {
 		if (sh.type < static_cast<oa::U32>(ModelFileSection::Config) or
@@ -828,8 +867,8 @@ oa::Result<ModelFile> ModelFile::load(const oa::String& inPath) {
 		// its 64-bit members into standard-library constructors: those references
 		// would retain the packed, potentially misaligned address.
 		const oa::U64 sectionOffset = sh.offset;
-		ranges.emplace_back(sectionOffset, sectionEnd);
-		auto hash = modelFileHashRange(file, sh.offset, sh.size);
+		ranges.emplaceBack(sectionOffset, sectionEnd);
+		auto hash = modelFileHashRange(file.value, sh.offset, sh.size);
 		if (not hash.isOk())
 			return hash.getStatus();
 		if (hash.getValue() != sh.checksum) {
@@ -837,7 +876,10 @@ oa::Result<ModelFile> ModelFile::load(const oa::String& inPath) {
 		}
 		legacyFileChecksum ^= hash.getValue();
 	}
-	std::sort(ranges.begin(), ranges.end());
+	oa::sort(ranges.begin(), ranges.end(),
+		[](const auto& inLeft, const auto& inRight) {
+			return inLeft.first < inRight.first;
+		});
 	for (oa::Usize i = 1; i < ranges.size(); ++i) {
 		if (ranges[i].first < ranges[i - 1].second) {
 			return modelFileCorrupt("overlapping section ranges");
@@ -863,7 +905,7 @@ oa::Result<ModelFile> ModelFile::load(const oa::String& inPath) {
 	model.formatVersion = fh.version;
 	const auto* configSection = findSection(ModelFileSection::Config);
 	if (configSection->size < sizeof(ModelFileConfig) or
-		not modelFileReadExact(file, configSection->offset, &model.config,
+		not modelFileReadExact(file.value, configSection->offset, &model.config,
 							   sizeof(ModelFileConfig))) {
 		return modelFileCorrupt("invalid config section");
 	}
@@ -881,7 +923,7 @@ oa::Result<ModelFile> ModelFile::load(const oa::String& inPath) {
 	}
 	if (model.config.archConfigSize > 0) {
 		model.archConfig.resize(model.config.archConfigSize);
-		if (not modelFileReadExact(file, configSection->offset + sizeof(ModelFileConfig),
+		if (not modelFileReadExact(file.value, configSection->offset + sizeof(ModelFileConfig),
 								   model.archConfig.data(), model.archConfig.size())) {
 			return modelFileCorrupt("truncated architecture config");
 		}
@@ -895,7 +937,7 @@ oa::Result<ModelFile> ModelFile::load(const oa::String& inPath) {
 		if (sh->size < sizeof(oa::U32) * 2)
 			return modelFileCorrupt("truncated tensor index");
 		oa::U32 countAndReserved[2]{};
-		if (not modelFileReadExact(file, sh->offset, countAndReserved, sizeof(countAndReserved))) {
+		if (not modelFileReadExact(file.value, sh->offset, countAndReserved, sizeof(countAndReserved))) {
 			return modelFileCorrupt("cannot read tensor index header");
 		}
 		if (countAndReserved[1] != 0)
@@ -908,13 +950,13 @@ oa::Result<ModelFile> ModelFile::load(const oa::String& inPath) {
 			return modelFileCorrupt("tensor index size overflow");
 		}
 		outIndex.resize(countAndReserved[0]);
-		if (entriesBytes > 0 and not modelFileReadExact(file, sh->offset + sizeof(countAndReserved),
+		if (entriesBytes > 0 and not modelFileReadExact(file.value, sh->offset + sizeof(countAndReserved),
 														outIndex.data(), entriesBytes)) {
 			return modelFileCorrupt("truncated tensor index entries");
 		}
 		const oa::U64 blobSize = sh->size - indexBytes;
 		oa::HashSet<oa::String> names;
-		std::vector<std::pair<oa::U64, oa::U64>> tensorRanges;
+		oa::Vec<oa::Pair<oa::U64, oa::U64>> tensorRanges;
 		for (const auto& entry : outIndex) {
 			if (not modelFileHasTerminator(entry.name, sizeof(entry.name)) or
 				entry.name[0] == '\0' or entry.rank > kModelFileMaxRank or
@@ -935,9 +977,12 @@ oa::Result<ModelFile> ModelFile::load(const oa::String& inPath) {
 				return modelFileCorrupt("tensor byte count does not match shape/encoding");
 			}
 			if (entry.numBytes != 0)
-				tensorRanges.emplace_back(entry.blobOffset, entryEnd);
+				tensorRanges.emplaceBack(entry.blobOffset, entryEnd);
 		}
-		std::sort(tensorRanges.begin(), tensorRanges.end());
+		oa::sort(tensorRanges.begin(), tensorRanges.end(),
+			[](const auto& inLeft, const auto& inRight) {
+				return inLeft.first < inRight.first;
+			});
 		for (oa::Usize i = 1; i < tensorRanges.size(); ++i) {
 			if (tensorRanges[i].first < tensorRanges[i - 1].second) {
 				return modelFileCorrupt("overlapping tensor payload ranges");
@@ -945,7 +990,7 @@ oa::Result<ModelFile> ModelFile::load(const oa::String& inPath) {
 		}
 		outBlob.resize(static_cast<oa::Usize>(blobSize));
 		if (blobSize > 0 and
-			not modelFileReadExact(file, sh->offset + indexBytes, outBlob.data(), blobSize)) {
+			not modelFileReadExact(file.value, sh->offset + indexBytes, outBlob.data(), blobSize)) {
 			return modelFileCorrupt("truncated tensor payload");
 		}
 		return oa::Status::ok();
@@ -958,7 +1003,7 @@ oa::Result<ModelFile> ModelFile::load(const oa::String& inPath) {
 	if (const auto* sh = findSection(ModelFileSection::Optimizer)) {
 		model.optimizerPresent = true;
 		if (sh->size < sizeof(ModelOptimizerState) or
-			not modelFileReadExact(file, sh->offset, &model.optimizer,
+			not modelFileReadExact(file.value, sh->offset, &model.optimizer,
 								   sizeof(ModelOptimizerState)) or
 			not modelFileHasTerminator(model.optimizer.type, sizeof(model.optimizer.type))) {
 			return modelFileCorrupt("invalid optimizer header");
@@ -983,14 +1028,14 @@ oa::Result<ModelFile> ModelFile::load(const oa::String& inPath) {
 		oa::U64 offset = sizeof(ModelOptimizerState);
 		model.adamM.resize(static_cast<oa::Usize>(adamNum));
 		if (adamBytes > 0 and
-			not modelFileReadExact(file, sh->offset + offset, model.adamM.data(), adamBytes)) {
+			not modelFileReadExact(file.value, sh->offset + offset, model.adamM.data(), adamBytes)) {
 			return modelFileCorrupt("truncated optimizer first moment");
 		}
 		offset += adamBytes;
 		if (not modelFileIsMuonOnly(model.optimizer)) {
 			model.adamV.resize(static_cast<oa::Usize>(adamNum));
 			if (adamBytes > 0 and
-				not modelFileReadExact(file, sh->offset + offset, model.adamV.data(), adamBytes)) {
+				not modelFileReadExact(file.value, sh->offset + offset, model.adamV.data(), adamBytes)) {
 				return modelFileCorrupt("truncated optimizer second moment");
 			}
 			offset += adamBytes;
@@ -999,7 +1044,7 @@ oa::Result<ModelFile> ModelFile::load(const oa::String& inPath) {
 
 	const auto* progressSection = findSection(ModelFileSection::Progress);
 	if (progressSection->size != sizeof(ModelTrainingProgress) or
-		not modelFileReadExact(file, progressSection->offset, &model.progress,
+		not modelFileReadExact(file.value, progressSection->offset, &model.progress,
 							   sizeof(ModelTrainingProgress)) or
 		not modelFileHasTerminator(model.progress.metricName, sizeof(model.progress.metricName))) {
 		return modelFileCorrupt("invalid progress section");
@@ -1022,15 +1067,15 @@ void dumpModelFile(const oa::String& inPath) {
 			return;
 		}
 	}
-	std::ifstream file(inPath.cStr(), std::ios::binary);
-	if (!file) {
+	ModelFileHandle file(::fopen(inPath.cStr(), "rb"));
+	if (not file.isOpen()) {
 		OaLogError(oa::LogComponent::Ml, "[oam] Cannot open: %s", inPath.cStr());
 		return;
 	}
 
 	ModelFileHeader fh;
-	file.read(reinterpret_cast<char*>(&fh), sizeof(fh));
-	if (fh.magic != kModelFileMagic) {
+	if (not modelFileReadExact(file.value, 0, &fh, sizeof(fh)) or
+		fh.magic != kModelFileMagic) {
 		OaLogError(oa::LogComponent::Ml, "[oam] Not an .oam file");
 		return;
 	}
@@ -1040,8 +1085,11 @@ void dumpModelFile(const oa::String& inPath) {
 			  fh.totalSize / 1e6);
 
 	oa::Vec<ModelFileSectionHeader> sections(fh.numSections);
-	for (oa::U32 i = 0; i < fh.numSections; ++i)
-		file.read(reinterpret_cast<char*>(&sections[i]), sizeof(ModelFileSectionHeader));
+	if (not modelFileReadExact(file.value, sizeof(ModelFileHeader), sections.data(),
+							   sections.size() * sizeof(ModelFileSectionHeader))) {
+		OaLogError(oa::LogComponent::Ml, "[oam] Cannot read section table");
+		return;
+	}
 
 	for (oa::U32 i = 0; i < fh.numSections; ++i) {
 		const auto& sh = sections[i];
@@ -1051,21 +1099,22 @@ void dumpModelFile(const oa::String& inPath) {
 
 		if (type == ModelFileSection::Config) {
 			ModelFileConfig cfg;
-			file.seekg(sh.offset);
-			file.read(reinterpret_cast<char*>(&cfg),
-					  std::min(sh.size, static_cast<oa::U64>(sizeof(ModelFileConfig))));
+			if (not modelFileReadExact(file.value, sh.offset, &cfg,
+					oa::min(sh.size, static_cast<oa::U64>(sizeof(ModelFileConfig))))) continue;
 			OaLogInfo(oa::LogComponent::Ml, "       arch=%s dModel=%u nLayers=%u dVocab=%u",
 					  cfg.architecture, cfg.dModel, cfg.nLayers, cfg.dVocab);
 		}
 
 		if (type == ModelFileSection::Weights || type == ModelFileSection::State) {
 			oa::U32 count = 0, reserved = 0;
-			file.seekg(sh.offset);
-			file.read(reinterpret_cast<char*>(&count), sizeof(oa::U32));
-			file.read(reinterpret_cast<char*>(&reserved), sizeof(oa::U32));
+			if (not modelFileReadExact(file.value, sh.offset, &count, sizeof(oa::U32)) or
+				not modelFileReadExact(file.value, sh.offset + sizeof(oa::U32), &reserved,
+								   sizeof(oa::U32))) continue;
 			for (oa::U32 j = 0; j < count; ++j) {
 				ModelTensorEntry e;
-				file.read(reinterpret_cast<char*>(&e), sizeof(e));
+				const oa::U64 entryOffset = sh.offset + sizeof(oa::U32) * 2
+					+ static_cast<oa::U64>(j) * sizeof(ModelTensorEntry);
+				if (not modelFileReadExact(file.value, entryOffset, &e, sizeof(e))) break;
 				OaLogInfo(oa::LogComponent::Ml, "       %s  %s/%.*s  %.3f MB", e.name,
 						  modelFileTensorEncodingName(e.encoding),
 						  static_cast<int>(oa::scalarTypeName(e.dtype).size()),

@@ -3,6 +3,7 @@
 #include "executableGraphBuilder.h"
 
 #include <oa/core/bufferAccess.h>
+#include <oa/core/std/array.h>
 #include <oa/core/status.h>
 #include <oa/runtime/allocator.h>
 #include <oa/runtime/executionStats.h>
@@ -21,6 +22,67 @@ class Engine;
 class Matrix;
 class OpLoweringScope;
 class Timer;
+
+// Fixed inline argument packs preserve concise `{&a, &b}` lowering call sites.
+// std::initializer_list is the compiler-defined brace-list bridge; it does not
+// justify a module-specific list/container type. These packs remain private to
+// the semantic/lowering seam and borrow every referenced value.
+class MatrixArgs {
+public:
+	MatrixArgs() = default;
+	MatrixArgs(std::initializer_list<const oa::Matrix*> inValues)
+		: size_(inValues.size()) {
+		OA_REQUIRE(size_ <= values_.size());
+		oa::Usize index = 0;
+		for (const oa::Matrix* value : inValues) values_[index++] = value;
+	}
+
+	template <typename... Values>
+		requires (sizeof...(Values) > 0U and sizeof...(Values) <= 32U
+			and (... and not oa::IsSameV<oa::RemoveCvrefT<Values>, oa::MatrixArgs>))
+	MatrixArgs(Values... inValues)
+		: size_(sizeof...(Values)) {
+		const oa::Matrix* incoming[] = {
+			static_cast<const oa::Matrix*>(inValues)...};
+		for (oa::Usize index = 0; index < size_; ++index) values_[index] = incoming[index];
+	}
+
+	[[nodiscard]] oa::Span<const oa::Matrix* const> span() const noexcept {
+		return {values_.data(), size_};
+	}
+
+private:
+	oa::Array<const oa::Matrix*, 32> values_{};
+	oa::Usize size_ = 0;
+};
+
+class OpAttributeArgs {
+public:
+	OpAttributeArgs() = default;
+	OpAttributeArgs(std::initializer_list<oa::OpAttribute> inValues)
+		: size_(inValues.size()) {
+		OA_REQUIRE(size_ <= values_.size());
+		oa::Usize index = 0;
+		for (const oa::OpAttribute& value : inValues) values_[index++] = value;
+	}
+
+	template <typename... Values>
+		requires (sizeof...(Values) > 0U and sizeof...(Values) <= 16U
+			and (... and not oa::IsSameV<oa::RemoveCvrefT<Values>, oa::OpAttributeArgs>))
+	OpAttributeArgs(Values&&... inValues)
+		: size_(sizeof...(Values)) {
+		oa::Usize index = 0;
+		((values_[index++] = oa::forward<Values>(inValues)), ...);
+	}
+
+	[[nodiscard]] oa::Span<const oa::OpAttribute> span() const noexcept {
+		return {values_.data(), size_};
+	}
+
+private:
+	oa::Array<oa::OpAttribute, 16> values_{};
+	oa::Usize size_ = 0;
+};
 
 // Private mutable execution owner for one engine recording. It owns semantic
 // authoring, executable lowering, one-shot batching, stable temporary slots,
@@ -72,9 +134,9 @@ public:
 		oa::Span<const oa::OpAttribute> inAttributes = {});
 	[[nodiscard]] oa::Result<oa::U32> recordOp(
 		const oa::OpContract& inContract,
-		std::initializer_list<const oa::Matrix*> inInputs,
-		std::initializer_list<const oa::Matrix*> inOutputs,
-		std::initializer_list<oa::OpAttribute> inAttributes = {});
+		oa::MatrixArgs inInputs,
+		oa::MatrixArgs inOutputs,
+		oa::OpAttributeArgs inAttributes = {});
 	[[nodiscard]] oa::Status recordView(
 		const oa::Matrix& inSource,
 		const oa::Matrix& inView);
@@ -112,7 +174,7 @@ public:
 		oa::U32 inSemanticOp = oa::invalidSemanticOpId);
 	void add(
 		oa::StringView inKernelName,
-		std::initializer_list<const oa::Matrix*> inMatrices,
+		oa::MatrixArgs inMatrices,
 		oa::Span<oa::BufferAccess> inAccess,
 		const void* inPush,
 		oa::U32 inPushSize,
@@ -314,9 +376,9 @@ public:
 		oa::Span<const oa::OpAttribute> inAttributes = {});
 	[[nodiscard]] oa::Status commit(
 		const oa::OpContract& inContract,
-		std::initializer_list<const oa::Matrix*> inInputs,
-		std::initializer_list<const oa::Matrix*> inOutputs,
-		std::initializer_list<oa::OpAttribute> inAttributes = {});
+		oa::MatrixArgs inInputs,
+		oa::MatrixArgs inOutputs,
+		oa::OpAttributeArgs inAttributes = {});
 	[[nodiscard]] oa::Result<oa::U32> commitWithId(
 		const oa::OpContract& inContract,
 		oa::Span<const oa::Matrix* const> inInputs,
@@ -324,9 +386,9 @@ public:
 		oa::Span<const oa::OpAttribute> inAttributes = {});
 	[[nodiscard]] oa::Result<oa::U32> commitWithId(
 		const oa::OpContract& inContract,
-		std::initializer_list<const oa::Matrix*> inInputs,
-		std::initializer_list<const oa::Matrix*> inOutputs,
-		std::initializer_list<oa::OpAttribute> inAttributes = {});
+		oa::MatrixArgs inInputs,
+		oa::MatrixArgs inOutputs,
+		oa::OpAttributeArgs inAttributes = {});
 
 private:
 	oa::ExecutionSession* session_ = nullptr;

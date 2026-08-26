@@ -1,7 +1,5 @@
 #include "imageCodecInternal.h"
-
-#include <cctype>
-#include <cstring>
+#include <oa/core/memory.h>
 
 namespace oa::imageCodec {
 
@@ -13,7 +11,7 @@ bool hasPrefix(
 	oa::Usize inPrefixSize) noexcept
 {
 	return inData.size() >= inPrefixSize
-		and std::memcmp(inData.data(), inPrefix, inPrefixSize) == 0;
+		and oa::memcmp(inData.data(), inPrefix, inPrefixSize) == 0;
 }
 
 bool isTga(oa::Span<const oa::U8> inData) noexcept
@@ -49,8 +47,8 @@ oa::ImageCodec detectCodec(oa::Span<const oa::U8> inData) noexcept
 	if (hasPrefix(inData, jpeg, sizeof(jpeg))) return oa::ImageCodec::Jpeg;
 	if (hasPrefix(inData, bmp, sizeof(bmp))) return oa::ImageCodec::Bmp;
 	if (inData.size() >= 12U
-		and std::memcmp(inData.data(), "RIFF", 4U) == 0
-		and std::memcmp(inData.data() + 8U, "WEBP", 4U) == 0) {
+		and oa::memcmp(inData.data(), "RIFF", 4U) == 0
+		and oa::memcmp(inData.data() + 8U, "WEBP", 4U) == 0) {
 		return oa::ImageCodec::Webp;
 	}
 	if (isTga(inData)) return oa::ImageCodec::Tga;
@@ -61,8 +59,9 @@ oa::ImageCodec codecFromPath(const oa::Path& inPath) noexcept
 {
 	oa::String extension = inPath.extension().string();
 	for (char& value : extension) {
-		value = static_cast<char>(
-			std::tolower(static_cast<unsigned char>(value)));
+		if (value >= 'A' and value <= 'Z') {
+			value = static_cast<char>(value + ('a' - 'A'));
+		}
 	}
 	if (extension == ".jpg" or extension == ".jpeg") {
 		return oa::ImageCodec::Jpeg;

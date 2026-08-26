@@ -4,10 +4,7 @@
 
 #include <SDL3/SDL.h>
 
-#include <cmath>
-#include <iterator>
-
-
+#include <oa/core/std/scalarMath.h>
 namespace oa::input {
 
 namespace {
@@ -66,8 +63,8 @@ oa::U64 scrollNowNs(const oa::UiEvent& inEvent) noexcept {
 
 bool looksLikeWheelDetent(oa::F32 inAbs) noexcept {
 	if (inAbs < 0.9F || inAbs > 3.5F) { return false; }
-	const oa::F32 nearest = std::round(inAbs);
-	return std::fabs(inAbs - nearest) < 0.12F;
+	const oa::F32 nearest = oa::round(inAbs);
+	return oa::abs(inAbs - nearest) < 0.12F;
 }
 
 void resetScrollBurst() noexcept {
@@ -89,8 +86,8 @@ oa::I32 buttonScancode(Button inButton) noexcept {
 
 oa::UiScrollGesture classifyBurst(const oa::UiEvent& inEvent) noexcept {
 	const oa::U64 nowNs = scrollNowNs(inEvent);
-	const oa::F32 absX  = std::fabs(inEvent.scrollX);
-	const oa::F32 absY  = std::fabs(inEvent.scrollY);
+	const oa::F32 absX  = oa::abs(inEvent.scrollX);
+	const oa::F32 absY  = oa::abs(inEvent.scrollY);
 
 	if (GScrollBurst.lastNs != 0ULL && nowNs - GScrollBurst.lastNs > kBurstGapNs) {
 		resetScrollBurst();
@@ -155,12 +152,12 @@ oa::UiScrollGesture classifyScroll(const oa::UiEvent& inEvent) noexcept {
 
 	// Wayland trackpad pinch is often synthesized as ctrl+smooth scroll.
 	if (inEvent.ctrl()
-	 && (std::fabs(inEvent.scrollX) > 0.001F || std::fabs(inEvent.scrollY) > 0.001F)) {
+	 && (oa::abs(inEvent.scrollX) > 0.001F || oa::abs(inEvent.scrollY) > 0.001F)) {
 		resetScrollBurst();
 		return oa::UiScrollGesture::PinchScroll;
 	}
 
-	if (std::fabs(inEvent.scrollX) < 0.001F && std::fabs(inEvent.scrollY) < 0.001F) {
+	if (oa::abs(inEvent.scrollX) < 0.001F && oa::abs(inEvent.scrollY) < 0.001F) {
 		return oa::UiScrollGesture::None;
 	}
 
@@ -233,7 +230,8 @@ void processEvent(const void* inPlatformEvent) {
 }
 
 void update() {
-	for (oa::Usize index = 0U; index < std::size(GState.keyboard.keys); ++index) {
+	for (oa::Usize index = 0U;
+		index < sizeof(GState.keyboard.keys) / sizeof(GState.keyboard.keys[0]); ++index) {
 		GState.pressKeys[index] = GState.keyboard.keys[index]
 			&& not GState.prevKeys[index];
 		GState.releaseKeys[index] = not GState.keyboard.keys[index]
@@ -260,7 +258,8 @@ void clearForNextFrame() {
 	GState.mouse.scrollY = 0.0F;
 	GState.pressLeft = GState.pressMiddle = GState.pressRight = false;
 	GState.releaseLeft = GState.releaseMiddle = GState.releaseRight = false;
-	for (oa::Usize index = 0U; index < std::size(GState.pressKeys); ++index) {
+	for (oa::Usize index = 0U;
+		index < sizeof(GState.pressKeys) / sizeof(GState.pressKeys[0]); ++index) {
 		GState.pressKeys[index] = false;
 		GState.releaseKeys[index] = false;
 	}

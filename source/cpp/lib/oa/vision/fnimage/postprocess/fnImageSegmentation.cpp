@@ -3,10 +3,9 @@
 #include <oa/core/bufferAccess.h>
 #include <oa/core/log.h>
 #include <oa/core/op.h>
+#include <oa/core/std/limits.h>
+#include <oa/core/std/scalarMath.h>
 #include <oa/runtime/executionSession.h>
-
-#include <cmath>
-#include <limits>
 
 oa::Matrix oa::FnImage::segmentationOverlay(
 	oa::Engine& inRt,
@@ -34,8 +33,8 @@ oa::Matrix oa::FnImage::segmentationOverlay(
 		&& inPalette.getDtype() == oa::ScalarType::Float32;
 	const oa::U64 elements = static_cast<oa::U64>(inImage.numElements());
 	if (!imageValid || !maskValid || !paletteValid
-		|| !std::isfinite(inAlpha) || inAlpha < 0.0F || inAlpha > 1.0F
-		|| elements > std::numeric_limits<oa::U32>::max()) {
+		|| !oa::isFinite(inAlpha) || inAlpha < 0.0F || inAlpha > 1.0F
+		|| elements > oa::Limits<oa::U32>::max()) {
 		OaLogError(oa::LogComponent::Vision,
 			"oa::FnImage::segmentationOverlay expects FP32 NCHW RGB/RGBA, matching Int32 labels, FP32 palette [K,3], and alpha in [0,1]");
 		return {};

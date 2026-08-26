@@ -2,22 +2,22 @@
 
 #include <oa/ui/navigation.h>
 #include <oa/core/log.h>
+#include <oa/core/std/algo.h>
+#include <oa/core/std/limits.h>
+#include <oa/core/std/scalarMath.h>
 #include <oa/ui/input.h>
 #include <oa/ui/platformInput.h>
-
-#include <cmath>
-#include <limits>
 
 namespace {
 
 [[nodiscard]] bool finiteVec3(const oa::vlm::Vec3& inValue) noexcept {
-	return std::isfinite(inValue.x) and std::isfinite(inValue.y)
-		and std::isfinite(inValue.z);
+	return oa::isFinite(inValue.x) and oa::isFinite(inValue.y)
+		and oa::isFinite(inValue.z);
 }
 
 [[nodiscard]] bool fitsFloat(oa::F64 inValue) noexcept {
-	return std::isfinite(inValue)
-		and std::abs(inValue) <= std::numeric_limits<oa::F32>::max();
+	return oa::isFinite(inValue)
+		and oa::abs(inValue) <= oa::Limits<oa::F32>::max();
 }
 
 [[nodiscard]] oa::Status navigationRangeError(oa::StringView inOperation) {
@@ -140,50 +140,50 @@ void oa::Navigation::restore(const StateSnapshot& inState) noexcept {
 }
 
 oa::Status oa::Navigation::validate() const {
-	const bool configValid = std::isfinite(config_.panLimit)
+	const bool configValid = oa::isFinite(config_.panLimit)
 		and config_.panLimit >= 0.0F
-		and std::isfinite(config_.zoomMinZ) and config_.zoomMinZ > 0.0F
+		and oa::isFinite(config_.zoomMinZ) and config_.zoomMinZ > 0.0F
 		and config_.zoomMinZ <= refZ_
-		and static_cast<oa::F64>(refZ_) / config_.zoomMinZ <= std::numeric_limits<oa::F32>::max()
-		and std::isfinite(config_.maxZoomOutZ)
+		and static_cast<oa::F64>(refZ_) / config_.zoomMinZ <= oa::Limits<oa::F32>::max()
+		and oa::isFinite(config_.maxZoomOutZ)
 		and config_.maxZoomOutZ >= refZ_
 		and config_.maxZoomOutZ >= config_.zoomMinZ
-		and std::isfinite(config_.mouseWheelSensitivity)
+		and oa::isFinite(config_.mouseWheelSensitivity)
 		and config_.mouseWheelSensitivity >= 0.0F
-		and std::isfinite(config_.wheelPanScale) and config_.wheelPanScale >= 0.0F
-		and std::isfinite(config_.ctrlScrollDollyScale)
+		and oa::isFinite(config_.wheelPanScale) and config_.wheelPanScale >= 0.0F
+		and oa::isFinite(config_.ctrlScrollDollyScale)
 		and config_.ctrlScrollDollyScale >= 0.0F
-		and std::isfinite(config_.rmbZoomDragScale)
+		and oa::isFinite(config_.rmbZoomDragScale)
 		and config_.rmbZoomDragScale >= 0.0F
-		and std::isfinite(config_.keyboardPanStep)
+		and oa::isFinite(config_.keyboardPanStep)
 		and config_.keyboardPanStep >= 0.0F
-		and std::isfinite(config_.touchpadPanScale)
+		and oa::isFinite(config_.touchpadPanScale)
 		and config_.touchpadPanScale >= 0.0F
-		and std::isfinite(config_.pinchGestureScale)
+		and oa::isFinite(config_.pinchGestureScale)
 		and config_.pinchGestureScale >= 0.0F
-		and std::isfinite(config_.keyboardZoomStep)
+		and oa::isFinite(config_.keyboardZoomStep)
 		and config_.keyboardZoomStep > 1.0F
-		and std::isfinite(config_.animationDurationMs)
+		and oa::isFinite(config_.animationDurationMs)
 		and config_.animationDurationMs >= 0.0F;
 	if (not configValid) {
 		return oa::Status::invalidArgument(
 			"oa::Navigation requires finite non-negative controls, zoomMinZ <= 1 <= maxZoomOutZ, and keyboardZoomStep > 1");
 	}
-	const bool stateValid = std::isfinite(contentW_) and contentW_ > 0.0F
-		and std::isfinite(contentH_) and contentH_ > 0.0F
-		and std::isfinite(windowW_) and windowW_ > 0.0F
-		and std::isfinite(windowH_) and windowH_ > 0.0F
+	const bool stateValid = oa::isFinite(contentW_) and contentW_ > 0.0F
+		and oa::isFinite(contentH_) and contentH_ > 0.0F
+		and oa::isFinite(windowW_) and windowW_ > 0.0F
+		and oa::isFinite(windowH_) and windowH_ > 0.0F
 		and finiteVec3(movement_) and finiteVec3(animStartMovement_)
 		and finiteVec3(targetMovement_)
 		and movement_.z >= minZ() and movement_.z <= maxZ()
 		and targetMovement_.z >= minZ() and targetMovement_.z <= maxZ()
-		and std::isfinite(zoom_) and zoom_ > 0.0F
-		and std::isfinite(panX_) and std::isfinite(panY_)
-		and std::isfinite(animTimeMs_) and animTimeMs_ >= 0.0F
-		and std::isfinite(animDurationMs_) and animDurationMs_ >= 0.0F
-		and std::isfinite(lastMouseX_) and std::isfinite(lastMouseY_)
-		and std::isfinite(pinchBeginZ_) and pinchBeginZ_ > 0.0F
-		and std::isfinite(pinchAccumScale_) and pinchAccumScale_ > 0.0F;
+		and oa::isFinite(zoom_) and zoom_ > 0.0F
+		and oa::isFinite(panX_) and oa::isFinite(panY_)
+		and oa::isFinite(animTimeMs_) and animTimeMs_ >= 0.0F
+		and oa::isFinite(animDurationMs_) and animDurationMs_ >= 0.0F
+		and oa::isFinite(lastMouseX_) and oa::isFinite(lastMouseY_)
+		and oa::isFinite(pinchBeginZ_) and pinchBeginZ_ > 0.0F
+		and oa::isFinite(pinchAccumScale_) and pinchAccumScale_ > 0.0F;
 	if (not stateValid) {
 		return oa::Status::error(
 			oa::StatusCode::FailedPrecondition,
@@ -226,7 +226,7 @@ oa::Status oa::Navigation::syncMovementFromPanel() {
 	const oa::F32 z = oa::clamp(movement_.z, minZ(), maxZ());
 	const oa::F64 zoom = static_cast<oa::F64>(refZ_) / z;
 	const oa::F64 pixelsPerUnit = static_cast<oa::F64>(windowH_) / (2.0 * z);
-	if (not std::isfinite(pixelsPerUnit) or pixelsPerUnit <= 0.0) {
+	if (not oa::isFinite(pixelsPerUnit) or pixelsPerUnit <= 0.0) {
 		return navigationRangeError("oa::Navigation::syncMovementFromPanel");
 	}
 	const oa::F64 movementX = (static_cast<oa::F64>(panX_)
@@ -260,10 +260,10 @@ oa::Status oa::Navigation::clampPanel() {
 	OA_RETURN_IF_ERROR(refreshZoom());
 	const oa::F64 imageW = static_cast<oa::F64>(contentW_) * zoom_;
 	const oa::F64 imageH = static_cast<oa::F64>(contentH_) * zoom_;
-	const oa::F64 minDim = std::min<oa::F64>(windowW_, windowH_);
-	const oa::F64 margin = std::min(minDim * 0.1, 100.0);
-	const oa::F64 panX = std::clamp<oa::F64>(panX_, -imageW + margin, windowW_ - margin);
-	const oa::F64 panY = std::clamp<oa::F64>(panY_, -imageH + margin, windowH_ - margin);
+	const oa::F64 minDim = oa::min<oa::F64>(windowW_, windowH_);
+	const oa::F64 margin = oa::min(minDim * 0.1, 100.0);
+	const oa::F64 panX = oa::clamp<oa::F64>(panX_, -imageW + margin, windowW_ - margin);
+	const oa::F64 panY = oa::clamp<oa::F64>(panY_, -imageH + margin, windowH_ - margin);
 	if (not fitsFloat(panX) or not fitsFloat(panY)) {
 		restore(previous);
 		return navigationRangeError("oa::Navigation::clampPanel");
@@ -281,7 +281,7 @@ oa::Status oa::Navigation::clampPanel() {
 
 oa::Status oa::Navigation::setContentSize(oa::F32 inWidth, oa::F32 inHeight) {
 	OA_RETURN_IF_ERROR(validate());
-	if (not std::isfinite(inWidth) or not std::isfinite(inHeight)
+	if (not oa::isFinite(inWidth) or not oa::isFinite(inHeight)
 		or inWidth <= 0.0F or inHeight <= 0.0F) {
 		return oa::Status::invalidArgument(
 			"oa::Navigation::setContentSize requires finite positive dimensions");
@@ -296,7 +296,7 @@ oa::Status oa::Navigation::setContentSize(oa::F32 inWidth, oa::F32 inHeight) {
 
 oa::Status oa::Navigation::setWindowSize(oa::F32 inWidth, oa::F32 inHeight) {
 	OA_RETURN_IF_ERROR(validate());
-	if (not std::isfinite(inWidth) or not std::isfinite(inHeight)
+	if (not oa::isFinite(inWidth) or not oa::isFinite(inHeight)
 		or inWidth <= 0.0F or inHeight <= 0.0F) {
 		return oa::Status::invalidArgument(
 			"oa::Navigation::setWindowSize requires finite positive dimensions");
@@ -311,17 +311,17 @@ oa::Status oa::Navigation::setWindowSize(oa::F32 inWidth, oa::F32 inHeight) {
 
 oa::Status oa::Navigation::fitToWindow(bool inAnimate) {
 	OA_RETURN_IF_ERROR(validate());
-	const oa::F64 fitZoom = std::min(
+	const oa::F64 fitZoom = oa::min(
 		static_cast<oa::F64>(windowW_) / contentW_,
 		static_cast<oa::F64>(windowH_) / contentH_);
-	if (not std::isfinite(fitZoom) or fitZoom <= 0.0) {
+	if (not oa::isFinite(fitZoom) or fitZoom <= 0.0) {
 		return navigationRangeError("oa::Navigation::fitToWindow");
 	}
 	const StateSnapshot previous = snapshot();
 	targetMovement_ = {
 		0.0F,
 		0.0F,
-		static_cast<oa::F32>(std::clamp<oa::F64>(
+		static_cast<oa::F32>(oa::clamp<oa::F64>(
 			static_cast<oa::F64>(refZ_) / fitZoom, minZ(), maxZ())),
 	};
 	const oa::Status status = beginAnimation(inAnimate, config_.animationDurationMs);
@@ -331,12 +331,12 @@ oa::Status oa::Navigation::fitToWindow(bool inAnimate) {
 
 oa::Status oa::Navigation::dollyWheel(oa::F32 inScrollDelta) {
 	OA_RETURN_IF_ERROR(validate());
-	if (not std::isfinite(inScrollDelta)) {
+	if (not oa::isFinite(inScrollDelta)) {
 		return oa::Status::invalidArgument(
 			"oa::Navigation wheel delta must be finite");
 	}
-	if (std::fabs(inScrollDelta) < 0.0001F) return oa::Status::ok();
-	const oa::F64 nextZ = std::clamp<oa::F64>(
+	if (oa::abs(inScrollDelta) < 0.0001F) return oa::Status::ok();
+	const oa::F64 nextZ = oa::clamp<oa::F64>(
 		static_cast<oa::F64>(movement_.z)
 			* (1.0 - static_cast<oa::F64>(inScrollDelta)
 				* config_.mouseWheelSensitivity),
@@ -354,17 +354,17 @@ oa::Status oa::Navigation::dollyWheel(oa::F32 inScrollDelta) {
 
 oa::Status oa::Navigation::rmbZoomDrag(oa::F32 inDeltaX) {
 	OA_RETURN_IF_ERROR(validate());
-	if (not std::isfinite(inDeltaX)) {
+	if (not oa::isFinite(inDeltaX)) {
 		return oa::Status::invalidArgument(
 			"oa::Navigation RMB zoom delta must be finite");
 	}
-	if (std::fabs(inDeltaX) < 0.0001F) return oa::Status::ok();
-	const oa::F64 delta = std::abs(static_cast<oa::F64>(inDeltaX))
+	if (oa::abs(inDeltaX) < 0.0001F) return oa::Status::ok();
+	const oa::F64 delta = oa::abs(static_cast<oa::F64>(inDeltaX))
 		* config_.rmbZoomDragScale;
 	const oa::F64 candidate = inDeltaX > 0.0F
 		? static_cast<oa::F64>(movement_.z) / (1.0 + delta)
 		: static_cast<oa::F64>(movement_.z) * (1.0 + delta);
-	const oa::F64 nextZ = std::clamp(candidate, static_cast<oa::F64>(minZ()),
+	const oa::F64 nextZ = oa::clamp(candidate, static_cast<oa::F64>(minZ()),
 		static_cast<oa::F64>(maxZ()));
 	if (not fitsFloat(nextZ)) return navigationRangeError("oa::Navigation::rmbZoomDrag");
 	const StateSnapshot previous = snapshot();
@@ -383,8 +383,8 @@ oa::Status oa::Navigation::zoomAt(
 	oa::F32 inAnchorY,
 	bool inAnimate) {
 	OA_RETURN_IF_ERROR(validate());
-	if (not std::isfinite(inZoom) or inZoom <= 0.0F
-		or not std::isfinite(inAnchorX) or not std::isfinite(inAnchorY)) {
+	if (not oa::isFinite(inZoom) or inZoom <= 0.0F
+		or not oa::isFinite(inAnchorX) or not oa::isFinite(inAnchorY)) {
 		return oa::Status::invalidArgument(
 			"oa::Navigation::zoomTo requires finite positive zoom and finite anchor coordinates");
 	}
@@ -395,15 +395,15 @@ oa::Status oa::Navigation::zoomAt(
 		return status;
 	}
 	const oa::F64 oldZoom = zoom_;
-	const oa::F64 targetZoom = std::clamp<oa::F64>(
+	const oa::F64 targetZoom = oa::clamp<oa::F64>(
 		inZoom,
 		static_cast<oa::F64>(refZ_) / maxZ(),
 		static_cast<oa::F64>(refZ_) / minZ());
-	if (std::abs(targetZoom - oldZoom) < 0.0001) return oa::Status::ok();
+	if (oa::abs(targetZoom - oldZoom) < 0.0001) return oa::Status::ok();
 	const oa::F64 ratio = targetZoom / oldZoom;
 	const oa::F64 newPanX = inAnchorX - (static_cast<oa::F64>(inAnchorX) - panX_) * ratio;
 	const oa::F64 newPanY = inAnchorY - (static_cast<oa::F64>(inAnchorY) - panY_) * ratio;
-	const oa::F64 targetZ = std::clamp<oa::F64>(
+	const oa::F64 targetZ = oa::clamp<oa::F64>(
 		static_cast<oa::F64>(refZ_) / targetZoom, minZ(), maxZ());
 	const oa::F64 admittedZoom = static_cast<oa::F64>(refZ_) / targetZ;
 	const oa::F64 pixelsPerUnit = static_cast<oa::F64>(windowH_) / (2.0 * targetZ);
@@ -457,7 +457,7 @@ oa::Status oa::Navigation::zoomTo(
 
 oa::Status oa::Navigation::panScreenBy(oa::F32 inDx, oa::F32 inDy) {
 	OA_RETURN_IF_ERROR(validate());
-	if (not std::isfinite(inDx) or not std::isfinite(inDy)) {
+	if (not oa::isFinite(inDx) or not oa::isFinite(inDy)) {
 		return oa::Status::invalidArgument(
 			"oa::Navigation::panBy requires finite screen deltas");
 	}
@@ -486,7 +486,7 @@ oa::Status oa::Navigation::panBy(oa::F32 inDx, oa::F32 inDy) {
 
 oa::Status oa::Navigation::keyboardPan(oa::F32 inDirX, oa::F32 inDirY) {
 	OA_RETURN_IF_ERROR(validate());
-	if (not std::isfinite(inDirX) or not std::isfinite(inDirY)) {
+	if (not oa::isFinite(inDirX) or not oa::isFinite(inDirY)) {
 		return oa::Status::invalidArgument(
 			"oa::Navigation::keyboardPan requires finite directions");
 	}
@@ -512,7 +512,7 @@ oa::Status oa::Navigation::keyboardPan(oa::F32 inDirX, oa::F32 inDirY) {
 
 oa::Status oa::Navigation::keyboardZoomBy(oa::F32 inFactor) {
 	OA_RETURN_IF_ERROR(validate());
-	if (not std::isfinite(inFactor) or inFactor <= 0.0F) {
+	if (not oa::isFinite(inFactor) or inFactor <= 0.0F) {
 		return oa::Status::invalidArgument(
 			"oa::Navigation keyboard zoom factor must be finite and positive");
 	}
@@ -573,8 +573,8 @@ oa::Status oa::Navigation::updatePanDrag(const oa::UiEvent& inEvent) {
 		? inEvent.mouseDX : inEvent.mouseX - lastMouseX_;
 	const oa::F32 dy = inEvent.mouseDY != 0.0F
 		? inEvent.mouseDY : inEvent.mouseY - lastMouseY_;
-	if (not std::isfinite(dx) or not std::isfinite(dy)
-		or not std::isfinite(inEvent.mouseX) or not std::isfinite(inEvent.mouseY)) {
+	if (not oa::isFinite(dx) or not oa::isFinite(dy)
+		or not oa::isFinite(inEvent.mouseX) or not oa::isFinite(inEvent.mouseY)) {
 		return oa::Status::invalidArgument(
 			"oa::Navigation pan event requires finite coordinates and deltas");
 	}
@@ -615,7 +615,7 @@ oa::F32 oa::Navigation::easeOutCubic(oa::F32 inT) noexcept {
 }
 
 oa::Status oa::Navigation::beginAnimation(bool inAnimate, oa::F32 inDurationMs) {
-	if (not std::isfinite(inDurationMs) or inDurationMs < 0.0F) {
+	if (not oa::isFinite(inDurationMs) or inDurationMs < 0.0F) {
 		return oa::Status::invalidArgument(
 			"oa::Navigation animation duration must be finite and non-negative");
 	}
@@ -633,7 +633,7 @@ oa::Status oa::Navigation::beginAnimation(bool inAnimate, oa::F32 inDurationMs) 
 
 oa::Status oa::Navigation::handleScroll(const oa::UiEvent& inEvent) {
 	if (isPanDragging_ or isRmbZooming_ or isPinching_) return oa::Status::ok();
-	if (not std::isfinite(inEvent.scrollX) or not std::isfinite(inEvent.scrollY)) {
+	if (not oa::isFinite(inEvent.scrollX) or not oa::isFinite(inEvent.scrollY)) {
 		return oa::Status::invalidArgument(
 			"oa::Navigation scroll event requires finite deltas");
 	}
@@ -644,7 +644,7 @@ oa::Status oa::Navigation::handleScroll(const oa::UiEvent& inEvent) {
 		case oa::UiScrollGesture::PinchScroll: {
 			const oa::F32 tick = inEvent.integerScrollY != 0
 				? static_cast<oa::F32>(inEvent.integerScrollY) : inEvent.scrollY;
-			if (std::fabs(tick) < 0.0001F) return oa::Status::ok();
+			if (oa::abs(tick) < 0.0001F) return oa::Status::ok();
 			const oa::F32 delta = oa::clamp(
 				tick * 120.0F * config_.ctrlScrollDollyScale,
 				-360.0F, 360.0F);
@@ -670,7 +670,7 @@ oa::Status oa::Navigation::handleScroll(const oa::UiEvent& inEvent) {
 oa::Status oa::Navigation::handlePinch(const oa::UiEvent& inEvent) {
 	if (isPanDragging_ or isRmbZooming_) return oa::Status::ok();
 	if (inEvent.pinchPhase == oa::UiPinchPhase::Update
-		and (not std::isfinite(inEvent.gestureScale)
+		and (not oa::isFinite(inEvent.gestureScale)
 			or inEvent.gestureScale <= 0.0F)) {
 		return oa::Status::invalidArgument(
 			"oa::Navigation pinch scale must be finite and positive");
@@ -690,9 +690,9 @@ oa::Status oa::Navigation::handlePinch(const oa::UiEvent& inEvent) {
 				pinchAccumScale_ = 1.0F;
 				isPinching_ = true;
 			}
-			const oa::F64 damped = std::pow(
+			const oa::F64 damped = oa::pow(
 				static_cast<oa::F64>(inEvent.gestureScale),
-				config_.pinchGestureScale);
+				static_cast<oa::F64>(config_.pinchGestureScale));
 			const oa::F64 accumulated = static_cast<oa::F64>(pinchAccumScale_) * damped;
 			const oa::F64 targetZoom = (static_cast<oa::F64>(refZ_) / pinchBeginZ_)
 				* accumulated;
@@ -727,7 +727,7 @@ oa::Result<bool> oa::Navigation::handleEvent(const oa::UiEvent& inEvent) {
 			return true;
 		case oa::UiEventType::MouseDown:
 			if (inEvent.button == 1 or inEvent.button == 2 or inEvent.button == 3) {
-				if (not std::isfinite(inEvent.mouseX) or not std::isfinite(inEvent.mouseY)) {
+				if (not oa::isFinite(inEvent.mouseX) or not oa::isFinite(inEvent.mouseY)) {
 					return oa::Status::invalidArgument(
 						"oa::Navigation pointer-down coordinates must be finite");
 				}
@@ -757,8 +757,8 @@ oa::Result<bool> oa::Navigation::handleEvent(const oa::UiEvent& inEvent) {
 			if (isRmbZooming_) {
 				const oa::F32 dx = inEvent.mouseDX != 0.0F
 					? inEvent.mouseDX : inEvent.mouseX - lastMouseX_;
-				if (not std::isfinite(dx) or not std::isfinite(inEvent.mouseX)
-					or not std::isfinite(inEvent.mouseY)) {
+				if (not oa::isFinite(dx) or not oa::isFinite(inEvent.mouseX)
+					or not oa::isFinite(inEvent.mouseY)) {
 					return oa::Status::invalidArgument(
 						"oa::Navigation RMB zoom event requires finite coordinates and delta");
 				}
@@ -792,13 +792,13 @@ oa::Result<bool> oa::Navigation::handleEvent(const oa::UiEvent& inEvent) {
 
 oa::Status oa::Navigation::update(oa::F32 inDeltaMs) {
 	OA_RETURN_IF_ERROR(validate());
-	if (not std::isfinite(inDeltaMs) or inDeltaMs < 0.0F) {
+	if (not oa::isFinite(inDeltaMs) or inDeltaMs < 0.0F) {
 		return oa::Status::invalidArgument(
 			"oa::Navigation::update requires a finite non-negative delta");
 	}
 	if (animTimeMs_ >= animDurationMs_) return oa::Status::ok();
 	const StateSnapshot previous = snapshot();
-	const oa::F64 time = std::min<oa::F64>(
+	const oa::F64 time = oa::min<oa::F64>(
 		static_cast<oa::F64>(animTimeMs_) + inDeltaMs,
 		animDurationMs_);
 	const oa::F32 t = animDurationMs_ > 0.0F

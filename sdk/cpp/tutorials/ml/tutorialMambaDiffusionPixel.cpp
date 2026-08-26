@@ -66,7 +66,9 @@ public:
 				/*nGroups*/ 1, /*RopeFraction*/ 0.5F, /*Mimo*/ false, /*mimoRank*/ 4,
 				/*dtMin*/ 0.001F, /*dtMax*/ 0.1F, /*DtInitFloor*/ 1e-4F, /*aFloor*/ 1e-4F,
 				/*OutprojNorm*/ true);
-			oa::String name = oa::String("mamba") + std::to_string(i);
+			const std::string indexText = std::to_string(i);
+			oa::String name = oa::String("mamba")
+				+ oa::String(indexText.data(), indexText.size());
 			registerModule(name.cStr(), block);
 			blocks_.pushBack(block);
 
@@ -74,12 +76,14 @@ public:
 			ffn->setActivation(oa::Activation::Gelu);
 			ffn->parameters()[0].data = oa::FnMatrix::randGlorotUniform(oa::MatrixShape{kLatentDim, kLatentDim}, wd);
 			ffn->parameters()[0].data.setRequiresGrad(true);
-			oa::String ffnName = oa::String("ffn") + std::to_string(i);
+			oa::String ffnName = oa::String("ffn")
+				+ oa::String(indexText.data(), indexText.size());
 			registerModule(ffnName.cStr(), ffn);
 			ffns_.pushBack(ffn);
 
 			auto norm = oa::makeShared<oa::RmsNorm>(kLatentDim);
-			oa::String normName = oa::String("norm") + std::to_string(i);
+			oa::String normName = oa::String("norm")
+				+ oa::String(indexText.data(), indexText.size());
 			registerModule(normName.cStr(), norm);
 			norms_.pushBack(norm);
 		}
@@ -317,7 +321,10 @@ TEST(TutorialMambaDiffusionPixel, FashionMnistFlowMatching) {
 
 	for (oa::I32 i = 0; i < kNumClasses; ++i) {
 		auto img = oa::FnMatrix::slice(generated, 0, i, i + 1).reshape(oa::MatrixShape{kPixels});
-		oa::Path path = outDir / oa::Path("class_" + std::to_string(i) + "_" + kClassNames[i] + ".png");
+		oa::String filename = oa::String("class_")
+			+ oa::toString(static_cast<oa::U32>(i))
+			+ "_" + kClassNames[i] + ".png";
+		oa::Path path = outDir / oa::StringView(filename);
 		auto status = saveImage(rt, img, path, kImageSize, kImageSize);
 		if (status.isOk()) {
 			printf("  Saved %s\n", path.string().cStr());

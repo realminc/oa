@@ -7,7 +7,7 @@
 		if (not result.isValid()) {
 			throw std::runtime_error("Gae rejected its input");
 		}
-		return new oa::GaeResult(std::move(result));
+		return new oa::GaeResult(oa::move(result));
 	},
 	  nb::arg("reward"), nb::arg("value"), nb::arg("nextValue"), nb::arg("terminated"), nb::arg("truncated"), nb::arg("config") = oa::GaeConfig{},
 	  nb::rv_policy::take_ownership,
@@ -18,7 +18,7 @@
 		if (result.isEmpty()) {
 			throw std::runtime_error("NormalizeAdvantages rejected its input");
 		}
-		return matrixPtr(std::move(result));
+		return matrixPtr(oa::move(result));
 	},
 	  nb::arg("advantage"), nb::arg("epsilon") = 1.0e-8F,
 	  nb::rv_policy::take_ownership,

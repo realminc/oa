@@ -1,9 +1,8 @@
 #pragma once
 
 #include <oa/core/fnMatrix.h>
+#include <oa/core/std/algo.h>
 #include <oa/core/types.h>
-
-#include <bit>
 
 namespace oa {
 
@@ -49,10 +48,10 @@ namespace FnMatrixPrivate {
 		hash, static_cast<oa::U32>(inConfig.numRopeAngles));
 	hash = ssmFingerprintAppend(hash, static_cast<oa::U32>(inConfig.nGroups));
 	hash = ssmFingerprintAppend(hash, static_cast<oa::U32>(inConfig.mimoRank));
-	hash = ssmFingerprintAppend(hash, std::bit_cast<oa::U32>(inConfig.eps));
-	hash = ssmFingerprintAppend(hash, std::bit_cast<oa::U32>(inConfig.dtMin));
-	hash = ssmFingerprintAppend(hash, std::bit_cast<oa::U32>(inConfig.dtMax));
-	hash = ssmFingerprintAppend(hash, std::bit_cast<oa::U32>(inConfig.aFloor));
+	hash = ssmFingerprintAppend(hash, oa::bitCast<oa::U32>(inConfig.eps));
+	hash = ssmFingerprintAppend(hash, oa::bitCast<oa::U32>(inConfig.dtMin));
+	hash = ssmFingerprintAppend(hash, oa::bitCast<oa::U32>(inConfig.dtMax));
+	hash = ssmFingerprintAppend(hash, oa::bitCast<oa::U32>(inConfig.aFloor));
 	return hash;
 }
 

@@ -6,8 +6,6 @@
 
 #include <oa/ml/module.h>
 
-#include <initializer_list>
-
 namespace oa {
 
 /// Embedding: Embedding lookup layer.

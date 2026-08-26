@@ -24,11 +24,8 @@
 #include <oa/core/validation.h>
 #include <oa/core/log.h>
 #include <oa/core/device.h>
-
-#include <cctype>
-#include <chrono>
-#include <exception>
-#include <thread>
+#include <oa/core/std/chrono.h>
+#include <oa/core/thread.h>
 
 // ─── Engine-local limits ─────────────────────────────────────────────────────────
 
@@ -49,13 +46,13 @@ oa::String oa::EngineConfig::defaultPipelineCacheDir_() {
 class oa::Engine::Impl::BufferLeaseRegistry {
 public:
 	void attach(oa::Engine& inOwner) {
-		std::lock_guard<std::mutex> lock(mutex_);
+		oa::ScopedLock lock(mutex_);
 		owner_ = &inOwner;
 	}
 
 	[[nodiscard]] bool registerBufferLease(oa::Engine& inOwner, oavk::Buffer* inBuffer) {
 		if (not inBuffer) return false;
-		std::lock_guard<std::mutex> lock(mutex_);
+		oa::ScopedLock lock(mutex_);
 		if (owner_ != &inOwner) return false;
 		entries_.pushBack(inBuffer);
 		return true;
@@ -64,7 +61,7 @@ public:
 	void release(oavk::Buffer* inBuffer) {
 		if (not inBuffer) return;
 		{
-			std::lock_guard<std::mutex> lock(mutex_);
+			oa::ScopedLock lock(mutex_);
 			for (oa::Usize i = 0; i < entries_.size(); ++i) {
 				if (entries_[i] != inBuffer) continue;
 				if (owner_) releaseStorage_(*owner_, *inBuffer, false);
@@ -76,7 +73,7 @@ public:
 	}
 
 	void drain(oa::Engine& inOwner) {
-		std::lock_guard<std::mutex> lock(mutex_);
+		oa::ScopedLock lock(mutex_);
 		if (owner_ != &inOwner) return;
 		// alias views are registered after their physical backing. Reverse order
 		// destroys every alias VkBuffer before its VMA allocation.
@@ -107,7 +104,7 @@ private:
 
 	oa::Engine* owner_ = nullptr;
 	oa::Vec<oavk::Buffer*> entries_;
-	std::mutex mutex_;
+	oa::Mutex mutex_;
 };
 
 oa::Engine::Impl::Impl() = default;
@@ -204,7 +201,7 @@ oa::MemoryUsage oa::Engine::getMemoryUsage() const {
 		? stats.budgetBytes
 		: impl_->device_.info.hardware.vramBytes;
 	if (total == 0U) return {};
-	const oa::U64 used = std::min(stats.usedBytes, total);
+	const oa::U64 used = oa::min(stats.usedBytes, total);
 	return oa::MemoryUsage{
 		.totalBytes = total,
 		.freeBytes = total - used,
@@ -225,17 +222,11 @@ oa::Result<oa::ExecutionPlan> oa::Engine::capture(oa::Fn<void()> inRecord) {
 	}
 
 	auto captureSession = oa::makeUnique<oa::ExecutionSession>(this);
-	try {
+	{
 		oa::ExecutionSession::RecordingScope recording(*captureSession);
+		// Recording callbacks obey OA's no-exception contract. Operation failures
+		// are retained by the session and reported by finalize/submit below.
 		inRecord();
-	} catch (const std::exception& inError) {
-		captureSession->clear();
-		return oa::Status::error(oa::StatusCode::Internal,
-			oa::String("oa::Engine::capture callback failed: ") + inError.what());
-	} catch (...) {
-		captureSession->clear();
-		return oa::Status::error(oa::StatusCode::Internal,
-			"oa::Engine::capture callback failed with an unknown exception");
 	}
 
 	auto validation = captureSession->validateCapture();
@@ -465,8 +456,13 @@ static bool asciiEqualsIgnoreCase(const char* inA, const char* inB) {
 		return inA == inB;
 	}
 	while (*inA != '\0' && *inB != '\0') {
-		const char a = static_cast<char>(std::tolower(static_cast<unsigned char>(*inA)));
-		const char b = static_cast<char>(std::tolower(static_cast<unsigned char>(*inB)));
+		const auto lowerAscii = [](char inValue) noexcept {
+			return inValue >= 'A' && inValue <= 'Z'
+				? static_cast<char>(inValue + ('a' - 'A'))
+				: inValue;
+		};
+		const char a = lowerAscii(*inA);
+		const char b = lowerAscii(*inB);
 		if (a != b) {
 			return false;
 		}
@@ -552,7 +548,7 @@ oa::SharedPtr<oavk::Buffer> oa::EngineAccess::adoptBufferLease(
 	oavk::Buffer&& inBuffer,
 	oa::SharedPtr<oavk::Buffer> inBacking)
 {
-	auto* buffer = new oavk::Buffer(std::move(inBuffer));
+	auto* buffer = new oavk::Buffer(oa::move(inBuffer));
 	auto registry = impl_->bufferLeaseRegistry_;
 	if (not registry or not registry->registerBufferLease(engine_, buffer)) {
 		freeBuffer(*buffer);
@@ -560,7 +556,7 @@ oa::SharedPtr<oavk::Buffer> oa::EngineAccess::adoptBufferLease(
 		return {};
 	}
 	return oa::SharedPtr<oavk::Buffer>(buffer,
-		[registry = std::move(registry), backing = std::move(inBacking)](
+		[registry = oa::move(registry), backing = oa::move(inBacking)](
 			oavk::Buffer* inPtr) mutable {
 			registry->release(inPtr);
 			backing.reset();
@@ -689,8 +685,8 @@ oa::Status oa::EngineAccess::initializeImpl(const oa::EngineConfig& inConfig) {
 		return allocator.getStatus();
 	}
 
-	rt.impl_->device_ = std::move(pickResult.getValue());
-	rt.impl_->allocator_ = std::move(allocator.getValue());
+	rt.impl_->device_ = oa::move(pickResult.getValue());
+	rt.impl_->allocator_ = oa::move(allocator.getValue());
 	rt.impl_->timerRegistry_ = oa::makeShared<oa::TimerRegistry>(rt);
 	rt.impl_->precision_ = inConfig.precision;
 	rt.impl_->matrixPlacement_ = resolveMatrixPlacement(rt.impl_->device_);
@@ -711,7 +707,7 @@ oa::Status oa::EngineAccess::initializeImpl(const oa::EngineConfig& inConfig) {
 		return oa::Status::error(oa::StatusCode::PipelineError,
 			"bindless heap creation failed (required for all operations)");
 	}
-	rt.impl_->bindless_ = std::move(bindlessResult.getValue());
+	rt.impl_->bindless_ = oa::move(bindlessResult.getValue());
 	rt.impl_->session_ = oa::makeUnique<oa::ExecutionSession>(&rt);
 
 	oa::String cacheDir;
@@ -846,11 +842,10 @@ oa::Status oa::Engine::close() {
 	impl_->allocator_.free(impl_->readbackStaging_);
 
 	{
-		std::lock_guard<std::mutex> lock(impl_->hostVisibleBufferCacheMutex_);
-		for (auto& [capacity, buf] : impl_->hostVisibleBufferCache_) {
-			(void)capacity;
-			access.deregisterBuffer(buf);
-			impl_->allocator_.free(buf);
+		oa::ScopedLock lock(impl_->hostVisibleBufferCacheMutex_);
+		for (auto& entry : impl_->hostVisibleBufferCache_) {
+			access.deregisterBuffer(entry.buffer);
+			impl_->allocator_.free(entry.buffer);
 		}
 		impl_->hostVisibleBufferCache_.clear();
 		impl_->hostVisibleBufferCacheBytes_ = 0;
@@ -978,18 +973,19 @@ oa::Status oa::EngineAccess::ensureAllEmbeddedLiboaPipelines() {
 		plan.requestCount = maxDtype + 1u;
 		for (oa::U32 dt = 0; dt <= maxDtype; ++dt) {
 			oa::PipelineSpec spec{.numBindings = 16, .pushConstantBytes = 128,
-				.specConstants = {{.id = 0, .value = dt}}};
+				.specConstants = oa::Vec<oa::SpecConstant>{
+					oa::SpecConstant{.id = 0, .value = dt}}};
 			requests.pushBack(oa::PipelineLoadRequest{
 				.name = ent->name,
 				.spirv = oa::Span<const oa::U8>(ent->data, ent->size),
-				.spec = std::move(spec),
+				.spec = oa::move(spec),
 			});
 		}
 		plans.pushBack(plan);
 	}
 
 	const oa::I64 configuredThreads = oa::EnvFlag::getInt("OA_SHADER_LOAD_THREADS", 0);
-	const oa::U32 hardwareThreads = std::max(1u, std::thread::hardware_concurrency());
+	const oa::U32 hardwareThreads = oa::Thread::hardwareConcurrency();
 	// A populated vulkan pipeline cache makes pipeline creation extremely cheap;
 	// cloning and merging it per worker costs more than serial creation. Cold
 	// driver compilation is CPU-heavy and scales best around physical-core count,
@@ -997,19 +993,19 @@ oa::Status oa::EngineAccess::ensureAllEmbeddedLiboaPipelines() {
 	// cache replication on large hosts. The environment override remains exact.
 	oa::U32 loadThreads = 1;
 	if (configuredThreads > 0) {
-		loadThreads = static_cast<oa::U32>(std::min<oa::I64>(configuredThreads, 64));
+		loadThreads = static_cast<oa::U32>(oa::min<oa::I64>(configuredThreads, 64));
 	} else if (!impl_->pipelines_.hasInitialCacheData()) {
-		loadThreads = std::min<oa::U32>(std::max<oa::U32>(1u, hardwareThreads / 2u), 8u);
+		loadThreads = oa::min<oa::U32>(oa::max<oa::U32>(1u, hardwareThreads / 2u), 8u);
 	}
-	loadThreads = std::max<oa::U32>(1u,
-		std::min<oa::U32>(loadThreads, static_cast<oa::U32>(requests.size())));
+	loadThreads = oa::max<oa::U32>(1u,
+		oa::min<oa::U32>(loadThreads, static_cast<oa::U32>(requests.size())));
 
 	OaLogInfo(oa::LogComponent::Engine,
 		"Preloading %zu shader pipelines (%u thread%s, %s cache)",
 		requests.size(), loadThreads, loadThreads == 1 ? "" : "s",
 		impl_->pipelines_.hasInitialCacheData() ? "warm" : "cold");
 
-	const auto loadBegin = std::chrono::steady_clock::now();
+	const auto loadBegin = oa::steadyNow();
 	oa::Vec<oa::Status> requestStatuses;
 	if (!requests.empty()) {
 		(void)impl_->pipelines_.ensurePipelinesParallel(
@@ -1018,8 +1014,7 @@ oa::Status oa::EngineAccess::ensureAllEmbeddedLiboaPipelines() {
 			loadThreads,
 			&requestStatuses);
 	}
-	const oa::F64 loadMs = std::chrono::duration<oa::F64, std::milli>(
-		std::chrono::steady_clock::now() - loadBegin).count();
+	const oa::F64 loadMs = (oa::steadyNow() - loadBegin).toMilliseconds();
 
 	for (const auto& plan : plans) {
 		oa::Status shaderStatus = oa::Status::ok();
@@ -1085,11 +1080,21 @@ oa::Result<oavk::Buffer> oa::EngineAccess::allocBuffer(
 	}
 
 	{
-		std::lock_guard<std::mutex> lock(impl_->hostVisibleBufferCacheMutex_);
-		auto best = impl_->hostVisibleBufferCache_.lower_bound(inSize);
-		if (best != impl_->hostVisibleBufferCache_.end()) {
-			oavk::Buffer reused = std::move(best->second);
-			impl_->hostVisibleBufferCache_.erase(best);
+		oa::ScopedLock lock(impl_->hostVisibleBufferCacheMutex_);
+		oa::Usize bestIndex = impl_->hostVisibleBufferCache_.size();
+		oa::U64 bestCapacity = static_cast<oa::U64>(-1);
+		for (oa::Usize index = 0; index < impl_->hostVisibleBufferCache_.size(); ++index) {
+			const oa::U64 capacity = impl_->hostVisibleBufferCache_[index].capacity;
+			if (capacity >= inSize && capacity < bestCapacity) {
+				bestIndex = index;
+				bestCapacity = capacity;
+			}
+		}
+		if (bestIndex != impl_->hostVisibleBufferCache_.size()) {
+			oavk::Buffer reused = oa::move(
+				impl_->hostVisibleBufferCache_[bestIndex].buffer);
+			impl_->hostVisibleBufferCache_.erase(
+				impl_->hostVisibleBufferCache_.begin() + bestIndex);
 			impl_->hostVisibleBufferCacheBytes_ -= reused.capacity;
 			reused.size = inSize;
 			const auto update = updateBufferDescriptor(reused);
@@ -1177,21 +1182,21 @@ oa::Status oa::EngineAccess::uploadBuffer(
 		copySize = alignedEnd - alignedBegin;
 	}
 
-	std::lock_guard<std::mutex> lock(impl_->uploadRingMutex_);
+	oa::ScopedLock lock(impl_->uploadRingMutex_);
 	if (!impl_->uploadRing_ || impl_->uploadRing_->frameCapacityBytes() < copySize) {
 		if (impl_->uploadRing_) {
 			OA_RETURN_IF_ERROR(impl_->uploadRing_->close());
 			impl_->uploadRing_.reset();
 		}
 		const oa::U64 frameBytes = (copySize + 255ULL) & ~255ULL;
-		const oa::U64 capacity = std::max<oa::U64>(64ULL * 1024ULL * 1024ULL, frameBytes * 3ULL);
+		const oa::U64 capacity = oa::max<oa::U64>(64ULL * 1024ULL * 1024ULL, frameBytes * 3ULL);
 		auto ring = oa::UploadRing::create(engine_, oa::UploadRingConfig{
 			.capacityBytes = capacity,
 			.framesInFlight = 3,
 			.alignment = 256,
 		});
 		if (!ring) return ring.getStatus();
-		impl_->uploadRing_ = oa::makeUnique<oa::UploadRing>(std::move(*ring));
+		impl_->uploadRing_ = oa::makeUnique<oa::UploadRing>(oa::move(*ring));
 	}
 	OA_RETURN_IF_ERROR(impl_->uploadRing_->beginBatch());
 	OA_RETURN_IF_ERROR(impl_->uploadRing_->upload(
@@ -1216,12 +1221,12 @@ oa::Status oa::EngineAccess::readbackBuffer(
 			"readbackBuffer: source must be a non-aliased engine VMA allocation");
 	}
 
-	std::lock_guard<std::mutex> lock(impl_->readbackMutex_);
+	oa::ScopedLock lock(impl_->readbackMutex_);
 	if (not impl_->readbackStream_.commandPool) {
 		auto streamResult = oavk::Stream::create(
 			impl_->device_, impl_->device_.queues.computeQueueFamily, impl_->device_.queues.computeQueue);
 		if (not streamResult) return streamResult.getStatus();
-		impl_->readbackStream_ = std::move(*streamResult);
+		impl_->readbackStream_ = oa::move(*streamResult);
 	}
 	if (inSrc.mappedPtr) {
 		oa::Status status = impl_->readbackStream_.begin(impl_->device_);
@@ -1257,7 +1262,7 @@ oa::Status oa::EngineAccess::readbackBuffer(
 		if (capacity < copySize) capacity = copySize;
 		auto readbackResult = impl_->allocator_.allocHostReadback(capacity);
 		if (not readbackResult) return readbackResult.getStatus();
-		impl_->readbackStaging_ = std::move(*readbackResult);
+		impl_->readbackStaging_ = oa::move(*readbackResult);
 	}
 
 	oa::Status status = impl_->readbackStream_.begin(impl_->device_);
@@ -1332,14 +1337,17 @@ void oa::EngineAccess::freeBuffer(oavk::Buffer& inOutBuffer) {
 		&& !inOutBuffer.isTransient()
 		&& (inOutBuffer.flags & OA_VK_BUFFER_FLAG_ALIAS) == 0 &&
 		inOutBuffer.bindlessIndex != OA_BINDLESS_INVALID) {
-		std::lock_guard<std::mutex> lock(impl_->hostVisibleBufferCacheMutex_);
+		oa::ScopedLock lock(impl_->hostVisibleBufferCacheMutex_);
 		const oa::Bool canCache =
 			impl_->hostVisibleBufferCache_.size() < kHostVisibleCacheMaxBuffers &&
 			inOutBuffer.capacity <= kHostVisibleCacheMaxBytes &&
 			impl_->hostVisibleBufferCacheBytes_ + inOutBuffer.capacity <= kHostVisibleCacheMaxBytes;
 		if (canCache) {
 			impl_->hostVisibleBufferCacheBytes_ += inOutBuffer.capacity;
-			impl_->hostVisibleBufferCache_.emplace(inOutBuffer.capacity, inOutBuffer);
+			impl_->hostVisibleBufferCache_.pushBack({
+				inOutBuffer.capacity,
+				inOutBuffer
+			});
 			inOutBuffer = oavk::Buffer{};
 			return;
 		}
@@ -1391,9 +1399,9 @@ oavk::Stream* oa::EngineAccess::acquireStream() {
 	if (!res) {
 		return nullptr;
 	}
-	auto ptr = oa::makeUnique<oavk::Stream>(std::move(*res));
+	auto ptr = oa::makeUnique<oavk::Stream>(oa::move(*res));
 	oavk::Stream* raw = ptr.get();
-	impl_->streamPool_.pushBack(std::move(ptr));
+	impl_->streamPool_.pushBack(oa::move(ptr));
 	return raw;
 }
 
@@ -1404,7 +1412,7 @@ bool oa::Engine::ownsEvent(const oa::Event& inEvent) const noexcept {
 
 void oa::EngineAccess::collectRetiredGraphicsStreams() {
 	if (impl_->device_.device == nullptr) return;
-	std::lock_guard<std::mutex> lock(impl_->graphicsStreamPoolMutex_);
+	oa::ScopedLock lock(impl_->graphicsStreamPoolMutex_);
 	for (auto& slot : impl_->graphicsStreamPool_) {
 		if (slot.state != Impl::GraphicsStreamSlotState::Retired
 			or not slot.stream
@@ -1420,7 +1428,7 @@ void oa::EngineAccess::collectRetiredGraphicsStreams() {
 oavk::Stream* oa::EngineAccess::graphicsStreamForLease(
 	oa::U32 inSlot, oa::U64 inGeneration) noexcept
 {
-	std::lock_guard<std::mutex> lock(impl_->graphicsStreamPoolMutex_);
+	oa::ScopedLock lock(impl_->graphicsStreamPoolMutex_);
 	if (inSlot >= impl_->graphicsStreamPool_.size()) return nullptr;
 	auto& slot = impl_->graphicsStreamPool_[inSlot];
 	if (slot.generation != inGeneration
@@ -1440,7 +1448,7 @@ oa::Result<oa::Event> oa::EngineAccess::submitGraphicsStream(
 			oa::StatusCode::FailedPrecondition,
 			"graphics submission requires a ready engine");
 	}
-	std::lock_guard<std::mutex> lock(impl_->graphicsStreamPoolMutex_);
+	oa::ScopedLock lock(impl_->graphicsStreamPoolMutex_);
 	if (inSlot >= impl_->graphicsStreamPool_.size()) {
 		return oa::Status::error(
 			oa::StatusCode::InvalidArgument,
@@ -1505,7 +1513,7 @@ oa::Result<oa::Event> oa::EngineAccess::submitGraphicsStream(
 oa::Status oa::EngineAccess::cancelGraphicsStream(
 	oa::U32 inSlot, oa::U64 inGeneration)
 {
-	std::lock_guard<std::mutex> lock(impl_->graphicsStreamPoolMutex_);
+	oa::ScopedLock lock(impl_->graphicsStreamPoolMutex_);
 	if (inSlot >= impl_->graphicsStreamPool_.size()) {
 		return oa::Status::error(
 			oa::StatusCode::InvalidArgument,
@@ -1532,7 +1540,7 @@ oa::Status oa::EngineAccess::recycleGraphicsStream(
 	oa::U64 inGeneration,
 	const oa::Event& inCompletion)
 {
-	std::lock_guard<std::mutex> lock(impl_->graphicsStreamPoolMutex_);
+	oa::ScopedLock lock(impl_->graphicsStreamPoolMutex_);
 	if (inSlot >= impl_->graphicsStreamPool_.size()) {
 		return oa::Status::error(
 			oa::StatusCode::InvalidArgument,
@@ -1566,7 +1574,7 @@ oa::Status oa::EngineAccess::recycleGraphicsStream(
 oa::Status oa::EngineAccess::abandonGraphicsStream(
 	oa::U32 inSlot, oa::U64 inGeneration)
 {
-	std::lock_guard<std::mutex> lock(impl_->graphicsStreamPoolMutex_);
+	oa::ScopedLock lock(impl_->graphicsStreamPoolMutex_);
 	if (inSlot >= impl_->graphicsStreamPool_.size()) {
 		return oa::Status::error(
 			oa::StatusCode::InvalidArgument,
@@ -1607,7 +1615,7 @@ oa::Status oa::EngineAccess::abandonGraphicsStream(
 }
 
 oa::Status oa::EngineAccess::completeGraphicsStreams() {
-	std::lock_guard<std::mutex> lock(impl_->graphicsStreamPoolMutex_);
+	oa::ScopedLock lock(impl_->graphicsStreamPoolMutex_);
 	oa::Status firstError = oa::Status::ok();
 	for (auto& slot : impl_->graphicsStreamPool_) {
 		if (not slot.stream) continue;
@@ -1640,13 +1648,13 @@ oa::Status oa::EngineAccess::completeGraphicsStreams() {
 void oa::EngineAccess::retireImageDispatch(oa::RetiredImageDispatch&& inRetired)
 {
 	if (inRetired.stream == nullptr) return;
-	std::lock_guard<std::mutex> lock(impl_->retiredImageDispatchMutex_);
+	oa::ScopedLock lock(impl_->retiredImageDispatchMutex_);
 	impl_->retiredImageDispatches_.pushBack(oa::move(inRetired));
 }
 
 void oa::EngineAccess::collectRetiredImageDispatches()
 {
-	std::lock_guard<std::mutex> lock(impl_->retiredImageDispatchMutex_);
+	oa::ScopedLock lock(impl_->retiredImageDispatchMutex_);
 	for (oa::Usize i = impl_->retiredImageDispatches_.size(); i > 0; --i) {
 		auto& retired = impl_->retiredImageDispatches_[i - 1];
 		if (retired.stream == nullptr || !retired.stream->isComplete(impl_->device_)) {
@@ -1891,9 +1899,9 @@ oavk::Stream* oa::EngineAccess::acquireAsyncStream() {
 	if (!res) {
 		return nullptr;
 	}
-	auto ptr = oa::makeUnique<oavk::Stream>(std::move(*res));
+	auto ptr = oa::makeUnique<oavk::Stream>(oa::move(*res));
 	oavk::Stream* raw = ptr.get();
-	impl_->asyncStreamPool_.pushBack(std::move(ptr));
+	impl_->asyncStreamPool_.pushBack(oa::move(ptr));
 	return raw;
 }
 
@@ -1930,13 +1938,13 @@ void* oa::EngineAccess::queueSubmitMutex(void* inQueue) noexcept {
 
 void oa::EngineAccess::lockQueueSubmit(void* inQueue) {
 	if (void* mutex = queueSubmitMutex(inQueue)) {
-		static_cast<std::mutex*>(mutex)->lock();
+		static_cast<oa::Mutex*>(mutex)->lock();
 	}
 }
 
 void oa::EngineAccess::unlockQueueSubmit(void* inQueue) {
 	if (void* mutex = queueSubmitMutex(inQueue)) {
-		static_cast<std::mutex*>(mutex)->unlock();
+		static_cast<oa::Mutex*>(mutex)->unlock();
 	}
 }
 
@@ -1967,7 +1975,7 @@ oa::Status oa::EngineAccess::submitToQueue(void* inQueue, void* inSubmitInfo, vo
 	VkQueue queue = static_cast<VkQueue>(inQueue);
 	VkFence fence = static_cast<VkFence>(inFence);
 	const VkSubmitInfo* si = static_cast<const VkSubmitInfo*>(inSubmitInfo);
-	std::lock_guard<std::mutex> lock(*static_cast<std::mutex*>(mutex));
+	oa::ScopedLock lock(*static_cast<oa::Mutex*>(mutex));
 	const VkResult result = impl_->device_.deviceDispatch.vkQueueSubmit(
 		queue, 1, si, fence);
 	if (result != VK_SUCCESS) {
@@ -1996,7 +2004,7 @@ oa::Status oa::EngineAccess::submitToQueue2(void* inQueue, const void* inSubmitI
 	}
 	VkQueue queue = static_cast<VkQueue>(inQueue);
 	const auto* submitInfo = static_cast<const VkSubmitInfo2*>(inSubmitInfo);
-	std::lock_guard<std::mutex> lock(*static_cast<std::mutex*>(mutex));
+	oa::ScopedLock lock(*static_cast<oa::Mutex*>(mutex));
 	const VkResult result = impl_->device_.deviceDispatch.vkQueueSubmit2(
 		queue, 1, submitInfo, VK_NULL_HANDLE);
 	if (result != VK_SUCCESS) {
@@ -2044,7 +2052,7 @@ oa::Result<oa::Event> oa::EngineAccess::copyBufferAsync(
 			"copyBufferAsync: source and destination memory must not overlap");
 	}
 
-	std::lock_guard<std::mutex> lock(impl_->transferStreamMutex_);
+	oa::ScopedLock lock(impl_->transferStreamMutex_);
 	if (not impl_->transferStream_.commandPool) {
 		// OA buffers use exclusive queue-family ownership. Keep this generic
 		// helper on the primary compute queue until graph-level release/acquire
@@ -2057,7 +2065,7 @@ oa::Result<oa::Event> oa::EngineAccess::copyBufferAsync(
 		if (not res) {
 			return res.getStatus();
 		}
-		impl_->transferStream_ = std::move(*res);
+		impl_->transferStream_ = oa::move(*res);
 	}
 	if (impl_->transferStream_.submitted) {
 		if (not impl_->transferStream_.isComplete(impl_->device_)) {

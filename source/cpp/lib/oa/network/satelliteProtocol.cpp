@@ -1,7 +1,7 @@
 #include "satelliteProtocol.h"
 
-#include <cstring>
-#include <limits>
+#include <oa/core/memory.h>
+#include <oa/core/std/limits.h>
 
 namespace {
 
@@ -215,7 +215,7 @@ oa::SatelliteField oa::SatelliteField::u64(oa::SatelliteFieldId inId, oa::U64 in
 
 oa::SatelliteField oa::SatelliteField::f32(oa::SatelliteFieldId inId, oa::F32 inValue) {
 	oa::U32 bits = 0;
-	std::memcpy(&bits, &inValue, sizeof(bits));
+	oa::memcpy(&bits, &inValue, sizeof(bits));
 	oa::SatelliteField field;
 	field.id = inId;
 	field.kind = oa::SatelliteFieldKind::F32;
@@ -323,7 +323,7 @@ oa::Result<oa::Vec<oa::Byte>> oa::SatelliteProtocol::encode(
 	oa::Vec<oa::Byte> payload;
 	appendU16(payload, static_cast<oa::U16>(inMessage.fields.size()));
 	for (const auto& field : inMessage.fields) {
-		if (field.data.size() > std::numeric_limits<oa::U32>::max()) {
+		if (field.data.size() > oa::Limits<oa::U32>::max()) {
 			return oa::Status::error(oa::StatusCode::ResourceExhausted,
 				"satellite protocol: field is too large");
 		}
@@ -531,7 +531,7 @@ oa::Result<oa::F32> oa::SatelliteProtocol::readF32(const oa::SatelliteField& inF
 	if (status.isError()) return status;
 	const oa::U32 bits = readU32Le(inField.data.data());
 	oa::F32 value = 0.0F;
-	std::memcpy(&value, &bits, sizeof(value));
+	oa::memcpy(&value, &bits, sizeof(value));
 	return value;
 }
 

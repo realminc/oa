@@ -23,14 +23,14 @@
 
 namespace {
 
-const std::string kShibuyaH264Storage = oa::Paths::data(
-    "video/shibuya_crossing_1080p30_h264.mp4").string().stdStr();
-const std::string kShibuyaH265Storage = oa::Paths::data(
-    "video/shibuya_crossing_1080p30_h265.mp4").string().stdStr();
-const std::string kShibuyaAv1Storage = oa::Paths::data(
-    "video/shibuya_crossing_1080p30_av1.mp4").string().stdStr();
-const std::string kShibuyaVp9Storage = oa::Paths::data(
-    "video/shibuya_crossing_1080p30_vp9.mp4").string().stdStr();
+const std::string kShibuyaH264Storage = testStdString(oa::Paths::data(
+    "video/shibuya_crossing_1080p30_h264.mp4").string());
+const std::string kShibuyaH265Storage = testStdString(oa::Paths::data(
+    "video/shibuya_crossing_1080p30_h265.mp4").string());
+const std::string kShibuyaAv1Storage = testStdString(oa::Paths::data(
+    "video/shibuya_crossing_1080p30_av1.mp4").string());
+const std::string kShibuyaVp9Storage = testStdString(oa::Paths::data(
+    "video/shibuya_crossing_1080p30_vp9.mp4").string());
 const char* kShibuyaH264 = kShibuyaH264Storage.c_str();
 const char* kShibuyaH265 = kShibuyaH265Storage.c_str();
 const char* kShibuyaAv1 = kShibuyaAv1Storage.c_str();
@@ -866,7 +866,8 @@ TEST(VideoDemuxer, SustainedH264DisplayFramesMatchFfmpegReference) {
       select += "+";
     }
     select += "eq(n\\,";
-    select += std::to_string(sampleFrames[i]);
+    const std::string frameText = std::to_string(sampleFrames[i]);
+    select += oa::StringView(frameText.data(), frameText.size());
     select += ")";
   }
   select += "'";

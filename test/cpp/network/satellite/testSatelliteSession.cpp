@@ -48,7 +48,7 @@ struct ListenerAndPort {
 
 ListenerAndPort bindLoopback() {
 	auto result = oa::TcpListener::bind("127.0.0.1", 0U, 8);
-	EXPECT_TRUE(result.isOk()) << result.getStatus().getMessage();
+	EXPECT_TRUE(result.isOk()) << result.getStatus().getMessage().cStr();
 	ListenerAndPort bound;
 	bound.listener = oa::move(*result);
 	bound.port = bound.listener.port();
@@ -87,7 +87,7 @@ TEST(SatelliteSession, AuthenticatedProbeNegotiatesLimitsAndRunsCpuOracle) {
 	clientConfig.limits.maxObjects = 16U;
 	auto connected = oa::SatelliteClientSession::connect(
 		"127.0.0.1", bound.port, oa::move(clientConfig));
-	ASSERT_TRUE(connected.isOk()) << connected.getStatus().getMessage();
+	ASSERT_TRUE(connected.isOk()) << connected.getStatus().getMessage().cStr();
 	auto client = oa::move(*connected);
 	EXPECT_NE(client.probe().sessionEpoch, 0U);
 	EXPECT_EQ(client.probe().deviceName, "loopback-oracle");
@@ -110,7 +110,7 @@ TEST(SatelliteSession, AuthenticatedProbeNegotiatesLimitsAndRunsCpuOracle) {
 	EXPECT_TRUE(client.close().isOk());
 
 	server.join();
-	EXPECT_TRUE(serverStatus.isOk()) << serverStatus.toString();
+	EXPECT_TRUE(serverStatus.isOk()) << serverStatus.toString().cStr();
 }
 
 TEST(SatelliteSession, CancellationBeforeExecutionLeavesNoResult) {

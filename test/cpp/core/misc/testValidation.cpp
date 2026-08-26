@@ -1,6 +1,9 @@
 #include <gtest/gtest.h>
 #include <oa/core/validation.h>
 
+#include <thread>
+#include <vector>
+
 // OA_VALIDATION_ACTIVE: true when OA_VALIDATE macros are compiled in.
 // in release without OA_ENABLE_VALIDATION, macros are ((void)0) — violations return ok.
 #if not defined(NDEBUG) or defined(OA_ENABLE_VALIDATION)
@@ -233,6 +236,24 @@ TEST(Validation, DebugCounterNamedIncr) {
 	SUCCEED();
 #endif
 	oa::Validation::resetCounters();
+}
+
+TEST(Validation, DebugCounterSerializesWriters) {
+#ifndef NDEBUG
+	oa::Validation::resetCounters();
+	std::vector<std::thread> writers;
+	for (oa::I32 thread = 0; thread < 4; ++thread) {
+		writers.emplace_back([] {
+			for (oa::I32 value = 0; value < 1000; ++value)
+				oa::Validation::incrCounterNamed("concurrent_counter");
+		});
+	}
+	for (auto& writer : writers) writer.join();
+	EXPECT_EQ(oa::Validation::getCounter("concurrent_counter"), oa::U64(4000));
+	oa::Validation::resetCounters();
+#else
+	SUCCEED();
+#endif
 }
 
 TEST(Validation, DumpCountersDoesNotCrash) {

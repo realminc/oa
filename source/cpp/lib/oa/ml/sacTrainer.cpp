@@ -6,8 +6,7 @@
 #include <oa/ml/policy.h>
 #include <oa/ml/trainingSession.h>
 #include <oa/runtime/executionSession.h>
-
-#include <cmath>
+#include <oa/core/std/scalarMath.h>
 
 namespace {
 
@@ -127,8 +126,8 @@ oa::Result<oa::UniquePtr<oa::SacTrainer>> oa::SacTrainer::create(
 		|| replay.actionDtype != oa::ScalarType::Float32
 		|| replay.actionShape != oa::MatrixShape{
 			static_cast<oa::I64>(inConfig.actionDimensions)}
-		|| !std::isfinite(inConfig.actionMinimum)
-		|| !std::isfinite(inConfig.actionMaximum)
+		|| !oa::isFinite(inConfig.actionMinimum)
+		|| !oa::isFinite(inConfig.actionMaximum)
 		|| inConfig.actionMinimum >= inConfig.actionMaximum) {
 		return oa::Status::invalidArgument(
 			"oa::SacTrainer configuration does not match continuous replay storage");

@@ -40,7 +40,7 @@ oa::EmpyrealmCore::EmpyrealmCore(
 	oa::I32 inDState, oa::I32 inExpand, oa::I32 inHeadDim,
 	oa::I32 inNGroups, oa::F32 inRopeFraction, bool inIsMimo, oa::I32 inMimoRank,
 	oa::F32 inDtMin, oa::F32 inDtMax, oa::F32 inDtInitFloor, oa::F32 inAFloor, bool inIsOutprojNorm)
-	: embed_(std::move(inEmbedModule))
+	: embed_(oa::move(inEmbedModule))
 	, dModel_(inDModel)
 	, isByteMode_(false)
 {

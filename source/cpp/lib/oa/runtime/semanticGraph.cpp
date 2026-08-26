@@ -1,10 +1,7 @@
 #include <oa/runtime/semanticGraph.h>
+#include <oa/core/jsonWriter.h>
 
 #include <oa/runtime/executableGraph.h>
-
-#include <algorithm>
-#include <iomanip>
-#include <sstream>
 
 namespace {
 
@@ -67,28 +64,8 @@ oa::StringView attributeKindName(oa::OpAttributeKind inKind) {
 	return "unknown";
 }
 
-void writeJsonString(std::ostringstream& out, oa::StringView inValue) {
-	out << '"';
-	for (const char value : inValue) {
-		switch (value) {
-			case '"': out << "\\\""; break;
-			case '\\': out << "\\\\"; break;
-			case '\b': out << "\\b"; break;
-			case '\f': out << "\\f"; break;
-			case '\n': out << "\\n"; break;
-			case '\r': out << "\\r"; break;
-			case '\t': out << "\\t"; break;
-			default:
-				if (static_cast<unsigned char>(value) < 0x20U) {
-					out << "\\u" << std::hex << std::setw(4)
-						<< std::setfill('0') << static_cast<unsigned>(value)
-						<< std::dec << std::setfill(' ');
-				} else {
-					out << value;
-				}
-		}
-	}
-	out << '"';
+void writeJsonString(oa::internal::JsonWriter& out, oa::StringView inValue) {
+	out.writeString(inValue);
 }
 
 oa::SemanticValueAccess* findAccess(
@@ -652,7 +629,7 @@ oa::Result<oa::SemanticLoweringAnalysis> oa::analyzeSemanticLowering(
 	for (const auto& node : inExecutable.nodes()) {
 		const oa::U32 ownerCount =
 			static_cast<oa::U32>(node.semanticOps.size());
-		analysis.maximumOpsPerNode_ = std::max(
+		analysis.maximumOpsPerNode_ = oa::max(
 			analysis.maximumOpsPerNode_, ownerCount);
 		if (ownerCount == 0U) {
 			++analysis.compatibilityNodeCount_;
@@ -705,7 +682,7 @@ oa::Result<oa::SemanticLoweringAnalysis> oa::analyzeSemanticLowering(
 		if (fusionMembership[operation] != 0U) {
 			++analysis.fusedOpCount_;
 		}
-		analysis.maximumNodesPerOp_ = std::max(
+		analysis.maximumNodesPerOp_ = oa::max(
 			analysis.maximumNodesPerOp_, nodeCount);
 	}
 	return analysis;
@@ -727,7 +704,7 @@ const oa::SemanticValueDesc* oa::SemanticGraph::findValue(
 }
 
 oa::String oa::SemanticGraph::debugReportJson(oa::StringView inName) const {
-	std::ostringstream out;
+	oa::internal::JsonWriter out;
 	out << "{\n  \"schema\": \"oa.semantic_graph.v2\",\n  \"name\": ";
 	writeJsonString(out, inName);
 	out << ",\n  \"values\": [";
@@ -768,9 +745,9 @@ oa::String oa::SemanticGraph::debugReportJson(oa::StringView inName) const {
 		out << (index == 0 ? "\n" : ",\n") << "    {\"id\": " << operation.id
 			<< ", \"name\": ";
 		writeJsonString(out, operation.name);
-		out << ", \"contract_hash\": \"0x" << std::hex << std::setw(16)
-			<< std::setfill('0') << operation.contractHash << std::dec
-			<< std::setfill(' ') << "\", \"lowering\": ";
+		out << ", \"contract_hash\": ";
+		out.writeHexId(operation.contractHash);
+		out << ", \"lowering\": ";
 		writeJsonString(out, loweringName(operation.lowering));
 		out << ", \"differentiation\": ";
 		writeJsonString(out, differentiationName(operation.differentiation));
@@ -809,7 +786,7 @@ oa::String oa::SemanticGraph::debugReportJson(oa::StringView inName) const {
 					out << value.unsignedInteger;
 					break;
 				case oa::OpAttributeKind::Float:
-					out << std::setprecision(17) << value.floatVal;
+					out.writeFloat(value.floatVal);
 					break;
 				case oa::OpAttributeKind::String:
 				case oa::OpAttributeKind::Enum:
@@ -884,7 +861,7 @@ oa::String oa::SemanticGraph::debugReportJson(oa::StringView inName) const {
 	}
 	if (not autograd_.empty()) out << '\n';
 	out << "  ]\n}\n";
-	return oa::String(out.str());
+	return out.take();
 }
 
 void oa::SemanticGraph::reset() noexcept {

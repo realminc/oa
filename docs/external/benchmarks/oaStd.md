@@ -1,6 +1,6 @@
 # OA foundation benchmark
 
-**Status:** Current fixed-host engineering evidence
+**Status:** OA v0.7.19 fixed-host engineering evidence
 
 **Measured:** 2026-08-26
 

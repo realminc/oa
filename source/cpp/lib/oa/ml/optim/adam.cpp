@@ -8,10 +8,8 @@
 #include <oa/core/matrixAccess.h>
 #include <oa/core/validation.h>
 #include <oa/core/log.h>
-
-#include <cstring>
-
-static oa::U32 divCeil(oa::U32 inA, oa::U32 inB) { return (inA + inB - 1) / inB; }
+#include <oa/core/memory.h>
+#include <oa/core/std/cString.h>
 
 static oa::Matrix getParamGrad(oa::Parameter* inP) {
 	return inP->grad();  // live grad (single source of truth: Data's autograd meta)
@@ -40,7 +38,7 @@ void oa::Adam::step() {
 			oa::BufferAccess::ReadWrite, oa::BufferAccess::Read,
 			oa::BufferAccess::ReadWrite, oa::BufferAccess::ReadWrite
 		};
-		ctx.add( "Adam", {&p->data, &grad, &m_[i], &v_[i]}, access, &push, sizeof(push), divCeil(n, 256));
+		ctx.add( "Adam", {&p->data, &grad, &m_[i], &v_[i]}, access, &push, sizeof(push), oa::divCeil(n, 256));
 	}
 }
 
@@ -58,7 +56,8 @@ oa::Status oa::Adam::saveTo(oa::Engine& inEngine, ModelFile& outFile) const {
 	oa::ExecutionSession::RecordingScope recording(context);
 	outFile.optimizerPresent = true;
 	outFile.optimizer = ModelOptimizerState{};
-	std::strncpy(outFile.optimizer.type, "Adam", sizeof(outFile.optimizer.type) - 1);
+	constexpr char kType[] = "Adam";
+	oa::memcpy(outFile.optimizer.type, kType, sizeof(kType));
 	outFile.optimizer.lr    = lr_;
 	outFile.optimizer.beta1 = beta1_;
 	outFile.optimizer.beta2 = beta2_;
@@ -95,7 +94,7 @@ oa::Status oa::Adam::saveTo(oa::Engine& inEngine, ModelFile& outFile) const {
 
 oa::Status oa::Adam::validateLoad(const ModelFile& inFile) const {
 	if (not inFile.hasOptimizer()
-		or std::strncmp(inFile.optimizer.type, "Adam", sizeof(inFile.optimizer.type)) != 0)
+		or oa::strncmp(inFile.optimizer.type, "Adam", sizeof(inFile.optimizer.type)) != 0)
 	{
 		return oa::Status::error(oa::StatusCode::FailedPrecondition,
 			"Adam checkpoint optimizer state is missing or has the wrong type");

@@ -15,24 +15,22 @@
 #include <oa/runtime/engine.h>
 #include <oa/runtime/engine/deviceAccess.h>
 
-#include <algorithm>
-
 oa::ItTraining::ItTraining(
 	oa::Engine& inEngine,
 	oa::Optimizer& inOpt,
 	oa::ItTrainingConfig inCfg)
-	: opt_(inOpt), cfg_(std::move(inCfg)
+	: opt_(inOpt), cfg_(oa::move(inCfg)
 ) {
-	cfg_.batchSize = std::max(cfg_.batchSize, 1);
-	cfg_.sequenceLength = std::max(cfg_.sequenceLength, 0);
-	cfg_.sourceUnitsPerSample = std::max(cfg_.sourceUnitsPerSample, 0.0);
+	cfg_.batchSize = oa::max(cfg_.batchSize, 1);
+	cfg_.sequenceLength = oa::max(cfg_.sequenceLength, 0);
+	cfg_.sourceUnitsPerSample = oa::max(cfg_.sourceUnitsPerSample, 0.0);
 	// Variable epoch schedule: prefix sums, and the schedule owns totalSteps.
 	if (not cfg_.epochSteps.empty()) {
 		epochOffsets_.reserve(cfg_.epochSteps.size());
 		oa::I64 sum = 0;
 		for (const oa::I64 steps : cfg_.epochSteps) {
-			sum += std::max<oa::I64>(steps, 1);
-			epochOffsets_.push_back(sum);
+			sum += oa::max<oa::I64>(steps, 1);
+			epochOffsets_.pushBack(sum);
 		}
 		cfg_.totalSteps = sum;
 	}
@@ -51,7 +49,7 @@ oa::ItTraining::ItTraining(
 		}
 	}
 
-	t0_      = std::chrono::high_resolution_clock::now();
+	t0_      = oa::highResolutionNow();
 	epochT0_ = t0_;
 	lastStepT_ = t0_;
 	trainingPhaseTiming_ = oa::EnvFlag::isSet("OA_LOG_TRAINING_PHASES");
@@ -60,7 +58,7 @@ oa::ItTraining::ItTraining(
 	// register config-time callbacks. addCallback can still be used after
 	// construction; these are simply equivalent to calling it in a loop.
 	for (auto* cb : cfg_.callbacks) {
-		if (cb != nullptr) callbacks_.push_back(cb);
+		if (cb != nullptr) callbacks_.pushBack(cb);
 	}
 }
 
@@ -92,7 +90,7 @@ void oa::ItTraining::advanceIfNeeded_() {
 			epochLossSum_   = 0.0;
 			epochLossCount_ = 0;
 			epochSourceUnits_ = 0;
-			epochT0_        = std::chrono::high_resolution_clock::now();
+			epochT0_        = oa::highResolutionNow();
 			lastEpochFired_ = currentEpoch;
 			fireEpochBegin();
 			if (stopRequested_) return;
@@ -107,7 +105,7 @@ void oa::ItTraining::advanceIfNeeded_() {
 		stableResourceFrameOpen_ = true;
 	}
 	if (trainingPhaseTiming_) {
-		phaseBodyT0_ = std::chrono::high_resolution_clock::now();
+		phaseBodyT0_ = oa::highResolutionNow();
 		phaseBodyStarted_ = true;
 	}
 }
@@ -147,7 +145,7 @@ void oa::ItTraining::reset() {
 	lastGpuTimeStep_ = 0;
 	gpuTimingSamples_.clear();
 	gpuTimingSumMs_  = 0.0;
-	liveAccuracy_    = std::numeric_limits<oa::F32>::quiet_NaN();
+	liveAccuracy_    = oa::Limits<oa::F32>::quietNaN();
 	stopRequested_   = false;
 	lastStatus_      = oa::Status::ok();
 	trainBeginFired_ = false;
@@ -157,7 +155,7 @@ void oa::ItTraining::reset() {
 	epochLossCount_  = 0;
 	trainingLossSum_ = 0.0;
 	trainingLossCount_ = 0;
-	t0_              = std::chrono::high_resolution_clock::now();
+	t0_              = oa::highResolutionNow();
 	epochT0_         = t0_;
 	lastStepT_       = t0_;
 	trainingPhaseStats_ = {};
@@ -174,7 +172,7 @@ bool oa::ItTraining::isEpochBoundary() const {
 	if (index_ <= 0) return false;
 	if (hasEpochs() and isLastStep()) return true;
 	if (not epochOffsets_.empty()) {
-		return std::binary_search(epochOffsets_.begin(), epochOffsets_.end(), index_);
+		return oa::binarySearch(epochOffsets_.begin(), epochOffsets_.end(), index_);
 	}
 	if (cfg_.stepsPerEpoch <= 0) return false;
 	return (index_ % cfg_.stepsPerEpoch) == 0;
@@ -189,7 +187,7 @@ bool oa::ItTraining::isLastStep() const {
 
 oa::I64 oa::ItTraining::epochIndexForStep_(oa::I64 inStep) const {
 	// first offset >= inStep is the epoch containing that step.
-	auto it = std::lower_bound(epochOffsets_.begin(), epochOffsets_.end(), inStep);
+	auto it = oa::lowerBound(epochOffsets_.begin(), epochOffsets_.end(), inStep);
 	if (it == epochOffsets_.end()) return static_cast<oa::I64>(epochOffsets_.size()) - 1;
 	return static_cast<oa::I64>(it - epochOffsets_.begin());
 }
@@ -207,7 +205,7 @@ oa::I64 oa::ItTraining::stepInEpoch() const {
 	if (not epochOffsets_.empty()) {
 		if (index_ == 0) return 0;
 		const oa::I64 epochIdx = epochIndexForStep_(index_);
-		const oa::I64 begin = epochIdx == 0 ? 0 : epochOffsets_[static_cast<size_t>(epochIdx - 1)];
+		const oa::I64 begin = epochIdx == 0 ? 0 : epochOffsets_[static_cast<oa::Usize>(epochIdx - 1)];
 		return index_ - begin;
 	}
 	if (cfg_.stepsPerEpoch <= 0) return index_;
@@ -218,12 +216,12 @@ oa::I64 oa::ItTraining::stepInEpoch() const {
 oa::I64 oa::ItTraining::stepsInCurrentEpoch() const {
 	if (not cfg_.epochSteps.empty()) {
 		const oa::I64 epochIdx = index_ == 0 ? 0 : epochIndexForStep_(index_);
-		return cfg_.epochSteps[static_cast<size_t>(epochIdx)];
+		return cfg_.epochSteps[static_cast<oa::Usize>(epochIdx)];
 	}
 	if (cfg_.stepsPerEpoch <= 0) return cfg_.totalSteps;
 	if (cfg_.totalSteps > 0 and epoch() == totalEpochs()) {
 		const oa::I64 completedBefore = (epoch() - 1) * cfg_.stepsPerEpoch;
-		return std::min(cfg_.stepsPerEpoch, cfg_.totalSteps - completedBefore);
+		return oa::min(cfg_.stepsPerEpoch, cfg_.totalSteps - completedBefore);
 	}
 	return cfg_.stepsPerEpoch;
 }
@@ -246,13 +244,13 @@ void oa::ItTraining::next() {
 	// Body for step index_ has just run — finalize: record opt step, push the
 	// recorded ops through execution, then fire StepEnd/EpochEnd. index_ stays
 	// at the current step number; the next isDone() advances lazily.
-	using Clock = std::chrono::high_resolution_clock;
-	const auto elapsedMs = [](const Clock::time_point& inBegin,
-		const Clock::time_point& inEnd) -> oa::F64 {
-		return std::chrono::duration<oa::F64, std::milli>(inEnd - inBegin).count();
+	using Clock = oa::HighResolutionClock;
+	const auto elapsedMs = [](oa::HighResolutionTimePoint inBegin,
+		oa::HighResolutionTimePoint inEnd) -> oa::F64 {
+		return (inEnd - inBegin).toMilliseconds();
 	};
 	const auto stepT0 = trainingPhaseTiming_ and phaseBodyStarted_
-		? phaseBodyT0_ : Clock::time_point{};
+		? phaseBodyT0_ : Clock::TimePoint{};
 	auto& session = *executionSession_;
 	const auto failStep = [&](const oa::Status& inStatus, const char* inAction) {
 		closeStableResourceFrame_();
@@ -275,13 +273,13 @@ void oa::ItTraining::next() {
 		return;
 	}
 
-	const auto optimizerT0 = trainingPhaseTiming_ ? Clock::now() : Clock::time_point{};
+	const auto optimizerT0 = trainingPhaseTiming_ ? Clock::now() : Clock::TimePoint{};
 	if (trainingPhaseTiming_ and phaseBodyStarted_) {
 		trainingPhaseStats_.bodyMs += elapsedMs(phaseBodyT0_, optimizerT0);
 	}
 
 	if (not replayExisting) opt_.step();
-	const auto optimizerT1 = trainingPhaseTiming_ ? Clock::now() : Clock::time_point{};
+	const auto optimizerT1 = trainingPhaseTiming_ ? Clock::now() : Clock::TimePoint{};
 	if (trainingPhaseTiming_) {
 		trainingPhaseStats_.optimizerMs += elapsedMs(optimizerT0, optimizerT1);
 	}
@@ -358,7 +356,7 @@ void oa::ItTraining::next() {
 			if (not reportSetting.empty()) {
 				const oa::Path reportPath = reportSetting == "1"
 					? oa::Paths::var("report") / "training_graph.json"
-					: oa::Path(reportSetting.stdStr());
+					: oa::Path(reportSetting);
 				const auto parent = reportPath.parentPath();
 				auto reportStatus = parent.empty()
 					? oa::Status::ok() : oa::Filesystem::createDirectories(parent);
@@ -410,14 +408,14 @@ void oa::ItTraining::next() {
 	}
 	lastStepSourceUnits_ = pendingSourceUnits_ >= 0
 		? pendingSourceUnits_
-		: static_cast<oa::I64>(std::llround(
+		: static_cast<oa::I64>(oa::round(
 			static_cast<oa::F64>(cfg_.batchSize) * cfg_.sourceUnitsPerSample));
 	totalSourceUnits_ += lastStepSourceUnits_;
 	epochSourceUnits_ += lastStepSourceUnits_;
 
 	// The step is complete, so the scalar is exact and safe to read. Every step
 	// contributes exactly once to running and epoch metrics.
-	const auto scalarMetricT0 = trainingPhaseTiming_ ? Clock::now() : Clock::time_point{};
+	const auto scalarMetricT0 = trainingPhaseTiming_ ? Clock::now() : Clock::TimePoint{};
 	const oa::Matrix& completedLoss = usedProgram and programLoss_.hasStorage()
 		? programLoss_ : pendingLoss_;
 	if (completedLoss.hasStorage() and completedLoss.numElements() > 0) {
@@ -432,7 +430,7 @@ void oa::ItTraining::next() {
 		lastGpuMs_ = cfg_.program->lastGpuMs();
 		if (lastGpuMs_ > 0.0) {
 			lastGpuTimeStep_ = index_;
-			gpuTimingSamples_.push_back(lastGpuMs_);
+			gpuTimingSamples_.pushBack(lastGpuMs_);
 			gpuTimingSumMs_ += lastGpuMs_;
 			gpuTimedSourceUnits_ += lastStepSourceUnits_;
 		}
@@ -449,20 +447,20 @@ void oa::ItTraining::next() {
 		}
 		if (lastGpuMs_ > 0.0) {
 			lastGpuTimeStep_ = index_;
-			gpuTimingSamples_.push_back(lastGpuMs_);
+			gpuTimingSamples_.pushBack(lastGpuMs_);
 			gpuTimingSumMs_ += lastGpuMs_;
 			gpuTimedSourceUnits_ += lastStepSourceUnits_;
 		}
 	}
 	updateMetrics_();
 	lastStatus_ = oa::Status::ok();
-	const auto scalarMetricT1 = trainingPhaseTiming_ ? Clock::now() : Clock::time_point{};
+	const auto scalarMetricT1 = trainingPhaseTiming_ ? Clock::now() : Clock::TimePoint{};
 	if (trainingPhaseTiming_) {
 		trainingPhaseStats_.scalarMetricMs += elapsedMs(scalarMetricT0, scalarMetricT1);
 	}
 	closeStableResourceFrame_();
 
-	const auto callbackT0 = trainingPhaseTiming_ ? Clock::now() : Clock::time_point{};
+	const auto callbackT0 = trainingPhaseTiming_ ? Clock::now() : Clock::TimePoint{};
 	fireStepEnd();
 
 	if (lastStatus_.isOk() and isEpochBoundary()) {
@@ -487,7 +485,7 @@ void oa::ItTraining::next(const oa::Matrix& inLoss) {
 	next();
 }
 
-void oa::ItTraining::step(const std::function<void()>& inOpFn) {
+void oa::ItTraining::step(const oa::Fn<void()>& inOpFn) {
 	if (isDone()) return;  // also handles lazy advanceIfNeeded_
 	const oa::Bool recordsStep = cfg_.program == nullptr
 		or not cfg_.program->isCaptured();
@@ -501,8 +499,8 @@ void oa::ItTraining::step(const std::function<void()>& inOpFn) {
 }
 
 void oa::ItTraining::step(
-	const std::function<void()>& inPrepareFn,
-	const std::function<void()>& inRecordFn)
+	const oa::Fn<void()>& inPrepareFn,
+	const oa::Fn<void()>& inRecordFn)
 {
 	if (isDone()) return;  // also opens the stable frame before preparation
 	const oa::Bool recordsStep = cfg_.program == nullptr
@@ -545,7 +543,7 @@ oa::Status oa::ItTraining::finish() {
 			static_cast<long long>(s.count), total, s.mean(s.bodyMs),
 			s.mean(s.optimizerMs), s.mean(s.compileMs), s.mean(s.recordMs),
 			s.mean(s.submitMs), s.mean(s.waitMs), s.mean(s.scalarMetricMs),
-			s.mean(s.callbackMs), std::max<oa::F64>(total - accounted, 0.0));
+			s.mean(s.callbackMs), oa::max<oa::F64>(total - accounted, 0.0));
 	}
 	auto status = oa::Status::ok();
 	if (session_ != nullptr) session_->onFinished(status, *this);
@@ -582,14 +580,14 @@ oa::GpuTimingStats oa::ItTraining::gpuTimingStats() const {
 	oa::GpuTimingStats stats;
 	if (gpuTimingSamples_.empty()) return stats;
 
-	std::vector<oa::F64> sorted = gpuTimingSamples_;
-	std::sort(sorted.begin(), sorted.end());
+	oa::Vec<oa::F64> sorted = gpuTimingSamples_;
+	oa::sort(sorted.begin(), sorted.end());
 
 	const auto percentile = [&sorted](oa::F64 p) -> oa::F64 {
 		if (sorted.empty()) return 0.0;
 		const oa::F64 pos = p * static_cast<oa::F64>(sorted.size() - 1);
-		const auto lo = static_cast<size_t>(pos);
-		const auto hi = std::min(lo + 1, sorted.size() - 1);
+		const auto lo = static_cast<oa::Usize>(pos);
+		const auto hi = oa::min(lo + 1, sorted.size() - 1);
 		const oa::F64 t = pos - static_cast<oa::F64>(lo);
 		return sorted[lo] * (1.0 - t) + sorted[hi] * t;
 	};
@@ -604,14 +602,13 @@ oa::GpuTimingStats oa::ItTraining::gpuTimingStats() const {
 }
 
 oa::F64 oa::ItTraining::elapsedSeconds() const {
-	auto now = std::chrono::high_resolution_clock::now();
-	return std::chrono::duration<double>(now - t0_).count();
+	auto now = oa::highResolutionNow();
+	return (now - t0_).toSeconds();
 }
 
 void oa::ItTraining::excludeWallTime(oa::F64 inSeconds) {
 	if (inSeconds <= 0.0) return;
-	const auto excluded = std::chrono::duration_cast<std::chrono::high_resolution_clock::duration>(
-		std::chrono::duration<oa::F64>(inSeconds));
+	const auto excluded = oa::Duration::fromDouble(inSeconds);
 	t0_ += excluded;
 	epochT0_ += excluded;
 	lastStepT_ += excluded;
@@ -667,28 +664,28 @@ oa::F64 oa::ItTraining::trainingMeanLoss() const {
 }
 
 oa::F64 oa::ItTraining::epochSeconds() const {
-	auto now = std::chrono::high_resolution_clock::now();
-	return std::chrono::duration<double>(now - epochT0_).count();
+	auto now = oa::highResolutionNow();
+	return (now - epochT0_).toSeconds();
 }
 
 // ─── Callback dispatch ────────────────────────────────────────────────────
 
 void oa::ItTraining::addCallback(oa::CbTraining* inCallback) {
-	if (inCallback != nullptr) callbacks_.push_back(inCallback);
+	if (inCallback != nullptr) callbacks_.pushBack(inCallback);
 }
 
 void oa::ItTraining::addMetric(oa::Metric* inMetric) {
-	if (inMetric != nullptr) metrics_.push_back(inMetric);
+	if (inMetric != nullptr) metrics_.pushBack(inMetric);
 }
 
 void oa::ItTraining::resetMetrics_() {
 	for (auto* metric : metrics_) metric->reset();
-	lastStepT_ = std::chrono::high_resolution_clock::now();
+	lastStepT_ = oa::highResolutionNow();
 }
 
 void oa::ItTraining::updateMetrics_() {
-	const auto now = std::chrono::high_resolution_clock::now();
-	const oa::F64 seconds = std::chrono::duration<double>(now - lastStepT_).count();
+	const auto now = oa::highResolutionNow();
+	const oa::F64 seconds = (now - lastStepT_).toSeconds();
 	for (auto* metric : metrics_) {
 		metric->updateStep(lastLoss_, hasLossSample(), seconds, 1);
 	}
@@ -698,7 +695,7 @@ void oa::ItTraining::updateMetrics_() {
 void oa::ItTraining::fireTrainBegin() {
 	// training wall time begins at the first iteration, excluding construction,
 	// model/header setup, and time spent waiting before the loop starts.
-	t0_ = std::chrono::high_resolution_clock::now();
+	t0_ = oa::highResolutionNow();
 	epochT0_ = t0_;
 	resetMetrics_();
 	for (auto* cb : callbacks_) {

@@ -2,11 +2,9 @@
 
 #include <oa/ml/tokenizer.h>
 
-#include <algorithm>
-#include <cstring>
-#include <fstream>
-#include <limits>
-#include <map>
+#include <oa/core/filesystem.h>
+#include <oa/core/std/format.h>
+#include <oa/core/std/hashMap.h>
 
 namespace {
 constexpr const char* kBpeMagic = "oa_bpe_v1";
@@ -14,10 +12,30 @@ constexpr const char* kBpeMagic = "oa_bpe_v1";
 oa::U64 pairKey(oa::U32 inLeft, oa::U32 inRight) {
 	return (static_cast<oa::U64>(inLeft) << 32U) | static_cast<oa::U64>(inRight);
 }
+
+bool readUnsigned(oa::StringView inText, oa::Usize& inOutCursor, oa::U64& outValue) {
+	while (inOutCursor < inText.size()
+		and (inText[inOutCursor] == ' ' or inText[inOutCursor] == '\t'
+			or inText[inOutCursor] == '\r' or inText[inOutCursor] == '\n')) {
+		++inOutCursor;
+	}
+	if (inOutCursor == inText.size() or inText[inOutCursor] < '0'
+		or inText[inOutCursor] > '9') return false;
+	oa::U64 value = 0;
+	while (inOutCursor < inText.size() and inText[inOutCursor] >= '0'
+		and inText[inOutCursor] <= '9') {
+		const oa::U64 digit = static_cast<oa::U64>(inText[inOutCursor] - '0');
+		if (value > (oa::Limits<oa::U64>::max() - digit) / 10U) return false;
+		value = value * 10U + digit;
+		++inOutCursor;
+	}
+	outValue = value;
+	return true;
+}
 } // namespace
 
 oa::BpeTokenizer::BpeTokenizer(oa::I32 inTargetVocab)
-	: targetVocab_(std::max<oa::I32>(256, inTargetVocab)) {}
+	: targetVocab_(oa::max<oa::I32>(256, inTargetVocab)) {}
 
 oa::Vec<oa::I32> oa::BpeTokenizer::applyMerge(
 	const oa::Vec<oa::I32>& inIds, const Merge& inMerge, oa::I32 inNewToken) {
@@ -40,23 +58,27 @@ void oa::BpeTokenizer::train(const char* inText, oa::I32 inNumMerges) {
 	merges_.clear();
 	if (inText == nullptr or inNumMerges <= 0) return;
 	oa::Vec<oa::I32> ids;
-	const oa::Usize len = std::strlen(inText);
+	const oa::Usize len = oa::strlen(inText);
 	ids.reserve(len);
 	const auto* bytes = reinterpret_cast<const oa::U8*>(inText);
 	for (oa::Usize i = 0; i < len; ++i) ids.pushBack(bytes[i]);
 
-	const oa::I32 maxMerges = std::min(inNumMerges, targetVocab_ - 256);
+	const oa::I32 maxMerges = oa::min(inNumMerges, targetVocab_ - 256);
 	for (oa::I32 m = 0; m < maxMerges and ids.size() > 1; ++m) {
-		// std::map gives a deterministic smallest-pair tie break.
-		std::map<oa::U64, oa::I64> pairCounts;
+		oa::HashMap<oa::U64, oa::I64> pairCounts;
+		pairCounts.reserve(ids.size() - 1U);
 		for (oa::Usize i = 0; i + 1 < ids.size(); ++i) {
-			++pairCounts[pairKey(static_cast<oa::U32>(ids[i]), static_cast<oa::U32>(ids[i + 1]))];
+			const oa::U64 key = pairKey(
+				static_cast<oa::U32>(ids[i]), static_cast<oa::U32>(ids[i + 1]));
+			auto found = pairCounts.find(key);
+			if (found == pairCounts.end()) pairCounts.emplace(key, 1);
+			else ++found->second;
 		}
 
-		oa::U64 bestPair = std::numeric_limits<oa::U64>::max();
+		oa::U64 bestPair = oa::Limits<oa::U64>::max();
 		oa::I64 bestCount = 0;
 		for (const auto& [pair, count] : pairCounts) {
-			if (count > bestCount) {
+			if (count > bestCount or (count == bestCount and pair < bestPair)) {
 				bestCount = count;
 				bestPair = pair;
 			}
@@ -73,7 +95,7 @@ void oa::BpeTokenizer::train(const char* inText, oa::I32 inNumMerges) {
 
 oa::Vec<oa::I32> oa::BpeTokenizer::encode(const char* inText) const {
 	oa::Vec<oa::I32> tokens;
-	const oa::I64 len = static_cast<oa::I64>(std::strlen(inText));
+	const oa::I64 len = static_cast<oa::I64>(oa::strlen(inText));
 	tokens.reserve(len);
 
 	// Start with raw bytes
@@ -107,24 +129,31 @@ oa::String oa::BpeTokenizer::decode(const oa::Vec<oa::I32>& inTokens) const {
 }
 
 oa::Status oa::BpeTokenizer::save(const oa::String& inPath) const {
-	std::ofstream out(inPath.cStr(), std::ios::binary | std::ios::trunc);
-	if (not out) return oa::Status::error(oa::StatusCode::PermissionError,
-		oa::String("oa::BpeTokenizer: cannot write ") + inPath);
-	out << kBpeMagic << '\n' << merges_.size() << '\n';
-	for (const auto& merge : merges_) out << merge.left << ' ' << merge.right << '\n';
-	if (not out) return oa::Status::error(oa::StatusCode::DiskFull,
-		oa::String("oa::BpeTokenizer: failed writing ") + inPath);
-	return oa::Status::ok();
+	oa::String text;
+	text.append(kBpeMagic);
+	text.pushBack('\n');
+	text.append(oa::toString(static_cast<oa::U64>(merges_.size())).view());
+	text.pushBack('\n');
+	for (const auto& merge : merges_) {
+		text.append(oa::toString(merge.left).view());
+		text.pushBack(' ');
+		text.append(oa::toString(merge.right).view());
+		text.pushBack('\n');
+	}
+	return oa::Filesystem::writeText(oa::Path(inPath), text.view());
 }
 
 oa::Status oa::BpeTokenizer::load(const oa::String& inPath) {
-	std::ifstream in(inPath.cStr(), std::ios::binary);
-	if (not in) return oa::Status::error(oa::StatusCode::FileNotFound,
-		oa::String("oa::BpeTokenizer: cannot read ") + inPath);
-	std::string magic;
+	auto textResult = oa::Filesystem::readText(oa::Path(inPath));
+	if (not textResult.isOk()) return textResult.getStatus();
+	const oa::StringView text = textResult.getValue().view();
+	const oa::Usize firstNewline = text.find('\n');
 	oa::U64 count = 0;
-	if (not std::getline(in, magic) or magic != kBpeMagic or not (in >> count)
-		or count > 1000000ULL) {
+	oa::Usize cursor = firstNewline == oa::StringView::Npos
+		? text.size() : firstNewline + 1U;
+	if (firstNewline == oa::StringView::Npos
+		or text.subStr(0, firstNewline) != kBpeMagic
+		or not readUnsigned(text, cursor, count) or count > 1000000ULL) {
 		return oa::Status::error(oa::StatusCode::FileCorrupt,
 			oa::String("oa::BpeTokenizer: invalid header in ") + inPath);
 	}
@@ -133,15 +162,16 @@ oa::Status oa::BpeTokenizer::load(const oa::String& inPath) {
 	for (oa::U64 i = 0; i < count; ++i) {
 		oa::U64 left = 0, right = 0;
 		const oa::U64 nextToken = 256ULL + i;
-		if (not (in >> left >> right) or left >= nextToken or right >= nextToken
-			or left > std::numeric_limits<oa::U32>::max()
-			or right > std::numeric_limits<oa::U32>::max()) {
+		if (not readUnsigned(text, cursor, left) or not readUnsigned(text, cursor, right)
+			or left >= nextToken or right >= nextToken
+			or left > oa::Limits<oa::U32>::max()
+			or right > oa::Limits<oa::U32>::max()) {
 			return oa::Status::error(oa::StatusCode::FileCorrupt,
 				oa::String("oa::BpeTokenizer: invalid merge in ") + inPath);
 		}
 		merges.pushBack({static_cast<oa::U32>(left), static_cast<oa::U32>(right)});
 	}
-	merges_ = std::move(merges);
+	merges_ = oa::move(merges);
 	targetVocab_ = vocabSize();
 	return oa::Status::ok();
 }

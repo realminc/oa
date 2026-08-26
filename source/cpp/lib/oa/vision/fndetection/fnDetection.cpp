@@ -4,11 +4,10 @@
 #include <oa/core/fnMatrix.h>
 #include <oa/core/log.h>
 #include <oa/core/op.h>
+#include <oa/core/std/algo.h>
+#include <oa/core/std/limits.h>
+#include <oa/core/std/scalarMath.h>
 #include <oa/runtime/executionSession.h>
-
-#include <algorithm>
-#include <cmath>
-#include <limits>
 
 namespace {
 
@@ -16,7 +15,7 @@ bool isBoxMatrix(const oa::Matrix& inBoxes) {
 	return inBoxes.rank() == 2 && inBoxes.size(0) > 0
 		&& inBoxes.size(1) == 4
 		&& inBoxes.getDtype() == oa::ScalarType::Float32
-		&& inBoxes.numElements() <= std::numeric_limits<oa::U32>::max();
+		&& inBoxes.numElements() <= oa::Limits<oa::U32>::max();
 }
 
 bool isVector(const oa::Matrix& inMatrix, oa::I64 inSize, oa::ScalarType inDtype) {
@@ -32,7 +31,7 @@ oa::Matrix oa::FnDetection::boxIou(const oa::Matrix& inA,	const oa::Matrix& inB)
 	}
 	const oa::U32 rowsA = static_cast<oa::U32>(inA.size(0));
 	const oa::U32 rowsB = static_cast<oa::U32>(inB.size(0));
-	if (static_cast<oa::U64>(rowsA) * rowsB > std::numeric_limits<oa::U32>::max()) {
+	if (static_cast<oa::U64>(rowsA) * rowsB > oa::Limits<oa::U32>::max()) {
 		OaLogError(oa::LogComponent::Vision,
 			"oa::FnDetection::boxIou output exceeds the dispatch limit");
 		return {};
@@ -71,9 +70,9 @@ oa::NmsResult oa::FnDetection::nms(
 		&& inScores.getDtype() == oa::ScalarType::Float32
 		&& inClasses.getShape() == inScores.getShape()
 		&& inClasses.getDtype() == oa::ScalarType::Int32
-		&& std::isfinite(inConfig.iouThreshold)
+		&& oa::isFinite(inConfig.iouThreshold)
 		&& inConfig.iouThreshold >= 0.0F && inConfig.iouThreshold <= 1.0F
-		&& std::isfinite(inConfig.scoreThreshold)
+		&& oa::isFinite(inConfig.scoreThreshold)
 		&& inConfig.maxDetections > 0;
 	if (!valid) {
 		OaLogError(oa::LogComponent::Vision,	"oa::FnDetection::nms expects FP32 boxes [N,4], FP32 scores [N], Int32 classes [N], finite thresholds and maxDetections > 0");
@@ -83,7 +82,7 @@ oa::NmsResult oa::FnDetection::nms(
 	oa::OpLoweringScope lowering(context);
 	const oa::U32 count = static_cast<oa::U32>(inBoxes.size(0));
 	const oa::U32 maximum = static_cast<oa::U32>(
-		std::min<oa::I64>(count, inConfig.maxDetections));
+		oa::min<oa::I64>(count, inConfig.maxDetections));
 	oa::NmsResult result{
 		.indices = oa::FnMatrix::empty({static_cast<oa::I64>(maximum)}, oa::ScalarType::Int32),
 		.count = oa::FnMatrix::empty({1}, oa::ScalarType::UInt32),
@@ -131,7 +130,7 @@ oa::Matrix oa::FnDetection::confusionMatrix(
 		&& inTarget.getDtype() == oa::ScalarType::Int32
 		&& inClassCount > 0
 		&& static_cast<oa::U64>(inClassCount) * inClassCount
-			<= std::numeric_limits<oa::U32>::max();
+			<= oa::Limits<oa::U32>::max();
 	if (!valid) {
 		OaLogError(oa::LogComponent::Vision,
 			"oa::FnDetection::confusionMatrix expects Int32 predicted/target [N] and ClassCount > 0");
@@ -167,7 +166,7 @@ oa::Matrix oa::FnDetection::binaryMaskCounts(
 		&& inPredicted.getDtype() == oa::ScalarType::UInt8
 		&& inTarget.getShape() == inPredicted.getShape()
 		&& inTarget.getDtype() == oa::ScalarType::UInt8
-		&& inPredicted.numElements() <= std::numeric_limits<oa::U32>::max();
+		&& inPredicted.numElements() <= oa::Limits<oa::U32>::max();
 	if (!valid) {
 		OaLogError(oa::LogComponent::Vision,
 			"oa::FnDetection::binaryMaskCounts expects equally-shaped UInt8 masks");
@@ -219,7 +218,7 @@ oa::DetectionMetricsResult oa::FnDetection::evaluate(
 		&& thresholds > 0
 		&& inIouThresholds.getDtype() == oa::ScalarType::Float32
 		&& inClassCount > 0
-		&& std::isfinite(inScoreThreshold);
+		&& oa::isFinite(inScoreThreshold);
 	if (!valid) {
 		OaLogError(oa::LogComponent::Vision,
 			"oa::FnDetection::evaluate expects prediction boxes/scores/classes/image IDs, target boxes/classes/image IDs, FP32 IoU thresholds [T], ClassCount > 0 and a finite score threshold");
@@ -234,9 +233,9 @@ oa::DetectionMetricsResult oa::FnDetection::evaluate(
 		* static_cast<oa::U64>(predicted + targets);
 	const oa::U64 curveElements = pairCount
 		* static_cast<oa::U64>(predicted) * 2ULL;
-	if (pairCount > std::numeric_limits<oa::U32>::max()
-		|| stateElements > std::numeric_limits<oa::U32>::max()
-		|| curveElements > std::numeric_limits<oa::U32>::max()) {
+	if (pairCount > oa::Limits<oa::U32>::max()
+		|| stateElements > oa::Limits<oa::U32>::max()
+		|| curveElements > oa::Limits<oa::U32>::max()) {
 		OaLogError(oa::LogComponent::Vision,
 			"oa::FnDetection::evaluate scratch exceeds the 32-bit shader indexing limit");
 		return {};

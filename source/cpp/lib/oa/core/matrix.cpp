@@ -2,9 +2,6 @@
 #include <oa/core/fnMatrix.h>
 #include <oa/runtime/allocator.h>
 
-#include <cstddef>
-#include <utility>
-
 // ============================================================================
 // oa::MatrixShape broadcast helpers
 // ============================================================================
@@ -38,13 +35,13 @@ oa::Array<oa::I64, OA_MAX_TENSOR_DIMS> oa::MatrixShape::broadcastStrides(const o
 	oa::I32 pad = inOut.rank - rank;
 	for (oa::I32 d = 0; d < inOut.rank; ++d) {
 		if (d < pad) {
-			strides[static_cast<std::size_t>(d)] = 0;
+			strides[static_cast<oa::Usize>(d)] = 0;
 		} else {
 			oa::I32 selfIdx = d - pad;
 			if (dims[static_cast<oa::Usize>(selfIdx)] == 1) {
-				strides[static_cast<std::size_t>(d)] = 0;
+				strides[static_cast<oa::Usize>(d)] = 0;
 			} else {
-				strides[static_cast<std::size_t>(d)] = stride(selfIdx);
+				strides[static_cast<oa::Usize>(d)] = stride(selfIdx);
 			}
 		}
 	}
@@ -95,7 +92,7 @@ const void* oa::Matrix::data() const {
 	if (vkBuf_) {
 		if (vkBuf_->mappedPtr) {
 			const auto* base = static_cast<const char*>(vkBuf_->mappedPtr);
-			return base + static_cast<ptrdiff_t>(byteOffset_);
+			return base + static_cast<oa::Isize>(byteOffset_);
 		}
 		// A retained device matrix is deliberately made inert when its engine
 		// closes. Do not fall through to the non-owning cached mapped pointer.
@@ -103,7 +100,7 @@ const void* oa::Matrix::data() const {
 	}
 	if (data_.get()) {
 		const auto* base = static_cast<const char*>(data_.get());
-		return base + static_cast<ptrdiff_t>(byteOffset_);
+		return base + static_cast<oa::Isize>(byteOffset_);
 	}
 	return nullptr;
 }

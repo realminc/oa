@@ -1,38 +1,39 @@
 #include <oa/ml/metric.h>
 #include <oa/core/fnMatrix.h>
+#include <oa/core/std/algo.h>
+#include <oa/core/std/cString.h>
+#include <oa/core/std/scalarMath.h>
 #include <oa/runtime/executionSession.h>
 
-#include <algorithm>
-#include <cstdio>
-#include <cstring>
+#include <stdio.h>
 
 // ─── oa::MetricValueFormatter ────────────────────────────────────────────────
 
 oa::I32 oa::MetricValueFormatter::format(char* outBuffer, oa::I32 inBufferSize, oa::F64 inValue) {
 	if (outBuffer == nullptr or inBufferSize <= 0) return 0;
-	if (not std::isfinite(inValue)) {
-		return std::snprintf(outBuffer, static_cast<size_t>(inBufferSize), "%g", inValue);
+	if (not oa::isFinite(inValue)) {
+		return ::snprintf(outBuffer, static_cast<oa::Usize>(inBufferSize), "%g", inValue);
 	}
 
-	const oa::F64 magnitude = std::abs(inValue);
+	const oa::F64 magnitude = oa::abs(inValue);
 	oa::I32 requiredPrecision = defaultPrecision_;
 	if (magnitude > 0.0 and magnitude < 1.0) {
-		const oa::I32 leadingZeros = std::max<oa::I32>(0,
-			-static_cast<oa::I32>(std::floor(std::log10(magnitude))) - 1);
-		requiredPrecision = std::max(requiredPrecision, leadingZeros + 3);
+		const oa::I32 leadingZeros = oa::max<oa::I32>(0,
+			-static_cast<oa::I32>(oa::floor(oa::log10(magnitude))) - 1);
+		requiredPrecision = oa::max(requiredPrecision, leadingZeros + 3);
 	}
 	if (requiredPrecision > maxPrecision_ or magnitude >= 1.0e9) {
 		havePrevious_ = true;
 		previousValue_ = inValue;
-		return std::snprintf(outBuffer, static_cast<size_t>(inBufferSize), "%.3g", inValue);
+		return ::snprintf(outBuffer, static_cast<oa::Usize>(inBufferSize), "%.3g", inValue);
 	}
-	precision_ = std::max(precision_, requiredPrecision);
+	precision_ = oa::max(precision_, requiredPrecision);
 
 	if (havePrevious_ and inValue != previousValue_) {
 		while (precision_ < maxPrecision_) {
-			const oa::F64 scale = std::pow(10.0, static_cast<oa::F64>(precision_));
-			const oa::F64 previousRounded = std::round(previousValue_ * scale) / scale;
-			const oa::F64 currentRounded = std::round(inValue * scale) / scale;
+			const oa::F64 scale = oa::pow(10.0, static_cast<oa::F64>(precision_));
+			const oa::F64 previousRounded = oa::round(previousValue_ * scale) / scale;
+			const oa::F64 currentRounded = oa::round(inValue * scale) / scale;
 			if (previousRounded != currentRounded) break;
 			++precision_;
 		}
@@ -41,12 +42,12 @@ oa::I32 oa::MetricValueFormatter::format(char* outBuffer, oa::I32 inBufferSize, 
 	previousValue_ = inValue;
 
 	char fixed[96]{};
-	std::snprintf(fixed, sizeof(fixed), "%.*f", precision_, inValue);
-	char* end = fixed + std::strlen(fixed);
+	::snprintf(fixed, sizeof(fixed), "%.*f", precision_, inValue);
+	char* end = fixed + oa::strlen(fixed);
 	while (end > fixed and end[-1] == '0') --end;
 	if (end > fixed and end[-1] == '.') --end;
 	*end = '\0';
-	return std::snprintf(outBuffer, static_cast<size_t>(inBufferSize), "%s", fixed);
+	return ::snprintf(outBuffer, static_cast<oa::Usize>(inBufferSize), "%s", fixed);
 }
 
 // ─── oa::MetricLoss ──────────────────────────────────────────────────────────
@@ -86,13 +87,13 @@ oa::I32 oa::MetricLoss::render(char* outBuffer, oa::I32 inBufferSize, bool inFir
 	if (inBufferSize < 32) return 0;
 	const char* metricName = name();
 	if (count_ == 0) {
-		return snprintf(outBuffer, inBufferSize, "%s: n/a", metricName);
+		return ::snprintf(outBuffer, static_cast<oa::Usize>(inBufferSize), "%s: n/a", metricName);
 	}
 	// Progress bars are space-constrained and the metric's aggregation policy is
 	// already part of its configuration. Summaries spell out initial/final/mean.
 	char value[96]{};
 	formatter_.format(value, sizeof(value), result());
-	return snprintf(outBuffer, inBufferSize, "%s: %s", metricName, value);
+	return ::snprintf(outBuffer, static_cast<oa::Usize>(inBufferSize), "%s: %s", metricName, value);
 }
 
 // ─── oa::MetricAccuracy ───────────────────────────────────────────────────────
@@ -120,8 +121,11 @@ oa::F64 oa::MetricAccuracy::result() const {
 oa::I32 oa::MetricAccuracy::render(char* outBuffer, oa::I32 inBufferSize, bool inFirst) const {
 	(void)inFirst; // separator is handled by oa::CbProgressBar
 	if (inBufferSize < 32) return 0;
-	if (total_ == 0) return snprintf(outBuffer, inBufferSize, "accuracy: n/a");
-	return snprintf(outBuffer, inBufferSize, "accuracy: %.4f", result());
+	if (total_ == 0) {
+		return ::snprintf(outBuffer, static_cast<oa::Usize>(inBufferSize), "accuracy: n/a");
+	}
+	return ::snprintf(outBuffer, static_cast<oa::Usize>(inBufferSize),
+		"accuracy: %.4f", result());
 }
 
 // ─── oa::FnMetric ───────────────────────────────────────────────────────────

@@ -18,7 +18,7 @@
 
 #include <oa/core/validation.h>
 
-#include <cassert>
+#include <assert.h>
 
 #if not defined(NDEBUG) or defined(OA_ENABLE_VALIDATION)
 static oa::Status validateLinear(

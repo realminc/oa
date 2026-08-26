@@ -2,9 +2,6 @@
 
 #include <oa/ui/viewport.h>
 
-#include <algorithm>
-#include <cmath>
-#include <limits>
 
 namespace {
 
@@ -14,7 +11,7 @@ namespace {
 }
 
 [[nodiscard]] bool isFinitePositive(oa::F32 inValue) noexcept {
-	return std::isfinite(inValue) and inValue > 0.0F;
+	return oa::isFinite(inValue) and inValue > 0.0F;
 }
 
 } // namespace
@@ -47,8 +44,8 @@ oa::Status oa::Viewport::setScissor(const oa::ScissorDesc& inScissor) {
 }
 
 oa::Status oa::Viewport::setClearColor(const oa::vlm::Vec4& inColor) {
-	if (not std::isfinite(inColor.x) or not std::isfinite(inColor.y)
-		or not std::isfinite(inColor.z) or not std::isfinite(inColor.w)) {
+	if (not oa::isFinite(inColor.x) or not oa::isFinite(inColor.y)
+		or not oa::isFinite(inColor.z) or not oa::isFinite(inColor.w)) {
 		return oa::Status::invalidArgument(
 			"oa::Viewport::setClearColor requires finite components");
 	}
@@ -57,7 +54,7 @@ oa::Status oa::Viewport::setClearColor(const oa::vlm::Vec4& inColor) {
 }
 
 oa::Status oa::Viewport::setClearDepth(oa::F32 inDepth) {
-	if (not std::isfinite(inDepth) or inDepth < 0.0F or inDepth > 1.0F) {
+	if (not oa::isFinite(inDepth) or inDepth < 0.0F or inDepth > 1.0F) {
 		return oa::Status::invalidArgument(
 			"oa::Viewport::setClearDepth requires a finite value in [0,1]");
 	}
@@ -110,7 +107,7 @@ oa::Status oa::Viewport::setupImageAspectFit(
 		return oa::Status::invalidArgument(
 			"oa::Viewport::setupImageAspectFit requires a valid render target");
 	}
-	const oa::F64 maxPixel = std::numeric_limits<oa::I32>::max();
+	const oa::F64 maxPixel = oa::Limits<oa::I32>::max();
 	if (inWindowWidth > maxPixel or inWindowHeight > maxPixel) {
 		return oa::Status::error(
 			oa::StatusCode::OutOfRange,
@@ -130,8 +127,8 @@ oa::Status oa::Viewport::setupImageAspectFit(
 	}
 	const oa::F64 offsetX = (static_cast<oa::F64>(inWindowWidth) - displayWidth) * 0.5;
 	const oa::F64 offsetY = (static_cast<oa::F64>(inWindowHeight) - displayHeight) * 0.5;
-	if (not std::isfinite(displayWidth) or not std::isfinite(displayHeight)
-		or not std::isfinite(offsetX) or not std::isfinite(offsetY)
+	if (not oa::isFinite(displayWidth) or not oa::isFinite(displayHeight)
+		or not oa::isFinite(offsetX) or not oa::isFinite(offsetY)
 		or displayWidth < 0.5 or displayHeight < 0.5
 		or displayWidth > maxPixel or displayHeight > maxPixel
 		or offsetX < 0.0 or offsetY < 0.0
@@ -142,10 +139,10 @@ oa::Status oa::Viewport::setupImageAspectFit(
 	}
 
 	const oa::ViewportDesc viewport{
-		.x = static_cast<oa::I32>(std::llround(offsetX)),
-		.y = static_cast<oa::I32>(std::llround(offsetY)),
-		.width = static_cast<oa::I32>(std::llround(displayWidth)),
-		.height = static_cast<oa::I32>(std::llround(displayHeight)),
+		.x = static_cast<oa::I32>(oa::lround(offsetX)),
+		.y = static_cast<oa::I32>(oa::lround(offsetY)),
+		.width = static_cast<oa::I32>(oa::lround(displayWidth)),
+		.height = static_cast<oa::I32>(oa::lround(displayHeight)),
 	};
 	return setupImage2D(inImageWidth, inImageHeight, inTarget, viewport);
 }

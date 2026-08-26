@@ -1,8 +1,8 @@
 // oa::Camera implementation
 
 #include <oa/render/camera.h>
+#include <oa/core/std/scalarMath.h>
 #include <oa/core/vlm.h>
-#include <cmath>
 
 namespace oa {
 
@@ -257,7 +257,7 @@ oa::F32 getSensorHeight(const oa::CameraState& inState) noexcept {
 oa::F32 getEffectiveFovY(const oa::CameraState& inState) noexcept {
 	if (inState.focalLength > 0.0f && inState.sensorHeight > 0.0f) {
 		// FOV = 2 * arctan(sensorHeight / (2 * focalLength))
-		return 2.0f * std::atan(inState.sensorHeight / (2.0f * inState.focalLength)) * 180.0f / 3.14159265358979323846f;
+		return 2.0f * oa::atan(inState.sensorHeight / (2.0f * inState.focalLength)) * 180.0f / 3.14159265358979323846f;
 	}
 	return inState.fovY;
 }

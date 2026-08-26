@@ -6,8 +6,6 @@
 
 #include <oa/ml/module.h>
 
-#include <initializer_list>
-
 namespace oa {
 
 /// Conv1d: 1D convolution layer (im2col + GEMM).

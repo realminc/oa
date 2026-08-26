@@ -12,6 +12,18 @@ TEST(CoreMemory, CopySmall) {
 	EXPECT_EQ(std::memcmp(src, dst, 16), 0);
 }
 
+TEST(CoreMemory, MoveOverlappingRanges) {
+	oa::U8 moveRight[] = {0, 1, 2, 3, 4, 5, 6, 7};
+	EXPECT_EQ(oa::memmove(moveRight + 2, moveRight, 6), moveRight + 2);
+	const oa::U8 expectedRight[] = {0, 1, 0, 1, 2, 3, 4, 5};
+	EXPECT_EQ(std::memcmp(moveRight, expectedRight, sizeof(moveRight)), 0);
+
+	oa::U8 moveLeft[] = {0, 1, 2, 3, 4, 5, 6, 7};
+	EXPECT_EQ(oa::memmove(moveLeft, moveLeft + 2, 6), moveLeft);
+	const oa::U8 expectedLeft[] = {2, 3, 4, 5, 6, 7, 6, 7};
+	EXPECT_EQ(std::memcmp(moveLeft, expectedLeft, sizeof(moveLeft)), 0);
+}
+
 TEST(CoreMemory, CopyMedium) {
 	void* src = oa::alignedAlloc(512, 64);
 	void* dst = oa::alignedAlloc(512, 64);

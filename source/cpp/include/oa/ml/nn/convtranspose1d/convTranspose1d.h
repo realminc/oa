@@ -6,8 +6,6 @@
 
 #include <oa/ml/module.h>
 
-#include <initializer_list>
-
 namespace oa {
 
 /// ConvTranspose1d: 1D transposed convolution (learnable upsampling); adjoint of Conv1d, no bias.

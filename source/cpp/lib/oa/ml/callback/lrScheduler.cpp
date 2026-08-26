@@ -1,14 +1,15 @@
 #include <oa/ml/lrScheduler.h>
 #include <oa/ml/optim.h>
-
-#include <cmath>
+#include <oa/core/std/algo.h>
+#include <oa/core/std/scalarMath.h>
+#include <oa/core/std/utility.h>
 
 static constexpr oa::F32 kPi = 3.14159265358979323846f;
 
 oa::F32 oa::CosineScheduler::getLr(oa::U64 inStep) const {
 	if (inStep >= totalSteps_) return minLr_;
 	oa::F32 progress = static_cast<oa::F32>(inStep) / static_cast<oa::F32>(totalSteps_);
-	return minLr_ + 0.5f * (maxLr_ - minLr_) * (1.0f + std::cos(progress * kPi));
+	return minLr_ + 0.5f * (maxLr_ - minLr_) * (1.0f + oa::cos(progress * kPi));
 }
 
 oa::F32 oa::WarmupScheduler::getLr(oa::U64 inStep) const {
@@ -30,12 +31,12 @@ oa::F32 oa::OneCycleScheduler::getLr(oa::U64 inStep) const {
 
 	if (step <= upSteps && upSteps > 0.0f) {
 		oa::F32 pct = step / upSteps;
-		return finalLr + (maxLr_ - finalLr) / 2.0f * (1.0f - std::cos(kPi * pct));
+		return finalLr + (maxLr_ - finalLr) / 2.0f * (1.0f - oa::cos(kPi * pct));
 	}
 	if (downSteps > 0.0f) {
 		oa::F32 pct = (step - upSteps) / downSteps;
 		if (pct > 1.0f) pct = 1.0f;
-		return finalLr + (maxLr_ - finalLr) / 2.0f * (1.0f + std::cos(kPi * pct));
+		return finalLr + (maxLr_ - finalLr) / 2.0f * (1.0f + oa::cos(kPi * pct));
 	}
 	return finalLr;
 }
@@ -44,8 +45,8 @@ oa::F32 oa::OneCycleScheduler::getLr(oa::U64 inStep) const {
 oa::F32 oa::CyclicScheduler::getLr(oa::U64 inStep) const {
 	oa::F32 step = static_cast<oa::F32>(inStep);
 	oa::F32 sizeUp = static_cast<oa::F32>(stepSizeUp_);
-	oa::F32 cycle = std::floor(step / (2.0f * sizeUp));
-	oa::F32 x = std::abs(step / sizeUp - 2.0f * cycle - 1.0f);
+	oa::F32 cycle = oa::floor(step / (2.0f * sizeUp));
+	oa::F32 x = oa::abs(step / sizeUp - 2.0f * cycle - 1.0f);
 
 	oa::F32 scale = 1.0f;
 	switch (mode_) {
@@ -53,10 +54,10 @@ oa::F32 oa::CyclicScheduler::getLr(oa::U64 inStep) const {
 		scale = 1.0f;
 		break;
 	case oa::CyclicMode::Triangular2:
-		scale = 1.0f / std::pow(2.0f, cycle);
+		scale = 1.0f / oa::pow(2.0f, cycle);
 		break;
 	case oa::CyclicMode::ExpRange:
-		scale = std::pow(gamma_, step);
+		scale = oa::pow(gamma_, step);
 		break;
 	}
 
@@ -83,7 +84,7 @@ oa::F32 oa::CosineWarmRestartsScheduler::getLr(oa::U64 inStep) const {
 	}
 
 	oa::F32 progress = static_cast<oa::F32>(tCur) / static_cast<oa::F32>(ti);
-	return etaMin_ + 0.5f * (maxLr_ - etaMin_) * (1.0f + std::cos(kPi * progress));
+	return etaMin_ + 0.5f * (maxLr_ - etaMin_) * (1.0f + oa::cos(kPi * progress));
 }
 
 // ReduceOnPlateau: stateful metric-driven scheduler
@@ -131,10 +132,10 @@ oa::F32 oa::SequentialScheduler::getLr(oa::U64 inStep) const {
 // LinearWarmupCosine: compose warmup + cosine
 oa::LinearWarmupCosineScheduler::LinearWarmupCosineScheduler(
 	oa::I32 inWarmupSteps, oa::I32 inTotalSteps, oa::F32 inMaxLr, oa::F32 inMinLr) {
-	const oa::U64 w = static_cast<oa::U64>(std::max(0, inWarmupSteps));
-	const oa::I32 cosSpan = std::max(1, inTotalSteps - inWarmupSteps);
+	const oa::U64 w = static_cast<oa::U64>(oa::max(0, inWarmupSteps));
+	const oa::I32 cosSpan = oa::max(1, inTotalSteps - inWarmupSteps);
 	auto cos = oa::makeShared<oa::CosineScheduler>(inMaxLr, inMinLr, static_cast<oa::U64>(cosSpan));
-	inner_ = oa::makeShared<oa::WarmupScheduler>(inMaxLr, w, std::move(cos));
+	inner_ = oa::makeShared<oa::WarmupScheduler>(inMaxLr, w, oa::move(cos));
 }
 
 oa::F32 oa::LinearWarmupCosineScheduler::getLr(oa::U64 inStep) const {

@@ -15,8 +15,6 @@
 #include <oa/runtime/texture.h>
 #include <oa/runtime/event.h>
 
-#include <vector>
-
 namespace oa {
 class Engine;
 class Ui;
@@ -83,8 +81,8 @@ class RenderReadback {
 public:
 	oa::U32 width_ = 0U;
 	oa::U32 height_ = 0U;
-	std::vector<oa::U8> colorRgba8_;
-	std::vector<oa::F32> depth32_;
+	oa::Vec<oa::U8> colorRgba8_;
+	oa::Vec<oa::F32> depth32_;
 };
 
 class Renderer {

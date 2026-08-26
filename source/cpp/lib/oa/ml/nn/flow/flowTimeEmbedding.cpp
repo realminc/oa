@@ -1,9 +1,8 @@
 #include <oa/ml/nn/flow/flowTimeEmbedding.h>
 
+#include <oa/core/assert.h>
 #include <oa/core/fnMatrix.h>
-
-#include <cmath>
-#include <stdexcept>
+#include <oa/core/std/scalarMath.h>
 
 namespace oa {
 
@@ -14,17 +13,16 @@ FlowTimeEmbedding::FlowTimeEmbedding(
 	: embeddingDim_(inEmbeddingDim),
 	  maxPeriod_(inMaxPeriod),
 	  timeScale_(inTimeScale) {
-	if (embeddingDim_ <= 0 || (embeddingDim_ % 2) != 0 ||
-		!std::isfinite(maxPeriod_) || maxPeriod_ <= 1.0F ||
-		!std::isfinite(timeScale_) || timeScale_ <= 0.0F) {
-		throw std::invalid_argument("FlowTimeEmbedding requires positive even dimension, max period > 1 and positive scale");
-	}
+	OA_REQUIRE_MSG(embeddingDim_ > 0 && (embeddingDim_ % 2) == 0
+		&& oa::isFinite(maxPeriod_) && maxPeriod_ > 1.0F
+		&& oa::isFinite(timeScale_) && timeScale_ > 0.0F,
+		"FlowTimeEmbedding requires positive even dimension, max period > 1 and positive scale");
 
 	const oa::I32 half = embeddingDim_ / 2;
 	oa::Vec<oa::F32> frequencies(half);
-	const oa::F32 logPeriod = std::log(maxPeriod_);
+	const oa::F32 logPeriod = oa::log(maxPeriod_);
 	for (oa::I32 index = 0; index < half; ++index) {
-		frequencies[index] = timeScale_ * std::exp(
+		frequencies[index] = timeScale_ * oa::exp(
 			-logPeriod * static_cast<oa::F32>(index) / static_cast<oa::F32>(half));
 	}
 	frequencies_ = oa::FnMatrix::fromBytes(
@@ -35,10 +33,9 @@ FlowTimeEmbedding::FlowTimeEmbedding(
 }
 
 oa::Matrix FlowTimeEmbedding::forward(const oa::Matrix& inTime) {
-	if (inTime.rank() < 1 || inTime.rank() > 2 ||
-		(inTime.rank() == 2 && inTime.size(1) != 1)) {
-		throw std::invalid_argument("FlowTimeEmbedding expects [B] or [B,1]");
-	}
+	OA_REQUIRE_MSG(inTime.rank() >= 1 && inTime.rank() <= 2
+		&& (inTime.rank() != 2 || inTime.size(1) == 1),
+		"FlowTimeEmbedding expects [B] or [B,1]");
 	const oa::I64 batch = inTime.size(0);
 	auto time = inTime.reshape(oa::MatrixShape{batch, 1});
 	if (time.getDtype() != oa::ScalarType::Float32) {

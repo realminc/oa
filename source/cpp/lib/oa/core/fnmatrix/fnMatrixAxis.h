@@ -3,7 +3,7 @@
 #include <oa/core/matrix.h>
 #include <oa/core/types.h>
 
-#include <limits>
+#include <oa/core/std/limits.h>
 
 struct FnMatrixAxisShape {
 	oa::U32 outerSize = 0U;
@@ -23,7 +23,7 @@ struct FnMatrixAxisShape {
 	const oa::I32 dim = inRequestedDim == -1 ? rank - 1 : inRequestedDim;
 	if (rank <= 0 or inRequestedDim < -1 or dim < 0 or dim >= rank) return false;
 
-	constexpr oa::U64 maxU32 = std::numeric_limits<oa::U32>::max();
+	constexpr oa::U64 maxU32 = oa::Limits<oa::U32>::max();
 	oa::U64 outerSize = 1U;
 	oa::U64 innerSize = 1U;
 	for (oa::I32 axis = 0; axis < rank; ++axis) {

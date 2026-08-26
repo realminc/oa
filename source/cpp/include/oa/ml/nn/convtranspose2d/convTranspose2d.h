@@ -6,8 +6,6 @@
 
 #include <oa/ml/module.h>
 
-#include <initializer_list>
-
 namespace oa {
 
 /// ConvTranspose2d: 2D transposed convolution layer (learnable upsampling).

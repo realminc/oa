@@ -34,7 +34,7 @@ oa::Result<oavk::Timestamp> oavk::Timestamp::create(oa::Engine &inRt, oa::U32 in
 
 	ts.pool = pool;
 	ts.owner_ = &inRt;
-	return std::move(ts);
+	return oa::move(ts);
 }
 
 oavk::Timestamp::~Timestamp() {
@@ -130,7 +130,7 @@ oa::F64 oavk::Timestamp::elapsedNs(oa::U32 inStartIdx, oa::U32 inEndIdx) const {
 oavk::Timestamp::Timestamp(oavk::Timestamp &&inOther) noexcept
 	: pool(inOther.pool), capacity(inOther.capacity), writeIndex(inOther.writeIndex),
 	  nanosPerTick(inOther.nanosPerTick), validBits(inOther.validBits),
-	  results(std::move(inOther.results)), owner_(inOther.owner_) {
+	  results(oa::move(inOther.results)), owner_(inOther.owner_) {
 	inOther.pool = nullptr;
 	inOther.owner_ = nullptr;
 	inOther.capacity = 0;
@@ -146,7 +146,7 @@ oavk::Timestamp &oavk::Timestamp::operator=(oavk::Timestamp &&inOther) noexcept 
 		writeIndex = inOther.writeIndex;
 		nanosPerTick = inOther.nanosPerTick;
 		validBits = inOther.validBits;
-		results = std::move(inOther.results);
+		results = oa::move(inOther.results);
 		owner_ = inOther.owner_;
 		inOther.pool = nullptr;
 		inOther.owner_ = nullptr;

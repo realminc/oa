@@ -6,9 +6,8 @@
 #include <oa/ml/autograd.h>
 #include <oa/ml/fnMatrix.h>
 #include <oa/runtime/executionSession.h>
-
-#include <limits>
-#include <cmath>
+#include <oa/core/std/limits.h>
+#include <oa/core/std/scalarMath.h>
 
 namespace {
 
@@ -18,7 +17,7 @@ bool validatePolicyShape(
 	return inLogits.rank() == 2
 		&& inLogits.size(0) > 0 && inLogits.size(1) > 1
 		&& inLogits.size(0)
-			<= static_cast<oa::I64>(std::numeric_limits<oa::U32>::max())
+			<= static_cast<oa::I64>(oa::Limits<oa::U32>::max())
 		&& inLogits.getDtype() == oa::ScalarType::Float32
 		&& inValue.getShape() == oa::MatrixShape{inLogits.size(0)}
 		&& inValue.getDtype() == oa::ScalarType::Float32;
@@ -37,8 +36,8 @@ bool validateContinuousPolicyShape(
 		&& inLogStddev.getDtype() == oa::ScalarType::Float32
 		&& inValue.getShape() == oa::MatrixShape{inMean.size(0)}
 		&& inValue.getDtype() == oa::ScalarType::Float32
-		&& std::isfinite(inMinimum) && std::isfinite(inMaximum)
-		&& inMinimum < inMaximum && std::isfinite(inEpsilon)
+		&& oa::isFinite(inMinimum) && oa::isFinite(inMaximum)
+		&& inMinimum < inMaximum && oa::isFinite(inEpsilon)
 		&& inEpsilon > 0.0F && inEpsilon < 1.0F;
 }
 
@@ -183,7 +182,7 @@ oa::ContinuousPolicyResult oa::FnPolicy::evaluateTanhNormal(
 		1.0F + inEpsilon));
 	const oa::Matrix corrected = oa::FnMatrix::sub(
 		baseLogProbability,
-		oa::FnMatrix::addScalar(jacobian, std::log(scale)));
+		oa::FnMatrix::addScalar(jacobian, oa::log(scale)));
 	const oa::Matrix entropyPerDimension = oa::FnMatrix::addScalar(
 		logStddev, 0.5F * (1.0F + logTwoPi));
 	oa::ContinuousPolicyResult result{

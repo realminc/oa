@@ -7,7 +7,7 @@
 		if (not result.isValid()) {
 			throw std::runtime_error("EvaluateCategoricalPolicy rejected its input");
 		}
-		return new oa::PolicyResult(std::move(result));
+		return new oa::PolicyResult(oa::move(result));
 	},
 	  nb::arg("logits"), nb::arg("action"), nb::arg("value"),
 	  nb::rv_policy::take_ownership,
@@ -18,7 +18,7 @@
 		if (not result.isValid()) {
 			throw std::runtime_error("EvaluateTanhNormalPolicy rejected its input");
 		}
-		return new oa::ContinuousPolicyResult(std::move(result));
+		return new oa::ContinuousPolicyResult(oa::move(result));
 	},
 	  nb::arg("mean"), nb::arg("logStddev"), nb::arg("rawAction"), nb::arg("value"), nb::arg("minimum") = -1.0F, nb::arg("maximum") = 1.0F, nb::arg("epsilon") = 1.0e-6F,
 	  nb::rv_policy::take_ownership,
@@ -29,7 +29,7 @@
 		if (not result.isValid()) {
 			throw std::runtime_error("SampleCategoricalPolicy rejected its input");
 		}
-		return new oa::PolicyResult(std::move(result));
+		return new oa::PolicyResult(oa::move(result));
 	},
 	  nb::arg("logits"), nb::arg("value"), nb::arg("seed") = 0,
 	  nb::rv_policy::take_ownership,
@@ -40,7 +40,7 @@
 		if (not result.isValid()) {
 			throw std::runtime_error("SampleTanhNormalPolicy rejected its input");
 		}
-		return new oa::ContinuousPolicyResult(std::move(result));
+		return new oa::ContinuousPolicyResult(oa::move(result));
 	},
 	  nb::arg("mean"), nb::arg("logStddev"), nb::arg("value"), nb::arg("minimum") = -1.0F, nb::arg("maximum") = 1.0F, nb::arg("seed") = 0, nb::arg("epsilon") = 1.0e-6F,
 	  nb::rv_policy::take_ownership,

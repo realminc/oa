@@ -3,9 +3,9 @@
 #include <oa/core/perfStore.h>
 #include <oa/core/filesystem.h>
 #include <oa/core/paths.h>
+#include <oa/core/std/cString.h>
 #include <oa/core/time.h>
-#include <cstring>
-#include <cstdio>
+#include <stdio.h>
 
 static constexpr oa::U32 kMagic   = 0x4F415046U;
 static constexpr oa::U32 kVersion = 1U;
@@ -77,8 +77,8 @@ const oa::PerfRecord* oa::PerfStore::findLatest(
 ) const {
     const oa::PerfRecord* best = nullptr;
     for (const auto& rec : records_) {
-        if (std::strncmp(rec.gpuName,    inGpuName,    64) == 0 and
-            std::strncmp(rec.metricName, inMetricName, 64) == 0) {
+        if (oa::strncmp(rec.gpuName,    inGpuName,    64) == 0 and
+            oa::strncmp(rec.metricName, inMetricName, 64) == 0) {
             if (best == nullptr or rec.timestampNs > best->timestampNs) {
                 best = &rec;
             }

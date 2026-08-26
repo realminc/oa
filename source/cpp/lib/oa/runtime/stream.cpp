@@ -1,6 +1,6 @@
-#include <cstring>
-
 #include <oa/runtime/stream.h>
+#include <oa/core/memory.h>
+#include <oa/core/std/utility.h>
 #include <oa/core/log.h>
 #include <oa/core/validation.h>
 #include <oa/runtime/bindless.h>
@@ -24,9 +24,9 @@ oavk::Stream::Stream(oavk::Stream&& inOther) noexcept
 	: commandPool(inOther.commandPool)
 	, commandBuffer(inOther.commandBuffer)
 	, deviceDispatch(inOther.deviceDispatch)
-	, timelineSem(std::move(inOther.timelineSem))
+	, timelineSem(oa::move(inOther.timelineSem))
 	, timelineValue(inOther.timelineValue)
-	, pendingPools(std::move(inOther.pendingPools))
+	, pendingPools(oa::move(inOther.pendingPools))
 	, queue(inOther.queue)
 	, queueFamily(inOther.queueFamily)
 	, recording(inOther.recording)
@@ -49,9 +49,9 @@ oavk::Stream& oavk::Stream::operator=(oavk::Stream&& inOther) noexcept {
 		commandPool = inOther.commandPool;
 		commandBuffer = inOther.commandBuffer;
 		deviceDispatch = inOther.deviceDispatch;
-		timelineSem = std::move(inOther.timelineSem);
+		timelineSem = oa::move(inOther.timelineSem);
 		timelineValue = inOther.timelineValue;
-		pendingPools = std::move(inOther.pendingPools);
+		pendingPools = oa::move(inOther.pendingPools);
 		queue = inOther.queue;
 		queueFamily = inOther.queueFamily;
 		recording = inOther.recording;
@@ -111,7 +111,7 @@ oa::Result<oavk::Stream> oavk::Stream::create(
 	s.commandPool = pool;
 	s.commandBuffer = cb;
 	s.deviceDispatch = &inDevice.deviceDispatch;
-	s.timelineSem = std::move(*semRes);
+	s.timelineSem = oa::move(*semRes);
 	s.timelineValue = 0;
 	s.queue = inQueue;
 	s.queueFamily = inQueueFamily;
@@ -349,7 +349,7 @@ oa::Status oavk::Stream::recordDispatchDesc(
 		indices[i] = inDesc.buffers[i].bindlessIndex;
 	}
 	if (inDesc.pushData and inDesc.pushSize > 0) {
-		std::memcpy(pushBuf + headerBytes, inDesc.pushData, inDesc.pushSize);
+		oa::memcpy(pushBuf + headerBytes, inDesc.pushData, inDesc.pushSize);
 	}
 	deviceDispatch->vkCmdPushConstants(cb,
 		static_cast<VkPipelineLayout>(pipeline.pipelineLayout),

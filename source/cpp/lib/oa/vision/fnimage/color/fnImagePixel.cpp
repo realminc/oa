@@ -5,8 +5,7 @@
 #include <oa/core/bufferAccess.h>
 #include <oa/core/fnMatrix.h>
 #include <oa/core/log.h>
-
-#include <cmath>
+#include <oa/core/std/scalarMath.h>
 
 namespace {
 
@@ -69,37 +68,37 @@ oa::Matrix compositePass(const oa::Matrix& inA, const oa::Matrix& inB,
 oa::Matrix oa::FnImage::thresholdBinary(oa::Engine& inRt, const oa::Matrix& inImage,
 	oa::F32 inThreshold, oa::F32 inMaxValue) {
 	(void)inRt;
-	if (!validImage(inImage, "ThresholdBinary") || !std::isfinite(inThreshold) ||
-		!std::isfinite(inMaxValue)) return inImage;
+	if (!validImage(inImage, "ThresholdBinary") || !oa::isFinite(inThreshold) ||
+		!oa::isFinite(inMaxValue)) return inImage;
 	return pointwise(inImage, 0, inThreshold, inMaxValue);
 }
 
 oa::Matrix oa::FnImage::thresholdBinaryInv(oa::Engine& inRt, const oa::Matrix& inImage,
 	oa::F32 inThreshold, oa::F32 inMaxValue) {
 	(void)inRt;
-	if (!validImage(inImage, "ThresholdBinaryInv") || !std::isfinite(inThreshold) ||
-		!std::isfinite(inMaxValue)) return inImage;
+	if (!validImage(inImage, "ThresholdBinaryInv") || !oa::isFinite(inThreshold) ||
+		!oa::isFinite(inMaxValue)) return inImage;
 	return pointwise(inImage, 1, inThreshold, inMaxValue);
 }
 
 oa::Matrix oa::FnImage::thresholdTruncate(oa::Engine& inRt, const oa::Matrix& inImage,
 	oa::F32 inThreshold) {
 	(void)inRt;
-	if (!validImage(inImage, "ThresholdTruncate") || !std::isfinite(inThreshold)) return inImage;
+	if (!validImage(inImage, "ThresholdTruncate") || !oa::isFinite(inThreshold)) return inImage;
 	return pointwise(inImage, 2, inThreshold);
 }
 
 oa::Matrix oa::FnImage::thresholdToZero(oa::Engine& inRt, const oa::Matrix& inImage,
 	oa::F32 inThreshold) {
 	(void)inRt;
-	if (!validImage(inImage, "ThresholdToZero") || !std::isfinite(inThreshold)) return inImage;
+	if (!validImage(inImage, "ThresholdToZero") || !oa::isFinite(inThreshold)) return inImage;
 	return pointwise(inImage, 3, inThreshold);
 }
 
 oa::Matrix oa::FnImage::thresholdToZeroInv(oa::Engine& inRt, const oa::Matrix& inImage,
 	oa::F32 inThreshold) {
 	(void)inRt;
-	if (!validImage(inImage, "ThresholdToZeroInv") || !std::isfinite(inThreshold)) return inImage;
+	if (!validImage(inImage, "ThresholdToZeroInv") || !oa::isFinite(inThreshold)) return inImage;
 	return pointwise(inImage, 4, inThreshold);
 }
 
@@ -107,7 +106,7 @@ oa::Matrix oa::FnImage::inRange(oa::Engine& inRt, const oa::Matrix& inImage,
 	oa::F32 inLow, oa::F32 inHigh, oa::F32 inTrueValue) {
 	(void)inRt;
 	if (!validImage(inImage, "inRange") || inLow > inHigh ||
-		!std::isfinite(inLow) || !std::isfinite(inHigh) || !std::isfinite(inTrueValue)) return inImage;
+		!oa::isFinite(inLow) || !oa::isFinite(inHigh) || !oa::isFinite(inTrueValue)) return inImage;
 	return pointwise(inImage, 5, inLow, inHigh, inTrueValue);
 }
 
@@ -115,21 +114,21 @@ oa::Matrix oa::FnImage::clamp(oa::Engine& inRt, const oa::Matrix& inImage,
 	oa::F32 inLow, oa::F32 inHigh) {
 	(void)inRt;
 	if (!validImage(inImage, "Clamp") || inLow > inHigh ||
-		!std::isfinite(inLow) || !std::isfinite(inHigh)) return inImage;
+		!oa::isFinite(inLow) || !oa::isFinite(inHigh)) return inImage;
 	return pointwise(inImage, 6, inLow, inHigh);
 }
 
 oa::Matrix oa::FnImage::invert(oa::Engine& inRt, const oa::Matrix& inImage, oa::F32 inMaxValue) {
 	(void)inRt;
-	if (!validImage(inImage, "Invert") || !std::isfinite(inMaxValue)) return inImage;
+	if (!validImage(inImage, "Invert") || !oa::isFinite(inMaxValue)) return inImage;
 	return pointwise(inImage, 7, inMaxValue);
 }
 
 oa::Matrix oa::FnImage::brightnessContrast(oa::Engine& inRt, const oa::Matrix& inImage,
 	oa::F32 inBrightness, oa::F32 inContrast) {
 	(void)inRt;
-	if (!validImage(inImage, "BrightnessContrast") || !std::isfinite(inBrightness) ||
-		!std::isfinite(inContrast)) return inImage;
+	if (!validImage(inImage, "BrightnessContrast") || !oa::isFinite(inBrightness) ||
+		!oa::isFinite(inContrast)) return inImage;
 	return pointwise(inImage, 8, inContrast, inBrightness);
 }
 
@@ -137,15 +136,15 @@ oa::Matrix oa::FnImage::gammaContrast(oa::Engine& inRt, const oa::Matrix& inImag
 	oa::F32 inGamma, oa::F32 inGain) {
 	(void)inRt;
 	if (!validImage(inImage, "GammaContrast") || inGamma <= 0.0F ||
-		!std::isfinite(inGamma) || !std::isfinite(inGain)) return inImage;
+		!oa::isFinite(inGamma) || !oa::isFinite(inGain)) return inImage;
 	return pointwise(inImage, 9, inGamma, inGain);
 }
 
 oa::Matrix oa::FnImage::solarize(oa::Engine& inRt, const oa::Matrix& inImage,
 	oa::F32 inThreshold, oa::F32 inMaxValue) {
 	(void)inRt;
-	if (!validImage(inImage, "Solarize") || !std::isfinite(inThreshold) ||
-		!std::isfinite(inMaxValue)) return inImage;
+	if (!validImage(inImage, "Solarize") || !oa::isFinite(inThreshold) ||
+		!oa::isFinite(inMaxValue)) return inImage;
 	return pointwise(inImage, 10, inThreshold, inMaxValue);
 }
 
@@ -153,7 +152,7 @@ oa::Matrix oa::FnImage::posterize(oa::Engine& inRt, const oa::Matrix& inImage,
 	oa::U32 inLevels, oa::F32 inLow, oa::F32 inHigh) {
 	(void)inRt;
 	if (!validImage(inImage, "Posterize") || inLevels < 2 || inLevels > 65536 ||
-		inLow >= inHigh || !std::isfinite(inLow) || !std::isfinite(inHigh)) return inImage;
+		inLow >= inHigh || !oa::isFinite(inLow) || !oa::isFinite(inHigh)) return inImage;
 	return pointwise(inImage, 11, static_cast<oa::F32>(inLevels), inLow, inHigh);
 }
 
@@ -198,7 +197,7 @@ oa::Matrix oa::FnImage::alphaBlend(oa::Engine& inRt, const oa::Matrix& inA,
 	const oa::Matrix& inB, oa::F32 inAlpha) {
 	(void)inRt;
 	if (!validImage(inA, "AlphaBlend") || !sameImage(inA, inB) ||
-		!std::isfinite(inAlpha) || inAlpha < 0.0F || inAlpha > 1.0F) return inA;
+		!oa::isFinite(inAlpha) || inAlpha < 0.0F || inAlpha > 1.0F) return inA;
 	return compositePass(inA, inB, inA, 0, inAlpha);
 }
 
@@ -217,7 +216,7 @@ oa::Matrix oa::FnImage::composite(oa::Engine& inRt, const oa::Matrix& inA,
 oa::Matrix oa::FnImage::erase(oa::Engine& inRt, const oa::Matrix& inImage,
 	oa::U32 inX, oa::U32 inY, oa::U32 inWidth, oa::U32 inHeight, oa::F32 inValue) {
 	(void)inRt;
-	if (!validImage(inImage, "erase") || !std::isfinite(inValue)) return inImage;
+	if (!validImage(inImage, "erase") || !oa::isFinite(inValue)) return inImage;
 	const auto shape = inImage.getShape();
 	if (inWidth == 0 || inHeight == 0 || inX >= static_cast<oa::U32>(shape[3]) ||
 		inY >= static_cast<oa::U32>(shape[2])) return inImage;
@@ -249,7 +248,7 @@ oa::Matrix oa::FnImage::gaussianNoise(oa::Engine& inRt, const oa::Matrix& inImag
 	oa::F32 inMean, oa::F32 inStddev, oa::U64 inSeed) {
 	(void)inRt;
 	if (!validImage(inImage, "GaussianNoise") || inStddev < 0.0F ||
-		!std::isfinite(inMean) || !std::isfinite(inStddev)) return inImage;
+		!oa::isFinite(inMean) || !oa::isFinite(inStddev)) return inImage;
 	auto noise = oa::FnMatrix::philoxNormal(inImage, inMean, inStddev, inSeed);
 	return oa::FnMatrix::add(inImage, noise);
 }
@@ -258,8 +257,8 @@ oa::Matrix oa::FnImage::saltPepperNoise(oa::Engine& inRt, const oa::Matrix& inIm
 	oa::F32 inProbability, oa::F32 inSaltValue, oa::F32 inPepperValue, oa::U64 inSeed) {
 	(void)inRt;
 	if (!validImage(inImage, "SaltPepperNoise") || inProbability < 0.0F ||
-		inProbability > 1.0F || !std::isfinite(inProbability) ||
-		!std::isfinite(inSaltValue) || !std::isfinite(inPepperValue)) return inImage;
+		inProbability > 1.0F || !oa::isFinite(inProbability) ||
+		!oa::isFinite(inSaltValue) || !oa::isFinite(inPepperValue)) return inImage;
 	auto random = oa::FnMatrix::philoxUniform(inImage, 0.0F, 1.0F, inSeed);
 	auto output = oa::FnMatrix::empty(inImage.getShape(), inImage.getDtype());
 	struct Push { oa::U32 numElements; oa::F32 probability, saltValue, pepperValue; };

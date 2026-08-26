@@ -16,7 +16,7 @@
 #include "descriptorValidation.h"
 #include "dispatchValidation.h"
 
-#include <cassert>
+#include <assert.h>
 #include <vulkan/vulkan.h>
 
 static bool executionAccessReads(oa::BufferAccess inAccess) {
@@ -1035,7 +1035,7 @@ oa::SharedPtr<oavk::Buffer> oa::ExecutionSession::allocateMatrixBuffer(
 	const auto allocate = [&]() -> oa::SharedPtr<oavk::Buffer> {
 		auto result = oa::EngineResourceAccess::allocBuffer(*engine_, inBytes, inPlacement);
 		if (not result) return {};
-		return oa::EngineAccess(*engine_).adoptBufferLease(std::move(*result));
+		return oa::EngineAccess(*engine_).adoptBufferLease(oa::move(*result));
 	};
 
 	if (not stableResourceFrameActive_) return allocate();

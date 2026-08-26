@@ -8,8 +8,7 @@
 #include <oa/runtime/spirv.h>
 #include <oa/runtime/pipeline.h>
 #include <oa/core/log.h>
-
-#include <cstring>
+#include <oa/core/memory.h>
 
 namespace {
 
@@ -46,7 +45,7 @@ oa::Result<oa::MatmulKernelLaunch> oa::GemmDispatch::describeValidatedPlan(
 
 	auto copyPush = [&](const auto& inPush) {
 		static_assert(sizeof(inPush) <= oa::MatmulKernelLaunch::MaxPushBytes);
-		std::memcpy(launch.pushData, &inPush, sizeof(inPush));
+		oa::memcpy(launch.pushData, &inPush, sizeof(inPush));
 		launch.pushSize = static_cast<oa::U32>(sizeof(inPush));
 	};
 

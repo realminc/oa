@@ -11,7 +11,7 @@
 #include <oa/core/matrixAccess.h>
 #include <oa/runtime/executionSession.h>
 
-#include <cstring>
+#include <oa/core/memory.h>
 
 oa::U32 oa::Texture::bindlessIndex() const noexcept {
 	return bufferOwner_ ? bufferOwner_->bindlessIndex : UINT32_MAX;
@@ -42,7 +42,7 @@ oa::Result<oavk::Buffer> oa::TextureAccess::uploadBuffer(
 	auto stagingResult = oa::EngineResourceAccess::allocBuffer(inEngine, inBytes);
 	if (not stagingResult) return stagingResult.getStatus();
 	oavk::Buffer staging = oa::move(*stagingResult);
-	std::memcpy(staging.mappedPtr, inData, inBytes);
+	oa::memcpy(staging.mappedPtr, inData, inBytes);
 	if (not oa::EngineAllocatorAccess::get(inEngine).flushHostBuffer(
 		staging, 0U, inBytes))
 	{

@@ -4,11 +4,11 @@
 #include <oa/core/fnMatrix.h>
 #include <oa/core/log.h>
 #include <oa/core/op.h>
+#include <oa/core/std/scalarMath.h>
 #include <oa/ml/autograd.h>
 #include <oa/ml/fnLoss.h>
 #include <oa/runtime/executionSession.h>
 
-#include <cmath>
 
 namespace {
 
@@ -55,9 +55,9 @@ oa::SacCriticLossResult oa::FnLoss::sacCritic(
 		&& inTerminated.getDtype() == oa::ScalarType::UInt8
 		&& inTruncated.getShape() == oa::MatrixShape{batch}
 		&& inTruncated.getDtype() == oa::ScalarType::UInt8
-		&& std::isfinite(inConfig.discount)
+		&& oa::isFinite(inConfig.discount)
 		&& inConfig.discount >= 0.0F && inConfig.discount <= 1.0F
-		&& std::isfinite(inConfig.entropyCoefficient)
+		&& oa::isFinite(inConfig.entropyCoefficient)
 		&& inConfig.entropyCoefficient >= 0.0F;
 	if (!valid) {
 		OaLogError(oa::LogComponent::Ml,	"oa::FnLoss::sacCritic expects matching FP32 vectors, detached targets, UInt8 boundaries and valid coefficients");
@@ -131,7 +131,7 @@ oa::Matrix oa::FnLoss::sacActor(
 	const oa::I64 batch = inQ1.rank() == 1 ? inQ1.size(0) : 0;
 	if (batch <= 0 || !vectorF32(inQ1, batch) || !vectorF32(inQ2, batch)
 		|| !vectorF32(inLogProbability, batch)
-		|| !std::isfinite(inEntropyCoefficient)
+		|| !oa::isFinite(inEntropyCoefficient)
 		|| inEntropyCoefficient < 0.0F) {
 		OaLogError(oa::LogComponent::Ml,
 			"oa::FnLoss::sacActor expects matching FP32 vectors and non-negative entropy coefficient");

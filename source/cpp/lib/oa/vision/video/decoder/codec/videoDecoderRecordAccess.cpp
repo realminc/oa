@@ -4,7 +4,6 @@
 #include <oa/runtime/engine.h>
 #include <oa/runtime/engine/deviceAccess.h>
 
-#include <algorithm>
 
 oa::Result<oa::VideoDecoderRecordAccess::ActiveCmd> oa::VideoDecoderRecordAccess::begin(
 	oa::VideoDecoder& inDecoder,
@@ -258,7 +257,7 @@ oa::Status oa::VideoDecoderRecordAccess::finishAndSubmit(
 	}
 	if (reuseSemaphore != VK_NULL_HANDLE && reuseValue > 0) {
 		if (waitCount > 0 && waitSemaphores[0] == reuseSemaphore) {
-			waitValues[0] = std::max(waitValues[0], reuseValue);
+			waitValues[0] = oa::max(waitValues[0], reuseValue);
 			waitStages[0] |= VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
 		} else {
 			waitSemaphores[waitCount] = reuseSemaphore;

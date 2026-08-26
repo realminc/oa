@@ -7,9 +7,8 @@
 
 #include <oa/audio/fnAudio.h>
 #include <oa/core/fnMatrix.h>
+#include <oa/core/std/limits.h>
 #include <oa/runtime/engine.h>
-
-#include <limits>
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -22,8 +21,8 @@ static oa::Result<oa::Audio> uploadToGpu(
 	if (inInterleaved == nullptr || inChannelCount == 0 || inSampleCount == 0 || inSampleRate == 0) {
 		return oa::Status::invalidArgument("Empty audio data");
 	}
-	if (inSampleCount > std::numeric_limits<oa::Usize>::max() / inChannelCount ||
-		inSampleCount > static_cast<oa::U64>(std::numeric_limits<oa::I64>::max())) {
+	if (inSampleCount > oa::Limits<oa::Usize>::max() / inChannelCount ||
+		inSampleCount > static_cast<oa::U64>(oa::Limits<oa::I64>::max())) {
 		return oa::Status::invalidArgument("Audio data exceeds OA matrix limits");
 	}
 

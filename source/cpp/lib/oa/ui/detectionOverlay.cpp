@@ -4,11 +4,9 @@
 #include <oa/ui/text.h>
 #include <oa/ui/ui.h>
 
-#include <algorithm>
-#include <array>
-#include <cmath>
-#include <new>
-
+#include <oa/core/std/algo.h>
+#include <oa/core/std/array.h>
+#include <oa/core/std/scalarMath.h>
 namespace {
 
 constexpr oa::U32 kOverlayRingSize = 3;
@@ -36,11 +34,11 @@ oa::Detection canonicalizeDetection(
 }
 
 bool isFiniteDetection(const oa::Detection& inDetection) {
-	return std::isfinite(inDetection.centerX)
-		&& std::isfinite(inDetection.centerY)
-		&& std::isfinite(inDetection.width)
-		&& std::isfinite(inDetection.height)
-		&& std::isfinite(inDetection.confidence);
+	return oa::isFinite(inDetection.centerX)
+		&& oa::isFinite(inDetection.centerY)
+		&& oa::isFinite(inDetection.width)
+		&& oa::isFinite(inDetection.height)
+		&& oa::isFinite(inDetection.confidence);
 }
 
 void appendLabel(
@@ -72,8 +70,8 @@ void appendLabel(
 		if (!glyph) continue;
 		const oa::F32 scale = inConfig.fontSize / glyph->rasterSize;
 		const oa::F32 glyphTop = -glyph->bearingY * scale;
-		textTop = std::min(textTop, glyphTop);
-		textBottom = std::max(textBottom, glyphTop + glyph->inkH * scale);
+		textTop = oa::min(textTop, glyphTop);
+		textBottom = oa::max(textBottom, glyphTop + glyph->inkH * scale);
 	}
 	if (textBottom <= textTop) return;
 
@@ -119,7 +117,7 @@ void appendLabel(
 struct oa::DetectionOverlay::Impl {
 	oa::Engine* runtime = nullptr;
 	oa::DetectionOverlayConfig config;
-	std::array<OverlaySlot, kOverlayRingSize> slots;
+	oa::Array<OverlaySlot, kOverlayRingSize> slots;
 	oa::I32 activeSlot = -1;
 	oa::U32 nextSlot = 0;
 	oa::U32 count = 0;
@@ -149,12 +147,7 @@ oa::Result<oa::DetectionOverlay> oa::DetectionOverlay::create(
 			"oa::DetectionOverlay: capacities must be non-zero");
 	}
 
-	oa::UniquePtr<Impl> impl(new (std::nothrow) Impl());
-	if (!impl) {
-		return oa::Status::error(
-			oa::StatusCode::OutOfMemory,
-			"oa::DetectionOverlay: allocation failed");
-	}
+	auto impl = oa::makeUnique<Impl>();
 	impl->runtime = &inRuntime;
 	impl->config = inConfig;
 	for (auto& slot : impl->slots) {
@@ -209,7 +202,7 @@ oa::Status oa::DetectionOverlay::update(
 	oa::Vec<oa::Detection> detections;
 	oa::Vec<oa::GlyphInstance> glyphs;
 	detections.reserve(inItems.size());
-	glyphs.reserve(std::min<oa::Usize>(
+	glyphs.reserve(oa::min<oa::Usize>(
 		impl_->config.maxGlyphs, inItems.size() * 24));
 	const oa::U32 fallbackColor = impl_->config.boxColor.toU32();
 	for (const auto& item : inItems) {
@@ -252,7 +245,7 @@ void oa::DetectionOverlay::draw(
 		inDestination,
 		inClip,
 		impl_->config.boxColor,
-		static_cast<oa::U32>(std::max(1.0F, std::round(impl_->config.thicknessPixels))));
+		static_cast<oa::U32>(oa::max(1.0F, oa::round(impl_->config.thicknessPixels))));
 	inUi.glyphs(slot.glyphs, inAtlas, inDestination, inClip);
 }
 

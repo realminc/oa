@@ -175,7 +175,7 @@ TEST(FnMatrixBackward, SchemaPilotsAttachTapeToSemanticOperations) {
 	EXPECT_EQ(graph->operations()[sumBackwardFirst].backwardOf, 2U);
 	EXPECT_EQ(graph->operations()[sumBackwardFirst + 1U].backwardOf, 2U);
 
-	const auto report = graph->debugReportJson("autograd-pilot").stdStr();
+	const auto report = testStdString(graph->debugReportJson("autograd-pilot"));
 	EXPECT_NE(report.find("\"autograd\""), std::string::npos);
 	EXPECT_NE(report.find("\"backward_of\": 1"), std::string::npos);
 	EXPECT_NE(report.find("\"backward_operation_count\": 5"),

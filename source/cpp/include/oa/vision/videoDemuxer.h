@@ -14,7 +14,7 @@
 #include <oa/core/types.h>
 #include <oa/vision/videoDecoder.h>
 
-#include <cstdio>
+#include <stdio.h>
 
 namespace oa {
 
@@ -248,7 +248,7 @@ private:
   VideoDemuxerStats stats_ = {};
   oa::U64 lastDecodeTimestamp_ = 0U;
   bool hasLastDecodeTimestamp_ = false;
-  std::FILE *file_ = nullptr;
+  FILE* file_ = nullptr;
   oa::U64 fileSize_ = 0U;
   oa::Vec<oa::U8>
       sampleData_; // bounded scratch for the current compressed sample

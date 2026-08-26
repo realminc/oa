@@ -6,12 +6,7 @@
 #include <oa/runtime/bindless.h>
 #include "deviceBuilder.h"
 
-#include <algorithm>
-#include <cctype>
-#include <cmath>
-#include <cstring>
-#include <string>
-#include <vector>
+#include <stdio.h>
 
 
 // VRAM: MiB below 1 GiB; otherwise whole GB / TB / PB (binary base, "GB" label like retail GPUs).
@@ -27,24 +22,24 @@ static oa::String formatCapacityBytesHuman(oa::U64 inBytes) {
 		if (mibVal == 0) {
 			mibVal = 1;
 		}
-		std::snprintf(
+		::snprintf(
 			buf, sizeof(buf), "%llu MiB", static_cast<unsigned long long>(mibVal));
 		return oa::String(buf);
 	}
 	if (inBytes < tib) {
 		const double gigabytes =
 			static_cast<double>(inBytes) / static_cast<double>(gib);
-		std::snprintf(buf, sizeof(buf), "%.0f GB", std::round(gigabytes));
+		::snprintf(buf, sizeof(buf), "%.0f GB", oa::round(gigabytes));
 		return oa::String(buf);
 	}
 	if (inBytes < pib) {
 		const double terabytes =
 			static_cast<double>(inBytes) / static_cast<double>(tib);
-		std::snprintf(buf, sizeof(buf), "%.2f TB", terabytes);
+		::snprintf(buf, sizeof(buf), "%.2f TB", terabytes);
 		return oa::String(buf);
 	}
 	const double petabytes = static_cast<double>(inBytes) / static_cast<double>(pib);
-	std::snprintf(buf, sizeof(buf), "%.2f PB", petabytes);
+	::snprintf(buf, sizeof(buf), "%.2f PB", petabytes);
 	return oa::String(buf);
 }
 
@@ -57,14 +52,14 @@ static oa::String formatMemoryBandwidthHuman(oa::F64 inGigabytesPerSecond) {
 	}
 	if (inGigabytesPerSecond < 1.0) {
 		const double mibPerSec = inGigabytesPerSecond * 1024.0;
-		std::snprintf(buf, sizeof(buf), "%.0f MB/s", mibPerSec);
+		::snprintf(buf, sizeof(buf), "%.0f MB/s", mibPerSec);
 		return oa::String(buf);
 	}
 	if (inGigabytesPerSecond < 1024.0) {
-		std::snprintf(buf, sizeof(buf), "%.0f GB/s", inGigabytesPerSecond);
+		::snprintf(buf, sizeof(buf), "%.0f GB/s", inGigabytesPerSecond);
 		return oa::String(buf);
 	}
-	std::snprintf(buf, sizeof(buf), "%.2f TB/s", inGigabytesPerSecond / 1024.0);
+	::snprintf(buf, sizeof(buf), "%.2f TB/s", inGigabytesPerSecond / 1024.0);
 	return oa::String(buf);
 }
 
@@ -75,14 +70,14 @@ static oa::String formatPeakTflopsHuman(oa::F64 inTflops) {
 		return oa::String("0 TFLOPS");
 	}
 	if (inTflops < 1000.0) {
-		std::snprintf(buf, sizeof(buf), "%.2f TFLOPS", inTflops);
+		::snprintf(buf, sizeof(buf), "%.2f TFLOPS", inTflops);
 		return oa::String(buf);
 	}
 	if (inTflops < 1.0e6) {
-		std::snprintf(buf, sizeof(buf), "%.2f PFLOPS", inTflops / 1000.0);
+		::snprintf(buf, sizeof(buf), "%.2f PFLOPS", inTflops / 1000.0);
 		return oa::String(buf);
 	}
-	std::snprintf(buf, sizeof(buf), "%.2f EFLOPS", inTflops / 1.0e6);
+	::snprintf(buf, sizeof(buf), "%.2f EFLOPS", inTflops / 1.0e6);
 	return oa::String(buf);
 }
 
@@ -97,8 +92,13 @@ static bool asciiEqualsIgnoreCase(const char* inA, const char* inB) {
 		return inA == inB;
 	}
 	while (*inA != '\0' && *inB != '\0') {
-		const char a = static_cast<char>(std::tolower(static_cast<unsigned char>(*inA)));
-		const char b = static_cast<char>(std::tolower(static_cast<unsigned char>(*inB)));
+		const auto lowerAscii = [](char inValue) noexcept {
+			return inValue >= 'A' && inValue <= 'Z'
+				? static_cast<char>(inValue + ('a' - 'A'))
+				: inValue;
+		};
+		const char a = lowerAscii(*inA);
+		const char b = lowerAscii(*inB);
 		if (a != b) {
 			return false;
 		}
@@ -505,7 +505,7 @@ oa::Result<oavk::Device> oavk::Device::createFromPhysical(
 		return deviceResult.getStatus();
 	}
 
-	oavk::Device dev = std::move(deviceResult.getValue());
+	oavk::Device dev = oa::move(deviceResult.getValue());
 
 	// Fill in legacy fields that DeviceBuilder doesn't set
 	dev.info.hardware.pickRating = inPickRating;
@@ -535,7 +535,7 @@ oa::Result<oavk::Device> oavk::Device::create(
 		inInstanceExtraExtensions, inHintNeedsPresentation);
 	if (!instRes.isOk()) return oa::Result<oavk::Device>(instRes.getStatus());
 
-	VkInstance instance = std::move(instRes).getValue();
+	VkInstance instance = oa::move(instRes).getValue();
 	OaVkInstanceTable instanceDispatch{};
 	oaVkLoadInstanceTable(&instanceDispatch, instance);
 	if (instanceDispatch.vkEnumeratePhysicalDevices == nullptr) {
@@ -622,7 +622,7 @@ oa::Result<oavk::Device> oavk::Device::create(
 		return oa::Result<oavk::Device>(result.getStatus());
 	}
 
-	auto dev         = std::move(result.getValue());
+	auto dev         = oa::move(result.getValue());
 	dev.ownsInstance = true;
 	return dev;
 }

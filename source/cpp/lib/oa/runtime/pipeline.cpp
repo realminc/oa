@@ -1,11 +1,3 @@
-#include <mutex>
-#include <shared_mutex>
-#include <atomic>
-#include <chrono>
-#include <thread>
-#include <algorithm>
-#include <vector>
-
 #include <oa/runtime/pipeline.h>
 #include "descriptorValidation.h"
 #include <oa/runtime/device.h>
@@ -13,9 +5,11 @@
 #include <oa/runtime/oaVk.h>
 #include <oa/core/filesystem.h>
 #include <oa/core/log.h>
+#include <oa/core/std/chrono.h>
 #include "../core/logAccess.h"
 #include <oa/runtime/kernelRegistry.h>
 #include <oa/core/envFlag.h>
+#include <oa/core/thread.h>
 
 #ifdef __ANDROID__
 #include <android/log.h>
@@ -59,7 +53,7 @@ oa::Result<oa::PipelineCache> oa::PipelineCache::create(const oavk::Device& inDe
 		oa::Path cachePath = oa::Path(inCacheDir) / pipelineCacheFile;
 		auto loaded = oa::Filesystem::readBinary(cachePath);
 		if (loaded.isOk()) {
-			cacheData = std::move(loaded.getValue());
+			cacheData = oa::move(loaded.getValue());
 			OaLogInfo(oa::LogComponent::Compute, "pipeline cache: loaded %zu bytes from %s",	cacheData.size(), cachePath.string().cStr());
 		}
 	}
@@ -523,7 +517,7 @@ oa::Status oa::PipelineRegistry::init(
 void oa::PipelineRegistry::destroy(const oavk::Device& inDevice) {
 	cache_.save(inDevice, cacheDir_);
 	cache_.destroy(inDevice);
-	std::unique_lock lock(*mutex_);
+	oa::UniqueLock lock(*mutex_);
 	for (auto& [name, pipe] : registry_) {
 		pipe.destroy(inDevice);
 	}
@@ -540,7 +534,7 @@ oa::Status oa::PipelineRegistry::ensurePipeline(
 	oa::String key = makePipelineKey(inName, inSpec);
 
 	{
-		std::shared_lock lock(*mutex_);
+		oa::SharedLock lock(*mutex_);
 		if (registry_.contains(key)) return oa::Status::ok();
 	}
 
@@ -564,12 +558,12 @@ oa::Status oa::PipelineRegistry::ensurePipeline(
 	}
 	if (!result.isOk()) return result.getStatus();
 
-	std::unique_lock lock(*mutex_);
+	oa::UniqueLock lock(*mutex_);
 	if (registry_.contains(key)) {
 		result.getValue().destroy(inDevice);
 		return oa::Status::ok();
 	}
-	registry_.emplace(std::move(key), std::move(result.getValue()));
+	registry_.emplace(oa::move(key), oa::move(result.getValue()));
 	return oa::Status::ok();
 }
 
@@ -585,8 +579,8 @@ oa::Status oa::PipelineRegistry::ensurePipelinesParallel(
 	}
 	if (requestCount == 0) return oa::Status::ok();
 
-	const oa::U32 workerCount = std::max<oa::U32>(1u,
-		std::min<oa::U32>(inWorkerCount, requestCount));
+	const oa::U32 workerCount = oa::max<oa::U32>(1u,
+		oa::min<oa::U32>(inWorkerCount, requestCount));
 	if (workerCount == 1) {
 		oa::Status firstError = oa::Status::ok();
 		for (oa::U32 i = 0; i < requestCount; ++i) {
@@ -609,7 +603,7 @@ oa::Status oa::PipelineRegistry::ensurePipelinesParallel(
 
 	oa::Vec<ParallelBuildResult> results(requestCount);
 	{
-		std::shared_lock lock(*mutex_);
+		oa::SharedLock lock(*mutex_);
 		for (oa::U32 i = 0; i < requestCount; ++i) {
 			if (registry_.contains(makePipelineKey(inRequests[i].name, inRequests[i].spec))) {
 				results[i].needsBuild = false;
@@ -649,15 +643,17 @@ oa::Status oa::PipelineRegistry::ensurePipelinesParallel(
 		}
 	}
 
-	std::atomic<oa::U32> nextIndex{0};
+	oa::Atomic<oa::U32> nextIndex{0};
 	const oa::LogSelection logSelection = oa::LogAccess::currentSelection();
-	std::vector<std::thread> workers;
+	oa::Vec<oa::Thread> workers;
 	workers.reserve(workerCount);
+	oa::Status launchStatus = oa::Status::ok();
 	for (oa::U32 worker = 0; worker < workerCount; ++worker) {
-		workers.emplace_back([&, worker] {
+		auto created = oa::Thread::create([&, worker] {
 			oa::LogAccess::Scope logScope(logSelection);
 			for (;;) {
-				const oa::U32 index = nextIndex.fetch_add(1, std::memory_order_relaxed);
+				const oa::U32 index = nextIndex.fetchAdd(
+					1, oa::MemoryOrder::Relaxed);
 				if (index >= requestCount) break;
 				auto& build = results[index];
 				if (!build.needsBuild) continue;
@@ -677,12 +673,29 @@ oa::Status oa::PipelineRegistry::ensurePipelinesParallel(
 					build.status = result.getStatus();
 					continue;
 				}
-				build.pipeline = std::move(result.getValue());
+				build.pipeline = oa::move(result.getValue());
 				build.hasPipeline = true;
 			}
 		});
+		if (created.isError()) {
+			launchStatus = created.getStatus();
+			break;
+		}
+		workers.pushBack(oa::move(*created));
 	}
-	for (auto& worker : workers) worker.join();
+	for (auto& worker : workers) {
+		const oa::Status joinStatus = worker.join();
+		if (launchStatus.isOk() and joinStatus.isError()) launchStatus = joinStatus;
+	}
+	if (launchStatus.isError()) {
+		for (VkPipelineCache workerCache : workerCaches) {
+			if (workerCache != VK_NULL_HANDLE) {
+				inDevice.deviceDispatch.vkDestroyPipelineCache(
+					device, workerCache, nullptr);
+			}
+		}
+		return launchStatus;
+	}
 
 	// Merge only after all workers stop touching their caches. This satisfies the
 	// vulkan external-synchronization requirements for both source and destination.
@@ -708,7 +721,7 @@ oa::Status oa::PipelineRegistry::ensurePipelinesParallel(
 
 	oa::Status firstError = oa::Status::ok();
 	{
-		std::unique_lock lock(*mutex_);
+		oa::UniqueLock lock(*mutex_);
 		for (oa::U32 i = 0; i < requestCount; ++i) {
 			auto& build = results[i];
 			if (build.hasPipeline) {
@@ -716,7 +729,7 @@ oa::Status oa::PipelineRegistry::ensurePipelinesParallel(
 				if (registry_.contains(key)) {
 					build.pipeline.destroy(inDevice);
 				} else {
-					registry_.emplace(std::move(key), std::move(build.pipeline));
+					registry_.emplace(oa::move(key), oa::move(build.pipeline));
 				}
 			}
 			if (outStatuses) (*outStatuses)[i] = build.status;
@@ -747,10 +760,11 @@ oa::Status oa::PipelineRegistry::ensurePipelinesOnDemand(
 		oa::PipelineSpec spec;
 		spec.numBindings = 16;
 		spec.pushConstantBytes = 128;
-		spec.specConstants = {{.id = 0, .value = request.dtype}};
+		spec.specConstants = oa::Vec<oa::SpecConstant>{
+			oa::SpecConstant{.id = 0, .value = request.dtype}};
 		oa::String key = makePipelineKey(request.name, spec);
 		{
-			std::shared_lock lock(*mutex_);
+			oa::SharedLock lock(*mutex_);
 			const auto exact = registry_.find(key);
 			if (exact != registry_.end()) continue;
 			const auto bare = registry_.find(request.name);
@@ -777,16 +791,16 @@ oa::Status oa::PipelineRegistry::ensurePipelinesOnDemand(
 	if (requests.empty()) return oa::Status::ok();
 
 	const oa::I64 configuredThreads = oa::EnvFlag::getInt("OA_SHADER_LOAD_THREADS", 0);
-	const oa::U32 hardwareThreads = std::max(1u, std::thread::hardware_concurrency());
+	const oa::U32 hardwareThreads = oa::Thread::hardwareConcurrency();
 	oa::U32 loadThreads = 1;
 	if (configuredThreads > 0) {
-		loadThreads = static_cast<oa::U32>(std::min<oa::I64>(configuredThreads, 64));
+		loadThreads = static_cast<oa::U32>(oa::min<oa::I64>(configuredThreads, 64));
 	} else if (not hasInitialCacheData()) {
-		loadThreads = std::min<oa::U32>(
-			std::max<oa::U32>(1u, hardwareThreads / 2u), 8u);
+		loadThreads = oa::min<oa::U32>(
+			oa::max<oa::U32>(1u, hardwareThreads / 2u), 8u);
 	}
-	loadThreads = std::max<oa::U32>(1u,
-		std::min<oa::U32>(loadThreads, static_cast<oa::U32>(requests.size())));
+	loadThreads = oa::max<oa::U32>(1u,
+		oa::min<oa::U32>(loadThreads, static_cast<oa::U32>(requests.size())));
 
 	OaLogInfo(oa::LogComponent::Compute,
 		"Loading %zu shader pipeline%s on demand (%u thread%s, %s cache)",
@@ -794,15 +808,14 @@ oa::Status oa::PipelineRegistry::ensurePipelinesOnDemand(
 		loadThreads, loadThreads == 1 ? "" : "s",
 		hasInitialCacheData() ? "warm" : "cold");
 
-	const auto loadBegin = std::chrono::steady_clock::now();
+	const auto loadBegin = oa::steadyNow();
 	oa::Vec<oa::Status> statuses;
 	const oa::Status loadStatus = ensurePipelinesParallel(
 		*device_,
 		oa::Span<const oa::PipelineLoadRequest>(requests.data(), requests.size()),
 		loadThreads,
 		&statuses);
-	const oa::F64 loadMs = std::chrono::duration<oa::F64, std::milli>(
-		std::chrono::steady_clock::now() - loadBegin).count();
+	const oa::F64 loadMs = (oa::steadyNow() - loadBegin).toMilliseconds();
 
 	oa::U32 loaded = 0;
 	oa::U32 failed = 0;
@@ -852,7 +865,8 @@ oa::Status oa::PipelineRegistry::tryLoadOnDemand(
 	oa::PipelineSpec spec;
 	spec.numBindings = 16;
 	spec.pushConstantBytes = 128;
-	spec.specConstants = {{.id = 0, .value = inDtype}};
+	spec.specConstants = oa::Vec<oa::SpecConstant>{
+		oa::SpecConstant{.id = 0, .value = inDtype}};
 
 	// load it
 	oa::Status status = ensurePipeline(inDevice, kernelName,
@@ -886,7 +900,7 @@ oa::ComputePipeline& oa::PipelineRegistry::getPipeline(oa::StringView inName, oa
 	key += oa::toString(inDtype);
 	
 	{
-		std::shared_lock lock(*mutex_);
+		oa::SharedLock lock(*mutex_);
 		
 		// Strategy 1: Try with requested DTYPE suffix
 		auto it = registry_.find(key);
@@ -909,7 +923,7 @@ oa::ComputePipeline& oa::PipelineRegistry::getPipeline(oa::StringView inName, oa
 	if (device_ != nullptr && !inName.empty()) {
 		const oa::Status loadStatus = tryLoadOnDemand(*device_, inName, inDtype);
 		if (loadStatus.isOk()) {
-			std::shared_lock lock(*mutex_);
+			oa::SharedLock lock(*mutex_);
 			auto it = registry_.find(key);
 			if (it != registry_.end()) return it->second;
 			auto bareIt = registry_.find(oa::String(inName));

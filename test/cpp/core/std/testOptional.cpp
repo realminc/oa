@@ -2,6 +2,31 @@
 
 #include <optional>
 
+namespace {
+
+struct LifetimeProbe {
+	int* destructions = nullptr;
+	int value = 0;
+
+	LifetimeProbe(int* inDestructions, int inValue)
+		: destructions(inDestructions), value(inValue) {}
+
+	~LifetimeProbe() { ++*destructions; }
+};
+
+} // namespace
+
+TEST(Lifetime, ConstructAndDestroyCallerOwnedStorage) {
+	alignas(LifetimeProbe) unsigned char storage[sizeof(LifetimeProbe)]{};
+	int destructions = 0;
+	auto* probe = oa::constructAt(
+		reinterpret_cast<LifetimeProbe*>(storage), &destructions, 42);
+	EXPECT_EQ(probe->value, 42);
+	EXPECT_EQ(oa::launder(reinterpret_cast<LifetimeProbe*>(storage)), probe);
+	oa::destroyAt(probe);
+	EXPECT_EQ(destructions, 1);
+}
+
 TEST(Optional, ValueOr) {
 	oa::Optional<int> empty;
 	oa::Optional<int> filled(7);
@@ -32,38 +57,37 @@ TEST(Optional, ValueOr) {
 	EXPECT_EQ(sinkOa, sinkSt);
 }
 
-TEST(Optional, ValueThrowsWhenEmpty) {
+TEST(Optional, ValueRejectsEmpty) {
 	oa::Optional<int> empty;
-	EXPECT_THROW(static_cast<void>(empty.value()), std::bad_optional_access);
+	EXPECT_DEATH(static_cast<void>(empty.value()), "OA contract failed: engaged_");
 }
 
 TEST(Optional, EmplaceAndReset) {
 	oa::Optional<int> o;
+	EXPECT_EQ(o.get(), nullptr);
 	o.emplace(5);
 	ASSERT_TRUE(o.hasValue());
+	ASSERT_NE(o.get(), nullptr);
+	EXPECT_EQ(*o.get(), 5);
 	EXPECT_EQ(o.value(), 5);
+	const oa::Optional<int>& readOnly = o;
+	ASSERT_NE(readOnly.get(), nullptr);
+	EXPECT_EQ(*readOnly.get(), 5);
 	o.reset();
 	EXPECT_FALSE(o.hasValue());
+	EXPECT_EQ(o.get(), nullptr);
 }
 
-TEST(Optional, FromStdOptional) {
-	std::optional<int> s(11);
-	oa::Optional<int> o(s);
-	ASSERT_TRUE(o.hasValue());
-	EXPECT_EQ(o.value(), 11);
-}
+TEST(Optional, CopyAndMovePreserveOwnership) {
+	oa::Optional<int> original(11);
+	oa::Optional<int> copy(original);
+	ASSERT_TRUE(copy.hasValue());
+	EXPECT_EQ(copy.value(), 11);
 
-TEST(Optional, StdOptionalRoundTrip) {
-	oa::Optional<int> o(3);
-	std::optional<int> s = o.stdOptional();
-	ASSERT_TRUE(s.has_value());
-	EXPECT_EQ(*s, 3);
-}
-
-TEST(Optional, AssignNullopt) {
-	oa::Optional<int> o(1);
-	o = std::nullopt;
-	EXPECT_FALSE(o.hasValue());
+	oa::Optional<int> moved(oa::move(original));
+	ASSERT_TRUE(moved.hasValue());
+	EXPECT_EQ(moved.value(), 11);
+	EXPECT_FALSE(original.hasValue());
 }
 
 TEST(StdOptionalVsStd, ParallelEmplaceResetSequence) {

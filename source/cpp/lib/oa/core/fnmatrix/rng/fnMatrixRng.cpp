@@ -13,25 +13,23 @@
 #include <oa/core/fnMatrix.h>
 #include <oa/core/op.h>
 #include <oa/core/status.h>
+#include <oa/core/std/random.h>
+#include <oa/core/std/chrono.h>
 #include <oa/core/types.h>
 #include <oa/core/bufferAccess.h>
 #include <oa/runtime/executionSession.h>
 
-#include <algorithm>
-#include <random>
-
-static oa::U32 divCeil(oa::U32 inA, oa::U32 inB) { return (inA + inB - 1) / inB; }
-
 // Shared host-side seed source for all Philox calls made with inSeed == 0.
-// Seeded from std::random_device by default (per-run non-deterministic);
+// Seeded from the system clock by default (per-run non-deterministic);
 // oa::FnMatrix::setRngSeed() reseeds it for reproducible init/training.
-static std::mt19937_64& rngState() {
-	static thread_local std::mt19937_64 rng(std::random_device{}());
+static oa::Random& rngState() {
+	static thread_local oa::Random rng(static_cast<oa::U64>(
+		oa::SystemClock::now().nanosecondsSinceEpoch()));
 	return rng;
 }
 
 static oa::U64 resolveRngSeed(oa::U64 inSeed) {
-	return inSeed == 0 ? rngState()() : inSeed;
+	return inSeed == 0 ? rngState().nextU64() : inSeed;
 }
 
 void oa::FnMatrix::setRngSeed(oa::U64 inSeed) {
@@ -180,8 +178,8 @@ oa::Matrix oa::FnMatrix::sampleLogits(const oa::Matrix& inLogits, oa::F32 inTemp
 		OaLogError(oa::LogComponent::Compute, "SampleLogits: vocabulary must be positive");
 		return {};
 	}
-	const oa::I32 candidates = inTopK > 0 ? std::min(inTopK, vocab) : vocab;
-	const oa::F32 topP = std::max(1.0e-7F, std::min(inTopP, 1.0F));
+	const oa::I32 candidates = inTopK > 0 ? oa::min(inTopK, vocab) : vocab;
+	const oa::F32 topP = oa::max(1.0e-7F, oa::min(inTopP, 1.0F));
 	const oa::U64 seed = inTemperature > 0.0F
 		? resolveRngSeed(inSeed)
 		: inSeed;

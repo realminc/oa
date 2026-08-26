@@ -5,7 +5,7 @@
 // Two-phase SDL3 setup:
 //   oa::EngineConfig config;
 //   config.presentationMode = oa::PresentationMode::Swapchain;
-//   std::vector<const char*> extensions;
+//   oa::Vec<const char*> extensions;
 //   window.getPresenterInstanceExtensions(&extensions);
 //   for (const char* extension : extensions)
 //       config.instanceExtraExtensions.pushBack(extension);
@@ -15,8 +15,6 @@
 //   presenter.initPresentation(surface, extent);
 
 #pragma once
-
-#include <vector>
 
 #include <oa/runtime/engine.h>
 #include <oa/runtime/swapchain.h>
@@ -210,10 +208,10 @@ private:
 	// Render pass + framebuffers reference swapchain_.views directly; they go
 	// away in step 5 when dynamic rendering replaces VkRenderPass.
 	VkRenderPass               renderPass_  = VK_NULL_HANDLE;
-	std::vector<VkFramebuffer> framebuffers_;
+	oa::Vec<VkFramebuffer> framebuffers_;
 
 	VkCommandPool                cmdPool_ = VK_NULL_HANDLE;
-	std::vector<VkCommandBuffer> cmdBufs_;
+	oa::Vec<VkCommandBuffer> cmdBufs_;
 
 	VkDescriptorPool imGuiPool_  = VK_NULL_HANDLE;
 	bool             imGuiReady_ = false;

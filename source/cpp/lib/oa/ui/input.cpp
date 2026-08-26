@@ -1,9 +1,8 @@
 #include <oa/ui/input.h>
 
 #include <oa/core/filesystem.h>
-
-#include <array>
-#include <string>
+#include <oa/core/hostText.h>
+#include <oa/core/std/format.h>
 
 #ifdef OA_HAS_YAML_CPP
 #include <yaml-cpp/yaml.h>
@@ -16,7 +15,7 @@ struct KeyName {
 	const char* name;
 };
 
-constexpr std::array kKeyNames{
+constexpr KeyName kKeyNames[]{
 	KeyName{oa::UiKey::A, "A"}, KeyName{oa::UiKey::B, "B"},
 	KeyName{oa::UiKey::C, "C"}, KeyName{oa::UiKey::D, "D"},
 	KeyName{oa::UiKey::E, "E"}, KeyName{oa::UiKey::F, "F"},
@@ -64,7 +63,7 @@ const char* keyToName(oa::UiKey inKey) noexcept {
 	return nullptr;
 }
 
-bool nameToKey(const std::string& inName, oa::UiKey& outKey) noexcept {
+bool nameToKey(oa::StringView inName, oa::UiKey& outKey) noexcept {
 	for (const auto& entry : kKeyNames) {
 		if (inName == entry.name) {
 			outKey = entry.key;
@@ -85,7 +84,7 @@ const char* contextToName(oa::InputContext inContext) noexcept {
 }
 
 bool nameToContext(
-	const std::string& inName,
+	oa::StringView inName,
 	oa::InputContext& outContext) noexcept {
 	if (inName == "Global") outContext = oa::InputContext::Global;
 	else if (inName == "NodeCanvas") outContext = oa::InputContext::NodeCanvas;
@@ -97,7 +96,7 @@ bool nameToContext(
 
 oa::String bindingError(oa::Usize inIndex, oa::StringView inReason) {
 	oa::String message("oa::InputSystem binding ");
-	message += oa::String(std::to_string(inIndex));
+	message += oa::toString(static_cast<oa::U64>(inIndex));
 	message += ": ";
 	message += inReason;
 	return message;
@@ -226,7 +225,7 @@ oa::Status oa::InputSystem::loadBindingsYaml(oa::StringView inPath) {
 	};
 	oa::Vec<PendingBinding> pending;
 	try {
-		const YAML::Node root = YAML::LoadFile(path.string().stdStr());
+		const YAML::Node root = YAML::LoadFile(oa::hostText::copy(path.string()));
 		if (not root.IsMap()) {
 			return oa::Status::invalidArgument(
 				"oa::InputSystem bindings root must be a map");
@@ -255,7 +254,7 @@ oa::Status oa::InputSystem::loadBindingsYaml(oa::StringView inPath) {
 					index, "action, key and context are required scalars"));
 			}
 			PendingBinding item;
-			item.name = oa::String(node["action"].as<std::string>());
+			item.name = oa::hostText::copy(node["action"].Scalar());
 			if (item.name.empty()) {
 				return oa::Status::invalidArgument(bindingError(
 					index, "action must not be empty"));
@@ -267,12 +266,12 @@ oa::Status oa::InputSystem::loadBindingsYaml(oa::StringView inPath) {
 				}
 			}
 			if (not nameToKey(
-				node["key"].as<std::string>(), item.binding.key)) {
+				oa::hostText::copy(node["key"].Scalar()), item.binding.key)) {
 				return oa::Status::invalidArgument(bindingError(
 					index, "unknown key"));
 			}
 			if (not nameToContext(
-				node["context"].as<std::string>(), item.context)) {
+				oa::hostText::copy(node["context"].Scalar()), item.context)) {
 				return oa::Status::invalidArgument(bindingError(
 					index, "unknown context"));
 			}
@@ -293,7 +292,7 @@ oa::Status oa::InputSystem::loadBindingsYaml(oa::StringView inPath) {
 						return oa::Status::invalidArgument(bindingError(
 							index, "modifier must be a scalar"));
 					}
-					const std::string modifier = modifierNode.as<std::string>();
+					const oa::String modifier = oa::hostText::copy(modifierNode.Scalar());
 					oa::U32 flag = oa::UiModifierNone;
 					if (modifier == "shift") flag = oa::UiModifierShift;
 					else if (modifier == "ctrl") flag = oa::UiModifierCtrl;
@@ -315,10 +314,6 @@ oa::Status oa::InputSystem::loadBindingsYaml(oa::StringView inPath) {
 	} catch (const YAML::Exception& exception) {
 		return oa::Status::invalidArgument(
 			oa::String("oa::InputSystem invalid bindings YAML: ")
-				+ exception.what());
-	} catch (const std::exception& exception) {
-		return oa::Status::error(oa::StatusCode::Internal,
-			oa::String("oa::InputSystem failed to load bindings: ")
 				+ exception.what());
 	}
 
@@ -374,7 +369,7 @@ oa::Status oa::InputSystem::saveBindingsYaml(oa::StringView inPath) const {
 				"oa::InputSystem contains a non-serializable binding");
 		}
 		output << YAML::BeginMap;
-		output << YAML::Key << "action" << YAML::Value << action.name.stdStr();
+		output << YAML::Key << "action" << YAML::Value << oa::hostText::copy(action.name);
 		output << YAML::Key << "key" << YAML::Value << key;
 		output << YAML::Key << "modifiers" << YAML::Value << YAML::BeginSeq;
 		if ((action.binding.modifiers & oa::UiModifierShift) != 0U) output << "shift";
@@ -391,7 +386,7 @@ oa::Status oa::InputSystem::saveBindingsYaml(oa::StringView inPath) const {
 	if (not output.good()) {
 		return oa::Status::error(oa::StatusCode::Internal,
 			oa::String("oa::InputSystem failed to encode bindings YAML: ")
-				+ output.GetLastError());
+				+ oa::hostText::copy(output.GetLastError()));
 	}
 	return oa::Filesystem::writeText(
 		oa::Path(inPath), oa::StringView(output.c_str(), output.size()));

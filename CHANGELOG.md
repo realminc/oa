@@ -4,6 +4,56 @@ All notable changes to OA are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is the single
 `VERSION` file at the repo root (read by CMake, `oa::version()`, and the Python package).
 
+## [0.7.19] — 2026-08-26 (owned foundation milestone)
+
+This patch publishes the private `v0.7.1` foundation checkpoint: OA-owned
+containers, ownership, synchronization, time, filesystem, CLI, Unicode, and
+platform seams replace ordinary hosted-library use across maintained product
+code while the existing engine and operation model remain intact.
+
+### Added
+
+- **Owned foundation vocabulary** — `oa::Vec`, `String`, `HashMap`, `HashSet`,
+  ownership, variants, callables, synchronization, clocks, paths, files, and
+  platform I/O provide bounded OA contracts.
+- **Native command line** — `oa::Cli<TConfig>`, `oa::CmdCli`, and `oa::OptCli`
+  replace CLI11 and fmt; utf8proc 2.11.3 is pinned as a private C dependency.
+- **Dependency ratchet** — the OA std audit classifies owned, public,
+  foundation, generated, vendored, and complete-closure dependencies and
+  prevents regression above the accepted boundary.
+- **Foundation evidence** — focused correctness tests and a fixed-host
+  OA/host benchmark cover algorithms, hashing, and shared ownership.
+
+### Changed
+
+- OA-owned code uses direct names such as `oa::move`, `oa::sort`, and
+  `oa::makeUnique`; there is no `oa::std`, `oastd`, or `OaStd*` compatibility
+  namespace.
+- Product queues, histories, logging synchronization, capture rings,
+  validation state, and runtime services use OA-owned storage and
+  synchronization.
+
+### Fixed
+
+- CLI handles retain stable addresses, empty option values remain distinct
+  from missing values, and help exits successfully.
+- Python filesystem and media bindings explicitly construct OA paths and string
+  views after hosted conversion constructors were removed.
+- Contract-rejection tests use the fail-fast contract, and distributed
+  split-batch verification separates gradient parity from AdamW response.
+
+### Removed
+
+- CLI11 and fmt package, include, link, and installed-header dependencies.
+- Public hosted-filesystem conversions and the redundant `StdFilesystem`
+  facade.
+
+### Verification
+
+- The exact candidate is required to pass complete Release, ASAN/LSAN, UBSAN,
+  Python capability, generation, documentation, asset, package/install, and
+  hosted public-release gates before publication is complete.
+
 ## [0.7.18] — 2026-08-25 (paired Transformer SDK example)
 
 This patch adds one compact, source-owned ML training program with equivalent

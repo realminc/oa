@@ -4,6 +4,9 @@
 
 #include <oa/core/fnMatrix.h>
 #include <oa/core/log.h>
+#include <oa/core/std/algo.h>
+#include <oa/core/std/limits.h>
+#include <oa/core/std/scalarMath.h>
 #include <oa/audio/fnAudio.h>
 #include <oa/render/renderer.h>
 #include <oa/runtime/engine.h>
@@ -13,10 +16,6 @@
 #include <oa/vision/fnImage.h>
 #include "../runtime/textureAccess.h"
 
-#include <algorithm>
-#include <cmath>
-#include <cstdlib>
-#include <limits>
 
 namespace {
 
@@ -41,17 +40,17 @@ const char* videoCodecName(oa::VideoCodec inCodec) {
 }
 
 oa::I32 saturatingPixel(oa::F64 inValue) noexcept {
-	if (not std::isfinite(inValue)) return 0;
-	return static_cast<oa::I32>(std::clamp<oa::F64>(
+	if (not oa::isFinite(inValue)) return 0;
+	return static_cast<oa::I32>(oa::clamp<oa::F64>(
 		inValue,
-		std::numeric_limits<oa::I32>::min(),
-		std::numeric_limits<oa::I32>::max()));
+		oa::Limits<oa::I32>::min(),
+		oa::Limits<oa::I32>::max()));
 }
 
 oa::I32 saturatingExtent(oa::F64 inValue) noexcept {
-	if (not std::isfinite(inValue) or inValue <= 0.0) return 0;
-	return static_cast<oa::I32>(std::clamp<oa::F64>(
-		inValue, 1.0, std::numeric_limits<oa::I32>::max()));
+	if (not oa::isFinite(inValue) or inValue <= 0.0) return 0;
+	return static_cast<oa::I32>(oa::clamp<oa::F64>(
+		inValue, 1.0, oa::Limits<oa::I32>::max()));
 }
 
 bool isPowerOfTwo(oa::U32 inValue) noexcept {
@@ -436,7 +435,7 @@ oa::Status oa::Viewer::openAudio(oa::Engine& inEngine) {
 		const oa::I64 samples = decoded->samples();
 		if (samples <= 0
 			or static_cast<oa::U64>(samples)
-				> std::numeric_limits<oa::U32>::max()) {
+				> oa::Limits<oa::U32>::max()) {
 			return oa::Status::error(
 				oa::StatusCode::OutOfRange,
 				"oa::Viewer audio analysis requires a non-empty u32-addressable source");
@@ -445,7 +444,7 @@ oa::Status oa::Viewer::openAudio(oa::Engine& inEngine) {
 		const oa::U64 boundedHop =
 			(static_cast<oa::U64>(samples) + frameIntervals - 1U)
 				/ frameIntervals;
-		const oa::U32 effectiveHop = std::max(
+		const oa::U32 effectiveHop = oa::max(
 			config_.audioHopSize,
 			static_cast<oa::U32>(boundedHop));
 
@@ -572,30 +571,30 @@ oa::U64 oa::Viewer::mediaPositionUs() const noexcept {
 }
 
 oa::PixelRect oa::Viewer::timelineRect() const noexcept {
-	const oa::F32 contentScale = std::max(
+	const oa::F32 contentScale = oa::max(
 		0.01F, (windowPixelScaleX_ + windowPixelScaleY_) * 0.5F);
 	const auto px = [contentScale](oa::I32 inLogical) {
-		return std::max<oa::I32>(1, static_cast<oa::I32>(std::lround(
+		return oa::max<oa::I32>(1, static_cast<oa::I32>(oa::lround(
 			static_cast<oa::F32>(inLogical) * contentScale)));
 	};
 	const oa::I32 contentTop = static_cast<oa::I32>(windowDecorationHeight());
-	const oa::I32 contentHeight = std::max<oa::I32>(
+	const oa::I32 contentHeight = oa::max<oa::I32>(
 		1, static_cast<oa::I32>(height()) - contentTop);
 	const oa::I32 margin = px(24);
 	const oa::I32 height = px(20);
-	const oa::I32 width = std::max<oa::I32>(
+	const oa::I32 width = oa::max<oa::I32>(
 		1, static_cast<oa::I32>(this->width()) - margin * 2);
 	const oa::I32 y = resolvedMode_ == oa::ViewerMode::Audio
-		? contentTop + std::max<oa::I32>(0, contentHeight - px(28))
-		: contentTop + std::max<oa::I32>(0, contentHeight - px(52));
+		? contentTop + oa::max<oa::I32>(0, contentHeight - px(28))
+		: contentTop + oa::max<oa::I32>(0, contentHeight - px(52));
 	return {margin, y, width, height};
 }
 
 oa::PixelRect oa::Viewer::temporalButtonsRect() const noexcept {
-	const oa::F32 contentScale = std::max(
+	const oa::F32 contentScale = oa::max(
 		0.01F, (windowPixelScaleX_ + windowPixelScaleY_) * 0.5F);
 	const auto px = [contentScale](oa::I32 inLogical) {
-		return std::max<oa::I32>(1, static_cast<oa::I32>(std::lround(
+		return oa::max<oa::I32>(1, static_cast<oa::I32>(oa::lround(
 			static_cast<oa::F32>(inLogical) * contentScale)));
 	};
 	const oa::PixelRect timeline = timelineRect();
@@ -604,35 +603,35 @@ oa::PixelRect oa::Viewer::temporalButtonsRect() const noexcept {
 	const oa::I32 contentTop = static_cast<oa::I32>(windowDecorationHeight());
 	return {
 		timeline.x,
-		std::max(contentTop + px(8), timeline.y - size - px(10)),
+		oa::max(contentTop + px(8), timeline.y - size - px(10)),
 		size * 2 + gap,
 		size,
 	};
 }
 
 oa::PixelRect oa::Viewer::audioViewTabRect() const noexcept {
-	const oa::F32 scale = std::max(
+	const oa::F32 scale = oa::max(
 		0.01F, (windowPixelScaleX_ + windowPixelScaleY_) * 0.5F);
 	const auto px = [scale](oa::I32 inLogical) {
-		return std::max<oa::I32>(1, static_cast<oa::I32>(std::lround(
+		return oa::max<oa::I32>(1, static_cast<oa::I32>(oa::lround(
 			static_cast<oa::F32>(inLogical) * scale)));
 	};
 	const oa::I32 margin = px(24);
-	const oa::I32 available = std::max<oa::I32>(
+	const oa::I32 available = oa::max<oa::I32>(
 		1, static_cast<oa::I32>(width()) - margin * 2);
 	return {
 		margin,
 		static_cast<oa::I32>(windowDecorationHeight()) + px(12),
-		std::min(available, px(360)),
+		oa::min(available, px(360)),
 		px(28),
 	};
 }
 
 oa::PixelRect oa::Viewer::audioVisualizationRect() const noexcept {
-	const oa::F32 scale = std::max(
+	const oa::F32 scale = oa::max(
 		0.01F, (windowPixelScaleX_ + windowPixelScaleY_) * 0.5F);
 	const auto px = [scale](oa::I32 inLogical) {
-		return std::max<oa::I32>(1, static_cast<oa::I32>(std::lround(
+		return oa::max<oa::I32>(1, static_cast<oa::I32>(oa::lround(
 			static_cast<oa::F32>(inLogical) * scale)));
 	};
 	const oa::I32 margin = px(24);
@@ -647,8 +646,8 @@ oa::PixelRect oa::Viewer::audioVisualizationRect() const noexcept {
 	return {
 		margin,
 		top,
-		std::max<oa::I32>(1, static_cast<oa::I32>(width()) - margin * 2),
-		std::max<oa::I32>(1, bottom - top),
+		oa::max<oa::I32>(1, static_cast<oa::I32>(width()) - margin * 2),
+		oa::max<oa::I32>(1, bottom - top),
 	};
 }
 
@@ -685,7 +684,7 @@ void oa::Viewer::seekMediaFraction(oa::F32 inFraction) {
 	const oa::U64 duration = mediaDurationUs();
 	if (duration == 0U) return;
 	const long double clamped = static_cast<long double>(
-		std::clamp(inFraction, 0.0F, 1.0F));
+		oa::clamp(inFraction, 0.0F, 1.0F));
 	seekMediaUs(static_cast<oa::U64>(clamped * static_cast<long double>(duration)));
 }
 
@@ -702,10 +701,10 @@ void oa::Viewer::stepTemporal(oa::I32 inAmount) {
 	if (not audio_.hasValue()) return;
 	audio_->pause();
 	const oa::U64 position = audio_->positionUs();
-	const oa::U64 step = config_.audioStepUs * static_cast<oa::U64>(std::abs(inAmount));
+	const oa::U64 step = config_.audioStepUs * static_cast<oa::U64>(oa::abs(inAmount));
 	const oa::U64 target = inAmount < 0
 		? (position > step ? position - step : 0U)
-		: std::min(mediaDurationUs(), position + step);
+		: oa::min(mediaDurationUs(), position + step);
 	seekMediaUs(target);
 }
 
@@ -730,10 +729,10 @@ oa::Status oa::Viewer::configureNavigation() {
 			"oa::Viewer visual source has zero dimensions");
 	}
 
-	const oa::U32 windowWidth = std::min(
-		config_.width, std::max<oa::U32>(contentWidth, contentWidth * 2U));
-	const oa::U32 windowHeight = std::min(
-		config_.height, std::max<oa::U32>(contentHeight, contentHeight * 2U));
+	const oa::U32 windowWidth = oa::min(
+		config_.width, oa::max<oa::U32>(contentWidth, contentWidth * 2U));
+	const oa::U32 windowHeight = oa::min(
+		config_.height, oa::max<oa::U32>(contentHeight, contentHeight * 2U));
 	resizeWindow(windowWidth, windowHeight);
 
 	nav_.setCapturePointer([this](bool inOn) { captureRelativeMouse(inOn); });
@@ -742,8 +741,8 @@ oa::Status oa::Viewer::configureNavigation() {
 		static_cast<oa::F32>(contentHeight)));
 	OA_RETURN_IF_ERROR(nav_.setWindowSize(
 		static_cast<oa::F32>(width()),
-		static_cast<oa::F32>(std::max<oa::U32>(
-			1U, height() - std::min(height(), windowDecorationHeight())))));
+		static_cast<oa::F32>(oa::max<oa::U32>(
+			1U, height() - oa::min(height(), windowDecorationHeight())))));
 	return nav_.fitToWindow(false);
 }
 
@@ -904,7 +903,7 @@ oa::Status oa::Viewer::initView() {
 }
 
 oa::Status oa::Viewer::update(oa::F32 inDeltaMs) {
-	if (not std::isfinite(inDeltaMs) or inDeltaMs < 0.0F) {
+	if (not oa::isFinite(inDeltaMs) or inDeltaMs < 0.0F) {
 		return oa::Status::invalidArgument(
 			"oa::Viewer::update requires a finite non-negative delta");
 	}
@@ -942,7 +941,7 @@ oa::Status oa::Viewer::routeEvent(const oa::UiEvent& inEvent) {
 		return oa::Status::ok();
 	}
 	const oa::PixelRect controls = timelineRect();
-	const oa::F32 contentScale = std::max(
+	const oa::F32 contentScale = oa::max(
 		0.01F, (windowPixelScaleX_ + windowPixelScaleY_) * 0.5F);
 	const oa::F32 controlPadding = 12.0F * contentScale;
 	const oa::F64 controlTop = static_cast<oa::F64>(controls.y) - controlPadding;
@@ -957,7 +956,7 @@ oa::Status oa::Viewer::routeEvent(const oa::UiEvent& inEvent) {
 		or (not inControls and not inTemporalButtons and not timelineActive)) {
 		oa::UiEvent contentEvent = inEvent;
 		if (contentEvent.type == oa::UiEventType::WindowResize) {
-			contentEvent.windowH = std::max<oa::I32>(
+			contentEvent.windowH = oa::max<oa::I32>(
 				1,
 				contentEvent.windowH
 					- static_cast<oa::I32>(windowDecorationHeight()));
@@ -978,7 +977,7 @@ void oa::Viewer::drawOverlay(oa::Ui& inUi, oa::PixelRect inDestination) {
 		inDestination,
 		{.x = 0, .y = static_cast<oa::I32>(windowDecorationHeight()),
 		 .w = static_cast<oa::I32>(width()),
-		 .h = std::max<oa::I32>(
+		 .h = oa::max<oa::I32>(
 			1,
 			static_cast<oa::I32>(height())
 				- static_cast<oa::I32>(windowDecorationHeight()))});
@@ -1041,7 +1040,7 @@ void oa::Viewer::renderVideo(oa::Ui& inUi) {
 	if (config_.showStats) {
 		const oa::F32 contentScale = inUi.contentScale();
 		const auto px = [contentScale](oa::I32 inLogical) {
-			return std::max<oa::I32>(1, static_cast<oa::I32>(std::lround(
+			return oa::max<oa::I32>(1, static_cast<oa::I32>(oa::lround(
 				static_cast<oa::F32>(inLogical) * contentScale)));
 		};
 		inUi.beginPanel("viewer-stats", {
@@ -1063,7 +1062,7 @@ void oa::Viewer::renderAudio(oa::Ui& inUi) {
 	renderAudioViewSelector(inUi);
 	const oa::U64 duration = mediaDurationUs();
 	if (duration == 0U) return;
-	oa::F32 fraction = static_cast<oa::F32>(std::min(
+	oa::F32 fraction = static_cast<oa::F32>(oa::min(
 		1.0L,
 		static_cast<long double>(mediaPositionUs())
 			/ static_cast<long double>(duration)));
@@ -1129,7 +1128,7 @@ void oa::Viewer::renderTimeline(oa::Ui& inUi) {
 	if (not hasTimeline() or resolvedMode_ == oa::ViewerMode::Audio) return;
 	const oa::U64 duration = mediaDurationUs();
 	if (duration == 0U) return;
-	oa::F32 fraction = static_cast<oa::F32>(std::min(
+	oa::F32 fraction = static_cast<oa::F32>(oa::min(
 		1.0L,
 		static_cast<long double>(mediaPositionUs())
 			/ static_cast<long double>(duration)));
@@ -1140,7 +1139,7 @@ void oa::Viewer::renderTimeline(oa::Ui& inUi) {
 	const oa::PixelRect rect = timelineRect();
 	const oa::F32 contentScale = inUi.contentScale();
 	const auto px = [contentScale](oa::I32 inLogical) {
-		return std::max<oa::I32>(1, static_cast<oa::I32>(std::lround(
+		return oa::max<oa::I32>(1, static_cast<oa::I32>(oa::lround(
 			static_cast<oa::F32>(inLogical) * contentScale)));
 	};
 	const oa::Color playing = isMediaPlaying()
@@ -1157,9 +1156,9 @@ void oa::Viewer::renderTemporalButtons(oa::Ui& inUi) {
 	if (!hasTimeline()) return;
 	const oa::PixelRect group = temporalButtonsRect();
 	const oa::F32 contentScale = inUi.contentScale();
-	const oa::I32 gap = std::max<oa::I32>(1, static_cast<oa::I32>(std::lround(
+	const oa::I32 gap = oa::max<oa::I32>(1, static_cast<oa::I32>(oa::lround(
 		8.0F * contentScale)));
-	const oa::I32 size = std::max<oa::I32>(1, (group.w - gap) / 2);
+	const oa::I32 size = oa::max<oa::I32>(1, (group.w - gap) / 2);
 	if (inUi.chevronButton(
 		"Previous",
 		{group.x, group.y, size, group.h},

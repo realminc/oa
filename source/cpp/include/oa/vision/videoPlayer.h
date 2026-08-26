@@ -5,7 +5,7 @@
 //
 // usage:
 //   auto videoR = oa::VideoPlayer::open(engine, {.uri = "video.mp4"});
-//   oa::VideoPlayer video = std::move(*videoR);
+//   oa::VideoPlayer video = oa::move(*videoR);
 //   // each frame:
 //   OA_RETURN_IF_ERROR(video.next());
 //   consume(video.currentFrame());

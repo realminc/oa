@@ -69,7 +69,7 @@ def emitEnumTostring(enumDef: EnumDef) -> str:
 
 
 def emitEnumFromstring(enumDef: EnumDef) -> str:
-	"""Emit FromString implementation for enum (non-constexpr for strcmp)."""
+	"""Emit FromString implementation for enum using the OA C-string primitive."""
 	defaultValue = f"{enumDef.name}::{enumDef.values[0].name}"
 	lines = [
 	 f"[[nodiscard]] inline {enumDef.name} "
@@ -79,7 +79,7 @@ def emitEnumFromstring(enumDef: EnumDef) -> str:
 
 	for val in enumDef.values:
 		lines.append(
-		 f"\tif (std::strcmp(inString, \"{serializedName(val)}\") == 0) "
+			 f"\tif (oa::strcmp(inString, \"{serializedName(val)}\") == 0) "
 		 f"return {enumDef.name}::{val.name};"
 		)
 
@@ -114,7 +114,7 @@ def emitHeaderFile(schema: TypeSchema, schemaName: str) -> str:
 	lines.append("")
 	lines.append("#include <oa/core/types.h>")
 	if any(enum.generateFromstring for enum in schema.enums):
-		lines.append(f"#include <cstring>")
+		lines.append("#include <oa/core/std/cString.h>")
 	lines.append("")
 
 	lines.append(f"namespace {schema.namespace} {{")

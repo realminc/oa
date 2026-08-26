@@ -3,9 +3,9 @@
 #include <oa/data/fnDataset.h>
 #include <oa/core/fnMatrix.h>
 #include <oa/core/log.h>
-#include <random>
-#include <numeric>
-#include <algorithm>
+#include <oa/core/std/algo.h>
+#include <oa/core/std/chrono.h>
+#include <oa/core/std/random.h>
 
 namespace oa {
 
@@ -44,21 +44,23 @@ bool validateLike(const oa::Matrix& inMatrix, const oa::Matrix& inReference) {
 
 void shuffle(oa::Vec<oa::I64>& inOutIndices, oa::U64 inSeed) {
 	if (inSeed == 0) {
-		std::random_device rd;
-		inSeed = rd();
+		inSeed = static_cast<oa::U64>(
+			oa::SystemClock::now().nanosecondsSinceEpoch());
 	}
-	std::mt19937 rng(static_cast<oa::U32>(inSeed));
-	std::shuffle(inOutIndices.begin(), inOutIndices.end(), rng);
+	oa::Random rng(inSeed);
+	rng.shuffle(inOutIndices.data(), inOutIndices.size());
 }
 
 SplitResult randomSplit(oa::I64 inTotalSize, oa::F32 inTrainRatio, oa::F32 inValRatio, oa::U64 inSeed) {
 	SplitResult result;
 	if (inTotalSize <= 0) return result;
-	inTrainRatio = std::clamp(inTrainRatio, 0.0f, 1.0f);
-	inValRatio = std::clamp(inValRatio, 0.0f, 1.0f - inTrainRatio);
+	inTrainRatio = oa::clamp(inTrainRatio, 0.0f, 1.0f);
+	inValRatio = oa::clamp(inValRatio, 0.0f, 1.0f - inTrainRatio);
 
 	oa::Vec<oa::I64> indices(static_cast<oa::Usize>(inTotalSize));
-	std::iota(indices.begin(), indices.end(), 0);
+	for (oa::I64 index = 0; index < inTotalSize; ++index) {
+		indices[static_cast<oa::Usize>(index)] = index;
+	}
 	shuffle(indices, inSeed);
 
 	oa::I64 trainCount = static_cast<oa::I64>(static_cast<oa::F32>(inTotalSize) * inTrainRatio);

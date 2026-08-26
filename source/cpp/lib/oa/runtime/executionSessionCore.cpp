@@ -6,7 +6,7 @@
 #include <oa/runtime/dispatch.h>
 #include <oa/runtime/engine.h>
 
-#include <cassert>
+#include <assert.h>
 
 namespace {
 
@@ -149,16 +149,11 @@ oa::Status oa::ExecutionSession::record(
 
 oa::Result<oa::U32> oa::ExecutionSession::recordOp(
 	const oa::OpContract& inContract,
-	std::initializer_list<const oa::Matrix*> inInputs,
-	std::initializer_list<const oa::Matrix*> inOutputs,
-	std::initializer_list<oa::OpAttribute> inAttributes)
+	oa::MatrixArgs inInputs,
+	oa::MatrixArgs inOutputs,
+	oa::OpAttributeArgs inAttributes)
 {
-	return recordOp(
-		inContract,
-		oa::Span<const oa::Matrix* const>(inInputs.begin(), inInputs.size()),
-		oa::Span<const oa::Matrix* const>(inOutputs.begin(), inOutputs.size()),
-		oa::Span<const oa::OpAttribute>(
-			inAttributes.begin(), inAttributes.size()));
+	return recordOp(inContract, inInputs.span(), inOutputs.span(), inAttributes.span());
 }
 
 oa::OpLoweringScope::OpLoweringScope(oa::ExecutionSession& inSession)
@@ -185,16 +180,11 @@ oa::Status oa::OpLoweringScope::commit(
 
 oa::Status oa::OpLoweringScope::commit(
 	const oa::OpContract& inContract,
-	std::initializer_list<const oa::Matrix*> inInputs,
-	std::initializer_list<const oa::Matrix*> inOutputs,
-	std::initializer_list<oa::OpAttribute> inAttributes)
+	oa::MatrixArgs inInputs,
+	oa::MatrixArgs inOutputs,
+	oa::OpAttributeArgs inAttributes)
 {
-	return commit(
-		inContract,
-		oa::Span<const oa::Matrix* const>(inInputs.begin(), inInputs.size()),
-		oa::Span<const oa::Matrix* const>(inOutputs.begin(), inOutputs.size()),
-		oa::Span<const oa::OpAttribute>(
-			inAttributes.begin(), inAttributes.size()));
+	return commit(inContract, inInputs.span(), inOutputs.span(), inAttributes.span());
 }
 
 oa::Result<oa::U32> oa::OpLoweringScope::commitWithId(
@@ -215,16 +205,11 @@ oa::Result<oa::U32> oa::OpLoweringScope::commitWithId(
 
 oa::Result<oa::U32> oa::OpLoweringScope::commitWithId(
 	const oa::OpContract& inContract,
-	std::initializer_list<const oa::Matrix*> inInputs,
-	std::initializer_list<const oa::Matrix*> inOutputs,
-	std::initializer_list<oa::OpAttribute> inAttributes)
+	oa::MatrixArgs inInputs,
+	oa::MatrixArgs inOutputs,
+	oa::OpAttributeArgs inAttributes)
 {
-	return commitWithId(
-		inContract,
-		oa::Span<const oa::Matrix* const>(inInputs.begin(), inInputs.size()),
-		oa::Span<const oa::Matrix* const>(inOutputs.begin(), inOutputs.size()),
-		oa::Span<const oa::OpAttribute>(
-			inAttributes.begin(), inAttributes.size()));
+	return commitWithId(inContract, inInputs.span(), inOutputs.span(), inAttributes.span());
 }
 
 void oa::ExecutionSession::add(
@@ -301,7 +286,7 @@ void oa::ExecutionSession::add(
 
 void oa::ExecutionSession::add(
 	oa::StringView inKernelName,
-	std::initializer_list<const oa::Matrix*> inMatrices,
+	oa::MatrixArgs inMatrices,
 	oa::Span<oa::BufferAccess> inAccess,
 	const void* inPush,
 	oa::U32 inPushSize,
@@ -332,7 +317,6 @@ void oa::ExecutionSession::add(
 	desc.dispatch.groupsX = inGroupsX;
 	desc.dispatch.groupsY = inGroupsY;
 	desc.dispatch.groupsZ = inGroupsZ;
-	desc.matrices = oa::Span<const oa::Matrix* const>(
-		inMatrices.begin(), inMatrices.size());
+	desc.matrices = inMatrices.span();
 	(void)record(desc);
 }

@@ -10,6 +10,7 @@
 
 #include <ml/rl/environmentKernelPack.h>
 #include <ml/rl/gen/environmentOpRegistry.h>
+#include <core/streamText.h>
 #include <oa/ml/environmentExecution.h>
 #include <oa/runtime/dispatchValidation.h>
 
@@ -488,12 +489,13 @@ oa::Result<LunarLander3dVector> LunarLander3dVector::createFlat(
 		return oa::Status::invalidArgument(
 			"Lunar Lander 3D requires at least one environment lane");
 	}
-	const oa::String configError(inConfig.environment_.validationError());
+	const oa::String configError = oa::sdk::fromStdString(
+		inConfig.environment_.validationError());
 	if (not configError.empty()) return oa::Status::invalidArgument(configError);
 	const LunarTerrain terrain = LunarTerrain::createFlat(
 		inConfig.environment_.terrain_);
 	if (not terrain.isValid()) {
-		return oa::Status::invalidArgument(oa::String(terrain.error()));
+		return oa::Status::invalidArgument(oa::sdk::fromStdString(terrain.error()));
 	}
 	const oa::U64 terrainVertices = static_cast<oa::U64>(terrain.heights().size());
 	auto serializedConfig = lunarVectorSerializeConfigF32(

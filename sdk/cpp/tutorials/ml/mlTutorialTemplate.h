@@ -9,7 +9,7 @@
 //
 // Shared helpers it leans on:  Tutorial/Ml/TutorialMl.h.
 // Live exemplars to copy:
-//   - Simplest oa::ItTraining : sdk/cpp/examples/ml/itTraining.cpp
+//   - Simplest oa::ItTraining : sdk/cpp/examples/ml/transformer.cpp
 //   - Classification : TutorialMnistClassifierAg.cpp  (accuracy, epochs, ckpt mgr)
 //   - sequence/LM    : Nlp/TutorialNlpByteMamba3Ag.cpp (generation, batch sampler)
 //   - Multi-stage    : TutorialMotionGen.cpp           (staged loops, sidecar cfg)

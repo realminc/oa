@@ -2,12 +2,10 @@
 
 #include <oa/runtime/gemmTypes.h>
 #include <oa/core/filesystem.h>
-#include <algorithm>
-#include <unordered_map>
-#include <mutex>
-#include <fstream>
-#include <type_traits>
-#include <cmath>
+#include <oa/core/envFlag.h>
+#include <oa/core/std/hashMap.h>
+#include <oa/core/std/sync.h>
+#include <oa/core/std/typeTraits.h>
 
 namespace oa {
 
@@ -18,8 +16,8 @@ struct GemmRouteCache {
 	static constexpr oa::U32 FileVersion = 6;
 	static constexpr const char* DefaultPath = "var/gemm_route_cache.bin";
 
-	std::unordered_map<oa::RouteCacheKey, oa::RouteCacheValue, oa::RouteCacheKeyHash> map;
-	mutable std::mutex mutex;
+	oa::HashMap<oa::RouteCacheKey, oa::RouteCacheValue, oa::RouteCacheKeyHash> map;
+	mutable oa::Mutex mutex;
 	oa::U64 PublicationStep = 0;
 
 	// publish a newly measured route using a sequence owned by this engine's
@@ -31,7 +29,7 @@ struct GemmRouteCache {
 		float inP95GpuTimeMs,
 		oa::U32 inSampleCount)
 	{
-		std::lock_guard<std::mutex> lock(mutex);
+		oa::ScopedLock lock(mutex);
 		updateLocked(inKey, inWinner, inMedianGpuTimeMs, inP95GpuTimeMs,
 			inSampleCount, ++PublicationStep);
 	}
@@ -57,10 +55,10 @@ struct GemmRouteCache {
 		oa::U32                     inSampleCount,
 		oa::U64                     inStep)
 	{
-		std::lock_guard<std::mutex> lock(mutex);
+		oa::ScopedLock lock(mutex);
 		updateLocked(inKey, inWinner, inMedianGpuTimeMs, inP95GpuTimeMs,
 			inSampleCount, inStep);
-		PublicationStep = std::max(PublicationStep, inStep);
+		PublicationStep = oa::max(PublicationStep, inStep);
 	}
 
 	// query cache for a winning variant
@@ -68,7 +66,7 @@ struct GemmRouteCache {
 		const oa::RouteCacheKey& inKey,
 		oa::U64&      outWinner) const
 	{
-		std::lock_guard<std::mutex> lock(mutex);
+		oa::ScopedLock lock(mutex);
 		auto it = map.find(inKey);
 		if (it != map.end() && it->second.sampleCount > 0) {
 			outWinner = it->second.winnerVariant;
@@ -80,14 +78,13 @@ struct GemmRouteCache {
 	// Versioned, field-wise format. Never dump C++ structs directly: padding,
 	// bool size, and enum layout are not a persistent file contract.
 	[[nodiscard]] bool save(const char* inPath) const {
-		std::lock_guard<std::mutex> lock(mutex);
-		std::ofstream file(inPath, std::ios::binary);
-		if (!file) return false;
+		oa::ScopedLock lock(mutex);
+		oa::Vec<oa::U8> bytes;
 
 		auto write = [&](const auto& value) {
-			using T = std::decay_t<decltype(value)>;
-			static_assert(std::is_trivially_copyable_v<T>);
-			file.write(reinterpret_cast<const char*>(&value), sizeof(T));
+			using T = oa::RemoveCvrefT<decltype(value)>;
+			static_assert(oa::IsTriviallyCopyableV<T>);
+			bytes.append(reinterpret_cast<const oa::U8*>(&value), sizeof(T));
 		};
 		write(FileMagic);
 		write(FileVersion);
@@ -117,20 +114,25 @@ struct GemmRouteCache {
 			write(value.sampleCount); write(value.lastUpdatedStep);
 		}
 
-		return file.good();
+		return oa::Filesystem::writeBinary(
+			oa::Path(inPath), oa::Span<const oa::U8>(bytes.data(), bytes.size())).isOk();
 	}
 
 	// load cache from disk
 	[[nodiscard]] bool load(const char* inPath) {
-		std::lock_guard<std::mutex> lock(mutex);
-		std::ifstream file(inPath, std::ios::binary);
-		if (!file) return false;
+		oa::ScopedLock lock(mutex);
+		auto loaded = oa::Filesystem::readBinary(oa::Path(inPath));
+		if (loaded.isError()) return false;
+		const auto& bytes = *loaded;
+		oa::Usize offset = 0;
 
 		auto read = [&](auto& value) {
-			using T = std::decay_t<decltype(value)>;
-			static_assert(std::is_trivially_copyable_v<T>);
-			file.read(reinterpret_cast<char*>(&value), sizeof(T));
-			return file.good();
+			using T = oa::RemoveCvrefT<decltype(value)>;
+			static_assert(oa::IsTriviallyCopyableV<T>);
+			if (sizeof(T) > bytes.size() - oa::min(offset, bytes.size())) return false;
+			oa::memcpy(&value, bytes.data() + offset, sizeof(T));
+			offset += sizeof(T);
+			return true;
 		};
 		oa::U64 magic = 0;
 		oa::U32 version = 0;
@@ -174,8 +176,8 @@ struct GemmRouteCache {
 			const bool invalidBool = aContiguous > 1U || bContiguous > 1U
 				|| bTransposed > 1U || requiresPreActivation > 1U || training > 1U;
 			const bool invalidValue = value.winnerVariant == oa::invalidMatmulVariantId
-				|| !std::isfinite(value.medianGpuTimeMs)
-				|| !std::isfinite(value.p95GpuTimeMs)
+				|| !oa::isFinite(value.medianGpuTimeMs)
+				|| !oa::isFinite(value.p95GpuTimeMs)
 				|| value.medianGpuTimeMs < 0.0F || value.p95GpuTimeMs < 0.0F
 				|| value.sampleCount == 0U;
 			if (invalidEnum || invalidBool || invalidValue
@@ -202,13 +204,13 @@ struct GemmRouteCache {
 				PublicationStep = 0;
 				return false;
 			}
-			PublicationStep = std::max(PublicationStep, value.lastUpdatedStep);
+			PublicationStep = oa::max(PublicationStep, value.lastUpdatedStep);
 		}
 
 		// Reject trailing bytes as a corrupt or incompatible cache rather than
 		// accepting records written with a different contract. Never leave a
 		// partially accepted map live when load reports failure.
-		if (file.peek() != std::ifstream::traits_type::eof()) {
+		if (offset != bytes.size()) {
 			map.clear();
 			PublicationStep = 0;
 			return false;
@@ -219,10 +221,7 @@ struct GemmRouteCache {
 	// Check if autotune mode is enabled (per-run benchmarking vs cache)
 	// environment variable: OA_GEMM_AUTOTUNE=1 enables, 0/default disables
 	[[nodiscard]] static bool isAutotuneEnabled() {
-		const char* env = std::getenv("OA_GEMM_AUTOTUNE");
-		if (!env) return false;
-		std::string s(env);
-		return s == "1" || s == "true" || s == "yes" || s == "on";
+		return oa::EnvFlag::isSet("OA_GEMM_AUTOTUNE");
 	}
 
 private:
@@ -234,7 +233,11 @@ private:
 		oa::U32 inSampleCount,
 		oa::U64 inStep)
 	{
-		auto& entry = map[inKey];
+		auto found = map.find(inKey);
+		if (found == map.end()) {
+			found = map.emplace(inKey, oa::RouteCacheValue{}).first;
+		}
+		auto& entry = found->second;
 		entry.winnerVariant = inWinner;
 		entry.medianGpuTimeMs = inMedianGpuTimeMs;
 		entry.p95GpuTimeMs = inP95GpuTimeMs;

@@ -14,7 +14,7 @@
 //             (default 0; max 8192)
 //
 // The size dispatch matters when the caller's size is dynamic. For a compile-
-// time constant size, both memcpy and std::memcpy reduce to the same moves.
+// time constant size, both memcpy and oa::memcpy reduce to the same moves.
 //
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -23,8 +23,6 @@
 #define OA_TYPES_H_SKIP_REST
 #include <oa/core/types.h>
 #undef OA_TYPES_H_SKIP_REST
-#include <atomic>
-#include <cstring>
 
 namespace oa {
 
@@ -38,7 +36,7 @@ __attribute__((always_inline))
 inline void copyBlock(oa::Byte* inDst, const oa::Byte* inSrc) {
 	static_assert(size == 1 || size == 2 || size == 4 || size == 8
 		|| size == 16 || size == 32);
-	std::memcpy(inDst, inSrc, size);
+	__builtin_memcpy(inDst, inSrc, size);
 }
 
 } // namespace detail
@@ -52,13 +50,13 @@ inline void* memcpy(void* __restrict__ inDst, const void* __restrict__ inSrc, oa
 	if (__builtin_expect(inSize == 0, 0)) return inDst;
 	// Let the compiler emit its optimal single sequence when the call site knows
 	// the size. The branches below are specifically for dynamic-size callers.
-	if (__builtin_constant_p(inSize)) return std::memcpy(inDst, inSrc, inSize);
+	if (__builtin_constant_p(inSize)) return __builtin_memcpy(inDst, inSrc, inSize);
 
 	oa::Byte* dst = static_cast<oa::Byte*>(inDst);
 	const oa::Byte* src = static_cast<const oa::Byte*>(inSrc);
 	using detail::copyBlock;
 
-	// Fixed-size std::memcpy is a compiler primitive, not a libc call. Keeping
+	// Fixed-size compiler memcpy is an intrinsic, not a hosted C++ call. Keeping
 	// these accesses expressed as copies also makes unaligned data legal C++.
 	if (__builtin_expect(inSize <= 16, 1)) {
 		if (inSize >= 8) {
@@ -108,7 +106,7 @@ inline void* memcpy(void* __restrict__ inDst, const void* __restrict__ inSrc, oa
 		return inDst;
 	}
 
-	return std::memcpy(inDst, inSrc, inSize);
+	return __builtin_memcpy(inDst, inSrc, inSize);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -125,15 +123,21 @@ inline void* memcpyStream(void* inDst, const void* inSrc, oa::Usize inSize) {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 inline void* memset(void* inDst, oa::I32 inValue, oa::Usize inSize) {
-	return std::memset(inDst, inValue, inSize);
+	return __builtin_memset(inDst, inValue, inSize);
+}
+
+// Overlap-safe byte move. Keep this distinct from memcpy so callers make the
+// aliasing contract visible and the compiler selects the appropriate lowering.
+inline void* memmove(void* inDst, const void* inSrc, oa::Usize inSize) {
+	return __builtin_memmove(inDst, inSrc, inSize);
 }
 
 inline void* memzero(void* inDst, oa::Usize inSize) {
-	return std::memset(inDst, 0, inSize);
+	return __builtin_memset(inDst, 0, inSize);
 }
 
 inline oa::I32 memcmp(const void* inA, const void* inB, oa::Usize inSize) {
-	return std::memcmp(inA, inB, inSize);
+	return __builtin_memcmp(inA, inB, inSize);
 }
 
 bool memEqual(const void* inA, const void* inB, oa::Usize inSize);
@@ -154,7 +158,7 @@ inline void prefetchL2(const void* inPtr)    { __builtin_prefetch(inPtr, 0, 2); 
 inline void prefetchWrite(void* inPtr)       { __builtin_prefetch(inPtr, 1, 3); }
 inline void prefetchNta(const void* inPtr)   { __builtin_prefetch(inPtr, 0, 0); }
 inline void memoryFence() { __sync_synchronize(); }
-inline void storeFence()  { std::atomic_thread_fence(std::memory_order_release); }
-inline void loadFence()   { std::atomic_thread_fence(std::memory_order_acquire); }
+inline void storeFence()  { __atomic_thread_fence(__ATOMIC_RELEASE); }
+inline void loadFence()   { __atomic_thread_fence(__ATOMIC_ACQUIRE); }
 
 } // namespace oa

@@ -6,19 +6,17 @@
 #include <oa/core/filesystem.h>
 #include <oa/core/fnMatrix.h>
 #include <oa/core/matrixAccess.h>
+#include <oa/core/memory.h>
+#include <oa/core/std/limits.h>
+#include <oa/core/std/sync.h>
 #include <oa/runtime/executionSession.h>
 #include <oa/runtime/engine.h>
 #include <oa/runtime/engine/resourceAccess.h>
 
-#include <algorithm>
-#include <cstring>
-#include <limits>
-#include <mutex>
-
 namespace {
 
 struct TranslatorRegistry {
-	std::mutex mutex;
+	oa::Mutex mutex;
 	oa::Vec<oa::UniquePtr<oa::ModelTranslator>> translators;
 };
 
@@ -33,7 +31,7 @@ oa::Result<oa::U64> elementCount(oa::Span<const oa::I64> inShape) {
 		if (dim < 0) return oa::Status::invalidArgument("weight shape contains a negative dimension");
 		if (dim == 0) return oa::U64{0};
 		const auto value = static_cast<oa::U64>(dim);
-		if (count > std::numeric_limits<oa::U64>::max() / value) {
+		if (count > oa::Limits<oa::U64>::max() / value) {
 			return oa::Status::error(oa::StatusCode::OutOfRange, "weight element count overflow");
 		}
 		count *= value;
@@ -50,7 +48,7 @@ bool sameShape(oa::Span<const oa::I64> inA, oa::Span<const oa::I64> inB) {
 oa::Result<oa::Vec<oa::U8>> readConverted(
 	const oa::WeightSource& inSource, const oa::WeightInfo& inInfo, oa::ScalarType inDtype) {
 	const oa::U64 scalarBytes = oa::scalarSize(inDtype);
-	if (scalarBytes == 0 || inInfo.elementCount > std::numeric_limits<oa::U64>::max() / scalarBytes) {
+	if (scalarBytes == 0 || inInfo.elementCount > oa::Limits<oa::U64>::max() / scalarBytes) {
 		return oa::Status::error(oa::StatusCode::DtypeMismatch, "Invalid transfer target dtype");
 	}
 	oa::Vec<oa::U8> result(inInfo.elementCount * scalarBytes);
@@ -72,7 +70,7 @@ oa::Result<oa::Vec<oa::U8>> executeMapping(
 	if (targetCountResult.isError()) return targetCountResult.getStatus();
 	const oa::U64 targetCount = targetCountResult.getValue();
 	const oa::U64 scalarBytes = oa::scalarSize(inMapping.targetDtype);
-	if (scalarBytes == 0 || targetCount > std::numeric_limits<oa::U64>::max() / scalarBytes) {
+	if (scalarBytes == 0 || targetCount > oa::Limits<oa::U64>::max() / scalarBytes) {
 		return oa::Status::error(oa::StatusCode::DtypeMismatch,
 			oa::String("Invalid target dtype for mapping: ") + inMapping.target);
 	}
@@ -203,7 +201,7 @@ oa::Status oa::registerModelTranslator(oa::UniquePtr<oa::ModelTranslator> inTran
 		return oa::Status::invalidArgument("Cannot register an empty model translator");
 	}
 	auto& registry = getTranslatorRegistry();
-	std::lock_guard lock(registry.mutex);
+	oa::ScopedLock lock(registry.mutex);
 	for (const auto& translator : registry.translators) {
 		if (translator->name() == inTranslator->name()) {
 			return oa::Status::error(oa::StatusCode::AlreadyExists,
@@ -216,7 +214,7 @@ oa::Status oa::registerModelTranslator(oa::UniquePtr<oa::ModelTranslator> inTran
 
 const oa::ModelTranslator* oa::findModelTranslator(oa::StringView inName) {
 	auto& registry = getTranslatorRegistry();
-	std::lock_guard lock(registry.mutex);
+	oa::ScopedLock lock(registry.mutex);
 	for (const auto& translator : registry.translators) {
 		if (translator->name() == inName) return translator.get();
 	}
@@ -225,7 +223,7 @@ const oa::ModelTranslator* oa::findModelTranslator(oa::StringView inName) {
 
 oa::Vec<oa::String> oa::listModelTranslators() {
 	auto& registry = getTranslatorRegistry();
-	std::lock_guard lock(registry.mutex);
+	oa::ScopedLock lock(registry.mutex);
 	oa::Vec<oa::String> result;
 	result.reserve(registry.translators.size());
 	for (const auto& translator : registry.translators) result.pushBack(oa::String(translator->name()));
@@ -312,7 +310,7 @@ oa::Result<oa::WeightTransferReport> oa::transferWeights(
 	oa::HashSet<oa::String> targets;
 	oa::HashSet<oa::String> usedSources;
 	oa::ModelFile model;
-	if (inMap.archConfig.size() > std::numeric_limits<oa::U32>::max()) {
+	if (inMap.archConfig.size() > oa::Limits<oa::U32>::max()) {
 		return oa::Status::invalidArgument("architecture config exceeds OAM limit");
 	}
 	model.config = inMap.config;

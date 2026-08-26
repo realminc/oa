@@ -2,14 +2,13 @@
 
 #include <oa/core/filesystem.h>
 #include <oa/core/fnMatrix.h>
+#include <oa/core/std/scalarMath.h>
 #include <oa/vision/fnImage.h>
-
-#include <cmath>
 
 namespace {
 
 oa::U8 quantize(oa::F32 inValue) {
-	if (not std::isfinite(inValue)) return 0U;
+	if (not oa::isFinite(inValue)) return 0U;
 	const oa::F32 clamped = inValue < 0.0F
 		? 0.0F
 		: (inValue > 1.0F ? 1.0F : inValue);

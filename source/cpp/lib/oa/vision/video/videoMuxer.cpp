@@ -2,9 +2,9 @@
 
 #include <oa/vision/videoMuxer.h>
 #include <oa/core/filesystem.h>
-#include <algorithm>
-#include <cstring>
-#include <limits>
+#include <oa/core/std/algo.h>
+
+#include <stdio.h>
 
 namespace
 {
@@ -31,9 +31,9 @@ inline void writeU64BE(oa::U8* outPtr, oa::U64 inValue)
 	writeU32BE(outPtr + 4U, static_cast<oa::U32>(inValue));
 }
 
-bool writeFile(std::FILE* inFile, const void* inData, oa::Usize inSize)
+bool writeFile(::FILE* inFile, const void* inData, oa::Usize inSize)
 {
-	return inSize == 0U or std::fwrite(inData, 1U, inSize, inFile) == inSize;
+	return inSize == 0U or ::fwrite(inData, 1U, inSize, inFile) == inSize;
 }
 
 // Helper: write MP4 box header
@@ -89,7 +89,7 @@ oa::Result<oa::Vec<oa::U8>> annexBToLengthPrefixed(const oa::Span<const oa::U8>&
 			const oa::Usize oldSize = output.size();
 			output.resize(oldSize + 4U + payloadSize);
 			writeU32BE(output.data() + oldSize, static_cast<oa::U32>(payloadSize));
-			std::memcpy(output.data() + oldSize + 4U, data + payloadStart, payloadSize);
+			oa::memcpy(output.data() + oldSize + 4U, data + payloadStart, payloadSize);
 		}
 		start = next;
 		startLength = nextLength;
@@ -115,7 +115,7 @@ oa::Vec<oa::U8> buildHvcc(
 		+ 3U + 2U + static_cast<oa::U32>(inPps.size());
 	oa::Vec<oa::U8> box;
 	box.resize(8U + payloadSize);
-	std::memset(box.data(), 0, box.size());
+	oa::memset(box.data(), 0, box.size());
 	writeBoxHeader(box.data(), static_cast<oa::U32>(box.size()), 0x68766343U); // hvcC
 	oa::U8* record = box.data() + 8U;
 	record[0] = 1U;          // configurationVersion
@@ -141,7 +141,7 @@ oa::Vec<oa::U8> buildHvcc(
 		offset += 2U;
 		writeU16BE(record + offset, static_cast<oa::U16>(inNal.size()));
 		offset += 2U;
-		std::memcpy(record + offset, inNal.data(), inNal.size());
+		oa::memcpy(record + offset, inNal.data(), inNal.size());
 		offset += static_cast<oa::U32>(inNal.size());
 	};
 	writeArray(32U, inVps);
@@ -154,7 +154,7 @@ void appendBytes(oa::Vec<oa::U8>& out, const void* inData, oa::Usize inSize)
 {
 	const oa::Usize offset = out.size();
 	out.resize(offset + inSize);
-	if (inSize > 0U) std::memcpy(out.data() + offset, inData, inSize);
+	if (inSize > 0U) oa::memcpy(out.data() + offset, inData, inSize);
 }
 
 oa::Vec<oa::U8> wrapBox(oa::U32 inType, const oa::Vec<oa::U8>& inPayload)
@@ -162,7 +162,7 @@ oa::Vec<oa::U8> wrapBox(oa::U32 inType, const oa::Vec<oa::U8>& inPayload)
 	oa::Vec<oa::U8> box;
 	box.resize(8U + inPayload.size());
 	writeBoxHeader(box.data(), static_cast<oa::U32>(box.size()), inType);
-	if (!inPayload.empty()) std::memcpy(box.data() + 8U, inPayload.data(), inPayload.size());
+	if (!inPayload.empty()) oa::memcpy(box.data() + 8U, inPayload.data(), inPayload.size());
 	return box;
 }
 
@@ -175,13 +175,13 @@ oa::Vec<oa::U8> buildAudioTrack(
 	oa::U64 mediaDuration64 = 0U;
 	for (oa::U32 duration : inDurations) mediaDuration64 += duration;
 	const oa::U32 mediaDuration = static_cast<oa::U32>(
-		std::min<oa::U64>(mediaDuration64, std::numeric_limits<oa::U32>::max()));
+		oa::min<oa::U64>(mediaDuration64, oa::Limits<oa::U32>::max()));
 	const oa::U64 audibleFrames = mediaDuration64 > inConfig.audioPrimingFrames
 		? mediaDuration64 - inConfig.audioPrimingFrames : 0U;
-	const oa::U32 movieDuration = static_cast<oa::U32>(std::min<oa::U64>(
+	const oa::U32 movieDuration = static_cast<oa::U32>(oa::min<oa::U64>(
 		(audibleFrames * inMovieTimescale + inConfig.audioSampleRate / 2U)
 			/ inConfig.audioSampleRate,
-		std::numeric_limits<oa::U32>::max()));
+		oa::Limits<oa::U32>::max()));
 
 	oa::Vec<oa::U8> trakPayload;
 	oa::U8 tkhd[92] = {};
@@ -218,7 +218,7 @@ oa::Vec<oa::U8> buildAudioTrack(
 	oa::Vec<oa::U8> hdlr(32U + sizeof(kName), 0U);
 	writeBoxHeader(hdlr.data(), static_cast<oa::U32>(hdlr.size()), 0x68646c72U);
 	writeU32BE(hdlr.data() + 16U, 0x736f756eU); // soun
-	std::memcpy(hdlr.data() + 32U, kName, sizeof(kName));
+	oa::memcpy(hdlr.data() + 32U, kName, sizeof(kName));
 	appendBytes(mdiaPayload, hdlr.data(), hdlr.size());
 
 	oa::Vec<oa::U8> minfPayload;
@@ -278,7 +278,7 @@ oa::Vec<oa::U8> buildAudioTrack(
 	writeU32BE(stsz.data() + 16U, mediaDuration);
 	appendBytes(stblPayload, stsz.data(), stsz.size());
 
-	const bool largeOffsets = std::any_of(inOffsets.begin(), inOffsets.end(),
+	const bool largeOffsets = oa::anyOf(inOffsets.begin(), inOffsets.end(),
 		[](oa::U64 inOffset) { return inOffset > 0xFFFFFFFFULL; });
 	oa::Vec<oa::U8> offsets(16U + inOffsets.size() * (largeOffsets ? 8U : 4U), 0U);
 	writeBoxHeader(offsets.data(), static_cast<oa::U32>(offsets.size()),
@@ -304,7 +304,7 @@ oa::Vec<oa::U8> buildAudioTrack(
 
 void oa::VideoMuxer::reset_() noexcept
 {
-	if (outputFile_ != nullptr) std::fclose(outputFile_);
+	if (outputFile_ != nullptr) ::fclose(outputFile_);
 	outputFile_ = nullptr;
 	mdatPayloadBytes_ = 0U;
 	config_ = {};
@@ -327,22 +327,22 @@ void oa::VideoMuxer::reset_() noexcept
 
 oa::VideoMuxer::VideoMuxer(oa::VideoMuxer&& inOther) noexcept
 	: config_(inOther.config_)
-	, mdatData_(std::move(inOther.mdatData_))
+	, mdatData_(oa::move(inOther.mdatData_))
 	, outputFile_(inOther.outputFile_)
 	, mdatPayloadBytes_(inOther.mdatPayloadBytes_)
-	, packetOffsets_(std::move(inOther.packetOffsets_))
-	, packetSizes_(std::move(inOther.packetSizes_))
-	, packetDts_(std::move(inOther.packetDts_))
-	, packetKeyframe_(std::move(inOther.packetKeyframe_))
-	, audioPacketOffsets_(std::move(inOther.audioPacketOffsets_))
-	, audioPacketSizes_(std::move(inOther.audioPacketSizes_))
-	, audioPacketDurations_(std::move(inOther.audioPacketDurations_))
-	, audioCodecConfig_(std::move(inOther.audioCodecConfig_))
+	, packetOffsets_(oa::move(inOther.packetOffsets_))
+	, packetSizes_(oa::move(inOther.packetSizes_))
+	, packetDts_(oa::move(inOther.packetDts_))
+	, packetKeyframe_(oa::move(inOther.packetKeyframe_))
+	, audioPacketOffsets_(oa::move(inOther.audioPacketOffsets_))
+	, audioPacketSizes_(oa::move(inOther.audioPacketSizes_))
+	, audioPacketDurations_(oa::move(inOther.audioPacketDurations_))
+	, audioCodecConfig_(oa::move(inOther.audioCodecConfig_))
 	, packetCount_(inOther.packetCount_)
 	, finalized_(inOther.finalized_)
-	, vps_(std::move(inOther.vps_))
-	, sps_(std::move(inOther.sps_))
-	, pps_(std::move(inOther.pps_))
+	, vps_(oa::move(inOther.vps_))
+	, sps_(oa::move(inOther.sps_))
+	, pps_(oa::move(inOther.pps_))
 {
 	inOther.outputFile_ = nullptr;
 	inOther.reset_();
@@ -354,22 +354,22 @@ oa::VideoMuxer& oa::VideoMuxer::operator=(oa::VideoMuxer&& inOther) noexcept
 	if (this != &inOther) {
 		reset_();
 		config_ = inOther.config_;
-		mdatData_ = std::move(inOther.mdatData_);
+		mdatData_ = oa::move(inOther.mdatData_);
 		outputFile_ = inOther.outputFile_;
 		mdatPayloadBytes_ = inOther.mdatPayloadBytes_;
-		packetOffsets_ = std::move(inOther.packetOffsets_);
-		packetSizes_ = std::move(inOther.packetSizes_);
-		packetDts_ = std::move(inOther.packetDts_);
-		packetKeyframe_ = std::move(inOther.packetKeyframe_);
-		audioPacketOffsets_ = std::move(inOther.audioPacketOffsets_);
-		audioPacketSizes_ = std::move(inOther.audioPacketSizes_);
-		audioPacketDurations_ = std::move(inOther.audioPacketDurations_);
-		audioCodecConfig_ = std::move(inOther.audioCodecConfig_);
+		packetOffsets_ = oa::move(inOther.packetOffsets_);
+		packetSizes_ = oa::move(inOther.packetSizes_);
+		packetDts_ = oa::move(inOther.packetDts_);
+		packetKeyframe_ = oa::move(inOther.packetKeyframe_);
+		audioPacketOffsets_ = oa::move(inOther.audioPacketOffsets_);
+		audioPacketSizes_ = oa::move(inOther.audioPacketSizes_);
+		audioPacketDurations_ = oa::move(inOther.audioPacketDurations_);
+		audioCodecConfig_ = oa::move(inOther.audioCodecConfig_);
 		packetCount_ = inOther.packetCount_;
 		finalized_ = inOther.finalized_;
-		vps_ = std::move(inOther.vps_);
-		sps_ = std::move(inOther.sps_);
-		pps_ = std::move(inOther.pps_);
+		vps_ = oa::move(inOther.vps_);
+		sps_ = oa::move(inOther.sps_);
+		pps_ = oa::move(inOther.pps_);
 		inOther.outputFile_ = nullptr;
 		inOther.reset_();
 	}
@@ -387,7 +387,7 @@ oa::Status oa::VideoMuxer::close()
 {
 	int closeResult = 0;
 	if (outputFile_ != nullptr) {
-		closeResult = std::fclose(outputFile_);
+		closeResult = ::fclose(outputFile_);
 		outputFile_ = nullptr;
 	}
 	reset_();
@@ -423,7 +423,7 @@ oa::Result<oa::VideoMuxer> oa::VideoMuxer::create(
 	oa::VideoMuxer muxer;
 	muxer.config_ = inConfig;
 	
-	muxer.outputFile_ = std::fopen(inConfig.outputPath.cStr(), "wb+");
+	muxer.outputFile_ = ::fopen(inConfig.outputPath.cStr(), "wb+");
 	if (muxer.outputFile_ == nullptr) {
 		return oa::Status::error(oa::StatusCode::Unavailable,
 			"Cannot open MP4 output for streaming");
@@ -505,7 +505,7 @@ void oa::VideoMuxer::setAudioCodecConfig(oa::Span<const oa::U8> inAudioSpecificC
 {
 	audioCodecConfig_.resize(inAudioSpecificConfig.size());
 	if (!inAudioSpecificConfig.empty()) {
-		std::memcpy(audioCodecConfig_.data(), inAudioSpecificConfig.data(),
+		oa::memcpy(audioCodecConfig_.data(), inAudioSpecificConfig.data(),
 			inAudioSpecificConfig.size());
 	}
 }
@@ -553,19 +553,19 @@ oa::Status oa::VideoMuxer::finalize()
 	// patch the mdat largesize, append moov, flush and close.
 	oa::U8 largeSize[8] = {};
 	writeU64BE(largeSize, 16U + mdatPayloadBytes_);
-	if (std::fseek(outputFile_, 24L, SEEK_SET) != 0
+	if (::fseek(outputFile_, 24L, SEEK_SET) != 0
 		or not writeFile(outputFile_, largeSize, sizeof(largeSize))) {
 		return oa::Status::error(oa::StatusCode::DataLoss, "Failed to finalize MP4 mdat size");
 	}
 	mdatData_.clear();
 	writeMoovBox();
-	oa::Vec<oa::U8> moovBuf = std::move(mdatData_);
-	if (std::fseek(outputFile_, 0L, SEEK_END) != 0
+	oa::Vec<oa::U8> moovBuf = oa::move(mdatData_);
+	if (::fseek(outputFile_, 0L, SEEK_END) != 0
 		or not writeFile(outputFile_, moovBuf.data(), moovBuf.size())
-		or std::fflush(outputFile_) != 0) {
+		or ::fflush(outputFile_) != 0) {
 		return oa::Status::error(oa::StatusCode::DataLoss, "Failed to append MP4 movie metadata");
 	}
-	std::fclose(outputFile_);
+	::fclose(outputFile_);
 	outputFile_ = nullptr;
 
 	finalized_ = true;
@@ -599,11 +599,11 @@ void oa::VideoMuxer::writeMoovBox()
 	auto ptsToTicks = [&](oa::U64 inPtsUs) -> oa::U32 {
 		const oa::U64 denominator = 1'000'000ULL * config_.timebaseNum;
 		const oa::U64 ticks = (inPtsUs * config_.timebaseDen + denominator / 2ULL) / denominator;
-		return static_cast<oa::U32>(std::min<oa::U64>(ticks, 0xFFFFFFFFULL));
+		return static_cast<oa::U32>(oa::min<oa::U64>(ticks, 0xFFFFFFFFULL));
 	};
 	oa::Vec<oa::U32> sampleDeltas;
 	sampleDeltas.resize(packetCount_);
-	const oa::U32 nominalDelta = std::max(1U, timescale / config_.frameRate);
+	const oa::U32 nominalDelta = oa::max(1U, timescale / config_.frameRate);
 	oa::U64 durationTicks64 = 0U;
 	for (oa::U32 i = 0; i < packetCount_; ++i) {
 		oa::U32 delta = nominalDelta;
@@ -618,17 +618,17 @@ void oa::VideoMuxer::writeMoovBox()
 		durationTicks64 += delta;
 	}
 	const oa::U32 videoDurationTicks = static_cast<oa::U32>(
-		std::min<oa::U64>(durationTicks64, 0xFFFFFFFFULL));
+		oa::min<oa::U64>(durationTicks64, 0xFFFFFFFFULL));
 	oa::U64 audioFrames = 0U;
 	for (oa::U32 duration : audioPacketDurations_) audioFrames += duration;
 	const oa::U64 audibleAudioFrames = audioFrames > config_.audioPrimingFrames
 		? audioFrames - config_.audioPrimingFrames : 0U;
 	const oa::U32 audioDurationTicks = config_.audioSampleRate == 0U ? 0U
-		: static_cast<oa::U32>(std::min<oa::U64>(
+		: static_cast<oa::U32>(oa::min<oa::U64>(
 			(audibleAudioFrames * timescale + config_.audioSampleRate / 2U)
 				/ config_.audioSampleRate,
 			0xFFFFFFFFULL));
-	const oa::U32 movieDurationTicks = std::max(videoDurationTicks, audioDurationTicks);
+	const oa::U32 movieDurationTicks = oa::max(videoDurationTicks, audioDurationTicks);
 
 	// MovieHeaderBox version 0 is exactly 108 bytes. The previous 28-byte
 	// array was written through offset 96 and corrupted the stack.
@@ -662,7 +662,7 @@ void oa::VideoMuxer::writeMoovBox()
 	writeU32BE(mvhd + 104, audioPacketSizes_.empty() ? 2U : 3U); // next_track_ID
 	
 	moovData.resize(moovData.size() + kMvhdSize);
-	std::memcpy(moovData.data() + moovData.size() - kMvhdSize, mvhd, kMvhdSize);
+	oa::memcpy(moovData.data() + moovData.size() - kMvhdSize, mvhd, kMvhdSize);
 	
 	// Build the video track; an optional audio track is appended below.
 	
@@ -699,7 +699,7 @@ void oa::VideoMuxer::writeMoovBox()
 	// moov → trak → mdia recursion actually reaches the sample table.
 	oa::Vec<oa::U8> trakData;
 	trakData.resize(trakData.size() + 92);
-	std::memcpy(trakData.data() + trakData.size() - 92, tkhd, 92);
+	oa::memcpy(trakData.data() + trakData.size() - 92, tkhd, 92);
 
 	// Write mdia with mdhd, hdlr, minf and stbl.
 	oa::Vec<oa::U8> mdiaData;
@@ -717,7 +717,7 @@ void oa::VideoMuxer::writeMoovBox()
 	writeU16BE(mdhd + 30, 0);               // pre_defined
 	
 	mdiaData.resize(mdiaData.size() + kMdhdSize);
-	std::memcpy(mdiaData.data() + mdiaData.size() - kMdhdSize, mdhd, kMdhdSize);
+	oa::memcpy(mdiaData.data() + mdiaData.size() - kMdhdSize, mdhd, kMdhdSize);
 	
 	// hdlr (HandlerBox §8.4.3): 8 header + 4 version_flags + 4 pre_defined
 	//   + 4 handler_type + 12 reserved + Pascal-style name string.
@@ -733,11 +733,11 @@ void oa::VideoMuxer::writeMoovBox()
 	writeU32BE(hdlr + 20, 0);                  // reserved[0]
 	writeU32BE(hdlr + 24, 0);                  // reserved[1]
 	writeU32BE(hdlr + 28, 0);                  // reserved[2]
-	std::memcpy(hdlr + 32, kHandlerName, kHandlerNameLen);
+	oa::memcpy(hdlr + 32, kHandlerName, kHandlerNameLen);
 	hdlr[32 + kHandlerNameLen] = 0;            // null terminator
 
 	mdiaData.resize(mdiaData.size() + kHdlrSize);
-	std::memcpy(mdiaData.data() + mdiaData.size() - kHdlrSize, hdlr, kHdlrSize);
+	oa::memcpy(mdiaData.data() + mdiaData.size() - kHdlrSize, hdlr, kHdlrSize);
 	
 	// Write minf box with vmhd and stbl
 	oa::Vec<oa::U8> minfData;
@@ -754,7 +754,7 @@ void oa::VideoMuxer::writeMoovBox()
 	writeU16BE(vmhd + 18, 0);                       // opcolor[2]
 
 	minfData.resize(minfData.size() + kVmhdSize);
-	std::memcpy(minfData.data() + minfData.size() - kVmhdSize, vmhd, kVmhdSize);
+	oa::memcpy(minfData.data() + minfData.size() - kVmhdSize, vmhd, kVmhdSize);
 	
 	// Write stbl box with sample table boxes
 	oa::Vec<oa::U8> stblData;
@@ -794,11 +794,11 @@ void oa::VideoMuxer::writeMoovBox()
 		avcCData[12] = 0xFF;    // lengthSizeMinusOne = 3 + reserved bits
 		avcCData[13] = 0xE1;    // numOfSPS = 1 + reserved bits
 		writeU16BE(avcCData.data() + 14, static_cast<oa::U16>(sps_.size()));
-		std::memcpy(avcCData.data() + 16, sps_.data(), sps_.size());
+		oa::memcpy(avcCData.data() + 16, sps_.data(), sps_.size());
 		const oa::U32 ppsOffset = 16U + static_cast<oa::U32>(sps_.size());
 		avcCData[ppsOffset] = 1;  // numOfPPS
 		writeU16BE(avcCData.data() + ppsOffset + 1, static_cast<oa::U16>(pps_.size()));
-		std::memcpy(avcCData.data() + ppsOffset + 3, pps_.data(), pps_.size());
+		oa::memcpy(avcCData.data() + ppsOffset + 3, pps_.data(), pps_.size());
 	}
 	oa::Vec<oa::U8> codecConfig = config_.codec == oa::VideoCodec::H264
 		? oa::move(avcCData) : buildHvcc(vps_, sps_, pps_);
@@ -852,11 +852,11 @@ void oa::VideoMuxer::writeMoovBox()
 
 	// append codec config inside the visual sample entry.
 	if (!codecConfig.empty()) {
-		std::memcpy(sampleEntry + 86, codecConfig.data(), codecConfig.size());
+		oa::memcpy(sampleEntry + 86, codecConfig.data(), codecConfig.size());
 	}
 	
 	stblData.resize(stblData.size() + stsdSize);
-	std::memcpy(stblData.data() + stblData.size() - stsdSize, stsdData.data(), stsdSize);
+	oa::memcpy(stblData.data() + stblData.size() - stsdSize, stsdData.data(), stsdSize);
 	
 	// stts: run-length encode actual capture timestamp deltas. This supports
 	// variable-rate PipeWire input while remaining compact for fixed-rate video.
@@ -870,7 +870,7 @@ void oa::VideoMuxer::writeMoovBox()
 		const oa::U32 sttsSize = 16U + static_cast<oa::U32>(runs.size()) * 8U;
 		oa::Vec<oa::U8> stts;
 		stts.resize(sttsSize);
-		std::memset(stts.data(), 0, stts.size());
+		oa::memset(stts.data(), 0, stts.size());
 		writeBoxHeader(stts.data(), sttsSize, 0x73747473);
 		writeU32BE(stts.data() + 8, 0);
 		writeU32BE(stts.data() + 12, static_cast<oa::U32>(runs.size()));
@@ -879,7 +879,7 @@ void oa::VideoMuxer::writeMoovBox()
 			writeU32BE(stts.data() + 20U + i * 8U, runs[i].delta);
 		}
 		stblData.resize(stblData.size() + stts.size());
-		std::memcpy(stblData.data() + stblData.size() - stts.size(), stts.data(), stts.size());
+		oa::memcpy(stblData.data() + stblData.size() - stts.size(), stts.data(), stts.size());
 	}
 
 	// stsc (SampleToChunkBox §8.7.4): 8 header + 4 vf + 4 entry_count +
@@ -894,7 +894,7 @@ void oa::VideoMuxer::writeMoovBox()
 		writeU32BE(stsc + 20, 1);                     // samples_per_chunk
 		writeU32BE(stsc + 24, 1);                     // sample_description_index
 		stblData.resize(stblData.size() + kStscSize);
-		std::memcpy(stblData.data() + stblData.size() - kStscSize, stsc, kStscSize);
+		oa::memcpy(stblData.data() + stblData.size() - kStscSize, stsc, kStscSize);
 	}
 
 	// stsz (SampleSizeBox §8.7.3.2): 8 header + 4 vf + 4 sample_size
@@ -912,13 +912,13 @@ void oa::VideoMuxer::writeMoovBox()
 			writeU32BE(stsz.data() + 20 + i * 4, packetSizes_[i]);
 		}
 		stblData.resize(stblData.size() + stszSize);
-		std::memcpy(stblData.data() + stblData.size() - stszSize, stsz.data(), stszSize);
+		oa::memcpy(stblData.data() + stblData.size() - stszSize, stsz.data(), stszSize);
 	}
 
 	// stco/co64: use 64-bit chunk offsets automatically once a streamed file
 	// crosses the 4 GiB boundary.
 	{
-		const bool largeOffsets = std::any_of(packetOffsets_.begin(), packetOffsets_.end(),
+		const bool largeOffsets = oa::anyOf(packetOffsets_.begin(), packetOffsets_.end(),
 			[](oa::U64 inOffset) { return inOffset > 0xFFFFFFFFULL; });
 		const oa::U32 stride = largeOffsets ? 8U : 4U;
 		const oa::U32 offsetSize = 16U + stride * packetCount_;
@@ -960,7 +960,7 @@ void oa::VideoMuxer::writeMoovBox()
 		}
 		
 		stblData.resize(stblData.size() + stssSize);
-		std::memcpy(stblData.data() + stblData.size() - stssSize, stss.data(), stssSize);
+		oa::memcpy(stblData.data() + stblData.size() - stssSize, stss.data(), stssSize);
 	}
 	
 	// Write stbl box header
@@ -970,11 +970,11 @@ void oa::VideoMuxer::writeMoovBox()
 	
 	oa::Vec<oa::U8> finalStbl;
 	finalStbl.resize(stblData.size() + 8);
-	std::memcpy(finalStbl.data(), stblHeader, 8);
-	std::memcpy(finalStbl.data() + 8, stblData.data(), stblData.size());
+	oa::memcpy(finalStbl.data(), stblHeader, 8);
+	oa::memcpy(finalStbl.data() + 8, stblData.data(), stblData.size());
 	
 	minfData.resize(minfData.size() + finalStbl.size());
-	std::memcpy(minfData.data() + minfData.size() - finalStbl.size(), finalStbl.data(), finalStbl.size());
+	oa::memcpy(minfData.data() + minfData.size() - finalStbl.size(), finalStbl.data(), finalStbl.size());
 	
 	// Write minf box header
 	oa::U32 minfSize = static_cast<oa::U32>(minfData.size() + 8);
@@ -983,11 +983,11 @@ void oa::VideoMuxer::writeMoovBox()
 	
 	oa::Vec<oa::U8> finalMinf;
 	finalMinf.resize(minfData.size() + 8);
-	std::memcpy(finalMinf.data(), minfHeader, 8);
-	std::memcpy(finalMinf.data() + 8, minfData.data(), minfData.size());
+	oa::memcpy(finalMinf.data(), minfHeader, 8);
+	oa::memcpy(finalMinf.data() + 8, minfData.data(), minfData.size());
 	
 	mdiaData.resize(mdiaData.size() + finalMinf.size());
-	std::memcpy(mdiaData.data() + mdiaData.size() - finalMinf.size(), finalMinf.data(), finalMinf.size());
+	oa::memcpy(mdiaData.data() + mdiaData.size() - finalMinf.size(), finalMinf.data(), finalMinf.size());
 	
 	// Write mdia box header
 	oa::U32 mdiaSize = static_cast<oa::U32>(mdiaData.size() + 8);
@@ -996,15 +996,15 @@ void oa::VideoMuxer::writeMoovBox()
 	
 	oa::Vec<oa::U8> finalMdia;
 	finalMdia.resize(mdiaData.size() + 8);
-	std::memcpy(finalMdia.data(), mdiaHeader, 8);
-	std::memcpy(finalMdia.data() + 8, mdiaData.data(), mdiaData.size());
+	oa::memcpy(finalMdia.data(), mdiaHeader, 8);
+	oa::memcpy(finalMdia.data() + 8, mdiaData.data(), mdiaData.size());
 
 	// append mdia into the trak payload (after tkhd) and wrap with a trak
 	// box header before appending to moov. ParseTrakBox in the demuxer
 	// recurses moov → trak → mdia → minf → stbl, so the trak wrap is
 	// essential — without it width / height / sample table stay empty.
 	trakData.resize(trakData.size() + finalMdia.size());
-	std::memcpy(trakData.data() + trakData.size() - finalMdia.size(),
+	oa::memcpy(trakData.data() + trakData.size() - finalMdia.size(),
 		finalMdia.data(), finalMdia.size());
 
 	oa::U32 trakSize = static_cast<oa::U32>(trakData.size() + 8);
@@ -1012,11 +1012,11 @@ void oa::VideoMuxer::writeMoovBox()
 	writeBoxHeader(trakHeader, trakSize, 0x7472616bU);  // 'trak'
 	oa::Vec<oa::U8> finalTrak;
 	finalTrak.resize(trakData.size() + 8);
-	std::memcpy(finalTrak.data(), trakHeader, 8);
-	std::memcpy(finalTrak.data() + 8, trakData.data(), trakData.size());
+	oa::memcpy(finalTrak.data(), trakHeader, 8);
+	oa::memcpy(finalTrak.data() + 8, trakData.data(), trakData.size());
 
 	moovData.resize(moovData.size() + finalTrak.size());
-	std::memcpy(moovData.data() + moovData.size() - finalTrak.size(),
+	oa::memcpy(moovData.data() + moovData.size() - finalTrak.size(),
 		finalTrak.data(), finalTrak.size());
 
 	if (!audioPacketSizes_.empty()) {
@@ -1033,16 +1033,16 @@ void oa::VideoMuxer::writeMoovBox()
 	// Prepend moov header to moov data
 	oa::Vec<oa::U8> finalMoov;
 	finalMoov.resize(moovData.size() + 8);
-	std::memcpy(finalMoov.data(), moovHeader, 8);
-	std::memcpy(finalMoov.data() + 8, moovData.data(), moovData.size());
+	oa::memcpy(finalMoov.data(), moovHeader, 8);
+	oa::memcpy(finalMoov.data() + 8, moovData.data(), moovData.size());
 	
 	// Prepend moov to mdat data
 	oa::Vec<oa::U8> finalData;
 	finalData.resize(mdatData_.size() + finalMoov.size());
-	std::memcpy(finalData.data(), finalMoov.data(), finalMoov.size());
+	oa::memcpy(finalData.data(), finalMoov.data(), finalMoov.size());
 	if (not mdatData_.empty()) {
-		std::memcpy(finalData.data() + finalMoov.size(),
+		oa::memcpy(finalData.data() + finalMoov.size(),
 			mdatData_.data(), mdatData_.size());
 	}
-	mdatData_ = std::move(finalData);
+	mdatData_ = oa::move(finalData);
 }

@@ -1,22 +1,23 @@
 // OA determinism Mode — Runtime control for numeric behavior
 
 #include <oa/core/determinism.h>
-#include <cstdlib>
-#include <cstring>
+#include <oa/core/std/stringView.h>
+
+#include <stdlib.h>
 
 static oa::DeterminismMode gDeterminismMode = oa::DeterminismMode::Stable;
 static bool gModeSet = false;
 
 oa::DeterminismMode oa::getDeterminismMode() {
 	if (!gModeSet) {
-		const char* env = std::getenv("OA_DETERMINISM_MODE");
+		const char* env = ::getenv("OA_DETERMINISM_MODE");
 		if (env) {
-			std::string s(env);
-			if (s == "Fast" || s == "fast" || s == "0") {
+			const oa::StringView mode(env);
+			if (mode == "Fast" || mode == "fast" || mode == "0") {
 				gDeterminismMode = oa::DeterminismMode::Fast;
-			} else if (s == "Stable" || s == "stable" || s == "1") {
+			} else if (mode == "Stable" || mode == "stable" || mode == "1") {
 				gDeterminismMode = oa::DeterminismMode::Stable;
-			} else if (s == "Deterministic" || s == "deterministic" || s == "2") {
+			} else if (mode == "Deterministic" || mode == "deterministic" || mode == "2") {
 				gDeterminismMode = oa::DeterminismMode::Deterministic;
 			}
 		}

@@ -5,8 +5,6 @@
 
 #pragma once
 
-#include <cstring>
-
 #include <oa/core.h>
 
 namespace oa {
@@ -25,7 +23,7 @@ public:
 			return oa::Status::invalidArgument("oa::Hash requires exactly 32 bytes");
 		}
 		Hash hash;
-		std::memcpy(hash.bytes.data(), inBytes.data(), hash.bytes.size());
+		oa::memcpy(hash.bytes.data(), inBytes.data(), hash.bytes.size());
 		return hash;
 	}
 
@@ -94,7 +92,7 @@ public:
 	[[nodiscard]] static constexpr oa::Usize size() { return 32; }
 };
 
-// std::unordered_map/set hasher
+// Hash-map/set hasher.
 class HashHasher {
 public:
 	[[nodiscard]] oa::Usize operator()(const Hash& inHash) const {

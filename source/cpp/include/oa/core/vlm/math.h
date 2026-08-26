@@ -2,10 +2,11 @@
 
 #include <oa/core/vlm/matrix.h>
 
-#include <algorithm>
-#include <cmath>
-#include <limits>
-#include <type_traits>
+#include <oa/core/std/algo.h>
+#include <oa/core/std/limits.h>
+#include <oa/core/std/scalarMath.h>
+#include <oa/core/std/typeTraits.h>
+#include <oa/core/std/utility.h>
 
 namespace oa {
 
@@ -15,10 +16,10 @@ template <typename T>
 inline constexpr T Pi = T(3.141592653589793238462643383279502884L);
 
 template <typename T>
-inline constexpr T Tolerance = std::is_same_v<T, F32> ? T(1.0e-5F) : T(1.0e-12);
+inline constexpr T Tolerance = oa::IsSameV<T, F32> ? T(1.0e-5F) : T(1.0e-12);
 
 template <typename T>
-inline constexpr T InverseTolerance = std::numeric_limits<T>::epsilon() * T(32);
+inline constexpr T InverseTolerance = oa::Limits<T>::epsilon() * T(32);
 
 template <typename T>
 [[nodiscard]] constexpr T radians(T inDegrees) noexcept {
@@ -167,7 +168,7 @@ template <typename T>
 	const detail::Vec2<T>& inA,
 	const detail::Vec2<T>& inB
 ) noexcept {
-	return std::sqrt(distanceSquared(inA, inB));
+	return oa::sqrt(distanceSquared(inA, inB));
 }
 
 template <typename T>
@@ -175,7 +176,7 @@ template <typename T>
 	const detail::Vec3<T>& inA,
 	const detail::Vec3<T>& inB
 ) noexcept {
-	return std::sqrt(distanceSquared(inA, inB));
+	return oa::sqrt(distanceSquared(inA, inB));
 }
 
 template <typename T>
@@ -183,7 +184,7 @@ template <typename T>
 	const detail::Vec4<T>& inA,
 	const detail::Vec4<T>& inB
 ) noexcept {
-	return std::sqrt(distanceSquared(inA, inB));
+	return oa::sqrt(distanceSquared(inA, inB));
 }
 
 template <typename T>
@@ -206,7 +207,7 @@ template <typename T>
 	if (discriminant < T(0)) return {};
 	return sub(
 		scale(inIncident, inEta),
-		scale(inNormal, inEta * normalDotIncident + std::sqrt(discriminant)));
+		scale(inNormal, inEta * normalDotIncident + oa::sqrt(discriminant)));
 }
 
 template <typename T>
@@ -286,12 +287,12 @@ template <typename T>
 
 template <typename T>
 [[nodiscard]] constexpr T componentMin(const detail::Vec3<T>& inValue) noexcept {
-	return std::min(inValue.x, std::min(inValue.y, inValue.z));
+	return oa::min(inValue.x, oa::min(inValue.y, inValue.z));
 }
 
 template <typename T>
 [[nodiscard]] constexpr T componentMax(const detail::Vec3<T>& inValue) noexcept {
-	return std::max(inValue.x, std::max(inValue.y, inValue.z));
+	return oa::max(inValue.x, oa::max(inValue.y, inValue.z));
 }
 
 template <typename T>
@@ -390,12 +391,12 @@ template <typename T>
 	const T yaw = radians(inYawDeg);
 	const T pitch = radians(inPitchDeg);
 	const T roll = radians(inRollDeg);
-	const T cy = std::cos(yaw * T(0.5));
-	const T sy = std::sin(yaw * T(0.5));
-	const T cp = std::cos(pitch * T(0.5));
-	const T sp = std::sin(pitch * T(0.5));
-	const T cr = std::cos(roll * T(0.5));
-	const T sr = std::sin(roll * T(0.5));
+	const T cy = oa::cos(yaw * T(0.5));
+	const T sy = oa::sin(yaw * T(0.5));
+	const T cp = oa::cos(pitch * T(0.5));
+	const T sp = oa::sin(pitch * T(0.5));
+	const T cr = oa::cos(roll * T(0.5));
+	const T sr = oa::sin(roll * T(0.5));
 	return {
 		(cy * cp) * sr - (sy * sp) * cr,
 		(sy * cp) * sr + (cy * sp) * cr,
@@ -408,14 +409,14 @@ template <typename T>
 [[nodiscard]] detail::Vec3<T> quaternionToEuler(const detail::Quat<T>& inQuaternion) noexcept {
 	const T sinRollCosPitch = T(2) * (inQuaternion.w * inQuaternion.x	+ inQuaternion.y * inQuaternion.z);
 	const T cosRollCosPitch = T(1) - T(2) * (inQuaternion.x * inQuaternion.x + inQuaternion.y * inQuaternion.y);
-	const T roll = std::atan2(sinRollCosPitch, cosRollCosPitch);
+	const T roll = oa::atan2(sinRollCosPitch, cosRollCosPitch);
 	const T sinPitch = T(2) * (inQuaternion.w * inQuaternion.y - inQuaternion.z * inQuaternion.x);
-	const T pitch = std::abs(sinPitch) >= T(1)
-		? std::copysign(Pi<T> / T(2), sinPitch)
-		: std::asin(sinPitch);
+	const T pitch = oa::abs(sinPitch) >= T(1)
+		? oa::copySign(Pi<T> / T(2), sinPitch)
+		: oa::asin(sinPitch);
 	const T sinYawCosPitch = T(2) * (inQuaternion.w * inQuaternion.z + inQuaternion.x * inQuaternion.y);
 	const T cosYawCosPitch = T(1) - T(2) * (inQuaternion.y * inQuaternion.y	+ inQuaternion.z * inQuaternion.z);
-	const T yaw = std::atan2(sinYawCosPitch, cosYawCosPitch);
+	const T yaw = oa::atan2(sinYawCosPitch, cosYawCosPitch);
 	return {degrees(yaw), degrees(pitch), degrees(roll)};
 }
 
@@ -435,7 +436,7 @@ template <typename T>
 	T inTolerance = InverseTolerance<T>
 ) noexcept {
 	const T normSquared = inQuaternion.normSquared();
-	if (not std::isfinite(normSquared) or normSquared <= inTolerance) {
+	if (not oa::isFinite(normSquared) or normSquared <= inTolerance) {
 		return false;
 	}
 	outInverse = inQuaternion.conjugate() / normSquared;
@@ -467,12 +468,12 @@ template <typename T>
 		b = -b;
 		cosine = -cosine;
 	}
-	cosine = std::clamp(cosine, T(-1), T(1));
+	cosine = oa::clamp(cosine, T(-1), T(1));
 	if (cosine > T(1) - Tolerance<T>) return nlerp(a, b, inT);
-	const T angle = std::acos(cosine);
-	const T sine = std::sin(angle);
-	const T weightA = std::sin((T(1) - inT) * angle) / sine;
-	const T weightB = std::sin(inT * angle) / sine;
+	const T angle = oa::acos(cosine);
+	const T sine = oa::sin(angle);
+	const T weightA = oa::sin((T(1) - inT) * angle) / sine;
+	const T weightB = oa::sin(inT * angle) / sine;
 	return (a * weightA + b * weightB).normalized();
 }
 
@@ -516,25 +517,25 @@ template <typename T>
 	const T trace = m00 + m11 + m22;
 	detail::Quat<T> result;
 	if (trace > T(0)) {
-		const T scale = std::sqrt(trace + T(1)) * T(2);
+		const T scale = oa::sqrt(trace + T(1)) * T(2);
 		result.w = T(0.25) * scale;
 		result.x = (at(2, 1) - at(1, 2)) / scale;
 		result.y = (at(0, 2) - at(2, 0)) / scale;
 		result.z = (at(1, 0) - at(0, 1)) / scale;
 	} else if (m00 > m11 and m00 > m22) {
-		const T scale = std::sqrt(T(1) + m00 - m11 - m22) * T(2);
+		const T scale = oa::sqrt(T(1) + m00 - m11 - m22) * T(2);
 		result.w = (at(2, 1) - at(1, 2)) / scale;
 		result.x = T(0.25) * scale;
 		result.y = (at(0, 1) + at(1, 0)) / scale;
 		result.z = (at(0, 2) + at(2, 0)) / scale;
 	} else if (m11 > m22) {
-		const T scale = std::sqrt(T(1) + m11 - m00 - m22) * T(2);
+		const T scale = oa::sqrt(T(1) + m11 - m00 - m22) * T(2);
 		result.w = (at(0, 2) - at(2, 0)) / scale;
 		result.x = (at(0, 1) + at(1, 0)) / scale;
 		result.y = T(0.25) * scale;
 		result.z = (at(1, 2) + at(2, 1)) / scale;
 	} else {
-		const T scale = std::sqrt(T(1) + m22 - m00 - m11) * T(2);
+		const T scale = oa::sqrt(T(1) + m22 - m00 - m11) * T(2);
 		result.w = (at(1, 0) - at(0, 1)) / scale;
 		result.x = (at(0, 2) + at(2, 0)) / scale;
 		result.y = (at(1, 2) + at(2, 1)) / scale;
@@ -573,21 +574,21 @@ template <typename T>
 	I32 sign = 1;
 	for (I32 pivotColumn = 0; pivotColumn < 4; ++pivotColumn) {
 		I32 pivotRow = pivotColumn;
-		T pivotMagnitude = std::abs(reduced.m[pivotRow][pivotColumn]);
+		T pivotMagnitude = oa::abs(reduced.m[pivotRow][pivotColumn]);
 		for (I32 row = pivotColumn + 1; row < 4; ++row) {
-			const T magnitude = std::abs(reduced.m[row][pivotColumn]);
+			const T magnitude = oa::abs(reduced.m[row][pivotColumn]);
 			if (magnitude > pivotMagnitude) {
 				pivotMagnitude = magnitude;
 				pivotRow = row;
 			}
 		}
-		if (not std::isfinite(pivotMagnitude)) {
-			return std::numeric_limits<T>::quiet_NaN();
+		if (not oa::isFinite(pivotMagnitude)) {
+			return oa::Limits<T>::quietNaN();
 		}
 		if (pivotMagnitude == T(0)) return T(0);
 		if (pivotRow != pivotColumn) {
 			for (I32 column = 0; column < 4; ++column) {
-				std::swap(reduced.m[pivotRow][column], reduced.m[pivotColumn][column]);
+				oa::swapValues(reduced.m[pivotRow][column], reduced.m[pivotColumn][column]);
 			}
 			sign = -sign;
 		}
@@ -613,25 +614,25 @@ template <typename T>
 	for (I32 row = 0; row < 4; ++row) {
 		for (I32 column = 0; column < 4; ++column) {
 			const T value = inMatrix.m[row][column];
-			if (not std::isfinite(value)) return false;
+			if (not oa::isFinite(value)) return false;
 			augmented[row][column] = value;
 		}
 		augmented[row][row + 4] = T(1);
 	}
 	for (I32 pivotColumn = 0; pivotColumn < 4; ++pivotColumn) {
 		I32 pivotRow = pivotColumn;
-		T pivotMagnitude = std::abs(augmented[pivotRow][pivotColumn]);
+		T pivotMagnitude = oa::abs(augmented[pivotRow][pivotColumn]);
 		for (I32 row = pivotColumn + 1; row < 4; ++row) {
-			const T magnitude = std::abs(augmented[row][pivotColumn]);
+			const T magnitude = oa::abs(augmented[row][pivotColumn]);
 			if (magnitude > pivotMagnitude) {
 				pivotMagnitude = magnitude;
 				pivotRow = row;
 			}
 		}
-		if (not std::isfinite(pivotMagnitude) or pivotMagnitude <= inTolerance) return false;
+		if (not oa::isFinite(pivotMagnitude) or pivotMagnitude <= inTolerance) return false;
 		if (pivotRow != pivotColumn) {
 			for (I32 column = 0; column < 8; ++column) {
-				std::swap(augmented[pivotRow][column], augmented[pivotColumn][column]);
+				oa::swapValues(augmented[pivotRow][column], augmented[pivotColumn][column]);
 			}
 		}
 		const T inversePivot = T(1) / augmented[pivotColumn][pivotColumn];
@@ -650,7 +651,7 @@ template <typename T>
 	for (I32 row = 0; row < 4; ++row) {
 		for (I32 column = 0; column < 4; ++column) {
 			inverse.m[row][column] = augmented[row][column + 4];
-			if (not std::isfinite(inverse.m[row][column])) return false;
+			if (not oa::isFinite(inverse.m[row][column])) return false;
 		}
 	}
 	outInverse = inverse;
@@ -686,7 +687,7 @@ template <typename T>
 ) noexcept {
 	const detail::Vec4<T> homogeneous = transform(
 		{inPoint.x, inPoint.y, inPoint.z, T(1)}, inMatrix);
-	if (not homogeneous.isFinite() or std::abs(homogeneous.w) <= inTolerance) return false;
+	if (not homogeneous.isFinite() or oa::abs(homogeneous.w) <= inTolerance) return false;
 	const detail::Vec3<T> projected{
 		homogeneous.x / homogeneous.w,
 		homogeneous.y / homogeneous.w,
@@ -708,7 +709,7 @@ template <typename T>
 	if (not tryInverse(inMatrix, inverse, inTolerance)) return false;
 	const detail::Vec3<T> transformed = transformDirection(inNormal, transpose(inverse));
 	const T transformedLength = length(transformed);
-	if (not std::isfinite(transformedLength) or transformedLength <= inTolerance) return false;
+	if (not oa::isFinite(transformedLength) or transformedLength <= inTolerance) return false;
 	outNormal = transformed / transformedLength;
 	return true;
 }
@@ -720,7 +721,7 @@ template <typename T>
 	T inNear,
 	T inFar
 ) noexcept {
-	const T tangent = std::tan(radians(inFovYDeg) / T(2));
+	const T tangent = oa::tan(radians(inFovYDeg) / T(2));
 	detail::Mat4<T> result{};
 	result.m[0][0] = T(1) / (inAspect * tangent);
 	result.m[1][1] = T(1) / tangent;
@@ -808,10 +809,10 @@ template <typename T>
 	T inPitchRad,
 	T inRadius
 ) noexcept {
-	const T cosineYaw = std::cos(inYawRad);
-	const T sineYaw = std::sin(inYawRad);
-	const T cosinePitch = std::cos(inPitchRad);
-	const T sinePitch = std::sin(inPitchRad);
+	const T cosineYaw = oa::cos(inYawRad);
+	const T sineYaw = oa::sin(inYawRad);
+	const T cosinePitch = oa::cos(inPitchRad);
+	const T sinePitch = oa::sin(inPitchRad);
 	return {
 		(inRadius * sineYaw) * cosinePitch,
 		inRadius * sinePitch,
@@ -826,8 +827,8 @@ template <typename T>
 		return {};
 	}
 	return {
-		std::atan2(inValue.x, inValue.z),
-		std::asin(inValue.y / radius),
+		oa::atan2(inValue.x, inValue.z),
+		oa::asin(inValue.y / radius),
 		radius,
 	};
 }

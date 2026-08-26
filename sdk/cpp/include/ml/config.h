@@ -12,8 +12,6 @@
 
 #include <limits>
 
-#include <fmt/format.h>
-
 #include <oa/core/cli.h>
 #include <oa/core/time.h>
 #include <oa/ml/config.h>
@@ -281,22 +279,7 @@ public:
 
 	// Override parse to support base.yaml + Model config merge
 	bool parse(int inArgc, char** inArgv) {
-		// Extract --config path first (same as base class)
-		for (int i = 1; i < inArgc; ++i) {
-			oa::String arg(inArgv[i]);
-			if ((arg == "--config" || arg == "-c") && i + 1 < inArgc) {
-				configPath_ = inArgv[i + 1];
-				break;
-			}
-			if (arg.substr(0, 9) == "--config=") {
-				configPath_ = arg.substr(9);
-				break;
-			}
-			if (arg.substr(0, 3) == "-c=") {
-				configPath_ = arg.substr(3);
-				break;
-			}
-		}
+		scanConfigPath(inArgc, inArgv);
 
 		// step 3a: load base.yaml first (shared defaults)
 		oa::Yaml::Node baseYaml;
@@ -316,22 +299,17 @@ public:
 				oa::Yaml::Node modelYaml = oa::Yaml::loadFile(configPath_);
 				loadYaml(modelYaml);
 			} catch (const oa::Yaml::Exception& e) {
-				fmt::print(stderr, "[OA CONFIG] YAML load failed: {} (using defaults)\n", e.what());
+				::fprintf(stderr, "[OA CONFIG] YAML load failed: %s (using defaults)\n", e.what());
 				if (!hasBase) {
 					return false;  // No base and no model config
 				}
 			}
 		}
 
-		// step 4: CLI11 parse -> only modifies cfg_ fields where user explicitly provided CLI args
-		try {
-			app_.parse(inArgc, inArgv);
-			applyCliOverrides();
-			return true;
-		} catch (const CLI::ParseError& e) {
-			app_.exit(e);
-			return false;
-		}
+		// Explicit command-line values have final precedence.
+		if (not parseArguments(inArgc, inArgv)) return false;
+		applyCliOverrides();
+		return true;
 	}
 
 protected:
@@ -359,7 +337,10 @@ protected:
 				cbs.metrics = true;
 				cbs.metricNames.clear();
 				for (const auto& item : m) {
-					try { cbs.metricNames.pushBack(oa::String(item.as<std::string>())); } catch (...) {}
+					try {
+						const std::string value = item.as<std::string>();
+						cbs.metricNames.pushBack(oa::String(value.data(), value.size()));
+					} catch (...) {}
 				}
 			} else {
 				cbs.metrics = parseCallbackToggle(m, cbs.metrics);

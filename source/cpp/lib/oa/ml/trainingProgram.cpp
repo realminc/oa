@@ -1,4 +1,5 @@
 #include <oa/ml/trainingProgram.h>
+#include <oa/core/jsonWriter.h>
 
 #include <oa/core/fnMatrix.h>
 #include <oa/core/matrixAccess.h>
@@ -8,10 +9,6 @@
 #include <oa/runtime/engine/resourceAccess.h>
 #include <oa/runtime/executionSession.h>
 #include <oa/runtime/executionPlan.h>
-
-#include <cstring>
-#include <iomanip>
-#include <sstream>
 
 namespace {
 
@@ -75,30 +72,8 @@ const char* memoryPlacementName(oa::MemoryPlacement inPlacement) {
 	return "unknown";
 }
 
-void writeJsonString(std::ostringstream& out, oa::StringView inValue) {
-	out << '"';
-	for (const char value : inValue) {
-		switch (value) {
-			case '"': out << "\\\""; break;
-			case '\\': out << "\\\\"; break;
-			case '\b': out << "\\b"; break;
-			case '\f': out << "\\f"; break;
-			case '\n': out << "\\n"; break;
-			case '\r': out << "\\r"; break;
-			case '\t': out << "\\t"; break;
-			default:
-				if (static_cast<unsigned char>(value) < 0x20U) {
-					out << "\\u" << std::hex << std::setw(4)
-						<< std::setfill('0')
-						<< static_cast<unsigned>(
-							static_cast<unsigned char>(value))
-						<< std::dec << std::setfill(' ');
-				} else {
-					out << value;
-				}
-		}
-	}
-	out << '"';
+void writeJsonString(oa::internal::JsonWriter& out, oa::StringView inValue) {
+	out.writeString(inValue);
 }
 
 struct MemoryAnalysisSummary {
@@ -135,7 +110,7 @@ MemoryAnalysisSummary analyzeMemory(
 			}
 			if (overlaps) continue;
 			group.members.pushBack(&resource);
-			group.requiredBytes = std::max(group.requiredBytes, resource.byteSize);
+			group.requiredBytes = oa::max(group.requiredBytes, resource.byteSize);
 			group.totalBytes += resource.byteSize;
 			placed = true;
 			break;
@@ -146,7 +121,7 @@ MemoryAnalysisSummary analyzeMemory(
 			group.members.pushBack(&resource);
 			group.requiredBytes = resource.byteSize;
 			group.totalBytes = resource.byteSize;
-			groups.pushBack(std::move(group));
+			groups.pushBack(oa::move(group));
 		}
 	}
 	for (const auto& group : groups) {
@@ -241,7 +216,7 @@ oa::Status oa::TrainingProgram::prepareReplayRng_(oa::Engine& inRuntime) {
 		node.buffers.pushBack(oa::MatrixAccess::descriptor(state));
 		node.bufferOwners.pushBack(oa::MatrixAccess::storageOwner(state));
 		node.access.pushBack(oa::BufferAccess::Read);
-		rngStates_.pushBack(std::move(state));
+		rngStates_.pushBack(oa::move(state));
 	}
 
 	// advance every per-op counter after the complete step. Keeping this as a
@@ -387,9 +362,9 @@ oa::Status oa::TrainingProgram::capture(
 		if (owner.useCount() != explainedOwners) continue;
 
 		oa::Matrix matrix;
-		oa::MatrixAccess::storageOwner(matrix) = std::move(owner);
+		oa::MatrixAccess::storageOwner(matrix) = oa::move(owner);
 		oa::MatrixAccess::hostOwner(matrix).reset();
-		aliasMatrices.pushBack(std::move(matrix));
+		aliasMatrices.pushBack(oa::move(matrix));
 		aliasResourceIds.pushBack(resource.resource);
 		permittedOwners.pushBack(resource.captureRetainedOwnerCount);
 		originalHandles.pushBack(
@@ -416,7 +391,7 @@ oa::Status oa::TrainingProgram::capture(
 			retiredHandles.pushBack(originalHandles[index]);
 		}
 		capturedResourceOwners[resource] =
-			std::move(oa::MatrixAccess::storageOwner(matrix));
+			oa::move(oa::MatrixAccess::storageOwner(matrix));
 	}
 	const oa::U64 materializedAliasSavings = graph.materializedAliasSavings();
 	recordCompilationStage_(oa::TrainingCompilationStage::MemoryPlanning,
@@ -541,7 +516,7 @@ void oa::TrainingProgram::recordCompilationStage_(
 oa::String oa::TrainingProgram::compilationDebugReportJson(
 	oa::StringView inName) const
 {
-	std::ostringstream out;
+	oa::internal::JsonWriter out;
 	out << "{\n  \"schema\": \"oa.training_compilation.v2\",\n"
 		<< "  \"name\": ";
 	writeJsonString(out, inName);
@@ -633,5 +608,5 @@ oa::String oa::TrainingProgram::compilationDebugReportJson(
 	}
 	if (not capturedResources_.empty()) out << '\n';
 	out << "    ]\n  }\n}\n";
-	return oa::String(out.str());
+	return out.take();
 }

@@ -3,6 +3,36 @@
 #include <algorithm>
 #include <random>
 
+namespace {
+
+struct LifetimeValue {
+	static inline int alive = 0;
+	static inline int moved = 0;
+
+	int value = 0;
+
+	LifetimeValue() { ++alive; }
+	explicit LifetimeValue(int inValue) : value(inValue) { ++alive; }
+	LifetimeValue(const LifetimeValue& inOther) : value(inOther.value) { ++alive; }
+	LifetimeValue(LifetimeValue&& inOther) noexcept : value(inOther.value) {
+		++alive;
+		++moved;
+		inOther.value = -1;
+	}
+	LifetimeValue& operator=(const LifetimeValue&) = default;
+	LifetimeValue& operator=(LifetimeValue&&) = default;
+	~LifetimeValue() { --alive; }
+};
+
+struct IntegralConstructibleValue {
+	explicit IntegralConstructibleValue(unsigned int inValue = 0U)
+		: value(inValue) {}
+
+	unsigned int value = 0U;
+};
+
+} // namespace
+
 TEST(StdVec, PushPop) {
 	oa::Vec<int> v;
 	v.pushBack(1);
@@ -48,6 +78,12 @@ TEST(StdVec, PushPop) {
 		"std::vector::push_back+pop_back (120k)", t2);
 	stdExpectGotSize("stress tail size (same RNG)", szSt, szOa);
 	EXPECT_EQ(szOa, szSt);
+}
+
+TEST(StdVec, IntegralCountDoesNotBindElementPack) {
+	oa::Vec<IntegralConstructibleValue> values(4U);
+	ASSERT_EQ(values.size(), 4U);
+	for (const auto& value : values) EXPECT_EQ(value.value, 0U);
 }
 
 TEST(StdVecVsStd, ParallelPushSequenceIdentical) {
@@ -165,4 +201,78 @@ TEST(StdVecVsStd, TimedPushPopWallUs) {
 		"std::vector::push_back+pop_back (200k)", t2);
 	stdExpectGotSize("vec final size (same RNG)", szSt, szOa);
 	EXPECT_EQ(szOa, szSt);
+}
+
+TEST(StdVec, ReverseIteratorParity) {
+	oa::Vec<int> values{1, 2, 3, 4};
+	auto it = values.rbegin();
+	EXPECT_EQ(*it, 4);
+	EXPECT_EQ(it[1], 3);
+	EXPECT_EQ(*(it + 2), 2);
+	EXPECT_EQ(values.rend() - values.rbegin(), 4);
+	EXPECT_TRUE(values.rbegin() < values.rend());
+	++it;
+	EXPECT_EQ(*it, 3);
+	--it;
+	EXPECT_EQ(*it, 4);
+
+	const oa::Vec<int>& constValues = values;
+	oa::Vec<int>::const_reverse_iterator constIt = values.rbegin();
+	EXPECT_EQ(constIt, constValues.crbegin());
+	EXPECT_EQ(*constIt, 4);
+}
+
+TEST(StdVec, CheckedAccessUsesAlwaysOnContract) {
+	oa::Vec<int> values{7};
+	EXPECT_EQ(values.at(0), 7);
+	EXPECT_DEATH(static_cast<void>(values.at(1)), "OA contract failed: inidx < size\\(\\)");
+}
+
+TEST(StdVec, ReservedStorageTracksContiguousEndPointer) {
+	oa::Vec<int> values;
+	values.reserve(32);
+	ASSERT_NE(values.data(), nullptr);
+	EXPECT_EQ(values.begin(), values.end());
+	EXPECT_EQ(values.capacity(), 32U);
+
+	for (int value = 0; value < 32; ++value) {
+		values.pushBack(value);
+	}
+
+	EXPECT_EQ(values.size(), 32U);
+	EXPECT_EQ(values.end(), values.data() + 32);
+	EXPECT_EQ(values.back(), 31);
+}
+
+TEST(StdVec, EmptyIteratorsAreStableNullSentinels) {
+	oa::Vec<int> values;
+	EXPECT_EQ(values.begin(), nullptr);
+	EXPECT_EQ(values.end(), nullptr);
+	EXPECT_EQ(values.cbegin(), nullptr);
+	EXPECT_EQ(values.cend(), nullptr);
+
+	const auto inserted = values.insert(values.cbegin(), 9);
+	ASSERT_NE(inserted, nullptr);
+	EXPECT_EQ(*inserted, 9);
+	EXPECT_EQ(values.size(), 1U);
+}
+
+TEST(StdVec, NonTrivialGrowthOwnsEveryLifetimeOnce) {
+	LifetimeValue::alive = 0;
+	LifetimeValue::moved = 0;
+	{
+		oa::Vec<LifetimeValue> values;
+		for (int index = 0; index < 100; ++index) {
+			values.emplaceBack(index);
+		}
+		ASSERT_EQ(values.size(), 100U);
+		EXPECT_EQ(LifetimeValue::alive, 100);
+		EXPECT_GT(LifetimeValue::moved, 0);
+		for (int index = 0; index < 100; ++index) {
+			EXPECT_EQ(values[static_cast<oa::Usize>(index)].value, index);
+		}
+		values.resize(37);
+		EXPECT_EQ(LifetimeValue::alive, 37);
+	}
+	EXPECT_EQ(LifetimeValue::alive, 0);
 }

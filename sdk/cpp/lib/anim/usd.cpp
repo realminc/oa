@@ -1,5 +1,7 @@
 #include <anim/usd.h>
 
+#include <core/streamText.h>
+
 #include <cctype>
 #include <cstdlib>
 #include <set>
@@ -39,7 +41,7 @@ oa::String mat4Usd(const oa::vlm::Mat4& m) {
 		s << (r < 3 ? ", " : " ");
 	}
 	s << ")";
-	return oa::String(s.str());
+	return oa::sdk::fromStdString(s.str());
 }
 
 // Comma-separated quoted joint token list shared by Skeleton + SkelAnimation.
@@ -52,12 +54,12 @@ oa::String jointsToken(const oa::UsdSkelClip& inClip) {
 		const char* jointName = (j == 0 && path.empty()) ? "root" : path.cStr();
 		joints << (j ? ", " : "") << "\"" << jointName << "\"";
 	}
-	return oa::String(joints.str());
+	return oa::sdk::fromStdString(joints.str());
 }
 
 // USD prim names must be valid identifiers: [A-Za-z_][A-Za-z0-9_]*.
 oa::String sanitizePrimName(const oa::String& inName) {
-	std::string s = inName.stdStr();
+	std::string s = oa::sdk::toStdString(inName);
 	if (s.empty()) { return oa::String("Anim"); }
 	std::string out;
 	out.reserve(s.size());
@@ -65,7 +67,7 @@ oa::String sanitizePrimName(const oa::String& inName) {
 		out.push_back((std::isalnum(static_cast<unsigned char>(c)) || c == '_') ? c : '_');
 	}
 	if (std::isdigit(static_cast<unsigned char>(out[0]))) { out.insert(out.begin(), '_'); }
-	return oa::String(out);
+	return oa::sdk::fromStdString(out);
 }
 
 // Emit one `def SkelAnimation "<animName>" { ... }` prim at indent `ind`. When
@@ -160,13 +162,13 @@ oa::Status writeStage(const oa::Path& inPath, oa::Span<const oa::UsdNamedClip> i
 		for (oa::Usize i = 0; i < inClips.size(); ++i) {
 			oa::String base = inClips[i].name.empty() ? oa::String("Animation")
 			                                        : sanitizePrimName(inClips[i].name);
-			std::string cand = base.stdStr();
+			std::string cand = oa::sdk::toStdString(base);
 			oa::I32 suffix = 1;
 			while (used.count(cand) != 0) {
-				cand = base.stdStr() + "_" + std::to_string(suffix++);
+				cand = oa::sdk::toStdString(base) + "_" + std::to_string(suffix++);
 			}
 			used.insert(cand);
-			animNames.pushBack(oa::String(cand));
+			animNames.pushBack(oa::sdk::fromStdString(cand));
 		}
 	}
 
@@ -234,7 +236,7 @@ oa::Status writeStage(const oa::Path& inPath, oa::Span<const oa::UsdNamedClip> i
 	o << "    }\n";  // close Skeleton
 	o << "}\n";      // close SkelRoot
 
-	return oa::Filesystem::writeText(inPath, oa::String(o.str()));
+	return oa::Filesystem::writeText(inPath, oa::sdk::fromStdString(o.str()));
 }
 
 } // namespace
@@ -340,7 +342,7 @@ bool stringValueAfter(const std::string& t, const char* key, oa::String& out) {
 	if (q1 == npos) { return false; }
 	const oa::Usize q2 = t.find('"', q1 + 1);
 	if (q2 == npos) { return false; }
-	out = oa::String(t.substr(q1 + 1, q2 - q1 - 1));
+	out = oa::sdk::fromStdString(t.substr(q1 + 1, q2 - q1 - 1));
 	return true;
 }
 
@@ -423,7 +425,8 @@ oa::Status parseAnimClipFromText(const std::string& t, oa::F32 inFps, oa::I32 in
 				if (q == npos || q > e) {
 					break;
 				}
-				clip.jointPaths.pushBack(oa::String(t.substr(i + 1, q - i - 1)));
+				clip.jointPaths.pushBack(
+					oa::sdk::fromStdString(t.substr(i + 1, q - i - 1)));
 				i = q + 1;
 			} else {
 				++i;
@@ -533,7 +536,7 @@ oa::Result<oa::UsdSkelClip> oa::Usd::readUsda(const oa::Path& inPath) {
 	if (!textResult.isOk()) {
 		return textResult.getStatus();
 	}
-	const std::string text = textResult->stdStr();
+	const std::string text = oa::sdk::toStdString(*textResult);
 
 	oa::F32 fps = 30.0f;
 	oa::I32 upAxis = 2;
@@ -564,7 +567,7 @@ oa::Result<oa::Vec<oa::UsdNamedClip>> oa::Usd::readUsdaMulti(const oa::Path& inP
 	if (!textResult.isOk()) {
 		return textResult.getStatus();
 	}
-	const std::string text = textResult->stdStr();
+	const std::string text = oa::sdk::toStdString(*textResult);
 	const oa::Usize npos = std::string::npos;
 
 	oa::F32 fps = 30.0f;
@@ -584,7 +587,8 @@ oa::Result<oa::Vec<oa::UsdNamedClip>> oa::Usd::readUsdaMulti(const oa::Path& inP
 		const oa::Usize q1 = text.find('"', pos);
 		const oa::Usize q2 = (q1 == npos) ? npos : text.find('"', q1 + 1);
 		oa::String primName = (q1 != npos && q2 != npos)
-			? oa::String(text.substr(q1 + 1, q2 - q1 - 1)) : oa::String("Animation");
+			? oa::sdk::fromStdString(text.substr(q1 + 1, q2 - q1 - 1))
+			: oa::String("Animation");
 
 		// step past an optional metadata paren block `( ... )` (which itself contains
 		// `{ }` for customData) so the prim BODY brace is matched, not customData.

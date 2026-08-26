@@ -6,7 +6,7 @@
 #include <oa/ml/autograd.h>
 #include <oa/runtime/executionSession.h>
 
-#include <cmath>
+#include <oa/core/std/scalarMath.h>
 
 namespace {
 
@@ -27,8 +27,8 @@ oa::Matrix attachSemanticResult(
 	oa::Matrix inResult,
 	oa::OpLoweringScope& inLowering,
 	const oa::OpContract& inContract,
-	std::initializer_list<const oa::Matrix*> inInputs,
-	std::initializer_list<oa::OpAttribute> inAttributes) {
+	oa::MatrixArgs inInputs,
+	oa::OpAttributeArgs inAttributes) {
 	auto semantic = inLowering.commitWithId(
 		inContract, inInputs, {&inResult}, inAttributes);
 	if (not semantic.isOk()) return {};
@@ -51,8 +51,8 @@ oa::Matrix oa::FnEnvironment::normalizeObservation(
 	oa::F32 inEpsilon,
 	oa::F32 inClip) {
 	if (!isFp32(inObservation) || !isFp32(inMean) || !isFp32(inStddev)
-		|| !std::isfinite(inEpsilon) || inEpsilon <= 0.0F
-		|| !std::isfinite(inClip) || inClip <= 0.0F) {
+		|| !oa::isFinite(inEpsilon) || inEpsilon <= 0.0F
+		|| !oa::isFinite(inClip) || inClip <= 0.0F) {
 		OaLogError(oa::LogComponent::Ml,
 			"NormalizeObservation expects FP32 matrices and positive finite epsilon/clip");
 		return {};
@@ -81,10 +81,10 @@ oa::Matrix oa::FnEnvironment::scaleAction(
 	oa::F32 inTargetMaximum,
 	bool inClamp) {
 	if (!isFp32(inAction)
-		|| !std::isfinite(inSourceMinimum)
-		|| !std::isfinite(inSourceMaximum)
-		|| !std::isfinite(inTargetMinimum)
-		|| !std::isfinite(inTargetMaximum)
+		|| !oa::isFinite(inSourceMinimum)
+		|| !oa::isFinite(inSourceMaximum)
+		|| !oa::isFinite(inTargetMinimum)
+		|| !oa::isFinite(inTargetMaximum)
 		|| inSourceMinimum >= inSourceMaximum
 		|| inTargetMinimum >= inTargetMaximum) {
 		OaLogError(oa::LogComponent::Ml,
@@ -122,8 +122,8 @@ oa::Matrix oa::FnEnvironment::clipReward(
 	const oa::Matrix& inReward,
 	oa::F32 inMinimum,
 	oa::F32 inMaximum) {
-	if (!isFp32(inReward) || !std::isfinite(inMinimum)
-		|| !std::isfinite(inMaximum) || inMinimum > inMaximum) {
+	if (!isFp32(inReward) || !oa::isFinite(inMinimum)
+		|| !oa::isFinite(inMaximum) || inMinimum > inMaximum) {
 		OaLogError(oa::LogComponent::Ml,
 			"ClipReward expects FP32 rewards and ordered finite bounds");
 		return {};

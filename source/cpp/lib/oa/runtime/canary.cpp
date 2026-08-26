@@ -1,4 +1,5 @@
 #include <oa/runtime/canary.h>
+#include <oa/core/jsonWriter.h>
 
 #include <oa/core/fnMatrix.h>
 #include <oa/core/matrixAccess.h>
@@ -6,13 +7,6 @@
 #include <oa/runtime/engine.h>
 #include <oa/runtime/engine/resourceAccess.h>
 #include "engine/deviceAccess.h"
-
-#include <algorithm>
-#include <cmath>
-#include <cstring>
-#include <iomanip>
-#include <sstream>
-#include <vector>
 
 namespace {
 
@@ -27,7 +21,7 @@ oa::U64 hashBytes(const void* inData, oa::U64 inBytes) {
 }
 
 template <typename T>
-oa::Span<const oa::U8> bytes(const std::vector<T>& inValues) {
+oa::Span<const oa::U8> bytes(const oa::Vec<T>& inValues) {
 	return {
 		reinterpret_cast<const oa::U8*>(inValues.data()),
 		inValues.size() * sizeof(T),
@@ -38,7 +32,7 @@ template <typename T>
 oa::Status readback(
 	oa::Engine& inEngine,
 	const oa::Matrix& inMatrix,
-	std::vector<T>& outValues)
+	oa::Vec<T>& outValues)
 {
 	const oa::U64 bytes = static_cast<oa::U64>(outValues.size() * sizeof(T));
 	if (bytes != static_cast<oa::U64>(inMatrix.byteSize())) {
@@ -63,14 +57,14 @@ oa::DeviceCanaryCheck exactCheck(
 	check.expectedHash = hashBytes(inExpected, inBytes);
 	check.actualHash = hashBytes(inActual, inBytes);
 	check.passed = check.expectedHash == check.actualHash
-		and std::memcmp(inExpected, inActual, static_cast<size_t>(inBytes)) == 0;
+		and oa::memcmp(inExpected, inActual, static_cast<oa::Usize>(inBytes)) == 0;
 	return check;
 }
 
 oa::DeviceCanaryCheck floatCheck(
 	oa::StringView inName,
-	const std::vector<oa::F32>& inExpected,
-	const std::vector<oa::F32>& inActual,
+	const oa::Vec<oa::F32>& inExpected,
+	const oa::Vec<oa::F32>& inActual,
 	oa::F64 inTolerance)
 {
 	oa::DeviceCanaryCheck check;
@@ -82,41 +76,19 @@ oa::DeviceCanaryCheck floatCheck(
 	check.actualHash = hashBytes(
 		inActual.data(), inActual.size() * sizeof(oa::F32));
 	check.passed = inExpected.size() == inActual.size();
-	for (size_t i = 0; i < std::min(inExpected.size(), inActual.size()); ++i) {
-		const oa::F64 error = std::abs(
+	for (oa::Usize i = 0; i < oa::min(inExpected.size(), inActual.size()); ++i) {
+		const oa::F64 error = oa::abs(
 			static_cast<oa::F64>(inExpected[i]) - static_cast<oa::F64>(inActual[i]));
-		check.maxAbsoluteError = std::max(check.maxAbsoluteError, error);
-		if (not std::isfinite(inActual[i]) or error > inTolerance) {
+		check.maxAbsoluteError = oa::max(check.maxAbsoluteError, error);
+		if (not oa::isFinite(inActual[i]) or error > inTolerance) {
 			check.passed = false;
 		}
 	}
 	return check;
 }
 
-void writeJsonString(std::ostringstream& out, oa::StringView inValue) {
-	out << '"';
-	for (const char value : inValue) {
-		switch (value) {
-			case '"': out << "\\\""; break;
-			case '\\': out << "\\\\"; break;
-			case '\b': out << "\\b"; break;
-			case '\f': out << "\\f"; break;
-			case '\n': out << "\\n"; break;
-			case '\r': out << "\\r"; break;
-			case '\t': out << "\\t"; break;
-			default:
-				if (static_cast<unsigned char>(value) < 0x20U) {
-					out << "\\u" << std::hex << std::setw(4)
-						<< std::setfill('0')
-						<< static_cast<unsigned>(
-							static_cast<unsigned char>(value))
-						<< std::dec << std::setfill(' ');
-				} else {
-					out << value;
-				}
-		}
-	}
-	out << '"';
+void writeJsonString(oa::internal::JsonWriter& out, oa::StringView inValue) {
+	out.writeString(inValue);
 }
 
 } // namespace
@@ -130,7 +102,7 @@ oa::Bool oa::DeviceCanaryReport::passed() const noexcept {
 }
 
 oa::String oa::DeviceCanaryReport::debugReportJson() const {
-	std::ostringstream out;
+	oa::internal::JsonWriter out;
 	out << "{\n  \"schema\": \"oa.device_canary.v1\",\n"
 		<< "  \"passed\": " << (passed() ? "true" : "false")
 		<< ",\n  \"device\": {\"name\": ";
@@ -151,17 +123,19 @@ oa::String oa::DeviceCanaryReport::debugReportJson() const {
 		out << ", \"passed\": " << (check.passed ? "true" : "false")
 			<< ", \"exact\": " << (check.exact ? "true" : "false")
 			<< ", \"samples\": " << check.sampleCount
-			<< ", \"expected_hash\": \"0x" << std::hex
-			<< std::setw(16) << std::setfill('0') << check.expectedHash
-			<< "\", \"actual_hash\": \"0x" << std::setw(16)
-			<< check.actualHash << std::dec << std::setfill(' ')
-			<< "\", \"max_absolute_error\": " << std::setprecision(17)
-			<< check.maxAbsoluteError << ", \"tolerance\": "
-			<< check.tolerance << "}";
+			<< ", \"expected_hash\": ";
+		out.writeHexId(check.expectedHash);
+		out << ", \"actual_hash\": ";
+		out.writeHexId(check.actualHash);
+		out << ", \"max_absolute_error\": ";
+		out.writeFloat(check.maxAbsoluteError);
+		out << ", \"tolerance\": ";
+		out.writeFloat(check.tolerance);
+		out << "}";
 	}
 	if (not checks.empty()) out << '\n';
 	out << "  ]\n}\n";
-	return oa::String(out.str());
+	return out.take();
 }
 
 oa::Status oa::DeviceCanary::run(
@@ -187,9 +161,9 @@ oa::Status oa::DeviceCanary::run(
 	outReport.apiVersion = info.software.apiVersion;
 
 	constexpr oa::U32 kVectorSize = 257U;
-	std::vector<oa::U32> transportExpected(kVectorSize);
-	std::vector<oa::F32> aValues(kVectorSize);
-	std::vector<oa::F32> bValues(kVectorSize);
+	oa::Vec<oa::U32> transportExpected(kVectorSize);
+	oa::Vec<oa::F32> aValues(kVectorSize);
+	oa::Vec<oa::F32> bValues(kVectorSize);
 	for (oa::U32 i = 0; i < kVectorSize; ++i) {
 		transportExpected[i] = 0x9e3779b9U * (i + 1U) ^ (i << 17U);
 		aValues[i] = static_cast<oa::F32>(static_cast<oa::I32>(i % 31U) - 15)
@@ -201,8 +175,8 @@ oa::Status oa::DeviceCanary::run(
 	constexpr oa::U32 kM = 17U;
 	constexpr oa::U32 kN = 11U;
 	constexpr oa::U32 kK = 13U;
-	std::vector<oa::F32> matrixA(kM * kK);
-	std::vector<oa::F32> matrixB(kN * kK);
+	oa::Vec<oa::F32> matrixA(kM * kK);
+	oa::Vec<oa::F32> matrixB(kN * kK);
 	for (oa::U32 i = 0; i < matrixA.size(); ++i) {
 		matrixA[i] = static_cast<oa::F32>(static_cast<oa::I32>(i % 17U) - 8)
 			* 0.03125F;
@@ -214,8 +188,8 @@ oa::Status oa::DeviceCanary::run(
 
 	constexpr oa::U32 kRows = 16U;
 	constexpr oa::U32 kClasses = 7U;
-	std::vector<oa::F32> logits(kRows * kClasses, -4.0F);
-	std::vector<oa::U32> labels(kRows);
+	oa::Vec<oa::F32> logits(kRows * kClasses, -4.0F);
+	oa::Vec<oa::U32> labels(kRows);
 	oa::U32 expectedCorrect = 0;
 	for (oa::U32 row = 0; row < kRows; ++row) {
 		const oa::U32 winner = row % kClasses;
@@ -249,29 +223,29 @@ oa::Status oa::DeviceCanary::run(
 
 	OA_RETURN_IF_ERROR(context.submitAndWait());
 
-	std::vector<oa::U32> transportActual(kVectorSize);
+	oa::Vec<oa::U32> transportActual(kVectorSize);
 	OA_RETURN_IF_ERROR(readback(inEngine, transport, transportActual));
 	outReport.checks.pushBack(exactCheck(
 		"host_device_roundtrip_u32",
 		transportExpected.data(), transportActual.data(),
 		transportExpected.size() * sizeof(oa::U32), kVectorSize));
 
-	std::vector<oa::F32> vectorExpected(kVectorSize);
+	oa::Vec<oa::F32> vectorExpected(kVectorSize);
 	oa::F32 sumExpected = 0.0F;
 	for (oa::U32 i = 0; i < kVectorSize; ++i) {
 		vectorExpected[i] = (aValues[i] + bValues[i]) * aValues[i];
 		sumExpected += vectorExpected[i];
 	}
-	std::vector<oa::F32> vectorActual(kVectorSize);
+	oa::Vec<oa::F32> vectorActual(kVectorSize);
 	OA_RETURN_IF_ERROR(readback(inEngine, vectorOut, vectorActual));
 	outReport.checks.pushBack(floatCheck(
 		"fp32_elementwise_barrier_chain", vectorExpected, vectorActual, 1.0e-6));
-	std::vector<oa::F32> sumActual(1);
+	oa::Vec<oa::F32> sumActual(1);
 	OA_RETURN_IF_ERROR(readback(inEngine, vectorSum, sumActual));
 	outReport.checks.pushBack(floatCheck(
 		"fp32_shared_reduction", {sumExpected}, sumActual, 2.0e-4));
 
-	std::vector<oa::F32> matrixExpected(kM * kN, 0.0F);
+	oa::Vec<oa::F32> matrixExpected(kM * kN, 0.0F);
 	for (oa::U32 row = 0; row < kM; ++row) {
 		for (oa::U32 col = 0; col < kN; ++col) {
 			for (oa::U32 k = 0; k < kK; ++k) {
@@ -280,12 +254,12 @@ oa::Status oa::DeviceCanary::run(
 			}
 		}
 	}
-	std::vector<oa::F32> matrixActual(kM * kN);
+	oa::Vec<oa::F32> matrixActual(kM * kN);
 	OA_RETURN_IF_ERROR(readback(inEngine, matrixOut, matrixActual));
 	outReport.checks.pushBack(floatCheck(
 		"fp32_matmul_irregular", matrixExpected, matrixActual, 2.0e-5));
 
-	std::vector<oa::U32> countActual(1);
+	oa::Vec<oa::U32> countActual(1);
 	OA_RETURN_IF_ERROR(readback(inEngine, correctCount, countActual));
 	outReport.checks.pushBack(exactCheck(
 		"uint32_accuracy_reduction",

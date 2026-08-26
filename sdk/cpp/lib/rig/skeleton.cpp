@@ -1,4 +1,5 @@
 #include <rig/skeleton.h>
+#include <core/streamText.h>
 #include <rig/skeletonUsd.h>
 
 #include <core/transform.h>
@@ -202,7 +203,9 @@ oa::Status oa::Skeleton::writeSkel(const oa::Path& inPath) const {
 	out << "{\n";
 	out << "  \"format\": \"oa.skel\",\n";
 	out << "  \"version\": " << formatVersion << ",\n";
-	out << "  \"name\": \"" << name << "\",\n";
+	out << "  \"name\": \"";
+	out.write(name.data(), static_cast<std::streamsize>(name.size()));
+	out << "\",\n";
 	out << "  \"skeletonId\": " << skeletonId << ",\n";
 
 	out << "  \"contactJoints\": [";
@@ -216,8 +219,9 @@ oa::Status oa::Skeleton::writeSkel(const oa::Path& inPath) const {
 		const oa::SkelJoint& j = joints[static_cast<oa::Usize>(i)];
 		const oa::vlm::Vec3& t = j.rest.translate;
 		const oa::vlm::Quat& q = j.rest.jointOrient;
-		out << "    { \"name\": \"" << j.name << "\""
-			<< ", \"parent\": " << j.parentIndex
+		out << "    { \"name\": \"";
+		out.write(j.name.data(), static_cast<std::streamsize>(j.name.size()));
+		out << "\"" << ", \"parent\": " << j.parentIndex
 			<< ", \"humanIkId\": " << j.humanIkId
 			<< ", \"rest\": [" << t.x << ", " << t.y << ", " << t.z << "]"
 			<< ", \"orient\": [" << q.x << ", " << q.y << ", " << q.z << ", " << q.w << "]"
@@ -229,7 +233,7 @@ oa::Status oa::Skeleton::writeSkel(const oa::Path& inPath) const {
 	out << "  ]\n";
 	out << "}\n";
 
-	return oa::Filesystem::writeText(inPath, oa::String(out.str()));
+	return oa::Filesystem::writeText(inPath, oa::sdk::fromStdString(out.str()));
 }
 
 namespace {

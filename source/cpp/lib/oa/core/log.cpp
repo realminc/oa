@@ -1,10 +1,8 @@
 #include <oa/core/log.h>
 #include "logAccess.h"
 
-#include <atomic>
-#include <cerrno>
-#include <filesystem>
-#include <iomanip>
+#include <stdio.h>
+#include <time.h>
 
 namespace {
 
@@ -48,7 +46,7 @@ thread_local ThreadLogSelection selectedLog;
 	}
 }
 
-[[nodiscard]] bool localTime(std::time_t inTime, std::tm& outTime) noexcept {
+[[nodiscard]] bool localTime(::time_t inTime, ::tm& outTime) noexcept {
 #if defined(_WIN32)
 	return localtime_s(&outTime, &inTime) == 0;
 #else
@@ -57,16 +55,14 @@ thread_local ThreadLogSelection selectedLog;
 }
 
 void formatLogTimestamp(char* outText, oa::Usize inCapacity, long& outMillis) noexcept {
-	const auto now = std::chrono::system_clock::now();
-	const auto epochMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-		now.time_since_epoch());
-	outMillis = static_cast<long>(epochMs.count() % 1000);
-	const std::time_t wall = std::chrono::system_clock::to_time_t(now);
-	std::tm local{};
+	const oa::I64 epochNanoseconds = oa::systemNow().nanosecondsSinceEpoch();
+	outMillis = static_cast<long>((epochNanoseconds / 1'000'000LL) % 1000LL);
+	const ::time_t wall = static_cast<::time_t>(epochNanoseconds / 1'000'000'000LL);
+	::tm local{};
 	if (localTime(wall, local)) {
-		(void)std::strftime(outText, inCapacity, "%H:%M:%S", &local);
+		(void)::strftime(outText, inCapacity, "%H:%M:%S", &local);
 	} else if (inCapacity != 0U) {
-		(void)std::snprintf(outText, inCapacity, "00:00:00");
+		(void)::snprintf(outText, inCapacity, "00:00:00");
 	}
 }
 
@@ -78,12 +74,12 @@ void fallbackWrite(
 {
 	char message[4096]{};
 	if (inFormat != nullptr) {
-		(void)std::vsnprintf(message, sizeof(message), inFormat, inArgs);
+		(void)::vsnprintf(message, sizeof(message), inFormat, inArgs);
 	}
 	char timestamp[32]{};
 	long millis = 0;
 	formatLogTimestamp(timestamp, sizeof(timestamp), millis);
-	(void)std::fprintf(stderr, "%s%s.%03ld [%s] [%s] %s\033[0m\n",
+	(void)::fprintf(stderr, "%s%s.%03ld [%s] [%s] %s\033[0m\n",
 		levelColor(inLevel), timestamp, millis, levelName(inLevel),
 		inComponent.cStr(), message);
 }
@@ -94,10 +90,11 @@ namespace oa {
 
 class LogImpl {
 public:
-	std::mutex mutex;
-	std::ofstream file;
+	oa::Mutex mutex;
+	::FILE* file = nullptr;
 	oa::String path;
-	std::atomic<oa::LogLevel> minimumLevel{oa::LogLevel::Info};
+	oa::Atomic<oa::U8> minimumLevel{
+		static_cast<oa::U8>(oa::LogLevel::Info)};
 	oa::Bool consoleOutput = true;
 	oa::Bool open = true;
 	oa::Status firstError = oa::Status::ok();
@@ -108,34 +105,34 @@ public:
 		const char* inFormat,
 		va_list inArgs)
 	{
-		if (inLevel < minimumLevel.load(std::memory_order_relaxed)
+		if (static_cast<oa::U8>(inLevel)
+			< minimumLevel.load(oa::MemoryOrder::Relaxed)
 			or inLevel == oa::LogLevel::Off) {
 			return oa::Status::ok();
 		}
 		char message[4096]{};
 		if (inFormat != nullptr) {
-			(void)std::vsnprintf(message, sizeof(message), inFormat, inArgs);
+			(void)::vsnprintf(message, sizeof(message), inFormat, inArgs);
 		}
 		char timestamp[32]{};
 		long millis = 0;
 		formatLogTimestamp(timestamp, sizeof(timestamp), millis);
 
-		std::lock_guard<std::mutex> lock(mutex);
+		oa::ScopedLock<oa::Mutex> lock(mutex);
 		if (not open) {
 			return oa::Status::error(oa::StatusCode::FailedPrecondition,
 				"oa::Log::write called after Close");
 		}
-		if (file.is_open()) {
-			file << timestamp << "." << std::setfill('0') << std::setw(3) << millis
-				 << " [" << levelName(inLevel) << "] ["
-				 << inComponent.cStr() << "] " << message << "\n";
-			if (not file.good() and firstError.isOk()) {
+		if (file != nullptr) {
+			if (::fprintf(file, "%s.%03ld [%s] [%s] %s\n",
+				timestamp, millis, levelName(inLevel), inComponent.cStr(), message) < 0
+				and firstError.isOk()) {
 				firstError = oa::Status::error(oa::StatusCode::Internal,
 					"log file write failed");
 			}
 		}
 		if (consoleOutput) {
-			(void)std::fprintf(stderr, "%s%s.%03ld [%s] [%s] %s\033[0m\n",
+			(void)::fprintf(stderr, "%s%s.%03ld [%s] [%s] %s\033[0m\n",
 				levelColor(inLevel), timestamp, millis, levelName(inLevel),
 				inComponent.cStr(), message);
 		}
@@ -154,7 +151,8 @@ oa::Log::~Log() {
 
 oa::Result<oa::UniquePtr<oa::Log>> oa::Log::create(const oa::LogOptions& inOptions) {
 	auto impl = oa::makeShared<oa::LogImpl>();
-	impl->minimumLevel.store(inOptions.minimumLevel, std::memory_order_relaxed);
+	impl->minimumLevel.store(
+		static_cast<oa::U8>(inOptions.minimumLevel), oa::MemoryOrder::Relaxed);
 	impl->consoleOutput = inOptions.consoleOutput;
 
 	if (inOptions.fileOutput) {
@@ -162,36 +160,28 @@ oa::Result<oa::UniquePtr<oa::Log>> oa::Log::create(const oa::LogOptions& inOptio
 			return oa::Status::invalidArgument(
 				"oa::Log file output requires a directory");
 		}
-		try {
-			const std::filesystem::path directory(inOptions.directory.stdStr());
-			std::error_code ec;
-			std::filesystem::create_directories(directory, ec);
-			if (ec) {
-				return oa::Status::error(oa::StatusCode::PermissionError,
-					oa::String("cannot create log directory: ") + ec.message().c_str());
-			}
+		const oa::Path directory(inOptions.directory);
+		if (const oa::Status status = oa::Filesystem::createDirectories(directory);
+			status.isError()) {
+			return status;
+		}
 
-			const auto now = std::chrono::system_clock::now();
-			const std::time_t wall = std::chrono::system_clock::to_time_t(now);
-			std::tm local{};
-			char date[16] = "unknown";
-			if (localTime(wall, local)) {
-				(void)std::strftime(date, sizeof(date), "%Y%m%d", &local);
-			}
-			oa::String filename = inOptions.prefix.empty() ? oa::String("oa") : inOptions.prefix;
-			filename += "_";
-			filename += date;
-			filename += ".log";
-			const std::filesystem::path path = directory / filename.stdStr();
-			impl->path = oa::String(path.string());
-			impl->file.open(path, std::ios::app);
-			if (not impl->file.is_open()) {
-				return oa::Status::error(oa::StatusCode::PermissionError,
-					oa::String("cannot open log file: ") + impl->path);
-			}
-		} catch (const std::exception& inError) {
-			return oa::Status::error(oa::StatusCode::Internal,
-				oa::String("log initialization failed: ") + inError.what());
+		const ::time_t wall = static_cast<::time_t>(
+			oa::systemNow().nanosecondsSinceEpoch() / 1'000'000'000LL);
+		::tm local{};
+		char date[16] = "unknown";
+		if (localTime(wall, local)) {
+			(void)::strftime(date, sizeof(date), "%Y%m%d", &local);
+		}
+		oa::String filename = inOptions.prefix.empty() ? oa::String("oa") : inOptions.prefix;
+		filename += "_";
+		filename += date;
+		filename += ".log";
+		impl->path = (directory / filename.view()).string();
+		impl->file = ::fopen(impl->path.cStr(), "a");
+		if (impl->file == nullptr) {
+			return oa::Status::error(oa::StatusCode::PermissionError,
+				oa::String("cannot open log file: ") + impl->path);
 		}
 	}
 
@@ -226,10 +216,9 @@ oa::Status oa::Log::writeV(
 
 oa::Status oa::Log::flush() {
 	if (not impl_) return oa::Status::ok();
-	std::lock_guard<std::mutex> lock(impl_->mutex);
-	if (impl_->file.is_open()) {
-		impl_->file.flush();
-		if (not impl_->file.good() and impl_->firstError.isOk()) {
+	oa::ScopedLock<oa::Mutex> lock(impl_->mutex);
+	if (impl_->file != nullptr) {
+		if (::fflush(impl_->file) != 0 and impl_->firstError.isOk()) {
 			impl_->firstError = oa::Status::error(oa::StatusCode::Internal,
 				"log file flush failed");
 		}
@@ -239,39 +228,46 @@ oa::Status oa::Log::flush() {
 
 oa::Status oa::Log::close() {
 	if (not impl_) return oa::Status::ok();
-	std::lock_guard<std::mutex> lock(impl_->mutex);
+	oa::ScopedLock<oa::Mutex> lock(impl_->mutex);
 	if (not impl_->open) return impl_->firstError;
-	if (impl_->file.is_open()) {
-		impl_->file.flush();
-		if (not impl_->file.good() and impl_->firstError.isOk()) {
+	if (impl_->file != nullptr) {
+		if (::fflush(impl_->file) != 0 and impl_->firstError.isOk()) {
 			impl_->firstError = oa::Status::error(oa::StatusCode::Internal,
 				"log file flush failed during Close");
 		}
-		impl_->file.close();
+		if (::fclose(impl_->file) != 0 and impl_->firstError.isOk()) {
+			impl_->firstError = oa::Status::error(oa::StatusCode::Internal,
+				"log file close failed");
+		}
+		impl_->file = nullptr;
 	}
 	impl_->open = false;
 	return impl_->firstError;
 }
 
 void oa::Log::setLevel(oa::LogLevel inLevel) noexcept {
-	if (impl_) impl_->minimumLevel.store(inLevel, std::memory_order_relaxed);
+	if (impl_) {
+		impl_->minimumLevel.store(
+			static_cast<oa::U8>(inLevel), oa::MemoryOrder::Relaxed);
+	}
 }
 
 oa::LogLevel oa::Log::getLevel() const noexcept {
 	return impl_
-		? impl_->minimumLevel.load(std::memory_order_relaxed)
+		? static_cast<oa::LogLevel>(
+			impl_->minimumLevel.load(oa::MemoryOrder::Relaxed))
 		: oa::LogLevel::Off;
 }
 
 oa::String oa::Log::getLogPath() const {
 	if (not impl_) return {};
-	std::lock_guard<std::mutex> lock(impl_->mutex);
+	oa::ScopedLock<oa::Mutex> lock(impl_->mutex);
 	return impl_->path;
 }
 
 oa::Bool oa::Log::isOpen() const noexcept {
 	if (not impl_) return false;
-	std::lock_guard<std::mutex> lock(impl_->mutex);
+	oa::ScopedLock<oa::Mutex> lock(impl_->mutex);
 	return impl_->open;
 }
 

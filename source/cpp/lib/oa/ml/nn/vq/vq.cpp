@@ -3,10 +3,9 @@
 #include <oa/ml/nn/vq/vq.h>
 
 #include <oa/core/fnMatrix.h>
+#include <oa/core/std/format.h>
 #include <oa/ml/fnMatrix.h>       // VqAssign / VqEmaUpdate / detach
 #include <oa/runtime/executionSession.h>
-
-#include <utility>
 
 // ─── oa::VectorQuantizer ──────────────────────────────────────────────────────
 
@@ -62,7 +61,6 @@ oa::Matrix oa::VectorQuantizer::lookup(const oa::Matrix& inIdx) const {
 
 void oa::VectorQuantizer::seed(const oa::Matrix& inLatents) {
 	const oa::I64 K    = config_.numCodes;
-	const oa::I64 D    = config_.codeDim;
 	const oa::I64 rows = inLatents.size(0);
 	OA_ASSERT(rows >= K && "VQ seed needs at least numCodes latent rows");
 	OA_ASSERT(K <= 512 && "VQ seed exceeds the GPU topK limit");
@@ -99,9 +97,8 @@ oa::ResidualVectorQuantizer::ResidualVectorQuantizer(
 	OA_ASSERT(inNumLevels >= 1 && "RVQ needs at least one level");
 	for (oa::I32 q = 0; q < inNumLevels; ++q) {
 		auto lvl = oa::makeShared<oa::VectorQuantizer>(inConfig);
-		char name[16];
-		std::snprintf(name, sizeof(name), "level%d", q);
-		registerModule(name, lvl);
+		const oa::String name = oa::format("level%d", q);
+		registerModule(name.cStr(), lvl);
 		levels_.pushBack(lvl);
 	}
 }

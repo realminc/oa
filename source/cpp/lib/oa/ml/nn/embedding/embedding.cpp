@@ -18,7 +18,7 @@ oa::Matrix oa::Embedding::forward(const oa::Matrix& inInput) {
 	auto out = oa::FnMatrix::gather(weight, inInput);
 	if (oa::FnAutograd::isEnabled() and (weight.requiresGrad())) {
 		auto gradFn = oa::makeShared<oa::GradGather>();
-		gradFn->saveForBackward({inInput, weight});
+		gradFn->saveForBackward(inInput, weight);
 		gradFn->setGraphInputs(  oa::Vec<oa::Matrix>{weight, inInput});
 		gradFn->sequenceNr_    = oa::FnAutograd::nextSeq();
 		gradFn->outputShape_   = out.getShape();

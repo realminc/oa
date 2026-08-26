@@ -1,18 +1,16 @@
 #include <oa/ui/text.h>
 
 #include <oa/core/memory.h>
+#include <oa/core/std/algo.h>
+#include <oa/core/std/limits.h>
+#include <oa/core/std/scalarMath.h>
+#include <oa/core/std/vec.h>
 #include <oa/runtime/engine.h>
 #include <oa/runtime/engine/resourceAccess.h>
 
 #include <hb.h>
 #include <hb-ot.h>
 #include <utf8proc.h>
-
-#include <algorithm>
-#include <cmath>
-#include <limits>
-#include <new>
-#include <vector>
 
 #include "consumedBufferRetirement.h"
 
@@ -78,12 +76,12 @@ bool isValidFont(oa::FontId inFont) noexcept {
 }
 
 oa::I32 nearestStrikeIndex(oa::F32 inPixelSize) noexcept {
-	if (!std::isfinite(inPixelSize) || inPixelSize <= 0.0F) return -1;
+	if (!oa::isFinite(inPixelSize) || inPixelSize <= 0.0F) return -1;
 	oa::U32 nearest = 0U;
-	oa::F32 nearestDistance = std::abs(
+	oa::F32 nearestDistance = oa::abs(
 		inPixelSize - static_cast<oa::F32>(kTextStrikeSizes[0]));
 	for (oa::U32 index = 1U; index < kTextStrikeCount; ++index) {
-		const oa::F32 distance = std::abs(
+		const oa::F32 distance = oa::abs(
 			inPixelSize - static_cast<oa::F32>(kTextStrikeSizes[index]));
 		if (distance < nearestDistance) {
 			nearest = index;
@@ -133,11 +131,7 @@ oa::Status oa::TextAtlas::init(oa::Engine& inRt) {
 			"oa::TextAtlas: atlas allocation is not host-visible");
 	}
 
-	oa::UniquePtr<Impl> impl(new (std::nothrow) Impl());
-	if (!impl) {
-		oa::EngineResourceAccess::freeBuffer(inRt, *allocation);
-		return oa::Status::error(oa::StatusCode::OutOfMemory, "oa::TextAtlas: metadata allocation failed");
-	}
+	auto impl = oa::makeUnique<Impl>();
 	impl->runtime = &inRt;
 	impl->atlas = oa::move(*allocation);
 	oa::memcpy(impl->atlas.mappedPtr, kTextAtlasPixels, sizeof(kTextAtlasPixels));
@@ -341,7 +335,7 @@ struct ResolvedScalar {
 
 struct HbFaceData {
 	hb_face_t* face = nullptr;
-	std::vector<oa::U32> codepointByGlyph;
+	oa::Vec<oa::U32> codepointByGlyph;
 
 	HbFaceData() = default;
 	HbFaceData(const HbFaceData&) = delete;
@@ -355,7 +349,7 @@ struct HbFaceData {
 		oa::Usize inByteCount,
 		oa::FontId inFont) {
 		if (inBytes == nullptr || inByteCount == 0U
-			|| inByteCount > std::numeric_limits<unsigned int>::max()) {
+			|| inByteCount > oa::Limits<unsigned int>::max()) {
 			return;
 		}
 		hb_blob_t* blob = hb_blob_create(
@@ -497,8 +491,8 @@ DecodedScalar decodeUtf8(oa::StringView inText, oa::Usize& inOutIndex) noexcept 
 bool appendShapedRun(
 	oa::FontId inFont,
 	oa::F32 inPixelSize,
-	const std::vector<RunScalar>& inRun,
-	std::vector<ShapedTextItem>& inOutItems) {
+	const oa::Vec<RunScalar>& inRun,
+	oa::Vec<ShapedTextItem>& inOutItems) {
 	if (inRun.empty()) return true;
 	const HbFaceData& face = harfBuzzFace(inFont);
 	if (face.face == nullptr) return false;
@@ -509,16 +503,16 @@ bool appendShapedRun(
 		return false;
 	}
 	hb_ot_font_set_funcs(font);
-	const oa::F64 scaled = std::round(static_cast<oa::F64>(inPixelSize) * 64.0);
+	const oa::F64 scaled = oa::round(static_cast<oa::F64>(inPixelSize) * 64.0);
 	if (scaled <= 0.0
-		|| scaled > static_cast<oa::F64>(std::numeric_limits<int>::max())) {
+		|| scaled > static_cast<oa::F64>(oa::Limits<int>::max())) {
 		hb_font_destroy(font);
 		return false;
 	}
 	const int scale = static_cast<int>(scaled);
 	hb_font_set_scale(font, scale, scale);
-	const unsigned int ppem = static_cast<unsigned int>(std::max(
-		1.0, std::round(static_cast<oa::F64>(inPixelSize))));
+	const unsigned int ppem = static_cast<unsigned int>(oa::max(
+		1.0, oa::round(static_cast<oa::F64>(inPixelSize))));
 	hb_font_set_ppem(font, ppem, ppem);
 
 	hb_buffer_t* buffer = hb_buffer_create();
@@ -563,7 +557,7 @@ bool appendShapedRun(
 		if (!fontSupportsCodepoint(inFont, codepoint)) {
 			codepoint = static_cast<oa::U32>('?');
 		}
-		inOutItems.push_back({
+		inOutItems.pushBack({
 			.kind = ShapedItemKind::Glyph,
 			.font = inFont,
 			.codepoint = codepoint,
@@ -582,14 +576,14 @@ bool buildShapedText(
 	oa::StringView inText,
 	oa::FontId inPrimaryFont,
 	oa::F32 inPixelSize,
-	std::vector<ShapedTextItem>& outItems) {
+	oa::Vec<ShapedTextItem>& outItems) {
 	if (!isValidFont(inPrimaryFont)
-		|| inText.size() > std::numeric_limits<oa::U32>::max()) {
+		|| inText.size() > oa::Limits<oa::U32>::max()) {
 		return false;
 	}
 	outItems.clear();
 	outItems.reserve(inText.size());
-	std::vector<RunScalar> run;
+	oa::Vec<RunScalar> run;
 	run.reserve(inText.size());
 	oa::FontId runFont = inPrimaryFont;
 	bool hasRun = false;
@@ -610,7 +604,7 @@ bool buildShapedText(
 		if (decoded.codepoint == '\r') continue;
 		if (decoded.codepoint == '\n' || decoded.codepoint == '\t') {
 			if (!flush()) return false;
-			outItems.push_back({
+			outItems.pushBack({
 				.kind = decoded.codepoint == '\n'
 					? ShapedItemKind::LineBreak
 					: ShapedItemKind::Tab,
@@ -627,7 +621,7 @@ bool buildShapedText(
 			runFont = resolved.font;
 			hasRun = true;
 		}
-		run.push_back({resolved.codepoint, decoded.cluster});
+		run.pushBack({resolved.codepoint, decoded.cluster});
 		previousFont = resolved.font;
 		hasPrevious = true;
 	}
@@ -663,7 +657,7 @@ oa::F32 tabStopWidth(oa::FontId inPrimaryFont, oa::F32 inPixelSize) noexcept {
 	const GeneratedGlyph* glyph = findGeneratedGlyph(
 		space.font, codepoint, inPixelSize);
 	if (glyph == nullptr || glyph->pixelSize == 0U) return inPixelSize * 2.0F;
-	return std::max(
+	return oa::max(
 		1.0F,
 		glyph->advance * (inPixelSize / static_cast<oa::F32>(glyph->pixelSize))
 			* 4.0F);
@@ -673,9 +667,9 @@ oa::F32 advanceToTabStop(
 	oa::F32 inX,
 	oa::F32 inLineOrigin,
 	oa::F32 inTabWidth) noexcept {
-	const oa::F32 relative = std::max(0.0F, inX - inLineOrigin);
+	const oa::F32 relative = oa::max(0.0F, inX - inLineOrigin);
 	return inLineOrigin
-		+ (std::floor(relative / inTabWidth) + 1.0F) * inTabWidth;
+		+ (oa::floor(relative / inTabWidth) + 1.0F) * inTabWidth;
 }
 
 } // namespace
@@ -687,9 +681,9 @@ void oa::TextLayout::shape(
 	const oa::TextLayoutConfig& inCfg,
 	oa::U32 inColor,
 	oa::Vec<oa::PositionedGlyph>& inOutGlyphs) const {
-	if (!std::isfinite(inCfg.size) || inCfg.size <= 0.0F) return;
+	if (!oa::isFinite(inCfg.size) || inCfg.size <= 0.0F) return;
 	const oa::FontId font = inCfg.monospace ? oa::FontId::Mono : inCfg.font;
-	std::vector<ShapedTextItem> items;
+	oa::Vec<ShapedTextItem> items;
 	if (!buildShapedText(inText, font, inCfg.size, items)) return;
 	const oa::F32 tabWidth = tabStopWidth(font, inCfg.size);
 	oa::F32 x = inOrigin.x;
@@ -736,9 +730,9 @@ oa::vlm::Vec2 oa::TextLayout::measure(
 	const oa::TextAtlas& inAtlas,
 	oa::StringView inText,
 	const oa::TextLayoutConfig& inCfg) const {
-	if (!std::isfinite(inCfg.size) || inCfg.size <= 0.0F) return {};
+	if (!oa::isFinite(inCfg.size) || inCfg.size <= 0.0F) return {};
 	const oa::FontId font = inCfg.monospace ? oa::FontId::Mono : inCfg.font;
-	std::vector<ShapedTextItem> items;
+	oa::Vec<ShapedTextItem> items;
 	if (!buildShapedText(inText, font, inCfg.size, items)) return {};
 	const oa::F32 tabWidth = tabStopWidth(font, inCfg.size);
 	oa::F32 lineWidth = 0.0F;
@@ -746,7 +740,7 @@ oa::vlm::Vec2 oa::TextLayout::measure(
 	oa::F32 height = inCfg.size;
 	for (const ShapedTextItem& item : items) {
 		if (item.kind == ShapedItemKind::LineBreak) {
-			maxWidth = std::max(maxWidth, lineWidth);
+			maxWidth = oa::max(maxWidth, lineWidth);
 			lineWidth = 0.0F;
 			height += inCfg.size * 1.25F;
 			continue;
@@ -755,7 +749,7 @@ oa::vlm::Vec2 oa::TextLayout::measure(
 			oa::F32 next = advanceToTabStop(lineWidth, 0.0F, tabWidth);
 			if (inCfg.wrapWidth > 0.0F && lineWidth > 0.0F
 				&& next > inCfg.wrapWidth) {
-				maxWidth = std::max(maxWidth, lineWidth);
+				maxWidth = oa::max(maxWidth, lineWidth);
 				lineWidth = 0.0F;
 				height += inCfg.size * 1.25F;
 				next = advanceToTabStop(lineWidth, 0.0F, tabWidth);
@@ -766,12 +760,12 @@ oa::vlm::Vec2 oa::TextLayout::measure(
 		const oa::F32 advance = item.xAdvance;
 		if (inCfg.wrapWidth > 0.0F && lineWidth > 0.0F
 			&& lineWidth + advance > inCfg.wrapWidth) {
-			maxWidth = std::max(maxWidth, lineWidth);
+			maxWidth = oa::max(maxWidth, lineWidth);
 			lineWidth = 0.0F;
 			height += inCfg.size * 1.25F;
 		}
 		lineWidth += advance;
 	}
 	(void)inAtlas;
-	return {std::max(maxWidth, lineWidth), height};
+	return {oa::max(maxWidth, lineWidth), height};
 }

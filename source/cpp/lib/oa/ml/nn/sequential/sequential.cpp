@@ -7,19 +7,13 @@
 #include <oa/core/fnMatrix.h>
 #include <oa/core/validation.h>
 
-oa::Sequential::Sequential(std::initializer_list<oa::SharedPtr<Module>> inLayers) {
-	for (const auto& layer : inLayers) {
-		add(layer);
-	}
-}
-
 oa::Sequential& oa::Sequential::add(oa::SharedPtr<oa::Module> inModule) {
 	oa::String name(oa::String("layer_") + oa::toString(static_cast<oa::U32>(children_.size())));
-	return add(name, std::move(inModule));
+	return add(name, oa::move(inModule));
 }
 
 oa::Sequential& oa::Sequential::add(oa::StringView inName, oa::SharedPtr<oa::Module> inModule) {
-	registerModule(inName, std::move(inModule));
+	registerModule(inName, oa::move(inModule));
 	return *this;
 }
 oa::Matrix oa::Sequential::forward(const oa::Matrix& inInput) {

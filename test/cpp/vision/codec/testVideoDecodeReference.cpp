@@ -118,7 +118,9 @@ std::vector<uint8_t> ffmpegRgba(const char* inPath, int inFrames) {
 std::string resolveVideoAsset(const char* inFixtureRelAsset, const char* inDatasetFilename) {
 	if (inDatasetFilename != nullptr && inDatasetFilename[0] != '\0') {
 		const std::filesystem::path datasetPath =
-			oa::Paths::data("video").stdPath() / inDatasetFilename;
+			std::filesystem::path(
+				testStdString(oa::Paths::data("video").string())
+			) / inDatasetFilename;
 		if (std::filesystem::exists(datasetPath)) {
 			return datasetPath.lexically_normal().string();
 		}

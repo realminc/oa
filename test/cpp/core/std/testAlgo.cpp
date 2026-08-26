@@ -11,6 +11,16 @@ struct StdSortProbe {
 	int value = 0;
 };
 
+struct MoveOnlySortProbe {
+	int value = 0;
+
+	explicit MoveOnlySortProbe(int inValue) : value(inValue) {}
+	MoveOnlySortProbe(const MoveOnlySortProbe&) = delete;
+	MoveOnlySortProbe& operator=(const MoveOnlySortProbe&) = delete;
+	MoveOnlySortProbe(MoveOnlySortProbe&&) noexcept = default;
+	MoveOnlySortProbe& operator=(MoveOnlySortProbe&&) noexcept = default;
+};
+
 } // namespace oa
 
 TEST(StdAlgo, StandardSortSupportsOaTypesWithoutSwapAdlCollision) {
@@ -49,6 +59,39 @@ TEST(StdAlgo, FindAndSort) {
 	stdReportCompareSequentialRuns(
 		"oa::find+oa::sort x80k", t0, t1, "std::find+std::sort x80k", t2);
 	stdExpectGotInt("find+sort last back", 3, static_cast<long long>(v.back()));
+}
+
+TEST(StdAlgo, IntroSortHandlesAdversarialOrdersDuplicatesAndMoveOnlyValues) {
+	constexpr oa::Usize count = 4097;
+	for (int pattern = 0; pattern < 4; ++pattern) {
+		oa::Vec<int> actual(count);
+		std::vector<int> expected(count);
+		for (oa::Usize index = 0; index < count; ++index) {
+			int value = 0;
+			if (pattern == 0) value = static_cast<int>(index);
+			if (pattern == 1) value = static_cast<int>(count - index);
+			if (pattern == 2) value = 7;
+			if (pattern == 3) value = static_cast<int>((index * 37U) % 19U);
+			actual[index] = value;
+			expected[index] = value;
+		}
+		oa::sort(actual.begin(), actual.end());
+		std::sort(expected.begin(), expected.end());
+		ASSERT_TRUE(oa::equal(
+			actual.begin(), actual.end(), expected.begin(), expected.end()));
+	}
+
+	oa::MoveOnlySortProbe values[] = {
+		oa::MoveOnlySortProbe(9), oa::MoveOnlySortProbe(1),
+		oa::MoveOnlySortProbe(4), oa::MoveOnlySortProbe(1)};
+	oa::sort(values, values + 4,
+		[](const oa::MoveOnlySortProbe& inA, const oa::MoveOnlySortProbe& inB) {
+			return inA.value < inB.value;
+		});
+	EXPECT_EQ(values[0].value, 1);
+	EXPECT_EQ(values[1].value, 1);
+	EXPECT_EQ(values[2].value, 4);
+	EXPECT_EQ(values[3].value, 9);
 }
 
 TEST(StdAlgo, SpanFillAndFind) {
@@ -114,6 +157,17 @@ TEST(StdAlgo, Clamp) {
 	EXPECT_EQ(sinkOa, sinkSt);
 }
 
+TEST(StdAlgo, RemoveIfMatchesStandardContract) {
+	oa::Vec<int> values{1, 2, 3, 4, 5, 6};
+	const auto newEnd = oa::removeIf(
+		values.begin(), values.end(), [](int inValue) { return inValue % 2 == 0; });
+	values.erase(newEnd, values.end());
+	ASSERT_EQ(values.size(), 3U);
+	EXPECT_EQ(values[0], 1);
+	EXPECT_EQ(values[1], 3);
+	EXPECT_EQ(values[2], 5);
+}
+
 TEST(StdAlgoVsStd, SpanSortEqualToStdSort) {
 	int oaBuf[32];
 	int stBuf[32];
@@ -165,7 +219,7 @@ TEST(StdAlgoVsStd, SpanFindCountMatchStd) {
 	volatile std::size_t sinkOa = 0;
 	for (int r = 0; r < 40'000; ++r) {
 		sinkOa += static_cast<std::size_t>(oa::find(sp, needle) - sp.data());
-		sinkOa += oa::count(sp, needle);
+		sinkOa += static_cast<std::size_t>(oa::count(sp, needle));
 	}
 	const auto t1 = oa::highResolutionNow();
 	volatile std::size_t sinkSt = 0;
@@ -240,4 +294,24 @@ TEST(StdAlgoMinMax, CustomComparator) {
 	// "min" under > selects the larger; "max" under > selects the smaller.
 	EXPECT_EQ(oa::min(3, 7, greater), 7);
 	EXPECT_EQ(oa::max(3, 7, greater), 3);
+}
+
+TEST(StdAlgo, GcdMatchesIntegerContract) {
+	EXPECT_EQ(oa::gcd(48, 18), 6);
+	EXPECT_EQ(oa::gcd(18, 48), 6);
+	EXPECT_EQ(oa::gcd(0, 9), 9);
+	EXPECT_EQ(oa::gcd(-48, 18), 6);
+}
+
+TEST(StdAlgo, BitCastPreservesRepresentation) {
+	constexpr oa::F32 one = 1.0F;
+	constexpr oa::U32 bits = oa::bitCast<oa::U32>(one);
+	static_assert(bits == 0x3F800000U);
+	EXPECT_EQ(oa::bitCast<oa::F32>(bits), one);
+}
+
+TEST(StdAlgo, ArraySizeIsCompileTimeExtent) {
+	const int values[] = {1, 2, 3, 4};
+	static_assert(oa::arraySize(values) == 4);
+	EXPECT_EQ(oa::arraySize(values), 4U);
 }

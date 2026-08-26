@@ -191,7 +191,7 @@ inline void tutorialPrintTrainingHeader(oa::I32 inEpochs, oa::I32 inStepsPerEpoc
 // apply device index from config to the engine. call before engine creation.
 inline void tutorialApplyDeviceIndex(const TutorialMlConfig& inCfg) {
 	if (inCfg.deviceIndex >= 0) {
-		oa::String idxStr = oa::String(std::to_string(inCfg.deviceIndex).c_str());
+		oa::String idxStr = oa::toString(static_cast<oa::I64>(inCfg.deviceIndex));
 #if defined(_WIN32)
 		_putenv_s("OA_DEVICE", idxStr.cStr());
 #else

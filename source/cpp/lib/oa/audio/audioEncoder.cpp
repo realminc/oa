@@ -4,12 +4,10 @@
 #include <oa/audio/fnAudio.h>
 #include <oa/core/filesystem.h>
 #include <oa/core/memory.h>
+#include <oa/core/std/algo.h>
+#include <oa/core/std/limits.h>
+#include <oa/core/std/scalarMath.h>
 #include <oa/runtime/executionSession.h>
-
-#include <limits>
-#include <algorithm>
-#include <cmath>
-#include <cstring>
 
 namespace {
 
@@ -35,7 +33,7 @@ oa::Result<oa::Vec<oa::U8>> oa::FnAudio::encodeInterleavedWavF32(
 	if (inSampleRate == 0) {
 		return oa::Status::invalidArgument("oa::FnAudio::encodeInterleavedWavF32: sample rate must be > 0");
 	}
-	if (inChannelCount == 0 || inChannelCount > std::numeric_limits<oa::U16>::max()) {
+	if (inChannelCount == 0 || inChannelCount > oa::Limits<oa::U16>::max()) {
 		return oa::Status::invalidArgument("oa::FnAudio::encodeInterleavedWavF32: channel count must be in [1, 65535]");
 	}
 	if (inSamples.empty() || (inSamples.size() % inChannelCount) != 0) {
@@ -46,13 +44,13 @@ oa::Result<oa::Vec<oa::U8>> oa::FnAudio::encodeInterleavedWavF32(
 	constexpr oa::U64 kBytesPerSample = sizeof(oa::F32);
 	constexpr oa::U64 kHeaderBytes = 46;
 	const oa::U64 dataBytes64 = static_cast<oa::U64>(inSamples.size()) * kBytesPerSample;
-	if (dataBytes64 > std::numeric_limits<oa::U32>::max() - 38ULL) {
+	if (dataBytes64 > oa::Limits<oa::U32>::max() - 38ULL) {
 		return oa::Status::invalidArgument("oa::FnAudio::encodeInterleavedWavF32: WAV exceeds the RIFF 32-bit size limit");
 	}
 	const oa::U64 byteRate64 = static_cast<oa::U64>(inSampleRate) * inChannelCount * kBytesPerSample;
 	const oa::U64 blockAlign64 = static_cast<oa::U64>(inChannelCount) * kBytesPerSample;
-	if (byteRate64 > std::numeric_limits<oa::U32>::max() ||
-		blockAlign64 > std::numeric_limits<oa::U16>::max()) {
+	if (byteRate64 > oa::Limits<oa::U32>::max() ||
+		blockAlign64 > oa::Limits<oa::U16>::max()) {
 		return oa::Status::invalidArgument("oa::FnAudio::encodeInterleavedWavF32: WAV rate/channel product overflows the header");
 	}
 
@@ -99,7 +97,7 @@ oa::Result<oa::Vec<oa::U8>> oa::FnAudio::encodeWavF32(const oa::Audio& inAudio) 
 
 	const oa::U64 channels = static_cast<oa::U64>(shape[0]);
 	const oa::U64 samples = static_cast<oa::U64>(shape[1]);
-	if (channels > std::numeric_limits<oa::Usize>::max() / samples) {
+	if (channels > oa::Limits<oa::Usize>::max() / samples) {
 		return oa::Status::invalidArgument("oa::FnAudio::encodeWavF32: audio shape overflows host storage");
 	}
 	oa::Vec<oa::F32> interleaved(static_cast<oa::Usize>(channels * samples));
@@ -142,12 +140,12 @@ namespace {
 oa::I16 quantizePcmS16(oa::F32 inSample) {
 	// A device/caller can hand the recorder non-finite FP32. Never feed NaN to
 	// lrint: silence NaN and saturate infinities deterministically.
-	if (std::isnan(inSample)) return 0;
-	if (inSample >= 1.0F) return std::numeric_limits<oa::I16>::max();
-	if (inSample <= -1.0F) return std::numeric_limits<oa::I16>::min();
-	const oa::F32 clamped = std::clamp(inSample, -1.0F, 1.0F);
+	if (oa::isNan(inSample)) return 0;
+	if (inSample >= 1.0F) return oa::Limits<oa::I16>::max();
+	if (inSample <= -1.0F) return oa::Limits<oa::I16>::min();
+	const oa::F32 clamped = oa::clamp(inSample, -1.0F, 1.0F);
 	const oa::F32 scaled = clamped < 0.0F ? clamped * 32768.0F : clamped * 32767.0F;
-	return static_cast<oa::I16>(std::lrint(scaled));
+	return static_cast<oa::I16>(oa::lround(scaled));
 }
 
 void emitPcmPacket(
@@ -170,7 +168,7 @@ void emitPcmPacket(
 	outPackets.pushBack(oa::move(packet));
 	const oa::Usize remaining = inImpl.pending.size() - samples;
 	if (remaining > 0U) {
-		std::memmove(inImpl.pending.data(), inImpl.pending.data() + samples,
+		oa::memmove(inImpl.pending.data(), inImpl.pending.data() + samples,
 			remaining * sizeof(oa::F32)
 		);
 	}
@@ -210,7 +208,7 @@ oa::Result<oa::AudioEncoder> oa::AudioEncoder::create(
 			"Requested audio codec is not implemented by OA");
 	}
 	if (inProfile.framesPerPacket
-		> std::numeric_limits<oa::Usize>::max() / inProfile.channelCount / sizeof(oa::I16)) {
+		> oa::Limits<oa::Usize>::max() / inProfile.channelCount / sizeof(oa::I16)) {
 		return oa::Status::invalidArgument("Audio packet shape exceeds host address space");
 	}
 	oa::AudioEncoder encoder;
@@ -228,7 +226,7 @@ oa::Status oa::AudioEncoder::encode(
 		return oa::Status::invalidArgument("Audio input must contain complete interleaved frames");
 	}
 	const oa::Usize oldSize = impl_->pending.size();
-	if (inInterleaved.size() > std::numeric_limits<oa::Usize>::max() - oldSize) {
+	if (inInterleaved.size() > oa::Limits<oa::Usize>::max() - oldSize) {
 		return oa::Status::invalidArgument("Audio input exceeds host address space");
 	}
 	impl_->pending.resize(oldSize + inInterleaved.size());

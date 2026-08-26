@@ -113,7 +113,7 @@ oa::Status writeDatasetArchive(
 	hdr.testOffset = hdr.valOffset + hdr.valBytes;
 	hdr.testBytes = static_cast<oa::U64>(inTest.size());
 
-	std::ofstream f(inPath.stdPath(), std::ios::binary | std::ios::trunc);
+	std::ofstream f(inPath.cStr(), std::ios::binary | std::ios::trunc);
 	if (!f) return oa::Status::error(oa::StatusCode::Internal, "oad: cannot open output");
 	f.write(reinterpret_cast<const char*>(&hdr), sizeof(hdr));
 	if (!f) return oa::Status::error(oa::StatusCode::Internal, "oad: write header");

@@ -1,5 +1,7 @@
 #include "oaStdTest.h"
 
+#include <oa/core/std/typeTraits.h>
+
 #include <random>
 #include <unordered_set>
 
@@ -7,6 +9,14 @@ TEST(HashSet, InsertContains) {
 	oa::HashSet<int> s;
 	EXPECT_TRUE(s.insert(5).second);
 	EXPECT_TRUE(s.contains(5));
+}
+
+TEST(HashSet, IteratorKeyIsImmutable) {
+	oa::HashSet<oa::I32> values;
+	values.insert(7);
+	auto iterator = values.begin();
+	static_assert(oa::IsSameV<decltype(*iterator), const oa::I32&>);
+	EXPECT_EQ(*iterator, 7);
 }
 
 TEST(HashSet, RangeFor) {
@@ -21,7 +31,7 @@ TEST(HashSet, RangeFor) {
 	EXPECT_EQ(sum, 6);
 }
 
-TEST(HashSet, DuplicateAndStdSet) {
+TEST(HashSet, DuplicateEraseAndIteration) {
 	oa::HashSet<int> s;
 	EXPECT_TRUE(s.insert(3).second);
 	EXPECT_FALSE(s.insert(3).second);
@@ -29,9 +39,12 @@ TEST(HashSet, DuplicateAndStdSet) {
 	for (int i = 0; i < 40; ++i) {
 		s.insert(i);
 	}
-	auto st = s.stdSet();
-	EXPECT_EQ(st.size(), 40u);
-	EXPECT_TRUE(st.count(17));
+	int visited = 0;
+	for (int value : s) {
+		EXPECT_TRUE(value >= 0 && value < 40);
+		++visited;
+	}
+	EXPECT_EQ(visited, 40);
 }
 
 TEST(HashSet, IteratorPostfix) {

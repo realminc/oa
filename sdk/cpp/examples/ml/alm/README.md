@@ -37,6 +37,15 @@ cmake --build build/release --target AlmAg -j
 ./bin/release/example/ml/almAg
 ```
 
+`AlmAg` is not registered in the default CTest suite because its complete
+gate requires external motion datasets and a suitable discrete GPU. Enable it
+explicitly on a qualified machine:
+
+```bash
+cmake --preset release -DOA_ENABLE_ALM_TESTS=ON
+ctest --test-dir build/release -R '^AlmAg$' --output-on-failure
+```
+
 ## Tests
 
 - `Alm.ConfigTest` — config structs

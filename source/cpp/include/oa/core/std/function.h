@@ -1,14 +1,11 @@
 #pragma once
 
-// Native Fn<R(Args...)> — small-buffer type erasure + heap fallback; `stdFn()` wraps for std boundaries.
+// Native Fn<R(Args...)> — small-buffer type erasure with a heap fallback.
 
+#include <oa/core/assert.h>
+#include <oa/core/std/lifetime.h>
 #include <oa/core/std/typeTraits.h>
 #include <oa/core/std/utility.h>
-
-#include <functional>
-#include <new>
-#include <stdexcept>
-#include <type_traits>
 
 namespace oa {
 
@@ -16,6 +13,11 @@ template<typename Sig>
 class Fn;
 
 namespace fnDetail {
+
+template<typename R, typename F, typename... Args>
+inline constexpr bool IsInvocableR = requires(F& inFunction, Args... inArgs) {
+	static_cast<R>(inFunction(oa::forward<Args>(inArgs)...));
+};
 
 template<typename R, typename... Args>
 struct VTable {
@@ -46,14 +48,14 @@ static void destroySbo(void* storage) {
 template<typename R, typename F, typename... Args>
 static void copySbo(void* dst, const void* src) {
 	using FD = oa::DecayT<F>;
-	new (dst) FD(*reinterpret_cast<const FD*>(src));
+	oa::constructAt(reinterpret_cast<FD*>(dst), *reinterpret_cast<const FD*>(src));
 }
 
 template<typename R, typename F, typename... Args>
 static void moveSbo(void* dst, void* src) {
 	using FD = oa::DecayT<F>;
-	new (dst) FD(oa::move(*reinterpret_cast<FD*>(src)));
-	reinterpret_cast<FD*>(src)->~FD();
+	oa::constructAt(reinterpret_cast<FD*>(dst), oa::move(*reinterpret_cast<FD*>(src)));
+	oa::destroyAt(reinterpret_cast<FD*>(src));
 }
 
 template<typename R, typename F, typename... Args>
@@ -123,20 +125,24 @@ static const VTable<R, Args...>* vtableHeap() {
 template<typename F, typename R, typename... Args>
 static constexpr bool useSbo() {
 	using FD = oa::DecayT<F>;
-	constexpr std::size_t Cap = 40;
-	return std::is_invocable_r_v<R, FD&, Args...> && sizeof(FD) <= Cap &&
-		alignof(FD) <= alignof(std::max_align_t) && oa::IsNothrowMoveConstructibleV<FD>;
+	constexpr decltype(sizeof(0)) Cap = 40;
+	constexpr decltype(sizeof(0)) Alignment =
+		alignof(long double) > alignof(void*) ? alignof(long double) : alignof(void*);
+	return IsInvocableR<R, FD, Args...> && sizeof(FD) <= Cap &&
+		alignof(FD) <= Alignment && oa::IsNothrowMoveConstructibleV<FD>;
 }
 
 } // namespace fnDetail
 
 template<typename R, typename... Args>
 class Fn<R(Args...)> {
-	static constexpr std::size_t BufferSize = 40;
+	static constexpr decltype(sizeof(0)) BufferSize = 40;
+	static constexpr decltype(sizeof(0)) BufferAlignment =
+		alignof(long double) > alignof(void*) ? alignof(long double) : alignof(void*);
 
 	using VTable = fnDetail::VTable<R, Args...>;
 	const VTable* vtable_{nullptr};
-	alignas(std::max_align_t) unsigned char buffer_[BufferSize]{};
+	alignas(BufferAlignment) unsigned char buffer_[BufferSize]{};
 
 	void clear() noexcept {
 		if (vtable_) {
@@ -165,7 +171,7 @@ class Fn<R(Args...)> {
 public:
 	Fn() noexcept = default;
 
-	Fn(std::nullptr_t) noexcept {}
+	Fn(decltype(nullptr)) noexcept {}
 
 	~Fn() { clear(); }
 
@@ -191,13 +197,15 @@ public:
 		return *this;
 	}
 
-	template<typename F, typename = std::enable_if_t<!std::is_same_v<oa::DecayT<F>, Fn>>>
+	template<typename F>
+	requires (!oa::IsSameV<oa::DecayT<F>, Fn>
+		&& fnDetail::IsInvocableR<R, oa::DecayT<F>, Args...>
+		&& oa::IsCopyConstructibleV<oa::DecayT<F>>)
 	Fn(F&& inF) {
 		using FD = oa::DecayT<F>;
-		static_assert(std::is_invocable_r_v<R, FD&, Args...>, "Fn: F must be invocable with Args...");
 
 		if constexpr (fnDetail::useSbo<F, R, Args...>()) {
-			new (buffer_) FD(oa::forward<F>(inF));
+			oa::constructAt(reinterpret_cast<FD*>(buffer_), oa::forward<F>(inF));
 			vtable_ = fnDetail::vtableSbo<R, FD, Args...>();
 		} else {
 			static_assert(sizeof(void*) <= BufferSize, "Fn: buffer too small for heap pointer");
@@ -209,9 +217,7 @@ public:
 	}
 
 	R operator()(Args... inArgs) const {
-		if (!vtable_) {
-			throw std::bad_function_call();
-		}
+		OA_REQUIRE(vtable_ != nullptr);
 		return vtable_->call(buffer_, oa::forward<Args>(inArgs)...);
 	}
 
@@ -225,23 +231,6 @@ public:
 		inO = oa::move(tmp);
 	}
 
-	[[nodiscard]] std::function<R(Args...)> stdFn() const& {
-		if (!vtable_) {
-			return {};
-		}
-		Fn self = *this;
-		return [self](Args... a) mutable { return self(oa::forward<Args>(a)...); };
-	}
-
-	[[nodiscard]] std::function<R(Args...)> stdFn() && {
-		if (!vtable_) {
-			return {};
-		}
-		Fn self = oa::move(*this);
-		return [self = oa::move(self)](Args... a) mutable {
-			return self(oa::forward<Args>(a)...);
-		};
-	}
 };
 
 } // namespace oa

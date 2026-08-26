@@ -21,8 +21,7 @@
 #undef OA_TYPES_H_SKIP_REST
 
 #include <oa/core/std/typeTraits.h>
-
-#include <cmath>   // sqrt / log / sin / cos for the Gaussian transform
+#include <oa/core/std/scalarMath.h>
 
 namespace oa {
 
@@ -121,10 +120,10 @@ public:
 		}
 		const oa::F64 u2    = nextDouble();
 		const oa::F64 twoPi = 6.283185307179586476925286766559;
-		const oa::F64 mag   = std::sqrt(-2.0 * std::log(u1));
-		cachedGaussian_    = mag * std::sin(twoPi * u2);
+		const oa::F64 mag   = oa::sqrt(-2.0 * oa::log(u1));
+		cachedGaussian_    = mag * oa::sin(twoPi * u2);
 		hasCachedGaussian_ = true;
-		return inMean + inStdDev * (mag * std::cos(twoPi * u2));
+		return inMean + inStdDev * (mag * oa::cos(twoPi * u2));
 	}
 
 	// ── Fisher–Yates shuffle over a contiguous range ────────────────────────

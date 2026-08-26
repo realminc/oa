@@ -7,9 +7,7 @@
 #pragma once
 
 #include <oa/core/types.h>
-
-#include <algorithm>
-#include <cmath>
+#include <oa/core/std/scalarMath.h>
 
 
 namespace oa {
@@ -44,11 +42,11 @@ struct WindowDecorationMetrics {
 [[nodiscard]] inline oa::I32 windowLogicalSizeForPixels(
 	oa::U32 inPixels,
 	oa::F32 inPixelScale) noexcept {
-	const oa::F32 scale = std::isfinite(inPixelScale) and inPixelScale > 0.001F
+	const oa::F32 scale = oa::isFinite(inPixelScale) and inPixelScale > 0.001F
 		? inPixelScale : 1.0F;
-	return std::max(
+	return oa::max(
 		1,
-		static_cast<oa::I32>(std::ceil(
+		static_cast<oa::I32>(oa::ceil(
 			static_cast<oa::F32>(inPixels) / scale)));
 }
 

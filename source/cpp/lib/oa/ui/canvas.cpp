@@ -1,19 +1,19 @@
 #include <oa/ui/canvas.h>
-#include <cmath>
-#include <algorithm>
-#include <limits>
+#include <oa/core/std/algo.h>
+#include <oa/core/std/limits.h>
+#include <oa/core/std/scalarMath.h>
 
 namespace {
 
 [[nodiscard]] bool isFiniteVec2(oa::vlm::Vec2 inValue) noexcept {
-	return std::isfinite(inValue.x) and std::isfinite(inValue.y);
+	return oa::isFinite(inValue.x) and oa::isFinite(inValue.y);
 }
 
 [[nodiscard]] bool isValidState(
 	const oa::NodeCanvasState& inState,
 	bool inRequirePositiveView) noexcept {
 	return isFiniteVec2(inState.pan) and isFiniteVec2(inState.viewSize)
-		and std::isfinite(inState.zoom)
+		and oa::isFinite(inState.zoom)
 		and inState.zoom >= oa::NodeCanvas::kZoomMin
 		and inState.zoom <= oa::NodeCanvas::kZoomMax
 		and (inRequirePositiveView
@@ -92,8 +92,8 @@ oa::Result<oa::NodeCanvasGrid> oa::NodeCanvas::grid(
 	oa::U32 inMajorEvery,
 	oa::U32 inSuperMajorEvery) const {
 	if (not isValidState(state_, true)) return invalidCanvasState();
-	if (not std::isfinite(inMinimumScreenSpacing)
-		or not std::isfinite(inBaseWorldStep)
+	if (not oa::isFinite(inMinimumScreenSpacing)
+		or not oa::isFinite(inBaseWorldStep)
 		or inMinimumScreenSpacing < 4.0F or inMinimumScreenSpacing > 512.0F
 		or inBaseWorldStep <= 0.0F or inMajorEvery < 2U or inMajorEvery > 100U
 		or inSuperMajorEvery < inMajorEvery * 2U
@@ -107,22 +107,22 @@ oa::Result<oa::NodeCanvasGrid> oa::NodeCanvas::grid(
 	// Preserve the Maya-style decimal hierarchy: 10 -> 100 -> 1000. Zooming
 	// out promotes the visible minor tier by whole decades; zooming in never
 	// invents a sub-base grid.
-	const oa::F64 exponentValue = std::max(0.0, std::ceil(std::log10(ratio)));
-	if (not std::isfinite(exponentValue)
-		or exponentValue < static_cast<oa::F64>(std::numeric_limits<int>::min())
-		or exponentValue > static_cast<oa::F64>(std::numeric_limits<int>::max())) {
+	const oa::F64 exponentValue = oa::max(0.0, oa::ceil(oa::log10(ratio)));
+	if (not oa::isFinite(exponentValue)
+		or exponentValue < static_cast<oa::F64>(oa::Limits<int>::min())
+		or exponentValue > static_cast<oa::F64>(oa::Limits<int>::max())) {
 		return oa::Status::error(
 			oa::StatusCode::OutOfRange,
 			"oa::NodeCanvas::grid spacing exponent is out of range");
 	}
 	const oa::F64 worldStep = static_cast<oa::F64>(inBaseWorldStep)
-		* std::pow(10.0, exponentValue);
+		* oa::pow(10.0, exponentValue);
 	const oa::F64 screenStep = worldStep * state_.zoom;
 	const oa::vlm::Vec2 origin = worldToScreen({0.0F, 0.0F});
-	if (not std::isfinite(worldStep) or not std::isfinite(screenStep)
+	if (not oa::isFinite(worldStep) or not oa::isFinite(screenStep)
 		or worldStep <= 0.0 or screenStep <= 0.0
-		or worldStep > std::numeric_limits<oa::F32>::max()
-		or screenStep > std::numeric_limits<oa::F32>::max()
+		or worldStep > oa::Limits<oa::F32>::max()
+		or screenStep > oa::Limits<oa::F32>::max()
 		or not isFiniteVec2(origin)) {
 		return oa::Status::error(
 			oa::StatusCode::OutOfRange,
@@ -151,7 +151,7 @@ oa::Status oa::NodeCanvas::setState(const oa::NodeCanvasState& inState) {
 }
 
 oa::Status oa::NodeCanvas::setViewSize(oa::F32 inW, oa::F32 inH) {
-	if (not std::isfinite(inW) or not std::isfinite(inH)
+	if (not oa::isFinite(inW) or not oa::isFinite(inH)
 		or inW <= 0.0F or inH <= 0.0F) {
 		return oa::Status::invalidArgument(
 			"oa::NodeCanvas::setViewSize requires finite positive dimensions");
@@ -174,9 +174,9 @@ oa::Status oa::NodeCanvas::pan(oa::vlm::Vec2 inDeltaScreen) {
 		- static_cast<oa::F64>(inDeltaScreen.x) / state_.zoom;
 	const oa::F64 nextY = static_cast<oa::F64>(state_.pan.y)
 		- static_cast<oa::F64>(inDeltaScreen.y) / state_.zoom;
-	if (not std::isfinite(nextX) or not std::isfinite(nextY)
-		or std::abs(nextX) > std::numeric_limits<oa::F32>::max()
-		or std::abs(nextY) > std::numeric_limits<oa::F32>::max()) {
+	if (not oa::isFinite(nextX) or not oa::isFinite(nextY)
+		or oa::abs(nextX) > oa::Limits<oa::F32>::max()
+		or oa::abs(nextY) > oa::Limits<oa::F32>::max()) {
 		return oa::Status::error(
 			oa::StatusCode::OutOfRange,
 			"oa::NodeCanvas::pan result is out of range");
@@ -189,7 +189,7 @@ oa::Status oa::NodeCanvas::pan(oa::vlm::Vec2 inDeltaScreen) {
 
 oa::Status oa::NodeCanvas::zoomAt(oa::F32 inFactor, oa::vlm::Vec2 inFocusScreen) {
 	if (not isValidState(state_, false)) return invalidCanvasState();
-	if (not std::isfinite(inFactor) or inFactor <= 0.0F
+	if (not oa::isFinite(inFactor) or inFactor <= 0.0F
 		or not isFiniteVec2(inFocusScreen)) {
 		return oa::Status::invalidArgument(
 			"oa::NodeCanvas::zoomAt requires a finite positive factor and focus");
@@ -201,7 +201,7 @@ oa::Status oa::NodeCanvas::zoomAt(oa::F32 inFactor, oa::vlm::Vec2 inFocusScreen)
 			oa::StatusCode::OutOfRange,
 			"oa::NodeCanvas::zoomAt focus is outside the finite world range");
 	}
-	const oa::F32 newZoom = std::clamp(state_.zoom * inFactor, kZoomMin, kZoomMax);
+	const oa::F32 newZoom = oa::clamp(state_.zoom * inFactor, kZoomMin, kZoomMax);
 	state_.zoom = newZoom;
 	const oa::vlm::Vec2 worldAfter = screenToWorld(inFocusScreen);
 	state_.pan = state_.pan - (worldAfter - worldBefore);
@@ -220,16 +220,16 @@ oa::Status oa::NodeCanvas::fitToView(
 	const oa::WorldAabb& inBounds,
 	oa::F32 inPaddingPixels) {
 	if (not isValidState(state_, true)) return invalidCanvasState();
-	if (not inBounds.isValid() or not std::isfinite(inPaddingPixels)
+	if (not inBounds.isValid() or not oa::isFinite(inPaddingPixels)
 		or inPaddingPixels < 0.0F
 		or inPaddingPixels * 2.0F >= state_.viewSize.x
 		or inPaddingPixels * 2.0F >= state_.viewSize.y) {
 		return oa::Status::invalidArgument(
 			"oa::NodeCanvas::fitToView requires valid bounds and usable padding");
 	}
-	const oa::F64 extentX = std::max<oa::F64>(
+	const oa::F64 extentX = oa::max<oa::F64>(
 		static_cast<oa::F64>(inBounds.max.x) - inBounds.min.x, 1.0);
-	const oa::F64 extentY = std::max<oa::F64>(
+	const oa::F64 extentY = oa::max<oa::F64>(
 		static_cast<oa::F64>(inBounds.max.y) - inBounds.min.y, 1.0);
 	oa::NodeCanvasState target = state_;
 	target.pan = {
@@ -238,7 +238,7 @@ oa::Status oa::NodeCanvas::fitToView(
 		static_cast<oa::F32>((static_cast<oa::F64>(inBounds.min.y)
 			+ inBounds.max.y) * 0.5),
 	};
-	target.zoom = std::clamp(static_cast<oa::F32>(std::min(
+	target.zoom = oa::clamp(static_cast<oa::F32>(oa::min(
 		(state_.viewSize.x - inPaddingPixels * 2.0F) / extentX,
 		(state_.viewSize.y - inPaddingPixels * 2.0F) / extentY)),
 		kZoomMin, kZoomMax);
@@ -255,7 +255,7 @@ oa::Status oa::NodeCanvas::fitToView(
 }
 
 oa::Status oa::NodeCanvas::stepAnimation(oa::F32 inDeltaMs) {
-	if (not std::isfinite(inDeltaMs) or inDeltaMs < 0.0F) {
+	if (not oa::isFinite(inDeltaMs) or inDeltaMs < 0.0F) {
 		return oa::Status::invalidArgument(
 			"oa::NodeCanvas::stepAnimation requires a finite non-negative delta");
 	}

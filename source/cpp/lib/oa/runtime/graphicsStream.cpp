@@ -25,7 +25,7 @@ oa::Result<GraphicsStreamLease> GraphicsStreamLease::acquire(
 	}
 
 	oa::EngineAccess(inEngine).collectRetiredGraphicsStreams();
-	std::lock_guard<std::mutex> lock(impl.graphicsStreamPoolMutex_);
+	oa::ScopedLock lock(impl.graphicsStreamPoolMutex_);
 	oa::U32 slotIndex = static_cast<oa::U32>(
 		impl.graphicsStreamPool_.size());
 	for (oa::U32 index = 0;

@@ -4,13 +4,8 @@ include(CMakeFindDependencyMacro)
 
 find_dependency(Vulkan)
 find_dependency(yaml-cpp CONFIG)
-find_dependency(CLI11 CONFIG)
-find_dependency(fmt CONFIG)
 if(@OA_BUILD_CRYPTO@)
 	find_dependency(liboqs CONFIG)
-endif()
-if(@OA_PACKAGE_NEEDS_UTF8PROC@)
-	find_dependency(utf8proc CONFIG)
 endif()
 if(@OA_PACKAGE_NEEDS_HARFBUZZ@)
 	# The static vcpkg FreeType export referenced by HarfBuzz names

@@ -604,20 +604,16 @@ TEST_VK(VkEngineTestFixture, SatelliteNlpReplicatedStepMatchesLocalOracle) {
 	ASSERT_TRUE(profile.isOk());
 	const oa::String profileText(
 		reinterpret_cast<const char*>(profile->data()), profile->size());
-	EXPECT_NE(profileText.view().stdView().find("workload=nlp-byte-transformer-step-v1"),
-		std::string::npos);
-	EXPECT_NE(profileText.view().stdView().find("kernel_selection_coverage=gemm-v1"),
-		std::string::npos);
-	EXPECT_EQ(profileText.view().stdView().find("kernel_selections=0"),
-		std::string::npos);
-	EXPECT_NE(profileText.view().stdView().find("kernel_fallbacks=0"),
-		std::string::npos);
-	EXPECT_NE(profileText.view().stdView().find("precision_fallbacks=0"),
-		std::string::npos);
-	EXPECT_NE(profileText.view().stdView().find("layout_fallbacks=0"),
-		std::string::npos);
-	EXPECT_NE(profileText.view().stdView().find("naive_fallbacks=0"),
-		std::string::npos);
+	const oa::StringView profileView = profileText.view();
+	EXPECT_NE(profileView.find("workload=nlp-byte-transformer-step-v1"),
+		oa::StringView::Npos);
+	EXPECT_NE(profileView.find("kernel_selection_coverage=gemm-v1"),
+		oa::StringView::Npos);
+	EXPECT_EQ(profileView.find("kernel_selections=0"), oa::StringView::Npos);
+	EXPECT_NE(profileView.find("kernel_fallbacks=0"), oa::StringView::Npos);
+	EXPECT_NE(profileView.find("precision_fallbacks=0"), oa::StringView::Npos);
+	EXPECT_NE(profileView.find("layout_fallbacks=0"), oa::StringView::Npos);
+	EXPECT_NE(profileView.find("naive_fallbacks=0"), oa::StringView::Npos);
 	auto retained = client.getResult(*request);
 	ASSERT_TRUE(retained.isOk());
 	auto retainedBytes = oa::SatelliteClientSession::readBytesResult(*retained);
@@ -749,30 +745,62 @@ TEST_VK(VkEngineTestFixture,
 		reduced[i] = local->gradients[i] * localWeight
 			+ remote->gradients[i] * remoteWeight;
 	}
-	expectVectorNear(
-		oa::Span<const oa::F32>(reduced.data(), reduced.size()),
-		oa::Span<const oa::F32>(full->gradients.data(), full->gradients.size()),
-		1e-3F, 2e-4F);
+	{
+		SCOPED_TRACE("reduced split-batch gradient versus full-batch gradient");
+		expectVectorNear(
+			oa::Span<const oa::F32>(reduced.data(), reduced.size()),
+			oa::Span<const oa::F32>(full->gradients.data(), full->gradients.size()),
+			2e-6F, 2e-4F);
+	}
 	auto authoritative = applyAuthoritativeGradient(
 		engine, initialParameterView,
 		oa::Span<const oa::F32>(reduced.data(), reduced.size()));
 	ASSERT_TRUE(authoritative.isOk()) << authoritative.getStatus().toString();
-	expectVectorNear(
-		oa::Span<const oa::F32>(authoritative->data(), authoritative->size()),
-		oa::Span<const oa::F32>(full->updatedParameters.data(),
-			full->updatedParameters.size()),
-		1e-3F, 2e-4F);
+	auto fullAuthoritative = applyAuthoritativeGradient(
+		engine, initialParameterView,
+		oa::Span<const oa::F32>(full->gradients.data(), full->gradients.size()));
+	ASSERT_TRUE(fullAuthoritative.isOk()) << fullAuthoritative.getStatus().toString();
+	{
+		SCOPED_TRACE("full-gradient authoritative update versus full-batch update");
+		expectVectorNear(
+			oa::Span<const oa::F32>(fullAuthoritative->data(), fullAuthoritative->size()),
+			oa::Span<const oa::F32>(full->updatedParameters.data(),
+				full->updatedParameters.size()),
+			2e-6F, 2e-4F);
+	}
+
+	// A split reduction changes FP32 summation order. Near zero, that can flip a
+	// gradient's sign by less than 1e-9; first-step AdamW intentionally magnifies
+	// the difference through g / (abs(g) + eps). Prove that every parameter
+	// difference is exactly explained by that optimizer law instead of hiding it
+	// behind a loose parameter tolerance.
+	constexpr oa::F32 adamEps = 1e-8F;
+	const oa::F32 learningRate = oa::NlpSuiteRecipe(
+		oa::NlpArchitecture::Transformer,
+		oa::NlpTokenizerKind::Byte).learningRate();
+	ASSERT_EQ(authoritative->size(), fullAuthoritative->size());
+	for (oa::Usize i = 0; i < authoritative->size(); ++i) {
+		const auto normalized = [](oa::F32 inGradient) {
+			return inGradient / (std::abs(inGradient) + adamEps);
+		};
+		const oa::F32 expectedDifference = -learningRate
+			* (normalized(reduced[i]) - normalized(full->gradients[i]));
+		const oa::F32 actualDifference =
+			(*authoritative)[i] - (*fullAuthoritative)[i];
+		ASSERT_NEAR(actualDifference, expectedDifference, 2e-6F)
+			<< "AdamW split-reduction response at element " << i;
+	}
 
 	auto profile = oa::SatelliteClientSession::readProfile(*waited);
 	ASSERT_TRUE(profile.isOk());
 	const oa::String profileText(
 		reinterpret_cast<const char*>(profile->data()), profile->size());
-	EXPECT_NE(profileText.view().stdView().find(
-		"workload=nlp-byte-transformer-gradient-v1"), std::string::npos);
-	EXPECT_NE(profileText.view().stdView().find("batch_offset=32;batch_count=32"),
-		std::string::npos);
-	EXPECT_NE(profileText.view().stdView().find("kernel_fallbacks=0"),
-		std::string::npos);
+	const oa::StringView profileView = profileText.view();
+	EXPECT_NE(profileView.find("workload=nlp-byte-transformer-gradient-v1"),
+		oa::StringView::Npos);
+	EXPECT_NE(profileView.find("batch_offset=32;batch_count=32"),
+		oa::StringView::Npos);
+	EXPECT_NE(profileView.find("kernel_fallbacks=0"), oa::StringView::Npos);
 
 	ASSERT_TRUE(client.dropObject(1U).isOk());
 	ASSERT_TRUE(client.dropObject(4U).isOk());

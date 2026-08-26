@@ -4,7 +4,6 @@
 #include <oa/ml/fnOptim.h>
 #include <oa/core/fnMatrix.h>
 
-#include <cstring>
 #include <oa/core/matrix.h>
 #include <oa/core/matrixAccess.h>
 #include <oa/core/bufferAccess.h>
@@ -12,9 +11,9 @@
 #include <oa/runtime/allocator.h>
 #include <oa/core/log.h>
 #include <oa/core/envFlag.h>
-
-#include <algorithm>
-#include <cmath>
+#include <oa/core/memory.h>
+#include <oa/core/std/algo.h>
+#include <oa/core/std/scalarMath.h>
 
 namespace oa {
 
@@ -171,9 +170,9 @@ void muonMatrixStep(
 
 	oa::Matrix ortho = transposed ? oa::FnMatrix::transpose(z, 0, 1) : z;
 
-	const oa::U32 maxDimension = std::max(inRows, inCols);
+	const oa::U32 maxDimension = oa::max(inRows, inCols);
 	const oa::F32 moonshotScale = 0.2F
-		* std::sqrt(static_cast<oa::F32>(maxDimension));
+		* oa::sqrt(static_cast<oa::F32>(maxDimension));
 	{
 		struct MuonApplyPush {
 			oa::U32 Count;
@@ -279,7 +278,7 @@ void adamWStepMany(
 	const oa::U32 count1 = static_cast<oa::U32>(inParams[1].param->numElements());
 	const oa::U32 count2 = static_cast<oa::U32>(inParams[2].param->numElements());
 	const oa::U32 count3 = static_cast<oa::U32>(inParams[3].param->numElements());
-	const oa::U32 maxCount = std::max(std::max(count0, count1), std::max(count2, count3));
+	const oa::U32 maxCount = oa::max(oa::max(count0, count1), oa::max(count2, count3));
 
 	struct AdamWMany4Push {
 		oa::U32 count0;
@@ -330,7 +329,7 @@ void adamWStepManyGraph(
 	const oa::U32 count1 = static_cast<oa::U32>(inParams[1].param->numElements());
 	const oa::U32 count2 = static_cast<oa::U32>(inParams[2].param->numElements());
 	const oa::U32 count3 = static_cast<oa::U32>(inParams[3].param->numElements());
-	const oa::U32 maxCount = std::max(std::max(count0, count1), std::max(count2, count3));
+	const oa::U32 maxCount = oa::max(oa::max(count0, count1), oa::max(count2, count3));
 	struct Push {
 		oa::U32 count0, count1, count2, count3;
 	} push{count0, count1, count2, count3};
@@ -454,7 +453,7 @@ void clipGradNorm(
 	oa::I32 paramData[18] = {};
 	paramData[0] = n;
 	for (oa::I32 i = 0; i < n; ++i) paramData[i + 1] = counts[i];
-	std::memcpy(&paramData[17], &inMaxNorm, sizeof(oa::F32));  // float bits → slot 17
+	oa::memcpy(&paramData[17], &inMaxNorm, sizeof(oa::F32));  // float bits → slot 17
 	inOutParams = oa::FnMatrix::fromInt32(
 		oa::Span<const oa::I32>(paramData, 18),
 		oa::MatrixShape{18}, oa::ScalarType::Int32);

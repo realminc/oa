@@ -16,6 +16,7 @@
 
 #include <oa/vision/videoEncoder.h>
 #include "videoEncoderImpl.h"
+#include <oa/core/std/format.h>
 #include <oa/core/log.h>
 #include <oa/runtime/engine.h>
 #include <oa/runtime/eventAccess.h>
@@ -772,7 +773,7 @@ oa::Result<oa::VideoEncoder> oa::VideoEncoder::create(
 	if (!sessionResult.isOk()) {
 		return sessionResult.getStatus();
 	}
-	encoder.impl_->session = std::move(sessionResult.getValue());
+	encoder.impl_->session = oa::move(sessionResult.getValue());
 	encoder.impl_->dpbSlotCapacity = maxDpbSlots;
 
 	// ── 2. Create video queue ───────────────────────────────────────────
@@ -780,7 +781,7 @@ oa::Result<oa::VideoEncoder> oa::VideoEncoder::create(
 	if (!queueResult.isOk()) {
 		return queueResult.getStatus();
 	}
-	encoder.impl_->queue = std::move(queueResult.getValue());
+	encoder.impl_->queue = oa::move(queueResult.getValue());
 
 	// ── 3. Create shared DPB using oavk::VideoDpb ─────────────────────────
 	// The encoder never samples its DPB. Requesting SAMPLED here makes the
@@ -799,7 +800,7 @@ oa::Result<oa::VideoEncoder> oa::VideoEncoder::create(
 	if (!dpbResult.isOk()) {
 		return dpbResult.getStatus();
 	}
-	encoder.impl_->dpb = std::move(dpbResult.getValue());
+	encoder.impl_->dpb = oa::move(dpbResult.getValue());
 
 	// ── 4. Create codec session parameters ─────────────────────────────
 	StdVideoH264SequenceParameterSet h264Sps = buildSpsForH264Encode(inProfile);
@@ -927,7 +928,7 @@ oa::Result<oa::VideoEncoder> oa::VideoEncoder::create(
 				encoder, bitstreamResult.getStatus(), "video encoder");
 		}
 		slot.bitstream = oa::move(*bitstreamResult);
-		std::memset(slot.bitstream.getMappedPtr(), 0,
+		oa::memset(slot.bitstream.getMappedPtr(), 0,
 			static_cast<oa::Usize>(slot.bitstream.getCapacity()));
 		result = OaVmaFlushAllocation(
 			static_cast<OaVmaAllocator>(oa::EngineAllocatorAccess::get(vkEngine).allocator),
@@ -1142,7 +1143,7 @@ oa::Result<oa::VideoEncoder> oa::VideoEncoder::create(
 	}
 	encoder.impl_->currentGopFrame   = 0;
 	encoder.impl_->gopSize           = inProfile.gopSize;
-	return oa::Result<oa::VideoEncoder>(std::move(encoder));
+	return oa::Result<oa::VideoEncoder>(oa::move(encoder));
 }
 
 
@@ -1472,7 +1473,7 @@ oa::Status oa::VideoEncoder::submitEncode_(EncodeSlot& inSlot, oa::U64 inPts)
 	// zero-byte feedback fallback unambiguous without paying to clear the full
 	// 4 MiB buffer every frame.
 	if (inSlot.bitstreamDirtyEnd > 0U) {
-		std::memset(inSlot.bitstream.getMappedPtr(), 0,
+		oa::memset(inSlot.bitstream.getMappedPtr(), 0,
 			static_cast<oa::Usize>(inSlot.bitstreamDirtyEnd));
 		VkResult flushResult = OaVmaFlushAllocation(
 			static_cast<OaVmaAllocator>(oa::EngineAllocatorAccess::get(vkEngine).allocator),
@@ -2086,7 +2087,7 @@ oa::Status oa::VideoEncoder::harvest_(
 		if (result != VK_SUCCESS) {
 			return oa::Status::error(oa::StatusCode::VulkanError,
 				oa::String("vkWaitForFences (encode job) failed: VkResult=")
-					+ std::to_string(static_cast<int>(result)));
+					+ oa::toString(static_cast<oa::I64>(result)));
 		}
 	} else {
 		result = oa::EngineDeviceAccess::get(vkEngine).deviceDispatch.vkGetFenceStatus(device, inSlot.fence);
@@ -2094,7 +2095,7 @@ oa::Status oa::VideoEncoder::harvest_(
 		if (result != VK_SUCCESS) {
 			return oa::Status::error(oa::StatusCode::VulkanError,
 				oa::String("vkGetFenceStatus (encode job) failed: VkResult=")
-					+ std::to_string(static_cast<int>(result)));
+					+ oa::toString(static_cast<oa::I64>(result)));
 		}
 	}
 
@@ -2198,9 +2199,9 @@ oa::Status oa::VideoEncoder::harvest_(
 	const oa::Usize hdrLen   = inSlot.isKeyframe ? impl_->cachedHeaders.size() : 0U;
 	outFrame.bitstream.resize(hdrLen + sliceLen);
 	if (hdrLen > 0U) {
-		std::memcpy(outFrame.bitstream.data(), impl_->cachedHeaders.data(), hdrLen);
+		oa::memcpy(outFrame.bitstream.data(), impl_->cachedHeaders.data(), hdrLen);
 	}
-	std::memcpy(outFrame.bitstream.data() + hdrLen, slicePtr, sliceLen);
+	oa::memcpy(outFrame.bitstream.data() + hdrLen, slicePtr, sliceLen);
 	outFrame.presentationTimestamp = inSlot.presentationTimestamp;
 	outFrame.isKeyframe            = inSlot.isKeyframe;
 	outFrame.frameSize             = static_cast<oa::U32>(hdrLen + sliceLen);

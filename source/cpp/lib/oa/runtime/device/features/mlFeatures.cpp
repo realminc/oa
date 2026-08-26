@@ -9,7 +9,7 @@
 #include <oa/core/envFlag.h>
 #include <oa/core/log.h>
 #include <oa/runtime/init.h>
-#include <cstring>
+#include <string.h>
 
 
 class MlFeatures : public oavk::FeatureModule {

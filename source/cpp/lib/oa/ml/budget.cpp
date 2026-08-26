@@ -2,9 +2,8 @@
 
 #include <oa/ml/config.h>
 #include <oa/runtime/engine.h>
-#include <algorithm>
-#include <cstdio>
-#include <cmath>
+#include <oa/core/std/algo.h>
+#include <stdio.h>
 
 oa::VramBudgetResult oa::computeVramBudget(
 	const oa::Engine& inEngine,
@@ -69,18 +68,18 @@ oa::VramBudgetResult oa::computeVramBudget(
 		// Batch fixed, solve for seq len
 		B = inConfig.preferredBatchSize;
 		S = static_cast<oa::I32>(maxTokens / static_cast<oa::Usize>(B));
-		S = std::clamp(S, inConfig.minSeqLen, inConfig.maxSeqLen);
+		S = oa::clamp(S, inConfig.minSeqLen, inConfig.maxSeqLen);
 	} else if (inConfig.preferredSeqLen > 0) {
 		// seq len fixed, solve for batch
 		S = inConfig.preferredSeqLen;
 		B = static_cast<oa::I32>(maxTokens / static_cast<oa::Usize>(S));
-		B = std::clamp(B, inConfig.minBatchSize, inConfig.maxBatchSize);
+		B = oa::clamp(B, inConfig.minBatchSize, inConfig.maxBatchSize);
 	} else {
 		// Full auto: maximize S first (longer context = better quality), then B
 		// Start with a reasonable S, then maximize B
 		// Strategy: try S candidates from max down, find largest B >= minBatchSize
-		S = std::min(inConfig.maxSeqLen, static_cast<oa::I32>(maxTokens));
-		S = std::max(S, inConfig.minSeqLen);
+		S = oa::min(inConfig.maxSeqLen, static_cast<oa::I32>(maxTokens));
+		S = oa::max(S, inConfig.minSeqLen);
 
 		// find best S where we can fit at least minBatchSize
 		while (S >= inConfig.minSeqLen) {
@@ -94,8 +93,8 @@ oa::VramBudgetResult oa::computeVramBudget(
 			B = static_cast<oa::I32>(maxTokens / static_cast<oa::Usize>(S));
 		}
 
-		B = std::clamp(B, inConfig.minBatchSize, inConfig.maxBatchSize);
-		S = std::clamp(S, inConfig.minSeqLen, inConfig.maxSeqLen);
+		B = oa::clamp(B, inConfig.minBatchSize, inConfig.maxBatchSize);
+		S = oa::clamp(S, inConfig.minSeqLen, inConfig.maxSeqLen);
 	}
 
 	result.batchSize = B;

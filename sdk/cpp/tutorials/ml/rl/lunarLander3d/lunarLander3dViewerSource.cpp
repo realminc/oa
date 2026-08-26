@@ -6,6 +6,8 @@
 #include <oa/core/log.h>
 #include <oa/runtime/engine.h>
 
+#include <core/streamText.h>
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -116,7 +118,7 @@ public:
 			return oa::Status::error(
 				oa::StatusCode::FailedPrecondition,
 				oa::String("LunarLander3d scalar environment creation failed: ")
-					+ environment_.error());
+					+ oa::sdk::fromStdString(environment_.error()));
 		}
 		const oa::Status resetStatus = resetSimulation_();
 		if (resetStatus.isError()) {
@@ -394,7 +396,7 @@ private:
 			return oa::Status::error(
 				oa::StatusCode::DataLoss,
 				oa::String("LunarLander3d scalar transition failed: ")
-					+ transition.error_);
+					+ oa::sdk::fromStdString(transition.error_));
 		}
 		return oa::Status::ok();
 	}

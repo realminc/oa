@@ -11,12 +11,12 @@
 #include <oa/runtime/init.h>     // oavk::CoopMatShape, oavk::CoopMatShapes
 #include <oa/runtime/rate.h>
 
-#include <limits>
+#include <oa/core/std/limits.h>
 
 namespace oavk {
 
-inline constexpr oa::U32 EnumerationIndexUnset = std::numeric_limits<oa::U32>::max();
-inline constexpr oa::U32 PciDeviceIdUnknown    = std::numeric_limits<oa::U32>::max();
+inline constexpr oa::U32 EnumerationIndexUnset = oa::Limits<oa::U32>::max();
+inline constexpr oa::U32 PciDeviceIdUnknown    = oa::Limits<oa::U32>::max();
 
 
 class Queues {

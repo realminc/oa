@@ -16,7 +16,7 @@
 #include <oa/core/validation.h>
 #include <oa/core/fnmatrix/fnMatrixAxis.h>
 
-#include <cassert>
+#include <assert.h>
 
 static oa::U32 divCeil(oa::U32 inA, oa::U32 inB) { return (inA + inB - 1) / inB; }
 
@@ -24,8 +24,8 @@ static oa::Matrix commitMatrixResult(
 	oa::Matrix inResult,
 	oa::OpLoweringScope& inLowering,
 	const oa::OpContract& inContract,
-	std::initializer_list<const oa::Matrix*> inInputs,
-	std::initializer_list<oa::OpAttribute> inAttributes = {})
+	oa::MatrixArgs inInputs,
+	oa::OpAttributeArgs inAttributes = {})
 {
 	const auto status = inLowering.commit(
 		inContract, inInputs, {&inResult}, inAttributes);
@@ -161,7 +161,7 @@ oa::Matrix oa::FnMatrix::softmaxScaledMasked(
 
 	if (oa::FnAutograd::isEnabled() and inScores.requiresGrad()) {
 		auto gradFn = oa::makeShared<oa::GradSoftmaxScaledMasked>();
-		gradFn->saveForBackward({out});
+		gradFn->saveForBackward(out);
 		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inScores});
 		gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		gradFn->outputShape_ = out.getShape();

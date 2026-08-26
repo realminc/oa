@@ -6,8 +6,6 @@
 
 #include <oa/ml/module.h>
 
-#include <initializer_list>
-
 namespace oa {
 
 /// Flatten: Flatten layer with PyTorch-style start_dim/end_dim.

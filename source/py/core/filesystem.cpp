@@ -2,6 +2,7 @@
 #include "../binding.h"
 
 #include <oa/core/filesystem.h>
+#include <oa/core/hostText.h>
 #include <oa/core/paths.h>
 
 namespace {
@@ -25,7 +26,7 @@ std::vector<std::string> stringsFrom(oa::Vec<oa::String>&& strings) {
     std::vector<std::string> result;
     result.reserve(strings.size());
     for (const auto& value : strings) {
-        result.push_back(value.stdStr());
+		result.push_back(oa::hostText::copy(value));
     }
     return result;
 }
@@ -38,22 +39,22 @@ void bindCoreFilesystem(nb::module_& m) {
         .def("__init__", [](oa::Path* self, nb::handle path) {
             new (self) oa::Path(pathFromPython(path));
         }, nb::arg("path"))
-        .def("__str__", [](const oa::Path& self) { return self.string().stdStr(); })
-        .def("__repr__", [](const oa::Path& self) {
-            const std::string value = self.string().stdStr();
+		.def("__str__", [](const oa::Path& self) { return oa::hostText::copy(self.string()); })
+		.def("__repr__", [](const oa::Path& self) {
+			const std::string value = oa::hostText::copy(self.string());
             return std::string("oa.Path(") + nb::cast<std::string>(
                 nb::repr(nb::str(value.c_str()))) + ")";
         })
-        .def("__fspath__", [](const oa::Path& self) { return self.string().stdStr(); })
+		.def("__fspath__", [](const oa::Path& self) { return oa::hostText::copy(self.string()); })
         .def("__truediv__", [](const oa::Path& self, nb::handle child) {
             return self / pathFromPython(child);
         }, nb::arg("child"))
         .def("__eq__", [](const oa::Path& self, const oa::Path& other) {
             return self == other;
         }, nb::arg("other"))
-        .def("string", [](const oa::Path& self) { return self.string().stdStr(); })
-        .def("genericString", [](const oa::Path& self) {
-            return self.genericString().stdStr();
+		.def("string", [](const oa::Path& self) { return oa::hostText::copy(self.string()); })
+		.def("genericString", [](const oa::Path& self) {
+			return oa::hostText::copy(self.genericString());
         })
         .def("parentPath", &oa::Path::parentPath)
         .def("filename", &oa::Path::filename)
@@ -136,7 +137,7 @@ void bindCoreFilesystem(nb::module_& m) {
                 pathFromPython(directory), recursive)));
         }, nb::arg("directory"), nb::arg("recursive") = false)
         .def_static("readText", [](nb::handle path) {
-            return unwrap(oa::Filesystem::readText(pathFromPython(path))).stdStr();
+			return oa::hostText::copy(unwrap(oa::Filesystem::readText(pathFromPython(path))));
         }, nb::arg("path"))
         .def_static("writeText", [](nb::handle path, const std::string& content) {
             throwIfError(oa::Filesystem::writeText(

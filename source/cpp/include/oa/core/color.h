@@ -5,8 +5,8 @@
 
 #pragma once
 
-#include <cmath>
 #include <oa/core/types.h>
+#include <oa/core/std/scalarMath.h>
 
 namespace oa {
 
@@ -29,7 +29,7 @@ public:
 		auto to8 = [](oa::F32 v) -> oa::U32 {
 			v = v < 0.0F ? 0.0F : v;
 			v = v > 1.0F ? 1.0F : v;
-			return static_cast<oa::U32>(std::lroundf(v * 255.0F));
+			return static_cast<oa::U32>(oa::round(v * 255.0F));
 		};
 		return (to8(r) << 24) | (to8(g) << 16) | (to8(b) << 8) | to8(a);
 	}

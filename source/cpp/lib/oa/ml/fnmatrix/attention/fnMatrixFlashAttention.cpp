@@ -1,12 +1,11 @@
 #include <oa/ml/fnMatrix.h>
 
 #include <oa/core/bufferAccess.h>
+#include <oa/core/assert.h>
 #include <oa/core/fnMatrix.h>
 #include <oa/core/op.h>
 #include <oa/ml/autograd.h>
 #include <oa/runtime/executionSession.h>
-
-#include <stdexcept>
 
 namespace oa {
 namespace {
@@ -15,23 +14,17 @@ constexpr oa::I64 kFlashMaxSeqLen = 1024;
 
 void validateFlashInputs(
 	const oa::Matrix& inQ, const oa::Matrix& inK, const oa::Matrix& inV) {
-	if (inQ.rank() != 3 || inK.getShape() != inQ.getShape() ||
-		inV.getShape() != inQ.getShape()) {
-		throw std::invalid_argument(
-			"FlashAttentionCausal expects equal Q/K/V [batchHeads,sequence,headDim]");
-	}
-	if (inQ.size(0) <= 0 || inQ.size(1) <= 0 || inQ.size(2) <= 0 ||
-		inQ.size(1) > kFlashMaxSeqLen) {
-		throw std::invalid_argument(
-			"FlashAttentionCausal requires non-empty dimensions and sequence <= 1024");
-	}
-	if (inK.getDtype() != inQ.getDtype() || inV.getDtype() != inQ.getDtype()) {
-		throw std::invalid_argument("FlashAttentionCausal requires one Q/K/V dtype");
-	}
-	if (inQ.getDtype() != oa::ScalarType::Float32) {
-		throw std::invalid_argument(
-			"FlashAttentionCausal v1 is verified for Float32 storage only");
-	}
+	OA_REQUIRE_MSG(inQ.rank() == 3 && inK.getShape() == inQ.getShape()
+		&& inV.getShape() == inQ.getShape(),
+		"FlashAttentionCausal expects equal Q/K/V [batchHeads,sequence,headDim]");
+	OA_REQUIRE_MSG(inQ.size(0) > 0 && inQ.size(1) > 0 && inQ.size(2) > 0
+		&& inQ.size(1) <= kFlashMaxSeqLen,
+		"FlashAttentionCausal requires non-empty dimensions and sequence <= 1024");
+	OA_REQUIRE_MSG(inK.getDtype() == inQ.getDtype()
+		&& inV.getDtype() == inQ.getDtype(),
+		"FlashAttentionCausal requires one Q/K/V dtype");
+	OA_REQUIRE_MSG(inQ.getDtype() == oa::ScalarType::Float32,
+		"FlashAttentionCausal v1 is verified for Float32 storage only");
 }
 
 class GradFlashAttentionCausal final : public GradNode {
@@ -86,7 +79,7 @@ oa::Matrix oa::FnMatrix::flashAttentionCausal(
 	if (oa::FnAutograd::isEnabled() &&
 		(inQ.requiresGrad() || inK.requiresGrad() || inV.requiresGrad())) {
 		auto grad = oa::makeShared<oa::GradFlashAttentionCausal>();
-		grad->saveForBackward({inQ, inK, inV, output, logSumExp});
+		grad->saveForBackward(inQ, inK, inV, output, logSumExp);
 		grad->setGraphInputs({inQ, inK, inV});
 		grad->sequenceNr_ = oa::FnAutograd::nextSeq();
 		grad->outputShape_ = output.getShape();
@@ -106,12 +99,11 @@ oa::FlashAttentionBwdResult oa::FnMatrix::flashAttentionCausalBwd(
 	const oa::Matrix& inOutput, const oa::Matrix& inLogSumExp,
 	const oa::Matrix& inGradOutput, oa::F32 inScale) {
 	validateFlashInputs(inQ, inK, inV);
-	if (inOutput.getShape() != inQ.getShape() ||
-		inGradOutput.getShape() != inQ.getShape() ||
-		inLogSumExp.getShape() != oa::MatrixShape{inQ.size(0), inQ.size(1)} ||
-		inLogSumExp.getDtype() != oa::ScalarType::Float32) {
-		throw std::invalid_argument("FlashAttentionCausalBwd received incompatible saved tensors");
-	}
+	OA_REQUIRE_MSG((inOutput.getShape() == inQ.getShape()
+		&& inGradOutput.getShape() == inQ.getShape()
+		&& inLogSumExp.getShape() == oa::MatrixShape{inQ.size(0), inQ.size(1)}
+		&& inLogSumExp.getDtype() == oa::ScalarType::Float32),
+		"FlashAttentionCausalBwd received incompatible saved tensors");
 	auto& ctx = oa::ExecutionSession::getActive();
 	oa::OpLoweringScope lowering(ctx);
 	auto gradQ = oa::FnMatrix::empty(inQ.getShape(), inQ.getDtype());

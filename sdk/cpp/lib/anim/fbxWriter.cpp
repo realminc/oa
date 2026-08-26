@@ -1,6 +1,9 @@
 #include <anim/fbxWriter.h>
+#include <core/streamText.h>
 
 #include <anim/usd.h>
+
+#include <core/streamText.h>
 
 #include <oa/core/vlm.h>
 
@@ -16,7 +19,7 @@ oa::String fv(oa::F32 v) {
 	std::ostringstream s;
 	s.precision(9);
 	s << static_cast<double>(v);
-	return oa::String(s.str());
+	return oa::sdk::fromStdString(s.str());
 }
 
 // index of the last '/' in a string, or oa::String::Npos.
@@ -296,5 +299,5 @@ oa::Status oa::Fbx::writeFbx(const oa::Path& inPath, const oa::UsdSkelClip& inCl
 		o << "\t\tReferenceTime: 0," << stopTime << "\n\t}\n}\n";
 	}
 
-	return oa::Filesystem::writeText(inPath, oa::String(o.str()));
+	return oa::Filesystem::writeText(inPath, oa::sdk::fromStdString(o.str()));
 }

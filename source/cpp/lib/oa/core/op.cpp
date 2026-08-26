@@ -2,7 +2,7 @@
 
 #include <oa/core/matrix.h>
 
-#include <utility>
+#include <oa/core/std/utility.h>
 
 namespace {
 
@@ -59,7 +59,7 @@ oa::OpAttribute oa::OpAttribute::fromString(
 	oa::OpAttribute attribute;
 	attribute.name = oa::String(inName);
 	attribute.kind = oa::OpAttributeKind::String;
-	attribute.text = std::move(inValue);
+	attribute.text = oa::move(inValue);
 	return attribute;
 }
 
@@ -79,7 +79,7 @@ oa::OpAttribute oa::OpAttribute::fromEnum(
 	oa::OpAttribute attribute;
 	attribute.name = oa::String(inName);
 	attribute.kind = oa::OpAttributeKind::Enum;
-	attribute.text = std::move(inSymbol);
+	attribute.text = oa::move(inSymbol);
 	return attribute;
 }
 

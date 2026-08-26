@@ -17,7 +17,7 @@
 
 #pragma once
 
-#include <array>
+#include <oa/core/std/array.h>
 #include <oa/core/types.h>
 #include <oa/core/status.h>
 #include <oa/core/matrix.h>
@@ -116,8 +116,8 @@ private:
 	static void releaseRetired_(void* inPayload);
 
 	oa::Engine* engine_ = nullptr;
-	std::array<oavk::Buffer, kImageMaxPlanes> planes_ = {};
-	std::array<ImageDtype, kImageMaxPlanes> dtypes_ = {};
+	oa::Array<oavk::Buffer, kImageMaxPlanes> planes_ = {};
+	oa::Array<ImageDtype, kImageMaxPlanes> dtypes_ = {};
 	oa::Vec<oa::Event> consumerCompletions_;
 	oa::I32 width_ = 0;
 	oa::I32 height_ = 0;

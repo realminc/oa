@@ -1,5 +1,6 @@
 #include <oa/network/tcp.h>
 #include <oa/core/log.h>
+#include <oa/core/std/utility.h>
 
 #if defined(_WIN32)
 #include <winsock2.h>
@@ -14,9 +15,9 @@ using socklen_t = int;
 using SOCKET = int;
 #endif
 
-#include <cerrno>
-#include <cstdio>
-#include <cstring>
+#include <errno.h>
+#include <stdio.h>
+#include <string.h>
 
 #if defined(_WIN32)
 static void tcpEnsureWinsock() {
@@ -50,19 +51,19 @@ static oa::I64 tcpWrite(oa::I32 inFd, const oa::Byte* inBuf, oa::U64 inSize) { r
 
 static oa::String tcpFormatU16(oa::U16 inPort) {
 	char buf[8];
-	std::snprintf(buf, sizeof(buf), "%u", static_cast<unsigned>(inPort));
+	::snprintf(buf, sizeof(buf), "%u", static_cast<unsigned>(inPort));
 	return oa::String(buf);
 }
 
 // oa::TcpStream
 
 oa::TcpStream::TcpStream(oa::I32 inFd, oa::String inAddr, oa::U16 inPort)
-	: fd_(inFd), remoteAddr_(std::move(inAddr)), remotePort_(inPort) {}
+	: fd_(inFd), remoteAddr_(oa::move(inAddr)), remotePort_(inPort) {}
 
 oa::TcpStream::~TcpStream() { close(); }
 
 oa::TcpStream::TcpStream(oa::TcpStream&& inOther) noexcept
-	: fd_(inOther.fd_), remoteAddr_(std::move(inOther.remoteAddr_)), remotePort_(inOther.remotePort_) {
+	: fd_(inOther.fd_), remoteAddr_(oa::move(inOther.remoteAddr_)), remotePort_(inOther.remotePort_) {
 	inOther.fd_ = -1;
 	inOther.remotePort_ = 0;
 }
@@ -71,7 +72,7 @@ oa::TcpStream& oa::TcpStream::operator=(oa::TcpStream&& inOther) noexcept {
 	if (this != &inOther) {
 		close();
 		fd_ = inOther.fd_;
-		remoteAddr_ = std::move(inOther.remoteAddr_);
+		remoteAddr_ = oa::move(inOther.remoteAddr_);
 		remotePort_ = inOther.remotePort_;
 		inOther.fd_ = -1;
 		inOther.remotePort_ = 0;
@@ -123,7 +124,7 @@ oa::Status oa::TcpStream::setIoTimeout(oa::U32 inTimeoutMs) {
 		or ::setsockopt(fd_, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout)) != 0)
 	{
 		return oa::Status::error(oa::StatusCode::Unavailable,
-			oa::String("failed to configure TCP I/O timeout: ") + std::strerror(errno));
+			oa::String("failed to configure TCP I/O timeout: ") + ::strerror(errno));
 	}
 #endif
 	return oa::Status::ok();
@@ -198,7 +199,7 @@ oa::Result<oa::TcpListener> oa::TcpListener::bind(const oa::String& inHost, oa::
 	tcpEnsureWinsock();
 	oa::I32 fd = tcpSocket(AF_INET, SOCK_STREAM, 0);
 	if (fd < 0) {
-		return oa::Status::error("socket() failed: " + oa::String(std::strerror(errno)));
+		return oa::Status::error("socket() failed: " + oa::String(::strerror(errno)));
 	}
 
 	oa::I32 yes = 1;
@@ -221,13 +222,13 @@ oa::Result<oa::TcpListener> oa::TcpListener::bind(const oa::String& inHost, oa::
 		bindMsg += "bind() failed on port ";
 		bindMsg += tcpFormatU16(inPort);
 		bindMsg += ": ";
-		bindMsg += std::strerror(errno);
-		return oa::Status::error(std::move(bindMsg));
+		bindMsg += ::strerror(errno);
+		return oa::Status::error(oa::move(bindMsg));
 	}
 
 	if (::listen(fd, inBacklog) < 0) {
 		tcpClose(fd);
-		return oa::Status::error("listen() failed: " + oa::String(std::strerror(errno)));
+		return oa::Status::error("listen() failed: " + oa::String(::strerror(errno)));
 	}
 
 	// Resolve actual port (if inPort was 0, OS picks one)
@@ -251,7 +252,7 @@ oa::Result<oa::TcpStream> oa::TcpListener::accept() {
 	socklen_t addrLen = sizeof(clientAddr);
 	oa::I32 clientFd = static_cast<oa::I32>(::accept(static_cast<SOCKET>(fd_), reinterpret_cast<struct sockaddr*>(&clientAddr), &addrLen));
 	if (clientFd < 0) {
-		return oa::Status::error("accept() failed: " + oa::String(std::strerror(errno)));
+		return oa::Status::error("accept() failed: " + oa::String(::strerror(errno)));
 	}
 
 	oa::I32 yes = 1;

@@ -3,6 +3,7 @@
 #include <oa/runtime/allocator.h>
 #include <oa/runtime/oaVk.h>
 #include <oa/core/log.h>
+#include <oa/core/std/algo.h>
 #include "descriptorValidation.h"
 
 namespace oavk {
@@ -32,11 +33,11 @@ oa::Result<BindlessHeap> BindlessHeap::create(
 	// Use those values directly; the retry loop below will back off if a driver still
 	// cannot satisfy the capped request.
 
-	const oa::U32 minBufferCapacity = std::min(
+	const oa::U32 minBufferCapacity = oa::min(
 		bufferCapacity, OA_BINDLESS_CAPACITY_FALLBACK);
-	const oa::U32 minImageCapacity = std::min(
+	const oa::U32 minImageCapacity = oa::min(
 		imageCapacity, OA_BINDLESS_IMAGE_CAPACITY_FALLBACK);
-	const oa::U32 minSamplerCapacity = std::min(
+	const oa::U32 minSamplerCapacity = oa::min(
 		samplerCapacity, OA_BINDLESS_SAMPLER_CAPACITY_FALLBACK);
 
 	// Track retry stage: 0 = first attempt, 1 = halve buffers only, 2 = halve everything
@@ -138,19 +139,19 @@ oa::Result<BindlessHeap> BindlessHeap::create(
 		if (retryStage == 0) {
 			// first failure: halve buffers only
 			if (bufferCapacity > minBufferCapacity) {
-				bufferCapacity = std::max(bufferCapacity / 2, minBufferCapacity);
+				bufferCapacity = oa::max(bufferCapacity / 2, minBufferCapacity);
 			}
 			retryStage = 1;
 		} else {
 			// Subsequent failures: halve everything
 			if (bufferCapacity > minBufferCapacity) {
-				bufferCapacity = std::max(bufferCapacity / 2, minBufferCapacity);
+				bufferCapacity = oa::max(bufferCapacity / 2, minBufferCapacity);
 			}
 			if (imageCapacity > minImageCapacity) {
-				imageCapacity = std::max(imageCapacity / 2, minImageCapacity);
+				imageCapacity = oa::max(imageCapacity / 2, minImageCapacity);
 			}
 			if (samplerCapacity > minSamplerCapacity) {
-				samplerCapacity = std::max(samplerCapacity / 2, minSamplerCapacity);
+				samplerCapacity = oa::max(samplerCapacity / 2, minSamplerCapacity);
 			}
 		}
 

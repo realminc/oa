@@ -54,11 +54,11 @@ protected:
 	// valid only during init, tick, and shutdown. Setup deliberately runs before
 	// device creation so it can finalize engineConfig_ or exit without vulkan work.
 	[[nodiscard]] oa::Engine& engine() noexcept {
-		assert(engineOwner_ != nullptr);
+		OA_ASSERT(engineOwner_ != nullptr);
 		return *engineOwner_;
 	}
 	[[nodiscard]] const oa::Engine& engine() const noexcept {
-		assert(engineOwner_ != nullptr);
+		OA_ASSERT(engineOwner_ != nullptr);
 		return *engineOwner_;
 	}
 	[[nodiscard]] bool hasEngine() const noexcept { return engineOwner_ != nullptr; }

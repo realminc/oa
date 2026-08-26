@@ -6,9 +6,8 @@
 #include <oa/ml/rollout.h>
 
 #include "environmentExecution.h"
-
-#include <algorithm>
-#include <limits>
+#include <oa/core/std/algo.h>
+#include <oa/core/std/limits.h>
 
 oa::Result<oa::PolicyEvaluationMetrics> oa::PolicyEvaluator::evaluateCategorical(
 	oa::Environment& inEnvironment,
@@ -93,8 +92,8 @@ oa::Result<oa::PolicyEvaluationMetrics> oa::PolicyEvaluator::evaluateCategorical
 
 	oa::Vec<oa::F32> episodeReturn(environments, 0.0F);
 	oa::F64 sum = 0.0;
-	oa::F32 minimum = std::numeric_limits<oa::F32>::infinity();
-	oa::F32 maximum = -std::numeric_limits<oa::F32>::infinity();
+	oa::F32 minimum = oa::Limits<oa::F32>::infinity();
+	oa::F32 maximum = -oa::Limits<oa::F32>::infinity();
 	oa::U64 completed = 0;
 	for (oa::U32 step = 0; step < inConfig.horizon; ++step) {
 		for (oa::U32 lane = 0; lane < environments; ++lane) {
@@ -102,8 +101,8 @@ oa::Result<oa::PolicyEvaluationMetrics> oa::PolicyEvaluator::evaluateCategorical
 			episodeReturn[lane] += reward[index];
 			if (terminated[index] != 0 || truncated[index] != 0) {
 				sum += episodeReturn[lane];
-				minimum = std::min(minimum, episodeReturn[lane]);
-				maximum = std::max(maximum, episodeReturn[lane]);
+				minimum = oa::min(minimum, episodeReturn[lane]);
+				maximum = oa::max(maximum, episodeReturn[lane]);
 				episodeReturn[lane] = 0.0F;
 				++completed;
 			}

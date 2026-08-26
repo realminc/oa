@@ -3,9 +3,7 @@
 #include <oa/runtime/engine.h>
 #include <oa/runtime/allocator.h>
 #include <oa/runtime/texture.h>
-
-#include <cstdint>
-#include <type_traits>
+#include <oa/core/std/typeTraits.h>
 
 // Sole private bridge for raw buffer/image representation and engine
 // provenance of the public semantic texture value.
@@ -13,9 +11,9 @@ class oa::TextureAccess {
 private:
 	template<typename T>
 	[[nodiscard]] static oa::U64 encodeHandle_(T inHandle) noexcept {
-		if constexpr (std::is_pointer_v<T>) {
+		if constexpr (oa::IsPointerV<T>) {
 			return static_cast<oa::U64>(
-				reinterpret_cast<std::uintptr_t>(inHandle));
+				reinterpret_cast<oa::Usize>(inHandle));
 		} else {
 			return static_cast<oa::U64>(inHandle);
 		}
@@ -23,9 +21,9 @@ private:
 
 	template<typename T>
 	[[nodiscard]] static T decodeHandle_(oa::U64 inHandle) noexcept {
-		if constexpr (std::is_pointer_v<T>) {
+		if constexpr (oa::IsPointerV<T>) {
 			return reinterpret_cast<T>(
-				static_cast<std::uintptr_t>(inHandle));
+				static_cast<oa::Usize>(inHandle));
 		} else {
 			return static_cast<T>(inHandle);
 		}

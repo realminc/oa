@@ -1,16 +1,16 @@
 #include "satelliteSession.h"
 
 #include <oa/core/fnMatrix.h>
+#include <oa/core/memory.h>
+#include <oa/core/std/algo.h>
+#include <oa/core/std/limits.h>
 #include <oa/core/version.h>
 #include <oa/network/tcpFramed.h>
 #include <oa/runtime/executionSession.h>
 #include <oa/runtime/executionSession.h>
 #include <oa/runtime/engine.h>
 
-#include <algorithm>
-#include <cerrno>
-#include <cstring>
-#include <limits>
+#include <errno.h>
 
 #if defined(OA_PLATFORM_WINDOWS)
 	#include <bcrypt.h>
@@ -98,14 +98,14 @@ oa::U32 readU32Le(const oa::Byte* inData) {
 
 void appendF32Le(oa::Vec<oa::Byte>& out, oa::F32 inValue) {
 	oa::U32 bits = 0;
-	std::memcpy(&bits, &inValue, sizeof(bits));
+	oa::memcpy(&bits, &inValue, sizeof(bits));
 	appendU32Le(out, bits);
 }
 
 oa::F32 readF32Le(const oa::Byte* inData) {
 	const oa::U32 bits = readU32Le(inData);
 	oa::F32 value = 0.0F;
-	std::memcpy(&value, &bits, sizeof(value));
+	oa::memcpy(&value, &bits, sizeof(value));
 	return value;
 }
 
@@ -142,7 +142,7 @@ oa::Result<oa::U64> checkedElementCount(oa::Span<const oa::I64> inShape) {
 				"satellite session: tensor dimensions must be positive");
 		}
 		const oa::U64 value = static_cast<oa::U64>(dimension);
-		if (count > std::numeric_limits<oa::U64>::max() / value) {
+		if (count > oa::Limits<oa::U64>::max() / value) {
 			return oa::Status::error(oa::StatusCode::OutOfRange,
 				"satellite session: tensor element count overflows");
 		}
@@ -398,11 +398,11 @@ oa::SatelliteLimits negotiateLimits(
 	const oa::SatelliteLimits& inClient, const oa::SatelliteLimits& inServer)
 {
 	oa::SatelliteLimits limits;
-	limits.maxPayloadBytes = std::min(
+	limits.maxPayloadBytes = oa::min(
 		inClient.maxPayloadBytes, inServer.maxPayloadBytes);
-	limits.maxResidentBytes = std::min(
+	limits.maxResidentBytes = oa::min(
 		inClient.maxResidentBytes, inServer.maxResidentBytes);
-	limits.maxObjects = std::min(inClient.maxObjects, inServer.maxObjects);
+	limits.maxObjects = oa::min(inClient.maxObjects, inServer.maxObjects);
 	limits.maxInflight = 1U;
 	return limits;
 }
@@ -453,7 +453,7 @@ oa::Result<oa::SatelliteSecret> oa::SatelliteSecret::fromBytes(
 			"satellite session: authentication secret must be exactly 32 bytes");
 	}
 	oa::SatelliteSecret secret;
-	std::memcpy(secret.bytes_.data(), inBytes.data(), inBytes.size());
+	oa::memcpy(secret.bytes_.data(), inBytes.data(), inBytes.size());
 	secret.valid_ = true;
 	return secret;
 }
@@ -660,7 +660,7 @@ oa::Status oa::SatelliteServerSession::serve(oa::TcpStream inStream) {
 			auto elements = checkedElementCount(
 				oa::Span<const oa::I64>(shape->data(), shape->size()));
 			if (elements.isError()
-				or *elements > std::numeric_limits<oa::U64>::max() / scalarBytes
+				or *elements > oa::Limits<oa::U64>::max() / scalarBytes
 				or *elements * scalarBytes != data->data.size())
 			{
 				(void)writeMessage(inStream, errorResponse(request,
@@ -816,7 +816,7 @@ oa::Status oa::SatelliteServerSession::serve(oa::TcpStream inStream) {
 				next.inputs = oa::move(*inputs);
 				next.output = *output;
 				next.expectedVersion = *expectedVersion;
-				std::copy(expectedHashField->data.begin(), expectedHashField->data.end(),
+				oa::copy(expectedHashField->data.begin(), expectedHashField->data.end(),
 					next.expectedHash.data());
 				if (arguments != nullptr) next.arguments = arguments->data;
 			} else {
@@ -959,7 +959,7 @@ oa::Status oa::SatelliteServerSession::serve(oa::TcpStream inStream) {
 							<= limits.maxPayloadBytes - namedResult->data.size()
 								- namedResult->profile.size();
 					if (elements.isError() or scalarBytes == 0U
-						or *elements > std::numeric_limits<oa::U64>::max() / scalarBytes
+						or *elements > oa::Limits<oa::U64>::max() / scalarBytes
 						or *elements * scalarBytes != namedResult->data.size()
 						or not resultFitsPayload
 						or namedResult->profile.size() > 4096U

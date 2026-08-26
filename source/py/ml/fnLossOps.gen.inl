@@ -35,7 +35,7 @@
 		if (not result.isValid()) {
 			throw std::runtime_error("Dqn rejected its input");
 		}
-		return new oa::DqnLossResult(std::move(result));
+		return new oa::DqnLossResult(oa::move(result));
 	},
 	  nb::arg("q"), nb::arg("action"), nb::arg("reward"), nb::arg("nextQ"), nb::arg("terminated"), nb::arg("truncated"), nb::arg("config") = oa::DqnLossConfig{},
 	  nb::rv_policy::take_ownership,
@@ -74,7 +74,7 @@
 		if (not result.isValid()) {
 			throw std::runtime_error("Ppo rejected its input");
 		}
-		return new oa::PpoLossResult(std::move(result));
+		return new oa::PpoLossResult(oa::move(result));
 	},
 	  nb::arg("newLogProbability"), nb::arg("oldLogProbability"), nb::arg("advantage"), nb::arg("value"), nb::arg("targetReturn"), nb::arg("entropy"), nb::arg("config") = oa::PpoLossConfig{},
 	  nb::rv_policy::take_ownership,
@@ -85,7 +85,7 @@
 		if (result.isEmpty()) {
 			throw std::runtime_error("PpoClippedPolicy rejected its input");
 		}
-		return matrixPtr(std::move(result));
+		return matrixPtr(oa::move(result));
 	},
 	  nb::arg("newLogProbability"), nb::arg("oldLogProbability"), nb::arg("advantage"), nb::arg("clipEpsilon") = 0.2F,
 	  nb::rv_policy::take_ownership,
@@ -96,7 +96,7 @@
 		if (result.isEmpty()) {
 			throw std::runtime_error("PpoClippedPolicyBwd rejected its input");
 		}
-		return matrixPtr(std::move(result));
+		return matrixPtr(oa::move(result));
 	},
 	  nb::arg("newLogProbability"), nb::arg("oldLogProbability"), nb::arg("advantage"), nb::arg("clipEpsilon") = 0.2F,
 	  nb::rv_policy::take_ownership,
@@ -107,7 +107,7 @@
 		if (result.isEmpty()) {
 			throw std::runtime_error("SacActor rejected its input");
 		}
-		return matrixPtr(std::move(result));
+		return matrixPtr(oa::move(result));
 	},
 	  nb::arg("q1"), nb::arg("q2"), nb::arg("logProbability"), nb::arg("entropyCoefficient") = 0.2F,
 	  nb::rv_policy::take_ownership,
@@ -118,7 +118,7 @@
 		if (not result.isValid()) {
 			throw std::runtime_error("SacCritic rejected its input");
 		}
-		return new oa::SacCriticLossResult(std::move(result));
+		return new oa::SacCriticLossResult(oa::move(result));
 	},
 	  nb::arg("q1"), nb::arg("q2"), nb::arg("reward"), nb::arg("nextQ1"), nb::arg("nextQ2"), nb::arg("nextLogProbability"), nb::arg("terminated"), nb::arg("truncated"), nb::arg("config") = oa::SacLossConfig{},
 	  nb::rv_policy::take_ownership,

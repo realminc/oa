@@ -107,20 +107,20 @@ TEST(SharedPtr, CustomDeleter) {
 
 TEST(SharedPtr, ControlBlockKeepsImplicitWeakOwner) {
 	StdControlProbe control;
-	EXPECT_EQ(control.strong.load(std::memory_order_relaxed), 1);
-	EXPECT_EQ(control.weak.load(std::memory_order_relaxed), 1);
+	EXPECT_EQ(control.strong.load(oa::MemoryOrder::Relaxed), 1);
+	EXPECT_EQ(control.weak.load(oa::MemoryOrder::Relaxed), 1);
 
 	control.incWeak();
-	EXPECT_EQ(control.weak.load(std::memory_order_relaxed), 2);
+	EXPECT_EQ(control.weak.load(oa::MemoryOrder::Relaxed), 2);
 
 	control.decStrong();
-	EXPECT_EQ(control.strong.load(std::memory_order_relaxed), 0);
-	EXPECT_EQ(control.weak.load(std::memory_order_relaxed), 1);
+	EXPECT_EQ(control.strong.load(oa::MemoryOrder::Relaxed), 0);
+	EXPECT_EQ(control.weak.load(oa::MemoryOrder::Relaxed), 1);
 	EXPECT_EQ(control.releases, 1);
 	EXPECT_EQ(control.destroys, 0);
 
 	control.decWeak();
-	EXPECT_EQ(control.weak.load(std::memory_order_relaxed), 0);
+	EXPECT_EQ(control.weak.load(oa::MemoryOrder::Relaxed), 0);
 	EXPECT_EQ(control.destroys, 1);
 }
 
@@ -156,42 +156,8 @@ TEST(SharedPtr, ConcurrentLastStrongAndWeakRelease) {
 	EXPECT_EQ(destructions.load(std::memory_order_relaxed), iterations);
 }
 
-TEST(SharedPtr, ConstructorDeletesIncomingPointerWhenControlCreationThrows) {
-	std::atomic<int> destructions{0};
-	int copies = 0;
-	int deletes = 0;
-	StdThrowingCopyDeleter deleter(copies, deletes, 2);
-
-	EXPECT_THROW(
-		static_cast<void>(oa::SharedPtr<StdLifetimeProbe>(
-			new StdLifetimeProbe{&destructions}, deleter)),
-		std::runtime_error);
-	EXPECT_EQ(copies, 2);
-	EXPECT_EQ(deletes, 1);
-	EXPECT_EQ(destructions.load(std::memory_order_relaxed), 1);
-}
-
-TEST(SharedPtr, ResetKeepsOldOwnerWhenControlCreationThrows) {
-	std::atomic<int> oldDestructions{0};
-	std::atomic<int> incomingDestructions{0};
-	auto owner = oa::makeShared<StdLifetimeProbe>(&oldDestructions);
-
-	int copies = 0;
-	int deletes = 0;
-	StdThrowingCopyDeleter deleter(copies, deletes, 2);
-	EXPECT_THROW(
-		owner.reset(new StdLifetimeProbe{&incomingDestructions}, deleter),
-		std::runtime_error);
-
-	ASSERT_TRUE(owner);
-	EXPECT_EQ(owner.useCount(), 1);
-	EXPECT_EQ(oldDestructions.load(std::memory_order_relaxed), 0);
-	EXPECT_EQ(incomingDestructions.load(std::memory_order_relaxed), 1);
-	EXPECT_EQ(deletes, 1);
-
-	owner.reset();
-	EXPECT_EQ(oldDestructions.load(std::memory_order_relaxed), 1);
-}
+static_assert(!oa::IsSharedDeleterV<StdThrowingCopyDeleter>,
+	"throwing deleters must be rejected at the SharedPtr contract boundary");
 
 TEST(SharedPtr, VoidCustomDeleterReleasesOnce) {
 	int deletes = 0;

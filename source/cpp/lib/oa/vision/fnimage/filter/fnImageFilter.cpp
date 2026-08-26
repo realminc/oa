@@ -6,11 +6,6 @@
 #include <oa/core/fnMatrix.h>
 #include <oa/core/log.h>
 
-#include <algorithm>
-#include <array>
-#include <cmath>
-#include <initializer_list>
-
 namespace {
 
 oa::U32 divCeil(oa::U32 inA, oa::U32 inB) {
@@ -53,8 +48,11 @@ bool isValidKernel1d(const oa::Matrix& inImage, const oa::Matrix& inKernel) {
 		inKernel.getDtype() == inImage.getDtype() && inKernel.hasStorage();
 }
 
-oa::Matrix makeKernel2d(const oa::Matrix& inImage, std::initializer_list<oa::F32> inValues) {
-	const oa::I64 side = static_cast<oa::I64>(std::sqrt(static_cast<oa::F64>(inValues.size())));
+oa::Matrix makeKernel2d(
+	const oa::Matrix& inImage,
+	const oa::Array<oa::F32, 9>& inValues
+) {
+	const oa::I64 side = static_cast<oa::I64>(oa::sqrt(static_cast<oa::F64>(inValues.size())));
 	oa::Vec<oa::F32> values;
 	values.reserve(inValues.size());
 	for (const oa::F32 value : inValues) values.pushBack(value);
@@ -84,7 +82,7 @@ bool isValidMorphology(const oa::Matrix& inImage, oa::U32 inKernelWidth,
 		inKernelWidth > 0 && inKernelHeight > 0 &&
 		inKernelWidth <= 31 && inKernelHeight <= 31 &&
 		(inKernelWidth & 1U) != 0 && (inKernelHeight & 1U) != 0 &&
-		isValidBorder(inBorder) && std::isfinite(inBorderValue)) {
+		isValidBorder(inBorder) && oa::isFinite(inBorderValue)) {
 		return true;
 	}
 	OaLogWarn(oa::LogComponent::Vision,
@@ -156,7 +154,7 @@ oa::Matrix oa::FnImage::convolve2d(
 	(void)inRt;
 	if (!isValidImage(inImage, "oa::FnImage::convolve2d") ||
 		!isValidKernel2d(inImage, inKernel) || !isValidBorder(inBorder) ||
-		!std::isfinite(inBorderValue)) {
+		!oa::isFinite(inBorderValue)) {
 		OaLogWarn(oa::LogComponent::Vision,
 			"oa::FnImage::convolve2d requires an odd <=31 rank-2 kernel with matching dtype and a valid border");
 		return inImage;
@@ -194,7 +192,7 @@ oa::Matrix oa::FnImage::separableConvolve2d(
 	(void)inRt;
 	if (!isValidImage(inImage, "oa::FnImage::separableConvolve2d") ||
 		!isValidKernel1d(inImage, inKernelX) || !isValidKernel1d(inImage, inKernelY) ||
-		!isValidBorder(inBorder) || !std::isfinite(inBorderValue)) {
+		!isValidBorder(inBorder) || !oa::isFinite(inBorderValue)) {
 		OaLogWarn(oa::LogComponent::Vision,
 			"oa::FnImage::separableConvolve2d requires odd <=31 vector kernels with matching dtype and a valid border");
 		return inImage;
@@ -281,7 +279,7 @@ oa::Matrix oa::FnImage::laplacian(oa::Engine& inRt, const oa::Matrix& inImage,
 
 oa::Matrix oa::FnImage::sharpen(oa::Engine& inRt, const oa::Matrix& inImage,
 	oa::F32 inAmount, oa::BorderMode inBorder) {
-	if (!std::isfinite(inAmount) || inAmount < 0.0F) return inImage;
+	if (!oa::isFinite(inAmount) || inAmount < 0.0F) return inImage;
 	auto kernel = makeKernel2d(inImage, {0, -inAmount, 0,
 		-inAmount, 1.0F + 4.0F * inAmount, -inAmount,
 		0, -inAmount, 0});
@@ -357,8 +355,8 @@ oa::Matrix oa::FnImage::bilateralFilter(oa::Engine& inRt, const oa::Matrix& inIm
 	(void)inRt;
 	if (!isValidNeighborhood(inImage, inKernelSize, inBorder,
 		"oa::FnImage::bilateralFilter") || inSigmaColor <= 0.0F ||
-		inSigmaSpace <= 0.0F || !std::isfinite(inSigmaColor) ||
-		!std::isfinite(inSigmaSpace)) return inImage;
+		inSigmaSpace <= 0.0F || !oa::isFinite(inSigmaColor) ||
+		!oa::isFinite(inSigmaSpace)) return inImage;
 	return neighborhoodPass(inImage, inKernelSize, 1, inBorder, 0.0F,
 		inSigmaSpace, inSigmaColor);
 }
@@ -366,7 +364,7 @@ oa::Matrix oa::FnImage::bilateralFilter(oa::Engine& inRt, const oa::Matrix& inIm
 oa::Matrix oa::FnImage::unsharpMask(oa::Engine& inRt, const oa::Matrix& inImage,
 	oa::F32 inSigma, oa::F32 inAmount, oa::U32 inKernelSize) {
 	if (!isValidImage(inImage, "oa::FnImage::unsharpMask") || inSigma <= 0.0F ||
-		!std::isfinite(inSigma) || !std::isfinite(inAmount)) return inImage;
+		!oa::isFinite(inSigma) || !oa::isFinite(inAmount)) return inImage;
 	auto blurred = gaussianBlur(inRt, inImage, inSigma, inKernelSize);
 	auto detail = oa::FnMatrix::sub(inImage, blurred);
 	return oa::FnMatrix::add(inImage, oa::FnMatrix::scale(detail, inAmount));
@@ -397,8 +395,8 @@ oa::Matrix oa::FnImage::adaptiveThresholdMean(oa::Engine& inRt,
 	oa::F32 inMaxValue, oa::BorderMode inBorder) {
 	(void)inRt;
 	if (!isValidNeighborhood(inImage, inKernelSize, inBorder,
-		"oa::FnImage::adaptiveThresholdMean") || !std::isfinite(inC) ||
-		!std::isfinite(inMaxValue)) return inImage;
+		"oa::FnImage::adaptiveThresholdMean") || !oa::isFinite(inC) ||
+		!oa::isFinite(inMaxValue)) return inImage;
 	return neighborhoodPass(inImage, inKernelSize, 2, inBorder, 0.0F,
 		1.0F, inC, inMaxValue);
 }
@@ -408,8 +406,8 @@ oa::Matrix oa::FnImage::adaptiveThresholdGaussian(oa::Engine& inRt,
 	oa::F32 inMaxValue, oa::F32 inSigma, oa::BorderMode inBorder) {
 	(void)inRt;
 	if (!isValidNeighborhood(inImage, inKernelSize, inBorder,
-		"oa::FnImage::adaptiveThresholdGaussian") || !std::isfinite(inC) ||
-		!std::isfinite(inMaxValue) || !std::isfinite(inSigma) || inSigma < 0.0F) return inImage;
+		"oa::FnImage::adaptiveThresholdGaussian") || !oa::isFinite(inC) ||
+		!oa::isFinite(inMaxValue) || !oa::isFinite(inSigma) || inSigma < 0.0F) return inImage;
 	const oa::F32 sigma = inSigma > 0.0F ? inSigma :
 		0.3F * ((static_cast<oa::F32>(inKernelSize) - 1.0F) * 0.5F - 1.0F) + 0.8F;
 	return neighborhoodPass(inImage, inKernelSize, 3, inBorder, 0.0F,
@@ -418,7 +416,7 @@ oa::Matrix oa::FnImage::adaptiveThresholdGaussian(oa::Engine& inRt,
 
 oa::Matrix oa::FnImage::gaussianBlur(oa::Engine& inRt, const oa::Matrix& inImage,	oa::F32 inSigma, oa::U32 inKernelSize) {
 	if (!isValidImage(inImage, "oa::FnImage::gaussianBlur") ||
-		!std::isfinite(inSigma) || inSigma <= 0.0F ||
+		!oa::isFinite(inSigma) || inSigma <= 0.0F ||
 		(inKernelSize != 0 && (inKernelSize > 31 || (inKernelSize & 1U) == 0))) {
 		OaLogWarn(oa::LogComponent::Vision,
 			"oa::FnImage::gaussianBlur requires finite positive sigma and odd kernel <=31 (or zero for automatic)");
@@ -426,15 +424,15 @@ oa::Matrix oa::FnImage::gaussianBlur(oa::Engine& inRt, const oa::Matrix& inImage
 	}
 
 	oa::U32 radius = inKernelSize == 0
-		? static_cast<oa::U32>(std::ceil(3.0F * inSigma))
+		? static_cast<oa::U32>(oa::ceil(3.0F * inSigma))
 		: inKernelSize / 2U;
-	radius = std::min(radius, 15U);
+	radius = oa::min(radius, 15U);
 	const oa::U32 size = radius * 2U + 1U;
 	oa::Vec<oa::F32> values(size);
 	oa::F64 sum = 0.0;
 	for (oa::U32 i = 0; i < size; ++i) {
 		const oa::F64 x = static_cast<oa::F64>(static_cast<oa::I32>(i) - static_cast<oa::I32>(radius));
-		const oa::F64 value = std::exp(-(x * x) / (2.0 * inSigma * inSigma));
+		const oa::F64 value = oa::exp(-(x * x) / (2.0 * inSigma * inSigma));
 		values[i] = static_cast<oa::F32>(value);
 		sum += value;
 	}

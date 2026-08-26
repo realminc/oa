@@ -26,11 +26,11 @@
 #pragma once
 
 #include <oa/core/status.h>
+#include <oa/core/std/scalarMath.h>
 #include <oa/core/types.h>
 #include <oa/render/camera.h>
 #include <oa/runtime/texture.h>
 
-#include <cmath>
 
 // forward declarations.
 namespace oa { struct Swapchain; }    // runtime/swapchain.h
@@ -66,7 +66,7 @@ struct ViewportDesc {
 
 	[[nodiscard]] bool isValid() const noexcept {
 		return width > 0 and height > 0
-			and std::isfinite(minDepth) and std::isfinite(maxDepth)
+			and oa::isFinite(minDepth) and oa::isFinite(maxDepth)
 			and minDepth >= 0.0F and minDepth <= maxDepth
 			and maxDepth <= 1.0F;
 	}
@@ -182,9 +182,9 @@ public:
 			and camera_ != nullptr and target_ != nullptr and target_->isValid()
 			and viewport_.isValid()
 			and (not useScissor_ or scissor_.isValid())
-			and std::isfinite(clearColor_.x) and std::isfinite(clearColor_.y)
-			and std::isfinite(clearColor_.z) and std::isfinite(clearColor_.w)
-			and std::isfinite(clearDepth_)
+			and oa::isFinite(clearColor_.x) and oa::isFinite(clearColor_.y)
+			and oa::isFinite(clearColor_.z) and oa::isFinite(clearColor_.w)
+			and oa::isFinite(clearDepth_)
 			and clearDepth_ >= 0.0F and clearDepth_ <= 1.0F;
 	}
 

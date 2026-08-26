@@ -5,7 +5,7 @@
 #pragma once
 
 #include <oa/core/types.h>
-#include <cstring>
+#include <oa/core/std/cString.h>
 
 namespace oa {
 
@@ -26,10 +26,10 @@ enum class VideoCodec : U32 {
 }
 [[nodiscard]] inline VideoCodec videoCodecFromString(const char* inString) noexcept {
 	if (inString == nullptr) return VideoCodec::H264;
-	if (std::strcmp(inString, "H264") == 0) return VideoCodec::H264;
-	if (std::strcmp(inString, "H265") == 0) return VideoCodec::H265;
-	if (std::strcmp(inString, "AV1") == 0) return VideoCodec::AV1;
-	if (std::strcmp(inString, "VP9") == 0) return VideoCodec::VP9;
+	if (oa::strcmp(inString, "H264") == 0) return VideoCodec::H264;
+	if (oa::strcmp(inString, "H265") == 0) return VideoCodec::H265;
+	if (oa::strcmp(inString, "AV1") == 0) return VideoCodec::AV1;
+	if (oa::strcmp(inString, "VP9") == 0) return VideoCodec::VP9;
 	return VideoCodec::H264;
 }
 
@@ -54,12 +54,12 @@ enum class ImageCodec : U8 {
 }
 [[nodiscard]] inline ImageCodec imageCodecFromString(const char* inString) noexcept {
 	if (inString == nullptr) return ImageCodec::Auto;
-	if (std::strcmp(inString, "auto") == 0) return ImageCodec::Auto;
-	if (std::strcmp(inString, "jpeg") == 0) return ImageCodec::Jpeg;
-	if (std::strcmp(inString, "png") == 0) return ImageCodec::Png;
-	if (std::strcmp(inString, "webp") == 0) return ImageCodec::Webp;
-	if (std::strcmp(inString, "bmp") == 0) return ImageCodec::Bmp;
-	if (std::strcmp(inString, "tga") == 0) return ImageCodec::Tga;
+	if (oa::strcmp(inString, "auto") == 0) return ImageCodec::Auto;
+	if (oa::strcmp(inString, "jpeg") == 0) return ImageCodec::Jpeg;
+	if (oa::strcmp(inString, "png") == 0) return ImageCodec::Png;
+	if (oa::strcmp(inString, "webp") == 0) return ImageCodec::Webp;
+	if (oa::strcmp(inString, "bmp") == 0) return ImageCodec::Bmp;
+	if (oa::strcmp(inString, "tga") == 0) return ImageCodec::Tga;
 	return ImageCodec::Auto;
 }
 
@@ -78,9 +78,9 @@ enum class YCbCrModel : U32 {
 }
 [[nodiscard]] inline YCbCrModel yCbCrModelFromString(const char* inString) noexcept {
 	if (inString == nullptr) return YCbCrModel::Auto;
-	if (std::strcmp(inString, "Auto") == 0) return YCbCrModel::Auto;
-	if (std::strcmp(inString, "BT709") == 0) return YCbCrModel::BT709;
-	if (std::strcmp(inString, "BT2020") == 0) return YCbCrModel::BT2020;
+	if (oa::strcmp(inString, "Auto") == 0) return YCbCrModel::Auto;
+	if (oa::strcmp(inString, "BT709") == 0) return YCbCrModel::BT709;
+	if (oa::strcmp(inString, "BT2020") == 0) return YCbCrModel::BT2020;
 	return YCbCrModel::Auto;
 }
 
@@ -103,11 +103,11 @@ enum class PixelFormat : U32 {
 }
 [[nodiscard]] inline PixelFormat pixelFormatFromString(const char* inString) noexcept {
 	if (inString == nullptr) return PixelFormat::NV12;
-	if (std::strcmp(inString, "NV12") == 0) return PixelFormat::NV12;
-	if (std::strcmp(inString, "RGB8") == 0) return PixelFormat::RGB8;
-	if (std::strcmp(inString, "RGBA8") == 0) return PixelFormat::RGBA8;
-	if (std::strcmp(inString, "BF16") == 0) return PixelFormat::BF16;
-	if (std::strcmp(inString, "F32") == 0) return PixelFormat::F32;
+	if (oa::strcmp(inString, "NV12") == 0) return PixelFormat::NV12;
+	if (oa::strcmp(inString, "RGB8") == 0) return PixelFormat::RGB8;
+	if (oa::strcmp(inString, "RGBA8") == 0) return PixelFormat::RGBA8;
+	if (oa::strcmp(inString, "BF16") == 0) return PixelFormat::BF16;
+	if (oa::strcmp(inString, "F32") == 0) return PixelFormat::F32;
 	return PixelFormat::NV12;
 }
 
@@ -126,9 +126,9 @@ enum class InterpolationMode : U32 {
 }
 [[nodiscard]] inline InterpolationMode interpolationModeFromString(const char* inString) noexcept {
 	if (inString == nullptr) return InterpolationMode::Nearest;
-	if (std::strcmp(inString, "Nearest") == 0) return InterpolationMode::Nearest;
-	if (std::strcmp(inString, "Bilinear") == 0) return InterpolationMode::Bilinear;
-	if (std::strcmp(inString, "Bicubic") == 0) return InterpolationMode::Bicubic;
+	if (oa::strcmp(inString, "Nearest") == 0) return InterpolationMode::Nearest;
+	if (oa::strcmp(inString, "Bilinear") == 0) return InterpolationMode::Bilinear;
+	if (oa::strcmp(inString, "Bicubic") == 0) return InterpolationMode::Bicubic;
 	return InterpolationMode::Nearest;
 }
 
@@ -151,11 +151,11 @@ enum class BorderMode : U32 {
 }
 [[nodiscard]] inline BorderMode borderModeFromString(const char* inString) noexcept {
 	if (inString == nullptr) return BorderMode::Constant;
-	if (std::strcmp(inString, "Constant") == 0) return BorderMode::Constant;
-	if (std::strcmp(inString, "Replicate") == 0) return BorderMode::Replicate;
-	if (std::strcmp(inString, "Reflect") == 0) return BorderMode::Reflect;
-	if (std::strcmp(inString, "Reflect101") == 0) return BorderMode::Reflect101;
-	if (std::strcmp(inString, "Wrap") == 0) return BorderMode::Wrap;
+	if (oa::strcmp(inString, "Constant") == 0) return BorderMode::Constant;
+	if (oa::strcmp(inString, "Replicate") == 0) return BorderMode::Replicate;
+	if (oa::strcmp(inString, "Reflect") == 0) return BorderMode::Reflect;
+	if (oa::strcmp(inString, "Reflect101") == 0) return BorderMode::Reflect101;
+	if (oa::strcmp(inString, "Wrap") == 0) return BorderMode::Wrap;
 	return BorderMode::Constant;
 }
 

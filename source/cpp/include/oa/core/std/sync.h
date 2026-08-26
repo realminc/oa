@@ -1,169 +1,163 @@
 #pragma once
 
-// Atomic / Mutex / SharedMutex / ScopedLock / … —
-// PascalCase synchronization surface.
-//
-// HONEST NOTE: atomics are compiler builtins and mutexes are kernel/futex
-// shims. There is no meaningful clean-room implementation — reimplementing a
-// CAS or a mutex "ourselves" would just re-expose the same __atomic_* / futex
-// syscalls with more bugs. So these deliberately WRAP <atomic>/<mutex> and
-// only provide the OA-consistent naming. native() exposes the underlying std
-// object for the rare boundary (e.g. std::condition_variable). See OA standard library.md.
+// OA synchronization values. Platform synchronization objects remain hidden
+// behind fixed, aligned storage; no hosted C++ mutex type or ABI crosses this
+// public boundary.
 
-#include <atomic>
-#include <mutex>
-#include <shared_mutex>
+#include <oa/core/std/atomic.h>
+#include <oa/core/std/chrono.h>
 
 namespace oa {
 
-// ── Atomic<T> ──────────────────────────────────────────────────────────
-template<typename T>
-class Atomic {
-public:
-	using ValueType = T;
+class Condition;
 
-	Atomic() noexcept = default;
-	constexpr Atomic(T inDesired) noexcept : value_(inDesired) {}
-	Atomic(const Atomic&)            = delete;
-	Atomic& operator=(const Atomic&) = delete;
-
-	[[nodiscard]] T load(std::memory_order inOrder = std::memory_order_seq_cst) const noexcept {
-		return value_.load(inOrder);
-	}
-	void store(T inDesired, std::memory_order inOrder = std::memory_order_seq_cst) noexcept {
-		value_.store(inDesired, inOrder);
-	}
-	T exchange(T inDesired, std::memory_order inOrder = std::memory_order_seq_cst) noexcept {
-		return value_.exchange(inDesired, inOrder);
-	}
-	bool compareExchangeStrong(T& inExpected, T inDesired,
-	                           std::memory_order inOrder = std::memory_order_seq_cst) noexcept {
-		return value_.compare_exchange_strong(inExpected, inDesired, inOrder);
-	}
-	bool compareExchangeWeak(T& inExpected, T inDesired,
-	                         std::memory_order inOrder = std::memory_order_seq_cst) noexcept {
-		return value_.compare_exchange_weak(inExpected, inDesired, inOrder);
-	}
-
-	// Integral/pointer only (instantiated on use, mirroring std::atomic).
-	T fetchAdd(T inArg, std::memory_order inOrder = std::memory_order_seq_cst) noexcept { return value_.fetch_add(inArg, inOrder); }
-	T fetchSub(T inArg, std::memory_order inOrder = std::memory_order_seq_cst) noexcept { return value_.fetch_sub(inArg, inOrder); }
-	T fetchOr (T inArg, std::memory_order inOrder = std::memory_order_seq_cst) noexcept { return value_.fetch_or(inArg, inOrder); }
-	T fetchAnd(T inArg, std::memory_order inOrder = std::memory_order_seq_cst) noexcept { return value_.fetch_and(inArg, inOrder); }
-	T fetchXor(T inArg, std::memory_order inOrder = std::memory_order_seq_cst) noexcept { return value_.fetch_xor(inArg, inOrder); }
-
-	// Ergonomic operators (match std::atomic).
-	operator T() const noexcept { return load(); }
-	T operator=(T inDesired) noexcept { store(inDesired); return inDesired; }
-	T operator++()    noexcept { return ++value_; }
-	T operator++(int) noexcept { return value_++; }
-	T operator--()    noexcept { return --value_; }
-	T operator--(int) noexcept { return value_--; }
-	T operator+=(T inArg) noexcept { return value_ += inArg; }
-	T operator-=(T inArg) noexcept { return value_ -= inArg; }
-
-	[[nodiscard]] std::atomic<T>&       native()       noexcept { return value_; }
-	[[nodiscard]] const std::atomic<T>& native() const noexcept { return value_; }
-
-private:
-	std::atomic<T> value_;
-};
-
-// ── Mutex ──────────────────────────────────────────────────────────────
 class Mutex {
 public:
-	Mutex() = default;
-	Mutex(const Mutex&)            = delete;
+	Mutex() noexcept;
+	~Mutex() noexcept;
+	Mutex(const Mutex&) = delete;
 	Mutex& operator=(const Mutex&) = delete;
 
-	void lock()            { mutex_.lock(); }
-	[[nodiscard]] bool tryLock() { return mutex_.try_lock(); }
-	void unlock()          { mutex_.unlock(); }
-
-	[[nodiscard]] std::mutex& native() noexcept { return mutex_; }
+	void lock() noexcept;
+	[[nodiscard]] bool tryLock() noexcept;
+	void unlock() noexcept;
 
 private:
-	std::mutex mutex_;
+	friend class Condition;
+	static constexpr unsigned kStorageSize = 64;
+	alignas(16) unsigned char storage_[kStorageSize]{};
 };
 
-// ── SharedMutex (reader/writer) ────────────────────────────────────────
 class SharedMutex {
 public:
-	SharedMutex() = default;
-	SharedMutex(const SharedMutex&)            = delete;
+	SharedMutex() noexcept;
+	~SharedMutex() noexcept;
+	SharedMutex(const SharedMutex&) = delete;
 	SharedMutex& operator=(const SharedMutex&) = delete;
 
-	void lock()               { mutex_.lock(); }
-	[[nodiscard]] bool tryLock()    { return mutex_.try_lock(); }
-	void unlock()             { mutex_.unlock(); }
+	void lock() noexcept;
+	[[nodiscard]] bool tryLock() noexcept;
+	void unlock() noexcept;
 
-	void lockShared()         { mutex_.lock_shared(); }
-	[[nodiscard]] bool tryLockShared() { return mutex_.try_lock_shared(); }
-	void unlockShared()       { mutex_.unlock_shared(); }
-
-	[[nodiscard]] std::shared_mutex& native() noexcept { return mutex_; }
+	void lockShared() noexcept;
+	[[nodiscard]] bool tryLockShared() noexcept;
+	void unlockShared() noexcept;
 
 private:
-	std::shared_mutex mutex_;
+	static constexpr unsigned kStorageSize = 64;
+	alignas(16) unsigned char storage_[kStorageSize]{};
 };
 
-// ── ScopedLock<Mutex> — RAII exclusive lock (non-movable) ───────────────
-template<typename Mutex>
+template<typename Lock>
 class ScopedLock {
 public:
-	explicit ScopedLock(Mutex& inMutex) : mutex_(inMutex) { mutex_.lock(); }
-	~ScopedLock() { mutex_.unlock(); }
-	ScopedLock(const ScopedLock&)            = delete;
+	explicit ScopedLock(Lock& inLock) noexcept : lock_(inLock) { lock_.lock(); }
+	~ScopedLock() { lock_.unlock(); }
+	ScopedLock(const ScopedLock&) = delete;
 	ScopedLock& operator=(const ScopedLock&) = delete;
+
 private:
-	Mutex& mutex_;
+	Lock& lock_;
 };
 
-// ── SharedLock<Mutex> — RAII shared (reader) lock ───────────────────────
-template<typename Mutex>
+template<typename Lock>
 class SharedLock {
 public:
-	explicit SharedLock(Mutex& inMutex) : mutex_(inMutex) { mutex_.lockShared(); }
-	~SharedLock() { mutex_.unlockShared(); }
-	SharedLock(const SharedLock&)            = delete;
+	explicit SharedLock(Lock& inLock) noexcept : lock_(inLock) {
+		lock_.lockShared();
+	}
+	~SharedLock() { lock_.unlockShared(); }
+	SharedLock(const SharedLock&) = delete;
 	SharedLock& operator=(const SharedLock&) = delete;
+
 private:
-	Mutex& mutex_;
+	Lock& lock_;
 };
 
-// ── UniqueLock<Mutex> — movable, deferrable exclusive lock ──────────────
-template<typename Mutex>
+template<typename Lock>
 class UniqueLock {
 public:
 	UniqueLock() = default;
-	explicit UniqueLock(Mutex& inMutex) : mutex_(&inMutex), owns_(true) { mutex_->lock(); }
-	~UniqueLock() { if (owns_ && mutex_ != nullptr) { mutex_->unlock(); } }
+	explicit UniqueLock(Lock& inLock) noexcept : lock_(&inLock), owns_(true) {
+		lock_->lock();
+	}
+	~UniqueLock() {
+		if (owns_ && lock_ != nullptr) lock_->unlock();
+	}
 
 	UniqueLock(UniqueLock&& inOther) noexcept
-		: mutex_(inOther.mutex_), owns_(inOther.owns_) {
-		inOther.mutex_ = nullptr;
-		inOther.owns_  = false;
+		: lock_(inOther.lock_), owns_(inOther.owns_) {
+		inOther.lock_ = nullptr;
+		inOther.owns_ = false;
 	}
 	UniqueLock& operator=(UniqueLock&& inOther) noexcept {
-		if (this != &inOther) {
-			if (owns_ && mutex_ != nullptr) { mutex_->unlock(); }
-			mutex_ = inOther.mutex_;
-			owns_  = inOther.owns_;
-			inOther.mutex_ = nullptr;
-			inOther.owns_  = false;
-		}
+		if (this == &inOther) return *this;
+		if (owns_ && lock_ != nullptr) lock_->unlock();
+		lock_ = inOther.lock_;
+		owns_ = inOther.owns_;
+		inOther.lock_ = nullptr;
+		inOther.owns_ = false;
 		return *this;
 	}
-	UniqueLock(const UniqueLock&)            = delete;
+	UniqueLock(const UniqueLock&) = delete;
 	UniqueLock& operator=(const UniqueLock&) = delete;
 
-	void lock()   { if (mutex_ != nullptr && !owns_) { mutex_->lock();   owns_ = true;  } }
-	void unlock() { if (mutex_ != nullptr && owns_)  { mutex_->unlock(); owns_ = false; } }
+	void lock() noexcept {
+		if (lock_ != nullptr && !owns_) {
+			lock_->lock();
+			owns_ = true;
+		}
+	}
+	void unlock() noexcept {
+		if (lock_ != nullptr && owns_) {
+			lock_->unlock();
+			owns_ = false;
+		}
+	}
 	[[nodiscard]] bool ownsLock() const noexcept { return owns_; }
 
 private:
-	Mutex* mutex_ = nullptr;
-	bool   owns_  = false;
+	friend class Condition;
+	Lock* lock_ = nullptr;
+	bool owns_ = false;
+};
+
+class Condition {
+public:
+	Condition() noexcept;
+	~Condition() noexcept;
+	Condition(const Condition&) = delete;
+	Condition& operator=(const Condition&) = delete;
+
+	void wait(UniqueLock<Mutex>& inLock) noexcept;
+	[[nodiscard]] bool waitFor(
+		UniqueLock<Mutex>& inLock,
+		oa::Duration inDuration
+	) noexcept;
+	template<typename Predicate>
+	void wait(UniqueLock<Mutex>& inLock, Predicate inPredicate) noexcept {
+		while (!inPredicate()) wait(inLock);
+	}
+	template<typename Predicate>
+	[[nodiscard]] bool waitFor(
+		UniqueLock<Mutex>& inLock,
+		oa::Duration inDuration,
+		Predicate inPredicate
+	) noexcept {
+		const oa::SteadyTimePoint deadline = oa::steadyNow() + inDuration;
+		while (!inPredicate()) {
+			const oa::SteadyTimePoint current = oa::steadyNow();
+			if (current >= deadline) return inPredicate();
+			if (!waitFor(inLock, deadline - current)) return inPredicate();
+		}
+		return true;
+	}
+	void notifyOne() noexcept;
+	void notifyAll() noexcept;
+
+private:
+	static constexpr unsigned kStorageSize = 64;
+	alignas(16) unsigned char storage_[kStorageSize]{};
 };
 
 } // namespace oa

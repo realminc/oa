@@ -7,7 +7,7 @@
 		if (result.isEmpty()) {
 			throw std::runtime_error("ClipReward rejected its input");
 		}
-		return matrixPtr(std::move(result));
+		return matrixPtr(oa::move(result));
 	},
 	  nb::arg("reward"), nb::arg("minimum") = -1.0F, nb::arg("maximum") = 1.0F,
 	  nb::rv_policy::take_ownership,
@@ -18,7 +18,7 @@
 		if (result.isEmpty()) {
 			throw std::runtime_error("NormalizeObservation rejected its input");
 		}
-		return matrixPtr(std::move(result));
+		return matrixPtr(oa::move(result));
 	},
 	  nb::arg("observation"), nb::arg("mean"), nb::arg("stddev"), nb::arg("epsilon") = 1.0e-6F, nb::arg("clip") = 10.0F,
 	  nb::rv_policy::take_ownership,
@@ -29,7 +29,7 @@
 		if (result.isEmpty()) {
 			throw std::runtime_error("ScaleAction rejected its input");
 		}
-		return matrixPtr(std::move(result));
+		return matrixPtr(oa::move(result));
 	},
 	  nb::arg("action"), nb::arg("sourceMinimum"), nb::arg("sourceMaximum"), nb::arg("targetMinimum"), nb::arg("targetMaximum"), nb::arg("clamp") = true,
 	  nb::rv_policy::take_ownership,

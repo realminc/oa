@@ -1,34 +1,23 @@
 #pragma once
 
-// phase 2b OA standard library — small-string optimization (`SsoCap` chars) + heap tail via oa::allocBytes.
+// OA-owned string with small-string optimization (`SsoCap` chars) and an
+// oa::allocBytes-backed heap tail.
 //
 // Copies use `oa::memcpy` where contiguous; growth releases SSO to heap when needed.
-// Interop: `stdStr()` copies to `std::string`; includes `<string>` only for that boundary.
+// Hosted-library conversions belong at their owning filesystem, parser, CLI,
+// binding, or serialization boundary rather than in this foundation type.
 
 #include <oa/core/memory.h>
+#include <oa/core/assert.h>
 #include <oa/core/std/allocator.h>
+#include <oa/core/std/atomic.h>
 #include <oa/core/std/stringView.h>
-
-#include <atomic>
-#include <cstddef>
-#include <cstring>
-#include <functional>
-#include <limits>
-#include <new>
-#include <stdexcept>
-#include <string>
-#include <string_view>
-
-#ifndef OA_ASSERT
-#include <cassert>
-#define OA_ASSERT(expr) assert(expr)
-#endif
 
 namespace oa {
 
 class String {
 public:
-	using size_type = std::size_t;
+	using size_type = oa::Usize;
 
 	static constexpr size_type SsoCap = 22;
 	static constexpr size_type Npos = oa::StringView::Npos;
@@ -49,7 +38,7 @@ public:
 		if (!inO.isHeap_) {
 			const size_type n = inO.ssoLen();
 			if (n > 0) {
-				std::memcpy(ssoData(), inO.ssoData(), n);
+				oa::memcpy(ssoData(), inO.ssoData(), n);
 			}
 			rep_.sso.buf[n] = '\0';
 			rep_.sso.len = inO.rep_.sso.len;
@@ -64,19 +53,13 @@ public:
 		}
 	}
 
-	String(std::string inS) {
-		initEmpty();
-		rep_.sso.buf[0] = '\0';
-		assignRange(inS.data(), inS.size());
-	}
-
 	String(const char* inCStr) {
 		initEmpty();
 		rep_.sso.buf[0] = '\0';
 		if (inCStr == nullptr) {
 			return;
 		}
-		const size_type n = std::strlen(inCStr);
+		const size_type n = oa::strlen(inCStr);
 		assignRange(inCStr, n);
 	}
 
@@ -112,7 +95,7 @@ public:
 		if (!inO.isHeap_) {
 			const size_type n = inO.ssoLen();
 			if (n > 0) {
-				std::memcpy(ssoData(), inO.ssoData(), n);
+				oa::memcpy(ssoData(), inO.ssoData(), n);
 			}
 			rep_.sso.buf[n] = '\0';
 			rep_.sso.len = inO.rep_.sso.len;
@@ -127,8 +110,6 @@ public:
 		}
 		return *this;
 	}
-
-	[[nodiscard]] std::string stdStr() const { return std::string(data(), size()); }
 
 	[[nodiscard]] size_type size() const noexcept {
 		return isHeap_ ? rep_.heap.len : static_cast<size_type>(rep_.sso.len);
@@ -157,16 +138,14 @@ public:
 		for (size_type i = 0; i < n; ++i) {
 			ptr[i] = 0;
 		}
-		std::atomic_thread_fence(std::memory_order_seq_cst);
+		oa::atomicThreadFence(oa::MemoryOrder::Sequential);
 		clear();
 	}
 
 	// Mirrors std::string::erase(pos, count); returns index of character after erased range.
 	size_type erase(size_type inPos = 0, size_type inCount = Npos) {
 		const size_type sz = size();
-		if (inPos > sz) {
-			throw std::out_of_range("String::erase");
-		}
+		OA_REQUIRE(inPos <= sz);
 		const size_type tail = sz - inPos;
 		const size_type removeN = (inCount == Npos || inCount > tail) ? tail : inCount;
 		if (removeN == 0) {
@@ -176,7 +155,7 @@ public:
 		char* d = mutableData();
 		const size_type keep = tail - removeN;
 		if (keep > 0) {
-			std::memmove(d + inPos, d + inPos + removeN, keep);
+			__builtin_memmove(d + inPos, d + inPos + removeN, keep);
 		}
 		setLen(newSz);
 		downgradeToSsoIfFits();
@@ -222,19 +201,34 @@ public:
 	}
 
 	void pushBack(char inCh) {
-		const size_type old = size();
-		if (old == std::numeric_limits<size_type>::max()) {
-			throw std::bad_array_new_length();
+		if (isHeap_) {
+			const size_type old = rep_.heap.len;
+			if (old == rep_.heap.cap) {
+				growForPushBack(old);
+			}
+			char* const data = rep_.heap.ptr;
+			data[old] = inCh;
+			data[old + 1] = '\0';
+			rep_.heap.len = old + 1;
+			return;
 		}
-		const size_type n = old + 1;
-		ensureTotalCapacity(n);
-		char* d = mutableData();
-		d[old] = inCh;
-		setLen(n);
+
+		const size_type old = ssoLen();
+		if (old < SsoCap) {
+			rep_.sso.buf[old] = inCh;
+			rep_.sso.buf[old + 1] = '\0';
+			rep_.sso.len = static_cast<unsigned char>(old + 1);
+			return;
+		}
+
+		ensureHeapCapacityAtLeast(SsoCap + 1);
+		rep_.heap.ptr[old] = inCh;
+		rep_.heap.ptr[old + 1] = '\0';
+		rep_.heap.len = old + 1;
 	}
 
 	void popBack() {
-		OA_ASSERT(!empty());
+		OA_REQUIRE(!empty());
 		const size_type n = size() - 1;
 		setLen(n);
 		downgradeToSsoIfFits();
@@ -243,19 +237,19 @@ public:
 	[[nodiscard]] size_type length() const noexcept { return size(); }
 
 	[[nodiscard]] char& front() noexcept {
-		OA_ASSERT(!empty());
+		OA_REQUIRE(!empty());
 		return mutableData()[0];
 	}
 	[[nodiscard]] const char& front() const noexcept {
-		OA_ASSERT(!empty());
+		OA_REQUIRE(!empty());
 		return data()[0];
 	}
 	[[nodiscard]] char& back() noexcept {
-		OA_ASSERT(!empty());
+		OA_REQUIRE(!empty());
 		return mutableData()[size() - 1U];
 	}
 	[[nodiscard]] const char& back() const noexcept {
-		OA_ASSERT(!empty());
+		OA_REQUIRE(!empty());
 		return data()[size() - 1U];
 	}
 	String& append(oa::StringView inV) {
@@ -276,8 +270,8 @@ public:
 			}
 		}
 		const size_type old = size();
-		if (n > std::numeric_limits<size_type>::max() - old) {
-			throw std::bad_array_new_length();
+		if (n > static_cast<size_type>(-1) - old) {
+			oa::allocationFailed(oa::AllocationError::SizeOverflow, old, 1);
 		}
 		const size_type newLen = old + n;
 		ensureTotalCapacity(newLen);
@@ -300,28 +294,18 @@ public:
 	String& operator+=(const String& inO) {
 		return append(oa::StringView(inO.data(), inO.size()));
 	}
-	String& operator+=(std::string_view inV) {
-		return append(oa::StringView(inV.data(), inV.size()));
-	}
-	String& operator+=(const std::string& inS) {
-		return append(oa::StringView(inS.data(), inS.size()));
-	}
 
 	[[nodiscard]] char& operator[](size_type inIdx) { return mutableData()[inIdx]; }
 
 	[[nodiscard]] const char& operator[](size_type inIdx) const { return data()[inIdx]; }
 
 	[[nodiscard]] char& at(size_type inIdx) {
-		if (inIdx >= size()) {
-			throw std::out_of_range("String::at");
-		}
+		OA_REQUIRE(inIdx < size());
 		return mutableData()[inIdx];
 	}
 
 	[[nodiscard]] const char& at(size_type inIdx) const {
-		if (inIdx >= size()) {
-			throw std::out_of_range("String::at");
-		}
+		OA_REQUIRE(inIdx < size());
 		return data()[inIdx];
 	}
 
@@ -355,7 +339,7 @@ public:
 		if (n != inV.size()) {
 			return false;
 		}
-		return n == 0 || std::memcmp(data(), inV.data(), n) == 0;
+		return n == 0 || oa::memcmp(data(), inV.data(), n) == 0;
 	}
 
 	[[nodiscard]] bool equals(const String& inO) const noexcept { return equals(inO.view()); }
@@ -366,7 +350,7 @@ public:
 		const size_type nb = inV.size();
 		const size_type n = na < nb ? na : nb;
 		if (n > 0) {
-			const int cmp = std::memcmp(data(), inV.data(), static_cast<size_t>(n));
+			const int cmp = oa::memcmp(data(), inV.data(), n);
 			if (cmp != 0) {
 				return cmp < 0 ? -1 : 1;
 			}
@@ -459,7 +443,7 @@ private:
 			const size_type len = ssoLen();
 			const size_type allocBytes = inMinCap + 1;
 			if (allocBytes <= inMinCap) {
-				throw std::bad_array_new_length();
+				oa::allocationFailed(oa::AllocationError::SizeOverflow, inMinCap, 1);
 			}
 			void* raw = oa::allocBytes(allocBytes, 1);
 			char* p = static_cast<char*>(raw);
@@ -478,7 +462,7 @@ private:
 		}
 		size_type newCap = rep_.heap.cap;
 		while (newCap < inMinCap) {
-			if (newCap >= (std::numeric_limits<size_type>::max() / 2) - 16) {
+			if (newCap >= (static_cast<size_type>(-1) / 2) - 16) {
 				newCap = inMinCap;
 				break;
 			}
@@ -487,7 +471,7 @@ private:
 		}
 		const size_type allocBytes = newCap + 1;
 		if (allocBytes <= newCap) {
-			throw std::bad_array_new_length();
+			oa::allocationFailed(oa::AllocationError::SizeOverflow, newCap, 1);
 		}
 		void* raw = oa::allocBytes(allocBytes, 1);
 		char* p = static_cast<char*>(raw);
@@ -503,6 +487,16 @@ private:
 			return;
 		}
 		ensureHeapCapacityAtLeast(inNeedLen);
+	}
+
+#if defined(__clang__) || defined(__GNUC__)
+	__attribute__((noinline)) __attribute__((cold))
+#endif
+	void growForPushBack(size_type inOldLen) {
+		if (inOldLen == static_cast<size_type>(-1)) {
+			oa::allocationFailed(oa::AllocationError::SizeOverflow, inOldLen, 1);
+		}
+		ensureHeapCapacityAtLeast(inOldLen + 1);
 	}
 
 	void assignRange(const char* inP, size_type inN) {
@@ -570,22 +564,6 @@ inline bool operator!=(const char* inA, const String& inB) noexcept {
 	return !inB.equals(oa::StringView(inA));
 }
 
-inline bool operator==(const String& inA, const std::string& inB) noexcept {
-	return inA.equals(oa::StringView(inB.data(), inB.size()));
-}
-
-inline bool operator==(const std::string& inA, const String& inB) noexcept {
-	return inB.equals(oa::StringView(inA.data(), inA.size()));
-}
-
-inline bool operator!=(const String& inA, const std::string& inB) noexcept {
-	return !inA.equals(oa::StringView(inB.data(), inB.size()));
-}
-
-inline bool operator!=(const std::string& inA, const String& inB) noexcept {
-	return !inB.equals(oa::StringView(inA.data(), inA.size()));
-}
-
 inline String operator+(const String& inA, const String& inB) {
 	String r(inA);
 	r.append(inB.view());
@@ -616,34 +594,4 @@ inline String operator+(const char* inA, const String& inB) {
 	return r;
 }
 
-inline String operator+(const String& inA, const std::string& inB) {
-	String r(inA);
-	r.append(oa::StringView(inB.data(), inB.size()));
-	return r;
-}
-
-inline String operator+(const std::string& inA, const String& inB) {
-	String r(inA.data(), inA.size());
-	r.append(inB.view());
-	return r;
-}
-
 } // namespace oa
-
-namespace std {
-
-template<>
-struct hash<oa::String> {
-	std::size_t operator()(const oa::String& inS) const noexcept {
-		return hash<string_view>{}(string_view(inS.data(), inS.size()));
-	}
-};
-
-template<>
-struct hash<oa::StringView> {
-	std::size_t operator()(oa::StringView inV) const noexcept {
-		return hash<string_view>{}(inV.stdView());
-	}
-};
-
-} // namespace std

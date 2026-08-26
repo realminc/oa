@@ -1141,19 +1141,19 @@ TEST(TestMamba3, MimoBackwardMatchesFiniteDifferences) {
 }
 
 TEST(TestMamba3, RejectsInvalidStabilityBounds) {
-	EXPECT_THROW(
+	EXPECT_DEATH(
 		oa::Mamba3Module(32, 16, 2, 0, 1, 0.5F),
-		std::invalid_argument);
-	EXPECT_THROW(
+		"OA contract failed");
+	EXPECT_DEATH(
 		oa::Mamba3Module(std::numeric_limits<oa::I32>::max(), 16, 2, 16, 1, 0.5F),
-		std::invalid_argument);
-	EXPECT_THROW(
+		"OA contract failed");
+	EXPECT_DEATH(
 		oa::Mamba3Module(32, 16, 2, 16, 1, 1.5F),
-		std::invalid_argument);
-	EXPECT_THROW(
+		"OA contract failed");
+	EXPECT_DEATH(
 		oa::Mamba3Module(32, 16, 2, 16, 1, 0.5F, false, 4,
 			0.1F, 0.01F),
-		std::invalid_argument);
+		"OA contract failed");
 
 	const oa::Matrix c = oa::FnMatrix::empty({1, 1, 2, 2}, oa::ScalarType::Float32);
 	const oa::Matrix k = oa::FnMatrix::empty(c.getShape(), oa::ScalarType::Float32);

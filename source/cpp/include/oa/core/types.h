@@ -9,33 +9,40 @@
 // block is parsed first (breaks types → std.h → vec.h → memory.h → full types cycle).
 //
 
+// Fixed-width limit macros remain a C ABI boundary used by Vulkan-facing code.
+// Use the C header directly instead of relying on a hosted C++ header to expose
+// them transitively.
+#include <stdint.h>
+
 #ifndef OA_CORE_TYPES_H_SCALARS_DEFINED
 #define OA_CORE_TYPES_H_SCALARS_DEFINED
 
-#include <cstddef>
-#include <cstdint>
-
 namespace oa {
 
-using I8 = std::int8_t;
-using I16 = std::int16_t;
-using I32 = std::int32_t;
-using I64 = std::int64_t;
+using I8 = __INT8_TYPE__;
+using I16 = __INT16_TYPE__;
+using I32 = __INT32_TYPE__;
+using I64 = __INT64_TYPE__;
 
-using U8 = std::uint8_t;
-using U16 = std::uint16_t;
-using U32 = std::uint32_t;
-using U64 = std::uint64_t;
+using U8 = __UINT8_TYPE__;
+using U16 = __UINT16_TYPE__;
+using U32 = __UINT32_TYPE__;
+using U64 = __UINT64_TYPE__;
 
 using F32 = float;
 using F64 = double;
 
-using Usize = std::size_t;
-using Isize = std::ptrdiff_t;
+using Usize = __SIZE_TYPE__;
+using Isize = __PTRDIFF_TYPE__;
 
 using Byte = U8;
 using Char = char;
 using Bool = bool;
+
+static_assert(sizeof(I8) == 1 and sizeof(U8) == 1);
+static_assert(sizeof(I16) == 2 and sizeof(U16) == 2);
+static_assert(sizeof(I32) == 4 and sizeof(U32) == 4);
+static_assert(sizeof(I64) == 8 and sizeof(U64) == 8);
 
 } // namespace oa
 
@@ -49,9 +56,7 @@ using Bool = bool;
 // AUTO-GENERATED TYPES (must be included before functions that use them)
 #include <oa/core/type.gen.h>
 
-// STANDARD LIBRARY INCLUDES
-#include <cassert>
-#include <limits>
+#include <oa/core/assert.h>
 
 // COMPILER & PLATFORM DETECTION
 #if defined(_MSC_VER)
@@ -93,9 +98,6 @@ using Bool = bool;
 #elif defined(__APPLE__)
 	#define OA_PLATFORM_APPLE 1
 #endif
-
-// Debug assertion — maps to assert() (no-op when NDEBUG is defined)
-#define OA_ASSERT(expr) assert(expr)
 
 // 128-bit integers (MSVC: pair of limbs; Clang/GCC: __int128 extension)
 #ifdef OA_COMPILER_MSVC
@@ -237,21 +239,21 @@ inline constexpr ScalarType ScalarTypeOfV = ScalarTypeOf<T>::Value;
 
 // Numeric limits and math constants
 
-inline constexpr F32 F32Max = std::numeric_limits<F32>::max();
-inline constexpr F32 F32Min = std::numeric_limits<F32>::lowest();
-inline constexpr F32 F32Epsilon = std::numeric_limits<F32>::epsilon();
-inline constexpr F32 F32Infinity = std::numeric_limits<F32>::infinity();
+inline constexpr F32 F32Max = __FLT_MAX__;
+inline constexpr F32 F32Min = -__FLT_MAX__;
+inline constexpr F32 F32Epsilon = __FLT_EPSILON__;
+inline constexpr F32 F32Infinity = __builtin_huge_valf();
 
-inline constexpr F64 F64Max = std::numeric_limits<F64>::max();
-inline constexpr F64 F64Min = std::numeric_limits<F64>::lowest();
-inline constexpr F64 F64Epsilon = std::numeric_limits<F64>::epsilon();
-inline constexpr F64 F64Infinity = std::numeric_limits<F64>::infinity();
+inline constexpr F64 F64Max = __DBL_MAX__;
+inline constexpr F64 F64Min = -__DBL_MAX__;
+inline constexpr F64 F64Epsilon = __DBL_EPSILON__;
+inline constexpr F64 F64Infinity = __builtin_huge_val();
 
-inline constexpr I32 I32Max = std::numeric_limits<I32>::max();
-inline constexpr I32 I32Min = std::numeric_limits<I32>::min();
-inline constexpr I64 I64Max = std::numeric_limits<I64>::max();
-inline constexpr I64 I64Min = std::numeric_limits<I64>::min();
-inline constexpr U64 U64Max = std::numeric_limits<U64>::max();
+inline constexpr I32 I32Max = __INT_MAX__;
+inline constexpr I32 I32Min = -__INT_MAX__ - 1;
+inline constexpr I64 I64Max = __LONG_LONG_MAX__;
+inline constexpr I64 I64Min = -__LONG_LONG_MAX__ - 1;
+inline constexpr U64 U64Max = ~static_cast<U64>(0);
 
 // Mathematical constants
 inline constexpr F64 Pi = 3.14159265358979323846;
@@ -290,13 +292,17 @@ template<Usize alignment>
 // Saturating / safe arithmetic and byte helpers
 
 [[nodiscard]] OA_HOST_DEVICE constexpr bool safeAdd(U64 inA, U64 inB, U64& outResult) noexcept {
-	if (inB > U64Max - inA) return false;
+	if (inB > U64Max - inA) {
+		return false;
+	}
 	outResult = inA + inB;
 	return true;
 }
 
 [[nodiscard]] OA_HOST_DEVICE constexpr bool safeMul(U64 inA, U64 inB, U64& outResult) noexcept {
-	if (inA == 0 || inB == 0) { outResult = 0; return true; }
+	if (inA == 0 || inB == 0) {
+		outResult = 0; return true;
+	}
 	if (inA > U64Max / inB) return false;
 	outResult = inA * inB;
 	return true;
@@ -321,10 +327,6 @@ template<Usize alignment>
 	inVal = ((inVal << 16) & 0xFFFF0000FFFF0000ULL) | ((inVal >> 16) & 0x0000FFFF0000FFFFULL);
 	return (inVal << 32) | (inVal >> 32);
 }
-
-#include <cmath>
-[[nodiscard]] inline F32 sqrt(F32 inX) noexcept { return sqrtf(inX); }
-[[nodiscard]] inline F64 sqrt(F64 inX) noexcept { return ::sqrt(inX); }
 
 } // namespace oa
 

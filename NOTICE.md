@@ -55,6 +55,7 @@ files. OA is grateful to their authors.
 | **miniaudio** | `source/cpp/thirdparty/miniaudio/*` | David Reid ([mackron](https://github.com/mackron/miniaudio)) | Public domain or MIT-0 |
 | **stb** (`stb_image`, …) | `source/cpp/thirdparty/stb/*` | Sean Barrett ([nothings/stb](https://github.com/nothings/stb)) | Public domain or MIT |
 | **xsimd 14.1.0** | `source/cpp/thirdparty/xsimd/*` | QuantStack and xsimd contributors ([xtensor-stack/xsimd](https://github.com/xtensor-stack/xsimd)) | BSD-3-Clause |
+| **utf8proc 2.11.3** | `source/cpp/thirdparty/utf8proc/*` | utf8proc contributors ([JuliaStrings/utf8proc](https://github.com/JuliaStrings/utf8proc)) | MIT |
 | **libadrenotools** | `sdk/android/oaMobileLab/third_party/libadrenotools/*` (Android only) | Billy Laws ([bylaws/libadrenotools](https://github.com/bylaws/libadrenotools)) | BSD-2-Clause |
 
 The volk and VMA copies are **modified** (fork/rename/split for OA's build); their MIT
@@ -72,9 +73,6 @@ the active vcpkg installation are copied into release packages automatically.
 | Component | OA use | License |
 |---|---|---|
 | yaml-cpp | YAML configuration and model metadata | MIT |
-| CLI11 | command-line interfaces | BSD-3-Clause |
-| {fmt} | formatting | MIT |
-| utf8proc | Unicode text processing | MIT |
 | Vulkan-Headers | Vulkan API declarations | Apache-2.0 OR MIT |
 | SDL3 | windows, input and camera integration | Zlib; selected configurations also contain MIT/Apache-2.0 code |
 | liboqs | optional post-quantum cryptography | MIT, with separately licensed code identified by liboqs |

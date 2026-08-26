@@ -1,9 +1,8 @@
 #pragma once
 
 #include <oa/core/types.h>
+#include <oa/core/std/array.h>
 #include <oa/runtime/oaVk.h>
-#include <array>
-#include <cstdint>
 
 namespace oavk {
 
@@ -121,12 +120,12 @@ void logCoopMatShapes(const CoopMatShapes& inShapes, const char* inIndent);
 
 // instance layer (enabled when oavk::Device::create(enableValidation=true))
 inline constexpr const char LayerKhronosValidation[] = "VK_LAYER_KHRONOS_validation";
-inline constexpr std::array<const char*, 1> InstanceLayerNames{{
+inline constexpr oa::Array<const char*, 1> InstanceLayerNames{
 	LayerKhronosValidation,
-}};
+};
 
 // instance extensions (empty; add WSI/surface names here for swapchain)
-inline constexpr std::array<const char*, 0> InstanceExtensionNames{};
+inline constexpr oa::Array<const char*, 0> InstanceExtensionNames{};
 
 // Device extension constants
 inline constexpr const char ExtKhrCooperativeMatrix[] = "VK_KHR_cooperative_matrix";
@@ -159,7 +158,7 @@ inline constexpr const char ExtKhrCalibratedTimestamps[] = "VK_KHR_calibrated_ti
 inline constexpr const char ExtExtCalibratedTimestamps[] = "VK_EXT_calibrated_timestamps";
 
 // Device extensions to probe from physical device
-inline constexpr std::array<const char*, 28> OptionalDeviceExtensionProbeNames{{
+inline constexpr oa::Array<const char*, 28> OptionalDeviceExtensionProbeNames{
 	ExtKhrCooperativeMatrix,
 	ExtNvCooperativeMatrix,
 	ExtNvCooperativeVector,
@@ -188,7 +187,7 @@ inline constexpr std::array<const char*, 28> OptionalDeviceExtensionProbeNames{{
 	ExtKhrSamplerYcbcr,
 	ExtKhrCalibratedTimestamps,
 	ExtExtCalibratedTimestamps,
-}};
+};
 
 // Minimal spec constants
 inline constexpr const uint32_t MinApiVersion = VK_API_VERSION_1_3;

@@ -4,9 +4,6 @@
 #include <oa/core/matrix.h>
 #include <oa/ml/fnLoss.h>
 
-#include <cmath>
-#include <vector>
-
 namespace oa {
 
 // ─── Metric ──────────────────────────────────────────────────────────────────
@@ -68,7 +65,7 @@ public:
 
 	MetricLoss() = default;
 	explicit MetricLoss(oa::String inName, Mode inMode = Mode::Mean)
-		: name_(std::move(inName)), mode_(inMode) {}
+		: name_(oa::move(inName)), mode_(inMode) {}
 
 	void update(const Matrix& inPreds, const Matrix& inLabels) override;
 	void update(oa::F32 inLossValue);

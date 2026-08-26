@@ -124,7 +124,7 @@ oa::Result<oa::ImagePlanes> oa::ImagePlanes::loadFile(oa::Engine& inRt, oa::Stri
 		stbi_image_free(px);
 		planes.width_        = w;
 		planes.height_       = h;
-		planes.channelCount_ = static_cast<oa::U8>(std::min(nCh, kImageMaxPlanes));
+		planes.channelCount_ = static_cast<oa::U8>(oa::min(nCh, kImageMaxPlanes));
 	} else {
 		stbi_uc* px = stbi_load(inPath.data(), &w, &h, &ch, 0);
 		if (!px) {
@@ -148,7 +148,7 @@ oa::Result<oa::ImagePlanes> oa::ImagePlanes::loadFile(oa::Engine& inRt, oa::Stri
 		stbi_image_free(px);
 		planes.width_        = w;
 		planes.height_       = h;
-		planes.channelCount_ = static_cast<oa::U8>(std::min(nCh, kImageMaxPlanes));
+		planes.channelCount_ = static_cast<oa::U8>(oa::min(nCh, kImageMaxPlanes));
 	}
 
 	OaLogInfo(oa::LogComponent::Ui, "oa::ImagePlanes: loaded %s (%dx%d, %u ch)",

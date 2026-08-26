@@ -16,8 +16,8 @@
 #include <oa/runtime/engine/resourceAccess.h>
 #include <oa/core/validation.h>
 
-#include <cassert>
-#include <cstring>
+#include <assert.h>
+#include <string.h>
 
 static void recordMatrixView(
 	const oa::Matrix& inSource,

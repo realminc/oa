@@ -6,8 +6,6 @@
 
 #include <oa/ml/module.h>
 
-#include <initializer_list>
-
 namespace oa {
 
 /// AdaptiveAvgPool2d: Adaptive average pooling layer.

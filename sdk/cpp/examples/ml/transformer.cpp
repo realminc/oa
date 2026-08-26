@@ -78,8 +78,7 @@ OA_MAIN("ExampleMlTransformer") {
 	if (tokenizer.vocabSize() != VocabSize) return 1;
 	const auto corpusTokens = tokenizer.encode(Corpus);
 
-	oa::NnTransformer model(
-		VocabSize, ContextLength, ModelWidth, HiddenWidth);
+	oa::NnTransformer model(VocabSize, ContextLength, ModelWidth, HiddenWidth);
 	auto parameters = model.allParameterPtrs();
 	oa::AdamW optimizer(parameters, 0.01F);
 	oa::MetricLoss lossMetric;
@@ -98,14 +97,19 @@ OA_MAIN("ExampleMlTransformer") {
 	training.addCallback(&summary);
 
 	std::printf("\nOA SDK Example — BPE Transformer · all-position LM\n");
-	std::printf("Tokenizer: byte BPE · vocab=%d · context=%d\n",
-		VocabSize, ContextLength);
-	std::printf("Model: NnTransformer(width=%d, hidden=%d, layers=1, heads=1)\n",
-		ModelWidth, HiddenWidth);
-	std::printf("Params: %lld · AdamW(lr=0.01)\n",
-		static_cast<long long>(model.numParameters()));
-	std::printf("Training: %d steps · batch=%d · sequence=%d tokens\n",
-		TrainingSteps, BatchSize, ContextLength);
+	std::printf("Tokenizer: byte BPE · vocab=%d · context=%d\n", VocabSize, ContextLength);
+	std::printf(
+		"Model: NnTransformer(width=%d, hidden=%d, layers=1, heads=1)\n",
+		ModelWidth,
+		HiddenWidth
+	);
+	std::printf("Params: %lld · AdamW(lr=0.01)\n", static_cast<long long>(model.numParameters()));
+	std::printf(
+		"Training: %d steps · batch=%d · sequence=%d tokens\n",
+		TrainingSteps,
+		BatchSize,
+		ContextLength
+	);
 
 	oa::I64 cursor = 0;
 	oa::Matrix input;
@@ -119,12 +123,18 @@ OA_MAIN("ExampleMlTransformer") {
 		auto loss = oa::FnLoss::crossEntropy(logits, target.reshape({target.numElements()}));
 		tape.backward(loss);
 		training.next(loss);
-		if (training.index() == 1) initialLoss = training.lastLoss();
+		if (training.index() == 1) {
+			initialLoss = training.lastLoss();
+		}
 	}
-	if (not training.finish().isOk()) return 1;
+	if (not training.finish().isOk()) {
+		return 1;
+	}
 
 	const oa::F32 finalLoss = training.lastLoss();
-	if (not (finalLoss < initialLoss)) return 1;
+	if (not (finalLoss < initialLoss)) {
+		return 1;
+	}
 	const auto generated = generate(model, tokenizer);
 	std::printf("Transformer training verified: vocab=300, steps=300\n");
 	std::printf("Loss: %.4f -> %.4f\n", initialLoss, finalLoss);

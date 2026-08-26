@@ -4,19 +4,24 @@
 
 #include <oa/core/log.h>
 #include <oa/core/fnMatrix.h>
+#include <oa/core/memory.h>
+#include <oa/core/std/scalarMath.h>
+#include <oa/core/std/utility.h>
 
 #include <anim/usd.h>
 #include <anim/posePack.h>
 #include <rig/skeleton.h>
-
-#include <cctype>
-#include <cmath>
-#include <cstring>
-#include <utility>
+#include <core/streamText.h>
 
 namespace {
 
 constexpr oa::F32 kStdFloor = 1e-4f;
+
+char lowerAscii(char inValue) {
+	return inValue >= 'A' && inValue <= 'Z'
+		? static_cast<char>(inValue + ('a' - 'A'))
+		: inValue;
+}
 
 const char* const kCategoryNames[] = {
 	"idle", "walk", "backpack", "briefcase", "cup", "phone", "purse", "react", "other"
@@ -32,7 +37,7 @@ oa::Usize splitIndex(oa::DsSplit inSplit) {
 oa::U8 oa::dsCategoryOf(const oa::String& inContent) {
 	oa::String c = inContent;
 	for (oa::Usize i = 0; i < c.size(); ++i) {
-		c[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(c[i])));
+		c[i] = lowerAscii(c[i]);
 	}
 	auto has = [&](const char* k) { return c.find(k) != oa::String::Npos; };
 	if (has("walk"))      { return 1; }
@@ -124,7 +129,7 @@ bool oa::DsGen3dAnim::loadUsd_() {
 	fps_ = named[0].clip.fps;
 
 	auto splitOf = [](const oa::String& s) -> oa::DsSplit {
-		const std::string v = s.stdStr();
+		const std::string v = oa::sdk::toStdString(s);
 		if (v == "val")  { return oa::DsSplit::Val; }
 		if (v == "test") { return oa::DsSplit::Test; }
 		return oa::DsSplit::Train;
@@ -132,7 +137,7 @@ bool oa::DsGen3dAnim::loadUsd_() {
 	// Strip a leading "[MF]T[NOU]_" body-variant prefix when present (legacy MTN
 	// naming); otherwise classify on the full name.
 	auto contentOf = [](const oa::String& name) -> oa::String {
-		const std::string s = name.stdStr();
+		const std::string s = oa::sdk::toStdString(name);
 		if (s.size() > 4 && (s[0] == 'M' || s[0] == 'F') && s[1] == 'T' && s[3] == '_') {
 			return oa::String(s.substr(4).c_str());
 		}
@@ -159,7 +164,7 @@ bool oa::DsGen3dAnim::loadUsd_() {
 			continue;
 		}
 
-		const std::string stem = nc.name.stdStr();
+		const std::string stem = oa::sdk::toStdString(nc.name);
 		oa::DsClipMeta m;
 		m.name      = nc.name;
 		m.content   = contentOf(nc.name);
@@ -172,8 +177,8 @@ bool oa::DsGen3dAnim::loadUsd_() {
 		m.split     = splitOf(nc.split);
 		m.frames    = clip.frameCount;
 
-		clips_.pushBack(std::move(clip));
-		metas_.pushBack(std::move(m));
+		clips_.pushBack(oa::move(clip));
+		metas_.pushBack(oa::move(m));
 	}
 
 	if (clips_.empty()) {
@@ -250,7 +255,7 @@ void oa::DsGen3dAnim::recomputeStats_() {
 		const double m = sum[c] * inv;
 		const double var = sumsq[c] * inv - m * m;
 		mean_[c] = static_cast<oa::F32>(m);
-		std_[c]  = static_cast<oa::F32>(std::sqrt(var > 0.0 ? var : 0.0));
+		std_[c]  = static_cast<oa::F32>(oa::sqrt(var > 0.0 ? var : 0.0));
 		// Dead-channel rule: a channel whose std is below kStdFloor is effectively
 		// constant in this set and carries no learnable signal. Dividing by a tiny
 		// floor would amplify pure numerical jitter by ~1/floor (×10^4) — blowing up
@@ -288,10 +293,10 @@ void oa::DsGen3dAnim::buildIndices(oa::I32 inContextLen, oa::I64 inSeed) {
 	indices_.resize(windows_.size());
 	for (oa::Usize i = 0; i < indices_.size(); ++i) { indices_[i] = static_cast<oa::I64>(i); }
 	// Use TrainRng for initial shuffle (affects all splits equally for now)
-	std::shuffle(indices_.begin(), indices_.end(), trainRng_);
-	std::shuffle(splitWindows_[0].begin(), splitWindows_[0].end(), trainRng_);
-	std::shuffle(splitWindows_[1].begin(), splitWindows_[1].end(), valRng_);
-	std::shuffle(splitWindows_[2].begin(), splitWindows_[2].end(), testRng_);
+	trainRng_.shuffle(indices_.data(), indices_.size());
+	trainRng_.shuffle(splitWindows_[0].data(), splitWindows_[0].size());
+	valRng_.shuffle(splitWindows_[1].data(), splitWindows_[1].size());
+	testRng_.shuffle(splitWindows_[2].data(), splitWindows_[2].size());
 }
 
 oa::I64 oa::DsGen3dAnim::size() const {
@@ -366,7 +371,7 @@ bool oa::DsGen3dAnim::restrictSplitToClip(oa::DsSplit inSplit, const oa::String&
 	}
 	if (filtered.empty()) { return false; }
 
-	splitWindows_[splitIdx] = std::move(filtered);
+	splitWindows_[splitIdx] = oa::move(filtered);
 	splitCursor_[splitIdx] = 0;
 	return true;
 }
@@ -396,7 +401,7 @@ void oa::DsGen3dAnim::nextBatch(oa::DsSplit inSplit, oa::I32 inBatch, oa::Matrix
 	for (oa::I32 b = 0; b < inBatch; ++b) {
 		if (splitCursor_[splitIdx] >= splitWindows.size()) {
 			splitCursor_[splitIdx] = 0;
-			std::shuffle(splitWindows.begin(), splitWindows.end(), rng);
+			rng.shuffle(splitWindows.data(), splitWindows.size());
 		}
 		const Window& wnd = windows_[splitWindows[splitCursor_[splitIdx]++]];
 		const oa::PoseClip& clip = clips_[static_cast<oa::Usize>(wnd.clip)];
@@ -416,13 +421,13 @@ void oa::DsGen3dAnim::nextBatch(oa::DsSplit inSplit, oa::I32 inBatch, oa::Matrix
 
 	outX = oa::FnMatrix::empty(oa::MatrixShape{inBatch, contextLen_, poseDim_}, oa::ScalarType::Float32);
 	outY = oa::FnMatrix::empty(oa::MatrixShape{inBatch, contextLen_, poseDim_}, oa::ScalarType::Float32);
-	std::memcpy(outX.dataAs<float>(), xdata.data(), static_cast<size_t>(total) * sizeof(float));
-	std::memcpy(outY.dataAs<float>(), ydata.data(), static_cast<size_t>(total) * sizeof(float));
+	oa::memcpy(outX.dataAs<float>(), xdata.data(), static_cast<oa::Usize>(total) * sizeof(float));
+	oa::memcpy(outY.dataAs<float>(), ydata.data(), static_cast<oa::Usize>(total) * sizeof(float));
 }
 
 oa::I32 oa::DsGen3dAnim::findClipByName(const oa::String& inName) const {
 	for (oa::Usize i = 0; i < metas_.size(); ++i) {
-		if (metas_[i].name.stdStr() == inName.stdStr()) { return static_cast<oa::I32>(i); }
+		if (metas_[i].name == inName) { return static_cast<oa::I32>(i); }
 	}
 	return -1;
 }
@@ -433,7 +438,7 @@ bool oa::DsGen3dAnim::seedRaw(oa::I32 inClipIdx, oa::I32 inContext, oa::Vec<oa::
 	if (static_cast<oa::I32>(clip.frameCount) < inContext || poseDim_ <= 0) { return false; }
 	const oa::Usize n = static_cast<oa::Usize>(inContext) * static_cast<oa::Usize>(poseDim_);
 	outRaw.resize(n);
-	std::memcpy(outRaw.data(), clip.samples.data(), n * sizeof(oa::F32));
+	oa::memcpy(outRaw.data(), clip.samples.data(), n * sizeof(oa::F32));
 	return true;
 }
 
@@ -442,7 +447,7 @@ bool oa::DsGen3dAnim::clipRaw(oa::I32 inClipIdx, oa::Vec<oa::F32>& outRaw, oa::U
 	const oa::PoseClip& clip = clips_[static_cast<oa::Usize>(inClipIdx)];
 	outFrames = clip.frameCount;
 	outRaw.resize(clip.samples.size());
-	std::memcpy(outRaw.data(), clip.samples.data(), clip.samples.size() * sizeof(oa::F32));
+	oa::memcpy(outRaw.data(), clip.samples.data(), clip.samples.size() * sizeof(oa::F32));
 	return true;
 }
 

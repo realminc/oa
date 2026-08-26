@@ -26,7 +26,7 @@ protected:
 		config.appName = "TestFnMatrixActivation";
 		auto result = oa::Engine::create(config);
 		ASSERT_TRUE(result.isOk()) << result.getStatus().getMessage();
-		static oa::UniquePtr<oa::Engine> engine = std::move(*result);
+		static oa::UniquePtr<oa::Engine> engine = oa::move(*result);
 		runtime = engine.get();
 	}
 };

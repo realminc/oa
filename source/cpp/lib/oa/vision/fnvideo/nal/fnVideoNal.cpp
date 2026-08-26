@@ -2,8 +2,7 @@
 // CPU-only Annex-B byte stream split / emit / SPS+PPS extraction.
 
 #include <oa/vision/fnVideo.h>
-
-#include <cstring>
+#include <oa/core/memory.h>
 
 namespace oa {
 
@@ -135,7 +134,7 @@ oa::Vec<oa::U8> extractFirstH265NalByType(
 			and static_cast<oa::U8>((bytes[payloadStart] >> 1U) & 0x3FU) == inType) {
 			oa::Vec<oa::U8> out;
 			out.resize(payloadEnd - payloadStart);
-			std::memcpy(out.data(), bytes + payloadStart, out.size());
+			oa::memcpy(out.data(), bytes + payloadStart, out.size());
 			return out;
 		}
 		start = next;

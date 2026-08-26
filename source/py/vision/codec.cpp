@@ -19,7 +19,8 @@ oa::Image* imageFromResult(oa::Result<oa::Image>&& result) {
 }
 
 oa::VideoDemuxer* openDemuxer(const std::string& uri, const oa::VideoDemuxerConfig& config) {
-	auto result = oa::VideoDemuxer::open(oa::StringView(uri), config);
+	auto result = oa::VideoDemuxer::open(oa::StringView(
+		uri.data(), static_cast<oa::Usize>(uri.size())), config);
 	if (result.isError()) {
 		throw std::runtime_error(result.getStatus().toString().cStr());
 	}

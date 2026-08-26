@@ -14,12 +14,11 @@
 #include <oa/core/op.h>
 #include <oa/runtime/executionSession.h>
 #include <oa/runtime/engine.h>
-#include <algorithm>
-#include <array>
-#include <bit>
-#include <cmath>
-#include <numeric>
-#include <limits>
+#include <oa/core/std/algo.h>
+#include <oa/core/std/array.h>
+#include <oa/core/std/utility.h>
+#include <oa/core/std/scalarMath.h>
+#include <oa/core/std/limits.h>
 
 namespace oa {
 
@@ -27,7 +26,7 @@ namespace FnAudio {
 
 constexpr oa::F32 kLn10Over20Inv = 8.68588963806504F;  // 20 / ln(10)
 
-static oa::F32 dbToLinear(oa::F32 inDb) { return std::pow(10.0F, inDb / 20.0F); }
+static oa::F32 dbToLinear(oa::F32 inDb) { return oa::pow(10.0F, inDb / 20.0F); }
 
 static Audio wrapLike(oa::Matrix inMatrix, const Audio& inAudio) {
 	if (inMatrix.isEmpty()) return {};
@@ -40,7 +39,7 @@ Audio normalize(const Audio& inAudio, oa::F32 inTargetDb, oa::U8 inMode) {
 	const oa::Matrix& inA = inAudio.asMatrix();
 	const auto& shape = inA.getShape();
 	if (shape.rank != 2 || shape[0] <= 0 || shape[1] <= 0 ||
-		inA.getDtype() != oa::ScalarType::Float32 || !std::isfinite(inTargetDb) ||
+		inA.getDtype() != oa::ScalarType::Float32 || !oa::isFinite(inTargetDb) ||
 		inTargetDb < -300.0F || inTargetDb > 100.0F || inMode > 1) {
 		OaLogError(oa::LogComponent::Audio,
 			"oa::FnAudio::normalize: expected non-empty F32 [channels, samples], finite target, mode 0 or 1");
@@ -59,7 +58,7 @@ Audio normalize(const Audio& inAudio, oa::F32 inTargetDb, oa::U8 inMode) {
 		level = oa::FnMatrix::sqrt(oa::FnMatrix::mean(oa::FnMatrix::mul(inA, inA)));
 	}
 	auto safeLevel = oa::FnMatrix::clampMin(
-		level, std::numeric_limits<oa::F32>::min());
+		level, oa::Limits<oa::F32>::min());
 	auto gain = oa::FnMatrix::scale(
 		oa::FnMatrix::reciprocal(safeLevel), targetLin);
 	Audio result = wrapLike(oa::FnMatrix::mul(inA, gain), inAudio);
@@ -108,13 +107,13 @@ Audio resample(
 	}
 
 	// gcd-reduce so the shader's rational source positioning stays in u32.
-	const oa::U32 g       = std::gcd(inInRate, inOutRate);
+	const oa::U32 g       = oa::gcd(inInRate, inOutRate);
 	const oa::U32 inRateR  = inInRate  / g;
 	const oa::U32 outRateR = inOutRate / g;
 
 	const oa::U32 channels   = static_cast<oa::U32>(shape[0]);
 	const oa::U64 inSamples  = static_cast<oa::U64>(shape[1]);
-	if (inSamples > std::numeric_limits<oa::U64>::max() / outRateR) {
+	if (inSamples > oa::Limits<oa::U64>::max() / outRateR) {
 		OaLogError(oa::LogComponent::Audio, "oa::FnAudio::resample: output length overflows");
 		return {};
 	}
@@ -124,9 +123,9 @@ Audio resample(
 		return {};
 	}
 
-	if (inSamples > std::numeric_limits<oa::U32>::max() ||
-		outSamples > std::numeric_limits<oa::U32>::max() ||
-		outSamples > std::numeric_limits<oa::U32>::max() / channels) {
+	if (inSamples > oa::Limits<oa::U32>::max() ||
+		outSamples > oa::Limits<oa::U32>::max() ||
+		outSamples > oa::Limits<oa::U32>::max() / channels) {
 		OaLogError(oa::LogComponent::Audio, "oa::FnAudio::resample: dispatch exceeds u32 limits");
 		return {};
 	}
@@ -167,7 +166,7 @@ Audio mix(
 		|| inA.sampleRate() != inB.sampleRate()
 		|| inA.layout() != inB.layout()
 		|| inA.asMatrix().getShape() != inB.asMatrix().getShape()
-		|| not std::isfinite(inGainA) || not std::isfinite(inGainB)) {
+		|| not oa::isFinite(inGainA) || not oa::isFinite(inGainB)) {
 		OaLogError(oa::LogComponent::Audio,
 			"oa::FnAudio::mix: inputs must have matching valid audio contracts");
 		return {};
@@ -178,7 +177,7 @@ Audio mix(
 	oa::OpLoweringScope lowering(ctx);
 	oa::Matrix out = oa::FnMatrix::empty(a.getShape(), oa::ScalarType::Float32);
 	const oa::U64 count64 = static_cast<oa::U64>(a.numElements());
-	if (count64 > std::numeric_limits<oa::U32>::max()) {
+	if (count64 > oa::Limits<oa::U32>::max()) {
 		OaLogError(oa::LogComponent::Audio,
 			"oa::FnAudio::mix: dispatch exceeds u32 limits");
 		return {};
@@ -214,7 +213,7 @@ Audio mix(
 
 Audio gain(const Audio& inAudio, oa::F32 inGainDb) {
 	if (not inAudio.validate() || inAudio.isEmpty()) return {};
-	if (!std::isfinite(inGainDb) || inGainDb < -300.0F || inGainDb > 100.0F) return {};
+	if (!oa::isFinite(inGainDb) || inGainDb < -300.0F || inGainDb > 100.0F) return {};
 	const oa::Matrix& input = inAudio.asMatrix();
 	auto& ctx = oa::ExecutionSession::getActive();
 	oa::OpLoweringScope lowering(ctx);
@@ -230,7 +229,7 @@ Audio gain(const Audio& inAudio, oa::F32 inGainDb) {
 
 Audio clip(const Audio& inAudio, oa::F32 inMin, oa::F32 inMax) {
 	if (not inAudio.validate() || inAudio.isEmpty()) return {};
-	if (!std::isfinite(inMin) || !std::isfinite(inMax) || inMin > inMax) return {};
+	if (!oa::isFinite(inMin) || !oa::isFinite(inMax) || inMin > inMax) return {};
 	const oa::Matrix& input = inAudio.asMatrix();
 	auto& ctx = oa::ExecutionSession::getActive();
 	oa::OpLoweringScope lowering(ctx);
@@ -256,9 +255,9 @@ Audio saturate(
 	if (not inAudio.validate() || inAudio.isEmpty()) return {};
 	const oa::Matrix& input = inAudio.asMatrix();
 	const oa::U64 count64 = static_cast<oa::U64>(input.numElements());
-	if (!std::isfinite(inDriveDb) || inDriveDb < -60.0F || inDriveDb > 60.0F
-		|| !std::isfinite(inMix) || inMix < 0.0F || inMix > 1.0F
-		|| count64 == 0 || count64 > std::numeric_limits<oa::U32>::max()) {
+	if (!oa::isFinite(inDriveDb) || inDriveDb < -60.0F || inDriveDb > 60.0F
+		|| !oa::isFinite(inMix) || inMix < 0.0F || inMix > 1.0F
+		|| count64 == 0 || count64 > oa::Limits<oa::U32>::max()) {
 		OaLogError(oa::LogComponent::Audio,
 			"oa::FnAudio::saturate: expected drive in [-60, 60] dB, mix in [0, 1], and u32-addressable audio");
 		return {};
@@ -306,9 +305,9 @@ Audio reverb(
 	const auto& shape = input.getShape();
 	if (shape.rank != 2 or shape[0] <= 0 or shape[1] <= 0
 		or input.getDtype() != oa::ScalarType::Float32
-		or not std::isfinite(inDecaySeconds)
+		or not oa::isFinite(inDecaySeconds)
 		or inDecaySeconds < 0.1F or inDecaySeconds > 10.0F
-		or not std::isfinite(inWet) or inWet < 0.0F or inWet > 1.0F) {
+		or not oa::isFinite(inWet) or inWet < 0.0F or inWet > 1.0F) {
 		OaLogError(oa::LogComponent::Audio,
 			"oa::FnAudio::reverb: expected non-empty F32 [channels, samples], decaySeconds in [0.1, 10], and wet in [0, 1]");
 		return {};
@@ -316,10 +315,10 @@ Audio reverb(
 
 	const oa::U64 channels64 = static_cast<oa::U64>(shape[0]);
 	const oa::U64 inSamples64 = static_cast<oa::U64>(shape[1]);
-	const oa::U64 tailSamples64 = static_cast<oa::U64>(std::ceil(
+	const oa::U64 tailSamples64 = static_cast<oa::U64>(oa::ceil(
 		static_cast<oa::F64>(inAudio.sampleRate())
 		* static_cast<oa::F64>(inDecaySeconds)));
-	const oa::U64 maxAddressableSamples = std::numeric_limits<oa::U32>::max();
+	const oa::U64 maxAddressableSamples = oa::Limits<oa::U32>::max();
 	if (tailSamples64 == 0U or tailSamples64 > maxAddressableSamples
 		or inSamples64 > maxAddressableSamples - tailSamples64) {
 		OaLogError(oa::LogComponent::Audio,
@@ -327,48 +326,48 @@ Audio reverb(
 		return {};
 	}
 	const oa::U64 outSamples64 = inSamples64 + tailSamples64;
-	if (channels64 > std::numeric_limits<oa::U32>::max()
-		or outSamples64 > std::numeric_limits<oa::U32>::max()
-		or channels64 > std::numeric_limits<oa::U32>::max() / outSamples64) {
+	if (channels64 > oa::Limits<oa::U32>::max()
+		or outSamples64 > oa::Limits<oa::U32>::max()
+		or channels64 > oa::Limits<oa::U32>::max() / outSamples64) {
 		OaLogError(oa::LogComponent::Audio,
 			"oa::FnAudio::reverb: output dispatch exceeds u32 addressing");
 		return {};
 	}
 
-	constexpr std::array<oa::F64, 4> combDelaySeconds{
+	constexpr oa::Array<oa::F64, 4> combDelaySeconds{
 		0.0297, 0.0371, 0.0411, 0.0437};
-	constexpr std::array<oa::F64, 2> allpassDelaySeconds{0.0050, 0.0017};
+	constexpr oa::Array<oa::F64, 2> allpassDelaySeconds{0.0050, 0.0017};
 	constexpr oa::F32 allpassGain = 0.7F;
 	const oa::U32 channels = static_cast<oa::U32>(channels64);
 	const oa::U32 inSamples = static_cast<oa::U32>(inSamples64);
 	const oa::U32 outSamples = static_cast<oa::U32>(outSamples64);
 	const oa::U32 count = static_cast<oa::U32>(channels64 * outSamples64);
 
-	std::array<oa::U32, 4> combDelays{};
-	std::array<oa::F32, 4> combFeedback{};
+	oa::Array<oa::U32, 4> combDelays{};
+	oa::Array<oa::F32, 4> combFeedback{};
 	oa::F64 normalizationDenominator = 0.0;
 	for (oa::Usize index = 0; index < combDelaySeconds.size(); ++index) {
-		const oa::U64 delay = std::max<oa::U64>(1U, static_cast<oa::U64>(
-			std::llround(combDelaySeconds[index] * inAudio.sampleRate())));
-		if (delay > std::numeric_limits<oa::U32>::max()
-			or channels64 > std::numeric_limits<oa::U32>::max() / delay) {
+		const oa::U64 delay = oa::max<oa::U64>(1U, static_cast<oa::U64>(
+			oa::round(combDelaySeconds[index] * inAudio.sampleRate())));
+		if (delay > oa::Limits<oa::U32>::max()
+			or channels64 > oa::Limits<oa::U32>::max() / delay) {
 			OaLogError(oa::LogComponent::Audio,
 				"oa::FnAudio::reverb: comb dispatch exceeds u32 addressing");
 			return {};
 		}
 		combDelays[index] = static_cast<oa::U32>(delay);
-		combFeedback[index] = static_cast<oa::F32>(std::pow(
+		combFeedback[index] = static_cast<oa::F32>(oa::pow(
 			0.001,
 			(static_cast<oa::F64>(delay) / inAudio.sampleRate())
 				/ static_cast<oa::F64>(inDecaySeconds)));
 		normalizationDenominator += 1.0 / (1.0 - combFeedback[index]);
 	}
-	std::array<oa::U32, 2> allpassDelays{};
+	oa::Array<oa::U32, 2> allpassDelays{};
 	for (oa::Usize index = 0; index < allpassDelaySeconds.size(); ++index) {
-		const oa::U64 delay = std::max<oa::U64>(1U, static_cast<oa::U64>(
-			std::llround(allpassDelaySeconds[index] * inAudio.sampleRate())));
-		if (delay > std::numeric_limits<oa::U32>::max()
-			or channels64 > std::numeric_limits<oa::U32>::max() / delay) {
+		const oa::U64 delay = oa::max<oa::U64>(1U, static_cast<oa::U64>(
+			oa::round(allpassDelaySeconds[index] * inAudio.sampleRate())));
+		if (delay > oa::Limits<oa::U32>::max()
+			or channels64 > oa::Limits<oa::U32>::max() / delay) {
 			OaLogError(oa::LogComponent::Audio,
 				"oa::FnAudio::reverb: all-pass dispatch exceeds u32 addressing");
 			return {};
@@ -382,7 +381,7 @@ Audio reverb(
 	oa::OpLoweringScope lowering(ctx);
 	const oa::MatrixShape outputShape{
 		static_cast<oa::I64>(channels), static_cast<oa::I64>(outSamples)};
-	std::array<oa::Matrix, 4> combs;
+	oa::Array<oa::Matrix, 4> combs;
 	for (oa::Usize index = 0; index < combs.size(); ++index) {
 		combs[index] = oa::FnMatrix::empty(outputShape, oa::ScalarType::Float32);
 		if (combs[index].isEmpty()) return {};
@@ -422,7 +421,7 @@ Audio reverb(
 		{&combs[0], &combs[1], &combs[2], &combs[3], &summed},
 		sumAccess, &sumPush, sizeof(sumPush), (count + 255U) / 256U);
 
-	std::array<oa::Matrix, 2> diffused;
+	oa::Array<oa::Matrix, 2> diffused;
 	const oa::Matrix* diffuserInput = &summed;
 	for (oa::Usize index = 0; index < diffused.size(); ++index) {
 		diffused[index] = oa::FnMatrix::empty(outputShape, oa::ScalarType::Float32);
@@ -480,11 +479,11 @@ Audio reverb(
 }
 
 static bool isStableBiquad(const BiquadCoefficients& inCoefficients) {
-	const bool finite = std::isfinite(inCoefficients.b0)
-		and std::isfinite(inCoefficients.b1)
-		and std::isfinite(inCoefficients.b2)
-		and std::isfinite(inCoefficients.a1)
-		and std::isfinite(inCoefficients.a2);
+	const bool finite = oa::isFinite(inCoefficients.b0)
+		and oa::isFinite(inCoefficients.b1)
+		and oa::isFinite(inCoefficients.b2)
+		and oa::isFinite(inCoefficients.a1)
+		and oa::isFinite(inCoefficients.a2);
 	if (not finite) return false;
 
 	// Jury stability test for 1 + a1*z^-1 + a2*z^-2. Strict inequalities
@@ -516,11 +515,11 @@ static bool resolveBiquadDispatchShape(
 	const oa::U64 samples64 = static_cast<oa::U64>(shape[1]);
 	const oa::U64 blocks64 =
 		(samples64 + kBiquadBlockSize - 1U) / kBiquadBlockSize;
-	if (channels64 > std::numeric_limits<oa::U32>::max()
-		or samples64 > std::numeric_limits<oa::U32>::max()
-		or channels64 > std::numeric_limits<oa::U32>::max() / samples64
-		or channels64 > std::numeric_limits<oa::U32>::max() / blocks64
-		or channels64 * blocks64 > std::numeric_limits<oa::U32>::max() / 6U) {
+	if (channels64 > oa::Limits<oa::U32>::max()
+		or samples64 > oa::Limits<oa::U32>::max()
+		or channels64 > oa::Limits<oa::U32>::max() / samples64
+		or channels64 > oa::Limits<oa::U32>::max() / blocks64
+		or channels64 * blocks64 > oa::Limits<oa::U32>::max() / 6U) {
 		return false;
 	}
 	outShape = BiquadDispatchShape{
@@ -612,7 +611,7 @@ static void addBiquadSection(
 
 static oa::U64 appendSosHash(oa::U64 inHash, oa::F32 inValue) {
 	constexpr oa::U64 prime = 1099511628211ULL;
-	const oa::U32 bits = std::bit_cast<oa::U32>(inValue);
+	const oa::U32 bits = oa::bitCast<oa::U32>(inValue);
 	for (oa::U32 shift = 0U; shift < 32U; shift += 8U) {
 		inHash ^= static_cast<oa::U8>(bits >> shift);
 		inHash *= prime;
@@ -767,7 +766,7 @@ Audio sosFilter(
 
 oa::Matrix amplitudeToDb(const Audio& inAudio, oa::F32 inFloorDb) {
 	if (not inAudio.validate() || inAudio.isEmpty()) return {};
-	if (!std::isfinite(inFloorDb) || inFloorDb < -300.0F || inFloorDb > 0.0F) return {};
+	if (!oa::isFinite(inFloorDb) || inFloorDb < -300.0F || inFloorDb > 0.0F) return {};
 	const oa::Matrix& input = inAudio.asMatrix();
 	auto& ctx = oa::ExecutionSession::getActive();
 	oa::OpLoweringScope lowering(ctx);
@@ -793,7 +792,7 @@ Audio preEmphasis(const Audio& inAudio, oa::F32 inAlpha) {
 	// Composed: shift right by one via Zeros+Slice+Concat, then sub(x, α·shift).
 	const auto& shape = inBuf.getShape();
 	if (shape.rank != 2 || shape[0] <= 0 || shape[1] <= 0 ||
-		inBuf.getDtype() != oa::ScalarType::Float32 || !std::isfinite(inAlpha)) {
+		inBuf.getDtype() != oa::ScalarType::Float32 || !oa::isFinite(inAlpha)) {
 		OaLogError(oa::LogComponent::Audio, "oa::FnAudio::preEmphasis: expected [channels, samples], rank=%d", shape.rank);
 		return {};
 	}
@@ -869,7 +868,7 @@ Audio fade(
 	const oa::U64 fadeIn   = inFadeInSamples  < samples ? inFadeInSamples  : samples;
 	const oa::U64 fadeOut  = inFadeOutSamples < samples ? inFadeOutSamples : samples;
 	const oa::U64 count64 = static_cast<oa::U64>(shape[0]) * samples;
-	if (samples > std::numeric_limits<oa::U32>::max() || count64 > std::numeric_limits<oa::U32>::max()) {
+	if (samples > oa::Limits<oa::U32>::max() || count64 > oa::Limits<oa::U32>::max()) {
 		OaLogError(oa::LogComponent::Audio, "oa::FnAudio::fade: dispatch exceeds u32 limits");
 		return {};
 	}
@@ -907,8 +906,8 @@ oa::Matrix waveformEnvelope(const Audio& inAudio, oa::U32 inBins) {
 	if (shape.rank != 2 || shape[0] <= 0 || shape[1] <= 0
 		|| inBuf.getDtype() != oa::ScalarType::Float32 || inBins == 0U
 		|| inBins > 65'536U
-		|| shape[0] > static_cast<oa::I64>(std::numeric_limits<oa::U32>::max())
-		|| shape[1] > static_cast<oa::I64>(std::numeric_limits<oa::U32>::max())) {
+		|| shape[0] > static_cast<oa::I64>(oa::Limits<oa::U32>::max())
+		|| shape[1] > static_cast<oa::I64>(oa::Limits<oa::U32>::max())) {
 		OaLogError(oa::LogComponent::Audio,
 			"oa::FnAudio::waveformEnvelope: expected non-empty F32 [channels, samples] and bins in [1, 65536]");
 		return {};

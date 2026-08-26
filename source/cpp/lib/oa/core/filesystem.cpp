@@ -1,76 +1,270 @@
-// ═══════════════════════════════════════════════════════════════════════════════
-// OA CORE - Filesystem Implementation
-// ═══════════════════════════════════════════════════════════════════════════════
-
 #include <oa/core/filesystem.h>
 #include <oa/core/std/algo.h>
 
-#include <chrono>
-#include <fstream>
-#include <limits>
-#include <sstream>
-#include <string>
-#include <system_error>
+#include <errno.h>
+#include <stdio.h>
+#include <string.h>
+
+#if defined(_WIN32)
+#include <windows.h>
+#else
+#include <dirent.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 
 namespace {
 
-oa::Status filesystemError(const std::error_code& inError) {
-	if (inError == std::errc::no_such_file_or_directory) {
-		return oa::Status::error(oa::StatusCode::FileNotFound,
-			oa::String(inError.message()));
+[[nodiscard]] oa::Status filesystemError(
+	int inError, oa::StringView inAction, const oa::Path& inPath)
+{
+	oa::StatusCode code = oa::StatusCode::Internal;
+	switch (inError) {
+		case ENOENT: code = oa::StatusCode::FileNotFound; break;
+		case EACCES:
+		case EPERM: code = oa::StatusCode::PermissionError; break;
+		case ENOSPC: code = oa::StatusCode::DiskFull; break;
+		case EEXIST: code = oa::StatusCode::AlreadyExists; break;
+		default: break;
 	}
-	if (inError == std::errc::permission_denied) {
-		return oa::Status::error(oa::StatusCode::PermissionError,
-			oa::String(inError.message()));
+	oa::String message(inAction);
+	message += ": ";
+	message += inPath.string();
+	if (const char* detail = ::strerror(inError); detail != nullptr) {
+		message += " (";
+		message += detail;
+		message += ')';
 	}
-	if (inError == std::errc::no_space_on_device) {
-		return oa::Status::error(oa::StatusCode::DiskFull,
-			oa::String(inError.message()));
-	}
-	if (inError == std::errc::file_exists) {
-		return oa::Status::error(oa::StatusCode::AlreadyExists,
-			oa::String(inError.message()));
-	}
-	return oa::Status::error(oa::StatusCode::Internal, oa::String(inError.message()));
+	return oa::Status::error(code, oa::move(message));
 }
 
 void sortPaths(oa::Vec<oa::Path>& inOutPaths) {
-	if (inOutPaths.size() < 2U) {
-		return;
-	}
+	if (inOutPaths.size() < 2U) return;
 	oa::sort(inOutPaths.begin(), inOutPaths.end(),
 		[](const oa::Path& inA, const oa::Path& inB) {
 			return inA.genericString() < inB.genericString();
 		});
 }
 
+[[nodiscard]] oa::Status writeBytes(
+	const oa::Path& inPath, const void* inData, oa::Usize inBytes, const char* inMode)
+{
+	::FILE* file = ::fopen(inPath.cStr(), inMode);
+	if (file == nullptr) return filesystemError(errno, "cannot open file", inPath);
+	if (inBytes != 0U and ::fwrite(inData, 1U, inBytes, file) != inBytes) {
+		const int error = errno != 0 ? errno : EIO;
+		(void)::fclose(file);
+		return filesystemError(error, "cannot write file", inPath);
+	}
+	if (::fclose(file) != 0) {
+		return filesystemError(errno != 0 ? errno : EIO, "cannot close file", inPath);
+	}
+	return oa::Status::ok();
+}
+
+#if defined(_WIN32)
+
+[[nodiscard]] bool queryPath(
+	const oa::Path& inPath, WIN32_FILE_ATTRIBUTE_DATA& outData) noexcept
+{
+	return ::GetFileAttributesExA(
+		inPath.cStr(), GetFileExInfoStandard, &outData) != FALSE;
+}
+
+[[nodiscard]] oa::Status createOneDirectory(const oa::Path& inPath) {
+	if (::CreateDirectoryA(inPath.cStr(), nullptr) != FALSE) return oa::Status::ok();
+	const DWORD error = ::GetLastError();
+	if (error == ERROR_ALREADY_EXISTS and oa::Filesystem::isDirectory(inPath)) {
+		return oa::Status::ok();
+	}
+	return filesystemError(static_cast<int>(error), "cannot create directory", inPath);
+}
+
+template<typename Visitor>
+[[nodiscard]] oa::Status visitDirectory(const oa::Path& inDir, Visitor&& inVisitor) {
+	const oa::String pattern = (inDir / "*").string();
+	WIN32_FIND_DATAA data{};
+	HANDLE handle = ::FindFirstFileA(pattern.cStr(), &data);
+	if (handle == INVALID_HANDLE_VALUE) {
+		return filesystemError(
+			static_cast<int>(::GetLastError()), "cannot list directory", inDir);
+	}
+	oa::Status status = oa::Status::ok();
+	do {
+		const oa::StringView name(data.cFileName);
+		if (name == "." or name == "..") continue;
+		status = inVisitor(inDir / name,
+			(data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0,
+			(data.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0);
+		if (status.isError()) break;
+	} while (::FindNextFileA(handle, &data) != FALSE);
+	const DWORD endError = ::GetLastError();
+	(void)::FindClose(handle);
+	if (status.isError()) return status;
+	if (endError != ERROR_NO_MORE_FILES) {
+		return filesystemError(static_cast<int>(endError), "cannot list directory", inDir);
+	}
+	return oa::Status::ok();
+}
+
+#else
+
+[[nodiscard]] bool queryPath(
+	const oa::Path& inPath, struct stat& outData, bool inFollow = true) noexcept
+{
+	return (inFollow ? ::stat(inPath.cStr(), &outData)
+		: ::lstat(inPath.cStr(), &outData)) == 0;
+}
+
+[[nodiscard]] oa::Status createOneDirectory(const oa::Path& inPath) {
+	if (::mkdir(inPath.cStr(), 0777) == 0) return oa::Status::ok();
+	if (errno == EEXIST and oa::Filesystem::isDirectory(inPath)) {
+		return oa::Status::ok();
+	}
+	return filesystemError(errno, "cannot create directory", inPath);
+}
+
+template<typename Visitor>
+[[nodiscard]] oa::Status visitDirectory(const oa::Path& inDir, Visitor&& inVisitor) {
+	DIR* directory = ::opendir(inDir.cStr());
+	if (directory == nullptr) return filesystemError(errno, "cannot list directory", inDir);
+	oa::Status status = oa::Status::ok();
+	errno = 0;
+	while (dirent* entry = ::readdir(directory)) {
+		const oa::StringView name(entry->d_name);
+		if (name == "." or name == "..") continue;
+		const oa::Path path = inDir / name;
+		struct stat info{};
+		if (not queryPath(path, info, false)) {
+			status = filesystemError(errno, "cannot inspect directory entry", path);
+			break;
+		}
+		status = inVisitor(path, S_ISDIR(info.st_mode), S_ISLNK(info.st_mode));
+		if (status.isError()) break;
+		errno = 0;
+	}
+	const int iterationError = errno;
+	(void)::closedir(directory);
+	if (status.isError()) return status;
+	if (iterationError != 0) {
+		return filesystemError(iterationError, "cannot list directory", inDir);
+	}
+	return oa::Status::ok();
+}
+
+#endif
+
+[[nodiscard]] oa::Status removeTree(const oa::Path& inPath);
+
+[[nodiscard]] oa::Status removeLeaf(const oa::Path& inEntry) {
+#if defined(_WIN32)
+	if (::DeleteFileA(inEntry.cStr()) == FALSE) {
+		return filesystemError(
+			static_cast<int>(::GetLastError()), "cannot remove file", inEntry);
+	}
+#else
+	if (::unlink(inEntry.cStr()) != 0) {
+		return filesystemError(errno, "cannot remove file", inEntry);
+	}
+#endif
+	return oa::Status::ok();
+}
+
+[[nodiscard]] oa::Status removeTree(const oa::Path& inPath) {
+	const oa::Status contents = visitDirectory(inPath,
+		[](const oa::Path& inEntry, bool inDirectory, bool inSymlink) {
+			return inDirectory and not inSymlink
+				? removeTree(inEntry) : removeLeaf(inEntry);
+		});
+	if (contents.isError()) return contents;
+#if defined(_WIN32)
+	if (::RemoveDirectoryA(inPath.cStr()) == FALSE) {
+		return filesystemError(
+			static_cast<int>(::GetLastError()), "cannot remove directory", inPath);
+	}
+#else
+	if (::rmdir(inPath.cStr()) != 0) {
+		return filesystemError(errno, "cannot remove directory", inPath);
+	}
+#endif
+	return oa::Status::ok();
+}
+
+[[nodiscard]] bool globMatch(oa::StringView inPattern, oa::StringView inName) {
+	oa::Usize pattern = 0;
+	oa::Usize name = 0;
+	oa::Usize starPattern = oa::StringView::Npos;
+	oa::Usize starName = 0;
+	while (name < inName.size()) {
+		if (pattern < inPattern.size()
+			and (inPattern[pattern] == inName[name] or inPattern[pattern] == '?')) {
+			++pattern;
+			++name;
+		} else if (pattern < inPattern.size() and inPattern[pattern] == '*') {
+			starPattern = pattern++;
+			starName = name;
+		} else if (starPattern != oa::StringView::Npos) {
+			pattern = starPattern + 1U;
+			name = ++starName;
+		} else {
+			return false;
+		}
+	}
+	while (pattern < inPattern.size() and inPattern[pattern] == '*') ++pattern;
+	return pattern == inPattern.size();
+}
+
 } // namespace
 
-// ─── Existence & Info ────────────────────────────────────────────────────────
-
 bool oa::Filesystem::exists(const oa::Path& inPath) {
-	std::error_code ec;
-	return std::filesystem::exists(inPath, ec);
+#if defined(_WIN32)
+	WIN32_FILE_ATTRIBUTE_DATA data{};
+#else
+	struct stat data{};
+#endif
+	return queryPath(inPath, data);
 }
 
 bool oa::Filesystem::isFile(const oa::Path& inPath) {
-	std::error_code ec;
-	return std::filesystem::is_regular_file(inPath, ec);
+#if defined(_WIN32)
+	WIN32_FILE_ATTRIBUTE_DATA data{};
+	return queryPath(inPath, data)
+		and (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
+#else
+	struct stat data{};
+	return queryPath(inPath, data) and S_ISREG(data.st_mode);
+#endif
 }
 
 bool oa::Filesystem::isDirectory(const oa::Path& inPath) {
-	std::error_code ec;
-	return std::filesystem::is_directory(inPath, ec);
+#if defined(_WIN32)
+	WIN32_FILE_ATTRIBUTE_DATA data{};
+	return queryPath(inPath, data)
+		and (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+#else
+	struct stat data{};
+	return queryPath(inPath, data) and S_ISDIR(data.st_mode);
+#endif
 }
 
 oa::Result<oa::Usize> oa::Filesystem::getFileSize(const oa::Path& inPath) {
-	std::error_code ec;
-	const auto size = std::filesystem::file_size(inPath, ec);
-	if (ec) {
-		return filesystemError(ec);
+#if defined(_WIN32)
+	WIN32_FILE_ATTRIBUTE_DATA data{};
+	if (not queryPath(inPath, data)) {
+		return filesystemError(static_cast<int>(::GetLastError()), "cannot inspect file", inPath);
 	}
-	if (size > static_cast<std::uintmax_t>(
-			std::numeric_limits<oa::Usize>::max())) {
+	const oa::U64 size = (static_cast<oa::U64>(data.nFileSizeHigh) << 32U)
+		| data.nFileSizeLow;
+#else
+	struct stat data{};
+	if (not queryPath(inPath, data)) return filesystemError(errno, "cannot inspect file", inPath);
+	if (data.st_size < 0) {
+		return oa::Status::error(oa::StatusCode::Internal,
+			"filesystem returned a negative file size");
+	}
+	const oa::U64 size = static_cast<oa::U64>(data.st_size);
+#endif
+	if (size > oa::Limits<oa::Usize>::max()) {
 		return oa::Status::error(oa::StatusCode::Internal,
 			"file size exceeds addressable memory: " + inPath.string());
 	}
@@ -78,380 +272,252 @@ oa::Result<oa::Usize> oa::Filesystem::getFileSize(const oa::Path& inPath) {
 }
 
 oa::Result<oa::I64> oa::Filesystem::getLastModified(const oa::Path& inPath) {
-	std::error_code ec;
-	auto time = std::filesystem::last_write_time(inPath, ec);
-	if (ec) {
-		return filesystemError(ec);
+#if defined(_WIN32)
+	WIN32_FILE_ATTRIBUTE_DATA data{};
+	if (not queryPath(inPath, data)) {
+		return filesystemError(static_cast<int>(::GetLastError()), "cannot inspect file", inPath);
 	}
-	auto duration = time.time_since_epoch();
-	return std::chrono::duration_cast<std::chrono::seconds>(duration).count();
+	ULARGE_INTEGER ticks{};
+	ticks.HighPart = data.ftLastWriteTime.dwHighDateTime;
+	ticks.LowPart = data.ftLastWriteTime.dwLowDateTime;
+	constexpr oa::U64 EpochDelta100ns = 116444736000000000ULL;
+	return static_cast<oa::I64>((ticks.QuadPart - EpochDelta100ns) / 10000000ULL);
+#else
+	struct stat data{};
+	if (not queryPath(inPath, data)) return filesystemError(errno, "cannot inspect file", inPath);
+	return static_cast<oa::I64>(data.st_mtime);
+#endif
 }
 
-// ─── directory operations ────────────────────────────────────────────────────
-
 oa::Status oa::Filesystem::createDirectory(const oa::Path& inPath) {
-	std::error_code ec;
-	if (!std::filesystem::create_directory(inPath, ec) && ec) {
-		return filesystemError(ec);
-	}
-	return oa::Status::ok();
+	return createOneDirectory(inPath);
 }
 
 oa::Status oa::Filesystem::createDirectories(const oa::Path& inPath) {
-	std::error_code ec;
-	if (!std::filesystem::create_directories(inPath, ec) && ec) {
-		return filesystemError(ec);
+	if (inPath.empty() or isDirectory(inPath)) return oa::Status::ok();
+	const oa::Path normalized = inPath.lexicallyNormal();
+	const oa::String text = normalized.string();
+	oa::Usize cursor = normalized.isAbsolute() ? 1U : 0U;
+	while (cursor <= text.size()) {
+		oa::Usize slash = text.find('/', cursor);
+		if (slash == oa::String::Npos) slash = text.size();
+		if (slash != 0U) {
+			const oa::Path component(text.view().subStr(0U, slash));
+			if (not component.empty() and component.string() != ".") {
+				OA_RETURN_IF_ERROR(createOneDirectory(component));
+			}
+		}
+		if (slash == text.size()) break;
+		cursor = slash + 1U;
 	}
 	return oa::Status::ok();
 }
 
 oa::Status oa::Filesystem::removeFile(const oa::Path& inPath) {
-	std::error_code ec;
-	if (!std::filesystem::remove(inPath, ec) && ec) {
-		return filesystemError(ec);
+#if defined(_WIN32)
+	if (::DeleteFileA(inPath.cStr()) != FALSE or ::GetLastError() == ERROR_FILE_NOT_FOUND) {
+		return oa::Status::ok();
 	}
-	return oa::Status::ok();
+	return filesystemError(static_cast<int>(::GetLastError()), "cannot remove file", inPath);
+#else
+	if (::unlink(inPath.cStr()) == 0 or errno == ENOENT) return oa::Status::ok();
+	return filesystemError(errno, "cannot remove file", inPath);
+#endif
 }
 
 oa::Status oa::Filesystem::removeDirectory(const oa::Path& inPath, bool inRecursive) {
-	std::error_code ec;
-	if (inRecursive) {
-		std::filesystem::remove_all(inPath, ec);
-	} else {
-		std::filesystem::remove(inPath, ec);
-	}
-	if (ec) {
-		return filesystemError(ec);
-	}
-	return oa::Status::ok();
+	if (not exists(inPath)) return oa::Status::ok();
+	if (inRecursive) return removeTree(inPath);
+#if defined(_WIN32)
+	if (::RemoveDirectoryA(inPath.cStr()) != FALSE) return oa::Status::ok();
+	return filesystemError(static_cast<int>(::GetLastError()), "cannot remove directory", inPath);
+#else
+	if (::rmdir(inPath.cStr()) == 0) return oa::Status::ok();
+	return filesystemError(errno, "cannot remove directory", inPath);
+#endif
 }
 
 oa::Status oa::Filesystem::copy(const oa::Path& inFrom, const oa::Path& inTo) {
-	std::error_code ec;
-	std::filesystem::copy(inFrom, inTo, std::filesystem::copy_options::overwrite_existing, ec);
-	if (ec) {
-		return filesystemError(ec);
-	}
-	return oa::Status::ok();
+	if (isDirectory(inFrom)) return createDirectories(inTo);
+	auto data = readBinary(inFrom);
+	if (data.isError()) return data.getStatus();
+	return writeBinary(inTo,
+		oa::Span<const oa::U8>(data->data(), data->size()));
 }
 
 oa::Status oa::Filesystem::move(const oa::Path& inFrom, const oa::Path& inTo) {
-	std::error_code ec;
-	std::filesystem::rename(inFrom, inTo, ec);
-	if (ec) {
-		return filesystemError(ec);
+	const oa::Path parent = inTo.parentPath();
+	if (not parent.empty()) OA_RETURN_IF_ERROR(createDirectories(parent));
+#if defined(_WIN32)
+	if (::MoveFileExA(inFrom.cStr(), inTo.cStr(), MOVEFILE_REPLACE_EXISTING) != FALSE) {
+		return oa::Status::ok();
 	}
-	return oa::Status::ok();
+	return filesystemError(static_cast<int>(::GetLastError()), "cannot move path", inFrom);
+#else
+	if (::rename(inFrom.cStr(), inTo.cStr()) == 0) return oa::Status::ok();
+	return filesystemError(errno, "cannot move path", inFrom);
+#endif
 }
 
-// ─── Listing ─────────────────────────────────────────────────────────────────
-
-oa::Result<oa::Vec<oa::Path>> oa::Filesystem::listFiles(const oa::Path& inDir, oa::StringView inExtension) {
-	if (!isDirectory(inDir)) {
+oa::Result<oa::Vec<oa::Path>> oa::Filesystem::listFiles(
+	const oa::Path& inDir, oa::StringView inExtension)
+{
+	if (not isDirectory(inDir)) {
 		return oa::Status::notFound("directory does not exist: " + inDir.string());
 	}
-
 	oa::Vec<oa::Path> files;
-	std::error_code ec;
-	std::filesystem::directory_iterator it(inDir.stdPath(), ec);
-	const std::filesystem::directory_iterator end;
-	if (ec) {
-		return filesystemError(ec);
-	}
-	while (it != end) {
-		const auto& entry = *it;
-		if (entry.is_regular_file(ec)) {
-			const std::string extNative = entry.path().extension().string();
-			const oa::StringView extView(extNative.data(), extNative.size());
-			if (inExtension.empty() || inExtension.equals(extView)) {
-				files.pushBack(oa::Path(entry.path()));
-			}
-		}
-		if (ec) {
-			return filesystemError(ec);
-		}
-		it.increment(ec);
-		if (ec) {
-			return filesystemError(ec);
-		}
-	}
+	const oa::Status status = visitDirectory(inDir,
+		[&](const oa::Path& inPath, bool inDirectory, bool) {
+			if (not inDirectory and (inExtension.empty()
+				or inPath.extension().string() == inExtension)) files.pushBack(inPath);
+			return oa::Status::ok();
+		});
+	if (status.isError()) return status;
 	sortPaths(files);
 	return files;
 }
 
 oa::Result<oa::Vec<oa::Path>> oa::Filesystem::listDirectories(const oa::Path& inDir) {
-	if (!isDirectory(inDir)) {
+	if (not isDirectory(inDir)) {
 		return oa::Status::notFound("directory does not exist: " + inDir.string());
 	}
-
-	oa::Vec<oa::Path> dirs;
-	std::error_code ec;
-	std::filesystem::directory_iterator it(inDir.stdPath(), ec);
-	const std::filesystem::directory_iterator end;
-	if (ec) {
-		return filesystemError(ec);
-	}
-	while (it != end) {
-		const auto& entry = *it;
-		if (entry.is_directory(ec)) {
-			dirs.pushBack(oa::Path(entry.path()));
-		}
-		if (ec) {
-			return filesystemError(ec);
-		}
-		it.increment(ec);
-		if (ec) {
-			return filesystemError(ec);
-		}
-	}
-	sortPaths(dirs);
-	return dirs;
+	oa::Vec<oa::Path> directories;
+	const oa::Status status = visitDirectory(inDir,
+		[&](const oa::Path& inPath, bool inDirectory, bool inSymlink) {
+			if (inDirectory and not inSymlink) directories.pushBack(inPath);
+			return oa::Status::ok();
+		});
+	if (status.isError()) return status;
+	sortPaths(directories);
+	return directories;
 }
 
-oa::Result<oa::Vec<oa::Path>> oa::Filesystem::listAll(const oa::Path& inDir, bool inRecursive) {
-	if (!isDirectory(inDir)) {
+oa::Result<oa::Vec<oa::Path>> oa::Filesystem::listAll(
+	const oa::Path& inDir, bool inRecursive)
+{
+	if (not isDirectory(inDir)) {
 		return oa::Status::notFound("directory does not exist: " + inDir.string());
 	}
-
 	oa::Vec<oa::Path> entries;
-	std::error_code ec;
-
-	if (inRecursive) {
-		std::filesystem::recursive_directory_iterator it(inDir.stdPath(), ec);
-		const std::filesystem::recursive_directory_iterator end;
-		if (ec) {
-			return filesystemError(ec);
-		}
-		while (it != end) {
-			entries.pushBack(oa::Path(it->path()));
-			it.increment(ec);
-			if (ec) {
-				return filesystemError(ec);
-			}
-		}
-	} else {
-		std::filesystem::directory_iterator it(inDir.stdPath(), ec);
-		const std::filesystem::directory_iterator end;
-		if (ec) {
-			return filesystemError(ec);
-		}
-		while (it != end) {
-			entries.pushBack(oa::Path(it->path()));
-			it.increment(ec);
-			if (ec) {
-				return filesystemError(ec);
-			}
-		}
-	}
+	const auto appendDirectory = [&](auto&& self, const oa::Path& inCurrent) -> oa::Status {
+		return visitDirectory(inCurrent,
+			[&](const oa::Path& inPath, bool inDirectory, bool inSymlink) {
+				entries.pushBack(inPath);
+				if (inRecursive and inDirectory and not inSymlink) return self(self, inPath);
+				return oa::Status::ok();
+			});
+	};
+	const oa::Status status = appendDirectory(appendDirectory, inDir);
+	if (status.isError()) return status;
 	sortPaths(entries);
 	return entries;
 }
 
-// ─── text file operations ────────────────────────────────────────────────────
-
 oa::Result<oa::String> oa::Filesystem::readText(const oa::Path& inPath) {
-	std::ifstream file(inPath.stdPath());
-	if (!file) {
-		return oa::Status::notFound("Cannot open file: " + inPath.string());
-	}
-
-	std::ostringstream stream;
-	stream << file.rdbuf();
-	if (file.bad()) {
-		return oa::Status::error(oa::StatusCode::Internal,
-			"Failed to read file: " + inPath.string());
-	}
-	return oa::String(stream.str());
+	auto binary = readBinary(inPath);
+	if (binary.isError()) return binary.getStatus();
+	return oa::String(reinterpret_cast<const char*>(binary->data()), binary->size());
 }
 
-oa::Status oa::Filesystem::writeText(const oa::Path& inPath, oa::StringView inContent) {
+oa::Status oa::Filesystem::writeText(
+	const oa::Path& inPath, oa::StringView inContent)
+{
 	const oa::Path parent = inPath.parentPath();
-	if (!parent.empty()) {
-		OA_RETURN_IF_ERROR(createDirectories(parent));
-	}
-
-	std::ofstream file(inPath.stdPath());
-	if (!file) {
-		return oa::Status::error(oa::StatusCode::FileNotFound, "Cannot create file: " + inPath.string());
-	}
-
-	file << inContent;
-	if (!file) {
-		return oa::Status::error(oa::StatusCode::Internal,
-			"Failed to write file: " + inPath.string());
-	}
-	return oa::Status::ok();
+	if (not parent.empty()) OA_RETURN_IF_ERROR(createDirectories(parent));
+	return writeBytes(inPath, inContent.data(), inContent.size(), "wb");
 }
 
-oa::Status oa::Filesystem::appendText(const oa::Path& inPath, oa::StringView inContent) {
+oa::Status oa::Filesystem::appendText(
+	const oa::Path& inPath, oa::StringView inContent)
+{
 	const oa::Path parent = inPath.parentPath();
-	if (!parent.empty()) {
-		OA_RETURN_IF_ERROR(createDirectories(parent));
-	}
-
-	std::ofstream file(inPath.stdPath(), std::ios::app);
-	if (!file) {
-		return oa::Status::error(oa::StatusCode::FileNotFound, "Cannot open file for append: " + inPath.string());
-	}
-
-	file << inContent;
-	if (!file) {
-		return oa::Status::error(oa::StatusCode::Internal,
-			"Failed to append file: " + inPath.string());
-	}
-	return oa::Status::ok();
+	if (not parent.empty()) OA_RETURN_IF_ERROR(createDirectories(parent));
+	return writeBytes(inPath, inContent.data(), inContent.size(), "ab");
 }
 
 oa::Result<oa::Vec<oa::String>> oa::Filesystem::readLines(const oa::Path& inPath) {
-	std::ifstream file(inPath.stdPath());
-	if (!file) {
-		return oa::Status::notFound("Cannot open file: " + inPath.string());
-	}
-
+	auto text = readText(inPath);
+	if (text.isError()) return text.getStatus();
 	oa::Vec<oa::String> lines;
-	oa::String line;
-	char nextCh = '\0';
-	while (file.get(nextCh)) {
-		if (nextCh == '\n') {
-			if (!line.empty() && line.back() == '\r') {
-				line.popBack();
-			}
-			lines.pushBack(std::move(line));
-			line = oa::String();
-		} else {
-			line.pushBack(nextCh);
-		}
+	oa::Usize begin = 0;
+	for (oa::Usize index = 0; index < text->size(); ++index) {
+		if ((*text)[index] != '\n') continue;
+		oa::Usize end = index;
+		if (end > begin and (*text)[end - 1U] == '\r') --end;
+		lines.emplaceBack(text->view().subStr(begin, end - begin));
+		begin = index + 1U;
 	}
-	if (!line.empty()) {
-		lines.pushBack(std::move(line));
-	}
-	if (file.bad()) {
-		return oa::Status::error(oa::StatusCode::Internal, "read error: " + inPath.string());
-	}
-
+	if (begin < text->size()) lines.emplaceBack(text->view().subStr(begin));
 	return lines;
 }
 
-// ─── Binary file operations ─────────────────────────────────────────────────
-
 oa::Result<oa::Vec<oa::U8>> oa::Filesystem::readBinary(const oa::Path& inPath) {
-	std::ifstream file(inPath.stdPath(), std::ios::binary | std::ios::ate);
-	if (!file) {
-		return oa::Status::notFound("Cannot open file: " + inPath.string());
+	auto sizeResult = getFileSize(inPath);
+	if (sizeResult.isError()) return sizeResult.getStatus();
+	::FILE* file = ::fopen(inPath.cStr(), "rb");
+	if (file == nullptr) return filesystemError(errno, "cannot open file", inPath);
+	oa::Vec<oa::U8> data(*sizeResult);
+	if (not data.empty() and ::fread(data.data(), 1U, data.size(), file) != data.size()) {
+		const int error = ::ferror(file) != 0 and errno != 0 ? errno : EIO;
+		(void)::fclose(file);
+		return filesystemError(error, "cannot read file", inPath);
 	}
-
-	const auto end = file.tellg();
-	const std::streamoff sizeOffset = end;
-	if (sizeOffset < 0 ||
-		static_cast<oa::U64>(sizeOffset) >
-			static_cast<oa::U64>(std::numeric_limits<std::streamsize>::max())) {
-		return oa::Status::error(oa::StatusCode::Internal,
-			"Invalid file size: " + inPath.string());
+	if (::fclose(file) != 0) {
+		return filesystemError(errno != 0 ? errno : EIO, "cannot close file", inPath);
 	}
-	const auto size = static_cast<std::streamsize>(sizeOffset);
-	file.seekg(0, std::ios::beg);
-	if (!file) {
-		return oa::Status::error(oa::StatusCode::Internal,
-			"Failed to seek file: " + inPath.string());
-	}
-
-	oa::Vec<oa::U8> data(static_cast<oa::Usize>(size));
-	if (size > 0 && !file.read(reinterpret_cast<char*>(data.data()), size)) {
-		return oa::Status::error(oa::StatusCode::Internal, "Failed to read file: " + inPath.string());
-	}
-
 	return data;
 }
 
-oa::Status oa::Filesystem::writeBinary(const oa::Path& inPath, oa::Span<const oa::U8> inData) {
+oa::Status oa::Filesystem::writeBinary(
+	const oa::Path& inPath, oa::Span<const oa::U8> inData)
+{
 	const oa::Path parent = inPath.parentPath();
-	if (!parent.empty()) {
-		OA_RETURN_IF_ERROR(createDirectories(parent));
-	}
-	if (inData.size() > static_cast<oa::Usize>(
-			std::numeric_limits<std::streamsize>::max())) {
-		return oa::Status::invalidArgument(
-			"Binary payload exceeds stream size: " + inPath.string());
-	}
-
-	std::ofstream file(inPath.stdPath(), std::ios::binary);
-	if (!file) {
-		return oa::Status::error(oa::StatusCode::FileNotFound, "Cannot create file: " + inPath.string());
-	}
-
-	if (!inData.empty() &&
-		!file.write(reinterpret_cast<const char*>(inData.data()),
-			static_cast<std::streamsize>(inData.size()))) {
-		return oa::Status::error(oa::StatusCode::Internal, "Failed to write file: " + inPath.string());
-	}
-
-	return oa::Status::ok();
+	if (not parent.empty()) OA_RETURN_IF_ERROR(createDirectories(parent));
+	return writeBytes(inPath, inData.data(), inData.size(), "wb");
 }
-
-// ─── Filesystem Resolution ──────────────────────────────────────────────────
 
 oa::Result<oa::Path> oa::Filesystem::absolute(const oa::Path& inPath) {
-	std::error_code ec;
-	const auto path = std::filesystem::absolute(inPath.stdPath(), ec);
-	if (ec) {
-		return filesystemError(ec);
+#if defined(_WIN32)
+	const DWORD needed = ::GetFullPathNameA(inPath.cStr(), 0U, nullptr, nullptr);
+	if (needed == 0U) {
+		return filesystemError(static_cast<int>(::GetLastError()), "cannot resolve path", inPath);
 	}
-	return oa::Path(path);
-}
-
-// ─── Glob Pattern Matching ──────────────────────────────────────────────────
-
-/// Simple glob match: * matches zero or more chars, ? matches exactly one char
-static bool globMatch(oa::StringView inPattern, oa::StringView inName) {
-	oa::Usize p = 0;
-	oa::Usize n = 0;
-	oa::Usize starP = oa::StringView::Npos;
-	oa::Usize starN = 0;
-
-	while (n < inName.size()) {
-		if (p < inPattern.size() && (inPattern[p] == inName[n] || inPattern[p] == '?')) {
-			++p;
-			++n;
-		} else if (p < inPattern.size() && inPattern[p] == '*') {
-			starP = p++;
-			starN = n;
-		} else if (starP != oa::StringView::Npos) {
-			p = starP + 1;
-			n = ++starN;
-		} else {
-			return false;
+	oa::Vec<char> buffer(static_cast<oa::Usize>(needed));
+	if (::GetFullPathNameA(inPath.cStr(), needed, buffer.data(), nullptr) == 0U) {
+		return filesystemError(static_cast<int>(::GetLastError()), "cannot resolve path", inPath);
+	}
+	return oa::Path(oa::StringView(buffer.data(), needed - 1U));
+#else
+	if (inPath.isAbsolute()) return inPath.lexicallyNormal();
+	oa::Usize capacity = 256U;
+	for (;;) {
+		oa::Vec<char> buffer(capacity);
+		if (::getcwd(buffer.data(), buffer.size()) != nullptr) {
+			return (oa::Path(buffer.data()) / inPath).lexicallyNormal();
 		}
+		if (errno != ERANGE) return filesystemError(errno, "cannot resolve path", inPath);
+		if (capacity > oa::Limits<oa::Usize>::max() / 2U) {
+			return oa::Status::error(oa::StatusCode::ResourceExhausted,
+				"current directory path is too large");
+		}
+		capacity *= 2U;
 	}
-
-	while (p < inPattern.size() && inPattern[p] == '*') {
-		++p;
-	}
-	return p == inPattern.size();
+#endif
 }
 
-oa::Result<oa::Vec<oa::Path>> oa::Filesystem::glob(const oa::Path& inDir, oa::StringView inPattern) {
-	if (!isDirectory(inDir)) {
+oa::Result<oa::Vec<oa::Path>> oa::Filesystem::glob(
+	const oa::Path& inDir, oa::StringView inPattern)
+{
+	if (not isDirectory(inDir)) {
 		return oa::Status::notFound("directory does not exist: " + inDir.string());
 	}
-
 	oa::Vec<oa::Path> matches;
-	std::error_code ec;
-	std::filesystem::directory_iterator it(inDir.stdPath(), ec);
-	const std::filesystem::directory_iterator end;
-	if (ec) {
-		return filesystemError(ec);
-	}
-	while (it != end) {
-		const auto& entry = *it;
-		const std::string nameNative = entry.path().filename().string();
-		if (globMatch(inPattern, oa::StringView(nameNative.data(), nameNative.size()))) {
-			matches.pushBack(oa::Path(entry.path()));
-		}
-		it.increment(ec);
-		if (ec) {
-			return filesystemError(ec);
-		}
-	}
+	const oa::Status status = visitDirectory(inDir,
+		[&](const oa::Path& inPath, bool, bool) {
+			if (globMatch(inPattern, inPath.filename().string())) matches.pushBack(inPath);
+			return oa::Status::ok();
+		});
+	if (status.isError()) return status;
 	sortPaths(matches);
 	return matches;
 }

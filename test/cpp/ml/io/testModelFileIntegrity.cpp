@@ -4,22 +4,23 @@
 #include <oa/ml/modelFile.h>
 #include <oa/ml/module.h>
 #include <oa/ml/optim.h>
+#include <oa/core/std/format.h>
+#include <oa/core/time.h>
 
-#include <chrono>
-#include <cstring>
 #include <type_traits>
 
 namespace {
 
 oa::Path makeDirectory() {
-	const auto tick = std::chrono::steady_clock::now().time_since_epoch().count();
+	const auto tick = oa::steadyNow().nanosecondsSinceEpoch();
 	return oa::Paths::temp() /
-		   oa::Path("oa_oam_integrity_" + std::to_string(static_cast<long long>(tick)));
+		   oa::Path(oa::String("oa_oam_integrity_") + oa::toString(tick));
 }
 
 oa::ModelFile makeModel(oa::F32 inLastValue = 4.0F) {
 	oa::ModelFile model;
-	std::strncpy(model.config.architecture, "IntegrityTest", sizeof(model.config.architecture) - 1);
+	constexpr char architecture[] = "IntegrityTest";
+	oa::memcpy(model.config.architecture, architecture, sizeof(architecture) - 1U);
 	model.config.dModel = 4;
 	model.progress.step = 17;
 	const oa::F32 weights[] = {1.0F, 2.0F, 3.0F, inLastValue};

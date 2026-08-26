@@ -3,7 +3,7 @@
 #include "../engine/engineAccess.h"
 #include "routeCache.h"
 
-#include <cassert>
+#include <assert.h>
 
 // Private bridge for GEMM lowering and its focused tests. The learned route
 // cache is engine-owned implementation policy, not part of oa::Engine's public

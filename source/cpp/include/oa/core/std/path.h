@@ -1,63 +1,143 @@
 #pragma once
 
+// OA-owned lexical path value. Path manipulation is independent from the
+// hosted filesystem library; operating-system access belongs to Filesystem's
+// private backend.
+
 #include <oa/core/std/string.h>
 #include <oa/core/std/utility.h>
-
-#include <filesystem>
-#include <string>
+#include <oa/core/std/vec.h>
 
 namespace oa {
 
-// OA-owned path value. Native storage is oa::String; std::filesystem is used
-// only at lexical and system-call boundaries.
 class Path {
 public:
 	Path() = default;
-	explicit Path(const std::filesystem::path& inPath) : string_(inPath.string()) {}
-	explicit Path(std::string inString) : string_(oa::move(inString)) {}
 	Path(const char* inString) : string_(inString != nullptr ? inString : "") {}
 	Path(StringView inView) : string_(inView) {}
 	Path(const String& inString) : string_(inString) {}
-
-	[[nodiscard]] std::filesystem::path stdPath() const {
-		return std::filesystem::path(string_.stdStr());
-	}
-	[[nodiscard]] operator std::filesystem::path() const { return stdPath(); }
+	Path(String&& inString) noexcept : string_(oa::move(inString)) {}
 
 	[[nodiscard]] String string() const { return string_; }
-	[[nodiscard]] String genericString() const {
-		return String(stdPath().generic_string());
-	}
+	[[nodiscard]] String genericString() const { return string_; }
 	[[nodiscard]] const char* cStr() const noexcept { return string_.cStr(); }
 	[[nodiscard]] bool empty() const noexcept { return string_.empty(); }
-	void clear() { string_.clear(); }
+	void clear() noexcept { string_.clear(); }
 
-	[[nodiscard]] bool hasParentPath() const { return stdPath().has_parent_path(); }
-	[[nodiscard]] Path parentPath() const { return Path(stdPath().parent_path()); }
+	[[nodiscard]] bool hasParentPath() const { return not parentPath().empty(); }
+
+	[[nodiscard]] Path parentPath() const {
+		const StringView text = string_.view();
+		if (text.empty()) return {};
+
+		Usize end = text.size();
+		while (end > 1 and isSeparator_(text[end - 1])) --end;
+		if (end == 1 and isSeparator_(text[0])) return Path("/");
+		if (end < text.size()) return Path(text.subStr(0, end));
+
+		Usize separator = end;
+		while (separator > 0 and not isSeparator_(text[separator - 1])) --separator;
+		if (separator == 0) return {};
+		while (separator > 1 and isSeparator_(text[separator - 1])) --separator;
+		return Path(text.subStr(0, separator));
+	}
 
 	Path& append(const Path& inOther) {
-		std::filesystem::path path = stdPath();
-		path /= inOther.stdPath();
-		string_ = String(path.string());
+		if (inOther.empty()) return *this;
+		if (inOther.isAbsolute() or empty()) {
+			string_ = inOther.string_;
+			return *this;
+		}
+		if (not isSeparator_(string_.back())) string_.pushBack('/');
+		string_.append(inOther.string_.view());
 		return *this;
 	}
+
 	Path& operator/=(const Path& inOther) { return append(inOther); }
 
-	[[nodiscard]] Path filename() const { return Path(stdPath().filename()); }
-	[[nodiscard]] Path stem() const { return Path(stdPath().stem()); }
-	[[nodiscard]] Path extension() const { return Path(stdPath().extension()); }
-	[[nodiscard]] bool isAbsolute() const { return stdPath().is_absolute(); }
-	[[nodiscard]] bool isRelative() const { return stdPath().is_relative(); }
-	[[nodiscard]] Path lexicallyNormal() const { return Path(stdPath().lexically_normal()); }
-
-	[[nodiscard]] bool operator==(const Path& inOther) const {
-		return stdPath() == inOther.stdPath();
+	[[nodiscard]] Path filename() const {
+		const StringView text = string_.view();
+		if (text.empty() or isSeparator_(text.back())) return {};
+		Usize begin = text.size();
+		while (begin > 0 and not isSeparator_(text[begin - 1])) --begin;
+		return Path(text.subStr(begin));
 	}
-	[[nodiscard]] bool operator!=(const Path& inOther) const { return !(*this == inOther); }
+
+	[[nodiscard]] Path stem() const {
+		const Path namePath = filename();
+		const StringView name = namePath.string_.view();
+		if (name == "." or name == "..") return Path(name);
+		const Usize dot = name.rfind('.');
+		if (dot == StringView::Npos or dot == 0) return Path(name);
+		return Path(name.subStr(0, dot));
+	}
+
+	[[nodiscard]] Path extension() const {
+		const Path namePath = filename();
+		const StringView name = namePath.string_.view();
+		if (name == "." or name == "..") return {};
+		const Usize dot = name.rfind('.');
+		if (dot == StringView::Npos or dot == 0) return {};
+		return Path(name.subStr(dot));
+	}
+
+	[[nodiscard]] bool isAbsolute() const noexcept {
+		return not string_.empty() and isSeparator_(string_[0]);
+	}
+
+	[[nodiscard]] bool isRelative() const noexcept { return not isAbsolute(); }
+
+	[[nodiscard]] Path lexicallyNormal() const {
+		const StringView text = string_.view();
+		if (text.empty()) return {};
+
+		const bool absolute = isAbsolute();
+		Vec<StringView> components;
+		Usize cursor = 0;
+		while (cursor < text.size()) {
+			while (cursor < text.size() and isSeparator_(text[cursor])) ++cursor;
+			const Usize begin = cursor;
+			while (cursor < text.size() and not isSeparator_(text[cursor])) ++cursor;
+			if (begin == cursor) continue;
+
+			const StringView component = text.subStr(begin, cursor - begin);
+			if (component == ".") continue;
+			if (component == "..") {
+				if (not components.empty() and components.back() != "..") {
+					components.popBack();
+				} else if (not absolute) {
+					components.pushBack(component);
+				}
+				continue;
+			}
+			components.pushBack(component);
+		}
+
+		String normalized;
+		if (absolute) normalized.pushBack('/');
+		for (Usize index = 0; index < components.size(); ++index) {
+			if (not normalized.empty() and normalized.back() != '/') normalized.pushBack('/');
+			normalized.append(components[index]);
+		}
+		if (normalized.empty() and not absolute) normalized.pushBack('.');
+		return Path(oa::move(normalized));
+	}
+
+	[[nodiscard]] bool operator==(const Path& inOther) const noexcept {
+		return string_ == inOther.string_;
+	}
+
+	[[nodiscard]] bool operator!=(const Path& inOther) const noexcept {
+		return not (*this == inOther);
+	}
 
 	void swap(Path& inOther) noexcept { oa::swapValues(string_, inOther.string_); }
 
 private:
+	[[nodiscard]] static constexpr bool isSeparator_(char inCharacter) noexcept {
+		return inCharacter == '/';
+	}
+
 	String string_;
 };
 

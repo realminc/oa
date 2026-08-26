@@ -1,8 +1,6 @@
 #include <oa/ml/mcpTraining.h>
-
-#include <charconv>
-#include <cmath>
-#include <string>
+#include <oa/core/std/format.h>
+#include <oa/core/std/scalarMath.h>
 
 namespace oa {
 
@@ -50,17 +48,16 @@ void writeJsonString(oa::String &out, oa::StringView inText) {
 }
 
 void writeFinite(oa::String &out, oa::F64 inValue) {
-  if (not std::isfinite(inValue)) {
+  if (not oa::isFinite(inValue)) {
     out += "null";
     return;
   }
-  char buffer[64]{};
-  const auto converted = std::to_chars(buffer, buffer + sizeof(buffer), inValue, std::chars_format::general);
-  if (converted.ec != std::errc{}) {
+  oa::String converted;
+  if (not oa::formatF64(inValue, converted)) {
     out += "null";
     return;
   }
-  out.append(oa::StringView(buffer, static_cast<oa::Usize>(converted.ptr - buffer)));
+  out.append(converted.view());
 }
 
 [[nodiscard]] oa::StringView stateName(TrainingState inState) {
@@ -90,13 +87,13 @@ dispositionName(TrainingCommandDisposition inDisposition) {
 [[nodiscard]] oa::String snapshotJson(const oa::TrainingSession &inSession) {
   const TrainingSnapshot snapshot = inSession.currentSnapshot();
   oa::String json = R"({"revision":)";
-  json += std::to_string(snapshot.revision);
+  json += oa::toString(snapshot.revision);
   json += R"(,"state":)";
   writeJsonString(json, stateName(snapshot.state));
   json += R"(,"step":)";
-  json += std::to_string(snapshot.step);
+  json += oa::toString(snapshot.step);
   json += R"(,"epoch":)";
-  json += std::to_string(snapshot.epoch);
+  json += oa::toString(snapshot.epoch);
   json += R"(,"learningRate":)";
   writeFinite(json, snapshot.learningRate);
   json += R"(,"loss":)";
@@ -122,7 +119,7 @@ dispositionName(TrainingCommandDisposition inDisposition) {
       json += R"(,"value":)";
       writeFinite(json, metric.value);
       json += R"(,"step":)";
-      json += std::to_string(metric.step);
+      json += oa::toString(metric.step);
       json += '}';
     }
   }
@@ -164,9 +161,11 @@ trainingValue(const McpArguments &inArguments) {
   if (inSequence.isError()) {
     return oa::Result<McpToolResult>(inSequence.getStatus());
   }
-  McpToolResult result = McpToolResult::success(oa::String("training command accepted with sequence ") + std::to_string(*inSequence));
+  McpToolResult result = McpToolResult::success(
+    oa::String("training command accepted with sequence ")
+    + oa::toString(*inSequence));
   result.structuredContentJson = R"({"sequence":)";
-  result.structuredContentJson += std::to_string(*inSequence);
+  result.structuredContentJson += oa::toString(*inSequence);
   result.structuredContentJson += '}';
   return oa::Result<McpToolResult>(oa::move(result));
 }
@@ -256,9 +255,9 @@ oa::Status McpTraining::registerTools(McpServer &inServer, oa::TrainingSession &
           if (i != 0)
             json += ',';
           json += R"({"sequence":)";
-          json += std::to_string(entry.sequence);
+          json += oa::toString(entry.sequence);
           json += R"(,"revision":)";
-          json += std::to_string(entry.revision);
+          json += oa::toString(entry.revision);
           json += R"(,"disposition":)";
           writeJsonString(json, dispositionName(entry.disposition));
           json += R"(,"state":)";

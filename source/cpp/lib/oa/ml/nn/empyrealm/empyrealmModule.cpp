@@ -4,13 +4,10 @@
 // kernels instead of Mamba3*. See EmpyrealmModule.h for design rationale.
 
 #include "empyrealmModule.h"
+#include <oa/core/assert.h>
 #include <oa/core/fnMatrix.h>
 #include <oa/ml/nn.h>
 #include <oa/runtime/executionSession.h>
-#include <cmath>
-#include <cstdio>
-#include <cstdlib>
-#include <stdexcept>
 
 #if __has_include(<nvtx3/nvToolsExt.h>)
 #include <nvtx3/nvToolsExt.h>
@@ -23,11 +20,10 @@
 
 oa::Matrix oa::EmpyrealmModule::forward(const oa::Matrix& inInput) {
 	NVTX_RANGE_PUSH("empyrealm::forward");
-	if (inInput.rank() != 3 or inInput.size(2) != static_cast<oa::I64>(dModel_)) {
-		throw std::invalid_argument(
+	OA_REQUIRE_MSG(inInput.rank() == 3
+		&& inInput.size(2) == static_cast<oa::I64>(dModel_),
 			"oa::EmpyrealmModule::forward expects a 3D [batch, seqLen, d_model] input; "
 			"reshape a flat [B*S, D] embedding to [B, S, D] before calling.");
-	}
 	oa::I32 batch = static_cast<oa::I32>(inInput.size(0));
 	oa::I32 seqLen = static_cast<oa::I32>(inInput.size(1));
 

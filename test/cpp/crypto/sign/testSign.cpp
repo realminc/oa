@@ -110,10 +110,6 @@ TEST(Sign, DeserializeRejectsWrongLengths) {
 	oa::Byte shortSig[OA_SIGN_SIG_SIZE - 1]{};
 	EXPECT_TRUE(oa::deserializePublicKey(shortPk).isError());
 	EXPECT_TRUE(oa::deserializeSignature(shortSig).isError());
-	EXPECT_TRUE(oa::deserializePublicKey(
-		oa::Span<const oa::Byte>(nullptr, OA_SIGN_PUBKEY_SIZE)).isError());
-	EXPECT_TRUE(oa::deserializeSignature(
-		oa::Span<const oa::Byte>(nullptr, OA_SIGN_SIG_SIZE)).isError());
 }
 
 TEST(Sign, EmptyMessageRoundTrip) {

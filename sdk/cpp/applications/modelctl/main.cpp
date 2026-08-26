@@ -29,7 +29,9 @@
 #include <oa/core/filesystem.h>
 #include <oa/ml/modelFile.h>
 #include <oa/ml/transferWeights.h>
-#include <ml/nn/alm/clipTextModelTranslator.h>
+#if OA_ENABLE_ALM
+	#include <ml/nn/alm/clipTextModelTranslator.h>
+#endif
 
 #include <cmath>
 #include <cstring>
@@ -90,7 +92,9 @@ static oa::String formatShape(const oa::WeightInfo& inEntry) {
 	oa::String result = "[";
 	for (oa::Usize d = 0; d < inEntry.shape.size(); ++d) {
 		if (d > 0) result += ", ";
-		result += std::to_string(static_cast<long long>(inEntry.shape[d]));
+		char num[32];
+		snprintf(num, sizeof(num), "%lld", static_cast<long long>(inEntry.shape[d]));
+		result += num;
 	}
 	result += "]";
 	return result;
@@ -596,12 +600,14 @@ static int cmdImport(
 	OA_CLI("Opened weight source: %s", inInputPath.cStr());
 	OA_CLI("  file size: %s", formatBytes(source.sourceBytes()).cStr());
 	OA_CLI("  Found %zu weight entries", entries.size());
+#if OA_ENABLE_ALM
 	const auto builtinTranslators = oa::registerClipTextModelTranslator();
 	if (not builtinTranslators.isOk()) {
 		OA_CLI("Error: Failed to register built-in model translators: %s",
 			builtinTranslators.getMessage().cStr());
 		return 1;
 	}
+#endif
 
 	oa::Result<oa::WeightMap> mapResult = inArch == "raw"
 		? oa::makeRawWeightMap(source)
@@ -747,48 +753,48 @@ public:
 		);
 
 		auto* inspect = addSubcommand("inspect", "Inspect an external weight source");
-		inspect->add_option("path", cfg_.inputPath, "external weight file")->required();
+		inspect->addOption("path", cfg_.inputPath, "external weight file")->required();
 
 		// info command
 		auto* info = addSubcommand("info", "show model info and all sections");
-		info->add_option("path", cfg_.inputPath, "Model file (.oam)")->required();
+		info->addOption("path", cfg_.inputPath, "Model file (.oam)")->required();
 
 		// verify command
 		auto* verify = addSubcommand("verify", "verify model integrity (load + checksums)");
-		verify->add_option("path", cfg_.inputPath, "Model file (.oam)")->required();
+		verify->addOption("path", cfg_.inputPath, "Model file (.oam)")->required();
 
 		// import command
 		auto* import = addSubcommand("import", "Import external weights into .oam");
-		import->add_option("--in,-i", cfg_.inputPath, "external weight file")->required();
-		import->add_option("--format,-f", cfg_.format, "input format: auto | safetensors | gguf | onnx");
-		import->add_option("--arch,-a", cfg_.arch, "Registered model translator, or raw")->required();
-		import->add_option("--out,-o", cfg_.outputPath, "output .oam path")->required();
-		import->add_option("--dtype,-d", cfg_.dtype, "weight dtype policy; raw requires preserve");
-		import->add_flag("--validate,-v", cfg_.validate, "run translator validation after import");
+		import->addOption("--in,-i", cfg_.inputPath, "external weight file")->required();
+		import->addOption("--format,-f", cfg_.format, "input format: auto | safetensors | gguf | onnx");
+		import->addOption("--arch,-a", cfg_.arch, "Registered model translator, or raw")->required();
+		import->addOption("--out,-o", cfg_.outputPath, "output .oam path")->required();
+		import->addOption("--dtype,-d", cfg_.dtype, "weight dtype policy; raw requires preserve");
+		import->addFlag("--validate,-v", cfg_.validate, "run translator validation after import");
 
 		auto* quantize = addSubcommand("quantize", "quantize Float32 matrix weights for inference");
-		quantize->add_option("path", cfg_.inputPath, "Dense model file (.oam)")->required();
-		quantize->add_option("--out,-o", cfg_.outputPath, "output .oam path")->required();
-		quantize->add_option("--dtype,-d", cfg_.dtype, "Native weight encoding: q4 | q8")->required();
+		quantize->addOption("path", cfg_.inputPath, "Dense model file (.oam)")->required();
+		quantize->addOption("--out,-o", cfg_.outputPath, "output .oam path")->required();
+		quantize->addOption("--dtype,-d", cfg_.dtype, "Native weight encoding: q4 | q8")->required();
 
 		// validate command
 		auto* validate = addSubcommand("validate", "validate an imported model against reference fixtures");
-		validate->add_option("path", cfg_.inputPath, "Model file (.oam)")->required();
-		validate->add_option("--reference,-r", cfg_.referencePath, "Reference output file (.bin) for comparison");
-		validate->add_option("--input", cfg_.validateInput, "Validation input prompt (default: fixed seed prompt)");
+		validate->addOption("path", cfg_.inputPath, "Model file (.oam)")->required();
+		validate->addOption("--reference,-r", cfg_.referencePath, "Reference output file (.bin) for comparison");
+		validate->addOption("--input", cfg_.validateInput, "Validation input prompt (default: fixed seed prompt)");
 
 		// list command
 		auto* list = addSubcommand("list", "list all .oam models in directory");
-		list->add_option("dir", cfg_.inputPath, "directory to scan (default: var/model/dev)");
+		list->addOption("dir", cfg_.inputPath, "directory to scan (default: var/model/dev)");
 
 		// compare command
 		auto* compare = addSubcommand("compare", "compare two models");
-		compare->add_option("path1", cfg_.inputPath, "first model (.oam)")->required();
-		compare->add_option("path2", cfg_.comparePath, "second model (.oam)")->required();
+		compare->addOption("path1", cfg_.inputPath, "first model (.oam)")->required();
+		compare->addOption("path2", cfg_.comparePath, "second model (.oam)")->required();
 
 		// dump command
 		auto* dump = addSubcommand("dump", "Raw section dump (offsets, sizes, checksums)");
-		dump->add_option("path", cfg_.inputPath, "Model file (.oam)")->required();
+		dump->addOption("path", cfg_.inputPath, "Model file (.oam)")->required();
 
 		requireSubcommand(1, 1);
 	}
@@ -802,7 +808,7 @@ public:
 
 int main(int argc, char** argv) {
 	ModelctlCli cli;
-	if (!cli.parse(argc, argv)) return 1;
+	if (!cli.parse(argc, argv)) return cli.helpRequested() ? 0 : 1;
 
 	const auto& cfg = cli.getConfig();
 	auto cmd = cli.getCommand();

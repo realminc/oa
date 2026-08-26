@@ -88,7 +88,7 @@
 		if (result.isEmpty()) {
 			throw std::runtime_error("Concat requires one or more shape-compatible matrices");
 		}
-		return matrixPtr(std::move(result));
+		return matrixPtr(oa::move(result));
 	},
 	  nb::arg("inputs"), nb::arg("dim") = 0,
 	  nb::rv_policy::take_ownership,
@@ -330,7 +330,7 @@
 		nb::list values;
 		for (auto& value : result) {
 			values.append(nb::cast(
-				matrixPtr(std::move(value)),
+				matrixPtr(oa::move(value)),
 				nb::rv_policy::take_ownership));
 		}
 		return values;

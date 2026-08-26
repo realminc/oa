@@ -1,8 +1,8 @@
 #include <oa/core/mappedFile.h>
+#include <oa/core/std/limits.h>
 
-#include <cerrno>
-#include <cstring>
-#include <limits>
+#include <errno.h>
+#include <string.h>
 
 #ifdef OA_PLATFORM_LINUX
 #include <fcntl.h>
@@ -46,12 +46,12 @@ oa::Status oa::MappedFile::openReadOnly(const oa::Path& inPath) {
 	fd_ = open(inPath.cStr(), O_RDONLY | O_CLOEXEC);
 	if (fd_ < 0) {
 		return oa::Status::error(oa::StatusCode::FileNotFound,
-			oa::String("Cannot open mapped file: ") + inPath.cStr() + ": " + std::strerror(errno));
+			oa::String("Cannot open mapped file: ") + inPath.cStr() + ": " + ::strerror(errno));
 	}
 
 	struct stat statBuf {};
 	if (fstat(fd_, &statBuf) != 0) {
-		const oa::String message = oa::String("Cannot stat mapped file: ") + std::strerror(errno);
+		const oa::String message = oa::String("Cannot stat mapped file: ") + ::strerror(errno);
 		close();
 		return oa::Status::error(oa::StatusCode::Internal, message);
 	}
@@ -59,7 +59,7 @@ oa::Status oa::MappedFile::openReadOnly(const oa::Path& inPath) {
 		close();
 		return oa::Status::error(oa::StatusCode::FileCorrupt, "Cannot map an empty file");
 	}
-	if (static_cast<oa::U64>(statBuf.st_size) > std::numeric_limits<oa::Usize>::max()) {
+	if (static_cast<oa::U64>(statBuf.st_size) > oa::Limits<oa::Usize>::max()) {
 		close();
 		return oa::Status::error(oa::StatusCode::ResourceExhausted, "mapped file is too large for this process");
 	}
@@ -67,7 +67,7 @@ oa::Status oa::MappedFile::openReadOnly(const oa::Path& inPath) {
 	size_ = static_cast<oa::Usize>(statBuf.st_size);
 	void* mapped = mmap(nullptr, size_, PROT_READ, MAP_PRIVATE, fd_, 0);
 	if (mapped == MAP_FAILED) {
-		const oa::String message = oa::String("Cannot map file: ") + std::strerror(errno);
+		const oa::String message = oa::String("Cannot map file: ") + ::strerror(errno);
 		data_ = nullptr;
 		close();
 		return oa::Status::error(oa::StatusCode::Internal, message);

@@ -1,7 +1,7 @@
 // oa::FnMesh implementation
 
 #include <oa/render/fnMesh.h>
-#include <cmath>
+#include <oa/core/std/algo.h>
 
 namespace oa {
 
@@ -159,12 +159,12 @@ void computeBounds(oa::MeshData& inMesh) {
 	oa::vlm::Vec3 maxP = inMesh.vertices[0].position;
 
 	for (const auto& v : inMesh.vertices) {
-		minP.x = std::min(minP.x, v.position.x);
-		minP.y = std::min(minP.y, v.position.y);
-		minP.z = std::min(minP.z, v.position.z);
-		maxP.x = std::max(maxP.x, v.position.x);
-		maxP.y = std::max(maxP.y, v.position.y);
-		maxP.z = std::max(maxP.z, v.position.z);
+		minP.x = oa::min(minP.x, v.position.x);
+		minP.y = oa::min(minP.y, v.position.y);
+		minP.z = oa::min(minP.z, v.position.z);
+		maxP.x = oa::max(maxP.x, v.position.x);
+		maxP.y = oa::max(maxP.y, v.position.y);
+		maxP.z = oa::max(maxP.z, v.position.z);
 	}
 
 	inMesh.bounds.min = minP;

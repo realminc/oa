@@ -156,17 +156,17 @@ public:
 		);
 
 		auto* pack = addSubcommand("pack", "Pack train/val/test byte files into one .oad");
-		pack->add_option("-o,--output", cfg_.outPath, "output .oad path")->required();
-		pack->add_option("--train", cfg_.trainPath, "training corpus (required)")->required();
-		pack->add_option("--val", cfg_.valPath, "Validation corpus (optional)");
-		pack->add_option("--test", cfg_.testPath, "Test corpus (optional)");
+		pack->addOption("-o,--output", cfg_.outPath, "output .oad path")->required();
+		pack->addOption("--train", cfg_.trainPath, "training corpus (required)")->required();
+		pack->addOption("--val", cfg_.valPath, "Validation corpus (optional)");
+		pack->addOption("--test", cfg_.testPath, "Test corpus (optional)");
 
 		auto* info = addSubcommand("info", "show .oad header and split sizes");
-		info->add_option("path", cfg_.inputPath, "Path to .oad")->required();
+		info->addOption("path", cfg_.inputPath, "Path to .oad")->required();
 
 		auto* unpack = addSubcommand("unpack", "Write train.bin / val.bin / test.bin to a directory");
-		unpack->add_option("path", cfg_.inputPath, "Path to .oad")->required();
-		unpack->add_option("-o,--out", cfg_.outDir, "output directory")->required();
+		unpack->addOption("path", cfg_.inputPath, "Path to .oad")->required();
+		unpack->addOption("-o,--out", cfg_.outDir, "output directory")->required();
 
 		requireSubcommand(1, 1);
 	}
@@ -174,7 +174,7 @@ public:
 
 int main(int argc, char** argv) {
 	DatasetctlCli cli;
-	if (!cli.parse(argc, argv)) return 1;
+	if (!cli.parse(argc, argv)) return cli.helpRequested() ? 0 : 1;
 
 	const auto& cfg = cli.getConfig();
 	auto cmd = cli.getSubcommand();

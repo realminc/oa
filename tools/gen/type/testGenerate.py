@@ -108,7 +108,9 @@ class TypeGenerationTest(unittest.TestCase):
 		self.assertIn(
 		 "constexpr const char* scalarTypeToString(", header
 		)
-		self.assertIn("std::strcmp(inString, \"Float32\")", header)
+		self.assertIn("oa::strcmp(inString, \"Float32\")", header)
+		self.assertIn("#include <oa/core/std/cString.h>", header)
+		self.assertNotIn("#include <cstring>", header)
 		self.assertIn("if (inString == nullptr)", header)
 		self.assertNotIn("scalarTypeToString(", implementation)
 
@@ -116,7 +118,7 @@ class TypeGenerationTest(unittest.TestCase):
 		schema = loadSchema(SCHEMA_DIR / "vision" / "visionTypes.toml")
 		header = emitHeaderFile(schema, "vision/visionTypes.toml")
 		self.assertIn('case ImageCodec::Webp: return "webp";', header)
-		self.assertIn('std::strcmp(inString, "webp")', header)
+		self.assertIn('oa::strcmp(inString, "webp")', header)
 
 	def testStructDefaultsSurviveComments(self) -> None:
 		schema = loadSchema(SCHEMA_DIR / "core" / "coreTypes.toml")

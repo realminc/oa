@@ -1,7 +1,6 @@
 // OA_DOC_BEGIN: plot-line
 #include <oa/oa.h>
 
-#include <array>
 #include <cstdio>
 #include <utility>
 
@@ -12,7 +11,7 @@ OA_MAIN_MODE("ExamplePlotLine", argc > 1 and oa::StringView(argv[1]) == "--previ
 		.height = 540U,
 		.theme = oa::plot::Theme::Dark,
 	});
-	constexpr std::array<oa::F32, 6> figureValues{
+	constexpr oa::Array<oa::F32, 6> figureValues{
 		1.0F, 0.72F, 0.51F, 0.38F, 0.29F, 0.23F
 	};
 	figure.ax(0, 0).xLabel("step");

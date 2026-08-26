@@ -10,7 +10,7 @@
 #include <oa/ml/autograd.h>
 #include <oa/ml/autograd/matrix/autogradChannelNorm.h>
 
-#include <cassert>
+#include <assert.h>
 
 oa::Matrix oa::FnMatrix::channelNorm(
 	const oa::Matrix& inX, const oa::Matrix& inWeight, const oa::Matrix& inBias,
@@ -63,7 +63,7 @@ oa::Matrix oa::FnMatrix::channelNorm(
 		gradFn->channels_ = inChannels;
 		gradFn->seqLen_ = inSeqLen;
 		gradFn->eps_ = inEps;
-		gradFn->saveForBackward({inX, inWeight});
+		gradFn->saveForBackward(inX, inWeight);
 		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inX, inWeight, inBias});
 		gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		gradFn->outputShape_ = out.getShape();
@@ -190,7 +190,7 @@ oa::Matrix oa::FnMatrix::channelNormRelu(
 		gradFn->channels_ = inChannels;
 		gradFn->seqLen_ = inSeqLen;
 		gradFn->eps_ = inEps;
-		gradFn->saveForBackward({inX, inWeight, out});
+		gradFn->saveForBackward(inX, inWeight, out);
 		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inX, inWeight, inBias});
 		gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		gradFn->outputShape_ = out.getShape();

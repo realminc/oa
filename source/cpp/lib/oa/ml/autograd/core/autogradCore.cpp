@@ -4,14 +4,12 @@
 
 #include <oa/core/fnMatrix.h>
 #include <oa/core/log.h>
+#include <oa/core/std/algo.h>
+#include <oa/core/std/hashMap.h>
 #include <oa/core/validation.h>
 #include <oa/core/fnmatrix/fnMatrixInternal.h>
 #include <oa/runtime/executionSession.h>
 #include <oa/runtime/semanticGraph.h>
-
-#include <algorithm>
-#include <unordered_map>
-#include <unordered_set>
 
 namespace {
 
@@ -105,7 +103,7 @@ namespace {
 
 void topoCollect_(const oa::SharedPtr<oa::GradNode>& inNode,
                   oa::Vec<oa::SharedPtr<oa::GradNode>>& outNodes,
-                  std::unordered_set<oa::GradNode*>& inVisited) {
+                  oa::HashSet<oa::GradNode*>& inVisited) {
 	if (not inNode) return;
 	auto* raw = inNode.get();
 	if (inVisited.find(raw) != inVisited.end()) return;
@@ -129,9 +127,9 @@ oa::Status oa::GradientTape::tryBackward(const oa::Matrix& inRoot) {
 	if (not rootFn) return oa::Status::ok();
 
 	oa::Vec<oa::SharedPtr<oa::GradNode>> topo;
-	std::unordered_set<oa::GradNode*> visited;
+	oa::HashSet<oa::GradNode*> visited;
 	topoCollect_(rootFn, topo, visited);
-	std::sort(topo.begin(), topo.end(),
+	oa::sort(topo.begin(), topo.end(),
 		[](const oa::SharedPtr<oa::GradNode>& a, const oa::SharedPtr<oa::GradNode>& b) {
 			return a->sequenceNr_ < b->sequenceNr_;
 		});
@@ -142,7 +140,7 @@ oa::Status oa::GradientTape::tryBackward(const oa::Matrix& inRoot) {
 		if (not status.isOk()) return status;
 	}
 
-	std::unordered_map<oa::GradNode*, oa::Matrix> gradMap;
+	oa::HashMap<oa::GradNode*, oa::Matrix> gradMap;
 	gradMap.emplace(rootFn.get(), oa::FnMatrix::full(inRoot.getShape(), 1.0, inRoot.getDtype()));
 
 	oa::GradNo noGradGuard;
