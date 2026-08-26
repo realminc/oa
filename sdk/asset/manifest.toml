@@ -145,14 +145,6 @@ source = "OA TutorialPlotGallery deterministic headless render"
 role = "offline SDK and developer-site Plot documentation"
 
 [[asset]]
-path = "documentation/readme/motiongpt.gif"
-bytes = 2237111
-sha256 = "879faba927233778014a90f29a01363fb2aa5fdf9fe0cd45850994e5bd16fa3e"
-license = "LicenseRef-OA-Repository"
-source = "OA ALM historical motion-generation presentation capture"
-role = "repository README and offline SDK presentation"
-
-[[asset]]
 path = "documentation/readme/oaSpaceCathedral.jpg"
 bytes = 130198
 sha256 = "0ba84f8c3677bff9596869ee6a888f674cae671a691afc2f7e1b50f1f27d4e66"

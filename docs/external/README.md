@@ -11,6 +11,7 @@ architecture, migration, research or device-report tree.
 - [Documentation](documentation/) — API, example and tutorial authoring and generation contract
 - [Tutorials](tutorial/) — public prose paired with checked executable sources
 - [Benchmarks](benchmarks/) — reproducible, revision-scoped public measurements
+- [Release notes](releases/) — immutable shipped scope, compatibility, evidence, and limits
 - [Assets](../../sdk/asset/documentation/) — manifested offline documentation and presentation media
 - `generated/` — reviewable snapshots consumed by standalone documentation builds
 - [Python package readme](pyPIReadme.md) — published `oapython` package description

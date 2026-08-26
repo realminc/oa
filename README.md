@@ -29,16 +29,9 @@ playback, capture, presentation, and MCP control.
 [![PyPI](https://img.shields.io/pypi/v/oapython?label=pypi)](https://pypi.org/project/oapython/)
 [![License](https://img.shields.io/badge/license-BSL--1.1-3b3b3b)](LICENSE)
 
-> **Current preview candidate.** `v0.7.18`
-> publishes the converged engine and event model, schema-owned C++/Python operations,
-> semantic Q4/Q8 inference values, the rewritten Mamba-3 SISO/MIMO paths, local MCP
-> training control, the unified Renderer/Ui/Plot presentation stack, per-engine Vulkan
-> dispatch isolation, GPU-native Audio processing, exact C++/Python naming parity,
-> executable C++/Python examples, a GPU-native Vision augmentation walkthrough,
-> unified ML reinforcement/training contracts, Vulkan-native spatial math, native room
-> reverb, a minimal `OA_MAIN` application boundary, source-owned Core/Audio/Crypto/
-> Vision/Ui examples, and checked `oa::Viewer::preview` presentation evidence.
-> The API and artifact formats remain pre-1.0 and may change.
+> **Development preview.** The API and artifact formats remain pre-1.0 and may
+> change. Read the [latest release notes](docs/external/releases/v0.7.18.md) for
+> shipped scope, verification, compatibility, and known limitations.
 
 ## One runtime. Two front ends.
 
@@ -49,39 +42,6 @@ operations. Devices enter through Vulkan capability checks and qualified executi
 routes, never through a brand allow-list; unsupported paths fail closed instead of
 silently changing the workload.
 
-## What ships in 0.7.18
-
-| Area | Shipped surface |
-|---|---|
-| **Core / Runtime** | One pinned `oa::Engine`, explicit `submit`/`oa::Event` completion, reusable `oa::ExecutionPlan` capture, bindless allocation, semantic DNN planning, kernel routing, pipeline caching, calibrated clocks, and execution diagnostics |
-| **Ml** | Matrices, modules, autograd, AdamW/Muon/SGD, losses, metrics, model files, checkpoints, RNN, GRU, Transformer, Flash Attention, dropless sparse MoE, grouped-state Mamba-3 SISO/MIMO, and native environment/rollout/replay/PPO/DQN/SAC contracts |
-| **Quantized inference** | Semantic `oa::QuantMatrix`, explicit Q4/Q8 pack/dequantize, fused `matMulNt`, and `.oam` v3 Dense/Q4/Q8 storage; Q4/Q8 are inference encodings, not training dtypes |
-| **Vision / Media** | 50 graph-native image operations, JPEG/PNG/BMP/TGA and capability-gated WebP I/O, native container parsing, Vulkan Video decode/encode surfaces, capture, playback, recording, and transcoding sessions |
-| **Audio** | WAV/FLAC/MP3 decode, WAV-F32 output, deterministic PCM16 streaming, capture/playback sessions, and GPU-native feature extraction, normalization, resampling, saturation, native room reverb, block-parallel zero-state Biquad, and one-to-64-section SOS operations with Python parity |
-| **Render / Ui / Plot** | One bounded `oa::Renderer` for mesh or Ui composition, headless and swapchain presentation, unified `oa::Viewer::preview` for checked image/audio/video paths and direct GPU values, GPU-composed retained figures, Line/Scatter/Bar/Histogram/Heatmap/Image artists, dark/light themes, and deterministic PNG output |
-| **MCP** | Local newline-delimited stdio JSON-RPC/MCP server primitives and guarded live-training controls through `oa::McpTraining` |
-| **Python** | One C++-parity surface with PascalCase types, camelCase operations, lowercase modules, generated stubs, lazy engine creation, paired examples/tutorials, and the same native Vulkan implementation |
-| **Crypto** | Strict host cryptographic primitives plus Vulkan batch hashing and public-data acceleration; no independent security audit is claimed |
-| **VLM** | Bounded Vulkan-native vectors, quaternions, matrices, transforms, projection, interpolation, and coordinate conversion under one right-handed Vulkan convention |
-
-The canonical NLP suite trains RNN, GRU, dense Transformer, sparse-MoE Transformer,
-and Mamba-3 with Byte, BPE, and Char tokenizers through the same autograd, optimizer,
-metrics, generation, and checkpoint path. The current Iris Xe evidence includes all 15
-complete 300-step workloads. The controlled `v0.6.105` → `v0.6.106` comparison found no
-accepted regression across its 12 non-Mamba rows and 21–48% lower median step time for
-the six Transformer/MoE rows; Mamba-3 was subsequently rewritten and is reported
-separately because the old paired baseline was thermally invalid. See the
-[NLP benchmark](docs/external/benchmarks/oaNlpSuite.md) for the exact estimators, spread, commits,
-driver, and rejected runs.
-
-<p align="center">
-  <a href="https://x.com/empyrealm1/status/2072364333909037178">
-    <img src="sdk/asset/documentation/readme/motiongpt.gif" width="520" alt="OA ALM generating 3D character motion on Vulkan">
-  </a>
-  <br>
-  <em>OA ALM: text-conditioned motion tokens → decoded motion → USD. <a href="https://x.com/empyrealm1/status/2072364333909037178">full clip ↗</a></em>
-</p>
-
 ## Quick start
 
 ### C++
@@ -91,34 +51,35 @@ driver, and rejected runs.
 
 #include <array>
 #include <cmath>
+#include <cstdio>
 #include <utility>
 
-int main() {
-	oa::EngineConfig config;
-	config.appName = "QuickStart";
-	config.precision = oa::Precision::FP32;
+OA_MAIN("ExampleCoreMatrix") {
+	auto one = oa::FnMatrix::ones({2, 3});
 
-	auto created = oa::Engine::create(config);
-	if (not created.isOk()) return 1;
-	auto engine = std::move(created).getValue();
+	auto two = oa::FnMatrix::full({2, 3}, 2.0F);
 
-	auto a = oa::FnMatrix::ones({2, 3});
-	auto b = oa::FnMatrix::full({2, 3}, 2.0F);
-	auto c = oa::FnMatrix::add(a, b);
-
-	auto submitted = engine->submit();
-	if (not submitted.isOk()) return 1;
-	if (not engine->wait(submitted.getValue()).isOk()) return 1;
+	auto sum = oa::FnMatrix::add(one, two);
 
 	std::array<oa::F32, 6> values{};
-	if (not oa::FnMatrix::copyToHost(c, values.data(), sizeof(values)).isOk()) return 1;
-	return std::abs(values[0] - 3.0F) <= 1e-5F ? 0 : 1;
+	if (not oa::FnMatrix::copyToHost(sum, values.data(), sizeof(values)).isOk()) {
+		return 1;
+	}
+	for (const oa::F32 value : values) {
+		if (std::abs(value - 3.0F) > 1e-06F) {
+			return 1;
+		}
+	}
+
+	std::puts("Matrix addition verified: every value is 3");
+	return 0;
 }
 ```
 
-The operation records semantic work. `submit()` returns the exact `oa::Event`; waiting
-that event is the explicit completion boundary. For reusable work, capture once with
-`engine->capture(...)` and resubmit the returned `oa::ExecutionPlan`.
+This is the runnable [SDK C++ matrix example](sdk/cpp/examples/core/matrix.cpp).
+`OA_MAIN` provides one lexical engine owner; the checked `copyToHost` sink is the
+completion boundary for the recorded matrix work. Advanced applications can own
+`oa::Engine` directly when they need explicit capture, submission, and event control.
 
 ### Python
 
@@ -131,14 +92,22 @@ python -m pip install oapython
 ```python
 import oa
 
-a = oa.FnMatrix.ones([2, 3])
-b = oa.FnMatrix.full([2, 3], 2.0)
-c = oa.FnMatrix.add(a, b)
-print(oa.FnMatrix.copyToHost(c))
+one = oa.FnMatrix.ones([2, 3])
+
+two = oa.FnMatrix.full([2, 3], 2.0)
+
+sum = oa.FnMatrix.add(one, two)
+
+values = oa.FnMatrix.copyToHost(sum)
+assert len(values) == 6
+assert all(abs(value - 3.0) <= 1e-06 for value in values)
+
+print("Matrix addition verified: every value is 3")
 ```
 
-Import is host-only. The first device-backed request creates the binding host lazily.
-Python calls the same C++ values and Vulkan kernels; it is not a NumPy or CPU fallback.
+This is the runnable [SDK Python matrix example](sdk/py/examples/core/matrix.py).
+Import is host-only. The first device-backed request creates the binding host lazily;
+Python calls the same C++ values and Vulkan kernels rather than a NumPy or CPU fallback.
 
 ## Build from source
 
@@ -203,44 +172,13 @@ under `source/cpp/lib/oa/`; vendored C/C++ dependencies under
 `source/cpp/thirdparty/`; Python mirrors the public module boundaries under
 `source/py/`.
 
-## Hardware and verification
-
-| Device class | Evidence for this release line |
-|---|---|
-| **Intel Iris Xe TGL GT2** | Current local acceptance pack: FP32 Core/Ml, the 15-workload NLP suite, Q4/Q8, grouped Mamba-3, Vision, Plot/Ui/Renderer, Python, and separate core/synchronization/GPU-assisted validation; exact video support remains profile-specific |
-| **Qualcomm Adreno 610** | Earlier physical OaMobileLab checkpoint ran the five Byte NLP models through training, generation, save, and reload; the complete 0.7.18 tree has not been requalified on this device |
-| **NVIDIA / AMD / newer Adreno / datacenter** | Capability-gated implementations exist, but the complete 0.7.18 tree is unverified on these hardware packs and no current performance claim is made |
-| **CPU Vulkan** | Useful for selected correctness and hosted-CI work; not a performance target and not a substitute for the real-GPU gate |
-
-OA queries capabilities and fails closed when a route is unavailable. Native BF16 and
-cooperative-matrix paths need fresh device-specific validation. FP64 appears only as
-fail-closed vocabulary until a scientific numerical pack is implemented and proven.
-
-## Preview boundaries
-
-- The public API, Python ABI, and `.oam` format may change before 1.0.
-- The GitHub/PyPI wheel targets Linux x86-64, CPython 3.12, and glibc 2.39+.
-- Vulkan Video is codec/profile/device dependent; unsupported profiles return an error
-  instead of silently selecting a software decoder.
-- `oa::Renderer` is a compact mesh/Ui presentation layer, not a scene graph, material/PBR
-  renderer, DCC, or general game engine. Plot output is retained and GPU-composed, but
-  interactive plot navigation remains future work.
-- MCP is a local control plane, not a remote transport or high-frequency tensor data
-  plane. Cross-machine distributed execution and physical heterogeneous collectives are
-  not part of this preview.
-- OA ALM is an end-to-end small-model demonstration, not a production-quality general
-  motion model.
-- Crypto is correctness-tested but has not received an independent security audit. Do
-  not represent it as certified or suitable for custody without review.
-- GitHub-hosted CI proves build, host sanitizer, generation, and packaging contracts.
-  The real-GPU job is conditional until a persistent runner is provisioned; the current
-  GPU evidence is the recorded physical Iris Xe pack.
-
 ## Documentation
 
 - [Developer documentation](https://dev.realm.software/)
 - [GitHub releases](https://github.com/realminc/oa/releases)
+- [Release notes](docs/external/releases/README.md)
 - [Changelog](CHANGELOG.md)
+- [OA foundation benchmark](docs/external/benchmarks/oaStd.md)
 - [NLP training benchmark](docs/external/benchmarks/oaNlpSuite.md)
 - [Desktop/mobile NLP validation](docs/external/benchmarks/oaMobileLab.md)
 - [C++ tutorials](sdk/cpp/tutorials)
