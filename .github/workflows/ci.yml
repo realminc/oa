@@ -296,7 +296,7 @@ jobs:
       - name: Build host ownership and parser tests
         run: |
           cmake --build build/${{ matrix.build_dir }} --parallel "$(nproc)" --target \
-            TestTypes TestMemory TestContainers TestThreading TestCoreMisc \
+            TestTypes TestMemory TestContainers TestThreading TestCoreMisc TestCli \
             TestValidation TestVlm TestCamera TestMcp TestTransferWeights TestModelFileIntegrity TestTokenizer \
             TestGptOssConfig TestOaStd TestVkDispatch
 

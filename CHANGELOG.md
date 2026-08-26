@@ -4,6 +4,25 @@ All notable changes to OA are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is the single
 `VERSION` file at the repo root (read by CMake, `oa::version()`, and the Python package).
 
+## [0.7.20] — 2026-08-26 (hosted release repair)
+
+This patch republishes the `v0.7.19` foundation source with corrected hosted
+sanitizer target ownership. The product implementation and performance evidence
+are unchanged.
+
+### Fixed
+
+- The ASAN and UBSAN jobs now build `TestCli` before running the complete
+  `core`-label CTest profile. The `v0.7.19` workflow registered that test but
+  omitted its executable from the curated sanitizer build target list.
+
+### Verification
+
+- The corrected private candidate passes 153/153 Release tests.
+- `TestCli` builds and passes independently under both ASAN and UBSAN.
+- The tagged public workflow owns the final CPU-Vulkan, sanitizer, package,
+  wheel, PyPI, release-asset, and checksum evidence.
+
 ## [0.7.19] — 2026-08-26 (owned foundation milestone)
 
 This patch publishes the private `v0.7.1` foundation checkpoint: OA-owned
