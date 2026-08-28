@@ -495,7 +495,7 @@ template<typename... Types> T* VmaPoolAllocator<T>::Alloc(Types&&... args)
 			Item* const pItem = &block.pItems[block.FirstFreeIndex];
 			block.FirstFreeIndex = pItem->NextFreeIndex;
 			T* result = (T*)&pItem->Value;
-			new(result)T(oa::forward<Types>(args)...); // Explicit constructor call.
+			oa::constructAt(result, oa::forward<Types>(args)...);
 			return result;
 		}
 	}
@@ -505,7 +505,7 @@ template<typename... Types> T* VmaPoolAllocator<T>::Alloc(Types&&... args)
 	Item* const pItem = &newBlock.pItems[0];
 	newBlock.FirstFreeIndex = pItem->NextFreeIndex;
 	T* result = (T*)&pItem->Value;
-	new(result) T(oa::forward<Types>(args)...); // Explicit constructor call.
+	oa::constructAt(result, oa::forward<Types>(args)...);
 	return result;
 }
 

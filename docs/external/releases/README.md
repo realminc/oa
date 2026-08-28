@@ -11,7 +11,8 @@ introduction.
 
 ## Releases
 
-- [v0.7.21](v0.7.21.md) — current public development preview
+- [v0.7.22](v0.7.22.md) — current public development preview
+- [v0.7.21](v0.7.21.md) — foundation source snapshot; hosted publication blocked by the dependency ratchet
 - [v0.7.20](v0.7.20.md) — hosted sanitizer-target repair
 - [v0.7.19](v0.7.19.md) — foundation source snapshot; hosted publication failed
 - [v0.7.18](v0.7.18.md) — paired Transformer SDK example

@@ -4,6 +4,29 @@ All notable changes to OA are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is the single
 `VERSION` file at the repo root (read by CMake, `oa::version()`, and the Python package).
 
+## [0.7.22] — 2026-08-28 (hosted dependency-ratchet repair)
+
+This immutable patch replaces the blocked `v0.7.21` hosted candidate. Product
+APIs, allocator algorithms, numerical behavior, and performance evidence are
+unchanged.
+
+### Fixed
+
+- VMA placement construction now uses OA's language-level placement tag instead
+  of importing `<new>`. This restores the zero-new-include dependency baseline
+  enforced by the hosted OA standard-library audit.
+- Refreshed the exact VMA derived-file checksums after the placement-boundary
+  correction.
+
+### Verification
+
+- The standard-library dependency ratchet passes with the vendored include
+  count reduced from 125 to 124.
+- `TestVma` passes 5/5, `TestVmaInternals` passes 2/2, and the live Vulkan
+  runtime allocator suite passes 21/21 on the qualified Intel Iris Xe host.
+- The tagged public workflow owns the complete sanitizer, CPU-Vulkan, package,
+  wheel, PyPI, release-asset, and checksum result.
+
 ## [0.7.21] — 2026-08-28 (foundation hardening and Vulkan allocation boundary)
 
 This patch publishes the complete private `v0.7.2` performance and security

@@ -59,8 +59,8 @@ final source edit of an update checkpoint.
 | `vma.h` | `bf281c0311c9d1ce181a3919f229b2051ba467183ca4cf149d1257a9d6ab7d66` |
 | `vma.hpp` | `5e260b0e8279131601226a05a93869f4e04b013e8c69028ea41deb40c8bf7ba0` |
 | `vma.cpp` | `614d76e5c05f3921cbe5e193ae03e5b936cbcaf0bda9829fe5dfe34669015770` |
-| `detail/config.h` | `186cf724c3f076d4a93208dfcc2a5a585f8b23ad0f084d25eefa85509968a9f9` |
-| `detail/containers.h` | `f7c83426cc774599bab78960f5b54e228ee1acefa149ca5a4375aaf97492bd4d` |
+| `detail/config.h` | `e4f23223747a1a475a74e58b09b7bb394542b5e1f6e548c7fee76d973961123e` |
+| `detail/containers.h` | `9b185a1fecfd71746c4480f72cdb732d5a36bb1849109434fc23beb30607ac24` |
 | `detail/types.h` | `ac840524b991a42e0948367b55f10c89d4a7519c99d8f59b6649766fd36e69b6` |
 | `detail/metadata.h` | `ad835535f953b82650238aad5edf206e4ac95acafd080fb107ea65d783b4a4a5` |
 | `detail/classes.h` | `35a8bf1bed666b77edbe08c5b63a3aa13ba3ecbeb224e4034744bf263becb61b` |

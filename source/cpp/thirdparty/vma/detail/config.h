@@ -2,13 +2,13 @@
 // Full MIT copyright/permission notice: source/cpp/thirdparty/vma/vma.h. See NOTICE.md.
 #include <stdint.h>
 #include <inttypes.h>
-#include <new>
 
 #include <oa/core/assert.h>
 #include <oa/core/std/algo.h>
 #include <oa/core/std/allocator.h>
 #include <oa/core/std/atomic.h>
 #include <oa/core/std/cString.h>
+#include <oa/core/std/lifetime.h>
 #include <oa/core/std/memory.h>
 #include <oa/core/std/sync.h>
 #include <oa/core/std/utility.h>
@@ -1195,9 +1195,9 @@ T* VmaAllocateArray(const VkAllocationCallbacks* pAllocationCallbacks, size_t co
 	return (T*)VmaMalloc(pAllocationCallbacks, sizeof(T) * count, VMA_ALIGN_OF(T));
 }
 
-#define Vma_new(allocator, type)   new(VmaAllocate<type>(allocator))(type)
+#define Vma_new(allocator, type)   new(VmaAllocate<type>(allocator), ::oa::Placement)(type)
 
-#define Vma_new_array(allocator, type, count)   new(VmaAllocateArray<type>((allocator), (count)))(type)
+#define Vma_new_array(allocator, type, count)   new(VmaAllocateArray<type>((allocator), (count)), ::oa::Placement)(type)
 
 template<typename T>
 void Vma_delete(const VkAllocationCallbacks* pAllocationCallbacks, T* ptr)
