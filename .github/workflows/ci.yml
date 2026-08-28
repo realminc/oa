@@ -242,16 +242,21 @@ jobs:
     name: Host Sanitizer (${{ matrix.name }})
     if: github.repository == 'realminc/oa'
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
         include:
+          # TestOaStd exercises fail-closed contracts through many instrumented
+          # child processes. Keep ASAN bounded while accounting for that cost.
           - name: ASAN
             preset: asan
             build_dir: asan
+            test_timeout_seconds: 180
           - name: UBSAN
             preset: ubsan
             build_dir: ubsan
+            test_timeout_seconds: 120
     env:
       ASAN_OPTIONS: detect_leaks=1:halt_on_error=1:strict_string_checks=1
       UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
@@ -303,7 +308,8 @@ jobs:
       - name: Run host sanitizer suite
         run: |
           ctest --test-dir build/${{ matrix.build_dir }} \
-            --output-on-failure --timeout 120 -L core
+            --output-on-failure \
+            --timeout ${{ matrix.test_timeout_seconds }} -L core
 
   cpu-vulkan-smoke:
     name: CPU Vulkan (Lavapipe)

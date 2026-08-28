@@ -4,6 +4,30 @@ All notable changes to OA are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is the single
 `VERSION` file at the repo root (read by CMake, `oa::version()`, and the Python package).
 
+## [0.7.23] — 2026-08-28 (hosted ASAN-budget repair)
+
+This immutable patch replaces the blocked `v0.7.22` hosted candidate. Product
+code, APIs, allocation behavior, numerical behavior, and performance evidence
+are unchanged.
+
+### Fixed
+
+- The ASAN profile now allows 180 seconds for each CTest while UBSAN retains
+  the existing 120-second limit. This covers the instrumented child-process
+  cost of the foundation's fail-closed death tests without weakening them.
+- The sanitizer job has an explicit 45-minute ceiling, so the larger ASAN
+  per-test budget cannot turn a genuine hang into an unbounded workflow.
+
+### Verification
+
+- The blocked v0.7.22 run completed 271 of 272 `TestOaStd` cases under ASAN
+  without a sanitizer finding before CTest stopped the executable at 120.04
+  seconds; the final case had started.
+- The same source passed the complete Release/package job, UBSAN profile,
+  CPU-Vulkan Lavapipe smoke profile, and repaired manylinux wheel build.
+- The tagged v0.7.23 workflow owns the final ASAN completion, release assets,
+  checksums, and PyPI result.
+
 ## [0.7.22] — 2026-08-28 (hosted dependency-ratchet repair)
 
 This immutable patch replaces the blocked `v0.7.21` hosted candidate. Product
