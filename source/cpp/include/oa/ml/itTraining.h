@@ -27,7 +27,7 @@
 #include <oa/core/std/chrono.h>
 #include <oa/core/std/function.h>
 #include <oa/core/std/limits.h>
-#include <oa/core/std/vec.h>
+#include <oa/core/std/vector.h>
 #include <oa/core/iterator.h>
 #include <oa/core/matrix.h>
 #include <oa/core/status.h>
@@ -52,7 +52,7 @@ struct ItTrainingConfig {
 	oa::I64 stepsPerEpoch   = 0;
 	// Variable-length epoch schedule: epochSteps[i] = steps in epoch i+1.
 	// Overrides stepsPerEpoch when non-empty. totalSteps is forced to the sum.
-	oa::Vec<oa::I64> epochSteps;
+	oa::Vector<oa::I64> epochSteps;
 	oa::I32 batchSize       = 1;
 	// Optional sequence work per sample (for throughput reporting).
 	oa::I32 sequenceLength  = 0;
@@ -62,9 +62,9 @@ struct ItTrainingConfig {
 	oa::String timerName    = "training_step";
 	oa::Bool enableGpuTiming = true;
 	// Stateful metrics updated once after each completed step. Non-owning.
-	oa::Vec<Metric*> metrics;
+	oa::Vector<Metric*> metrics;
 	// callbacks registered at construction. Non-owning.
-	oa::Vec<CbTraining*> callbacks;
+	oa::Vector<CbTraining*> callbacks;
 	// Optional fixed-shape program for capture/replay. Non-owning.
 	TrainingProgram* program = nullptr;
 };
@@ -200,7 +200,7 @@ private:
 	oa::ExecutionSession* executionSession_ = nullptr;
 	Engine*              rt_                 = nullptr;
 	ItTrainingConfig     cfg_;
-	oa::Vec<oa::I64>       epochOffsets_;
+	oa::Vector<oa::I64>       epochOffsets_;
 	bool                 stopRequested_        = false;
 	oa::Status             lastStatus_           = oa::Status::ok();
 	oa::I64                totalSamples_         = 0;
@@ -217,7 +217,7 @@ private:
 	oa::F64                lastGpuMs_            = 0.0;
 	oa::I64                lastLossStep_         = 0;
 	oa::I64                lastGpuTimeStep_      = 0;
-	oa::Vec<oa::F64>       gpuTimingSamples_;
+	oa::Vector<oa::F64>       gpuTimingSamples_;
 	oa::F64                gpuTimingSumMs_       = 0.0;
 	oa::Timer              timer_;
 	bool                 timerReady_           = false;
@@ -238,8 +238,8 @@ private:
 	bool                 stableResourceFrameOpen_ = false;
 	bool                 programCaptureDisabled_  = false;
 	bool                 programReportWritten_    = false;
-	oa::Vec<Metric*>       metrics_;
-	oa::Vec<CbTraining*>   callbacks_;
+	oa::Vector<Metric*>       metrics_;
+	oa::Vector<CbTraining*>   callbacks_;
 	TrainingSession* session_ = nullptr;
 };
 

@@ -3,7 +3,7 @@
 #include "../../../../../thirdparty/stb/stb_image.h"
 #include "../../../../../thirdparty/stb/stb_image_write.h"
 
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
 #include <oa/core/std/limits.h>
 
 namespace oa::imageCodec {
@@ -22,7 +22,7 @@ oa::I32 requestedChannels(oa::ImageFormat inFormat)
 
 void appendEncodedBytes(void* inContext, void* inData, int inSize)
 {
-	auto& output = *static_cast<oa::Vec<oa::U8>*>(inContext);
+	auto& output = *static_cast<oa::Vector<oa::U8>*>(inContext);
 	if (inData == nullptr or inSize <= 0) return;
 	const oa::Usize oldSize = output.size();
 	output.resize(oldSize + static_cast<oa::Usize>(inSize));
@@ -102,7 +102,7 @@ oa::Result<Pixels> decodeStb(
 	return result;
 }
 
-oa::Result<oa::Vec<oa::U8>> encodeStb(
+oa::Result<oa::Vector<oa::U8>> encodeStb(
 	const Pixels& inPixels,
 	oa::ImageCodec inCodec,
 	oa::U32 inQuality)
@@ -136,7 +136,7 @@ oa::Result<oa::Vec<oa::U8>> encodeStb(
 			"oa::FnImage::encode: JPEG does not support GrayAlpha input");
 	}
 
-	oa::Vec<oa::U8> encoded;
+	oa::Vector<oa::U8> encoded;
 	int status = 0;
 	switch (inCodec) {
 		case oa::ImageCodec::Jpeg:

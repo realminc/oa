@@ -50,7 +50,7 @@ public:
 	}
 
 protected:
-	oa::Vec<Parameter*> params_;
+	oa::Vector<Parameter*> params_;
 	oa::F32  lr_    = 1e-3f;
 	oa::U64  step_  = 0;
 
@@ -59,8 +59,8 @@ protected:
 	// The optimizer math runs entirely in fp32 on the master (grads are upcast); the
 	// bf16 weight the forward pass reads is re-derived as round(master) each step.
 	// fp32 params keep an empty master_ slot and update in place.
-	oa::Vec<Matrix> master_;       // fp32 master per param; empty slot ⇒ param is fp32
-	oa::Vec<Matrix> gradF32_;      // fp32 upcast-grad scratch per param
+	oa::Vector<Matrix> master_;       // fp32 master per param; empty slot ⇒ param is fp32
+	oa::Vector<Matrix> gradF32_;      // fp32 upcast-grad scratch per param
 	bool mixedReady_   = false;  // master_/gradF32_ sized
 	bool masterSeeded_ = false;  // masters seeded from current weights (clear on load)
 
@@ -89,7 +89,7 @@ public:
 
 class Sgd : public Optimizer {
 public:
-	Sgd(oa::Vec<Parameter>& inParams, oa::F32 inLr = 1e-2f, oa::F32 inMomentum = 0.0f, oa::F32 inWeightDecay = 0.0f)
+	Sgd(oa::Vector<Parameter>& inParams, oa::F32 inLr = 1e-2f, oa::F32 inMomentum = 0.0f, oa::F32 inWeightDecay = 0.0f)
 		: momentum_(inMomentum), weightDecay_(inWeightDecay) {
 		lr_ = inLr;
 		for (auto& p : inParams) if (p.requiresGrad) params_.pushBack(&p);
@@ -99,7 +99,7 @@ public:
 		lr_ = inLr;
 		for (auto* p : inParamPtrs) if (p && p->requiresGrad) params_.pushBack(p);
 	}
-	Sgd(oa::Vec<Parameter*>& inParamPtrs, oa::F32 inLr = 1e-2f, oa::F32 inMomentum = 0.0f, oa::F32 inWeightDecay = 0.0f)
+	Sgd(oa::Vector<Parameter*>& inParamPtrs, oa::F32 inLr = 1e-2f, oa::F32 inMomentum = 0.0f, oa::F32 inWeightDecay = 0.0f)
 		: momentum_(inMomentum), weightDecay_(inWeightDecay) {
 		lr_ = inLr;
 		for (auto* p : inParamPtrs) if (p && p->requiresGrad) params_.pushBack(p);
@@ -120,7 +120,7 @@ private:
 
 class Adam : public Optimizer {
 public:
-	Adam(oa::Vec<Parameter>& inParams, oa::F32 inLr = 1e-3f, oa::F32 inBeta1 = 0.9f, oa::F32 inBeta2 = 0.999f, oa::F32 inEps = 1e-8f)
+	Adam(oa::Vector<Parameter>& inParams, oa::F32 inLr = 1e-3f, oa::F32 inBeta1 = 0.9f, oa::F32 inBeta2 = 0.999f, oa::F32 inEps = 1e-8f)
 		: beta1_(inBeta1), beta2_(inBeta2), eps_(inEps) {
 		lr_ = inLr;
 		for (auto& p : inParams) if (p.requiresGrad) params_.pushBack(&p);
@@ -130,7 +130,7 @@ public:
 		lr_ = inLr;
 		for (auto* p : inParamPtrs) if (p && p->requiresGrad) params_.pushBack(p);
 	}
-	Adam(oa::Vec<Parameter*>& inParamPtrs, oa::F32 inLr = 1e-3f, oa::F32 inBeta1 = 0.9f, oa::F32 inBeta2 = 0.999f, oa::F32 inEps = 1e-8f)
+	Adam(oa::Vector<Parameter*>& inParamPtrs, oa::F32 inLr = 1e-3f, oa::F32 inBeta1 = 0.9f, oa::F32 inBeta2 = 0.999f, oa::F32 inEps = 1e-8f)
 		: beta1_(inBeta1), beta2_(inBeta2), eps_(inEps) {
 		lr_ = inLr;
 		for (auto* p : inParamPtrs) if (p && p->requiresGrad) params_.pushBack(p);
@@ -144,8 +144,8 @@ public:
 
 private:
 	oa::F32 beta1_, beta2_, eps_;
-	oa::Vec<Matrix> m_;  // first moment estimates
-	oa::Vec<Matrix> v_;  // second moment estimates
+	oa::Vector<Matrix> m_;  // first moment estimates
+	oa::Vector<Matrix> v_;  // second moment estimates
 };
 
 // ─── AdamW ───────────────────────────────────────────────────────────────────
@@ -153,7 +153,7 @@ private:
 
 class AdamW : public Optimizer {
 public:
-	AdamW(oa::Vec<Parameter>& inParams, oa::F32 inLr = 1e-3f, oa::F32 inBeta1 = 0.9f, oa::F32 inBeta2 = 0.999f,
+	AdamW(oa::Vector<Parameter>& inParams, oa::F32 inLr = 1e-3f, oa::F32 inBeta1 = 0.9f, oa::F32 inBeta2 = 0.999f,
 		oa::F32 inEps = 1e-8f, oa::F32 inWeightDecay = 0.01f)
 		: beta1_(inBeta1), beta2_(inBeta2), eps_(inEps), weightDecay_(inWeightDecay) {
 		lr_ = inLr;
@@ -166,7 +166,7 @@ public:
 		lr_ = inLr;
 		for (Parameter* p : inParamPtrs) if (p && p->requiresGrad) params_.pushBack(p);
 	}
-	AdamW(oa::Vec<Parameter*>& inParamPtrs, oa::F32 inLr = 1e-3f, oa::F32 inBeta1 = 0.9f, oa::F32 inBeta2 = 0.999f,
+	AdamW(oa::Vector<Parameter*>& inParamPtrs, oa::F32 inLr = 1e-3f, oa::F32 inBeta1 = 0.9f, oa::F32 inBeta2 = 0.999f,
 		oa::F32 inEps = 1e-8f, oa::F32 inWeightDecay = 0.01f)
 		: beta1_(inBeta1), beta2_(inBeta2), eps_(inEps), weightDecay_(inWeightDecay) {
 		lr_ = inLr;
@@ -182,8 +182,8 @@ public:
 
 private:
 	oa::F32 beta1_, beta2_, eps_, weightDecay_;
-	oa::Vec<Matrix> m_;
-	oa::Vec<Matrix> v_;
+	oa::Vector<Matrix> m_;
+	oa::Vector<Matrix> v_;
 	Matrix        graphState_;         // uint32[6], GPU-stepped replay state
 	Engine*       graphStateEngine_ = nullptr;
 };
@@ -197,7 +197,7 @@ private:
 
 class Muon : public Optimizer {
 public:
-	Muon(oa::Vec<Parameter>& inParams, oa::F32 inLr = 1e-3f, oa::F32 inBeta = 0.95f,
+	Muon(oa::Vector<Parameter>& inParams, oa::F32 inLr = 1e-3f, oa::F32 inBeta = 0.95f,
 		oa::F32 inWeightDecay = 0.1f, oa::F32 inEps = 1e-7f, oa::I32 inNs5Iterations = 5)
 		: beta_(inBeta), weightDecay_(inWeightDecay), eps_(inEps), ns5Iterations_(inNs5Iterations) {
 		lr_ = inLr;
@@ -209,7 +209,7 @@ public:
 		lr_ = inLr;
 		for (Parameter* p : inParamPtrs) if (p && p->requiresGrad) params_.pushBack(p);
 	}
-	Muon(oa::Vec<Parameter*>& inParamPtrs, oa::F32 inLr = 1e-3f, oa::F32 inBeta = 0.95f,
+	Muon(oa::Vector<Parameter*>& inParamPtrs, oa::F32 inLr = 1e-3f, oa::F32 inBeta = 0.95f,
 		oa::F32 inWeightDecay = 0.1f, oa::F32 inEps = 1e-7f, oa::I32 inNs5Iterations = 5)
 		: beta_(inBeta), weightDecay_(inWeightDecay), eps_(inEps), ns5Iterations_(inNs5Iterations) {
 		lr_ = inLr;
@@ -225,7 +225,7 @@ public:
 private:
 	oa::F32 beta_, weightDecay_, eps_;
 	oa::I32 ns5Iterations_;
-	oa::Vec<Matrix> momentum_;
+	oa::Vector<Matrix> momentum_;
 };
 
 } // namespace oa

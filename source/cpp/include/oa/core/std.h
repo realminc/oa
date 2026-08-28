@@ -3,11 +3,12 @@
 // OA standard-library umbrella for header-only templates under
 // source/cpp/include/oa/core/std/. Types use PascalCase and methods use
 // camelCase.
-// The implementation mixes native oa::Vec, oa::String, maps and smart pointers;
+// The implementation mixes native oa::Vector, oa::String, maps and smart pointers;
 // some modules still compose std internally at explicit boundaries.
 
 #include <oa/core/std/chrono.h>
 #include <oa/core/std/allocator.h>
+#include <oa/core/std/memory.h>
 #include <oa/core/std/lifetime.h>
 #include <oa/core/std/stringView.h>
 #include <oa/core/std/array.h>
@@ -24,7 +25,7 @@
 #include <oa/core/std/format.h>
 #include <oa/core/std/path.h>
 #include <oa/core/std/algo.h>
-#include <oa/core/std/vec.h>
+#include <oa/core/std/vector.h>
 #include <oa/core/std/random.h>
 #include <oa/core/std/sync.h>
 #include <oa/core/std/scalarMath.h>

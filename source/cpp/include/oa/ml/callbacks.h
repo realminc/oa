@@ -204,7 +204,7 @@ private:
 	bool  showEpochHeader_ = true;
 	oa::SteadyTimePoint lastPrintT_;
 	oa::I64 lastFinalizedStep_ = 0;
-	oa::Vec<oa::Metric*> metrics_;
+	oa::Vector<oa::Metric*> metrics_;
 };
 
 // ─── oa::CbValidation ───────────────────────────────────────────────────────
@@ -723,7 +723,7 @@ public:
 	}
 
 private:
-	oa::Vec<Phase> phases_;
+	oa::Vector<Phase> phases_;
 	PhaseBeginFn       onPhaseBegin_;
 	oa::I32              currentPhase_ = -1;
 };

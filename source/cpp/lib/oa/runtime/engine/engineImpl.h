@@ -10,6 +10,7 @@
 #include <oa/runtime/pipeline.h>
 #include <oa/runtime/stream.h>
 #include <oa/runtime/uploadRing.h>
+#include <oa/runtime/gemm/dispatch.h>
 #include "../../core/logAccess.h"
 #include "../timerRegistry.h"
 
@@ -27,10 +28,10 @@ struct RetiredUploadRing;
 // layout or exports raw vulkan resource ownership to consumers.
 struct RetiredImageDispatch {
 	oavk::Stream* stream = nullptr;
-	oa::Vec<oa::U32> storageImageSlots;
-	oa::Vec<oa::U32> sampledImageSlots;
-	oa::Vec<oa::U32> samplerSlots;
-	oa::Vec<VkImageView> imageViews;
+	oa::Vector<oa::U32> storageImageSlots;
+	oa::Vector<oa::U32> sampledImageSlots;
+	oa::Vector<oa::U32> samplerSlots;
+	oa::Vector<VkImageView> imageViews;
 };
 
 struct HostVisibleBufferCacheEntry {
@@ -115,7 +116,7 @@ public:
 	struct RetiredSessionBatch {
 		oavk::Stream* stream = nullptr;
 		oa::Event completion;
-		oa::Vec<oa::UniquePtr<oa::ExecutableGraph>> graphs;
+		oa::Vector<oa::UniquePtr<oa::ExecutableGraph>> graphs;
 	};
 	enum class GraphicsStreamSlotState : oa::U8 {
 		Free,
@@ -136,7 +137,7 @@ public:
 	oa::LogSelection previousLogSelection_;
 	oa::SharedPtr<oa::TimerRegistry> timerRegistry_;
 	oavk::Device device_;
-	OaVma allocator_;
+	RuntimeAllocator allocator_;
 	oavk::BindlessHeap bindless_;
 	oa::PipelineRegistry pipelines_;
 	oa::UniquePtr<GemmState> gemmState_;
@@ -146,26 +147,26 @@ public:
 	oa::MemoryPlacement matrixPlacement_ = oa::MemoryPlacement::HostUpload;
 	mutable oa::Atomic<oa::U64> gemmCapsMask_{0};
 
-	oa::Vec<oa::UniquePtr<oavk::Stream>> streamPool_;
-	oa::Vec<oa::U32> freeStack_;
+	oa::Vector<oa::UniquePtr<oavk::Stream>> streamPool_;
+	oa::Vector<oa::U32> freeStack_;
 	oa::Spinlock streamPoolLock_;
-	oa::Vec<oa::RetiredImageDispatch> retiredImageDispatches_;
+	oa::Vector<oa::RetiredImageDispatch> retiredImageDispatches_;
 	oa::Mutex retiredImageDispatchMutex_;
-	oa::Vec<oa::UniquePtr<oa::ExecutableGraph>> retiredExecutionPlans_;
+	oa::Vector<oa::UniquePtr<oa::ExecutableGraph>> retiredExecutionPlans_;
 	oa::Mutex retiredExecutionPlanMutex_;
-	oa::Vec<RetiredSessionBatch> retiredSessionBatches_;
+	oa::Vector<RetiredSessionBatch> retiredSessionBatches_;
 	oa::Mutex retiredSessionBatchMutex_;
-	oa::Vec<oa::UniquePtr<oa::RetiredUploadRing>> retiredUploadRings_;
+	oa::Vector<oa::UniquePtr<oa::RetiredUploadRing>> retiredUploadRings_;
 	oa::Mutex retiredUploadRingMutex_;
-	oa::Vec<oa::UniquePtr<oa::RetiredPresenter>> retiredPresenters_;
+	oa::Vector<oa::UniquePtr<oa::RetiredPresenter>> retiredPresenters_;
 	oa::Mutex retiredPresenterMutex_;
-	oa::Vec<RetiredServiceState> retiredBorrowedServices_;
+	oa::Vector<RetiredServiceState> retiredBorrowedServices_;
 	oa::Mutex retiredBorrowedServiceMutex_;
 
-	oa::Vec<oa::UniquePtr<oavk::Stream>> asyncStreamPool_;
-	oa::Vec<oa::U32> asyncFreeStack_;
+	oa::Vector<oa::UniquePtr<oavk::Stream>> asyncStreamPool_;
+	oa::Vector<oa::U32> asyncFreeStack_;
 	oa::Spinlock asyncStreamPoolLock_;
-	oa::Vec<GraphicsStreamSlot> graphicsStreamPool_;
+	oa::Vector<GraphicsStreamSlot> graphicsStreamPool_;
 	oa::Mutex graphicsStreamPoolMutex_;
 
 	oavk::Stream transferStream_;
@@ -181,6 +182,6 @@ public:
 	oa::Mutex uploadRingMutex_;
 	oa::Mutex readbackMutex_;
 	oa::Mutex hostVisibleBufferCacheMutex_;
-	oa::Vec<oa::HostVisibleBufferCacheEntry> hostVisibleBufferCache_;
+	oa::Vector<oa::HostVisibleBufferCacheEntry> hostVisibleBufferCache_;
 	oa::U64 hostVisibleBufferCacheBytes_ = 0;
 };

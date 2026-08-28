@@ -4,6 +4,50 @@ All notable changes to OA are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is the single
 `VERSION` file at the repo root (read by CMake, `oa::version()`, and the Python package).
 
+## [0.7.21] — 2026-08-28 (foundation hardening and Vulkan allocation boundary)
+
+This patch publishes the complete private `v0.7.2` performance and security
+checkpoint together with the private `v0.7.3` container-naming closure.
+
+### Added
+
+- Audited host-memory primitives provide explicit ordinary, streaming,
+  constant-work comparison, and secure-erasure contracts with fixed-host
+  correctness and performance evidence.
+- Expanded foundation tests cover overflow, invalid atomic orders, lifetime
+  rollback, self-aliasing, reentrant destruction, secret erasure, embedded NUL,
+  and moved-from container state.
+- Pinned VKL and VMA provenance records exact upstream source, local patches,
+  checksums, and refresh procedures.
+
+### Changed
+
+- VMA remains the pinned AMD allocation algorithm behind a private checked
+  `vma::` C++ façade and uses OA-owned host primitives. OA runtime allocation
+  policy remains owned by `oa::Engine`.
+- The engine upload cache now uses an ordered capacity index instead of a
+  linear scan while preserving smallest-sufficient reuse.
+- Renamed the OA-owned dynamic sequence from `oa::Vec<T>` to
+  `oa::Vector<T>` and its public header from `<oa/core/std/vec.h>` to
+  `<oa/core/std/vector.h>`. The pre-1.0 shorthand was removed so the generic
+  container is distinct from `oa::vlm::Vec2`, `Vec3`, and `Vec4`.
+
+### Fixed
+
+- Foundation ownership, containers, time, synchronization, random, algorithms,
+  strings, paths, and raw-memory boundaries now reject the audited overflow,
+  invalid-state, stale-alias, and partial-construction failure modes.
+
+### Verification
+
+- The final naming checkpoint passes the complete 305-step Release library and
+  `TestOaStd` build, all 271 focused tests, a direct installed-header-style
+  compile probe, and the 152-file generated-source drift check.
+- Detailed sanitizer, race, coverage, benchmark, and qualification boundaries
+  remain owned by the foundation, host-memory, and VMA evidence documents. The
+  tagged hosted workflow owns final package, wheel, PyPI, asset, and checksum
+  results.
+
 ## [0.7.20] — 2026-08-26 (hosted release repair)
 
 This patch republishes the `v0.7.19` foundation source with corrected hosted
@@ -12,9 +56,8 @@ are unchanged.
 
 ### Fixed
 
-- The ASAN and UBSAN jobs now build `TestCli` before running the complete
-  `core`-label CTest profile. The `v0.7.19` workflow registered that test but
-  omitted its executable from the curated sanitizer build target list.
+- The ASAN and UBSAN jobs build `TestCli` before running the complete
+  `core`-label CTest profile.
 
 ### Verification
 

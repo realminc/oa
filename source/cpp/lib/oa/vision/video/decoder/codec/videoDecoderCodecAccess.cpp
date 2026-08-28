@@ -4,7 +4,7 @@
 #include <oa/runtime/engine.h>
 #include <oa/runtime/engine/allocatorAccess.h>
 #include <oa/runtime/engine/deviceAccess.h>
-#include <oa/runtime/oaVma.h>
+#include <vma/vma.hpp>
 #include "../videoDecoderProfile.h"
 #include "../../codec/nalParser.h"
 
@@ -84,7 +84,7 @@ oa::Status oa::VideoDecoder::uploadBitstream(const oa::Span<const oa::U8>& inBit
 	}
 
 	auto& vkEngine = *impl_->engine;
-	auto allocator = static_cast<OaVmaAllocator>(oa::EngineAllocatorAccess::get(vkEngine).allocator);
+	auto allocator = static_cast<vma::Allocator>(oa::EngineAllocatorAccess::get(vkEngine).allocator);
 
 	if (slot.buffer.getCapacity() < requiredSize) {
 		VkVideoDecodeH264ProfileInfoKHR h264 = {};
@@ -122,9 +122,9 @@ oa::Status oa::VideoDecoder::uploadBitstream(const oa::Span<const oa::U8>& inBit
 		auto* tail = static_cast<oa::U8*>(mappedPtr) + inBitstream.size();
 		oa::memzero(tail, static_cast<oa::Usize>(requiredSize - inBitstream.size()));
 	}
-	VkResult flushResult = OaVmaFlushAllocation(
+	VkResult flushResult = vma::flushAllocation(
 		allocator,
-		static_cast<OaVmaAllocation>(slot.buffer.getAllocation()),
+		static_cast<vma::Allocation>(slot.buffer.getAllocation()),
 		0,
 		requiredSize);
 	if (flushResult != VK_SUCCESS) {
@@ -134,12 +134,12 @@ oa::Status oa::VideoDecoder::uploadBitstream(const oa::Span<const oa::U8>& inBit
 	return oa::Status::ok();
 }
 
-void oa::VideoDecoder::buildRefPicList0(oa::I32 inCurrentPoc, oa::Vec<oa::I32>& outRefList)
+void oa::VideoDecoder::buildRefPicList0(oa::I32 inCurrentPoc, oa::Vector<oa::I32>& outRefList)
 {
 	outRefList.clear();
 
 	struct RefFrame { oa::I32 slotIndex; oa::I32 poc; };
-	oa::Vec<RefFrame> candidates;
+	oa::Vector<RefFrame> candidates;
 
 	for (oa::I32 i = 0; i < 16; ++i) {
 		if (impl_->dpbSlots[i].inUse && impl_->dpbSlots[i].isReference) {
@@ -165,12 +165,12 @@ void oa::VideoDecoder::buildRefPicList0(oa::I32 inCurrentPoc, oa::Vec<oa::I32>& 
 	}
 }
 
-void oa::VideoDecoder::buildRefPicList1(oa::I32 inCurrentPoc, oa::Vec<oa::I32>& outRefList)
+void oa::VideoDecoder::buildRefPicList1(oa::I32 inCurrentPoc, oa::Vector<oa::I32>& outRefList)
 {
 	outRefList.clear();
 
 	struct RefFrame { oa::I32 slotIndex; oa::I32 poc; };
-	oa::Vec<RefFrame> candidates;
+	oa::Vector<RefFrame> candidates;
 
 	for (oa::I32 i = 0; i < 16; ++i) {
 		if (impl_->dpbSlots[i].inUse && impl_->dpbSlots[i].isReference) {
@@ -196,7 +196,7 @@ void oa::VideoDecoder::buildRefPicList1(oa::I32 inCurrentPoc, oa::Vec<oa::I32>& 
 	}
 }
 
-void oa::VideoDecoder::buildH264RefPicList0P(oa::Vec<oa::I32>& outRefList)
+void oa::VideoDecoder::buildH264RefPicList0P(oa::Vector<oa::I32>& outRefList)
 {
 	// H.264 §8.2.4.2.1: the initial P-slice refPicList0 lists short-term
 	// references by picNum (FrameNumWrap) descending, then long-term references
@@ -211,8 +211,8 @@ void oa::VideoDecoder::buildH264RefPicList0P(oa::Vec<oa::I32>& outRefList)
 	const oa::I32 currFrameNum = static_cast<oa::I32>(impl_->currentH264FrameNumber);
 
 	struct ShortRef { oa::I32 slotIndex; oa::I32 picNum; };
-	oa::Vec<ShortRef> shortTerm;
-	oa::Vec<oa::I32> longTerm;
+	oa::Vector<ShortRef> shortTerm;
+	oa::Vector<oa::I32> longTerm;
 
 	for (oa::I32 i = 0; i < 16; ++i) {
 		if (!impl_->dpbSlots[i].inUse || !impl_->dpbSlots[i].isReference) {
@@ -318,7 +318,7 @@ void oa::VideoDecoder::applySlidingWindow(oa::U32 inMaxNumRefFrames)
 }
 
 void oa::VideoDecoder::applyMmco(
-	const oa::Vec<oa::H264MmcoCommand>& inMmcoCommands,
+	const oa::Vector<oa::H264MmcoCommand>& inMmcoCommands,
 	oa::I32 inCurrentDpbSlot)
 {
 	auto findShortTermByH264FrameNum = [&](oa::U32 inH264FrameNum) -> oa::I32 {
@@ -386,7 +386,7 @@ void oa::VideoDecoder::applyMmco(
 	}
 }
 
-void oa::VideoDecoder::applyMmco(const oa::Vec<oa::U32>& inMmcoCommands)
+void oa::VideoDecoder::applyMmco(const oa::Vector<oa::U32>& inMmcoCommands)
 {
 	(void)inMmcoCommands;
 }

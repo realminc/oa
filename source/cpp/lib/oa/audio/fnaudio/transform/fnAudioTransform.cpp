@@ -9,7 +9,7 @@
 #include <oa/audio/fnAudio.h>
 #include <oa/core/log.h>
 #include <oa/core/fnMatrix.h>
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
 #include <oa/core/bufferAccess.h>
 #include <oa/core/op.h>
 #include <oa/runtime/executionSession.h>
@@ -49,11 +49,11 @@ static oa::Matrix buildMelFilterbank(const MelConfig& inCfg, oa::U32 inSampleRat
 	auto melToHz = [](float m) { return 700.0F * (oa::pow(10.0F, m / 2595.0F) - 1.0F); };
 
 	// Triangular filters [numMels, freqBins]
-	oa::Vec<oa::F32> fb(numMels * freqBins, 0.0F);
+	oa::Vector<oa::F32> fb(numMels * freqBins, 0.0F);
 	float melMin = hzToMel(fMin);
 	float melMax = hzToMel(fMax);
 
-	oa::Vec<float> melPts(numMels + 2);
+	oa::Vector<float> melPts(numMels + 2);
 	for (oa::U32 i = 0; i < numMels + 2; ++i) {
 		melPts[i] = melToHz(melMin + float(i) * (melMax - melMin) / float(numMels + 1));
 	}
@@ -90,7 +90,7 @@ static bool isValidMelConfig(const MelConfig& inCfg, oa::U32 inSampleRate) {
 // Orthonormal DCT-II matrix [numCoeffs, numMels] (scipy dct norm='ortho' —
 // what librosa MFCC uses).
 static oa::Matrix buildDctIiMatrix(oa::U32 inNumCoeffs, oa::U32 inNumMels) {
-	oa::Vec<oa::F32> d(inNumCoeffs * inNumMels, 0.0F);
+	oa::Vector<oa::F32> d(inNumCoeffs * inNumMels, 0.0F);
 	const oa::F32 scale0 = oa::sqrt(1.0F / static_cast<oa::F32>(inNumMels));
 	const oa::F32 scale  = oa::sqrt(2.0F / static_cast<oa::F32>(inNumMels));
 	for (oa::U32 k = 0; k < inNumCoeffs; ++k) {

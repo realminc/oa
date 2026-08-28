@@ -6,10 +6,10 @@
 // `reset` applies the deleter then nulls; the type is move-only and does not
 // export a hosted standard-library ownership conversion.
 //
-// Incomplete-type support (PImpl): reset guards the deleter call with a
-// compile-time completeness check so `~UniquePtr<T>` never instantiates the
-// deleter in TUs where T is forward-declared. The out-of-line destructor of the
-// owning class (defined where T is complete) handles deletion.
+// Incomplete-type support (PImpl): DefaultDelete requires T to be complete at
+// the destruction point, as enforced by its static assertion. A custom deleter
+// may explicitly support incomplete T and is always invoked; ownership is never
+// silently discarded.
 
 #include <oa/core/std/utility.h>
 #include <oa/core/std/typeTraits.h>
@@ -46,34 +46,55 @@ public:
 
 	explicit UniquePtr(pointer inP) noexcept requires (!oa::IsVoidV<T>) : ptr_(inP) {}
 
-	UniquePtr(pointer inP, Deleter inD) noexcept : ptr_(inP), deleter_(oa::move(inD)) {}
+	UniquePtr(pointer inP, const Deleter& inD) noexcept
+		requires(oa::IsNothrowCopyConstructibleV<Deleter>)
+		: ptr_(inP), deleter_(inD) {}
+
+	UniquePtr(pointer, const Deleter&)
+		requires(!oa::IsNothrowCopyConstructibleV<Deleter>) = delete;
+
+	UniquePtr(pointer inP, Deleter&& inD) noexcept
+		requires(oa::IsNothrowMoveConstructibleV<Deleter>)
+		: ptr_(inP), deleter_(oa::move(inD)) {}
+
+	UniquePtr(pointer, Deleter&&)
+		requires(!oa::IsNothrowMoveConstructibleV<Deleter>) = delete;
 
 	UniquePtr(const UniquePtr&) = delete;
 	UniquePtr& operator=(const UniquePtr&) = delete;
 
 	UniquePtr(UniquePtr&& inO) noexcept
-		: ptr_(inO.ptr_), deleter_(oa::move(inO.deleter_)) {
-		inO.ptr_ = nullptr;
+		requires(oa::IsNothrowMoveConstructibleV<Deleter>)
+		: ptr_(nullptr), deleter_(oa::move(inO.deleter_)) {
+		// Do not relinquish ownership until the destination deleter exists.
+		ptr_ = inO.release();
 	}
+
+	UniquePtr(UniquePtr&&) requires(!oa::IsNothrowMoveConstructibleV<Deleter>) = delete;
 
 	template<typename U, typename E,
 		typename = oa::EnableIfT<!oa::IsSameV<U, T> || !oa::IsSameV<E, Deleter>>,
-		typename = oa::EnableIfT<oa::IsConvertibleV<U*, T*>>>
-	UniquePtr(UniquePtr<U, E>&& inO) noexcept(oa::IsNothrowConstructibleV<Deleter, E&&>)
-		: ptr_(inO.release()), deleter_(oa::move(inO.getDeleter())) {}
+		typename = oa::EnableIfT<oa::IsConvertibleV<U*, T*>>,
+		typename = oa::EnableIfT<oa::IsNothrowConstructibleV<Deleter, E&&>>>
+	UniquePtr(UniquePtr<U, E>&& inO) noexcept
+		: ptr_(nullptr), deleter_(oa::move(inO.getDeleter())) {
+		ptr_ = inO.release();
+	}
 
-	UniquePtr& operator=(UniquePtr&& inO) noexcept(
-		oa::IsNothrowMoveAssignableV<Deleter>) {
+	UniquePtr& operator=(UniquePtr&& inO) noexcept
+		requires(oa::IsNothrowMoveAssignableV<Deleter>) {
 		if (this != &inO) {
 			reset();
-			ptr_ = inO.ptr_;
 			deleter_ = oa::move(inO.deleter_);
-			inO.ptr_ = nullptr;
+			ptr_ = inO.release();
 		}
 		return *this;
 	}
 
-	~UniquePtr() { reset(); }
+	UniquePtr& operator=(UniquePtr&&)
+		requires(!oa::IsNothrowMoveAssignableV<Deleter>) = delete;
+
+	~UniquePtr() noexcept { reset(); }
 
 	[[nodiscard]] pointer get() const noexcept { return ptr_; }
 
@@ -94,22 +115,23 @@ public:
 	}
 
 	void reset(pointer inP = pointer{}) noexcept {
+		if (inP == ptr_) {
+			return;
+		}
 		pointer old = ptr_;
 		ptr_ = inP;
 		if (old) {
-			// Guard with a compile-time completeness check: in TUs that only
-			// forward-declare T (pimpl pattern), this branch is suppressed so
-			// the deleter is never instantiated with an incomplete type.
-			// The owning class's out-of-line dtor runs reset in a completing TU.
-			if constexpr (IsCompleteType<T>) {
-				getDeleter()(old);
-			}
+			// DefaultDelete deliberately fails compilation when instantiated at an
+			// incomplete destruction point. A custom deleter may legally own an
+			// incomplete type and must never be silently skipped.
+			getDeleter()(old);
 		}
 	}
 
-	void swap(UniquePtr& inO) noexcept {
-		oa::swapValues(ptr_, inO.ptr_);
+	void swap(UniquePtr& inO) noexcept
+		requires(oa::IsNothrowSwappableV<Deleter>) {
 		oa::swapValues(deleter_, inO.deleter_);
+		oa::swapValues(ptr_, inO.ptr_);
 	}
 
 private:

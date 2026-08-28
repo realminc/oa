@@ -229,7 +229,7 @@ TEST(VideoRoundtrip, AbandonedSubmittedEncoderRetiresAtEngineClose) {
 		auto encoderResult = oa::VideoEncoder::create(*engine, profile);
 		ASSERT_TRUE(encoderResult.isOk()) << encoderResult.getStatus().toString();
 		auto encoder = oa::move(*encoderResult);
-		oa::Vec<oa::EncodedVideoPacket> ready;
+		oa::Vector<oa::EncodedVideoPacket> ready;
 		ASSERT_TRUE(oa::VideoEncoderAccess::submitRgba(
 			encoder, *oa::TextureAccess::buffer(texture),
 			width, height, 0U, ready).isOk());
@@ -625,7 +625,7 @@ TEST(VideoRoundtrip, DeferredMatrixTextureCompletesBeforeEncodeSnapshot)
 	// Preserve a deterministic stale snapshot. FromMatrix has only recorded its
 	// white producer, so encode(...) must execute that graph before the
 	// encoder is allowed to read this deliberately black packed buffer.
-	oa::Vec<oa::U8> black(static_cast<oa::Usize>(width) * height * 4U, 0U);
+	oa::Vector<oa::U8> black(static_cast<oa::Usize>(width) * height * 4U, 0U);
 	auto poisonStatus = oa::EngineResourceAccess::uploadBuffer(*engine,
 		*oa::TextureAccess::buffer(texture), 0U, black.data(), black.size());
 	ASSERT_TRUE(poisonStatus.isOk()) << poisonStatus.toString();

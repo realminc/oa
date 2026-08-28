@@ -1,9 +1,11 @@
 // memory: oa::memcpy, oa::memzero, oa::memEqual, aligned alloc.
 
 #include "../../oaTest.h"
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
+#include <algorithm>
 #include <array>
 #include <cstring>
+#include <vector>
 
 TEST(CoreMemory, CopySmall) {
 	oa::U8 src[16] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
@@ -103,6 +105,49 @@ TEST(CoreMemory, StreamingCopyEveryTailAndAlignment) {
 	}
 }
 
+TEST(CoreMemory, StreamingCopyAdmissionBoundaries) {
+	constexpr oa::Usize Guard = 64;
+	constexpr oa::U8 Sentinel = 0xA6;
+	constexpr std::array sizes{
+		oa::detail::MemcpyStreamMinBytes - 1U,
+		oa::detail::MemcpyStreamMinBytes,
+		oa::detail::MemcpyStreamMinBytes + 1U,
+		oa::detail::MemcpyStreamMaxBytes - 1U,
+		oa::detail::MemcpyStreamMaxBytes,
+		oa::detail::MemcpyStreamMaxBytes + 1U,
+	};
+	const oa::Usize allocation = sizes.back() + Guard * 3U;
+	std::vector<oa::U8> src(allocation);
+	std::vector<oa::U8> actual(allocation);
+	std::vector<oa::U8> expected(allocation);
+	for (oa::Usize index = 0; index < allocation; ++index) {
+		src[index] = static_cast<oa::U8>((index * 97U + 11U) & 0xFFU);
+	}
+
+	for (oa::Usize size : sizes) {
+		for (oa::Usize srcOffset : {
+			oa::Usize{0}, oa::Usize{1}, oa::Usize{63}})
+		{
+			for (oa::Usize dstOffset : {
+				oa::Usize{0}, oa::Usize{17}, oa::Usize{63}})
+			{
+				std::fill(actual.begin(), actual.end(), Sentinel);
+				std::fill(expected.begin(), expected.end(), Sentinel);
+				std::memcpy(expected.data() + Guard + dstOffset,
+					src.data() + Guard + srcOffset, size);
+				EXPECT_EQ(oa::memcpyStream(
+					actual.data() + Guard + dstOffset,
+					src.data() + Guard + srcOffset, size),
+					actual.data() + Guard + dstOffset);
+				ASSERT_EQ(std::memcmp(
+					actual.data(), expected.data(), allocation), 0)
+					<< "size=" << size << " srcOffset=" << srcOffset
+					<< " dstOffset=" << dstOffset;
+			}
+		}
+	}
+}
+
 TEST(CoreMemory, Memzero) {
 	void* buf = oa::alignedAlloc(256, 64);
 	std::memset(buf, 0xFF, 256);
@@ -120,6 +165,122 @@ TEST(CoreMemory, MemEqual) {
 	EXPECT_TRUE(oa::memEqual(a, b, 32));
 	b[15] = 0x99;
 	EXPECT_FALSE(oa::memEqual(a, b, 32));
+}
+
+TEST(CoreMemory, SecureZeroAndConstantTimeEquality) {
+	constexpr oa::Usize MaxSize = 1024;
+	constexpr oa::Usize Guard = 64;
+	constexpr oa::U8 Sentinel = 0xA7;
+	std::array<oa::U8, MaxSize + Guard * 2> a{};
+	std::array<oa::U8, MaxSize + Guard * 2> b{};
+
+	EXPECT_TRUE(oa::memEqualConstantTime(nullptr, nullptr, 0));
+	EXPECT_NO_FATAL_FAILURE(oa::memzeroSecure(nullptr, 0));
+	for (oa::Usize size = 0; size <= MaxSize; ++size) {
+		for (oa::Usize offset : {
+			oa::Usize{0}, oa::Usize{1}, oa::Usize{17}, oa::Usize{63}})
+		{
+			a.fill(Sentinel);
+			b.fill(Sentinel);
+			EXPECT_TRUE(oa::memEqualConstantTime(
+				a.data() + Guard + offset,
+				b.data() + Guard + offset,
+				size));
+			if (size > 0) {
+				for (const oa::Usize position : {
+					oa::Usize{0}, size / 2U, size - 1U})
+				{
+					b[Guard + offset + position] ^= 0xFFU;
+					EXPECT_FALSE(oa::memEqualConstantTime(
+						a.data() + Guard + offset,
+						b.data() + Guard + offset,
+						size));
+					b[Guard + offset + position] ^= 0xFFU;
+				}
+			}
+
+			oa::memzeroSecure(a.data() + Guard + offset, size);
+			for (oa::Usize index = 0; index < a.size(); ++index) {
+				const bool inside = index >= Guard + offset
+					and index < Guard + offset + size;
+				ASSERT_EQ(a[index], inside ? 0U : Sentinel)
+					<< "size=" << size << " offset=" << offset
+					<< " index=" << index;
+			}
+		}
+	}
+}
+
+TEST(CoreMemoryDeath, SecurePrimitivesRejectNullNonemptyRanges) {
+	EXPECT_DEATH((void)oa::memEqual(nullptr, nullptr, 1), "");
+	EXPECT_DEATH((void)oa::memEqualConstantTime(nullptr, "x", 1), "");
+	EXPECT_DEATH((void)oa::memEqualConstantTime("x", nullptr, 1), "");
+	EXPECT_DEATH(oa::memzeroSecure(nullptr, 1), "");
+}
+
+TEST(CoreMemory, CompareEverySizeAndMismatchPosition) {
+	constexpr oa::Usize MaxSize = 1024;
+	std::array<oa::U8, MaxSize> a{};
+	std::array<oa::U8, MaxSize> b{};
+	for (oa::Usize index = 0; index < MaxSize; ++index) {
+		a[index] = static_cast<oa::U8>((index * 73U + 19U) & 0xFFU);
+	}
+	b = a;
+	for (oa::Usize size = 0; size <= MaxSize; ++size) {
+		EXPECT_EQ(oa::memcmp(a.data(), b.data(), size), 0);
+		if (size == 0) continue;
+		for (const oa::Usize position : {
+			oa::Usize{0}, size / 2U, size - 1U})
+		{
+			b[position] ^= 0x80U;
+			const int oaResult = oa::memcmp(a.data(), b.data(), size);
+			const int stdResult = std::memcmp(a.data(), b.data(), size);
+			EXPECT_EQ((oaResult > 0) - (oaResult < 0),
+				(stdResult > 0) - (stdResult < 0));
+			b[position] ^= 0x80U;
+		}
+	}
+}
+
+TEST(CoreMemory, MoveEverySizeAlignmentAndDirection) {
+	constexpr oa::Usize MaxSize = 512;
+	constexpr oa::Usize Guard = 64;
+	std::array<oa::U8, MaxSize + Guard * 3> actual{};
+	std::array<oa::U8, MaxSize + Guard * 3> expected{};
+
+	for (oa::Usize size = 0; size <= MaxSize; ++size) {
+		for (oa::Usize offset : {
+			oa::Usize{0}, oa::Usize{1}, oa::Usize{17}, oa::Usize{63}})
+		{
+			for (oa::Usize distance : {
+				oa::Usize{0}, oa::Usize{1}, oa::Usize{7}, oa::Usize{31}})
+			{
+				for (oa::Usize index = 0; index < actual.size(); ++index) {
+					actual[index] = static_cast<oa::U8>(index * 31U + 7U);
+				}
+				expected = actual;
+				oa::U8* const actualBase = actual.data() + Guard + offset;
+				oa::U8* const expectedBase = expected.data() + Guard + offset;
+				std::memmove(expectedBase + distance, expectedBase, size);
+				EXPECT_EQ(oa::memmove(actualBase + distance, actualBase, size),
+					actualBase + distance);
+				ASSERT_EQ(actual, expected)
+					<< "right size=" << size << " offset=" << offset
+					<< " distance=" << distance;
+
+				for (oa::Usize index = 0; index < actual.size(); ++index) {
+					actual[index] = static_cast<oa::U8>(index * 31U + 7U);
+				}
+				expected = actual;
+				std::memmove(expectedBase, expectedBase + distance, size);
+				EXPECT_EQ(oa::memmove(actualBase, actualBase + distance, size),
+					actualBase);
+				ASSERT_EQ(actual, expected)
+					<< "left size=" << size << " offset=" << offset
+					<< " distance=" << distance;
+			}
+		}
+	}
 }
 
 TEST(CoreMemory, FillZeroAndEqualEveryTail) {

@@ -101,7 +101,7 @@ public:
 	// Host observation is legal only with neither an active recording nor a
 	// pending event. The copy exposes semantic episode telemetry, never
 	// stateF32_/u32_.
-	[[nodiscard]] oa::Result<oa::Vec<LunarLander3dEpisodeTelemetry>>
+	[[nodiscard]] oa::Result<oa::Vector<LunarLander3dEpisodeTelemetry>>
 		copyEpisodeTelemetry() const;
 
 private:

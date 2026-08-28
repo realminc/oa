@@ -24,7 +24,7 @@ enum class WeightFormat : oa::U8 {
 
 struct WeightInfo {
 	oa::String name;
-	oa::Vec<oa::I64> shape;
+	oa::Vector<oa::I64> shape;
 	oa::ScalarType dtype = oa::ScalarType::Float32;
 	oa::U64 byteSize = 0;
 	oa::U64 elementCount = 0;
@@ -39,7 +39,7 @@ public:
 
 	[[nodiscard]] virtual WeightFormat format() const noexcept = 0;
 	[[nodiscard]] virtual const oa::Path& path() const noexcept = 0;
-	[[nodiscard]] virtual oa::Vec<WeightInfo> list() const = 0;
+	[[nodiscard]] virtual oa::Vector<WeightInfo> list() const = 0;
 	[[nodiscard]] virtual const WeightInfo* find(oa::StringView inName) const = 0;
 	[[nodiscard]] virtual oa::Result<oa::Span<const oa::U8>> bytes(oa::StringView inName) const = 0;
 	[[nodiscard]] virtual oa::HashMap<oa::String, oa::String> metadata() const = 0;
@@ -73,9 +73,9 @@ struct WeightSlice {
 
 struct WeightMapping {
 	// Concat accepts multiple sources in order. Other transforms require one.
-	oa::Vec<oa::String> sources;
+	oa::Vector<oa::String> sources;
 	oa::String target;
-	oa::Vec<oa::I64> targetShape;
+	oa::Vector<oa::I64> targetShape;
 	oa::ScalarType targetDtype = oa::ScalarType::Float32;
 	WeightTransform transform = WeightTransform::Identity;
 	oa::I32 concatAxis = 0;
@@ -86,8 +86,8 @@ struct WeightMap {
 	oa::String architecture;
 	oa::U32 configVersion = 1;
 	ModelFileConfig config;
-	oa::Vec<oa::U8> archConfig;
-	oa::Vec<WeightMapping> mappings;
+	oa::Vector<oa::U8> archConfig;
+	oa::Vector<WeightMapping> mappings;
 	bool requireAllSourceWeights = true;
 };
 
@@ -96,7 +96,7 @@ struct WeightTransferReport {
 	oa::U64 usedSourceWeights = 0;
 	oa::U64 outputWeights = 0;
 	oa::U64 outputBytes = 0;
-	oa::Vec<oa::String> unusedSources;
+	oa::Vector<oa::String> unusedSources;
 };
 
 // Model translators are small declarative mapping layers. They inspect the
@@ -115,7 +115,7 @@ public:
 // to the transfer engine.
 oa::Status registerModelTranslator(oa::UniquePtr<ModelTranslator> inTranslator);
 [[nodiscard]] const ModelTranslator* findModelTranslator(oa::StringView inName);
-[[nodiscard]] oa::Vec<oa::String> listModelTranslators();
+[[nodiscard]] oa::Vector<oa::String> listModelTranslators();
 
 [[nodiscard]] oa::Result<WeightTransferReport> transferWeights(
 	const WeightSource& inSource, const WeightMap& inMap,

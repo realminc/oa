@@ -22,7 +22,7 @@ void bindMlOptim(nb::module_& m) {
     nb::class_<oa::Sgd, oa::Optimizer>(m, "Sgd")
         .def("__init__", [](oa::Sgd* self, nb::list params, oa::F32 lr, oa::F32 momentum,
                             oa::F32 weightDecay) {
-            oa::Vec<oa::Parameter*> ptrs;
+            oa::Vector<oa::Parameter*> ptrs;
             for (auto item : params) {
                 ptrs.pushBack(nb::cast<oa::Parameter*>(item));
             }
@@ -36,7 +36,7 @@ void bindMlOptim(nb::module_& m) {
     nb::class_<oa::Adam, oa::Optimizer>(m, "Adam")
         .def("__init__", [](oa::Adam* self, nb::list params, oa::F32 lr, oa::F32 beta1,
                             oa::F32 beta2, oa::F32 eps) {
-            oa::Vec<oa::Parameter*> ptrs;
+            oa::Vector<oa::Parameter*> ptrs;
             for (auto item : params) {
                 ptrs.pushBack(nb::cast<oa::Parameter*>(item));
             }
@@ -54,7 +54,7 @@ void bindMlOptim(nb::module_& m) {
     nb::class_<oa::AdamW, oa::Optimizer>(m, "AdamW")
         .def("__init__", [](oa::AdamW* self, nb::list params, oa::F32 lr, oa::F32 beta1,
                             oa::F32 beta2, oa::F32 eps, oa::F32 weightDecay) {
-            oa::Vec<oa::Parameter*> ptrs;
+            oa::Vector<oa::Parameter*> ptrs;
             for (auto item : params) {
                 ptrs.pushBack(nb::cast<oa::Parameter*>(item));
             }
@@ -74,7 +74,7 @@ void bindMlOptim(nb::module_& m) {
     nb::class_<oa::Muon, oa::Optimizer>(m, "Muon")
         .def("__init__", [](oa::Muon* self, nb::list params, oa::F32 lr, oa::F32 beta,
                             oa::F32 weightDecay, oa::F32 eps, oa::I32 ns5Iters) {
-            oa::Vec<oa::Parameter*> ptrs;
+            oa::Vector<oa::Parameter*> ptrs;
             for (auto item : params) {
                 ptrs.pushBack(nb::cast<oa::Parameter*>(item));
             }

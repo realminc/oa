@@ -42,7 +42,7 @@ private:
 	oa::I32 hiddenSize_;
 	oa::I32 numLayers_;
 	bool hasBias_;
-	oa::Vec<oa::SharedPtr<GruCell>> layers_;
+	oa::Vector<oa::SharedPtr<GruCell>> layers_;
 };
 
 } // namespace oa

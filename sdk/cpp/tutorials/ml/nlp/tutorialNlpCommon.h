@@ -95,8 +95,8 @@ public:
 	}
 
 	void nextBatch(oa::Matrix& outX, oa::Matrix& outY) {
-		oa::Vec<oa::I32> x(static_cast<oa::I64>(batchSize_) * kContextLen);
-		oa::Vec<oa::I32> y(static_cast<oa::I64>(batchSize_) * kContextLen);
+		oa::Vector<oa::I32> x(static_cast<oa::I64>(batchSize_) * kContextLen);
+		oa::Vector<oa::I32> y(static_cast<oa::I64>(batchSize_) * kContextLen);
 		const oa::I64 limit = tokens_.size() - kContextLen - 1;
 		for (oa::I32 b = 0; b < batchSize_; ++b) {
 			const oa::I64 start = (cursor_ + b * 7) % limit;
@@ -113,8 +113,8 @@ public:
 	}
 
 	// Left-aligned prompt: ids at positions 0.. (padded with 0 / space).
-	[[nodiscard]] oa::Vec<oa::I32> encodePromptLeft(const char* inPrompt) const {
-		oa::Vec<oa::I32> out(kContextLen);
+	[[nodiscard]] oa::Vector<oa::I32> encodePromptLeft(const char* inPrompt) const {
+		oa::Vector<oa::I32> out(kContextLen);
 		const oa::I64 len = static_cast<oa::I64>(std::strlen(inPrompt));
 		for (oa::I32 i = 0; i < kContextLen; ++i) out[i] = encode_ ? 26 : 0;
 		for (oa::I32 i = 0; i < kContextLen and i < len; ++i) out[i] = encode(inPrompt[i]);
@@ -122,7 +122,7 @@ public:
 	}
 
 private:
-	oa::Vec<oa::I32> tokens_;
+	oa::Vector<oa::I32> tokens_;
 	oa::I32       batchSize_;
 	oa::I64       cursor_ = 0;
 	EncodeFn    encode_ = nullptr;
@@ -148,7 +148,7 @@ template <class Model>
 oa::String nlpGenerateGreedy(Model& inModel, const char* inPrompt, oa::I32 inCount,
 	oa::I32 inVocab, NlpAllPositionSampler::EncodeFn inEncode = nullptr) {
 	NlpAllPositionSampler enc(nlpCorpus(), 1, inEncode);  // only encodePromptLeft used
-	oa::Vec<oa::I32> context = enc.encodePromptLeft(inPrompt);
+	oa::Vector<oa::I32> context = enc.encodePromptLeft(inPrompt);
 	const oa::I32 promptLen = static_cast<oa::I32>(std::strlen(inPrompt));
 	oa::I32 filled   = std::min(promptLen, kContextLen);
 	oa::I32 logitRow = std::max(0, filled - 1);
@@ -226,7 +226,7 @@ template <class Model>
 oa::String nlpGenerateSampled(Model& inModel, const char* inPrompt, oa::I32 inCount,
 	oa::I32 inVocab, oa::F32 inTemperature = 0.8F, oa::F32 inTopP = 0.9F) {
 	NlpAllPositionSampler enc(nlpCorpus(), 1);  // only encodePromptLeft used
-	oa::Vec<oa::I32> context = enc.encodePromptLeft(inPrompt);
+	oa::Vector<oa::I32> context = enc.encodePromptLeft(inPrompt);
 	const oa::I32 promptLen = static_cast<oa::I32>(std::strlen(inPrompt));
 	oa::I32 filled = std::min(promptLen, kContextLen);
 	oa::I32 logitRow = std::max(0, filled - 1);

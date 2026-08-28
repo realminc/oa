@@ -62,8 +62,9 @@ option(OA_BUILD_SHARED "Build liboa as a shared library (required for distributa
 option(OA_BUILD_TUTORIALS "Build the tutorial executables (installable as oa-* CLI tools)" OFF)
 option(OA_ANDROID_ML "Build the Android-safe Runtime + Core + ML source profile" ${ANDROID})
 option(OA_ENABLE_NATIVE_ARCH "Enable -march=native for local non-Android Release builds" ON)
-set(OA_SANITIZERS "" CACHE STRING "Comma-separated host sanitizers: address, undefined, or address,undefined")
-set_property(CACHE OA_SANITIZERS PROPERTY STRINGS "" "address" "undefined" "address,undefined")
+option(OA_COVERAGE "Instrument host binaries for LLVM source coverage" OFF)
+set(OA_SANITIZERS "" CACHE STRING "Comma-separated host sanitizers: address, undefined, thread, or address,undefined")
+set_property(CACHE OA_SANITIZERS PROPERTY STRINGS "" "address" "undefined" "thread" "address,undefined")
 
 if(NOT OA_EMBED_SHADERS)
 	message(FATAL_ERROR
@@ -90,12 +91,27 @@ if(OA_SANITIZERS)
 	if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
 		message(FATAL_ERROR "OA_SANITIZERS requires Clang or GCC")
 	endif()
-	if(NOT OA_SANITIZERS MATCHES "^(address|undefined|address,undefined)$")
+	if(NOT OA_SANITIZERS MATCHES "^(address|undefined|thread|address,undefined)$")
 		message(FATAL_ERROR "Invalid OA_SANITIZERS='${OA_SANITIZERS}'")
 	endif()
 	add_compile_options("-fsanitize=${OA_SANITIZERS}" -fno-omit-frame-pointer)
 	add_link_options("-fsanitize=${OA_SANITIZERS}")
 	message(STATUS "Host sanitizers: ${OA_SANITIZERS}")
+endif()
+
+if(OA_COVERAGE)
+	if(ANDROID)
+		message(FATAL_ERROR "OA_COVERAGE is a host validation profile and is not supported by the Android build")
+	endif()
+	if(OA_SANITIZERS)
+		message(FATAL_ERROR "OA_COVERAGE and OA_SANITIZERS are separate validation profiles")
+	endif()
+	if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+		message(FATAL_ERROR "OA_COVERAGE requires Clang/LLVM coverage tooling")
+	endif()
+	add_compile_options(-fprofile-instr-generate -fcoverage-mapping)
+	add_link_options(-fprofile-instr-generate -fcoverage-mapping)
+	message(STATUS "LLVM source coverage instrumentation: enabled")
 endif()
 
 add_subdirectory(source)
@@ -431,9 +447,10 @@ set(OA_SOURCES
 	source/cpp/lib/oa/ml/io/shardedWeightSource.cpp
 	source/cpp/lib/oa/ml/io/safeTensorReader.cpp
 
-	# Vulkan runtime
-	source/cpp/lib/oa/runtime/oaVk.c
-	source/cpp/lib/oa/runtime/oaVma.cpp
+	# Vulkan runtime (vendored forks — now under thirdparty/)
+	source/cpp/thirdparty/vkl/vkl.c
+	source/cpp/thirdparty/vma/vma.cpp
+	source/cpp/lib/oa/runtime/loader.cpp
 	source/cpp/lib/oa/runtime/device/device.cpp
 	source/cpp/lib/oa/runtime/instance.cpp
 	source/cpp/lib/oa/runtime/device/deviceUtils.cpp
@@ -737,6 +754,7 @@ target_include_directories(oa PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/source/cpp/thi
 target_include_directories(oa PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/source/cpp/thirdparty/utf8proc)
 target_include_directories(oa SYSTEM PRIVATE
 	${CMAKE_CURRENT_SOURCE_DIR}/source/cpp/thirdparty/xsimd/include)
+target_include_directories(oa PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/source/cpp/thirdparty)
 target_include_directories(oa PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/source/cpp/lib)
 
 # The fixed xsimd 14.1.0 snapshot is header-only and private to OA's compiled
@@ -835,7 +853,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 	endif()
 endif()
 
-# Vulkan: OaVk (forked volk) handles dynamic loading via dlopen — no static linking.
+# Vulkan: private VKL (forked volk) handles dynamic loading; no loader is linked.
 target_link_libraries(oa PRIVATE ${CMAKE_DL_LIBS})
 if(TARGET Vulkan::Headers)
 	target_link_libraries(oa PUBLIC Vulkan::Headers)
@@ -1423,14 +1441,12 @@ install(FILES
 	DESTINATION "${OA_LICENSE_INSTALL_DIR}/third-party"
 	COMPONENT oa
 )
-install(FILES source/cpp/thirdparty/xsimd/LICENSE
+install(FILES source/cpp/thirdparty/licenses/xsimd.txt
 	DESTINATION "${OA_LICENSE_INSTALL_DIR}/third-party"
-	RENAME xsimd.txt
 	COMPONENT oa
 )
-install(FILES source/cpp/thirdparty/utf8proc/LICENSE
+install(FILES source/cpp/thirdparty/licenses/utf8proc.txt
 	DESTINATION "${OA_LICENSE_INSTALL_DIR}/third-party"
-	RENAME utf8proc.txt
 	COMPONENT oa
 )
 if(DEFINED VCPKG_INSTALLED_DIR AND DEFINED VCPKG_TARGET_TRIPLET)
@@ -1697,13 +1713,11 @@ if(OA_BUILD_PYTHON)
 			source/cpp/thirdparty/licenses/stb.txt
 			DESTINATION oa/licenses/third-party
 			COMPONENT PythonWheel)
-		install(FILES source/cpp/thirdparty/xsimd/LICENSE
+		install(FILES source/cpp/thirdparty/licenses/xsimd.txt
 			DESTINATION oa/licenses/third-party
-			RENAME xsimd.txt
 			COMPONENT PythonWheel)
-		install(FILES source/cpp/thirdparty/utf8proc/LICENSE
+		install(FILES source/cpp/thirdparty/licenses/utf8proc.txt
 			DESTINATION oa/licenses/third-party
-			RENAME utf8proc.txt
 			COMPONENT PythonWheel)
 		foreach(_OA_NOTICE_FILE IN LISTS _OA_VCPKG_NOTICE_FILES)
 			get_filename_component(_OA_NOTICE_DIR "${_OA_NOTICE_FILE}" DIRECTORY)

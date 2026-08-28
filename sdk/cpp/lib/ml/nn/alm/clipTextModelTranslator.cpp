@@ -32,7 +32,7 @@ public:
 			const auto* info = inSource.find(inName);
 			if (info == nullptr)
 				return oa::Status::notFound(oa::String("CLIP tensor missing: ") + inName);
-			oa::Vec<oa::I64> shape(inShape);
+			oa::Vector<oa::I64> shape(inShape);
 			if (info->shape.size() != shape.size())
 				return oa::Status::error(oa::StatusCode::ShapeMismatch,
 										 oa::String("CLIP rank mismatch: ") + inName);

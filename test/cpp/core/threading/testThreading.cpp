@@ -101,8 +101,8 @@ TEST(Channel, Mpmc) {
 	constexpr oa::I32 kTotal = kProducers * kPerProducer;
 
 	std::atomic<oa::I32> sum{0};
-	oa::Vec<std::thread> producers;
-	oa::Vec<std::thread> consumers;
+	oa::Vector<std::thread> producers;
+	oa::Vector<std::thread> consumers;
 
 	for (oa::I32 p = 0; p < kProducers; ++p) {
 		producers.emplaceBack([&, p] {
@@ -217,7 +217,7 @@ TEST(RwLock, ConcurrentReads) {
 	oa::RwLock<oa::I32> lock(42);
 	std::atomic<oa::I32> readCount{0};
 
-	oa::Vec<std::thread> readers;
+	oa::Vector<std::thread> readers;
 	for (oa::I32 i = 0; i < 8; ++i) {
 		readers.emplaceBack([&] {
 			auto guard = lock.read();
@@ -234,7 +234,7 @@ TEST(RwLock, ConcurrentReads) {
 TEST(RwLock, ExclusiveWrite) {
 	oa::RwLock<oa::I32> lock(0);
 
-	oa::Vec<std::thread> writers;
+	oa::Vector<std::thread> writers;
 	for (oa::I32 i = 0; i < 4; ++i) {
 		writers.emplaceBack([&] {
 			for (oa::I32 j = 0; j < 100; ++j) {
@@ -258,7 +258,7 @@ TEST(Spinlock, MutualExclusion) {
 	oa::Spinlock spin;
 	oa::I32 counter = 0;
 
-	oa::Vec<std::thread> threads;
+	oa::Vector<std::thread> threads;
 	for (oa::I32 i = 0; i < 4; ++i) {
 		threads.emplaceBack([&] {
 			for (oa::I32 j = 0; j < 1000; ++j) {

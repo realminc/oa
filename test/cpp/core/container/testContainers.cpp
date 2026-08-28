@@ -1,4 +1,4 @@
-// oa::Vec vs std::vector — parity, growth behavior, and printed speed comparison.
+// oa::Vector vs std::vector — parity, growth behavior, and printed speed comparison.
 
 #include "../../oaTest.h"
 
@@ -11,7 +11,7 @@
 namespace {
 
 template<typename T>
-static bool vecsEqual(const oa::Vec<T>& inOa, const std::vector<T>& inStd) {
+static bool vecsEqual(const oa::Vector<T>& inOa, const std::vector<T>& inStd) {
 	if (inOa.size() != inStd.size()) return false;
 	for (oa::Usize i = 0; i < inOa.size(); ++i) {
 		if (!(inOa[i] == inStd[i])) return false;
@@ -31,10 +31,10 @@ static double timeAvgMsPerIter(oa::I32 inIters, F&& inFunc) {
 
 static void printSpeedTableHeader() {
 	printf("\n");
-	printf("=== oa::Vec vs std::vector — ms per full loop (lower = faster) ===\n");
-	printf("    std/Oa:  >1.0 => oa::Vec faster   |   <1.0 => std::vector faster\n");
+	printf("=== oa::Vector vs std::vector — ms per full loop (lower = faster) ===\n");
+	printf("    std/Oa:  >1.0 => oa::Vector faster   |   <1.0 => std::vector faster\n");
 	printf("------------------------------------------------------------------------\n");
-	printf("  %-46s %10s %10s %10s\n", "scenario", "oa::Vec ms", "std ms", "std/Oa");
+	printf("  %-46s %10s %10s %10s\n", "scenario", "oa::Vector ms", "std ms", "std/Oa");
 	printf("------------------------------------------------------------------------\n");
 }
 
@@ -74,7 +74,7 @@ static void benchTrials(
 	const double stMed = percentile(stMs, 0.5);
 	const double ratioMed = oaMed > 0.0 ? stMed / oaMed : 0.0;
 	printf("  %-46s\n", inLabel);
-	printf("    oa::Vec  min/med/max: %8.3f / %8.3f / %8.3f ms\n",
+	printf("    oa::Vector  min/med/max: %8.3f / %8.3f / %8.3f ms\n",
 		oaMs.front(), oaMed, oaMs.back());
 	printf("    std    min/med/max: %8.3f / %8.3f / %8.3f ms\n",
 		stMs.front(), stMed, stMs.back());
@@ -85,7 +85,7 @@ static void benchTrials(
 } // namespace
 
 TEST(CoreContainers, VecPushBackMatchesStdInt) {
-	oa::Vec<oa::I32> oa;
+	oa::Vector<oa::I32> oa;
 	std::vector<oa::I32> st;
 	for (oa::I32 i = 0; i < 1000; ++i) {
 		oa.pushBack(i);
@@ -96,7 +96,7 @@ TEST(CoreContainers, VecPushBackMatchesStdInt) {
 }
 
 TEST(CoreContainers, VecReserveResizeErase) {
-	oa::Vec<oa::I32> oa;
+	oa::Vector<oa::I32> oa;
 	std::vector<oa::I32> st;
 	oa.reserve(500);
 	st.reserve(500);
@@ -116,7 +116,7 @@ TEST(CoreContainers, VecReserveResizeErase) {
 }
 
 TEST(CoreContainers, VecStringNonTrivial) {
-	oa::Vec<std::string> oa;
+	oa::Vector<std::string> oa;
 	std::vector<std::string> st;
 	oa.pushBack("hello");
 	st.push_back("hello");
@@ -129,7 +129,7 @@ TEST(CoreContainers, VecStringNonTrivial) {
 }
 
 TEST(CoreContainers, VecAppendTrivialMatchesMemcpy) {
-	oa::Vec<oa::I32> oa;
+	oa::Vector<oa::I32> oa;
 	std::vector<oa::I32> st;
 	oa::I32 chunk[256];
 	for (oa::I32 i = 0; i < 256; ++i) chunk[i] = i * 3;
@@ -142,8 +142,8 @@ TEST(CoreContainers, VecAppendTrivialMatchesMemcpy) {
 }
 
 TEST(CoreContainers, VecEqualityOperator) {
-	oa::Vec<oa::I32> a;
-	oa::Vec<oa::I32> b;
+	oa::Vector<oa::I32> a;
+	oa::Vector<oa::I32> b;
 	a.pushBack(1);
 	a.pushBack(2);
 	b.pushBack(1);
@@ -155,9 +155,9 @@ TEST(CoreContainers, VecEqualityOperator) {
 
 // run:  ./test_containers --gtest_filter=CoreContainers.benchSpeedVsStd
 TEST(CoreContainers, benchSpeedVsStd) {
-	oa::Vec<oa::I32> oaI;
+	oa::Vector<oa::I32> oaI;
 	std::vector<oa::I32> stI;
-	oa::Vec<oa::F64> oaD;
+	oa::Vector<oa::F64> oaD;
 	std::vector<oa::F64> stD;
 
 	printSpeedTableHeader();
@@ -180,7 +180,7 @@ TEST(CoreContainers, benchSpeedVsStd) {
 	}
 
 	// 2) Cold growth every iteration: release capacity then grow from empty.
-	// oa::Vec uses realloc for trivial T — expect faster than typical std::vector (alloc+copy+free).
+	// oa::Vector uses realloc for trivial T — expect faster than typical std::vector (alloc+copy+free).
 	{
 		const oa::I32 n = 500000;
 		const oa::I32 iters = 20;
@@ -196,7 +196,7 @@ TEST(CoreContainers, benchSpeedVsStd) {
 		});
 		printSpeedRow("push_back i32, N=500k, clear+shrink_to_fit", oaMs, stMs);
 		const double stdPerOa = oaMs > 0.0 ? stMs / oaMs : 0.0;
-		EXPECT_GE(stdPerOa, 1.0) << "oa::Vec realloc path should be at least parity vs std::vector here";
+		EXPECT_GE(stdPerOa, 1.0) << "oa::Vector realloc path should be at least parity vs std::vector here";
 	}
 
 	// 3) No realloc: single reserve then fill.
@@ -239,14 +239,14 @@ TEST(CoreContainers, benchSpeedVsStd) {
 // Full statistical report: pin CPU (e.g. taskset -c 0) for stable numbers.
 // run: ./test_containers --gtest_filter=CoreContainers.benchSpeedVsStdFullReport
 TEST(CoreContainers, benchSpeedVsStdFullReport) {
-	oa::Vec<oa::I32> oaI;
+	oa::Vector<oa::I32> oaI;
 	std::vector<oa::I32> stI;
-	oa::Vec<oa::U8> oaU;
+	oa::Vector<oa::U8> oaU;
 	std::vector<oa::U8> stU;
 
 	printf("\n");
 	printf("================================================================================\n");
-	printf(" oa::Vec vs std::vector — FULL REPORT (median over independent trials)\n");
+	printf(" oa::Vector vs std::vector — FULL REPORT (median over independent trials)\n");
 	printf("================================================================================\n");
 #if defined(__clang__)
 	printf(" Compiler: Clang %s\n", __clang_version__);
@@ -256,7 +256,7 @@ TEST(CoreContainers, benchSpeedVsStdFullReport) {
 	printf(" Compiler: (other)\n");
 #endif
 	printf(" C++ __cplusplus = %ld\n", static_cast<long>(__cplusplus));
-	printf(" std/Oa median > 1.0 => std slower => oa::Vec faster for that scenario.\n");
+	printf(" std/Oa median > 1.0 => std slower => oa::Vector faster for that scenario.\n");
 	printf("--------------------------------------------------------------------------------\n\n");
 
 	const oa::I32 kTrials = 21;

@@ -153,7 +153,7 @@ TEST_VK(FlowTest, RejectsInvalidContracts) {
 TEST_VK(FlowTest, HumanMl3dGeometryMetricsHaveExactIdentityOracle) {
 	constexpr oa::I32 frames = 3;
 	constexpr oa::I32 features = 263;
-	oa::Vec<oa::F32> target(frames * features, 0.0F);
+	oa::Vector<oa::F32> target(frames * features, 0.0F);
 	// Plant all four feet in the target and prediction.
 	for (oa::I32 frame = 0; frame < frames; ++frame) {
 		for (oa::I32 contact = 0; contact < 4; ++contact) {

@@ -14,7 +14,7 @@
 #include <oa/runtime/dispatchDesc.h>
 
 namespace oa { class Engine; }
-struct OaVkDeviceTable;
+struct VklDeviceTable;
 
 namespace oavk {
 
@@ -36,10 +36,10 @@ public:
 	void* commandPool = nullptr;
 	void* commandBuffer = nullptr;
 	// Borrowed immutable dispatch owned by the device that created this stream.
-	const OaVkDeviceTable* deviceDispatch = nullptr;
+	const VklDeviceTable* deviceDispatch = nullptr;
 	TimelineSemaphore timelineSem;
 	oa::U64 timelineValue = 0;
-	oa::Vec<void*> pendingPools;
+	oa::Vector<void*> pendingPools;
 	void* queue = nullptr;
 	oa::U32 queueFamily = 0;
 	oa::Bool recording = false;

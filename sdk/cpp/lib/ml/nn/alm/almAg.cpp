@@ -161,7 +161,7 @@ oa::Status validateWeights(oa::Module& inModule, const oa::ModelFile& inFile) {
 		}
 	}
 	struct NamedBuffer { oa::String path; const oa::ModuleBuffer* buffer = nullptr; };
-	oa::Vec<NamedBuffer> buffers;
+	oa::Vector<NamedBuffer> buffers;
 	auto collect = [&](auto&& self, const oa::Module& module, const oa::String& prefix) -> void {
 		for (const auto& buffer : module.buffers()) {
 			if (not buffer.persistent or buffer.data.isEmpty()) continue;
@@ -255,13 +255,13 @@ oa::Matrix oa::AlmAg::forwardConditioned(
 	return prior_->forwardConditioned(inTokenIds, inTextFeatures);
 }
 
-oa::Vec<oa::Matrix> oa::AlmAg::tokenize(
+oa::Vector<oa::Matrix> oa::AlmAg::tokenize(
 	const oa::Matrix& inMotion, oa::I32 inBatch, oa::I32 inFrames) {
 	return tokenizer_->tokenize(inMotion, inBatch, inFrames);
 }
 
 oa::Matrix oa::AlmAg::detokenize(
-	const oa::Vec<oa::Matrix>& inTokenIds, oa::I32 inBatch, oa::I32 inTokenLength) {
+	const oa::Vector<oa::Matrix>& inTokenIds, oa::I32 inBatch, oa::I32 inTokenLength) {
 	return tokenizer_->detokenize(inTokenIds, inBatch, inTokenLength);
 }
 

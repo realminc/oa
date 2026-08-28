@@ -56,15 +56,15 @@ private:
 	oa::I32    batchSize_;
 	bool     shuffle_;
 
-	oa::Vec<oa::U8> images_;   // [num_samples * 784] flattened images
-	oa::Vec<oa::U8> labels_;   // [num_samples] class labels (0-9)
+	oa::Vector<oa::U8> images_;   // [num_samples * 784] flattened images
+	oa::Vector<oa::U8> labels_;   // [num_samples] class labels (0-9)
 	oa::I32    numSamples_ = 0;
 	oa::I32    numBatches_ = 0;
 
-	oa::Vec<oa::I32> indices_;  // Shuffled sample indices
+	oa::Vector<oa::I32> indices_;  // Shuffled sample indices
 	oa::I32        cursor_ = 0;
-	oa::Vec<oa::U8>  imgBuf_;  // Pre-allocated batch image buffer
-	oa::Vec<oa::U8>  lblBuf_;  // Pre-allocated batch label buffer
+	oa::Vector<oa::U8>  imgBuf_;  // Pre-allocated batch image buffer
+	oa::Vector<oa::U8>  lblBuf_;  // Pre-allocated batch label buffer
 
 	std::mt19937 rng_;
 };

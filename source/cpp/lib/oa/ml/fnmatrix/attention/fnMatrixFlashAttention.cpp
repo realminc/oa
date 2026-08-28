@@ -31,7 +31,7 @@ class GradFlashAttentionCausal final : public GradNode {
 public:
 	oa::F32 scale = 1.0F;
 
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.empty()) return;
 		auto gradients = oa::FnMatrix::flashAttentionCausalBwd(
 			saved(0), saved(1), saved(2), saved(3), saved(4), inDOut, scale);

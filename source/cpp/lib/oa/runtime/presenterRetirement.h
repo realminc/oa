@@ -17,12 +17,12 @@ namespace oa {
 struct RetiredPresenter {
 	oa::Swapchain swapchain;
 	VkRenderPass renderPass = VK_NULL_HANDLE;
-	oa::Vec<VkFramebuffer> framebuffers;
+	oa::Vector<VkFramebuffer> framebuffers;
 	VkCommandPool commandPool = VK_NULL_HANDLE;
-	oa::Vec<VkCommandBuffer> commandBuffers;
+	oa::Vector<VkCommandBuffer> commandBuffers;
 	VkDescriptorPool imGuiPool = VK_NULL_HANDLE;
 	oa::Bool imGuiReady = false;
-	oa::Vec<oa::UniquePtr<oavk::Stream>> graphicsStreams;
+	oa::Vector<oa::UniquePtr<oavk::Stream>> graphicsStreams;
 	void* presentQueue = nullptr;
 	oavk::QueueSubmitRoute presentQueueRoute = oavk::QueueSubmitRoute::Unknown;
 	oa::Bool hasSwapchainMaintenance1 = false;

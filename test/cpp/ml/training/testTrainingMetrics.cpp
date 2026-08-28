@@ -34,8 +34,8 @@ public:
     }
   }
 
-  oa::Vec<oa::I64> lossSteps;
-  oa::Vec<oa::F32> lossValues;
+  oa::Vector<oa::I64> lossSteps;
+  oa::Vector<oa::F32> lossValues;
 };
 
 class FailingTrainingCallback final : public oa::CbTraining {
@@ -312,14 +312,14 @@ TEST(TrainingSession, ViewerPromotesOnlyLatestCompletedPreview) {
                         oa::ItTrainingConfig{.totalSteps = 1});
   oa::TrainingSession session(training);
   oa::TrainingViewerSource viewer(session);
-  oa::Vec<oa::U8> firstPixels(8U * 8U * 4U, 0U);
+  oa::Vector<oa::U8> firstPixels(8U * 8U * 4U, 0U);
   auto firstResult = oa::FnTexture::fromPixels(
       *engine, oa::Span<const oa::U8>(firstPixels.data(), firstPixels.size()), 8,
       8);
   ASSERT_TRUE(firstResult.isOk()) << firstResult.getStatus().toString();
   auto first = oa::makeShared<oa::Texture>();
   *first = oa::move(*firstResult);
-  oa::Vec<oa::U8> latestPixels(16U * 16U * 4U, 0U);
+  oa::Vector<oa::U8> latestPixels(16U * 16U * 4U, 0U);
   auto latestResult = oa::FnTexture::fromPixels(
       *engine, oa::Span<const oa::U8>(latestPixels.data(), latestPixels.size()), 16,
       16);
@@ -939,7 +939,7 @@ TEST(TrainingProgram, AdamWMatchesReferenceAndAcceptsReplayLrUpdate) {
   oa::FnMatrix::fillInPlace(param.grad(), 0.25F);
   ASSERT_TRUE(testSubmitAndWait(ctx).isOk());
 
-  oa::Vec<oa::Parameter *> params;
+  oa::Vector<oa::Parameter *> params;
   params.pushBack(&param);
   constexpr oa::F32 beta1 = 0.9F;
   constexpr oa::F32 beta2 = 0.999F;
@@ -1244,11 +1244,11 @@ public:
     meanLossAtEpochEnd.pushBack(static_cast<oa::F32>(inIter.epochMeanLoss()));
   }
 
-  oa::Vec<oa::I64> epochAtSample;
-  oa::Vec<oa::I64> stepInEpochAtSample;
-  oa::Vec<oa::F32> lossAtSample;
-  oa::Vec<oa::F32> epochEndCount;
-  oa::Vec<oa::F32> meanLossAtEpochEnd;
+  oa::Vector<oa::I64> epochAtSample;
+  oa::Vector<oa::I64> stepInEpochAtSample;
+  oa::Vector<oa::F32> lossAtSample;
+  oa::Vector<oa::F32> epochEndCount;
+  oa::Vector<oa::F32> meanLossAtEpochEnd;
 };
 
 TEST(TrainingMetrics, FirstFinalAndEpochBoundaryAreSampled) {

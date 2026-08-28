@@ -203,7 +203,7 @@ oa::Result<oa::ClipTokenBatch> oa::ClipTokenizer::encode(oa::Span<const oa::Stri
 	oa::ClipTokenBatch out; out.batch = static_cast<oa::I32>(prompts.size()); out.contextLength = context;
 	out.tokenIds.resize(static_cast<oa::Usize>(out.batch) * context, impl_->eos); out.flatEosRows.resize(out.batch);
 	for (oa::I32 b = 0; b < out.batch; ++b) {
-		oa::Vec<oa::I32> ids{impl_->bos};
+		oa::Vector<oa::I32> ids{impl_->bos};
 		auto units = normalizeUnits(prompts[static_cast<oa::Usize>(b)]); if (units.isError()) return units.getStatus();
 		for (const auto& token : pretokenize(units.getValue())) {
 			std::string encoded; for (const unsigned char byte : token) encoded += impl_->byteMap[byte];

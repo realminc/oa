@@ -6,19 +6,19 @@
 #include <oa/core/device.h>
 #include <oa/core/types.h>
 
-struct OaVkInstanceTable;
+struct VklInstanceTable;
 
 namespace oavk {
 
 void logPhysicalDeviceSurvey(
-	const OaVkInstanceTable& inDispatch,
+	const VklInstanceTable& inDispatch,
 	oa::U32 inCount,
 	void* const* inPhysicalDevices,
 	oa::DeviceType inPreferred
 );
 
 [[nodiscard]] oa::U64 physicalDeviceLocalHeapBytes(
-	const OaVkInstanceTable& inDispatch,
+	const VklInstanceTable& inDispatch,
 	void* inPhysicalDevice);
 
 [[nodiscard]] oa::U64 physicalDevicePickScore(
@@ -62,8 +62,9 @@ void logPhysicalDeviceSurvey(
 );
 
 [[nodiscard]] oa::U64 physicalDeviceRate(
-	const OaVkInstanceTable& inDispatch,
+	const VklInstanceTable& inDispatch,
 	void* inPhysicalDevice,
-	oa::DeviceType inPreferred);
+	oa::DeviceType inPreferred
+);
 
 } // namespace oavk

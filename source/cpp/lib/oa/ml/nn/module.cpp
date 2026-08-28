@@ -19,8 +19,8 @@ void oa::Module::train(oa::Bool inTraining) {
 	}
 }
 
-oa::Vec<oa::Parameter> oa::Module::allParameters() {
-	oa::Vec<oa::Parameter> all;
+oa::Vector<oa::Parameter> oa::Module::allParameters() {
+	oa::Vector<oa::Parameter> all;
 	for (auto& p : params_) {
 		all.pushBack(p);
 	}
@@ -33,8 +33,8 @@ oa::Vec<oa::Parameter> oa::Module::allParameters() {
 	return all;
 }
 
-oa::Vec<oa::Parameter*> oa::Module::allParameterPtrs() {
-	oa::Vec<oa::Parameter*> all;
+oa::Vector<oa::Parameter*> oa::Module::allParameterPtrs() {
+	oa::Vector<oa::Parameter*> all;
 	for (auto& p : params_) {
 		all.pushBack(&p);
 	}
@@ -49,8 +49,8 @@ oa::Vec<oa::Parameter*> oa::Module::allParameterPtrs() {
 
 
 
-oa::Vec<oa::ModuleBuffer*> oa::Module::allBufferPtrs(bool inPersistentOnly) {
-	oa::Vec<oa::ModuleBuffer*> all;
+oa::Vector<oa::ModuleBuffer*> oa::Module::allBufferPtrs(bool inPersistentOnly) {
+	oa::Vector<oa::ModuleBuffer*> all;
 	for (auto& buffer : buffers_) {
 		if (!inPersistentOnly || buffer.persistent) {
 			all.pushBack(&buffer);
@@ -106,7 +106,7 @@ static oa::String joinPath(const oa::String& inPrefix, const oa::String& inLeaf)
 static void namedParameterWalk(
 	oa::Module& inModule,
 	const oa::String& inPrefix,
-	oa::Vec<oa::NamedParameter>& out)
+	oa::Vector<oa::NamedParameter>& out)
 {
 	for (auto& p : inModule.parameters()) {
 		out.pushBack({joinPath(inPrefix, p.name), &p});
@@ -119,8 +119,8 @@ static void namedParameterWalk(
 	}
 }
 
-oa::Vec<oa::NamedParameter> oa::Module::allNamedParameterPtrs() {
-	oa::Vec<oa::NamedParameter> all;
+oa::Vector<oa::NamedParameter> oa::Module::allNamedParameterPtrs() {
+	oa::Vector<oa::NamedParameter> all;
 	namedParameterWalk(*this, oa::String(), all);
 	return all;
 }
@@ -133,12 +133,12 @@ oa::Status oa::Module::saveWalk(
 		const auto& mat = p.data;
 		if (mat.isEmpty()) continue;
 		oa::String name = joinPath(inPrefix, p.name);
-		oa::Vec<oa::U64> shapeVec;
+		oa::Vector<oa::U64> shapeVec;
 		for (oa::I32 i = 0; i < mat.rank(); ++i) {
 			shapeVec.pushBack(static_cast<oa::U64>(mat.size(i)));
 		}
 		auto bytes = static_cast<oa::U64>(mat.byteSize());
-		oa::Vec<oa::U8> hostBuf(static_cast<oa::I64>(bytes));
+		oa::Vector<oa::U8> hostBuf(static_cast<oa::I64>(bytes));
 		auto status = oa::FnMatrix::copyToHost(mat, hostBuf.data(), bytes);
 		if (not status.isOk()) {
 			return oa::Status::error(status.getCode(),
@@ -153,12 +153,12 @@ oa::Status oa::Module::saveWalk(
 		if (!buffer.persistent || buffer.data.isEmpty()) continue;
 		const auto& mat = buffer.data;
 		oa::String name = joinPath(inPrefix, buffer.name);
-		oa::Vec<oa::U64> shapeVec;
+		oa::Vector<oa::U64> shapeVec;
 		for (oa::I32 i = 0; i < mat.rank(); ++i) {
 			shapeVec.pushBack(static_cast<oa::U64>(mat.size(i)));
 		}
 		auto bytes = static_cast<oa::U64>(mat.byteSize());
-		oa::Vec<oa::U8> hostBuf(static_cast<oa::I64>(bytes));
+		oa::Vector<oa::U8> hostBuf(static_cast<oa::I64>(bytes));
 		auto status = oa::FnMatrix::copyToHost(mat, hostBuf.data(), bytes);
 		if (not status.isOk()) {
 			return oa::Status::error(status.getCode(),

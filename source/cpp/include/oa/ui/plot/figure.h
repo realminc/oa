@@ -106,7 +106,7 @@ private:
 	[[nodiscard]] oa::Status prepareImageSources(oa::Engine& inEngine) const;
 	[[nodiscard]] oa::Status renderRgba(
 		oa::Engine& inEngine,
-		oa::Vec<oa::U8>& outRgba);
+		oa::Vector<oa::U8>& outRgba);
 
 	struct Impl;
 	oa::UniquePtr<Impl> impl_;

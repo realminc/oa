@@ -32,7 +32,7 @@ struct CameraCaptureConfig {
 
 class CameraCapture {
 public:
-	CameraCapture() = default;
+	CameraCapture();
 	CameraCapture(const CameraCapture&) = delete;
 	CameraCapture& operator=(const CameraCapture&) = delete;
 	CameraCapture(CameraCapture&&) noexcept;

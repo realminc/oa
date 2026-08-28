@@ -18,7 +18,7 @@
 #include <oa/runtime/engine/resourceAccess.h>
 #include <oa/runtime/engine/bindlessAccess.h>
 #include <oa/core/log.h>
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
 #include <oa/core/std/algo.h>
 #include <oa/core/std/chrono.h>
 #include <oa/core/std/format.h>
@@ -57,8 +57,8 @@ struct oa::CameraCapture::Impl {
 	oa::I32  latest      = -1;  // last written buffer (-1 = no frame yet)
 	bool   streaming   = false;
 
-	oa::Vec<oavk::Buffer> ring;
-	oa::Vec<oa::Event> ringConsumers;
+	oa::Vector<oavk::Buffer> ring;
+	oa::Vector<oa::Event> ringConsumers;
 	oa::CameraCaptureConfig config = {};
 	oa::U64 formatGen = 0U;
 	oa::U64 reconnects = 0U;
@@ -73,7 +73,7 @@ struct oa::CameraCapture::Impl {
 		oa::Event pendingConsumer;
 	};
 	int v4l2Fd = -1;
-	oa::Vec<V4l2Slot> v4l2Slots;
+	oa::Vector<V4l2Slot> v4l2Slots;
 	VkFormat v4l2VkFormat = VK_FORMAT_UNDEFINED;
 	bool v4l2Streaming = false;
 	bool v4l2ReconnectEnabled = false;
@@ -366,6 +366,8 @@ void oa::CameraCapture::Impl::releaseV4l2(
 #endif
 
 // ─── move / dtor ─────────────────────────────────────────────────────────────
+
+oa::CameraCapture::CameraCapture() = default;
 
 oa::CameraCapture::CameraCapture(oa::CameraCapture&& inOther) noexcept
 	: impl_(oa::move(inOther.impl_))

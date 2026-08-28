@@ -39,14 +39,14 @@ struct RefJoint {
 
 // A full reference pose (the 25 core body joints).
 struct RefPose {
-	oa::Vec<RefJoint> joints;
+	oa::Vector<RefJoint> joints;
 
 	// local reference orientation for a bone by name; identity if absent.
 	[[nodiscard]] oa::vlm::Quat orientOf(oa::StringView inName) const noexcept;
 };
 
 // The HumanIK characterization for the UE mannequin (25 core slots).
-[[nodiscard]] const oa::Vec<HumanIkSlot>& humanIkCharacterization();
+[[nodiscard]] const oa::Vector<HumanIkSlot>& humanIkCharacterization();
 
 // The reference pose for a mannequin + pose kind (manny/quinn × tPose/aPose).
 [[nodiscard]] const RefPose& refPoseFor(Mannequin inWho, PoseKind inKind);

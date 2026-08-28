@@ -8,7 +8,7 @@
 namespace oa::imageCodec {
 
 struct Pixels {
-	oa::Vec<oa::U8> data;
+	oa::Vector<oa::U8> data;
 	oa::I32 width = 0;
 	oa::I32 height = 0;
 	oa::ImageFormat format = oa::ImageFormat::Rgb;
@@ -26,7 +26,7 @@ struct Pixels {
 [[nodiscard]] oa::Result<Pixels> decodeStb(
 	oa::Span<const oa::U8> inData,
 	oa::ImageFormat inFormat);
-[[nodiscard]] oa::Result<oa::Vec<oa::U8>> encodeStb(
+[[nodiscard]] oa::Result<oa::Vector<oa::U8>> encodeStb(
 	const Pixels& inPixels,
 	oa::ImageCodec inCodec,
 	oa::U32 inQuality);
@@ -35,7 +35,7 @@ struct Pixels {
 [[nodiscard]] oa::Result<Pixels> decodeWebp(
 	oa::Span<const oa::U8> inData,
 	oa::ImageFormat inFormat);
-[[nodiscard]] oa::Result<oa::Vec<oa::U8>> encodeWebp(
+[[nodiscard]] oa::Result<oa::Vector<oa::U8>> encodeWebp(
 	const Pixels& inPixels,
 	oa::U32 inQuality);
 

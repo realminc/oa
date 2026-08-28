@@ -68,14 +68,14 @@ private:
 
 struct Prediction { oa::I32 classIdx; oa::F32 confidence; };
 
-static oa::Vec<Prediction> predict(MnistClassifier& inModel, const oa::Matrix& inX) {
+static oa::Vector<Prediction> predict(MnistClassifier& inModel, const oa::Matrix& inX) {
 	auto probs = oa::FnMatrix::softmax(inModel.forward(inX), -1);
 	oa::I32 batch = static_cast<oa::I32>(probs.size(0));
 	oa::I32 nCls  = static_cast<oa::I32>(probs.size(1));
-	oa::Vec<oa::F32> host(batch * nCls);
+	oa::Vector<oa::F32> host(batch * nCls);
 	(void)oa::FnMatrix::copyToHost(probs, host.data(), host.size() * sizeof(oa::F32));
 
-	oa::Vec<Prediction> out(batch);
+	oa::Vector<Prediction> out(batch);
 	for (oa::I32 i = 0; i < batch; ++i) {
 		oa::I32 best = 0;
 		oa::F32 bestV = host[i * nCls];

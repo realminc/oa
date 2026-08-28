@@ -1,6 +1,6 @@
-/* OaVk — hard fork of volk. See OaVk.h for version/license details */
+/* VKL — hard fork of volk. See vkl.h for version/license details */
 /* clang-format off */
-#include <oa/runtime/oaVk.h>
+#include "vkl.h"
 
 #ifdef _WIN32
 	typedef const char* LPCSTR;
@@ -14,11 +14,11 @@
 		typedef int (__stdcall* FARPROC)(void);
 	#endif
 #else
-#	include <dlfcn.h>
+#include <dlfcn.h>
 #endif
 
 #ifdef __APPLE__
-#	include <stdlib.h>
+#include <stdlib.h>
 #endif
 
 #include <string.h>
@@ -41,71 +41,81 @@ extern "C" {
 
 /* The loader itself is process-global. Instance/device commands are tables. */
 #if defined(VK_VERSION_1_0)
-static PFN_vkCreateInstance oaVkCreateInstancePtr;
-static PFN_vkEnumerateInstanceExtensionProperties oaVkEnumerateInstanceExtensionPropertiesPtr;
-static PFN_vkEnumerateInstanceLayerProperties oaVkEnumerateInstanceLayerPropertiesPtr;
-static PFN_vkGetInstanceProcAddr oaVkGetInstanceProcAddrPtr;
+static PFN_vkCreateInstance vklCreateInstancePtr;
+static PFN_vkEnumerateInstanceExtensionProperties vklEnumerateInstanceExtensionPropertiesPtr;
+static PFN_vkEnumerateInstanceLayerProperties vklEnumerateInstanceLayerPropertiesPtr;
+static PFN_vkGetInstanceProcAddr vklGetInstanceProcAddrPtr;
 #endif
 #if defined(VK_VERSION_1_1)
-static PFN_vkEnumerateInstanceVersion oaVkEnumerateInstanceVersionPtr;
+static PFN_vkEnumerateInstanceVersion vklEnumerateInstanceVersionPtr;
 #endif
 
 #if defined(__GNUC__)
-#    define OAVK_DISABLE_GCC_PEDANTIC_WARNINGS \
-		_Pragma("GCC diagnostic push") \
-		_Pragma("GCC diagnostic ignored \"-Wpedantic\"")
-#    define OAVK_RESTORE_GCC_PEDANTIC_WARNINGS \
-		_Pragma("GCC diagnostic pop")
+#define VKL_DISABLE_GCC_PEDANTIC_WARNINGS \
+	_Pragma("GCC diagnostic push") \
+	_Pragma("GCC diagnostic ignored \"-Wpedantic\"")
+#define VKL_RESTORE_GCC_PEDANTIC_WARNINGS \
+	_Pragma("GCC diagnostic pop")
 #else
-#    define OAVK_DISABLE_GCC_PEDANTIC_WARNINGS
-#    define OAVK_RESTORE_GCC_PEDANTIC_WARNINGS
+#define VKL_DISABLE_GCC_PEDANTIC_WARNINGS
+#define VKL_RESTORE_GCC_PEDANTIC_WARNINGS
 #endif
 
 static void* loadedModule = NULL;
 
-static void OaVkGenLoadLoader(void* context, PFN_vkVoidFunction (*load)(void*, const char*));
-static void OaVkGenLoadInstanceTable(struct OaVkInstanceTable* table, void* context, PFN_vkVoidFunction (*load)(void*, const char*));
-static void OaVkGenLoadDeviceTable(struct OaVkDeviceTable* table, void* context, PFN_vkVoidFunction (*load)(void*, const char*));
+static void vklGenLoadLoader(void* context, PFN_vkVoidFunction (*load)(void*, const char*));
+static void vklGenLoadInstanceTable(struct VklInstanceTable* table, void* context, PFN_vkVoidFunction (*load)(void*, const char*));
+static void vklGenLoadDeviceTable(struct VklDeviceTable* table, void* context, PFN_vkVoidFunction (*load)(void*, const char*));
 
-static PFN_vkVoidFunction vkGetInstanceProcAddrStub(void* context, const char* name)
-{
-	return oaVkGetInstanceProcAddrPtr((VkInstance)context, name);
+static PFN_vkVoidFunction vkGetInstanceProcAddrStub(void* context, const char* name) {
+	return vklGetInstanceProcAddrPtr((VkInstance)context, name);
 }
 
-struct OaVkDeviceTableLoadContext
-{
+struct VklDeviceTableLoadContext {
 	PFN_vkGetDeviceProcAddr getDeviceProcAddr;
 	VkDevice device;
 };
 
-static PFN_vkVoidFunction OaVkGetDeviceTableProcAddrStub(
-	void* context, const char* name)
-{
-	struct OaVkDeviceTableLoadContext* loadContext =
-		(struct OaVkDeviceTableLoadContext*)context;
+static PFN_vkVoidFunction vklGetDeviceTableProcAddrStub(void* context, const char* name) {
+	struct VklDeviceTableLoadContext* loadContext =	(struct VklDeviceTableLoadContext*)context;
 	return loadContext->getDeviceProcAddr(loadContext->device, name);
 }
 
-static PFN_vkVoidFunction nullProcAddrStub(void* context, const char* name)
-{
-	(void)context;
-	(void)name;
+static PFN_vkVoidFunction nullProcAddrStub(void* context, const char* name) {
+	(void) context;
+	(void) name;
 	return NULL;
 }
 
-VkResult oaVkInit(void)
-{
+static void unloadModule(void* module) {
+	if (!module) {
+		return;
+	}
+#if defined(_WIN32)
+	FreeLibrary((HMODULE)module);
+#else
+	dlclose(module);
+#endif
+}
+
+VkResult vklInit(void) {
+	if (vklGetInstanceProcAddrPtr) {
+		return VK_SUCCESS;
+	}
+
 #if defined(_WIN32)
 	HMODULE module = LoadLibraryA("vulkan-1.dll");
-	if (!module)
+	if (!module) {
 		return VK_ERROR_INITIALIZATION_FAILED;
+	}
 
 	// note: function pointer is cast through void function pointer to silence cast-function-type warning on gcc8
-	oaVkGetInstanceProcAddrPtr = (PFN_vkGetInstanceProcAddr)(void(*)(void))GetProcAddress(module, "vkGetInstanceProcAddr");
+	vklGetInstanceProcAddrPtr = (PFN_vkGetInstanceProcAddr)(void(*)(void))GetProcAddress(module, "vkGetInstanceProcAddr");
 #elif defined(__APPLE__)
 	void* module = dlopen("libvulkan.dylib", RTLD_NOW | RTLD_LOCAL);
-	if (!module)
+	if (!module) {
 		module = dlopen("libvulkan.1.dylib", RTLD_NOW | RTLD_LOCAL);
+	}
 	// modern versions of macOS don't search /usr/local/lib automatically contrary to what man dlopen says
 	// Vulkan SDK uses this as the system-wide installation location, so we're going to fallback to this if all else fails
 	if (!module && getenv("DYLD_FALLBACK_LIBRARY_PATH") == NULL)
@@ -121,19 +131,19 @@ VkResult oaVkInit(void)
 	if (!module)
 		return VK_ERROR_INITIALIZATION_FAILED;
 
-	oaVkGetInstanceProcAddrPtr = (PFN_vkGetInstanceProcAddr)dlsym(module, "vkGetInstanceProcAddr");
+	vklGetInstanceProcAddrPtr = (PFN_vkGetInstanceProcAddr)dlsym(module, "vkGetInstanceProcAddr");
 #elif defined(__ANDROID__)
 	void* module = dlopen("libvulkan.so.1", RTLD_NOW | RTLD_LOCAL);
 	if (!module)
 		module = dlopen("libvulkan.so", RTLD_NOW | RTLD_LOCAL);
 	if (!module)
 		return VK_ERROR_INITIALIZATION_FAILED;
-	OAVK_DISABLE_GCC_PEDANTIC_WARNINGS
-	oaVkGetInstanceProcAddrPtr = (PFN_vkGetInstanceProcAddr)dlsym(module, "vkGetInstanceProcAddr");
-	OAVK_RESTORE_GCC_PEDANTIC_WARNINGS
+	VKL_DISABLE_GCC_PEDANTIC_WARNINGS
+	vklGetInstanceProcAddrPtr = (PFN_vkGetInstanceProcAddr)dlsym(module, "vkGetInstanceProcAddr");
+	VKL_RESTORE_GCC_PEDANTIC_WARNINGS
 #else
 	int flags = RTLD_NOW | RTLD_LOCAL;
-#ifdef OAVK_USE_DEEPBIND
+#ifdef VKL_USE_DEEPBIND
 	flags |= RTLD_DEEPBIND; // Prevent libvulkan.so from resolving Vulkan symbols via our own exports
 #endif
 	void* module = dlopen("libvulkan.so.1", flags);
@@ -141,86 +151,100 @@ VkResult oaVkInit(void)
 		module = dlopen("libvulkan.so", flags);
 	if (!module)
 		return VK_ERROR_INITIALIZATION_FAILED;
-	OAVK_DISABLE_GCC_PEDANTIC_WARNINGS
-	oaVkGetInstanceProcAddrPtr = (PFN_vkGetInstanceProcAddr)dlsym(module, "vkGetInstanceProcAddr");
-	OAVK_RESTORE_GCC_PEDANTIC_WARNINGS
+	VKL_DISABLE_GCC_PEDANTIC_WARNINGS
+	vklGetInstanceProcAddrPtr = (PFN_vkGetInstanceProcAddr)dlsym(module, "vkGetInstanceProcAddr");
+	VKL_RESTORE_GCC_PEDANTIC_WARNINGS
 #endif
 
+	if (!vklGetInstanceProcAddrPtr) {
+		unloadModule(module);
+		return VK_ERROR_INITIALIZATION_FAILED;
+	}
+
 	loadedModule = module;
-	OaVkGenLoadLoader(NULL, vkGetInstanceProcAddrStub);
+	vklGenLoadLoader(NULL, vkGetInstanceProcAddrStub);
 
 	return VK_SUCCESS;
 }
 
-void oaVkInitCustom(PFN_vkGetInstanceProcAddr handler)
-{
-	oaVkGetInstanceProcAddrPtr = handler;
-
-	loadedModule = NULL;
-	OaVkGenLoadLoader(NULL, vkGetInstanceProcAddrStub);
-}
-
-void oaVkFinalize(void)
-{
-	if (loadedModule)
-	{
-#if defined(_WIN32)
-		FreeLibrary((HMODULE)loadedModule);
-#else
-		dlclose(loadedModule);
-#endif
+void vklInitCustom(PFN_vkGetInstanceProcAddr handler) {
+	if (handler == vklGetInstanceProcAddrPtr) {
+		return;
+	}
+	vklFinalize();
+	if (!handler) {
+		return;
 	}
 
-	oaVkGetInstanceProcAddrPtr = NULL;
-	OaVkGenLoadLoader(NULL, nullProcAddrStub);
+	vklGetInstanceProcAddrPtr = handler;
+	vklGenLoadLoader(NULL, vkGetInstanceProcAddrStub);
+}
+
+void vklFinalize(void) {
+	unloadModule(loadedModule);
+
+	vklGetInstanceProcAddrPtr = NULL;
+	vklGenLoadLoader(NULL, nullProcAddrStub);
 
 	loadedModule = NULL;
 }
 
-uint32_t oaVkGetInstanceVersion(void)
-{
+uint32_t vklGetInstanceVersion(void) {
 #if defined(VK_VERSION_1_1)
 	uint32_t apiVersion = 0;
-	if (oaVkEnumerateInstanceVersionPtr && oaVkEnumerateInstanceVersionPtr(&apiVersion) == VK_SUCCESS)
+	if (vklEnumerateInstanceVersionPtr && vklEnumerateInstanceVersionPtr(&apiVersion) == VK_SUCCESS)
 		return apiVersion;
 #endif
 
-	if (oaVkCreateInstancePtr)
+	if (vklCreateInstancePtr)
 		return VK_API_VERSION_1_0;
 
 	return 0;
 }
 
-PFN_vkGetInstanceProcAddr oaVkGetInstanceProcAddr(void)
-{
-	return oaVkGetInstanceProcAddrPtr;
+PFN_vkGetInstanceProcAddr vklGetInstanceProcAddr(void) {
+	return vklGetInstanceProcAddrPtr;
 }
 
-VkResult oaVkCreateInstance(
+VkResult vklCreateInstance(
 	const VkInstanceCreateInfo* createInfo,
 	const VkAllocationCallbacks* allocator,
-	VkInstance* instance)
-{
-	if (!oaVkCreateInstancePtr)
+	VkInstance* instance
+) {
+	if (!vklCreateInstancePtr)
 		return VK_ERROR_INITIALIZATION_FAILED;
-	return oaVkCreateInstancePtr(createInfo, allocator, instance);
+	return vklCreateInstancePtr(createInfo, allocator, instance);
 }
 
-VkResult oaVkEnumerateInstanceExtensionProperties(
+VkResult vklEnumerateInstanceExtensionProperties(
 	const char* layerName,
 	uint32_t* propertyCount,
-	VkExtensionProperties* properties)
-{
-	if (!oaVkEnumerateInstanceExtensionPropertiesPtr)
+	VkExtensionProperties* properties
+) {
+	if (!vklEnumerateInstanceExtensionPropertiesPtr)
 		return VK_ERROR_INITIALIZATION_FAILED;
-	return oaVkEnumerateInstanceExtensionPropertiesPtr(
+	return vklEnumerateInstanceExtensionPropertiesPtr(
 		layerName, propertyCount, properties);
 }
 
-void oaVkLoadInstanceTable(struct OaVkInstanceTable* table, VkInstance instance)
-{
+VkResult vklEnumerateInstanceLayerProperties(
+	uint32_t* propertyCount,
+	VkLayerProperties* properties
+) {
+	if (!vklEnumerateInstanceLayerPropertiesPtr)
+		return VK_ERROR_INITIALIZATION_FAILED;
+	return vklEnumerateInstanceLayerPropertiesPtr(propertyCount, properties);
+}
+
+void vklLoadInstanceTable(struct VklInstanceTable* table, VkInstance instance) {
+	if (!table) {
+		return;
+	}
 	memset(table, 0, sizeof(*table));
-	OaVkGenLoadInstanceTable(table, instance, vkGetInstanceProcAddrStub);
+	if (!vklGetInstanceProcAddrPtr || !instance) {
+		return;
+	}
+	vklGenLoadInstanceTable(table, instance, vkGetInstanceProcAddrStub);
 
 	/* Vulkan 1.1 promotion aliases for extension-backed Android HALs. */
 	if (!table->vkGetPhysicalDeviceFeatures2 && table->vkGetPhysicalDeviceFeatures2KHR)
@@ -233,21 +257,24 @@ void oaVkLoadInstanceTable(struct OaVkInstanceTable* table, VkInstance instance)
 		table->vkGetPhysicalDeviceQueueFamilyProperties2 = (PFN_vkGetPhysicalDeviceQueueFamilyProperties2)table->vkGetPhysicalDeviceQueueFamilyProperties2KHR;
 }
 
-void oaVkLoadDeviceTable(
-	struct OaVkDeviceTable* table,
-	const struct OaVkInstanceTable* instanceTable,
-	VkDevice device)
-{
+void vklLoadDeviceTable(
+	struct VklDeviceTable* table,
+	const struct VklInstanceTable* instanceTable,
+	VkDevice device
+) {
+	if (!table) {
+		return;
+	}
 	memset(table, 0, sizeof(*table));
 	if (!instanceTable || !instanceTable->vkGetDeviceProcAddr || !device)
 		return;
 
-	struct OaVkDeviceTableLoadContext context = {
+	struct VklDeviceTableLoadContext context = {
 		instanceTable->vkGetDeviceProcAddr,
 		device,
 	};
-	OaVkGenLoadDeviceTable(
-		table, &context, OaVkGetDeviceTableProcAddrStub);
+	vklGenLoadDeviceTable(
+		table, &context, vklGetDeviceTableProcAddrStub);
 
 	/* Promoted command aliases for extension-backed Android Vulkan HALs. */
 	if (!table->vkGetBufferMemoryRequirements2 && table->vkGetBufferMemoryRequirements2KHR)
@@ -278,24 +305,22 @@ void oaVkLoadDeviceTable(
 		table->vkCmdEndRendering = (PFN_vkCmdEndRendering)table->vkCmdEndRenderingKHR;
 }
 
-static void OaVkGenLoadLoader(void* context, PFN_vkVoidFunction (*load)(void*, const char*))
-{
-	/* VOLK_GENERATE_LOAD_LOADER */
+static void vklGenLoadLoader(void* context, PFN_vkVoidFunction (*load)(void*, const char*)) {
+	/* VKL_GENERATE_LOAD_LOADER */
 #if defined(VK_VERSION_1_0)
-	oaVkCreateInstancePtr = (PFN_vkCreateInstance)load(context, "vkCreateInstance");
-	oaVkEnumerateInstanceExtensionPropertiesPtr = (PFN_vkEnumerateInstanceExtensionProperties)load(context, "vkEnumerateInstanceExtensionProperties");
-	oaVkEnumerateInstanceLayerPropertiesPtr = (PFN_vkEnumerateInstanceLayerProperties)load(context, "vkEnumerateInstanceLayerProperties");
+	vklCreateInstancePtr = (PFN_vkCreateInstance)load(context, "vkCreateInstance");
+	vklEnumerateInstanceExtensionPropertiesPtr = (PFN_vkEnumerateInstanceExtensionProperties)load(context, "vkEnumerateInstanceExtensionProperties");
+	vklEnumerateInstanceLayerPropertiesPtr = (PFN_vkEnumerateInstanceLayerProperties)load(context, "vkEnumerateInstanceLayerProperties");
 #endif /* defined(VK_VERSION_1_0) */
 #if defined(VK_VERSION_1_1)
-	oaVkEnumerateInstanceVersionPtr = (PFN_vkEnumerateInstanceVersion)load(context, "vkEnumerateInstanceVersion");
+	vklEnumerateInstanceVersionPtr = (PFN_vkEnumerateInstanceVersion)load(context, "vkEnumerateInstanceVersion");
 #endif /* defined(VK_VERSION_1_1) */
-	/* VOLK_GENERATE_LOAD_LOADER */
+	/* VKL_GENERATE_LOAD_LOADER */
 }
 
-#ifndef OAVK_NO_LEGACY_GLOBAL_DISPATCH
-static void OaVkGenLoadInstance(void* context, PFN_vkVoidFunction (*load)(void*, const char*))
-{
-	/* VOLK_GENERATE_LOAD_INSTANCE */
+#ifndef VKL_NO_LEGACY_GLOBAL_DISPATCH
+static void vklGenLoadInstance(void* context, PFN_vkVoidFunction (*load)(void*, const char*)) {
+	/* VKL_GENERATE_LOAD_INSTANCE */
 #if defined(VK_VERSION_1_0)
 	vkCreateDevice = (PFN_vkCreateDevice)load(context, "vkCreateDevice");
 	vkDestroyInstance = (PFN_vkDestroyInstance)load(context, "vkDestroyInstance");
@@ -534,14 +559,14 @@ static void OaVkGenLoadInstance(void* context, PFN_vkVoidFunction (*load)(void*,
 #if (defined(VK_KHR_device_group) && defined(VK_KHR_surface)) || (defined(VK_KHR_swapchain) && defined(VK_VERSION_1_1))
 	vkGetPhysicalDevicePresentRectanglesKHR = (PFN_vkGetPhysicalDevicePresentRectanglesKHR)load(context, "vkGetPhysicalDevicePresentRectanglesKHR");
 #endif /* (defined(VK_KHR_device_group) && defined(VK_KHR_surface)) || (defined(VK_KHR_swapchain) && defined(VK_VERSION_1_1)) */
-	/* VOLK_GENERATE_LOAD_INSTANCE */
+	/* VKL_GENERATE_LOAD_INSTANCE */
 }
 #endif
 
-#ifndef VOLK_NO_DEVICE_PROTOTYPES
-static void OaVkGenLoadDevice(void* context, PFN_vkVoidFunction (*load)(void*, const char*))
+#ifndef VKL_NO_DEVICE_PROTOTYPES
+static void vklGenLoadDevice(void* context, PFN_vkVoidFunction (*load)(void*, const char*))
 {
-	/* VOLK_GENERATE_LOAD_DEVICE */
+	/* VKL_GENERATE_LOAD_DEVICE */
 #if defined(VK_VERSION_1_0)
 	vkAllocateCommandBuffers = (PFN_vkAllocateCommandBuffers)load(context, "vkAllocateCommandBuffers");
 	vkAllocateDescriptorSets = (PFN_vkAllocateDescriptorSets)load(context, "vkAllocateDescriptorSets");
@@ -1602,13 +1627,13 @@ static void OaVkGenLoadDevice(void* context, PFN_vkVoidFunction (*load)(void*, c
 #if (defined(VK_KHR_device_group) && defined(VK_KHR_swapchain)) || (defined(VK_KHR_swapchain) && defined(VK_VERSION_1_1))
 	vkAcquireNextImage2KHR = (PFN_vkAcquireNextImage2KHR)load(context, "vkAcquireNextImage2KHR");
 #endif /* (defined(VK_KHR_device_group) && defined(VK_KHR_swapchain)) || (defined(VK_KHR_swapchain) && defined(VK_VERSION_1_1)) */
-	/* VOLK_GENERATE_LOAD_DEVICE */
+	/* VKL_GENERATE_LOAD_DEVICE */
 }
 #endif
 
-static void OaVkGenLoadInstanceTable(struct OaVkInstanceTable* table, void* context, PFN_vkVoidFunction (*load)(void*, const char*))
+static void vklGenLoadInstanceTable(struct VklInstanceTable* table, void* context, PFN_vkVoidFunction (*load)(void*, const char*))
 {
-	/* VOLK_GENERATE_LOAD_INSTANCE_TABLE */
+	/* VKL_GENERATE_LOAD_INSTANCE_TABLE */
 #if defined(VK_VERSION_1_0)
 	table->vkCreateDevice = (PFN_vkCreateDevice)load(context, "vkCreateDevice");
 	table->vkDestroyInstance = (PFN_vkDestroyInstance)load(context, "vkDestroyInstance");
@@ -1847,12 +1872,12 @@ static void OaVkGenLoadInstanceTable(struct OaVkInstanceTable* table, void* cont
 #if (defined(VK_KHR_device_group) && defined(VK_KHR_surface)) || (defined(VK_KHR_swapchain) && defined(VK_VERSION_1_1))
 	table->vkGetPhysicalDevicePresentRectanglesKHR = (PFN_vkGetPhysicalDevicePresentRectanglesKHR)load(context, "vkGetPhysicalDevicePresentRectanglesKHR");
 #endif /* (defined(VK_KHR_device_group) && defined(VK_KHR_surface)) || (defined(VK_KHR_swapchain) && defined(VK_VERSION_1_1)) */
-	/* VOLK_GENERATE_LOAD_INSTANCE_TABLE */
+	/* VKL_GENERATE_LOAD_INSTANCE_TABLE */
 }
 
-static void OaVkGenLoadDeviceTable(struct OaVkDeviceTable* table, void* context, PFN_vkVoidFunction (*load)(void*, const char*))
+static void vklGenLoadDeviceTable(struct VklDeviceTable* table, void* context, PFN_vkVoidFunction (*load)(void*, const char*))
 {
-	/* VOLK_GENERATE_LOAD_DEVICE_TABLE */
+	/* VKL_GENERATE_LOAD_DEVICE_TABLE */
 #if defined(VK_VERSION_1_0)
 	table->vkAllocateCommandBuffers = (PFN_vkAllocateCommandBuffers)load(context, "vkAllocateCommandBuffers");
 	table->vkAllocateDescriptorSets = (PFN_vkAllocateDescriptorSets)load(context, "vkAllocateDescriptorSets");
@@ -2913,19 +2938,19 @@ static void OaVkGenLoadDeviceTable(struct OaVkDeviceTable* table, void* context,
 #if (defined(VK_KHR_device_group) && defined(VK_KHR_swapchain)) || (defined(VK_KHR_swapchain) && defined(VK_VERSION_1_1))
 	table->vkAcquireNextImage2KHR = (PFN_vkAcquireNextImage2KHR)load(context, "vkAcquireNextImage2KHR");
 #endif /* (defined(VK_KHR_device_group) && defined(VK_KHR_swapchain)) || (defined(VK_KHR_swapchain) && defined(VK_VERSION_1_1)) */
-	/* VOLK_GENERATE_LOAD_DEVICE_TABLE */
+	/* VKL_GENERATE_LOAD_DEVICE_TABLE */
 }
 
 #ifdef __GNUC__
-#ifdef VOLK_DEFAULT_VISIBILITY
+#ifdef VKL_DEFAULT_VISIBILITY
 #	pragma GCC visibility push(default)
 #else
 #	pragma GCC visibility push(hidden)
 #endif
 #endif
 
-#ifndef VOLK_NO_DEVICE_PROTOTYPES
-/* VOLK_GENERATE_PROTOTYPES_C */
+#ifndef VKL_NO_DEVICE_PROTOTYPES
+/* VKL_GENERATE_PROTOTYPES_C */
 #if defined(VK_VERSION_1_0)
 PFN_vkAllocateCommandBuffers vkAllocateCommandBuffers;
 PFN_vkAllocateDescriptorSets vkAllocateDescriptorSets;
@@ -4193,7 +4218,7 @@ PFN_vkGetPhysicalDevicePresentRectanglesKHR vkGetPhysicalDevicePresentRectangles
 #if (defined(VK_KHR_device_group) && defined(VK_KHR_swapchain)) || (defined(VK_KHR_swapchain) && defined(VK_VERSION_1_1))
 PFN_vkAcquireNextImage2KHR vkAcquireNextImage2KHR;
 #endif /* (defined(VK_KHR_device_group) && defined(VK_KHR_swapchain)) || (defined(VK_KHR_swapchain) && defined(VK_VERSION_1_1)) */
-/* VOLK_GENERATE_PROTOTYPES_C */
+/* VKL_GENERATE_PROTOTYPES_C */
 #endif
 
 #ifdef __GNUC__

@@ -11,7 +11,7 @@ constexpr oa::U8 kMagic[4] = { '3', 'D', 'A', 'N' };
 constexpr oa::Usize kHeaderSize = 4 + sizeof(oa::U32) * 5 + sizeof(oa::F32);
 
 template <typename T>
-void appendPod(oa::Vec<oa::U8>& out, const T& inValue) {
+void appendPod(oa::Vector<oa::U8>& out, const T& inValue) {
 	const auto* bytes = reinterpret_cast<const oa::U8*>(&inValue);
 	for (oa::Usize i = 0; i < sizeof(T); ++i) {
 		out.pushBack(bytes[i]);
@@ -19,7 +19,7 @@ void appendPod(oa::Vec<oa::U8>& out, const T& inValue) {
 }
 
 template <typename T>
-bool readPod(const oa::Vec<oa::U8>& inData, oa::Usize& inOutOffset, T& outValue) {
+bool readPod(const oa::Vector<oa::U8>& inData, oa::Usize& inOutOffset, T& outValue) {
 	if (inOutOffset + sizeof(T) > inData.size()) {
 		return false;
 	}
@@ -72,7 +72,7 @@ oa::Status oa::PoseClip::write3dAnim(const oa::Path& inPath) const {
 		return oa::Status::invalidArgument("oa::PoseClip::write3dAnim: invalid clip");
 	}
 
-	oa::Vec<oa::U8> bytes;
+	oa::Vector<oa::U8> bytes;
 	bytes.reserve(kHeaderSize + samples.size() * sizeof(oa::F32));
 	for (oa::U8 b : kMagic) {
 		bytes.pushBack(b);

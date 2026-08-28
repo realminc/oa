@@ -46,7 +46,7 @@ oa::Optional<DataLoader::Batch> DataLoader::nextBatch() {
 		return {};
 	}
 
-	oa::Vec<Dataset::Sample> samples;
+	oa::Vector<Dataset::Sample> samples;
 	samples.reserve(static_cast<oa::Usize>(actualBatch));
 	for (oa::I64 i = 0; i < actualBatch; ++i) {
 		auto sample = dataset_.getSample(indices_[static_cast<oa::Usize>(start + i)]);

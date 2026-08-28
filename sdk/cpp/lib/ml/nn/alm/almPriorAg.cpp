@@ -94,8 +94,8 @@ void oa::AlmPriorAg::updateMoeRoutingBias() {
 	for (auto& layer : layers_) if (layer->moe() != nullptr) layer->moe()->updateRoutingBias();
 }
 
-oa::Vec<oa::MoeRouteStats> oa::AlmPriorAg::moeRouteStats() const {
-	oa::Vec<oa::MoeRouteStats> stats;
+oa::Vector<oa::MoeRouteStats> oa::AlmPriorAg::moeRouteStats() const {
+	oa::Vector<oa::MoeRouteStats> stats;
 	for (const auto& layer : layers_) if (layer->moe() != nullptr) stats.pushBack(layer->moe()->routeStats());
 	return stats;
 }
@@ -299,8 +299,8 @@ oa::Matrix oa::AlmPriorAg::decodeToMotion(
 	const oa::I32* ids  = inTokenIds.dataAs<const oa::I32>();
 	if (batch == 0 or len == 0) return {};
 
-	oa::Vec<oa::Matrix> levelIds;
-	oa::Vec<oa::I32>    seqLens;
+	oa::Vector<oa::Matrix> levelIds;
+	oa::Vector<oa::I32>    seqLens;
 	seqLens.reserve(batch);
 
 	for (oa::I32 b = 0; b < batch; ++b) {

@@ -36,10 +36,10 @@ protected:
 	}
 };
 
-oa::Vec<oa::F32> makeSineWave(oa::U32 inSampleRate, oa::F32 inFreqHz, oa::F32 inDurationS)
+oa::Vector<oa::F32> makeSineWave(oa::U32 inSampleRate, oa::F32 inFreqHz, oa::F32 inDurationS)
 {
 	const oa::U32 n = static_cast<oa::U32>(static_cast<oa::F32>(inSampleRate) * inDurationS);
-	oa::Vec<oa::F32> samples;
+	oa::Vector<oa::F32> samples;
 	samples.resize(n);
 	for (oa::U32 i = 0; i < n; ++i) {
 		samples[i] = std::sin(2.0F * 3.14159265F * inFreqHz * float(i) / float(inSampleRate));
@@ -86,7 +86,7 @@ TEST_VK(TestAudioDecoder, WavRoundTripStereoDeinterleaves)
 	auto left  = makeSineWave(sampleRate, 440.0F, 0.5F);
 	auto right = makeSineWave(sampleRate, 880.0F, 0.5F);
 
-	oa::Vec<oa::F32> interleaved;
+	oa::Vector<oa::F32> interleaved;
 	interleaved.resize(left.size() * 2);
 	for (oa::Usize i = 0; i < left.size(); ++i) {
 		interleaved[i * 2]     = left[i];
@@ -121,7 +121,7 @@ TEST_VK(TestAudioDecoder, DecodeResultMeta)
 	const oa::U32 sampleRate = 44100;
 	auto sine = makeSineWave(sampleRate, 440.0F, 1.0F);
 
-	oa::Vec<oa::F32> interleaved;
+	oa::Vector<oa::F32> interleaved;
 	interleaved.resize(sine.size() * 2);
 	for (oa::Usize i = 0; i < sine.size(); ++i) {
 		interleaved[i * 2] = interleaved[i * 2 + 1] = sine[i];
@@ -192,7 +192,7 @@ TEST_VK(TestAudioDecoder, StreamingPcmIsDeterministicForNonFiniteInput)
 		std::numeric_limits<oa::F32>::infinity(),
 		0.5F,
 	};
-	oa::Vec<oa::EncodedAudioPacket> packets;
+	oa::Vector<oa::EncodedAudioPacket> packets;
 	ASSERT_TRUE(encoder.encode(oa::Span<const oa::F32>(samples, 4U), packets).isOk());
 	ASSERT_EQ(packets.size(), 1U);
 	ASSERT_EQ(packets[0].bitstream.size(), 8U);

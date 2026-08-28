@@ -136,10 +136,10 @@ public:
 	void deregisterSampler(oa::U32 inIndex);
 
 private:
-	oa::Vec<oa::U32> freeList_;
-	oa::Vec<oa::U32> storageImageFreeList_;
-	oa::Vec<oa::U32> sampledImageFreeList_;
-	oa::Vec<oa::U32> samplerFreeList_;
+	oa::Vector<oa::U32> freeList_;
+	oa::Vector<oa::U32> storageImageFreeList_;
+	oa::Vector<oa::U32> sampledImageFreeList_;
+	oa::Vector<oa::U32> samplerFreeList_;
 	BindlessCapacities capacities_;
 	oa::Spinlock lock_;
 };

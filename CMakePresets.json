@@ -74,6 +74,30 @@
 			}
 		},
 		{
+			"name": "tsan",
+			"inherits": "linux-base",
+			"binaryDir": "build/tsan",
+			"cacheVariables": {
+				"CMAKE_BUILD_TYPE": "Debug",
+				"OA_SANITIZERS": "thread",
+				"OA_VULKAN_VALIDATION": "OFF",
+				"OA_EMBED_SHADERS": "ON",
+				"OA_BUILD_TUTORIALS": "OFF"
+			}
+		},
+		{
+			"name": "coverage",
+			"inherits": "linux-base",
+			"binaryDir": "build/coverage",
+			"cacheVariables": {
+				"CMAKE_BUILD_TYPE": "Debug",
+				"OA_COVERAGE": "ON",
+				"OA_VULKAN_VALIDATION": "OFF",
+				"OA_EMBED_SHADERS": "ON",
+				"OA_BUILD_TUTORIALS": "OFF"
+			}
+		},
+		{
 			"name": "windows-base",
 			"hidden": true,
 			"inherits": "base",

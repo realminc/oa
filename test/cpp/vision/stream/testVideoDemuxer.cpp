@@ -1151,7 +1151,7 @@ TEST(FnVideoNal, ParseAndEmitRoundTrip) {
   const oa::U8 kSps[] = {0x67, 0x42, 0xC0, 0x1E};
   const oa::U8 kPps[] = {0x68, 0xCE, 0x38, 0x80};
 
-  oa::Vec<oa::U8> stream;
+  oa::Vector<oa::U8> stream;
   const oa::U8 startCode[4] = {0, 0, 0, 1};
   for (auto byte : startCode) {
     stream.pushBack(byte);

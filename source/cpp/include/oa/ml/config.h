@@ -72,7 +72,7 @@ public:
 	oa::F32 noiseStd = 0.0f;
 
 	// Multi-phase training (optional)
-	oa::Vec<TrainPhaseConfig> phases;
+	oa::Vector<TrainPhaseConfig> phases;
 
 	[[nodiscard]] bool usesPhases() const { return !phases.empty(); }
 };

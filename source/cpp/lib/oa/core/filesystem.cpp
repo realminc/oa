@@ -38,7 +38,7 @@ namespace {
 	return oa::Status::error(code, oa::move(message));
 }
 
-void sortPaths(oa::Vec<oa::Path>& inOutPaths) {
+void sortPaths(oa::Vector<oa::Path>& inOutPaths) {
 	if (inOutPaths.size() < 2U) return;
 	oa::sort(inOutPaths.begin(), inOutPaths.end(),
 		[](const oa::Path& inA, const oa::Path& inB) {
@@ -359,13 +359,13 @@ oa::Status oa::Filesystem::move(const oa::Path& inFrom, const oa::Path& inTo) {
 #endif
 }
 
-oa::Result<oa::Vec<oa::Path>> oa::Filesystem::listFiles(
+oa::Result<oa::Vector<oa::Path>> oa::Filesystem::listFiles(
 	const oa::Path& inDir, oa::StringView inExtension)
 {
 	if (not isDirectory(inDir)) {
 		return oa::Status::notFound("directory does not exist: " + inDir.string());
 	}
-	oa::Vec<oa::Path> files;
+	oa::Vector<oa::Path> files;
 	const oa::Status status = visitDirectory(inDir,
 		[&](const oa::Path& inPath, bool inDirectory, bool) {
 			if (not inDirectory and (inExtension.empty()
@@ -377,11 +377,11 @@ oa::Result<oa::Vec<oa::Path>> oa::Filesystem::listFiles(
 	return files;
 }
 
-oa::Result<oa::Vec<oa::Path>> oa::Filesystem::listDirectories(const oa::Path& inDir) {
+oa::Result<oa::Vector<oa::Path>> oa::Filesystem::listDirectories(const oa::Path& inDir) {
 	if (not isDirectory(inDir)) {
 		return oa::Status::notFound("directory does not exist: " + inDir.string());
 	}
-	oa::Vec<oa::Path> directories;
+	oa::Vector<oa::Path> directories;
 	const oa::Status status = visitDirectory(inDir,
 		[&](const oa::Path& inPath, bool inDirectory, bool inSymlink) {
 			if (inDirectory and not inSymlink) directories.pushBack(inPath);
@@ -392,13 +392,13 @@ oa::Result<oa::Vec<oa::Path>> oa::Filesystem::listDirectories(const oa::Path& in
 	return directories;
 }
 
-oa::Result<oa::Vec<oa::Path>> oa::Filesystem::listAll(
+oa::Result<oa::Vector<oa::Path>> oa::Filesystem::listAll(
 	const oa::Path& inDir, bool inRecursive)
 {
 	if (not isDirectory(inDir)) {
 		return oa::Status::notFound("directory does not exist: " + inDir.string());
 	}
-	oa::Vec<oa::Path> entries;
+	oa::Vector<oa::Path> entries;
 	const auto appendDirectory = [&](auto&& self, const oa::Path& inCurrent) -> oa::Status {
 		return visitDirectory(inCurrent,
 			[&](const oa::Path& inPath, bool inDirectory, bool inSymlink) {
@@ -435,10 +435,10 @@ oa::Status oa::Filesystem::appendText(
 	return writeBytes(inPath, inContent.data(), inContent.size(), "ab");
 }
 
-oa::Result<oa::Vec<oa::String>> oa::Filesystem::readLines(const oa::Path& inPath) {
+oa::Result<oa::Vector<oa::String>> oa::Filesystem::readLines(const oa::Path& inPath) {
 	auto text = readText(inPath);
 	if (text.isError()) return text.getStatus();
-	oa::Vec<oa::String> lines;
+	oa::Vector<oa::String> lines;
 	oa::Usize begin = 0;
 	for (oa::Usize index = 0; index < text->size(); ++index) {
 		if ((*text)[index] != '\n') continue;
@@ -451,12 +451,12 @@ oa::Result<oa::Vec<oa::String>> oa::Filesystem::readLines(const oa::Path& inPath
 	return lines;
 }
 
-oa::Result<oa::Vec<oa::U8>> oa::Filesystem::readBinary(const oa::Path& inPath) {
+oa::Result<oa::Vector<oa::U8>> oa::Filesystem::readBinary(const oa::Path& inPath) {
 	auto sizeResult = getFileSize(inPath);
 	if (sizeResult.isError()) return sizeResult.getStatus();
 	::FILE* file = ::fopen(inPath.cStr(), "rb");
 	if (file == nullptr) return filesystemError(errno, "cannot open file", inPath);
-	oa::Vec<oa::U8> data(*sizeResult);
+	oa::Vector<oa::U8> data(*sizeResult);
 	if (not data.empty() and ::fread(data.data(), 1U, data.size(), file) != data.size()) {
 		const int error = ::ferror(file) != 0 and errno != 0 ? errno : EIO;
 		(void)::fclose(file);
@@ -482,7 +482,7 @@ oa::Result<oa::Path> oa::Filesystem::absolute(const oa::Path& inPath) {
 	if (needed == 0U) {
 		return filesystemError(static_cast<int>(::GetLastError()), "cannot resolve path", inPath);
 	}
-	oa::Vec<char> buffer(static_cast<oa::Usize>(needed));
+	oa::Vector<char> buffer(static_cast<oa::Usize>(needed));
 	if (::GetFullPathNameA(inPath.cStr(), needed, buffer.data(), nullptr) == 0U) {
 		return filesystemError(static_cast<int>(::GetLastError()), "cannot resolve path", inPath);
 	}
@@ -491,7 +491,7 @@ oa::Result<oa::Path> oa::Filesystem::absolute(const oa::Path& inPath) {
 	if (inPath.isAbsolute()) return inPath.lexicallyNormal();
 	oa::Usize capacity = 256U;
 	for (;;) {
-		oa::Vec<char> buffer(capacity);
+		oa::Vector<char> buffer(capacity);
 		if (::getcwd(buffer.data(), buffer.size()) != nullptr) {
 			return (oa::Path(buffer.data()) / inPath).lexicallyNormal();
 		}
@@ -505,13 +505,13 @@ oa::Result<oa::Path> oa::Filesystem::absolute(const oa::Path& inPath) {
 #endif
 }
 
-oa::Result<oa::Vec<oa::Path>> oa::Filesystem::glob(
+oa::Result<oa::Vector<oa::Path>> oa::Filesystem::glob(
 	const oa::Path& inDir, oa::StringView inPattern)
 {
 	if (not isDirectory(inDir)) {
 		return oa::Status::notFound("directory does not exist: " + inDir.string());
 	}
-	oa::Vec<oa::Path> matches;
+	oa::Vector<oa::Path> matches;
 	const oa::Status status = visitDirectory(inDir,
 		[&](const oa::Path& inPath, bool, bool) {
 			if (globMatch(inPattern, inPath.filename().string())) matches.pushBack(inPath);

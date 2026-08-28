@@ -26,7 +26,7 @@ oa::Status oa::VideoEncoderAccess::submitRgba(
 	oa::U32 inVisibleWidth,
 	oa::U32 inVisibleHeight,
 	oa::U64 inPts,
-	oa::Vec<EncodedVideoPacket>& outReady,
+	oa::Vector<EncodedVideoPacket>& outReady,
 	YCbCrModel inColorSpace,
 	bool inFullRange
 ) {
@@ -45,7 +45,7 @@ oa::Status oa::VideoEncoderAccess::submitRgbaImage(
 	oa::U32 inVisibleWidth,
 	oa::U32 inVisibleHeight,
 	oa::U64 inPts,
-	oa::Vec<EncodedVideoPacket>& outReady,
+	oa::Vector<EncodedVideoPacket>& outReady,
 	YCbCrModel inColorSpace,
 	bool inFullRange,
 	oa::U32 inArrayLayer,

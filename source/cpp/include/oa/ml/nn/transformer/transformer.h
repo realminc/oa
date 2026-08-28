@@ -126,7 +126,7 @@ private:
 	oa::I32 numHeads_ = 0;
 	oa::SharedPtr<oa::Embedding> tokenEmbedding_;
 	oa::SharedPtr<oa::Embedding> positionEmbedding_;
-	oa::Vec<oa::SharedPtr<oa::TransformerBlock>> blocks_;
+	oa::Vector<oa::SharedPtr<oa::TransformerBlock>> blocks_;
 	oa::SharedPtr<oa::LayerNorm> finalNorm_;
 	oa::SharedPtr<oa::Linear> head_;
 };

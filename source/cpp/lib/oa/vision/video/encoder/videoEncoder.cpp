@@ -25,7 +25,7 @@
 #include <oa/runtime/engine/deviceAccess.h>
 #include <oa/runtime/engine/bindlessAccess.h>
 #include <oa/runtime/imageDispatch.h>
-#include <oa/runtime/oaVma.h>
+#include <vma/vma.hpp>
 #include "oa/runtime/engine/borrowedServiceRetirement.h"
 #include "videoEncoderInternal.h"
 #include "../decoder/videoDecoderInternal.h"
@@ -119,7 +119,7 @@ void attachEncodeCapabilityStructs(
 
 
 bool hasFormatWithUsage(
-	const oa::Vec<VkVideoFormatPropertiesKHR>& inFormats,
+	const oa::Vector<VkVideoFormatPropertiesKHR>& inFormats,
 	VkFormat inFormat,
 	VkImageUsageFlags inUsage)
 {
@@ -336,11 +336,11 @@ H265EncodeParameters buildParametersForH265Encode(
 
 
 oa::Status queryVideoFormats(
-	const OaVkInstanceTable& inDispatch,
+	const VklInstanceTable& inDispatch,
 	VkPhysicalDevice inPhys,
 	const VkVideoProfileInfoKHR& inProfile,
 	VkImageUsageFlags inUsage,
-	oa::Vec<VkVideoFormatPropertiesKHR>& outFormats)
+	oa::Vector<VkVideoFormatPropertiesKHR>& outFormats)
 {
 	if (inDispatch.vkGetPhysicalDeviceVideoFormatPropertiesKHR == nullptr) {
 		return oa::Status::error("vkGetPhysicalDeviceVideoFormatPropertiesKHR is not loaded");
@@ -914,8 +914,8 @@ oa::Result<oa::VideoEncoder> oa::VideoEncoder::create(
 	inputInfo.queueFamilyIndexCount = separateQueueFamilies ? 2U : 0U;
 	inputInfo.pQueueFamilyIndices = separateQueueFamilies ? queueFamilies : nullptr;
 	inputInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	OaVmaAllocationCreateInfo imageAllocInfo = {};
-	imageAllocInfo.usage = OA_VMA_MEMORY_USAGE_GPU_ONLY;
+	vma::AllocationCreateInfo imageAllocInfo = {};
+	imageAllocInfo.usage = vma::memoryUsageGpuOnly;
 	for (auto& slot : encoder.impl_->slots) {
 		const oa::U64 bitstreamSize = 4ULL * 1024ULL * 1024ULL;
 		auto bitstreamResult = oavk::VideoBitstream::create(
@@ -930,9 +930,9 @@ oa::Result<oa::VideoEncoder> oa::VideoEncoder::create(
 		slot.bitstream = oa::move(*bitstreamResult);
 		oa::memset(slot.bitstream.getMappedPtr(), 0,
 			static_cast<oa::Usize>(slot.bitstream.getCapacity()));
-		result = OaVmaFlushAllocation(
-			static_cast<OaVmaAllocator>(oa::EngineAllocatorAccess::get(vkEngine).allocator),
-			static_cast<OaVmaAllocation>(slot.bitstream.getAllocation()),
+		result = vma::flushAllocation(
+			static_cast<vma::Allocator>(oa::EngineAllocatorAccess::get(vkEngine).allocator),
+			static_cast<vma::Allocation>(slot.bitstream.getAllocation()),
 			0, slot.bitstream.getCapacity());
 		if (result != VK_SUCCESS) {
 			return closeSessionAfterCreateFailure(encoder, oa::Status::error(
@@ -955,9 +955,9 @@ oa::Result<oa::VideoEncoder> oa::VideoEncoder::create(
 		}
 		slot.rgbaSnapshot = oa::move(*rgbaResult);
 
-	OaVmaAllocation inputAllocation = VK_NULL_HANDLE;
-	result = OaVmaCreateImage(
-		static_cast<OaVmaAllocator>(oa::EngineAllocatorAccess::get(vkEngine).allocator),
+	vma::Allocation inputAllocation = VK_NULL_HANDLE;
+	result = vma::createImage(
+		static_cast<vma::Allocator>(oa::EngineAllocatorAccess::get(vkEngine).allocator),
 		&inputInfo, &imageAllocInfo, &slot.inputImage, &inputAllocation, nullptr);
 	if (result != VK_SUCCESS) {
 		return closeSessionAfterCreateFailure(encoder, oa::Status::error(
@@ -1125,8 +1125,8 @@ oa::Result<oa::VideoEncoder> oa::VideoEncoder::create(
 		auto physicalDevice = static_cast<VkPhysicalDevice>(oa::EngineDeviceAccess::get(vkEngine).physicalDevice);
 		instanceDispatch.vkGetPhysicalDeviceQueueFamilyProperties2(
 			physicalDevice, &familyCount, nullptr);
-		oa::Vec<VkQueueFamilyProperties2> familyProps(familyCount);
-		oa::Vec<VkQueueFamilyQueryResultStatusPropertiesKHR> statusProps(familyCount);
+		oa::Vector<VkQueueFamilyProperties2> familyProps(familyCount);
+		oa::Vector<VkQueueFamilyQueryResultStatusPropertiesKHR> statusProps(familyCount);
 		for (oa::U32 idx = 0U; idx < familyCount; ++idx) {
 			statusProps[idx].sType =
 				VK_STRUCTURE_TYPE_QUEUE_FAMILY_QUERY_RESULT_STATUS_PROPERTIES_KHR;
@@ -1475,9 +1475,9 @@ oa::Status oa::VideoEncoder::submitEncode_(EncodeSlot& inSlot, oa::U64 inPts)
 	if (inSlot.bitstreamDirtyEnd > 0U) {
 		oa::memset(inSlot.bitstream.getMappedPtr(), 0,
 			static_cast<oa::Usize>(inSlot.bitstreamDirtyEnd));
-		VkResult flushResult = OaVmaFlushAllocation(
-			static_cast<OaVmaAllocator>(oa::EngineAllocatorAccess::get(vkEngine).allocator),
-			static_cast<OaVmaAllocation>(inSlot.bitstream.getAllocation()),
+		VkResult flushResult = vma::flushAllocation(
+			static_cast<vma::Allocator>(oa::EngineAllocatorAccess::get(vkEngine).allocator),
+			static_cast<vma::Allocation>(inSlot.bitstream.getAllocation()),
 			0, inSlot.bitstreamDirtyEnd);
 		if (flushResult != VK_SUCCESS) {
 			return oa::Status::error(oa::StatusCode::VulkanError,
@@ -2140,9 +2140,9 @@ oa::Status oa::VideoEncoder::harvest_(
 			+ " (status=" + oa::toString(static_cast<oa::I64>(queryStatus)) + ")");
 	}
 	if (fb.bitstreamBytesWritten == 0U) {
-		(void)OaVmaInvalidateAllocation(
-			static_cast<OaVmaAllocator>(oa::EngineAllocatorAccess::get(vkEngine).allocator),
-			static_cast<OaVmaAllocation>(inSlot.bitstream.getAllocation()),
+		(void)vma::invalidateAllocation(
+			static_cast<vma::Allocator>(oa::EngineAllocatorAccess::get(vkEngine).allocator),
+			static_cast<vma::Allocation>(inSlot.bitstream.getAllocation()),
 			0, inSlot.bitstream.getCapacity());
 		const auto* data = static_cast<const oa::U8*>(inSlot.bitstream.getMappedPtr());
 		oa::U64 nonzeroExtent = 0U;
@@ -2182,9 +2182,9 @@ oa::Status oa::VideoEncoder::harvest_(
 	// The encoder writes this GPU_TO_CPU allocation. Invalidate non-coherent
 	// memory before reading its persistent mapping; coherent heaps make this a
 	// no-op.
-	result = OaVmaInvalidateAllocation(
-		static_cast<OaVmaAllocator>(oa::EngineAllocatorAccess::get(vkEngine).allocator),
-		static_cast<OaVmaAllocation>(inSlot.bitstream.getAllocation()),
+	result = vma::invalidateAllocation(
+		static_cast<vma::Allocator>(oa::EngineAllocatorAccess::get(vkEngine).allocator),
+		static_cast<vma::Allocation>(inSlot.bitstream.getAllocation()),
 		fb.bitstreamStartOffset, fb.bitstreamBytesWritten);
 	if (result != VK_SUCCESS) {
 		return oa::Status::error(oa::StatusCode::VulkanError,
@@ -2216,7 +2216,7 @@ oa::Status oa::VideoEncoder::submitRgba(
 	oa::U32 inVisibleWidth,
 	oa::U32 inVisibleHeight,
 	oa::U64 inPts,
-	oa::Vec<oa::EncodedVideoPacket>& outReady,
+	oa::Vector<oa::EncodedVideoPacket>& outReady,
 	oa::YCbCrModel inColorSpace,
 	bool inFullRange)
 {
@@ -2268,7 +2268,7 @@ oa::Status oa::VideoEncoder::submitRgbaImage(
 	oa::U32 inVisibleWidth,
 	oa::U32 inVisibleHeight,
 	oa::U64 inPts,
-	oa::Vec<oa::EncodedVideoPacket>& outReady,
+	oa::Vector<oa::EncodedVideoPacket>& outReady,
 	oa::YCbCrModel inColorSpace,
 	bool inFullRange,
 	oa::U32 inArrayLayer,
@@ -2325,7 +2325,7 @@ oa::Status oa::VideoEncoder::submitRgbaImage(
 }
 
 
-oa::Status oa::VideoEncoder::flush(oa::Vec<oa::EncodedVideoPacket>& outFrames)
+oa::Status oa::VideoEncoder::flush(oa::Vector<oa::EncodedVideoPacket>& outFrames)
 {
 	if (not impl_ or impl_->session.handle() == VK_NULL_HANDLE) {
 		return oa::Status::ok();
@@ -2349,7 +2349,7 @@ oa::Status oa::VideoEncoder::destroySlot_(EncodeSlot& inSlot)
 	if (impl_->engine == nullptr) return oa::Status::ok();
 	auto& vkEngine = *impl_->engine;
 	VkDevice device = static_cast<VkDevice>(oa::EngineDeviceAccess::get(vkEngine).device);
-	auto* allocator = static_cast<OaVmaAllocator>(oa::EngineAllocatorAccess::get(vkEngine).allocator);
+	auto* allocator = static_cast<vma::Allocator>(oa::EngineAllocatorAccess::get(vkEngine).allocator);
 	const oa::Status inputStatus = inSlot.inputTicket.wait();
 	if (inSlot.rgbaSnapshot.buffer != VK_NULL_HANDLE) {
 		oa::EngineResourceAccess::freeBuffer(vkEngine, inSlot.rgbaSnapshot);
@@ -2377,8 +2377,8 @@ oa::Status oa::VideoEncoder::destroySlot_(EncodeSlot& inSlot)
 		oa::EngineDeviceAccess::get(vkEngine).deviceDispatch.vkDestroyImageView(device, inSlot.inputView, nullptr);
 	}
 	if (inSlot.inputImage != VK_NULL_HANDLE) {
-		OaVmaDestroyImage(allocator, inSlot.inputImage,
-			static_cast<OaVmaAllocation>(inSlot.inputAllocation));
+		vma::destroyImage(allocator, inSlot.inputImage,
+			static_cast<vma::Allocation>(inSlot.inputAllocation));
 	}
 	inSlot = {};
 	return inputStatus;
@@ -2477,7 +2477,7 @@ oa::Status oa::VideoTranscoder::transcodeFrame(
 			"Decoder did not produce an image-backed RGBA frame");
 	}
 
-	oa::Vec<oa::EncodedVideoPacket> ready;
+	oa::Vector<oa::EncodedVideoPacket> ready;
 	const oa::U64 pts = rgba.presentationTimestamp != 0U
 		? rgba.presentationTimestamp : nextPtsUs_;
 	OA_RETURN_IF_ERROR(oa::VideoEncoderAccess::submitRgbaImage(encoder_,

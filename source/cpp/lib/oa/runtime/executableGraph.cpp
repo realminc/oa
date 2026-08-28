@@ -10,7 +10,7 @@
 #include <oa/runtime/bindless.h>
 #include <oa/runtime/stream.h>
 #include <oa/runtime/pipeline.h>
-#include <oa/runtime/oaVk.h>
+#include <vkl/vkl.h>
 #include <oa/runtime/engine/bindlessAccess.h>
 #include <oa/runtime/engine/deviceAccess.h>
 #include <oa/runtime/engine/pipelineAccess.h>
@@ -62,14 +62,14 @@ static oa::U32 computeNodeBarriers(
 	const oa::ComputeNode& inNode,
 	oa::U32 inNodeIndex,
 	const oa::HashMap<void*, GraphBufferState>& inState,
-	oa::Vec<VkBufferMemoryBarrier2>& outBufferBarriers,
-	oa::Vec<VkMemoryBarrier2>& outAliasBarriers,
-	oa::Vec<GraphBarrierDebug>* outBufferDebug = nullptr,
-	oa::Vec<GraphBarrierDebug>* outAliasDebug = nullptr
+	oa::Vector<VkBufferMemoryBarrier2>& outBufferBarriers,
+	oa::Vector<VkMemoryBarrier2>& outAliasBarriers,
+	oa::Vector<GraphBarrierDebug>* outBufferDebug = nullptr,
+	oa::Vector<GraphBarrierDebug>* outAliasDebug = nullptr
 );
 static oa::U32 pruneRedundantWarBarriers(
-	oa::Vec<VkBufferMemoryBarrier2>& inOutBarriers,
-	oa::Vec<GraphBarrierDebug>* inOutDebug = nullptr
+	oa::Vector<VkBufferMemoryBarrier2>& inOutBarriers,
+	oa::Vector<GraphBarrierDebug>* inOutDebug = nullptr
 );
 static void updateBufferStates(
 	const oa::ComputeNode& inNode,
@@ -77,7 +77,7 @@ static void updateBufferStates(
 	oa::HashMap<void*, GraphBufferState>& inOutState
 );
 static void recordFinalBarrier(
-	const OaVkDeviceTable& inDispatch,
+	const VklDeviceTable& inDispatch,
 	VkCommandBuffer inCb,
 	oa::Bool inRequired);
 static oa::Status allocGraphDescriptorSet(
@@ -464,10 +464,10 @@ static oa::U32 computeNodeBarriers(
 	const oa::ComputeNode& inNode,
 	oa::U32 inNodeIndex,
 	const oa::HashMap<void*, GraphBufferState>& inState,
-	oa::Vec<VkBufferMemoryBarrier2>& outBufferBarriers,
-	oa::Vec<VkMemoryBarrier2>& outAliasBarriers,
-	oa::Vec<GraphBarrierDebug>* outBufferDebug,
-	oa::Vec<GraphBarrierDebug>* outAliasDebug)
+	oa::Vector<VkBufferMemoryBarrier2>& outBufferBarriers,
+	oa::Vector<VkMemoryBarrier2>& outAliasBarriers,
+	oa::Vector<GraphBarrierDebug>* outBufferDebug,
+	oa::Vector<GraphBarrierDebug>* outAliasDebug)
 {
 	outBufferBarriers.clear();
 	outAliasBarriers.clear();
@@ -583,8 +583,8 @@ static oa::U32 computeNodeBarriers(
 // reads the weight) before the optimizer dispatch (which writes the weight).
 // A standalone WAR is retained.
 static oa::U32 pruneRedundantWarBarriers(
-	oa::Vec<VkBufferMemoryBarrier2>& inOutBarriers,
-	oa::Vec<GraphBarrierDebug>* inOutDebug)
+	oa::Vector<VkBufferMemoryBarrier2>& inOutBarriers,
+	oa::Vector<GraphBarrierDebug>* inOutDebug)
 {
 	VkPipelineStageFlags2 orderedSrcStages = 0;
 	VkPipelineStageFlags2 orderedDstStages = 0;
@@ -693,7 +693,7 @@ static void updateBufferStates(
 }
 
 static void recordFinalBarrier(
-	const OaVkDeviceTable& inDispatch,
+	const VklDeviceTable& inDispatch,
 	VkCommandBuffer inCb,
 	oa::Bool inRequired)
 {
@@ -803,8 +803,8 @@ oa::Status oa::ExecutableGraph::execute(oa::Engine& inRt) {
 
 	oa::HashMap<void*, GraphBufferState> bufferStates;
 	bufferStates.reserve(nodes_.size() * 4U);
-	oa::Vec<VkBufferMemoryBarrier2> barriers;
-	oa::Vec<VkMemoryBarrier2> aliasBarriers;
+	oa::Vector<VkBufferMemoryBarrier2> barriers;
+	oa::Vector<VkMemoryBarrier2> aliasBarriers;
 	barriers.reserve(8);
 
 	for (oa::U32 nodeIdx = 0; nodeIdx < nodes_.size(); ++nodeIdx) {
@@ -861,8 +861,8 @@ oa::Status oa::ExecutableGraph::executeMultiQueue(oa::Engine& inRt) {
 
 	oa::HashMap<void*, GraphBufferState> bufferStates;
 	bufferStates.reserve(nodes_.size() * 4U);
-	oa::Vec<VkBufferMemoryBarrier2> barriers;
-	oa::Vec<VkMemoryBarrier2> aliasBarriers;
+	oa::Vector<VkBufferMemoryBarrier2> barriers;
+	oa::Vector<VkMemoryBarrier2> aliasBarriers;
 	barriers.reserve(8);
 
 	// Track the last-submitted stream for cross-queue dependency
@@ -1068,7 +1068,7 @@ oa::Status oa::ExecutableGraph::compile(oa::Engine& inRt) {
 	// Batch only the variants required by this graph. This preserves lazy startup
 	// while using the same bounded parallel loading and compact summary reporting
 	// as eager engine preload.
-	oa::Vec<oa::PipelineVariantRequest> pipelineRequests;
+	oa::Vector<oa::PipelineVariantRequest> pipelineRequests;
 	pipelineRequests.reserve(nodes_.size());
 	for (const auto& node : nodes_) {
 		pipelineRequests.pushBack({.name = node.shader, .dtype = node.dtype});
@@ -1196,8 +1196,8 @@ oa::Status oa::ExecutableGraph::compile(oa::Engine& inRt) {
 	// Record all dispatches with minimal barriers into the secondary CB
 	oa::HashMap<void*, GraphBufferState> bufferStates;
 	bufferStates.reserve(nodes_.size() * 4U);
-	oa::Vec<VkBufferMemoryBarrier2> barriers;
-	oa::Vec<VkMemoryBarrier2> aliasBarriers;
+	oa::Vector<VkBufferMemoryBarrier2> barriers;
+	oa::Vector<VkMemoryBarrier2> aliasBarriers;
 	barriers.reserve(8);
 	barrierCount_ = 0;
 	warBarrierCount_ = 0;
@@ -1582,7 +1582,7 @@ oa::Status oa::ExecutableGraph::recordReplay(oa::Engine& inRt, void* inPrimaryCo
 
 // ─── phase 3: memory aliasing analysis ────────────────────────────────────────
 
-oa::Vec<oa::BufferLifetime> oa::ExecutableGraph::computeLifetimes() const {
+oa::Vector<oa::BufferLifetime> oa::ExecutableGraph::computeLifetimes() const {
 	// map: VkBuffer handle -> (first_access, last_access, size)
 	struct LifetimeEntry {
 		oa::U64 size = 0;
@@ -1618,7 +1618,7 @@ oa::Vec<oa::BufferLifetime> oa::ExecutableGraph::computeLifetimes() const {
 		}
 	}
 
-	oa::Vec<oa::BufferLifetime> result;
+	oa::Vector<oa::BufferLifetime> result;
 	result.reserve(static_cast<oa::U32>(map.size()));
 	for (auto& [handle, entry] : map) {
 		oa::BufferLifetime lt;
@@ -1639,9 +1639,9 @@ oa::Vec<oa::BufferLifetime> oa::ExecutableGraph::computeLifetimes() const {
 	return result;
 }
 
-oa::Vec<oa::AliasGroup> oa::ExecutableGraph::computeAliasGroups() const {
+oa::Vector<oa::AliasGroup> oa::ExecutableGraph::computeAliasGroups() const {
 	auto lifetimes = computeLifetimes();
-	oa::Vec<oa::AliasGroup> groups;
+	oa::Vector<oa::AliasGroup> groups;
 
 	// Greedy interval coloring: assign each buffer to the first group
 	// where it doesn't overlap with any existing member.
@@ -1704,7 +1704,7 @@ oa::Status oa::ExecutableGraph::materializeAliases(
 		void* handle = nullptr;
 		oa::MemoryPlacement placement = oa::MemoryPlacement::Auto;
 	};
-	oa::Vec<EligibleMatrix> eligible;
+	oa::Vector<EligibleMatrix> eligible;
 	eligible.reserve(inEligible.size());
 	for (auto* matrix : inEligible) {
 		if (matrix == nullptr
@@ -1745,7 +1745,7 @@ oa::Status oa::ExecutableGraph::materializeAliases(
 		oa::MemoryPlacement placement = oa::MemoryPlacement::Auto;
 	};
 	auto lifetimes = computeLifetimes();
-	oa::Vec<PlacementAliasGroup> groups;
+	oa::Vector<PlacementAliasGroup> groups;
 	for (const auto& lt : lifetimes) {
 		if (not isEligible(lt.buffer)) continue;
 		const auto placement = placementOf(lt.buffer);
@@ -1980,11 +1980,11 @@ oa::String oa::ExecutableGraph::debugReportJson(oa::StringView inName) const {
 	}
 
 	oa::HashMap<void*, GraphBufferState> bufferStates;
-	oa::Vec<VkBufferMemoryBarrier2> bufferBarriers;
-	oa::Vec<VkMemoryBarrier2> aliasBarriers;
-	oa::Vec<GraphBarrierDebug> bufferDebug;
-	oa::Vec<GraphBarrierDebug> aliasDebug;
-	oa::Vec<GraphBarrierDebug> plannedBarriers;
+	oa::Vector<VkBufferMemoryBarrier2> bufferBarriers;
+	oa::Vector<VkMemoryBarrier2> aliasBarriers;
+	oa::Vector<GraphBarrierDebug> bufferDebug;
+	oa::Vector<GraphBarrierDebug> aliasDebug;
+	oa::Vector<GraphBarrierDebug> plannedBarriers;
 	for (oa::U32 nodeIdx = 0; nodeIdx < nodes_.size(); ++nodeIdx) {
 		const auto& node = nodes_[nodeIdx];
 		computeNodeBarriers(node, nodeIdx, bufferStates, bufferBarriers,

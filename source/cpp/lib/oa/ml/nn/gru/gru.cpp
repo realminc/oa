@@ -136,7 +136,7 @@ oa::Matrix oa::Gru::forward(const oa::Matrix& inInput) {
 			// timestep. The environment switch is capability-oriented so mobile,
 			// desktop, and future backends share the same implementation.
 			auto hidden = layers_[layerIndex]->zeroState(batch);
-			oa::Vec<oa::Matrix> outputs;
+			oa::Vector<oa::Matrix> outputs;
 			outputs.reserve(seqLen);
 			for (oa::I32 time = 0; time < seqLen; ++time) {
 				hidden = layers_[layerIndex]->stepWithGatesI(

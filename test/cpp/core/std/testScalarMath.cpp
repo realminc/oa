@@ -83,3 +83,18 @@ TEST(StdScalarMath, IntegralAbsParity) {
 		EXPECT_EQ(oa::abs(value), std::abs(value));
 	}
 }
+
+TEST(StdScalarMath, IntegralAbsRejectsUnrepresentableMinimum) {
+	EXPECT_EQ(oa::abs(std::numeric_limits<int>::min() + 1),
+		std::numeric_limits<int>::max());
+	EXPECT_EQ(oa::abs(std::numeric_limits<long long>::min() + 1),
+		std::numeric_limits<long long>::max());
+	EXPECT_EQ(oa::abs(std::numeric_limits<long>::min() + 1),
+		std::numeric_limits<long>::max());
+	EXPECT_DEATH((void)oa::abs(std::numeric_limits<int>::min()),
+		"oa::abs result is not representable");
+	EXPECT_DEATH((void)oa::abs(std::numeric_limits<long>::min()),
+		"oa::abs result is not representable");
+	EXPECT_DEATH((void)oa::abs(std::numeric_limits<long long>::min()),
+		"oa::abs result is not representable");
+}

@@ -1,49 +1,49 @@
 /**
- * OaVk — vulkan function loader (hard fork of volk)
+ * VKL — vulkan function loader (hard fork of volk)
  *
  * Original: volk by Arseny Kapoulkine — https://github.com/zeux/volk
- * Forked: 2026-03 — all volk* symbols renamed to OaVk*, namespace support removed.
+ * Forked: 2026-03 — all volk* symbols renamed to vkl*, namespace support removed.
  * License: MIT (see notice at end of file)
  */
 /* clang-format off */
-#ifndef OAVK_H_
-#define OAVK_H_
+#ifndef VKL_H_
+#define VKL_H_
 
 #if defined(VULKAN_H_) && !defined(VK_NO_PROTOTYPES)
-#	error To use OaVk, you need to define VK_NO_PROTOTYPES before including vulkan.h
+#error To use vkl, you need to define VK_NO_PROTOTYPES before including vulkan.h
 #endif
 
-/* VOLK_GENERATE_VERSION_DEFINE */
-#define OAVK_HEADER_VERSION 346
-/* VOLK_GENERATE_VERSION_DEFINE */
+/* VKL_GENERATE_VERSION_DEFINE */
+#define VKL_HEADER_VERSION 346
+/* VKL_GENERATE_VERSION_DEFINE */
 
 #ifndef VK_NO_PROTOTYPES
-#	define VK_NO_PROTOTYPES
+#define VK_NO_PROTOTYPES
 #endif
 
 #ifndef VULKAN_H_
-#	ifdef OAVK_VULKAN_H_PATH
-#		include OAVK_VULKAN_H_PATH
-#	else /* Platform headers included below */
-#		include <vulkan/vk_platform.h>
-#		include <vulkan/vulkan_core.h>
-#	endif
+#ifdef VKL_VULKAN_H_PATH
+#include VKL_VULKAN_H_PATH
+#else /* Platform headers included below */
+#include <vulkan/vk_platform.h>
+#include <vulkan/vulkan_core.h>
+#endif
 #endif
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-struct OaVkInstanceTable;
-struct OaVkDeviceTable;
+struct VklInstanceTable;
+struct VklDeviceTable;
 
 // OA uses explicit per-device dispatch tables. Keep the generated legacy
 // device-global declarations disabled for every library and SDK consumer.
-#ifndef VOLK_NO_DEVICE_PROTOTYPES
-#	define VOLK_NO_DEVICE_PROTOTYPES
+#ifndef VKL_NO_DEVICE_PROTOTYPES
+#define VKL_NO_DEVICE_PROTOTYPES
 #endif
-#ifndef OAVK_NO_LEGACY_GLOBAL_DISPATCH
-#	define OAVK_NO_LEGACY_GLOBAL_DISPATCH
+#ifndef VKL_NO_LEGACY_GLOBAL_DISPATCH
+#define VKL_NO_LEGACY_GLOBAL_DISPATCH
 #endif
 
 /**
@@ -51,46 +51,65 @@ struct OaVkDeviceTable;
  *
  * Returns VK_SUCCESS on success and VK_ERROR_INITIALIZATION_FAILED otherwise.
  */
-VkResult oaVkInit(void);
+VkResult vklInit(void);
 
 /**
  * initialize library by providing a custom handler to load global symbols.
  *
- * This function can be used instead of oaVkInit.
+ * This function can be used instead of vklInit.
  * The handler function pointer will be asked to load global vulkan symbols which require no instance
  * (such as vkCreateInstance, vkEnumerateInstance* and vkEnumerateInstanceVersion if available).
+ * Passing NULL clears the loader state. The caller must externally synchronize
+ * initialization/finalization and guarantee that no live vulkan object or
+ * dispatch table still depends on the previous loader.
  */
-void oaVkInitCustom(PFN_vkGetInstanceProcAddr handler);
+void vklInitCustom(PFN_vkGetInstanceProcAddr handler);
 
 /**
  * finalize library by unloading vulkan loader and resetting global symbols to NULL.
  *
- * This function does not need to be called on process exit (as loader will be unloaded automatically) or if oaVkInit failed.
+ * This function does not need to be called on process exit (as loader will be unloaded automatically) or if vklInit failed.
  * in general this function is optional to call but may be useful in rare cases eg if the loader needs to be reinitialized multiple times.
  */
-void oaVkFinalize(void);
+void vklFinalize(void);
 
 /**
  * get vulkan instance version supported by the vulkan loader, or 0 if vulkan isn't supported
  *
- * Returns 0 if oaVkInit wasn't called or failed.
+ * Returns 0 if vklInit wasn't called or failed.
  */
-uint32_t oaVkGetInstanceVersion(void);
+uint32_t vklGetInstanceVersion(void);
+
+/* Loader-global functions are process properties, not instance/device dispatch.
+ * Their storage is private so vkl never exports vk* variables that can collide
+ * with the native vulkan loader. */
+PFN_vkGetInstanceProcAddr vklGetInstanceProcAddr(void);
+VkResult vklCreateInstance(
+	const VkInstanceCreateInfo* createInfo,
+	const VkAllocationCallbacks* allocator,
+	VkInstance* instance
+);
+VkResult vklEnumerateInstanceExtensionProperties(
+	const char* layerName,
+	uint32_t* propertyCount,
+	VkExtensionProperties* properties
+);
+VkResult vklEnumerateInstanceLayerProperties(
+	uint32_t* propertyCount,
+	VkLayerProperties* properties
+);
 
 /**
  * load function pointers using application-created VkInstance into a table.
  * Application should use function pointers from that table instead of using global function pointers.
  */
-void oaVkLoadInstanceTable(struct OaVkInstanceTable* table, VkInstance instance);
+void vklLoadInstanceTable(struct VklInstanceTable* table, VkInstance instance);
 
 /**
  * load function pointers using application-created VkDevice into a table.
  * Application should use function pointers from that table instead of using global function pointers.
  */
-void oaVkLoadDeviceTable(
-	struct OaVkDeviceTable* table,
-	const struct OaVkInstanceTable* instanceTable,
-	VkDevice device);
+void vklLoadDeviceTable(struct VklDeviceTable* table, const struct VklInstanceTable* instanceTable, VkDevice device);
 
 #ifdef __cplusplus
 } // extern "C"
@@ -103,7 +122,7 @@ void oaVkLoadDeviceTable(
  * Note that we only replace platform-specific headers when the headers are known to be problematic: very large
  * or slow to compile (Windows), or introducing unprefixed macros which can cause conflicts (Windows, Xlib).
  */
-#if !defined(VULKAN_H_) && !defined(OAVK_VULKAN_H_PATH)
+#if !defined(VULKAN_H_) && !defined(VKL_VULKAN_H_PATH)
 
 #ifdef VK_USE_PLATFORM_ANDROID_KHR
 #include <vulkan/vulkan_android.h>
@@ -213,9 +232,8 @@ extern "C" {
 /**
  * instance-specific function pointer table
  */
-struct OaVkInstanceTable
-{
-	/* VOLK_GENERATE_INSTANCE_TABLE */
+struct VklInstanceTable {
+	/* VKL_GENERATE_INSTANCE_TABLE */
 #if defined(VK_VERSION_1_0)
 	PFN_vkCreateDevice vkCreateDevice;
 	PFN_vkDestroyInstance vkDestroyInstance;
@@ -568,15 +586,14 @@ struct OaVkInstanceTable
 #else
 	PFN_vkVoidFunction padding_a8092b55[1];
 #endif /* (defined(VK_KHR_device_group) && defined(VK_KHR_surface)) || (defined(VK_KHR_swapchain) && defined(VK_VERSION_1_1)) */
-	/* VOLK_GENERATE_INSTANCE_TABLE */
+	/* VKL_GENERATE_INSTANCE_TABLE */
 };
 
 /**
  * Device-specific function pointer table
  */
-struct OaVkDeviceTable
-{
-	/* VOLK_GENERATE_DEVICE_TABLE */
+struct VklDeviceTable {
+	/* VKL_GENERATE_DEVICE_TABLE */
 #if defined(VK_VERSION_1_0)
 	PFN_vkAllocateCommandBuffers vkAllocateCommandBuffers;
 	PFN_vkAllocateDescriptorSets vkAllocateDescriptorSets;
@@ -2011,24 +2028,11 @@ struct OaVkDeviceTable
 #else
 	PFN_vkVoidFunction padding_cffc198[1];
 #endif /* (defined(VK_KHR_device_group) && defined(VK_KHR_swapchain)) || (defined(VK_KHR_swapchain) && defined(VK_VERSION_1_1)) */
-	/* VOLK_GENERATE_DEVICE_TABLE */
+	/* VKL_GENERATE_DEVICE_TABLE */
 };
 
-/* Loader-global functions are process properties, not instance/device dispatch.
- * Keep their storage private so OA never exports variables that collide with the
- * native Vulkan loader's vk* function symbols. */
-PFN_vkGetInstanceProcAddr oaVkGetInstanceProcAddr(void);
-VkResult oaVkCreateInstance(
-	const VkInstanceCreateInfo* createInfo,
-	const VkAllocationCallbacks* allocator,
-	VkInstance* instance);
-VkResult oaVkEnumerateInstanceExtensionProperties(
-	const char* layerName,
-	uint32_t* propertyCount,
-	VkExtensionProperties* properties);
-
-#ifndef OAVK_NO_LEGACY_GLOBAL_DISPATCH
-/* VOLK_GENERATE_PROTOTYPES_H */
+#ifndef VKL_NO_LEGACY_GLOBAL_DISPATCH
+/* VKL_GENERATE_PROTOTYPES_H */
 #if defined(VK_VERSION_1_0)
 extern PFN_vkCreateDevice vkCreateDevice;
 extern PFN_vkCreateInstance vkCreateInstance;
@@ -2272,10 +2276,10 @@ extern PFN_vkGetPhysicalDeviceUbmPresentationSupportSEC vkGetPhysicalDeviceUbmPr
 #if (defined(VK_KHR_device_group) && defined(VK_KHR_surface)) || (defined(VK_KHR_swapchain) && defined(VK_VERSION_1_1))
 extern PFN_vkGetPhysicalDevicePresentRectanglesKHR vkGetPhysicalDevicePresentRectanglesKHR;
 #endif /* (defined(VK_KHR_device_group) && defined(VK_KHR_surface)) || (defined(VK_KHR_swapchain) && defined(VK_VERSION_1_1)) */
-/* VOLK_GENERATE_PROTOTYPES_H */
+/* VKL_GENERATE_PROTOTYPES_H */
 
-#ifndef VOLK_NO_DEVICE_PROTOTYPES
-/* VOLK_GENERATE_PROTOTYPES_H_DEVICE */
+#ifndef VKL_NO_DEVICE_PROTOTYPES
+/* VKL_GENERATE_PROTOTYPES_H_DEVICE */
 #if defined(VK_VERSION_1_0)
 extern PFN_vkAllocateCommandBuffers vkAllocateCommandBuffers;
 extern PFN_vkAllocateDescriptorSets vkAllocateDescriptorSets;
@@ -3336,15 +3340,15 @@ extern PFN_vkGetDeviceGroupSurfacePresentModesKHR vkGetDeviceGroupSurfacePresent
 #if (defined(VK_KHR_device_group) && defined(VK_KHR_swapchain)) || (defined(VK_KHR_swapchain) && defined(VK_VERSION_1_1))
 extern PFN_vkAcquireNextImage2KHR vkAcquireNextImage2KHR;
 #endif /* (defined(VK_KHR_device_group) && defined(VK_KHR_swapchain)) || (defined(VK_KHR_swapchain) && defined(VK_VERSION_1_1)) */
-/* VOLK_GENERATE_PROTOTYPES_H_DEVICE */
+/* VKL_GENERATE_PROTOTYPES_H_DEVICE */
 #endif
-#endif /* OAVK_NO_LEGACY_GLOBAL_DISPATCH */
+#endif /* VKL_NO_LEGACY_GLOBAL_DISPATCH */
 
 #ifdef __cplusplus
 } // extern "C"
 #endif
 
-#endif // OAVK_H_
+#endif // VKL_H_
 
 /**
  * copyright (c) 2018-2026 Arseny Kapoulkine

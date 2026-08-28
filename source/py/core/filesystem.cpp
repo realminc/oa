@@ -13,7 +13,7 @@ T unwrap(oa::Result<T>&& result) {
     return std::move(result).getValue();
 }
 
-std::vector<oa::Path> pathsFrom(oa::Vec<oa::Path>&& paths) {
+std::vector<oa::Path> pathsFrom(oa::Vector<oa::Path>&& paths) {
     std::vector<oa::Path> result;
     result.reserve(paths.size());
     for (auto& path : paths) {
@@ -22,7 +22,7 @@ std::vector<oa::Path> pathsFrom(oa::Vec<oa::Path>&& paths) {
     return result;
 }
 
-std::vector<std::string> stringsFrom(oa::Vec<oa::String>&& strings) {
+std::vector<std::string> stringsFrom(oa::Vector<oa::String>&& strings) {
     std::vector<std::string> result;
     result.reserve(strings.size());
     for (const auto& value : strings) {

@@ -1,7 +1,7 @@
 #include "satelliteSession.h"
 
 #include <oa/core/fnMatrix.h>
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
 #include <oa/core/std/algo.h>
 #include <oa/core/std/limits.h>
 #include <oa/core/version.h>
@@ -43,37 +43,32 @@ struct PendingOp {
 	oa::U64 inputB = 0;
 	oa::U64 output = 0;
 	oa::String operation;
-	oa::Vec<oa::U64> inputs;
-	oa::Vec<oa::Byte> arguments;
+	oa::Vector<oa::U64> inputs;
+	oa::Vector<oa::Byte> arguments;
 	oa::U64 expectedVersion = 0;
 	oa::Array<oa::Byte, 32> expectedHash{};
 	oa::Bool complete = false;
 	oa::StatusCode status = oa::StatusCode::Ok;
-	oa::Vec<oa::Byte> result;
-	oa::Vec<oa::Byte> profile;
+	oa::Vector<oa::Byte> result;
+	oa::Vector<oa::Byte> profile;
 };
 
 struct SessionObject {
 	oa::U64 id = 0;
 	oa::U64 version = 0;
 	oa::ScalarType dtype = oa::ScalarType::Float32;
-	oa::Vec<oa::I64> shape;
-	oa::Vec<oa::Byte> data;
+	oa::Vector<oa::I64> shape;
+	oa::Vector<oa::Byte> data;
 	oa::Array<oa::Byte, 32> hash{};
 };
 
-void secureZero(void* inData, oa::Usize inBytes) noexcept {
-	volatile oa::Byte* bytes = static_cast<volatile oa::Byte*>(inData);
-	for (oa::Usize i = 0; i < inBytes; ++i) bytes[i] = 0U;
-}
-
-void appendU32Le(oa::Vec<oa::Byte>& out, oa::U32 inValue) {
+void appendU32Le(oa::Vector<oa::Byte>& out, oa::U32 inValue) {
 	for (oa::U32 shift = 0; shift < 32U; shift += 8U) {
 		out.pushBack(static_cast<oa::Byte>((inValue >> shift) & 0xffU));
 	}
 }
 
-void appendU64Le(oa::Vec<oa::Byte>& out, oa::U64 inValue) {
+void appendU64Le(oa::Vector<oa::Byte>& out, oa::U64 inValue) {
 	for (oa::U32 shift = 0; shift < 64U; shift += 8U) {
 		out.pushBack(static_cast<oa::Byte>((inValue >> shift) & 0xffU));
 	}
@@ -96,7 +91,7 @@ oa::U32 readU32Le(const oa::Byte* inData) {
 	return value;
 }
 
-void appendF32Le(oa::Vec<oa::Byte>& out, oa::F32 inValue) {
+void appendF32Le(oa::Vector<oa::Byte>& out, oa::F32 inValue) {
 	oa::U32 bits = 0;
 	oa::memcpy(&bits, &inValue, sizeof(bits));
 	appendU32Le(out, bits);
@@ -118,13 +113,13 @@ oa::Array<oa::Byte, 32> hashString(oa::StringView inText) {
 		reinterpret_cast<const oa::Byte*>(inText.data()), inText.size()));
 }
 
-oa::U64 totalObjectBytes(const oa::Vec<SessionObject>& inObjects) {
+oa::U64 totalObjectBytes(const oa::Vector<SessionObject>& inObjects) {
 	oa::U64 total = 0U;
 	for (const auto& object : inObjects) total += object.data.size();
 	return total;
 }
 
-SessionObject* findObject(oa::Vec<SessionObject>& inObjects, oa::U64 inId) {
+SessionObject* findObject(oa::Vector<SessionObject>& inObjects, oa::U64 inId) {
 	for (auto& object : inObjects) {
 		if (object.id == inId) return &object;
 	}
@@ -160,12 +155,12 @@ oa::Result<oa::MatrixShape> matrixShapeFromSpan(oa::Span<const oa::I64> inShape)
 	return shape;
 }
 
-oa::Result<oa::Vec<oa::F32>> decodeF32(oa::Span<const oa::Byte> inData) {
+oa::Result<oa::Vector<oa::F32>> decodeF32(oa::Span<const oa::Byte> inData) {
 	if (inData.size() % sizeof(oa::F32) != 0U) {
 		return oa::Status::error(oa::StatusCode::DataLoss,
 			"satellite session: FP32 object has a partial element");
 	}
-	oa::Vec<oa::F32> values;
+	oa::Vector<oa::F32> values;
 	values.reserve(inData.size() / sizeof(oa::F32));
 	for (oa::Usize offset = 0; offset < inData.size(); offset += sizeof(oa::F32)) {
 		values.pushBack(readF32Le(inData.data() + offset));
@@ -173,7 +168,7 @@ oa::Result<oa::Vec<oa::F32>> decodeF32(oa::Span<const oa::Byte> inData) {
 	return values;
 }
 
-oa::Span<const oa::Byte> asBytes(const oa::Vec<oa::Byte>& inBytes) {
+oa::Span<const oa::Byte> asBytes(const oa::Vector<oa::Byte>& inBytes) {
 	return oa::Span<const oa::Byte>(inBytes.data(), inBytes.size());
 }
 
@@ -202,7 +197,7 @@ oa::Result<oa::Array<oa::Byte, 32>> randomNonce() {
 		if (count < 0 and errno == EINTR) continue;
 		if (count <= 0) {
 			(void)::close(fd);
-			secureZero(nonce.data(), nonce.size());
+			oa::memzeroSecure(nonce.data(), nonce.size());
 			return oa::Status::error(oa::StatusCode::Unavailable,
 				"satellite session: operating-system random source failed");
 		}
@@ -254,11 +249,7 @@ oa::Result<oa::Array<oa::Byte, 32>> kmac(
 
 oa::Bool constantEqual(oa::Span<const oa::Byte> inA, oa::Span<const oa::Byte> inB) {
 	if (inA.size() != inB.size()) return false;
-	oa::Byte difference = 0;
-	for (oa::Usize i = 0; i < inA.size(); ++i) {
-		difference |= static_cast<oa::Byte>(inA[i] ^ inB[i]);
-	}
-	return difference == 0U;
+	return oa::memEqualConstantTime(inA.data(), inB.data(), inA.size());
 }
 
 oa::Bool admitsNamedOperation(
@@ -290,7 +281,7 @@ oa::Result<oa::SatelliteMessage> readMessage(
 	if (inMaxPayloadBytes > oa::SatelliteProtocol::kMaxPayloadBytes) {
 		return oa::Status::invalidArgument("satellite session: invalid payload limit");
 	}
-	oa::Vec<oa::Byte> frame;
+	oa::Vector<oa::Byte> frame;
 	const auto status = oa::TcpFramed::readMessage(
 		inStream, frame, oa::SatelliteProtocol::kHeaderBytes + inMaxPayloadBytes);
 	if (status.isError()) {
@@ -421,14 +412,14 @@ oa::Status sendFailure(
 } // namespace
 
 oa::SatelliteSecret::~SatelliteSecret() {
-	secureZero(bytes_.data(), bytes_.size());
+	oa::memzeroSecure(bytes_.data(), bytes_.size());
 	valid_ = false;
 }
 
 oa::SatelliteSecret::SatelliteSecret(oa::SatelliteSecret&& inOther) noexcept
 	: bytes_(inOther.bytes_), valid_(inOther.valid_)
 {
-	secureZero(inOther.bytes_.data(), inOther.bytes_.size());
+	oa::memzeroSecure(inOther.bytes_.data(), inOther.bytes_.size());
 	inOther.valid_ = false;
 }
 
@@ -436,10 +427,10 @@ oa::SatelliteSecret& oa::SatelliteSecret::operator=(
 	oa::SatelliteSecret&& inOther) noexcept
 {
 	if (this != &inOther) {
-		secureZero(bytes_.data(), bytes_.size());
+		oa::memzeroSecure(bytes_.data(), bytes_.size());
 		bytes_ = inOther.bytes_;
 		valid_ = inOther.valid_;
-		secureZero(inOther.bytes_.data(), inOther.bytes_.size());
+		oa::memzeroSecure(inOther.bytes_.data(), inOther.bytes_.size());
 		inOther.valid_ = false;
 	}
 	return *this;
@@ -573,7 +564,7 @@ oa::Status oa::SatelliteServerSession::serve(oa::TcpStream inStream) {
 	if (epochResult.isError()) return epochResult.getStatus();
 	const oa::U64 epoch = *epochResult;
 	lastEpoch_ = epoch;
-	oa::Vec<oa::Byte> replyProofData;
+	oa::Vector<oa::Byte> replyProofData;
 	replyProofData.append(clientNonceField->data.data(), clientNonceField->data.size());
 	replyProofData.append(serverNonce.data(), serverNonce.size());
 	appendU64Le(replyProofData, epoch);
@@ -607,7 +598,7 @@ oa::Status oa::SatelliteServerSession::serve(oa::TcpStream inStream) {
 	OA_RETURN_IF_ERROR(writeMessage(inStream, reply));
 
 	oa::U64 lastRequestId = hello.requestId;
-	oa::Vec<SessionObject> objects;
+	oa::Vector<SessionObject> objects;
 	oa::Optional<PendingOp> pending;
 	while (true) {
 		auto requestResult = readMessage(inStream, limits.maxPayloadBytes);
@@ -902,7 +893,7 @@ oa::Status oa::SatelliteServerSession::serve(oa::TcpStream inStream) {
 								"satellite session: exact GPU event provenance failed");
 						return sendFailure(inStream, request, failure, true);
 					}
-					oa::Vec<oa::F32> host(aValues->size());
+					oa::Vector<oa::F32> host(aValues->size());
 					const auto copied = oa::FnMatrix::copyToHost(
 						out, host.data(), host.size() * sizeof(oa::F32));
 					if (copied.isError()) {
@@ -1096,7 +1087,7 @@ oa::Result<oa::SatelliteClientSession> oa::SatelliteClientSession::connect(
 		return oa::Status::error(oa::StatusCode::DataLoss,
 			"satellite session: reply epoch fields disagree");
 	}
-	oa::Vec<oa::Byte> replyProofData;
+	oa::Vector<oa::Byte> replyProofData;
 	replyProofData.append(clientNonce.data(), clientNonce.size());
 	replyProofData.append(serverNonce->data.data(), serverNonce->data.size());
 	appendU64Le(replyProofData, epoch);
@@ -1157,7 +1148,7 @@ oa::Status oa::SatelliteClientSession::putF32Versioned(
 		return oa::Status::error(oa::StatusCode::ShapeMismatch,
 			"satellite session: shape and value count disagree");
 	}
-	oa::Vec<oa::Byte> data;
+	oa::Vector<oa::Byte> data;
 	data.reserve(inValues.size() * sizeof(oa::F32));
 	for (const oa::F32 value : inValues) appendF32Le(data, value);
 	return putObject(
@@ -1187,7 +1178,7 @@ oa::Status oa::SatelliteClientSession::putU32Versioned(
 		return oa::Status::error(oa::StatusCode::ShapeMismatch,
 			"satellite session: shape and value count disagree");
 	}
-	oa::Vec<oa::Byte> data;
+	oa::Vector<oa::Byte> data;
 	data.reserve(inValues.size() * sizeof(oa::U32));
 	for (const oa::U32 value : inValues) appendU32Le(data, value);
 	return putObject(
@@ -1202,7 +1193,7 @@ oa::Status oa::SatelliteClientSession::putObject(
 	oa::Span<const oa::Byte> inData)
 {
 	const auto hash = hashBytes(inData);
-	oa::Vec<oa::SatelliteField> fields;
+	oa::Vector<oa::SatelliteField> fields;
 	fields.pushBack(oa::SatelliteField::u64(
 		oa::SatelliteFieldId::PutObjectId, inObjectId));
 	fields.pushBack(oa::SatelliteField::u8(
@@ -1242,7 +1233,7 @@ oa::Status oa::SatelliteClientSession::putObject(
 }
 
 oa::Status oa::SatelliteClientSession::dropObject(oa::U64 inObjectId) {
-	oa::Vec<oa::SatelliteField> fields;
+	oa::Vector<oa::SatelliteField> fields;
 	fields.pushBack(oa::SatelliteField::u64(
 		oa::SatelliteFieldId::DropObjectId, inObjectId));
 	auto response = exchange(oa::SatelliteMessageType::dropObject, oa::move(fields));
@@ -1251,7 +1242,7 @@ oa::Status oa::SatelliteClientSession::dropObject(oa::U64 inObjectId) {
 
 oa::Result<oa::SatelliteMessage> oa::SatelliteClientSession::exchange(
 	oa::SatelliteMessageType inType,
-	oa::Vec<oa::SatelliteField> inFields)
+	oa::Vector<oa::SatelliteField> inFields)
 {
 	if (not open_) {
 		return oa::Status::error(oa::StatusCode::FailedPrecondition,
@@ -1283,10 +1274,10 @@ oa::Result<oa::SatelliteMessage> oa::SatelliteClientSession::exchange(
 }
 
 oa::Result<oa::U64> oa::SatelliteClientSession::startCpuAdd(oa::U32 inA, oa::U32 inB) {
-	oa::Vec<oa::Byte> arguments;
+	oa::Vector<oa::Byte> arguments;
 	appendU32Le(arguments, inA);
 	appendU32Le(arguments, inB);
-	oa::Vec<oa::SatelliteField> fields;
+	oa::Vector<oa::SatelliteField> fields;
 	fields.pushBack(oa::SatelliteField::string(
 		oa::SatelliteFieldId::ExecuteOperation, "u32-add-v1"));
 	fields.pushBack(oa::SatelliteField::u64Array(
@@ -1307,7 +1298,7 @@ oa::Result<oa::U64> oa::SatelliteClientSession::startMatrixAddF32(
 	oa::U64 inOutput)
 {
 	const oa::U64 inputs[] = {inA, inB};
-	oa::Vec<oa::SatelliteField> fields;
+	oa::Vector<oa::SatelliteField> fields;
 	fields.pushBack(oa::SatelliteField::string(
 		oa::SatelliteFieldId::ExecuteOperation, "matrix-add-f32-v1"));
 	fields.pushBack(oa::SatelliteField::u64Array(
@@ -1338,7 +1329,7 @@ oa::Result<oa::U64> oa::SatelliteClientSession::startNamed(
 				"satellite session: named-operation input id must be non-zero");
 		}
 	}
-	oa::Vec<oa::SatelliteField> fields;
+	oa::Vector<oa::SatelliteField> fields;
 	fields.pushBack(oa::SatelliteField::string(
 		oa::SatelliteFieldId::ExecuteOperation, inOperation));
 	fields.pushBack(oa::SatelliteField::u64Array(
@@ -1360,28 +1351,28 @@ oa::Result<oa::U64> oa::SatelliteClientSession::startNamed(
 }
 
 oa::Result<oa::SatelliteMessage> oa::SatelliteClientSession::poll(oa::U64 inRequestId) {
-	oa::Vec<oa::SatelliteField> fields;
+	oa::Vector<oa::SatelliteField> fields;
 	fields.pushBack(oa::SatelliteField::u64(
 		oa::SatelliteFieldId::PollRequestId, inRequestId));
 	return exchange(oa::SatelliteMessageType::poll, oa::move(fields));
 }
 
 oa::Result<oa::SatelliteMessage> oa::SatelliteClientSession::wait(oa::U64 inRequestId) {
-	oa::Vec<oa::SatelliteField> fields;
+	oa::Vector<oa::SatelliteField> fields;
 	fields.pushBack(oa::SatelliteField::u64(
 		oa::SatelliteFieldId::WaitRequestId, inRequestId));
 	return exchange(oa::SatelliteMessageType::wait, oa::move(fields));
 }
 
 oa::Result<oa::SatelliteMessage> oa::SatelliteClientSession::cancel(oa::U64 inRequestId) {
-	oa::Vec<oa::SatelliteField> fields;
+	oa::Vector<oa::SatelliteField> fields;
 	fields.pushBack(oa::SatelliteField::u64(
 		oa::SatelliteFieldId::CancelRequestId, inRequestId));
 	return exchange(oa::SatelliteMessageType::cancel, oa::move(fields));
 }
 
 oa::Result<oa::SatelliteMessage> oa::SatelliteClientSession::getResult(oa::U64 inRequestId) {
-	oa::Vec<oa::SatelliteField> fields;
+	oa::Vector<oa::SatelliteField> fields;
 	fields.pushBack(oa::SatelliteField::u64(
 		oa::SatelliteFieldId::GetResultRequestId, inRequestId));
 	return exchange(oa::SatelliteMessageType::getResult, oa::move(fields));
@@ -1398,7 +1389,7 @@ oa::Status oa::SatelliteClientSession::close() {
 
 oa::Status oa::SatelliteClientSession::abort(oa::StringView inReason) {
 	if (not open_) return oa::Status::ok();
-	oa::Vec<oa::SatelliteField> fields;
+	oa::Vector<oa::SatelliteField> fields;
 	fields.pushBack(oa::SatelliteField::string(
 		oa::SatelliteFieldId::AbortReason,
 		inReason.empty() ? oa::StringView("client abort") : inReason));
@@ -1442,7 +1433,7 @@ oa::Result<oa::U32> oa::SatelliteClientSession::readCpuAddResult(
 	return readU32Le(bytesField->data.data());
 }
 
-oa::Result<oa::Vec<oa::F32>> oa::SatelliteClientSession::readF32Result(
+oa::Result<oa::Vector<oa::F32>> oa::SatelliteClientSession::readF32Result(
 	const oa::SatelliteMessage& inMessage)
 {
 	const auto* completeField = requiredField(
@@ -1476,7 +1467,7 @@ oa::Result<oa::Vec<oa::F32>> oa::SatelliteClientSession::readF32Result(
 	return decodeF32(asBytes(bytesField->data));
 }
 
-oa::Result<oa::Vec<oa::Byte>> oa::SatelliteClientSession::readBytesResult(
+oa::Result<oa::Vector<oa::Byte>> oa::SatelliteClientSession::readBytesResult(
 	const oa::SatelliteMessage& inMessage)
 {
 	const auto* completeField = requiredField(
@@ -1510,11 +1501,11 @@ oa::Result<oa::Vec<oa::Byte>> oa::SatelliteClientSession::readBytesResult(
 	return bytesField->data;
 }
 
-oa::Result<oa::Vec<oa::Byte>> oa::SatelliteClientSession::readProfile(
+oa::Result<oa::Vector<oa::Byte>> oa::SatelliteClientSession::readProfile(
 	const oa::SatelliteMessage& inMessage)
 {
 	const auto* profile = oa::SatelliteProtocol::findField(
 		inMessage, oa::SatelliteFieldId::ResultProfile);
-	if (profile == nullptr) return oa::Vec<oa::Byte>{};
+	if (profile == nullptr) return oa::Vector<oa::Byte>{};
 	return profile->data;
 }

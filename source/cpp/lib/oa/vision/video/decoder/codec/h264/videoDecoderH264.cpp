@@ -9,7 +9,7 @@ namespace {
 
 oa::Status normalizeAnnexB(
 	const oa::Span<const oa::U8>& inBitstream,
-	oa::Vec<oa::U8>& outBitstream)
+	oa::Vector<oa::U8>& outBitstream)
 {
 	outBitstream.clear();
 	const oa::U8* data = inBitstream.data();
@@ -76,7 +76,7 @@ oa::Status oa::VideoDecoderCodecAccess::decodeH264(
 		return oa::Status::error("H.264 parser not registered");
 	}
 
-	oa::Vec<oa::U8> normalizedBitstream;
+	oa::Vector<oa::U8> normalizedBitstream;
 	OA_RETURN_IF_ERROR(normalizeAnnexB(inBitstream, normalizedBitstream));
 	const oa::Span<const oa::U8> bitstream(
 		normalizedBitstream.data(),
@@ -155,8 +155,8 @@ oa::Status oa::VideoDecoderCodecAccess::decodeH264(
 	sliceHeader.picOrderCntLsb = fullPoc;
 	desc.sliceHeader.picOrderCntLsb = fullPoc;
 
-	oa::Vec<oa::I32> refPicList0;
-	oa::Vec<oa::I32> refPicList1;
+	oa::Vector<oa::I32> refPicList0;
+	oa::Vector<oa::I32> refPicList1;
 	if (sliceHeader.sliceType == oa::H264SliceType::P) {
 		// P-slice list0 is picNum-ordered (§8.2.4.2.1), not POC-ordered.
 		inDecoder.buildH264RefPicList0P(refPicList0);

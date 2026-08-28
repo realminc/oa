@@ -56,6 +56,28 @@ TEST(HashSet, IteratorPostfix) {
 	EXPECT_EQ(it, s.end());
 }
 
+TEST(HashSet, MoveLeavesSourceEmptyAndReusable) {
+	oa::HashSet<int> source;
+	for (int value = 0; value < 24; ++value) source.insert(value);
+	EXPECT_EQ(source.erase(7), 1U);
+
+	oa::HashSet<int> moved(oa::move(source));
+	EXPECT_TRUE(source.empty());
+	EXPECT_EQ(source.begin(), source.end());
+	EXPECT_TRUE(source.insert(100).second);
+	EXPECT_TRUE(source.contains(100));
+	EXPECT_EQ(moved.size(), 23U);
+	EXPECT_TRUE(moved.contains(9));
+
+	oa::HashSet<int> destination;
+	destination.insert(-1);
+	destination = oa::move(moved);
+	EXPECT_TRUE(moved.empty());
+	EXPECT_TRUE(moved.insert(200).second);
+	EXPECT_EQ(destination.size(), 23U);
+	EXPECT_TRUE(destination.contains(9));
+}
+
 TEST(StdHashSetVsStd, SameInsertsAsUnorderedSet) {
 	oa::HashSet<int> oa;
 	std::unordered_set<int> st;

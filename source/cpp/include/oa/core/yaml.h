@@ -51,8 +51,8 @@ public:
 		return inDefault;
 	}
 
-	[[nodiscard]] static oa::Vec<oa::String> getList(const Node& inNode, const oa::String& inKey) {
-		oa::Vec<oa::String> result;
+	[[nodiscard]] static oa::Vector<oa::String> getList(const Node& inNode, const oa::String& inKey) {
+		oa::Vector<oa::String> result;
 		const std::string key(inKey.data(), inKey.size());
 		if (inNode && inNode[key] && inNode[key].IsSequence()) {
 			for (const auto& item : inNode[key]) {
@@ -92,8 +92,8 @@ public:
 		return inDefault;
 	}
 
-	[[nodiscard]] static oa::Vec<oa::String> getList(const Node&, const oa::String&) {
-		return oa::Vec<oa::String>();
+	[[nodiscard]] static oa::Vector<oa::String> getList(const Node&, const oa::String&) {
+		return oa::Vector<oa::String>();
 	}
 };
 

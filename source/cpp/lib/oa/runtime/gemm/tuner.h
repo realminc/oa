@@ -39,7 +39,7 @@ struct GemmTunerResult {
 	// Fastest first. This is deliberately the complete legal ranking rather
 	// than only the winner, so diagnostics and future policy can compare a
 	// stable second choice without re-running an exhaustive tune.
-	oa::Vec<oa::GemmTunerCandidateResult> rankedCandidates;
+	oa::Vector<oa::GemmTunerCandidateResult> rankedCandidates;
 };
 
 // oa::GemmTuner — benchmark harness

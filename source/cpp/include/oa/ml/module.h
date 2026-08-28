@@ -96,22 +96,22 @@ public:
 	// PyTorch's .parameters(). For nested modules use allParameterPtrs() instead.
 	// FOOTGUN: module->parameters()[0] on a nested module is OOB. Always check
 	// .size() first or use allParameterPtrs().
-	[[nodiscard]] oa::Vec<Parameter>& parameters() { return params_; }
-	[[nodiscard]] const oa::Vec<Parameter>& parameters() const { return params_; }
+	[[nodiscard]] oa::Vector<Parameter>& parameters() { return params_; }
+	[[nodiscard]] const oa::Vector<Parameter>& parameters() const { return params_; }
 
 	// Recursive parameter collection (use these for nested modules)
-	[[nodiscard]] oa::Vec<Parameter>        allParameters();
-	[[nodiscard]] oa::Vec<Parameter*>       allParameterPtrs();
-	[[nodiscard]] oa::Vec<NamedParameter>   allNamedParameterPtrs();
+	[[nodiscard]] oa::Vector<Parameter>        allParameters();
+	[[nodiscard]] oa::Vector<Parameter*>       allParameterPtrs();
+	[[nodiscard]] oa::Vector<NamedParameter>   allNamedParameterPtrs();
 	[[nodiscard]] virtual oa::I64           numParameters() const;
 	void registerModule(oa::StringView inName, oa::SharedPtr<Module> inModule);
 	void registerParameter(oa::StringView inName, Matrix inData, bool inRequiresGrad = true);
 
 	// persistent/non-trainable state. buffers never receive gradients and never
 	// participate in optimizer parameter traversal or numParameters().
-	[[nodiscard]] oa::Vec<ModuleBuffer>& buffers() { return buffers_; }
-	[[nodiscard]] const oa::Vec<ModuleBuffer>& buffers() const { return buffers_; }
-	[[nodiscard]] oa::Vec<ModuleBuffer*> allBufferPtrs(bool inPersistentOnly = false);
+	[[nodiscard]] oa::Vector<ModuleBuffer>& buffers() { return buffers_; }
+	[[nodiscard]] const oa::Vector<ModuleBuffer>& buffers() const { return buffers_; }
+	[[nodiscard]] oa::Vector<ModuleBuffer*> allBufferPtrs(bool inPersistentOnly = false);
 	void registerBuffer(oa::StringView inName, Matrix inData, bool inPersistent = true);
 
 	// Sub-modules
@@ -120,8 +120,8 @@ public:
 		oa::String            name;
 		oa::SharedPtr<Module> module;
 	};
-	[[nodiscard]] oa::Vec<NamedChild>& children() { return children_; }
-	[[nodiscard]] const oa::Vec<NamedChild>& children() const { return children_; }
+	[[nodiscard]] oa::Vector<NamedChild>& children() { return children_; }
+	[[nodiscard]] const oa::Vector<NamedChild>& children() const { return children_; }
 
 	// Persistence — non-virtual generic tree walks. Builds dotted parameter paths
 	// from registerModule/registerParameter names (e.g. "fc1.weight"). arch-specific
@@ -154,9 +154,9 @@ protected:
 	[[nodiscard]] oa::Status loadWalk(Engine& inEngine, const ModelFile& inFile, const oa::String& inPrefix);
 
 	oa::String            name_;
-	oa::Vec<Parameter>    params_;
-	oa::Vec<ModuleBuffer> buffers_;
-	oa::Vec<NamedChild>   children_;
+	oa::Vector<Parameter>    params_;
+	oa::Vector<ModuleBuffer> buffers_;
+	oa::Vector<NamedChild>   children_;
 	oa::Bool              training_ = true;
 	oa::Device            device_{oa::DeviceType::VkDiscrete, 0};
 };

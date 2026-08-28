@@ -4,7 +4,7 @@
 #include <oa/oa.h>
 #include "oa/runtime/collective/hostCollectiveOracle.h"
 #include <oa/runtime/engine.h>
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
 
 #include <cmath>
 #include <numeric>

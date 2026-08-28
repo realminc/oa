@@ -74,9 +74,9 @@ public:
 	[[nodiscard]] oa::I32   poseDim() const noexcept { return poseDim_; }
 	[[nodiscard]] oa::F32   fps()     const noexcept { return fps_; }
 	[[nodiscard]] oa::Usize clipCount() const noexcept { return clips_.size(); }
-	[[nodiscard]] const oa::Vec<oa::F32>& mean() const noexcept { return mean_; }
-	[[nodiscard]] const oa::Vec<oa::F32>& std()  const noexcept { return std_; }
-	[[nodiscard]] const oa::Vec<DsClipMeta>& metas() const noexcept { return metas_; }
+	[[nodiscard]] const oa::Vector<oa::F32>& mean() const noexcept { return mean_; }
+	[[nodiscard]] const oa::Vector<oa::F32>& std()  const noexcept { return std_; }
+	[[nodiscard]] const oa::Vector<DsClipMeta>& metas() const noexcept { return metas_; }
 
 	/// Count clips in a specific split.
 	[[nodiscard]] oa::Usize splitClipCount(DsSplit inSplit) const noexcept;
@@ -85,10 +85,10 @@ public:
 	[[nodiscard]] oa::I32 findClipByName(const oa::String& inName) const;
 
 	/// Copy raw (un-normalized) frames from a clip. For seeding generation.
-	[[nodiscard]] bool seedRaw(oa::I32 inClipIdx, oa::I32 inContext, oa::Vec<oa::F32>& outRaw) const;
-	[[nodiscard]] bool clipRaw(oa::I32 inClipIdx, oa::Vec<oa::F32>& outRaw, oa::U32& outFrames) const;
-	[[nodiscard]] bool seedModelRaw(oa::I32 inClipIdx, oa::I32 inContext, oa::Vec<oa::F32>& outRaw) const;
-	[[nodiscard]] bool clipModelRaw(oa::I32 inClipIdx, oa::Vec<oa::F32>& outRaw, oa::U32& outFrames) const;
+	[[nodiscard]] bool seedRaw(oa::I32 inClipIdx, oa::I32 inContext, oa::Vector<oa::F32>& outRaw) const;
+	[[nodiscard]] bool clipRaw(oa::I32 inClipIdx, oa::Vector<oa::F32>& outRaw, oa::U32& outFrames) const;
+	[[nodiscard]] bool seedModelRaw(oa::I32 inClipIdx, oa::I32 inContext, oa::Vector<oa::F32>& outRaw) const;
+	[[nodiscard]] bool clipModelRaw(oa::I32 inClipIdx, oa::Vector<oa::F32>& outRaw, oa::U32& outFrames) const;
 
 private:
 	struct Window { oa::I32 clip; oa::I32 start; };
@@ -98,15 +98,15 @@ private:
 	oa::F32 fps_        = 30.0f;
 	oa::I32 contextLen_ = 0;
 
-	oa::Vec<PoseClip>   clips_;
-	oa::Vec<DsClipMeta> metas_;
-	oa::Vec<oa::F32>        mean_;
-	oa::Vec<oa::F32>        std_;
+	oa::Vector<PoseClip>   clips_;
+	oa::Vector<DsClipMeta> metas_;
+	oa::Vector<oa::F32>        mean_;
+	oa::Vector<oa::F32>        std_;
 
 	// Window indices for OaDataLoader
-	oa::Vec<Window> windows_;
-	oa::Vec<oa::I64>  indices_;  // Shuffled window indices
-	oa::Vec<oa::Usize> splitWindows_[3];
+	oa::Vector<Window> windows_;
+	oa::Vector<oa::I64>  indices_;  // Shuffled window indices
+	oa::Vector<oa::Usize> splitWindows_[3];
 	oa::Usize splitCursor_[3] = {0, 0, 0};
 	
 	// Per-split RNGs for deterministic, independent sampling

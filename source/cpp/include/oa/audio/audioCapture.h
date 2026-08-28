@@ -17,7 +17,7 @@ struct AudioCaptureConfig {
 };
 
 struct AudioCaptureChunk {
-	oa::Vec<oa::F32> interleaved;
+	oa::Vector<oa::F32> interleaved;
 	oa::U32 sampleRate = 0U;
 	oa::U32 channelCount = 0U;
 	oa::U64 frameCount = 0U;
@@ -29,7 +29,7 @@ class AudioCapture {
 public:
 	struct Impl;
 
-	AudioCapture() = default;
+	AudioCapture();
 	AudioCapture(AudioCapture&& inOther) noexcept;
 	AudioCapture& operator=(AudioCapture&& inOther) noexcept;
 	AudioCapture(const AudioCapture&) = delete;

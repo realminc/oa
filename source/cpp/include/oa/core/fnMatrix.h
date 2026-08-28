@@ -210,7 +210,7 @@ namespace FnMatrix {
 	[[nodiscard]] Matrix gatherLastDim(const Matrix& inSelf, const Matrix& inIndices);
 	[[nodiscard]] Matrix gatherLastDimBwd(const Matrix& inGradOut, const Matrix& inIndices, oa::I32 inInputWidth);
 	[[nodiscard]] Matrix concat(oa::Span<Matrix> inInputs, oa::I32 inDim = 0);
-	[[nodiscard]] oa::Vec<Matrix> split(const Matrix& inSelf, oa::Span<oa::I64> inSizes, oa::I32 inDim = 0);
+	[[nodiscard]] oa::Vector<Matrix> split(const Matrix& inSelf, oa::Span<oa::I64> inSizes, oa::I32 inDim = 0);
 	[[nodiscard]] Matrix sliceBwd(
 		MatrixShape inInputShape, oa::I32 inDim, oa::I64 inStart,	oa::I64 inEnd, const Matrix& inDOut
 	);

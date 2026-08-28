@@ -13,7 +13,7 @@
 
 #include <oa/core/types.h>
 #include <oa/core/status.h>
-#include <oa/runtime/oaVk.h>
+#include <vulkan/vulkan_core.h>
 #include <oa/vision/videoDecoder.h>
 
 namespace oa { class Texture; }
@@ -55,7 +55,7 @@ struct VideoEncodeProfile {
 
 // Encoded frame output — bitstream + PTS + key/keyflag.
 struct EncodedVideoPacket {
-	oa::Vec<oa::U8> bitstream;
+	oa::Vector<oa::U8> bitstream;
 	oa::U64       presentationTimestamp = 0U;  // PTS in microseconds
 	bool        isKeyframe            = false;
 	oa::U32       frameSize             = 0U;  // Bytes in bitstream
@@ -108,8 +108,8 @@ struct VideoEncodeCapabilities {
 	VkExtensionProperties               stdHeaderVersion = {};
 	VkVideoEncodeCapabilityFlagsKHR     encodeFlags      = 0;
 
-	oa::Vec<VkVideoFormatPropertiesKHR> inputFormats;
-	oa::Vec<VkVideoFormatPropertiesKHR> dpbFormats;
+	oa::Vector<VkVideoFormatPropertiesKHR> inputFormats;
+	oa::Vector<VkVideoFormatPropertiesKHR> dpbFormats;
 };
 
 
@@ -146,7 +146,7 @@ public:
 	);
 
 	// flush encoder (get remaining buffered frames — B-frame reordering).
-	oa::Status flush(oa::Vec<EncodedVideoPacket>& outFrames);
+	oa::Status flush(oa::Vector<EncodedVideoPacket>& outFrames);
 
 	// Explicit completion and resource-release boundary. pending encoded output
 	// is discarded; call flush() first when the packets are required.
@@ -177,7 +177,7 @@ private:
 		oa::U32 inVisibleWidth,
 		oa::U32 inVisibleHeight,
 		oa::U64 inPts,
-		oa::Vec<EncodedVideoPacket>& outReady,
+		oa::Vector<EncodedVideoPacket>& outReady,
 		YCbCrModel inColorSpace = YCbCrModel::BT709,
 		bool inFullRange = false
 	);
@@ -189,7 +189,7 @@ private:
 		oa::U32 inVisibleWidth,
 		oa::U32 inVisibleHeight,
 		oa::U64 inPts,
-		oa::Vec<EncodedVideoPacket>& outReady,
+		oa::Vector<EncodedVideoPacket>& outReady,
 		YCbCrModel inColorSpace = YCbCrModel::BT709,
 		bool inFullRange = false,
 		oa::U32 inArrayLayer = 0U,

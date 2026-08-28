@@ -7,7 +7,10 @@
 function(oa_add_tutorial TARGET SOURCE SUBDIR)
 	add_executable(${TARGET} ${SOURCE} ${oa_SOURCE_DIR}/test/cpp/ml/mlTestMain.cpp)
 	target_link_libraries(${TARGET} PRIVATE oaSdkSupport GTest::gtest)
-	target_include_directories(${TARGET} PRIVATE ${oa_SOURCE_DIR}/test/cpp)
+	target_include_directories(${TARGET} PRIVATE
+		${oa_SOURCE_DIR}/test/cpp
+		${oa_SOURCE_DIR}/source/cpp/lib
+		${oa_SOURCE_DIR}/source/cpp/thirdparty)
 	set_target_properties(${TARGET} PROPERTIES
 		RUNTIME_OUTPUT_DIRECTORY "${OA_BIN_DIR}/tutorial/${SUBDIR}")
 	add_test(NAME ${TARGET} COMMAND ${TARGET})

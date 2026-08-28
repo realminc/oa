@@ -1,6 +1,6 @@
 #include <oa/vision/detection.h>
 
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
 #include <oa/runtime/buffer.h>
 #include <oa/runtime/engine.h>
 #include <oa/runtime/engine/resourceAccess.h>
@@ -15,6 +15,8 @@ struct oa::DetectionBuffer::Impl {
 	oa::U32 count = 0;
 	oa::U32 capacity = 0;
 };
+
+oa::DetectionBuffer::DetectionBuffer() = default;
 
 oa::DetectionBuffer::DetectionBuffer(oa::DetectionBuffer&& inOther) noexcept
 	: impl_(oa::move(inOther.impl_)) {}

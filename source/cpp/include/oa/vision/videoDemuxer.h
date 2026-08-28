@@ -29,7 +29,7 @@ enum class VideoContainerKind : oa::U32 {
 
 // Video packet extracted from container
 struct VideoPacket {
-  oa::Vec<oa::U8> data;              // Raw NAL bytes (Annex-B format)
+  oa::Vector<oa::U8> data;              // Raw NAL bytes (Annex-B format)
   oa::U64 presentationTimestamp = 0; // PTS in stream timebase
   oa::U64 decodeTimestamp = 0;       // DTS in stream timebase
   bool isKeyframe = false;
@@ -164,7 +164,7 @@ public:
   };
 
   // Sample table (populated by MP4 parser)
-  oa::Vec<Sample> samples_;
+  oa::Vector<Sample> samples_;
 
   // Container metadata (codec/width/height/duration). Public so the free
   // helpers in videoDemuxer.cpp can write into it during box parsing.
@@ -174,8 +174,8 @@ public:
   // ready to prepend to the first IDR packet. Also exposes the NAL length
   // field width so readNextPacket can rewrite length-prefix → start codes.
   struct AvcConfig {
-    oa::Vec<oa::U8> spsAnnexB; // 00 00 00 01 + SPS NAL
-    oa::Vec<oa::U8> ppsAnnexB; // 00 00 00 01 + PPS NAL
+    oa::Vector<oa::U8> spsAnnexB; // 00 00 00 01 + SPS NAL
+    oa::Vector<oa::U8> ppsAnnexB; // 00 00 00 01 + PPS NAL
     VideoProfile profile = {};
     oa::U8 lengthSize = 4; // bytes per NAL length field (1, 2 or 4)
     bool valid = false;
@@ -184,9 +184,9 @@ public:
 
   // codec config parsed from hvcC (H.265): VPS + SPS + PPS as Annex-B bytes
   struct HvcConfig {
-    oa::Vec<oa::U8> vpsAnnexB; // 00 00 00 01 + VPS NAL
-    oa::Vec<oa::U8> spsAnnexB; // 00 00 00 01 + SPS NAL
-    oa::Vec<oa::U8> ppsAnnexB; // 00 00 00 01 + PPS NAL
+    oa::Vector<oa::U8> vpsAnnexB; // 00 00 00 01 + VPS NAL
+    oa::Vector<oa::U8> spsAnnexB; // 00 00 00 01 + SPS NAL
+    oa::Vector<oa::U8> ppsAnnexB; // 00 00 00 01 + PPS NAL
     VideoProfile profile = {};
     oa::U8 lengthSize = 4; // bytes per NAL length field (1, 2 or 4)
     bool valid = false;
@@ -198,7 +198,7 @@ public:
   // OBU temporal units that omit the sequence header, so we prepend this to
   // every keyframe temporal unit (analogous to SPS/PPS for H.264/H.265).
   struct Av1Config {
-    oa::Vec<oa::U8> configObus; // raw low-overhead OBU bytes (sequence header)
+    oa::Vector<oa::U8> configObus; // raw low-overhead OBU bytes (sequence header)
     VideoProfile profile = {};
     bool valid = false;
   };
@@ -250,13 +250,13 @@ private:
   bool hasLastDecodeTimestamp_ = false;
   FILE* file_ = nullptr;
   oa::U64 fileSize_ = 0U;
-  oa::Vec<oa::U8>
+  oa::Vector<oa::U8>
       sampleData_; // bounded scratch for the current compressed sample
   oa::U64 currentOffset_ = 0;
   bool eos_ = false;
   oa::U32 currentSampleIndex_ = 0;
   bool needParameterSets_ = true; // prepend SPS+PPS on next IDR
-  oa::Vec<oa::U8>
+  oa::Vector<oa::U8>
       bufferedPictureNals_;       // Picture NAL units buffered for next packet
   oa::U64 bufferedTimestamp_ = 0; // timestamp for buffered picture NAL units
   bool bufferedIsKeyframe_ =

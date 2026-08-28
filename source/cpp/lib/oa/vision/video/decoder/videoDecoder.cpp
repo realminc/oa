@@ -12,7 +12,7 @@
 #include <oa/runtime/engine/deviceAccess.h>
 #include <oa/core/std/array.h>
 #include <oa/runtime/init.h>
-#include <oa/runtime/oaVma.h>
+#include <vma/vma.hpp>
 #include <oa/core/fnMatrix.h>
 #include "oa/runtime/engine/borrowedServiceRetirement.h"
 #include "../codec/nalParser.h"
@@ -148,7 +148,7 @@ static bool hasQualifiedIntelVp9LevelOverride(
 }
 
 static bool hasFormatWithUsage(
-	const oa::Vec<VkVideoFormatPropertiesKHR>& inFormats,
+	const oa::Vector<VkVideoFormatPropertiesKHR>& inFormats,
 	VkFormat inFormat,
 	VkImageUsageFlags inUsage)
 {
@@ -161,7 +161,7 @@ static bool hasFormatWithUsage(
 }
 
 static const VkVideoFormatPropertiesKHR* findFormatWithUsage(
-	const oa::Vec<VkVideoFormatPropertiesKHR>& inFormats,
+	const oa::Vector<VkVideoFormatPropertiesKHR>& inFormats,
 	VkFormat inFormat,
 	VkImageUsageFlags inUsage)
 {
@@ -174,11 +174,11 @@ static const VkVideoFormatPropertiesKHR* findFormatWithUsage(
 }
 
 static oa::Status queryVideoFormats(
-	const OaVkInstanceTable& inDispatch,
+	const VklInstanceTable& inDispatch,
 	VkPhysicalDevice inPhys,
 	const VkVideoProfileInfoKHR& inProfile,
 	VkImageUsageFlags inUsage,
-	oa::Vec<VkVideoFormatPropertiesKHR>& outFormats)
+	oa::Vector<VkVideoFormatPropertiesKHR>& outFormats)
 {
 	if (!inDispatch.vkGetPhysicalDeviceVideoFormatPropertiesKHR) {
 		return oa::Status::error("vkGetPhysicalDeviceVideoFormatPropertiesKHR is not loaded");
@@ -716,12 +716,12 @@ oa::Result<oa::VideoDecodeCapabilities> oa::VideoDecoder::queryDecodeCapabilitie
 	}
 	out.supportsNv12Dpb = hasFormatWithUsage(out.dpbFormats, VK_FORMAT_G8_B8R8_2PLANE_420_UNORM, dpbUsage);
 
-	oa::Vec<VkVideoFormatPropertiesKHR> dpbSampledFormats;
+	oa::Vector<VkVideoFormatPropertiesKHR> dpbSampledFormats;
 	OA_RETURN_IF_ERROR(queryVideoFormats(
 		instanceDispatch, phys, profile, dpbSampledUsage, dpbSampledFormats));
 	out.supportsNv12DpbSampled = hasFormatWithUsage(dpbSampledFormats, VK_FORMAT_G8_B8R8_2PLANE_420_UNORM, dpbSampledUsage);
 
-	oa::Vec<VkVideoFormatPropertiesKHR> dpbTransferFormats;
+	oa::Vector<VkVideoFormatPropertiesKHR> dpbTransferFormats;
 	OA_RETURN_IF_ERROR(queryVideoFormats(
 		instanceDispatch, phys, profile, dpbTransferUsage, dpbTransferFormats));
 	out.supportsNv12DpbTransferSrc =
@@ -929,7 +929,7 @@ oa::Result<oa::VideoDecoder> oa::VideoDecoder::create(
 		static_cast<VkPhysicalDevice>(oa::EngineDeviceAccess::get(vkEngine).physicalDevice),
 		&queueFamilyCount,
 		nullptr);
-	oa::Vec<VkQueueFamilyProperties> queueFamilyProperties(queueFamilyCount);
+	oa::Vector<VkQueueFamilyProperties> queueFamilyProperties(queueFamilyCount);
 	instanceDispatch.vkGetPhysicalDeviceQueueFamilyProperties(
 		static_cast<VkPhysicalDevice>(oa::EngineDeviceAccess::get(vkEngine).physicalDevice),
 		&queueFamilyCount,
@@ -1472,10 +1472,10 @@ oa::Status oa::VideoDecoder::close()
 		VkImage image = impl_->outputImages[i];
 		void* allocation = i < impl_->outputAllocations.size() ? impl_->outputAllocations[i] : nullptr;
 		if (image && allocation) {
-			OaVmaDestroyImage(
-				static_cast<OaVmaAllocator>(oa::EngineAllocatorAccess::get(vkEngine).allocator),
+			vma::destroyImage(
+				static_cast<vma::Allocator>(oa::EngineAllocatorAccess::get(vkEngine).allocator),
 				image,
-				static_cast<OaVmaAllocation>(allocation));
+				static_cast<vma::Allocation>(allocation));
 		}
 	}
 	impl_->outputImages.clear();
@@ -1498,10 +1498,10 @@ oa::Status oa::VideoDecoder::close()
 		VkImage image = impl_->sampleImages[i];
 		void* allocation = i < impl_->sampleAllocations.size() ? impl_->sampleAllocations[i] : nullptr;
 		if (image && allocation) {
-			OaVmaDestroyImage(
-				static_cast<OaVmaAllocator>(oa::EngineAllocatorAccess::get(vkEngine).allocator),
+			vma::destroyImage(
+				static_cast<vma::Allocator>(oa::EngineAllocatorAccess::get(vkEngine).allocator),
 				image,
-				static_cast<OaVmaAllocation>(allocation));
+				static_cast<vma::Allocation>(allocation));
 		}
 	}
 	impl_->sampleImages.clear();
@@ -1513,10 +1513,10 @@ oa::Status oa::VideoDecoder::close()
 		VkImage image = impl_->rgbImages[i];
 		void* allocation = i < impl_->rgbAllocations.size() ? impl_->rgbAllocations[i] : nullptr;
 		if (image && allocation) {
-			OaVmaDestroyImage(
-				static_cast<OaVmaAllocator>(oa::EngineAllocatorAccess::get(vkEngine).allocator),
+			vma::destroyImage(
+				static_cast<vma::Allocator>(oa::EngineAllocatorAccess::get(vkEngine).allocator),
 				image,
-				static_cast<OaVmaAllocation>(allocation));
+				static_cast<vma::Allocation>(allocation));
 		}
 	}
 	impl_->rgbImages.clear();

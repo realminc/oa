@@ -41,11 +41,11 @@ public:
 		const oa::Matrix& inTokenIds, const oa::Matrix& inTextFeatures
 	);
 
-	[[nodiscard]] oa::Vec<oa::Matrix> tokenize(
+	[[nodiscard]] oa::Vector<oa::Matrix> tokenize(
 		const oa::Matrix& inMotion, oa::I32 inBatch, oa::I32 inFrames
 	);
 	[[nodiscard]] oa::Matrix detokenize(
-		const oa::Vec<oa::Matrix>& inTokenIds, oa::I32 inBatch, oa::I32 inTokenLength
+		const oa::Vector<oa::Matrix>& inTokenIds, oa::I32 inBatch, oa::I32 inTokenLength
 	);
 
 	// End-to-end token sampling + VQ decode. output is normalized HumanML3D

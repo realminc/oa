@@ -86,7 +86,7 @@ struct H264SliceHeader {
 	bool noOutputOfPriorPics       = false;
 	bool longTermReference         = false;
 	bool adaptiveRefPicMarking     = false;
-	oa::Vec<H264MmcoCommand> mmcoCommands;
+	oa::Vector<H264MmcoCommand> mmcoCommands;
 	bool refPicMarkingValid        = false;
 };
 
@@ -98,9 +98,9 @@ struct H265SliceHeader {
 	oa::U32 picOrderCntLsb = 0;
 	oa::I32 picOrderCntVal = 0;
 	oa::U16 numBitsForSTRefPicSetInSlice = 0;
-	oa::Vec<oa::I32> stCurrBeforeDeltaPocs;
-	oa::Vec<oa::I32> stCurrAfterDeltaPocs;
-	oa::Vec<oa::I32> stFollDeltaPocs;
+	oa::Vector<oa::I32> stCurrBeforeDeltaPocs;
+	oa::Vector<oa::I32> stCurrAfterDeltaPocs;
+	oa::Vector<oa::I32> stFollDeltaPocs;
 	oa::U8 nalUnitType = 0;
 	oa::U8 temporalId = 0;
 	bool firstSliceSegmentInPic = true;
@@ -114,8 +114,8 @@ struct H265SliceHeader {
 // NAL unit parser
 class NalParser {
 public:
-	static oa::Vec<oa::U8> makeRbsp(const oa::U8* inData, oa::Usize inSize)	{
-		oa::Vec<oa::U8> rbsp;
+	static oa::Vector<oa::U8> makeRbsp(const oa::U8* inData, oa::Usize inSize)	{
+		oa::Vector<oa::U8> rbsp;
 		rbsp.reserve(inSize);
 		oa::U32 zeroRun = 0;
 		for (oa::Usize i = 0; i < inSize; ++i)
@@ -132,7 +132,7 @@ public:
 		return rbsp;
 	}
 
-	static bool moreRbspData(const BitstreamReader& inReader, const oa::Vec<oa::U8>& inRbsp) {
+	static bool moreRbspData(const BitstreamReader& inReader, const oa::Vector<oa::U8>& inRbsp) {
 		if (inRbsp.empty()) {
 			return false;
 		}
@@ -367,7 +367,7 @@ public:
 		if (inSize < 2) {
 			return false;
 		}
-		oa::Vec<oa::U8> rbsp = makeRbsp(inData, inSize);
+		oa::Vector<oa::U8> rbsp = makeRbsp(inData, inSize);
 		BitstreamReader reader(rbsp.data(), rbsp.size());
 
 		reader.skipBits(16); // HEVC NAL header
@@ -385,7 +385,7 @@ public:
 		if (inSize < 2) {
 			return false;
 		}
-		oa::Vec<oa::U8> rbsp = makeRbsp(inData, inSize);
+		oa::Vector<oa::U8> rbsp = makeRbsp(inData, inSize);
 		BitstreamReader reader(rbsp.data(), rbsp.size());
 
 		reader.skipBits(16); // HEVC NAL header
@@ -485,7 +485,7 @@ public:
 		if (inSize < 2) {
 			return false;
 		}
-		oa::Vec<oa::U8> rbsp = makeRbsp(inData, inSize);
+		oa::Vector<oa::U8> rbsp = makeRbsp(inData, inSize);
 		BitstreamReader reader(rbsp.data(), rbsp.size());
 
 		reader.skipBits(16); // HEVC NAL header
@@ -563,7 +563,7 @@ public:
 		(void)parseH265NalHeader(inData, inSize, temporalId);
 		outHeader.nalUnitType = static_cast<oa::U8>(inNalType);
 		outHeader.temporalId = temporalId;
-		oa::Vec<oa::U8> rbsp = makeRbsp(inData, inSize);
+		oa::Vector<oa::U8> rbsp = makeRbsp(inData, inSize);
 		BitstreamReader reader(rbsp.data(), rbsp.size());
 
 		reader.skipBits(16); // HEVC NAL header
@@ -680,7 +680,7 @@ public:
 		oa::Usize inSize,
 		H264SpsData& outSps)
 	{
-		oa::Vec<oa::U8> rbsp = makeRbsp(inData, inSize);
+		oa::Vector<oa::U8> rbsp = makeRbsp(inData, inSize);
 		BitstreamReader reader(rbsp.data(), rbsp.size());
 
 		// Skip NAL header (already parsed)
@@ -799,7 +799,7 @@ public:
 		oa::Usize inSize,
 		H264PpsData& outPps)
 	{
-		oa::Vec<oa::U8> rbsp = makeRbsp(inData, inSize);
+		oa::Vector<oa::U8> rbsp = makeRbsp(inData, inSize);
 		BitstreamReader reader(rbsp.data(), rbsp.size());
 
 		// Skip NAL header
@@ -858,7 +858,7 @@ public:
 		bool inIsIdr,
 		oa::U32& outPpsId)
 	{
-		oa::Vec<oa::U8> rbsp = makeRbsp(inData, inSize);
+		oa::Vector<oa::U8> rbsp = makeRbsp(inData, inSize);
 		BitstreamReader reader(rbsp.data(), rbsp.size());
 
 		// Skip NAL header
@@ -881,7 +881,7 @@ public:
 		const H264PpsData& inPps,
 		H264SliceHeader& outHeader)
 	{
-		oa::Vec<oa::U8> rbsp = makeRbsp(inData, inSize);
+		oa::Vector<oa::U8> rbsp = makeRbsp(inData, inSize);
 		BitstreamReader reader(rbsp.data(), rbsp.size());
 
 		reader.skipBits(8); // NAL header

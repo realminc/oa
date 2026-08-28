@@ -240,7 +240,7 @@ TEST(Gru, GruStepByStep) {
 	
 	// Manual step-by-step processing
 	auto hidden = gru.zeroState(batch, 0);
-	oa::Vec<oa::Matrix> outputs;
+	oa::Vector<oa::Matrix> outputs;
 	
 	for (oa::I32 t = 0; t < seqLen; ++t) {
 		auto xt = oa::FnMatrix::randN(oa::MatrixShape{batch, 10}, oa::ScalarType::Float32);

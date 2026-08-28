@@ -9,7 +9,7 @@ namespace oa {
 
 class GradLinear final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		const oa::Matrix& x      = saved(0);
 		const oa::Matrix& weight = saved(1);
 		const bool needDX = outDIn.size() > 0;
@@ -26,7 +26,7 @@ public:
 
 class GradLinearRelu final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		const oa::Matrix& x      = saved(0);
 		const oa::Matrix& weight = saved(1);
 		const oa::Matrix& act    = saved(2);
@@ -48,7 +48,7 @@ public:
 // fused forward kernel discards. Recompute it before applying GeluBwd.
 class GradLinearGelu final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		const oa::Matrix& x      = saved(0);
 		const oa::Matrix& weight = saved(1);
 		const oa::Matrix& bias   = saved(2);
@@ -70,7 +70,7 @@ public:
 // fused forward. Recompute it before applying SiluBwd.
 class GradLinearSilu final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		const oa::Matrix& x      = saved(0);
 		const oa::Matrix& weight = saved(1);
 		const oa::Matrix& bias   = saved(2);
@@ -90,7 +90,7 @@ public:
 
 class GradBmm final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		const oa::Matrix& a = saved(0);
 		const oa::Matrix& b = saved(1);
 		if (outDIn.size() > 0) {
@@ -106,7 +106,7 @@ public:
 
 class GradBmmNt final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		const oa::Matrix& a = saved(0);
 		const oa::Matrix& b = saved(1);
 		if (outDIn.size() > 0) {

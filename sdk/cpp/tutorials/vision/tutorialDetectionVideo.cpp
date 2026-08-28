@@ -240,7 +240,7 @@ private:
 		const oa::F32 phase = static_cast<oa::F32>(video_->index() % 240) / 240.0F;
 		const oa::F32 wave = std::sin(phase * 6.28318530718F);
 
-		oa::Vec<oa::DetectionOverlayItem> items;
+		oa::Vector<oa::DetectionOverlayItem> items;
 		items.pushBack({
 			.detection = {
 				.centerX = 0.29F + wave * 0.035F,

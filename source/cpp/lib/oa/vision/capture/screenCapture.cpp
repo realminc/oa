@@ -1,10 +1,10 @@
 #include <oa/vision/screenCapture.h>
 
 #include <oa/core/log.h>
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
 #include <oa/core/std/algo.h>
 #include <oa/core/std/pair.h>
-#include <oa/core/std/vec.h>
+#include <oa/core/std/vector.h>
 #include <oa/core/thread.h>
 #include <oa/runtime/allocator.h>
 #include <oa/runtime/engine.h>
@@ -35,8 +35,8 @@
 struct oa::ScreenCapture::Impl {
 	oa::Engine* engine = nullptr;
 	oa::ScreenCaptureConfig config = {};
-	oa::Vec<oavk::Buffer> ring;
-	oa::Vec<oa::Event> ringConsumers;
+	oa::Vector<oavk::Buffer> ring;
+	oa::Vector<oa::Event> ringConsumers;
 	oa::U32 head = 0;
 	oa::U32 latest = 0;
 	oa::U32 width = 0;
@@ -60,7 +60,7 @@ struct oa::ScreenCapture::Impl {
 	oa::Thread pwThread;
 
 	oa::Mutex frameMutex;
-	oa::Vec<oa::U8> cpuFrame;
+	oa::Vector<oa::U8> cpuFrame;
 	oa::U32 cpuWidth = 0;
 	oa::U32 cpuHeight = 0;
 	oa::U32 cpuStride = 0;
@@ -81,7 +81,7 @@ struct oa::ScreenCapture::Impl {
 		oa::ImportedDmaBufImage imported;
 		oa::Event consumed;
 	};
-	oa::Vec<PendingDmaRelease> pendingDmaReleases;
+	oa::Vector<PendingDmaRelease> pendingDmaReleases;
 #endif
 
 	void freeRing() {
@@ -224,7 +224,7 @@ bool isImportableCaptureModifier(
 			& VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT) != 0U;
 }
 
-oa::Vec<oa::U64> captureDmaBufModifiers(
+oa::Vector<oa::U64> captureDmaBufModifiers(
 	const oa::Engine& inEngine, VkFormat inFormat)
 {
 	const auto& device = oa::EngineDeviceAccess::get(inEngine);
@@ -241,12 +241,12 @@ oa::Vec<oa::U64> captureDmaBufModifiers(
 	device.instanceDispatch.vkGetPhysicalDeviceFormatProperties2(
 		static_cast<VkPhysicalDevice>(device.physicalDevice), inFormat, &properties);
 	if (list.drmFormatModifierCount == 0U) return {};
-	oa::Vec<VkDrmFormatModifierPropertiesEXT> candidates(list.drmFormatModifierCount);
+	oa::Vector<VkDrmFormatModifierPropertiesEXT> candidates(list.drmFormatModifierCount);
 	list.pDrmFormatModifierProperties = candidates.data();
 	device.instanceDispatch.vkGetPhysicalDeviceFormatProperties2(
 		static_cast<VkPhysicalDevice>(device.physicalDevice), inFormat, &properties);
 
-	oa::Vec<oa::U64> result;
+	oa::Vector<oa::U64> result;
 	result.reserve(candidates.size());
 	for (const auto& candidate : candidates) {
 		if (candidate.drmFormatModifierPlaneCount != 1U
@@ -505,6 +505,8 @@ const pw_stream_events kStreamEvents = [] {
 } // namespace
 #endif
 
+oa::ScreenCapture::ScreenCapture() = default;
+
 oa::ScreenCapture::ScreenCapture(oa::ScreenCapture&& inOther) noexcept
 	: impl_(oa::move(inOther.impl_)) {}
 
@@ -658,7 +660,7 @@ oa::Result<oa::ScreenCapture> oa::ScreenCapture::open(
 		{ SPA_VIDEO_FORMAT_BGRA, VK_FORMAT_B8G8R8A8_UNORM },
 		{ SPA_VIDEO_FORMAT_BGRx, VK_FORMAT_B8G8R8A8_UNORM },
 	};
-	oa::Vec<oa::Pair<spa_video_format, oa::U64>> dmaFormats;
+	oa::Vector<oa::Pair<spa_video_format, oa::U64>> dmaFormats;
 	for (const auto& format : formats) {
 		for (const oa::U64 modifier : captureDmaBufModifiers(inEngine, format.vk)) {
 			dmaFormats.emplaceBack(format.spa, modifier);
@@ -669,10 +671,10 @@ oa::Result<oa::ScreenCapture> oa::ScreenCapture::open(
 		dmaFormats.size());
 	// Each pod is small, but use dynamically-sized stable storage so every
 	// importable modifier can be offered without a fixed stack limit.
-	oa::Vec<oa::U8> storage(2048U + (dmaFormats.size() + 4U) * 512U);
+	oa::Vector<oa::U8> storage(2048U + (dmaFormats.size() + 4U) * 512U);
 	spa_pod_builder builder = SPA_POD_BUILDER_INIT(
 		storage.data(), static_cast<oa::U32>(storage.size()));
-	oa::Vec<const spa_pod*> params;
+	oa::Vector<const spa_pod*> params;
 	params.reserve(dmaFormats.size() + 4U);
 	for (const auto& [format, modifier] : dmaFormats) {
 		params.pushBack(addCaptureFormat(

@@ -81,8 +81,8 @@ class RenderReadback {
 public:
 	oa::U32 width_ = 0U;
 	oa::U32 height_ = 0U;
-	oa::Vec<oa::U8> colorRgba8_;
-	oa::Vec<oa::F32> depth32_;
+	oa::Vector<oa::U8> colorRgba8_;
+	oa::Vector<oa::F32> depth32_;
 };
 
 class Renderer {

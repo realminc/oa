@@ -53,7 +53,7 @@ oa::Result<oa::PoseClip> oa::PosePack::pack(const oa::UsdSkelClip& inUsd, const 
 
 	// map skeleton joint → USD joint by leaf bone name. Missing is allowed (the
 	// clip may lack a base joint, or carry junk joints we ignore) → rest fallback.
-	oa::Vec<oa::I32> usdOf;
+	oa::Vector<oa::I32> usdOf;
 	usdOf.resize(static_cast<oa::Usize>(N));
 	for (oa::I32 s = 0; s < N; ++s) {
 		const oa::StringView want = inSkel.joints[static_cast<oa::Usize>(s)].name;
@@ -87,8 +87,8 @@ oa::Result<oa::PoseClip> oa::PosePack::pack(const oa::UsdSkelClip& inUsd, const 
 
 	// forward kinematics → world position of every joint (contacts only). Skeleton
 	// order guarantees each parent is solved first.
-	oa::Vec<oa::vlm::Vec3> worldPos; worldPos.resize(static_cast<oa::Usize>(frames) * N);
-	oa::Vec<oa::vlm::Quat> worldRot; worldRot.resize(static_cast<oa::Usize>(frames) * N);
+	oa::Vector<oa::vlm::Vec3> worldPos; worldPos.resize(static_cast<oa::Usize>(frames) * N);
+	oa::Vector<oa::vlm::Quat> worldRot; worldRot.resize(static_cast<oa::Usize>(frames) * N);
 	for (oa::U32 f = 0; f < frames; ++f) {
 		for (oa::I32 s = 0; s < N; ++s) {
 			const oa::vlm::Vec3 lt = localTrans(f, s);
@@ -118,7 +118,7 @@ oa::Result<oa::PoseClip> oa::PosePack::pack(const oa::UsdSkelClip& inUsd, const 
 		}
 	}
 
-	oa::Vec<oa::F32> samples;
+	oa::Vector<oa::F32> samples;
 	samples.resize(static_cast<oa::Usize>(frames) * D);
 	for (oa::U32 f = 0; f < frames; ++f) {
 		const oa::Usize base = static_cast<oa::Usize>(f) * D;
@@ -190,7 +190,7 @@ oa::Result<oa::UsdSkelClip> oa::PosePack::unpack(const oa::PoseClip& inClip, con
 	usd.restTransforms.resize(static_cast<oa::Usize>(N));
 	for (oa::I32 s = 0; s < N; ++s) {
 		oa::String path;
-		oa::Vec<oa::I32> chain;
+		oa::Vector<oa::I32> chain;
 		for (oa::I32 cur = s; cur >= 0; cur = inSkel.joints[static_cast<oa::Usize>(cur)].parentIndex) {
 			chain.pushBack(cur);
 		}

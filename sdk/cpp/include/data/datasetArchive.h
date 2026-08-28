@@ -97,7 +97,7 @@ private:
 	oa::U8* mapAddr_ = nullptr;
 	oa::I64 mapSize_ = 0;
 #else
-	oa::Vec<oa::U8> owned_;
+	oa::Vector<oa::U8> owned_;
 #endif
 };
 

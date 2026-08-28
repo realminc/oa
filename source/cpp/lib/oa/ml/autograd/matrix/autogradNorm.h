@@ -10,7 +10,7 @@ namespace oa {
 class GradLayerNorm final : public oa::GradNode {
 public:
 	oa::F32 eps_ = 1e-5F;
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		const oa::Matrix& x = saved(0);
 		const oa::Matrix& weight = saved(1);
 		const oa::Matrix& bias = saved(2);
@@ -31,7 +31,7 @@ public:
 class GradRmsNorm final : public oa::GradNode {
 public:
 	oa::F32 eps_ = 1e-5F;
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		const oa::Matrix& x = saved(0);
 		const oa::Matrix& weight = saved(1);
 		const bool needDX = outDIn.size() > 0;
@@ -47,7 +47,7 @@ public:
 class GradRmsNormGated final : public oa::GradNode {
 public:
 	oa::F32 eps_ = 1e-5f;
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		const oa::Matrix& x = saved(0);
 		const oa::Matrix& w = saved(1);
 		const oa::Matrix& bias = saved(2);

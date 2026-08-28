@@ -32,7 +32,7 @@ public:
 	oa::String driverName;
 	oa::String driverVersion;
 	oa::String apiVersion;
-	oa::Vec<DeviceCanaryCheck> checks;
+	oa::Vector<DeviceCanaryCheck> checks;
 
 	[[nodiscard]] oa::Bool passed() const noexcept;
 	[[nodiscard]] oa::String debugReportJson() const;

@@ -3,7 +3,7 @@
 
 #include <oa/ui/plot/axes.h>
 
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
 #include <oa/core/std/algo.h>
 #include <oa/core/std/limits.h>
 #include <oa/core/std/scalarMath.h>

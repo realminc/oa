@@ -128,13 +128,13 @@ namespace {
 // orientation accumulates the rest jointOrients (animated rotate is identity at
 // rest). Mirrors the quaternion FK in oa::PosePack::Pack.
 void restFk(
-	const oa::Vec<oa::SkelJoint>& inJoints,
+	const oa::Vector<oa::SkelJoint>& inJoints,
 	oa::I32 inJoint,
 	oa::vlm::Vec3& outPos,
 	oa::vlm::Quat& outRot) {
 	const oa::I32 n = static_cast<oa::I32>(inJoints.size());
 	// Chain root → inJoint.
-	oa::Vec<oa::I32> chain;
+	oa::Vector<oa::I32> chain;
 	for (oa::I32 cur = inJoint; cur >= 0 && cur < n; cur = inJoints[static_cast<oa::Usize>(cur)].parentIndex) {
 		chain.pushBack(cur);
 	}
@@ -411,7 +411,7 @@ namespace {
 
 // Full UsdSkel path of a joint: "pelvis/left_hip/left_knee/..." (root → joint).
 oa::String jointPathFor(const oa::Skeleton& inSkel, oa::I32 inJoint) {
-	oa::Vec<oa::I32> chain;
+	oa::Vector<oa::I32> chain;
 	for (oa::I32 cur = inJoint; cur >= 0 && cur < inSkel.jointCount();
 	     cur = inSkel.joints[static_cast<oa::Usize>(cur)].parentIndex) {
 		chain.pushBack(cur);

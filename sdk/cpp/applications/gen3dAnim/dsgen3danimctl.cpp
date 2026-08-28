@@ -169,7 +169,7 @@ static int cmdClean(const oa::String& inIn, const oa::String& inSave,
 // there too); doing it here keeps the dataset .usd file itself clean + viewable.
 static oa::UsdSkelClip stripToBase(const oa::UsdSkelClip& inClip, const oa::Skeleton& inSkel, oa::I32& outDropped) {
 	const oa::I32 nIn = inClip.jointCount();
-	oa::Vec<oa::I32> keep;
+	oa::Vector<oa::I32> keep;
 	for (oa::I32 u = 0; u < nIn; ++u) {
 		if (inSkel.indexOf(leafName(inClip.jointPaths[static_cast<oa::Usize>(u)])) >= 0) {
 			keep.pushBack(u);
@@ -236,8 +236,8 @@ static std::string contentOf(const std::string& inStem) {
 }
 
 // Read a --clips list file into source paths (skips blanks and '#' comments).
-static oa::Vec<oa::String> readClipList(const oa::String& inPath) {
-	oa::Vec<oa::String> out;
+static oa::Vector<oa::String> readClipList(const oa::String& inPath) {
+	oa::Vector<oa::String> out;
 	auto text = oa::Filesystem::readText(oa::Path(inPath));
 	if (!text.isOk()) { return out; }
 	std::string s = oa::sdk::toStdString(*text);
@@ -258,7 +258,7 @@ static oa::Vec<oa::String> readClipList(const oa::String& inPath) {
 static int cmdPack(const oa::String& inIn, const oa::String& inClips, const oa::String& inOut,
                    const oa::String& inVal, const oa::String& inTest, bool inRaw) {
 	// Gather source .usd paths from --clips list or --in folder walk.
-	oa::Vec<oa::String> sources;
+	oa::Vector<oa::String> sources;
 	if (!inClips.empty()) {
 		sources = readClipList(inClips);
 		if (sources.empty()) {
@@ -287,7 +287,7 @@ static int cmdPack(const oa::String& inIn, const oa::String& inClips, const oa::
 	const std::set<std::string> testSet = parseList(inTest);
 	const oa::Skeleton& sk = oa::skMetaHuman();
 
-	oa::Vec<oa::UsdNamedClip> clips;
+	oa::Vector<oa::UsdNamedClip> clips;
 	oa::I32 nTrain = 0, nVal = 0, nTest = 0, nSkip = 0, nDropTotal = 0;
 	for (const oa::String& src : sources) {
 		auto read = oa::Usd::readUsda(oa::Path(src));
@@ -351,7 +351,7 @@ static int cmdStrip(const oa::String& inIn, const oa::String& inDir,
 
 	// Gather targets: a single --in file, or every .usd under --dir (recursive),
 	// minus any path containing an --exclude substring (AimOffset by default).
-	oa::Vec<oa::String> files;
+	oa::Vector<oa::String> files;
 	if (!inDir.empty()) {
 		auto listing = oa::Filesystem::listAll(oa::Path(inDir), /*recursive=*/true);
 		if (!listing.isOk()) {
@@ -429,8 +429,8 @@ static int cmdInfo(const oa::String& inPath, oa::I32 inContext) {
 		ds.windowCount(oa::DsSplit::Test));
 
 	// Normalization sanity: the ranges should be finite (no NaN/Inf), std >= 0.
-	const oa::Vec<oa::F32>& mean = ds.mean();
-	const oa::Vec<oa::F32>& sd   = ds.std();
+	const oa::Vector<oa::F32>& mean = ds.mean();
+	const oa::Vector<oa::F32>& sd   = ds.std();
 	if (!mean.empty() && !sd.empty()) {
 		oa::F32 mmin = mean[0], mmax = mean[0], smin = sd[0], smax = sd[0];
 		for (oa::Usize i = 0; i < mean.size(); ++i) {
@@ -442,7 +442,7 @@ static int cmdInfo(const oa::String& inPath, oa::I32 inContext) {
 	}
 
 	std::printf("\n  %-5s %-34s %-7s %-7s %s\n", "idx", "Name", "split", "frames", "category");
-	const oa::Vec<oa::DsClipMeta>& metas = ds.metas();
+	const oa::Vector<oa::DsClipMeta>& metas = ds.metas();
 	for (oa::Usize i = 0; i < metas.size(); ++i) {
 		const oa::DsClipMeta& m = metas[i];
 		const char* sp = (m.split == oa::DsSplit::Train) ? "train"
@@ -480,17 +480,17 @@ static int cmdBake(const oa::String& inPath, const oa::String& inOut,
 
 	const oa::I32 poseDim = ds.poseDim();
 	const oa::Usize clipCount = ds.clipCount();
-	const oa::Vec<oa::DsClipMeta>& metas = ds.metas();
-	const oa::Vec<oa::F32>& mean = ds.mean();
-	const oa::Vec<oa::F32>& sd   = ds.std();
+	const oa::Vector<oa::DsClipMeta>& metas = ds.metas();
+	const oa::Vector<oa::F32>& mean = ds.mean();
+	const oa::Vector<oa::F32>& sd   = ds.std();
 
 	// Gather every clip's raw model-space frames (un-standardized — the tutorial
 	// standardizes on the fly with the baked Mean/std, exactly like nextBatch).
-	oa::Vec<oa::Vec<oa::F32>> clipData;
-	oa::Vec<oa::U32>        clipFrames;
+	oa::Vector<oa::Vector<oa::F32>> clipData;
+	oa::Vector<oa::U32>        clipFrames;
 	oa::U32 frameTotal = 0;
 	for (oa::Usize i = 0; i < clipCount; ++i) {
-		oa::Vec<oa::F32> raw; oa::U32 frames = 0;
+		oa::Vector<oa::F32> raw; oa::U32 frames = 0;
 		if (!ds.clipModelRaw(static_cast<oa::I32>(i), raw, frames) || frames == 0) {
 			std::printf("bake: clip %zu has no frames\n", i);
 			return 1;
@@ -558,7 +558,7 @@ static int cmdBake(const oa::String& inPath, const oa::String& inOut,
 	std::fprintf(f, "// raw (un-standardized) model-space pose frames, frame-major.\n");
 	std::fprintf(f, "inline const float Poses[FrameTotal * PoseDim] = {\n");
 	for (oa::Usize i = 0; i < clipCount; ++i) {
-		const oa::Vec<oa::F32>& raw = clipData[i];
+		const oa::Vector<oa::F32>& raw = clipData[i];
 		std::fprintf(f, "// --- clip %zu: %s (%u frames) ---\n", i, metas[i].name.cStr(), clipFrames[i]);
 		for (oa::Usize k = 0; k < raw.size(); ++k) {
 			emitFloat(f, static_cast<double>(raw[k]));

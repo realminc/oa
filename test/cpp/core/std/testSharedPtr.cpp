@@ -55,6 +55,59 @@ struct StdThrowingCopyDeleter {
 	}
 };
 
+struct StdReentrantSharedValue {
+	oa::SharedPtr<StdReentrantSharedValue>* owner = nullptr;
+	int* destructions = nullptr;
+
+	~StdReentrantSharedValue() {
+		++*destructions;
+		if (owner != nullptr) owner->reset();
+	}
+};
+
+struct StdThrowingSharedConstruction {
+	int* destructions = nullptr;
+
+	explicit StdThrowingSharedConstruction(int* inDestructions)
+		: destructions(inDestructions) {
+		throw std::runtime_error("injected makeShared construction failure");
+	}
+
+	~StdThrowingSharedConstruction() { ++*destructions; }
+};
+
+struct StdReentrantWeakControlDeleter {
+	oa::WeakPtr<int>* owner = nullptr;
+	bool* armed = nullptr;
+	int* destructorCallbacks = nullptr;
+
+	StdReentrantWeakControlDeleter() = default;
+	StdReentrantWeakControlDeleter(
+		oa::WeakPtr<int>* inOwner,
+		bool* inArmed,
+		int* inDestructorCallbacks
+	) : owner(inOwner), armed(inArmed), destructorCallbacks(inDestructorCallbacks) {}
+	StdReentrantWeakControlDeleter(const StdReentrantWeakControlDeleter&) = delete;
+	StdReentrantWeakControlDeleter& operator=(const StdReentrantWeakControlDeleter&) = delete;
+	StdReentrantWeakControlDeleter(StdReentrantWeakControlDeleter&& inOther) noexcept
+		: owner(inOther.owner)
+		, armed(inOther.armed)
+		, destructorCallbacks(inOther.destructorCallbacks) {
+		inOther.owner = nullptr;
+		inOther.armed = nullptr;
+		inOther.destructorCallbacks = nullptr;
+	}
+
+	void operator()(int* inPtr) const noexcept { delete inPtr; }
+
+	~StdReentrantWeakControlDeleter() {
+		if (owner != nullptr && armed != nullptr && *armed) {
+			++*destructorCallbacks;
+			owner->reset();
+		}
+	}
+};
+
 }  // namespace
 
 TEST(SharedPtr, MakeShared) {
@@ -87,6 +140,44 @@ TEST(SharedPtr, Reset) {
 	p.reset();
 	EXPECT_FALSE(p);
 	EXPECT_EQ(p.useCount(), 0);
+}
+
+TEST(SharedPtr, ResetPublishesEmptyBeforeReentrantDestruction) {
+	int destructions = 0;
+	oa::SharedPtr<StdReentrantSharedValue> owner;
+	owner = oa::makeShared<StdReentrantSharedValue>(&owner, &destructions);
+
+	owner.reset();
+
+	EXPECT_FALSE(owner);
+	EXPECT_EQ(destructions, 1);
+}
+
+TEST(SharedPtr, AssignmentPublishesIncomingBeforeRetiringOldOwner) {
+	int oldDestructions = 0;
+	int incomingDestructions = 0;
+	oa::SharedPtr<StdReentrantSharedValue> destination;
+	destination = oa::makeShared<StdReentrantSharedValue>(
+		&destination, &oldDestructions);
+	auto incoming = oa::makeShared<StdReentrantSharedValue>(
+		nullptr, &incomingDestructions);
+
+	destination = incoming;
+
+	// The old value's destructor re-entered destination.reset(). It observed and
+	// safely released the already-published incoming state.
+	EXPECT_FALSE(destination);
+	EXPECT_EQ(oldDestructions, 1);
+	EXPECT_EQ(incoming.useCount(), 1);
+	EXPECT_EQ(incomingDestructions, 0);
+}
+
+TEST(SharedPtr, ThrowingMakeSharedConstructionReleasesControlStorage) {
+	int destructions = 0;
+	EXPECT_THROW(
+		(void)oa::makeShared<StdThrowingSharedConstruction>(&destructions),
+		std::runtime_error);
+	EXPECT_EQ(destructions, 0);
 }
 
 TEST(SharedPtr, CustomDeleter) {
@@ -122,6 +213,29 @@ TEST(SharedPtr, ControlBlockKeepsImplicitWeakOwner) {
 	control.decWeak();
 	EXPECT_EQ(control.weak.load(oa::MemoryOrder::Relaxed), 0);
 	EXPECT_EQ(control.destroys, 1);
+}
+
+TEST(SharedPtr, FinalOwnerWithoutWeakObserverReleasesAndDestroysOnce) {
+	StdControlProbe control;
+
+	control.decStrong();
+
+	EXPECT_EQ(control.strong.load(oa::MemoryOrder::Relaxed), 0);
+	EXPECT_EQ(control.weak.load(oa::MemoryOrder::Relaxed), 1);
+	EXPECT_EQ(control.releases, 1);
+	EXPECT_EQ(control.destroys, 1);
+}
+
+TEST(SharedPtr, ReferenceCountOverflowFailsClosed) {
+	StdControlProbe control;
+	control.strong.store(oa::SharedControl::MaxReferenceCount,
+		oa::MemoryOrder::Relaxed);
+	EXPECT_DEATH(control.incStrong(), "SharedPtr strong reference count overflow");
+
+	control.strong.store(1, oa::MemoryOrder::Relaxed);
+	control.weak.store(oa::SharedControl::MaxReferenceCount,
+		oa::MemoryOrder::Relaxed);
+	EXPECT_DEATH(control.incWeak(), "WeakPtr reference count overflow");
 }
 
 TEST(SharedPtr, ConcurrentLastStrongAndWeakRelease) {
@@ -211,6 +325,28 @@ TEST(WeakPtr, CopySharesControlBlock) {
 	s.reset();
 	EXPECT_TRUE(a.expired());
 	EXPECT_TRUE(b.expired());
+}
+
+TEST(WeakPtr, AssignmentPublishesIncomingBeforeOldControlDestruction) {
+	oa::WeakPtr<int> destination;
+	bool armed = false;
+	int destructorCallbacks = 0;
+	oa::SharedPtr<int> oldOwner(
+		new int(1),
+		StdReentrantWeakControlDeleter{
+			&destination, &armed, &destructorCallbacks});
+	destination = oa::WeakPtr<int>(oldOwner);
+	oldOwner.reset();
+
+	auto incomingOwner = oa::makeShared<int>(2);
+	oa::WeakPtr<int> incoming(incomingOwner);
+	armed = true;
+	destination = incoming;
+
+	EXPECT_TRUE(destination.expired());
+	EXPECT_EQ(destination.useCount(), 0);
+	EXPECT_FALSE(incoming.expired());
+	EXPECT_EQ(destructorCallbacks, 1);
 }
 
 TEST(StdSharedPtrVsStd, UseCountAfterCopyMatchesPattern) {

@@ -98,7 +98,7 @@ public:
 	[[nodiscard]] oa::Status saveBindingsYaml(oa::StringView inPath) const;
 
 private:
-	oa::Vec<KeyAction> actions_;
+	oa::Vector<KeyAction> actions_;
 	InputContext     context_ = InputContext::Global;
 };
 

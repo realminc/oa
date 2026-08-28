@@ -46,7 +46,7 @@ oa::Matrix oa::FnMatrix::empyrealmAdt(const oa::Matrix& inDdA, const oa::Matrix&
 	if (oa::FnAutograd::isEnabled() and (inDdA.requiresGrad() or inDt.requiresGrad())) {
 		auto gradFn = oa::makeShared<oa::GradEmpyrealmAdt>(inAFloor);
 		gradFn->saveForBackward(inDdA, inDt);
-		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inDdA, inDt});
+		gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inDdA, inDt});
 		gradFn->sequenceNr_  = oa::FnAutograd::nextSeq();
 		gradFn->outputShape_ = out.getShape();
 		if (not oa::FnAutograd::attachSemantic(
@@ -123,7 +123,7 @@ oa::Matrix oa::FnMatrix::empyrealmDt(
 	if (oa::FnAutograd::isEnabled() and inX.requiresGrad()) {
 		auto gradFn = oa::makeShared<oa::GradEmpyrealmDt>(inDtMin, inDtMax);
 		gradFn->saveForBackward(inX);
-		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inX});
+		gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inX});
 		gradFn->sequenceNr_  = oa::FnAutograd::nextSeq();
 		gradFn->outputShape_ = out.getShape();
 		if (not oa::FnAutograd::attachSemantic(
@@ -271,7 +271,7 @@ oa::Matrix oa::FnMatrix::empyrealmSiso(
 		auto gradFn = oa::makeShared<oa::GradEmpyrealmSiso>();
 		gradFn->saveForBackward(inC, inB, inX, inZ, inAdt, inDt, inTrap,
 			inAngle, inCBias, inBBias, inD);
-		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inC, inB, inX, inZ, inAdt, inDt, inTrap,
+		gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inC, inB, inX, inZ, inAdt, inDt, inTrap,
 			inAngle, inCBias, inBBias, inD});
 		gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		gradFn->config_ = inConfig;
@@ -525,7 +525,7 @@ oa::EmpyrealmDtAdtResult oa::FnMatrix::empyrealmDtAdt(
 	if (oa::FnAutograd::isEnabled() and (inDtRaw.requiresGrad() or inDdA.requiresGrad())) {
 		auto dtGrad = oa::makeShared<oa::GradEmpyrealmDt>(inDtMin, inDtMax);
 		dtGrad->saveForBackward(inDtRaw);
-		dtGrad->setGraphInputs(oa::Vec<oa::Matrix>{inDtRaw});
+		dtGrad->setGraphInputs(oa::Vector<oa::Matrix>{inDtRaw});
 		dtGrad->sequenceNr_  = oa::FnAutograd::nextSeq();
 		dtGrad->outputShape_ = dt.getShape();
 		if (not oa::FnAutograd::attachSemantic(
@@ -537,7 +537,7 @@ oa::EmpyrealmDtAdtResult oa::FnMatrix::empyrealmDtAdt(
 
 		auto adtGrad = oa::makeShared<oa::GradEmpyrealmAdt>(inAFloor);
 		adtGrad->saveForBackward(inDdA, dt);
-		adtGrad->setGraphInputs(oa::Vec<oa::Matrix>{inDdA, dt});
+		adtGrad->setGraphInputs(oa::Vector<oa::Matrix>{inDdA, dt});
 		adtGrad->sequenceNr_  = oa::FnAutograd::nextSeq();
 		adtGrad->outputShape_ = adt.getShape();
 		if (not oa::FnAutograd::attachSemantic(
@@ -655,7 +655,7 @@ oa::Mamba3PreprocessResult oa::FnMatrix::empyrealmPreprocess(
 			auto gradFn = oa::makeShared<oa::GradEmpyrealmPreprocess>();
 			gradFn->state_ = state;
 			gradFn->outputIndex_ = gradIndex;
-			gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inProjected, inDtBias});
+			gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inProjected, inDtBias});
 			gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 			gradFn->outputShape_ = out.getShape();
 			if (not oa::FnAutograd::attachSemantic(

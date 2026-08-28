@@ -8,7 +8,7 @@ namespace oa {
 
 class GradSum final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() == 0) return;
 		const oa::Matrix& input = saved(0);
 		auto ones = oa::FnMatrix::ones(
@@ -21,7 +21,7 @@ class GradMean final : public oa::GradNode {
 public:
 	oa::I32 dim_ = -1;
 
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() == 0) return;
 		const oa::Matrix& input = saved(0);
 		const oa::I64 count = dim_ >= 0 and dim_ < input.rank()
@@ -38,7 +38,7 @@ class GradSoftmax final : public oa::GradNode {
 public:
 	oa::I32 dim_ = -1;
 
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() > 0) {
 			outDIn[0] = oa::FnMatrix::softmaxBwd(
 				saved(0), inDOut, dim_);
@@ -50,7 +50,7 @@ class GradLogSoftmax final : public oa::GradNode {
 public:
 	oa::I32 dim_ = -1;
 
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() > 0) {
 			outDIn[0] = oa::FnMatrix::logSoftmaxBwd(
 				saved(0), inDOut, dim_);
@@ -60,7 +60,7 @@ public:
 
 class GradMax final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() > 0) {
 			outDIn[0] = oa::FnMatrix::maxBwd(
 				saved(0), saved(1), inDOut);

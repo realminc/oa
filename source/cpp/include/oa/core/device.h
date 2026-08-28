@@ -39,7 +39,7 @@ enum class DeviceType : oa::U8 {
 		case DeviceType::VkCpu:        return "VkCpu";
 		case DeviceType::VkVirtualGpu: return "VkVirtualGpu";
 		case DeviceType::VkOther:      return "VkOther";
-		default:                         return "Unknown";
+		default:                       return "Unknown";
 	}
 }
 

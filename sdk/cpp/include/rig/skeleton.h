@@ -66,10 +66,10 @@ struct Skeleton {
 
 	oa::String             name       = "metahuman_body";
 	oa::U32                skeletonId = 0;   // matches PoseClip::skeletonId
-	oa::Vec<SkelJoint>   joints;
+	oa::Vector<SkelJoint>   joints;
 	// indices into joints of the foot joints whose contacts are packed (in
 	// channel order). Two for a biped: { foot_l, foot_r }.
-	oa::Vec<oa::I32>         contactJoints;
+	oa::Vector<oa::I32>         contactJoints;
 
 	[[nodiscard]] oa::I32 jointCount() const noexcept {
 		return static_cast<oa::I32>(joints.size());

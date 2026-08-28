@@ -4,16 +4,16 @@
 #include <oa/runtime/engine.h>
 #include <oa/runtime/engine/allocatorAccess.h>
 #include <oa/runtime/engine/deviceAccess.h>
-#include <oa/runtime/oaVma.h>
+#include <vma/vma.hpp>
 
 namespace {
 
-const OaVkInstanceTable& instanceVk(oa::Engine& inEngine)
+const VklInstanceTable& instanceVk(oa::Engine& inEngine)
 {
 	return oa::EngineDeviceAccess::get(inEngine).instanceDispatch;
 }
 
-const OaVkDeviceTable& deviceVk(oa::Engine& inEngine)
+const VklDeviceTable& deviceVk(oa::Engine& inEngine)
 {
 	return oa::EngineDeviceAccess::get(inEngine).deviceDispatch;
 }
@@ -116,7 +116,7 @@ oa::Status VideoFormat::queryFormats(
 	class oa::Engine& inRt,
 	const VkVideoProfileInfoKHR& inProfile,
 	VkImageUsageFlags inUsage,
-	oa::Vec<VkVideoFormatPropertiesKHR>& outFormats)
+	oa::Vector<VkVideoFormatPropertiesKHR>& outFormats)
 {
 	if (!instanceVk(inRt).vkGetPhysicalDeviceVideoFormatPropertiesKHR) {
 		return oa::Status::error("vkGetPhysicalDeviceVideoFormatPropertiesKHR is not loaded");
@@ -162,7 +162,7 @@ oa::Status VideoFormat::queryFormats(
 }
 
 bool VideoFormat::hasFormatWithUsage(
-	const oa::Vec<VkVideoFormatPropertiesKHR>& inFormats,
+	const oa::Vector<VkVideoFormatPropertiesKHR>& inFormats,
 	VkFormat inFormat,
 	VkImageUsageFlags inUsage)
 {
@@ -175,7 +175,7 @@ bool VideoFormat::hasFormatWithUsage(
 }
 
 const VkVideoFormatPropertiesKHR* VideoFormat::findFormatWithUsage(
-	const oa::Vec<VkVideoFormatPropertiesKHR>& inFormats,
+	const oa::Vector<VkVideoFormatPropertiesKHR>& inFormats,
 	VkFormat inFormat,
 	VkImageUsageFlags inUsage)
 {
@@ -257,7 +257,7 @@ oa::Result<VideoSession> VideoSession::create(
 		return oa::Status::error(oa::StatusCode::VulkanError, "vkGetVideoSessionMemoryRequirementsKHR failed");
 	}
 
-	oa::Vec<VkVideoSessionMemoryRequirementsKHR> requirements(requirementCount);
+	oa::Vector<VkVideoSessionMemoryRequirementsKHR> requirements(requirementCount);
 	for (auto& requirement : requirements) {
 		requirement = {};
 		requirement.sType = VK_STRUCTURE_TYPE_VIDEO_SESSION_MEMORY_REQUIREMENTS_KHR;
@@ -271,17 +271,17 @@ oa::Result<VideoSession> VideoSession::create(
 	requirements.resize(requirementCount);
 
 	// allocate and bind memory
-	oa::Vec<VkBindVideoSessionMemoryInfoKHR> bindInfos(requirementCount);
+	oa::Vector<VkBindVideoSessionMemoryInfoKHR> bindInfos(requirementCount);
 	for (oa::U32 i = 0; i < requirementCount; ++i) {
 		const VkVideoSessionMemoryRequirementsKHR& requirement = requirements[i];
-		OaVmaAllocationCreateInfo allocCreateInfo = {};
-		allocCreateInfo.usage = OA_VMA_MEMORY_USAGE_GPU_ONLY;
+		vma::AllocationCreateInfo allocCreateInfo = {};
+		allocCreateInfo.usage = vma::memoryUsageGpuOnly;
 		allocCreateInfo.memoryTypeBits = requirement.memoryRequirements.memoryTypeBits;
 
-		OaVmaAllocation allocation = VK_NULL_HANDLE;
-		OaVmaAllocationInfo allocInfo = {};
-		result = OaVmaAllocateMemory(
-			static_cast<OaVmaAllocator>(oa::EngineAllocatorAccess::get(inRt).allocator),
+		vma::Allocation allocation = VK_NULL_HANDLE;
+		vma::AllocationInfo allocInfo = {};
+		result = vma::allocateMemory(
+			static_cast<vma::Allocator>(oa::EngineAllocatorAccess::get(inRt).allocator),
 			&requirement.memoryRequirements,
 			&allocCreateInfo,
 			&allocation,
@@ -342,8 +342,8 @@ void VideoSession::destroy()
 
 	for (void* alloc : allocations_) {
 		if (alloc != nullptr && rt_ != nullptr) {
-			OaVmaFreeMemory(static_cast<OaVmaAllocator>(oa::EngineAllocatorAccess::get(*rt_).allocator),
-			                 static_cast<OaVmaAllocation>(alloc));
+			vma::freeMemory(static_cast<vma::Allocator>(oa::EngineAllocatorAccess::get(*rt_).allocator),
+			                 static_cast<vma::Allocation>(alloc));
 		}
 	}
 	allocations_.clear();
@@ -506,12 +506,12 @@ oa::Result<VideoDpb> VideoDpb::create(
 	}
 	imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
-	OaVmaAllocationCreateInfo allocInfo = {};
-	allocInfo.usage = OA_VMA_MEMORY_USAGE_GPU_ONLY;
+	vma::AllocationCreateInfo allocInfo = {};
+	allocInfo.usage = vma::memoryUsageGpuOnly;
 
-	OaVmaAllocation allocation = VK_NULL_HANDLE;
-	VkResult result = OaVmaCreateImage(
-		static_cast<OaVmaAllocator>(oa::EngineAllocatorAccess::get(inRt).allocator),
+	vma::Allocation allocation = VK_NULL_HANDLE;
+	VkResult result = vma::createImage(
+		static_cast<vma::Allocator>(oa::EngineAllocatorAccess::get(inRt).allocator),
 		&imageInfo,
 		&allocInfo,
 		&dpb.image_,
@@ -578,8 +578,8 @@ void VideoDpb::destroy()
 		view_ = VK_NULL_HANDLE;
 	}
 	if (image_ != VK_NULL_HANDLE && allocation_ != nullptr && rt_ != nullptr) {
-		OaVmaDestroyImage(static_cast<OaVmaAllocator>(oa::EngineAllocatorAccess::get(*rt_).allocator),
-		                  image_, static_cast<OaVmaAllocation>(allocation_));
+		vma::destroyImage(static_cast<vma::Allocator>(oa::EngineAllocatorAccess::get(*rt_).allocator),
+		                  image_, static_cast<vma::Allocation>(allocation_));
 		image_ = VK_NULL_HANDLE;
 		allocation_ = nullptr;
 	}
@@ -638,15 +638,15 @@ oa::Result<VideoBitstream> VideoBitstream::create(
 		: VK_BUFFER_USAGE_VIDEO_ENCODE_DST_BIT_KHR | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 	bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-	OaVmaAllocationCreateInfo allocInfo = {};
+	vma::AllocationCreateInfo allocInfo = {};
 	allocInfo.usage = inDirection == Direction::Decoder
-		? OA_VMA_MEMORY_USAGE_CPU_TO_GPU
-		: OA_VMA_MEMORY_USAGE_GPU_TO_CPU;
-	allocInfo.flags = OA_VMA_ALLOCATION_CREATE_MAPPED_BIT;
+		? vma::memoryUsageCpuToGpu
+		: vma::memoryUsageGpuToCpu;
+	allocInfo.flags = vma::allocationCreateMappedBit;
 
-	OaVmaAllocation allocation = VK_NULL_HANDLE;
-	VkResult result = OaVmaCreateBuffer(
-		static_cast<OaVmaAllocator>(oa::EngineAllocatorAccess::get(inRt).allocator),
+	vma::Allocation allocation = VK_NULL_HANDLE;
+	VkResult result = vma::createBuffer(
+		static_cast<vma::Allocator>(oa::EngineAllocatorAccess::get(inRt).allocator),
 		&bufferInfo,
 		&allocInfo,
 		&bitstream.buffer_,
@@ -658,9 +658,9 @@ oa::Result<VideoBitstream> VideoBitstream::create(
 	}
 
 	// map the buffer
-	result = OaVmaMapMemory(
-		static_cast<OaVmaAllocator>(oa::EngineAllocatorAccess::get(inRt).allocator),
-		static_cast<OaVmaAllocation>(bitstream.allocation_),
+	result = vma::mapMemory(
+		static_cast<vma::Allocator>(oa::EngineAllocatorAccess::get(inRt).allocator),
+		static_cast<vma::Allocation>(bitstream.allocation_),
 		&bitstream.mappedPtr_);
 	if (result != VK_SUCCESS) {
 		bitstream.destroy();
@@ -706,14 +706,14 @@ oa::Status VideoBitstream::resize(oa::U64 inNewSize)
 void VideoBitstream::destroy()
 {
 	if (mappedPtr_ != nullptr && allocation_ != nullptr && rt_ != nullptr) {
-		OaVmaUnmapMemory(static_cast<OaVmaAllocator>(oa::EngineAllocatorAccess::get(*rt_).allocator),
-		               static_cast<OaVmaAllocation>(allocation_));
+		vma::unmapMemory(static_cast<vma::Allocator>(oa::EngineAllocatorAccess::get(*rt_).allocator),
+		               static_cast<vma::Allocation>(allocation_));
 		mappedPtr_ = nullptr;
 	}
 
 	if (buffer_ != VK_NULL_HANDLE && allocation_ != nullptr && rt_ != nullptr) {
-		OaVmaDestroyBuffer(static_cast<OaVmaAllocator>(oa::EngineAllocatorAccess::get(*rt_).allocator),
-		                 buffer_, static_cast<OaVmaAllocation>(allocation_));
+		vma::destroyBuffer(static_cast<vma::Allocator>(oa::EngineAllocatorAccess::get(*rt_).allocator),
+		                 buffer_, static_cast<vma::Allocation>(allocation_));
 		buffer_ = VK_NULL_HANDLE;
 		allocation_ = nullptr;
 	}

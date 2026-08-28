@@ -77,7 +77,7 @@ kind                 = "session_command"
 body                 = "manual_session"
 generate_declaration = false
 api_return           = "oa::Status"
-api_params           = ["oa::Vec<oa::EncodedVideoPacket>& outFrames"]
+api_params           = ["oa::Vector<oa::EncodedVideoPacket>& outFrames"]
 notes = "Drain reordered encoder output into caller-owned packets."
 
 [ops.session]

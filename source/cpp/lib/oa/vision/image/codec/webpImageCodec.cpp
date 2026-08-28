@@ -5,7 +5,7 @@
 #include <webp/encode.h>
 #endif
 
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
 
 namespace oa::imageCodec {
 
@@ -79,7 +79,7 @@ oa::Result<Pixels> decodeWebp(
 #endif
 }
 
-oa::Result<oa::Vec<oa::U8>> encodeWebp(
+oa::Result<oa::Vector<oa::U8>> encodeWebp(
 	const Pixels& inPixels,
 	oa::U32 inQuality)
 {
@@ -125,7 +125,7 @@ oa::Result<oa::Vec<oa::U8>> encodeWebp(
 			"oa::FnImage::encode: libwebp encode failed");
 	}
 
-	oa::Vec<oa::U8> encoded;
+	oa::Vector<oa::U8> encoded;
 	encoded.resize(encodedSize);
 	oa::memcpy(encoded.data(), encodedData, encodedSize);
 	WebPFree(encodedData);

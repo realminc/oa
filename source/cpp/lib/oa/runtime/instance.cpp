@@ -1,4 +1,5 @@
 #include <oa/runtime/instance.h>
+#include <oa/runtime/loader.h>
 
 #include <oa/core/log.h>
 #include <oa/core/std/cString.h>
@@ -52,17 +53,12 @@ oa::Result<VkInstance> oavk::Instance::createInstance(
 	oa::U32 inAppVersionPatch,
 	oa::Bool inEnableValidation,
 	oa::Span<const char* const> inExtraInstanceExtensions,
-	oa::Bool inWantsPresentation
+	oa::Bool inWantsPresentation,
+	PFN_vkGetInstanceProcAddr inCustomLoader
 ) {
-	// Embedders such as the android mobile runtime may select a per-app vulkan
-	// implementation first via oaVkInitCustom. Preserve that dispatch instead
-	// of silently reopening android's system loader here.
-	VkResult vkInitResult = VK_SUCCESS;
-	if (oaVkGetInstanceProcAddr() == nullptr) {
-		vkInitResult = oaVkInit();
-	}
-	if (vkInitResult != VK_SUCCESS) {
-		return oa::Status::error(oa::StatusCode::VulkanError,	"oaVkInit failed — no vulkan loader on system?");
+	const oa::Status loaderStatus = oavk::initializeLoader(inCustomLoader);
+	if (!loaderStatus.isOk()) {
+		return loaderStatus;
 	}
 
 	oa::String appNameCopy(inAppName);
@@ -77,7 +73,7 @@ oa::Result<VkInstance> oavk::Instance::createInstance(
 		.apiVersion = oavk::MinApiVersion,
 	};
 
-	oa::Vec<const char*> extNames;
+	oa::Vector<const char*> extNames;
 	auto appendUnique = [&extNames](const char* inName) {
 		for (const char* existing : extNames) {
 			if (oa::strcmp(existing, inName) == 0) return;
@@ -100,10 +96,10 @@ oa::Result<VkInstance> oavk::Instance::createInstance(
 	// select KHR or EXT without creating an invalid extension combination.
 	if (inWantsPresentation) {
 		oa::U32 count = 0;
-		if (oaVkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr)
+		if (vklEnumerateInstanceExtensionProperties(nullptr, &count, nullptr)
 			== VK_SUCCESS && count > 0) {
-			oa::Vec<VkExtensionProperties> properties(count);
-			if (oaVkEnumerateInstanceExtensionProperties(
+			oa::Vector<VkExtensionProperties> properties(count);
+			if (vklEnumerateInstanceExtensionProperties(
 				nullptr, &count, properties.data()) == VK_SUCCESS) {
 				bool hasSurfaceCaps2 = false;
 				bool hasKhrMaintenance = false;
@@ -141,12 +137,12 @@ oa::Result<VkInstance> oavk::Instance::createInstance(
 		// VK_EXT_validation_features is exposed by the validation layer, not
 		// necessarily as a global instance extension. query that layer directly.
 		oa::U32 propertyCount = 0;
-		if (oaVkEnumerateInstanceExtensionProperties(
+		if (vklEnumerateInstanceExtensionProperties(
 				oavk::InstanceLayerNames[0], &propertyCount, nullptr) == VK_SUCCESS
 			&& propertyCount > 0)
 		{
-			oa::Vec<VkExtensionProperties> properties(propertyCount);
-			if (oaVkEnumerateInstanceExtensionProperties(
+			oa::Vector<VkExtensionProperties> properties(propertyCount);
+			if (vklEnumerateInstanceExtensionProperties(
 					oavk::InstanceLayerNames[0], &propertyCount, properties.data()) == VK_SUCCESS)
 			{
 				for (const auto& property : properties) {
@@ -207,7 +203,7 @@ oa::Result<VkInstance> oavk::Instance::createInstance(
 	}
 
 	VkInstance instance = VK_NULL_HANDLE;
-	VkResult r = oaVkCreateInstance(&instCI, nullptr, &instance);
+	VkResult r = vklCreateInstance(&instCI, nullptr, &instance);
 	if (r != VK_SUCCESS) {
 		return oa::Status::error(oa::StatusCode::VulkanError,	oa::String("vkCreateInstance failed (VkResult=") + oa::toString(static_cast<oa::I64>(r)) + ")");
 	}
@@ -219,7 +215,7 @@ oa::Result<VkInstance> oavk::Instance::createInstance(
 }
 
 void oavk::Instance::destroyInstance(
-	const OaVkInstanceTable& inDispatch,
+	const VklInstanceTable& inDispatch,
 	VkInstance inInstance) noexcept
 {
 	if (inInstance != VK_NULL_HANDLE) {

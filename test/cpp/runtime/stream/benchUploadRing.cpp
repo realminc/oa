@@ -144,7 +144,7 @@ TEST(VkUploadRingBenchmark, BatchedVsLegacyPerCopy) {
 		"bytes", "copies", "legacy us", "ring us", "speedup");
 
 	for (const UploadCase& uploadCase : cases) {
-		oa::Vec<oavk::Buffer> destinations;
+		oa::Vector<oavk::Buffer> destinations;
 		destinations.reserve(uploadCase.count);
 		for (oa::U32 index = 0; index < uploadCase.count; ++index) {
 			auto destination = oa::EngineResourceAccess::allocBufferDevice(*rt, uploadCase.bytes);
@@ -152,7 +152,7 @@ TEST(VkUploadRingBenchmark, BatchedVsLegacyPerCopy) {
 			destinations.pushBack(std::move(*destination));
 		}
 
-		oa::Vec<oa::U8> data(uploadCase.bytes);
+		oa::Vector<oa::U8> data(uploadCase.bytes);
 		for (oa::U64 index = 0; index < uploadCase.bytes; ++index) {
 			data[index] = static_cast<oa::U8>((index * 131u + 17u) & 0xFFu);
 		}
@@ -225,8 +225,8 @@ TEST(VkUploadRingBenchmark, PersistentReadbackVsPerCallResources) {
 		auto sourceResult = oa::EngineResourceAccess::allocBufferDevice(*rt, readbackCase.bytes);
 		ASSERT_TRUE(sourceResult.isOk());
 		auto source = std::move(*sourceResult);
-		oa::Vec<oa::U8> data(readbackCase.bytes);
-		oa::Vec<oa::U8> output(readbackCase.bytes);
+		oa::Vector<oa::U8> data(readbackCase.bytes);
+		oa::Vector<oa::U8> output(readbackCase.bytes);
 		for (oa::U64 index = 0; index < readbackCase.bytes; ++index) {
 			data[index] = static_cast<oa::U8>((index * 73u + 11u) & 0xFFu);
 		}

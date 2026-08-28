@@ -12,7 +12,7 @@
         "try": 1
       }
     },
-    "source/cpp/include/oa/core/std/vec.h": {
+    "source/cpp/include/oa/core/std/vector.h": {
       "stdSymbols": {
         "initializer_list": 2
       },

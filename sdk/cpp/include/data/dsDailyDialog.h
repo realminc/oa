@@ -51,13 +51,13 @@ private:
 	oa::I32    batchSize_;
 	oa::I32    contextLen_;
 	bool     shuffle_;
-	oa::Vec<oa::U8> text_;    // All text concatenated (UTF-8 bytes)
+	oa::Vector<oa::U8> text_;    // All text concatenated (UTF-8 bytes)
 	oa::I64    numChars_ = 0;
 	oa::I32    numConversations_ = 0;
 	oa::I64    numSamples_ = 0;
 	oa::I64    numBatches_ = 0;
 
-	oa::Vec<oa::I64> indices_;  // Shuffled start positions
+	oa::Vector<oa::I64> indices_;  // Shuffled start positions
 	oa::I64        currentBatch_ = 0;
 	std::mt19937 rng_;
 };

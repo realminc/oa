@@ -35,7 +35,7 @@ oa::Matrix oa::FnMatrix::copy(const oa::Matrix& inA) {
 	if (oa::FnAutograd::isEnabled() and (inA.requiresGrad())) {
 		auto _gradFn = oa::makeShared<oa::GradCopy>();
 		_gradFn->saveForBackward();
-		_gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA});
+		_gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inA});
 		_gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		_gradFn->outputShape_ = out.getShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads
 		const auto semanticAttached = oa::FnAutograd::attachSemantic(

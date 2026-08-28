@@ -125,8 +125,8 @@ struct AlmTrainConfig {
 	oa::I64 seed      = 42;
 
 	// Multiphase schedules (optional; when empty, use flat tok_epochs/lm_epochs)
-	oa::Vec<PhaseConfig> tokPhases;
-	oa::Vec<PhaseConfig> lmPhases;
+	oa::Vector<PhaseConfig> tokPhases;
+	oa::Vector<PhaseConfig> lmPhases;
 
 	// callbacks
 	oa::I64 ckptSaveEvery   = 0;       // 0 = epoch-end only; >0 adds mid-epoch saves
@@ -254,7 +254,7 @@ public:
 	}
 
 	static void loadPhases(const oa::Yaml::Node& inTraining, const oa::String& inKey,
-		oa::Vec<PhaseConfig>& outPhases, oa::F32 inFallbackLr, oa::F32 inFallbackMinLr, oa::I32 inFallbackWarmup) {
+		oa::Vector<PhaseConfig>& outPhases, oa::F32 inFallbackLr, oa::F32 inFallbackMinLr, oa::I32 inFallbackWarmup) {
 		outPhases.clear();
 		const oa::Yaml::Node seq = inTraining[oa::sdk::toStdString(inKey)];
 		if (not(seq and seq.IsSequence())) return;
@@ -270,14 +270,14 @@ public:
 	}
 
 	static oa::SharedPtr<oa::LRScheduler> buildScheduler(
-		const oa::Vec<PhaseConfig>& inPhases, oa::I64 inStepsPerEpoch,
+		const oa::Vector<PhaseConfig>& inPhases, oa::I64 inStepsPerEpoch,
 		oa::F32 inFallbackLr, oa::F32 inFallbackMinLr, oa::I32 inFallbackWarmup, oa::I64 inTotalSteps) {
 		if (inPhases.empty()) {
 			return oa::makeShared<oa::LinearWarmupCosineScheduler>(
 				inFallbackWarmup, static_cast<oa::I32>(inTotalSteps), inFallbackLr, inFallbackMinLr);
 		}
-		oa::Vec<oa::SharedPtr<oa::LRScheduler>> subs;
-		oa::Vec<oa::U64> milestones;
+		oa::Vector<oa::SharedPtr<oa::LRScheduler>> subs;
+		oa::Vector<oa::U64> milestones;
 		oa::U64 offset = 0;
 		for (const auto& ph : inPhases) {
 			const oa::I64 phaseSteps = static_cast<oa::I64>(ph.epochs) * inStepsPerEpoch;
@@ -350,7 +350,7 @@ oa::Status writeNpyF32Atomic(const oa::Path& inPath, const oa::F32* inData,
 	if (header.size() > std::numeric_limits<oa::U16>::max())
 		return oa::Status::error(oa::StatusCode::OutOfRange, "NumPy header is too large");
 	const oa::Usize payloadBytes = inRows * inCols * sizeof(oa::F32);
-	oa::Vec<oa::U8> bytes(prefixBytes + header.size() + payloadBytes);
+	oa::Vector<oa::U8> bytes(prefixBytes + header.size() + payloadBytes);
 	const oa::U8 magic[] = {0x93, 'N', 'U', 'M', 'P', 'Y', 1, 0};
 	std::memcpy(bytes.data(), magic, sizeof(magic));
 	const oa::U16 headerBytes = static_cast<oa::U16>(header.size());
@@ -619,10 +619,10 @@ struct TokenizerBridge {
 	oa::Matrix decode(const oa::Matrix& inZq, oa::I32 inB, oa::I32 inTokLen) {
 		return ptr->decode(inZq, inB, inTokLen);
 	}
-	oa::Vec<oa::Matrix> tokenize(const oa::Matrix& inX, oa::I32 inB, oa::I32 inT) {
+	oa::Vector<oa::Matrix> tokenize(const oa::Matrix& inX, oa::I32 inB, oa::I32 inT) {
 		return ptr->tokenize(inX, inB, inT);
 	}
-	oa::Matrix detokenize(const oa::Vec<oa::Matrix>& inIds, oa::I32 inB, oa::I32 inTokLen) {
+	oa::Matrix detokenize(const oa::Vector<oa::Matrix>& inIds, oa::I32 inB, oa::I32 inTokLen) {
 		return ptr->detokenize(inIds, inB, inTokLen);
 	}
 	void emaUpdate(const oa::ResidualVqResult& inResult) {
@@ -719,7 +719,7 @@ struct TrainAlmApp : oa::ComputeApp {
 	// tokenizer
 	TokenizerBridge tok_;
 	oa::UniquePtr<oa::AdamW> tokOpt_;
-	oa::Vec<oa::Parameter*> tokParams_;
+	oa::Vector<oa::Parameter*> tokParams_;
 	std::vector<std::pair<oa::I32, oa::I32>> tokWindows_;
 	std::vector<std::pair<oa::I32, oa::I32>> tokValWindows_;
 	size_t tokCursor_ = 0;
@@ -727,7 +727,7 @@ struct TrainAlmApp : oa::ComputeApp {
 	// LM
 	LmBridge lm_;
 	oa::UniquePtr<oa::AdamW> lmOpt_;
-	oa::Vec<oa::Parameter*> lmParams_;
+	oa::Vector<oa::Parameter*> lmParams_;
 	std::vector<std::vector<oa::I32>> tokenSequences_;
 	std::vector<std::vector<oa::I32>> valTokenSequences_;
 	std::vector<LmWindow> lmWindows_;
@@ -855,8 +855,8 @@ struct TrainAlmApp : oa::ComputeApp {
 		}
 
 		struct FeatureRecord { oa::String id; oa::Usize offset = 0; oa::Usize count = 0; };
-		oa::Vec<FeatureRecord> records;
-		oa::Vec<oa::String> prompts;
+		oa::Vector<FeatureRecord> records;
+		oa::Vector<oa::String> prompts;
 		prompts.pushBack(oa::String()); // unconditional feature row
 		std::unordered_set<std::string> seen;
 		auto append = [&](const oa::DsCombatMotionProcessed& dataset) {

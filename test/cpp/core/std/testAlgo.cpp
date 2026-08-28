@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <limits>
 #include <random>
 #include <vector>
 
@@ -19,6 +20,35 @@ struct MoveOnlySortProbe {
 	MoveOnlySortProbe& operator=(const MoveOnlySortProbe&) = delete;
 	MoveOnlySortProbe(MoveOnlySortProbe&&) noexcept = default;
 	MoveOnlySortProbe& operator=(MoveOnlySortProbe&&) noexcept = default;
+};
+
+struct BidirectionalExtremaProbe {
+	using difference_type = signed char;
+	using value_type = int;
+	using pointer = int*;
+	using reference = int&;
+
+	int position = 0;
+	reference operator*() noexcept { return position; }
+	BidirectionalExtremaProbe& operator++() noexcept { ++position; return *this; }
+	BidirectionalExtremaProbe& operator--() noexcept { --position; return *this; }
+	bool operator==(const BidirectionalExtremaProbe& inOther) const noexcept {
+		return position == inOther.position;
+	}
+};
+
+struct ForwardOnlyProbe {
+	using difference_type = int;
+	using value_type = int;
+	using pointer = int*;
+	using reference = int&;
+
+	int position = 0;
+	reference operator*() noexcept { return position; }
+	ForwardOnlyProbe& operator++() noexcept { ++position; return *this; }
+	bool operator==(const ForwardOnlyProbe& inOther) const noexcept {
+		return position == inOther.position;
+	}
 };
 
 } // namespace oa
@@ -64,7 +94,7 @@ TEST(StdAlgo, FindAndSort) {
 TEST(StdAlgo, IntroSortHandlesAdversarialOrdersDuplicatesAndMoveOnlyValues) {
 	constexpr oa::Usize count = 4097;
 	for (int pattern = 0; pattern < 4; ++pattern) {
-		oa::Vec<int> actual(count);
+		oa::Vector<int> actual(count);
 		std::vector<int> expected(count);
 		for (oa::Usize index = 0; index < count; ++index) {
 			int value = 0;
@@ -134,6 +164,48 @@ TEST(StdAlgo, SpanFillAndFind) {
 	stdExpectGotInt("span find byte", 8, static_cast<long long>(*it));
 }
 
+TEST(StdAlgo, EmptySpanAlgorithmsAvoidNullPointerArithmetic) {
+	oa::Span<int> empty;
+	const auto never = [](int) { return true; };
+
+	EXPECT_EQ(oa::find(empty, 7), nullptr);
+	EXPECT_EQ(oa::findIf(empty, never), nullptr);
+	EXPECT_EQ(oa::count(empty, 7), 0);
+	EXPECT_TRUE(oa::equal(empty, empty));
+	oa::fill(empty, 7);
+	EXPECT_EQ(oa::copy(empty, static_cast<int*>(nullptr)), nullptr);
+	EXPECT_TRUE(oa::allOf(empty, never));
+	EXPECT_FALSE(oa::anyOf(empty, never));
+	EXPECT_TRUE(oa::noneOf(empty, never));
+	oa::sort(empty);
+	oa::reverse(empty);
+	EXPECT_EQ(oa::unique(empty), nullptr);
+	EXPECT_EQ(oa::minElement(empty), nullptr);
+	EXPECT_EQ(oa::maxElement(empty), nullptr);
+}
+
+TEST(StdAlgo, GcdHandlesSignedExtremaWithoutOverflow) {
+	constexpr int minimum = std::numeric_limits<int>::min();
+	EXPECT_EQ(oa::gcd(minimum, 2), 2);
+	EXPECT_EQ(oa::gcd(minimum, 3), 1);
+	EXPECT_EQ(oa::gcd(std::numeric_limits<unsigned>::max(), 0U),
+		std::numeric_limits<unsigned>::max());
+	EXPECT_DEATH((void)oa::gcd(minimum, 0),
+		"oa::gcd result is not representable");
+}
+
+TEST(StdIter, AdvanceHandlesMinimumSmallSignedDistance) {
+	oa::BidirectionalExtremaProbe iterator;
+	oa::advance(iterator, std::numeric_limits<signed char>::min());
+	EXPECT_EQ(iterator.position, -128);
+}
+
+TEST(StdIter, ForwardIteratorRejectsNegativeAdvance) {
+	oa::ForwardOnlyProbe iterator;
+	EXPECT_DEATH(oa::advance(iterator, -1),
+		"oa::advance cannot move a forward iterator backwards");
+}
+
 TEST(StdAlgo, Clamp) {
 	EXPECT_EQ(oa::clamp(5, 0, 10), 5);
 	EXPECT_EQ(oa::clamp(-1, 0, 10), 0);
@@ -158,7 +230,7 @@ TEST(StdAlgo, Clamp) {
 }
 
 TEST(StdAlgo, RemoveIfMatchesStandardContract) {
-	oa::Vec<int> values{1, 2, 3, 4, 5, 6};
+	oa::Vector<int> values{1, 2, 3, 4, 5, 6};
 	const auto newEnd = oa::removeIf(
 		values.begin(), values.end(), [](int inValue) { return inValue % 2 == 0; });
 	values.erase(newEnd, values.end());

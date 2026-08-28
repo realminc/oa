@@ -7,7 +7,7 @@
 #include <oa/runtime/engine/allocatorAccess.h>
 #include <oa/runtime/engine/deviceAccess.h>
 #include <oa/runtime/graphicsStream.h>
-#include <oa/runtime/oaVma.h>
+#include <vma/vma.hpp>
 #include <oa/runtime/spirv.h>
 #include <oa/runtime/stream.h>
 
@@ -37,19 +37,19 @@ enum class RenderSlotState : oa::U8 {
 struct RenderTarget {
 	VkImage colorImage = VK_NULL_HANDLE;
 	VkImageView colorView = VK_NULL_HANDLE;
-	OaVmaAllocation colorAllocation = VK_NULL_HANDLE;
+	vma::Allocation colorAllocation = VK_NULL_HANDLE;
 	VkImageLayout colorLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	VkImage colorMsaaImage = VK_NULL_HANDLE;
 	VkImageView colorMsaaView = VK_NULL_HANDLE;
-	OaVmaAllocation colorMsaaAllocation = VK_NULL_HANDLE;
+	vma::Allocation colorMsaaAllocation = VK_NULL_HANDLE;
 	VkImageLayout colorMsaaLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	VkImage depthImage = VK_NULL_HANDLE;
 	VkImageView depthView = VK_NULL_HANDLE;
-	OaVmaAllocation depthAllocation = VK_NULL_HANDLE;
+	vma::Allocation depthAllocation = VK_NULL_HANDLE;
 	VkImageLayout depthLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	VkImage depthMsaaImage = VK_NULL_HANDLE;
 	VkImageView depthMsaaView = VK_NULL_HANDLE;
-	OaVmaAllocation depthMsaaAllocation = VK_NULL_HANDLE;
+	vma::Allocation depthMsaaAllocation = VK_NULL_HANDLE;
 	VkImageLayout depthMsaaLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	oavk::Buffer colorReadback;
 	oavk::Buffer depthReadback;
@@ -112,7 +112,7 @@ struct RenderSlot {
 
 [[nodiscard]] oa::Status validateTargetExtent(
 	oa::Engine& inEngine,
-	const OaVkInstanceTable& inInstanceTable,
+	const VklInstanceTable& inInstanceTable,
 	oa::U32 inWidth,
 	oa::U32 inHeight,
 	VkSampleCountFlagBits inSampleCount) {
@@ -280,7 +280,7 @@ struct RenderSlot {
 }
 
 [[nodiscard]] VkShaderModule createShaderModule(
-	const OaVkDeviceTable& inDeviceTable,
+	const VklDeviceTable& inDeviceTable,
 	VkDevice inDevice,
 	const oavk::SpirvEntry& inSpirv) noexcept {
 	VkShaderModuleCreateInfo info{};
@@ -303,17 +303,17 @@ struct RenderSlot {
 	bufferInfo.usage = inUsage;
 	bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-	OaVmaAllocationCreateInfo allocationInfo{};
-	allocationInfo.usage = OA_VMA_MEMORY_USAGE_CPU_TO_GPU;
-	allocationInfo.flags = OA_VMA_ALLOCATION_CREATE_MAPPED_BIT
-		| OA_VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+	vma::AllocationCreateInfo allocationInfo{};
+	allocationInfo.usage = vma::memoryUsageCpuToGpu;
+	allocationInfo.flags = vma::allocationCreateMappedBit
+		| vma::allocationCreateHostAccessSequentialWriteBit;
 	allocationInfo.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
 
 	VkBuffer buffer = VK_NULL_HANDLE;
-	OaVmaAllocation allocation = VK_NULL_HANDLE;
-	OaVmaAllocationInfo allocationResult{};
-	if (OaVmaCreateBuffer(
-			static_cast<OaVmaAllocator>(oa::EngineAllocatorAccess::get(inEngine).allocator),
+	vma::Allocation allocation = VK_NULL_HANDLE;
+	vma::AllocationInfo allocationResult{};
+	if (vma::createBuffer(
+			static_cast<vma::Allocator>(oa::EngineAllocatorAccess::get(inEngine).allocator),
 			&bufferInfo, &allocationInfo, &buffer, &allocation,
 			&allocationResult) != VK_SUCCESS) {
 		return oa::Status::error(
@@ -335,7 +335,7 @@ struct RenderSlot {
 
 void destroyTarget(
 	oa::Engine& inEngine,
-	const OaVkDeviceTable& inDeviceTable,
+	const VklDeviceTable& inDeviceTable,
 	RenderTarget& inOutTarget) noexcept {
 	const VkDevice device = static_cast<VkDevice>(oa::EngineDeviceAccess::get(inEngine).device);
 	if (inOutTarget.colorView != VK_NULL_HANDLE) {
@@ -355,23 +355,23 @@ void destroyTarget(
 			device, inOutTarget.depthMsaaView, nullptr);
 	}
 	if (inOutTarget.colorImage != VK_NULL_HANDLE) {
-		OaVmaDestroyImage(
-			static_cast<OaVmaAllocator>(oa::EngineAllocatorAccess::get(inEngine).allocator),
+		vma::destroyImage(
+			static_cast<vma::Allocator>(oa::EngineAllocatorAccess::get(inEngine).allocator),
 			inOutTarget.colorImage, inOutTarget.colorAllocation);
 	}
 	if (inOutTarget.depthImage != VK_NULL_HANDLE) {
-		OaVmaDestroyImage(
-			static_cast<OaVmaAllocator>(oa::EngineAllocatorAccess::get(inEngine).allocator),
+		vma::destroyImage(
+			static_cast<vma::Allocator>(oa::EngineAllocatorAccess::get(inEngine).allocator),
 			inOutTarget.depthImage, inOutTarget.depthAllocation);
 	}
 	if (inOutTarget.colorMsaaImage != VK_NULL_HANDLE) {
-		OaVmaDestroyImage(
-			static_cast<OaVmaAllocator>(oa::EngineAllocatorAccess::get(inEngine).allocator),
+		vma::destroyImage(
+			static_cast<vma::Allocator>(oa::EngineAllocatorAccess::get(inEngine).allocator),
 			inOutTarget.colorMsaaImage, inOutTarget.colorMsaaAllocation);
 	}
 	if (inOutTarget.depthMsaaImage != VK_NULL_HANDLE) {
-		OaVmaDestroyImage(
-			static_cast<OaVmaAllocator>(oa::EngineAllocatorAccess::get(inEngine).allocator),
+		vma::destroyImage(
+			static_cast<vma::Allocator>(oa::EngineAllocatorAccess::get(inEngine).allocator),
 			inOutTarget.depthMsaaImage, inOutTarget.depthMsaaAllocation);
 	}
 	oa::EngineAllocatorAccess::get(inEngine).free(inOutTarget.colorReadback);
@@ -381,7 +381,7 @@ void destroyTarget(
 
 [[nodiscard]] oa::Status createImage(
 	oa::Engine& inEngine,
-	const OaVkDeviceTable& inDeviceTable,
+	const VklDeviceTable& inDeviceTable,
 	oa::U32 inWidth,
 	oa::U32 inHeight,
 	VkFormat inFormat,
@@ -390,7 +390,7 @@ void destroyTarget(
 	VkSampleCountFlagBits inSampleCount,
 	VkImage& outImage,
 	VkImageView& outView,
-	OaVmaAllocation& outAllocation) {
+	vma::Allocation& outAllocation) {
 	VkImageCreateInfo imageInfo{};
 	imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
 	imageInfo.imageType = VK_IMAGE_TYPE_2D;
@@ -404,10 +404,10 @@ void destroyTarget(
 	imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
-	OaVmaAllocationCreateInfo allocationInfo{};
-	allocationInfo.usage = OA_VMA_MEMORY_USAGE_GPU_ONLY;
-	if (OaVmaCreateImage(
-			static_cast<OaVmaAllocator>(oa::EngineAllocatorAccess::get(inEngine).allocator),
+	vma::AllocationCreateInfo allocationInfo{};
+	allocationInfo.usage = vma::memoryUsageGpuOnly;
+	if (vma::createImage(
+			static_cast<vma::Allocator>(oa::EngineAllocatorAccess::get(inEngine).allocator),
 			&imageInfo, &allocationInfo, &outImage, &outAllocation,
 			nullptr) != VK_SUCCESS) {
 		return oa::Status::error(
@@ -426,8 +426,8 @@ void destroyTarget(
 	if (inDeviceTable.vkCreateImageView(
 			static_cast<VkDevice>(oa::EngineDeviceAccess::get(inEngine).device),
 			&viewInfo, nullptr, &outView) != VK_SUCCESS) {
-		OaVmaDestroyImage(
-			static_cast<OaVmaAllocator>(oa::EngineAllocatorAccess::get(inEngine).allocator),
+		vma::destroyImage(
+			static_cast<vma::Allocator>(oa::EngineAllocatorAccess::get(inEngine).allocator),
 			outImage, outAllocation);
 		outImage = VK_NULL_HANDLE;
 		outAllocation = VK_NULL_HANDLE;
@@ -440,7 +440,7 @@ void destroyTarget(
 
 [[nodiscard]] oa::Status createTarget(
 	oa::Engine& inEngine,
-	const OaVkDeviceTable& inDeviceTable,
+	const VklDeviceTable& inDeviceTable,
 	oa::U32 inWidth,
 	oa::U32 inHeight,
 	VkSampleCountFlagBits inSampleCount,
@@ -519,10 +519,10 @@ void destroyTarget(
 
 class oa::Renderer::MeshImpl final : public oa::Renderer::Impl {
 public:
-	OaVkInstanceTable InstanceTable{};
-	OaVkDeviceTable DeviceTable{};
+	VklInstanceTable InstanceTable{};
+	VklDeviceTable DeviceTable{};
 	oa::RendererConfig renderConfig;
-	oa::Vec<RenderSlot> slots;
+	oa::Vector<RenderSlot> slots;
 	oa::U32 activeSlot = oa::Limits<oa::U32>::max();
 	oa::U64 TargetGeneration = 1U;
 	VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
@@ -1808,7 +1808,7 @@ oa::Status oa::Renderer::MeshImpl::resize(
 
 	// allocate a full replacement generation first. A Busy or allocation-failure
 	// path does not mutate old resources, layouts, dimensions, or generations.
-	oa::Vec<RenderTarget> replacements(slots.size());
+	oa::Vector<RenderTarget> replacements(slots.size());
 	for (oa::Usize index = 0U; index < replacements.size(); ++index) {
 		const oa::Status status = createTarget(
 			*engine, DeviceTable,

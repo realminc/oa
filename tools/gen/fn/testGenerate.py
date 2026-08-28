@@ -224,7 +224,7 @@ lowering = "dispatch"
 		 emitted,
 		)
 		self.assertIn(
-		 "gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inLogits});",
+		 "gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inLogits});",
 		 emitted,
 		)
 

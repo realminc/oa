@@ -11,7 +11,7 @@
 #include <oa/core/matrixAccess.h>
 #include <oa/runtime/executionSession.h>
 
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
 
 oa::U32 oa::Texture::bindlessIndex() const noexcept {
 	return bufferOwner_ ? bufferOwner_->bindlessIndex : UINT32_MAX;

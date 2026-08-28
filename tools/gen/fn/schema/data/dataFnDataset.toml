@@ -12,7 +12,7 @@ body = "cpu_util"
 generate_declaration = false
 api_return = "void"
 api_params = [
-    "oa::Vec<oa::I64>& inOutIndices",
+    "oa::Vector<oa::I64>& inOutIndices",
     "oa::U64 inSeed = 0",
 ]
 notes = "Shuffle a host index vector with explicit or nondeterministic seed selection."

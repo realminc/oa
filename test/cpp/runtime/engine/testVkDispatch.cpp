@@ -1,6 +1,7 @@
 #include "../../oaTest.h"
 
-#include <oa/runtime/oaVk.h>
+#include "oa/runtime/loader.h"
+#include <vkl/vkl.h>
 
 #include <cstdint>
 
@@ -23,11 +24,30 @@ VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL fakeGetInstanceProcAddr(
 	return markerForHandle(inInstance);
 }
 
+VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL secondGetInstanceProcAddr(
+	VkInstance inInstance,
+	const char*)
+{
+	return markerForHandle(inInstance);
+}
+
 VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL fakeGetDeviceProcAddrA(
 	VkDevice,
 	const char*)
 {
 	return &dispatchMarkerA;
+}
+
+TEST(VkDispatch, ProcessLoaderSelectionCannotChange) {
+	vklInitCustom(&fakeGetInstanceProcAddr);
+	EXPECT_TRUE(oavk::initializeLoader(&fakeGetInstanceProcAddr).isOk());
+	EXPECT_TRUE(oavk::initializeLoader().isOk());
+
+	const oa::Status changed =
+		oavk::initializeLoader(&secondGetInstanceProcAddr);
+	EXPECT_EQ(changed.getCode(), oa::StatusCode::FailedPrecondition);
+	EXPECT_EQ(vklGetInstanceProcAddr(), &fakeGetInstanceProcAddr);
+	vklFinalize();
 }
 
 VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL fakeGetDeviceProcAddrB(
@@ -41,39 +61,39 @@ VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL fakeGetDeviceProcAddrB(
 
 TEST(VkDispatch, InstanceTablesRemainIndependent)
 {
-	oaVkInitCustom(&fakeGetInstanceProcAddr);
+	vklInitCustom(&fakeGetInstanceProcAddr);
 	const auto instanceA = reinterpret_cast<VkInstance>(std::uintptr_t{1U});
 	const auto instanceB = reinterpret_cast<VkInstance>(std::uintptr_t{2U});
-	OaVkInstanceTable tableA{};
-	OaVkInstanceTable tableB{};
+	VklInstanceTable tableA{};
+	VklInstanceTable tableB{};
 
-	oaVkLoadInstanceTable(&tableA, instanceA);
+	vklLoadInstanceTable(&tableA, instanceA);
 	const auto firstDestroy = tableA.vkDestroyInstance;
 	ASSERT_NE(firstDestroy, nullptr);
-	oaVkLoadInstanceTable(&tableB, instanceB);
+	vklLoadInstanceTable(&tableB, instanceB);
 
 	EXPECT_EQ(tableA.vkDestroyInstance, firstDestroy);
 	EXPECT_NE(tableA.vkDestroyInstance, tableB.vkDestroyInstance);
 	EXPECT_NE(tableA.vkGetPhysicalDeviceProperties,
 		tableB.vkGetPhysicalDeviceProperties);
-	oaVkFinalize();
+	vklFinalize();
 }
 
 TEST(VkDispatch, DeviceTablesRemainIndependent)
 {
-	OaVkInstanceTable instanceA{};
-	OaVkInstanceTable instanceB{};
+	VklInstanceTable instanceA{};
+	VklInstanceTable instanceB{};
 	instanceA.vkGetDeviceProcAddr = &fakeGetDeviceProcAddrA;
 	instanceB.vkGetDeviceProcAddr = &fakeGetDeviceProcAddrB;
 	const auto deviceA = reinterpret_cast<VkDevice>(std::uintptr_t{1U});
 	const auto deviceB = reinterpret_cast<VkDevice>(std::uintptr_t{2U});
-	OaVkDeviceTable tableA{};
-	OaVkDeviceTable tableB{};
+	VklDeviceTable tableA{};
+	VklDeviceTable tableB{};
 
-	oaVkLoadDeviceTable(&tableA, &instanceA, deviceA);
+	vklLoadDeviceTable(&tableA, &instanceA, deviceA);
 	const auto firstSubmit = tableA.vkQueueSubmit;
 	ASSERT_NE(firstSubmit, nullptr);
-	oaVkLoadDeviceTable(&tableB, &instanceB, deviceB);
+	vklLoadDeviceTable(&tableB, &instanceB, deviceB);
 
 	EXPECT_EQ(tableA.vkQueueSubmit, firstSubmit);
 	EXPECT_NE(tableA.vkQueueSubmit, tableB.vkQueueSubmit);

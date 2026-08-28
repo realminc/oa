@@ -127,18 +127,18 @@ oa::Result<std::vector<oa::F32>> loadRawF32(const oa::String& inPath, oa::I32 in
 }
 
 // Copy a matrix to host FP32. Safe for BF16/FP16 storage models.
-oa::Vec<oa::F32> hostFloatData(const oa::Matrix& inMatrix) {
+oa::Vector<oa::F32> hostFloatData(const oa::Matrix& inMatrix) {
 	auto& ctx = oa::ExecutionSession::getActive();
 	if (inMatrix.getDtype() == oa::ScalarType::Float32) {
 		(void)ctx.submitAndWait();
 		const oa::F32* p = inMatrix.dataAs<const oa::F32>();
-		return oa::Vec<oa::F32>(p, p + inMatrix.numElements());
+		return oa::Vector<oa::F32>(p, p + inMatrix.numElements());
 	}
 	oa::Matrix f32 = oa::FnMatrix::empty(inMatrix.getShape(), oa::ScalarType::Float32);
 	oa::FnMatrix::castInto(inMatrix, f32);
 	(void)ctx.submitAndWait();
 	const oa::F32* p = f32.dataAs<const oa::F32>();
-	return oa::Vec<oa::F32>(p, p + f32.numElements());
+	return oa::Vector<oa::F32>(p, p + f32.numElements());
 }
 
 } // namespace

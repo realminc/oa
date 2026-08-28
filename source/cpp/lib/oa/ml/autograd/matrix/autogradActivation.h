@@ -13,7 +13,7 @@ class GradSoftmaxScaledMasked final : public oa::GradNode {
 public:
 	oa::F32 scale_ = 1.0F;
 
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() > 0) {
 			outDIn[0] = oa::FnMatrix::softmaxScaledMaskedBwd(
 				saved(0), inDOut, scale_);
@@ -23,7 +23,7 @@ public:
 
 class GradSiluMul final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() > 0) {
 			outDIn[0] = oa::FnMatrix::siluMulBwd(saved(0), inDOut);
 		}
@@ -32,7 +32,7 @@ public:
 
 class GradGeglu final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() > 0) {
 			outDIn[0] = oa::FnMatrix::gegluBwd(saved(0), inDOut);
 		}
@@ -41,7 +41,7 @@ public:
 
 class GradSwiglu final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		const oa::Matrix& gate = saved(0);
 		const oa::Matrix& up   = saved(1);
 		const oa::Matrix& out  = saved(2);

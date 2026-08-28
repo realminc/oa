@@ -50,12 +50,12 @@ public:
   void setAudioCodecConfig(oa::Span<const oa::U8> inCodecConfig);
 
   // set AVC SPS/PPS data for the avcC decoder configuration box.
-  void setCodecConfig(const oa::Vec<oa::U8> &inSps,
-                      const oa::Vec<oa::U8> &inPps);
+  void setCodecConfig(const oa::Vector<oa::U8> &inSps,
+                      const oa::Vector<oa::U8> &inPps);
   // set HEVC VPS/SPS/PPS data for the hvcC decoder configuration box.
-  void setCodecConfig(const oa::Vec<oa::U8> &inVps,
-                      const oa::Vec<oa::U8> &inSps,
-                      const oa::Vec<oa::U8> &inPps);
+  void setCodecConfig(const oa::Vector<oa::U8> &inVps,
+                      const oa::Vector<oa::U8> &inSps,
+                      const oa::Vector<oa::U8> &inPps);
 
   // finalize the MP4 file (write moov box and flush).
   oa::Status finalize();
@@ -71,23 +71,23 @@ private:
   void writeMoovBox();
 
   VideoMuxerConfig config_ = {};
-  oa::Vec<oa::U8> mdatData_;
+  oa::Vector<oa::U8> mdatData_;
   FILE* outputFile_ = nullptr;
   oa::U64 mdatPayloadBytes_ = 0U;
-  oa::Vec<oa::U64> packetOffsets_;
-  oa::Vec<oa::U32> packetSizes_;
-  oa::Vec<oa::U64> packetDts_;
-  oa::Vec<bool> packetKeyframe_;
-  oa::Vec<oa::U64> audioPacketOffsets_;
-  oa::Vec<oa::U32> audioPacketSizes_;
-  oa::Vec<oa::U32> audioPacketDurations_;
-  oa::Vec<oa::U8> audioCodecConfig_;
+  oa::Vector<oa::U64> packetOffsets_;
+  oa::Vector<oa::U32> packetSizes_;
+  oa::Vector<oa::U64> packetDts_;
+  oa::Vector<bool> packetKeyframe_;
+  oa::Vector<oa::U64> audioPacketOffsets_;
+  oa::Vector<oa::U32> audioPacketSizes_;
+  oa::Vector<oa::U32> audioPacketDurations_;
+  oa::Vector<oa::U8> audioCodecConfig_;
   oa::U32 packetCount_ = 0;
   bool finalized_ = false;
 
-  oa::Vec<oa::U8> vps_;
-  oa::Vec<oa::U8> sps_;
-  oa::Vec<oa::U8> pps_;
+  oa::Vector<oa::U8> vps_;
+  oa::Vector<oa::U8> sps_;
+  oa::Vector<oa::U8> pps_;
 };
 
 } // namespace oa

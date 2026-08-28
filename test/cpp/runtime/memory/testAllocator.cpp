@@ -5,7 +5,7 @@
 #include <cstdio>
 #include <cstring>
 
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
 #include <oa/core/fnMatrix.h>
 #include <oa/core/matrixAccess.h>
 #include <oa/runtime/engine.h>
@@ -309,7 +309,7 @@ TEST(allocator, EngineCloseDrainsAliasLeasesBeforeAllocatorTeardown) {
 	ASSERT_NE(engine, nullptr);
 
 	constexpr oa::U32 N = 64;
-	oa::Vec<oa::Matrix> matrices;
+	oa::Vector<oa::Matrix> matrices;
 	{
 		auto& engineContext = oa::ExecutionSession::forEngine(*engine);
 		oa::ExecutionSession::RecordingScope contextScope(engineContext);
@@ -321,7 +321,7 @@ TEST(allocator, EngineCloseDrainsAliasLeasesBeforeAllocatorTeardown) {
 		}
 	}
 
-	oa::Vec<oavk::Buffer> buffers;
+	oa::Vector<oavk::Buffer> buffers;
 	for (const auto& matrix : matrices) {
 		buffers.pushBack(oa::MatrixAccess::descriptor(matrix));
 	}
@@ -365,9 +365,9 @@ TEST(allocator, BindlessExhaustionFailsAllocationWithoutLeakingStorage) {
 	auto originalHeap = std::move(bindless);
 	bindless = std::move(*tinyResult);
 	auto first = oa::EngineResourceAccess::allocBufferDevice(rt, 4096);
-	const OaVmaStats beforeFailure = oa::EngineAllocatorAccess::get(rt).getStats();
+	const RuntimeAllocatorStats beforeFailure = oa::EngineAllocatorAccess::get(rt).getStats();
 	auto exhausted = oa::EngineResourceAccess::allocBufferDevice(rt, 4096);
-	const OaVmaStats afterFailure = oa::EngineAllocatorAccess::get(rt).getStats();
+	const RuntimeAllocatorStats afterFailure = oa::EngineAllocatorAccess::get(rt).getStats();
 
 	EXPECT_TRUE(first.isOk()) << first.getStatus().toString();
 	EXPECT_FALSE(exhausted.isOk());
@@ -451,18 +451,18 @@ TEST(allocator, DeviceLocalUploadReadbackRoundTrip) {
 	auto buffer = std::move(result).getValue();
 	ASSERT_EQ(buffer.placement, oa::MemoryPlacement::DeviceLocal);
 
-	oa::Vec<oa::U32> source(kCount);
-	oa::Vec<oa::U32> destination(kCount);
+	oa::Vector<oa::U32> source(kCount);
+	oa::Vector<oa::U32> destination(kCount);
 	for (oa::U32 i = 0; i < kCount; ++i) source[i] = i * 2654435761U;
 
 	ASSERT_TRUE(oa::EngineResourceAccess::uploadBuffer(rt, buffer, 0, source.data(), kBytes).isOk());
 	ASSERT_TRUE(oa::EngineResourceAccess::readbackBuffer(rt, buffer, 0, destination.data(), kBytes).isOk());
 	for (oa::U32 i = 0; i < kCount; ++i) EXPECT_EQ(destination[i], source[i]);
-	const OaVmaStats firstReadbackStats = oa::EngineAllocatorAccess::get(rt).getStats();
+	const RuntimeAllocatorStats firstReadbackStats = oa::EngineAllocatorAccess::get(rt).getStats();
 	for (oa::U32 repeat = 0; repeat < 8; ++repeat) {
 		ASSERT_TRUE(oa::EngineResourceAccess::readbackBuffer(rt, buffer, 0, destination.data(), kBytes).isOk());
 	}
-	const OaVmaStats repeatedReadbackStats = oa::EngineAllocatorAccess::get(rt).getStats();
+	const RuntimeAllocatorStats repeatedReadbackStats = oa::EngineAllocatorAccess::get(rt).getStats();
 	EXPECT_EQ(repeatedReadbackStats.allocationCount, firstReadbackStats.allocationCount);
 	EXPECT_EQ(repeatedReadbackStats.allocationBytes, firstReadbackStats.allocationBytes);
 
@@ -518,7 +518,7 @@ TEST(allocator, UploadWeightsCorrectness) {
 	ASSERT_TRUE(result.isOk());
 	auto& buf = result.getValue();
 
-	oa::Vec<oa::F32> src(N);
+	oa::Vector<oa::F32> src(N);
 	for (oa::U32 i = 0; i < N; ++i) {
 		src[i] = static_cast<oa::F32>(i) * 0.5f;
 	}

@@ -2,7 +2,7 @@
 #include <oa/runtime/device.h>
 #include <oa/runtime/allocator.h>
 #include <oa/runtime/pipeline.h>
-#include <oa/runtime/oaVk.h>
+#include <vkl/vkl.h>
 #include "dispatchValidation.h"
 
 oa::Result<oavk::Command> oavk::Command::create(const oavk::Device& inDevice) {

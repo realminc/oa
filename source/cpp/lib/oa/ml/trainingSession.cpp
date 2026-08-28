@@ -37,7 +37,7 @@ public:
   }
 
 private:
-  oa::Vec<T> values_;
+  oa::Vector<T> values_;
   oa::Usize head_ = 0;
 };
 
@@ -89,11 +89,11 @@ struct TrainingSession::Impl {
   oa::U64 revision = 0;
   oa::U64 nextSequence = 1;
   oa::U64 takeSequence = 0;
-  oa::Vec<TrainingCommand> commands;
+  oa::Vector<TrainingCommand> commands;
   BoundedHistory<TrainingCommandResult> results;
   BoundedHistory<TrainingSnapshot> snapshots;
-  oa::Vec<TrainingParameterDesc> parameters;
-  oa::Vec<TrainingMetricSample> pendingMetrics;
+  oa::Vector<TrainingParameterDesc> parameters;
+  oa::Vector<TrainingMetricSample> pendingMetrics;
 };
 
 namespace {
@@ -277,7 +277,7 @@ void TrainingSession::publishMetric(oa::String inName, oa::F64 inValue) {
 }
 
 oa::Status TrainingSession::poll() {
-  oa::Vec<TrainingCommand> commands;
+  oa::Vector<TrainingCommand> commands;
   {
   oa::ScopedLock<oa::Mutex> lock(impl_->mutex);
     commands.swap(impl_->commands);
@@ -490,9 +490,9 @@ oa::Optional<TrainingSnapshot> TrainingSession::latestSnapshot() const {
   return impl_->snapshots.back();
 }
 
-oa::Vec<TrainingCommandResult>
+oa::Vector<TrainingCommandResult>
 TrainingSession::resultsAfter(oa::U64 inSequence) const {
-  oa::Vec<TrainingCommandResult> results;
+  oa::Vector<TrainingCommandResult> results;
   oa::ScopedLock<oa::Mutex> lock(impl_->mutex);
   impl_->results.forEach([&](const TrainingCommandResult& result) {
     if (result.sequence > inSequence)
@@ -501,8 +501,8 @@ TrainingSession::resultsAfter(oa::U64 inSequence) const {
   return results;
 }
 
-oa::Vec<TrainingCommandResult> TrainingSession::takeResults() {
-  oa::Vec<TrainingCommandResult> results;
+oa::Vector<TrainingCommandResult> TrainingSession::takeResults() {
+  oa::Vector<TrainingCommandResult> results;
   oa::ScopedLock<oa::Mutex> lock(impl_->mutex);
   results.reserve(impl_->results.size());
   impl_->results.forEach([&](const TrainingCommandResult& result) {

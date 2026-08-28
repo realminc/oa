@@ -13,7 +13,7 @@
 #include "dispatchValidation.h"
 #include "storageDtype.h"
 
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
 
 oavk::ImageDispatchTicket::ImageDispatchTicket(oavk::ImageDispatchTicket&& inOther) noexcept
 	: engine_(inOther.engine_)
@@ -163,9 +163,9 @@ static oavk::Stream* imageDispatchSetupAndRecord(
 	oa::U32 inGroupsX,
 	oa::U32 inGroupsY,
 	oa::U32 inGroupsZ,
-	oa::Vec<oa::U32>& outStorageImageSlots,
-	oa::Vec<oa::U32>& outSampledImageSlots,
-	oa::Vec<oa::U32>& outSamplerSlots,
+	oa::Vector<oa::U32>& outStorageImageSlots,
+	oa::Vector<oa::U32>& outSampledImageSlots,
+	oa::Vector<oa::U32>& outSamplerSlots,
 	oa::Status& outStatus)
 {
 	outStatus = oavk::validateDirectComputeDispatch(
@@ -208,7 +208,7 @@ static oavk::Stream* imageDispatchSetupAndRecord(
 	}
 
 	oa::PipelineSpec spec{.numBindings = 16, .pushConstantBytes = 128,
-		.specConstants = oa::Vec<oa::SpecConstant>{
+		.specConstants = oa::Vector<oa::SpecConstant>{
 			oa::SpecConstant{.id = 0, .value = dtype.getValue()}}};
 	outStatus = oa::EnginePipelineAccess::ensure(
 		inRt,
@@ -219,7 +219,7 @@ static oavk::Stream* imageDispatchSetupAndRecord(
 		return nullptr;
 	}
 
-	oa::Vec<oa::U32> resourceIndices;
+	oa::Vector<oa::U32> resourceIndices;
 	resourceIndices.reserve(inBindings.size());
 
 	for (const auto& binding : inBindings) {
@@ -321,7 +321,7 @@ static oavk::Stream* imageDispatchSetupAndRecord(
 	// Optional image transitions happen in the same command buffer as the
 	// dispatch. This is required when a storage image crosses between compute
 	// and vulkan Video layouts; a descriptor layout alone is not a barrier.
-	oa::Vec<VkImageMemoryBarrier2> preBarriers;
+	oa::Vector<VkImageMemoryBarrier2> preBarriers;
 	for (const auto& binding : inBindings) {
 		if (binding.image == VK_NULL_HANDLE) continue;
 		const bool externalAcquire =
@@ -386,7 +386,7 @@ static oavk::Stream* imageDispatchSetupAndRecord(
 		pushBuf);
 	oa::EngineDeviceAccess::get(inRt).deviceDispatch.vkCmdDispatch(cmd, inGroupsX, inGroupsY, inGroupsZ);
 
-	oa::Vec<VkImageMemoryBarrier2> postBarriers;
+	oa::Vector<VkImageMemoryBarrier2> postBarriers;
 	for (const auto& binding : inBindings) {
 		if (binding.image == VK_NULL_HANDLE or binding.finalLayout == VK_IMAGE_LAYOUT_UNDEFINED
 			or binding.finalLayout == binding.imageLayout) continue;
@@ -453,9 +453,9 @@ oa::Status oavk::ImageDispatch::run(
 	oa::U32 inGroupsY,
 	oa::U32 inGroupsZ)
 {
-	oa::Vec<oa::U32> storageImageSlots;
-	oa::Vec<oa::U32> sampledImageSlots;
-	oa::Vec<oa::U32> samplerSlots;
+	oa::Vector<oa::U32> storageImageSlots;
+	oa::Vector<oa::U32> sampledImageSlots;
+	oa::Vector<oa::U32> samplerSlots;
 	oa::Status status;
 	oavk::Stream* stream = imageDispatchSetupAndRecord(
 		inRt, inShaderName, inBindings, inPushData, inPushSize,
@@ -505,9 +505,9 @@ oa::Status oavk::ImageDispatch::runWithDependency(
 	const oavk::TimelineSemaphore& inWaitSem,
 	oa::U64 inWaitValue)
 {
-	oa::Vec<oa::U32> storageImageSlots;
-	oa::Vec<oa::U32> sampledImageSlots;
-	oa::Vec<oa::U32> samplerSlots;
+	oa::Vector<oa::U32> storageImageSlots;
+	oa::Vector<oa::U32> sampledImageSlots;
+	oa::Vector<oa::U32> samplerSlots;
 	oa::Status status;
 	oavk::Stream* stream = imageDispatchSetupAndRecord(
 		inRt, inShaderName, inBindings, inPushData, inPushSize,

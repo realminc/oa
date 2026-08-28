@@ -7,7 +7,7 @@
 
 #include <oa/core/types.h>
 #include <oa/core/status.h>
-#include <oa/runtime/oaVk.h>
+#include <vkl/vkl.h>
 
 namespace oa { class Engine; }
 
@@ -46,7 +46,7 @@ private:
 
 	oa::Engine* rt_ = nullptr;
 	VkVideoSessionKHR session_ = VK_NULL_HANDLE;
-	oa::Vec<void*> allocations_;  // VMA blocks bound via vkBindVideoSessionMemoryKHR
+	oa::Vector<void*> allocations_;  // VMA blocks bound via vkBindVideoSessionMemoryKHR
 	VkExtent2D codedExtent_ = {0, 0};
 	oa::U32 maxDpbSlots_ = 0;
 	oa::U32 maxActiveReferences_ = 0;
@@ -242,17 +242,17 @@ public:
 		oa::Engine& inRt,
 		const VkVideoProfileInfoKHR& inProfile,
 		VkImageUsageFlags inUsage,
-		oa::Vec<VkVideoFormatPropertiesKHR>& outFormats);
+		oa::Vector<VkVideoFormatPropertiesKHR>& outFormats);
 
 	// Check if a format is supported with specific usage
 	static bool hasFormatWithUsage(
-		const oa::Vec<VkVideoFormatPropertiesKHR>& inFormats,
+		const oa::Vector<VkVideoFormatPropertiesKHR>& inFormats,
 		VkFormat inFormat,
 		VkImageUsageFlags inUsage);
 
 	// find format properties for a specific format
 	static const VkVideoFormatPropertiesKHR* findFormatWithUsage(
-		const oa::Vec<VkVideoFormatPropertiesKHR>& inFormats,
+		const oa::Vector<VkVideoFormatPropertiesKHR>& inFormats,
 		VkFormat inFormat,
 		VkImageUsageFlags inUsage);
 };

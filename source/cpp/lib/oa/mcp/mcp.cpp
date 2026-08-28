@@ -36,8 +36,8 @@ struct JsonValue {
   JsonKind kind = JsonKind::Null;
   oa::Bool boolean = false;
   oa::String text;
-  oa::Vec<oa::UniquePtr<JsonValue>> array;
-  oa::Vec<JsonMember> object;
+  oa::Vector<oa::UniquePtr<JsonValue>> array;
+  oa::Vector<JsonMember> object;
 };
 
 JsonMember::~JsonMember() = default;

@@ -43,8 +43,8 @@ struct MeshVertex {
 
 // Mesh data (CPU-side POD, can be uploaded to GPU buffers)
 struct MeshData {
-	oa::Vec<MeshVertex> vertices;
-	oa::Vec<oa::U32>        indices;
+	oa::Vector<MeshVertex> vertices;
+	oa::Vector<oa::U32>        indices;
 	Aabb                bounds;
 	bool                boundsDirty = true;
 };

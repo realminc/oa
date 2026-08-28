@@ -17,7 +17,7 @@ public:
 	}
 
 	void probeExtensions(
-		const oa::Vec<VkExtensionProperties>& inAvailableExtensions,
+		const oa::Vector<VkExtensionProperties>& inAvailableExtensions,
 		oavk::PhysicalExtensionProbe& outProbe
 	) override {
 		// Core features don't require additional extensions beyond vulkan 1.3
@@ -74,7 +74,7 @@ public:
 	}
 
 	void queryFeatures(
-		const OaVkInstanceTable& inDispatch,
+		const VklInstanceTable& inDispatch,
 		VkPhysicalDevice inPhysicalDevice,
 		oavk::DeviceFeatureBundle& outBundle
 	) override {
@@ -335,7 +335,7 @@ public:
 	void collectExtensions(
 		const oavk::PhysicalExtensionProbe& inProbe,
 		const oavk::DeviceFeatureBundle& inBundle,
-		oa::Vec<const char*>& outExtensions
+		oa::Vector<const char*>& outExtensions
 	) override {
 		const oa::U32 apiMajor = VK_API_VERSION_MAJOR(inBundle.physicalApiVersion);
 		const oa::U32 apiMinor = VK_API_VERSION_MINOR(inBundle.physicalApiVersion);
@@ -389,7 +389,7 @@ public:
 		}
 	}
 
-	oa::Vec<oa::StringView> dependencies() const override {
+	oa::Vector<oa::StringView> dependencies() const override {
 		return {};  // Core has no dependencies
 	}
 };

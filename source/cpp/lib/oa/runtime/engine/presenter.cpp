@@ -13,7 +13,7 @@
 #include "engineAccess.h"
 #include "deviceAccess.h"
 #include <oa/runtime/window.h>
-#include <oa/runtime/oaVk.h>
+#include <vkl/vkl.h>
 #include <oa/runtime/device.h>
 #include <oa/core/assert.h>
 #include <oa/core/log.h>
@@ -21,7 +21,7 @@
 #include <oa/core/std/format.h>
 #include <oa/core/std/limits.h>
 #include <oa/core/std/utility.h>
-#include <oa/core/std/vec.h>
+#include <oa/core/std/vector.h>
 
 #include "../presenterRetirement.h"
 
@@ -51,10 +51,10 @@ static inline VkDevice reDev(const oa::Presenter& E) {
 	return static_cast<VkDevice>(
 		oa::EngineDeviceAccess::get(E.engine()).device);
 }
-static inline const OaVkDeviceTable& reVk(const oa::Presenter& E) {
+static inline const VklDeviceTable& reVk(const oa::Presenter& E) {
 	return oa::EngineDeviceAccess::get(E.engine()).deviceDispatch;
 }
-static inline const OaVkInstanceTable& reInstanceVk(const oa::Presenter& E) {
+static inline const VklInstanceTable& reInstanceVk(const oa::Presenter& E) {
 	return oa::EngineDeviceAccess::get(E.engine()).instanceDispatch;
 }
 static inline VkPhysicalDevice rePhys(const oa::Presenter& E) {
@@ -114,6 +114,9 @@ oa::Status oa::Presenter::destroySurface(void*& inOutSurface) const {
 // aliased into a moved-from twin. (The old hand-written move ctor/assignment that
 // reset the source's swapchain_/renderPass_/cmdPool_/imGuiPool_ to dodge
 // double-destroy is gone.)
+
+oa::Presenter::Presenter(oa::Engine& inEngine) noexcept
+	: engine_(inEngine) {}
 
 oa::Presenter::~Presenter() {
 	abandon_();
@@ -486,7 +489,7 @@ bool oa::Presenter::buildSwapchainObjects() {
 	uint32_t fmtCount = 0;
 	reInstanceVk(*this).vkGetPhysicalDeviceSurfaceFormatsKHR(
 		rePhys(*this), surf, &fmtCount, nullptr);
-	oa::Vec<VkSurfaceFormatKHR> formats(fmtCount);
+	oa::Vector<VkSurfaceFormatKHR> formats(fmtCount);
 	if (fmtCount) {
 		reInstanceVk(*this).vkGetPhysicalDeviceSurfaceFormatsKHR(
 			rePhys(*this), surf, &fmtCount, formats.data());
@@ -514,7 +517,7 @@ bool oa::Presenter::buildSwapchainObjects() {
 		uint32_t modeCount = 0;
 		reInstanceVk(*this).vkGetPhysicalDeviceSurfacePresentModesKHR(
 			rePhys(*this), surf, &modeCount, nullptr);
-		oa::Vec<VkPresentModeKHR> modes(modeCount);
+		oa::Vector<VkPresentModeKHR> modes(modeCount);
 		if (modeCount) {
 			reInstanceVk(*this).vkGetPhysicalDeviceSurfacePresentModesKHR(
 				rePhys(*this), surf, &modeCount, modes.data());
@@ -834,7 +837,7 @@ bool oa::Presenter::initImGui(void* inNativeWindow) {
 		return false;
 	}
 
-	// load vulkan functions for ImGui via our volk-style loader (OaVk).
+	// Load Vulkan functions for ImGui through the engine-owned VKL boundary.
 	// Required because imgui_impl_vulkan.cpp is compiled with VK_NO_PROTOTYPES.
 	oavk::Device& engineDevice = oa::EngineDeviceAccess::get(engine_);
 	VkInstance inst = static_cast<VkInstance>(engineDevice.instance);
@@ -842,7 +845,7 @@ bool oa::Presenter::initImGui(void* inNativeWindow) {
 		VK_API_VERSION_1_4,
 		[](const char* inName, void* inUserData) -> PFN_vkVoidFunction {
 			const auto& device = *static_cast<const oavk::Device*>(inUserData);
-			const auto getInstanceProcAddr = oaVkGetInstanceProcAddr();
+			const auto getInstanceProcAddr = vklGetInstanceProcAddr();
 			return getInstanceProcAddr != nullptr
 				? getInstanceProcAddr(static_cast<VkInstance>(device.instance), inName)
 				: nullptr;
@@ -951,7 +954,7 @@ oa::Status oa::Presenter::waitPresentationIdle() {
 	if (oa::EngineDeviceAccess::get(engine_).info.software.hasSwapchainMaintenance1
 		&& !swapchain_.presentCompletionUncertain
 		&& !swapchain_.presentFence.empty()) {
-		oa::Vec<VkFence> pending;
+		oa::Vector<VkFence> pending;
 		pending.reserve(swapchain_.presentFence.size());
 		for (oa::Usize i = 0; i < swapchain_.presentFence.size(); ++i) {
 			if (i < swapchain_.presentFencePending.size()
@@ -1062,13 +1065,13 @@ void oa::EngineAccess::retirePresenter(
 
 oa::Status oa::EngineAccess::completeRetiredPresenters() {
 	oa::Status result = oa::Status::ok();
-	oa::Vec<oa::UniquePtr<oa::RetiredPresenter>> retired;
+	oa::Vector<oa::UniquePtr<oa::RetiredPresenter>> retired;
 	{
 		oa::ScopedLock<oa::Mutex> lock(impl_->retiredPresenterMutex_);
 		retired = oa::move(impl_->retiredPresenters_);
 	}
 
-	oa::Vec<oa::UniquePtr<oa::RetiredPresenter>> pending;
+	oa::Vector<oa::UniquePtr<oa::RetiredPresenter>> pending;
 	for (auto& presenter : retired) {
 		oa::Status presenterStatus = oa::Status::ok();
 		const auto retainError = [&presenterStatus](const oa::Status& inStatus) {
@@ -1087,7 +1090,7 @@ oa::Status oa::EngineAccess::completeRetiredPresenters() {
 			if (presenter->hasSwapchainMaintenance1
 				&& !presenter->swapchain.presentCompletionUncertain
 				&& !presenter->swapchain.presentFence.empty()) {
-				oa::Vec<VkFence> fences;
+				oa::Vector<VkFence> fences;
 				for (oa::Usize i = 0;
 					i < presenter->swapchain.presentFence.size(); ++i) {
 					if (i < presenter->swapchain.presentFencePending.size()

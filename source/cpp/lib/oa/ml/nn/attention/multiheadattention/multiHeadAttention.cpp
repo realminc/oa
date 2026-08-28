@@ -23,12 +23,12 @@ oa::MultiHeadAttention::MultiHeadAttention(oa::I32 inDModel, oa::I32 inNumHeads,
 	registerModule("out_proj", outProj_);
 }
 
-oa::Vec<oa::Matrix> oa::MultiHeadAttention::projectQkv(const oa::Matrix& inInput) {
+oa::Vector<oa::Matrix> oa::MultiHeadAttention::projectQkv(const oa::Matrix& inInput) {
 	auto& q = qProj_->parameters();
 	auto& k = kProj_->parameters();
 	auto& v = vProj_->parameters();
 	const bool hasBias = q.size() > 1 && k.size() > 1 && v.size() > 1;
-	oa::Vec<oa::Matrix> result;
+	oa::Vector<oa::Matrix> result;
 	result.reserve(3);
 	result.pushBack(hasBias
 		? oa::FnMatrix::linear(inInput, q[0].data, q[1].data)

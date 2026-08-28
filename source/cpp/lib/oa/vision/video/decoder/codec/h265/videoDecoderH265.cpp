@@ -7,7 +7,7 @@ namespace {
 
 oa::Status normalizeAnnexB(
 	const oa::Span<const oa::U8>& inBitstream,
-	oa::Vec<oa::U8>& outBitstream)
+	oa::Vector<oa::U8>& outBitstream)
 {
 	outBitstream.clear();
 	const oa::U8* data = inBitstream.data();
@@ -74,7 +74,7 @@ oa::Status oa::VideoDecoderCodecAccess::decodeH265(
 		return oa::Status::error("H.265 parser not registered");
 	}
 
-	oa::Vec<oa::U8> normalizedBitstream;
+	oa::Vector<oa::U8> normalizedBitstream;
 	OA_RETURN_IF_ERROR(normalizeAnnexB(inBitstream, normalizedBitstream));
 	const oa::Span<const oa::U8> bitstream(
 		normalizedBitstream.data(),
@@ -159,7 +159,7 @@ oa::Status oa::VideoDecoderCodecAccess::decodeH265(
 	}
 
 	auto isRetainedReference = [&](oa::I32 inPoc) {
-		auto containsPoc = [&](const oa::Vec<oa::I32>& inDeltaPocs) {
+		auto containsPoc = [&](const oa::Vector<oa::I32>& inDeltaPocs) {
 			for (oa::I32 deltaPoc : inDeltaPocs) {
 				if (desc.sliceHeader.picOrderCntVal + deltaPoc == inPoc) {
 					return true;
@@ -183,9 +183,9 @@ oa::Status oa::VideoDecoderCodecAccess::decodeH265(
 		return oa::Status::error("DPB overflow - all 16 slots are reference frames");
 	}
 
-	oa::Vec<oa::I32> refPicList0;
-	oa::Vec<oa::I32> refPicList1;
-	auto resolveReferences = [&](const oa::Vec<oa::I32>& inDeltaPocs, oa::Vec<oa::I32>& outSlots) -> oa::Status {
+	oa::Vector<oa::I32> refPicList0;
+	oa::Vector<oa::I32> refPicList1;
+	auto resolveReferences = [&](const oa::Vector<oa::I32>& inDeltaPocs, oa::Vector<oa::I32>& outSlots) -> oa::Status {
 		for (oa::I32 deltaPoc : inDeltaPocs) {
 			const oa::I32 targetPoc = desc.sliceHeader.picOrderCntVal + deltaPoc;
 			oa::I32 targetSlot = -1;

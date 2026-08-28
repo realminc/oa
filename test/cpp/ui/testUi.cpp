@@ -6,7 +6,7 @@
 #include <oa/runtime/engine/bindlessAccess.h>
 #include <oa/runtime/engine/engineAccess.h>
 #include <oa/runtime/executionSession.h>
-#include <oa/runtime/oaVma.h>
+#include <vma/vma.hpp>
 #include <oa/runtime/stream.h>
 #include <oa/core/fnMatrix.h>
 #include <oa/core/filesystem.h>
@@ -251,7 +251,7 @@ struct UiStorageTarget {
 	oa::Engine* engine = nullptr;
 	VkImage image = VK_NULL_HANDLE;
 	VkImageView view = VK_NULL_HANDLE;
-	OaVmaAllocation allocation = VK_NULL_HANDLE;
+	vma::Allocation allocation = VK_NULL_HANDLE;
 	oavk::Buffer readback;
 	oa::U32 bindlessIndex = OA_BINDLESS_INVALID;
 	oa::U32 width = 0U;
@@ -279,10 +279,10 @@ struct UiStorageTarget {
 		imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 		imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
-		OaVmaAllocationCreateInfo allocationInfo{};
-		allocationInfo.usage = OA_VMA_MEMORY_USAGE_GPU_ONLY;
-		if (OaVmaCreateImage(
-				static_cast<OaVmaAllocator>(oa::EngineAllocatorAccess::get(*engine).allocator),
+		vma::AllocationCreateInfo allocationInfo{};
+		allocationInfo.usage = vma::memoryUsageGpuOnly;
+		if (vma::createImage(
+				static_cast<vma::Allocator>(oa::EngineAllocatorAccess::get(*engine).allocator),
 				&imageInfo,
 				&allocationInfo,
 				&image,
@@ -430,8 +430,8 @@ struct UiStorageTarget {
 			view = VK_NULL_HANDLE;
 		}
 		if (image != VK_NULL_HANDLE) {
-			OaVmaDestroyImage(
-				static_cast<OaVmaAllocator>(oa::EngineAllocatorAccess::get(*engine).allocator),
+			vma::destroyImage(
+				static_cast<vma::Allocator>(oa::EngineAllocatorAccess::get(*engine).allocator),
 				image,
 				allocation);
 			image = VK_NULL_HANDLE;
@@ -2392,7 +2392,7 @@ TEST_VK(TestUi, HintedTextAtlasUsesExactFontsAndUtf8Clusters)
 
 	oa::TextLayout layout;
 	oa::TextLayoutConfig config{.font = oa::FontId::Sans, .size = 14.0F};
-	oa::Vec<oa::PositionedGlyph> glyphs;
+	oa::Vector<oa::PositionedGlyph> glyphs;
 	layout.shape(
 		atlas,
 		oa::StringView("A\xC3\xA9" "B"),

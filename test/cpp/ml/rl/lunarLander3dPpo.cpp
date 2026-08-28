@@ -112,13 +112,13 @@ oa::Result<oa::F32> lunarEvaluateTeacherProbe(
 }
 
 template<typename T>
-oa::Result<oa::Vec<T>> lunarCopyMatrix(const oa::Matrix& inMatrix) {
+oa::Result<oa::Vector<T>> lunarCopyMatrix(const oa::Matrix& inMatrix) {
 	if (inMatrix.isEmpty() or inMatrix.numElements() < 0) {
 		return oa::Status::error(
 			oa::StatusCode::FailedPrecondition,
 			"Lunar Lander 3D evaluation history is empty");
 	}
-	oa::Vec<T> result(static_cast<oa::Usize>(inMatrix.numElements()));
+	oa::Vector<T> result(static_cast<oa::Usize>(inMatrix.numElements()));
 	const oa::Status copied = oa::FnMatrix::copyToHost(
 		inMatrix, result.data(),
 		static_cast<oa::U64>(result.size() * sizeof(T)));
@@ -148,7 +148,7 @@ public:
 	TestLunarLander3dPpoConfig config_;
 	oa::UniquePtr<oa::ExecutionSession> context_;
 	oa::UniquePtr<oa::CategoricalActorCritic> model_;
-	oa::Vec<oa::Parameter*> parameters_;
+	oa::Vector<oa::Parameter*> parameters_;
 	oa::AdamW optimizer_;
 	oa::LunarLander3dVector environment_;
 	oa::UniquePtr<oa::PpoTrainer> trainer_;
@@ -504,7 +504,7 @@ oa::Status TestLunarLander3dPpo::pretrainScriptedTeacher(
 	if (initialLoss.isError()) return initialLoss.getStatus();
 	metrics.initialLoss_ = *initialLoss;
 
-	oa::Vec<oa::Parameter*> policyParameters;
+	oa::Vector<oa::Parameter*> policyParameters;
 	for (const oa::NamedParameter& named : impl_->model_->allNamedParameterPtrs()) {
 		constexpr char prefix[] = "policy";
 		if (named.param != nullptr and named.path.size() >= sizeof(prefix) - 1U
@@ -658,9 +658,9 @@ TestLunarLander3dPpo::evaluateFirstEpisodes(
 		result.expectedEpisodes_ = inConfig.environments_;
 		LunarEvaluationDigest actionDigest;
 		LunarEvaluationDigest valueDigest;
-		oa::Vec<oa::U8> completed(inConfig.environments_, 0U);
-		oa::Vec<oa::U32> terminalReasons(inConfig.environments_, 0U);
-		oa::Vec<oa::F32> accumulatedReturns(inConfig.environments_, 0.0F);
+		oa::Vector<oa::U8> completed(inConfig.environments_, 0U);
+		oa::Vector<oa::U32> terminalReasons(inConfig.environments_, 0U);
+		oa::Vector<oa::F32> accumulatedReturns(inConfig.environments_, 0.0F);
 
 		for (oa::U32 chunkStart = 0U; chunkStart < inConfig.horizon_;) {
 			const oa::U32 chunkSteps = std::min(
@@ -669,10 +669,10 @@ TestLunarLander3dPpo::evaluateFirstEpisodes(
 			oa::Matrix valueHistory;
 			oa::Matrix rewardHistory;
 			oa::Matrix endReasonHistory;
-			oa::Vec<oa::Matrix> actions;
-			oa::Vec<oa::Matrix> values;
-			oa::Vec<oa::Matrix> rewards;
-			oa::Vec<oa::Matrix> endReasons;
+			oa::Vector<oa::Matrix> actions;
+			oa::Vector<oa::Matrix> values;
+			oa::Vector<oa::Matrix> rewards;
+			oa::Vector<oa::Matrix> endReasons;
 			actions.reserve(chunkSteps);
 			values.reserve(chunkSteps);
 			rewards.reserve(chunkSteps);
@@ -756,10 +756,10 @@ TestLunarLander3dPpo::evaluateFirstEpisodes(
 			auto endReasonsResult = lunarCopyMatrix<oa::U32>(endReasonHistory);
 			if (endReasonsResult.isError()) return endReasonsResult.getStatus();
 
-			oa::Vec<oa::I32> actionHost = oa::move(actionsResult).getValue();
-			oa::Vec<oa::F32> valueHost = oa::move(valuesResult).getValue();
-			oa::Vec<oa::F32> rewardHost = oa::move(rewardsResult).getValue();
-			oa::Vec<oa::U32> endReasonHost =
+			oa::Vector<oa::I32> actionHost = oa::move(actionsResult).getValue();
+			oa::Vector<oa::F32> valueHost = oa::move(valuesResult).getValue();
+			oa::Vector<oa::F32> rewardHost = oa::move(rewardsResult).getValue();
+			oa::Vector<oa::U32> endReasonHost =
 				oa::move(endReasonsResult).getValue();
 			const oa::Usize expectedElements =
 				static_cast<oa::Usize>(chunkSteps) * inConfig.environments_;
@@ -840,7 +840,7 @@ TestLunarLander3dPpo::evaluateFirstEpisodes(
 		}
 		auto telemetryResult = environment.copyEpisodeTelemetry();
 		if (telemetryResult.isError()) return telemetryResult.getStatus();
-		oa::Vec<oa::LunarLander3dEpisodeTelemetry> telemetry =
+		oa::Vector<oa::LunarLander3dEpisodeTelemetry> telemetry =
 			oa::move(telemetryResult).getValue();
 		if (telemetry.size() != inConfig.environments_) {
 			return oa::Status::error(

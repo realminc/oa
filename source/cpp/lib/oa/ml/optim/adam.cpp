@@ -8,7 +8,7 @@
 #include <oa/core/matrixAccess.h>
 #include <oa/core/validation.h>
 #include <oa/core/log.h>
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
 #include <oa/core/std/cString.h>
 
 static oa::Matrix getParamGrad(oa::Parameter* inP) {

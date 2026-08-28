@@ -5,7 +5,7 @@
 #include <oa/vision/fnImage.h>
 #include <oa/core/fnMatrix.h>
 
-static oa::Matrix makeVisionTensor(const oa::Vec<oa::F32>& inValues, oa::MatrixShape inShape) {
+static oa::Matrix makeVisionTensor(const oa::Vector<oa::F32>& inValues, oa::MatrixShape inShape) {
 	auto tensor = oa::FnMatrix::empty(inShape, oa::ScalarType::Float32);
 	for (oa::Usize i = 0; i < inValues.size(); ++i) {
 		tensor.set(static_cast<oa::I64>(i), inValues[i]);
@@ -118,7 +118,7 @@ TEST_F(VkEngineTestFixture, Normalize_ZeroMeanUnitStd) {
 }
 
 TEST_F(VkEngineTestFixture, Normalize_KnownValues) {
-	oa::Vec<oa::F32> values = {1.0f, 2.0f, 10.0f, 20.0f, 100.0f, 200.0f};
+	oa::Vector<oa::F32> values = {1.0f, 2.0f, 10.0f, 20.0f, 100.0f, 200.0f};
 	auto input = makeVisionTensor(values, oa::MatrixShape{1, 3, 1, 2});
 	oa::NormalizationParams params = {
 		.mean = {1.0f, 10.0f, 100.0f},
@@ -220,7 +220,7 @@ TEST_F(VkEngineTestFixture, Crop_TopLeftCorner) {
 }
 
 TEST_F(VkEngineTestFixture, Crop_KnownValues) {
-	oa::Vec<oa::F32> values = {
+	oa::Vector<oa::F32> values = {
 		1.0f, 2.0f, 3.0f, 4.0f,
 		5.0f, 6.0f, 7.0f, 8.0f,
 		9.0f, 10.0f, 11.0f, 12.0f
@@ -257,7 +257,7 @@ TEST_F(VkEngineTestFixture, Flip_Both) {
 }
 
 TEST_F(VkEngineTestFixture, Flip_KnownValues) {
-	oa::Vec<oa::F32> values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+	oa::Vector<oa::F32> values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
 	auto input = makeVisionTensor(values, oa::MatrixShape{1, 1, 2, 3});
 	auto h = oa::FnImage::flip(rt(), input, true, false);
 	EXPECT_NEAR(h.at(0), 3.0f, 1e-5f);
@@ -279,7 +279,7 @@ TEST_F(VkEngineTestFixture, Flip_KnownValues) {
 // ─── rotate Tests ───────────────────────────────────────────────────────────────
 
 TEST_F(VkEngineTestFixture, Rotate_KnownValues) {
-	oa::Vec<oa::F32> values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+	oa::Vector<oa::F32> values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
 	auto input = makeVisionTensor(values, oa::MatrixShape{1, 1, 2, 3});
 	auto r90 = oa::FnImage::rotate(rt(), input, 90);
 	expectShape(r90, {1, 1, 3, 2});

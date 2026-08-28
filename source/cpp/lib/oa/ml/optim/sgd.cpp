@@ -3,7 +3,7 @@
 #include <oa/runtime/executionSession.h>
 #include <oa/core/bufferAccess.h>
 #include <oa/core/fnMatrix.h>
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
 #include <oa/core/std/cString.h>
 #include <oa/core/validation.h>
 

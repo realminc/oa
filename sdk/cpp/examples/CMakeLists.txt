@@ -25,7 +25,10 @@ if(OA_ENABLE_ALM)
 		ml/alm/almAg.cpp
 		${oa_SOURCE_DIR}/test/cpp/ml/mlTestMain.cpp)
 	target_link_libraries(AlmAg PRIVATE oaSdkSupport GTest::gtest)
-	target_include_directories(AlmAg PRIVATE ${oa_SOURCE_DIR}/test/cpp)
+	target_include_directories(AlmAg PRIVATE
+		${oa_SOURCE_DIR}/test/cpp
+		${oa_SOURCE_DIR}/source/cpp/lib
+		${oa_SOURCE_DIR}/source/cpp/thirdparty)
 	set_target_properties(AlmAg PROPERTIES
 		RUNTIME_OUTPUT_DIRECTORY "${OA_BIN_DIR}/example/ml")
 	add_test(NAME AlmAg COMMAND AlmAg)

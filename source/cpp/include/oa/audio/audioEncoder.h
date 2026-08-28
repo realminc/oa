@@ -14,7 +14,7 @@
 namespace oa {
 
 struct EncodedAudioPacket {
-  oa::Vec<oa::U8> bitstream;
+  oa::Vector<oa::U8> bitstream;
   oa::I64 presentationFrame = 0;
   oa::U32 durationFrames = 0U;
 };
@@ -30,7 +30,7 @@ class AudioEncoder {
 public:
   struct Impl;
 
-  AudioEncoder() = default;
+  AudioEncoder();
   AudioEncoder(AudioEncoder &&inOther) noexcept;
   AudioEncoder &operator=(AudioEncoder &&inOther) noexcept;
   AudioEncoder(const AudioEncoder &) = delete;
@@ -40,8 +40,8 @@ public:
   [[nodiscard]] static oa::Result<AudioEncoder>
   create(const AudioEncodeProfile &inProfile);
   [[nodiscard]] oa::Status encode(oa::Span<const oa::F32> inInterleaved,
-                                  oa::Vec<EncodedAudioPacket> &outPackets);
-  [[nodiscard]] oa::Status flush(oa::Vec<EncodedAudioPacket> &outPackets);
+                                  oa::Vector<EncodedAudioPacket> &outPackets);
+  [[nodiscard]] oa::Status flush(oa::Vector<EncodedAudioPacket> &outPackets);
   // Discards any unflushed partial packet and closes the session.
   [[nodiscard]] oa::Status close();
 

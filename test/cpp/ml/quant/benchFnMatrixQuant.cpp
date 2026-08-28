@@ -135,7 +135,7 @@ TEST(BenchFnMatrixQuant, FusedVersusExpandedSmallM) {
 	expectNear(q4Fused, q4Expanded);
 	expectNear(q8Fused, q8Expanded);
 
-	oa::Vec<oa::Matrix> keepAlive;
+	oa::Vector<oa::Matrix> keepAlive;
 	auto q4ExpandedMs = measure(
 		testEngine(), "q4_expanded", warmup, iterations, [&] {
 			auto expanded = oa::FnMatrix::dequantizeQ4(

@@ -14,6 +14,29 @@ struct LifetimeProbe {
 	~LifetimeProbe() { ++*destructions; }
 };
 
+struct ReentrantOptionalProbe;
+using ReentrantOptional = oa::Optional<ReentrantOptionalProbe>;
+
+struct ReentrantOptionalProbe {
+	ReentrantOptional* owner = nullptr;
+	bool* observedEmpty = nullptr;
+	int* destructions = nullptr;
+
+	ReentrantOptionalProbe(
+		ReentrantOptional* inOwner,
+		bool* inObservedEmpty,
+		int* inDestructions
+	) : owner(inOwner)
+	  , observedEmpty(inObservedEmpty)
+	  , destructions(inDestructions) {}
+
+	~ReentrantOptionalProbe() {
+		++*destructions;
+		*observedEmpty = !owner->hasValue();
+		owner->reset();
+	}
+};
+
 } // namespace
 
 TEST(Lifetime, ConstructAndDestroyCallerOwnedStorage) {
@@ -76,6 +99,19 @@ TEST(Optional, EmplaceAndReset) {
 	o.reset();
 	EXPECT_FALSE(o.hasValue());
 	EXPECT_EQ(o.get(), nullptr);
+}
+
+TEST(Optional, ResetPublishesEmptyBeforeValueDestruction) {
+	ReentrantOptional value;
+	bool observedEmpty = false;
+	int destructions = 0;
+	value.emplace(&value, &observedEmpty, &destructions);
+
+	value.reset();
+
+	EXPECT_FALSE(value.hasValue());
+	EXPECT_TRUE(observedEmpty);
+	EXPECT_EQ(destructions, 1);
 }
 
 TEST(Optional, CopyAndMovePreserveOwnership) {

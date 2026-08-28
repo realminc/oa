@@ -79,7 +79,7 @@ struct GemmRouteCache {
 	// bool size, and enum layout are not a persistent file contract.
 	[[nodiscard]] bool save(const char* inPath) const {
 		oa::ScopedLock lock(mutex);
-		oa::Vec<oa::U8> bytes;
+		oa::Vector<oa::U8> bytes;
 
 		auto write = [&](const auto& value) {
 			using T = oa::RemoveCvrefT<decltype(value)>;

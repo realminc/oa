@@ -22,7 +22,7 @@ class AudioPlayer {
 public:
   struct Impl;
 
-  AudioPlayer() = default;
+  AudioPlayer();
   AudioPlayer(AudioPlayer &&) noexcept;
   AudioPlayer &operator=(AudioPlayer &&) noexcept;
   AudioPlayer(const AudioPlayer &) = delete;

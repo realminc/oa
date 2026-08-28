@@ -22,7 +22,7 @@ struct Gen3dAnimLossConfig {
 	oa::F32 velWeight    = 0.5f;
 	oa::F32 contactWeight= 2.0f;
 	oa::F32 rootWeight   = 0.0f;
-	oa::Vec<oa::F32> channelWeights;   // optional; size==poseDim => per-channel-type path
+	oa::Vector<oa::F32> channelWeights;   // optional; size==poseDim => per-channel-type path
 };
 
 // SkPoseFkLossConfig - differentiable skeletal FK world-position loss.

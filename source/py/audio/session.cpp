@@ -15,7 +15,7 @@ template <typename T> T *takeResult(oa::Result<T> &&inResult) {
   return new T(oa::move(inResult).getValue());
 }
 
-nb::list takePackets(oa::Vec<oa::EncodedAudioPacket> &inPackets) {
+nb::list takePackets(oa::Vector<oa::EncodedAudioPacket> &inPackets) {
   nb::list result;
   for (auto &packet : inPackets) {
     result.append(nb::cast(new oa::EncodedAudioPacket(oa::move(packet)),
@@ -105,7 +105,7 @@ void bindAudioSession(nb::module_ &inModule) {
           "encode",
           [](oa::AudioEncoder &inEncoder,
              const std::vector<oa::F32> &inInterleaved) {
-            oa::Vec<oa::EncodedAudioPacket> packets;
+            oa::Vector<oa::EncodedAudioPacket> packets;
             throwIfError(
                 inEncoder.encode(oa::Span<const oa::F32>(inInterleaved.data(),
                                                          inInterleaved.size()),
@@ -115,7 +115,7 @@ void bindAudioSession(nb::module_ &inModule) {
           nb::arg("interleaved"))
       .def("flush",
            [](oa::AudioEncoder &inEncoder) {
-             oa::Vec<oa::EncodedAudioPacket> packets;
+             oa::Vector<oa::EncodedAudioPacket> packets;
              throwIfError(inEncoder.flush(packets));
              return takePackets(packets);
            })

@@ -1,6 +1,6 @@
 #include "satelliteProtocol.h"
 
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
 #include <oa/core/std/limits.h>
 
 namespace {
@@ -58,22 +58,22 @@ constexpr SatelliteFieldSchema kFieldSchemas[] = {
 	return nullptr;
 }
 
-void appendU8(oa::Vec<oa::Byte>& out, oa::U8 inValue) {
+void appendU8(oa::Vector<oa::Byte>& out, oa::U8 inValue) {
 	out.pushBack(inValue);
 }
 
-void appendU16(oa::Vec<oa::Byte>& out, oa::U16 inValue) {
+void appendU16(oa::Vector<oa::Byte>& out, oa::U16 inValue) {
 	out.pushBack(static_cast<oa::Byte>(inValue & 0xffU));
 	out.pushBack(static_cast<oa::Byte>((inValue >> 8U) & 0xffU));
 }
 
-void appendU32(oa::Vec<oa::Byte>& out, oa::U32 inValue) {
+void appendU32(oa::Vector<oa::Byte>& out, oa::U32 inValue) {
 	for (oa::U32 shift = 0; shift < 32U; shift += 8U) {
 		out.pushBack(static_cast<oa::Byte>((inValue >> shift) & 0xffU));
 	}
 }
 
-void appendU64(oa::Vec<oa::Byte>& out, oa::U64 inValue) {
+void appendU64(oa::Vector<oa::Byte>& out, oa::U64 inValue) {
 	for (oa::U32 shift = 0; shift < 64U; shift += 8U) {
 		out.pushBack(static_cast<oa::Byte>((inValue >> shift) & 0xffU));
 	}
@@ -314,13 +314,13 @@ oa::Status oa::SatelliteProtocol::validate(const oa::SatelliteMessage& inMessage
 	return oa::Status::ok();
 }
 
-oa::Result<oa::Vec<oa::Byte>> oa::SatelliteProtocol::encode(
+oa::Result<oa::Vector<oa::Byte>> oa::SatelliteProtocol::encode(
 	const oa::SatelliteMessage& inMessage)
 {
 	const auto status = validate(inMessage);
 	if (status.isError()) return status;
 
-	oa::Vec<oa::Byte> payload;
+	oa::Vector<oa::Byte> payload;
 	appendU16(payload, static_cast<oa::U16>(inMessage.fields.size()));
 	for (const auto& field : inMessage.fields) {
 		if (field.data.size() > oa::Limits<oa::U32>::max()) {
@@ -338,7 +338,7 @@ oa::Result<oa::Vec<oa::Byte>> oa::SatelliteProtocol::encode(
 			"satellite protocol: encoded payload exceeds the session limit");
 	}
 
-	oa::Vec<oa::Byte> encoded;
+	oa::Vector<oa::Byte> encoded;
 	encoded.reserve(kHeaderBytes + payload.size());
 	encoded.append(kMagic, sizeof(kMagic));
 	appendU16(encoded, inMessage.version);
@@ -542,7 +542,7 @@ oa::Result<oa::String> oa::SatelliteProtocol::readString(const oa::SatelliteFiel
 	return oa::String(reinterpret_cast<const char*>(inField.data.data()), inField.data.size());
 }
 
-oa::Result<oa::Vec<oa::U64>> oa::SatelliteProtocol::readU64Array(
+oa::Result<oa::Vector<oa::U64>> oa::SatelliteProtocol::readU64Array(
 	const oa::SatelliteField& inField)
 {
 	if (inField.kind != oa::SatelliteFieldKind::U64Array
@@ -550,7 +550,7 @@ oa::Result<oa::Vec<oa::U64>> oa::SatelliteProtocol::readU64Array(
 	{
 		return oa::Status::invalidArgument("satellite protocol: typed field access mismatch");
 	}
-	oa::Vec<oa::U64> values;
+	oa::Vector<oa::U64> values;
 	values.reserve(inField.data.size() / sizeof(oa::U64));
 	for (oa::Usize offset = 0; offset < inField.data.size(); offset += sizeof(oa::U64)) {
 		values.pushBack(readU64Le(inField.data.data() + offset));
@@ -558,7 +558,7 @@ oa::Result<oa::Vec<oa::U64>> oa::SatelliteProtocol::readU64Array(
 	return values;
 }
 
-oa::Result<oa::Vec<oa::I64>> oa::SatelliteProtocol::readI64Array(
+oa::Result<oa::Vector<oa::I64>> oa::SatelliteProtocol::readI64Array(
 	const oa::SatelliteField& inField)
 {
 	if (inField.kind != oa::SatelliteFieldKind::I64Array
@@ -566,7 +566,7 @@ oa::Result<oa::Vec<oa::I64>> oa::SatelliteProtocol::readI64Array(
 	{
 		return oa::Status::invalidArgument("satellite protocol: typed field access mismatch");
 	}
-	oa::Vec<oa::I64> values;
+	oa::Vector<oa::I64> values;
 	values.reserve(inField.data.size() / sizeof(oa::I64));
 	for (oa::Usize offset = 0; offset < inField.data.size(); offset += sizeof(oa::I64)) {
 		values.pushBack(static_cast<oa::I64>(readU64Le(inField.data.data() + offset)));

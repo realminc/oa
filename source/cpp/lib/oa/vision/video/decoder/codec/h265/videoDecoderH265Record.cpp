@@ -7,8 +7,8 @@
 oa::Status oa::VideoDecoder::recordH265DecodeCommands(
 	oa::I32 inDpbSlot,
 	const oa::H265PictureDesc& inDesc,
-	const oa::Vec<oa::I32>& inRefPicList0,
-	const oa::Vec<oa::I32>& inRefPicList1)
+	const oa::Vector<oa::I32>& inRefPicList0,
+	const oa::Vector<oa::I32>& inRefPicList1)
 {
 	const oa::H265SliceHeader& inSliceHeader = inDesc.sliceHeader;
 	const oa::Span<const oa::U32> inSliceOffsets(inDesc.sliceOffsets.data(), inDesc.sliceOffsets.size());

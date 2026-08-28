@@ -15,7 +15,7 @@ public:
 		return WeightFormat::SafeTensors;
 	}
 	[[nodiscard]] const Path& path() const noexcept override { return path_; }
-	[[nodiscard]] Vec<WeightInfo> list() const override;
+	[[nodiscard]] Vector<WeightInfo> list() const override;
 	[[nodiscard]] const WeightInfo* find(StringView inName) const override;
 	[[nodiscard]] Result<Span<const U8>> bytes(StringView inName) const override;
 	[[nodiscard]] HashMap<String, String> metadata() const override { return metadata_; }
@@ -43,7 +43,7 @@ private:
 	U64 dataStart_ = 0;
 	MappedFile file_;
 	HashMap<String, Entry> entries_;
-	Vec<String> entryOrder_;
+	Vector<String> entryOrder_;
 	HashMap<String, String> metadata_;
 };
 

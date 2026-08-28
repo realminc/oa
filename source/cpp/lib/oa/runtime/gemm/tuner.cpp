@@ -98,9 +98,9 @@ oa::Status validateCandidate(
 			"oa::GemmTuner: numerical validation received an invalid shape");
 	}
 
-	oa::Vec<oa::F32> aData(aCount);
-	oa::Vec<oa::F32> bData(bCount);
-	oa::Vec<oa::F32> biasData(
+	oa::Vector<oa::F32> aData(aCount);
+	oa::Vector<oa::F32> bData(bCount);
+	oa::Vector<oa::F32> biasData(
 		inProblem.epilogue == oa::GemmEpilogue::None ? 0U : inProblem.n);
 	for (oa::Usize i = 0U; i < aData.size(); ++i) {
 		aData[i] = static_cast<oa::F32>(
@@ -157,7 +157,7 @@ oa::Status validateCandidate(
 	if (not submitted.isOk()) return submitted.getStatus();
 	OA_RETURN_IF_ERROR(inContext.wait(submitted.getValue()));
 
-	oa::Vec<oa::F32> outputData(outputCount);
+	oa::Vector<oa::F32> outputData(outputCount);
 	OA_RETURN_IF_ERROR(oa::FnMatrix::copyToHost(
 		output, outputData.data(), outputData.size() * sizeof(oa::F32)));
 	return oa::GemmTuner::validateNumericalOutput(
@@ -170,11 +170,11 @@ oa::Status validateCandidate(
 
 // Collect candidates for one exact production contract whose caps are
 // satisfied on the current device.
-static oa::Vec<Candidate> collectCandidates(
+static oa::Vector<Candidate> collectCandidates(
 	const oa::Engine& inRt,
 	const oa::MatmulProblem& inProblem)
 {
-	oa::Vec<Candidate> candidates;
+	oa::Vector<Candidate> candidates;
 
 	for (const auto& v : oa::matmulRegistry::all()) {
 		if (v.epilogue != inProblem.epilogue) continue;
@@ -515,7 +515,7 @@ oa::Status oa::GemmTuner::benchmarkShape(
 	const oa::U32 blockCount = oa::min<oa::U32>(4U, inBenchIterations);
 	const oa::U32 iterationsPerBlock =
 		(inBenchIterations + blockCount - 1U) / blockCount;
-	oa::Vec<oa::Vec<oa::F32>> blockMeans(candidates.size());
+	oa::Vector<oa::Vector<oa::F32>> blockMeans(candidates.size());
 	for (oa::U32 block = 0; block < blockCount; ++block) {
 		for (oa::U32 order = 0; order < candidates.size(); ++order) {
 			const oa::U32 candidateIdx = (block & 1U) == 0U
@@ -639,7 +639,7 @@ oa::Status oa::GemmTuner::run(
 		static_cast<oa::F64>(hw.vramBytes) / (1024.0 * 1024.0 * 1024.0));
 	
 	auto shapes = getDefaultShapes();
-	oa::Vec<oa::GemmTunerResult> results;
+	oa::Vector<oa::GemmTunerResult> results;
 	results.reserve(shapes.size());
 	
 	for (oa::U32 i = 0; i < shapes.size(); ++i) {

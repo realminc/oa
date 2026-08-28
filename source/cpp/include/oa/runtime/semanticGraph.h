@@ -70,13 +70,13 @@ struct SemanticOpDesc {
 	oa::OpLowering lowering = oa::OpLowering::Dispatch;
 	oa::OpControlFlow controlFlow = oa::OpControlFlow::StraightLine;
 	oa::U8 optionalInputMask = 0U;
-	oa::Vec<oa::U32> inputs;
-	oa::Vec<oa::U32> outputs;
-	oa::Vec<oa::OpAttribute> attributes;
-	oa::Vec<oa::SemanticValueAccess> accesses;
-	oa::Vec<oa::U32> mutatedInputs;
-	oa::Vec<oa::SemanticAliasDesc> aliases;
-	oa::Vec<oa::U32> controlDependencies;
+	oa::Vector<oa::U32> inputs;
+	oa::Vector<oa::U32> outputs;
+	oa::Vector<oa::OpAttribute> attributes;
+	oa::Vector<oa::SemanticValueAccess> accesses;
+	oa::Vector<oa::U32> mutatedInputs;
+	oa::Vector<oa::SemanticAliasDesc> aliases;
+	oa::Vector<oa::U32> controlDependencies;
 	oa::U32 backwardOf = oa::invalidSemanticOpId;
 	oa::U64 backwardSequence = 0;
 };
@@ -135,9 +135,9 @@ public:
 	void reset() noexcept;
 
 private:
-	oa::Vec<oa::SemanticValueDesc> values_;
-	oa::Vec<oa::SemanticOpDesc> operations_;
-	oa::Vec<oa::SemanticAutogradDesc> autograd_;
+	oa::Vector<oa::SemanticValueDesc> values_;
+	oa::Vector<oa::SemanticOpDesc> operations_;
+	oa::Vector<oa::SemanticAutogradDesc> autograd_;
 	oa::U64 generation_ = 1;
 };
 
@@ -186,7 +186,7 @@ private:
 		const oa::SemanticGraph& inSemantic,
 		const oa::ExecutableGraph& inExecutable);
 
-	oa::Vec<oa::U32> executableNodeCounts_;
+	oa::Vector<oa::U32> executableNodeCounts_;
 	oa::U32 schemaOwnedNodeCount_ = 0;
 	oa::U32 compatibilityNodeCount_ = 0;
 	oa::U32 directOpCount_ = 0;

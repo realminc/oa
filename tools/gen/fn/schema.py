@@ -333,14 +333,14 @@ def validatePythonBinding(ctx: str, op: dict) -> None:
 	 and
 	 apiReturn not in (
 	  "void", "oa::Matrix", "oa::Audio", "oa::Image",
-	  "oa::Vec<oa::Matrix>"
+	  "oa::Vector<oa::Matrix>"
 	 )
 	 and result is None
 	):
 		fail(
 		 f"{ctx}: generated python binding requires api_return "
 		 "= 'void'/'oa::Matrix'/'oa::Audio'/'oa::Image'/"
-		 "'oa::Vec<oa::Matrix>' "
+		 "'oa::Vector<oa::Matrix>' "
 		 "or a python_result descriptor"
 		)
 	if result is not None:

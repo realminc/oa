@@ -27,6 +27,13 @@ namespace oa {
 
 class Random {
 public:
+	struct Checkpoint {
+		oa::U64 state = 0;
+		oa::U64 increment = 0;
+		oa::F64 cachedGaussian = 0.0;
+		bool hasCachedGaussian = false;
+	};
+
 	// Fixed default seed → reproducible by default. Provide a seed for a
 	// specific stream; inSeq selects an independent stream for the same seed
 	// (two generators with the same seed but different inSeq never correlate).
@@ -84,18 +91,25 @@ public:
 		if (inMax <= inMin) {
 			return inMin;
 		}
-		const oa::U64 range = static_cast<oa::U64>(inMax - inMin) + 1u;
+		constexpr oa::U64 signBit = oa::U64{1} << 63U;
+		const oa::U64 orderedMin = oa::bitCast<oa::U64>(inMin) ^ signBit;
+		const oa::U64 orderedMax = oa::bitCast<oa::U64>(inMax) ^ signBit;
+		const oa::U64 range = orderedMax - orderedMin + 1u;
+		oa::U64 offset = 0;
 		if (range == 0u) {
 			// Full 64-bit span (min=INT64_MIN, max=INT64_MAX): every value valid.
-			return static_cast<oa::I64>(nextU64());
+			offset = nextU64();
+		} else {
+			// Reject the low `2^64 mod range` values so the modulo is unbiased.
+			const oa::U64 reject = (0u - range) % range;
+			oa::U64 value;
+			do {
+				value = nextU64();
+			} while (value < reject);
+			offset = value % range;
 		}
-		// Reject the low `2^64 mod range` values so the modulo is unbiased.
-		const oa::U64 reject = (0u - range) % range;
-		oa::U64 r;
-		do {
-			r = nextU64();
-		} while (r < reject);
-		return inMin + static_cast<oa::I64>(r % range);
+		const oa::U64 resultBits = (orderedMin + offset) ^ signBit;
+		return oa::bitCast<oa::I64>(resultBits);
 	}
 
 	// Uniform real in [inMin, inMax).
@@ -137,13 +151,26 @@ public:
 		}
 	}
 
-	// Raw state accessors — for checkpointing a training run's RNG exactly.
+	// The complete state includes the Box-Muller cached variate. Raw state/inc
+	// access remains for compatibility with integer-only checkpoints; use
+	// checkpoint/restoreCheckpoint for exact continuation across all APIs.
 	[[nodiscard]] oa::U64 rawState() const { return state_; }
 	[[nodiscard]] oa::U64 rawInc()   const { return increment_; }
 	void setRawState(oa::U64 inState, oa::U64 inInc) {
 		state_ = inState;
 		increment_   = inInc | 1u;   // keep increment odd
 		hasCachedGaussian_ = false;
+	}
+
+	[[nodiscard]] Checkpoint checkpoint() const noexcept {
+		return Checkpoint{state_, increment_, cachedGaussian_, hasCachedGaussian_};
+	}
+
+	void restoreCheckpoint(const Checkpoint& inCheckpoint) noexcept {
+		state_ = inCheckpoint.state;
+		increment_ = inCheckpoint.increment | 1u;
+		cachedGaussian_ = inCheckpoint.cachedGaussian;
+		hasCachedGaussian_ = inCheckpoint.hasCachedGaussian;
 	}
 
 private:

@@ -1,7 +1,7 @@
 #include <oa/runtime/bindless.h>
 #include <oa/runtime/device.h>
 #include <oa/runtime/allocator.h>
-#include <oa/runtime/oaVk.h>
+#include <vkl/vkl.h>
 #include <oa/core/log.h>
 #include <oa/core/std/algo.h>
 #include "descriptorValidation.h"
@@ -332,7 +332,7 @@ oa::Status BindlessHeap::update(
 	return oa::Status::ok();
 }
 
-static oa::U32 bindlessPopSlot(oa::Vec<oa::U32>& inOutFreeList, const char* inKind)
+static oa::U32 bindlessPopSlot(oa::Vector<oa::U32>& inOutFreeList, const char* inKind)
 {
 	if (inOutFreeList.empty()) {
 		OaLogError(oa::LogComponent::Runtime, "bindless heap: out of %s slots", inKind);

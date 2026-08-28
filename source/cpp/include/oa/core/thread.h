@@ -53,7 +53,7 @@ struct CoreInfo {
 };
 
 struct CpuTopology {
-	oa::Vec<CoreInfo> cores;
+	oa::Vector<CoreInfo> cores;
 	oa::I32 numPhysicalCores = 0;
 	oa::I32 numLogicalCores = 0;
 	oa::I32 numNumaNodes = 1;
@@ -61,9 +61,9 @@ struct CpuTopology {
 
 	[[nodiscard]] static CpuTopology detect();
 
-	[[nodiscard]] oa::Vec<oa::I32> getPcoreIds() const;
-	[[nodiscard]] oa::Vec<oa::I32> getEcoreIds() const;
-	[[nodiscard]] oa::Vec<oa::I32> getCoresOnNuma(oa::I32 inNode) const;
+	[[nodiscard]] oa::Vector<oa::I32> getPcoreIds() const;
+	[[nodiscard]] oa::Vector<oa::I32> getEcoreIds() const;
+	[[nodiscard]] oa::Vector<oa::I32> getCoresOnNuma(oa::I32 inNode) const;
 
 	void print() const;
 };
@@ -133,7 +133,7 @@ struct SpinlockGuard {
 // Uses oa::SharedMutex under the hood.
 //
 // usage:
-//   oa::RwLock<oa::Vec<oa::Matrix>> cache;
+//   oa::RwLock<oa::Vector<oa::Matrix>> cache;
 //   { auto r = cache.read();  use(*r); }           // shared
 //   { auto w = cache.write(); w->push_back(t); }   // exclusive
 
@@ -268,7 +268,7 @@ struct Channel {
 
 private:
 	oa::I32 capacity_;
-	oa::Vec<T> buffer_;
+	oa::Vector<T> buffer_;
 	oa::I32 readPos_ = 0;
 	oa::I32 writePos_ = 0;
 	oa::I32 count_ = 0;
@@ -429,7 +429,7 @@ struct ThreadPoolConfig {
 	oa::I32 numWorkers = 0;
 	oa::Bool pinToCores = true;
 	oa::Bool useTopology = true;
-	oa::Vec<oa::I32> coreIds;
+	oa::Vector<oa::I32> coreIds;
 };
 
 struct ThreadPool {

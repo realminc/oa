@@ -174,7 +174,7 @@ kind = "unary"
 surface = "host_utility"
 body = "cpu_util"
 generate_declaration = false
-api_return = "oa::Result<oa::Vec<oa::U8>>"
+api_return = "oa::Result<oa::Vector<oa::U8>>"
 api_params = [
     "const oa::Image& inImage",
     "oa::ImageCodec inCodec",

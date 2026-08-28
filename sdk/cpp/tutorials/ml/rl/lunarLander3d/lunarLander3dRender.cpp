@@ -222,8 +222,8 @@ private:
 			"LunarLander3d terrain height count does not match its grid");
 	}
 
-	oa::Vec<oa::vlm::Vec3> positions(static_cast<std::size_t>(vertexCount));
-	oa::Vec<oa::vlm::Vec3> normalSums(static_cast<std::size_t>(vertexCount));
+	oa::Vector<oa::vlm::Vec3> positions(static_cast<std::size_t>(vertexCount));
+	oa::Vector<oa::vlm::Vec3> normalSums(static_cast<std::size_t>(vertexCount));
 	for (oa::U32 z = 0U; z < verticesZ; ++z) {
 		for (oa::U32 x = 0U; x < verticesX; ++x) {
 			const oa::U32 index = z * verticesX + x;

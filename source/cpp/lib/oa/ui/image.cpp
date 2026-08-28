@@ -35,7 +35,7 @@ static oa::Result<oavk::Buffer> uploadImagePlane(
 			"oa::ImagePlanes plane byte size overflows alignment");
 	}
 	const oa::U64 paddedBytes = (inBytes + 3U) & ~oa::U64{3U};
-	oa::Vec<oa::U8> padded(paddedBytes);
+	oa::Vector<oa::U8> padded(paddedBytes);
 	oa::memcpy(padded.data(), inData, inBytes);
 	if (paddedBytes > inBytes) {
 		oa::memset(padded.data() + inBytes, 0, paddedBytes - inBytes);
@@ -111,7 +111,7 @@ oa::Result<oa::ImagePlanes> oa::ImagePlanes::loadFile(oa::Engine& inRt, oa::Stri
 			* static_cast<oa::U64>(h);
 		oa::U64 planeBytes = pixelCount * sizeof(float);
 
-		oa::Vec<float> tmp(pixelCount);
+		oa::Vector<float> tmp(pixelCount);
 		for (oa::U32 c = 0; c < nCh and c < kImageMaxPlanes; ++c) {
 			for (oa::I64 i = 0; i < static_cast<oa::I64>(w) * h; ++i) {
 				tmp[static_cast<oa::U64>(i)] = px[static_cast<oa::U64>(i) * nCh + c];
@@ -135,7 +135,7 @@ oa::Result<oa::ImagePlanes> oa::ImagePlanes::loadFile(oa::Engine& inRt, oa::Stri
 		const oa::U64 planeBytes = static_cast<oa::U64>(w)
 			* static_cast<oa::U64>(h);
 
-		oa::Vec<oa::U8> tmp(planeBytes);
+		oa::Vector<oa::U8> tmp(planeBytes);
 		for (oa::U32 c = 0; c < nCh and c < kImageMaxPlanes; ++c) {
 			for (oa::I64 i = 0; i < static_cast<oa::I64>(w) * h; ++i) {
 				tmp[static_cast<oa::U64>(i)] = px[static_cast<oa::U64>(i) * nCh + c];

@@ -8,7 +8,7 @@
 
 namespace {
 
-std::vector<oa::I32> toStdVector(const oa::Vec<oa::I32>& values) {
+std::vector<oa::I32> toStdVector(const oa::Vector<oa::I32>& values) {
     std::vector<oa::I32> result;
     result.reserve(values.size());
     for (const oa::I32 value : values) {
@@ -17,8 +17,8 @@ std::vector<oa::I32> toStdVector(const oa::Vec<oa::I32>& values) {
     return result;
 }
 
-oa::Vec<oa::I32> toOaVector(const std::vector<oa::I32>& values) {
-    oa::Vec<oa::I32> result(values.size());
+oa::Vector<oa::I32> toOaVector(const std::vector<oa::I32>& values) {
+    oa::Vector<oa::I32> result(values.size());
     for (oa::Usize index = 0; index < values.size(); ++index) {
         result[index] = values[index];
     }

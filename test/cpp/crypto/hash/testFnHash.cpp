@@ -137,7 +137,7 @@ TEST_F(VkEngineTestFixture, MerkleRootMatchesCpu) {
 		syncCtx();
 		auto host = readBack(root, 32);
 
-		oa::Vec<oa::Hash> leaves;
+		oa::Vector<oa::Hash> leaves;
 		leaves.reserve(n);
 		for (oa::U32 i = 0; i < n; ++i) {
 			oa::Hash h;

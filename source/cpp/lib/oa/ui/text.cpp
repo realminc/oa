@@ -1,10 +1,10 @@
 #include <oa/ui/text.h>
 
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
 #include <oa/core/std/algo.h>
 #include <oa/core/std/limits.h>
 #include <oa/core/std/scalarMath.h>
-#include <oa/core/std/vec.h>
+#include <oa/core/std/vector.h>
 #include <oa/runtime/engine.h>
 #include <oa/runtime/engine/resourceAccess.h>
 
@@ -92,6 +92,8 @@ oa::I32 nearestStrikeIndex(oa::F32 inPixelSize) noexcept {
 }
 
 } // namespace
+
+oa::TextAtlas::TextAtlas() = default;
 
 oa::TextAtlas::TextAtlas(oa::TextAtlas&& inOther) noexcept
 	: impl_(oa::move(inOther.impl_))
@@ -335,7 +337,7 @@ struct ResolvedScalar {
 
 struct HbFaceData {
 	hb_face_t* face = nullptr;
-	oa::Vec<oa::U32> codepointByGlyph;
+	oa::Vector<oa::U32> codepointByGlyph;
 
 	HbFaceData() = default;
 	HbFaceData(const HbFaceData&) = delete;
@@ -491,8 +493,8 @@ DecodedScalar decodeUtf8(oa::StringView inText, oa::Usize& inOutIndex) noexcept 
 bool appendShapedRun(
 	oa::FontId inFont,
 	oa::F32 inPixelSize,
-	const oa::Vec<RunScalar>& inRun,
-	oa::Vec<ShapedTextItem>& inOutItems) {
+	const oa::Vector<RunScalar>& inRun,
+	oa::Vector<ShapedTextItem>& inOutItems) {
 	if (inRun.empty()) return true;
 	const HbFaceData& face = harfBuzzFace(inFont);
 	if (face.face == nullptr) return false;
@@ -576,14 +578,14 @@ bool buildShapedText(
 	oa::StringView inText,
 	oa::FontId inPrimaryFont,
 	oa::F32 inPixelSize,
-	oa::Vec<ShapedTextItem>& outItems) {
+	oa::Vector<ShapedTextItem>& outItems) {
 	if (!isValidFont(inPrimaryFont)
 		|| inText.size() > oa::Limits<oa::U32>::max()) {
 		return false;
 	}
 	outItems.clear();
 	outItems.reserve(inText.size());
-	oa::Vec<RunScalar> run;
+	oa::Vector<RunScalar> run;
 	run.reserve(inText.size());
 	oa::FontId runFont = inPrimaryFont;
 	bool hasRun = false;
@@ -680,10 +682,10 @@ void oa::TextLayout::shape(
 	oa::vlm::Vec2 inOrigin,
 	const oa::TextLayoutConfig& inCfg,
 	oa::U32 inColor,
-	oa::Vec<oa::PositionedGlyph>& inOutGlyphs) const {
+	oa::Vector<oa::PositionedGlyph>& inOutGlyphs) const {
 	if (!oa::isFinite(inCfg.size) || inCfg.size <= 0.0F) return;
 	const oa::FontId font = inCfg.monospace ? oa::FontId::Mono : inCfg.font;
-	oa::Vec<ShapedTextItem> items;
+	oa::Vector<ShapedTextItem> items;
 	if (!buildShapedText(inText, font, inCfg.size, items)) return;
 	const oa::F32 tabWidth = tabStopWidth(font, inCfg.size);
 	oa::F32 x = inOrigin.x;
@@ -732,7 +734,7 @@ oa::vlm::Vec2 oa::TextLayout::measure(
 	const oa::TextLayoutConfig& inCfg) const {
 	if (!oa::isFinite(inCfg.size) || inCfg.size <= 0.0F) return {};
 	const oa::FontId font = inCfg.monospace ? oa::FontId::Mono : inCfg.font;
-	oa::Vec<ShapedTextItem> items;
+	oa::Vector<ShapedTextItem> items;
 	if (!buildShapedText(inText, font, inCfg.size, items)) return {};
 	const oa::F32 tabWidth = tabStopWidth(font, inCfg.size);
 	oa::F32 lineWidth = 0.0F;

@@ -538,7 +538,7 @@ TEST_VK(OptimMuon, MuonOptimizerStepMatchesReference) {
 	parameter.grad() = oa::FnMatrix::fromBytes(
 		byteSpan(gradients), shape, oa::ScalarType::Float32);
 
-	oa::Vec<oa::Parameter*> parameters{&parameter};
+	oa::Vector<oa::Parameter*> parameters{&parameter};
 	oa::Muon optimizer(
 		parameters,
 		kLearningRate,

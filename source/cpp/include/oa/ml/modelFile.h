@@ -167,17 +167,17 @@ class ModelFile {
 public:
 	oa::U32 formatVersion = kModelFileVersion;
 	ModelFileConfig config;
-	oa::Vec<oa::U8> archConfig;
+	oa::Vector<oa::U8> archConfig;
 
-	oa::Vec<ModelTensorEntry> weightIndex;
-	oa::Vec<oa::U8> weightBlob;
+	oa::Vector<ModelTensorEntry> weightIndex;
+	oa::Vector<oa::U8> weightBlob;
 
-	oa::Vec<ModelTensorEntry> stateIndex;
-	oa::Vec<oa::U8> stateBlob;
+	oa::Vector<ModelTensorEntry> stateIndex;
+	oa::Vector<oa::U8> stateBlob;
 
 	ModelOptimizerState optimizer = {};
-	oa::Vec<oa::F32> adamM;
-	oa::Vec<oa::F32> adamV;
+	oa::Vector<oa::F32> adamM;
+	oa::Vector<oa::F32> adamV;
 	oa::Bool optimizerPresent = false;
 
 	ModelTrainingProgress progress = {};

@@ -8,8 +8,8 @@ oa::Status oa::VideoDecoder::recordVP9DecodeCommands(
 	oa::I32 inDpbSlot,
 	const oa::Vp9PictureDesc& inDesc,
 	const oa::I32 inReferenceNameSlotIndices[STD_VIDEO_VP9_REFS_PER_FRAME],
-	const oa::Vec<oa::I32>& inReferenceSlots,
-	const oa::Vec<VkExtent2D>& inReferenceExtents)
+	const oa::Vector<oa::I32>& inReferenceSlots,
+	const oa::Vector<VkExtent2D>& inReferenceExtents)
 {
 	oa::VideoDecoder::BitstreamSlot& bitstream = impl_->bitstreamRing[impl_->currentBitstreamIndex];
 	if (!impl_->engine || impl_->session.handle() == VK_NULL_HANDLE || !impl_->commandBuffers[0] || bitstream.buffer.getBuffer() == VK_NULL_HANDLE) {

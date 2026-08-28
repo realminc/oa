@@ -10,7 +10,7 @@ namespace {
 oa::PoseClip makeClip(const oa::Skeleton& Sk, oa::U32 frames) {
 	const oa::I32 D = Sk.poseDim();
 	const oa::I32 N = Sk.jointCount();
-	oa::Vec<oa::F32> s;
+	oa::Vector<oa::F32> s;
 	s.resize(static_cast<oa::Usize>(frames) * D);
 	for (oa::U32 f = 0; f < frames; ++f) {
 		const oa::Usize base = static_cast<oa::Usize>(f) * D;

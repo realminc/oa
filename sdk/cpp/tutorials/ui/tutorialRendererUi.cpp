@@ -4,7 +4,6 @@
 // window, then choose a sink. oa::Viewer::show returns its final graphics
 // completion to oa::Renderer before the frame target can be recycled.
 
-#include <oa/runtime/oaVk.h>
 #include <oa/runtime/engine.h>
 #include <oa/ui/canvas.h>
 #include <oa/render/renderer.h>

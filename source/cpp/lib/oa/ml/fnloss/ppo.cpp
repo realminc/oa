@@ -47,7 +47,7 @@ class GradPpoClippedPolicy final : public oa::GradNode {
 public:
 	oa::F32 clipEpsilon = 0.2F;
 
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.empty()) return;
 		oa::Matrix grad = oa::FnLoss::ppoClippedPolicyBwd(
 			saved(0), saved(1), saved(2), clipEpsilon);
@@ -93,7 +93,7 @@ oa::Matrix oa::FnLoss::ppoClippedPolicy(
 		auto grad = oa::makeShared<GradPpoClippedPolicy>();
 		grad->saveForBackward(
 			inNewLogProbability, inOldLogProbability, inAdvantage);
-		grad->setGraphInputs(oa::Vec<oa::Matrix>{inNewLogProbability, inOldLogProbability, inAdvantage});
+		grad->setGraphInputs(oa::Vector<oa::Matrix>{inNewLogProbability, inOldLogProbability, inAdvantage});
 		grad->clipEpsilon = inClipEpsilon;
 		grad->sequenceNr_ = oa::FnAutograd::nextSeq();
 		loss.mutAutograd().gradFn = grad;

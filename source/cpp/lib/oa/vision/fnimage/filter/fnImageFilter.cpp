@@ -53,7 +53,7 @@ oa::Matrix makeKernel2d(
 	const oa::Array<oa::F32, 9>& inValues
 ) {
 	const oa::I64 side = static_cast<oa::I64>(oa::sqrt(static_cast<oa::F64>(inValues.size())));
-	oa::Vec<oa::F32> values;
+	oa::Vector<oa::F32> values;
 	values.reserve(inValues.size());
 	for (const oa::F32 value : inValues) values.pushBack(value);
 	return oa::FnMatrix::fromBytes(
@@ -428,7 +428,7 @@ oa::Matrix oa::FnImage::gaussianBlur(oa::Engine& inRt, const oa::Matrix& inImage
 		: inKernelSize / 2U;
 	radius = oa::min(radius, 15U);
 	const oa::U32 size = radius * 2U + 1U;
-	oa::Vec<oa::F32> values(size);
+	oa::Vector<oa::F32> values(size);
 	oa::F64 sum = 0.0;
 	for (oa::U32 i = 0; i < size; ++i) {
 		const oa::F64 x = static_cast<oa::F64>(static_cast<oa::I32>(i) - static_cast<oa::I32>(radius));

@@ -12,7 +12,7 @@ static oa::Matrix getParamGrad(oa::Parameter* inP) {
 	return inP->grad();  // live grad (single source of truth: Data's autograd meta)
 }
 
-static void ensureMomentumBuffers(oa::Vec<oa::Parameter*>& inParams, oa::Vec<oa::Matrix>& inOutMomentum) {
+static void ensureMomentumBuffers(oa::Vector<oa::Parameter*>& inParams, oa::Vector<oa::Matrix>& inOutMomentum) {
 	if (not inOutMomentum.empty()) return;
 	for (auto* p : inParams) {
 		inOutMomentum.pushBack(oa::FnMatrix::zeros(p->data.getShape()));

@@ -97,6 +97,7 @@ target_include_directories(oaSdkSupport
 	PRIVATE
 		${CMAKE_CURRENT_LIST_DIR}/lib
 		${oa_SOURCE_DIR}/source/cpp/lib
+		${oa_SOURCE_DIR}/source/cpp/thirdparty
 		${oa_SOURCE_DIR}/source/cpp/thirdparty/utf8proc)
 set_target_properties(oaSdkSupport PROPERTIES
 	POSITION_INDEPENDENT_CODE ON)

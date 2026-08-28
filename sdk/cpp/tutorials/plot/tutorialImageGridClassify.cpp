@@ -46,8 +46,8 @@ static constexpr oa::I32 kNumClasses = 10;
 // ─── Raw IDX loader for test images (needed for texture creation) ─────────
 
 struct MnistData {
-	oa::Vec<oa::U8> images;
-	oa::Vec<oa::U8> labels;
+	oa::Vector<oa::U8> images;
+	oa::Vector<oa::U8> labels;
 	oa::I32 count = 0;
 };
 
@@ -140,7 +140,7 @@ struct GridCell {
 static oa::Status trainAndPredictGrid(oa::Engine& inRt,
                                     const oa::String&    inDataDir,
                                     oa::I32              inTrainSteps,
-                                    oa::Vec<GridCell>&   outCells) {
+                                    oa::Vector<GridCell>&   outCells) {
 	// load raw test data for texture creation (oa::DsMnist normalizes data)
 	MnistData testData;
 	if (not loadMnistIDX(inDataDir, "t10k-images-idx3-ubyte", "t10k-labels-idx1-ubyte", testData)) {
@@ -210,7 +210,7 @@ static oa::Status trainAndPredictGrid(oa::Engine& inRt,
 	// Copy probs to host for argmax
 	oa::I32 batch = static_cast<oa::I32>(probs.size(0));
 	oa::I32 nCls  = static_cast<oa::I32>(probs.size(1));
-	oa::Vec<oa::F32> host(batch * nCls);
+	oa::Vector<oa::F32> host(batch * nCls);
 	(void)oa::FnMatrix::copyToHost(probs, host.data(), host.size() * sizeof(oa::F32));
 
 	// Use raw test data for texture creation
@@ -219,7 +219,7 @@ static oa::Status trainAndPredictGrid(oa::Engine& inRt,
 	outCells.resize(kGridN);
 
 	for (oa::I32 i = 0; i < kGridN; ++i) {
-		oa::Vec<oa::U8> rgba(static_cast<oa::I64>(28) * 28 * 4);
+		oa::Vector<oa::U8> rgba(static_cast<oa::I64>(28) * 28 * 4);
 		oa::I32 best  = 0;
 		oa::F32 bestV = host[static_cast<oa::I64>(i) * kNumClasses];
 		for (oa::I32 j = 1; j < kNumClasses; ++j) {
@@ -263,7 +263,7 @@ static const oa::Color kSuccess = {0.188F, 0.820F, 0.345F, 1.0F};  // #30d158
 static const oa::Color kError   = {1.000F, 0.271F, 0.227F, 1.0F};  // #ff453a
 static const oa::Color kMuted   = {0.565F, 0.565F, 0.565F, 1.0F};  // #909090
 
-static void populateFigure(oa::plot::Figure& inFig, const oa::Vec<GridCell>& inCells) {
+static void populateFigure(oa::plot::Figure& inFig, const oa::Vector<GridCell>& inCells) {
 	for (oa::I32 i = 0; i < kGridN; ++i) {
 		const GridCell& cell = inCells[i];
 		auto& ax = inFig.ax(i / kGridCols, i % kGridCols);
@@ -345,7 +345,7 @@ private:
 	oa::String          dataDir_;
 	oa::I32             trainSteps_ = 2000;
 	oa::plot::Figure    fig_;
-	oa::Vec<GridCell>   cells_;
+	oa::Vector<GridCell>   cells_;
 	oa::Engine*         engine_ = nullptr;
 };
 
@@ -397,7 +397,7 @@ int main(int argc, char** argv) {
 		}
 		oa::Engine& engine = *eR.getValue();
 
-		oa::Vec<GridCell> cells;
+		oa::Vector<GridCell> cells;
 		if (auto s = trainAndPredictGrid(engine, dataDir, trainSteps, cells); not s.isOk()) {
 			std::fprintf(stderr, "Train/predict: %s\n", s.toString().cStr());
 			return 1;

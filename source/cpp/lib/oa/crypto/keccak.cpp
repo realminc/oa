@@ -4,7 +4,7 @@
 // State: 25 x uint64_t, little-endian lane ordering.
 
 #include <oa/crypto/keccak.h>
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
 #include <oa/core/std/algo.h>
 #include <oa/core/std/allocator.h>
 #include <oa/core/std/limits.h>
@@ -15,17 +15,17 @@ namespace {
 class SecureEraseGuard {
 public:
 	SecureEraseGuard(void* inData, oa::Usize inSize)
-		: data_(static_cast<volatile oa::Byte*>(inData)), size_(inSize) {}
+		: data_(inData), size_(inSize) {}
 
 	~SecureEraseGuard() {
-		for (oa::Usize i = 0; i < size_; ++i) data_[i] = 0;
+		oa::memzeroSecure(data_, size_);
 	}
 
 	SecureEraseGuard(const SecureEraseGuard&) = delete;
 	SecureEraseGuard& operator=(const SecureEraseGuard&) = delete;
 
 private:
-	volatile oa::Byte* data_;
+	void* data_;
 	oa::Usize size_;
 };
 
@@ -76,8 +76,7 @@ public:
 private:
 	void reset() noexcept {
 		if (data_ == nullptr) return;
-		volatile oa::Byte* secure = data_;
-		for (oa::Usize i = 0; i < size_; ++i) secure[i] = 0;
+		oa::memzeroSecure(data_, size_);
 		oa::freeBytes(data_, alignof(oa::Byte));
 		data_ = nullptr;
 		size_ = 0;

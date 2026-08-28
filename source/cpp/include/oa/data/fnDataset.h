@@ -16,13 +16,13 @@ namespace oa {
 namespace FnDataset {
 
 	/// Fisher-Yates shuffle on an index array.
-	void shuffle(oa::Vec<oa::I64>& inOutIndices, oa::U64 inSeed = 0);
+	void shuffle(oa::Vector<oa::I64>& inOutIndices, oa::U64 inSeed = 0);
 
 	/// Random split result for train / validation / test.
 	struct SplitResult {
-		oa::Vec<oa::I64> train;
-		oa::Vec<oa::I64> val;
-		oa::Vec<oa::I64> test;
+		oa::Vector<oa::I64> train;
+		oa::Vector<oa::I64> val;
+		oa::Vector<oa::I64> test;
 	};
 
 	/// Randomly split indices into train/val/test subsets.

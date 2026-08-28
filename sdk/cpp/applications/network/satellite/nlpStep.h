@@ -16,9 +16,9 @@ inline constexpr U32 SatelliteNlpStepLogitSampleCount = 64U;
 class SatelliteNlpBatch {
 public:
 	U64 stepIndex = 0;
-	Vec<U32> sampleIndices;
-	Vec<U32> inputs;
-	Vec<U32> targets;
+	Vector<U32> sampleIndices;
+	Vector<U32> inputs;
+	Vector<U32> targets;
 };
 
 class SatelliteNlpStepResult {
@@ -37,9 +37,9 @@ public:
 	Array<Byte, 32> targetHash{};
 	Array<Byte, 32> parameterLayoutHash{};
 	Array<Byte, 32> updatedParameterHash{};
-	Vec<F32> logitSample;
-	Vec<F32> gradients;
-	Vec<F32> updatedParameters;
+	Vector<F32> logitSample;
+	Vector<F32> gradients;
+	Vector<F32> updatedParameters;
 };
 
 class SatelliteNlpGradientResult {
@@ -54,7 +54,7 @@ public:
 	Array<Byte, 32> inputHash{};
 	Array<Byte, 32> targetHash{};
 	Array<Byte, 32> parameterLayoutHash{};
-	Vec<F32> gradients;
+	Vector<F32> gradients;
 };
 
 [[nodiscard]] Result<SatelliteNamedResult> satelliteExecuteNlpStep(

@@ -19,7 +19,7 @@ struct UploadFrame {
 // become dangling merely because the ring facade was destroyed.
 struct RetiredUploadRing {
 	oavk::Buffer staging;
-	oa::Vec<oa::UniquePtr<oa::UploadFrame>> frames;
+	oa::Vector<oa::UniquePtr<oa::UploadFrame>> frames;
 };
 
 } // namespace oa

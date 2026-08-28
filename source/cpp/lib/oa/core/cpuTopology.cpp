@@ -120,7 +120,7 @@ oa::CpuTopology oa::CpuTopology::detect() {
 	}
 
 	// Count physical cores via unique (package_id, core_id) pairs
-	oa::Vec<oa::U64> seen;
+	oa::Vector<oa::U64> seen;
 	for (oa::I32 i = 0; i < maxCpu; ++i) {
 		char path[256];
 		snprintf(path, sizeof(path),
@@ -148,24 +148,24 @@ oa::CpuTopology oa::CpuTopology::detect() {
 	return topo;
 }
 
-oa::Vec<oa::I32> oa::CpuTopology::getPcoreIds() const {
-	oa::Vec<oa::I32> ids;
+oa::Vector<oa::I32> oa::CpuTopology::getPcoreIds() const {
+	oa::Vector<oa::I32> ids;
 	for (auto& c : cores) {
 		if (c.type == oa::CoreType::Performance) ids.pushBack(c.id);
 	}
 	return ids;
 }
 
-oa::Vec<oa::I32> oa::CpuTopology::getEcoreIds() const {
-	oa::Vec<oa::I32> ids;
+oa::Vector<oa::I32> oa::CpuTopology::getEcoreIds() const {
+	oa::Vector<oa::I32> ids;
 	for (auto& c : cores) {
 		if (c.type == oa::CoreType::Efficiency) ids.pushBack(c.id);
 	}
 	return ids;
 }
 
-oa::Vec<oa::I32> oa::CpuTopology::getCoresOnNuma(oa::I32 inNode) const {
-	oa::Vec<oa::I32> ids;
+oa::Vector<oa::I32> oa::CpuTopology::getCoresOnNuma(oa::I32 inNode) const {
+	oa::Vector<oa::I32> ids;
 	for (auto& c : cores) {
 		if (c.numaNode == inNode) ids.pushBack(c.id);
 	}

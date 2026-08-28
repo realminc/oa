@@ -65,8 +65,8 @@ public:
 	void seed(const oa::Matrix& inLatents) { rvq_->seed(inLatents); }
 
 	// Inference helpers (no STE): sequence → per-level token id streams, and back.
-	[[nodiscard]] oa::Vec<oa::Matrix> tokenize(const oa::Matrix& inX, oa::I32 inBatch, oa::I32 inSeqLen);
-	[[nodiscard]] oa::Matrix detokenize(const oa::Vec<oa::Matrix>& inIdx, oa::I32 inBatch, oa::I32 inTokLen);
+	[[nodiscard]] oa::Vector<oa::Matrix> tokenize(const oa::Matrix& inX, oa::I32 inBatch, oa::I32 inSeqLen);
+	[[nodiscard]] oa::Matrix detokenize(const oa::Vector<oa::Matrix>& inIdx, oa::I32 inBatch, oa::I32 inTokLen);
 
 	[[nodiscard]] oa::I32 downsampleFactor() const noexcept { return factor_; }
 	[[nodiscard]] oa::ResidualVectorQuantizer& rvq() noexcept { return *rvq_; }
@@ -78,8 +78,8 @@ private:
 	// here makes pre-norm scale a degenerate flat direction → the output layer drifts and
 	// recon explodes; the learnable scale removes that degeneracy. Consumes depth LNs from
 	// inLn starting at inLnCursor (advanced in place).
-	[[nodiscard]] oa::Matrix resStack(const oa::Vec<oa::SharedPtr<oa::Conv1d>>& inConvs,
-		const oa::Vec<oa::SharedPtr<oa::LayerNorm>>& inLn, oa::Usize& inLnCursor, const oa::Matrix& inH) const;
+	[[nodiscard]] oa::Matrix resStack(const oa::Vector<oa::SharedPtr<oa::Conv1d>>& inConvs,
+		const oa::Vector<oa::SharedPtr<oa::LayerNorm>>& inLn, oa::Usize& inLnCursor, const oa::Matrix& inH) const;
 	// Learnable-affine channel norm on a [B,C,T] activation (LayerNorm over C=width):
 	// transpose C→last, LN(weight+bias), transpose back.
 	[[nodiscard]] oa::Matrix normC(const oa::SharedPtr<oa::LayerNorm>& inLn, const oa::Matrix& inH) const;
@@ -93,12 +93,12 @@ private:
 	AlmTokenizerConfig config_;
 	oa::I32 factor_ = 8;   // 2^downT
 	oa::SharedPtr<oa::Conv1d> encIn_, encOut_, decIn_, decMid_, decOut_;
-	oa::Vec<oa::SharedPtr<oa::Conv1d>>          encDown_;  // downT strided downsample convs
-	oa::Vec<oa::SharedPtr<oa::ConvTranspose1d>> decUp_;    // downT learnable 2× upsample convs
-	oa::Vec<oa::SharedPtr<oa::Conv1d>> encRes_;    // downT stages × 2·depth convs (flat)
-	oa::Vec<oa::SharedPtr<oa::Conv1d>> decRes_;
-	oa::Vec<oa::SharedPtr<oa::LayerNorm>> encLn_;  // learnable-affine norms, encoder call order
-	oa::Vec<oa::SharedPtr<oa::LayerNorm>> decLn_;  // learnable-affine norms, decoder call order
+	oa::Vector<oa::SharedPtr<oa::Conv1d>>          encDown_;  // downT strided downsample convs
+	oa::Vector<oa::SharedPtr<oa::ConvTranspose1d>> decUp_;    // downT learnable 2× upsample convs
+	oa::Vector<oa::SharedPtr<oa::Conv1d>> encRes_;    // downT stages × 2·depth convs (flat)
+	oa::Vector<oa::SharedPtr<oa::Conv1d>> decRes_;
+	oa::Vector<oa::SharedPtr<oa::LayerNorm>> encLn_;  // learnable-affine norms, encoder call order
+	oa::Vector<oa::SharedPtr<oa::LayerNorm>> decLn_;  // learnable-affine norms, decoder call order
 	oa::SharedPtr<oa::ResidualVectorQuantizer> rvq_;
 };
 

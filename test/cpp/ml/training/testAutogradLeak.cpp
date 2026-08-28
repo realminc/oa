@@ -3,7 +3,7 @@
 //
 // Symptom under investigation (session 9): the NLP tutorials OOM-kill the box and
 // crawl (~23 sps) on a tiny model. That is a leak signature, not "model too big".
-// This probe runs *tiny* models for many steps and watches OaVma usedBytes. A hard
+// This probe runs *tiny* models for many steps and watches allocator usedBytes. A hard
 // VRAM cap fails the test fast so it can NEVER OOM the display server.
 //
 //   CoreTapeNoLeak — Linear → CrossEntropy. Isolates the core tape/accumulate path.
@@ -148,14 +148,14 @@ private:
 };
 
 oa::Matrix makeLabels() {
-	oa::Vec<oa::U8> y(kBatch);
+	oa::Vector<oa::U8> y(kBatch);
 	for (oa::I32 b = 0; b < kBatch; ++b) y[b] = static_cast<oa::U8>(b % kVocab);
 	return oa::FnMatrix::fromBytes(oa::Span<const oa::U8>(y.data(), y.size()),
 		oa::MatrixShape{kBatch}, oa::ScalarType::UInt8);
 }
 
 oa::Matrix makeTokens() {
-	oa::Vec<oa::U8> x(static_cast<oa::I64>(kBatch) * kSeq);
+	oa::Vector<oa::U8> x(static_cast<oa::I64>(kBatch) * kSeq);
 	for (oa::I64 i = 0; i < x.size(); ++i) x[i] = static_cast<oa::U8>(i % kVocab);
 	return oa::FnMatrix::fromBytes(oa::Span<const oa::U8>(x.data(), x.size()),
 		oa::MatrixShape{kBatch, kSeq}, oa::ScalarType::UInt8);
@@ -280,13 +280,13 @@ private:
 
 TEST(AutogradLeak, GruTapeRealDims) {
 	auto makeTokens = [] {
-		oa::Vec<oa::U8> x(static_cast<oa::I64>(kRBatch) * kRSeq);
+		oa::Vector<oa::U8> x(static_cast<oa::I64>(kRBatch) * kRSeq);
 		for (oa::I64 i = 0; i < x.size(); ++i) x[i] = static_cast<oa::U8>(i % kRVocab);
 		return oa::FnMatrix::fromBytes(oa::Span<const oa::U8>(x.data(), x.size()),
 			oa::MatrixShape{kRBatch, kRSeq}, oa::ScalarType::UInt8);
 	};
 	auto makeLabels = [] {
-		oa::Vec<oa::U8> y(kRBatch);
+		oa::Vector<oa::U8> y(kRBatch);
 		for (oa::I32 b = 0; b < kRBatch; ++b) y[b] = static_cast<oa::U8>(b % kRVocab);
 		return oa::FnMatrix::fromBytes(oa::Span<const oa::U8>(y.data(), y.size()),
 			oa::MatrixShape{kRBatch}, oa::ScalarType::UInt8);
@@ -361,9 +361,9 @@ TEST(AutogradLeak, GruWorkingSetVsSeq) {
 		};
 		setGrad(embed); setGrad(gru); setGrad(head);
 
-		oa::Vec<oa::U8> xb(static_cast<oa::I64>(kBat) * seq);
+		oa::Vector<oa::U8> xb(static_cast<oa::I64>(kBat) * seq);
 		for (oa::I64 i = 0; i < xb.size(); ++i) xb[i] = static_cast<oa::U8>(i % kVoc);
-		oa::Vec<oa::U8> yb(kBat);
+		oa::Vector<oa::U8> yb(kBat);
 		for (oa::I32 b = 0; b < kBat; ++b) yb[b] = static_cast<oa::U8>(b % kVoc);
 		auto labels = oa::FnMatrix::fromBytes(oa::Span<const oa::U8>(yb.data(), yb.size()),
 			oa::MatrixShape{kBat}, oa::ScalarType::UInt8);

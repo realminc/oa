@@ -8,7 +8,7 @@
 #include <oa/runtime/spirv.h>
 #include <oa/runtime/pipeline.h>
 #include <oa/core/log.h>
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
 
 namespace {
 

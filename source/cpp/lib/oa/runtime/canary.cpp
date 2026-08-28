@@ -21,7 +21,7 @@ oa::U64 hashBytes(const void* inData, oa::U64 inBytes) {
 }
 
 template <typename T>
-oa::Span<const oa::U8> bytes(const oa::Vec<T>& inValues) {
+oa::Span<const oa::U8> bytes(const oa::Vector<T>& inValues) {
 	return {
 		reinterpret_cast<const oa::U8*>(inValues.data()),
 		inValues.size() * sizeof(T),
@@ -32,7 +32,7 @@ template <typename T>
 oa::Status readback(
 	oa::Engine& inEngine,
 	const oa::Matrix& inMatrix,
-	oa::Vec<T>& outValues)
+	oa::Vector<T>& outValues)
 {
 	const oa::U64 bytes = static_cast<oa::U64>(outValues.size() * sizeof(T));
 	if (bytes != static_cast<oa::U64>(inMatrix.byteSize())) {
@@ -63,8 +63,8 @@ oa::DeviceCanaryCheck exactCheck(
 
 oa::DeviceCanaryCheck floatCheck(
 	oa::StringView inName,
-	const oa::Vec<oa::F32>& inExpected,
-	const oa::Vec<oa::F32>& inActual,
+	const oa::Vector<oa::F32>& inExpected,
+	const oa::Vector<oa::F32>& inActual,
 	oa::F64 inTolerance)
 {
 	oa::DeviceCanaryCheck check;
@@ -161,9 +161,9 @@ oa::Status oa::DeviceCanary::run(
 	outReport.apiVersion = info.software.apiVersion;
 
 	constexpr oa::U32 kVectorSize = 257U;
-	oa::Vec<oa::U32> transportExpected(kVectorSize);
-	oa::Vec<oa::F32> aValues(kVectorSize);
-	oa::Vec<oa::F32> bValues(kVectorSize);
+	oa::Vector<oa::U32> transportExpected(kVectorSize);
+	oa::Vector<oa::F32> aValues(kVectorSize);
+	oa::Vector<oa::F32> bValues(kVectorSize);
 	for (oa::U32 i = 0; i < kVectorSize; ++i) {
 		transportExpected[i] = 0x9e3779b9U * (i + 1U) ^ (i << 17U);
 		aValues[i] = static_cast<oa::F32>(static_cast<oa::I32>(i % 31U) - 15)
@@ -175,8 +175,8 @@ oa::Status oa::DeviceCanary::run(
 	constexpr oa::U32 kM = 17U;
 	constexpr oa::U32 kN = 11U;
 	constexpr oa::U32 kK = 13U;
-	oa::Vec<oa::F32> matrixA(kM * kK);
-	oa::Vec<oa::F32> matrixB(kN * kK);
+	oa::Vector<oa::F32> matrixA(kM * kK);
+	oa::Vector<oa::F32> matrixB(kN * kK);
 	for (oa::U32 i = 0; i < matrixA.size(); ++i) {
 		matrixA[i] = static_cast<oa::F32>(static_cast<oa::I32>(i % 17U) - 8)
 			* 0.03125F;
@@ -188,8 +188,8 @@ oa::Status oa::DeviceCanary::run(
 
 	constexpr oa::U32 kRows = 16U;
 	constexpr oa::U32 kClasses = 7U;
-	oa::Vec<oa::F32> logits(kRows * kClasses, -4.0F);
-	oa::Vec<oa::U32> labels(kRows);
+	oa::Vector<oa::F32> logits(kRows * kClasses, -4.0F);
+	oa::Vector<oa::U32> labels(kRows);
 	oa::U32 expectedCorrect = 0;
 	for (oa::U32 row = 0; row < kRows; ++row) {
 		const oa::U32 winner = row % kClasses;
@@ -223,29 +223,29 @@ oa::Status oa::DeviceCanary::run(
 
 	OA_RETURN_IF_ERROR(context.submitAndWait());
 
-	oa::Vec<oa::U32> transportActual(kVectorSize);
+	oa::Vector<oa::U32> transportActual(kVectorSize);
 	OA_RETURN_IF_ERROR(readback(inEngine, transport, transportActual));
 	outReport.checks.pushBack(exactCheck(
 		"host_device_roundtrip_u32",
 		transportExpected.data(), transportActual.data(),
 		transportExpected.size() * sizeof(oa::U32), kVectorSize));
 
-	oa::Vec<oa::F32> vectorExpected(kVectorSize);
+	oa::Vector<oa::F32> vectorExpected(kVectorSize);
 	oa::F32 sumExpected = 0.0F;
 	for (oa::U32 i = 0; i < kVectorSize; ++i) {
 		vectorExpected[i] = (aValues[i] + bValues[i]) * aValues[i];
 		sumExpected += vectorExpected[i];
 	}
-	oa::Vec<oa::F32> vectorActual(kVectorSize);
+	oa::Vector<oa::F32> vectorActual(kVectorSize);
 	OA_RETURN_IF_ERROR(readback(inEngine, vectorOut, vectorActual));
 	outReport.checks.pushBack(floatCheck(
 		"fp32_elementwise_barrier_chain", vectorExpected, vectorActual, 1.0e-6));
-	oa::Vec<oa::F32> sumActual(1);
+	oa::Vector<oa::F32> sumActual(1);
 	OA_RETURN_IF_ERROR(readback(inEngine, vectorSum, sumActual));
 	outReport.checks.pushBack(floatCheck(
 		"fp32_shared_reduction", {sumExpected}, sumActual, 2.0e-4));
 
-	oa::Vec<oa::F32> matrixExpected(kM * kN, 0.0F);
+	oa::Vector<oa::F32> matrixExpected(kM * kN, 0.0F);
 	for (oa::U32 row = 0; row < kM; ++row) {
 		for (oa::U32 col = 0; col < kN; ++col) {
 			for (oa::U32 k = 0; k < kK; ++k) {
@@ -254,12 +254,12 @@ oa::Status oa::DeviceCanary::run(
 			}
 		}
 	}
-	oa::Vec<oa::F32> matrixActual(kM * kN);
+	oa::Vector<oa::F32> matrixActual(kM * kN);
 	OA_RETURN_IF_ERROR(readback(inEngine, matrixOut, matrixActual));
 	outReport.checks.pushBack(floatCheck(
 		"fp32_matmul_irregular", matrixExpected, matrixActual, 2.0e-5));
 
-	oa::Vec<oa::U32> countActual(1);
+	oa::Vector<oa::U32> countActual(1);
 	OA_RETURN_IF_ERROR(readback(inEngine, correctCount, countActual));
 	outReport.checks.pushBack(exactCheck(
 		"uint32_accuracy_reduction",

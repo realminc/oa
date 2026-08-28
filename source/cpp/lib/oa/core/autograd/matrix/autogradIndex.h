@@ -11,7 +11,7 @@ public:
 	oa::I32 repeats_ = 1;
 	oa::I32 dim_ = 0;
 
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() == 0) return;
 		const oa::Matrix& input = saved(0);
 		outDIn[0] = oa::FnMatrix::repeatInterleaveBwd(
@@ -21,7 +21,7 @@ public:
 
 class GradCausalMask final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() > 0) {
 			outDIn[0] = oa::FnMatrix::causalMaskBwd(inDOut);
 		}
@@ -34,7 +34,7 @@ public:
 	oa::Matrix count_;
 	oa::Matrix dispatchArgs_;
 
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() == 0) return;
 		const oa::Matrix& input = saved(0);
 		outDIn[0] = oa::FnMatrix::compactRowsBwd(
@@ -48,7 +48,7 @@ public:
 	oa::Matrix count_;
 	oa::Matrix dispatchArgs_;
 
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() < 2) return;
 		outDIn[0] = oa::FnMatrix::copy(inDOut);
 		outDIn[1] = dispatchArgs_.numElements() == 3
@@ -61,7 +61,7 @@ public:
 
 class GradGather final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() == 0) return;
 		const oa::Matrix& indices = saved(0);
 		const oa::Matrix& weight = saved(1);
@@ -75,7 +75,7 @@ public:
 
 class GradGatherLastDim final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() > 0) {
 			outDIn[0] = oa::FnMatrix::gatherLastDimBwd(
 				inDOut,
@@ -88,9 +88,9 @@ public:
 class GradConcat final : public oa::GradNode {
 public:
 	oa::I32 dim_ = 0;
-	oa::Vec<oa::I64> sizes_;
+	oa::Vector<oa::I64> sizes_;
 
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		oa::I64 offset = 0;
 		for (oa::I32 index = 0;
 			index < static_cast<oa::I32>(sizes_.size());
@@ -114,7 +114,7 @@ public:
 	oa::I64 start_ = 0;
 	oa::I64 end_ = 0;
 
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		const oa::MatrixShape inputShape = saved(0).getShape();
 		oa::MatrixShape sliceShape = inputShape;
 		if (dim_ >= 0 and dim_ < sliceShape.rank) {

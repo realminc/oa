@@ -11,7 +11,7 @@ namespace oa {
 
 class GradCrossEntropy final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDLoss, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDLoss, oa::Vector<oa::Matrix>& outDIn) override {
 		const oa::Matrix& logits  = saved(0);
 		const oa::Matrix& targets = saved(1);
 		if (outDIn.size() > 0) {
@@ -31,7 +31,7 @@ public:
 class GradMaskedCrossEntropy final : public oa::GradNode {
 public:
 	oa::I32 validCount_ = 0;
-	void backward(const oa::Matrix& /*inDLoss*/, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& /*inDLoss*/, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() > 0) {
 			outDIn[0] = oa::FnLoss::maskedCrossEntropyBwd(
 				saved(0), saved(1), saved(2), validCount_);
@@ -42,7 +42,7 @@ public:
 // oa::GradSmoothL1 — smoothL1(A, B) → d_A (B is target, no grad needed)
 class GradSmoothL1 final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDLoss, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDLoss, oa::Vector<oa::Matrix>& outDIn) override {
 		const oa::Matrix& a = saved(0);
 		const oa::Matrix& b = saved(1);
 		if (outDIn.size() > 0) {
@@ -54,7 +54,7 @@ public:
 // oa::GradMse — mse(A, B) → d_A
 class GradMse final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDLoss, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDLoss, oa::Vector<oa::Matrix>& outDIn) override {
 		const oa::Matrix& a = saved(0);
 		const oa::Matrix& b = saved(1);
 		if (outDIn.size() > 0) {
@@ -66,7 +66,7 @@ public:
 // oa::GradL1 — L1(A, B) → d_A
 class GradL1 final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDLoss, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDLoss, oa::Vector<oa::Matrix>& outDIn) override {
 		const oa::Matrix& a = saved(0);
 		const oa::Matrix& b = saved(1);
 		if (outDIn.size() > 0) {
@@ -78,7 +78,7 @@ public:
 // oa::GradBce — bce(A, B) → d_A
 class GradBce final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDLoss, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDLoss, oa::Vector<oa::Matrix>& outDIn) override {
 		const oa::Matrix& a = saved(0);
 		const oa::Matrix& b = saved(1);
 		if (outDIn.size() > 0) {

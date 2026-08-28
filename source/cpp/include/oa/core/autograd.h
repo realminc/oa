@@ -21,24 +21,24 @@ public:
 	// owns traversal and execution cadence; nodes only describe their adjoints.
 	virtual void backward(
 		const Matrix& inUpstream,
-		oa::Vec<Matrix>& outInputGrads
+		oa::Vector<Matrix>& outInputGrads
 	) = 0;
 
 	[[nodiscard]] oa::Span<const Matrix> graphInputs() const {
 		return inputs_.span();
 	}
-	[[nodiscard]] oa::Vec<Matrix>& mutGraphInputs() { return inputs_; }
-	void setGraphInputs(oa::Vec<Matrix> inInputs) {
+	[[nodiscard]] oa::Vector<Matrix>& mutGraphInputs() { return inputs_; }
+	void setGraphInputs(oa::Vector<Matrix> inInputs) {
 		inputs_ = oa::move(inInputs);
 	}
 
 	/// Retains matrices required by backward and snapshots their storage
 	/// mutation versions. Backward fails before recording any kernels if a
 	/// retained matrix was modified in place.
-	void saveForBackward(oa::Vec<Matrix> inMatrices);
+	void saveForBackward(oa::Vector<Matrix> inMatrices);
 	template<typename... Matrices>
 	void saveForBackward(Matrices&&... inMatrices) {
-		oa::Vec<Matrix> values;
+		oa::Vector<Matrix> values;
 		values.reserve(sizeof...(Matrices));
 		(values.pushBack(Matrix(oa::forward<Matrices>(inMatrices))), ...);
 		saveForBackward(oa::move(values));
@@ -65,7 +65,7 @@ protected:
 		return savedMatrices_[inIndex].matrix;
 	}
 
-	oa::Vec<Matrix> inputs_;
+	oa::Vector<Matrix> inputs_;
 
 private:
 	friend class GradientTape;
@@ -77,7 +77,7 @@ private:
 
 	[[nodiscard]] oa::Status validateSavedVersions() const;
 
-	oa::Vec<SavedMatrix> savedMatrices_;
+	oa::Vector<SavedMatrix> savedMatrices_;
 };
 
 // oa::FnAutograd — autograd tape control.

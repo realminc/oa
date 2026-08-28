@@ -12,7 +12,7 @@ namespace oa {
 class GradEmpyrealmAdt final : public oa::GradNode {
 public:
 	explicit GradEmpyrealmAdt(oa::F32 inAFloor) noexcept : aFloor_(inAFloor) {}
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		const oa::Matrix& ddA = saved(0);
 		const oa::Matrix& dt  = saved(1);
 		auto g = oa::FnMatrix::empyrealmAdtBwd(inDOut, ddA, dt, aFloor_);
@@ -29,7 +29,7 @@ private:
 class GradEmpyrealmDt final : public oa::GradNode {
 public:
 	GradEmpyrealmDt(oa::F32 inDtMin, oa::F32 inDtMax) noexcept : dtMin_(inDtMin), dtMax_(inDtMax) {}
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		const oa::Matrix& x = saved(0);
 		if (outDIn.size() > 0) outDIn[0] = oa::FnMatrix::empyrealmDtBwd(inDOut, x, dtMin_, dtMax_);
 	}
@@ -59,7 +59,7 @@ public:
 	oa::SharedPtr<SharedState> state_;
 	oa::I32 outputIndex_ = 0;  // 0=z, 1=x, 2=bh, 3=ch, 4=dt, 5=adt, 6=trap, 7=angle
 
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		switch (outputIndex_) {
 			case 0: state_->dZ = inDOut; break;
 			case 1: state_->dX = inDOut; break;
@@ -92,7 +92,7 @@ public:
 	oa::SharedPtr<oa::GradMamba3Preprocess::SharedState> state_;
 	oa::I32 outputIndex_ = 0;
 
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		switch (outputIndex_) {
 			case 0: state_->dZ = inDOut; break;
 			case 1: state_->dX = inDOut; break;
@@ -123,7 +123,7 @@ public:
 class GradMamba3Siso final : public oa::GradNode {
 public:
 	oa::SsmConfig config_{};
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		const oa::Matrix& c      = saved(0);
 		const oa::Matrix& b      = saved(1);
 		const oa::Matrix& x      = saved(2);
@@ -166,7 +166,7 @@ public:
 class GradMamba3Mimo final : public oa::GradNode {
 public:
 	oa::SsmConfig config_{};
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		oa::MatrixShape expected{config_.batch, config_.seqLen,
 			config_.nHeads, config_.headDim};
 		oa::Matrix dOut4 = inDOut;
@@ -204,7 +204,7 @@ public:
 class GradEmpyrealmSiso final : public oa::GradNode {
 public:
 	oa::SsmConfig config_{};
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		const oa::Matrix& c      = saved(0);
 		const oa::Matrix& b      = saved(1);
 		const oa::Matrix& x      = saved(2);

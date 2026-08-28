@@ -18,7 +18,7 @@ oa::Status addEnabled(oa::Matrix& out, const oa::Matrix& inA, const oa::Matrix& 
 		auto gradFn = oa::makeShared<oa::GradBcastBinary>();
 		gradFn->op_ = oa::BcastBinOp::Add;
 		gradFn->saveForBackward(inA, inB);
-		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA, inB});
+		gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inA, inB});
 		gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		gradFn->outputShape_ = out.getShape();
 		OA_RETURN_IF_ERROR(oa::FnAutograd::attachSemantic(gradFn, inSemanticOp));
@@ -27,7 +27,7 @@ oa::Status addEnabled(oa::Matrix& out, const oa::Matrix& inA, const oa::Matrix& 
 	}
 	auto gradFn = oa::makeShared<oa::GradAdd>();
 	gradFn->saveForBackward();
-	gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA, inB});
+	gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inA, inB});
 	gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 	OA_RETURN_IF_ERROR(oa::FnAutograd::attachSemantic(gradFn, inSemanticOp));
 	out.mutAutograd().gradFn = gradFn;
@@ -39,7 +39,7 @@ oa::Status divEnabled(oa::Matrix& out, const oa::Matrix& inA, const oa::Matrix& 
 		auto gradFn = oa::makeShared<oa::GradBcastBinary>();
 		gradFn->op_ = oa::BcastBinOp::Div;
 		gradFn->saveForBackward(inA, inB);
-		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA, inB});
+		gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inA, inB});
 		gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		gradFn->outputShape_ = out.getShape();
 		OA_RETURN_IF_ERROR(oa::FnAutograd::attachSemantic(gradFn, inSemanticOp));
@@ -48,7 +48,7 @@ oa::Status divEnabled(oa::Matrix& out, const oa::Matrix& inA, const oa::Matrix& 
 	}
 	auto gradFn = oa::makeShared<oa::GradDiv>();
 	gradFn->saveForBackward(inA, inB);
-	gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA, inB});
+	gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inA, inB});
 	gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 	OA_RETURN_IF_ERROR(oa::FnAutograd::attachSemantic(gradFn, inSemanticOp));
 	out.mutAutograd().gradFn = gradFn;
@@ -58,7 +58,7 @@ oa::Status divEnabled(oa::Matrix& out, const oa::Matrix& inA, const oa::Matrix& 
 oa::Status gatherEnabled(oa::Matrix& out, const oa::Matrix& inA, const oa::Matrix& inIndices, oa::U32 inSemanticOp) {
 	auto gradFn = oa::makeShared<oa::GradGather>();
 	gradFn->saveForBackward(inIndices, inA);
-	gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA, inIndices});
+	gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inA, inIndices});
 	gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 	gradFn->outputShape_ = out.getShape();
 	OA_RETURN_IF_ERROR(oa::FnAutograd::attachSemantic(gradFn, inSemanticOp));
@@ -69,7 +69,7 @@ oa::Status gatherEnabled(oa::Matrix& out, const oa::Matrix& inA, const oa::Matri
 oa::Status logSoftmaxEnabled(oa::Matrix& out, const oa::Matrix& inA, oa::I32 inDim, oa::U32 inSemanticOp) {
 	auto gradFn = oa::makeShared<oa::GradLogSoftmax>();
 	gradFn->saveForBackward(out);
-	gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA});
+	gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inA});
 	gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 	gradFn->dim_ = inDim;
 	gradFn->outputShape_ = out.getShape();
@@ -81,7 +81,7 @@ oa::Status logSoftmaxEnabled(oa::Matrix& out, const oa::Matrix& inA, oa::I32 inD
 oa::Status matMulNtEnabled(oa::Matrix& out, const oa::Matrix& inA, const oa::Matrix& inB, oa::U32 inSemanticOp) {
 	auto gradFn = oa::makeShared<oa::GradMatMulNt>();
 	gradFn->saveForBackward(inA, inB);
-	gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA, inB});
+	gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inA, inB});
 	gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 	gradFn->outputShape_ = out.getShape();
 	OA_RETURN_IF_ERROR(oa::FnAutograd::attachSemantic(gradFn, inSemanticOp));
@@ -92,7 +92,7 @@ oa::Status matMulNtEnabled(oa::Matrix& out, const oa::Matrix& inA, const oa::Mat
 oa::Status maxEnabled(oa::Matrix& out, const oa::Matrix& inA, oa::U32 inSemanticOp) {
 	auto gradFn = oa::makeShared<oa::GradMax>();
 	gradFn->saveForBackward(inA, out);
-	gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA});
+	gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inA});
 	gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 	gradFn->outputShape_ = out.getShape();
 	OA_RETURN_IF_ERROR(oa::FnAutograd::attachSemantic(gradFn, inSemanticOp));
@@ -103,7 +103,7 @@ oa::Status maxEnabled(oa::Matrix& out, const oa::Matrix& inA, oa::U32 inSemantic
 oa::Status meanEnabled(oa::Matrix& out, const oa::Matrix& inA, oa::I32 inDim, oa::U32 inSemanticOp) {
 	auto gradFn = oa::makeShared<oa::GradMean>();
 	gradFn->saveForBackward(inA);
-	gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA});
+	gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inA});
 	gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 	gradFn->dim_ = inDim;
 	gradFn->outputShape_ = out.getShape();
@@ -117,7 +117,7 @@ oa::Status mulEnabled(oa::Matrix& out, const oa::Matrix& inA, const oa::Matrix& 
 		auto gradFn = oa::makeShared<oa::GradBcastBinary>();
 		gradFn->op_ = oa::BcastBinOp::Mul;
 		gradFn->saveForBackward(inA, inB);
-		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA, inB});
+		gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inA, inB});
 		gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		gradFn->outputShape_ = out.getShape();
 		OA_RETURN_IF_ERROR(oa::FnAutograd::attachSemantic(gradFn, inSemanticOp));
@@ -126,7 +126,7 @@ oa::Status mulEnabled(oa::Matrix& out, const oa::Matrix& inA, const oa::Matrix& 
 	}
 	auto gradFn = oa::makeShared<oa::GradMul>();
 	gradFn->saveForBackward(inA, inB);
-	gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA, inB});
+	gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inA, inB});
 	gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 	gradFn->outputShape_ = out.getShape();
 	OA_RETURN_IF_ERROR(oa::FnAutograd::attachSemantic(gradFn, inSemanticOp));
@@ -137,7 +137,7 @@ oa::Status mulEnabled(oa::Matrix& out, const oa::Matrix& inA, const oa::Matrix& 
 oa::Status sliceEnabled(oa::Matrix& out, const oa::Matrix& inSelf, oa::I32 inDim, oa::I64 inStart, oa::I64 inEnd, oa::U32 inSemanticOp) {
 	auto gradFn = oa::makeShared<oa::GradSlice>();
 	gradFn->saveForBackward(inSelf);
-	gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inSelf});
+	gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inSelf});
 	gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 	gradFn->dim_ = inDim;
 	gradFn->start_ = inStart;
@@ -151,7 +151,7 @@ oa::Status sliceEnabled(oa::Matrix& out, const oa::Matrix& inSelf, oa::I32 inDim
 oa::Status softmaxEnabled(oa::Matrix& out, const oa::Matrix& inA, oa::I32 inDim, oa::U32 inSemanticOp) {
 	auto gradFn = oa::makeShared<oa::GradSoftmax>();
 	gradFn->saveForBackward(out);
-	gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA});
+	gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inA});
 	gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 	gradFn->dim_ = inDim;
 	gradFn->outputShape_ = out.getShape();
@@ -165,7 +165,7 @@ oa::Status subEnabled(oa::Matrix& out, const oa::Matrix& inA, const oa::Matrix& 
 		auto gradFn = oa::makeShared<oa::GradBcastBinary>();
 		gradFn->op_ = oa::BcastBinOp::Sub;
 		gradFn->saveForBackward(inA, inB);
-		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA, inB});
+		gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inA, inB});
 		gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		gradFn->outputShape_ = out.getShape();
 		OA_RETURN_IF_ERROR(oa::FnAutograd::attachSemantic(gradFn, inSemanticOp));
@@ -174,7 +174,7 @@ oa::Status subEnabled(oa::Matrix& out, const oa::Matrix& inA, const oa::Matrix& 
 	}
 	auto gradFn = oa::makeShared<oa::GradSub>();
 	gradFn->saveForBackward();
-	gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA, inB});
+	gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inA, inB});
 	gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 	OA_RETURN_IF_ERROR(oa::FnAutograd::attachSemantic(gradFn, inSemanticOp));
 	out.mutAutograd().gradFn = gradFn;
@@ -184,7 +184,7 @@ oa::Status subEnabled(oa::Matrix& out, const oa::Matrix& inA, const oa::Matrix& 
 oa::Status sumEnabled(oa::Matrix& out, const oa::Matrix& inA, oa::U32 inSemanticOp) {
 	auto gradFn = oa::makeShared<oa::GradSum>();
 	gradFn->saveForBackward(inA);
-	gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA});
+	gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inA});
 	gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 	gradFn->outputShape_ = out.getShape();
 	OA_RETURN_IF_ERROR(oa::FnAutograd::attachSemantic(gradFn, inSemanticOp));
@@ -195,7 +195,7 @@ oa::Status sumEnabled(oa::Matrix& out, const oa::Matrix& inA, oa::U32 inSemantic
 oa::Status transposeEnabled(oa::Matrix& out, const oa::Matrix& inA, oa::I32 inDim0, oa::I32 inDim1, oa::U32 inSemanticOp) {
 	auto gradFn = oa::makeShared<oa::GradTranspose>();
 	gradFn->saveForBackward();
-	gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA});
+	gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inA});
 	gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 	gradFn->dim0_ = inDim0;
 	gradFn->dim1_ = inDim1;

@@ -6,7 +6,7 @@
 #include "videoCodecParser.h"
 #include <oa/vision/videoDecoder.h>
 #include <oa/core/std/hashMap.h>
-#include <oa/core/std/vec.h>
+#include <oa/core/std/vector.h>
 #include <vk_video/vulkan_video_codec_h265std.h>
 #include <vk_video/vulkan_video_codec_h265std_decode.h>
 #include "nalParser.h"
@@ -20,12 +20,12 @@ struct H265PictureDesc {
 	H265SliceHeader sliceHeader;
 	H265SpsData sps;
 	H265PpsData pps;
-	oa::Vec<oa::U32> sliceOffsets;  // NAL header byte offsets in the bitstream
+	oa::Vector<oa::U32> sliceOffsets;  // NAL header byte offsets in the bitstream
 	bool isReference = false;
 	// Parameter sets found in this access unit (for upload before decode)
-	oa::Vec<H265VpsData> vpsInAu;
-	oa::Vec<H265SpsData> spsInAu;
-	oa::Vec<H265PpsData> ppsInAu;
+	oa::Vector<H265VpsData> vpsInAu;
+	oa::Vector<H265SpsData> spsInAu;
+	oa::Vector<H265PpsData> ppsInAu;
 };
 
 // H.265 codec parser implementation
@@ -58,9 +58,9 @@ public:
 	const H265PpsData* getPpsData(oa::U32 inPpsId) const;
 
 	// Enumerate cached IDs so the decoder can upload to vulkan session
-	oa::Vec<oa::U32> getCachedVpsIds() const;
-	oa::Vec<oa::U32> getCachedSpsIds() const;
-	oa::Vec<oa::U32> getCachedPpsIds() const;
+	oa::Vector<oa::U32> getCachedVpsIds() const;
+	oa::Vector<oa::U32> getCachedSpsIds() const;
+	oa::Vector<oa::U32> getCachedPpsIds() const;
 
 	// convert OA structures to vulkan Video structures
 	static StdVideoH265LevelIdc toStdH265Level(oa::U32 inLevelIdc);

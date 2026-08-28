@@ -31,7 +31,7 @@
 
 oa::Matrix oa::Moe::denseExpertDelta(const oa::Matrix& inNormed, const oa::Matrix& inGate) const {
 	const oa::I64 T = inNormed.size(0);
-	oa::Vec<oa::Matrix> expertOutputs;
+	oa::Vector<oa::Matrix> expertOutputs;
 	expertOutputs.reserve(numExperts_);
 	for (oa::I32 e = 0; e < numExperts_; ++e) {
 		auto gateW = oa::FnMatrix::reshape(
@@ -137,7 +137,7 @@ void oa::Moe::init(oa::I32 inDModel, oa::I32 inDFF, oa::I32 inNumExperts, oa::I3
 	}
 
 	// Aux-loss-free balancing bias starts at zero (⇒ forward identical to classic).
-	oa::Vec<oa::F32> zeroBias(numExperts_, 0.0F);
+	oa::Vector<oa::F32> zeroBias(numExperts_, 0.0F);
 	routingBias_ = oa::FnMatrix::fromBytes(
 		oa::Span<const oa::U8>(reinterpret_cast<const oa::U8*>(zeroBias.data()),
 			zeroBias.size() * sizeof(oa::F32)),
@@ -232,8 +232,8 @@ oa::Matrix oa::Moe::forward(const oa::Matrix& inX) {
 
 // ── Telemetry / balancing helpers (host-side; require a prior execute+Sync) ────
 
-oa::Vec<oa::F32> oa::Moe::lastLoadFraction() const {
-	oa::Vec<oa::F32> frac;
+oa::Vector<oa::F32> oa::Moe::lastLoadFraction() const {
+	oa::Vector<oa::F32> frac;
 	frac.reserve(numExperts_);
 	for (oa::I32 e = 0; e < numExperts_; ++e) frac.pushBack(0.0f);
 	if (lastSelectionMask_.numElements() == 0) return frac;
@@ -244,7 +244,7 @@ oa::Vec<oa::F32> oa::Moe::lastLoadFraction() const {
 		oa::ScalarType::Float32);
 	auto& ctx = oa::ExecutionSession::getActive();
 	(void)ctx.submitAndWait();
-	oa::Vec<oa::F32> loadHost(static_cast<oa::Usize>(E));
+	oa::Vector<oa::F32> loadHost(static_cast<oa::Usize>(E));
 	if (not oa::FnMatrix::copyToHost(load, loadHost.data(),
 		static_cast<oa::U64>(load.byteSize())).isOk()) return frac;
 	oa::F64 total = 0.0;
@@ -271,7 +271,7 @@ oa::MoeRouteStats oa::Moe::routeStats() const {
 			oa::ScalarType::Float32);
 		auto& ctx = oa::ExecutionSession::getActive();
 		(void)ctx.submitAndWait();
-		oa::Vec<oa::F32> meanHost(static_cast<oa::Usize>(E));
+		oa::Vector<oa::F32> meanHost(static_cast<oa::Usize>(E));
 		if (oa::FnMatrix::copyToHost(mean, meanHost.data(),
 			static_cast<oa::U64>(mean.byteSize())).isOk()) {
 			for (oa::I32 e = 0; e < E; ++e)

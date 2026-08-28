@@ -21,8 +21,8 @@ oa::RefPose buildPose(const RtgRefJoint* inTable) {
 	return pose;
 }
 
-oa::Vec<oa::HumanIkSlot> buildCharacterization() {
-	oa::Vec<oa::HumanIkSlot> slots;
+oa::Vector<oa::HumanIkSlot> buildCharacterization() {
+	oa::Vector<oa::HumanIkSlot> slots;
 	for (oa::I32 i = 0; i < kCoreCount; ++i) {
 		const RtgHikSlot& s = kHumanIkMap[i];
 		oa::HumanIkSlot o;
@@ -45,8 +45,8 @@ oa::vlm::Quat oa::RefPose::orientOf(oa::StringView inName) const noexcept {
 	return { 0.0f, 0.0f, 0.0f, 1.0f };
 }
 
-const oa::Vec<oa::HumanIkSlot>& oa::humanIkCharacterization() {
-	static const oa::Vec<oa::HumanIkSlot> kMap = buildCharacterization();
+const oa::Vector<oa::HumanIkSlot>& oa::humanIkCharacterization() {
+	static const oa::Vector<oa::HumanIkSlot> kMap = buildCharacterization();
 	return kMap;
 }
 

@@ -36,7 +36,7 @@ public:
 
 private:
 	Dataset& parent_;
-	oa::Vec<oa::I64> indices_;
+	oa::Vector<oa::I64> indices_;
 };
 
 } // namespace oa

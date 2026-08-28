@@ -25,7 +25,7 @@
 #include <oa/core/fnMatrix.h>
 #include <oa/core/fnmatrix/fnMatrixInternal.h>
 #include <oa/core/log.h>
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
 #include <oa/core/op.h>
 #include <oa/core/status.h>
 #include <oa/core/types.h>

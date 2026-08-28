@@ -6,7 +6,7 @@
 // `operator[]` has a debug assertion.
 
 #include <oa/core/assert.h>
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
 #include <oa/core/std/cString.h>
 
 namespace oa {
@@ -33,7 +33,9 @@ public:
 		: ptr_(ins),
 		  len_(boundedCStrLen(ins, N)) {}
 
-	constexpr StringView(const char* ins, size_type inlen) noexcept : ptr_(ins), len_(inlen) {}
+	constexpr StringView(const char* ins, size_type inlen) noexcept : ptr_(ins), len_(inlen) {
+		OA_REQUIRE(ins != nullptr || inlen == 0);
+	}
 
 	StringView(const char* innullTerminated) noexcept
 		: ptr_(innullTerminated),
@@ -101,12 +103,13 @@ public:
 		if (inpos >= len_) {
 			return Npos;
 		}
-		for (size_type i = inpos; i < len_; ++i) {
-			if (ptr_[i] == inch) {
-				return i;
-			}
-		}
-		return Npos;
+		const void* const found = __builtin_memchr(
+			ptr_ + inpos,
+			static_cast<unsigned char>(inch),
+			len_ - inpos);
+		return found == nullptr
+			? Npos
+			: static_cast<size_type>(static_cast<const char*>(found) - ptr_);
 	}
 
 	[[nodiscard]] size_type rfind(
@@ -145,7 +148,8 @@ public:
 	}
 
 	[[nodiscard]] size_type find(const char* ins, size_type inpos, size_type incount) const noexcept {
-		if (ins == nullptr || incount == 0) {
+		OA_REQUIRE(ins != nullptr || incount == 0);
+		if (incount == 0) {
 			return inpos <= len_ ? inpos : Npos;
 		}
 		return find(StringView(ins, incount), inpos);

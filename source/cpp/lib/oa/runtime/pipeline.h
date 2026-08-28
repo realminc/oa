@@ -20,7 +20,7 @@ class PipelineSpec {
 public:
 	oa::U32 numBindings = 2;
 	oa::U32 pushConstantBytes = 128;
-	oa::Vec<oa::SpecConstant> specConstants;
+	oa::Vector<oa::SpecConstant> specConstants;
 };
 
 // One self-contained SPIR-V pipeline creation request. slang source-module
@@ -127,7 +127,7 @@ public:
 		const oavk::Device& inDevice,
 		oa::Span<const oa::PipelineLoadRequest> inRequests,
 		oa::U32 inWorkerCount,
-		oa::Vec<oa::Status>* outStatuses = nullptr);
+		oa::Vector<oa::Status>* outStatuses = nullptr);
 	[[nodiscard]] oa::Status ensurePipelinesOnDemand(
 		oa::Span<const oa::PipelineVariantRequest> inRequests);
 

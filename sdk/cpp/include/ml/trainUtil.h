@@ -13,7 +13,7 @@
 
 static inline void sampleBatch(
 	oa::Span<const oa::U8> inData, oa::I32 inBatchSize, oa::I32 inSeqLen,
-	std::mt19937& inRng, oa::Vec<oa::U32>& outIndices, oa::Vec<oa::U32>& outTargets
+	std::mt19937& inRng, oa::Vector<oa::U32>& outIndices, oa::Vector<oa::U32>& outTargets
 ) {
 	const oa::I32 T = inBatchSize * inSeqLen;
 	outIndices.resize(T);

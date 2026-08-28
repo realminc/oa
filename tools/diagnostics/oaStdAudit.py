@@ -170,7 +170,6 @@ def classifyPath(relative: Path) -> list[str]:
 	if (
 		text.startswith("source/cpp/thirdparty/")
 		or text.startswith("source/cpp/lib/oa/runtime/vma/")
-		or text == "source/cpp/lib/oa/runtime/oaVma.h"
 	):
 		scopes.append("vendor")
 	if "/gen/" in text or ".gen." in text:

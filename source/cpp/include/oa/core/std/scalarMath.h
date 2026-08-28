@@ -9,6 +9,9 @@
 // oa::min/oa::sort in algo.h. Float and
 // double overloads so the right precision is picked without casts.
 
+#include <oa/core/assert.h>
+#include <oa/core/std/limits.h>
+
 namespace oa {
 
 // ── Roots / powers ──────────────────────────────────────────────────────────
@@ -75,8 +78,20 @@ namespace oa {
 
 [[nodiscard]] inline float     abs(float inX)     { return __builtin_fabsf(inX); }
 [[nodiscard]] inline double    abs(double inX)    { return __builtin_fabs(inX); }
-[[nodiscard]] inline int       abs(int inX)       { return inX < 0 ? -inX : inX; }
-[[nodiscard]] inline long long abs(long long inX) { return inX < 0 ? -inX : inX; }
+[[nodiscard]] inline int abs(int inX) {
+	OA_REQUIRE_MSG(inX != oa::Limits<int>::min(), "oa::abs result is not representable");
+	return inX < 0 ? -inX : inX;
+}
+[[nodiscard]] inline long abs(long inX) {
+	OA_REQUIRE_MSG(inX != oa::Limits<long>::min(),
+		"oa::abs result is not representable");
+	return inX < 0 ? -inX : inX;
+}
+[[nodiscard]] inline long long abs(long long inX) {
+	OA_REQUIRE_MSG(inX != oa::Limits<long long>::min(),
+		"oa::abs result is not representable");
+	return inX < 0 ? -inX : inX;
+}
 
 // ── Classification ──────────────────────────────────────────────────────────
 [[nodiscard]] inline bool isNan(float inX)     { return __builtin_isnan(inX); }

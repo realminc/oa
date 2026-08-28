@@ -26,7 +26,7 @@ oa::Status writeSafeTensor(
 	oa::Span<const oa::U8> inPayload
 ) {
 	const oa::U64 headerSize = static_cast<oa::U64>(inHeader.size());
-	oa::Vec<oa::U8> bytes(static_cast<oa::Usize>(8 + headerSize + inPayload.size()));
+	oa::Vector<oa::U8> bytes(static_cast<oa::Usize>(8 + headerSize + inPayload.size()));
 	oa::memcpy(bytes.data(), &headerSize, sizeof(headerSize));
 	oa::memcpy(bytes.data() + 8, inHeader.data(), static_cast<oa::Usize>(headerSize));
 	if (!inPayload.empty()) {

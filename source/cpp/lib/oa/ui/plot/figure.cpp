@@ -31,7 +31,7 @@ namespace oa::plot {
 // ─── Figure::Impl ──────────────────────────────────────────────────────────
 
 struct Figure::Impl {
-	oa::Vec<Axes> axes_;
+	oa::Vector<Axes> axes_;
 	oa::String    title_;
 	oa::String    xLabel_;
 	oa::String    yLabel_;
@@ -810,7 +810,7 @@ oa::Status Figure::prepareImageSources(oa::Engine& inEngine) const {
 
 oa::Status Figure::renderRgba(
 	oa::Engine& inEngine,
-	oa::Vec<oa::U8>& outRgba) {
+	oa::Vector<oa::U8>& outRgba) {
 	if (config_.width == 0U or config_.height == 0U
 		or config_.width > static_cast<oa::U32>(oa::Limits<oa::I32>::max())
 		or config_.height > static_cast<oa::U32>(oa::Limits<oa::I32>::max())) {
@@ -849,7 +849,7 @@ oa::Status Figure::saveTo(oa::Engine& inEngine, const char* inPath) {
 		return oa::Status::invalidArgument(
 			"oa::plot::Figure::saveTo requires a non-empty path");
 	}
-	oa::Vec<oa::U8> rgba;
+	oa::Vector<oa::U8> rgba;
 	OA_RETURN_IF_ERROR(renderRgba(inEngine, rgba));
 	OA_RETURN_IF_ERROR(oa::FnImage::saveRgbaFile(
 		oa::Span<const oa::U8>(rgba.data(), rgba.size()),
@@ -874,7 +874,7 @@ oa::Status Figure::saveTo(const char* inPath) {
 oa::Result<oa::Image> Figure::render(oa::Engine& inEngine) {
 	auto& context = oa::ExecutionSession::forEngine(inEngine);
 	oa::ExecutionSession::RecordingScope recording(context);
-	oa::Vec<oa::U8> rgba;
+	oa::Vector<oa::U8> rgba;
 	OA_RETURN_IF_ERROR(renderRgba(inEngine, rgba));
 	const oa::U64 pixelCount = static_cast<oa::U64>(config_.width)
 		* static_cast<oa::U64>(config_.height);
@@ -885,7 +885,7 @@ oa::Result<oa::Image> Figure::render(oa::Engine& inEngine) {
 			oa::StatusCode::DataLoss,
 			"oa::plot::Figure GPU readback has an inconsistent extent");
 	}
-	oa::Vec<oa::F32> planar(static_cast<oa::Usize>(pixelCount * 4U));
+	oa::Vector<oa::F32> planar(static_cast<oa::Usize>(pixelCount * 4U));
 	constexpr oa::F32 normalizeU8 = 1.0F / 255.0F;
 	for (oa::Usize channel = 0U; channel < 4U; ++channel) {
 		for (oa::Usize pixel = 0U;

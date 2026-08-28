@@ -13,7 +13,7 @@
 #include <oa/ui/cv.h>
 #include <oa/ui/image.h>
 #include <oa/core/color.h>
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
 #include <oa/core/status.h>
 #include <oa/core/std/algo.h>
 #include <oa/core/std/cString.h>
@@ -24,7 +24,7 @@
 
 // ─── oa::CvFrame method bodies ──────────────────────────────────────────────────
 
-void oa::CvFrame::addBboxes(oa::Vec<oa::CvBbox> inBoxes, const oa::CvBboxesConfig& inCfg) {
+void oa::CvFrame::addBboxes(oa::Vector<oa::CvBbox> inBoxes, const oa::CvBboxesConfig& inCfg) {
 	oa::CvOverlayBboxes ov;
 	ov.config = inCfg;
 	ov.boxes  = oa::move(inBoxes);
@@ -53,7 +53,7 @@ static void blendPixel(oa::U8* dst, oa::U8 R, oa::U8 G, oa::U8 B, oa::U8 A) {
 	dst[3] = 255;
 }
 
-static void drawHLine(oa::Vec<oa::U8>& buf, oa::I32 W, oa::I32 H,
+static void drawHLine(oa::Vector<oa::U8>& buf, oa::I32 W, oa::I32 H,
 	oa::I64 X0, oa::I64 X1, oa::I64 Y,
 	oa::U8 R, oa::U8 G, oa::U8 B, oa::U8 A)
 {
@@ -68,7 +68,7 @@ static void drawHLine(oa::Vec<oa::U8>& buf, oa::I32 W, oa::I32 H,
 	}
 }
 
-static void drawVLine(oa::Vec<oa::U8>& buf, oa::I32 W, oa::I32 H,
+static void drawVLine(oa::Vector<oa::U8>& buf, oa::I32 W, oa::I32 H,
 	oa::I64 X, oa::I64 Y0, oa::I64 Y1,
 	oa::U8 R, oa::U8 G, oa::U8 B, oa::U8 A)
 {
@@ -84,7 +84,7 @@ static void drawVLine(oa::Vec<oa::U8>& buf, oa::I32 W, oa::I32 H,
 }
 
 // draw axis-aligned rect outline with integer thickness
-static void drawRect(oa::Vec<oa::U8>& buf, oa::I32 W, oa::I32 H,
+static void drawRect(oa::Vector<oa::U8>& buf, oa::I32 W, oa::I32 H,
 	oa::I64 X, oa::I64 Y, oa::I64 RW, oa::I64 RH, oa::I32 T,
 	oa::U8 R, oa::U8 G, oa::U8 B, oa::U8 A)
 {
@@ -96,7 +96,7 @@ static void drawRect(oa::Vec<oa::U8>& buf, oa::I32 W, oa::I32 H,
 	}
 }
 
-static void fillRect(oa::Vec<oa::U8>& buf, oa::I32 W, oa::I32 H,
+static void fillRect(oa::Vector<oa::U8>& buf, oa::I32 W, oa::I32 H,
 	oa::I64 X, oa::I64 Y, oa::I64 RW, oa::I64 RH,
 	oa::U8 R, oa::U8 G, oa::U8 B, oa::U8 A)
 {
@@ -177,7 +177,7 @@ static oa::I32 charIndex(char C) {
 	return 12;
 }
 
-static void drawChar(oa::Vec<oa::U8>& buf, oa::I32 W, oa::I32 H,
+static void drawChar(oa::Vector<oa::U8>& buf, oa::I32 W, oa::I32 H,
 	oa::I64 X, oa::I64 Y, char C, oa::I32 scale, oa::U8 R, oa::U8 G, oa::U8 B)
 {
 	const oa::I32 idx = charIndex(C);
@@ -203,7 +203,7 @@ static void drawChar(oa::Vec<oa::U8>& buf, oa::I32 W, oa::I32 H,
 	}
 }
 
-static void drawString(oa::Vec<oa::U8>& buf, oa::I32 W, oa::I32 H,
+static void drawString(oa::Vector<oa::U8>& buf, oa::I32 W, oa::I32 H,
 	oa::I64 X, oa::I64 Y, const char* str, oa::I32 scale, oa::U8 R, oa::U8 G, oa::U8 B)
 {
 	oa::I64 cx = X;
@@ -230,7 +230,7 @@ static oa::Result<oa::Texture> renderFrame(
 		return oa::Status::invalidArgument("oa::CvFrame: invalid W/H");
 	}
 
-	oa::Vec<oa::U8> pixels;
+	oa::Vector<oa::U8> pixels;
 	const oa::U64 nBytes = static_cast<oa::U64>(W) * static_cast<oa::U64>(H) * 4U;
 	if (nBytes > static_cast<oa::U64>(oa::Limits<oa::I64>::max())) {
 		return oa::Status::error(oa::StatusCode::ResourceExhausted,

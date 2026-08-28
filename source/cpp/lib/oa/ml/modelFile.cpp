@@ -49,7 +49,7 @@ void modelFileHashUpdate(oa::U64& inOutHash, const oa::U8* inData, oa::Usize inS
 	}
 }
 
-oa::U64 modelFileManifestHash(const ModelFileHeader& inHeader, const oa::Vec<ModelFileSectionHeader>& inSections) {
+oa::U64 modelFileManifestHash(const ModelFileHeader& inHeader, const oa::Vector<ModelFileSectionHeader>& inSections) {
 	ModelFileHeader normalized = inHeader;
 	normalized.checksum = 0;
 	oa::U64 hash = 0xcbf29ce484222325ULL;
@@ -134,7 +134,7 @@ bool modelFileWriteExact(FILE* inFile, const void* inData, oa::U64 inBytes) {
 }
 
 oa::Result<oa::U64> modelFileHashRange(FILE* inFile, oa::U64 inOffset, oa::U64 inBytes) {
-	oa::Vec<oa::U8> chunk(oa::min<oa::U64>(inBytes, kHashChunkBytes));
+	oa::Vector<oa::U8> chunk(oa::min<oa::U64>(inBytes, kHashChunkBytes));
 	oa::U64 hash = 0xcbf29ce484222325ULL;
 	oa::U64 consumed = 0;
 	while (consumed < inBytes) {
@@ -295,7 +295,7 @@ oa::I32 modelFileRoundNearestEven(oa::F32 inValue) {
 	return oa::abs(lower) % 2 == 0 ? lower : lower + 1;
 }
 
-oa::Result<oa::Vec<oa::U8>> modelFileQuantizeFloat32(const oa::U8* inData, oa::U64 inElements,
+oa::Result<oa::Vector<oa::U8>> modelFileQuantizeFloat32(const oa::U8* inData, oa::U64 inElements,
 													 oa::Quantization inQuantization) {
 	if (inQuantization != oa::Quantization::Q4 and inQuantization != oa::Quantization::Q8) {
 		return oa::Status::error(oa::StatusCode::InvalidArgument, "unsupported quantization value");
@@ -312,7 +312,7 @@ oa::Result<oa::Vec<oa::U8>> modelFileQuantizeFloat32(const oa::U8* inData, oa::U
 		return oa::Status::error(oa::StatusCode::ResourceExhausted,
 								 "quantized weight size overflow");
 	}
-	oa::Vec<oa::U8> encoded(static_cast<oa::Usize>(totalBytes), 0);
+	oa::Vector<oa::U8> encoded(static_cast<oa::Usize>(totalBytes), 0);
 	for (oa::U64 block = 0; block < blocks; ++block) {
 		oa::F32 maximum = 0.0F;
 		for (oa::U64 lane = 0; lane < 32; ++lane) {
@@ -429,7 +429,7 @@ void* ModelFile::statePtr(const char* inName) {
 	return const_cast<void*>(static_cast<const ModelFile&>(*this).statePtr(inName));
 }
 
-static void addTensor(oa::Vec<ModelTensorEntry>& outIndex, oa::Vec<oa::U8>& outBlob,
+static void addTensor(oa::Vector<ModelTensorEntry>& outIndex, oa::Vector<oa::U8>& outBlob,
 					  const char* inName, oa::ScalarType inDtype, oa::Span<const oa::U64> inShape,
 					  const void* inData, oa::U64 inBytes,
 					  ModelTensorEncoding inEncoding = ModelTensorEncoding::Dense,
@@ -597,13 +597,13 @@ oa::Result<oa::QuantMatrix> ModelFile::loadQuantMatrix(oa::Engine& inEngine,
 
 // Tensor index serialization
 
-static oa::Vec<oa::U8> serializeTensorIndex(const oa::Vec<ModelTensorEntry>& inIndex,
-											const oa::Vec<oa::U8>& inBlob) {
+static oa::Vector<oa::U8> serializeTensorIndex(const oa::Vector<ModelTensorEntry>& inIndex,
+											const oa::Vector<oa::U8>& inBlob) {
 	oa::U32 count = static_cast<oa::U32>(inIndex.size());
 	oa::U32 reserved = 0;
 	oa::Usize indexBytes = sizeof(oa::U32) * 2 + sizeof(ModelTensorEntry) * count;
 
-	oa::Vec<oa::U8> raw(indexBytes + inBlob.size());
+	oa::Vector<oa::U8> raw(indexBytes + inBlob.size());
 	oa::U8* p = raw.data();
 	oa::memcpy(p, &count, sizeof(oa::U32));
 	p += sizeof(oa::U32);
@@ -622,10 +622,10 @@ static oa::Vec<oa::U8> serializeTensorIndex(const oa::Vec<ModelTensorEntry>& inI
 oa::Status ModelFile::save(const oa::String& inPath) const {
 	const oa::Path parent = oa::Path(inPath).parentPath();
 	if (not parent.empty()) OA_RETURN_IF_ERROR(oa::Filesystem::createDirectories(parent));
-	auto validateTensors = [&](const oa::Vec<ModelTensorEntry>& inIndex,
-							   const oa::Vec<oa::U8>& inBlob, bool inIsWeight) -> oa::Status {
+	auto validateTensors = [&](const oa::Vector<ModelTensorEntry>& inIndex,
+							   const oa::Vector<oa::U8>& inBlob, bool inIsWeight) -> oa::Status {
 		oa::HashSet<oa::String> names;
-		oa::Vec<oa::Pair<oa::U64, oa::U64>> tensorRanges;
+		oa::Vector<oa::Pair<oa::U64, oa::U64>> tensorRanges;
 		for (const auto& entry : inIndex) {
 			if (not modelFileHasTerminator(entry.name, sizeof(entry.name)) or
 				entry.name[0] == '\0' or entry.rank > kModelFileMaxRank or
@@ -666,13 +666,13 @@ oa::Status ModelFile::save(const oa::String& inPath) const {
 
 	struct Payload {
 		ModelFileSection type;
-		oa::Vec<oa::U8> data;
+		oa::Vector<oa::U8> data;
 	};
-	oa::Vec<Payload> payloads;
+	oa::Vector<Payload> payloads;
 
 	// Config + optional archConfig
 	{
-		oa::Vec<oa::U8> raw(sizeof(ModelFileConfig) + archConfig.size());
+		oa::Vector<oa::U8> raw(sizeof(ModelFileConfig) + archConfig.size());
 		oa::memcpy(raw.data(), &config, sizeof(ModelFileConfig));
 		if (!archConfig.empty())
 			oa::memcpy(raw.data() + sizeof(ModelFileConfig), archConfig.data(), archConfig.size());
@@ -697,7 +697,7 @@ oa::Status ModelFile::save(const oa::String& inPath) const {
 		hdr.numParams = adamM.size();
 		const oa::Usize adamMBytes = adamM.size() * sizeof(oa::F32);
 		const oa::Usize adamVBytes = adamV.size() * sizeof(oa::F32);
-		oa::Vec<oa::U8> raw(sizeof(ModelOptimizerState) + adamMBytes + adamVBytes);
+		oa::Vector<oa::U8> raw(sizeof(ModelOptimizerState) + adamMBytes + adamVBytes);
 		oa::U8* p = raw.data();
 		oa::memcpy(p, &hdr, sizeof(ModelOptimizerState));
 		p += sizeof(ModelOptimizerState);
@@ -713,7 +713,7 @@ oa::Status ModelFile::save(const oa::String& inPath) const {
 	}
 
 	{
-		oa::Vec<oa::U8> raw(sizeof(ModelTrainingProgress));
+		oa::Vector<oa::U8> raw(sizeof(ModelTrainingProgress));
 		oa::memcpy(raw.data(), &progress, sizeof(ModelTrainingProgress));
 		payloads.pushBack({ModelFileSection::Progress, oa::move(raw)});
 	}
@@ -722,7 +722,7 @@ oa::Status ModelFile::save(const oa::String& inPath) const {
 	oa::Usize headerBytes = kModelFileHeaderSize + numSections * kModelFileSectionHeaderSize;
 	oa::Usize dataStart = modelFilePageAlign(headerBytes);
 
-	oa::Vec<ModelFileSectionHeader> sectionHeaders(numSections);
+	oa::Vector<ModelFileSectionHeader> sectionHeaders(numSections);
 	oa::U64 offset = dataStart;
 
 	for (oa::U32 i = 0; i < numSections; ++i) {
@@ -757,7 +757,7 @@ oa::Status ModelFile::save(const oa::String& inPath) const {
 
 	{
 		oa::Usize written = kModelFileHeaderSize + numSections * kModelFileSectionHeaderSize;
-		oa::Vec<oa::U8> zeros(dataStart - written, 0);
+		oa::Vector<oa::U8> zeros(dataStart - written, 0);
 		complete = complete and modelFileWriteExact(file.value, zeros.data(), zeros.size());
 	}
 
@@ -769,7 +769,7 @@ oa::Status ModelFile::save(const oa::String& inPath) const {
 		if (needsAlign) {
 			oa::Usize pad = modelFilePageAlign(sp.data.size()) - sp.data.size();
 			if (pad > 0) {
-				oa::Vec<oa::U8> zeros(pad, 0);
+				oa::Vector<oa::U8> zeros(pad, 0);
 				complete = complete and modelFileWriteExact(file.value, zeros.data(), pad);
 			}
 		}
@@ -835,7 +835,7 @@ oa::Result<ModelFile> ModelFile::load(const oa::String& inPath) {
 	if (fh.totalSize != fileSize)
 		return modelFileCorrupt("file size does not match header");
 
-	oa::Vec<ModelFileSectionHeader> sections(fh.numSections);
+	oa::Vector<ModelFileSectionHeader> sections(fh.numSections);
 	if (not modelFileReadExact(file.value, sizeof(ModelFileHeader), sections.data(), sectionTableBytes)) {
 		return modelFileCorrupt("failed to read section table");
 	}
@@ -845,7 +845,7 @@ oa::Result<ModelFile> ModelFile::load(const oa::String& inPath) {
 
 	const oa::U64 dataStart = modelFilePageAlign(static_cast<oa::Usize>(headerBytes));
 	oa::Array<bool, static_cast<oa::Usize>(ModelFileSection::LegacyKernelCache) + 1> seen{};
-	oa::Vec<oa::Pair<oa::U64, oa::U64>> ranges;
+	oa::Vector<oa::Pair<oa::U64, oa::U64>> ranges;
 	oa::U64 legacyFileChecksum = 0;
 	for (const auto& sh : sections) {
 		if (sh.type < static_cast<oa::U32>(ModelFileSection::Config) or
@@ -929,8 +929,8 @@ oa::Result<ModelFile> ModelFile::load(const oa::String& inPath) {
 		}
 	}
 
-	auto parseTensorSection = [&](ModelFileSection inType, oa::Vec<ModelTensorEntry>& outIndex,
-								  oa::Vec<oa::U8>& outBlob) -> oa::Status {
+	auto parseTensorSection = [&](ModelFileSection inType, oa::Vector<ModelTensorEntry>& outIndex,
+								  oa::Vector<oa::U8>& outBlob) -> oa::Status {
 		const auto* sh = findSection(inType);
 		if (sh == nullptr)
 			return oa::Status::ok();
@@ -956,7 +956,7 @@ oa::Result<ModelFile> ModelFile::load(const oa::String& inPath) {
 		}
 		const oa::U64 blobSize = sh->size - indexBytes;
 		oa::HashSet<oa::String> names;
-		oa::Vec<oa::Pair<oa::U64, oa::U64>> tensorRanges;
+		oa::Vector<oa::Pair<oa::U64, oa::U64>> tensorRanges;
 		for (const auto& entry : outIndex) {
 			if (not modelFileHasTerminator(entry.name, sizeof(entry.name)) or
 				entry.name[0] == '\0' or entry.rank > kModelFileMaxRank or
@@ -1084,7 +1084,7 @@ void dumpModelFile(const oa::String& inPath) {
 	OaLogInfo(oa::LogComponent::Ml, "  Sections: %u  size: %.1f MB", fh.numSections,
 			  fh.totalSize / 1e6);
 
-	oa::Vec<ModelFileSectionHeader> sections(fh.numSections);
+	oa::Vector<ModelFileSectionHeader> sections(fh.numSections);
 	if (not modelFileReadExact(file.value, sizeof(ModelFileHeader), sections.data(),
 							   sections.size() * sizeof(ModelFileSectionHeader))) {
 		OaLogError(oa::LogComponent::Ml, "[oam] Cannot read section table");

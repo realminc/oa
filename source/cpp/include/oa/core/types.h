@@ -5,8 +5,9 @@
 // This is the FOUNDATION file - all other headers include this.
 // contains: scalars, strings, containers, smart pointers, numeric constants.
 //
-// No #pragma once: memory.h includes this with OA_TYPES_H_SKIP_REST so only the scalar
-// block is parsed first (breaks types → std.h → vec.h → memory.h → full types cycle).
+// No #pragma once: std/memory.h includes this with OA_TYPES_H_SKIP_REST so only
+// the scalar block is parsed first (breaks types → std.h → vec.h → memory.h →
+// full types cycle).
 //
 
 // Fixed-width limit macros remain a C ABI boundary used by Vulkan-facing code.

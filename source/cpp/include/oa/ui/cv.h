@@ -51,7 +51,7 @@ struct CvBboxesConfig {
 
 // ─── CvOverlay ──────────────────────────────────────────────────────────────
 
-struct CvOverlayBboxes { CvBboxesConfig config; oa::Vec<CvBbox> boxes; };
+struct CvOverlayBboxes { CvBboxesConfig config; oa::Vector<CvBbox> boxes; };
 using CvOverlay = CvOverlayBboxes;
 
 
@@ -61,9 +61,9 @@ struct CvFrame {
 	const oavk::Buffer*   base    = nullptr;  // borrowed RGBA8 device buffer
 	oa::I32               w       = 0;
 	oa::I32               h       = 0;
-	oa::Vec<CvOverlay>  overlays;
+	oa::Vector<CvOverlay>  overlays;
 
-	void addBboxes(oa::Vec<CvBbox>         inBoxes, const CvBboxesConfig& inCfg = {});
+	void addBboxes(oa::Vector<CvBbox>         inBoxes, const CvBboxesConfig& inCfg = {});
 
 	void clearOverlays() noexcept { overlays.clear(); }
 

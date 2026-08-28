@@ -18,7 +18,7 @@ struct DeferredAccum {
 	oa::Matrix  grad;
 	oa::Matrix  contribution;
 };
-thread_local oa::Vec<DeferredAccum> g_DeferredAccum;
+thread_local oa::Vector<DeferredAccum> g_DeferredAccum;
 
 } // anonymous
 
@@ -29,7 +29,7 @@ oa::AutogradMeta::~AutogradMeta() = default;
 
 // ─── oa::GradNode saved values ───────────────────────────────────────────────
 
-void oa::GradNode::saveForBackward(oa::Vec<oa::Matrix> inMatrices) {
+void oa::GradNode::saveForBackward(oa::Vector<oa::Matrix> inMatrices) {
 	savedMatrices_.clear();
 	savedMatrices_.reserve(inMatrices.size());
 	for (auto& matrix : inMatrices) {

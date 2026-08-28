@@ -2,7 +2,7 @@
 
 #include <data/dsMnist.h>
 #include <oa/core/log.h>
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
 #include <fstream>
 #include <algorithm>
 

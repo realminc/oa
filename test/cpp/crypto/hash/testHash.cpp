@@ -66,13 +66,13 @@ TEST(Hasher, RejectsNullNonEmptyInput) {
 }
 
 TEST(Merkle, EmptyAndSingleLeafContracts) {
-	oa::Vec<oa::Hash> empty;
+	oa::Vector<oa::Hash> empty;
 	EXPECT_TRUE(oa::merkleRoot(empty).isZero());
 	auto emptyTree = oa::buildMerkleTree(empty);
 	EXPECT_TRUE(emptyTree.root.isZero());
 	EXPECT_TRUE(oa::getMerkleProof(emptyTree, 0).isError());
 
-	oa::Vec<oa::Hash> one{hashByte(7)};
+	oa::Vector<oa::Hash> one{hashByte(7)};
 	auto tree = oa::buildMerkleTree(one);
 	EXPECT_EQ(tree.root, one[0]);
 	auto proof = oa::getMerkleProof(tree, 0);
@@ -82,7 +82,7 @@ TEST(Merkle, EmptyAndSingleLeafContracts) {
 }
 
 TEST(Merkle, EveryLeafProofVerifiesForOddTree) {
-	oa::Vec<oa::Hash> leaves;
+	oa::Vector<oa::Hash> leaves;
 	for (oa::Byte i = 0; i < 7; ++i) leaves.pushBack(hashByte(i));
 	const auto tree = oa::buildMerkleTree(leaves);
 	EXPECT_EQ(tree.root, oa::merkleRoot(leaves));
@@ -96,7 +96,7 @@ TEST(Merkle, EveryLeafProofVerifiesForOddTree) {
 }
 
 TEST(Merkle, MalformedDirectionVectorFailsClosed) {
-	oa::Vec<oa::Hash> leaves{hashByte(1), hashByte(2)};
+	oa::Vector<oa::Hash> leaves{hashByte(1), hashByte(2)};
 	const auto tree = oa::buildMerkleTree(leaves);
 	auto proof = oa::getMerkleProof(tree, 0);
 	ASSERT_TRUE(proof.isOk());

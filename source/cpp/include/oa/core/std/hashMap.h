@@ -10,7 +10,7 @@
 #include <oa/core/std/optional.h>
 #include <oa/core/std/pair.h>
 #include <oa/core/std/utility.h>
-#include <oa/core/std/vec.h>
+#include <oa/core/std/vector.h>
 
 namespace oa {
 
@@ -40,6 +40,47 @@ private:
 	};
 
 public:
+	HashMap() = default;
+	HashMap(const HashMap&) = default;
+	HashMap& operator=(const HashMap&) = default;
+
+	HashMap(HashMap&& inOther) noexcept(
+		oa::IsNothrowMoveConstructibleV<Hash>
+		&& oa::IsNothrowMoveConstructibleV<KeyEq>)
+		requires(oa::IsNothrowMoveConstructibleV<Hash>
+			&& oa::IsNothrowMoveConstructibleV<KeyEq>)
+		: hasher_(oa::move(inOther.hasher_)), equal_(oa::move(inOther.equal_)) {
+		// Move the potentially-throwing policy objects before stealing storage.
+		// If policy construction fails, the source still owns every entry.
+		slots_.swap(inOther.slots_);
+		size_ = inOther.size_;
+		erased_ = inOther.erased_;
+		inOther.size_ = 0;
+		inOther.erased_ = 0;
+	}
+
+	HashMap(HashMap&&)
+		requires(!(oa::IsNothrowMoveConstructibleV<Hash>
+			&& oa::IsNothrowMoveConstructibleV<KeyEq>)) = delete;
+
+	HashMap& operator=(HashMap&& inOther) noexcept
+		requires(oa::IsNothrowMoveConstructibleV<Hash>
+			&& oa::IsNothrowMoveConstructibleV<KeyEq>
+			&& oa::IsNothrowSwappableV<Hash>
+			&& oa::IsNothrowSwappableV<KeyEq>) {
+		if (this != &inOther) {
+			HashMap replacement(oa::move(inOther));
+			swap(replacement);
+		}
+		return *this;
+	}
+
+	HashMap& operator=(HashMap&&)
+		requires(!(oa::IsNothrowMoveConstructibleV<Hash>
+			&& oa::IsNothrowMoveConstructibleV<KeyEq>
+			&& oa::IsNothrowSwappableV<Hash>
+			&& oa::IsNothrowSwappableV<KeyEq>)) = delete;
+
 	class const_iterator;
 
 	class iterator {
@@ -78,12 +119,12 @@ public:
 		bool operator!=(const iterator& inOther) const noexcept { return not (*this == inOther); }
 
 	private:
-		oa::Vec<Slot>* slots_{nullptr};
+		oa::Vector<Slot>* slots_{nullptr};
 		SizeType index_{0};
 		pointer value_{nullptr};
 
 		iterator(
-			oa::Vec<Slot>* inSlots,
+			oa::Vector<Slot>* inSlots,
 			SizeType inIndex,
 			pointer inValue,
 			bool inScan
@@ -143,12 +184,12 @@ public:
 		}
 
 	private:
-		const oa::Vec<Slot>* slots_{nullptr};
+		const oa::Vector<Slot>* slots_{nullptr};
 		SizeType index_{0};
 		pointer value_{nullptr};
 
 		const_iterator(
-			const oa::Vec<Slot>* inSlots,
+			const oa::Vector<Slot>* inSlots,
 			SizeType inIndex,
 			pointer inValue,
 			bool inScan
@@ -233,11 +274,21 @@ public:
 	SizeType erase(const K& inKey) {
 		const SizeType index = findIndex_(inKey);
 		if (index == slots_.size()) return 0;
-		slots_[index].value.reset();
 		slots_[index].erased = true;
 		--size_;
 		++erased_;
+		slots_[index].value.reset();
 		return 1;
+	}
+
+	void swap(HashMap& inOther) noexcept
+		requires(oa::IsNothrowSwappableV<Hash> && oa::IsNothrowSwappableV<KeyEq>) {
+		if (this == &inOther) return;
+		oa::swapValues(hasher_, inOther.hasher_);
+		oa::swapValues(equal_, inOther.equal_);
+		slots_.swap(inOther.slots_);
+		oa::swapValues(size_, inOther.size_);
+		oa::swapValues(erased_, inOther.erased_);
 	}
 
 	[[nodiscard]] iterator begin() noexcept { return iterator(&slots_, 0, nullptr, true); }
@@ -259,7 +310,7 @@ private:
 	static constexpr SizeType LoadNumerator = 3;
 	static constexpr SizeType LoadDenominator = 4;
 
-	oa::Vec<Slot> slots_{};
+	oa::Vector<Slot> slots_{};
 	Hash hasher_{};
 	KeyEq equal_{};
 	SizeType size_{0};
@@ -287,7 +338,7 @@ private:
 		return capacity;
 	}
 
-	[[nodiscard]] SizeType findIndex_(const K& inKey) const noexcept {
+	[[nodiscard]] SizeType findIndex_(const K& inKey) const {
 		if (slots_.empty()) return 0;
 		const SizeType mask = slots_.size() - 1;
 		SizeType index = static_cast<SizeType>(hasher_(inKey)) & mask;
@@ -304,34 +355,64 @@ private:
 	}
 
 	void rehash_(SizeType inCapacity) {
-		oa::Vec<Slot> old = oa::move(slots_);
-		slots_.resize(inCapacity);
-		size_ = 0;
-		erased_ = 0;
-		for (SizeType index = 0; index < old.size(); ++index) {
-			if (old[index].value.hasValue()) {
-				insertNoGrow_(oa::move(old[index].value.value()));
+		oa::Vector<Slot> replacement;
+		replacement.resize(inCapacity);
+		SizeType replacementSize = 0;
+
+		if constexpr (oa::IsCopyConstructibleV<SlotType>) {
+			// Copying keeps the original table byte-for-byte intact until every
+			// hash and value construction in the replacement has succeeded.
+			for (SizeType index = 0; index < slots_.size(); ++index) {
+				if (slots_[index].value.hasValue()) {
+					const SlotType& value = slots_[index].value.value();
+					insertNoGrowHashed_(replacement, replacementSize,
+						static_cast<SizeType>(hasher_(value.first)), value);
+				}
+			}
+		} else {
+			static_assert(oa::IsNothrowMoveConstructibleV<SlotType>,
+				"HashMap rehash requires a copyable value or nothrow movable storage");
+			// A throwing stateful hasher must run before the first source value is
+			// moved. Once hashes are known, the admitted move-only path is no-throw.
+			oa::Vector<SizeType> hashes(slots_.size());
+			for (SizeType index = 0; index < slots_.size(); ++index) {
+				if (slots_[index].value.hasValue()) {
+					hashes[index] = static_cast<SizeType>(
+						hasher_(slots_[index].value->first));
+				}
+			}
+			for (SizeType index = 0; index < slots_.size(); ++index) {
+				if (slots_[index].value.hasValue()) {
+					insertNoGrowHashed_(replacement, replacementSize, hashes[index],
+						oa::move(slots_[index].value.value()));
+				}
 			}
 		}
+
+		slots_.swap(replacement);
+		size_ = replacementSize;
+		erased_ = 0;
 	}
 
-	void insertNoGrow_(SlotType&& inValue) {
-		const SizeType mask = slots_.size() - 1;
-		SizeType index = static_cast<SizeType>(hasher_(inValue.first)) & mask;
-		while (slots_[index].value.hasValue()) index = (index + 1) & mask;
-		if (slots_[index].erased) {
-			slots_[index].erased = false;
-			--erased_;
-		}
-		slots_[index].value.emplace(oa::move(inValue));
-		++size_;
+	template<typename Value>
+	void insertNoGrowHashed_(
+		oa::Vector<Slot>& inSlots,
+		SizeType& inSize,
+		SizeType inHash,
+		Value&& inValue
+	) {
+		const SizeType mask = inSlots.size() - 1;
+		SizeType index = inHash & mask;
+		while (inSlots[index].value.hasValue()) index = (index + 1) & mask;
+		inSlots[index].value.emplace(oa::forward<Value>(inValue));
+		++inSize;
 	}
 
 	oa::Pair<iterator, bool> insertStorage_(SlotType&& inValue) {
 		if (slots_.empty()) {
 			rehash_(MinCapacity);
-		} else if ((size_ + erased_ + 1) * LoadDenominator
-			> slots_.size() * LoadNumerator) {
+		} else if (size_ + erased_ + 1
+			> slots_.size() - slots_.size() / LoadDenominator) {
 			const SizeType liveCapacity = capacityForCount_(size_ + 1);
 			const SizeType nextCapacity = liveCapacity > slots_.size()
 				? liveCapacity
@@ -358,11 +439,12 @@ private:
 		}
 
 		Slot& destination = slots_[insertion];
-		if (destination.erased) {
+		const bool reusedErased = destination.erased;
+		destination.value.emplace(oa::move(inValue));
+		if (reusedErased) {
 			destination.erased = false;
 			--erased_;
 		}
-		destination.value.emplace(oa::move(inValue));
 		++size_;
 		return {
 			iterator(&slots_, insertion, destination.value.get(), false),
@@ -387,6 +469,12 @@ public:
 	using size_type = SizeType;
 	using hasher = HasherType;
 	using key_equal = KeyEqualType;
+
+	HashSet() = default;
+	HashSet(const HashSet&) = default;
+	HashSet& operator=(const HashSet&) = default;
+	HashSet(HashSet&&) = default;
+	HashSet& operator=(HashSet&&) = default;
 
 	class const_iterator;
 

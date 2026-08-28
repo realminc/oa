@@ -2,7 +2,7 @@
 #include "descriptorValidation.h"
 #include <oa/runtime/device.h>
 #include <oa/runtime/allocator.h>
-#include <oa/runtime/oaVk.h>
+#include <vkl/vkl.h>
 #include <oa/core/filesystem.h>
 #include <oa/core/log.h>
 #include <oa/core/std/chrono.h>
@@ -48,7 +48,7 @@ inline void maybeForceSubgroupSize(
 oa::Result<oa::PipelineCache> oa::PipelineCache::create(const oavk::Device& inDevice, const oa::String& inCacheDir) {
 	VkDevice dev = static_cast<VkDevice>(inDevice.device);
 
-	oa::Vec<oa::U8> cacheData;
+	oa::Vector<oa::U8> cacheData;
 	if (!inCacheDir.empty()) {
 		oa::Path cachePath = oa::Path(inCacheDir) / pipelineCacheFile;
 		auto loaded = oa::Filesystem::readBinary(cachePath);
@@ -92,7 +92,7 @@ void oa::PipelineCache::save(const oavk::Device& inDevice, const oa::String& inC
 		return;
 	}
 
-	oa::Vec<oa::U8> data(dataSize);
+	oa::Vector<oa::U8> data(dataSize);
 	(void)inDevice.deviceDispatch.vkGetPipelineCacheData(dev, vkCache, &dataSize, data.data());
 
 	oa::Path cacheDir(inCacheDir);
@@ -142,7 +142,7 @@ oa::Result<oa::ComputePipeline> oa::ComputePipeline::create(
 	} else {
 		ownsLayout = true;
 
-		oa::Vec<VkDescriptorSetLayoutBinding> bindings(inSpec.numBindings);
+		oa::Vector<VkDescriptorSetLayoutBinding> bindings(inSpec.numBindings);
 		for (oa::U32 i = 0; i < inSpec.numBindings; i++) {
 			bindings[i] = {};
 			bindings[i].binding = i;
@@ -183,8 +183,8 @@ oa::Result<oa::ComputePipeline> oa::ComputePipeline::create(
 		}
 	}
 
-	oa::Vec<VkSpecializationMapEntry> specEntries;
-	oa::Vec<oa::U32> specData;
+	oa::Vector<VkSpecializationMapEntry> specEntries;
+	oa::Vector<oa::U32> specData;
 	VkSpecializationInfo specInfo{};
 
 	if (!inSpec.specConstants.empty()) {
@@ -366,7 +366,7 @@ oa::Result<oa::PipelineLibrary> oa::PipelineLibrary::create(
 	if (inBindlessPipelineLayout) {
 		pipelineLayout = static_cast<VkPipelineLayout>(inBindlessPipelineLayout);
 	} else {
-		oa::Vec<VkDescriptorSetLayoutBinding> bindings(inSpec.numBindings);
+		oa::Vector<VkDescriptorSetLayoutBinding> bindings(inSpec.numBindings);
 		for (oa::U32 i = 0; i < inSpec.numBindings; i++) {
 			bindings[i] = {};
 			bindings[i].binding = i;
@@ -571,7 +571,7 @@ oa::Status oa::PipelineRegistry::ensurePipelinesParallel(
 	const oavk::Device& inDevice,
 	oa::Span<const oa::PipelineLoadRequest> inRequests,
 	oa::U32 inWorkerCount,
-	oa::Vec<oa::Status>* outStatuses)
+	oa::Vector<oa::Status>* outStatuses)
 {
 	const oa::U32 requestCount = static_cast<oa::U32>(inRequests.size());
 	if (outStatuses) {
@@ -601,7 +601,7 @@ oa::Status oa::PipelineRegistry::ensurePipelinesParallel(
 		bool hasPipeline = false;
 	};
 
-	oa::Vec<ParallelBuildResult> results(requestCount);
+	oa::Vector<ParallelBuildResult> results(requestCount);
 	{
 		oa::SharedLock lock(*mutex_);
 		for (oa::U32 i = 0; i < requestCount; ++i) {
@@ -617,7 +617,7 @@ oa::Status oa::PipelineRegistry::ensurePipelinesParallel(
 	// snapshot the primary cache once, before workers start. Feeding this same
 	// immutable snapshot to each worker preserves warm-cache startup while keeping
 	// every vkCreateComputePipelines call on a separately synchronized cache.
-	oa::Vec<oa::U8> initialData;
+	oa::Vector<oa::U8> initialData;
 	if (primaryCache != VK_NULL_HANDLE) {
 		size_t size = 0;
 		if (inDevice.deviceDispatch.vkGetPipelineCacheData(device, primaryCache, &size, nullptr) == VK_SUCCESS && size != 0) {
@@ -630,7 +630,7 @@ oa::Status oa::PipelineRegistry::ensurePipelinesParallel(
 		}
 	}
 
-	oa::Vec<VkPipelineCache> workerCaches(workerCount);
+	oa::Vector<VkPipelineCache> workerCaches(workerCount);
 	for (oa::U32 i = 0; i < workerCount; ++i) {
 		VkPipelineCacheCreateInfo ci{};
 		ci.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
@@ -645,7 +645,7 @@ oa::Status oa::PipelineRegistry::ensurePipelinesParallel(
 
 	oa::Atomic<oa::U32> nextIndex{0};
 	const oa::LogSelection logSelection = oa::LogAccess::currentSelection();
-	oa::Vec<oa::Thread> workers;
+	oa::Vector<oa::Thread> workers;
 	workers.reserve(workerCount);
 	oa::Status launchStatus = oa::Status::ok();
 	for (oa::U32 worker = 0; worker < workerCount; ++worker) {
@@ -700,7 +700,7 @@ oa::Status oa::PipelineRegistry::ensurePipelinesParallel(
 	// Merge only after all workers stop touching their caches. This satisfies the
 	// vulkan external-synchronization requirements for both source and destination.
 	if (primaryCache != VK_NULL_HANDLE) {
-		oa::Vec<VkPipelineCache> mergeCaches;
+		oa::Vector<VkPipelineCache> mergeCaches;
 		mergeCaches.reserve(workerCount);
 		for (VkPipelineCache cache : workerCaches) {
 			if (cache != VK_NULL_HANDLE) mergeCaches.pushBack(cache);
@@ -744,7 +744,7 @@ oa::Status oa::PipelineRegistry::ensurePipelinesOnDemand(
 {
 	if (device_ == nullptr or inRequests.empty()) return oa::Status::ok();
 
-	oa::Vec<oa::PipelineLoadRequest> requests;
+	oa::Vector<oa::PipelineLoadRequest> requests;
 	oa::HashMap<oa::String, oa::Bool> planned;
 	requests.reserve(inRequests.size());
 	for (const auto& request : inRequests) {
@@ -760,7 +760,7 @@ oa::Status oa::PipelineRegistry::ensurePipelinesOnDemand(
 		oa::PipelineSpec spec;
 		spec.numBindings = 16;
 		spec.pushConstantBytes = 128;
-		spec.specConstants = oa::Vec<oa::SpecConstant>{
+		spec.specConstants = oa::Vector<oa::SpecConstant>{
 			oa::SpecConstant{.id = 0, .value = request.dtype}};
 		oa::String key = makePipelineKey(request.name, spec);
 		{
@@ -809,7 +809,7 @@ oa::Status oa::PipelineRegistry::ensurePipelinesOnDemand(
 		hasInitialCacheData() ? "warm" : "cold");
 
 	const auto loadBegin = oa::steadyNow();
-	oa::Vec<oa::Status> statuses;
+	oa::Vector<oa::Status> statuses;
 	const oa::Status loadStatus = ensurePipelinesParallel(
 		*device_,
 		oa::Span<const oa::PipelineLoadRequest>(requests.data(), requests.size()),
@@ -865,7 +865,7 @@ oa::Status oa::PipelineRegistry::tryLoadOnDemand(
 	oa::PipelineSpec spec;
 	spec.numBindings = 16;
 	spec.pushConstantBytes = 128;
-	spec.specConstants = oa::Vec<oa::SpecConstant>{
+	spec.specConstants = oa::Vector<oa::SpecConstant>{
 		oa::SpecConstant{.id = 0, .value = inDtype}};
 
 	// load it

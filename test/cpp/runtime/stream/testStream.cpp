@@ -17,7 +17,7 @@
 #include <oa/runtime/graphicsStream.h>
 #include <oa/runtime/engine/queueSubmitRoute.h>
 #include <oa/core/simd.h>
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
 #include <thread>
 #include <atomic>
 #include <chrono>
@@ -944,7 +944,7 @@ TEST(VkStream, ConcurrentPoolAccess) {
 		}
 	};
 
-	oa::Vec<std::thread> threads;
+	oa::Vector<std::thread> threads;
 	for (oa::I32 i = 0; i < kThreads; ++i) {
 		threads.emplaceBack(worker);
 	}
@@ -1639,7 +1639,7 @@ TEST(VkStream, UploadRingDestructionRetiresSubmittedResourcesToEngine) {
 	auto dstResult = oa::EngineResourceAccess::allocBuffer(*rt, kSize);
 	ASSERT_TRUE(dstResult.isOk());
 	auto dst = std::move(*dstResult);
-	oa::Vec<oa::U8> source(kSize);
+	oa::Vector<oa::U8> source(kSize);
 	for (oa::U64 index = 0; index < kSize; ++index) {
 		source[index] = static_cast<oa::U8>((index * 17U + 11U) & 0xFFU);
 	}
@@ -1693,7 +1693,7 @@ TEST(VkStream, ConcurrentPipelineRead) {
 		}
 	};
 
-	oa::Vec<std::thread> threads;
+	oa::Vector<std::thread> threads;
 	for (oa::I32 i = 0; i < kThreads; ++i) {
 		threads.emplaceBack(reader);
 	}

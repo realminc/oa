@@ -211,7 +211,7 @@ TEST_VK(TestFnMatrixShapeManual, Concat_1D_Simple) {
 	auto c = createMatrixFromHost(data3, oa::MatrixShape{4});
 	
 	oa::ExecutionSession::RecordingScope ctx_scope(oa::ExecutionSession::getActive());
-	oa::Vec<oa::Matrix> inputs = {a, b, c};
+	oa::Vector<oa::Matrix> inputs = {a, b, c};
 	auto concatenated = oa::FnMatrix::concat(oa::Span<oa::Matrix>(inputs), 0);
 	
 	// expected: [1, 2, 3, 4, 5, 6, 7, 8, 9]
@@ -236,7 +236,7 @@ TEST_VK(TestFnMatrixShapeManual, Concat_2D_Rows) {
 	auto b = createMatrixFromHost(data2, oa::MatrixShape{1, N});
 	
 	oa::ExecutionSession::RecordingScope ctx_scope(oa::ExecutionSession::getActive());
-	oa::Vec<oa::Matrix> inputs = {a, b};
+	oa::Vector<oa::Matrix> inputs = {a, b};
 	auto concatenated = oa::FnMatrix::concat(oa::Span<oa::Matrix>(inputs), 0);
 	
 	// expected: 3x3 matrix
@@ -267,7 +267,7 @@ TEST_VK(TestFnMatrixShapeManual, Concat_2D_Cols) {
 	auto b = createMatrixFromHost(data2, oa::MatrixShape{M, 1});
 	
 	oa::ExecutionSession::RecordingScope ctx_scope(oa::ExecutionSession::getActive());
-	oa::Vec<oa::Matrix> inputs = {a, b};
+	oa::Vector<oa::Matrix> inputs = {a, b};
 	auto concatenated = oa::FnMatrix::concat(oa::Span<oa::Matrix>(inputs), 1);
 	
 	// expected: 2x3 matrix
@@ -298,7 +298,7 @@ TEST_VK(TestFnMatrixShapeManual, Split_1D_Equal) {
 	auto a = createMatrixFromHost(data, oa::MatrixShape{6});
 	
 	oa::ExecutionSession::RecordingScope ctx_scope(oa::ExecutionSession::getActive());
-	oa::Vec<oa::I64> sizes = {2, 2, 2};
+	oa::Vector<oa::I64> sizes = {2, 2, 2};
 	auto splits = oa::FnMatrix::split(a, oa::Span<oa::I64>(sizes), 0);
 	
 	ASSERT_EQ(splits.size(), 3);
@@ -328,7 +328,7 @@ TEST_VK(TestFnMatrixShapeManual, Split_1D_Unequal) {
 	auto a = createMatrixFromHost(data, oa::MatrixShape{7});
 	
 	oa::ExecutionSession::RecordingScope ctx_scope(oa::ExecutionSession::getActive());
-	oa::Vec<oa::I64> sizes = {3, 1, 3};
+	oa::Vector<oa::I64> sizes = {3, 1, 3};
 	auto splits = oa::FnMatrix::split(a, oa::Span<oa::I64>(sizes), 0);
 	
 	ASSERT_EQ(splits.size(), 3);
@@ -366,7 +366,7 @@ TEST_VK(TestFnMatrixShapeManual, Split_2D_Rows) {
 	auto a = createMatrixFromHost(data, oa::MatrixShape{4, N});
 	
 	oa::ExecutionSession::RecordingScope ctx_scope(oa::ExecutionSession::getActive());
-	oa::Vec<oa::I64> sizes = {1, 2, 1};
+	oa::Vector<oa::I64> sizes = {1, 2, 1};
 	auto splits = oa::FnMatrix::split(a, oa::Span<oa::I64>(sizes), 0);
 	
 	ASSERT_EQ(splits.size(), 3);
@@ -399,7 +399,7 @@ TEST_VK(TestFnMatrixShapeManual, Permute_3D_Simple) {
 	auto a = createMatrixFromHost(data, oa::MatrixShape{B, H, W});
 
 	oa::ExecutionSession::RecordingScope ctx_scope(oa::ExecutionSession::getActive());
-	oa::Vec<oa::I32> dims = {2, 0, 1};  // W, B, H
+	oa::Vector<oa::I32> dims = {2, 0, 1};  // W, B, H
 	auto permuted = a.permute(oa::Span<const oa::I32>(dims));
 
 	// Check shape: [2,3,4] -> [4,2,3]
@@ -439,7 +439,7 @@ TEST_VK(TestFnMatrixShapeManual, Permute_4D_NCHW_to_NHWC) {
 	auto a = createMatrixFromHost(data, oa::MatrixShape{N, C, H, W});
 	
 	oa::ExecutionSession::RecordingScope ctx_scope(oa::ExecutionSession::getActive());
-	oa::Vec<oa::I32> dims = {0, 2, 3, 1};  // N, H, W, C
+	oa::Vector<oa::I32> dims = {0, 2, 3, 1};  // N, H, W, C
 	auto permuted = a.permute(oa::Span<const oa::I32>(dims));
 	
 	// Check shape: [2,3,2,2] -> [2,2,2,3]
@@ -458,7 +458,7 @@ TEST_VK(TestFnMatrixShapeManual, Permute_Identity) {
 	auto a = createMatrixFromHost(data, oa::MatrixShape{B, H, W});
 	
 	oa::ExecutionSession::RecordingScope ctx_scope(oa::ExecutionSession::getActive());
-	oa::Vec<oa::I32> dims = {0, 1, 2};  // Identity
+	oa::Vector<oa::I32> dims = {0, 1, 2};  // Identity
 	auto permuted = a.permute(oa::Span<const oa::I32>(dims));
 	
 	std::vector<float> got(B * H * W);

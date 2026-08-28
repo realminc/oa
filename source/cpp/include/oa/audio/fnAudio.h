@@ -27,12 +27,12 @@ namespace FnAudio {
 	// host boundary; the semantic overload completes and reads back its input.
 	[[nodiscard]] oa::Result<Audio> decodeFile(const oa::Path& inPath);
 	[[nodiscard]] oa::Result<Audio> decodeMemory(oa::Span<const oa::U8> inData);
-	[[nodiscard]] oa::Result<oa::Vec<oa::U8>> encodeInterleavedWavF32(
+	[[nodiscard]] oa::Result<oa::Vector<oa::U8>> encodeInterleavedWavF32(
 		oa::Span<const oa::F32> inSamples,
 		oa::U32 inSampleRate,
 		oa::U32 inChannelCount
 	);
-	[[nodiscard]] oa::Result<oa::Vec<oa::U8>> encodeWavF32(const Audio& inAudio);
+	[[nodiscard]] oa::Result<oa::Vector<oa::U8>> encodeWavF32(const Audio& inAudio);
 	[[nodiscard]] oa::Status saveWavF32(const oa::Path& inPath, const Audio& inAudio);
 
 	// Configuration-object conveniences are authored here because their bodies

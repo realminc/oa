@@ -6,7 +6,7 @@
 
 #include <oa/core/types.h>
 
-#include <oa/runtime/oaVk.h>
+#include <vulkan/vulkan_core.h>
 
 
 namespace oa {
@@ -65,7 +65,7 @@ public:
 	// Presenter path: returns the VK_KHR_surface + platform extension names
 	// required for VkInstance creation (e.g. from SDL_Vulkan_GetInstanceExtensions).
 	[[nodiscard]] virtual bool getPresenterInstanceExtensions(
-		oa::Vec<const char*>* outExtensions) const;
+		oa::Vector<const char*>* outExtensions) const;
 
 	// Returns the platform-native window handle (e.g. SDL_Window*).
 	// Used by ImGui backends (ImGui_ImplSDL3_InitForVulkan).

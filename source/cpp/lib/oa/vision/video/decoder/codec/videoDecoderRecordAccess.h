@@ -12,7 +12,7 @@ struct VideoDecoderRecordAccess {
 	struct ActiveCmd {
 		VkCommandBuffer cb = VK_NULL_HANDLE;
 		VkFence fence = VK_NULL_HANDLE;
-		const OaVkDeviceTable* deviceDispatch = nullptr;
+		const VklDeviceTable* deviceDispatch = nullptr;
 	};
 
 	static oa::Result<ActiveCmd> begin(oa::VideoDecoder& inDecoder, const char* inLabel);

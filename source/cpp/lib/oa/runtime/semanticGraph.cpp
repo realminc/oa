@@ -69,7 +69,7 @@ void writeJsonString(oa::internal::JsonWriter& out, oa::StringView inValue) {
 }
 
 oa::SemanticValueAccess* findAccess(
-	oa::Vec<oa::SemanticValueAccess>& inAccesses,
+	oa::Vector<oa::SemanticValueAccess>& inAccesses,
 	oa::U32 inValue)
 {
 	for (auto& access : inAccesses) {
@@ -79,7 +79,7 @@ oa::SemanticValueAccess* findAccess(
 }
 
 void mergeAccess(
-	oa::Vec<oa::SemanticValueAccess>& inAccesses,
+	oa::Vector<oa::SemanticValueAccess>& inAccesses,
 	oa::U32 inValue,
 	oa::SemanticAccessMode inMode)
 {
@@ -290,11 +290,11 @@ oa::Result<oa::U32> oa::SemanticGraph::addOp(
 	operation.lowering = inContract.lowering;
 	operation.controlFlow = inContract.controlFlow;
 	operation.optionalInputMask = inContract.optionalInputMask;
-	operation.inputs = oa::Vec<oa::U32>(inInputs.begin(), inInputs.end());
-	operation.outputs = oa::Vec<oa::U32>(inOutputs.begin(), inOutputs.end());
-	operation.attributes = oa::Vec<oa::OpAttribute>(
+	operation.inputs = oa::Vector<oa::U32>(inInputs.begin(), inInputs.end());
+	operation.outputs = oa::Vector<oa::U32>(inOutputs.begin(), inOutputs.end());
+	operation.attributes = oa::Vector<oa::OpAttribute>(
 		inAttributes.begin(), inAttributes.end());
-	operation.controlDependencies = oa::Vec<oa::U32>(
+	operation.controlDependencies = oa::Vector<oa::U32>(
 		inControlDependencies.begin(), inControlDependencies.end());
 	if ((static_cast<oa::U8>(inContract.effects)
 		& static_cast<oa::U8>(oa::OpEffect::ReadInputs)) != 0U)
@@ -625,7 +625,7 @@ oa::Result<oa::SemanticLoweringAnalysis> oa::analyzeSemanticLowering(
 	const auto operations = inSemantic.operations();
 	oa::SemanticLoweringAnalysis analysis;
 	analysis.executableNodeCounts_.resize(operations.size(), 0U);
-	oa::Vec<oa::U8> fusionMembership(operations.size(), 0U);
+	oa::Vector<oa::U8> fusionMembership(operations.size(), 0U);
 	for (const auto& node : inExecutable.nodes()) {
 		const oa::U32 ownerCount =
 			static_cast<oa::U32>(node.semanticOps.size());

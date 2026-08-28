@@ -212,7 +212,7 @@ static void lunarHeadlessAppendJsonString(
 
 static oa::Status lunarHeadlessBuildPpm(
 	const oa::RenderReadback& inReadback,
-	oa::Vec<oa::U8>& outPpm) {
+	oa::Vector<oa::U8>& outPpm) {
 	const oa::U64 pixelCount = static_cast<oa::U64>(inReadback.width_)
 		* static_cast<oa::U64>(inReadback.height_);
 	if (pixelCount == 0U
@@ -257,7 +257,7 @@ static oa::Status lunarHeadlessRenderFrame(
 	const oa::Path& inOutputDirectory,
 	oa::U32 inFrameIndex,
 	LunarHeadlessDigest& inOutImageSequenceDigest,
-	oa::Vec<LunarHeadlessFrameRecord>& inOutRecords) {
+	oa::Vector<LunarHeadlessFrameRecord>& inOutRecords) {
 	OA_RETURN_IF_ERROR(inSession.beginFrame(inState, inCamera));
 	auto frameResult = inSession.submitFrame();
 	if (frameResult.isError()) {
@@ -274,7 +274,7 @@ static oa::Status lunarHeadlessRenderFrame(
 	auto readbackResult = inSession.consumeReadback(*frameResult);
 	if (readbackResult.isError()) return readbackResult.getStatus();
 
-	oa::Vec<oa::U8> ppm;
+	oa::Vector<oa::U8> ppm;
 	OA_RETURN_IF_ERROR(lunarHeadlessBuildPpm(*readbackResult, ppm));
 	char filename[32];
 	const int filenameSize = std::snprintf(
@@ -311,7 +311,7 @@ static oa::String lunarHeadlessBuildManifestJson(
 	oa::U32 inHeight,
 	oa::U64 inTraceDigest,
 	oa::U64 inImageSequenceDigest,
-	const oa::Vec<LunarHeadlessFrameRecord>& inRecords) {
+	const oa::Vector<LunarHeadlessFrameRecord>& inRecords) {
 	char values[1024];
 	const int valueSize = std::snprintf(
 		values, sizeof(values),
@@ -459,7 +459,7 @@ static oa::Result<LunarHeadlessSummary> lunarHeadlessRun(
 	oa::Status runStatus = oa::Status::ok();
 	LunarHeadlessDigest traceDigest;
 	LunarHeadlessDigest imageSequenceDigest;
-	oa::Vec<LunarHeadlessFrameRecord> records;
+	oa::Vector<LunarHeadlessFrameRecord> records;
 	lunarHeadlessDigestManifest(traceDigest, episodeManifest);
 	for (const oa::F64 height : environment.terrain().heights()) {
 		traceDigest.addDouble(height);

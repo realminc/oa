@@ -154,7 +154,7 @@ oa::SatelliteMessage makeMessage(oa::SatelliteMessageType inType) {
 	return message;
 }
 
-void refreshChecksum(oa::Vec<oa::Byte>& inOutBytes) {
+void refreshChecksum(oa::Vector<oa::Byte>& inOutBytes) {
 	const auto checksum = oa::SatelliteProtocol::stableDigest(
 		oa::Span<const oa::Byte>(inOutBytes.data(), 32U),
 		oa::Span<const oa::Byte>(
@@ -331,7 +331,7 @@ TEST(SatelliteProtocol, ParserRejectsUnknownVersionTypeFlagsAndTrailingBytes) {
 }
 
 TEST(SatelliteProtocol, ParserRejectsPayloadAllocationLimitBeforeFieldDecode) {
-	oa::Vec<oa::Byte> header(oa::SatelliteProtocol::kHeaderBytes);
+	oa::Vector<oa::Byte> header(oa::SatelliteProtocol::kHeaderBytes);
 	header[0] = 'O';
 	header[1] = 'A';
 	header[2] = 'S';

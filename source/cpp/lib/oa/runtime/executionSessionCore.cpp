@@ -88,8 +88,8 @@ oa::Status oa::ExecutionSession::record(
 			"matrix dispatch record: raw buffer and indirect fields must be empty"));
 	}
 
-	oa::Vec<oavk::Buffer> buffers;
-	oa::Vec<oa::SharedPtr<oavk::Buffer>> owners;
+	oa::Vector<oavk::Buffer> buffers;
+	oa::Vector<oa::SharedPtr<oavk::Buffer>> owners;
 	buffers.reserve(inDesc.matrices.size());
 	owners.reserve(inDesc.matrices.size());
 

@@ -26,7 +26,7 @@
 #include <oa/core/fnMatrix.h>
 #include <oa/core/fnmatrix/fnMatrixInternal.h>
 #include <oa/core/matrixAccess.h>
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
 #include <oa/ml/autograd.h>
 #include <oa/ml/fnLoss.h>
 #include <oa/ml/fnMatrix.h>
@@ -65,7 +65,7 @@ static double measureUs(oa::I32 inWarmup, oa::I32 inIters, F&& inFunc) {
 // Build a chain of scale dispatches for testing
 static void buildChainGraph(
 	oa::ExecutableGraph& outGraph,
-	oa::Vec<oavk::Buffer>& inBufs,
+	oa::Vector<oavk::Buffer>& inBufs,
 	oa::U32 inNumDispatches)
 {
 	struct { oa::U32 N; oa::F32 scale; } pc = {256, 1.001f};
@@ -754,8 +754,8 @@ TEST(ExecutableGraph, MultiAddExecutesSchemaOwnedFusionAndRemainder) {
 	ctx.clear();
 	constexpr oa::U32 PairCount = 6U;
 	constexpr oa::U32 elementCount = 64U;
-	oa::Vec<oa::Matrix> destinations;
-	oa::Vec<oa::Matrix> sources;
+	oa::Vector<oa::Matrix> destinations;
+	oa::Vector<oa::Matrix> sources;
 	for (oa::U32 pair = 0U; pair < PairCount; ++pair) {
 		destinations.pushBack(oa::FnMatrix::empty(
 			{elementCount}, oa::ScalarType::Float32,
@@ -4216,7 +4216,7 @@ TEST(ExecutableGraph, BarrierOverhead) {
 
 	for (auto& cfg : configs) {
 		oa::U32 N = cfg.n;
-		oa::Vec<oavk::Buffer> bufs(N + 1);
+		oa::Vector<oavk::Buffer> bufs(N + 1);
 		for (oa::U32 i = 0; i <= N; ++i) {
 			auto res = oa::EngineAllocatorAccess::get(*rt).allocHostVisible(256 * sizeof(oa::F32));
 			ASSERT_TRUE(res.isOk());
@@ -4272,7 +4272,7 @@ TEST(ExecutableGraph, MemoryAliasing) {
 
 	for (auto& cfg : configs) {
 		oa::U32 N = cfg.n;
-		oa::Vec<oavk::Buffer> bufs(N + 1);
+		oa::Vector<oavk::Buffer> bufs(N + 1);
 		for (oa::U32 i = 0; i <= N; ++i) {
 			auto res = oa::EngineAllocatorAccess::get(*rt).allocHostVisible(4096);
 			ASSERT_TRUE(res.isOk());
@@ -4303,8 +4303,8 @@ TEST(ExecutableGraph, AllocatorBackedAliasesExecuteCorrectly) {
 	auto* rt = testEnginePtr();
 	ASSERT_NE(rt, nullptr);
 	constexpr oa::U32 N = 256;
-	oa::Vec<oa::Matrix> matrices;
-	oa::Vec<oavk::Buffer> buffers;
+	oa::Vector<oa::Matrix> matrices;
+	oa::Vector<oavk::Buffer> buffers;
 	for (oa::U32 i = 0; i < 5U; ++i) {
 		matrices.pushBack(oa::FnMatrix::empty(
 			{static_cast<oa::I64>(N)}, oa::ScalarType::Float32,
@@ -4357,8 +4357,8 @@ TEST(ExecutableGraph, AliasMaterializationRejectsExternallyOwnedTransient) {
 	auto* rt = testEnginePtr();
 	ASSERT_NE(rt, nullptr);
 	constexpr oa::U32 N = 64;
-	oa::Vec<oa::Matrix> matrices;
-	oa::Vec<oavk::Buffer> buffers;
+	oa::Vector<oa::Matrix> matrices;
+	oa::Vector<oavk::Buffer> buffers;
 	for (oa::U32 i = 0; i < 5U; ++i) {
 		matrices.pushBack(oa::FnMatrix::empty(
 			{static_cast<oa::I64>(N)}, oa::ScalarType::Float32,
@@ -4380,8 +4380,8 @@ TEST(ExecutableGraph, AllocatorBackedDeviceLocalAliasesExecuteCorrectly) {
 	auto* rt = testEnginePtr();
 	ASSERT_NE(rt, nullptr);
 	constexpr oa::U32 N = 256;
-	oa::Vec<oa::Matrix> matrices;
-	oa::Vec<oavk::Buffer> buffers;
+	oa::Vector<oa::Matrix> matrices;
+	oa::Vector<oavk::Buffer> buffers;
 	for (oa::U32 i = 0; i < 5U; ++i) {
 		const auto placement = (i == 0U or i == 4U)
 			? oa::MemoryPlacement::HostUpload : oa::MemoryPlacement::DeviceLocal;

@@ -6,7 +6,7 @@
 #include <oa/core/filesystem.h>
 #include <oa/core/fnMatrix.h>
 #include <oa/core/matrixAccess.h>
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
 #include <oa/core/std/limits.h>
 #include <oa/core/std/sync.h>
 #include <oa/runtime/executionSession.h>
@@ -17,7 +17,7 @@ namespace {
 
 struct TranslatorRegistry {
 	oa::Mutex mutex;
-	oa::Vec<oa::UniquePtr<oa::ModelTranslator>> translators;
+	oa::Vector<oa::UniquePtr<oa::ModelTranslator>> translators;
 };
 
 TranslatorRegistry& getTranslatorRegistry() {
@@ -45,19 +45,19 @@ bool sameShape(oa::Span<const oa::I64> inA, oa::Span<const oa::I64> inB) {
 	return true;
 }
 
-oa::Result<oa::Vec<oa::U8>> readConverted(
+oa::Result<oa::Vector<oa::U8>> readConverted(
 	const oa::WeightSource& inSource, const oa::WeightInfo& inInfo, oa::ScalarType inDtype) {
 	const oa::U64 scalarBytes = oa::scalarSize(inDtype);
 	if (scalarBytes == 0 || inInfo.elementCount > oa::Limits<oa::U64>::max() / scalarBytes) {
 		return oa::Status::error(oa::StatusCode::DtypeMismatch, "Invalid transfer target dtype");
 	}
-	oa::Vec<oa::U8> result(inInfo.elementCount * scalarBytes);
+	oa::Vector<oa::U8> result(inInfo.elementCount * scalarBytes);
 	OA_RETURN_IF_ERROR(inSource.read(
 		inInfo.name, oa::Span<oa::U8>(result.data(), result.size()), inDtype));
 	return result;
 }
 
-oa::Result<oa::Vec<oa::U8>> executeMapping(
+oa::Result<oa::Vector<oa::U8>> executeMapping(
 	const oa::WeightSource& inSource, const oa::WeightMapping& inMapping) {
 	if (inMapping.sources.empty()) {
 		return oa::Status::invalidArgument(oa::String("weight mapping has no source: ") + inMapping.target);
@@ -74,9 +74,9 @@ oa::Result<oa::Vec<oa::U8>> executeMapping(
 		return oa::Status::error(oa::StatusCode::DtypeMismatch,
 			oa::String("Invalid target dtype for mapping: ") + inMapping.target);
 	}
-	oa::Vec<oa::U8> output(targetCount * scalarBytes);
+	oa::Vector<oa::U8> output(targetCount * scalarBytes);
 
-	oa::Vec<const oa::WeightInfo*> sources;
+	oa::Vector<const oa::WeightInfo*> sources;
 	sources.reserve(inMapping.sources.size());
 	for (const auto& name : inMapping.sources) {
 		const auto* info = inSource.find(name);
@@ -142,7 +142,7 @@ oa::Result<oa::Vec<oa::U8>> executeMapping(
 		if (concatenated != inMapping.targetShape[axisIndex])
 			return oa::Status::error(oa::StatusCode::ShapeMismatch, "Concat target axis mismatch");
 
-		oa::Vec<oa::Vec<oa::U8>> inputBuffers;
+		oa::Vector<oa::Vector<oa::U8>> inputBuffers;
 		inputBuffers.reserve(sources.size());
 		for (const auto* info : sources) {
 			auto inputResult = readConverted(inSource, *info, inMapping.targetDtype);
@@ -221,10 +221,10 @@ const oa::ModelTranslator* oa::findModelTranslator(oa::StringView inName) {
 	return nullptr;
 }
 
-oa::Vec<oa::String> oa::listModelTranslators() {
+oa::Vector<oa::String> oa::listModelTranslators() {
 	auto& registry = getTranslatorRegistry();
 	oa::ScopedLock lock(registry.mutex);
-	oa::Vec<oa::String> result;
+	oa::Vector<oa::String> result;
 	result.reserve(registry.translators.size());
 	for (const auto& translator : registry.translators) result.pushBack(oa::String(translator->name()));
 	return result;
@@ -249,7 +249,7 @@ oa::Status oa::WeightSource::readMatrix(
 	}
 	outMatrix = oa::FnMatrix::empty(shape, inTargetDtype);
 	const oa::U64 byteSize = info->elementCount * oa::scalarSize(inTargetDtype);
-	oa::Vec<oa::U8> bytes(byteSize);
+	oa::Vector<oa::U8> bytes(byteSize);
 	OA_RETURN_IF_ERROR(read(inName, oa::Span<oa::U8>(bytes.data(), bytes.size()), inTargetDtype));
 	OA_RETURN_IF_ERROR(oa::EngineResourceAccess::uploadBuffer(inEngine,
 		oa::MatrixAccess::descriptor(outMatrix), outMatrix.byteOffset(),
@@ -334,7 +334,7 @@ oa::Result<oa::WeightTransferReport> oa::transferWeights(
 		auto outputResult = executeMapping(inSource, mapping);
 		if (outputResult.isError()) return outputResult.getStatus();
 		auto& output = outputResult.getValue();
-		oa::Vec<oa::U64> shape;
+		oa::Vector<oa::U64> shape;
 		shape.reserve(mapping.targetShape.size());
 		for (const oa::I64 dim : mapping.targetShape) shape.pushBack(static_cast<oa::U64>(dim));
 		model.addWeight(mapping.target.cStr(), mapping.targetDtype,

@@ -11,6 +11,7 @@
 #include <oa/core/std/function.h>
 #include <oa/runtime/executionPlan.h>
 #include <oa/runtime/clockCalibration.h>
+#include <vulkan/vulkan_core.h>
 
 namespace oa {
 
@@ -64,7 +65,15 @@ public:
 	oa::String appName                    = "OaApp";
 	oa::U32    appVersion                 = 1;
 	// SDL3: fill from SDL_Vulkan_GetInstanceExtensions (VK_KHR_surface + platform ext).
-	oa::Vec<oa::String> instanceExtraExtensions;
+	oa::Vector<oa::String> instanceExtraExtensions;
+
+	// Optional: supply the vkGetInstanceProcAddr function pointer obtained from
+	// a platform-specific or per-app Vulkan loader (e.g. Android Turnip/Adreno
+	// via adrenotools). The first engine selects the process-global loader;
+	// later engines must request the same function or leave this null. The
+	// function and its backing module must remain valid until every engine and
+	// Vulkan object in the process is retired.
+	PFN_vkGetInstanceProcAddr vulkanLoaderProcAddr = nullptr;
 
 	oa::U32 deviceIndex = 0;
 

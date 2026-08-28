@@ -44,7 +44,7 @@ oa::Status oa::TcpFramed::writeMessage(oa::TcpStream& inStream, oa::Span<const o
 
 oa::Status oa::TcpFramed::readMessage(
 	oa::TcpStream& inStream,
-	oa::Vec<oa::Byte>& outPayload,
+	oa::Vector<oa::Byte>& outPayload,
 	oa::U32 inMaxPayloadBytes)
 {
 	if (inMaxPayloadBytes > kMaxPayloadBytes) {

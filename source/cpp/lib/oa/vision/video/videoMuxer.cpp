@@ -63,9 +63,9 @@ oa::Usize findAnnexBStartCode(const oa::U8* inData, oa::Usize inSize, oa::Usize 
 // MP4 avc1 samples use length-prefixed NAL units. vulkan encoders normally
 // return Annex-B. convert every access unit at the container boundary; keeping
 // Annex-B in mdat makes the avcC lengthSizeMinusOne declaration a lie.
-oa::Result<oa::Vec<oa::U8>> annexBToLengthPrefixed(const oa::Span<const oa::U8>& inBytes)
+oa::Result<oa::Vector<oa::U8>> annexBToLengthPrefixed(const oa::Span<const oa::U8>& inBytes)
 {
-	oa::Vec<oa::U8> output;
+	oa::Vector<oa::U8> output;
 	if (inBytes.empty()) return output;
 	const oa::U8* data = inBytes.data();
 	const oa::Usize size = inBytes.size();
@@ -101,10 +101,10 @@ oa::Result<oa::Vec<oa::U8>> annexBToLengthPrefixed(const oa::Span<const oa::U8>&
 }
 
 
-oa::Vec<oa::U8> buildHvcc(
-	const oa::Vec<oa::U8>& inVps,
-	const oa::Vec<oa::U8>& inSps,
-	const oa::Vec<oa::U8>& inPps)
+oa::Vector<oa::U8> buildHvcc(
+	const oa::Vector<oa::U8>& inVps,
+	const oa::Vector<oa::U8>& inSps,
+	const oa::Vector<oa::U8>& inPps)
 {
 	// hEVCDecoderConfigurationRecord (ISO/IEC 14496-15 section 8.3.3.1):
 	// 23-byte fixed record followed by complete VPS/SPS/PPS arrays. OA emits
@@ -113,7 +113,7 @@ oa::Vec<oa::U8> buildHvcc(
 		+ 3U + 2U + static_cast<oa::U32>(inVps.size())
 		+ 3U + 2U + static_cast<oa::U32>(inSps.size())
 		+ 3U + 2U + static_cast<oa::U32>(inPps.size());
-	oa::Vec<oa::U8> box;
+	oa::Vector<oa::U8> box;
 	box.resize(8U + payloadSize);
 	oa::memset(box.data(), 0, box.size());
 	writeBoxHeader(box.data(), static_cast<oa::U32>(box.size()), 0x68766343U); // hvcC
@@ -135,7 +135,7 @@ oa::Vec<oa::U8> buildHvcc(
 	record[22] = 3U;         // numOfArrays
 
 	oa::U32 offset = 23U;
-	auto writeArray = [&](oa::U8 inNalType, const oa::Vec<oa::U8>& inNal) {
+	auto writeArray = [&](oa::U8 inNalType, const oa::Vector<oa::U8>& inNal) {
 		record[offset++] = static_cast<oa::U8>(0x80U | inNalType);
 		writeU16BE(record + offset, 1U);
 		offset += 2U;
@@ -150,26 +150,26 @@ oa::Vec<oa::U8> buildHvcc(
 	return box;
 }
 
-void appendBytes(oa::Vec<oa::U8>& out, const void* inData, oa::Usize inSize)
+void appendBytes(oa::Vector<oa::U8>& out, const void* inData, oa::Usize inSize)
 {
 	const oa::Usize offset = out.size();
 	out.resize(offset + inSize);
 	if (inSize > 0U) oa::memcpy(out.data() + offset, inData, inSize);
 }
 
-oa::Vec<oa::U8> wrapBox(oa::U32 inType, const oa::Vec<oa::U8>& inPayload)
+oa::Vector<oa::U8> wrapBox(oa::U32 inType, const oa::Vector<oa::U8>& inPayload)
 {
-	oa::Vec<oa::U8> box;
+	oa::Vector<oa::U8> box;
 	box.resize(8U + inPayload.size());
 	writeBoxHeader(box.data(), static_cast<oa::U32>(box.size()), inType);
 	if (!inPayload.empty()) oa::memcpy(box.data() + 8U, inPayload.data(), inPayload.size());
 	return box;
 }
 
-oa::Vec<oa::U8> buildAudioTrack(
+oa::Vector<oa::U8> buildAudioTrack(
 	const oa::VideoMuxerConfig& inConfig,
-	const oa::Vec<oa::U64>& inOffsets,
-	const oa::Vec<oa::U32>& inDurations,
+	const oa::Vector<oa::U64>& inOffsets,
+	const oa::Vector<oa::U32>& inDurations,
 	oa::U32 inMovieTimescale)
 {
 	oa::U64 mediaDuration64 = 0U;
@@ -183,7 +183,7 @@ oa::Vec<oa::U8> buildAudioTrack(
 			/ inConfig.audioSampleRate,
 		oa::Limits<oa::U32>::max()));
 
-	oa::Vec<oa::U8> trakPayload;
+	oa::Vector<oa::U8> trakPayload;
 	oa::U8 tkhd[92] = {};
 	writeBoxHeader(tkhd, 92U, 0x746b6864U);
 	writeU32BE(tkhd + 8U, 0x00000007U);
@@ -196,7 +196,7 @@ oa::Vec<oa::U8> buildAudioTrack(
 	appendBytes(trakPayload, tkhd, sizeof(tkhd));
 
 	if (inConfig.audioPrimingFrames > 0U) {
-		oa::Vec<oa::U8> elstPayload(20U, 0U);
+		oa::Vector<oa::U8> elstPayload(20U, 0U);
 		writeU32BE(elstPayload.data() + 4U, 1U);
 		writeU32BE(elstPayload.data() + 8U, movieDuration);
 		writeU32BE(elstPayload.data() + 12U, inConfig.audioPrimingFrames);
@@ -206,7 +206,7 @@ oa::Vec<oa::U8> buildAudioTrack(
 		appendBytes(trakPayload, edts.data(), edts.size());
 	}
 
-	oa::Vec<oa::U8> mdiaPayload;
+	oa::Vector<oa::U8> mdiaPayload;
 	oa::U8 mdhd[32] = {};
 	writeBoxHeader(mdhd, 32U, 0x6d646864U);
 	writeU32BE(mdhd + 20U, inConfig.audioSampleRate);
@@ -215,24 +215,24 @@ oa::Vec<oa::U8> buildAudioTrack(
 	appendBytes(mdiaPayload, mdhd, sizeof(mdhd));
 
 	constexpr char kName[] = "SoundHandler";
-	oa::Vec<oa::U8> hdlr(32U + sizeof(kName), 0U);
+	oa::Vector<oa::U8> hdlr(32U + sizeof(kName), 0U);
 	writeBoxHeader(hdlr.data(), static_cast<oa::U32>(hdlr.size()), 0x68646c72U);
 	writeU32BE(hdlr.data() + 16U, 0x736f756eU); // soun
 	oa::memcpy(hdlr.data() + 32U, kName, sizeof(kName));
 	appendBytes(mdiaPayload, hdlr.data(), hdlr.size());
 
-	oa::Vec<oa::U8> minfPayload;
+	oa::Vector<oa::U8> minfPayload;
 	oa::U8 smhd[16] = {};
 	writeBoxHeader(smhd, 16U, 0x736d6864U);
 	appendBytes(minfPayload, smhd, sizeof(smhd));
 
-	oa::Vec<oa::U8> stblPayload;
+	oa::Vector<oa::U8> stblPayload;
 	// ISO/IEC 23003-5 uncompressed audio: signed 16-bit little-endian PCM.
 	// `ipcm` is the sample entry and `pcmC` carries byte order/sample width.
 	constexpr oa::U32 kPcmcSize = 14U;
 	constexpr oa::U32 kSampleEntrySize = 36U + kPcmcSize;
 	const oa::U32 sampleEntrySize = kSampleEntrySize;
-	oa::Vec<oa::U8> stsd(16U + sampleEntrySize, 0U);
+	oa::Vector<oa::U8> stsd(16U + sampleEntrySize, 0U);
 	writeBoxHeader(stsd.data(), static_cast<oa::U32>(stsd.size()), 0x73747364U);
 	writeU32BE(stsd.data() + 12U, 1U);
 	oa::U8* ipcm = stsd.data() + 16U;
@@ -248,7 +248,7 @@ oa::Vec<oa::U8> buildAudioTrack(
 	appendBytes(stblPayload, stsd.data(), stsd.size());
 
 	// One PCM frame is one MP4 sample and lasts one audio-timescale tick.
-	oa::Vec<oa::U8> stts(24U, 0U);
+	oa::Vector<oa::U8> stts(24U, 0U);
 	writeBoxHeader(stts.data(), static_cast<oa::U32>(stts.size()), 0x73747473U);
 	writeU32BE(stts.data() + 12U, 1U);
 	writeU32BE(stts.data() + 16U, mediaDuration);
@@ -256,13 +256,13 @@ oa::Vec<oa::U8> buildAudioTrack(
 	appendBytes(stblPayload, stts.data(), stts.size());
 
 	struct ChunkRun { oa::U32 firstChunk; oa::U32 samplesPerChunk; };
-	oa::Vec<ChunkRun> chunkRuns;
+	oa::Vector<ChunkRun> chunkRuns;
 	for (oa::U32 i = 0U; i < inDurations.size(); ++i) {
 		if (chunkRuns.empty() or chunkRuns.back().samplesPerChunk != inDurations[i]) {
 			chunkRuns.pushBack({i + 1U, inDurations[i]});
 		}
 	}
-	oa::Vec<oa::U8> stsc(16U + chunkRuns.size() * 12U, 0U);
+	oa::Vector<oa::U8> stsc(16U + chunkRuns.size() * 12U, 0U);
 	writeBoxHeader(stsc.data(), static_cast<oa::U32>(stsc.size()), 0x73747363U);
 	writeU32BE(stsc.data() + 12U, static_cast<oa::U32>(chunkRuns.size()));
 	for (oa::U32 i = 0U; i < chunkRuns.size(); ++i) {
@@ -272,7 +272,7 @@ oa::Vec<oa::U8> buildAudioTrack(
 	}
 	appendBytes(stblPayload, stsc.data(), stsc.size());
 
-	oa::Vec<oa::U8> stsz(20U, 0U);
+	oa::Vector<oa::U8> stsz(20U, 0U);
 	writeBoxHeader(stsz.data(), static_cast<oa::U32>(stsz.size()), 0x7374737aU);
 	writeU32BE(stsz.data() + 12U, inConfig.audioChannelCount * sizeof(oa::I16));
 	writeU32BE(stsz.data() + 16U, mediaDuration);
@@ -280,7 +280,7 @@ oa::Vec<oa::U8> buildAudioTrack(
 
 	const bool largeOffsets = oa::anyOf(inOffsets.begin(), inOffsets.end(),
 		[](oa::U64 inOffset) { return inOffset > 0xFFFFFFFFULL; });
-	oa::Vec<oa::U8> offsets(16U + inOffsets.size() * (largeOffsets ? 8U : 4U), 0U);
+	oa::Vector<oa::U8> offsets(16U + inOffsets.size() * (largeOffsets ? 8U : 4U), 0U);
 	writeBoxHeader(offsets.data(), static_cast<oa::U32>(offsets.size()),
 		largeOffsets ? 0x636f3634U : 0x7374636fU); // co64 / stco
 	writeU32BE(offsets.data() + 12U, static_cast<oa::U32>(inOffsets.size()));
@@ -452,7 +452,7 @@ oa::Status oa::VideoMuxer::writePacket(const oa::EncodedVideoPacket& inFrame)
 	auto sampleResult = annexBToLengthPrefixed(
 		oa::Span<const oa::U8>(inFrame.bitstream.data(), inFrame.bitstream.size()));
 	if (not sampleResult.isOk()) return sampleResult.getStatus();
-	oa::Vec<oa::U8> sample = oa::move(*sampleResult);
+	oa::Vector<oa::U8> sample = oa::move(*sampleResult);
 
 	if (outputFile_ == nullptr or not writeFile(outputFile_, sample.data(), sample.size())) {
 		return oa::Status::error(oa::StatusCode::DataLoss, "Failed to stream video sample to MP4");
@@ -511,7 +511,7 @@ void oa::VideoMuxer::setAudioCodecConfig(oa::Span<const oa::U8> inAudioSpecificC
 }
 
 
-void oa::VideoMuxer::setCodecConfig(const oa::Vec<oa::U8>& inSps, const oa::Vec<oa::U8>& inPps)
+void oa::VideoMuxer::setCodecConfig(const oa::Vector<oa::U8>& inSps, const oa::Vector<oa::U8>& inPps)
 {
 	sps_ = inSps;
 	pps_ = inPps;
@@ -519,9 +519,9 @@ void oa::VideoMuxer::setCodecConfig(const oa::Vec<oa::U8>& inSps, const oa::Vec<
 
 
 void oa::VideoMuxer::setCodecConfig(
-	const oa::Vec<oa::U8>& inVps,
-	const oa::Vec<oa::U8>& inSps,
-	const oa::Vec<oa::U8>& inPps)
+	const oa::Vector<oa::U8>& inVps,
+	const oa::Vector<oa::U8>& inSps,
+	const oa::Vector<oa::U8>& inPps)
 {
 	vps_ = inVps;
 	sps_ = inSps;
@@ -559,7 +559,7 @@ oa::Status oa::VideoMuxer::finalize()
 	}
 	mdatData_.clear();
 	writeMoovBox();
-	oa::Vec<oa::U8> moovBuf = oa::move(mdatData_);
+	oa::Vector<oa::U8> moovBuf = oa::move(mdatData_);
 	if (::fseek(outputFile_, 0L, SEEK_END) != 0
 		or not writeFile(outputFile_, moovBuf.data(), moovBuf.size())
 		or ::fflush(outputFile_) != 0) {
@@ -593,7 +593,7 @@ void oa::VideoMuxer::writeMoovBox()
 {
 	// Build complete movie metadata after all streamed samples are known.
 	
-	oa::Vec<oa::U8> moovData;
+	oa::Vector<oa::U8> moovData;
 	
 	const oa::U32 timescale = static_cast<oa::U32>(config_.timebaseDen);
 	auto ptsToTicks = [&](oa::U64 inPtsUs) -> oa::U32 {
@@ -601,7 +601,7 @@ void oa::VideoMuxer::writeMoovBox()
 		const oa::U64 ticks = (inPtsUs * config_.timebaseDen + denominator / 2ULL) / denominator;
 		return static_cast<oa::U32>(oa::min<oa::U64>(ticks, 0xFFFFFFFFULL));
 	};
-	oa::Vec<oa::U32> sampleDeltas;
+	oa::Vector<oa::U32> sampleDeltas;
 	sampleDeltas.resize(packetCount_);
 	const oa::U32 nominalDelta = oa::max(1U, timescale / config_.frameRate);
 	oa::U64 durationTicks64 = 0U;
@@ -697,12 +697,12 @@ void oa::VideoMuxer::writeMoovBox()
 	// trak payload accumulates {tkhd, mdia}. We wrap it with a 'trak' box
 	// header at the end and append to moovData; that way the demuxer's
 	// moov → trak → mdia recursion actually reaches the sample table.
-	oa::Vec<oa::U8> trakData;
+	oa::Vector<oa::U8> trakData;
 	trakData.resize(trakData.size() + 92);
 	oa::memcpy(trakData.data() + trakData.size() - 92, tkhd, 92);
 
 	// Write mdia with mdhd, hdlr, minf and stbl.
-	oa::Vec<oa::U8> mdiaData;
+	oa::Vector<oa::U8> mdiaData;
 	
 	// MediaHeaderBox version 0 is 32 bytes.
 	constexpr oa::U32 kMdhdSize = 32U;
@@ -740,7 +740,7 @@ void oa::VideoMuxer::writeMoovBox()
 	oa::memcpy(mdiaData.data() + mdiaData.size() - kHdlrSize, hdlr, kHdlrSize);
 	
 	// Write minf box with vmhd and stbl
-	oa::Vec<oa::U8> minfData;
+	oa::Vector<oa::U8> minfData;
 	
 	// vmhd (VideoMediaHeaderBox §12.1.2): 8 header + 4 version_flags
 	//   + 2 graphicsmode + 2*3 opcolor = 20 bytes.
@@ -757,13 +757,13 @@ void oa::VideoMuxer::writeMoovBox()
 	oa::memcpy(minfData.data() + minfData.size() - kVmhdSize, vmhd, kVmhdSize);
 	
 	// Write stbl box with sample table boxes
-	oa::Vec<oa::U8> stblData;
+	oa::Vector<oa::U8> stblData;
 	
 	// Write stsd sample description with avcC or hvcC codec configuration.
-	oa::Vec<oa::U8> stsdData;
+	oa::Vector<oa::U8> stsdData;
 	
 	// Build avcC box if SPS/PPS are available
-	oa::Vec<oa::U8> avcCData;
+	oa::Vector<oa::U8> avcCData;
 	if (!sps_.empty() && !pps_.empty()) {
 		// aVCDecoderConfigurationRecord (ISO/IEC 14496-15 §5.2.1.1):
 		//   8  bytes  box header (size + type)
@@ -800,7 +800,7 @@ void oa::VideoMuxer::writeMoovBox()
 		writeU16BE(avcCData.data() + ppsOffset + 1, static_cast<oa::U16>(pps_.size()));
 		oa::memcpy(avcCData.data() + ppsOffset + 3, pps_.data(), pps_.size());
 	}
-	oa::Vec<oa::U8> codecConfig = config_.codec == oa::VideoCodec::H264
+	oa::Vector<oa::U8> codecConfig = config_.codec == oa::VideoCodec::H264
 		? oa::move(avcCData) : buildHvcc(vps_, sps_, pps_);
 	
 	// VisualSampleEntry preamble (ISO/IEC 14496-12 §8.5.2):
@@ -862,13 +862,13 @@ void oa::VideoMuxer::writeMoovBox()
 	// variable-rate PipeWire input while remaining compact for fixed-rate video.
 	{
 		struct SttsRun { oa::U32 count; oa::U32 delta; };
-		oa::Vec<SttsRun> runs;
+		oa::Vector<SttsRun> runs;
 		for (oa::U32 delta : sampleDeltas) {
 			if (runs.empty() or runs.back().delta != delta) runs.pushBack({1U, delta});
 			else ++runs.back().count;
 		}
 		const oa::U32 sttsSize = 16U + static_cast<oa::U32>(runs.size()) * 8U;
-		oa::Vec<oa::U8> stts;
+		oa::Vector<oa::U8> stts;
 		stts.resize(sttsSize);
 		oa::memset(stts.data(), 0, stts.size());
 		writeBoxHeader(stts.data(), sttsSize, 0x73747473);
@@ -901,7 +901,7 @@ void oa::VideoMuxer::writeMoovBox()
 	//                                + 4 sample_count + 4*N entry sizes.
 	{
 		const oa::U32 stszSize = 8 + 4 + 4 + 4 + 4 * packetCount_;
-		oa::Vec<oa::U8> stsz;
+		oa::Vector<oa::U8> stsz;
 		stsz.resize(stszSize);
 		for (oa::U32 i = 0; i < stszSize; ++i) { stsz[i] = 0; }
 		writeBoxHeader(stsz.data(), stszSize, 0x7374737a);  // 'stsz'
@@ -922,7 +922,7 @@ void oa::VideoMuxer::writeMoovBox()
 			[](oa::U64 inOffset) { return inOffset > 0xFFFFFFFFULL; });
 		const oa::U32 stride = largeOffsets ? 8U : 4U;
 		const oa::U32 offsetSize = 16U + stride * packetCount_;
-		oa::Vec<oa::U8> offsets(offsetSize, 0U);
+		oa::Vector<oa::U8> offsets(offsetSize, 0U);
 		writeBoxHeader(offsets.data(), offsetSize,
 			largeOffsets ? 0x636f3634U : 0x7374636fU); // co64/stco
 		writeU32BE(offsets.data() + 12, packetCount_);
@@ -944,7 +944,7 @@ void oa::VideoMuxer::writeMoovBox()
 
 	if (keyframeCount > 0) {
 		const oa::U32 stssSize = 8 + 4 + 4 + 4 * keyframeCount;
-		oa::Vec<oa::U8> stss;
+		oa::Vector<oa::U8> stss;
 		stss.resize(stssSize);
 		for (oa::U32 i = 0; i < stssSize; ++i) { stss[i] = 0; }
 		writeBoxHeader(stss.data(), stssSize, 0x73747373);  // 'stss'
@@ -968,7 +968,7 @@ void oa::VideoMuxer::writeMoovBox()
 	oa::U8 stblHeader[8];
 	writeBoxHeader(stblHeader, stblSize, 0x7374626c);  // 'stbl'
 	
-	oa::Vec<oa::U8> finalStbl;
+	oa::Vector<oa::U8> finalStbl;
 	finalStbl.resize(stblData.size() + 8);
 	oa::memcpy(finalStbl.data(), stblHeader, 8);
 	oa::memcpy(finalStbl.data() + 8, stblData.data(), stblData.size());
@@ -981,7 +981,7 @@ void oa::VideoMuxer::writeMoovBox()
 	oa::U8 minfHeader[8];
 	writeBoxHeader(minfHeader, minfSize, 0x6d696e66);  // 'minf'
 	
-	oa::Vec<oa::U8> finalMinf;
+	oa::Vector<oa::U8> finalMinf;
 	finalMinf.resize(minfData.size() + 8);
 	oa::memcpy(finalMinf.data(), minfHeader, 8);
 	oa::memcpy(finalMinf.data() + 8, minfData.data(), minfData.size());
@@ -994,7 +994,7 @@ void oa::VideoMuxer::writeMoovBox()
 	oa::U8 mdiaHeader[8];
 	writeBoxHeader(mdiaHeader, mdiaSize, 0x6d646961);  // 'mdia'
 	
-	oa::Vec<oa::U8> finalMdia;
+	oa::Vector<oa::U8> finalMdia;
 	finalMdia.resize(mdiaData.size() + 8);
 	oa::memcpy(finalMdia.data(), mdiaHeader, 8);
 	oa::memcpy(finalMdia.data() + 8, mdiaData.data(), mdiaData.size());
@@ -1010,7 +1010,7 @@ void oa::VideoMuxer::writeMoovBox()
 	oa::U32 trakSize = static_cast<oa::U32>(trakData.size() + 8);
 	oa::U8 trakHeader[8];
 	writeBoxHeader(trakHeader, trakSize, 0x7472616bU);  // 'trak'
-	oa::Vec<oa::U8> finalTrak;
+	oa::Vector<oa::U8> finalTrak;
 	finalTrak.resize(trakData.size() + 8);
 	oa::memcpy(finalTrak.data(), trakHeader, 8);
 	oa::memcpy(finalTrak.data() + 8, trakData.data(), trakData.size());
@@ -1031,13 +1031,13 @@ void oa::VideoMuxer::writeMoovBox()
 	writeBoxHeader(moovHeader, moovSize, 0x6d6f6f76);  // 'moov'
 	
 	// Prepend moov header to moov data
-	oa::Vec<oa::U8> finalMoov;
+	oa::Vector<oa::U8> finalMoov;
 	finalMoov.resize(moovData.size() + 8);
 	oa::memcpy(finalMoov.data(), moovHeader, 8);
 	oa::memcpy(finalMoov.data() + 8, moovData.data(), moovData.size());
 	
 	// Prepend moov to mdat data
-	oa::Vec<oa::U8> finalData;
+	oa::Vector<oa::U8> finalData;
 	finalData.resize(mdatData_.size() + finalMoov.size());
 	oa::memcpy(finalData.data(), finalMoov.data(), finalMoov.size());
 	if (not mdatData_.empty()) {

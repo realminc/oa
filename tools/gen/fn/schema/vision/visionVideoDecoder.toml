@@ -141,7 +141,7 @@ category             = "Color"
 kind                 = "session_command"
 body                 = "manual_session"
 generate_declaration = false
-api_return           = "oa::Result<oa::Vec<oa::U8>>"
+api_return           = "oa::Result<oa::Vector<oa::U8>>"
 api_params           = ["const oa::VideoFrame& inFrame"]
 notes = "Synchronously observe the luma plane on the host."
 
@@ -157,7 +157,7 @@ category             = "Color"
 kind                 = "session_command"
 body                 = "manual_session"
 generate_declaration = false
-api_return           = "oa::Result<oa::Vec<oa::U8>>"
+api_return           = "oa::Result<oa::Vector<oa::U8>>"
 api_params           = ["const oa::VideoFrame& inFrame"]
 notes = "Synchronously observe packed NV12 data on the host."
 
@@ -173,7 +173,7 @@ category             = "Color"
 kind                 = "session_command"
 body                 = "manual_session"
 generate_declaration = false
-api_return           = "oa::Result<oa::Vec<oa::U8>>"
+api_return           = "oa::Result<oa::Vector<oa::U8>>"
 api_params           = ["const oa::VideoFrame& inFrame"]
 notes = "Synchronously observe packed RGBA data on the host."
 

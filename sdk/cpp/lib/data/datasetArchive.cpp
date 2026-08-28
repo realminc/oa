@@ -2,7 +2,7 @@
 
 #include <data/datasetArchive.h>
 #include <oa/core/filesystem.h>
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
 #include <cstring>
 #include <fstream>
 

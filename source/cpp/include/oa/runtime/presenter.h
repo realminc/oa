@@ -5,7 +5,7 @@
 // Two-phase SDL3 setup:
 //   oa::EngineConfig config;
 //   config.presentationMode = oa::PresentationMode::Swapchain;
-//   oa::Vec<const char*> extensions;
+//   oa::Vector<const char*> extensions;
 //   window.getPresenterInstanceExtensions(&extensions);
 //   for (const char* extension : extensions)
 //       config.instanceExtraExtensions.pushBack(extension);
@@ -32,7 +32,7 @@ class VulkanWindow;
 // engine; the engine destroys them at close() and the caller must not do so.
 class Presenter {
 public:
-	explicit Presenter(oa::Engine& inEngine) noexcept : engine_(inEngine) {}
+	explicit Presenter(oa::Engine& inEngine) noexcept;
 	Presenter(Presenter&&)            = delete;
 	Presenter(const Presenter&)       = delete;
 	~Presenter();
@@ -208,10 +208,10 @@ private:
 	// Render pass + framebuffers reference swapchain_.views directly; they go
 	// away in step 5 when dynamic rendering replaces VkRenderPass.
 	VkRenderPass               renderPass_  = VK_NULL_HANDLE;
-	oa::Vec<VkFramebuffer> framebuffers_;
+	oa::Vector<VkFramebuffer> framebuffers_;
 
 	VkCommandPool                cmdPool_ = VK_NULL_HANDLE;
-	oa::Vec<VkCommandBuffer> cmdBufs_;
+	oa::Vector<VkCommandBuffer> cmdBufs_;
 
 	VkDescriptorPool imGuiPool_  = VK_NULL_HANDLE;
 	bool             imGuiReady_ = false;

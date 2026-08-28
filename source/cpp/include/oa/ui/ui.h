@@ -384,7 +384,7 @@ struct UiNodeCanvasGridConfig {
 
 class Ui {
 public:
-	Ui() = default;
+	Ui();
 	Ui(const Ui&)            = delete;
 	Ui& operator=(const Ui&) = delete;
 	Ui(Ui&&) noexcept;

@@ -6,7 +6,7 @@
 #include <oa/ml/modelFile.h>
 #include <oa/ml/optim.h>
 #include <oa/core/log.h>
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
 #include <oa/core/std/algo.h>
 #include <oa/core/std/limits.h>
 #include <oa/core/std/utility.h>

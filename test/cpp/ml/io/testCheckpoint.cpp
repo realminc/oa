@@ -36,7 +36,7 @@ protected:
 } // namespace
 
 TEST_VK(CheckpointTest, PersistsHeaderOnlySgdOptimizerState) {
-	oa::Vec<oa::Parameter> parameters;
+	oa::Vector<oa::Parameter> parameters;
 	oa::Sgd source(parameters, 0.125F, 0.75F, 0.01F);
 	oa::ModelFile model;
 	ASSERT_TRUE(source.saveTo(testEngine(), model).isOk());

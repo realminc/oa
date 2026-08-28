@@ -11,7 +11,7 @@ struct oa::VideoDemuxer::MediaImpl {
 	NativeKind kind = NativeKind::None;
 	oa::U16 pmtPid = 0x1FFFU;
 	oa::U16 videoPid = 0x1FFFU;
-	oa::Vec<oa::U8> pes;
+	oa::Vector<oa::U8> pes;
 	oa::U64 pesPts = 0U;
 	oa::U64 pesDts = 0U;
 	bool pesKeyframe = false;
@@ -249,7 +249,7 @@ oa::U64 readEbmlUnsigned(::FILE* inFile, oa::U64 inSize)
 oa::String readEbmlString(::FILE* inFile, oa::U64 inSize)
 {
 	if (inSize > 1024U) return {};
-	oa::Vec<char> bytes(static_cast<oa::Usize>(inSize + 1U), '\0');
+	oa::Vector<char> bytes(static_cast<oa::Usize>(inSize + 1U), '\0');
 	if (inSize > 0U and ::fread(bytes.data(), 1U, static_cast<oa::Usize>(inSize), inFile)
 		!= inSize) return {};
 	return oa::String(bytes.data());
@@ -322,7 +322,7 @@ bool parseHevcDecoderConfig(const oa::U8* inData, oa::U64 inSize, oa::VideoDemux
 		++p;
 		const oa::U16 numNalus = readU16BE(inData + p);
 		p += 2U;
-		oa::Vec<oa::U8>* target = nullptr;
+		oa::Vector<oa::U8>* target = nullptr;
 		if (nalType == 32U)
 			target = &out.vpsAnnexB;
 		else if (nalType == 33U)
@@ -400,7 +400,7 @@ bool parseAv1DecoderConfig(const oa::U8* inData, oa::U64 inSize, oa::VideoDemuxe
 	out.valid = not out.configObus.empty();
 	if (out.valid) {
 		oa::VcpAv1 parser;
-		oa::Vec<oa::Av1PictureDesc> pictures;
+		oa::Vector<oa::Av1PictureDesc> pictures;
 		const oa::Status parseStatus =
 			parser.parseAccessUnitPictures(oa::Span<const oa::U8>(out.configObus.data(), out.configObus.size()), pictures);
 		if (parseStatus.isOk() and parser.hasSequenceHeader()) {
@@ -460,7 +460,7 @@ struct MatroskaTrack {
 	oa::U64 number = 0U;
 	oa::U64 type = 0U;
 	oa::String codec;
-	oa::Vec<oa::U8> codecPrivate;
+	oa::Vector<oa::U8> codecPrivate;
 	oa::U32 width = 0U;
 	oa::U32 height = 0U;
 	oa::U64 defaultDurationNs = 0U;
@@ -563,7 +563,7 @@ oa::Status parseMatroskaFile(::FILE* inFile, oa::U64 inFileSize,
 	// Matroska normally writes Tracks before cluster, but EBML does not make
 	// that ordering a demuxer invariant. index cluster payload ranges first and
 	// parse them only after the selected video track is known.
-	oa::Vec<oa::U64> clusters;
+	oa::Vector<oa::U64> clusters;
 	while (static_cast<oa::U64>(::ftello(inFile)) < segmentEnd) {
 		EbmlElement element;
 		if (not readEbmlElement(inFile, segmentEnd, element)) break;
@@ -1211,7 +1211,7 @@ oa::Result<oa::VideoDemuxer> oa::VideoDemuxer::openLocal_(oa::StringView inPath)
 			if (payloadSize > static_cast<oa::U64>(SIZE_MAX)) {
 				return oa::Status::error("MP4 moov metadata exceeds host address space");
 			}
-			oa::Vec<oa::U8> metadata(static_cast<oa::Usize>(payloadSize));
+			oa::Vector<oa::U8> metadata(static_cast<oa::Usize>(payloadSize));
 			if (::fseeko(stream.file_, static_cast<off_t>(offset + headerSize), SEEK_SET) != 0
 				|| ::fread(metadata.data(), 1U, metadata.size(), stream.file_) != metadata.size()) {
 				return oa::Status::error("Cannot read MP4 moov metadata");
@@ -1222,7 +1222,7 @@ oa::Result<oa::VideoDemuxer> oa::VideoDemuxer::openLocal_(oa::StringView inPath)
 			if (payloadSize > static_cast<oa::U64>(SIZE_MAX)) {
 				return oa::Status::error("MP4 fragment metadata exceeds host address space");
 			}
-			oa::Vec<oa::U8> fragment(static_cast<oa::Usize>(payloadSize));
+			oa::Vector<oa::U8> fragment(static_cast<oa::Usize>(payloadSize));
 			if (::fseeko(stream.file_, static_cast<off_t>(offset + headerSize), SEEK_SET) != 0
 				or ::fread(fragment.data(), 1U, fragment.size(), stream.file_) != fragment.size()) {
 				return oa::Status::error("Cannot read MP4 fragment metadata");
@@ -1733,13 +1733,13 @@ void parseMinfBox(const oa::U8* inData, oa::U64 inSize, oa::VideoDemuxer& outStr
 void parseStblBox(const oa::U8* inData, oa::U64 inSize, oa::VideoDemuxer& outStream)
 {
 	// Temporary storage for sample table data
-	oa::Vec<oa::U32> sampleSizes;      // From stsz
-	oa::Vec<oa::U64> chunkOffsets;     // From stco
-	oa::Vec<oa::U32> sttsEntries;     // From stts (count, duration pairs)
-	oa::Vec<oa::U32> stscEntries;  // From stsc (firstChunk, samplesPerChunk,
+	oa::Vector<oa::U32> sampleSizes;      // From stsz
+	oa::Vector<oa::U64> chunkOffsets;     // From stco
+	oa::Vector<oa::U32> sttsEntries;     // From stts (count, duration pairs)
+	oa::Vector<oa::U32> stscEntries;  // From stsc (firstChunk, samplesPerChunk,
 							   // sampleDescriptionIndex)
-	oa::Vec<oa::U32> stssEntries;     // From stss (keyframe sample indices)
-	oa::Vec<oa::I32> cttsEntries;     // From ctts (sampleCount, compositionOffset)
+	oa::Vector<oa::U32> stssEntries;     // From stss (keyframe sample indices)
+	oa::Vector<oa::I32> cttsEntries;     // From ctts (sampleCount, compositionOffset)
 	
 	oa::U64 offset = 0;
 	while (offset + 8 <= inSize) {
@@ -2128,7 +2128,7 @@ oa::Status parseMoofBox(const oa::U8* inData, oa::U64 inSize, oa::U64 inMoofOffs
 		oa::U32 defaultFlags = outStream.fragment_.defaultSampleFlags;
 		oa::U64 baseDataOffset = inMoofOffset;
 		oa::U64 baseDecodeTime = 0U;
-		oa::Vec<oa::U64> runs;
+		oa::Vector<oa::U64> runs;
 
 		for (oa::U64 child = 0U; child + 8U <= trafSize;) {
 			const oa::U32 childSize = readU32BE(traf + child);

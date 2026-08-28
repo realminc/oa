@@ -30,8 +30,8 @@ class Swiglu;
 // to one expert (harmless while the oracle runs every expert densely, fatal the
 // moment the sparse executor lands).
 struct MoeRouteStats {
-	oa::Vec<oa::F32> loadFraction;   // [E] fraction of (token×slot) assignments; sums to 1
-	oa::Vec<oa::F32> meanProb;       // [E] mean router softmax probability per expert
+	oa::Vector<oa::F32> loadFraction;   // [E] fraction of (token×slot) assignments; sums to 1
+	oa::Vector<oa::F32> meanProb;       // [E] mean router softmax probability per expert
 	oa::F32 entropy = 0.0F;        // normalized load entropy in [0,1]; 1 = perfectly balanced
 	oa::F32 maxLoadRatio = 0.0F;   // E·max_e load; 1 = balanced, →E = full collapse
 	oa::I32 deadExperts = 0;       // experts receiving zero tokens
@@ -84,7 +84,7 @@ public:
 private:
 	// GPU-reduced per-expert load fraction of the last forward. Explicit telemetry
 	// synchronizes and reads only E reduced scalars, never the [T,E] route mask.
-	[[nodiscard]] oa::Vec<oa::F32> lastLoadFraction() const;
+	[[nodiscard]] oa::Vector<oa::F32> lastLoadFraction() const;
 	[[nodiscard]] oa::Matrix denseExpertDelta(const oa::Matrix& inNormed,
 		const oa::Matrix& inGate) const;
 	[[nodiscard]] oa::Matrix sparseExpertDelta(const oa::Matrix& inNormed,
@@ -115,7 +115,7 @@ private:
 	// registered E child modules and rebuilt these same stacks with four Concat
 	// operations every forward, then split all four gradients again in backward.
 	// Shared always-on experts (DeepSeekMoE): applied unconditionally, no gate.
-	oa::Vec<oa::SharedPtr<oa::Swiglu>> sharedExperts_;
+	oa::Vector<oa::SharedPtr<oa::Swiglu>> sharedExperts_;
 
 	// Aux-loss-free balancing state (device buffer + host policy scalar).
 	oa::Matrix routingBias_;        // persistent [1,E] selection bias, gradient-free

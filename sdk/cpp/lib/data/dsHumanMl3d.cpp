@@ -103,8 +103,8 @@ oa::I32 jsonIntField(const std::string& inJson, const char* inKey) {
 
 // HumanML3D stores one or more "text#pos-tags#start#end" records. A zero/zero
 // range denotes the full clip; non-zero ranges denote captioned sub-clips.
-oa::Vec<HumanMl3dCaption> readCaptions(const std::string& inPath) {
-	oa::Vec<HumanMl3dCaption> out;
+oa::Vector<HumanMl3dCaption> readCaptions(const std::string& inPath) {
+	oa::Vector<HumanMl3dCaption> out;
 	std::ifstream f(inPath);
 	std::string line;
 	while (std::getline(f, line)) {
@@ -147,7 +147,7 @@ oa::I32 jointsForFeatDimImpl(oa::I32 inFeatDim) {
 
 } // namespace
 
-oa::Vec<oa::F32> humanMl3dRecoverWorldJoints(
+oa::Vector<oa::F32> humanMl3dRecoverWorldJoints(
 	oa::Span<const oa::F32> inFeatures, oa::I32 inFrames, oa::I32 inFeatDim) {
 	const oa::I32 joints = jointsForFeatDimImpl(inFeatDim);
 	if (inFrames <= 0 or joints <= 0 or
@@ -156,18 +156,18 @@ oa::Vec<oa::F32> humanMl3dRecoverWorldJoints(
 	}
 
 	const oa::I32 ricCount = (joints - 1) * 3;
-	oa::Vec<oa::F32> positions;
+	oa::Vector<oa::F32> positions;
 	positions.reserve(static_cast<oa::Usize>(inFrames) * joints * 3);
 
 	// HumanML3D stores half-angle yaw deltas. This mirrors the reference
 	// recover_root_rot_pos/recover_from_ric quaternion convention.
-	oa::Vec<oa::F32> yaw(static_cast<oa::Usize>(inFrames), 0.0F);
+	oa::Vector<oa::F32> yaw(static_cast<oa::Usize>(inFrames), 0.0F);
 	for (oa::I32 t = 1; t < inFrames; ++t) {
 		yaw[static_cast<oa::Usize>(t)] = yaw[static_cast<oa::Usize>(t - 1)]
 			+ inFeatures[static_cast<oa::Usize>(t - 1) * inFeatDim];
 	}
 
-	oa::Vec<oa::vlm::Vec3> root(static_cast<oa::Usize>(inFrames));
+	oa::Vector<oa::vlm::Vec3> root(static_cast<oa::Usize>(inFrames));
 	for (oa::I32 t = 0; t < inFrames; ++t) {
 		oa::vlm::Vec3 delta = {};
 		if (t > 0) {

@@ -264,9 +264,9 @@ public:
 		oa::MemoryPlacement inPlacement = oa::MemoryPlacement::Auto);
 	[[nodiscard]] oa::Status snapshotSemanticBindings(
 		oa::Span<const oa::Matrix* const> inObservedOutputs,
-		oa::Vec<oa::SemanticStorageBinding>& outBindings,
-		oa::Vec<oa::CapturedResourceDesc>& outResourceDescs,
-		oa::Vec<oa::SharedPtr<oavk::Buffer>>& outResources) const;
+		oa::Vector<oa::SemanticStorageBinding>& outBindings,
+		oa::Vector<oa::CapturedResourceDesc>& outResourceDescs,
+		oa::Vector<oa::SharedPtr<oavk::Buffer>>& outResources) const;
 	void releaseStableTransientResources(oa::Span<void*> inRetiredHandles);
 
 private:
@@ -298,9 +298,9 @@ private:
 		oa::OpValueKind inKind);
 	void clearSemanticRecording() noexcept;
 	[[nodiscard]] static BatchBufferState* findBatchBufferState(
-		oa::Vec<BatchBufferState>& inStates, const oavk::Buffer& inBuffer);
+		oa::Vector<BatchBufferState>& inStates, const oavk::Buffer& inBuffer);
 	static void mergeBatchBufferState(
-		oa::Vec<BatchBufferState>& inStates,
+		oa::Vector<BatchBufferState>& inStates,
 		const oavk::Buffer& inBuffer,
 		oa::Bool inRead,
 		oa::Bool inWrite,
@@ -337,17 +337,17 @@ private:
 	oa::ExecutableGraph* graph_ = nullptr;
 	oa::ExecutableGraphBuilder builder_;
 	oa::SemanticGraph semanticGraph_;
-	oa::Vec<SemanticValueBinding> semanticValueBindings_;
+	oa::Vector<SemanticValueBinding> semanticValueBindings_;
 	oa::Bool executed_ = false;
-	oa::Vec<oa::ExecutableGraph*> deferredGraphs_;
-	oa::Vec<oa::ExecutableGraph*> reusableGraphs_;
-	oa::Vec<BatchBufferState> batchBufferStates_;
+	oa::Vector<oa::ExecutableGraph*> deferredGraphs_;
+	oa::Vector<oa::ExecutableGraph*> reusableGraphs_;
+	oa::Vector<BatchBufferState> batchBufferStates_;
 	oavk::Stream* activeBatchStream_ = nullptr;
 	oavk::Stream* pendingBatchStream_ = nullptr;
 	oa::Event pendingEvent_;
 	oa::Status recordingFailure_;
 	oa::ExecutionStats stats_;
-	oa::Vec<oa::SharedPtr<oavk::Buffer>> stableResourceSlots_;
+	oa::Vector<oa::SharedPtr<oavk::Buffer>> stableResourceSlots_;
 	oa::Usize stableResourceCursor_ = 0;
 	oa::Usize stableResourceCount_ = 0;
 	oa::Usize stableExternalResourceCount_ = 0;

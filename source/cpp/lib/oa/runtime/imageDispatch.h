@@ -4,7 +4,7 @@
 #include <oa/core/status.h>
 #include <oa/runtime/allocator.h>
 #include <oa/runtime/engine.h>
-#include <oa/runtime/oaVk.h>
+#include <vkl/vkl.h>
 #include <oa/runtime/sync.h>
 
 namespace oavk {
@@ -79,10 +79,10 @@ private:
 
 	oa::Engine* engine_ = nullptr;
 	oavk::Stream* stream_ = nullptr;
-	oa::Vec<oa::U32> storageImageSlots_;
-	oa::Vec<oa::U32> sampledImageSlots_;
-	oa::Vec<oa::U32> samplerSlots_;
-	oa::Vec<VkImageView> ownedImageViews_;
+	oa::Vector<oa::U32> storageImageSlots_;
+	oa::Vector<oa::U32> sampledImageSlots_;
+	oa::Vector<oa::U32> samplerSlots_;
+	oa::Vector<VkImageView> ownedImageViews_;
 };
 
 class ImageDispatch {

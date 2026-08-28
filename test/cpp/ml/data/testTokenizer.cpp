@@ -7,7 +7,7 @@
 
 namespace {
 
-void expectSame(const oa::Vec<oa::I32>& inA, const oa::Vec<oa::I32>& inB) {
+void expectSame(const oa::Vector<oa::I32>& inA, const oa::Vector<oa::I32>& inB) {
 	ASSERT_EQ(inA.size(), inB.size());
 	for (oa::Usize i = 0; i < inA.size(); ++i) EXPECT_EQ(inA[i], inB[i]) << "token " << i;
 }

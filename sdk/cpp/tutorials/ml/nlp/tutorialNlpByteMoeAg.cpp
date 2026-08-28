@@ -38,7 +38,7 @@ public:
 
 private:
 	oa::Matrix positionIds(oa::I32 inBatch) const {
-		oa::Vec<oa::U8> ids(static_cast<oa::I64>(inBatch) * kContextLen);
+		oa::Vector<oa::U8> ids(static_cast<oa::I64>(inBatch) * kContextLen);
 		for (oa::I64 i = 0; i < ids.size(); ++i) ids[i] = static_cast<oa::U8>(i % kContextLen);
 		return oa::FnMatrix::fromBytes(oa::Span<const oa::U8>(ids.data(), ids.size()),
 			oa::MatrixShape{static_cast<oa::I64>(ids.size())}, oa::ScalarType::UInt8);

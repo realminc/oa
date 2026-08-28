@@ -4,7 +4,6 @@
 #include <oa/runtime/engine.h>
 #include <oa/runtime/presenter.h>
 #include <oa/runtime/window.h>
-#include <oa/runtime/oaVk.h>
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>

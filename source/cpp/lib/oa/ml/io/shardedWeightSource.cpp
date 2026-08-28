@@ -42,7 +42,7 @@ oa::Status ShardedWeightSource::open(const oa::Path& inIndexPath) {
 
 	oa::HashMap<oa::String, oa::Usize> shardIndices;
 	oa::HashSet<oa::String> indexedNames;
-	oa::Vec<oa::Pair<oa::String, oa::String>> indexedWeights;
+	oa::Vector<oa::Pair<oa::String, oa::String>> indexedWeights;
 	indexedWeights.reserve(weightMap.size());
 	for (const auto& item : weightMap) {
 		if (!item.first.IsScalar() || !item.second.IsScalar()) {

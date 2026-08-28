@@ -16,7 +16,7 @@ namespace oa {
 class GradSmoothL1Mean final : public oa::GradNode {
 public:
 	oa::U32 count_ = 0;
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		const oa::Matrix& a = saved(0);
 		const oa::Matrix& b = saved(1);
 		if (outDIn.size() > 0) {
@@ -33,7 +33,7 @@ public:
 	oa::I32 seqLen_ = 0;
 	oa::I32 featDim_ = 0;
 	oa::U32 count_ = 0;
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		const oa::Matrix& pred = saved(0);
 		const oa::Matrix& target = saved(1);
 		if (outDIn.size() > 0) {

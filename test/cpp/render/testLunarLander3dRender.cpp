@@ -4,7 +4,6 @@
 #include <oa/runtime/engine.h>
 #include <oa/runtime/eventAccess.h>
 #include <oa/runtime/engine/deviceAccess.h>
-#include <oa/runtime/oaVk.h>
 
 #include "oa/runtime/engine/borrowedServiceRetirement.h"
 #include "oa/runtime/textureAccess.h"

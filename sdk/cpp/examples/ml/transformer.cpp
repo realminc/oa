@@ -22,18 +22,18 @@ constexpr const char* Corpus =
 	"outrageous fortune or to take arms against a sea of troubles and by "
 	"opposing end them ";
 
-oa::Matrix tokenMatrix(const oa::Vec<oa::I32>& tokens, oa::I32 batch) {
+oa::Matrix tokenMatrix(const oa::Vector<oa::I32>& tokens, oa::I32 batch) {
 	return oa::FnMatrix::fromInt32(
 		oa::Span<const oa::I32>(tokens.data(), tokens.size()),
 		{batch, ContextLength}, oa::ScalarType::UInt32
 	);
 }
 
-void nextBatch(const oa::Vec<oa::I32>& tokens, oa::I64& cursor,
+void nextBatch(const oa::Vector<oa::I32>& tokens, oa::I64& cursor,
 	oa::Matrix& input, oa::Matrix& target) {
 	const oa::I64 limit = static_cast<oa::I64>(tokens.size()) - ContextLength - 1;
-	oa::Vec<oa::I32> x(static_cast<oa::Usize>(BatchSize * ContextLength));
-	oa::Vec<oa::I32> y(x.size());
+	oa::Vector<oa::I32> x(static_cast<oa::Usize>(BatchSize * ContextLength));
+	oa::Vector<oa::I32> y(x.size());
 	for (oa::I32 batch = 0; batch < BatchSize; ++batch) {
 		const oa::I64 start = (cursor + static_cast<oa::I64>(batch) * 7) % limit;
 		for (oa::I32 position = 0; position < ContextLength; ++position) {
@@ -50,7 +50,7 @@ void nextBatch(const oa::Vec<oa::I32>& tokens, oa::I64& cursor,
 oa::String generate(oa::NnTransformer& model, const oa::BpeTokenizer& tokenizer) {
 	const oa::String prompt = "to be";
 	auto promptTokens = tokenizer.encode(prompt.cStr());
-	oa::Vec<oa::I32> context(static_cast<oa::Usize>(ContextLength), 0);
+	oa::Vector<oa::I32> context(static_cast<oa::Usize>(ContextLength), 0);
 	const auto copied = std::min<oa::Usize>(promptTokens.size(), context.size());
 	for (oa::Usize index = 0; index < copied; ++index) context[index] = promptTokens[index];
 	oa::I32 filled = std::max<oa::I32>(1, static_cast<oa::I32>(copied));

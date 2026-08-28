@@ -15,12 +15,33 @@ namespace oa {
 
 template<typename T>
 [[nodiscard]] constexpr T gcd(T inA, T inB) noexcept {
-	while (inB != 0) {
-		const T remainder = inA % inB;
-		inA = inB;
-		inB = remainder;
+	static_assert(oa::IsIntegralV<T>, "oa::gcd requires an integral type");
+	static_assert(sizeof(T) <= sizeof(oa::U64),
+		"oa::gcd currently admits integral types up to 64 bits");
+	constexpr bool isSigned = static_cast<T>(-1) < static_cast<T>(0);
+	const auto magnitude = [](T inValue) constexpr -> oa::U64 {
+		const oa::U64 raw = static_cast<oa::U64>(inValue);
+		if constexpr (isSigned) {
+			return inValue < 0 ? oa::U64{0} - raw : raw;
+		}
+		return raw;
+	};
+
+	oa::U64 a = magnitude(inA);
+	oa::U64 b = magnitude(inB);
+	while (b != 0) {
+		const oa::U64 remainder = a % b;
+		a = b;
+		b = remainder;
 	}
-	return inA < 0 ? -inA : inA;
+	if constexpr (isSigned) {
+		constexpr unsigned bits = static_cast<unsigned>(sizeof(T) * __CHAR_BIT__);
+		constexpr oa::U64 maxValue = bits == 64U
+			? (~oa::U64{0} >> 1U)
+			: ((oa::U64{1} << (bits - 1U)) - 1U);
+		OA_REQUIRE_MSG(a <= maxValue, "oa::gcd result is not representable");
+	}
+	return static_cast<T>(a);
 }
 
 struct DefaultLess {
@@ -217,8 +238,8 @@ template<typename It, typename T>
 }
 
 template<typename T, typename U>
-[[nodiscard]] typename oa::Span<T>::iterator find(oa::Span<T> inSpan, const U& inVal) {
-	return find(inSpan.data(), inSpan.data() + inSpan.size(), inVal);
+	[[nodiscard]] typename oa::Span<T>::iterator find(oa::Span<T> inSpan, const U& inVal) {
+	return find(inSpan.begin(), inSpan.end(), inVal);
 }
 
 template<typename It, typename Pred>
@@ -232,8 +253,8 @@ template<typename It, typename Pred>
 }
 
 template<typename T, typename Pred>
-[[nodiscard]] typename oa::Span<T>::iterator findIf(oa::Span<T> inSpan, Pred inPred) {
-	return findIf(inSpan.data(), inSpan.data() + inSpan.size(), inPred);
+	[[nodiscard]] typename oa::Span<T>::iterator findIf(oa::Span<T> inSpan, Pred inPred) {
+	return findIf(inSpan.begin(), inSpan.end(), inPred);
 }
 
 template<typename It, typename Cmp>
@@ -270,12 +291,14 @@ void stableSort(RandIt inFirst, RandIt inLast) {
 
 template<typename T, typename Cmp>
 void sort(oa::Span<T> inSpan, Cmp inCmp) {
-	sort(inSpan.data(), inSpan.data() + inSpan.size(), inCmp);
+	if (inSpan.empty()) return;
+	sort(inSpan.begin(), inSpan.end(), inCmp);
 }
 
 template<typename T>
 void sort(oa::Span<T> inSpan) {
-	sort(inSpan.data(), inSpan.data() + inSpan.size());
+	if (inSpan.empty()) return;
+	sort(inSpan.begin(), inSpan.end());
 }
 
 template<typename It, typename T>
@@ -290,8 +313,8 @@ template<typename It, typename T>
 }
 
 template<typename T, typename U>
-[[nodiscard]] auto count(oa::Span<T> inSpan, const U& inVal) {
-	return count(inSpan.data(), inSpan.data() + inSpan.size(), inVal);
+	[[nodiscard]] auto count(oa::Span<T> inSpan, const U& inVal) {
+	return count(inSpan.begin(), inSpan.end(), inVal);
 }
 
 template<typename It1, typename It2>
@@ -311,7 +334,7 @@ template<typename T, typename U>
 	if (inA.size() != inB.size()) {
 		return false;
 	}
-	return equal(inA.data(), inA.data() + inA.size(), inB.data(), inB.data() + inB.size());
+	return equal(inA.begin(), inA.end(), inB.begin(), inB.end());
 }
 
 template<typename It, typename T>
@@ -323,7 +346,7 @@ void fill(It inFirst, It inLast, const T& inVal) {
 
 template<typename T, typename U>
 void fill(oa::Span<T> inSpan, const U& inVal) {
-	fill(inSpan.data(), inSpan.data() + inSpan.size(), inVal);
+	fill(inSpan.begin(), inSpan.end(), inVal);
 }
 
 template<typename It, typename outIt>
@@ -338,7 +361,7 @@ outIt copy(It inFirst, It inLast, outIt inDest) {
 
 template<typename T, typename outIt>
 outIt copy(oa::Span<T> inSpan, outIt inDest) {
-	return copy(inSpan.data(), inSpan.data() + inSpan.size(), inDest);
+	return copy(inSpan.begin(), inSpan.end(), inDest);
 }
 
 template<typename It, typename Pred>
@@ -352,8 +375,8 @@ template<typename It, typename Pred>
 }
 
 template<typename T, typename Pred>
-[[nodiscard]] bool allOf(oa::Span<T> inSpan, Pred inPred) {
-	return allOf(inSpan.data(), inSpan.data() + inSpan.size(), inPred);
+	[[nodiscard]] bool allOf(oa::Span<T> inSpan, Pred inPred) {
+	return allOf(inSpan.begin(), inSpan.end(), inPred);
 }
 
 template<typename It, typename Pred>
@@ -367,8 +390,8 @@ template<typename It, typename Pred>
 }
 
 template<typename T, typename Pred>
-[[nodiscard]] bool anyOf(oa::Span<T> inSpan, Pred inPred) {
-	return anyOf(inSpan.data(), inSpan.data() + inSpan.size(), inPred);
+	[[nodiscard]] bool anyOf(oa::Span<T> inSpan, Pred inPred) {
+	return anyOf(inSpan.begin(), inSpan.end(), inPred);
 }
 
 template<typename It, typename Pred>
@@ -382,8 +405,8 @@ template<typename It, typename Pred>
 }
 
 template<typename T, typename Pred>
-[[nodiscard]] bool noneOf(oa::Span<T> inSpan, Pred inPred) {
-	return noneOf(inSpan.data(), inSpan.data() + inSpan.size(), inPred);
+	[[nodiscard]] bool noneOf(oa::Span<T> inSpan, Pred inPred) {
+	return noneOf(inSpan.begin(), inSpan.end(), inPred);
 }
 
 // Scalar two-argument min/max (the oa::min / oa::max replacement — distinct
@@ -426,7 +449,7 @@ void reverse(It inFirst, It inLast) {
 
 template<typename T>
 void reverse(oa::Span<T> inSpan) {
-	reverse(inSpan.data(), inSpan.data() + inSpan.size());
+	reverse(inSpan.begin(), inSpan.end());
 }
 
 template<typename It, typename Pred>
@@ -457,8 +480,8 @@ template<typename It>
 }
 
 template<typename T>
-[[nodiscard]] typename oa::Span<T>::iterator unique(oa::Span<T> inSpan) {
-	return unique(inSpan.data(), inSpan.data() + inSpan.size());
+	[[nodiscard]] typename oa::Span<T>::iterator unique(oa::Span<T> inSpan) {
+	return unique(inSpan.begin(), inSpan.end());
 }
 
 template<typename It>
@@ -518,23 +541,23 @@ template<typename It, typename Cmp>
 }
 
 template<typename T>
-[[nodiscard]] typename oa::Span<T>::iterator minElement(oa::Span<T> inSpan) {
-	return minElement(inSpan.data(), inSpan.data() + inSpan.size());
+	[[nodiscard]] typename oa::Span<T>::iterator minElement(oa::Span<T> inSpan) {
+	return minElement(inSpan.begin(), inSpan.end());
 }
 
 template<typename T, typename Cmp>
-[[nodiscard]] typename oa::Span<T>::iterator minElement(oa::Span<T> inSpan, Cmp inCmp) {
-	return minElement(inSpan.data(), inSpan.data() + inSpan.size(), inCmp);
+	[[nodiscard]] typename oa::Span<T>::iterator minElement(oa::Span<T> inSpan, Cmp inCmp) {
+	return minElement(inSpan.begin(), inSpan.end(), inCmp);
 }
 
 template<typename T>
-[[nodiscard]] typename oa::Span<T>::iterator maxElement(oa::Span<T> inSpan) {
-	return maxElement(inSpan.data(), inSpan.data() + inSpan.size());
+	[[nodiscard]] typename oa::Span<T>::iterator maxElement(oa::Span<T> inSpan) {
+	return maxElement(inSpan.begin(), inSpan.end());
 }
 
 template<typename T, typename Cmp>
-[[nodiscard]] typename oa::Span<T>::iterator maxElement(oa::Span<T> inSpan, Cmp inCmp) {
-	return maxElement(inSpan.data(), inSpan.data() + inSpan.size(), inCmp);
+	[[nodiscard]] typename oa::Span<T>::iterator maxElement(oa::Span<T> inSpan, Cmp inCmp) {
+	return maxElement(inSpan.begin(), inSpan.end(), inCmp);
 }
 
 } // namespace oa

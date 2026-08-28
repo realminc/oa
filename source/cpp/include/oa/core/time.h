@@ -16,11 +16,19 @@ public:
 		: nanos_(inTime.nanosecondsSinceEpoch()) {}
 
 	[[nodiscard]] static Timestamp now() noexcept { return Timestamp(oa::steadyNow()); }
-	[[nodiscard]] static constexpr Timestamp fromSeconds(oa::I64 inSeconds) noexcept { return Timestamp(inSeconds * 1'000'000'000LL); }
-	[[nodiscard]] static constexpr Timestamp fromMilliseconds(oa::I64 inMillis) noexcept { return Timestamp(inMillis * 1'000'000LL); }
-	[[nodiscard]] static constexpr Timestamp fromMicroseconds(oa::I64 inMicros) noexcept { return Timestamp(inMicros * 1'000LL); }
+	[[nodiscard]] static constexpr Timestamp fromSeconds(oa::I64 inSeconds) noexcept {
+		return Timestamp(oa::Duration::fromSeconds(inSeconds).nanoseconds());
+	}
+	[[nodiscard]] static constexpr Timestamp fromMilliseconds(oa::I64 inMillis) noexcept {
+		return Timestamp(oa::Duration::fromMilliseconds(inMillis).nanoseconds());
+	}
+	[[nodiscard]] static constexpr Timestamp fromMicroseconds(oa::I64 inMicros) noexcept {
+		return Timestamp(oa::Duration::fromMicroseconds(inMicros).nanoseconds());
+	}
 	[[nodiscard]] static constexpr Timestamp fromNanoseconds(oa::I64 inNanos) noexcept { return Timestamp(inNanos); }
-	[[nodiscard]] static constexpr Timestamp fromDouble(oa::F64 inSeconds) noexcept { return Timestamp(static_cast<oa::I64>(inSeconds * 1'000'000'000.0)); }
+	[[nodiscard]] static constexpr Timestamp fromDouble(oa::F64 inSeconds) noexcept {
+		return Timestamp(oa::Duration::fromDouble(inSeconds).nanoseconds());
+	}
 	[[nodiscard]] static constexpr Timestamp zero() noexcept { return Timestamp(0); }
 
 	[[nodiscard]] constexpr oa::I64 nanos() const noexcept { return nanos_; }
@@ -30,10 +38,24 @@ public:
 	[[nodiscard]] constexpr oa::F64 toSeconds() const noexcept { return static_cast<oa::F64>(nanos_) / 1e9; }
 	[[nodiscard]] constexpr oa::F64 toMs() const noexcept { return static_cast<oa::F64>(nanos_) / 1e6; }
 
-	[[nodiscard]] constexpr Timestamp operator+(Timestamp inOther) const noexcept { return Timestamp(nanos_ + inOther.nanos_); }
-	[[nodiscard]] constexpr Timestamp operator-(Timestamp inOther) const noexcept { return Timestamp(nanos_ - inOther.nanos_); }
-	constexpr Timestamp& operator+=(Timestamp inOther) noexcept { nanos_ += inOther.nanos_; return *this; }
-	constexpr Timestamp& operator-=(Timestamp inOther) noexcept { nanos_ -= inOther.nanos_; return *this; }
+	[[nodiscard]] constexpr Timestamp operator+(Timestamp inOther) const noexcept {
+		return Timestamp(oa::detail::checkedI64Add(
+			nanos_, inOther.nanos_, "Timestamp addition overflow"));
+	}
+	[[nodiscard]] constexpr Timestamp operator-(Timestamp inOther) const noexcept {
+		return Timestamp(oa::detail::checkedI64Subtract(
+			nanos_, inOther.nanos_, "Timestamp subtraction overflow"));
+	}
+	constexpr Timestamp& operator+=(Timestamp inOther) noexcept {
+		nanos_ = oa::detail::checkedI64Add(
+			nanos_, inOther.nanos_, "Timestamp addition overflow");
+		return *this;
+	}
+	constexpr Timestamp& operator-=(Timestamp inOther) noexcept {
+		nanos_ = oa::detail::checkedI64Subtract(
+			nanos_, inOther.nanos_, "Timestamp subtraction overflow");
+		return *this;
+	}
 
 	[[nodiscard]] constexpr bool operator==(Timestamp inOther) const noexcept { return nanos_ == inOther.nanos_; }
 	[[nodiscard]] constexpr bool operator!=(Timestamp inOther) const noexcept { return nanos_ != inOther.nanos_; }
@@ -97,13 +119,14 @@ public:
 
 	[[nodiscard]] static Datetime now() noexcept;
 	[[nodiscard]] static constexpr Datetime fromUnixSeconds(oa::I64 inSeconds) noexcept {
-		return Datetime(oa::SystemTimePoint(inSeconds * 1'000'000'000LL));
+		return Datetime(oa::SystemTimePoint(
+			oa::Duration::fromSeconds(inSeconds).nanoseconds()));
 	}
 	[[nodiscard]] static constexpr Datetime fromUnixNanoseconds(oa::I64 inNanoseconds) noexcept {
 		return Datetime(oa::SystemTimePoint(inNanoseconds));
 	}
 	[[nodiscard]] static constexpr Datetime fromDouble(oa::F64 inSeconds) noexcept {
-		return fromUnixNanoseconds(static_cast<oa::I64>(inSeconds * 1'000'000'000.0));
+		return fromUnixNanoseconds(oa::Duration::fromDouble(inSeconds).nanoseconds());
 	}
 
 	[[nodiscard]] oa::SystemTimePoint getTimePoint() const noexcept { return time_; }
@@ -124,7 +147,9 @@ public:
 	[[nodiscard]] oa::I32 minute() const;
 	[[nodiscard]] oa::I32 second() const;
 	[[nodiscard]] oa::I32 microsecond() const {
-		return static_cast<oa::I32>((unixNanoseconds() % 1'000'000'000LL) / 1'000LL);
+		oa::I64 subsecond = unixNanoseconds() % 1'000'000'000LL;
+		if (subsecond < 0) subsecond += 1'000'000'000LL;
+		return static_cast<oa::I32>(subsecond / 1'000LL);
 	}
 	[[nodiscard]] oa::I32 dayOfWeek() const;
 	[[nodiscard]] oa::I32 dayOfYear() const;
@@ -165,8 +190,15 @@ private:
 
 // Smart human-readable duration: "3s", "45s", "2m 30s", "1h 15m", "2d 6h"
 [[nodiscard]] inline oa::String formatDuration(oa::F64 inSeconds) {
+	OA_REQUIRE_MSG(
+		inSeconds == inSeconds
+			and inSeconds >= oa::Limits<oa::F64>::lowest()
+			and inSeconds <= oa::Limits<oa::F64>::max(),
+		"formatDuration requires a finite value");
 	if (inSeconds < 0.0) inSeconds = 0.0;
-	const oa::I64 total = static_cast<oa::I64>(inSeconds + 0.5);
+	const oa::F64 rounded = inSeconds + 0.5;
+	OA_REQUIRE_MSG(rounded < 0x1.0p63, "formatDuration seconds overflow");
+	const oa::I64 total = static_cast<oa::I64>(rounded);
 	if (total < 60) {
 		oa::String out;
 		out += toString(total);

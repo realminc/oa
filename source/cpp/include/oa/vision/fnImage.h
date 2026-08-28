@@ -44,7 +44,7 @@ namespace FnImage {
 		oa::Span<const oa::U8> inData,
 		ImageFormat inFormat = ImageFormat::Rgb
 	);
-	[[nodiscard]] oa::Result<oa::Vec<oa::U8>> encode(
+	[[nodiscard]] oa::Result<oa::Vector<oa::U8>> encode(
 		const Image& inImage,
 		ImageCodec inCodec,
 		oa::U32 inQuality = 90U

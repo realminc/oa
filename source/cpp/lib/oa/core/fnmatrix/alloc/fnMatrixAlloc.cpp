@@ -13,7 +13,7 @@
 #include <oa/core/fnMatrix.h>
 #include <oa/core/fnmatrix/fnMatrixInternal.h>
 #include <oa/core/log.h>
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
 #include <oa/core/status.h>
 #include <oa/core/types.h>
 #include <oa/runtime/executionSession.h>
@@ -188,7 +188,7 @@ oa::Matrix oa::FnMatrix::fromBytes(oa::Span<const oa::U8> inData, oa::MatrixShap
 	auto t = oa::FnMatrix::empty(inShape, inDtype);
 	if (!t.hasStorage()) return t;
 	const oa::U8* uploadData = inData.data();
-	oa::Vec<oa::U8> converted;
+	oa::Vector<oa::U8> converted;
 	if (isFloat32U8Input) {
 		converted.resize(static_cast<oa::Usize>(expectedBytes));
 		const oa::U8* src = inData.data();
@@ -227,7 +227,7 @@ oa::Matrix oa::FnMatrix::fromInt32(oa::Span<const oa::I32> inData, oa::MatrixSha
 	auto t = oa::FnMatrix::empty(inShape, inDtype);
 	if (!t.hasStorage()) return t;
 	const void* uploadData = inData.data();
-	oa::Vec<oa::F32> converted;
+	oa::Vector<oa::F32> converted;
 	if (inDtype == oa::ScalarType::Float32) {
 		converted.resize(static_cast<oa::Usize>(numElements));
 		for (oa::I64 i = 0; i < numElements; ++i) {

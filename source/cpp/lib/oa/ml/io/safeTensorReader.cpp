@@ -572,7 +572,7 @@ oa::Result<oa::ScalarType> SafeTensorsWeightSource::parseDtype(oa::StringView in
 
 oa::Status SafeTensorsWeightSource::validateEntries() {
 	const oa::U64 dataBytes = static_cast<oa::U64>(file_.size()) - dataStart_;
-	oa::Vec<const Entry*> sorted;
+	oa::Vector<const Entry*> sorted;
 	sorted.reserve(entryOrder_.size());
 
 	for (const auto& name : entryOrder_) {
@@ -644,8 +644,8 @@ oa::Status SafeTensorsWeightSource::validateEntries() {
 	return oa::Status::ok();
 }
 
-oa::Vec<oa::WeightInfo> SafeTensorsWeightSource::list() const {
-	oa::Vec<oa::WeightInfo> result;
+oa::Vector<oa::WeightInfo> SafeTensorsWeightSource::list() const {
+	oa::Vector<oa::WeightInfo> result;
 	result.reserve(entryOrder_.size());
 	for (const auto& name : entryOrder_) {
 		auto it = entries_.find(name);

@@ -12,7 +12,7 @@ public:
 	oa::I32 kernelSize_ = 0;
 	oa::I32 stride_ = 0;
 	oa::I32 padding_ = 0;
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() > 0) {
 			outDIn[0] = oa::FnMatrix::maxPool2dBwd(
 				saved(0), saved(2), inDOut,
@@ -27,7 +27,7 @@ public:
 	oa::I32 stride_ = 0;
 	oa::I32 padding_ = 0;
 
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() > 0) {
 			outDIn[0] = oa::FnMatrix::avgPool2dBwd(
 				saved(0), inDOut, kernelSize_, stride_, padding_);

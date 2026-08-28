@@ -2,7 +2,7 @@
 
 #include <oa/core/types.h>
 #include <oa/core/std/array.h>
-#include <oa/runtime/oaVk.h>
+#include <vkl/vkl.h>
 
 namespace oavk {
 
@@ -263,8 +263,8 @@ struct QueuePlan {
 	oa::U32 dedicatedTransferSlots = 0;
 	bool hasAsync = false;
 	oa::U32 mainComputeCount = 1;
-	oa::Vec<oa::F32> priorityBacking;
-	oa::Vec<VkDeviceQueueCreateInfo> queueCIs;
+	oa::Vector<oa::F32> priorityBacking;
+	oa::Vector<VkDeviceQueueCreateInfo> queueCIs;
 };
 
 struct DeviceFeatureBundle {

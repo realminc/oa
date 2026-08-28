@@ -1,6 +1,6 @@
 #include <oa/runtime/device.h>
 #include <oa/core/log.h>
-#include <oa/runtime/oaVk.h>
+#include <vkl/vkl.h>
 #include <oa/runtime/init.h>     // oavk::VendorId*, oavk::coopMatTrust forward decl
 #include <oa/core/envFlag.h>
 
@@ -489,7 +489,7 @@ oa::U64 oavk::physicalDevicePickScore(
 }
 
 static bool physicalDeviceHasExtension(
-	const OaVkInstanceTable& inDispatch,
+	const VklInstanceTable& inDispatch,
 	VkPhysicalDevice inPhys,
 	const char* inName)
 {
@@ -499,7 +499,7 @@ static bool physicalDeviceHasExtension(
 	if (extCount == 0) {
 		return false;
 	}
-	oa::Vec<VkExtensionProperties> extensions(extCount);
+	oa::Vector<VkExtensionProperties> extensions(extCount);
 	inDispatch.vkEnumerateDeviceExtensionProperties(
 		inPhys, nullptr, &extCount, extensions.data());
 	for (oa::U32 i = 0; i < extCount; ++i) {
@@ -512,7 +512,7 @@ static bool physicalDeviceHasExtension(
 
 
 oa::U32 oavk::countComputeQueueSlots(
-	const OaVkInstanceTable& inDispatch,
+	const VklInstanceTable& inDispatch,
 	void* inPhysicalDevice)
 {
 	VkPhysicalDevice phys = static_cast<VkPhysicalDevice>(inPhysicalDevice);
@@ -524,7 +524,7 @@ oa::U32 oavk::countComputeQueueSlots(
 	if (qfCount == 0) {
 		return 0;
 	}
-	oa::Vec<VkQueueFamilyProperties> qfProps(qfCount);
+	oa::Vector<VkQueueFamilyProperties> qfProps(qfCount);
 	inDispatch.vkGetPhysicalDeviceQueueFamilyProperties(
 		phys, &qfCount, qfProps.data());
 	oa::U32 computeSlots = 0;
@@ -538,7 +538,7 @@ oa::U32 oavk::countComputeQueueSlots(
 
 
 oa::U64 oavk::physicalDeviceRate(
-	const OaVkInstanceTable& inDispatch,
+	const VklInstanceTable& inDispatch,
 	void* inPhysicalDevice,
 	oa::DeviceType inPreferred)
 {

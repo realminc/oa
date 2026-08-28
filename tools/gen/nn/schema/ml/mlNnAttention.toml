@@ -34,7 +34,7 @@ members = [
 	"oa::I32 maskSeqLen_ = 0;",
 	"oa::I32 maskBatch_ = 0;",
 	"oa::AttentionMode maskMode_ = oa::AttentionMode::Causal;",
-	"oa::Vec<oa::Matrix> projectQkv(const oa::Matrix& inInput);",
+	"oa::Vector<oa::Matrix> projectQkv(const oa::Matrix& inInput);",
 	"const oa::Matrix& attentionMask(oa::I32 inBatch);",
 	"oa::Matrix forwardStandard(const oa::Matrix& inInput, const oa::Matrix& inAdditiveMask);",
 	"oa::Matrix forwardFlash(const oa::Matrix& inInput);",
@@ -62,12 +62,12 @@ lastBackend_ = oa::AttentionBackend::Standard;
 return forwardStandard(inInput, attentionMask(static_cast<oa::I32>(inInput.size(0) / seqLen_)));
 """
 extra_methods = """
-oa::Vec<oa::Matrix> oa::MultiHeadAttention::projectQkv(const oa::Matrix& inInput) {
+oa::Vector<oa::Matrix> oa::MultiHeadAttention::projectQkv(const oa::Matrix& inInput) {
 	auto& q = qProj_->parameters();
 	auto& k = kProj_->parameters();
 	auto& v = vProj_->parameters();
 	const bool hasBias = q.size() > 1 && k.size() > 1 && v.size() > 1;
-	oa::Vec<oa::Matrix> result;
+	oa::Vector<oa::Matrix> result;
 	result.reserve(3);
 	result.pushBack(hasBias
 		? oa::FnMatrix::linear(inInput, q[0].data, q[1].data)

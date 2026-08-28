@@ -98,7 +98,7 @@ public:
 	// border / frame color around the axes rect. Defaults to no border.
 	void borderColor(oa::Color inColor);
 
-	// Default-constructible so oa::plot::Figure can hold oa::Vec<Axes>. Use
+	// Default-constructible so oa::plot::Figure can hold oa::Vector<Axes>. Use
 	// Figure::ax(r, c) to obtain a reference rather than constructing one
 	// yourself.
 	Axes() = default;
@@ -111,10 +111,10 @@ private:
 
 	struct ImshowCmd  { oa::Texture tex; bool present = false; };
 	struct TextCmd    { oa::String text; oa::Color color; bool present = false; };
-	struct LineCmd    { oa::Vec<oa::F32> x; oa::Vec<oa::F32> y; LineStyle style; };
-	struct ScatterCmd { oa::Vec<oa::F32> x; oa::Vec<oa::F32> y; ScatterStyle style; };
-	struct BarCmd     { oa::Vec<oa::F32> x; oa::Vec<oa::F32> y; BarStyle style; oa::F32 width = 0.8F; };
-	struct HeatmapCmd { oa::Vec<oa::F32> v; oa::I32 rows = 0, cols = 0; HeatmapStyle style; bool present = false; };
+	struct LineCmd    { oa::Vector<oa::F32> x; oa::Vector<oa::F32> y; LineStyle style; };
+	struct ScatterCmd { oa::Vector<oa::F32> x; oa::Vector<oa::F32> y; ScatterStyle style; };
+	struct BarCmd     { oa::Vector<oa::F32> x; oa::Vector<oa::F32> y; BarStyle style; oa::F32 width = 0.8F; };
+	struct HeatmapCmd { oa::Vector<oa::F32> v; oa::I32 rows = 0, cols = 0; HeatmapStyle style; bool present = false; };
 	enum class ArtistKind : oa::U8 { Line, Scatter, Bar };
 	struct ArtistRef { ArtistKind kind = ArtistKind::Line; oa::U32 index = 0U; };
 	struct LimitsCmd {
@@ -128,10 +128,10 @@ private:
 	TextCmd    xLabel_;
 	TextCmd    yLabel_;
 	HeatmapCmd heatmap_;
-	oa::Vec<LineCmd> lines_;
-	oa::Vec<ScatterCmd> scatters_;
-	oa::Vec<BarCmd> bars_;
-	oa::Vec<ArtistRef> artists_;
+	oa::Vector<LineCmd> lines_;
+	oa::Vector<ScatterCmd> scatters_;
+	oa::Vector<BarCmd> bars_;
+	oa::Vector<ArtistRef> artists_;
 	LimitsCmd limits_;
 	oa::Color border_ = {0.0F, 0.0F, 0.0F, 0.0F};
 	bool hasBorder_ = false;

@@ -99,8 +99,8 @@ private:
 // codebook; the straight-through estimate and commitment loss apply once on the total.
 struct ResidualVqResult {
 	oa::Matrix        quantized;   // [N, D] straight-through total: z_e + detach(Σzq - z_e)
-	oa::Vec<oa::Matrix> idx;         // Q × [N] int32 — per-level code indices (the tokens)
-	oa::Vec<oa::Matrix> residuals;   // Q × [N, D] — per-level input residual (for the EMA update)
+	oa::Vector<oa::Matrix> idx;         // Q × [N] int32 — per-level code indices (the tokens)
+	oa::Vector<oa::Matrix> residuals;   // Q × [N, D] — per-level input residual (for the EMA update)
 	oa::Matrix        commitLoss;  // scalar β·MSE(z_e, sg Σzq)
 };
 
@@ -123,7 +123,7 @@ public:
 	// ids (one [N] Int32 per level, shallow→deep) → z_q [N, D] for the decoder. inIdx
 	// may carry fewer than numLevels() levels (e.g. a model that only generates level
 	// 0); only the supplied levels are summed.
-	[[nodiscard]] oa::Matrix lookup(const oa::Vec<oa::Matrix>& inIdx) const;
+	[[nodiscard]] oa::Matrix lookup(const oa::Vector<oa::Matrix>& inIdx) const;
 
 	// Greedy data-dependent seed: seed level 0 from the latents, then each deeper level
 	// from the running residual under the already-seeded shallower levels.
@@ -134,7 +134,7 @@ public:
 
 private:
 	VectorQuantizerConfig               config_;
-	oa::Vec<oa::SharedPtr<VectorQuantizer>> levels_;
+	oa::Vector<oa::SharedPtr<VectorQuantizer>> levels_;
 };
 
 } // namespace oa

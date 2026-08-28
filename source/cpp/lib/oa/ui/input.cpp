@@ -223,7 +223,7 @@ oa::Status oa::InputSystem::loadBindingsYaml(oa::StringView inPath) {
 		oa::InputContext context = oa::InputContext::Global;
 		bool allowRepeat = false;
 	};
-	oa::Vec<PendingBinding> pending;
+	oa::Vector<PendingBinding> pending;
 	try {
 		const YAML::Node root = YAML::LoadFile(oa::hostText::copy(path.string()));
 		if (not root.IsMap()) {

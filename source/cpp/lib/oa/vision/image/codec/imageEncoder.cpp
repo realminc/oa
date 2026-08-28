@@ -38,7 +38,7 @@ oa::Result<oa::imageCodec::Pixels> readPackedPixels(const oa::Image& inImage, oa
 		return oa::Status::invalidArgument("oa::FnImage::encode: invalid image extent or channel count");
 	}
 
-	oa::Vec<oa::F32> planar;
+	oa::Vector<oa::F32> planar;
 	planar.resize(static_cast<oa::Usize>(pixelCount * sourceChannels));
 	const oa::Status copyStatus = oa::FnMatrix::copyToHost(
 		inImage.asMatrix(),
@@ -117,7 +117,7 @@ oa::Result<oa::imageCodec::Pixels> readPackedPixels(const oa::Image& inImage, oa
 
 } // namespace
 
-oa::Result<oa::Vec<oa::U8>> oa::FnImage::encode(
+oa::Result<oa::Vector<oa::U8>> oa::FnImage::encode(
 	const oa::Image& inImage,
 	oa::ImageCodec inCodec,
 	oa::U32 inQuality)

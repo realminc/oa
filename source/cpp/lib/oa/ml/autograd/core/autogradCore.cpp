@@ -102,7 +102,7 @@ oa::Status completeSemantic(
 namespace {
 
 void topoCollect_(const oa::SharedPtr<oa::GradNode>& inNode,
-                  oa::Vec<oa::SharedPtr<oa::GradNode>>& outNodes,
+                  oa::Vector<oa::SharedPtr<oa::GradNode>>& outNodes,
                   oa::HashSet<oa::GradNode*>& inVisited) {
 	if (not inNode) return;
 	auto* raw = inNode.get();
@@ -126,7 +126,7 @@ oa::Status oa::GradientTape::tryBackward(const oa::Matrix& inRoot) {
 	auto rootFn = inRoot.getGradFn();
 	if (not rootFn) return oa::Status::ok();
 
-	oa::Vec<oa::SharedPtr<oa::GradNode>> topo;
+	oa::Vector<oa::SharedPtr<oa::GradNode>> topo;
 	oa::HashSet<oa::GradNode*> visited;
 	topoCollect_(rootFn, topo, visited);
 	oa::sort(topo.begin(), topo.end(),
@@ -165,7 +165,7 @@ oa::Status oa::GradientTape::tryBackward(const oa::Matrix& inRoot) {
 			upstream = upstream.reshape(fn->outputShape_);
 		}
 		auto& inputs = fn->mutGraphInputs();
-		oa::Vec<oa::Matrix> inGrads(inputs.size());
+		oa::Vector<oa::Matrix> inGrads(inputs.size());
 		fn->backward(upstream, inGrads);
 
 		for (oa::Usize j = 0; j < inGrads.size(); ++j) {

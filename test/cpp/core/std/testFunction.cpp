@@ -11,6 +11,36 @@ struct LargeCallable {
 	int operator()(int inValue) { return inValue + bias; }
 };
 
+struct ReentrantFnCallable {
+	oa::Fn<void()>* owner = nullptr;
+	bool* armed = nullptr;
+	int* destructions = nullptr;
+
+	ReentrantFnCallable() = default;
+	ReentrantFnCallable(
+		oa::Fn<void()>* inOwner,
+		bool* inArmed,
+		int* inDestructions
+	) : owner(inOwner), armed(inArmed), destructions(inDestructions) {}
+
+	ReentrantFnCallable(const ReentrantFnCallable&) = default;
+	ReentrantFnCallable(ReentrantFnCallable&& inOther) noexcept
+		: owner(inOther.owner), armed(inOther.armed), destructions(inOther.destructions) {
+		inOther.owner = nullptr;
+		inOther.armed = nullptr;
+		inOther.destructions = nullptr;
+	}
+
+	void operator()() const noexcept {}
+
+	~ReentrantFnCallable() {
+		if (destructions != nullptr) ++*destructions;
+		if (owner != nullptr && armed != nullptr && *armed) {
+			*owner = oa::Fn<void()>{};
+		}
+	}
+};
+
 } // namespace
 
 TEST(Fn, Call) {
@@ -33,6 +63,25 @@ TEST(Fn, EmptyAndSwap) {
 TEST(Fn, NullptrConstructionIsEmpty) {
 	oa::Fn<int()> fn = nullptr;
 	EXPECT_TRUE(fn.empty());
+}
+
+TEST(Fn, TypedNullFunctionPointerConstructionIsEmpty) {
+	int (*function)(int) = nullptr;
+	oa::Fn<int(int)> fn(function);
+	EXPECT_TRUE(fn.empty());
+}
+
+TEST(Fn, ClearPublishesEmptyBeforeReentrantCallableDestruction) {
+	oa::Fn<void()> fn;
+	bool armed = false;
+	int destructions = 0;
+	fn = oa::Fn<void()>(ReentrantFnCallable{&fn, &armed, &destructions});
+	armed = true;
+
+	fn = oa::Fn<void()>{};
+
+	EXPECT_TRUE(fn.empty());
+	EXPECT_EQ(destructions, 1);
 }
 
 TEST(Fn, HeapFallbackCopiesAndMoves) {

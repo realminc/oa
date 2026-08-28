@@ -46,7 +46,7 @@ void appendLabel(
 	const oa::DetectionOverlayConfig& inConfig,
 	const oa::Detection& inDetection,
 	oa::StringView inLabel,
-	oa::Vec<oa::GlyphInstance>& inOutGlyphs) {
+	oa::Vector<oa::GlyphInstance>& inOutGlyphs) {
 	if (!inConfig.showLabels || inLabel.empty()) return;
 
 	const oa::F32 anchorX = inDetection.centerX - inDetection.width * 0.5F;
@@ -56,7 +56,7 @@ void appendLabel(
 		.font = oa::FontId::Sans,
 		.size = inConfig.fontSize,
 	};
-	oa::Vec<oa::PositionedGlyph> positioned;
+	oa::Vector<oa::PositionedGlyph> positioned;
 	layout.shape(
 		inAtlas, inLabel, {}, layoutConfig,
 		inConfig.labelTextColor.toU32(), positioned);
@@ -122,6 +122,8 @@ struct oa::DetectionOverlay::Impl {
 	oa::U32 nextSlot = 0;
 	oa::U32 count = 0;
 };
+
+oa::DetectionOverlay::DetectionOverlay() = default;
 
 oa::DetectionOverlay::DetectionOverlay(oa::DetectionOverlay&& inOther) noexcept
 	: impl_(oa::move(inOther.impl_)) {}
@@ -199,8 +201,8 @@ oa::Status oa::DetectionOverlay::update(
 			"oa::DetectionOverlay: all upload slots are in flight");
 	}
 
-	oa::Vec<oa::Detection> detections;
-	oa::Vec<oa::GlyphInstance> glyphs;
+	oa::Vector<oa::Detection> detections;
+	oa::Vector<oa::GlyphInstance> glyphs;
 	detections.reserve(inItems.size());
 	glyphs.reserve(oa::min<oa::Usize>(
 		impl_->config.maxGlyphs, inItems.size() * 24));

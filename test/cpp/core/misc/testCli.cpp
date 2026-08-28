@@ -8,10 +8,10 @@ namespace {
 
 template<typename Parser>
 bool parseArgs(Parser& inParser, std::initializer_list<const char*> inArguments) {
-	oa::Vec<oa::String> owned;
+	oa::Vector<oa::String> owned;
 	owned.reserve(inArguments.size());
 	for (const char* argument : inArguments) owned.pushBack(oa::String(argument));
-	oa::Vec<char*> pointers;
+	oa::Vector<char*> pointers;
 	pointers.reserve(owned.size());
 	for (oa::String& argument : owned) {
 		pointers.pushBack(const_cast<char*>(argument.cStr()));
@@ -24,7 +24,7 @@ struct CliConfig {
 	oa::F32 rate = 0.0F;
 	oa::String path;
 	bool feature = false;
-	oa::Vec<oa::String> labels;
+	oa::Vector<oa::String> labels;
 };
 
 class TestCli final : public oa::Cli<CliConfig> {

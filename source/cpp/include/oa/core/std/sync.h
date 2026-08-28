@@ -103,16 +103,16 @@ public:
 	UniqueLock& operator=(const UniqueLock&) = delete;
 
 	void lock() noexcept {
-		if (lock_ != nullptr && !owns_) {
-			lock_->lock();
-			owns_ = true;
-		}
+		OA_REQUIRE_MSG(lock_ != nullptr, "UniqueLock has no associated lock");
+		OA_REQUIRE_MSG(!owns_, "UniqueLock already owns its lock");
+		lock_->lock();
+		owns_ = true;
 	}
 	void unlock() noexcept {
-		if (lock_ != nullptr && owns_) {
-			lock_->unlock();
-			owns_ = false;
-		}
+		OA_REQUIRE_MSG(lock_ != nullptr, "UniqueLock has no associated lock");
+		OA_REQUIRE_MSG(owns_, "UniqueLock does not own its lock");
+		lock_->unlock();
+		owns_ = false;
 	}
 	[[nodiscard]] bool ownsLock() const noexcept { return owns_; }
 

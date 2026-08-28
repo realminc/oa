@@ -17,7 +17,7 @@ public:
 	static oa::Status writeMessage(TcpStream& inStream, oa::Span<const oa::Byte> inPayload);
 	static oa::Status readMessage(
 		TcpStream& inStream,
-		oa::Vec<oa::Byte>& outPayload,
+		oa::Vector<oa::Byte>& outPayload,
 		oa::U32 inMaxPayloadBytes = kMaxPayloadBytes);
 
 private:

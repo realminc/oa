@@ -38,7 +38,7 @@ public:
 
 private:
 	oa::String           path_;
-	oa::Vec<PerfRecord>  records_;
+	oa::Vector<PerfRecord>  records_;
 	[[nodiscard]] oa::Status flush_() const;
 };
 

@@ -26,16 +26,16 @@
 namespace oa {
 
 struct UsdSkelClip {
-	oa::Vec<oa::String> jointPaths;       // full UsdSkel paths, e.g. "root/pelvis/spine_01"
-	oa::Vec<oa::vlm::Mat4>   bindTransforms;   // per joint, world bind pose
-	oa::Vec<oa::vlm::Mat4>   restTransforms;   // per joint, local rest pose
+	oa::Vector<oa::String> jointPaths;       // full UsdSkel paths, e.g. "root/pelvis/spine_01"
+	oa::Vector<oa::vlm::Mat4>   bindTransforms;   // per joint, world bind pose
+	oa::Vector<oa::vlm::Mat4>   restTransforms;   // per joint, local rest pose
 	oa::U32           frameCount = 0;
 	oa::F32           fps        = 30.0f;
 	// stage up-axis as a Vec3 component index: 2 = Z (our writer's default), 1 = Y
 	// (Maya/UE exports). Used by the packer to pick the contact-floor axis.
 	oa::I32           upAxis     = 2;
-	oa::Vec<oa::vlm::Vec3>   translations;     // frameCount * jointCount
-	oa::Vec<oa::vlm::Quat>   rotations;        // frameCount * jointCount
+	oa::Vector<oa::vlm::Vec3>   translations;     // frameCount * jointCount
+	oa::Vector<oa::vlm::Quat>   rotations;        // frameCount * jointCount
 
 	[[nodiscard]] oa::I32 jointCount() const noexcept {
 		return static_cast<oa::I32>(jointPaths.size());
@@ -76,7 +76,7 @@ namespace Usd {
 // Read every SkelAnimation prim out of a WriteUsdaMulti stage. The shared
 // Skeleton bind/rest transforms are applied to each returned clip. Also reads a
 // single-anim stage as a one-element vector.
-[[nodiscard]] oa::Result<oa::Vec<UsdNamedClip>> readUsdaMulti(const oa::Path& inPath);
+[[nodiscard]] oa::Result<oa::Vector<UsdNamedClip>> readUsdaMulti(const oa::Path& inPath);
 
 } // namespace Usd
 

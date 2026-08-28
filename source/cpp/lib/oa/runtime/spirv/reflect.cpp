@@ -16,7 +16,7 @@
 #include <oa/runtime/spirv.h>
 #include <oa/core/std/hashMap.h>
 #include <oa/core/std/sync.h>
-#include <oa/core/std/vec.h>
+#include <oa/core/std/vector.h>
 
 namespace {
 
@@ -33,12 +33,12 @@ constexpr oa::U32 kDecorationOffset = 35;
 
 struct ReflectState {
 	// Indexed by SPIR-V result id (< bound).
-	oa::Vec<oa::U8> kind;        // 0=unknown, 1=scalar, 2=vector, 3=struct
-	oa::Vec<oa::U32> scalarSize; // bytes, for kind==1
-	oa::Vec<oa::U32> vecComp;    // component type id, for kind==2
-	oa::Vec<oa::U32> vecCount;   // component count, for kind==2
-	oa::Vec<oa::Vec<oa::U32>> structMembers; // member type ids
-	oa::Vec<oa::Vec<oa::U32>> memberOffset;  // byte offset per member
+	oa::Vector<oa::U8> kind;        // 0=unknown, 1=scalar, 2=vector, 3=struct
+	oa::Vector<oa::U32> scalarSize; // bytes, for kind==1
+	oa::Vector<oa::U32> vecComp;    // component type id, for kind==2
+	oa::Vector<oa::U32> vecCount;   // component count, for kind==2
+	oa::Vector<oa::Vector<oa::U32>> structMembers; // member type ids
+	oa::Vector<oa::Vector<oa::U32>> memberOffset;  // byte offset per member
 	oa::U32 pushStructId = 0;
 
 	oa::U32 sizeOfType(oa::U32 inId) const {
@@ -68,8 +68,8 @@ oa::U32 oavk::spirvPushConstantBlockSize(const oa::U8* inSpirv, oa::U32 inSizeBy
 	s.scalarSize.assign(bound, 0);
 	s.vecComp.assign(bound, 0);
 	s.vecCount.assign(bound, 0);
-	s.structMembers.assign(bound, oa::Vec<oa::U32>{});
-	s.memberOffset.assign(bound, oa::Vec<oa::U32>{});
+	s.structMembers.assign(bound, oa::Vector<oa::U32>{});
+	s.memberOffset.assign(bound, oa::Vector<oa::U32>{});
 
 	auto safeId = [&](oa::U32 id) -> bool { return id != 0 && id < bound; };
 

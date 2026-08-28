@@ -10,7 +10,7 @@ namespace oa {
 
 class GradDiv final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		const oa::Matrix& a = saved(0);
 		const oa::Matrix& b = saved(1);
 		if (outDIn.size() > 0) outDIn[0] = oa::FnMatrix::div(inDOut, b);
@@ -25,7 +25,7 @@ public:
 
 class GradNeg final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() > 0) {
 			outDIn[0] = oa::FnMatrix::scale(inDOut, -1.0F);
 		}
@@ -62,7 +62,7 @@ public:
 			? result : result.reshape(inTarget);
 	}
 
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		const oa::Matrix& a = saved(0);
 		const oa::Matrix& b = saved(1);
 		oa::Matrix gradA;
@@ -100,7 +100,7 @@ public:
 
 class GradAbs final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() == 0) return;
 		const oa::Matrix& input = saved(0);
 		auto positive = oa::FnMatrix::equal(
@@ -116,7 +116,7 @@ class GradClampMax final : public oa::GradNode {
 public:
 	explicit GradClampMax(oa::F32 inMax) noexcept : max_(inMax) {}
 
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() == 0) return;
 		const oa::Matrix& input = saved(0);
 		auto difference = oa::FnMatrix::subScalar(input, max_);
@@ -133,7 +133,7 @@ class GradClampMin final : public oa::GradNode {
 public:
 	explicit GradClampMin(oa::F32 inMin) noexcept : min_(inMin) {}
 
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() == 0) return;
 		const oa::Matrix& input = saved(0);
 		auto negativeInput = oa::FnMatrix::scale(input, -1.0F);

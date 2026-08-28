@@ -17,7 +17,7 @@ public:
 	}
 
 	void probeExtensions(
-		const oa::Vec<VkExtensionProperties>& inAvailableExtensions,
+		const oa::Vector<VkExtensionProperties>& inAvailableExtensions,
 		oavk::PhysicalExtensionProbe& outProbe
 	) override {
 		for (const auto& ext : inAvailableExtensions) {
@@ -38,7 +38,7 @@ public:
 	}
 
 	void queryFeatures(
-		const OaVkInstanceTable& inDispatch,
+		const VklInstanceTable& inDispatch,
 		VkPhysicalDevice inPhysicalDevice,
 		oavk::DeviceFeatureBundle& outBundle
 	) override {
@@ -70,7 +70,7 @@ public:
 	void collectExtensions(
 		const oavk::PhysicalExtensionProbe& inProbe,
 		const oavk::DeviceFeatureBundle& inBundle,
-		oa::Vec<const char*>& outExtensions
+		oa::Vector<const char*>& outExtensions
 	) override {
 		// Swapchain extension (required for presentation)
 		if (inProbe.khrSwapchain) {
@@ -85,7 +85,7 @@ public:
 		}
 	}
 
-	oa::Vec<oa::StringView> dependencies() const override {
+	oa::Vector<oa::StringView> dependencies() const override {
 		return {"Core"};
 	}
 

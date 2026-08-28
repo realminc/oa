@@ -19,7 +19,7 @@ public:
 	}
 
 	void probeExtensions(
-		const oa::Vec<VkExtensionProperties>& inAvailableExtensions,
+		const oa::Vector<VkExtensionProperties>& inAvailableExtensions,
 		oavk::PhysicalExtensionProbe& outProbe
 	) override {
 		for (const auto& ext : inAvailableExtensions) {
@@ -51,7 +51,7 @@ public:
 	}
 
 	void queryFeatures(
-		const OaVkInstanceTable& inDispatch,
+		const VklInstanceTable& inDispatch,
 		VkPhysicalDevice inPhysicalDevice,
 		oavk::DeviceFeatureBundle& outBundle
 	) override {
@@ -240,7 +240,7 @@ public:
 	void collectExtensions(
 		const oavk::PhysicalExtensionProbe& inProbe,
 		const oavk::DeviceFeatureBundle& inBundle,
-		oa::Vec<const char*>& outExtensions
+		oa::Vector<const char*>& outExtensions
 	) override {
 		// Cooperative Matrix
 		if (inBundle.hasCoopMatrix && inProbe.khrCooperativeMatrix) {
@@ -281,13 +281,13 @@ public:
 		}
 	}
 
-	oa::Vec<oa::StringView> dependencies() const override {
+	oa::Vector<oa::StringView> dependencies() const override {
 		return {"Core"};
 	}
 
 private:
 	void refineCooperativeMatrixCapability(
-		const OaVkInstanceTable& inDispatch,
+		const VklInstanceTable& inDispatch,
 		VkPhysicalDevice inPhys,
 		oavk::DeviceFeatureBundle& inOutBundle
 	) {
@@ -328,7 +328,7 @@ private:
 			return;
 		}
 
-		oa::Vec<VkCooperativeMatrixPropertiesKHR> coopProps(coopCount);
+		oa::Vector<VkCooperativeMatrixPropertiesKHR> coopProps(coopCount);
 		for (oa::U32 i = 0; i < coopCount; ++i) {
 			coopProps[i] = {};
 			coopProps[i].sType = VK_STRUCTURE_TYPE_COOPERATIVE_MATRIX_PROPERTIES_KHR;

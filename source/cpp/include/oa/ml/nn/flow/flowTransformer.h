@@ -49,7 +49,7 @@ public:
 
 private:
 	FlowTransformerConfig config_;
-	oa::Vec<oa::SharedPtr<oa::TransformerBlock>> blocks_;
+	oa::Vector<oa::SharedPtr<oa::TransformerBlock>> blocks_;
 	oa::SharedPtr<oa::LayerNorm> outputNorm_;
 
 	oa::Matrix forwardImpl(

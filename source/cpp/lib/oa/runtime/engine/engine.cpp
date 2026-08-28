@@ -5,7 +5,7 @@
 #include <oa/runtime/uploadRing.h>
 #include "../uploadRingRetirement.h"
 #include "../presenterRetirement.h"
-#include <oa/runtime/oaVk.h>
+#include <vkl/vkl.h>
 #include <oa/runtime/dispatch.h>
 #include <oa/runtime/executionSession.h>
 #include <oa/runtime/executionSession.h>
@@ -19,7 +19,7 @@
 #include <oa/core/envFlag.h>
 #include <oa/runtime/kernelRegistry.h>
 #include <oa/core/matrix.h>
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
 #include <oa/core/paths.h>
 #include <oa/core/validation.h>
 #include <oa/core/log.h>
@@ -103,7 +103,7 @@ private:
 	}
 
 	oa::Engine* owner_ = nullptr;
-	oa::Vec<oavk::Buffer*> entries_;
+	oa::Vector<oavk::Buffer*> entries_;
 	oa::Mutex mutex_;
 };
 
@@ -350,7 +350,7 @@ oa::Result<oa::ClockCalibration> oa::Engine::calibrateClock(
 	const char* calibrationName = useKhr
 		? "vkGetCalibratedTimestampsKHR"
 		: "vkGetCalibratedTimestampsEXT";
-	const auto getInstanceProcAddr = oaVkGetInstanceProcAddr();
+	const auto getInstanceProcAddr = vklGetInstanceProcAddr();
 	const auto getDomains = reinterpret_cast<GetTimeDomainsFn>(
 		getInstanceProcAddr != nullptr
 			? getInstanceProcAddr(instance, domainName)
@@ -368,7 +368,7 @@ oa::Result<oa::ClockCalibration> oa::Engine::calibrateClock(
 		return oa::Status::error(oa::StatusCode::VulkanError,
 			"calibrated timestamp domain query failed");
 	}
-	oa::Vec<VkTimeDomainKHR> domains(domainCount);
+	oa::Vector<VkTimeDomainKHR> domains(domainCount);
 	result = getDomains(physical, &domainCount, domains.data());
 	if (result != VK_SUCCESS) {
 		return oa::Status::error(oa::StatusCode::VulkanError,
@@ -638,7 +638,7 @@ oa::Status oa::EngineAccess::initializeImpl(const oa::EngineConfig& inConfig) {
 		default: break;
 	}
 
-	oa::Vec<const char*> instanceExtraPtrs;
+	oa::Vector<const char*> instanceExtraPtrs;
 	for (const auto& ext : inConfig.instanceExtraExtensions) {
 		if (!ext.empty()) {
 			instanceExtraPtrs.pushBack(ext.cStr());
@@ -663,7 +663,8 @@ oa::Status oa::EngineAccess::initializeImpl(const oa::EngineConfig& inConfig) {
 			inConfig.appVersion,
 			extraSpan,
 			wantPresentation,
-			wantHeadlessGraphics
+			wantHeadlessGraphics,
+			inConfig.vulkanLoaderProcAddr
 		) : oavk::Device::create(
 			oa::StringView(inConfig.appName),
 			inConfig.enableValidation,
@@ -672,14 +673,15 @@ oa::Status oa::EngineAccess::initializeImpl(const oa::EngineConfig& inConfig) {
 			inConfig.appVersion,
 			extraSpan,
 			wantPresentation,
-			wantHeadlessGraphics
+			wantHeadlessGraphics,
+			inConfig.vulkanLoaderProcAddr
 		);
 
 	if (!pickResult.isOk()) {
 		return pickResult.getStatus();
 	}
 
-	auto allocator = OaVma::create(pickResult.getValue());
+	auto allocator = RuntimeAllocator::create(pickResult.getValue());
 	if (!allocator.isOk()) {
 		pickResult.getValue().destroy();
 		return allocator.getStatus();
@@ -877,13 +879,13 @@ void oa::EngineAccess::retireBorrowedService(
 }
 
 oa::Status oa::EngineAccess::completeRetiredBorrowedServices() {
-	oa::Vec<Impl::RetiredServiceState> retired;
+	oa::Vector<Impl::RetiredServiceState> retired;
 	{
 		oa::ScopedLock<oa::Mutex> lock(impl_->retiredBorrowedServiceMutex_);
 		retired = oa::move(impl_->retiredBorrowedServices_);
 	}
 	oa::Status firstError = oa::Status::ok();
-	oa::Vec<Impl::RetiredServiceState> retry;
+	oa::Vector<Impl::RetiredServiceState> retry;
 	for (auto& service : retired) {
 		const auto status = service.complete();
 		if (not status.isOk()) {
@@ -933,8 +935,8 @@ oa::Status oa::EngineAccess::ensureAllEmbeddedLiboaPipelines() {
 		oa::U32 firstRequest = 0;
 		oa::U32 requestCount = 0;
 	};
-	oa::Vec<oa::PipelineLoadRequest> requests;
-	oa::Vec<ShaderLoadPlan> plans;
+	oa::Vector<oa::PipelineLoadRequest> requests;
+	oa::Vector<ShaderLoadPlan> plans;
 	requests.reserve(total * (impl_->device_.nativeShaderBfloat16Usable() ? 2u : 1u));
 	plans.reserve(total);
 
@@ -973,7 +975,7 @@ oa::Status oa::EngineAccess::ensureAllEmbeddedLiboaPipelines() {
 		plan.requestCount = maxDtype + 1u;
 		for (oa::U32 dt = 0; dt <= maxDtype; ++dt) {
 			oa::PipelineSpec spec{.numBindings = 16, .pushConstantBytes = 128,
-				.specConstants = oa::Vec<oa::SpecConstant>{
+				.specConstants = oa::Vector<oa::SpecConstant>{
 					oa::SpecConstant{.id = 0, .value = dt}}};
 			requests.pushBack(oa::PipelineLoadRequest{
 				.name = ent->name,
@@ -1006,7 +1008,7 @@ oa::Status oa::EngineAccess::ensureAllEmbeddedLiboaPipelines() {
 		impl_->pipelines_.hasInitialCacheData() ? "warm" : "cold");
 
 	const auto loadBegin = oa::steadyNow();
-	oa::Vec<oa::Status> requestStatuses;
+	oa::Vector<oa::Status> requestStatuses;
 	if (!requests.empty()) {
 		(void)impl_->pipelines_.ensurePipelinesParallel(
 			impl_->device_,
@@ -1139,7 +1141,13 @@ oa::Status oa::EngineAccess::uploadBuffer(
 		// the semantic host-write publication boundary. Avoid invoking memcpy on
 		// identical source and destination ranges.
 		if (destination != inData) {
-			oa::memcpy(destination, inData, static_cast<oa::Usize>(inSize));
+			if (inDst.isBar()) {
+				oa::memcpyStream(
+					destination, inData, static_cast<oa::Usize>(inSize));
+			} else {
+				oa::memcpy(
+					destination, inData, static_cast<oa::Usize>(inSize));
+			}
 		}
 		if (not impl_->allocator_.flushHostBuffer(inDst, inDstOffset, inSize)) {
 			return oa::Status::error(
@@ -1153,12 +1161,12 @@ oa::Status oa::EngineAccess::uploadBuffer(
 	// still contain byte/half scalars or expose an unaligned view, so promote the
 	// transfer to the enclosing words. Partial updates preserve neighbouring
 	// bytes through a read-modify-write; whole-buffer uploads simply zero pad the
-	// physical tail allocated by OaVma.
+	// physical tail allocated by RuntimeAllocator.
 	oavk::Buffer copyDst = inDst;
 	oa::U64 copyOffset = inDstOffset;
 	const void* copyData = inData;
 	oa::U64 copySize = inSize;
-	oa::Vec<oa::U8> alignedData;
+	oa::Vector<oa::U8> alignedData;
 	if ((copyOffset & 3ULL) != 0 || (copySize & 3ULL) != 0) {
 		const oa::U64 alignedBegin = copyOffset & ~3ULL;
 		const oa::U64 alignedEnd = (copyOffset + copySize + 3ULL) & ~3ULL;
@@ -1463,7 +1471,7 @@ oa::Result<oa::Event> oa::EngineAccess::submitGraphicsStream(
 			"graphics stream lease is stale or not recording");
 	}
 
-	oa::Vec<oavk::TimelineWait> waits;
+	oa::Vector<oavk::TimelineWait> waits;
 	waits.reserve(inDependencies.size());
 	for (const oa::Event& dependency : inDependencies) {
 		if (not engine_.ownsEvent(dependency)) {
@@ -1684,13 +1692,13 @@ void oa::EngineAccess::retireExecutionPlan(oa::UniquePtr<oa::ExecutableGraph>&& 
 
 void oa::EngineAccess::collectRetiredExecutionPlans()
 {
-	oa::Vec<oa::UniquePtr<oa::ExecutableGraph>> retired;
+	oa::Vector<oa::UniquePtr<oa::ExecutableGraph>> retired;
 	{
 		oa::ScopedLock<oa::Mutex> lock(impl_->retiredExecutionPlanMutex_);
 		retired = oa::move(impl_->retiredExecutionPlans_);
 	}
 
-	oa::Vec<oa::UniquePtr<oa::ExecutableGraph>> pending;
+	oa::Vector<oa::UniquePtr<oa::ExecutableGraph>> pending;
 	for (auto& graph : retired) {
 		const auto completion = graph->lastCompletion(engine_);
 		if (completion.isValid() and not completion.isComplete()) {
@@ -1709,13 +1717,13 @@ void oa::EngineAccess::collectRetiredExecutionPlans()
 oa::Status oa::EngineAccess::completeRetiredExecutionPlans()
 {
 	oa::Status result = oa::Status::ok();
-	oa::Vec<oa::UniquePtr<oa::ExecutableGraph>> retired;
+	oa::Vector<oa::UniquePtr<oa::ExecutableGraph>> retired;
 	{
 		oa::ScopedLock<oa::Mutex> lock(impl_->retiredExecutionPlanMutex_);
 		retired = oa::move(impl_->retiredExecutionPlans_);
 	}
 
-	oa::Vec<oa::UniquePtr<oa::ExecutableGraph>> pending;
+	oa::Vector<oa::UniquePtr<oa::ExecutableGraph>> pending;
 	for (auto& graph : retired) {
 		const auto waitStatus = graph->waitForPendingReplay(engine_);
 		if (not waitStatus.isOk()) {
@@ -1736,7 +1744,7 @@ oa::Status oa::EngineAccess::completeRetiredExecutionPlans()
 void oa::EngineAccess::retireSessionBatch(
 	oavk::Stream* inStream,
 	const oa::Event& inCompletion,
-	oa::Vec<oa::UniquePtr<oa::ExecutableGraph>>&& inGraphs)
+	oa::Vector<oa::UniquePtr<oa::ExecutableGraph>>&& inGraphs)
 {
 	if (inStream == nullptr) return;
 	Impl::RetiredSessionBatch retired;
@@ -1749,13 +1757,13 @@ void oa::EngineAccess::retireSessionBatch(
 
 void oa::EngineAccess::collectRetiredSessionBatches()
 {
-	oa::Vec<Impl::RetiredSessionBatch> retired;
+	oa::Vector<Impl::RetiredSessionBatch> retired;
 	{
 		oa::ScopedLock<oa::Mutex> lock(impl_->retiredSessionBatchMutex_);
 		retired = oa::move(impl_->retiredSessionBatches_);
 	}
 
-	oa::Vec<Impl::RetiredSessionBatch> pending;
+	oa::Vector<Impl::RetiredSessionBatch> pending;
 	for (auto& batch : retired) {
 		// The stream owns the timeline and remains the authoritative retirement
 		// proof even if a malformed completion event reached this fallback path.
@@ -1789,13 +1797,13 @@ void oa::EngineAccess::collectRetiredSessionBatches()
 oa::Status oa::EngineAccess::completeRetiredSessionBatches()
 {
 	oa::Status result = oa::Status::ok();
-	oa::Vec<Impl::RetiredSessionBatch> retired;
+	oa::Vector<Impl::RetiredSessionBatch> retired;
 	{
 		oa::ScopedLock<oa::Mutex> lock(impl_->retiredSessionBatchMutex_);
 		retired = oa::move(impl_->retiredSessionBatches_);
 	}
 
-	oa::Vec<Impl::RetiredSessionBatch> pending;
+	oa::Vector<Impl::RetiredSessionBatch> pending;
 	for (auto& batch : retired) {
 		const auto waitStatus = batch.stream != nullptr
 			? batch.stream->synchronize(impl_->device_)
@@ -1837,13 +1845,13 @@ void oa::EngineAccess::retireUploadRing(oa::UniquePtr<oa::RetiredUploadRing>&& i
 oa::Status oa::EngineAccess::completeRetiredUploadRings()
 {
 	oa::Status result = oa::Status::ok();
-	oa::Vec<oa::UniquePtr<oa::RetiredUploadRing>> retired;
+	oa::Vector<oa::UniquePtr<oa::RetiredUploadRing>> retired;
 	{
 		oa::ScopedLock<oa::Mutex> lock(impl_->retiredUploadRingMutex_);
 		retired = oa::move(impl_->retiredUploadRings_);
 	}
 
-	oa::Vec<oa::UniquePtr<oa::RetiredUploadRing>> pending;
+	oa::Vector<oa::UniquePtr<oa::RetiredUploadRing>> pending;
 	for (auto& ring : retired) {
 		oa::Bool complete = true;
 		for (auto& frame : ring->frames) {

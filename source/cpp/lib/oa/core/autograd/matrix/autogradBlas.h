@@ -8,7 +8,7 @@ namespace oa {
 
 class GradMatMulNt final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		const oa::Matrix& a = saved(0);
 		const oa::Matrix& b = saved(1);
 		const oa::MatrixShape expected{a.size(0), b.size(0)};

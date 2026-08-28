@@ -93,7 +93,7 @@ private:
 		return false;
 	}
 
-	oa::Vec<Alias> aliases_;
+	oa::Vector<Alias> aliases_;
 	oa::String description_;
 	void* target_ = nullptr;
 	ParseFn parse_ = nullptr;
@@ -108,7 +108,8 @@ class CmdCli {
 public:
 	CmdCli() = default;
 	CmdCli(oa::String inName, oa::String inDescription)
-		: name_(oa::move(inName)), description_(oa::move(inDescription)) {}
+		: name_(oa::move(inName)), description_(oa::move(inDescription))
+	{}
 
 	template<typename T>
 	OptCli* addOption(oa::StringView inNames, T& outTarget, oa::StringView inDescription) {
@@ -140,7 +141,7 @@ public:
 
 	OptCli* addMultiOption(
 		oa::StringView inNames,
-		oa::Vec<oa::String>& outTarget,
+		oa::Vector<oa::String>& outTarget,
 		oa::StringView inDescription
 	) {
 		auto option = oa::makeUnique<OptCli>();
@@ -148,7 +149,7 @@ public:
 		option->description_ = oa::String(inDescription);
 		option->multi_ = true;
 		option->parse_ = [](void* inTarget, oa::StringView inValue) {
-			static_cast<oa::Vec<oa::String>*>(inTarget)->pushBack(oa::String(inValue));
+			static_cast<oa::Vector<oa::String>*>(inTarget)->pushBack(oa::String(inValue));
 			return true;
 		};
 		addAliases(*option, inNames);
@@ -226,7 +227,7 @@ private:
 
 	oa::String name_;
 	oa::String description_;
-	oa::Vec<oa::UniquePtr<OptCli>> options_;
+	oa::Vector<oa::UniquePtr<OptCli>> options_;
 	bool parsed_ = false;
 };
 
@@ -234,7 +235,8 @@ template<typename TConfig>
 class Cli {
 public:
 	Cli(oa::StringView inName, oa::StringView inDescription)
-		: root_(oa::String(inName), oa::String(inDescription)) {
+		: root_(oa::String(inName), oa::String(inDescription))
+	{
 		root_.addOption("-c,--config", configPath_, "YAML config file");
 		root_.addOption("-v,--verbose", verbose_, "verbose level (0-3)");
 	}
@@ -306,7 +308,7 @@ protected:
 
 	OptCli* addMultiOption(
 		oa::StringView inNames,
-		oa::Vec<oa::String>& outTarget,
+		oa::Vector<oa::String>& outTarget,
 		oa::StringView inDescription
 	) {
 		return root_.addMultiOption(inNames, outTarget, inDescription);
@@ -475,7 +477,7 @@ private:
 	}
 
 	CmdCli root_;
-	oa::Vec<oa::UniquePtr<CmdCli>> subcommands_;
+	oa::Vector<oa::UniquePtr<CmdCli>> subcommands_;
 	oa::String epilog_;
 	oa::I32 requiredSubcommandMin_ = 0;
 	oa::I32 requiredSubcommandMax_ = 0;

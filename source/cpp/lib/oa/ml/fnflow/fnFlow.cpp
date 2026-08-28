@@ -70,7 +70,7 @@ class GradFlowMaskedMse final : public oa::GradNode {
 public:
 	void backward(
 		const oa::Matrix& inUpstream,
-		oa::Vec<oa::Matrix>& outInputGrads) override {
+		oa::Vector<oa::Matrix>& outInputGrads) override {
 		if (outInputGrads.empty()) return;
 		outInputGrads[0] = maskedMseBackward(
 			saved(0), saved(1), saved(2), saved(3), inUpstream);
@@ -208,7 +208,7 @@ oa::Matrix oa::FnFlow::maskedMse(
 		auto gradFn = oa::makeShared<GradFlowMaskedMse>();
 		gradFn->saveForBackward(
 			inPrediction, inTarget, mask, denominator);
-		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inPrediction});
+		gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inPrediction});
 		gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		gradFn->outputShape_ = loss.getShape();
 		if (not oa::FnAutograd::attachSemantic(

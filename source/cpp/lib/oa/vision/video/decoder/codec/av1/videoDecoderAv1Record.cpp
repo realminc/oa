@@ -116,7 +116,7 @@ oa::Status oa::VideoDecoder::recordAV1DecodeCommands(
 	if (inBitstreamBase > inDesc.frame.size) {
 		return oa::Status::error(oa::StatusCode::InvalidArgument, "Invalid AV1 frame header offset");
 	}
-	oa::Vec<oa::U32> relTileOffsets;
+	oa::Vector<oa::U32> relTileOffsets;
 	relTileOffsets.reserve(inTileOffsets.size());
 	for (oa::Usize i = 0; i < inTileOffsets.size(); ++i) {
 		if (inTileOffsets[i] < inBitstreamBase) {

@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 //
 // contains only what can't be inlined:
-//   - Non-temporal streaming copy (AVX2/AVX-512)
+//   - Qualified-window non-temporal streaming copy (AVX2/AVX-512)
 //   - memEqual (AVX2/AVX-512)
 //   - Aligned allocation
 //
@@ -11,10 +11,10 @@
 //
 // ═══════════════════════════════════════════════════════════════════════════════
 
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
+#include <oa/core/assert.h>
 #include <oa/core/std/allocator.h>
 
-#include <ctype.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -33,36 +33,20 @@
 // RUNTIME CPU DETECTION
 // ═══════════════════════════════════════════════════════════════════════════════
 
-static bool hasAVX512F() {
+static bool hasAVX512ByteOps() {
 #if defined(__x86_64__)
 	oa::U32 eax, ebx, ecx, edx;
 	if (__get_cpuid_count(7, 0, &eax, &ebx, &ecx, &edx)) {
-		return (ebx >> 16) & 1;
+		constexpr oa::U32 avx512fBit = 1U << 16U;
+		constexpr oa::U32 avx512bwBit = 1U << 30U;
+		return (ebx & (avx512fBit | avx512bwBit))
+			== (avx512fBit | avx512bwBit);
 	}
 #endif
 	return false;
 }
 
-static const bool g_HasAVX512 = hasAVX512F();
-
-static oa::Usize initOaMemcpyNtPrefetchBytes() {
-	constexpr oa::Usize kDefault = 0;
-	constexpr oa::Usize kMax = 8192;
-	const char* env = ::getenv("OA_MEMCPY_NT_PREFETCH");
-	if (!env || !*env) return kDefault;
-	char* end = nullptr;
-	errno = 0;
-	unsigned long long val = ::strtoull(env, &end, 10);
-	if (errno == ERANGE) return kMax;
-	if (end == env) return kDefault;
-	while (*end != '\0' && ::isspace(static_cast<unsigned char>(*end))) ++end;
-	if (*end != '\0') return kDefault;
-	if (val == 0ULL) return 0;
-	if (val > static_cast<unsigned long long>(kMax)) return kMax;
-	return static_cast<oa::Usize>(val);
-}
-
-static const oa::Usize g_OaMemcpyNtPrefetchBytes = initOaMemcpyNtPrefetchBytes();
+[[maybe_unused]] static const bool g_HasAVX512ByteOps = hasAVX512ByteOps();
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // EXPLICIT NON-TEMPORAL STREAMING COPY
@@ -71,9 +55,13 @@ static const oa::Usize g_OaMemcpyNtPrefetchBytes = initOaMemcpyNtPrefetchBytes()
 // uploads (for example a mapped discrete-GPU BAR), not a universally faster
 // memcpy selected from the byte count alone.
 
-#if defined(__AVX512F__)
-__attribute__((target("avx512f")))
-static void* memcpyNT_AVX512(void* inDst, const void* inSrc, oa::Usize inSize) {
+#if defined(__AVX512F__) && defined(__AVX512BW__)
+__attribute__((target("avx512f,avx512bw")))
+static void* memcpyNT_AVX512(
+	void* inDst,
+	const void* inSrc,
+	oa::Usize inSize
+) noexcept {
 	oa::Byte* dst = static_cast<oa::Byte*>(inDst);
 	const oa::Byte* src = static_cast<const oa::Byte*>(inSrc);
 
@@ -85,14 +73,6 @@ static void* memcpyNT_AVX512(void* inDst, const void* inSrc, oa::Usize inSize) {
 	}
 
 	while (inSize >= 256) {
-		if (g_OaMemcpyNtPrefetchBytes > 0) {
-			const char* PrefBase = reinterpret_cast<const char*>(src) + g_OaMemcpyNtPrefetchBytes;
-			_mm_prefetch(PrefBase, _MM_HINT_NTA);
-			_mm_prefetch(PrefBase + 64, _MM_HINT_NTA);
-			_mm_prefetch(PrefBase + 128, _MM_HINT_NTA);
-			_mm_prefetch(PrefBase + 192, _MM_HINT_NTA);
-		}
-
 		__m512i Z0 = _mm512_loadu_si512(src);
 		__m512i Z1 = _mm512_loadu_si512(src + 64);
 		__m512i Z2 = _mm512_loadu_si512(src + 128);
@@ -111,7 +91,11 @@ static void* memcpyNT_AVX512(void* inDst, const void* inSrc, oa::Usize inSize) {
 #endif
 
 #if defined(__AVX2__)
-static void* memcpyNT_AVX2(void* inDst, const void* inSrc, oa::Usize inSize) {
+static void* memcpyNT_AVX2(
+	void* inDst,
+	const void* inSrc,
+	oa::Usize inSize
+) noexcept {
 	oa::Byte* dst = static_cast<oa::Byte*>(inDst);
 	const oa::Byte* src = static_cast<const oa::Byte*>(inSrc);
 
@@ -123,12 +107,6 @@ static void* memcpyNT_AVX2(void* inDst, const void* inSrc, oa::Usize inSize) {
 	}
 
 	while (inSize >= 128) {
-		if (g_OaMemcpyNtPrefetchBytes > 0) {
-			const char* PrefBase = reinterpret_cast<const char*>(src) + g_OaMemcpyNtPrefetchBytes;
-			_mm_prefetch(PrefBase, _MM_HINT_NTA);
-			_mm_prefetch(PrefBase + 64, _MM_HINT_NTA);
-		}
-
 		__m256i Y0 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src));
 		__m256i Y1 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src + 32));
 		__m256i Y2 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src + 64));
@@ -146,10 +124,14 @@ static void* memcpyNT_AVX2(void* inDst, const void* inSrc, oa::Usize inSize) {
 }
 #endif
 
-void* oa::memcpyNt(void* inDst, const void* inSrc, oa::Usize inSize) {
+void* oa::detail::memcpyStreamImpl(
+	void* inDst,
+	const void* inSrc,
+	oa::Usize inSize
+) noexcept {
 	if (inSize == 0 || inDst == inSrc) return inDst;
-#if defined(__AVX512F__)
-	if (g_HasAVX512) return memcpyNT_AVX512(inDst, inSrc, inSize);
+#if defined(__AVX512F__) && defined(__AVX512BW__)
+	if (g_HasAVX512ByteOps) return memcpyNT_AVX512(inDst, inSrc, inSize);
 #endif
 #if defined(__AVX2__)
 	return memcpyNT_AVX2(inDst, inSrc, inSize);
@@ -162,11 +144,80 @@ void* oa::memcpyNt(void* inDst, const void* inSrc, oa::Usize inSize) {
 // MEMCMP / MEMEQUAL
 // ═══════════════════════════════════════════════════════════════════════════════
 
-bool oa::memEqual(const void* inA, const void* inB, oa::Usize inSize) {
-	if (inA == inB || inSize == 0) return true;
+void oa::memzeroSecure(void* inDst, oa::Usize inSize) noexcept {
+	if (inSize == 0) return;
+	OA_REQUIRE(inDst != nullptr);
+	volatile oa::Byte* const dst = static_cast<volatile oa::Byte*>(inDst);
+	for (oa::Usize index = 0; index < inSize; ++index) {
+		dst[index] = 0U;
+	}
+	__atomic_signal_fence(__ATOMIC_SEQ_CST);
+}
 
-#if defined(__AVX512F__)
-	if (g_HasAVX512) {
+bool oa::memEqualConstantTime(
+	const void* inA,
+	const void* inB,
+	oa::Usize inSize
+) noexcept {
+	if (inSize == 0) return true;
+	OA_REQUIRE(inA != nullptr);
+	OA_REQUIRE(inB != nullptr);
+	const oa::Byte* a = static_cast<const oa::Byte*>(inA);
+	const oa::Byte* b = static_cast<const oa::Byte*>(inB);
+	oa::Byte difference = 0U;
+
+#if defined(__AVX512F__) && defined(__AVX512BW__)
+	if (g_HasAVX512ByteOps) {
+		oa::U64 equalMask = static_cast<oa::U64>(-1);
+		while (inSize >= 64U) {
+			const __m512i va = _mm512_loadu_si512(a);
+			const __m512i vb = _mm512_loadu_si512(b);
+			equalMask &= _mm512_cmpeq_epi8_mask(va, vb);
+			a += 64U;
+			b += 64U;
+			inSize -= 64U;
+		}
+		difference |= static_cast<oa::Byte>(
+			equalMask != static_cast<oa::U64>(-1));
+	}
+#elif defined(__AVX2__)
+	__m256i vectorDifference = _mm256_setzero_si256();
+	while (inSize >= 32U) {
+		const __m256i va = _mm256_loadu_si256(
+			reinterpret_cast<const __m256i*>(a));
+		const __m256i vb = _mm256_loadu_si256(
+			reinterpret_cast<const __m256i*>(b));
+		vectorDifference = _mm256_or_si256(
+			vectorDifference, _mm256_xor_si256(va, vb));
+		a += 32U;
+		b += 32U;
+		inSize -= 32U;
+	}
+	const __m256i vectorEqual = _mm256_cmpeq_epi8(
+		vectorDifference, _mm256_setzero_si256());
+	difference |= static_cast<oa::Byte>(
+		_mm256_movemask_epi8(vectorEqual) != -1);
+#endif
+
+	for (oa::Usize index = 0; index < inSize; ++index) {
+		difference |= static_cast<oa::Byte>(a[index] ^ b[index]);
+	}
+	__atomic_signal_fence(__ATOMIC_SEQ_CST);
+	return difference == 0U;
+}
+
+bool oa::memEqual(
+	const void* inA,
+	const void* inB,
+	oa::Usize inSize
+) noexcept {
+	if (inSize == 0) return true;
+	OA_REQUIRE(inA != nullptr);
+	OA_REQUIRE(inB != nullptr);
+	if (inA == inB) return true;
+
+#if defined(__AVX512F__) && defined(__AVX512BW__)
+	if (g_HasAVX512ByteOps) {
 		const oa::Byte* A = static_cast<const oa::Byte*>(inA);
 		const oa::Byte* B = static_cast<const oa::Byte*>(inB);
 		while (inSize >= 64) {

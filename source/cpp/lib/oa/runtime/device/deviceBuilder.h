@@ -10,7 +10,7 @@
 namespace oavk {
 
 [[nodiscard]] oa::Status planDeviceQueues(
-	const OaVkInstanceTable& inDispatch,
+	const VklInstanceTable& inDispatch,
 	VkPhysicalDevice inPhysicalDevice,
 	VkSurfaceKHR inSurface,
 	QueuePlan& outPlan,
@@ -46,11 +46,11 @@ public:
 	// These are called internally by Build*() methods
 
 	// phase 2: probe extensions
-	void probeExtensions(const oa::Vec<VkExtensionProperties>& inExtensions);
+	void probeExtensions(const oa::Vector<VkExtensionProperties>& inExtensions);
 
 	// phase 3: query features
 	void queryFeatures(
-		const OaVkInstanceTable& inDispatch,
+		const VklInstanceTable& inDispatch,
 		VkPhysicalDevice inPhysicalDevice);
 
 	// phase 4: Build feature chains
@@ -87,7 +87,7 @@ public:
 
 private:
 	// Module storage
-	oa::Vec<oa::UniquePtr<FeatureModule>> modules_;
+	oa::Vector<oa::UniquePtr<FeatureModule>> modules_;
 	
 	// Module flags
 	bool hasCoreModule_    = false;
@@ -99,7 +99,7 @@ private:
 	// Build state
 	PhysicalExtensionProbe extProbe_;
 	DeviceFeatureBundle featureBundle_;
-	oa::Vec<const char*> enabledExtensions_;
+	oa::Vector<const char*> enabledExtensions_;
 
 	// Helper: validate module dependencies
 	oa::Status validateDependencies() const;
@@ -109,7 +109,7 @@ private:
 
 	// Helper: Create logical device
 	oa::Result<VkDevice> createLogicalDevice(
-		const OaVkInstanceTable& inDispatch,
+		const VklInstanceTable& inDispatch,
 		VkPhysicalDevice inPhysicalDevice,
 		const QueuePlan& inQueuePlan
 	);

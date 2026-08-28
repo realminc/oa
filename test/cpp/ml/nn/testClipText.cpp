@@ -143,7 +143,7 @@ TEST_VK(ClipText, CorpusTokenizerMatchesPinnedIds) {
 	ASSERT_EQ(readU32(), 1U);
 	const oa::U32 count = readU32();
 	ASSERT_GT(count, 0U);
-	oa::Vec<oa::String> prompts;
+	oa::Vector<oa::String> prompts;
 	prompts.reserve(count);
 	std::vector<oa::I32> expected(static_cast<size_t>(count) * 77);
 	for (oa::U32 i = 0; i < count; ++i) {

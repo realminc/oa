@@ -2,7 +2,8 @@
 // Creates oa::Presenter + SDL3 window + vulkan surface, then drives
 // oa::Ui per-frame for the single windowed viewer lifecycle.
 
-// Engine first: Device.h → OaVk.h → VK_NO_PROTOTYPES before any vulkan.h pull-in.
+// Engine first: the private device/VKL boundary establishes VK_NO_PROTOTYPES
+// before any Vulkan header is pulled in.
 #include <oa/runtime/engine.h>
 #include <oa/runtime/presenter.h>
 #include <oa/runtime/window.h>
@@ -121,7 +122,7 @@ void appendWindowTitleGlyphs(
 	oa::StringView inTitle,
 	oa::F32 inScaleX,
 	oa::F32 inScaleY,
-	oa::Vec<oa::GlyphInstance>& inOutGlyphs) {
+	oa::Vector<oa::GlyphInstance>& inOutGlyphs) {
 	const oa::F32 fontSize = 13.0F * inScaleY;
 	const oa::F32 baseline = 23.0F * inScaleY;
 	oa::TextLayout layout;
@@ -129,7 +130,7 @@ void appendWindowTitleGlyphs(
 		.font = oa::FontId::Sans,
 		.size = fontSize,
 	};
-	oa::Vec<oa::PositionedGlyph> positioned;
+	oa::Vector<oa::PositionedGlyph> positioned;
 	layout.shape(
 		inAtlas, inTitle, {20.0F * inScaleX, baseline}, config,
 		oa::Color{0.80F, 0.80F, 0.80F, 1.0F}.toU32(), positioned);
@@ -273,7 +274,7 @@ oa::Status oa::Viewer::rebuildWindowTitleGlyphs() {
 			oa::StatusCode::FailedPrecondition,
 			"oa::Viewer window title glyph buffer is not initialized");
 	}
-	oa::Vec<oa::GlyphInstance> glyphs;
+	oa::Vector<oa::GlyphInstance> glyphs;
 	glyphs.reserve(oa::min<oa::Usize>(
 		config_.title.size(),
 		static_cast<oa::Usize>(kMaxWindowTitleGlyphs)));
@@ -770,7 +771,7 @@ oa::Status oa::Viewer::runApplication(oa::Engine* inBorrowedEngine) {
 		(void)closeOwnedEngine();
 		return s;
 	}
-	oa::Vec<oa::UiEvent> events;
+	oa::Vector<oa::UiEvent> events;
 	using Clock = oa::SteadyClock;
 	auto tPrev = Clock::now();
 	oa::Status runStatus = oa::Status::ok();

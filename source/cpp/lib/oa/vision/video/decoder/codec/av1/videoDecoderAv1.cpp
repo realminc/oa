@@ -144,7 +144,7 @@ oa::Status oa::VideoDecoderCodecAccess::decodeAv1(
 	auto* parser = static_cast<oa::VcpAv1*>(inDecoder.impl_->parser.get());
 	if (!parser) return oa::Status::error("AV1 parser not registered");
 
-	oa::Vec<oa::Av1PictureDesc> pictures;
+	oa::Vector<oa::Av1PictureDesc> pictures;
 	OA_RETURN_IF_ERROR(parser->parseAccessUnitPictures(inBitstream, pictures));
 	oa::VideoFrame lastDecoded = {};
 	for (const oa::Av1PictureDesc& desc : pictures) {

@@ -67,7 +67,7 @@ private:
 	[[nodiscard]] const Slot* resolve_(TimerSlot inSlot) const noexcept;
 
 	oa::Engine* owner_ = nullptr;
-	oa::Vec<oa::UniquePtr<Slot>> slots_;
+	oa::Vector<oa::UniquePtr<Slot>> slots_;
 	mutable oa::Mutex mutex_;
 	oa::Bool open_ = true;
 };

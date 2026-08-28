@@ -1,22 +1,27 @@
-#include <assert.h>
-
 #include <oa/runtime/allocator.h>
 #include <oa/runtime/device.h>
-#include <oa/runtime/oaVk.h>
-#include <oa/runtime/oaVma.h>
-#include <oa/core/memory.h>
+#include <vkl/vkl.h>
+#include <vma/vma.hpp>
+#include <oa/core/assert.h>
+#include <oa/core/std/memory.h>
+#include <oa/core/std/limits.h>
 
 namespace {
 
-constexpr oa::U64 transferCapacity(oa::U64 inSize) {
-	return (oa::max<oa::U64>(inSize, 1ULL) + 3ULL) & ~3ULL;
+oa::Result<oa::U64> transferCapacity(oa::U64 inSize) {
+	constexpr oa::U64 padding = 3U;
+	if (inSize > oa::Limits<oa::U64>::max() - padding) {
+		return oa::Status::error(
+			oa::StatusCode::OutOfRange, "buffer capacity overflow");
+	}
+	return (oa::max<oa::U64>(inSize, 1U) + padding) & ~padding;
 }
 
 } // namespace
 
-static OaVmaVulkanFunctions getOaVkFunctions(const oavk::Device& inDevice) {
-	OaVmaVulkanFunctions fns{};
-	fns.vkGetInstanceProcAddr = oaVkGetInstanceProcAddr();
+static vma::VulkanFunctions getVulkanFunctions(const oavk::Device& inDevice) {
+	vma::VulkanFunctions fns{};
+	fns.vkGetInstanceProcAddr = vklGetInstanceProcAddr();
 	fns.vkGetDeviceProcAddr = inDevice.instanceDispatch.vkGetDeviceProcAddr;
 	fns.vkGetPhysicalDeviceProperties = inDevice.instanceDispatch.vkGetPhysicalDeviceProperties;
 	fns.vkGetPhysicalDeviceMemoryProperties = inDevice.instanceDispatch.vkGetPhysicalDeviceMemoryProperties;
@@ -44,10 +49,10 @@ static OaVmaVulkanFunctions getOaVkFunctions(const oavk::Device& inDevice) {
 	return fns;
 }
 
-oa::Result<OaVma> OaVma::create(const oavk::Device& inDevice) {
-	OaVmaVulkanFunctions fns = getOaVkFunctions(inDevice);
+oa::Result<RuntimeAllocator> RuntimeAllocator::create(const oavk::Device& inDevice) {
+	vma::VulkanFunctions fns = getVulkanFunctions(inDevice);
 
-	OaVmaAllocatorCreateInfo ci{};
+	vma::AllocatorCreateInfo ci{};
 	ci.vulkanApiVersion = inDevice.info.software.apiVersionPacked;
 	ci.instance = static_cast<VkInstance>(inDevice.instance);
 	ci.physicalDevice = static_cast<VkPhysicalDevice>(inDevice.physicalDevice);
@@ -55,35 +60,36 @@ oa::Result<OaVma> OaVma::create(const oavk::Device& inDevice) {
 	ci.pVulkanFunctions = &fns;
 	// Enable buffer device address support (required for bindless + GPU compute graphs)
 	// Enable KHR_maintenance5 support (required for VkBufferUsageFlags2CreateInfo)
-	ci.flags = OA_VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
+	ci.flags = vma::allocatorCreateBufferDeviceAddressBit;
 	for (const auto& extension : inDevice.info.software.enabledDeviceExtensions) {
 		if (extension == "VK_KHR_maintenance5") {
-			ci.flags |= OA_VMA_ALLOCATOR_CREATE_KHR_MAINTENANCE5_BIT;
+			ci.flags |= vma::allocatorCreateKhrMaintenance5Bit;
 			break;
 		}
 	}
 
-	OaVmaAllocator alloc = VK_NULL_HANDLE;
-	VkResult r = OaVmaCreateAllocator(&ci, &alloc);
+	vma::Allocator alloc = VK_NULL_HANDLE;
+	VkResult r = vma::createAllocator(&ci, &alloc);
 	if (r != VK_SUCCESS) {
-		return oa::Status::error(oa::StatusCode::OutOfMemory, "OaVmaCreateAllocator failed");
+		return oa::Status::error(oa::StatusCode::OutOfMemory, "vma::createAllocator failed");
 	}
 
-	OaVma a;
+	RuntimeAllocator a;
 	a.allocator = alloc;
 	a.hasSam = inDevice.info.hardware.hasSAM;
 	return a;
 }
 
-void OaVma::destroy() {
+void RuntimeAllocator::destroy() {
 	if (allocator) {
-		OaVmaDestroyAllocator(static_cast<OaVmaAllocator>(allocator));
+		vma::destroyAllocator(static_cast<vma::Allocator>(allocator));
 		allocator = nullptr;
 	}
 }
 
-oa::Result<oavk::Buffer> OaVma::allocDevice(oa::U64 inSize) {
-	const oa::U64 capacity = transferCapacity(inSize);
+oa::Result<oavk::Buffer> RuntimeAllocator::allocDevice(oa::U64 inSize) {
+	oa::U64 capacity = 0U;
+	OA_ASSIGN_OR_RETURN(capacity, transferCapacity(inSize));
 	VkBufferCreateInfo bufCI = {
 		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
 		.size = capacity,
@@ -94,14 +100,14 @@ oa::Result<oavk::Buffer> OaVma::allocDevice(oa::U64 inSize) {
 			| VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
 	};
 
-	OaVmaAllocationCreateInfo allocCI = {
-		.usage = OA_VMA_MEMORY_USAGE_GPU_ONLY,
+	vma::AllocationCreateInfo allocCI = {
+		.usage = vma::memoryUsageGpuOnly,
 	};
 
 	VkBuffer buffer = VK_NULL_HANDLE;
-	OaVmaAllocation allocation = VK_NULL_HANDLE;
-	VkResult r = OaVmaCreateBuffer(
-		static_cast<OaVmaAllocator>(allocator),
+	vma::Allocation allocation = VK_NULL_HANDLE;
+	VkResult r = vma::createBuffer(
+		static_cast<vma::Allocator>(allocator),
 		&bufCI, &allocCI, &buffer, &allocation, nullptr
 	);
 	if (r != VK_SUCCESS) {
@@ -121,8 +127,9 @@ oa::Result<oavk::Buffer> OaVma::allocDevice(oa::U64 inSize) {
 	return buf;
 }
 
-oa::Result<oavk::Buffer> OaVma::allocHostVisible(oa::U64 inSize) {
-	const oa::U64 capacity = transferCapacity(inSize);
+oa::Result<oavk::Buffer> RuntimeAllocator::allocHostVisible(oa::U64 inSize) {
+	oa::U64 capacity = 0U;
+	OA_ASSIGN_OR_RETURN(capacity, transferCapacity(inSize));
 	VkBufferCreateInfo bufCI{};
 	bufCI.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
 	bufCI.size = capacity;
@@ -132,9 +139,9 @@ oa::Result<oavk::Buffer> OaVma::allocHostVisible(oa::U64 inSize) {
 		| VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT
 		| VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 
-	OaVmaAllocationCreateInfo allocCI{};
-	allocCI.usage = OA_VMA_MEMORY_USAGE_CPU_TO_GPU;
-	allocCI.flags = OA_VMA_ALLOCATION_CREATE_MAPPED_BIT | OA_VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+	vma::AllocationCreateInfo allocCI{};
+	allocCI.usage = vma::memoryUsageCpuToGpu;
+	allocCI.flags = vma::allocationCreateMappedBit | vma::allocationCreateHostAccessSequentialWriteBit;
 	// oa::Matrix exposes its mapped pointer as a first-class CPU access path. Keep
 	// that contract valid for direct Data()/dataAs() users; explicit flush and
 	// invalidate calls remain in transfer primitives as a second line of defence.
@@ -142,10 +149,10 @@ oa::Result<oavk::Buffer> OaVma::allocHostVisible(oa::U64 inSize) {
 		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 
 	VkBuffer buffer = VK_NULL_HANDLE;
-	OaVmaAllocation allocation = VK_NULL_HANDLE;
-	OaVmaAllocationInfo allocInfo{};
-	VkResult r = OaVmaCreateBuffer(
-		static_cast<OaVmaAllocator>(allocator),
+	vma::Allocation allocation = VK_NULL_HANDLE;
+	vma::AllocationInfo allocInfo{};
+	VkResult r = vma::createBuffer(
+		static_cast<vma::Allocator>(allocator),
 		&bufCI, &allocCI, &buffer, &allocation, &allocInfo);
 	if (r != VK_SUCCESS) {
 		return oa::Status::error(oa::StatusCode::OutOfMemory, "host-visible buffer allocation failed");
@@ -164,8 +171,9 @@ oa::Result<oavk::Buffer> OaVma::allocHostVisible(oa::U64 inSize) {
 	return buf;
 }
 
-oa::Result<oavk::Buffer> OaVma::allocHostReadback(oa::U64 inSize) {
-	const oa::U64 capacity = transferCapacity(inSize);
+oa::Result<oavk::Buffer> RuntimeAllocator::allocHostReadback(oa::U64 inSize) {
+	oa::U64 capacity = 0U;
+	OA_ASSIGN_OR_RETURN(capacity, transferCapacity(inSize));
 	VkBufferCreateInfo bufCI{};
 	bufCI.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
 	bufCI.size = capacity;
@@ -174,17 +182,17 @@ oa::Result<oavk::Buffer> OaVma::allocHostReadback(oa::U64 inSize) {
 		| VK_BUFFER_USAGE_TRANSFER_DST_BIT
 		| VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
 
-	OaVmaAllocationCreateInfo allocCI{};
-	allocCI.usage = OA_VMA_MEMORY_USAGE_GPU_TO_CPU;
-	allocCI.flags = OA_VMA_ALLOCATION_CREATE_MAPPED_BIT
-		| OA_VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
+	vma::AllocationCreateInfo allocCI{};
+	allocCI.usage = vma::memoryUsageGpuToCpu;
+	allocCI.flags = vma::allocationCreateMappedBit
+		| vma::allocationCreateHostAccessRandomBit;
 	allocCI.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
 
 	VkBuffer buffer = VK_NULL_HANDLE;
-	OaVmaAllocation allocation = VK_NULL_HANDLE;
-	OaVmaAllocationInfo allocInfo{};
-	const VkResult result = OaVmaCreateBuffer(
-		static_cast<OaVmaAllocator>(allocator),
+	vma::Allocation allocation = VK_NULL_HANDLE;
+	vma::AllocationInfo allocInfo{};
+	const VkResult result = vma::createBuffer(
+		static_cast<vma::Allocator>(allocator),
 		&bufCI, &allocCI, &buffer, &allocation, &allocInfo);
 	if (result != VK_SUCCESS) {
 		return oa::Status::error(oa::StatusCode::OutOfMemory, "host-readback buffer allocation failed");
@@ -203,34 +211,41 @@ oa::Result<oavk::Buffer> OaVma::allocHostReadback(oa::U64 inSize) {
 	return out;
 }
 
-oa::Bool OaVma::flushHostBuffer(const oavk::Buffer& inBuf, oa::U64 inOffset, oa::U64 inSize) {
+oa::Bool RuntimeAllocator::flushHostBuffer(const oavk::Buffer& inBuf, oa::U64 inOffset, oa::U64 inSize) {
 	if (not allocator or not inBuf.allocation) {
-		return true;
+		return false;
 	}
-	VkResult r = OaVmaFlushAllocation(
-		static_cast<OaVmaAllocator>(allocator),
-		static_cast<OaVmaAllocation>(inBuf.allocation),
+	if (inBuf.allocatorIdentity != allocator
+		or inOffset > inBuf.capacity
+		or inSize > inBuf.capacity - inOffset) return false;
+	VkResult r = vma::flushAllocation(
+		static_cast<vma::Allocator>(allocator),
+		static_cast<vma::Allocation>(inBuf.allocation),
 		inOffset, inSize);
 	return r == VK_SUCCESS;
 }
 
-oa::Bool OaVma::invalidateHostBuffer(
+oa::Bool RuntimeAllocator::invalidateHostBuffer(
 	const oavk::Buffer& inBuf, oa::U64 inOffset, oa::U64 inSize) {
 	if (not allocator or not inBuf.allocation) {
-		return true;
+		return false;
 	}
-	VkResult r = OaVmaInvalidateAllocation(
-		static_cast<OaVmaAllocator>(allocator),
-		static_cast<OaVmaAllocation>(inBuf.allocation),
+	if (inBuf.allocatorIdentity != allocator
+		or inOffset > inBuf.capacity
+		or inSize > inBuf.capacity - inOffset) return false;
+	VkResult r = vma::invalidateAllocation(
+		static_cast<vma::Allocator>(allocator),
+		static_cast<vma::Allocation>(inBuf.allocation),
 		inOffset, inSize);
 	return r == VK_SUCCESS;
 }
 
-oa::Result<oavk::Buffer> OaVma::allocBar(oa::U64 inSize) {
+oa::Result<oavk::Buffer> RuntimeAllocator::allocBar(oa::U64 inSize) {
 	if (!hasSam) {
 		return allocHostVisible(inSize);
 	}
-	const oa::U64 capacity = transferCapacity(inSize);
+	oa::U64 capacity = 0U;
+	OA_ASSIGN_OR_RETURN(capacity, transferCapacity(inSize));
 
 	// Device-local + host-visible = BAR (requires SAM / resizable BAR)
 	VkBufferCreateInfo bufCI{};
@@ -242,17 +257,17 @@ oa::Result<oavk::Buffer> OaVma::allocBar(oa::U64 inSize) {
 		| VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT
 		| VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 
-	OaVmaAllocationCreateInfo allocCI{};
-	allocCI.usage = OA_VMA_MEMORY_USAGE_AUTO;
-	allocCI.flags = OA_VMA_ALLOCATION_CREATE_MAPPED_BIT
-		| OA_VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+	vma::AllocationCreateInfo allocCI{};
+	allocCI.usage = vma::memoryUsageAuto;
+	allocCI.flags = vma::allocationCreateMappedBit
+		| vma::allocationCreateHostAccessSequentialWriteBit;
 	allocCI.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
 
 	VkBuffer buffer = VK_NULL_HANDLE;
-	OaVmaAllocation allocation = VK_NULL_HANDLE;
-	OaVmaAllocationInfo allocInfo{};
-	VkResult r = OaVmaCreateBuffer(
-		static_cast<OaVmaAllocator>(allocator),
+	vma::Allocation allocation = VK_NULL_HANDLE;
+	vma::AllocationInfo allocInfo{};
+	VkResult r = vma::createBuffer(
+		static_cast<vma::Allocator>(allocator),
 		&bufCI, &allocCI, &buffer, &allocation, &allocInfo);
 	if (r != VK_SUCCESS) {
 		// BAR allocation can fail if VRAM is full; fall back to host-visible
@@ -273,8 +288,9 @@ oa::Result<oavk::Buffer> OaVma::allocBar(oa::U64 inSize) {
 	return buf;
 }
 
-oa::Result<oavk::Buffer> OaVma::allocPreprocessBuffer(oa::U64 inSize) {
-	const oa::U64 capacity = transferCapacity(inSize);
+oa::Result<oavk::Buffer> RuntimeAllocator::allocPreprocessBuffer(oa::U64 inSize) {
+	oa::U64 capacity = 0U;
+	OA_ASSIGN_OR_RETURN(capacity, transferCapacity(inSize));
 	// allocate buffer with VK_BUFFER_USAGE_2_PREPROCESS_BUFFER_BIT_EXT for VK_EXT_device_generated_commands
 	// Note: VK_BUFFER_USAGE_2_PREPROCESS_BUFFER_BIT_EXT requires VkBufferUsageFlags2CreateInfo in pNext
 	VkBufferUsageFlags2CreateInfo usageFlags2{};
@@ -292,23 +308,23 @@ oa::Result<oavk::Buffer> OaVma::allocPreprocessBuffer(oa::U64 inSize) {
 	bufCI.size = capacity;
 	bufCI.usage = 0;  // Must be 0 when using VkBufferUsageFlags2CreateInfo
 
-	OaVmaAllocationCreateInfo allocCI{};
+	vma::AllocationCreateInfo allocCI{};
 	if (hasSam) {
 		// Use BAR if available (device-local + host-visible)
-		allocCI.usage = OA_VMA_MEMORY_USAGE_AUTO;
-		allocCI.flags = OA_VMA_ALLOCATION_CREATE_MAPPED_BIT
-			| OA_VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+		allocCI.usage = vma::memoryUsageAuto;
+		allocCI.flags = vma::allocationCreateMappedBit
+			| vma::allocationCreateHostAccessSequentialWriteBit;
 		allocCI.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
 	} else {
 		// Fall back to device-local only
-		allocCI.usage = OA_VMA_MEMORY_USAGE_GPU_ONLY;
+		allocCI.usage = vma::memoryUsageGpuOnly;
 	}
 
 	VkBuffer buffer = VK_NULL_HANDLE;
-	OaVmaAllocation allocation = VK_NULL_HANDLE;
-	OaVmaAllocationInfo allocInfo{};
-	VkResult r = OaVmaCreateBuffer(
-		static_cast<OaVmaAllocator>(allocator),
+	vma::Allocation allocation = VK_NULL_HANDLE;
+	vma::AllocationInfo allocInfo{};
+	VkResult r = vma::createBuffer(
+		static_cast<vma::Allocator>(allocator),
 		&bufCI, &allocCI, &buffer, &allocation, &allocInfo);
 	if (r != VK_SUCCESS) {
 		return oa::Status::error(oa::StatusCode::OutOfMemory, "preprocess buffer allocation failed");
@@ -332,7 +348,10 @@ oa::Result<oavk::Buffer> OaVma::allocPreprocessBuffer(oa::U64 inSize) {
 	return buf;
 }
 
-oa::Status OaVma::uploadWeights(oavk::Buffer& inDst, const void* inSrc, oa::U64 inSize) {
+oa::Status RuntimeAllocator::uploadWeights(oavk::Buffer& inDst, const void* inSrc, oa::U64 inSize) {
+	if (inSrc == nullptr and inSize != 0U) {
+		return oa::Status::error(oa::StatusCode::InvalidArgument, "source is null");
+	}
 	if (!inDst.mappedPtr) {
 		return oa::Status::error(oa::StatusCode::InvalidArgument, "buffer not mapped");
 	}
@@ -350,9 +369,10 @@ oa::Status OaVma::uploadWeights(oavk::Buffer& inDst, const void* inSrc, oa::U64 
 	return oa::Status::ok();
 }
 
-oa::Result<oavk::Buffer> OaVma::allocAliased(
+oa::Result<oavk::Buffer> RuntimeAllocator::allocAliased(
 	oa::U64 inSize, oa::MemoryPlacement inPlacement) {
-	const oa::U64 capacity = transferCapacity(inSize);
+	oa::U64 capacity = 0U;
+	OA_ASSIGN_OR_RETURN(capacity, transferCapacity(inSize));
 	VkBufferCreateInfo bufCI{};
 	bufCI.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
 	bufCI.size = capacity;
@@ -361,41 +381,41 @@ oa::Result<oavk::Buffer> OaVma::allocAliased(
 		| VK_BUFFER_USAGE_TRANSFER_DST_BIT
 		| VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
 
-	OaVmaAllocationCreateInfo allocCI{};
-	allocCI.flags = OA_VMA_ALLOCATION_CREATE_CAN_ALIAS_BIT;
+	vma::AllocationCreateInfo allocCI{};
+	allocCI.flags = vma::allocationCreateCanAliasBit;
 	switch (inPlacement) {
 		case oa::MemoryPlacement::DeviceLocal:
-			allocCI.usage = OA_VMA_MEMORY_USAGE_GPU_ONLY;
+			allocCI.usage = vma::memoryUsageGpuOnly;
 			break;
 		case oa::MemoryPlacement::Unified:
-			allocCI.usage = OA_VMA_MEMORY_USAGE_AUTO;
-			allocCI.flags |= OA_VMA_ALLOCATION_CREATE_MAPPED_BIT
-				| OA_VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+			allocCI.usage = vma::memoryUsageAuto;
+			allocCI.flags |= vma::allocationCreateMappedBit
+				| vma::allocationCreateHostAccessSequentialWriteBit;
 			allocCI.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
 				| VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
 			break;
 		case oa::MemoryPlacement::HostReadback:
-			allocCI.usage = OA_VMA_MEMORY_USAGE_GPU_TO_CPU;
-			allocCI.flags |= OA_VMA_ALLOCATION_CREATE_MAPPED_BIT
-				| OA_VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
+			allocCI.usage = vma::memoryUsageGpuToCpu;
+			allocCI.flags |= vma::allocationCreateMappedBit
+				| vma::allocationCreateHostAccessRandomBit;
 			allocCI.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
 			break;
 		case oa::MemoryPlacement::Auto:
 		case oa::MemoryPlacement::HostUpload:
 			inPlacement = oa::MemoryPlacement::HostUpload;
-			allocCI.usage = OA_VMA_MEMORY_USAGE_CPU_TO_GPU;
-			allocCI.flags |= OA_VMA_ALLOCATION_CREATE_MAPPED_BIT
-				| OA_VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+			allocCI.usage = vma::memoryUsageCpuToGpu;
+			allocCI.flags |= vma::allocationCreateMappedBit
+				| vma::allocationCreateHostAccessSequentialWriteBit;
 			allocCI.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
 				| VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 			break;
 	}
 
 	VkBuffer buffer = VK_NULL_HANDLE;
-	OaVmaAllocation allocation = VK_NULL_HANDLE;
-	OaVmaAllocationInfo allocInfo{};
-	VkResult res = OaVmaCreateBuffer(
-		static_cast<OaVmaAllocator>(allocator),
+	vma::Allocation allocation = VK_NULL_HANDLE;
+	vma::AllocationInfo allocInfo{};
+	VkResult res = vma::createBuffer(
+		static_cast<vma::Allocator>(allocator),
 		&bufCI, &allocCI, &buffer, &allocation, &allocInfo
 	);
 	if (res != VK_SUCCESS) {
@@ -417,13 +437,22 @@ oa::Result<oavk::Buffer> OaVma::allocAliased(
 	return buf;
 }
 
-oa::Result<oavk::Buffer> OaVma::createAliasingBuffer(
+oa::Result<oavk::Buffer> RuntimeAllocator::createAliasingBuffer(
 	const oavk::Buffer& inExisting, oa::U64 inSize
 ) {
-	const oa::U64 capacity = transferCapacity(inSize);
+	oa::U64 capacity = 0U;
+	OA_ASSIGN_OR_RETURN(capacity, transferCapacity(inSize));
 	if (!inExisting.allocation) {
 		return oa::Status::error(oa::StatusCode::InvalidArgument,
 			"createAliasingBuffer: source has no allocation");
+	}
+	if (inExisting.allocatorIdentity != allocator) {
+		return oa::Status::error(oa::StatusCode::InvalidArgument,
+			"createAliasingBuffer: source belongs to another allocator");
+	}
+	if (capacity > inExisting.capacity) {
+		return oa::Status::error(oa::StatusCode::OutOfRange,
+			"createAliasingBuffer: requested range exceeds source allocation");
 	}
 
 	VkBufferCreateInfo bufCI{};
@@ -435,9 +464,9 @@ oa::Result<oavk::Buffer> OaVma::createAliasingBuffer(
 		| VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
 
 	VkBuffer buffer = VK_NULL_HANDLE;
-	VkResult r = OaVmaCreateAliasingBuffer2(
-		static_cast<OaVmaAllocator>(allocator),
-		static_cast<OaVmaAllocation>(inExisting.allocation),
+	VkResult r = vma::createAliasingBuffer(
+		static_cast<vma::Allocator>(allocator),
+		static_cast<vma::Allocation>(inExisting.allocation),
 		0,
 		&bufCI,
 		&buffer);
@@ -462,17 +491,17 @@ oa::Result<oavk::Buffer> OaVma::createAliasingBuffer(
 	return buf;
 }
 
-void OaVma::freeAlias(oavk::Buffer& inOutBuffer) {
-	// OaVmaDestroyBuffer safely handles null allocation — destroys only the VkBuffer.
+void RuntimeAllocator::freeAlias(oavk::Buffer& inOutBuffer) {
+	// vma::destroyBuffer safely handles null allocation — destroys only the VkBuffer.
 	free(inOutBuffer);
 }
 
-OaVmaStats OaVma::getStats() const {
-	OaVmaStats stats{};
+RuntimeAllocatorStats RuntimeAllocator::getStats() const {
+	RuntimeAllocatorStats stats{};
 	if (!allocator) return stats;
 
-	OaVmaBudget budgets[VK_MAX_MEMORY_HEAPS]{};
-	OaVmaGetHeapBudgets(static_cast<OaVmaAllocator>(allocator), budgets);
+	vma::Budget budgets[VK_MAX_MEMORY_HEAPS]{};
+	vma::getHeapBudgets(static_cast<vma::Allocator>(allocator), budgets);
 
 	for (oa::U32 i = 0; i < VK_MAX_MEMORY_HEAPS; ++i) {
 		if (budgets[i].budget == 0) continue;
@@ -483,8 +512,8 @@ OaVmaStats OaVma::getStats() const {
 	// Detailed accounting: distinguishes bytes actually live (allocationBytes) from bytes
 	// reserved in VMA blocks (blockBytes). A large blockBytes/allocationBytes ratio means
 	// fragmentation / pooled slack rather than a true leak.
-	OaVmaTotalStatistics total{};
-	OaVmaCalculateStatistics(static_cast<OaVmaAllocator>(allocator), &total);
+	vma::TotalStatistics total{};
+	vma::calculateStatistics(static_cast<vma::Allocator>(allocator), &total);
 	stats.allocationBytes = total.total.statistics.allocationBytes;
 	stats.blockBytes      = total.total.statistics.blockBytes;
 	stats.allocationCount = total.total.statistics.allocationCount;
@@ -492,22 +521,25 @@ OaVmaStats OaVma::getStats() const {
 	return stats;
 }
 
-void OaVma::free(oavk::Buffer& inOutBuffer) {
-	if (inOutBuffer.buffer && allocator) {
+void RuntimeAllocator::free(oavk::Buffer& inOutBuffer) {
+	if (inOutBuffer.buffer) {
+		OA_REQUIRE_MSG(allocator != nullptr,
+			"cannot free a live buffer after allocator destruction");
+		OA_REQUIRE_MSG(inOutBuffer.allocatorIdentity == allocator,
+			"buffer belongs to a different allocator");
 		// Descriptor ownership belongs to oa::Engine, not VMA. Looking up an
 		// ambient engine here can deregister the same numeric slot from the wrong
 		// heap when more than one engine exists. Engine-owned buffers therefore
 		// pass through the engine's private resource boundary, which deregisters
 		// first; raw allocator users may only free buffers that were never
 		// registered.
-		assert(inOutBuffer.bindlessIndex == UINT32_MAX
-			&& "deregister an engine-owned buffer before raw allocator free");
-		if (inOutBuffer.bindlessIndex != UINT32_MAX) return;
+		OA_REQUIRE_MSG(inOutBuffer.bindlessIndex == UINT32_MAX,
+			"deregister an engine-owned buffer before raw allocator free");
 
-		OaVmaDestroyBuffer(
-			static_cast<OaVmaAllocator>(allocator),
+		vma::destroyBuffer(
+			static_cast<vma::Allocator>(allocator),
 			static_cast<VkBuffer>(inOutBuffer.buffer),
-			static_cast<OaVmaAllocation>(inOutBuffer.allocation)
+			static_cast<vma::Allocation>(inOutBuffer.allocation)
 		);
 		inOutBuffer.buffer = nullptr;
 		inOutBuffer.allocation = nullptr;

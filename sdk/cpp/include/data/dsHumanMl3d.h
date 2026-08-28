@@ -39,7 +39,7 @@ struct HumanMl3dCaption {
 // HumanML3D feature stream. inFeatures must be de-standardized first. The
 // returned row-major array is [inFrames, J, 3] in the dataset's canonical
 // metric coordinate system.
-[[nodiscard]] oa::Vec<oa::F32> humanMl3dRecoverWorldJoints(
+[[nodiscard]] oa::Vector<oa::F32> humanMl3dRecoverWorldJoints(
 	oa::Span<const oa::F32> inFeatures,
 	oa::I32 inFrames,
 	oa::I32 inFeatDim = 263);
@@ -96,7 +96,7 @@ public:
 		return ids_[static_cast<oa::Usize>(inIndex)];
 	}
 	// Every caption record, including HumanML3D partial-clip time ranges.
-	[[nodiscard]] const oa::Vec<HumanMl3dCaption>& clipCaptions(oa::I64 inIndex) const {
+	[[nodiscard]] const oa::Vector<HumanMl3dCaption>& clipCaptions(oa::I64 inIndex) const {
 		return captions_[static_cast<oa::Usize>(inIndex)];
 	}
 	// Optional frozen text-encoder rows from text_feats/<id>.npy.
@@ -129,14 +129,14 @@ protected:
 	oa::I32 numJoints_ = 22;
 	bool  ok_        = false;
 
-	oa::Vec<oa::F32>    mean_, std_;       // [featDim]
-	oa::Vec<oa::F32>    feat_;             // all clips concatenated, [totalFrames * featDim]
-	oa::Vec<oa::I64>    offsets_;          // row offset per clip, size numClips+1
-	oa::Vec<oa::String> ids_;
-	oa::Vec<oa::String> texts_;
-	oa::Vec<oa::Vec<HumanMl3dCaption>> captions_;
-	oa::Vec<oa::F32> textFeatures_;        // concatenated [all caption rows, textFeatureDim]
-	oa::Vec<oa::I64> textFeatureOffsets_;  // caption-row offset per clip, size numClips+1
+	oa::Vector<oa::F32>    mean_, std_;       // [featDim]
+	oa::Vector<oa::F32>    feat_;             // all clips concatenated, [totalFrames * featDim]
+	oa::Vector<oa::I64>    offsets_;          // row offset per clip, size numClips+1
+	oa::Vector<oa::String> ids_;
+	oa::Vector<oa::String> texts_;
+	oa::Vector<oa::Vector<HumanMl3dCaption>> captions_;
+	oa::Vector<oa::F32> textFeatures_;        // concatenated [all caption rows, textFeatureDim]
+	oa::Vector<oa::I64> textFeatureOffsets_;  // caption-row offset per clip, size numClips+1
 	oa::I32 textFeatureDim_ = 0;
 	oa::I32 textFeatureManifestDim_ = 0;
 	oa::String textFeatureFormat_;

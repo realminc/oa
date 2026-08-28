@@ -18,7 +18,7 @@ static bool pinThreadToCore([[maybe_unused]] oa::I32 inCoreId) {
 }
 
 struct oa::ThreadPool::State {
-	oa::Vec<oa::SharedPtr<oa::Channel<Job>>> queues;
+	oa::Vector<oa::SharedPtr<oa::Channel<Job>>> queues;
 	oa::Atomic<oa::I32> nextWorker{0};
 	oa::Atomic<oa::I32> workersRemaining{0};
 	oa::Atomic<bool> running{false};
@@ -106,7 +106,7 @@ oa::ThreadPool oa::ThreadPool::create(const oa::ThreadPoolConfig& inConfig) {
 	}
 
 	// Determine core assignments
-	oa::Vec<oa::I32> workerCoreIds;
+	oa::Vector<oa::I32> workerCoreIds;
 	if (!inConfig.coreIds.empty()) {
 		workerCoreIds = inConfig.coreIds;
 	} else if (inConfig.useTopology) {

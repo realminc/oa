@@ -1,5 +1,5 @@
 #include "oa/runtime/collective/hostCollectiveOracle.h"
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
 #include <oa/core/simd.h>
 #include <oa/core/std/limits.h>
 #include <oa/core/std/scalarMath.h>
@@ -36,7 +36,7 @@ static oa::Status validateEqualHostBuffers(oa::Span<oavk::Buffer> inBufs) {
 	}
 	const oa::U64 size = inBufs[0].size;
 	if (size > static_cast<oa::U64>(
-			oa::Limits<oa::Vec<oa::U8>::size_type>::max())) {
+			oa::Limits<oa::Vector<oa::U8>::size_type>::max())) {
 		return oa::Status::error(oa::StatusCode::InvalidArgument,
 			"collective buffer size exceeds the host staging limit");
 	}
@@ -86,7 +86,7 @@ oa::Status HostCollectiveOracle::allReduce(
 	if (size == 0 or inOutBufs.size() == 1) return oa::Status::ok();
 
 	const oa::I64 count = static_cast<oa::I64>(size / sizeof(oa::F32));
-	oa::Vec<oa::F32> reduced(static_cast<oa::Vec<oa::F32>::size_type>(count));
+	oa::Vector<oa::F32> reduced(static_cast<oa::Vector<oa::F32>::size_type>(count));
 	oa::memcpy(reduced.data(), inOutBufs[0].mappedPtr, size);
 	for (oa::U32 i = 1; i < inOutBufs.size(); ++i) {
 		cpuReduceF32(
@@ -113,7 +113,7 @@ oa::Status HostCollectiveOracle::broadcast(
 	const auto& src = inOutBufs[inSrcIdx];
 	if (src.size == 0 or inOutBufs.size() == 1) return oa::Status::ok();
 
-	oa::Vec<oa::U8> staged(static_cast<oa::Vec<oa::U8>::size_type>(src.size));
+	oa::Vector<oa::U8> staged(static_cast<oa::Vector<oa::U8>::size_type>(src.size));
 	oa::memcpy(staged.data(), src.mappedPtr, src.size);
 	for (oa::U32 i = 0; i < inOutBufs.size(); ++i) {
 		if (i == inSrcIdx) continue;
@@ -142,7 +142,7 @@ oa::Status HostCollectiveOracle::allGather(
 	}
 	const oa::U64 fullSize = partialSize * n;
 	if (fullSize > static_cast<oa::U64>(
-			oa::Limits<oa::Vec<oa::U8>::size_type>::max())) {
+			oa::Limits<oa::Vector<oa::U8>::size_type>::max())) {
 		return oa::Status::error(oa::StatusCode::InvalidArgument,
 			"AllGather: output size exceeds the host staging limit");
 	}
@@ -166,7 +166,7 @@ oa::Status HostCollectiveOracle::allGather(
 	}
 	if (fullSize == 0) return oa::Status::ok();
 
-	oa::Vec<oa::U8> gathered(static_cast<oa::Vec<oa::U8>::size_type>(fullSize));
+	oa::Vector<oa::U8> gathered(static_cast<oa::Vector<oa::U8>::size_type>(fullSize));
 	for (oa::U32 src = 0; src < n; ++src) {
 		const oa::U64 offset = src * partialSize;
 		oa::memcpy(gathered.data() + offset, inPartials[src].mappedPtr, partialSize);
@@ -206,7 +206,7 @@ oa::Status HostCollectiveOracle::scatter(
 	}
 	if (chunkSize == 0) return oa::Status::ok();
 
-	oa::Vec<oa::U8> staged(static_cast<oa::Vec<oa::U8>::size_type>(inFull.size));
+	oa::Vector<oa::U8> staged(static_cast<oa::Vector<oa::U8>::size_type>(inFull.size));
 	oa::memcpy(staged.data(), inFull.mappedPtr, inFull.size);
 	for (oa::U32 i = 0; i < n; ++i) {
 		oa::memcpy(
@@ -232,7 +232,7 @@ oa::Status HostCollectiveOracle::reduceScatter(
 	}
 	const oa::U64 chunkSize = size / n;
 	const oa::I64 count = static_cast<oa::I64>(size / sizeof(oa::F32));
-	oa::Vec<oa::F32> reduced(static_cast<oa::Vec<oa::F32>::size_type>(count));
+	oa::Vector<oa::F32> reduced(static_cast<oa::Vector<oa::F32>::size_type>(count));
 	oa::memcpy(reduced.data(), inOutBufs[0].mappedPtr, size);
 	for (oa::U32 i = 1; i < n; ++i) {
 		cpuReduceF32(

@@ -164,7 +164,7 @@ void measureAttentionForwardPair(
 	ASSERT_TRUE(testSubmitAndWait(ctx).isOk());
 	ctx.clear();
 	const oa::F32 scale = 1.0F / std::sqrt(static_cast<oa::F32>(inHeadDim));
-	oa::Vec<oa::Matrix> keep;
+	oa::Vector<oa::Matrix> keep;
 	char standardName[96], flashName[96], flashTimer[96];
 	std::snprintf(standardName, sizeof(standardName), "%s standard forward", inPrefix);
 	std::snprintf(flashName, sizeof(flashName), "%s flash forward", inPrefix);
@@ -208,7 +208,7 @@ void measureAttentionTrainingPair(
 	ASSERT_TRUE(testSubmitAndWait(ctx).isOk());
 	ctx.clear();
 	const oa::F32 scale = 1.0F / std::sqrt(static_cast<oa::F32>(inHeadDim));
-	oa::Vec<oa::Matrix> keep;
+	oa::Vector<oa::Matrix> keep;
 	char standardName[96], flashName[96], standardTimer[96], flashTimer[96];
 	std::snprintf(standardName, sizeof(standardName), "%s standard train", inPrefix);
 	std::snprintf(flashName, sizeof(flashName), "%s flash train", inPrefix);
@@ -303,7 +303,7 @@ TEST(BenchTransformerComponents, AlmLinearShape) {
 	ASSERT_TRUE(testSubmitAndWait(ctx).isOk());
 
 	constexpr oa::U32 warmup = 3, samples = 10;
-	oa::Vec<oa::Matrix> keep;
+	oa::Vector<oa::Matrix> keep;
 	print("ALM Linear data backward", measure(engine, "alm_linear_data_bwd", [&] {
 		keep = {oa::FnMatrix::linearDataBwd(dModel, modelW)};
 	}, warmup, samples));
@@ -370,7 +370,7 @@ TEST(BenchTransformerComponents, LinearParamCrossover) {
 		auto x = oa::FnMatrix::randXavier({M, K});
 		auto dy = oa::FnMatrix::randXavier({M, N});
 		ASSERT_TRUE(testSubmitAndWait(ctx).isOk());
-		oa::Vec<oa::Matrix> keep;
+		oa::Vector<oa::Matrix> keep;
 		char scalarName[64], tiledName[64], rowsName[64];
 		char scalarTimer[64], tiledTimer[64], rowsTimer[64];
 		std::snprintf(scalarName, sizeof(scalarName), "scalar M%d N%d K%d", M, N, K);
@@ -435,7 +435,7 @@ TEST(BenchTransformerComponents, NlpShape) {
 	auto dAttn = oa::FnMatrix::randXavier({BH * S, S});
 	ASSERT_TRUE(testSubmitAndWait(ctx).isOk());
 
-	oa::Vec<oa::Matrix> keep;
+	oa::Vector<oa::Matrix> keep;
 	print("layer norm", measure(engine, "transformer_ln", [&] {
 		keep = {oa::FnMatrix::layerNorm(x, lnW, lnB, 1e-5F)};
 	}));

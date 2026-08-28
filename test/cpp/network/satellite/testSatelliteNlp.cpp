@@ -55,7 +55,7 @@ oa::SatelliteSessionConfig makeConfig() {
 	return config;
 }
 
-oa::Status copyF32(const oa::Matrix& inMatrix, oa::Vec<oa::F32>& out) {
+oa::Status copyF32(const oa::Matrix& inMatrix, oa::Vector<oa::F32>& out) {
 	if (inMatrix.getDtype() != oa::ScalarType::Float32) {
 		return oa::Status::error(oa::StatusCode::DtypeMismatch,
 			"satellite NLP oracle: expected FP32 matrix");
@@ -98,20 +98,20 @@ oa::Status loadParameters(
 	return oa::Status::ok();
 }
 
-void appendU32Le(oa::Vec<oa::Byte>& out, oa::U32 inValue) {
+void appendU32Le(oa::Vector<oa::Byte>& out, oa::U32 inValue) {
 	for (oa::U32 shift = 0; shift < 32U; shift += 8U) {
 		out.pushBack(static_cast<oa::Byte>((inValue >> shift) & 0xffU));
 	}
 }
 
-void appendU64Le(oa::Vec<oa::Byte>& out, oa::U64 inValue) {
+void appendU64Le(oa::Vector<oa::Byte>& out, oa::U64 inValue) {
 	for (oa::U32 shift = 0; shift < 64U; shift += 8U) {
 		out.pushBack(static_cast<oa::Byte>((inValue >> shift) & 0xffU));
 	}
 }
 
-oa::Vec<oa::Byte> encodeF32(oa::Span<const oa::F32> inValues) {
-	oa::Vec<oa::Byte> bytes;
+oa::Vector<oa::Byte> encodeF32(oa::Span<const oa::F32> inValues) {
+	oa::Vector<oa::Byte> bytes;
 	bytes.reserve(inValues.size() * sizeof(oa::F32));
 	for (const oa::F32 value : inValues) {
 		oa::U32 bits = 0U;
@@ -121,15 +121,15 @@ oa::Vec<oa::Byte> encodeF32(oa::Span<const oa::F32> inValues) {
 	return bytes;
 }
 
-oa::Vec<oa::Byte> encodeU32(oa::Span<const oa::U32> inValues) {
-	oa::Vec<oa::Byte> bytes;
+oa::Vector<oa::Byte> encodeU32(oa::Span<const oa::U32> inValues) {
+	oa::Vector<oa::Byte> bytes;
 	bytes.reserve(inValues.size() * sizeof(oa::U32));
 	for (const oa::U32 value : inValues) appendU32Le(bytes, value);
 	return bytes;
 }
 
-oa::Vec<oa::Byte> encodeStepArguments(oa::Span<const oa::U32> inSampleIndices) {
-	oa::Vec<oa::Byte> bytes;
+oa::Vector<oa::Byte> encodeStepArguments(oa::Span<const oa::U32> inSampleIndices) {
+	oa::Vector<oa::Byte> bytes;
 	appendU32Le(bytes, 0x31504c4eU);
 	appendU32Le(bytes, 1U);
 	appendU64Le(bytes, oa::NlpSuiteRngSeed);
@@ -140,9 +140,9 @@ oa::Vec<oa::Byte> encodeStepArguments(oa::Span<const oa::U32> inSampleIndices) {
 }
 
 oa::Array<oa::Byte, 32> localParameterLayoutHash(
-	const oa::Vec<oa::NamedParameter>& inParameters)
+	const oa::Vector<oa::NamedParameter>& inParameters)
 {
-	oa::Vec<oa::Byte> layout;
+	oa::Vector<oa::Byte> layout;
 	for (const auto& named : inParameters) {
 		appendU32Le(layout, static_cast<oa::U32>(named.path.size()));
 		layout.append(reinterpret_cast<const oa::Byte*>(named.path.cStr()),
@@ -165,9 +165,9 @@ public:
 	oa::F32 logitMax = 0.0F;
 	oa::F32 logitMean = 0.0F;
 	oa::F32 logitL2 = 0.0F;
-	oa::Vec<oa::F32> logitSample;
-	oa::Vec<oa::F32> gradients;
-	oa::Vec<oa::F32> updatedParameters;
+	oa::Vector<oa::F32> logitSample;
+	oa::Vector<oa::F32> gradients;
+	oa::Vector<oa::F32> updatedParameters;
 };
 
 oa::Result<LocalStepResult> runLocalOracle(
@@ -218,7 +218,7 @@ oa::Result<LocalStepResult> runLocalOracle(
 	}
 
 	OA_RETURN_IF_ERROR(oa::FnMatrix::copyToHost(loss, &result.loss, sizeof(result.loss)));
-	oa::Vec<oa::F32> allLogits;
+	oa::Vector<oa::F32> allLogits;
 	OA_RETURN_IF_ERROR(copyF32(logits, allLogits));
 	result.logitMin = std::numeric_limits<oa::F32>::infinity();
 	result.logitMax = -std::numeric_limits<oa::F32>::infinity();
@@ -300,7 +300,7 @@ oa::Result<LocalStepResult> runLocalGradient(
 	return result;
 }
 
-oa::Result<oa::Vec<oa::F32>> applyAuthoritativeGradient(
+oa::Result<oa::Vector<oa::F32>> applyAuthoritativeGradient(
 	oa::Engine& inEngine,
 	oa::Span<const oa::F32> inParameters,
 	oa::Span<const oa::F32> inGradient)
@@ -340,7 +340,7 @@ oa::Result<oa::Vec<oa::F32>> applyAuthoritativeGradient(
 		return submitted.getStatus();
 	}
 	OA_RETURN_IF_ERROR(inEngine.wait(*submitted));
-	oa::Vec<oa::F32> updated;
+	oa::Vector<oa::F32> updated;
 	updated.reserve(oa::SatelliteNlpStepParameterCount);
 	for (auto* parameter : parameters) {
 		OA_RETURN_IF_ERROR(copyF32(parameter->data, updated));
@@ -350,9 +350,9 @@ oa::Result<oa::Vec<oa::F32>> applyAuthoritativeGradient(
 
 oa::Status buildFrozenInputs(
 	oa::Engine& inEngine,
-	oa::Vec<oa::F32>& outParameters,
-	oa::Vec<oa::U32>& outInputs,
-	oa::Vec<oa::U32>& outTargets)
+	oa::Vector<oa::F32>& outParameters,
+	oa::Vector<oa::U32>& outInputs,
+	oa::Vector<oa::U32>& outTargets)
 {
 	auto& context = oa::ExecutionSession::forEngine(inEngine);
 	oa::ExecutionSession::RecordingScope recording(context);
@@ -416,9 +416,9 @@ oa::Bool hashIsZero(const oa::Array<oa::Byte, 32>& inHash) {
 
 TEST_VK(VkEngineTestFixture, SatelliteNlpReplicatedStepMatchesLocalOracle) {
 	auto& engine = testEngine();
-	oa::Vec<oa::F32> initialParameters;
-	oa::Vec<oa::U32> inputs;
-	oa::Vec<oa::U32> targets;
+	oa::Vector<oa::F32> initialParameters;
+	oa::Vector<oa::U32> inputs;
+	oa::Vector<oa::U32> targets;
 	ASSERT_TRUE(buildFrozenInputs(
 		engine, initialParameters, inputs, targets).isOk());
 	const oa::I64 parameterShape[] = {oa::SatelliteNlpStepParameterCount};
@@ -636,9 +636,9 @@ TEST_VK(VkEngineTestFixture,
 	SatelliteNlpSplitBatchGradientAndAuthoritativeUpdateMatchFullBatch)
 {
 	auto& engine = testEngine();
-	oa::Vec<oa::F32> initialParameters;
-	oa::Vec<oa::U32> inputs;
-	oa::Vec<oa::U32> targets;
+	oa::Vector<oa::F32> initialParameters;
+	oa::Vector<oa::U32> inputs;
+	oa::Vector<oa::U32> targets;
 	ASSERT_TRUE(buildFrozenInputs(
 		engine, initialParameters, inputs, targets).isOk());
 	const oa::Span<const oa::F32> initialParameterView(
@@ -740,7 +740,7 @@ TEST_VK(VkEngineTestFixture,
 		local->loss * localWeight + remote->loss * remoteWeight,
 		full->loss, 2e-5F, 2e-5F));
 	ASSERT_EQ(local->gradients.size(), remote->gradients.size());
-	oa::Vec<oa::F32> reduced(local->gradients.size());
+	oa::Vector<oa::F32> reduced(local->gradients.size());
 	for (oa::Usize i = 0; i < reduced.size(); ++i) {
 		reduced[i] = local->gradients[i] * localWeight
 			+ remote->gradients[i] * remoteWeight;

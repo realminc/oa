@@ -350,7 +350,7 @@ TEST_F(CoreMiscFs, BinaryRoundTrip) {
 
 TEST_F(CoreMiscFs, PodRoundTrip) {
 	oa::Path p = workDir_ / "pod.bin";
-	oa::Vec<CoreMiscTestPod> in;
+	oa::Vector<CoreMiscTestPod> in;
 	in.pushBack(CoreMiscTestPod{7, 42});
 	in.pushBack(CoreMiscTestPod{99, 1});
 	ASSERT_TRUE(oa::Filesystem::writePod(p, oa::Span<const CoreMiscTestPod>(in.data(), in.size())).isOk());

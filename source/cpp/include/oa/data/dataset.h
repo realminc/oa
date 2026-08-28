@@ -77,7 +77,7 @@ public:
 private:
 	Dataset& dataset_;
 	DataLoaderConfig config_;
-	oa::Vec<oa::I64> indices_;
+	oa::Vector<oa::I64> indices_;
 	oa::I64 currentBatch_ = 0;
 
 	void buildIndices();

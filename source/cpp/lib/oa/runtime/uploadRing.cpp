@@ -1,6 +1,6 @@
 #include <oa/runtime/uploadRing.h>
 
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
 #include <oa/core/log.h>
 #include <oa/core/std.h>
 #include <oa/runtime/allocator.h>
@@ -32,8 +32,8 @@ struct oa::UploadRing::Impl {
 	oa::U32 activeFrame = 0;
 	oa::Bool batchOpen = false;
 	oa::Event lastCompletion;
-	oa::Vec<oa::UniquePtr<oa::UploadFrame>> frames;
-	oa::Vec<PendingUploadCopy> copies;
+	oa::Vector<oa::UniquePtr<oa::UploadFrame>> frames;
+	oa::Vector<PendingUploadCopy> copies;
 };
 
 oa::UploadRing::UploadRing(oa::UploadRing&&) noexcept = default;
@@ -183,7 +183,10 @@ oa::Status oa::UploadRing::upload(
 	if (inData == nullptr) return oa::Status::invalidArgument("UploadRing: source is null");
 	auto slice = reserve(inSize, inAlignment);
 	if (!slice) return slice.getStatus();
-	oa::memcpy(slice->mapped, inData, static_cast<oa::Usize>(inSize));
+	// The staging slice is published to a GPU transfer and is not consumed by
+	// the CPU. memcpyStream selects the qualified non-temporal window and falls
+	// back to the ordinary platform path outside it.
+	oa::memcpyStream(slice->mapped, inData, static_cast<oa::Usize>(inSize));
 	return enqueueCopy(*slice, inDst, inDstOffset);
 }
 
@@ -204,7 +207,7 @@ oa::Result<oa::Event> oa::UploadRing::submit() {
 	oa::Usize begin = 0;
 	while (begin < impl_->copies.size()) {
 		const oavk::Buffer& dst = impl_->copies[begin].dst;
-		oa::Vec<oavk::BufferCopyRegion> regions;
+		oa::Vector<oavk::BufferCopyRegion> regions;
 		oa::U64 barrierBegin = UINT64_MAX;
 		oa::U64 barrierEnd = 0U;
 		oa::Usize end = begin;

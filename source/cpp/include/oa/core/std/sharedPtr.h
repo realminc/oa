@@ -8,6 +8,7 @@
 
 #include <oa/core/std/allocator.h>
 #include <oa/core/std/atomic.h>
+#include <oa/core/assert.h>
 #include <oa/core/std/lifetime.h>
 #include <oa/core/std/typeTraits.h>
 #include <oa/core/std/uniquePtr.h>
@@ -19,23 +20,30 @@ template<typename T>
 class WeakPtr;
 
 struct SharedControl {
+	static constexpr oa::U32 MaxReferenceCount = 0x7fffffffU;
+
 	// 32-bit counters keep the common inline control block in the smaller
 	// allocator size class while still admitting more owners than OA can use.
-	oa::Atomic<oa::I32> strong{1};
+	oa::Atomic<oa::U32> strong{1};
 	// One implicit weak reference keeps the control block alive while any
 	// strong owner exists. Explicit WeakPtr instances add to this count.
-	oa::Atomic<oa::I32> weak{1};
+	oa::Atomic<oa::U32> weak{1};
 
 	void incStrong() noexcept {
-		strong.fetchAdd(1, oa::MemoryOrder::Relaxed);
+		const oa::U32 previous = strong.fetchAdd(1, oa::MemoryOrder::Relaxed);
+		OA_REQUIRE_MSG(previous != 0, "SharedPtr increment after final release");
+		OA_REQUIRE_MSG(previous < MaxReferenceCount,
+			"SharedPtr strong reference count overflow");
 	}
 
 	bool incStrongIfNonzero() noexcept {
-		oa::I32 n = strong.load(oa::MemoryOrder::Relaxed);
+		oa::U32 n = strong.load(oa::MemoryOrder::Relaxed);
 		for (;;) {
 			if (n == 0) {
 				return false;
 			}
+			OA_REQUIRE_MSG(n < MaxReferenceCount,
+				"SharedPtr strong reference count overflow");
 			if (strong.compareExchangeWeak(
 				n, n + 1, oa::MemoryOrder::AcquireRelease)) {
 				return true;
@@ -44,27 +52,45 @@ struct SharedControl {
 	}
 
 	void incWeak() noexcept {
-		weak.fetchAdd(1, oa::MemoryOrder::Relaxed);
+		const oa::U32 previous = weak.fetchAdd(1, oa::MemoryOrder::Relaxed);
+		OA_REQUIRE_MSG(previous != 0, "WeakPtr increment after final release");
+		OA_REQUIRE_MSG(previous < MaxReferenceCount,
+			"WeakPtr reference count overflow");
 	}
 
 	void decStrong() noexcept {
-		if (strong.fetchSub(1, oa::MemoryOrder::AcquireRelease) != 1) {
+		// A sole owner with no weak observer cannot race with another legal
+		// reference-count operation: making another owner requires an existing
+		// owner or weak observer. Acquire the prior release that left this owner
+		// last, then retire without a locked read-modify-write.
+		if (strong.load(oa::MemoryOrder::Acquire) == 1
+			&& weak.load(oa::MemoryOrder::Acquire) == 1) {
+			strong.store(0, oa::MemoryOrder::Relaxed);
+			releaseObjectAndDestroyControl();
+			return;
+		}
+		const oa::U32 previous = strong.fetchSub(1, oa::MemoryOrder::AcquireRelease);
+		OA_REQUIRE_MSG(previous != 0, "SharedPtr reference count underflow");
+		if (previous != 1) {
+			return;
+		}
+		// The implicit weak owner is the only remaining weak reference in the
+		// common make/release path. Once the final strong owner is gone, no new
+		// WeakPtr can be created unless one already exists. Fuse object and
+		// control-block destruction in that path so release needs one dynamic
+		// dispatch and no second atomic decrement.
+		if (weak.load(oa::MemoryOrder::Acquire) == 1) {
+			releaseObjectAndDestroyControl();
 			return;
 		}
 		releaseObject();
-		// The implicit weak owner is the only remaining weak reference in the
-		// common make/release path. Once the final strong owner is gone, no new
-		// WeakPtr can be created unless one already exists, so a count of one
-		// permits direct destruction without a second locked decrement.
-		if (weak.load(oa::MemoryOrder::Acquire) == 1) {
-			destroyControl();
-			return;
-		}
 		decWeak();
 	}
 
 	void decWeak() noexcept {
-		if (weak.fetchSub(1, oa::MemoryOrder::AcquireRelease) != 1) {
+		const oa::U32 previous = weak.fetchSub(1, oa::MemoryOrder::AcquireRelease);
+		OA_REQUIRE_MSG(previous != 0, "WeakPtr reference count underflow");
+		if (previous != 1) {
 			return;
 		}
 		destroyControl();
@@ -72,6 +98,10 @@ struct SharedControl {
 
 	virtual void releaseObject() noexcept = 0;
 	virtual void destroyControl() noexcept = 0;
+	virtual void releaseObjectAndDestroyControl() noexcept {
+		releaseObject();
+		destroyControl();
+	}
 
 protected:
 	virtual ~SharedControl() = default;
@@ -90,8 +120,11 @@ struct SharedControlDeleter final : SharedControl {
 
 	void releaseObject() noexcept override {
 		if (ptr) {
-			deleter(ptr);
+			// Publish the retired state before invoking user code. A deleter may
+			// release another owner which reaches this control block recursively.
+			T* retired = ptr;
 			ptr = nullptr;
+			deleter(retired);
 		}
 	}
 
@@ -100,6 +133,15 @@ struct SharedControlDeleter final : SharedControl {
 		oa::destroyAt(self);
 		oa::freeBytes(self, alignof(SharedControlDeleter));
 	}
+
+	void releaseObjectAndDestroyControl() noexcept override {
+		if (ptr) {
+			T* retired = ptr;
+			ptr = nullptr;
+			deleter(retired);
+		}
+		destroyControl();
+	}
 };
 
 template<typename Control, typename... Args>
@@ -107,7 +149,11 @@ template<typename Control, typename... Args>
 	class StorageGuard final {
 	public:
 		explicit StorageGuard(void* inStorage) noexcept : storage_(inStorage) {}
-		~StorageGuard() { oa::freeBytes(storage_, alignof(Control)); }
+		~StorageGuard() {
+			if (storage_) {
+				oa::freeBytes(storage_, alignof(Control));
+			}
+		}
 
 		StorageGuard(const StorageGuard&) = delete;
 		StorageGuard& operator=(const StorageGuard&) = delete;
@@ -177,6 +223,11 @@ struct SharedControlInline final : SharedControl {
 		oa::destroyAt(self);
 		oa::freeBytes(self, alignof(SharedControlInline));
 	}
+
+	void releaseObjectAndDestroyControl() noexcept override {
+		oa::destroyAt(objectPtr_());
+		destroyControl();
+	}
 };
 
 template<typename T>
@@ -218,14 +269,11 @@ public:
 		if (control_ == inO.control_) {
 			return *this;
 		}
-		if (control_) {
-			control_->decStrong();
-		}
-		control_ = inO.control_;
-		ptr_ = inO.ptr_;
-		if (control_) {
-			control_->incStrong();
-		}
+		// Acquire the incoming owner before retiring the old one. Destruction of
+		// the old object may re-enter this SharedPtr; it must observe a complete
+		// new state rather than the control block currently being released.
+		SharedPtr replacement(inO);
+		swap(replacement);
 		return *this;
 	}
 
@@ -255,13 +303,8 @@ public:
 
 	SharedPtr& operator=(SharedPtr&& inO) noexcept {
 		if (this != &inO) {
-			if (control_) {
-				control_->decStrong();
-			}
-			control_ = inO.control_;
-			ptr_ = inO.ptr_;
-			inO.control_ = nullptr;
-			inO.ptr_ = nullptr;
+			SharedPtr replacement(oa::move(inO));
+			swap(replacement);
 		}
 		return *this;
 	}
@@ -271,11 +314,7 @@ public:
 		return *this;
 	}
 
-	~SharedPtr() {
-		if (control_) {
-			control_->decStrong();
-		}
-	}
+	~SharedPtr() { reset(); }
 
 	[[nodiscard]] T* get() const noexcept { return ptr_; }
 	[[nodiscard]] long useCount() const noexcept {
@@ -288,11 +327,10 @@ public:
 	[[nodiscard]] T* operator->() const noexcept requires (!oa::IsVoidV<T>) { return ptr_; }
 
 	void reset() noexcept {
-		if (control_) {
-			control_->decStrong();
-			control_ = nullptr;
-			ptr_ = nullptr;
-		}
+		SharedControl* retired = control_;
+		control_ = nullptr;
+		ptr_ = nullptr;
+		if (retired) retired->decStrong();
 	}
 
 	void reset(T* inP) requires (!oa::IsVoidV<T>) {
@@ -369,14 +407,8 @@ public:
 		if (control_ == inO.control_) {
 			return *this;
 		}
-		if (control_) {
-			control_->decWeak();
-		}
-		control_ = inO.control_;
-		ptr_ = inO.ptr_;
-		if (control_) {
-			control_->incWeak();
-		}
+		WeakPtr replacement(inO);
+		swap(replacement);
 		return *this;
 	}
 
@@ -387,13 +419,8 @@ public:
 
 	WeakPtr& operator=(WeakPtr&& inO) noexcept {
 		if (this != &inO) {
-			if (control_) {
-				control_->decWeak();
-			}
-			control_ = inO.control_;
-			ptr_ = inO.ptr_;
-			inO.control_ = nullptr;
-			inO.ptr_ = nullptr;
+			WeakPtr replacement(oa::move(inO));
+			swap(replacement);
 		}
 		return *this;
 	}
@@ -404,11 +431,7 @@ public:
 		}
 	}
 
-	~WeakPtr() {
-		if (control_) {
-			control_->decWeak();
-		}
-	}
+	~WeakPtr() { reset(); }
 
 	[[nodiscard]] long useCount() const noexcept {
 		return control_ ? control_->strong.load(oa::MemoryOrder::Relaxed) : 0;
@@ -427,11 +450,10 @@ public:
 	}
 
 	void reset() noexcept {
-		if (control_) {
-			control_->decWeak();
-			control_ = nullptr;
-			ptr_ = nullptr;
-		}
+		SharedControl* retired = control_;
+		control_ = nullptr;
+		ptr_ = nullptr;
+		if (retired) retired->decWeak();
 	}
 
 	void swap(WeakPtr& inO) noexcept {
@@ -476,14 +498,8 @@ public:
 		if (control_ == inO.control_) {
 			return *this;
 		}
-		if (control_) {
-			control_->decStrong();
-		}
-		control_ = inO.control_;
-		ptr_ = inO.ptr_;
-		if (control_) {
-			control_->incStrong();
-		}
+		SharedPtr replacement(inO);
+		swap(replacement);
 		return *this;
 	}
 
@@ -494,13 +510,8 @@ public:
 
 	SharedPtr& operator=(SharedPtr&& inO) noexcept {
 		if (this != &inO) {
-			if (control_) {
-				control_->decStrong();
-			}
-			control_ = inO.control_;
-			ptr_ = inO.ptr_;
-			inO.control_ = nullptr;
-			inO.ptr_ = nullptr;
+			SharedPtr replacement(oa::move(inO));
+			swap(replacement);
 		}
 		return *this;
 	}
@@ -510,11 +521,7 @@ public:
 		return *this;
 	}
 
-	~SharedPtr() {
-		if (control_) {
-			control_->decStrong();
-		}
-	}
+	~SharedPtr() { reset(); }
 
 	[[nodiscard]] void* get() const noexcept { return ptr_; }
 	[[nodiscard]] long useCount() const noexcept {
@@ -524,11 +531,10 @@ public:
 	explicit operator bool() const noexcept { return ptr_ != nullptr; }
 
 	void reset() noexcept {
-		if (control_) {
-			control_->decStrong();
-			control_ = nullptr;
-			ptr_ = nullptr;
-		}
+		SharedControl* retired = control_;
+		control_ = nullptr;
+		ptr_ = nullptr;
+		if (retired) retired->decStrong();
 	}
 
 	template<typename Deleter>
@@ -571,14 +577,8 @@ public:
 		if (control_ == inO.control_) {
 			return *this;
 		}
-		if (control_) {
-			control_->decWeak();
-		}
-		control_ = inO.control_;
-		ptr_ = inO.ptr_;
-		if (control_) {
-			control_->incWeak();
-		}
+		WeakPtr replacement(inO);
+		swap(replacement);
 		return *this;
 	}
 
@@ -589,13 +589,8 @@ public:
 
 	WeakPtr& operator=(WeakPtr&& inO) noexcept {
 		if (this != &inO) {
-			if (control_) {
-				control_->decWeak();
-			}
-			control_ = inO.control_;
-			ptr_ = inO.ptr_;
-			inO.control_ = nullptr;
-			inO.ptr_ = nullptr;
+			WeakPtr replacement(oa::move(inO));
+			swap(replacement);
 		}
 		return *this;
 	}
@@ -606,11 +601,7 @@ public:
 		}
 	}
 
-	~WeakPtr() {
-		if (control_) {
-			control_->decWeak();
-		}
-	}
+	~WeakPtr() { reset(); }
 
 	[[nodiscard]] long useCount() const noexcept {
 		return control_ ? control_->strong.load(oa::MemoryOrder::Relaxed) : 0;
@@ -629,11 +620,10 @@ public:
 	}
 
 	void reset() noexcept {
-		if (control_) {
-			control_->decWeak();
-			control_ = nullptr;
-			ptr_ = nullptr;
-		}
+		SharedControl* retired = control_;
+		control_ = nullptr;
+		ptr_ = nullptr;
+		if (retired) retired->decWeak();
 	}
 
 	void swap(WeakPtr& inO) noexcept {

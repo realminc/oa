@@ -212,7 +212,7 @@ oa::Matrix oa::FnMatrix::cast(const oa::Matrix& inSrc, oa::ScalarType inDtype) {
 	if (oa::FnAutograd::isEnabled() and inSrc.requiresGrad()) {
 		auto gradFn = oa::makeShared<oa::GradCast>();
 		gradFn->srcDtype_ = inSrc.getDtype();
-		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inSrc});
+		gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inSrc});
 		gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		out.setRequiresGrad(true);
 		out.mutAutograd().gradFn = gradFn;

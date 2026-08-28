@@ -30,7 +30,7 @@ void attachLinearProjection(
 	}
 	auto grad = oa::makeShared<oa::GradLinear>();
 	grad->saveForBackward(inHidden, inWeightHh);
-	oa::Vec<oa::Matrix> inputs{inHidden, inWeightHh};
+	oa::Vector<oa::Matrix> inputs{inHidden, inWeightHh};
 	if (hasBias) inputs.pushBack(inBiasHh);
 	grad->setGraphInputs(oa::move(inputs));
 	grad->sequenceNr_ = oa::FnAutograd::nextSeq();
@@ -92,7 +92,7 @@ oa::Status attachGruScan(
 	auto grad = oa::makeShared<oa::GradGruScan>();
 	grad->saveForBackward(inGatesI, inWeightHh,
 		hasBias ? inBiasHh : inGatesI, inHprev);
-	oa::Vec<oa::Matrix> inputs{inGatesI, inWeightHh};
+	oa::Vector<oa::Matrix> inputs{inGatesI, inWeightHh};
 	if (hasBias) inputs.pushBack(inBiasHh);
 	grad->setGraphInputs(oa::move(inputs));
 	grad->sequenceNr_ = oa::FnAutograd::nextSeq();

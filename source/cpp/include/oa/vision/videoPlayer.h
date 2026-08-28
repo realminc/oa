@@ -148,7 +148,7 @@ public:
   // Read back the current converted RGBA frame. This is intended for CPU
   // reference overlays and diagnostics; realtime inference should consume
   // currentFrame() directly on the GPU.
-  [[nodiscard]] oa::Result<oa::Vec<oa::U8>> readbackCurrentRgba();
+  [[nodiscard]] oa::Result<oa::Vector<oa::U8>> readbackCurrentRgba();
   // Record the compute submission that most recently sampled currentFrame().
   // The session will not recycle that RGBA image until inConsumed completes.
   // frames advanced without being rendered remain immediately reusable.
@@ -207,15 +207,15 @@ private:
   bool playing_ = true;
   bool reachedEos_ = false;
   bool demuxerEosCurrent_ = false;
-  oa::Vec<ReorderEntry> reorder_;
-  oa::Vec<oa::U64> displayPts_;
+  oa::Vector<ReorderEntry> reorder_;
+  oa::Vector<oa::U64> displayPts_;
   // playback-owned pool of RGBA targets. Sized lazily to reorderDepth + 2
   // (held in reorder + currently displayed + one slack). The decoder owns
   // the actual VkImage lifetimes via its rgbImages_ table; we just track
   // who's holding which.
-  oa::Vec<VideoFrame> rgbaPool_;
-  oa::Vec<bool> rgbaPoolBusy_;
-  oa::Vec<oa::Event> rgbaPoolConsumerEvents_;
+  oa::Vector<VideoFrame> rgbaPool_;
+  oa::Vector<bool> rgbaPoolBusy_;
+  oa::Vector<oa::Event> rgbaPoolConsumerEvents_;
   oa::I64 index_ = 0;
   oa::U64 demuxerFormatGeneration_ = 1U;
   oa::U64 demuxerReconnectCount_ = 0U;

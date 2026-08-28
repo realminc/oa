@@ -37,7 +37,7 @@ class SatelliteField {
 public:
 	SatelliteFieldId id{};
 	SatelliteFieldKind kind{};
-	oa::Vec<oa::Byte> data;
+	oa::Vector<oa::Byte> data;
 
 	[[nodiscard]] static SatelliteField u8(SatelliteFieldId inId, oa::U8 inValue);
 	[[nodiscard]] static SatelliteField u16(SatelliteFieldId inId, oa::U16 inValue);
@@ -61,7 +61,7 @@ public:
 	oa::U32 flags = 0;
 	oa::U64 requestId = 0;
 	oa::U64 sessionEpoch = 0;
-	oa::Vec<SatelliteField> fields;
+	oa::Vector<SatelliteField> fields;
 };
 
 class SatelliteProtocol {
@@ -74,7 +74,7 @@ public:
 	static constexpr oa::U32 kMaxFields = 64U;
 
 	[[nodiscard]] static oa::Status validate(const SatelliteMessage& inMessage);
-	[[nodiscard]] static oa::Result<oa::Vec<oa::Byte>> encode(
+	[[nodiscard]] static oa::Result<oa::Vector<oa::Byte>> encode(
 		const SatelliteMessage& inMessage);
 	[[nodiscard]] static oa::Result<SatelliteMessage> decode(
 		oa::Span<const oa::Byte> inBytes);
@@ -93,9 +93,9 @@ public:
 	[[nodiscard]] static oa::Result<oa::U64> readU64(const SatelliteField& inField);
 	[[nodiscard]] static oa::Result<oa::F32> readF32(const SatelliteField& inField);
 	[[nodiscard]] static oa::Result<oa::String> readString(const SatelliteField& inField);
-	[[nodiscard]] static oa::Result<oa::Vec<oa::U64>> readU64Array(
+	[[nodiscard]] static oa::Result<oa::Vector<oa::U64>> readU64Array(
 		const SatelliteField& inField);
-	[[nodiscard]] static oa::Result<oa::Vec<oa::I64>> readI64Array(
+	[[nodiscard]] static oa::Result<oa::Vector<oa::I64>> readI64Array(
 		const SatelliteField& inField);
 };
 

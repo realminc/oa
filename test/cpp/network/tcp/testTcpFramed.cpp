@@ -11,7 +11,7 @@ TEST(TcpFramed, RoundTripOverLoopback) {
 	oa::TcpListener listener = std::move(listenerRes.getValue());
 	const oa::U16 port = listener.port();
 
-	oa::Vec<oa::Byte> received;
+	oa::Vector<oa::Byte> received;
 	std::thread server([&] {
 		auto acc = listener.accept();
 		ASSERT_TRUE(acc.isOk());
@@ -28,7 +28,7 @@ TEST(TcpFramed, RoundTripOverLoopback) {
 	oa::TcpStream client = std::move(conn.getValue());
 	const oa::Byte payload[] = {'h', 'i'};
 	ASSERT_TRUE(oa::TcpFramed::writeMessage(client, oa::Span<const oa::Byte>(payload, 2)).isOk());
-	oa::Vec<oa::Byte> back;
+	oa::Vector<oa::Byte> back;
 	ASSERT_TRUE(oa::TcpFramed::readMessage(client, back).isOk());
 	ASSERT_EQ(back.size(), 3u);
 	EXPECT_EQ(back[0], 0x01);
@@ -50,7 +50,7 @@ TEST(TcpFramed, ConsumerLimitRejectsBeforePayloadAllocation) {
 		auto accepted = listener.accept();
 		ASSERT_TRUE(accepted.isOk());
 		oa::TcpStream stream = std::move(accepted.getValue());
-		oa::Vec<oa::Byte> payload;
+		oa::Vector<oa::Byte> payload;
 		const auto status = oa::TcpFramed::readMessage(stream, payload, 4U);
 		EXPECT_TRUE(status.isError());
 		EXPECT_TRUE(payload.empty());
@@ -73,7 +73,7 @@ TEST(TcpFramed, IoTimeoutUnblocksAnIdlePeer) {
 		ASSERT_TRUE(accepted.isOk());
 		oa::TcpStream stream = std::move(accepted.getValue());
 		ASSERT_TRUE(stream.setIoTimeout(25U).isOk());
-		oa::Vec<oa::Byte> payload;
+		oa::Vector<oa::Byte> payload;
 		EXPECT_TRUE(oa::TcpFramed::readMessage(stream, payload).isError());
 	});
 

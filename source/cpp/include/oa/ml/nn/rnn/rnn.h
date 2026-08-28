@@ -54,7 +54,7 @@ private:
 	oa::I32 hiddenSize_;
 	oa::I32 numLayers_;
 	bool hasBias_;
-	oa::Vec<oa::SharedPtr<RnnCell>> layers_;
+	oa::Vector<oa::SharedPtr<RnnCell>> layers_;
 };
 
 } // namespace oa

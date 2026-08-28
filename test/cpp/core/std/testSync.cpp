@@ -50,6 +50,52 @@ TEST(Atomic, MemoryOrdersAndWeakCompareExchange) {
 	oa::atomicThreadFence(oa::MemoryOrder::Sequential);
 }
 
+TEST(Atomic, InvalidMemoryOrdersFailClosed) {
+	oa::Atomic<int> value{1};
+	EXPECT_DEATH(
+		static_cast<void>(value.load(oa::MemoryOrder::Release)),
+		"atomic load requires relaxed, consume, acquire, or sequential order");
+	EXPECT_DEATH(
+		static_cast<void>(value.load(oa::MemoryOrder::AcquireRelease)),
+		"atomic load requires relaxed, consume, acquire, or sequential order");
+	EXPECT_DEATH(
+		value.store(2, oa::MemoryOrder::Acquire),
+		"atomic store requires relaxed, release, or sequential order");
+	EXPECT_DEATH(
+		value.store(2, oa::MemoryOrder::Consume),
+		"atomic store requires relaxed, release, or sequential order");
+	EXPECT_DEATH(
+		value.store(2, oa::MemoryOrder::AcquireRelease),
+		"atomic store requires relaxed, release, or sequential order");
+
+	constexpr auto invalidOrder = static_cast<oa::MemoryOrder>(0x7f);
+	EXPECT_DEATH(
+		oa::atomicThreadFence(invalidOrder),
+		"invalid atomic memory order");
+	EXPECT_DEATH(
+		static_cast<void>(value.exchange(2, invalidOrder)),
+		"invalid atomic memory order");
+}
+
+TEST(Atomic, SignedOperatorResultsWrapWithoutUndefinedBehavior) {
+	constexpr int max = oa::Limits<int>::max();
+	constexpr int min = oa::Limits<int>::min();
+
+	oa::Atomic<int> high{max};
+	EXPECT_EQ(high++, max);
+	EXPECT_EQ(high.load(), min);
+	high.store(max);
+	EXPECT_EQ(high += 1, min);
+	EXPECT_EQ(high.load(), min);
+
+	oa::Atomic<int> low{min};
+	EXPECT_EQ(low--, min);
+	EXPECT_EQ(low.load(), max);
+	low.store(min);
+	EXPECT_EQ(low -= 1, max);
+	EXPECT_EQ(low.load(), max);
+}
+
 TEST(Atomic, IntegralFetchAndDecrementOps) {
 	oa::Atomic<unsigned> value{12U};
 	EXPECT_EQ(value.fetchOr(3U), 12U);
@@ -197,4 +243,48 @@ TEST(UniqueLock, MoveAndDefer) {
 	EXPECT_FALSE(lk2.ownsLock());
 	lk2.lock();
 	EXPECT_TRUE(lk2.ownsLock());
+}
+
+TEST(UniqueLock, InvalidOwnershipTransitionsFailClosed) {
+	EXPECT_DEATH(
+		{
+			oa::UniqueLock<oa::Mutex> lock;
+			lock.lock();
+		},
+		"UniqueLock has no associated lock");
+	EXPECT_DEATH(
+		{
+			oa::UniqueLock<oa::Mutex> lock;
+			lock.unlock();
+		},
+		"UniqueLock has no associated lock");
+	EXPECT_DEATH(
+		{
+			oa::Mutex mutex;
+			oa::UniqueLock<oa::Mutex> lock(mutex);
+			lock.lock();
+		},
+		"UniqueLock already owns its lock");
+	EXPECT_DEATH(
+		{
+			oa::Mutex mutex;
+			oa::UniqueLock<oa::Mutex> lock(mutex);
+			lock.unlock();
+			lock.unlock();
+		},
+		"UniqueLock does not own its lock");
+}
+
+TEST(Condition, PredicateDeadlineOverflowFailsClosed) {
+	EXPECT_DEATH(
+		{
+			oa::Mutex mutex;
+			oa::Condition condition;
+			oa::UniqueLock<oa::Mutex> lock(mutex);
+			static_cast<void>(condition.waitFor(
+				lock,
+				oa::Duration::fromNanoseconds(oa::Limits<oa::I64>::max()),
+				[] { return false; }));
+		},
+		"SteadyTimePoint addition overflow");
 }

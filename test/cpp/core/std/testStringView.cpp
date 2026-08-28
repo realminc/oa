@@ -1,5 +1,17 @@
 #include "oaStdTest.h"
 
+TEST(StringView, RejectsNonemptyNullRange) {
+	EXPECT_DEATH((static_cast<void>(oa::StringView(nullptr, 1))),
+		"OA contract failed: ins != nullptr \\|\\| inlen == 0");
+}
+
+TEST(StringView, FindRejectsNullWithNonzeroCount) {
+	const oa::StringView value("abc");
+	EXPECT_DEATH(static_cast<void>(value.find(nullptr, 0, 1)),
+		"OA contract failed: ins != nullptr \\|\\| incount == 0");
+	EXPECT_EQ(value.find(nullptr, 0, 0), 0U);
+}
+
 #include <string_view>
 
 TEST(StringView, SubStr) {
@@ -29,6 +41,21 @@ TEST(StringView, ReverseFindMatchesStdStringView) {
 	EXPECT_EQ(value.rfind(':', 7U), standard.rfind(':', 7U));
 	EXPECT_EQ(value.rfind('x'), oa::StringView::Npos);
 	EXPECT_EQ(oa::StringView{}.rfind('x'), oa::StringView::Npos);
+}
+
+TEST(StringView, CharacterFindMatchesStdAcrossBoundsAndByteValues) {
+	const char bytes[] = {'a', '\0', static_cast<char>(0xFF), 'a'};
+	const oa::StringView value(bytes, sizeof(bytes));
+	const std::string_view standard(bytes, sizeof(bytes));
+	const char needles[] = {'a', '\0', static_cast<char>(0xFF), 'z'};
+	for (const char needle : needles) {
+		for (oa::Usize position = 0; position <= sizeof(bytes) + 2U; ++position) {
+			EXPECT_EQ(value.find(needle, position), standard.find(needle, position))
+				<< "position=" << position
+				<< " needle=" << static_cast<unsigned int>(
+					static_cast<unsigned char>(needle));
+		}
+	}
 }
 
 TEST(StringView, CompareEqualsMatchStd) {

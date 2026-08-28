@@ -618,7 +618,7 @@ oa::Matrix oa::FnLoss::smoothL1Mean(const oa::Matrix& inA, const oa::Matrix& inB
 	if (oa::FnAutograd::isEnabled() and inA.requiresGrad()) {
 		auto gradFn = oa::makeShared<oa::GradSmoothL1Mean>();
 		gradFn->saveForBackward({inA, inB});
-		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA, inB});
+		gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inA, inB});
 		gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		gradFn->count_ = count;
 		out.mutAutograd().gradFn = gradFn;
@@ -690,7 +690,7 @@ oa::Matrix oa::FnLoss::velSmoothL1(const oa::Matrix& inPred, const oa::Matrix& i
 	if (oa::FnAutograd::isEnabled() and inPred.requiresGrad()) {
 		auto gradFn = oa::makeShared<oa::GradVelSmoothL1>();
 		gradFn->saveForBackward({inPred, inTarget});
-		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inPred, inTarget});
+		gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inPred, inTarget});
 		gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		gradFn->batch_ = batch;
 		gradFn->seqLen_ = seqLen;

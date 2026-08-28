@@ -185,7 +185,7 @@ inline oa::Result<oa::Texture> makeImage(
 }
 
 inline void validatePatchRoundTrip() {
-	oa::Vec<oa::F32> input(kPixels);
+	oa::Vector<oa::F32> input(kPixels);
 	for (oa::I32 index = 0; index < kPixels; ++index) {
 		input[static_cast<oa::Usize>(index)] = static_cast<oa::F32>(index);
 	}
@@ -195,14 +195,14 @@ inline void validatePatchRoundTrip() {
 			input.size() * sizeof(oa::F32)),
 		oa::MatrixShape{1, kPixels}, oa::ScalarType::Float32);
 	auto roundTrip = unpatchify(patchify(matrix));
-	oa::Vec<oa::F32> output(kPixels);
+	oa::Vector<oa::F32> output(kPixels);
 	ASSERT_TRUE(oa::FnMatrix::copyToHost(
 		roundTrip, output.data(), output.size() * sizeof(oa::F32)).isOk());
 	EXPECT_EQ(output, input);
 }
 
 inline void validateImageLayout(oa::Engine& inEngine) {
-	oa::Vec<oa::F32> input(kPixels);
+	oa::Vector<oa::F32> input(kPixels);
 	for (oa::I32 y = 0; y < kImageSize; ++y) {
 		for (oa::I32 x = 0; x < kImageSize; ++x) {
 			const bool high = ((y * 5 + x * 7) & 1) != 0;
@@ -221,7 +221,7 @@ inline void validateImageLayout(oa::Engine& inEngine) {
 	EXPECT_EQ(texture->width(), kImageSize);
 	EXPECT_EQ(texture->height(), kImageSize);
 
-	oa::Vec<oa::U32> pixels(kPixels);
+	oa::Vector<oa::U32> pixels(kPixels);
 	ASSERT_TRUE(oa::FnTexture::copyToHost(
 		inEngine, *texture, pixels.data(),
 		pixels.size() * sizeof(oa::U32)).isOk());
@@ -257,7 +257,7 @@ inline void validateImagePixels(
 	oa::Engine& inEngine,
 	const oa::Texture& inTexture) {
 	const oa::I64 pixelCount = kPixels;
-	oa::Vec<oa::U32> pixels(pixelCount);
+	oa::Vector<oa::U32> pixels(pixelCount);
 	ASSERT_TRUE(oa::FnTexture::copyToHost(
 		inEngine, inTexture, pixels.data(),
 		pixels.size() * sizeof(oa::U32)).isOk());

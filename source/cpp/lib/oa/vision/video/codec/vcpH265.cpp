@@ -304,7 +304,7 @@ namespace {
 		return false;
 	}
 
-	oa::Status findAnnexBNalUnits(const oa::Span<const oa::U8>& inBitstream, oa::Vec<AnnexBNalUnit>& outNalUnits)	{
+	oa::Status findAnnexBNalUnits(const oa::Span<const oa::U8>& inBitstream, oa::Vector<AnnexBNalUnit>& outNalUnits)	{
 		outNalUnits.clear();
 		const oa::U8* data = inBitstream.data();
 		const oa::Usize size = inBitstream.size();
@@ -338,22 +338,22 @@ namespace {
 	}
 } // namespace
 
-oa::Vec<oa::U32> oa::VcpH265::getCachedVpsIds() const {
-	oa::Vec<oa::U32> ids;
+oa::Vector<oa::U32> oa::VcpH265::getCachedVpsIds() const {
+	oa::Vector<oa::U32> ids;
 	ids.reserve(oaVpsCache_.size());
 	for (const auto& kv : oaVpsCache_) ids.pushBack(kv.first);
 	return ids;
 }
 
-oa::Vec<oa::U32> oa::VcpH265::getCachedSpsIds() const {
-	oa::Vec<oa::U32> ids;
+oa::Vector<oa::U32> oa::VcpH265::getCachedSpsIds() const {
+	oa::Vector<oa::U32> ids;
 	ids.reserve(oaSpsCache_.size());
 	for (const auto& kv : oaSpsCache_) ids.pushBack(kv.first);
 	return ids;
 }
 
-oa::Vec<oa::U32> oa::VcpH265::getCachedPpsIds() const {
-	oa::Vec<oa::U32> ids;
+oa::Vector<oa::U32> oa::VcpH265::getCachedPpsIds() const {
+	oa::Vector<oa::U32> ids;
 	ids.reserve(oaPpsCache_.size());
 	for (const auto& kv : oaPpsCache_) ids.pushBack(kv.first);
 	return ids;
@@ -364,7 +364,7 @@ oa::Status oa::VcpH265::parseAccessUnit(const oa::Span<const oa::U8>& inBitstrea
 	outDesc.sliceOffsets.clear();
 	outDesc.isReference = false;
 
-	oa::Vec<AnnexBNalUnit> nalUnits;
+	oa::Vector<AnnexBNalUnit> nalUnits;
 	oa::Status findStatus = findAnnexBNalUnits(inBitstream, nalUnits);
 	if (!findStatus.isOk()) {
 		return findStatus;
@@ -449,7 +449,7 @@ oa::Status oa::VcpH265::parseAccessUnit(const oa::Span<const oa::U8>& inBitstrea
 			// Manually read PPS ID from the first few bytes of the slice header
 			oa::U32 ppsId = 0;
 			{
-				oa::Vec<oa::U8> rbsp = oa::NalParser::makeRbsp(data + nalUnit.offset, nalUnit.size);
+				oa::Vector<oa::U8> rbsp = oa::NalParser::makeRbsp(data + nalUnit.offset, nalUnit.size);
 				oa::BitstreamReader reader(rbsp.data(), rbsp.size());
 				reader.skipBits(16); // NAL header
 				const bool irap = static_cast<oa::U8>(nalType) >= 16 && static_cast<oa::U8>(nalType) <= 23;

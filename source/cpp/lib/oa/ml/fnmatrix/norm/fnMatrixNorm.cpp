@@ -158,7 +158,7 @@ oa::Matrix oa::FnMatrix::rmsNormGated(
 		(inSelf.requiresGrad() or inWeight.requiresGrad() or inBias.requiresGrad() or inZ.requiresGrad())) {
 		auto gradFn = oa::makeShared<oa::GradRmsNormGated>();
 		gradFn->saveForBackward(inSelf, inWeight, inBias, inZ);
-		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inSelf, inWeight, inBias, inZ});
+		gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inSelf, inWeight, inBias, inZ});
 		gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		gradFn->eps_ = inEps;
 		gradFn->outputShape_ = out.getShape();
@@ -323,7 +323,7 @@ oa::ResidualRmsNormResult oa::FnMatrix::residualRmsNorm(
 		(inA.requiresGrad() or inB.requiresGrad()))
 	{
 		auto residualGrad = oa::makeShared<oa::GradAdd>();
-		residualGrad->setGraphInputs(oa::Vec<oa::Matrix>{inA, inB});
+		residualGrad->setGraphInputs(oa::Vector<oa::Matrix>{inA, inB});
 		residualGrad->sequenceNr_ = oa::FnAutograd::nextSeq();
 		residualGrad->outputShape_ = residual.getShape();
 		const auto attached = oa::FnAutograd::attachSemantic(
@@ -337,7 +337,7 @@ oa::ResidualRmsNormResult oa::FnMatrix::residualRmsNorm(
 	{
 		auto outGrad = oa::makeShared<oa::GradRmsNorm>();
 		outGrad->saveForBackward(residual, inWeight, out, out);
-		outGrad->setGraphInputs(oa::Vec<oa::Matrix>{residual, inWeight});
+		outGrad->setGraphInputs(oa::Vector<oa::Matrix>{residual, inWeight});
 		outGrad->sequenceNr_ = oa::FnAutograd::nextSeq();
 		outGrad->eps_ = inEps;
 		outGrad->outputShape_ = out.getShape();

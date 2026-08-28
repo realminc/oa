@@ -73,7 +73,7 @@ oa::Matrix oa::FnMatrix::avgPool2d(const oa::Matrix& inX, oa::I32 inKernelSize, 
 		gradFn->kernelSize_ = inKernelSize;
 		gradFn->stride_ = inStride;
 		gradFn->padding_ = inPadding;
-		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inX});
+		gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inX});
 		gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		gradFn->outputShape_ = out.getShape();
 		const auto semanticAttached = oa::FnAutograd::attachSemantic(
@@ -146,7 +146,7 @@ oa::MaxPool2dResult oa::FnMatrix::maxPool2d(
 		gradFn->kernelSize_ = inKernelSize;
 		gradFn->stride_ = inStride;
 		gradFn->padding_ = inPadding;
-		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inX});
+		gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inX});
 		gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		gradFn->outputShape_ = out.getShape();
 		const auto semanticAttached = oa::FnAutograd::attachSemantic(

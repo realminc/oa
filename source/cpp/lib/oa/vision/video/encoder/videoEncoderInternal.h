@@ -25,7 +25,7 @@ struct VideoEncoderAccess {
 		oa::U32 inVisibleWidth,
 		oa::U32 inVisibleHeight,
 		oa::U64 inPts,
-		oa::Vec<EncodedVideoPacket>& outReady,
+		oa::Vector<EncodedVideoPacket>& outReady,
 		YCbCrModel inColorSpace = YCbCrModel::BT709,
 		bool inFullRange = false);
 	static oa::Status submitRgbaImage(
@@ -37,7 +37,7 @@ struct VideoEncoderAccess {
 		oa::U32 inVisibleWidth,
 		oa::U32 inVisibleHeight,
 		oa::U64 inPts,
-		oa::Vec<EncodedVideoPacket>& outReady,
+		oa::Vector<EncodedVideoPacket>& outReady,
 		YCbCrModel inColorSpace = YCbCrModel::BT709,
 		bool inFullRange = false,
 		oa::U32 inArrayLayer = 0U,

@@ -26,7 +26,7 @@ public:
 	oa::U32 writeIndex = 0;
 	oa::F64 nanosPerTick = 0.0;
 	oa::U32 validBits = 0;
-	oa::Vec<oa::U64> results;
+	oa::Vector<oa::U64> results;
 
 	Timestamp() = default;
 	~Timestamp();

@@ -9,7 +9,7 @@
 
 namespace {
 
-nb::bytes bytesFrom(const oa::Vec<oa::U8>& data) {
+nb::bytes bytesFrom(const oa::Vector<oa::U8>& data) {
     return nb::bytes(reinterpret_cast<const char*>(data.data()), data.size());
 }
 

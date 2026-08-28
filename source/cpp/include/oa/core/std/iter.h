@@ -4,6 +4,7 @@
 // C++ standard iterator machinery into public OA headers.
 
 #include <oa/core/std/typeTraits.h>
+#include <oa/core/assert.h>
 
 namespace oa {
 
@@ -71,16 +72,19 @@ constexpr void advance(It& inIt, Diff inN) {
 	if constexpr (IsRandomAccessIteratorV<It>) {
 		inIt += inN;
 	} else if constexpr (IsBidirectionalIteratorV<It>) {
-		if (inN >= 0) {
-			for (Diff k = 0; k < inN; ++k) {
-				++inIt;
-			}
-		} else {
-			for (Diff k = 0; k < -inN; ++k) {
-				--inIt;
-			}
+		// Count toward zero instead of negating a potentially minimum signed
+		// difference value.
+		while (inN > 0) {
+			++inIt;
+			--inN;
+		}
+		while (inN < 0) {
+			--inIt;
+			++inN;
 		}
 	} else {
+		OA_REQUIRE_MSG(inN >= 0,
+			"oa::advance cannot move a forward iterator backwards");
 		for (Diff k = 0; k < inN; ++k) {
 			++inIt;
 		}

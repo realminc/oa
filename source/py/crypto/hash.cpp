@@ -79,7 +79,7 @@ void bindCryptoHash(nb::module_& m) {
        nb::arg("outLen") = 32, "KMAC-256 keyed hash (NIST SP 800-185).");
 
     m.def("merkleRoot", [](const std::vector<oa::Hash>& leaves) {
-        oa::Vec<oa::Hash> v;
+        oa::Vector<oa::Hash> v;
         v.reserve(leaves.size());
         for (const auto& h : leaves) { v.pushBack(h); }
         return oa::merkleRoot(v);

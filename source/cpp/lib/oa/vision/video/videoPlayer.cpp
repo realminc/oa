@@ -502,7 +502,7 @@ void oa::VideoPlayer::markCurrentFrameConsumed(const oa::Event& inConsumed)
 	}
 }
 
-oa::Result<oa::Vec<oa::U8>> oa::VideoPlayer::readbackCurrentRgba()
+oa::Result<oa::Vector<oa::U8>> oa::VideoPlayer::readbackCurrentRgba()
 {
 	if (!decoder_.hasValue() || frame_.imageView == VK_NULL_HANDLE) {
 		return oa::Status::error("oa::VideoPlayer::readbackCurrentRgba: no current frame");

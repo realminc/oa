@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <vector>
 
 // Golden PCG32 stream for seed=42, seq=1, computed independently (Python port of
@@ -84,6 +85,26 @@ TEST(Random, RangeDegenerate) {
 	EXPECT_EQ(rng.nextRange(9, 2), 9);  // max <= min returns min
 }
 
+TEST(Random, SignedRangeHandlesFullDomainAndExtremeIntervals) {
+	constexpr oa::I64 minimum = std::numeric_limits<oa::I64>::min();
+	constexpr oa::I64 maximum = std::numeric_limits<oa::I64>::max();
+	oa::Random rng(0xD15EA5EULL);
+
+	for (int iteration = 0; iteration < 10'000; ++iteration) {
+		const oa::I64 full = rng.nextRange(minimum, maximum);
+		EXPECT_GE(full, minimum);
+		EXPECT_LE(full, maximum);
+
+		const oa::I64 low = rng.nextRange(minimum, minimum + 4'096);
+		EXPECT_GE(low, minimum);
+		EXPECT_LE(low, minimum + 4'096);
+
+		const oa::I64 high = rng.nextRange(maximum - 4'096, maximum);
+		EXPECT_GE(high, maximum - 4'096);
+		EXPECT_LE(high, maximum);
+	}
+}
+
 TEST(Random, GaussianMeanAndStdDev) {
 	oa::Random rng(2024u);
 	const int N = 200000;
@@ -127,4 +148,19 @@ TEST(Random, RawStateCheckpoint) {
 	restored.setRawState(state, inc);
 	EXPECT_EQ(restored.nextU32(), a);
 	EXPECT_EQ(restored.nextU32(), b);
+}
+
+TEST(Random, CompleteCheckpointRestoresCachedGaussianExactly) {
+	oa::Random rng(777u, 9u);
+	(void)rng.nextGaussian(); // Creates a cached Box-Muller partner.
+	const oa::Random::Checkpoint checkpoint = rng.checkpoint();
+	const oa::F64 expectedGaussian = rng.nextGaussian(3.0, 2.0);
+	const oa::U32 expectedInteger = rng.nextU32();
+	(void)rng.nextGaussian();
+	(void)rng.nextU64();
+
+	rng.restoreCheckpoint(checkpoint);
+
+	EXPECT_DOUBLE_EQ(rng.nextGaussian(3.0, 2.0), expectedGaussian);
+	EXPECT_EQ(rng.nextU32(), expectedInteger);
 }

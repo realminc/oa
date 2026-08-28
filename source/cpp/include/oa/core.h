@@ -8,6 +8,7 @@
 //   #include <oa/core/status.h>  - oa::Status, oa::Result
 //   #include <oa/core/math.h>    - oa::Fixed, oa::Price, oa::Qty
 //   #include <oa/core/std/chrono.h>  - oa::steadyNow, oa::highResolutionNow, duration helpers
+//   #include <oa/core/std/memory.h>  - oa::memcpy, secure erase, byte comparison
 //   #include <oa/core/time.h>    - oa::Timestamp, oa::Stopwatch
 //   #include <oa/core/device.h>  - oa::Device, GPU abstraction
 //   #include <oa/core/log.h>     - oa::Log, logging macros
@@ -24,7 +25,7 @@
 #include <oa/core/log.h>        // Logging: oa::Log, oa::LogMetrics, OaLog* macros
 #include <oa/core/validation.h> // Validation: OA_VALIDATE, OA_WARN_PERF, debug counters
 #include <oa/core/cli.h>        // CLI: oa::Cli<T>, native 3-way precedence
-#include <oa/core/memory.h>     // Fast memcpy: oa::memcpy, oa::memset (AVX/SSE)
+#include <oa/core/std/memory.h> // Host memory: copy, move, fill, comparison, secure erase
 #include <oa/core/filesystem.h> // Host filesystem I/O: oa::Filesystem
 #include <oa/core/paths.h>      // Named locations: oa::Paths::asset/data/var/temp
 #include <oa/core/mappedFile.h> // Read-only whole-file mapping with checked spans

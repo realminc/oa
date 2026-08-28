@@ -2,9 +2,7 @@
 import oa
 
 one = oa.FnMatrix.ones([2, 3])
-
 two = oa.FnMatrix.full([2, 3], 2.0)
-
 sum = oa.FnMatrix.add(one, two)
 
 values = oa.FnMatrix.copyToHost(sum)

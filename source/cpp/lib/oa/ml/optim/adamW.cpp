@@ -5,7 +5,7 @@
 #include <oa/core/fnmatrix/fnMatrixInternal.h>
 #include <oa/core/log.h>
 #include <oa/core/matrixAccess.h>
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
 #include <oa/core/std/algo.h>
 #include <oa/core/std/cString.h>
 #include <oa/runtime/executionSession.h>
@@ -17,8 +17,8 @@ static oa::Matrix getParamGrad(oa::Parameter* inP) {
 	return inP->grad();  // live grad (single source of truth: Data's autograd meta)
 }
 
-static void ensureMomentBuffers(oa::Vec<oa::Parameter*>& inParams,
-	oa::Vec<oa::Matrix>& inOutM, oa::Vec<oa::Matrix>& inOutV)
+static void ensureMomentBuffers(oa::Vector<oa::Parameter*>& inParams,
+	oa::Vector<oa::Matrix>& inOutM, oa::Vector<oa::Matrix>& inOutV)
 {
 	if (not inOutM.empty()) return;
 	for (auto* p : inParams) {
@@ -140,7 +140,7 @@ void oa::AdamW::zeroGrad() {
 	// across steps → divergence).
 	//
 	// Fast path: batch up to 4 grads into a single MultiMatrixFill dispatch.
-	oa::Vec<oa::Matrix> grads;
+	oa::Vector<oa::Matrix> grads;
 	grads.reserve(4);
 	for (auto* p : params_) {
 		oa::Matrix g = p->grad();

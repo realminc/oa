@@ -13,7 +13,7 @@ public:
 	oa::U32 timeOffset_ = 0;
 	oa::U32 batchStride_ = 1;
 
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		const oa::Matrix& gatesI = saved(0);
 		const oa::Matrix& gatesH = saved(1);
 		const oa::Matrix& hidden = saved(2);
@@ -38,7 +38,7 @@ public:
 	oa::I32 batch_ = 0;
 	bool hasBias_ = false;
 
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		const oa::Matrix& gatesI = saved(0);
 		const oa::Matrix& wHh = saved(1);
 		const oa::Matrix& hprev3d = saved(3);
@@ -67,7 +67,7 @@ public:
 	oa::U32 timeOffset_ = 0;
 	oa::U32 batchStride_ = 1;
 
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		const oa::Matrix& gatesI = saved(0);
 		const oa::Matrix& gatesH = saved(1);
 		const bool needDGatesI = outDIn.size() > 0;
@@ -88,7 +88,7 @@ public:
 	oa::I32 batch_ = 0;
 	bool hasBias_ = false;
 
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		const oa::Matrix& gatesI = saved(0);
 		const oa::Matrix& wHh = saved(1);
 		const oa::Matrix& hprev3d = saved(3);

@@ -5,7 +5,7 @@
 #pragma once
 
 #include "videoCodecParser.h"
-#include <oa/core/std/vec.h>
+#include <oa/core/std/vector.h>
 #include <vk_video/vulkan_video_codec_vp9std.h>
 #include <vk_video/vulkan_video_codec_vp9std_decode.h>
 

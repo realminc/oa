@@ -213,7 +213,7 @@ oa::Status McpTraining::registerTools(McpServer &inServer, oa::TrainingSession &
         "training MCP tools must be registered before server start");
   }
 
-  oa::Vec<McpTool> tools;
+  oa::Vector<McpTool> tools;
   tools.pushBack(readTool(
       "training_status",
       "Read the latest immutable training state and scalar timing snapshot.",

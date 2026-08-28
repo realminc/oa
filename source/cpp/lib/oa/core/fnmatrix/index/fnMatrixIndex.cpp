@@ -11,7 +11,7 @@
 #include <oa/core/autograd/matrix/autogradShape.h>
 #include "../../autograd/autogradAttach.gen.h"
 #include <oa/core/matrix.h>
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
 #include <oa/core/op.h>
 #include <oa/core/status.h>
 #include <oa/core/types.h>
@@ -179,7 +179,7 @@ oa::Matrix oa::FnMatrix::gatherLastDim(const oa::Matrix& inSelf, const oa::Matri
 	if (oa::FnAutograd::isEnabled() and inSelf.requiresGrad()) {
 		auto gradFn = oa::makeShared<oa::GradGatherLastDim>();
 		gradFn->saveForBackward(inSelf, inIndices);
-		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inSelf, inIndices});
+		gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inSelf, inIndices});
 		gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		gradFn->outputShape_ = out.getShape();
 		if (not oa::FnAutograd::attachSemantic(
@@ -320,7 +320,7 @@ oa::Matrix oa::FnMatrix::sliceBwd(
 	return out;
 }
 
-oa::Vec<oa::Matrix> oa::FnMatrix::split(
+oa::Vector<oa::Matrix> oa::FnMatrix::split(
 	const oa::Matrix& inSelf, oa::Span<oa::I64> inSizes, oa::I32 inDim
 ) {
 	auto& ctx = oa::ExecutionSession::getActive();
@@ -336,7 +336,7 @@ oa::Vec<oa::Matrix> oa::FnMatrix::split(
 	(void)totalSize;
 
 	// Create output tensors by slicing
-	oa::Vec<oa::Matrix> outputs;
+	oa::Vector<oa::Matrix> outputs;
 	outputs.reserve(inSizes.size());
 
 	oa::OpLoweringScope lowering(ctx);
@@ -347,7 +347,7 @@ oa::Vec<oa::Matrix> oa::FnMatrix::split(
 		offset += size;
 	}
 
-	oa::Vec<const oa::Matrix*> outputPointers;
+	oa::Vector<const oa::Matrix*> outputPointers;
 	outputPointers.reserve(outputs.size());
 	for (const auto& output : outputs) outputPointers.pushBack(&output);
 	const oa::Matrix* inputPointers[] = {&inSelf};
@@ -403,7 +403,7 @@ oa::Matrix oa::FnMatrix::concat(oa::Span<oa::Matrix> inInputs, oa::I32 inDim) {
 	oa::Matrix out = oa::FnMatrix::empty(outShape, inInputs[0].getDtype());
 
 	oa::OpLoweringScope lowering(ctx);
-	oa::Vec<const oa::Matrix*> inputPointers;
+	oa::Vector<const oa::Matrix*> inputPointers;
 	inputPointers.reserve(inInputs.size());
 	oa::U32 dstStart = 0;
 	for (const auto& input : inInputs) {
@@ -452,7 +452,7 @@ oa::Matrix oa::FnMatrix::concat(oa::Span<oa::Matrix> inInputs, oa::I32 inDim) {
 			for (const auto& input : inInputs) {
 				gradFn->sizes_.pushBack(input.size(inDim));
 			}
-			oa::Vec<oa::Matrix> inputs;
+			oa::Vector<oa::Matrix> inputs;
 			inputs.reserve(inInputs.size());
 			for (const auto& input : inInputs) inputs.pushBack(input);
 			gradFn->setGraphInputs(inputs);
@@ -566,7 +566,7 @@ oa::Matrix oa::FnMatrix::reshape(const oa::Matrix& inA, oa::MatrixShape inShape)
 		out.detachForGradAttach(true);
 		auto gradFn = oa::makeShared<oa::GradReshape>();
 		gradFn->inputShape_ = inA.getShape();
-		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA});
+		gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inA});
 		gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		gradFn->outputShape_ = out.getShape();
 		out.mutAutograd().gradFn = gradFn;
@@ -623,7 +623,7 @@ oa::Matrix oa::FnMatrix::repeatInterleave(const oa::Matrix& inA, oa::I32 inRepea
 		gradFn->repeats_ = inRepeats;
 		gradFn->dim_ = inDim;
 		gradFn->saveForBackward(inA);
-		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA});
+		gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inA});
 		gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		gradFn->outputShape_ = out.getShape();
 		if (not oa::FnAutograd::attachSemantic(
@@ -711,7 +711,7 @@ oa::Matrix oa::FnMatrix::causalMask(const oa::Matrix& inScores) {
 	if (oa::FnAutograd::isEnabled() and inScores.requiresGrad()) {
 		auto gradFn = oa::makeShared<oa::GradCausalMask>();
 		gradFn->saveForBackward(inScores);
-		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inScores});
+		gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inScores});
 		gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		gradFn->outputShape_ = out.getShape();
 		out.mutAutograd().gradFn = gradFn;
@@ -876,7 +876,7 @@ oa::CompactRowsResult oa::FnMatrix::compactRows(const oa::Matrix& inSelf, const 
 		gradFn->count_ = result.count;
 		gradFn->dispatchArgs_ = result.dispatchArgs;
 		gradFn->saveForBackward(inSelf);
-		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inSelf});
+		gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inSelf});
 		gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		gradFn->outputShape_ = result.values.getShape();
 		if (not oa::FnAutograd::attachSemantic(
@@ -979,7 +979,7 @@ oa::Matrix oa::FnMatrix::scatterRows(const oa::Matrix& inSelf, const oa::Matrix&
 		gradFn->rowMap_ = inRowMap;
 		gradFn->count_ = inCount;
 		gradFn->saveForBackward(inSelf, inSource);
-		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inSelf, inSource});
+		gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inSelf, inSource});
 		gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		gradFn->outputShape_ = out.getShape();
 		if (not oa::FnAutograd::attachSemantic(
@@ -1044,7 +1044,7 @@ oa::Matrix oa::FnMatrix::scatterRows(const oa::Matrix& inSelf, const oa::Matrix&
 		gradFn->count_ = inPlan.count;
 		gradFn->dispatchArgs_ = inPlan.dispatchArgs;
 		gradFn->saveForBackward(inSelf, inSource);
-		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inSelf, inSource});
+		gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inSelf, inSource});
 		gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		gradFn->outputShape_ = out.getShape();
 		if (not oa::FnAutograd::attachSemantic(

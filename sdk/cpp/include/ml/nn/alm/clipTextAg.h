@@ -58,7 +58,7 @@ private:
 	ClipTextConfig config_;
 	oa::SharedPtr<oa::Embedding> tokenEmbedding_;
 	oa::SharedPtr<oa::Embedding> positionEmbedding_;
-	oa::Vec<oa::SharedPtr<oa::Module>> layers_;
+	oa::Vector<oa::SharedPtr<oa::Module>> layers_;
 	oa::SharedPtr<oa::LayerNorm> finalLayerNorm_;
 	oa::SharedPtr<oa::Linear> textProjection_;
 	oa::Matrix positionIds_;

@@ -12,6 +12,48 @@ TEST(String, AppendView) {
 	EXPECT_EQ(testStdString(s), "abcd");
 }
 
+TEST(String, SelfAppendRebasesSubviewAcrossSsoGrowth) {
+	oa::String string("abcdefghijklmnopqrstuv");
+	const oa::StringView tail(string.data() + 2, 20);
+
+	string.append(tail);
+
+	EXPECT_EQ(testStdString(string), "abcdefghijklmnopqrstuvcdefghijklmnopqrstuv");
+}
+
+TEST(String, AppendRejectsSelfViewPastLiveRange) {
+	oa::String string("abc");
+	const oa::StringView invalid(string.data() + 1, 3);
+	EXPECT_DEATH(string.append(invalid), "OA contract failed: isWhollyLive");
+}
+
+TEST(String, AppendRejectsSelfViewStartingAtTerminator) {
+	oa::String string("abc");
+	const oa::StringView invalid(string.data() + string.size(), 1);
+	EXPECT_DEATH(string.append(invalid), "OA contract failed: isWhollyLive");
+}
+
+TEST(String, AppendRejectsUnusedOwnedHeapStorage) {
+	oa::String string("abc");
+	string.reserve(64);
+	const oa::StringView invalid(string.data() + string.size() + 1U, 1);
+	EXPECT_DEATH(string.append(invalid), "OA contract failed: isWhollyLive");
+}
+
+TEST(String, AppendRejectsWrappedSourceRange) {
+	oa::String string("abc");
+	const auto impossibleAddress = static_cast<oa::Usize>(-1);
+	const oa::StringView invalid(
+		reinterpret_cast<const char*>(impossibleAddress), 2);
+	EXPECT_DEATH(string.append(invalid),
+		"OA contract failed: n <= static_cast<size_type>\\(-1\\) - sourceAddress");
+}
+
+TEST(String, NonemptyNullRangeIsRejected) {
+	EXPECT_DEATH((static_cast<void>(oa::String(nullptr, 1))),
+		"OA contract failed: inP != nullptr");
+}
+
 TEST(String, SsoMaxThenHeap) {
 	std::string s22(22, 'x');
 	oa::String a(s22.c_str());
@@ -85,6 +127,32 @@ TEST(String, MoveCoversEverySsoLengthAndHeap) {
 		EXPECT_EQ(testStdString(assigned), expected) << "length=" << length;
 		EXPECT_TRUE(assignmentSource.empty()) << "length=" << length;
 	}
+}
+
+TEST(String, SecureWipeClearsEntireInlineStorageAndReleasesHeapStorage) {
+	oa::String inlineString("abcdefghijklmnopqrstuv");
+	inlineString.resize(3);
+	inlineString.secureWipeSecrets();
+	EXPECT_TRUE(inlineString.empty());
+	EXPECT_EQ(inlineString.capacity(), oa::String::SsoCap);
+	for (oa::Usize index = 0; index <= oa::String::SsoCap; ++index) {
+		EXPECT_EQ(inlineString.data()[index], '\0') << "index=" << index;
+	}
+
+	oa::String heapString;
+	heapString.reserve(64);
+	heapString.append("secret");
+	heapString.secureWipeSecrets();
+	EXPECT_TRUE(heapString.empty());
+	EXPECT_EQ(heapString.capacity(), oa::String::SsoCap);
+	EXPECT_EQ(heapString.cStr()[0], '\0');
+
+	oa::String emptyHeapString;
+	emptyHeapString.reserve(64);
+	ASSERT_EQ(emptyHeapString.capacity(), 64U);
+	emptyHeapString.secureWipeSecrets();
+	EXPECT_TRUE(emptyHeapString.empty());
+	EXPECT_EQ(emptyHeapString.capacity(), oa::String::SsoCap);
 }
 
 TEST(StdStringVsStd, AppendSameBytesAsStdString) {

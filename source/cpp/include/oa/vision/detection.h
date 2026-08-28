@@ -34,7 +34,7 @@ static_assert(__builtin_offsetof(Detection, trackId) == 28);
 
 class DetectionBuffer {
 public:
-	DetectionBuffer() = default;
+	DetectionBuffer();
 	DetectionBuffer(const DetectionBuffer&) = delete;
 	DetectionBuffer& operator=(const DetectionBuffer&) = delete;
 	DetectionBuffer(DetectionBuffer&& inOther) noexcept;

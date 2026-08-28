@@ -89,7 +89,7 @@ private:
   [[nodiscard]] oa::Status
   writeAudioAligned_(oa::Span<const oa::F32> inInterleaved, oa::U64 inPts);
   [[nodiscard]] oa::Status
-  writeAudioPackets_(oa::Vec<EncodedAudioPacket> &inPackets);
+  writeAudioPackets_(oa::Vector<EncodedAudioPacket> &inPackets);
   [[nodiscard]] oa::Status setFirstVideoPts_(oa::U64 inPts);
 
   Engine *engine_ = nullptr;
@@ -98,11 +98,11 @@ private:
   VideoMuxer muxer_;
   AudioEncoder audioEncoder_;
   struct PendingAudioChunk {
-    oa::Vec<oa::F32> samples;
+    oa::Vector<oa::F32> samples;
     oa::U64 pts = 0U;
   };
-  oa::Vec<PendingAudioChunk> pendingAudio_;
-  oa::Vec<oa::F32> audioScratch_;
+  oa::Vector<PendingAudioChunk> pendingAudio_;
+  oa::Vector<oa::F32> audioScratch_;
   oa::U64 firstVideoPts_ = 0U;
   oa::U64 nextAudioFrame_ = 0U;
   bool hasFirstVideoPts_ = false;

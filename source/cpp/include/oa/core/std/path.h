@@ -6,17 +6,17 @@
 
 #include <oa/core/std/string.h>
 #include <oa/core/std/utility.h>
-#include <oa/core/std/vec.h>
+#include <oa/core/std/vector.h>
 
 namespace oa {
 
 class Path {
 public:
 	Path() = default;
-	Path(const char* inString) : string_(inString != nullptr ? inString : "") {}
-	Path(StringView inView) : string_(inView) {}
-	Path(const String& inString) : string_(inString) {}
-	Path(String&& inString) noexcept : string_(oa::move(inString)) {}
+	Path(const char* inString) : Path(StringView(inString != nullptr ? inString : "")) {}
+	Path(StringView inView) : string_(validatedView_(inView)) {}
+	Path(const String& inString) : string_(validatedView_(inString.view())) {}
+	Path(String&& inString) noexcept : string_(validatedString_(oa::move(inString))) {}
 
 	[[nodiscard]] String string() const { return string_; }
 	[[nodiscard]] String genericString() const { return string_; }
@@ -43,6 +43,10 @@ public:
 	}
 
 	Path& append(const Path& inOther) {
+		if (this == &inOther) {
+			const Path stable(inOther);
+			return append(stable);
+		}
 		if (inOther.empty()) return *this;
 		if (inOther.isAbsolute() or empty()) {
 			string_ = inOther.string_;
@@ -92,7 +96,7 @@ public:
 		if (text.empty()) return {};
 
 		const bool absolute = isAbsolute();
-		Vec<StringView> components;
+		Vector<StringView> components;
 		Usize cursor = 0;
 		while (cursor < text.size()) {
 			while (cursor < text.size() and isSeparator_(text[cursor])) ++cursor;
@@ -134,6 +138,16 @@ public:
 	void swap(Path& inOther) noexcept { oa::swapValues(string_, inOther.string_); }
 
 private:
+	[[nodiscard]] static StringView validatedView_(StringView inView) noexcept {
+		OA_REQUIRE(inView.find('\0') == StringView::Npos);
+		return inView;
+	}
+
+	[[nodiscard]] static String&& validatedString_(String&& inString) noexcept {
+		(void)validatedView_(inString.view());
+		return oa::move(inString);
+	}
+
 	[[nodiscard]] static constexpr bool isSeparator_(char inCharacter) noexcept {
 		return inCharacter == '/';
 	}

@@ -844,11 +844,11 @@ TEST(TestMamba3, ModuleGradMagnitudes) {
 	oa::Mamba3Module m(D, 32, 2, 16, 1, 0.5f, false, 4, 0.001f, 0.1f, 1e-4f, 1e-4f, true);
 	oa::Embedding embed(V, D);
 	oa::Linear head(D, V, true);
-	oa::Vec<oa::I32> tokens(B * S);
+	oa::Vector<oa::I32> tokens(B * S);
 	for (oa::I32 i = 0; i < B * S; ++i) tokens[i] = i % V;
 	auto batchX = oa::FnMatrix::fromInt32(oa::Span<const oa::I32>(tokens.data(), tokens.size()),
 		oa::MatrixShape{B, S}, oa::ScalarType::Int32);
-	oa::Vec<oa::I32> labels(B * S);
+	oa::Vector<oa::I32> labels(B * S);
 	for (oa::I32 i = 0; i < B * S; ++i) labels[i] = (i + 1) % V;
 	auto targets = oa::FnMatrix::fromInt32(oa::Span<const oa::I32>(labels.data(), labels.size()),
 		oa::MatrixShape{B * S}, oa::ScalarType::Int32);

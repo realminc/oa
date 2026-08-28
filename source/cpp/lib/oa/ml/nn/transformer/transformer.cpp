@@ -233,7 +233,7 @@ oa::Matrix oa::NnTransformer::forward(const oa::Matrix& inTokens) {
 }
 
 oa::Matrix oa::NnTransformer::positionIds(oa::I32 inBatch) const {
-	oa::Vec<oa::I32> ids(static_cast<oa::Usize>(inBatch * contextLength_));
+	oa::Vector<oa::I32> ids(static_cast<oa::Usize>(inBatch * contextLength_));
 	for (oa::Usize index = 0; index < ids.size(); ++index) {
 		ids[index] = static_cast<oa::I32>(index % static_cast<oa::Usize>(contextLength_));
 	}

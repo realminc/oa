@@ -276,7 +276,7 @@ static void preheatGpu(oa::Engine&, int inIterations) {
 	auto inputs = makeInputs({"preheat", 64, 16, 32, 16});
 	auto& context = oa::ExecutionSession::getActive();
 	if (auto status = testSubmitAndWait(context); not status.isOk()) throw std::runtime_error("BenchMamba3: preheat initialization failed");
-	oa::Vec<oa::Matrix> keepAlive;
+	oa::Vector<oa::Matrix> keepAlive;
 	for (int iteration = 0; iteration < inIterations; ++iteration) {
 		auto out = oa::FnMatrix::mamba3SisoBwd(
 			inputs.dOut, inputs.c, inputs.b, inputs.x, inputs.z, inputs.adt, inputs.dt,
@@ -294,7 +294,7 @@ static void benchmarkShape(oa::Engine& inEngine, const Shape& inShape, int inWar
 	auto& context = oa::ExecutionSession::getActive();
 	if (auto status = testSubmitAndWait(context); not status.isOk()) throw std::runtime_error("BenchMamba3: input initialization failed");
 
-	oa::Vec<oa::Matrix> keepAlive;
+	oa::Vector<oa::Matrix> keepAlive;
 	auto pre = measure(inEngine, "mamba_preprocess", inWarmup, inIterations, [&] {
 		auto out = oa::FnMatrix::mamba3Preprocess(inputs.projected, inputs.dtBias, inputs.preprocessConfig);
 		keepAlive = {out.x, out.z, out.bh, out.ch, out.dt, out.adt, out.trap, out.angle};

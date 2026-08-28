@@ -28,8 +28,8 @@ public:
 		: engaged_(inOther.engaged_) {
 		if (engaged_) {
 			oa::constructAt(ptr_(), oa::move(*inOther.ptr_()));
-			oa::destroyAt(inOther.ptr_());
 			inOther.engaged_ = false;
+			oa::destroyAt(inOther.ptr_());
 		}
 	}
 
@@ -62,8 +62,8 @@ public:
 				oa::constructAt(ptr_(), oa::move(*inOther.ptr_()));
 				engaged_ = true;
 			}
-			oa::destroyAt(inOther.ptr_());
 			inOther.engaged_ = false;
+			oa::destroyAt(inOther.ptr_());
 		} else {
 			reset();
 		}
@@ -121,8 +121,9 @@ public:
 
 	void reset() noexcept {
 		if (engaged_) {
-			oa::destroyAt(ptr_());
+			T* retired = ptr_();
 			engaged_ = false;
+			oa::destroyAt(retired);
 		}
 	}
 

@@ -14,7 +14,7 @@ namespace oa {
 
 class GradAdd final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() > 0) outDIn[0] = inDOut;
 		if (outDIn.size() > 1) outDIn[1] = inDOut;
 	}
@@ -22,7 +22,7 @@ public:
 
 class GradSub final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() > 0) outDIn[0] = inDOut;
 		if (outDIn.size() > 1) outDIn[1] = oa::FnMatrix::scale(inDOut, -1.0f);
 	}
@@ -30,7 +30,7 @@ public:
 
 class GradMul final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		const oa::Matrix& a = saved(0);
 		const oa::Matrix& b = saved(1);
 		if (outDIn.size() > 0) outDIn[0] = oa::FnMatrix::mul(inDOut, b);
@@ -41,7 +41,7 @@ public:
 class GradScale final : public oa::GradNode {
 public:
 	explicit GradScale(oa::F32 inScalar) noexcept : scalar_(inScalar) {}
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() > 0) outDIn[0] = oa::FnMatrix::scale(inDOut, scalar_);
 	}
 	oa::F32 scalar_;
@@ -49,14 +49,14 @@ public:
 
 class GradLog final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() > 0) outDIn[0] = oa::FnMatrix::div(inDOut, saved(0));
 	}
 };
 
 class GradSqrt final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() > 0) outDIn[0] = oa::FnMatrix::div(inDOut, oa::FnMatrix::scale(saved(0), 2.0f));
 	}
 };
@@ -64,7 +64,7 @@ public:
 class GradPow final : public oa::GradNode {
 public:
 	explicit GradPow(oa::F32 inExponent) noexcept : exponent_(inExponent) {}
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() > 0) {
 			const oa::Matrix& x = saved(0);
 			auto dPow = oa::FnMatrix::pow(x, exponent_ - 1.0f);
@@ -76,14 +76,14 @@ public:
 
 class GradAddScalar final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() > 0) outDIn[0] = inDOut;
 	}
 };
 
 class GradSubScalar final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() > 0) outDIn[0] = inDOut;
 	}
 };
@@ -91,7 +91,7 @@ public:
 class GradDivScalar final : public oa::GradNode {
 public:
 	explicit GradDivScalar(oa::F32 inScalar) noexcept : scalar_(inScalar) {}
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() > 0) outDIn[0] = oa::FnMatrix::scale(inDOut, 1.0f / scalar_);
 	}
 	oa::F32 scalar_;
@@ -99,28 +99,28 @@ public:
 
 class GradExp final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() > 0) outDIn[0] = oa::FnMatrix::mul(inDOut, saved(0));
 	}
 };
 
 class GradSin final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() > 0) outDIn[0] = oa::FnMatrix::mul(inDOut, oa::FnMatrix::cos(saved(0)));
 	}
 };
 
 class GradCos final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() > 0) outDIn[0] = oa::FnMatrix::scale(oa::FnMatrix::mul(inDOut, oa::FnMatrix::sin(saved(0))), -1.0f);
 	}
 };
 
 class GradReciprocal final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() > 0) {
 			const oa::Matrix& out = saved(0);
 			outDIn[0] = oa::FnMatrix::scale(oa::FnMatrix::mul(inDOut, oa::FnMatrix::mul(out, out)), -1.0f);

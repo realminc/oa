@@ -100,9 +100,9 @@ public:
 
 	void next(oa::Matrix& outInput, oa::Matrix& outTarget);
 	[[nodiscard]] oa::I64 lastSourceUnits() const { return lastSourceUnits_; }
-	[[nodiscard]] oa::Vec<oa::I32> encode(const char* inText) const;
-	[[nodiscard]] oa::String decode(const oa::Vec<oa::I32>& inTokens) const;
-	[[nodiscard]] oa::Matrix inputMatrix(const oa::Vec<oa::I32>& inTokens) const;
+	[[nodiscard]] oa::Vector<oa::I32> encode(const char* inText) const;
+	[[nodiscard]] oa::String decode(const oa::Vector<oa::I32>& inTokens) const;
+	[[nodiscard]] oa::Matrix inputMatrix(const oa::Vector<oa::I32>& inTokens) const;
 	[[nodiscard]] oa::Matrix inputStepMatrix(oa::I32 inToken) const;
 
 	[[nodiscard]] static const char* corpus();
@@ -112,7 +112,7 @@ private:
 	[[nodiscard]] oa::String decodeChar(oa::I32 inToken) const;
 	[[nodiscard]] oa::I32 tokenSourceUnits(oa::I32 inToken) const;
 	[[nodiscard]] oa::Matrix toMatrix(
-		const oa::Vec<oa::I32>& inTokens,
+		const oa::Vector<oa::I32>& inTokens,
 		oa::I32 inBatchSize) const;
 
 	NlpSuiteRecipe recipe_;
@@ -120,8 +120,8 @@ private:
 	oa::I64 cursor_ = 0;
 	oa::I64 lastSourceUnits_ = 0;
 	oa::BpeTokenizer bpeTokenizer_{320};
-	oa::Vec<oa::I32> tokens_;
-	oa::Vec<oa::I32> tokenSourceUnits_;
+	oa::Vector<oa::I32> tokens_;
+	oa::Vector<oa::I32> tokenSourceUnits_;
 };
 
 } // namespace oa

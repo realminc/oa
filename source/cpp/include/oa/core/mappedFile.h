@@ -36,7 +36,7 @@ private:
 #ifdef OA_PLATFORM_LINUX
 	int fd_ = -1;
 #else
-	oa::Vec<oa::U8> owned_;
+	oa::Vector<oa::U8> owned_;
 #endif
 };
 

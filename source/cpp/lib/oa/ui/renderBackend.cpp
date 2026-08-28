@@ -1,10 +1,10 @@
 #include <oa/runtime/engine.h>
 #include <oa/runtime/eventAccess.h>
-#include <oa/runtime/oaVk.h>
+#include <vkl/vkl.h>
 #include "../render/rendererInternal.h"
 
 #include <oa/core/log.h>
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
 #include <oa/core/std/limits.h>
 #include <oa/core/std/optional.h>
 #include <oa/runtime/engine/allocatorAccess.h>
@@ -12,7 +12,7 @@
 #include <oa/runtime/engine/deviceAccess.h>
 #include <oa/runtime/engine/submissionAccess.h>
 #include <oa/runtime/graphicsStream.h>
-#include <oa/runtime/oaVma.h>
+#include <vma/vma.hpp>
 #include <oa/runtime/stream.h>
 #include <oa/ui/text.h>
 #include <oa/ui/ui.h>
@@ -43,7 +43,7 @@ enum class UiSubmissionRoute : oa::U8 {
 struct UiTarget {
 	VkImage image = VK_NULL_HANDLE;
 	VkImageView view = VK_NULL_HANDLE;
-	OaVmaAllocation allocation = VK_NULL_HANDLE;
+	vma::Allocation allocation = VK_NULL_HANDLE;
 	VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
 	oa::U32 bindlessIndex = OA_BINDLESS_INVALID;
 	oavk::Buffer readback;
@@ -78,7 +78,7 @@ struct UiSlot {
 
 [[nodiscard]] oa::Status validateExtent(
 	oa::Engine& inEngine,
-	const OaVkInstanceTable& inInstanceTable,
+	const VklInstanceTable& inInstanceTable,
 	oa::U32 inWidth,
 	oa::U32 inHeight) {
 	if (inWidth == 0U || inHeight == 0U) {
@@ -161,8 +161,8 @@ void destroyTarget(oa::Engine& inEngine, UiTarget& inOutTarget) noexcept {
 			device, inOutTarget.view, nullptr);
 	}
 	if (inOutTarget.image != VK_NULL_HANDLE) {
-		OaVmaDestroyImage(
-			static_cast<OaVmaAllocator>(
+		vma::destroyImage(
+			static_cast<vma::Allocator>(
 				oa::EngineAllocatorAccess::get(inEngine).allocator),
 			inOutTarget.image,
 			inOutTarget.allocation);
@@ -205,10 +205,10 @@ void destroyTarget(oa::Engine& inEngine, UiTarget& inOutTarget) noexcept {
 		imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	}
 
-	OaVmaAllocationCreateInfo allocationInfo{};
-	allocationInfo.usage = OA_VMA_MEMORY_USAGE_GPU_ONLY;
-	if (OaVmaCreateImage(
-		static_cast<OaVmaAllocator>(
+	vma::AllocationCreateInfo allocationInfo{};
+	allocationInfo.usage = vma::memoryUsageGpuOnly;
+	if (vma::createImage(
+		static_cast<vma::Allocator>(
 			oa::EngineAllocatorAccess::get(inEngine).allocator),
 		&imageInfo,
 		&allocationInfo,
@@ -271,7 +271,7 @@ void destroyTarget(oa::Engine& inEngine, UiTarget& inOutTarget) noexcept {
 }
 
 void recordTargetBegin(
-	const OaVkDeviceTable& inDispatch,
+	const VklDeviceTable& inDispatch,
 	VkCommandBuffer inCommandBuffer,
 	UiTarget& inTarget,
 	const oa::Color& inClearColor) {
@@ -333,7 +333,7 @@ void recordTargetBegin(
 }
 
 void recordTargetFinish(
-	const OaVkDeviceTable& inDispatch,
+	const VklDeviceTable& inDispatch,
 	VkCommandBuffer inCommandBuffer,
 	const UiTarget& inTarget) {
 	VkImageMemoryBarrier2 output{};
@@ -360,7 +360,7 @@ void recordTargetFinish(
 }
 
 void recordReadback(
-	const OaVkDeviceTable& inDispatch,
+	const VklDeviceTable& inDispatch,
 	VkCommandBuffer inCommandBuffer,
 	const UiTarget& inTarget,
 	oa::U32 inWidth,
@@ -432,11 +432,11 @@ void recordReadback(
 
 class oa::Renderer::UiImpl final : public oa::Renderer::Impl {
 public:
-	OaVkInstanceTable instanceTable_{};
+	VklInstanceTable instanceTable_{};
 	oa::UiRenderConfig config_;
 	oa::TextAtlas textAtlas;
 	oa::Ui uiSession_;
-	oa::Vec<UiSlot> slots;
+	oa::Vector<UiSlot> slots;
 	oa::U32 activeSlot = NoActiveSlot;
 	oa::U64 targetGeneration_ = 1U;
 
@@ -503,7 +503,7 @@ oa::Status oa::Renderer::UiImpl::initialize(
 			oa::StatusCode::FailedPrecondition,
 			"oa::Renderer requires a ready compute engine");
 	}
-	oaVkLoadInstanceTable(
+	vklLoadInstanceTable(
 		&instanceTable_,
 		static_cast<VkInstance>(
 			oa::EngineDeviceAccess::get(inEngine).instance));
@@ -861,7 +861,7 @@ oa::Result<oa::RenderFrame> oa::Renderer::UiImpl::submitFrame(
 	if (route == UiSubmissionRoute::Graphics) {
 		submitted = slot.graphicsLease->submit(inDependencies);
 	} else {
-		oa::Vec<oavk::TimelineWait> waits;
+		oa::Vector<oavk::TimelineWait> waits;
 		waits.reserve(inDependencies.size());
 		for (const oa::Event& dependency : inDependencies) {
 			waits.pushBack(oa::EventAccess::timelineWait(dependency));
@@ -1165,7 +1165,7 @@ oa::Status oa::Renderer::UiImpl::resize(oa::U32 inWidth, oa::U32 inHeight) {
 	if (inWidth == config_.width_
 		&& inHeight == config_.height_) return oa::Status::ok();
 
-	oa::Vec<UiTarget> replacements(slots.size());
+	oa::Vector<UiTarget> replacements(slots.size());
 	for (UiTarget& target : replacements) {
 		const oa::Status status = createTarget(
 			*engine, inWidth, inHeight, target);

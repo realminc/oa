@@ -7,6 +7,15 @@ function(oa_set_test_paths TARGET)
 		"OA_DATA_DIR=${OA_TEST_DATA_DIR}")
 endfunction()
 
+# The in-tree test harness deliberately exercises private engine state. Private
+# runtime headers can include pinned third-party implementation headers, so
+# every harness target needs both roots without publishing either through oa.
+function(oa_add_private_test_includes TARGET)
+	target_include_directories(${TARGET} PRIVATE
+		${oa_SOURCE_DIR}/source/cpp/lib
+		${oa_SOURCE_DIR}/source/cpp/thirdparty)
+endfunction()
+
 # Test helper for host tests. OA owns the main so capability profiles can turn
 # any selected GoogleTest skip into a process failure.
 function(oa_add_test TARGET SOURCE SUBDIR)
@@ -15,6 +24,7 @@ function(oa_add_test TARGET SOURCE SUBDIR)
 	target_include_directories(${TARGET} PRIVATE
 		${CMAKE_CURRENT_SOURCE_DIR}/cpp
 		${oa_SOURCE_DIR}/source/cpp/lib)
+	oa_add_private_test_includes(${TARGET})
 	string(REGEX REPLACE "^cpp/" "" _oa_output_subdir "${SUBDIR}")
 	set_target_properties(${TARGET} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${OA_BIN_DIR}/test/${_oa_output_subdir}")
 	add_test(NAME ${TARGET} COMMAND ${TARGET})
@@ -26,6 +36,7 @@ function(oa_add_ml_test TARGET SOURCE SUBDIR)
 	add_executable(${TARGET} ${SOURCE} ${CMAKE_CURRENT_SOURCE_DIR}/cpp/ml/mlTestMain.cpp)
 	target_link_libraries(${TARGET} PRIVATE oa GTest::gtest)
 	target_include_directories(${TARGET} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/cpp)
+	oa_add_private_test_includes(${TARGET})
 	# Engine-init suites use TEST_VK (alias for gtest TEST_F). Force-include the
 	# alias header so gtest-direct and generated .gen.cpp sources see it without
 	# per-file include churn. gcc/clang only (OA has no MSVC path).
@@ -69,6 +80,7 @@ function(oa_add_crypto_test TARGET SOURCE SUBDIR)
 	add_executable(${TARGET} ${SOURCE} ${CMAKE_CURRENT_SOURCE_DIR}/cpp/crypto/cryptoTestMain.cpp)
 	target_link_libraries(${TARGET} PRIVATE oa GTest::gtest)
 	target_include_directories(${TARGET} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/cpp)
+	oa_add_private_test_includes(${TARGET})
 	string(REGEX REPLACE "^cpp/" "" _oa_output_subdir "${SUBDIR}")
 	set_target_properties(${TARGET} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${OA_BIN_DIR}/test/${_oa_output_subdir}")
 	add_test(NAME ${TARGET} COMMAND ${TARGET})
@@ -111,6 +123,8 @@ oa_add_test(TestContainers       cpp/core/container/testContainers.cpp  cpp/core
 # cpp/core/image tests (Phase 1: metadata wrapper, requires Vulkan since OA is GPU-only)
 oa_add_ml_test(TestImage         cpp/core/testImage.cpp                 cpp/core)
 oa_add_ml_test(TestUi            cpp/ui/testUi.cpp                      cpp/ui)
+target_include_directories(TestUi PRIVATE
+	${oa_SOURCE_DIR}/source/cpp/thirdparty)
 oa_add_test(TestCamera           cpp/render/testCamera.cpp              cpp/render)
 set_tests_properties(TestCamera PROPERTIES LABELS "core;render")
 oa_add_test(TestLunarLander3dRender cpp/render/testLunarLander3dRender.cpp cpp/render)
@@ -193,7 +207,7 @@ add_executable(TestOaStd
 	cpp/core/std/testFunction.cpp
 	cpp/core/std/testPath.cpp
 	cpp/core/std/testAlgo.cpp
-	cpp/core/std/testVec.cpp
+	cpp/core/std/testVector.cpp
 	cpp/core/std/testRandom.cpp
 	cpp/core/std/testFormat.cpp
 	cpp/core/std/testSync.cpp
@@ -203,6 +217,7 @@ add_executable(TestOaStd
 )
 target_link_libraries(TestOaStd PRIVATE oa GTest::gtest)
 target_include_directories(TestOaStd PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/cpp)
+oa_add_private_test_includes(TestOaStd)
 set_target_properties(TestOaStd PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${OA_BIN_DIR}/test/core/std")
 add_test(NAME TestOaStd COMMAND TestOaStd)
 set_tests_properties(TestOaStd PROPERTIES LABELS "core;oastd")
@@ -232,7 +247,7 @@ if(OA_OASTD_EXTRA_TARGETS)
 		"${oa_SOURCE_DIR}/source/cpp/include/oa/core/std/typeTraits.h"
 		"${oa_SOURCE_DIR}/source/cpp/include/oa/core/std/path.h"
 		"${oa_SOURCE_DIR}/source/cpp/include/oa/core/std/algo.h"
-		"${oa_SOURCE_DIR}/source/cpp/include/oa/core/std/vec.h"
+		"${oa_SOURCE_DIR}/source/cpp/include/oa/core/std/vector.h"
 	)
 	add_custom_target(oa_oastd_headers SOURCES ${_OA_OASTD_STD_HDRS})
 	add_custom_target(oastd COMMENT "Build OA standard-library test suite (TestOaStd)" DEPENDS TestOaStd)
@@ -429,7 +444,15 @@ set_tests_properties(TestAudioDecoder TestAudioSessionLifecycle TestFnAudio
 # ═══════════════════════════════════════════════════════════════════════════
 
 oa_add_test(TestAllocator cpp/runtime/memory/testAllocator.cpp cpp/runtime/memory)
-target_include_directories(TestAllocator PRIVATE ${oa_SOURCE_DIR}/source/cpp/lib)
+target_include_directories(TestAllocator PRIVATE
+	${oa_SOURCE_DIR}/source/cpp/lib
+	${oa_SOURCE_DIR}/source/cpp/thirdparty)
+oa_add_test(TestVma cpp/runtime/memory/testVma.cpp cpp/runtime/memory)
+target_include_directories(TestVma PRIVATE
+	${oa_SOURCE_DIR}/source/cpp/thirdparty)
+oa_add_test(TestVmaInternals cpp/runtime/memory/testVmaInternals.cpp cpp/runtime/memory)
+target_include_directories(TestVmaInternals PRIVATE
+	${oa_SOURCE_DIR}/source/cpp/thirdparty)
 
 oa_add_ml_test(TestKernelRegistry cpp/runtime/engine/testKernelRegistry.cpp cpp/runtime/engine)
 add_test(
@@ -447,6 +470,8 @@ add_test(
 set_tests_properties(TestKernelGeneration PROPERTIES LABELS "core;generation")
 oa_add_ml_test(TestEngineInit cpp/runtime/engine/testEngineInit.cpp cpp/runtime/engine)
 oa_add_test(TestVkDispatch cpp/runtime/engine/testVkDispatch.cpp cpp/runtime/engine)
+target_include_directories(TestVkDispatch PRIVATE
+	${oa_SOURCE_DIR}/source/cpp/thirdparty)
 set_tests_properties(TestVkDispatch PROPERTIES LABELS "core;runtime")
 oa_add_test(TestComputeApp cpp/runtime/engine/testComputeApp.cpp cpp/runtime/engine)
 set_tests_properties(TestComputeApp PROPERTIES LABELS "gpu_bindless")
@@ -512,8 +537,25 @@ add_executable(BenchAllocator cpp/runtime/memory/benchAllocator.cpp)
 target_link_libraries(BenchAllocator PRIVATE oa)
 target_include_directories(BenchAllocator PRIVATE
 	${CMAKE_CURRENT_SOURCE_DIR}/cpp
-	${PROJECT_SOURCE_DIR}/source/cpp/lib)
+	${PROJECT_SOURCE_DIR}/source/cpp/lib
+	${PROJECT_SOURCE_DIR}/source/cpp/thirdparty)
 set_target_properties(BenchAllocator PROPERTIES
+	RUNTIME_OUTPUT_DIRECTORY "${OA_BIN_DIR}/test/runtime/memory")
+
+# Direct CPU-side VMA algorithm benchmark. The same source also has a
+# standalone OA_BENCH_VMA_STOCK mode for pinned-upstream comparison.
+add_executable(BenchVma cpp/runtime/memory/benchVma.cpp)
+target_link_libraries(BenchVma PRIVATE oa)
+target_include_directories(BenchVma PRIVATE
+	${PROJECT_SOURCE_DIR}/source/cpp/thirdparty)
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+	# Match the flags used by the product VMA translation unit and the pinned
+	# stock comparison. Different alias/overflow semantics invalidate ratios.
+	target_compile_options(BenchVma PRIVATE
+		-fno-strict-aliasing
+		-fno-strict-overflow)
+endif()
+set_target_properties(BenchVma PROPERTIES
 	RUNTIME_OUTPUT_DIRECTORY "${OA_BIN_DIR}/test/runtime/memory")
 
 # Persistent mapped upload ring vs allocate/submit/wait/free per copy.
@@ -613,6 +655,17 @@ set_target_properties(BenchDeviceRoofline PROPERTIES
 if(TARGET oa_shaders)
 	add_dependencies(BenchDeviceRoofline oa_shaders)
 endif()
+
+foreach(TARGET IN ITEMS
+	BenchUploadRing
+	BenchMamba3
+	BenchMoeComponents
+	BenchTransformerComponents
+	BenchGemmVariants
+	BenchFnMatrixQuant
+	BenchDeviceRoofline)
+	oa_add_private_test_includes(${TARGET})
+endforeach()
 
 # ─── Vulkan smoke subsets ──────────────────────────────────────────────────
 # The complete executables remain the small real-GPU gate. Filtered profile tests

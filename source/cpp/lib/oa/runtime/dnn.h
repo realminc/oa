@@ -58,8 +58,8 @@ struct DnnOpDesc {
 	// capture preserves the canonical oa::U32 here.
 	U32 sourceOp = invalidDnnOpId;
 	DnnOpType type = DnnOpType::Matmul;
-	Vec<U32> inputs;
-	Vec<U32> outputs;
+	Vector<U32> inputs;
+	Vector<U32> outputs;
 	// Matmul epilogue semantics are explicit so an engine cannot replay a route
 	// with the wrong saved-activation contract.
 	oa::GemmEpilogue epilogue = oa::GemmEpilogue::None;
@@ -74,14 +74,14 @@ struct DnnPolicy {
 
 struct DnnPartition {
 	DnnEngineType engine = DnnEngineType::Portable;
-	Vec<U32> ops;
-	Vec<U32> savedForBackward;
+	Vector<U32> ops;
+	Vector<U32> savedForBackward;
 	U64 workspaceBytes = 0;
 	bool deterministic = true;
 };
 
 struct DnnPlan {
-	Vec<DnnPartition> partitions;
+	Vector<DnnPartition> partitions;
 	U64 graphHash = 0;
 	U32 plannerAbi = 2;
 	U32 sourceOpCount = 0;
@@ -104,8 +104,8 @@ public:
 	}
 
 private:
-	Vec<DnnMatrixDesc> matrices_;
-	Vec<DnnOpDesc> ops_;
+	Vector<DnnMatrixDesc> matrices_;
+	Vector<DnnOpDesc> ops_;
 };
 
 class DnnPlanner {

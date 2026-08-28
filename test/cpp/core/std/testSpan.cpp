@@ -12,10 +12,10 @@ TEST(Span, FromArray) {
 }
 
 TEST(Span, FromVecPreservesConstness) {
-	oa::Vec<int> data{1, 2, 3};
+	oa::Vector<int> data{1, 2, 3};
 	oa::Span<int> mutableSpan(data);
 	oa::Span<const int> constSpan(data);
-	const oa::Vec<int>& constData = data;
+	const oa::Vector<int>& constData = data;
 	oa::Span<const int> constSourceSpan(constData);
 
 	mutableSpan[1] = 7;
@@ -55,6 +55,9 @@ TEST(Span, InvalidRangesRejectContract) {
 	EXPECT_DEATH((void)span.subSpan(2), "OA contract failed: inOffset <= size_");
 	EXPECT_DEATH((void)span.subSpan(0, 2),
 		"OA contract failed: inCount == DynamicExtent \\|\\| ext <= rem");
+	EXPECT_DEATH(
+		(void)oa::Span<int>(&value, static_cast<oa::Usize>(-1)),
+		"OA contract failed: inCount <= static_cast<size_type>\\(-1\\) / sizeof\\(T\\)");
 }
 
 TEST(Span, EmptyAccessRejectsContractWithoutNullArithmetic) {

@@ -28,7 +28,7 @@ void expectDecodedPattern(const oa::Image& inImage, oa::I32 inChannels = 3)
 		inImage.asMatrix().getShape(),
 		oa::MatrixShape({1, inChannels, 180, 320}));
 
-	oa::Vec<oa::F32> values;
+	oa::Vector<oa::F32> values;
 	values.resize(static_cast<oa::Usize>(
 		inImage.asMatrix().numElements()));
 	ASSERT_TRUE(oa::FnMatrix::copyToHost(
@@ -81,7 +81,7 @@ void expectRoundTrip(
 
 TEST(ImageCodec, RejectsInvalidMemory)
 {
-	oa::Vec<oa::U8> invalid = {0x00U, 0x01U, 0x02U};
+	oa::Vector<oa::U8> invalid = {0x00U, 0x01U, 0x02U};
 	auto result = oa::FnImage::decodeMemory(
 		oa::Span<const oa::U8>(invalid.data(), invalid.size()));
 	EXPECT_TRUE(result.isError());

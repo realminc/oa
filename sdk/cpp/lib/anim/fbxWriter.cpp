@@ -39,7 +39,7 @@ struct AnimNode {
 	const char* kind  = "";   // "T" | "R"
 	long long   nodeId = 0;
 	long long   curveId[3] = { 0, 0, 0 };
-	oa::Vec<oa::F32> col[3];
+	oa::Vector<oa::F32> col[3];
 };
 
 // Leaf bone name from a UsdSkel path.
@@ -59,8 +59,8 @@ oa::Status oa::Fbx::writeFbx(const oa::Path& inPath, const oa::UsdSkelClip& inCl
 	const oa::F32 fps = inClip.fps;
 
 	// parent index per joint, recovered from the slash-delimited paths.
-	oa::Vec<oa::I32> parent; parent.resize(static_cast<oa::Usize>(n));
-	oa::Vec<oa::String> leafNames; leafNames.resize(static_cast<oa::Usize>(n));
+	oa::Vector<oa::I32> parent; parent.resize(static_cast<oa::Usize>(n));
+	oa::Vector<oa::String> leafNames; leafNames.resize(static_cast<oa::Usize>(n));
 	for (oa::I32 j = 0; j < n; ++j) {
 		const oa::String& path = inClip.jointPaths[static_cast<oa::Usize>(j)];
 		leafNames[static_cast<oa::Usize>(j)] = leaf(path);
@@ -78,7 +78,7 @@ oa::Status oa::Fbx::writeFbx(const oa::Path& inPath, const oa::UsdSkelClip& inCl
 	}
 
 	// FBX key times.
-	oa::Vec<long long> times; times.resize(static_cast<oa::Usize>(frames));
+	oa::Vector<long long> times; times.resize(static_cast<oa::Usize>(frames));
 	for (oa::U32 i = 0; i < frames; ++i) {
 		times[i] = static_cast<long long>(std::llround(static_cast<double>(i) * kFbxTimePerSec / fps));
 	}
@@ -87,13 +87,13 @@ oa::Status oa::Fbx::writeFbx(const oa::Path& inPath, const oa::UsdSkelClip& inCl
 	long long nextId = 1000000000LL;
 	auto newId = [&]() { return ++nextId; };
 
-	oa::Vec<long long> boneId; boneId.resize(static_cast<oa::Usize>(n));
-	oa::Vec<long long> attrId; attrId.resize(static_cast<oa::Usize>(n));
+	oa::Vector<long long> boneId; boneId.resize(static_cast<oa::Usize>(n));
+	oa::Vector<long long> attrId; attrId.resize(static_cast<oa::Usize>(n));
 	for (oa::I32 j = 0; j < n; ++j) { boneId[static_cast<oa::Usize>(j)] = newId(); }
 	for (oa::I32 j = 0; j < n; ++j) { attrId[static_cast<oa::Usize>(j)] = newId(); }
 
 	// Build animation nodes: T where a joint translates, R where it rotates.
-	oa::Vec<AnimNode> anim;
+	oa::Vector<AnimNode> anim;
 	for (oa::I32 j = 0; j < n; ++j) {
 		const oa::vlm::Vec3 t0 = inClip.translations[static_cast<oa::Usize>(j)];
 		const oa::vlm::Quat q0 = inClip.rotations[static_cast<oa::Usize>(j)];

@@ -4,7 +4,7 @@
 #include <oa/core/status.h>
 
 namespace oa { class ComputePipeline; }
-struct OaVkDeviceTable;
+struct VklDeviceTable;
 
 namespace oavk {
 
@@ -17,7 +17,7 @@ public:
 	void* commandBuffer = nullptr;
 	// Borrowed from the device that owns this command pool. The device must
 	// outlive the command object, just as it must outlive the vulkan handles.
-	const OaVkDeviceTable* deviceDispatch = nullptr;
+	const VklDeviceTable* deviceDispatch = nullptr;
 
 	[[nodiscard]] static oa::Result<Command> create(const Device& inDevice);
 	void destroy(const oavk::Device& inDevice);

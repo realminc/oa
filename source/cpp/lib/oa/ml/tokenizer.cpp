@@ -37,9 +37,9 @@ bool readUnsigned(oa::StringView inText, oa::Usize& inOutCursor, oa::U64& outVal
 oa::BpeTokenizer::BpeTokenizer(oa::I32 inTargetVocab)
 	: targetVocab_(oa::max<oa::I32>(256, inTargetVocab)) {}
 
-oa::Vec<oa::I32> oa::BpeTokenizer::applyMerge(
-	const oa::Vec<oa::I32>& inIds, const Merge& inMerge, oa::I32 inNewToken) {
-	oa::Vec<oa::I32> out;
+oa::Vector<oa::I32> oa::BpeTokenizer::applyMerge(
+	const oa::Vector<oa::I32>& inIds, const Merge& inMerge, oa::I32 inNewToken) {
+	oa::Vector<oa::I32> out;
 	out.reserve(inIds.size());
 	for (oa::Usize i = 0; i < inIds.size();) {
 		if (i + 1 < inIds.size()
@@ -57,7 +57,7 @@ oa::Vec<oa::I32> oa::BpeTokenizer::applyMerge(
 void oa::BpeTokenizer::train(const char* inText, oa::I32 inNumMerges) {
 	merges_.clear();
 	if (inText == nullptr or inNumMerges <= 0) return;
-	oa::Vec<oa::I32> ids;
+	oa::Vector<oa::I32> ids;
 	const oa::Usize len = oa::strlen(inText);
 	ids.reserve(len);
 	const auto* bytes = reinterpret_cast<const oa::U8*>(inText);
@@ -93,8 +93,8 @@ void oa::BpeTokenizer::train(const char* inText, oa::I32 inNumMerges) {
 	}
 }
 
-oa::Vec<oa::I32> oa::BpeTokenizer::encode(const char* inText) const {
-	oa::Vec<oa::I32> tokens;
+oa::Vector<oa::I32> oa::BpeTokenizer::encode(const char* inText) const {
+	oa::Vector<oa::I32> tokens;
 	const oa::I64 len = static_cast<oa::I64>(oa::strlen(inText));
 	tokens.reserve(len);
 
@@ -122,7 +122,7 @@ void oa::BpeTokenizer::appendDecoded(oa::I32 inToken, oa::String& outText) const
 	appendDecoded(static_cast<oa::I32>(merges_[rank].right), outText);
 }
 
-oa::String oa::BpeTokenizer::decode(const oa::Vec<oa::I32>& inTokens) const {
+oa::String oa::BpeTokenizer::decode(const oa::Vector<oa::I32>& inTokens) const {
 	oa::String out;
 	for (oa::I32 token : inTokens) appendDecoded(token, out);
 	return out;
@@ -157,7 +157,7 @@ oa::Status oa::BpeTokenizer::load(const oa::String& inPath) {
 		return oa::Status::error(oa::StatusCode::FileCorrupt,
 			oa::String("oa::BpeTokenizer: invalid header in ") + inPath);
 	}
-	oa::Vec<Merge> merges;
+	oa::Vector<Merge> merges;
 	merges.reserve(static_cast<oa::Usize>(count));
 	for (oa::U64 i = 0; i < count; ++i) {
 		oa::U64 left = 0, right = 0;
@@ -176,9 +176,9 @@ oa::Status oa::BpeTokenizer::load(const oa::String& inPath) {
 	return oa::Status::ok();
 }
 
-oa::Vec<oa::I32> oa::BpeTokenizer::encodePrompt(const char* inPrompt, oa::I32 inContextLen) const {
-	oa::Vec<oa::I32> tokens = encode(inPrompt);
-	oa::Vec<oa::I32> out(inContextLen);
+oa::Vector<oa::I32> oa::BpeTokenizer::encodePrompt(const char* inPrompt, oa::I32 inContextLen) const {
+	oa::Vector<oa::I32> tokens = encode(inPrompt);
+	oa::Vector<oa::I32> out(inContextLen);
 	for (oa::I32 i = 0; i < inContextLen; ++i) out[i] = 0;  // PAD
 	// Right-align so the most recent token sits at index inContextLen-1, matching
 	// the shift-left + append-at-end autoregressive loop used in the tutorials.

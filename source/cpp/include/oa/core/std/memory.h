@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════════════════
-// OA - HIGH-PERFORMANCE MEMORY OPERATIONS
+// OA - STANDARD-LIBRARY MEMORY OPERATIONS
 // ═══════════════════════════════════════════════════════════════════════════════
 //
 // Fully inlined small-copy dispatch with compiler-generated fixed-size moves.
@@ -9,9 +9,8 @@
 //             selected target ISA without unaligned typed accesses or raw asm
 //   >256B:   platform memcpy (IFUNC/ERMS/vector implementation on glibc)
 //   explicit streaming: memcpyStream, only when the destination will not be
-//             consumed soon and bypassing the cache is part of the contract
-//   OA_MEMCPY_NT_PREFETCH: optional NTA prefetch distance for experiments
-//             (default 0; max 8192)
+//             consumed soon; a qualified medium-size window uses non-temporal
+//             stores and the remaining sizes use the best ordinary copy path
 //
 // The size dispatch matters when the caller's size is dynamic. For a compile-
 // time constant size, both memcpy and oa::memcpy reduce to the same moves.
@@ -26,16 +25,25 @@
 
 namespace oa {
 
-// Explicit non-temporal copy implementation (defined in memory.cpp).
-void* memcpyNt(void* inDst, const void* inSrc, oa::Usize inSize);
-
 namespace detail {
+
+// Conservative fixed-host-qualified window for the compiled non-temporal
+// backend. Outside it, the platform copy is faster or statistically flat and
+// preserves the explicit streaming API without forcing a losing algorithm.
+inline constexpr oa::Usize MemcpyStreamMinBytes = 1U * 1024U;
+inline constexpr oa::Usize MemcpyStreamMaxBytes = 4U * 1024U * 1024U;
+
+// Compiled backend for the public explicit streaming-copy contract.
+void* memcpyStreamImpl(
+	void* inDst,
+	const void* inSrc,
+	oa::Usize inSize
+) noexcept;
 
 template <oa::Usize size>
 __attribute__((always_inline))
-inline void copyBlock(oa::Byte* inDst, const oa::Byte* inSrc) {
-	static_assert(size == 1 || size == 2 || size == 4 || size == 8
-		|| size == 16 || size == 32);
+inline void copyBlock(oa::Byte* inDst, const oa::Byte* inSrc) noexcept {
+	static_assert(size == 1 || size == 2 || size == 4 || size == 8 || size == 16 || size == 32);
 	__builtin_memcpy(inDst, inSrc, size);
 }
 
@@ -46,7 +54,7 @@ inline void copyBlock(oa::Byte* inDst, const oa::Byte* inSrc) {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 __attribute__((always_inline))
-inline void* memcpy(void* __restrict__ inDst, const void* __restrict__ inSrc, oa::Usize inSize) {
+inline void* memcpy(void* __restrict__ inDst, const void* __restrict__ inSrc, oa::Usize inSize) noexcept {
 	if (__builtin_expect(inSize == 0, 0)) return inDst;
 	// Let the compiler emit its optimal single sequence when the call site knows
 	// the size. The branches below are specifically for dynamic-size callers.
@@ -113,34 +121,54 @@ inline void* memcpy(void* __restrict__ inDst, const void* __restrict__ inSrc, oa
 // memcpyStream — Explicit non-temporal cache policy
 // ═══════════════════════════════════════════════════════════════════════════════
 
-inline void* memcpyStream(void* inDst, const void* inSrc, oa::Usize inSize) {
+inline void* memcpyStream(void* inDst, const void* inSrc, oa::Usize inSize) noexcept {
 	if (inSize == 0 || inDst == inSrc) return inDst;
-	return memcpyNt(inDst, inSrc, inSize);
+	if (inSize < detail::MemcpyStreamMinBytes) {
+		if (inSize <= 256U) return oa::memcpy(inDst, inSrc, inSize);
+		return __builtin_memcpy(inDst, inSrc, inSize);
+	}
+	if (inSize > detail::MemcpyStreamMaxBytes) {
+		return __builtin_memcpy(inDst, inSrc, inSize);
+	}
+	return detail::memcpyStreamImpl(inDst, inSrc, inSize);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // MEMSET / MEMZERO / MEMCMP (defined in memory.cpp)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-inline void* memset(void* inDst, oa::I32 inValue, oa::Usize inSize) {
+inline void* memset(void* inDst, oa::I32 inValue, oa::Usize inSize) noexcept {
 	return __builtin_memset(inDst, inValue, inSize);
 }
 
 // Overlap-safe byte move. Keep this distinct from memcpy so callers make the
 // aliasing contract visible and the compiler selects the appropriate lowering.
-inline void* memmove(void* inDst, const void* inSrc, oa::Usize inSize) {
+inline void* memmove(void* inDst, const void* inSrc, oa::Usize inSize) noexcept {
 	return __builtin_memmove(inDst, inSrc, inSize);
 }
 
-inline void* memzero(void* inDst, oa::Usize inSize) {
+inline void* memzero(void* inDst, oa::Usize inSize) noexcept {
 	return __builtin_memset(inDst, 0, inSize);
 }
 
-inline oa::I32 memcmp(const void* inA, const void* inB, oa::Usize inSize) {
+inline oa::I32 memcmp(const void* inA, const void* inB, oa::Usize inSize) noexcept {
 	return __builtin_memcmp(inA, inB, inSize);
 }
 
-bool memEqual(const void* inA, const void* inB, oa::Usize inSize);
+// Ordinary equality may exit at the first mismatch. Do not use it for secrets.
+bool memEqual(const void* inA, const void* inB, oa::Usize inSize) noexcept;
+
+// Explicit erasure uses observable byte stores and a compiler fence so the
+// writes survive dead-store elimination. Ordinary memzero has no such contract.
+void memzeroSecure(void* inDst, oa::Usize inSize) noexcept;
+
+// Visits every byte for a fixed public size. This prevents content-dependent
+// early exit, but cannot promise system-wide constant time across all hardware.
+bool memEqualConstantTime(
+	const void* inA,
+	const void* inB,
+	oa::Usize inSize
+) noexcept;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ALIGNED ALLOCATION
@@ -153,12 +181,12 @@ void alignedFree(void* inPtr);
 // PREFETCH / CACHE CONTROL
 // ═══════════════════════════════════════════════════════════════════════════════
 
-inline void prefetchL1(const void* inPtr)    { __builtin_prefetch(inPtr, 0, 3); }
-inline void prefetchL2(const void* inPtr)    { __builtin_prefetch(inPtr, 0, 2); }
-inline void prefetchWrite(void* inPtr)       { __builtin_prefetch(inPtr, 1, 3); }
-inline void prefetchNta(const void* inPtr)   { __builtin_prefetch(inPtr, 0, 0); }
-inline void memoryFence() { __sync_synchronize(); }
-inline void storeFence()  { __atomic_thread_fence(__ATOMIC_RELEASE); }
-inline void loadFence()   { __atomic_thread_fence(__ATOMIC_ACQUIRE); }
+inline void prefetchL1(const void* inPtr) noexcept    { __builtin_prefetch(inPtr, 0, 3); }
+inline void prefetchL2(const void* inPtr) noexcept    { __builtin_prefetch(inPtr, 0, 2); }
+inline void prefetchWrite(void* inPtr) noexcept       { __builtin_prefetch(inPtr, 1, 3); }
+inline void prefetchNta(const void* inPtr) noexcept   { __builtin_prefetch(inPtr, 0, 0); }
+inline void memoryFence() noexcept { __atomic_thread_fence(__ATOMIC_SEQ_CST); }
+inline void storeFence() noexcept  { __atomic_thread_fence(__ATOMIC_RELEASE); }
+inline void loadFence() noexcept   { __atomic_thread_fence(__ATOMIC_ACQUIRE); }
 
 } // namespace oa

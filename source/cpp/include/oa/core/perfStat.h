@@ -51,7 +51,7 @@ private:
     oa::U32        warmup_;
 
     oa::U64        totalCount_ = 0;
-    oa::Vec<oa::F64> ring_;
+    oa::Vector<oa::F64> ring_;
     oa::U32        head_   = 0;
     oa::U32        filled_ = 0;
     oa::F64        sum_    = 0.0;
@@ -59,7 +59,7 @@ private:
     oa::F64        lastVal_ = 0.0;
 
     mutable bool         dirty_     = true;
-    mutable oa::Vec<oa::F64> sortedBuf_;
+    mutable oa::Vector<oa::F64> sortedBuf_;
 
     void ensureSorted() const;
     [[nodiscard]] oa::F64 percentile(oa::F64 inP) const;

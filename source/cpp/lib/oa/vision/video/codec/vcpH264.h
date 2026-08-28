@@ -48,8 +48,8 @@ public:
 	const H264PpsData* getPpsData(oa::U32 inPpsId) const;
 
 	// Enumerate cached IDs so the decoder can upload to vulkan session
-	oa::Vec<oa::U32> getCachedSpsIds() const;
-	oa::Vec<oa::U32> getCachedPpsIds() const;
+	oa::Vector<oa::U32> getCachedSpsIds() const;
+	oa::Vector<oa::U32> getCachedPpsIds() const;
 
 	// convert OA structures to vulkan Video structures
 	static StdVideoH264LevelIdc toStdH264Level(oa::U32 inLevelIdc);

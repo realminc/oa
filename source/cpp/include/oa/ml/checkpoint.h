@@ -87,7 +87,7 @@ private:
 		oa::F64 metric;
 		oa::U64 step;
 	};
-	oa::Vec<SavedCheckpoint> saved_;
+	oa::Vector<SavedCheckpoint> saved_;
 };
 
 } // namespace oa

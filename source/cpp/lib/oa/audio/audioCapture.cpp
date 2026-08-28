@@ -1,7 +1,7 @@
 #include <oa/audio/audioCapture.h>
 
 #include <oa/core/log.h>
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
 #include <oa/core/std/chrono.h>
 #include <oa/runtime/engine.h>
 #include "oa/runtime/engine/borrowedServiceRetirement.h"
@@ -21,8 +21,8 @@ struct oa::AudioCapture::Impl {
 	oa::Engine* engine = nullptr;
 	ma_device device = {};
 	oa::AudioCaptureConfig config = {};
-	oa::Vec<oa::F32> ring;
-	oa::Vec<oa::U64> ringFrameIndices;
+	oa::Vector<oa::F32> ring;
+	oa::Vector<oa::U64> ringFrameIndices;
 	oa::U64 capacityFrames = 0U;
 	oa::Atomic<oa::U64> writeFrame{0U};
 	oa::Atomic<oa::U64> readFrame{0U};
@@ -88,6 +88,8 @@ void captureCallback(
 }
 
 } // namespace
+
+oa::AudioCapture::AudioCapture() = default;
 
 oa::AudioCapture::AudioCapture(oa::AudioCapture&& inOther) noexcept
 	: impl_(oa::move(inOther.impl_))

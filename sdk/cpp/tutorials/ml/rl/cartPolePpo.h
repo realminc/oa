@@ -31,11 +31,11 @@ struct TutorialCartPolePpoMetrics {
 	oa::F32 policyLoss = 0.0F;
 	oa::F32 valueLoss = 0.0F;
 	oa::F32 entropy = 0.0F;
-	oa::Vec<oa::F32> lossHistory;
-	oa::Vec<oa::F32> policyLossHistory;
-	oa::Vec<oa::F32> valueLossHistory;
-	oa::Vec<oa::F32> entropyHistory;
-	oa::Vec<oa::F32> evaluationReturnHistory;
+	oa::Vector<oa::F32> lossHistory;
+	oa::Vector<oa::F32> policyLossHistory;
+	oa::Vector<oa::F32> valueLossHistory;
+	oa::Vector<oa::F32> entropyHistory;
+	oa::Vector<oa::F32> evaluationReturnHistory;
 };
 
 namespace oa {

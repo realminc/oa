@@ -121,7 +121,7 @@ oa::AlmTokenizerAg::AlmTokenizerAg(const oa::AlmTokenizerConfig& inConfig)
 	// ── Learnable-affine channel norms (one per NormC site, in call order) ───────
 	// encoder: EncIn + per stage {EncDown + depth res-block pre-norms}.
 	// Decoder: DecIn + per stage {depth res-block pre-norms + DecUp} + DecMid.
-	auto mkLn = [&](oa::Vec<oa::SharedPtr<oa::LayerNorm>>& inVec, const char* inName) {
+	auto mkLn = [&](oa::Vector<oa::SharedPtr<oa::LayerNorm>>& inVec, const char* inName) {
 		auto ln = oa::makeShared<oa::LayerNorm>(W);
 		registerModule(inName, ln);
 		inVec.pushBack(ln);
@@ -183,8 +183,8 @@ oa::Matrix oa::AlmTokenizerAg::convRelu(const oa::SharedPtr<oa::Conv1d>& inConv,
 
 // Pre-norm residual: h = h + convB(reLU(convA(reLU(LN(h))))). Faithful ResConv1DBlock
 // with learnable-affine norm. Consumes depth LNs from inLn starting at inLnCursor.
-oa::Matrix oa::AlmTokenizerAg::resStack(const oa::Vec<oa::SharedPtr<oa::Conv1d>>& inConvs,
-	const oa::Vec<oa::SharedPtr<oa::LayerNorm>>& inLn, oa::Usize& inLnCursor, const oa::Matrix& inH) const {
+oa::Matrix oa::AlmTokenizerAg::resStack(const oa::Vector<oa::SharedPtr<oa::Conv1d>>& inConvs,
+	const oa::Vector<oa::SharedPtr<oa::LayerNorm>>& inLn, oa::Usize& inLnCursor, const oa::Matrix& inH) const {
 	oa::Matrix h = inH;
 	for (oa::Usize q = 0; q + 1 < inConvs.size(); q += 2) {
 		auto t = convFwd(inConvs[q], normCRelu(inLn[inLnCursor++], h));
@@ -202,7 +202,7 @@ oa::Matrix oa::AlmTokenizerAg::encode(const oa::Matrix& inX, oa::I32 inBatch, oa
 	oa::Usize resCursor = 0;
 	for (oa::I32 d = 0; d < config_.downT; ++d) {
 		h = normCRelu(encLn_[lnc++], convFwd(encDown_[static_cast<oa::Usize>(d)], h));   // [B, W, T/2^(d+1)]
-		oa::Vec<oa::SharedPtr<oa::Conv1d>> stage;
+		oa::Vector<oa::SharedPtr<oa::Conv1d>> stage;
 		for (oa::I32 q = 0; q < 2 * config_.depth; ++q) stage.pushBack(encRes_[resCursor++]);
 		h = resStack(stage, encLn_, lnc, h);
 	}
@@ -225,7 +225,7 @@ oa::Matrix oa::AlmTokenizerAg::decode(const oa::Matrix& inZq, oa::I32 inBatch, o
 	dbgRms("dec.in", h);
 	oa::Usize resCursor = 0;
 	for (oa::I32 d = 0; d < config_.downT; ++d) {
-		oa::Vec<oa::SharedPtr<oa::Conv1d>> stage;
+		oa::Vector<oa::SharedPtr<oa::Conv1d>> stage;
 		for (oa::I32 q = 0; q < 2 * config_.depth; ++q) stage.pushBack(decRes_[resCursor++]);
 		h = resStack(stage, decLn_, lnc, h);
 		h = normC(decLn_[lnc++], decUp_[static_cast<oa::Usize>(d)]->forward(h));   // [B, W, ×2], bounded
@@ -240,11 +240,11 @@ oa::Matrix oa::AlmTokenizerAg::decode(const oa::Matrix& inZq, oa::I32 inBatch, o
 	return ot.reshape(oa::MatrixShape{nFrame, config_.inputDim});
 }
 
-oa::Vec<oa::Matrix> oa::AlmTokenizerAg::tokenize(const oa::Matrix& inX, oa::I32 inBatch, oa::I32 inSeqLen) {
+oa::Vector<oa::Matrix> oa::AlmTokenizerAg::tokenize(const oa::Matrix& inX, oa::I32 inBatch, oa::I32 inSeqLen) {
 	auto z = encode(inX, inBatch, inSeqLen);
 	return rvq_->quantize(z).idx;
 }
 
-oa::Matrix oa::AlmTokenizerAg::detokenize(const oa::Vec<oa::Matrix>& inIdx, oa::I32 inBatch, oa::I32 inTokLen) {
+oa::Matrix oa::AlmTokenizerAg::detokenize(const oa::Vector<oa::Matrix>& inIdx, oa::I32 inBatch, oa::I32 inTokLen) {
 	return decode(rvq_->lookup(inIdx), inBatch, inTokLen);
 }

@@ -40,7 +40,7 @@ std::string testReferencePath(const char* inStem)
 }
 
 struct H264NalWriter {
-	oa::Vec<oa::U8> bytes;
+	oa::Vector<oa::U8> bytes;
 	oa::U32 bitOffset = 0;
 
 	void writeBit(oa::U32 inBit) {
@@ -88,7 +88,7 @@ struct H264NalWriter {
 	}
 };
 
-oa::Vec<oa::U8> makeH264SpsNal()
+oa::Vector<oa::U8> makeH264SpsNal()
 {
 	H264NalWriter w;
 	w.bytes.pushBack(0);
@@ -180,7 +180,7 @@ TEST(H264NalParser, WeightedPSlicePreservesMmco)
 	EXPECT_EQ(header.mmcoCommands[0].differenceOfPicNumsMinus1, 4u);
 }
 
-oa::Vec<oa::U8> makeH264PpsNal()
+oa::Vector<oa::U8> makeH264PpsNal()
 {
 	H264NalWriter w;
 	w.bytes.pushBack(0);
@@ -207,10 +207,10 @@ oa::Vec<oa::U8> makeH264PpsNal()
 	return w.bytes;
 }
 
-oa::Vec<oa::U8> makeH264ParameterAccessUnit()
+oa::Vector<oa::U8> makeH264ParameterAccessUnit()
 {
-	oa::Vec<oa::U8> out = makeH264SpsNal();
-	oa::Vec<oa::U8> pps = makeH264PpsNal();
+	oa::Vector<oa::U8> out = makeH264SpsNal();
+	oa::Vector<oa::U8> pps = makeH264PpsNal();
 	for (oa::U8 byte : pps) {
 		out.pushBack(byte);
 	}
@@ -1171,8 +1171,8 @@ TEST_F(VkEngineTestFixture, VideoDecoder_PipelinesAsyncH264Conversion)
 	// Exceed the 16-slot decode-output pool so this test covers reuse while
 	// earlier color conversions are still in flight.
 	constexpr oa::U32 frameCount = 24;
-	oa::Vec<oa::VideoFrame> rgbaFrames;
-	oa::Vec<oa::Event> readyEvents;
+	oa::Vector<oa::VideoFrame> rgbaFrames;
+	oa::Vector<oa::Event> readyEvents;
 	rgbaFrames.reserve(frameCount);
 	readyEvents.reserve(frameCount);
 

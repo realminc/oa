@@ -2,7 +2,7 @@
 #include <oa/runtime/engine.h>
 #include <oa/runtime/engine/allocatorAccess.h>
 #include <oa/runtime/engine/deviceAccess.h>
-#include <oa/runtime/oaVk.h>
+#include <vkl/vkl.h>
 #include <oa/runtime/pipeline.h>
 #include <oa/runtime/spirv.h>
 #include <oa/runtime/engine/bindlessAccess.h>
@@ -24,7 +24,7 @@
 #include <stdio.h>
 #include <oa/core/std/cString.h>
 #include <oa/core/std/limits.h>
-#include <oa/core/std/vec.h>
+#include <oa/core/std/vector.h>
 
 // ─── blitRgba push constants (must match blitRgba.slang) ─────────────────────
 struct BlitRgbaPc {
@@ -645,18 +645,18 @@ struct oa::Ui::Impl {
 		oa::U32 cache = 0;
 		oa::U32 slot = 0;
 	};
-	oa::Vec<PlotCache> plots;
-	oa::Vec<UsedPlotSlot> usedPlots;
-	oa::Vec<oa::ImagePlanes*> usedImagePlanes;
+	oa::Vector<PlotCache> plots;
+	oa::Vector<UsedPlotSlot> usedPlots;
+	oa::Vector<oa::ImagePlanes*> usedImagePlanes;
 	struct TextureRetention {
 		oa::Event completion;
-		oa::Vec<oa::SharedPtr<oavk::Buffer>> owners;
+		oa::Vector<oa::SharedPtr<oavk::Buffer>> owners;
 	};
-	oa::Vec<oa::SharedPtr<oavk::Buffer>> pendingTextureOwners;
-	oa::Vec<TextureRetention> textureRetentions;
+	oa::Vector<oa::SharedPtr<oavk::Buffer>> pendingTextureOwners;
+	oa::Vector<TextureRetention> textureRetentions;
 	// exact engine-owned completions for every accepted frame submission. These
 	// cover pipelines and descriptor slots in addition to per-buffer reuse.
-	oa::Vec<oa::Event> frameCompletions;
+	oa::Vector<oa::Event> frameCompletions;
 
 	PlotSlot* uploadPlotValues(oa::U32 inId, const oa::F32* inData,
 		oa::U32 inCount, oa::U32& outCacheIndex, oa::U32& outSlotIndex) {
@@ -724,13 +724,13 @@ struct oa::Ui::Impl {
 		VkImageLayout layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 		oa::U32 slot = OA_BINDLESS_INVALID;
 	};
-	oa::Vec<SampledImageSlot> sampledImageSlots;
+	oa::Vector<SampledImageSlot> sampledImageSlots;
 
 	// Deferred commands share one renderer. Overlay commands are collected
 	// separately only to guarantee top-layer ordering, then merged immediately
 	// before recording.
-	oa::Vec<BlitCmd> blits;
-	oa::Vec<BlitCmd> overlayBlits;
+	oa::Vector<BlitCmd> blits;
+	oa::Vector<BlitCmd> overlayBlits;
 	bool recordingOverlay = false;
 
 	// Panel stack for layout cursor.
@@ -750,7 +750,7 @@ struct oa::Ui::Impl {
 		oa::PixelRect scrollViewport;
 		oa::I32 scrollOffsetY = 0;
 	};
-	oa::Vec<PanelState> panelStack;
+	oa::Vector<PanelState> panelStack;
 	struct ScrollState {
 		oa::U32 id = 0U;
 		oa::I32 offsetY = 0;
@@ -764,22 +764,22 @@ struct oa::Ui::Impl {
 		oa::I32 wheelStep = 48;
 		bool overlay = false;
 	};
-	oa::Vec<ScrollState> scrollStates;
-	oa::Vec<ScrollRecord> scrollRecords;
-	oa::Vec<ScrollRecord> priorScrollRecords;
+	oa::Vector<ScrollState> scrollStates;
+	oa::Vector<ScrollRecord> scrollRecords;
+	oa::Vector<ScrollRecord> priorScrollRecords;
 
-	oa::Vec<oa::U32> focusOrder;
-	oa::Vec<oa::U32> priorFocusOrder;
-	oa::Vec<oa::U32> popupFocusOrder;
-	oa::Vec<oa::U32> priorPopupFocusOrder;
-	oa::Vec<oa::U32> adjustableOrder;
-	oa::Vec<oa::U32> priorAdjustableOrder;
-	oa::Vec<oa::U32> treeOrder;
-	oa::Vec<oa::U32> priorTreeOrder;
-	oa::Vec<oa::U32> tabOrder;
-	oa::Vec<oa::U32> priorTabOrder;
-	oa::Vec<oa::U32> textInputOrder;
-	oa::Vec<oa::U32> priorTextInputOrder;
+	oa::Vector<oa::U32> focusOrder;
+	oa::Vector<oa::U32> priorFocusOrder;
+	oa::Vector<oa::U32> popupFocusOrder;
+	oa::Vector<oa::U32> priorPopupFocusOrder;
+	oa::Vector<oa::U32> adjustableOrder;
+	oa::Vector<oa::U32> priorAdjustableOrder;
+	oa::Vector<oa::U32> treeOrder;
+	oa::Vector<oa::U32> priorTreeOrder;
+	oa::Vector<oa::U32> tabOrder;
+	oa::Vector<oa::U32> priorTabOrder;
+	oa::Vector<oa::U32> textInputOrder;
+	oa::Vector<oa::U32> priorTextInputOrder;
 	struct TextEditSnapshot {
 		oa::String text;
 		oa::Usize cursor = 0U;
@@ -793,17 +793,17 @@ struct oa::Ui::Impl {
 		oa::String preedit;
 		oa::Usize preeditSelectionBegin = 0U;
 		oa::Usize preeditSelectionEnd = 0U;
-		oa::Vec<TextEditSnapshot> undo;
-		oa::Vec<TextEditSnapshot> redo;
+		oa::Vector<TextEditSnapshot> undo;
+		oa::Vector<TextEditSnapshot> redo;
 		oa::F32 scrollX = 0.0F;
 		oa::F32 blinkMs = 0.0F;
 		oa::U64 lastSeenFrame = 0U;
 	};
-	oa::Vec<TextEditState> textEditStates;
-	oa::Vec<TextEditEvent> textEditEvents;
+	oa::Vector<TextEditState> textEditStates;
+	oa::Vector<TextEditEvent> textEditEvents;
 	oa::String clipboardWrite;
 	oa::PixelRect focusedTextInputRect;
-	oa::Vec<oa::UiAccessibilityNode> accessibilityNodes;
+	oa::Vector<oa::UiAccessibilityNode> accessibilityNodes;
 	oa::U64 frameIndex = 0U;
 	oa::F32 frameDeltaMs = 0.0F;
 	oa::F32 contentScale = 1.0F;
@@ -847,8 +847,8 @@ struct oa::Ui::Impl {
 	static constexpr oa::U32 kTextGlyphCapacity = 16384;
 	const oa::TextAtlas* textAtlas = nullptr;
 	oa::Array<oa::GlyphBuffer, kTextSlotCount> textSlots;
-	oa::Vec<oa::GlyphInstance> textGlyphs;
-	oa::Vec<oa::PositionedGlyph> textScratch;
+	oa::Vector<oa::GlyphInstance> textGlyphs;
+	oa::Vector<oa::PositionedGlyph> textScratch;
 	oa::U32 nextTextSlot = 0U;
 	oa::U32 usedTextSlot = kTextSlotCount;
 	bool textPrepared = false;
@@ -1245,7 +1245,7 @@ struct oa::Ui::Impl {
 	}
 
 	void advanceFocus(oa::UiInputState& inInput, bool inReverse) const {
-		const oa::Vec<oa::U32>& order = openPopupId != 0U
+		const oa::Vector<oa::U32>& order = openPopupId != 0U
 			? priorPopupFocusOrder : priorFocusOrder;
 		if (order.empty()) return;
 		oa::Usize index = order.size();
@@ -1621,8 +1621,8 @@ struct oa::Ui::Impl {
 		for (BlitCmd& command : blits) {
 			if (command.kind != BlitKind::Glyphs || !command.internalText
 				|| command.glyphs.count == 0U) continue;
-			oa::Vec<oa::PixelRect> bounds(command.glyphs.count);
-			oa::Vec<oa::U32> batches(command.glyphs.count);
+			oa::Vector<oa::PixelRect> bounds(command.glyphs.count);
+			oa::Vector<oa::U32> batches(command.glyphs.count);
 			oa::U32 batchCount = 1U;
 			for (oa::U32 local = 0U; local < command.glyphs.count; ++local) {
 				oa::GlyphInstance& glyph = textGlyphs[
@@ -1693,6 +1693,8 @@ struct oa::Ui::Impl {
 
 
 // ─── oa::Ui move/dtor ───────────────────────────────────────────────────────────
+
+oa::Ui::Ui() = default;
 
 oa::Ui::Ui(oa::Ui&& inOther) noexcept
 	: impl_(oa::move(inOther.impl_))
@@ -3257,7 +3259,7 @@ oa::UiTabBarResult oa::Ui::tabBar(
 		return result;
 	}
 
-	oa::Vec<oa::U32> itemIds(static_cast<oa::Usize>(count));
+	oa::Vector<oa::U32> itemIds(static_cast<oa::Usize>(count));
 	for (oa::I32 index = 0; index < count; ++index) {
 		const oa::UiTabItem& item = inItems[static_cast<oa::Usize>(index)];
 		const oa::U32 itemId = hashWidgetScope(barId, item.id);
@@ -3357,7 +3359,7 @@ oa::UiTabBarResult oa::Ui::tabBar(
 	result.firstVisible = inOutState.firstVisible;
 	result.onePastLast = oa::min(
 		count, result.firstVisible + visibleCapacity);
-	oa::Vec<oa::PixelRect> tabRects;
+	oa::Vector<oa::PixelRect> tabRects;
 	tabRects.reserve(static_cast<oa::Usize>(
 		result.onePastLast - result.firstVisible));
 	for (oa::I32 index = result.firstVisible;
@@ -4736,7 +4738,7 @@ bool oa::Ui::inputText(oa::StringView inLabel, oa::String& inOutText) {
 			.anchor = state.anchor,
 		};
 	};
-	const auto pushHistory = [&](oa::Vec<Impl::TextEditSnapshot>& inHistory,
+	const auto pushHistory = [&](oa::Vector<Impl::TextEditSnapshot>& inHistory,
 		Impl::TextEditSnapshot inSnapshot) {
 		if (inHistory.size() >= kTextHistoryCapacity) {
 			inHistory.erase(inHistory.begin());
@@ -4751,8 +4753,8 @@ bool oa::Ui::inputText(oa::StringView inLabel, oa::String& inOutText) {
 		caretActivity = true;
 		return true;
 	};
-	const auto restoreHistory = [&](oa::Vec<Impl::TextEditSnapshot>& inFrom,
-		oa::Vec<Impl::TextEditSnapshot>& inTo) {
+	const auto restoreHistory = [&](oa::Vector<Impl::TextEditSnapshot>& inFrom,
+		oa::Vector<Impl::TextEditSnapshot>& inTo) {
 		if (inFrom.empty()) return false;
 		Impl::TextEditSnapshot current = snapshot();
 		Impl::TextEditSnapshot restore = oa::move(inFrom.back());
@@ -5429,7 +5431,7 @@ void oa::Ui::labelFmt(const char* inFmt, ...) {
 			"oa::Ui::labelFmt could not format the label"));
 		return;
 	}
-	oa::Vec<char> text(static_cast<oa::Usize>(required) + 1U);
+	oa::Vector<char> text(static_cast<oa::Usize>(required) + 1U);
 	(void)::vsnprintf(text.data(), text.size(), inFmt, copy);
 	va_end(copy);
 	label(oa::StringView(text.data(), static_cast<oa::Usize>(required)));
@@ -6275,7 +6277,7 @@ void oa::Ui::plotLineXY(
 		|| !oa::isFinite(inCfg.yMin) || !oa::isFinite(inCfg.yMax)
 		|| inCfg.xMax <= inCfg.xMin || inCfg.yMax <= inCfg.yMin) return;
 
-	oa::Vec<oa::F32> packed(static_cast<oa::Usize>(inCount) * 2U);
+	oa::Vector<oa::F32> packed(static_cast<oa::Usize>(inCount) * 2U);
 	oa::memcpy(packed.data(), inX,
 		static_cast<oa::Usize>(inCount) * sizeof(oa::F32));
 	oa::memcpy(packed.data() + inCount, inY,
@@ -6324,7 +6326,7 @@ void oa::Ui::plotLineRing(
 	oa::I32 inOffset,
 	const oa::UiPlotConfig& inCfg) {
 	if (inData == nullptr || inCount <= 0) return;
-	oa::Vec<oa::F32> ordered(static_cast<oa::Usize>(inCount));
+	oa::Vector<oa::F32> ordered(static_cast<oa::Usize>(inCount));
 	const oa::I32 offset = ((inOffset % inCount) + inCount) % inCount;
 	for (oa::I32 index = 0; index < inCount; ++index) {
 		ordered[static_cast<oa::Usize>(index)] =

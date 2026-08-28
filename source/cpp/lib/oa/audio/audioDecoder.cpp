@@ -27,7 +27,7 @@ static oa::Result<oa::Audio> uploadToGpu(
 	}
 
 	// Deinterleave: LRLRLR... → [C, N] planar
-	oa::Vec<oa::F32> planar;
+	oa::Vector<oa::F32> planar;
 	planar.resize(inChannelCount * inSampleCount);
 	for (oa::U64 s = 0; s < inSampleCount; ++s) {
 		for (oa::U32 c = 0; c < inChannelCount; ++c) {

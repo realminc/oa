@@ -118,7 +118,7 @@ private:
 	oa::Engine* engine_ = nullptr;
 	oa::Array<oavk::Buffer, kImageMaxPlanes> planes_ = {};
 	oa::Array<ImageDtype, kImageMaxPlanes> dtypes_ = {};
-	oa::Vec<oa::Event> consumerCompletions_;
+	oa::Vector<oa::Event> consumerCompletions_;
 	oa::I32 width_ = 0;
 	oa::I32 height_ = 0;
 	oa::U8 channelCount_ = 0;

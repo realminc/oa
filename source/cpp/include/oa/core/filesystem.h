@@ -9,7 +9,7 @@
 
 #pragma once
 
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
 #include <oa/core/status.h>
 #include <oa/core/types.h>
 
@@ -36,32 +36,32 @@ public:
 	[[nodiscard]] static oa::Status move(const oa::Path& inFrom, const oa::Path& inTo);
 
 	// ─── Listing ──────────────────────────────────────────────────────────
-	[[nodiscard]] static oa::Result<oa::Vec<oa::Path>>
+	[[nodiscard]] static oa::Result<oa::Vector<oa::Path>>
 	listFiles(const oa::Path& inDir, oa::StringView inExtension = "");
-	[[nodiscard]] static oa::Result<oa::Vec<oa::Path>>
+	[[nodiscard]] static oa::Result<oa::Vector<oa::Path>>
 	listDirectories(const oa::Path& inDir);
-	[[nodiscard]] static oa::Result<oa::Vec<oa::Path>>
+	[[nodiscard]] static oa::Result<oa::Vector<oa::Path>>
 	listAll(const oa::Path& inDir, bool inRecursive = false);
 
 	// ─── text file operations ─────────────────────────────────────────────
 	[[nodiscard]] static oa::Result<oa::String> readText(const oa::Path& inPath);
 	[[nodiscard]] static oa::Status writeText(const oa::Path& inPath, oa::StringView inContent);
 	[[nodiscard]] static oa::Status appendText(const oa::Path& inPath, oa::StringView inContent);
-	[[nodiscard]] static oa::Result<oa::Vec<oa::String>>
+	[[nodiscard]] static oa::Result<oa::Vector<oa::String>>
 	readLines(const oa::Path& inPath);
 
 	// ─── Binary file operations ───────────────────────────────────────────
-	[[nodiscard]] static oa::Result<oa::Vec<oa::U8>> readBinary(const oa::Path& inPath);
+	[[nodiscard]] static oa::Result<oa::Vector<oa::U8>> readBinary(const oa::Path& inPath);
 	[[nodiscard]] static oa::Status writeBinary(const oa::Path& inPath, oa::Span<const oa::U8> inData);
 
 	template <typename T>
-	[[nodiscard]] static oa::Result<oa::Vec<T>> readPod(const oa::Path& inPath) {
+	[[nodiscard]] static oa::Result<oa::Vector<T>> readPod(const oa::Path& inPath) {
 		auto result = readBinary(inPath);
 		if (!result.isOk()) return result.getStatus();
 		const auto& data = result.getValue();
 		if (data.size() % sizeof(T) != 0)
 			return oa::Status::invalidArgument("file size not aligned to type size");
-		oa::Vec<T> out(data.size() / sizeof(T));
+		oa::Vector<T> out(data.size() / sizeof(T));
 		oa::memcpy(out.data(), data.data(), data.size());
 		return out;
 	}
@@ -77,7 +77,7 @@ public:
 	[[nodiscard]] static oa::Result<oa::Path> absolute(const oa::Path& inPath);
 
 	// ─── Glob Pattern Matching ────────────────────────────────────────────
-	[[nodiscard]] static oa::Result<oa::Vec<oa::Path>> glob(const oa::Path& inDir, oa::StringView inPattern);
+	[[nodiscard]] static oa::Result<oa::Vector<oa::Path>> glob(const oa::Path& inDir, oa::StringView inPattern);
 };
 
 // Legacy alias — remove once call sites are migrated.

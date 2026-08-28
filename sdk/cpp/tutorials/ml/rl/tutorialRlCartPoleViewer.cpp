@@ -313,7 +313,7 @@ private:
 		oa::Ui& inUi,
 		oa::StringView inId,
 		oa::PixelRect inRect,
-		const oa::Vec<oa::F32>& inValues,
+		const oa::Vector<oa::F32>& inValues,
 		oa::Color inColor,
 		bool inFill,
 		oa::I32 inHeaderHeight,
@@ -345,7 +345,7 @@ private:
 		oa::F32 inBaselineY,
 		oa::F32 inSize,
 		oa::Color inColor,
-		oa::Vec<oa::GlyphInstance>& inOutGlyphs) {
+		oa::Vector<oa::GlyphInstance>& inOutGlyphs) {
 		oa::F32 penX = inX;
 		for (const char character : inText) {
 			const oa::U32 codepoint = static_cast<oa::U8>(character);
@@ -408,7 +408,7 @@ private:
 				"One incremental PPO optimizer update on this device",
 			};
 
-			oa::Vec<oa::GlyphInstance> glyphs;
+			oa::Vector<oa::GlyphInstance> glyphs;
 			glyphs.reserve(320);
 			const oa::TextAtlas& atlas = inTextAtlas;
 			for (oa::U32 index = 0; index < inRects.size(); ++index) {
@@ -456,7 +456,7 @@ private:
 	oa::Engine* runtime_ = nullptr;
 	oa::UniquePtr<TutorialCartPolePpo> session_;
 	TutorialCartPoleSnapshot snapshot_;
-	oa::Vec<oa::F32> updateMs_;
+	oa::Vector<oa::F32> updateMs_;
 	std::array<oa::GlyphBuffer, kLabelSlotCount> labelSlots_;
 	oa::U32 lastEvaluatedRollout_ = 0;
 	oa::U32 nextLabelSlot_ = 0;

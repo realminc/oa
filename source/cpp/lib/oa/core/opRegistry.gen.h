@@ -7002,7 +7002,7 @@ inline const oa::OpContract softplusBwd{
 
 inline const oa::OpContract split{
 	.name = "oa::FnMatrix::split",
-	.hash = 0x68b79b2ee4436fc5ULL,
+	.hash = 0x2018054bb5b3d8e2ULL,
 	.inputKinds = 0x00000001U,
 	.outputKinds = 0x00000000U,
 	.inputCount = 1U,

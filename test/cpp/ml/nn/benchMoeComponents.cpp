@@ -94,7 +94,7 @@ TEST(BenchMoeComponents, NlpShape) {
 	auto plan = oa::FnMatrix::moeExpertPlan(indices, E);
 	ASSERT_TRUE(testSubmitAndWait(ctx).isOk());
 
-	oa::Vec<oa::Matrix> keep;
+	oa::Vector<oa::Matrix> keep;
 	print("legacy route normalize", measure(engine, "legacy_route", [&] {
 		auto unnorm = oa::FnMatrix::mul(probs, mask);
 		auto denom = oa::FnMatrix::sum(unnorm, 1);

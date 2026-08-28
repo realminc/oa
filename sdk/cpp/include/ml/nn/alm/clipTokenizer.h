@@ -6,8 +6,8 @@
 namespace oa {
 
 struct ClipTokenBatch {
-	oa::Vec<oa::I32> tokenIds;
-	oa::Vec<oa::I32> flatEosRows;
+	oa::Vector<oa::I32> tokenIds;
+	oa::Vector<oa::I32> flatEosRows;
 	oa::I32 batch = 0;
 	oa::I32 contextLength = 0;
 };

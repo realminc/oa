@@ -12,7 +12,7 @@
 namespace oa {
 
 template<typename T>
-class Vec;
+class Vector;
 
 template<typename T>
 class Span {
@@ -33,15 +33,16 @@ public:
 
 	Span(pointer inPtr, size_type inCount) noexcept : ptr_(inPtr), size_(inCount) {
 		OA_REQUIRE(inPtr != nullptr || inCount == 0);
+		OA_REQUIRE(inCount <= static_cast<size_type>(-1) / sizeof(T));
 	}
 
 	template<typename U>
-	Span(oa::Vec<U>& inVec) noexcept
+	Span(oa::Vector<U>& inVec) noexcept
 		requires(oa::IsConvertibleV<U*, pointer>)
 		: Span(inVec.data(), inVec.size()) {}
 
 	template<typename U>
-	Span(const oa::Vec<U>& inVec) noexcept
+	Span(const oa::Vector<U>& inVec) noexcept
 		requires(oa::IsConvertibleV<const U*, pointer>)
 		: Span(inVec.data(), inVec.size()) {}
 

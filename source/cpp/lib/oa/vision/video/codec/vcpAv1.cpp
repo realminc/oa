@@ -1282,7 +1282,7 @@ static oa::Status extractAv1FramePayload(const oa::Span<const oa::U8>& inBitstre
 	return oa::Status::ok();
 }
 
-static oa::Status findAv1Obus(const oa::Span<const oa::U8>& inFrame, oa::Vec<oa::Av1Obu>& outObus)
+static oa::Status findAv1Obus(const oa::Span<const oa::U8>& inFrame, oa::Vector<oa::Av1Obu>& outObus)
 {
 	outObus.clear();
 	const oa::U8* data = inFrame.data();
@@ -1359,7 +1359,7 @@ oa::Status oa::VcpAv1::inspectAccessUnit(
 	outInfo = {};
 	oa::Av1IvfFrame frame = {};
 	OA_RETURN_IF_ERROR(extractAv1FramePayload(inBitstream, frame));
-	oa::Vec<oa::Av1Obu> obus;
+	oa::Vector<oa::Av1Obu> obus;
 	OA_RETURN_IF_ERROR(findAv1Obus(
 		oa::Span<const oa::U8>(inBitstream.data() + frame.offset, frame.size), obus));
 	for (const oa::Av1Obu& obu : obus) {
@@ -1377,7 +1377,7 @@ oa::Status oa::VcpAv1::inspectAccessUnit(
 oa::Status oa::VcpAv1::parseAccessUnit(const oa::Span<const oa::U8>& inBitstream, oa::Av1PictureDesc& outDesc)
 {
 	outDesc = {};
-	oa::Vec<oa::Av1PictureDesc> pictures;
+	oa::Vector<oa::Av1PictureDesc> pictures;
 	OA_RETURN_IF_ERROR(parseAccessUnitPictures(inBitstream, pictures));
 	if (!pictures.empty()) outDesc = pictures[0];
 	return oa::Status::ok();
@@ -1385,14 +1385,14 @@ oa::Status oa::VcpAv1::parseAccessUnit(const oa::Span<const oa::U8>& inBitstream
 
 oa::Status oa::VcpAv1::parseAccessUnitPictures(
 	const oa::Span<const oa::U8>& inBitstream,
-	oa::Vec<oa::Av1PictureDesc>& outDescs)
+	oa::Vector<oa::Av1PictureDesc>& outDescs)
 {
 	outDescs.clear();
 
 	oa::Av1IvfFrame frame = {};
 	OA_RETURN_IF_ERROR(extractAv1FramePayload(inBitstream, frame));
 
-	oa::Vec<oa::Av1Obu> obus;
+	oa::Vector<oa::Av1Obu> obus;
 	OA_RETURN_IF_ERROR(findAv1Obus(
 		oa::Span<const oa::U8>(inBitstream.data() + frame.offset, frame.size),
 		obus));

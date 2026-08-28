@@ -311,15 +311,15 @@ static PerfResult benchBatchOne(
 	int inWarmup,
 	int inIters)
 {
-	oa::Vec<oa::Matrix> aVec;
-	oa::Vec<oa::Matrix> bVec;
+	oa::Vector<oa::Matrix> aVec;
+	oa::Vector<oa::Matrix> bVec;
 	for (int i = 0; i < inBatchSize; ++i) {
 		aVec.pushBack(oa::FnMatrix::rand(oa::MatrixShape{inCase.m, inCase.k}));
 		bVec.pushBack(oa::FnMatrix::rand(oa::MatrixShape{inCase.n, inCase.k}));
 	}
 	if (not submitAndWait(inEngine).isOk()) return {};
 
-	oa::Vec<oa::Matrix> results;
+	oa::Vector<oa::Matrix> results;
 	auto captured = inEngine.capture([&]() {
 		for (int i = 0; i < inBatchSize; ++i) {
 			results.pushBack(oa::FnMatrix::matMulNt(aVec[i], bVec[i], inPrecision));

@@ -7,8 +7,8 @@
 oa::Status oa::VideoDecoder::recordH264DecodeCommands(
 	oa::I32 inDpbSlot,
 	const oa::H264PictureDesc& inDesc,
-	const oa::Vec<oa::I32>& inRefPicList0,
-	const oa::Vec<oa::I32>& inRefPicList1)
+	const oa::Vector<oa::I32>& inRefPicList0,
+	const oa::Vector<oa::I32>& inRefPicList1)
 {
 	const oa::H264SliceHeader& inSliceHeader = inDesc.sliceHeader;
 	const oa::Usize inNalOffset = inDesc.sliceStartCodeOffset;

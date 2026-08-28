@@ -136,7 +136,7 @@ oa::Status oa::PerfStore::flush_() const {
     oa::Usize totalSize = sizeof(PerfFileHeader)
         + (records_.size() * sizeof(oa::PerfRecord));
 
-    oa::Vec<oa::U8> buf;
+    oa::Vector<oa::U8> buf;
     buf.resize(totalSize, 0U);
 
     oa::memcpy(buf.data(), &hdr, sizeof(hdr));

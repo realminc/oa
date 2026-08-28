@@ -20,7 +20,7 @@ public:
 	I32 d_ = 1;
 	I32 outL_ = 0;
 
-	void backward(const Matrix& inDOut, Vec<Matrix>& outDIn) override {
+	void backward(const Matrix& inDOut, Vector<Matrix>& outDIn) override {
 		if (outDIn.size() > 0) {
 			outDIn[0] = FnMatrix::col2Im1d(
 				inDOut, n_, inC_, l_, k_, s_, p_, d_, outL_);
@@ -33,7 +33,7 @@ public:
 	oa::U32 stride_ = 1;
 	oa::U32 padding_ = 0;
 	oa::U32 groups_ = 1;
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		const oa::Matrix& x = saved(0);
 		const oa::Matrix& weight = saved(1);
 		const oa::MatrixShape input_shape = x.getShape();
@@ -60,7 +60,7 @@ class GradConvTranspose2d final : public oa::GradNode {
 public:
 	oa::U32 stride_ = 1;
 	oa::U32 padding_ = 0;
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		const oa::Matrix& x = saved(0);
 		const oa::Matrix& weight = saved(1);
 		const oa::MatrixShape input_shape = x.getShape();
@@ -88,7 +88,7 @@ public:
 	oa::U32 stride_ = 1;
 	oa::U32 padding_ = 0;
 	oa::U32 dilation_ = 1;
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		const oa::Matrix& x      = saved(0);
 		const oa::Matrix& weight = saved(1);
 		const bool needDX = outDIn.size() > 0;

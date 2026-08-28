@@ -30,7 +30,7 @@ playback, capture, presentation, and MCP control.
 [![License](https://img.shields.io/badge/license-BSL--1.1-3b3b3b)](LICENSE)
 
 > **Development preview.** The API and artifact formats remain pre-1.0 and may
-> change. Read the [latest release notes](docs/external/releases/v0.7.20.md) for
+> change. Read the [latest release notes](docs/external/releases/v0.7.21.md) for
 > shipped scope, verification, compatibility, and known limitations.
 
 ## One runtime. Two front ends.
@@ -49,29 +49,22 @@ silently changing the workload.
 ```cpp
 #include <oa/oa.h>
 
-#include <array>
-#include <cmath>
-#include <cstdio>
-#include <utility>
-
 OA_MAIN("ExampleCoreMatrix") {
 	auto one = oa::FnMatrix::ones({2, 3});
-
 	auto two = oa::FnMatrix::full({2, 3}, 2.0F);
-
 	auto sum = oa::FnMatrix::add(one, two);
 
-	std::array<oa::F32, 6> values{};
+	oa::Array<oa::F32, 6> values{};
 	if (not oa::FnMatrix::copyToHost(sum, values.data(), sizeof(values)).isOk()) {
 		return 1;
 	}
 	for (const oa::F32 value : values) {
-		if (std::abs(value - 3.0F) > 1e-06F) {
+		if (oa::abs(value - 3.0F) > 1e-06F) {
 			return 1;
 		}
 	}
 
-	std::puts("Matrix addition verified: every value is 3");
+	oa::puts("Matrix addition verified: every value is 3");
 	return 0;
 }
 ```
@@ -93,9 +86,7 @@ python -m pip install oapython
 import oa
 
 one = oa.FnMatrix.ones([2, 3])
-
 two = oa.FnMatrix.full([2, 3], 2.0)
-
 sum = oa.FnMatrix.add(one, two)
 
 values = oa.FnMatrix.copyToHost(sum)

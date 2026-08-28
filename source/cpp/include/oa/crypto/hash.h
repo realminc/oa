@@ -131,20 +131,20 @@ private:
 
 // Merkle tree (CPU). For GPU batch trees, use oa::FnHash::merkleRoot.
 
-Hash merkleRoot(const oa::Vec<Hash>& inLeaves);
+Hash merkleRoot(const oa::Vector<Hash>& inLeaves);
 
 class MerkleTree {
 public:
-	oa::Vec<oa::Vec<Hash>> levels;
+	oa::Vector<oa::Vector<Hash>> levels;
 	Hash root;
 };
 
-MerkleTree buildMerkleTree(const oa::Vec<Hash>& inLeaves);
+MerkleTree buildMerkleTree(const oa::Vector<Hash>& inLeaves);
 
 class MerkleProof {
 public:
-	oa::Vec<Hash> siblings;
-	oa::Vec<oa::Bool> isLeft;
+	oa::Vector<Hash> siblings;
+	oa::Vector<oa::Bool> isLeft;
 };
 
 [[nodiscard]] oa::Result<MerkleProof> getMerkleProof(const MerkleTree& inTree, oa::U32 inLeafIndex);

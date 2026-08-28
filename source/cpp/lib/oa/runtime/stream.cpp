@@ -1,5 +1,5 @@
 #include <oa/runtime/stream.h>
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
 #include <oa/core/std/utility.h>
 #include <oa/core/log.h>
 #include <oa/core/validation.h>
@@ -9,7 +9,7 @@
 #include <oa/runtime/engine/deviceAccess.h>
 #include <oa/runtime/device.h>
 #include <oa/runtime/pipeline.h>
-#include <oa/runtime/oaVk.h>
+#include <vkl/vkl.h>
 #include <oa/runtime/engine/bindlessAccess.h>
 #include <oa/runtime/engine/pipelineAccess.h>
 #include <oa/runtime/engine/submissionAccess.h>
@@ -409,7 +409,7 @@ void oavk::Stream::recordCopyBufferRegions(
 	oa::Span<const oavk::BufferCopyRegion> inRegions)
 {
 	if (inRegions.empty()) return;
-	oa::Vec<VkBufferCopy> regions;
+	oa::Vector<VkBufferCopy> regions;
 	regions.reserve(inRegions.size());
 	for (const oavk::BufferCopyRegion& region : inRegions) {
 		if (region.size == 0) continue;
@@ -600,7 +600,7 @@ void oavk::Stream::recordBufferMemoryBarriers(const oavk::Buffer* inBufs, oa::U3
 
 	constexpr oa::U32 kStackMax = 16;
 	VkBufferMemoryBarrier2 stackBarriers[kStackMax];
-	oa::Vec<VkBufferMemoryBarrier2> heapBarriers;
+	oa::Vector<VkBufferMemoryBarrier2> heapBarriers;
 	VkBufferMemoryBarrier2* barriers = stackBarriers;
 	if (inCount > kStackMax) {
 		heapBarriers.resize(inCount);
@@ -681,8 +681,8 @@ oa::Status oavk::Stream::submitWithDependencies(
 	oa::Engine& inRt,
 	oa::Span<const oavk::TimelineWait> inWaits
 ) {
-	oa::Vec<VkSemaphore> waitSemaphores;
-	oa::Vec<oa::U64> waitValues;
+	oa::Vector<VkSemaphore> waitSemaphores;
+	oa::Vector<oa::U64> waitValues;
 	for (const oavk::TimelineWait& wait : inWaits) {
 		if (wait.semaphore == nullptr || wait.value == 0) continue;
 		const VkSemaphore semaphore = static_cast<VkSemaphore>(wait.semaphore);
@@ -714,7 +714,7 @@ oa::Status oavk::Stream::submitWithDependencies(
 	VkSemaphore signalSem = static_cast<VkSemaphore>(timelineSem.semaphore);
 
 	VkCommandBuffer cb = static_cast<VkCommandBuffer>(commandBuffer);
-	oa::Vec<VkSemaphoreSubmitInfo> waitInfos;
+	oa::Vector<VkSemaphoreSubmitInfo> waitInfos;
 	for (oa::Usize waitIdx = 0; waitIdx < waitSemaphores.size(); ++waitIdx) {
 		VkSemaphoreSubmitInfo waitInfo = {};
 		waitInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;

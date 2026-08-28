@@ -5,7 +5,7 @@
 #include <oa/runtime/engine/allocatorAccess.h>
 #include <oa/runtime/engine/deviceAccess.h>
 #include <oa/runtime/stream.h>
-#include <oa/runtime/oaVma.h>
+#include <vma/vma.hpp>
 #include <oa/runtime/engine/bindlessAccess.h>
 #include <oa/runtime/engine/submissionAccess.h>
 #include <oa/ui/viewer.h>
@@ -167,13 +167,13 @@ oa::Status oa::Viewer::buildComposeImage(oa::U32 inWidth, oa::U32 inHeight) {
 		ici.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	}
 
-	OaVmaAllocationCreateInfo allocCI{};
-	allocCI.usage = OA_VMA_MEMORY_USAGE_GPU_ONLY;
+	vma::AllocationCreateInfo allocCI{};
+	allocCI.usage = vma::memoryUsageGpuOnly;
 
 	VkImage          img   = VK_NULL_HANDLE;
-	OaVmaAllocation  alloc = VK_NULL_HANDLE;
-	if (OaVmaCreateImage(
-		static_cast<OaVmaAllocator>(oa::EngineAllocatorAccess::get(*engine_).allocator),
+	vma::Allocation  alloc = VK_NULL_HANDLE;
+	if (vma::createImage(
+		static_cast<vma::Allocator>(oa::EngineAllocatorAccess::get(*engine_).allocator),
 		&ici, &allocCI, &img, &alloc, nullptr) != VK_SUCCESS)
 	{
 		return oa::Status::error(oa::StatusCode::OutOfMemory, "oa::Viewer: compose image allocation failed");
@@ -189,7 +189,7 @@ oa::Status oa::Viewer::buildComposeImage(oa::U32 inWidth, oa::U32 inHeight) {
 	vi.subresourceRange.layerCount = 1;
 	VkImageView view = VK_NULL_HANDLE;
 	if (oa::EngineDeviceAccess::get(*engine_).deviceDispatch.vkCreateImageView(dev, &vi, nullptr, &view) != VK_SUCCESS) {
-		OaVmaDestroyImage(static_cast<OaVmaAllocator>(oa::EngineAllocatorAccess::get(*engine_).allocator), img, alloc);
+		vma::destroyImage(static_cast<vma::Allocator>(oa::EngineAllocatorAccess::get(*engine_).allocator), img, alloc);
 		return oa::Status::error(oa::StatusCode::VulkanError, "oa::Viewer: compose image view creation failed");
 	}
 
@@ -198,13 +198,13 @@ oa::Status oa::Viewer::buildComposeImage(oa::U32 inWidth, oa::U32 inHeight) {
 		oavk::Stream* s = oa::EngineSubmissionAccess::acquireStream(*engine_);
 		if (s == nullptr) {
 			oa::EngineDeviceAccess::get(*engine_).deviceDispatch.vkDestroyImageView(dev, view, nullptr);
-			OaVmaDestroyImage(static_cast<OaVmaAllocator>(oa::EngineAllocatorAccess::get(*engine_).allocator), img, alloc);
+			vma::destroyImage(static_cast<vma::Allocator>(oa::EngineAllocatorAccess::get(*engine_).allocator), img, alloc);
 			return oa::Status::error(oa::StatusCode::VulkanError, "oa::Viewer: stream acquisition failed");
 		}
 		if (auto st = s->begin(oa::EngineDeviceAccess::get(*engine_)); not st.isOk()) {
 			oa::EngineSubmissionAccess::releaseStream(*engine_, s);
 			oa::EngineDeviceAccess::get(*engine_).deviceDispatch.vkDestroyImageView(dev, view, nullptr);
-			OaVmaDestroyImage(static_cast<OaVmaAllocator>(oa::EngineAllocatorAccess::get(*engine_).allocator), img, alloc);
+			vma::destroyImage(static_cast<vma::Allocator>(oa::EngineAllocatorAccess::get(*engine_).allocator), img, alloc);
 			return st;
 		}
 		VkCommandBuffer cmd = static_cast<VkCommandBuffer>(s->commandBuffer);
@@ -227,7 +227,7 @@ oa::Status oa::Viewer::buildComposeImage(oa::U32 inWidth, oa::U32 inHeight) {
 		if (auto st = s->submitAndWait(*engine_); not st.isOk()) {
 			oa::EngineSubmissionAccess::releaseStream(*engine_, s);
 			oa::EngineDeviceAccess::get(*engine_).deviceDispatch.vkDestroyImageView(dev, view, nullptr);
-			OaVmaDestroyImage(static_cast<OaVmaAllocator>(oa::EngineAllocatorAccess::get(*engine_).allocator), img, alloc);
+			vma::destroyImage(static_cast<vma::Allocator>(oa::EngineAllocatorAccess::get(*engine_).allocator), img, alloc);
 			return st;
 		}
 		oa::EngineSubmissionAccess::releaseStream(*engine_, s);
@@ -237,7 +237,7 @@ oa::Status oa::Viewer::buildComposeImage(oa::U32 inWidth, oa::U32 inHeight) {
 		.registerStorageImage(oa::EngineDeviceAccess::get(*engine_), view, VK_IMAGE_LAYOUT_GENERAL);
 	if (bindlessIndex == OA_BINDLESS_INVALID) {
 		oa::EngineDeviceAccess::get(*engine_).deviceDispatch.vkDestroyImageView(dev, view, nullptr);
-		OaVmaDestroyImage(static_cast<OaVmaAllocator>(oa::EngineAllocatorAccess::get(*engine_).allocator), img, alloc);
+		vma::destroyImage(static_cast<vma::Allocator>(oa::EngineAllocatorAccess::get(*engine_).allocator), img, alloc);
 		return oa::Status::error(oa::StatusCode::ResourceExhausted, "oa::Viewer: compose bindless registration failed");
 	}
 
@@ -263,10 +263,10 @@ void oa::Viewer::destroyComposeImage() {
 		composeView_ = nullptr;
 	}
 	if (composeImage_ != nullptr) {
-		OaVmaDestroyImage(
-			static_cast<OaVmaAllocator>(oa::EngineAllocatorAccess::get(*engine_).allocator),
+		vma::destroyImage(
+			static_cast<vma::Allocator>(oa::EngineAllocatorAccess::get(*engine_).allocator),
 			static_cast<VkImage>(composeImage_),
-			static_cast<OaVmaAllocation>(composeAllocation_));
+			static_cast<vma::Allocation>(composeAllocation_));
 		composeImage_ = nullptr;
 		composeAllocation_ = nullptr;
 	}

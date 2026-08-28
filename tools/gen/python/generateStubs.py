@@ -85,7 +85,7 @@ def _refineSchemaReturnTypes(source: str) -> str:
 		matrixVectorOps.update(
 		 op["python"].get("name", op["name"])
 		 for op in schema.get("ops", [])
-		 if op.get("api_return") == "oa::Vec<oa::Matrix>"
+		 if op.get("api_return") == "oa::Vector<oa::Matrix>"
 		 and "python" in op
 		)
 

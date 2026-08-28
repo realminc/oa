@@ -14,7 +14,7 @@ public:
 	oa::I32 headDim_ = 0;
 	oa::F32 thetaBase_ = 10000.0f;
 	oa::U32 posOffset_ = 0;
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() == 0) return;
 		const oa::Matrix& x = saved(0);
 		oa::I64 T = x.size(0);

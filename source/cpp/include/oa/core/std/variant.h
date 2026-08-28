@@ -115,8 +115,11 @@ private:
 
 	void destroy_() noexcept {
 		if (index_ != Npos) {
-			destroyAt_(index_, raw_());
+			const Size retiredIndex = index_;
+			// Publish the empty state before invoking an alternative's destructor.
+			// User destruction code may inspect or reset its owning Variant.
 			index_ = Npos;
+			destroyAt_(retiredIndex, raw_());
 		}
 	}
 
@@ -214,8 +217,9 @@ public:
 		: index_(inOther.index_) {
 		if (index_ != Npos) {
 			moveConstructAt_(index_, raw_(), inOther.raw_());
-			destroyAt_(inOther.index_, inOther.raw_());
+			const Size retiredIndex = inOther.index_;
 			inOther.index_ = Npos;
+			destroyAt_(retiredIndex, inOther.raw_());
 		}
 	}
 
@@ -242,11 +246,12 @@ public:
 		(oa::IsNothrowMoveAssignableV<Ts> && ...)) {
 		if (this != &inOther) {
 			destroy_();
-			index_ = inOther.index_;
-			if (index_ != Npos) {
-				moveConstructAt_(index_, raw_(), inOther.raw_());
-				destroyAt_(inOther.index_, inOther.raw_());
+			const Size incomingIndex = inOther.index_;
+			if (incomingIndex != Npos) {
+				moveConstructAt_(incomingIndex, raw_(), inOther.raw_());
+				index_ = incomingIndex;
 				inOther.index_ = Npos;
+				destroyAt_(incomingIndex, inOther.raw_());
 			}
 		}
 		return *this;

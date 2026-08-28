@@ -1,6 +1,6 @@
 // OA vulkan Render device Implementation
 #include <oa/runtime/device.h>
-#include <oa/runtime/oaVk.h>
+#include <vkl/vkl.h>
 #include <oa/core/log.h>
 
 
@@ -19,7 +19,7 @@ VkSurfaceFormatKHR oavk::RenderDevice::selectSwapchainFormat(VkSurfaceKHR inSurf
 		};
 	}
 	
-	oa::Vec<VkSurfaceFormatKHR> formats(formatCount);
+	oa::Vector<VkSurfaceFormatKHR> formats(formatCount);
 	instanceDispatch.vkGetPhysicalDeviceSurfaceFormatsKHR(
 		phys, inSurface, &formatCount, formats.data());
 	
@@ -47,7 +47,7 @@ VkPresentModeKHR oavk::RenderDevice::selectPresentMode(VkSurfaceKHR inSurface) c
 		return VK_PRESENT_MODE_FIFO_KHR;  // Always available
 	}
 	
-	oa::Vec<VkPresentModeKHR> modes(modeCount);
+	oa::Vector<VkPresentModeKHR> modes(modeCount);
 	instanceDispatch.vkGetPhysicalDeviceSurfacePresentModesKHR(
 		phys, inSurface, &modeCount, modes.data());
 	

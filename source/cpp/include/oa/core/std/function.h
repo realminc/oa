@@ -146,8 +146,9 @@ class Fn<R(Args...)> {
 
 	void clear() noexcept {
 		if (vtable_) {
-			vtable_->destroy(buffer_);
+			const VTable* retired = vtable_;
 			vtable_ = nullptr;
+			retired->destroy(buffer_);
 		}
 	}
 
@@ -163,9 +164,10 @@ class Fn<R(Args...)> {
 		if (!inO.vtable_) {
 			return;
 		}
-		inO.vtable_->move(buffer_, inO.buffer_);
-		vtable_ = inO.vtable_;
+		const VTable* incoming = inO.vtable_;
 		inO.vtable_ = nullptr;
+		incoming->move(buffer_, inO.buffer_);
+		vtable_ = incoming;
 	}
 
 public:
@@ -203,6 +205,11 @@ public:
 		&& oa::IsCopyConstructibleV<oa::DecayT<F>>)
 	Fn(F&& inF) {
 		using FD = oa::DecayT<F>;
+		if constexpr (oa::IsPointerV<FD>) {
+			// Match std::function's typed-null function-pointer behavior. Treating
+			// it as an engaged callable merely defers the fault until invocation.
+			if (inF == nullptr) return;
+		}
 
 		if constexpr (fnDetail::useSbo<F, R, Args...>()) {
 			oa::constructAt(reinterpret_cast<FD*>(buffer_), oa::forward<F>(inF));

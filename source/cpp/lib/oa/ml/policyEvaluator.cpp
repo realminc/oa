@@ -73,9 +73,9 @@ oa::Result<oa::PolicyEvaluationMetrics> oa::PolicyEvaluator::evaluateCategorical
 	if (completion.isError()) return completion.getStatus();
 	OA_RETURN_IF_ERROR(inEnvironment.wait(*completion));
 	const oa::U64 transitions = static_cast<oa::U64>(inConfig.horizon) * environments;
-	oa::Vec<oa::F32> reward(static_cast<oa::Usize>(transitions));
-	oa::Vec<oa::U8> terminated(static_cast<oa::Usize>(transitions));
-	oa::Vec<oa::U8> truncated(static_cast<oa::Usize>(transitions));
+	oa::Vector<oa::F32> reward(static_cast<oa::Usize>(transitions));
+	oa::Vector<oa::U8> terminated(static_cast<oa::Usize>(transitions));
+	oa::Vector<oa::U8> truncated(static_cast<oa::Usize>(transitions));
 	{
 		// The environment owns the execution context that produced the rollout.
 		// Keep its engine selected for every host readback instead of falling
@@ -90,7 +90,7 @@ oa::Result<oa::PolicyEvaluationMetrics> oa::PolicyEvaluator::evaluateCategorical
 			rollout.batch().truncated, truncated.data(), transitions));
 	}
 
-	oa::Vec<oa::F32> episodeReturn(environments, 0.0F);
+	oa::Vector<oa::F32> episodeReturn(environments, 0.0F);
 	oa::F64 sum = 0.0;
 	oa::F32 minimum = oa::Limits<oa::F32>::infinity();
 	oa::F32 maximum = -oa::Limits<oa::F32>::infinity();

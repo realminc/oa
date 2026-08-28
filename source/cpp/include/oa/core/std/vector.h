@@ -1,6 +1,6 @@
 #pragma once
 
-// Vec<T> — phase 2 (OA standard library roadmap)
+// Vector<T> — phase 2 (OA standard library roadmap)
 //
 // Header-only template (same as std::vector): full definition must stay in headers
 // unless you add explicit instantiations in a .cpp for specific T.
@@ -18,11 +18,11 @@
 // state. Trivial T stores use a restrict-qualified slot (no construct_at).
 // Trivial popBack skips destroy_at. clear() ends at destroyAll only.
 // Trivial bulk: append(indata, incount) uses oa::memcpy; value-init resize uses oa::memzero
-// for arithmetic/enum/pointer T; contiguous iterator ranges use oa::memcpy when allowed.
+// for arithmetic/enum T; contiguous iterator ranges use oa::memcpy when allowed.
 //
-// Include as <oa/core/std/vec.h> or through <oa/core/std.h> or <oa/core/types.h>.
+// Include as <oa/core/std/vector.h> or through <oa/core/std.h> or <oa/core/types.h>.
 
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
 #include <oa/core/assert.h>
 #include <oa/core/std/allocator.h>
 #include <oa/core/std/iter.h>
@@ -48,7 +48,7 @@
 namespace oa {
 
 template<typename T>
-class Vec {
+class Vector {
 public:
 	using value_type = T;
 	using size_type = oa::Usize;
@@ -62,12 +62,20 @@ public:
 	using reverse_iterator = oa::ReverseIterator<iterator>;
 	using const_reverse_iterator = oa::ReverseIterator<const_iterator>;
 
-	Vec() noexcept = default;
+	Vector() noexcept = default;
 
-	explicit Vec(size_type incount) { resizeValueInit(incount); }
+	explicit Vector(size_type incount) {
+		ConstructionGuard guard(this);
+		resizeValueInit(incount);
+		guard.release();
+	}
 
-	Vec(size_type incount, const T& inval) {
-		if (incount == 0) return;
+	Vector(size_type incount, const T& inval) {
+		ConstructionGuard guard(this);
+		if (incount == 0) {
+			guard.release();
+			return;
+		}
 		reserve(incount);
 		if constexpr (oa::IsTriviallyCopyableV<T>) {
 			for (size_type i = 0; i < incount; ++i) ptr_[i] = inval;
@@ -75,62 +83,76 @@ public:
 		} else {
 			for (size_type i = 0; i < incount; ++i) pushBack(inval);
 		}
+		guard.release();
 	}
 
-	Vec(std::initializer_list<T> inInit) : Vec(inInit.begin(), inInit.end()) {}
+	Vector(std::initializer_list<T> inInit) : Vector(inInit.begin(), inInit.end()) {}
 
-	// Exclude integral It so Vec<int>(3, 4) resolves to (size_type, const T&), not iterator pair.
+	// Exclude integral It so Vector<int>(3, 4) resolves to (size_type, const T&), not iterator pair.
 	template<typename It>
 	requires (!oa::IsIntegralV<oa::RemoveCvrefT<It>>
 		&& requires(It inIt) { ++inIt; *inIt; })
-	Vec(It infirst, It inlast) {
+	Vector(It infirst, It inlast) {
+		ConstructionGuard guard(this);
 #if __cplusplus >= 202002L
 		if constexpr (oa::IsRandomAccessIteratorV<It>) {
 			const auto dist = inlast - infirst;
-			if (dist <= 0) return;
+			if (dist <= 0) {
+				guard.release();
+				return;
+			}
 			const size_type n = static_cast<size_type>(dist);
 			reserve(n);
 			if constexpr (oa::IsContiguousIteratorV<It>) {
 				if constexpr (oa::IsSameV<oa::RemoveConstT<oa::IterValueT<It>>, T> && oa::IsTriviallyCopyableV<T>) {
 					oa::memcpy(ptr_, oa::toAddress(infirst), n * sizeof(T));
 					end_ = ptr_ + n;
+					guard.release();
 					return;
 				}
 			}
 			It it = infirst;
 			for (size_type i = 0; i < n; ++i, ++it) {
-				if constexpr (oa::IsTriviallyCopyableV<T>) ptr_[i] = *it;
-				else oa::constructAt(ptr_ + i, *it);
+				if constexpr (oa::IsTriviallyCopyableV<T>) {
+					ptr_[i] = *it;
+				} else {
+					oa::constructAt(end_, *it);
+					++end_;
+				}
 			}
-			end_ = ptr_ + n;
+			if constexpr (oa::IsTriviallyCopyableV<T>) {
+				end_ = ptr_ + n;
+			}
+			guard.release();
 			return;
 		}
 #endif
 		for (; infirst != inlast; ++infirst) pushBack(*infirst);
+		guard.release();
 	}
 
-	Vec(const Vec& inother) requires oa::IsCopyConstructibleV<T>
-		: Vec(inother.begin(), inother.end()) {}
+	Vector(const Vector& inother) requires oa::IsCopyConstructibleV<T>
+		: Vector(inother.begin(), inother.end()) {}
 
-	Vec(const Vec&) requires (!oa::IsCopyConstructibleV<T>) = delete;
+	Vector(const Vector&) requires (!oa::IsCopyConstructibleV<T>) = delete;
 
-	Vec(Vec&& inother) noexcept
+	Vector(Vector&& inother) noexcept
 		: ptr_(inother.ptr_), end_(inother.end_), capEnd_(inother.capEnd_) {
 		inother.ptr_ = nullptr;
 		inother.end_ = nullptr;
 		inother.capEnd_ = nullptr;
 	}
 
-	Vec& operator=(const Vec& inother) requires oa::IsCopyConstructibleV<T> {
+	Vector& operator=(const Vector& inother) requires oa::IsCopyConstructibleV<T> {
 		if (this == &inother) return *this;
-		Vec tmp(inother);
+		Vector tmp(inother);
 		swap(tmp);
 		return *this;
 	}
 
-	Vec& operator=(const Vec&) requires (!oa::IsCopyConstructibleV<T>) = delete;
+	Vector& operator=(const Vector&) requires (!oa::IsCopyConstructibleV<T>) = delete;
 
-	Vec& operator=(Vec&& inother) noexcept(
+	Vector& operator=(Vector&& inother) noexcept(
 		oa::IsNothrowMoveConstructibleV<T> && oa::IsNothrowMoveAssignableV<T>) {
 		if (this == &inother) return *this;
 		destroyAll();
@@ -144,12 +166,12 @@ public:
 		return *this;
 	}
 
-	Vec& operator=(std::initializer_list<T> inInit) {
+	Vector& operator=(std::initializer_list<T> inInit) {
 		assign(inInit.begin(), inInit.end());
 		return *this;
 	}
 
-	~Vec() {
+	~Vector() {
 		destroyAll();
 		deallocate();
 	}
@@ -175,22 +197,22 @@ public:
 	}
 
 	reference front() {
-		OA_ASSERT(!empty());
+		OA_REQUIRE(!empty());
 		return ptr_[0];
 	}
 
 	const_reference front() const {
-		OA_ASSERT(!empty());
+		OA_REQUIRE(!empty());
 		return ptr_[0];
 	}
 
 	reference back() {
-		OA_ASSERT(!empty());
+		OA_REQUIRE(!empty());
 		return end_[-1];
 	}
 
 	const_reference back() const {
-		OA_ASSERT(!empty());
+		OA_REQUIRE(!empty());
 		return end_[-1];
 	}
 
@@ -236,7 +258,18 @@ public:
 	__attribute__((always_inline))
 #endif
 	void pushBack(const T& inval) {
-		if (OA_UNLIKELY(end_ == capEnd_)) growCapacity(addCapacity(size(), 1));
+		if (OA_UNLIKELY(end_ == capEnd_)) {
+			// The input may name an element in this Vector. Stabilize it before a
+			// realloc can invalidate the reference; keeping growth inline also
+			// lets the optimizer scalar-replace short-lived trivial Vectors.
+			T stable(inval);
+			growCapacity(addCapacity(size(), 1));
+			T* OA_RESTRICT slot = end_;
+			if constexpr (oa::IsTriviallyCopyableV<T>) *slot = stable;
+			else oa::constructAt(slot, stable);
+			end_ = slot + 1;
+			return;
+		}
 		T* OA_RESTRICT slot = end_;
 		if constexpr (oa::IsTriviallyCopyableV<T>) *slot = inval;
 		else oa::constructAt(slot, inval);
@@ -247,7 +280,15 @@ public:
 	__attribute__((always_inline))
 #endif
 	void pushBack(T&& inval) {
-		if (OA_UNLIKELY(end_ == capEnd_)) growCapacity(addCapacity(size(), 1));
+		if (OA_UNLIKELY(end_ == capEnd_)) {
+			T stable(oa::move(inval));
+			growCapacity(addCapacity(size(), 1));
+			T* OA_RESTRICT slot = end_;
+			if constexpr (oa::IsTriviallyCopyableV<T>) *slot = oa::move(stable);
+			else oa::constructAt(slot, oa::move(stable));
+			end_ = slot + 1;
+			return;
+		}
 		T* OA_RESTRICT slot = end_;
 		if constexpr (oa::IsTriviallyCopyableV<T>) *slot = oa::move(inval);
 		else oa::constructAt(slot, oa::move(inval));
@@ -256,24 +297,51 @@ public:
 
 	template<typename... Args>
 	reference emplaceBack(Args&&... inargs) {
-		if (OA_UNLIKELY(end_ == capEnd_)) growCapacity(addCapacity(size(), 1));
+		if (OA_UNLIKELY(end_ == capEnd_)) {
+			return growAndEmplaceBack(oa::forward<Args>(inargs)...);
+		}
 		T* const slot = end_;
 		oa::constructAt(slot, oa::forward<Args>(inargs)...);
 		end_ = slot + 1;
 		return *slot;
 	}
 
-	// Trivial elements only: one oa::memcpy (inline asm / NT path from memory.h) vs N× pushBack.
+	// Trivial elements only: one oa::memcpy versus N pushBack calls.
 	template<typename U = T, typename = oa::EnableIfT<oa::IsTriviallyCopyableV<U>>>
 	void append(const T* indata, size_type incount) {
 		if (incount == 0) return;
+		OA_REQUIRE(indata != nullptr);
+		const size_type sourceBytes = byteCapacityFor(incount);
+		const size_type sourceAddress = reinterpret_cast<size_type>(indata);
+		OA_REQUIRE(sourceBytes <= static_cast<size_type>(-1) - sourceAddress);
+		const size_type sourceEndAddress = sourceAddress + sourceBytes;
+
+		size_type sourceIndex = InvalidElementIndex;
+		if (ptr_ != nullptr) {
+			const size_type beginAddress = reinterpret_cast<size_type>(ptr_);
+			const size_type liveEndAddress = reinterpret_cast<size_type>(end_);
+			const size_type storageEndAddress = reinterpret_cast<size_type>(capEnd_);
+			const bool intersectsStorage = sourceAddress < storageEndAddress
+				&& sourceEndAddress > beginAddress;
+			if (intersectsStorage) {
+				const bool isWhollyLive = sourceAddress >= beginAddress
+					&& sourceAddress < liveEndAddress
+					&& sourceEndAddress <= liveEndAddress
+					&& ((sourceAddress - beginAddress) % sizeof(T)) == 0;
+				OA_REQUIRE(isWhollyLive);
+				sourceIndex = (sourceAddress - beginAddress) / sizeof(T);
+			}
+		}
 		reserve(addCapacity(size(), incount));
-		oa::memcpy(end_, indata, static_cast<oa::Usize>(incount * sizeof(T)));
+		if (sourceIndex != InvalidElementIndex) {
+			indata = ptr_ + sourceIndex;
+		}
+		oa::memcpy(end_, indata, sourceBytes);
 		end_ += incount;
 	}
 
 	void popBack() {
-		OA_ASSERT(!empty());
+		OA_REQUIRE(!empty());
 		if constexpr (!oa::IsTriviallyDestructibleV<T>) {
 			oa::destroyAt(end_ - 1);
 		}
@@ -289,7 +357,7 @@ public:
 		if (incount > currentSize) {
 			reserve(incount);
 			const size_type add = incount - currentSize;
-			if constexpr ((oa::IsArithmeticV<T> || oa::IsEnumV<T> || oa::IsPointerV<T>) &&
+			if constexpr ((oa::IsArithmeticV<T> || oa::IsEnumV<T>) &&
 				oa::IsTriviallyCopyableV<T>) {
 				oa::memzero(end_, static_cast<oa::Usize>(add * sizeof(T)));
 				end_ = ptr_ + incount;
@@ -307,11 +375,17 @@ public:
 			shrinkToSize(incount);
 			return;
 		}
+		if (incount > capacity() && elementIndex(&inval) != InvalidElementIndex) {
+			T stable(inval);
+			reserve(incount);
+			while (size() < incount) pushBack(stable);
+			return;
+		}
 		reserve(incount);
 		while (size() < incount) pushBack(inval);
 	}
 
-	void swap(Vec& inother) noexcept {
+	void swap(Vector& inother) noexcept {
 		T* tPtr = ptr_;
 		T* tEnd = end_;
 		T* tCapEnd = capEnd_;
@@ -324,20 +398,16 @@ public:
 	}
 
 	template<typename It>
+	requires (!oa::IsIntegralV<oa::RemoveCvrefT<It>>
+		&& requires(It inIt) { ++inIt; *inIt; })
 	void assign(It infirst, It inlast) {
-		clear();
-		for (; infirst != inlast; ++infirst) pushBack(*infirst);
+		Vector tmp(infirst, inlast);
+		swap(tmp);
 	}
 
 	void assign(size_type incount, const T& inval) {
-		clear();
-		reserve(incount);
-		if constexpr (oa::IsTriviallyCopyableV<T>) {
-			for (size_type i = 0; i < incount; ++i) ptr_[i] = inval;
-			end_ = ptr_ + incount;
-		} else {
-			for (size_type i = 0; i < incount; ++i) pushBack(inval);
-		}
+		Vector tmp(incount, inval);
+		swap(tmp);
 	}
 
 	iterator insert(const_iterator inpos, const T& inval) {
@@ -353,7 +423,7 @@ public:
 		const size_type i = positionIndex(inpos);
 		const auto distance = oa::distance(infirst, inlast);
 		OA_REQUIRE(distance >= 0);
-		Vec tmp;
+		Vector tmp;
 		const size_type currentSize = size();
 		tmp.reserve(addCapacity(currentSize, static_cast<size_type>(distance)));
 		for (size_type j = 0; j < i; ++j) tmp.pushBack(ptr_[j]);
@@ -374,7 +444,7 @@ public:
 		const size_type hi = positionIndex(inlast);
 		OA_REQUIRE(lo <= hi);
 		if (lo == hi) return pointerAt(lo);
-		Vec tmp;
+		Vector tmp;
 		const size_type currentSize = size();
 		size_type newLen = currentSize - (hi - lo);
 		tmp.reserve(newLen);
@@ -425,6 +495,72 @@ private:
 			&& storageAlign() <= oa::defaultAllocationAlignment();
 	}
 
+	static constexpr size_type InvalidElementIndex = static_cast<size_type>(-1);
+
+	[[nodiscard]] size_type elementIndex(const T* inValue) const noexcept {
+		if (ptr_ == nullptr || inValue == nullptr) {
+			return InvalidElementIndex;
+		}
+		const size_type address = reinterpret_cast<size_type>(inValue);
+		const size_type beginAddress = reinterpret_cast<size_type>(ptr_);
+		const size_type endAddress = reinterpret_cast<size_type>(end_);
+		if (address < beginAddress || address >= endAddress
+			|| ((address - beginAddress) % sizeof(T)) != 0) {
+			return InvalidElementIndex;
+		}
+		return (address - beginAddress) / sizeof(T);
+	}
+
+	class ReallocationGuard final {
+	public:
+		ReallocationGuard(T* inData, size_type inAlignment) noexcept
+			: data_(inData), alignment_(inAlignment) {}
+
+		~ReallocationGuard() {
+			if (data_ == nullptr) {
+				return;
+			}
+			if constexpr (!oa::IsTriviallyDestructibleV<T>) {
+				for (size_type index = 0; index < constructed_; ++index) {
+					oa::destroyAt(data_ + index);
+				}
+			}
+			oa::freeBytes(data_, alignment_);
+		}
+
+		ReallocationGuard(const ReallocationGuard&) = delete;
+		ReallocationGuard& operator=(const ReallocationGuard&) = delete;
+
+		void markConstructed() noexcept { ++constructed_; }
+		void release() noexcept { data_ = nullptr; }
+
+	private:
+		T* data_ = nullptr;
+		size_type alignment_ = 0;
+		size_type constructed_ = 0;
+	};
+
+	class ConstructionGuard final {
+	public:
+		explicit ConstructionGuard(Vector* inOwner) noexcept : owner_(inOwner) {}
+
+		~ConstructionGuard() {
+			if (owner_ == nullptr) {
+				return;
+			}
+			owner_->destroyAll();
+			owner_->deallocate();
+		}
+
+		ConstructionGuard(const ConstructionGuard&) = delete;
+		ConstructionGuard& operator=(const ConstructionGuard&) = delete;
+
+		void release() noexcept { owner_ = nullptr; }
+
+	private:
+		Vector* owner_;
+	};
+
 	static size_type byteCapacityFor(size_type inelemCap) {
 		if (inelemCap == 0) return 0;
 		if (inelemCap > static_cast<size_type>(-1) / sizeof(T)) {
@@ -453,8 +589,12 @@ private:
 			OA_REQUIRE(inPosition == nullptr);
 			return 0;
 		}
-		OA_REQUIRE(inPosition >= ptr_ && inPosition <= end_);
-		return static_cast<size_type>(inPosition - ptr_);
+		const size_type address = reinterpret_cast<size_type>(inPosition);
+		const size_type beginAddress = reinterpret_cast<size_type>(ptr_);
+		const size_type endAddress = reinterpret_cast<size_type>(end_);
+		OA_REQUIRE(address >= beginAddress && address <= endAddress);
+		OA_REQUIRE(((address - beginAddress) % sizeof(T)) == 0);
+		return (address - beginAddress) / sizeof(T);
 	}
 
 	[[nodiscard]] iterator pointerAt(size_type inIndex) noexcept {
@@ -495,7 +635,7 @@ private:
 		const size_type currentSize = size();
 		if (currentSize >= incount) return;
 		const size_type add = incount - currentSize;
-		if constexpr ((oa::IsArithmeticV<T> || oa::IsEnumV<T> || oa::IsPointerV<T>) &&
+		if constexpr ((oa::IsArithmeticV<T> || oa::IsEnumV<T>) &&
 			oa::IsTriviallyCopyableV<T>) {
 			oa::memzero(end_, static_cast<oa::Usize>(add * sizeof(T)));
 			end_ = ptr_ + incount;
@@ -505,6 +645,26 @@ private:
 				++end_;
 			}
 		}
+	}
+
+	template<typename... Args>
+#if defined(__clang__) || defined(__GNUC__)
+	__attribute__((noinline)) __attribute__((cold))
+#endif
+	reference growAndEmplaceBack(Args&&... inArgs) {
+		// Constructor arguments may borrow an existing element. Materialize
+		// before reallocation so a moved allocation cannot invalidate them.
+		T stable(oa::forward<Args>(inArgs)...);
+		growCapacity(addCapacity(size(), 1));
+		T* const slot = end_;
+		if constexpr (oa::IsCopyConstructibleV<T>
+			&& !oa::IsNothrowMoveConstructibleV<T>) {
+			oa::constructAt(slot, stable);
+		} else {
+			oa::constructAt(slot, oa::move(stable));
+		}
+		end_ = slot + 1;
+		return *slot;
 	}
 
 #if defined(__clang__) || defined(__GNUC__)
@@ -544,17 +704,25 @@ private:
 		const size_type align = storageAlign();
 		void* const raw = oa::allocBytes(bytes, align);
 		T* newPtr = static_cast<T*>(raw);
+		ReallocationGuard guard(newPtr, align);
 		if (ptr_) {
 			if constexpr (oa::IsTriviallyCopyableV<T>) {
 				if (currentSize > 0) oa::memcpy(newPtr, ptr_, currentSize * sizeof(T));
 			} else {
 				for (size_type i = 0; i < currentSize; ++i) {
-					oa::constructAt(newPtr + i, oa::move(ptr_[i]));
-					oa::destroyAt(ptr_ + i);
+					if constexpr (oa::IsCopyConstructibleV<T>
+						&& !oa::IsNothrowMoveConstructibleV<T>) {
+						oa::constructAt(newPtr + i, ptr_[i]);
+					} else {
+						oa::constructAt(newPtr + i, oa::move(ptr_[i]));
+					}
+					guard.markConstructed();
 				}
+				for (size_type i = 0; i < currentSize; ++i) oa::destroyAt(ptr_ + i);
 			}
 			oa::freeBytes(ptr_, align);
 		}
+		guard.release();
 		ptr_ = newPtr;
 		end_ = ptr_ + currentSize;
 		capEnd_ = ptr_ + innewCap;
@@ -574,17 +742,25 @@ private:
 		const size_type align = storageAlign();
 		void* const raw = oa::allocBytes(bytes, align);
 		T* newPtr = static_cast<T*>(raw);
+		ReallocationGuard guard(newPtr, align);
 		if (ptr_) {
 			if constexpr (oa::IsTriviallyCopyableV<T>) {
 				if (currentSize > 0) oa::memcpy(newPtr, ptr_, currentSize * sizeof(T));
 			} else {
 				for (size_type i = 0; i < currentSize; ++i) {
-					oa::constructAt(newPtr + i, oa::move(ptr_[i]));
-					oa::destroyAt(ptr_ + i);
+					if constexpr (oa::IsCopyConstructibleV<T>
+						&& !oa::IsNothrowMoveConstructibleV<T>) {
+						oa::constructAt(newPtr + i, ptr_[i]);
+					} else {
+						oa::constructAt(newPtr + i, oa::move(ptr_[i]));
+					}
+					guard.markConstructed();
 				}
+				for (size_type i = 0; i < currentSize; ++i) oa::destroyAt(ptr_ + i);
 			}
 			oa::freeBytes(ptr_, align);
 		}
+		guard.release();
 		ptr_ = newPtr;
 		end_ = ptr_ + currentSize;
 		capEnd_ = ptr_ + innewCap;
@@ -593,7 +769,7 @@ private:
 	iterator insertRebuild(size_type inidx, const T& inval) {
 		const size_type currentSize = size();
 		OA_REQUIRE(inidx <= currentSize);
-		Vec tmp;
+		Vector tmp;
 		tmp.reserve(addCapacity(currentSize, 1));
 		for (size_type j = 0; j < inidx; ++j) tmp.pushBack(ptr_[j]);
 		tmp.pushBack(inval);
@@ -605,7 +781,7 @@ private:
 	iterator insertRebuildMove(size_type inidx, T&& inval) {
 		const size_type currentSize = size();
 		OA_REQUIRE(inidx <= currentSize);
-		Vec tmp;
+		Vector tmp;
 		tmp.reserve(addCapacity(currentSize, 1));
 		for (size_type j = 0; j < inidx; ++j) tmp.pushBack(oa::move(ptr_[j]));
 		tmp.pushBack(oa::move(inval));
@@ -617,38 +793,33 @@ private:
 
 // ADL hooks for range-for and std::begin/end (member API is PascalCase).
 template<typename T>
-typename Vec<T>::iterator begin(Vec<T>& invec) noexcept {
+typename Vector<T>::iterator begin(Vector<T>& invec) noexcept {
 	return invec.begin();
 }
 template<typename T>
-typename Vec<T>::const_iterator begin(const Vec<T>& invec) noexcept {
+typename Vector<T>::const_iterator begin(const Vector<T>& invec) noexcept {
 	return invec.begin();
 }
 template<typename T>
-typename Vec<T>::iterator begin(Vec<T>&& invec) noexcept {
+typename Vector<T>::iterator begin(Vector<T>&& invec) noexcept {
 	return invec.begin();
 }
 template<typename T>
-typename Vec<T>::iterator end(Vec<T>& invec) noexcept {
+typename Vector<T>::iterator end(Vector<T>& invec) noexcept {
 	return invec.end();
 }
 template<typename T>
-typename Vec<T>::const_iterator end(const Vec<T>& invec) noexcept {
+typename Vector<T>::const_iterator end(const Vector<T>& invec) noexcept {
 	return invec.end();
 }
 template<typename T>
-typename Vec<T>::iterator end(Vec<T>&& invec) noexcept {
+typename Vector<T>::iterator end(Vector<T>&& invec) noexcept {
 	return invec.end();
 }
 
 template<typename T>
-bool operator==(const Vec<T>& ina, const Vec<T>& inb) {
+bool operator==(const Vector<T>& ina, const Vector<T>& inb) {
 	if (ina.size() != inb.size()) return false;
-	if (ina.data() == inb.data()) return true;
-	if constexpr (oa::IsTriviallyCopyableV<T>) {
-		if (ina.size() == 0) return true;
-		return oa::memEqual(ina.data(), inb.data(), ina.size() * sizeof(T));
-	}
 	for (oa::Usize i = 0; i < ina.size(); ++i) {
 		if (!(ina.data()[i] == inb.data()[i])) return false;
 	}
@@ -656,7 +827,7 @@ bool operator==(const Vec<T>& ina, const Vec<T>& inb) {
 }
 
 template<typename T>
-bool operator!=(const Vec<T>& ina, const Vec<T>& inb) {
+bool operator!=(const Vector<T>& ina, const Vector<T>& inb) {
 	return !(ina == inb);
 }
 

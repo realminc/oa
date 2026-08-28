@@ -8,7 +8,7 @@ namespace oa {
 
 class GradMoeRouteWeights final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() == 0) return;
 		outDIn[0] = oa::FnMatrix::moeRouteWeightsBwd(
 			inDOut, saved(0), saved(1), saved(2));
@@ -16,7 +16,7 @@ public:
 };
 class GradGroupedGemmM final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() < 2) return;
 		auto result = oa::FnMatrix::groupedGemmMBwd(
 			inDOut, saved(0), saved(1), saved(2));
@@ -27,7 +27,7 @@ public:
 
 class GradGroupedLinearM final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() < 3) return;
 		auto result = oa::FnMatrix::groupedLinearMBwd(
 			inDOut, saved(0), saved(1), saved(3));
@@ -39,7 +39,7 @@ public:
 
 class GradMoeCombine final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() < 2) return;
 		auto result = oa::FnMatrix::moeCombineBwd(
 			inDOut, saved(0), saved(1), saved(2), saved(3));
@@ -50,7 +50,7 @@ public:
 
 class GradMoeGather final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() == 0) return;
 		const oa::Matrix& input = saved(0);
 		outDIn[0] = oa::FnMatrix::moeGatherBwd(
@@ -60,7 +60,7 @@ public:
 
 class GradScatterAddRows final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() > 0) outDIn[0] = oa::FnMatrix::gather(inDOut, saved(0));
 	}
 };

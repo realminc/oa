@@ -7,7 +7,7 @@
 
 #include <oa/core/status.h>
 #include <oa/core/types.h>
-#include <oa/core/std/vec.h>
+#include <oa/core/std/vector.h>
 
 namespace oa {
 
@@ -29,10 +29,10 @@ public:
 	void train(const char* inText, oa::I32 inNumMerges);
 
 	/// Encode text to BPE tokens
-	[[nodiscard]] oa::Vec<oa::I32> encode(const char* inText) const;
+	[[nodiscard]] oa::Vector<oa::I32> encode(const char* inText) const;
 
 	/// Decode BPE tokens back to text
-	[[nodiscard]] oa::String decode(const oa::Vec<oa::I32>& inTokens) const;
+	[[nodiscard]] oa::String decode(const oa::Vector<oa::I32>& inTokens) const;
 
 	/// Persist/load the learned merge ranks. The format is deterministic and
 	/// architecture-independent so a training checkpoint can ship its text vocab.
@@ -40,7 +40,7 @@ public:
 	[[nodiscard]] oa::Status load(const oa::String& inPath);
 
 	/// Encode prompt with padding to context length
-	[[nodiscard]] oa::Vec<oa::I32> encodePrompt(const char* inPrompt, oa::I32 inContextLen) const;
+	[[nodiscard]] oa::Vector<oa::I32> encodePrompt(const char* inPrompt, oa::I32 inContextLen) const;
 
 	/// get current vocabulary size
 	[[nodiscard]] oa::I32 vocabSize() const { return 256 + static_cast<oa::I32>(merges_.size()); }
@@ -49,14 +49,14 @@ public:
 	[[nodiscard]] oa::I32 numMerges() const { return static_cast<oa::I32>(merges_.size()); }
 
 private:
-	[[nodiscard]] static oa::Vec<oa::I32> applyMerge(
-		const oa::Vec<oa::I32>& inIds, const Merge& inMerge, oa::I32 inNewToken);
+	[[nodiscard]] static oa::Vector<oa::I32> applyMerge(
+		const oa::Vector<oa::I32>& inIds, const Merge& inMerge, oa::I32 inNewToken);
 	void appendDecoded(oa::I32 inToken, oa::String& outText) const;
 
 	oa::I32 targetVocab_;
 	// Merge rank i creates token 256+i. Operands are full token IDs, not bytes:
 	// later merges may legally reference earlier learned tokens.
-	oa::Vec<Merge> merges_;
+	oa::Vector<Merge> merges_;
 };
 
 // Legacy alias — remove once call sites are migrated.

@@ -123,7 +123,7 @@ oa::Matrix oa::Rnn::forward(const oa::Matrix& inInput) {
 			layerInput = scan.out;
 		} else {
 			auto hidden = layers_[layerIndex]->zeroState(batch);
-			oa::Vec<oa::Matrix> outputs;
+			oa::Vector<oa::Matrix> outputs;
 			outputs.reserve(seqLen);
 			for (oa::I32 time = 0; time < seqLen; ++time) {
 				hidden = layers_[layerIndex]->stepWithGi(

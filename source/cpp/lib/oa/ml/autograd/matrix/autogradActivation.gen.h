@@ -15,35 +15,35 @@ namespace oa {
 
 class GradGelu final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() > 0) outDIn[0] = oa::FnMatrix::geluBwd(saved(0), inDOut);
 	}
 };
 
 class GradSilu final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() > 0) outDIn[0] = oa::FnMatrix::siluBwd(saved(0), inDOut);
 	}
 };
 
 class GradRelu final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() > 0) outDIn[0] = oa::FnMatrix::reluBwd(saved(0), inDOut);
 	}
 };
 
 class GradTanh final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() > 0) outDIn[0] = oa::FnMatrix::tanhBwd(saved(0), inDOut);
 	}
 };
 
 class GradSigmoid final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() > 0) outDIn[0] = oa::FnMatrix::sigmoidBwd(saved(0), inDOut);
 	}
 };
@@ -51,7 +51,7 @@ public:
 class GradLeakyRelu final : public oa::GradNode {
 public:
 	explicit GradLeakyRelu(oa::F32 inAlpha) noexcept : alpha_(inAlpha) {}
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() > 0) outDIn[0] = oa::FnMatrix::leakyReluBwd(saved(0), inDOut, alpha_);
 	}
 	oa::F32 alpha_;
@@ -60,7 +60,7 @@ public:
 class GradElu final : public oa::GradNode {
 public:
 	explicit GradElu(oa::F32 inAlpha) noexcept : alpha_(inAlpha) {}
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() > 0) outDIn[0] = oa::FnMatrix::eluBwd(saved(0), inDOut, alpha_);
 	}
 	oa::F32 alpha_;
@@ -68,14 +68,14 @@ public:
 
 class GradMish final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() > 0) outDIn[0] = oa::FnMatrix::mishBwd(saved(0), inDOut);
 	}
 };
 
 class GradSoftplus final : public oa::GradNode {
 public:
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (outDIn.size() > 0) outDIn[0] = oa::FnMatrix::softplusBwd(saved(0), inDOut);
 	}
 };

@@ -3,7 +3,7 @@
 #include <anim/poseClip.h>
 
 TEST(PoseClip, BinaryRoundTripAndTxtExport) {
-	oa::Vec<oa::F32> samples;
+	oa::Vector<oa::F32> samples;
 	constexpr oa::U32 kFrames = 3;
 	constexpr oa::U32 kPoseDim = 5;
 	for (oa::U32 i = 0; i < kFrames * kPoseDim; ++i) {

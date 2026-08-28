@@ -26,7 +26,7 @@
 #pragma once
 
 #include <oa/core/types.h>
-#include <oa/runtime/oaVk.h>
+#include <vulkan/vulkan_core.h>
 
 
 namespace oa {
@@ -47,22 +47,22 @@ struct Swapchain {
 	VkSwapchainKHR            handle        = VK_NULL_HANDLE;
 	VkFormat                  format        = VK_FORMAT_UNDEFINED;
 	VkExtent2D                extent        = {};
-	oa::Vec<VkImage>      images;
-	oa::Vec<VkImageView>  views;
+	oa::Vector<VkImage>      images;
+	oa::Vector<VkImageView>  views;
 	bool                      presentReady  = false;
 
 	// ─── Per-frame-in-flight sync ────────────────────────────────────────────
 	// Sized kFramesInFlight after BuildSyncObjects. frameIndex_ cycles
 	// 0..kFramesInFlight-1 on every successful present.
 	int                       frameIndex    = 0;
-	oa::Vec<VkSemaphore>  imageAvailSem;
-	oa::Vec<VkSemaphore>  renderDoneSem;
-	oa::Vec<VkFence>      inFlightFence;
+	oa::Vector<VkSemaphore>  imageAvailSem;
+	oa::Vector<VkSemaphore>  renderDoneSem;
+	oa::Vector<VkFence>      inFlightFence;
 	// Optional VK_KHR/EXT_swapchain_maintenance1 fences. Unlike inFlightFence,
 	// these retire presentation-engine access to the swapchain image and the
 	// RenderDone semaphore. pending tracks fences currently owned by a present.
-	oa::Vec<VkFence>      presentFence;
-	oa::Vec<bool>         presentFencePending;
+	oa::Vector<VkFence>      presentFence;
+	oa::Vector<bool>         presentFencePending;
 	// A failed vkQueuePresentKHR may leave completion ownership ambiguous. The
 	// rare recovery path falls back to a queue drain before destroying WSI state.
 	bool                      presentCompletionUncertain = false;

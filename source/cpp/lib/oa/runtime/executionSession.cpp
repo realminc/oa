@@ -232,8 +232,8 @@ oa::Result<oa::U32> oa::ExecutionSession::recordOp(
 		return fail(oa::Status::error(oa::StatusCode::InvalidArgument,
 			"execution session semantic operation requires a named contract"));
 	}
-	oa::Vec<oa::U32> inputs;
-	oa::Vec<oa::U32> outputs;
+	oa::Vector<oa::U32> inputs;
+	oa::Vector<oa::U32> outputs;
 	inputs.reserve(inInputs.size());
 	outputs.reserve(inOutputs.size());
 	for (oa::U32 index = 0; index < inInputs.size(); ++index) {
@@ -394,9 +394,9 @@ oa::Status oa::ExecutionSession::recordView(
 
 oa::Status oa::ExecutionSession::snapshotSemanticBindings(
 	oa::Span<const oa::Matrix* const> inObservedOutputs,
-	oa::Vec<oa::SemanticStorageBinding>& outBindings,
-	oa::Vec<oa::CapturedResourceDesc>& outResourceDescs,
-	oa::Vec<oa::SharedPtr<oavk::Buffer>>& outResources) const
+	oa::Vector<oa::SemanticStorageBinding>& outBindings,
+	oa::Vector<oa::CapturedResourceDesc>& outResourceDescs,
+	oa::Vector<oa::SharedPtr<oavk::Buffer>>& outResources) const
 {
 	outBindings.clear();
 	outResourceDescs.clear();
@@ -658,7 +658,7 @@ oa::Status oa::ExecutionSession::failRecording_(const oa::Status& inFailure) {
 }
 
 oa::ExecutionSession::BatchBufferState* oa::ExecutionSession::findBatchBufferState(
-	oa::Vec<BatchBufferState>& inStates, const oavk::Buffer& inBuffer)
+	oa::Vector<BatchBufferState>& inStates, const oavk::Buffer& inBuffer)
 {
 	for (auto& state : inStates) {
 		if (state.buffer.synchronizationIdentity()
@@ -668,7 +668,7 @@ oa::ExecutionSession::BatchBufferState* oa::ExecutionSession::findBatchBufferSta
 }
 
 void oa::ExecutionSession::mergeBatchBufferState(
-	oa::Vec<BatchBufferState>& inStates,
+	oa::Vector<BatchBufferState>& inStates,
 	const oavk::Buffer& inBuffer,
 	oa::Bool inRead,
 	oa::Bool inWrite,
@@ -694,7 +694,7 @@ oa::U32 oa::ExecutionSession::emitBatchBoundaryBarriers(
 	// Secondary command buffers do not create dependencies between themselves.
 	// Carry exact buffer access state across graph boundaries so the primary
 	// emits only real RAW/WAR/WAW barriers and leaves unrelated work independent.
-	oa::Vec<BatchBufferState> incoming;
+	oa::Vector<BatchBufferState> incoming;
 	for (const auto& node : inIncoming.nodes()) {
 		for (oa::U32 i = 0; i < static_cast<oa::U32>(node.buffers.size()); ++i) {
 			mergeBatchBufferState(
@@ -706,8 +706,8 @@ oa::U32 oa::ExecutionSession::emitBatchBoundaryBarriers(
 		}
 	}
 
-	oa::Vec<VkBufferMemoryBarrier2> barriers;
-	oa::Vec<VkMemoryBarrier2> aliasBarriers;
+	oa::Vector<VkBufferMemoryBarrier2> barriers;
+	oa::Vector<VkMemoryBarrier2> aliasBarriers;
 	for (const auto& current : incoming) {
 		auto* previous = findBatchBufferState(batchBufferStates_, current.buffer);
 		if (not previous) continue;
@@ -900,7 +900,7 @@ void oa::ExecutionSession::retirePendingBatch_() {
 		pendingEvent_ = {};
 		return;
 	}
-	oa::Vec<oa::UniquePtr<oa::ExecutableGraph>> graphs;
+	oa::Vector<oa::UniquePtr<oa::ExecutableGraph>> graphs;
 	for (auto* graph : deferredGraphs_) {
 		graphs.pushBack(oa::UniquePtr<oa::ExecutableGraph>(graph));
 	}

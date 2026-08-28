@@ -28,7 +28,7 @@ struct TutorialCartPolePpo::Impl {
 	oa::Engine* engine = nullptr;
 	TutorialCartPolePpoConfig config;
 	oa::UniquePtr<oa::CategoricalActorCritic> model;
-	oa::Vec<oa::Parameter*> parameters;
+	oa::Vector<oa::Parameter*> parameters;
 	oa::AdamW optimizer;
 	oa::CartPole environment;
 	oa::UniquePtr<oa::PpoTrainer> trainer;
@@ -192,7 +192,7 @@ oa::Result<TutorialCartPoleSnapshot> TutorialCartPolePpo::snapshotLane(
 		return oa::Status::error(
 			oa::StatusCode::FailedPrecondition, "CartPole runtime is unavailable");
 	}
-	oa::Vec<oa::F32> values(static_cast<oa::Usize>(state.numElements()));
+	oa::Vector<oa::F32> values(static_cast<oa::Usize>(state.numElements()));
 	const auto readback = oa::FnMatrix::copyToHost(
 		state, values.data(), values.size() * sizeof(oa::F32));
 	if (readback.isError()) {

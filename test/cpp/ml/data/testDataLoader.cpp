@@ -6,7 +6,7 @@
 namespace {
 
 oa::Matrix u8Matrix(std::initializer_list<oa::U8> inValues, oa::MatrixShape inShape) {
-	oa::Vec<oa::U8> values;
+	oa::Vector<oa::U8> values;
 	values.reserve(inValues.size());
 	for (oa::U8 value : inValues) values.pushBack(value);
 	return oa::FnMatrix::fromBytes(

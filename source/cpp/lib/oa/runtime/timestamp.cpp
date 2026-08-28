@@ -3,7 +3,7 @@
 #include <oa/runtime/engine.h>
 #include <oa/runtime/device.h>
 #include <oa/runtime/stream.h>
-#include <oa/runtime/oaVk.h>
+#include <vkl/vkl.h>
 
 oa::Result<oavk::Timestamp> oavk::Timestamp::create(oa::Engine &inRt, oa::U32 inMaxQueries) {
 	oavk::Timestamp ts;

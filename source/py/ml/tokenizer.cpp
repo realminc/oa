@@ -8,11 +8,11 @@
 
 namespace {
 
-std::vector<oa::I32> toStdVector(const oa::Vec<oa::I32>& values) {
+std::vector<oa::I32> toStdVector(const oa::Vector<oa::I32>& values) {
 	return {values.begin(), values.end()};
 }
 
-oa::Vec<oa::I32> toOaVector(const std::vector<oa::I32>& values) {
+oa::Vector<oa::I32> toOaVector(const std::vector<oa::I32>& values) {
 	return {values.begin(), values.end()};
 }
 

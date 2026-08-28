@@ -279,7 +279,7 @@ oa::Matrix oa::NlpSuiteModel::forwardGenerationStep(const oa::Matrix& inToken) {
 oa::Matrix oa::NlpSuiteModel::positionIds(oa::I32 inBatch, oa::I32 inSequence) const {
 	const oa::Usize count = static_cast<oa::Usize>(inBatch) *
 		static_cast<oa::Usize>(inSequence);
-	oa::Vec<oa::I32> ids(count);
+	oa::Vector<oa::I32> ids(count);
 	for (oa::Usize index = 0; index < ids.size(); ++index) {
 		ids[index] = static_cast<oa::I32>(index % static_cast<oa::Usize>(inSequence));
 	}
@@ -308,8 +308,8 @@ void oa::NlpSuiteSampler::next(oa::Matrix& outInput, oa::Matrix& outTarget) {
 	const oa::I32 contextLength = recipe_.contextLength();
 	const oa::Usize count = static_cast<oa::Usize>(batchSize_) *
 		static_cast<oa::Usize>(contextLength);
-	oa::Vec<oa::I32> input(count);
-	oa::Vec<oa::I32> target(count);
+	oa::Vector<oa::I32> input(count);
+	oa::Vector<oa::I32> target(count);
 	const oa::I64 limit = static_cast<oa::I64>(tokens_.size()) - contextLength - 1;
 	lastSourceUnits_ = 0;
 	for (oa::I32 batch = 0; batch < batchSize_; ++batch) {
@@ -330,12 +330,12 @@ void oa::NlpSuiteSampler::next(oa::Matrix& outInput, oa::Matrix& outTarget) {
 	outTarget = toMatrix(target, batchSize_);
 }
 
-oa::Vec<oa::I32> oa::NlpSuiteSampler::encode(const char* inText) const {
+oa::Vector<oa::I32> oa::NlpSuiteSampler::encode(const char* inText) const {
 	if (recipe_.tokenizer() == oa::NlpTokenizerKind::Bpe) {
 		return bpeTokenizer_.encode(inText);
 	}
 	const oa::Usize length = std::strlen(inText);
-	oa::Vec<oa::I32> tokens(length);
+	oa::Vector<oa::I32> tokens(length);
 	for (oa::Usize index = 0; index < length; ++index) {
 		tokens[index] = recipe_.tokenizer() == oa::NlpTokenizerKind::Char
 			? encodeChar(inText[index])
@@ -344,7 +344,7 @@ oa::Vec<oa::I32> oa::NlpSuiteSampler::encode(const char* inText) const {
 	return tokens;
 }
 
-oa::String oa::NlpSuiteSampler::decode(const oa::Vec<oa::I32>& inTokens) const {
+oa::String oa::NlpSuiteSampler::decode(const oa::Vector<oa::I32>& inTokens) const {
 	if (recipe_.tokenizer() == oa::NlpTokenizerKind::Bpe) {
 		return bpeTokenizer_.decode(inTokens);
 	}
@@ -359,7 +359,7 @@ oa::String oa::NlpSuiteSampler::decode(const oa::Vec<oa::I32>& inTokens) const {
 	return text;
 }
 
-oa::Matrix oa::NlpSuiteSampler::inputMatrix(const oa::Vec<oa::I32>& inTokens) const {
+oa::Matrix oa::NlpSuiteSampler::inputMatrix(const oa::Vector<oa::I32>& inTokens) const {
 	const oa::I64 contextLength = recipe_.contextLength();
 	const oa::I32 batchSize = static_cast<oa::I32>(
 		static_cast<oa::I64>(inTokens.size()) / contextLength);
@@ -402,14 +402,14 @@ oa::String oa::NlpSuiteSampler::decodeChar(oa::I32 inToken) const {
 
 oa::I32 oa::NlpSuiteSampler::tokenSourceUnits(oa::I32 inToken) const {
 	if (recipe_.tokenizer() == oa::NlpTokenizerKind::Bpe) {
-		oa::Vec<oa::I32> token{inToken};
+		oa::Vector<oa::I32> token{inToken};
 		return static_cast<oa::I32>(bpeTokenizer_.decode(token).size());
 	}
 	return 1;
 }
 
 oa::Matrix oa::NlpSuiteSampler::toMatrix(
-	const oa::Vec<oa::I32>& inTokens,
+	const oa::Vector<oa::I32>& inTokens,
 	oa::I32 inBatchSize) const {
 	const oa::MatrixShape shape{inBatchSize, recipe_.contextLength()};
 	return oa::FnMatrix::fromInt32(

@@ -147,7 +147,7 @@ oa::Status oa::VideoRecorder::writeRgba(
 			"oa::VideoRecorder frame extent does not match its fixed encode profile");
 	}
 	OA_RETURN_IF_ERROR(setFirstVideoPts_(inPts));
-	oa::Vec<oa::EncodedVideoPacket> ready;
+	oa::Vector<oa::EncodedVideoPacket> ready;
 	OA_RETURN_IF_ERROR(oa::VideoEncoderAccess::submitRgba(encoder_,
 		inRgba, inWidth, inHeight, inPts, ready,
 		config_.colorSpace, config_.fullRange));
@@ -179,7 +179,7 @@ oa::Status oa::VideoRecorder::writeAsync(
 	OA_RETURN_IF_ERROR(setFirstVideoPts_(inFrame.presentationTimestamp));
 	const oa::YCbCrModel colorSpace = inFrame.colorSpace == oa::YCbCrModel::Auto
 		? config_.colorSpace : inFrame.colorSpace;
-	oa::Vec<oa::EncodedVideoPacket> ready;
+	oa::Vector<oa::EncodedVideoPacket> ready;
 	if (inFrame.resource == oa::VideoFrameResource::Buffer and inFrame.buffer != nullptr
 		and inFrame.isRgb and inFrame.format == VK_FORMAT_R8G8B8A8_UNORM) {
 		OA_RETURN_IF_ERROR(oa::VideoEncoderAccess::submitRgba(encoder_,
@@ -228,7 +228,7 @@ oa::Status oa::VideoRecorder::write(const oa::Texture& inTexture,	oa::U64 inPts)
 	return write(*frame);
 }
 
-oa::Status oa::VideoRecorder::writeAudioPackets_(oa::Vec<oa::EncodedAudioPacket>& inPackets)
+oa::Status oa::VideoRecorder::writeAudioPackets_(oa::Vector<oa::EncodedAudioPacket>& inPackets)
 {
 	for (const auto& packet : inPackets) {
 		OA_RETURN_IF_ERROR(muxer_.writeAudioPacket(packet));
@@ -258,7 +258,7 @@ oa::Status oa::VideoRecorder::writeAudioAligned_(
 	if (desiredStart > static_cast<oa::I64>(nextAudioFrame_)) {
 		const oa::U64 gapFrames = static_cast<oa::U64>(desiredStart) - nextAudioFrame_;
 		audioScratch_.resize(static_cast<oa::Usize>(gapFrames * channels), 0.0F);
-		oa::Vec<oa::EncodedAudioPacket> packets;
+		oa::Vector<oa::EncodedAudioPacket> packets;
 		OA_RETURN_IF_ERROR(audioEncoder_.encode(
 			oa::Span<const oa::F32>(audioScratch_.data(), audioScratch_.size()), packets));
 		OA_RETURN_IF_ERROR(writeAudioPackets_(packets));
@@ -268,7 +268,7 @@ oa::Status oa::VideoRecorder::writeAudioAligned_(
 	const oa::U64 acceptedFrames = inputFrames - trimFrames;
 	const oa::Usize sampleOffset = static_cast<oa::Usize>(trimFrames * channels);
 	const oa::Usize sampleCount = static_cast<oa::Usize>(acceptedFrames * channels);
-	oa::Vec<oa::EncodedAudioPacket> packets;
+	oa::Vector<oa::EncodedAudioPacket> packets;
 	OA_RETURN_IF_ERROR(audioEncoder_.encode(
 		oa::Span<const oa::F32>(inInterleaved.data() + sampleOffset, sampleCount), packets));
 	OA_RETURN_IF_ERROR(writeAudioPackets_(packets));
@@ -334,14 +334,14 @@ oa::Status oa::VideoRecorder::finalize() {
 		return oa::Status::error(oa::StatusCode::FailedPrecondition,
 			"oa::VideoRecorder was not created");
 	}
-	oa::Vec<oa::EncodedVideoPacket> remaining;
+	oa::Vector<oa::EncodedVideoPacket> remaining;
 	OA_RETURN_IF_ERROR(encoder_.flush(remaining));
 	for (const auto& frame : remaining) {
 		OA_RETURN_IF_ERROR(writeEncoded_(frame));
 	}
 	if (config_.audioEnabled && audioEncoder_.isOpen()) {
 		if (!hasFirstVideoPts_) pendingAudio_.clear();
-		oa::Vec<oa::EncodedAudioPacket> audioPackets;
+		oa::Vector<oa::EncodedAudioPacket> audioPackets;
 		OA_RETURN_IF_ERROR(audioEncoder_.flush(audioPackets));
 		OA_RETURN_IF_ERROR(writeAudioPackets_(audioPackets));
 	}

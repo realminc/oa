@@ -7,7 +7,7 @@
 
 #include <oa/core/types.h>
 #include <oa/core/status.h>
-#include <oa/runtime/oaVk.h>
+#include <vulkan/vulkan_core.h>
 
 namespace oa {
 

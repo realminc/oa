@@ -1,6 +1,6 @@
 #include <oa/runtime/sync.h>
 #include <oa/runtime/device.h>
-#include <oa/runtime/oaVk.h>
+#include <vkl/vkl.h>
 
 // ─── oavk::Fence ──────────────────────────────────────────────────────────────
 

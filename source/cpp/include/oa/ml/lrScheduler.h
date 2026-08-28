@@ -148,14 +148,14 @@ private:
 
 class SequentialScheduler : public LRScheduler {
 public:
-	SequentialScheduler(oa::Vec<oa::SharedPtr<LRScheduler>> inSchedulers, oa::Vec<oa::U64> inMilestones)
+	SequentialScheduler(oa::Vector<oa::SharedPtr<LRScheduler>> inSchedulers, oa::Vector<oa::U64> inMilestones)
 		: schedulers_(oa::move(inSchedulers)), milestones_(oa::move(inMilestones)) {}
 
 	[[nodiscard]] oa::F32 getLr(oa::U64 inStep) const override;
 
 private:
-	oa::Vec<oa::SharedPtr<LRScheduler>> schedulers_;
-	oa::Vec<oa::U64> milestones_;
+	oa::Vector<oa::SharedPtr<LRScheduler>> schedulers_;
+	oa::Vector<oa::U64> milestones_;
 };
 
 // ─── LinearWarmupCosineScheduler ─────────────────────────────────────────────

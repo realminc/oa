@@ -32,7 +32,7 @@ public:
 class SatelliteNamedRequest {
 public:
 	oa::String operation;
-	oa::Vec<SatelliteObjectView> inputs;
+	oa::Vector<SatelliteObjectView> inputs;
 	oa::Span<const oa::Byte> arguments;
 	oa::U64 expectedVersion = 0;
 	oa::Array<oa::Byte, 32> expectedHash{};
@@ -42,9 +42,9 @@ class SatelliteNamedResult {
 public:
 	oa::U64 version = 0;
 	oa::ScalarType dtype = oa::ScalarType::UInt8;
-	oa::Vec<oa::I64> shape;
-	oa::Vec<oa::Byte> data;
-	oa::Vec<oa::Byte> profile;
+	oa::Vector<oa::I64> shape;
+	oa::Vector<oa::Byte> data;
+	oa::Vector<oa::Byte> profile;
 	oa::Event completion;
 };
 
@@ -92,7 +92,7 @@ public:
 	oa::String deviceName = "CPU oracle";
 	// Empty disables application work. The session admits only names in this
 	// bounded list; the handler is never invoked by poll, cancel, or disconnect.
-	oa::Vec<oa::String> namedOperations;
+	oa::Vector<oa::String> namedOperations;
 	SatelliteNamedWorkFn namedWork;
 };
 
@@ -191,11 +191,11 @@ public:
 
 	[[nodiscard]] static oa::Result<oa::U32> readCpuAddResult(
 		const SatelliteMessage& inMessage);
-	[[nodiscard]] static oa::Result<oa::Vec<oa::F32>> readF32Result(
+	[[nodiscard]] static oa::Result<oa::Vector<oa::F32>> readF32Result(
 		const SatelliteMessage& inMessage);
-	[[nodiscard]] static oa::Result<oa::Vec<oa::Byte>> readBytesResult(
+	[[nodiscard]] static oa::Result<oa::Vector<oa::Byte>> readBytesResult(
 		const SatelliteMessage& inMessage);
-	[[nodiscard]] static oa::Result<oa::Vec<oa::Byte>> readProfile(
+	[[nodiscard]] static oa::Result<oa::Vector<oa::Byte>> readProfile(
 		const SatelliteMessage& inMessage);
 
 private:
@@ -207,7 +207,7 @@ private:
 		oa::Span<const oa::Byte> inData);
 	[[nodiscard]] oa::Result<SatelliteMessage> exchange(
 		SatelliteMessageType inType,
-		oa::Vec<SatelliteField> inFields);
+		oa::Vector<SatelliteField> inFields);
 
 	TcpStream stream_;
 	SatelliteProbe probe_;

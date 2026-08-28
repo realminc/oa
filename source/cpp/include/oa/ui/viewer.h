@@ -10,7 +10,7 @@
 #include <oa/core/constant.h>
 #include <oa/core/status.h>
 #include <oa/core/types.h>
-#include <oa/runtime/oaVk.h>
+#include <vulkan/vulkan_core.h>
 #include <oa/runtime/event.h>
 #include <oa/ui/detectionOverlay.h>
 #include <oa/ui/image.h>
@@ -134,7 +134,7 @@ struct ViewerConfig {
 
 	// Optional normalized CV annotations rendered without reading back or
 	// replacing the source frame.
-	oa::Vec<DetectionOverlayItem> annotations;
+	oa::Vector<DetectionOverlayItem> annotations;
 	DetectionOverlayConfig annotationStyle;
 
 	// keyboard shortcuts.

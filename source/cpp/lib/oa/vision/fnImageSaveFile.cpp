@@ -18,7 +18,7 @@
 #include <oa/runtime/executionSession.h>
 #include <oa/runtime/allocator.h>
 #include <oa/core/log.h>
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
 #include <oa/core/std/cString.h>
 #include <oa/core/std/limits.h>
 
@@ -200,7 +200,7 @@ oa::Status saveTextureFileReady(
 			oa::StatusCode::FailedPrecondition,
 			"oa::FnImage::saveTextureFile: texture buffer smaller than W*H*4");
 	}
-	oa::Vec<oa::U8> pixels;
+	oa::Vector<oa::U8> pixels;
 	pixels.resize(static_cast<oa::Usize>(bytes));
 	OA_RETURN_IF_ERROR(oa::EngineResourceAccess::readbackBuffer(
 		inEngine, *buffer, 0U, pixels.data(), bytes));

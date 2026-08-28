@@ -1,7 +1,7 @@
 #include <oa/core/log.h>
 #include <oa/core/envFlag.h>
 #include <oa/runtime/device.h>
-#include <oa/runtime/oaVk.h>
+#include <vkl/vkl.h>
 #include <oa/runtime/instance.h>
 #include <oa/runtime/bindless.h>
 #include "deviceBuilder.h"
@@ -142,7 +142,7 @@ static DeviceInfoLogMode defaultDeviceInfoLogMode() {
 
 
 oa::U64 oavk::physicalDeviceLocalHeapBytes(
-	const OaVkInstanceTable& inDispatch,
+	const VklInstanceTable& inDispatch,
 	void* inPhysicalDevice)
 {
 	VkPhysicalDevice phys = static_cast<VkPhysicalDevice>(inPhysicalDevice);
@@ -159,7 +159,7 @@ oa::U64 oavk::physicalDeviceLocalHeapBytes(
 
 
 void oavk::logPhysicalDeviceSurvey(
-	const OaVkInstanceTable& inDispatch,
+	const VklInstanceTable& inDispatch,
 	oa::U32 inCount,
 	void* const* inPhysicalDevices,
 	oa::DeviceType inPreferred)
@@ -208,7 +208,7 @@ void oavk::logPhysicalDeviceSurvey(
 // oavk::planDeviceQueues — shared by the device builders
 // ------------------------------------------------------------
 oa::Status oavk::planDeviceQueues(
-	const OaVkInstanceTable& inDispatch,
+	const VklInstanceTable& inDispatch,
 	VkPhysicalDevice  inPhys,
 	VkSurfaceKHR      inSurface,
 	oavk::QueuePlan&    outPlan,
@@ -216,7 +216,7 @@ oa::Status oavk::planDeviceQueues(
 {
 	oa::U32 qfCount = 0;
 	inDispatch.vkGetPhysicalDeviceQueueFamilyProperties(inPhys, &qfCount, nullptr);
-	oa::Vec<VkQueueFamilyProperties> qfProps(qfCount);
+	oa::Vector<VkQueueFamilyProperties> qfProps(qfCount);
 	inDispatch.vkGetPhysicalDeviceQueueFamilyProperties(
 		inPhys, &qfCount, qfProps.data());
 
@@ -239,7 +239,7 @@ oa::Status oavk::planDeviceQueues(
 	const bool wantSurface  = (inSurface != VK_NULL_HANDLE);
 	const bool wantGraphics = wantSurface or inNeedsGraphics;
 
-	oa::Vec<VkBool32> presentSupport;
+	oa::Vector<VkBool32> presentSupport;
 	if (wantSurface) {
 		if (!inDispatch.vkGetPhysicalDeviceSurfaceSupportKHR) {
 			return oa::Status::error(
@@ -365,8 +365,8 @@ oa::Status oavk::planDeviceQueues(
 	// ops on the plan so decoder create() can verify codec support.
 	{
 		oa::U32 qf2Count = qfCount;
-		oa::Vec<VkQueueFamilyProperties2> qfProps2(qf2Count);
-		oa::Vec<VkQueueFamilyVideoPropertiesKHR> videoProps(qf2Count);
+		oa::Vector<VkQueueFamilyProperties2> qfProps2(qf2Count);
+		oa::Vector<VkQueueFamilyVideoPropertiesKHR> videoProps(qf2Count);
 		for (oa::U32 idx = 0; idx < qf2Count; ++idx) {
 			videoProps[idx] = {};
 			videoProps[idx].sType = VK_STRUCTURE_TYPE_QUEUE_FAMILY_VIDEO_PROPERTIES_KHR;
@@ -421,7 +421,7 @@ oa::Status oavk::planDeviceQueues(
 	outPlan.hasAsync         = (outPlan.asyncComputeQF != UINT32_MAX) || outPlan.computeHasMultiQueue;
 	outPlan.mainComputeCount = (outPlan.computeHasMultiQueue && outPlan.asyncComputeQF == UINT32_MAX) ? 2 : 1;
 
-	oa::Vec<oa::U32> need;
+	oa::Vector<oa::U32> need;
 	need.resize(qfCount);
 	for (oa::U32 idx = 0; idx < qfCount; ++idx) need[idx] = 0;
 
@@ -528,16 +528,17 @@ oa::Result<oavk::Device> oavk::Device::create(
 	oa::U32                      inAppVersionPatch,
 	oa::Span<const char* const>  inInstanceExtraExtensions,
 	oa::Bool                     inHintNeedsPresentation,
-	oa::Bool                     inHintNeedsGraphics
+	oa::Bool                     inHintNeedsGraphics,
+	PFN_vkGetInstanceProcAddr    inCustomLoader
 ) {
 	auto instRes = oavk::Instance::createInstance(
 		inAppName, inAppVersionPatch, inEnableValidation,
-		inInstanceExtraExtensions, inHintNeedsPresentation);
+		inInstanceExtraExtensions, inHintNeedsPresentation, inCustomLoader);
 	if (!instRes.isOk()) return oa::Result<oavk::Device>(instRes.getStatus());
 
 	VkInstance instance = oa::move(instRes).getValue();
-	OaVkInstanceTable instanceDispatch{};
-	oaVkLoadInstanceTable(&instanceDispatch, instance);
+	VklInstanceTable instanceDispatch{};
+	vklLoadInstanceTable(&instanceDispatch, instance);
 	if (instanceDispatch.vkEnumeratePhysicalDevices == nullptr) {
 		oavk::Instance::destroyInstance(instanceDispatch, instance);
 		return oa::Status::error(
@@ -552,7 +553,7 @@ oa::Result<oavk::Device> oavk::Device::create(
 		return oa::Status::error(oa::StatusCode::DeviceNotFound, "no vulkan physical devices");
 	}
 
-	oa::Vec<VkPhysicalDevice> physDevices(devCount);
+	oa::Vector<VkPhysicalDevice> physDevices(devCount);
 	instanceDispatch.vkEnumeratePhysicalDevices(
 		instance, &devCount, physDevices.data());
 

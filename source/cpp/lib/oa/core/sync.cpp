@@ -173,9 +173,9 @@ bool oa::Condition::waitFor(
 	OA_REQUIRE(inLock.owns_ && inLock.lock_ != nullptr);
 	if (inDuration.nanoseconds() <= 0) return false;
 #if defined(_WIN32)
-	const oa::I64 milliseconds =
-		(inDuration.nanoseconds() + 999'999LL) / 1'000'000LL;
-	const DWORD timeout = milliseconds >= static_cast<oa::I64>(INFINITE - 1U)
+	const oa::U64 durationNanos = static_cast<oa::U64>(inDuration.nanoseconds());
+	const oa::U64 milliseconds = (durationNanos + 999'999ULL) / 1'000'000ULL;
+	const DWORD timeout = milliseconds >= static_cast<oa::U64>(INFINITE - 1U)
 		? INFINITE - 1U : static_cast<DWORD>(milliseconds);
 	if (SleepConditionVariableSRW(
 		native<NativeCondition>(storage_),
@@ -194,12 +194,35 @@ bool oa::Condition::waitFor(
 		OA_REQUIRE(clock_gettime(CLOCK_REALTIME, &deadline) == 0);
 	#endif
 	const oa::I64 durationNanos = inDuration.nanoseconds();
-	deadline.tv_sec += static_cast<time_t>(durationNanos / 1'000'000'000LL);
-	deadline.tv_nsec += static_cast<long>(durationNanos % 1'000'000'000LL);
-	if (deadline.tv_nsec >= 1'000'000'000L) {
-		++deadline.tv_sec;
-		deadline.tv_nsec -= 1'000'000'000L;
+	OA_REQUIRE(deadline.tv_nsec >= 0 and deadline.tv_nsec < 1'000'000'000L);
+	if constexpr (static_cast<time_t>(-1) > static_cast<time_t>(0)) {
+		OA_REQUIRE(deadline.tv_sec <= static_cast<time_t>(oa::Limits<oa::I64>::max()));
+	} else if constexpr (sizeof(time_t) > sizeof(oa::I64)) {
+		OA_REQUIRE(deadline.tv_sec >= static_cast<time_t>(oa::Limits<oa::I64>::min()));
+		OA_REQUIRE(deadline.tv_sec <= static_cast<time_t>(oa::Limits<oa::I64>::max()));
 	}
+	const oa::I64 currentSeconds = static_cast<oa::I64>(deadline.tv_sec);
+	OA_REQUIRE(static_cast<time_t>(currentSeconds) == deadline.tv_sec);
+	oa::I64 deadlineSeconds = oa::detail::checkedI64Add(
+		currentSeconds,
+		durationNanos / 1'000'000'000LL,
+		"Condition deadline seconds overflow");
+	oa::I64 deadlineNanoseconds = oa::detail::checkedI64Add(
+		static_cast<oa::I64>(deadline.tv_nsec),
+		durationNanos % 1'000'000'000LL,
+		"Condition deadline nanoseconds overflow");
+	if (deadlineNanoseconds >= 1'000'000'000LL) {
+		deadlineSeconds = oa::detail::checkedI64Add(
+			deadlineSeconds, 1, "Condition deadline seconds overflow");
+		deadlineNanoseconds -= 1'000'000'000LL;
+	}
+	if constexpr (static_cast<time_t>(-1) > static_cast<time_t>(0)) {
+		OA_REQUIRE(deadlineSeconds >= 0);
+	}
+	deadline.tv_sec = static_cast<time_t>(deadlineSeconds);
+	OA_REQUIRE(static_cast<oa::I64>(deadline.tv_sec) == deadlineSeconds);
+	deadline.tv_nsec = static_cast<long>(deadlineNanoseconds);
+	OA_REQUIRE(static_cast<oa::I64>(deadline.tv_nsec) == deadlineNanoseconds);
 	const int result = pthread_cond_timedwait(
 		native<NativeCondition>(storage_),
 		native<NativeMutex>(inLock.lock_->storage_),

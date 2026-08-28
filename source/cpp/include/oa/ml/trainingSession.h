@@ -101,7 +101,7 @@ struct TrainingSnapshot {
   oa::F32 loss = 0.0F;
   oa::F64 gpuMs = 0.0;
   oa::F64 wallMs = 0.0;
-  oa::Vec<TrainingMetricSample> metrics;
+  oa::Vector<TrainingMetricSample> metrics;
 };
 
 struct TrainingParameterDesc {
@@ -176,9 +176,9 @@ public:
   // Non-destructive bounded result view for independent observers such as a
   // viewer and MCP client. results older than the configured ring capacity may
   // have been dropped; callers advance their own sequence cursor.
-  [[nodiscard]] oa::Vec<TrainingCommandResult>
+  [[nodiscard]] oa::Vector<TrainingCommandResult>
   resultsAfter(oa::U64 inSequence) const;
-  [[nodiscard]] oa::Vec<TrainingCommandResult> takeResults();
+  [[nodiscard]] oa::Vector<TrainingCommandResult> takeResults();
 
   // Called by oa::ItTraining after a completed step/reset/finish. Public for
   // custom iterator adapters, but ordinary callers do not invoke these.

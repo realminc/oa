@@ -1,5 +1,6 @@
 #include "oaStdTest.h"
 
+#include <stdexcept>
 #include <type_traits>
 #include <variant>
 
@@ -24,6 +25,51 @@ struct TrackedVariantValue {
 	}
 	TrackedVariantValue& operator=(TrackedVariantValue&&) noexcept = default;
 	~TrackedVariantValue() { --alive; }
+};
+
+struct ThrowingMoveVariantValue {
+	static inline int alive = 0;
+	static inline bool throwOnMove = false;
+
+	explicit ThrowingMoveVariantValue(int inValue = 0) : value(inValue) { ++alive; }
+	ThrowingMoveVariantValue(const ThrowingMoveVariantValue&) = delete;
+	ThrowingMoveVariantValue(ThrowingMoveVariantValue&& inOther) : value(inOther.value) {
+		if (throwOnMove) {
+			throw std::runtime_error("injected Variant move failure");
+		}
+		++alive;
+		inOther.value = -1;
+	}
+	ThrowingMoveVariantValue& operator=(ThrowingMoveVariantValue&&) = delete;
+	~ThrowingMoveVariantValue() { --alive; }
+
+	int value = 0;
+};
+
+struct ReentrantVariantProbe;
+using ReentrantVariant = oa::Variant<int, ReentrantVariantProbe>;
+
+struct ReentrantVariantProbe {
+	ReentrantVariant* owner = nullptr;
+	bool* observedEmpty = nullptr;
+	int* destructions = nullptr;
+
+	ReentrantVariantProbe(
+		ReentrantVariant* inOwner,
+		bool* inObservedEmpty,
+		int* inDestructions
+	) : owner(inOwner)
+	  , observedEmpty(inObservedEmpty)
+	  , destructions(inDestructions) {}
+
+	ReentrantVariantProbe(const ReentrantVariantProbe&) = default;
+	ReentrantVariantProbe(ReentrantVariantProbe&& inOther) noexcept = default;
+	ReentrantVariantProbe& operator=(ReentrantVariantProbe&&) noexcept = default;
+
+	~ReentrantVariantProbe() {
+		++*destructions;
+		*observedEmpty = owner->empty();
+	}
 };
 
 } // namespace
@@ -145,6 +191,20 @@ TEST(Variant, CopyMoveAndEmptyState) {
 		"OA contract failed: index_ != Npos");
 }
 
+TEST(Variant, EmplacePublishesEmptyBeforeAlternativeDestruction) {
+	ReentrantVariant value{0};
+	bool observedEmpty = false;
+	int destructions = 0;
+	value.emplace<ReentrantVariantProbe>(&value, &observedEmpty, &destructions);
+
+	value.emplace<int>(23);
+
+	EXPECT_TRUE(value.holdsAlternative<int>());
+	EXPECT_EQ(value.get<int>(), 23);
+	EXPECT_TRUE(observedEmpty);
+	EXPECT_EQ(destructions, 1);
+}
+
 TEST(Variant, PreservesOverAlignment) {
 	using Value = oa::Variant<int, OverAlignedVariantValue>;
 	static_assert(alignof(Value) >= alignof(OverAlignedVariantValue));
@@ -171,6 +231,24 @@ TEST(Variant, OwnsEachAlternativeLifetimeOnce) {
 		EXPECT_EQ(TrackedVariantValue::alive, 0);
 	}
 	EXPECT_EQ(TrackedVariantValue::alive, 0);
+}
+
+TEST(Variant, ThrowingMoveAssignmentLeavesDestinationEmpty) {
+	ThrowingMoveVariantValue::alive = 0;
+	ThrowingMoveVariantValue::throwOnMove = false;
+	{
+		oa::Variant<int, ThrowingMoveVariantValue> source{0};
+		source.emplace<ThrowingMoveVariantValue>(31);
+		oa::Variant<int, ThrowingMoveVariantValue> destination{7};
+
+		ThrowingMoveVariantValue::throwOnMove = true;
+		EXPECT_THROW(destination = oa::move(source), std::runtime_error);
+		EXPECT_TRUE(destination.empty());
+		EXPECT_EQ(source.get<ThrowingMoveVariantValue>().value, 31);
+		EXPECT_EQ(ThrowingMoveVariantValue::alive, 1);
+		ThrowingMoveVariantValue::throwOnMove = false;
+	}
+	EXPECT_EQ(ThrowingMoveVariantValue::alive, 0);
 }
 
 TEST(StdVariantVsStd, VisitSumMatchesStdVisit) {

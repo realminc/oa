@@ -110,8 +110,8 @@ bool DsDailyDialog::nextBatch(oa::Matrix& outX, oa::Matrix& outY) {
 	oa::I64 endIdx = std::min(startIdx + batchSize_, static_cast<oa::I64>(indices_.size()));
 	oa::I32 actualBatchSize = static_cast<oa::I32>(endIdx - startIdx);
 
-	oa::Vec<oa::U8> xBuf(static_cast<oa::I64>(actualBatchSize) * contextLen_);
-	oa::Vec<oa::U8> yBuf(actualBatchSize);
+	oa::Vector<oa::U8> xBuf(static_cast<oa::I64>(actualBatchSize) * contextLen_);
+	oa::Vector<oa::U8> yBuf(actualBatchSize);
 
 	for (oa::I32 i = 0; i < actualBatchSize; ++i) {
 		oa::I64 startPos = indices_[startIdx + i];

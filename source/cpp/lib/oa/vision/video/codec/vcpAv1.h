@@ -5,7 +5,7 @@
 #pragma once
 
 #include "videoCodecParser.h"
-#include <oa/core/std/vec.h>
+#include <oa/core/std/vector.h>
 #include <vk_video/vulkan_video_codec_av1std.h>
 #include <vk_video/vulkan_video_codec_av1std_decode.h>
 
@@ -163,8 +163,8 @@ struct Av1FrameHeaderInfo {
 };
 
 struct Av1TileGroupInfo {
-	oa::Vec<oa::U32> tileOffsets;
-	oa::Vec<oa::U32> tileSizes;
+	oa::Vector<oa::U32> tileOffsets;
+	oa::Vector<oa::U32> tileSizes;
 };
 
 // Structural inventory of one container access unit / AV1 temporal unit.  This
@@ -195,8 +195,8 @@ struct Av1PictureDesc {
 	// frame payload.
 	oa::Usize decodeObuOffset = 0;
 	oa::Usize decodeObuSize = 0;
-	oa::Vec<oa::U32> tileOffsets;
-	oa::Vec<oa::U32> tileSizes;
+	oa::Vector<oa::U32> tileOffsets;
+	oa::Vector<oa::U32> tileSizes;
 };
 
 // AV1 codec parser implementation
@@ -216,7 +216,7 @@ public:
 
 	// parse a complete access unit (IVF-wrapped AV1 bitstream).
 	oa::Status parseAccessUnit(const oa::Span<const oa::U8>& inBitstream, Av1PictureDesc& outDesc);
-	oa::Status parseAccessUnitPictures(const oa::Span<const oa::U8>& inBitstream,	oa::Vec<Av1PictureDesc>& outDescs);
+	oa::Status parseAccessUnitPictures(const oa::Span<const oa::U8>& inBitstream,	oa::Vector<Av1PictureDesc>& outDescs);
 	oa::Status inspectAccessUnit(const oa::Span<const oa::U8>& inBitstream,	Av1AccessUnitInfo& outInfo) const;
 	[[nodiscard]] bool hasSequenceHeader() const noexcept	{	return hasCachedSequenceHeader_; }
 	[[nodiscard]] const Av1SequenceHeaderInfo& getSequenceHeader() const noexcept	{	return cachedSequenceHeader_;	}

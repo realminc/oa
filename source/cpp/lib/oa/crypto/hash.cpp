@@ -57,7 +57,7 @@ void Hasher::reset() {
 
 // Merkle tree
 
-Hash merkleRoot(const oa::Vec<Hash>& inLeaves) {
+Hash merkleRoot(const oa::Vector<Hash>& inLeaves) {
 	if (inLeaves.empty()) {
 		return Hash::zero();
 	}
@@ -65,10 +65,10 @@ Hash merkleRoot(const oa::Vec<Hash>& inLeaves) {
 		return inLeaves[0];
 	}
 
-	oa::Vec<Hash> level = inLeaves;
+	oa::Vector<Hash> level = inLeaves;
 
 	while (level.size() > 1) {
-		oa::Vec<Hash> nextLevel;
+		oa::Vector<Hash> nextLevel;
 		nextLevel.reserve((level.size() + 1) / 2);
 
 		for (oa::Usize i = 0; i < level.size(); i += 2) {
@@ -85,7 +85,7 @@ Hash merkleRoot(const oa::Vec<Hash>& inLeaves) {
 	return level[0];
 }
 
-MerkleTree buildMerkleTree(const oa::Vec<Hash>& inLeaves) {
+MerkleTree buildMerkleTree(const oa::Vector<Hash>& inLeaves) {
 	MerkleTree tree;
 
 	if (inLeaves.empty()) {
@@ -97,7 +97,7 @@ MerkleTree buildMerkleTree(const oa::Vec<Hash>& inLeaves) {
 
 	while (tree.levels.back().size() > 1) {
 		const auto& previousLevel = tree.levels.back();
-		oa::Vec<Hash> nextLevel;
+		oa::Vector<Hash> nextLevel;
 		nextLevel.reserve((previousLevel.size() + 1) / 2);
 
 		for (oa::Usize i = 0; i < previousLevel.size(); i += 2) {

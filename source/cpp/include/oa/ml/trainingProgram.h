@@ -168,17 +168,17 @@ private:
 	oa::UniquePtr<oa::ExecutionPlan> plan_;
 	oa::SemanticGraph semanticGraph_;
 	oa::SemanticLoweringAnalysis loweringAnalysis_;
-	oa::Vec<oa::SemanticStorageBinding> semanticStorageBindings_;
-	oa::Vec<oa::CapturedResourceDesc> capturedResources_;
-	oa::Vec<oa::SharedPtr<oavk::Buffer>> capturedResourceOwners_;
+	oa::Vector<oa::SemanticStorageBinding> semanticStorageBindings_;
+	oa::Vector<oa::CapturedResourceDesc> capturedResources_;
+	oa::Vector<oa::SharedPtr<oavk::Buffer>> capturedResourceOwners_;
 	oa::U32 aliasCandidateCount_ = 0;
 	oa::U32 aliasMaterializationEligibleCount_ = 0;
 	oa::U32 plannedAliasGroupCount_ = 0;
 	oa::U64 potentialAliasSavings_ = 0;
 	oa::U64 materializedAliasSavings_ = 0;
 	oa::String aliasMaterializationFallbackReason_;
-	oa::Vec<TrainingCompilationStageRecord> compilationStages_;
-	oa::Vec<oa::Matrix> rngStates_;
+	oa::Vector<TrainingCompilationStageRecord> compilationStages_;
+	oa::Vector<oa::Matrix> rngStates_;
 };
 
 } // namespace oa

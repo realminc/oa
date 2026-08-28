@@ -50,23 +50,23 @@ public:
 
 	bool useSampleStaging = false;
 	bool copySampleStagingOnVideoQueue = false;
-	oa::Vec<VkImage> sampleImages;
-	oa::Vec<VkImageView> sampleYViews;
-	oa::Vec<VkImageView> sampleUvViews;
-	oa::Vec<void*> sampleAllocations;
+	oa::Vector<VkImage> sampleImages;
+	oa::Vector<VkImageView> sampleYViews;
+	oa::Vector<VkImageView> sampleUvViews;
+	oa::Vector<void*> sampleAllocations;
 	oa::Array<VkImageLayout, 16> sampleImageLayouts = {};
 
-	oa::Vec<VkImage> outputImages;
-	oa::Vec<VkImageView> outputViews;
-	oa::Vec<void*> outputAllocations;
+	oa::Vector<VkImage> outputImages;
+	oa::Vector<VkImageView> outputViews;
+	oa::Vector<void*> outputAllocations;
 	oa::Array<VkImageLayout, 16> outputImageLayouts = {};
 	oa::Array<VkSemaphore, 16> outputReuseSemaphores = {};
 	oa::Array<oa::U64, 16> outputReuseValues = {};
 
-	oa::Vec<VkImage> rgbImages;
-	oa::Vec<VkImageView> rgbViews;
-	oa::Vec<void*> rgbAllocations;
-	oa::Vec<VkImageLayout> rgbImageLayouts;
+	oa::Vector<VkImage> rgbImages;
+	oa::Vector<VkImageView> rgbViews;
+	oa::Vector<void*> rgbAllocations;
+	oa::Vector<VkImageLayout> rgbImageLayouts;
 
 	oa::HashMap<oa::U32, H264SpsData> spsCache;
 	oa::HashMap<oa::U32, H264PpsData> ppsCache;

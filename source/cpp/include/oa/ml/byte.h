@@ -49,10 +49,10 @@ public:
 	[[nodiscard]] static oa::Matrix encodeBatched(oa::Span<const oa::U8> inBytes);
 
 	/// Decode logits [seq_len, 256] back to bytes (argmax)
-	[[nodiscard]] static oa::Vec<oa::U8> decode(const oa::Matrix& inLogits);
+	[[nodiscard]] static oa::Vector<oa::U8> decode(const oa::Matrix& inLogits);
 
 	/// Decode with temperature sampling
-	[[nodiscard]] static Vec<U8> sample(
+	[[nodiscard]] static Vector<U8> sample(
 		const Matrix& inLogits,
 		F32 inTemperature = 1.0F,
 		F32 inTopP = 0.9F);

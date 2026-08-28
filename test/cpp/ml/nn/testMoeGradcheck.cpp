@@ -62,7 +62,7 @@ GradStats gradCheckParam(oa::ExecutionSession& ctx, const std::function<float()>
 }
 
 // find a parameter by its dotted path; nullptr if absent (test fails loudly).
-oa::Parameter* findParam(oa::Vec<oa::NamedParameter>& named, const char* path) {
+oa::Parameter* findParam(oa::Vector<oa::NamedParameter>& named, const char* path) {
 	for (auto& np : named)
 		if (std::string(np.path.cStr()) == path) return np.param;
 	return nullptr;
@@ -235,7 +235,7 @@ TEST(MoeDiag, SliceBcastMulMultiUse) {
 
 	constexpr oa::I32 T = 2, E = 2, D = 3;
 	auto p = oa::FnMatrix::randN(oa::MatrixShape{T, E}, oa::ScalarType::Float32);
-	oa::Vec<oa::Matrix> experts;
+	oa::Vector<oa::Matrix> experts;
 	for (oa::I32 e = 0; e < E; ++e) experts.pushBack(oa::FnMatrix::randN(oa::MatrixShape{T, D}, oa::ScalarType::Float32));
 	auto target = oa::FnMatrix::randN(oa::MatrixShape{T, D}, oa::ScalarType::Float32);
 	p.setRequiresGrad(true);
@@ -271,7 +271,7 @@ TEST(MoeDiag, SoftmaxGateCombineChain) {
 
 	constexpr oa::I32 T = 2, E = 2, D = 3;
 	auto logits = oa::FnMatrix::randN(oa::MatrixShape{T, E}, oa::ScalarType::Float32);
-	oa::Vec<oa::Matrix> experts;
+	oa::Vector<oa::Matrix> experts;
 	for (oa::I32 e = 0; e < E; ++e)
 		experts.pushBack(oa::FnMatrix::randN(oa::MatrixShape{T, D}, oa::ScalarType::Float32));
 	auto target = oa::FnMatrix::randN(oa::MatrixShape{T, D}, oa::ScalarType::Float32);

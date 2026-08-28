@@ -132,7 +132,7 @@ void oa::ResidualVectorQuantizer::emaUpdate(const oa::ResidualVqResult& inResult
 	}
 }
 
-oa::Matrix oa::ResidualVectorQuantizer::lookup(const oa::Vec<oa::Matrix>& inIdx) const {
+oa::Matrix oa::ResidualVectorQuantizer::lookup(const oa::Vector<oa::Matrix>& inIdx) const {
 	OA_ASSERT(inIdx.size() >= 1 && "RVQ lookup needs at least one level of token ids");
 	OA_ASSERT(inIdx.size() <= levels_.size() && "RVQ lookup given more token levels than codebooks");
 	// Sum the per-level gathered codes — the inverse of quantize's Σzq accumulation.

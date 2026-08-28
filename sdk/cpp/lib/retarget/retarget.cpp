@@ -43,14 +43,14 @@ oa::Result<oa::PoseClip> oa::Retarget::retargetClip(const oa::Skeleton& inSrc,
 	}
 
 	// Per-joint source/dest rest orientations (by bone name, identity if absent).
-	oa::Vec<oa::vlm::Quat> srcRef; srcRef.resize(static_cast<oa::Usize>(N));
-	oa::Vec<oa::vlm::Quat> dstRef; dstRef.resize(static_cast<oa::Usize>(N));
+	oa::Vector<oa::vlm::Quat> srcRef; srcRef.resize(static_cast<oa::Usize>(N));
+	oa::Vector<oa::vlm::Quat> dstRef; dstRef.resize(static_cast<oa::Usize>(N));
 	for (oa::I32 s = 0; s < N; ++s) {
 		srcRef[static_cast<oa::Usize>(s)] = inSrcRef.orientOf(inSrc.joints[static_cast<oa::Usize>(s)].name);
 		dstRef[static_cast<oa::Usize>(s)] = inDstRef.orientOf(inDst.joints[static_cast<oa::Usize>(s)].name);
 	}
 
-	oa::Vec<oa::F32> out = inClip.samples;   // copy; translations + hinges + contacts pass through
+	oa::Vector<oa::F32> out = inClip.samples;   // copy; translations + hinges + contacts pass through
 	const oa::I32 D = static_cast<oa::I32>(inClip.poseDim);
 	for (oa::U32 f = 0; f < inClip.frameCount; ++f) {
 		const oa::Usize base = static_cast<oa::Usize>(f) * D;

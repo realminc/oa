@@ -7,10 +7,9 @@
 // Hosted-library conversions belong at their owning filesystem, parser, CLI,
 // binding, or serialization boundary rather than in this foundation type.
 
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
 #include <oa/core/assert.h>
 #include <oa/core/std/allocator.h>
-#include <oa/core/std/atomic.h>
 #include <oa/core/std/stringView.h>
 
 namespace oa {
@@ -128,17 +127,10 @@ public:
 		rep_.sso.buf[0] = '\0';
 	}
 
-	// Zero live buffer bytes (best-effort against compiler reordering), then release storage.
+	// Zero the entire owned character allocation, including unused capacity and
+	// the terminator, before releasing storage.
 	void secureWipeSecrets() noexcept {
-		const size_type n = size();
-		if (n == 0) {
-			return;
-		}
-		volatile char* ptr = mutableData();
-		for (size_type i = 0; i < n; ++i) {
-			ptr[i] = 0;
-		}
-		oa::atomicThreadFence(oa::MemoryOrder::Sequential);
+		oa::memzeroSecure(mutableData(), capacity() + 1U);
 		clear();
 	}
 
@@ -254,27 +246,41 @@ public:
 	}
 	String& append(oa::StringView inV) {
 		const char* p = inV.data();
-		size_type n = inV.size();
+		const size_type n = inV.size();
 		if (n == 0) {
 			return *this;
 		}
-		if (!isHeap_) {
-			if (p >= ssoData() && p < ssoData() + size()) {
-				String tmp(inV);
-				return append(tmp.view());
-			}
-		} else {
-			if (p >= rep_.heap.ptr && p < rep_.heap.ptr + rep_.heap.len) {
-				String tmp(inV);
-				return append(tmp.view());
-			}
-		}
+		OA_REQUIRE(p != nullptr);
 		const size_type old = size();
+		const size_type sourceAddress = reinterpret_cast<size_type>(p);
+		OA_REQUIRE(n <= static_cast<size_type>(-1) - sourceAddress);
+		const size_type sourceEndAddress = sourceAddress + n;
+		const size_type beginAddress = reinterpret_cast<size_type>(data());
+		OA_REQUIRE(old <= static_cast<size_type>(-1) - beginAddress);
+		const size_type endAddress = beginAddress + old;
+		const size_type currentCapacity = capacity();
+		OA_REQUIRE(currentCapacity < static_cast<size_type>(-1));
+		const size_type storageBytes = currentCapacity + 1U;
+		OA_REQUIRE(storageBytes <= static_cast<size_type>(-1) - beginAddress);
+		const size_type storageEndAddress = beginAddress + storageBytes;
+		const bool intersectsStorage = sourceAddress < storageEndAddress
+			&& sourceEndAddress > beginAddress;
+		size_type sourceOffset = 0;
+		if (intersectsStorage) {
+			const bool isWhollyLive = sourceAddress >= beginAddress
+				&& sourceAddress < endAddress
+				&& sourceEndAddress <= endAddress;
+			OA_REQUIRE(isWhollyLive);
+			sourceOffset = sourceAddress - beginAddress;
+		}
 		if (n > static_cast<size_type>(-1) - old) {
 			oa::allocationFailed(oa::AllocationError::SizeOverflow, old, 1);
 		}
 		const size_type newLen = old + n;
 		ensureTotalCapacity(newLen);
+		if (intersectsStorage) {
+			p = mutableData() + sourceOffset;
+		}
 		oa::memcpy(mutableData() + old, p, static_cast<oa::Usize>(n));
 		setLen(newLen);
 		return *this;
@@ -504,6 +510,7 @@ private:
 			clear();
 			return;
 		}
+		OA_REQUIRE(inP != nullptr);
 		if (inN <= SsoCap) {
 			if (isHeap_) {
 				oa::freeBytes(rep_.heap.ptr);

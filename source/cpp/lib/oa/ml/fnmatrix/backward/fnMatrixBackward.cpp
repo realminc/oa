@@ -162,7 +162,7 @@ oa::Matrix oa::FnMatrix::softmaxScaledMasked(
 	if (oa::FnAutograd::isEnabled() and inScores.requiresGrad()) {
 		auto gradFn = oa::makeShared<oa::GradSoftmaxScaledMasked>();
 		gradFn->saveForBackward(out);
-		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inScores});
+		gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inScores});
 		gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		gradFn->outputShape_ = out.getShape();
 		gradFn->scale_ = inScale;

@@ -1,6 +1,6 @@
 #include <oa/runtime/dnn.h>
 #include <oa/runtime/semanticGraph.h>
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
 #include <oa/core/std/algo.h>
 #include <oa/core/std/utility.h>
 
@@ -229,7 +229,7 @@ oa::Status oa::DnnGraph::validate() const {
 	if (matrices_.empty() or ops_.empty()) {
 		return oa::Status::invalidArgument("DNN graph cannot be empty");
 	}
-	oa::Vec<oa::U32> produced;
+	oa::Vector<oa::U32> produced;
 	for (oa::U32 opIdx = 0; opIdx < ops_.size(); ++opIdx) {
 		const auto& op = ops_[opIdx];
 		for (auto id : op.inputs) {
@@ -415,7 +415,7 @@ oa::Result<oa::DnnPlan> oa::DnnPlanner::plan(
 	if (not validation.isOk()) return validation;
 
 	oa::DnnGraph captured;
-	oa::Vec<oa::U8> trainingOperations;
+	oa::Vector<oa::U8> trainingOperations;
 	trainingOperations.resize(inGraph.operationCount(), 0U);
 	for (const auto& autograd : inGraph.autograd()) {
 		trainingOperations[autograd.forwardOp] = 1U;

@@ -290,7 +290,7 @@ void oa::ItTraining::next() {
 	{
 		if (not replayExisting) {
 			const auto captureT0 = Clock::now();
-			oa::Vec<const oa::Matrix*> observedOutputs;
+			oa::Vector<const oa::Matrix*> observedOutputs;
 			if (pendingLoss_.hasStorage()) observedOutputs.pushBack(&pendingLoss_);
 			oa::TrainingProgramOptions programOptions;
 			programOptions.enableGpuTiming = timerReady_;
@@ -580,7 +580,7 @@ oa::GpuTimingStats oa::ItTraining::gpuTimingStats() const {
 	oa::GpuTimingStats stats;
 	if (gpuTimingSamples_.empty()) return stats;
 
-	oa::Vec<oa::F64> sorted = gpuTimingSamples_;
+	oa::Vector<oa::F64> sorted = gpuTimingSamples_;
 	oa::sort(sorted.begin(), sorted.end());
 
 	const auto percentile = [&sorted](oa::F64 p) -> oa::F64 {

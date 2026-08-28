@@ -4,7 +4,7 @@
 // Linux media-capture interop; this is not a distributed transport.
 #include <oa/runtime/device.h>
 #include <oa/runtime/engine.h>
-#include <oa/runtime/oaVk.h>
+#include <vkl/vkl.h>
 
 #ifdef __linux__
 #include <unistd.h>

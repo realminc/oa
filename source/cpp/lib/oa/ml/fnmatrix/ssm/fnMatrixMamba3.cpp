@@ -303,7 +303,7 @@ oa::Matrix oa::FnMatrix::mamba3Siso(
 		auto gradFn = oa::makeShared<oa::GradMamba3Siso>();
 		gradFn->saveForBackward(inC, inB, inX, inZ, inAdt, inDt, inTrap,
 			inAngle, inCBias, inBBias, inD);
-		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inC, inB, inX, inZ, inAdt, inDt, inTrap,
+		gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inC, inB, inX, inZ, inAdt, inDt, inTrap,
 			inAngle, inCBias, inBBias, inD});
 		gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		gradFn->config_ = inConfig;
@@ -817,7 +817,7 @@ oa::Matrix oa::FnMatrix::mamba3Mimo(
 		gradFn->saveForBackward(inC, inB, inX, inZ, inAdt, inDt,
 			inTrap, inAngle, inCBias, inBBias, inD, inMimoX, inMimoZ, inMimoO,
 			inNormWeight);
-		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inC, inB, inX, inZ, inAdt,
+		gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inC, inB, inX, inZ, inAdt,
 			inDt, inTrap, inAngle, inCBias, inBBias, inD, inMimoX, inMimoZ,
 			inMimoO, inNormWeight});
 		gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
@@ -1205,7 +1205,7 @@ oa::Mamba3PreprocessResult oa::FnMatrix::mamba3Preprocess(
 			auto gradFn = oa::makeShared<oa::GradMamba3Preprocess>();
 			gradFn->state_ = state;
 			gradFn->outputIndex_ = gradIndex;
-			gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inProjected, inDtBias});
+			gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inProjected, inDtBias});
 			gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 			gradFn->outputShape_ = out.getShape();
 			if (not oa::FnAutograd::attachSemantic(

@@ -35,18 +35,18 @@
 #include <functional>
 
 // Copy a matrix to host FP32. Safe for BF16/FP16 storage models.
-static oa::Vec<oa::F32> hostFloatData(const oa::Matrix& inMatrix) {
+static oa::Vector<oa::F32> hostFloatData(const oa::Matrix& inMatrix) {
 	auto& ctx = oa::ExecutionSession::getActive();
 	if (inMatrix.getDtype() == oa::ScalarType::Float32) {
 		(void)testSubmitAndWait(ctx);
 		const oa::F32* p = inMatrix.dataAs<const oa::F32>();
-		return oa::Vec<oa::F32>(p, p + inMatrix.numElements());
+		return oa::Vector<oa::F32>(p, p + inMatrix.numElements());
 	}
 	oa::Matrix f32 = oa::FnMatrix::empty(inMatrix.getShape(), oa::ScalarType::Float32);
 	oa::FnMatrix::castInto(inMatrix, f32);
 	(void)testSubmitAndWait(ctx);
 	const oa::F32* p = f32.dataAs<const oa::F32>();
-	return oa::Vec<oa::F32>(p, p + f32.numElements());
+	return oa::Vector<oa::F32>(p, p + f32.numElements());
 }
 
 // Dot product on host FP32. Safe for BF16/FP16 storage models.
@@ -494,7 +494,7 @@ TEST(Alm, ConvAutoEncoderIdentity) {
 	auto& ctx = oa::ExecutionSession::getActive();
 	auto X = oa::FnMatrix::randN(oa::MatrixShape{B, C, L});
 	(void)testSubmitAndWait(ctx);
-	oa::Vec<oa::Parameter*> params;
+	oa::Vector<oa::Parameter*> params;
 	auto ep = enc->allParameterPtrs();
 	auto dp = dec->allParameterPtrs();
 	for (auto* p : ep) params.pushBack(p);
@@ -530,7 +530,7 @@ TEST(Alm, ConvAutoEncoderStride2) {
 	auto& ctx = oa::ExecutionSession::getActive();
 	auto X = oa::FnMatrix::randN(oa::MatrixShape{B, C, L});
 	(void)testSubmitAndWait(ctx);
-	oa::Vec<oa::Parameter*> params;
+	oa::Vector<oa::Parameter*> params;
 	auto ep = enc->allParameterPtrs();
 	auto dp = dec->allParameterPtrs();
 	for (auto* p : ep) params.pushBack(p);
@@ -563,7 +563,7 @@ TEST(Alm, DeepConvAutoEncoder) {
 	auto& ctx = oa::ExecutionSession::getActive();
 	auto X = oa::FnMatrix::randN(oa::MatrixShape{B, inC, L});
 	(void)testSubmitAndWait(ctx);
-	oa::Vec<oa::Parameter*> params;
+	oa::Vector<oa::Parameter*> params;
 	auto collect = [&](const oa::SharedPtr<oa::Module>& m) {
 		for (auto* p : m->allParameterPtrs()) params.pushBack(p);
 	};
@@ -605,7 +605,7 @@ TEST(Alm, DeepConvAutoEncoderNorm) {
 	auto& ctx = oa::ExecutionSession::getActive();
 	auto X = oa::FnMatrix::randN(oa::MatrixShape{B, inC, L});
 	(void)testSubmitAndWait(ctx);
-	oa::Vec<oa::Parameter*> params;
+	oa::Vector<oa::Parameter*> params;
 	auto collect = [&](const oa::SharedPtr<oa::Module>& m) {
 		for (auto* p : m->allParameterPtrs()) params.pushBack(p);
 	};
@@ -660,7 +660,7 @@ TEST(Alm, LinearAeSanity) {
 	{ oa::U64 r = 5; for (auto& v : xh) { r = (r * 6364136223846793005ULL) + 1; v = std::sin(0.01F * static_cast<float>(static_cast<oa::U32>(r >> 40))); } }
 	auto X = oa::FnMatrix::fromBytes(oa::Span<const oa::U8>(reinterpret_cast<const oa::U8*>(xh.data()), xh.size() * sizeof(float)),
 		oa::MatrixShape{B, D}, oa::ScalarType::Float32);
-	oa::Vec<oa::Parameter*> params;
+	oa::Vector<oa::Parameter*> params;
 	for (auto* p : enc->allParameterPtrs()) params.pushBack(p);
 	for (auto* p : dec->allParameterPtrs()) params.pushBack(p);
 	auto opt = oa::makeUnique<oa::AdamW>(params, 1e-3F);
@@ -715,7 +715,7 @@ TEST(Alm, ComposedDescentCheck) {
 	const double L0 = static_cast<double>(loss0.at(0));
 	std::printf("ComposedDescent: L0 = %.8f, params=%lld\n", L0, static_cast<long long>(params.size()));
 
-	oa::Vec<oa::Matrix> W0, G;
+	oa::Vector<oa::Matrix> W0, G;
 	for (auto* p : params) { W0.pushBack(p->data.clone()); G.pushBack(p->data.gradMatrix().clone()); }
 	(void)testSubmitAndWait(ctx);
 
@@ -1604,7 +1604,7 @@ TEST(Alm, TokenizerSaveLoadRoundtrip) {
 		(void)testSubmitAndWait(ctx); ctx.clear();
 	}
 
-	auto readIds = [&](const oa::Vec<oa::Matrix>& inIdx) {
+	auto readIds = [&](const oa::Vector<oa::Matrix>& inIdx) {
 		std::vector<std::vector<oa::I32>> out;
 		for (const auto& m : inIdx) {
 			std::vector<oa::I32> h(static_cast<size_t>(m.numElements()));

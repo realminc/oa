@@ -39,7 +39,7 @@ public:
 	void retireSessionBatch(
 		oavk::Stream* inStream,
 		const oa::Event& inCompletion,
-		oa::Vec<oa::UniquePtr<oa::ExecutableGraph>>&& inGraphs);
+		oa::Vector<oa::UniquePtr<oa::ExecutableGraph>>&& inGraphs);
 	void collectRetiredSessionBatches();
 	[[nodiscard]] oa::Status completeRetiredSessionBatches();
 	[[nodiscard]] oavk::Stream* graphicsStreamForLease(

@@ -106,7 +106,7 @@ struct ConfigTrain {
 
 	// When non-empty, `steps` is the sum of phase steps (YAML); CLI `--steps` can cap total after parse.
 	// Per-phase LR schedule uses phase-local step counts; TrainStep still receives the global step index.
-	oa::Vec<ConfigTrainPhase> trainingPhases;
+	oa::Vector<ConfigTrainPhase> trainingPhases;
 
 	// Callback config (YAML training.callbacks). Each entry accepts either a
 	// bool toggle or a map with per-callback params:
@@ -123,7 +123,7 @@ struct ConfigTrain {
 		oa::Bool progressBar = true;
 		oa::Bool summary = true;
 		oa::Bool metrics = true;
-		oa::Vec<oa::String> metricNames;          // empty = default {loss}
+		oa::Vector<oa::String> metricNames;          // empty = default {loss}
 		oa::Bool earlyStop = true;
 		oa::Bool phase = true;
 		oa::Bool checkpoint = true;

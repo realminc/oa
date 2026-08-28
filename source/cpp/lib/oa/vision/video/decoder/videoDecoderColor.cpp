@@ -12,7 +12,7 @@
 #include <oa/runtime/engine/submissionAccess.h>
 #include <oa/runtime/imageDispatch.h>
 #include <oa/runtime/stream.h>
-#include <oa/runtime/oaVma.h>
+#include <vma/vma.hpp>
 #include <oa/core/fnMatrix.h>
 #include <oa/core/matrixAccess.h>
 
@@ -44,7 +44,7 @@ static oa::U32 toVisionColorSpace(oa::YCbCrModel inColorSpace, oa::U32 inWidth, 
 	return 0;
 }
 
-oa::Result<oa::Vec<oa::U8>> oa::VideoDecoder::readbackLuma(const oa::VideoFrame& inFrame)
+oa::Result<oa::Vector<oa::U8>> oa::VideoDecoder::readbackLuma(const oa::VideoFrame& inFrame)
 {
 	if (!impl_->engine || impl_->session.handle() == VK_NULL_HANDLE || !impl_->commandBuffers[0]) {
 		return oa::Status::error("Video decoder not initialized");
@@ -55,7 +55,7 @@ oa::Result<oa::Vec<oa::U8>> oa::VideoDecoder::readbackLuma(const oa::VideoFrame&
 	OA_RETURN_IF_ERROR(inFrame.ready.wait());
 
 	auto& vkEngine = *impl_->engine;
-	auto allocator = static_cast<OaVmaAllocator>(oa::EngineAllocatorAccess::get(vkEngine).allocator);
+	auto allocator = static_cast<vma::Allocator>(oa::EngineAllocatorAccess::get(vkEngine).allocator);
 	const oa::U64 byteSize = static_cast<oa::U64>(inFrame.width) * inFrame.height;
 
 	VkBufferCreateInfo bufferInfo = {};
@@ -64,14 +64,14 @@ oa::Result<oa::Vec<oa::U8>> oa::VideoDecoder::readbackLuma(const oa::VideoFrame&
 	bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 	bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-	OaVmaAllocationCreateInfo allocInfo = {};
-	allocInfo.usage = OA_VMA_MEMORY_USAGE_CPU_ONLY;
-	allocInfo.flags = OA_VMA_ALLOCATION_CREATE_MAPPED_BIT | OA_VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
+	vma::AllocationCreateInfo allocInfo = {};
+	allocInfo.usage = vma::memoryUsageCpuOnly;
+	allocInfo.flags = vma::allocationCreateMappedBit | vma::allocationCreateHostAccessRandomBit;
 
 	::VkBuffer readbackBuffer = VK_NULL_HANDLE;
-	OaVmaAllocation readbackAllocation = VK_NULL_HANDLE;
-	OaVmaAllocationInfo readbackInfo = {};
-	VkResult result = OaVmaCreateBuffer(
+	vma::Allocation readbackAllocation = VK_NULL_HANDLE;
+	vma::AllocationInfo readbackInfo = {};
+	VkResult result = vma::createBuffer(
 		allocator,
 		&bufferInfo,
 		&allocInfo,
@@ -84,7 +84,7 @@ oa::Result<oa::Vec<oa::U8>> oa::VideoDecoder::readbackLuma(const oa::VideoFrame&
 
 	auto cleanup = [&]() {
 		if (readbackBuffer || readbackAllocation) {
-			OaVmaDestroyBuffer(allocator, readbackBuffer, readbackAllocation);
+			vma::destroyBuffer(allocator, readbackBuffer, readbackAllocation);
 		}
 	};
 
@@ -198,13 +198,13 @@ oa::Result<oa::Vec<oa::U8>> oa::VideoDecoder::readbackLuma(const oa::VideoFrame&
 		return submitStatus;
 	}
 
-	result = OaVmaInvalidateAllocation(allocator, readbackAllocation, 0, byteSize);
+	result = vma::invalidateAllocation(allocator, readbackAllocation, 0, byteSize);
 	if (result != VK_SUCCESS) {
 		cleanup();
 		return oa::Status::error(oa::StatusCode::VulkanError, "Failed to invalidate video luma readback allocation");
 	}
 
-	oa::Vec<oa::U8> data(static_cast<oa::Usize>(byteSize));
+	oa::Vector<oa::U8> data(static_cast<oa::Usize>(byteSize));
 	oa::memcpy(data.data(), readbackInfo.pMappedData, static_cast<oa::Usize>(byteSize));
 	cleanup();
 
@@ -216,7 +216,7 @@ oa::Result<oa::Vec<oa::U8>> oa::VideoDecoder::readbackLuma(const oa::VideoFrame&
 	return data;
 }
 
-oa::Result<oa::Vec<oa::U8>> oa::VideoDecoder::readbackNv12(const oa::VideoFrame& inFrame) {
+oa::Result<oa::Vector<oa::U8>> oa::VideoDecoder::readbackNv12(const oa::VideoFrame& inFrame) {
 	if (!impl_->engine || impl_->session.handle() == VK_NULL_HANDLE || !impl_->commandBuffers[0]) {
 		return oa::Status::error("Video decoder not initialized");
 	}
@@ -243,7 +243,7 @@ oa::Result<oa::Vec<oa::U8>> oa::VideoDecoder::readbackNv12(const oa::VideoFrame&
 		readbackLayer = 0;
 		isSampleStaging = true;
 	}
-	auto allocator = static_cast<OaVmaAllocator>(oa::EngineAllocatorAccess::get(vkEngine).allocator);
+	auto allocator = static_cast<vma::Allocator>(oa::EngineAllocatorAccess::get(vkEngine).allocator);
 	const oa::U64 lumaBytes = static_cast<oa::U64>(inFrame.width) * inFrame.height;
 	const oa::U64 chromaBytes = lumaBytes / 2;
 	const oa::U64 byteSize = lumaBytes + chromaBytes;
@@ -254,14 +254,14 @@ oa::Result<oa::Vec<oa::U8>> oa::VideoDecoder::readbackNv12(const oa::VideoFrame&
 	bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 	bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-	OaVmaAllocationCreateInfo allocInfo = {};
-	allocInfo.usage = OA_VMA_MEMORY_USAGE_CPU_ONLY;
-	allocInfo.flags = OA_VMA_ALLOCATION_CREATE_MAPPED_BIT | OA_VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
+	vma::AllocationCreateInfo allocInfo = {};
+	allocInfo.usage = vma::memoryUsageCpuOnly;
+	allocInfo.flags = vma::allocationCreateMappedBit | vma::allocationCreateHostAccessRandomBit;
 
 	::VkBuffer readbackBuffer = VK_NULL_HANDLE;
-	OaVmaAllocation readbackAllocation = VK_NULL_HANDLE;
-	OaVmaAllocationInfo readbackInfo = {};
-	VkResult result = OaVmaCreateBuffer(
+	vma::Allocation readbackAllocation = VK_NULL_HANDLE;
+	vma::AllocationInfo readbackInfo = {};
+	VkResult result = vma::createBuffer(
 		allocator,
 		&bufferInfo,
 		&allocInfo,
@@ -274,7 +274,7 @@ oa::Result<oa::Vec<oa::U8>> oa::VideoDecoder::readbackNv12(const oa::VideoFrame&
 
 	auto cleanup = [&]() {
 		if (readbackBuffer || readbackAllocation) {
-			OaVmaDestroyBuffer(allocator, readbackBuffer, readbackAllocation);
+			vma::destroyBuffer(allocator, readbackBuffer, readbackAllocation);
 		}
 	};
 
@@ -405,13 +405,13 @@ oa::Result<oa::Vec<oa::U8>> oa::VideoDecoder::readbackNv12(const oa::VideoFrame&
 		return submitStatus;
 	}
 
-	result = OaVmaInvalidateAllocation(allocator, readbackAllocation, 0, byteSize);
+	result = vma::invalidateAllocation(allocator, readbackAllocation, 0, byteSize);
 	if (result != VK_SUCCESS) {
 		cleanup();
 		return oa::Status::error(oa::StatusCode::VulkanError, "Failed to invalidate video NV12 readback allocation");
 	}
 
-	oa::Vec<oa::U8> data(static_cast<oa::Usize>(byteSize));
+	oa::Vector<oa::U8> data(static_cast<oa::Usize>(byteSize));
 	oa::memcpy(data.data(), readbackInfo.pMappedData, static_cast<oa::Usize>(byteSize));
 	cleanup();
 
@@ -425,7 +425,7 @@ oa::Result<oa::Vec<oa::U8>> oa::VideoDecoder::readbackNv12(const oa::VideoFrame&
 	return data;
 }
 
-oa::Result<oa::Vec<oa::U8>> oa::VideoDecoder::readbackRgba(const oa::VideoFrame& inFrame)
+oa::Result<oa::Vector<oa::U8>> oa::VideoDecoder::readbackRgba(const oa::VideoFrame& inFrame)
 {
 	if (!impl_->engine || !impl_->commandBuffers[0]) {
 		return oa::Status::error("Video decoder not initialized");
@@ -438,7 +438,7 @@ oa::Result<oa::Vec<oa::U8>> oa::VideoDecoder::readbackRgba(const oa::VideoFrame&
 	}
 
 	auto& vkEngine = *impl_->engine;
-	auto allocator = static_cast<OaVmaAllocator>(oa::EngineAllocatorAccess::get(vkEngine).allocator);
+	auto allocator = static_cast<vma::Allocator>(oa::EngineAllocatorAccess::get(vkEngine).allocator);
 	const oa::U64 byteSize = static_cast<oa::U64>(inFrame.width) * inFrame.height * 4;
 
 	VkBufferCreateInfo bufferInfo = {};
@@ -447,14 +447,14 @@ oa::Result<oa::Vec<oa::U8>> oa::VideoDecoder::readbackRgba(const oa::VideoFrame&
 	bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 	bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-	OaVmaAllocationCreateInfo allocInfo = {};
-	allocInfo.usage = OA_VMA_MEMORY_USAGE_CPU_ONLY;
-	allocInfo.flags = OA_VMA_ALLOCATION_CREATE_MAPPED_BIT | OA_VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
+	vma::AllocationCreateInfo allocInfo = {};
+	allocInfo.usage = vma::memoryUsageCpuOnly;
+	allocInfo.flags = vma::allocationCreateMappedBit | vma::allocationCreateHostAccessRandomBit;
 
 	::VkBuffer readbackBuffer = VK_NULL_HANDLE;
-	OaVmaAllocation readbackAllocation = VK_NULL_HANDLE;
-	OaVmaAllocationInfo readbackInfo = {};
-	VkResult result = OaVmaCreateBuffer(
+	vma::Allocation readbackAllocation = VK_NULL_HANDLE;
+	vma::AllocationInfo readbackInfo = {};
+	VkResult result = vma::createBuffer(
 		allocator,
 		&bufferInfo,
 		&allocInfo,
@@ -467,7 +467,7 @@ oa::Result<oa::Vec<oa::U8>> oa::VideoDecoder::readbackRgba(const oa::VideoFrame&
 
 	auto cleanup = [&]() {
 		if (readbackBuffer || readbackAllocation) {
-			OaVmaDestroyBuffer(allocator, readbackBuffer, readbackAllocation);
+			vma::destroyBuffer(allocator, readbackBuffer, readbackAllocation);
 		}
 	};
 
@@ -589,13 +589,13 @@ oa::Result<oa::Vec<oa::U8>> oa::VideoDecoder::readbackRgba(const oa::VideoFrame&
 		return submitStatus;
 	}
 
-	result = OaVmaInvalidateAllocation(allocator, readbackAllocation, 0, byteSize);
+	result = vma::invalidateAllocation(allocator, readbackAllocation, 0, byteSize);
 	if (result != VK_SUCCESS) {
 		cleanup();
 		return oa::Status::error(oa::StatusCode::VulkanError, "Failed to invalidate video RGBA readback allocation");
 	}
 
-	oa::Vec<oa::U8> data(static_cast<oa::Usize>(byteSize));
+	oa::Vector<oa::U8> data(static_cast<oa::Usize>(byteSize));
 	oa::memcpy(data.data(), readbackInfo.pMappedData, static_cast<oa::Usize>(byteSize));
 	cleanup();
 
@@ -1081,7 +1081,7 @@ oa::Result<oa::VideoFrame> oa::VideoDecoder::allocateRgbaFrame_(oa::U32 inWidth,
 
 	auto& vkEngine = *impl_->engine;
 	VkDevice device = static_cast<VkDevice>(oa::EngineDeviceAccess::get(vkEngine).device);
-	auto allocator = static_cast<OaVmaAllocator>(oa::EngineAllocatorAccess::get(vkEngine).allocator);
+	auto allocator = static_cast<vma::Allocator>(oa::EngineAllocatorAccess::get(vkEngine).allocator);
 
 	VkImageCreateInfo imageInfo = {};
 	imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -1125,10 +1125,10 @@ oa::Result<oa::VideoFrame> oa::VideoDecoder::allocateRgbaFrame_(oa::U32 inWidth,
 	imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
 	VkImage image = VK_NULL_HANDLE;
-	OaVmaAllocation allocation = VK_NULL_HANDLE;
-	OaVmaAllocationCreateInfo allocInfo = {};
-	allocInfo.usage = OA_VMA_MEMORY_USAGE_GPU_ONLY;
-	VkResult result = OaVmaCreateImage(
+	vma::Allocation allocation = VK_NULL_HANDLE;
+	vma::AllocationCreateInfo allocInfo = {};
+	allocInfo.usage = vma::memoryUsageGpuOnly;
+	VkResult result = vma::createImage(
 		allocator,
 		&imageInfo,
 		&allocInfo,
@@ -1153,7 +1153,7 @@ oa::Result<oa::VideoFrame> oa::VideoDecoder::allocateRgbaFrame_(oa::U32 inWidth,
 	VkImageView imageView = VK_NULL_HANDLE;
 	result = oa::EngineDeviceAccess::get(*impl_->engine).deviceDispatch.vkCreateImageView(device, &viewInfo, nullptr, &imageView);
 	if (result != VK_SUCCESS) {
-		OaVmaDestroyImage(allocator, image, allocation);
+		vma::destroyImage(allocator, image, allocation);
 		return oa::Status::error(oa::StatusCode::VulkanError, "Failed to create RGBA video frame image view");
 	}
 
@@ -1171,7 +1171,7 @@ oa::Result<oa::VideoFrame> oa::VideoDecoder::allocateRgbaFrame_(oa::U32 inWidth,
 	if (result != VK_SUCCESS) {
 		releaseVideoCmdSlot();
 		oa::EngineDeviceAccess::get(*impl_->engine).deviceDispatch.vkDestroyImageView(device, imageView, nullptr);
-		OaVmaDestroyImage(allocator, image, allocation);
+		vma::destroyImage(allocator, image, allocation);
 		return oa::Status::error(oa::StatusCode::VulkanError, "vkBeginCommandBuffer failed for RGBA frame transition");
 	}
 
@@ -1202,7 +1202,7 @@ oa::Result<oa::VideoFrame> oa::VideoDecoder::allocateRgbaFrame_(oa::U32 inWidth,
 	if (result != VK_SUCCESS) {
 		releaseVideoCmdSlot();
 		oa::EngineDeviceAccess::get(*impl_->engine).deviceDispatch.vkDestroyImageView(device, imageView, nullptr);
-		OaVmaDestroyImage(allocator, image, allocation);
+		vma::destroyImage(allocator, image, allocation);
 		return oa::Status::error(oa::StatusCode::VulkanError, "vkEndCommandBuffer failed for RGBA frame transition");
 	}
 
@@ -1219,7 +1219,7 @@ oa::Result<oa::VideoFrame> oa::VideoDecoder::allocateRgbaFrame_(oa::U32 inWidth,
 		oa::EngineDeviceAccess::get(*impl_->engine).deviceDispatch.vkResetFences(device, 1, &fence);
 		releaseVideoCmdSlot();
 		oa::EngineDeviceAccess::get(*impl_->engine).deviceDispatch.vkDestroyImageView(device, imageView, nullptr);
-		OaVmaDestroyImage(allocator, image, allocation);
+		vma::destroyImage(allocator, image, allocation);
 		return oa::Status::error(oa::StatusCode::VulkanError, "vkQueueSubmit failed for RGBA frame transition");
 	}
 	oa::EngineDeviceAccess::get(*impl_->engine).deviceDispatch.vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX);
@@ -1347,7 +1347,7 @@ oa::Result<oa::Matrix> oa::VideoDecoder::convertFrameToBf16(const oa::VideoFrame
 	const oa::U32 width = inFrame.width;
 	const oa::U32 height = inFrame.height;
 	const oa::U64 lumaBytes = static_cast<oa::U64>(width) * height;
-	const oa::Vec<oa::U8>& nv12 = *nv12Result;
+	const oa::Vector<oa::U8>& nv12 = *nv12Result;
 	if (nv12.size() < static_cast<oa::Usize>(lumaBytes + lumaBytes / 2)) {
 		return oa::Status::error(oa::StatusCode::InvalidArgument, "NV12 readback was smaller than expected");
 	}
@@ -2132,7 +2132,7 @@ oa::Status oa::VideoDecoder::createOutputImages(
 	oa::U32 inSlotCount)
 {
 	VkDevice device = static_cast<VkDevice>(oa::EngineDeviceAccess::get(inRt).device);
-	auto allocator = static_cast<OaVmaAllocator>(oa::EngineAllocatorAccess::get(inRt).allocator);
+	auto allocator = static_cast<vma::Allocator>(oa::EngineAllocatorAccess::get(inRt).allocator);
 
 	VkVideoProfileListInfoKHR profileList = {};
 	profileList.sType = VK_STRUCTURE_TYPE_VIDEO_PROFILE_LIST_INFO_KHR;
@@ -2186,12 +2186,12 @@ oa::Status oa::VideoDecoder::createOutputImages(
 		}
 		imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
-		OaVmaAllocationCreateInfo allocInfo = {};
-		allocInfo.usage = OA_VMA_MEMORY_USAGE_GPU_ONLY;
+		vma::AllocationCreateInfo allocInfo = {};
+		allocInfo.usage = vma::memoryUsageGpuOnly;
 
 		VkImage image = VK_NULL_HANDLE;
-		OaVmaAllocation allocation = VK_NULL_HANDLE;
-		VkResult result = OaVmaCreateImage(allocator, &imageInfo, &allocInfo, &image, &allocation, nullptr);
+		vma::Allocation allocation = VK_NULL_HANDLE;
+		VkResult result = vma::createImage(allocator, &imageInfo, &allocInfo, &image, &allocation, nullptr);
 		if (result != VK_SUCCESS) {
 			return oa::Status::error(oa::StatusCode::VulkanError, "Failed to create decode output image");
 		}
@@ -2210,7 +2210,7 @@ oa::Status oa::VideoDecoder::createOutputImages(
 		VkImageView view = VK_NULL_HANDLE;
 		result = oa::EngineDeviceAccess::get(*impl_->engine).deviceDispatch.vkCreateImageView(device, &viewInfo, nullptr, &view);
 		if (result != VK_SUCCESS) {
-			OaVmaDestroyImage(allocator, image, allocation);
+			vma::destroyImage(allocator, image, allocation);
 			return oa::Status::error(oa::StatusCode::VulkanError, "Failed to create decode output image view");
 		}
 
@@ -2232,7 +2232,7 @@ oa::Status oa::VideoDecoder::createSampleStagingImages(
 	oa::U32 inSlotCount
 ) {
 	VkDevice device = static_cast<VkDevice>(oa::EngineDeviceAccess::get(inRt).device);
-	auto allocator = static_cast<OaVmaAllocator>(oa::EngineAllocatorAccess::get(inRt).allocator);
+	auto allocator = static_cast<vma::Allocator>(oa::EngineAllocatorAccess::get(inRt).allocator);
 
 	oa::U32 sharedFamilies[3] = {
 		oa::EngineDeviceAccess::get(inRt).queues.videoDecodeQueueFamily,
@@ -2281,12 +2281,12 @@ oa::Status oa::VideoDecoder::createSampleStagingImages(
 		}
 		imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
-		OaVmaAllocationCreateInfo allocInfo = {};
-		allocInfo.usage = OA_VMA_MEMORY_USAGE_GPU_ONLY;
+		vma::AllocationCreateInfo allocInfo = {};
+		allocInfo.usage = vma::memoryUsageGpuOnly;
 
 		VkImage image = VK_NULL_HANDLE;
-		OaVmaAllocation allocation = VK_NULL_HANDLE;
-		VkResult result = OaVmaCreateImage(allocator, &imageInfo, &allocInfo, &image, &allocation, nullptr);
+		vma::Allocation allocation = VK_NULL_HANDLE;
+		VkResult result = vma::createImage(allocator, &imageInfo, &allocInfo, &image, &allocation, nullptr);
 		if (result != VK_SUCCESS) {
 			return oa::Status::error(oa::StatusCode::VulkanError, "Failed to create NV12 staging image");
 		}
@@ -2313,13 +2313,13 @@ oa::Status oa::VideoDecoder::createSampleStagingImages(
 		VkImageView uvView = VK_NULL_HANDLE;
 		oa::Status yStatus = createPlaneView(VK_FORMAT_R8_UNORM, VK_IMAGE_ASPECT_PLANE_0_BIT, yView);
 		if (!yStatus.isOk()) {
-			OaVmaDestroyImage(allocator, image, allocation);
+			vma::destroyImage(allocator, image, allocation);
 			return yStatus;
 		}
 		oa::Status uvStatus = createPlaneView(VK_FORMAT_R8G8_UNORM, VK_IMAGE_ASPECT_PLANE_1_BIT, uvView);
 		if (!uvStatus.isOk()) {
 			oa::EngineDeviceAccess::get(*impl_->engine).deviceDispatch.vkDestroyImageView(device, yView, nullptr);
-			OaVmaDestroyImage(allocator, image, allocation);
+			vma::destroyImage(allocator, image, allocation);
 			return uvStatus;
 		}
 

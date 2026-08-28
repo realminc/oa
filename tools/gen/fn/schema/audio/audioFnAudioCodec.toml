@@ -40,7 +40,7 @@ kind = "unary"
 surface = "host_utility"
 body = "cpu_util"
 generate_declaration = false
-api_return = "oa::Result<oa::Vec<oa::U8>>"
+api_return = "oa::Result<oa::Vector<oa::U8>>"
 api_params = [
     "oa::Span<const oa::F32> inSamples",
     "oa::U32 inSampleRate",
@@ -54,7 +54,7 @@ kind = "unary"
 surface = "host_utility"
 body = "cpu_util"
 generate_declaration = false
-api_return = "oa::Result<oa::Vec<oa::U8>>"
+api_return = "oa::Result<oa::Vector<oa::U8>>"
 api_params = ["const oa::Audio& inAudio"]
 notes = "Synchronously read back and encode one semantic audio value to IEEE Float32 WAV bytes."
 

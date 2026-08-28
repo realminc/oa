@@ -50,7 +50,7 @@ enum class FontId : oa::U8 {
 
 class TextAtlas {
 public:
-	TextAtlas() = default;
+	TextAtlas();
 	TextAtlas(const TextAtlas&)            = delete;
 	TextAtlas& operator=(const TextAtlas&) = delete;
 	TextAtlas(TextAtlas&&) noexcept;
@@ -167,7 +167,7 @@ public:
 		oa::vlm::Vec2                    inOrigin,
 		const TextLayoutConfig& inCfg,
 		oa::U32                     inColor,
-		oa::Vec<PositionedGlyph>& inOutGlyphs) const;
+		oa::Vector<PositionedGlyph>& inOutGlyphs) const;
 
 	// measure text extent without appending.
 	[[nodiscard]] oa::vlm::Vec2 measure(

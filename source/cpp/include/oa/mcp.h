@@ -122,8 +122,8 @@ private:
 
   McpServerConfig config_;
   oa::Status configurationStatus_;
-  oa::Vec<McpTool> tools_;
-  oa::Vec<McpTextResource> resources_;
+  oa::Vector<McpTool> tools_;
+  oa::Vector<McpTextResource> resources_;
   oa::String legacyProtocolVersion_;
   oa::Bool legacyInitializeSeen_ = false;
   oa::Bool legacyReady_ = false;

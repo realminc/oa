@@ -15,7 +15,7 @@ public:
 	oa::I32 seqLen = 0;
 	oa::I32 numHeads = 0;
 
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (!outDIn.empty()) outDIn[0] = oa::FnMatrix::mergeHeads(inDOut, batch, seqLen, numHeads);
 	}
 };
@@ -25,7 +25,7 @@ public:
 	oa::I32 batch = 0;
 	oa::I32 seqLen = 0;
 	oa::I32 numHeads = 0;
-	void backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {
+	void backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {
 		if (!outDIn.empty()) outDIn[0] = oa::FnMatrix::splitHeads(inDOut, batch, seqLen, numHeads);
 	}
 };

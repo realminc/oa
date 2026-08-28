@@ -57,11 +57,8 @@ public:
 
 	constexpr SecretKey() : bytes{} {}
 
-	void secureZero() {
-		volatile oa::Byte* ptr = bytes.data();
-		for (oa::Usize i = 0; i < bytes.size(); ++i) {
-			ptr[i] = 0;
-		}
+	void secureZero() noexcept {
+		oa::memzeroSecure(bytes.data(), bytes.size());
 	}
 
 	~SecretKey() { secureZero(); }

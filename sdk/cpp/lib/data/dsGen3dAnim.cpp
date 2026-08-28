@@ -4,7 +4,7 @@
 
 #include <oa/core/log.h>
 #include <oa/core/fnMatrix.h>
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
 #include <oa/core/std/scalarMath.h>
 #include <oa/core/std/utility.h>
 
@@ -120,7 +120,7 @@ bool oa::DsGen3dAnim::loadUsd_() {
 			clipsR.getStatus().toString().cStr());
 		return false;
 	}
-	const oa::Vec<oa::UsdNamedClip>& named = clipsR.getValue();
+	const oa::Vector<oa::UsdNamedClip>& named = clipsR.getValue();
 	if (named.empty()) { return false; }
 
 	const oa::Skeleton& sk = oa::skMetaHuman();
@@ -227,7 +227,7 @@ void oa::DsGen3dAnim::recomputeStats_() {
 	std_.resize(D);
 	if (D == 0 || clips_.empty()) { return; }
 
-	oa::Vec<double> sum, sumsq;
+	oa::Vector<double> sum, sumsq;
 	sum.resize(D);
 	sumsq.resize(D);
 	for (oa::Usize i = 0; i < D; ++i) {
@@ -309,7 +309,7 @@ oa::Matrix oa::DsGen3dAnim::getItem(oa::I64 inIndex) const {
 	const oa::PoseClip& clip = clips_[static_cast<oa::Usize>(w.clip)];
 	// Return flat [ctx * poseDim] for now; reshape caller-side if needed
 	const oa::Usize n = static_cast<oa::Usize>(contextLen_) * poseDim_;
-	oa::Vec<float> xdata(n);
+	oa::Vector<float> xdata(n);
 	for (oa::I32 t = 0; t < contextLen_; ++t) {
 		for (oa::I32 c = 0; c < poseDim_; ++c) {
 			const oa::Usize ch = static_cast<oa::Usize>(c);
@@ -329,7 +329,7 @@ oa::Dataset::Sample oa::DsGen3dAnim::getSample(oa::I64 inIndex) const {
 	const oa::PoseClip& clip = clips_[static_cast<oa::Usize>(w.clip)];
 
 	const oa::Usize n = static_cast<oa::Usize>(contextLen_) * poseDim_;
-	oa::Vec<float> xdata(n);
+	oa::Vector<float> xdata(n);
 	for (oa::I32 t = 0; t < contextLen_; ++t) {
 		for (oa::I32 c = 0; c < poseDim_; ++c) {
 			const oa::Usize ch = static_cast<oa::Usize>(c);
@@ -342,7 +342,7 @@ oa::Dataset::Sample oa::DsGen3dAnim::getSample(oa::I64 inIndex) const {
 		oa::MatrixShape{contextLen_, poseDim_}, oa::ScalarType::Float32);
 
 	// Y: next frame (single pose vector)
-	oa::Vec<float> ydata(poseDim_);
+	oa::Vector<float> ydata(poseDim_);
 	for (oa::I32 c = 0; c < poseDim_; ++c) {
 		const oa::Usize ch = static_cast<oa::Usize>(c);
 		ydata[ch] = (modelFeature_(clip, w.start + contextLen_, c) - mean_[ch]) / std_[ch];
@@ -363,7 +363,7 @@ bool oa::DsGen3dAnim::restrictSplitToClip(oa::DsSplit inSplit, const oa::String&
 	if (clipIdx < 0) { return false; }
 
 	const oa::Usize splitIdx = splitIndex(inSplit);
-	oa::Vec<oa::Usize> filtered;
+	oa::Vector<oa::Usize> filtered;
 	for (oa::Usize windowIdx : splitWindows_[splitIdx]) {
 		if (windows_[windowIdx].clip == clipIdx) {
 			filtered.pushBack(windowIdx);
@@ -387,11 +387,11 @@ oa::Usize oa::DsGen3dAnim::splitClipCount(oa::DsSplit inSplit) const noexcept {
 void oa::DsGen3dAnim::nextBatch(oa::DsSplit inSplit, oa::I32 inBatch, oa::Matrix& outX, oa::Matrix& outY) {
 	const oa::I64 rowLen = static_cast<oa::I64>(contextLen_) * poseDim_;
 	const oa::I64 total  = static_cast<oa::I64>(inBatch) * rowLen;
-	oa::Vec<float> xdata(static_cast<oa::Usize>(total));
-	oa::Vec<float> ydata(static_cast<oa::Usize>(total));
+	oa::Vector<float> xdata(static_cast<oa::Usize>(total));
+	oa::Vector<float> ydata(static_cast<oa::Usize>(total));
 
 	const oa::Usize splitIdx = splitIndex(inSplit);
-	oa::Vec<oa::Usize>& splitWindows = splitWindows_[splitIdx];
+	oa::Vector<oa::Usize>& splitWindows = splitWindows_[splitIdx];
 	if (splitWindows.empty()) { outX = oa::Matrix(); outY = oa::Matrix(); return; }
 
 	// Iterate shuffled windows without replacement inside an epoch. This matches
@@ -432,7 +432,7 @@ oa::I32 oa::DsGen3dAnim::findClipByName(const oa::String& inName) const {
 	return -1;
 }
 
-bool oa::DsGen3dAnim::seedRaw(oa::I32 inClipIdx, oa::I32 inContext, oa::Vec<oa::F32>& outRaw) const {
+bool oa::DsGen3dAnim::seedRaw(oa::I32 inClipIdx, oa::I32 inContext, oa::Vector<oa::F32>& outRaw) const {
 	if (inClipIdx < 0 || static_cast<oa::Usize>(inClipIdx) >= clips_.size()) { return false; }
 	const oa::PoseClip& clip = clips_[static_cast<oa::Usize>(inClipIdx)];
 	if (static_cast<oa::I32>(clip.frameCount) < inContext || poseDim_ <= 0) { return false; }
@@ -442,7 +442,7 @@ bool oa::DsGen3dAnim::seedRaw(oa::I32 inClipIdx, oa::I32 inContext, oa::Vec<oa::
 	return true;
 }
 
-bool oa::DsGen3dAnim::clipRaw(oa::I32 inClipIdx, oa::Vec<oa::F32>& outRaw, oa::U32& outFrames) const {
+bool oa::DsGen3dAnim::clipRaw(oa::I32 inClipIdx, oa::Vector<oa::F32>& outRaw, oa::U32& outFrames) const {
 	if (inClipIdx < 0 || static_cast<oa::Usize>(inClipIdx) >= clips_.size()) { return false; }
 	const oa::PoseClip& clip = clips_[static_cast<oa::Usize>(inClipIdx)];
 	outFrames = clip.frameCount;
@@ -451,7 +451,7 @@ bool oa::DsGen3dAnim::clipRaw(oa::I32 inClipIdx, oa::Vec<oa::F32>& outRaw, oa::U
 	return true;
 }
 
-bool oa::DsGen3dAnim::seedModelRaw(oa::I32 inClipIdx, oa::I32 inContext, oa::Vec<oa::F32>& outRaw) const {
+bool oa::DsGen3dAnim::seedModelRaw(oa::I32 inClipIdx, oa::I32 inContext, oa::Vector<oa::F32>& outRaw) const {
 	if (inClipIdx < 0 || static_cast<oa::Usize>(inClipIdx) >= clips_.size()) { return false; }
 	const oa::PoseClip& clip = clips_[static_cast<oa::Usize>(inClipIdx)];
 	if (static_cast<oa::I32>(clip.frameCount) < inContext || poseDim_ <= 0) { return false; }
@@ -466,7 +466,7 @@ bool oa::DsGen3dAnim::seedModelRaw(oa::I32 inClipIdx, oa::I32 inContext, oa::Vec
 	return true;
 }
 
-bool oa::DsGen3dAnim::clipModelRaw(oa::I32 inClipIdx, oa::Vec<oa::F32>& outRaw, oa::U32& outFrames) const {
+bool oa::DsGen3dAnim::clipModelRaw(oa::I32 inClipIdx, oa::Vector<oa::F32>& outRaw, oa::U32& outFrames) const {
 	if (inClipIdx < 0 || static_cast<oa::Usize>(inClipIdx) >= clips_.size()) { return false; }
 	const oa::PoseClip& clip = clips_[static_cast<oa::Usize>(inClipIdx)];
 	outFrames = clip.frameCount;

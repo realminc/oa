@@ -2,11 +2,11 @@
 
 #include <oa/core/types.h>
 #include <oa/core/status.h>
-#include <oa/runtime/oaVk.h>
+#include <vkl/vkl.h>
 #include <oa/runtime/init.h>
 
 // VkInstance creation shared by single-device and mesh paths.
-// Flow: oaVkInit → createInstance → caller-owned OaVkInstanceTable.
+// Flow: process loader selection → createInstance → caller-owned table.
 
 namespace oavk {
 
@@ -21,11 +21,12 @@ public:
 		oa::U32 inAppVersionPatch,
 		oa::Bool inEnableValidation,
 		oa::Span<const char* const> inExtraInstanceExtensions = {},
-		oa::Bool inWantsPresentation = false
+		oa::Bool inWantsPresentation = false,
+		PFN_vkGetInstanceProcAddr inCustomLoader = nullptr
 	);
 
 	static void destroyInstance(
-		const OaVkInstanceTable& inDispatch,
+		const VklInstanceTable& inDispatch,
 		VkInstance inInstance) noexcept;
 };
 

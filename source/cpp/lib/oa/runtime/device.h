@@ -7,7 +7,7 @@
 #include <oa/core/types.h>
 #include <oa/core/status.h>
 #include <oa/core/device.h>
-#include <oa/runtime/oaVk.h>
+#include <vkl/vkl.h>
 #include <oa/runtime/init.h>     // oavk::CoopMatShape, oavk::CoopMatShapes
 #include <oa/runtime/rate.h>
 
@@ -94,7 +94,7 @@ public:
 	oa::U32            driverId = 0;
 	oa::String         driverName;
 	oa::String         driverInfo;
-	oa::Vec<oa::String>  enabledDeviceExtensions;
+	oa::Vector<oa::String>  enabledDeviceExtensions;
 	
 	oa::Bool hasCooperativeMatrix                    = false;
 	oa::Bool hasCooperativeVector                    = false;  // vK_NV_cooperative_vector (Blackwell+)
@@ -152,8 +152,8 @@ public:
 	void* instance       = nullptr;
 	void* physicalDevice = nullptr;
 	void* device         = nullptr;
-	OaVkInstanceTable instanceDispatch{};
-	OaVkDeviceTable deviceDispatch{};
+	VklInstanceTable instanceDispatch{};
+	VklDeviceTable deviceDispatch{};
 	oa::Bool ownsInstance  = true;
 	Queues     queues;
 	DeviceInfo info;
@@ -179,7 +179,8 @@ public:
 		oa::U32                     inAppVersionPatch         = 1,
 		oa::Span<const char* const> inInstanceExtraExtensions = {},
 		oa::Bool                    inHintNeedsPresentation   = false,
-		oa::Bool                    inHintNeedsGraphics       = false
+		oa::Bool                    inHintNeedsGraphics       = false,
+		PFN_vkGetInstanceProcAddr   inCustomLoader            = nullptr
 	);
 
 	// -----------------------------------------------------------------------
@@ -305,9 +306,7 @@ const char* physicalTypeLabel(VkPhysicalDeviceType inType);
 const char* vendorLabel(oa::U32 inVendorId);
 oa::String formatDriverVersion(oa::U32 inVersion);
 const char* driverIdLabel(oa::U32 inDriverId);
-oa::U32 countComputeQueueSlots(
-	const OaVkInstanceTable& inDispatch,
-	void* inPhysicalDevice);
+oa::U32 countComputeQueueSlots(const VklInstanceTable& inDispatch, void* inPhysicalDevice);
 
 } // namespace oavk
 

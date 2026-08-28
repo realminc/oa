@@ -6,7 +6,8 @@
 #include <oa/runtime/executionSession.h>
 #include <oa/runtime/engine.h>
 #include <oa/runtime/engine/deviceAccess.h>
-#include <oa/runtime/oaVk.h>
+
+#include <vkl/vkl.h>
 
 #include <ml/rl/environmentKernelPack.h>
 #include <ml/rl/gen/environmentOpRegistry.h>
@@ -90,10 +91,10 @@ static oa::Usize lunarVectorConfigIndex(
 	return static_cast<oa::Usize>(inIndex);
 }
 
-static oa::Result<oa::Vec<oa::F32>> lunarVectorSerializeConfigF32(
+static oa::Result<oa::Vector<oa::F32>> lunarVectorSerializeConfigF32(
 	const LunarLander3dConfig& inConfig,
 	const LunarTerrain& inTerrain) {
-	oa::Vec<oa::F32> values(kLunarVectorConfigF32Count, 0.0F);
+	oa::Vector<oa::F32> values(kLunarVectorConfigF32Count, 0.0F);
 	bool losesNonzero = false;
 	bool requiresSubnormal = false;
 	auto setValue = [&values, &losesNonzero, &requiresSubnormal](
@@ -208,9 +209,9 @@ static oa::Result<oa::Vec<oa::F32>> lunarVectorSerializeConfigF32(
 	return values;
 }
 
-static oa::Vec<oa::U32> lunarVectorSerializeConfigU32(
+static oa::Vector<oa::U32> lunarVectorSerializeConfigU32(
 	const LunarLander3dConfig& inConfig) {
-	oa::Vec<oa::U32> values(kLunarVectorConfigU32Count, 0U);
+	oa::Vector<oa::U32> values(kLunarVectorConfigU32Count, 0U);
 	const oa::U64 fingerprint = inConfig.contractFingerprint();
 	values[0] = kLunarVectorConfigLayoutVersion;
 	values[1] = inConfig.environmentVersion_;
@@ -232,7 +233,7 @@ static oa::Vec<oa::U32> lunarVectorSerializeConfigU32(
 	return values;
 }
 
-static bool lunarVectorAllFinite(const oa::Vec<oa::F32>& inValues) noexcept {
+static bool lunarVectorAllFinite(const oa::Vector<oa::F32>& inValues) noexcept {
 	for (const oa::F32 value : inValues) {
 		if (not std::isfinite(value)) return false;
 	}
@@ -240,7 +241,7 @@ static bool lunarVectorAllFinite(const oa::Vec<oa::F32>& inValues) noexcept {
 }
 
 static oa::Status lunarVectorValidateSerializedConfig(
-	const oa::Vec<oa::F32>& inValues,
+	const oa::Vector<oa::F32>& inValues,
 	const LunarLander3dConfig& inConfig) {
 	if (inValues.size() != kLunarVectorConfigF32Count
 		or not lunarVectorAllFinite(inValues)) {
@@ -366,8 +367,8 @@ static oa::Status lunarVectorValidateDeviceLimits(
 			oa::StatusCode::FailedPrecondition,
 			"Lunar Lander 3D requires queried vulkan device limits");
 	}
-	OaVkInstanceTable instanceTable{};
-	oaVkLoadInstanceTable(
+	VklInstanceTable instanceTable{};
+	vklLoadInstanceTable(
 		&instanceTable,
 		static_cast<VkInstance>(oa::EngineDeviceAccess::get(inEngine).instance));
 	if (not instanceTable.vkGetPhysicalDeviceProperties
@@ -440,7 +441,7 @@ static oa::Status lunarVectorValidateDeviceLimits(
 	return oa::Status::ok();
 }
 
-static oa::Matrix lunarVectorFromF32(const oa::Vec<oa::F32>& inValues) {
+static oa::Matrix lunarVectorFromF32(const oa::Vector<oa::F32>& inValues) {
 	return oa::FnMatrix::fromBytes(
 		oa::Span<const oa::U8>(
 			reinterpret_cast<const oa::U8*>(inValues.data()),
@@ -448,7 +449,7 @@ static oa::Matrix lunarVectorFromF32(const oa::Vec<oa::F32>& inValues) {
 		{static_cast<oa::I64>(inValues.size())}, oa::ScalarType::Float32);
 }
 
-static oa::Matrix lunarVectorFromU32(const oa::Vec<oa::U32>& inValues) {
+static oa::Matrix lunarVectorFromU32(const oa::Vector<oa::U32>& inValues) {
 	return oa::FnMatrix::fromBytes(
 		oa::Span<const oa::U8>(
 			reinterpret_cast<const oa::U8*>(inValues.data()),
@@ -501,19 +502,19 @@ oa::Result<LunarLander3dVector> LunarLander3dVector::createFlat(
 	auto serializedConfig = lunarVectorSerializeConfigF32(
 		inConfig.environment_, terrain);
 	if (serializedConfig.isError()) return serializedConfig.getStatus();
-	oa::Vec<oa::F32> configF32 = oa::move(serializedConfig).getValue();
+	oa::Vector<oa::F32> configF32 = oa::move(serializedConfig).getValue();
 	OA_RETURN_IF_ERROR(lunarVectorValidateSerializedConfig(
 		configF32, inConfig.environment_));
 	OA_RETURN_IF_ERROR(lunarVectorValidateDeviceLimits(
 		inEngine, inConfig.environments_, terrainVertices));
-	const oa::Vec<oa::U32> configU32 = lunarVectorSerializeConfigU32(
+	const oa::Vector<oa::U32> configU32 = lunarVectorSerializeConfigU32(
 		inConfig.environment_);
-	oa::Vec<oa::F32> terrainF32(
+	oa::Vector<oa::F32> terrainF32(
 		static_cast<oa::Usize>(terrainVertices), 0.0F);
 	for (oa::Usize index = 0; index < terrainF32.size(); ++index) {
 		terrainF32[index] = static_cast<oa::F32>(terrain.heights()[index]);
 	}
-	const oa::Vec<oa::U8> noExternalStop(inConfig.environments_, 0U);
+	const oa::Vector<oa::U8> noExternalStop(inConfig.environments_, 0U);
 
 	const oa::MatrixShape stateF32Shape{
 		static_cast<oa::I64>(inConfig.environments_),
@@ -620,7 +621,7 @@ bool LunarLander3dVector::isValid() const noexcept {
 		and matches(noExternalStop_, vectorShape, oa::ScalarType::UInt8);
 }
 
-oa::Result<oa::Vec<LunarLander3dEpisodeTelemetry>>
+oa::Result<oa::Vector<LunarLander3dEpisodeTelemetry>>
 LunarLander3dVector::copyEpisodeTelemetry() const {
 	if (not isValid() or not isOpen()) {
 		return oa::Status::error(
@@ -638,9 +639,9 @@ LunarLander3dVector::copyEpisodeTelemetry() const {
 			"Lunar Lander 3D telemetry requires waiting on the exact submitted event");
 	}
 	const oa::Usize environments = static_cast<oa::Usize>(config_.environments_);
-	oa::Vec<oa::F32> stateF32(
+	oa::Vector<oa::F32> stateF32(
 		environments * kLunarVectorStateF32Width, 0.0F);
-	oa::Vec<oa::U32> stateU32(
+	oa::Vector<oa::U32> stateU32(
 		environments * kLunarVectorStateU32Width, 0U);
 	{
 		// CopyToHost resolves its runtime through the selected context. Select
@@ -656,7 +657,7 @@ LunarLander3dVector::copyEpisodeTelemetry() const {
 			static_cast<oa::U64>(stateU32.size() * sizeof(oa::U32))));
 	}
 
-	oa::Vec<LunarLander3dEpisodeTelemetry> result;
+	oa::Vector<LunarLander3dEpisodeTelemetry> result;
 	result.reserve(environments);
 	for (oa::Usize lane = 0U; lane < environments; ++lane) {
 		const oa::Usize f32Base = lane * kLunarVectorStateF32Width;

@@ -45,7 +45,7 @@ struct DetectionOverlayConfig {
 
 class DetectionOverlay {
 public:
-	DetectionOverlay() = default;
+	DetectionOverlay();
 	DetectionOverlay(const DetectionOverlay&) = delete;
 	DetectionOverlay& operator=(const DetectionOverlay&) = delete;
 	DetectionOverlay(DetectionOverlay&& inOther) noexcept;

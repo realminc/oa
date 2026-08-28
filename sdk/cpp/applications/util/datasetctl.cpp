@@ -67,7 +67,7 @@ static int cmdPack(
 	}
 	auto& train = trainR.getValue();
 
-	oa::Vec<oa::U8> val;
+	oa::Vector<oa::U8> val;
 	if (!valPath.empty()) {
 		if (!oa::Filesystem::isFile(oa::Path(valPath))) {
 			OA_CLI("Error: val file not found: %s", valPath.cStr());
@@ -81,7 +81,7 @@ static int cmdPack(
 		val = oa::move(valR).getValue();
 	}
 
-	oa::Vec<oa::U8> test;
+	oa::Vector<oa::U8> test;
 	if (!testPath.empty()) {
 		if (!oa::Filesystem::isFile(oa::Path(testPath))) {
 			OA_CLI("Error: test file not found: %s", testPath.cStr());

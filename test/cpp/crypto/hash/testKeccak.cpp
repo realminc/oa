@@ -23,8 +23,8 @@ static oa::String toHex(const oa::Byte* inData, oa::Usize inLen) {
 	return result;
 }
 
-static oa::Vec<oa::Byte> fromHex(const oa::String& inHex) {
-	oa::Vec<oa::Byte> result;
+static oa::Vector<oa::Byte> fromHex(const oa::String& inHex) {
+	oa::Vector<oa::Byte> result;
 	result.reserve(inHex.size() / 2);
 	for (oa::Usize i = 0; i + 1 < inHex.size(); i += 2) {
 		auto nibble = [](char c) -> oa::Byte {
@@ -261,8 +261,8 @@ TEST(Kmac256, DifferentCustom) {
 }
 
 TEST(Kmac256, LargeKeyAndCustomizationAreBoundedSafely) {
-	oa::Vec<oa::Byte> key(4096, 0xA5);
-	oa::Vec<oa::Byte> custom(4096, 0x5A);
+	oa::Vector<oa::Byte> key(4096, 0xA5);
+	oa::Vector<oa::Byte> custom(4096, 0x5A);
 	const oa::Byte msg[] = {'l', 'a', 'r', 'g', 'e'};
 	oa::Byte mac1[64];
 	oa::Byte mac2[64];
@@ -284,7 +284,7 @@ TEST(Kmac256, RejectsNullNonEmptyInputs) {
 // Performance: SHAKE-256 throughput (1 MB).
 TEST(Shake256, Throughput1MB) {
 	const oa::Usize size = oa::Usize{1024} * 1024;
-	oa::Vec<oa::Byte> data(size, 0xAB);
+	oa::Vector<oa::Byte> data(size, 0xAB);
 	oa::Byte digest[32];
 
 	auto start = std::chrono::high_resolution_clock::now();

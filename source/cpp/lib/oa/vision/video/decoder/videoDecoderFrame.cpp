@@ -4,7 +4,7 @@
 #include <oa/runtime/engine.h>
 #include <oa/runtime/engine/allocatorAccess.h>
 #include <oa/runtime/engine/deviceAccess.h>
-#include <oa/runtime/oaVma.h>
+#include <vma/vma.hpp>
 
 // Video frame pool implementation
 oa::VideoFramePool::VideoFramePool(oa::VideoFramePool&& inOther) noexcept
@@ -71,11 +71,11 @@ oa::Result<oa::VideoFramePool> oa::VideoFramePool::create(
 		imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
 		VkImage image = VK_NULL_HANDLE;
-		OaVmaAllocation allocation = VK_NULL_HANDLE;
-		OaVmaAllocationCreateInfo allocInfo = {};
-		allocInfo.usage = OA_VMA_MEMORY_USAGE_GPU_ONLY;
-		VkResult result = OaVmaCreateImage(
-			static_cast<OaVmaAllocator>(oa::EngineAllocatorAccess::get(vkEngine).allocator),
+		vma::Allocation allocation = VK_NULL_HANDLE;
+		vma::AllocationCreateInfo allocInfo = {};
+		allocInfo.usage = vma::memoryUsageGpuOnly;
+		VkResult result = vma::createImage(
+			static_cast<vma::Allocator>(oa::EngineAllocatorAccess::get(vkEngine).allocator),
 			&imageInfo,
 			&allocInfo,
 			&image,
@@ -99,8 +99,8 @@ oa::Result<oa::VideoFramePool> oa::VideoFramePool::create(
 		viewInfo.subresourceRange.layerCount = 1;
 		result = oa::EngineDeviceAccess::get(vkEngine).deviceDispatch.vkCreateImageView(device, &viewInfo, nullptr, &imageView);
 		if (result != VK_SUCCESS) {
-			OaVmaDestroyImage(
-				static_cast<OaVmaAllocator>(oa::EngineAllocatorAccess::get(vkEngine).allocator),
+			vma::destroyImage(
+				static_cast<vma::Allocator>(oa::EngineAllocatorAccess::get(vkEngine).allocator),
 				image,
 				allocation);
 			pool.reset_();
@@ -160,10 +160,10 @@ void oa::VideoFramePool::reset_() noexcept
 		}
 		void* allocation = i < allocations_.size() ? allocations_[i] : nullptr;
 		if (frames_[i].image && allocation) {
-			OaVmaDestroyImage(
-				static_cast<OaVmaAllocator>(oa::EngineAllocatorAccess::get(vkEngine).allocator),
+			vma::destroyImage(
+				static_cast<vma::Allocator>(oa::EngineAllocatorAccess::get(vkEngine).allocator),
 				frames_[i].image,
-				static_cast<OaVmaAllocation>(allocation));
+				static_cast<vma::Allocation>(allocation));
 			frames_[i].image = VK_NULL_HANDLE;
 		}
 	}

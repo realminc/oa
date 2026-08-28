@@ -42,7 +42,7 @@ public:
 	// type; callers never receive or own it.
 	struct Impl;
 
-	ScreenCapture() = default;
+	ScreenCapture();
 	ScreenCapture(ScreenCapture&& inOther) noexcept;
 	ScreenCapture& operator=(ScreenCapture&& inOther) noexcept;
 	ScreenCapture(const ScreenCapture&) = delete;

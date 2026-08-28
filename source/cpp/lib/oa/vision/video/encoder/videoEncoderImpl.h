@@ -46,12 +46,12 @@ public:
 	oavk::VideoDpb dpb;
 	oa::U32 dpbSlotCapacity = 0U;
 
-	oa::Vec<EncodeSlot> slots;
+	oa::Vector<EncodeSlot> slots;
 	oa::U32 submitSlot = 0U;
 	oa::U32 harvestSlot = 0U;
 	oa::U32 pendingSlots = 0U;
 	bool compatibilityUploadReady = false;
-	oa::Vec<oa::U8> cachedHeaders;
+	oa::Vector<oa::U8> cachedHeaders;
 
 	bool rateControlReset = false;
 	bool queryResultStatusSupported = false;

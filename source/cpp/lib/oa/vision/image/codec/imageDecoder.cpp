@@ -27,7 +27,7 @@ oa::Result<oa::Image> uploadDecodedImage(
 			"oa::FnImage::decodeMemory: no active oa::ExecutionSession");
 	}
 
-	oa::Vec<oa::F32> planar;
+	oa::Vector<oa::F32> planar;
 	planar.resize(static_cast<oa::Usize>(pixelCount * channels));
 	for (oa::I32 channel = 0; channel < channels; ++channel) {
 		for (oa::I64 pixel = 0; pixel < pixelCount; ++pixel) {

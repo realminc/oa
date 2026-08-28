@@ -36,28 +36,28 @@ public:
 	oa::U64 seed = 0;
 	oa::U64 stepIndex = 0;
 	oa::U32 batchOffset = 0;
-	oa::Vec<oa::U32> sampleIndices;
+	oa::Vector<oa::U32> sampleIndices;
 };
 
-void appendU32(oa::Vec<oa::Byte>& out, oa::U32 inValue) {
+void appendU32(oa::Vector<oa::Byte>& out, oa::U32 inValue) {
 	for (oa::U32 shift = 0; shift < 32U; shift += 8U) {
 		out.pushBack(static_cast<oa::Byte>((inValue >> shift) & 0xffU));
 	}
 }
 
-void appendU64(oa::Vec<oa::Byte>& out, oa::U64 inValue) {
+void appendU64(oa::Vector<oa::Byte>& out, oa::U64 inValue) {
 	for (oa::U32 shift = 0; shift < 64U; shift += 8U) {
 		out.pushBack(static_cast<oa::Byte>((inValue >> shift) & 0xffU));
 	}
 }
 
-void appendF32(oa::Vec<oa::Byte>& out, oa::F32 inValue) {
+void appendF32(oa::Vector<oa::Byte>& out, oa::F32 inValue) {
 	oa::U32 bits = 0;
 	std::memcpy(&bits, &inValue, sizeof(bits));
 	appendU32(out, bits);
 }
 
-void appendHash(oa::Vec<oa::Byte>& out, const oa::Array<oa::Byte, 32>& inHash) {
+void appendHash(oa::Vector<oa::Byte>& out, const oa::Array<oa::Byte, 32>& inHash) {
 	out.append(inHash.data(), inHash.size());
 }
 
@@ -170,12 +170,12 @@ oa::Status validateSampleIndices(const StepArguments& inArguments) {
 	return oa::Status::ok();
 }
 
-oa::Result<oa::Vec<oa::F32>> decodeF32(oa::Span<const oa::Byte> inBytes) {
+oa::Result<oa::Vector<oa::F32>> decodeF32(oa::Span<const oa::Byte> inBytes) {
 	if (inBytes.size() % sizeof(oa::F32) != 0U) {
 		return oa::Status::error(oa::StatusCode::DataLoss,
 			"satellite NLP step: FP32 payload has a partial element");
 	}
-	oa::Vec<oa::F32> values;
+	oa::Vector<oa::F32> values;
 	values.reserve(inBytes.size() / sizeof(oa::F32));
 	for (oa::Usize offset = 0; offset < inBytes.size(); offset += sizeof(oa::F32)) {
 		values.pushBack(readF32(inBytes.data() + offset));
@@ -183,12 +183,12 @@ oa::Result<oa::Vec<oa::F32>> decodeF32(oa::Span<const oa::Byte> inBytes) {
 	return values;
 }
 
-oa::Result<oa::Vec<oa::U32>> decodeU32(oa::Span<const oa::Byte> inBytes) {
+oa::Result<oa::Vector<oa::U32>> decodeU32(oa::Span<const oa::Byte> inBytes) {
 	if (inBytes.size() % sizeof(oa::U32) != 0U) {
 		return oa::Status::error(oa::StatusCode::DataLoss,
 			"satellite NLP step: UInt32 payload has a partial element");
 	}
-	oa::Vec<oa::U32> values;
+	oa::Vector<oa::U32> values;
 	values.reserve(inBytes.size() / sizeof(oa::U32));
 	for (oa::Usize offset = 0; offset < inBytes.size(); offset += sizeof(oa::U32)) {
 		values.pushBack(readU32(inBytes.data() + offset));
@@ -197,9 +197,9 @@ oa::Result<oa::Vec<oa::U32>> decodeU32(oa::Span<const oa::Byte> inBytes) {
 }
 
 oa::Array<oa::Byte, 32> parameterLayoutHash(
-	const oa::Vec<oa::NamedParameter>& inParameters)
+	const oa::Vector<oa::NamedParameter>& inParameters)
 {
-	oa::Vec<oa::Byte> layout;
+	oa::Vector<oa::Byte> layout;
 	for (const auto& named : inParameters) {
 		appendU32(layout, static_cast<oa::U32>(named.path.size()));
 		layout.append(reinterpret_cast<const oa::Byte*>(named.path.cStr()),
@@ -215,7 +215,7 @@ oa::Array<oa::Byte, 32> parameterLayoutHash(
 }
 
 oa::Status loadParameters(
-	oa::Vec<oa::NamedParameter>& inParameters,
+	oa::Vector<oa::NamedParameter>& inParameters,
 	oa::Span<const oa::F32> inFlat)
 {
 	oa::Usize offset = 0;
@@ -248,7 +248,7 @@ oa::Status loadParameters(
 	return oa::Status::ok();
 }
 
-oa::Status copyF32(const oa::Matrix& inMatrix, oa::Vec<oa::F32>& out) {
+oa::Status copyF32(const oa::Matrix& inMatrix, oa::Vector<oa::F32>& out) {
 	if (inMatrix.getDtype() != oa::ScalarType::Float32) {
 		return oa::Status::error(oa::StatusCode::DtypeMismatch,
 			"satellite NLP step: FP32 readback contract changed");
@@ -260,8 +260,8 @@ oa::Status copyF32(const oa::Matrix& inMatrix, oa::Vec<oa::F32>& out) {
 		inMatrix, out.data() + oldSize, count * sizeof(oa::F32));
 }
 
-oa::Vec<oa::Byte> encodeResult(const oa::SatelliteNlpStepResult& inResult) {
-	oa::Vec<oa::Byte> bytes;
+oa::Vector<oa::Byte> encodeResult(const oa::SatelliteNlpStepResult& inResult) {
+	oa::Vector<oa::Byte> bytes;
 	bytes.reserve(256U
 		+ (inResult.logitSample.size() + inResult.gradients.size()
 			+ inResult.updatedParameters.size()) * sizeof(oa::F32));
@@ -289,10 +289,10 @@ oa::Vec<oa::Byte> encodeResult(const oa::SatelliteNlpStepResult& inResult) {
 	return bytes;
 }
 
-oa::Vec<oa::Byte> encodeGradientResult(
+oa::Vector<oa::Byte> encodeGradientResult(
 	const oa::SatelliteNlpGradientResult& inResult)
 {
-	oa::Vec<oa::Byte> bytes;
+	oa::Vector<oa::Byte> bytes;
 	bytes.reserve(192U + inResult.gradients.size() * sizeof(oa::F32));
 	appendU32(bytes, kGradientResultMagic);
 	appendU32(bytes, kGradientResultVersion);
@@ -311,7 +311,7 @@ oa::Vec<oa::Byte> encodeGradientResult(
 	return bytes;
 }
 
-oa::Vec<oa::Byte> buildProfile(
+oa::Vector<oa::Byte> buildProfile(
 	oa::Engine& inEngine,
 	oa::StringView inWorkload,
 	oa::U32 inBatchOffset,
@@ -334,7 +334,7 @@ oa::Vec<oa::Byte> buildProfile(
 		stats.kernelSelectionCount, stats.kernelFallbackCount,
 		stats.precisionFallbackCount, stats.layoutFallbackCount,
 		stats.naiveFallbackCount);
-	oa::Vec<oa::Byte> out;
+	oa::Vector<oa::Byte> out;
 	if (written > 0) {
 		const oa::Usize count = std::min(
 			static_cast<oa::Usize>(written), sizeof(profile) - 1U);
@@ -372,7 +372,7 @@ public:
 		offset_ += out.size();
 		return oa::Status::ok();
 	}
-	[[nodiscard]] oa::Status f32Vector(oa::U32 inCount, oa::Vec<oa::F32>& out) {
+	[[nodiscard]] oa::Status f32Vector(oa::U32 inCount, oa::Vector<oa::F32>& out) {
 		if (static_cast<oa::Usize>(inCount) > remaining() / sizeof(oa::F32)) {
 			return truncated();
 		}
@@ -402,9 +402,9 @@ public:
 	oa::F32 logitMax = 0.0F;
 	oa::F32 logitMean = 0.0F;
 	oa::F32 logitL2 = 0.0F;
-	oa::Vec<oa::F32> logitSample;
-	oa::Vec<oa::F32> gradients;
-	oa::Vec<oa::F32> updatedParameters;
+	oa::Vector<oa::F32> logitSample;
+	oa::Vector<oa::F32> gradients;
+	oa::Vector<oa::F32> updatedParameters;
 	oa::Array<oa::Byte, 32> updatedParameterHash{};
 	oa::Event completion;
 };
@@ -536,7 +536,7 @@ oa::Result<BatchExecution> executeBatch(
 			"satellite NLP workload: loss is not finite");
 	}
 	if (inCollectLogits) {
-		oa::Vec<oa::F32> allLogits;
+		oa::Vector<oa::F32> allLogits;
 		OA_RETURN_IF_ERROR(copyF32(logits, allLogits));
 		if (allLogits.size() != static_cast<oa::Usize>(predictedPositions) * kVocabSize) {
 			return oa::Status::error(oa::StatusCode::ShapeMismatch,
@@ -602,7 +602,7 @@ oa::Result<BatchExecution> executeBatch(
 } // namespace
 
 oa::Array<oa::Byte, 32> oa::satelliteHashF32(oa::Span<const oa::F32> inValues) {
-	oa::Vec<oa::Byte> bytes;
+	oa::Vector<oa::Byte> bytes;
 	bytes.reserve(inValues.size() * sizeof(oa::F32));
 	for (const oa::F32 value : inValues) appendF32(bytes, value);
 	return oa::SatelliteProtocol::stableDigest(oa::Span<const oa::Byte>(
@@ -610,7 +610,7 @@ oa::Array<oa::Byte, 32> oa::satelliteHashF32(oa::Span<const oa::F32> inValues) {
 }
 
 oa::Array<oa::Byte, 32> oa::satelliteHashU32(oa::Span<const oa::U32> inValues) {
-	oa::Vec<oa::Byte> bytes;
+	oa::Vector<oa::Byte> bytes;
 	bytes.reserve(inValues.size() * sizeof(oa::U32));
 	for (const oa::U32 value : inValues) appendU32(bytes, value);
 	return oa::SatelliteProtocol::stableDigest(oa::Span<const oa::Byte>(
@@ -679,7 +679,7 @@ oa::Result<oa::U64> oa::satelliteStartNlpStep(
 		return oa::Status::error(oa::StatusCode::OutOfRange,
 			"satellite NLP step: result version would overflow");
 	}
-	oa::Vec<oa::Byte> arguments;
+	oa::Vector<oa::Byte> arguments;
 	appendU32(arguments, kArgumentMagic);
 	appendU32(arguments, kArgumentVersion);
 	appendU64(arguments, inSeed);
@@ -718,7 +718,7 @@ oa::Result<oa::U64> oa::satelliteStartNlpGradient(
 		return oa::Status::invalidArgument(
 			"satellite NLP gradient: microbatch is outside the frozen global batch");
 	}
-	oa::Vec<oa::Byte> arguments;
+	oa::Vector<oa::Byte> arguments;
 	appendU32(arguments, kGradientArgumentMagic);
 	appendU32(arguments, kGradientArgumentVersion);
 	appendU64(arguments, inSeed);

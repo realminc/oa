@@ -34,6 +34,33 @@ TEST(Path, AppendFilename) {
 	EXPECT_EQ(root.filename().string(), "b.txt");
 }
 
+TEST(Path, SelfAppendStabilizesBeforeMutation) {
+	oa::Path relative("root");
+	relative /= relative;
+	EXPECT_EQ(relative, oa::Path("root/root"));
+
+	oa::Path trailing("root/");
+	trailing /= trailing;
+	EXPECT_EQ(trailing, oa::Path("root/root/"));
+
+	oa::Path absolute("/root");
+	absolute /= absolute;
+	EXPECT_EQ(absolute, oa::Path("/root"));
+}
+
+TEST(Path, RejectsEmbeddedNullValues) {
+	const char embedded[] = {'a', '\0', 'b'};
+	const oa::StringView view(embedded, 3);
+	const oa::String string(embedded, 3);
+
+	EXPECT_DEATH(static_cast<void>(oa::Path(view)),
+		"OA contract failed: inView.find");
+	EXPECT_DEATH(static_cast<void>(oa::Path(string)),
+		"OA contract failed: inView.find");
+	EXPECT_DEATH(static_cast<void>(oa::Path(oa::String(embedded, 3))),
+		"OA contract failed: inView.find");
+}
+
 TEST(Path, RootDotAndDotDotSemantics) {
 	EXPECT_EQ(oa::Path("/").parentPath(), oa::Path("/"));
 	EXPECT_TRUE(oa::Path("file").parentPath().empty());

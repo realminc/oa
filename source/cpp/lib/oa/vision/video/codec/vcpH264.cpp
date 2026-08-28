@@ -183,15 +183,15 @@ void oa::VcpH264::clearParameterSets()
 	offsetForRefFrameStorage_.clear();
 }
 
-oa::Vec<oa::U32> oa::VcpH264::getCachedSpsIds() const {
-	oa::Vec<oa::U32> ids;
+oa::Vector<oa::U32> oa::VcpH264::getCachedSpsIds() const {
+	oa::Vector<oa::U32> ids;
 	ids.reserve(oaSpsCache_.size());
 	for (const auto& kv : oaSpsCache_) ids.pushBack(kv.first);
 	return ids;
 }
 
-oa::Vec<oa::U32> oa::VcpH264::getCachedPpsIds() const {
-	oa::Vec<oa::U32> ids;
+oa::Vector<oa::U32> oa::VcpH264::getCachedPpsIds() const {
+	oa::Vector<oa::U32> ids;
 	ids.reserve(oaPpsCache_.size());
 	for (const auto& kv : oaPpsCache_) ids.pushBack(kv.first);
 	return ids;
@@ -222,7 +222,7 @@ namespace {
 		return false;
 	}
 
-	oa::Status findAnnexBNalUnits(const oa::Span<const oa::U8>& inBitstream, oa::Vec<AnnexBNalUnit>& outNalUnits)
+	oa::Status findAnnexBNalUnits(const oa::Span<const oa::U8>& inBitstream, oa::Vector<AnnexBNalUnit>& outNalUnits)
 	{
 		outNalUnits.clear();
 		const oa::U8* data = inBitstream.data();
@@ -264,7 +264,7 @@ oa::Status oa::VcpH264::parseAccessUnit(const oa::Span<const oa::U8>& inBitstrea
 	outDesc.sliceStartCodeSize = 0;
 	outDesc.sliceNalSize = 0;
 
-	oa::Vec<AnnexBNalUnit> nalUnits;
+	oa::Vector<AnnexBNalUnit> nalUnits;
 	oa::Status findStatus = findAnnexBNalUnits(inBitstream, nalUnits);
 	if (!findStatus.isOk()) {
 		return findStatus;

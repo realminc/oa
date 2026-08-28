@@ -25,7 +25,7 @@ TEST(Embedding, BatchLookup) {
 	oa::Embedding embed(256, 64);
 	
 	// Create sequence of indices: [10] - single sequence of 10 tokens
-	oa::Vec<oa::U8> indices_data(10);
+	oa::Vector<oa::U8> indices_data(10);
 	for (oa::I32 i = 0; i < 10; ++i) {
 		indices_data[i] = static_cast<oa::U8>(i % 256);
 	}

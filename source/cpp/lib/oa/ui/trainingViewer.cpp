@@ -43,7 +43,7 @@ oa::Color stateColor(oa::TrainingState inState) {
 struct oa::TrainingViewerSource::Impl {
 	struct Series {
 		oa::String name;
-		oa::Vec<oa::F32> values;
+		oa::Vector<oa::F32> values;
 		oa::Color color;
 		bool expanded = true;
 	};
@@ -52,7 +52,7 @@ struct oa::TrainingViewerSource::Impl {
 	oa::TrainingViewerConfig config;
 	oa::Optional<oa::TrainingSnapshot> snapshot;
 	oa::Optional<oa::TrainingCommandResult> lastCommand;
-	oa::Vec<Series> seriesList;
+	oa::Vector<Series> seriesList;
 	oa::U64 lastResultSequence = 0;
 	oa::F32 viewerFrameMs = 0.0F;
 	// 0=responsive, 1/2=explicit metric-card column count.

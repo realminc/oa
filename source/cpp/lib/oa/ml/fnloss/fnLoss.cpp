@@ -387,7 +387,7 @@ oa::Matrix oa::FnLoss::maskedCrossEntropy(const oa::Matrix& inLogits,
 	if (oa::FnAutograd::isEnabled() and inLogits.requiresGrad()) {
 		auto gradFn = oa::makeShared<oa::GradMaskedCrossEntropy>();
 		gradFn->saveForBackward(inLogits, inTargets, inMask);
-		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inLogits, inTargets, inMask});
+		gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inLogits, inTargets, inMask});
 		gradFn->validCount_ = inValidCount;
 		gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		loss.mutAutograd().gradFn = gradFn;
@@ -472,7 +472,7 @@ oa::Matrix oa::FnLoss::smoothL1(const oa::Matrix& inA, const oa::Matrix& inB) {
 	if (oa::FnAutograd::isEnabled() and inA.requiresGrad()) {
 		auto gradFn = oa::makeShared<oa::GradSmoothL1>();
 		gradFn->saveForBackward(inA, inB);
-		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA, inB});
+		gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inA, inB});
 		gradFn->sequenceNr_  = oa::FnAutograd::nextSeq();
 		loss.mutAutograd().gradFn = gradFn;
 	}
@@ -522,7 +522,7 @@ oa::Matrix oa::FnLoss::mse(const oa::Matrix& inA, const oa::Matrix& inB) {
 	if (oa::FnAutograd::isEnabled() and inA.requiresGrad()) {
 		auto gradFn = oa::makeShared<oa::GradMse>();
 		gradFn->saveForBackward(inA, inB);
-		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA, inB});
+		gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inA, inB});
 		gradFn->sequenceNr_  = oa::FnAutograd::nextSeq();
 		loss.mutAutograd().gradFn = gradFn;
 	}
@@ -572,7 +572,7 @@ oa::Matrix oa::FnLoss::l1(const oa::Matrix& inA, const oa::Matrix& inB) {
 	if (oa::FnAutograd::isEnabled() and inA.requiresGrad()) {
 		auto gradFn = oa::makeShared<oa::GradL1>();
 		gradFn->saveForBackward(inA, inB);
-		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA, inB});
+		gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inA, inB});
 		gradFn->sequenceNr_  = oa::FnAutograd::nextSeq();
 		loss.mutAutograd().gradFn = gradFn;
 	}
@@ -622,7 +622,7 @@ oa::Matrix oa::FnLoss::bce(const oa::Matrix& inA, const oa::Matrix& inB) {
 	if (oa::FnAutograd::isEnabled() and inA.requiresGrad()) {
 		auto gradFn = oa::makeShared<oa::GradBce>();
 		gradFn->saveForBackward(inA, inB);
-		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA, inB});
+		gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inA, inB});
 		gradFn->sequenceNr_  = oa::FnAutograd::nextSeq();
 		loss.mutAutograd().gradFn = gradFn;
 	}

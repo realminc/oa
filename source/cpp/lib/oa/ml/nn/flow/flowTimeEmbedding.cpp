@@ -19,7 +19,7 @@ FlowTimeEmbedding::FlowTimeEmbedding(
 		"FlowTimeEmbedding requires positive even dimension, max period > 1 and positive scale");
 
 	const oa::I32 half = embeddingDim_ / 2;
-	oa::Vec<oa::F32> frequencies(half);
+	oa::Vector<oa::F32> frequencies(half);
 	const oa::F32 logPeriod = oa::log(maxPeriod_);
 	for (oa::I32 index = 0; index < half; ++index) {
 		frequencies[index] = timeScale_ * oa::exp(

@@ -156,9 +156,9 @@ public:
 private:
 	oa::SharedPtr<oa::Embedding> classEmbed_;
 	oa::SharedPtr<oa::Linear> patchInProj_;
-	oa::Vec<oa::SharedPtr<oa::Mamba3Module>> blocks_;
-	oa::Vec<oa::SharedPtr<oa::Linear>> ffns_;
-	oa::Vec<oa::SharedPtr<oa::RmsNorm>> norms_;
+	oa::Vector<oa::SharedPtr<oa::Mamba3Module>> blocks_;
+	oa::Vector<oa::SharedPtr<oa::Linear>> ffns_;
+	oa::Vector<oa::SharedPtr<oa::RmsNorm>> norms_;
 	oa::SharedPtr<oa::Linear> outProj_;
 	oa::SharedPtr<oa::ConvTranspose2d> outConv1_;
 	oa::SharedPtr<oa::ConvTranspose2d> outConv2_;
@@ -171,11 +171,11 @@ static oa::Status saveImage(oa::Engine& inRt,
                           const oa::Path& inPath,
                           oa::I32 inW, oa::I32 inH) {
 	// inPixels: [1, pixels] in [-1, 1] flow-matching space. map to [0, 1].
-	oa::Vec<oa::F32> host(static_cast<oa::I64>(inW) * inH);
+	oa::Vector<oa::F32> host(static_cast<oa::I64>(inW) * inH);
 	oa::Matrix mapped = oa::FnMatrix::clampMin(oa::FnMatrix::clampMax((inPixels * 0.5F) + 0.5F, 1.0F), 0.0F);
 	OA_RETURN_IF_ERROR(oa::FnMatrix::copyToHost(mapped, host.data(), static_cast<oa::I64>(host.size()) * sizeof(oa::F32)));
 
-	oa::Vec<oa::U8> rgba(static_cast<oa::I64>(inW) * inH * 4);
+	oa::Vector<oa::U8> rgba(static_cast<oa::I64>(inW) * inH * 4);
 	for (oa::I64 i = 0; i < static_cast<oa::I64>(inW) * inH; ++i) {
 		oa::U8 g = static_cast<oa::U8>(host[i] * 255.0F);
 		rgba[(static_cast<oa::I64>(i) * 4) + 0] = g;
@@ -197,7 +197,7 @@ static oa::Status saveImage(oa::Engine& inRt,
 static oa::Matrix sampleImages(PixelMambaDiffusion& inModel,
                              oa::FlowTimeEmbedding& inTimeEmbedding,
                              oa::Engine& inRt,
-                             const oa::Vec<oa::U8>& inLabels,
+                             const oa::Vector<oa::U8>& inLabels,
                              oa::U64 inSeed) {
 	(void)inRt;
 	const oa::I32 count = static_cast<oa::I32>(inLabels.size());
@@ -312,7 +312,7 @@ TEST(TutorialMambaDiffusionPixel, FashionMnistFlowMatching) {
 	oa::Path outDir = oa::Paths::var() / "mamba_diffusion";
 	ASSERT_TRUE(oa::Filesystem::createDirectories(outDir).isOk());
 	printf("\nSampling %d class-conditional images (%d Euler steps) ...\n", kNumClasses, kNumSteps);
-	oa::Vec<oa::U8> labels(kNumClasses);
+	oa::Vector<oa::U8> labels(kNumClasses);
 	for (oa::I32 i = 0; i < kNumClasses; ++i) {
 		labels[i] = static_cast<oa::U8>(i);
 	}

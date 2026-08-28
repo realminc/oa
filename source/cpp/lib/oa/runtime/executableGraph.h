@@ -19,16 +19,16 @@ class Matrix;
 class ComputeNode {
 public:
 	oa::String operation;
-	oa::Vec<oa::U32> semanticOps;
+	oa::Vector<oa::U32> semanticOps;
 	oa::U64 implementationId = 0;
 	oa::U64 opContractHash = 0;
 	oa::U64 problemContractHash = 0;
 	oa::U64 kernelContentHash = 0;
 	oa::KernelSelectionKind kernelSelection = oa::KernelSelectionKind::Unspecified;
 	oa::String shader;
-	oa::Vec<oavk::Buffer> buffers;
-	oa::Vec<oa::SharedPtr<oavk::Buffer>> bufferOwners;
-	oa::Vec<oa::BufferAccess> access;
+	oa::Vector<oavk::Buffer> buffers;
+	oa::Vector<oa::SharedPtr<oavk::Buffer>> bufferOwners;
+	oa::Vector<oa::BufferAccess> access;
 	alignas(16) oa::U8 pushData[128] = {};
 	oa::U32 pushSize = 0;
 	// Storage dtype the shader variant must match: 0 = FP32 (4-byte oaLoad/oaStore),
@@ -58,7 +58,7 @@ public:
 // Group of buffers whose lifetimes don't overlap — can share one allocation.
 class AliasGroup {
 public:
-	oa::Vec<oa::BufferLifetime> members;
+	oa::Vector<oa::BufferLifetime> members;
 	oa::U64 requiredSize = 0;
 };
 
@@ -211,10 +211,10 @@ public:
 
 	// ─── phase 3: memory aliasing analysis ────────────────────────────────
 	// Per-buffer first/last access within the graph.
-	[[nodiscard]] oa::Vec<oa::BufferLifetime> computeLifetimes() const;
+	[[nodiscard]] oa::Vector<oa::BufferLifetime> computeLifetimes() const;
 
 	// Non-overlapping buffer groups that can share one VkDeviceMemory allocation.
-	[[nodiscard]] oa::Vec<oa::AliasGroup> computeAliasGroups() const;
+	[[nodiscard]] oa::Vector<oa::AliasGroup> computeAliasGroups() const;
 
 	// Materialize alias backing for an explicit set of exclusively owned,
 	// graph-internal transient matrices. external inputs/outputs are never
@@ -283,7 +283,7 @@ private:
 	void resetDevice_(const oavk::Device& inDevice);
 	void destroyDevice_(const oavk::Device& inDevice);
 
-	oa::Vec<oa::ComputeNode> nodes_;
+	oa::Vector<oa::ComputeNode> nodes_;
 	oa::Engine* owner_ = nullptr;
 
 	// Compiled state (phase 2 - CPU-driven)
@@ -297,14 +297,14 @@ private:
 	oa::U64 replayTimestampReadValue_ = 0;
 	oa::F64 lastReplayGpuMs_ = 0.0;
 	oa::Bool replayTimingEnabled_ = false;
-	oa::Vec<void*> descriptorPools_;
+	oa::Vector<void*> descriptorPools_;
 	oa::U32 queueFamily_ = 0;
 	bool compiled_ = false;
 	oa::U64 lastCompileHash_ = 0;  // FNV-1a hash of node list; 0 = never compiled
 	oa::Bool lastCompileReused_ = false;
 	// A compiled command buffer embeds resource bindings. Retain matrix-owned
 	// buffers after clearNodes() so cache reuse cannot outlive those resources.
-	oa::Vec<oa::SharedPtr<oavk::Buffer>> compiledBufferOwners_;
+	oa::Vector<oa::SharedPtr<oavk::Buffer>> compiledBufferOwners_;
 
 	// compile-time synchronization stats.
 	oa::U32 barrierCount_  = 0;   // total resource/global dependencies emitted
@@ -315,7 +315,7 @@ private:
 
 	// allocator-backed transient arena. view deleters retain their backing owner,
 	// so graph nodes and rebound matrices can safely outlive this graph object.
-	oa::Vec<oa::SharedPtr<oavk::Buffer>> aliasOwners_;
+	oa::Vector<oa::SharedPtr<oavk::Buffer>> aliasOwners_;
 	oa::U64 materializedAliasSavings_ = 0;
 	void destroyAliasArena();
 

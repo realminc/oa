@@ -20,7 +20,7 @@ struct PoseClip {
 	oa::U32 poseDim    = 0;
 	oa::F32 fps        = 30.0f;
 	oa::U32 skeletonId = 0;
-	oa::Vec<oa::F32> samples;
+	oa::Vector<oa::F32> samples;
 
 	[[nodiscard]] bool isValid() const noexcept;
 	[[nodiscard]] oa::Usize valueCount() const noexcept {

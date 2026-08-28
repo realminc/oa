@@ -38,7 +38,7 @@ oa::Matrix oa::FnMatrix::gelu(const oa::Matrix& inA) {
 	if (oa::FnAutograd::isEnabled() and (inA.requiresGrad())) {
 		auto _gradFn = oa::makeShared<oa::GradGelu>();
 		_gradFn->saveForBackward(inA);
-		_gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA});
+		_gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inA});
 		_gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		_gradFn->outputShape_ = out.getShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads
 		const auto semanticAttached = oa::FnAutograd::attachSemantic(
@@ -69,7 +69,7 @@ oa::Matrix oa::FnMatrix::silu(const oa::Matrix& inA) {
 	if (oa::FnAutograd::isEnabled() and (inA.requiresGrad())) {
 		auto _gradFn = oa::makeShared<oa::GradSilu>();
 		_gradFn->saveForBackward(inA);
-		_gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA});
+		_gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inA});
 		_gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		_gradFn->outputShape_ = out.getShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads
 		const auto semanticAttached = oa::FnAutograd::attachSemantic(
@@ -100,7 +100,7 @@ oa::Matrix oa::FnMatrix::relu(const oa::Matrix& inA) {
 	if (oa::FnAutograd::isEnabled() and (inA.requiresGrad())) {
 		auto _gradFn = oa::makeShared<oa::GradRelu>();
 		_gradFn->saveForBackward(out);
-		_gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA});
+		_gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inA});
 		_gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		_gradFn->outputShape_ = out.getShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads
 		const auto semanticAttached = oa::FnAutograd::attachSemantic(
@@ -131,7 +131,7 @@ oa::Matrix oa::FnMatrix::tanh(const oa::Matrix& inA) {
 	if (oa::FnAutograd::isEnabled() and (inA.requiresGrad())) {
 		auto _gradFn = oa::makeShared<oa::GradTanh>();
 		_gradFn->saveForBackward(out);
-		_gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA});
+		_gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inA});
 		_gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		_gradFn->outputShape_ = out.getShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads
 		const auto semanticAttached = oa::FnAutograd::attachSemantic(
@@ -162,7 +162,7 @@ oa::Matrix oa::FnMatrix::sigmoid(const oa::Matrix& inA) {
 	if (oa::FnAutograd::isEnabled() and (inA.requiresGrad())) {
 		auto _gradFn = oa::makeShared<oa::GradSigmoid>();
 		_gradFn->saveForBackward(out);
-		_gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA});
+		_gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inA});
 		_gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		_gradFn->outputShape_ = out.getShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads
 		const auto semanticAttached = oa::FnAutograd::attachSemantic(
@@ -193,7 +193,7 @@ oa::Matrix oa::FnMatrix::leakyRelu(const oa::Matrix& inA, oa::F32 inAlpha) {
 	if (oa::FnAutograd::isEnabled() and (inA.requiresGrad())) {
 		auto _gradFn = oa::makeShared<oa::GradLeakyRelu>(inAlpha);
 		_gradFn->saveForBackward(out);
-		_gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA});
+		_gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inA});
 		_gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		_gradFn->outputShape_ = out.getShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads
 		const auto semanticAttached = oa::FnAutograd::attachSemantic(
@@ -224,7 +224,7 @@ oa::Matrix oa::FnMatrix::elu(const oa::Matrix& inA, oa::F32 inAlpha) {
 	if (oa::FnAutograd::isEnabled() and (inA.requiresGrad())) {
 		auto _gradFn = oa::makeShared<oa::GradElu>(inAlpha);
 		_gradFn->saveForBackward(out);
-		_gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA});
+		_gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inA});
 		_gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		_gradFn->outputShape_ = out.getShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads
 		const auto semanticAttached = oa::FnAutograd::attachSemantic(
@@ -255,7 +255,7 @@ oa::Matrix oa::FnMatrix::mish(const oa::Matrix& inA) {
 	if (oa::FnAutograd::isEnabled() and (inA.requiresGrad())) {
 		auto _gradFn = oa::makeShared<oa::GradMish>();
 		_gradFn->saveForBackward(inA);
-		_gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA});
+		_gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inA});
 		_gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		_gradFn->outputShape_ = out.getShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads
 		const auto semanticAttached = oa::FnAutograd::attachSemantic(
@@ -286,7 +286,7 @@ oa::Matrix oa::FnMatrix::swiglu(const oa::Matrix& inA, const oa::Matrix& inB) {
 	if (oa::FnAutograd::isEnabled() and (inA.requiresGrad() or inB.requiresGrad())) {
 		auto _gradFn = oa::makeShared<oa::GradSwiglu>();
 		_gradFn->saveForBackward(inA, inB, out);
-		_gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA, inB});
+		_gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inA, inB});
 		_gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		_gradFn->outputShape_ = out.getShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads
 		const auto semanticAttached = oa::FnAutograd::attachSemantic(
@@ -320,7 +320,7 @@ oa::Matrix oa::FnMatrix::siluMul(const oa::Matrix& inA, oa::U32 inIntermediateSi
 	if (oa::FnAutograd::isEnabled() and (inA.requiresGrad())) {
 		auto _gradFn = oa::makeShared<oa::GradSiluMul>();
 		_gradFn->saveForBackward(inA);
-		_gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA});
+		_gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inA});
 		_gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		_gradFn->outputShape_ = out.getShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads
 		const auto semanticAttached = oa::FnAutograd::attachSemantic(
@@ -354,7 +354,7 @@ oa::Matrix oa::FnMatrix::geglu(const oa::Matrix& inA, oa::U32 inIntermediateSize
 	if (oa::FnAutograd::isEnabled() and (inA.requiresGrad())) {
 		auto _gradFn = oa::makeShared<oa::GradGeglu>();
 		_gradFn->saveForBackward(inA);
-		_gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA});
+		_gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inA});
 		_gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		_gradFn->outputShape_ = out.getShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads
 		const auto semanticAttached = oa::FnAutograd::attachSemantic(
@@ -385,7 +385,7 @@ oa::Matrix oa::FnMatrix::softplus(const oa::Matrix& inA) {
 	if (oa::FnAutograd::isEnabled() and (inA.requiresGrad())) {
 		auto _gradFn = oa::makeShared<oa::GradSoftplus>();
 		_gradFn->saveForBackward(out);
-		_gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inA});
+		_gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inA});
 		_gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		_gradFn->outputShape_ = out.getShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads
 		const auto semanticAttached = oa::FnAutograd::attachSemantic(

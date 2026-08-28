@@ -35,8 +35,8 @@ std::vector<oa::Byte> makeFixture() {
 	return fixture;
 }
 
-oa::Vec<oa::Hash> hashFixtureOnCpu(const std::vector<oa::Byte>& inFixture) {
-	oa::Vec<oa::Hash> leaves;
+oa::Vector<oa::Hash> hashFixtureOnCpu(const std::vector<oa::Byte>& inFixture) {
+	oa::Vector<oa::Hash> leaves;
 	leaves.reserve(kChunkCount);
 	for (oa::U32 chunk = 0; chunk < kChunkCount; ++chunk) {
 		oa::Hash hash;

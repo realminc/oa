@@ -155,7 +155,7 @@ oa::Status writeStage(const oa::Path& inPath, oa::Span<const oa::UsdNamedClip> i
 
 	// Resolve unique, valid prim names up-front (the Skeleton's animationSource rel
 	// must reference the first one).
-	oa::Vec<oa::String> animNames;
+	oa::Vector<oa::String> animNames;
 	animNames.reserve(inClips.size());
 	{
 		std::set<std::string> used;
@@ -297,8 +297,8 @@ bool balanced(const std::string& t, oa::Usize from, char open, char close,
 }
 
 // All numeric literals in [p, end), in order.
-oa::Vec<oa::F32> parseFloats(const char* p, const char* end) {
-	oa::Vec<oa::F32> out;
+oa::Vector<oa::F32> parseFloats(const char* p, const char* end) {
+	oa::Vector<oa::F32> out;
 	while (p < end) {
 		const char c = *p;
 		const bool numStart = (c >= '0' && c <= '9') || c == '-' || c == '+' || c == '.';
@@ -319,7 +319,7 @@ oa::Vec<oa::F32> parseFloats(const char* p, const char* end) {
 }
 
 // Locate the attribute then the next bracket array and parse all its floats.
-bool floatArrayAfter(const std::string& t, const char* attr, oa::Vec<oa::F32>& out) {
+bool floatArrayAfter(const std::string& t, const char* attr, oa::Vector<oa::F32>& out) {
 	const oa::Usize npos = std::string::npos;
 	const oa::Usize key = t.find(attr);
 	if (key == npos) {
@@ -347,7 +347,7 @@ bool stringValueAfter(const std::string& t, const char* key, oa::String& out) {
 }
 
 // All `{...}` numeric literals after `attr` (a timeSamples block).
-bool rawTimeSamples(const std::string& t, const char* attr, oa::Vec<oa::F32>& out) {
+bool rawTimeSamples(const std::string& t, const char* attr, oa::Vector<oa::F32>& out) {
 	const oa::Usize npos = std::string::npos;
 	const oa::Usize key = t.find(attr);
 	if (key == npos) { return false; }
@@ -362,8 +362,8 @@ bool rawTimeSamples(const std::string& t, const char* attr, oa::Vec<oa::F32>& ou
 // key-stripped values, so rotation/translation tracks can be aligned by frame
 // index — UE exports occasionally drop or add a sample on one track, leaving the
 // two unequal/sparse (see the keyed alignment in ParseAnimClipFromText).
-bool deinterleaveKeyed(const oa::Vec<oa::F32>& raw, int comps, oa::I32 n,
-                       oa::Vec<oa::I32>& keys, oa::Vec<oa::F32>& out) {
+bool deinterleaveKeyed(const oa::Vector<oa::F32>& raw, int comps, oa::I32 n,
+                       oa::Vector<oa::I32>& keys, oa::Vector<oa::F32>& out) {
 	const oa::Usize perFrame = 1 + static_cast<oa::Usize>(comps) * static_cast<oa::Usize>(n);
 	if (raw.size() == 0 || raw.size() % perFrame != 0) {
 		return false;
@@ -382,7 +382,7 @@ bool deinterleaveKeyed(const oa::Vec<oa::F32>& raw, int comps, oa::I32 n,
 }
 
 // flat row-major 16-per-joint floats → per-joint matrices.
-void matricesFrom(const oa::Vec<oa::F32>& flat, oa::I32 n, oa::Vec<oa::vlm::Mat4>& out) {
+void matricesFrom(const oa::Vector<oa::F32>& flat, oa::I32 n, oa::Vector<oa::vlm::Mat4>& out) {
 	if (flat.size() != static_cast<oa::Usize>(n) * 16) {
 		return;
 	}
@@ -445,11 +445,11 @@ oa::Status parseAnimClipFromText(const std::string& t, oa::F32 inFps, oa::I32 in
 	// track keeps its own frame KEYS and the clip timeline is the union of both.
 	// A missing sample holds the previous value (step) — exact when a track is
 	// merely shorter, harmless for a one-off dropped key.
-	oa::Vec<oa::I32> rotKeys, transKeys;
-	oa::Vec<oa::F32> rotVals, transVals;   // rotVals: frames*(4n); transVals: frames*(3n)
+	oa::Vector<oa::I32> rotKeys, transKeys;
+	oa::Vector<oa::F32> rotVals, transVals;   // rotVals: frames*(4n); transVals: frames*(3n)
 	bool rotStatic = false, transStatic = false;
 
-	if (oa::Vec<oa::F32> raw; rawTimeSamples(t, "rotations.timeSamples", raw)) {
+	if (oa::Vector<oa::F32> raw; rawTimeSamples(t, "rotations.timeSamples", raw)) {
 		if (!deinterleaveKeyed(raw, 4, n, rotKeys, rotVals)) {
 			return oa::Status::invalidArgument("oa::Usd: rotations count mismatch");
 		}
@@ -460,7 +460,7 @@ oa::Status parseAnimClipFromText(const std::string& t, oa::F32 inFps, oa::I32 in
 		return oa::Status::invalidArgument("oa::Usd: no rotations (timeSamples or static)");
 	}
 
-	if (oa::Vec<oa::F32> raw; rawTimeSamples(t, "translations.timeSamples", raw)) {
+	if (oa::Vector<oa::F32> raw; rawTimeSamples(t, "translations.timeSamples", raw)) {
 		if (!deinterleaveKeyed(raw, 3, n, transKeys, transVals)) {
 			return oa::Status::invalidArgument("oa::Usd: translations count mismatch");
 		}
@@ -473,7 +473,7 @@ oa::Status parseAnimClipFromText(const std::string& t, oa::F32 inFps, oa::I32 in
 
 	// clip timeline = union of the animated tracks' keys (a static track broadcasts
 	// and contributes no keys of its own). Two static tracks → a single-frame pose.
-	oa::Vec<oa::I32> timeline;
+	oa::Vector<oa::I32> timeline;
 	{
 		std::set<oa::I32> keySet;
 		if (!rotStatic)   { for (oa::I32 k : rotKeys)   { keySet.insert(k); } }
@@ -483,7 +483,7 @@ oa::Status parseAnimClipFromText(const std::string& t, oa::F32 inFps, oa::I32 in
 	}
 
 	// index of the last key <= q (hold-previous); keys are ascending, clamp to 0.
-	auto holdIdx = [](const oa::Vec<oa::I32>& keys, oa::I32 q) -> oa::Usize {
+	auto holdIdx = [](const oa::Vector<oa::I32>& keys, oa::I32 q) -> oa::Usize {
 		oa::Usize idx = 0;
 		for (oa::Usize i = 0; i < keys.size(); ++i) {
 			if (keys[i] <= q) { idx = i; } else { break; }
@@ -549,10 +549,10 @@ oa::Result<oa::UsdSkelClip> oa::Usd::readUsda(const oa::Path& inPath) {
 	const oa::I32 n = clip.jointCount();
 
 	// Optional bind/rest transforms (Skeleton-level): 16 floats per joint.
-	if (oa::Vec<oa::F32> f; floatArrayAfter(text, "bindTransforms", f)) {
+	if (oa::Vector<oa::F32> f; floatArrayAfter(text, "bindTransforms", f)) {
 		matricesFrom(f, n, clip.bindTransforms);
 	}
-	if (oa::Vec<oa::F32> f; floatArrayAfter(text, "restTransforms", f)) {
+	if (oa::Vector<oa::F32> f; floatArrayAfter(text, "restTransforms", f)) {
 		matricesFrom(f, n, clip.restTransforms);
 	}
 
@@ -562,7 +562,7 @@ oa::Result<oa::UsdSkelClip> oa::Usd::readUsda(const oa::Path& inPath) {
 	return clip;
 }
 
-oa::Result<oa::Vec<oa::UsdNamedClip>> oa::Usd::readUsdaMulti(const oa::Path& inPath) {
+oa::Result<oa::Vector<oa::UsdNamedClip>> oa::Usd::readUsdaMulti(const oa::Path& inPath) {
 	auto textResult = oa::Filesystem::readText(inPath);
 	if (!textResult.isOk()) {
 		return textResult.getStatus();
@@ -575,11 +575,11 @@ oa::Result<oa::Vec<oa::UsdNamedClip>> oa::Usd::readUsdaMulti(const oa::Path& inP
 	parseStageMeta(text, fps, upAxis);
 
 	// Shared Skeleton bind/rest (first occurrence — applied to every clip).
-	oa::Vec<oa::F32> bindFlat, restFlat;
+	oa::Vector<oa::F32> bindFlat, restFlat;
 	const bool hasBind = floatArrayAfter(text, "bindTransforms", bindFlat);
 	const bool hasRest = floatArrayAfter(text, "restTransforms", restFlat);
 
-	oa::Vec<oa::UsdNamedClip> out;
+	oa::Vector<oa::UsdNamedClip> out;
 
 	oa::Usize pos = 0;
 	while ((pos = text.find("def SkelAnimation", pos)) != npos) {

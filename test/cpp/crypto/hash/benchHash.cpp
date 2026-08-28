@@ -176,7 +176,7 @@ TEST_F(VkEngineTestFixture, MerkleRootCPU) {
 	const oa::I32 iterations = 10;
 
 	// Create leaf hashes
-	oa::Vec<oa::Hash> leaves;
+	oa::Vector<oa::Hash> leaves;
 	leaves.reserve(num_leaves);
 	for (oa::I32 i = 0; i < num_leaves; ++i) {
 		oa::Byte data[4] = {
@@ -193,9 +193,9 @@ TEST_F(VkEngineTestFixture, MerkleRootCPU) {
 	auto start = Clock::now();
 	for (oa::I32 iter = 0; iter < iterations; ++iter) {
 		// Binary tree reduction
-		oa::Vec<oa::Hash> current = leaves;
+		oa::Vector<oa::Hash> current = leaves;
 		while (current.size() > 1) {
-			oa::Vec<oa::Hash> next;
+			oa::Vector<oa::Hash> next;
 			next.reserve(current.size() / 2);
 			for (oa::Usize i = 0; i + 1 < current.size(); i += 2) {
 				oa::Byte combined[64];

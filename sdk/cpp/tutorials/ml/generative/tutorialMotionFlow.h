@@ -98,15 +98,15 @@ struct BatchData {
 	oa::Matrix motion;
 	oa::Matrix mask;
 	oa::Matrix condition;
-	oa::Vec<oa::I32> lengths;
+	oa::Vector<oa::I32> lengths;
 };
 
 inline BatchData nextBatch(oa::DsCombatMotionProcessed& inDataset, oa::I32& inOutCursor) {
 	const oa::I32 features = inDataset.featDim();
 	const oa::I32 conditionDim = inDataset.textFeatureDim();
-	oa::Vec<oa::F32> motion(static_cast<oa::I64>(kBatch) * kSequence * features);
-	oa::Vec<oa::F32> mask(static_cast<oa::I64>(kBatch) * kSequence);
-	oa::Vec<oa::F32> condition;
+	oa::Vector<oa::F32> motion(static_cast<oa::I64>(kBatch) * kSequence * features);
+	oa::Vector<oa::F32> mask(static_cast<oa::I64>(kBatch) * kSequence);
+	oa::Vector<oa::F32> condition;
 	if (conditionDim > 0) condition.resize(static_cast<oa::I64>(kBatch) * conditionDim);
 	std::fill(motion.begin(), motion.end(), 0.0F);
 	std::fill(mask.begin(), mask.end(), 0.0F);
@@ -202,17 +202,17 @@ inline void validateGeometryAndExport(
 	const oa::I32 features = inDataset.featDim();
 	const oa::I32 frames = batch.lengths[0];
 	ASSERT_GT(frames, 0);
-	oa::Vec<oa::F32> generatedHost(
+	oa::Vector<oa::F32> generatedHost(
 		static_cast<oa::Usize>(kBatch) * kSequence * features);
-	oa::Vec<oa::F32> targetHost(
+	oa::Vector<oa::F32> targetHost(
 		static_cast<oa::Usize>(kBatch) * kSequence * features);
 	ASSERT_TRUE(oa::FnMatrix::copyToHost(state, generatedHost.data(),
 		generatedHost.size() * sizeof(oa::F32)).isOk());
 	ASSERT_TRUE(oa::FnMatrix::copyToHost(batch.motion, targetHost.data(),
 		targetHost.size() * sizeof(oa::F32)).isOk());
 
-	oa::Vec<oa::F32> generated(static_cast<oa::Usize>(frames) * features);
-	oa::Vec<oa::F32> target(static_cast<oa::Usize>(frames) * features);
+	oa::Vector<oa::F32> generated(static_cast<oa::Usize>(frames) * features);
+	oa::Vector<oa::F32> target(static_cast<oa::Usize>(frames) * features);
 	std::memcpy(generated.data(), generatedHost.data(),
 		generated.size() * sizeof(oa::F32));
 	std::memcpy(target.data(), targetHost.data(),

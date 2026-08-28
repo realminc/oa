@@ -87,11 +87,11 @@ MemoryAnalysisSummary analyzeMemory(
 {
 	struct Group {
 		oa::MemoryPlacement placement = oa::MemoryPlacement::Auto;
-		oa::Vec<const oa::CapturedResourceDesc*> members;
+		oa::Vector<const oa::CapturedResourceDesc*> members;
 		oa::U64 requiredBytes = 0;
 		oa::U64 totalBytes = 0;
 	};
-	oa::Vec<Group> groups;
+	oa::Vector<Group> groups;
 	MemoryAnalysisSummary summary;
 	for (const auto& resource : inResources) {
 		if (not resource.aliasCandidate) continue;
@@ -223,9 +223,9 @@ oa::Status oa::TrainingProgram::prepareReplayRng_(oa::Engine& inRuntime) {
 	// separate tail dispatch prevents one RNG workgroup from publishing the next
 	// counter while another workgroup is still reading the current value.
 	for (auto& state : rngStates_) {
-		oa::Vec<oavk::Buffer> buffers;
-		oa::Vec<oa::SharedPtr<oavk::Buffer>> owners;
-		oa::Vec<oa::BufferAccess> access;
+		oa::Vector<oavk::Buffer> buffers;
+		oa::Vector<oa::SharedPtr<oavk::Buffer>> owners;
+		oa::Vector<oa::BufferAccess> access;
 		buffers.pushBack(oa::MatrixAccess::descriptor(state));
 		owners.pushBack(oa::MatrixAccess::storageOwner(state));
 		access.pushBack(oa::BufferAccess::Write);
@@ -260,9 +260,9 @@ oa::Status oa::TrainingProgram::capture(
 	if (not sourceLowering.isOk()) return sourceLowering.getStatus();
 	auto dnnResult = oa::DnnPlanner::plan(*semanticSource);
 	if (not dnnResult.isOk()) return dnnResult.getStatus();
-	oa::Vec<oa::SemanticStorageBinding> semanticBindings;
-	oa::Vec<oa::CapturedResourceDesc> capturedResources;
-	oa::Vec<oa::SharedPtr<oavk::Buffer>> capturedResourceOwners;
+	oa::Vector<oa::SemanticStorageBinding> semanticBindings;
+	oa::Vector<oa::CapturedResourceDesc> capturedResources;
+	oa::Vector<oa::SharedPtr<oavk::Buffer>> capturedResourceOwners;
 	OA_RETURN_IF_ERROR(inContext.snapshotSemanticBindings(inOptions.observedOutputs, semanticBindings,
 		capturedResources, capturedResourceOwners));
 	const auto memoryAnalysis = analyzeMemory(
@@ -339,10 +339,10 @@ oa::Status oa::TrainingProgram::capture(
 	// Materialize only resources whose complete owner count is explained by the
 	// source session and this copied graph. Any surviving user matrix/view or
 	// autograd owner makes the count larger and remains on its original storage.
-	oa::Vec<oa::Matrix> aliasMatrices;
-	oa::Vec<oa::U32> aliasResourceIds;
-	oa::Vec<oa::U32> permittedOwners;
-	oa::Vec<void*> originalHandles;
+	oa::Vector<oa::Matrix> aliasMatrices;
+	oa::Vector<oa::U32> aliasResourceIds;
+	oa::Vector<oa::U32> permittedOwners;
+	oa::Vector<void*> originalHandles;
 	aliasMatrices.reserve(memoryAnalysis.candidateCount);
 	aliasResourceIds.reserve(memoryAnalysis.candidateCount);
 	permittedOwners.reserve(memoryAnalysis.candidateCount);
@@ -370,7 +370,7 @@ oa::Status oa::TrainingProgram::capture(
 		originalHandles.pushBack(
 			oa::MatrixAccess::storageOwner(aliasMatrices.back())->buffer);
 	}
-	oa::Vec<oa::Matrix*> eligibleMatrices;
+	oa::Vector<oa::Matrix*> eligibleMatrices;
 	eligibleMatrices.reserve(aliasMatrices.size());
 	for (auto& matrix : aliasMatrices) eligibleMatrices.pushBack(&matrix);
 	oa::Status aliasStatus = graph.materializeAliases(
@@ -381,7 +381,7 @@ oa::Status oa::TrainingProgram::capture(
 	// deterministic compilation report retains the reason rather than hiding it.
 	const oa::String aliasFallbackReason = aliasStatus.isOk()
 		? oa::String{} : aliasStatus.getMessage();
-	oa::Vec<void*> retiredHandles;
+	oa::Vector<void*> retiredHandles;
 	for (oa::U32 index = 0; index < aliasMatrices.size(); ++index) {
 		const auto resource = aliasResourceIds[index];
 		auto& matrix = aliasMatrices[index];

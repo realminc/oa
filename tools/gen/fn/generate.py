@@ -765,7 +765,7 @@ def _emitManualAutogradAttachDefinition(op: dict) -> list[str]:
 		 "\t\tauto gradFn = oa::makeShared<oa::GradBcastBinary>();",
 		 f"\t\tgradFn->op_ = oa::BcastBinOp::{ag['broadcast_op']};",
 		 f"\t\tgradFn->saveForBackward({', '.join(inputs)});",
-		 f"\t\tgradFn->setGraphInputs(oa::Vec<oa::Matrix>{inputsInit});",
+		 f"\t\tgradFn->setGraphInputs(oa::Vector<oa::Matrix>{inputsInit});",
 		 "\t\tgradFn->sequenceNr_ = oa::FnAutograd::nextSeq();",
 		 "\t\tgradFn->outputShape_ = out.getShape();",
 		 "\t\tOA_RETURN_IF_ERROR(oa::FnAutograd::attachSemantic(gradFn, inSemanticOp));",
@@ -782,7 +782,7 @@ def _emitManualAutogradAttachDefinition(op: dict) -> list[str]:
 		# An absent optional semantic input is not an autograd edge. This keeps
 		# the tape arity honest (Linear without bias is the first contract) and
 		# prevents backward from manufacturing a gradient for an absent value.
-		lines.append("\toa::Vec<oa::Matrix> graphInputs;")
+		lines.append("\toa::Vector<oa::Matrix> graphInputs;")
 		for name in inputs:
 			if name in optionalSet:
 				lines.append(
@@ -793,7 +793,7 @@ def _emitManualAutogradAttachDefinition(op: dict) -> list[str]:
 		lines.append("\tgradFn->setGraphInputs(oa::move(graphInputs));")
 	else:
 		lines.append(
-		 f"\tgradFn->setGraphInputs(oa::Vec<oa::Matrix>{inputsInit});"
+		 f"\tgradFn->setGraphInputs(oa::Vector<oa::Matrix>{inputsInit});"
 		)
 	lines.append("\tgradFn->sequenceNr_ = oa::FnAutograd::nextSeq();")
 	lines += [
@@ -984,7 +984,7 @@ def emitPythonBinding(namespace: str, op: dict) -> list[str]:
 	elif apiReturn == "void":
 		result = call
 		ownedResult = ""
-	elif apiReturn == "oa::Vec<oa::Matrix>":
+	elif apiReturn == "oa::Vector<oa::Matrix>":
 		result = ""
 		ownedResult = ""
 	else:
@@ -997,7 +997,7 @@ def emitPythonBinding(namespace: str, op: dict) -> list[str]:
 	 f'\tm.def("{pythonName}", []({params}) {{',
 	]
 	resultValidation = python.get("result_validation")
-	if apiReturn == "oa::Vec<oa::Matrix>":
+	if apiReturn == "oa::Vector<oa::Matrix>":
 		lines += [
 		 f"\t\tauto result = {call};",
 		 "\t\tnb::list values;",
@@ -1493,7 +1493,7 @@ def emitAutogradAttach(
 	 f"\t\tauto _gradFn = oa::makeShared<{gradClass}>{ctorCall};\n"
 	 f"{broadcastOperation}"
 	 f"\t\t_gradFn->saveForBackward({savedArgs});\n"
-	 f"\t\t_gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inputsInit});\n"
+	 f"\t\t_gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inputsInit});\n"
 	 f"\t\t_gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();\n"
 	 f"\t\t_gradFn->outputShape_ = out.getShape();  // tape normalizes upstream d to this; protects elementwise bwd against viewed-shape fan-out grads\n"
 	 f"{semanticAttach}"
@@ -2075,7 +2075,7 @@ def emitAutogradClass(op: dict) -> str:
 	 f"class {gradClass} final : public oa::GradNode {{\n"
 	 f"public:\n"
 	 f"{scalarCtor}"
-	 f"\tvoid backward(const oa::Matrix& inDOut, oa::Vec<oa::Matrix>& outDIn) override {{\n"
+	 f"\tvoid backward(const oa::Matrix& inDOut, oa::Vector<oa::Matrix>& outDIn) override {{\n"
 	 f"{body}"
 	 f"\t}}\n"
 	 f"{scalarDecls}"

@@ -41,7 +41,7 @@ private:
 	oa::I32 maskSeqLen_ = 0;
 	oa::I32 maskBatch_ = 0;
 	oa::AttentionMode maskMode_ = oa::AttentionMode::Causal;
-	oa::Vec<oa::Matrix> projectQkv(const oa::Matrix& inInput);
+	oa::Vector<oa::Matrix> projectQkv(const oa::Matrix& inInput);
 	const oa::Matrix& attentionMask(oa::I32 inBatch);
 	oa::Matrix forwardStandard(const oa::Matrix& inInput, const oa::Matrix& inAdditiveMask);
 	oa::Matrix forwardFlash(const oa::Matrix& inInput);

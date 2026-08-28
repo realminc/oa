@@ -78,7 +78,7 @@ oa::Matrix oa::FnMatrix::im2Col1d(
 		gradFn->n_ = N; gradFn->inC_ = inC; gradFn->l_ = L; gradFn->k_ = inK;
 		gradFn->s_ = inStride; gradFn->p_ = inPadding; gradFn->d_ = inDilation;
 		gradFn->outL_ = outL;
-		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inX});
+		gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inX});
 		gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		gradFn->outputShape_ = out.getShape();
 		if (not oa::FnAutograd::attachSemantic(

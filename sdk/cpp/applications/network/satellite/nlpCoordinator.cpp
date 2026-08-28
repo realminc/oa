@@ -34,7 +34,7 @@ using CoordinatorClock = std::chrono::steady_clock;
 class LocalGradient {
 public:
 	oa::F32 loss = 0.0F;
-	oa::Vec<oa::F32> values;
+	oa::Vector<oa::F32> values;
 };
 
 class ContextFailureGuard {
@@ -60,7 +60,7 @@ oa::Status submitAndWait(oa::Engine& inEngine) {
 	return oa::Status::ok();
 }
 
-oa::Status appendF32(const oa::Matrix& inMatrix, oa::Vec<oa::F32>& outValues) {
+oa::Status appendF32(const oa::Matrix& inMatrix, oa::Vector<oa::F32>& outValues) {
 	if (inMatrix.getDtype() != oa::ScalarType::Float32) {
 		return oa::Status::error(oa::StatusCode::DtypeMismatch,
 			"satellite NLP coordinator: expected an FP32 matrix");
@@ -72,8 +72,8 @@ oa::Status appendF32(const oa::Matrix& inMatrix, oa::Vec<oa::F32>& outValues) {
 		inMatrix, outValues.data() + oldSize, count * sizeof(oa::F32));
 }
 
-oa::Result<oa::Vec<oa::F32>> copyParameters(oa::NlpSuiteModel& inModel) {
-	oa::Vec<oa::F32> values;
+oa::Result<oa::Vector<oa::F32>> copyParameters(oa::NlpSuiteModel& inModel) {
+	oa::Vector<oa::F32> values;
 	values.reserve(oa::SatelliteNlpStepParameterCount);
 	for (const auto* parameter : inModel.allParameterPtrs()) {
 		if (parameter == nullptr) {
@@ -268,7 +268,7 @@ oa::Result<oa::F32> evaluateAccuracy(
 		oa::ScalarType::UInt32);
 	const auto logits = inModel.forward(inputs);
 	OA_RETURN_IF_ERROR(submitAndWait(inEngine));
-	oa::Vec<oa::F32> host(static_cast<oa::Usize>(logits.numElements()));
+	oa::Vector<oa::F32> host(static_cast<oa::Usize>(logits.numElements()));
 	OA_RETURN_IF_ERROR(oa::FnMatrix::copyToHost(
 		logits, host.data(), host.size() * sizeof(oa::F32)));
 	const oa::Usize rows = inBatch.targets.size();
@@ -294,7 +294,7 @@ oa::Result<oa::String> generateGreedy(
 {
 	oa::NlpSuiteSampler sampler(inRecipe, 1);
 	const oa::Usize contextLength = static_cast<oa::Usize>(inRecipe.contextLength());
-	oa::Vec<oa::I32> context(contextLength, 0);
+	oa::Vector<oa::I32> context(contextLength, 0);
 	const auto prompt = sampler.encode(oa::NlpSuiteGenerationPrompt);
 	const oa::Usize copyCount = std::min(prompt.size(), contextLength);
 	for (oa::Usize index = 0; index < copyCount; ++index) {
@@ -307,7 +307,7 @@ oa::Result<oa::String> generateGreedy(
 		const auto inputs = sampler.inputMatrix(context);
 		const auto logits = inModel.forward(inputs);
 		OA_RETURN_IF_ERROR(submitAndWait(inEngine));
-		oa::Vec<oa::F32> host(static_cast<oa::Usize>(logits.numElements()));
+		oa::Vector<oa::F32> host(static_cast<oa::Usize>(logits.numElements()));
 		OA_RETURN_IF_ERROR(oa::FnMatrix::copyToHost(
 			logits, host.data(), host.size() * sizeof(oa::F32)));
 		if (host.size() != contextLength * 256U) {
@@ -629,7 +629,7 @@ oa::Result<oa::SatelliteNlpCoordinatorReport> oa::satelliteRunSplitBatchNlp(
 			report.remoteKernelFallbacks += *fallbacks;
 			OA_RETURN_IF_ERROR(dropStepObjects(inClient));
 
-			oa::Vec<oa::F32> reduced(local->values.size());
+			oa::Vector<oa::F32> reduced(local->values.size());
 			for (oa::Usize index = 0; index < reduced.size(); ++index) {
 				reduced[index] = local->values[index] * localWeight
 					+ remote->gradients[index] * remoteWeight;

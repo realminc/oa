@@ -48,7 +48,7 @@ oa::Matrix oa::Rope::forward(const oa::Matrix& inInput) {
 	if (oa::FnAutograd::isEnabled() and inInput.requiresGrad()) {
 		auto gradFn = oa::makeShared<oa::GradRoPE>();
 		gradFn->saveForBackward(inInput);
-		gradFn->setGraphInputs(oa::Vec<oa::Matrix>{inInput});
+		gradFn->setGraphInputs(oa::Vector<oa::Matrix>{inInput});
 		gradFn->sequenceNr_ = oa::FnAutograd::nextSeq();
 		gradFn->numHeads_ = numHeads_;
 		gradFn->headDim_ = headDim_;

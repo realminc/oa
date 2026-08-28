@@ -42,7 +42,7 @@ bool validateLike(const oa::Matrix& inMatrix, const oa::Matrix& inReference) {
 // index shuffling and splitting
 // ============================================================================
 
-void shuffle(oa::Vec<oa::I64>& inOutIndices, oa::U64 inSeed) {
+void shuffle(oa::Vector<oa::I64>& inOutIndices, oa::U64 inSeed) {
 	if (inSeed == 0) {
 		inSeed = static_cast<oa::U64>(
 			oa::SystemClock::now().nanosecondsSinceEpoch());
@@ -57,7 +57,7 @@ SplitResult randomSplit(oa::I64 inTotalSize, oa::F32 inTrainRatio, oa::F32 inVal
 	inTrainRatio = oa::clamp(inTrainRatio, 0.0f, 1.0f);
 	inValRatio = oa::clamp(inValRatio, 0.0f, 1.0f - inTrainRatio);
 
-	oa::Vec<oa::I64> indices(static_cast<oa::Usize>(inTotalSize));
+	oa::Vector<oa::I64> indices(static_cast<oa::Usize>(inTotalSize));
 	for (oa::I64 index = 0; index < inTotalSize; ++index) {
 		indices[static_cast<oa::Usize>(index)] = index;
 	}

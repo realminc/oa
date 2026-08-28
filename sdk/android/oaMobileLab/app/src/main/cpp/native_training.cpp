@@ -13,7 +13,6 @@
 #include <oa/ml/optim.h>
 #include <oa/runtime/executionSession.h>
 #include <oa/runtime/engine.h>
-#include <oa/runtime/oaVk.h>
 
 #include <algorithm>
 #include <atomic>
@@ -124,14 +123,6 @@ static Function OaMobileLoadExport(void* inLibrary, const char* inName) {
 	return function;
 }
 
-class OaMobileVkScope {
-public:
-	OaMobileVkScope() = default;
-	OaMobileVkScope(const OaMobileVkScope&) = delete;
-	OaMobileVkScope& operator=(const OaMobileVkScope&) = delete;
-	~OaMobileVkScope() { oaVkFinalize(); }
-};
-
 class OaMobileProgressCallback {
 public:
 	OaMobileProgressCallback(JNIEnv* inEnvironment, jobject inCallback)
@@ -224,7 +215,7 @@ static oa::U64 OaMobileParameterFingerprint(oa::NlpSuiteModel& inModel) {
 	oa::U64 hash = 1469598103934665603ULL;
 	for (const auto* parameter : inModel.allParameterPtrs()) {
 		const oa::U64 bytes = static_cast<oa::U64>(parameter->data.byteSize());
-		oa::Vec<oa::U8> host(static_cast<oa::Usize>(bytes));
+		oa::Vector<oa::U8> host(static_cast<oa::Usize>(bytes));
 		const auto copy = oa::FnMatrix::copyToHost(parameter->data, host.data(), bytes);
 		if (not copy.isOk()) {
 			OaMobileFail("Parameter fingerprint readback failed");
@@ -345,7 +336,7 @@ static oa::String OaMobileGenerateGreedy(
 			++index) {
 			auto row = logits.reshape(oa::MatrixShape{inRecipe.vocabSize()});
 			const oa::I32 next = static_cast<oa::I32>(oa::FnMatrix::argmax(row));
-			oa::Vec<oa::I32> nextToken{next};
+			oa::Vector<oa::I32> nextToken{next};
 			const oa::String decoded = inSampler.decode(nextToken);
 			output += decoded;
 			generatedSourceUnits += static_cast<oa::I32>(decoded.size());
@@ -368,7 +359,7 @@ static oa::String OaMobileGenerateGreedy(
 
 	const oa::I32 contextLength = inRecipe.contextLength();
 	const oa::I32 padToken = inRecipe.tokenizer() == oa::NlpTokenizerKind::Char ? 26 : 0;
-	oa::Vec<oa::I32> context(contextLength, padToken);
+	oa::Vector<oa::I32> context(contextLength, padToken);
 	const auto prompt = inSampler.encode(OaNlpSuiteGenerationPrompt);
 	const oa::I32 copyCount = std::min(
 		static_cast<oa::I32>(prompt.size()), contextLength);
@@ -397,7 +388,7 @@ static oa::String OaMobileGenerateGreedy(
 			oa::FnMatrix::slice(logits, 0, logitRow, logitRow + 1),
 			oa::MatrixShape{inRecipe.vocabSize()});
 		const oa::I32 next = static_cast<oa::I32>(oa::FnMatrix::argmax(row));
-		oa::Vec<oa::I32> nextToken(1, next);
+		oa::Vector<oa::I32> nextToken(1, next);
 		const oa::String decoded = inSampler.decode(nextToken);
 		output += decoded;
 		generatedSourceUnits += static_cast<oa::I32>(decoded.size());
@@ -434,10 +425,6 @@ static std::string OaMobileRunTraining(
 	OaMobileProgressCallback progress(inEnvironment, inCallback);
 	auto turnip = OaMobileOpenTurnip(
 		inDriverDirectory, inNativeLibraryDirectory, inCacheDirectory);
-	auto getInstanceProcAddr = OaMobileLoadExport<PFN_vkGetInstanceProcAddr>(
-		turnip.get(), "vkGetInstanceProcAddr");
-	oaVkInitCustom(getInstanceProcAddr);
-	OaMobileVkScope vkScope;
 
 	setenv("OA_VAR_DIR", inCacheDirectory.c_str(), 1);
 	setenv("OA_DISABLE_GRU_SCAN", "1", 1);
@@ -451,6 +438,10 @@ static std::string OaMobileRunTraining(
 	config.preloadEmbeddedPipelines = false;
 	config.pipelineCacheDir = oa::String((inCacheDirectory + "/oa-vk").cStr());
 	config.appName = "OaMobileLab";
+	// Route the Turnip/Adreno per-app loader through EngineConfig instead of
+	// calling VKL directly. The engine installs it before loader initialization.
+	config.vulkanLoaderProcAddr = OaMobileLoadExport<PFN_vkGetInstanceProcAddr>(
+		turnip.get(), "vkGetInstanceProcAddr");
 
 	auto engineResult = oa::Engine::create(config);
 	if (not engineResult.isOk()) {

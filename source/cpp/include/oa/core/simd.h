@@ -1,6 +1,6 @@
 // OA SIMD — Portable compiled batch math via xsimd
 //
-// memory ops (memcpy, memset, memzero, memequal) are in memory.h.
+// Memory operations are owned by <oa/core/std/memory.h>.
 //
 // usage:
 //   #include <oa/core/simd.h>

@@ -1,5 +1,5 @@
 #include "imageCodecInternal.h"
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
 
 namespace oa::imageCodec {
 

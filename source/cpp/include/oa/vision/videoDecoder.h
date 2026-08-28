@@ -11,7 +11,8 @@
 #include <oa/core/status.h>
 #include <oa/core/matrix.h>
 #include <oa/core/image.h>
-#include <oa/runtime/oaVk.h>
+#include <vulkan/vulkan_core.h>
+#include <vk_video/vulkan_video_codecs_common.h>
 #include <oa/runtime/event.h>
 #include <oa/vision/type.h>
 #include <oa/vision/videoCodecParameterSets.h>
@@ -134,8 +135,8 @@ struct VideoDecodeCapabilities {
 	VkExtensionProperties stdHeaderVersion = {};
 	VkVideoDecodeCapabilityFlagsKHR decodeFlags = 0;
 	VideoProfile profile = {};
-	oa::Vec<VkVideoFormatPropertiesKHR> dpbFormats;
-	oa::Vec<VkVideoFormatPropertiesKHR> outputFormats;
+	oa::Vector<VkVideoFormatPropertiesKHR> dpbFormats;
+	oa::Vector<VkVideoFormatPropertiesKHR> outputFormats;
 };
 
 // YCbCr to RGB conversion options
@@ -225,9 +226,9 @@ public:
 	[[nodiscard]] oa::Result<VideoFrame> allocateRgbaFrame(
 		oa::U32 inWidth,
 		oa::U32 inHeight);
-	[[nodiscard]] oa::Result<oa::Vec<oa::U8>> readbackLuma(const VideoFrame& inFrame);
-	[[nodiscard]] oa::Result<oa::Vec<oa::U8>> readbackNv12(const VideoFrame& inFrame);
-	[[nodiscard]] oa::Result<oa::Vec<oa::U8>> readbackRgba(const VideoFrame& inFrame);
+	[[nodiscard]] oa::Result<oa::Vector<oa::U8>> readbackLuma(const VideoFrame& inFrame);
+	[[nodiscard]] oa::Result<oa::Vector<oa::U8>> readbackNv12(const VideoFrame& inFrame);
+	[[nodiscard]] oa::Result<oa::Vector<oa::U8>> readbackRgba(const VideoFrame& inFrame);
 	[[nodiscard]] oa::Result<Matrix> convertFrameToBf16(
 		const VideoFrame& inFrame,
 		bool inNormalizeImageNet = true);
@@ -316,14 +317,14 @@ private:
 	oa::I32 allocateDpbSlot();
 	void markSlotAsReference(oa::I32 inSlotIndex, oa::I32 inPicOrderCnt);
 	void releaseDpbSlot(oa::I32 inSlotIndex);
-	void buildRefPicList0(oa::I32 inCurrentPoc, oa::Vec<oa::I32>& outRefList);
-	void buildRefPicList1(oa::I32 inCurrentPoc, oa::Vec<oa::I32>& outRefList);
-	void buildH264RefPicList0P(oa::Vec<oa::I32>& outRefList);
+	void buildRefPicList0(oa::I32 inCurrentPoc, oa::Vector<oa::I32>& outRefList);
+	void buildRefPicList1(oa::I32 inCurrentPoc, oa::Vector<oa::I32>& outRefList);
+	void buildH264RefPicList0P(oa::Vector<oa::I32>& outRefList);
 	void applySlidingWindow(oa::U32 inMaxNumRefFrames);
 	void applyMmco(
-		const oa::Vec<H264MmcoCommand>& inMmcoCommands,
+		const oa::Vector<H264MmcoCommand>& inMmcoCommands,
 		oa::I32 inCurrentDpbSlot);
-	void applyMmco(const oa::Vec<oa::U32>& inMmcoCommands);
+	void applyMmco(const oa::Vector<oa::U32>& inMmcoCommands);
 
 	oa::Status cacheSps(oa::U32 inSpsId, const H264SpsData& inSps);
 	oa::Status cachePps(oa::U32 inPpsId, const H264PpsData& inPps);
@@ -366,13 +367,13 @@ private:
 	oa::Status recordH264DecodeCommands(
 		oa::I32 inDpbSlot,
 		const H264PictureDesc& inDesc,
-		const oa::Vec<oa::I32>& inRefPicList0,
-		const oa::Vec<oa::I32>& inRefPicList1);
+		const oa::Vector<oa::I32>& inRefPicList0,
+		const oa::Vector<oa::I32>& inRefPicList1);
 	oa::Status recordH265DecodeCommands(
 		oa::I32 inDpbSlot,
 		const H265PictureDesc& inDesc,
-		const oa::Vec<oa::I32>& inRefPicList0,
-		const oa::Vec<oa::I32>& inRefPicList1);
+		const oa::Vector<oa::I32>& inRefPicList0,
+		const oa::Vector<oa::I32>& inRefPicList1);
 	oa::Status recordAV1DecodeCommands(
 		oa::I32 inDpbSlot,
 		const Av1PictureDesc& inDesc,
@@ -381,8 +382,8 @@ private:
 		oa::I32 inDpbSlot,
 		const Vp9PictureDesc& inDesc,
 		const oa::I32 inReferenceNameSlotIndices[STD_VIDEO_VP9_REFS_PER_FRAME],
-		const oa::Vec<oa::I32>& inReferenceSlots,
-		const oa::Vec<VkExtent2D>& inReferenceExtents);
+		const oa::Vector<oa::I32>& inReferenceSlots,
+		const oa::Vector<VkExtent2D>& inReferenceExtents);
 	oa::Status convertNv12ToRgb(
 		const VideoFrame& inNv12Frame,
 		const VideoConversionOptions& inOptions,
@@ -437,9 +438,9 @@ private:
 	void moveFrom(VideoFramePool&& inOther) noexcept;
 	void reset_() noexcept;
 
-	oa::Vec<VideoFrame> frames_;
-	oa::Vec<bool> inUse_;
-	oa::Vec<void*> allocations_;
+	oa::Vector<VideoFrame> frames_;
+	oa::Vector<bool> inUse_;
+	oa::Vector<void*> allocations_;
 	Engine* rt_ = nullptr;
 };
 

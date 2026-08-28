@@ -7,7 +7,7 @@
 
 namespace oavk { class Device; }
 
-class OaVmaStats {
+class RuntimeAllocatorStats {
 public:
 	oa::U64 usedBytes = 0;
 	oa::U64 budgetBytes = 0;
@@ -17,12 +17,12 @@ public:
 	oa::U64 blockCount = 0;
 };
 
-class OaVma {
+class RuntimeAllocator {
 public:
 	void* allocator = nullptr;
 	oa::Bool hasSam = false;
 
-	[[nodiscard]] static oa::Result<OaVma> create(const oavk::Device& inDevice);
+	[[nodiscard]] static oa::Result<RuntimeAllocator> create(const oavk::Device& inDevice);
 	void destroy();
 
 	[[nodiscard]] oa::Result<oavk::Buffer> allocDevice(oa::U64 inSize);
@@ -49,5 +49,5 @@ public:
 		const oavk::Buffer& inExisting, oa::U64 inSize);
 	void freeAlias(oavk::Buffer& inOutBuffer);
 
-	[[nodiscard]] OaVmaStats getStats() const;
+	[[nodiscard]] RuntimeAllocatorStats getStats() const;
 };

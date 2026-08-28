@@ -29,7 +29,7 @@ oa::ModelFile makeModel(oa::F32 inLastValue = 4.0F) {
 	return model;
 }
 
-oa::U64 legacyFileChecksum(const oa::Vec<oa::U8>& inBytes) {
+oa::U64 legacyFileChecksum(const oa::Vector<oa::U8>& inBytes) {
 	const auto* header = reinterpret_cast<const oa::ModelFileHeader*>(inBytes.data());
 	const auto* sections = reinterpret_cast<const oa::ModelFileSectionHeader*>(
 		inBytes.data() + sizeof(oa::ModelFileHeader));
@@ -46,7 +46,7 @@ void hashUpdate(oa::U64& inOutHash, const oa::U8* inData, oa::Usize inSize) {
 	}
 }
 
-oa::U64 manifestChecksum(const oa::Vec<oa::U8>& inBytes) {
+oa::U64 manifestChecksum(const oa::Vector<oa::U8>& inBytes) {
 	auto header = *reinterpret_cast<const oa::ModelFileHeader*>(inBytes.data());
 	header.checksum = 0;
 	const auto* sections = inBytes.data() + sizeof(oa::ModelFileHeader);
@@ -61,7 +61,7 @@ oa::ModelFile makeQuantizableModel() {
 	oa::ModelFile model;
 	std::strncpy(model.config.architecture, "QuantIntegrityTest",
 				 sizeof(model.config.architecture) - 1);
-	oa::Vec<oa::F32> weights(32, 0.0F);
+	oa::Vector<oa::F32> weights(32, 0.0F);
 	for (oa::I32 value = -7; value <= 7; ++value) {
 		weights[static_cast<oa::Usize>(value + 7)] = static_cast<oa::F32>(value);
 	}

@@ -4,6 +4,7 @@
 // primitive directly; no hosted C++ standard-library type or ABI crosses this
 // boundary.
 
+#include <oa/core/assert.h>
 #include <oa/core/std/typeTraits.h>
 
 namespace oa {
@@ -19,7 +20,22 @@ enum class MemoryOrder {
 
 namespace atomicDetail {
 
-[[nodiscard]] constexpr int builtinOrder(MemoryOrder inOrder) noexcept {
+[[nodiscard]] constexpr bool isKnownOrder(MemoryOrder inOrder) noexcept {
+	switch (inOrder) {
+		case MemoryOrder::Relaxed:
+		case MemoryOrder::Consume:
+		case MemoryOrder::Acquire:
+		case MemoryOrder::Release:
+		case MemoryOrder::AcquireRelease:
+		case MemoryOrder::Sequential:
+			return true;
+		default:
+			return false;
+	}
+}
+
+[[nodiscard]] inline int builtinOrder(MemoryOrder inOrder) noexcept {
+	OA_REQUIRE_MSG(isKnownOrder(inOrder), "invalid atomic memory order");
 	switch (inOrder) {
 		case MemoryOrder::Relaxed:        return __ATOMIC_RELAXED;
 		case MemoryOrder::Consume:        return __ATOMIC_CONSUME;
@@ -27,16 +43,50 @@ namespace atomicDetail {
 		case MemoryOrder::Release:        return __ATOMIC_RELEASE;
 		case MemoryOrder::AcquireRelease: return __ATOMIC_ACQ_REL;
 		case MemoryOrder::Sequential:     return __ATOMIC_SEQ_CST;
-		default:                          return __ATOMIC_SEQ_CST;
+		default:                          break;
 	}
+	return __ATOMIC_SEQ_CST;
 }
 
-[[nodiscard]] constexpr int failureOrder(MemoryOrder inOrder) noexcept {
+[[nodiscard]] inline int loadOrder(MemoryOrder inOrder) noexcept {
+	OA_REQUIRE_MSG(
+		inOrder == MemoryOrder::Relaxed or
+		inOrder == MemoryOrder::Consume or
+		inOrder == MemoryOrder::Acquire or
+		inOrder == MemoryOrder::Sequential,
+		"atomic load requires relaxed, consume, acquire, or sequential order");
+	return builtinOrder(inOrder);
+}
+
+[[nodiscard]] inline int storeOrder(MemoryOrder inOrder) noexcept {
+	OA_REQUIRE_MSG(
+		inOrder == MemoryOrder::Relaxed or
+		inOrder == MemoryOrder::Release or
+		inOrder == MemoryOrder::Sequential,
+		"atomic store requires relaxed, release, or sequential order");
+	return builtinOrder(inOrder);
+}
+
+[[nodiscard]] inline int failureOrder(MemoryOrder inOrder) noexcept {
 	switch (inOrder) {
 		case MemoryOrder::Release:        return __ATOMIC_RELAXED;
 		case MemoryOrder::AcquireRelease: return __ATOMIC_ACQUIRE;
 		default:                          return builtinOrder(inOrder);
 	}
+}
+
+template<typename T>
+[[nodiscard]] inline T wrappingAdd(T inLeft, T inRight) noexcept {
+	T result{};
+	(void)__builtin_add_overflow(inLeft, inRight, &result);
+	return result;
+}
+
+template<typename T>
+[[nodiscard]] inline T wrappingSub(T inLeft, T inRight) noexcept {
+	T result{};
+	(void)__builtin_sub_overflow(inLeft, inRight, &result);
+	return result;
 }
 
 } // namespace atomicDetail
@@ -63,14 +113,14 @@ public:
 	[[nodiscard]] T load(
 		MemoryOrder inOrder = MemoryOrder::Sequential
 	) const noexcept {
-		return __atomic_load_n(&value_, atomicDetail::builtinOrder(inOrder));
+		return __atomic_load_n(&value_, atomicDetail::loadOrder(inOrder));
 	}
 
 	void store(
 		T inDesired,
 		MemoryOrder inOrder = MemoryOrder::Sequential
 	) noexcept {
-		__atomic_store_n(&value_, inDesired, atomicDetail::builtinOrder(inOrder));
+		__atomic_store_n(&value_, inDesired, atomicDetail::storeOrder(inOrder));
 	}
 
 	T exchange(
@@ -149,22 +199,24 @@ public:
 		return inDesired;
 	}
 	T operator++() noexcept requires(oa::IsIntegralV<T>) {
-		return fetchAdd(static_cast<T>(1)) + static_cast<T>(1);
+		return atomicDetail::wrappingAdd(
+			fetchAdd(static_cast<T>(1)), static_cast<T>(1));
 	}
 	T operator++(int) noexcept requires(oa::IsIntegralV<T>) {
 		return fetchAdd(static_cast<T>(1));
 	}
 	T operator--() noexcept requires(oa::IsIntegralV<T>) {
-		return fetchSub(static_cast<T>(1)) - static_cast<T>(1);
+		return atomicDetail::wrappingSub(
+			fetchSub(static_cast<T>(1)), static_cast<T>(1));
 	}
 	T operator--(int) noexcept requires(oa::IsIntegralV<T>) {
 		return fetchSub(static_cast<T>(1));
 	}
 	T operator+=(T inArg) noexcept requires(oa::IsIntegralV<T>) {
-		return fetchAdd(inArg) + inArg;
+		return atomicDetail::wrappingAdd(fetchAdd(inArg), inArg);
 	}
 	T operator-=(T inArg) noexcept requires(oa::IsIntegralV<T>) {
-		return fetchSub(inArg) - inArg;
+		return atomicDetail::wrappingSub(fetchSub(inArg), inArg);
 	}
 
 private:

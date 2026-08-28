@@ -4,7 +4,7 @@
 #include <oa/runtime/engine/submissionAccess.h>
 #include <oa/runtime/engine/deviceAccess.h>
 #include <oa/runtime/stream.h>
-#include <oa/runtime/oaVk.h>
+#include <vkl/vkl.h>
 #include <oa/core/thread.h>
 #include <oa/runtime/kernelRegistry.h>
 #include <oa/core/validation.h>

@@ -69,7 +69,7 @@ public:
 	// synchronized optimizer step. Dense priors return an empty auxLoss and no-op.
 	[[nodiscard]] oa::Matrix moeAuxLoss() const;
 	void updateMoeRoutingBias();
-	[[nodiscard]] oa::Vec<oa::MoeRouteStats> moeRouteStats() const;
+	[[nodiscard]] oa::Vector<oa::MoeRouteStats> moeRouteStats() const;
 
 private:
 	oa::Matrix forwardImpl(const oa::Matrix& inTokenIds, const oa::Matrix* inTextFeatures);
@@ -91,7 +91,7 @@ private:
 	oa::I32    cachedPosB_ = -1;
 	oa::I32    cachedPosT_ = -1;
 
-	oa::Vec<oa::SharedPtr<oa::TransformerBlock>> layers_;
+	oa::Vector<oa::SharedPtr<oa::TransformerBlock>> layers_;
 	oa::SharedPtr<oa::RmsNorm> finalNorm_;
 	oa::SharedPtr<oa::Linear> outputHead_;
 

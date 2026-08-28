@@ -16,7 +16,7 @@ enum class ComputeAppProbeMode : oa::U8 {
 
 class ComputeAppProbeState {
 public:
-	oa::Vec<oa::String> calls_;
+	oa::Vector<oa::String> calls_;
 	oa::U32 setupCount_ = 0;
 	oa::U32 initCount_ = 0;
 	oa::U32 tickCount_ = 0;
@@ -68,7 +68,7 @@ public:
 	}
 	[[nodiscard]] oa::Bool ownsEngine() const noexcept { return hasEngine(); }
 	[[nodiscard]] oa::Status retryClose() { return engine().close(); }
-	[[nodiscard]] const oa::Vec<oa::String>& calls() const noexcept {
+	[[nodiscard]] const oa::Vector<oa::String>& calls() const noexcept {
 		return state_->calls_;
 	}
 	[[nodiscard]] oa::U32 setupCount() const noexcept { return state_->setupCount_; }

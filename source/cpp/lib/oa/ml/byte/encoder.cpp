@@ -12,13 +12,13 @@ oa::Matrix oa::ByteEncoder::encodeBatched(oa::Span<const oa::U8> inBytes) {
 	return oa::FnMatrix::fromBytes(inBytes, oa::MatrixShape{1, static_cast<oa::I64>(inBytes.size())}, oa::ScalarType::UInt8);
 }
 
-oa::Vec<oa::U8> oa::ByteEncoder::decode(const oa::Matrix& inLogits) {
+oa::Vector<oa::U8> oa::ByteEncoder::decode(const oa::Matrix& inLogits) {
 	auto ids = oa::FnMatrix::sampleLogits(inLogits, 0.0F);
 	if (ids.isEmpty()) return {};
 	auto& ctx = oa::ExecutionSession::getActive();
 	(void)ctx.submitAndWait();
-	oa::Vec<oa::U8> result(static_cast<oa::Usize>(ids.numElements()));
-	oa::Vec<oa::I32> host(static_cast<oa::Usize>(ids.numElements()));
+	oa::Vector<oa::U8> result(static_cast<oa::Usize>(ids.numElements()));
+	oa::Vector<oa::I32> host(static_cast<oa::Usize>(ids.numElements()));
 	if (not oa::FnMatrix::copyToHost(ids, host.data(),
 		static_cast<oa::U64>(ids.byteSize())).isOk()) return {};
 	for (oa::I64 i = 0; i < ids.numElements(); ++i)
@@ -26,13 +26,13 @@ oa::Vec<oa::U8> oa::ByteEncoder::decode(const oa::Matrix& inLogits) {
 	return result;
 }
 
-oa::Vec<oa::U8> oa::ByteEncoder::sample(const oa::Matrix& inLogits, oa::F32 inTemperature, oa::F32 inTopP) {
+oa::Vector<oa::U8> oa::ByteEncoder::sample(const oa::Matrix& inLogits, oa::F32 inTemperature, oa::F32 inTopP) {
 	auto ids = oa::FnMatrix::sampleLogits(inLogits, inTemperature, 0, inTopP);
 	if (ids.isEmpty()) return {};
 	auto& ctx = oa::ExecutionSession::getActive();
 	(void)ctx.submitAndWait();
-	oa::Vec<oa::U8> result(static_cast<oa::Usize>(ids.numElements()));
-	oa::Vec<oa::I32> host(static_cast<oa::Usize>(ids.numElements()));
+	oa::Vector<oa::U8> result(static_cast<oa::Usize>(ids.numElements()));
+	oa::Vector<oa::I32> host(static_cast<oa::Usize>(ids.numElements()));
 	if (not oa::FnMatrix::copyToHost(ids, host.data(),
 		static_cast<oa::U64>(ids.byteSize())).isOk()) return {};
 	for (oa::I64 i = 0; i < ids.numElements(); ++i)

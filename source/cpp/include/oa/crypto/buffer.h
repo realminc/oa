@@ -7,7 +7,7 @@
 #pragma once
 
 #include <oa/core/types.h>
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
 
 #ifdef OA_PLATFORM_LINUX
 #include <sys/mman.h>
@@ -19,7 +19,7 @@ class SecureBuffer {
 public:
 	SecureBuffer() = default;
 
-	SecureBuffer(void* inPtr, oa::U64 inSize) : ptr_(inPtr), size_(inSize) {
+	SecureBuffer(void* inPtr, oa::Usize inSize) : ptr_(inPtr), size_(inSize) {
 		if (ptr_ && size_ > 0) {
 #ifdef OA_PLATFORM_LINUX
 			locked_ = mlock(ptr_, size_) == 0;
@@ -55,13 +55,7 @@ public:
 	}
 
 	void secureZero() noexcept {
-		if (!ptr_ || size_ == 0) return;
-		// Volatile stores are deliberately simple and portable; erasing a few KiB
-		// of key material is not a throughput path.
-		volatile oa::U8* vp = static_cast<volatile oa::U8*>(ptr_);
-		for (oa::U64 i = 0; i < size_; ++i) {
-			vp[i] = 0;
-		}
+		oa::memzeroSecure(ptr_, size_);
 	}
 
 	void reset() noexcept {
@@ -78,13 +72,13 @@ public:
 
 	[[nodiscard]] oa::U8* data() { return static_cast<oa::U8*>(ptr_); }
 	[[nodiscard]] const oa::U8* data() const { return static_cast<const oa::U8*>(ptr_); }
-	[[nodiscard]] oa::U64 sizeBytes() const { return size_; }
+	[[nodiscard]] oa::Usize sizeBytes() const { return size_; }
 	[[nodiscard]] bool isValid() const { return ptr_ != nullptr && size_ > 0; }
 	[[nodiscard]] bool isLocked() const { return locked_; }
 
 private:
 	void* ptr_ = nullptr;
-	oa::U64 size_ = 0;
+	oa::Usize size_ = 0;
 	bool locked_ = false;
 };
 

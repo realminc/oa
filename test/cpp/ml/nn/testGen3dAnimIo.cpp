@@ -45,7 +45,7 @@ static oa::UsdSkelClip makeSampleUsd(const oa::Skeleton& sk, oa::U32 frames) {
 	const oa::I32 N = sk.jointCount();
 
 	// Identity pose in the compact layout: walk each joint's ChannelSpec.
-	oa::Vec<oa::F32> s;
+	oa::Vector<oa::F32> s;
 	s.resize(static_cast<oa::Usize>(frames) * D);
 	for (oa::U32 f = 0; f < frames; ++f) {
 		const oa::Usize base = static_cast<oa::Usize>(f) * D;

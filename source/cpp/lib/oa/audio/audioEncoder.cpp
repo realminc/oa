@@ -3,7 +3,7 @@
 #include <oa/audio/audioEncoder.h>
 #include <oa/audio/fnAudio.h>
 #include <oa/core/filesystem.h>
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
 #include <oa/core/std/algo.h>
 #include <oa/core/std/limits.h>
 #include <oa/core/std/scalarMath.h>
@@ -25,7 +25,7 @@ void writeU32Le(oa::U8* out, oa::U32 inValue) {
 
 } // namespace
 
-oa::Result<oa::Vec<oa::U8>> oa::FnAudio::encodeInterleavedWavF32(
+oa::Result<oa::Vector<oa::U8>> oa::FnAudio::encodeInterleavedWavF32(
 	oa::Span<const oa::F32> inSamples,
 	oa::U32 inSampleRate,
 	oa::U32 inChannelCount)
@@ -55,7 +55,7 @@ oa::Result<oa::Vec<oa::U8>> oa::FnAudio::encodeInterleavedWavF32(
 	}
 
 	const oa::U32 dataBytes = static_cast<oa::U32>(dataBytes64);
-	oa::Vec<oa::U8> out;
+	oa::Vector<oa::U8> out;
 	out.resize(static_cast<oa::Usize>(kHeaderBytes + dataBytes64));
 	oa::U8* p = out.data();
 
@@ -77,7 +77,7 @@ oa::Result<oa::Vec<oa::U8>> oa::FnAudio::encodeInterleavedWavF32(
 	return out;
 }
 
-oa::Result<oa::Vec<oa::U8>> oa::FnAudio::encodeWavF32(const oa::Audio& inAudio) {
+oa::Result<oa::Vector<oa::U8>> oa::FnAudio::encodeWavF32(const oa::Audio& inAudio) {
 	if (not inAudio.validate() || inAudio.isEmpty()) {
 		return oa::Status::invalidArgument("oa::FnAudio::encodeWavF32: expected valid non-empty audio");
 	}
@@ -100,7 +100,7 @@ oa::Result<oa::Vec<oa::U8>> oa::FnAudio::encodeWavF32(const oa::Audio& inAudio) 
 	if (channels > oa::Limits<oa::Usize>::max() / samples) {
 		return oa::Status::invalidArgument("oa::FnAudio::encodeWavF32: audio shape overflows host storage");
 	}
-	oa::Vec<oa::F32> interleaved(static_cast<oa::Usize>(channels * samples));
+	oa::Vector<oa::F32> interleaved(static_cast<oa::Usize>(channels * samples));
 	const oa::F32* planar = inBuffer.dataAs<oa::F32>();
 	for (oa::U64 sample = 0; sample < samples; ++sample) {
 		for (oa::U64 channel = 0; channel < channels; ++channel) {
@@ -129,8 +129,8 @@ oa::Status oa::FnAudio::saveWavF32(
 
 struct oa::AudioEncoder::Impl {
 	oa::AudioEncodeProfile profile = {};
-	oa::Vec<oa::U8> codecConfig;
-	oa::Vec<oa::F32> pending;
+	oa::Vector<oa::U8> codecConfig;
+	oa::Vector<oa::F32> pending;
 	oa::I64 nextInputFrame = 0;
 	oa::U32 primingFrames = 0U;
 };
@@ -151,7 +151,7 @@ oa::I16 quantizePcmS16(oa::F32 inSample) {
 void emitPcmPacket(
 	oa::AudioEncoder::Impl& inImpl,
 	oa::U32 inFrames,
-	oa::Vec<oa::EncodedAudioPacket>& outPackets
+	oa::Vector<oa::EncodedAudioPacket>& outPackets
 ) {
 	const oa::U32 channels = inImpl.profile.channelCount;
 	const oa::Usize samples = static_cast<oa::Usize>(inFrames) * channels;
@@ -176,6 +176,8 @@ void emitPcmPacket(
 }
 
 } // namespace
+
+oa::AudioEncoder::AudioEncoder() = default;
 
 oa::AudioEncoder::AudioEncoder(oa::AudioEncoder&& inOther) noexcept
 	: impl_(oa::move(inOther.impl_))
@@ -219,7 +221,7 @@ oa::Result<oa::AudioEncoder> oa::AudioEncoder::create(
 
 oa::Status oa::AudioEncoder::encode(
 	oa::Span<const oa::F32> inInterleaved,
-	oa::Vec<oa::EncodedAudioPacket>& outPackets)
+	oa::Vector<oa::EncodedAudioPacket>& outPackets)
 {
 	if (!impl_) return oa::Status::error(oa::StatusCode::FailedPrecondition, "Audio encoder is not open");
 	if (inInterleaved.empty() || inInterleaved.size() % impl_->profile.channelCount != 0U) {
@@ -240,7 +242,7 @@ oa::Status oa::AudioEncoder::encode(
 	return oa::Status::ok();
 }
 
-oa::Status oa::AudioEncoder::flush(oa::Vec<oa::EncodedAudioPacket>& outPackets)
+oa::Status oa::AudioEncoder::flush(oa::Vector<oa::EncodedAudioPacket>& outPackets)
 {
 	if (!impl_) return oa::Status::ok();
 	if (!impl_->pending.empty()) {

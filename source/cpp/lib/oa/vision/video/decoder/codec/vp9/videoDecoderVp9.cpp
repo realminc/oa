@@ -85,8 +85,8 @@ oa::Status oa::VideoDecoderCodecAccess::decodeVp9(
 	}
 
 	oa::I32 refNameSlotIndices[STD_VIDEO_VP9_REFS_PER_FRAME] = {-1, -1, -1};
-	oa::Vec<oa::I32> refSlots;
-	oa::Vec<VkExtent2D> refExtents;
+	oa::Vector<oa::I32> refSlots;
+	oa::Vector<VkExtent2D> refExtents;
 	if (!isKeyFrame) {
 		for (oa::U32 i = 0; i < STD_VIDEO_VP9_REFS_PER_FRAME; ++i) {
 			const oa::U8 bufferIdx = desc.refFrameIdx[i];

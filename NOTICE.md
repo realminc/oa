@@ -50,17 +50,17 @@ files. OA is grateful to their authors.
 
 | Component | In OA as | Author | License |
 |---|---|---|---|
-| **volk** (Vulkan meta-loader) | `source/cpp/lib/oa/runtime/oaVk.{c,h}` (hard fork; `volk*` → `OaVk*`) | Arseny Kapoulkine ([zeux/volk](https://github.com/zeux/volk)) | MIT |
-| **Vulkan Memory Allocator (VMA)** | `source/cpp/lib/oa/runtime/vma/*` + `oaVma.{h,cpp}` (vendored; umbrella header split into modules, `vma*` → `OaVma*`) | Advanced Micro Devices, Inc. ([GPUOpen VMA](https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator)) | MIT |
+| **volk / VKL** (Vulkan meta-loader) | `source/cpp/thirdparty/vkl` (hard fork; collision-safe `vkl*` C ABI) | Arseny Kapoulkine ([zeux/volk](https://github.com/zeux/volk)) | MIT |
+| **Vulkan Memory Allocator (VMA)** | `source/cpp/thirdparty/vma` (hard fork; split unity implementation) | Advanced Micro Devices, Inc. ([GPUOpen VMA](https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator)) | MIT |
 | **miniaudio** | `source/cpp/thirdparty/miniaudio/*` | David Reid ([mackron](https://github.com/mackron/miniaudio)) | Public domain or MIT-0 |
 | **stb** (`stb_image`, …) | `source/cpp/thirdparty/stb/*` | Sean Barrett ([nothings/stb](https://github.com/nothings/stb)) | Public domain or MIT |
 | **xsimd 14.1.0** | `source/cpp/thirdparty/xsimd/*` | QuantStack and xsimd contributors ([xtensor-stack/xsimd](https://github.com/xtensor-stack/xsimd)) | BSD-3-Clause |
 | **utf8proc 2.11.3** | `source/cpp/thirdparty/utf8proc/*` | utf8proc contributors ([JuliaStrings/utf8proc](https://github.com/JuliaStrings/utf8proc)) | MIT |
 | **libadrenotools** | `sdk/android/oaMobileLab/third_party/libadrenotools/*` (Android only) | Billy Laws ([bylaws/libadrenotools](https://github.com/bylaws/libadrenotools)) | BSD-2-Clause |
 
-The volk and VMA copies are **modified** (fork/rename/split for OA's build); their MIT
-copyright and permission notices are preserved in `oaVk.h` and `oaVma.h` respectively,
-and each split VMA module carries an SPDX attribution line pointing back to that notice.
+The volk and VMA copies are **modified** (fork/rename/split for OA's build).
+Their MIT notices are centralized in `source/cpp/thirdparty/licenses`, and each
+fork records exact provenance and local changes in its adjacent `UPSTREAM.md`.
 libadrenotools and its linkernsbypass copy retain their `LICENSE` files in place.
 
 ## Direct build and link dependencies

@@ -10,7 +10,7 @@
 struct oa::AudioPlayer::Impl {
 	oa::Engine* engine = nullptr;
 	oa::AudioPlayerConfig config;
-	oa::Vec<oa::F32> ring;
+	oa::Vector<oa::F32> ring;
 	oa::U64 capacityFrames = 0U;
 	oa::Atomic<oa::U64> writeFrame{0U};
 	oa::Atomic<oa::U64> readFrame{0U};
@@ -113,7 +113,7 @@ bool seekDecoder(oa::AudioPlayer::Impl& inImpl, oa::U64 inTimestampUs) {
 
 void decodeLoop(oa::AudioPlayer::Impl* inImpl) {
 	constexpr oa::U64 kDecodeFrames = 4096U;
-	oa::Vec<oa::F32> decoded;
+	oa::Vector<oa::F32> decoded;
 	decoded.resize(static_cast<oa::Usize>(kDecodeFrames * inImpl->channels));
 	while (not inImpl->stop.load(oa::MemoryOrder::Acquire)) {
 		const oa::U64 requestSerial = inImpl->seekSerial.load(oa::MemoryOrder::Acquire);
@@ -166,6 +166,8 @@ void decodeLoop(oa::AudioPlayer::Impl* inImpl) {
 }
 
 } // namespace
+
+oa::AudioPlayer::AudioPlayer() = default;
 
 oa::AudioPlayer::AudioPlayer(oa::AudioPlayer&& inOther) noexcept
 	: impl_(oa::move(inOther.impl_))

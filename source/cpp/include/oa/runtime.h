@@ -17,4 +17,3 @@
 #include <oa/runtime/app.h>
 #include <oa/runtime/window.h>
 #include <oa/runtime/externalMemory.h>
-#include <oa/runtime/oaVk.h>

@@ -11,7 +11,7 @@
 #include <oa/runtime/allocator.h>
 #include <oa/core/log.h>
 #include <oa/core/envFlag.h>
-#include <oa/core/memory.h>
+#include <oa/core/std/memory.h>
 #include <oa/core/std/algo.h>
 #include <oa/core/std/scalarMath.h>
 

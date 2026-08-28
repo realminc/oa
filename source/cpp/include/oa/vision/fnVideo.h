@@ -51,24 +51,24 @@ namespace FnVideo {
 	// split an Annex-B byte stream into NAL units (skip 00 00 00 01 /
 	// 00 00 01 start codes). Payloads alias back into inBytes; do not
 	// outlive the input buffer.
-	[[nodiscard]] oa::Vec<NalUnit> parseNalAnnexB(const oa::Span<const oa::U8>& inBytes);
+	[[nodiscard]] oa::Vector<NalUnit> parseNalAnnexB(const oa::Span<const oa::U8>& inBytes);
 
 	// Concatenate NAL payloads with 4-byte start codes (00 00 00 01).
 	// Caller-owned output buffer.
-	[[nodiscard]] oa::Vec<oa::U8> emitNalAnnexB(const oa::Span<const NalUnit>& inUnits);
+	[[nodiscard]] oa::Vector<oa::U8> emitNalAnnexB(const oa::Span<const NalUnit>& inUnits);
 
 	// Return the raw bytes (including NAL header) of the first SPS unit
 	// found in inNalBytes; empty if none.
-	[[nodiscard]] oa::Vec<oa::U8> extractSps(const oa::Span<const oa::U8>& inNalBytes);
+	[[nodiscard]] oa::Vector<oa::U8> extractSps(const oa::Span<const oa::U8>& inNalBytes);
 
 	// Same for the first PPS unit.
-	[[nodiscard]] oa::Vec<oa::U8> extractPps(const oa::Span<const oa::U8>& inNalBytes);
+	[[nodiscard]] oa::Vector<oa::U8> extractPps(const oa::Span<const oa::U8>& inNalBytes);
 
 	// HEVC parameter-set extraction. H.265 uses a two-byte NAL header and
 	// different type encoding, so these are deliberately codec-explicit.
-	[[nodiscard]] oa::Vec<oa::U8> extractVpsH265(const oa::Span<const oa::U8>& inNalBytes);
-	[[nodiscard]] oa::Vec<oa::U8> extractSpsH265(const oa::Span<const oa::U8>& inNalBytes);
-	[[nodiscard]] oa::Vec<oa::U8> extractPpsH265(const oa::Span<const oa::U8>& inNalBytes);
+	[[nodiscard]] oa::Vector<oa::U8> extractVpsH265(const oa::Span<const oa::U8>& inNalBytes);
+	[[nodiscard]] oa::Vector<oa::U8> extractSpsH265(const oa::Span<const oa::U8>& inNalBytes);
+	[[nodiscard]] oa::Vector<oa::U8> extractPpsH265(const oa::Span<const oa::U8>& inNalBytes);
 
 } // namespace FnVideo
 

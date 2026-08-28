@@ -148,7 +148,7 @@ surface = "public_operation"
 kernel_forward = "MatrixCopyRegion"
 body = "manual_session"
 generate_declaration = false
-api_return = "oa::Vec<oa::Matrix>"
+api_return = "oa::Vector<oa::Matrix>"
 api_params = [
     "const oa::Matrix& inSelf",
     "oa::Span<oa::I64> inSizes",

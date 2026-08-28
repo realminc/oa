@@ -8,7 +8,7 @@
 
 // forward declarations from Device.cpp
 oa::Status oavk::planDeviceQueues(
-	const OaVkInstanceTable& inDispatch,
+	const VklInstanceTable& inDispatch,
 	VkPhysicalDevice inPhys,
 	VkSurfaceKHR inSurface,
 	oavk::QueuePlan& outPlan,
@@ -79,7 +79,7 @@ oavk::DeviceBuilder& oavk::DeviceBuilder::withAllFeatures() {
 // phase 2: probe Extensions
 // ─────────────────────────────────────────────────────────────────────────────
 
-void oavk::DeviceBuilder::probeExtensions(const oa::Vec<VkExtensionProperties>& inExtensions) {
+void oavk::DeviceBuilder::probeExtensions(const oa::Vector<VkExtensionProperties>& inExtensions) {
 	for (const auto& module : modules_) {
 		module->probeExtensions(inExtensions, extProbe_);
 	}
@@ -91,7 +91,7 @@ void oavk::DeviceBuilder::probeExtensions(const oa::Vec<VkExtensionProperties>& 
 // ─────────────────────────────────────────────────────────────────────────────
 
 void oavk::DeviceBuilder::queryFeatures(
-	const OaVkInstanceTable& inDispatch,
+	const VklInstanceTable& inDispatch,
 	VkPhysicalDevice inPhysicalDevice)
 {
 	for (const auto& module : modules_) {
@@ -186,8 +186,8 @@ oa::Result<oavk::Device> oavk::DeviceBuilder::buildBase(
 		return depStatus;
 	}
 	sortModulesByDependencies();
-	OaVkInstanceTable instanceDispatch{};
-	oaVkLoadInstanceTable(&instanceDispatch, inInstance);
+	VklInstanceTable instanceDispatch{};
+	vklLoadInstanceTable(&instanceDispatch, inInstance);
 	if (instanceDispatch.vkEnumerateDeviceExtensionProperties == nullptr
 		or instanceDispatch.vkCreateDevice == nullptr)
 	{
@@ -200,7 +200,7 @@ oa::Result<oavk::Device> oavk::DeviceBuilder::buildBase(
 	oa::U32 extCount = 0;
 	instanceDispatch.vkEnumerateDeviceExtensionProperties(
 		inPhysicalDevice, nullptr, &extCount, nullptr);
-	oa::Vec<VkExtensionProperties> extensions(extCount);
+	oa::Vector<VkExtensionProperties> extensions(extCount);
 	instanceDispatch.vkEnumerateDeviceExtensionProperties(
 		inPhysicalDevice, nullptr, &extCount, extensions.data());
 
@@ -252,7 +252,7 @@ oa::Result<oavk::Device> oavk::DeviceBuilder::buildBase(
 	device.device = deviceResult.getValue();
 	device.ownsInstance = false;
 	device.instanceDispatch = instanceDispatch;
-	oaVkLoadDeviceTable(
+	vklLoadDeviceTable(
 		&device.deviceDispatch,
 		&device.instanceDispatch,
 		static_cast<VkDevice>(device.device));
@@ -375,8 +375,8 @@ oa::Result<oavk::RenderDevice> oavk::DeviceBuilder::buildRender(
 		return depStatus;
 	}
 	sortModulesByDependencies();
-	OaVkInstanceTable instanceDispatch{};
-	oaVkLoadInstanceTable(&instanceDispatch, inInstance);
+	VklInstanceTable instanceDispatch{};
+	vklLoadInstanceTable(&instanceDispatch, inInstance);
 	if (instanceDispatch.vkEnumerateDeviceExtensionProperties == nullptr
 		or instanceDispatch.vkCreateDevice == nullptr)
 	{
@@ -389,7 +389,7 @@ oa::Result<oavk::RenderDevice> oavk::DeviceBuilder::buildRender(
 	oa::U32 extCount = 0;
 	instanceDispatch.vkEnumerateDeviceExtensionProperties(
 		inPhysicalDevice, nullptr, &extCount, nullptr);
-	oa::Vec<VkExtensionProperties> extensions(extCount);
+	oa::Vector<VkExtensionProperties> extensions(extCount);
 	instanceDispatch.vkEnumerateDeviceExtensionProperties(
 		inPhysicalDevice, nullptr, &extCount, extensions.data());
 
@@ -435,7 +435,7 @@ oa::Result<oavk::RenderDevice> oavk::DeviceBuilder::buildRender(
 	renderDevice.device = deviceResult.getValue();
 	renderDevice.ownsInstance = false;
 	renderDevice.instanceDispatch = instanceDispatch;
-	oaVkLoadDeviceTable(
+	vklLoadDeviceTable(
 		&renderDevice.deviceDispatch,
 		&renderDevice.instanceDispatch,
 		static_cast<VkDevice>(renderDevice.device));
@@ -530,7 +530,7 @@ oa::Result<oavk::RenderDevice> oavk::DeviceBuilder::buildRender(
 // ─────────────────────────────────────────────────────────────────────────────
 
 oa::Result<VkDevice> oavk::DeviceBuilder::createLogicalDevice(
-	const OaVkInstanceTable& inDispatch,
+	const VklInstanceTable& inDispatch,
 	VkPhysicalDevice inPhysicalDevice,
 	const oavk::QueuePlan& inQueuePlan
 ) {
@@ -616,7 +616,7 @@ void oavk::DeviceBuilder::populateDeviceInfo(
 	oa::U32 queueFamilyCount = 0;
 	outDevice.instanceDispatch.vkGetPhysicalDeviceQueueFamilyProperties(
 		inPhysicalDevice, &queueFamilyCount, nullptr);
-	oa::Vec<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+	oa::Vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
 	outDevice.instanceDispatch.vkGetPhysicalDeviceQueueFamilyProperties(
 		inPhysicalDevice, &queueFamilyCount, queueFamilies.data());
 	if (outDevice.queues.computeQueueFamily < queueFamilyCount) {
