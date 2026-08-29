@@ -355,8 +355,8 @@ void logAndCount(
 			case oa::KernelSelectionKind::Direct: break;
 		}
 		OaLogInfo(oa::LogComponent::Compute,
-			"GemmRouter: M=%u N=%u K=%u requested=%s actual=%s kernel=%s "
-			"path=%s fallback=%s grid=%u,%u,%u",
+			"GemmRouter: M={} N={} K={} requested={} actual={} kernel={} "
+			"path={} fallback={} grid={},{},{}",
 			inM, inN, inK, precName(inRequestedPrecision), precName(inR.actualPrec),
 			inR.kernelName, pathName(inR.path), fallback, inR.gx, inR.gy, inR.gz);
 	}
@@ -584,7 +584,7 @@ oa::MatmulPlan oa::GemmRouter::plan(
 	}
 
 	OaLogError(oa::LogComponent::Compute,
-		"GemmRouter: no legal variant for M=%u N=%u K=%u epilogue=%u",
+		"GemmRouter: no legal variant for M={} N={} K={} epilogue={}",
 		problem.m, problem.n, problem.k, static_cast<oa::U32>(problem.epilogue));
 	return {};
 }

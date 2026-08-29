@@ -6,7 +6,7 @@
 #include <oa/runtime/dispatch.h>
 #include <oa/runtime/engine.h>
 
-#include <assert.h>
+#include <oa/core/std/assert.h>
 
 namespace {
 
@@ -23,8 +23,7 @@ oa::ExecutionSession* oa::ExecutionSession::getActivePtr() noexcept {
 }
 
 oa::ExecutionSession& oa::ExecutionSession::getActive() {
-	assert(activeSession
-		and "no active execution session; initialize an engine or select one");
+	OA_REQUIRE_MSG(activeSession, "no active execution session; initialize an engine or select one");
 	return *activeSession;
 }
 
@@ -35,7 +34,7 @@ oa::ExecutionSession& oa::ExecutionSession::forEngine(
 		return *activeSession;
 	}
 	auto& impl = oa::EngineAccess::get(inEngine);
-	assert(impl.session_ and "engine has no execution session");
+	OA_REQUIRE_MSG(impl.session_, "engine has no execution session");
 	return *impl.session_;
 }
 
@@ -46,7 +45,7 @@ const oa::ExecutionSession& oa::ExecutionSession::forEngine(
 		return *activeSession;
 	}
 	const auto& impl = oa::EngineAccess::get(inEngine);
-	assert(impl.session_ and "engine has no execution session");
+	OA_REQUIRE_MSG(impl.session_, "engine has no execution session");
 	return *impl.session_;
 }
 
@@ -62,7 +61,7 @@ oa::ExecutionSession::RecordingScope::~RecordingScope() {
 }
 
 oa::Engine& oa::ExecutionSession::engine() const noexcept {
-	assert(engine_ and "execution session has no engine");
+	OA_REQUIRE_MSG(engine_, "execution session has no engine");
 	return *engine_;
 }
 

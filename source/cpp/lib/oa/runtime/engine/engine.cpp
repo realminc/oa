@@ -507,7 +507,7 @@ static DeviceInitLogMode getDeviceInitLogMode() {
 static void logSelectedDevicesSummarySingle(const oavk::Device& inDev) {
 	OaLogInfo(oa::LogComponent::Engine, "Selected devices: (");
 	OaLogInfo(oa::LogComponent::Engine,
-		"  (0) [Vk %u]: %s — %s",
+		"  (0) [Vk {}]: {} — {}",
 		static_cast<unsigned>(enumerationIndexOrZero(inDev)),
 		inDev.info.hardware.vendorName.cStr(),
 		inDev.info.hardware.deviceName.cStr());
@@ -534,7 +534,7 @@ void oa::EngineAccess::logSelectedDevices() {
 oa::Engine::~Engine() {
 	if (auto status = close(); !status.isOk()) {
 		OaLogError(oa::LogComponent::Engine,
-			"oa::Engine::~Engine: shutdown failed: %s",
+			"oa::Engine::~Engine: shutdown failed: {}",
 			status.toString().cStr());
 		// completion did not prove that retired service resources are idle. The
 		// engine cannot report another retry once destruction begins, so detach
@@ -727,7 +727,7 @@ oa::Status oa::EngineAccess::initializeImpl(const oa::EngineConfig& inConfig) {
 	if (inConfig.preloadEmbeddedPipelines) {
 		auto loadStatus = ensureAllEmbeddedLiboaPipelines();
 		if (!loadStatus.isOk()) {
-			OaLogWarn(oa::LogComponent::Engine, "Failed to pre-load embedded pipelines: %s",
+			OaLogWarn(oa::LogComponent::Engine, "Failed to pre-load embedded pipelines: {}",
 				loadStatus.getMessage().cStr());
 		}
 	}
@@ -958,7 +958,7 @@ oa::Status oa::EngineAccess::ensureAllEmbeddedLiboaPipelines() {
 			and !oa::matmulRegistry::capsSatisfy(gemmCapsMask(engine_), variant->requiredCapsMask))
 		{
 			OaLogDebug(oa::LogComponent::Engine,
-				"Skipping %s (required GEMM caps unavailable on this device)", ent->name);
+				"Skipping {} (required GEMM caps unavailable on this device)", ent->name);
 			++skipped;
 			continue;
 		}
@@ -1003,7 +1003,7 @@ oa::Status oa::EngineAccess::ensureAllEmbeddedLiboaPipelines() {
 		oa::min<oa::U32>(loadThreads, static_cast<oa::U32>(requests.size())));
 
 	OaLogInfo(oa::LogComponent::Engine,
-		"Preloading %zu shader pipelines (%u thread%s, %s cache)",
+		"Preloading {} shader pipelines ({} thread{}, {} cache)",
 		requests.size(), loadThreads, loadThreads == 1 ? "" : "s",
 		impl_->pipelines_.hasInitialCacheData() ? "warm" : "cold");
 
@@ -1028,13 +1028,13 @@ oa::Status oa::EngineAccess::ensureAllEmbeddedLiboaPipelines() {
 			++loaded;
 		} else {
 			++failed;
-			OaLogWarn(oa::LogComponent::Engine, "Failed to load shader '%s': %s",
+			OaLogWarn(oa::LogComponent::Engine, "Failed to load shader '{}': {}",
 				plan.name, shaderStatus.getMessage().cStr());
 		}
 	}
 
 	OaLogInfo(oa::LogComponent::Engine,
-		"Loaded %u/%u shaders (skipped=%u, failed=%u, pipelines=%zu, threads=%u, %.2f ms, precision=%s)",
+		"Loaded {}/{} shaders (skipped={}, failed={}, pipelines={}, threads={}, {:.2f} ms, precision={})",
 		loaded, total, skipped, failed, requests.size(), loadThreads, loadMs,
 		oa::precisionToString(engine_.getPrecision()));
 
@@ -1777,7 +1777,7 @@ void oa::EngineAccess::collectRetiredSessionBatches()
 				batch.stream->resetUnsubmitted(impl_->device_);
 			if (not resetStatus.isOk()) {
 				OaLogError(oa::LogComponent::Engine,
-					"retired context stream reset failed: %s",
+					"retired context stream reset failed: {}",
 					resetStatus.getMessage().cStr());
 				pending.pushBack(oa::move(batch));
 				continue;
@@ -1989,7 +1989,7 @@ oa::Status oa::EngineAccess::submitToQueue(void* inQueue, void* inSubmitInfo, vo
 	if (result != VK_SUCCESS) {
 		const char* routeName = queueSubmitRouteName(route);
 		OaLogError(oa::LogComponent::Engine,
-			"vkQueueSubmit (%s) failed, VkResult=%d",
+			"vkQueueSubmit ({}) failed, VkResult={}",
 			routeName, static_cast<int>(result));
 		return oa::Status::error(
 			oa::StatusCode::VulkanError,
@@ -2018,7 +2018,7 @@ oa::Status oa::EngineAccess::submitToQueue2(void* inQueue, const void* inSubmitI
 	if (result != VK_SUCCESS) {
 		const char* routeName = queueSubmitRouteName(route);
 		OaLogError(oa::LogComponent::Engine,
-			"vkQueueSubmit2 (%s) failed, VkResult=%d",
+			"vkQueueSubmit2 ({}) failed, VkResult={}",
 			routeName, static_cast<int>(result));
 		return oa::Status::error(
 			oa::StatusCode::VulkanError,

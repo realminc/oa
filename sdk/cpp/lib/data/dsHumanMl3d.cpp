@@ -329,7 +329,7 @@ bool DsHumanMl3d::load(const oa::String& inDataDir, const oa::String& inSplit, o
 			textFeatureManifestDim_ <= 0 or dtype != "float32" or
 			feature != "CLIPTextModelWithProjection.text_embeds") {
 			OaLogWarn(oa::LogComponent::Data,
-				"DsHumanMl3d: ignoring incompatible text_feats/manifest.json in %s", dir.c_str());
+				"DsHumanMl3d: ignoring incompatible text_feats/manifest.json in {}", dir.c_str());
 			textFeatureFormat_ = {};
 			textFeatureModel_ = {};
 			textFeatureManifestDim_ = 0;
@@ -339,11 +339,11 @@ bool DsHumanMl3d::load(const oa::String& inDataDir, const oa::String& inSplit, o
 	std::vector<oa::I64> ms, ss;
 	std::vector<float> md, sd;
 	if (!npyLoadF32(dir + "/Mean.npy", ms, md) || !npyLoadF32(dir + "/Std.npy", ss, sd)) {
-		OaLogError(oa::LogComponent::Data, "DsHumanMl3d: cannot read Mean/Std in %s", dir.c_str());
+		OaLogError(oa::LogComponent::Data, "DsHumanMl3d: cannot read Mean/Std in {}", dir.c_str());
 		return false;
 	}
 	if (static_cast<oa::I32>(md.size()) != featDim_ || static_cast<oa::I32>(sd.size()) != featDim_) {
-		OaLogError(oa::LogComponent::Data, "DsHumanMl3d: Mean/Std dim %zu != featDim %d", md.size(), featDim_);
+		OaLogError(oa::LogComponent::Data, "DsHumanMl3d: Mean/Std dim {} != featDim {}", md.size(), featDim_);
 		return false;
 	}
 	mean_.append(md.data(), md.size());
@@ -351,7 +351,7 @@ bool DsHumanMl3d::load(const oa::String& inDataDir, const oa::String& inSplit, o
 
 	const auto ids = readLines(dir + "/" + std::string(inSplit.cStr()) + ".txt");
 	if (ids.empty()) {
-		OaLogError(oa::LogComponent::Data, "DsHumanMl3d: empty/missing split %s in %s", inSplit.cStr(), dir.c_str());
+		OaLogError(oa::LogComponent::Data, "DsHumanMl3d: empty/missing split {} in {}", inSplit.cStr(), dir.c_str());
 		return false;
 	}
 
@@ -389,11 +389,11 @@ bool DsHumanMl3d::load(const oa::String& inDataDir, const oa::String& inSplit, o
 				: (textShape.size() == 2 ? textShape[1] : 0);
 			if (rows <= 0 or dim <= 0 or rows != static_cast<oa::I64>(captions.size())) {
 				OaLogWarn(oa::LogComponent::Data,
-					"DsHumanMl3d: ignoring text feature rows for %s (shape/caption mismatch)", id.c_str());
+					"DsHumanMl3d: ignoring text feature rows for {} (shape/caption mismatch)", id.c_str());
 			} else if (dim != textFeatureManifestDim_ or
 				(textFeatureDim_ != 0 and dim != textFeatureDim_)) {
 				OaLogWarn(oa::LogComponent::Data,
-					"DsHumanMl3d: ignoring text features for %s (dim %lld != %d)",
+					"DsHumanMl3d: ignoring text features for {} (dim {} != {})",
 					id.c_str(), static_cast<long long>(dim), textFeatureDim_);
 			} else {
 				textFeatureDim_ = static_cast<oa::I32>(dim);
@@ -408,7 +408,7 @@ bool DsHumanMl3d::load(const oa::String& inDataDir, const oa::String& inSplit, o
 	}
 	numClips_ = static_cast<oa::I64>(ids_.size());
 	if (numClips_ == 0) {
-		OaLogError(oa::LogComponent::Data, "DsHumanMl3d: loaded 0 clips from %s", dir.c_str());
+		OaLogError(oa::LogComponent::Data, "DsHumanMl3d: loaded 0 clips from {}", dir.c_str());
 		return false;
 	}
 	return true;

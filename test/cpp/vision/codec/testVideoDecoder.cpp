@@ -7,17 +7,13 @@
 #include "../videoTestSupport.h"
 #include <oa/vision/video/codec/codecRegistry.h>
 #include <oa/vision/video/codec/vcpAv1.h>
+#include <oa/vision/video/codec/vcpH265.h>
 #include <oa/vision/video/decoder/videoDecoderInternal.h>
 #include <oa/vision/video/decoder/videoDecoderProfile.h>
 #include <oa/runtime/engine.h>
 
 #include <oa/vision/videoDecoder.h>
 #include <oa/vision/videoDemuxer.h>
-#include <array>
-#include <filesystem>
-#include <fstream>
-#include <sstream>
-#include <string>
 
 #if defined(_WIN32)
 #include <process.h>
@@ -27,16 +23,14 @@
 
 namespace {
 
-std::string testReferencePath(const char* inStem)
+oa::Path testReferencePath(const char* inStem)
 {
 #if defined(_WIN32)
-	const auto processId = static_cast<unsigned long>(_getpid());
+	const oa::U64 processId = static_cast<oa::U64>(_getpid());
 #else
-	const auto processId = static_cast<unsigned long>(getpid());
+	const oa::U64 processId = static_cast<oa::U64>(getpid());
 #endif
-	const auto filename = std::string(inStem) + "-"
-		+ std::to_string(processId) + ".bin";
-	return (std::filesystem::temp_directory_path() / filename).string();
+	return oa::Paths::temp() / oa::Path(oa::format("{}-{}.bin", inStem, processId));
 }
 
 struct H264NalWriter {
@@ -221,6 +215,8 @@ oa::VideoProfile makeH264FixtureProfile()
 {
 	oa::VideoProfile profile;
 	profile.codec = oa::VideoCodec::H264;
+	profile.standardProfile = oa::VideoCodecProfile::H264Baseline;
+	profile.h264PictureLayout = oa::VideoH264PictureLayout::Progressive;
 	profile.width = 128;
 	profile.height = 72;
 	profile.maxDpbSlots = 4;
@@ -231,9 +227,34 @@ oa::VideoProfile makeH265FixtureProfile()
 {
 	oa::VideoProfile profile;
 	profile.codec = oa::VideoCodec::H265;
+	profile.standardProfile = oa::VideoCodecProfile::H265Main;
 	profile.width = 128;
 	profile.height = 72;
 	profile.maxDpbSlots = 4;
+	return profile;
+}
+
+oa::VideoProfile makeH265Main10FixtureProfile()
+{
+	oa::VideoProfile profile = makeH265FixtureProfile();
+	profile.standardProfile = oa::VideoCodecProfile::H265Main10;
+	profile.lumaBitDepth = oa::VideoBitDepth::Bit10;
+	profile.chromaBitDepth = oa::VideoBitDepth::Bit10;
+	return profile;
+}
+
+oa::VideoProfile makeH265RangeExtFixtureProfile()
+{
+	oa::VideoProfile profile = makeH265FixtureProfile();
+	profile.standardProfile = oa::VideoCodecProfile::H265FormatRangeExtensions;
+	return profile;
+}
+
+oa::VideoProfile makeH265RangeExt10FixtureProfile()
+{
+	oa::VideoProfile profile = makeH265RangeExtFixtureProfile();
+	profile.lumaBitDepth = oa::VideoBitDepth::Bit10;
+	profile.chromaBitDepth = oa::VideoBitDepth::Bit10;
 	return profile;
 }
 
@@ -248,6 +269,15 @@ oa::VideoProfile makeAv1FixtureProfile()
 	return profile;
 }
 
+oa::VideoProfile makeAv1Main10FixtureProfile()
+{
+	oa::VideoProfile profile = makeAv1FixtureProfile();
+	profile.standardProfile = oa::VideoCodecProfile::Av1Main;
+	profile.lumaBitDepth = oa::VideoBitDepth::Bit10;
+	profile.chromaBitDepth = oa::VideoBitDepth::Bit10;
+	return profile;
+}
+
 oa::VideoProfile makeVp9FixtureProfile()
 {
 	oa::VideoProfile profile;
@@ -255,6 +285,15 @@ oa::VideoProfile makeVp9FixtureProfile()
 	profile.width = 128;
 	profile.height = 72;
 	profile.maxDpbSlots = 9;
+	return profile;
+}
+
+oa::VideoProfile makeVp9Profile2FixtureProfile()
+{
+	oa::VideoProfile profile = makeVp9FixtureProfile();
+	profile.standardProfile = oa::VideoCodecProfile::Vp9Profile2;
+	profile.lumaBitDepth = oa::VideoBitDepth::Bit10;
+	profile.chromaBitDepth = oa::VideoBitDepth::Bit10;
 	return profile;
 }
 
@@ -344,7 +383,7 @@ void expectDecodedNv12MatchesFfmpeg(
 	const char* inFixtureRelativePath,
 	const char* inReferenceStem)
 {
-	if (std::system("command -v ffmpeg >/dev/null 2>&1") != 0) {
+	if (::system("command -v ffmpeg >/dev/null 2>&1") != 0) {
 		GTEST_SKIP() << "ffmpeg is not installed";
 	}
 
@@ -355,15 +394,15 @@ void expectDecodedNv12MatchesFfmpeg(
 		static_cast<oa::Usize>(inProfile.width) * inProfile.height * 3u / 2u);
 
 	const oa::Path fixturePath = testAssetPath(inFixtureRelativePath);
-	const std::string referencePath = testReferencePath(inReferenceStem);
+	const oa::Path referencePath = testReferencePath(inReferenceStem);
 	const oa::String command = oa::String("ffmpeg -v error -y -i \"")
 		+ fixturePath.string()
 		+ "\" -frames:v 1 -f rawvideo -pix_fmt nv12 \""
-		+ referencePath.c_str()
+		+ referencePath.string()
 		+ "\"";
-	ASSERT_EQ(std::system(command.cStr()), 0);
-	auto reference = oa::Filesystem::readBinary(oa::Path(referencePath.c_str()));
-	std::remove(referencePath.c_str());
+	ASSERT_EQ(::system(command.cStr()), 0);
+	auto reference = oa::Filesystem::readBinary(referencePath);
+	(void) oa::Filesystem::removeFile(referencePath);
 	ASSERT_TRUE(reference.isOk()) << reference.getStatus().toString();
 	ASSERT_EQ(reference->size(), decoded->size());
 
@@ -375,7 +414,7 @@ void expectDecodedNv12MatchesFfmpeg(
 	oa::U64 referenceLumaSum = 0;
 	oa::U8 maxError = 0;
 	for (oa::Usize i = 0; i < decoded->size(); ++i) {
-		const oa::U8 error = static_cast<oa::U8>(std::abs(
+		const oa::U8 error = static_cast<oa::U8>(oa::abs(
 			static_cast<int>((*decoded)[i])
 			- static_cast<int>((*reference)[i])));
 		if (i < lumaBytes) {
@@ -411,6 +450,154 @@ void expectDecodedNv12MatchesFfmpeg(
 		<< static_cast<oa::U32>((*reference)[3]);
 	EXPECT_LT(chromaMae, 3.0)
 		<< "maxError=" << static_cast<oa::U32>(maxError);
+}
+
+void expectDecodedP010MatchesFfmpeg(
+	oa::VideoDecoder& inDecoder,
+	const oa::VideoFrame& inFrame,
+	const oa::VideoProfile& inProfile,
+	const char* inFixtureRelativePath,
+	const char* inReferenceStem)
+{
+	if (::system("command -v ffmpeg >/dev/null 2>&1") != 0) {
+		GTEST_SKIP() << "ffmpeg is not installed";
+	}
+	ASSERT_EQ(
+		inFrame.format,
+		VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16);
+	auto decoded = inDecoder.readbackYuv420(inFrame);
+	ASSERT_TRUE(decoded.isOk()) << decoded.getStatus().toString();
+	const oa::Usize componentCount =
+		static_cast<oa::Usize>(inProfile.width) * inProfile.height * 3U / 2U;
+	ASSERT_EQ(decoded->size(), componentCount * sizeof(oa::U16));
+
+	const oa::Path fixturePath = testAssetPath(inFixtureRelativePath);
+	const oa::Path referencePath = testReferencePath(inReferenceStem);
+	const oa::String command = oa::String("ffmpeg -v error -y -i \"")
+		+ fixturePath.string()
+		+ "\" -frames:v 1 -f rawvideo -pix_fmt p010le \""
+		+ referencePath.string()
+		+ "\"";
+	ASSERT_EQ(::system(command.cStr()), 0);
+	auto reference = oa::Filesystem::readBinary(referencePath);
+	(void) oa::Filesystem::removeFile(referencePath);
+	ASSERT_TRUE(reference.isOk()) << reference.getStatus().toString();
+	ASSERT_EQ(reference->size(), decoded->size());
+
+	auto readCode = [](const oa::Vector<oa::U8>& inBytes, oa::Usize inIndex) {
+		const oa::Usize offset = inIndex * 2U;
+		const oa::U16 packed = static_cast<oa::U16>(inBytes[offset])
+			| static_cast<oa::U16>(static_cast<oa::U16>(inBytes[offset + 1U]) << 8U);
+		return static_cast<oa::U16>(packed >> 6U);
+	};
+	const oa::Usize lumaComponents =
+		static_cast<oa::Usize>(inProfile.width) * inProfile.height;
+	oa::U64 lumaError = 0U;
+	oa::U64 chromaError = 0U;
+	oa::U16 maxError = 0U;
+	for (oa::Usize index = 0U; index < componentCount; ++index) {
+		const oa::U16 decodedCode = readCode(*decoded, index);
+		const oa::U16 referenceCode = readCode(*reference, index);
+		const oa::U16 error = decodedCode > referenceCode
+			? decodedCode - referenceCode : referenceCode - decodedCode;
+		if (index < lumaComponents) lumaError += error;
+		else chromaError += error;
+		maxError = error > maxError ? error : maxError;
+	}
+	const oa::F64 lumaMae = static_cast<oa::F64>(lumaError)
+		/ static_cast<oa::F64>(lumaComponents);
+	const oa::F64 chromaMae = static_cast<oa::F64>(chromaError)
+		/ static_cast<oa::F64>(componentCount - lumaComponents);
+	EXPECT_LT(lumaMae, 3.0) << "maxCodeError=" << maxError;
+	EXPECT_LT(chromaMae, 3.0) << "maxCodeError=" << maxError;
+}
+
+void expectP010ComputeRgbaMatchesCpu(
+	oa::VideoDecoder& inDecoder,
+	const oa::VideoFrame& inFrame)
+{
+	auto p010Result = inDecoder.readbackYuv420(inFrame);
+	ASSERT_TRUE(p010Result.isOk()) << p010Result.getStatus().toString();
+
+	oa::VideoConversionOptions options = {};
+	options.preferHardwareYCbCr = false;
+	options.colorSpace = oa::YCbCrModel::Auto;
+	auto rgbaFrameResult = inDecoder.convert(inFrame, options);
+	ASSERT_TRUE(rgbaFrameResult.isOk()) << rgbaFrameResult.getStatus().toString();
+	auto rgbaResult = inDecoder.readbackRgba(*rgbaFrameResult);
+	ASSERT_TRUE(rgbaResult.isOk()) << rgbaResult.getStatus().toString();
+	ASSERT_EQ(
+		rgbaResult->size(),
+		static_cast<oa::Usize>(inFrame.width) * inFrame.height * 4U);
+
+	auto readCode = [&p010Result](oa::Usize inComponent) {
+		const oa::Usize offset = inComponent * 2U;
+		const oa::U16 packed = static_cast<oa::U16>((*p010Result)[offset])
+			| static_cast<oa::U16>(static_cast<oa::U16>((*p010Result)[offset + 1U]) << 8U);
+		return static_cast<oa::F32>(packed >> 6U) / 1023.0F;
+	};
+	auto clampByte = [](oa::F32 inValue) {
+		const oa::F32 clamped = inValue < 0.0F ? 0.0F : (inValue > 1.0F ? 1.0F : inValue);
+		return static_cast<oa::I32>(clamped * 255.0F + 0.5F);
+	};
+	const oa::Usize lumaComponents =
+		static_cast<oa::Usize>(inFrame.width) * inFrame.height;
+	oa::U64 totalError = 0U;
+	oa::U32 maxError = 0U;
+	for (oa::U32 y = 0U; y < inFrame.height; ++y) {
+		for (oa::U32 x = 0U; x < inFrame.width; ++x) {
+			const oa::Usize pixel = static_cast<oa::Usize>(y) * inFrame.width + x;
+			const oa::Usize uv = lumaComponents
+				+ static_cast<oa::Usize>(y / 2U) * inFrame.width
+				+ static_cast<oa::Usize>(x / 2U) * 2U;
+			const oa::F32 yy = 1.164F * (readCode(pixel) - 64.0F / 1023.0F);
+			const oa::F32 uu = readCode(uv) - 512.0F / 1023.0F;
+			const oa::F32 vv = readCode(uv + 1U) - 512.0F / 1023.0F;
+			const oa::I32 expected[4] = {
+				clampByte(yy + 1.596F * vv),
+				clampByte(yy - 0.391F * uu - 0.813F * vv),
+				clampByte(yy + 2.018F * uu),
+				255};
+			for (oa::U32 channel = 0U; channel < 4U; ++channel) {
+				const oa::I32 actual = (*rgbaResult)[pixel * 4U + channel];
+				const oa::U32 error = static_cast<oa::U32>(
+					actual > expected[channel]
+						? actual - expected[channel]
+						: expected[channel] - actual);
+				totalError += error;
+				maxError = error > maxError ? error : maxError;
+			}
+		}
+	}
+	const oa::F64 mae = static_cast<oa::F64>(totalError)
+		/ static_cast<oa::F64>(rgbaResult->size());
+	EXPECT_LT(mae, 1.0) << "maxByteError=" << maxError;
+	EXPECT_LE(maxError, 3U);
+
+	options.preferHardwareYCbCr = true;
+	auto hardwareFrameResult = inDecoder.convert(inFrame, options);
+	ASSERT_TRUE(hardwareFrameResult.isOk())
+		<< hardwareFrameResult.getStatus().toString();
+	auto hardwareRgbaResult = inDecoder.readbackRgba(*hardwareFrameResult);
+	ASSERT_TRUE(hardwareRgbaResult.isOk())
+		<< hardwareRgbaResult.getStatus().toString();
+	ASSERT_EQ(hardwareRgbaResult->size(), rgbaResult->size());
+	oa::U64 hardwareError = 0U;
+	oa::U32 hardwareMaxError = 0U;
+	for (oa::Usize pixel = 0U; pixel < rgbaResult->size(); pixel += 4U) {
+		for (oa::Usize channel = 0U; channel < 3U; ++channel) {
+			const oa::U8 hardware = (*hardwareRgbaResult)[pixel + channel];
+			const oa::U8 compute = (*rgbaResult)[pixel + channel];
+			const oa::U32 error = hardware > compute
+				? hardware - compute : compute - hardware;
+			hardwareError += error;
+			hardwareMaxError = oa::max(hardwareMaxError, error);
+		}
+	}
+	const oa::F64 hardwareMae = static_cast<oa::F64>(hardwareError)
+		/ static_cast<oa::F64>(inFrame.width * inFrame.height * 3U);
+	EXPECT_LT(hardwareMae, 6.0) << "maxByteError=" << hardwareMaxError;
+	EXPECT_LT(hardwareMaxError, 96U);
 }
 
 } // namespace
@@ -526,7 +713,7 @@ TEST(VideoProfile, RejectsCodecProfileMismatch)
 
 TEST(VideoProfile, LegacyDefaultsResolveToVerifiedProfiles)
 {
-	const std::pair<oa::VideoCodec, oa::VideoCodecProfile> cases[] = {
+	const oa::Pair<oa::VideoCodec, oa::VideoCodecProfile> cases[] = {
 		{oa::VideoCodec::H264, oa::VideoCodecProfile::H264High},
 		{oa::VideoCodec::H265, oa::VideoCodecProfile::H265Main},
 		{oa::VideoCodec::AV1, oa::VideoCodecProfile::Av1Main},
@@ -544,63 +731,114 @@ TEST(VideoProfile, LegacyDefaultsResolveToVerifiedProfiles)
 
 TEST(VideoProfile, AssetManifestDrivesExactStreamProfiles)
 {
-	const oa::Path manifestPath = testAssetPath("video/manifest.tsv");
-	std::ifstream manifest(manifestPath.cStr());
-	ASSERT_TRUE(manifest.is_open()) << manifestPath.cStr();
-
-	std::string line;
-	ASSERT_TRUE(static_cast<bool>(std::getline(manifest, line)));
+	const oa::Path manifestPath = testAssetPath("video/clip/manifest.tsv");
+	auto linesResult = oa::Filesystem::readLines(manifestPath);
+	ASSERT_TRUE(linesResult.isOk()) << linesResult.getStatus().toString();
+	ASSERT_FALSE(linesResult->empty());
 	oa::U32 rowCount = 0;
-	while (std::getline(manifest, line)) {
+	for (oa::Usize lineIndex = 1U; lineIndex < linesResult->size(); ++lineIndex) {
+		const oa::String& line = (*linesResult)[lineIndex];
 		if (line.empty()) continue;
-		std::array<std::string, 18> columns;
-		std::istringstream row(line);
-		for (std::string& column : columns) {
-			ASSERT_TRUE(static_cast<bool>(std::getline(row, column, '\t'))) << line;
+		oa::Array<oa::StringView, 18> columns;
+		oa::StringView remainder = line.view();
+		for (oa::Usize columnIndex = 0U; columnIndex < columns.size(); ++columnIndex) {
+			const oa::Usize separator = remainder.find('\t');
+			if (columnIndex + 1U == columns.size()) {
+				columns[columnIndex] = remainder;
+				EXPECT_EQ(separator, oa::StringView::Npos) << line;
+				break;
+			}
+			ASSERT_NE(separator, oa::StringView::Npos) << line;
+			columns[columnIndex] = remainder.subStr(0U, separator);
+			remainder.removePrefix(separator + 1U);
 		}
 
 		oa::String relativePath = "video/";
-		relativePath += oa::StringView(columns[0].data(), columns[0].size());
+		relativePath += columns[0];
 		const oa::Path fixturePath = testAssetPath(relativePath);
 		auto streamResult = oa::VideoDemuxer::open(fixturePath.cStr());
 		ASSERT_TRUE(streamResult.isOk()) << columns[0] << ": " << streamResult.getStatus().toString();
 		const oa::VideoProfile profile = streamResult->getVideoProfile();
-		EXPECT_EQ(profile.width, static_cast<oa::U32>(std::stoul(columns[8])));
-		EXPECT_EQ(profile.height, static_cast<oa::U32>(std::stoul(columns[9])));
+		oa::U64 manifestWidth = 0U;
+		oa::U64 manifestHeight = 0U;
+		ASSERT_TRUE(oa::parseU64(columns[8], manifestWidth));
+		ASSERT_TRUE(oa::parseU64(columns[9], manifestHeight));
+		EXPECT_EQ(profile.width, static_cast<oa::U32>(manifestWidth));
+		EXPECT_EQ(profile.height, static_cast<oa::U32>(manifestHeight));
 		EXPECT_EQ(profile.lumaBitDepth, oa::VideoBitDepth::Bit8);
 		EXPECT_EQ(profile.chromaBitDepth, oa::VideoBitDepth::Bit8);
 		EXPECT_EQ(profile.chromaSubsampling, oa::VideoChromaSubsampling::Yuv420);
 
 		if (columns[1] == "h264") {
 			EXPECT_EQ(profile.codec, oa::VideoCodec::H264);
-			EXPECT_EQ(profile.standardProfile, oa::VideoCodecProfile::H264High);
+			if (columns[2] == "baseline") {
+				EXPECT_EQ(profile.standardProfile, oa::VideoCodecProfile::H264Baseline);
+			} else if (columns[2] == "main") {
+				EXPECT_EQ(profile.standardProfile, oa::VideoCodecProfile::H264Main);
+			} else if (columns[2] == "high") {
+				EXPECT_EQ(profile.standardProfile, oa::VideoCodecProfile::H264High);
+			} else {
+				FAIL() << "Unknown H.264 manifest profile: " << columns[2];
+			}
 			EXPECT_EQ(profile.h264PictureLayout, oa::VideoH264PictureLayout::Progressive);
 			EXPECT_TRUE(profile.hasLevel);
-			EXPECT_EQ(profile.level, static_cast<oa::U32>(STD_VIDEO_H264_LEVEL_IDC_3_1));
+			if (columns[15] == "3.1") {
+				EXPECT_EQ(profile.level, static_cast<oa::U32>(STD_VIDEO_H264_LEVEL_IDC_3_1));
+			} else if (columns[15] == "4.2") {
+				EXPECT_EQ(profile.level, static_cast<oa::U32>(STD_VIDEO_H264_LEVEL_IDC_4_2));
+			} else if (columns[15] == "5.2") {
+				EXPECT_EQ(profile.level, static_cast<oa::U32>(STD_VIDEO_H264_LEVEL_IDC_5_2));
+			} else {
+				FAIL() << "Unknown H.264 manifest level: " << columns[15];
+			}
 		} else if (columns[1] == "h265") {
 			EXPECT_EQ(profile.codec, oa::VideoCodec::H265);
 			EXPECT_EQ(profile.standardProfile, oa::VideoCodecProfile::H265Main);
 			EXPECT_TRUE(profile.hasLevel);
-			EXPECT_EQ(profile.level, static_cast<oa::U32>(STD_VIDEO_H265_LEVEL_IDC_3_1));
+			if (columns[15] == "3.1") {
+				EXPECT_EQ(profile.level, static_cast<oa::U32>(STD_VIDEO_H265_LEVEL_IDC_3_1));
+			} else if (columns[15] == "4.1") {
+				EXPECT_EQ(profile.level, static_cast<oa::U32>(STD_VIDEO_H265_LEVEL_IDC_4_1));
+			} else if (columns[15] == "5.1") {
+				EXPECT_EQ(profile.level, static_cast<oa::U32>(STD_VIDEO_H265_LEVEL_IDC_5_1));
+			} else {
+				FAIL() << "Unknown H.265 manifest level: " << columns[15];
+			}
 			EXPECT_FALSE(profile.highTier);
 		} else if (columns[1] == "av1") {
 			EXPECT_EQ(profile.codec, oa::VideoCodec::AV1);
 			EXPECT_EQ(profile.standardProfile, oa::VideoCodecProfile::Av1Main);
 			EXPECT_FALSE(profile.av1FilmGrain);
 			EXPECT_TRUE(profile.hasLevel);
-			EXPECT_EQ(profile.level, static_cast<oa::U32>(STD_VIDEO_AV1_LEVEL_3_1));
+			if (columns[15] == "3.1") {
+				EXPECT_EQ(profile.level, static_cast<oa::U32>(STD_VIDEO_AV1_LEVEL_3_1));
+			} else if (columns[15] == "4.1") {
+				EXPECT_EQ(profile.level, static_cast<oa::U32>(STD_VIDEO_AV1_LEVEL_4_1));
+			} else if (columns[15] == "5.1") {
+				EXPECT_EQ(profile.level, static_cast<oa::U32>(STD_VIDEO_AV1_LEVEL_5_1));
+			} else {
+				FAIL() << "Unknown AV1 manifest level: " << columns[15];
+			}
 			EXPECT_FALSE(profile.highTier);
 		} else if (columns[1] == "vp9") {
 			EXPECT_EQ(profile.codec, oa::VideoCodec::VP9);
 			EXPECT_EQ(profile.standardProfile, oa::VideoCodecProfile::Vp9Profile0);
 			EXPECT_TRUE(profile.hasLevel);
-			EXPECT_EQ(profile.level, static_cast<oa::U32>(STD_VIDEO_VP9_LEVEL_3_1));
+			if (columns[15] == "3.1") {
+				EXPECT_EQ(profile.level, static_cast<oa::U32>(STD_VIDEO_VP9_LEVEL_3_1));
+			} else if (columns[15] == "4.0") {
+				EXPECT_EQ(profile.level, static_cast<oa::U32>(STD_VIDEO_VP9_LEVEL_4_0));
+			} else if (columns[15] == "5.0") {
+				EXPECT_EQ(profile.level, static_cast<oa::U32>(STD_VIDEO_VP9_LEVEL_5_0));
+			} else {
+				FAIL() << "Unknown VP9 manifest level: " << columns[15];
+			}
 		} else {
 			FAIL() << "Unknown manifest codec: " << columns[1];
 		}
 		++rowCount;
 	}
-	EXPECT_EQ(rowCount, 4U);
+	EXPECT_EQ(rowCount, 14U);
 }
 
 TEST(VideoCodecRegistry, CreatesStreamLocalParserState)
@@ -677,6 +915,7 @@ TEST_F(VkEngineTestFixture, VideoDecoder_QueryDecodeCapabilities)
 	EXPECT_GT(caps.minBitstreamBufferOffsetAlignment, 0u);
 	EXPECT_GT(caps.minBitstreamBufferSizeAlignment, 0u);
 	EXPECT_TRUE(caps.supportsDpbAndOutputCoincide || caps.supportsDpbAndOutputDistinct);
+	EXPECT_TRUE(caps.supportsDecodedDpb);
 	EXPECT_TRUE(caps.supportsNv12Dpb);
 	EXPECT_FALSE(caps.dpbFormats.empty());
 	EXPECT_FALSE(caps.outputFormats.empty());
@@ -686,21 +925,127 @@ TEST_F(VkEngineTestFixture, VideoDecoder_QueryDecodeCapabilities)
 		|| (caps.supportsDpbAndOutputDistinct && caps.supportsNv12OutputSampled));
 }
 
-TEST_F(VkEngineTestFixture, VideoDecoder_UnimplementedProfileNeverClaimsSupport)
+TEST_F(VkEngineTestFixture, VideoDecoder_ReportsNativeFormatForImplementedProfiles)
 {
-	oa::VideoProfile profile = {};
-	profile.codec = oa::VideoCodec::H265;
-	profile.standardProfile = oa::VideoCodecProfile::H265Main10;
-	profile.chromaSubsampling = oa::VideoChromaSubsampling::Yuv420;
-	profile.lumaBitDepth = oa::VideoBitDepth::Bit10;
-	profile.chromaBitDepth = oa::VideoBitDepth::Bit10;
-	auto capsResult = oa::VideoDecoder::queryDecodeCapabilities(rt(), profile);
-	if (not capsResult.isOk()) {
-		GTEST_SKIP() << capsResult.getStatus().toString();
+	struct Case {
+		oa::VideoCodec codec;
+		oa::VideoCodecProfile standardProfile;
+		oa::VideoBitDepth bitDepth;
+		VkFormat format;
+	};
+	const Case cases[] = {
+		{oa::VideoCodec::H265, oa::VideoCodecProfile::H265Main10,
+			oa::VideoBitDepth::Bit10,
+			VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16},
+		{oa::VideoCodec::AV1, oa::VideoCodecProfile::Av1Main,
+			oa::VideoBitDepth::Bit10,
+			VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16},
+		{oa::VideoCodec::VP9, oa::VideoCodecProfile::Vp9Profile2,
+			oa::VideoBitDepth::Bit10,
+			VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16},
+	};
+	for (const Case& testCase : cases) {
+		oa::VideoProfile profile = {};
+		profile.codec = testCase.codec;
+		profile.standardProfile = testCase.standardProfile;
+		profile.chromaSubsampling = oa::VideoChromaSubsampling::Yuv420;
+		profile.lumaBitDepth = testCase.bitDepth;
+		profile.chromaBitDepth = testCase.bitDepth;
+		auto capsResult = oa::VideoDecoder::queryDecodeCapabilities(rt(), profile);
+		ASSERT_TRUE(capsResult.isOk()) << capsResult.getStatus().toString();
+		EXPECT_TRUE(capsResult->oaDecodePathImplemented);
+		if (capsResult->hardwareProfileSupported) {
+			EXPECT_EQ(capsResult->referencePictureFormat, testCase.format);
+			EXPECT_EQ(capsResult->pictureFormat, testCase.format);
+			EXPECT_EQ(capsResult->supported, capsResult->supportsDecodedDpb);
+		}
 	}
-	EXPECT_FALSE(capsResult->supported);
-	EXPECT_FALSE(capsResult->oaDecodePathImplemented);
-	EXPECT_EQ(capsResult->profile.standardProfile, oa::VideoCodecProfile::H265Main10);
+
+	oa::VideoProfile rangeExtensions = {};
+	rangeExtensions.codec = oa::VideoCodec::H265;
+	rangeExtensions.standardProfile = oa::VideoCodecProfile::H265FormatRangeExtensions;
+	auto rangeResult = oa::VideoDecoder::queryDecodeCapabilities(rt(), rangeExtensions);
+	ASSERT_TRUE(rangeResult.isOk()) << rangeResult.getStatus().toString();
+	EXPECT_TRUE(rangeResult->oaDecodePathImplemented);
+	if (rangeResult->hardwareProfileSupported) {
+		EXPECT_EQ(rangeResult->supported, rangeResult->supportsDecodedDpb);
+	} else {
+		EXPECT_FALSE(rangeResult->supported);
+	}
+
+	oa::VideoProfile mainStill = {};
+	mainStill.codec = oa::VideoCodec::H265;
+	mainStill.standardProfile = oa::VideoCodecProfile::H265MainStillPicture;
+	auto mainStillResult = oa::VideoDecoder::queryDecodeCapabilities(rt(), mainStill);
+	ASSERT_TRUE(mainStillResult.isOk()) << mainStillResult.getStatus().toString();
+	EXPECT_FALSE(mainStillResult->supported);
+	EXPECT_FALSE(mainStillResult->oaDecodePathImplemented);
+}
+
+TEST_F(VkEngineTestFixture, VideoDecoder_RecordsExactHardwareProfileMatrix)
+{
+	struct Case {
+		const char* name;
+		oa::VideoCodec codec;
+		oa::VideoCodecProfile profile;
+		oa::VideoChromaSubsampling chroma;
+		oa::VideoBitDepth depth;
+	};
+	const Case cases[] = {
+		{"h264-baseline-420-8", oa::VideoCodec::H264, oa::VideoCodecProfile::H264Baseline, oa::VideoChromaSubsampling::Yuv420, oa::VideoBitDepth::Bit8},
+		{"h264-main-420-8", oa::VideoCodec::H264, oa::VideoCodecProfile::H264Main, oa::VideoChromaSubsampling::Yuv420, oa::VideoBitDepth::Bit8},
+		{"h264-high-420-8", oa::VideoCodec::H264, oa::VideoCodecProfile::H264High, oa::VideoChromaSubsampling::Yuv420, oa::VideoBitDepth::Bit8},
+		{"h264-high444-444-8", oa::VideoCodec::H264, oa::VideoCodecProfile::H264High444Predictive, oa::VideoChromaSubsampling::Yuv444, oa::VideoBitDepth::Bit8},
+		{"h264-high444-444-10", oa::VideoCodec::H264, oa::VideoCodecProfile::H264High444Predictive, oa::VideoChromaSubsampling::Yuv444, oa::VideoBitDepth::Bit10},
+		{"h265-main-420-8", oa::VideoCodec::H265, oa::VideoCodecProfile::H265Main, oa::VideoChromaSubsampling::Yuv420, oa::VideoBitDepth::Bit8},
+		{"h265-main10-420-10", oa::VideoCodec::H265, oa::VideoCodecProfile::H265Main10, oa::VideoChromaSubsampling::Yuv420, oa::VideoBitDepth::Bit10},
+		{"h265-mainstill-420-8", oa::VideoCodec::H265, oa::VideoCodecProfile::H265MainStillPicture, oa::VideoChromaSubsampling::Yuv420, oa::VideoBitDepth::Bit8},
+		{"h265-range-420-8", oa::VideoCodec::H265, oa::VideoCodecProfile::H265FormatRangeExtensions, oa::VideoChromaSubsampling::Yuv420, oa::VideoBitDepth::Bit8},
+		{"h265-range-420-10", oa::VideoCodec::H265, oa::VideoCodecProfile::H265FormatRangeExtensions, oa::VideoChromaSubsampling::Yuv420, oa::VideoBitDepth::Bit10},
+		{"h265-range-422-10", oa::VideoCodec::H265, oa::VideoCodecProfile::H265FormatRangeExtensions, oa::VideoChromaSubsampling::Yuv422, oa::VideoBitDepth::Bit10},
+		{"h265-range-444-10", oa::VideoCodec::H265, oa::VideoCodecProfile::H265FormatRangeExtensions, oa::VideoChromaSubsampling::Yuv444, oa::VideoBitDepth::Bit10},
+		{"h265-range-420-12", oa::VideoCodec::H265, oa::VideoCodecProfile::H265FormatRangeExtensions, oa::VideoChromaSubsampling::Yuv420, oa::VideoBitDepth::Bit12},
+		{"h265-scc-420-8", oa::VideoCodec::H265, oa::VideoCodecProfile::H265ScreenContentCodingExtensions, oa::VideoChromaSubsampling::Yuv420, oa::VideoBitDepth::Bit8},
+		{"av1-main-420-8", oa::VideoCodec::AV1, oa::VideoCodecProfile::Av1Main, oa::VideoChromaSubsampling::Yuv420, oa::VideoBitDepth::Bit8},
+		{"av1-main-420-10", oa::VideoCodec::AV1, oa::VideoCodecProfile::Av1Main, oa::VideoChromaSubsampling::Yuv420, oa::VideoBitDepth::Bit10},
+		{"av1-high-444-8", oa::VideoCodec::AV1, oa::VideoCodecProfile::Av1High, oa::VideoChromaSubsampling::Yuv444, oa::VideoBitDepth::Bit8},
+		{"av1-high-444-10", oa::VideoCodec::AV1, oa::VideoCodecProfile::Av1High, oa::VideoChromaSubsampling::Yuv444, oa::VideoBitDepth::Bit10},
+		{"av1-pro-422-10", oa::VideoCodec::AV1, oa::VideoCodecProfile::Av1Professional, oa::VideoChromaSubsampling::Yuv422, oa::VideoBitDepth::Bit10},
+		{"av1-pro-444-12", oa::VideoCodec::AV1, oa::VideoCodecProfile::Av1Professional, oa::VideoChromaSubsampling::Yuv444, oa::VideoBitDepth::Bit12},
+		{"vp9-p0-420-8", oa::VideoCodec::VP9, oa::VideoCodecProfile::Vp9Profile0, oa::VideoChromaSubsampling::Yuv420, oa::VideoBitDepth::Bit8},
+		{"vp9-p1-444-8", oa::VideoCodec::VP9, oa::VideoCodecProfile::Vp9Profile1, oa::VideoChromaSubsampling::Yuv444, oa::VideoBitDepth::Bit8},
+		{"vp9-p2-420-10", oa::VideoCodec::VP9, oa::VideoCodecProfile::Vp9Profile2, oa::VideoChromaSubsampling::Yuv420, oa::VideoBitDepth::Bit10},
+		{"vp9-p2-420-12", oa::VideoCodec::VP9, oa::VideoCodecProfile::Vp9Profile2, oa::VideoChromaSubsampling::Yuv420, oa::VideoBitDepth::Bit12},
+		{"vp9-p3-444-10", oa::VideoCodec::VP9, oa::VideoCodecProfile::Vp9Profile3, oa::VideoChromaSubsampling::Yuv444, oa::VideoBitDepth::Bit10},
+		{"vp9-p3-444-12", oa::VideoCodec::VP9, oa::VideoCodecProfile::Vp9Profile3, oa::VideoChromaSubsampling::Yuv444, oa::VideoBitDepth::Bit12},
+	};
+
+	oa::U32 hardwareCount = 0U;
+	for (const Case& testCase : cases) {
+		oa::VideoProfile request = {};
+		request.codec = testCase.codec;
+		request.standardProfile = testCase.profile;
+		request.chromaSubsampling = testCase.chroma;
+		request.lumaBitDepth = testCase.depth;
+		request.chromaBitDepth = testCase.depth;
+		auto result = oa::VideoDecoder::queryDecodeCapabilities(rt(), request);
+		if (!result.isOk() && result.getStatus().getCode() == oa::StatusCode::Unavailable) {
+			ASSERT_TRUE(oa::print("PROFILE_MATRIX\t{}\tquery=unavailable", testCase.name).isOk());
+			continue;
+		}
+		ASSERT_TRUE(result.isOk()) << testCase.name << ": " << result.getStatus().toString();
+		if (result->hardwareProfileSupported) ++hardwareCount;
+		ASSERT_TRUE(oa::print(
+			"PROFILE_MATRIX\t{}\thardware={}\toa_path={}\tdecoded_format={}\tsupported={}",
+			testCase.name,
+			result->hardwareProfileSupported,
+			result->oaDecodePathImplemented,
+			static_cast<oa::U32>(result->referencePictureFormat),
+			result->supported).isOk());
+	}
+	if (hardwareCount == 0U) {
+		GTEST_SKIP() << "No queried Vulkan Video decode profile is supported on this device";
+	}
 }
 
 TEST_F(VkEngineTestFixture, VideoDecoder_CreateH264Decoder)
@@ -891,7 +1236,7 @@ TEST_F(VkEngineTestFixture, VideoDecoder_UpdateH264SessionParametersFromAccessUn
 
 TEST_F(VkEngineTestFixture, VideoDecoder_DecodeH264FrameFromLocalFixture)
 {
-	auto fixtureResult = oa::Filesystem::readBinary(testAssetPath("video/visionTestPattern128x72Idr.h264"));
+	auto fixtureResult = oa::Filesystem::readBinary(testAssetPath("video/conformance/test_pattern_72p_h264_baseline_idr_8bit_420.h264"));
 	ASSERT_TRUE(fixtureResult.isOk()) << fixtureResult.getStatus().toString();
 
 	auto& engine = rt();
@@ -945,19 +1290,19 @@ TEST_F(VkEngineTestFixture, VideoDecoder_DecodeH264FrameFromLocalFixture)
 		ASSERT_TRUE(nv12Result.isOk()) << nv12Result.getStatus().toString();
 		ASSERT_EQ(nv12Result->size(), static_cast<oa::Usize>(profile.width * profile.height * 3 / 2));
 
-		if (std::system("command -v ffmpeg >/dev/null 2>&1") == 0) {
+		if (::system("command -v ffmpeg >/dev/null 2>&1") == 0) {
 			const oa::Path fixturePath =
-				testAssetPath("video/visionTestPattern128x72Idr.h264");
-			const std::string referencePath =
+				testAssetPath("video/conformance/test_pattern_72p_h264_baseline_idr_8bit_420.h264");
+			const oa::Path referencePath =
 				testReferencePath("oa_h264_idr_reference_nv12");
 			const oa::String command = oa::String("ffmpeg -v error -y -i \"")
 				+ fixturePath.string()
 				+ "\" -frames:v 1 -f rawvideo -pix_fmt nv12 \""
-				+ referencePath.c_str()
+				+ referencePath.string()
 				+ "\"";
-			ASSERT_EQ(std::system(command.cStr()), 0);
-			auto referenceResult = oa::Filesystem::readBinary(oa::Path(referencePath.c_str()));
-			std::remove(referencePath.c_str());
+			ASSERT_EQ(::system(command.cStr()), 0);
+			auto referenceResult = oa::Filesystem::readBinary(referencePath);
+			(void) oa::Filesystem::removeFile(referencePath);
 			ASSERT_TRUE(referenceResult.isOk())
 				<< referenceResult.getStatus().toString();
 			ASSERT_EQ(referenceResult->size(), nv12Result->size());
@@ -970,7 +1315,7 @@ TEST_F(VkEngineTestFixture, VideoDecoder_DecodeH264FrameFromLocalFixture)
 			oa::U64 referenceLumaSum = 0;
 			oa::U8 maxError = 0;
 			for (oa::Usize i = 0; i < nv12Result->size(); ++i) {
-				const oa::U8 error = static_cast<oa::U8>(std::abs(
+				const oa::U8 error = static_cast<oa::U8>(oa::abs(
 					static_cast<int>((*nv12Result)[i])
 					- static_cast<int>((*referenceResult)[i])));
 				if (i < lumaBytes) {
@@ -1007,12 +1352,8 @@ TEST_F(VkEngineTestFixture, VideoDecoder_DecodeH264FrameFromLocalFixture)
 		}
 
 		auto hardwareTensorResult = oa::VideoDecoderInternal::convertFrameToBf16Hardware(decoder, frame, false);
-		ASSERT_TRUE(hardwareTensorResult.isOk()) << hardwareTensorResult.getStatus().toString();
-		oa::Matrix hardwareTensor = oa::move(*hardwareTensorResult);
-		expectShape(hardwareTensor, {1, 3, profile.height, profile.width});
-		expectFinite(hardwareTensor);
-		EXPECT_GE(hardwareTensor.at(0), 0.0f);
-		EXPECT_LE(hardwareTensor.at(0), 1.0f);
+		EXPECT_FALSE(hardwareTensorResult.isOk());
+		EXPECT_EQ(hardwareTensorResult.getStatus().getCode(), oa::StatusCode::Unavailable);
 		const oa::U64 lumaBytes = static_cast<oa::U64>(profile.width) * profile.height;
 		const oa::U8 yy = (*nv12Result)[0];
 		const oa::U8 uu = (*nv12Result)[static_cast<oa::Usize>(lumaBytes)];
@@ -1046,7 +1387,6 @@ TEST_F(VkEngineTestFixture, VideoDecoder_DecodeH264FrameFromLocalFixture)
 		expectFinite(tensor);
 		EXPECT_GE(tensor.at(0), 0.0f);
 		EXPECT_LE(tensor.at(0), 1.0f);
-		EXPECT_NEAR(tensor.at(0), hardwareTensor.at(0), 1e-3f);
 	}
 
 	EXPECT_TRUE(decoder.close().isOk());
@@ -1082,6 +1422,9 @@ TEST_F(VkEngineTestFixture, VideoDecoder_DecodeH264FrameFromLocalFixture)
 	// hardware YCbCr path must write opaque alpha; this also catches zero-write
 	// failures (e.g. push-constant misalignment causing all threads to return).
 	EXPECT_EQ(alpha255Count, static_cast<oa::U32>(profile.width * profile.height));
+	EXPECT_GT(
+		oa::VideoDecoderInternal::getHardwareYcbcrDispatchCount(conversionDecoder),
+		0U);
 	EXPECT_TRUE(conversionDecoder.close().isOk());
 
 	auto computeConversionDecoderResult = oa::VideoDecoder::create(engine, profile);
@@ -1116,13 +1459,30 @@ TEST_F(VkEngineTestFixture, VideoDecoder_DecodeH264FrameFromLocalFixture)
 	}
 	EXPECT_GT(computeColorNonZeroCount, 0u);
 	EXPECT_EQ(computeAlpha255Count, static_cast<oa::U32>(profile.width * profile.height));
+	oa::U64 rgbAbsoluteError = 0U;
+	oa::U8 rgbMaxError = 0U;
+	for (oa::Usize i = 0; i < rgbaResult->size(); i += 4U) {
+		for (oa::Usize channel = 0; channel < 3U; ++channel) {
+			const oa::U8 hardware = (*rgbaResult)[i + channel];
+			const oa::U8 compute = (*computeRgbaResult)[i + channel];
+			const oa::U8 error = hardware > compute
+				? static_cast<oa::U8>(hardware - compute)
+				: static_cast<oa::U8>(compute - hardware);
+			rgbAbsoluteError += error;
+			rgbMaxError = oa::max(rgbMaxError, error);
+		}
+	}
+	const oa::F64 rgbMae = static_cast<oa::F64>(rgbAbsoluteError)
+		/ static_cast<oa::F64>(profile.width * profile.height * 3U);
+	EXPECT_LT(rgbMae, 6.0) << "maxError=" << static_cast<oa::U32>(rgbMaxError);
+	EXPECT_LT(rgbMaxError, 96U);
 	EXPECT_TRUE(computeConversionDecoder.close().isOk());
 }
 
 TEST_F(VkEngineTestFixture, VideoDecoder_DecodeResizeNormalizeOwnedBySession)
 {
 	auto fixtureResult = oa::Filesystem::readBinary(
-		testAssetPath("video/visionTestPattern128x72Idr.h264"));
+		testAssetPath("video/conformance/test_pattern_72p_h264_baseline_idr_8bit_420.h264"));
 	ASSERT_TRUE(fixtureResult.isOk()) << fixtureResult.getStatus().toString();
 
 	auto& engine = rt();
@@ -1154,7 +1514,7 @@ TEST_F(VkEngineTestFixture, VideoDecoder_DecodeResizeNormalizeOwnedBySession)
 TEST_F(VkEngineTestFixture, VideoDecoder_PipelinesAsyncH264Conversion)
 {
 	auto fixtureResult = oa::Filesystem::readBinary(
-		testAssetPath("video/visionTestPattern128x72Idr.h264"));
+		testAssetPath("video/conformance/test_pattern_72p_h264_baseline_idr_8bit_420.h264"));
 	ASSERT_TRUE(fixtureResult.isOk()) << fixtureResult.getStatus().toString();
 
 	auto& engine = rt();
@@ -1178,7 +1538,7 @@ TEST_F(VkEngineTestFixture, VideoDecoder_PipelinesAsyncH264Conversion)
 
 	oa::VideoConversionOptions options = {};
 	options.convertToRgb = true;
-	options.preferHardwareYCbCr = false;
+	options.preferHardwareYCbCr = true;
 
 	for (oa::U32 i = 0; i < frameCount; ++i) {
 		oa::VideoFrame nv12 = {};
@@ -1211,6 +1571,9 @@ TEST_F(VkEngineTestFixture, VideoDecoder_PipelinesAsyncH264Conversion)
 			ASSERT_EQ((*rgbaResult)[pixel + 3], 255);
 		}
 	}
+	EXPECT_EQ(
+		oa::VideoDecoderInternal::getHardwareYcbcrDispatchCount(decoder),
+		frameCount);
 
 	EXPECT_TRUE(decoder.close().isOk());
 }
@@ -1218,7 +1581,7 @@ TEST_F(VkEngineTestFixture, VideoDecoder_PipelinesAsyncH264Conversion)
 TEST_F(VkEngineTestFixture, VideoDecoder_AsyncConversionEventRetiresResourcesSafely)
 {
 	auto fixtureResult = oa::Filesystem::readBinary(
-		testAssetPath("video/visionTestPattern128x72Idr.h264"));
+		testAssetPath("video/conformance/test_pattern_72p_h264_baseline_idr_8bit_420.h264"));
 	ASSERT_TRUE(fixtureResult.isOk()) << fixtureResult.getStatus().toString();
 
 	auto& engine = rt();
@@ -1280,7 +1643,7 @@ TEST_F(VkEngineTestFixture, VideoDecoder_AsyncConversionEventRetiresResourcesSaf
 TEST(VideoDecoderLifecycle, AbandonedSubmittedSessionRetiresAtEngineClose)
 {
 	auto fixtureResult = oa::Filesystem::readBinary(
-		testAssetPath("video/visionTestPattern128x72Idr.h264"));
+		testAssetPath("video/conformance/test_pattern_72p_h264_baseline_idr_8bit_420.h264"));
 	ASSERT_TRUE(fixtureResult.isOk()) << fixtureResult.getStatus().toString();
 
 	auto config = testEngineConfig(oa::Precision::FP32);
@@ -1317,7 +1680,7 @@ TEST(VideoDecoderLifecycle, AbandonedSubmittedSessionRetiresAtEngineClose)
 
 TEST_F(VkEngineTestFixture, VideoDecoder_DecodeH265FrameFromLocalFixture)
 {
-	auto fixtureResult = oa::Filesystem::readBinary(testAssetPath("video/visionTestPattern128x72Idr.h265"));
+	auto fixtureResult = oa::Filesystem::readBinary(testAssetPath("video/conformance/test_pattern_72p_h265_main_idr_8bit_420.h265"));
 	ASSERT_TRUE(fixtureResult.isOk()) << fixtureResult.getStatus().toString();
 
 	auto& engine = rt();
@@ -1347,15 +1710,111 @@ TEST_F(VkEngineTestFixture, VideoDecoder_DecodeH265FrameFromLocalFixture)
 		decoder,
 		frame,
 		profile,
-		"video/visionTestPattern128x72Idr.h265",
+		"video/conformance/test_pattern_72p_h265_main_idr_8bit_420.h265",
 		"oa_h265_idr_reference_nv12");
 
 	EXPECT_TRUE(decoder.close().isOk());
 }
 
+TEST_F(VkEngineTestFixture, VideoDecoder_DecodeH265Main10P010FromLocalFixture)
+{
+	constexpr const char* fixture =
+		"video/conformance/test_pattern_72p_h265_main10_idr_10bit_420.h265";
+	auto fixtureResult = oa::Filesystem::readBinary(testAssetPath(fixture));
+	ASSERT_TRUE(fixtureResult.isOk()) << fixtureResult.getStatus().toString();
+
+	oa::VideoProfile profile = makeH265Main10FixtureProfile();
+	auto capsResult = oa::VideoDecoder::queryDecodeCapabilities(rt(), profile);
+	ASSERT_TRUE(capsResult.isOk()) << capsResult.getStatus().toString();
+	if (!capsResult->supported) GTEST_SKIP() << "H.265 Main 10 P010 is unavailable";
+
+	auto result = oa::VideoDecoder::create(rt(), profile);
+	ASSERT_TRUE(result.isOk()) << result.getStatus().toString();
+	auto decoder = oa::move(*result);
+	oa::VideoFrame frame = {};
+	const oa::Status status = oa::VideoDecoderInternal::decodeFrame(
+		decoder, oa::Span<const oa::U8>(*fixtureResult), frame);
+	ASSERT_TRUE(status.isOk()) << status.toString();
+	expectDecodedP010MatchesFfmpeg(
+		decoder, frame, profile, fixture, "oa_h265_main10_reference_p010");
+	expectP010ComputeRgbaMatchesCpu(decoder, frame);
+	EXPECT_TRUE(decoder.close().isOk());
+}
+
+TEST_F(VkEngineTestFixture, VideoDecoder_DecodeH265RangeExt420_8bitFromLocalFixture)
+{
+	constexpr const char* fixture =
+		"video/conformance/test_pattern_72p_h265_rangeext_intra_8bit_420.h265";
+	auto fixtureResult = oa::Filesystem::readBinary(testAssetPath(fixture));
+	ASSERT_TRUE(fixtureResult.isOk()) << fixtureResult.getStatus().toString();
+	oa::VcpH265 parser;
+	oa::H265PictureDesc desc = {};
+	const oa::Status parseStatus = parser.parseAccessUnit(
+		oa::Span<const oa::U8>(*fixtureResult), desc);
+	ASSERT_TRUE(parseStatus.isOk()) << parseStatus.toString();
+	ASSERT_EQ(desc.vpsInAu.size(), 1U);
+	EXPECT_EQ(
+		desc.vpsInAu[0].generalProfileIdc,
+		static_cast<oa::U32>(STD_VIDEO_H265_PROFILE_IDC_FORMAT_RANGE_EXTENSIONS));
+
+	oa::VideoProfile profile = makeH265RangeExtFixtureProfile();
+	auto capsResult = oa::VideoDecoder::queryDecodeCapabilities(rt(), profile);
+	ASSERT_TRUE(capsResult.isOk()) << capsResult.getStatus().toString();
+	if (!capsResult->supported) GTEST_SKIP() << "H.265 Range Extensions 4:2:0 8-bit is unavailable";
+
+	auto result = oa::VideoDecoder::create(rt(), profile);
+	ASSERT_TRUE(result.isOk()) << result.getStatus().toString();
+	auto decoder = oa::move(*result);
+	oa::VideoFrame frame = {};
+	const oa::Status status = oa::VideoDecoderInternal::decodeFrame(
+		decoder, oa::Span<const oa::U8>(*fixtureResult), frame);
+	ASSERT_TRUE(status.isOk()) << status.toString();
+	expectDecodedNv12MatchesFfmpeg(
+		decoder, frame, profile, fixture, "oa_h265_rangeext_reference_nv12");
+	EXPECT_TRUE(decoder.close().isOk());
+}
+
+TEST_F(VkEngineTestFixture, VideoDecoder_DecodeH265RangeExt420_10bitFromLocalFixture)
+{
+	constexpr const char* fixture =
+		"video/conformance/test_pattern_72p_h265_rangeext_intra_10bit_420.h265";
+	auto fixtureResult = oa::Filesystem::readBinary(testAssetPath(fixture));
+	ASSERT_TRUE(fixtureResult.isOk()) << fixtureResult.getStatus().toString();
+	oa::VcpH265 parser;
+	oa::H265PictureDesc desc = {};
+	const oa::Status parseStatus = parser.parseAccessUnit(
+		oa::Span<const oa::U8>(*fixtureResult), desc);
+	ASSERT_TRUE(parseStatus.isOk()) << parseStatus.toString();
+	ASSERT_EQ(desc.vpsInAu.size(), 1U);
+	EXPECT_EQ(
+		desc.vpsInAu[0].generalProfileIdc,
+		static_cast<oa::U32>(STD_VIDEO_H265_PROFILE_IDC_FORMAT_RANGE_EXTENSIONS));
+	EXPECT_EQ(desc.sps.bitDepthLumaMinus8, 2U);
+	EXPECT_EQ(desc.sps.bitDepthChromaMinus8, 2U);
+
+	oa::VideoProfile profile = makeH265RangeExt10FixtureProfile();
+	auto capsResult = oa::VideoDecoder::queryDecodeCapabilities(rt(), profile);
+	ASSERT_TRUE(capsResult.isOk()) << capsResult.getStatus().toString();
+	if (!capsResult->supported) {
+		GTEST_SKIP() << "H.265 Range Extensions 4:2:0 10-bit is unavailable";
+	}
+
+	auto result = oa::VideoDecoder::create(rt(), profile);
+	ASSERT_TRUE(result.isOk()) << result.getStatus().toString();
+	auto decoder = oa::move(*result);
+	oa::VideoFrame frame = {};
+	const oa::Status status = oa::VideoDecoderInternal::decodeFrame(
+		decoder, oa::Span<const oa::U8>(*fixtureResult), frame);
+	ASSERT_TRUE(status.isOk()) << status.toString();
+	expectDecodedP010MatchesFfmpeg(
+		decoder, frame, profile, fixture, "oa_h265_rangeext10_reference_p010");
+	expectP010ComputeRgbaMatchesCpu(decoder, frame);
+	EXPECT_TRUE(decoder.close().isOk());
+}
+
 TEST_F(VkEngineTestFixture, VideoDecoder_Av1FixturePresentAndCapabilityQueried)
 {
-	auto fixtureResult = oa::Filesystem::readBinary(testAssetPath("video/visionTestPattern128x72KeyframeAv1.ivf"));
+	auto fixtureResult = oa::Filesystem::readBinary(testAssetPath("video/conformance/test_pattern_72p_av1_main_keyframe_8bit_420.ivf"));
 	ASSERT_TRUE(fixtureResult.isOk()) << fixtureResult.getStatus().toString();
 	EXPECT_GT(fixtureResult->size(), 0u);
 
@@ -1404,7 +1863,7 @@ TEST_F(VkEngineTestFixture, VideoDecoder_CreateVp9Decoder)
 
 TEST_F(VkEngineTestFixture, VideoDecoder_Vp9FixturePresentAndCapabilityQueried)
 {
-	auto fixtureResult = oa::Filesystem::readBinary(testAssetPath("video/visionTestPattern128x72KeyframeVp9.ivf"));
+	auto fixtureResult = oa::Filesystem::readBinary(testAssetPath("video/conformance/test_pattern_72p_vp9_profile0_keyframe_8bit_420.ivf"));
 	ASSERT_TRUE(fixtureResult.isOk()) << fixtureResult.getStatus().toString();
 	EXPECT_GT(fixtureResult->size(), 0u);
 
@@ -1419,7 +1878,7 @@ TEST_F(VkEngineTestFixture, VideoDecoder_Vp9FixturePresentAndCapabilityQueried)
 
 TEST_F(VkEngineTestFixture, VideoDecoder_DecodeVp9FrameFromLocalFixture)
 {
-	auto fixtureResult = oa::Filesystem::readBinary(testAssetPath("video/visionTestPattern128x72KeyframeVp9.ivf"));
+	auto fixtureResult = oa::Filesystem::readBinary(testAssetPath("video/conformance/test_pattern_72p_vp9_profile0_keyframe_8bit_420.ivf"));
 	ASSERT_TRUE(fixtureResult.isOk()) << fixtureResult.getStatus().toString();
 
 	auto& engine = rt();
@@ -1445,15 +1904,39 @@ TEST_F(VkEngineTestFixture, VideoDecoder_DecodeVp9FrameFromLocalFixture)
 		decoder,
 		frame,
 		profile,
-		"video/visionTestPattern128x72KeyframeVp9.ivf",
+		"video/conformance/test_pattern_72p_vp9_profile0_keyframe_8bit_420.ivf",
 		"oa_vp9_keyframe_reference_nv12");
 
 	EXPECT_TRUE(decoder.close().isOk());
 }
 
+TEST_F(VkEngineTestFixture, VideoDecoder_DecodeVp9Profile2P010FromLocalFixture)
+{
+	constexpr const char* fixture =
+		"video/conformance/test_pattern_72p_vp9_profile2_key_10bit_420.ivf";
+	auto fixtureResult = oa::Filesystem::readBinary(testAssetPath(fixture));
+	ASSERT_TRUE(fixtureResult.isOk()) << fixtureResult.getStatus().toString();
+	oa::VideoProfile profile = makeVp9Profile2FixtureProfile();
+	auto capsResult = oa::VideoDecoder::queryDecodeCapabilities(rt(), profile);
+	ASSERT_TRUE(capsResult.isOk()) << capsResult.getStatus().toString();
+	if (!capsResult->supported) GTEST_SKIP() << "VP9 Profile 2 P010 is unavailable";
+
+	auto result = oa::VideoDecoder::create(rt(), profile);
+	ASSERT_TRUE(result.isOk()) << result.getStatus().toString();
+	auto decoder = oa::move(*result);
+	oa::VideoFrame frame = {};
+	const oa::Status status = oa::VideoDecoderInternal::decodeFrame(
+		decoder, oa::Span<const oa::U8>(*fixtureResult), frame);
+	ASSERT_TRUE(status.isOk()) << status.toString();
+	expectDecodedP010MatchesFfmpeg(
+		decoder, frame, profile, fixture, "oa_vp9_profile2_reference_p010");
+	expectP010ComputeRgbaMatchesCpu(decoder, frame);
+	EXPECT_TRUE(decoder.close().isOk());
+}
+
 TEST_F(VkEngineTestFixture, Av1Parser_ParseLocalFixture)
 {
-	auto fixtureResult = oa::Filesystem::readBinary(testAssetPath("video/visionTestPattern128x72KeyframeAv1.ivf"));
+	auto fixtureResult = oa::Filesystem::readBinary(testAssetPath("video/conformance/test_pattern_72p_av1_main_keyframe_8bit_420.ivf"));
 	ASSERT_TRUE(fixtureResult.isOk()) << fixtureResult.getStatus().toString();
 
 	oa::VcpAv1 parser;
@@ -1472,7 +1955,7 @@ TEST_F(VkEngineTestFixture, Av1Parser_ParseLocalFixture)
 
 TEST(Av1Parser, CountsEveryPictureInMultiFrameTemporalUnits)
 {
-	const oa::Path path = testAssetPath("video/shibuya720pAv1MainEightBit420.mp4");
+	const oa::Path path = testAssetPath("video/clip/shibuya_720p_30fps_av1_main_8bit_420.mp4");
 	auto streamResult = oa::VideoDemuxer::open(path.cStr());
 	ASSERT_TRUE(streamResult.isOk()) << streamResult.getStatus().toString();
 	oa::VcpAv1 parser;
@@ -1493,7 +1976,7 @@ TEST(Av1Parser, CountsEveryPictureInMultiFrameTemporalUnits)
 
 TEST_F(VkEngineTestFixture, VideoDecoder_DecodeAv1FrameFromLocalFixture)
 {
-	auto fixtureResult = oa::Filesystem::readBinary(testAssetPath("video/visionTestPattern128x72KeyframeAv1.ivf"));
+	auto fixtureResult = oa::Filesystem::readBinary(testAssetPath("video/conformance/test_pattern_72p_av1_main_keyframe_8bit_420.ivf"));
 	ASSERT_TRUE(fixtureResult.isOk()) << fixtureResult.getStatus().toString();
 
 	auto& engine = rt();
@@ -1518,9 +2001,55 @@ TEST_F(VkEngineTestFixture, VideoDecoder_DecodeAv1FrameFromLocalFixture)
 		decoder,
 		frame,
 		profile,
-		"video/visionTestPattern128x72KeyframeAv1.ivf",
+		"video/conformance/test_pattern_72p_av1_main_keyframe_8bit_420.ivf",
 		"oa_av1_keyframe_reference_nv12");
 
+	EXPECT_TRUE(decoder.close().isOk());
+}
+
+TEST_F(VkEngineTestFixture, VideoDecoder_DecodeAv1Main10P010FromLocalFixture)
+{
+	constexpr const char* fixture =
+		"video/conformance/test_pattern_72p_av1_main_key_10bit_420.obu";
+	auto fixtureResult = oa::Filesystem::readBinary(testAssetPath(fixture));
+	ASSERT_TRUE(fixtureResult.isOk()) << fixtureResult.getStatus().toString();
+	oa::VideoProfile profile = makeAv1Main10FixtureProfile();
+	auto capsResult = oa::VideoDecoder::queryDecodeCapabilities(rt(), profile);
+	ASSERT_TRUE(capsResult.isOk()) << capsResult.getStatus().toString();
+	if (!capsResult->supported) GTEST_SKIP() << "AV1 Main 10-bit P010 is unavailable";
+
+	auto result = oa::VideoDecoder::create(rt(), profile);
+	ASSERT_TRUE(result.isOk()) << result.getStatus().toString();
+	auto decoder = oa::move(*result);
+	oa::VideoFrame frame = {};
+	const oa::Status status = oa::VideoDecoderInternal::decodeFrame(
+		decoder, oa::Span<const oa::U8>(*fixtureResult), frame);
+	ASSERT_TRUE(status.isOk()) << status.toString();
+	expectDecodedP010MatchesFfmpeg(
+		decoder, frame, profile, fixture, "oa_av1_main10_reference_p010");
+	expectP010ComputeRgbaMatchesCpu(decoder, frame);
+	EXPECT_TRUE(decoder.close().isOk());
+}
+
+TEST_F(VkEngineTestFixture, VideoDecoder_RejectsAv1Main10LoopRestorationBeforeSubmit)
+{
+	constexpr const char* fixture =
+		"video/conformance/test_pattern_72p_av1_main_key_10bit_420_loop_restoration.obu";
+	auto fixtureResult = oa::Filesystem::readBinary(testAssetPath(fixture));
+	ASSERT_TRUE(fixtureResult.isOk()) << fixtureResult.getStatus().toString();
+	oa::VideoProfile profile = makeAv1Main10FixtureProfile();
+	auto capsResult = oa::VideoDecoder::queryDecodeCapabilities(rt(), profile);
+	ASSERT_TRUE(capsResult.isOk()) << capsResult.getStatus().toString();
+	if (!capsResult->supported) GTEST_SKIP() << "AV1 Main 10-bit P010 is unavailable";
+	auto result = oa::VideoDecoder::create(rt(), profile);
+	ASSERT_TRUE(result.isOk()) << result.getStatus().toString();
+	auto decoder = oa::move(*result);
+	oa::VideoFrame frame = {};
+	const oa::Status status = oa::VideoDecoderInternal::decodeFrame(
+		decoder, oa::Span<const oa::U8>(*fixtureResult), frame);
+	EXPECT_FALSE(status.isOk());
+	EXPECT_EQ(status.getCode(), oa::StatusCode::Unavailable);
+	EXPECT_EQ(decoder.getCurrentFrameNumber(), 0U);
 	EXPECT_TRUE(decoder.close().isOk());
 }
 
@@ -1549,7 +2078,7 @@ TEST_F(VkEngineTestFixture, VideoDecoder_DpbInitialState)
 
 TEST_F(VkEngineTestFixture, VideoDecoder_DpbDecodeAndFlush)
 {
-	auto fixtureResult = oa::Filesystem::readBinary(testAssetPath("video/visionTestPattern128x72Idr.h264"));
+	auto fixtureResult = oa::Filesystem::readBinary(testAssetPath("video/conformance/test_pattern_72p_h264_baseline_idr_8bit_420.h264"));
 	ASSERT_TRUE(fixtureResult.isOk()) << fixtureResult.getStatus().toString();
 
 	auto& engine = rt();

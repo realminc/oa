@@ -3,7 +3,7 @@
 // Inline optional value with explicit lifetime and no standard-library optional
 // interop. Empty checked access terminates through the always-on OA contract.
 
-#include <oa/core/assert.h>
+#include <oa/core/std/assert.h>
 #include <oa/core/std/lifetime.h>
 #include <oa/core/std/typeTraits.h>
 

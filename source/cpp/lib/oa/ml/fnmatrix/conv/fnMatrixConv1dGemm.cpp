@@ -24,7 +24,7 @@
 #include <oa/ml/autograd.h>
 #include <oa/ml/autograd/matrix/autogradConv.h>
 
-#include <assert.h>
+#include <oa/core/std/assert.h>
 
 namespace {
 
@@ -40,7 +40,7 @@ oa::Matrix oa::FnMatrix::im2Col1d(
 {
 	auto& ctx = oa::ExecutionSession::getActive();
 	oa::OpLoweringScope lowering(ctx);
-	assert(inX.rank() == 3 && "Im2Col1d input must be 3D [N, inC, L]");
+	OA_REQUIRE_MSG(inX.rank() == 3, "Im2Col1d input must be 3D [N, inC, L]");
 
 	const oa::I32 N = static_cast<oa::I32>(inX.size(0));
 	const oa::I32 inC = static_cast<oa::I32>(inX.size(1));
@@ -138,8 +138,8 @@ oa::Matrix oa::FnMatrix::conv1dGemm(
 {
 	auto& ctx = oa::ExecutionSession::getActive();
 	oa::OpLoweringScope lowering(ctx);
-	assert(inX.rank() == 3 && "Conv1dGemm input must be 3D [N, inC, L]");
-	assert(inWeight.rank() == 3 && "Conv1dGemm weight must be 3D [outC, inC, K]");
+	OA_REQUIRE_MSG(inX.rank() == 3, "Conv1dGemm input must be 3D [N, inC, L]");
+	OA_REQUIRE_MSG(inWeight.rank() == 3, "Conv1dGemm weight must be 3D [outC, inC, K]");
 
 	const oa::I32 N = static_cast<oa::I32>(inX.size(0));
 	const oa::I32 inC = static_cast<oa::I32>(inX.size(1));

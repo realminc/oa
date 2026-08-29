@@ -13,8 +13,8 @@
 // playback control:
 //   video.togglePlay();        // Space
 //   video.next();              // Right arrow
-//   video.stepBackward();      // Left arrow (seeks to prior IDR + replays
-//   forward)
+//   video.stepBackward();      // Left arrow (cache hit, or bounded keyframe
+//                              // replay on a cache miss)
 //
 // looping (cfg.loop = true, default) is handled internally: when the
 // underlying stream hits EOS, seek(0) is issued and the next frame comes
@@ -52,8 +52,9 @@ struct VideoPlayerConfig {
   // Start in the playing state. When false, the app must explicitly
   // call play() or next() to advance.
   bool startPlaying = true;
-  // open and synchronize the first audio track when one is present. Failure
-  // to find an audio track preserves video-only operation.
+  // Attempt independent AudioPlayer decoding from the same URI. This currently
+  // covers its WAV/FLAC/MP3 boundary, not native MP4/Matroska audio extraction
+  // or a shared A/V clock. Failure preserves video-only operation.
   bool audio = true;
   VideoDemuxerConfig demuxerConfig = {};
 
@@ -66,10 +67,32 @@ struct VideoPlayerConfig {
   // only when the stream has no B-frames).
   oa::U32 reorderDepth = 4;
 
+  // Display-order RGBA cache used by exact forward/backward stepping. The
+  // effective capacity is the smaller of these limits, so 4K content cannot
+  // silently allocate 32 full-resolution frames when the byte budget is
+  // lower. Zero frames disables retained presentation history.
+  oa::U32 presentationCacheFrames = 32;
+  oa::U64 presentationCacheBytes = 256ULL * 1024ULL * 1024ULL;
+
   // conversion filter: Nearest = sharp pixel edges, no smoothing.
   // Linear = smoother but softer output. Default Nearest for video
   // to preserve decoded-frame sharpness.
   Filter filter = Filter::Nearest;
+};
+
+struct VideoPlayerStats {
+  oa::U64 decodedFrames = 0U;
+  oa::U64 seekReplayFrames = 0U;
+  oa::U64 seekReplayConversionsSkipped = 0U;
+  oa::U64 presentationCacheHits = 0U;
+  oa::U64 presentationCacheMisses = 0U;
+  // Number of displayed-frame conversions that used a Vulkan sampler YCbCr
+  // conversion rather than the manual plane-sampling compatibility path.
+  oa::U64 hardwareYcbcrConversions = 0U;
+  oa::U64 seekResets = 0U;
+  oa::U64 decoderRecreations = 0U;
+  oa::U32 presentationCacheCapacity = 0U;
+  oa::U32 presentationCacheResident = 0U;
 };
 
 class VideoPlayer {
@@ -101,6 +124,9 @@ public:
   void reset();
   // Returns the number of frames decoded since the most recent rewind.
   [[nodiscard]] oa::I64 index() const { return index_; }
+  [[nodiscard]] oa::Usize currentFrameIndex() const noexcept {
+    return index_ > 0 ? static_cast<oa::Usize>(index_ - 1) : 0U;
+  }
 
   // ─── playback control ─────────────────────────────────────────────────
   void play();
@@ -115,18 +141,22 @@ public:
   [[nodiscard]] oa::U64 durationUs() const;
   [[nodiscard]] oa::U64 positionUs() const;
   [[nodiscard]] oa::Status seekUs(oa::U64 inTimestampUs);
+  // Select an exact display-order frame. The caller owns play/pause policy;
+  // timestamp rounding remains confined to time-based seekUs().
+  [[nodiscard]] oa::Status seekFrame(oa::Usize inFrameIndex);
 
-  // seek to the previous keyframe and re-decode forward until one frame
-  // before the current position. Costs up to GOP-size frames of decode.
+  // Present the previous display-order frame. Cache-resident history does no
+  // decode work; a miss seeks to the preceding keyframe and rebuilds a bounded
+  // presentation window.
   oa::Status stepBackward();
 
   // Scrub by a signed number of display-order frames. Positive movement
-  // advances normally; negative movement seeks to the preceding keyframe
-  // and replays through the reorder/presentation path.
+  // advances normally; negative movement uses retained presentation history
+  // first and replays through the reorder path only on a cache miss.
   oa::Status stepFrames(oa::I32 inFrameDelta);
-  // seek in the container video-track timebase. The decoder is recreated at
-  // the preceding keyframe and replayed to the first display frame at/after
-  // the requested timestamp.
+  // Seek in the container video-track timebase. Ordinary seeks flush decoder
+  // state without destroying reusable RGBA allocations; genuine stream-format
+  // generation changes recreate the decoder.
   oa::Status seek(oa::U64 inTimestamp);
   // drain outstanding GPU work and clear queued display frames.
   oa::Status flush();
@@ -163,6 +193,9 @@ public:
   [[nodiscard]] bool isEos() const;
   [[nodiscard]] const VideoContainerInfo &getContainerInfo() const;
   [[nodiscard]] const VideoDemuxerStats &getDemuxerStats() const;
+  [[nodiscard]] const VideoPlayerStats &getPlaybackStats() const {
+    return stats_;
+  }
 
 private:
   // Each reorder buffer entry owns its own RGBA target image. We convert
@@ -182,13 +215,29 @@ private:
     ReorderEntry &operator=(ReorderEntry &&) noexcept = default;
   };
 
-  oa::Status decodeOneIntoReorder_();
-  oa::Status fillReorderBuffer_();
-  oa::Status popAndPresentLowestPts_();
+  struct PresentationEntry {
+    VideoFrame rgba = {};
+    oa::U64 pts = 0U;
+    oa::Usize displayIndex = 0U;
+  };
+
+  oa::Status decodeOneIntoReorder_(oa::U64 inMinimumRetainedPts = 0U);
+  oa::Status fillReorderBuffer_(oa::U64 inMinimumRetainedPts = 0U);
+  oa::Status popLowestPts_(ReorderEntry &outEntry);
+  oa::Status presentDecoded_(ReorderEntry &&inEntry,
+                             oa::Usize inDisplayIndex);
+  bool presentCached_(oa::Usize inDisplayIndex);
+  void cachePresented_(const VideoFrame &inFrame, oa::U64 inPts,
+                       oa::Usize inDisplayIndex);
+  oa::Status clearPresentationCache_();
+  [[nodiscard]] oa::Usize displayIndexForPts_(oa::U64 inPts,
+                                              oa::Usize inMinimum) const;
   oa::Status seekDisplayFrame_(oa::Usize inTargetFrameIndex);
   oa::Status clearReorder_();
   oa::Status waitForPoolConsumers_();
-  oa::Status restartDecoder_();
+  oa::Status resetDecoderForSeek_();
+  oa::Status recreateDecoder_();
+  [[nodiscard]] oa::F32 currentFrameIntervalMs_() const;
   void abandon_() noexcept;
   static oa::Status completeRetired_(void *inPayload);
   static void releaseRetired_(void *inPayload);
@@ -208,15 +257,18 @@ private:
   bool reachedEos_ = false;
   bool demuxerEosCurrent_ = false;
   oa::Vector<ReorderEntry> reorder_;
+  oa::Vector<PresentationEntry> presentationCache_;
   oa::Vector<oa::U64> displayPts_;
-  // playback-owned pool of RGBA targets. Sized lazily to reorderDepth + 2
-  // (held in reorder + currently displayed + one slack). The decoder owns
-  // the actual VkImage lifetimes via its rgbImages_ table; we just track
-  // who's holding which.
+  // Playback-owned pool of RGBA targets. Reorder and presentation-cache
+  // entries retain slots; completed consumer events gate reuse. The decoder
+  // owns the VkImage allocations and preserves them across flush/seek resets.
   oa::Vector<VideoFrame> rgbaPool_;
   oa::Vector<bool> rgbaPoolBusy_;
   oa::Vector<oa::Event> rgbaPoolConsumerEvents_;
   oa::I64 index_ = 0;
+  oa::Usize decodeCursor_ = 0U;
+  oa::Usize presentationCacheCapacity_ = 0U;
+  VideoPlayerStats stats_;
   oa::U64 demuxerFormatGeneration_ = 1U;
   oa::U64 demuxerReconnectCount_ = 0U;
 };

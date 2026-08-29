@@ -254,6 +254,16 @@ TEST(Log, ComponentVocabularyIsStableAndExtensible) {
 	EXPECT_STREQ(TestLogComponent.cStr(), "TST ");
 }
 
+TEST(Log, GroupedIntegerFormattingCoversFullSignedRange) {
+	EXPECT_EQ(oa::formatNumber(0), oa::String("0"));
+	EXPECT_EQ(oa::formatNumber(999), oa::String("999"));
+	EXPECT_EQ(oa::formatNumber(1000), oa::String("1,000"));
+	EXPECT_EQ(oa::formatNumber(-1000), oa::String("-1,000"));
+	EXPECT_EQ(oa::formatNumber(9'521'568), oa::String("9,521,568"));
+	EXPECT_EQ(oa::formatNumber(-9'223'372'036'854'775'807LL - 1LL),
+		oa::String("-9,223,372,036,854,775,808"));
+}
+
 TEST_F(CoreMiscFs, LogSessionOwnsFileAndReportsClosedWrites) {
 	auto created = oa::Log::create(oa::LogOptions{
 		.directory = workDir_.string(),
@@ -265,7 +275,18 @@ TEST_F(CoreMiscFs, LogSessionOwnsFileAndReportsClosedWrites) {
 	ASSERT_TRUE(created.isOk()) << created.getStatus().toString();
 	auto log = oa::move(created).getValue();
 	ASSERT_TRUE(log->write(
-		oa::LogLevel::Info, TestLogComponent, "owned record %d", 7).isOk());
+		oa::LogLevel::Info, TestLogComponent, "owned record {}", 7).isOk());
+	log->setLevel(oa::LogLevel::Error);
+	// Filter before parsing/formatting so disabled diagnostics stay cheap and a
+	// malformed disabled format cannot terminate the process.
+	ASSERT_TRUE(log->write(
+		oa::LogLevel::Info, TestLogComponent, "{", 9).isOk());
+	log->setLevel(oa::LogLevel::Trace);
+	oa::String longRecord;
+	longRecord.reserve(5000U);
+	for (oa::Usize index = 0; index < 5000U; ++index) longRecord.pushBack('x');
+	ASSERT_TRUE(log->write(
+		oa::LogLevel::Info, TestLogComponent, longRecord.view()).isOk());
 	ASSERT_TRUE(log->flush().isOk());
 	const oa::Path path(log->getLogPath());
 	ASSERT_TRUE(oa::Filesystem::isFile(path));
@@ -274,6 +295,7 @@ TEST_F(CoreMiscFs, LogSessionOwnsFileAndReportsClosedWrites) {
 	const std::string hostedContents = testStdString(*contents);
 	EXPECT_NE(hostedContents.find("[TST ]"), std::string::npos);
 	EXPECT_NE(hostedContents.find("owned record 7"), std::string::npos);
+	EXPECT_NE(hostedContents.find(std::string(5000U, 'x')), std::string::npos);
 	ASSERT_TRUE(log->close().isOk());
 	EXPECT_EQ(log->write(
 		oa::LogLevel::Info, oa::LogComponent::Core, "after close").getCode(),
@@ -298,7 +320,7 @@ TEST_F(CoreMiscFs, LogSessionSerializesWritersAndLevelChanges) {
 				log->setLevel((record & 1) == 0
 					? oa::LogLevel::Trace : oa::LogLevel::Info);
 				if (not log->write(oa::LogLevel::Info, oa::LogComponent::Core,
-					"writer=%d record=%d", thread, record).isOk()) {
+					"writer={} record={}", thread, record).isOk()) {
 					failed.store(true, std::memory_order_relaxed);
 				}
 			}
@@ -336,6 +358,25 @@ TEST_F(CoreMiscFs, LogMetricsSerializesWritersFlushAndClose) {
 		if (character == '\n') ++lineCount;
 	}
 	EXPECT_EQ(lineCount, 400U);
+}
+
+TEST_F(CoreMiscFs, LogMetricsEscapesTagsAndPreservesLongRecords) {
+	oa::LogMetrics metrics(workDir_.string());
+	oa::String tag;
+	for (oa::Usize index = 0; index < 5000U; ++index) tag.pushBack('x');
+	tag += "\"\n\\";
+	metrics.logScalar(tag, -7, __builtin_nan(""));
+	metrics.flush();
+	metrics.close();
+
+	auto contents = oa::Filesystem::readText(workDir_ / "events.jsonl");
+	ASSERT_TRUE(contents.isOk()) << contents.getStatus().toString();
+	const std::string hosted = testStdString(*contents);
+	EXPECT_NE(hosted.find(std::string(5000U, 'x')), std::string::npos);
+	EXPECT_NE(hosted.find("\\\"\\n\\\\"), std::string::npos);
+	EXPECT_NE(hosted.find("\"step\":-7"), std::string::npos);
+	EXPECT_NE(hosted.find("\"value\":null"), std::string::npos);
+	EXPECT_EQ(static_cast<oa::Usize>(std::count(hosted.begin(), hosted.end(), '\n')), 1U);
 }
 
 TEST_F(CoreMiscFs, BinaryRoundTrip) {

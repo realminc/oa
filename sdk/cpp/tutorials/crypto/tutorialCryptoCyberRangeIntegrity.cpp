@@ -9,12 +9,6 @@
 #include <oa/core/fnMatrix.h>
 #include <oa/runtime/engine.h>
 
-#include <array>
-#include <cstdio>
-#include <cstring>
-#include <utility>
-#include <vector>
-
 namespace {
 
 constexpr oa::U32 kChunkCount = 16;
@@ -22,8 +16,8 @@ constexpr oa::U32 kChunkBytes = 256;
 constexpr oa::U32 kTamperedChunk = 5;
 constexpr oa::U32 kTamperedByte = 17;
 
-std::vector<oa::Byte> makeFixture() {
-	std::vector<oa::Byte> fixture(kChunkCount * kChunkBytes);
+oa::Vector<oa::Byte> makeFixture() {
+	oa::Vector<oa::Byte> fixture(kChunkCount * kChunkBytes);
 	oa::U32 state = 0x0A5EC123U;
 	for (oa::U32 chunk = 0; chunk < kChunkCount; ++chunk) {
 		for (oa::U32 byte = 0; byte < kChunkBytes; ++byte) {
@@ -35,7 +29,7 @@ std::vector<oa::Byte> makeFixture() {
 	return fixture;
 }
 
-oa::Vector<oa::Hash> hashFixtureOnCpu(const std::vector<oa::Byte>& inFixture) {
+oa::Vector<oa::Hash> hashFixtureOnCpu(const oa::Vector<oa::Byte>& inFixture) {
 	oa::Vector<oa::Hash> leaves;
 	leaves.reserve(kChunkCount);
 	for (oa::U32 chunk = 0; chunk < kChunkCount; ++chunk) {
@@ -52,7 +46,7 @@ oa::Vector<oa::Hash> hashFixtureOnCpu(const std::vector<oa::Byte>& inFixture) {
 
 oa::Status hashFixtureOnGpu(
 	oa::Engine& inEngine,
-	const std::vector<oa::Byte>& inFixture,
+	const oa::Vector<oa::Byte>& inFixture,
 	oa::Hash& outRoot)
 {
 	if (inFixture.size() != kChunkCount * kChunkBytes) {
@@ -84,18 +78,18 @@ oa::Status hashFixtureOnGpu(
 	}
 	OA_RETURN_IF_ERROR(inEngine.wait(submitted.getValue()));
 
-	std::array<oa::Byte, oa::Hash::size()> rootBytes{};
+	oa::Array<oa::Byte, oa::Hash::size()> rootBytes{};
 	OA_RETURN_IF_ERROR(oa::FnMatrix::copyToHost(
 		root,
 		rootBytes.data(),
 		rootBytes.size())
 	);
-	std::memcpy(outRoot.bytes.data(), rootBytes.data(), rootBytes.size());
+	oa::memcpy(outRoot.bytes.data(), rootBytes.data(), rootBytes.size());
 	return oa::Status::ok();
 }
 
 void printFailure(const char* inStage, const oa::Status& inStatus) {
-	std::fprintf(stderr, "%s failed: %s\n",
+	oa::print(oa::PrintStream::Error, "{} failed: {}",
 		inStage, inStatus.toString().cStr());
 }
 
@@ -109,11 +103,11 @@ int main() {
 
 	auto created = oa::Engine::create(config);
 	if (not created.isOk()) {
-		std::fprintf(stderr, "[skip] vulkan engine unavailable: %s\n",
+		oa::print(oa::PrintStream::Error, "[skip] vulkan engine unavailable: {}",
 			created.getStatus().toString().cStr());
 		return 125;
 	}
-	auto engine = std::move(created).getValue();
+	auto engine = oa::move(created).getValue();
 
 	const auto baselineFixture = makeFixture();
 	auto tamperedFixture = baselineFixture;
@@ -162,19 +156,17 @@ int main() {
 		and originalProofValid
 		and tamperedProofRejected;
 
-	std::printf("OA Linux cyber-range integrity checkpoint\n");
-	std::printf("  scope: in-memory fixture only\n");
-	std::printf("  device: %.*s\n",
-		static_cast<int>(engine->deviceName().size()),
-		engine->deviceName().data());
-	std::printf("  chunks: %u x %u bytes\n", kChunkCount, kChunkBytes);
-	std::printf("  baseline root: %s\n", baselineGpuRoot.toHex().cStr());
-	std::printf("  tampered root: %s\n", tamperedGpuRoot.toHex().cStr());
-	std::printf("  CPU/vulkan parity: %s\n",
+	oa::print("OA Linux cyber-range integrity checkpoint");
+	oa::print("  scope: in-memory fixture only");
+	oa::print("  device: {}", engine->deviceName());
+	oa::print("  chunks: {} x {} bytes", kChunkCount, kChunkBytes);
+	oa::print("  baseline root: {}", baselineGpuRoot.toHex().cStr());
+	oa::print("  tampered root: {}", tamperedGpuRoot.toHex().cStr());
+	oa::print("  CPU/vulkan parity: {}",
 		baselineParity and tamperedParity ? "pass" : "FAIL");
-	std::printf("  tamper detection: %s\n", rootChanged ? "pass" : "FAIL");
-	std::printf("  proof rejection: %s\n",
+	oa::print("  tamper detection: {}", rootChanged ? "pass" : "FAIL");
+	oa::print("  proof rejection: {}",
 		originalProofValid and tamperedProofRejected ? "pass" : "FAIL");
-	std::printf("  result: %s\n", passed ? "PASS" : "FAIL");
+	oa::print("  result: {}", passed ? "PASS" : "FAIL");
 	return passed ? 0 : 3;
 }

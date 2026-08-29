@@ -35,7 +35,7 @@ oa::PerfStat measure(oa::Engine& inEngine, const char* inName, Enqueue&& inEnque
 	return stat;
 }
 
-void print(const char* inName, const oa::PerfStat& inStat) {
+void printStat(const char* inName, const oa::PerfStat& inStat) {
 	std::printf("  %-25s mean=%7.4f ms  p50=%7.4f  p95=%7.4f\n",
 		inName, inStat.mean(), inStat.p50(), inStat.p95());
 }
@@ -95,37 +95,37 @@ TEST(BenchMoeComponents, NlpShape) {
 	ASSERT_TRUE(testSubmitAndWait(ctx).isOk());
 
 	oa::Vector<oa::Matrix> keep;
-	print("legacy route normalize", measure(engine, "legacy_route", [&] {
+	printStat("legacy route normalize", measure(engine, "legacy_route", [&] {
 		auto unnorm = oa::FnMatrix::mul(probs, mask);
 		auto denom = oa::FnMatrix::sum(unnorm, 1);
 		auto dense = oa::FnMatrix::div(unnorm, denom);
 		auto selected = oa::FnMatrix::gatherLastDim(dense, indices);
 		keep = {unnorm, denom, dense, selected};
 	}));
-	print("fused route normalize", measure(engine, "fused_route", [&] {
+	printStat("fused route normalize", measure(engine, "fused_route", [&] {
 		keep = {oa::FnMatrix::moeRouteWeights(probs, indices)};
 	}));
-	print("expert plan", measure(engine, "expert_plan", [&] {
+	printStat("expert plan", measure(engine, "expert_plan", [&] {
 		auto p = oa::FnMatrix::moeExpertPlan(indices, E);
 		keep = {p.counts, p.offsets, p.packedToken, p.packedSlot, p.inverse};
 	}));
-	print("pack tokens", measure(engine, "pack", [&] {
+	printStat("pack tokens", measure(engine, "pack", [&] {
 		keep = {oa::FnMatrix::moeGather(x, plan.packedToken, plan.inverse)};
 	}));
-	print("grouped gate/up", measure(engine, "gate_up", [&] {
+	printStat("grouped gate/up", measure(engine, "gate_up", [&] {
 		keep = {oa::FnMatrix::groupedLinearM(packedX, gateW, gateB, offsets)};
 	}));
-	print("SwiGLU", measure(engine, "swiglu", [&] {
+	printStat("SwiGLU", measure(engine, "swiglu", [&] {
 		keep = {oa::FnMatrix::siluMul(gateUp, H)};
 	}));
-	print("grouped down", measure(engine, "down", [&] {
+	printStat("grouped down", measure(engine, "down", [&] {
 		keep = {oa::FnMatrix::groupedLinearM(hidden, downW, downB, offsets)};
 	}));
-	print("combine", measure(engine, "combine", [&] {
+	printStat("combine", measure(engine, "combine", [&] {
 		keep = {oa::FnMatrix::moeCombine(
 			packedOut, routeGate, plan.inverse, plan.packedSlot)};
 	}));
-	print("fused sparse chain", measure(engine, "sparse_chain", [&] {
+	printStat("fused sparse chain", measure(engine, "sparse_chain", [&] {
 		auto weights = oa::FnMatrix::moeRouteWeights(probs, indices);
 		auto p = oa::FnMatrix::moeExpertPlan(indices, E);
 		auto px = oa::FnMatrix::moeGather(x, p.packedToken, p.inverse);
@@ -138,47 +138,47 @@ TEST(BenchMoeComponents, NlpShape) {
 	}));
 
 	std::printf("\nSparse backward and optimizer:\n");
-	print("combine backward", measure(engine, "combine_bwd", [&] {
+	printStat("combine backward", measure(engine, "combine_bwd", [&] {
 		auto bwd = oa::FnMatrix::moeCombineBwd(
 			dOut, packedOut, routeGate, plan.inverse, plan.packedSlot);
 		keep = {bwd.dPacked, bwd.dRouteGate};
 	}));
-	print("grouped down backward", measure(engine, "down_bwd", [&] {
+	printStat("grouped down backward", measure(engine, "down_bwd", [&] {
 		auto bwd = oa::FnMatrix::groupedLinearMBwd(dPacked, hidden, downW, offsets);
 		keep = {bwd.dInput, bwd.dWeight, bwd.dBias};
 	}));
-	print("down data+weight bwd", measure(engine, "down_gemm_bwd", [&] {
+	printStat("down data+weight bwd", measure(engine, "down_gemm_bwd", [&] {
 		auto bwd = oa::FnMatrix::groupedGemmMBwd(dPacked, hidden, downW, offsets);
 		keep = {bwd.dInput, bwd.dWeight};
 	}));
-	print("down bias backward", measure(engine, "down_bias_bwd", [&] {
+	printStat("down bias backward", measure(engine, "down_bias_bwd", [&] {
 		keep = {oa::FnMatrix::groupedLinearMBiasBwd(dPacked, offsets, E)};
 	}));
-	print("SwiGLU backward", measure(engine, "swiglu_bwd", [&] {
+	printStat("SwiGLU backward", measure(engine, "swiglu_bwd", [&] {
 		keep = {oa::FnMatrix::siluMulBwd(gateUp, dHidden)};
 	}));
-	print("grouped gate/up backward", measure(engine, "gate_up_bwd", [&] {
+	printStat("grouped gate/up backward", measure(engine, "gate_up_bwd", [&] {
 		auto bwd = oa::FnMatrix::groupedLinearMBwd(dGateUp, packedX, gateW, offsets);
 		keep = {bwd.dInput, bwd.dWeight, bwd.dBias};
 	}));
-	print("gate/up data+weight bwd", measure(engine, "gate_up_gemm_bwd", [&] {
+	printStat("gate/up data+weight bwd", measure(engine, "gate_up_gemm_bwd", [&] {
 		auto bwd = oa::FnMatrix::groupedGemmMBwd(dGateUp, packedX, gateW, offsets);
 		keep = {bwd.dInput, bwd.dWeight};
 	}));
-	print("gate/up bias backward", measure(engine, "gate_up_bias_bwd", [&] {
+	printStat("gate/up bias backward", measure(engine, "gate_up_bias_bwd", [&] {
 		keep = {oa::FnMatrix::groupedLinearMBiasBwd(dGateUp, offsets, E)};
 	}));
-	print("legacy pack backward", measure(engine, "legacy_pack_bwd", [&] {
+	printStat("legacy pack backward", measure(engine, "legacy_pack_bwd", [&] {
 		keep = {oa::FnMatrix::gatherBwd(plan.packedToken, packedX, T, D)};
 	}));
-	print("atomic pack backward", measure(engine, "atomic_pack_bwd", [&] {
+	printStat("atomic pack backward", measure(engine, "atomic_pack_bwd", [&] {
 		keep = {oa::FnMatrix::scatterAddRows(packedX, plan.packedToken, T)};
 	}));
-	print("route weights backward", measure(engine, "route_bwd", [&] {
+	printStat("route weights backward", measure(engine, "route_bwd", [&] {
 		keep = {oa::FnMatrix::moeRouteWeightsBwd(
 			dRouteGate, probs, indices, routeGate)};
 	}));
-	print("complete sparse backward", measure(engine, "sparse_chain_bwd", [&] {
+	printStat("complete sparse backward", measure(engine, "sparse_chain_bwd", [&] {
 		auto combine = oa::FnMatrix::moeCombineBwd(
 			dOut, packedOut, routeGate, plan.inverse, plan.packedSlot);
 		auto down = oa::FnMatrix::groupedLinearMBwd(
@@ -191,7 +191,7 @@ TEST(BenchMoeComponents, NlpShape) {
 		keep = {combine.dPacked, combine.dRouteGate, down.dInput, down.dWeight,
 			down.dBias, dGu, gate.dInput, gate.dWeight, gate.dBias, dx, dProb};
 	}));
-	print("expert AdamW (4 tensors)", measure(engine, "expert_adamw", [&] {
+	printStat("expert AdamW (4 tensors)", measure(engine, "expert_adamw", [&] {
 		oa::FnOptim::AdamWParamSet sets[] = {
 			{&gateW, &gateWM, &gateWV, &gateWGrad},
 			{&gateB, &gateBM, &gateBV, &gateBGrad},

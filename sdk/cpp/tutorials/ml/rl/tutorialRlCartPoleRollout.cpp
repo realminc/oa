@@ -6,13 +6,9 @@
 #include <oa/ml.h>
 #include <oa/runtime/engine.h>
 
-#include <cmath>
-#include <cstdio>
-#include <vector>
-
 namespace {
 
-oa::Matrix matrixF32(const std::vector<oa::F32>& inValues, oa::MatrixShape inShape) {
+oa::Matrix matrixF32(const oa::Vector<oa::F32>& inValues, oa::MatrixShape inShape) {
 	return oa::FnMatrix::fromBytes(
 		oa::Span<const oa::U8>(
 			reinterpret_cast<const oa::U8*>(inValues.data()),
@@ -21,8 +17,8 @@ oa::Matrix matrixF32(const std::vector<oa::F32>& inValues, oa::MatrixShape inSha
 }
 
 template<typename T>
-std::vector<T> copy(const oa::Matrix& inMatrix) {
-	std::vector<T> result(static_cast<oa::Usize>(inMatrix.numElements()));
+oa::Vector<T> copy(const oa::Matrix& inMatrix) {
+	oa::Vector<T> result(static_cast<oa::Usize>(inMatrix.numElements()));
 	EXPECT_TRUE(oa::FnMatrix::copyToHost(
 		inMatrix, result.data(), result.size() * sizeof(T)).isOk());
 	return result;
@@ -35,9 +31,7 @@ TEST(TutorialRlCartPoleRollout, VectorizedGpuCollection) {
 	constexpr oa::U32 horizon = 64;
 	constexpr oa::U64 seed = 20260716ULL;
 
-	std::printf("\n"
-		"OA reinforcement learning — vectorized GPU CartPole rollout\n"
-		"  environments: %u · horizon: %u · transitions: %u\n",
+	oa::print("\n" "OA reinforcement learning — vectorized GPU CartPole rollout\n" "  environments: {} · horizon: {} · transitions: {}",
 		environments, horizon, environments * horizon);
 
 	auto createdEnvironment = oa::CartPole::create(
@@ -117,13 +111,10 @@ TEST(TutorialRlCartPoleRollout, VectorizedGpuCollection) {
 		episodes += static_cast<oa::U32>(terminated[index] != 0
 			|| truncated[index] != 0);
 		ASSERT_EQ(valid[index], 1U);
-		ASSERT_TRUE(std::isfinite(advantage[index]));
+		ASSERT_TRUE(oa::isFinite(advantage[index]));
 	}
 
-	std::printf(
-		"  result: %.0f reward · %u completed episodes · %.2f reward/env\n"
-		"  path: policy -> sample -> step -> append -> reset-done -> GAE\n"
-		"  host tensor reads during collection: 0\n\n",
+	oa::print("  result: {:.0f} reward · {} completed episodes · {:.2f} reward/env\n" "  path: policy -> sample -> step -> append -> reset-done -> GAE\n" "  host tensor reads during collection: 0\n",
 		rewardSum, episodes, rewardSum / environments);
 	EXPECT_EQ(rollout.size(), horizon);
 	EXPECT_GT(rewardSum, 0.0);

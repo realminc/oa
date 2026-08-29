@@ -278,6 +278,7 @@ struct DeviceFeatureBundle {
 	VkPhysicalDeviceTimelineSemaphoreFeatures supportedTimelineSemaphore{};
 	VkPhysicalDeviceSynchronization2Features supportedSynchronization2{};
 	VkPhysicalDeviceDynamicRenderingFeatures supportedDynamicRendering{};
+	VkPhysicalDeviceSamplerYcbcrConversionFeatures supportedSamplerYcbcrConversion{};
 	VkPhysicalDeviceShaderBfloat16FeaturesKHR supportedBf16{};
 	VkPhysicalDeviceCooperativeMatrixFeaturesKHR supportedCoopMat{};
 	VkPhysicalDeviceCooperativeVectorFeaturesNV supportedCoopVec{};
@@ -298,6 +299,7 @@ struct DeviceFeatureBundle {
 	VkPhysicalDeviceTimelineSemaphoreFeatures timelineSemaphoreFeatures{};
 	VkPhysicalDeviceSynchronization2Features synchronization2Features{};
 	VkPhysicalDeviceDynamicRenderingFeatures dynamicRenderingFeatures{};
+	VkPhysicalDeviceSamplerYcbcrConversionFeatures samplerYcbcrConversionFeatures{};
 	VkPhysicalDeviceCooperativeMatrixFeaturesKHR coopMatFeatures{};
 	VkPhysicalDeviceShaderBfloat16FeaturesKHR enableBf16Feat{};
 	VkPhysicalDeviceDeviceGeneratedCommandsFeaturesEXT deviceGenFeatures{};

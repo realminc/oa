@@ -11,7 +11,7 @@
 #include <oa/runtime/executionSession.h>
 #include "../../autograd/autogradAttach.gen.h"
 
-#include <assert.h>
+#include <oa/core/std/assert.h>
 
 static oa::U32 divCeil(oa::U32 inA, oa::U32 inB) { return (inA + inB - 1) / inB; }
 
@@ -31,9 +31,9 @@ oa::Matrix oa::FnMatrix::conv2d(
 	auto& ctx = oa::ExecutionSession::getActive();
 
 	// input: [N, inC, H, W], weight: [outC, inC, K, K], Bias: [outC]
-	assert(inX.rank() == 4 && "Conv2d input must be 4D [N, inC, H, W]");
-	assert(inWeight.rank() == 4 && "Conv2d weight must be 4D [outC, inC, K, K]");
-	assert(inBias.rank() == 1 && "Conv2d bias must be 1D [outC]");
+	OA_REQUIRE_MSG(inX.rank() == 4, "Conv2d input must be 4D [N, inC, H, W]");
+	OA_REQUIRE_MSG(inWeight.rank() == 4, "Conv2d weight must be 4D [outC, inC, K, K]");
+	OA_REQUIRE_MSG(inBias.rank() == 1, "Conv2d bias must be 1D [outC]");
 
 	oa::U32 N = static_cast<oa::U32>(inX.size(0));
 	oa::U32 inC = static_cast<oa::U32>(inX.size(1));
@@ -43,8 +43,8 @@ oa::Matrix oa::FnMatrix::conv2d(
 	oa::U32 K = static_cast<oa::U32>(inWeight.size(2));
 	oa::U32 S = inStride;
 	oa::U32 P = inPadding;
-	assert(inGroups > 0 && inC % inGroups == 0 && outC % inGroups == 0);
-	assert(static_cast<oa::U32>(inWeight.size(1)) == inC / inGroups);
+	OA_REQUIRE(inGroups > 0 && inC % inGroups == 0 && outC % inGroups == 0);
+	OA_REQUIRE(static_cast<oa::U32>(inWeight.size(1)) == inC / inGroups);
 
 	// output dimensions: (H + 2*P - K) / S + 1, (W + 2*P - K) / S + 1
 	oa::U32 outH = (((H + (2 * P)) - K) / S) + 1;
@@ -100,9 +100,10 @@ oa::Matrix oa::FnMatrix::conv2dBwdData(
 
 	// d_out: [N, outC, outH, outW], weight: [outC, inC, K, K]
 	// d_input: [N, inC, H, W]
-	assert(inDOut.rank() == 4 && "Conv2dBwdData d_out must be 4D [N, outC, outH, outW]");
-	assert(inWeight.rank() == 4 && "Conv2dBwdData weight must be 4D [outC, inC, K, K]");
-	assert(inInputShape.rank == 4 && "Conv2dBwdData input_shape must be 4D [N, inC, H, W]");
+	OA_REQUIRE_MSG(inDOut.rank() == 4,
+		"Conv2dBwdData d_out must be 4D [N, outC, outH, outW]");
+	OA_REQUIRE_MSG(inWeight.rank() == 4, "Conv2dBwdData weight must be 4D [outC, inC, K, K]");
+	OA_REQUIRE_MSG(inInputShape.rank == 4, "Conv2dBwdData input_shape must be 4D [N, inC, H, W]");
 
 	oa::U32 N = static_cast<oa::U32>(inDOut.size(0));
 	oa::U32 outC = static_cast<oa::U32>(inDOut.size(1));
@@ -114,8 +115,8 @@ oa::Matrix oa::FnMatrix::conv2dBwdData(
 	oa::U32 W = static_cast<oa::U32>(inInputShape[3]);
 	oa::U32 S = inStride;
 	oa::U32 P = inPadding;
-	assert(inGroups > 0 && inC % inGroups == 0 && outC % inGroups == 0);
-	assert(static_cast<oa::U32>(inWeight.size(1)) == inC / inGroups);
+	OA_REQUIRE(inGroups > 0 && inC % inGroups == 0 && outC % inGroups == 0);
+	OA_REQUIRE(static_cast<oa::U32>(inWeight.size(1)) == inC / inGroups);
 
 	// allocate input gradient: [N, inC, H, W]
 	auto d_input = empty(inInputShape, inDOut.getDtype());
@@ -160,9 +161,10 @@ oa::Conv2dBwdWeightResult oa::FnMatrix::conv2dBwdWeight(
 
 	// input: [N, inC, H, W], d_out: [N, outC, outH, outW]
 	// d_weight: [outC, inC, K, K], d_bias: [outC]
-	assert(inInput.rank() == 4 && "Conv2dBwdWeight input must be 4D [N, inC, H, W]");
-	assert(inDOut.rank() == 4 && "Conv2dBwdWeight d_out must be 4D [N, outC, outH, outW]");
-	assert(inWeight.rank() == 4 && "Conv2dBwdWeight weight must be 4D [outC, inC, K, K]");
+	OA_REQUIRE_MSG(inInput.rank() == 4,
+		"Conv2dBwdWeight input must be 4D [N, inC, H, W]");
+	OA_REQUIRE_MSG(inDOut.rank() == 4, "Conv2dBwdWeight d_out must be 4D [N, outC, outH, outW]");
+	OA_REQUIRE_MSG(inWeight.rank() == 4, "Conv2dBwdWeight weight must be 4D [outC, inC, K, K]");
 
 	oa::U32 N = static_cast<oa::U32>(inInput.size(0));
 	oa::U32 inC = static_cast<oa::U32>(inInput.size(1));
@@ -175,8 +177,8 @@ oa::Conv2dBwdWeightResult oa::FnMatrix::conv2dBwdWeight(
 	oa::U32 S = inStride;
 	oa::U32 P = inPadding;
 	oa::U32 weightInC = static_cast<oa::U32>(inWeight.size(1));
-	assert(inGroups > 0 && inC % inGroups == 0 && outC % inGroups == 0);
-	assert(weightInC == inC / inGroups);
+	OA_REQUIRE(inGroups > 0 && inC % inGroups == 0 && outC % inGroups == 0);
+	OA_REQUIRE(weightInC == inC / inGroups);
 
 	// allocate gradients
 	auto d_weight = empty(inWeight.getShape(), inDOut.getDtype());
@@ -222,9 +224,10 @@ oa::Matrix oa::FnMatrix::convTranspose2d(
 	auto& ctx = oa::ExecutionSession::getActive();
 	oa::OpLoweringScope lowering(ctx);
 	// input: [N, inC, H, W], weight: [inC, outC, K, K], Bias: [outC]
-	assert(inX.rank() == 4 && "ConvTranspose2d input must be 4D [N, inC, H, W]");
-	assert(inWeight.rank() == 4 && "ConvTranspose2d weight must be 4D [inC, outC, K, K]");
-	assert(inBias.rank() == 1 && "ConvTranspose2d bias must be 1D [outC]");
+	OA_REQUIRE_MSG(inX.rank() == 4,
+		"ConvTranspose2d input must be 4D [N, inC, H, W]");
+	OA_REQUIRE_MSG(inWeight.rank() == 4, "ConvTranspose2d weight must be 4D [inC, outC, K, K]");
+	OA_REQUIRE_MSG(inBias.rank() == 1, "ConvTranspose2d bias must be 1D [outC]");
 
 	oa::U32 N = static_cast<oa::U32>(inX.size(0));
 	oa::U32 H = static_cast<oa::U32>(inX.size(2));
@@ -237,7 +240,7 @@ oa::Matrix oa::FnMatrix::convTranspose2d(
 	// output dimensions: (H - 1) * S - 2P + K
 	oa::U32 outH = ((H - 1) * S) - (2 * P) + K;
 	oa::U32 outW = ((W - 1) * S) - (2 * P) + K;
-	assert(outH > 0 && outW > 0 && "ConvTranspose2d output dimensions must be positive");
+	OA_REQUIRE_MSG(outH > 0 && outW > 0, "ConvTranspose2d output dimensions must be positive");
 
 	// Transposed convolution forward is the adjoint of Conv2d backward-data.
 	// Reuse Conv2dBwdData: it maps [N, outC_conv, outH, outW] -> [N, inC_conv, H, W]
@@ -309,9 +312,9 @@ oa::ConvTranspose2dBwdWeightResult oa::FnMatrix::convTranspose2dBwdWeight(
 
 	// input: [N, inC, H, W], d_out: [N, outC, outH, outW]
 	// d_weight: [inC, outC, K, K], d_bias: [outC]
-	assert(inInput.rank() == 4 && "ConvTranspose2dBwdWeight input must be 4D [N, inC, H, W]");
-	assert(inDOut.rank() == 4 && "ConvTranspose2dBwdWeight d_out must be 4D [N, outC, outH, outW]");
-	assert(inWeight.rank() == 4 && "ConvTranspose2dBwdWeight weight must be 4D [inC, outC, K, K]");
+	OA_REQUIRE_MSG(inInput.rank() == 4, "ConvTranspose2dBwdWeight input must be 4D [N, inC, H, W]");
+	OA_REQUIRE_MSG(inDOut.rank() == 4, "ConvTranspose2dBwdWeight d_out must be 4D [N, outC, outH, outW]");
+	OA_REQUIRE_MSG(inWeight.rank() == 4, "ConvTranspose2dBwdWeight weight must be 4D [inC, outC, K, K]");
 
 	oa::U32 N = static_cast<oa::U32>(inInput.size(0));
 	oa::U32 inC = static_cast<oa::U32>(inInput.size(1));
@@ -368,9 +371,9 @@ oa::Matrix oa::FnMatrix::conv1dBwdData(
 
 	// d_out: [N, outC, outL], weight: [outC, inC, K]
 	// d_input: [N, inC, L]
-	assert(inDOut.rank() == 3 && "Conv1dBwdData d_out must be 3D [N, outC, outL]");
-	assert(inWeight.rank() == 3 && "Conv1dBwdData weight must be 3D [outC, inC, K]");
-	assert(inInputShape.rank == 3 && "Conv1dBwdData input_shape must be 3D [N, inC, L]");
+	OA_REQUIRE_MSG(inDOut.rank() == 3, "Conv1dBwdData d_out must be 3D [N, outC, outL]");
+	OA_REQUIRE_MSG(inWeight.rank() == 3, "Conv1dBwdData weight must be 3D [outC, inC, K]");
+	OA_REQUIRE_MSG(inInputShape.rank == 3, "Conv1dBwdData input_shape must be 3D [N, inC, L]");
 
 	oa::U32 N = static_cast<oa::U32>(inDOut.size(0));
 	oa::U32 outC = static_cast<oa::U32>(inDOut.size(1));
@@ -426,9 +429,9 @@ oa::Conv1dBwdWeightResult oa::FnMatrix::conv1dBwdWeight(
 
 	// input: [N, inC, L], d_out: [N, outC, outL]
 	// d_weight: [outC, inC, K], d_bias: [outC]
-	assert(inInput.rank() == 3 && "Conv1dBwdWeight input must be 3D [N, inC, L]");
-	assert(inDOut.rank() == 3 && "Conv1dBwdWeight d_out must be 3D [N, outC, outL]");
-	assert(inWeight.rank() == 3 && "Conv1dBwdWeight weight must be 3D [outC, inC, K]");
+	OA_REQUIRE_MSG(inInput.rank() == 3, "Conv1dBwdWeight input must be 3D [N, inC, L]");
+	OA_REQUIRE_MSG(inDOut.rank() == 3, "Conv1dBwdWeight d_out must be 3D [N, outC, outL]");
+	OA_REQUIRE_MSG(inWeight.rank() == 3, "Conv1dBwdWeight weight must be 3D [outC, inC, K]");
 
 	oa::U32 N = static_cast<oa::U32>(inInput.size(0));
 	oa::U32 inC = static_cast<oa::U32>(inInput.size(1));

@@ -18,7 +18,7 @@
 #include "../fnMatrixAxis.h"
 #include "fnMatrixReduceLowering.h"
 
-#include <assert.h>
+#include <oa/core/std/assert.h>
 
 static oa::Matrix commitCoreReductionResult(
 	oa::Matrix inResult,
@@ -246,7 +246,7 @@ oa::Matrix oa::FnMatrix::sum(const oa::Matrix& inA, oa::I32 inDim) {
 		const auto attached = oa::detail::generatedAutogradAttach::FnMatrix::sum(
 			out, inA, semantic.getValue());
 		if (not attached.isOk()) {
-			OaLogError(oa::LogComponent::Compute,	"Sum semantic autograd attachment failed: %s",	attached.getMessage().cStr());
+			OaLogError(oa::LogComponent::Compute,	"Sum semantic autograd attachment failed: {}",	attached.getMessage().cStr());
 			return {};
 		}
 		return out;
@@ -267,7 +267,7 @@ oa::Matrix oa::FnMatrix::sum(const oa::Matrix& inA, oa::I32 inDim) {
 	const auto attached = oa::detail::generatedAutogradAttach::FnMatrix::sum(out, inA, semantic.getValue());
 	if (not attached.isOk()) {
 		OaLogError(oa::LogComponent::Compute,
-			"Sum semantic autograd attachment failed: %s",
+			"Sum semantic autograd attachment failed: {}",
 			attached.getMessage().cStr());
 		return {};
 	}
@@ -317,14 +317,14 @@ oa::Matrix oa::FnMatrix::mean(const oa::Matrix& inA, oa::I32 inDim) {
 			ctx, inA, out, oa::detail::opRegistry::FnMatrix::mean, semantic.getValue());
 		if (not lowering.isOk()) {
 			OaLogError(oa::LogComponent::Compute,
-				"Mean lowering failed: %s", lowering.getMessage().cStr()
+				"Mean lowering failed: {}", lowering.getMessage().cStr()
 			);
 			return {};
 		}
 
 		const auto attached = oa::detail::generatedAutogradAttach::FnMatrix::mean(out, inA, inDim, semantic.getValue());
 		if (not attached.isOk()) {
-			OaLogError(oa::LogComponent::Compute,	"Mean semantic autograd attachment failed: %s", attached.getMessage().cStr());
+			OaLogError(oa::LogComponent::Compute,	"Mean semantic autograd attachment failed: {}", attached.getMessage().cStr());
 			return {};
 		}
 		return out;
@@ -353,7 +353,7 @@ oa::Matrix oa::FnMatrix::mean(const oa::Matrix& inA, oa::I32 inDim) {
 		out, inA, inDim, semantic.getValue());
 	if (not attached.isOk()) {
 		OaLogError(oa::LogComponent::Compute,
-			"Mean semantic autograd attachment failed: %s",
+			"Mean semantic autograd attachment failed: {}",
 			attached.getMessage().cStr());
 		return {};
 	}
@@ -380,7 +380,7 @@ oa::Matrix oa::FnMatrix::max(const oa::Matrix& inA, oa::I32 inDim) {
 		out, inA, semantic.getValue());
 	if (not attached.isOk()) {
 		OaLogError(oa::LogComponent::Compute,
-			"Max semantic autograd attachment failed: %s",
+			"Max semantic autograd attachment failed: {}",
 			attached.getMessage().cStr());
 		return {};
 	}
@@ -396,10 +396,10 @@ oa::I64 oa::FnMatrix::argmax(const oa::Matrix& inA, oa::I32 inDim) {
 	oa::BufferAccess access[] = {oa::BufferAccess::Read, oa::BufferAccess::Write};
 	ctx.add( "Argmax", {&inA, &out}, access, &push, sizeof(push), 1);
 	auto status = oa::FnMatrix::completeRecordedWork(ctx);
-	assert(status.isOk() and "context submission failed before Argmax readback");
+	OA_REQUIRE_MSG(status.isOk(), "context submission failed before Argmax readback");
 	oa::U32 index = 0;
 	auto copyStatus = oa::FnMatrix::copyToHost(out, &index, sizeof(index));
-	assert(copyStatus.isOk() && "Argmax readback failed");
+	OA_REQUIRE_MSG(copyStatus.isOk(), "Argmax readback failed");
 	return static_cast<oa::I64>(index);
 }
 
@@ -497,7 +497,7 @@ oa::Matrix oa::FnMatrix::softmax(const oa::Matrix& inA, oa::I32 inDim) {
 		out, inA, inDim, semantic.getValue());
 	if (not attached.isOk()) {
 		OaLogError(oa::LogComponent::Compute,
-			"Softmax semantic autograd attachment failed: %s",
+			"Softmax semantic autograd attachment failed: {}",
 			attached.getMessage().cStr());
 		return {};
 	}
@@ -530,7 +530,7 @@ oa::Matrix oa::FnMatrix::logSoftmax(const oa::Matrix& inA, oa::I32 inDim) {
 		output, inA, inDim, semantic.getValue());
 	if (not attached.isOk()) {
 		OaLogError(oa::LogComponent::Compute,
-			"LogSoftmax semantic autograd attachment failed: %s",
+			"LogSoftmax semantic autograd attachment failed: {}",
 			attached.getMessage().cStr());
 		return {};
 	}

@@ -28,9 +28,6 @@
 #include <oa/ml/byte.h>
 #include <ml/nlpSuite.h>
 
-#include <algorithm>
-#include <cmath>
-#include <cstring>
 
 // ─── Shared hyperparameters (identical across the whole suite) ───────────────
 
@@ -45,7 +42,7 @@ inline constexpr oa::I32 kNlpGenerationBytes = oa::NlpSuiteGenerationSourceUnits
 // Cross-entropy is mean nats/token. Dividing by ln(2) and the represented
 // source bytes/token yields tokenizer-independent bits per byte.
 inline oa::F64 nlpBitsPerByte(oa::F64 inCrossEntropyNats, oa::F64 inBytesPerToken = 1.0) {
-	return inBytesPerToken > 0.0 ? inCrossEntropyNats / (std::log(2.0) * inBytesPerToken) : 0.0;
+	return inBytesPerToken > 0.0 ? inCrossEntropyNats / (oa::log(2.0) * inBytesPerToken) : 0.0;
 }
 
 // ─── Shared corpus ───────────────────────────────────────────────────────────
@@ -84,7 +81,7 @@ public:
 	NlpAllPositionSampler(const char* inText, oa::I32 inBatchSize, EncodeFn inEncode = nullptr)
 		: batchSize_(inBatchSize), encode_(inEncode)
 	{
-		const oa::I64 len = static_cast<oa::I64>(std::strlen(inText));
+		const oa::I64 len = static_cast<oa::I64>(oa::strlen(inText));
 		tokens_.resize(len);
 		for (oa::I64 i = 0; i < len; ++i) tokens_[i] = encode(inText[i]);
 	}
@@ -115,7 +112,7 @@ public:
 	// Left-aligned prompt: ids at positions 0.. (padded with 0 / space).
 	[[nodiscard]] oa::Vector<oa::I32> encodePromptLeft(const char* inPrompt) const {
 		oa::Vector<oa::I32> out(kContextLen);
-		const oa::I64 len = static_cast<oa::I64>(std::strlen(inPrompt));
+		const oa::I64 len = static_cast<oa::I64>(oa::strlen(inPrompt));
 		for (oa::I32 i = 0; i < kContextLen; ++i) out[i] = encode_ ? 26 : 0;
 		for (oa::I32 i = 0; i < kContextLen and i < len; ++i) out[i] = encode(inPrompt[i]);
 		return out;
@@ -149,9 +146,9 @@ oa::String nlpGenerateGreedy(Model& inModel, const char* inPrompt, oa::I32 inCou
 	oa::I32 inVocab, NlpAllPositionSampler::EncodeFn inEncode = nullptr) {
 	NlpAllPositionSampler enc(nlpCorpus(), 1, inEncode);  // only encodePromptLeft used
 	oa::Vector<oa::I32> context = enc.encodePromptLeft(inPrompt);
-	const oa::I32 promptLen = static_cast<oa::I32>(std::strlen(inPrompt));
-	oa::I32 filled   = std::min(promptLen, kContextLen);
-	oa::I32 logitRow = std::max(0, filled - 1);
+	const oa::I32 promptLen = static_cast<oa::I32>(oa::strlen(inPrompt));
+	oa::I32 filled   = oa::min(promptLen, kContextLen);
+	oa::I32 logitRow = oa::max(0, filled - 1);
 	oa::String out(inPrompt);
 
 	for (oa::I32 i = 0; i < inCount; ++i) {
@@ -189,7 +186,7 @@ oa::String nlpGenerateStatefulGreedy(
 	(void)tutorialSubmitAndWait(testEngine());
 
 	oa::Matrix logits;
-	const auto promptLength = static_cast<oa::I32>(std::strlen(inPrompt));
+	const auto promptLength = static_cast<oa::I32>(oa::strlen(inPrompt));
 	for (oa::I32 index = 0; index < promptLength; ++index) {
 		const oa::I32 token = static_cast<oa::U8>(inPrompt[index]);
 		auto input = oa::FnMatrix::fromInt32(
@@ -227,9 +224,9 @@ oa::String nlpGenerateSampled(Model& inModel, const char* inPrompt, oa::I32 inCo
 	oa::I32 inVocab, oa::F32 inTemperature = 0.8F, oa::F32 inTopP = 0.9F) {
 	NlpAllPositionSampler enc(nlpCorpus(), 1);  // only encodePromptLeft used
 	oa::Vector<oa::I32> context = enc.encodePromptLeft(inPrompt);
-	const oa::I32 promptLen = static_cast<oa::I32>(std::strlen(inPrompt));
-	oa::I32 filled = std::min(promptLen, kContextLen);
-	oa::I32 logitRow = std::max(0, filled - 1);
+	const oa::I32 promptLen = static_cast<oa::I32>(oa::strlen(inPrompt));
+	oa::I32 filled = oa::min(promptLen, kContextLen);
+	oa::I32 logitRow = oa::max(0, filled - 1);
 	oa::String out(inPrompt);
 
 	for (oa::I32 i = 0; i < inCount; ++i) {

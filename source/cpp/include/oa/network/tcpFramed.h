@@ -18,7 +18,8 @@ public:
 	static oa::Status readMessage(
 		TcpStream& inStream,
 		oa::Vector<oa::Byte>& outPayload,
-		oa::U32 inMaxPayloadBytes = kMaxPayloadBytes);
+		oa::U32 inMaxPayloadBytes = kMaxPayloadBytes
+	);
 
 private:
 	static void writeU32Le(oa::Byte* outBuf, oa::U32 inValue);

@@ -19,7 +19,7 @@
 #include <oa/core/filesystem.h>
 #include <oa/core/paths.h>
 #include <chrono>
-#include <cassert>
+#include <oa/core/std/assert.h>
 #include <functional>
 #include <ostream>
 #include <string>
@@ -207,8 +207,7 @@ inline oa::Engine* testVkEngine = nullptr;
 }
 
 [[nodiscard]] static inline oa::Engine& testEngine() {
-	assert(testVkEngine != nullptr
-		&& "VkTestEnvironment did not create the suite engine");
+	OA_REQUIRE_MSG(testVkEngine != nullptr, "VkTestEnvironment did not create the suite engine");
 	return *testVkEngine;
 }
 

@@ -187,10 +187,13 @@ oa::Status oa::VideoDecoder::updateH265SessionParametersFromSps(const oa::H265Sp
 	if (impl_->h265SpsUploaded[inSps.spsId]) {
 		return oa::Status::ok();
 	}
-	if (inSps.chromaFormatIdc != STD_VIDEO_H265_CHROMA_FORMAT_IDC_420 ||
-		inSps.bitDepthLumaMinus8 != 0 ||
-		inSps.bitDepthChromaMinus8 != 0) {
-		return oa::Status::error(oa::StatusCode::InvalidArgument, "Only H.265 8-bit 4:2:0 session parameters are supported");
+	const oa::U32 expectedDepthMinus8 =
+		static_cast<oa::U32>(impl_->profile.lumaBitDepth) - 8U;
+	if (inSps.chromaFormatIdc != STD_VIDEO_H265_CHROMA_FORMAT_IDC_420
+		or inSps.bitDepthLumaMinus8 != expectedDepthMinus8
+		or inSps.bitDepthChromaMinus8 != expectedDepthMinus8) {
+		return oa::Status::error(oa::StatusCode::InvalidArgument,
+			"H.265 SPS chroma/bit-depth does not match the decoder profile");
 	}
 	auto vpsIt = impl_->h265VpsCache.find(inSps.vpsId);
 	if (vpsIt == impl_->h265VpsCache.end()) {

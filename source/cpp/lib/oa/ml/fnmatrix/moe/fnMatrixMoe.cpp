@@ -385,7 +385,7 @@ oa::Matrix oa::FnMatrix::moeGather(const oa::Matrix& inSelf,const oa::Matrix& in
 		inInverse.numElements() != inIndices.numElements() or
 		inSelf.size(0) <= 0 or
 		inIndices.numElements() % inSelf.size(0) != 0) {
-		OaLogError(oa::LogComponent::Ml,	"MoeGather: expected Self[T,D] and UInt32 indices/inverse[R], R %% T == 0");
+		OaLogError(oa::LogComponent::Ml,	"MoeGather: expected Self[T,D] and UInt32 indices/inverse[R], R % T == 0");
 		return {};
 	}
 	const oa::U32 R = static_cast<oa::U32>(inIndices.numElements());
@@ -418,7 +418,7 @@ oa::Matrix oa::FnMatrix::moeGatherBwd(const oa::Matrix& inSource,
 		inInverse.numElements() != inSource.size(0) or inOutRows <= 0 or
 		inSource.size(0) % inOutRows != 0) {
 		OaLogError(oa::LogComponent::Ml,
-			"MoeGatherBwd: expected source[R,D], UInt32 inverse[R], R %% T == 0");
+			"MoeGatherBwd: expected source[R,D], UInt32 inverse[R], R % T == 0");
 		return {};
 	}
 	const oa::U32 R = static_cast<oa::U32>(inSource.size(0));

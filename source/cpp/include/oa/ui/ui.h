@@ -612,7 +612,8 @@ public:
 	[[nodiscard]] bool timeline(
 		oa::StringView inId,
 		PixelRect inRect,
-		oa::F32& inOutFraction);
+		oa::F32& inOutFraction,
+		bool* outActive = nullptr);
 	// Full-surface audio scrubber backed by a GPU [bins, 2] min/max envelope.
 	[[nodiscard]] bool waveformTimeline(
 		oa::StringView inId,

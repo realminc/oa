@@ -2,7 +2,7 @@
 
 // Native Variant<Ts...> — bounded tagged storage for OA value alternatives.
 
-#include <oa/core/assert.h>
+#include <oa/core/std/assert.h>
 #include <oa/core/std/lifetime.h>
 #include <oa/core/std/typeTraits.h>
 #include <oa/core/std/utility.h>

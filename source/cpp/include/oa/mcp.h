@@ -41,10 +41,11 @@ public:
 private:
   friend class McpServer;
 
-  explicit McpArguments(oa::String inJson, oa::U32 inMaxNestingDepth,
-                        oa::U32 inMaxJsonNodes)
-      : json_(oa::move(inJson)), maxNestingDepth_(inMaxNestingDepth),
-        maxJsonNodes_(inMaxJsonNodes) {}
+  explicit McpArguments(oa::String inJson, oa::U32 inMaxNestingDepth, oa::U32 inMaxJsonNodes)
+    : json_(oa::move(inJson))
+    , maxNestingDepth_(inMaxNestingDepth)
+    , maxJsonNodes_(inMaxJsonNodes)
+  {}
 
   oa::String json_ = "{}";
   oa::U32 maxNestingDepth_ = 64;
@@ -117,8 +118,7 @@ public:
   }
 
 private:
-  [[nodiscard]] oa::String boundResponse(oa::String inResponse,
-                                         oa::StringView inIdJson) const;
+  [[nodiscard]] oa::String boundResponse(oa::String inResponse, oa::StringView inIdJson) const;
 
   McpServerConfig config_;
   oa::Status configurationStatus_;

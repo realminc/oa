@@ -4,6 +4,53 @@ All notable changes to OA are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is the single
 `VERSION` file at the repo root (read by CMake, `oa::version()`, and the Python package).
 
+## [0.7.24] — 2026-08-29 (native Vulkan Video foundation)
+
+### Added
+
+- Exact H.264, H.265, AV1, and VP9 decode-profile construction, capability
+  admission, pinned 8/10-bit conformance fixtures, and a 26-cell live-device
+  profile matrix.
+- Native P010 decode and color conversion for admitted H.265 Main 10, AV1 Main
+  10, and VP9 Profile 2 streams, plus verified H.265 Range Extensions 8/10-bit
+  4:2:0 single-picture subsets.
+- A default capability-gated hardware sampler-YCbCr display route with the
+  validated compute conversion path retained as the explicit fallback and
+  benchmark comparator.
+- Reproducible 1080p60 and UHD60 fixture generation, provenance, hashes,
+  FFmpeg differentials, validation reports, and fresh-process performance
+  qualification.
+
+### Changed
+
+- Viewer video transport now uses bounded decode-ahead, presentation caching,
+  exact frame stepping, and reverse reconstruction without CPU pixel readback.
+- Video implementation, SDK tutorials, codec tests, reference harnesses, and
+  realtime benchmarks use OA-owned containers, paths, timing,
+  synchronization, math, and formatted output.
+- The root C++ quick start uses checked `oa::print` instead of the removed
+  `oa::puts` spelling.
+
+### Fixed
+
+- Codec-specific DPB, profile, level, native-format, descriptor-lifetime, and
+  AV1 staged-conversion synchronization defects now fail closed or use the
+  qualified route.
+- Forward/backward one-frame and held-key playback remain stable across cache
+  misses and presentation-order reconstruction.
+
+### Verification
+
+- Release, ASAN/LSAN, and UBSAN pass all 41 decoder tests and all six FFmpeg
+  end-to-end differential tests on Intel Iris Xe TGL GT2 / Mesa 26.1.7.
+- Separate Vulkan core, synchronization, and GPU-assisted validation reports
+  are clean for the qualified hardware/manual YCbCr paths.
+- Every measured 1080p and UHD decode/present process exceeded the 60 fps
+  source cadence; the slowest UHD process reached 198.771 fps. UHD AV1
+  hardware/manual conversion reached qualified parity in both execution
+  orders; the remaining ratios stay characterization because thermal spread
+  exceeds the promotion gate.
+
 ## [0.7.23] — 2026-08-28 (hosted ASAN-budget repair)
 
 This immutable patch replaces the blocked `v0.7.22` hosted candidate. Product

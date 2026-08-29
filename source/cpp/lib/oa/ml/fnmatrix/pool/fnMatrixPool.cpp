@@ -11,13 +11,13 @@
 #include <oa/runtime/executionSession.h>
 #include <oa/core/validation.h>
 
-#include <assert.h>
+#include <oa/core/std/assert.h>
 static oa::U32 divCeil(oa::U32 inA, oa::U32 inB) { return (inA + inB - 1) / inB; }
 
 // Pooling
 oa::Matrix oa::FnMatrix::avgPool2d(const oa::Matrix& inX, oa::I32 inKernelSize, oa::I32 inStride, oa::I32 inPadding) {
 	auto& ctx = oa::ExecutionSession::getActive();
-	assert(inX.rank() == 4 && "AvgPool2d requires 4D input [N, C, H, W]");
+	OA_REQUIRE_MSG(inX.rank() == 4, "AvgPool2d requires 4D input [N, C, H, W]");
 
 	oa::I64 N = inX.size(0);
 	oa::I64 C = inX.size(1);
@@ -89,7 +89,7 @@ oa::MaxPool2dResult oa::FnMatrix::maxPool2d(
 	const oa::Matrix& inX, oa::I32 inKernelSize, oa::I32 inStride, oa::I32 inPadding
 ) {
 	auto& ctx = oa::ExecutionSession::getActive();
-	assert(inX.rank() == 4 && "MaxPool2d requires 4D input [N, C, H, W]");
+	OA_REQUIRE_MSG(inX.rank() == 4, "MaxPool2d requires 4D input [N, C, H, W]");
 
 	oa::I64 N = inX.size(0);
 	oa::I64 C = inX.size(1);

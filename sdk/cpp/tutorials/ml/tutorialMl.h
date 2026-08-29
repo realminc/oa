@@ -24,9 +24,7 @@
 #include <oa/core/yaml.h>
 #include <oa/core/time.h>
 
-#include <cstdio>
-#include <cstdlib>
-#include <string>
+#include <stdlib.h>
 
 // ─── TutorialMlConfig ─────────────────────────────────────────────────────
 
@@ -71,7 +69,7 @@ inline oa::I32 tutorialPreParseDeviceIndex(int& inOutArgc, char** inOutArgv) {
 	for (int i = 1; i < inOutArgc; ++i) {
 		oa::String arg(inOutArgv[i]);
 		if ((arg == "--device-index" || arg == "-d") && i + 1 < inOutArgc) {
-			idx = static_cast<oa::I32>(std::strtol(inOutArgv[i + 1], nullptr, 10));
+			idx = static_cast<oa::I32>(::strtol(inOutArgv[i + 1], nullptr, 10));
 			// remove both tokens by shifting
 			for (int j = i; j + 2 < inOutArgc; ++j) {
 				inOutArgv[j] = inOutArgv[j + 2];
@@ -80,7 +78,7 @@ inline oa::I32 tutorialPreParseDeviceIndex(int& inOutArgc, char** inOutArgv) {
 			break;
 		}
 		if (arg.substr(0, 15) == "--device-index=") {
-			idx = static_cast<oa::I32>(std::strtol(arg.cStr() + 15, nullptr, 10));
+			idx = static_cast<oa::I32>(::strtol(arg.cStr() + 15, nullptr, 10));
 			// remove token by shifting
 			for (int j = i; j + 1 < inOutArgc; ++j) {
 				inOutArgv[j] = inOutArgv[j + 1];
@@ -168,20 +166,20 @@ struct TutorialTrainingLoop {
 // ─── header Printing ────────────────────────────────────────────────────────
 
 inline void tutorialPrintBanner(const char* inTitle, const char* inSubtitle = nullptr) {
-	std::printf("\n╔══════════════════════════════════════════════════════════════════╗\n");
-	std::printf("║  %-64s║\n", inTitle);
-	std::printf("╚══════════════════════════════════════════════════════════════════╝\n");
+	oa::print("\n╔══════════════════════════════════════════════════════════════════╗");
+	oa::print("║  {:<64}║", inTitle);
+	oa::print("╚══════════════════════════════════════════════════════════════════╝");
 	if (inSubtitle) {
-		std::printf("%s\n", inSubtitle);
+		oa::print("{}", inSubtitle);
 	}
 }
 
 inline void tutorialPrintTrainingHeader(oa::I32 inEpochs, oa::I32 inStepsPerEpoch, oa::I32 inBatchSize) {
 	if (inEpochs > 0) {
-		std::printf("training: %d epochs × %d steps/epoch · batch=%d\n",
+		oa::print("training: {} epochs × {} steps/epoch · batch={}",
 			inEpochs, inStepsPerEpoch, inBatchSize);
 	} else {
-		std::printf("training: %d steps · batch=%d\n",
+		oa::print("training: {} steps · batch={}",
 			inStepsPerEpoch * inEpochs, inBatchSize);
 	}
 }
@@ -202,20 +200,20 @@ inline void tutorialApplyDeviceIndex(const TutorialMlConfig& inCfg) {
 
 // Override config from env var (env wins over YAML)
 inline void tutorialApplyEnvOverrides(TutorialMlConfig& inOutCfg) {
-	if (const char* d = std::getenv("OA_DEVICE"); d && *d) {
+	if (const char* d = ::getenv("OA_DEVICE"); d && *d) {
 		char* end = nullptr;
-		unsigned long v = std::strtoul(d, &end, 10);
+		unsigned long v = ::strtoul(d, &end, 10);
 		if (end != d && *end == '\0') {
 			inOutCfg.deviceIndex = static_cast<oa::I32>(v);
 		}
 	}
-	if (const char* v = std::getenv("OA_TUTORIAL_BATCH_SIZE"); v && *v) {
-		inOutCfg.batchSize = static_cast<oa::I32>(std::strtol(v, nullptr, 10));
+	if (const char* v = ::getenv("OA_TUTORIAL_BATCH_SIZE"); v && *v) {
+		inOutCfg.batchSize = static_cast<oa::I32>(::strtol(v, nullptr, 10));
 	}
-	if (const char* v = std::getenv("OA_TUTORIAL_STEPS"); v && *v) {
-		inOutCfg.steps = static_cast<oa::I32>(std::strtol(v, nullptr, 10));
+	if (const char* v = ::getenv("OA_TUTORIAL_STEPS"); v && *v) {
+		inOutCfg.steps = static_cast<oa::I32>(::strtol(v, nullptr, 10));
 	}
-	if (const char* v = std::getenv("OA_TUTORIAL_LR"); v && *v) {
-		inOutCfg.lr = static_cast<oa::F32>(std::strtod(v, nullptr));
+	if (const char* v = ::getenv("OA_TUTORIAL_LR"); v && *v) {
+		inOutCfg.lr = static_cast<oa::F32>(::strtod(v, nullptr));
 	}
 }

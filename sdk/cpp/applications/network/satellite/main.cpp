@@ -29,15 +29,7 @@ struct Endpoint {
 };
 
 void usage() {
-	std::fprintf(stderr,
-		"usage:\n"
-		"  oa-satellite serve --listen 127.0.0.1:9100 --auth-key-hex <64 hex> [--once]\n"
-		"  oa-satellite probe 127.0.0.1:9100 --auth-key-hex <64 hex>\n"
-		"  oa-satellite benchmark --workload nlp-byte-transformer-step-v1 "
-		"--mode standalone --checkpoint <path>\n"
-		"  oa-satellite benchmark --peer 127.0.0.1:9100 --auth-key-hex <64 hex> "
-		"--workload nlp-byte-transformer-step-v1 --mode split-batch "
-		"--checkpoint <path>\n");
+	oa::print(oa::PrintStream::Error, "usage:\n" "  oa-satellite serve --listen 127.0.0.1:9100 --auth-key-hex <64 hex> [--once]\n" "  oa-satellite probe 127.0.0.1:9100 --auth-key-hex <64 hex>\n" "  oa-satellite benchmark --workload nlp-byte-transformer-step-v1 " "--mode standalone --checkpoint <path>\n" "  oa-satellite benchmark --peer 127.0.0.1:9100 --auth-key-hex <64 hex> " "--workload nlp-byte-transformer-step-v1 --mode split-batch " "--checkpoint <path>");
 }
 
 oa::Result<Endpoint> parseEndpoint(oa::StringView inText) {
@@ -109,22 +101,21 @@ int serve(int inArgc, char** inArgv) {
 	}
 	auto endpoint = parseEndpoint(endpointText);
 	if (endpoint.isError()) {
-		std::fprintf(stderr, "oa-satellite: %s\n", endpoint.getStatus().toString().cStr());
+		oa::print(oa::PrintStream::Error, "oa-satellite: {}", endpoint.getStatus().toString().cStr());
 		return 2;
 	}
 	if (endpoint->host != "127.0.0.1") {
-		std::fprintf(stderr,
-			"oa-satellite: non-loopback serving is disabled until an encrypted pairing channel ships\n");
+		oa::print(oa::PrintStream::Error, "oa-satellite: non-loopback serving is disabled until an encrypted pairing channel ships");
 		return 2;
 	}
 	auto secret = parseSecret(keyText);
 	if (secret.isError()) {
-		std::fprintf(stderr, "oa-satellite: %s\n", secret.getStatus().toString().cStr());
+		oa::print(oa::PrintStream::Error, "oa-satellite: {}", secret.getStatus().toString().cStr());
 		return 2;
 	}
 	auto listener = oa::TcpListener::bind(endpoint->host, endpoint->port, 8);
 	if (listener.isError()) {
-		std::fprintf(stderr, "oa-satellite: %s\n", listener.getStatus().toString().cStr());
+		oa::print(oa::PrintStream::Error, "oa-satellite: {}", listener.getStatus().toString().cStr());
 		return 1;
 	}
 	oa::EngineConfig engineConfig;
@@ -134,7 +125,7 @@ int serve(int inArgc, char** inArgv) {
 	engineConfig.numericMode = oa::NumericMode::Stable;
 	auto engineResult = oa::Engine::create(engineConfig);
 	if (engineResult.isError()) {
-		std::fprintf(stderr, "oa-satellite: %s\n",
+		oa::print(oa::PrintStream::Error, "oa-satellite: {}",
 			engineResult.getStatus().toString().cStr());
 		return 1;
 	}
@@ -146,28 +137,28 @@ int serve(int inArgc, char** inArgv) {
 	config.namedWork = oa::satelliteExecuteNlpWork;
 	oa::SatelliteServerSession server(*engine, oa::move(config));
 	const bool once = hasFlag(inArgc, inArgv, "--once");
-	std::printf("oa-satellite: listening on %s:%u\n",
+	oa::print("oa-satellite: listening on {}:{}",
 		endpoint->host.cStr(), static_cast<unsigned>(listener->port()));
 	std::fflush(stdout);
 	int exitCode = 0;
 	do {
 		auto accepted = listener->accept();
 		if (accepted.isError()) {
-			std::fprintf(stderr, "oa-satellite: %s\n",
+			oa::print(oa::PrintStream::Error, "oa-satellite: {}",
 				accepted.getStatus().toString().cStr());
 			exitCode = 1;
 			break;
 		}
 		const auto status = server.serve(oa::move(*accepted));
 		if (status.isError() and once) {
-			std::fprintf(stderr, "oa-satellite: %s\n", status.toString().cStr());
+			oa::print(oa::PrintStream::Error, "oa-satellite: {}", status.toString().cStr());
 			exitCode = 1;
 			break;
 		}
 	} while (not once);
 	const auto close = engine->close();
 	if (close.isError()) {
-		std::fprintf(stderr, "oa-satellite: engine close failed: %s\n",
+		oa::print(oa::PrintStream::Error, "oa-satellite: engine close failed: {}",
 			close.toString().cStr());
 		return 1;
 	}
@@ -188,21 +179,19 @@ int probe(int inArgc, char** inArgv) {
 	auto secret = parseSecret(keyText);
 	if (endpoint.isError() or secret.isError()) {
 		const auto& status = endpoint.isError() ? endpoint.getStatus() : secret.getStatus();
-		std::fprintf(stderr, "oa-satellite: %s\n", status.toString().cStr());
+		oa::print(oa::PrintStream::Error, "oa-satellite: {}", status.toString().cStr());
 		return 2;
 	}
 	oa::SatelliteSessionConfig config(oa::move(*secret), satelliteMac);
 	auto connected = oa::SatelliteClientSession::connect(
 		endpoint->host, endpoint->port, oa::move(config));
 	if (connected.isError()) {
-		std::fprintf(stderr, "oa-satellite: %s\n",
+		oa::print(oa::PrintStream::Error, "oa-satellite: {}",
 			connected.getStatus().toString().cStr());
 		return 1;
 	}
 	auto client = oa::move(*connected);
-	std::printf(
-		"protocol=%u epoch=%llu device=%s max_payload=%u max_resident=%llu "
-		"max_objects=%u max_inflight=%u\n",
+	oa::print("protocol={} epoch={} device={} max_payload={} max_resident={} " "max_objects={} max_inflight={}",
 		static_cast<unsigned>(oa::SatelliteProtocol::kVersion),
 		static_cast<unsigned long long>(client.probe().sessionEpoch),
 		client.probe().deviceName.cStr(),
@@ -212,7 +201,7 @@ int probe(int inArgc, char** inArgv) {
 		static_cast<unsigned>(client.probe().limits.maxInflight));
 	const auto close = client.close();
 	if (close.isError()) {
-		std::fprintf(stderr, "oa-satellite: %s\n", close.toString().cStr());
+		oa::print(oa::PrintStream::Error, "oa-satellite: {}", close.toString().cStr());
 		return 1;
 	}
 	return 0;
@@ -226,13 +215,7 @@ void printBenchmarkReport(
 {
 	const oa::F64 wallPerStep = inReport.completeWallMs
 		/ static_cast<oa::F64>(inReport.completedSteps);
-	std::printf(
-		"workload=%s mode=%s split=%s steps=%u optimizer_step=%llu "
-		"initial_loss=%.6f final_loss=%.6f accuracy=%.4f "
-		"wall_ms=%.3f wall_ms_per_step=%.3f local_kernel_selections=%llu "
-		"local_kernel_fallbacks=%llu remote_kernel_selections=%llu "
-		"remote_kernel_fallbacks=%llu checkpoint_round_trip=%s "
-		"generation_quality=%s remote_device=%s\n",
+	oa::print("workload={} mode={} split={} steps={} optimizer_step={} " "initial_loss={:.6f} final_loss={:.6f} accuracy={:.4f} " "wall_ms={:.3f} wall_ms_per_step={:.3f} local_kernel_selections={} " "local_kernel_fallbacks={} remote_kernel_selections={} " "remote_kernel_fallbacks={} checkpoint_round_trip={} " "generation_quality={} remote_device={}",
 		inWorkload, inMode,
 		std::strcmp(inMode, "split-batch") == 0 ? "32/32" : "64/0",
 		static_cast<unsigned>(inReport.completedSteps),
@@ -247,8 +230,7 @@ void printBenchmarkReport(
 		static_cast<unsigned long long>(inReport.remoteKernelFallbacks),
 		inReport.checkpointRoundTrip ? "PASS" : "FAIL",
 		inReport.generationQualityPassed ? "PASS" : "FAIL", inRemoteDevice);
-	std::printf("generated=%.*s\n",
-		static_cast<int>(inReport.generated.size()), inReport.generated.data());
+	oa::print("generated={}", inReport.generated);
 }
 
 int benchmark(int inArgc, char** inArgv) {
@@ -273,7 +255,7 @@ int benchmark(int inArgc, char** inArgv) {
 	engineConfig.numericMode = oa::NumericMode::Stable;
 	auto engineResult = oa::Engine::create(engineConfig);
 	if (engineResult.isError()) {
-		std::fprintf(stderr, "oa-satellite: %s\n",
+		oa::print(oa::PrintStream::Error, "oa-satellite: {}",
 			engineResult.getStatus().toString().cStr());
 		return 1;
 	}
@@ -283,7 +265,7 @@ int benchmark(int inArgc, char** inArgv) {
 	if (std::strcmp(mode, "standalone") == 0) {
 		auto report = oa::satelliteRunStandaloneNlp(*engine, coordinatorConfig);
 		if (report.isError()) {
-			std::fprintf(stderr, "oa-satellite: %s\n",
+			oa::print(oa::PrintStream::Error, "oa-satellite: {}",
 				report.getStatus().toString().cStr());
 			(void)engine->close();
 			return 1;
@@ -291,7 +273,7 @@ int benchmark(int inArgc, char** inArgv) {
 		printBenchmarkReport(*report, workload, mode, "none");
 		const auto engineClose = engine->close();
 		if (engineClose.isError()) {
-			std::fprintf(stderr, "oa-satellite: close failed: %s\n",
+			oa::print(oa::PrintStream::Error, "oa-satellite: close failed: {}",
 				engineClose.toString().cStr());
 			return 1;
 		}
@@ -306,7 +288,7 @@ int benchmark(int inArgc, char** inArgv) {
 	auto secret = parseSecret(keyText);
 	if (endpoint.isError() or secret.isError()) {
 		const auto& status = endpoint.isError() ? endpoint.getStatus() : secret.getStatus();
-		std::fprintf(stderr, "oa-satellite: %s\n", status.toString().cStr());
+		oa::print(oa::PrintStream::Error, "oa-satellite: {}", status.toString().cStr());
 		(void)engine->close();
 		return 2;
 	}
@@ -316,7 +298,7 @@ int benchmark(int inArgc, char** inArgv) {
 	auto connected = oa::SatelliteClientSession::connect(
 		endpoint->host, endpoint->port, oa::move(sessionConfig));
 	if (connected.isError()) {
-		std::fprintf(stderr, "oa-satellite: %s\n",
+		oa::print(oa::PrintStream::Error, "oa-satellite: {}",
 			connected.getStatus().toString().cStr());
 		(void)engine->close();
 		return 1;
@@ -326,7 +308,7 @@ int benchmark(int inArgc, char** inArgv) {
 	auto report = oa::satelliteRunSplitBatchNlp(
 		*engine, client, coordinatorConfig);
 	if (report.isError()) {
-		std::fprintf(stderr, "oa-satellite: %s\n",
+		oa::print(oa::PrintStream::Error, "oa-satellite: {}",
 			report.getStatus().toString().cStr());
 		(void)client.close();
 		(void)engine->close();
@@ -338,7 +320,7 @@ int benchmark(int inArgc, char** inArgv) {
 	const auto engineClose = engine->close();
 	if (close.isError() or engineClose.isError()) {
 		const auto& status = close.isError() ? close : engineClose;
-		std::fprintf(stderr, "oa-satellite: close failed: %s\n",
+		oa::print(oa::PrintStream::Error, "oa-satellite: close failed: {}",
 			status.toString().cStr());
 		return 1;
 	}

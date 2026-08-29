@@ -6,8 +6,7 @@
 #include <oa/ui/viewer.h>
 #include <oa/core/paths.h>
 
-#include <cstdlib>
-
+#include <stdlib.h>
 int main(int argc, char** argv) {
 	oa::ViewerConfig config;
 	config.title = "OA detection Image";

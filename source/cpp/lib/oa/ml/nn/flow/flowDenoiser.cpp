@@ -1,5 +1,5 @@
 #include <oa/ml/nn/flow/flowDenoiser.h>
-#include <oa/core/assert.h>
+#include <oa/core/std/assert.h>
 #include <oa/core/std/scalarMath.h>
 
 namespace oa {

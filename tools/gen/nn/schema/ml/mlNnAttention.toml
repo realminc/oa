@@ -160,6 +160,5 @@ oa::Matrix oa::MultiHeadAttention::forwardFlash(const oa::Matrix& inInput) {
 notes = "Multi-head scaled dot-product self-attention with explicit causal/bidirectional visibility and interchangeable standard/fused causal Flash backends."
 extra_includes = """
 #include <oa/ml/fnMatrix.h>
-#include <oa/core/assert.h>
 #include <oa/core/std/scalarMath.h>
 """

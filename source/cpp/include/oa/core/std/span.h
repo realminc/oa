@@ -6,7 +6,7 @@
 // contract. A null pointer is valid only for an empty span.
 
 #include <oa/core/std/array.h>
-#include <oa/core/assert.h>
+#include <oa/core/std/assert.h>
 #include <oa/core/std/typeTraits.h>
 
 namespace oa {

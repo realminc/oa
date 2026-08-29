@@ -288,7 +288,7 @@ void oa::UploadRing::abandon_() noexcept {
 		{
 			OaLogError(
 				oa::LogComponent::Runtime,
-				"oa::UploadRing abandonment failed to cancel open batch: %s",
+				"oa::UploadRing abandonment failed to cancel open batch: {}",
 				status.getMessage().cStr()
 			);
 		}

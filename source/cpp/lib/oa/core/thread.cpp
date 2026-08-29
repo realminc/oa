@@ -1,6 +1,6 @@
 #include <oa/core/thread.h>
 
-#include <oa/core/assert.h>
+#include <oa/core/std/assert.h>
 
 #if defined(OA_PLATFORM_WINDOWS)
 	#ifndef NOMINMAX

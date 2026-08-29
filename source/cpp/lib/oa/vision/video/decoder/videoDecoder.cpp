@@ -1,6 +1,6 @@
 // OA Vision — hardware Video Decoder Implementation
 // VK_KHR_video_decode_h264 / h265 / av1
-// Zero-copy: compressed bitstream → vkImage (NV12) → compute shader
+// Zero-copy: compressed bitstream → native 4:2:0 VkImage (NV12/P010) → compute
 
 #include <oa/vision/videoDecoder.h>
 #include "videoDecoderImpl.h"
@@ -21,13 +21,6 @@
 #include "../codec/vcpAv1.h"
 #include "videoDecoderProfile.h"
 
-static oa::F32 clampUnit(oa::F32 inValue)
-{
-	if (inValue < 0.0f) return 0.0f;
-	if (inValue > 1.0f) return 1.0f;
-	return inValue;
-}
-
 static oa::Status closeDecoderAfterCreateFailure(
 	oa::VideoDecoder& inDecoder,
 	const oa::Status& inCreateFailure)
@@ -40,28 +33,6 @@ static oa::Status closeDecoderAfterCreateFailure(
 	message += "; cleanup also failed: ";
 	message += closeStatus.toString();
 	return oa::Status::error(closeStatus.getCode(), oa::move(message));
-}
-
-static VkSamplerYcbcrModelConversion toVkYcbcrModel(oa::YCbCrModel inColorSpace, oa::U32 inWidth, oa::U32 inHeight)
-{
-	if (inColorSpace == oa::YCbCrModel::BT2020) {
-		return VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_2020;
-	}
-	if (inColorSpace == oa::YCbCrModel::BT709 || inWidth >= 1280 || inHeight >= 720) {
-		return VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_709;
-	}
-	return VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_601;
-}
-
-static oa::U32 toVisionColorSpace(oa::YCbCrModel inColorSpace, oa::U32 inWidth, oa::U32 inHeight)
-{
-	if (inColorSpace == oa::YCbCrModel::BT2020) {
-		return 2;
-	}
-	if (inColorSpace == oa::YCbCrModel::BT709 || inWidth >= 1280 || inHeight >= 720) {
-		return 1;
-	}
-	return 0;
 }
 
 static void attachCodecCapabilities(
@@ -160,17 +131,45 @@ static bool hasFormatWithUsage(
 	return false;
 }
 
-static const VkVideoFormatPropertiesKHR* findFormatWithUsage(
-	const oa::Vector<VkVideoFormatPropertiesKHR>& inFormats,
-	VkFormat inFormat,
-	VkImageUsageFlags inUsage)
+static VkFormat decodedFormatForProfile(const oa::VideoProfile& inProfile)
 {
-	for (const auto& format : inFormats) {
-		if (format.format == inFormat && (format.imageUsageFlags & inUsage) == inUsage) {
-			return &format;
-		}
+	if (inProfile.chromaSubsampling != oa::VideoChromaSubsampling::Yuv420
+		or inProfile.lumaBitDepth != inProfile.chromaBitDepth) {
+		return VK_FORMAT_UNDEFINED;
 	}
-	return nullptr;
+	switch (inProfile.lumaBitDepth) {
+	case oa::VideoBitDepth::Bit8:
+		return VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
+	case oa::VideoBitDepth::Bit10:
+		return VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16;
+	case oa::VideoBitDepth::Bit12:
+		return VK_FORMAT_G12X4_B12X4R12X4_2PLANE_420_UNORM_3PACK16;
+	}
+	return VK_FORMAT_UNDEFINED;
+}
+
+static VkFormat decodedLumaPlaneFormat(VkFormat inFormat)
+{
+	switch (inFormat) {
+	case VK_FORMAT_G8_B8R8_2PLANE_420_UNORM: return VK_FORMAT_R8_UNORM;
+	case VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16:
+		return VK_FORMAT_R10X6_UNORM_PACK16;
+	case VK_FORMAT_G12X4_B12X4R12X4_2PLANE_420_UNORM_3PACK16:
+		return VK_FORMAT_R12X4_UNORM_PACK16;
+	default: return VK_FORMAT_UNDEFINED;
+	}
+}
+
+static VkFormat decodedChromaPlaneFormat(VkFormat inFormat)
+{
+	switch (inFormat) {
+	case VK_FORMAT_G8_B8R8_2PLANE_420_UNORM: return VK_FORMAT_R8G8_UNORM;
+	case VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16:
+		return VK_FORMAT_R10X6G10X6_UNORM_2PACK16;
+	case VK_FORMAT_G12X4_B12X4R12X4_2PLANE_420_UNORM_3PACK16:
+		return VK_FORMAT_R12X4G12X4_UNORM_2PACK16;
+	default: return VK_FORMAT_UNDEFINED;
+	}
 }
 
 static oa::Status queryVideoFormats(
@@ -340,17 +339,17 @@ static oa::Status createDecodeSessionParameters(
 				? &av1TimingInfo : nullptr;
 
 			OaLogInfo(oa::LogComponent::Video,
-				"AV1 session params: profile=%u maxW=%u maxH=%u ohBits=%u "
-				"cdef=%u lr=%u orderHint=%u refMvs=%u sb128=%u",
+				"AV1 session params: profile={} maxW={} maxH={} ohBits={} "
+				"cdef={} lr={} orderHint={} refMvs={} sb128={}",
 				av1SequenceHeader.seq_profile,
 				av1SequenceHeader.max_frame_width_minus_1 + 1U,
 				av1SequenceHeader.max_frame_height_minus_1 + 1U,
 				av1SequenceHeader.order_hint_bits_minus_1,
-				av1SequenceHeader.flags.enable_cdef,
-				av1SequenceHeader.flags.enable_restoration,
-				av1SequenceHeader.flags.enable_order_hint,
-				av1SequenceHeader.flags.enable_ref_frame_mvs,
-				av1SequenceHeader.flags.use_128x128_superblock);
+				static_cast<oa::U32>(av1SequenceHeader.flags.enable_cdef),
+				static_cast<oa::U32>(av1SequenceHeader.flags.enable_restoration),
+				static_cast<oa::U32>(av1SequenceHeader.flags.enable_order_hint),
+				static_cast<oa::U32>(av1SequenceHeader.flags.enable_ref_frame_mvs),
+				static_cast<oa::U32>(av1SequenceHeader.flags.use_128x128_superblock));
 
 			av1Info.sType = VK_STRUCTURE_TYPE_VIDEO_DECODE_AV1_SESSION_PARAMETERS_CREATE_INFO_KHR;
 			av1Info.pStdSequenceHeader = &av1SequenceHeader;
@@ -550,6 +549,11 @@ oa::U32 oa::VideoDecoder::getCodedHeight() const noexcept
 	return impl_ ? impl_->codedHeight : 0U;
 }
 
+oa::U64 oa::VideoDecoder::getHardwareYcbcrDispatchCount() const noexcept
+{
+	return impl_ ? impl_->hardwareYcbcrDispatchCount : 0U;
+}
+
 oa::VideoResourcePath oa::VideoDecoder::getResourcePath() const noexcept
 {
 	return impl_ ? impl_->resourcePath : oa::VideoResourcePath::Unavailable;
@@ -706,24 +710,31 @@ oa::Result<oa::VideoDecodeCapabilities> oa::VideoDecoder::queryDecodeCapabilitie
 
 	OA_RETURN_IF_ERROR(queryVideoFormats(
 		instanceDispatch, phys, profile, dpbUsage, out.dpbFormats));
+	const VkFormat decodedFormat = decodedFormatForProfile(resolved);
 	if (out.oaDecodePathImplemented) {
-		out.referencePictureFormat = VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
-		out.pictureFormat = VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
+		out.referencePictureFormat = decodedFormat;
+		out.pictureFormat = decodedFormat;
 	} else {
 		if (not out.dpbFormats.empty()) {
 			out.referencePictureFormat = out.dpbFormats[0].format;
 		}
 	}
+	out.supportsDecodedDpb = decodedFormat != VK_FORMAT_UNDEFINED
+		and hasFormatWithUsage(out.dpbFormats, decodedFormat, dpbUsage);
 	out.supportsNv12Dpb = hasFormatWithUsage(out.dpbFormats, VK_FORMAT_G8_B8R8_2PLANE_420_UNORM, dpbUsage);
 
 	oa::Vector<VkVideoFormatPropertiesKHR> dpbSampledFormats;
 	OA_RETURN_IF_ERROR(queryVideoFormats(
 		instanceDispatch, phys, profile, dpbSampledUsage, dpbSampledFormats));
+	out.supportsDecodedDpbSampled = decodedFormat != VK_FORMAT_UNDEFINED
+		and hasFormatWithUsage(dpbSampledFormats, decodedFormat, dpbSampledUsage);
 	out.supportsNv12DpbSampled = hasFormatWithUsage(dpbSampledFormats, VK_FORMAT_G8_B8R8_2PLANE_420_UNORM, dpbSampledUsage);
 
 	oa::Vector<VkVideoFormatPropertiesKHR> dpbTransferFormats;
 	OA_RETURN_IF_ERROR(queryVideoFormats(
 		instanceDispatch, phys, profile, dpbTransferUsage, dpbTransferFormats));
+	out.supportsDecodedDpbTransferSrc = decodedFormat != VK_FORMAT_UNDEFINED
+		and hasFormatWithUsage(dpbTransferFormats, decodedFormat, dpbTransferUsage);
 	out.supportsNv12DpbTransferSrc =
 		hasFormatWithUsage(dpbTransferFormats, VK_FORMAT_G8_B8R8_2PLANE_420_UNORM, dpbTransferUsage);
 
@@ -732,6 +743,8 @@ oa::Result<oa::VideoDecodeCapabilities> oa::VideoDecoder::queryDecodeCapabilitie
 	if (out.pictureFormat == VK_FORMAT_UNDEFINED and not out.outputFormats.empty()) {
 		out.pictureFormat = out.outputFormats[0].format;
 	}
+	out.supportsDecodedOutputSampled = decodedFormat != VK_FORMAT_UNDEFINED
+		and hasFormatWithUsage(out.outputFormats, decodedFormat, outputSampledUsage);
 	out.supportsNv12OutputSampled = hasFormatWithUsage(out.outputFormats, VK_FORMAT_G8_B8R8_2PLANE_420_UNORM, outputSampledUsage);
 	const bool levelWithinDeviceMaximum =
 		not resolved.hasLevel or resolved.level <= out.maxLevel;
@@ -742,9 +755,9 @@ oa::Result<oa::VideoDecodeCapabilities> oa::VideoDecoder::queryDecodeCapabilitie
 	const bool levelAccepted =
 		levelWithinDeviceMaximum or qualifiedLevelOverride;
 	OaLogDebug(oa::LogComponent::Video,
-		"VideoDecoder exact profile: codec=%u profile=%u chroma=%u "
-		"lumaDepth=%u chromaDepth=%u level=%u hasLevel=%d maxLevel=%u "
-		"hardware=%d oaPath=%d nv12Dpb=%d levelAccepted=%d",
+		"VideoDecoder exact profile: codec={} profile={} chroma={} "
+		"lumaDepth={} chromaDepth={} level={} hasLevel={} maxLevel={} "
+		"hardware={} oaPath={} decodedFormat={} decodedDpb={} levelAccepted={}",
 		static_cast<unsigned>(resolved.codec),
 		static_cast<unsigned>(resolved.standardProfile),
 		static_cast<unsigned>(resolved.chromaSubsampling),
@@ -755,10 +768,12 @@ oa::Result<oa::VideoDecodeCapabilities> oa::VideoDecoder::queryDecodeCapabilitie
 		out.maxLevel,
 		static_cast<int>(out.hardwareProfileSupported),
 		static_cast<int>(out.oaDecodePathImplemented),
-		static_cast<int>(out.supportsNv12Dpb),
+		static_cast<unsigned>(decodedFormat),
+		static_cast<int>(out.supportsDecodedDpb),
 		static_cast<int>(levelAccepted));
 	out.supported =
-		out.hardwareProfileSupported and out.oaDecodePathImplemented and out.supportsNv12Dpb and levelAccepted;
+		out.hardwareProfileSupported and out.oaDecodePathImplemented
+		and out.supportsDecodedDpb and levelAccepted;
 
 	return out;
 }
@@ -814,7 +829,7 @@ oa::Result<oa::VideoDecoder> oa::VideoDecoder::create(
 			oa::EngineDeviceAccess::get(inRt), resolved, caps)) {
 		OaLogInfo(oa::LogComponent::Video,
 			"Using qualified Intel TGL VP9 level override: "
-			"streamLevel=%u driverMaxLevel=%u extent=%ux%u",
+			"streamLevel={} driverMaxLevel={} extent={}x{}",
 			resolved.level,
 			caps.maxLevel,
 			resolved.width,
@@ -824,8 +839,17 @@ oa::Result<oa::VideoDecoder> oa::VideoDecoder::create(
 		resolved.height > caps.maxHeight) {
 		return oa::Status::error(oa::StatusCode::InvalidArgument, "Video decode extent is unsupported");
 	}
-	if (!caps.supportsNv12Dpb) {
-		return oa::Status::error(oa::StatusCode::Unavailable, "vulkan Video decoder does not expose NV12 DPB support");
+	if (!caps.supportsDecodedDpb) {
+		return oa::Status::error(oa::StatusCode::Unavailable,
+			"vulkan Video decoder does not expose the required decoded-picture format");
+	}
+	decoder.impl_->decodedFormat = caps.referencePictureFormat;
+	decoder.impl_->decodedYFormat = decodedLumaPlaneFormat(caps.referencePictureFormat);
+	decoder.impl_->decodedUvFormat = decodedChromaPlaneFormat(caps.referencePictureFormat);
+	if (decoder.impl_->decodedYFormat == VK_FORMAT_UNDEFINED
+		or decoder.impl_->decodedUvFormat == VK_FORMAT_UNDEFINED) {
+		return oa::Status::error(oa::StatusCode::Unavailable,
+			"OA has no plane-view mapping for the decoded-picture format");
 	}
 
 	auto& vkEngine = inRt;
@@ -868,15 +892,15 @@ oa::Result<oa::VideoDecoder> oa::VideoDecoder::create(
 		: caps.maxActiveReferencePictures;
 	const oa::U32 finalMaxActiveReferences = maxActiveReferences == 0 && caps.maxActiveReferencePictures > 0 ? 1 : maxActiveReferences;
 	OaLogInfo(oa::LogComponent::Video,
-		"VideoDecoder caps: maxDpbSlots=%u MaxActiveRefs=%u "
-		"DpbAndOutputCoincide=%d DpbAndOutputDistinct=%d "
-		"DpbSampled=%d DpbTransferSrc=%d OutputSampled=%d",
+		"VideoDecoder caps: maxDpbSlots={} MaxActiveRefs={} "
+		"DpbAndOutputCoincide={} DpbAndOutputDistinct={} "
+		"DpbSampled={} DpbTransferSrc={} OutputSampled={}",
 		maxDpbSlots, finalMaxActiveReferences,
 		static_cast<int>(caps.supportsDpbAndOutputCoincide ? 1 : 0),
 		static_cast<int>(caps.supportsDpbAndOutputDistinct ? 1 : 0),
-		static_cast<int>(caps.supportsNv12DpbSampled ? 1 : 0),
-		static_cast<int>(caps.supportsNv12DpbTransferSrc ? 1 : 0),
-		static_cast<int>(caps.supportsNv12OutputSampled ? 1 : 0));
+		static_cast<int>(caps.supportsDecodedDpbSampled ? 1 : 0),
+		static_cast<int>(caps.supportsDecodedDpbTransferSrc ? 1 : 0),
+		static_cast<int>(caps.supportsDecodedOutputSampled ? 1 : 0));
 
 	VkExtent2D codedExtent = {decoder.impl_->codedWidth, decoder.impl_->codedHeight};
 
@@ -974,53 +998,72 @@ oa::Result<oa::VideoDecoder> oa::VideoDecoder::create(
 	const bool av1PreferDistinct =
 		resolved.codec == oa::VideoCodec::AV1
 		and caps.supportsDpbAndOutputDistinct
-		and caps.supportsNv12OutputSampled;
+		and caps.supportsDecodedOutputSampled;
+
+	VkFormatProperties2 ycbcrFormatProperties = {};
+	ycbcrFormatProperties.sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2;
+	const bool hasSamplerYcbcr = hasHardwareYCbCrConversion(vkEngine);
+	if (hasSamplerYcbcr) {
+		instanceDispatch.vkGetPhysicalDeviceFormatProperties2(
+			static_cast<VkPhysicalDevice>(
+				oa::EngineDeviceAccess::get(vkEngine).physicalDevice),
+			caps.referencePictureFormat,
+			&ycbcrFormatProperties);
+	}
+	const VkFormatFeatureFlags requiredYcbcrFeatures =
+		VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT
+		| VK_FORMAT_FEATURE_MIDPOINT_CHROMA_SAMPLES_BIT;
+	const bool supportsDefaultHardwareYcbcr = hasSamplerYcbcr
+		and (ycbcrFormatProperties.formatProperties.optimalTilingFeatures
+			& requiredYcbcrFeatures) == requiredYcbcrFeatures;
 
 	// CoincidentFastStaging: only safe when the video queue has transfer
 	// capability (copy stays on the same queue, no cross-family hazard).
 	// When the video queue lacks transfer and is a different family, the
 	// cross-queue DPB→staging copy has caused device-loss on Intel ANV.
-	const bool useCoincideStaging =
+	const bool useDirectCoincideSampling =
 		not av1PreferDistinct
+		// AV1 must release its coincident DPB before color conversion so the
+		// following decode can overlap. Hardware YCbCr still samples the ordinary
+		// staging image; only direct DPB sampling is excluded here.
+		and resolved.codec != oa::VideoCodec::AV1
 		and caps.supportsDpbAndOutputCoincide
-		and caps.supportsNv12DpbTransferSrc
+		and caps.supportsDecodedDpbSampled
+		and supportsDefaultHardwareYcbcr;
+
+	const bool useCoincideStaging =
+		not useDirectCoincideSampling
+		and not av1PreferDistinct
+		and caps.supportsDpbAndOutputCoincide
+		and caps.supportsDecodedDpbTransferSrc
 		and videoQueueSupportsTransfer;
 
 	// DistinctComputeConvert: decode into a distinct output image, then
-	// NV12→RGBA via compute shader on the compute queue. Safe for iGPUs
+	// decoded YUV→RGBA via compute shader on the compute queue. Safe for iGPUs
 	// because it avoids DPB image copies entirely — the distinct output
 	// image is created with CONCURRENT sharing across video+compute families.
 	const bool useDistinctOutput =
-		not useCoincideStaging
+		not useDirectCoincideSampling
+		and not useCoincideStaging
 		and caps.supportsDpbAndOutputDistinct
-		and caps.supportsNv12OutputSampled;
+		and caps.supportsDecodedOutputSampled;
 
 	// CoincidentComputeStaging: copy the decoded DPB layer into an ordinary
-	// NV12 image on the compute queue, then sample the staging image planes.
+	// native decoded image on the compute queue, then sample its staging planes.
 	// Prefer this over direct DPB sampling when TRANSFER_SRC is available.
 	const bool useCoincideComputeStaging =
-		not useCoincideStaging
+		not useDirectCoincideSampling
+		and not useCoincideStaging
 		and not useDistinctOutput
 		and caps.supportsDpbAndOutputCoincide
-		and caps.supportsNv12DpbTransferSrc;
-
-	// DirectCoincidentSampling: sample the DPB directly through a YCbCr
-	// conversion sampler (COLOR_BIT aspect, no R8/R8G8 plane views). This is
-	// only used when no transfer-based or distinct-output path is available.
-	const bool useDirectCoincideSampling =
-		not useCoincideStaging
-		and not useDistinctOutput
-		and not useCoincideComputeStaging
-		and caps.supportsDpbAndOutputCoincide
-		and caps.supportsNv12DpbSampled
-		and hasHardwareYCbCrConversion(vkEngine);
+		and caps.supportsDecodedDpbTransferSrc;
 
 	// Determine the resource path enum.
 	oa::VideoResourcePath resourcePath = oa::VideoResourcePath::Unavailable;
-	if (useCoincideStaging)              resourcePath = oa::VideoResourcePath::CoincidentFastStaging;
+	if (useDirectCoincideSampling)       resourcePath = oa::VideoResourcePath::DirectCoincidentSampling;
+	else if (useCoincideStaging)         resourcePath = oa::VideoResourcePath::CoincidentFastStaging;
 	else if (useDistinctOutput)          resourcePath = oa::VideoResourcePath::DistinctComputeConvert;
 	else if (useCoincideComputeStaging)  resourcePath = oa::VideoResourcePath::CoincidentComputeStaging;
-	else if (useDirectCoincideSampling)  resourcePath = oa::VideoResourcePath::DirectCoincidentSampling;
 
 	if (resourcePath == oa::VideoResourcePath::Unavailable) {
 		return closeDecoderAfterCreateFailure(decoder, oa::Status::error(
@@ -1034,7 +1077,10 @@ oa::Result<oa::VideoDecoder> oa::VideoDecoder::create(
 	if (useDirectCoincideSampling) {
 		dpbUsage |= VK_IMAGE_USAGE_SAMPLED_BIT;
 	}
-	if (useCoincideStaging or useCoincideComputeStaging) {
+	// Decoder readback and the explicitly requested manual conversion fallback
+	// both need a transfer source even when direct hardware sampling is the
+	// selected default path.
+	if (caps.supportsDecodedDpbTransferSrc) {
 		dpbUsage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
 	}
 
@@ -1060,7 +1106,8 @@ oa::Result<oa::VideoDecoder> oa::VideoDecoder::create(
 		"Unavailable",
 	};
 
-	if (useCoincideStaging or useCoincideComputeStaging) {
+	if (useCoincideStaging or useCoincideComputeStaging
+		or (useDirectCoincideSampling and caps.supportsDecodedDpbTransferSrc)) {
 		oa::Status stagingStatus = decoder.createSampleStagingImages(
 			vkEngine,
 			profile,
@@ -1083,10 +1130,11 @@ oa::Result<oa::VideoDecoder> oa::VideoDecoder::create(
 			return closeDecoderAfterCreateFailure(decoder, outputStatus);
 		}
 	}
+	decoder.impl_->hardwareSamplesDpbDirectly = useDirectCoincideSampling;
 
 	OaLogInfo(oa::LogComponent::Video,
-		"VideoDecoder: resource path = %s (videoQF=%u computeQF=%u dedicated=%s transfer=%s "
-		"coincide=%s distinct=%s)",
+		"VideoDecoder: resource path = {} (videoQF={} computeQF={} dedicated={} transfer={} "
+		"coincide={} distinct={})",
 		kResourcePathNames[static_cast<oa::U32>(resourcePath)],
 		videoQueueFamily,
 		oa::EngineDeviceAccess::get(vkEngine).queues.computeQueueFamily,
@@ -1366,6 +1414,10 @@ oa::Status oa::VideoDecoder::close()
 			retainError(waitStatus);
 		}
 	}
+	if (impl_->lastYcbcrEvent.isValid()) {
+		retainError(impl_->lastYcbcrEvent.wait());
+	}
+	retainError(destroyHardwareYcbcr_());
 
 	// drain per-CB fences that actually have a pending submit. After flush()
 	// fences are left signaled; an unsignaled fence with no in-flight work
@@ -1420,22 +1472,6 @@ oa::Status oa::VideoDecoder::close()
 	impl_->currentBitstreamIndex = 0;
 	impl_->dpb.destroy();
 
-	if (impl_->conversionPipeline) {
-		oa::EngineDeviceAccess::get(*impl_->engine).deviceDispatch.vkDestroyPipeline(device, impl_->conversionPipeline, nullptr);
-		impl_->conversionPipeline = VK_NULL_HANDLE;
-	}
-	if (impl_->ycbcrSampler) {
-		oa::EngineDeviceAccess::get(*impl_->engine).deviceDispatch.vkDestroySampler(device, impl_->ycbcrSampler, nullptr);
-		impl_->ycbcrSampler = VK_NULL_HANDLE;
-	}
-	if (impl_->ycbcrSamplerNearest) {
-		oa::EngineDeviceAccess::get(*impl_->engine).deviceDispatch.vkDestroySampler(device, impl_->ycbcrSamplerNearest, nullptr);
-		impl_->ycbcrSamplerNearest = VK_NULL_HANDLE;
-	}
-	if (impl_->ycbcrConversion) {
-		oa::EngineDeviceAccess::get(*impl_->engine).deviceDispatch.vkDestroySamplerYcbcrConversion(device, impl_->ycbcrConversion, nullptr);
-		impl_->ycbcrConversion = VK_NULL_HANDLE;
-	}
 	for (VkImageView& view : impl_->cachedNv12YViews) {
 		if (view) { oa::EngineDeviceAccess::get(*impl_->engine).deviceDispatch.vkDestroyImageView(device, view, nullptr); view = VK_NULL_HANDLE; }
 	}
@@ -1509,6 +1545,7 @@ oa::Status oa::VideoDecoder::close()
 	impl_->sampleImageLayouts.fill(VK_IMAGE_LAYOUT_UNDEFINED);
 	impl_->useSampleStaging = false;
 	impl_->copySampleStagingOnVideoQueue = false;
+	impl_->hardwareSamplesDpbDirectly = false;
 	for (oa::Usize i = 0; i < impl_->rgbImages.size(); ++i) {
 		VkImage image = impl_->rgbImages[i];
 		void* allocation = i < impl_->rgbAllocations.size() ? impl_->rgbAllocations[i] : nullptr;

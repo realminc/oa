@@ -53,6 +53,14 @@ const oa::ComputeKernel* oa::computeKernelFindByName(const char* inName) {
 
 bool oa::computeKernelUsesDefaultBindlessPipeline(const char* inName)
 {
+	if (inName == nullptr) return false;
+	// Sampler YCbCr conversion is deliberately hybrid: global bindless set 0
+	// plus a decoder-owned immutable combined-image sampler at set 1. Creating
+	// either module with the default one-set layout is invalid.
+	if (oa::strcmp(inName, "CvtNv12YcbcrToRgba") == 0
+		or oa::strcmp(inName, "CvtNv12YcbcrToBf16") == 0) {
+		return false;
+	}
 	// Render shaders (vertex/fragment) use a graphics pipeline layout,
 	// not the compute bindless pipeline. Exclude from compute dispatch.
 	const oa::StringView name(inName);

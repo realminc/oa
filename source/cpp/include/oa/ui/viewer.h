@@ -315,6 +315,7 @@ private:
 	oa::Event audioAnalysisReady_;
 	ViewerAudioView audioView_ = ViewerAudioView::Waveform;
 	UiTabBarState audioViewTabs_;
+	oa::Optional<oa::F32> pendingTimelineSeekFraction_;
 	ImageViewMode imageMode_ = ImageViewMode::RGB;
 
 	Navigation nav_;
@@ -350,14 +351,17 @@ private:
 	[[nodiscard]] bool isMediaLooping() const noexcept;
 	[[nodiscard]] oa::U64 mediaDurationUs() const noexcept;
 	[[nodiscard]] oa::U64 mediaPositionUs() const noexcept;
+	[[nodiscard]] oa::F32 mediaPositionFraction() const noexcept;
 	[[nodiscard]] PixelRect timelineRect() const noexcept;
 	[[nodiscard]] PixelRect temporalButtonsRect() const noexcept;
 	[[nodiscard]] PixelRect audioViewTabRect() const noexcept;
 	[[nodiscard]] PixelRect audioVisualizationRect() const noexcept;
 	void toggleMediaPlayback();
 	void toggleMediaLoop();
+	void pauseMedia();
 	void seekMediaUs(oa::U64 inTimestampUs);
 	void seekMediaFraction(oa::F32 inFraction);
+	void handleTimelineSeek(oa::F32 inFraction, bool inChanged, bool inActive);
 	void stepTemporal(oa::I32 inAmount);
 	[[nodiscard]] oa::Status configureNavigation();
 	[[nodiscard]] oa::Status configureOverlay();

@@ -132,15 +132,60 @@ bool hasFormatWithUsage(
 }
 
 
+struct H264LevelLimit {
+	StdVideoH264LevelIdc level;
+	oa::U64 maxMacroblocksPerSecond;
+	oa::U64 maxFrameMacroblocks;
+};
+
+
+// ITU-T H.264 Table A-1 limits for OA's currently useful progressive High
+// profile range. Frame dimensions also obey the A.3 width/height square bound.
+constexpr StdVideoH264LevelIdc h264LevelForExtent(
+	oa::U32 inWidth,
+	oa::U32 inHeight,
+	oa::U32 inFrameRate)
+{
+	constexpr H264LevelLimit limits[] = {
+		{STD_VIDEO_H264_LEVEL_IDC_4_2, 522'240ULL, 8'704ULL},
+		{STD_VIDEO_H264_LEVEL_IDC_5_0, 589'824ULL, 22'080ULL},
+		{STD_VIDEO_H264_LEVEL_IDC_5_1, 983'040ULL, 36'864ULL},
+		{STD_VIDEO_H264_LEVEL_IDC_5_2, 2'073'600ULL, 36'864ULL},
+		{STD_VIDEO_H264_LEVEL_IDC_6_0, 4'177'920ULL, 139'264ULL},
+		{STD_VIDEO_H264_LEVEL_IDC_6_1, 8'355'840ULL, 139'264ULL},
+		{STD_VIDEO_H264_LEVEL_IDC_6_2, 16'711'680ULL, 139'264ULL},
+	};
+	if (inWidth == 0U or inHeight == 0U or inFrameRate == 0U) {
+		return STD_VIDEO_H264_LEVEL_IDC_INVALID;
+	}
+	const oa::U64 widthMbs = (static_cast<oa::U64>(inWidth) + 15ULL) / 16ULL;
+	const oa::U64 heightMbs = (static_cast<oa::U64>(inHeight) + 15ULL) / 16ULL;
+	const oa::U64 frameMbs = widthMbs * heightMbs;
+	for (const H264LevelLimit& limit : limits) {
+		if (frameMbs <= limit.maxFrameMacroblocks
+			and frameMbs <= limit.maxMacroblocksPerSecond / inFrameRate
+			and widthMbs * widthMbs <= 8ULL * limit.maxFrameMacroblocks
+			and heightMbs * heightMbs <= 8ULL * limit.maxFrameMacroblocks) {
+			return limit.level;
+		}
+	}
+	return STD_VIDEO_H264_LEVEL_IDC_INVALID;
+}
+
+
+static_assert(h264LevelForExtent(1920U, 1080U, 60U)
+	== STD_VIDEO_H264_LEVEL_IDC_4_2);
+static_assert(h264LevelForExtent(3840U, 2160U, 60U)
+	== STD_VIDEO_H264_LEVEL_IDC_5_2);
+
+
 // Manufactures a minimal valid H.264 SPS for an encode session.
 // The encoder side WRITES this (vs the decoder which parses it from the
 // bitstream); we only fill the fields a baseline encoder needs.
 //
-// level is picked conservatively at 4.2 (covers 1080p60) — the cap query
-// has already bounded width/height so the level is always over-provisioned
-// rather than under-provisioned. Refine when we wire user-facing level
-// selection.
-StdVideoH264SequenceParameterSet buildSpsForH264Encode(const oa::VideoEncodeProfile& inProfile)
+StdVideoH264SequenceParameterSet buildSpsForH264Encode(
+	const oa::VideoEncodeProfile& inProfile,
+	StdVideoH264LevelIdc inLevel)
 {
 	StdVideoH264SequenceParameterSet sps = {};
 	sps.flags.constraint_set0_flag           = 0;
@@ -158,7 +203,7 @@ StdVideoH264SequenceParameterSet buildSpsForH264Encode(const oa::VideoEncodeProf
 	sps.flags.qpprime_y_zero_transform_bypass_flag = 0;
 	sps.flags.frame_cropping_flag            = 0;
 	sps.profile_idc                          = STD_VIDEO_H264_PROFILE_IDC_HIGH;
-	sps.level_idc                            = STD_VIDEO_H264_LEVEL_IDC_4_2;
+	sps.level_idc                            = inLevel;
 	sps.chroma_format_idc                    = STD_VIDEO_H264_CHROMA_FORMAT_IDC_420;
 	sps.seq_parameter_set_id                 = 0;
 	sps.bit_depth_luma_minus8                = 0;
@@ -465,11 +510,13 @@ oa::Result<oa::VideoEncodeCapabilities> oa::VideoEncoder::queryEncodeCapabilitie
 	out.maxBitrate                         = encCaps.maxBitrate > oa::U64{0xFFFFFFFFULL} ? oa::U32{0xFFFFFFFFU} : static_cast<oa::U32>(encCaps.maxBitrate);
 
 	if (inCodec == oa::VideoCodec::H264) {
+		out.maxLevel                           = static_cast<oa::U32>(h264Caps.maxLevelIdc);
 		out.maxH264SliceCount                = h264Caps.maxSliceCount;
 		out.maxH264PPictureL0ReferenceCount  = h264Caps.maxPPictureL0ReferenceCount;
 		out.maxH264BPictureL0ReferenceCount  = h264Caps.maxBPictureL0ReferenceCount;
 		out.maxH264L1ReferenceCount          = h264Caps.maxL1ReferenceCount;
 	} else if (inCodec == oa::VideoCodec::H265) {
+		out.maxLevel                               = static_cast<oa::U32>(h265Caps.maxLevelIdc);
 		out.maxH265SliceSegmentCount         = h265Caps.maxSliceSegmentCount;
 		out.maxH265PPictureL0ReferenceCount  = h265Caps.maxPPictureL0ReferenceCount;
 		out.maxH265BPictureL0ReferenceCount  = h265Caps.maxBPictureL0ReferenceCount;
@@ -633,7 +680,7 @@ oa::Result<oa::VideoEncoder> oa::VideoEncoder::create(
 	const oa::VideoEncodeCapabilities& caps = *capsResult;
 	if (inProfile.codec == oa::VideoCodec::H265) {
 		OaLogInfo(oa::LogComponent::Video,
-			"H.265 encoder caps: CTB=0x%x transform=0x%x syntax=0x%x P-L0=%u DPB=%u activeRefs=%u",
+			"H.265 encoder caps: CTB=0x{:x} transform=0x{:x} syntax=0x{:x} P-L0={} DPB={} activeRefs={}",
 			static_cast<unsigned>(caps.h265CtbSizes),
 			static_cast<unsigned>(caps.h265TransformBlockSizes),
 			static_cast<unsigned>(caps.h265StdSyntaxFlags),
@@ -655,6 +702,16 @@ oa::Result<oa::VideoEncoder> oa::VideoEncoder::create(
 	if (inProfile.gopSize == 0U) {
 		return oa::Status::error(oa::StatusCode::InvalidArgument,
 			"Video encode GOP size must be > 0");
+	}
+	const StdVideoH264LevelIdc h264Level = inProfile.codec == oa::VideoCodec::H264
+		? h264LevelForExtent(inProfile.width, inProfile.height, inProfile.frameRate)
+		: STD_VIDEO_H264_LEVEL_IDC_INVALID;
+	if (inProfile.codec == oa::VideoCodec::H264
+		and (h264Level == STD_VIDEO_H264_LEVEL_IDC_INVALID
+			or static_cast<oa::U32>(h264Level) > caps.maxLevel)) {
+		return oa::Status::error(
+			oa::StatusCode::Unavailable,
+			"H.264 encode extent and frame rate require an unsupported level");
 	}
 	if (inProfile.constantQp > 51U) {
 		return oa::Status::error(oa::StatusCode::InvalidArgument,
@@ -803,7 +860,9 @@ oa::Result<oa::VideoEncoder> oa::VideoEncoder::create(
 	encoder.impl_->dpb = oa::move(dpbResult.getValue());
 
 	// ── 4. Create codec session parameters ─────────────────────────────
-	StdVideoH264SequenceParameterSet h264Sps = buildSpsForH264Encode(inProfile);
+	StdVideoH264SequenceParameterSet h264Sps = buildSpsForH264Encode(
+		inProfile,
+		h264Level);
 	StdVideoH264PictureParameterSet  h264Pps = buildPpsForH264Encode(inProfile);
 	VkVideoEncodeH264SessionParametersAddInfoKHR h264AddInfo = {};
 	h264AddInfo.sType        = VK_STRUCTURE_TYPE_VIDEO_ENCODE_H264_SESSION_PARAMETERS_ADD_INFO_KHR;
@@ -2169,11 +2228,11 @@ oa::Status oa::VideoEncoder::harvest_(
 		if (impl_->zeroFeedbackRecoveryCount == 1U) {
 			OaLogWarn(oa::LogComponent::Video,
 				"Driver returned COMPLETE video encode feedback with zero bytes; "
-				"recovered a validated %u-byte Annex-B payload (later recoveries suppressed)",
+				"recovered a validated {}-byte Annex-B payload (later recoveries suppressed)",
 				static_cast<unsigned>(fb.bitstreamBytesWritten));
 		} else {
 			OaLogDebug(oa::LogComponent::Video,
-				"Recovered zero-byte video encode feedback for PTS %llu (%u Annex-B bytes)",
+				"Recovered zero-byte video encode feedback for PTS {} ({} Annex-B bytes)",
 				static_cast<unsigned long long>(inSlot.presentationTimestamp),
 				static_cast<unsigned>(fb.bitstreamBytesWritten));
 		}

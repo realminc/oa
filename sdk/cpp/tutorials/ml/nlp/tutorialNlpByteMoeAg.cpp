@@ -6,8 +6,6 @@
 #include <oa/ml/autograd.h>
 #include <oa/core/envFlag.h>
 
-#include <algorithm>
-#include <cmath>
 
 namespace {
 
@@ -53,23 +51,23 @@ private:
 } // namespace
 
 TEST(TutorialNlpByteMoeAg, MoeAllPositionLM) {
-	std::printf("\n╔══════════════════════════════════════════════════════════════════╗\n");
-	std::printf("║  OA Tutorial — Byte MoE Transformer · all-position LM           ║\n");
-	std::printf("╚══════════════════════════════════════════════════════════════════╝\n\n");
-	std::printf("tokenizer: raw byte · vocab=%d\n", kByteVocab);
-	std::printf("Task: dense next-byte prediction at every position\n\n");
+	oa::print("\n╔══════════════════════════════════════════════════════════════════╗");
+	oa::print("║  OA Tutorial — Byte MoE Transformer · all-position LM           ║");
+	oa::print("╚══════════════════════════════════════════════════════════════════╝\n");
+	oa::print("tokenizer: raw byte · vocab={}", kByteVocab);
+	oa::print("Task: dense next-byte prediction at every position\n");
 
 	oa::FnMatrix::setRngSeed(oa::NlpSuiteRngSeed);
 	auto model = oa::makeShared<ByteMoeLM>();
 	auto parameters = model->allParameterPtrs();
 	auto optimizer = oa::makeUnique<oa::AdamW>(parameters, 0.01F);
 	auto& rt = testEngine();
-	std::printf("Model: Byte + position Embed → Attention + moE(E=4,K=2,DFF=16) → LN → Linear(32→256)\n");
-	std::printf("params: %lld    Optimizer: AdamW(lr=0.01)\n\n", static_cast<long long>(model->numParameters()));
+	oa::print("Model: Byte + position Embed → Attention + moE(E=4,K=2,DFF=16) → LN → Linear(32→256)");
+	oa::print("params: {}    Optimizer: AdamW(lr=0.01)\n", static_cast<long long>(model->numParameters()));
 
 	NlpAllPositionSampler sampler(nlpCorpus(), kBatch);
 	const oa::I32 steps = static_cast<oa::I32>(
-		std::max<oa::I64>(oa::EnvFlag::getInt("OA_TUTORIAL_STEPS", kSteps), 1));
+		oa::max<oa::I64>(oa::EnvFlag::getInt("OA_TUTORIAL_STEPS", kSteps), 1));
 	const oa::Bool useTrainingProgram = oa::EnvFlag::isSet("OA_TRAINING_PROGRAM");
 	oa::TrainingProgram program;
 	TutorialTrainingLoop training(rt, *optimizer, oa::ItTrainingConfig{
@@ -82,7 +80,7 @@ TEST(TutorialNlpByteMoeAg, MoeAllPositionLM) {
 		.timerName = "byte_moe_step",
 		.program = useTrainingProgram ? &program : nullptr,
 	});
-	std::printf("training: %d steps · batch=%d · sequence=%d byte tokens · execution=%s\n",
+	oa::print("training: {} steps · batch={} · sequence={} byte tokens · execution={}",
 		steps, kBatch, kContextLen, useTrainingProgram ? "captured" : "eager");
 
 	oa::Matrix x, y;
@@ -104,11 +102,11 @@ TEST(TutorialNlpByteMoeAg, MoeAllPositionLM) {
 	const oa::F32 finalLoss = training.loop.lastLoss();
 	const oa::F32 accuracy = nlpAccuracyAllPositions(*model, x, y, kByteVocab);
 
-	std::printf("\nEvaluation:\n");
-	std::printf("  Random-loss baseline ln(%d) = %.4f\n", kByteVocab, std::log(static_cast<double>(kByteVocab)));
-	std::printf("  bits/byte: %.4f\n", nlpBitsPerByte(finalLoss));
-	std::printf("  Accuracy: %.1f%%\n", accuracy);
-	std::printf("\nGeneration:\n  prompt: '%s'\n  generated: '%s'\n\n", kNlpGenerationPrompt,
+	oa::print("\nEvaluation:");
+	oa::print("  Random-loss baseline ln({}) = {:.4f}", kByteVocab, oa::log(static_cast<double>(kByteVocab)));
+	oa::print("  bits/byte: {:.4f}", nlpBitsPerByte(finalLoss));
+	oa::print("  Accuracy: {:.1f}%", accuracy);
+	oa::print("\nGeneration:\n  prompt: '{}'\n  generated: '{}'\n", kNlpGenerationPrompt,
 		nlpGenerateGreedy(*model, kNlpGenerationPrompt, kNlpGenerationBytes, kByteVocab).cStr());
 
 	ASSERT_GT(initialLoss, 0.0F);

@@ -344,7 +344,7 @@ oa::Status SafeTensorsWeightSource::open(const oa::Path& inPath) {
 	}
 
 	isOpen_ = true;
-	OaLogInfo(oa::LogComponent::Ml, "weight source: opened %s (%llu bytes, %zu entries)",
+	OaLogInfo(oa::LogComponent::Ml, "weight source: opened {} ({} bytes, {} entries)",
 		inPath.cStr(), static_cast<unsigned long long>(fileSize), entries_.size());
 
 	return oa::Status::ok();

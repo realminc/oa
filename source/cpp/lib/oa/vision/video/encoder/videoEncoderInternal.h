@@ -44,6 +44,8 @@ struct VideoEncoderAccess {
 		oa::Event inReady = {},
 		oa::U32 inExternalQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
 		oa::Event* outInputConsumed = nullptr);
+	[[nodiscard]] static oa::U64 zeroFeedbackRecoveryCount(
+		const VideoEncoder& inEncoder) noexcept;
 };
 
 } // namespace oa

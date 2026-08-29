@@ -27,6 +27,7 @@ struct PushConstants {
     uint coded_height;
     uint color_space;
     uint full_range;
+    uint bit_depth;
 };
 
 [[vk::push_constant]] PushConstants pc;
@@ -34,14 +35,26 @@ struct PushConstants {
 [[vk::binding(1, 0)]] RWTexture2D<float4> storage_images[];
 [[vk::binding(3, 0)]] SamplerState samplers[];
 
+float CodeMaximum() {
+    return float((1u << pc.bit_depth) - 1u);
+}
+
+float LimitedLumaOffset() {
+    return float(16u << (pc.bit_depth - 8u)) / CodeMaximum();
+}
+
+float ChromaMidpoint() {
+    return float(128u << (pc.bit_depth - 8u)) / CodeMaximum();
+}
+
 // BT.601 (Standard Definition) - Limited Range
 // R = 1.164 * (Y - 16) + 1.596 * (V - 128)
 // G = 1.164 * (Y - 16) - 0.391 * (U - 128) - 0.813 * (V - 128)
 // B = 1.164 * (Y - 16) + 2.018 * (U - 128)
 float3 YuvToRgb_BT601_Limited(float y, float u, float v) {
-    float Y = 1.164f * (y - 16.0f / 255.0f);
-    float U = u - 128.0f / 255.0f;
-    float V = v - 128.0f / 255.0f;
+    float Y = 1.164f * (y - LimitedLumaOffset());
+    float U = u - ChromaMidpoint();
+    float V = v - ChromaMidpoint();
     
     float r = Y + 1.596f * V;
     float g = Y - 0.391f * U - 0.813f * V;
@@ -53,8 +66,8 @@ float3 YuvToRgb_BT601_Limited(float y, float u, float v) {
 // BT.601 (Standard Definition) - Full Range
 float3 YuvToRgb_BT601_Full(float y, float u, float v) {
     float Y = y;
-    float U = u - 0.5f;
-    float V = v - 0.5f;
+    float U = u - ChromaMidpoint();
+    float V = v - ChromaMidpoint();
     
     float r = Y + 1.402f * V;
     float g = Y - 0.344f * U - 0.714f * V;
@@ -68,9 +81,9 @@ float3 YuvToRgb_BT601_Full(float y, float u, float v) {
 // G = 1.164 * (Y - 16) - 0.213 * (U - 128) - 0.533 * (V - 128)
 // B = 1.164 * (Y - 16) + 2.112 * (U - 128)
 float3 YuvToRgb_BT709_Limited(float y, float u, float v) {
-    float Y = 1.164f * (y - 16.0f / 255.0f);
-    float U = u - 128.0f / 255.0f;
-    float V = v - 128.0f / 255.0f;
+    float Y = 1.164f * (y - LimitedLumaOffset());
+    float U = u - ChromaMidpoint();
+    float V = v - ChromaMidpoint();
     
     float r = Y + 1.793f * V;
     float g = Y - 0.213f * U - 0.533f * V;
@@ -82,8 +95,8 @@ float3 YuvToRgb_BT709_Limited(float y, float u, float v) {
 // BT.709 (High Definition) - Full Range
 float3 YuvToRgb_BT709_Full(float y, float u, float v) {
     float Y = y;
-    float U = u - 0.5f;
-    float V = v - 0.5f;
+    float U = u - ChromaMidpoint();
+    float V = v - ChromaMidpoint();
     
     float r = Y + 1.5748f * V;
     float g = Y - 0.1873f * U - 0.4681f * V;
@@ -97,9 +110,9 @@ float3 YuvToRgb_BT709_Full(float y, float u, float v) {
 // G = 1.164 * (Y - 16) - 0.188 * (U - 128) - 0.650 * (V - 128)
 // B = 1.164 * (Y - 16) + 2.148 * (U - 128)
 float3 YuvToRgb_BT2020_Limited(float y, float u, float v) {
-    float Y = 1.164f * (y - 16.0f / 255.0f);
-    float U = u - 128.0f / 255.0f;
-    float V = v - 128.0f / 255.0f;
+    float Y = 1.164f * (y - LimitedLumaOffset());
+    float U = u - ChromaMidpoint();
+    float V = v - ChromaMidpoint();
     
     float r = Y + 1.678f * V;
     float g = Y - 0.188f * U - 0.650f * V;
@@ -111,8 +124,8 @@ float3 YuvToRgb_BT2020_Limited(float y, float u, float v) {
 // BT.2020 (Ultra High Definition) - Full Range
 float3 YuvToRgb_BT2020_Full(float y, float u, float v) {
     float Y = y;
-    float U = u - 0.5f;
-    float V = v - 0.5f;
+    float U = u - ChromaMidpoint();
+    float V = v - ChromaMidpoint();
     
     float r = Y + 1.4746f * V;
     float g = Y - 0.1646f * U - 0.5714f * V;

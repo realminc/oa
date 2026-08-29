@@ -482,7 +482,7 @@ oa::Status oa::Viewer::openAudio(oa::Engine& inEngine) {
 		audioAnalysisReady_ = *submitted;
 	} else {
 		OaLogWarn(oa::LogComponent::Ui,
-			"oa::Viewer audio analysis unavailable: %s",
+			"oa::Viewer audio analysis unavailable: {}",
 			decoded.getStatus().toString().cStr());
 	}
 	if (config_.startPlaying) {
@@ -526,7 +526,7 @@ oa::Status oa::Viewer::openSource(oa::Engine& inEngine) {
 	if (audioStatus.isOk()) return audioStatus;
 
 	OaLogError(oa::LogComponent::Ui,
-		"oa::Viewer could not open '%s' as image (%s), video (%s) or audio (%s)",
+		"oa::Viewer could not open '{}' as image ({}), video ({}) or audio ({})",
 		config_.path.cStr(),
 		imageStatus.toString().cStr(),
 		videoStatus.toString().cStr(),
@@ -570,6 +570,23 @@ oa::U64 oa::Viewer::mediaPositionUs() const noexcept {
 	return 0U;
 }
 
+oa::F32 oa::Viewer::mediaPositionFraction() const noexcept {
+	if (video_.hasValue()) {
+		const oa::Usize count = video_->frameCount();
+		if (count <= 1U) return 0.0F;
+		return static_cast<oa::F32>(
+			static_cast<long double>(oa::min(
+				video_->currentFrameIndex(), count - 1U))
+			/ static_cast<long double>(count - 1U));
+	}
+	const oa::U64 duration = mediaDurationUs();
+	if (duration == 0U) return 0.0F;
+	return static_cast<oa::F32>(oa::min(
+		1.0L,
+		static_cast<long double>(mediaPositionUs())
+			/ static_cast<long double>(duration)));
+}
+
 oa::PixelRect oa::Viewer::timelineRect() const noexcept {
 	const oa::F32 contentScale = oa::max(
 		0.01F, (windowPixelScaleX_ + windowPixelScaleY_) * 0.5F);
@@ -598,14 +615,14 @@ oa::PixelRect oa::Viewer::temporalButtonsRect() const noexcept {
 			static_cast<oa::F32>(inLogical) * contentScale)));
 	};
 	const oa::PixelRect timeline = timelineRect();
-	const oa::I32 size = px(40);
-	const oa::I32 gap = px(8);
+	const oa::I32 height = px(34);
+	const oa::I32 width = oa::min(timeline.w, px(272));
 	const oa::I32 contentTop = static_cast<oa::I32>(windowDecorationHeight());
 	return {
 		timeline.x,
-		oa::max(contentTop + px(8), timeline.y - size - px(10)),
-		size * 2 + gap,
-		size,
+		oa::max(contentTop + px(8), timeline.y - height - px(8)),
+		width,
+		height,
 	};
 }
 
@@ -658,7 +675,7 @@ void oa::Viewer::toggleMediaPlayback() {
 		if (audio_->isPlaying()) audio_->pause();
 		else if (const oa::Status status = audio_->play(); not status.isOk()) {
 			OaLogWarn(oa::LogComponent::Ui,
-				"oa::Viewer audio playback failed: %s", status.toString().cStr());
+				"oa::Viewer audio playback failed: {}", status.toString().cStr());
 		}
 	}
 }
@@ -670,36 +687,72 @@ void oa::Viewer::toggleMediaLoop() {
 	if (audio_.hasValue()) audio_->setLoop(loop);
 }
 
+void oa::Viewer::pauseMedia() {
+	if (video_.hasValue()) video_->pause();
+	else if (audio_.hasValue()) audio_->pause();
+}
+
 void oa::Viewer::seekMediaUs(oa::U64 inTimestampUs) {
+	pauseMedia();
 	oa::Status status = oa::Status::ok();
 	if (video_.hasValue()) status = video_->seekUs(inTimestampUs);
 	else if (audio_.hasValue()) status = audio_->seek(inTimestampUs);
 	if (not status.isOk()) {
 		OaLogWarn(oa::LogComponent::Ui,
-			"oa::Viewer media seek failed: %s", status.toString().cStr());
+			"oa::Viewer media seek failed: {}", status.toString().cStr());
 	}
 }
 
 void oa::Viewer::seekMediaFraction(oa::F32 inFraction) {
-	const oa::U64 duration = mediaDurationUs();
-	if (duration == 0U) return;
 	const long double clamped = static_cast<long double>(
 		oa::clamp(inFraction, 0.0F, 1.0F));
+	if (video_.hasValue()) {
+		pauseMedia();
+		const oa::Usize count = video_->frameCount();
+		if (count == 0U) return;
+		const oa::Usize target = static_cast<oa::Usize>(
+			clamped * static_cast<long double>(count - 1U) + 0.5L);
+		const oa::Status status = video_->seekFrame(target);
+		if (not status.isOk()) {
+			OaLogWarn(oa::LogComponent::Ui,
+				"oa::Viewer video frame seek failed: {}",
+				status.toString().cStr());
+		}
+		return;
+	}
+	const oa::U64 duration = mediaDurationUs();
+	if (duration == 0U) return;
 	seekMediaUs(static_cast<oa::U64>(clamped * static_cast<long double>(duration)));
+}
+
+void oa::Viewer::handleTimelineSeek(
+	oa::F32 inFraction,
+	bool inChanged,
+	bool inActive
+) {
+	if (inChanged) {
+		pauseMedia();
+		pendingTimelineSeekFraction_.emplace(
+			oa::clamp(inFraction, 0.0F, 1.0F));
+	}
+	if (inActive || not pendingTimelineSeekFraction_.hasValue()) return;
+	const oa::F32 committed = *pendingTimelineSeekFraction_;
+	pendingTimelineSeekFraction_.reset();
+	seekMediaFraction(committed);
 }
 
 void oa::Viewer::stepTemporal(oa::I32 inAmount) {
 	if (video_.hasValue()) {
-		video_->pause();
+		pauseMedia();
 		const oa::Status status = video_->stepFrames(inAmount);
 		if (not status.isOk()) {
 			OaLogWarn(oa::LogComponent::Ui,
-				"oa::Viewer video scrub failed: %s", status.toString().cStr());
+				"oa::Viewer video scrub failed: {}", status.toString().cStr());
 		}
 		return;
 	}
 	if (not audio_.hasValue()) return;
-	audio_->pause();
+	pauseMedia();
 	const oa::U64 position = audio_->positionUs();
 	const oa::U64 step = config_.audioStepUs * static_cast<oa::U64>(oa::abs(inAmount));
 	const oa::U64 target = inAmount < 0
@@ -755,7 +808,7 @@ oa::Status oa::Viewer::configureOverlay() {
 	auto overlay = oa::DetectionOverlay::create(*engine_, config_.annotationStyle);
 	if (not overlay.isOk()) {
 		OaLogError(oa::LogComponent::Ui,
-			"oa::Viewer overlay creation failed: %s",
+			"oa::Viewer overlay creation failed: {}",
 			overlay.getStatus().toString().cStr());
 		return overlay.getStatus();
 	}
@@ -766,7 +819,7 @@ oa::Status oa::Viewer::configureOverlay() {
 		textAtlas_);
 	if (not update.isOk()) {
 		OaLogError(oa::LogComponent::Ui,
-			"oa::Viewer overlay update failed: %s", update.toString().cStr());
+			"oa::Viewer overlay update failed: {}", update.toString().cStr());
 		detectionOverlay_ = {};
 		return update;
 	}
@@ -816,12 +869,16 @@ void oa::Viewer::registerTemporalInput() {
 	input.registerAction({.name = "loop", .binding = {.key = oa::UiKey::L},
 		.callback = [this] { toggleMediaLoop(); }});
 	input.registerAction({.name = "stepf", .binding = {.key = oa::UiKey::Right},
+		.allowRepeat = true,
 		.callback = [this] { stepTemporal(1); }});
 	input.registerAction({.name = "stepb", .binding = {.key = oa::UiKey::Left},
+		.allowRepeat = true,
 		.callback = [this] { stepTemporal(-1); }});
 	input.registerAction({.name = "stepf5", .binding = {.key = oa::UiKey::Up},
+		.allowRepeat = true,
 		.callback = [this] { stepTemporal(5); }});
 	input.registerAction({.name = "stepb5", .binding = {.key = oa::UiKey::Down},
+		.allowRepeat = true,
 		.callback = [this] { stepTemporal(-5); }});
 	if (resolvedMode_ == oa::ViewerMode::Audio) {
 		input.registerAction({.name = "audio-waveform", .binding = {.key = oa::UiKey::W},
@@ -869,26 +926,26 @@ oa::Status oa::Viewer::initView() {
 
 	if (not config_.showHelp) return oa::Status::ok();
 	OaLogInfo(oa::LogComponent::Ui, "═══════════════════════════════════════════════════");
-	OaLogInfo(oa::LogComponent::Ui, "oa::Viewer (%s)", viewerModeName(resolvedMode_));
+	OaLogInfo(oa::LogComponent::Ui, "oa::Viewer ({})", viewerModeName(resolvedMode_));
 	if (resolvedMode_ != oa::ViewerMode::Live and not config_.path.empty()) {
-		OaLogInfo(oa::LogComponent::Ui, "  source: %s", config_.path.cStr());
+		OaLogInfo(oa::LogComponent::Ui, "  source: {}", config_.path.cStr());
 	}
 	if (resolvedMode_ == oa::ViewerMode::Image) {
-		OaLogInfo(oa::LogComponent::Ui, "  size: %dx%d",
+		OaLogInfo(oa::LogComponent::Ui, "  size: {}x{}",
 			imageSource().width(), imageSource().height());
 		OaLogInfo(oa::LogComponent::Ui,
 			"  channels: 1=R  2=G  3=B  4=A  5=RGB");
 	} else if (video_.hasValue()) {
-		OaLogInfo(oa::LogComponent::Ui, "  codec: %s",
+		OaLogInfo(oa::LogComponent::Ui, "  codec: {}",
 			videoCodecName(video_->getContainerInfo().codec));
-		OaLogInfo(oa::LogComponent::Ui, "  size: %ux%u @ %u fps",
+		OaLogInfo(oa::LogComponent::Ui, "  size: {}x{} @ {} fps",
 			video_->width(), video_->height(), video_->frameRate());
-		OaLogInfo(oa::LogComponent::Ui, "  Duration: %.2f s",
+		OaLogInfo(oa::LogComponent::Ui, "  Duration: {:.2f} s",
 			static_cast<double>(video_->durationUs()) / 1'000'000.0);
 		OaLogInfo(oa::LogComponent::Ui,
 			"  Space=play/pause  Arrows=step 1/5 frames  L=loop  timeline=seek");
 	} else if (audio_.hasValue()) {
-		OaLogInfo(oa::LogComponent::Ui, "  Audio: %u Hz · %u channels · %.2f s",
+		OaLogInfo(oa::LogComponent::Ui, "  Audio: {} Hz · {} channels · {:.2f} s",
 			audio_->sampleRate(), audio_->channelCount(),
 			static_cast<double>(audio_->durationUs()) / 1'000'000.0);
 		OaLogInfo(oa::LogComponent::Ui,
@@ -896,7 +953,7 @@ oa::Status oa::Viewer::initView() {
 	} else if (resolvedMode_ == oa::ViewerMode::Live) {
 		OaLogInfo(oa::LogComponent::Ui, "  source: attached live producer");
 	}
-	if (hasVisualContent()) OaLogInfo(oa::LogComponent::Ui, "%s", oa::navigationHelpLine());
+	if (hasVisualContent()) OaLogInfo(oa::LogComponent::Ui, "{}", oa::navigationHelpLine());
 	OaLogInfo(oa::LogComponent::Ui, "  Q/Esc=Quit");
 	OaLogInfo(oa::LogComponent::Ui, "═══════════════════════════════════════════════════");
 	return oa::Status::ok();
@@ -1062,10 +1119,7 @@ void oa::Viewer::renderAudio(oa::Ui& inUi) {
 	renderAudioViewSelector(inUi);
 	const oa::U64 duration = mediaDurationUs();
 	if (duration == 0U) return;
-	oa::F32 fraction = static_cast<oa::F32>(oa::min(
-		1.0L,
-		static_cast<long double>(mediaPositionUs())
-			/ static_cast<long double>(duration)));
+	oa::F32 fraction = mediaPositionFraction();
 	const oa::PixelRect visualization = audioVisualizationRect();
 	if (audioView_ == oa::ViewerAudioView::Waveform
 		and not audioEnvelope_.isEmpty()) {
@@ -1092,9 +1146,11 @@ void oa::Viewer::renderAudio(oa::Ui& inUi) {
 		});
 		inUi.endPanel();
 	}
-	if (config_.showTimeline and inUi.timeline(
-		"viewer-audio-transport", timelineRect(), fraction)) {
-		seekMediaFraction(fraction);
+	bool timelineActive = false;
+	const bool timelineChanged = config_.showTimeline and inUi.timeline(
+		"viewer-audio-transport", timelineRect(), fraction, &timelineActive);
+	if (config_.showTimeline) {
+		handleTimelineSeek(fraction, timelineChanged, timelineActive);
 	}
 }
 
@@ -1128,13 +1184,11 @@ void oa::Viewer::renderTimeline(oa::Ui& inUi) {
 	if (not hasTimeline() or resolvedMode_ == oa::ViewerMode::Audio) return;
 	const oa::U64 duration = mediaDurationUs();
 	if (duration == 0U) return;
-	oa::F32 fraction = static_cast<oa::F32>(oa::min(
-		1.0L,
-		static_cast<long double>(mediaPositionUs())
-			/ static_cast<long double>(duration)));
-	if (inUi.timeline("viewer-transport", timelineRect(), fraction)) {
-		seekMediaFraction(fraction);
-	}
+	oa::F32 fraction = mediaPositionFraction();
+	bool timelineActive = false;
+	const bool timelineChanged = inUi.timeline(
+		"viewer-transport", timelineRect(), fraction, &timelineActive);
+	handleTimelineSeek(fraction, timelineChanged, timelineActive);
 
 	const oa::PixelRect rect = timelineRect();
 	const oa::F32 contentScale = inUi.contentScale();
@@ -1153,24 +1207,26 @@ void oa::Viewer::renderTimeline(oa::Ui& inUi) {
 }
 
 void oa::Viewer::renderTemporalButtons(oa::Ui& inUi) {
-	if (!hasTimeline()) return;
+	if (not hasTimeline()) return;
 	const oa::PixelRect group = temporalButtonsRect();
-	const oa::F32 contentScale = inUi.contentScale();
-	const oa::I32 gap = oa::max<oa::I32>(1, static_cast<oa::I32>(oa::lround(
-		8.0F * contentScale)));
-	const oa::I32 size = oa::max<oa::I32>(1, (group.w - gap) / 2);
-	if (inUi.chevronButton(
-		"Previous",
-		{group.x, group.y, size, group.h},
-		oa::UiChevronDirection::Previous)) {
+	oa::UiLayout layout;
+	layout.padding = oa::UiEdge{};
+	layout.gap = 6.0F * inUi.contentScale();
+	inUi.beginPanel("viewer-transport-controls", group, layout);
+	inUi.beginRow("transport");
+	if (inUi.button("|<")) seekMediaFraction(0.0F);
+	if (inUi.button("<")) {
 		stepTemporal(-1);
 	}
-	if (inUi.chevronButton(
-		"Next",
-		{group.x + size + gap, group.y, size, group.h},
-		oa::UiChevronDirection::Next)) {
+	if (inUi.button("Play / Pause")) {
+		toggleMediaPlayback();
+	}
+	if (inUi.button(">")) {
 		stepTemporal(1);
 	}
+	if (inUi.button(">|")) seekMediaFraction(1.0F);
+	inUi.endRow();
+	inUi.endPanel();
 }
 
 oa::Status oa::Viewer::render(oa::Ui& inUi) {

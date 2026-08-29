@@ -54,6 +54,17 @@ thread_local ThreadLogSelection selectedLog;
 #endif
 }
 
+[[nodiscard]] bool writeAll(::FILE* inFile, oa::StringView inText) noexcept {
+	oa::Usize written = 0U;
+	while (written < inText.size()) {
+		const oa::Usize count = ::fwrite(
+			inText.data() + written, 1U, inText.size() - written, inFile);
+		if (count == 0U) return false;
+		written += count;
+	}
+	return true;
+}
+
 void formatLogTimestamp(char* outText, oa::Usize inCapacity, long& outMillis) noexcept {
 	const oa::I64 epochNanoseconds = oa::systemNow().nanosecondsSinceEpoch();
 	outMillis = static_cast<long>((epochNanoseconds / 1'000'000LL) % 1000LL);
@@ -69,19 +80,15 @@ void formatLogTimestamp(char* outText, oa::Usize inCapacity, long& outMillis) no
 void fallbackWrite(
 	oa::LogLevel inLevel,
 	oa::LogComponent inComponent,
-	const char* inFormat,
-	va_list inArgs) noexcept
+	oa::StringView inText) noexcept
 {
-	char message[4096]{};
-	if (inFormat != nullptr) {
-		(void)::vsnprintf(message, sizeof(message), inFormat, inArgs);
-	}
 	char timestamp[32]{};
 	long millis = 0;
 	formatLogTimestamp(timestamp, sizeof(timestamp), millis);
-	(void)::fprintf(stderr, "%s%s.%03ld [%s] [%s] %s\033[0m\n",
+	const oa::String record = oa::format("{}{}.{:03d} [{}] [{}] {}\033[0m\n",
 		levelColor(inLevel), timestamp, millis, levelName(inLevel),
-		inComponent.cStr(), message);
+		inComponent.cStr(), inText);
+	(void)oa::detail::writePrint(oa::PrintStream::Error, record.view(), false);
 }
 
 } // namespace
@@ -99,24 +106,23 @@ public:
 	oa::Bool open = true;
 	oa::Status firstError = oa::Status::ok();
 
-	[[nodiscard]] oa::Status writeV(
+	[[nodiscard]] bool shouldWrite(oa::LogLevel inLevel) const noexcept {
+		return inLevel != oa::LogLevel::Off
+			and static_cast<oa::U8>(inLevel)
+				>= minimumLevel.load(oa::MemoryOrder::Relaxed);
+	}
+
+	[[nodiscard]] oa::Status writeText(
 		oa::LogLevel inLevel,
 		oa::LogComponent inComponent,
-		const char* inFormat,
-		va_list inArgs)
+		oa::StringView inText)
 	{
-		if (static_cast<oa::U8>(inLevel)
-			< minimumLevel.load(oa::MemoryOrder::Relaxed)
-			or inLevel == oa::LogLevel::Off) {
-			return oa::Status::ok();
-		}
-		char message[4096]{};
-		if (inFormat != nullptr) {
-			(void)::vsnprintf(message, sizeof(message), inFormat, inArgs);
-		}
+		if (not shouldWrite(inLevel)) return oa::Status::ok();
 		char timestamp[32]{};
 		long millis = 0;
 		formatLogTimestamp(timestamp, sizeof(timestamp), millis);
+		const oa::String record = oa::format("{}.{:03d} [{}] [{}] {}\n",
+			timestamp, millis, levelName(inLevel), inComponent.cStr(), inText);
 
 		oa::ScopedLock<oa::Mutex> lock(mutex);
 		if (not open) {
@@ -124,17 +130,17 @@ public:
 				"oa::Log::write called after Close");
 		}
 		if (file != nullptr) {
-			if (::fprintf(file, "%s.%03ld [%s] [%s] %s\n",
-				timestamp, millis, levelName(inLevel), inComponent.cStr(), message) < 0
+			if (not writeAll(file, record.view())
 				and firstError.isOk()) {
 				firstError = oa::Status::error(oa::StatusCode::Internal,
 					"log file write failed");
 			}
 		}
 		if (consoleOutput) {
-			(void)::fprintf(stderr, "%s%s.%03ld [%s] [%s] %s\033[0m\n",
-				levelColor(inLevel), timestamp, millis, levelName(inLevel),
-				inComponent.cStr(), message);
+			const oa::String consoleRecord = oa::format("{}{}\033[0m",
+				levelColor(inLevel), record);
+			(void)oa::detail::writePrint(
+				oa::PrintStream::Error, consoleRecord.view(), false);
 		}
 		return firstError;
 	}
@@ -188,30 +194,20 @@ oa::Result<oa::UniquePtr<oa::Log>> oa::Log::create(const oa::LogOptions& inOptio
 	return oa::UniquePtr<oa::Log>(new oa::Log(oa::move(impl)));
 }
 
-oa::Status oa::Log::write(
+oa::Status oa::Log::writeText(
 	oa::LogLevel inLevel,
 	oa::LogComponent inComponent,
-	const char* inFormat,
-	...)
-{
-	va_list args;
-	va_start(args, inFormat);
-	const oa::Status status = writeV(inLevel, inComponent, inFormat, args);
-	va_end(args);
-	return status;
-}
-
-oa::Status oa::Log::writeV(
-	oa::LogLevel inLevel,
-	oa::LogComponent inComponent,
-	const char* inFormat,
-	va_list inArgs)
+	oa::StringView inText)
 {
 	if (not impl_) {
 		return oa::Status::error(oa::StatusCode::FailedPrecondition,
 			"oa::Log has no state");
 	}
-	return impl_->writeV(inLevel, inComponent, inFormat, inArgs);
+	return impl_->writeText(inLevel, inComponent, inText);
+}
+
+bool oa::Log::shouldWrite(oa::LogLevel inLevel) const noexcept {
+	return not impl_ or impl_->shouldWrite(inLevel);
 }
 
 oa::Status oa::Log::flush() {
@@ -307,18 +303,19 @@ oa::LogSelection oa::LogAccess::currentSelection() noexcept {
 		: oa::LogSelection{};
 }
 
-void oa::logWrite(
+bool oa::logShouldWrite(oa::LogLevel inLevel) noexcept {
+	if (auto impl = oa::LogAccess::current()) return impl->shouldWrite(inLevel);
+	return inLevel != oa::LogLevel::Off;
+}
+
+void oa::logWriteText(
 	oa::LogLevel inLevel,
 	oa::LogComponent inComponent,
-	const char* inFormat,
-	...)
+	oa::StringView inText) noexcept
 {
-	va_list args;
-	va_start(args, inFormat);
 	if (auto impl = oa::LogAccess::current()) {
-		(void)impl->writeV(inLevel, inComponent, inFormat, args);
+		(void)impl->writeText(inLevel, inComponent, inText);
 	} else {
-		fallbackWrite(inLevel, inComponent, inFormat, args);
+		fallbackWrite(inLevel, inComponent, inText);
 	}
-	va_end(args);
 }

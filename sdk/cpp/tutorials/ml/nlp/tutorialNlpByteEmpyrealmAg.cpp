@@ -16,16 +16,11 @@
 #include <oa/ml.h>
 #include <oa/ml/byte.h>
 #include <oa/ml/autograd.h>
-#include <cstdlib>
+#include <stdlib.h>
 #include <oa/runtime/engine.h>
-#include <algorithm>
-#include <chrono>
-#include <cmath>
-#include <cstring>
-#include <vector>
 
 static bool tutorialUseMuonOptimizer() {
-	const char* env = std::getenv("OA_USE_MUON");
+	const char* env = ::getenv("OA_USE_MUON");
 	return env && env[0] == '1';
 }
 
@@ -75,10 +70,10 @@ static float paramGradL1(const oa::Matrix& g) {
 }
 
 TEST(TutorialNlpByteEmpyrealmAg, TraceableAutograd) {
-	printf("\n╔══════════════════════════════════════════════════════════════════╗\n");
-	printf("║  OA Tutorial — empyrealm Core ag (autograd Fidelity)             ║\n");
-	printf("║  EmpyrealmPreprocess + EmpyrealmSiso traced path                 ║\n");
-	printf("╚══════════════════════════════════════════════════════════════════╝\n\n");
+	oa::print("\n╔══════════════════════════════════════════════════════════════════╗");
+	oa::print("║  OA Tutorial — empyrealm Core ag (autograd Fidelity)             ║");
+	oa::print("║  EmpyrealmPreprocess + EmpyrealmSiso traced path                 ║");
+	oa::print("╚══════════════════════════════════════════════════════════════════╝\n");
 
 	auto  model  = oa::makeShared<EmpyrealmByteLMAg>();
 	auto  params = model->allParameterPtrs();
@@ -87,8 +82,8 @@ TEST(TutorialNlpByteEmpyrealmAg, TraceableAutograd) {
 	auto  opt    = tutorialMakeOptimizer(*model, 0.003F);
 	auto& rt     = testEngine();
 
-	printf("Path: traceable split (Preprocess MatMul + EmpyrealmSiso + out_proj)\n");
-	printf("params: %lld    Optimizer: %s(lr=0.003)\n\n",
+	oa::print("Path: traceable split (Preprocess MatMul + EmpyrealmSiso + out_proj)");
+	oa::print("params: {}    Optimizer: {}(lr=0.003)\n",
 		static_cast<long long>(model->numParameters()),
 		tutorialUseMuonOptimizer() ? "Muon" : "AdamW");
 
@@ -129,9 +124,9 @@ TEST(TutorialNlpByteEmpyrealmAg, TraceableAutograd) {
 
 		if (training.loop.index() == 1) {
 			initialLoss = training.loop.lastLoss();
-			printf("\n─── step-1 gradient magnitudes (traceable path, L1) ───\n");
+			oa::print("\n─── step-1 gradient magnitudes (traceable path, L1) ───");
 			struct MagEntry { const char* name; oa::Matrix result; oa::I64 numel; };
-			std::vector<MagEntry> entries;
+			oa::Vector<MagEntry> entries;
 			for (auto* p : params) {
 				auto g = p->data.gradMatrix();
 				oa::Matrix s;
@@ -142,18 +137,18 @@ TEST(TutorialNlpByteEmpyrealmAg, TraceableAutograd) {
 					s = oa::FnMatrix::sum(absg, 0);
 					numel = p->data.numElements();
 				}
-				entries.push_back({p->name.cStr(), std::move(s), numel});
+				entries.pushBack({p->name.cStr(), oa::move(s), numel});
 			}
 			ASSERT_TRUE(tutorialSubmitAndWait(rt).isOk());
 			for (const auto& e : entries) {
 				float mag = 0.0F;
 				if (e.result.numElements() > 0) mag = e.result.at(0);
-				printf("  %-32s  L1=%.6f  (numel=%lld)\n",
+				oa::print("  {:<32}  L1={:.6f}  (numel={})",
 					e.name, mag, static_cast<long long>(e.numel));
-				if (std::strcmp(e.name, "in_proj") == 0) inProjGradL1 = mag;
-				if (std::strcmp(e.name, "out_proj") == 0) outProjGradL1 = mag;
+				if (oa::strcmp(e.name, "in_proj") == 0) inProjGradL1 = mag;
+				if (oa::strcmp(e.name, "out_proj") == 0) outProjGradL1 = mag;
 			}
-			printf("\n");
+			oa::print("");
 			fflush(stdout);
 		}
 	}
@@ -163,15 +158,15 @@ TEST(TutorialNlpByteEmpyrealmAg, TraceableAutograd) {
 
 	const oa::F32 finalBatchAcc =
 		nlpAccuracyAllPositions(*model, batchX, batchY, kVocabSize);
-	printf("\nEvaluation:\n");
-	printf("  Random-loss baseline ln(%d) = %.4f\n",
-		kVocabSize, std::log(static_cast<double>(kVocabSize)));
-	printf("  bits/byte: %.4f\n", nlpBitsPerByte(lastLoss));
-	printf("  Accuracy: %.1f%%\n", finalBatchAcc);
+	oa::print("\nEvaluation:");
+	oa::print("  Random-loss baseline ln({}) = {:.4f}",
+		kVocabSize, oa::log(static_cast<double>(kVocabSize)));
+	oa::print("  bits/byte: {:.4f}", nlpBitsPerByte(lastLoss));
+	oa::print("  Accuracy: {:.1f}%", finalBatchAcc);
 
-	printf("\nGeneration:\n");
-	printf("  prompt: '%s'\n", kNlpGenerationPrompt);
-	printf("  generated: '%s'\n\n", nlpGenerateGreedy(*model, kNlpGenerationPrompt,
+	oa::print("\nGeneration:");
+	oa::print("  prompt: '{}'", kNlpGenerationPrompt);
+	oa::print("  generated: '{}'\n", nlpGenerateGreedy(*model, kNlpGenerationPrompt,
 		kNlpGenerationBytes, kVocabSize).cStr());
 
 	EXPECT_LT(lastLoss, initialLoss);

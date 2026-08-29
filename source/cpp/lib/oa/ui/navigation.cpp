@@ -29,7 +29,7 @@ namespace {
 void reportShortcutFailure(const oa::Status& inStatus) {
 	if (inStatus.isOk()) return;
 	OaLogError(oa::LogComponent::Ui,
-		"viewport navigation shortcut failed: %s", inStatus.toString().cStr());
+		"viewport navigation shortcut failed: {}", inStatus.toString().cStr());
 }
 
 } // namespace

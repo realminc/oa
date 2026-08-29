@@ -1,15 +1,12 @@
 // OA_DOC_BEGIN: audio-process
 #include <oa/oa.h>
 
-#include <cstdio>
-#include <utility>
-
 OA_MAIN_PREVIEW("ExampleAudio") {
 	auto audioResult = oa::FnAudio::decodeFile(oa::Paths::asset("audio/oaNarration.wav"));
 	if (not audioResult.isOk()) {
 		return 1;
 	}
-	auto audio = std::move(audioResult).getValue();
+	auto audio = oa::move(audioResult).getValue();
 
 	auto mono = oa::FnAudio::toMono(audio);
 
@@ -37,7 +34,7 @@ OA_MAIN_PREVIEW("ExampleAudio") {
 	}
 	if (not oa::Filesystem::isFile(output)) return 1;
 
-	std::printf("Saved reverberated audio (1.5 s tail): %s\n", output.cStr());
+	oa::print("Saved reverberated audio (1.5 s tail): {}", output.cStr());
 
 	if (argc > 1 and oa::StringView(argv[1]) == "--preview") {
 		oa::ViewerConfig previewConfig;

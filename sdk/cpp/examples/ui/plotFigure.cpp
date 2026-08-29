@@ -1,9 +1,6 @@
 // OA_DOC_BEGIN: plot-line
 #include <oa/oa.h>
 
-#include <cstdio>
-#include <utility>
-
 OA_MAIN_MODE("ExamplePlotLine", argc > 1 and oa::StringView(argv[1]) == "--preview" ? oa::PresentationMode::Swapchain : oa::PresentationMode::Headless) {
 	oa::plot::Figure figure({
 		.title = "Training loss",
@@ -20,7 +17,7 @@ OA_MAIN_MODE("ExamplePlotLine", argc > 1 and oa::StringView(argv[1]) == "--previ
 
 	auto renderedResult = figure.render(engine);
 	if (not renderedResult.isOk()) return 1;
-	auto rendered = std::move(renderedResult).getValue();
+	auto rendered = oa::move(renderedResult).getValue();
 
 	const oa::Path output = oa::Paths::var("example/ui/trainingLoss.jpg");
 	if (not oa::Filesystem::createDirectories(output.parentPath()).isOk()) return 1;
@@ -31,7 +28,7 @@ OA_MAIN_MODE("ExamplePlotLine", argc > 1 and oa::StringView(argv[1]) == "--previ
 	if (rendered.format() != oa::ImageFormat::Rgba) return 1;
 	if (not oa::Filesystem::isFile(output)) return 1;
 
-	std::printf("Saved training-loss plot: %s\n", output.cStr());
+	oa::print("Saved training-loss plot: {}", output.cStr());
 
 	if (argc > 1 and oa::StringView(argv[1]) == "--preview") {
 		oa::ViewerConfig previewConfig;

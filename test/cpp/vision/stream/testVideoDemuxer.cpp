@@ -48,6 +48,49 @@ TEST(VideoDemuxer, EmptyEventIsAlreadyComplete) {
   EXPECT_TRUE(token.wait().isOk());
 }
 
+TEST(VideoDemuxer, SignedCompositionOffsetsAreCheckedBeforeUnsignedConversion) {
+	oa::VideoDemuxer demuxer;
+	demuxer.samples_.pushBack({.dts = 100U, .ctsOffset = -40});
+	demuxer.samples_.pushBack({.dts = 100U, .ctsOffset = 25});
+	demuxer.samples_.pushBack({.dts = 10U, .ctsOffset = -11});
+	demuxer.samples_.pushBack({
+		.dts = oa::Limits<oa::U64>::max(),
+		.ctsOffset = 1,
+	});
+
+	auto negativeOffset = demuxer.samplePresentationTimestamp(0U);
+	ASSERT_TRUE(negativeOffset.isOk());
+	EXPECT_EQ(*negativeOffset, 60U);
+	auto positiveOffset = demuxer.samplePresentationTimestamp(1U);
+	ASSERT_TRUE(positiveOffset.isOk());
+	EXPECT_EQ(*positiveOffset, 125U);
+	EXPECT_EQ(
+		demuxer.samplePresentationTimestamp(2U).getStatus().getCode(),
+		oa::StatusCode::DataLoss);
+	EXPECT_EQ(
+		demuxer.samplePresentationTimestamp(3U).getStatus().getCode(),
+		oa::StatusCode::DataLoss);
+	EXPECT_EQ(
+		demuxer.samplePresentationTimestamp(4U).getStatus().getCode(),
+		 oa::StatusCode::OutOfRange);
+}
+
+TEST(VideoDemuxer, SeekFindsPrecedingKeyframeAcrossNonMonotonicBFramePts) {
+	oa::VideoDemuxer demuxer;
+	demuxer.samples_.pushBack({.dts = 0U, .ctsOffset = 0, .isKeyframe = true});
+	demuxer.samples_.pushBack({.dts = 10U, .ctsOffset = 30});
+	demuxer.samples_.pushBack({.dts = 20U, .ctsOffset = -10});
+	demuxer.samples_.pushBack({.dts = 30U, .ctsOffset = 0, .isKeyframe = true});
+	demuxer.samples_.pushBack({.dts = 40U, .ctsOffset = 30});
+	demuxer.samples_.pushBack({.dts = 50U, .ctsOffset = -10});
+	demuxer.samples_.pushBack({.dts = 60U, .ctsOffset = 0, .isKeyframe = true});
+
+	ASSERT_TRUE(demuxer.seek(50U).isOk());
+	EXPECT_EQ(demuxer.getCurrentSampleIndex(), 3U);
+	ASSERT_TRUE(demuxer.seek(65U).isOk());
+	EXPECT_EQ(demuxer.getCurrentSampleIndex(), 6U);
+}
+
 } // namespace
 
 TEST(VideoDemuxer, OpenShibuyaMp4) {
@@ -320,16 +363,19 @@ TEST(VideoDemuxer, DecodesShibuyaH265FirstFrame) {
   ASSERT_TRUE(decoderResult.isOk()) << decoderResult.getStatus().toString();
   auto decoder = oa::move(*decoderResult);
 
-  oa::VideoPacket pkt{};
-  ASSERT_TRUE(demuxerResult->readNextPacket(pkt).isOk());
-  ASSERT_GT(pkt.data.size(), 0U);
-
   oa::VideoFrame frame{};
-  ASSERT_TRUE(oa::VideoDecoderInternal::decodeFrame(
-                  decoder,
-                  oa::Span<const oa::U8>(pkt.data.data(), pkt.data.size()),
-                  frame)
-                  .isOk());
+  for (oa::U32 packetIndex = 0U;
+       packetIndex < 4U && frame.imageView == VK_NULL_HANDLE;
+       ++packetIndex) {
+    oa::VideoPacket packet{};
+    ASSERT_TRUE(demuxerResult->readNextPacket(packet).isOk());
+    ASSERT_GT(packet.data.size(), 0U);
+    ASSERT_TRUE(oa::VideoDecoderInternal::decodeFrame(
+                    decoder,
+                    oa::Span<const oa::U8>(packet.data.data(), packet.data.size()),
+                    frame)
+                    .isOk());
+  }
   EXPECT_NE(frame.imageView, VK_NULL_HANDLE);
   EXPECT_EQ(oa::VideoDecoderInternal::getCachedH265VpsCount(decoder), 1u);
   EXPECT_EQ(oa::VideoDecoderInternal::getCachedH265SpsCount(decoder), 1u);
@@ -517,12 +563,19 @@ TEST(VideoDemuxer, LongPlaybackLoopResetAndBackStep) {
   EXPECT_EQ(video.index(), beforeScrub - 1);
   ASSERT_TRUE(video.next().isOk());
   EXPECT_EQ(video.index(), beforeScrub);
+  const oa::VideoPlayerStats cacheProofStart = video.getPlaybackStats();
   for (oa::U32 i = 0; i < 12; ++i) {
     ASSERT_TRUE(video.stepFrames(-5).isOk()) << "repeat backward scrub " << i;
     EXPECT_EQ(video.index(), beforeScrub - 5);
     ASSERT_TRUE(video.stepFrames(5).isOk()) << "repeat forward scrub " << i;
     EXPECT_EQ(video.index(), beforeScrub);
   }
+  const oa::VideoPlayerStats cacheProofEnd = video.getPlaybackStats();
+  EXPECT_EQ(cacheProofEnd.seekResets, cacheProofStart.seekResets)
+      << "cache-resident reverse/forward stepping must not reset the decoder";
+  EXPECT_GE(cacheProofEnd.presentationCacheHits,
+            cacheProofStart.presentationCacheHits + 24U);
+  EXPECT_GT(cacheProofEnd.presentationCacheResident, 0U);
 
   video.reset();
   ASSERT_TRUE(video.next().isOk());
@@ -1143,6 +1196,97 @@ TEST(VideoDemuxer, SustainedH264StepLatencyStaysBelowFrameBudget) {
       << "sustained decode/convert latency exceeded the full frame budget";
   EXPECT_LT(maxStepMs, video.frameIntervalMs() * 2.0)
       << "a decode/convert step exceeded twice the full frame budget";
+  ASSERT_TRUE(video.close().isOk());
+}
+
+TEST(VideoDemuxer, SustainedH264ReverseSteppingCrossesCacheBoundaries) {
+  if (not datasetAvailable(kShibuyaH264)) {
+    GTEST_SKIP() << "Shibuya MP4 dataset not present";
+  }
+  auto *engine = testEnginePtr();
+  if (engine == nullptr or
+      not testVideoDecodeSupported(*engine, oa::VideoCodec::H264)) {
+    GTEST_SKIP() << "vulkan Video H.264 decode not supported";
+  }
+
+  oa::VideoPlayerConfig cfg;
+  cfg.uri = kShibuyaH264;
+  cfg.audio = false;
+  cfg.startPlaying = false;
+  cfg.loop = false;
+  cfg.presentationCacheFrames = 32U;
+  cfg.preferHardwareYCbCr = false;
+  auto videoResult = oa::VideoPlayer::open(*engine, cfg);
+  ASSERT_TRUE(videoResult.isOk()) << videoResult.getStatus().toString();
+  oa::VideoPlayer video = oa::move(*videoResult);
+
+  auto indexResult = oa::VideoDemuxer::open(kShibuyaH264);
+  ASSERT_TRUE(indexResult.isOk()) << indexResult.getStatus().toString();
+  std::vector<oa::U64> expectedPts;
+  expectedPts.reserve(indexResult->samples_.size());
+  for (oa::Usize i = 0U; i < indexResult->samples_.size(); ++i) {
+    auto pts = indexResult->samplePresentationTimestamp(i);
+    ASSERT_TRUE(pts.isOk()) << pts.getStatus().toString();
+    expectedPts.push_back(*pts);
+  }
+  std::sort(expectedPts.begin(), expectedPts.end());
+
+  constexpr oa::U32 forwardFrames = 180U;
+  for (oa::U32 i = 0U; i < forwardFrames; ++i) {
+    ASSERT_TRUE(video.next().isOk()) << "forward step " << i;
+  }
+  const oa::I64 initialIndex = video.index();
+  EXPECT_EQ(video.currentFrameIndex(),
+            static_cast<oa::Usize>(initialIndex - 1));
+  EXPECT_FALSE(video.seekFrame(video.frameCount()).isOk());
+  const oa::VideoPlayerStats initialStats = video.getPlaybackStats();
+  oa::U64 priorPts = video.currentFrame().presentationTimestamp;
+  std::vector<oa::F64> samplesMs;
+  constexpr oa::U32 reverseFrames = 96U;
+  samplesMs.reserve(reverseFrames);
+  for (oa::U32 i = 0U; i < reverseFrames; ++i) {
+    const auto start = std::chrono::steady_clock::now();
+    ASSERT_TRUE(video.stepBackward().isOk()) << "reverse step " << i;
+    const auto end = std::chrono::steady_clock::now();
+    samplesMs.push_back(
+        std::chrono::duration<oa::F64, std::milli>(end - start).count());
+    EXPECT_EQ(video.index(), initialIndex - static_cast<oa::I64>(i) - 1);
+    const oa::U64 pts = video.currentFrame().presentationTimestamp;
+    EXPECT_LT(pts, priorPts) << "reverse step " << i;
+    priorPts = pts;
+  }
+  const oa::VideoPlayerStats finalStats = video.getPlaybackStats();
+  EXPECT_GE(finalStats.presentationCacheMisses,
+            initialStats.presentationCacheMisses + 2U);
+  EXPECT_GE(finalStats.seekResets, initialStats.seekResets + 2U);
+  EXPECT_GT(finalStats.seekReplayConversionsSkipped,
+            initialStats.seekReplayConversionsSkipped);
+  EXPECT_LT(finalStats.seekReplayConversionsSkipped -
+                initialStats.seekReplayConversionsSkipped,
+            finalStats.seekReplayFrames - initialStats.seekReplayFrames);
+
+  std::sort(samplesMs.begin(), samplesMs.end());
+  oa::F64 totalMs = 0.0;
+  for (oa::F64 sampleMs : samplesMs) totalMs += sampleMs;
+  constexpr oa::Usize p99Index = (reverseFrames * 99U / 100U) - 1U;
+  RecordProperty("reverse_mean_ms", totalMs / reverseFrames);
+  RecordProperty("reverse_p99_ms", samplesMs[p99Index]);
+  RecordProperty("reverse_max_ms", samplesMs.back());
+  RecordProperty("reverse_cache_misses",
+                 finalStats.presentationCacheMisses -
+                     initialStats.presentationCacheMisses);
+  RecordProperty("seek_replay_frames",
+                 finalStats.seekReplayFrames - initialStats.seekReplayFrames);
+  RecordProperty("seek_rgba_conversions_skipped",
+                 finalStats.seekReplayConversionsSkipped -
+                     initialStats.seekReplayConversionsSkipped);
+  constexpr oa::Usize exactSeekTarget = 120U;
+  ASSERT_LT(exactSeekTarget, expectedPts.size());
+  ASSERT_TRUE(video.seekFrame(exactSeekTarget).isOk());
+  EXPECT_EQ(video.currentFrameIndex(), exactSeekTarget);
+  EXPECT_EQ(video.currentFrame().presentationTimestamp,
+            expectedPts[exactSeekTarget]);
+  EXPECT_TRUE(indexResult->close().isOk());
   ASSERT_TRUE(video.close().isOk());
 }
 

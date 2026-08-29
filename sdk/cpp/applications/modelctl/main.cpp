@@ -121,7 +121,7 @@ static oa::I64 countTotalParams(const oa::ModelFile& inModel) {
 static int cmdInspect(const oa::String& inPath) {
 	auto sourceResult = oa::openWeightSource(oa::Path(inPath));
 	if (sourceResult.isError()) {
-		OA_CLI("Error: %s", sourceResult.getStatus().toString().cStr());
+		OA_CLI("Error: {}", sourceResult.getStatus().toString().cStr());
 		return 1;
 	}
 	auto& source = *sourceResult.getValue();
@@ -135,31 +135,30 @@ static int cmdInspect(const oa::String& inPath) {
 	}
 
 	OA_CLI_RAW("\n");
-	OA_CLI("  weight source: %s", inPath.cStr());
-	OA_CLI("  file size:     %s", formatBytes(source.sourceBytes()).cStr());
-	OA_CLI("  Entries:     %zu", entries.size());
-	OA_CLI("  Elements:    %s", formatNumber(static_cast<oa::I64>(elements)).cStr());
-	OA_CLI("  Payload:     %s", formatBytes(payloadBytes).cStr());
+	OA_CLI("  weight source: {}", inPath.cStr());
+	OA_CLI("  file size:     {}", formatBytes(source.sourceBytes()).cStr());
+	OA_CLI("  Entries:     {}", entries.size());
+	OA_CLI("  Elements:    {}", formatNumber(static_cast<oa::I64>(elements)).cStr());
+	OA_CLI("  Payload:     {}", formatBytes(payloadBytes).cStr());
 
 	const auto metadata = source.metadata();
 	if (!metadata.empty()) {
 		OA_CLI_RAW("\n");
 		OA_CLI("  METADATA");
 		for (const auto& [key, value] : metadata) {
-			OA_CLI("  %s: %s", key.cStr(), value.cStr());
+			OA_CLI("  {}: {}", key.cStr(), value.cStr());
 		}
 	}
 
 	OA_CLI_RAW("\n");
-	OA_CLI("  %-5s %-42s %-22s %-10s %s", "idx", "Name", "Shape", "dtype", "Bytes");
+	OA_CLI("  {:<5} {:<42} {:<22} {:<10} {}", "idx", "Name", "Shape", "dtype", "Bytes");
 	for (oa::Usize i = 0; i < entries.size(); ++i) {
 		const auto& entry = entries[i];
-		OA_CLI("  %-5zu %-42s %-22s %-10.*s %s",
+		OA_CLI("  {:<5} {:<42} {:<22} {:<10} {}",
 			i,
 			entry.name.cStr(),
 			formatShape(entry).cStr(),
-			static_cast<int>(oa::scalarTypeName(entry.dtype).size()),
-			oa::scalarTypeName(entry.dtype).data(),
+			oa::scalarTypeName(entry.dtype),
 			formatBytes(entry.byteSize).cStr());
 	}
 	OA_CLI_RAW("\n");
@@ -169,7 +168,7 @@ static int cmdInspect(const oa::String& inPath) {
 static int cmdInfo(const oa::String& inPath) {
 	auto result = oa::ModelFile::load(inPath);
 	if (!result.isOk()) {
-		OA_CLI("Error: %s", result.getStatus().getMessage().cStr());
+		OA_CLI("Error: {}", result.getStatus().getMessage().cStr());
 		return 1;
 	}
 
@@ -177,27 +176,26 @@ static int cmdInfo(const oa::String& inPath) {
 	auto totalParams = countTotalParams(model);
 
 	OA_CLI_RAW("\n");
-	OA_CLI("  Model: %s", inPath.cStr());
+	OA_CLI("  Model: {}", inPath.cStr());
 	OA_CLI_RAW("\n");
 
 	auto sizeResult = oa::Filesystem::getFileSize(oa::Path(inPath));
 	if (sizeResult.isOk()) {
-		OA_CLI("  file size:      %s", formatBytes(sizeResult.getValue()).cStr());
+		OA_CLI("  file size:      {}", formatBytes(sizeResult.getValue()).cStr());
 	}
-	OA_CLI("  format:         OAM v%u", model.formatVersion);
+	OA_CLI("  format:         OAM v{}", model.formatVersion);
 
 	// Config
 	OA_CLI_RAW("\n");
 	OA_CLI("  CONFIG");
-	OA_CLI("  architecture:   %s", model.config.architecture);
-	OA_CLI("  dModel:         %u", model.config.dModel);
-	OA_CLI("  nLayers:        %u", model.config.nLayers);
-	OA_CLI("  dVocab:         %u", model.config.dVocab);
-	OA_CLI("  weight dtype:   %.*s",
-		static_cast<int>(oa::scalarTypeName(static_cast<oa::ScalarType>(model.config.weightDtype)).size()),
-		oa::scalarTypeName(static_cast<oa::ScalarType>(model.config.weightDtype)).data());
+	OA_CLI("  architecture:   {}", model.config.architecture);
+	OA_CLI("  dModel:         {}", model.config.dModel);
+	OA_CLI("  nLayers:        {}", model.config.nLayers);
+	OA_CLI("  dVocab:         {}", model.config.dVocab);
+	OA_CLI("  weight dtype:   {}",
+		oa::scalarTypeName(static_cast<oa::ScalarType>(model.config.weightDtype)));
 	if (model.config.archConfigSize > 0) {
-		OA_CLI("  archConfig:     %u bytes", model.config.archConfigSize);
+		OA_CLI("  archConfig:     {} bytes", model.config.archConfigSize);
 	}
 
 	// Weights
@@ -206,22 +204,22 @@ static int cmdInfo(const oa::String& inPath) {
 		for (const auto& w : model.weightIndex) weightBytes += w.numBytes;
 
 		OA_CLI_RAW("\n");
-		OA_CLI("  WEIGHTS (%zu tensors)", model.weightIndex.size());
-		OA_CLI("  parameters:     %s (%s logical FP32)",
+		OA_CLI("  WEIGHTS ({} tensors)", model.weightIndex.size());
+		OA_CLI("  parameters:     {} ({} logical FP32)",
 			formatNumber(totalParams).cStr(),
 			formatBytes(static_cast<oa::U64>(totalParams) * 4).cStr());
-		OA_CLI("  Blob size:      %s", formatBytes(weightBytes).cStr());
+		OA_CLI("  Blob size:      {}", formatBytes(weightBytes).cStr());
 
 		constexpr oa::U32 kMaxTensors = 30;
 		OA_CLI_RAW("\n");
-		OA_CLI("  %-6s  %-30s  %-18s  %-10s  %s", "idx", "Name", "Shape", "Elements", "storage");
+		OA_CLI("  {:<6}  {:<30}  {:<18}  {:<10}  {}", "idx", "Name", "Shape", "Elements", "storage");
 		for (oa::U32 i = 0; i < model.weightIndex.size(); ++i) {
 			if (i >= kMaxTensors) {
-				OA_CLI("  ... and %zu more tensors", model.weightIndex.size() - kMaxTensors);
+				OA_CLI("  ... and {} more tensors", model.weightIndex.size() - kMaxTensors);
 				break;
 			}
 			const auto& w = model.weightIndex[i];
-			OA_CLI("  %-6u  %-30s  %-18s  %-10s  %s",
+			OA_CLI("  {:<6}  {:<30}  {:<18}  {:<10}  {}",
 				i, w.name,
 				formatShape(w).cStr(),
 				formatNumber(countElements(w)).cStr(),
@@ -232,10 +230,10 @@ static int cmdInfo(const oa::String& inPath) {
 	// State
 	if (model.hasState()) {
 		OA_CLI_RAW("\n");
-		OA_CLI("  STATE (%zu tensors)", model.stateIndex.size());
+		OA_CLI("  STATE ({} tensors)", model.stateIndex.size());
 		for (oa::U32 i = 0; i < model.stateIndex.size() && i < 10; ++i) {
 			const auto& s = model.stateIndex[i];
-			OA_CLI("    %s  %s  %s", s.name, formatShape(s).cStr(),
+			OA_CLI("    {}  {}  {}", s.name, formatShape(s).cStr(),
 				formatBytes(s.numBytes).cStr());
 		}
 	}
@@ -244,25 +242,25 @@ static int cmdInfo(const oa::String& inPath) {
 	if (model.hasOptimizer()) {
 		OA_CLI_RAW("\n");
 		OA_CLI("  OPTIMIZER");
-		OA_CLI("  type:           %s", model.optimizer.type);
-		OA_CLI("  step:           %lld", static_cast<long long>(model.optimizer.step));
-		OA_CLI("  lr:             %.2e", model.optimizer.lr);
-		OA_CLI("  beta1:          %.4f", model.optimizer.beta1);
-		OA_CLI("  beta2:          %.6f", model.optimizer.beta2);
-		OA_CLI("  eps:            %.1e", model.optimizer.eps);
-		OA_CLI("  weight decay:   %.4f", model.optimizer.weightDecay);
-		OA_CLI("  num params:     %s", formatNumber(static_cast<oa::I64>(model.optimizer.numParams)).cStr());
-		OA_CLI("  M/V size:       %s each",
+		OA_CLI("  type:           {}", model.optimizer.type);
+		OA_CLI("  step:           {}", static_cast<long long>(model.optimizer.step));
+		OA_CLI("  lr:             {:.2e}", model.optimizer.lr);
+		OA_CLI("  beta1:          {:.4f}", model.optimizer.beta1);
+		OA_CLI("  beta2:          {:.6f}", model.optimizer.beta2);
+		OA_CLI("  eps:            {:.1e}", model.optimizer.eps);
+		OA_CLI("  weight decay:   {:.4f}", model.optimizer.weightDecay);
+		OA_CLI("  num params:     {}", formatNumber(static_cast<oa::I64>(model.optimizer.numParams)).cStr());
+		OA_CLI("  M/V size:       {} each",
 			formatBytes(model.adamM.size() * sizeof(oa::F32)).cStr());
 	}
 
 	// Progress
 	OA_CLI_RAW("\n");
 	OA_CLI("  PROGRESS");
-	OA_CLI("  step:           %lld", static_cast<long long>(model.progress.step));
-	OA_CLI("  Bytes Seen:     %s", formatBytes(model.progress.bytesSeen).cStr());
-	OA_CLI("  lr:             %.2e", model.progress.lr);
-	OA_CLI("  Best Metric:    %.6f (%s, %s)",
+	OA_CLI("  step:           {}", static_cast<long long>(model.progress.step));
+	OA_CLI("  Bytes Seen:     {}", formatBytes(model.progress.bytesSeen).cStr());
+	OA_CLI("  lr:             {:.2e}", model.progress.lr);
+	OA_CLI("  Best Metric:    {:.6f} ({}, {})",
 		model.progress.bestMetric,
 		model.progress.metricName,
 		model.progress.lowerIsBetter ? "lower is better" : "higher is better");
@@ -272,13 +270,13 @@ static int cmdInfo(const oa::String& inPath) {
 }
 
 static int cmdVerify(const oa::String& inPath) {
-	OA_CLI("Verifying: %s ...", inPath.cStr());
+	OA_CLI("Verifying: {} ...", inPath.cStr());
 
 	// ModelFile::load is the single checksum and structural authority. Keeping a
 	// second verifier here previously made modelctl disagree with OAM v2+.
 	auto result = oa::ModelFile::load(inPath);
 	if (!result.isOk()) {
-		OA_CLI("LOAD FAILED: %s", result.getStatus().getMessage().cStr());
+		OA_CLI("LOAD FAILED: {}", result.getStatus().getMessage().cStr());
 		return 1;
 	}
 
@@ -289,7 +287,7 @@ static int cmdVerify(const oa::String& inPath) {
 	// Check weight blob consistency
 	for (const auto& w : model.weightIndex) {
 		if (w.blobOffset + w.numBytes > model.weightBlob.size()) {
-			OA_CLI("ERROR: weight '%s' extends past blob (offset=%llu, size=%llu, blob=%zu)",
+			OA_CLI("ERROR: weight '{}' extends past blob (offset={}, size={}, blob={})",
 				w.name, static_cast<unsigned long long>(w.blobOffset),
 				static_cast<unsigned long long>(w.numBytes), model.weightBlob.size());
 			++issues;
@@ -315,7 +313,7 @@ static int cmdVerify(const oa::String& inPath) {
 	}
 
 	if (nanCount > 0 || infCount > 0) {
-		OA_CLI("WARNING: %lld NaN, %lld Inf values in weights",
+		OA_CLI("WARNING: {} NaN, {} Inf values in weights",
 			static_cast<long long>(nanCount), static_cast<long long>(infCount));
 		++issues;
 	}
@@ -323,40 +321,40 @@ static int cmdVerify(const oa::String& inPath) {
 	// Optimizer consistency
 	if (model.hasOptimizer()) {
 		if (model.adamM.size() != model.adamV.size()) {
-			OA_CLI("ERROR: adamM size (%zu) != adamV size (%zu)",
+			OA_CLI("ERROR: adamM size ({}) != adamV size ({})",
 				model.adamM.size(), model.adamV.size());
 			++issues;
 		}
 	}
 
 	if (issues == 0) {
-		OA_CLI("OK: arch=%s, %s params, %zu weights, optimizer=%s",
+		OA_CLI("OK: arch={}, {} params, {} weights, optimizer={}",
 			model.config.architecture,
 			formatNumber(totalParams).cStr(),
 			model.weightIndex.size(),
 			model.hasOptimizer() ? "yes" : "no");
 	} else {
-		OA_CLI("ISSUES: %d problems found", issues);
+		OA_CLI("ISSUES: {} problems found", issues);
 	}
 	return issues > 0 ? 1 : 0;
 }
 
 static int cmdList(const oa::String& inDir) {
 	if (!oa::Filesystem::isDirectory(oa::Path(inDir))) {
-		OA_CLI("Error: directory not found: %s", inDir.cStr());
+		OA_CLI("Error: directory not found: {}", inDir.cStr());
 		return 1;
 	}
 
 	auto filesResult = oa::Filesystem::listAll(oa::Path(inDir), true);
 	if (!filesResult.isOk()) {
-		OA_CLI("Error: %s", filesResult.getStatus().getMessage().cStr());
+		OA_CLI("Error: {}", filesResult.getStatus().getMessage().cStr());
 		return 1;
 	}
 
 	OA_CLI_RAW("\n");
-	OA_CLI("  Models in: %s", inDir.cStr());
+	OA_CLI("  Models in: {}", inDir.cStr());
 	OA_CLI_RAW("\n");
-	OA_CLI("  %-40s  %-12s  %-8s  %-10s  %-6s",
+	OA_CLI("  {:<40}  {:<12}  {:<8}  {:<10}  {:<6}",
 		"file", "architecture", "step", "parameters", "optim");
 
 	oa::I32 count = 0;
@@ -376,7 +374,7 @@ static int cmdList(const oa::String& inDir) {
 			}
 			if (relPath.size() > 40) relPath = "..." + relPath.substr(relPath.size() - 37);
 
-			OA_CLI("  %-40s  %-12s  %-8lld  %-10s  %-6s",
+			OA_CLI("  {:<40}  {:<12}  {:<8}  {:<10}  {:<6}",
 				relPath.cStr(),
 				m.config.architecture,
 				static_cast<long long>(m.progress.step),
@@ -390,7 +388,7 @@ static int cmdList(const oa::String& inDir) {
 				if (!relPath.empty() && relPath[0] == '/') relPath = relPath.substr(1);
 			}
 			if (relPath.size() > 40) relPath = "..." + relPath.substr(relPath.size() - 37);
-			OA_CLI("  %-40s  %-12s  %-8s  %-10s  %-6s",
+			OA_CLI("  {:<40}  {:<12}  {:<8}  {:<10}  {:<6}",
 				relPath.cStr(), "ERROR", "-", "-", "-");
 		}
 	}
@@ -399,7 +397,7 @@ static int cmdList(const oa::String& inDir) {
 	if (count == 0) {
 		OA_CLI("  (no .oam models found)");
 	} else {
-		OA_CLI("  total: %d models", count);
+		OA_CLI("  total: {} models", count);
 	}
 	OA_CLI_RAW("\n");
 	return 0;
@@ -410,11 +408,11 @@ static int cmdCompare(const oa::String& inPath1, const oa::String& inPath2) {
 	auto result2 = oa::ModelFile::load(inPath2);
 
 	if (!result1.isOk()) {
-		OA_CLI("Error loading %s: %s", inPath1.cStr(), result1.getStatus().getMessage().cStr());
+		OA_CLI("Error loading {}: {}", inPath1.cStr(), result1.getStatus().getMessage().cStr());
 		return 1;
 	}
 	if (!result2.isOk()) {
-		OA_CLI("Error loading %s: %s", inPath2.cStr(), result2.getStatus().getMessage().cStr());
+		OA_CLI("Error loading {}: {}", inPath2.cStr(), result2.getStatus().getMessage().cStr());
 		return 1;
 	}
 
@@ -426,21 +424,21 @@ static int cmdCompare(const oa::String& inPath1, const oa::String& inPath2) {
 	OA_CLI_RAW("\n");
 	OA_CLI("  Model Comparison");
 	OA_CLI_RAW("\n");
-	OA_CLI("  %-20s  %15s  %15s", "", "Model 1", "Model 2");
-	OA_CLI("  %-20s  %15s  %15s", "architecture:", m1.config.architecture, m2.config.architecture);
-	OA_CLI("  %-20s  %15u  %15u", "dModel:", m1.config.dModel, m2.config.dModel);
-	OA_CLI("  %-20s  %15u  %15u", "nLayers:", m1.config.nLayers, m2.config.nLayers);
-	OA_CLI("  %-20s  %15u  %15u", "dVocab:", m1.config.dVocab, m2.config.dVocab);
-	OA_CLI("  %-20s  %15s  %15s", "parameters:",
+	OA_CLI("  {:<20}  {:>15}  {:>15}", "", "Model 1", "Model 2");
+	OA_CLI("  {:<20}  {:>15}  {:>15}", "architecture:", m1.config.architecture, m2.config.architecture);
+	OA_CLI("  {:<20}  {:>15}  {:>15}", "dModel:", m1.config.dModel, m2.config.dModel);
+	OA_CLI("  {:<20}  {:>15}  {:>15}", "nLayers:", m1.config.nLayers, m2.config.nLayers);
+	OA_CLI("  {:<20}  {:>15}  {:>15}", "dVocab:", m1.config.dVocab, m2.config.dVocab);
+	OA_CLI("  {:<20}  {:>15}  {:>15}", "parameters:",
 		formatNumber(params1).cStr(), formatNumber(params2).cStr());
-	OA_CLI("  %-20s  %15zu  %15zu", "weight Tensors:",
+	OA_CLI("  {:<20}  {:>15}  {:>15}", "weight Tensors:",
 		m1.weightIndex.size(), m2.weightIndex.size());
-	OA_CLI("  %-20s  %15lld  %15lld", "step:",
+	OA_CLI("  {:<20}  {:>15}  {:>15}", "step:",
 		static_cast<long long>(m1.progress.step),
 		static_cast<long long>(m2.progress.step));
-	OA_CLI("  %-20s  %15.6f  %15.6f", "Best Metric:",
+	OA_CLI("  {:<20}  {:15.6f}  {:15.6f}", "Best Metric:",
 		m1.progress.bestMetric, m2.progress.bestMetric);
-	OA_CLI("  %-20s  %15s  %15s", "Optimizer:",
+	OA_CLI("  {:<20}  {:>15}  {:>15}", "Optimizer:",
 		m1.hasOptimizer() ? "yes" : "no",
 		m2.hasOptimizer() ? "yes" : "no");
 	OA_CLI_RAW("\n");
@@ -488,8 +486,8 @@ static int cmdCompare(const oa::String& inPath1, const oa::String& inPath2) {
 		if (compatible && totalElements > 0) {
 			oa::F64 avgDiff = sumDiff / static_cast<oa::F64>(totalElements);
 			OA_CLI("  WEIGHT DIFFERENCES");
-			OA_CLI("  Avg Diff:       %.8f", avgDiff);
-			OA_CLI("  Max Diff:       %.8f", maxDiff);
+			OA_CLI("  Avg Diff:       {:.8f}", avgDiff);
+			OA_CLI("  Max Diff:       {:.8f}", maxDiff);
 			OA_CLI_RAW("\n");
 		}
 	}
@@ -522,18 +520,18 @@ static int cmdQuantize(
 	}
 	auto loaded = oa::ModelFile::load(inPath);
 	if (not loaded.isOk()) {
-		OA_CLI("Error: %s", loaded.getStatus().toString().cStr());
+		OA_CLI("Error: {}", loaded.getStatus().toString().cStr());
 		return 1;
 	}
 	const oa::U64 beforeBytes = loaded->weightBlob.size();
 	auto converted = loaded->quantizeWeights(quantization);
 	if (not converted.isOk()) {
-		OA_CLI("Error: %s", converted.getStatus().toString().cStr());
+		OA_CLI("Error: {}", converted.getStatus().toString().cStr());
 		return 1;
 	}
 	const auto status = converted->save(inOutputPath);
 	if (not status.isOk()) {
-		OA_CLI("Error: %s", status.toString().cStr());
+		OA_CLI("Error: {}", status.toString().cStr());
 		return 1;
 	}
 	oa::Usize quantMatrices = 0;
@@ -543,10 +541,10 @@ static int cmdQuantize(
 	const oa::U64 afterBytes = converted->weightBlob.size();
 	const oa::F64 ratio = beforeBytes == 0
 		? 0.0 : static_cast<oa::F64>(afterBytes) / static_cast<oa::F64>(beforeBytes);
-	OA_CLI("quantized: %s -> %s", inPath.cStr(), inOutputPath.cStr());
-	OA_CLI("  encoding:      %s", oa::quantizationToString(quantization));
-	OA_CLI("  Quant matrices: %zu", quantMatrices);
-	OA_CLI("  weight blob:   %s -> %s (%.1f%%)",
+	OA_CLI("quantized: {} -> {}", inPath.cStr(), inOutputPath.cStr());
+	OA_CLI("  encoding:      {}", oa::quantizationToString(quantization));
+	OA_CLI("  Quant matrices: {}", quantMatrices);
+	OA_CLI("  weight blob:   {} -> {} ({:.1f}%)",
 		formatBytes(beforeBytes).cStr(), formatBytes(afterBytes).cStr(), ratio * 100.0);
 	OA_CLI("  Optimizer:     removed (inference artifact)");
 	return 0;
@@ -565,8 +563,8 @@ static int cmdImport(
 	const oa::String& inDtype,
 	bool inValidate
 ) {
-	OA_CLI("Importing: %s -> %s", inInputPath.cStr(), inOutputPath.cStr());
-	OA_CLI("format: %s, arch: %s, dtype: %s", inFormat.cStr(), inArch.cStr(), inDtype.cStr());
+	OA_CLI("Importing: {} -> {}", inInputPath.cStr(), inOutputPath.cStr());
+	OA_CLI("format: {}, arch: {}, dtype: {}", inFormat.cStr(), inArch.cStr(), inDtype.cStr());
 
 	if (inDtype != "preserve") {
 		OA_CLI("Error: dtype conversion policy is translator-owned; currently use '--dtype preserve'");
@@ -586,24 +584,24 @@ static int cmdImport(
 	else if (inFormat == "gguf") format = oa::WeightFormat::Gguf;
 	else if (inFormat == "onnx") format = oa::WeightFormat::Onnx;
 	else if (inFormat != "auto") {
-		OA_CLI("Error: unknown weight format '%s'", inFormat.cStr());
+		OA_CLI("Error: unknown weight format '{}'", inFormat.cStr());
 		return 2;
 	}
 	auto sourceResult = oa::openWeightSource(oa::Path(inInputPath), format);
 	if (sourceResult.isError()) {
-		OA_CLI("Error: Failed to open weight source: %s", sourceResult.getStatus().getMessage().cStr());
+		OA_CLI("Error: Failed to open weight source: {}", sourceResult.getStatus().getMessage().cStr());
 		return 1;
 	}
 	auto& source = *sourceResult.getValue();
 
 	auto entries = source.list();
-	OA_CLI("Opened weight source: %s", inInputPath.cStr());
-	OA_CLI("  file size: %s", formatBytes(source.sourceBytes()).cStr());
-	OA_CLI("  Found %zu weight entries", entries.size());
+	OA_CLI("Opened weight source: {}", inInputPath.cStr());
+	OA_CLI("  file size: {}", formatBytes(source.sourceBytes()).cStr());
+	OA_CLI("  Found {} weight entries", entries.size());
 #if OA_ENABLE_ALM
 	const auto builtinTranslators = oa::registerClipTextModelTranslator();
 	if (not builtinTranslators.isOk()) {
-		OA_CLI("Error: Failed to register built-in model translators: %s",
+		OA_CLI("Error: Failed to register built-in model translators: {}",
 			builtinTranslators.getMessage().cStr());
 		return 1;
 	}
@@ -618,13 +616,13 @@ static int cmdImport(
 			return translator->buildMap(source);
 		})();
 	if (mapResult.isError()) {
-		OA_CLI("Error: Failed to build weight map: %s", mapResult.getStatus().getMessage().cStr());
+		OA_CLI("Error: Failed to build weight map: {}", mapResult.getStatus().getMessage().cStr());
 		return 1;
 	}
 	oa::ModelFile model;
 	auto reportResult = oa::transferWeights(source, mapResult.getValue(), model);
 	if (reportResult.isError()) {
-		OA_CLI("Error: weight transfer failed: %s", reportResult.getStatus().getMessage().cStr());
+		OA_CLI("Error: weight transfer failed: {}", reportResult.getStatus().getMessage().cStr());
 		return 1;
 	}
 	const auto& report = reportResult.getValue();
@@ -632,14 +630,14 @@ static int cmdImport(
 	// save OAM file
 	auto saveStatus = model.save(inOutputPath);
 	if (!saveStatus.isOk()) {
-		OA_CLI("Error: Failed to save OAM file: %s", saveStatus.getMessage().cStr());
+		OA_CLI("Error: Failed to save OAM file: {}", saveStatus.getMessage().cStr());
 		return 1;
 	}
 
 	OA_CLI("Successfully imported to OAM format");
-	OA_CLI("  output: %s", inOutputPath.cStr());
-	OA_CLI("  Weights: %zu tensors", model.weightIndex.size());
-	OA_CLI("  total size: %s", formatBytes(report.outputBytes).cStr());
+	OA_CLI("  output: {}", inOutputPath.cStr());
+	OA_CLI("  Weights: {} tensors", model.weightIndex.size());
+	OA_CLI("  total size: {}", formatBytes(report.outputBytes).cStr());
 
 	return 0;
 }
@@ -653,18 +651,18 @@ static int cmdValidate(
 	const oa::String& inReferencePath,
 	const oa::String& inInput
 ) {
-	OA_CLI("Validating: %s", inModelPath.cStr());
+	OA_CLI("Validating: {}", inModelPath.cStr());
 
 	// load the OAM model
 	auto loadResult = oa::ModelFile::load(inModelPath);
 	if (!loadResult.isOk()) {
-		OA_CLI("Error: Failed to load OAM model: %s", loadResult.getStatus().getMessage().cStr());
+		OA_CLI("Error: Failed to load OAM model: {}", loadResult.getStatus().getMessage().cStr());
 		return 1;
 	}
 
 	const auto& model = loadResult.getValue();
-	OA_CLI("Loaded model: %s", model.config.architecture);
-	OA_CLI("  Weights: %zu tensors", model.weightIndex.size());
+	OA_CLI("Loaded model: {}", model.config.architecture);
+	OA_CLI("  Weights: {} tensors", model.weightIndex.size());
 
 	// Basic structural checks
 	oa::I32 issues = 0;
@@ -673,7 +671,7 @@ static int cmdValidate(
 
 	for (const auto& w : model.weightIndex) {
 		if (w.blobOffset + w.numBytes > model.weightBlob.size()) {
-			OA_CLI("ERROR: weight '%s' extends past blob", w.name);
+			OA_CLI("ERROR: weight '{}' extends past blob", w.name);
 			++issues;
 			continue;
 		}
@@ -688,19 +686,19 @@ static int cmdValidate(
 		}
 	}
 
-	OA_CLI("  total elements: %s", formatNumber(totalElements).cStr());
-	OA_CLI("  valid elements: %s", formatNumber(matchedElements).cStr());
+	OA_CLI("  total elements: {}", formatNumber(totalElements).cStr());
+	OA_CLI("  valid elements: {}", formatNumber(matchedElements).cStr());
 
 	if (!inReferencePath.empty()) {
 		OA_CLI("Note: Reference numeric comparison requires model-specific forward pass (not yet implemented)");
-		OA_CLI("  Reference path: %s", inReferencePath.cStr());
+		OA_CLI("  Reference path: {}", inReferencePath.cStr());
 	}
 
 	if (issues == 0) {
 		OA_CLI("Validation passed");
 		return 0;
 	} else {
-		OA_CLI("Validation failed: %d issues found", issues);
+		OA_CLI("Validation failed: {} issues found", issues);
 		return 1;
 	}
 }
@@ -841,6 +839,6 @@ int main(int argc, char** argv) {
 		);
 	}
 
-	OA_CLI("Error: unknown command '%s'", cmd.cStr());
+	OA_CLI("Error: unknown command '{}'", cmd.cStr());
 	return 1;
 }

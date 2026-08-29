@@ -242,8 +242,8 @@ static GraphDebugHashes executableGraphDebugHashes(
 void oa::ExecutableGraph::add(const oa::ComputeDispatchDesc& inDesc) {
 	if (inDesc.access.size() != inDesc.buffers.size()) {
 		OaLogError(oa::LogComponent::Compute,
-			"oa::ExecutableGraph::add '%.*s': access=%zu buffers=%zu",
-			static_cast<int>(inDesc.kernel.size()), inDesc.kernel.data(),
+			"oa::ExecutableGraph::add '{}': access={} buffers={}",
+			inDesc.kernel,
 			inDesc.access.size(), inDesc.buffers.size());
 		return;
 	}
@@ -251,8 +251,8 @@ void oa::ExecutableGraph::add(const oa::ComputeDispatchDesc& inDesc) {
 		and inDesc.bufferOwners.size() != inDesc.buffers.size())
 	{
 		OaLogError(oa::LogComponent::Compute,
-			"oa::ExecutableGraph::add '%.*s': owners=%zu buffers=%zu",
-			static_cast<int>(inDesc.kernel.size()), inDesc.kernel.data(),
+			"oa::ExecutableGraph::add '{}': owners={} buffers={}",
+			inDesc.kernel,
 			inDesc.bufferOwners.size(), inDesc.buffers.size());
 		return;
 	}
@@ -260,8 +260,8 @@ void oa::ExecutableGraph::add(const oa::ComputeDispatchDesc& inDesc) {
 		or (inDesc.pushSize != 0U and inDesc.pushData == nullptr))
 	{
 		OaLogError(oa::LogComponent::Compute,
-			"oa::ExecutableGraph::add '%.*s': invalid push payload size=%u",
-			static_cast<int>(inDesc.kernel.size()), inDesc.kernel.data(),
+			"oa::ExecutableGraph::add '{}': invalid push payload size={}",
+			inDesc.kernel,
 			inDesc.pushSize);
 		return;
 	}
@@ -272,8 +272,8 @@ void oa::ExecutableGraph::add(const oa::ComputeDispatchDesc& inDesc) {
 			== oa::invalidSemanticOpId)
 		{
 			OaLogError(oa::LogComponent::Compute,
-				"oa::ExecutableGraph::add '%.*s': invalid semantic provenance",
-				static_cast<int>(inDesc.kernel.size()), inDesc.kernel.data());
+				"oa::ExecutableGraph::add '{}': invalid semantic provenance",
+				inDesc.kernel);
 			return;
 		}
 		for (oa::U32 previous = 0; previous < operation; ++previous) {
@@ -283,8 +283,8 @@ void oa::ExecutableGraph::add(const oa::ComputeDispatchDesc& inDesc) {
 				continue;
 			}
 			OaLogError(oa::LogComponent::Compute,
-				"oa::ExecutableGraph::add '%.*s': duplicate semantic provenance",
-				static_cast<int>(inDesc.kernel.size()), inDesc.kernel.data());
+				"oa::ExecutableGraph::add '{}': duplicate semantic provenance",
+				inDesc.kernel);
 			return;
 		}
 	}
@@ -940,12 +940,12 @@ oa::Status oa::ExecutableGraph::executeMultiQueue(oa::Engine& inRt) {
 	// Ensure all streams are complete before releasing
 	if (computeStream->submitted) {
 		if (auto s = computeStream->synchronize(oa::EngineDeviceAccess::get(inRt)); !s.isOk()) {
-			OaLogError(oa::LogComponent::Compute, "graph execute: compute stream sync failed: %s", s.getMessage().cStr());
+			OaLogError(oa::LogComponent::Compute, "graph execute: compute stream sync failed: {}", s.getMessage().cStr());
 		}
 	}
 	if (asyncStream->submitted) {
 		if (auto s = asyncStream->synchronize(oa::EngineDeviceAccess::get(inRt)); !s.isOk()) {
-			OaLogError(oa::LogComponent::Compute, "graph execute: async stream sync failed: %s", s.getMessage().cStr());
+			OaLogError(oa::LogComponent::Compute, "graph execute: async stream sync failed: {}", s.getMessage().cStr());
 		}
 	}
 
@@ -1048,7 +1048,7 @@ oa::Status oa::ExecutableGraph::compile(oa::Engine& inRt) {
 		auto it = previous.find(this);
 		if (it != previous.end()) {
 			OaLogInfo(oa::LogComponent::Compute,
-				"graph cache identity: topology=%s resources=%s push=%s",
+				"graph cache identity: topology={} resources={} push={}",
 				it->second.topology == current.topology ? "same" : "changed",
 				it->second.resources == current.resources ? "same" : "changed",
 				it->second.push == current.push ? "same" : "changed");
@@ -1339,7 +1339,7 @@ oa::Status oa::ExecutableGraph::compile(oa::Engine& inRt) {
 	if (oa::EnvFlag::isSet("OA_LOG_BARRIERS")) {
 		const oa::U32 n = static_cast<oa::U32>(nodes_.size());
 		OaLogInfo(oa::LogComponent::Compute,
-			"oa::ExecutableGraph::compile: nodes=%u barriers=%u war=%u indirect=%u alias=%u",
+			"oa::ExecutableGraph::compile: nodes={} barriers={} war={} indirect={} alias={}",
 			n, barrierCount_, warBarrierCount_, indirectBarrierCount_,
 			aliasBarrierCount_);
 	}

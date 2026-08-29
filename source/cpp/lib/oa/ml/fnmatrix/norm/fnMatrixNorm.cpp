@@ -15,7 +15,7 @@
 #include <oa/core/validation.h>
 #include "../../autograd/autogradAttach.gen.h"
 
-#include <assert.h>
+#include <oa/core/std/assert.h>
 
 // Normalization
 oa::Matrix oa::FnMatrix::layerNorm(
@@ -24,7 +24,7 @@ oa::Matrix oa::FnMatrix::layerNorm(
 	// normalize over the LAST dim; leading dims are independent rows (rank>2 safe).
 	const oa::I64 cols = inSelf.rank() >= 1 ? inSelf.size(inSelf.rank() - 1) : inSelf.numElements();
 	const oa::I64 rows = cols > 0 ? inSelf.numElements() / cols : 1;
-	assert(inWeight.numElements() == cols and inBias.numElements() == cols);
+	OA_REQUIRE(inWeight.numElements() == cols and inBias.numElements() == cols);
 
 	oa::Matrix out = oa::FnMatrix::empty(inSelf.getShape(), inSelf.getDtype());
 	const auto semantic = ctx.recordOp(
@@ -46,7 +46,7 @@ oa::Matrix oa::FnMatrix::layerNorm(
 		out, inSelf, inWeight, inBias, inEps, semantic.getValue());
 	if (not attached.isOk()) {
 		OaLogError(oa::LogComponent::Ml,
-			"LayerNorm semantic autograd attachment failed: %s",
+			"LayerNorm semantic autograd attachment failed: {}",
 			attached.getMessage().cStr());
 		return {};
 	}
@@ -63,7 +63,7 @@ oa::Matrix oa::FnMatrix::rmsNorm(
 	// flattens to rows=B*T, cols=C, matching the row-major buffer the kernel expects.)
 	const oa::I64 cols = inSelf.rank() >= 1 ? inSelf.size(inSelf.rank() - 1) : inSelf.numElements();
 	const oa::I64 rows = cols > 0 ? inSelf.numElements() / cols : 1;
-	assert(inWeight.numElements() == cols);
+	OA_REQUIRE(inWeight.numElements() == cols);
 
 	oa::Matrix out = oa::FnMatrix::empty(inSelf.getShape(), inSelf.getDtype());
 	const auto semantic = ctx.recordOp(
@@ -82,7 +82,7 @@ oa::Matrix oa::FnMatrix::rmsNorm(
 		out, inSelf, inWeight, inEps, semantic.getValue());
 	if (not attached.isOk()) {
 		OaLogError(oa::LogComponent::Ml,
-			"RmsNorm semantic autograd attachment failed: %s",
+			"RmsNorm semantic autograd attachment failed: {}",
 			attached.getMessage().cStr());
 		return {};
 	}
@@ -289,8 +289,8 @@ oa::ResidualRmsNormResult oa::FnMatrix::residualRmsNorm(
 	auto& ctx = oa::ExecutionSession::getActive();
 	const oa::I64 cols = inA.rank() >= 1 ? inA.size(inA.rank() - 1) : inA.numElements();
 	const oa::I64 rows = cols > 0 ? inA.numElements() / cols : 1;
-	assert(inWeight.numElements() == cols);
-	assert(inB.numElements() == inA.numElements());
+	OA_REQUIRE(inWeight.numElements() == cols);
+	OA_REQUIRE(inB.numElements() == inA.numElements());
 
 	oa::Matrix out = oa::FnMatrix::empty(inA.getShape(), inA.getDtype());
 	oa::Matrix residual = oa::FnMatrix::empty(inA.getShape(), inA.getDtype());

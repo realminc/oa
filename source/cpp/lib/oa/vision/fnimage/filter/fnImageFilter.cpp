@@ -18,8 +18,8 @@ bool isValidImage(const oa::Matrix& inImage, oa::StringView inOperation) {
 		shape[2] > 0 && shape[3] > 0) {
 		return true;
 	}
-	OaLogWarn(oa::LogComponent::Vision, "%.*s expects a stored, non-empty [B,C,H,W] tensor",
-		static_cast<int>(inOperation.size()), inOperation.data());
+	OaLogWarn(oa::LogComponent::Vision, "{} expects a stored, non-empty [B,C,H,W] tensor",
+		inOperation);
 	return false;
 }
 
@@ -86,8 +86,8 @@ bool isValidMorphology(const oa::Matrix& inImage, oa::U32 inKernelWidth,
 		return true;
 	}
 	OaLogWarn(oa::LogComponent::Vision,
-		"%.*s requires odd kernel dimensions in [1,31], a valid border, and a finite border value",
-		static_cast<int>(inOperation.size()), inOperation.data());
+		"{} requires odd kernel dimensions in [1,31], a valid border, and a finite border value",
+		inOperation);
 	return false;
 }
 
@@ -137,8 +137,8 @@ bool isValidNeighborhood(const oa::Matrix& inImage, oa::U32 inKernelSize,
 	if (isValidImage(inImage, inOperation) && inKernelSize > 0 &&
 		inKernelSize <= 15 && (inKernelSize & 1U) != 0 && isValidBorder(inBorder)) return true;
 	OaLogWarn(oa::LogComponent::Vision,
-		"%.*s requires an odd kernel in [1,15] and a valid border",
-		static_cast<int>(inOperation.size()), inOperation.data());
+		"{} requires an odd kernel in [1,15] and a valid border",
+		inOperation);
 	return false;
 }
 

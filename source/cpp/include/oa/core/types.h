@@ -57,7 +57,7 @@ static_assert(sizeof(I64) == 8 and sizeof(U64) == 8);
 // AUTO-GENERATED TYPES (must be included before functions that use them)
 #include <oa/core/type.gen.h>
 
-#include <oa/core/assert.h>
+#include <oa/core/std/assert.h>
 
 // COMPILER & PLATFORM DETECTION
 #if defined(_MSC_VER)

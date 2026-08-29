@@ -31,12 +31,12 @@ static void executionSessionMaybeLogGraph(const oa::ExecutableGraph& inGraph) {
 
 	const auto nodes = inGraph.nodes();
 	OaLogInfo(oa::LogComponent::Compute,
-		"oa::ExecutionSession graph #%u: %u node(s)", index + 1U,
+		"oa::ExecutionSession graph #{}: {} node(s)", index + 1U,
 		static_cast<oa::U32>(nodes.size()));
 	for (oa::U32 i = 0; i < static_cast<oa::U32>(nodes.size()); ++i) {
 		const auto& node = nodes[i];
 		OaLogInfo(oa::LogComponent::Compute,
-			"  [%02u] %-32s groups=(%u,%u,%u) buffers=%u push=%u",
+			"  [{:02}] {:<32} groups=({},{},{}) buffers={} push={}",
 			i,
 			node.shader.cStr(),
 			node.groupsX,
@@ -52,7 +52,7 @@ oa::Status oa::ExecutionSession::recordActiveGraph_() {
 	const auto recordingStatus = consumeRecordingFailure();
 	if (not recordingStatus.isOk()) {
 		OaLogError(oa::LogComponent::Compute,
-			"oa::ExecutionSession recording transaction aborted: %s",
+			"oa::ExecutionSession recording transaction aborted: {}",
 			recordingStatus.getMessage().cStr());
 		return recordingStatus;
 	}
@@ -61,7 +61,7 @@ oa::Status oa::ExecutionSession::recordActiveGraph_() {
 	const auto loweringStatus = validateLowering();
 	if (not loweringStatus.isOk()) {
 		OaLogError(oa::LogComponent::Compute,
-			"oa::ExecutionSession semantic lowering validation failed: %s",
+			"oa::ExecutionSession semantic lowering validation failed: {}",
 			loweringStatus.getMessage().cStr());
 		discardActiveRecording();
 		return loweringStatus;
@@ -90,7 +90,7 @@ oa::Status oa::ExecutionSession::recordActiveGraph_() {
 		if (activeGraph->lastCompileReused()) ++stats().compileCacheHits;
 		if (not compileStatus.isOk()) {
 			OaLogError(oa::LogComponent::Compute,
-				"oa::ExecutionSession graph compile failed: %s",
+				"oa::ExecutionSession graph compile failed: {}",
 				compileStatus.getMessage().cStr());
 			// The primary command buffer does not reference this graph yet, so
 			// discarding the rejected recording is safe.
@@ -108,7 +108,7 @@ oa::Status oa::ExecutionSession::recordActiveGraph_() {
 	stats().recordMs += executionSessionElapsedMs(recordBegin);
 	if (not recordResult.isOk()) {
 		OaLogError(oa::LogComponent::Compute,
-			"oa::ExecutionSession graph recording failed: %s",
+			"oa::ExecutionSession graph recording failed: {}",
 			recordResult.getStatus().getMessage().cStr());
 		return recordResult.getStatus();
 	}
@@ -150,7 +150,7 @@ oa::Result<oa::Event> oa::ExecutionSession::submit(oa::Timer* inTimer) {
 		if (inTimer) oa::TimerAccess::cancelDevice(*inTimer);
 		if (not abandonStatus.isOk()) {
 			OaLogError(oa::LogComponent::Compute,
-				"failed submission cleanup also failed: %s",
+				"failed submission cleanup also failed: {}",
 				abandonStatus.getMessage().cStr());
 		}
 		return recordStatus;
@@ -168,7 +168,7 @@ oa::Result<oa::Event> oa::ExecutionSession::submit(oa::Timer* inTimer) {
 			// auxiliary profiling failure. The timer becomes unavailable, while
 			// the caller still owns the exact completion boundary.
 			OaLogError(oa::LogComponent::Compute,
-				"device timer completion attachment failed: %s",
+				"device timer completion attachment failed: {}",
 				attachStatus.getMessage().cStr());
 		}
 	}
@@ -247,10 +247,10 @@ oa::Status oa::ExecutionSession::wait(const oa::Event& inEvent) {
 	stats().waitMs += executionSessionElapsedMs(waitBegin);
 	if (status.isOk() and oa::EnvFlag::isSet("OA_LOG_RUNTIME_PHASES")) {
 		OaLogInfo(oa::LogComponent::Compute,
-			"Runtime phases: nodes=%u dispatches=%u graphs=%u submissions=%u cache_hits=%u "
-			"barriers=%u boundary_barriers=%u host_barriers=%u war=%u indirect=%u alias=%u "
-			"descriptor_sets=%u referenced_bytes=%llu compile=%.3f ms record=%.3f ms "
-			"submit=%.3f ms wait=%.3f ms",
+			"Runtime phases: nodes={} dispatches={} graphs={} submissions={} cache_hits={} "
+			"barriers={} boundary_barriers={} host_barriers={} war={} indirect={} alias={} "
+			"descriptor_sets={} referenced_bytes={} compile={:.3f} ms record={:.3f} ms "
+			"submit={:.3f} ms wait={:.3f} ms",
 			stats().nodeCount, stats().dispatchCount,
 			stats().graphCount, stats().submissionCount,
 			stats().compileCacheHits,

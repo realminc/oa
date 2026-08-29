@@ -29,7 +29,7 @@ oa::Matrix oa::FnMatrix::matMulNt(
 	oa::I64 M2d = 1;
 	for (oa::I32 i = 0; i < inA.rank() - 1; ++i) M2d *= inA.size(i);
 
-	OaLogDebug(oa::LogComponent::Compute, "MatMulNt: A.rank=%d K=%lld B=[%lld,%lld] M2d=%lld N=%lld",
+	OaLogDebug(oa::LogComponent::Compute, "MatMulNt: A.rank={} K={} B=[{},{}] M2d={} N={}",
 		inA.rank(), K, inB.size(0), inB.size(1), M2d, N);
 
 	oa::Matrix out = oa::FnMatrix::empty(inferredShape.getValue(), inA.getDtype());
@@ -40,7 +40,7 @@ oa::Matrix oa::FnMatrix::matMulNt(
 		static_cast<oa::U32>(K),
 		inPrecision);
 	if (not lowering.isOk()) {
-		OaLogError(oa::LogComponent::Compute, "MatMulNt lowering failed: %s",
+		OaLogError(oa::LogComponent::Compute, "MatMulNt lowering failed: {}",
 			lowering.getStatus().getMessage().cStr());
 		return {};
 	}
@@ -49,7 +49,7 @@ oa::Matrix oa::FnMatrix::matMulNt(
 		out, inA, inB, lowering.getValue());
 	if (not attached.isOk()) {
 		OaLogError(oa::LogComponent::Compute,
-			"MatMulNt semantic autograd attachment failed: %s",
+			"MatMulNt semantic autograd attachment failed: {}",
 			attached.getMessage().cStr());
 		return {};
 	}

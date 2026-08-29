@@ -78,6 +78,57 @@ layouts, spin loops, and non-atomic shared counts were rejected because they
 either regressed another workload or weakened portability, progress, or
 failure semantics.
 
+## Formatting checkpoint
+
+OA exposes one brace-formatting and record-output family:
+
+```cpp
+#include <oa/core/std/print.h>
+
+const oa::String message = oa::format("epoch={} loss={:.4f}", epoch, loss);
+OA_RETURN_IF_ERROR(oa::print("epoch={} loss={:.4f}", epoch, loss));
+OA_RETURN_IF_ERROR(oa::print(oa::PrintStream::Error, "failed: {}", reason));
+OA_RETURN_IF_ERROR(oa::write("\rprogress={:.1f}%", percent));
+OA_RETURN_IF_ERROR(oa::flush());
+```
+
+`oa::print` appends exactly one newline; `oa::write` appends none. Neither
+implicitly flushes, so visible same-line progress uses `\r`, `oa::write`, and
+the explicit `oa::flush` shown above. The functions return `oa::Status` for
+recoverable host-output failures. Format strings use sequential `{}` or
+`{:spec}` fields and must be character-array literals; runtime text is accepted
+as data and is not reparsed as a format program. The supported surface includes
+OA strings and views, C strings, booleans, characters, integers, enums,
+floating-point values, pointers, escaped braces, alignment, sign, alternate
+form, zero padding, bounded width and precision, integer bases, and the
+`f`/`e`/`g` floating families.
+
+The 2026-08-28 dev checkpoint compares OA's bounded, literal brace formatter
+against `std::format` for identical output. It used Release Clang 22.1.8,
+glibc 2.44, Linux 7.1.8-arch1-3, the same Intel Core i5-1145G7, CPU 3 affinity,
+AC power, the `powersave` governor, and the balanced power profile. Each fresh
+process used 32,768 items, five warmups, and 21 alternating samples. All seven
+processes passed full-output preflight and timed checksums. Ratios are the
+median of the seven per-process OA/standard-library ratios; lower is better.
+
+| Case | Median `oa/std` | Seven-process range | Result on this workload |
+|---|---:|---:|---|
+| signed decimal integer | 0.589x | 0.577-0.603x | OA used 58.9% of host time |
+| padded hex + bool | 0.668x | 0.661-0.688x | OA used 66.8% of host time |
+| fixed-precision float | 0.913x | 0.901-0.919x | OA used 91.3% of host time |
+| padded hex + bool + fixed float | 1.003x | 0.975-1.011x | parity within spread |
+
+Inlining lets the compiler fold fixed literal syntax; records through 128
+bytes use bounded inline staging, and floating conversion writes into caller
+storage rather than an intermediate owning string. These changes close the
+previous mixed-record gap without changing output, precision, locale,
+overflow, or failure behavior. OA still pins floating conversion to the C
+numeric locale and caps format width, precision, and total output. The logger,
+CLI, and user-facing C++ SDK applications, examples, and tutorials now use this
+same brace-formatting route. Logger records no longer have fixed 4096-byte or
+metrics-JSONL 256-byte truncation points; metrics tags are JSON-escaped and
+non-finite values serialize as `null`.
+
 ## Host-memory checkpoint
 
 `BenchMemory` separately qualifies the raw-byte primitives now owned by
@@ -193,6 +244,10 @@ pair. Unknown CLI arguments are rejected rather than silently ignored.
 cmake --build build/release --target BenchStd TestOaStd -j
 ctest --test-dir build/release -R '^TestOaStd$' --output-on-failure
 taskset -c 2 ./bin/release/test/core/std/benchStd \
+  --items 32768 --warmups 5 --samples 21
+
+# Formatting evidence above used CPU 3 on the recorded host.
+taskset -c 3 ./bin/release/test/core/std/benchStd \
   --items 32768 --warmups 5 --samples 21
 
 cmake --build build/release --target BenchMemory TestMemory -j

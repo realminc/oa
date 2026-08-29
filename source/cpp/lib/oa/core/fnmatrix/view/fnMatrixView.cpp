@@ -16,7 +16,7 @@
 #include <oa/runtime/engine/resourceAccess.h>
 #include <oa/core/validation.h>
 
-#include <assert.h>
+#include <oa/core/std/assert.h>
 #include <string.h>
 
 static void recordMatrixView(
@@ -28,7 +28,7 @@ static void recordMatrixView(
 	const auto status = context->recordView(inSource, inView);
 	if (not status.isOk()) {
 		OaLogError(oa::LogComponent::Compute,
-			"matrix view semantic recording failed: %s",
+			"matrix view semantic recording failed: {}",
 			status.getMessage().cStr());
 	}
 }
@@ -189,12 +189,12 @@ void oa::Matrix::copyFrom(const oa::Matrix& inOther) {
 }
 
 oa::F32 oa::Matrix::item() const {
-	assert(numElements() == 1 && "item() requires scalar tensor");
+	OA_REQUIRE_MSG(numElements() == 1, "item() requires scalar tensor");
 	return at(0);
 }
 
 oa::F32 oa::Matrix::at(oa::I64 inIdx) const {
-	assert(inIdx >= 0 and inIdx < numElements());
+	OA_REQUIRE(inIdx >= 0 and inIdx < numElements());
 	// A host read is an observation boundary even when the allocation happens to
 	// be persistently mapped. Recorded GPU writes must become visible before the
 	// CPU dereferences that mapping; otherwise correctness depends on allocation
@@ -203,7 +203,7 @@ oa::F32 oa::Matrix::at(oa::I64 inIdx) const {
 	if (oa::ExecutionSession::getActivePtr()) {
 		auto completionStatus =
 			oa::FnMatrix::completeRecordedWork(oa::ExecutionSession::getActive());
-		assert(completionStatus.isOk());
+		OA_REQUIRE(completionStatus.isOk());
 	}
 	const oa::I64 elemOff = matrixFlatToElementOffset(shape_, stride_, inIdx);
 	const oa::I64 elemSz = static_cast<oa::I64>(oa::scalarSize(dtype_));
@@ -217,10 +217,10 @@ oa::F32 oa::Matrix::at(oa::I64 inIdx) const {
 			oa::MatrixAccess::descriptor(*this),
 			byteOffset_ + static_cast<oa::U64>(elemOff * elemSz),
 			cellBytes, static_cast<oa::U64>(elemSz));
-		assert(status.isOk());
+		OA_REQUIRE(status.isOk());
 		cell = reinterpret_cast<const char*>(cellBytes);
 	}
-	assert(cell != nullptr);
+	OA_REQUIRE(cell != nullptr);
 	if (dtype_ == oa::ScalarType::BFloat16) {
 		return oa::bf16ToF32(*reinterpret_cast<const oa::U16*>(cell));
 	}
@@ -228,7 +228,7 @@ oa::F32 oa::Matrix::at(oa::I64 inIdx) const {
 }
 
 void oa::Matrix::set(oa::I64 inIdx, oa::F32 inValue) {
-	assert(inIdx >= 0 and inIdx < numElements());
+	OA_REQUIRE(inIdx >= 0 and inIdx < numElements());
 	const oa::I64 elemOff = matrixFlatToElementOffset(shape_, stride_, inIdx);
 	const oa::I64 elemSz = static_cast<oa::I64>(oa::scalarSize(dtype_));
 	auto* base = static_cast<char*>(data());
@@ -242,14 +242,14 @@ void oa::Matrix::set(oa::I64 inIdx, oa::F32 inValue) {
 	if (not cell) {
 		auto completionStatus =
 			oa::FnMatrix::completeRecordedWork(oa::ExecutionSession::getActive());
-		assert(completionStatus.isOk());
+		OA_REQUIRE(completionStatus.isOk());
 	}
 	auto& runtime = oa::ExecutionSession::getActive().engine();
 	const auto status = oa::EngineResourceAccess::uploadBuffer(runtime,
 		oa::MatrixAccess::descriptor(*this),
 		byteOffset_ + static_cast<oa::U64>(elemOff * elemSz),
 		encoded, static_cast<oa::U64>(elemSz));
-	assert(status.isOk());
+	OA_REQUIRE(status.isOk());
 }
 
 void oa::Matrix::zero() {

@@ -16,7 +16,6 @@ enum class DescriptorKind : oa::U32 {
 	SampledImage,
 	StorageImage,
 	Sampler,
-	CombinedImageSampler,
 };
 
 struct ImageDispatchBinding {
@@ -45,6 +44,17 @@ struct ImageDispatchBinding {
 	// implied as the local owner between the pre/post barriers.
 	oa::U32 initialQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	oa::U32 finalQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+};
+
+// Exact pipeline bridge for shaders that retain OA's global bindless set 0 but
+// require one additional fixed-layout descriptor set. Vulkan sampler YCbCr
+// conversion is the first consumer: its combined image sampler must be
+// immutable and therefore cannot live in the global update-after-bind heap.
+// All handles are borrowed and must remain alive through the returned ticket.
+struct ImageDispatchPipeline {
+	VkPipeline pipeline = VK_NULL_HANDLE;
+	VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
+	VkDescriptorSet auxiliaryDescriptorSet = VK_NULL_HANDLE;
 };
 
 class ImageDispatchTicket {
@@ -139,6 +149,18 @@ public:
 		const void* inPushData,
 		oa::U32 inPushSize,
 		oa::ScalarType inStorageDtype,
+		oa::U32 inGroupsX,
+		oa::U32 inGroupsY,
+		oa::U32 inGroupsZ,
+		const oavk::TimelineSemaphore& inWaitSem,
+		oa::U64 inWaitValue);
+
+	[[nodiscard]] static oa::Result<ImageDispatchTicket> runWithPipelineDependencyAsync(
+		oa::Engine& inRt,
+		const ImageDispatchPipeline& inPipeline,
+		oa::Span<const ImageDispatchBinding> inBindings,
+		const void* inPushData,
+		oa::U32 inPushSize,
 		oa::U32 inGroupsX,
 		oa::U32 inGroupsY,
 		oa::U32 inGroupsZ,

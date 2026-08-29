@@ -16,6 +16,10 @@ oa::Result<oa::VideoPlayer> oa::VideoPlayer::open(oa::Engine& inEngine, const oa
 	if (uri.empty()) {
 		return oa::Status::error(oa::StatusCode::InvalidArgument, "oa::VideoPlayer: empty URI");
 	}
+	if (inCfg.reorderDepth > 64U || inCfg.presentationCacheFrames > 4096U) {
+		return oa::Status::invalidArgument(
+			"oa::VideoPlayer reorder/cache frame limits are out of range");
+	}
 
 	auto demuxerResult = oa::VideoDemuxer::open(uri, inCfg.demuxerConfig);
 	if (not demuxerResult.isOk()) {
@@ -44,16 +48,17 @@ oa::Result<oa::VideoPlayer> oa::VideoPlayer::open(oa::Engine& inEngine, const oa
 		auto audio = oa::AudioPlayer::open(inEngine, audioConfig);
 		if (audio.isOk()) {
 			it.audio_.emplace(oa::move(*audio));
-			if (inCfg.startPlaying) (void)it.audio_->play();
 		} else if (audio.getStatus().getCode() != oa::StatusCode::NotFound) {
 			OaLogWarn(oa::LogComponent::Video,
-				"oa::VideoPlayer audio disabled: %s", audio.getStatus().getMessage().cStr());
+				"oa::VideoPlayer audio disabled: {}", audio.getStatus().getMessage().cStr());
 		}
 	}
 	it.displayPts_.reserve(it.demuxer_->samples_.size());
-	for (const auto& sample : it.demuxer_->samples_) {
-		it.displayPts_.pushBack(
-			sample.dts + static_cast<oa::U64>(sample.ctsOffset));
+	for (oa::Usize sampleIndex = 0U;
+		sampleIndex < it.demuxer_->samples_.size(); ++sampleIndex) {
+		auto pts = it.demuxer_->samplePresentationTimestamp(sampleIndex);
+		if (not pts.isOk()) return pts.getStatus();
+		it.displayPts_.pushBack(*pts);
 	}
 	if (not it.displayPts_.empty()) {
 		oa::sort(it.displayPts_.data(),
@@ -68,10 +73,30 @@ oa::Result<oa::VideoPlayer> oa::VideoPlayer::open(oa::Engine& inEngine, const oa
 	} else {
 		it.frameIntervalMs_ = 1000.0F / 30.0F;
 	}
+	if (inCfg.presentationCacheFrames > 0U
+		&& inCfg.presentationCacheBytes > 0U) {
+		const oa::U64 width = it.demuxer_->getInfo().width;
+		const oa::U64 height = it.demuxer_->getInfo().height;
+		if (width > 0U && height > 0U
+			&& width <= oa::Limits<oa::U64>::max() / height
+			&& width * height <= oa::Limits<oa::U64>::max() / 4U) {
+			const oa::U64 frameBytes = width * height * 4U;
+			const oa::U64 byBudget = inCfg.presentationCacheBytes / frameBytes;
+			it.presentationCacheCapacity_ = static_cast<oa::Usize>(oa::min<oa::U64>(
+				inCfg.presentationCacheFrames, byBudget));
+		}
+	}
+	it.stats_.presentationCacheCapacity = static_cast<oa::U32>(
+		oa::min<oa::Usize>(it.presentationCacheCapacity_,
+			oa::Limits<oa::U32>::max()));
 
 	oa::Status first = it.next();
 	if (not first.isOk()) {
 		return first;
+	}
+	if (inCfg.startPlaying && it.audio_.hasValue()) {
+		OA_RETURN_IF_ERROR(it.audio_->seek(it.positionUs()));
+		OA_RETURN_IF_ERROR(it.audio_->play());
 	}
 
 	return oa::Result<oa::VideoPlayer>(oa::move(it));
@@ -90,11 +115,15 @@ oa::VideoPlayer::VideoPlayer(oa::VideoPlayer&& inOther) noexcept
 	, reachedEos_(inOther.reachedEos_)
 	, demuxerEosCurrent_(inOther.demuxerEosCurrent_)
 	, reorder_(oa::move(inOther.reorder_))
+	, presentationCache_(oa::move(inOther.presentationCache_))
 	, displayPts_(oa::move(inOther.displayPts_))
 	, rgbaPool_(oa::move(inOther.rgbaPool_))
 	, rgbaPoolBusy_(oa::move(inOther.rgbaPoolBusy_))
 	, rgbaPoolConsumerEvents_(oa::move(inOther.rgbaPoolConsumerEvents_))
 	, index_(inOther.index_)
+	, decodeCursor_(inOther.decodeCursor_)
+	, presentationCacheCapacity_(inOther.presentationCacheCapacity_)
+	, stats_(inOther.stats_)
 	, demuxerFormatGeneration_(inOther.demuxerFormatGeneration_)
 	, demuxerReconnectCount_(inOther.demuxerReconnectCount_)
 {
@@ -104,6 +133,9 @@ oa::VideoPlayer::VideoPlayer(oa::VideoPlayer&& inOther) noexcept
 	inOther.playing_     = false;
 	inOther.reachedEos_  = false;
 	inOther.demuxerEosCurrent_ = false;
+	inOther.decodeCursor_ = 0U;
+	inOther.presentationCacheCapacity_ = 0U;
+	inOther.stats_ = {};
 }
 
 oa::VideoPlayer& oa::VideoPlayer::operator=(oa::VideoPlayer&& inOther) noexcept {
@@ -121,11 +153,15 @@ oa::VideoPlayer& oa::VideoPlayer::operator=(oa::VideoPlayer&& inOther) noexcept 
 		reachedEos_      = inOther.reachedEos_;
 		demuxerEosCurrent_= inOther.demuxerEosCurrent_;
 		reorder_         = oa::move(inOther.reorder_);
+		presentationCache_ = oa::move(inOther.presentationCache_);
 		displayPts_      = oa::move(inOther.displayPts_);
 		rgbaPool_        = oa::move(inOther.rgbaPool_);
 		rgbaPoolBusy_    = oa::move(inOther.rgbaPoolBusy_);
 		rgbaPoolConsumerEvents_ = oa::move(inOther.rgbaPoolConsumerEvents_);
 		index_           = inOther.index_;
+		decodeCursor_    = inOther.decodeCursor_;
+		presentationCacheCapacity_ = inOther.presentationCacheCapacity_;
+		stats_           = inOther.stats_;
 		demuxerFormatGeneration_ = inOther.demuxerFormatGeneration_;
 		demuxerReconnectCount_ = inOther.demuxerReconnectCount_;
 		inOther.engine_      = nullptr;
@@ -134,6 +170,9 @@ oa::VideoPlayer& oa::VideoPlayer::operator=(oa::VideoPlayer&& inOther) noexcept 
 		inOther.playing_     = false;
 		inOther.reachedEos_  = false;
 		inOther.demuxerEosCurrent_ = false;
+		inOther.decodeCursor_ = 0U;
+		inOther.presentationCacheCapacity_ = 0U;
+		inOther.stats_ = {};
 	}
 	return *this;
 }
@@ -179,6 +218,7 @@ oa::Status oa::VideoPlayer::close()
 	};
 	retainError(waitForPoolConsumers_());
 	retainError(clearReorder_());
+	retainError(clearPresentationCache_());
 	if (decoder_.hasValue()) {
 		retainError(decoder_->close());
 		decoder_.reset();
@@ -199,6 +239,7 @@ oa::Status oa::VideoPlayer::close()
 	frame_   = {};
 	engine_  = nullptr;
 	playing_ = false;
+	decodeCursor_ = 0U;
 	return firstError;
 }
 
@@ -210,7 +251,8 @@ bool oa::VideoPlayer::isDone() const
 
 void oa::VideoPlayer::reset()
 {
-	(void)restartDecoder_();
+	(void)clearPresentationCache_();
+	(void)resetDecoderForSeek_();
 	if (demuxer_.hasValue()) {
 		(void)demuxer_->seek(0);
 	}
@@ -218,13 +260,17 @@ void oa::VideoPlayer::reset()
 	reachedEos_       = false;
 	demuxerEosCurrent_ = false;
 	index_            = 0;
+	decodeCursor_     = 0U;
 	if (audio_.hasValue()) (void)audio_->seek(0U);
 }
 
 void oa::VideoPlayer::play()
 {
 	playing_ = true;
-	if (audio_.hasValue()) (void)audio_->play();
+	if (audio_.hasValue()) {
+		(void)audio_->seek(positionUs());
+		(void)audio_->play();
+	}
 }
 
 void oa::VideoPlayer::pause()
@@ -303,10 +349,35 @@ oa::Status oa::VideoPlayer::seekUs(oa::U64 inTimestampUs)
 	return seek(timestamp);
 }
 
+oa::Status oa::VideoPlayer::seekFrame(oa::Usize inFrameIndex) {
+	if (displayPts_.empty()) {
+		return oa::Status::error(
+			oa::StatusCode::FailedPrecondition,
+			"oa::VideoPlayer::seekFrame requires an indexed seekable source");
+	}
+	if (inFrameIndex >= displayPts_.size()) {
+		return oa::Status::error(
+			oa::StatusCode::OutOfRange,
+			"oa::VideoPlayer::seekFrame index is outside the display sequence");
+	}
+	OA_RETURN_IF_ERROR(seekDisplayFrame_(inFrameIndex));
+	if (audio_.hasValue()) {
+		OA_RETURN_IF_ERROR(audio_->seek(positionUs()));
+	}
+	return oa::Status::ok();
+}
+
 oa::Status oa::VideoPlayer::next()
 {
 	if (not decoder_.hasValue() or not demuxer_.hasValue()) {
 		return oa::Status::error("oa::VideoPlayer::next: not initialized");
+	}
+	if (not displayPts_.empty()
+		&& index_ >= 0
+		&& static_cast<oa::Usize>(index_) < displayPts_.size()) {
+		const oa::Usize target = static_cast<oa::Usize>(index_);
+		if (presentCached_(target)) return oa::Status::ok();
+		if (target != decodeCursor_) return seekDisplayFrame_(target);
 	}
 	// Keep the reorder buffer at depth+1 so the lowest PTS in it is
 	// guaranteed to be the next display frame (anything that could come
@@ -319,7 +390,8 @@ oa::Status oa::VideoPlayer::next()
 	if (reorder_.empty()) {
 		// Drained: either real EOS or loop-and-refill.
 		if (cfg_.loop) {
-			OA_RETURN_IF_ERROR(restartDecoder_());
+			OA_RETURN_IF_ERROR(clearPresentationCache_());
+			OA_RETURN_IF_ERROR(resetDecoderForSeek_());
 			oa::Status seekStatus = demuxer_->seek(0);
 			if (not seekStatus.isOk()) {
 				return seekStatus;
@@ -327,6 +399,7 @@ oa::Status oa::VideoPlayer::next()
 			demuxerEosCurrent_ = false;
 			reachedEos_ = false;
 			index_ = 0;
+			decodeCursor_ = 0U;
 			oa::Status refill = fillReorderBuffer_();
 			if (not refill.isOk()) {
 				return refill;
@@ -339,11 +412,14 @@ oa::Status oa::VideoPlayer::next()
 			return oa::Status::ok();
 		}
 	}
-	oa::Status presentStatus = popAndPresentLowestPts_();
-	if (presentStatus.isOk()) {
-		++index_;
-	}
-	return presentStatus;
+	ReorderEntry entry;
+	OA_RETURN_IF_ERROR(popLowestPts_(entry));
+	const oa::Usize displayIndex = displayPts_.empty()
+		? static_cast<oa::Usize>(oa::max<oa::I64>(0, index_))
+		: decodeCursor_;
+	OA_RETURN_IF_ERROR(presentDecoded_(oa::move(entry), displayIndex));
+	decodeCursor_ = displayIndex + 1U;
+	return oa::Status::ok();
 }
 
 oa::Status oa::VideoPlayer::stepBackward()
@@ -360,7 +436,9 @@ oa::Status oa::VideoPlayer::stepFrames(oa::I32 inFrameDelta)
 		for (oa::I32 i = 0; i < inFrameDelta; ++i) {
 			OA_RETURN_IF_ERROR(next());
 		}
-		if (audio_.hasValue()) OA_RETURN_IF_ERROR(audio_->seek(positionUs()));
+		if (audio_.hasValue()) {
+			OA_RETURN_IF_ERROR(audio_->seek(positionUs()));
+		}
 		return oa::Status::ok();
 	}
 	if (not demuxer_.hasValue() or not decoder_.hasValue()
@@ -370,13 +448,20 @@ oa::Status oa::VideoPlayer::stepFrames(oa::I32 inFrameDelta)
 	}
 
 	const oa::I64 current = oa::max<oa::I64>(0, index_ - 1);
-	const oa::I64 target = oa::max<oa::I64>(
-		0, current + static_cast<oa::I64>(inFrameDelta));
+	const oa::I64 target = oa::clamp<oa::I64>(
+		current + static_cast<oa::I64>(inFrameDelta),
+		0,
+		static_cast<oa::I64>(displayPts_.size() - 1U));
 	if (target == current) {
 		return oa::Status::ok();
 	}
-	OA_RETURN_IF_ERROR(seekDisplayFrame_(static_cast<oa::Usize>(target)));
-	if (audio_.hasValue()) OA_RETURN_IF_ERROR(audio_->seek(positionUs()));
+	if (not presentCached_(static_cast<oa::Usize>(target))) {
+		++stats_.presentationCacheMisses;
+		OA_RETURN_IF_ERROR(seekDisplayFrame_(static_cast<oa::Usize>(target)));
+	}
+	if (audio_.hasValue()) {
+		OA_RETURN_IF_ERROR(audio_->seek(positionUs()));
+	}
 	return oa::Status::ok();
 }
 
@@ -387,17 +472,22 @@ oa::Status oa::VideoPlayer::seek(oa::U64 inTimestamp)
 			return oa::Status::error(oa::StatusCode::FailedPrecondition,
 				"oa::VideoPlayer::seek: media source is not seekable");
 		}
-		OA_RETURN_IF_ERROR(restartDecoder_());
+		OA_RETURN_IF_ERROR(clearPresentationCache_());
+		OA_RETURN_IF_ERROR(resetDecoderForSeek_());
 		OA_RETURN_IF_ERROR(demuxer_->seek(inTimestamp));
 		demuxerEosCurrent_ = false;
 		reachedEos_ = false;
 		index_ = 0;
+		decodeCursor_ = 0U;
 		OA_RETURN_IF_ERROR(fillReorderBuffer_());
 		if (reorder_.empty()) {
 			return oa::Status::error(oa::StatusCode::OutOfRange,
 				"oa::VideoPlayer::seek: no frame at requested timestamp");
 		}
-		OA_RETURN_IF_ERROR(popAndPresentLowestPts_());
+		ReorderEntry entry;
+		OA_RETURN_IF_ERROR(popLowestPts_(entry));
+		OA_RETURN_IF_ERROR(presentDecoded_(oa::move(entry), 0U));
+		decodeCursor_ = 1U;
 		accumulator_ = 0.0F;
 	} else {
 		oa::Usize target = 0U;
@@ -407,11 +497,7 @@ oa::Status oa::VideoPlayer::seek(oa::U64 inTimestamp)
 		OA_RETURN_IF_ERROR(seekDisplayFrame_(target));
 	}
 	if (audio_.hasValue()) {
-		const auto& info = demuxer_->getInfo();
-		const oa::U64 timestampUs = info.timebaseDen > 0U
-			? inTimestamp * info.timebaseNum * 1'000'000ULL / info.timebaseDen
-			: 0U;
-		OA_RETURN_IF_ERROR(audio_->seek(timestampUs));
+		OA_RETURN_IF_ERROR(audio_->seek(positionUs()));
 	}
 	return oa::Status::ok();
 }
@@ -419,9 +505,34 @@ oa::Status oa::VideoPlayer::seek(oa::U64 inTimestamp)
 oa::Status oa::VideoPlayer::flush()
 {
 	OA_RETURN_IF_ERROR(clearReorder_());
+	OA_RETURN_IF_ERROR(clearPresentationCache_());
 	if (decoder_.hasValue()) OA_RETURN_IF_ERROR(decoder_->flush());
 	accumulator_ = 0.0F;
 	return oa::Status::ok();
+}
+
+oa::F32 oa::VideoPlayer::currentFrameIntervalMs_() const {
+	if (cfg_.frameRateOverride > 0.0F || not demuxer_.hasValue()
+		or index_ <= 0) {
+		return frameIntervalMs_;
+	}
+	const oa::Usize current = static_cast<oa::Usize>(index_ - 1);
+	if (current + 1U >= displayPts_.size()) return frameIntervalMs_;
+	const oa::U64 currentPts = displayPts_[current];
+	const oa::U64 nextPts = displayPts_[current + 1U];
+	const auto& info = demuxer_->getInfo();
+	if (nextPts <= currentPts || info.timebaseNum == 0U
+		or info.timebaseDen == 0U) {
+		return frameIntervalMs_;
+	}
+	const long double milliseconds = static_cast<long double>(nextPts - currentPts)
+		* static_cast<long double>(info.timebaseNum) * 1000.0L
+		/ static_cast<long double>(info.timebaseDen);
+	if (milliseconds <= 0.0L
+		or milliseconds > static_cast<long double>(oa::Limits<oa::F32>::max())) {
+		return frameIntervalMs_;
+	}
+	return static_cast<oa::F32>(milliseconds);
 }
 
 void oa::VideoPlayer::tick(oa::F32 inDeltaMs)
@@ -430,9 +541,19 @@ void oa::VideoPlayer::tick(oa::F32 inDeltaMs)
 		accumulator_ = 0.0F;
 		return;
 	}
+	// A frame callback is not authorization for unbounded catch-up decode.
+	// Invalid time pauses the session; one update is capped to one second.
+	if (not oa::isFinite(inDeltaMs) || inDeltaMs < 0.0F) {
+		pause();
+		accumulator_ = 0.0F;
+		return;
+	}
+	inDeltaMs = oa::min(inDeltaMs, 1000.0F);
 	accumulator_ += inDeltaMs;
-	while (accumulator_ >= frameIntervalMs_) {
-		accumulator_ -= frameIntervalMs_;
+	while (true) {
+		const oa::F32 intervalMs = currentFrameIntervalMs_();
+		if (accumulator_ < intervalMs) break;
+		accumulator_ -= intervalMs;
 		oa::Status status = next();
 		if (not status.isOk()) {
 			accumulator_ = 0.0F;
@@ -540,7 +661,8 @@ oa::Result<oa::VideoFrame> oa::VideoPlayer::acquireRgbaFromPool_()
 			return rgbaPool_[i];
 		}
 	}
-	const oa::Usize maxPoolSize = static_cast<oa::Usize>(cfg_.reorderDepth) + 3U;
+	const oa::Usize maxPoolSize = static_cast<oa::Usize>(cfg_.reorderDepth)
+		+ presentationCacheCapacity_ + 3U;
 	if (rgbaPool_.size() >= maxPoolSize) {
 		for (oa::Usize i = 0; i < rgbaPool_.size(); ++i) {
 			if (rgbaPoolBusy_[i]) {
@@ -573,13 +695,24 @@ void oa::VideoPlayer::releaseRgbaToPool_(const oa::VideoFrame& inFrame) {
 	}
 	for (oa::Usize i = 0; i < rgbaPool_.size(); ++i) {
 		if (rgbaPool_[i].image == inFrame.image) {
+			// A presenter/encoder consumer event is already ordered after the
+			// frame's conversion-ready dependency and is therefore the stronger
+			// reuse edge. Frames released before reaching a consumer still retain
+			// their conversion completion so seek/flush cannot recycle the target
+			// while compute is writing it.
+			if (not rgbaPoolConsumerEvents_[i].isValid()
+				and inFrame.ready.isValid()) {
+				rgbaPoolConsumerEvents_[i] = inFrame.ready;
+			}
 			rgbaPoolBusy_[i] = false;
 			return;
 		}
 	}
 }
 
-oa::Status oa::VideoPlayer::decodeOneIntoReorder_() {
+oa::Status oa::VideoPlayer::decodeOneIntoReorder_(
+	oa::U64 inMinimumRetainedPts
+) {
 	// Keep reading packets until we get a picture (skip parameter-set-only packets)
 	while (true) {
 		oa::VideoPacket packet;
@@ -593,7 +726,7 @@ oa::Status oa::VideoPlayer::decodeOneIntoReorder_() {
 			or streamStats.reconnectCount != demuxerReconnectCount_) {
 			demuxerFormatGeneration_ = streamStats.formatGeneration;
 			demuxerReconnectCount_ = streamStats.reconnectCount;
-			OA_RETURN_IF_ERROR(restartDecoder_());
+			OA_RETURN_IF_ERROR(recreateDecoder_());
 			demuxerEosCurrent_ = false;
 		}
 
@@ -614,38 +747,52 @@ oa::Status oa::VideoPlayer::decodeOneIntoReorder_() {
 		if (not nv12.shown) {
 			continue;
 		}
+		++stats_.decodedFrames;
+		const oa::U64 presentationPts = nv12.presentationTimestamp;
+		if (presentationPts < inMinimumRetainedPts) {
+			++stats_.seekReplayFrames;
+			++stats_.seekReplayConversionsSkipped;
+			reorder_.emplaceBack(VideoFrame{}, presentationPts);
+			return oa::Status::ok();
+		}
+		if (inMinimumRetainedPts > 0U) ++stats_.seekReplayFrames;
 
 		// convert NV12 → RGBA *now* into our own pool slot so the DPB layer is
 		// free for the next decode. Holding NV12 across decodes is unsafe because
 		// the H.264 sliding window evicts oldest slots and the allocator picks
 		// them up for the next frame, trashing any data we'd be holding.
-	auto rgbaResult = acquireRgbaFromPool_();
-	if (not rgbaResult.isOk()) {
-		return rgbaResult.getStatus();
-	}
-	oa::VideoFrame rgba = *rgbaResult;
-	rgba.presentationTimestamp = packet.presentationTimestamp;
+		auto rgbaResult = acquireRgbaFromPool_();
+		if (not rgbaResult.isOk()) {
+			return rgbaResult.getStatus();
+		}
+		oa::VideoFrame rgba = *rgbaResult;
+		rgba.presentationTimestamp = presentationPts;
 
-	oa::VideoConversionOptions options;
-	options.convertToRgb        = true;
-	options.preferHardwareYCbCr = cfg_.preferHardwareYCbCr;
-	options.filter               = cfg_.filter;
-	oa::Status convertStatus = decoder_->convertInto(nv12, options, rgba);
-	if (not convertStatus.isOk()) {
-		releaseRgbaToPool_(rgba);
-		return convertStatus;
-	}
+		oa::VideoConversionOptions options;
+		options.convertToRgb = true;
+		options.preferHardwareYCbCr = cfg_.preferHardwareYCbCr;
+		options.filter = cfg_.filter;
+		auto readyResult = decoder_->convertIntoAsync(nv12, options, rgba);
+		if (not readyResult.isOk()) {
+			releaseRgbaToPool_(rgba);
+			return readyResult.getStatus();
+		}
+		stats_.hardwareYcbcrConversions =
+			decoder_->getHardwareYcbcrDispatchCount();
+		rgba.ready = *readyResult;
 
-	reorder_.emplaceBack(rgba, packet.presentationTimestamp);
-	return oa::Status::ok();
+		reorder_.emplaceBack(rgba, presentationPts);
+		return oa::Status::ok();
 	} // end while
 }
 
-oa::Status oa::VideoPlayer::fillReorderBuffer_() {
+oa::Status oa::VideoPlayer::fillReorderBuffer_(
+	oa::U64 inMinimumRetainedPts
+) {
 	// top up to depth+1 entries so the smallest-PTS entry is guaranteed
 	// to be the next displayable frame (no late arrival can undercut it).
 	while (reorder_.size() <= cfg_.reorderDepth and not demuxerEosCurrent_) {
-		oa::Status s = decodeOneIntoReorder_();
+		oa::Status s = decodeOneIntoReorder_(inMinimumRetainedPts);
 		if (not s.isOk()) {
 			return s;
 		}
@@ -653,7 +800,7 @@ oa::Status oa::VideoPlayer::fillReorderBuffer_() {
 	return oa::Status::ok();
 }
 
-oa::Status oa::VideoPlayer::popAndPresentLowestPts_() {
+oa::Status oa::VideoPlayer::popLowestPts_(ReorderEntry& outEntry) {
 	if (reorder_.empty()) {
 		return oa::Status::error("oa::VideoPlayer: reorder buffer empty");
 	}
@@ -665,14 +812,91 @@ oa::Status oa::VideoPlayer::popAndPresentLowestPts_() {
 			minIdx = i;
 		}
 	}
-	ReorderEntry entry = oa::move(reorder_[minIdx]);
+	outEntry = oa::move(reorder_[minIdx]);
 	reorder_.erase(reorder_.data() + minIdx);
-
-	// Return the previously-displayed RGBA to the pool. Each entry owns its
-	// own RGBA target so no decoded frame can corrupt one we haven't shown.
-	releaseRgbaToPool_(frame_);
-	frame_ = entry.rgba;
 	return oa::Status::ok();
+}
+
+oa::Status oa::VideoPlayer::presentDecoded_(
+	ReorderEntry&& inEntry,
+	oa::Usize inDisplayIndex
+) {
+	if (presentationCacheCapacity_ == 0U) {
+		releaseRgbaToPool_(frame_);
+		frame_ = inEntry.rgba;
+	} else {
+		cachePresented_(inEntry.rgba, inEntry.pts, inDisplayIndex);
+		frame_ = inEntry.rgba;
+	}
+	index_ = static_cast<oa::I64>(inDisplayIndex) + 1;
+	reachedEos_ = false;
+	accumulator_ = 0.0F;
+	return oa::Status::ok();
+}
+
+bool oa::VideoPlayer::presentCached_(oa::Usize inDisplayIndex) {
+	for (const PresentationEntry& entry : presentationCache_) {
+		if (entry.displayIndex != inDisplayIndex) continue;
+		frame_ = entry.rgba;
+		index_ = static_cast<oa::I64>(inDisplayIndex) + 1;
+		reachedEos_ = false;
+		accumulator_ = 0.0F;
+		++stats_.presentationCacheHits;
+		return true;
+	}
+	return false;
+}
+
+void oa::VideoPlayer::cachePresented_(
+	const VideoFrame& inFrame,
+	oa::U64 inPts,
+	oa::Usize inDisplayIndex
+) {
+	for (PresentationEntry& existing : presentationCache_) {
+		if (existing.displayIndex != inDisplayIndex) continue;
+		releaseRgbaToPool_(existing.rgba);
+		existing = PresentationEntry{
+			.rgba = inFrame,
+			.pts = inPts,
+			.displayIndex = inDisplayIndex,
+		};
+		return;
+	}
+	while (presentationCache_.size() >= presentationCacheCapacity_) {
+		releaseRgbaToPool_(presentationCache_.front().rgba);
+		presentationCache_.erase(presentationCache_.begin());
+	}
+	presentationCache_.pushBack(PresentationEntry{
+		.rgba = inFrame,
+		.pts = inPts,
+		.displayIndex = inDisplayIndex,
+	});
+	stats_.presentationCacheResident = static_cast<oa::U32>(
+		presentationCache_.size());
+}
+
+oa::Status oa::VideoPlayer::clearPresentationCache_() {
+	frame_ = {};
+	for (PresentationEntry& entry : presentationCache_) {
+		releaseRgbaToPool_(entry.rgba);
+	}
+	presentationCache_.clear();
+	stats_.presentationCacheResident = 0U;
+	return oa::Status::ok();
+}
+
+oa::Usize oa::VideoPlayer::displayIndexForPts_(
+	oa::U64 inPts,
+	oa::Usize inMinimum
+) const {
+	oa::Usize low = oa::min(inMinimum, displayPts_.size());
+	oa::Usize high = displayPts_.size();
+	while (low < high) {
+		const oa::Usize middle = low + (high - low) / 2U;
+		if (displayPts_[middle] < inPts) low = middle + 1U;
+		else high = middle;
+	}
+	return low;
 }
 
 oa::Status oa::VideoPlayer::clearReorder_() {
@@ -691,17 +915,30 @@ oa::Status oa::VideoPlayer::waitForPoolConsumers_() {
 	return oa::Status::ok();
 }
 
-oa::Status oa::VideoPlayer::restartDecoder_() {
+oa::Status oa::VideoPlayer::resetDecoderForSeek_() {
+	if (not decoder_.hasValue()) {
+		return oa::Status::error(
+			oa::StatusCode::FailedPrecondition,
+			"oa::VideoPlayer seek reset requires an initialized decoder");
+	}
+	OA_RETURN_IF_ERROR(clearReorder_());
+	OA_RETURN_IF_ERROR(decoder_->flush());
+	++stats_.seekResets;
+	return oa::Status::ok();
+}
+
+oa::Status oa::VideoPlayer::recreateDecoder_() {
 	if (engine_ == nullptr or not demuxer_.hasValue()) {
-		return oa::Status::error("oa::VideoPlayer::restartDecoder_: not initialized");
+		return oa::Status::error("oa::VideoPlayer::recreateDecoder_: not initialized");
 	}
 
 	OA_RETURN_IF_ERROR(clearReorder_());
+	OA_RETURN_IF_ERROR(clearPresentationCache_());
 	OA_RETURN_IF_ERROR(waitForPoolConsumers_());
 	if (decoder_.hasValue()) {
 		// conversion completion precedes the asynchronous DPB restore submit.
 		// flush waits the decoder's latest timeline value, covering both,
-		// before restartDecoder_ closes the old session and image pool.
+		// before recreateDecoder_ closes the old session and image pool.
 		OA_RETURN_IF_ERROR(decoder_->flush());
 	}
 
@@ -721,6 +958,8 @@ oa::Status oa::VideoPlayer::restartDecoder_() {
 	rgbaPoolConsumerEvents_.clear();
 	frame_ = {};
 	decoder_.emplace(oa::move(*decoderResult));
+	decodeCursor_ = 0U;
+	++stats_.decoderRecreations;
 	return oa::Status::ok();
 }
 
@@ -730,24 +969,49 @@ oa::Status oa::VideoPlayer::seekDisplayFrame_(oa::Usize inTargetFrameIndex) {
 			"oa::VideoPlayer::seekDisplayFrame_: target out of range");
 	}
 
-	OA_RETURN_IF_ERROR(restartDecoder_());
-	OA_RETURN_IF_ERROR(demuxer_->seek(displayPts_[inTargetFrameIndex]));
+	if (presentCached_(inTargetFrameIndex)) return oa::Status::ok();
+	const oa::Usize history = oa::max<oa::Usize>(
+		1U, presentationCacheCapacity_);
+	const oa::Usize seekStart = inTargetFrameIndex + 1U > history
+		? inTargetFrameIndex + 1U - history
+		: 0U;
+	OA_RETURN_IF_ERROR(clearPresentationCache_());
+	OA_RETURN_IF_ERROR(resetDecoderForSeek_());
+	OA_RETURN_IF_ERROR(demuxer_->seek(displayPts_[seekStart]));
 	demuxerEosCurrent_ = false;
 	reachedEos_ = false;
 
-	const oa::U64 targetPts = displayPts_[inTargetFrameIndex];
+	oa::Usize minimumIndex = 0U;
+	const oa::U64 minimumRetainedPts = displayPts_[seekStart];
 	while (true) {
-		OA_RETURN_IF_ERROR(fillReorderBuffer_());
+		OA_RETURN_IF_ERROR(fillReorderBuffer_(minimumRetainedPts));
 		if (reorder_.empty()) {
 			return oa::Status::error(
 				"oa::VideoPlayer::seekDisplayFrame_: target was not decoded");
 		}
-		OA_RETURN_IF_ERROR(popAndPresentLowestPts_());
-		if (frame_.presentationTimestamp >= targetPts) {
-			break;
+		ReorderEntry entry;
+		OA_RETURN_IF_ERROR(popLowestPts_(entry));
+		const oa::Usize decodedIndex = displayIndexForPts_(
+			entry.pts, minimumIndex);
+		if (decodedIndex >= displayPts_.size()
+			or decodedIndex > inTargetFrameIndex) {
+			releaseRgbaToPool_(entry.rgba);
+			return oa::Status::error(
+				oa::StatusCode::DataLoss,
+				"oa::VideoPlayer seek skipped the requested display frame");
 		}
+		if (decodedIndex >= seekStart) {
+			if (entry.rgba.imageView == VK_NULL_HANDLE) {
+				return oa::Status::error(
+					oa::StatusCode::DataLoss,
+					"oa::VideoPlayer seek discarded a retained display frame");
+			}
+			OA_RETURN_IF_ERROR(presentDecoded_(
+				oa::move(entry), decodedIndex));
+		}
+		minimumIndex = decodedIndex + 1U;
+		decodeCursor_ = minimumIndex;
+		if (decodedIndex == inTargetFrameIndex) break;
 	}
-	index_ = static_cast<oa::I64>(inTargetFrameIndex) + 1;
-	accumulator_ = 0.0F;
 	return oa::Status::ok();
 }

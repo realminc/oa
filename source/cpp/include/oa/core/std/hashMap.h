@@ -4,7 +4,7 @@
 // one allocation so lookup does not chase per-bucket allocations. Empty and
 // erased slots remain distinct to preserve linear-probe search chains.
 
-#include <oa/core/assert.h>
+#include <oa/core/std/assert.h>
 #include <oa/core/std/iter.h>
 #include <oa/core/std/keyHash.h>
 #include <oa/core/std/optional.h>

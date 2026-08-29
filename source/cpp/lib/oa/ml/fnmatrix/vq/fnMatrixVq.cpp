@@ -16,7 +16,7 @@
 #include <oa/core/bufferAccess.h>
 #include <oa/runtime/executionSession.h>
 
-#include <assert.h>
+#include <oa/core/std/assert.h>
 
 static oa::U32 vqDivCeil(oa::U32 inA, oa::U32 inB) { return (inA + inB - 1u) / inB; }
 
@@ -34,9 +34,9 @@ oa::Matrix detach(const oa::Matrix& inSelf) {
 }
 
 oa::VqAssignResult vqAssign(const oa::Matrix& inZe, const oa::Matrix& inCodebook) {
-	assert(inZe.rank() == 2 && "VqAssign: inZe must be 2D [N, D]");
-	assert(inCodebook.rank() == 2 && "VqAssign: inCodebook must be 2D [K, D]");
-	assert(inZe.size(1) == inCodebook.size(1) && "VqAssign: latent dim mismatch (D)");
+	OA_REQUIRE_MSG(inZe.rank() == 2, "VqAssign: inZe must be 2D [N, D]");
+	OA_REQUIRE_MSG(inCodebook.rank() == 2, "VqAssign: inCodebook must be 2D [K, D]");
+	OA_REQUIRE_MSG(inZe.size(1) == inCodebook.size(1), "VqAssign: latent dim mismatch (D)");
 
 	auto& ctx = oa::ExecutionSession::getActive();
 	oa::OpLoweringScope lowering(ctx);
@@ -80,10 +80,10 @@ void vqEmaUpdate(const oa::Matrix& inZe, const oa::Matrix& inIdx,
                  oa::Matrix& inOutEmbedSum, oa::Matrix& inOutClusterSize, oa::Matrix& outCodebook,
                  oa::F32 inDecay, oa::F32 inEps, oa::F32 inDeadThreshold, oa::U32 inSeed,
                  bool inNormalize) {
-	assert(inZe.rank() == 2 && "VqEmaUpdate: inZe must be 2D [N, D]");
-	assert(outCodebook.rank() == 2 && "VqEmaUpdate: outCodebook must be 2D [K, D]");
-	assert(inZe.size(1) == outCodebook.size(1) && "VqEmaUpdate: latent dim mismatch (D)");
-	assert(inOutClusterSize.numElements() == outCodebook.size(0) && "VqEmaUpdate: cluster_size must be [K]");
+	OA_REQUIRE_MSG(inZe.rank() == 2, "VqEmaUpdate: inZe must be 2D [N, D]");
+	OA_REQUIRE_MSG(outCodebook.rank() == 2, "VqEmaUpdate: outCodebook must be 2D [K, D]");
+	OA_REQUIRE_MSG(inZe.size(1) == outCodebook.size(1), "VqEmaUpdate: latent dim mismatch (D)");
+	OA_REQUIRE_MSG(inOutClusterSize.numElements() == outCodebook.size(0), "VqEmaUpdate: cluster_size must be [K]");
 
 	auto& ctx = oa::ExecutionSession::getActive();
 	oa::OpLoweringScope lowering(ctx);
@@ -121,7 +121,7 @@ void vqEmaUpdate(const oa::Matrix& inZe, const oa::Matrix& inIdx,
 			oa::OpAttribute::fromBoolean("normalize", inNormalize)});
 	if (not status.isOk()) {
 		OaLogError(oa::LogComponent::Ml,
-			"VqEmaUpdate semantic lowering failed: %s",
+			"VqEmaUpdate semantic lowering failed: {}",
 			status.getMessage().cStr());
 	}
 }

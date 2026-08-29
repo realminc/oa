@@ -26,7 +26,7 @@ DsMnist::DsMnist(
 	}
 	if (!loadDataset()) {
 		OaLogError(oa::LogComponent::Data,
-			"Failed to load MNIST dataset from: %s (split: %s)",
+			"Failed to load MNIST dataset from: {} (split: {})",
 			inDataDir.cStr(), inSplit.cStr());
 		return;
 	}
@@ -54,7 +54,7 @@ bool DsMnist::loadDataset() {
 
 	if (!imgF || !lblF) {
 		OaLogError(oa::LogComponent::Data,
-			"MNIST files not found: %s, %s", imgPath.cStr(), lblPath.cStr());
+			"MNIST files not found: {}, {}", imgPath.cStr(), lblPath.cStr());
 		return false;
 	}
 
@@ -75,11 +75,11 @@ bool DsMnist::loadDataset() {
 	oa::U32 nLabels = readBE32(lblF);
 
 	if (rows != 28 || cols != 28) {
-		OaLogError(oa::LogComponent::Data, "Invalid MNIST image dimensions: %ux%u", rows, cols);
+		OaLogError(oa::LogComponent::Data, "Invalid MNIST image dimensions: {}x{}", rows, cols);
 		return false;
 	}
 	if (n != nLabels) {
-		OaLogError(oa::LogComponent::Data, "MNIST image/label count mismatch: %u vs %u", n, nLabels);
+		OaLogError(oa::LogComponent::Data, "MNIST image/label count mismatch: {} vs {}", n, nLabels);
 		return false;
 	}
 
@@ -98,7 +98,7 @@ bool DsMnist::loadDataset() {
 		return false;
 	}
 
-	OaLogInfo(oa::LogComponent::Data, "Loaded MNIST: %d samples, %d batches (batch=%d)",
+	OaLogInfo(oa::LogComponent::Data, "Loaded MNIST: {} samples, {} batches (batch={})",
 		numSamples_, numBatches_, batchSize_);
 	return true;
 }

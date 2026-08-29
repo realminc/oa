@@ -33,7 +33,7 @@ bool validateNchwImage(const oa::Matrix& inImage, const char* inOperation)
 	if (!inImage.hasStorage() || shape.rank != 4 || shape[0] <= 0 || shape[1] <= 0 ||
 		shape[2] <= 0 || shape[3] <= 0) {
 		OaLogWarn(oa::LogComponent::Vision,
-			"oa::FnImage::%s expects a stored, non-empty [B,C,H,W] tensor", inOperation);
+			"oa::FnImage::{} expects a stored, non-empty [B,C,H,W] tensor", inOperation);
 		return false;
 	}
 	return true;
@@ -205,7 +205,7 @@ oa::Matrix oa::FnImage::rotate(
 		return inImage;
 	}
 	if (degrees != 90 && degrees != 180 && degrees != 270) {
-		OaLogWarn(oa::LogComponent::Vision, "rotate: unsupported degrees %u", inDegrees);
+		OaLogWarn(oa::LogComponent::Vision, "rotate: unsupported degrees {}", inDegrees);
 		return inImage;
 	}
 

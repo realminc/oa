@@ -141,7 +141,7 @@ oa::ThreadPool oa::ThreadPool::create(const oa::ThreadPoolConfig& inConfig) {
 		});
 		if (worker.isError()) {
 			OaLogError(oa::LogComponent::Core,
-				"ThreadPool worker %d failed to start: %s", i,
+				"ThreadPool worker {} failed to start: {}", i,
 				worker.getStatus().toString().cStr());
 		}
 		OA_REQUIRE(worker.isOk());
@@ -150,7 +150,7 @@ oa::ThreadPool oa::ThreadPool::create(const oa::ThreadPoolConfig& inConfig) {
 		OA_REQUIRE(detachStatus.isOk());
 	}
 
-	OaLogInfo(oa::LogComponent::Core, "ThreadPool: %d workers started", numWorkers);
+	OaLogInfo(oa::LogComponent::Core, "ThreadPool: {} workers started", numWorkers);
 	return pool;
 }
 

@@ -92,6 +92,156 @@
       "metric_name": "step_forward_p50_wall",
       "metric_unit": "ms",
       "require_regex": ["\\[   psnr   \\] av1\\s+frame 7: [3-9][0-9]\\.[0-9] dB", "\\[  PASSED  \\] 1 test"]
+    },
+    {
+      "name": "vision.video.decode_present_1080p60_saturation",
+      "command_id": "BenchVideoRealtime.DecodePresentWall.1080p60.v1",
+      "command": ["{binary_root}/test/vision/codec/benchVideoRealtime", "--gtest_filter=BenchVideoRealtime.DecodePresentWall"],
+      "contract": {
+        "asset_sha256": "725351e7586c03b5f371c6fb69140a7622aea1dd1ab9d5a7d7bf9212565aae22",
+        "codec": "h264_high_8bit_420",
+        "frames": "288",
+        "path": "decode_convert_present_ready_unpaced_saturation",
+        "pixel_readback_bytes": "0",
+        "source": "1920x1080_60fps_300_distinct_frames"
+      },
+      "metric_regex": "OABENCH video\\.realtime\\.decode_present[^\\n]*throughput_fps=(?P<value>[0-9.]+)",
+      "metric_name": "application_visible_throughput",
+      "metric_unit": "frames/s",
+      "direction": "higher",
+      "cooldown": 5.0,
+      "max_spread_percent": 15.0,
+      "thermal_limit_celsius": 70.0,
+      "thermal_sensor_regex": "coretemp:.*:Package id 0",
+      "thermal_timeout": 600.0,
+      "require_regex": [
+        "width=1920 height=1080 source_fps=60 frames=288 asset_bytes=13678088",
+        "pixel_readback_bytes=0",
+        "\\[  PASSED  \\] 1 test"
+      ]
+    },
+    {
+      "name": "vision.video.paced_decode_present_1080p60",
+      "command_id": "BenchVideoRealtime.PacedDecodePresent60.1080p60.v1",
+      "command": ["{binary_root}/test/vision/codec/benchVideoRealtime", "--gtest_filter=BenchVideoRealtime.PacedDecodePresent60"],
+      "contract": {
+        "asset_sha256": "725351e7586c03b5f371c6fb69140a7622aea1dd1ab9d5a7d7bf9212565aae22",
+        "codec": "h264_high_8bit_420",
+        "decode_ahead_frames": "3",
+        "decode_lead_ms": "50.000000",
+        "frame_budget_ms": "16.666667",
+        "frames": "240",
+        "path": "paced_decode_convert_present_ready",
+        "pixel_readback_bytes": "0",
+        "source": "1920x1080_60fps_300_distinct_frames"
+      },
+      "metric_regex": "OABENCH video\\.realtime\\.paced_decode_present[^\\n]*deadline_miss_percent=(?P<value>[0-9.]+)",
+      "metric_name": "application_ready_deadline_misses",
+      "metric_unit": "percent",
+      "direction": "lower",
+      "cooldown": 5.0,
+      "max_spread_percent": 15.0,
+      "thermal_limit_celsius": 70.0,
+      "thermal_sensor_regex": "coretemp:.*:Package id 0",
+      "thermal_timeout": 600.0,
+      "require_regex": [
+        "width=1920 height=1080 source_fps=60 frames=240 asset_bytes=13678088 frame_budget_ms=16\\.666667 decode_ahead_frames=3 decode_lead_ms=50\\.000000",
+        "host_schedule_misses=0 deadline_misses=0 deadline_miss_percent=0\\.000000",
+        "pixel_readback_bytes=0",
+        "\\[  PASSED  \\] 1 test"
+      ]
+    },
+    {
+      "name": "vision.video.direct_image_1080p60_to_h264_60_saturation",
+      "command_id": "BenchVideoRealtime.DirectImageDecodeConvertEncode.1080p60.h264_60.v1",
+      "command": ["{binary_root}/test/vision/codec/benchVideoRealtime", "--gtest_filter=BenchVideoRealtime.DirectImageDecodeConvertEncode"],
+      "contract": {
+        "asset_sha256": "725351e7586c03b5f371c6fb69140a7622aea1dd1ab9d5a7d7bf9212565aae22",
+        "async_depth": "3",
+        "decode_codec": "h264_high_8bit_420",
+        "encode_codec": "h264_high_8bit_420",
+        "frames": "240",
+        "feedback_recovery": "reported",
+        "oracle": "ffmpeg_decode",
+        "path": "decode_convert_rgba_image_encode_unpaced_saturation",
+        "pixel_cpu_copy_bytes": "0",
+        "source": "1920x1080_60fps_300_distinct_frames",
+        "target_timestamp_rate": "60fps"
+      },
+      "metric_regex": "OABENCH video\\.realtime\\.direct_image_encode[^\\n]*throughput_fps=(?P<value>[0-9.]+)",
+      "metric_name": "application_visible_throughput",
+      "metric_unit": "frames/s",
+      "direction": "higher",
+      "cooldown": 5.0,
+      "max_spread_percent": 15.0,
+      "thermal_limit_celsius": 70.0,
+      "thermal_sensor_regex": "coretemp:.*:Package id 0",
+      "thermal_timeout": 600.0,
+      "require_regex": [
+        "width=1920 height=1080 source_fps=60 target_fps=60 frames=240 async_depth=3 asset_bytes=13678088",
+        "pixel_cpu_copy_bytes=0 feedback_recoveries=[0-9]+ oracle=ffmpeg",
+        "\\[  PASSED  \\] 1 test"
+      ]
+    },
+    {
+      "name": "vision.video.decode_present_uhd60_saturation",
+      "command_id": "BenchVideoRealtime.DecodePresentWall.uhd60.v1",
+      "command": ["env", "OA_VIDEO_BENCH_VARIANT=uhd60", "{binary_root}/test/vision/codec/benchVideoRealtime", "--gtest_filter=BenchVideoRealtime.DecodePresentWall"],
+      "contract": {
+        "asset_sha256": "04c1793ddf5393efcb002b8b73658e8d662063cbd027a69468dd6da16b93a97f",
+        "codec": "h265_main_8bit_420",
+        "frames": "288",
+        "path": "decode_convert_present_ready_unpaced_saturation",
+        "pixel_readback_bytes": "0",
+        "source": "3840x2160_60fps_300_distinct_native_frames"
+      },
+      "metric_regex": "OABENCH video\\.realtime\\.decode_present[^\\n]*throughput_fps=(?P<value>[0-9.]+)",
+      "metric_name": "application_visible_throughput",
+      "metric_unit": "frames/s",
+      "direction": "higher",
+      "cooldown": 5.0,
+      "max_spread_percent": 15.0,
+      "thermal_limit_celsius": 70.0,
+      "thermal_sensor_regex": "coretemp:.*:Package id 0",
+      "thermal_timeout": 600.0,
+      "require_regex": [
+        "decode_codec=h265 requested=3840x2160 decode_max=[4-9][0-9]{3,}x[2-9][0-9]{3,}[^\\n]*encode_required=0",
+        "width=3840 height=2160 source_fps=60 frames=288 asset_bytes=30491343",
+        "pixel_readback_bytes=0",
+        "\\[  PASSED  \\] 1 test"
+      ]
+    },
+    {
+      "name": "vision.video.paced_decode_present_uhd60",
+      "command_id": "BenchVideoRealtime.PacedDecodePresent60.uhd60.v1",
+      "command": ["env", "OA_VIDEO_BENCH_VARIANT=uhd60", "{binary_root}/test/vision/codec/benchVideoRealtime", "--gtest_filter=BenchVideoRealtime.PacedDecodePresent60"],
+      "contract": {
+        "asset_sha256": "04c1793ddf5393efcb002b8b73658e8d662063cbd027a69468dd6da16b93a97f",
+        "codec": "h265_main_8bit_420",
+        "decode_ahead_frames": "3",
+        "decode_lead_ms": "50.000000",
+        "frame_budget_ms": "16.666667",
+        "frames": "240",
+        "path": "paced_decode_convert_present_ready",
+        "pixel_readback_bytes": "0",
+        "source": "3840x2160_60fps_300_distinct_native_frames"
+      },
+      "metric_regex": "OABENCH video\\.realtime\\.paced_decode_present[^\\n]*deadline_miss_percent=(?P<value>[0-9.]+)",
+      "metric_name": "application_ready_deadline_misses",
+      "metric_unit": "percent",
+      "direction": "lower",
+      "cooldown": 5.0,
+      "max_spread_percent": 15.0,
+      "thermal_limit_celsius": 70.0,
+      "thermal_sensor_regex": "coretemp:.*:Package id 0",
+      "thermal_timeout": 600.0,
+      "require_regex": [
+        "decode_codec=h265 requested=3840x2160 decode_max=[4-9][0-9]{3,}x[2-9][0-9]{3,}[^\\n]*encode_required=0",
+        "width=3840 height=2160 source_fps=60 frames=240 asset_bytes=30491343 frame_budget_ms=16\\.666667 decode_ahead_frames=3 decode_lead_ms=50\\.000000",
+        "host_schedule_misses=0 deadline_misses=0 deadline_miss_percent=0\\.000000",
+        "pixel_readback_bytes=0",
+        "\\[  PASSED  \\] 1 test"
+      ]
     }
   ]
 }

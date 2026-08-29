@@ -68,7 +68,7 @@ void expectRoundTrip(
 	for (oa::I64 index = 0;
 		index < inSource.asMatrix().numElements();
 		++index) {
-		absoluteError += std::abs(
+		absoluteError += oa::abs(
 			static_cast<oa::F64>(decoded->asMatrix().at(index))
 			- static_cast<oa::F64>(inSource.asMatrix().at(index)));
 	}

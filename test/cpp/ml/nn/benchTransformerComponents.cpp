@@ -41,7 +41,7 @@ oa::PerfStat measure(oa::Engine& inEngine, const char* inName, Enqueue&& inEnque
 	return stat;
 }
 
-void print(const char* inName, const oa::PerfStat& inStat) {
+void printStat(const char* inName, const oa::PerfStat& inStat) {
 	std::printf("  %-28s mean=%7.4f ms  p50=%7.4f  p95=%7.4f\n",
 		inName, inStat.mean(), inStat.p50(), inStat.p95());
 }
@@ -182,8 +182,8 @@ void measureAttentionForwardPair(
 	};
 	auto pair = measureExplicitPair(
 		inEngine, enqueueStandard, enqueueFlash, flashTimer, 5, 25);
-	print(standardName, pair.baseline);
-	print(flashName, pair.optimized);
+	printStat(standardName, pair.baseline);
+	printStat(flashName, pair.optimized);
 	std::printf(
 		"  %-28s mean=%7.3f %%   p50=%7.3f  p95=%7.3f\n",
 		"paired flash gain", pair.pairedGain.mean(),
@@ -215,7 +215,7 @@ void measureAttentionTrainingPair(
 	std::snprintf(standardTimer, sizeof(standardTimer), "%s_standard_train", inPrefix);
 	std::snprintf(flashTimer, sizeof(flashTimer), "%s_flash_train", inPrefix);
 	auto zeroLeaves = [&] { q.zeroGrad(); k.zeroGrad(); v.zeroGrad(); };
-	print(standardName, measure(inEngine, standardTimer, [&] {
+	printStat(standardName, measure(inEngine, standardTimer, [&] {
 		zeroLeaves();
 		oa::GradientTape tape;
 		auto scores = oa::FnMatrix::bmmNt(q, k);
@@ -227,7 +227,7 @@ void measureAttentionTrainingPair(
 		tape.backward(oa::FnMatrix::mean(output));
 		keep = {output, q.gradMatrix(), k.gradMatrix(), v.gradMatrix()};
 	}, 2, 8));
-	print(flashName, measure(inEngine, flashTimer, [&] {
+	printStat(flashName, measure(inEngine, flashTimer, [&] {
 		zeroLeaves();
 		oa::GradientTape tape;
 		auto output = oa::FnMatrix::flashAttentionCausal(q, k, v, scale);
@@ -304,26 +304,26 @@ TEST(BenchTransformerComponents, AlmLinearShape) {
 
 	constexpr oa::U32 warmup = 3, samples = 10;
 	oa::Vector<oa::Matrix> keep;
-	print("ALM Linear data backward", measure(engine, "alm_linear_data_bwd", [&] {
+	printStat("ALM Linear data backward", measure(engine, "alm_linear_data_bwd", [&] {
 		keep = {oa::FnMatrix::linearDataBwd(dModel, modelW)};
 	}, warmup, samples));
-	print("ALM Linear param backward", measure(engine, "alm_linear_param_bwd", [&] {
+	printStat("ALM Linear param backward", measure(engine, "alm_linear_param_bwd", [&] {
 		auto dw = oa::FnMatrix::linearWeightBiasBwd(x, dModel);
 		keep = {dw.gradWeight, dw.gradBias};
 	}, warmup, samples));
-	print("ALM scalar param backward", measure(engine, "alm_linear_param_bwd_scalar", [&] {
+	printStat("ALM scalar param backward", measure(engine, "alm_linear_param_bwd_scalar", [&] {
 		auto dw = linearWeightBiasBwdScalarForBench(x, dModel);
 		keep = {dw.gradWeight, dw.gradBias};
 	}, warmup, samples));
-	print("ALM tiled param backward", measure(engine, "alm_linear_param_bwd_tiled", [&] {
+	printStat("ALM tiled param backward", measure(engine, "alm_linear_param_bwd_tiled", [&] {
 		auto dw = linearWeightBiasBwdTiledForBench(x, dModel);
 		keep = {dw.gradWeight, dw.gradBias};
 	}, warmup, samples));
-	print("ALM rows32 param backward", measure(engine, "alm_linear_param_bwd_rows32", [&] {
+	printStat("ALM rows32 param backward", measure(engine, "alm_linear_param_bwd_rows32", [&] {
 		auto dw = linearWeightBiasBwdRows32ForBench(x, dModel);
 		keep = {dw.gradWeight, dw.gradBias};
 	}, warmup, samples));
-	print("ALM Q/K/V backward", measure(engine, "alm_qkv_bwd", [&] {
+	printStat("ALM Q/K/V backward", measure(engine, "alm_qkv_bwd", [&] {
 		auto qdx = oa::FnMatrix::linearDataBwd(dModel, modelW);
 		auto qdw = oa::FnMatrix::linearWeightBiasBwd(x, dModel);
 		auto kdx = oa::FnMatrix::linearDataBwd(dModel, modelW);
@@ -333,18 +333,18 @@ TEST(BenchTransformerComponents, AlmLinearShape) {
 		keep = {qdx, qdw.gradWeight, qdw.gradBias, kdx, kdw.gradWeight,
 			kdw.gradBias, vdx, vdw.gradWeight, vdw.gradBias};
 	}, warmup, samples));
-	print("ALM FFN data backward", measure(engine, "alm_ffn_data_bwd", [&] {
+	printStat("ALM FFN data backward", measure(engine, "alm_ffn_data_bwd", [&] {
 		keep = {oa::FnMatrix::linearDataBwd(dFfn, ffnW)};
 	}, warmup, samples));
-	print("ALM FFN param backward", measure(engine, "alm_ffn_param_bwd", [&] {
+	printStat("ALM FFN param backward", measure(engine, "alm_ffn_param_bwd", [&] {
 		auto dw = oa::FnMatrix::linearWeightBiasBwd(x, dFfn);
 		keep = {dw.gradWeight, dw.gradBias};
 	}, warmup, samples));
-	print("ALM FFN tiled param bwd", measure(engine, "alm_ffn_param_bwd_tiled", [&] {
+	printStat("ALM FFN tiled param bwd", measure(engine, "alm_ffn_param_bwd_tiled", [&] {
 		auto dw = linearWeightBiasBwdTiledForBench(x, dFfn);
 		keep = {dw.gradWeight, dw.gradBias};
 	}, warmup, samples));
-	print("ALM FFN rows32 param bwd", measure(engine, "alm_ffn_param_bwd_rows32", [&] {
+	printStat("ALM FFN rows32 param bwd", measure(engine, "alm_ffn_param_bwd_rows32", [&] {
 		auto dw = linearWeightBiasBwdRows32ForBench(x, dFfn);
 		keep = {dw.gradWeight, dw.gradBias};
 	}, warmup, samples));
@@ -379,15 +379,15 @@ TEST(BenchTransformerComponents, LinearParamCrossover) {
 		std::snprintf(scalarTimer, sizeof(scalarTimer), "linear_param_scalar_%d_%d_%d", M, N, K);
 		std::snprintf(tiledTimer, sizeof(tiledTimer), "linear_param_tiled_%d_%d_%d", M, N, K);
 		std::snprintf(rowsTimer, sizeof(rowsTimer), "linear_param_rows32_%d_%d_%d", M, N, K);
-		print(scalarName, measure(engine, scalarTimer, [&] {
+		printStat(scalarName, measure(engine, scalarTimer, [&] {
 			auto dw = linearWeightBiasBwdScalarForBench(x, dy);
 			keep = {dw.gradWeight, dw.gradBias};
 		}, 2, 6));
-		print(tiledName, measure(engine, tiledTimer, [&] {
+		printStat(tiledName, measure(engine, tiledTimer, [&] {
 			auto dw = linearWeightBiasBwdTiledForBench(x, dy);
 			keep = {dw.gradWeight, dw.gradBias};
 		}, 2, 6));
-		print(rowsName, measure(engine, rowsTimer, [&] {
+		printStat(rowsName, measure(engine, rowsTimer, [&] {
 			auto dw = linearWeightBiasBwdRows32ForBench(x, dy);
 			keep = {dw.gradWeight, dw.gradBias};
 		}, 2, 6));
@@ -436,18 +436,18 @@ TEST(BenchTransformerComponents, NlpShape) {
 	ASSERT_TRUE(testSubmitAndWait(ctx).isOk());
 
 	oa::Vector<oa::Matrix> keep;
-	print("layer norm", measure(engine, "transformer_ln", [&] {
+	printStat("layer norm", measure(engine, "transformer_ln", [&] {
 		keep = {oa::FnMatrix::layerNorm(x, lnW, lnB, 1e-5F)};
 	}));
-	print("three Q/K/V projections", measure(engine, "transformer_qkv", [&] {
+	printStat("three Q/K/V projections", measure(engine, "transformer_qkv", [&] {
 		keep = {oa::FnMatrix::linear(x, qW, qB), oa::FnMatrix::linear(x, kW, kB),
 			oa::FnMatrix::linear(x, vW, vB)};
 	}));
-	print("score transpose + BMM", measure(engine, "transformer_score", [&] {
+	printStat("score transpose + BMM", measure(engine, "transformer_score", [&] {
 		auto kt = oa::FnMatrix::transpose(k, 1, 2);
 		keep = {kt, oa::FnMatrix::bmm(q, kt)};
 	}));
-	print("score direct BMM NT", measure(engine, "transformer_score_nt", [&] {
+	printStat("score direct BMM NT", measure(engine, "transformer_score_nt", [&] {
 		keep = {oa::FnMatrix::bmmNt(q, k)};
 	}));
 	auto scorePair = measureExplicitPair(
@@ -458,8 +458,8 @@ TEST(BenchTransformerComponents, NlpShape) {
 		},
 		[&] { keep = {oa::FnMatrix::bmmNt(q, k)}; },
 		"transformer_score_bmm_nt_pair", 5, 25);
-	print("score transpose baseline", scorePair.baseline);
-	print("score direct BMM NT pair", scorePair.optimized);
+	printStat("score transpose baseline", scorePair.baseline);
+	printStat("score direct BMM NT pair", scorePair.optimized);
 	std::printf(
 		"  %-28s mean=%7.3f %%   p50=%7.3f  p95=%7.3f\n",
 		"paired direct-BMM gain", scorePair.pairedGain.mean(),
@@ -469,31 +469,31 @@ TEST(BenchTransformerComponents, NlpShape) {
 		"optimized_p50_ms=%.6f paired_gain_p50_percent=%.3f\n",
 		scorePair.baseline.p50(), scorePair.optimized.p50(),
 		scorePair.pairedGain.p50());
-	print("scaled masked softmax", measure(engine, "transformer_softmax", [&] {
+	printStat("scaled masked softmax", measure(engine, "transformer_softmax", [&] {
 		keep = {oa::FnMatrix::softmaxScaledMasked(
 			scores.reshape({BH * S, S}), mask, 1.0F / std::sqrt(static_cast<oa::F32>(P)))};
 	}));
-	print("context BMM", measure(engine, "transformer_context", [&] {
+	printStat("context BMM", measure(engine, "transformer_context", [&] {
 		keep = {oa::FnMatrix::bmm(attn, v)};
 	}));
-	print("output projection", measure(engine, "transformer_out", [&] {
+	printStat("output projection", measure(engine, "transformer_out", [&] {
 		keep = {oa::FnMatrix::linear(context.reshape({T, D}), oW, oB)};
 	}));
-	print("inference FFN LinearGelu", measure(engine, "transformer_ffn1_infer", [&] {
+	printStat("inference FFN LinearGelu", measure(engine, "transformer_ffn1_infer", [&] {
 		keep = {oa::FnMatrix::linearGelu(x, f1W, f1B)};
 	}));
-	print("training FFN Linear + Gelu", measure(engine, "transformer_ffn1_train", [&] {
+	printStat("training FFN Linear + Gelu", measure(engine, "transformer_ffn1_train", [&] {
 		auto pre = oa::FnMatrix::linear(x, f1W, f1B);
 		keep = {pre, oa::FnMatrix::gelu(pre)};
 	}));
-	print("FFN down projection", measure(engine, "transformer_ffn2", [&] {
+	printStat("FFN down projection", measure(engine, "transformer_ffn2", [&] {
 		keep = {oa::FnMatrix::linear(hidden, f2W, f2B)};
 	}));
-	print("residual add", measure(engine, "transformer_residual", [&] {
+	printStat("residual add", measure(engine, "transformer_residual", [&] {
 		keep = {oa::FnMatrix::add(x, dFlat)};
 	}));
 
-	print("complete attention", measure(engine, "transformer_attention", [&] {
+	printStat("complete attention", measure(engine, "transformer_attention", [&] {
 		auto xn = oa::FnMatrix::layerNorm(x, lnW, lnB, 1e-5F);
 		auto q1 = oa::FnMatrix::splitHeads(oa::FnMatrix::linear(xn, qW, qB), B, S, H);
 		auto k1 = oa::FnMatrix::splitHeads(oa::FnMatrix::linear(xn, kW, kB), B, S, H);
@@ -520,7 +520,7 @@ TEST(BenchTransformerComponents, NlpShape) {
 		auto ff = oa::FnMatrix::linearGelu(fn, f1W, f1B);
 		keep = {oa::FnMatrix::add(residual, oa::FnMatrix::linear(ff, f2W, f2B))};
 	};
-	print("complete dense block", measure(
+	printStat("complete dense block", measure(
 		engine, "transformer_block", enqueueDenseBlock));
 
 	auto enqueueQkvBackward = [&] {
@@ -533,13 +533,13 @@ TEST(BenchTransformerComponents, NlpShape) {
 		keep = {qdx, qdw.gradWeight, qdw.gradBias, kdx, kdw.gradWeight,
 			kdw.gradBias, vdx, vdw.gradWeight, vdw.gradBias};
 	};
-	print("Q/K/V projection backward", measure(
+	printStat("Q/K/V projection backward", measure(
 		engine, "transformer_qkv_bwd", enqueueQkvBackward));
 	auto qkvBackwardPair = measureFeaturePair(
 		engine, enqueueQkvBackward, "OA_DISABLE_LINEAR_PARAM_ROWS32",
 		"transformer_qkv_bwd_rows32_pair");
-	print("Q/K/V backward scalar", qkvBackwardPair.baseline);
-	print("Q/K/V backward rows32", qkvBackwardPair.optimized);
+	printStat("Q/K/V backward scalar", qkvBackwardPair.baseline);
+	printStat("Q/K/V backward rows32", qkvBackwardPair.optimized);
 	std::printf(
 		"  %-28s mean=%7.3f %%   p50=%7.3f  p95=%7.3f\n",
 		"paired rows32 gain", qkvBackwardPair.pairedGain.mean(),
@@ -549,22 +549,22 @@ TEST(BenchTransformerComponents, NlpShape) {
 		"optimized_p50_ms=%.6f paired_gain_p50_percent=%.3f\n",
 		qkvBackwardPair.baseline.p50(), qkvBackwardPair.optimized.p50(),
 		qkvBackwardPair.pairedGain.p50());
-	print("Linear data backward", measure(engine, "transformer_linear_data_bwd", [&] {
+	printStat("Linear data backward", measure(engine, "transformer_linear_data_bwd", [&] {
 		keep = {oa::FnMatrix::linearDataBwd(dFlat, qW)};
 	}));
-	print("Linear weight+bias backward", measure(engine, "transformer_linear_param_bwd", [&] {
+	printStat("Linear weight+bias backward", measure(engine, "transformer_linear_param_bwd", [&] {
 		auto dw = oa::FnMatrix::linearWeightBiasBwd(x, dFlat);
 		keep = {dw.gradWeight, dw.gradBias};
 	}));
-	print("tiled weight+bias backward", measure(engine, "transformer_linear_param_bwd_tiled", [&] {
+	printStat("tiled weight+bias backward", measure(engine, "transformer_linear_param_bwd_tiled", [&] {
 		auto dw = linearWeightBiasBwdTiledForBench(x, dFlat);
 		keep = {dw.gradWeight, dw.gradBias};
 	}));
-	print("rows32 weight+bias backward", measure(engine, "transformer_linear_param_bwd_rows32", [&] {
+	printStat("rows32 weight+bias backward", measure(engine, "transformer_linear_param_bwd_rows32", [&] {
 		auto dw = linearWeightBiasBwdRows32ForBench(x, dFlat);
 		keep = {dw.gradWeight, dw.gradBias};
 	}));
-	print("attention core backward", measure(engine, "transformer_attn_bwd", [&] {
+	printStat("attention core backward", measure(engine, "transformer_attn_bwd", [&] {
 		auto da = oa::FnMatrix::bmm(dContext, oa::FnMatrix::transpose(v, 1, 2));
 		auto dv = oa::FnMatrix::bmm(oa::FnMatrix::transpose(attn, 1, 2), dContext);
 		auto ds = oa::FnMatrix::softmaxScaledMaskedBwd(
@@ -574,13 +574,13 @@ TEST(BenchTransformerComponents, NlpShape) {
 		auto dk = oa::FnMatrix::bmm(oa::FnMatrix::transpose(ds3, 1, 2), q);
 		keep = {da, dv, ds, dq, dk};
 	}));
-	print("FFN1 backward saved pre", measure(engine, "transformer_ffn1_bwd_saved", [&] {
+	printStat("FFN1 backward saved pre", measure(engine, "transformer_ffn1_bwd_saved", [&] {
 		auto dz = oa::FnMatrix::geluBwd(ffPre, dHidden);
 		auto dx = oa::FnMatrix::linearDataBwd(dz, f1W);
 		auto dw = oa::FnMatrix::linearWeightBiasBwd(x, dz);
 		keep = {dz, dx, dw.gradWeight, dw.gradBias};
 	}));
-	print("legacy FFN1 bwd recompute", measure(engine, "transformer_ffn1_bwd_recompute", [&] {
+	printStat("legacy FFN1 bwd recompute", measure(engine, "transformer_ffn1_bwd_recompute", [&] {
 		auto pre = oa::FnMatrix::linear(x, f1W, f1B);
 		auto dz = oa::FnMatrix::geluBwd(pre, dHidden);
 		auto dx = oa::FnMatrix::linearDataBwd(dz, f1W);
@@ -592,8 +592,8 @@ TEST(BenchTransformerComponents, NlpShape) {
 		auto cachePair = measureFeaturePair(
 			engine, enqueueDenseBlock, "OA_DISABLE_GEMM_ROUTE_CACHE",
 			"transformer_gemm_cache_pair");
-		print("dense block heuristic", cachePair.baseline);
-		print("dense block measured cache", cachePair.optimized);
+		printStat("dense block heuristic", cachePair.baseline);
+		printStat("dense block measured cache", cachePair.optimized);
 		std::printf(
 			"  %-28s mean=%7.3f %%   p50=%7.3f  p95=%7.3f\n",
 			"paired route-cache gain", cachePair.pairedGain.mean(),
@@ -609,8 +609,8 @@ TEST(BenchTransformerComponents, NlpShape) {
 		auto narrowPair = measureFeaturePair(
 			engine, enqueueDenseBlock, "OA_DISABLE_NARROW_ROW_KERNELS",
 			"transformer_narrow_row_pair");
-		print("dense block general rows", narrowPair.baseline);
-		print("dense block narrow rows", narrowPair.optimized);
+		printStat("dense block general rows", narrowPair.baseline);
+		printStat("dense block narrow rows", narrowPair.optimized);
 		std::printf(
 			"  %-28s mean=%7.3f %%   p50=%7.3f  p95=%7.3f\n",
 			"paired narrow-row gain", narrowPair.pairedGain.mean(),
@@ -626,8 +626,8 @@ TEST(BenchTransformerComponents, NlpShape) {
 		auto bmmPair = measureFeaturePair(
 			engine, enqueueDenseBlock, "OA_DISABLE_TILED_BMM",
 			"transformer_tiled_bmm_pair");
-		print("dense block scalar BMM", bmmPair.baseline);
-		print("dense block tiled BMM", bmmPair.optimized);
+		printStat("dense block scalar BMM", bmmPair.baseline);
+		printStat("dense block tiled BMM", bmmPair.optimized);
 		std::printf(
 			"  %-28s mean=%7.3f %%   p50=%7.3f  p95=%7.3f\n",
 			"paired tiled-BMM gain", bmmPair.pairedGain.mean(),

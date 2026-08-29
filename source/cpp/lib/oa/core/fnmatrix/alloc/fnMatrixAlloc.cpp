@@ -20,7 +20,6 @@
 #include <oa/runtime/engine/resourceAccess.h>
 #include <oa/runtime/executionSession.h>
 
-#include <assert.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
@@ -180,7 +179,7 @@ oa::Matrix oa::FnMatrix::fromBytes(oa::Span<const oa::U8> inData, oa::MatrixShap
 		and inData.size() == static_cast<oa::Usize>(numElements * 4));
 	if (inData.size() != static_cast<oa::Usize>(expectedBytes) && !isFloat32U8Input && !isFp32ToBf16) {
 		OaLogError(oa::LogComponent::Compute,
-			"FromBytes: input size mismatch. expected %lld bytes for shape, got %zu bytes",
+			"FromBytes: input size mismatch. expected {} bytes for shape, got {} bytes",
 			static_cast<long long>(expectedBytes), inData.size());
 		return oa::Matrix{};
 	}
@@ -207,7 +206,7 @@ oa::Matrix oa::FnMatrix::fromBytes(oa::Span<const oa::U8> inData, oa::MatrixShap
 			oa::MatrixAccess::descriptor(t), 0, uploadData,
 			static_cast<oa::U64>(expectedBytes));
 		if (!status.isOk()) {
-			OaLogError(oa::LogComponent::Compute, "FromBytes upload failed: %s",
+			OaLogError(oa::LogComponent::Compute, "FromBytes upload failed: {}",
 				status.getMessage().cStr());
 			return {};
 		}
@@ -219,7 +218,7 @@ oa::Matrix oa::FnMatrix::fromInt32(oa::Span<const oa::I32> inData, oa::MatrixSha
 	oa::I64 numElements = inShape.numElements();
 	if (inData.size() != static_cast<oa::Usize>(numElements)) {
 		OaLogError(oa::LogComponent::Compute,
-			"FromInt32: input size mismatch. expected %lld elements for shape, got %zu elements",
+			"FromInt32: input size mismatch. expected {} elements for shape, got {} elements",
 			static_cast<long long>(numElements), inData.size());
 		return oa::Matrix{};
 	}
@@ -236,7 +235,7 @@ oa::Matrix oa::FnMatrix::fromInt32(oa::Span<const oa::I32> inData, oa::MatrixSha
 		uploadData = converted.data();
 	} else if (inDtype != oa::ScalarType::Int32 and inDtype != oa::ScalarType::UInt32) {
 		OaLogError(oa::LogComponent::Compute,
-			"FromInt32: unsupported dtype %d, use Int32, UInt32, or Float32",
+			"FromInt32: unsupported dtype {}, use Int32, UInt32, or Float32",
 			static_cast<int>(inDtype));
 		return {};
 	}
@@ -245,7 +244,7 @@ oa::Matrix oa::FnMatrix::fromInt32(oa::Span<const oa::I32> inData, oa::MatrixSha
 			oa::MatrixAccess::descriptor(t), 0, uploadData,
 			static_cast<oa::U64>(t.byteSize()));
 		if (!status.isOk()) {
-			OaLogError(oa::LogComponent::Compute, "FromInt32 upload failed: %s",
+			OaLogError(oa::LogComponent::Compute, "FromInt32 upload failed: {}",
 				status.getMessage().cStr());
 			return {};
 		}

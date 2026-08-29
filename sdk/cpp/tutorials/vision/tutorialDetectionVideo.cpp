@@ -21,35 +21,29 @@
 #include <oa/ui/viewer.h>
 #include <oa/vision/videoPlayer.h>
 
-#include <algorithm>
-#include <cmath>
-#include <cstdio>
-#include <cstdlib>
-#include <limits>
-#include <string>
+#include <stdlib.h>
 
 namespace {
 
 oa::I32 detectionPixel(oa::F64 inValue) noexcept {
-	if (not std::isfinite(inValue)) return 0;
-	return static_cast<oa::I32>(std::clamp<oa::F64>(
+	if (not oa::isFinite(inValue)) return 0;
+	return static_cast<oa::I32>(oa::clamp<oa::F64>(
 		inValue,
-		std::numeric_limits<oa::I32>::min(),
-		std::numeric_limits<oa::I32>::max()));
+		oa::Limits<oa::I32>::min(),
+		oa::Limits<oa::I32>::max()));
 }
 
 oa::I32 detectionExtent(oa::F64 inValue) noexcept {
-	if (not std::isfinite(inValue) or inValue <= 0.0) return 0;
-	return static_cast<oa::I32>(std::clamp<oa::F64>(
-		inValue, 1.0, std::numeric_limits<oa::I32>::max()));
+	if (not oa::isFinite(inValue) or inValue <= 0.0) return 0;
+	return static_cast<oa::I32>(oa::clamp<oa::F64>(
+		inValue, 1.0, oa::Limits<oa::I32>::max()));
 }
 
 } // namespace
 
 class DetectionVideoSource final : public oa::ViewerLiveSource {
 public:
-	oa::String path = oa::sdk::fromStdString(
-		tutorialVideoPath("shibuya_crossing_1080p30_av1.mp4"));
+	oa::String path = tutorialVideoPath("shibuya_crossing_1080p30_av1.mp4");
 	[[nodiscard]] oa::ViewerLiveCapabilities capabilities() const noexcept override {
 		return {
 			.receivesEvents = true,
@@ -105,7 +99,7 @@ public:
 			.callback = [this] { scrub(-1); }});
 
 		OaLogInfo(oa::LogComponent::App,
-			"detection display: %s (%ux%u)",
+			"detection display: {} ({}x{})",
 			path.cStr(), video_->width(), video_->height());
 		OaLogInfo(oa::LogComponent::App,
 			"GPU path: decode -> image compose -> boxes + SDF labels -> present");
@@ -140,8 +134,8 @@ public:
 				"detection video render requires an open source");
 		}
 		if (inWidth == 0U || inHeight == 0U
-			|| inWidth > static_cast<oa::U32>(std::numeric_limits<oa::I32>::max())
-			|| inHeight > static_cast<oa::U32>(std::numeric_limits<oa::I32>::max())) {
+			|| inWidth > static_cast<oa::U32>(oa::Limits<oa::I32>::max())
+			|| inHeight > static_cast<oa::U32>(oa::Limits<oa::I32>::max())) {
 			return oa::Status::invalidArgument(
 				"detection video render requires a signed positive UI extent");
 		}
@@ -227,7 +221,7 @@ private:
 		const oa::Status status = video_->stepFrames(inFrames);
 		if (!status.isOk()) {
 			OaLogWarn(oa::LogComponent::App,
-				"Video scrub failed: %s", status.toString().cStr());
+				"Video scrub failed: {}", status.toString().cStr());
 		}
 	}
 
@@ -238,7 +232,7 @@ private:
 				"detection annotations require open video and overlay state");
 		}
 		const oa::F32 phase = static_cast<oa::F32>(video_->index() % 240) / 240.0F;
-		const oa::F32 wave = std::sin(phase * 6.28318530718F);
+		const oa::F32 wave = oa::sin(phase * 6.28318530718F);
 
 		oa::Vector<oa::DetectionOverlayItem> items;
 		items.pushBack({
@@ -307,11 +301,11 @@ private:
 int main(int argc, char** argv) {
 	const oa::I32 deviceIndex = tutorialPreParseDeviceIndex(argc, argv);
 	if (deviceIndex >= 0) {
-		const std::string index = std::to_string(deviceIndex);
+		const oa::String index = oa::toString(static_cast<oa::I64>(deviceIndex));
 #if defined(_WIN32)
-		_putenv_s("OA_DEVICE", index.c_str());
+		_putenv_s("OA_DEVICE", index.cStr());
 #else
-		::setenv("OA_DEVICE", index.c_str(), 1);
+		::setenv("OA_DEVICE", index.cStr(), 1);
 #endif
 	}
 

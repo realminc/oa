@@ -1,6 +1,6 @@
 // oa::VideoDecoder — hardware Video Decoder
 // VK_KHR_video_decode_h264 / h265 / av1 / vp9
-// Zero-copy: compressed bitstream → vkImage (NV12) → compute shader
+// Zero-copy: compressed bitstream → native 4:2:0 VkImage (NV12/P010) → compute
 //
 // Public surface: lifecycle, decode, decoder-owned conversion/readback, ML
 // bridges, completion, and capability queries.
@@ -39,7 +39,7 @@ enum class VideoResourcePath : oa::U32 {
 	// Decode + DPB→staging copy in one video submit. Requires dedicated video
 	// queue with TRANSFER_BIT + coincide mode + DPB TRANSFER_SRC. NVIDIA dGPU.
 	CoincidentFastStaging = 0,
-	// Decode into distinct output image, then NV12→RGBA via compute shader on
+	// Decode into a distinct output image, then decoded YUV→RGBA on
 	// the compute queue with cross-family ownership transfer.
 	DistinctComputeConvert = 1,
 	// Coincide mode but copy on compute queue (cross-family barrier pair).
@@ -115,6 +115,11 @@ struct VideoDecodeCapabilities {
 	bool oaDecodePathImplemented = false;
 	bool supportsDpbAndOutputCoincide = false;
 	bool supportsDpbAndOutputDistinct = false;
+	bool supportsDecodedDpb = false;
+	bool supportsDecodedDpbSampled = false;
+	bool supportsDecodedDpbTransferSrc = false;
+	bool supportsDecodedOutputSampled = false;
+	// Compatibility detail for callers that specifically require 8-bit NV12.
 	bool supportsNv12Dpb = false;
 	bool supportsNv12DpbSampled = false;
 	bool supportsNv12DpbTransferSrc = false;
@@ -141,9 +146,12 @@ struct VideoDecodeCapabilities {
 
 // YCbCr to RGB conversion options
 struct VideoConversionOptions {
-	bool preferHardwareYCbCr = true;   // Use VK_KHR_sampler_ycbcr_conversion if available
+	// Hardware sampler YCbCr conversion is the default when the exact decoded
+	// format, color metadata, filter and image usage are supported. The manual
+	// compute converter remains the correctness-preserving fallback.
+	bool preferHardwareYCbCr = true;
 	YCbCrModel colorSpace = YCbCrModel::Auto;  // BT.709, BT.2020, or auto-detect
-	bool convertToRgb = true;          // convert NV12→RGB (false = keep NV12)
+	bool convertToRgb = true;          // convert decoded YUV→RGB (false = keep native YUV)
 	Filter filter = Filter::Nearest;   // Nearest = sharp, no smoothing
 };
 
@@ -164,7 +172,7 @@ struct VideoFrame {
 	VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
 	oa::U32 externalQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	const oavk::Buffer* buffer = nullptr;
-	VkFormat format = VK_FORMAT_UNDEFINED; // NV12, RGBA8, or producer format
+	VkFormat format = VK_FORMAT_UNDEFINED; // NV12, P010, RGBA8, or producer format
 	oa::U32 width = 0;
 	oa::U32 height = 0;
 	oa::U64 presentationTimestamp = 0; // PTS in microseconds
@@ -183,6 +191,7 @@ class VideoTranscoder;
 // hardware video decoder session. Wraps VkVideoSessionKHR + DPB management.
 class VideoDecoder {
 	friend class VideoTranscoder;
+	friend class VideoPlayer;
 	friend struct VideoDecoderCodecAccess;
 	friend struct VideoDecoderRecordAccess;
 	friend struct VideoDecoderInternal;
@@ -228,6 +237,9 @@ public:
 		oa::U32 inHeight);
 	[[nodiscard]] oa::Result<oa::Vector<oa::U8>> readbackLuma(const VideoFrame& inFrame);
 	[[nodiscard]] oa::Result<oa::Vector<oa::U8>> readbackNv12(const VideoFrame& inFrame);
+	// Returns tightly packed two-plane 4:2:0 bytes in the frame's native
+	// storage representation: NV12 bytes or little-endian P010 16-bit words.
+	[[nodiscard]] oa::Result<oa::Vector<oa::U8>> readbackYuv420(const VideoFrame& inFrame);
 	[[nodiscard]] oa::Result<oa::Vector<oa::U8>> readbackRgba(const VideoFrame& inFrame);
 	[[nodiscard]] oa::Result<Matrix> convertFrameToBf16(
 		const VideoFrame& inFrame,
@@ -297,6 +309,11 @@ private:
 		const VideoFrame& inNv12Frame,
 		const VideoConversionOptions& inOptions,
 		const VideoFrame& inRgbTarget);
+	[[nodiscard]] oa::Result<oa::Event> convertNv12ToRgbHardwareIntoAsync(
+		const VideoFrame& inYcbcrFrame,
+		const VideoConversionOptions& inOptions,
+		const VideoFrame& inRgbTarget);
+	oa::Status destroyHardwareYcbcr_();
 	oa::Status restoreDpbLayerToDecodeLayout(const VideoFrame& inFrame);
 	[[nodiscard]] oa::U64 getBitstreamBufferCapacity() const noexcept;
 	[[nodiscard]] oa::U32 getBitstreamRingSize() const noexcept { return kBitstreamRingSize; }
@@ -305,6 +322,7 @@ private:
 	[[nodiscard]] oa::U32 getCachedH265VpsCount() const noexcept;
 	[[nodiscard]] oa::U32 getCachedH265SpsCount() const noexcept;
 	[[nodiscard]] oa::U32 getCachedH265PpsCount() const noexcept;
+	[[nodiscard]] oa::U64 getHardwareYcbcrDispatchCount() const noexcept;
 	static bool hasHardwareYCbCrConversion(Engine& inRt);
 	VideoDecoder();
 	void moveFrom(VideoDecoder&& inOther) noexcept;
@@ -345,7 +363,6 @@ private:
 	oa::Status releaseDpbLayerForComputeCopy(const VideoFrame& inFrame);
 	[[nodiscard]] VkImageLayout getFrameLayout(const VideoFrame& inFrame, bool& outIsOutput, oa::U32& outImageIndex) const;
 	void setFrameLayout(bool inIsOutput, oa::U32 inImageIndex, VkImageLayout inLayout);
-	oa::Status ensureYcbcrSampler(YCbCrModel inColorSpace, Filter inFilter = Filter::Nearest);
 	oa::Status createOutputImages(
 		class Engine& inRt,
 		const VkVideoProfileInfoKHR& inProfile,
@@ -388,11 +405,6 @@ private:
 		const VideoFrame& inNv12Frame,
 		const VideoConversionOptions& inOptions,
 		VideoFrame& outRgbFrame);
-	oa::Status convertNv12ToRgbHardware(
-		const VideoFrame& inNv12Frame,
-		YCbCrModel inColorSpace,
-		VideoFrame& outRgbFrame,
-		Filter inFilter = Filter::Nearest);
 	oa::Status convertNv12ToRgbCompute(
 		const VideoFrame& inNv12Frame,
 		YCbCrModel inColorSpace,

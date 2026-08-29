@@ -7,7 +7,6 @@
 #include <oa/core/fnMatrix.h>
 #include <oa/core/validation.h>
 #include <oa/ml/fnMatrix.h>
-#include <oa/core/assert.h>
 #include <oa/core/std/scalarMath.h>
 
 oa::MultiHeadAttention::MultiHeadAttention(oa::I32 inDModel, oa::I32 inNumHeads, oa::F32 inDropoutP, bool inBias, oa::AttentionBackend inBackend, oa::AttentionMode inMode)

@@ -232,6 +232,6 @@ void oa::GradientTape::backward(const oa::Matrix& inRoot) {
 	const auto status = tryBackward(inRoot);
 	if (not status.isOk()) {
 		OaLogError(oa::LogComponent::Ml,
-			"autograd backward failed: %s", status.getMessage().cStr());
+			"autograd backward failed: {}", status.getMessage().cStr());
 	}
 }

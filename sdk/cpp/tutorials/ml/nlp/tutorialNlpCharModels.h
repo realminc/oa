@@ -8,7 +8,6 @@
 #include <oa/ml.h>
 #include <oa/ml/autograd.h>
 
-#include <cmath>
 
 class CharRnnLM : public oa::Module {
 public:
@@ -142,17 +141,17 @@ template <class Model>
 void runNlpCharTutorial(const char* inTitle, const char* inModelDescription,
 	const char* inTimerName, const char* inCheckpointPath, oa::F32 inLearningRate) {
 	auto& rt = testEngine();
-	std::printf("\n╔══════════════════════════════════════════════════════════════════╗\n");
-	std::printf("║  %-62s║\n", inTitle);
-	std::printf("╚══════════════════════════════════════════════════════════════════╝\n\n");
-	std::printf("tokenizer: character · vocab=%d (a-z + space)\n", kCharVocabSize);
-	std::printf("Task: dense next-character prediction at every position\n\n");
+	oa::print("\n╔══════════════════════════════════════════════════════════════════╗");
+	oa::print("║  {:<62}║", inTitle);
+	oa::print("╚══════════════════════════════════════════════════════════════════╝\n");
+	oa::print("tokenizer: character · vocab={} (a-z + space)", kCharVocabSize);
+	oa::print("Task: dense next-character prediction at every position\n");
 
 	auto model = oa::makeShared<Model>();
 	auto params = model->allParameterPtrs();
 	auto opt = oa::makeUnique<oa::AdamW>(params, inLearningRate);
-	std::printf("Model: %s\n", inModelDescription);
-	std::printf("params: %lld    Optimizer: AdamW(lr=%.3g)\n\n",
+	oa::print("Model: {}", inModelDescription);
+	oa::print("params: {}    Optimizer: AdamW(lr={:.3g})\n",
 		static_cast<long long>(model->numParameters()), static_cast<double>(inLearningRate));
 
 	NlpAllPositionSampler sampler(nlpCorpus(), kBatch, nlpCharEncode);
@@ -164,7 +163,7 @@ void runNlpCharTutorial(const char* inTitle, const char* inModelDescription,
 		.sequenceUnit = "token",
 		.timerName = inTimerName,
 	});
-	std::printf("training: %d steps · batch=%d · sequence=%d character tokens\n", kSteps, kBatch, kContextLen);
+	oa::print("training: {} steps · batch={} · sequence={} character tokens", kSteps, kBatch, kContextLen);
 
 	oa::Matrix x, y;
 	oa::F32 initialLoss = 0.0F;
@@ -182,10 +181,10 @@ void runNlpCharTutorial(const char* inTitle, const char* inModelDescription,
 	const oa::F32 finalLoss = training.loop.lastLoss();
 	const oa::F32 accuracy = nlpAccuracyAllPositions(*model, x, y, kCharVocabSize);
 
-	std::printf("\nEvaluation:\n");
-	std::printf("  Random-loss baseline ln(%d) = %.4f\n", kCharVocabSize, std::log(static_cast<double>(kCharVocabSize)));
-	std::printf("  character-token accuracy: %.1f%% (compare within Char only)\n", accuracy);
-	std::printf("\nGeneration:\n  prompt: '%s'\n  generated: '%s'\n\n",
+	oa::print("\nEvaluation:");
+	oa::print("  Random-loss baseline ln({}) = {:.4f}", kCharVocabSize, oa::log(static_cast<double>(kCharVocabSize)));
+	oa::print("  character-token accuracy: {:.1f}% (compare within Char only)", accuracy);
+	oa::print("\nGeneration:\n  prompt: '{}'\n  generated: '{}'\n",
 		kNlpGenerationPrompt,
 		nlpGenerateGreedy(*model, kNlpGenerationPrompt, kNlpGenerationBytes,
 			kCharVocabSize, nlpCharEncode).cStr());

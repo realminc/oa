@@ -163,9 +163,13 @@ def main(argv: list[str] | None = None) -> int:
 			return 0
 		if args.command == "fetch":
 			fetchPack(pack, dataRoot)
-		verifyPack(pack, dataRoot)
-		print(f"verified {pack['id']} at {dataRoot / pack['id']}")
-		return 0
+			verifyPack(pack, dataRoot)
+			print(f"verified {pack['id']} at {dataRoot / pack['id']}")
+			return 0
+		if args.command == "verify":
+			verifyPack(pack, dataRoot)
+			print(f"verified {pack['id']} at {dataRoot / pack['id']}")
+			return 0
 	except (DataError, OSError, KeyError, TypeError, urllib.error.URLError) as error:
 		print(f"dataset: {error}", file=sys.stderr)
 		return 1

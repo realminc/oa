@@ -459,7 +459,9 @@ TEST_VK(TestUi, TimelinePointerDragAndRelease)
 	down.mouseX = 85.0F;
 	down.mouseY = 16.0F;
 	EXPECT_FALSE(ui.routeEvent(down));
-	EXPECT_TRUE(ui.timeline("transport", rect, fraction));
+	bool active = false;
+	EXPECT_TRUE(ui.timeline("transport", rect, fraction, &active));
+	EXPECT_TRUE(active);
 	EXPECT_FLOAT_EQ(fraction, 0.75F);
 	EXPECT_NE(ui.input().activeId, 0U);
 	ui.endFrame();
@@ -470,7 +472,8 @@ TEST_VK(TestUi, TimelinePointerDragAndRelease)
 	move.mouseX = 35.0F;
 	move.mouseY = 16.0F;
 	EXPECT_TRUE(ui.routeEvent(move));
-	EXPECT_TRUE(ui.timeline("transport", rect, fraction));
+	EXPECT_TRUE(ui.timeline("transport", rect, fraction, &active));
+	EXPECT_TRUE(active);
 	EXPECT_FLOAT_EQ(fraction, 0.25F);
 	ui.endFrame();
 
@@ -481,7 +484,8 @@ TEST_VK(TestUi, TimelinePointerDragAndRelease)
 	up.mouseX = 60.0F;
 	up.mouseY = 16.0F;
 	EXPECT_TRUE(ui.routeEvent(up));
-	EXPECT_TRUE(ui.timeline("transport", rect, fraction));
+	EXPECT_TRUE(ui.timeline("transport", rect, fraction, &active));
+	EXPECT_FALSE(active);
 	EXPECT_FLOAT_EQ(fraction, 0.5F);
 	EXPECT_EQ(ui.input().activeId, 0U);
 	ui.endFrame();

@@ -13,9 +13,6 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
 
-#include <array>
-#include <cstdio>
-
 namespace {
 
 class SdlPlatformLease {
@@ -89,11 +86,11 @@ oa::Status runTutorial() {
 		const oa::UiStyle& style = ui.currentStyle();
 		ui.rect({0, 0, 960, 600}, style.background);
 
-		std::array<oa::UiTabItem, 3U> tabs{{
-			{.id = "scene", .label = "Scene.oa", .dirty = true},
-			{.id = "material", .label = "Material"},
-			{.id = "output", .label = "output"},
-		}};
+		oa::Array<oa::UiTabItem, 3U> tabs{
+			oa::UiTabItem{.id = "scene", .label = "Scene.oa", .dirty = true},
+			oa::UiTabItem{.id = "material", .label = "Material"},
+			oa::UiTabItem{.id = "output", .label = "output"},
+		};
 		oa::UiTabBarState tabState{.selected = 0, .firstVisible = 0};
 		(void)ui.tabBar(
 			"documents", {0, 0, 960, 34},
@@ -177,7 +174,7 @@ oa::Status runTutorial() {
 int main() {
 	const oa::Status status = runTutorial();
 	if (not status.isOk()) {
-		std::fprintf(stderr, "TutorialRendererUi failed: %s\n",
+		oa::print(oa::PrintStream::Error, "TutorialRendererUi failed: {}",
 			status.toString().cStr());
 		return 1;
 	}

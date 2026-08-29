@@ -8,7 +8,7 @@
 
 #include "vma.h"
 
-#include <oa/core/assert.h>
+#include <oa/core/std/assert.h>
 
 namespace vma {
 

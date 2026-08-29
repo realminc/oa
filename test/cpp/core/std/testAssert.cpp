@@ -1,6 +1,6 @@
 #include "oaStdTest.h"
 
-#include <oa/core/assert.h>
+#include <oa/core/std/assert.h>
 
 TEST(StdAssert, BuildModeContract) {
 	int evaluations = 0;
@@ -20,6 +20,11 @@ TEST(StdAssert, RequireAlwaysEvaluates) {
 
 TEST(StdAssert, RequireReportsExpressionAndTerminates) {
 	EXPECT_DEATH(OA_REQUIRE(false), "OA contract failed: false");
+}
+
+TEST(StdAssert, RequireMessageReportsAndTerminates) {
+	EXPECT_DEATH(OA_REQUIRE_MSG(false, "explicit contract message"),
+		"OA contract failed: false: explicit contract message");
 }
 
 #ifndef NDEBUG

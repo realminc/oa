@@ -46,7 +46,7 @@ int oa::withEngine(
 	auto engineResult = oa::Engine::create(inConfig);
 	if (not engineResult) {
 		OaLogError(oa::LogComponent::App,
-			"Engine init failed: %s", engineResult.getStatus().toString().cStr());
+			"Engine init failed: {}", engineResult.getStatus().toString().cStr());
 		return 1;
 	}
 	auto engine = oa::move(*engineResult);
@@ -60,7 +60,7 @@ int oa::withEngine(
 	const auto closeStatus = engine->close();
 	if (not closeStatus) {
 		OaLogError(oa::LogComponent::App,
-			"Engine close failed: %s", closeStatus.toString().cStr());
+			"Engine close failed: {}", closeStatus.toString().cStr());
 		return bodyResult == 0 ? 1 : bodyResult;
 	}
 	return bodyResult;
@@ -80,7 +80,7 @@ int oa::withEngine(
 		const oa::Status platformStatus = platform.acquire(&config);
 		if (not platformStatus.isOk()) {
 			OaLogError(oa::LogComponent::App,
-				"Presentation platform init failed: %s",
+				"Presentation platform init failed: {}",
 				platformStatus.toString().cStr());
 			return 1;
 		}
@@ -104,7 +104,7 @@ int oa::ComputeApp::main(int argc, char** argv) {
 	auto engineResult = oa::Engine::create(engineConfig_);
 	if (not engineResult) {
 		OaLogError(oa::LogComponent::App,
-			"Engine init failed: %s", engineResult.getStatus().toString().cStr());
+			"Engine init failed: {}", engineResult.getStatus().toString().cStr());
 		return 1;
 	}
 	engineOwner_ = oa::move(*engineResult);
@@ -113,14 +113,14 @@ int oa::ComputeApp::main(int argc, char** argv) {
 	auto initStatus = init();
 	if (not initStatus) {
 		OaLogError(oa::LogComponent::App,
-			"App init failed: %s", initStatus.toString().cStr());
+			"App init failed: {}", initStatus.toString().cStr());
 		exitCode = 1;
 	} else {
 		while (isRunning) {
 			auto tickStatus = tick();
 			if (not tickStatus) {
 				OaLogError(oa::LogComponent::App,
-					"tick error: %s", tickStatus.toString().cStr());
+					"tick error: {}", tickStatus.toString().cStr());
 				exitCode = 1;
 				break;
 			}
@@ -131,7 +131,7 @@ int oa::ComputeApp::main(int argc, char** argv) {
 	auto closeStatus = engine().close();
 	if (not closeStatus) {
 		OaLogError(oa::LogComponent::App,
-			"Engine close failed: %s", closeStatus.toString().cStr());
+			"Engine close failed: {}", closeStatus.toString().cStr());
 		exitCode = 1;
 	}
 	return exitCode;

@@ -114,13 +114,13 @@ Batch collate(oa::Span<const Dataset::Sample> inSamples) {
 		const auto& sample = inSamples[i];
 		if (!validateLike(sample.x, first.x)) {
 			OaLogError(oa::LogComponent::Data,
-				"oa::FnDataset::collate: X shape, dtype, or storage mismatch at sample %zu", i);
+				"oa::FnDataset::collate: X shape, dtype, or storage mismatch at sample {}", i);
 			return {};
 		}
 		if (sample.hasLabel() != hasLabel ||
 			(hasLabel && !validateLike(sample.y, first.y))) {
 			OaLogError(oa::LogComponent::Data,
-				"oa::FnDataset::collate: Y presence, shape, dtype, or storage mismatch at sample %zu", i);
+				"oa::FnDataset::collate: Y presence, shape, dtype, or storage mismatch at sample {}", i);
 			return {};
 		}
 	}

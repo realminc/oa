@@ -36,7 +36,7 @@ oa::Status oa::VideoDecoderCodecAccess::decodeAv1Picture(
 		if (dpbSlot < 0) {
 			return oa::Status::error(oa::StatusCode::Unavailable, "AV1 show_existing_frame references an invalid/unavailable DPB slot");
 		}
-		fillNv12OutFrame(
+		fillDecodedOutFrame(
 			inDecoder,
 			dpbSlot,
 			inDecoder.impl_->profile.width,
@@ -49,6 +49,20 @@ oa::Status oa::VideoDecoderCodecAccess::decodeAv1Picture(
 
 	if (!desc.hasPicture) {
 		return oa::Status::ok();
+	}
+
+	// The current Vulkan AV1 path has no qualified 10-bit loop-restoration
+	// implementation.  On Intel TGL/Mesa 26.1.7, submitting an otherwise valid
+	// Main-10 picture with UsesLr set stalls the video queue without a validation
+	// VUID.  Reject the syntax before mutating DPB state or submitting GPU work;
+	// this gate stays cross-vendor until the std-video metadata has an independent
+	// oracle and the path is qualified on more than one implementation.
+	if (inDecoder.impl_->profile.lumaBitDepth == oa::VideoBitDepth::Bit10
+		&& desc.frameHeader.usesLr)
+	{
+		return oa::Status::error(
+			oa::StatusCode::Unavailable,
+			"AV1 Main 10-bit loop restoration is not qualified");
 	}
 
 	const bool isKeyFrame = (desc.frameHeader.frameType == STD_VIDEO_AV1_FRAME_TYPE_KEY);
@@ -102,7 +116,7 @@ oa::Status oa::VideoDecoderCodecAccess::decodeAv1Picture(
 	OA_RETURN_IF_ERROR(inDecoder.recordAV1DecodeCommands(dpbSlot, desc, refNameSlotIndices));
 	// CPU reference-map bookkeeping describes the submission order; it does
 	// not read decode output. FinishAndSubmit chains this job after the prior
-	// decoder timeline value, and FillNv12OutFrame publishes the new value as
+	// decoder timeline value, and fillDecodedOutFrame publishes the new value as
 	// oa::VideoFrame::Ready for downstream GPU or host consumers.
 
 	for (oa::U32 mask = desc.frameHeader.refreshFrameFlags, refIndex = 0u;
@@ -121,7 +135,7 @@ oa::Status oa::VideoDecoderCodecAccess::decodeAv1Picture(
 	releaseUnmappedSlots();
 	inDecoder.impl_->currentFrameNumber++;
 
-	fillNv12OutFrame(
+	fillDecodedOutFrame(
 		inDecoder,
 		dpbSlot,
 		inDecoder.impl_->profile.width,

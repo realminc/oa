@@ -20,10 +20,6 @@
 #include <oa/ml/autograd.h>
 #include <oa/core/envFlag.h>
 #include <oa/runtime/engine.h>
-#include <algorithm>
-#include <chrono>
-#include <cmath>
-#include <cstring>
 
 #if __has_include(<nvtx3/nvToolsExt.h>)
 #include <nvtx3/nvToolsExt.h>
@@ -122,10 +118,10 @@ TEST(TutorialNlpByteTransformerAg, MatMulBackpropFlowsToBothOperands) {
 	ASSERT_TRUE(tutorialSubmitAndWait(testEngine()).isOk());
 
 	auto gradMag = [](const oa::Matrix& g) {
-		std::vector<float> h(static_cast<size_t>(g.numElements()));
+		oa::Vector<float> h(static_cast<oa::Usize>(g.numElements()));
 		(void)oa::FnMatrix::copyToHost(g, h.data(), h.size() * sizeof(float));
 		float s = 0.0F;
-		for (float v : h) s += std::abs(v);
+		for (float v : h) s += oa::abs(v);
 		return s;
 	};
 	EXPECT_GT(gradMag(A.gradMatrix()), 0.0F) << "MatMul did not backprop into A";
@@ -135,11 +131,11 @@ TEST(TutorialNlpByteTransformerAg, MatMulBackpropFlowsToBothOperands) {
 // ─── Tutorial ──────────────────────────────────────────────────────────────
 
 TEST(TutorialNlpByteTransformerAg, TransformerByteNextToken) {
-	printf("\n╔══════════════════════════════════════════════════════════════════╗\n");
-	printf("║  OA Tutorial — Transformer Block (Byte autograd)                ║\n");
-	printf("╚══════════════════════════════════════════════════════════════════╝\n\n");
-	printf("Vocab: 256 bytes · context: %d · dModel: %d · Attention: causal self-attn (1 head)\n", kContextLen, kDModel);
-	printf("Task: all-position next-byte (dense windows, matched to ByteRnnAg corpus)\n\n");
+	oa::print("\n╔══════════════════════════════════════════════════════════════════╗");
+	oa::print("║  OA Tutorial — Transformer Block (Byte autograd)                ║");
+	oa::print("╚══════════════════════════════════════════════════════════════════╝\n");
+	oa::print("Vocab: 256 bytes · context: {} · dModel: {} · Attention: causal self-attn (1 head)", kContextLen, kDModel);
+	oa::print("Task: all-position next-byte (dense windows, matched to ByteRnnAg corpus)\n");
 
 	oa::FnMatrix::setRngSeed(oa::NlpSuiteRngSeed);
 	auto  model  = oa::makeShared<ByteTransformerLM>();
@@ -147,13 +143,13 @@ TEST(TutorialNlpByteTransformerAg, TransformerByteNextToken) {
 	auto  opt    = oa::makeUnique<oa::AdamW>(params, 0.01F);
 	auto& rt     = testEngine();
 
-	printf("Model: embed(%d→%d) + PosEmbed → oa::TransformerBlock(%d, %d) → LN → Linear(%d→%d)\n",
+	oa::print("Model: embed({}→{}) + PosEmbed → oa::TransformerBlock({}, {}) → LN → Linear({}→{})",
 		kVocabSize, kDModel, kDModel, kHiddenDim, kDModel, kVocabSize);
-	printf("params: %lld    Optimizer: AdamW(lr=0.01)\n\n",
+	oa::print("params: {}    Optimizer: AdamW(lr=0.01)\n",
 		static_cast<long long>(model->numParameters()));
 
 	const oa::I32 steps = static_cast<oa::I32>(
-		std::max<oa::I64>(oa::EnvFlag::getInt("OA_TUTORIAL_STEPS", 300), 1));
+		oa::max<oa::I64>(oa::EnvFlag::getInt("OA_TUTORIAL_STEPS", 300), 1));
 	constexpr oa::I32 kBatch = 64;
 	NlpAllPositionSampler sampler(nlpCorpus(), kBatch);
 	const oa::Bool useTrainingProgram = oa::EnvFlag::isSet("OA_TRAINING_PROGRAM");
@@ -172,7 +168,7 @@ TEST(TutorialNlpByteTransformerAg, TransformerByteNextToken) {
 		.program        = useTrainingProgram ? &program : nullptr,
 	});
 
-	printf("training: %d steps · batch=%d · sequence=%d tokens · execution=%s\n",
+	oa::print("training: {} steps · batch={} · sequence={} tokens · execution={}",
 		steps, kBatch, kContextLen, useTrainingProgram ? "captured" : "eager");
 
 	oa::Matrix batchX;
@@ -209,16 +205,16 @@ TEST(TutorialNlpByteTransformerAg, TransformerByteNextToken) {
 	const oa::F32 finalBatchAcc = nlpAccuracyAllPositions(*model, batchX, batchY, kVocabSize);
 	(void)rt;
 
-	printf("\nEvaluation:\n");
-	printf("  Random-loss baseline ln(%d) = %.4f\n",
-		kVocabSize, static_cast<double>(std::log(static_cast<float>(kVocabSize))));
-	printf("  bits/byte: %.4f\n", nlpBitsPerByte(lastLoss));
-	printf("  Accuracy: %.1f%%\n", finalBatchAcc);
+	oa::print("\nEvaluation:");
+	oa::print("  Random-loss baseline ln({}) = {:.4f}",
+		kVocabSize, static_cast<double>(oa::log(static_cast<float>(kVocabSize))));
+	oa::print("  bits/byte: {:.4f}", nlpBitsPerByte(lastLoss));
+	oa::print("  Accuracy: {:.1f}%", finalBatchAcc);
 
 	// ── generate ──
 	oa::String generated = nlpGenerateGreedy(*model, kNlpGenerationPrompt,
 		kNlpGenerationBytes, kVocabSize);
-	printf("\nGeneration:\n  prompt: '%s'\n  generated: '%s'\n\n",
+	oa::print("\nGeneration:\n  prompt: '{}'\n  generated: '{}'\n",
 		kNlpGenerationPrompt, generated.cStr());
 
 	ASSERT_GT(initialLoss, 0.0F);
@@ -237,7 +233,7 @@ TEST(TutorialNlpByteTransformerAg, TransformerByteNextToken) {
 	ASSERT_TRUE(loadStatus.isOk()) << "load failed: " << loadStatus.getMessage();
 
 	oa::F32 reloadedAcc = nlpAccuracyAllPositions(*reloaded, batchX, batchY, kVocabSize);
-	printf("Reload accuracy: %.1f%% (was %.1f%%)    Optimizer step: %llu (was %llu)\n\n",
+	oa::print("Reload accuracy: {:.1f}% (was {:.1f}%)    Optimizer step: {} (was {})\n",
 		reloadedAcc, finalBatchAcc,
 		static_cast<unsigned long long>(reloadedOpt->getStep()),
 		static_cast<unsigned long long>(opt->getStep()));

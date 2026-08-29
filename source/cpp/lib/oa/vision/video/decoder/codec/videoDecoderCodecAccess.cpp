@@ -8,7 +8,7 @@
 #include "../videoDecoderProfile.h"
 #include "../../codec/nalParser.h"
 
-void oa::VideoDecoderCodecAccess::fillNv12OutFrame(
+void oa::VideoDecoderCodecAccess::fillDecodedOutFrame(
 	oa::VideoDecoder& inDecoder,
 	oa::I32 inDpbSlot,
 	oa::U32 inWidth,
@@ -26,7 +26,7 @@ void oa::VideoDecoderCodecAccess::fillNv12OutFrame(
 	outFrame.layout = (!inDecoder.impl_->outputImages.empty() && slot < inDecoder.impl_->outputImages.size())
 		? inDecoder.impl_->outputImageLayouts[slot]
 		: inDecoder.impl_->dpbImageLayouts[slot];
-	outFrame.format = VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
+	outFrame.format = inDecoder.impl_->decodedFormat;
 	outFrame.width = inWidth;
 	outFrame.height = inHeight;
 	outFrame.presentationTimestamp = inPts;

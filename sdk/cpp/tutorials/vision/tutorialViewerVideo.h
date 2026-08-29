@@ -5,20 +5,18 @@
 
 #include <oa/ui/viewer.h>
 
-#include <cstdio>
-#include <cstdlib>
-#include <string>
+#include <stdlib.h>
 
 inline int runTutorialViewerVideo(
 	int argc,
 	char** argv,
-	const std::string& inDefaultPath,
+	const oa::String& inDefaultPath,
 	const char* inTitle,
 	bool inLoop = true)
 {
 	oa::I32 deviceIdx = tutorialPreParseDeviceIndex(argc, argv);
 	if (deviceIdx >= 0) {
-		oa::String idxStr = oa::String(std::to_string(deviceIdx).c_str());
+		const oa::String idxStr = oa::toString(static_cast<oa::I64>(deviceIdx));
 #if defined(_WIN32)
 		_putenv_s("OA_DEVICE", idxStr.cStr());
 #else
@@ -28,14 +26,14 @@ inline int runTutorialViewerVideo(
 
 	oa::ViewerConfig config;
 	config.mode = oa::ViewerMode::Video;
-	config.path = argc > 1 ? argv[1] : inDefaultPath.c_str();
+	config.path = argc > 1 ? argv[1] : inDefaultPath.cStr();
 	config.title = inTitle;
 	config.loop = inLoop;
 
 	oa::Viewer viewer(config);
 	oa::Status status = viewer.run();
 	if (not status.isOk()) {
-		std::fprintf(stderr, "%s: %s\n", inTitle, status.toString().cStr());
+		oa::print(oa::PrintStream::Error, "{}: {}", inTitle, status.toString().cStr());
 		return 1;
 	}
 	return 0;

@@ -32,6 +32,8 @@ struct VideoDecoderInternal {
 	static oa::U32 getCachedH265SpsCount(const oa::VideoDecoder& inDecoder) noexcept;
 	static oa::U32 getCachedH265PpsCount(const oa::VideoDecoder& inDecoder) noexcept;
 	static bool hasHardwareYCbCrConversion(oa::Engine& inRt);
+	static oa::U64 getHardwareYcbcrDispatchCount(
+		const oa::VideoDecoder& inDecoder) noexcept;
 };
 
 } // namespace oa

@@ -3,7 +3,7 @@
 #include "../engine/engineAccess.h"
 #include "routeCache.h"
 
-#include <assert.h>
+#include <oa/core/std/assert.h>
 
 // Private bridge for GEMM lowering and its focused tests. The learned route
 // cache is engine-owned implementation policy, not part of oa::Engine's public
@@ -40,7 +40,7 @@ public:
 		oa::UniquePtr<oa::GemmRouteCache>&& inReplacement) noexcept
 	{
 		auto& impl = oa::EngineAccess::get(inEngine);
-		assert(impl.gemmState_);
+		OA_REQUIRE(impl.gemmState_);
 		auto previous = oa::move(impl.gemmState_->routeCache);
 		impl.gemmState_->routeCache = oa::move(inReplacement);
 		return previous;

@@ -16,7 +16,7 @@
 #include "descriptorValidation.h"
 #include "dispatchValidation.h"
 
-#include <assert.h>
+#include <oa/core/std/assert.h>
 #include <vulkan/vulkan.h>
 
 static bool executionAccessReads(oa::BufferAccess inAccess) {
@@ -32,7 +32,7 @@ oa::ExecutionSession::ExecutionSession(oa::Engine* inEngine)
 	, graph_(new oa::ExecutableGraph())
 	, builder_(graph_)
 {
-	assert(engine_ and "Engine cannot be null");
+	OA_REQUIRE_MSG(engine_, "Engine cannot be null");
 }
 
 oa::ExecutionSession::~ExecutionSession() {
@@ -41,7 +41,7 @@ oa::ExecutionSession::~ExecutionSession() {
 	// incomplete.
 	if (const auto status = abandon(); not status.isOk()) {
 		OaLogError(oa::LogComponent::Compute,
-			"execution session abandonment failed: %s",
+			"execution session abandonment failed: {}",
 			status.getMessage().cStr());
 	}
 	for (auto* graph : deferredGraphs_) {
@@ -59,8 +59,7 @@ oa::Status oa::ExecutionSession::record(const oa::ComputeDispatchDesc& inDesc) {
 	if (not recordingFailure_.isOk()) return recordingFailure_;
 	if (not engine_) {
 		OaLogError(oa::LogComponent::Compute,
-			"oa::ExecutionSession::record '%.*s': null engine",
-			static_cast<int>(inDesc.kernel.size()), inDesc.kernel.data());
+			"oa::ExecutionSession::record '{}': null engine", inDesc.kernel);
 		return failRecording_(oa::Status::error(oa::StatusCode::Internal,
 			"execution session record: null engine"));
 	}
@@ -244,8 +243,8 @@ oa::Result<oa::U32> oa::ExecutionSession::recordOp(
 				continue;
 			}
 			OaLogError(oa::LogComponent::Compute,
-				"Semantic operation '%.*s' input %u has no storage",
-				static_cast<int>(inContract.name.size()), inContract.name.data(),
+				"Semantic operation '{}' input {} has no storage",
+				inContract.name,
 				index);
 			return fail(oa::Status::error(oa::StatusCode::InvalidArgument,
 				"execution session semantic operation has an invalid input matrix"));
@@ -587,7 +586,7 @@ void oa::ExecutionSession::markExecuted() noexcept {
 }
 
 void oa::ExecutionSession::discardActiveRecording() {
-	assert(graph_ and "graph is null");
+	OA_REQUIRE_MSG(graph_, "graph is null");
 	if (engine_) graph_->reset(*engine_);
 	else graph_->reset();
 	executed_ = true;
@@ -597,7 +596,7 @@ void oa::ExecutionSession::discardActiveRecording() {
 }
 
 oa::U32 oa::ExecutionSession::nodeCount() const noexcept {
-	assert(graph_ and "graph is null");
+	OA_REQUIRE_MSG(graph_, "graph is null");
 	return graph_->nodeCount();
 }
 
@@ -632,7 +631,7 @@ oa::Status oa::ExecutionSession::failRecording_(const oa::Status& inFailure) {
 	if (recordingFailure_.isOk()) {
 		recordingFailure_ = inFailure;
 		OaLogError(oa::LogComponent::Compute,
-			"execution recording rejected: %s",
+			"execution recording rejected: {}",
 			inFailure.getMessage().cStr());
 	}
 
@@ -650,7 +649,7 @@ oa::Status oa::ExecutionSession::failRecording_(const oa::Status& inFailure) {
 		const auto cancelStatus = cancelActiveBatch_();
 		if (not cancelStatus.isOk()) {
 			OaLogError(oa::LogComponent::Compute,
-				"execution session failed to cancel aborted recording batch: %s",
+				"execution session failed to cancel aborted recording batch: {}",
 				cancelStatus.getMessage().cStr());
 		}
 	}
@@ -781,7 +780,7 @@ oa::U32 oa::ExecutionSession::emitBatchBoundaryBarriers(
 oa::Result<oa::U32> oa::ExecutionSession::recordActiveGraphInBatch_(
 	void* inPrimaryCommandBuffer)
 {
-	assert(graph_ and "graph is null");
+	OA_REQUIRE_MSG(graph_, "graph is null");
 	const auto previousStates = batchBufferStates_;
 	const oa::U32 barrierCount = emitBatchBoundaryBarriers(
 		inPrimaryCommandBuffer, *graph_);
@@ -938,7 +937,7 @@ oa::Status oa::ExecutionSession::abandon() {
 }
 
 void oa::ExecutionSession::rotateAfterBatch() {
-	assert(graph_ and "graph is null");
+	OA_REQUIRE_MSG(graph_, "graph is null");
 	deferredGraphs_.pushBack(graph_);
 	if (not reusableGraphs_.empty()) {
 		graph_ = reusableGraphs_.back();
@@ -976,7 +975,7 @@ void oa::ExecutionSession::reclaimCompletedGraphs() {
 }
 
 void oa::ExecutionSession::clear() {
-	assert(graph_ and "graph is null");
+	OA_REQUIRE_MSG(graph_, "graph is null");
 	if (engine_) {
 		graph_->clearNodes();
 	} else {
@@ -993,8 +992,7 @@ void oa::ExecutionSession::clear() {
 }
 
 void oa::ExecutionSession::beginStableResourceFrame() {
-	assert(not stableResourceFrameActive_
-		and "stable resource frames cannot be nested");
+	OA_REQUIRE_MSG(not stableResourceFrameActive_, "stable resource frames cannot be nested");
 	stableResourceCursor_ = 0;
 	stableResourceFrameActive_ = true;
 	stableResourceInputsSealed_ = false;
@@ -1010,17 +1008,14 @@ void oa::ExecutionSession::endStableResourceFrame() noexcept {
 }
 
 void oa::ExecutionSession::sealStableResourceInputs() {
-	assert(stableResourceFrameActive_
-		and "stable inputs require an active resource frame");
-	assert(not stableResourceInputsSealed_
-		and "stable resource inputs may only be sealed once per frame");
+	OA_REQUIRE_MSG(stableResourceFrameActive_, "stable inputs require an active resource frame");
+	OA_REQUIRE_MSG(not stableResourceInputsSealed_, "stable resource inputs may only be sealed once per frame");
 	stableExternalResourceCount_ = stableResourceCursor_;
 	stableResourceInputsSealed_ = true;
 }
 
 void oa::ExecutionSession::sealAllStableResourcesExternal() {
-	assert(stableResourceFrameActive_
-		and "stable resources require an active resource frame");
+	OA_REQUIRE_MSG(stableResourceFrameActive_, "stable resources require an active resource frame");
 	stableExternalResourceCount_ = stableResourceCursor_;
 	stableResourceInputsSealed_ = true;
 }
@@ -1063,7 +1058,7 @@ oa::SharedPtr<oavk::Buffer> oa::ExecutionSession::allocateMatrixBuffer(
 		}
 		if (logStableResourceMisses) {
 			OaLogInfo(oa::LogComponent::Compute,
-				"Stable resource slot %zu replaced: %llu -> %llu bytes",
+				"Stable resource slot {} replaced: {} -> {} bytes",
 				slot,
 				static_cast<unsigned long long>(existing ? existing->size : 0),
 				static_cast<unsigned long long>(inBytes));
@@ -1075,7 +1070,7 @@ oa::SharedPtr<oavk::Buffer> oa::ExecutionSession::allocateMatrixBuffer(
 	auto buffer = allocate();
 	if (logStableResourceMisses) {
 		OaLogInfo(oa::LogComponent::Compute,
-			"Stable resource slot %zu created: %llu bytes", slot,
+			"Stable resource slot {} created: {} bytes", slot,
 			static_cast<unsigned long long>(inBytes));
 	}
 	stableResourceSlots_.pushBack(buffer);

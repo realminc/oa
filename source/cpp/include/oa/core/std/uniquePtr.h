@@ -44,18 +44,22 @@ public:
 
 	UniquePtr() noexcept = default;
 
-	explicit UniquePtr(pointer inP) noexcept requires (!oa::IsVoidV<T>) : ptr_(inP) {}
+	explicit UniquePtr(pointer inP) noexcept requires (!oa::IsVoidV<T>)
+		: ptr_(inP)
+	{}
 
 	UniquePtr(pointer inP, const Deleter& inD) noexcept
 		requires(oa::IsNothrowCopyConstructibleV<Deleter>)
-		: ptr_(inP), deleter_(inD) {}
+		: ptr_(inP), deleter_(inD)
+	{}
 
 	UniquePtr(pointer, const Deleter&)
 		requires(!oa::IsNothrowCopyConstructibleV<Deleter>) = delete;
 
 	UniquePtr(pointer inP, Deleter&& inD) noexcept
 		requires(oa::IsNothrowMoveConstructibleV<Deleter>)
-		: ptr_(inP), deleter_(oa::move(inD)) {}
+		: ptr_(inP), deleter_(oa::move(inD))
+	{}
 
 	UniquePtr(pointer, Deleter&&)
 		requires(!oa::IsNothrowMoveConstructibleV<Deleter>) = delete;

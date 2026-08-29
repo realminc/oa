@@ -7,19 +7,17 @@
 // frame fixes the recording extent; input timestamps are normalized to zero.
 
 #include <oa/runtime/engine.h>
+#include <oa/core/thread.h>
 #include <oa/audio/audioCapture.h>
 #include <oa/vision/screenCapture.h>
 #include <oa/vision/videoRecorder.h>
 
-#include <chrono>
-#include <csignal>
-#include <cstdio>
-#include <cstdlib>
-#include <thread>
+#include <signal.h>
+#include <stdlib.h>
 
 namespace {
 
-volatile std::sig_atomic_t stopRequested = 0;
+volatile ::sig_atomic_t stopRequested = 0;
 
 void requestStop(int) noexcept {
 	stopRequested = 1;
@@ -29,37 +27,37 @@ void requestStop(int) noexcept {
 
 int main(int argc, char** argv) {
 	const char* output = argc > 1 ? argv[1] : "/tmp/oa_screen_capture.mp4";
-	const double seconds = argc > 2 ? std::atof(argv[2]) : 10.0;
-	const bool wantAudio = argc <= 3 or std::atoi(argv[3]) != 0;
+	const double seconds = argc > 2 ? ::atof(argv[2]) : 10.0;
+	const bool wantAudio = argc <= 3 or ::atoi(argv[3]) != 0;
 	if (seconds <= 0.0) {
-		std::fprintf(stderr, "Duration must be positive\n");
+		oa::print(oa::PrintStream::Error, "Duration must be positive");
 		return 1;
 	}
-	std::signal(SIGINT, requestStop);
-	std::signal(SIGTERM, requestStop);
+	::signal(SIGINT, requestStop);
+	::signal(SIGTERM, requestStop);
 
 	oa::EngineConfig engineConfig;
 	engineConfig.presentationMode = oa::PresentationMode::None;
 	engineConfig.selectForThread = true;
 	auto engineResult = oa::Engine::create(engineConfig);
 	if (not engineResult.isOk()) {
-		std::fprintf(stderr, "Engine creation failed: %s\n",
+		oa::print(oa::PrintStream::Error, "Engine creation failed: {}",
 			engineResult.getStatus().toString().cStr());
 		return 1;
 	}
 	oa::Engine& engine = *engineResult.getValue();
 
 	if (not oa::ScreenCapture::isSupported()) {
-		std::fprintf(stderr, "This build has no libportal/PipeWire screen backend\n");
+		oa::print(oa::PrintStream::Error, "This build has no libportal/PipeWire screen backend");
 		return 1;
 	}
 	// Declare the completion-event producer before capture so capture drains
 	// deferred DMA-BUF releases while the recorder timelines are still alive.
 	oa::VideoRecorder recorder;
-	std::printf("Select a monitor or window in the Wayland portal...\n");
+	oa::print("Select a monitor or window in the Wayland portal...");
 	auto captureResult = oa::ScreenCapture::open(engine);
 	if (not captureResult.isOk()) {
-		std::fprintf(stderr, "Screen capture failed: %s\n",
+		oa::print(oa::PrintStream::Error, "Screen capture failed: {}",
 			captureResult.getStatus().toString().cStr());
 		return 1;
 	}
@@ -72,10 +70,10 @@ int main(int argc, char** argv) {
 			audioCapture = oa::move(*audioResult);
 			auto start = audioCapture.start();
 			if (start.isOk()) audioEnabled = true;
-			else std::fprintf(stderr, "Audio capture unavailable: %s; recording video only\n",
+			else oa::print(oa::PrintStream::Error, "Audio capture unavailable: {}; recording video only",
 				start.toString().cStr());
 		} else {
-			std::fprintf(stderr, "Audio capture unavailable: %s; recording video only\n",
+			oa::print(oa::PrintStream::Error, "Audio capture unavailable: {}; recording video only",
 				audioResult.getStatus().toString().cStr());
 		}
 	}
@@ -88,12 +86,11 @@ int main(int argc, char** argv) {
 		while (audioCapture.poll(chunk)) OA_RETURN_IF_ERROR(recorder.writeAudio(chunk));
 		return oa::Status::ok();
 	};
-	const auto deadline = std::chrono::steady_clock::now()
-		+ std::chrono::duration<double>(seconds);
-	while (not stopRequested and std::chrono::steady_clock::now() < deadline) {
+	const auto deadline = oa::steadyNow() + oa::Duration::fromDouble(seconds);
+	while (not stopRequested and oa::steadyNow() < deadline) {
 		oa::VideoFrame frame;
 		if (not capture.poll(frame)) {
-			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+			oa::Thread::sleepFor(oa::Duration::fromMilliseconds(1));
 			continue;
 		}
 		if (not recorderOpen) {
@@ -107,20 +104,20 @@ int main(int argc, char** argv) {
 			config.audioEnabled = audioEnabled;
 			auto result = oa::VideoRecorder::create(engine, config);
 			if (not result.isOk()) {
-				std::fprintf(stderr, "Recorder creation failed: %s\n",
+				oa::print(oa::PrintStream::Error, "Recorder creation failed: {}",
 					result.getStatus().toString().cStr());
 				capture.release(frame);
 				return 1;
 			}
 			recorder = oa::move(*result);
 			recorderOpen = true;
-			std::printf("Recording %ux%u%s to %s for %.1f seconds\n",
+			oa::print("Recording {}x{}{} to {} for {:.1f} seconds",
 				frame.width, frame.height, audioEnabled ? " + AAC audio" : "",
 				output, seconds);
 		}
 		auto audioStatus = drainAudio();
 		if (not audioStatus.isOk()) {
-			std::fprintf(stderr, "Record audio failed: %s\n", audioStatus.toString().cStr());
+			oa::print(oa::PrintStream::Error, "Record audio failed: {}", audioStatus.toString().cStr());
 			capture.release(frame);
 			return 1;
 		}
@@ -128,30 +125,30 @@ int main(int argc, char** argv) {
 		auto status = recorder.writeAsync(frame, consumed);
 		capture.release(frame, consumed);
 		if (not status.isOk()) {
-			std::fprintf(stderr, "Record frame failed: %s\n", status.toString().cStr());
+			oa::print(oa::PrintStream::Error, "Record frame failed: {}", status.toString().cStr());
 			return 1;
 		}
 		++frameCount;
 	}
 
 	if (not recorderOpen or frameCount == 0U) {
-		std::fprintf(stderr, "portal stream produced no frames\n");
+		oa::print(oa::PrintStream::Error, "portal stream produced no frames");
 		return 1;
 	}
 	if (audioEnabled) {
 		(void)audioCapture.stop();
 		auto audioStatus = drainAudio();
 		if (not audioStatus.isOk()) {
-			std::fprintf(stderr, "Final audio drain failed: %s\n", audioStatus.toString().cStr());
+			oa::print(oa::PrintStream::Error, "Final audio drain failed: {}", audioStatus.toString().cStr());
 			return 1;
 		}
 	}
 	auto finalStatus = recorder.finalize();
 	if (not finalStatus.isOk()) {
-		std::fprintf(stderr, "finalize failed: %s\n", finalStatus.toString().cStr());
+		oa::print(oa::PrintStream::Error, "finalize failed: {}", finalStatus.toString().cStr());
 		return 1;
 	}
-	std::printf("Saved %u frames%s to %s\n", frameCount,
+	oa::print("Saved {} frames{} to {}", frameCount,
 		audioEnabled ? " with synchronized AAC audio" : "", output);
 	return 0;
 }

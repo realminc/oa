@@ -7,15 +7,11 @@
 #include <oa/ui/plot/plot.h>
 #include <oa/vision/fnImage.h>
 
-#include <cstdio>
-#include <utility>
-#include <vector>
-
 namespace {
 
 oa::Image rgbImage(oa::Matrix inMatrix) {
 	return oa::Image(
-		std::move(inMatrix),
+		oa::move(inMatrix),
 		oa::ImageLayout::Nchw,
 		oa::ImageFormat::Rgb);
 }
@@ -35,33 +31,33 @@ int main(int argc, char** argv) {
 	config.presentationMode = oa::PresentationMode::Headless;
 	auto created = oa::Engine::create(config);
 	if (not created.isOk()) {
-		std::fprintf(stderr, "Engine creation failed: %s\n",
+		oa::print(oa::PrintStream::Error, "Engine creation failed: {}",
 			created.getStatus().toString().cStr());
 		return 1;
 	}
-	auto engine = std::move(created).getValue();
+	auto engine = oa::move(created).getValue();
 
 	auto decoded = oa::FnImage::decodeFile(input);
 	if (not decoded.isOk()) {
-		std::fprintf(stderr, "Image decode failed: %s\n",
+		oa::print(oa::PrintStream::Error, "Image decode failed: {}",
 			decoded.getStatus().toString().cStr());
 		return 1;
 	}
 
 	// OA_DOC_BEGIN: vision-data-augmentation
-	std::vector<oa::Image> views;
+	oa::Vector<oa::Image> views;
 	views.reserve(6);
-	views.push_back(std::move(decoded).getValue());
+	views.pushBack(oa::move(decoded).getValue());
 	const oa::Matrix& source = views.front().asMatrix();
 
-	views.push_back(rgbImage(oa::FnImage::flip(source, true, false)));
+	views.pushBack(rgbImage(oa::FnImage::flip(source, true, false)));
 	auto crop = oa::FnImage::centerCrop(source, 280, 150);
-	views.push_back(rgbImage(oa::FnImage::resize(crop, 320, 180)));
-	views.push_back(rgbImage(
+	views.pushBack(rgbImage(oa::FnImage::resize(crop, 320, 180)));
+	views.pushBack(rgbImage(
 		oa::FnImage::brightnessContrast(source, 0.08F, 1.15F)));
 	auto noisy = oa::FnImage::gaussianNoise(source, 0.0F, 0.035F, 2026U);
-	views.push_back(rgbImage(oa::FnImage::clamp(noisy, 0.0F, 1.0F)));
-	views.push_back(rgbImage(oa::FnImage::solarize(source, 0.55F, 1.0F)));
+	views.pushBack(rgbImage(oa::FnImage::clamp(noisy, 0.0F, 1.0F)));
+	views.pushBack(rgbImage(oa::FnImage::solarize(source, 0.55F, 1.0F)));
 	// OA_DOC_END: vision-data-augmentation
 
 	const char* titles[] = {
@@ -80,16 +76,16 @@ int main(int argc, char** argv) {
 		.theme = oa::plot::Theme::Dark,
 	});
 
-	std::vector<oa::Texture> textures;
+	oa::Vector<oa::Texture> textures;
 	textures.reserve(views.size());
 	for (oa::Usize index = 0; index < views.size(); ++index) {
 		auto texture = oa::FnTexture::fromImage(*engine, views[index]);
 		if (not texture.isOk()) {
-			std::fprintf(stderr, "texture conversion failed: %s\n",
+			oa::print(oa::PrintStream::Error, "texture conversion failed: {}",
 				texture.getStatus().toString().cStr());
 			return 1;
 		}
-		textures.push_back(std::move(texture).getValue());
+		textures.pushBack(oa::move(texture).getValue());
 		auto& axes = figure.ax(
 			static_cast<oa::I32>(index / 3),
 			static_cast<oa::I32>(index % 3));
@@ -103,17 +99,17 @@ int main(int argc, char** argv) {
 	if (not outputDirectory.empty()) {
 		if (auto status = oa::Filesystem::createDirectories(outputDirectory);
 			not status.isOk()) {
-			std::fprintf(stderr, "output directory creation failed: %s\n",
+			oa::print(oa::PrintStream::Error, "output directory creation failed: {}",
 				status.toString().cStr());
 			return 1;
 		}
 	}
 	if (auto status = figure.saveTo(*engine, output.cStr()); not status.isOk()) {
-		std::fprintf(stderr, "Figure save failed: %s\n",
+		oa::print(oa::PrintStream::Error, "Figure save failed: {}",
 			status.toString().cStr());
 		return 1;
 	}
 
-	std::printf("saved 6 GPU augmentation views to %s\n", output.cStr());
+	oa::print("saved 6 GPU augmentation views to {}", output.cStr());
 	return 0;
 }

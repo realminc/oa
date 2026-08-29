@@ -18,6 +18,7 @@
 
 #include <oa/core/types.h>      // Foundation: scalars, strings, containers (includes type.gen.h)
 #include <oa/core/status.h>     // Error handling: oa::Status, oa::Result
+#include <oa/core/std/print.h>  // Type-safe oa::format, print, and write
 #include <oa/core/math.h>       // Fixed-point: oa::Price, oa::Qty, oa::Balance
 #include <oa/core/std/chrono.h> // OA clock values: oa::steadyNow, oa::Duration, ...
 #include <oa/core/time.h>       // Timestamps: oa::Timestamp, oa::Stopwatch

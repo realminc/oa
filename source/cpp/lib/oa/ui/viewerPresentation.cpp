@@ -34,7 +34,7 @@ oa::Status oa::Viewer::initPresentation(
 	}
 
 	if (auto s = buildComposeImage(config_.width, config_.height); not s.isOk()) {
-		OaLogError(oa::LogComponent::Ui, "oa::Viewer: compose image build failed: %s",
+		OaLogError(oa::LogComponent::Ui, "oa::Viewer: compose image build failed: {}",
 			s.getMessage().cStr());
 		inPresenter.detachPresentation();
 		presenter_ = nullptr;
@@ -43,7 +43,7 @@ oa::Status oa::Viewer::initPresentation(
 	}
 
 	if (auto s = ui_.init(*engine_, config_.style); not s.isOk()) {
-		OaLogError(oa::LogComponent::Ui, "oa::Viewer: UI initialization failed: %s",
+		OaLogError(oa::LogComponent::Ui, "oa::Viewer: UI initialization failed: {}",
 			s.getMessage().cStr());
 		destroyComposeImage();
 		inPresenter.detachPresentation();
@@ -53,12 +53,12 @@ oa::Status oa::Viewer::initPresentation(
 	}
 
 	if (auto s = ui_.initBlit(composeView_); not s.isOk()) {
-		OaLogError(oa::LogComponent::Ui, "oa::Viewer: UI compositor initialization failed: %s",
+		OaLogError(oa::LogComponent::Ui, "oa::Viewer: UI compositor initialization failed: {}",
 			s.getMessage().cStr());
 		const oa::Status cleanupStatus = ui_.close();
 		if (not cleanupStatus.isOk()) {
 			OaLogError(oa::LogComponent::Ui,
-				"oa::Viewer: UI cleanup after initialization failure also failed: %s",
+				"oa::Viewer: UI cleanup after initialization failure also failed: {}",
 				cleanupStatus.getMessage().cStr());
 		}
 		destroyComposeImage();
@@ -69,12 +69,12 @@ oa::Status oa::Viewer::initPresentation(
 	}
 
 	if (auto s = textAtlas_.init(*engine_); not s.isOk()) {
-		OaLogError(oa::LogComponent::Ui, "oa::Viewer: text atlas initialization failed: %s",
+		OaLogError(oa::LogComponent::Ui, "oa::Viewer: text atlas initialization failed: {}",
 			s.getMessage().cStr());
 		const oa::Status cleanupStatus = ui_.close();
 		if (not cleanupStatus.isOk()) {
 			OaLogError(oa::LogComponent::Ui,
-				"oa::Viewer: UI cleanup after atlas initialization failure also failed: %s",
+				"oa::Viewer: UI cleanup after atlas initialization failure also failed: {}",
 				cleanupStatus.getMessage().cStr());
 		}
 		destroyComposeImage();
@@ -84,12 +84,12 @@ oa::Status oa::Viewer::initPresentation(
 		return s;
 	}
 	if (auto s = ui_.bindTextAtlas(textAtlas_); not s.isOk()) {
-		OaLogError(oa::LogComponent::Ui, "oa::Viewer: UI text binding failed: %s",
+		OaLogError(oa::LogComponent::Ui, "oa::Viewer: UI text binding failed: {}",
 			s.getMessage().cStr());
 		const oa::Status cleanupStatus = ui_.close();
 		if (not cleanupStatus.isOk()) {
 			OaLogError(oa::LogComponent::Ui,
-				"oa::Viewer: UI cleanup after text binding failure also failed: %s",
+				"oa::Viewer: UI cleanup after text binding failure also failed: {}",
 				cleanupStatus.getMessage().cStr());
 		}
 		textAtlas_ = {};

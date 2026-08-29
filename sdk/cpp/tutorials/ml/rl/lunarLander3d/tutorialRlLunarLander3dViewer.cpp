@@ -17,7 +17,7 @@ namespace {
 			return 1;
 		}
 		if (argument != "--msaa" or index + 1 >= inArgc) {
-			OA_CLI("Unknown or incomplete argument: %s", inArgv[index]);
+			OA_CLI("Unknown or incomplete argument: {}", inArgv[index]);
 			return 2;
 		}
 		const oa::StringView value(inArgv[++index]);
@@ -25,7 +25,7 @@ namespace {
 		for (char digit : value) {
 			if (digit < '0' or digit > '9'
 				or parsed > (64U - static_cast<oa::U32>(digit - '0')) / 10U) {
-				OA_CLI("Invalid --msaa value: %s", inArgv[index]);
+				OA_CLI("Invalid --msaa value: {}", inArgv[index]);
 				return 2;
 			}
 			parsed = parsed * 10U + static_cast<oa::U32>(digit - '0');
@@ -34,7 +34,7 @@ namespace {
 			or (parsed != 1U and parsed != 2U and parsed != 4U
 				and parsed != 8U and parsed != 16U
 				and parsed != 32U and parsed != 64U)) {
-			OA_CLI("Invalid --msaa value: %s", inArgv[index]);
+			OA_CLI("Invalid --msaa value: {}", inArgv[index]);
 			return 2;
 		}
 		outSampleCount = parsed;

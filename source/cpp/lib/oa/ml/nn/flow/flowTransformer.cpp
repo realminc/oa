@@ -1,5 +1,5 @@
 #include <oa/ml/nn/flow/flowTransformer.h>
-#include <oa/core/assert.h>
+#include <oa/core/std/assert.h>
 #include <oa/core/std/format.h>
 
 namespace oa {
@@ -43,7 +43,7 @@ FlowTransformer::FlowTransformer(const FlowTransformerConfig& inConfig)	: config
 		if (config_.adaptiveConditioning) {
 			block->enableAdaptiveConditioning(config_.dModel);
 		}
-		const oa::String name = oa::format("block%d", index);
+		const oa::String name = oa::format("block{}", index);
 		registerModule(name.cStr(), block);
 		blocks_.pushBack(oa::move(block));
 	}

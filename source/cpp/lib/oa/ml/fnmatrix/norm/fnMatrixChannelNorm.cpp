@@ -10,7 +10,7 @@
 #include <oa/ml/autograd.h>
 #include <oa/ml/autograd/matrix/autogradChannelNorm.h>
 
-#include <assert.h>
+#include <oa/core/std/assert.h>
 
 oa::Matrix oa::FnMatrix::channelNorm(
 	const oa::Matrix& inX, const oa::Matrix& inWeight, const oa::Matrix& inBias,
@@ -18,9 +18,9 @@ oa::Matrix oa::FnMatrix::channelNorm(
 {
 	auto& ctx = oa::ExecutionSession::getActive();
 	oa::OpLoweringScope lowering(ctx);
-	assert(inX.numElements() == static_cast<oa::I64>(inBatch) * inChannels * inSeqLen);
-	assert(inWeight.numElements() == inChannels);
-	assert(inBias.numElements() == inChannels);
+	OA_REQUIRE(inX.numElements() == static_cast<oa::I64>(inBatch) * inChannels * inSeqLen);
+	OA_REQUIRE(inWeight.numElements() == inChannels);
+	OA_REQUIRE(inBias.numElements() == inChannels);
 
 	oa::Matrix out = oa::FnMatrix::empty(inX.getShape(), inX.getDtype());
 	struct {
@@ -86,8 +86,8 @@ oa::ChannelNormBwdResult oa::FnMatrix::channelNormBwd(
 {
 	auto& ctx = oa::ExecutionSession::getActive();
 	oa::OpLoweringScope lowering(ctx);
-	assert(inX.numElements() == static_cast<oa::I64>(inBatch) * inChannels * inSeqLen);
-	assert(inWeight.numElements() == inChannels);
+	OA_REQUIRE(inX.numElements() == static_cast<oa::I64>(inBatch) * inChannels * inSeqLen);
+	OA_REQUIRE(inWeight.numElements() == inChannels);
 
 	const oa::I64 rows = static_cast<oa::I64>(inBatch) * inSeqLen;
 
@@ -145,9 +145,9 @@ oa::Matrix oa::FnMatrix::channelNormRelu(
 {
 	auto& ctx = oa::ExecutionSession::getActive();
 	oa::OpLoweringScope lowering(ctx);
-	assert(inX.numElements() == static_cast<oa::I64>(inBatch) * inChannels * inSeqLen);
-	assert(inWeight.numElements() == inChannels);
-	assert(inBias.numElements() == inChannels);
+	OA_REQUIRE(inX.numElements() == static_cast<oa::I64>(inBatch) * inChannels * inSeqLen);
+	OA_REQUIRE(inWeight.numElements() == inChannels);
+	OA_REQUIRE(inBias.numElements() == inChannels);
 
 	oa::Matrix out = oa::FnMatrix::empty(inX.getShape(), inX.getDtype());
 	struct {
@@ -213,8 +213,8 @@ oa::ChannelNormBwdResult oa::FnMatrix::channelNormReluBwd(
 {
 	auto& ctx = oa::ExecutionSession::getActive();
 	oa::OpLoweringScope lowering(ctx);
-	assert(inX.numElements() == static_cast<oa::I64>(inBatch) * inChannels * inSeqLen);
-	assert(inWeight.numElements() == inChannels);
+	OA_REQUIRE(inX.numElements() == static_cast<oa::I64>(inBatch) * inChannels * inSeqLen);
+	OA_REQUIRE(inWeight.numElements() == inChannels);
 
 	const oa::I64 rows = static_cast<oa::I64>(inBatch) * inSeqLen;
 

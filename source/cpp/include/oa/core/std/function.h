@@ -2,7 +2,7 @@
 
 // Native Fn<R(Args...)> — small-buffer type erasure with a heap fallback.
 
-#include <oa/core/assert.h>
+#include <oa/core/std/assert.h>
 #include <oa/core/std/lifetime.h>
 #include <oa/core/std/typeTraits.h>
 #include <oa/core/std/utility.h>

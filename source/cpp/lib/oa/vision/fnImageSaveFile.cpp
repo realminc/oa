@@ -184,7 +184,7 @@ oa::Status saveRgbaFileReady(
 	}
 
 	OaLogInfo(oa::LogComponent::Vision,
-		"oa::FnImage::saveRgbaFile: %dx%d → %s", W, H, pathBuf);
+		"oa::FnImage::saveRgbaFile: {}x{} → {}", W, H, pathBuf);
 	return oa::Status::ok();
 }
 

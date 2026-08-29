@@ -174,7 +174,7 @@ oa::Vector<oa::I32> oa::CpuTopology::getCoresOnNuma(oa::I32 inNode) const {
 
 void oa::CpuTopology::print() const {
 	OaLogInfo(oa::LogComponent::Core,
-		"CPU: %d logical, %d physical, %d NUMA, %d pkg",
+		"CPU: {} logical, {} physical, {} NUMA, {} pkg",
 		numLogicalCores, numPhysicalCores, numNumaNodes, numPackages);
 
 	oa::I32 pCount = 0, eCount = 0;
@@ -185,14 +185,14 @@ void oa::CpuTopology::print() const {
 
 	if (eCount > 0) {
 		OaLogInfo(oa::LogComponent::Core,
-			"  P-cores: %d, E-cores: %d", pCount, eCount);
+			"  P-cores: {}, E-cores: {}", pCount, eCount);
 	}
 
 	if (numNumaNodes > 1) {
 		for (oa::I32 n = 0; n < numNumaNodes; ++n) {
 			auto ids = getCoresOnNuma(n);
 			OaLogInfo(oa::LogComponent::Core,
-				"  NUMA %d: %d cores", n, static_cast<oa::I32>(ids.size()));
+				"  NUMA {}: {} cores", n, static_cast<oa::I32>(ids.size()));
 		}
 	}
 }

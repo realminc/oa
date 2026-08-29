@@ -1,7 +1,7 @@
 #include <oa/ml/fnFlow.h>
 
 #include <oa/core/bufferAccess.h>
-#include <oa/core/assert.h>
+#include <oa/core/std/assert.h>
 #include <oa/core/fnMatrix.h>
 #include <oa/core/op.h>
 #include <oa/ml/autograd.h>

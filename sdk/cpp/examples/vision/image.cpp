@@ -1,14 +1,11 @@
 // OA_DOC_BEGIN: vision-image
 #include <oa/oa.h>
 
-#include <cstdio>
-#include <utility>
-
 OA_MAIN_PREVIEW("ExampleVisionImage") {
 	auto sourceResult = oa::FnImage::decodeFile(
 		oa::Paths::asset("image/coverVision.jpg"), oa::ImageFormat::Rgb);
 	if (not sourceResult.isOk()) return 1;
-	auto source = std::move(sourceResult).getValue();
+	auto source = oa::move(sourceResult).getValue();
 
 	auto grayscale = oa::FnImage::grayscale(source);
 
@@ -21,7 +18,7 @@ OA_MAIN_PREVIEW("ExampleVisionImage") {
 	if (grayscale.format() != oa::ImageFormat::Gray) return 1;
 	if (not oa::Filesystem::isFile(output)) return 1;
 
-	std::printf("Saved grayscale image: %s\n", output.cStr());
+	oa::print("Saved grayscale image: {}", output.cStr());
 
 	if (argc > 1 and oa::StringView(argv[1]) == "--preview") {
 		oa::ViewerConfig previewConfig;

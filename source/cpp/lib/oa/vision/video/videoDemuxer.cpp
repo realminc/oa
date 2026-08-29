@@ -1,6 +1,7 @@
 // OA Vision — bounded container demux and compressed-video packet source.
 
 #include <oa/vision/videoDemuxer.h>
+#include <oa/core/std/limits.h>
 #include "codec/nalParser.h"
 #include "codec/vcpAv1.h"
 #include <errno.h>
@@ -19,8 +20,34 @@ struct oa::VideoDemuxer::MediaImpl {
 	bool seekable = false;
 };
 
+oa::VideoDemuxer::VideoDemuxer() = default;
+
 namespace
 {
+
+oa::Result<oa::U64> checkedPresentationTimestamp(
+	oa::U64 inDecodeTimestamp,
+	oa::I32 inCompositionOffset
+) {
+	if (inCompositionOffset >= 0) {
+		const oa::U64 offset = static_cast<oa::U64>(inCompositionOffset);
+		if (inDecodeTimestamp > oa::Limits<oa::U64>::max() - offset) {
+			return oa::Status::error(
+				oa::StatusCode::DataLoss,
+				"Video sample presentation timestamp overflows u64");
+		}
+		return inDecodeTimestamp + offset;
+	}
+
+	const oa::U64 magnitude = static_cast<oa::U64>(
+		-static_cast<oa::I64>(inCompositionOffset));
+	if (inDecodeTimestamp < magnitude) {
+		return oa::Status::error(
+			oa::StatusCode::DataLoss,
+			"Video sample presentation timestamp is negative");
+	}
+	return inDecodeTimestamp - magnitude;
+}
 
 // forward declarations for MP4 box parsing
 void parseMoovBox(const oa::U8* inData, oa::U64 inSize, oa::VideoDemuxer& outStream);
@@ -957,6 +984,7 @@ void oa::VideoDemuxer::reset_() noexcept
 	needParameterSets_ = true;
 	bufferedPictureNals_.clear();
 	bufferedTimestamp_ = 0U;
+	bufferedDecodeTimestamp_ = 0U;
 	bufferedIsKeyframe_ = false;
 	uri_.clear();
 	config_ = {};
@@ -988,6 +1016,7 @@ oa::VideoDemuxer::VideoDemuxer(oa::VideoDemuxer&& inOther) noexcept
 	, needParameterSets_(inOther.needParameterSets_)
 	, bufferedPictureNals_(oa::move(inOther.bufferedPictureNals_))
 	, bufferedTimestamp_(inOther.bufferedTimestamp_)
+	, bufferedDecodeTimestamp_(inOther.bufferedDecodeTimestamp_)
 	, bufferedIsKeyframe_(inOther.bufferedIsKeyframe_)
 {
 	inOther.file_ = nullptr;
@@ -1021,6 +1050,7 @@ oa::VideoDemuxer& oa::VideoDemuxer::operator=(oa::VideoDemuxer&& inOther) noexce
 		needParameterSets_ = inOther.needParameterSets_;
 		bufferedPictureNals_ = oa::move(inOther.bufferedPictureNals_);
 		bufferedTimestamp_ = inOther.bufferedTimestamp_;
+		bufferedDecodeTimestamp_ = inOther.bufferedDecodeTimestamp_;
 		bufferedIsKeyframe_ = inOther.bufferedIsKeyframe_;
 		inOther.file_ = nullptr;
 		inOther.reset_();
@@ -1256,16 +1286,45 @@ oa::Result<oa::VideoDemuxer> oa::VideoDemuxer::openLocal_(oa::StringView inPath)
 	return stream;
 }
 
+oa::Result<oa::U64> oa::VideoDemuxer::samplePresentationTimestamp(
+	oa::Usize inSampleIndex
+) const {
+	if (inSampleIndex >= samples_.size()) {
+		return oa::Status::error(
+			oa::StatusCode::OutOfRange,
+			"Video sample timestamp index is out of range");
+	}
+	const Sample& sample = samples_[inSampleIndex];
+	return checkedPresentationTimestamp(sample.dts, sample.ctsOffset);
+}
+
 
 oa::Status oa::VideoDemuxer::readNextPacket(oa::VideoPacket& outPacket)
 {
 	if (media_) return readMediaPacket_(outPacket);
+	// A split H.265 sample can leave picture NALs after returning parameter
+	// sets. Consume them before testing sample-table EOS; otherwise a split
+	// final sample silently loses its picture.
+	if (!bufferedPictureNals_.empty()) {
+		outPacket.data = oa::move(bufferedPictureNals_);
+		outPacket.presentationTimestamp = bufferedTimestamp_;
+		outPacket.decodeTimestamp = bufferedDecodeTimestamp_;
+		outPacket.isKeyframe = bufferedIsKeyframe_;
+		outPacket.trackIndex = 0;
+		bufferedPictureNals_.clear();
+		return oa::Status::ok();
+	}
 	if (eos_ || currentSampleIndex_ >= samples_.size()) {
 		eos_ = true;
 		return oa::Status::error("End of stream");
 	}
 
 	const Sample& sample = samples_[currentSampleIndex_];
+	auto samplePts = samplePresentationTimestamp(currentSampleIndex_);
+	if (not samplePts.isOk()) {
+		eos_ = true;
+		return samplePts.getStatus();
+	}
 	if (sample.offset + sample.size > fileSize_) {
 		eos_ = true;
 		return oa::Status::error("Sample offset/size exceeds file bounds");
@@ -1279,17 +1338,6 @@ oa::Status oa::VideoDemuxer::readNextPacket(oa::VideoPacket& outPacket)
 
 	outPacket.data.clear();
 	outPacket.data.reserve(sample.size + 32);  // reserve a little extra for SPS/PPS
-
-	// Check if we have buffered picture NAL units from a previous sample
-	if (!bufferedPictureNals_.empty()) {
-		outPacket.data = oa::move(bufferedPictureNals_);
-		outPacket.presentationTimestamp = bufferedTimestamp_;
-		outPacket.decodeTimestamp = bufferedTimestamp_;
-		outPacket.isKeyframe = bufferedIsKeyframe_;
-		outPacket.trackIndex = 0;
-		bufferedPictureNals_.clear();
-		return oa::Status::ok();
-	}
 
 	// MP4 stores NAL units length-prefixed; we need Annex-B (00 00 00 01 +
 	// payload) for the vulkan Video decoder. Also prepend SPS+PPS on the
@@ -1364,14 +1412,15 @@ oa::Status oa::VideoDemuxer::readNextPacket(oa::VideoPacket& outPacket)
 		oa::Usize p = 0;
 		const oa::U8 startCode[4] = { 0, 0, 0, 1 };
 		bool hasPictureNal = false;
+		oa::Usize firstPictureNalOffset = oa::Limits<oa::Usize>::max();
 
-		while (p + nls <= srcSize) {
+		while (p <= srcSize && static_cast<oa::Usize>(nls) <= srcSize - p) {
 			oa::U32 nalLen = 0;
 			for (oa::U8 b = 0; b < nls; ++b) {
 				nalLen = (nalLen << 8) | static_cast<oa::U32>(src[p + b]);
 			}
 			p += nls;
-			if (p + nalLen > srcSize || nalLen == 0) {
+			if (nalLen == 0U || static_cast<oa::Usize>(nalLen) > srcSize - p) {
 				break;
 			}
 
@@ -1382,6 +1431,11 @@ oa::Status oa::VideoDemuxer::readNextPacket(oa::VideoPacket& outPacket)
 				if (nalType == 32 || nalType == 33 || nalType == 34) {  // VPS, SPS, PPS
 					isParamSet = true;
 				}
+			}
+
+			if (splitH265Ps && not isParamSet
+				&& firstPictureNalOffset == oa::Limits<oa::Usize>::max()) {
+				firstPictureNalOffset = outPacket.data.size();
 			}
 
 			// Write start code and NAL data
@@ -1405,36 +1459,22 @@ oa::Status oa::VideoDemuxer::readNextPacket(oa::VideoPacket& outPacket)
 		}
 
 		// If we have both parameter sets and picture NALs, split them
-		if (splitH265Ps && hasPictureNal && outPacket.data.size() > 0) {
-			// Scan backwards to find the last parameter set
-			oa::I32 lastParamSetEnd = -1;
-			oa::I32 lastStartCode = -1;
-			for (oa::I32 i = static_cast<oa::I32>(outPacket.data.size()) - 4; i >= 0; --i) {
-				if (outPacket.data[i] == 0 && outPacket.data[i + 1] == 0 &&
-					outPacket.data[i + 2] == 0 && outPacket.data[i + 3] == 1) {
-					lastStartCode = i;
-					if (i + 4 < static_cast<oa::I32>(outPacket.data.size())) {
-						oa::U8 nalType = (outPacket.data[i + 4] >> 1) & 0x3F;
-						if (nalType == 32 || nalType == 33 || nalType == 34) {  // VPS, SPS, PPS
-							lastParamSetEnd = i;
-							break;
-						}
-					}
-				}
-			}
-
-			// If we found parameter sets followed by picture NALs, split them
-			if (lastParamSetEnd >= 0 && lastStartCode > lastParamSetEnd) {
+		if (splitH265Ps && hasPictureNal
+			&& firstPictureNalOffset > 0U
+			&& firstPictureNalOffset < outPacket.data.size()) {
 				// move picture NALs to buffer
 				bufferedPictureNals_.clear();
-				bufferedPictureNals_.reserve(outPacket.data.size() - lastStartCode);
-				for (oa::Usize i = static_cast<oa::Usize>(lastStartCode); i < outPacket.data.size(); ++i) {
+				bufferedPictureNals_.reserve(
+					outPacket.data.size() - firstPictureNalOffset);
+				for (oa::Usize i = firstPictureNalOffset;
+					i < outPacket.data.size(); ++i) {
 					bufferedPictureNals_.pushBack(outPacket.data[i]);
 				}
-				outPacket.data.resize(lastStartCode);
+				outPacket.data.resize(firstPictureNalOffset);
 
 				// store timestamp and keyframe flag for buffered picture NALs
-				bufferedTimestamp_ = sample.dts + static_cast<oa::U64>(sample.ctsOffset);
+				bufferedTimestamp_ = *samplePts;
+				bufferedDecodeTimestamp_ = sample.dts;
 				bufferedIsKeyframe_ = sample.isKeyframe;
 
 					// Return parameter sets only (no timestamp needed for
@@ -1447,7 +1487,6 @@ oa::Status oa::VideoDemuxer::readNextPacket(oa::VideoPacket& outPacket)
 					// call.
 				++currentSampleIndex_;
 				return oa::Status::ok();
-			}
 		}
 	} else {
 		// Raw Annex-B (no container): bytes are already start-code prefixed.
@@ -1457,7 +1496,7 @@ oa::Status oa::VideoDemuxer::readNextPacket(oa::VideoPacket& outPacket)
 	}
 	}
 
-	outPacket.presentationTimestamp = sample.dts + static_cast<oa::U64>(sample.ctsOffset);
+	outPacket.presentationTimestamp = *samplePts;
 	outPacket.decodeTimestamp = sample.dts;
 	outPacket.isKeyframe = sample.isKeyframe;
 	outPacket.trackIndex = 0;
@@ -1496,25 +1535,32 @@ oa::Status oa::VideoDemuxer::seek(oa::U64 inTimestamp)
 		return oa::Status::error("VideoDemuxer::seek: no samples parsed");
 	}
 
-	// Walk the sample table backwards from the closest sample whose PTS is
-	// <= inTimestamp, snapping to the nearest preceding keyframe. With no
-	// keyframe table (`stss`) at all, every sample is treated as a keyframe
-	// (H.264 raw or all-IDR encoded streams).
+	// Samples are stored in decode order, while PTS is presentation order.
+	// B-frames therefore make PTS non-monotonic: inspect the complete table
+	// rather than breaking on the first sample beyond the requested time.
+	// With no keyframe table (`stss`), parsing marks every sample as a keyframe.
 	oa::Usize target = 0;
+	oa::U64 targetPts = 0U;
+	bool foundKeyframe = false;
 	for (oa::Usize i = 0; i < samples_.size(); ++i) {
-		const oa::U64 pts = samples_[i].dts + static_cast<oa::U64>(samples_[i].ctsOffset);
-		if (pts > inTimestamp) {
-			break;
+		auto ptsResult = samplePresentationTimestamp(i);
+		if (not ptsResult.isOk()) return ptsResult.getStatus();
+		const oa::U64 pts = *ptsResult;
+		if (samples_[i].isKeyframe && pts <= inTimestamp
+			&& (not foundKeyframe || pts >= targetPts)) {
+			target = i;
+			targetPts = pts;
+			foundKeyframe = true;
 		}
-		target = i;
-	}
-	while (target > 0 && not samples_[target].isKeyframe) {
-		--target;
 	}
 
-	currentSampleIndex_ = target;
+	currentSampleIndex_ = static_cast<oa::U32>(target);
 	eos_ = false;
 	needParameterSets_ = true;  // re-emit SPS+PPS at next keyframe
+	bufferedPictureNals_.clear();
+	bufferedTimestamp_ = 0U;
+	bufferedDecodeTimestamp_ = 0U;
+	bufferedIsKeyframe_ = false;
 	return oa::Status::ok();
 }
 

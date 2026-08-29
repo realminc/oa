@@ -15,7 +15,7 @@
 #include <oa/runtime/executionSession.h>
 #include <oa/core/validation.h>
 
-#include <assert.h>
+#include <oa/core/std/assert.h>
 
 static oa::U32 divCeil(oa::U32 inA, oa::U32 inB) { return (inA + inB - 1) / inB; }
 
@@ -303,7 +303,7 @@ oa::Matrix oa::FnMatrix::swiglu(const oa::Matrix& inA, const oa::Matrix& inB) {
 oa::Matrix oa::FnMatrix::siluMul(const oa::Matrix& inA, oa::U32 inIntermediateSize) {
 	auto& session = oa::ExecutionSession::getActive();
 	oa::MatrixShape outShape = inA.getShape();
-	assert(outShape.rank > 0 and inA.size(-1) % 2 == 0 and static_cast<oa::I64>(inIntermediateSize) == inA.size(-1) / 2);
+	OA_REQUIRE(outShape.rank > 0 and inA.size(-1) % 2 == 0 and static_cast<oa::I64>(inIntermediateSize) == inA.size(-1) / 2);
 	outShape.dims[static_cast<oa::Usize>(outShape.rank - 1)] = inA.size(-1) / 2;
 	oa::Matrix out = oa::FnMatrix::empty(outShape, inA.getDtype());
 	const auto semantic =
@@ -337,7 +337,7 @@ oa::Matrix oa::FnMatrix::siluMul(const oa::Matrix& inA, oa::U32 inIntermediateSi
 oa::Matrix oa::FnMatrix::geglu(const oa::Matrix& inA, oa::U32 inIntermediateSize) {
 	auto& session = oa::ExecutionSession::getActive();
 	oa::MatrixShape outShape = inA.getShape();
-	assert(outShape.rank > 0 and inA.size(-1) % 2 == 0 and static_cast<oa::I64>(inIntermediateSize) == inA.size(-1) / 2);
+	OA_REQUIRE(outShape.rank > 0 and inA.size(-1) % 2 == 0 and static_cast<oa::I64>(inIntermediateSize) == inA.size(-1) / 2);
 	outShape.dims[static_cast<oa::Usize>(outShape.rank - 1)] = inA.size(-1) / 2;
 	oa::Matrix out = oa::FnMatrix::empty(outShape, inA.getDtype());
 	const auto semantic =

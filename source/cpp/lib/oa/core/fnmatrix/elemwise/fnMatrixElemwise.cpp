@@ -89,7 +89,7 @@ static oa::Matrix dispatchBinary_(
 	const auto attached = inAttach(out, inA, inB, semantic.getValue());
 	if (not attached.isOk()) {
 		OaLogError(oa::LogComponent::Compute,
-			"%s semantic autograd attachment failed: %s",
+			"{} semantic autograd attachment failed: {}",
 			oa::String(inContract.name).cStr(), attached.getMessage().cStr());
 		return {};
 	}
@@ -190,7 +190,7 @@ void oa::FnMatrix::castInto(const oa::Matrix& inSrc, oa::Matrix& outDst) {
 		{&inSrc, &outDst}, {&outDst});
 	if (not status.isOk()) {
 		OaLogError(oa::LogComponent::Compute,
-			"CastInto semantic recording failed: %s",
+			"CastInto semantic recording failed: {}",
 			status.getMessage().cStr());
 	}
 }

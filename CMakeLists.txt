@@ -383,6 +383,7 @@ set(OA_SOURCES
 	source/cpp/lib/oa/core/envFlag.cpp
 	source/cpp/lib/oa/core/time.cpp
 	source/cpp/lib/oa/core/log.cpp
+	source/cpp/lib/oa/core/print.cpp
 	source/cpp/lib/oa/core/validation.cpp
 	source/cpp/lib/oa/core/memory.cpp
 	source/cpp/lib/oa/core/sync.cpp

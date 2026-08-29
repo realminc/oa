@@ -32,7 +32,7 @@ struct VideoDecoderCodecAccess {
 		const oa::Span<const oa::U8>& inBitstream,
 		oa::VideoFrame& outFrame);
 
-	static void fillNv12OutFrame(
+	static void fillDecodedOutFrame(
 		oa::VideoDecoder& inDecoder,
 		oa::I32 inDpbSlot,
 		oa::U32 inWidth,

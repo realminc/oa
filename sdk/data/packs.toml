@@ -58,3 +58,19 @@ downloadSha256 = "86c4e6aa9db7c042ec79f339dcb96d42b0075e16b8fc2e86bf0ca57e2dc565
 compression = "none"
 bytes = 1115394
 sha256 = "86c4e6aa9db7c042ec79f339dcb96d42b0075e16b8fc2e86bf0ca57e2dc565ed"
+
+[[pack]]
+id = "videoRealtime"
+version = "uvg-readysetgo-2026-08"
+license = "CC BY-NC 4.0"
+source = "https://ultravideo.fi/dataset.html"
+description = "Native 4K120 ReadySetGo master for opt-in local video qualification"
+
+[[pack.file]]
+path = "ReadySetGo_3840x2160_120fps_420_8bit_HEVC_RAW.hevc"
+url = "https://ultravideo.fi/video/ReadySetGo_3840x2160_120fps_420_8bit_HEVC_RAW.hevc"
+downloadBytes = 30724839
+downloadSha256 = "d2bc5ffd0f9b967239d3082e6dd9d9f6e32ae979f2b284631f56def0c7d2a6c3"
+compression = "none"
+bytes = 30724839
+sha256 = "d2bc5ffd0f9b967239d3082e6dd9d9f6e32ae979f2b284631f56def0c7d2a6c3"

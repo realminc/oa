@@ -76,7 +76,7 @@ oa::AlmPriorAg::AlmPriorAg(const oa::AlmPriorConfig& inConfig) : config_(inConfi
 	const char* ffn = config_.ffnType == oa::AlmFfnType::Dense ? "dense"
 		: (config_.ffnType == oa::AlmFfnType::Moe ? "moe" : "hybrid");
 	OaLogInfo(oa::LogComponent::Ml,
-		"oa::AlmPriorAg initialized: transformer, %s FFN, %d layers, %d heads, %d dim, %d vocab, maxseq=%d",
+		"oa::AlmPriorAg initialized: transformer, {} FFN, {} layers, {} heads, {} dim, {} vocab, maxseq={}",
 		ffn, config_.numLayers, config_.numHeads, config_.dModel, config_.vocabSize, maxSeqLen_);
 }
 
@@ -224,7 +224,7 @@ oa::Matrix oa::AlmPriorAg::generateImpl(
 		 inTextFeatures->size(1) != config_.textFeatureDim)) {
 		throw std::invalid_argument("oa::AlmPriorAg generation text features must be [B, textFeatureDim]");
 	}
-	OaLogInfo(oa::LogComponent::Ml, "oa::AlmPriorAg::generate — batch=%d, maxlen=%d, cache=%d",
+	OaLogInfo(oa::LogComponent::Ml, "oa::AlmPriorAg::generate — batch={}, maxlen={}, cache={}",
 		inBatchSize, inMaxLen, inUseCache ? 1 : 0);
 	auto& ctx = oa::ExecutionSession::getActive();
 	const oa::I64 vocabSize = config_.vocabSize;

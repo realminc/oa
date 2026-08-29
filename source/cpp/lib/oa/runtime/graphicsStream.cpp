@@ -94,7 +94,7 @@ GraphicsStreamLease& GraphicsStreamLease::operator=(
 		const oa::Status status = close();
 		if (not status.isOk()) {
 			OaLogError(oa::LogComponent::Runtime,
-				"graphics stream lease move-close failed: %s",
+				"graphics stream lease move-close failed: {}",
 				status.toString().cStr());
 		}
 	}
@@ -111,7 +111,7 @@ GraphicsStreamLease::~GraphicsStreamLease()
 	const oa::Status status = close();
 	if (not status.isOk()) {
 		OaLogError(oa::LogComponent::Runtime,
-			"graphics stream lease abandonment failed: %s",
+			"graphics stream lease abandonment failed: {}",
 			status.toString().cStr());
 	}
 }

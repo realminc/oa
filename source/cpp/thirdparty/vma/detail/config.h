@@ -3,7 +3,7 @@
 #include <stdint.h>
 #include <inttypes.h>
 
-#include <oa/core/assert.h>
+#include <oa/core/std/assert.h>
 #include <oa/core/std/algo.h>
 #include <oa/core/std/allocator.h>
 #include <oa/core/std/atomic.h>

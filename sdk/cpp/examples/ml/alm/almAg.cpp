@@ -27,13 +27,6 @@
 #include <oa/runtime/executionSession.h>
 #include <rig/skeleton.h>
 #include <rig/skeletonUsd.h>
-#include <cmath>
-#include <cstdio>
-#include <string>
-#include <vector>
-#include <chrono>
-#include <functional>
-
 // Copy a matrix to host FP32. Safe for BF16/FP16 storage models.
 static oa::Vector<oa::F32> hostFloatData(const oa::Matrix& inMatrix) {
 	auto& ctx = oa::ExecutionSession::getActive();
@@ -55,14 +48,14 @@ static double hostDot(const oa::Matrix& inA, const oa::Matrix& inB) {
 	auto b = hostFloatData(inB);
 	OA_ASSERT(a.size() == b.size() && "HostDot: size mismatch");
 	double s = 0.0;
-	for (size_t i = 0; i < a.size(); ++i) { s += static_cast<double>(a[i]) * static_cast<double>(b[i]); }
+	for (oa::Usize i = 0; i < a.size(); ++i) { s += static_cast<double>(a[i]) * static_cast<double>(b[i]); }
 	return s;
 }
 
 // True if every element is finite. Safe for BF16/FP16 storage models.
 static bool hostAllFinite(const oa::Matrix& inMatrix) {
 	auto h = hostFloatData(inMatrix);
-	for (size_t i = 0; i < h.size(); ++i) { if (not std::isfinite(h[i])) return false; }
+	for (oa::Usize i = 0; i < h.size(); ++i) { if (not oa::isFinite(h[i])) return false; }
 	return true;
 }
 
@@ -76,17 +69,17 @@ oa::AlmDatasetConfig oa::AlmDatasetConfig::fromEnv() {
 	cfg.maxClips = 0;
 	
 	// Override from environment
-	if (const char* corpus = std::getenv("OA_MOTION_CORPUS")) {
+	if (const char* corpus = ::getenv("OA_MOTION_CORPUS")) {
 		cfg.corpus = corpus;
 	}
-	if (const char* dataDir = std::getenv("OA_MOTION_DATA")) {
+	if (const char* dataDir = ::getenv("OA_MOTION_DATA")) {
 		cfg.dataDir = dataDir;
 	}
-	if (const char* split = std::getenv("OA_MOTION_SPLIT")) {
+	if (const char* split = ::getenv("OA_MOTION_SPLIT")) {
 		cfg.split = split;
 	}
-	if (const char* maxClips = std::getenv("OA_MOTION_MAX_CLIPS")) {
-		cfg.maxClips = std::atoi(maxClips);
+	if (const char* maxClips = ::getenv("OA_MOTION_MAX_CLIPS")) {
+		cfg.maxClips = ::atoi(maxClips);
 	}
 	
 	return cfg;
@@ -96,15 +89,15 @@ oa::AlmDatasetConfig oa::AlmDatasetConfig::fromEnv() {
 
 TEST(Alm, ConfigTest) {
 	auto datasetCfg = oa::AlmDatasetConfig::fromEnv();
-	std::printf("Dataset: %s\n", datasetCfg.corpus.cStr());
-	std::printf("dataDir: %s\n", datasetCfg.dataDir.cStr());
+	oa::print("Dataset: {}", datasetCfg.corpus.cStr());
+	oa::print("dataDir: {}", datasetCfg.dataDir.cStr());
 	
 	oa::AlmTokenizerConfig tokCfg;
-	std::printf("tokenizer: inputDim=%d, numCodes=%d\n", tokCfg.inputDim, tokCfg.numCodes);
+	oa::print("tokenizer: inputDim={}, numCodes={}", tokCfg.inputDim, tokCfg.numCodes);
 	
 	oa::AlmPriorConfig lmCfg;
 	lmCfg.syncVocab(tokCfg.numCodes);
-	std::printf("LM: vocabSize=%d, dModel=%d, numHeads=%d\n",
+	oa::print("LM: vocabSize={}, dModel={}, numHeads={}",
 		lmCfg.vocabSize, lmCfg.dModel, lmCfg.numHeads);
 	
 	EXPECT_EQ(lmCfg.vocabSize, tokCfg.numCodes + 3);
@@ -165,9 +158,9 @@ TEST(Alm, ConvTranspose1dGradCheck) {
 	auto dW = W.gradMatrix();
 	double sXdx = hostDot(x, dx);
 	double sWdW = hostDot(W, dW);
-	std::printf("ConvT grad-check: <y,g>=%.8f  <x,dx>=%.8f  <W,dW>=%.8f\n", sYg, sXdx, sWdW);
-	EXPECT_NEAR(sXdx, sYg, 1e-3 * (1.0 + std::abs(sYg))) << "dX adjoint wrong";
-	EXPECT_NEAR(sWdW, sYg, 1e-3 * (1.0 + std::abs(sYg))) << "dW wrong";
+	oa::print("ConvT grad-check: <y,g>={:.8f}  <x,dx>={:.8f}  <W,dW>={:.8f}", sYg, sXdx, sWdW);
+	EXPECT_NEAR(sXdx, sYg, 1e-3 * (1.0 + oa::abs(sYg))) << "dX adjoint wrong";
+	EXPECT_NEAR(sWdW, sYg, 1e-3 * (1.0 + oa::abs(sYg))) << "dW wrong";
 	ctx.clear();
 }
 
@@ -196,9 +189,9 @@ static void convGradCheckImpl(oa::I32 S) {
 	auto dx = x.gradMatrix();  auto dW = W.gradMatrix();
 	double sXdx = hostDot(x, dx);
 	double sWdW = hostDot(W, dW);
-	std::printf("Conv1d(stride=%d) grad-check: <y,g>=%.8f  <x,dx>=%.8f  <W,dW>=%.8f\n", S, sYg, sXdx, sWdW);
-	EXPECT_NEAR(sXdx, sYg, 1e-3 * (1.0 + std::abs(sYg))) << "Conv1d stride " << S << " dX wrong";
-	EXPECT_NEAR(sWdW, sYg, 1e-3 * (1.0 + std::abs(sYg))) << "Conv1d stride " << S << " dW wrong";
+	oa::print("Conv1d(stride={}) grad-check: <y,g>={:.8f}  <x,dx>={:.8f}  <W,dW>={:.8f}", S, sYg, sXdx, sWdW);
+	EXPECT_NEAR(sXdx, sYg, 1e-3 * (1.0 + oa::abs(sYg))) << "Conv1d stride " << S << " dX wrong";
+	EXPECT_NEAR(sWdW, sYg, 1e-3 * (1.0 + oa::abs(sYg))) << "Conv1d stride " << S << " dW wrong";
 	ctx.clear();
 }
 TEST(Alm, Conv1dGradCheckStride1) { convGradCheckImpl(1); }
@@ -227,7 +220,7 @@ static void conv1dGemmParityImpl(oa::I32 S) {
 		const double sc = static_cast<double>(lc.at(0));
 		auto dxi = xi.gradMatrix();
 		double sXdxi = hostDot(xi, dxi);
-		std::printf("Im2Col1d-only grad (S=%d): <cols,g>=%.6f <x,dx>=%.6f\n", S, sc, sXdxi);
+		oa::print("Im2Col1d-only grad (S={}): <cols,g>={:.6f} <x,dx>={:.6f}", S, sc, sXdxi);
 		ctx.clear();
 	}
 
@@ -250,9 +243,9 @@ static void conv1dGemmParityImpl(oa::I32 S) {
 	auto dw = wg.gradMatrix();
 	double sXdx = hostDot(xg, dx);
 	double sWdW = hostDot(wg, dw);
-	std::printf("Conv1dGemm grad-check (S=%d): <y,g>=%.6f <x,dx>=%.6f <w,dw>=%.6f\n", S, sYg, sXdx, sWdW);
-	EXPECT_NEAR(sXdx, sYg, 1e-3 * (1.0 + std::abs(sYg))) << "Im2Col1d dX adjoint wrong";
-	EXPECT_NEAR(sWdW, sYg, 1e-3 * (1.0 + std::abs(sYg))) << "Conv1dGemm dW wrong";
+	oa::print("Conv1dGemm grad-check (S={}): <y,g>={:.6f} <x,dx>={:.6f} <w,dw>={:.6f}", S, sYg, sXdx, sWdW);
+	EXPECT_NEAR(sXdx, sYg, 1e-3 * (1.0 + oa::abs(sYg))) << "Im2Col1d dX adjoint wrong";
+	EXPECT_NEAR(sWdW, sYg, 1e-3 * (1.0 + oa::abs(sYg))) << "Conv1dGemm dW wrong";
 	ctx.clear();
 }
 TEST(Alm, Conv1dGemmParityStride1) { conv1dGemmParityImpl(1); }
@@ -265,14 +258,13 @@ TEST(Alm, Conv1dGemmParityStride2) { conv1dGemmParityImpl(2); }
 //   sps          — samples/sec = B / (wall ms/step / 1000), B=32
 namespace {
 double nowMs() {
-	return std::chrono::duration<double, std::milli>(
-		std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+	return static_cast<double>(oa::highResolutionNow().nanosecondsSinceEpoch()) / 1.0e6;
 }
 // Batched-wall ms/iter ≈ isolated GPU compute: record N copies into one command
 // buffer (oa::GradNo, no grad graph), a single execute+Sync, wall/N. With the GPU
 // pipeline kept full, per-call CPU submit + sync-drain overhead is amortized to
 // ~0, so this separates real compute from the per-step sync stall.
-double batchedMsPerFwd(const std::function<oa::Matrix()>& inFn, oa::I32 inN) {
+double batchedMsPerFwd(const oa::Fn<oa::Matrix()>& inFn, oa::I32 inN) {
 	auto& ctx = oa::ExecutionSession::getActive();
 	{
 		oa::GradNo nog;
@@ -286,7 +278,7 @@ double batchedMsPerFwd(const std::function<oa::Matrix()>& inFn, oa::I32 inN) {
 		return per;
 	}
 }
-double wallMsPerStep(const std::function<oa::Matrix()>& inFwd, oa::I32 inN) {
+double wallMsPerStep(const oa::Fn<oa::Matrix()>& inFwd, oa::I32 inN) {
 	auto& ctx = oa::ExecutionSession::getActive();
 	for (oa::I32 i = 0; i < 5; ++i) {
 		oa::GradientTape tape; auto y = inFwd(); auto g = oa::FnMatrix::randN(y.getShape());
@@ -312,14 +304,14 @@ void convPerfImpl(const char* inTag, oa::I32 inC, oa::I32 outC, oa::I32 K, oa::I
 	double gpuG = batchedMsPerFwd(fwdGemm, n);
 	double stepG = wallMsPerStep(fwdGemm, n);
 	double spsG = 1000.0 * B / stepG;
-	std::printf("[perf %s] inC=%d outC=%d K=%d S=%d | batched ms/fwd=%.4f | wall ms/step=%.4f | sps=%.0f\n",
+	oa::print("[perf {}] inC={} outC={} K={} S={} | batched ms/fwd={:.4f} | wall ms/step={:.4f} | sps={:.0f}",
 		inTag, inC, outC, K, S, gpuG, stepG, spsG);
 	(void)ctx;
 }
 }
 TEST(Alm, Conv1dGemmPerf) {
 	const char* prec = testEngine().getPrecision() == oa::Precision::BF16 ? "BF16" : "FP32";
-	std::printf("[perf] engine precision = %s\n", prec);
+	oa::print("[perf] engine precision = {}", prec);
 	convPerfImpl("W384-K3", 384, 384, 3, 1, 1);   // res-block workhorse (x12 fwd)
 	convPerfImpl("W384-K4S2", 384, 384, 4, 2, 1); // strided down-conv (per stage)
 	convPerfImpl("in263-W384", 263, 384, 3, 1, 1); // enc_in
@@ -348,7 +340,7 @@ TEST(Alm, TokenizerStepPerfGemm) {
 		const oa::I32 tokLen = T / tok->downsampleFactor();
 
 		// Synthetic batch.
-		std::vector<float> xh(static_cast<size_t>(B) * T * inDim);
+		oa::Vector<float> xh(static_cast<oa::Usize>(B) * T * inDim);
 		oa::U64 rng = 0xDEADULL;
 		for (auto& v : xh) {
 			rng = (rng * 6364136223846793005ULL) + 1;
@@ -403,8 +395,7 @@ TEST(Alm, TokenizerStepPerfGemm) {
 	const oa::I32 steps = 10;
 	double msGemm = runSteps(steps);
 	double spsGemm = 1000.0 * B / msGemm;
-	std::printf("[tokenizer-step-perf] B=%d T=%d W=384 downT=2 depth=2\n"
-	            "  gemm: %.2f ms/step  sps=%.0f\n",
+	oa::print("[tokenizer-step-perf] B={} T={} W=384 downT=2 depth=2\n" "  gemm: {:.2f} ms/step  sps={:.0f}",
 	            B, T, msGemm, spsGemm);
 }
 
@@ -438,17 +429,17 @@ TEST(Alm, SingleConvIdentity) {
 			double sy = 0.0, sx = 0.0, sd = 0.0;
 			const oa::I64 n = y2.numElements();
 			for (oa::I64 i = 0; i < n; ++i) {
-				sy += std::abs(static_cast<double>(y2H[i]));
-				sx += std::abs(static_cast<double>(x2H[i]));
+				sy += oa::abs(static_cast<double>(y2H[i]));
+				sx += oa::abs(static_cast<double>(x2H[i]));
 				const double d = static_cast<double>(y2H[i]) - static_cast<double>(x2H[i]);
 				sd += d * d;
 			}
-			std::printf("  [1conv DIAG] n=%lld sum|y|=%.6f sum|x|=%.6f manualMSE=%.8f OaMse=%.8f\n",
+			oa::print("  [1conv DIAG] n={} sum|y|={:.6f} sum|x|={:.6f} manualMSE={:.8f} OaMse={:.8f}",
 				static_cast<long long>(n), sy, sx, sd / static_cast<double>(n), static_cast<double>(lv));
 		}
 		if (s == 1) first = lv;
 		last = lv;
-		if (s == 1 || s % 15 == 0) std::printf("  [1conv] step %2d | mse %.8f\n", s, static_cast<double>(lv));
+		if (s == 1 || s % 15 == 0) oa::print("  [1conv] step {:2} | mse {:.8f}", s, static_cast<double>(lv));
 	}
 	EXPECT_LT(last, first) << "single Conv1d must learn identity";
 	ctx.clear();
@@ -479,7 +470,7 @@ TEST(Alm, SingleConvTransposeIdentity) {
 		const float lv = loss.at(0);
 		if (s == 1) first = lv;
 		last = lv;
-		if (s == 1 || s % 15 == 0) std::printf("  [1convt] step %2d | mse %.8f\n", s, static_cast<double>(lv));
+		if (s == 1 || s % 15 == 0) oa::print("  [1convt] step {:2} | mse {:.8f}", s, static_cast<double>(lv));
 	}
 	EXPECT_LT(last, first) << "single ConvTranspose1d must learn identity";
 	ctx.clear();
@@ -515,7 +506,7 @@ TEST(Alm, ConvAutoEncoderIdentity) {
 		const float lv = loss.at(0);
 		if (s == 1) first = lv;
 		last = lv;
-		if (s == 1 || s % 15 == 0) std::printf("  [convae] step %2d | mse %.8f\n", s, static_cast<double>(lv));
+		if (s == 1 || s % 15 == 0) oa::print("  [convae] step {:2} | mse {:.8f}", s, static_cast<double>(lv));
 	}
 	EXPECT_LT(last, first) << "Conv1d→ConvTranspose1d autoencoder must learn identity";
 	ctx.clear();
@@ -551,7 +542,7 @@ TEST(Alm, ConvAutoEncoderStride2) {
 		const float lv = loss.at(0);
 		if (s == 1) first = lv;
 		last = lv;
-		if (s == 1 || s % 15 == 0) std::printf("  [convae2] step %2d | mse %.8f\n", s, static_cast<double>(lv));
+		if (s == 1 || s % 15 == 0) oa::print("  [convae2] step {:2} | mse {:.8f}", s, static_cast<double>(lv));
 	}
 	EXPECT_LT(last, first) << "Conv1d→ConvTranspose1d stride-2 autoencoder must learn identity";
 	ctx.clear();
@@ -593,7 +584,7 @@ TEST(Alm, DeepConvAutoEncoder) {
 		const float lv = loss.at(0);
 		if (s == 1) first = lv;
 		last = lv;
-		if (s == 1 || s % 15 == 0) std::printf("  [deepae] step %2d | mse %.8f\n", s, static_cast<double>(lv));
+		if (s == 1 || s % 15 == 0) oa::print("  [deepae] step {:2} | mse {:.8f}", s, static_cast<double>(lv));
 	}
 	EXPECT_LT(last, first) << "deep conv autoencoder must learn identity";
 	ctx.clear();
@@ -644,7 +635,7 @@ TEST(Alm, DeepConvAutoEncoderNorm) {
 		const float lv = loss.at(0);
 		if (s == 1) first = lv;
 		last = lv;
-		if (s == 1 || s % 15 == 0) std::printf("  [deepaen] step %2d | mse %.8f\n", s, static_cast<double>(lv));
+		if (s == 1 || s % 15 == 0) oa::print("  [deepaen] step {:2} | mse {:.8f}", s, static_cast<double>(lv));
 	}
 	EXPECT_LT(last, first) << "deep conv autoencoder with LayerNorm must learn identity";
 	ctx.clear();
@@ -656,8 +647,8 @@ TEST(Alm, LinearAeSanity) {
 	auto enc = oa::makeShared<oa::Linear>(D, H);
 	auto dec = oa::makeShared<oa::Linear>(H, D);
 	auto& ctx = oa::ExecutionSession::getActive();
-	std::vector<float> xh(static_cast<size_t>(B) * D);
-	{ oa::U64 r = 5; for (auto& v : xh) { r = (r * 6364136223846793005ULL) + 1; v = std::sin(0.01F * static_cast<float>(static_cast<oa::U32>(r >> 40))); } }
+	oa::Vector<float> xh(static_cast<oa::Usize>(B) * D);
+	{ oa::U64 r = 5; for (auto& v : xh) { r = (r * 6364136223846793005ULL) + 1; v = oa::sin(0.01F * static_cast<float>(static_cast<oa::U32>(r >> 40))); } }
 	auto X = oa::FnMatrix::fromBytes(oa::Span<const oa::U8>(reinterpret_cast<const oa::U8*>(xh.data()), xh.size() * sizeof(float)),
 		oa::MatrixShape{B, D}, oa::ScalarType::Float32);
 	oa::Vector<oa::Parameter*> params;
@@ -676,7 +667,7 @@ TEST(Alm, LinearAeSanity) {
 		const float lv = loss.at(0);
 		if (s == 1) first = lv;
 		last = lv;
-		if (s == 1 || s % 20 == 0) std::printf("  [linAE] step %2d | mse %.8f\n", s, static_cast<double>(lv));
+		if (s == 1 || s % 20 == 0) oa::print("  [linAE] step {:2} | mse {:.8f}", s, static_cast<double>(lv));
 	}
 	EXPECT_LT(last, first) << "linear AE harness must descend";
 	ctx.clear();
@@ -696,9 +687,9 @@ TEST(Alm, ComposedDescentCheck) {
 	auto tok = oa::makeShared<oa::AlmTokenizerAg>(cfg);
 	auto& ctx = oa::ExecutionSession::getActive();
 	const oa::I32 B = 8, Tw = 16;
-	std::vector<float> xh(static_cast<size_t>(B) * Tw * cfg.inputDim);
+	oa::Vector<float> xh(static_cast<oa::Usize>(B) * Tw * cfg.inputDim);
 	for (oa::I32 b = 0; b < B; ++b) for (oa::I32 t = 0; t < Tw; ++t) for (oa::I32 c = 0; c < cfg.inputDim; ++c)
-		xh[(static_cast<size_t>(b) * Tw + t) * cfg.inputDim + c] = std::sin(0.2F * static_cast<float>(t) + 0.3F * static_cast<float>(c));
+		xh[(static_cast<oa::Usize>(b) * Tw + t) * cfg.inputDim + c] = oa::sin(0.2F * static_cast<float>(t) + 0.3F * static_cast<float>(c));
 	auto X = oa::FnMatrix::fromBytes(oa::Span<const oa::U8>(reinterpret_cast<const oa::U8*>(xh.data()), xh.size() * sizeof(float)),
 		oa::MatrixShape{B, Tw, cfg.inputDim}, oa::ScalarType::Float32);
 	auto Xflat = X.reshape(oa::MatrixShape{static_cast<oa::I64>(B) * Tw, cfg.inputDim});
@@ -713,7 +704,7 @@ TEST(Alm, ComposedDescentCheck) {
 	tape.backward(loss0);
 	(void)testSubmitAndWait(ctx);
 	const double L0 = static_cast<double>(loss0.at(0));
-	std::printf("ComposedDescent: L0 = %.8f, params=%lld\n", L0, static_cast<long long>(params.size()));
+	oa::print("ComposedDescent: L0 = {:.8f}, params={}", L0, static_cast<long long>(params.size()));
 
 	oa::Vector<oa::Matrix> W0, G;
 	for (auto* p : params) { W0.pushBack(p->data.clone()); G.pushBack(p->data.gradMatrix().clone()); }
@@ -732,7 +723,7 @@ TEST(Alm, ComposedDescentCheck) {
 		auto l = oa::FnLoss::mse(rec, Xflat);
 		(void)testSubmitAndWait(ctx);
 		const double Lh = static_cast<double>(l.at(0));
-		std::printf("  h=%.0e  L=%.8f  %s\n", h, Lh, Lh < L0 ? "DOWN ✓" : "up");
+		oa::print("  h={:.0e}  L={:.8f}  {}", h, Lh, Lh < L0 ? "DOWN ✓" : "up");
 		if (Lh < L0) anyDown = true;
 		for (oa::I64 i = 0; i < params.size(); ++i) params[i]->data.copyFrom(W0[i]);
 		(void)testSubmitAndWait(ctx);
@@ -747,7 +738,7 @@ TEST(Alm, ComposedDescentCheck) {
 // depth needs much smaller lr and longer tuning; env OA_MG_DEPTH / OA_MG_DOWNT override.
 TEST(Alm, TokenizerLearnsRecon) {
 	oa::FnMatrix::setRngSeed(7);
-	auto envI0 = [](const char* n, oa::I32 d) { const char* e = std::getenv(n); return (e && *e) ? static_cast<oa::I32>(std::atoi(e)) : d; };
+	auto envI0 = [](const char* n, oa::I32 d) { const char* e = ::getenv(n); return (e && *e) ? static_cast<oa::I32>(::atoi(e)) : d; };
 	oa::AlmTokenizerConfig cfg;
 	cfg.inputDim = 48; cfg.width = 96; cfg.codeDim = 32; cfg.numCodes = 64;
 	cfg.downT = envI0("OA_MG_DOWNT", 1); cfg.depth = envI0("OA_MG_DEPTH", 0); cfg.commitBeta = 0.25F;
@@ -759,33 +750,33 @@ TEST(Alm, TokenizerLearnsRecon) {
 	auto& ctx = oa::ExecutionSession::getActive();
 
 	// env knobs for fast diagnosis without rebuilds.
-	auto envF = [](const char* n, oa::F32 d) { const char* e = std::getenv(n); return (e && *e) ? static_cast<oa::F32>(std::atof(e)) : d; };
-	auto envI = [](const char* n, oa::I32 d) { const char* e = std::getenv(n); return (e && *e) ? static_cast<oa::I32>(std::atoi(e)) : d; };
+	auto envF = [](const char* n, oa::F32 d) { const char* e = ::getenv(n); return (e && *e) ? static_cast<oa::F32>(::atof(e)) : d; };
+	auto envI = [](const char* n, oa::I32 d) { const char* e = ::getenv(n); return (e && *e) ? static_cast<oa::I32>(::atoi(e)) : d; };
 	// Diverse synthetic DATASET (not one repeated batch): dsFrames of multi-frequency,
 	// channel-varying content → a rich, learnable, non-degenerate manifold. Fresh random
 	// mini-batch each step, matching the real tokenizer's window-sampling contract.
 	// OA_MG_FRESH=0 reverts to the old single-fixed-batch repro.
 	const bool  fresh = envI("OA_MG_FRESH", 0) != 0;
 	const oa::I32 dsFrames = 2048;
-	std::vector<float> ds(static_cast<size_t>(dsFrames) * cfg.inputDim);
+	oa::Vector<float> ds(static_cast<oa::Usize>(dsFrames) * cfg.inputDim);
 	for (oa::I32 t = 0; t < dsFrames; ++t)
 		for (oa::I32 c = 0; c < cfg.inputDim; ++c) {
 			const float f1 = 0.04F + 0.011F * static_cast<float>(c % 7);
 			const float f2 = 0.13F + 0.007F * static_cast<float>(c % 5);
-			ds[(static_cast<size_t>(t) * cfg.inputDim) + c] =
-				(0.6F * std::sin((f1 * static_cast<float>(t)) + (0.3F * static_cast<float>(c))))
-				+ (0.4F * std::sin((f2 * static_cast<float>(t)) + (0.7F * static_cast<float>(c))));
+			ds[(static_cast<oa::Usize>(t) * cfg.inputDim) + c] =
+				(0.6F * oa::sin((f1 * static_cast<float>(t)) + (0.3F * static_cast<float>(c))))
+				+ (0.4F * oa::sin((f2 * static_cast<float>(t)) + (0.7F * static_cast<float>(c))));
 		}
 	oa::U64 rng = 0x1234ABCDULL;
 	auto sample = [&](oa::Matrix& outX, oa::Matrix& outXflat) {
-		std::vector<float> hb(static_cast<size_t>(B) * Tw * cfg.inputDim);
+		oa::Vector<float> hb(static_cast<oa::Usize>(B) * Tw * cfg.inputDim);
 		for (oa::I32 b = 0; b < B; ++b) {
 			rng = (rng * 6364136223846793005ULL) + 1442695040888963407ULL;
 			const oa::I32 start = static_cast<oa::I32>((rng >> 33) % static_cast<oa::U64>(dsFrames - Tw));
 			for (oa::I32 t = 0; t < Tw; ++t)
 				for (oa::I32 c = 0; c < cfg.inputDim; ++c)
-					hb[((static_cast<size_t>(b) * Tw + t) * cfg.inputDim) + c] =
-						ds[(static_cast<size_t>(start + t) * cfg.inputDim) + c];
+					hb[((static_cast<oa::Usize>(b) * Tw + t) * cfg.inputDim) + c] =
+						ds[(static_cast<oa::Usize>(start + t) * cfg.inputDim) + c];
 		}
 		outX = oa::FnMatrix::fromBytes(oa::Span<const oa::U8>(reinterpret_cast<const oa::U8*>(hb.data()), hb.size() * sizeof(float)),
 			oa::MatrixShape{B, Tw, cfg.inputDim}, oa::ScalarType::Float32);
@@ -802,7 +793,7 @@ TEST(Alm, TokenizerLearnsRecon) {
 	const bool  bypass = envI("OA_MG_BYPASS", 0) != 0;
 
 	auto params = tok->allParameterPtrs();
-	std::printf("Optimizer params: %lld tensors\n", static_cast<long long>(params.size()));
+	oa::print("Optimizer params: {} tensors", static_cast<long long>(params.size()));
 	oa::UniquePtr<oa::Optimizer> opt = oa::makeUnique<oa::AdamW>(params, lr, 0.9F, 0.999F, 1e-8F, 0.01F);
 	oa::F32 first = 0.0F;
 	oa::F32 last  = 0.0F;
@@ -826,11 +817,11 @@ TEST(Alm, TokenizerLearnsRecon) {
 		if (s == 1) first = lv;
 		last = lv;
 		if (s == 1 || s % 10 == 0 || s == steps)
-			std::printf("  [tok] step %3d | recon %.8f | commit %.8f\n", s, static_cast<double>(lv),
+			oa::print("  [tok] step {:3} | recon {:.8f} | commit {:.8f}", s, static_cast<double>(lv),
 				static_cast<double>(bypass ? 0.0F : q.commitLoss.at(0)));
-		ASSERT_TRUE(std::isfinite(lv)) << "diverged at step " << s;
+		ASSERT_TRUE(oa::isFinite(lv)) << "diverged at step " << s;
 	}
-	std::printf("tokenizer recon: %.8f -> %.8f\n", static_cast<double>(first), static_cast<double>(last));
+	oa::print("tokenizer recon: {:.8f} -> {:.8f}", static_cast<double>(first), static_cast<double>(last));
 	EXPECT_LT(last, first) << "tokenizer did not learn to reconstruct";
 	ctx.clear();
 }
@@ -842,7 +833,7 @@ TEST(Alm, LmStub) {
 	cfg.vocabSize = 515;
 	
 	auto lm = oa::makeShared<oa::AlmPriorAg>(cfg);
-	std::printf("LM created (stub)\n");
+	oa::print("LM created (stub)");
 	
 	// TODO: Test forward/generate when implemented
 	EXPECT_TRUE(lm != nullptr);
@@ -857,16 +848,16 @@ TEST(Alm, GenerateStub) {
 	auto tokenizer = oa::makeShared<oa::AlmTokenizerAg>(tokCfg);
 	auto lm = oa::makeShared<oa::AlmPriorAg>(lmCfg);
 	
-	std::printf("tokenizer and LM created\n");
+	oa::print("tokenizer and LM created");
 	
 	// generate tokens unconditionally (starts from [SOM]).
 	oa::Matrix generatedTokens = lm->generate(1, 1.0F, 0, 0.0F, 16);
-	std::printf("generated tokens shape: [%lld, %lld]\n",
+	oa::print("generated tokens shape: [{}, {}]",
 		static_cast<long long>(generatedTokens.size(0)), static_cast<long long>(generatedTokens.size(1)));
 	
 	// Decode to motion.
 	oa::Matrix motion = lm->decodeToMotion(generatedTokens, *tokenizer);
-	std::printf("Decoded motion shape: [%lld, %lld]\n",
+	oa::print("Decoded motion shape: [{}, {}]",
 		static_cast<long long>(motion.size(0)), static_cast<long long>(motion.size(1)));
 	
 	// Minimal USD export: treat motion as per-frame per-joint translations.
@@ -889,9 +880,7 @@ TEST(Alm, GenerateStub) {
 			clip.jointPaths.pushBack(path);
 			clip.bindTransforms.pushBack(oa::vlm::Mat4::identity());
 			clip.restTransforms.pushBack(oa::vlm::Mat4::identity());
-			char buf[32];
-			std::snprintf(buf, sizeof(buf), "/j%d", j);
-			path = path + buf;
+			path += oa::format("/j{}", j);
 		}
 		clip.translations.reserve(static_cast<oa::I64>(frames) * joints);
 		clip.rotations.reserve(static_cast<oa::I64>(frames) * joints);
@@ -905,7 +894,7 @@ TEST(Alm, GenerateStub) {
 		oa::Path usdPath("var/alm/Alm_GenerateStub.usda");
 		(void)oa::Filesystem::createDirectories(usdPath.parentPath());
 		auto st = oa::Usd::writeUsda(usdPath, clip, "rig");
-		std::printf("USD export: %s\n", st.isOk() ? "ok" : st.toString().cStr());
+		oa::print("USD export: {}", st.isOk() ? "ok" : st.toString().cStr());
 		EXPECT_TRUE(st.isOk());
 	}
 	
@@ -929,7 +918,7 @@ TEST(Alm, LmLearnsNextToken) {
 	const oa::I32 B  = 4;   // batched sequences; block-diagonal mask keeps each sequence causal
 	const oa::I32 Tw = 128; // B*Tw/Factor must be >= numCodes for VQ seed
 	const oa::I32 tokLen = Tw / tok->downsampleFactor();   // 64
-	std::vector<float> ds(static_cast<size_t>(B * Tw * tokCfg.inputDim));
+	oa::Vector<float> ds(static_cast<oa::Usize>(B * Tw * tokCfg.inputDim));
 	auto sampleDs = [&]() {
 		for (oa::I32 b = 0; b < B; ++b) {
 			for (oa::I32 t = 0; t < Tw; ++t) {
@@ -938,8 +927,8 @@ TEST(Alm, LmLearnsNextToken) {
 					const float freq = 1.0F + static_cast<float>(c % 8) * 0.5F;
 					const float phase = static_cast<float>(b) * 0.3F + static_cast<float>(c) * 0.1F;
 					const float start = static_cast<float>(b) * 0.7F + static_cast<float>(c % 3) * 0.2F;
-					ds[((static_cast<size_t>(b) * Tw + t) * tokCfg.inputDim) + c] =
-						start + std::sin(6.2831853F * (freq * tt + phase)) * 0.5F;
+					ds[((static_cast<oa::Usize>(b) * Tw + t) * tokCfg.inputDim) + c] =
+						start + oa::sin(6.2831853F * (freq * tt + phase)) * 0.5F;
 				}
 			}
 		}
@@ -973,11 +962,11 @@ TEST(Alm, LmLearnsNextToken) {
 	const oa::I32* ids = tokenIds.dataAs<const oa::I32>();
 
 	// Build LM inputs [SOM, c0, ..., cN] and targets [c0, ..., cN, EOM].
-	std::vector<oa::I32> inputHost(static_cast<size_t>(B) * (tokLen + 1));
-	std::vector<oa::I32> targetHost(static_cast<size_t>(B) * (tokLen + 1));
+	oa::Vector<oa::I32> inputHost(static_cast<oa::Usize>(B) * (tokLen + 1));
+	oa::Vector<oa::I32> targetHost(static_cast<oa::Usize>(B) * (tokLen + 1));
 	for (oa::I32 b = 0; b < B; ++b) {
-		const size_t inRow = static_cast<size_t>(b) * (tokLen + 1);
-		const size_t outRow = static_cast<size_t>(b) * tokLen;
+		const oa::Usize inRow = static_cast<oa::Usize>(b) * (tokLen + 1);
+		const oa::Usize outRow = static_cast<oa::Usize>(b) * tokLen;
 		inputHost[inRow] = lmCfg.somToken;
 		for (oa::I32 t = 0; t < tokLen; ++t) {
 			oa::I32 code = ids[outRow + t];
@@ -1016,10 +1005,10 @@ TEST(Alm, LmLearnsNextToken) {
 		if (s == 1) firstLoss = lv;
 		lastLoss = lv;
 		if (s == 1 || s % 50 == 0 || s == 200)
-			std::printf("  [lm] step %3d | ce %.8f\n", s, static_cast<double>(lv));
-		ASSERT_TRUE(std::isfinite(lv)) << "LM diverged at step " << s;
+			oa::print("  [lm] step {:3} | ce {:.8f}", s, static_cast<double>(lv));
+		ASSERT_TRUE(oa::isFinite(lv)) << "LM diverged at step " << s;
 	}
-	std::printf("LM cross-entropy: %.8f -> %.8f\n", static_cast<double>(firstLoss), static_cast<double>(lastLoss));
+	oa::print("LM cross-entropy: {:.8f} -> {:.8f}", static_cast<double>(firstLoss), static_cast<double>(lastLoss));
 	EXPECT_LT(lastLoss, firstLoss) << "LM did not learn next-token prediction";
 	lmOpt.reset();
 	lm.reset();
@@ -1048,15 +1037,15 @@ TEST(Alm, LmProductionShapeUpdates) {
 	cfg.dFfn = 512;
 	cfg.seqLen = T;
 
-	std::vector<oa::I32> input(static_cast<size_t>(B) * T);
-	std::vector<oa::I32> target(static_cast<size_t>(B) * T);
+	oa::Vector<oa::I32> input(static_cast<oa::Usize>(B) * T);
+	oa::Vector<oa::I32> target(static_cast<oa::Usize>(B) * T);
 	for (oa::I32 b = 0; b < B; ++b) {
-		const size_t row = static_cast<size_t>(b) * T;
+		const oa::Usize row = static_cast<oa::Usize>(b) * T;
 		input[row] = cfg.somToken;
 		for (oa::I32 t = 0; t < TokenLen; ++t) {
 			const oa::I32 code = (b * 7 + t * 3) % cfg.numCodes;
-			input[row + 1 + static_cast<size_t>(t)] = code;
-			target[row + static_cast<size_t>(t)] = code;
+			input[row + 1 + static_cast<oa::Usize>(t)] = code;
+			target[row + static_cast<oa::Usize>(t)] = code;
 		}
 		target[row + TokenLen] = cfg.eomToken;
 	}
@@ -1074,7 +1063,7 @@ TEST(Alm, LmProductionShapeUpdates) {
 
 	oa::F32 first = 0.0F;
 	oa::F32 last = 0.0F;
-	const auto begin = std::chrono::steady_clock::now();
+	const auto begin = oa::steadyNow();
 	for (oa::I32 step = 1; step <= steps; ++step) {
 		ctx.clear();
 		opt.zeroGrad();
@@ -1088,15 +1077,15 @@ TEST(Alm, LmProductionShapeUpdates) {
 		ASSERT_TRUE(testSubmitAndWait(ctx).isOk());
 		last = ce.at(0);
 		if (step == 1) first = last;
-		std::printf("  [production-shape] step %d/%d | ce %.8f\n",
+		oa::print("  [production-shape] step {}/{} | ce {:.8f}",
 			step, steps, static_cast<double>(last));
-		ASSERT_TRUE(std::isfinite(last));
+		ASSERT_TRUE(oa::isFinite(last));
 	}
-	const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - begin).count();
+	const double seconds = (oa::steadyNow() - begin).toSeconds();
 	const double msPerStep = seconds * 1000.0 / steps;
 	const double seqPerSec = static_cast<double>(B) * steps / seconds;
 	const double tokensPerSec = static_cast<double>(B) * T * steps / seconds;
-	std::printf("Production shape: CE %.8f -> %.8f | %.2f ms/step | %.2f seq/s | %.2f tks\n",
+	oa::print("Production shape: CE {:.8f} -> {:.8f} | {:.2f} ms/step | {:.2f} seq/s | {:.2f} tks",
 		static_cast<double>(first), static_cast<double>(last), msPerStep, seqPerSec, tokensPerSec);
 	EXPECT_LT(last, first) << "production-shape OaAlm did not update";
 	ctx.clear();
@@ -1120,10 +1109,10 @@ TEST(Alm, LmDynamicPrefixMatchesFullForward) {
 
 	constexpr oa::I32 B = 3;
 	constexpr oa::I32 T = 13;
-	std::vector<oa::U32> fullIds(static_cast<size_t>(B) * T);
+	oa::Vector<oa::U32> fullIds(static_cast<oa::Usize>(B) * T);
 	for (oa::I32 b = 0; b < B; ++b) {
 		for (oa::I32 t = 0; t < T; ++t) {
-			fullIds[static_cast<size_t>(b) * T + t] = static_cast<oa::U32>((b * 5 + t * 3) % lmCfg.numCodes);
+			fullIds[static_cast<oa::Usize>(b) * T + t] = static_cast<oa::U32>((b * 5 + t * 3) % lmCfg.numCodes);
 		}
 	}
 	auto fullInput = oa::FnMatrix::fromBytes(
@@ -1133,10 +1122,10 @@ TEST(Alm, LmDynamicPrefixMatchesFullForward) {
 
 	for (const oa::I32 prefixLen : {1, 2, 7, T}) {
 		ctx.clear();
-		std::vector<oa::U32> prefix(static_cast<size_t>(B) * prefixLen);
+		oa::Vector<oa::U32> prefix(static_cast<oa::Usize>(B) * prefixLen);
 		for (oa::I32 b = 0; b < B; ++b) {
 			for (oa::I32 t = 0; t < prefixLen; ++t) {
-				prefix[static_cast<size_t>(b) * prefixLen + t] = fullIds[static_cast<size_t>(b) * T + t];
+				prefix[static_cast<oa::Usize>(b) * prefixLen + t] = fullIds[static_cast<oa::Usize>(b) * T + t];
 			}
 		}
 		auto prefixInput = oa::FnMatrix::fromBytes(
@@ -1149,10 +1138,10 @@ TEST(Alm, LmDynamicPrefixMatchesFullForward) {
 			for (oa::I32 v = 0; v < lmCfg.vocabSize; ++v) {
 				const oa::I64 fullIdx = (static_cast<oa::I64>(b) * T + prefixLen - 1) * lmCfg.vocabSize + v;
 				const oa::I64 prefixIdx = (static_cast<oa::I64>(b) * prefixLen + prefixLen - 1) * lmCfg.vocabSize + v;
-				maxError = std::max(maxError, std::abs(fullLogits[fullIdx] - prefixLogits[prefixIdx]));
+				maxError = oa::max(maxError, oa::abs(fullLogits[fullIdx] - prefixLogits[prefixIdx]));
 			}
 		}
-		std::printf("  [dynamic-prefix] T=%d max error %.8g\n", prefixLen, static_cast<double>(maxError));
+		oa::print("  [dynamic-prefix] T={} max error {:.8g}", prefixLen, static_cast<double>(maxError));
 		EXPECT_LT(maxError, 1e-4F);
 	}
 
@@ -1174,16 +1163,16 @@ TEST(Alm, LmFrozenTextPrefixConditionsAndBackpropagates) {
 	cfg.maxSeqLen = 8;
 	auto lm = oa::makeShared<oa::AlmPriorAg>(cfg);
 
-	const std::vector<oa::I32> ids = {
+	const oa::Vector<oa::I32> ids = {
 		cfg.somToken, 1, 2, 3, 4,
 		cfg.somToken, 1, 2, 3, 4};
-	const std::vector<oa::I32> targets = {
+	const oa::Vector<oa::I32> targets = {
 		1, 2, 3, 4, cfg.eomToken,
 		1, 2, 3, 4, cfg.eomToken};
-	const std::vector<float> textA = {
+	const oa::Vector<float> textA = {
 		1.0F, 0.0F, 0.0F, 0.0F,
 		1.0F, 0.0F, 0.0F, 0.0F};
-	const std::vector<float> textB = {
+	const oa::Vector<float> textB = {
 		0.0F, 1.0F, 0.5F, -0.5F,
 		0.0F, 1.0F, 0.5F, -0.5F};
 	auto input = oa::FnMatrix::fromBytes(
@@ -1206,7 +1195,7 @@ TEST(Alm, LmFrozenTextPrefixConditionsAndBackpropagates) {
 	ASSERT_EQ(logitsA.size(), logitsB.size());
 	oa::F32 maxPromptDelta = 0.0F;
 	for (oa::Usize i = 0; i < logitsA.size(); ++i) {
-		maxPromptDelta = std::max(maxPromptDelta, std::abs(logitsA[i] - logitsB[i]));
+		maxPromptDelta = oa::max(maxPromptDelta, oa::abs(logitsA[i] - logitsB[i]));
 	}
 	EXPECT_GT(maxPromptDelta, 1e-6F) << "different frozen text features did not affect motion logits";
 	ctx.clear();
@@ -1229,7 +1218,7 @@ TEST(Alm, LmFrozenTextPrefixConditionsAndBackpropagates) {
 	ASSERT_NE(projectionWeight, nullptr);
 	ASSERT_FALSE(projectionWeight->grad().isEmpty());
 	double gradL1 = 0.0;
-	for (const auto value : hostFloatData(projectionWeight->grad())) gradL1 += std::abs(value);
+	for (const auto value : hostFloatData(projectionWeight->grad())) gradL1 += oa::abs(value);
 	EXPECT_GT(gradL1, 1e-8) << "motion loss did not train the text projection";
 	const oa::String checkpointPath = "/tmp/alm_conditioned_contract.oam";
 	ASSERT_TRUE(lm->save(ctx.engine(), checkpointPath).isOk());
@@ -1241,8 +1230,8 @@ TEST(Alm, LmFrozenTextPrefixConditionsAndBackpropagates) {
 	EXPECT_EQ(savedProjection->rank, 2);
 	EXPECT_EQ(savedProjection->shape[0], static_cast<oa::U64>(cfg.dModel));
 	EXPECT_EQ(savedProjection->shape[1], static_cast<oa::U64>(cfg.textFeatureDim));
-	std::remove(checkpointPath.cStr());
-	std::printf("  [text-prefix] max logit delta %.8g · projection grad L1 %.8g\n",
+	(void)oa::Filesystem::removeFile(checkpointPath);
+	oa::print("  [text-prefix] max logit delta {:.8g} · projection grad L1 {:.8g}",
 		static_cast<double>(maxPromptDelta), gradL1);
 	ctx.clear();
 }
@@ -1252,8 +1241,8 @@ TEST(Alm, LmFfnPoliciesForward) {
 	auto& ctx = oa::ExecutionSession::getActive();
 	constexpr oa::I32 B = 2;
 	constexpr oa::I32 T = 5;
-	std::vector<oa::U32> ids(static_cast<size_t>(B) * T);
-	for (oa::I32 i = 0; i < B * T; ++i) ids[static_cast<size_t>(i)] = static_cast<oa::U32>(i % 16);
+	oa::Vector<oa::U32> ids(static_cast<oa::Usize>(B) * T);
+	for (oa::I32 i = 0; i < B * T; ++i) ids[static_cast<oa::Usize>(i)] = static_cast<oa::U32>(i % 16);
 	auto input = oa::FnMatrix::fromBytes(
 		oa::Span<const oa::U8>(reinterpret_cast<const oa::U8*>(ids.data()), ids.size() * sizeof(oa::U32)),
 		oa::MatrixShape{B, T}, oa::ScalarType::UInt32);
@@ -1280,8 +1269,8 @@ TEST(Alm, LmCheckpointRoundtrip) {
 	cfg.syncVocab(16);
 	cfg.dModel = 32; cfg.numLayers = 2; cfg.dFfn = 64; cfg.seqLen = 6;
 
-	std::vector<oa::I32> ids = {cfg.somToken, 1, 2, 3, 4, 5, cfg.somToken, 5, 4, 3, 2, 1};
-	std::vector<oa::I32> targets = {1, 2, 3, 4, 5, cfg.eomToken, 5, 4, 3, 2, 1, cfg.eomToken};
+	oa::Vector<oa::I32> ids = {cfg.somToken, 1, 2, 3, 4, 5, cfg.somToken, 5, 4, 3, 2, 1};
+	oa::Vector<oa::I32> targets = {1, 2, 3, 4, 5, cfg.eomToken, 5, 4, 3, 2, 1, cfg.eomToken};
 	auto input = oa::FnMatrix::fromBytes(
 		oa::Span<const oa::U8>(reinterpret_cast<const oa::U8*>(ids.data()), ids.size() * sizeof(oa::I32)),
 		oa::MatrixShape{2, 6}, oa::ScalarType::Int32);
@@ -1315,11 +1304,11 @@ TEST(Alm, LmCheckpointRoundtrip) {
 	auto after = hostFloatData(reloaded->forward(input));
 	ASSERT_EQ(before.size(), after.size());
 	oa::F32 maxError = 0.0F;
-	for (oa::Usize i = 0; i < before.size(); ++i) maxError = std::max(maxError, std::abs(before[i] - after[i]));
-	std::printf("LM checkpoint round-trip max logit error %.8g\n", static_cast<double>(maxError));
+	for (oa::Usize i = 0; i < before.size(); ++i) maxError = oa::max(maxError, oa::abs(before[i] - after[i]));
+	oa::print("LM checkpoint round-trip max logit error {:.8g}", static_cast<double>(maxError));
 	EXPECT_EQ(maxError, 0.0F);
 	EXPECT_EQ(reloadedOpt->getStep(), originalOpt->getStep());
-	std::remove(path.cStr());
+	(void)oa::Filesystem::removeFile(path);
 	reloadedOpt.reset(); reloaded.reset(); originalOpt.reset(); original.reset();
 	ctx.clear();
 }
@@ -1346,8 +1335,8 @@ TEST(Alm, BundleRoundtrip) {
 	cfg.textEncoder = "oa/test-clip";
 
 	auto original = oa::makeShared<oa::AlmAg>(cfg);
-	const std::vector<oa::I32> ids = {8, 1, 2, 3};
-	const std::vector<oa::F32> text = {0.25F, -0.5F, 0.75F, 1.0F};
+	const oa::Vector<oa::I32> ids = {8, 1, 2, 3};
+	const oa::Vector<oa::F32> text = {0.25F, -0.5F, 0.75F, 1.0F};
 	auto input = oa::FnMatrix::fromBytes(
 		oa::Span<const oa::U8>(reinterpret_cast<const oa::U8*>(ids.data()), ids.size() * sizeof(oa::I32)),
 		oa::MatrixShape{1, 4}, oa::ScalarType::Int32);
@@ -1366,7 +1355,7 @@ TEST(Alm, BundleRoundtrip) {
 
 	auto loaded = oa::AlmAg::loadBundle(ctx.engine(), path);
 	ASSERT_TRUE(loaded.isOk()) << loaded.getStatus().getMessage().cStr();
-	auto reloaded = std::move(loaded).getValue();
+	auto reloaded = oa::move(loaded).getValue();
 	EXPECT_EQ(reloaded->config().tokenizer.numCodes, cfg.tokenizer.numCodes);
 	EXPECT_EQ(reloaded->config().prior.textFeatureDim, cfg.prior.textFeatureDim);
 	EXPECT_EQ(reloaded->config().prior.numHeads, cfg.prior.numHeads);
@@ -1374,7 +1363,7 @@ TEST(Alm, BundleRoundtrip) {
 	auto after = hostFloatData(reloaded->forwardConditioned(input, feature));
 	ASSERT_EQ(before.size(), after.size());
 	for (oa::Usize i = 0; i < before.size(); ++i) EXPECT_EQ(before[i], after[i]);
-	std::remove(path.cStr());
+	(void)oa::Filesystem::removeFile(path);
 	ctx.clear();
 }
 
@@ -1404,10 +1393,10 @@ TEST(Alm, LmTrainBench) {
 	lmCfg.dModel = 384; lmCfg.numLayers = 6; lmCfg.dFfn = 1536;
 
 	const oa::I32 B = 128, T = 64;                // batch, lm_seq_len (yaml)
-	std::vector<oa::U32> inHost(static_cast<size_t>(B) * (T + 1));
-	std::vector<oa::U32> tgtHost(static_cast<size_t>(B) * (T + 1));
+	oa::Vector<oa::U32> inHost(static_cast<oa::Usize>(B) * (T + 1));
+	oa::Vector<oa::U32> tgtHost(static_cast<oa::Usize>(B) * (T + 1));
 	for (oa::I32 b = 0; b < B; ++b) {
-		const size_t row = static_cast<size_t>(b) * (T + 1);
+		const oa::Usize row = static_cast<oa::Usize>(b) * (T + 1);
 		inHost[row] = static_cast<oa::U32>(lmCfg.somToken);
 		for (oa::I32 t = 0; t < T; ++t) {
 			const oa::U32 c = static_cast<oa::U32>((b * 7u + t * 3u) % 512u);
@@ -1441,14 +1430,14 @@ TEST(Alm, LmTrainBench) {
 		(void)testSubmitAndWait(ctx);
 	};
 	for (int i = 0; i < warmup; ++i) stepOnce();
-	auto t0 = std::chrono::high_resolution_clock::now();
+	auto t0 = oa::highResolutionNow();
 	for (int i = 0; i < timed; ++i) stepOnce();
-	auto t1 = std::chrono::high_resolution_clock::now();
-	const double dt = std::chrono::duration<double>(t1 - t0).count();
+	auto t1 = oa::highResolutionNow();
+	const double dt = (t1 - t0).toSeconds();
 	const double msStep = dt / timed * 1000.0;
 	const double sps = static_cast<double>(B) * timed / dt;
 	const char* prec = oa::FnMatrix::weightDtype() == oa::ScalarType::Float32 ? "fp32" : "bf16";
-	std::printf("  [lm bench %s] 6L D=384 B=%d T=%d | %.2f ms/step | %.1f seq/s (%.1fK tok/s)\n",
+	oa::print("  [lm bench {}] 6L D=384 B={} T={} | {:.2f} ms/step | {:.1f} seq/s ({:.1f}K tok/s)",
 		prec, B, T, msStep, sps, sps * T / 1000.0);
 	lmOpt.reset(); lm.reset(); ctx.clear();
 }
@@ -1467,14 +1456,14 @@ TEST(Alm, TokTrainBench) {
 
 	const oa::I32 B = 128, T = 64;                // batch, seq_len (yaml)
 	const oa::I32 tokLen = T / tok->downsampleFactor();
-	std::vector<float> ds(static_cast<size_t>(B) * T * tokCfg.inputDim);
+	oa::Vector<float> ds(static_cast<oa::Usize>(B) * T * tokCfg.inputDim);
 	for (oa::I32 b = 0; b < B; ++b) {
 		for (oa::I32 t = 0; t < T; ++t) {
 			const float tt = static_cast<float>(t) / static_cast<float>(T);
 			for (oa::I32 c = 0; c < tokCfg.inputDim; ++c) {
 				const float freq = 1.0F + static_cast<float>(c % 8) * 0.5F;
-				ds[((static_cast<size_t>(b) * T + t) * tokCfg.inputDim) + c] =
-					static_cast<float>(b) * 0.7F + std::sin(6.2831853F * freq * tt) * 0.5F;
+				ds[((static_cast<oa::Usize>(b) * T + t) * tokCfg.inputDim) + c] =
+					static_cast<float>(b) * 0.7F + oa::sin(6.2831853F * freq * tt) * 0.5F;
 			}
 		}
 	}
@@ -1501,14 +1490,14 @@ TEST(Alm, TokTrainBench) {
 		(void)testSubmitAndWait(ctx);
 	};
 	for (int i = 0; i < warmup; ++i) stepOnce();
-	auto t0 = std::chrono::high_resolution_clock::now();
+	auto t0 = oa::highResolutionNow();
 	for (int i = 0; i < timed; ++i) stepOnce();
-	auto t1 = std::chrono::high_resolution_clock::now();
-	const double dt = std::chrono::duration<double>(t1 - t0).count();
+	auto t1 = oa::highResolutionNow();
+	const double dt = (t1 - t0).toSeconds();
 	const double msStep = dt / timed * 1000.0;
 	const double sps = static_cast<double>(B) * timed / dt;
 	const char* prec = oa::FnMatrix::weightDtype() == oa::ScalarType::Float32 ? "fp32" : "bf16";
-	std::printf("  [tok bench %s] W=512 263d 3L downT=2 B=%d T=%d | %.2f ms/step | %.1f clips/s\n",
+	oa::print("  [tok bench {}] W=512 263d 3L downT=2 B={} T={} | {:.2f} ms/step | {:.1f} clips/s",
 		prec, B, T, msStep, sps);
 	tokOpt.reset(); tok.reset(); ctx.clear();
 }
@@ -1550,21 +1539,21 @@ static double printCodebookHealth(oa::AlmTokenizerAg& inTok, const oa::Matrix& i
 	(void)testSubmitAndWait(ctx);
 	const oa::I64 n = ids.numElements();
 	const oa::I32* p = ids.dataAs<const oa::I32>();
-	std::vector<oa::I64> hist(static_cast<size_t>(inNumCodes), 0);
+	oa::Vector<oa::I64> hist(static_cast<oa::Usize>(inNumCodes), 0);
 	for (oa::I64 i = 0; i < n; ++i) {
 		const oa::I32 c = p[i];
-		if (c >= 0 && c < inNumCodes) ++hist[static_cast<size_t>(c)];
+		if (c >= 0 && c < inNumCodes) ++hist[static_cast<oa::Usize>(c)];
 	}
 	oa::I32 active = 0;
 	double H = 0.0;
 	for (oa::I32 c = 0; c < inNumCodes; ++c) {
-		if (hist[static_cast<size_t>(c)] == 0) continue;
+		if (hist[static_cast<oa::Usize>(c)] == 0) continue;
 		++active;
-		const double pr = static_cast<double>(hist[static_cast<size_t>(c)]) / static_cast<double>(n);
-		H -= pr * std::log(pr);
+		const double pr = static_cast<double>(hist[static_cast<oa::Usize>(c)]) / static_cast<double>(n);
+		H -= pr * oa::log(pr);
 	}
-	const double perplexity = std::exp(H);
-	std::printf("  [codebook] %d/%d active (%.1f%%) | perplexity %.1f | %lld tokens\n",
+	const double perplexity = oa::exp(H);
+	oa::print("  [codebook] {}/{} active ({:.1f}%) | perplexity {:.1f} | {} tokens",
 	            active, inNumCodes, 100.0 * active / inNumCodes, perplexity,
 	            static_cast<long long>(n));
 	ctx.clear();
@@ -1585,7 +1574,7 @@ TEST(Alm, TokenizerSaveLoadRoundtrip) {
 	const oa::I32 tokLen = T / (1 << cfg.downT);
 
 	// Deterministic synthetic batch.
-	std::vector<float> xh(static_cast<size_t>(B) * T * cfg.inputDim);
+	oa::Vector<float> xh(static_cast<oa::Usize>(B) * T * cfg.inputDim);
 	oa::U64 rng = 0x1234ULL;
 	for (auto& v : xh) {
 		rng = (rng * 6364136223846793005ULL) + 1;
@@ -1605,11 +1594,11 @@ TEST(Alm, TokenizerSaveLoadRoundtrip) {
 	}
 
 	auto readIds = [&](const oa::Vector<oa::Matrix>& inIdx) {
-		std::vector<std::vector<oa::I32>> out;
+		oa::Vector<oa::Vector<oa::I32>> out;
 		for (const auto& m : inIdx) {
-			std::vector<oa::I32> h(static_cast<size_t>(m.numElements()));
+			oa::Vector<oa::I32> h(static_cast<oa::Usize>(m.numElements()));
 			(void)oa::FnMatrix::copyToHost(m, h.data(), h.size() * sizeof(oa::I32));
-			out.push_back(std::move(h));
+			out.pushBack(oa::move(h));
 		}
 		return out;
 	};
@@ -1631,14 +1620,14 @@ TEST(Alm, TokenizerSaveLoadRoundtrip) {
 
 	ASSERT_EQ(hostA.size(), hostB.size()) << "level count mismatch";
 	oa::I64 total = 0, mismatch = 0;
-	for (size_t lvl = 0; lvl < hostA.size(); ++lvl) {
+	for (oa::Usize lvl = 0; lvl < hostA.size(); ++lvl) {
 		ASSERT_EQ(hostA[lvl].size(), hostB[lvl].size());
-		for (size_t i = 0; i < hostA[lvl].size(); ++i) {
+		for (oa::Usize i = 0; i < hostA[lvl].size(); ++i) {
 			++total;
 			if (hostA[lvl][i] != hostB[lvl][i]) ++mismatch;
 		}
 	}
-	std::printf("TokenizerSaveLoadRoundtrip: %lld/%lld tokens identical after save+load (%zu levels)\n",
+	oa::print("TokenizerSaveLoadRoundtrip: {}/{} tokens identical after save+load ({} levels)",
 		static_cast<long long>(total - mismatch), static_cast<long long>(total), hostA.size());
 	EXPECT_EQ(mismatch, 0) << "reloaded tokenizer retokenized differently — conv weights or EMA codebook not persisted";
 	(void)tokLen;
@@ -1664,15 +1653,15 @@ TEST(Alm, TokenizerLearnsCmp) {
 	// numCodes=512, use B_seed=64 clips × T=64 frames → 1024 latents.
 	const oa::I32 Bseed = 64;
 	{
-		std::vector<float> seed(static_cast<size_t>(Bseed * T) * ds.featDim());
+		oa::Vector<float> seed(static_cast<oa::Usize>(Bseed * T) * ds.featDim());
 		for (oa::I32 b = 0; b < Bseed; ++b) {
 			const oa::I32 clipIdx = b % ds.numClips();
 			const oa::I32 frames = static_cast<oa::I32>(ds.clipFrames(clipIdx));
 			const oa::I32 start = frames > T ? (frames - T) / 2 : 0;
 			const oa::F32* src = ds.clipData(clipIdx) + start * ds.featDim();
-			float* dst = seed.data() + static_cast<size_t>(b) * T * ds.featDim();
-			const oa::I32 copyFrames = std::min(T, frames);
-			std::memcpy(dst, src, static_cast<size_t>(copyFrames) * ds.featDim() * sizeof(float));
+			float* dst = seed.data() + static_cast<oa::Usize>(b) * T * ds.featDim();
+			const oa::I32 copyFrames = oa::min(T, frames);
+			oa::memcpy(dst, src, static_cast<oa::Usize>(copyFrames) * ds.featDim() * sizeof(float));
 		}
 		auto seedX = oa::FnMatrix::fromBytes(
 			oa::Span<const oa::U8>(reinterpret_cast<const oa::U8*>(seed.data()), seed.size() * sizeof(float)),
@@ -1691,15 +1680,15 @@ TEST(Alm, TokenizerLearnsCmp) {
 		ctx.clear();
 		oa::GradientTape tape; tokOpt->zeroGrad();
 
-		std::vector<float> batch(static_cast<size_t>(B * T) * ds.featDim());
+		oa::Vector<float> batch(static_cast<oa::Usize>(B * T) * ds.featDim());
 		for (oa::I32 b = 0; b < B; ++b) {
 			const oa::I32 clipIdx = b % ds.numClips();
 			const oa::I32 frames = static_cast<oa::I32>(ds.clipFrames(clipIdx));
 			const oa::I32 start = frames > T ? (s * 17 + b * 31) % (frames - T) : 0;
 			const oa::F32* src = ds.clipData(clipIdx) + start * ds.featDim();
-			float* dst = batch.data() + static_cast<size_t>(b) * T * ds.featDim();
-			const oa::I32 copyFrames = std::min(T, frames);
-			std::memcpy(dst, src, static_cast<size_t>(copyFrames) * ds.featDim() * sizeof(float));
+			float* dst = batch.data() + static_cast<oa::Usize>(b) * T * ds.featDim();
+			const oa::I32 copyFrames = oa::min(T, frames);
+			oa::memcpy(dst, src, static_cast<oa::Usize>(copyFrames) * ds.featDim() * sizeof(float));
 		}
 		auto X = oa::FnMatrix::fromBytes(
 			oa::Span<const oa::U8>(reinterpret_cast<const oa::U8*>(batch.data()), batch.size() * sizeof(float)),
@@ -1730,22 +1719,22 @@ TEST(Alm, TokenizerLearnsCmp) {
 		if (s == 1) firstLoss = lv;
 		lastLoss = lv;
 		if (s == 1 || s % 100 == 0 || s == 500)
-			std::printf("  [h3d] step %3d | loss %.8f\n", s, static_cast<double>(lv));
-		ASSERT_TRUE(std::isfinite(lv)) << "tokenizer diverged at step " << s;
+			oa::print("  [h3d] step {:3} | loss {:.8f}", s, static_cast<double>(lv));
+		ASSERT_TRUE(oa::isFinite(lv)) << "tokenizer diverged at step " << s;
 	}
-	std::printf("CMP tokenizer loss: %.8f -> %.8f\n", static_cast<double>(firstLoss), static_cast<double>(lastLoss));
+	oa::print("CMP tokenizer loss: {:.8f} -> {:.8f}", static_cast<double>(firstLoss), static_cast<double>(lastLoss));
 	EXPECT_LT(lastLoss, firstLoss) << "tokenizer did not learn CMP reconstruction";
 
 	// codebook health (§12.1): tokenize all clips (fixed T window) → active% + perplexity.
 	{
-		const oa::I32 bh = std::min<oa::I32>(128, static_cast<oa::I32>(ds.numClips()));
-		std::vector<float> hb(static_cast<size_t>(bh * T) * ds.featDim());
+		const oa::I32 bh = oa::min<oa::I32>(128, static_cast<oa::I32>(ds.numClips()));
+		oa::Vector<float> hb(static_cast<oa::Usize>(bh * T) * ds.featDim());
 		for (oa::I32 b = 0; b < bh; ++b) {
 			const oa::I32 frames = static_cast<oa::I32>(ds.clipFrames(b));
 			const oa::I32 start = frames > T ? (frames - T) / 2 : 0;
 			const oa::F32* src = ds.clipData(b) + start * ds.featDim();
-			float* dst = hb.data() + static_cast<size_t>(b) * T * ds.featDim();
-			std::memcpy(dst, src, static_cast<size_t>(std::min(T, frames)) * ds.featDim() * sizeof(float));
+			float* dst = hb.data() + static_cast<oa::Usize>(b) * T * ds.featDim();
+			oa::memcpy(dst, src, static_cast<oa::Usize>(oa::min(T, frames)) * ds.featDim() * sizeof(float));
 		}
 		auto Xh = oa::FnMatrix::fromBytes(
 			oa::Span<const oa::U8>(reinterpret_cast<const oa::U8*>(hb.data()), hb.size() * sizeof(float)),
@@ -1775,18 +1764,18 @@ TEST(Alm, HumanMl3dLoads) {
 		EXPECT_GT(frames, 0) << "clip " << i << " has no frames";
 		const oa::F32* data = ds.clipData(i);
 		float first = data[0];
-		EXPECT_TRUE(std::isfinite(first)) << "clip " << i << " contains non-finite data";
+		EXPECT_TRUE(oa::isFinite(first)) << "clip " << i << " contains non-finite data";
 		const auto& captions = ds.clipCaptions(i);
 		if (not captions.empty()) {
 			EXPECT_EQ(ds.clipCaptions(i)[0].text, captions[0].text);
 			for (const auto& caption : captions) {
 				EXPECT_FALSE(caption.text.empty());
-				EXPECT_TRUE(std::isfinite(caption.startSec));
-				EXPECT_TRUE(std::isfinite(caption.endSec));
+				EXPECT_TRUE(oa::isFinite(caption.startSec));
+				EXPECT_TRUE(oa::isFinite(caption.endSec));
 			}
 		}
 	}
-	std::printf("HumanML3D: loaded %d clips (%d-dim, %d-joint)\n", ds.numClips(), ds.featDim(), ds.numJoints());
+	oa::print("HumanML3D: loaded {} clips ({}-dim, {}-joint)", ds.numClips(), ds.featDim(), ds.numJoints());
 }
 
 TEST(Alm, CmpLoadsAllCaptions) {
@@ -1801,8 +1790,8 @@ TEST(Alm, CmpLoadsAllCaptions) {
 		EXPECT_EQ(ds.clipCaptions(i)[0].text, captions[0].text);
 		for (const auto& caption : captions) {
 			EXPECT_FALSE(caption.text.empty());
-			EXPECT_TRUE(std::isfinite(caption.startSec));
-			EXPECT_TRUE(std::isfinite(caption.endSec));
+			EXPECT_TRUE(oa::isFinite(caption.startSec));
+			EXPECT_TRUE(oa::isFinite(caption.endSec));
 		}
 	}
 }
@@ -1811,15 +1800,15 @@ TEST(Alm, HumanMl3dReferenceInverse) {
 	constexpr oa::I32 frames = 2;
 	constexpr oa::I32 featDim = 263;
 	constexpr oa::I32 joints = 22;
-	std::vector<oa::F32> features(static_cast<size_t>(frames) * featDim, 0.0F);
+	oa::Vector<oa::F32> features(static_cast<oa::Usize>(frames) * featDim, 0.0F);
 	features[1] = 1.0F;  // frame-0 root X velocity, applied to frame 1
 	features[2] = 2.0F;  // frame-0 root Z velocity, applied to frame 1
 	features[3] = 0.5F;
 	features[featDim + 3] = 0.75F;
 	for (oa::I32 t = 0; t < frames; ++t) {
 		for (oa::I32 j = 1; j < joints; ++j) {
-			const size_t base = static_cast<size_t>(t) * featDim + 4
-				+ static_cast<size_t>(j - 1) * 3;
+			const oa::Usize base = static_cast<oa::Usize>(t) * featDim + 4
+				+ static_cast<oa::Usize>(j - 1) * 3;
 			features[base] = static_cast<oa::F32>(j) * 0.1F;
 			features[base + 1] = static_cast<oa::F32>(j) * 0.2F;
 			features[base + 2] = static_cast<oa::F32>(j) * -0.1F;
@@ -1832,7 +1821,7 @@ TEST(Alm, HumanMl3dReferenceInverse) {
 	EXPECT_FLOAT_EQ(world[0], 0.0F);
 	EXPECT_FLOAT_EQ(world[1], 0.5F);
 	EXPECT_FLOAT_EQ(world[2], 0.0F);
-	const size_t frame1 = static_cast<size_t>(joints) * 3;
+	const oa::Usize frame1 = static_cast<oa::Usize>(joints) * 3;
 	EXPECT_FLOAT_EQ(world[frame1], 1.0F);
 	EXPECT_FLOAT_EQ(world[frame1 + 1], 0.75F);
 	EXPECT_FLOAT_EQ(world[frame1 + 2], 2.0F);
@@ -1851,11 +1840,11 @@ TEST(Alm, HumanMl3dReferenceInverse) {
 }
 
 TEST(Alm, MaskedCrossEntropyAutograd) {
-	const std::vector<float> logitsHost = {
+	const oa::Vector<float> logitsHost = {
 		1.0f, 2.0f, 3.0f, 3.0f, 1.0f, 0.0f,
 		9.0f, 8.0f, 7.0f, -2.0f, 0.0f, 2.0f};
-	const std::vector<oa::I32> targetsHost = {2, 0, 0, 1};
-	const std::vector<float> maskHost = {1.0f, 1.0f, 0.0f, 0.0f};
+	const oa::Vector<oa::I32> targetsHost = {2, 0, 0, 1};
+	const oa::Vector<float> maskHost = {1.0f, 1.0f, 0.0f, 0.0f};
 	auto logits = oa::FnMatrix::fromBytes(
 		oa::Span<const oa::U8>(reinterpret_cast<const oa::U8*>(logitsHost.data()),
 			logitsHost.size() * sizeof(float)), oa::MatrixShape{4, 3}, oa::ScalarType::Float32);
@@ -1871,7 +1860,7 @@ TEST(Alm, MaskedCrossEntropyAutograd) {
 	tape.backward(loss);
 	auto& ctx = oa::ExecutionSession::getActive();
 	ASSERT_TRUE(testSubmitAndWait(ctx).isOk());
-	EXPECT_TRUE(std::isfinite(loss.at(0)));
+	EXPECT_TRUE(oa::isFinite(loss.at(0)));
 	const auto& grad = logits.gradMatrix();
 	for (oa::I32 i = 2 * 3; i < 4 * 3; ++i) EXPECT_FLOAT_EQ(grad.at(i), 0.0f);
 	for (oa::I32 row = 0; row < 2; ++row) {
@@ -1903,15 +1892,15 @@ TEST(Alm, LmLearnsCmpTokens) {
 	// numCodes=512, use B_seed=64 clips × T=64 frames → 1024 latents.
 	const oa::I32 Bseed = 64;
 	{
-		std::vector<float> seed(static_cast<size_t>(Bseed * T) * ds.featDim());
+		oa::Vector<float> seed(static_cast<oa::Usize>(Bseed * T) * ds.featDim());
 		for (oa::I32 b = 0; b < Bseed; ++b) {
 			const oa::I32 clipIdx = b % ds.numClips();
 			const oa::I32 frames = static_cast<oa::I32>(ds.clipFrames(clipIdx));
 			const oa::I32 start = frames > T ? (frames - T) / 2 : 0;
 			const oa::F32* src = ds.clipData(clipIdx) + start * ds.featDim();
-			float* dst = seed.data() + static_cast<size_t>(b) * T * ds.featDim();
-			const oa::I32 copyFrames = std::min(T, frames);
-			std::memcpy(dst, src, static_cast<size_t>(copyFrames) * ds.featDim() * sizeof(float));
+			float* dst = seed.data() + static_cast<oa::Usize>(b) * T * ds.featDim();
+			const oa::I32 copyFrames = oa::min(T, frames);
+			oa::memcpy(dst, src, static_cast<oa::Usize>(copyFrames) * ds.featDim() * sizeof(float));
 		}
 		auto seedX = oa::FnMatrix::fromBytes(
 			oa::Span<const oa::U8>(reinterpret_cast<const oa::U8*>(seed.data()), seed.size() * sizeof(float)),
@@ -1926,15 +1915,15 @@ TEST(Alm, LmLearnsCmpTokens) {
 	for (oa::I32 s = 1; s <= 500; ++s) {
 		ctx.clear();
 		oa::GradientTape tape; tokOpt->zeroGrad();
-		std::vector<float> batch(static_cast<size_t>(B * T) * ds.featDim());
+		oa::Vector<float> batch(static_cast<oa::Usize>(B * T) * ds.featDim());
 		for (oa::I32 b = 0; b < B; ++b) {
 			const oa::I32 clipIdx = b % ds.numClips();
 			const oa::I32 frames = static_cast<oa::I32>(ds.clipFrames(clipIdx));
 			const oa::I32 start = frames > T ? (s * 17 + b * 31) % (frames - T) : 0;
 			const oa::F32* src = ds.clipData(clipIdx) + start * ds.featDim();
-			float* dst = batch.data() + static_cast<size_t>(b) * T * ds.featDim();
-			const oa::I32 copyFrames = std::min(T, frames);
-			std::memcpy(dst, src, static_cast<size_t>(copyFrames) * ds.featDim() * sizeof(float));
+			float* dst = batch.data() + static_cast<oa::Usize>(b) * T * ds.featDim();
+			const oa::I32 copyFrames = oa::min(T, frames);
+			oa::memcpy(dst, src, static_cast<oa::Usize>(copyFrames) * ds.featDim() * sizeof(float));
 		}
 		auto X = oa::FnMatrix::fromBytes(
 			oa::Span<const oa::U8>(reinterpret_cast<const oa::U8*>(batch.data()), batch.size() * sizeof(float)),
@@ -1959,7 +1948,7 @@ TEST(Alm, LmLearnsCmpTokens) {
 		tokOpt->step();
 		tok->emaUpdate(q);
 		(void)testSubmitAndWait(ctx);
-		ASSERT_TRUE(std::isfinite(loss.at(0))) << "tokenizer diverged at step " << s;
+		ASSERT_TRUE(oa::isFinite(loss.at(0))) << "tokenizer diverged at step " << s;
 	}
 	tokOpt.reset();
 	ctx.clear();
@@ -1967,12 +1956,12 @@ TEST(Alm, LmLearnsCmpTokens) {
 	// stage 2: tokenize each long clip and collect token sequences.
 	const oa::I32 lmTokLen = 16;  // window of 16 tokens per sequence
 	const oa::I32 minFrames = lmTokLen * tok->downsampleFactor();  // 128
-	std::vector<std::vector<oa::I32>> tokenSequences;
+	oa::Vector<oa::Vector<oa::I32>> tokenSequences;
 	for (oa::I32 i = 0; i < ds.numClips(); ++i) {
 		const oa::I32 frames = static_cast<oa::I32>(ds.clipFrames(i));
 		if (frames < minFrames) continue;
-		std::vector<float> clip(static_cast<size_t>(frames) * ds.featDim());
-		std::memcpy(clip.data(), ds.clipData(i), clip.size() * sizeof(float));
+		oa::Vector<float> clip(static_cast<oa::Usize>(frames) * ds.featDim());
+		oa::memcpy(clip.data(), ds.clipData(i), clip.size() * sizeof(float));
 		auto x = oa::FnMatrix::fromBytes(
 			oa::Span<const oa::U8>(reinterpret_cast<const oa::U8*>(clip.data()), clip.size() * sizeof(float)),
 			oa::MatrixShape{1, frames, ds.featDim()}, oa::ScalarType::Float32);
@@ -1980,12 +1969,12 @@ TEST(Alm, LmLearnsCmpTokens) {
 		(void)testSubmitAndWait(ctx);
 		const oa::I64 n = ids.numElements();
 		const oa::I32* p = ids.dataAs<const oa::I32>();
-		tokenSequences.emplace_back(p, p + n);
+		tokenSequences.emplaceBack(p, p + n);
 		ctx.clear();
 	}
 	ASSERT_GE(static_cast<oa::I32>(tokenSequences.size()), B) << "Not enough long clips to build LM batches";
-	std::printf("  [lm cmp] collected %zu token sequences (minFrames=%d)\n", tokenSequences.size(), minFrames);
-	std::fflush(stdout);
+	oa::print("  [lm cmp] collected {} token sequences (minFrames={})", tokenSequences.size(), minFrames);
+	::fflush(stdout);
 
 	// stage 3: train the AR transformer on sliding windows.
 	// iGPU-sized SMOKE LM (reference is D=384/L=6/DFF=1536). The iGPU shares system
@@ -2006,13 +1995,13 @@ TEST(Alm, LmLearnsCmpTokens) {
 		ctx.clear();
 		oa::GradientTape tape; lmOpt->zeroGrad();
 
-		std::vector<oa::I32> inputHost(static_cast<size_t>(B) * (lmTokLen + 1));
-		std::vector<oa::I32> targetHost(static_cast<size_t>(B) * (lmTokLen + 1));
+		oa::Vector<oa::I32> inputHost(static_cast<oa::Usize>(B) * (lmTokLen + 1));
+		oa::Vector<oa::I32> targetHost(static_cast<oa::Usize>(B) * (lmTokLen + 1));
 		for (oa::I32 b = 0; b < B; ++b) {
 			const auto& seq = tokenSequences[(s + b) % tokenSequences.size()];
 			const oa::I32 maxStart = static_cast<oa::I32>(seq.size()) - lmTokLen;
 			const oa::I32 start = maxStart > 0 ? (s * 23 + b * 17) % maxStart : 0;
-			const size_t row = static_cast<size_t>(b) * (lmTokLen + 1);
+			const oa::Usize row = static_cast<oa::Usize>(b) * (lmTokLen + 1);
 			inputHost[row] = lmCfg.somToken;
 			for (oa::I32 t = 0; t < lmTokLen; ++t) {
 				const oa::I32 id = static_cast<oa::I32>(seq[start + t]);
@@ -2040,35 +2029,34 @@ TEST(Alm, LmLearnsCmpTokens) {
 		if (s == 1) firstLoss = lv;
 		lastLoss = lv;
 		if (s == 1 || s % 50 == 0 || s == 200)
-			std::printf("  [lm cmp] step %3d | ce %.8f\n", s, static_cast<double>(lv));
-		ASSERT_TRUE(std::isfinite(lv)) << "LM diverged at step " << s;
+			oa::print("  [lm cmp] step {:3} | ce {:.8f}", s, static_cast<double>(lv));
+		ASSERT_TRUE(oa::isFinite(lv)) << "LM diverged at step " << s;
 	}
-	std::printf("CMP LM cross-entropy: %.8f -> %.8f\n", static_cast<double>(firstLoss), static_cast<double>(lastLoss));
+	oa::print("CMP LM cross-entropy: {:.8f} -> {:.8f}", static_cast<double>(firstLoss), static_cast<double>(lastLoss));
 	EXPECT_LT(lastLoss, firstLoss) << "LM did not learn next-token prediction on CMP tokens";
 
 	// stage 4: end-to-end generation — sample multiple tokens streams and decode to motion.
 	ctx.clear();
 	const float temperatures[] = {1.0F, 2.0F, 3.0F};
-	std::vector<std::vector<oa::I32>> genStreams;   // captured per-temp token streams (diversity guard)
+	oa::Vector<oa::Vector<oa::I32>> genStreams;   // captured per-temp token streams (diversity guard)
 	for (oa::I32 g = 0; g < 3; ++g) {
 		auto generated = lm->generate(1, temperatures[g], 0, 0.9F, lmTokLen);
 		auto motion = lm->decodeToMotion(generated, *tok);
 		(void)testSubmitAndWait(ctx);
 
-		std::vector<oa::I32> genHost(static_cast<size_t>(generated.numElements()));
+		oa::Vector<oa::I32> genHost(static_cast<oa::Usize>(generated.numElements()));
 		(void)oa::FnMatrix::copyToHost(generated, genHost.data(), genHost.size() * sizeof(oa::I32));
-		genStreams.push_back(std::move(genHost));
-		std::printf("  [lm cmp] generated motion %d (T=%.2f) shape: [%lld, %lld]\n", g,
+		genStreams.pushBack(oa::move(genHost));
+		oa::print("  [lm cmp] generated motion {} (T={:.2f}) shape: [{}, {}]", g,
 			temperatures[g], static_cast<long long>(motion.size(0)), static_cast<long long>(motion.size(1)));
 		EXPECT_EQ(motion.size(1), ds.featDim()) << "generated motion feature dim must match dataset";
 		EXPECT_GT(motion.size(0), 0) << "generated motion must have frames";
 
 		// denormalize features and recover world joint positions for USD export.
-		char pathBuf[128];
 		const oa::I32 frames = static_cast<oa::I32>(motion.size(0));
 		const oa::I32 featDim = ds.featDim();
 		auto motionHost = hostFloatData(motion);
-		std::vector<float> featHost(motionHost.data(), motionHost.data() + motionHost.size());
+		oa::Vector<float> featHost(motionHost.data(), motionHost.data() + motionHost.size());
 		ds.denormalize(featHost.data(), frames);
 		auto worldJoints = oa::humanMl3dRecoverWorldJoints(
 			oa::Span<const oa::F32>(featHost.data(), featHost.size()), frames, featDim);
@@ -2076,11 +2064,11 @@ TEST(Alm, LmLearnsCmpTokens) {
 			oa::skHumanMl3d(),
 			oa::Span<const oa::F32>(worldJoints.data(), worldJoints.size()),
 			frames, 20.0F, 1, 100.0F);
-		std::snprintf(pathBuf, sizeof(pathBuf),
-			"var/alm/Alm_LmLearnsCmpTokens_generated_%d_T%.1f.usda", g, temperatures[g]);
-		oa::Path usdPath(pathBuf);
+		oa::Path usdPath(oa::format(
+			"var/alm/Alm_LmLearnsCmpTokens_generated_{}_T{:.1f}.usda",
+			g, temperatures[g]));
 		auto usdSt = oa::Usd::writeUsda(usdPath, skelClip, "humanml3d");
-		std::printf("  [lm cmp] saved generated skeleton %d to %s (%s)\n", g,
+		oa::print("  [lm cmp] saved generated skeleton {} to {} ({})", g,
 			usdPath.cStr(), usdSt.isOk() ? "ok" : usdSt.toString().cStr());
 		EXPECT_TRUE(usdSt.isOk()) << "Failed to write generated motion .usda";
 	}
@@ -2089,12 +2077,12 @@ TEST(Alm, LmLearnsCmpTokens) {
 	// clip. Count distinct generated streams — mode-collapse (identical tokens
 	// regardless of temperature) would leave only 1.
 	oa::I32 distinct = 0;
-	for (size_t i = 0; i < genStreams.size(); ++i) {
+	for (oa::Usize i = 0; i < genStreams.size(); ++i) {
 		bool isNew = true;
-		for (size_t j = 0; j < i; ++j) { if (genStreams[j] == genStreams[i]) { isNew = false; break; } }
+		for (oa::Usize j = 0; j < i; ++j) { if (genStreams[j] == genStreams[i]) { isNew = false; break; } }
 		if (isNew) ++distinct;
 	}
-	std::printf("  [lm cmp] generation diversity: %d/%zu distinct token streams across T=1/2/3\n",
+	oa::print("  [lm cmp] generation diversity: {}/{} distinct token streams across T=1/2/3",
 		distinct, genStreams.size());
 	EXPECT_GT(distinct, 1) << "generation mode-collapsed — all temperatures produced identical tokens";
 

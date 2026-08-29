@@ -64,7 +64,9 @@ OA_MAIN("ExampleCoreMatrix") {
 		}
 	}
 
-	oa::puts("Matrix addition verified: every value is 3");
+	if (not oa::print("Matrix addition verified: every value is 3").isOk()) {
+		return 1;
+	}
 	return 0;
 }
 ```

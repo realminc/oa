@@ -18,7 +18,7 @@ bool validImage(const oa::Matrix& inImage, const char* inOperation) {
 	if (shape.rank == 4 && shape[0] > 0 && shape[1] > 0 &&
 		shape[2] > 0 && shape[3] > 0 && inImage.hasStorage()) return true;
 	OaLogWarn(oa::LogComponent::Vision,
-		"oa::FnImage::%s expects a stored non-empty [B,C,H,W] tensor", inOperation);
+		"oa::FnImage::{} expects a stored non-empty [B,C,H,W] tensor", inOperation);
 	return false;
 }
 

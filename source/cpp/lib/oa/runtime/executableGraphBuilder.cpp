@@ -19,8 +19,8 @@ oa::Status oa::ExecutableGraphBuilder::record(const oa::ComputeDispatchDesc& inD
 	}
 	if (inDesc.access.size() != inDesc.buffers.size()) {
 		OaLogError(oa::LogComponent::Compute,
-			"oa::ExecutableGraphBuilder::record '%.*s': access=%zu buffers=%zu",
-			static_cast<int>(inDesc.kernel.size()), inDesc.kernel.data(),
+			"oa::ExecutableGraphBuilder::record '{}': access={} buffers={}",
+			inDesc.kernel,
 			inDesc.access.size(), inDesc.buffers.size());
 		return oa::Status::error(oa::StatusCode::InvalidArgument,
 			"graph builder record: buffer access count mismatch");
@@ -79,8 +79,8 @@ oa::Status oa::ExecutableGraphBuilder::record(const oa::ComputeDispatchDesc& inD
 				+ inDesc.pushSize;
 			if (assembled != declared) {
 				OaLogError(oa::LogComponent::Compute,
-					"bindless push mismatch for '%s': %u buffers * 4 + %u push "
-					"tail = %u, shader declares %u bytes",
+					"bindless push mismatch for '{}': {} buffers * 4 + {} push "
+					"tail = {}, shader declares {} bytes",
 					kernelName.cStr(), static_cast<oa::U32>(inDesc.buffers.size()),
 					inDesc.pushSize, assembled, declared);
 				if (not oa::EnvFlag::isSet("OA_DISABLE_PUSH_CHECK")) {

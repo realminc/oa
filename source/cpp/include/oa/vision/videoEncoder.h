@@ -74,6 +74,7 @@ struct VideoEncodeCapabilities {
 	oa::U32 pictureAccessGranularityHeight      = 1;
 	oa::U32 maxDpbSlots                         = 0;
 	oa::U32 maxActiveReferencePictures          = 0;
+	oa::U32 maxLevel                            = 0;
 	oa::U32 maxBitrate                          = 0;   // bits/sec (0 = unknown / unlimited)
 	oa::U32 maxQualityLevels                    = 1;
 	oa::U64 minBitstreamBufferOffsetAlignment   = 0;

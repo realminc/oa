@@ -656,6 +656,23 @@ if(TARGET oa_shaders)
 	add_dependencies(BenchDeviceRoofline oa_shaders)
 endif()
 
+# Local decode -> conversion -> presentation-ready and image-backed
+# decode -> conversion -> encode timing. Deliberately not registered with
+# CTest; correctness is mandatory, while canonical performance evidence uses
+# seven fresh processes through tools/diagnostics/oaBench.py.
+add_executable(BenchVideoRealtime
+	cpp/vision/codec/benchVideoRealtime.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/cpp/ml/mlTestMain.cpp)
+target_link_libraries(BenchVideoRealtime PRIVATE oa GTest::gtest)
+target_include_directories(BenchVideoRealtime PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/cpp)
+target_compile_options(BenchVideoRealtime PRIVATE
+	-include ${CMAKE_CURRENT_SOURCE_DIR}/cpp/oaTestVk.h)
+set_target_properties(BenchVideoRealtime PROPERTIES
+	RUNTIME_OUTPUT_DIRECTORY "${OA_BIN_DIR}/test/vision/codec")
+if(TARGET oa_shaders)
+	add_dependencies(BenchVideoRealtime oa_shaders)
+endif()
+
 foreach(TARGET IN ITEMS
 	BenchUploadRing
 	BenchMamba3
@@ -663,7 +680,8 @@ foreach(TARGET IN ITEMS
 	BenchTransformerComponents
 	BenchGemmVariants
 	BenchFnMatrixQuant
-	BenchDeviceRoofline)
+	BenchDeviceRoofline
+	BenchVideoRealtime)
 	oa_add_private_test_includes(${TARGET})
 endforeach()
 

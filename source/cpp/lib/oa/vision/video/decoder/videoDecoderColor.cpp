@@ -10,7 +10,9 @@
 #include <oa/runtime/engine/allocatorAccess.h>
 #include <oa/runtime/engine/deviceAccess.h>
 #include <oa/runtime/engine/submissionAccess.h>
+#include <oa/runtime/engine/bindlessAccess.h>
 #include <oa/runtime/imageDispatch.h>
+#include <oa/runtime/spirv.h>
 #include <oa/runtime/stream.h>
 #include <vma/vma.hpp>
 #include <oa/core/fnMatrix.h>
@@ -21,16 +23,6 @@ static oa::F32 clampUnit(oa::F32 inValue)
 	if (inValue < 0.0F) return 0.0F;
 	if (inValue > 1.0F) return 1.0F;
 	return inValue;
-}
-
-static VkSamplerYcbcrModelConversion toVkYcbcrModel(oa::YCbCrModel inColorSpace, oa::U32 inWidth, oa::U32 inHeight) {
-	if (inColorSpace == oa::YCbCrModel::BT2020) {
-		return VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_2020;
-	}
-	if (inColorSpace == oa::YCbCrModel::BT709 || inWidth >= 1280 || inHeight >= 720) {
-		return VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_709;
-	}
-	return VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_601;
 }
 
 static oa::U32 toVisionColorSpace(oa::YCbCrModel inColorSpace, oa::U32 inWidth, oa::U32 inHeight)
@@ -44,6 +36,50 @@ static oa::U32 toVisionColorSpace(oa::YCbCrModel inColorSpace, oa::U32 inWidth, 
 	return 0;
 }
 
+static VkSamplerYcbcrModelConversion toVkYcbcrModel(
+	oa::YCbCrModel inColorSpace,
+	oa::U32 inWidth,
+	oa::U32 inHeight)
+{
+	switch (toVisionColorSpace(inColorSpace, inWidth, inHeight)) {
+		case 2U: return VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_2020;
+		case 1U: return VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_709;
+		default: return VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_601;
+	}
+}
+
+static oa::U32 ycbcrPipelineIndex(
+	oa::YCbCrModel inColorSpace,
+	oa::U32 inWidth,
+	oa::U32 inHeight,
+	bool inFullRange,
+	oa::Filter inFilter)
+{
+	const oa::U32 model = toVisionColorSpace(inColorSpace, inWidth, inHeight);
+	const oa::U32 range = inFullRange ? 1U : 0U;
+	const oa::U32 filter = inFilter == oa::Filter::Linear ? 1U : 0U;
+	return (model * 2U + range) * 2U + filter;
+}
+
+static bool isDecodedYuv420Format(VkFormat inFormat)
+{
+	return inFormat == VK_FORMAT_G8_B8R8_2PLANE_420_UNORM
+		or inFormat == VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16;
+}
+
+static oa::U32 decodedBitDepth(VkFormat inFormat)
+{
+	if (inFormat == VK_FORMAT_G8_B8R8_2PLANE_420_UNORM) return 8U;
+	if (inFormat == VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16) return 10U;
+	return 0U;
+}
+
+static oa::U32 decodedBytesPerComponent(VkFormat inFormat)
+{
+	return inFormat == VK_FORMAT_G8_B8R8_2PLANE_420_UNORM ? 1U
+		: isDecodedYuv420Format(inFormat) ? 2U : 0U;
+}
+
 oa::Result<oa::Vector<oa::U8>> oa::VideoDecoder::readbackLuma(const oa::VideoFrame& inFrame)
 {
 	if (!impl_->engine || impl_->session.handle() == VK_NULL_HANDLE || !impl_->commandBuffers[0]) {
@@ -52,11 +88,17 @@ oa::Result<oa::Vector<oa::U8>> oa::VideoDecoder::readbackLuma(const oa::VideoFra
 	if (!inFrame.image || inFrame.width == 0 || inFrame.height == 0) {
 		return oa::Status::error(oa::StatusCode::InvalidArgument, "Invalid video frame for luma readback");
 	}
+	const oa::U32 bytesPerComponent = decodedBytesPerComponent(inFrame.format);
+	if (bytesPerComponent == 0U) {
+		return oa::Status::error(oa::StatusCode::InvalidArgument,
+			"luma readback requires an NV12 or P010 frame");
+	}
 	OA_RETURN_IF_ERROR(inFrame.ready.wait());
 
 	auto& vkEngine = *impl_->engine;
 	auto allocator = static_cast<vma::Allocator>(oa::EngineAllocatorAccess::get(vkEngine).allocator);
-	const oa::U64 byteSize = static_cast<oa::U64>(inFrame.width) * inFrame.height;
+	const oa::U64 byteSize = static_cast<oa::U64>(inFrame.width)
+		* inFrame.height * bytesPerComponent;
 
 	VkBufferCreateInfo bufferInfo = {};
 	bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -141,7 +183,11 @@ oa::Result<oa::Vector<oa::U8>> oa::VideoDecoder::readbackLuma(const oa::VideoFra
 	toTransfer.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	toTransfer.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	toTransfer.image = inFrame.image;
-	toTransfer.subresourceRange.aspectMask = VK_IMAGE_ASPECT_PLANE_0_BIT;
+	// Layout tracking is image-layer-wide in VideoDecoder. Transition both
+	// planes together even though this helper copies luma only; otherwise a
+	// later full YUV readback would treat plane 1 as TRANSFER_SRC while Vulkan
+	// still tracks it in VIDEO_DECODE_DPB (VUID 09600).
+	toTransfer.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 	toTransfer.subresourceRange.baseMipLevel = 0;
 	toTransfer.subresourceRange.levelCount = 1;
 	toTransfer.subresourceRange.baseArrayLayer = inFrame.arrayLayer;
@@ -216,15 +262,26 @@ oa::Result<oa::Vector<oa::U8>> oa::VideoDecoder::readbackLuma(const oa::VideoFra
 	return data;
 }
 
-oa::Result<oa::Vector<oa::U8>> oa::VideoDecoder::readbackNv12(const oa::VideoFrame& inFrame) {
+oa::Result<oa::Vector<oa::U8>> oa::VideoDecoder::readbackNv12(const oa::VideoFrame& inFrame)
+{
+	if (inFrame.format != VK_FORMAT_G8_B8R8_2PLANE_420_UNORM) {
+		return oa::Status::error(oa::StatusCode::InvalidArgument,
+			"readbackNv12 requires VK_FORMAT_G8_B8R8_2PLANE_420_UNORM");
+	}
+	return readbackYuv420(inFrame);
+}
+
+oa::Result<oa::Vector<oa::U8>> oa::VideoDecoder::readbackYuv420(const oa::VideoFrame& inFrame) {
 	if (!impl_->engine || impl_->session.handle() == VK_NULL_HANDLE || !impl_->commandBuffers[0]) {
 		return oa::Status::error("Video decoder not initialized");
 	}
 	if (!inFrame.image || inFrame.width == 0 || inFrame.height == 0) {
-		return oa::Status::error(oa::StatusCode::InvalidArgument, "Invalid video frame for NV12 readback");
+		return oa::Status::error(oa::StatusCode::InvalidArgument, "Invalid video frame for YUV420 readback");
 	}
-	if (inFrame.format != VK_FORMAT_G8_B8R8_2PLANE_420_UNORM) {
-		return oa::Status::error(oa::StatusCode::InvalidArgument, "readbackNv12 requires VK_FORMAT_G8_B8R8_2PLANE_420_UNORM");
+	const oa::U32 bytesPerComponent = decodedBytesPerComponent(inFrame.format);
+	if (bytesPerComponent == 0U) {
+		return oa::Status::error(oa::StatusCode::InvalidArgument,
+			"readbackYuv420 requires an NV12 or P010 frame");
 	}
 	OA_RETURN_IF_ERROR(inFrame.ready.wait());
 
@@ -237,14 +294,15 @@ oa::Result<oa::Vector<oa::U8>> oa::VideoDecoder::readbackNv12(const oa::VideoFra
 		if (inFrame.arrayLayer >= impl_->sampleImages.size()) {
 			return oa::Status::error(
 				oa::StatusCode::InvalidArgument,
-				"NV12 readback staging layer is unavailable");
+				"YUV420 readback staging layer is unavailable");
 		}
 		readbackImage = impl_->sampleImages[inFrame.arrayLayer];
 		readbackLayer = 0;
 		isSampleStaging = true;
 	}
 	auto allocator = static_cast<vma::Allocator>(oa::EngineAllocatorAccess::get(vkEngine).allocator);
-	const oa::U64 lumaBytes = static_cast<oa::U64>(inFrame.width) * inFrame.height;
+	const oa::U64 lumaBytes = static_cast<oa::U64>(inFrame.width)
+		* inFrame.height * bytesPerComponent;
 	const oa::U64 chromaBytes = lumaBytes / 2;
 	const oa::U64 byteSize = lumaBytes + chromaBytes;
 
@@ -269,7 +327,7 @@ oa::Result<oa::Vector<oa::U8>> oa::VideoDecoder::readbackNv12(const oa::VideoFra
 		&readbackAllocation,
 		&readbackInfo);
 	if (result != VK_SUCCESS) {
-		return oa::Status::error(oa::StatusCode::OutOfMemory, "Failed to allocate video NV12 readback buffer");
+		return oa::Status::error(oa::StatusCode::OutOfMemory, "Failed to allocate video YUV420 readback buffer");
 	}
 
 	auto cleanup = [&]() {
@@ -302,7 +360,7 @@ oa::Result<oa::Vector<oa::U8>> oa::VideoDecoder::readbackNv12(const oa::VideoFra
 	oavk::Stream* stream = oa::EngineSubmissionAccess::acquireStream(vkEngine);
 	if (stream == nullptr) {
 		cleanup();
-		return oa::Status::error(oa::StatusCode::VulkanError, "Failed to acquire compute stream for NV12 readback");
+		return oa::Status::error(oa::StatusCode::VulkanError, "Failed to acquire compute stream for YUV420 readback");
 	}
 	oa::Status beginStatus = stream->begin(oa::EngineDeviceAccess::get(vkEngine));
 	if (!beginStatus.isOk()) {
@@ -408,7 +466,7 @@ oa::Result<oa::Vector<oa::U8>> oa::VideoDecoder::readbackNv12(const oa::VideoFra
 	result = vma::invalidateAllocation(allocator, readbackAllocation, 0, byteSize);
 	if (result != VK_SUCCESS) {
 		cleanup();
-		return oa::Status::error(oa::StatusCode::VulkanError, "Failed to invalidate video NV12 readback allocation");
+		return oa::Status::error(oa::StatusCode::VulkanError, "Failed to invalidate video YUV420 readback allocation");
 	}
 
 	oa::Vector<oa::U8> data(static_cast<oa::Usize>(byteSize));
@@ -743,7 +801,7 @@ oa::Status oa::VideoDecoder::restoreDpbLayerToDecodeLayoutAfter(
 	if (!impl_->engine || !impl_->commandBuffers[0] || !inFrame.image) {
 		return oa::Status::ok();
 	}
-	if (inFrame.isRgb || inFrame.format != VK_FORMAT_G8_B8R8_2PLANE_420_UNORM) {
+	if (inFrame.isRgb || !isDecodedYuv420Format(inFrame.format)) {
 		return oa::Status::ok();
 	}
 	bool isOutput = false;
@@ -995,78 +1053,13 @@ oa::Status oa::VideoDecoder::transitionFrameForSampledRead(const oa::VideoFrame&
 		// the failed submit never gave it to the GPU, so resetting would leave it
 		// permanently unsignaled and deadlock the next acquireVideoCmdSlot.
 		releaseVideoCmdSlot();
-		OaLogError(oa::LogComponent::Video, "vkQueueSubmit failed for sampled read transition, VkResult=%d", (int)result);
+		OaLogError(oa::LogComponent::Video, "vkQueueSubmit failed for sampled read transition, VkResult={}", (int)result);
 		return oa::Status::error(oa::StatusCode::VulkanError,
 			"vkQueueSubmit failed for sampled read transition");
 	}
 	impl_->timelineValue = signalValue;
 	releaseVideoCmdSlot();
 	setFrameLayout(isOutput, imageIndex, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-	return oa::Status::ok();
-}
-
-oa::Status oa::VideoDecoder::ensureYcbcrSampler(oa::YCbCrModel inColorSpace, oa::Filter inFilter)
-{
-	if (!impl_->engine) {
-		return oa::Status::error("Video decoder not initialized");
-	}
-	auto& vkEngine = *impl_->engine;
-	if (!oa::EngineDeviceAccess::get(vkEngine).info.software.hasSamplerYcbcrConversion) {
-		return oa::Status::error(oa::StatusCode::Unavailable, "VK_KHR_sampler_ycbcr_conversion is not supported");
-	}
-
-	VkSampler* targetSampler = (inFilter == oa::Filter::Nearest)
-		? &impl_->ycbcrSamplerNearest : &impl_->ycbcrSampler;
-	if (*targetSampler && impl_->ycbcrConversion) {
-		return oa::Status::ok();
-	}
-
-	VkDevice device = static_cast<VkDevice>(oa::EngineDeviceAccess::get(vkEngine).device);
-	if (!impl_->ycbcrConversion) {
-		VkSamplerYcbcrConversionCreateInfo conversionInfo = {};
-		conversionInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_CREATE_INFO;
-		conversionInfo.format = VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
-		conversionInfo.ycbcrModel = toVkYcbcrModel(inColorSpace, impl_->profile.width, impl_->profile.height);
-		conversionInfo.ycbcrRange = VK_SAMPLER_YCBCR_RANGE_ITU_NARROW;
-		conversionInfo.components = {
-			VK_COMPONENT_SWIZZLE_IDENTITY,
-			VK_COMPONENT_SWIZZLE_IDENTITY,
-			VK_COMPONENT_SWIZZLE_IDENTITY,
-			VK_COMPONENT_SWIZZLE_IDENTITY};
-		conversionInfo.xChromaOffset = VK_CHROMA_LOCATION_MIDPOINT;
-		conversionInfo.yChromaOffset = VK_CHROMA_LOCATION_MIDPOINT;
-		conversionInfo.chromaFilter = VK_FILTER_LINEAR;
-		conversionInfo.forceExplicitReconstruction = VK_FALSE;
-
-		VkResult result = oa::EngineDeviceAccess::get(*impl_->engine).deviceDispatch.vkCreateSamplerYcbcrConversion(device, &conversionInfo, nullptr, &impl_->ycbcrConversion);
-		if (result != VK_SUCCESS) {
-			return oa::Status::error(oa::StatusCode::VulkanError, "Failed to create YCbCr sampler conversion");
-		}
-	}
-
-	VkSamplerYcbcrConversionInfo samplerConversion = {};
-	samplerConversion.sType = VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO;
-	samplerConversion.conversion = impl_->ycbcrConversion;
-
-	const VkFilter vkFilter = (inFilter == oa::Filter::Nearest)
-		? VK_FILTER_NEAREST : VK_FILTER_LINEAR;
-	VkSamplerCreateInfo samplerInfo = {};
-	samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-	samplerInfo.pNext = &samplerConversion;
-	samplerInfo.magFilter = vkFilter;
-	samplerInfo.minFilter = vkFilter;
-	samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
-	samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-	samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-	samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-	samplerInfo.minLod = 0.0f;
-	samplerInfo.maxLod = 0.0f;
-
-	VkResult result = oa::EngineDeviceAccess::get(*impl_->engine).deviceDispatch.vkCreateSampler(device, &samplerInfo, nullptr, targetSampler);
-	if (result != VK_SUCCESS) {
-		return oa::Status::error(oa::StatusCode::VulkanError, "Failed to create YCbCr sampler");
-	}
-
 	return oa::Status::ok();
 }
 
@@ -1246,93 +1239,17 @@ oa::Result<oa::Matrix> oa::VideoDecoder::convertFrameToBf16Hardware(
 	const oa::VideoFrame& inFrame,
 	bool inNormalizeImageNet)
 {
+	(void)inNormalizeImageNet;
 	if (!impl_->engine) {
 		return oa::Status::error("Video decoder not initialized");
 	}
-	if (!inFrame.image || inFrame.format != VK_FORMAT_G8_B8R8_2PLANE_420_UNORM) {
-		return oa::Status::error(oa::StatusCode::InvalidArgument, "convertFrameToBf16Hardware requires an NV12 frame");
+	if (!inFrame.image || !isDecodedYuv420Format(inFrame.format)) {
+		return oa::Status::error(oa::StatusCode::InvalidArgument,
+			"convertFrameToBf16Hardware requires an NV12 or P010 frame");
 	}
-	OA_RETURN_IF_ERROR(ensureYcbcrSampler(oa::YCbCrModel::Auto));
-	OA_RETURN_IF_ERROR(transitionFrameForSampledRead(inFrame));
-
-	auto& vkEngine = *impl_->engine;
-	VkDevice device = static_cast<VkDevice>(oa::EngineDeviceAccess::get(vkEngine).device);
-
-	VkSamplerYcbcrConversionInfo viewConversion = {};
-	viewConversion.sType = VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO;
-	viewConversion.conversion = impl_->ycbcrConversion;
-
-	VkImageViewCreateInfo viewInfo = {};
-	viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-	viewInfo.pNext = &viewConversion;
-	viewInfo.image = inFrame.image;
-	viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-	viewInfo.format = VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
-	viewInfo.components = {
-		VK_COMPONENT_SWIZZLE_IDENTITY,
-		VK_COMPONENT_SWIZZLE_IDENTITY,
-		VK_COMPONENT_SWIZZLE_IDENTITY,
-		VK_COMPONENT_SWIZZLE_IDENTITY};
-	viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	viewInfo.subresourceRange.baseMipLevel = 0;
-	viewInfo.subresourceRange.levelCount = 1;
-	viewInfo.subresourceRange.baseArrayLayer = 0;
-	viewInfo.subresourceRange.layerCount = 1;
-
-	VkImageView ycbcrView = VK_NULL_HANDLE;
-	VkResult result = oa::EngineDeviceAccess::get(*impl_->engine).deviceDispatch.vkCreateImageView(device, &viewInfo, nullptr, &ycbcrView);
-	if (result != VK_SUCCESS) {
-		return oa::Status::error(oa::StatusCode::VulkanError, "Failed to create YCbCr video frame image view");
-	}
-
-	auto output = oa::FnMatrix::empty(oa::MatrixShape{1, 3, inFrame.height, inFrame.width}, oa::ScalarType::BFloat16);
-	struct Push {
-		oa::U32 width;
-		oa::U32 height;
-		oa::U32 codedWidth;
-		oa::U32 codedHeight;
-		oa::U32 normalize;
-	};
-	Push push = {
-		.width = inFrame.width,
-		.height = inFrame.height,
-		.codedWidth = impl_->codedWidth,
-		.codedHeight = impl_->codedHeight,
-		.normalize = inNormalizeImageNet ? 1U : 0U
-	};
-
-	oavk::ImageDispatchBinding bindings[3] = {};
-	bindings[0].kind = oavk::DescriptorKind::StorageBuffer;
-	bindings[0].binding = 0;
-	bindings[0].buffer = oa::MatrixAccess::descriptor(output);
-	bindings[1].kind = oavk::DescriptorKind::SampledImage;
-	bindings[1].binding = 1;
-	bindings[1].imageView = ycbcrView;
-	bindings[1].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-	bindings[2].kind = oavk::DescriptorKind::Sampler;
-	bindings[2].binding = 2;
-	// ensureYcbcrSampler defaults to nearest for exact video texel sampling.
-	// Bind the sampler it actually created; impl_->ycbcrSampler is the separate
-	// linear-filter cache and remains null on this path.
-	bindings[2].sampler = impl_->ycbcrSamplerNearest;
-
-	oa::Status status = oavk::ImageDispatch::run(
-		vkEngine,
-		"CvtNv12YcbcrToBf16",
-		oa::Span<const oavk::ImageDispatchBinding>(bindings, 3),
-		&push,
-		sizeof(push),
-		oa::ScalarType::BFloat16,
-		oa::divCeil(inFrame.width, 16),
-		oa::divCeil(inFrame.height, 16),
-		1);
-	oa::EngineDeviceAccess::get(*impl_->engine).deviceDispatch.vkDestroyImageView(device, ycbcrView, nullptr);
-	if (!status.isOk()) {
-		return status;
-	}
-	return output;
+	return oa::Status::error(oa::StatusCode::Unavailable,
+		"hardware YCbCr conversion requires a sampler-specific immutable descriptor layout");
 }
-
 oa::Result<oa::Matrix> oa::VideoDecoder::convertFrameToBf16(const oa::VideoFrame& inFrame, bool inNormalizeImageNet) {
 	auto hardwareResult = convertFrameToBf16Hardware(inFrame, inNormalizeImageNet);
 	if (hardwareResult.isOk()) {
@@ -1403,7 +1320,7 @@ oa::Result<oa::Matrix> oa::VideoDecoder::decodeFrameToBf16(
 // phase 2.5: NV12 to RGB/BF16 conversion
 // ============================================================================
 
-// convert NV12 frame to RGB using hardware or compute shader
+// Convert an NV12 frame to RGB using the validated compute path.
 oa::Status oa::VideoDecoder::convertNv12ToRgb(
 	const oa::VideoFrame& inNv12Frame,
 	const oa::VideoConversionOptions& inOptions,
@@ -1427,15 +1344,11 @@ oa::Status oa::VideoDecoder::convertNv12ToRgb(
 		return oa::Status::ok();
 	}
 
-	// route to hardware or compute path based on options
-	if (inOptions.preferHardwareYCbCr && hasHardwareYCbCrConversion(*impl_->engine))
-	{
-		return convertNv12ToRgbHardware(inNv12Frame, inOptions.colorSpace, outRgbFrame, inOptions.filter);
-	}
-	else
-	{
-		return convertNv12ToRgbCompute(inNv12Frame, inOptions.colorSpace, outRgbFrame, inOptions.filter);
-	}
+	return convertNv12ToRgbCompute(
+		inNv12Frame,
+		inOptions.colorSpace,
+		outRgbFrame,
+		inOptions.filter);
 }
 
 oa::Status oa::VideoDecoder::convertFrameToRgba(
@@ -1468,6 +1381,375 @@ oa::Status oa::VideoDecoder::convertNv12ToRgbInto(
 	return oa::Status::ok();
 }
 
+oa::Result<oa::Event> oa::VideoDecoder::convertNv12ToRgbHardwareIntoAsync(
+	const oa::VideoFrame& inYcbcrFrame,
+	const oa::VideoConversionOptions& inOptions,
+	const oa::VideoFrame& inRgbTarget)
+{
+	if (!impl_->engine || !hasHardwareYCbCrConversion(*impl_->engine)) {
+		return oa::Status::error(oa::StatusCode::Unavailable,
+			"sampler YCbCr conversion is unavailable");
+	}
+	if (!isDecodedYuv420Format(inYcbcrFrame.format)) {
+		return oa::Status::error(oa::StatusCode::Unavailable,
+			"sampler YCbCr conversion requires NV12 or P010");
+	}
+
+	auto& engine = *impl_->engine;
+	auto& device = oa::EngineDeviceAccess::get(engine);
+	const VkDevice vkDevice = static_cast<VkDevice>(device.device);
+	const VkPhysicalDevice physicalDevice =
+		static_cast<VkPhysicalDevice>(device.physicalDevice);
+	const VkFilter filter = inOptions.filter == oa::Filter::Linear
+		? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
+
+	VkFormatProperties2 formatProperties = {};
+	formatProperties.sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2;
+	device.instanceDispatch.vkGetPhysicalDeviceFormatProperties2(
+		physicalDevice, inYcbcrFrame.format, &formatProperties);
+	const VkFormatFeatureFlags features =
+		formatProperties.formatProperties.optimalTilingFeatures;
+	const VkFormatFeatureFlags required =
+		VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT
+		| VK_FORMAT_FEATURE_MIDPOINT_CHROMA_SAMPLES_BIT;
+	if ((features & required) != required
+		or (filter == VK_FILTER_LINEAR
+			and (features & VK_FORMAT_FEATURE_SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER_BIT) == 0)) {
+		return oa::Status::error(oa::StatusCode::Unavailable,
+			"decoded format lacks the required sampler YCbCr conversion features");
+	}
+
+	const oa::U32 stateIndex = ycbcrPipelineIndex(
+		inOptions.colorSpace,
+		inYcbcrFrame.width,
+		inYcbcrFrame.height,
+		inYcbcrFrame.fullRange,
+		inOptions.filter);
+	auto& state = impl_->ycbcrPipelines[stateIndex];
+
+	auto destroyState = [&]() {
+		for (auto& entry : state.descriptors) {
+			if (entry.view != VK_NULL_HANDLE) {
+				device.deviceDispatch.vkDestroyImageView(vkDevice, entry.view, nullptr);
+			}
+		}
+		state.descriptors.clear();
+		if (state.rgbaPipeline != VK_NULL_HANDLE) {
+			device.deviceDispatch.vkDestroyPipeline(vkDevice, state.rgbaPipeline, nullptr);
+		}
+		if (state.bf16Pipeline != VK_NULL_HANDLE) {
+			device.deviceDispatch.vkDestroyPipeline(vkDevice, state.bf16Pipeline, nullptr);
+		}
+		if (state.pipelineLayout != VK_NULL_HANDLE) {
+			device.deviceDispatch.vkDestroyPipelineLayout(vkDevice, state.pipelineLayout, nullptr);
+		}
+		if (state.descriptorPool != VK_NULL_HANDLE) {
+			device.deviceDispatch.vkDestroyDescriptorPool(vkDevice, state.descriptorPool, nullptr);
+		}
+		if (state.descriptorSetLayout != VK_NULL_HANDLE) {
+			device.deviceDispatch.vkDestroyDescriptorSetLayout(vkDevice, state.descriptorSetLayout, nullptr);
+		}
+		if (state.sampler != VK_NULL_HANDLE) {
+			device.deviceDispatch.vkDestroySampler(vkDevice, state.sampler, nullptr);
+		}
+		if (state.conversion != VK_NULL_HANDLE) {
+			device.deviceDispatch.vkDestroySamplerYcbcrConversion(
+				vkDevice, state.conversion, nullptr);
+		}
+		state = {};
+	};
+
+	if (state.rgbaPipeline == VK_NULL_HANDLE) {
+		VkPhysicalDeviceImageFormatInfo2 formatInfo = {};
+		formatInfo.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2;
+		formatInfo.format = inYcbcrFrame.format;
+		formatInfo.type = VK_IMAGE_TYPE_2D;
+		formatInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+		formatInfo.usage = VK_IMAGE_USAGE_SAMPLED_BIT;
+		VkSamplerYcbcrConversionImageFormatProperties ycbcrProperties = {};
+		ycbcrProperties.sType = VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_IMAGE_FORMAT_PROPERTIES;
+		VkImageFormatProperties2 imageProperties = {};
+		imageProperties.sType = VK_STRUCTURE_TYPE_IMAGE_FORMAT_PROPERTIES_2;
+		imageProperties.pNext = &ycbcrProperties;
+		const VkResult propertyResult = device.instanceDispatch.vkGetPhysicalDeviceImageFormatProperties2(
+			physicalDevice, &formatInfo, &imageProperties);
+		if (propertyResult != VK_SUCCESS) {
+			return oa::Status::error(oa::StatusCode::Unavailable,
+				"decoded format cannot be queried as a sampled YCbCr image");
+		}
+		state.combinedDescriptorCount = oa::max(
+			1U, ycbcrProperties.combinedImageSamplerDescriptorCount);
+
+		VkSamplerYcbcrConversionCreateInfo conversionInfo = {};
+		conversionInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_CREATE_INFO;
+		conversionInfo.format = inYcbcrFrame.format;
+		conversionInfo.ycbcrModel = toVkYcbcrModel(
+			inOptions.colorSpace, inYcbcrFrame.width, inYcbcrFrame.height);
+		conversionInfo.ycbcrRange = inYcbcrFrame.fullRange
+			? VK_SAMPLER_YCBCR_RANGE_ITU_FULL
+			: VK_SAMPLER_YCBCR_RANGE_ITU_NARROW;
+		conversionInfo.components = {
+			VK_COMPONENT_SWIZZLE_IDENTITY,
+			VK_COMPONENT_SWIZZLE_IDENTITY,
+			VK_COMPONENT_SWIZZLE_IDENTITY,
+			VK_COMPONENT_SWIZZLE_IDENTITY};
+		// OA's plane-sampling fallback addresses chroma at texel centers. Match
+		// that reconstruction unless stream-level chroma-location metadata
+		// explicitly selects another siting mode.
+		conversionInfo.xChromaOffset = VK_CHROMA_LOCATION_MIDPOINT;
+		conversionInfo.yChromaOffset = VK_CHROMA_LOCATION_MIDPOINT;
+		conversionInfo.chromaFilter = filter;
+		conversionInfo.forceExplicitReconstruction = VK_FALSE;
+		VkResult result = device.deviceDispatch.vkCreateSamplerYcbcrConversion(
+			vkDevice, &conversionInfo, nullptr, &state.conversion);
+		if (result != VK_SUCCESS) {
+			destroyState();
+			return oa::Status::error(oa::StatusCode::Unavailable,
+				"vkCreateSamplerYcbcrConversion rejected the decoded format");
+		}
+
+		VkSamplerYcbcrConversionInfo samplerConversion = {};
+		samplerConversion.sType = VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO;
+		samplerConversion.conversion = state.conversion;
+		VkSamplerCreateInfo samplerInfo = {};
+		samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+		samplerInfo.pNext = &samplerConversion;
+		samplerInfo.magFilter = filter;
+		samplerInfo.minFilter = filter;
+		samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+		samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+		samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+		samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+		samplerInfo.minLod = 0.0F;
+		samplerInfo.maxLod = 0.0F;
+		result = device.deviceDispatch.vkCreateSampler(
+			vkDevice, &samplerInfo, nullptr, &state.sampler);
+		if (result != VK_SUCCESS) {
+			destroyState();
+			return oa::Status::error(oa::StatusCode::VulkanError,
+				"failed to create immutable YCbCr sampler");
+		}
+
+		VkDescriptorSetLayoutBinding binding = {};
+		binding.binding = 0U;
+		binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		binding.descriptorCount = 1U;
+		binding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+		binding.pImmutableSamplers = &state.sampler;
+		VkDescriptorSetLayoutCreateInfo layoutInfo = {};
+		layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+		layoutInfo.bindingCount = 1U;
+		layoutInfo.pBindings = &binding;
+		result = device.deviceDispatch.vkCreateDescriptorSetLayout(
+			vkDevice, &layoutInfo, nullptr, &state.descriptorSetLayout);
+		if (result != VK_SUCCESS) {
+			destroyState();
+			return oa::Status::error(oa::StatusCode::PipelineError,
+				"failed to create immutable YCbCr descriptor layout");
+		}
+
+		static constexpr oa::U32 kDescriptorCapacity = 64U;
+		VkDescriptorPoolSize poolSize = {};
+		poolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		poolSize.descriptorCount = kDescriptorCapacity * state.combinedDescriptorCount;
+		VkDescriptorPoolCreateInfo poolInfo = {};
+		poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+		poolInfo.maxSets = kDescriptorCapacity;
+		poolInfo.poolSizeCount = 1U;
+		poolInfo.pPoolSizes = &poolSize;
+		result = device.deviceDispatch.vkCreateDescriptorPool(
+			vkDevice, &poolInfo, nullptr, &state.descriptorPool);
+		if (result != VK_SUCCESS) {
+			destroyState();
+			return oa::Status::error(oa::StatusCode::PipelineError,
+				"failed to create YCbCr descriptor pool");
+		}
+
+		auto& bindless = oa::EngineBindlessAccess::get(engine);
+		VkDescriptorSetLayout setLayouts[2] = {
+			static_cast<VkDescriptorSetLayout>(bindless.descriptorSetLayout),
+			state.descriptorSetLayout};
+		VkPushConstantRange pushRange = {};
+		pushRange.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+		pushRange.size = oavk::OA_VK_MAX_PUSH_CONSTANT_BYTES;
+		VkPipelineLayoutCreateInfo pipelineLayoutInfo = {};
+		pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+		pipelineLayoutInfo.setLayoutCount = 2U;
+		pipelineLayoutInfo.pSetLayouts = setLayouts;
+		pipelineLayoutInfo.pushConstantRangeCount = 1U;
+		pipelineLayoutInfo.pPushConstantRanges = &pushRange;
+		result = device.deviceDispatch.vkCreatePipelineLayout(
+			vkDevice, &pipelineLayoutInfo, nullptr, &state.pipelineLayout);
+		if (result != VK_SUCCESS) {
+			destroyState();
+			return oa::Status::error(oa::StatusCode::PipelineError,
+				"failed to create hybrid bindless/YCbCr pipeline layout");
+		}
+
+		const oavk::SpirvEntry* spirv = oavk::findSpirv("CvtNv12YcbcrToRgba");
+		if (spirv == nullptr) {
+			destroyState();
+			return oa::Status::notFound("hardware YCbCr conversion shader not found");
+		}
+		VkShaderModuleCreateInfo moduleInfo = {};
+		moduleInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+		moduleInfo.codeSize = spirv->size;
+		moduleInfo.pCode = reinterpret_cast<const oa::U32*>(spirv->data);
+		VkShaderModule module = VK_NULL_HANDLE;
+		result = device.deviceDispatch.vkCreateShaderModule(
+			vkDevice, &moduleInfo, nullptr, &module);
+		if (result != VK_SUCCESS) {
+			destroyState();
+			return oa::Status::error(oa::StatusCode::ShaderCompileError,
+				"failed to create hardware YCbCr shader module");
+		}
+		VkComputePipelineCreateInfo pipelineInfo = {};
+		pipelineInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+		pipelineInfo.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+		pipelineInfo.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+		pipelineInfo.stage.module = module;
+		pipelineInfo.stage.pName = "main";
+		pipelineInfo.layout = state.pipelineLayout;
+		result = device.deviceDispatch.vkCreateComputePipelines(
+			vkDevice, VK_NULL_HANDLE, 1U, &pipelineInfo, nullptr, &state.rgbaPipeline);
+		device.deviceDispatch.vkDestroyShaderModule(vkDevice, module, nullptr);
+		if (result != VK_SUCCESS) {
+			destroyState();
+			return oa::Status::error(oa::StatusCode::PipelineError,
+				"failed to create hardware YCbCr conversion pipeline");
+		}
+		OaLogInfo(
+			oa::LogComponent::Video,
+			"VideoDecoder: hardware YCbCr active (format={} model={} range={} filter={} descriptorsPerImage={})",
+			static_cast<oa::U32>(inYcbcrFrame.format),
+			toVisionColorSpace(inOptions.colorSpace, inYcbcrFrame.width, inYcbcrFrame.height),
+			inYcbcrFrame.fullRange ? "full" : "narrow",
+			inOptions.filter == oa::Filter::Linear ? "linear" : "nearest",
+			state.combinedDescriptorCount);
+	}
+
+	VkImage sourceImage = inYcbcrFrame.image;
+	oa::U32 sourceLayer = getNv12PlaneArrayLayer(inYcbcrFrame);
+	VkImageLayout sourceLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	if (impl_->useSampleStaging
+		&& !impl_->hardwareSamplesDpbDirectly
+		&& inYcbcrFrame.image == impl_->dpb.getImage()) {
+		OA_RETURN_IF_ERROR(copyDpbLayerToSampleImage(inYcbcrFrame));
+		const oa::U32 layer = inYcbcrFrame.arrayLayer;
+		if (layer >= impl_->sampleImages.size()) {
+			return oa::Status::error(oa::StatusCode::InvalidArgument,
+				"hardware YCbCr staging layer is out of range");
+		}
+		sourceImage = impl_->sampleImages[layer];
+		sourceLayer = 0U;
+		sourceLayout = impl_->sampleImageLayouts[layer];
+	} else {
+		OA_RETURN_IF_ERROR(transitionFrameForSampledRead(inYcbcrFrame));
+	}
+
+	VkDescriptorSet sourceSet = VK_NULL_HANDLE;
+	for (const auto& entry : state.descriptors) {
+		if (entry.image == sourceImage && entry.layer == sourceLayer) {
+			sourceSet = entry.descriptorSet;
+			break;
+		}
+	}
+	if (sourceSet == VK_NULL_HANDLE) {
+		if (state.descriptors.size() >= 64U) {
+			return oa::Status::error(oa::StatusCode::ResourceExhausted,
+				"hardware YCbCr descriptor cache is full");
+		}
+		VkSamplerYcbcrConversionInfo viewConversion = {};
+		viewConversion.sType = VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO;
+		viewConversion.conversion = state.conversion;
+		VkImageViewCreateInfo viewInfo = {};
+		viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+		viewInfo.pNext = &viewConversion;
+		viewInfo.image = sourceImage;
+		viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+		viewInfo.format = inYcbcrFrame.format;
+		viewInfo.components = {
+			VK_COMPONENT_SWIZZLE_IDENTITY,
+			VK_COMPONENT_SWIZZLE_IDENTITY,
+			VK_COMPONENT_SWIZZLE_IDENTITY,
+			VK_COMPONENT_SWIZZLE_IDENTITY};
+		viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		viewInfo.subresourceRange.levelCount = 1U;
+		viewInfo.subresourceRange.baseArrayLayer = sourceLayer;
+		viewInfo.subresourceRange.layerCount = 1U;
+		VkImageView view = VK_NULL_HANDLE;
+		VkResult result = device.deviceDispatch.vkCreateImageView(
+			vkDevice, &viewInfo, nullptr, &view);
+		if (result != VK_SUCCESS) {
+			return oa::Status::error(oa::StatusCode::Unavailable,
+				"decoded image rejected the YCbCr conversion view");
+		}
+
+		VkDescriptorSetAllocateInfo allocateInfo = {};
+		allocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+		allocateInfo.descriptorPool = state.descriptorPool;
+		allocateInfo.descriptorSetCount = 1U;
+		allocateInfo.pSetLayouts = &state.descriptorSetLayout;
+		result = device.deviceDispatch.vkAllocateDescriptorSets(
+			vkDevice, &allocateInfo, &sourceSet);
+		if (result != VK_SUCCESS) {
+			device.deviceDispatch.vkDestroyImageView(vkDevice, view, nullptr);
+			return oa::Status::error(oa::StatusCode::ResourceExhausted,
+				"failed to allocate hardware YCbCr descriptor");
+		}
+		VkDescriptorImageInfo imageInfo = {};
+		imageInfo.sampler = state.sampler;
+		imageInfo.imageView = view;
+		imageInfo.imageLayout = sourceLayout;
+		VkWriteDescriptorSet write = {};
+		write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		write.dstSet = sourceSet;
+		write.dstBinding = 0U;
+		write.descriptorCount = 1U;
+		write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		write.pImageInfo = &imageInfo;
+		device.deviceDispatch.vkUpdateDescriptorSets(vkDevice, 1U, &write, 0U, nullptr);
+		state.descriptors.pushBack({sourceImage, sourceLayer, view, sourceSet});
+	}
+
+	oavk::ImageDispatchBinding output = {};
+	output.kind = oavk::DescriptorKind::StorageImage;
+	output.imageView = inRgbTarget.imageView;
+	output.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+	struct Push {
+		oa::U32 width;
+		oa::U32 height;
+		oa::U32 codedWidth;
+		oa::U32 codedHeight;
+	} push = {
+		.width = inYcbcrFrame.width,
+		.height = inYcbcrFrame.height,
+		.codedWidth = impl_->codedWidth,
+		.codedHeight = impl_->codedHeight};
+	oavk::ImageDispatchPipeline pipeline = {
+		.pipeline = state.rgbaPipeline,
+		.pipelineLayout = state.pipelineLayout,
+		.auxiliaryDescriptorSet = sourceSet};
+	auto ticketResult = oavk::ImageDispatch::runWithPipelineDependencyAsync(
+		engine,
+		pipeline,
+		oa::Span<const oavk::ImageDispatchBinding>(&output, 1U),
+		&push,
+		sizeof(push),
+		oa::divCeil(inYcbcrFrame.width, 16U),
+		oa::divCeil(inYcbcrFrame.height, 16U),
+		1U,
+		impl_->timelineSemaphore,
+		impl_->timelineValue);
+	if (!ticketResult.isOk()) return ticketResult.getStatus();
+	oavk::ImageDispatchTicket ticket = oa::move(*ticketResult);
+	const oa::Event completion = ticket.completion();
+	++impl_->hardwareYcbcrDispatchCount;
+	impl_->lastYcbcrEvent = completion;
+	OA_RETURN_IF_ERROR(restoreDpbLayerToDecodeLayoutAfter(inYcbcrFrame, completion));
+	return completion;
+}
+
 oa::Result<oa::Event> oa::VideoDecoder::convertNv12ToRgbIntoAsync(
 	const oa::VideoFrame& inNv12Frame,
 	const oa::VideoConversionOptions& inOptions,
@@ -1481,112 +1763,27 @@ oa::Result<oa::Event> oa::VideoDecoder::convertNv12ToRgbIntoAsync(
 	if (!impl_->engine) {
 		return oa::Status::error("Video decoder not initialized");
 	}
-	if (!inNv12Frame.image || inNv12Frame.format != VK_FORMAT_G8_B8R8_2PLANE_420_UNORM) {
-		return oa::Status::error(oa::StatusCode::InvalidArgument, "ConvertNv12ToRgbInto requires an NV12 frame");
+	if (!inNv12Frame.image || !isDecodedYuv420Format(inNv12Frame.format)) {
+		return oa::Status::error(oa::StatusCode::InvalidArgument,
+			"ConvertNv12ToRgbInto requires an NV12 or P010 frame");
 	}
 	if (!inRgbTarget.image || !inRgbTarget.imageView || inRgbTarget.format != VK_FORMAT_R8G8B8A8_UNORM) {
 		return oa::Status::error(oa::StatusCode::InvalidArgument, "ConvertNv12ToRgbInto: invalid RGBA target");
 	}
-
-	// Direct video-profile images must use the multiplane YCbCr sampler path.
-	// preferHardwareYCbCr remains a preference for ordinary/staging NV12
-	// images, but mutable R8/R8G8 plane views of a coincident video DPB are
-	// not a portable fallback (ANV loses the device when they are sampled).
-	if (not impl_->useSampleStaging
-		and hasHardwareYCbCrConversion(*impl_->engine)) {
-		OA_RETURN_IF_ERROR(ensureYcbcrSampler(inOptions.colorSpace, inOptions.filter));
-		OA_RETURN_IF_ERROR(transitionFrameForSampledRead(inNv12Frame));
-
-		auto& vkEngine = *impl_->engine;
-		VkDevice device = static_cast<VkDevice>(oa::EngineDeviceAccess::get(vkEngine).device);
-
-		VkImageViewUsageCreateInfo usageInfo = {};
-		usageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_USAGE_CREATE_INFO;
-		usageInfo.usage = VK_IMAGE_USAGE_SAMPLED_BIT;
-
-		VkSamplerYcbcrConversionInfo viewConversion = {};
-		viewConversion.sType = VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO;
-		viewConversion.pNext = &usageInfo;
-		viewConversion.conversion = impl_->ycbcrConversion;
-
-		VkImageViewCreateInfo viewInfo = {};
-		viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-		viewInfo.pNext = &viewConversion;
-		viewInfo.image = inNv12Frame.image;
-		viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-		viewInfo.format = VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
-		viewInfo.components = {
-			VK_COMPONENT_SWIZZLE_IDENTITY,
-			VK_COMPONENT_SWIZZLE_IDENTITY,
-			VK_COMPONENT_SWIZZLE_IDENTITY,
-			VK_COMPONENT_SWIZZLE_IDENTITY};
-		viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		viewInfo.subresourceRange.baseMipLevel = 0;
-		viewInfo.subresourceRange.levelCount = 1;
-		viewInfo.subresourceRange.baseArrayLayer = getNv12PlaneArrayLayer(inNv12Frame);
-		viewInfo.subresourceRange.layerCount = 1;
-
-		VkImageView ycbcrView = VK_NULL_HANDLE;
-		VkResult result = oa::EngineDeviceAccess::get(*impl_->engine).deviceDispatch.vkCreateImageView(device, &viewInfo, nullptr, &ycbcrView);
-		if (result != VK_SUCCESS) {
-			return oa::Status::error(
-				oa::StatusCode::VulkanError,
-				"ConvertNv12ToRgbInto: failed to create YCbCr image view");
+	if (inOptions.preferHardwareYCbCr) {
+		auto hardware = convertNv12ToRgbHardwareIntoAsync(
+			inNv12Frame, inOptions, inRgbTarget);
+		if (hardware.isOk()) return hardware;
+		if (hardware.getStatus().getCode() != oa::StatusCode::Unavailable) {
+			return hardware.getStatus();
 		}
-
-		struct Push {
-			oa::U32 width;
-			oa::U32 height;
-			oa::U32 codedWidth;
-			oa::U32 codedHeight;
-		};
-		Push push = {
-			.width = inNv12Frame.width,
-			.height = inNv12Frame.height,
-			.codedWidth = impl_->codedWidth,
-			.codedHeight = impl_->codedHeight};
-
-		oavk::ImageDispatchBinding bindings[3] = {};
-		bindings[0].kind = oavk::DescriptorKind::StorageImage;
-		bindings[0].binding = 1;
-		bindings[0].imageView = inRgbTarget.imageView;
-		bindings[0].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-		bindings[1].kind = oavk::DescriptorKind::SampledImage;
-		bindings[1].binding = 2;
-		bindings[1].imageView = ycbcrView;
-		bindings[1].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		bindings[2].kind = oavk::DescriptorKind::Sampler;
-		bindings[2].binding = 3;
-		bindings[2].sampler = inOptions.filter == oa::Filter::Nearest
-			? impl_->ycbcrSamplerNearest : impl_->ycbcrSampler;
-
-		auto ticketResult = oavk::ImageDispatch::runWithDependencyAsync(
-			vkEngine,
-			"CvtNv12YcbcrToRgba",
-			oa::Span<const oavk::ImageDispatchBinding>(bindings, 3),
-			&push,
-			sizeof(push),
-			oa::ScalarType::Float32,
-			oa::divCeil(inNv12Frame.width, 16),
-			oa::divCeil(inNv12Frame.height, 16),
-			1,
-			impl_->timelineSemaphore,
-			impl_->timelineValue);
-		if (not ticketResult.isOk()) {
-			oa::EngineDeviceAccess::get(*impl_->engine).deviceDispatch.vkDestroyImageView(device, ycbcrView, nullptr);
-			return ticketResult.getStatus();
-		}
-		oavk::ImageDispatchTicket ticket = oa::move(*ticketResult);
-		ticket.adoptImageView(ycbcrView);
-		for (oa::Usize i = 0; i < impl_->rgbImages.size(); ++i) {
-			if (impl_->rgbImages[i] == inRgbTarget.image && i < impl_->rgbImageLayouts.size()) {
-				impl_->rgbImageLayouts[i] = VK_IMAGE_LAYOUT_GENERAL;
-				break;
-			}
-		}
-		OA_RETURN_IF_ERROR(restoreDpbLayerToDecodeLayoutAfter(
-			inNv12Frame, ticket.completion()));
-		return ticket.completion();
+	}
+	if (impl_->hardwareSamplesDpbDirectly
+		and inNv12Frame.image == impl_->dpb.getImage()
+		and not impl_->useSampleStaging) {
+		return oa::Status::error(
+			oa::StatusCode::Unavailable,
+			"manual YCbCr conversion requires a sampled-plane or transfer-staging path");
 	}
 
 	// Coincident staging: copy DPB to a plain NV12 image, then sample its planes.
@@ -1613,6 +1810,7 @@ oa::Result<oa::Event> oa::VideoDecoder::convertNv12ToRgbIntoAsync(
 			oa::U32 codedHeight;
 			oa::U32 colorSpace;
 			oa::U32 fullRange;
+			oa::U32 bitDepth;
 		};
 
 		oavk::ImageDispatchBinding bindings[4] = {};
@@ -1638,7 +1836,8 @@ oa::Result<oa::Event> oa::VideoDecoder::convertNv12ToRgbIntoAsync(
 			.codedWidth = impl_->codedWidth,
 			.codedHeight = impl_->codedHeight,
 			.colorSpace = toVisionColorSpace(oa::YCbCrModel::Auto, inNv12Frame.width, inNv12Frame.height),
-			.fullRange = 0U};
+			.fullRange = inNv12Frame.fullRange ? 1U : 0U,
+			.bitDepth = decodedBitDepth(inNv12Frame.format)};
 
 		auto& vkEngine = *impl_->engine;
 		const oa::U64 convertWaitValue = impl_->timelineValue;
@@ -1673,8 +1872,12 @@ oa::Result<oa::Event> oa::VideoDecoder::convertNv12ToRgbIntoAsync(
 	}
 
 	const oa::U32 planeLayer = getNv12PlaneArrayLayer(inNv12Frame);
-	VkImageView yView  = getCachedNv12PlaneView(inNv12Frame.image, planeLayer, VK_FORMAT_R8_UNORM,    VK_IMAGE_ASPECT_PLANE_0_BIT);
-	VkImageView uvView = getCachedNv12PlaneView(inNv12Frame.image, planeLayer, VK_FORMAT_R8G8_UNORM, VK_IMAGE_ASPECT_PLANE_1_BIT);
+	VkImageView yView  = getCachedNv12PlaneView(
+		inNv12Frame.image, planeLayer, impl_->decodedYFormat,
+		VK_IMAGE_ASPECT_PLANE_0_BIT);
+	VkImageView uvView = getCachedNv12PlaneView(
+		inNv12Frame.image, planeLayer, impl_->decodedUvFormat,
+		VK_IMAGE_ASPECT_PLANE_1_BIT);
 	VkSampler   sampler = getCachedNv12Sampler(inOptions.filter);
 	if (yView == VK_NULL_HANDLE || uvView == VK_NULL_HANDLE || sampler == VK_NULL_HANDLE) {
 		return oa::Status::error(oa::StatusCode::VulkanError, "ConvertNv12ToRgbInto: failed to cache views/sampler");
@@ -1695,6 +1898,7 @@ oa::Result<oa::Event> oa::VideoDecoder::convertNv12ToRgbIntoAsync(
 		oa::U32 codedHeight;
 		oa::U32 colorSpace;
 		oa::U32 fullRange;
+		oa::U32 bitDepth;
 	};
 
 	oavk::ImageDispatchBinding bindings[4] = {};
@@ -1720,7 +1924,8 @@ oa::Result<oa::Event> oa::VideoDecoder::convertNv12ToRgbIntoAsync(
 		.codedWidth = impl_->codedWidth,
 		.codedHeight = impl_->codedHeight,
 		.colorSpace = toVisionColorSpace(oa::YCbCrModel::Auto, inNv12Frame.width, inNv12Frame.height),
-		.fullRange = 0U};
+		.fullRange = inNv12Frame.fullRange ? 1U : 0U,
+		.bitDepth = decodedBitDepth(inNv12Frame.format)};
 
 	auto& vkEngine = *impl_->engine;
 	const oa::U64 convertWaitValue = impl_->timelineValue;
@@ -1749,120 +1954,6 @@ oa::Result<oa::Event> oa::VideoDecoder::convertNv12ToRgbIntoAsync(
 	OA_RETURN_IF_ERROR(restoreDpbLayerToDecodeLayoutAfter(
 		inNv12Frame, ticket.completion()));
 	return ticket.completion();
-}
-
-// hardware YCbCr conversion path (VK_KHR_sampler_ycbcr_conversion)
-oa::Status oa::VideoDecoder::convertNv12ToRgbHardware(
-	const oa::VideoFrame& inNv12Frame,
-	oa::YCbCrModel inColorSpace,
-	oa::VideoFrame& outRgbFrame,
-	oa::Filter inFilter)
-{
-	if (!impl_->engine) {
-		return oa::Status::error("Video decoder not initialized");
-	}
-	if (!inNv12Frame.image || inNv12Frame.format != VK_FORMAT_G8_B8R8_2PLANE_420_UNORM) {
-		return oa::Status::error(oa::StatusCode::InvalidArgument, "ConvertNv12ToRgbHardware requires an NV12 frame");
-	}
-
-	OA_RETURN_IF_ERROR(ensureYcbcrSampler(inColorSpace, inFilter));
-	OA_RETURN_IF_ERROR(transitionFrameForSampledRead(inNv12Frame));
-
-	auto rgbaResult = acquireConvertedRgbaTarget(
-		inNv12Frame.width,
-		inNv12Frame.height,
-		inNv12Frame.presentationTimestamp);
-	if (!rgbaResult.isOk()) {
-		return rgbaResult.getStatus();
-	}
-	oa::VideoFrame rgbaFrame = *rgbaResult;
-
-	auto& vkEngine = *impl_->engine;
-	VkDevice device = static_cast<VkDevice>(oa::EngineDeviceAccess::get(vkEngine).device);
-
-	VkImageViewUsageCreateInfo usageInfo = {};
-	usageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_USAGE_CREATE_INFO;
-	usageInfo.usage = VK_IMAGE_USAGE_SAMPLED_BIT;
-
-	VkSamplerYcbcrConversionInfo viewConversion = {};
-	viewConversion.sType = VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO;
-	viewConversion.pNext = &usageInfo;
-	viewConversion.conversion = impl_->ycbcrConversion;
-
-	VkImageViewCreateInfo viewInfo = {};
-	viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-	viewInfo.pNext = &viewConversion;
-	viewInfo.image = inNv12Frame.image;
-	viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-	viewInfo.format = VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
-	viewInfo.components = {
-		VK_COMPONENT_SWIZZLE_IDENTITY,
-		VK_COMPONENT_SWIZZLE_IDENTITY,
-		VK_COMPONENT_SWIZZLE_IDENTITY,
-		VK_COMPONENT_SWIZZLE_IDENTITY};
-	viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	viewInfo.subresourceRange.baseMipLevel = 0;
-	viewInfo.subresourceRange.levelCount = 1;
-	viewInfo.subresourceRange.baseArrayLayer = getNv12PlaneArrayLayer(inNv12Frame);
-	viewInfo.subresourceRange.layerCount = 1;
-
-	VkImageView ycbcrView = VK_NULL_HANDLE;
-	VkResult result = oa::EngineDeviceAccess::get(*impl_->engine).deviceDispatch.vkCreateImageView(device, &viewInfo, nullptr, &ycbcrView);
-	if (result != VK_SUCCESS) {
-		return oa::Status::error(oa::StatusCode::VulkanError, "Failed to create YCbCr video frame image view");
-	}
-
-	struct Push {
-		oa::U32 width;
-		oa::U32 height;
-		oa::U32 codedWidth;
-		oa::U32 codedHeight;
-	};
-	Push push = {
-		.width = inNv12Frame.width,
-		.height = inNv12Frame.height,
-		.codedWidth = impl_->codedWidth,
-		.codedHeight = impl_->codedHeight};
-
-	oavk::ImageDispatchBinding bindings[3] = {};
-	bindings[0].kind = oavk::DescriptorKind::StorageImage;
-	bindings[0].binding = 1;
-	bindings[0].imageView = rgbaFrame.imageView;
-	bindings[0].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-	bindings[1].kind = oavk::DescriptorKind::SampledImage;
-	bindings[1].binding = 2;
-	bindings[1].imageView = ycbcrView;
-	bindings[1].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-	bindings[2].kind = oavk::DescriptorKind::Sampler;
-	bindings[2].binding = 3;
-	bindings[2].sampler = (inFilter == oa::Filter::Nearest)
-		? impl_->ycbcrSamplerNearest : impl_->ycbcrSampler;
-
-	oa::Status status = oavk::ImageDispatch::runWithDependency(
-		vkEngine,
-		"CvtNv12YcbcrToRgba",
-		oa::Span<const oavk::ImageDispatchBinding>(bindings, 3),
-		&push,
-		sizeof(push),
-		oa::ScalarType::Float32,
-		oa::divCeil(inNv12Frame.width, 16),
-		oa::divCeil(inNv12Frame.height, 16),
-		1,
-		impl_->timelineSemaphore,
-		impl_->timelineValue);
-	oa::EngineDeviceAccess::get(*impl_->engine).deviceDispatch.vkDestroyImageView(device, ycbcrView, nullptr);
-	if (!status.isOk()) {
-		return status;
-	}
-
-	for (oa::Usize i = 0; i < impl_->rgbImages.size(); ++i) {
-		if (impl_->rgbImages[i] == rgbaFrame.image && i < impl_->rgbImageLayouts.size()) {
-			impl_->rgbImageLayouts[i] = VK_IMAGE_LAYOUT_GENERAL;
-			break;
-		}
-	}
-	outRgbFrame = rgbaFrame;
-	return oa::Status::ok();
 }
 
 VkSampler oa::VideoDecoder::getCachedNv12Sampler(oa::Filter inFilter) {
@@ -1985,8 +2076,9 @@ oa::Status oa::VideoDecoder::convertNv12ToRgbCompute(
 	if (!impl_->engine) {
 		return oa::Status::error("Runtime not initialized");
 	}
-	if (!inNv12Frame.image || inNv12Frame.format != VK_FORMAT_G8_B8R8_2PLANE_420_UNORM) {
-		return oa::Status::error(oa::StatusCode::InvalidArgument, "ConvertNv12ToRgbCompute requires an NV12 frame");
+	if (!inNv12Frame.image || !isDecodedYuv420Format(inNv12Frame.format)) {
+		return oa::Status::error(oa::StatusCode::InvalidArgument,
+			"ConvertNv12ToRgbCompute requires an NV12 or P010 frame");
 	}
 
 	OA_RETURN_IF_ERROR(transitionFrameForSampledRead(inNv12Frame));
@@ -2001,8 +2093,12 @@ oa::Status oa::VideoDecoder::convertNv12ToRgbCompute(
 	oa::VideoFrame rgbaFrame = *rgbaResult;
 
 	const oa::U32 planeLayer = getNv12PlaneArrayLayer(inNv12Frame);
-	VkImageView yView  = getCachedNv12PlaneView(inNv12Frame.image, planeLayer, VK_FORMAT_R8_UNORM,    VK_IMAGE_ASPECT_PLANE_0_BIT);
-	VkImageView uvView = getCachedNv12PlaneView(inNv12Frame.image, planeLayer, VK_FORMAT_R8G8_UNORM, VK_IMAGE_ASPECT_PLANE_1_BIT);
+	VkImageView yView  = getCachedNv12PlaneView(
+		inNv12Frame.image, planeLayer, impl_->decodedYFormat,
+		VK_IMAGE_ASPECT_PLANE_0_BIT);
+	VkImageView uvView = getCachedNv12PlaneView(
+		inNv12Frame.image, planeLayer, impl_->decodedUvFormat,
+		VK_IMAGE_ASPECT_PLANE_1_BIT);
 	VkSampler   sampler = getCachedNv12Sampler(inFilter);
 	if (yView == VK_NULL_HANDLE || uvView == VK_NULL_HANDLE || sampler == VK_NULL_HANDLE) {
 		return oa::Status::error(oa::StatusCode::VulkanError, "ConvertNv12ToRgbCompute: failed to cache views/sampler");
@@ -2017,6 +2113,7 @@ oa::Status oa::VideoDecoder::convertNv12ToRgbCompute(
 		oa::U32 codedHeight;
 		oa::U32 colorSpace;
 		oa::U32 fullRange;
+		oa::U32 bitDepth;
 	};
 
 	oavk::ImageDispatchBinding bindings[4] = {};
@@ -2042,7 +2139,8 @@ oa::Status oa::VideoDecoder::convertNv12ToRgbCompute(
 		.codedWidth = impl_->codedWidth,
 		.codedHeight = impl_->codedHeight,
 		.colorSpace = toVisionColorSpace(inColorSpace, inNv12Frame.width, inNv12Frame.height),
-		.fullRange = 0U};
+		.fullRange = inNv12Frame.fullRange ? 1U : 0U,
+		.bitDepth = decodedBitDepth(inNv12Frame.format)};
 
 	auto& vkEngine = *impl_->engine;
 	oa::Status status = oavk::ImageDispatch::run(
@@ -2110,8 +2208,52 @@ oa::Status oa::VideoDecoder::decodeFrameWithConversion(
 // query hardware YCbCr conversion support
 bool oa::VideoDecoder::hasHardwareYCbCrConversion(oa::Engine& inRt)
 {
-	auto& vkEngine = inRt;
-	return oa::EngineDeviceAccess::get(vkEngine).info.software.hasSamplerYcbcrConversion;
+	const auto& device = oa::EngineDeviceAccess::get(inRt);
+	return device.info.software.hasSamplerYcbcrConversion
+		and device.instanceDispatch.vkGetPhysicalDeviceFormatProperties2 != nullptr
+		and device.instanceDispatch.vkGetPhysicalDeviceImageFormatProperties2 != nullptr
+		and device.deviceDispatch.vkCreateSamplerYcbcrConversion != nullptr
+		and device.deviceDispatch.vkDestroySamplerYcbcrConversion != nullptr;
+}
+
+oa::Status oa::VideoDecoder::destroyHardwareYcbcr_()
+{
+	if (!impl_->engine) return oa::Status::ok();
+	auto& device = oa::EngineDeviceAccess::get(*impl_->engine);
+	const VkDevice vkDevice = static_cast<VkDevice>(device.device);
+	for (auto& state : impl_->ycbcrPipelines) {
+		for (auto& entry : state.descriptors) {
+			if (entry.view != VK_NULL_HANDLE) {
+				device.deviceDispatch.vkDestroyImageView(vkDevice, entry.view, nullptr);
+			}
+		}
+		state.descriptors.clear();
+		if (state.rgbaPipeline != VK_NULL_HANDLE) {
+			device.deviceDispatch.vkDestroyPipeline(vkDevice, state.rgbaPipeline, nullptr);
+		}
+		if (state.bf16Pipeline != VK_NULL_HANDLE) {
+			device.deviceDispatch.vkDestroyPipeline(vkDevice, state.bf16Pipeline, nullptr);
+		}
+		if (state.pipelineLayout != VK_NULL_HANDLE) {
+			device.deviceDispatch.vkDestroyPipelineLayout(vkDevice, state.pipelineLayout, nullptr);
+		}
+		if (state.descriptorPool != VK_NULL_HANDLE) {
+			device.deviceDispatch.vkDestroyDescriptorPool(vkDevice, state.descriptorPool, nullptr);
+		}
+		if (state.descriptorSetLayout != VK_NULL_HANDLE) {
+			device.deviceDispatch.vkDestroyDescriptorSetLayout(vkDevice, state.descriptorSetLayout, nullptr);
+		}
+		if (state.sampler != VK_NULL_HANDLE) {
+			device.deviceDispatch.vkDestroySampler(vkDevice, state.sampler, nullptr);
+		}
+		if (state.conversion != VK_NULL_HANDLE) {
+			device.deviceDispatch.vkDestroySamplerYcbcrConversion(
+				vkDevice, state.conversion, nullptr);
+		}
+		state = {};
+	}
+	impl_->lastYcbcrEvent = {};
+	return oa::Status::ok();
 }
 
 oa::U32 oa::VideoDecoder::getNv12PlaneArrayLayer(const oa::VideoFrame& inFrame) const
@@ -2264,7 +2406,7 @@ oa::Status oa::VideoDecoder::createSampleStagingImages(
 		imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
 		imageInfo.flags = VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
 		imageInfo.imageType = VK_IMAGE_TYPE_2D;
-		imageInfo.format = VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
+		imageInfo.format = impl_->decodedFormat;
 		imageInfo.extent = {inCodedExtent.width, inCodedExtent.height, 1};
 		imageInfo.mipLevels = 1;
 		imageInfo.arrayLayers = 1;
@@ -2288,7 +2430,7 @@ oa::Status oa::VideoDecoder::createSampleStagingImages(
 		vma::Allocation allocation = VK_NULL_HANDLE;
 		VkResult result = vma::createImage(allocator, &imageInfo, &allocInfo, &image, &allocation, nullptr);
 		if (result != VK_SUCCESS) {
-			return oa::Status::error(oa::StatusCode::VulkanError, "Failed to create NV12 staging image");
+			return oa::Status::error(oa::StatusCode::VulkanError, "Failed to create decoded-frame staging image");
 		}
 
 		auto createPlaneView = [&](VkFormat inFormat, VkImageAspectFlagBits inPlane, VkImageView& outView) -> oa::Status {
@@ -2304,19 +2446,21 @@ oa::Status oa::VideoDecoder::createSampleStagingImages(
 			viewInfo.subresourceRange.layerCount = 1;
 			result = oa::EngineDeviceAccess::get(*impl_->engine).deviceDispatch.vkCreateImageView(device, &viewInfo, nullptr, &outView);
 			if (result != VK_SUCCESS) {
-				return oa::Status::error(oa::StatusCode::VulkanError, "Failed to create NV12 staging plane view");
+				return oa::Status::error(oa::StatusCode::VulkanError, "Failed to create decoded-frame staging plane view");
 			}
 			return oa::Status::ok();
 		};
 
 		VkImageView yView = VK_NULL_HANDLE;
 		VkImageView uvView = VK_NULL_HANDLE;
-		oa::Status yStatus = createPlaneView(VK_FORMAT_R8_UNORM, VK_IMAGE_ASPECT_PLANE_0_BIT, yView);
+		oa::Status yStatus = createPlaneView(
+			impl_->decodedYFormat, VK_IMAGE_ASPECT_PLANE_0_BIT, yView);
 		if (!yStatus.isOk()) {
 			vma::destroyImage(allocator, image, allocation);
 			return yStatus;
 		}
-		oa::Status uvStatus = createPlaneView(VK_FORMAT_R8G8_UNORM, VK_IMAGE_ASPECT_PLANE_1_BIT, uvView);
+		oa::Status uvStatus = createPlaneView(
+			impl_->decodedUvFormat, VK_IMAGE_ASPECT_PLANE_1_BIT, uvView);
 		if (!uvStatus.isOk()) {
 			oa::EngineDeviceAccess::get(*impl_->engine).deviceDispatch.vkDestroyImageView(device, yView, nullptr);
 			vma::destroyImage(allocator, image, allocation);

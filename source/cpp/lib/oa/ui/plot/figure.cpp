@@ -856,7 +856,7 @@ oa::Status Figure::saveTo(oa::Engine& inEngine, const char* inPath) {
 		config_.width, config_.height, inPath));
 	OaLogInfo(
 		oa::LogComponent::Plot,
-		"oa::plot::Figure::saveTo: %ux%u -> %s",
+		"oa::plot::Figure::saveTo: {}x{} -> {}",
 		config_.width, config_.height, inPath);
 	return oa::Status::ok();
 }

@@ -21,7 +21,7 @@
 
 #include <oa/core/validation.h>
 
-#include <assert.h>
+#include <oa/core/std/assert.h>
 
 static oa::U32 divCeil(oa::U32 inA, oa::U32 inB) { return (inA + inB - 1) / inB; }
 
@@ -145,7 +145,7 @@ oa::Matrix oa::FnMatrix::gather(const oa::Matrix& inSelf, const oa::Matrix& inIn
 	if (not attached.isOk()) {
 		OaLogError(
 			oa::LogComponent::Compute,
-			"Gather semantic autograd attachment failed: %s",
+			"Gather semantic autograd attachment failed: {}",
 			attached.getMessage().cStr());
 		return {};
 	}
@@ -221,7 +221,7 @@ oa::Matrix oa::FnMatrix::gatherLastDimBwd(const oa::Matrix& inGradOut,
 oa::Matrix oa::FnMatrix::slice(const oa::Matrix& inSelf, oa::I32 inDim, oa::I64 inStart, oa::I64 inEnd) {
 	auto& ctx = oa::ExecutionSession::getActive();
 	const oa::I32 rank = inSelf.rank();
-	assert(rank >= 1 && rank <= 4 && "Slice supports rank 1 through 4");
+	OA_REQUIRE_MSG(rank >= 1 && rank <= 4, "Slice supports rank 1 through 4");
 #if not defined(NDEBUG) or defined(OA_ENABLE_VALIDATION)
 	OA_ASSERT(validateSlice(inSelf, inDim, inStart, inEnd).isOk());
 #endif
@@ -265,7 +265,7 @@ oa::Matrix oa::FnMatrix::slice(const oa::Matrix& inSelf, oa::I32 inDim, oa::I64 
 		out, inSelf, inDim, inStart, inEnd, semantic.getValue());
 	if (not attached.isOk()) {
 		OaLogError(oa::LogComponent::Compute,
-			"Slice semantic autograd attachment failed: %s",
+			"Slice semantic autograd attachment failed: {}",
 			attached.getMessage().cStr());
 		return {};
 	}
@@ -278,10 +278,9 @@ oa::Matrix oa::FnMatrix::sliceBwd(
 	const oa::Matrix& inDOut) {
 	auto& ctx = oa::ExecutionSession::getActive();
 	const oa::I32 rank = inInputShape.rank;
-	assert(rank >= 1 && rank <= 4 && "SliceBwd supports rank 1 through 4");
-	assert(inDim >= 0 && inDim < rank && "SliceBwd dim out of range");
-	assert(inStart >= 0 && inEnd > inStart && inEnd <= inInputShape[inDim] &&
-		"SliceBwd start/end out of range");
+	OA_REQUIRE_MSG(rank >= 1 && rank <= 4, "SliceBwd supports rank 1 through 4");
+	OA_REQUIRE_MSG(inDim >= 0 && inDim < rank, "SliceBwd dim out of range");
+	OA_REQUIRE_MSG(inStart >= 0 && inEnd > inStart && inEnd <= inInputShape[inDim], "SliceBwd start/end out of range");
 	(void)rank;
 
 	oa::OpLoweringScope lowering(ctx);
@@ -324,15 +323,15 @@ oa::Vector<oa::Matrix> oa::FnMatrix::split(
 	const oa::Matrix& inSelf, oa::Span<oa::I64> inSizes, oa::I32 inDim
 ) {
 	auto& ctx = oa::ExecutionSession::getActive();
-	assert(inSizes.size() > 0 && "split requires at least one size");
-	assert(inDim >= 0 && inDim < inSelf.getShape().rank && "Invalid split dimension");
+	OA_REQUIRE_MSG(inSizes.size() > 0, "split requires at least one size");
+	OA_REQUIRE_MSG(inDim >= 0 && inDim < inSelf.getShape().rank, "Invalid split dimension");
 
 	// verify sizes sum to dimension size
 	oa::I64 totalSize = 0;
 	for (oa::I64 size : inSizes) {
 		totalSize += size;
 	}
-	assert(totalSize == inSelf.size(inDim) && "split sizes must sum to dimension size");
+	OA_REQUIRE_MSG(totalSize == inSelf.size(inDim), "split sizes must sum to dimension size");
 	(void)totalSize;
 
 	// Create output tensors by slicing
@@ -379,21 +378,18 @@ oa::Vector<oa::Matrix> oa::FnMatrix::split(
 
 oa::Matrix oa::FnMatrix::concat(oa::Span<oa::Matrix> inInputs, oa::I32 inDim) {
 	auto& ctx = oa::ExecutionSession::getActive();
-	assert(inInputs.size() > 0 && "Concat requires at least one input");
-	assert(inDim >= 0 && inDim < inInputs[0].rank() && "Concat dimension out of range");
-	assert(inInputs[0].rank() >= 1 && inInputs[0].rank() <= 4 &&
-		"Concat supports rank 1 through 4");
+	OA_REQUIRE_MSG(inInputs.size() > 0, "Concat requires at least one input");
+	OA_REQUIRE_MSG(inDim >= 0 && inDim < inInputs[0].rank(), "Concat dimension out of range");
+	OA_REQUIRE_MSG(inInputs[0].rank() >= 1 && inInputs[0].rank() <= 4, "Concat supports rank 1 through 4");
 
 	// Calculate output shape
 	oa::MatrixShape outShape = inInputs[0].getShape();
 	oa::I64 totalSize = 0;
 	for (const auto& input : inInputs) {
-		assert(input.getShape().rank == outShape.rank && "All inputs must have same rank");
-		assert(input.getDtype() == inInputs[0].getDtype() &&
-			"Concat inputs must have the same dtype");
+		OA_REQUIRE_MSG(input.getShape().rank == outShape.rank, "All inputs must have same rank");
+		OA_REQUIRE_MSG(input.getDtype() == inInputs[0].getDtype(), "Concat inputs must have the same dtype");
 		for (oa::I32 d = 0; d < outShape.rank; ++d) {
-			assert((d == inDim || input.size(d) == outShape[d]) &&
-				"Concat non-concatenated dimensions must match");
+			OA_REQUIRE_MSG((d == inDim || input.size(d) == outShape[d]), "Concat non-concatenated dimensions must match");
 		}
 		totalSize += input.size(inDim);
 	}
@@ -480,7 +476,7 @@ oa::Matrix oa::FnMatrix::transpose(const oa::Matrix& inA, oa::I32 inDim0, oa::I3
 			(dim0 == rank - 1 and dim1 == rank - 2))) {
 		OaLogError(oa::LogComponent::Compute,
 			"Transpose: only the last two axes of rank-2/rank-3 matrices are supported "
-			"(rank=%d, Dim0=%d, Dim1=%d)",
+			"(rank={}, Dim0={}, Dim1={})",
 			rank, inDim0, inDim1);
 		return {};
 	}
@@ -533,7 +529,7 @@ oa::Matrix oa::FnMatrix::transpose(const oa::Matrix& inA, oa::I32 inDim0, oa::I3
 		out, inA, dim0, dim1, semantic.getValue());
 	if (not attached.isOk()) {
 		OaLogError(oa::LogComponent::Compute,
-			"Transpose semantic autograd attachment failed: %s",
+			"Transpose semantic autograd attachment failed: {}",
 			attached.getMessage().cStr());
 		return {};
 	}
@@ -935,7 +931,7 @@ oa::Matrix oa::FnMatrix::compactRowsBwd(const oa::Matrix& inGradOut, const oa::M
 	const oa::Status status = ctx.record( desc);
 	if (not status.isOk()) {
 		OaLogError(oa::LogComponent::Compute,
-			"CompactRowsBwd: failed to record indirect dispatch: %s",
+			"CompactRowsBwd: failed to record indirect dispatch: {}",
 			status.getMessage().cStr());
 		return {};
 	}
@@ -1028,7 +1024,7 @@ oa::Matrix oa::FnMatrix::scatterRows(const oa::Matrix& inSelf, const oa::Matrix&
 	const oa::Status status = ctx.record( desc);
 	if (not status.isOk()) {
 		OaLogError(oa::LogComponent::Compute,
-			"ScatterRows: failed to record indirect dispatch: %s",
+			"ScatterRows: failed to record indirect dispatch: {}",
 			status.getMessage().cStr());
 		return {};
 	}
@@ -1101,7 +1097,7 @@ oa::Matrix oa::FnMatrix::scatterRowsBwdSource(const oa::Matrix& inGradOut,
 	const oa::Status status = ctx.record( desc);
 	if (not status.isOk()) {
 		OaLogError(oa::LogComponent::Compute,
-			"ScatterRowsBwdSource: failed to record indirect dispatch: %s",
+			"ScatterRowsBwdSource: failed to record indirect dispatch: {}",
 			status.getMessage().cStr());
 		return {};
 	}

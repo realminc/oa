@@ -1,5 +1,5 @@
 #include <oa/core/std/sync.h>
-#include <oa/core/assert.h>
+#include <oa/core/std/assert.h>
 
 #if defined(_WIN32)
 	#ifndef NOMINMAX

@@ -22,7 +22,7 @@ oa::Status oa::VideoDecoderCodecAccess::decodeVp9(
 		if (dpbSlot < 0) {
 			return oa::Status::error(oa::StatusCode::Unavailable, "VP9 show_existing_frame references an invalid/unavailable DPB slot");
 		}
-		fillNv12OutFrame(
+		fillDecodedOutFrame(
 			inDecoder,
 			dpbSlot,
 			desc.frameWidth > 0 ? desc.frameWidth : inDecoder.impl_->profile.width,
@@ -121,7 +121,7 @@ oa::Status oa::VideoDecoderCodecAccess::decodeVp9(
 		refExtents));
 	// CPU reference-map bookkeeping describes the submission order; it does
 	// not read decode output. FinishAndSubmit chains this job after the prior
-	// decoder timeline value, and FillNv12OutFrame publishes the new value as
+	// decoder timeline value, and fillDecodedOutFrame publishes the new value as
 	// oa::VideoFrame::Ready for downstream GPU or host consumers.
 
 	for (oa::U32 mask = desc.stdPictureInfo.refresh_frame_flags, refIndex = 0u; mask != 0u; mask >>= 1u, ++refIndex) {
@@ -140,7 +140,7 @@ oa::Status oa::VideoDecoderCodecAccess::decodeVp9(
 	releaseUnmappedSlots();
 	inDecoder.impl_->currentFrameNumber++;
 
-	fillNv12OutFrame(
+	fillDecodedOutFrame(
 		inDecoder,
 		dpbSlot,
 		desc.frameWidth > 0 ? desc.frameWidth : inDecoder.impl_->profile.width,

@@ -18,7 +18,7 @@
 
 #include <oa/core/validation.h>
 
-#include <assert.h>
+#include <oa/core/std/assert.h>
 
 #if not defined(NDEBUG) or defined(OA_ENABLE_VALIDATION)
 static oa::Status validateLinear(
@@ -64,8 +64,8 @@ oa::Status recordLinear(
 		.semanticOp = inSemanticOp,
 	});
 	if (not status.isOk()) {
-		OaLogError(oa::LogComponent::Ml, "%.*s lowering failed: %s",
-			static_cast<int>(inContract.name.size()), inContract.name.data(),
+		OaLogError(oa::LogComponent::Ml, "{} lowering failed: {}",
+			inContract.name,
 			status.getMessage().cStr());
 	}
 	return status;
@@ -102,14 +102,12 @@ oa::Matrix oa::FnMatrix::linear(
 #if not defined(NDEBUG) or defined(OA_ENABLE_VALIDATION)
 	OA_ASSERT(validateLinear(inX, inWeight).isOk());
 #endif
-	assert(inX.rank() >= 2 && "Linear: input must be >=2D");
-	assert(inWeight.rank() == 2 && "Linear: weight must be 2D [N, K]");
-	assert(inX.size(inX.rank() - 1) == inWeight.size(1)
-		&& "Linear: input last dim must match weight K");
+	OA_REQUIRE_MSG(inX.rank() >= 2, "Linear: input must be >=2D");
+	OA_REQUIRE_MSG(inWeight.rank() == 2, "Linear: weight must be 2D [N, K]");
+	OA_REQUIRE_MSG(inX.size(inX.rank() - 1) == inWeight.size(1), "Linear: input last dim must match weight K");
 	if (not inBias.isEmpty()) {
-		assert(inBias.rank() == 1 && "Linear: bias must be 1D [N]");
-		assert(inBias.size(0) == inWeight.size(0)
-			&& "Linear: bias size must match weight output dim");
+		OA_REQUIRE_MSG(inBias.rank() == 1, "Linear: bias must be 1D [N]");
+		OA_REQUIRE_MSG(inBias.size(0) == inWeight.size(0), "Linear: bias size must match weight output dim");
 	}
 
 	auto& ctx = oa::ExecutionSession::getActive();
@@ -146,7 +144,7 @@ oa::Matrix oa::FnMatrix::linear(
 		out, inX, inWeight, inBias, semantic.getValue());
 	if (not attached.isOk()) {
 		OaLogError(oa::LogComponent::Ml,
-			"Linear semantic autograd attachment failed: %s",
+			"Linear semantic autograd attachment failed: {}",
 			attached.getMessage().cStr());
 		return {};
 	}
@@ -161,16 +159,14 @@ oa::Matrix oa::FnMatrix::linearRelu(
 #if not defined(NDEBUG) or defined(OA_ENABLE_VALIDATION)
 	OA_ASSERT(validateLinear(inX, inWeight).isOk());
 #endif
-	assert(inX.rank() >= 2 && "LinearRelu: input must be >=2D");
-	assert(inWeight.rank() == 2 && "LinearRelu: weight must be 2D [N, K]");
-	assert(inX.size(inX.rank() - 1) == inWeight.size(1)
-		&& "LinearRelu: input last dim must match weight K");
+	OA_REQUIRE_MSG(inX.rank() >= 2, "LinearRelu: input must be >=2D");
+	OA_REQUIRE_MSG(inWeight.rank() == 2, "LinearRelu: weight must be 2D [N, K]");
+	OA_REQUIRE_MSG(inX.size(inX.rank() - 1) == inWeight.size(1), "LinearRelu: input last dim must match weight K");
 	if (inBias.isEmpty()) {
 		return oa::FnMatrix::relu(oa::FnMatrix::linear(inX, inWeight));
 	}
-	assert(inBias.rank() == 1 && "LinearRelu: bias must be 1D [N]");
-	assert(inBias.size(0) == inWeight.size(0)
-		&& "LinearRelu: bias size must match weight output dim");
+	OA_REQUIRE_MSG(inBias.rank() == 1, "LinearRelu: bias must be 1D [N]");
+	OA_REQUIRE_MSG(inBias.size(0) == inWeight.size(0), "LinearRelu: bias size must match weight output dim");
 
 	auto& ctx = oa::ExecutionSession::getActive();
 
@@ -206,7 +202,7 @@ oa::Matrix oa::FnMatrix::linearRelu(
 		out, inX, inWeight, inBias, semantic.getValue());
 	if (not attached.isOk()) {
 		OaLogError(oa::LogComponent::Ml,
-			"LinearRelu semantic autograd attachment failed: %s",
+			"LinearRelu semantic autograd attachment failed: {}",
 			attached.getMessage().cStr());
 		return {};
 	}
@@ -221,16 +217,14 @@ oa::Matrix oa::FnMatrix::linearGelu(
 #if not defined(NDEBUG) or defined(OA_ENABLE_VALIDATION)
 	OA_ASSERT(validateLinear(inX, inWeight).isOk());
 #endif
-	assert(inX.rank() >= 2 && "LinearGelu: input must be >=2D");
-	assert(inWeight.rank() == 2 && "LinearGelu: weight must be 2D [N, K]");
-	assert(inX.size(inX.rank() - 1) == inWeight.size(1)
-		&& "LinearGelu: input last dim must match weight K");
+	OA_REQUIRE_MSG(inX.rank() >= 2, "LinearGelu: input must be >=2D");
+	OA_REQUIRE_MSG(inWeight.rank() == 2, "LinearGelu: weight must be 2D [N, K]");
+	OA_REQUIRE_MSG(inX.size(inX.rank() - 1) == inWeight.size(1), "LinearGelu: input last dim must match weight K");
 	if (inBias.isEmpty()) {
 		return oa::FnMatrix::gelu(oa::FnMatrix::linear(inX, inWeight));
 	}
-	assert(inBias.rank() == 1 && "LinearGelu: bias must be 1D [N]");
-	assert(inBias.size(0) == inWeight.size(0)
-		&& "LinearGelu: bias size must match weight output dim");
+	OA_REQUIRE_MSG(inBias.rank() == 1, "LinearGelu: bias must be 1D [N]");
+	OA_REQUIRE_MSG(inBias.size(0) == inWeight.size(0), "LinearGelu: bias size must match weight output dim");
 
 	auto& ctx = oa::ExecutionSession::getActive();
 
@@ -266,7 +260,7 @@ oa::Matrix oa::FnMatrix::linearGelu(
 		out, inX, inWeight, inBias, semantic.getValue());
 	if (not attached.isOk()) {
 		OaLogError(oa::LogComponent::Ml,
-			"LinearGelu semantic autograd attachment failed: %s",
+			"LinearGelu semantic autograd attachment failed: {}",
 			attached.getMessage().cStr());
 		return {};
 	}
@@ -281,16 +275,14 @@ oa::Matrix oa::FnMatrix::linearSilu(
 #if not defined(NDEBUG) or defined(OA_ENABLE_VALIDATION)
 	OA_ASSERT(validateLinear(inX, inWeight).isOk());
 #endif
-	assert(inX.rank() >= 2 && "LinearSilu: input must be >=2D");
-	assert(inWeight.rank() == 2 && "LinearSilu: weight must be 2D [N, K]");
-	assert(inX.size(inX.rank() - 1) == inWeight.size(1)
-		&& "LinearSilu: input last dim must match weight K");
+	OA_REQUIRE_MSG(inX.rank() >= 2, "LinearSilu: input must be >=2D");
+	OA_REQUIRE_MSG(inWeight.rank() == 2, "LinearSilu: weight must be 2D [N, K]");
+	OA_REQUIRE_MSG(inX.size(inX.rank() - 1) == inWeight.size(1), "LinearSilu: input last dim must match weight K");
 	if (inBias.isEmpty()) {
 		return oa::FnMatrix::silu(oa::FnMatrix::linear(inX, inWeight));
 	}
-	assert(inBias.rank() == 1 && "LinearSilu: bias must be 1D [N]");
-	assert(inBias.size(0) == inWeight.size(0)
-		&& "LinearSilu: bias size must match weight output dim");
+	OA_REQUIRE_MSG(inBias.rank() == 1, "LinearSilu: bias must be 1D [N]");
+	OA_REQUIRE_MSG(inBias.size(0) == inWeight.size(0), "LinearSilu: bias size must match weight output dim");
 
 	auto& ctx = oa::ExecutionSession::getActive();
 
@@ -326,7 +318,7 @@ oa::Matrix oa::FnMatrix::linearSilu(
 		out, inX, inWeight, inBias, semantic.getValue());
 	if (not attached.isOk()) {
 		OaLogError(oa::LogComponent::Ml,
-			"LinearSilu semantic autograd attachment failed: %s",
+			"LinearSilu semantic autograd attachment failed: {}",
 			attached.getMessage().cStr());
 		return {};
 	}

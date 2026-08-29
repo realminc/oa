@@ -161,7 +161,7 @@ void oa::CheckpointManager::rotateCheckpoints() {
 	while (static_cast<oa::I32>(saved_.size()) > config_.maxKeep) {
 		const auto& worst = saved_.back();
 		(void)oa::Filesystem::removeFile(oa::Path(worst.path));
-		OaLogDebug(oa::LogComponent::Ml, "Rotated: %s", worst.path.cStr());
+		OaLogDebug(oa::LogComponent::Ml, "Rotated: {}", worst.path.cStr());
 		saved_.popBack();
 	}
 }
@@ -180,7 +180,7 @@ oa::Status oa::CheckpointManager::maybeSave(
 			const oa::String masterPath = this->masterPath();
 			OA_RETURN_IF_ERROR(saveCheckpointFile(*engine_, masterPath, inModel, inOpt,
 				inStep, inMetric, config_.metricName, config_.lowerIsBetter));
-			OaLogInfo(oa::LogComponent::Ml, "* Best: %s=%.4f -> %s",
+			OaLogInfo(oa::LogComponent::Ml, "* Best: {}={:.4f} -> {}",
 				config_.metricName.cStr(), inMetric, masterPath.cStr());
 		}
 		bestMetric_ = inMetric;
@@ -200,10 +200,10 @@ oa::Status oa::CheckpointManager::saveIncremental(
 	const oa::Status saveStatus = saveCheckpointFile(*engine_, path, inModel, inOpt,
 		inStep, inMetric, metricName, config_.lowerIsBetter);
 	if (not saveStatus.isOk()) {
-		OaLogError(oa::LogComponent::Ml, "checkpoint save failed: %s", path.cStr());
+		OaLogError(oa::LogComponent::Ml, "checkpoint save failed: {}", path.cStr());
 		return saveStatus;
 	}
-	OaLogInfo(oa::LogComponent::Ml, "checkpoint: %s (%s=%.4f step=%llu)",
+	OaLogInfo(oa::LogComponent::Ml, "checkpoint: {} ({}={:.4f} step={})",
 		filename.cStr(), metricName.cStr(), inMetric,
 		static_cast<unsigned long long>(inStep));
 	saved_.pushBack({path, inMetric, inStep});
@@ -215,7 +215,7 @@ oa::Status oa::CheckpointManager::saveIncremental(
 
 oa::Status oa::CheckpointManager::loadBestInto(oa::Module& inOutModel, oa::Optimizer& inOutOpt) const {
 	const oa::String masterPath = this->masterPath();
-	OaLogInfo(oa::LogComponent::Ml, "Loading best: %s", masterPath.cStr());
+	OaLogInfo(oa::LogComponent::Ml, "Loading best: {}", masterPath.cStr());
 	return restoreCheckpointFile(
 		*engine_, masterPath, inOutModel, inOutOpt, 0, false);
 }
@@ -264,7 +264,7 @@ oa::Status oa::CheckpointManager::loadLatestInto(oa::Module& inOutModel, oa::Opt
 		}
 	}
 
-	OaLogInfo(oa::LogComponent::Ml, "Loading latest: %s", latestPath.cStr());
+	OaLogInfo(oa::LogComponent::Ml, "Loading latest: {}", latestPath.cStr());
 	return restoreCheckpointFile(
 		*engine_, latestPath, inOutModel, inOutOpt, expectedStep, true);
 }

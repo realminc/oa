@@ -87,8 +87,15 @@ oa::Result<oa::VideoFramePool> oa::VideoFramePool::create(
 		}
 
 		VkImageView imageView = VK_NULL_HANDLE;
+		// A full multiplane view is a transfer/identity handle only. Sampling a
+		// COLOR-aspect NV12 view requires a matched YCbCr conversion on both the
+		// view and sampler; conversion code creates that qualified view itself.
+		VkImageViewUsageCreateInfo viewUsage = {};
+		viewUsage.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_USAGE_CREATE_INFO;
+		viewUsage.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
 		VkImageViewCreateInfo viewInfo = {};
 		viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+		viewInfo.pNext = &viewUsage;
 		viewInfo.image = image;
 		viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
 		viewInfo.format = imageInfo.format;

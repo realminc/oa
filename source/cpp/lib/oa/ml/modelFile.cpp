@@ -792,7 +792,7 @@ oa::Status ModelFile::save(const oa::String& inPath) const {
 		return commitStatus;
 	}
 
-	OaLogInfo(oa::LogComponent::Ml, "[oam] Saved %s | %zu weights | %.1f MB", inPath.cStr(),
+	OaLogInfo(oa::LogComponent::Ml, "[oam] Saved {} | {} weights | {:.1f} MB", inPath.cStr(),
 			  weightIndex.size(), fileHeader.totalSize / 1e6);
 	return oa::Status::ok();
 }
@@ -1050,7 +1050,7 @@ oa::Result<ModelFile> ModelFile::load(const oa::String& inPath) {
 		return modelFileCorrupt("invalid progress section");
 	}
 
-	OaLogInfo(oa::LogComponent::Ml, "[oam] Loaded %s | arch=%s | %zu weights | optimizer=%s",
+	OaLogInfo(oa::LogComponent::Ml, "[oam] Loaded {} | arch={} | {} weights | optimizer={}",
 			  inPath.cStr(), model.config.architecture, model.weightIndex.size(),
 			  model.hasOptimizer() ? "yes" : "no");
 	return model;
@@ -1062,14 +1062,14 @@ void dumpModelFile(const oa::String& inPath) {
 	{
 		auto verified = ModelFile::load(inPath);
 		if (not verified.isOk()) {
-			OaLogError(oa::LogComponent::Ml, "[oam] Refusing to inspect %s: %s", inPath.cStr(),
+			OaLogError(oa::LogComponent::Ml, "[oam] Refusing to inspect {}: {}", inPath.cStr(),
 					   verified.getStatus().toString().cStr());
 			return;
 		}
 	}
 	ModelFileHandle file(::fopen(inPath.cStr(), "rb"));
 	if (not file.isOpen()) {
-		OaLogError(oa::LogComponent::Ml, "[oam] Cannot open: %s", inPath.cStr());
+		OaLogError(oa::LogComponent::Ml, "[oam] Cannot open: {}", inPath.cStr());
 		return;
 	}
 
@@ -1080,8 +1080,8 @@ void dumpModelFile(const oa::String& inPath) {
 		return;
 	}
 
-	OaLogInfo(oa::LogComponent::Ml, "=== %s ===", inPath.cStr());
-	OaLogInfo(oa::LogComponent::Ml, "  Sections: %u  size: %.1f MB", fh.numSections,
+	OaLogInfo(oa::LogComponent::Ml, "=== {} ===", inPath.cStr());
+	OaLogInfo(oa::LogComponent::Ml, "  Sections: {}  size: {:.1f} MB", fh.numSections,
 			  fh.totalSize / 1e6);
 
 	oa::Vector<ModelFileSectionHeader> sections(fh.numSections);
@@ -1094,14 +1094,14 @@ void dumpModelFile(const oa::String& inPath) {
 	for (oa::U32 i = 0; i < fh.numSections; ++i) {
 		const auto& sh = sections[i];
 		auto type = static_cast<ModelFileSection>(sh.type);
-		OaLogInfo(oa::LogComponent::Ml, "  [%u] %s  offset=%lu  %.2f MB", i,
+		OaLogInfo(oa::LogComponent::Ml, "  [{}] {}  offset={}  {:.2f} MB", i,
 				  modelFileSectionName(type), sh.offset, sh.size / 1e6);
 
 		if (type == ModelFileSection::Config) {
 			ModelFileConfig cfg;
 			if (not modelFileReadExact(file.value, sh.offset, &cfg,
 					oa::min(sh.size, static_cast<oa::U64>(sizeof(ModelFileConfig))))) continue;
-			OaLogInfo(oa::LogComponent::Ml, "       arch=%s dModel=%u nLayers=%u dVocab=%u",
+			OaLogInfo(oa::LogComponent::Ml, "       arch={} dModel={} nLayers={} dVocab={}",
 					  cfg.architecture, cfg.dModel, cfg.nLayers, cfg.dVocab);
 		}
 
@@ -1115,10 +1115,9 @@ void dumpModelFile(const oa::String& inPath) {
 				const oa::U64 entryOffset = sh.offset + sizeof(oa::U32) * 2
 					+ static_cast<oa::U64>(j) * sizeof(ModelTensorEntry);
 				if (not modelFileReadExact(file.value, entryOffset, &e, sizeof(e))) break;
-				OaLogInfo(oa::LogComponent::Ml, "       %s  %s/%.*s  %.3f MB", e.name,
+				OaLogInfo(oa::LogComponent::Ml, "       {}  {}/{}  {:.3f} MB", e.name,
 						  modelFileTensorEncodingName(e.encoding),
-						  static_cast<int>(oa::scalarTypeName(e.dtype).size()),
-						  oa::scalarTypeName(e.dtype).data(), e.numBytes / 1e6);
+						  oa::scalarTypeName(e.dtype), e.numBytes / 1e6);
 			}
 		}
 	}

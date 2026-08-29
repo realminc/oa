@@ -4,7 +4,7 @@
 // primitive directly; no hosted C++ standard-library type or ABI crosses this
 // boundary.
 
-#include <oa/core/assert.h>
+#include <oa/core/std/assert.h>
 #include <oa/core/std/typeTraits.h>
 
 namespace oa {

@@ -66,7 +66,7 @@ public:
 				/*nGroups*/ 1, /*RopeFraction*/ 0.5F, /*Mimo*/ false, /*mimoRank*/ 4,
 				/*dtMin*/ 0.001F, /*dtMax*/ 0.1F, /*DtInitFloor*/ 1e-4F, /*aFloor*/ 1e-4F,
 				/*OutprojNorm*/ true);
-			const std::string indexText = std::to_string(i);
+			const oa::String indexText = oa::toString(static_cast<oa::I64>(i));
 			oa::String name = oa::String("mamba")
 				+ oa::String(indexText.data(), indexText.size());
 			registerModule(name.cStr(), block);
@@ -228,17 +228,17 @@ TEST(TutorialMambaDiffusionPixel, FashionMnistFlowMatching) {
 
 	oa::DsMnist trainLoader(dataDir, "train", kBatch, /*inShuffle=*/true);
 	if (trainLoader.numSamples() == 0) {
-		printf("Fashion-MNIST not found at: %s (run tools/data/manage.py fetch fashionMnist).\n",
+		oa::print("Fashion-MNIST not found at: {} (run tools/data/manage.py fetch fashionMnist).",
 			dataDir.cStr());
 		GTEST_SKIP() << "Dataset not found";
 	}
 
-	printf("\n╔══════════════════════════════════════════════════════════════════╗\n");
-	printf("║  OA Tutorial — Pixel-Space Mamba Diffusion                       ║\n");
-	printf("║  Flow Matching · Fashion-MNIST · Mamba-3 backbone                ║\n");
-	printf("╚══════════════════════════════════════════════════════════════════╝\n\n");
-	printf("Dataset: %d train images, 28×28 grayscale\n", trainLoader.numSamples());
-	printf("Model: %d patches × %d dims, %d Mamba-3 blocks, d_state=%d\n\n",
+	oa::print("\n╔══════════════════════════════════════════════════════════════════╗");
+	oa::print("║  OA Tutorial — Pixel-Space Mamba Diffusion                       ║");
+	oa::print("║  Flow Matching · Fashion-MNIST · Mamba-3 backbone                ║");
+	oa::print("╚══════════════════════════════════════════════════════════════════╝\n");
+	oa::print("Dataset: {} train images, 28×28 grayscale", trainLoader.numSamples());
+	oa::print("Model: {} patches × {} dims, {} Mamba-3 blocks, d_state={}\n",
 		kNumPatches, kPatchDim, kNumBlocks, kDState);
 
 	oa::FnMatrix::setRngSeed(2026);
@@ -249,7 +249,7 @@ TEST(TutorialMambaDiffusionPixel, FashionMnistFlowMatching) {
 	auto params = model->allParameterPtrs();
 	auto opt    = oa::makeUnique<oa::AdamW>(params, kLr);
 
-	printf("params: %lld    Optimizer: AdamW(lr=%g)    loss: MSE\n\n",
+	oa::print("params: {}    Optimizer: AdamW(lr={:g})    loss: MSE\n",
 		static_cast<long long>(model->numParameters()), static_cast<double>(kLr));
 
 	TutorialTrainingLoop training(testEngine(), *opt, oa::ItTrainingConfig{
@@ -301,8 +301,8 @@ TEST(TutorialMambaDiffusionPixel, FashionMnistFlowMatching) {
 	ASSERT_TRUE(training.loop.finish().isOk());
 	lastLoss = training.loop.lastLoss();
 
-	printf("\n─── results ───\n");
-	printf("Initial loss: %.4f -> Final loss: %.4f\n", initialLoss, lastLoss);
+	oa::print("\n─── results ───");
+	oa::print("Initial loss: {:.4f} -> Final loss: {:.4f}", initialLoss, lastLoss);
 
 	// generate and save images — one per Fashion-MNIST class
 	static const char* kClassNames[] = {
@@ -311,7 +311,7 @@ TEST(TutorialMambaDiffusionPixel, FashionMnistFlowMatching) {
 	};
 	oa::Path outDir = oa::Paths::var() / "mamba_diffusion";
 	ASSERT_TRUE(oa::Filesystem::createDirectories(outDir).isOk());
-	printf("\nSampling %d class-conditional images (%d Euler steps) ...\n", kNumClasses, kNumSteps);
+	oa::print("\nSampling {} class-conditional images ({} Euler steps) ...", kNumClasses, kNumSteps);
 	oa::Vector<oa::U8> labels(kNumClasses);
 	for (oa::I32 i = 0; i < kNumClasses; ++i) {
 		labels[i] = static_cast<oa::U8>(i);
@@ -327,12 +327,12 @@ TEST(TutorialMambaDiffusionPixel, FashionMnistFlowMatching) {
 		oa::Path path = outDir / oa::StringView(filename);
 		auto status = saveImage(rt, img, path, kImageSize, kImageSize);
 		if (status.isOk()) {
-			printf("  Saved %s\n", path.string().cStr());
+			oa::print("  Saved {}", path.string().cStr());
 		} else {
-			printf("  Failed to save %s: %s\n", path.string().cStr(), status.getMessage().cStr());
+			oa::print("  Failed to save {}: {}", path.string().cStr(), status.getMessage().cStr());
 		}
 	}
-	printf("\n");
+	oa::print("");
 
 	ASSERT_GT(initialLoss, 0.0F);
 	EXPECT_LT(lastLoss, initialLoss) << "MSE must decrease during training";

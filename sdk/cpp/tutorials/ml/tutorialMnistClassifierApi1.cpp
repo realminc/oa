@@ -21,11 +21,6 @@
 #include <oa/core/paths.h>
 #include <oa/ml.h>
 #include <oa/runtime/engine.h>
-#include <fstream>
-#include <algorithm>
-#include <chrono>
-#include <random>
-#include <cstring>
 
 // ─── Fashion-MNIST Dataset ─────────────────────────────────────────────────
 
@@ -125,15 +120,15 @@ TEST(TutorialMnist, FashionMnistClassification) {
 	oa::DsMnist testLoader(dataDir, "t10k", 100, /*shuffle=*/false);
 
 	if (trainLoader.numSamples() == 0 || testLoader.numSamples() == 0) {
-		printf("Fashion-MNIST not found at: %s (run tools/data/manage.py fetch fashionMnist).\n",
+		oa::print("Fashion-MNIST not found at: {} (run tools/data/manage.py fetch fashionMnist).",
 			dataDir.cStr());
 		GTEST_SKIP() << "Dataset not found";
 	}
 
-	printf("\n╔══════════════════════════════════════════════════════════════════╗\n");
-	printf("║  OA Tutorial — Fashion-MNIST classification (Module API)        ║\n");
-	printf("╚══════════════════════════════════════════════════════════════════╝\n\n");
-	printf("Dataset: %d train / %d test, 28×28 grayscale, %d classes\n\n",
+	oa::print("\n╔══════════════════════════════════════════════════════════════════╗");
+	oa::print("║  OA Tutorial — Fashion-MNIST classification (Module API)        ║");
+	oa::print("╚══════════════════════════════════════════════════════════════════╝\n");
+	oa::print("Dataset: {} train / {} test, 28×28 grayscale, {} classes\n",
 		trainLoader.numSamples(), testLoader.numSamples(), kNumClasses);
 
 	// ── Model + Optimizer ──
@@ -141,8 +136,8 @@ TEST(TutorialMnist, FashionMnistClassification) {
 	auto  params = model->allParameterPtrs();
 	auto  opt    = oa::makeUnique<oa::AdamW>(params, 0.001F);
 
-	printf("Model: 784 → Linear(128) + ReLU → Linear(%d)\n", kNumClasses);
-	printf("params: %lld    Optimizer: AdamW(lr=0.001)    loss: CrossEntropy\n\n",
+	oa::print("Model: 784 → Linear(128) + ReLU → Linear({})", kNumClasses);
+	oa::print("params: {}    Optimizer: AdamW(lr=0.001)    loss: CrossEntropy\n",
 		static_cast<long long>(model->numParameters()));
 
 	// ── training Loop ──
@@ -164,7 +159,7 @@ TEST(TutorialMnist, FashionMnistClassification) {
 	});
 	training.addAccuracyMetric();
 
-	printf("training: %d epochs × %d steps/epoch · batch=%d\n",
+	oa::print("training: {} epochs × {} steps/epoch · batch={}",
 		kEpochs, trainLoader.numSamples() / kBatch, kBatch);
 
 	// next() completes each exact step before the following sampler refill.
@@ -194,11 +189,11 @@ TEST(TutorialMnist, FashionMnistClassification) {
 
 	// ── Evaluate ──
 	oa::F32 testAcc = evalAccuracy(*model, testLoader);
-	printf("Test accuracy: %.2f%% (over %d samples)\n\n", testAcc, testLoader.numSamples());
+	oa::print("Test accuracy: {:.2f}% (over {} samples)\n", testAcc, testLoader.numSamples());
 
-	printf("Predictions on the first 10 test samples:\n");
-	printf("  # | actual              | predicted           | Conf   \n");
-	printf("  ──┼─────────────────────┼─────────────────────┼────────\n");
+	oa::print("Predictions on the first 10 test samples:");
+	oa::print("  # | actual              | predicted           | Conf   ");
+	oa::print("  ──┼─────────────────────┼─────────────────────┼────────");
 	
 	oa::Matrix x10, y10;
 	testLoader.nextBatch(x10, y10);
@@ -207,12 +202,12 @@ TEST(TutorialMnist, FashionMnistClassification) {
 	for (oa::I32 i = 0; i < 10; ++i) {
 		oa::I32 actual = oa::I32(labels[i]);
 		oa::I32 pred   = preds[i].classIdx;
-		printf("  %d | %-19s | %-19s | %5.1f%% %s\n",
+		oa::print("  {} | {:<19} | {:<19} | {:5.1f}% {}",
 			i, kClasses[actual], kClasses[pred], preds[i].confidence,
 			actual == pred ? "✓" : "✗");
 	}
 	testLoader.reset(false);  // reset for next eval
-	printf("\n");
+	oa::print("");
 
 	ASSERT_GT(initialLoss, 0.0F) << "Initial loss must be non-zero";
 	EXPECT_LT(lastLoss, initialLoss) << "loss must decrease during training";
@@ -239,8 +234,8 @@ TEST(TutorialMnist, FashionMnistClassification) {
 	ASSERT_TRUE(loadStatus.isOk()) << "loadBestInto failed: " << loadStatus.getMessage();
 
 	oa::F32 reloadedAcc = evalAccuracy(*reloaded, testLoader);
-	printf("checkpoint master: %s\n", mgr.masterPath().cStr());
-	printf("Reload accuracy: %.2f%% (was %.2f%%)    Optimizer step: %llu (was %llu)\n\n",
+	oa::print("checkpoint master: {}", mgr.masterPath().cStr());
+	oa::print("Reload accuracy: {:.2f}% (was {:.2f}%)    Optimizer step: {} (was {})\n",
 		reloadedAcc, testAcc,
 		static_cast<unsigned long long>(reloadedOpt->getStep()),
 		static_cast<unsigned long long>(opt->getStep()));

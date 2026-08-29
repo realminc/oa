@@ -68,7 +68,7 @@ public:
 	// Returns oa::Status::error on Error/Fatal severity; ok on lower severity.
 	[[nodiscard]] static oa::Status report(
 		ValidationSeverity inSev,
-		oa::LogComponent     inComp,
+		oa::LogComponent   inComp,
 		const char*        inFmt, ...) __attribute__((format(printf, 3, 4)));
 
 	// ── Debug counter API (debug builds only; always returns 0 in release) ──

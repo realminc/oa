@@ -1,4 +1,5 @@
 #include "videoDecoderInternal.h"
+#include "videoDecoderImpl.h"
 
 oa::Status oa::VideoDecoderInternal::decodeFrame(
 	oa::VideoDecoder& inDecoder,
@@ -70,4 +71,10 @@ oa::U32 oa::VideoDecoderInternal::getCachedH265PpsCount(const oa::VideoDecoder& 
 bool oa::VideoDecoderInternal::hasHardwareYCbCrConversion(oa::Engine& inRt)
 {
 	return oa::VideoDecoder::hasHardwareYCbCrConversion(inRt);
+}
+
+oa::U64 oa::VideoDecoderInternal::getHardwareYcbcrDispatchCount(
+	const oa::VideoDecoder& inDecoder) noexcept
+{
+	return inDecoder.getHardwareYcbcrDispatchCount();
 }

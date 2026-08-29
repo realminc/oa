@@ -368,7 +368,7 @@ TEST(GemmCmSgBf16, NativeBf16Perf) {
 		EXPECT_LT(eSg, 3e-2F) << "gemmCmSgBf16 (native bf16) " << M << "x" << N << "x" << K << " norm_err=" << eSg;
 		EXPECT_LT(eWg, 3e-2F) << "gemmCmWgBf16 (native bf16) " << M << "x" << N << "x" << K << " norm_err=" << eWg;
 		OaLogInfo(oa::LogComponent::Compute,
-			"NATIVE-BF16 %ux%ux%u : CmSg %.1f (err %.1e)  CmWg %.1f (err %.1e) TFLOP/s", M, N, K, sg, eSg, wg, eWg);
+			"NATIVE-BF16 {}x{}x{} : CmSg {:.1f} (err {:.1e})  CmWg {:.1f} (err {:.1e}) TFLOP/s", M, N, K, sg, eSg, wg, eWg);
 	}
 }
 
@@ -381,7 +381,7 @@ TEST(GemmCmSgBf16, FusedEpilogueCorrectness) {
 		for (const char* kernel : {"GemmBiasCmSgBf16", "GemmBiasReluCmSgBf16", "GemmBiasGeluCmSgBf16", "GemmBiasSiluCmSgBf16"}) {
 			float e = runAndCheckFused(rt, M, N, K, kernel, 128u);
 			EXPECT_LT(e, 3e-2F) << kernel << " " << M << "x" << N << "x" << K << " norm_err=" << e;
-			OaLogInfo(oa::LogComponent::Compute, "%s %ux%ux%u norm_err=%.2e", kernel, M, N, K, e);
+			OaLogInfo(oa::LogComponent::Compute, "{} {}x{}x{} norm_err={:.2e}", kernel, M, N, K, e);
 		}
 	}
 }
@@ -394,7 +394,7 @@ TEST(GemmCmSgBf16, SiluDualOutputCorrectness) {
 	for (auto [M, N, K] : std::vector<std::array<oa::U32, 3>>{{128, 128, 128}, {256, 256, 256}, {64, 128, 784}}) {
 		float e = runAndCheckSilu(rt, M, N, K, "GemmSiluCmSgBf16", 128u);
 		EXPECT_LT(e, 3e-2F) << "GemmSiluCmSgBf16 " << M << "x" << N << "x" << K << " norm_err=" << e;
-		OaLogInfo(oa::LogComponent::Compute, "GemmSiluCmSgBf16 %ux%ux%u norm_err=%.2e", M, N, K, e);
+		OaLogInfo(oa::LogComponent::Compute, "GemmSiluCmSgBf16 {}x{}x{} norm_err={:.2e}", M, N, K, e);
 	}
 }
 
@@ -403,23 +403,23 @@ TEST(GemmCmSgBf16, WorkgroupScopeCorrectness) {
 	oa::Engine& rt = testEngine();
 	const bool hasWg = (oa::EngineGemmAccess::capsMask(rt)
 		& oa::kCapCoopMat1WorkgroupBf16) != 0;
-	OaLogInfo(oa::LogComponent::Compute, "workgroup-scope BF16 CoopMat available: %s", hasWg ? "yes" : "no");
+	OaLogInfo(oa::LogComponent::Compute, "workgroup-scope BF16 CoopMat available: {}", hasWg ? "yes" : "no");
 	if (!hasWg) GTEST_SKIP();
 	OA_SKIP_IF_BF16_ENGINE(rt);
 	for (auto [M, N, K] : std::vector<std::array<oa::U32, 3>>{{128, 128, 128}, {256, 256, 256}, {64, 128, 784}}) {
 		float e = runAndCheck(rt, M, N, K, "GemmCmWgBf16", 64u);
 		EXPECT_LT(e, 3e-2F) << "GemmCmWgBf16 " << M << "x" << N << "x" << K << " norm_err=" << e;
-		OaLogInfo(oa::LogComponent::Compute, "GemmCmWgBf16 %ux%ux%u norm_err=%.2e", M, N, K, e);
+		OaLogInfo(oa::LogComponent::Compute, "GemmCmWgBf16 {}x{}x{} norm_err={:.2e}", M, N, K, e);
 	}
 	for (auto [M, N, K] : std::vector<std::array<oa::U32, 3>>{{128, 128, 128}, {256, 256, 256}, {64, 128, 784}}) {
 		for (const char* kernel : {"GemmBiasCmWgBf16", "GemmBiasReluCmWgBf16", "GemmBiasGeluCmWgBf16", "GemmBiasSiluCmWgBf16"}) {
 			float e = runAndCheckFused(rt, M, N, K, kernel, 64u);
 			EXPECT_LT(e, 3e-2F) << kernel << " " << M << "x" << N << "x" << K << " norm_err=" << e;
-			OaLogInfo(oa::LogComponent::Compute, "%s %ux%ux%u norm_err=%.2e", kernel, M, N, K, e);
+			OaLogInfo(oa::LogComponent::Compute, "{} {}x{}x{} norm_err={:.2e}", kernel, M, N, K, e);
 		}
 		float e = runAndCheckSilu(rt, M, N, K, "GemmSiluCmWgBf16", 64u);
 		EXPECT_LT(e, 3e-2F) << "GemmSiluCmWgBf16 " << M << "x" << N << "x" << K << " norm_err=" << e;
-		OaLogInfo(oa::LogComponent::Compute, "GemmSiluCmWgBf16 %ux%ux%u norm_err=%.2e", M, N, K, e);
+		OaLogInfo(oa::LogComponent::Compute, "GemmSiluCmWgBf16 {}x{}x{} norm_err={:.2e}", M, N, K, e);
 	}
 }
 
@@ -435,7 +435,7 @@ TEST(GemmCmSgBf16, WorkgroupScopePerf) {
 		double sub = benchTflopsBatched(rt, M, N, K, 100, "GemmCmSgBf16", 128u);
 		double wg  = benchTflopsBatched(rt, M, N, K, 100, "GemmCmWgBf16", 64u);
 		OaLogInfo(oa::LogComponent::Compute,
-			"WG xover %ux%ux%u : GemmCmSgBf16 %.1f  GemmCmWgBf16 %.1f TFLOP/s  (WG/sub = %.0f%%)",
+			"WG xover {}x{}x{} : GemmCmSgBf16 {:.1f}  GemmCmWgBf16 {:.1f} TFLOP/s  (WG/sub = {:.0f}%)",
 			M, N, K, sub, wg, 100.0 * wg / sub);
 	}
 }
@@ -455,14 +455,14 @@ TEST(GemmCmSgBf16, CrossoverVsCoopMat1) {
 	for (auto [M, N, K] : std::vector<std::array<oa::U32, 3>>{{128, 128, 128}, {256, 256, 256}, {64, 128, 784}, {160, 96, 100}}) {
 		float e = runAndCheck(rt, M, N, K, "GemmCmSgBf16", 128u);
 		EXPECT_LT(e, 3e-2F) << "GemmCmSgBf16 " << M << "x" << N << "x" << K << " norm_err=" << e;
-		OaLogInfo(oa::LogComponent::Compute, "GemmCmSgBf16 %ux%ux%u norm_err=%.2e", M, N, K, e);
+		OaLogInfo(oa::LogComponent::Compute, "GemmCmSgBf16 {}x{}x{} norm_err={:.2e}", M, N, K, e);
 	}
 	for (auto [M, N, K] : std::vector<std::array<oa::U32, 3>>{
 			{64, 128, 784}, {128, 128, 256}, {256, 256, 256}, {384, 1536, 512},
 			{512, 512, 512}, {768, 768, 768}, {1024, 1024, 1024}, {2048, 2048, 2048}}) {
 		double nu   = benchTflopsBatched(rt, M, N, K, 100, "GemmCmSgBf16", 128u);
 		OaLogInfo(oa::LogComponent::Compute,
-			"GemmCmSgBf16 %ux%ux%u : %.1f TFLOP/s", M, N, K, nu);
+			"GemmCmSgBf16 {}x{}x{} : {:.1f} TFLOP/s", M, N, K, nu);
 	}
 }
 
@@ -507,7 +507,7 @@ TEST(GemmCmSgBf16, FusedSmallNCorrectness) {
 		for (const char* kernel : {"GemmBiasCmSgBf16", "GemmBiasReluCmSgBf16", "GemmBiasGeluCmSgBf16", "GemmBiasSiluCmSgBf16"}) {
 			float e = runAndCheckFused(rt, M, N, K, kernel, 128u);
 			EXPECT_LT(e, 3e-2F) << kernel << " " << M << "x" << N << "x" << K << " norm_err=" << e;
-			OaLogInfo(oa::LogComponent::Compute, "%s small-N %ux%ux%u norm_err=%.2e", kernel, M, N, K, e);
+			OaLogInfo(oa::LogComponent::Compute, "{} small-N {}x{}x{} norm_err={:.2e}", kernel, M, N, K, e);
 		}
 	}
 }
@@ -527,7 +527,7 @@ TEST(GemmCmSgBf16, WgFusedSmallNCorrectness) {
 		for (const char* kernel : {"GemmBiasCmWgBf16", "GemmBiasReluCmWgBf16", "GemmBiasGeluCmWgBf16", "GemmBiasSiluCmWgBf16"}) {
 			float e = runAndCheckFused(rt, M, N, K, kernel, 64u);
 			EXPECT_LT(e, 3e-2F) << kernel << " " << M << "x" << N << "x" << K << " norm_err=" << e;
-			OaLogInfo(oa::LogComponent::Compute, "%s small-N %ux%ux%u norm_err=%.2e", kernel, M, N, K, e);
+			OaLogInfo(oa::LogComponent::Compute, "{} small-N {}x{}x{} norm_err={:.2e}", kernel, M, N, K, e);
 		}
 	}
 }

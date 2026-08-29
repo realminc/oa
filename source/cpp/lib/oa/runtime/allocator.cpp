@@ -2,7 +2,7 @@
 #include <oa/runtime/device.h>
 #include <vkl/vkl.h>
 #include <vma/vma.hpp>
-#include <oa/core/assert.h>
+#include <oa/core/std/assert.h>
 #include <oa/core/std/memory.h>
 #include <oa/core/std/limits.h>
 

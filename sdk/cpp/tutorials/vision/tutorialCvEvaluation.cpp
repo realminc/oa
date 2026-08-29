@@ -9,10 +9,7 @@
 #include <oa/ui/plot/plot.h>
 #include <oa/vision/fnDetection.h>
 
-#include <array>
-#include <cstdio>
-#include <cstdlib>
-#include <vector>
+#include <stdlib.h>
 
 namespace {
 
@@ -23,24 +20,24 @@ namespace {
 }
 
 template <typename T>
-oa::Matrix matrixBytes(const std::vector<T>& inValues, oa::MatrixShape inShape,
+oa::Matrix matrixBytes(const oa::Vector<T>& inValues, oa::MatrixShape inShape,
 	oa::ScalarType inType) {
 	return oa::FnMatrix::fromBytes(
 		oa::Span<const oa::U8>(reinterpret_cast<const oa::U8*>(inValues.data()),
 			inValues.size() * sizeof(T)), inShape, inType);
 }
 
-oa::Matrix matrixF32(const std::vector<oa::F32>& inValues, oa::MatrixShape inShape) {
+oa::Matrix matrixF32(const oa::Vector<oa::F32>& inValues, oa::MatrixShape inShape) {
 	return matrixBytes(inValues, inShape, oa::ScalarType::Float32);
 }
 
-oa::Matrix matrixI32(const std::vector<oa::I32>& inValues, oa::MatrixShape inShape) {
+oa::Matrix matrixI32(const oa::Vector<oa::I32>& inValues, oa::MatrixShape inShape) {
 	return matrixBytes(inValues, inShape, oa::ScalarType::Int32);
 }
 
 template <typename T>
-bool read(const oa::Matrix& inMatrix, std::vector<T>& out) {
-	out.resize(static_cast<std::size_t>(inMatrix.numElements()));
+bool read(const oa::Matrix& inMatrix, oa::Vector<T>& out) {
+	out.resize(static_cast<oa::Usize>(inMatrix.numElements()));
 	return oa::FnMatrix::copyToHost(inMatrix, out.data(),
 		static_cast<oa::U64>(out.size() * sizeof(T))).isOk();
 }
@@ -54,7 +51,7 @@ int main(int argc, char** argv) {
 	engineConfig.selectForThread = true;
 	auto engineResult = oa::Engine::create(engineConfig);
 	if (!engineResult.isOk()) {
-		std::fprintf(stderr, "Engine creation failed: %s\n",
+		oa::print(oa::PrintStream::Error, "Engine creation failed: {}",
 			engineResult.getStatus().toString().cStr());
 		return EXIT_FAILURE;
 	}
@@ -90,22 +87,22 @@ int main(int argc, char** argv) {
 
 	auto& engine = *engineResult.getValue();
 	if (auto status = submitAndWait(engine); status.isError()) {
-		std::fprintf(stderr, "Evaluation submission failed: %s\n",
+		oa::print(oa::PrintStream::Error, "Evaluation submission failed: {}",
 			status.toString().cStr());
 		return EXIT_FAILURE;
 	}
 
-	std::vector<oa::U32> confusionU32;
-	std::vector<oa::F32> perClass;
-	std::vector<oa::F32> map;
-	std::vector<oa::F32> meanMap;
+	oa::Vector<oa::U32> confusionU32;
+	oa::Vector<oa::F32> perClass;
+	oa::Vector<oa::F32> map;
+	oa::Vector<oa::F32> meanMap;
 	if (!read(confusion, confusionU32) || !read(detection.perClass, perClass)
 		|| !read(detection.meanAveragePrecisionByThreshold, map)
 		|| !read(detection.meanAveragePrecision, meanMap)) {
-		std::fprintf(stderr, "Evaluation readback failed\n");
+		oa::print(oa::PrintStream::Error, "Evaluation readback failed");
 		return EXIT_FAILURE;
 	}
-	std::vector<oa::F32> confusionF32(confusionU32.begin(), confusionU32.end());
+	oa::Vector<oa::F32> confusionF32(confusionU32.begin(), confusionU32.end());
 
 	const oa::Array<oa::F32, 10> trainLoss{
 		1.20F, 0.94F, 0.78F, 0.65F, 0.55F,
@@ -141,16 +138,16 @@ int main(int argc, char** argv) {
 		{.color = {0.96F, 0.64F, 0.20F, 1.0F}});
 
 	if (auto status = figure.saveTo(output); status.isError()) {
-		std::fprintf(stderr, "saveTo failed: %s\n", status.toString().cStr());
+		oa::print(oa::PrintStream::Error, "saveTo failed: {}", status.toString().cStr());
 		return EXIT_FAILURE;
 	}
 
-	std::printf("OA CV evaluation\n");
-	std::printf("  class 0: precision %.3f · recall %.3f · F1 %.3f · AP %.3f\n",
+	oa::print("OA CV evaluation");
+	oa::print("  class 0: precision {:.3f} · recall {:.3f} · F1 {:.3f} · AP {:.3f}",
 		perClass[0], perClass[1], perClass[2], perClass[3]);
-	std::printf("  class 1: precision %.3f · recall %.3f · F1 %.3f · AP %.3f\n",
+	oa::print("  class 1: precision {:.3f} · recall {:.3f} · F1 {:.3f} · AP {:.3f}",
 		perClass[4], perClass[5], perClass[6], perClass[7]);
-	std::printf("  mAP@[.50:.90]: %.3f\n", meanMap[0]);
-	std::printf("  figure: %s\n", output);
+	oa::print("  mAP@[.50:.90]: {:.3f}", meanMap[0]);
+	oa::print("  figure: {}", output);
 	return EXIT_SUCCESS;
 }

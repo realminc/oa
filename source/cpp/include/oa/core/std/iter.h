@@ -4,7 +4,7 @@
 // C++ standard iterator machinery into public OA headers.
 
 #include <oa/core/std/typeTraits.h>
-#include <oa/core/assert.h>
+#include <oa/core/std/assert.h>
 
 namespace oa {
 

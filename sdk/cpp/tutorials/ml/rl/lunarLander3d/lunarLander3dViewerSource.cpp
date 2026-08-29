@@ -8,9 +8,6 @@
 
 #include <core/streamText.h>
 
-#include <algorithm>
-#include <cmath>
-#include <limits>
 
 namespace {
 
@@ -66,10 +63,10 @@ oa::PixelRect lunarViewerFitRect(
 	oa::U32 width = inTargetWidth;
 	oa::U32 height = inTargetHeight;
 	if (targetAspect > sourceAspect) {
-		width = static_cast<oa::U32>(std::llround(
+		width = static_cast<oa::U32>(oa::lround(
 			static_cast<oa::F64>(height) * sourceAspect));
 	} else {
-		height = static_cast<oa::U32>(std::llround(
+		height = static_cast<oa::U32>(oa::lround(
 			static_cast<oa::F64>(width) / sourceAspect));
 	}
 	return {
@@ -202,8 +199,8 @@ public:
 			}
 		}
 
-		const oa::F32 finiteDelta = std::isfinite(inDeltaMs) and inDeltaMs > 0.0F
-			? std::min(inDeltaMs, OA_LUNAR_VIEW_MAX_ACCUMULATED_MS)
+		const oa::F32 finiteDelta = oa::isFinite(inDeltaMs) and inDeltaMs > 0.0F
+			? oa::min(inDeltaMs, OA_LUNAR_VIEW_MAX_ACCUMULATED_MS)
 			: 0.0F;
 		if (environment_.state().terminated_
 			or environment_.state().truncated_) {
@@ -226,7 +223,7 @@ public:
 			}
 		} else {
 			stepRequested_ = false;
-			accumulatorMs_ = std::min(
+			accumulatorMs_ = oa::min(
 				accumulatorMs_ + finiteDelta,
 				OA_LUNAR_VIEW_MAX_ACCUMULATED_MS);
 			const oa::F32 fixedStepMs = static_cast<oa::F32>(
@@ -264,8 +261,8 @@ public:
 			}
 		}
 
-		const oa::I32 panelWidth = std::min<oa::I32>(
-			360, std::max<oa::I32>(0, static_cast<oa::I32>(inWidth) - 24));
+		const oa::I32 panelWidth = oa::min<oa::I32>(
+			360, oa::max<oa::I32>(0, static_cast<oa::I32>(inWidth) - 24));
 		if (panelWidth <= 0 or inHeight < 174U) return;
 		const oa::PixelRect panel{12, 12, panelWidth, 150};
 		inUi.rect(panel, {0.015F, 0.02F, 0.035F, 0.82F});
@@ -417,7 +414,7 @@ private:
 			if (cancelStatus.isError()) {
 				OaLogError(
 					oa::LogComponent::App,
-					"LunarLander3d viewer cancellation failed after submit error: %s",
+					"LunarLander3d viewer cancellation failed after submit error: {}",
 					cancelStatus.toString().cStr());
 			}
 			return submitStatus;
@@ -432,7 +429,7 @@ private:
 		paused_ = true;
 		OaLogError(
 			oa::LogComponent::App,
-			"LunarLander3d viewer failed: %s",
+			"LunarLander3d viewer failed: {}",
 			inStatus.toString().cStr());
 	}
 
@@ -472,7 +469,7 @@ oa::Status LunarLander3dViewerSource::init(
 }
 
 oa::Status LunarLander3dViewerSource::update(oa::F32 inDeltaMs) {
-	if (not std::isfinite(inDeltaMs) or inDeltaMs < 0.0F) {
+	if (not oa::isFinite(inDeltaMs) or inDeltaMs < 0.0F) {
 		return oa::Status::invalidArgument(
 			"LunarLander3d viewer update requires a finite non-negative delta");
 	}
@@ -485,8 +482,8 @@ oa::Status LunarLander3dViewerSource::render(
 	const oa::TextAtlas& /*inTextAtlas*/,
 	oa::U32 inWidth,
 	oa::U32 inHeight) {
-	if (inWidth > static_cast<oa::U32>(std::numeric_limits<oa::I32>::max())
-		or inHeight > static_cast<oa::U32>(std::numeric_limits<oa::I32>::max())) {
+	if (inWidth > static_cast<oa::U32>(oa::Limits<oa::I32>::max())
+		or inHeight > static_cast<oa::U32>(oa::Limits<oa::I32>::max())) {
 		return oa::Status::invalidArgument(
 			"LunarLander3d viewer extent exceeds signed UI coordinates");
 	}

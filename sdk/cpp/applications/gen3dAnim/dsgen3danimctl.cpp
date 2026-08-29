@@ -30,6 +30,7 @@
 
 #include <oa/core/cli.h>
 #include <oa/core/filesystem.h>
+#include <oa/core/std/print.h>
 
 #include <anim/fbxWriter.h>
 #include <anim/poseClip.h>
@@ -72,13 +73,13 @@ static void ensureParent(const oa::Path& p) {
 static int cmdClean(const oa::String& inIn, const oa::String& inSave,
                     const oa::String& inUsda, const oa::String& inFbx) {
 	if (!oa::Filesystem::isFile(oa::Path(inIn))) {
-		std::printf("clean: input not found: %s\n", inIn.cStr());
+		oa::print("clean: input not found: {}", inIn.cStr());
 		return 1;
 	}
 
 	auto read = oa::Usd::readUsda(oa::Path(inIn));
 	if (!read.isOk()) {
-		std::printf("clean: read failed: %s\n", read.getStatus().toString().cStr());
+		oa::print("clean: read failed: {}", read.getStatus().toString().cStr());
 		return 1;
 	}
 	const oa::UsdSkelClip& usd = *read;
@@ -105,54 +106,54 @@ static int cmdClean(const oa::String& inIn, const oa::String& inSave,
 		if (!found) { ++baseMissing; }
 	}
 
-	std::printf("clip:    %s\n", inIn.cStr());
-	std::printf("  up-axis: %s   frames: %u   fps: %.3g\n",
+	oa::print("clip:    {}", inIn.cStr());
+	oa::print("  up-axis: {}   frames: {}   fps: {:.3g}",
 		usd.upAxis == 1 ? "Y" : "Z", usd.frameCount, usd.fps);
-	std::printf("  usd joints: %d   -> base kept: %d   junk dropped: %d   base absent: %d\n",
+	oa::print("  usd joints: {}   -> base kept: {}   junk dropped: {}   base absent: {}",
 		usd.jointCount(), kept, dropped, baseMissing);
-	std::printf("  dropped: %s\n", droppedNames.cStr());
+	oa::print("  dropped: {}", droppedNames.cStr());
 
 	auto packed = oa::PosePack::pack(usd, sk);
 	if (!packed.isOk()) {
-		std::printf("clean: pack failed: %s\n", packed.getStatus().toString().cStr());
+		oa::print("clean: pack failed: {}", packed.getStatus().toString().cStr());
 		return 1;
 	}
 	const oa::PoseClip& clip = *packed;
-	std::printf("  packed: %u frames x %u channels (compact poseDim)  = %llu floats\n",
+	oa::print("  packed: {} frames x {} channels (compact poseDim)  = {} floats",
 		clip.frameCount, clip.poseDim,
 		static_cast<unsigned long long>(clip.samples.size()));
 	const oa::I32 uniform = 9 + 6 * (sk.jointCount() - 1) + static_cast<oa::I32>(sk.contactJoints.size());
-	std::printf("  vs uniform-6D would be %d channels (%.0f%% smaller)\n",
+	oa::print("  vs uniform-6D would be {} channels ({:.0f}% smaller)",
 		uniform, 100.0 * (1.0 - static_cast<double>(clip.poseDim) / uniform));
 
 	if (!inSave.empty()) {
 		oa::Path p(inSave); ensureParent(p);
 		if (auto st = clip.write3dAnim(p); !st.isOk()) {
-			std::printf("  .3danim write failed: %s\n", st.toString().cStr());
+			oa::print("  .3danim write failed: {}", st.toString().cStr());
 		} else {
-			std::printf("  wrote %s\n", inSave.cStr());
+			oa::print("  wrote {}", inSave.cStr());
 		}
 	}
 	if (!inUsda.empty() || !inFbx.empty()) {
 		auto back = oa::PosePack::unpack(clip, sk);
 		if (!back.isOk()) {
-			std::printf("  unpack failed: %s\n", back.getStatus().toString().cStr());
+			oa::print("  unpack failed: {}", back.getStatus().toString().cStr());
 			return 1;
 		}
 		if (!inUsda.empty()) {
 			oa::Path p(inUsda); ensureParent(p);
 			if (auto st = oa::Usd::writeUsda(p, *back, "rig"); !st.isOk()) {
-				std::printf("  .usda write failed: %s\n", st.toString().cStr());
+				oa::print("  .usda write failed: {}", st.toString().cStr());
 			} else {
-				std::printf("  wrote %s\n", inUsda.cStr());
+				oa::print("  wrote {}", inUsda.cStr());
 			}
 		}
 		if (!inFbx.empty()) {
 			oa::Path p(inFbx); ensureParent(p);
 			if (auto st = oa::Fbx::writeFbx(p, *back); !st.isOk()) {
-				std::printf("  .fbx write failed: %s\n", st.toString().cStr());
+				oa::print("  .fbx write failed: {}", st.toString().cStr());
 			} else {
-				std::printf("  wrote %s\n", inFbx.cStr());
+				oa::print("  wrote {}", inFbx.cStr());
 			}
 		}
 	}
@@ -262,13 +263,13 @@ static int cmdPack(const oa::String& inIn, const oa::String& inClips, const oa::
 	if (!inClips.empty()) {
 		sources = readClipList(inClips);
 		if (sources.empty()) {
-			std::printf("pack: empty/unreadable clip list: %s\n", inClips.cStr());
+			oa::print("pack: empty/unreadable clip list: {}", inClips.cStr());
 			return 1;
 		}
 	} else if (!inIn.empty()) {
 		auto listing = oa::Filesystem::listAll(oa::Path(inIn), /*recursive=*/true);
 		if (!listing.isOk()) {
-			std::printf("pack: cannot list %s: %s\n", inIn.cStr(),
+			oa::print("pack: cannot list {}: {}", inIn.cStr(),
 				listing.getStatus().toString().cStr());
 			return 1;
 		}
@@ -279,7 +280,7 @@ static int cmdPack(const oa::String& inIn, const oa::String& inClips, const oa::
 			}
 		}
 	} else {
-		std::printf("pack: provide --in <dir> or --clips <list.txt>\n");
+		oa::print("pack: provide --in <dir> or --clips <list.txt>");
 		return 1;
 	}
 
@@ -292,7 +293,7 @@ static int cmdPack(const oa::String& inIn, const oa::String& inClips, const oa::
 	for (const oa::String& src : sources) {
 		auto read = oa::Usd::readUsda(oa::Path(src));
 		if (!read.isOk()) {
-			std::printf("  skip %s (read: %s)\n", src.cStr(), read.getStatus().toString().cStr());
+			oa::print("  skip {} (read: {})", src.cStr(), read.getStatus().toString().cStr());
 			++nSkip; continue;
 		}
 		const std::string clipStem = stem(src);
@@ -314,23 +315,23 @@ static int cmdPack(const oa::String& inIn, const oa::String& inClips, const oa::
 	}
 
 	if (clips.empty()) {
-		std::printf("pack: no usable .usd clips from input\n");
+		oa::print("pack: no usable .usd clips from input");
 		return 1;
 	}
 
-	std::printf("combined %llu clips (train %d / val %d / test %d, skipped %d) · joints %s\n",
+	oa::print("combined {} clips (train {} / val {} / test {}, skipped {}) · joints {}",
 		static_cast<unsigned long long>(clips.size()), nTrain, nVal, nTest, nSkip,
 		inRaw ? "raw (junk kept)" : "stripped to clean base");
 	if (!inRaw) {
-		std::printf("  junk joints dropped: %d total\n", nDropTotal);
+		oa::print("  junk joints dropped: {} total", nDropTotal);
 	}
 
 	if (auto st = oa::Usd::writeUsdaMulti(oa::Path(inOut),
 			oa::Span<const oa::UsdNamedClip>(clips.data(), clips.size())); !st.isOk()) {
-		std::printf("pack: write failed: %s\n", st.toString().cStr());
+		oa::print("pack: write failed: {}", st.toString().cStr());
 		return 1;
 	}
-	std::printf("wrote %s\n", inOut.cStr());
+	oa::print("wrote {}", inOut.cStr());
 	return 0;
 }
 
@@ -355,7 +356,7 @@ static int cmdStrip(const oa::String& inIn, const oa::String& inDir,
 	if (!inDir.empty()) {
 		auto listing = oa::Filesystem::listAll(oa::Path(inDir), /*recursive=*/true);
 		if (!listing.isOk()) {
-			std::printf("strip: cannot list %s: %s\n", inDir.cStr(),
+			oa::print("strip: cannot list {}: {}", inDir.cStr(),
 				listing.getStatus().toString().cStr());
 			return 1;
 		}
@@ -370,16 +371,16 @@ static int cmdStrip(const oa::String& inIn, const oa::String& inDir,
 	} else if (!inIn.empty()) {
 		files.pushBack(inIn);
 	} else {
-		std::printf("strip: provide --in <file> or --dir <root>\n");
+		oa::print("strip: provide --in <file> or --dir <root>");
 		return 1;
 	}
-	if (files.empty()) { std::printf("strip: no .usd files to process\n"); return 1; }
+	if (files.empty()) { oa::print("strip: no .usd files to process"); return 1; }
 
 	oa::I32 nDone = 0, nSkip = 0, nDrop = 0, nIncomplete = 0;
 	for (const oa::String& src : files) {
 		auto read = oa::Usd::readUsda(oa::Path(src));
 		if (!read.isOk()) {
-			std::printf("  skip %s (read: %s)\n", src.cStr(), read.getStatus().toString().cStr());
+			oa::print("  skip {} (read: {})", src.cStr(), read.getStatus().toString().cStr());
 			++nSkip; continue;
 		}
 		oa::I32 dropped = 0;
@@ -389,17 +390,17 @@ static int cmdStrip(const oa::String& inIn, const oa::String& inDir,
 		if (incomplete) { ++nIncomplete; }
 		nDrop += dropped;
 		if (inDryRun) {
-			std::printf("  [dry] kept %d  drop %d%s  %s\n", kept, dropped,
+			oa::print("  [dry] kept {}  drop {}{}  {}", kept, dropped,
 				incomplete ? "  (INCOMPLETE base)" : "", src.cStr());
 			++nDone; continue;
 		}
 		if (auto st = oa::Usd::writeUsda(oa::Path(src), stripped, "rig"); !st.isOk()) {
-			std::printf("  FAIL %s (write: %s)\n", src.cStr(), st.toString().cStr());
+			oa::print("  FAIL {} (write: {})", src.cStr(), st.toString().cStr());
 			++nSkip; continue;
 		}
 		++nDone;
 	}
-	std::printf("strip: %s %d files · junk dropped %d total · incomplete-base %d · skipped %d\n",
+	oa::print("strip: {} {} files · junk dropped {} total · incomplete-base {} · skipped {}",
 		inDryRun ? "would process" : "rewrote", nDone, nDrop, nIncomplete, nSkip);
 	return 0;
 }
@@ -411,19 +412,19 @@ static int cmdStrip(const oa::String& inIn, const oa::String& inDir,
 static int cmdInfo(const oa::String& inPath, oa::I32 inContext) {
 	oa::DsGen3dAnim ds;
 	if (auto st = ds.load(oa::Path(inPath)); !st.isOk()) {
-		std::printf("info: load failed: %s\n", st.toString().cStr());
+		oa::print("info: load failed: {}", st.toString().cStr());
 		return 1;
 	}
 	ds.buildIndices(inContext);
 
-	std::printf("\n  Dataset: %s\n", inPath.cStr());
-	std::printf("  poseDim: %d   fps: %.3g   Clips: %zu\n",
+	oa::print("\n  Dataset: {}", inPath.cStr());
+	oa::print("  poseDim: {}   fps: {:.3g}   Clips: {}",
 		ds.poseDim(), static_cast<double>(ds.fps()), ds.clipCount());
-	std::printf("  split clips:   train=%zu  val=%zu  test=%zu\n",
+	oa::print("  split clips:   train={}  val={}  test={}",
 		ds.splitClipCount(oa::DsSplit::Train),
 		ds.splitClipCount(oa::DsSplit::Val),
 		ds.splitClipCount(oa::DsSplit::Test));
-	std::printf("  Windows@ctx%d:  train=%zu  val=%zu  test=%zu\n", inContext,
+	oa::print("  Windows@ctx{}:  train={}  val={}  test={}", inContext,
 		ds.windowCount(oa::DsSplit::Train),
 		ds.windowCount(oa::DsSplit::Val),
 		ds.windowCount(oa::DsSplit::Test));
@@ -437,20 +438,20 @@ static int cmdInfo(const oa::String& inPath, oa::I32 inContext) {
 			mmin = std::min(mmin, mean[i]); mmax = std::max(mmax, mean[i]);
 			smin = std::min(smin, sd[i]);   smax = std::max(smax, sd[i]);
 		}
-		std::printf("  Mean range:    [%.4g, %.4g]\n", static_cast<double>(mmin), static_cast<double>(mmax));
-		std::printf("  std range:     [%.4g, %.4g]\n", static_cast<double>(smin), static_cast<double>(smax));
+		oa::print("  Mean range:    [{:.4g}, {:.4g}]", static_cast<double>(mmin), static_cast<double>(mmax));
+		oa::print("  std range:     [{:.4g}, {:.4g}]", static_cast<double>(smin), static_cast<double>(smax));
 	}
 
-	std::printf("\n  %-5s %-34s %-7s %-7s %s\n", "idx", "Name", "split", "frames", "category");
+	oa::print("\n  {:<5} {:<34} {:<7} {:<7} {}", "idx", "Name", "split", "frames", "category");
 	const oa::Vector<oa::DsClipMeta>& metas = ds.metas();
 	for (oa::Usize i = 0; i < metas.size(); ++i) {
 		const oa::DsClipMeta& m = metas[i];
 		const char* sp = (m.split == oa::DsSplit::Train) ? "train"
 		               : (m.split == oa::DsSplit::Val)   ? "val" : "test";
-		std::printf("  %-5zu %-34s %-7s %-7u %s\n",
+		oa::print("  {:<5} {:<34} {:<7} {:<7} {}",
 			i, m.name.cStr(), sp, m.frames, oa::dsCategoryName(m.category));
 	}
-	std::printf("\n");
+	oa::print("");
 	return 0;
 }
 
@@ -471,7 +472,7 @@ static int cmdBake(const oa::String& inPath, const oa::String& inOut,
                    const oa::String& inNs, bool inRootDelta) {
 	oa::DsGen3dAnim ds;
 	if (auto st = ds.load(oa::Path(inPath)); !st.isOk()) {
-		std::printf("bake: load failed: %s\n", st.toString().cStr());
+		oa::print("bake: load failed: {}", st.toString().cStr());
 		return 1;
 	}
 	// root as per-frame delta: recomputes Mean/std and makes clipModelRaw emit
@@ -492,7 +493,7 @@ static int cmdBake(const oa::String& inPath, const oa::String& inOut,
 	for (oa::Usize i = 0; i < clipCount; ++i) {
 		oa::Vector<oa::F32> raw; oa::U32 frames = 0;
 		if (!ds.clipModelRaw(static_cast<oa::I32>(i), raw, frames) || frames == 0) {
-			std::printf("bake: clip %zu has no frames\n", i);
+			oa::print("bake: clip {} has no frames", i);
 			return 1;
 		}
 		frameTotal += frames;
@@ -502,7 +503,7 @@ static int cmdBake(const oa::String& inPath, const oa::String& inOut,
 
 	FILE* f = std::fopen(inOut.cStr(), "wb");
 	if (!f) {
-		std::printf("bake: cannot open %s for write\n", inOut.cStr());
+		oa::print("bake: cannot open {} for write", inOut.cStr());
 		return 1;
 	}
 
@@ -570,7 +571,7 @@ static int cmdBake(const oa::String& inPath, const oa::String& inOut,
 
 	std::fclose(f);
 
-	std::printf("bake: wrote %s\n  poseDim=%d fps=%.3g Clips=%zu FrameTotal=%u  (%.1f KB of floats)\n",
+	oa::print("bake: wrote {}\n  poseDim={} fps={:.3g} Clips={} FrameTotal={}  ({:.1f} KB of floats)",
 		inOut.cStr(), poseDim, static_cast<double>(ds.fps()), clipCount, frameTotal,
 		static_cast<double>(frameTotal) * poseDim * 4.0 / 1024.0);
 	return 0;
@@ -671,6 +672,6 @@ int main(int argc, char** argv) {
 	if (cmd == "info")  return cmdInfo(c.infoPath, c.infoContext);
 	if (cmd == "bake")  return cmdBake(c.bakePath, c.bakeOut, c.bakeNs, c.bakeRootDelta);
 
-	std::printf("dsgen3danimctl: unknown command '%s'\n", cmd.cStr());
+	oa::print("dsgen3danimctl: unknown command '{}'", cmd.cStr());
 	return 1;
 }

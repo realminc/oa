@@ -8,7 +8,7 @@
 #include <oa/core/types.h>
 #undef OA_TYPES_H_SKIP_REST
 
-#include <oa/core/assert.h>
+#include <oa/core/std/assert.h>
 
 namespace oa {
 

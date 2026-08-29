@@ -1943,7 +1943,10 @@ class TransformerBlock(Module):
 class Viewer:
 	@overload
 	@staticmethod
-	def preview(source: Path, title: str = ..., width: int = ..., height: int = ...) -> None: ...
+	def preview(source: Path, title: str = ..., width: int = ..., height: int = ...) -> None:
+		"""
+		Preview an image, audio, or video path in a blocking oa::Viewer session.
+		"""
 
 	@overload
 	@staticmethod
@@ -2724,6 +2727,8 @@ class VideoPlayer:
 
 	def stepFrames(self, count: int) -> None: ...
 
+	def seekFrame(self, frameIndex: int) -> None: ...
+
 	def seek(self, timestamp: int) -> None: ...
 
 	def flush(self) -> None: ...
@@ -2737,6 +2742,8 @@ class VideoPlayer:
 	def currentFrameToImage(self, normalizeImagenet: bool = ...) -> Image: ...
 
 	def readbackCurrentRgba(self) -> bytes: ...
+
+	def currentFrameIndex(self) -> int: ...
 
 	def index(self) -> int: ...
 

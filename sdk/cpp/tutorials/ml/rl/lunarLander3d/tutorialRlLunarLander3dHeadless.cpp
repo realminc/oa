@@ -15,12 +15,6 @@
 
 #include <core/streamText.h>
 
-#include <algorithm>
-#include <cmath>
-#include <cstdio>
-#include <cstdint>
-#include <limits>
-
 #include <ml/rl/lunarLander3d.h>
 #include "lunarLander3dRender.h"
 
@@ -46,12 +40,12 @@ public:
 
 	void addDouble(oa::F64 inValue) noexcept {
 		addU64(static_cast<oa::U64>(static_cast<oa::I64>(
-			std::llround(inValue * 1.0e9))));
+			oa::lround(inValue * 1.0e9))));
 	}
 
 	void addFloat(oa::F32 inValue) noexcept {
 		addU64(static_cast<oa::U64>(static_cast<oa::I64>(
-			std::llround(static_cast<oa::F64>(inValue) * 1.0e6))));
+			oa::lround(static_cast<oa::F64>(inValue) * 1.0e6))));
 	}
 
 	[[nodiscard]] oa::U64 value() const noexcept { return hash_; }
@@ -216,7 +210,7 @@ static oa::Status lunarHeadlessBuildPpm(
 	const oa::U64 pixelCount = static_cast<oa::U64>(inReadback.width_)
 		* static_cast<oa::U64>(inReadback.height_);
 	if (pixelCount == 0U
-		or pixelCount > std::numeric_limits<oa::Usize>::max() / 4U
+		or pixelCount > oa::Limits<oa::Usize>::max() / 4U
 		or inReadback.colorRgba8_.size()
 			!= static_cast<oa::Usize>(pixelCount * 4U)) {
 		return oa::Status::error(
@@ -224,22 +218,17 @@ static oa::Status lunarHeadlessBuildPpm(
 			"lunar render returned an invalid RGBA8 extent");
 	}
 
-	char header[64];
-	const int headerSize = std::snprintf(
-		header, sizeof(header), "P6\n%u %u\n255\n",
-		inReadback.width_, inReadback.height_);
-	if (headerSize <= 0
-		or static_cast<oa::Usize>(headerSize) >= sizeof(header)
-		or pixelCount > (std::numeric_limits<oa::Usize>::max()
-			- static_cast<oa::Usize>(headerSize)) / 3U) {
+	const oa::String header = oa::format(
+		"P6\n{} {}\n255\n", inReadback.width_, inReadback.height_);
+	if (pixelCount > (oa::Limits<oa::Usize>::max() - header.size()) / 3U) {
 		return oa::Status::error(
 			oa::StatusCode::OutOfRange,
 			"lunar PPM extent exceeds host addressability");
 	}
 
-	outPpm.resize(static_cast<oa::Usize>(headerSize) + pixelCount * 3U);
-	oa::memcpy(outPpm.data(), header, static_cast<oa::Usize>(headerSize));
-	oa::U8* destination = outPpm.data() + headerSize;
+	outPpm.resize(header.size() + pixelCount * 3U);
+	oa::memcpy(outPpm.data(), header.data(), header.size());
+	oa::U8* destination = outPpm.data() + header.size();
 	for (oa::U64 pixel = 0U; pixel < pixelCount; ++pixel) {
 		const oa::Usize source = static_cast<oa::Usize>(pixel * 4U);
 		const oa::Usize target = static_cast<oa::Usize>(pixel * 3U);
@@ -266,7 +255,7 @@ static oa::Status lunarHeadlessRenderFrame(
 		if (cancelStatus.isError()) {
 			OaLogError(
 				oa::LogComponent::App,
-				"Lunar headless frame cancellation failed after submit error: %s",
+				"Lunar headless frame cancellation failed after submit error: {}",
 				cancelStatus.toString().cStr());
 		}
 		return submitStatus;
@@ -276,17 +265,9 @@ static oa::Status lunarHeadlessRenderFrame(
 
 	oa::Vector<oa::U8> ppm;
 	OA_RETURN_IF_ERROR(lunarHeadlessBuildPpm(*readbackResult, ppm));
-	char filename[32];
-	const int filenameSize = std::snprintf(
-		filename, sizeof(filename), "frame_%04u.ppm", inFrameIndex);
-	if (filenameSize <= 0
-		or static_cast<oa::Usize>(filenameSize) >= sizeof(filename)) {
-		return oa::Status::error(
-			oa::StatusCode::Internal,
-			"lunar frame filename formatting failed");
-	}
+	const oa::String filename = oa::format("frame_{:04}.ppm", inFrameIndex);
 	OA_RETURN_IF_ERROR(oa::Filesystem::writeBinary(
-		inOutputDirectory / filename,
+		inOutputDirectory / filename.view(),
 		oa::Span<const oa::U8>(ppm.data(), ppm.size())));
 
 	LunarHeadlessDigest frameDigest;
@@ -312,48 +293,42 @@ static oa::String lunarHeadlessBuildManifestJson(
 	oa::U64 inTraceDigest,
 	oa::U64 inImageSequenceDigest,
 	const oa::Vector<LunarHeadlessFrameRecord>& inRecords) {
-	char values[1024];
-	const int valueSize = std::snprintf(
-		values, sizeof(values),
-		"{\n"
+	oa::String result = oa::format(
+		"{{\n"
 		"  \"format_version\": 1,\n"
 		"  \"environment\": \"oa_lunar_lander_3d\",\n"
-		"  \"environment_version\": %u,\n"
-		"  \"physics_version\": %u,\n"
-		"  \"observation_version\": %u,\n"
-		"  \"reward_version\": %u,\n"
-		"  \"base_seed_hex\": \"%016llx\",\n"
-		"  \"environment_lane\": %u,\n"
-		"  \"episode_index\": %llu,\n"
-		"  \"config_fingerprint_hex\": \"%016llx\",\n"
+		"  \"environment_version\": {},\n"
+		"  \"physics_version\": {},\n"
+		"  \"observation_version\": {},\n"
+		"  \"reward_version\": {},\n"
+		"  \"base_seed_hex\": \"{:016x}\",\n"
+		"  \"environment_lane\": {},\n"
+		"  \"episode_index\": {},\n"
+		"  \"config_fingerprint_hex\": \"{:016x}\",\n"
 		"  \"controller\": \"scripted_descent_lateral_attitude_pd_v3\",\n"
-		"  \"episode_steps\": %u,\n"
-		"  \"end_reason\": \"%s\",\n"
-		"  \"episode_return_q1e9\": %lld,\n"
-		"  \"width\": %u,\n"
-		"  \"height\": %u,\n"
+		"  \"episode_steps\": {},\n"
+		"  \"end_reason\": \"{}\",\n"
+		"  \"episode_return_q1e9\": {},\n"
+		"  \"width\": {},\n"
+		"  \"height\": {},\n"
 		"  \"trace_digest_algorithm\": \"oa_lunar_quantized_fnv64_v1\",\n"
-		"  \"trace_digest_hex\": \"%016llx\",\n"
+		"  \"trace_digest_hex\": \"{:016x}\",\n"
 		"  \"image_digest_algorithm\": \"ppm_bytes_fnv64_v1\",\n"
-		"  \"image_sequence_digest_hex\": \"%016llx\",\n"
-		"  \"device\": {\n"
+		"  \"image_sequence_digest_hex\": \"{:016x}\",\n"
+		"  \"device\": {{\n"
 		"    \"name\": ",
 		inConfig.environmentVersion_, inConfig.physicsVersion_,
 		inConfig.observationVersion_, inConfig.rewardVersion_,
-		static_cast<unsigned long long>(inEpisodeManifest.baseSeed_),
+		inEpisodeManifest.baseSeed_,
 		inEpisodeManifest.environmentLane_,
-		static_cast<unsigned long long>(inEpisodeManifest.episodeIndex_),
-		static_cast<unsigned long long>(inEpisodeManifest.configFingerprint_),
+		inEpisodeManifest.episodeIndex_,
+		inEpisodeManifest.configFingerprint_,
 		inFinalState.episodeStep_,
 		lunarHeadlessEndReasonName(inFinalState.endReason_),
-		static_cast<long long>(std::llround(inFinalState.episodeReturn_ * 1.0e9)),
+		static_cast<oa::I64>(oa::lround(inFinalState.episodeReturn_ * 1.0e9)),
 		inWidth, inHeight,
-		static_cast<unsigned long long>(inTraceDigest),
-		static_cast<unsigned long long>(inImageSequenceDigest));
-	oa::String result;
-	if (valueSize > 0 and static_cast<oa::Usize>(valueSize) < sizeof(values)) {
-		result += oa::StringView(values, static_cast<oa::Usize>(valueSize));
-	}
+		inTraceDigest,
+		inImageSequenceDigest);
 	lunarHeadlessAppendJsonString(result, inEngine.deviceName());
 	result += ",\n    \"driver_name\": ";
 	lunarHeadlessAppendJsonString(
@@ -367,17 +342,12 @@ static oa::String lunarHeadlessBuildManifestJson(
 	result += "\n  },\n  \"frames\": [\n";
 	for (oa::Usize index = 0U; index < inRecords.size(); ++index) {
 		const LunarHeadlessFrameRecord& record = inRecords[index];
-		char line[256];
-		const int lineSize = std::snprintf(
-			line, sizeof(line),
-			"    {\"file\": \"%s\", \"episode_step\": %u, "
-			"\"ppm_digest_hex\": \"%016llx\"}%s\n",
+		result += oa::format(
+			"    {{\"file\": \"{}\", \"episode_step\": {}, "
+			"\"ppm_digest_hex\": \"{:016x}\"}}{}\n",
 			record.filename_.cStr(), record.episodeStep_,
-			static_cast<unsigned long long>(record.ppmDigest_),
+			record.ppmDigest_,
 			index + 1U == inRecords.size() ? "" : ",");
-		if (lineSize > 0 and static_cast<oa::Usize>(lineSize) < sizeof(line)) {
-			result += oa::StringView(line, static_cast<oa::Usize>(lineSize));
-		}
 	}
 	result += "  ]\n}\n";
 	return result;
@@ -448,7 +418,7 @@ static oa::Result<LunarHeadlessSummary> lunarHeadlessRun(
 		const oa::Status closeStatus = engine->close();
 		if (closeStatus.isError()) {
 			OaLogError(oa::LogComponent::App,
-				"Lunar headless engine close failed: %s",
+				"Lunar headless engine close failed: {}",
 				closeStatus.toString().cStr());
 		}
 		return createStatus;
@@ -516,17 +486,11 @@ static oa::Result<LunarHeadlessSummary> lunarHeadlessRun(
 	}
 	if (runStatus.isOk() and OA_EXPECTED_TRACE_DIGEST != 0U
 		and traceDigest.value() != OA_EXPECTED_TRACE_DIGEST) {
-		char digestError[192];
-		const int digestErrorSize = std::snprintf(
-			digestError, sizeof(digestError),
-			"lunar frozen trace digest mismatch: expected=%016llx actual=%016llx",
-			static_cast<unsigned long long>(OA_EXPECTED_TRACE_DIGEST),
-			static_cast<unsigned long long>(traceDigest.value()));
 		runStatus = oa::Status::error(
 			oa::StatusCode::DataLoss,
-			digestErrorSize > 0
-				? oa::String(digestError)
-				: oa::String("lunar frozen trace digest mismatch"));
+			oa::format(
+				"lunar frozen trace digest mismatch: expected={:016x} actual={:016x}",
+				OA_EXPECTED_TRACE_DIGEST, traceDigest.value()));
 	}
 
 	const oa::String manifestJson = runStatus.isOk()
@@ -541,14 +505,14 @@ static oa::Result<LunarHeadlessSummary> lunarHeadlessRun(
 		runStatus = sessionCloseStatus;
 	} else if (sessionCloseStatus.isError()) {
 		OaLogError(oa::LogComponent::App,
-			"Lunar headless renderer close failed: %s",
+			"Lunar headless renderer close failed: {}",
 			sessionCloseStatus.toString().cStr());
 	}
 	if (runStatus.isOk() and engineCloseStatus.isError()) {
 		runStatus = engineCloseStatus;
 	} else if (engineCloseStatus.isError()) {
 		OaLogError(oa::LogComponent::App,
-			"Lunar headless engine close failed: %s",
+			"Lunar headless engine close failed: {}",
 			engineCloseStatus.toString().cStr());
 	}
 	if (runStatus.isError()) return runStatus;
@@ -559,7 +523,7 @@ static oa::Result<LunarHeadlessSummary> lunarHeadlessRun(
 	summary.frameCount_ = static_cast<oa::U32>(records.size());
 	summary.episodeSteps_ = environment.state().episodeStep_;
 	summary.endReason_ = environment.state().endReason_;
-	summary.episodeReturnQ1e9_ = static_cast<oa::I64>(std::llround(
+	summary.episodeReturnQ1e9_ = static_cast<oa::I64>(oa::lround(
 		environment.state().episodeReturn_ * 1.0e9));
 	summary.traceDigest_ = traceDigest.value();
 	summary.imageSequenceDigest_ = imageSequenceDigest.value();
@@ -586,7 +550,7 @@ int main(int argc, char** argv) {
 	if (result.isError()) {
 		const oa::Status& status = result.getStatus();
 		OaLogError(oa::LogComponent::App,
-			"Lunar headless tutorial failed: %s", status.toString().cStr());
+			"Lunar headless tutorial failed: {}", status.toString().cStr());
 		if (status.getCode() == oa::StatusCode::DeviceNotFound
 			or status.getCode() == oa::StatusCode::Unavailable) {
 			return 125;
@@ -594,8 +558,8 @@ int main(int argc, char** argv) {
 		return 1;
 	}
 	OaLogInfo(oa::LogComponent::App,
-		"Lunar headless tutorial wrote %u frames and %s "
-		"(trace=%016llx, images=%016llx)",
+		"Lunar headless tutorial wrote {} frames and {} "
+		"(trace={:016x}, images={:016x})",
 		result->frameCount_, result->manifestPath_.cStr(),
 		static_cast<unsigned long long>(result->traceDigest_),
 		static_cast<unsigned long long>(result->imageSequenceDigest_));

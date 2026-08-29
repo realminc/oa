@@ -130,7 +130,7 @@ oa::Result<BindlessHeap> BindlessHeap::create(
 			samplerCapacity == minSamplerCapacity;
 		if (alreadyAtMinimum) {
 			OaLogError(oa::LogComponent::Runtime,
-				"bindless creation failed at minimum capacity (VkResult=%d)", r);
+				"bindless creation failed at minimum capacity (VkResult={})", r);
 			return oa::Status::error(oa::StatusCode::PipelineError,
 				"bindless descriptor layout/pool creation failed at minimum capacity");
 		}
@@ -155,11 +155,11 @@ oa::Result<BindlessHeap> BindlessHeap::create(
 			}
 		}
 
-		OaLogWarn(oa::LogComponent::Runtime, "bindless creation failed, retrying with smaller capacity (buffers=%u images=%u samplers=%u)",
+		OaLogWarn(oa::LogComponent::Runtime, "bindless creation failed, retrying with smaller capacity (buffers={} images={} samplers={})",
 			bufferCapacity, imageCapacity, samplerCapacity);
 	}
 
-	OaLogInfo(oa::LogComponent::Runtime, "bindless heap: buffers=%u imageSlots=%u samplerSlots=%u, UPDATE_AFTER_BIND",
+	OaLogInfo(oa::LogComponent::Runtime, "bindless heap: buffers={} imageSlots={} samplerSlots={}, UPDATE_AFTER_BIND",
 		bufferCapacity - 1, imageCapacity - 1, samplerCapacity - 1);
 
 	// allocate the one global descriptor set.
@@ -172,7 +172,7 @@ oa::Result<BindlessHeap> BindlessHeap::create(
 	VkDescriptorSet ds = VK_NULL_HANDLE;
 	r = inDevice.deviceDispatch.vkAllocateDescriptorSets(dev, &dsAI, &ds);
 	if (r != VK_SUCCESS) {
-		OaLogError(oa::LogComponent::Runtime, "bindless: vkAllocateDescriptorSets failed (VkResult=%d)", r);
+		OaLogError(oa::LogComponent::Runtime, "bindless: vkAllocateDescriptorSets failed (VkResult={})", r);
 		inDevice.deviceDispatch.vkDestroyDescriptorPool(dev, pool, nullptr);
 		inDevice.deviceDispatch.vkDestroyDescriptorSetLayout(dev, dsl, nullptr);
 		return oa::Status::error(oa::StatusCode::PipelineError,
@@ -195,7 +195,7 @@ oa::Result<BindlessHeap> BindlessHeap::create(
 	VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
 	r = inDevice.deviceDispatch.vkCreatePipelineLayout(dev, &plCI, nullptr, &pipelineLayout);
 	if (r != VK_SUCCESS) {
-		OaLogError(oa::LogComponent::Runtime, "bindless: vkCreatePipelineLayout failed (VkResult=%d)", r);
+		OaLogError(oa::LogComponent::Runtime, "bindless: vkCreatePipelineLayout failed (VkResult={})", r);
 		inDevice.deviceDispatch.vkDestroyDescriptorPool(dev, pool, nullptr);
 		inDevice.deviceDispatch.vkDestroyDescriptorSetLayout(dev, dsl, nullptr);
 		return oa::Status::error(oa::StatusCode::PipelineError,
@@ -261,13 +261,13 @@ oa::U32 BindlessHeap::registerBuffer(
 		oavk::validateStorageBufferDescriptor(inDevice, inBuffer);
 	if (not validation.isOk()) {
 		OaLogError(oa::LogComponent::Runtime,
-			"bindless heap: refusing storage-buffer registration: %s",
+			"bindless heap: refusing storage-buffer registration: {}",
 			validation.getMessage().cStr());
 		return OA_BINDLESS_INVALID;
 	}
 	oa::SpinlockGuard guard(lock_);
 	if (freeList_.empty()) {
-		OaLogError(oa::LogComponent::Runtime, "bindless heap: out of slots (%u max)",
+		OaLogError(oa::LogComponent::Runtime, "bindless heap: out of slots ({} max)",
 			capacities_.buffers);
 		return OA_BINDLESS_INVALID;
 	}
@@ -335,7 +335,7 @@ oa::Status BindlessHeap::update(
 static oa::U32 bindlessPopSlot(oa::Vector<oa::U32>& inOutFreeList, const char* inKind)
 {
 	if (inOutFreeList.empty()) {
-		OaLogError(oa::LogComponent::Runtime, "bindless heap: out of %s slots", inKind);
+		OaLogError(oa::LogComponent::Runtime, "bindless heap: out of {} slots", inKind);
 		return OA_BINDLESS_INVALID;
 	}
 	oa::U32 index = inOutFreeList.back();

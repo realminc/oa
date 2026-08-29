@@ -29,6 +29,25 @@ struct oa::VideoDecoder::BitstreamSlot {
 
 class oa::VideoDecoder::Impl {
 public:
+	struct YcbcrDescriptorEntry {
+		VkImage image = VK_NULL_HANDLE;
+		oa::U32 layer = 0U;
+		VkImageView view = VK_NULL_HANDLE;
+		VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
+	};
+
+	struct YcbcrPipelineState {
+		VkSamplerYcbcrConversion conversion = VK_NULL_HANDLE;
+		VkSampler sampler = VK_NULL_HANDLE;
+		VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
+		VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
+		VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
+		VkPipeline rgbaPipeline = VK_NULL_HANDLE;
+		VkPipeline bf16Pipeline = VK_NULL_HANDLE;
+		oa::U32 combinedDescriptorCount = 1U;
+		oa::Vector<YcbcrDescriptorEntry> descriptors;
+	};
+
 	~Impl();
 
 	oa::UniquePtr<VideoCodecParser> parser;
@@ -44,12 +63,16 @@ public:
 	oa::U32 currentBitstreamIndex = 0U;
 	oa::U32 codedWidth = 0U;
 	oa::U32 codedHeight = 0U;
+	VkFormat decodedFormat = VK_FORMAT_UNDEFINED;
+	VkFormat decodedYFormat = VK_FORMAT_UNDEFINED;
+	VkFormat decodedUvFormat = VK_FORMAT_UNDEFINED;
 	oavk::VideoDpb dpb;
 	oa::Array<VkImageLayout, 16> dpbImageLayouts = {};
 	oa::VideoResourcePath resourcePath = oa::VideoResourcePath::Unavailable;
 
 	bool useSampleStaging = false;
 	bool copySampleStagingOnVideoQueue = false;
+	bool hardwareSamplesDpbDirectly = false;
 	oa::Vector<VkImage> sampleImages;
 	oa::Vector<VkImageView> sampleYViews;
 	oa::Vector<VkImageView> sampleUvViews;
@@ -102,10 +125,6 @@ public:
 	oa::Array<oa::I32, STD_VIDEO_AV1_NUM_REF_FRAMES> av1RefFrameToDpbSlot = {};
 	oa::Array<StdVideoDecodeAV1ReferenceInfo, 16> av1DpbReferenceInfos = {};
 
-	VkSamplerYcbcrConversion ycbcrConversion = VK_NULL_HANDLE;
-	VkSampler ycbcrSampler = VK_NULL_HANDLE;
-	VkSampler ycbcrSamplerNearest = VK_NULL_HANDLE;
-	VkPipeline conversionPipeline = VK_NULL_HANDLE;
 
 	oa::I32 reusedRgbaIndex = -1;
 	oa::U32 reusedRgbaWidth = 0U;
@@ -115,6 +134,13 @@ public:
 	oa::Array<VkImageView, 16> cachedNv12UvViews = {};
 	VkSampler cachedNv12Sampler = VK_NULL_HANDLE;
 	VkSampler cachedNv12SamplerNearest = VK_NULL_HANDLE;
+	// Model (601/709/2020) x range (limited/full) x filter
+	// (nearest/linear). Each state owns the exact immutable sampler/layout
+	// required by Vulkan; source descriptors are allocated once and never
+	// updated while GPU work can reference them.
+	oa::Array<YcbcrPipelineState, 12> ycbcrPipelines = {};
+	oa::Event lastYcbcrEvent;
+	oa::U64 hardwareYcbcrDispatchCount = 0U;
 
 	oa::VideoProfile profile = {};
 	oa::Engine* engine = nullptr;

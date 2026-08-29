@@ -3,7 +3,7 @@
 #include <oa/runtime/executionSession.h>
 #include <oa/runtime/engine.h>
 
-#include <assert.h>
+#include <oa/core/std/assert.h>
 
 oa::EnvironmentExecution::EnvironmentExecution(oa::Engine& inEngine)
 	: engine_(&inEngine) {
@@ -134,7 +134,7 @@ oa::Status oa::EnvironmentExecution::close() {
 }
 
 oa::ExecutionSession& oa::EnvironmentExecution::session() const noexcept {
-	assert(session_ && "RL environment execution session is closed");
+	OA_REQUIRE_MSG(session_, "RL environment execution session is closed");
 	return *session_;
 }
 

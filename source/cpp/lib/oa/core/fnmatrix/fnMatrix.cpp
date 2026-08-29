@@ -33,7 +33,7 @@
 #include <oa/runtime/executionSession.h>
 #include <oa/runtime/dispatchDesc.h>
 
-#include <assert.h>
+#include <oa/core/std/assert.h>
 
 // Shared Helper Functions
 static oa::U32 divCeil(oa::U32 inA, oa::U32 inB) { return (inA + inB - 1) / inB; }
@@ -64,11 +64,10 @@ oa::Status oa::FnMatrix::completeRecordedWork(oa::ExecutionSession& inContext) {
 
 // oa::Matrix member Functions
 oa::F32 oa::FnMatrix::scalar(const oa::Matrix& inSrc) {
-	assert(inSrc.numElements() == 1 && "scalar() requires single-element tensor");
+	OA_REQUIRE_MSG(inSrc.numElements() == 1, "scalar() requires single-element tensor");
 	auto& ctx = oa::ExecutionSession::getActive();
 	auto completionStatus = completeRecordedWork(ctx);
-	assert(completionStatus.isOk()
-		and "context submission failed before scalar readback");
+	OA_REQUIRE_MSG(completionStatus.isOk(), "context submission failed before scalar readback");
 	return inSrc.at(0);
 }
 
@@ -99,14 +98,14 @@ static void binaryInPlace(
 	const auto inferredShape = oa::inferBinaryOpShape(
 		inContract, inSelf, inOther);
 	if (not inferredShape.isOk()) {
-		OaLogError(oa::LogComponent::Compute, "%s validation failed: %s",
+		OaLogError(oa::LogComponent::Compute, "{} validation failed: {}",
 			operation.cStr(),
 			inferredShape.getStatus().getMessage().cStr());
 		return;
 	}
 	if (inferredShape.getValue() != inSelf.getShape()) {
 		OaLogError(oa::LogComponent::Compute,
-			"%s cannot expand the mutated input through broadcasting",
+			"{} cannot expand the mutated input through broadcasting",
 			operation.cStr());
 		return;
 	}
@@ -117,7 +116,7 @@ static void binaryInPlace(
 			ctx, inSelf, inOther, inContract);
 		if (not semantic.isOk()) {
 			OaLogError(oa::LogComponent::Compute,
-				"%s semantic recording failed: %s",
+				"{} semantic recording failed: {}",
 				operation.cStr(),
 				semantic.getStatus().getMessage().cStr());
 			return;
@@ -157,7 +156,7 @@ static void binaryInPlace(
 		ctx, inSelf, inOther, inContract);
 	if (not semantic.isOk()) {
 		OaLogError(oa::LogComponent::Compute,
-			"%s semantic recording failed: %s",
+			"{} semantic recording failed: {}",
 			operation.cStr(),
 			semantic.getStatus().getMessage().cStr());
 		return;
@@ -202,7 +201,7 @@ void oa::FnMatrix::scaleInPlace(oa::Matrix& inSelf, oa::F32 inScalar) {
 		{oa::OpAttribute::fromFloat("scalar", inScalar)});
 	if (not status.isOk()) {
 		OaLogError(oa::LogComponent::Compute,
-			"ScaleInPlace semantic recording failed: %s",
+			"ScaleInPlace semantic recording failed: {}",
 			status.getMessage().cStr());
 	}
 }
@@ -220,7 +219,7 @@ void oa::FnMatrix::addScalarInPlace(oa::Matrix& inSelf, oa::F32 inScalar) {
 		{oa::OpAttribute::fromFloat("scalar", inScalar)});
 	if (not status.isOk()) {
 		OaLogError(oa::LogComponent::Compute,
-			"AddScalarInPlace semantic recording failed: %s",
+			"AddScalarInPlace semantic recording failed: {}",
 			status.getMessage().cStr());
 	}
 }
@@ -238,7 +237,7 @@ void oa::FnMatrix::subScalarInPlace(oa::Matrix& inSelf, oa::F32 inScalar) {
 		{oa::OpAttribute::fromFloat("scalar", inScalar)});
 	if (not status.isOk()) {
 		OaLogError(oa::LogComponent::Compute,
-			"SubScalarInPlace semantic recording failed: %s",
+			"SubScalarInPlace semantic recording failed: {}",
 			status.getMessage().cStr());
 	}
 }
@@ -256,7 +255,7 @@ void oa::FnMatrix::divScalarInPlace(oa::Matrix& inSelf, oa::F32 inScalar) {
 		{oa::OpAttribute::fromFloat("scalar", inScalar)});
 	if (not status.isOk()) {
 		OaLogError(oa::LogComponent::Compute,
-			"DivScalarInPlace semantic recording failed: %s",
+			"DivScalarInPlace semantic recording failed: {}",
 			status.getMessage().cStr());
 	}
 }
@@ -366,7 +365,7 @@ void oa::FnMatrix::multiAdd(oa::Span<oa::Matrix> inDst, oa::Span<const oa::Matri
 				ctx, dst, src, oa::detail::opRegistry::FnMatrix::addInPlace);
 			if (not semantic.isOk()) {
 				OaLogError(oa::LogComponent::Compute,
-					"MultiAdd semantic recording failed: %s",
+					"MultiAdd semantic recording failed: {}",
 					semantic.getStatus().getMessage().cStr());
 				return;
 			}
@@ -393,7 +392,7 @@ void oa::FnMatrix::multiAdd(oa::Span<oa::Matrix> inDst, oa::Span<const oa::Matri
 		});
 		if (not status.isOk()) {
 			OaLogError(oa::LogComponent::Compute,
-				"MultiAdd fused lowering failed: %s",
+				"MultiAdd fused lowering failed: {}",
 				status.getMessage().cStr());
 			return;
 		}
@@ -421,7 +420,7 @@ oa::TopKResult oa::FnMatrix::topK(const oa::Matrix& inA, oa::I32 inK, oa::I32 in
 	// old assert-only path read size(1) on a rank-1 tensor → OOB → SIGSEGV.
 	if ((rank != 1 and rank != 2) or dim != rank - 1 or inK < 0) {
 		OaLogError(oa::LogComponent::Compute,
-			"topK: unsupported args (rank=%d, dim=%d, k=%d); expects 1D/2D input, "
+			"topK: unsupported args (rank={}, dim={}, k={}); expects 1D/2D input, "
 			"last-dim only, k>=0. Returning empty result.", rank, dim, inK);
 		return {oa::Matrix{}, oa::Matrix{}};
 	}
@@ -473,7 +472,7 @@ oa::TopKResult oa::FnMatrix::topK(const oa::Matrix& inA, oa::I32 inK, oa::I32 in
 	}
 
 	OaLogError(oa::LogComponent::Compute,
-		"topK: k=%d exceeds the GPU limit %d; refusing a hidden CPU fallback",
+		"topK: k={} exceeds the GPU limit {}; refusing a hidden CPU fallback",
 		k, kTopKMaxGpu);
 	return {oa::Matrix{}, oa::Matrix{}};
 }

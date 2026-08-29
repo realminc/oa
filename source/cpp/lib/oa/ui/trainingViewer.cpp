@@ -124,7 +124,7 @@ struct oa::TrainingViewerSource::Impl {
 	void logEnqueue(const oa::Result<oa::U64>& inResult, const char* inName) {
 		if (inResult.isError()) {
 			OaLogWarn(oa::LogComponent::Ui,
-				"OaTrainingViewer %s rejected: %s", inName,
+				"OaTrainingViewer {} rejected: {}", inName,
 				inResult.getStatus().toString().cStr());
 		}
 	}

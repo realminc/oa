@@ -3,9 +3,9 @@
 #include <oa/core/types.h>
 #include <oa/core/status.h>
 #include <oa/core/filesystem.h>
+#include <oa/core/std/print.h>
 #include <oa/core/time.h>
 
-#include <stdarg.h>
 #include <stdio.h>
 
 namespace oa {
@@ -124,18 +124,33 @@ public:
 
 	// writes are serialized and safe from any thread. Write never throws; an I/O
 	// failure is returned to explicit callers and retained for flush/Close.
+	[[nodiscard]] oa::Status writeText(
+		LogLevel inLevel,
+		LogComponent inComponent,
+		oa::StringView inText
+	);
+
+	template<oa::Usize N, typename... Args>
 	[[nodiscard]] oa::Status write(
 		LogLevel inLevel,
 		LogComponent inComponent,
-		const char* inFormat,
-		...
-	);
-	[[nodiscard]] oa::Status writeV(
+		const char (&inFormat)[N],
+		Args&&... inArgs
+	) {
+		if (not shouldWrite(inLevel)) return oa::Status::ok();
+		const oa::String text = oa::format(inFormat, oa::forward<Args>(inArgs)...);
+		return writeText(inLevel, inComponent, text.view());
+	}
+
+	[[nodiscard]] oa::Status write(
 		LogLevel inLevel,
 		LogComponent inComponent,
-		const char* inFormat,
-		va_list inArgs
-	);
+		oa::StringView inText
+	) {
+		return shouldWrite(inLevel)
+			? writeText(inLevel, inComponent, inText)
+			: oa::Status::ok();
+	}
 	[[nodiscard]] oa::Status flush();
 	[[nodiscard]] oa::Status close();
 
@@ -152,12 +167,34 @@ public:
 private:
 	friend class LogAccess;
 	explicit Log(oa::SharedPtr<LogImpl> inImpl) noexcept;
+	[[nodiscard]] bool shouldWrite(LogLevel inLevel) const noexcept;
 	oa::SharedPtr<LogImpl> impl_;
 };
 
 // Macro-compatible dispatch without process-global logger ownership. calls made
 // before engine creation deliberately use the synchronous stderr fallback.
-void logWrite(LogLevel inLevel, LogComponent inComponent, const char* inFormat, ...);
+[[nodiscard]] bool logShouldWrite(LogLevel inLevel) noexcept;
+void logWriteText(LogLevel inLevel, LogComponent inComponent, oa::StringView inText) noexcept;
+
+template<oa::Usize N, typename... Args>
+inline void logWrite(
+	LogLevel inLevel,
+	LogComponent inComponent,
+	const char (&inFormat)[N],
+	Args&&... inArgs
+) {
+	if (not oa::logShouldWrite(inLevel)) return;
+	const oa::String text = oa::format(inFormat, oa::forward<Args>(inArgs)...);
+	oa::logWriteText(inLevel, inComponent, text.view());
+}
+
+inline void logWrite(
+	LogLevel inLevel,
+	LogComponent inComponent,
+	oa::StringView inText
+) noexcept {
+	if (oa::logShouldWrite(inLevel)) oa::logWriteText(inLevel, inComponent, inText);
+}
 
 #define OaLogInfo(component, ...) ::oa::logWrite(::oa::LogLevel::Info, component, __VA_ARGS__)
 #define OaLogWarn(component, ...) ::oa::logWrite(::oa::LogLevel::Warn, component, __VA_ARGS__)
@@ -172,48 +209,34 @@ void logWrite(LogLevel inLevel, LogComponent inComponent, const char* inFormat, 
 	#define OaLogDebug(component, ...) ::oa::logWrite(::oa::LogLevel::Debug, component, __VA_ARGS__)
 #endif
 
-#define OA_CLI(...) do { fprintf(stderr, __VA_ARGS__); fprintf(stderr, "\n"); } while(0)
-#define OA_CLI_RAW(...) do { fprintf(stderr, __VA_ARGS__); } while(0)
+#define OA_CLI(...) do { (void)::oa::print(::oa::PrintStream::Error, __VA_ARGS__); } while(0)
+#define OA_CLI_RAW(...) do { (void)::oa::write(::oa::PrintStream::Error, __VA_ARGS__); } while(0)
 
 // format integer with comma-separated thousands (e.g. 9521568 → "9,521,568")
 [[nodiscard]] inline oa::String formatNumber(oa::I64 inN) {
-	if (inN < 0) {
-		return oa::String("-") + formatNumber(-inN);
-	}
-	if (inN < 1000) {
-		char smallBuf[16];
-		if (::snprintf(smallBuf, sizeof(smallBuf), "%lld", static_cast<long long>(inN)) <= 0) {
-			return oa::String();
+	char storage[32];
+	char* cursor = storage + sizeof(storage);
+	const bool negative = inN < 0;
+	oa::U64 work = static_cast<oa::U64>(inN);
+	if (negative) work = oa::U64(0) - work;
+	oa::U32 groupDigits = 0U;
+	do {
+		if (groupDigits == 3U) {
+			*--cursor = ',';
+			groupDigits = 0U;
 		}
-		return oa::String(smallBuf);
-	}
-	char buf[32];
-	if (inN < 1000000) {
-		snprintf(buf, sizeof(buf), "%lld,%03lld",
-			(long long)(inN / 1000), (long long)(inN % 1000)
-		);
-	} else if (inN < 1000000000) {
-		snprintf(buf, sizeof(buf), "%lld,%03lld,%03lld",
-			(long long)(inN / 1000000), (long long)((inN / 1000) % 1000),
-			(long long)(inN % 1000)
-		);
-	} else {
-		snprintf(buf, sizeof(buf), "%lld,%03lld,%03lld,%03lld",
-			(long long)(inN / 1000000000), (long long)((inN / 1000000) % 1000),
-			(long long)((inN / 1000) % 1000), (long long)(inN % 1000)
-		);
-	}
-	return oa::String(buf);
+		*--cursor = static_cast<char>('0' + static_cast<char>(work % 10U));
+		work /= 10U;
+		++groupDigits;
+	} while (work != 0U);
+	if (negative) *--cursor = '-';
+	return oa::String(cursor,
+		static_cast<oa::Usize>(storage + sizeof(storage) - cursor));
 }
 
 // Uppercase hex with 0x prefix (PCI / vulkan id style, no leading-zero padding).
 [[nodiscard]] inline oa::String formatHexU32(oa::U32 inVal) {
-	char buf[16];
-	if (::snprintf(
-			buf, sizeof(buf), "0x%X", static_cast<unsigned>(inVal)) <= 0) {
-		return oa::String("0x0");
-	}
-	return oa::String(buf);
+	return oa::format("0x{:X}", inVal);
 }
 
 // Comma-separated decimal for oa::U64 (full range; for log readability only).
@@ -240,19 +263,25 @@ void logWrite(LogLevel inLevel, LogComponent inComponent, const char* inFormat, 
 
 // log a right-aligned summary line: "  (label): type(dims)          1,234"
 // width 60 between left text and right value. Used by model summaries and device info.
+[[nodiscard]] inline oa::String logSummaryPadding(oa::I32 inCount) {
+	if (inCount < 1) inCount = 1;
+	oa::String out;
+	out.reserve(static_cast<oa::Usize>(inCount));
+	for (oa::I32 index = 0; index < inCount; ++index) out.pushBack(' ');
+	return out;
+}
+
 inline void logSummary(LogComponent inComp, const char* inLeft, oa::I64 inParams) {
 	auto val = formatNumber(inParams);
 	oa::I32 pad = 60 - static_cast<oa::I32>(oa::strlen(inLeft))
 		- static_cast<oa::I32>(val.size());
-	if (pad < 1) pad = 1;
-	OaLogInfo(inComp, "%s%*s%s", inLeft, pad, "", val.cStr());
+	OaLogInfo(inComp, "{}{}{}", inLeft, logSummaryPadding(pad), val);
 }
 
 inline void logSummary(LogComponent inComp, const char* inLeft, const char* inRight) {
 	oa::I32 pad = 60 - static_cast<oa::I32>(oa::strlen(inLeft))
 		- static_cast<oa::I32>(oa::strlen(inRight));
-	if (pad < 1) pad = 1;
-	OaLogInfo(inComp, "%s%*s%s", inLeft, pad, "", inRight);
+	OaLogInfo(inComp, "{}{}{}", inLeft, logSummaryPadding(pad), inRight);
 }
 
 class LogMetrics {
@@ -298,12 +327,12 @@ public:
 
 		oa::F64 wallTime = (oa::now() - startTime_).toSeconds();
 
-		char buf[256];
-		snprintf(buf, sizeof(buf),
-			R"({"tag":"%s","step":%lld,"value":%.6g,"wall_time":%.3f})",
-			inTag.cStr(), static_cast<long long>(inStep), inValue, wallTime);
-
-		buffer_ += buf;
+		const oa::String tag = jsonString_(inTag.view());
+		const oa::String value = jsonNumber_(inValue, 6);
+		const oa::String elapsed = jsonNumber_(wallTime, 3);
+		buffer_ += oa::format(
+			R"({{"tag":{},"step":{},"value":{},"wall_time":{}}})",
+			tag, inStep, value, elapsed);
 		buffer_ += '\n';
 		++bufferCount_;
 
@@ -335,6 +364,46 @@ public:
 	LogMetrics& operator=(LogMetrics&&) = delete;
 
 private:
+	[[nodiscard]] static oa::String jsonString_(oa::StringView inText) {
+		static constexpr char hex[] = "0123456789abcdef";
+		OA_REQUIRE_MSG(inText.size() <= (oa::detail::MaxFormattedBytes - 2U) / 6U,
+			"metrics tag exceeds the OA safety limit");
+		oa::String out;
+		out.reserve(inText.size() + 2U);
+		out.pushBack('"');
+		for (const char byte : inText) {
+			const auto character = static_cast<unsigned char>(byte);
+			switch (character) {
+				case '"': out += "\\\""; break;
+				case '\\': out += "\\\\"; break;
+				case '\b': out += "\\b"; break;
+				case '\f': out += "\\f"; break;
+				case '\n': out += "\\n"; break;
+				case '\r': out += "\\r"; break;
+				case '\t': out += "\\t"; break;
+				default:
+					if (character < 0x20U) {
+						out += "\\u00";
+						out.pushBack(hex[character >> 4U]);
+						out.pushBack(hex[character & 0x0FU]);
+					} else {
+						out.pushBack(byte);
+					}
+					break;
+			}
+		}
+		out.pushBack('"');
+		return out;
+	}
+
+	[[nodiscard]] static oa::String jsonNumber_(oa::F64 inValue, oa::I32 inPrecision) {
+		return __builtin_isfinite(inValue)
+			? (inPrecision == 6
+				? oa::format("{:.6g}", inValue)
+				: oa::format("{:.3f}", inValue))
+			: oa::String("null");
+	}
+
 	void flushUnlocked_() {
 		if (buffer_.empty()) {
 			return;

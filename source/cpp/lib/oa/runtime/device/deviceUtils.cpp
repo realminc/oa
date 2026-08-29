@@ -830,35 +830,35 @@ inline constexpr oa::U32 DriverIdMesaRadv        = 3U;
 void oavk::logCoopMatShapes(const oavk::CoopMatShapes& inShapes, const char* inIndent) {
 	const char* p = inIndent != nullptr ? inIndent : "";
 	OaLogInfo(oa::LogComponent::Runtime,
-		"%sCooperativeMatrix shapes (%u total enumerated):",
+		"{}CooperativeMatrix shapes ({} total enumerated):",
 		p, inShapes.totalShapesEnumerated);
 	if (inShapes.fp16AccFp32.available) {
 		OaLogInfo(oa::LogComponent::Runtime,
-			"%s  fp16AccFp32:  M=%u N=%u K=%u",
+			"{}  fp16AccFp32:  M={} N={} K={}",
 			p, inShapes.fp16AccFp32.m, inShapes.fp16AccFp32.n, inShapes.fp16AccFp32.k);
 	}
 	if (inShapes.fp16AccFp16.available) {
 		OaLogInfo(oa::LogComponent::Runtime,
-			"%s  fp16AccFp16:  M=%u N=%u K=%u",
+			"{}  fp16AccFp16:  M={} N={} K={}",
 			p, inShapes.fp16AccFp16.m, inShapes.fp16AccFp16.n, inShapes.fp16AccFp16.k);
 	}
 	if (inShapes.bf16AccFp32.available) {
 		OaLogInfo(oa::LogComponent::Runtime,
-			"%s  bf16AccFp32:  M=%u N=%u K=%u scope=subgroup",
+			"{}  bf16AccFp32:  M={} N={} K={} scope=subgroup",
 			p, inShapes.bf16AccFp32.m, inShapes.bf16AccFp32.n, inShapes.bf16AccFp32.k);
 	}
 	if (inShapes.bf16AccFp32Workgroup.available) {
 		OaLogInfo(oa::LogComponent::Runtime,
-			"%s  Bf16AccFp32Wg: M=%u N=%u K=%u scope=workgroup",
+			"{}  Bf16AccFp32Wg: M={} N={} K={} scope=workgroup",
 			p, inShapes.bf16AccFp32Workgroup.m, inShapes.bf16AccFp32Workgroup.n, inShapes.bf16AccFp32Workgroup.k);
 	}
 	if (inShapes.int8AccInt32.available) {
 		OaLogInfo(oa::LogComponent::Runtime,
-			"%s  int8AccInt32: M=%u N=%u K=%u",
+			"{}  int8AccInt32: M={} N={} K={}",
 			p, inShapes.int8AccInt32.m, inShapes.int8AccInt32.n, inShapes.int8AccInt32.k);
 	}
 	OaLogInfo(oa::LogComponent::Runtime,
-		"%s  has16x16x16_Fp32Acc=%s  has16x16x16_Fp16Acc=%s",
+		"{}  has16x16x16_Fp32Acc={}  has16x16x16_Fp16Acc={}",
 		p,
 		inShapes.has16x16x16_Fp32Acc ? "Y" : "N",
 		inShapes.has16x16x16_Fp16Acc ? "Y" : "N");

@@ -42,7 +42,7 @@ enum class QuantPlaneFormat : oa::U8 {
 		or static_cast<oa::U64>(inCount) > MaxFloat32ElementCount)
 	{
 		OaLogError(oa::LogComponent::Ml,
-			"%s: Float32 byte offsets must fit the UInt32 kernel ABI", inOperation);
+			"{}: Float32 byte offsets must fit the UInt32 kernel ABI", inOperation);
 		return false;
 	}
 	return true;
@@ -98,7 +98,7 @@ enum class QuantPlaneFormat : oa::U8 {
 	const char* inKernel)
 {
 	auto fail = [inKernel](const char* inMessage) {
-		OaLogError(oa::LogComponent::Ml, "%s: %s", inKernel, inMessage);
+		OaLogError(oa::LogComponent::Ml, "{}: {}", inKernel, inMessage);
 		return oa::Matrix{};
 	};
 	if (inInput.rank() < 2) {
@@ -545,7 +545,7 @@ oa::QuantMatrix oa::FnMatrix::quantize(
 			break;
 		default:
 			OaLogError(oa::LogComponent::Ml,
-				"quantize: unsupported quantization value %u",
+				"quantize: unsupported quantization value {}",
 				static_cast<unsigned>(inQuantization));
 			return {};
 	}
@@ -558,7 +558,7 @@ oa::QuantMatrix oa::FnMatrix::quantize(
 		{&inInput}, {&semanticOutput}, {quantizationAttribute(inQuantization)});
 	if (not status.isOk()) {
 		OaLogError(oa::LogComponent::Ml,
-			"quantize: semantic lowering failed: %s",
+			"quantize: semantic lowering failed: {}",
 			status.getMessage().cStr());
 		return {};
 	}
@@ -587,7 +587,7 @@ oa::Matrix oa::FnMatrix::dequantize(const oa::QuantMatrix& inInput) {
 			break;
 		default:
 			OaLogError(oa::LogComponent::Ml,
-				"Dequantize: unsupported quantization value %u",
+				"Dequantize: unsupported quantization value {}",
 				static_cast<unsigned>(inInput.getQuantization()));
 			return {};
 	}
@@ -601,7 +601,7 @@ oa::Matrix oa::FnMatrix::dequantize(const oa::QuantMatrix& inInput) {
 		{quantizationAttribute(inInput.getQuantization())});
 	if (not status.isOk()) {
 		OaLogError(oa::LogComponent::Ml,
-			"Dequantize: semantic lowering failed: %s",
+			"Dequantize: semantic lowering failed: {}",
 			status.getMessage().cStr());
 		return {};
 	}
@@ -640,7 +640,7 @@ oa::Matrix oa::FnMatrix::matMulNt(
 			break;
 		default:
 			OaLogError(oa::LogComponent::Ml,
-				"MatMulNt: unsupported quantization value %u",
+				"MatMulNt: unsupported quantization value {}",
 				static_cast<unsigned>(inWeight.getQuantization()));
 			return {};
 	}
@@ -652,7 +652,7 @@ oa::Matrix oa::FnMatrix::matMulNt(
 		{quantizationAttribute(inWeight.getQuantization())});
 	if (not status.isOk()) {
 		OaLogError(oa::LogComponent::Ml,
-			"MatMulNt: semantic lowering failed: %s",
+			"MatMulNt: semantic lowering failed: {}",
 			status.getMessage().cStr());
 		return {};
 	}

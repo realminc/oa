@@ -27,9 +27,6 @@
 #include <oa/core/log.h>
 #include <oa/core/paths.h>
 
-#include <cstdio>
-#include <vector>
-
 
 int main(int argc, char** argv) {
 	const oa::String defaultInput =
@@ -48,25 +45,25 @@ int main(int argc, char** argv) {
 
 	auto engineResult = oa::Engine::create(cfg);
 	if (not engineResult.isOk()) {
-		std::fprintf(stderr, "oa::Engine::create failed: %s\n",
+		oa::print(oa::PrintStream::Error, "oa::Engine::create failed: {}",
 			engineResult.getStatus().toString().cStr());
 		return 1;
 	}
 	oa::Engine& engine = *engineResult.getValue();
 
 	OaLogInfo(oa::LogComponent::App,
-		"TutorialViewerImageHeadless: %s → %s", inPath, outPath);
+		"TutorialViewerImageHeadless: {} → {}", inPath, outPath);
 
 	// ─── producer: decode a semantic image, then lower it to a texture ────────
 	auto imageR = oa::FnImage::decodeFile(inPath, oa::ImageFormat::Rgba);
 	if (not imageR.isOk()) {
-		std::fprintf(stderr, "oa::FnImage::decodeFile(%s) failed: %s\n",
+		oa::print(oa::PrintStream::Error, "oa::FnImage::decodeFile({}) failed: {}",
 			inPath, imageR.getStatus().toString().cStr());
 		return 1;
 	}
 	auto loadR = oa::FnTexture::fromImage(engine, *imageR);
 	if (not loadR.isOk()) {
-		std::fprintf(stderr, "oa::FnTexture::fromImage failed: %s\n",
+		oa::print(oa::PrintStream::Error, "oa::FnTexture::fromImage failed: {}",
 			loadR.getStatus().toString().cStr());
 		return 1;
 	}
@@ -75,12 +72,12 @@ int main(int argc, char** argv) {
 	// ─── Sink: saveImage (architecture/oaArchitecture.md §10) ───────────────────────────────────
 	// readback + encode + filesystem write. No swapchain involved.
 	if (auto s = oa::FnImage::saveTextureFile(engine, tex, outPath); not s.isOk()) {
-		std::fprintf(stderr, "oa::FnImage::saveTextureFile(%s) failed: %s\n",
+		oa::print(oa::PrintStream::Error, "oa::FnImage::saveTextureFile({}) failed: {}",
 			outPath, s.toString().cStr());
 		return 1;
 	}
 
-	std::printf("OK: %dx%d  %s → %s\n", tex.width(), tex.height(), inPath, outPath);
+	oa::print("OK: {}x{}  {} → {}", tex.width(), tex.height(), inPath, outPath);
 
 	// ─── texture operation smoke ─────────────────────────────────────────────
 	// Both record through the texture domain API (no immediate dispatch), then
@@ -91,13 +88,13 @@ int main(int argc, char** argv) {
 	//                                       (round-trip: should byte-equal the
 	//                                       original outPath save above)
 	//   /tmp/oa_viewport_batch_clear.png  — solid red via clear
-	std::vector<oa::U8> zeros(static_cast<size_t>(tex.width()) *
-	                        static_cast<size_t>(tex.height()) * 4U, 0);
+	oa::Vector<oa::U8> zeros(static_cast<oa::Usize>(tex.width()) *
+	                        static_cast<oa::Usize>(tex.height()) * 4U, 0);
 	auto cloneR = oa::FnTexture::fromPixels(
 		engine, oa::Span<const oa::U8>(zeros.data(), zeros.size()),
 		tex.width(), tex.height());
 	if (not cloneR.isOk()) {
-		std::fprintf(stderr, "oa::FnTexture::fromPixels (clone target) failed: %s\n",
+		oa::print(oa::PrintStream::Error, "oa::FnTexture::fromPixels (clone target) failed: {}",
 			cloneR.getStatus().toString().cStr());
 		return 1;
 	}
@@ -107,44 +104,44 @@ int main(int argc, char** argv) {
 	desc.src = &tex;
 	desc.dst = &clone;
 	if (auto status = oa::FnTexture::blit(desc); not status.isOk()) {
-		std::fprintf(stderr, "oa::FnTexture::blit failed: %s\n",
+		oa::print(oa::PrintStream::Error, "oa::FnTexture::blit failed: {}",
 			status.toString().cStr());
 		return 1;
 	}
 	auto blitSubmitted = engine.submit();
 	if (not blitSubmitted.isOk()
 		or not engine.wait(blitSubmitted.getValue()).isOk()) {
-		std::fprintf(stderr, "oa::FnTexture::blit submission failed\n");
+		oa::print(oa::PrintStream::Error, "oa::FnTexture::blit submission failed");
 		return 1;
 	}
 
 	if (auto s = oa::FnImage::saveTextureFile(engine, clone, "/tmp/oa_viewport_batch_blit.png");
 		not s.isOk()) {
-		std::fprintf(stderr, "saveFile(blit) failed: %s\n", s.toString().cStr());
+		oa::print(oa::PrintStream::Error, "saveFile(blit) failed: {}", s.toString().cStr());
 	} else {
-		std::printf("OK: Blit → /tmp/oa_viewport_batch_blit.png\n");
+		oa::print("OK: Blit → /tmp/oa_viewport_batch_blit.png");
 	}
 
 	// Solid red, full opacity.
 	if (auto status = oa::FnTexture::clear(
 			clone, oa::ClearColor{0.95F, 0.10F, 0.10F, 1.0F});
 		not status.isOk()) {
-		std::fprintf(stderr, "oa::FnTexture::clear failed: %s\n",
+		oa::print(oa::PrintStream::Error, "oa::FnTexture::clear failed: {}",
 			status.toString().cStr());
 		return 1;
 	}
 	auto clearSubmitted = engine.submit();
 	if (not clearSubmitted.isOk()
 		or not engine.wait(clearSubmitted.getValue()).isOk()) {
-		std::fprintf(stderr, "oa::FnTexture::clear submission failed\n");
+		oa::print(oa::PrintStream::Error, "oa::FnTexture::clear submission failed");
 		return 1;
 	}
 
 	if (auto s = oa::FnImage::saveTextureFile(engine, clone, "/tmp/oa_viewport_batch_clear.png");
 		not s.isOk()) {
-		std::fprintf(stderr, "saveFile(clear) failed: %s\n", s.toString().cStr());
+		oa::print(oa::PrintStream::Error, "saveFile(clear) failed: {}", s.toString().cStr());
 	} else {
-		std::printf("OK: clear(red) → /tmp/oa_viewport_batch_clear.png\n");
+		oa::print("OK: clear(red) → /tmp/oa_viewport_batch_clear.png");
 	}
 
 	return 0;

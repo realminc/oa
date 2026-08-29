@@ -222,7 +222,7 @@ oa::Status oa::VideoDecoderCodecAccess::decodeH265(
 	}
 	inDecoder.impl_->currentFrameNumber++;
 
-	fillNv12OutFrame(
+	fillDecodedOutFrame(
 		inDecoder,
 		dpbSlot,
 		inDecoder.impl_->profile.width,

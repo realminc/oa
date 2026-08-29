@@ -6,6 +6,7 @@
 // The implementation mixes native oa::Vector, oa::String, maps and smart pointers;
 // some modules still compose std internally at explicit boundaries.
 
+#include <oa/core/std/assert.h>
 #include <oa/core/std/chrono.h>
 #include <oa/core/std/allocator.h>
 #include <oa/core/std/memory.h>

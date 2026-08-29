@@ -11,6 +11,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <functional>
+#include <format>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -860,6 +861,134 @@ int main(int argc, char** argv) {
 					stdCollisionLookup.find(collisionItems + index) == stdCollisionLookup.end());
 			}
 			return missing;
+		}) and passed;
+
+	passed = runPreflight("Format integer", [&]() {
+		for (oa::Usize index = 0; index < options.items; ++index) {
+			const oa::I64 value = static_cast<oa::I64>(index) * -31 + 7;
+			const oa::String actual = oa::format("{}", value);
+			const std::string expected = std::format("{}", value);
+			if (actual.size() != expected.size()
+				or std::memcmp(actual.data(), expected.data(), expected.size()) != 0) return false;
+		}
+		return true;
+	}) and passed;
+	passed = runPair("Format integer", options.items, options,
+		[&]() {
+			oa::U64 sum = 0;
+			for (oa::Usize index = 0; index < options.items; ++index) {
+				const oa::String text = oa::format("{}", static_cast<oa::I64>(index) * -31 + 7);
+				sum += text.size() + static_cast<unsigned char>(text.back());
+			}
+			return sum;
+		},
+		[&]() {
+			oa::U64 sum = 0;
+			for (oa::Usize index = 0; index < options.items; ++index) {
+				const std::string text = std::format("{}", static_cast<oa::I64>(index) * -31 + 7);
+				sum += text.size() + static_cast<unsigned char>(text.back());
+			}
+			return sum;
+		}) and passed;
+
+	passed = runPreflight("Format padded/bool", [&]() {
+		for (oa::Usize index = 0; index < options.items; ++index) {
+			const oa::String actual = oa::format(
+				"item={:08x} enabled={}",
+				static_cast<oa::U32>(index), (index & 1U) != 0U);
+			const std::string expected = std::format(
+				"item={:08x} enabled={}",
+				static_cast<oa::U32>(index), (index & 1U) != 0U);
+			if (actual.size() != expected.size()
+				or std::memcmp(actual.data(), expected.data(), expected.size()) != 0) return false;
+		}
+		return true;
+	}) and passed;
+	passed = runPair("Format padded/bool", options.items, options,
+		[&]() {
+			oa::U64 sum = 0;
+			for (oa::Usize index = 0; index < options.items; ++index) {
+				const oa::String text = oa::format(
+					"item={:08x} enabled={}",
+					static_cast<oa::U32>(index), (index & 1U) != 0U);
+				sum += text.size() + static_cast<unsigned char>(text.back());
+			}
+			return sum;
+		},
+		[&]() {
+			oa::U64 sum = 0;
+			for (oa::Usize index = 0; index < options.items; ++index) {
+				const std::string text = std::format(
+					"item={:08x} enabled={}",
+					static_cast<oa::U32>(index), (index & 1U) != 0U);
+				sum += text.size() + static_cast<unsigned char>(text.back());
+			}
+			return sum;
+		}) and passed;
+
+	passed = runPreflight("Format fixed float", [&]() {
+		for (oa::Usize index = 0; index < options.items; ++index) {
+			const double value = 1.25 + static_cast<double>(index & 7U) * 0.125;
+			const oa::String actual = oa::format("{:.2f}", value);
+			const std::string expected = std::format("{:.2f}", value);
+			if (actual.size() != expected.size()
+				or std::memcmp(actual.data(), expected.data(), expected.size()) != 0) return false;
+		}
+		return true;
+	}) and passed;
+	passed = runPair("Format fixed float", options.items, options,
+		[&]() {
+			oa::U64 sum = 0;
+			for (oa::Usize index = 0; index < options.items; ++index) {
+				const oa::String text = oa::format(
+					"{:.2f}", 1.25 + static_cast<double>(index & 7U) * 0.125);
+				sum += text.size() + static_cast<unsigned char>(text.back());
+			}
+			return sum;
+		},
+		[&]() {
+			oa::U64 sum = 0;
+			for (oa::Usize index = 0; index < options.items; ++index) {
+				const std::string text = std::format(
+					"{:.2f}", 1.25 + static_cast<double>(index & 7U) * 0.125);
+				sum += text.size() + static_cast<unsigned char>(text.back());
+			}
+			return sum;
+		}) and passed;
+
+	passed = runPreflight("Format mixed", [&]() {
+		for (oa::Usize index = 0; index < options.items; ++index) {
+			const oa::String actual = oa::format(
+				"item={:08x} enabled={} score={:.2f}",
+				static_cast<oa::U32>(index), (index & 1U) != 0U, 1.25);
+			const std::string expected = std::format(
+				"item={:08x} enabled={} score={:.2f}",
+				static_cast<oa::U32>(index), (index & 1U) != 0U, 1.25);
+			if (actual.size() != expected.size()
+				or std::memcmp(actual.data(), expected.data(), expected.size()) != 0) return false;
+		}
+		return true;
+	}) and passed;
+	passed = runPair("Format mixed", options.items, options,
+		[&]() {
+			oa::U64 sum = 0;
+			for (oa::Usize index = 0; index < options.items; ++index) {
+				const oa::String text = oa::format(
+					"item={:08x} enabled={} score={:.2f}",
+					static_cast<oa::U32>(index), (index & 1U) != 0U, 1.25);
+				sum += text.size() + static_cast<unsigned char>(text.back());
+			}
+			return sum;
+		},
+		[&]() {
+			oa::U64 sum = 0;
+			for (oa::Usize index = 0; index < options.items; ++index) {
+				const std::string text = std::format(
+					"item={:08x} enabled={} score={:.2f}",
+					static_cast<oa::U32>(index), (index & 1U) != 0U, 1.25);
+				sum += text.size() + static_cast<unsigned char>(text.back());
+			}
+			return sum;
 		}) and passed;
 
 	const auto runSharedPairs = [&](const char* inMakeName, const char* inCopyName) {

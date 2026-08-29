@@ -62,6 +62,16 @@ def _expandedCommand(
     ]
 
 
+def _resultSummary(name: str, document: dict[str, Any]) -> str:
+    stats = document["metric"]["statistics"]
+    if stats is None:
+        return f"{name}: metric statistics unavailable result={document['result']}"
+    return (
+        f"{name}: median={stats['median']:.6f} {stats['unit']} "
+        f"mad={stats['mad']:.6f} result={document['result']}"
+    )
+
+
 def _writeRooflineSummary(
     completed: Sequence[tuple[dict[str, Any], pathlib.Path, pathlib.Path]],
     *,
@@ -172,7 +182,7 @@ def run(args: argparse.Namespace) -> int:
     outputDir.mkdir(parents=True, exist_ok=False)
 
     vulkan = oaBench._vulkanSummary(repo)
-    identity = oaBench._platformIdentity(vulkan, device_index=args.deviceIndex)
+    identity = oaBench._platformIdentity(vulkan, deviceIndex=args.deviceIndex)
     platformKey = _platformKey(identity)
     baselineRoot = repo / "tools/diagnostics/baselines" / platformKey
     completed: list[tuple[dict[str, Any], pathlib.Path, pathlib.Path]] = []
@@ -242,11 +252,7 @@ def run(args: argparse.Namespace) -> int:
         _, status = oaBench.run(oaBench.parseArgs(argv))
         completed.append((workload, output, baseline))
         document = json.loads(output.read_text(encoding="utf-8"))
-        stats = document["metric"]["statistics"]
-        print(
-            f"{name}: median={stats['median']:.6f} {stats['unit']} "
-            f"mad={stats['mad']:.6f} result={document['result']}"
-        )
+        print(_resultSummary(name, document))
         failures += int(status != 0)
 
     if failures:

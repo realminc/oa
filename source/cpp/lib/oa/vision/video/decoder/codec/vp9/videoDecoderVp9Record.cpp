@@ -124,10 +124,11 @@ oa::Status oa::VideoDecoder::recordVP9DecodeCommands(
 		beginRefSlots[i] = refSlots[i];
 	}
 	beginRefSlots[refCount] = setupSlot;
-	// The setup picture is part of the begin-coding reference set with its real
-	// DPB association. This matches the vulkan Video reference decoder; -1 is
-	// the invalidation sentinel, not a first-use activation mechanism.
-	beginRefSlots[refCount].slotIndex = inDpbSlot;
+	// The current reconstruction image participates in layout/resource tracking,
+	// but its DPB association is not active until this decode completes. Binding
+	// a newly allocated slot here with its real index violates VUID 07239; the
+	// decode command activates it through pSetupReferenceSlot below.
+	beginRefSlots[refCount].slotIndex = -1;
 
 	VkVideoBeginCodingInfoKHR beginCoding = {};
 	beginCoding.sType = VK_STRUCTURE_TYPE_VIDEO_BEGIN_CODING_INFO_KHR;

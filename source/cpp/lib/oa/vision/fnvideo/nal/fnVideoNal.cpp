@@ -15,8 +15,7 @@ constexpr oa::U8 kPps = 8;   // H.264 nal_unit_type PPS
 
 // Scan for the next Annex-B start code (00 00 00 01 or 00 00 01) at or after
 // inOffset. Returns the offset of the first prefix byte, or inSize if none.
-oa::Usize findStartCode(const oa::U8* inBytes, oa::Usize inSize, oa::Usize inOffset, oa::Usize& outPrefixLen)
-{
+oa::Usize findStartCode(const oa::U8* inBytes, oa::Usize inSize, oa::Usize inOffset, oa::Usize& outPrefixLen) {
 	for (oa::Usize i = inOffset; i + 2 < inSize; ++i) {
 		if (inBytes[i] == 0 && inBytes[i + 1] == 0) {
 			if (inBytes[i + 2] == 1) {
@@ -33,8 +32,7 @@ oa::Usize findStartCode(const oa::U8* inBytes, oa::Usize inSize, oa::Usize inOff
 	return inSize;
 }
 
-NalUnit makeUnit(const oa::U8* inPayload, oa::Usize inPayloadLen)
-{
+NalUnit makeUnit(const oa::U8* inPayload, oa::Usize inPayloadLen) {
 	NalUnit unit{};
 	if (inPayloadLen == 0) {
 		return unit;
@@ -48,8 +46,7 @@ NalUnit makeUnit(const oa::U8* inPayload, oa::Usize inPayloadLen)
 
 } // namespace
 
-oa::Vector<NalUnit> parseNalAnnexB(const oa::Span<const oa::U8>& inBytes)
-{
+oa::Vector<NalUnit> parseNalAnnexB(const oa::Span<const oa::U8>& inBytes) {
 	oa::Vector<NalUnit> out;
 	const oa::U8* bytes = inBytes.data();
 	const oa::Usize size = inBytes.size();
@@ -73,8 +70,7 @@ oa::Vector<NalUnit> parseNalAnnexB(const oa::Span<const oa::U8>& inBytes)
 	return out;
 }
 
-oa::Vector<oa::U8> emitNalAnnexB(const oa::Span<const NalUnit>& inUnits)
-{
+oa::Vector<oa::U8> emitNalAnnexB(const oa::Span<const NalUnit>& inUnits) {
 	oa::Vector<oa::U8> out;
 	oa::Usize total = 0;
 	for (oa::Usize i = 0; i < inUnits.size(); ++i) {
@@ -97,8 +93,7 @@ oa::Vector<oa::U8> emitNalAnnexB(const oa::Span<const NalUnit>& inUnits)
 
 namespace {
 
-oa::Vector<oa::U8> extractFirstNalByType(const oa::Span<const oa::U8>& inNalBytes, oa::U8 inType)
-{
+oa::Vector<oa::U8> extractFirstNalByType(const oa::Span<const oa::U8>& inNalBytes, oa::U8 inType) {
 	const auto units = parseNalAnnexB(inNalBytes);
 	for (oa::Usize i = 0; i < units.size(); ++i) {
 		if (units[i].type == inType) {
@@ -114,10 +109,7 @@ oa::Vector<oa::U8> extractFirstNalByType(const oa::Span<const oa::U8>& inNalByte
 	return oa::Vector<oa::U8>{};
 }
 
-oa::Vector<oa::U8> extractFirstH265NalByType(
-	const oa::Span<const oa::U8>& inNalBytes,
-	oa::U8 inType)
-{
+oa::Vector<oa::U8> extractFirstH265NalByType(const oa::Span<const oa::U8>& inNalBytes, oa::U8 inType) {
 	const oa::U8* bytes = inNalBytes.data();
 	const oa::Usize size = inNalBytes.size();
 	oa::Usize prefixLength = 0U;
@@ -130,8 +122,7 @@ oa::Vector<oa::U8> extractFirstH265NalByType(
 		while (payloadEnd > payloadStart and bytes[payloadEnd - 1U] == 0U) {
 			--payloadEnd;
 		}
-		if (payloadEnd > payloadStart
-			and static_cast<oa::U8>((bytes[payloadStart] >> 1U) & 0x3FU) == inType) {
+		if (payloadEnd > payloadStart	and static_cast<oa::U8>((bytes[payloadStart] >> 1U) & 0x3FU) == inType) {
 			oa::Vector<oa::U8> out;
 			out.resize(payloadEnd - payloadStart);
 			oa::memcpy(out.data(), bytes + payloadStart, out.size());
@@ -145,28 +136,23 @@ oa::Vector<oa::U8> extractFirstH265NalByType(
 
 } // namespace
 
-oa::Vector<oa::U8> extractSps(const oa::Span<const oa::U8>& inNalBytes)
-{
+oa::Vector<oa::U8> extractSps(const oa::Span<const oa::U8>& inNalBytes) {
 	return extractFirstNalByType(inNalBytes, kSps);
 }
 
-oa::Vector<oa::U8> extractPps(const oa::Span<const oa::U8>& inNalBytes)
-{
+oa::Vector<oa::U8> extractPps(const oa::Span<const oa::U8>& inNalBytes) {
 	return extractFirstNalByType(inNalBytes, kPps);
 }
 
-oa::Vector<oa::U8> extractVpsH265(const oa::Span<const oa::U8>& inNalBytes)
-{
+oa::Vector<oa::U8> extractVpsH265(const oa::Span<const oa::U8>& inNalBytes) {
 	return extractFirstH265NalByType(inNalBytes, 32U);
 }
 
-oa::Vector<oa::U8> extractSpsH265(const oa::Span<const oa::U8>& inNalBytes)
-{
+oa::Vector<oa::U8> extractSpsH265(const oa::Span<const oa::U8>& inNalBytes) {
 	return extractFirstH265NalByType(inNalBytes, 33U);
 }
 
-oa::Vector<oa::U8> extractPpsH265(const oa::Span<const oa::U8>& inNalBytes)
-{
+oa::Vector<oa::U8> extractPpsH265(const oa::Span<const oa::U8>& inNalBytes) {
 	return extractFirstH265NalByType(inNalBytes, 34U);
 }
 

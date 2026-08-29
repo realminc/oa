@@ -8,7 +8,7 @@
 #include <oa/core/types.h>
 #undef OA_TYPES_H_SKIP_REST
 
-#include <oa/core/assert.h>
+#include <oa/core/std/assert.h>
 #include <oa/core/std/limits.h>
 
 namespace oa {
@@ -77,7 +77,8 @@ namespace detail {
 		inSeconds == inSeconds
 			and inSeconds >= oa::Limits<oa::F64>::lowest()
 			and inSeconds <= oa::Limits<oa::F64>::max(),
-		"time conversion requires a finite value");
+		"time conversion requires a finite value"
+	);
 	const oa::F64 nanoseconds = inSeconds * 1'000'000'000.0;
 	constexpr oa::F64 minimum = -0x1.0p63;
 	constexpr oa::F64 maximumExclusive = 0x1.0p63;

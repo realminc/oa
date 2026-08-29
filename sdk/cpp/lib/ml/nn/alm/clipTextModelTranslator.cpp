@@ -2,8 +2,6 @@
 
 #include <ml/nn/alm/clipTextAg.h>
 
-#include <cstring>
-
 namespace {
 
 class ClipTextModelTranslator final : public oa::ModelTranslator {
@@ -21,18 +19,16 @@ public:
 		map.config.dVocab = static_cast<oa::U32>(cfg.vocabSize);
 		map.config.weightDtype = static_cast<oa::U8>(oa::ScalarType::Float32);
 		map.archConfig.resize(sizeof(cfg));
-		std::memcpy(map.archConfig.data(), &cfg, sizeof(cfg));
+		oa::memcpy(map.archConfig.data(), &cfg, sizeof(cfg));
 		// The published file is a full image+text CLIP checkpoint. Vision and
 		// logit_scale weights are deliberately outside this translator, while every
 		// text-tower tensor is checked below.
 		map.requireAllSourceWeights = false;
 
-		auto add = [&](oa::StringView inName,
-					   std::initializer_list<oa::I64> inShape) -> oa::Status {
+		auto add = [&](oa::StringView inName, oa::Vector<oa::I64> shape) -> oa::Status {
 			const auto* info = inSource.find(inName);
 			if (info == nullptr)
 				return oa::Status::notFound(oa::String("CLIP tensor missing: ") + inName);
-			oa::Vector<oa::I64> shape(inShape);
 			if (info->shape.size() != shape.size())
 				return oa::Status::error(oa::StatusCode::ShapeMismatch,
 										 oa::String("CLIP rank mismatch: ") + inName);
@@ -57,10 +53,8 @@ public:
 		OA_RETURN_IF_ERROR(add("text_model.embeddings.position_embedding.weight",
 							   {cfg.contextLength, cfg.hiddenSize}));
 		for (oa::I32 layer = 0; layer < cfg.numLayers; ++layer) {
-			const std::string layerText = std::to_string(layer);
-			const oa::String root =
-				"text_model.encoder.layers."
-				+ oa::String(layerText.data(), layerText.size());
+			const oa::String root = "text_model.encoder.layers."
+				+ oa::toString(static_cast<oa::I64>(layer));
 			for (const char* projection : {"q_proj", "k_proj", "v_proj", "out_proj"}) {
 				const oa::String base = root + ".self_attn." + projection;
 				OA_RETURN_IF_ERROR(add(base + ".weight", {cfg.hiddenSize, cfg.hiddenSize}));

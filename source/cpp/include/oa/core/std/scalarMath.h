@@ -9,7 +9,7 @@
 // oa::min/oa::sort in algo.h. Float and
 // double overloads so the right precision is picked without casts.
 
-#include <oa/core/assert.h>
+#include <oa/core/std/assert.h>
 #include <oa/core/std/limits.h>
 
 namespace oa {

@@ -2,10 +2,6 @@
 
 #include <oa/oa.h>
 
-#include <cmath>
-#include <cstdio>
-#include <utility>
-
 [[nodiscard]] static oa::Status submitAndWait(oa::Engine& inEngine) {
 	auto submitted = inEngine.submit();
 	if (not submitted.isOk()) return submitted.getStatus();
@@ -19,16 +15,15 @@ int main() {
 
 	auto result = oa::Engine::create(config);
 	if (!result.isOk()) {
-		std::fprintf(stderr, "Engine creation failed: %s\n",
+		oa::print(oa::PrintStream::Error, "Engine creation failed: {}",
 			result.getStatus().getMessage().cStr());
 		return 1;
 	}
-	auto engine = std::move(result).getValue();
+	auto engine = oa::move(result).getValue();
 
-	std::printf("OA engine\n");
-	std::printf("  device: %.*s\n",
-		static_cast<int>(engine->deviceName().size()), engine->deviceName().data());
-	std::printf("  precision: %s\n",
+	oa::print("OA engine");
+	oa::print("  device: {}", engine->deviceName());
+	oa::print("  precision: {}",
 		engine->getPrecision() == oa::Precision::BF16 ? "BF16" : "FP32");
 
 	// oa::FnMatrix records into the engine's private eager recorder. No public
@@ -38,11 +33,11 @@ int main() {
 	auto output = oa::FnMatrix::add(a, b);
 
 	if (auto status = submitAndWait(*engine); !status.isOk()) {
-		std::fprintf(stderr, "Submission failed: %s\n", status.getMessage().cStr());
+		oa::print(oa::PrintStream::Error, "Submission failed: {}", status.getMessage().cStr());
 		return 1;
 	}
 
 	const oa::F32 value = output.at(0);
-	std::printf("  add(Ones, full(2)): %.1f\n", value);
-	return std::abs(value - 3.0F) <= 1e-5F ? 0 : 1;
+	oa::print("  add(Ones, full(2)): {:.1f}", value);
+	return oa::abs(value - 3.0F) <= 1e-5F ? 0 : 1;
 }

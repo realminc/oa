@@ -5,7 +5,7 @@
 // `Npos` for find failures; `at` / `subStr` use the always-on OA contract;
 // `operator[]` has a debug assertion.
 
-#include <oa/core/assert.h>
+#include <oa/core/std/assert.h>
 #include <oa/core/std/memory.h>
 #include <oa/core/std/cString.h>
 

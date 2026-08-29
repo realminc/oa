@@ -4,7 +4,7 @@
 // kernels instead of Mamba3*. See EmpyrealmModule.h for design rationale.
 
 #include "empyrealmModule.h"
-#include <oa/core/assert.h>
+#include <oa/core/std/assert.h>
 #include <oa/core/fnMatrix.h>
 #include <oa/ml/nn.h>
 #include <oa/runtime/executionSession.h>

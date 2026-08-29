@@ -2,10 +2,6 @@
 
 #include <oa/render/fnMesh.h>
 
-#include <algorithm>
-#include <array>
-#include <cmath>
-#include <limits>
 
 namespace {
 
@@ -14,23 +10,23 @@ constexpr oa::U32 VerticesPerBox = 24U;
 constexpr oa::U32 IndicesPerBox = 36U;
 
 [[nodiscard]] bool isFinite(const oa::vlm::Vec3& inVector) noexcept {
-	return std::isfinite(inVector.x)
-		and std::isfinite(inVector.y)
-		and std::isfinite(inVector.z);
+	return oa::isFinite(inVector.x)
+		and oa::isFinite(inVector.y)
+		and oa::isFinite(inVector.z);
 }
 
 [[nodiscard]] bool tryNarrowFinite(
 	double inValue,
 	oa::F32& outValue) noexcept {
-	if (not std::isfinite(inValue)
-		or inValue > static_cast<double>(std::numeric_limits<oa::F32>::max())
-		or inValue < -static_cast<double>(std::numeric_limits<oa::F32>::max())) {
+	if (not oa::isFinite(inValue)
+		or inValue > static_cast<double>(oa::Limits<oa::F32>::max())
+		or inValue < -static_cast<double>(oa::Limits<oa::F32>::max())) {
 		return false;
 	}
 	const oa::F32 converted = static_cast<oa::F32>(inValue);
-	if (not std::isfinite(converted)
+	if (not oa::isFinite(converted)
 		or (inValue != 0.0 and converted == 0.0F)
-		or (converted != 0.0F and std::fpclassify(converted) == FP_SUBNORMAL)) {
+		or (converted != 0.0F && oa::abs(converted) < oa::Limits<oa::F32>::min())) {
 		return false;
 	}
 	outValue = converted;
@@ -86,22 +82,19 @@ constexpr oa::U32 IndicesPerBox = 36U;
 }
 
 [[nodiscard]] oa::vlm::Vec3 normalize(const oa::vlm::Vec3& inValue) noexcept {
-	const oa::F32 maximumComponent = std::max({
-		std::abs(inValue.x),
-		std::abs(inValue.y),
-		std::abs(inValue.z),
-	});
-	if (not std::isfinite(maximumComponent)
+	const oa::F32 maximumComponent = oa::max(
+		oa::abs(inValue.x), oa::max(oa::abs(inValue.y), oa::abs(inValue.z)));
+	if (not oa::isFinite(maximumComponent)
 		or maximumComponent <= 1.0e-6F) {
 		return {0.0F, 1.0F, 0.0F};
 	}
 	const oa::vlm::Vec3 scaled = scale(inValue, 1.0F / maximumComponent);
 	const oa::F32 lengthSquared =
 		scaled.x * scaled.x + scaled.y * scaled.y + scaled.z * scaled.z;
-	if (not std::isfinite(lengthSquared) or lengthSquared <= 0.0F) {
+	if (not oa::isFinite(lengthSquared) or lengthSquared <= 0.0F) {
 		return {0.0F, 1.0F, 0.0F};
 	}
-	return scale(scaled, 1.0F / std::sqrt(lengthSquared));
+	return scale(scaled, 1.0F / oa::sqrt(lengthSquared));
 }
 
 [[nodiscard]] bool bodyPointToWorld(
@@ -147,23 +140,23 @@ public:
 				oa::StatusCode::OutOfRange,
 				"LunarLander3d body geometry is not representable as FP32");
 		}
-		static constexpr std::array<std::array<oa::U32, 4U>, 6U> faces{{
-			{{1U, 5U, 7U, 3U}},
-			{{4U, 0U, 2U, 6U}},
-			{{2U, 3U, 7U, 6U}},
-			{{4U, 5U, 1U, 0U}},
-			{{5U, 4U, 6U, 7U}},
-			{{0U, 1U, 3U, 2U}},
-		}};
-		static constexpr std::array<oa::vlm::Vec3, 6U> Normals{{
-			{1.0F, 0.0F, 0.0F},
-			{-1.0F, 0.0F, 0.0F},
-			{0.0F, 1.0F, 0.0F},
-			{0.0F, -1.0F, 0.0F},
-			{0.0F, 0.0F, 1.0F},
-			{0.0F, 0.0F, -1.0F},
-		}};
-		std::array<oa::vlm::Vec3, 8U> corners{};
+		static constexpr oa::Array<oa::Array<oa::U32, 4U>, 6U> faces{
+			oa::Array<oa::U32, 4U>{1U, 5U, 7U, 3U},
+			oa::Array<oa::U32, 4U>{4U, 0U, 2U, 6U},
+			oa::Array<oa::U32, 4U>{2U, 3U, 7U, 6U},
+			oa::Array<oa::U32, 4U>{4U, 5U, 1U, 0U},
+			oa::Array<oa::U32, 4U>{5U, 4U, 6U, 7U},
+			oa::Array<oa::U32, 4U>{0U, 1U, 3U, 2U},
+		};
+		static constexpr oa::Array<oa::vlm::Vec3, 6U> Normals{
+			oa::vlm::Vec3{1.0F, 0.0F, 0.0F},
+			oa::vlm::Vec3{-1.0F, 0.0F, 0.0F},
+			oa::vlm::Vec3{0.0F, 1.0F, 0.0F},
+			oa::vlm::Vec3{0.0F, -1.0F, 0.0F},
+			oa::vlm::Vec3{0.0F, 0.0F, 1.0F},
+			oa::vlm::Vec3{0.0F, 0.0F, -1.0F},
+		};
+		oa::Array<oa::vlm::Vec3, 8U> corners{};
 		for (oa::U32 corner = 0U; corner < corners.size(); ++corner) {
 			const oa::vlm::Vec3 offset{
 				(corner & 1U) ? inHalfExtent.x : -inHalfExtent.x,
@@ -222,8 +215,8 @@ private:
 			"LunarLander3d terrain height count does not match its grid");
 	}
 
-	oa::Vector<oa::vlm::Vec3> positions(static_cast<std::size_t>(vertexCount));
-	oa::Vector<oa::vlm::Vec3> normalSums(static_cast<std::size_t>(vertexCount));
+	oa::Vector<oa::vlm::Vec3> positions(static_cast<oa::Usize>(vertexCount));
+	oa::Vector<oa::vlm::Vec3> normalSums(static_cast<oa::Usize>(vertexCount));
 	for (oa::U32 z = 0U; z < verticesZ; ++z) {
 		for (oa::U32 x = 0U; x < verticesX; ++x) {
 			const oa::U32 index = z * verticesX + x;
@@ -247,7 +240,7 @@ private:
 	}
 
 	outMesh.indices.reserve(
-		static_cast<std::size_t>(config.cellsX_) * config.cellsZ_ * 6U);
+		static_cast<oa::Usize>(config.cellsX_) * config.cellsZ_ * 6U);
 	for (oa::U32 z = 0U; z < config.cellsZ_; ++z) {
 		for (oa::U32 x = 0U; x < config.cellsX_; ++x) {
 			const oa::U32 v00 = z * verticesX + x;
@@ -287,12 +280,12 @@ private:
 		}
 	}
 
-	outMesh.vertices.reserve(static_cast<std::size_t>(vertexCount)
-		+ static_cast<std::size_t>(config.cellsX_) * config.cellsZ_ * 6U);
+	outMesh.vertices.reserve(static_cast<oa::Usize>(vertexCount)
+		+ static_cast<oa::Usize>(config.cellsX_) * config.cellsZ_ * 6U);
 	for (oa::U32 index = 0U; index < vertexCount; ++index) {
 		const oa::F32 height = positions[index].y;
 		const oa::F32 shade =
-			std::clamp(0.30F + height * 0.025F, 0.22F, 0.38F);
+			oa::clamp(0.30F + height * 0.025F, 0.22F, 0.38F);
 		const oa::vlm::Vec3 normal = normalize(normalSums[index]);
 		if (not isFinite(normal)) {
 			return oa::Status::error(
@@ -387,7 +380,7 @@ public:
 			oa::F32 radius = 0.0F;
 			return tryToVlm(inSupport.bodyOffset_, offset)
 				and tryNarrowFinite(inSupport.radius_, radius)
-				and std::isfinite(radius * 1.35F);
+				and oa::isFinite(radius * 1.35F);
 		};
 		for (const oa::LunarSupportSphere& support
 			: inLanderConfig.bodySupports_) {
@@ -419,8 +412,8 @@ public:
 		const oa::U64 indexCapacity =
 			static_cast<oa::U64>(TerrainMesh.indices.size())
 			+ boxCount * IndicesPerBox;
-		if (vertexCapacity > std::numeric_limits<oa::U32>::max()
-			or indexCapacity > std::numeric_limits<oa::U32>::max()) {
+		if (vertexCapacity > oa::Limits<oa::U32>::max()
+			or indexCapacity > oa::Limits<oa::U32>::max()) {
 			return oa::Status::error(
 				oa::StatusCode::OutOfRange,
 				"LunarLander3d scene exceeds renderer capacity representation");
@@ -481,7 +474,7 @@ public:
 			}
 			const oa::F32 attachmentY = -0.20F;
 			const oa::F32 legHalfHeight =
-				std::max(0.05F, std::abs(attachmentY - foot.y) * 0.5F);
+				oa::max(0.05F, oa::abs(attachmentY - foot.y) * 0.5F);
 			const oa::vlm::Vec3 legCenter{
 				foot.x * 0.72F,
 				(attachmentY + foot.y) * 0.5F,

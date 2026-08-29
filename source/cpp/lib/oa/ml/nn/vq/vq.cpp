@@ -97,7 +97,7 @@ oa::ResidualVectorQuantizer::ResidualVectorQuantizer(
 	OA_ASSERT(inNumLevels >= 1 && "RVQ needs at least one level");
 	for (oa::I32 q = 0; q < inNumLevels; ++q) {
 		auto lvl = oa::makeShared<oa::VectorQuantizer>(inConfig);
-		const oa::String name = oa::format("level%d", q);
+		const oa::String name = oa::format("level{}", q);
 		registerModule(name.cStr(), lvl);
 		levels_.pushBack(lvl);
 	}

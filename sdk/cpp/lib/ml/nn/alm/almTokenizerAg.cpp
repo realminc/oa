@@ -4,6 +4,7 @@
 
 #include <oa/ml/nn.h>            // oa::Conv1d, oa::ConvTranspose1d
 #include <oa/core/fnMatrix.h>
+#include <oa/core/std/print.h>
 #include <oa/ml/fnMatrix.h>      // oa::FnMatrix::channelNorm, Conv1dRelu
 #include <oa/ml/autograd.h>      // oa::FnAutograd::IsEnabled
 #include <oa/runtime/executionSession.h>
@@ -41,7 +42,7 @@ static void dbgRms(const char* inTag, const oa::Matrix& inH) {
 	auto ss = oa::FnMatrix::sum(oa::FnMatrix::mul(inH, inH));
 	(void)ctx.submitAndWait();
 	const double rms = std::sqrt(static_cast<double>(ss.at(0)) / static_cast<double>(inH.numElements()));
-	std::printf("    [rms] %-10s = %.6f\n", inTag, rms);
+	(void)oa::print("    [rms] {:<10} = {:.6f}", inTag, rms);
 }
 
 oa::AlmTokenizerAg::AlmTokenizerAg(const oa::AlmTokenizerConfig& inConfig)

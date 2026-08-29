@@ -138,7 +138,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     previousMode = os.environ.get("OA_VK_VALIDATION_MODE")
     os.environ["OA_VK_VALIDATION_MODE"] = args.mode
     try:
-        evidenceArgs = oaEvidence.parse_args(
+        evidenceArgs = oaEvidence.parseArgs(
             (
                 "--repo",
                 str(repo),

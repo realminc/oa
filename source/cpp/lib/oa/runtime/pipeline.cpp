@@ -54,7 +54,7 @@ oa::Result<oa::PipelineCache> oa::PipelineCache::create(const oavk::Device& inDe
 		auto loaded = oa::Filesystem::readBinary(cachePath);
 		if (loaded.isOk()) {
 			cacheData = oa::move(loaded.getValue());
-			OaLogInfo(oa::LogComponent::Compute, "pipeline cache: loaded %zu bytes from %s",	cacheData.size(), cachePath.string().cStr());
+			OaLogInfo(oa::LogComponent::Compute, "pipeline cache: loaded {} bytes from {}",	cacheData.size(), cachePath.string().cStr());
 		}
 	}
 
@@ -99,7 +99,7 @@ void oa::PipelineCache::save(const oavk::Device& inDevice, const oa::String& inC
 	(void)oa::Filesystem::createDirectories(cacheDir);
 	oa::Path cachePath = cacheDir / pipelineCacheFile;
 	(void)oa::Filesystem::writeBinary(cachePath, oa::Span<const oa::U8>(data.data(), data.size()));
-	OaLogInfo(oa::LogComponent::Compute, "pipeline cache: saved %zu bytes to %s",
+	OaLogInfo(oa::LogComponent::Compute, "pipeline cache: saved {} bytes to {}",
 		dataSize, cachePath.string().cStr());
 }
 
@@ -547,7 +547,7 @@ oa::Status oa::PipelineRegistry::ensurePipeline(
 		inDevice, inSpirv, inSpec, cache_.cache, bindlessPipelineLayout_);
 	if (!result.isOk() && cache_.cache) {
 		OaLogWarn(oa::LogComponent::Compute,
-			"pipeline creation failed with cache for %s, dropping %s and retrying uncached",
+			"pipeline creation failed with cache for {}, dropping {} and retrying uncached",
 			oa::String(inName).cStr(), pipelineCacheFile);
 		cache_.destroy(inDevice);
 		if (!cacheDir_.empty()) {
@@ -639,7 +639,7 @@ oa::Status oa::PipelineRegistry::ensurePipelinesParallel(
 		if (inDevice.deviceDispatch.vkCreatePipelineCache(device, &ci, nullptr, &workerCaches[i]) != VK_SUCCESS) {
 			workerCaches[i] = VK_NULL_HANDLE;
 			OaLogWarn(oa::LogComponent::Compute,
-				"shader preload worker %u: pipeline-cache creation failed; compiling uncached", i);
+				"shader preload worker {}: pipeline-cache creation failed; compiling uncached", i);
 		}
 	}
 
@@ -710,7 +710,7 @@ oa::Status oa::PipelineRegistry::ensurePipelinesParallel(
 				device, primaryCache, static_cast<oa::U32>(mergeCaches.size()), mergeCaches.data());
 			if (merged != VK_SUCCESS) {
 				OaLogWarn(oa::LogComponent::Compute,
-					"shader preload: vkMergePipelineCaches failed (VkResult=%d)",
+					"shader preload: vkMergePipelineCaches failed (VkResult={})",
 					static_cast<int>(merged));
 			}
 		}
@@ -777,7 +777,7 @@ oa::Status oa::PipelineRegistry::ensurePipelinesOnDemand(
 		const auto* spirv = oavk::findSpirv(request.name.cStr());
 		if (spirv == nullptr) {
 			OaLogWarn(oa::LogComponent::Compute,
-				"SPIR-V not found for on-demand shader '%s'",
+				"SPIR-V not found for on-demand shader '{}'",
 				request.name.cStr());
 			return oa::Status::notFound("SPIR-V not found in registry");
 		}
@@ -803,7 +803,7 @@ oa::Status oa::PipelineRegistry::ensurePipelinesOnDemand(
 		oa::min<oa::U32>(loadThreads, static_cast<oa::U32>(requests.size())));
 
 	OaLogInfo(oa::LogComponent::Compute,
-		"Loading %zu shader pipeline%s on demand (%u thread%s, %s cache)",
+		"Loading {} shader pipeline{} on demand ({} thread{}, {} cache)",
 		requests.size(), requests.size() == 1 ? "" : "s",
 		loadThreads, loadThreads == 1 ? "" : "s",
 		hasInitialCacheData() ? "warm" : "cold");
@@ -825,12 +825,12 @@ oa::Status oa::PipelineRegistry::ensurePipelinesOnDemand(
 		} else {
 			++failed;
 			OaLogWarn(oa::LogComponent::Compute,
-				"Failed to load shader '%s' on demand: %s",
+				"Failed to load shader '{}' on demand: {}",
 				requests[index].name.cStr(), statuses[index].getMessage().cStr());
 		}
 	}
 	OaLogInfo(oa::LogComponent::Compute,
-		"Loaded %u/%zu shader pipeline%s on demand (failed=%u, threads=%u, %.2f ms)",
+		"Loaded {}/{} shader pipeline{} on demand (failed={}, threads={}, {:.2f} ms)",
 		loaded, requests.size(), requests.size() == 1 ? "" : "s",
 		failed, loadThreads, loadMs);
 	return loadStatus;
@@ -849,7 +849,7 @@ oa::Status oa::PipelineRegistry::tryLoadOnDemand(
 	// Look up SPIR-V
 	auto* spirv = oavk::findSpirv(kernelName.cStr());
 	if (!spirv) {
-		OaLogWarn(oa::LogComponent::Compute, "TryLoadOnDemand: SPIR-V not found for '%s'", kernelName.cStr());
+		OaLogWarn(oa::LogComponent::Compute, "TryLoadOnDemand: SPIR-V not found for '{}'", kernelName.cStr());
 		return oa::Status::notFound("SPIR-V not found in registry");
 	}
 	
@@ -878,7 +878,7 @@ oa::Status oa::PipelineRegistry::tryLoadOnDemand(
 			kernelName.cStr(), inDtype);
 		#endif
 	} else {
-		OaLogWarn(oa::LogComponent::Compute, "TryLoadOnDemand: Failed to load '%s'",
+		OaLogWarn(oa::LogComponent::Compute, "TryLoadOnDemand: Failed to load '{}'",
 			kernelName.cStr());
 	}
 	
@@ -890,7 +890,7 @@ oa::ComputePipeline& oa::PipelineRegistry::getPipeline(oa::StringView inName, oa
 	static oa::ComputePipeline sNull;
 	if (inDtype > 1U) {
 		OaLogError(oa::LogComponent::Compute,
-			"pipeline lookup rejected invalid storage DTYPE=%u for '%s'",
+			"pipeline lookup rejected invalid storage DTYPE={} for '{}'",
 			inDtype, oa::String(inName).cStr());
 		return sNull;
 	}
@@ -935,7 +935,7 @@ oa::ComputePipeline& oa::PipelineRegistry::getPipeline(oa::StringView inName, oa
 
 	// pipeline not found after eager and lazy strategies.
 	OaLogWarn(oa::LogComponent::Compute,
-		"pipeline not found: '%s' (tried exact DTYPE=%u and lazy exact embedded load).",
+		"pipeline not found: '{}' (tried exact DTYPE={} and lazy exact embedded load).",
 		oa::String(inName).cStr(), inDtype);
 	return sNull;
 }

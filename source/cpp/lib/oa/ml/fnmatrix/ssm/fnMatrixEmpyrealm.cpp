@@ -16,7 +16,7 @@
 
 #include "fnMatrixSsmInternal.h"
 
-#include <assert.h>
+#include <oa/core/std/assert.h>
 
 // ============================================================================
 // EmpyrealmAdt — fused per-token A·dt term (Ssm/empyrealm/EmpyrealmAdt.slang)
@@ -188,9 +188,9 @@ oa::Matrix oa::FnMatrix::empyrealmSiso(
 	const oa::Matrix& inD,
 	const oa::SsmConfig& inConfig)
 {
-	assert(inConfig.headDim <= 128 && "EmpyrealmSiso: headdim (P) must be <= 128");
-	assert(inConfig.stateSize <= 128 && "EmpyrealmSiso: d_state (N) must be <= 128");
-	assert(inConfig.numRopeAngles <= 64 && "EmpyrealmSiso: num_rope_angles (A) must be <= 64");
+	OA_REQUIRE_MSG(inConfig.headDim <= 128, "EmpyrealmSiso: headdim (P) must be <= 128");
+	OA_REQUIRE_MSG(inConfig.stateSize <= 128, "EmpyrealmSiso: d_state (N) must be <= 128");
+	OA_REQUIRE_MSG(inConfig.numRopeAngles <= 64, "EmpyrealmSiso: num_rope_angles (A) must be <= 64");
 	auto& ctx = oa::ExecutionSession::getActive();
 	oa::OpLoweringScope lowering(ctx);
 	const oa::U64 configIdentity =
@@ -309,7 +309,7 @@ oa::Matrix oa::FnMatrix::empyrealmSisoStep(
 	const oa::Matrix& inVState,
 	const oa::SsmConfig& inConfig)
 {
-	assert(inConfig.seqLen == 1 && "EmpyrealmSisoStep: seqLen must be 1");
+	OA_REQUIRE_MSG(inConfig.seqLen == 1, "EmpyrealmSisoStep: seqLen must be 1");
 	auto& ctx = oa::ExecutionSession::getActive();
 	oa::OpLoweringScope lowering(ctx);
 	const oa::U64 configIdentity =

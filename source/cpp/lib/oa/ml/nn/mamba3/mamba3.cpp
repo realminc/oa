@@ -8,7 +8,7 @@
 // tutorialNlpMamba3Ag (Mamba-3 reference + flat residual + gated out-norm).
 
 #include <oa/ml/nn/mamba3/mamba3.h>
-#include <oa/core/assert.h>
+#include <oa/core/std/assert.h>
 #include <oa/core/fnMatrix.h>
 #include <oa/core/std/limits.h>
 #include <oa/core/std/scalarMath.h>

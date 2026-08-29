@@ -16,7 +16,6 @@
 #include <oa/ml/byte.h>
 #include <oa/ml/autograd.h>
 #include <oa/runtime/engine.h>
-#include <cmath>
 
 static constexpr oa::I32 kVocabSize = oa::ByteVocabSize;  // 256 — byte vocab family
 
@@ -68,12 +67,12 @@ private:
 // ─── Tutorial ──────────────────────────────────────────────────────────────
 
 TEST(TutorialNlpByteGruAg, GruAllPositionLM) {
-	printf("\n╔══════════════════════════════════════════════════════════════════╗\n");
-	printf("║  OA Tutorial — Byte GRU · all-position LM (autograd)            ║\n");
-	printf("╚══════════════════════════════════════════════════════════════════╝\n\n");
-	printf("Vocab: %d bytes · context: %d · dModel: %d · Hidden: %d\n",
+	oa::print("\n╔══════════════════════════════════════════════════════════════════╗");
+	oa::print("║  OA Tutorial — Byte GRU · all-position LM (autograd)            ║");
+	oa::print("╚══════════════════════════════════════════════════════════════════╝\n");
+	oa::print("Vocab: {} bytes · context: {} · dModel: {} · Hidden: {}",
 		kVocabSize, kContextLen, kDModel, kHiddenDim);
-	printf("Task: dense next-byte at every position via a gated recurrent unit\n\n");
+	oa::print("Task: dense next-byte at every position via a gated recurrent unit\n");
 
 	oa::FnMatrix::setRngSeed(oa::NlpSuiteRngSeed);
 	auto  model  = oa::makeShared<ByteGruLM>();
@@ -81,9 +80,9 @@ TEST(TutorialNlpByteGruAg, GruAllPositionLM) {
 	auto  opt    = oa::makeUnique<oa::AdamW>(params, 0.01F);
 	auto& rt     = testEngine();
 
-	printf("Model: byteEmbed(%d→%d) → GRU(%d→%d, layers=1) → Linear(%d→%d)\n",
+	oa::print("Model: byteEmbed({}→{}) → GRU({}→{}, layers=1) → Linear({}→{})",
 		kVocabSize, kDModel, kDModel, kHiddenDim, kHiddenDim, kVocabSize);
-	printf("params: %lld    Optimizer: AdamW(lr=0.01)\n\n",
+	oa::print("params: {}    Optimizer: AdamW(lr=0.01)\n",
 		static_cast<long long>(model->numParameters()));
 
 	NlpAllPositionSampler sampler(nlpCorpus(), kBatch);
@@ -98,7 +97,7 @@ TEST(TutorialNlpByteGruAg, GruAllPositionLM) {
 		.timerName      = "byte_gru_allpos_step",
 		.callbacks      = {},
 	});
-	printf("training: %d steps · batch=%d · sequence=%d tokens\n", kSteps, kBatch, kContextLen);
+	oa::print("training: {} steps · batch={} · sequence={} tokens", kSteps, kBatch, kContextLen);
 
 	oa::Matrix batchX;
 	oa::Matrix batchY;
@@ -120,12 +119,12 @@ TEST(TutorialNlpByteGruAg, GruAllPositionLM) {
 
 	const oa::F32 finalAcc = nlpAccuracyAllPositions(*model, batchX, batchY, kVocabSize);
 	(void)rt;
-	printf("\nEvaluation:\n");
-	printf("  Random-loss baseline ln(%d) = %.4f\n",
-		kVocabSize, std::log(static_cast<double>(kVocabSize)));
-	printf("  bits/byte: %.4f\n", nlpBitsPerByte(lastLoss));
-	printf("  Accuracy: %.1f%%\n", finalAcc);
-	printf("\nGeneration:\n  prompt: '%s'\n  generated: '%s'\n\n", kNlpGenerationPrompt,
+	oa::print("\nEvaluation:");
+	oa::print("  Random-loss baseline ln({}) = {:.4f}",
+		kVocabSize, oa::log(static_cast<double>(kVocabSize)));
+	oa::print("  bits/byte: {:.4f}", nlpBitsPerByte(lastLoss));
+	oa::print("  Accuracy: {:.1f}%", finalAcc);
+	oa::print("\nGeneration:\n  prompt: '{}'\n  generated: '{}'\n", kNlpGenerationPrompt,
 		nlpGenerateGreedy(*model, kNlpGenerationPrompt, kNlpGenerationBytes, kVocabSize).cStr());
 
 	ASSERT_GT(initialLoss, 0.0F);

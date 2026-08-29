@@ -28,20 +28,20 @@ oa::Status platformError(const char* inOperation) {
 void configureVideoBackend() {
 	if (not SDL_SetAppMetadata("OA", nullptr, "com.empyrealm.oa")) {
 		OaLogWarn(oa::LogComponent::Ui,
-			"SDL_SetAppMetadata failed: %s", SDL_GetError());
+			"SDL_SetAppMetadata failed: {}", SDL_GetError());
 	}
 	// oa::Ui renders the IME composition string at its scalar-safe caret. Keep the
 	// candidate chooser native; OA does not own platform language policy.
 	if (not SDL_SetHint(SDL_HINT_IME_IMPLEMENTED_UI, "composition")) {
 		OaLogWarn(oa::LogComponent::Ui,
-			"SDL IME composition hint was rejected: %s", SDL_GetError());
+			"SDL IME composition hint was rejected: {}", SDL_GetError());
 	}
 
 	if (const char* backend = ::getenv("OA_UI_BACKEND");
 		backend != nullptr and backend[0] != '\0') {
 		if (not SDL_SetHint(SDL_HINT_VIDEO_DRIVER, backend)) {
 			OaLogWarn(oa::LogComponent::Ui,
-				"SDL video backend override '%s' was rejected", backend);
+				"SDL video backend override '{}' was rejected", backend);
 		}
 	} else if (const char* session = ::getenv("XDG_SESSION_TYPE");
 		session != nullptr and oa::strcmp(session, "wayland") == 0) {

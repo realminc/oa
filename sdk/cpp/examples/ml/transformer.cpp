@@ -1,9 +1,6 @@
 // OA_DOC_BEGIN: ml-transformer
 #include <oa/oa.h>
 
-#include <algorithm>
-#include <cstdio>
-
 namespace {
 constexpr oa::I32 VocabSize = 300;
 constexpr oa::I32 ContextLength = 16;
@@ -51,9 +48,9 @@ oa::String generate(oa::NnTransformer& model, const oa::BpeTokenizer& tokenizer)
 	const oa::String prompt = "to be";
 	auto promptTokens = tokenizer.encode(prompt.cStr());
 	oa::Vector<oa::I32> context(static_cast<oa::Usize>(ContextLength), 0);
-	const auto copied = std::min<oa::Usize>(promptTokens.size(), context.size());
+	const auto copied = oa::min<oa::Usize>(promptTokens.size(), context.size());
 	for (oa::Usize index = 0; index < copied; ++index) context[index] = promptTokens[index];
-	oa::I32 filled = std::max<oa::I32>(1, static_cast<oa::I32>(copied));
+	oa::I32 filled = oa::max<oa::I32>(1, static_cast<oa::I32>(copied));
 	oa::String result = prompt;
 	for (oa::I32 index = 0; index < 32; ++index) {
 		auto logits = model.forward(tokenMatrix(context, 1));
@@ -96,16 +93,14 @@ OA_MAIN("ExampleMlTransformer") {
 	training.addCallback(&progress);
 	training.addCallback(&summary);
 
-	std::printf("\nOA SDK Example — BPE Transformer · all-position LM\n");
-	std::printf("Tokenizer: byte BPE · vocab=%d · context=%d\n", VocabSize, ContextLength);
-	std::printf(
-		"Model: NnTransformer(width=%d, hidden=%d, layers=1, heads=1)\n",
+	oa::print("\nOA SDK Example — BPE Transformer · all-position LM");
+	oa::print("Tokenizer: byte BPE · vocab={} · context={}", VocabSize, ContextLength);
+	oa::print("Model: NnTransformer(width={}, hidden={}, layers=1, heads=1)",
 		ModelWidth,
 		HiddenWidth
 	);
-	std::printf("Params: %lld · AdamW(lr=0.01)\n", static_cast<long long>(model.numParameters()));
-	std::printf(
-		"Training: %d steps · batch=%d · sequence=%d tokens\n",
+	oa::print("Params: {} · AdamW(lr=0.01)", static_cast<long long>(model.numParameters()));
+	oa::print("Training: {} steps · batch={} · sequence={} tokens",
 		TrainingSteps,
 		BatchSize,
 		ContextLength
@@ -136,9 +131,9 @@ OA_MAIN("ExampleMlTransformer") {
 		return 1;
 	}
 	const auto generated = generate(model, tokenizer);
-	std::printf("Transformer training verified: vocab=300, steps=300\n");
-	std::printf("Loss: %.4f -> %.4f\n", initialLoss, finalLoss);
-	std::printf("Generated: %s\n", generated.cStr());
+	oa::print("Transformer training verified: vocab=300, steps=300");
+	oa::print("Loss: {:.4f} -> {:.4f}", initialLoss, finalLoss);
+	oa::print("Generated: {}", generated.cStr());
 	return 0;
 }
 // OA_DOC_END: ml-transformer

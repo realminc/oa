@@ -23,7 +23,7 @@
 // Include as <oa/core/std/vector.h> or through <oa/core/std.h> or <oa/core/types.h>.
 
 #include <oa/core/std/memory.h>
-#include <oa/core/assert.h>
+#include <oa/core/std/assert.h>
 #include <oa/core/std/allocator.h>
 #include <oa/core/std/iter.h>
 #include <oa/core/std/lifetime.h>

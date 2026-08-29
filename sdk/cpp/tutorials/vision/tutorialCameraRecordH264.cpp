@@ -8,18 +8,16 @@
 // ffmpeg subprocess participates in capture or encoding.
 
 #include <oa/runtime/engine.h>
+#include <oa/core/thread.h>
 #include <oa/vision/cameraCapture.h>
 #include <oa/vision/videoRecorder.h>
 
-#include <chrono>
-#include <csignal>
-#include <cstdio>
-#include <cstdlib>
-#include <thread>
+#include <signal.h>
+#include <stdlib.h>
 
 namespace {
 
-volatile std::sig_atomic_t stopRequested = 0;
+volatile ::sig_atomic_t stopRequested = 0;
 
 void requestStop(int) noexcept {
 	stopRequested = 1;
@@ -29,21 +27,21 @@ void requestStop(int) noexcept {
 
 int main(int argc, char** argv) {
 	const char* output = argc > 1 ? argv[1] : "/tmp/oa_camera_capture.mp4";
-	const double seconds = argc > 2 ? std::atof(argv[2]) : 10.0;
-	const oa::I32 deviceIndex = argc > 3 ? std::atoi(argv[3]) : 0;
+	const double seconds = argc > 2 ? ::atof(argv[2]) : 10.0;
+	const oa::I32 deviceIndex = argc > 3 ? ::atoi(argv[3]) : 0;
 	if (seconds <= 0.0 or deviceIndex < 0) {
-		std::fprintf(stderr, "Duration must be positive and device index non-negative\n");
+		oa::print(oa::PrintStream::Error, "Duration must be positive and device index non-negative");
 		return 1;
 	}
-	std::signal(SIGINT, requestStop);
-	std::signal(SIGTERM, requestStop);
+	::signal(SIGINT, requestStop);
+	::signal(SIGTERM, requestStop);
 
 	oa::EngineConfig engineConfig;
 	engineConfig.presentationMode = oa::PresentationMode::None;
 	engineConfig.selectForThread = true;
 	auto engineResult = oa::Engine::create(engineConfig);
 	if (not engineResult.isOk()) {
-		std::fprintf(stderr, "Engine creation failed: %s\n",
+		oa::print(oa::PrintStream::Error, "Engine creation failed: {}",
 			engineResult.getStatus().toString().cStr());
 		return 1;
 	}
@@ -57,7 +55,7 @@ int main(int argc, char** argv) {
 	captureConfig.deviceIndex = deviceIndex;
 	auto captureResult = oa::CameraCapture::open(engine, captureConfig);
 	if (not captureResult.isOk()) {
-		std::fprintf(stderr, "camera capture failed: %s\n",
+		oa::print(oa::PrintStream::Error, "camera capture failed: {}",
 			captureResult.getStatus().toString().cStr());
 		return 1;
 	}
@@ -72,7 +70,7 @@ int main(int argc, char** argv) {
 	recorderConfig.encode.gopSize = recorderConfig.encode.frameRate * 2U;
 	auto recorderResult = oa::VideoRecorder::create(engine, recorderConfig);
 	if (not recorderResult.isOk()) {
-		std::fprintf(stderr, "Recorder creation failed: %s\n",
+		oa::print(oa::PrintStream::Error, "Recorder creation failed: {}",
 			recorderResult.getStatus().toString().cStr());
 		return 1;
 	}
@@ -80,14 +78,13 @@ int main(int argc, char** argv) {
 
 	oa::U64 firstPts = 0;
 	oa::U32 frameCount = 0;
-	const auto deadline = std::chrono::steady_clock::now()
-		+ std::chrono::duration<double>(seconds);
-	std::printf("Recording camera %d at %dx%d @ %d fps to %s for %.1f seconds\n",
+	const auto deadline = oa::steadyNow() + oa::Duration::fromDouble(seconds);
+	oa::print("Recording camera {} at {}x{} @ {} fps to {} for {:.1f} seconds",
 		deviceIndex, capture.width(), capture.height(), capture.fps(), output, seconds);
-	while (not stopRequested and std::chrono::steady_clock::now() < deadline) {
+	while (not stopRequested and oa::steadyNow() < deadline) {
 		oa::VideoFrame frame;
 		if (not capture.pollFrame(frame)) {
-			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+			oa::Thread::sleepFor(oa::Duration::fromMilliseconds(1));
 			continue;
 		}
 		if (frameCount == 0U) firstPts = frame.presentationTimestamp;
@@ -96,21 +93,21 @@ int main(int argc, char** argv) {
 		auto status = recorder.writeAsync(frame, consumed);
 		capture.release(frame, consumed);
 		if (not status.isOk()) {
-			std::fprintf(stderr, "Record frame failed: %s\n", status.toString().cStr());
+			oa::print(oa::PrintStream::Error, "Record frame failed: {}", status.toString().cStr());
 			return 1;
 		}
 		++frameCount;
 	}
 
 	if (frameCount == 0U) {
-		std::fprintf(stderr, "camera produced no frames\n");
+		oa::print(oa::PrintStream::Error, "camera produced no frames");
 		return 1;
 	}
 	auto finalStatus = recorder.finalize();
 	if (not finalStatus.isOk()) {
-		std::fprintf(stderr, "finalize failed: %s\n", finalStatus.toString().cStr());
+		oa::print(oa::PrintStream::Error, "finalize failed: {}", finalStatus.toString().cStr());
 		return 1;
 	}
-	std::printf("Saved %u frames to %s\n", frameCount, output);
+	oa::print("Saved {} frames to {}", frameCount, output);
 	return 0;
 }

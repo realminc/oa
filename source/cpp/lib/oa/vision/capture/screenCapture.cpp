@@ -311,7 +311,7 @@ void returnDmaBuffer(oa::ScreenCapture::Impl& inImpl, pw_buffer* inBuffer) {
 		&inBuffer, sizeof(inBuffer), true, inImpl.pwStream);
 	if (result < 0) {
 		OaLogError(oa::LogComponent::Vision,
-			"PipeWire screen capture could not return DMA-BUF: %s",
+			"PipeWire screen capture could not return DMA-BUF: {}",
 			::strerror(-result));
 	}
 }
@@ -365,7 +365,7 @@ void streamStateChanged(void* inData, pw_stream_state, pw_stream_state inState, 
 	if (inState == PW_STREAM_STATE_ERROR or inState == PW_STREAM_STATE_UNCONNECTED) {
 		impl->streaming = false;
 		if (inError != nullptr) {
-			OaLogError(oa::LogComponent::Vision, "PipeWire screen stream: %s", inError);
+			OaLogError(oa::LogComponent::Vision, "PipeWire screen stream: {}", inError);
 		}
 	}
 }
@@ -394,13 +394,13 @@ void streamParamChanged(void* inData, oa::U32 inId, const spa_pod* inParam) {
 	}
 	if ((impl->rawFormat.flags & SPA_VIDEO_FLAG_MODIFIER) != 0U) {
 		OaLogInfo(oa::LogComponent::Vision,
-			"PipeWire screen capture: %ux%u %s via DMA-BUF modifier 0x%llx",
+			"PipeWire screen capture: {}x{} {} via DMA-BUF modifier 0x{:x}",
 			impl->rawFormat.size.width, impl->rawFormat.size.height,
 			captureFormatName(impl->rawFormat.format),
 			static_cast<unsigned long long>(impl->rawFormat.modifier));
 	} else {
 		OaLogInfo(oa::LogComponent::Vision,
-			"PipeWire screen capture: %ux%u %s via mapped memory",
+			"PipeWire screen capture: {}x{} {} via mapped memory",
 			impl->rawFormat.size.width, impl->rawFormat.size.height,
 			captureFormatName(impl->rawFormat.format));
 	}
@@ -667,7 +667,7 @@ oa::Result<oa::ScreenCapture> oa::ScreenCapture::open(
 		}
 	}
 	OaLogInfo(oa::LogComponent::Vision,
-		"PipeWire screen capture: advertising %zu DMA-BUF format/modifier pairs and mapped fallback",
+		"PipeWire screen capture: advertising {} DMA-BUF format/modifier pairs and mapped fallback",
 		dmaFormats.size());
 	// Each pod is small, but use dynamically-sized stable storage so every
 	// importable modifier can be offered without a fixed stack limit.
@@ -766,7 +766,7 @@ bool oa::ScreenCapture::poll(oa::VideoFrame& outFrame) {
 				return true;
 			}
 			OaLogError(oa::LogComponent::Vision,
-				"PipeWire supplied an advertised DMA-BUF that vulkan could not import: %s",
+				"PipeWire supplied an advertised DMA-BUF that vulkan could not import: {}",
 				imported.getStatus().toString().cStr());
 			rejectedDmaBuffer = impl.heldDmaBuffer;
 			impl.heldDmaBuffer = nullptr;

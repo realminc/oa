@@ -169,7 +169,7 @@ struct GenAlmApp : oa::ComputeApp {
 		}
 		auto loadedAlm = oa::AlmAg::loadBundle(engine(), c.model);
 		if (not loadedAlm.isOk()) {
-			OaLogError(oa::LogComponent::Ml, "genalm: oa::AlmAg load failed: %s",
+			OaLogError(oa::LogComponent::Ml, "genalm: oa::AlmAg load failed: {}",
 				loadedAlm.getStatus().getMessage().cStr());
 			isRunning = false; return oa::Status::ok();
 		}
@@ -178,7 +178,7 @@ struct GenAlmApp : oa::ComputeApp {
 		const bool conditioned = almCfg.prior.textFeatureDim > 0;
 		if (c.genMaxLen <= 0 or c.genMaxLen + (conditioned ? 1 : 0) > almCfg.prior.maxSeqLen) {
 			OaLogError(oa::LogComponent::Ml,
-				"genalm: generation length %d does not fit bundle maxSeqLen %d",
+				"genalm: generation length {} does not fit bundle maxSeqLen {}",
 				c.genMaxLen, almCfg.prior.maxSeqLen);
 			isRunning = false; return oa::Status::ok();
 		}
@@ -208,7 +208,7 @@ struct GenAlmApp : oa::ComputeApp {
 		oa::DsCombatMotionProcessed ds(c.dataset, c.split,
 			conditioned and not promptMode and not featureOverride ? c.conditioningClip + 1 : 1);
 		if (not ds.ok()) {
-			OaLogError(oa::LogComponent::Ml, "genalm: failed to load CMP from %s", c.dataset.cStr());
+			OaLogError(oa::LogComponent::Ml, "genalm: failed to load CMP from {}", c.dataset.cStr());
 			isRunning = false; return oa::Status::ok();
 		}
 		const oa::I32 featDim   = ds.featDim();
@@ -219,7 +219,7 @@ struct GenAlmApp : oa::ComputeApp {
 		if (featureOverride) {
 			auto loadedFeature = loadRawF32(c.textFeature, textFeatureDim);
 			if (not loadedFeature.isOk()) {
-				OaLogError(oa::LogComponent::Ml, "genalm: %s",
+				OaLogError(oa::LogComponent::Ml, "genalm: {}",
 					loadedFeature.getStatus().getMessage().cStr());
 				isRunning = false; return oa::Status::ok();
 			}
@@ -231,7 +231,7 @@ struct GenAlmApp : oa::ComputeApp {
 		} else if (conditioned) {
 			if (c.conditioningClip >= ds.numClips()) {
 				OaLogError(oa::LogComponent::Ml,
-					"genalm: conditioning clip %d is outside split '%s' (%lld clips loaded)",
+					"genalm: conditioning clip {} is outside split '{}' ({} clips loaded)",
 					c.conditioningClip, c.split.cStr(), static_cast<long long>(ds.numClips()));
 				isRunning = false; return oa::Status::ok();
 			}
@@ -240,7 +240,7 @@ struct GenAlmApp : oa::ComputeApp {
 				ds.textFeatureModel() != almCfg.textEncoder or c.captionIndex >= featureCount or
 				c.captionIndex >= static_cast<oa::I32>(ds.clipCaptions(c.conditioningClip).size())) {
 				OaLogError(oa::LogComponent::Ml,
-					"genalm: missing CLIP feature row %d for clip %s; run trainalm once to native-bake the caption cache",
+					"genalm: missing CLIP feature row {} for clip {}; run trainalm once to native-bake the caption cache",
 					c.captionIndex, ds.clipId(c.conditioningClip).cStr());
 				isRunning = false; return oa::Status::ok();
 			}
@@ -250,7 +250,7 @@ struct GenAlmApp : oa::ComputeApp {
 		}
 
 		oa::FnMatrix::setRngSeed(static_cast<oa::U64>(c.seed));
-		std::printf("Loaded oa::AlmAg: %s\n", c.model.cStr());
+		oa::print("Loaded oa::AlmAg: {}", c.model.cStr());
 
 		// ── generate ──
 		(void)oa::Filesystem::createDirectories(oa::Path(c.outDir));
@@ -259,7 +259,7 @@ struct GenAlmApp : oa::ComputeApp {
 		if (promptMode) {
 			auto encodedPrompt = alm->encodePrompt(c.prompt);
 			if (encodedPrompt.isError()) {
-				OaLogError(oa::LogComponent::Ml, "genalm: prompt encoding failed: %s",
+				OaLogError(oa::LogComponent::Ml, "genalm: prompt encoding failed: {}",
 					encodedPrompt.getStatus().getMessage().cStr());
 				isRunning = false; return oa::Status::ok();
 			}
@@ -274,10 +274,10 @@ struct GenAlmApp : oa::ComputeApp {
 				oa::MatrixShape{1, textFeatureDim}, oa::ScalarType::Float32);
 		}
 
-		std::printf("\ngenalm — generating %d clips (maxLen=%d, seed=%d)\n",
+		oa::print("\ngenalm — generating {} clips (maxLen={}, seed={})",
 			c.genCount, c.genMaxLen, c.seed);
 		if (conditioned) {
-			std::printf("Conditioning: %s-%d · %s · \"%s\"\n",
+			oa::print("Conditioning: {}-{} · {} · \"{}\"",
 				almCfg.textEncoder.cStr(), textFeatureDim,
 				promptMode ? "native prompt" : (featureOverride ? "feature override" : "dataset caption"),
 				conditioningCaption.cStr());
@@ -302,14 +302,14 @@ struct GenAlmApp : oa::ComputeApp {
 
 			const oa::I32 frames = static_cast<oa::I32>(motion.size(0));
 			if (frames <= 0) {
-				std::printf("  [gen %d] T=%.2f: empty motion\n", g, temp);
+				oa::print("  [gen {}] T={:.2f}: empty motion", g, temp);
 				continue;
 			}
 
 			const double tokSps = static_cast<double>(generated.numElements()) / (genMs * 0.001);
 			const double frameSps = static_cast<double>(frames) / (genMs * 0.001);
 
-			std::printf("  [gen %d] T=%.2f: %d frames × %lld dims | %.1f ms | %.0f tok/s | %.0f fps\n",
+			oa::print("  [gen {}] T={:.2f}: {} frames × {} dims | {:.1f} ms | {:.0f} tok/s | {:.0f} fps",
 				g, temp, frames, static_cast<long long>(motion.size(1)),
 				genMs, tokSps, frameSps);
 
@@ -330,7 +330,7 @@ struct GenAlmApp : oa::ComputeApp {
 				c.outDir.cStr(), c.name.cStr(), g, temp);
 			oa::Path usdPath(pathBuf);
 			auto usdSt = oa::Usd::writeUsda(usdPath, skelClip, "humanml3d");
-			std::printf("         saved %s (%s)\n",
+			oa::print("         saved {} ({})",
 				usdPath.cStr(), usdSt.isOk() ? "ok" : usdSt.toString().cStr());
 
 			// Keep generation provenance beside the preview. This is intentionally a
@@ -369,13 +369,13 @@ struct GenAlmApp : oa::ComputeApp {
 			const oa::Path metadataPath(oa::String(pathBuf) + ".meta.txt");
 			const auto metadataSt = oa::Filesystem::writeText(
 				metadataPath, oa::String(metadata.str().c_str()));
-			std::printf("         metadata %s (%s)\n", metadataPath.cStr(),
+			oa::print("         metadata {} ({})", metadataPath.cStr(),
 				metadataSt.isOk() ? "ok" : metadataSt.toString().cStr());
 			std::fflush(stdout);
 		}
 
 		const double totalSec = totalTimer.elapsedSec();
-		std::printf("\nGeneration complete: %d clips in %.2f s\n", c.genCount, totalSec);
+		oa::print("\nGeneration complete: {} clips in {:.2f} s", c.genCount, totalSec);
 		std::fflush(stdout);
 
 		isRunning = false;

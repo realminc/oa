@@ -22,7 +22,7 @@
 #include <oa/ml/nn/moe/moe.h>
 #include <oa/ml/nn.h>
 #include <oa/ml/module.h>
-#include <oa/core/assert.h>
+#include <oa/core/std/assert.h>
 #include <oa/core/fnMatrix.h>
 #include <oa/ml/fnMatrix.h>
 #include <oa/core/std/format.h>

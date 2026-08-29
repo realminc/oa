@@ -2,16 +2,11 @@
 
 #include "cartPolePpo.h"
 
-#include <cstdio>
-
 TEST(TutorialRlCartPolePpo, LearnsFromVectorizedGpuRollouts) {
 	constexpr oa::U64 evaluationSeed = 0x0e7a1ULL;
 	const TutorialCartPolePpoConfig config;
 
-	std::printf("\nOA reinforcement learning — CartPole PPO\n"
-		"  separate actor/critic: each 4 -> 64 -> 64\n"
-		"  heads: categorical policy 2 · scalar value 1\n"
-		"  rollout: %u env x %u steps · %u PPO epochs · %u rollouts\n",
+	oa::print("\nOA reinforcement learning — CartPole PPO\n" "  separate actor/critic: each 4 -> 64 -> 64\n" "  heads: categorical policy 2 · scalar value 1\n" "  rollout: {} env x {} steps · {} PPO epochs · {} rollouts",
 		config.environments, config.horizon,
 		config.updateEpochs, config.rollouts);
 
@@ -22,7 +17,7 @@ TEST(TutorialRlCartPolePpo, LearnsFromVectorizedGpuRollouts) {
 	auto beforeResult = session->evaluate(evaluationSeed);
 	ASSERT_TRUE(beforeResult.isOk()) << beforeResult.getStatus().toString();
 	const auto before = *beforeResult;
-	std::printf("  before: %.2f mean completed return (%u episodes)\n",
+	oa::print("  before: {:.2f} mean completed return ({} episodes)",
 		before.meanCompletedReturn, before.completedEpisodes);
 
 	oa::U32 lastPrinted = 0;
@@ -31,7 +26,7 @@ TEST(TutorialRlCartPolePpo, LearnsFromVectorizedGpuRollouts) {
 		const auto& metrics = session->metrics();
 		if (metrics.rollout != lastPrinted && metrics.rollout % 10U == 0U) {
 			lastPrinted = metrics.rollout;
-			std::printf("  rollout %u/%u · loss %.5f\n",
+			oa::print("  rollout {}/{} · loss {:.5f}",
 				metrics.rollout, config.rollouts, metrics.totalLoss);
 		}
 	}
@@ -52,13 +47,13 @@ TEST(TutorialRlCartPolePpo, LearnsFromVectorizedGpuRollouts) {
 	ASSERT_TRUE(restoredResultScore.isOk())
 		<< restoredResultScore.getStatus().toString();
 	const auto restored = *restoredResultScore;
-	std::remove(checkpointPath.cStr());
+	(void)oa::Filesystem::removeFile(checkpointPath);
 
-	std::printf("  after:  %.2f mean completed return (%u episodes)\n",
+	oa::print("  after:  {:.2f} mean completed return ({} episodes)",
 		after.meanCompletedReturn, after.completedEpisodes);
-	std::printf("  improvement: %+.2f\n\n",
+	oa::print("  improvement: {:+.2f}\n",
 		after.meanCompletedReturn - before.meanCompletedReturn);
-	std::printf("  checkpoint: %.2f restored return · AdamW step %llu\n\n",
+	oa::print("  checkpoint: {:.2f} restored return · AdamW step {}\n",
 		restored.meanCompletedReturn,
 		static_cast<unsigned long long>(restoredSession->optimizerStep()));
 	EXPECT_GE(after.meanCompletedReturn, before.meanCompletedReturn + 25.0);

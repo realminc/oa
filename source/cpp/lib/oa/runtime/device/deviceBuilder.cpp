@@ -666,7 +666,7 @@ void oavk::DeviceBuilder::populateDeviceInfo(
 	if (envBufferCap > 0) {
 		bufferLimit = static_cast<oa::U32>(envBufferCap);
 		OaLogInfo(oa::LogComponent::Runtime,
-			"bindless: buffer cap overridden via OA_BINDLESS_BUFFER_CAP=%lld",
+			"bindless: buffer cap overridden via OA_BINDLESS_BUFFER_CAP={}",
 			static_cast<long long>(envBufferCap));
 	}
 
@@ -758,8 +758,8 @@ void oavk::DeviceBuilder::populateDeviceInfo(
 		}
 		if (untrusted) {
 			OaLogWarn(oa::LogComponent::Runtime,
-				"CoopMat: %s — falling back to scalar paths "
-				"(vendor=0x%04X device=0x%04X driverId=%u)",
+				"CoopMat: {} — falling back to scalar paths "
+				"(vendor=0x{:04X} device=0x{:04X} driverId={})",
 				reason,
 				outDevice.info.hardware.vendorId,
 				outDevice.info.hardware.deviceId,
@@ -787,7 +787,7 @@ void oavk::DeviceBuilder::populateDeviceInfo(
 		}
 		if (untrusted) {
 			OaLogWarn(oa::LogComponent::Runtime,
-				"BF16: %s — using FP32 (vendor=0x%04X device=0x%04X driverId=%u)",
+				"BF16: {} — using FP32 (vendor=0x{:04X} device=0x{:04X} driverId={})",
 				reason,
 				outDevice.info.hardware.vendorId,
 				outDevice.info.hardware.deviceId,
@@ -817,7 +817,14 @@ void oavk::DeviceBuilder::populateDeviceInfo(
 	outDevice.info.software.hasVideoEncodeH264 = extProbe_.khrVideoEncodeH264;
 	outDevice.info.software.hasVideoEncodeH265 = extProbe_.khrVideoEncodeH265;
 	outDevice.info.software.hasVideoEncodeAV1 = extProbe_.khrVideoEncodeAV1;
-	outDevice.info.software.hasSamplerYcbcrConversion = extProbe_.khrSamplerYcbcr;
+	const bool core11 = VK_API_VERSION_MAJOR(featureBundle_.physicalApiVersion) > 1
+		or (VK_API_VERSION_MAJOR(featureBundle_.physicalApiVersion) == 1
+			and VK_API_VERSION_MINOR(featureBundle_.physicalApiVersion) >= 1);
+	outDevice.info.software.hasSamplerYcbcrConversion =
+		(core11 or extProbe_.khrSamplerYcbcr)
+		and (core11
+			? featureBundle_.features11.samplerYcbcrConversion == VK_TRUE
+			: featureBundle_.samplerYcbcrConversionFeatures.samplerYcbcrConversion == VK_TRUE);
 
 	// Copy enabled extensions
 	for (const char* ext : enabledExtensions_) {

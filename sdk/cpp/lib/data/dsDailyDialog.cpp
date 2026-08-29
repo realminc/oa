@@ -22,7 +22,7 @@ DsDailyDialog::DsDailyDialog(const oa::String& inFilePath, oa::I32 inBatchSize,
 	}
 	if (!loadDataset()) {
 		OaLogError(oa::LogComponent::Data,
-			"Failed to load DailyDialog from: %s", inFilePath.cStr());
+			"Failed to load DailyDialog from: {}", inFilePath.cStr());
 		return;
 	}
 
@@ -42,7 +42,7 @@ bool DsDailyDialog::loadDataset() {
 	std::ifstream file(filePath_.cStr(), std::ios::binary);
 	if (!file) {
 		OaLogError(oa::LogComponent::Data,
-			"Failed to open DailyDialog file: %s", filePath_.cStr());
+			"Failed to open DailyDialog file: {}", filePath_.cStr());
 		return false;
 	}
 
@@ -55,7 +55,7 @@ bool DsDailyDialog::loadDataset() {
 
 	if (!file) {
 		OaLogError(oa::LogComponent::Data,
-			"Failed to read DailyDialog file: %s", filePath_.cStr());
+			"Failed to read DailyDialog file: {}", filePath_.cStr());
 		return false;
 	}
 

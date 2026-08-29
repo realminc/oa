@@ -13,7 +13,7 @@ metadata = [
   "font/IntelOneMono/OFL.txt",
   "font/IntelOneMono/README.md",
   "video/README.md",
-  "video/manifest.tsv",
+  "video/clip/manifest.tsv",
 ]
 
 [[asset]]
@@ -281,7 +281,71 @@ source = "OA-generated vision test pattern"
 role = "image codec fixture"
 
 [[asset]]
-path = "video/shibuya720pAv1MainEightBit420.mp4"
+path = "video/clip/ready_set_go_1080p_60fps_av1_main_8bit_420.mp4"
+bytes = 28948149
+sha256 = "de3b3d89c04997d502b9e7c211529a0893f32af72d843bb552ca03267fda280e"
+license = "CC-BY-NC-4.0"
+source = "Ultra Video Group ReadySetGo; OA even-frame and spatial derivative"
+role = "AV1 1080p60 decode qualification fixture"
+
+[[asset]]
+path = "video/clip/ready_set_go_1080p_60fps_h264_high_8bit_420.mp4"
+bytes = 13678088
+sha256 = "725351e7586c03b5f371c6fb69140a7622aea1dd1ab9d5a7d7bf9212565aae22"
+license = "CC-BY-NC-4.0"
+source = "Ultra Video Group ReadySetGo; OA even-frame and spatial derivative"
+role = "H.264 1080p60 decode qualification fixture"
+
+[[asset]]
+path = "video/clip/ready_set_go_1080p_60fps_h265_main_8bit_420.mp4"
+bytes = 14342967
+sha256 = "6dc3c57694fbf4e344accb4e5931111b4e9379c95070d4ca5e5f55099ddd4b75"
+license = "CC-BY-NC-4.0"
+source = "Ultra Video Group ReadySetGo; OA even-frame and spatial derivative"
+role = "H.265 1080p60 decode qualification fixture"
+
+[[asset]]
+path = "video/clip/ready_set_go_1080p_60fps_vp9_profile0_8bit_420.mp4"
+bytes = 23319028
+sha256 = "1c7d5f8affe7bbf9fa017f466437219f447f9bfbf3fa3c3918a8f4d078384dfe"
+license = "CC-BY-NC-4.0"
+source = "Ultra Video Group ReadySetGo; OA even-frame and spatial derivative"
+role = "VP9 1080p60 decode qualification fixture"
+
+[[asset]]
+path = "video/clip/ready_set_go_2160p_60fps_av1_main_8bit_420.mp4"
+bytes = 57333783
+sha256 = "200432fd39c78cd25a76ddff2bde081de15575e02d9f5d8a65139355efd30a4b"
+license = "CC-BY-NC-4.0"
+source = "Ultra Video Group ReadySetGo; OA even-frame native-resolution derivative"
+role = "AV1 2160p60 decode qualification fixture"
+
+[[asset]]
+path = "video/clip/ready_set_go_2160p_60fps_h264_high_8bit_420.mp4"
+bytes = 35148235
+sha256 = "3b9302f7eeddb04dab046c051b30b9cb3ff3d5aaff90f8cf4cdf72b1f6472682"
+license = "CC-BY-NC-4.0"
+source = "Ultra Video Group ReadySetGo; OA even-frame native-resolution derivative"
+role = "H.264 2160p60 decode capability fixture"
+
+[[asset]]
+path = "video/clip/ready_set_go_2160p_60fps_h265_main_8bit_420.mp4"
+bytes = 30491343
+sha256 = "04c1793ddf5393efcb002b8b73658e8d662063cbd027a69468dd6da16b93a97f"
+license = "CC-BY-NC-4.0"
+source = "Ultra Video Group ReadySetGo; OA even-frame native-resolution derivative"
+role = "H.265 2160p60 decode qualification fixture"
+
+[[asset]]
+path = "video/clip/ready_set_go_2160p_60fps_vp9_profile0_8bit_420.mp4"
+bytes = 48451123
+sha256 = "2c2b0e34ae208c8fb3dcd88bc3cb6299f465f8a7419ff32c85a3a49dadc08912"
+license = "CC-BY-NC-4.0"
+source = "Ultra Video Group ReadySetGo; OA even-frame native-resolution derivative"
+role = "VP9 2160p60 decode qualification fixture"
+
+[[asset]]
+path = "video/clip/shibuya_720p_30fps_av1_main_8bit_420.mp4"
 bytes = 1334187
 sha256 = "dd0097378581c9e2d3cb39efdd88e659eb53bb8bcd05c0237919fcf4b09c2441"
 license = "CC-BY-SA-4.0"
@@ -289,7 +353,15 @@ source = "Basile Morin, Shibuya Crossing; OA profile transcode"
 role = "AV1 end-to-end decode fixture"
 
 [[asset]]
-path = "video/shibuya720pH264HighEightBit420.mp4"
+path = "video/clip/shibuya_720p_30fps_h264_baseline_8bit_420.mp4"
+bytes = 1776378
+sha256 = "d388fe195add3b79d2ae57115dc6d63d482257ce5b9229e32b83d9b0a451492b"
+license = "CC-BY-SA-4.0"
+source = "Basile Morin, Shibuya Crossing; OA profile transcode"
+role = "H.264 Baseline end-to-end decode fixture"
+
+[[asset]]
+path = "video/clip/shibuya_720p_30fps_h264_high_8bit_420.mp4"
 bytes = 1403690
 sha256 = "4f9d04b3e67540c42d1a8b82b650ee26e5447126c0f1b78e58f38c9f250e9bcc"
 license = "CC-BY-SA-4.0"
@@ -297,7 +369,15 @@ source = "Basile Morin, Shibuya Crossing; OA profile transcode"
 role = "H.264 end-to-end decode fixture"
 
 [[asset]]
-path = "video/shibuya720pH265MainEightBit420.mp4"
+path = "video/clip/shibuya_720p_30fps_h264_main_8bit_420.mp4"
+bytes = 1424788
+sha256 = "9ec623563cc8f29f005e911f8e54e94cee3216fbe7824188d4f939606436a865"
+license = "CC-BY-SA-4.0"
+source = "Basile Morin, Shibuya Crossing; OA profile transcode"
+role = "H.264 Main end-to-end decode fixture"
+
+[[asset]]
+path = "video/clip/shibuya_720p_30fps_h265_main_8bit_420.mp4"
 bytes = 1132674
 sha256 = "8bb97852b606cbce71b3c4608b8dc36424e17c63b4466dfcf19746099f1523c2"
 license = "CC-BY-SA-4.0"
@@ -305,7 +385,7 @@ source = "Basile Morin, Shibuya Crossing; OA profile transcode"
 role = "H.265 end-to-end decode fixture"
 
 [[asset]]
-path = "video/shibuya720pVp9Profile0EightBit420.mp4"
+path = "video/clip/shibuya_720p_30fps_vp9_profile0_8bit_420.mp4"
 bytes = 1895573
 sha256 = "79eb63aa80e3e6481dcad07d1ece79c6be4597be0584018b989a5daa2e4a2bce"
 license = "CC-BY-SA-4.0"
@@ -313,23 +393,23 @@ source = "Basile Morin, Shibuya Crossing; OA profile transcode"
 role = "VP9 end-to-end decode fixture"
 
 [[asset]]
-path = "video/visionTestPattern128x72Idr.h264"
-bytes = 3811
-sha256 = "36f9dcea89345abb752ba936c71d2c2ecd32966d6e58b89815fd041226265fcc"
+path = "video/conformance/test_pattern_72p_av1_main_key_10bit_420.obu"
+bytes = 844
+sha256 = "d29de98a3e33082b55a06fb423748fa7b7ed3b68a122333f4b0377921b8e0848"
 license = "LicenseRef-OA-Repository"
-source = "OA-generated vision test pattern"
-role = "H.264 elementary-stream fixture"
+source = "OA-generated synthetic test pattern"
+role = "AV1 Main 10-bit P010 decode fixture without loop restoration"
 
 [[asset]]
-path = "video/visionTestPattern128x72Idr.h265"
-bytes = 4960
-sha256 = "566c4b317b301b5ec4b68ee79a4222d9e16dd49e0782495d12274ce65ac63f62"
+path = "video/conformance/test_pattern_72p_av1_main_key_10bit_420_loop_restoration.obu"
+bytes = 1554
+sha256 = "bce7f4761c4674190980a8bca286d06d309ac18a026c622cbf469b6eb004fd40"
 license = "LicenseRef-OA-Repository"
-source = "OA-generated vision test pattern"
-role = "H.265 elementary-stream fixture"
+source = "OA-generated synthetic test pattern"
+role = "AV1 Main 10-bit loop-restoration fail-closed regression fixture"
 
 [[asset]]
-path = "video/visionTestPattern128x72KeyframeAv1.ivf"
+path = "video/conformance/test_pattern_72p_av1_main_keyframe_8bit_420.ivf"
 bytes = 1448
 sha256 = "fa8c821700574fe073bd9c809808502564e7a7e6ac7ea8c8635a2d302c992c5f"
 license = "LicenseRef-OA-Repository"
@@ -337,9 +417,57 @@ source = "OA-generated vision test pattern"
 role = "AV1 IVF fixture"
 
 [[asset]]
-path = "video/visionTestPattern128x72KeyframeVp9.ivf"
+path = "video/conformance/test_pattern_72p_h264_baseline_idr_8bit_420.h264"
+bytes = 3811
+sha256 = "36f9dcea89345abb752ba936c71d2c2ecd32966d6e58b89815fd041226265fcc"
+license = "LicenseRef-OA-Repository"
+source = "OA-generated vision test pattern"
+role = "H.264 elementary-stream fixture"
+
+[[asset]]
+path = "video/conformance/test_pattern_72p_h265_main10_idr_10bit_420.h265"
+bytes = 4330
+sha256 = "fcf273d11e3c5972ac0aca182bddfff8fac2beb5726f8d0308f8a3a334f7c71c"
+license = "LicenseRef-OA-Repository"
+source = "OA-generated synthetic test pattern"
+role = "H.265 Main 10 P010 elementary-stream fixture"
+
+[[asset]]
+path = "video/conformance/test_pattern_72p_h265_main_idr_8bit_420.h265"
+bytes = 4434
+sha256 = "b3031149a758701e40b9caa74679e8ee71d6ceaa66380705d2c1e1c49232315d"
+license = "LicenseRef-OA-Repository"
+source = "OA-generated vision test pattern"
+role = "H.265 elementary-stream fixture"
+
+[[asset]]
+path = "video/conformance/test_pattern_72p_h265_rangeext_intra_10bit_420.h265"
+bytes = 1886
+sha256 = "05f695ebb85a2e9785fe9f0d38821a766431d0d474e602b198884427088ace70"
+license = "LicenseRef-OA-Repository"
+source = "OA-generated synthetic test pattern; FFmpeg n9.0.1 and x265 4.3 Main 10 Intra"
+role = "H.265 Format Range Extensions 10-bit 4:2:0 intra decode fixture"
+
+[[asset]]
+path = "video/conformance/test_pattern_72p_h265_rangeext_intra_8bit_420.h265"
+bytes = 4196
+sha256 = "8d64e46282c409f79b6e9c5d6d62864731882a429d55bc7d6e745a2a378c04da"
+license = "LicenseRef-OA-Repository"
+source = "OA-generated synthetic test pattern; FFmpeg n9.0.1 and x265 4.3 Main Intra"
+role = "H.265 Format Range Extensions 8-bit 4:2:0 intra decode fixture"
+
+[[asset]]
+path = "video/conformance/test_pattern_72p_vp9_profile0_keyframe_8bit_420.ivf"
 bytes = 1316
 sha256 = "994105f425fd3cacebf59140721c58b93d548f92cea8870e0c564910fced34db"
 license = "LicenseRef-OA-Repository"
 source = "OA-generated vision test pattern"
 role = "VP9 IVF fixture"
+
+[[asset]]
+path = "video/conformance/test_pattern_72p_vp9_profile2_key_10bit_420.ivf"
+bytes = 3564
+sha256 = "364810f2d0cbcd0fe7e3516e282257d890812be70e11b19421e488872095d910"
+license = "LicenseRef-OA-Repository"
+source = "OA-generated synthetic test pattern"
+role = "VP9 Profile 2 P010 IVF decode fixture"

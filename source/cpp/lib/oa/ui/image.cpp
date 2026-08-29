@@ -103,7 +103,7 @@ oa::Result<oa::ImagePlanes> oa::ImagePlanes::loadFile(oa::Engine& inRt, oa::Stri
 	if (isHdr) {
 		float* px = stbi_loadf(inPath.data(), &w, &h, &ch, 0);
 		if (!px) {
-			OaLogError(oa::LogComponent::Ui, "oa::ImagePlanes::loadFile: HDR load failed: %s", inPath.data());
+			OaLogError(oa::LogComponent::Ui, "oa::ImagePlanes::loadFile: HDR load failed: {}", inPath.data());
 			return oa::Status::error("stb_image HDR load failed");
 		}
 		oa::U32 nCh = static_cast<oa::U32>(ch);
@@ -128,7 +128,7 @@ oa::Result<oa::ImagePlanes> oa::ImagePlanes::loadFile(oa::Engine& inRt, oa::Stri
 	} else {
 		stbi_uc* px = stbi_load(inPath.data(), &w, &h, &ch, 0);
 		if (!px) {
-			OaLogError(oa::LogComponent::Ui, "oa::ImagePlanes::loadFile: load failed: %s", inPath.data());
+			OaLogError(oa::LogComponent::Ui, "oa::ImagePlanes::loadFile: load failed: {}", inPath.data());
 			return oa::Status::error("stb_image load failed");
 		}
 		oa::U32 nCh = static_cast<oa::U32>(ch);
@@ -151,7 +151,7 @@ oa::Result<oa::ImagePlanes> oa::ImagePlanes::loadFile(oa::Engine& inRt, oa::Stri
 		planes.channelCount_ = static_cast<oa::U8>(oa::min(nCh, kImageMaxPlanes));
 	}
 
-	OaLogInfo(oa::LogComponent::Ui, "oa::ImagePlanes: loaded %s (%dx%d, %u ch)",
+	OaLogInfo(oa::LogComponent::Ui, "oa::ImagePlanes: loaded {} ({}x{}, {} ch)",
 		inPath.data(), w, h, planes.channelCount_);
 	return planes;
 }

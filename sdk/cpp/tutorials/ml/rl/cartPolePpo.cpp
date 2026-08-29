@@ -7,15 +7,12 @@
 #include <oa/ml/autograd.h>
 #include <oa/runtime/engine.h>
 
-#include <cmath>
-#include <numeric>
-#include <vector>
 
 namespace {
 
 template<typename T>
-oa::Result<std::vector<T>> copy(const oa::Matrix& inMatrix) {
-	std::vector<T> result(static_cast<oa::Usize>(inMatrix.numElements()));
+oa::Result<oa::Vector<T>> copy(const oa::Matrix& inMatrix) {
+	oa::Vector<T> result(static_cast<oa::Usize>(inMatrix.numElements()));
 	const oa::Status status = oa::FnMatrix::copyToHost(
 		inMatrix, result.data(), result.size() * sizeof(T));
 	if (status.isError()) return status;
@@ -59,7 +56,7 @@ oa::Result<oa::UniquePtr<TutorialCartPolePpo>> TutorialCartPolePpo::create(
 	const TutorialCartPolePpoConfig& inConfig) {
 	if (inConfig.environments == 0 || inConfig.horizon == 0
 		|| inConfig.rollouts == 0 || inConfig.updateEpochs == 0
-		|| !std::isfinite(inConfig.learningRate)
+		|| !oa::isFinite(inConfig.learningRate)
 		|| inConfig.learningRate <= 0.0F) {
 		return oa::Status::invalidArgument(
 			"TutorialCartPolePpo requires non-zero dimensions and a positive finite learning rate");

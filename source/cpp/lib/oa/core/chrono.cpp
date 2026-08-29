@@ -1,5 +1,5 @@
 #include <oa/core/std/chrono.h>
-#include <oa/core/assert.h>
+#include <oa/core/std/assert.h>
 
 #if defined(_WIN32)
 	#ifndef NOMINMAX

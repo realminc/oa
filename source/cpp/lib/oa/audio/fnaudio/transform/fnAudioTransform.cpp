@@ -155,11 +155,11 @@ oa::Matrix stft(const Audio& inAudio, const StftConfig& inCfg) {
 	const oa::Matrix& inBuf = inAudio.asMatrix();
 	const auto& shape = inBuf.getShape();
 	if (shape.rank != 2) {
-		OaLogError(oa::LogComponent::Audio, "oa::FnAudio::stft: expected [channels, samples], rank=%d", shape.rank);
+		OaLogError(oa::LogComponent::Audio, "oa::FnAudio::stft: expected [channels, samples], rank={}", shape.rank);
 		return {};
 	}
 	if (!isPow2(inCfg.fftSize) || inCfg.fftSize < 16 || inCfg.fftSize > 1024) {
-		OaLogError(oa::LogComponent::Audio, "oa::FnAudio::stft: fftSize must be pow2 in [16, 1024], got %u", inCfg.fftSize);
+		OaLogError(oa::LogComponent::Audio, "oa::FnAudio::stft: fftSize must be pow2 in [16, 1024], got {}", inCfg.fftSize);
 		return {};
 	}
 	if (inCfg.hopSize == 0) {

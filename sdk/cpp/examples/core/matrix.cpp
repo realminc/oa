@@ -1,11 +1,6 @@
 // OA_DOC_BEGIN: core-matrix-add
 #include <oa/oa.h>
 
-#include <array>
-#include <cmath>
-#include <cstdio>
-#include <utility>
-
 OA_MAIN("ExampleCoreMatrix") {
 	auto one = oa::FnMatrix::ones({2, 3});
 
@@ -13,17 +8,19 @@ OA_MAIN("ExampleCoreMatrix") {
 
 	auto sum = oa::FnMatrix::add(one, two);
 
-	std::array<oa::F32, 6> values{};
+	oa::Array<oa::F32, 6> values{};
 	if (not oa::FnMatrix::copyToHost(sum, values.data(), sizeof(values)).isOk()) {
 		return 1;
 	}
 	for (const oa::F32 value : values) {
-		if (std::abs(value - 3.0F) > 1e-06F) {
+		if (oa::abs(value - 3.0F) > 1e-06F) {
 			return 1;
 		}
 	}
 
-	std::puts("Matrix addition verified: every value is 3");
+	if (not oa::print("Matrix addition verified: every value is 3").isOk()) {
+		return 1;
+	}
 	return 0;
 }
 // OA_DOC_END: core-matrix-add

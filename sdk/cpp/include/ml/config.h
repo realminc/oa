@@ -13,6 +13,7 @@
 #include <limits>
 
 #include <oa/core/cli.h>
+#include <oa/core/std/print.h>
 #include <oa/core/time.h>
 #include <oa/ml/config.h>
 
@@ -299,7 +300,8 @@ public:
 				oa::Yaml::Node modelYaml = oa::Yaml::loadFile(configPath_);
 				loadYaml(modelYaml);
 			} catch (const oa::Yaml::Exception& e) {
-				::fprintf(stderr, "[OA CONFIG] YAML load failed: %s (using defaults)\n", e.what());
+				(void)oa::print(oa::PrintStream::Error,
+					"[OA CONFIG] YAML load failed: {} (using defaults)", e.what());
 				if (!hasBase) {
 					return false;  // No base and no model config
 				}

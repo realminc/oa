@@ -163,6 +163,7 @@ static oavk::Stream* imageDispatchSetupAndRecord(
 	oa::U32 inGroupsX,
 	oa::U32 inGroupsY,
 	oa::U32 inGroupsZ,
+	const oavk::ImageDispatchPipeline* inExactPipeline,
 	oa::Vector<oa::U32>& outStorageImageSlots,
 	oa::Vector<oa::U32>& outSampledImageSlots,
 	oa::Vector<oa::U32>& outSamplerSlots,
@@ -201,21 +202,29 @@ static oavk::Stream* imageDispatchSetupAndRecord(
 		}
 	}
 
-	const oavk::SpirvEntry* spirv = oavk::findSpirv(oa::String(inShaderName).cStr());
-	if (!spirv) {
-		outStatus = oa::Status::notFound("image dispatch shader not found");
-		return nullptr;
-	}
+	if (inExactPipeline == nullptr) {
+		const oavk::SpirvEntry* spirv = oavk::findSpirv(oa::String(inShaderName).cStr());
+		if (!spirv) {
+			outStatus = oa::Status::notFound("image dispatch shader not found");
+			return nullptr;
+		}
 
-	oa::PipelineSpec spec{.numBindings = 16, .pushConstantBytes = 128,
-		.specConstants = oa::Vector<oa::SpecConstant>{
-			oa::SpecConstant{.id = 0, .value = dtype.getValue()}}};
-	outStatus = oa::EnginePipelineAccess::ensure(
-		inRt,
-		inShaderName,
-		oa::Span<const oa::U8>(spirv->data, spirv->size),
-		spec);
-	if (!outStatus.isOk()) {
+		oa::PipelineSpec spec{.numBindings = 16, .pushConstantBytes = 128,
+			.specConstants = oa::Vector<oa::SpecConstant>{
+				oa::SpecConstant{.id = 0, .value = dtype.getValue()}}};
+		outStatus = oa::EnginePipelineAccess::ensure(
+			inRt,
+			inShaderName,
+			oa::Span<const oa::U8>(spirv->data, spirv->size),
+			spec);
+		if (!outStatus.isOk()) {
+			return nullptr;
+		}
+	} else if (inExactPipeline->pipeline == VK_NULL_HANDLE
+		or inExactPipeline->pipelineLayout == VK_NULL_HANDLE
+		or inExactPipeline->auxiliaryDescriptorSet == VK_NULL_HANDLE) {
+		outStatus = oa::Status::error(oa::StatusCode::InvalidArgument,
+			"image dispatch exact pipeline handles must be valid");
 		return nullptr;
 	}
 
@@ -266,32 +275,6 @@ static oavk::Stream* imageDispatchSetupAndRecord(
 				}
 				outSamplerSlots.pushBack(idx);
 				break;
-			case oavk::DescriptorKind::CombinedImageSampler:
-				{
-					oa::U32 imageIdx = bindless.registerSampledImage(
-						oa::EngineDeviceAccess::get(inRt),
-						binding.imageView,
-						binding.imageLayout == VK_IMAGE_LAYOUT_UNDEFINED ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : binding.imageLayout);
-					if (imageIdx == OA_BINDLESS_INVALID) {
-						outStatus = oa::Status::error(oa::StatusCode::InvalidArgument,
-							"image dispatch failed to register combined image sampler (image)");
-						return nullptr;
-					}
-					outSampledImageSlots.pushBack(imageIdx);
-					
-					oa::U32 samplerIdx = bindless.registerSampler(
-						oa::EngineDeviceAccess::get(inRt), binding.sampler);
-					if (samplerIdx == OA_BINDLESS_INVALID) {
-						outStatus = oa::Status::error(oa::StatusCode::InvalidArgument,
-							"image dispatch failed to register combined image sampler (sampler)");
-						return nullptr;
-					}
-					outSamplerSlots.pushBack(samplerIdx);
-					
-					resourceIndices.pushBack(imageIdx);
-					idx = samplerIdx;
-				}
-				break;
 		}
 		resourceIndices.pushBack(idx);
 	}
@@ -308,13 +291,22 @@ static oavk::Stream* imageDispatchSetupAndRecord(
 		return nullptr;
 	}
 
-	oa::ComputePipeline& pipeline = oa::EnginePipelineAccess::get(inRt).getPipeline(
-		inShaderName, dtype.getValue());
-	if (!pipeline.pipeline) {
-		outStatus = oa::Status::error(oa::StatusCode::PipelineError, "image dispatch: bindless pipeline not found");
-		oa::EngineSubmissionAccess::releaseStream(inRt, stream);
-		return nullptr;
+	oa::ComputePipeline* sharedPipeline = nullptr;
+	if (inExactPipeline == nullptr) {
+		sharedPipeline = &oa::EnginePipelineAccess::get(inRt).getPipeline(
+			inShaderName, dtype.getValue());
+		if (!sharedPipeline->pipeline) {
+			outStatus = oa::Status::error(oa::StatusCode::PipelineError, "image dispatch: bindless pipeline not found");
+			oa::EngineSubmissionAccess::releaseStream(inRt, stream);
+			return nullptr;
+		}
 	}
+	const VkPipeline vkPipeline = inExactPipeline != nullptr
+		? inExactPipeline->pipeline
+		: static_cast<VkPipeline>(sharedPipeline->pipeline);
+	const VkPipelineLayout vkPipelineLayout = inExactPipeline != nullptr
+		? inExactPipeline->pipelineLayout
+		: static_cast<VkPipelineLayout>(sharedPipeline->pipelineLayout);
 
 	VkCommandBuffer cmd = static_cast<VkCommandBuffer>(stream->commandBuffer);
 
@@ -355,16 +347,19 @@ static oavk::Stream* imageDispatchSetupAndRecord(
 		oa::EngineDeviceAccess::get(inRt).deviceDispatch.vkCmdPipelineBarrier2(cmd, &dependency);
 	}
 
-	oa::EngineDeviceAccess::get(inRt).deviceDispatch.vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, static_cast<VkPipeline>(pipeline.pipeline));
-	VkDescriptorSet descriptorSet =
-		static_cast<VkDescriptorSet>(bindless.descriptorSet);
+	oa::EngineDeviceAccess::get(inRt).deviceDispatch.vkCmdBindPipeline(
+		cmd, VK_PIPELINE_BIND_POINT_COMPUTE, vkPipeline);
+	VkDescriptorSet descriptorSets[2] = {
+		static_cast<VkDescriptorSet>(bindless.descriptorSet),
+		inExactPipeline != nullptr ? inExactPipeline->auxiliaryDescriptorSet : VK_NULL_HANDLE,
+	};
 	oa::EngineDeviceAccess::get(inRt).deviceDispatch.vkCmdBindDescriptorSets(
 		cmd,
 		VK_PIPELINE_BIND_POINT_COMPUTE,
-		static_cast<VkPipelineLayout>(pipeline.pipelineLayout),
+		vkPipelineLayout,
 		0,
-		1,
-		&descriptorSet,
+		inExactPipeline != nullptr ? 2U : 1U,
+		descriptorSets,
 		0,
 		nullptr);
 
@@ -379,7 +374,7 @@ static oavk::Stream* imageDispatchSetupAndRecord(
 	}
 	oa::EngineDeviceAccess::get(inRt).deviceDispatch.vkCmdPushConstants(
 		cmd,
-		static_cast<VkPipelineLayout>(pipeline.pipelineLayout),
+		vkPipelineLayout,
 		VK_SHADER_STAGE_COMPUTE_BIT,
 		0,
 		totalPush,
@@ -461,6 +456,7 @@ oa::Status oavk::ImageDispatch::run(
 		inRt, inShaderName, inBindings, inPushData, inPushSize,
 		inStorageDtype,
 		inGroupsX, inGroupsY, inGroupsZ,
+		nullptr,
 		storageImageSlots, sampledImageSlots, samplerSlots, status);
 	if (!stream) {
 		return status;
@@ -513,6 +509,7 @@ oa::Status oavk::ImageDispatch::runWithDependency(
 		inRt, inShaderName, inBindings, inPushData, inPushSize,
 		inStorageDtype,
 		inGroupsX, inGroupsY, inGroupsZ,
+		nullptr,
 		storageImageSlots, sampledImageSlots, samplerSlots, status);
 	if (!stream) {
 		return status;
@@ -548,6 +545,7 @@ oa::Result<oavk::ImageDispatchTicket> oavk::ImageDispatch::runWithDependencyAsyn
 		inRt, inShaderName, inBindings, inPushData, inPushSize,
 		inStorageDtype,
 		inGroupsX, inGroupsY, inGroupsZ,
+		nullptr,
 		ticket.storageImageSlots_,
 		ticket.sampledImageSlots_,
 		ticket.samplerSlots_,
@@ -562,6 +560,51 @@ oa::Result<oavk::ImageDispatchTicket> oavk::ImageDispatch::runWithDependencyAsyn
 		for (oa::U32 idx : ticket.storageImageSlots_) { bindless.deregisterStorageImage(idx); }
 		for (oa::U32 idx : ticket.sampledImageSlots_) { bindless.deregisterSampledImage(idx); }
 		for (oa::U32 idx : ticket.samplerSlots_) { bindless.deregisterSampler(idx); }
+		return status;
+	}
+	ticket.engine_ = &inRt;
+	ticket.stream_ = stream;
+	return ticket;
+}
+
+oa::Result<oavk::ImageDispatchTicket> oavk::ImageDispatch::runWithPipelineDependencyAsync(
+	oa::Engine& inRt,
+	const oavk::ImageDispatchPipeline& inPipeline,
+	oa::Span<const oavk::ImageDispatchBinding> inBindings,
+	const void* inPushData,
+	oa::U32 inPushSize,
+	oa::U32 inGroupsX,
+	oa::U32 inGroupsY,
+	oa::U32 inGroupsZ,
+	const oavk::TimelineSemaphore& inWaitSem,
+	oa::U64 inWaitValue)
+{
+	oavk::ImageDispatchTicket ticket;
+	oa::Status status;
+	oavk::Stream* stream = imageDispatchSetupAndRecord(
+		inRt,
+		{},
+		inBindings,
+		inPushData,
+		inPushSize,
+		oa::ScalarType::Float32,
+		inGroupsX,
+		inGroupsY,
+		inGroupsZ,
+		&inPipeline,
+		ticket.storageImageSlots_,
+		ticket.sampledImageSlots_,
+		ticket.samplerSlots_,
+		status);
+	if (!stream) return status;
+
+	status = stream->submitWithDependency(inRt, inWaitSem, inWaitValue);
+	if (!status.isOk()) {
+		oa::EngineSubmissionAccess::releaseStream(inRt, stream);
+		auto& bindless = oa::EngineBindlessAccess::get(inRt);
+		for (oa::U32 idx : ticket.storageImageSlots_) bindless.deregisterStorageImage(idx);
+		for (oa::U32 idx : ticket.sampledImageSlots_) bindless.deregisterSampledImage(idx);
+		for (oa::U32 idx : ticket.samplerSlots_) bindless.deregisterSampler(idx);
 		return status;
 	}
 	ticket.engine_ = &inRt;

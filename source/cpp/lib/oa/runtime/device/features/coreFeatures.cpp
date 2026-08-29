@@ -118,11 +118,15 @@ public:
 		outBundle.supportedDynamicRendering = {
 			.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES,
 		};
+		outBundle.supportedSamplerYcbcrConversion = {
+			.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SAMPLER_YCBCR_CONVERSION_FEATURES,
+		};
 		extensionFeatures2.pNext = &outBundle.supportedBufferDeviceAddress;
 		outBundle.supportedBufferDeviceAddress.pNext = &outBundle.supportedDescriptorIndexing;
 		outBundle.supportedDescriptorIndexing.pNext = &outBundle.supportedTimelineSemaphore;
 		outBundle.supportedTimelineSemaphore.pNext = &outBundle.supportedSynchronization2;
 		outBundle.supportedSynchronization2.pNext = &outBundle.supportedDynamicRendering;
+		outBundle.supportedDynamicRendering.pNext = &outBundle.supportedSamplerYcbcrConversion;
 		inDispatch.vkGetPhysicalDeviceFeatures2(
 			inPhysicalDevice, &extensionFeatures2);
 
@@ -231,6 +235,9 @@ public:
 		if (inOutBundle.supported11.shaderDrawParameters) {
 			inOutBundle.features11.shaderDrawParameters = VK_TRUE;
 		}
+		if (core11 && inOutBundle.supported11.samplerYcbcrConversion) {
+			inOutBundle.features11.samplerYcbcrConversion = VK_TRUE;
+		}
 
 		// Enable required vulkan 1.2 features
 		inOutBundle.features12.bufferDeviceAddress = VK_TRUE;
@@ -305,6 +312,13 @@ public:
 			};
 			append(inOutBundle.synchronization2Features);
 			append(inOutBundle.dynamicRenderingFeatures);
+		}
+		if (!core11 && inOutBundle.supportedSamplerYcbcrConversion.samplerYcbcrConversion) {
+			inOutBundle.samplerYcbcrConversionFeatures = {
+				.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SAMPLER_YCBCR_CONVERSION_FEATURES,
+				.samplerYcbcrConversion = VK_TRUE,
+			};
+			append(inOutBundle.samplerYcbcrConversionFeatures);
 		}
 
 		// Enable optional vulkan 1.3 features if available

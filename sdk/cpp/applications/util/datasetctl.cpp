@@ -29,22 +29,22 @@ static oa::String formatBytes(oa::U64 inBytes) {
 static int cmdInfo(const oa::String& inPath) {
 	oa::DatasetArchive f;
 	if (!f.tryOpen(inPath)) {
-		OA_CLI("Error: not a valid .oad v1 file: %s", inPath.cStr());
+		OA_CLI("Error: not a valid .oad v1 file: {}", inPath.cStr());
 		return 1;
 	}
 	const auto& h = f.header();
 	OA_CLI_RAW("\n");
-	OA_CLI("  file:     %s", inPath.cStr());
+	OA_CLI("  file:     {}", inPath.cStr());
 	auto sz = oa::Filesystem::getFileSize(oa::Path(inPath));
 	if (sz.isOk()) {
-		OA_CLI("  size:     %s", formatBytes(sz.getValue()).cStr());
+		OA_CLI("  size:     {}", formatBytes(sz.getValue()).cStr());
 	}
-	OA_CLI("  format:   OAD v%u.%u", static_cast<unsigned>(h.versionMajor), static_cast<unsigned>(h.versionMinor));
-	OA_CLI("  Train:    %s @ offset %llu", formatBytes(h.trainBytes).cStr(),
+	OA_CLI("  format:   OAD v{}.{}", static_cast<unsigned>(h.versionMajor), static_cast<unsigned>(h.versionMinor));
+	OA_CLI("  Train:    {} @ offset {}", formatBytes(h.trainBytes).cStr(),
 		static_cast<unsigned long long>(h.trainOffset));
-	OA_CLI("  Val:      %s @ offset %llu", formatBytes(h.valBytes).cStr(),
+	OA_CLI("  Val:      {} @ offset {}", formatBytes(h.valBytes).cStr(),
 		static_cast<unsigned long long>(h.valOffset));
-	OA_CLI("  Test:     %s @ offset %llu", formatBytes(h.testBytes).cStr(),
+	OA_CLI("  Test:     {} @ offset {}", formatBytes(h.testBytes).cStr(),
 		static_cast<unsigned long long>(h.testOffset));
 	OA_CLI_RAW("\n");
 	return 0;
@@ -57,12 +57,12 @@ static int cmdPack(
 	const oa::String& testPath
 ) {
 	if (!oa::Filesystem::isFile(oa::Path(trainPath))) {
-		OA_CLI("Error: train file not found: %s", trainPath.cStr());
+		OA_CLI("Error: train file not found: {}", trainPath.cStr());
 		return 1;
 	}
 	auto trainR = oa::Filesystem::readBinary(oa::Path(trainPath));
 	if (!trainR.isOk()) {
-		OA_CLI("Error: read train: %s", trainPath.cStr());
+		OA_CLI("Error: read train: {}", trainPath.cStr());
 		return 1;
 	}
 	auto& train = trainR.getValue();
@@ -70,12 +70,12 @@ static int cmdPack(
 	oa::Vector<oa::U8> val;
 	if (!valPath.empty()) {
 		if (!oa::Filesystem::isFile(oa::Path(valPath))) {
-			OA_CLI("Error: val file not found: %s", valPath.cStr());
+			OA_CLI("Error: val file not found: {}", valPath.cStr());
 			return 1;
 		}
 		auto valR = oa::Filesystem::readBinary(oa::Path(valPath));
 		if (!valR.isOk()) {
-			OA_CLI("Error: read val: %s", valPath.cStr());
+			OA_CLI("Error: read val: {}", valPath.cStr());
 			return 1;
 		}
 		val = oa::move(valR).getValue();
@@ -84,12 +84,12 @@ static int cmdPack(
 	oa::Vector<oa::U8> test;
 	if (!testPath.empty()) {
 		if (!oa::Filesystem::isFile(oa::Path(testPath))) {
-			OA_CLI("Error: test file not found: %s", testPath.cStr());
+			OA_CLI("Error: test file not found: {}", testPath.cStr());
 			return 1;
 		}
 		auto testR = oa::Filesystem::readBinary(oa::Path(testPath));
 		if (!testR.isOk()) {
-			OA_CLI("Error: read test: %s", testPath.cStr());
+			OA_CLI("Error: read test: {}", testPath.cStr());
 			return 1;
 		}
 		test = oa::move(testR).getValue();
@@ -100,10 +100,10 @@ static int cmdPack(
 	oa::Span<const oa::U8> xs(test.data(), test.size());
 	auto st = oa::writeDatasetArchive(oa::Path(outPath), ts, vs, xs);
 	if (st.isError()) {
-		OA_CLI("Error: %s", st.getMessage().cStr());
+		OA_CLI("Error: {}", st.getMessage().cStr());
 		return 1;
 	}
-	OA_CLI("Wrote %s (%s train, %s val, %s test)", outPath.cStr(), formatBytes(train.size()).cStr(),
+	OA_CLI("Wrote {} ({} train, {} val, {} test)", outPath.cStr(), formatBytes(train.size()).cStr(),
 		formatBytes(val.size()).cStr(), formatBytes(test.size()).cStr());
 	return 0;
 }
@@ -111,7 +111,7 @@ static int cmdPack(
 static int cmdUnpack(const oa::String& inPath, const oa::String& outDir) {
 	oa::DatasetArchive f;
 	if (!f.tryOpen(inPath)) {
-		OA_CLI("Error: not a valid .oad v1 file: %s", inPath.cStr());
+		OA_CLI("Error: not a valid .oad v1 file: {}", inPath.cStr());
 		return 1;
 	}
 	(void)oa::Filesystem::createDirectories(oa::Path(outDir));
@@ -121,7 +121,7 @@ static int cmdUnpack(const oa::String& inPath, const oa::String& outDir) {
 		oa::Path p = oa::Path(outDir) / name;
 		auto wst = oa::Filesystem::writeBinary(p, span);
 		if (wst.isError()) {
-			OA_CLI("Error: write %s: %s", p.string().cStr(), wst.getMessage().cStr());
+			OA_CLI("Error: write {}: {}", p.string().cStr(), wst.getMessage().cStr());
 			return 1;
 		}
 		return 0;
@@ -131,7 +131,7 @@ static int cmdUnpack(const oa::String& inPath, const oa::String& outDir) {
 	if (writeSplit("val.bin", f.valSpan())) return 1;
 	if (writeSplit("test.bin", f.testSpan())) return 1;
 
-	OA_CLI("Unpacked to %s/ (train.bin, val.bin, test.bin as present)", outDir.cStr());
+	OA_CLI("Unpacked to {}/ (train.bin, val.bin, test.bin as present)", outDir.cStr());
 	return 0;
 }
 
@@ -184,6 +184,6 @@ int main(int argc, char** argv) {
 	if (cmd == "info") return cmdInfo(cfg.inputPath);
 	if (cmd == "unpack") return cmdUnpack(cfg.inputPath, cfg.outDir);
 
-	OA_CLI("Error: unknown command '%s'", cmd.cStr());
+	OA_CLI("Error: unknown command '{}'", cmd.cStr());
 	return 1;
 }

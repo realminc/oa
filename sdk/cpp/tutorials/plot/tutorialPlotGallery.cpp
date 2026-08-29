@@ -13,11 +13,7 @@
 #include <oa/runtime/engine.h>
 #include <oa/ui/plot/plot.h>
 
-#include <algorithm>
-#include <cmath>
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
+#include <stdlib.h>
 
 namespace {
 
@@ -47,7 +43,7 @@ oa::plot::BarStyle bars(
 }
 
 oa::Color gradient(oa::Color inA, oa::Color inB, oa::F32 inT) {
-	const oa::F32 t = std::clamp(inT, 0.0F, 1.0F);
+	const oa::F32 t = oa::clamp(inT, 0.0F, 1.0F);
 	return {
 		inA.r + (inB.r - inA.r) * t,
 		inA.g + (inB.g - inA.g) * t,
@@ -112,10 +108,10 @@ void trainingPlot(oa::plot::Axes& inAxes) {
 	oa::Array<oa::F32, 72> validation{};
 	for (oa::Usize i = 0U; i < train.size(); ++i) {
 		const oa::F32 step = static_cast<oa::F32>(i);
-		train[i] = 1.55F * std::exp(-step / 18.0F)
-			+ 0.035F * std::sin(step * 0.52F) + 0.11F;
-		validation[i] = 1.45F * std::exp(-step / 21.0F)
-			+ 0.045F * std::sin(step * 0.39F + 0.8F) + 0.17F;
+		train[i] = 1.55F * oa::exp(-step / 18.0F)
+			+ 0.035F * oa::sin(step * 0.52F) + 0.11F;
+		validation[i] = 1.45F * oa::exp(-step / 21.0F)
+			+ 0.045F * oa::sin(step * 0.39F + 0.8F) + 0.17F;
 	}
 	inAxes.title("training curves");
 	inAxes.xLabel("optimizer step");
@@ -133,8 +129,8 @@ void rocPlot(oa::plot::Axes& inAxes) {
 		const oa::F32 x = static_cast<oa::F32>(i)
 			/ static_cast<oa::F32>(rate.size() - 1U);
 		rate[i] = x;
-		vision[i] = std::clamp(1.0F - std::exp(-4.3F * x), 0.0F, 1.0F);
-		fusion[i] = std::clamp(1.0F - std::exp(-6.7F * x), 0.0F, 1.0F);
+		vision[i] = oa::clamp(1.0F - oa::exp(-4.3F * x), 0.0F, 1.0F);
+		fusion[i] = oa::clamp(1.0F - oa::exp(-6.7F * x), 0.0F, 1.0F);
 		chance[i] = x;
 	}
 	inAxes.title("ROC - threshold sweep");
@@ -155,10 +151,10 @@ void precisionRecallPlot(oa::plot::Axes& inAxes) {
 		const oa::F32 x = static_cast<oa::F32>(i)
 			/ static_cast<oa::F32>(recall.size() - 1U);
 		recall[i] = x;
-		vision[i] = std::clamp(0.98F - 0.40F * std::pow(x, 1.6F)
-			- 0.025F * std::sin(x * 5.0F * kPi), 0.0F, 1.0F);
-		fusion[i] = std::clamp(0.995F - 0.27F * std::pow(x, 2.1F)
-			- 0.015F * std::sin(x * 4.0F * kPi), 0.0F, 1.0F);
+		vision[i] = oa::clamp(0.98F - 0.40F * oa::pow(x, 1.6F)
+			- 0.025F * oa::sin(x * 5.0F * kPi), 0.0F, 1.0F);
+		fusion[i] = oa::clamp(0.995F - 0.27F * oa::pow(x, 2.1F)
+			- 0.015F * oa::sin(x * 4.0F * kPi), 0.0F, 1.0F);
 	}
 	inAxes.title("Precision-recall");
 	inAxes.xLabel("recall");
@@ -173,9 +169,9 @@ void scoreHistogram(oa::plot::Axes& inAxes) {
 	for (oa::Usize i = 0U; i < scores.size(); ++i) {
 		const oa::F32 phase = static_cast<oa::F32>(i);
 		const oa::F32 cluster = i % 3U == 0U ? 0.28F : 0.74F;
-		scores[i] = std::clamp(cluster
-			+ 0.12F * std::sin(phase * 1.73F)
-			+ 0.045F * std::cos(phase * 0.37F), 0.0F, 1.0F);
+		scores[i] = oa::clamp(cluster
+			+ 0.12F * oa::sin(phase * 1.73F)
+			+ 0.045F * oa::cos(phase * 0.37F), 0.0F, 1.0F);
 	}
 	inAxes.title("confidence distribution");
 	inAxes.xLabel("model score");
@@ -192,7 +188,7 @@ void calibrationScatter(oa::plot::Axes& inAxes) {
 		const oa::F32 x = (static_cast<oa::F32>(i) + 0.5F)
 			/ static_cast<oa::F32>(confidence.size());
 		confidence[i] = x;
-		accuracy[i] = std::clamp(x + 0.055F * std::sin(8.0F * kPi * x)
+		accuracy[i] = oa::clamp(x + 0.055F * oa::sin(8.0F * kPi * x)
 			- 0.025F, 0.0F, 1.0F);
 		ideal[i] = x;
 	}
@@ -287,16 +283,16 @@ void lossLandscape(oa::plot::Axes& inAxes) {
 	wireframe(inAxes, "projected loss landscape",
 		[](oa::F32 x, oa::F32 y) {
 			const oa::F32 bowl = 0.42F * (x * x + 0.75F * y * y);
-			return bowl + 0.18F * std::sin(2.7F * x) * std::cos(3.1F * y);
+			return bowl + 0.18F * oa::sin(2.7F * x) * oa::cos(3.1F * y);
 		}, oa::Color::cyan(), oa::Color::purple());
 }
 
 void gradientBasin(oa::plot::Axes& inAxes) {
 	wireframe(inAxes, "projected optimizer basin",
 		[](oa::F32 x, oa::F32 y) {
-			const oa::F32 radius = std::sqrt(x * x + y * y);
-			return 0.34F * radius + 0.17F * std::cos(9.0F * radius)
-				* std::exp(-1.8F * radius);
+			const oa::F32 radius = oa::sqrt(x * x + y * y);
+			return 0.34F * radius + 0.17F * oa::cos(9.0F * radius)
+				* oa::exp(-1.8F * radius);
 		}, oa::Color::success(), oa::Color::warning());
 }
 
@@ -383,12 +379,12 @@ oa::Status saveFigure(
 	const char* inName) {
 	const oa::Path path = inDirectory / inName;
 	OA_RETURN_IF_ERROR(inFigure.saveTo(inEngine, path.cStr()));
-	std::printf("  %s\n", path.cStr());
+	oa::print("  {}", path.cStr());
 	return oa::Status::ok();
 }
 
 void usage(const char* inProgram) {
-	std::printf("usage: %s [--output DIR] [--headless]\n", inProgram);
+	oa::print("usage: {} [--output DIR] [--headless]", inProgram);
 }
 
 } // namespace
@@ -397,11 +393,11 @@ int main(int argc, char** argv) {
 	oa::Path output = oa::Paths::var("artifact/plot");
 	bool show = true;
 	for (int i = 1; i < argc; ++i) {
-		if (std::strcmp(argv[i], "--headless") == 0) {
+		if (oa::strcmp(argv[i], "--headless") == 0) {
 			show = false;
-		} else if (std::strcmp(argv[i], "--output") == 0 and i + 1 < argc) {
+		} else if (oa::strcmp(argv[i], "--output") == 0 and i + 1 < argc) {
 			output = oa::Path(argv[++i]);
-		} else if (std::strcmp(argv[i], "--help") == 0) {
+		} else if (oa::strcmp(argv[i], "--help") == 0) {
 			usage(argv[0]);
 			return EXIT_SUCCESS;
 		} else {
@@ -412,7 +408,7 @@ int main(int argc, char** argv) {
 
 	if (const oa::Status status = oa::Filesystem::createDirectories(output);
 		status.isError()) {
-		std::fprintf(stderr, "output directory failed: %s\n",
+		oa::print(oa::PrintStream::Error, "output directory failed: {}",
 			status.toString().cStr());
 		return EXIT_FAILURE;
 	}
@@ -423,7 +419,7 @@ int main(int argc, char** argv) {
 	engineConfig.appName = "TutorialPlotGallery";
 	auto engineResult = oa::Engine::create(engineConfig);
 	if (not engineResult.isOk()) {
-		std::fprintf(stderr, "Engine creation failed: %s\n",
+		oa::print(oa::PrintStream::Error, "Engine creation failed: {}",
 			engineResult.getStatus().toString().cStr());
 		return EXIT_FAILURE;
 	}
@@ -436,21 +432,21 @@ int main(int argc, char** argv) {
 	auto diagnostics = diagnosticsFigure();
 	auto landscapes = landscapeFigure();
 
-	std::printf("OA Plot walkthrough artifacts:\n");
+	oa::print("OA Plot walkthrough artifacts:");
 	if (saveFigure(engine, intro, output, "oa-plot-intro-dark.png").isError()
 		or saveFigure(engine, dark, output, "oa-plot-gallery-dark.png").isError()
 		or saveFigure(engine, light, output, "oa-plot-gallery-light.png").isError()
 		or saveFigure(engine, evaluation, output, "oa-plot-evaluation-dark.png").isError()
 		or saveFigure(engine, diagnostics, output, "oa-plot-diagnostics-dark.png").isError()
 		or saveFigure(engine, landscapes, output, "oa-plot-landscapes-dark.png").isError()) {
-		std::fprintf(stderr, "Plot walkthrough render failed\n");
+		oa::print(oa::PrintStream::Error, "Plot walkthrough render failed");
 		return EXIT_FAILURE;
 	}
 
 	if (show) {
 		const oa::Status status = dark.show();
 		if (status.isError()) {
-			std::fprintf(stderr, "oa::Viewer failed: %s\n", status.toString().cStr());
+			oa::print(oa::PrintStream::Error, "oa::Viewer failed: {}", status.toString().cStr());
 			return EXIT_FAILURE;
 		}
 	}

@@ -131,7 +131,6 @@ forward_body = """
 notes = "Batch normalization layer with running statistics."
 extra_includes = """
 #include <oa/runtime/executionSession.h>
-#include <assert.h>
 """
 extra_methods = """
 static oa::U32 divCeil(oa::U32 inA, oa::U32 inB) { return (inA + inB - 1) / inB; }

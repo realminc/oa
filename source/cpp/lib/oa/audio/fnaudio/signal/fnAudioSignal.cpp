@@ -82,7 +82,7 @@ Audio resample(
 	const oa::U32 inInRate = inAudio.sampleRate();
 	const auto& shape = inA.getShape();
 	if (shape.rank != 2 || shape[0] <= 0 || shape[1] <= 0 || inA.getDtype() != oa::ScalarType::Float32) {
-		OaLogError(oa::LogComponent::Audio, "oa::FnAudio::resample: expected [channels, samples], rank=%d", shape.rank);
+		OaLogError(oa::LogComponent::Audio, "oa::FnAudio::resample: expected [channels, samples], rank={}", shape.rank);
 		return {};
 	}
 	if (inInRate == 0 || inOutRate == 0 || inFilterHalfWidth == 0 || inFilterHalfWidth > 1024) {
@@ -793,7 +793,7 @@ Audio preEmphasis(const Audio& inAudio, oa::F32 inAlpha) {
 	const auto& shape = inBuf.getShape();
 	if (shape.rank != 2 || shape[0] <= 0 || shape[1] <= 0 ||
 		inBuf.getDtype() != oa::ScalarType::Float32 || !oa::isFinite(inAlpha)) {
-		OaLogError(oa::LogComponent::Audio, "oa::FnAudio::preEmphasis: expected [channels, samples], rank=%d", shape.rank);
+		OaLogError(oa::LogComponent::Audio, "oa::FnAudio::preEmphasis: expected [channels, samples], rank={}", shape.rank);
 		return {};
 	}
 	auto& ctx = oa::ExecutionSession::getActive();
@@ -828,7 +828,7 @@ Audio toMono(const Audio& inAudio) {
 	const oa::Matrix& inBuf = inAudio.asMatrix();
 	const auto& shape = inBuf.getShape();
 	if (shape.rank != 2 || shape[0] <= 0 || shape[1] <= 0 || inBuf.getDtype() != oa::ScalarType::Float32) {
-		OaLogError(oa::LogComponent::Audio, "oa::FnAudio::toMono: expected [channels, samples], rank=%d", shape.rank);
+		OaLogError(oa::LogComponent::Audio, "oa::FnAudio::toMono: expected [channels, samples], rank={}", shape.rank);
 		return {};
 	}
 	auto& ctx = oa::ExecutionSession::getActive();
@@ -861,7 +861,7 @@ Audio fade(
 	const oa::Matrix& inBuf = inAudio.asMatrix();
 	const auto& shape = inBuf.getShape();
 	if (shape.rank != 2 || shape[0] <= 0 || shape[1] <= 0 || inBuf.getDtype() != oa::ScalarType::Float32) {
-		OaLogError(oa::LogComponent::Audio, "oa::FnAudio::fade: expected [channels, samples], rank=%d", shape.rank);
+		OaLogError(oa::LogComponent::Audio, "oa::FnAudio::fade: expected [channels, samples], rank={}", shape.rank);
 		return {};
 	}
 	const oa::U64 samples  = static_cast<oa::U64>(shape[1]);

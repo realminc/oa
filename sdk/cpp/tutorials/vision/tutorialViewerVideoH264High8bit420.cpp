@@ -6,7 +6,7 @@ int main(int argc, char** argv) {
 	return runTutorialViewerVideo(
 		argc,
 		argv,
-		tutorialVideoAssetPath("shibuya720pH264HighEightBit420.mp4"),
+		tutorialVideoAssetPath("clip/shibuya_720p_30fps_h264_high_8bit_420.mp4"),
 		"OA Viewer · H.264 high · 8-bit 4:2:0",
 		false);
 }

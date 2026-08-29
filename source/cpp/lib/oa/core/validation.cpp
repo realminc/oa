@@ -186,7 +186,7 @@ void oa::Validation::dumpCounters(oa::LogComponent inComp) {
 	OaLogDebug(inComp, "DebugSession(");
 	for (const auto& [name, value] : st.counters) {
 		if (value > 0) {
-			OaLogDebug(inComp, "  %-36s %llu", name.cStr(),
+			OaLogDebug(inComp, "  {:<36} {}", name.cStr(),
 				static_cast<unsigned long long>(value));
 		}
 	}

@@ -7,8 +7,6 @@ import storage;
 
 struct PushConstants {
     uint out_idx;
-    uint nv12_idx;
-    uint sampler_idx;
     uint width;
     uint height;
     uint coded_width;
@@ -18,8 +16,7 @@ struct PushConstants {
 
 [[vk::push_constant]] PushConstants pc;
 [[vk::binding(0, 0)]] RWByteAddressBuffer heap[];
-[[vk::binding(2, 0)]] Texture2D<float4> sampled_images[];
-[[vk::binding(3, 0)]] SamplerState samplers[];
+[[vk::binding(0, 1)]] Sampler2D<float4> ycbcr_image;
 
 static const float3 IMAGENET_MEAN = float3(0.485f, 0.456f, 0.406f);
 static const float3 IMAGENET_STD  = float3(0.229f, 0.224f, 0.225f);
@@ -37,7 +34,7 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
     if (x >= pc.width || y >= pc.height) return;
 
     float2 uv = (float2(x, y) + 0.5f) / float2(pc.coded_width, pc.coded_height);
-    float3 rgb = saturate(sampled_images[pc.nv12_idx].SampleLevel(samplers[pc.sampler_idx], uv, 0).rgb);
+    float3 rgb = saturate(ycbcr_image.SampleLevel(uv, 0).rgb);
 
     if (pc.normalize != 0u) {
         rgb = (rgb - IMAGENET_MEAN) / IMAGENET_STD;

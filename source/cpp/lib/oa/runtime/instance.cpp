@@ -208,7 +208,7 @@ oa::Result<VkInstance> oavk::Instance::createInstance(
 		return oa::Status::error(oa::StatusCode::VulkanError,	oa::String("vkCreateInstance failed (VkResult=") + oa::toString(static_cast<oa::I64>(r)) + ")");
 	}
 	if (inEnableValidation) {
-		OaLogInfo(oa::LogComponent::Runtime, "Validation features: %s",
+		OaLogInfo(oa::LogComponent::Runtime, "Validation features: {}",
 			validationModeName(validationMode));
 	}
 	return oa::Result<VkInstance>(instance);

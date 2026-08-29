@@ -257,7 +257,7 @@ bool oa::CameraCapture::Impl::initV4l2()
 	consecutiveFailures = 0U;
 	++formatGen;
 	OaLogInfo(oa::LogComponent::Vision,
-		"oa::CameraCapture: V4L2 DMA-BUF %s %dx%d @ %d fps, ring=%u",
+		"oa::CameraCapture: V4L2 DMA-BUF {} {}x{} @ {} fps, ring={}",
 		path.cStr(), w, h, fps, request.count);
 	return true;
 }
@@ -474,7 +474,7 @@ oa::Status oa::CameraCapture::init_(
 #endif
 
 	if (!SDL_InitSubSystem(SDL_INIT_CAMERA)) {
-		OaLogError(oa::LogComponent::Vision, "SDL_INIT_CAMERA failed: %s", SDL_GetError());
+		OaLogError(oa::LogComponent::Vision, "SDL_INIT_CAMERA failed: {}", SDL_GetError());
 		return oa::Status::error("oa::CameraCapture: SDL_INIT_CAMERA failed");
 	}
 
@@ -498,7 +498,7 @@ oa::Status oa::CameraCapture::init_(
 
 	impl_->camera = SDL_OpenCamera(id, &desired);
 	if (!impl_->camera) {
-		OaLogError(oa::LogComponent::Vision, "SDL_OpenCamera failed: %s", SDL_GetError());
+		OaLogError(oa::LogComponent::Vision, "SDL_OpenCamera failed: {}", SDL_GetError());
 		return oa::Status::error("oa::CameraCapture: SDL_OpenCamera failed");
 	}
 
@@ -511,7 +511,7 @@ oa::Status oa::CameraCapture::init_(
 		while (SDL_PollEvent(&e)) {
 			if (e.type == SDL_EVENT_CAMERA_DEVICE_APPROVED) {
 				OaLogInfo(oa::LogComponent::Vision,
-					"oa::CameraCapture: camera approved (device %d)", devIdx);
+					"oa::CameraCapture: camera approved (device {})", devIdx);
 				permissionResolved = true;
 				break;
 			}
@@ -547,7 +547,7 @@ oa::Status oa::CameraCapture::init_(
 		}
 		if (impl_->fps <= 0) impl_->fps = inConfig.fps;
 		OaLogInfo(oa::LogComponent::Vision,
-			"oa::CameraCapture: opened %dx%d @ %d fps (format=0x%X)",
+			"oa::CameraCapture: opened {}x{} @ {} fps (format=0x{:X})",
 			impl_->w, impl_->h, impl_->fps,
 			static_cast<oa::U32>(impl_->spec.format));
 	}
@@ -566,7 +566,7 @@ oa::Status oa::CameraCapture::init_(
 				oa::EngineBindlessAccess::deregisterBuffer(inRt, b);
 				oa::EngineResourceAccess::freeBuffer(inRt, b);
 			}
-			OaLogError(oa::LogComponent::Vision, "ring buffer alloc failed: %s",
+			OaLogError(oa::LogComponent::Vision, "ring buffer alloc failed: {}",
 				res.getStatus().toString().cStr());
 			return oa::Status::error("oa::CameraCapture: ring buffer alloc failed");
 		}
@@ -588,7 +588,7 @@ oa::Status oa::CameraCapture::init_(
 	streaming_ = true;
 
 	OaLogInfo(oa::LogComponent::Vision,
-		"oa::CameraCapture: ring x%d, %.1f MB/frame",
+		"oa::CameraCapture: ring x{}, {:.1f} MB/frame",
 		impl_->ringN, frameBytes / 1e6f);
 
 	return oa::Status::ok();

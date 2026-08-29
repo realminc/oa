@@ -15,7 +15,7 @@
 #include <oa/runtime/window.h>
 #include <vkl/vkl.h>
 #include <oa/runtime/device.h>
-#include <oa/core/assert.h>
+#include <oa/core/std/assert.h>
 #include <oa/core/log.h>
 #include <oa/core/std/algo.h>
 #include <oa/core/std/format.h>
@@ -206,7 +206,7 @@ void oa::Presenter::abandon_() noexcept {
 			graphicsBatchStream_->resetUnsubmitted(oa::EngineDeviceAccess::get(engine_));
 			not status.isOk()) {
 			OaLogError(oa::LogComponent::Engine,
-				"oa::Presenter abandonment failed to cancel graphics batch: %s",
+				"oa::Presenter abandonment failed to cancel graphics batch: {}",
 				status.getMessage().cStr());
 		}
 		graphicsBatchStream_ = nullptr;
@@ -363,7 +363,7 @@ bool oa::Presenter::initPresentation(void* inSurface, VkExtent2D inExtent) {
 
 	if (!presentOk) {
 		OaLogError(oa::LogComponent::Engine,
-			"oa::Presenter::initPresentation: graphics queue family %u "
+			"oa::Presenter::initPresentation: graphics queue family {} "
 			"does not support present on this surface",
 			oa::EngineDeviceAccess::get(engine_).queues.graphicsQueueFamily);
 		return false;
@@ -393,8 +393,8 @@ bool oa::Presenter::initPresentation(void* inSurface, VkExtent2D inExtent) {
 
 	swapchain_.presentReady = true;
 	OaLogInfo(oa::LogComponent::Engine,
-		"oa::Presenter: presentation ready (%ux%u, %zu swap images, "
-		"retirement=%s)",
+		"oa::Presenter: presentation ready ({}x{}, {} swap images, "
+		"retirement={})",
 		swapchain_.extent.width, swapchain_.extent.height, swapchain_.images.size(),
 		oa::EngineDeviceAccess::get(engine_).info.software.hasSwapchainMaintenance1
 			? "present-fence" : "queue-idle-fallback");
@@ -407,7 +407,7 @@ void oa::Presenter::detachPresentation() {
 	if (!swapchain_.presentReady) return;
 	if (auto status = waitPresentationIdle(); !status.isOk()) {
 		OaLogError(oa::LogComponent::Engine,
-			"detachPresentation: %s", status.toString().cStr());
+			"detachPresentation: {}", status.toString().cStr());
 		return;
 	}
 	shutdownImGuiResources_();
@@ -427,7 +427,7 @@ bool oa::Presenter::recreateSwapchain(VkExtent2D inNewExtent) {
 	if (!swapchain_.surface) return false;
 	if (auto status = waitPresentationIdle(); !status.isOk()) {
 		OaLogError(oa::LogComponent::Engine,
-			"recreateSwapchain: %s", status.toString().cStr());
+			"recreateSwapchain: {}", status.toString().cStr());
 		return false;
 	}
 
@@ -587,7 +587,7 @@ bool oa::Presenter::buildSwapchainObjects() {
 		vi.subresourceRange.levelCount = 1;
 		vi.subresourceRange.layerCount = 1;
 		if (reVk(*this).vkCreateImageView(reDev(*this), &vi, nullptr, &swapchain_.views[i]) != VK_SUCCESS) {
-			OaLogError(oa::LogComponent::Engine, "vkCreateImageView failed (index %u)", i);
+			OaLogError(oa::LogComponent::Engine, "vkCreateImageView failed (index {})", i);
 			return false;
 		}
 	}
@@ -658,7 +658,7 @@ bool oa::Presenter::buildFramebuffers() {
 		fbi.height          = swapchain_.extent.height;
 		fbi.layers          = 1;
 		if (reVk(*this).vkCreateFramebuffer(reDev(*this), &fbi, nullptr, &framebuffers_[i]) != VK_SUCCESS) {
-			OaLogError(oa::LogComponent::Engine, "vkCreateFramebuffer failed (index %zu)", i);
+			OaLogError(oa::LogComponent::Engine, "vkCreateFramebuffer failed (index {})", i);
 			return false;
 		}
 	}
@@ -720,7 +720,7 @@ bool oa::Presenter::buildSyncObjects() {
 				reVk(*this).vkCreateFence(reDev(*this), &presentFi, nullptr,
 					&swapchain_.presentFence[i]) != VK_SUCCESS))
 		{
-			OaLogError(oa::LogComponent::Engine, "sync object creation failed (slot %d)", i);
+			OaLogError(oa::LogComponent::Engine, "sync object creation failed (slot {})", i);
 			return false;
 		}
 	}
@@ -891,7 +891,7 @@ void oa::Presenter::shutdownImGui() {
 	if (!imGuiReady_) return;
 	if (auto status = waitPresentationIdle(); !status.isOk()) {
 		OaLogError(oa::LogComponent::Engine,
-			"ShutdownImGui: %s", status.toString().cStr());
+			"ShutdownImGui: {}", status.toString().cStr());
 		return;
 	}
 	shutdownImGuiResources_();
@@ -1240,7 +1240,7 @@ bool oa::Presenter::drawFrame() {
 
 	if (const auto status = preparePresentFence(
 		swapchain_, static_cast<oa::U32>(swapchain_.frameIndex)); !status.isOk()) {
-		OaLogError(oa::LogComponent::Engine, "DrawFrame: %s", status.toString().cStr());
+		OaLogError(oa::LogComponent::Engine, "DrawFrame: {}", status.toString().cStr());
 		return false;
 	}
 
@@ -1312,7 +1312,7 @@ bool oa::Presenter::drawFrame() {
 			1, &si, swapchain_.inFlightFence[swapchain_.frameIndex]);
 	}
 	if (submitRes != VK_SUCCESS) {
-		OaLogError(oa::LogComponent::Engine, "vkQueueSubmit failed (VkResult=%d)",
+		OaLogError(oa::LogComponent::Engine, "vkQueueSubmit failed (VkResult={})",
 			static_cast<int>(submitRes));
 		return false;
 	}
@@ -1351,7 +1351,7 @@ bool oa::Presenter::drawFrame() {
 		return true;
 	}
 	if (pres != VK_SUCCESS) {
-		OaLogError(oa::LogComponent::Engine, "vkQueuePresentKHR failed (VkResult=%d)",
+		OaLogError(oa::LogComponent::Engine, "vkQueuePresentKHR failed (VkResult={})",
 			static_cast<int>(pres));
 		return false;
 	}
@@ -1390,7 +1390,7 @@ bool oa::Presenter::acquireSwapchainImage(
 	const oa::U32 frameSlot = static_cast<oa::U32>(inSwap.frameIndex);
 	if (const auto status = preparePresentFence(inSwap, frameSlot); !status.isOk()) {
 		OaLogError(oa::LogComponent::Engine,
-			"acquireSwapchainImage: %s", status.toString().cStr());
+			"acquireSwapchainImage: {}", status.toString().cStr());
 		return false;
 	}
 
@@ -1409,7 +1409,7 @@ bool oa::Presenter::acquireSwapchainImage(
 	}
 	if (acq != VK_SUCCESS and acq != VK_SUBOPTIMAL_KHR) {
 		OaLogError(oa::LogComponent::Engine,
-			"acquireSwapchainImage: vkAcquireNextImageKHR failed (VkResult=%d)",
+			"acquireSwapchainImage: vkAcquireNextImageKHR failed (VkResult={})",
 			static_cast<int>(acq));
 		return false;
 	}
@@ -1518,7 +1518,7 @@ bool oa::Presenter::presentSwapchainImage(
 		}
 		if (subImgui != VK_SUCCESS) {
 			OaLogError(oa::LogComponent::Engine,
-				"presentSwapchainImage(ImGui): vkQueueSubmit failed (VkResult=%d)",
+				"presentSwapchainImage(ImGui): vkQueueSubmit failed (VkResult={})",
 				static_cast<int>(subImgui));
 			return false;
 		}
@@ -1552,7 +1552,7 @@ bool oa::Presenter::presentSwapchainImage(
 		}
 		if (presImgui != VK_SUCCESS) {
 			OaLogError(oa::LogComponent::Engine,
-				"presentSwapchainImage(ImGui): vkQueuePresentKHR failed (VkResult=%d)",
+				"presentSwapchainImage(ImGui): vkQueuePresentKHR failed (VkResult={})",
 				static_cast<int>(presImgui));
 			return false;
 		}
@@ -1752,7 +1752,7 @@ bool oa::Presenter::presentSwapchainImage(
 	}
 	if (submitRes != VK_SUCCESS) {
 		OaLogError(oa::LogComponent::Engine,
-			"presentSwapchainImage: vkQueueSubmit failed (VkResult=%d)",
+			"presentSwapchainImage: vkQueueSubmit failed (VkResult={})",
 			static_cast<int>(submitRes));
 		return false;
 	}
@@ -1788,7 +1788,7 @@ bool oa::Presenter::presentSwapchainImage(
 	}
 	if (pres != VK_SUCCESS) {
 		OaLogError(oa::LogComponent::Engine,
-			"presentSwapchainImage: vkQueuePresentKHR failed (VkResult=%d)",
+			"presentSwapchainImage: vkQueuePresentKHR failed (VkResult={})",
 			static_cast<int>(pres));
 		return false;
 	}

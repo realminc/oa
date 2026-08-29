@@ -66,9 +66,6 @@
 #include "tutorialMl.h"          // TutorialPrintBanner, helpers (TutorialTrainingLoop too)
 #include <oa/ml.h>               // oa::ItTraining, modules, oa::FnLoss, oa::AdamW
 #include <oa/ml/autograd.h>      // oa::GradientTape
-#include <cstdio>
-#include <vector>
-
 // ── phase 0: constants + toy model ─────────────────────────────────────────
 // file-scope dims (constexpr, kPascalCase). Keep the model tiny — a tutorial
 // proves the *pipeline*, not SOTA. One oa::Module subclass; no manual backward
@@ -125,7 +122,7 @@ TEST(TutorialTemplate, EndToEnd) {
 	auto model  = oa::makeShared<TemplateModel>();
 	auto params = model->allParameterPtrs();
 	auto opt    = oa::makeUnique<oa::AdamW>(params, 0.001F);
-	std::printf("params: %lld\n\n", static_cast<long long>(model->numParameters()));
+	oa::print("params: {}\n", static_cast<long long>(model->numParameters()));
 
 	// phase 4: training setup. Compose the standard metric/progress/summary
 	// callbacks explicitly — never re-printf a loss line.
@@ -173,7 +170,7 @@ TEST(TutorialTemplate, EndToEnd) {
 
 	// phase 7: evaluate on held-out data.
 	const oa::F32 acc = evalAccuracy(*model, sampler);
-	std::printf("eval accuracy: %.2f%%\n\n", acc);
+	oa::print("eval accuracy: {:.2f}%\n", acc);
 
 	// phase 8: inference / generation — generative tutorials only. A classifier
 	// prints a few predictions here instead; skip with a comment, never silently.

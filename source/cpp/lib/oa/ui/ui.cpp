@@ -5524,12 +5524,15 @@ void oa::Ui::progressBar(oa::F32 inFraction, oa::StringView inOverlay) {
 bool oa::Ui::timeline(
 	oa::StringView inId,
 	oa::PixelRect inRect,
-	oa::F32& inOutFraction) {
+	oa::F32& inOutFraction,
+	bool* outActive) {
+	if (outActive != nullptr) *outActive = false;
 	if (!impl_ || inRect.w <= 0 || inRect.h <= 0) return false;
 
 	const oa::U32 id = hashWidgetScope(impl_->currentScope(), inId);
 	impl_->registerAdjustable(id);
 	const auto interaction = impl_->interact(input_, id, inRect);
+	if (outActive != nullptr) *outActive = interaction.held;
 
 	bool changed = false;
 	if (interaction.held || interaction.activated) {

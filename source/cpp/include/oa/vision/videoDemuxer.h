@@ -115,7 +115,7 @@ public:
   static oa::Result<VideoDemuxer> open(oa::StringView inUri,
                                        const VideoDemuxerConfig &inConfig);
 
-  VideoDemuxer() = default;
+  VideoDemuxer();
   VideoDemuxer(VideoDemuxer &&) noexcept;
   VideoDemuxer &operator=(VideoDemuxer &&) noexcept;
   VideoDemuxer(const VideoDemuxer &) = delete;
@@ -149,6 +149,12 @@ public:
   [[nodiscard]] oa::U64 formatGeneration() const noexcept {
     return stats_.formatGeneration;
   }
+
+  // Return one indexed sample's presentation timestamp without converting a
+  // signed composition offset to unsigned first. Malformed tables whose
+  // offset underflows DTS or whose positive offset overflows fail closed.
+  [[nodiscard]] oa::Result<oa::U64>
+  samplePresentationTimestamp(oa::Usize inSampleIndex) const;
 
   // get video profile for decoder creation
   [[nodiscard]] VideoProfile getVideoProfile() const;
@@ -259,6 +265,7 @@ private:
   oa::Vector<oa::U8>
       bufferedPictureNals_;       // Picture NAL units buffered for next packet
   oa::U64 bufferedTimestamp_ = 0; // timestamp for buffered picture NAL units
+  oa::U64 bufferedDecodeTimestamp_ = 0;
   bool bufferedIsKeyframe_ =
       false; // Keyframe flag for buffered picture NAL units
 };

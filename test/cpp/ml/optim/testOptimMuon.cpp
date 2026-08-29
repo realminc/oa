@@ -220,7 +220,7 @@ protected:
 		rtStorage_ = oa::move(*result);
 		oa::ExecutionSession::setActive(&oa::ExecutionSession::forEngine(rt()));
 
-		OaLogInfo(oa::LogComponent::Ml, "GPU: %s", oa::EngineDeviceAccess::get(rt()).info.hardware.deviceName.cStr());
+		OaLogInfo(oa::LogComponent::Ml, "GPU: {}", oa::EngineDeviceAccess::get(rt()).info.hardware.deviceName.cStr());
 	}
 
 	void TearDown() override {
@@ -261,8 +261,8 @@ protected:
 					* std::abs(static_cast<double>(ref[worstIndex]));
 			OaLogError(
 				oa::LogComponent::Ml,
-				"%s: Worst mismatch at [%u]: CPU=%.9g GPU=%.9g "
-				"(abs_err=%.3e allowed=%.3e)",
+				"{}: Worst mismatch at [{}]: CPU={:.9g} GPU={:.9g} "
+				"(abs_err={:.3e} allowed={:.3e})",
 				testName,
 				worstIndex,
 				ref[worstIndex],

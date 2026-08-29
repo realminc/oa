@@ -126,7 +126,7 @@ void oavk::Stream::destroy(const oavk::Device& inDevice) {
 	VkDevice dev = static_cast<VkDevice>(inDevice.device);
 	if (submitted) {
 		if (auto s = timelineSem.wait(inDevice, timelineValue); !s.isOk()) {
-			OaLogError(oa::LogComponent::Runtime, "stream::destroy: timeline wait failed: %s", s.getMessage().cStr());
+			OaLogError(oa::LogComponent::Runtime, "stream::destroy: timeline wait failed: {}", s.getMessage().cStr());
 		}
 	}
 	for (void* pool : pendingPools) {
@@ -259,7 +259,7 @@ oa::Status oavk::Stream::begin(const oavk::Device& inDevice) {
 		if (pushDuplicatesBufferIndices(                                           \
 				(bufs_), (push_), (pushSize_), (pipeline_))) {                            \
 			OaLogError(oa::LogComponent::Runtime,                                         \
-				"Dispatch '%s': host push constants begin with the buffer bindless "   \
+				"Dispatch '{}': host push constants begin with the buffer bindless "   \
 				"indices. The bindless path auto-prepends those; do NOT put "          \
 				"heapSlot()/buffer indices in the C++ push struct — pass scalar "      \
 				"params only, after the indices. Refusing dispatch to avoid silent "   \
@@ -310,8 +310,8 @@ oa::Status oavk::Stream::recordDispatchDesc(
 		inDesc.kernel, inDesc.dtype);
 	if (not pipeline.pipeline) {
 		OaLogError(oa::LogComponent::Runtime,
-			"recordDispatchDesc: pipeline not found: %.*s (dtype=%u)",
-			static_cast<int>(inDesc.kernel.size()), inDesc.kernel.data(),
+			"recordDispatchDesc: pipeline not found: {} (dtype={})",
+			inDesc.kernel,
 			inDesc.dtype);
 		return oa::Status::error("stream: pipeline not found: " + oa::String(inDesc.kernel));
 	}
@@ -795,7 +795,7 @@ oa::Status oavk::Stream::runOnce(
 		const auto reset = stream->resetUnsubmitted(oa::EngineDeviceAccess::get(inRt));
 		if (not reset.isOk()) {
 			OaLogError(oa::LogComponent::Runtime,
-				"stream: failed to cancel rejected one-shot dispatch: %s",
+				"stream: failed to cancel rejected one-shot dispatch: {}",
 				reset.getMessage().cStr());
 		}
 		oa::EngineSubmissionAccess::releaseStream(inRt, stream);

@@ -136,7 +136,7 @@ TEST(TestLunarLander3dPpo, CompletesOneVectorizedGpuUpdate) {
 	auto session = oa::move(*created);
 
 	OaLogInfo(oa::LogComponent::Ml,
-		"lunarLander3dPpo(environments=%u, horizon=%u, rollouts=%u, epochs=%u, observationElements=%lld, actions=%lld, gaeGamma=%.3f)",
+		"lunarLander3dPpo(environments={}, horizon={}, rollouts={}, epochs={}, observationElements={}, actions={}, gaeGamma={:.3f})",
 		config.environments_, config.horizon_, config.rollouts_,
 		config.updateEpochs_,
 		static_cast<long long>(session->observationElements()),
@@ -158,7 +158,7 @@ TEST(TestLunarLander3dPpo, CompletesOneVectorizedGpuUpdate) {
 	EXPECT_EQ(metrics.rollout_, 1U);
 	EXPECT_EQ(session->optimizerStep(), 1U);
 	OaLogInfo(oa::LogComponent::Ml,
-		"lunarLander3dPpoUpdate(totalLoss=%.6f, policyLoss=%.6f, valueLoss=%.6f, entropy=%.6f, optimizerStep=%llu)",
+		"lunarLander3dPpoUpdate(totalLoss={:.6f}, policyLoss={:.6f}, valueLoss={:.6f}, entropy={:.6f}, optimizerStep={})",
 		static_cast<double>(metrics.totalLoss_),
 		static_cast<double>(metrics.policyLoss_),
 		static_cast<double>(metrics.valueLoss_),

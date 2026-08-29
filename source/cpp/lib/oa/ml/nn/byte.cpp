@@ -1,4 +1,4 @@
-#include <assert.h>
+#include <oa/core/std/assert.h>
 
 #include <oa/ml/byte.h>
 #include <oa/ml/autograd/matrix/autogradBlas.h>
@@ -8,8 +8,7 @@ oa::Matrix oa::ByteEmbedding::forward(const oa::Matrix& inByteIds) {
 	auto& weight = params_[0].data;
 
 	// oa::FnMatrix::gather() now handles both UInt8 and UInt32 on GPU
-	assert((inByteIds.getDtype() == oa::ScalarType::UInt8 || inByteIds.getDtype() == oa::ScalarType::UInt32) &&
-		"oa::ByteEmbedding: indices must be UInt8 or UInt32");
+	OA_REQUIRE_MSG((inByteIds.getDtype() == oa::ScalarType::UInt8 || inByteIds.getDtype() == oa::ScalarType::UInt32), "oa::ByteEmbedding: indices must be UInt8 or UInt32");
 
 	// oa::FnMatrix::gather auto-attaches the embedding-scatter gradient (oa::GradGather)
 	// when the table requires grad — no need to hand-wire it here anymore.

@@ -480,6 +480,43 @@ TEST(VideoRoundtrip, AdvertisedRateControlModesEncode)
 }
 
 
+TEST(VideoRoundtrip, H264Uhd60LevelAdmission)
+{
+	auto* engine = testEnginePtr();
+	if (engine == nullptr) GTEST_SKIP() << "No vulkan engine available";
+	auto capsResult = oa::VideoEncoder::queryEncodeCapabilities(
+		*engine,
+		oa::VideoCodec::H264);
+	if (not capsResult.isOk()) GTEST_SKIP() << capsResult.getStatus().toString();
+	const oa::VideoEncodeCapabilities& caps = *capsResult;
+	ASSERT_GT(caps.maxLevel, 0U);
+	if (caps.maxWidth < 3840U or caps.maxHeight < 2160U) {
+		GTEST_SKIP() << "Selected H.264 encoder does not admit a UHD extent";
+	}
+
+	oa::VideoEncodeProfile profile;
+	profile.codec = oa::VideoCodec::H264;
+	profile.width = 3840U;
+	profile.height = 2160U;
+	profile.frameRate = 60U;
+	profile.gopSize = 60U;
+	profile.maxBFrames = 0U;
+	profile.rateControl = oa::VideoRateControl::ConstantQp;
+	profile.constantQp = 26U;
+	auto encoderResult = oa::VideoEncoder::create(*engine, profile);
+	if (caps.maxLevel < static_cast<oa::U32>(STD_VIDEO_H264_LEVEL_IDC_5_2)) {
+		ASSERT_FALSE(encoderResult.isOk());
+		EXPECT_EQ(
+			encoderResult.getStatus().getCode(),
+			oa::StatusCode::Unavailable);
+		return;
+	}
+	ASSERT_TRUE(encoderResult.isOk()) << encoderResult.getStatus().toString();
+	oa::VideoEncoder encoder = oa::move(*encoderResult);
+	EXPECT_TRUE(encoder.close().isOk());
+}
+
+
 TEST(VideoRoundtrip, EncodeMuxDemuxH264)
 {
 	auto* engine = testEnginePtr();

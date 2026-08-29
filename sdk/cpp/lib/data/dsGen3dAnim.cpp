@@ -98,7 +98,7 @@ oa::Status oa::DsGen3dAnim::load(const oa::Path& inPath) {
 			if (s > mx) { mx = s; }
 		}
 		OaLogInfo(oa::LogComponent::Data,
-			"dsgen3danim: active channel std — min=%.3g max=%.3g | %zu/%zu "
+			"dsgen3danim: active channel std — min={:.3g} max={:.3g} | {}/{} "
 			"neutralized (dead, scale=1)",
 			static_cast<double>(mn), static_cast<double>(mx),
 			dead, std_.size());
@@ -116,7 +116,7 @@ bool oa::DsGen3dAnim::loadInternal_() {
 bool oa::DsGen3dAnim::loadUsd_() {
 	auto clipsR = oa::Usd::readUsdaMulti(path_);
 	if (clipsR.isError()) {
-		OaLogError(oa::LogComponent::Data, "dsgen3danim: usd load failed: %s",
+		OaLogError(oa::LogComponent::Data, "dsgen3danim: usd load failed: {}",
 			clipsR.getStatus().toString().cStr());
 		return false;
 	}
@@ -153,13 +153,13 @@ bool oa::DsGen3dAnim::loadUsd_() {
 		const oa::UsdNamedClip& nc = named[i];
 		auto packed = oa::PosePack::pack(nc.clip, sk);
 		if (packed.isError()) {
-			OaLogWarn(oa::LogComponent::Data, "dsgen3danim: skip clip '%s' (pack: %s)",
+			OaLogWarn(oa::LogComponent::Data, "dsgen3danim: skip clip '{}' (pack: {})",
 				nc.name.cStr(), packed.getStatus().toString().cStr());
 			continue;
 		}
 		oa::PoseClip clip = packed.getValue();
 		if (static_cast<oa::I32>(clip.poseDim) != poseDim_) {
-			OaLogWarn(oa::LogComponent::Data, "dsgen3danim: skip clip '%s' (posedim %u != %d)",
+			OaLogWarn(oa::LogComponent::Data, "dsgen3danim: skip clip '{}' (posedim {} != {})",
 				nc.name.cStr(), clip.poseDim, poseDim_);
 			continue;
 		}
@@ -182,7 +182,7 @@ bool oa::DsGen3dAnim::loadUsd_() {
 	}
 
 	if (clips_.empty()) {
-		OaLogError(oa::LogComponent::Data, "dsgen3danim: usd dataset has no packable clips: %s",
+		OaLogError(oa::LogComponent::Data, "dsgen3danim: usd dataset has no packable clips: {}",
 			path_.string().cStr());
 		return false;
 	}
@@ -194,7 +194,7 @@ bool oa::DsGen3dAnim::loadUsd_() {
 	recomputeStats_();
 
 	OaLogInfo(oa::LogComponent::Data,
-		"dsgen3danim: loaded %s (usd) — %zu clips · posedim=%d · fps=%.3g",
+		"dsgen3danim: loaded {} (usd) — {} clips · posedim={} · fps={:.3g}",
 		path_.string().cStr(), clips_.size(), poseDim_, static_cast<double>(fps_));
 	return true;
 }
@@ -265,7 +265,7 @@ void oa::DsGen3dAnim::recomputeStats_() {
 		if (std_[c] < kStdFloor) { std_[c] = 1.0f; }
 	}
 
-	OaLogInfo(oa::LogComponent::Data, "dsgen3danim: model root translation = %s",
+	OaLogInfo(oa::LogComponent::Data, "dsgen3danim: model root translation = {}",
 		rootTranslationDelta_ ? "delta" : "absolute");
 }
 

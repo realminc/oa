@@ -44,7 +44,7 @@ oa::ItTraining::ItTraining(
 		timerReady_ = status.isOk();
 		if (not timerReady_) {
 			OaLogWarn(oa::LogComponent::Ml,
-				"oa::ItTraining: GPU timer init failed (%s); GPU timing disabled",
+				"oa::ItTraining: GPU timer init failed ({}); GPU timing disabled",
 				status.getMessage().cStr());
 		}
 	}
@@ -127,7 +127,7 @@ void oa::ItTraining::reset() {
 		auto status = cfg_.program->reset();
 		if (not status.isOk()) {
 			OaLogWarn(oa::LogComponent::Ml,
-				"oa::ItTraining::reset: training program reset failed: %s",
+				"oa::ItTraining::reset: training program reset failed: {}",
 				status.getMessage().cStr());
 		}
 	}
@@ -256,7 +256,7 @@ void oa::ItTraining::next() {
 		closeStableResourceFrame_();
 		lastStatus_ = inStatus;
 		OaLogError(oa::LogComponent::Ml,
-			"oa::ItTraining: %s failed at step %lld: %s",
+			"oa::ItTraining: {} failed at step {}: {}",
 			inAction, static_cast<long long>(index_), inStatus.getMessage().cStr());
 		stopRequested_ = true;
 		phaseBodyStarted_ = false;
@@ -308,7 +308,7 @@ void oa::ItTraining::next() {
 				// execution rather than turning an unsupported op into a hard failure.
 				programCaptureDisabled_ = true;
 				OaLogWarn(oa::LogComponent::Ml,
-					"oa::ItTraining: static capture unavailable at step %lld (%s); "
+					"oa::ItTraining: static capture unavailable at step {} ({}); "
 					"continuing eagerly",
 					static_cast<long long>(index_), captureStatus.getMessage().cStr());
 			} else {
@@ -366,10 +366,10 @@ void oa::ItTraining::next() {
 				}
 				if (reportStatus.isOk()) {
 					OaLogInfo(oa::LogComponent::Ml,
-						"training graph report: %s", reportPath.string().cStr());
+						"training graph report: {}", reportPath.string().cStr());
 				} else {
 					OaLogWarn(oa::LogComponent::Ml,
-						"training graph report failed: %s",
+						"training graph report failed: {}",
 						reportStatus.getMessage().cStr());
 				}
 				programReportWritten_ = true;
@@ -442,7 +442,7 @@ void oa::ItTraining::next() {
 			timerReady_ = false;
 			lastGpuMs_ = 0.0;
 			OaLogWarn(oa::LogComponent::Ml,
-				"oa::ItTraining: device timer commit failed (%s); timing disabled",
+				"oa::ItTraining: device timer commit failed ({}); timing disabled",
 				elapsed.getStatus().getMessage().cStr());
 		}
 		if (lastGpuMs_ > 0.0) {
@@ -537,9 +537,9 @@ oa::Status oa::ItTraining::finish() {
 		const oa::F64 total = s.mean(s.totalMs);
 		const oa::F64 accounted = s.mean(s.accountedMs());
 		OaLogInfo(oa::LogComponent::Ml,
-			"training phases: steps=%lld total=%.3f ms/step body=%.3f optimizer=%.3f "
-			"compile=%.3f record=%.3f submit=%.3f wait=%.3f scalar_metric=%.3f "
-			"callbacks=%.3f unaccounted=%.3f",
+			"training phases: steps={} total={:.3f} ms/step body={:.3f} optimizer={:.3f} "
+			"compile={:.3f} record={:.3f} submit={:.3f} wait={:.3f} scalar_metric={:.3f} "
+			"callbacks={:.3f} unaccounted={:.3f}",
 			static_cast<long long>(s.count), total, s.mean(s.bodyMs),
 			s.mean(s.optimizerMs), s.mean(s.compileMs), s.mean(s.recordMs),
 			s.mean(s.submitMs), s.mean(s.waitMs), s.mean(s.scalarMetricMs),
@@ -741,7 +741,7 @@ bool oa::ItTraining::captureCallbackStatus_(
 	if (lastStatus_.isOk()) lastStatus_ = status;
 	stopRequested_ = true;
 	OaLogError(oa::LogComponent::Ml,
-		"oa::ItTraining: callback %s failed at step %lld: %s",
+		"oa::ItTraining: callback {} failed at step {}: {}",
 		inPhase, static_cast<long long>(index_), status.getMessage().cStr());
 	return false;
 }

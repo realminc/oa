@@ -314,7 +314,7 @@ void oa::Viewer::refreshWindowDecorationScale() {
 		if (const oa::Status status = rebuildWindowTitleGlyphs();
 			not status.isOk()) {
 			OaLogWarn(oa::LogComponent::Ui,
-				"oa::Viewer title scale refresh failed: %s",
+				"oa::Viewer title scale refresh failed: {}",
 				status.toString().cStr());
 		}
 	}
@@ -420,7 +420,7 @@ bool oa::Viewer::routeWindowDecorationEvent(void* inEvent) {
 		}
 		if (not succeeded) {
 			OaLogWarn(oa::LogComponent::Ui,
-				"oa::Viewer window control failed: %s", SDL_GetError());
+				"oa::Viewer window control failed: {}", SDL_GetError());
 		}
 		return true;
 	}
@@ -628,7 +628,7 @@ oa::Status oa::Viewer::runApplication(oa::Engine* inBorrowedEngine) {
 	if (engine == nullptr) {
 		auto engineResult = oa::Engine::create(engineCfg);
 		if (not engineResult.isOk()) {
-			OaLogError(oa::LogComponent::Ui, "Engine create failed: %s",
+			OaLogError(oa::LogComponent::Ui, "Engine create failed: {}",
 				engineResult.getStatus().getMessage().cStr());
 			return engineResult.getStatus();
 		}
@@ -661,26 +661,26 @@ oa::Status oa::Viewer::runApplication(oa::Engine* inBorrowedEngine) {
 		static_cast<int>(config_.height),
 		flags);
 	if (win == nullptr) {
-		OaLogError(oa::LogComponent::Ui, "SDL_CreateWindow failed: %s", SDL_GetError());
+		OaLogError(oa::LogComponent::Ui, "SDL_CreateWindow failed: {}", SDL_GetError());
 		oa::input::shutdown();
 		(void)closeOwnedEngine();
 		return oa::Status::error("SDL_CreateWindow failed");
 	}
 	if (not SDL_SetWindowMinimumSize(win, 320, 240)) {
 		OaLogWarn(oa::LogComponent::Ui,
-			"SDL_SetWindowMinimumSize failed: %s", SDL_GetError());
+			"SDL_SetWindowMinimumSize failed: {}", SDL_GetError());
 	}
 	if (not config_.customWindowDecoration) {
 		windowDecorationActive_ = false;
 	} else if (SDL_SetWindowHitTest(win, viewerWindowHitTest, nullptr)) {
 		windowDecorationActive_ = true;
 		OaLogInfo(oa::LogComponent::Ui,
-			"oa::Viewer custom window decoration active (%s)",
+			"oa::Viewer custom window decoration active ({})",
 			SDL_GetCurrentVideoDriver() != nullptr
 				? SDL_GetCurrentVideoDriver() : "unknown video driver");
 	} else {
 		OaLogWarn(oa::LogComponent::Ui,
-			"SDL window hit-testing is unavailable; using system decorations: %s",
+			"SDL window hit-testing is unavailable; using system decorations: {}",
 			SDL_GetError());
 		SDL_DestroyWindow(win);
 		win = SDL_CreateWindow(
@@ -690,7 +690,7 @@ oa::Status oa::Viewer::runApplication(oa::Engine* inBorrowedEngine) {
 			baseFlags);
 		if (win == nullptr) {
 			OaLogError(oa::LogComponent::Ui,
-				"SDL_CreateWindow fallback failed: %s", SDL_GetError());
+				"SDL_CreateWindow fallback failed: {}", SDL_GetError());
 			oa::input::shutdown();
 			(void)closeOwnedEngine();
 			return oa::Status::error("SDL_CreateWindow fallback failed");
@@ -698,7 +698,7 @@ oa::Status oa::Viewer::runApplication(oa::Engine* inBorrowedEngine) {
 		windowDecorationActive_ = false;
 		if (not SDL_SetWindowMinimumSize(win, 320, 240)) {
 			OaLogWarn(oa::LogComponent::Ui,
-				"SDL_SetWindowMinimumSize fallback failed: %s",
+				"SDL_SetWindowMinimumSize fallback failed: {}",
 				SDL_GetError());
 		}
 	}
@@ -708,7 +708,7 @@ oa::Status oa::Viewer::runApplication(oa::Engine* inBorrowedEngine) {
 	ViewerSdlWindow surfaceWindow(win);
 	auto surfaceResult = presenter.createSurface(surfaceWindow);
 	if (not surfaceResult.isOk()) {
-		OaLogError(oa::LogComponent::Ui, "vulkan surface creation failed: %s",
+		OaLogError(oa::LogComponent::Ui, "vulkan surface creation failed: {}",
 			surfaceResult.getStatus().toString().cStr());
 		SDL_DestroyWindow(win);
 		oa::input::shutdown();
@@ -726,12 +726,12 @@ oa::Status oa::Viewer::runApplication(oa::Engine* inBorrowedEngine) {
 
 	window_ = static_cast<void*>(win);
 	if (auto s = openSource(rt); not s.isOk()) {
-		OaLogError(oa::LogComponent::Ui, "Device-ready initialization failed: %s",
+		OaLogError(oa::LogComponent::Ui, "Device-ready initialization failed: {}",
 			s.getMessage().cStr());
 		const oa::Status closeStatus = closeSource();
 		if (not closeStatus.isOk()) {
 			OaLogError(oa::LogComponent::Ui,
-				"source cleanup after open failure failed: %s",
+				"source cleanup after open failure failed: {}",
 				closeStatus.toString().cStr());
 		}
 		(void)presenter.destroySurface(surface);
@@ -744,7 +744,7 @@ oa::Status oa::Viewer::runApplication(oa::Engine* inBorrowedEngine) {
 
 	// phase C — the presenter owns WSI; the viewer owns its UI render target.
 	if (auto s = initPresentation(presenter, surface); not s.isOk()) {
-		OaLogError(oa::LogComponent::Ui, "oa::Viewer initialization failed: %s", s.getMessage().cStr());
+		OaLogError(oa::LogComponent::Ui, "oa::Viewer initialization failed: {}", s.getMessage().cStr());
 		(void)closeSource();
 		(void)presenter.destroySurface(surface);
 		SDL_DestroyWindow(win);
@@ -761,7 +761,7 @@ oa::Status oa::Viewer::runApplication(oa::Engine* inBorrowedEngine) {
 		const oa::Status presentationStatus = destroyPresentation();
 		if (not presentationStatus.isOk()) {
 			OaLogError(oa::LogComponent::Ui,
-				"Presentation cleanup after view initialization failed: %s",
+				"Presentation cleanup after view initialization failed: {}",
 				presentationStatus.toString().cStr());
 		}
 		(void)presenter.destroySurface(surface);
@@ -791,7 +791,7 @@ oa::Status oa::Viewer::runApplication(oa::Engine* inBorrowedEngine) {
 					static_cast<oa::U32>(sdlEvent.window.data1),
 					static_cast<oa::U32>(sdlEvent.window.data2)); not s.isOk()) {
 					OaLogError(oa::LogComponent::Ui,
-						"Presenter resize failed: %s", s.getMessage().cStr());
+						"Presenter resize failed: {}", s.getMessage().cStr());
 					runStatus = s;
 					running_ = false;
 				}
@@ -822,7 +822,7 @@ oa::Status oa::Viewer::runApplication(oa::Engine* inBorrowedEngine) {
 
 		if (const oa::Status updateStatus = update(deltaMs); not updateStatus.isOk()) {
 			OaLogError(oa::LogComponent::Ui,
-				"oa::Viewer update failed: %s", updateStatus.toString().cStr());
+				"oa::Viewer update failed: {}", updateStatus.toString().cStr());
 			runStatus = updateStatus;
 			running_ = false;
 			break;
@@ -832,7 +832,7 @@ oa::Status oa::Viewer::runApplication(oa::Engine* inBorrowedEngine) {
 			oa::Span<const oa::UiEvent>(events.data(), events.size()));
 			not routeStatus.isOk()) {
 			OaLogError(oa::LogComponent::Ui,
-				"oa::Viewer input failed: %s", routeStatus.toString().cStr());
+				"oa::Viewer input failed: {}", routeStatus.toString().cStr());
 			runStatus = routeStatus;
 			running_ = false;
 			endFrame();
@@ -841,7 +841,7 @@ oa::Status oa::Viewer::runApplication(oa::Engine* inBorrowedEngine) {
 		if (const oa::Status renderStatus = render(ui_);
 			not renderStatus.isOk()) {
 			OaLogError(oa::LogComponent::Ui,
-				"oa::Viewer source render failed: %s",
+				"oa::Viewer source render failed: {}",
 				renderStatus.toString().cStr());
 			runStatus = renderStatus;
 			running_ = false;
@@ -857,7 +857,7 @@ oa::Status oa::Viewer::runApplication(oa::Engine* inBorrowedEngine) {
 				nativeTextInputActive = wantsTextInput;
 			} else {
 				OaLogWarn(oa::LogComponent::Ui,
-					"SDL text-input state change failed: %s", SDL_GetError());
+					"SDL text-input state change failed: {}", SDL_GetError());
 			}
 		}
 		if (wantsTextInput && nativeTextInputActive) {
@@ -890,7 +890,7 @@ oa::Status oa::Viewer::runApplication(oa::Engine* inBorrowedEngine) {
 		if (ui_.takeClipboardWrite(clipboardWrite)
 			&& !SDL_SetClipboardText(clipboardWrite.cStr())) {
 			OaLogWarn(oa::LogComponent::Ui,
-				"SDL clipboard write failed: %s", SDL_GetError());
+				"SDL clipboard write failed: {}", SDL_GetError());
 		}
 
 		oa::Status frameStatus = oa::Status::ok();
@@ -924,7 +924,7 @@ oa::Status oa::Viewer::runApplication(oa::Engine* inBorrowedEngine) {
 		if (frameStatus.isOk()) frameStatus = present();
 		if (frameStatus.isError()) {
 			OaLogError(oa::LogComponent::Ui,
-				"oa::Viewer frame failed: %s", frameStatus.toString().cStr());
+				"oa::Viewer frame failed: {}", frameStatus.toString().cStr());
 			runStatus = frameStatus;
 			running_ = false;
 		}
@@ -940,7 +940,7 @@ oa::Status oa::Viewer::runApplication(oa::Engine* inBorrowedEngine) {
 	// sampling work before user resources and the compose image are destroyed.
 	if (const oa::Status syncStatus = presenter.syncGraphicsBatch(); not syncStatus.isOk()) {
 		OaLogError(oa::LogComponent::Ui,
-			"syncGraphicsBatch failed during UI shutdown: %s",
+			"syncGraphicsBatch failed during UI shutdown: {}",
 			syncStatus.getMessage().cStr());
 		if (runStatus.isOk()) runStatus = syncStatus;
 	}
@@ -950,7 +950,7 @@ oa::Status oa::Viewer::runApplication(oa::Engine* inBorrowedEngine) {
 	if (const oa::Status presentStatus = presenter.waitPresentationIdle();
 		not presentStatus.isOk()) {
 		OaLogError(oa::LogComponent::Ui,
-			"presentation drain failed during UI shutdown: %s",
+			"presentation drain failed during UI shutdown: {}",
 			presentStatus.toString().cStr());
 		if (runStatus.isOk()) runStatus = presentStatus;
 	}

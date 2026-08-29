@@ -4,13 +4,6 @@
 #include <oa/ml/trainingSession.h>
 #include <oa/ui/viewer.h>
 
-#include <algorithm>
-#include <array>
-#include <chrono>
-#include <cmath>
-#include <cstdio>
-#include <limits>
-
 namespace {
 
 class CartPoleLiveSource final : public oa::ViewerLiveSource {
@@ -64,7 +57,7 @@ public:
 	}
 
 	oa::Status update(oa::F32 inDeltaMs) override {
-		if (!std::isfinite(inDeltaMs) || inDeltaMs < 0.0F) {
+		if (!oa::isFinite(inDeltaMs) || inDeltaMs < 0.0F) {
 			return oa::Status::invalidArgument(
 				"CartPole viewer update requires a finite non-negative delta");
 		}
@@ -97,14 +90,13 @@ public:
 		}
 		if (!session_->isDone()) {
 			const oa::U64 stepBefore = session_->optimizerStep();
-			const auto begin = std::chrono::steady_clock::now();
+			const auto begin = oa::steadyNow();
 			if (const oa::Status status = session_->advance(); status.isError()) {
 				fail_(status);
 				return status;
 			}
 			const oa::F32 elapsed = static_cast<oa::F32>(
-				std::chrono::duration<oa::F64, std::milli>(
-					std::chrono::steady_clock::now() - begin).count());
+				(oa::steadyNow() - begin).toMilliseconds());
 			if (session_->optimizerStep() != stepBefore) updateMs_.pushBack(elapsed);
 			if (rePauseAfterStep_ && session_->optimizerStep() != stepBefore) {
 				(void)session_->control().pause();
@@ -120,7 +112,7 @@ public:
 					return evaluation.getStatus();
 				}
 				OaLogInfo(oa::LogComponent::App,
-					"CartPole rollout %u/%u: return %.2f · loss %.5f",
+					"CartPole rollout {}/{}: return {:.2f} · loss {:.5f}",
 					rollout, session_->config().rollouts,
 					evaluation->meanCompletedReturn,
 					session_->metrics().totalLoss);
@@ -128,7 +120,7 @@ public:
 		} else {
 			demoAccumMs_ += inDeltaMs;
 			if (demoAccumMs_ >= 20.0F) {
-				demoAccumMs_ = std::fmod(demoAccumMs_, 20.0F);
+				demoAccumMs_ = oa::fmod(demoAccumMs_, 20.0F);
 				if (const oa::Status status = session_->demonstrate(); status.isError()) {
 					fail_(status);
 					return status;
@@ -149,36 +141,36 @@ public:
 		const oa::TextAtlas& inTextAtlas,
 		oa::U32 inWidth,
 		oa::U32 inHeight) override {
-		if (inWidth > static_cast<oa::U32>(std::numeric_limits<oa::I32>::max())
-			|| inHeight > static_cast<oa::U32>(std::numeric_limits<oa::I32>::max())) {
+		if (inWidth > static_cast<oa::U32>(oa::Limits<oa::I32>::max())
+			|| inHeight > static_cast<oa::U32>(oa::Limits<oa::I32>::max())) {
 			return oa::Status::invalidArgument(
 				"CartPole viewer extent exceeds signed UI coordinates");
 		}
 		const oa::I32 width = static_cast<oa::I32>(inWidth);
 		const oa::I32 height = static_cast<oa::I32>(inHeight);
 		if (width < 320 || height < 240) return oa::Status::ok();
-		const oa::F32 uiScale = std::clamp(
+		const oa::F32 uiScale = oa::clamp(
 			static_cast<oa::F32>(height) / 720.0F, 1.0F, 2.0F);
 		const oa::I32 plotHeaderHeight = static_cast<oa::I32>(
-			std::round(42.0F * uiScale));
+			oa::round(42.0F * uiScale));
 		const oa::I32 margin = 20;
 		const oa::I32 gap = 16;
-		const oa::I32 simulationWidth = std::max<oa::I32>(200,
+		const oa::I32 simulationWidth = oa::max<oa::I32>(200,
 			static_cast<oa::I32>(static_cast<oa::F32>(width) * 0.62F));
 		const oa::PixelRect simulation{
 			margin, margin,
-			std::min(simulationWidth, width - margin * 2 - 160),
+			oa::min(simulationWidth, width - margin * 2 - 160),
 			height - margin * 2};
 		const oa::I32 plotX = simulation.x + simulation.w + gap;
 		const oa::I32 plotWidth = width - plotX - margin;
-		const oa::I32 plotHeight = std::max<oa::I32>(48,
+		const oa::I32 plotHeight = oa::max<oa::I32>(48,
 			(simulation.h - gap * 3) / 4);
-		const std::array<oa::PixelRect, 4> plotRects{{
-			{plotX, margin, plotWidth, plotHeight},
-			{plotX, margin + (plotHeight + gap), plotWidth, plotHeight},
-			{plotX, margin + (plotHeight + gap) * 2, plotWidth, plotHeight},
-			{plotX, margin + (plotHeight + gap) * 3, plotWidth, plotHeight},
-		}};
+		const oa::Array<oa::PixelRect, 4> plotRects{
+			oa::PixelRect{plotX, margin, plotWidth, plotHeight},
+			oa::PixelRect{plotX, margin + (plotHeight + gap), plotWidth, plotHeight},
+			oa::PixelRect{plotX, margin + (plotHeight + gap) * 2, plotWidth, plotHeight},
+			oa::PixelRect{plotX, margin + (plotHeight + gap) * 3, plotWidth, plotHeight},
+		};
 
 		inUi.rect(simulation, {0.055F, 0.055F, 0.055F, 1.0F});
 		inUi.rectOutline(simulation, {1.0F, 1.0F, 1.0F, 0.10F}, 1);
@@ -192,10 +184,10 @@ public:
 		const oa::F32 travel = static_cast<oa::F32>(simulation.w) * 0.34F;
 		const oa::F32 cartX = static_cast<oa::F32>(simulation.x)
 			+ static_cast<oa::F32>(simulation.w) * 0.5F
-			+ std::clamp(snapshot_.cartPosition / 2.4F, -1.0F, 1.0F) * travel;
+			+ oa::clamp(snapshot_.cartPosition / 2.4F, -1.0F, 1.0F) * travel;
 		const oa::F32 cartY = groundY;
-		const oa::I32 cartWidth = std::max<oa::I32>(52, simulation.w / 10);
-		const oa::I32 cartHeight = std::max<oa::I32>(24, simulation.h / 18);
+		const oa::I32 cartWidth = oa::max<oa::I32>(52, simulation.w / 10);
+		const oa::I32 cartHeight = oa::max<oa::I32>(24, simulation.h / 18);
 		const oa::PixelRect cart{
 			static_cast<oa::I32>(cartX) - cartWidth / 2,
 			static_cast<oa::I32>(cartY) - cartHeight / 2,
@@ -205,11 +197,11 @@ public:
 		inUi.rect(cart, cartColor.withAlpha(0.88F));
 		inUi.rectOutline(cart, {1.0F, 1.0F, 1.0F, 0.55F}, 2);
 		const oa::vlm::Vec2 pivot{cartX, static_cast<oa::F32>(cart.y)};
-		const oa::F32 poleLength = std::min<oa::F32>(
+		const oa::F32 poleLength = oa::min<oa::F32>(
 			220.0F, static_cast<oa::F32>(simulation.h) * 0.38F);
 		const oa::vlm::Vec2 tip{
-			pivot.x + std::sin(snapshot_.poleAngle) * poleLength,
-			pivot.y - std::cos(snapshot_.poleAngle) * poleLength};
+			pivot.x + oa::sin(snapshot_.poleAngle) * poleLength,
+			pivot.y - oa::cos(snapshot_.poleAngle) * poleLength};
 		inUi.line(pivot, tip, {0.95F, 0.95F, 0.95F, 1.0F}, 8.0F);
 		inUi.rect({static_cast<oa::I32>(pivot.x) - 6,
 			static_cast<oa::I32>(pivot.y) - 6, 12, 12},
@@ -247,7 +239,7 @@ public:
 			simulation.w - 40, 6}, {0.18F, 0.18F, 0.18F, 1.0F});
 		inUi.rect({simulation.x + 20, simulation.y + simulation.h - 18,
 			static_cast<oa::I32>(static_cast<oa::F32>(simulation.w - 40)
-				* std::clamp(progress, 0.0F, 1.0F)), 6}, cartColor);
+				* oa::clamp(progress, 0.0F, 1.0F)), 6}, cartColor);
 		if (session_->control().state() == oa::TrainingState::Paused) {
 			inUi.rect({simulation.x + 10, simulation.y + 10, 6, 38},
 				oa::Color::warning());
@@ -297,7 +289,7 @@ private:
 		if (snapshot.isError()) return snapshot.getStatus();
 		snapshot_ = *snapshot;
 		OaLogInfo(oa::LogComponent::App,
-			"CartPole initial held-out return: %.2f",
+			"CartPole initial held-out return: {:.2f}",
 			evaluation->meanCompletedReturn);
 		return oa::Status::ok();
 	}
@@ -306,7 +298,7 @@ private:
 		if (failure_.isOk()) failure_ = inStatus;
 		if (session_) (void)session_->control().stop();
 		OaLogError(oa::LogComponent::App,
-			"CartPole viewer failed: %s", inStatus.toString().cStr());
+			"CartPole viewer failed: {}", inStatus.toString().cStr());
 	}
 
 	static void plot_(
@@ -321,15 +313,15 @@ private:
 		if (inRect.w <= 0 || inRect.h <= 0 || inValues.empty()) return;
 		inUi.rect(inRect, {0.055F, 0.055F, 0.055F, 1.0F});
 		inUi.rect({
-			inRect.x + static_cast<oa::I32>(std::round(8.0F * inUiScale)),
-			inRect.y + static_cast<oa::I32>(std::round(9.0F * inUiScale)),
-			std::max<oa::I32>(3, static_cast<oa::I32>(std::round(3.0F * inUiScale))),
-			static_cast<oa::I32>(std::round(24.0F * inUiScale))}, inColor);
+			inRect.x + static_cast<oa::I32>(oa::round(8.0F * inUiScale)),
+			inRect.y + static_cast<oa::I32>(oa::round(9.0F * inUiScale)),
+			oa::max<oa::I32>(3, static_cast<oa::I32>(oa::round(3.0F * inUiScale))),
+			static_cast<oa::I32>(oa::round(24.0F * inUiScale))}, inColor);
 		const oa::PixelRect plotRect{
 			inRect.x,
 			inRect.y + inHeaderHeight,
 			inRect.w,
-			std::max<oa::I32>(1, inRect.h - inHeaderHeight)};
+			oa::max<oa::I32>(1, inRect.h - inHeaderHeight)};
 		inUi.beginPanel(inId, plotRect);
 		inUi.plotLine(inId, inValues.data(),
 			static_cast<oa::I32>(inValues.size()),
@@ -375,7 +367,7 @@ private:
 		const oa::TextAtlas& inTextAtlas,
 		oa::I32 inWidth,
 		oa::I32 inHeight,
-		const std::array<oa::PixelRect, 4>& inRects,
+		const oa::Array<oa::PixelRect, 4>& inRects,
 		oa::PixelRect inSimulationRect,
 		oa::F32 inUiScale) {
 		oa::I32 selected = -1;
@@ -392,15 +384,12 @@ private:
 			const oa::F32 evaluation = metrics.evaluationReturnHistory.empty()
 				? 0.0F : metrics.evaluationReturnHistory.back();
 			const oa::F32 updateMs = updateMs_.empty() ? 0.0F : updateMs_.back();
-			char titles[4][96]{};
-			std::snprintf(titles[0], sizeof(titles[0]),
-				"held-out return   %.2f", evaluation);
-			std::snprintf(titles[1], sizeof(titles[1]),
-				"PPO loss   %.5f", metrics.totalLoss);
-			std::snprintf(titles[2], sizeof(titles[2]),
-				"Policy entropy   %.4f", metrics.entropy);
-			std::snprintf(titles[3], sizeof(titles[3]),
-				"Update time   %.2f ms", updateMs);
+			const oa::Array<oa::String, 4> titles{
+				oa::format("held-out return   {:.2f}", evaluation),
+				oa::format("PPO loss   {:.5f}", metrics.totalLoss),
+				oa::format("Policy entropy   {:.4f}", metrics.entropy),
+				oa::format("Update time   {:.2f} ms", updateMs),
+			};
 			constexpr const char* descriptions[4] = {
 				"Mean completed reward on a fixed evaluation seed",
 				"clipped policy + value loss - entropy bonus",
@@ -422,8 +411,7 @@ private:
 					y + 33.0F * inUiScale, 10.0F * inUiScale,
 					{0.62F, 0.62F, 0.62F, 1.0F}, glyphs);
 			}
-			char fps[64]{};
-			std::snprintf(fps, sizeof(fps), "Viewer   %.1f FPS", viewerFps_);
+			const oa::String fps = oa::format("Viewer   {:.1f} FPS", viewerFps_);
 			appendText_(atlas, fps,
 				static_cast<oa::F32>(inSimulationRect.x) + 20.0F * inUiScale,
 				static_cast<oa::F32>(inSimulationRect.y) + 28.0F * inUiScale,
@@ -457,7 +445,7 @@ private:
 	oa::UniquePtr<TutorialCartPolePpo> session_;
 	TutorialCartPoleSnapshot snapshot_;
 	oa::Vector<oa::F32> updateMs_;
-	std::array<oa::GlyphBuffer, kLabelSlotCount> labelSlots_;
+	oa::Array<oa::GlyphBuffer, kLabelSlotCount> labelSlots_;
 	oa::U32 lastEvaluatedRollout_ = 0;
 	oa::U32 nextLabelSlot_ = 0;
 	oa::I32 activeLabelSlot_ = -1;

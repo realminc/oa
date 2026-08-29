@@ -1423,7 +1423,7 @@ def _outputAllocStmt(op: dict, namespace: str = "oa::FnMatrix") -> str:
 		)
 		return (
 		 "oa::MatrixShape outShape = inA.getShape();\n"
-		 f"\tassert(outShape.rank > 0 and inA.size(-1) % 2 == 0{paramCheck});\n"
+		 f"\tOA_REQUIRE(outShape.rank > 0 and inA.size(-1) % 2 == 0{paramCheck});\n"
 		 "\toutShape.dims[static_cast<oa::Usize>(outShape.rank - 1)] = inA.size(-1) / 2;\n"
 		 f"\toa::Matrix out = oa::FnMatrix::empty(outShape, {dtExpr});"
 		)
@@ -1757,13 +1757,13 @@ def emitCppFile(ops: list[dict], schemaName: str, category: str,
 	out.append("#include <oa/core/bufferAccess.h>\n")
 	out.append("#include <oa/runtime/executionSession.h>\n")
 	out.append("#include <oa/core/validation.h>\n\n")
-	needsAssert = any(
+	needsContract = any(
 	 op.get("output", {}).get("shape") == "last_dim_half"
 	 and op.get("body", "auto") not in ("manual_session", "cpu_util")
 	 for op in ops
 	)
-	if needsAssert:
-		out.append("#include <assert.h>\n\n")
+	if needsContract:
+		out.append("#include <oa/core/std/assert.h>\n\n")
 	needsDivCeil = any(
 	 op.get("body", "auto") not in ("manual_session", "cpu_util", "cpp_expr")
 	 for op in ops

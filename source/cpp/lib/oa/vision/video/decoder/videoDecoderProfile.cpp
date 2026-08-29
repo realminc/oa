@@ -91,17 +91,34 @@ oa::Result<oa::VideoProfile> resolveDecodeProfile(const oa::VideoProfile& inProf
 
 bool isDecodePathImplemented(const oa::VideoProfile& inProfile)
 {
-	if (inProfile.chromaSubsampling != oa::VideoChromaSubsampling::Yuv420 or
-		inProfile.lumaBitDepth != oa::VideoBitDepth::Bit8 or inProfile.chromaBitDepth != oa::VideoBitDepth::Bit8) {
+	if (inProfile.chromaSubsampling != oa::VideoChromaSubsampling::Yuv420
+		or inProfile.lumaBitDepth != inProfile.chromaBitDepth) {
 		return false;
 	}
+	const bool is8Bit = inProfile.lumaBitDepth == oa::VideoBitDepth::Bit8;
+	const bool is10Bit = inProfile.lumaBitDepth == oa::VideoBitDepth::Bit10;
 	switch (inProfile.standardProfile) {
+	case oa::VideoCodecProfile::H264Baseline:
+	case oa::VideoCodecProfile::H264Main:
 	case oa::VideoCodecProfile::H264High:
-		return inProfile.codec == oa::VideoCodec::H264 and
+		return is8Bit and inProfile.codec == oa::VideoCodec::H264 and
 			   inProfile.h264PictureLayout == oa::VideoH264PictureLayout::Progressive;
-	case oa::VideoCodecProfile::H265Main: return inProfile.codec == oa::VideoCodec::H265;
-	case oa::VideoCodecProfile::Av1Main: return inProfile.codec == oa::VideoCodec::AV1 and not inProfile.av1FilmGrain;
-	case oa::VideoCodecProfile::Vp9Profile0: return inProfile.codec == oa::VideoCodec::VP9;
+	case oa::VideoCodecProfile::H265Main:
+		return is8Bit and inProfile.codec == oa::VideoCodec::H265;
+	case oa::VideoCodecProfile::H265Main10:
+		return is10Bit and inProfile.codec == oa::VideoCodec::H265;
+	case oa::VideoCodecProfile::H265FormatRangeExtensions:
+		// The qualified Range-Extensions subset is the Main-Intra-compatible
+		// 8/10-bit 4:2:0 surface. Extension tools and every non-4:2:0 axis remain
+		// closed until their Std structures and native formats are proven.
+		return (is8Bit or is10Bit) and inProfile.codec == oa::VideoCodec::H265;
+	case oa::VideoCodecProfile::Av1Main:
+		return (is8Bit or is10Bit) and inProfile.codec == oa::VideoCodec::AV1
+			and not inProfile.av1FilmGrain;
+	case oa::VideoCodecProfile::Vp9Profile0:
+		return is8Bit and inProfile.codec == oa::VideoCodec::VP9;
+	case oa::VideoCodecProfile::Vp9Profile2:
+		return is10Bit and inProfile.codec == oa::VideoCodec::VP9;
 	default: return false;
 	}
 }

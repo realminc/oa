@@ -8,13 +8,10 @@
 #include <oa/ml.h>
 #include <oa/ml/autograd.h>
 
-#include <cmath>
-#include <cstdlib>
-#include <cstring>
-
+#include <stdlib.h>
 inline bool nlpBpeUseMuon() {
-	const char* value = std::getenv("OA_NLP_USE_MUON");
-	return value != nullptr and std::strcmp(value, "1") == 0;
+	const char* value = ::getenv("OA_NLP_USE_MUON");
+	return value != nullptr and oa::strcmp(value, "1") == 0;
 }
 
 inline oa::UniquePtr<oa::Optimizer> makeNlpBpeOptimizer(
@@ -162,29 +159,29 @@ void runNlpBpeTutorial(const char* inTitle, const char* inModelDescription,
 	NlpBpeTokenizer tokenizer(nlpCorpus(), kBpeVocabSize);
 	const auto corpusTokens = tokenizer.encode(nlpCorpus());
 	ASSERT_EQ(tokenizer.decode(corpusTokens), oa::String(nlpCorpus()));
-	const oa::I64 corpusBytes = static_cast<oa::I64>(std::strlen(nlpCorpus()));
+	const oa::I64 corpusBytes = static_cast<oa::I64>(oa::strlen(nlpCorpus()));
 	const oa::F64 corpusBytesPerToken = static_cast<oa::F64>(corpusBytes) / static_cast<oa::F64>(corpusTokens.size());
 
-	std::printf("\n╔══════════════════════════════════════════════════════════════════╗\n");
-	std::printf("║  %-62s║\n", inTitle);
-	std::printf("╚══════════════════════════════════════════════════════════════════╝\n\n");
-	std::printf("tokenizer: byte BPE · vocab=%d (256 bytes + %d merges)\n", tokenizer.vocabSize(), tokenizer.mergeCount());
-	std::printf("compression: %lld bytes → %zu tokens · %.3f byte/token · %.1f%% fewer positions\n",
+	oa::print("\n╔══════════════════════════════════════════════════════════════════╗");
+	oa::print("║  {:<62}║", inTitle);
+	oa::print("╚══════════════════════════════════════════════════════════════════╝\n");
+	oa::print("tokenizer: byte BPE · vocab={} (256 bytes + {} merges)", tokenizer.vocabSize(), tokenizer.mergeCount());
+	oa::print("compression: {} bytes → {} tokens · {:.3f} byte/token · {:.1f}% fewer positions",
 		static_cast<long long>(corpusBytes), corpusTokens.size(), corpusBytesPerToken,
 		100.0 * (1.0 - static_cast<oa::F64>(corpusTokens.size()) / static_cast<oa::F64>(corpusBytes)));
-	std::printf("context coverage: %d BPE tokens ≈ %.1f source bytes at corpus average\n",
+	oa::print("context coverage: {} BPE tokens ≈ {:.1f} source bytes at corpus average",
 		kContextLen, static_cast<oa::F64>(kContextLen) * corpusBytesPerToken);
-	std::printf("Task: dense next-token at every position · source throughput measured as exact byte/s\n\n");
+	oa::print("Task: dense next-token at every position · source throughput measured as exact byte/s\n");
 
 	auto model = oa::makeShared<Model>();
 	auto params = model->allParameterPtrs();
 	auto opt = makeNlpBpeOptimizer(params, inLearningRate);
-	std::printf("Model: %s\n", inModelDescription);
+	oa::print("Model: {}", inModelDescription);
 	if (nlpBpeUseMuon()) {
-		std::printf("params: %lld    Optimizer: Muon(lr=0.02, all-parameter experiment)\n\n",
+		oa::print("params: {}    Optimizer: Muon(lr=0.02, all-parameter experiment)\n",
 			static_cast<long long>(model->numParameters()));
 	} else {
-		std::printf("params: %lld    Optimizer: AdamW(lr=%.3g)\n\n",
+		oa::print("params: {}    Optimizer: AdamW(lr={:.3g})\n",
 			static_cast<long long>(model->numParameters()), static_cast<double>(inLearningRate));
 	}
 
@@ -197,7 +194,7 @@ void runNlpBpeTutorial(const char* inTitle, const char* inModelDescription,
 		.sourceUnit = "byte",
 		.timerName = inTimerName,
 	});
-	std::printf("training: %d steps · batch=%d · sequence=%d BPE tokens\n", kSteps, kBatch, kContextLen);
+	oa::print("training: {} steps · batch={} · sequence={} BPE tokens", kSteps, kBatch, kContextLen);
 
 	oa::Matrix x, y;
 	oa::F32 initialLoss = 0.0F;
@@ -217,12 +214,12 @@ void runNlpBpeTutorial(const char* inTitle, const char* inModelDescription,
 	const oa::F32 accuracy = nlpAccuracyAllPositions(*model, x, y, tokenizer.vocabSize());
 	const oa::F64 finalBytesPerToken = sampler.lastBatchBytesPerToken();
 
-	std::printf("\nEvaluation:\n");
-	std::printf("  Random-loss baseline ln(%d) = %.4f\n", tokenizer.vocabSize(), std::log(static_cast<double>(tokenizer.vocabSize())));
-	std::printf("  Final batch: %.3f byte/token · %.4f bits/byte\n",
+	oa::print("\nEvaluation:");
+	oa::print("  Random-loss baseline ln({}) = {:.4f}", tokenizer.vocabSize(), oa::log(static_cast<double>(tokenizer.vocabSize())));
+	oa::print("  Final batch: {:.3f} byte/token · {:.4f} bits/byte",
 		finalBytesPerToken, nlpBitsPerByte(finalLoss, finalBytesPerToken));
-	std::printf("  Token accuracy: %.1f%% (compare within BPE only)\n", accuracy);
-	std::printf("\nGeneration:\n  prompt: '%s'\n  generated: '%s'\n\n",
+	oa::print("  Token accuracy: {:.1f}% (compare within BPE only)", accuracy);
+	oa::print("\nGeneration:\n  prompt: '{}'\n  generated: '{}'\n",
 		kNlpGenerationPrompt,
 		nlpGenerateBpeGreedy(*model, tokenizer, kNlpGenerationPrompt,
 			kNlpGenerationBytes).cStr());

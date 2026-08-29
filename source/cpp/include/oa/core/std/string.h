@@ -8,7 +8,7 @@
 // binding, or serialization boundary rather than in this foundation type.
 
 #include <oa/core/std/memory.h>
-#include <oa/core/assert.h>
+#include <oa/core/std/assert.h>
 #include <oa/core/std/allocator.h>
 #include <oa/core/std/stringView.h>
 

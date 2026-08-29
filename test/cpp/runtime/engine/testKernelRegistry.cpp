@@ -441,6 +441,13 @@ TEST_VK(KernelRegistryTest, EmbeddedRegistryIndexAndNameAgree) {
 	EXPECT_EQ(oavk::findSpirvByIndex(count), nullptr);
 }
 
+TEST_VK(KernelRegistryTest, HybridYcbcrKernelsAreExcludedFromDefaultPreloadLayout) {
+	EXPECT_FALSE(oa::computeKernelUsesDefaultBindlessPipeline("CvtNv12YcbcrToRgba"));
+	EXPECT_FALSE(oa::computeKernelUsesDefaultBindlessPipeline("CvtNv12YcbcrToBf16"));
+	EXPECT_TRUE(oa::computeKernelUsesDefaultBindlessPipeline("CvtNv12ToRgb"));
+	EXPECT_FALSE(oa::computeKernelUsesDefaultBindlessPipeline(nullptr));
+}
+
 TEST_VK(KernelRegistryTest, MatmulVariantsOwnExactEmbeddedCapabilityMetadata) {
 	std::unordered_set<std::string> variantNames;
 	for (const auto& variant : oa::matmulRegistry::all()) {

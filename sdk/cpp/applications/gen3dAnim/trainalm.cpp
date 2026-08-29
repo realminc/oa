@@ -593,7 +593,7 @@ public:
 			}
 		}
 		const oa::F64 perplexity = std::exp(entropy);
-		std::printf("epoch %lld: codebook %d/%d live | ppl %.1f | vel %.6f | commit %.6f\n",
+		oa::print("epoch {}: codebook {}/{} live | ppl {:.1f} | vel {:.6f} | commit {:.6f}",
 			static_cast<long long>(inIter.epoch()), live, numCodes_,
 			perplexity, velMetric.result(), commitMetric.result());
 	}
@@ -687,7 +687,7 @@ public:
 	void onEpochEnd(oa::ItTraining&) override {
 		if (samples_ == 0) return;
 		const auto samples = static_cast<oa::F64>(samples_);
-		std::printf("MoE routing: %d layers · entropy %.3f · max-load %.2fx · dead %.2f/layer\n",
+		oa::print("MoE routing: {} layers · entropy {:.3f} · max-load {:.2f}x · dead {:.2f}/layer",
 			layers_, entropySum_ / samples, maxLoadSum_ / samples,
 			static_cast<oa::F64>(deadSum_) / samples);
 	}
@@ -813,8 +813,8 @@ struct TrainAlmApp : oa::ComputeApp {
 		}
 		const oa::Status status = alm->saveBundle(engine(), bundlePath);
 		if (status.isOk()) {
-			std::printf("Saved OaAlm: %s\n", bundlePath.cStr());
-			std::printf("  stage checkpoints: %s · %s\n",
+			oa::print("Saved OaAlm: {}", bundlePath.cStr());
+			oa::print("  stage checkpoints: {} · {}",
 				tokMgr_->masterPath().cStr(), lmMgr_->masterPath().cStr());
 			std::fflush(stdout);
 		}
@@ -886,7 +886,7 @@ struct TrainAlmApp : oa::ComputeApp {
 		constexpr oa::I32 batchSize = 16;
 		std::vector<oa::F32> features(prompts.size() * static_cast<oa::Usize>(dim));
 		auto& ctx = oa::ExecutionSession::getActive();
-		std::printf("Native CLIP bake: %zu captions + unconditional · batch=%d · vulkan\n",
+		oa::print("Native CLIP bake: {} captions + unconditional · batch={} · vulkan",
 			prompts.size() - 1, batchSize);
 		for (oa::Usize start = 0; start < prompts.size(); start += batchSize) {
 			const oa::I32 count = static_cast<oa::I32>(
@@ -912,10 +912,10 @@ struct TrainAlmApp : oa::ComputeApp {
 				host.data(), host.size() * sizeof(oa::F32));
 			ctx.clear();
 			const oa::Usize done = start + static_cast<oa::Usize>(count);
-			std::printf("  encoded %zu/%zu captions\r", done, prompts.size());
+			oa::write("  encoded {}/{} captions\r", done, prompts.size());
 			std::fflush(stdout);
 		}
-		std::printf("\n");
+		oa::print("");
 
 		const oa::Path outDir = oa::Path(c.dataset) / "text_feats";
 		OA_RETURN_IF_ERROR(oa::Filesystem::createDirectories(outDir));
@@ -937,7 +937,7 @@ struct TrainAlmApp : oa::ComputeApp {
 			+ "  \"producer\": \"oa::ClipTextAg/vulkan\"\n"
 			+ "}\n";
 		OA_RETURN_IF_ERROR(writeTextAtomic(outDir / "manifest.json", manifest));
-		std::printf("Native CLIP cache: %zu clips -> %s\n",
+		oa::print("Native CLIP cache: {} clips -> {}",
 			records.size(), outDir.string().cStr());
 		return oa::Status::ok();
 	}
@@ -982,7 +982,7 @@ struct TrainAlmApp : oa::ComputeApp {
 
 		ds_ = new oa::DsCombatMotionProcessed(c.dataset, c.split, c.maxClips);
 		if (not ds_->ok()) {
-			OaLogError(oa::LogComponent::Ml, "trainalm: failed to load CMP from %s", c.dataset.cStr());
+			OaLogError(oa::LogComponent::Ml, "trainalm: failed to load CMP from {}", c.dataset.cStr());
 			isRunning = false; return oa::Status::ok();
 		}
 		featDim_   = ds_->featDim();
@@ -991,7 +991,7 @@ struct TrainAlmApp : oa::ComputeApp {
 		valDs_ = new oa::DsCombatMotionProcessed(c.dataset, c.valSplit, c.maxClips);
 		if (not valDs_->ok()) {
 			OaLogWarn(oa::LogComponent::Ml,
-				"trainalm: validation split '%s' unavailable; val_loss/checkpoint selection disabled",
+				"trainalm: validation split '{}' unavailable; val_loss/checkpoint selection disabled",
 				c.valSplit.cStr());
 			delete valDs_;
 			valDs_ = nullptr;
@@ -1065,7 +1065,7 @@ struct TrainAlmApp : oa::ComputeApp {
 			}
 		}
 		if (tokWindows_.empty()) {
-			OaLogError(oa::LogComponent::Ml, "trainalm: no clip long enough for seq_len %d", T);
+			OaLogError(oa::LogComponent::Ml, "trainalm: no clip long enough for seq_len {}", T);
 			isRunning = false; return oa::Status::ok();
 		}
 		{ Lcg r(0xABCD); for (size_t i = tokWindows_.size(); i > 1; --i) std::swap(tokWindows_[i - 1], tokWindows_[r.u32() % i]); }
@@ -1122,10 +1122,10 @@ struct TrainAlmApp : oa::ComputeApp {
 		tokSchedCb_ = oa::makeUnique<oa::CbLrScheduler>(*tokSched_, *tokOpt_);
 
 		tokIterCfg.callbacks = {tokExtraCb_.get(), tokBar_.get()};
-		if (tokValidationCb_) tokIterCfg.callbacks.push_back(tokValidationCb_.get());
-		tokIterCfg.callbacks.push_back(tokCkptCb_.get());
-		tokIterCfg.callbacks.push_back(tokSchedCb_.get());
-		tokIterCfg.callbacks.push_back(tokSummary_.get());
+		if (tokValidationCb_) tokIterCfg.callbacks.pushBack(tokValidationCb_.get());
+		tokIterCfg.callbacks.pushBack(tokCkptCb_.get());
+		tokIterCfg.callbacks.pushBack(tokSchedCb_.get());
+		tokIterCfg.callbacks.pushBack(tokSummary_.get());
 
 		tokIter_ = oa::makeUnique<oa::ItTraining>(engine(), *tokOpt_, tokIterCfg);
 
@@ -1137,26 +1137,26 @@ struct TrainAlmApp : oa::ComputeApp {
 			auto dummyOpt = oa::makeUnique<oa::AdamW>(tokParams, 0.0F);
 			auto st = tok_.module().load(engine(), tokPath, *dummyOpt);
 			if (not st.isOk()) {
-				OaLogError(oa::LogComponent::Ml, "trainalm: failed to load tokenizer from %s: %s",
+				OaLogError(oa::LogComponent::Ml, "trainalm: failed to load tokenizer from {}: {}",
 					tokPath.cStr(), st.getMessage().cStr());
 				isRunning = false; return oa::Status::ok();
 			}
-			std::printf("Loaded tokenizer: %s\n", tokPath.cStr());
+			oa::print("Loaded tokenizer: {}", tokPath.cStr());
 			(void)ctx.submitAndWait();
 			currentStage_ = c.stage == "export" ? 4 : 1;
 		} else if (c.stage != "both" and c.stage != "tok") {
 			OaLogError(oa::LogComponent::Ml,
-				"trainalm: unknown stage '%s' (expected both, tok, lm, or export)", c.stage.cStr());
+				"trainalm: unknown stage '{}' (expected both, tok, lm, or export)", c.stage.cStr());
 			isRunning = false; return oa::Status::ok();
 		}
 
 		// ── print header ──
-		std::printf("\ntrainalm — OaAlm tokenizer + Transformer LM (%s FFN)\n", c.lmFfnType.cStr());
-		std::printf("  data: %s · %d clips · featDim %d · %d joints\n",
+		oa::print("\ntrainalm — OaAlm tokenizer + Transformer LM ({} FFN)", c.lmFfnType.cStr());
+		oa::print("  data: {} · {} clips · featDim {} · {} joints",
 			c.dataset.cStr(), numClips_, featDim_, numJoints_);
-		if (valDs_) std::printf("  validation: %s · %d clips · %zu tokenizer windows\n",
+		if (valDs_) oa::print("  validation: {} · {} clips · {} tokenizer windows",
 			c.valSplit.cStr(), valDs_->numClips(), tokValWindows_.size());
-		std::printf("tokenizer: %d epochs × %lld steps/epoch · B=%d · T=%d · lr %.1e · ckpt %s\n",
+		oa::print("tokenizer: {} epochs × {} steps/epoch · B={} · T={} · lr {:.1e} · ckpt {}",
 			c.tokEpochs, static_cast<long long>(tokStepsPerEpoch),
 			B, T, static_cast<double>(c.tokLr),
 			c.ckptSaveEvery > 0 ? "step+epoch" : "epoch-end");
@@ -1183,7 +1183,7 @@ struct TrainAlmApp : oa::ComputeApp {
 						"Publishing best completed ALM checkpoint before exit...");
 					const oa::Status saved = saveAlmBundle();
 					if (not saved.isOk()) OaLogError(oa::LogComponent::Ml,
-						"trainalm: interrupted ALM bundle save failed: %s",
+						"trainalm: interrupted ALM bundle save failed: {}",
 						saved.getMessage().cStr());
 				}
 			}
@@ -1197,7 +1197,7 @@ struct TrainAlmApp : oa::ComputeApp {
 		if (currentStage_ == 4) {
 			const oa::Status status = exportSavedStages();
 			if (not status.isOk()) OaLogError(oa::LogComponent::Ml,
-				"trainalm: saved-stage export failed: %s", status.getMessage().cStr());
+				"trainalm: saved-stage export failed: {}", status.getMessage().cStr());
 			isRunning = false;
 			return oa::Status::ok();
 		}
@@ -1214,7 +1214,7 @@ struct TrainAlmApp : oa::ComputeApp {
 
 		if (tokIter_->isDone()) {
 			(void)tokIter_->finish();
-			std::printf("tokenizer training complete.\n");
+			oa::print("tokenizer training complete.");
 			std::fflush(stdout);
 
 			// Dataset-wide codebook usage
@@ -1234,7 +1234,7 @@ struct TrainAlmApp : oa::ComputeApp {
 					ctx.clear();
 				}
 				const auto u = codebookUsage(allTok.data(), allTok.size(), c.numCodes);
-				std::printf("codebook usage (dataset): %d/%d live | perplexity %.1f | %zu tokens\n",
+				oa::print("codebook usage (dataset): {}/{} live | perplexity {:.1f} | {} tokens",
 					u.unique, c.numCodes, static_cast<double>(u.perplexity), allTok.size());
 				std::fflush(stdout);
 			}
@@ -1275,12 +1275,12 @@ struct TrainAlmApp : oa::ComputeApp {
 
 			if (tokIter_->stepCount() == 0) {
 				(void)ctx.submitAndWait();
-				std::printf("[DEBUG] X dtype=%d shape=(%lld,%lld,%lld) first=%f\n",
+				oa::print("[DEBUG] X dtype={} shape=({},{},{}) first={:f}",
 					static_cast<int>(X.getDtype()), X.size(0), X.size(1), X.size(2), X.at(0));
-				std::printf("[DEBUG] rec dtype=%d numel=%lld first=%f rms=%f\n",
+				oa::print("[DEBUG] rec dtype={} numel={} first={:f} rms={:f}",
 					static_cast<int>(rec.getDtype()), rec.numElements(), rec.at(0),
 					std::sqrt(static_cast<double>(oa::FnMatrix::sum(oa::FnMatrix::mul(rec, rec)).at(0)) / rec.numElements()));
-				std::printf("[DEBUG] recon dtype=%d val=%f commit=%f\n",
+				oa::print("[DEBUG] recon dtype={} val={:f} commit={:f}",
 					static_cast<int>(recon.getDtype()), recon.at(0), q.commitLoss.at(0));
 				std::fflush(stdout);
 			}
@@ -1294,7 +1294,7 @@ struct TrainAlmApp : oa::ComputeApp {
 		const oa::I64 step = tokIter_->stepCount();
 		const float lv = tokIter_->lastLoss();
 		if (not std::isfinite(lv)) {
-			OaLogError(oa::LogComponent::Ml, "trainalm: tokenizer diverged at step %lld",
+			OaLogError(oa::LogComponent::Ml, "trainalm: tokenizer diverged at step {}",
 				static_cast<long long>(step));
 			tokIter_->requestStop();
 		}
@@ -1398,8 +1398,7 @@ struct TrainAlmApp : oa::ComputeApp {
 		}
 		if (samples > 0) {
 			const auto usage = codebookUsage(validationTokens.data(), validationTokens.size(), c.numCodes);
-			std::printf("  Validation tokenizer: vel %.6f · MPJPE %.3f cm · contact %.2f%% · foot skate %.3f cm/frame\n"
-				"    codebook: %d/%d live · perplexity %.2f · %zu tokens\n",
+			oa::print("  Validation tokenizer: vel {:.6f} · MPJPE {:.3f} cm · contact {:.2f}% · foot skate {:.3f} cm/frame\n" "    codebook: {}/{} live · perplexity {:.2f} · {} tokens",
 				weightedVel / static_cast<oa::F64>(samples),
 				weightedMpjpeCm / static_cast<oa::F64>(samples),
 				contactTotal > 0 ? 100.0 * static_cast<oa::F64>(contactCorrect) / contactTotal : 0.0,
@@ -1434,13 +1433,13 @@ struct TrainAlmApp : oa::ComputeApp {
 					"trainalm: CLIP caption cache missing/incompatible; baking with native oa::ClipTextAg");
 				const oa::Status baked = bakeNativeClipFeatures();
 				if (not baked.isOk()) {
-					OaLogError(oa::LogComponent::Ml, "trainalm: native CLIP bake failed: %s",
+					OaLogError(oa::LogComponent::Ml, "trainalm: native CLIP bake failed: {}",
 						baked.getMessage().cStr());
 					isRunning = false; return oa::Status::ok();
 				}
 				const oa::Status reloaded = reloadDatasetsWithTextFeatures();
 				if (not reloaded.isOk()) {
-					OaLogError(oa::LogComponent::Ml, "trainalm: %s", reloaded.getMessage().cStr());
+					OaLogError(oa::LogComponent::Ml, "trainalm: {}", reloaded.getMessage().cStr());
 					isRunning = false; return oa::Status::ok();
 				}
 			}
@@ -1448,14 +1447,14 @@ struct TrainAlmApp : oa::ComputeApp {
 			if (lmTextFeatureDim_ <= 0 or ds_->textFeatureFormat() != "oa_clip_text_v1"
 				or ds_->textFeatureModel().empty()) {
 				OaLogError(oa::LogComponent::Ml,
-					"trainalm: native CLIP cache validation failed in %s/text_feats",
+					"trainalm: native CLIP cache validation failed in {}/text_feats",
 					c.dataset.cStr());
 				isRunning = false; return oa::Status::ok();
 			}
 			if (ds_->textFeatureModel() != "openai/clip-vit-large-patch14" or
 				lmTextFeatureDim_ != oa::ClipTextConfig::viTL14().projectionDim) {
 				OaLogError(oa::LogComponent::Ml,
-					"trainalm: dataset CLIP contract '%s'/%d does not match native openai/clip-vit-large-patch14/%d",
+					"trainalm: dataset CLIP contract '{}'/{} does not match native openai/clip-vit-large-patch14/{}",
 					ds_->textFeatureModel().cStr(), lmTextFeatureDim_,
 					oa::ClipTextConfig::viTL14().projectionDim);
 				isRunning = false; return oa::Status::ok();
@@ -1463,14 +1462,14 @@ struct TrainAlmApp : oa::ComputeApp {
 			if (not oa::Filesystem::isFile(oa::Path(c.clipTextModel)) or
 				not oa::Filesystem::isFile(oa::Path(c.clipMerges))) {
 				OaLogError(oa::LogComponent::Ml,
-					"trainalm: native CLIP assets are missing (%s, %s); import them before LM training",
+					"trainalm: native CLIP assets are missing ({}, {}); import them before LM training",
 					c.clipTextModel.cStr(), c.clipMerges.cStr());
 				isRunning = false; return oa::Status::ok();
 			}
 			for (oa::I32 ci = 0; ci < numClips_; ++ci) {
 				if (ds_->clipTextFeatureCount(ci) != static_cast<oa::I32>(ds_->clipCaptions(ci).size())) {
 					OaLogError(oa::LogComponent::Ml,
-						"trainalm: clip %s lacks one CLIP feature per caption",
+						"trainalm: clip {} lacks one CLIP feature per caption",
 						ds_->clipId(ci).cStr());
 					isRunning = false; return oa::Status::ok();
 				}
@@ -1487,7 +1486,7 @@ struct TrainAlmApp : oa::ComputeApp {
 					if (valDs_->clipTextFeatureCount(ci) !=
 						static_cast<oa::I32>(valDs_->clipCaptions(ci).size())) {
 						OaLogError(oa::LogComponent::Ml,
-							"trainalm: validation clip %s lacks one CLIP feature per caption",
+							"trainalm: validation clip {} lacks one CLIP feature per caption",
 							valDs_->clipId(ci).cStr());
 						isRunning = false; return oa::Status::ok();
 					}
@@ -1496,7 +1495,7 @@ struct TrainAlmApp : oa::ComputeApp {
 		} else if (c.textConditioning == "none") {
 			lmTextFeatureDim_ = 0;
 		} else {
-			OaLogError(oa::LogComponent::Ml, "trainalm: unknown text_conditioning '%s'",
+			OaLogError(oa::LogComponent::Ml, "trainalm: unknown text_conditioning '{}'",
 				c.textConditioning.cStr());
 			isRunning = false; return oa::Status::ok();
 		}
@@ -1521,10 +1520,10 @@ struct TrainAlmApp : oa::ComputeApp {
 			isRunning = false; return oa::Status::ok();
 		}
 		lmWindows_ = buildLmWindows(tokenSequences_, lmTokLen + 1);
-		std::printf("Tokenized all %zu clips for LM training · %zu true-boundary windows\n",
+		oa::print("Tokenized all {} clips for LM training · {} true-boundary windows",
 			tokenSequences_.size(), lmWindows_.size());
 		const auto corpusStats = measureTokenCorpus(tokenSequences_, c.numCodes);
-		std::printf("LM token corpus: %lld tokens · %d/%d codes · unigram ppl %.2f · bigram ppl %.2f\n",
+		oa::print("LM token corpus: {} tokens · {}/{} codes · unigram ppl {:.2f} · bigram ppl {:.2f}",
 			static_cast<long long>(corpusStats.tokens), corpusStats.unique, c.numCodes,
 			corpusStats.unigramPpl, corpusStats.bigramPpl);
 		std::fflush(stdout);
@@ -1547,7 +1546,7 @@ struct TrainAlmApp : oa::ComputeApp {
 				ctx.clear();
 			}
 			lmValWindows_ = buildLmWindows(valTokenSequences_, lmTokLen + 1);
-			std::printf("LM validation: %zu clips · %zu true-boundary windows\n",
+			oa::print("LM validation: {} clips · {} true-boundary windows",
 				valTokenSequences_.size(), lmValWindows_.size());
 			if (lmValWindows_.empty()) {
 				OaLogWarn(oa::LogComponent::Ml, "trainalm: validation split has no LM windows");
@@ -1557,7 +1556,7 @@ struct TrainAlmApp : oa::ComputeApp {
 		// Build LM
 		oa::AlmPriorConfig lmCfg = makeLmConfig(lmTextFeatureDim_);
 		if (c.lmFfnType != "dense" and c.lmFfnType != "moe" and c.lmFfnType != "hybrid") {
-			OaLogError(oa::LogComponent::Ml, "trainalm: unknown lm_ffn_type '%s'", c.lmFfnType.cStr());
+			OaLogError(oa::LogComponent::Ml, "trainalm: unknown lm_ffn_type '{}'", c.lmFfnType.cStr());
 			isRunning = false; return oa::Status::ok();
 		}
 		lm_.ptr = oa::makeShared<oa::AlmPriorAg>(lmCfg);
@@ -1624,12 +1623,12 @@ struct TrainAlmApp : oa::ComputeApp {
 		lmSchedCb_ = oa::makeUnique<oa::CbLrScheduler>(*lmSched_, *lmOpt_);
 
 		lmIterCfg.callbacks = {};
-		if (lmMoeRoutingCb_) lmIterCfg.callbacks.push_back(lmMoeRoutingCb_.get());
-		lmIterCfg.callbacks.push_back(lmBar_.get());
-		if (lmValidationCb_) lmIterCfg.callbacks.push_back(lmValidationCb_.get());
-		lmIterCfg.callbacks.push_back(lmCkptCb_.get());
-		lmIterCfg.callbacks.push_back(lmSchedCb_.get());
-		lmIterCfg.callbacks.push_back(lmSummary_.get());
+		if (lmMoeRoutingCb_) lmIterCfg.callbacks.pushBack(lmMoeRoutingCb_.get());
+		lmIterCfg.callbacks.pushBack(lmBar_.get());
+		if (lmValidationCb_) lmIterCfg.callbacks.pushBack(lmValidationCb_.get());
+		lmIterCfg.callbacks.pushBack(lmCkptCb_.get());
+		lmIterCfg.callbacks.pushBack(lmSchedCb_.get());
+		lmIterCfg.callbacks.pushBack(lmSummary_.get());
 
 		lmIter_ = oa::makeUnique<oa::ItTraining>(engine(), *lmOpt_, lmIterCfg);
 
@@ -1637,7 +1636,7 @@ struct TrainAlmApp : oa::ComputeApp {
 			? ds_->textFeatureModel() + oa::String("-")
 				+ oa::toString(static_cast<oa::I64>(lmTextFeatureDim_))
 			: oa::String("none");
-		std::printf("LM: %d epochs × %lld steps/epoch · B=%d · tokLen=%d · text=%s · lr %.1e · ckpt %s\n",
+		oa::print("LM: {} epochs × {} steps/epoch · B={} · tokLen={} · text={} · lr {:.1e} · ckpt {}",
 			lmTotalEpochs, static_cast<long long>(lmStepsPerEpoch),
 			B, lmTokLen, textLabel.cStr(), static_cast<double>(c.lmLr),
 			c.ckptSaveEvery > 0 ? "step+epoch" : "epoch-end");
@@ -1722,7 +1721,7 @@ struct TrainAlmApp : oa::ComputeApp {
 		}
 		if (samples > 0) {
 			const oa::F64 meanLoss = weightedLoss / static_cast<oa::F64>(samples);
-			std::printf("  Validation LM: perplexity %.3f · token accuracy %.2f%% · EOS accuracy %.2f%%\n",
+			oa::print("  Validation LM: perplexity {:.3f} · token accuracy {:.2f}% · EOS accuracy {:.2f}%",
 				std::exp(meanLoss),
 				100.0 * static_cast<oa::F64>(correctTokens) / samples,
 				eosTokens > 0 ? 100.0 * static_cast<oa::F64>(correctEos) / eosTokens : 0.0);
@@ -1741,12 +1740,12 @@ struct TrainAlmApp : oa::ComputeApp {
 			(void)lmIter_->finish();
 			const oa::Status bundleStatus = saveAlmBundle();
 			if (not bundleStatus.isOk()) {
-				OaLogError(oa::LogComponent::Ml, "trainalm: failed to save ALM bundle: %s",
+				OaLogError(oa::LogComponent::Ml, "trainalm: failed to save ALM bundle: {}",
 					bundleStatus.getMessage().cStr());
 				isRunning = false;
 				return oa::Status::ok();
 			}
-			std::printf("LM training complete.\n");
+			oa::print("LM training complete.");
 			std::fflush(stdout);
 			currentStage_ = 3;
 			return oa::Status::ok();
@@ -1807,7 +1806,7 @@ struct TrainAlmApp : oa::ComputeApp {
 		const oa::I64 step = lmIter_->stepCount();
 		const float lv = lmIter_->lastLoss();
 		if (not std::isfinite(lv)) {
-			OaLogError(oa::LogComponent::Ml, "trainalm: LM diverged at step %lld",
+			OaLogError(oa::LogComponent::Ml, "trainalm: LM diverged at step {}",
 				static_cast<long long>(step));
 			lmIter_->requestStop();
 		}

@@ -1,4 +1,5 @@
 #include "videoEncoderInternal.h"
+#include "videoEncoderImpl.h"
 
 oa::Status oa::VideoEncoderAccess::uploadInputRgba(
 	VideoEncoder& inEncoder,
@@ -59,4 +60,10 @@ oa::Status oa::VideoEncoderAccess::submitRgbaImage(
 		inColorSpace, inFullRange, inArrayLayer, inReady,
 		inExternalQueueFamilyIndex, outInputConsumed
 	);
+}
+
+oa::U64 oa::VideoEncoderAccess::zeroFeedbackRecoveryCount(
+	const VideoEncoder& inEncoder) noexcept
+{
+	return inEncoder.impl_ ? inEncoder.impl_->zeroFeedbackRecoveryCount : 0U;
 }

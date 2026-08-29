@@ -316,7 +316,7 @@ protected:
 
 	void SetUp() override {
 		VkEngineTestFixture::SetUp();  // Asserts suite engine exists
-		OaLogInfo(oa::LogComponent::Ml, "GPU: %s",
+		OaLogInfo(oa::LogComponent::Ml, "GPU: {}",
 			oa::EngineDeviceAccess::get(rt_).info.hardware.deviceName.cStr());
 	}
 
@@ -348,7 +348,7 @@ protected:
 
 		if (!matches) {
 			OaLogError(oa::LogComponent::Ml,
-			             "%s: Worst mismatch at [%u]: CPU=%.9g GPU=%.9g (error/limit=%.2e)",
+			             "{}: Worst mismatch at [{}]: CPU={:.9g} GPU={:.9g} (error/limit={:.2e})",
 			             testName, worstIndex, ref[worstIndex], gpu[worstIndex], worstRatio);
 		}
 		EXPECT_TRUE(matches) << testName << ": Max absolute error: " << maxAbsError

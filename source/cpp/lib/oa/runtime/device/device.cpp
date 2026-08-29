@@ -171,7 +171,7 @@ void oavk::logPhysicalDeviceSurvey(
 		return;
 	}
 	OaLogInfo(oa::LogComponent::Runtime,
-		"vulkan: enumerating physical devices (found %u)",
+		"vulkan: enumerating physical devices (found {})",
 		static_cast<unsigned>(inCount));
 	for (oa::U32 i = 0; i < inCount; ++i) {
 		VkPhysicalDevice phys =
@@ -190,7 +190,7 @@ void oavk::logPhysicalDeviceSurvey(
 		const oa::F64 tflops = oavk::estimatePeakTflopsF32ForDevice(
 			props.vendorID, props.deviceID, oaType, localBytes);
 		OaLogInfo(oa::LogComponent::Runtime,
-			"  [%u] %s | PickScore=%s | vram=%s MiB | compute_queue_slots=%u | est_bw=%.0f GB/s | est_fp32=%.1f TFLOPS | %s",
+			"  [{}] {} | PickScore={} | vram={} MiB | compute_queue_slots={} | est_bw={:.0f} GB/s | est_fp32={:.1f} TFLOPS | {}",
 			static_cast<unsigned>(i),
 			props.deviceName,
 			oa::formatNumberU64(rating).cStr(),
@@ -580,7 +580,7 @@ oa::Result<oavk::Device> oavk::Device::create(
 			instanceDispatch, bestPhys, inPreferred);
 		if (defaultDeviceInfoLogMode() == DeviceInfoLogMode::Full) {
 			OaLogInfo(oa::LogComponent::Runtime,
-				"vulkan: using forced enumeration index %u",
+				"vulkan: using forced enumeration index {}",
 				static_cast<unsigned>(bestIdx));
 		}
 	} else {
@@ -601,7 +601,7 @@ oa::Result<oavk::Device> oavk::Device::create(
 	instanceDispatch.vkGetPhysicalDeviceProperties(bestPhys, &pickProps);
 	if (defaultDeviceInfoLogMode() == DeviceInfoLogMode::Full) {
 		OaLogInfo(oa::LogComponent::Runtime,
-			"vulkan: selected physical device [%u] %s (PickScore=%s)",
+			"vulkan: selected physical device [{}] {} (PickScore={})",
 			static_cast<unsigned>(bestIdx),
 			pickProps.deviceName,
 			oa::formatNumberU64(bestScore).cStr()
@@ -676,7 +676,7 @@ void oavk::Device::printInfoCompact() const {
 		: static_cast<oa::U32>(this->index < 0 ? 0 : this->index);
 	const oa::String vram = formatCapacityBytesHuman(hw.vramBytes);
 	OaLogInfo(oa::LogComponent::Runtime,
-		"ComputeDevice (%u): %s, vulkan %s, %s",
+		"ComputeDevice ({}): {}, vulkan {}, {}",
 		static_cast<unsigned>(selectedIndex),
 		hw.deviceName.cStr(),
 		sw.apiVersion.cStr(),
@@ -693,12 +693,12 @@ void oavk::Device::printInfoCompact() const {
 			: "";
 		if (sw.hasVideoDecodeQueue) {
 			OaLogWarn(oa::LogComponent::Runtime,
-				"ComputeDevice (%u): video decode NOT usable — extensions advertised but no "
-				"VK_QUEUE_VIDEO_DECODE_BIT_KHR queue%s.",
+				"ComputeDevice ({}): video decode NOT usable — extensions advertised but no "
+				"VK_QUEUE_VIDEO_DECODE_BIT_KHR queue{}.",
 				static_cast<unsigned>(index), intelHint);
 		} else {
 			OaLogInfo(oa::LogComponent::Runtime,
-				"ComputeDevice (%u): video decode not supported (no VK_KHR_video_decode_queue)%s.",
+				"ComputeDevice ({}): video decode not supported (no VK_KHR_video_decode_queue){}.",
 				static_cast<unsigned>(index), intelHint);
 		}
 	}
@@ -715,55 +715,55 @@ void oavk::Device::printInfoDetailed() const {
 
 	OaLogInfo(oa::LogComponent::Runtime, "oavk::Device(");
 	if (hw.enumerationIndex != oavk::EnumerationIndexUnset) {
-		OaLogInfo(oa::LogComponent::Runtime, "  deviceIndex:    %u", hw.enumerationIndex);
+		OaLogInfo(oa::LogComponent::Runtime, "  deviceIndex:    {}", hw.enumerationIndex);
 	} else {
 		OaLogInfo(oa::LogComponent::Runtime, "  deviceIndex:    (unset)");
 	}
-	OaLogInfo(oa::LogComponent::Runtime, "  Vendor:         %s", hw.vendorName.cStr());
-	OaLogInfo(oa::LogComponent::Runtime, "  device:         %s", hw.deviceName.cStr());
-	OaLogInfo(oa::LogComponent::Runtime, "  deviceType:     %s", typeName);
-	OaLogInfo(oa::LogComponent::Runtime, "  vendorId:       %s (%u)",
+	OaLogInfo(oa::LogComponent::Runtime, "  Vendor:         {}", hw.vendorName.cStr());
+	OaLogInfo(oa::LogComponent::Runtime, "  device:         {}", hw.deviceName.cStr());
+	OaLogInfo(oa::LogComponent::Runtime, "  deviceType:     {}", typeName);
+	OaLogInfo(oa::LogComponent::Runtime, "  vendorId:       {} ({})",
 		oa::formatHexU32(hw.vendorId).cStr(), static_cast<unsigned>(hw.vendorId)
 	);
-	OaLogInfo(oa::LogComponent::Runtime, "  deviceId:       %s (%u)",
+	OaLogInfo(oa::LogComponent::Runtime, "  deviceId:       {} ({})",
 		oa::formatHexU32(hw.deviceId).cStr(), static_cast<unsigned>(hw.deviceId)
 	);
-	OaLogInfo(oa::LogComponent::Runtime, "  Vram:           %s",
+	OaLogInfo(oa::LogComponent::Runtime, "  Vram:           {}",
 		formatCapacityBytesHuman(hw.vramBytes).cStr()
 	);
-	OaLogInfo(oa::LogComponent::Runtime, "  apiVersion:     vulkan %s", sw.apiVersion.cStr());
+	OaLogInfo(oa::LogComponent::Runtime, "  apiVersion:     vulkan {}", sw.apiVersion.cStr());
 	// VendorDriverVersion = VkPhysicalDeviceProperties::driverVersion (vendor U32, shown M.n.p).
 	// DriverInfoString = VkPhysicalDeviceDriverProperties::driverInfo (separate vendor metadata).
 	OaLogInfo(oa::LogComponent::Runtime, "  driver(");
-	OaLogInfo(oa::LogComponent::Runtime, "    Provider:              %s", sw.driverName.cStr());
-	OaLogInfo(oa::LogComponent::Runtime, "    VendorDriverVersion:   %s", sw.driverVersion.cStr());
+	OaLogInfo(oa::LogComponent::Runtime, "    Provider:              {}", sw.driverName.cStr());
+	OaLogInfo(oa::LogComponent::Runtime, "    VendorDriverVersion:   {}", sw.driverVersion.cStr());
 	if (!sw.driverInfo.empty()) {
-		OaLogInfo(oa::LogComponent::Runtime, "    DriverInfoString:      %s", sw.driverInfo.cStr());
+		OaLogInfo(oa::LogComponent::Runtime, "    DriverInfoString:      {}", sw.driverInfo.cStr());
 	}
-	OaLogInfo(oa::LogComponent::Runtime, "    driverId:              %s (%s)",
+	OaLogInfo(oa::LogComponent::Runtime, "    driverId:              {} ({})",
 		oa::formatHexU32(sw.driverId).cStr(), oavk::driverIdLabel(sw.driverId)
 	);
 	OaLogInfo(oa::LogComponent::Runtime, "  )");
-	// OaLogInfo(oa::LogComponent::Runtime, "  PickScore:       %s (sort key for default GPU; higher=better)",
-	OaLogInfo(oa::LogComponent::Runtime, "  PickScore:       %s", oa::formatNumberU64(hw.pickRating).cStr());
+	OaLogInfo(oa::LogComponent::Runtime, "  PickScore:       {}",
+		oa::formatNumberU64(hw.pickRating));
 	OaLogInfo(oa::LogComponent::Runtime, "  queues(");
-	OaLogInfo(oa::LogComponent::Runtime, "    computeSlots: %u", queues.computeQueueSlotCount);
-	OaLogInfo(oa::LogComponent::Runtime, "    TransferSlots: %u", queues.dedicatedTransferQueueSlotCount);
+	OaLogInfo(oa::LogComponent::Runtime, "    computeSlots: {}", queues.computeQueueSlotCount);
+	OaLogInfo(oa::LogComponent::Runtime, "    TransferSlots: {}", queues.dedicatedTransferQueueSlotCount);
 	if (queues.hasVideoDecodeQueue) {
 		OaLogInfo(oa::LogComponent::Runtime,
-			"    VideoDecode: enabled (family=%u codecOps=0x%08X)",
+			"    VideoDecode: enabled (family={} codecOps=0x{:08X})",
 			static_cast<unsigned>(queues.videoDecodeQueueFamily),
 			static_cast<unsigned>(queues.videoDecodeCodecOps));
 	}
 	if (queues.hasVideoEncodeQueue) {
 		OaLogInfo(oa::LogComponent::Runtime,
-			"    VideoEncode: enabled (family=%u codecOps=0x%08X)",
+			"    VideoEncode: enabled (family={} codecOps=0x{:08X})",
 			static_cast<unsigned>(queues.videoEncodeQueueFamily),
 			static_cast<unsigned>(queues.videoEncodeCodecOps));
 	}
 	if (queues.hasPresentation) {
 		OaLogInfo(oa::LogComponent::Runtime,
-			"    Presentation: enabled (graphicsFamily=%u presentFamily=%u)",
+			"    Presentation: enabled (graphicsFamily={} presentFamily={})",
 			static_cast<unsigned>(queues.graphicsQueueFamily),
 			static_cast<unsigned>(queues.presentQueueFamily));
 	} else {
@@ -771,52 +771,52 @@ void oavk::Device::printInfoDetailed() const {
 	}
 	OaLogInfo(oa::LogComponent::Runtime, "  )");
 	OaLogInfo(oa::LogComponent::Runtime, "  throughputEstimate(");
-	OaLogInfo(oa::LogComponent::Runtime, "    MemoryBandwidth: %s",
+	OaLogInfo(oa::LogComponent::Runtime, "    MemoryBandwidth: {}",
 		formatMemoryBandwidthHuman(hw.estMemBandwidthGbps).cStr()
 	);
 	OaLogInfo(oa::LogComponent::Runtime, "    peakPerformance(");
-	OaLogInfo(oa::LogComponent::Runtime, "      Float32:  %s",
+	OaLogInfo(oa::LogComponent::Runtime, "      Float32:  {}",
 		formatPeakTflopsHuman(hw.estPeakTflopsF32).cStr()
 	);
 	if (sw.shaderBfloat16ExtensionEnabled && sw.shaderBfloat16TypeEnabled) {
 		const oa::F64 estBf16Tflops = hw.estPeakTflopsF32 * 2.0;
-		OaLogInfo(oa::LogComponent::Runtime, "      BFloat16: %s",
+		OaLogInfo(oa::LogComponent::Runtime, "      BFloat16: {}",
 			formatPeakTflopsHuman(estBf16Tflops).cStr()
 		);
 	}
 	OaLogInfo(oa::LogComponent::Runtime, "    )");
 	OaLogInfo(oa::LogComponent::Runtime, "  )");
 	OaLogInfo(oa::LogComponent::Runtime, "  computeLimits(");
-	OaLogInfo(oa::LogComponent::Runtime, "    subgroupSize: %u", hw.subgroupSize);
+	OaLogInfo(oa::LogComponent::Runtime, "    subgroupSize: {}", hw.subgroupSize);
 	OaLogInfo(
 		oa::LogComponent::Runtime,
-		"    MaxComputeWorkGroupSizeX: %u (MaxInvocations: %u)",
+		"    MaxComputeWorkGroupSizeX: {} (MaxInvocations: {})",
 		hw.maxComputeWorkGroupSize, hw.maxComputeWorkGroupInvocations
 	);
 	OaLogInfo(oa::LogComponent::Runtime,
-		"    maxComputeWorkGroupCount: [%u, %u, %u]",
+		"    maxComputeWorkGroupCount: [{}, {}, {}]",
 		hw.maxComputeWorkGroupCountX,
 		hw.maxComputeWorkGroupCountY,
 		hw.maxComputeWorkGroupCountZ);
-	OaLogInfo(oa::LogComponent::Runtime, "    MaxComputeSharedMemory: %u bytes",
+	OaLogInfo(oa::LogComponent::Runtime, "    MaxComputeSharedMemory: {} bytes",
 		hw.maxComputeSharedMemoryBytes);
-	OaLogInfo(oa::LogComponent::Runtime, "    maxStorageBufferRange: %s bytes",
+	OaLogInfo(oa::LogComponent::Runtime, "    maxStorageBufferRange: {} bytes",
 		oa::formatNumberU64(hw.maxStorageBufferRangeBytes).cStr());
 	OaLogInfo(oa::LogComponent::Runtime, "  )");
 	OaLogInfo(oa::LogComponent::Runtime, "  descriptorLimits(");
-	OaLogInfo(oa::LogComponent::Runtime, "    maxPerStageDescriptorUpdateAfterBindStorageBuffers: %u",
+	OaLogInfo(oa::LogComponent::Runtime, "    maxPerStageDescriptorUpdateAfterBindStorageBuffers: {}",
 		hw.maxPerStageDescriptorUpdateAfterBindStorageBuffers);
-	OaLogInfo(oa::LogComponent::Runtime, "    maxPerStageDescriptorUpdateAfterBindSampledImages: %u",
+	OaLogInfo(oa::LogComponent::Runtime, "    maxPerStageDescriptorUpdateAfterBindSampledImages: {}",
 		hw.maxPerStageDescriptorUpdateAfterBindSampledImages);
-	OaLogInfo(oa::LogComponent::Runtime, "    maxPerStageDescriptorUpdateAfterBindSamplers: %u",
+	OaLogInfo(oa::LogComponent::Runtime, "    maxPerStageDescriptorUpdateAfterBindSamplers: {}",
 		hw.maxPerStageDescriptorUpdateAfterBindSamplers);
 	OaLogInfo(oa::LogComponent::Runtime, "  )");
 	OaLogInfo(oa::LogComponent::Runtime, "  bindlessCapacity(");
-	OaLogInfo(oa::LogComponent::Runtime, "    StorageBuffers: %u%s", hw.bindlessBufferCapacity,
+	OaLogInfo(oa::LogComponent::Runtime, "    StorageBuffers: {}{}", hw.bindlessBufferCapacity,
 		hw.bindlessBufferCapacity < hw.maxPerStageDescriptorUpdateAfterBindStorageBuffers ? " (capped)" : "");
-	OaLogInfo(oa::LogComponent::Runtime, "    SampledImages: %u%s", hw.bindlessImageCapacity,
+	OaLogInfo(oa::LogComponent::Runtime, "    SampledImages: {}{}", hw.bindlessImageCapacity,
 		hw.bindlessImageCapacity < hw.maxPerStageDescriptorUpdateAfterBindSampledImages ? " (capped)" : "");
-	OaLogInfo(oa::LogComponent::Runtime, "    samplers: %u%s", hw.bindlessSamplerCapacity,
+	OaLogInfo(oa::LogComponent::Runtime, "    samplers: {}{}", hw.bindlessSamplerCapacity,
 		hw.bindlessSamplerCapacity < hw.maxPerStageDescriptorUpdateAfterBindSamplers ? " (capped)" : "");
 	OaLogInfo(oa::LogComponent::Runtime, "  )");
 	OaLogInfo(oa::LogComponent::Runtime, "  capabilities(");
@@ -833,7 +833,7 @@ void oavk::Device::printInfoDetailed() const {
 		}
 	}
 	if (!coreExts.empty()) {
-		OaLogInfo(oa::LogComponent::Runtime, "    Core: %s", coreExts.cStr());
+		OaLogInfo(oa::LogComponent::Runtime, "    Core: {}", coreExts);
 	}
 
 	// memory extensions
@@ -887,7 +887,7 @@ void oavk::Device::printInfoDetailed() const {
 		if (sw.hasVideoDecodeH265) decodeExts += ", VK_KHR_video_decode_h265";
 		if (sw.hasVideoDecodeAV1) decodeExts += ", VK_KHR_video_decode_av1";
 		if (sw.hasVideoDecodeVP9) decodeExts += ", VK_KHR_video_decode_vp9";
-		OaLogInfo(oa::LogComponent::Runtime, "    VideoDecode: %s", decodeExts.cStr());
+		OaLogInfo(oa::LogComponent::Runtime, "    VideoDecode: {}", decodeExts);
 	} else if (sw.hasVideoDecodeQueue) {
 		OaLogWarn(oa::LogComponent::Runtime,
 			"    VideoDecode: NOT SUPPORTED on this device — video-decode extensions are "
@@ -905,7 +905,7 @@ void oavk::Device::printInfoDetailed() const {
 		if (sw.hasVideoEncodeH264) encodeExts += ", VK_KHR_video_encode_h264";
 		if (sw.hasVideoEncodeH265) encodeExts += ", VK_KHR_video_encode_h265";
 		if (sw.hasVideoEncodeAV1) encodeExts += ", VK_KHR_video_encode_av1";
-		OaLogInfo(oa::LogComponent::Runtime, "    VideoEncode: %s", encodeExts.cStr());
+		OaLogInfo(oa::LogComponent::Runtime, "    VideoEncode: {}", encodeExts);
 	} else if (sw.hasVideoEncodeQueue) {
 		OaLogWarn(oa::LogComponent::Runtime,
 			"    VideoEncode: NOT SUPPORTED on this device — video-encode extensions are "
@@ -944,7 +944,7 @@ void oavk::Device::printInfoDetailed() const {
 	if (sw.shaderFloat64Enabled) {
 		precisions += ", fp64 (shaderFloat64; kernels not yet admitted)";
 	}
-	OaLogInfo(oa::LogComponent::Runtime, "    Precision: %s", precisions.cStr());
+	OaLogInfo(oa::LogComponent::Runtime, "    Precision: {}", precisions);
 
 	OaLogInfo(oa::LogComponent::Runtime, "  )");
 
@@ -955,8 +955,8 @@ void oavk::Device::printInfoDetailed() const {
 void oavk::Device::logShaderPrecisionCaps() const {
 	const auto& sw = info.software;
 	OaLogInfo(oa::LogComponent::Runtime,
-		"shader precision caps: 16b_storage=%u shader_float16=%u shader_float64=%u khr_shader_bfloat16=%u "
-		"(type=%u dot=%u coopmat=%u) int_dot_product=%u",
+		"shader precision caps: 16b_storage={} shader_float16={} shader_float64={} khr_shader_bfloat16={} "
+		"(type={} dot={} coopmat={}) int_dot_product={}",
 		sw.has16BitStorage ? 1u : 0u,
 		sw.shaderFloat16Enabled ? 1u : 0u,
 		sw.shaderFloat64Enabled ? 1u : 0u,

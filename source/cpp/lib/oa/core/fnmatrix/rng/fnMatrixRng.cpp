@@ -134,7 +134,7 @@ oa::Matrix oa::FnMatrix::philoxNormal(const oa::Matrix& inA, oa::F32 inMean, oa:
 
 oa::Matrix oa::FnMatrix::dropout(const oa::Matrix& inA, oa::F32 inP, oa::U64 inSeed) {
 	if (inP < 0.0F or inP >= 1.0F) {
-		OaLogError(oa::LogComponent::Compute, "Dropout: probability must be in [0,1), got %g", inP);
+		OaLogError(oa::LogComponent::Compute, "Dropout: probability must be in [0,1), got {:g}", inP);
 		return {};
 	}
 	if (inP == 0.0F) return inA;
@@ -220,7 +220,7 @@ oa::Matrix oa::FnMatrix::sampleLogits(const oa::Matrix& inLogits, oa::F32 inTemp
 	}
 	if (candidates > 1024) {
 		OaLogError(oa::LogComponent::Compute,
-			"SampleLogits: top-k/top-p candidate count %d exceeds GPU limit 1024", candidates);
+			"SampleLogits: top-k/top-p candidate count {} exceeds GPU limit 1024", candidates);
 		return {};
 	}
 	auto top = oa::FnMatrix::topK(inLogits, candidates);

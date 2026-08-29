@@ -78,8 +78,8 @@ void oa::applyNumericMode(oa::NumericMode inMode) {
 	const bool setDgc  = oa::EnvFlag::setIfUnset("OA_DISABLE_DGC", "1");
 
 	OaLogInfo(oa::LogComponent::Core,
-		"oa::NumericMode=%s applied  OA_FORCE_PRECISION=%s "
-		"OA_DISABLE_COOPMAT=%s OA_DISABLE_DGC=%s",
+		"oa::NumericMode={} applied  OA_FORCE_PRECISION={} "
+		"OA_DISABLE_COOPMAT={} OA_DISABLE_DGC={}",
 		modeStr,
 		setPrec ? "FP32 (set)" : "(user-supplied, kept)",
 		setCm   ? "1 (set)"    : "(user-supplied, kept)",
@@ -88,7 +88,7 @@ void oa::applyNumericMode(oa::NumericMode inMode) {
 	if (inMode == oa::NumericMode::Deterministic) {
 		const bool setPl = oa::EnvFlag::setIfUnset("OA_DISABLE_PERSISTENT_LOOP", "1");
 		OaLogInfo(oa::LogComponent::Core,
-			"oa::NumericMode=Deterministic added  OA_DISABLE_PERSISTENT_LOOP=%s",
+			"oa::NumericMode=Deterministic added  OA_DISABLE_PERSISTENT_LOOP={}",
 			setPl ? "1 (set)" : "(user-supplied, kept)");
 	}
 }

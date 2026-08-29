@@ -142,7 +142,7 @@ bool validateCrossEntropyInputs(const char* inOperation,
 	}
 	if (inLogFailure) {
 		OaLogError(oa::LogComponent::Ml,
-			"%s: expected packed zero-offset, fully backed, shader-byte-addressable rank-two Float32/BFloat16 logits and one rank-one UInt8/UInt32/Int32 target per row, with every padded descriptor range within the selected device maxStorageBufferRange",
+			"{}: expected packed zero-offset, fully backed, shader-byte-addressable rank-two Float32/BFloat16 logits and one rank-one UInt8/UInt32/Int32 target per row, with every padded descriptor range within the selected device maxStorageBufferRange",
 			inOperation
 		);
 	}
@@ -170,7 +170,7 @@ bool validateMaskedCrossEntropyInputs(
 		return true;
 	}
 	OaLogError(oa::LogComponent::Ml,
-		"%s: expected valid packed CrossEntropy inputs, a floating mask matching the logits dtype and row count, a valid selected-row count, and every padded descriptor range within the selected device maxStorageBufferRange",
+		"{}: expected valid packed CrossEntropy inputs, a floating mask matching the logits dtype and row count, a valid selected-row count, and every padded descriptor range within the selected device maxStorageBufferRange",
 		inOperation);
 	return false;
 }
@@ -187,7 +187,7 @@ bool validateCrossEntropyOutput(
 		return true;
 	}
 	OaLogError(oa::LogComponent::Ml,
-		"%s: output allocation does not provide a fully backed descriptor range within the selected device maxStorageBufferRange",
+		"{}: output allocation does not provide a fully backed descriptor range within the selected device maxStorageBufferRange",
 		inOperation);
 	return false;
 }
@@ -247,7 +247,7 @@ oa::Matrix oa::FnLoss::crossEntropy(const oa::Matrix& inLogits, const oa::Matrix
 		{&inLogits, &inTargets}, {&loss});
 	if (not semantic.isOk()) {
 		OaLogError(oa::LogComponent::Ml,
-			"CrossEntropy semantic recording failed: %s",
+			"CrossEntropy semantic recording failed: {}",
 			semantic.getStatus().getMessage().cStr());
 		return {};
 	}
@@ -260,7 +260,7 @@ oa::Matrix oa::FnLoss::crossEntropy(const oa::Matrix& inLogits, const oa::Matrix
 	[[maybe_unused]] const oavk::Buffer logitsBuf = oa::MatrixAccess::descriptor(inLogits);
 	[[maybe_unused]] const oavk::Buffer targetsBuf = oa::MatrixAccess::descriptor(inTargets);
 	[[maybe_unused]] const oavk::Buffer lossBuf = oa::MatrixAccess::descriptor(perSample);
-	OaLogDebug(oa::LogComponent::Ml, "CrossEntropy: batch=%u classes=%u logits_buf=%u targets_buf=%u loss_buf=%u",
+	OaLogDebug(oa::LogComponent::Ml, "CrossEntropy: batch={} classes={} logits_buf={} targets_buf={} loss_buf={}",
 		batch, classes, logitsBuf.bindlessIndex, targetsBuf.bindlessIndex, lossBuf.bindlessIndex);
 
 	oa::BufferAccess access[] = {
@@ -276,7 +276,7 @@ oa::Matrix oa::FnLoss::crossEntropy(const oa::Matrix& inLogits, const oa::Matrix
 		semantic.getValue());
 	if (not dispatch.isOk()) {
 		OaLogError(oa::LogComponent::Ml,
-			"CrossEntropy dispatch recording failed: %s",
+			"CrossEntropy dispatch recording failed: {}",
 			dispatch.getMessage().cStr());
 		return {};
 	}
@@ -286,7 +286,7 @@ oa::Matrix oa::FnLoss::crossEntropy(const oa::Matrix& inLogits, const oa::Matrix
 		oa::detail::opRegistry::FnLoss::crossEntropy, semantic.getValue());
 	if (not lowering.isOk()) {
 		OaLogError(oa::LogComponent::Ml,
-			"CrossEntropy mean lowering failed: %s",
+			"CrossEntropy mean lowering failed: {}",
 			lowering.getMessage().cStr());
 		return {};
 	}
@@ -295,7 +295,7 @@ oa::Matrix oa::FnLoss::crossEntropy(const oa::Matrix& inLogits, const oa::Matrix
 		loss, inLogits, inTargets, semantic.getValue());
 	if (not attached.isOk()) {
 		OaLogError(oa::LogComponent::Ml,
-			"CrossEntropy semantic autograd attachment failed: %s",
+			"CrossEntropy semantic autograd attachment failed: {}",
 			attached.getMessage().cStr());
 		return {};
 	}
@@ -338,7 +338,7 @@ oa::Matrix oa::FnLoss::crossEntropyBwd(const oa::Matrix& inLogits, const oa::Mat
 		groupsX, groupsY);
 	if (not dispatch.isOk()) {
 		OaLogError(oa::LogComponent::Ml,
-			"CrossEntropyBwd dispatch recording failed: %s",
+			"CrossEntropyBwd dispatch recording failed: {}",
 			dispatch.getMessage().cStr());
 		return {};
 	}
@@ -378,7 +378,7 @@ oa::Matrix oa::FnLoss::maskedCrossEntropy(const oa::Matrix& inLogits,
 		groupsX, groupsY);
 	if (not dispatch.isOk()) {
 		OaLogError(oa::LogComponent::Ml,
-			"MaskedCrossEntropy dispatch recording failed: %s",
+			"MaskedCrossEntropy dispatch recording failed: {}",
 			dispatch.getMessage().cStr());
 		return {};
 	}
@@ -431,7 +431,7 @@ oa::Matrix oa::FnLoss::maskedCrossEntropyBwd(const oa::Matrix& inLogits,
 		groupsX, groupsY);
 	if (not dispatch.isOk()) {
 		OaLogError(oa::LogComponent::Ml,
-			"MaskedCrossEntropyBwd dispatch recording failed: %s",
+			"MaskedCrossEntropyBwd dispatch recording failed: {}",
 			dispatch.getMessage().cStr());
 		return {};
 	}

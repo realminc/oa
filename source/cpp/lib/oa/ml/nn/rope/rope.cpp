@@ -8,7 +8,7 @@
 #include <oa/ml/nn/rope/rope.h>
 #include <oa/runtime/executionSession.h>
 
-#include <assert.h>
+#include <oa/core/std/assert.h>
 
 static oa::U32 divCeil(oa::U32 inA, oa::U32 inB) { return (inA + inB - 1) / inB; }
 
@@ -19,7 +19,7 @@ oa::Matrix oa::Rope::forward(const oa::Matrix& inInput) {
 	oa::I64 T = inInput.size(0);
 	oa::I64 D = inInput.size(1);
 	oa::I64 expectedD = static_cast<oa::I64>(numHeads_) * headDim_;
-	assert(D == expectedD && "oa::Rope: input dim must match num_heads * head_dim");
+	OA_REQUIRE_MSG(D == expectedD, "oa::Rope: input dim must match num_heads * head_dim");
 	(void)expectedD;
 
 	auto& ctx = oa::ExecutionSession::getActive();

@@ -339,11 +339,11 @@ oa::Status oa::GemmTuner::loadCache(oa::Engine& inRt) {
 	}
 	oa::String path = getCachePath(inRt);
 	if (routeCache->load(path.data())) {
-		OaLogInfo(oa::LogComponent::Compute, "oa::GemmTuner: Loaded route cache from '%s'",
+		OaLogInfo(oa::LogComponent::Compute, "oa::GemmTuner: Loaded route cache from '{}'",
 			path.data());
 	} else {
 		OaLogInfo(oa::LogComponent::Compute,
-			"oa::GemmTuner: No compatible route cache at '%s'; benchmark required",
+			"oa::GemmTuner: No compatible route cache at '{}'; benchmark required",
 			path.data());
 	}
 	return oa::Status::ok(); // Missing or stale cache is not an error.
@@ -539,7 +539,7 @@ oa::Status oa::GemmTuner::benchmarkShape(
 			samples.end());
 		if (samples.empty()) {
 			OaLogWarn(oa::LogComponent::Compute,
-				"  oa::GemmTuner candidate %s: rejected (no valid GPU timing blocks)",
+				"  oa::GemmTuner candidate {}: rejected (no valid GPU timing blocks)",
 				cand.name);
 			continue;
 		}
@@ -564,7 +564,7 @@ oa::Status oa::GemmTuner::benchmarkShape(
 		oa::F32 gflops = static_cast<oa::F32>((flops / (ms * 1e-3f)) / 1e9);
 
 		OaLogInfo(oa::LogComponent::Compute,
-			"  oa::GemmTuner candidate %s: %.4f ms (%.1f GFLOP/s, median of %u blocks)",
+			"  oa::GemmTuner candidate {}: {:.4f} ms ({:.1f} GFLOP/s, median of {} blocks)",
 			cand.name, ms, gflops, static_cast<oa::U32>(samples.size()));
 
 		if (ms < bestMs) {
@@ -593,7 +593,7 @@ oa::Status oa::GemmTuner::benchmarkShape(
 		tuningScope.session(), problem, bestVariant, inShape);
 	if (not numerical.isOk()) {
 		OaLogError(oa::LogComponent::Compute,
-			"oa::GemmTuner rejected winner %s for %ux%ux%u: %s",
+			"oa::GemmTuner rejected winner {} for {}x{}x{}: {}",
 			bestName, M, N, K, numerical.getMessage().data());
 		return numerical;
 	}
@@ -607,7 +607,7 @@ oa::Status oa::GemmTuner::benchmarkShape(
 			key, bestVariant, bestMs, bestP95Ms, bestSampleCount);
 
 		OaLogInfo(oa::LogComponent::Compute,
-			"oa::GemmTuner winner for %ux%ux%u epilogue=%u: %s (%.4f ms) -> route cache",
+			"oa::GemmTuner winner for {}x{}x{} epilogue={}: {} ({:.4f} ms) -> route cache",
 			M, N, K, static_cast<oa::U32>(problem.epilogue), bestName, bestMs);
 	}
 
@@ -633,9 +633,9 @@ oa::Status oa::GemmTuner::run(
 	OaLogInfo(oa::LogComponent::Compute, "oa::GemmTuner: Starting benchmark suite...");
 	
 	const auto& hw = oa::EngineDeviceAccess::get(inRt).info.hardware;
-	OaLogInfo(oa::LogComponent::Compute, "  GPU: %s", hw.deviceName.data());
-	OaLogInfo(oa::LogComponent::Compute, "  numSMs: %u", hw.numSMs);
-	OaLogInfo(oa::LogComponent::Compute, "  VRAM: %.2f GB",
+	OaLogInfo(oa::LogComponent::Compute, "  GPU: {}", hw.deviceName.data());
+	OaLogInfo(oa::LogComponent::Compute, "  numSMs: {}", hw.numSMs);
+	OaLogInfo(oa::LogComponent::Compute, "  VRAM: {:.2f} GB",
 		static_cast<oa::F64>(hw.vramBytes) / (1024.0 * 1024.0 * 1024.0));
 	
 	auto shapes = getDefaultShapes();
@@ -657,7 +657,7 @@ oa::Status oa::GemmTuner::run(
 			            result.bestTimeMs, result.bestGflops);
 		} else {
 			OaLogWarn(oa::LogComponent::Compute,
-			            "  [%s] %ux%ux%u: FAILED - %s",
+			            "  [{}] {}x{}x{}: FAILED - {}",
 			            shape.name, shape.m, shape.n, shape.k,
 			            status.getMessage().data());
 		}
@@ -669,12 +669,12 @@ oa::Status oa::GemmTuner::run(
 		if (not saveStatus.isOk()) {
 			return saveStatus;
 		}
-		OaLogInfo(oa::LogComponent::Compute, "oa::GemmTuner: Saved route cache to %s",
+		OaLogInfo(oa::LogComponent::Compute, "oa::GemmTuner: Saved route cache to {}",
 			oa::GemmRouteCache::DefaultPath);
 	}
 
 	OaLogInfo(oa::LogComponent::Compute,
-	            "oa::GemmTuner: Benchmark complete (%u shapes tested)",
+	            "oa::GemmTuner: Benchmark complete ({} shapes tested)",
 	            static_cast<oa::U32>(results.size()));
 
 	return oa::Status::ok();

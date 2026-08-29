@@ -90,7 +90,7 @@ oa::GaeResult oa::FnAdvantage::gae(
 	const oa::Status validation = validateGaeInputs(
 		inReward, inValue, inNextValue, inTerminated, inTruncated, inConfig);
 	if (validation.isError()) {
-		OaLogError(oa::LogComponent::Ml, "%s", validation.getMessage().cStr());
+		OaLogError(oa::LogComponent::Ml, "{}", validation.getMessage().cStr());
 		return {};
 	}
 	auto& context = oa::ExecutionSession::getActive();
@@ -104,7 +104,7 @@ oa::GaeResult oa::FnAdvantage::gae(
 		inReward, inValue, inNextValue, inTerminated, inTruncated,
 		result.advantage, result.ret, inConfig);
 	if (status.isError()) {
-		OaLogError(oa::LogComponent::Ml, "%s", status.getMessage().cStr());
+		OaLogError(oa::LogComponent::Ml, "{}", status.getMessage().cStr());
 		return {};
 	}
 	if (not lowering.commit(

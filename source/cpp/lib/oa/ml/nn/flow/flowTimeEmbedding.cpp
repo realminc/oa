@@ -1,6 +1,6 @@
 #include <oa/ml/nn/flow/flowTimeEmbedding.h>
 
-#include <oa/core/assert.h>
+#include <oa/core/std/assert.h>
 #include <oa/core/fnMatrix.h>
 #include <oa/core/std/scalarMath.h>
 

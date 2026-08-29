@@ -16,7 +16,7 @@
 #include <oa/core/validation.h>
 #include <oa/core/fnmatrix/fnMatrixAxis.h>
 
-#include <assert.h>
+#include <oa/core/std/assert.h>
 
 static oa::U32 divCeil(oa::U32 inA, oa::U32 inB) { return (inA + inB - 1) / inB; }
 
@@ -359,8 +359,8 @@ oa::Matrix oa::FnMatrix::maxPool2dBwd(
 ) {
 	auto& ctx = oa::ExecutionSession::getActive();
 	oa::OpLoweringScope lowering(ctx);
-	assert(inX.rank() == 4 && "MaxPool2dBwd requires 4D input [N, C, H, W]");
-	assert(inGradOutput.rank() == 4 && "MaxPool2dBwd requires 4D grad_output");
+	OA_REQUIRE_MSG(inX.rank() == 4, "MaxPool2dBwd requires 4D input [N, C, H, W]");
+	OA_REQUIRE_MSG(inGradOutput.rank() == 4, "MaxPool2dBwd requires 4D grad_output");
 
 	oa::I64 N = inX.size(0);
 	oa::I64 C = inX.size(1);
@@ -424,8 +424,8 @@ oa::Matrix oa::FnMatrix::avgPool2dBwd(const oa::Matrix& inX, const oa::Matrix& i
                                    oa::I32 inKernelSize, oa::I32 inStride, oa::I32 inPadding) {
 	auto& ctx = oa::ExecutionSession::getActive();
 	oa::OpLoweringScope lowering(ctx);
-	assert(inX.rank() == 4 && "AvgPool2dBwd requires 4D input [N, C, H, W]");
-	assert(inGradOutput.rank() == 4 && "AvgPool2dBwd requires 4D grad_output");
+	OA_REQUIRE_MSG(inX.rank() == 4, "AvgPool2dBwd requires 4D input [N, C, H, W]");
+	OA_REQUIRE_MSG(inGradOutput.rank() == 4, "AvgPool2dBwd requires 4D grad_output");
 
 	oa::I64 N = inX.size(0);
 	oa::I64 C = inX.size(1);
@@ -634,7 +634,7 @@ oa::Matrix oa::FnMatrix::linearDataBwd(const oa::Matrix& inGradOutput, const oa:
 		{&inGradOutput, &inWeight}, {&gradInput});
 	if (not semantic.isOk()) {
 		OaLogError(oa::LogComponent::Ml,
-			"LinearDataBwd semantic recording failed: %s",
+			"LinearDataBwd semantic recording failed: {}",
 			semantic.getStatus().getMessage().cStr());
 		return {};
 	}
@@ -753,7 +753,7 @@ oa::Matrix oa::FnMatrix::linearWeightBwd(const oa::Matrix& inInput, const oa::Ma
 		{&inInput, &inGradOutput}, {&gradWeight});
 	if (not semantic.isOk()) {
 		OaLogError(oa::LogComponent::Ml,
-			"LinearWeightBwd semantic recording failed: %s",
+			"LinearWeightBwd semantic recording failed: {}",
 			semantic.getStatus().getMessage().cStr());
 		return {};
 	}
@@ -790,7 +790,7 @@ oa::LinearWeightBiasBwdResult oa::FnMatrix::linearWeightBiasBwd(
 		{&inInput, &inGradOutput}, {&gradWeight, &gradBias});
 	if (not semantic.isOk()) {
 		OaLogError(oa::LogComponent::Ml,
-			"LinearWeightBiasBwd semantic recording failed: %s",
+			"LinearWeightBiasBwd semantic recording failed: {}",
 			semantic.getStatus().getMessage().cStr());
 		return {};
 	}
@@ -806,7 +806,7 @@ oa::LinearWeightBiasBwdResult oa::FnMatrix::linearWeightBiasBwd(
 		});
 	if (not lowering.isOk()) {
 		OaLogError(oa::LogComponent::Ml,
-			"LinearWeightBiasBwd lowering failed: %s",
+			"LinearWeightBiasBwd lowering failed: {}",
 			lowering.getMessage().cStr());
 		return {};
 	}

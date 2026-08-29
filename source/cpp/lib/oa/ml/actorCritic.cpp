@@ -42,7 +42,7 @@ oa::ActorCriticOutput oa::CategoricalActorCritic::evaluate(
 		|| inObservation.rank() != 2
 		|| inObservation.size(1) != config_.observationSize) {
 		OaLogError(oa::LogComponent::Ml,
-			"oa::CategoricalActorCritic expects FP32 observations [batch,%d]",
+			"oa::CategoricalActorCritic expects FP32 observations [batch,{}]",
 			config_.observationSize);
 		return {};
 	}

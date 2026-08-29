@@ -13,8 +13,8 @@ import oaBenchSuite
 class OaBenchSuiteTest(unittest.TestCase):
     def testCheckedInSuiteIsValidAndUnique(self) -> None:
         workloads = oaBenchSuite._loadSuite(oaBenchSuite.DEFAULT_CONFIG)
-        self.assertEqual(len(workloads), 8)
-        self.assertEqual(len({item["name"] for item in workloads}), 8)
+        self.assertEqual(len(workloads), 13)
+        self.assertEqual(len({item["name"] for item in workloads}), 13)
 
     def testRejectsDuplicateWorkload(self) -> None:
         with tempfile.TemporaryDirectory(prefix="oa-bench-suite-test-") as directory:
@@ -40,6 +40,19 @@ class OaBenchSuiteTest(unittest.TestCase):
         )
         self.assertEqual(
             key, "linux-x86-64-0x8086-0x9a49-driver-id-intel-open-source-mesa"
+        )
+
+    def testResultSummaryHandlesCorrectnessRejectionBeforeMeasuredSamples(self) -> None:
+        summary = oaBenchSuite._resultSummary(
+            "video.paced",
+            {
+                "metric": {"statistics": None},
+                "result": "FAIL",
+            },
+        )
+        self.assertEqual(
+            summary,
+            "video.paced: metric statistics unavailable result=FAIL",
         )
 
     def testRooflineSummaryCombinesFreshProcessMedians(self) -> None:

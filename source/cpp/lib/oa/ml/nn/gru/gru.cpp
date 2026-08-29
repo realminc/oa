@@ -4,7 +4,7 @@
 #include <oa/core/log.h>
 #include <oa/core/std/format.h>
 
-#include <assert.h>
+#include <oa/core/std/assert.h>
 
 oa::GruCell::GruCell(oa::I32 inInputSize, oa::I32 inHiddenSize, bool inBias)
 	: inputSize_(inInputSize)
@@ -67,7 +67,7 @@ oa::Gru::Gru(oa::I32 inInputSize, oa::I32 inHiddenSize, oa::I32 inNumLayers, boo
 		const oa::I32 layerInputSize = (i == 0) ? inputSize_ : hiddenSize_;
 		auto layer = oa::makeShared<oa::GruCell>(layerInputSize, hiddenSize_, hasBias_);
 		layers_.pushBack(layer);
-		const oa::String layerName = oa::format("layer%d", i);
+		const oa::String layerName = oa::format("layer{}", i);
 		registerModule(layerName.cStr(), layer);
 	}
 }
@@ -85,19 +85,16 @@ oa::Matrix oa::Gru::forward(const oa::Matrix& inInput) {
 	// input shape: [batch, seq_len, input_size]. This contract is load-bearing: the
 	// timestep loop slices dim 1, so a flattened rank-2 [batch*seq, input] (what
 	// oa::Embedding/Gather returns) would be read as batch=batch*seq, seq=input_size —
-	// slicing the wrong axis into O(seq^2) buffers with garbage gradients. NDEBUG
-	// strips asserts, so guard loudly at runtime regardless of build type.
+	// slicing the wrong axis into O(seq^2) buffers with garbage gradients. Guard
+	// it in every build.
 	if (inInput.rank() != 3) {
 		OaLogError(oa::LogComponent::Ml,
-			"oa::Gru::forward expects rank-3 [batch, seq, input], got rank=%d — "
+			"oa::Gru::forward expects rank-3 [batch, seq, input], got rank={} — "
 			"reshape the embedding output (Gather flattens to [batch*seq, embed])",
 			inInput.rank());
-		assert(false && "oa::Gru::forward requires rank-3 [batch, seq, input]");
-		// release strips the assert — do NOT fall through to the timestep loop, which
-		// would slice the wrong axis into O(seq^2) garbage with bad gradients. Return
-		// empty: a loud, non-corrupting failure that errors cleanly downstream.
-		return {};
 	}
+	OA_REQUIRE_MSG(inInput.rank() == 3,
+		"oa::Gru::forward requires rank-3 [batch, seq, input]");
 	const oa::I32 batch = static_cast<oa::I32>(inInput.size(0));
 	const oa::I32 seqLen = static_cast<oa::I32>(inInput.size(1));
 	oa::Matrix layerInput = inInput;

@@ -19,7 +19,7 @@
 
 #include "fnMatrixSsmInternal.h"
 
-#include <assert.h>
+#include <oa/core/std/assert.h>
 namespace {
 
 constexpr oa::U32 kMamba3Chunk = 16u;
@@ -102,7 +102,7 @@ bool isMamba3MimoConfigValid(
 
 void logInvalidMamba3Mimo(const char* inOperation) {
 	OaLogError(oa::LogComponent::Ml,
-		"%s requires exact MIMO tensor shapes, B/L/H/G/P/N > 0, H%%G=0, "
+		"{} requires exact MIMO tensor shapes, B/L/H/G/P/N > 0, H modulo G = 0, "
 		"P/N<=128, P*N<=4096, A<=64 and 2*A<=N, R in [1,8], "
 		"boolean flags, addressable tensor sizes, and FP32 operands",
 		inOperation);
@@ -213,13 +213,12 @@ oa::Matrix oa::FnMatrix::mamba3Siso(
 	const oa::Matrix& inD,
 	const oa::SsmConfig& inConfig)
 {
-	assert(inConfig.headDim <= 128 && "Mamba3Siso: headdim (P) must be <= 128");
-	assert(inConfig.stateSize <= 128 && "Mamba3Siso: d_state (N) must be <= 128");
-	assert(inConfig.numRopeAngles <= 64 && "Mamba3Siso: num_rope_angles (A) must be <= 64");
+	OA_REQUIRE_MSG(inConfig.headDim <= 128, "Mamba3Siso: headdim (P) must be <= 128");
+	OA_REQUIRE_MSG(inConfig.stateSize <= 128, "Mamba3Siso: d_state (N) must be <= 128");
+	OA_REQUIRE_MSG(inConfig.numRopeAngles <= 64, "Mamba3Siso: num_rope_angles (A) must be <= 64");
 	const oa::U32 groups = inConfig.nGroups == 0u
 		? inConfig.nHeads : inConfig.nGroups;
-	assert(groups > 0u && inConfig.nHeads % groups == 0u
-		&& "Mamba3Siso: nHeads must be divisible by nGroups");
+	OA_REQUIRE_MSG(groups > 0u && inConfig.nHeads % groups == 0u, "Mamba3Siso: nHeads must be divisible by nGroups");
 	auto& ctx = oa::ExecutionSession::getActive();
 	oa::OpLoweringScope lowering(ctx);
 	const oa::U64 configIdentity =
@@ -341,11 +340,10 @@ oa::Matrix oa::FnMatrix::mamba3SisoStep(
 	const oa::Matrix& inVState,
 	const oa::SsmConfig& inConfig)
 {
-	assert(inConfig.seqLen == 1 && "Mamba3SisoStep: seqLen must be 1");
+	OA_REQUIRE_MSG(inConfig.seqLen == 1, "Mamba3SisoStep: seqLen must be 1");
 	const oa::U32 groups = inConfig.nGroups == 0u
 		? inConfig.nHeads : inConfig.nGroups;
-	assert(groups > 0u && inConfig.nHeads % groups == 0u
-		&& "Mamba3SisoStep: nHeads must be divisible by nGroups");
+	OA_REQUIRE_MSG(groups > 0u && inConfig.nHeads % groups == 0u, "Mamba3SisoStep: nHeads must be divisible by nGroups");
 	auto& ctx = oa::ExecutionSession::getActive();
 	oa::OpLoweringScope lowering(ctx);
 	const oa::U64 configIdentity =
@@ -429,8 +427,7 @@ oa::SsmBwdResult oa::FnMatrix::mamba3SisoBwd(
 	const oa::U32 P = inConfig.headDim;
 	const oa::U32 N = inConfig.stateSize;
 	const oa::U32 A = inConfig.numRopeAngles;
-	assert(G > 0u && H % G == 0u
-		&& "Mamba3SisoBwd: nHeads must be divisible by nGroups");
+	OA_REQUIRE_MSG(G > 0u && H % G == 0u, "Mamba3SisoBwd: nHeads must be divisible by nGroups");
 
 	// The android NLP shape needs a bounded global-scratch specialization:
 	// Turnip rejects both the 32 KiB shared-memory short kernel and the generic

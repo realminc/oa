@@ -1,7 +1,7 @@
 // oa::TransformerBlock — pre-norm transformer block implementation
 
 #include <oa/ml/nn/transformer/transformer.h>
-#include <oa/core/assert.h>
+#include <oa/core/std/assert.h>
 #include <oa/core/fnMatrix.h>
 #include <oa/core/std/format.h>
 
@@ -206,7 +206,7 @@ oa::NnTransformer::NnTransformer(
 	for (oa::I32 index = 0; index < inNumLayers; ++index) {
 		auto block = oa::makeShared<oa::TransformerBlock>(
 			modelWidth_, hiddenWidth_, contextLength_, numHeads_, inEps);
-		const oa::String name = oa::format("block_%d", index);
+		const oa::String name = oa::format("block_{}", index);
 		registerModule(name.cStr(), block);
 		blocks_.pushBack(oa::move(block));
 	}

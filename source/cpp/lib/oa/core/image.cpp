@@ -2,7 +2,7 @@
 
 #include <oa/core/image.h>
 
-#include <assert.h>
+#include <oa/core/std/assert.h>
 
 oa::I32 oa::imageFormatChannels(oa::ImageFormat inFormat) {
 	switch (inFormat) {
@@ -63,7 +63,7 @@ oa::Image::Image(oa::Matrix inData, oa::ImageLayout inLayout, oa::ImageFormat in
 	, layout_(inLayout)
 	, format_(inFormat)
 {
-	assert(validate() and "oa::Image: shape/layout/format mismatch");
+	OA_REQUIRE_MSG(validate(), "oa::Image: shape/layout/format mismatch");
 }
 
 bool oa::Image::validate() const {
@@ -115,7 +115,7 @@ oa::ImageBatch::ImageBatch(oa::Matrix inData, oa::ImageLayout inLayout, oa::Imag
 	, layout_(inLayout)
 	, format_(inFormat)
 {
-	assert(validate() and "oa::ImageBatch: shape/layout/format mismatch");
+	OA_REQUIRE_MSG(validate(), "oa::ImageBatch: shape/layout/format mismatch");
 }
 
 bool oa::ImageBatch::validate() const {

@@ -99,6 +99,9 @@ void bindVisionVideo(nb::module_& m) {
         .def("stepFrames", [](oa::VideoPlayer& video, oa::I32 count) {
             throwIfError(video.stepFrames(count));
         }, nb::arg("count"))
+        .def("seekFrame", [](oa::VideoPlayer& video, oa::Usize frameIndex) {
+            throwIfError(video.seekFrame(frameIndex));
+        }, nb::arg("frameIndex"))
         .def("seek", [](oa::VideoPlayer& video, oa::U64 timestamp) {
             throwIfError(video.seek(timestamp));
         }, nb::arg("timestamp"))
@@ -126,6 +129,7 @@ void bindVisionVideo(nb::module_& m) {
             }
             return bytesFrom(result.getValue());
         })
+        .def("currentFrameIndex", &oa::VideoPlayer::currentFrameIndex)
         .def("index", &oa::VideoPlayer::index)
         .def("width", &oa::VideoPlayer::width)
         .def("height", &oa::VideoPlayer::height)

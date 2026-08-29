@@ -30,9 +30,6 @@
 #include <oa/core/log.h>
 #include <oa/core/paths.h>
 
-#include <fstream>
-#include <cstring>
-#include <cmath>
 
 
 // ─── Fashion-MNIST class names ─────────────────────────────────────────────
@@ -51,31 +48,48 @@ struct MnistData {
 	oa::I32 count = 0;
 };
 
-static oa::U32 readBE32(std::ifstream& f) {
-	oa::U8 b[4];
-	f.read(reinterpret_cast<char*>(b), 4);
-	return (oa::U32(b[0]) << 24) | (oa::U32(b[1]) << 16) | (oa::U32(b[2]) << 8) | oa::U32(b[3]);
+static bool readBE32(oa::Span<const oa::U8> inBytes, oa::Usize& inOutOffset, oa::U32& outValue) {
+	if (inOutOffset > inBytes.size() || inBytes.size() - inOutOffset < 4U) return false;
+	const oa::U8* bytes = inBytes.data() + inOutOffset;
+	outValue = (oa::U32(bytes[0]) << 24) | (oa::U32(bytes[1]) << 16)
+		| (oa::U32(bytes[2]) << 8) | oa::U32(bytes[3]);
+	inOutOffset += 4U;
+	return true;
 }
 
 static bool loadMnistIDX(const oa::String& inDir,
                          const oa::String& inImgFile,
                          const oa::String& inLblFile,
                          MnistData& out) {
-	std::ifstream imgF((inDir + "/" + inImgFile).cStr(), std::ios::binary);
-	std::ifstream lblF((inDir + "/" + inLblFile).cStr(), std::ios::binary);
-	if (not imgF or not lblF) { return false; }
-	if (readBE32(imgF) != 0x00000803U) { return false; }
-	oa::U32 n    = readBE32(imgF);
-	oa::U32 rows = readBE32(imgF);
-	oa::U32 cols = readBE32(imgF);
-	if (rows != 28U or cols != 28U) { return false; }
-	if (readBE32(lblF) != 0x00000801U) { return false; }
-	if (readBE32(lblF) != n) { return false; }
+	auto imageResult = oa::Filesystem::readBinary(oa::Path(inDir) / oa::Path(inImgFile));
+	auto labelResult = oa::Filesystem::readBinary(oa::Path(inDir) / oa::Path(inLblFile));
+	if (not imageResult.isOk() or not labelResult.isOk()) return false;
+	const auto images = oa::move(imageResult).getValue();
+	const auto labels = oa::move(labelResult).getValue();
+	oa::Usize imageOffset = 0;
+	oa::Usize labelOffset = 0;
+	oa::U32 imageMagic = 0, labelMagic = 0, n = 0, labelCount = 0, rows = 0, cols = 0;
+	if (not readBE32(images.span(), imageOffset, imageMagic) || imageMagic != 0x00000803U
+		|| not readBE32(images.span(), imageOffset, n)
+		|| not readBE32(images.span(), imageOffset, rows)
+		|| not readBE32(images.span(), imageOffset, cols)
+		|| rows != 28U || cols != 28U
+		|| not readBE32(labels.span(), labelOffset, labelMagic) || labelMagic != 0x00000801U
+		|| not readBE32(labels.span(), labelOffset, labelCount) || labelCount != n
+		|| n > static_cast<oa::U32>(oa::Limits<oa::I32>::max())) {
+		return false;
+	}
+	const oa::U64 imageCount = static_cast<oa::U64>(n) * 784U;
+	if (imageCount > oa::Limits<oa::Usize>::max()
+		|| imageOffset + static_cast<oa::Usize>(imageCount) != images.size()
+		|| labelOffset + static_cast<oa::Usize>(n) != labels.size()) {
+		return false;
+	}
 	out.count = static_cast<oa::I32>(n);
-	out.images.resize(static_cast<oa::I64>(n) * 784);
-	imgF.read(reinterpret_cast<char*>(out.images.data()), out.images.size());
-	out.labels.resize(static_cast<oa::I64>(n));
-	lblF.read(reinterpret_cast<char*>(out.labels.data()), out.labels.size());
+	out.images.resize(static_cast<oa::Usize>(imageCount));
+	out.labels.resize(static_cast<oa::Usize>(n));
+	oa::memcpy(out.images.data(), images.data() + imageOffset, out.images.size());
+	oa::memcpy(out.labels.data(), labels.data() + labelOffset, out.labels.size());
 	return true;
 }
 
@@ -153,7 +167,7 @@ static oa::Status trainAndPredictGrid(oa::Engine& inRt,
 	if (trainLoader.numSamples() == 0 || testLoader.numSamples() == 0) {
 		return oa::Status::error("Fashion-MNIST not found");
 	}
-	OaLogInfo(oa::LogComponent::App, "Loaded %d train / %d test images",
+	OaLogInfo(oa::LogComponent::App, "Loaded {} train / {} test images",
 	            trainLoader.numSamples(), testLoader.numSamples());
 
 	auto model     = oa::makeShared<MnistClassifier>();
@@ -178,7 +192,7 @@ static oa::Status trainAndPredictGrid(oa::Engine& inRt,
 		.callbacks      = { &progressBar, &summary },
 	});
 
-	OaLogInfo(oa::LogComponent::App, "training %d steps ...", inTrainSteps);
+	OaLogInfo(oa::LogComponent::App, "training {} steps ...", inTrainSteps);
 
 	oa::Matrix batchX;
 	oa::Matrix batchY;
@@ -251,7 +265,7 @@ static oa::Status trainAndPredictGrid(oa::Engine& inRt,
 		if (cell.correct) { ++correct; }
 	}
 	OaLogInfo(oa::LogComponent::App,
-	            "Prediction grid: %d / %d correct on first %d test images",
+	            "Prediction grid: {} / {} correct on first {} test images",
 	            correct, kGridN, kGridN);
 	return oa::Status::ok();
 }
@@ -314,7 +328,7 @@ public:
 				"Image grid source must be open before initialization");
 	}
 	oa::Status update(oa::F32 inDeltaMs) override {
-		return std::isfinite(inDeltaMs) && inDeltaMs >= 0.0F
+		return oa::isFinite(inDeltaMs) && inDeltaMs >= 0.0F
 			? oa::Status::ok()
 			: oa::Status::invalidArgument(
 				"Image grid update requires a finite non-negative delta");
@@ -363,7 +377,7 @@ int main(int argc, char** argv) {
 		if (a == "--save" and i + 1 < argc) {
 			savePath = argv[++i];
 		} else if (a == "--steps" and i + 1 < argc) {
-			trainSteps = std::atoi(argv[++i]);
+			trainSteps = ::atoi(argv[++i]);
 		} else if (dataDir == nullptr) {
 			dataDir = argv[i];
 		}
@@ -373,16 +387,16 @@ int main(int argc, char** argv) {
 		dataDir = defaultDataDir.cStr();
 	}
 
-	std::printf("\n");
-	std::printf("╔══════════════════════════════════════════════════════════════════╗\n");
-	std::printf("║    OA Tutorial — Fashion-MNIST Prediction grid (oa::plot)          ║\n");
-	std::printf("║    Train → Predict → display  (5×5 grid, 25 test images)         ║\n");
-	std::printf("║    Green title = correct  ·  Red title = wrong                   ║\n");
-	std::printf("║    Mode: %s  ║\n",
+	oa::print("");
+	oa::print("╔══════════════════════════════════════════════════════════════════╗");
+	oa::print("║    OA Tutorial — Fashion-MNIST Prediction grid (oa::plot)          ║");
+	oa::print("║    Train → Predict → display  (5×5 grid, 25 test images)         ║");
+	oa::print("║    Green title = correct  ·  Red title = wrong                   ║");
+	oa::print("║    Mode: {}  ║",
 		savePath != nullptr
 			? "saveTo (headless PNG output)                             "
 			: "show (interactive window)                                ");
-	std::printf("╚══════════════════════════════════════════════════════════════════╝\n\n");
+	oa::print("╚══════════════════════════════════════════════════════════════════╝\n");
 
 	// ─── save mode: compute-only engine, no swapchain ──────────────────────
 	if (savePath != nullptr) {
@@ -391,7 +405,7 @@ int main(int argc, char** argv) {
 		cfg.selectForThread = true;
 		auto eR = oa::Engine::create(cfg);
 		if (not eR.isOk()) {
-			std::fprintf(stderr, "Engine create failed: %s\n",
+			oa::print(oa::PrintStream::Error, "Engine create failed: {}",
 			             eR.getStatus().toString().cStr());
 			return 1;
 		}
@@ -399,7 +413,7 @@ int main(int argc, char** argv) {
 
 		oa::Vector<GridCell> cells;
 		if (auto s = trainAndPredictGrid(engine, dataDir, trainSteps, cells); not s.isOk()) {
-			std::fprintf(stderr, "Train/predict: %s\n", s.toString().cStr());
+			oa::print(oa::PrintStream::Error, "Train/predict: {}", s.toString().cStr());
 			return 1;
 		}
 

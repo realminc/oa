@@ -38,7 +38,7 @@ static oa::U32 divCeil(oa::U32 inA, oa::U32 inB) {
 static bool isByteMatrix(const oa::Matrix& inA, const char* inName) {
 	if (inA.getDtype() == oa::ScalarType::UInt8) return true;
 	OaLogError(oa::LogComponent::Crypto,
-		"oa::FnHash::%s: expected UInt8 input", inName);
+		"oa::FnHash::{}: expected UInt8 input", inName);
 	return false;
 }
 
@@ -53,7 +53,7 @@ static oa::Matrix shakeBatch(
 {
 	if (inA.rank() != 2) {
 		OaLogError(oa::LogComponent::Crypto,
-			"oa::FnHash::%s: expected a [N, msgLen] byte matrix", inName);
+			"oa::FnHash::{}: expected a [N, msgLen] byte matrix", inName);
 		return {};
 	}
 	if (!isByteMatrix(inA, inName)) return {};
@@ -61,13 +61,13 @@ static oa::Matrix shakeBatch(
 	const oa::I64 msgLen = inA.size(1);
 	if (n <= 0 || msgLen < 0) {
 		OaLogError(oa::LogComponent::Crypto,
-			"oa::FnHash::%s: empty input", inName);
+			"oa::FnHash::{}: empty input", inName);
 		return {};
 	}
 	if (static_cast<oa::U64>(n) > oa::Limits<oa::U32>::max() ||
 		static_cast<oa::U64>(msgLen) > oa::Limits<oa::U32>::max()) {
 		OaLogError(oa::LogComponent::Crypto,
-			"oa::FnHash::%s: dimensions exceed the shader ABI", inName);
+			"oa::FnHash::{}: dimensions exceed the shader ABI", inName);
 		return {};
 	}
 
@@ -168,7 +168,7 @@ oa::Matrix merkleRoot(const oa::Matrix& inA) {
 	if (static_cast<oa::U64>(nodes) > oa::Limits<oa::U32>::max()) return {};
 	if ((nodes & (nodes - 1)) != 0) {
 		OaLogError(oa::LogComponent::Crypto,
-			"oa::FnHash::merkleRoot: leaf count must be a power of two (got %lld); "
+			"oa::FnHash::merkleRoot: leaf count must be a power of two (got {}); "
 			"use oa::merkleRoot for arbitrary counts",
 			static_cast<long long>(nodes));
 		return {};

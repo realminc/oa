@@ -12,11 +12,7 @@
 #include <oa/ui/image.h>
 #include <oa/vision/fnImage.h>
 
-#include <algorithm>
-#include <cmath>
-#include <cstdio>
-#include <cstdlib>
-#include <stdexcept>
+#include <stdlib.h>
 
 namespace tutorialFashionFlow {
 
@@ -36,29 +32,25 @@ static_assert(kImageSize % kPatchSize == 0);
 static_assert(kSequence == kPatchesPerSide * kPatchesPerSide);
 
 inline oa::I32 trainSteps() {
-	const char* value = std::getenv("OA_GENERATIVE_STEPS");
+	const char* value = ::getenv("OA_GENERATIVE_STEPS");
 	if (!value) return 1000;
-	return std::max<oa::I32>(1,
-		static_cast<oa::I32>(std::strtol(value, nullptr, 10)));
+	return oa::max<oa::I32>(1,
+		static_cast<oa::I32>(::strtol(value, nullptr, 10)));
 }
 
 inline oa::I32 generatedClassFromEnvironment() {
-	const char* value = std::getenv("OA_GENERATIVE_CLASS");
+	const char* value = ::getenv("OA_GENERATIVE_CLASS");
 	if (!value) return 0;
 	char* end = nullptr;
-	const long parsed = std::strtol(value, &end, 10);
-	if (end == value || *end != '\0' || parsed < 0 || parsed >= kClasses) {
-		throw std::invalid_argument(
-			"OA_GENERATIVE_CLASS must be an integer in [0,9]");
-	}
+	const long parsed = ::strtol(value, &end, 10);
+	OA_REQUIRE_MSG(end != value && *end == '\0' && parsed >= 0 && parsed < kClasses,
+		"OA_GENERATIVE_CLASS must be an integer in [0,9]");
 	return static_cast<oa::I32>(parsed);
 }
 
 inline oa::Matrix patchify(const oa::Matrix& inImages) {
-	if (inImages.rank() != 2 || inImages.size(1) != kPixels) {
-		throw std::invalid_argument(
-			"Fashion flow patchify expects [B,784] images");
-	}
+	OA_REQUIRE_MSG(inImages.rank() == 2 && inImages.size(1) == kPixels,
+		"Fashion flow patchify expects [B,784] images");
 	const oa::I64 batch = inImages.size(0);
 	// [B,7,4,7,4] -> [B,7,7,4,4] without requiring a rank-5
 	// permutation. Both rank-3 transposes are materialized GPU operations.
@@ -74,11 +66,9 @@ inline oa::Matrix patchify(const oa::Matrix& inImages) {
 }
 
 inline oa::Matrix unpatchify(const oa::Matrix& inPatches) {
-	if (inPatches.rank() != 3 || inPatches.size(1) != kSequence
-		|| inPatches.size(2) != kPatchDim) {
-		throw std::invalid_argument(
-			"Fashion flow unpatchify expects [B,49,16] patches");
-	}
+	OA_REQUIRE_MSG(inPatches.rank() == 3 && inPatches.size(1) == kSequence
+		&& inPatches.size(2) == kPatchDim,
+		"Fashion flow unpatchify expects [B,49,16] patches");
 	const oa::I64 batch = inPatches.size(0);
 	auto columns = oa::FnMatrix::transpose(
 		inPatches.reshape(oa::MatrixShape{
@@ -267,16 +257,16 @@ inline void validateImagePixels(
 	oa::F64 sumSquares = 0.0;
 	for (oa::U32 pixel : pixels) {
 		const oa::U8 value = static_cast<oa::U8>(pixel & 0xFFU);
-		minimum = std::min(minimum, value);
-		maximum = std::max(maximum, value);
+		minimum = oa::min(minimum, value);
+		maximum = oa::max(maximum, value);
 		sum += value;
 		sumSquares += static_cast<oa::F64>(value) * value;
 	}
 	const oa::F64 mean = sum / static_cast<oa::F64>(pixelCount);
-	const oa::F64 variance = std::max(
+	const oa::F64 variance = oa::max(
 		0.0, sumSquares / static_cast<oa::F64>(pixelCount) - mean * mean);
-	const oa::F64 standardDeviation = std::sqrt(variance);
-	std::printf("image pixels min=%u max=%u mean=%.2f stddev=%.2f\n",
+	const oa::F64 standardDeviation = oa::sqrt(variance);
+	oa::print("image pixels min={} max={} mean={:.2f} stddev={:.2f}",
 		static_cast<unsigned>(minimum), static_cast<unsigned>(maximum),
 		mean, standardDeviation);
 	EXPECT_LT(minimum, maximum);
@@ -300,7 +290,7 @@ inline oa::F32 validate(Model& inModel, oa::DsMnist& inValidation) {
 		auto prediction = inModel.forwardFlow(flow.state, time, labels);
 		auto loss = oa::FnLoss::mse(prediction, flow.velocity);
 		const auto execute = tutorialSubmitAndWait(testEngine());
-		if (!execute.isOk()) throw std::runtime_error(execute.getMessage().cStr());
+		OA_REQUIRE_MSG(execute.isOk(), execute.getMessage().cStr());
 		total += loss.item();
 		++batches;
 	}
@@ -317,9 +307,9 @@ inline void run(bool inMoe) {
 
 	const oa::I32 steps = trainSteps();
 	const oa::I32 generatedClass = generatedClassFromEnvironment();
-	std::printf("\nOA Fashion-MNIST flow — %s FFN\n",
+	oa::print("\nOA Fashion-MNIST flow — {} FFN",
 		inMoe ? "dropless MoE" : "dense");
-	std::printf("train=%d val=%d batch=%d steps=%d seed=2026 class=%d\n",
+	oa::print("train={} val={} batch={} steps={} seed=2026 class={}",
 		train.numSamples(), validation.numSamples(), kBatch, steps,
 		generatedClass);
 	oa::FnMatrix::setRngSeed(2026);
@@ -368,7 +358,7 @@ inline void run(bool inMoe) {
 	ASSERT_TRUE(training.loop.finish().isOk());
 	const oa::F32 finalLoss = training.loop.lastLoss();
 	const oa::F32 validationLoss = validate(*model, validation);
-	std::printf("flow_mse train %.6f -> %.6f · val %.6f -> %.6f\n",
+	oa::print("flow_mse train {:.6f} -> {:.6f} · val {:.6f} -> {:.6f}",
 		initialLoss, finalLoss, initialValidationLoss, validationLoss);
 
 	auto generated = sample(*model, 2026, generatedClass);
@@ -395,9 +385,9 @@ inline void run(bool inMoe) {
 	ASSERT_TRUE(reloaded->load(engine, checkpoint, reloadedOptimizer).isOk());
 	EXPECT_EQ(reloaded->numParameters(), model->numParameters());
 	EXPECT_GT(initialLoss, 0.0F);
-	EXPECT_TRUE(std::isfinite(finalLoss));
-	EXPECT_TRUE(std::isfinite(initialValidationLoss));
-	EXPECT_TRUE(std::isfinite(validationLoss));
+	EXPECT_TRUE(oa::isFinite(finalLoss));
+	EXPECT_TRUE(oa::isFinite(initialValidationLoss));
+	EXPECT_TRUE(oa::isFinite(validationLoss));
 	if (steps >= 20) EXPECT_LT(validationLoss, initialValidationLoss);
 	EXPECT_GT(validationLoss, 0.0F);
 }
