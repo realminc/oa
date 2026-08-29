@@ -443,7 +443,6 @@ TEST_VK(KernelRegistryTest, EmbeddedRegistryIndexAndNameAgree) {
 
 TEST_VK(KernelRegistryTest, HybridYcbcrKernelsAreExcludedFromDefaultPreloadLayout) {
 	EXPECT_FALSE(oa::computeKernelUsesDefaultBindlessPipeline("CvtNv12YcbcrToRgba"));
-	EXPECT_FALSE(oa::computeKernelUsesDefaultBindlessPipeline("CvtNv12YcbcrToBf16"));
 	EXPECT_TRUE(oa::computeKernelUsesDefaultBindlessPipeline("CvtNv12ToRgb"));
 	EXPECT_FALSE(oa::computeKernelUsesDefaultBindlessPipeline(nullptr));
 }

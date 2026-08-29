@@ -1786,17 +1786,6 @@
     {
       "category": "Vision",
       "condition": "always",
-      "local": 3,
-      "name": "CvtNv12YcbcrToBf16",
-      "origin": "oa",
-      "prefix": "Vision",
-      "profile": "vision",
-      "source": "source/cpp/lib/oa/vision/shader/compute/conversion/cvtNv12YcbcrToBf16.slang",
-      "stage": "compute"
-    },
-    {
-      "category": "Vision",
-      "condition": "always",
       "local": 4,
       "name": "CvtNv12YcbcrToRgba",
       "origin": "oa",
@@ -2598,6 +2587,11 @@
     {
       "first": 1,
       "last": 1,
+      "prefix": "Vision"
+    },
+    {
+      "first": 3,
+      "last": 3,
       "prefix": "Vision"
     },
     {

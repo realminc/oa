@@ -11,7 +11,9 @@ introduction.
 
 ## Releases
 
-- [v0.7.23](v0.7.23.md) — current public development preview
+- [v0.7.25](v0.7.25.md) — current public development preview
+- [v0.7.24](v0.7.24.md) — native-video source snapshot; hosted publication blocked by shader authority and validation logging
+- [v0.7.23](v0.7.23.md) — foundation public development preview
 - [v0.7.22](v0.7.22.md) — source snapshot; hosted publication blocked by the ASAN test timeout
 - [v0.7.21](v0.7.21.md) — foundation source snapshot; hosted publication blocked by the dependency ratchet
 - [v0.7.20](v0.7.20.md) — hosted sanitizer-target repair

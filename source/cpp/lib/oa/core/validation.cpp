@@ -140,7 +140,7 @@ oa::Status oa::Validation::report(
 		cb(inSev, inComp, buf.data());
 	} else {
 		oa::logWrite(sevToLogLevel(inSev), inComp,
-			"[oa::Validation::%s] %s", oa::validationSeverityName(inSev), buf.data());
+			"[oa::Validation::{}] {}", oa::validationSeverityName(inSev), buf.data());
 	}
 
 	if (static_cast<oa::U8>(inSev) >= static_cast<oa::U8>(oa::ValidationSeverity::Error)) {

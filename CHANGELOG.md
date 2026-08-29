@@ -4,6 +4,29 @@ All notable changes to OA are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is the single
 `VERSION` file at the repo root (read by CMake, `oa::version()`, and the Python package).
 
+## [0.7.25] — 2026-08-29 (hosted video-release repair)
+
+This immutable patch replaces the blocked `v0.7.24` hosted candidate. Video
+APIs, codec admission, media fixtures, decode/presentation behavior, and
+performance evidence are unchanged.
+
+### Fixed
+
+- Retired the experimental `CvtNv12YcbcrToBf16` shader from the shipped
+  fixed-kernel registry because no production route dispatches it; its stable
+  Vision ID 3 is reserved against reuse.
+- Corrected validation's default logger to use OA brace formatting. The former
+  `%s` call aborted whenever a validation message reached the new formatter,
+  blocking Release wheel smoke plus ASAN and UBSAN validation tests.
+
+### Verification
+
+- The regenerated 370-shader manifest passes strict shader-authority audit
+  with zero fixed kernels lacking production references.
+- Focused Release and UBSAN validation tests pass, along with the generated
+  kernel contract and registry tests. The tagged workflow owns the complete
+  package, sanitizer, CPU-Vulkan, wheel, PyPI, and release result.
+
 ## [0.7.24] — 2026-08-29 (native Vulkan Video foundation)
 
 ### Added

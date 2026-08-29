@@ -99,7 +99,7 @@ class ImageDispatch {
 public:
 	// inStorageDtype describes dtype-following storage-buffer bindings and
 	// outputs. Image-only conversions use Float32 unless their shader writes a
-	// typed tensor buffer (for example CvtNv12YcbcrToBf16).
+	// typed tensor buffer.
 	[[nodiscard]] static oa::Status run(
 		oa::Engine& inRt,
 		oa::StringView inShaderName,

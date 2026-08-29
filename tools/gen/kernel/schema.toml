@@ -38,6 +38,9 @@ reservations = [
   { prefix = "Ml", first = 370, last = 379 },
   { prefix = "Ml", first = 383, last = 383 },
   { prefix = "Vision", first = 1, last = 1 },
+  # Retired experimental immutable-sampler BF16 path. The public conversion
+  # API does not dispatch it; keep the identity unavailable for reuse.
+  { prefix = "Vision", first = 3, last = 3 },
   { prefix = "Vision", first = 5, last = 5 },
   { prefix = "Vision", first = 12, last = 15 },
   { prefix = "Audio", first = 5, last = 5 },
@@ -208,7 +211,6 @@ kernels = [
   { name = "LogSoftmax", prefix = "Ml", local = 270, category = "Ml", origin = "oa", source = "source/cpp/lib/oa/ml/shader/compute/nn/softmax/logSoftmax.slang" },
   { name = "LogSoftmaxBwd", prefix = "Ml", local = 271, category = "Ml", origin = "oa", source = "source/cpp/lib/oa/ml/shader/compute/nn/softmax/logSoftmaxBwd.slang" },
   { name = "CvtNv12ToRgb", prefix = "Vision", local = 2, category = "Vision", origin = "oa", source = "source/cpp/lib/oa/vision/shader/compute/conversion/cvtNv12ToRgb.slang", profile = "vision" },
-  { name = "CvtNv12YcbcrToBf16", prefix = "Vision", local = 3, category = "Vision", origin = "oa", source = "source/cpp/lib/oa/vision/shader/compute/conversion/cvtNv12YcbcrToBf16.slang", profile = "vision" },
   { name = "CvtNv12YcbcrToRgba", prefix = "Vision", local = 4, category = "Vision", origin = "oa", source = "source/cpp/lib/oa/vision/shader/compute/conversion/cvtNv12YcbcrToRgba.slang", profile = "vision" },
   { name = "NormalizeImage", prefix = "Vision", local = 6, category = "Vision", origin = "oa", source = "source/cpp/lib/oa/vision/shader/compute/conversion/normalizeImage.slang", profile = "vision" },
   { name = "ResizeBilinear", prefix = "Vision", local = 7, category = "Vision", origin = "oa", source = "source/cpp/lib/oa/vision/shader/compute/geometric/resizeBilinear.slang", profile = "vision" },

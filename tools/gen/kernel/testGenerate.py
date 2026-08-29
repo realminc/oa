@@ -23,8 +23,8 @@ class KernelGenerationTest(unittest.TestCase):
 		)
 
 	def testLiveSchemaIsUniqueAndSourcesExist(self) -> None:
-		self.assertEqual(222, len(self.kernels))
-		self.assertEqual(36, len(self.reservations))
+		self.assertEqual(221, len(self.kernels))
+		self.assertEqual(37, len(self.reservations))
 		self.assertEqual(len(self.kernels), len({row["name"] for row in self.kernels}))
 		self.assertEqual(
 		 len(self.kernels),

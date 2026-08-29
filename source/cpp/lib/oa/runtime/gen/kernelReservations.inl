@@ -31,6 +31,7 @@
 { oa::computeKernelPrefix::Ml, 370, 379 },
 { oa::computeKernelPrefix::Ml, 383, 383 },
 { oa::computeKernelPrefix::Vision, 1, 1 },
+{ oa::computeKernelPrefix::Vision, 3, 3 },
 { oa::computeKernelPrefix::Vision, 5, 5 },
 { oa::computeKernelPrefix::Vision, 12, 15 },
 { oa::computeKernelPrefix::Audio, 5, 5 },

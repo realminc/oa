@@ -162,7 +162,6 @@ static constexpr oa::U64 RlSacTarget = OA_COMPUTE_KERNEL_ID(oa::computeKernelPre
 static constexpr oa::U64 LogSoftmax = OA_COMPUTE_KERNEL_ID(oa::computeKernelPrefix::Ml, 270);
 static constexpr oa::U64 LogSoftmaxBwd = OA_COMPUTE_KERNEL_ID(oa::computeKernelPrefix::Ml, 271);
 static constexpr oa::U64 CvtNv12ToRgb = OA_COMPUTE_KERNEL_ID(oa::computeKernelPrefix::Vision, 2);
-static constexpr oa::U64 CvtNv12YcbcrToBf16 = OA_COMPUTE_KERNEL_ID(oa::computeKernelPrefix::Vision, 3);
 static constexpr oa::U64 CvtNv12YcbcrToRgba = OA_COMPUTE_KERNEL_ID(oa::computeKernelPrefix::Vision, 4);
 static constexpr oa::U64 NormalizeImage = OA_COMPUTE_KERNEL_ID(oa::computeKernelPrefix::Vision, 6);
 static constexpr oa::U64 ResizeBilinear = OA_COMPUTE_KERNEL_ID(oa::computeKernelPrefix::Vision, 7);
