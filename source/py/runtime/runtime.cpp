@@ -53,7 +53,7 @@ static bool initPythonEngineLocked() {
     const bool requestedPresentation = platformStatus.isOk();
     if (not requestedPresentation) {
         OaLogWarn(oa::LogComponent::Python,
-            "OA Python presentation unavailable; requesting compute-only engine: %s",
+            "OA Python presentation unavailable; requesting compute-only engine: {}",
             platformStatus.toString().cStr());
     }
 
@@ -61,7 +61,7 @@ static bool initPythonEngineLocked() {
     if (not result.isOk() and requestedPresentation) {
         OaLogWarn(oa::LogComponent::Python,
             "OA Python presentation-capable engine creation failed; "
-            "retrying compute-only: %s",
+            "retrying compute-only: {}",
             result.getStatus().toString().cStr());
         gViewerPlatform.release();
         oa::EngineConfig computeCfg;

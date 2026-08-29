@@ -4,6 +4,30 @@ All notable changes to OA are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is the single
 `VERSION` file at the repo root (read by CMake, `oa::version()`, and the Python package).
 
+## [0.7.26] — 2026-08-29 (Python compute-fallback repair)
+
+This immutable patch replaces the blocked `v0.7.25` hosted candidate. The C++
+release, sanitizers, CPU-Vulkan smoke, and package publication passed; only the
+Python wheel smoke failed when a headless runner exercised compute-only engine
+fallback.
+
+### Fixed
+
+- Converted both Python runtime fallback warnings from legacy `%s` placeholders
+  to OA brace formatting.
+- Made the Python lifecycle test force an invalid presentation backend, so the
+  warning and compute-only fallback execute deterministically on desktop and
+  headless hosts.
+- Regenerated the root Python stub, removing one stale overload docstring that
+  the generator-owned `crypto-host` check detected.
+
+### Verification
+
+- The freshly linked extension passes all 36 host and all eight crypto-host
+  wheel-profile tests, including the forced compute-only lifecycle regression.
+- The tagged workflow owns the complete wheel build/install/smoke, PyPI,
+  package, sanitizer, CPU-Vulkan, release-asset, and checksum result.
+
 ## [0.7.25] — 2026-08-29 (hosted video-release repair)
 
 This immutable patch replaces the blocked `v0.7.24` hosted candidate. Video

@@ -35,6 +35,10 @@ assert not native.runtime._pythonEnginePresentationCapable()
 
 
 def test_first_device_factory_initializes_compute_engine() -> None:
+	environment = os.environ.copy()
+	# Deterministically exercise the presentation-warning / compute-only fallback
+	# even when the test host has a working desktop session.
+	environment["OA_UI_BACKEND"] = "oa-invalid-test-backend"
 	probe = """
 import oa
 from oa._native import native
@@ -46,4 +50,4 @@ values = oa.FnMatrix.copyToHost(oa.FnMatrix.add(one, two))
 assert values == [3.0] * 6
 assert native.runtime._pythonEngineInitialized()
 """
-	subprocess.run([sys.executable, "-c", probe], check=True)
+	subprocess.run([sys.executable, "-c", probe], check=True, env=environment)

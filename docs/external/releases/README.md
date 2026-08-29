@@ -11,7 +11,8 @@ introduction.
 
 ## Releases
 
-- [v0.7.25](v0.7.25.md) — current public development preview
+- [v0.7.26](v0.7.26.md) — current public development preview
+- [v0.7.25](v0.7.25.md) — C++ release snapshot; Python wheel publication blocked by a fallback-warning format mismatch
 - [v0.7.24](v0.7.24.md) — native-video source snapshot; hosted publication blocked by shader authority and validation logging
 - [v0.7.23](v0.7.23.md) — foundation public development preview
 - [v0.7.22](v0.7.22.md) — source snapshot; hosted publication blocked by the ASAN test timeout

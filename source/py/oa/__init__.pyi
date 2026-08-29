@@ -1943,10 +1943,7 @@ class TransformerBlock(Module):
 class Viewer:
 	@overload
 	@staticmethod
-	def preview(source: Path, title: str = ..., width: int = ..., height: int = ...) -> None:
-		"""
-		Preview an image, audio, or video path in a blocking oa::Viewer session.
-		"""
+	def preview(source: Path, title: str = ..., width: int = ..., height: int = ...) -> None: ...
 
 	@overload
 	@staticmethod
