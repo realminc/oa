@@ -4,10 +4,10 @@ schemaVersion = 1
 # intentionally not content-addressed. Every binary input below is pinned.
 metadata = [
   "audio/README.md",
-  "documentation/examples/audio/README.md",
-  "documentation/readme/README.md",
-  "documentation/viewer/README.md",
-  "documentation/vision/README.md",
+  "docs/examples/audio/README.md",
+  "docs/readme/README.md",
+  "docs/viewer/README.md",
+  "docs/vision/README.md",
   "font/IBMPlexSans/LICENSE.txt",
   "font/IBMPlexSans/README.md",
   "font/IntelOneMono/OFL.txt",
@@ -41,7 +41,7 @@ source = "OA-authored SDK narration synthesized as 24 kHz mono speech"
 role = "audio example input and WAV decoder fixture"
 
 [[asset]]
-path = "documentation/examples/audio/oaNarrationRoom.mp3"
+path = "docs/examples/audio/oaNarrationRoom.mp3"
 bytes = 112940
 sha256 = "9ba96428b579a8b7ee33216382d33016c890f6b143eea324e5cd0632239ff0fe"
 license = "LicenseRef-OA-Repository"
@@ -49,7 +49,7 @@ source = "64 kbit/s MP3 presentation fallback encoded from the checked oaNarrati
 role = "browser-playable processed audio example evidence"
 
 [[asset]]
-path = "documentation/examples/audio/oaNarrationRoom.wav"
+path = "docs/examples/audio/oaNarrationRoom.wav"
 bytes = 1345966
 sha256 = "b99343671d0b8c829bf495f40385a6287a78ef38deca58d3ad775c3de42a196b"
 license = "LicenseRef-OA-Repository"
@@ -57,7 +57,7 @@ source = "byte-identical output of sdk/py/examples/audio/audio.py on the checked
 role = "lossless processed audio example evidence"
 
 [[asset]]
-path = "documentation/examples/audio/oaNarrationRoomViewer.jpg"
+path = "docs/examples/audio/oaNarrationRoomViewer.jpg"
 bytes = 46232
 sha256 = "d93cebbb536b382d3c04041e5e80957ef3d5d7c25f468fdf3ab6785d9db6799a"
 license = "LicenseRef-OA-Repository"
@@ -65,7 +65,7 @@ source = "Cropped GTK-framed OA ExampleAudio --preview capture displaying the ch
 role = "processed audio example Viewer presentation evidence"
 
 [[asset]]
-path = "documentation/examples/ui/trainingLoss.jpg"
+path = "docs/examples/ui/trainingLoss.jpg"
 bytes = 66639
 sha256 = "7c60f7dea23a4180641016ef05eae0c3672bb784570d52f1aa44fcaada2ba762"
 license = "LicenseRef-OA-Repository"
@@ -73,7 +73,7 @@ source = "byte-identical output of sdk/py/examples/ui/plotFigure.py"
 role = "rendered UI figure example evidence"
 
 [[asset]]
-path = "documentation/examples/ui/trainingLossViewer.jpg"
+path = "docs/examples/ui/trainingLossViewer.jpg"
 bytes = 92854
 sha256 = "26f7e9b1a9fd5adf24955ab2a39e2edb549778e31d57df592d0f7412ddf0ffb5"
 license = "LicenseRef-OA-Repository"
@@ -81,7 +81,7 @@ source = "1280x720 GTK-framed OA ExamplePlotLine --preview capture displaying th
 role = "UI figure example Viewer presentation evidence"
 
 [[asset]]
-path = "documentation/examples/vision/coverVisionGrayscale.jpg"
+path = "docs/examples/vision/coverVisionGrayscale.jpg"
 bytes = 408896
 sha256 = "163864805a449c278e1abd26b921e502cde9deacfa4dbf5179eef6b44b9b6ed9"
 license = "LicenseRef-OA-Repository"
@@ -89,7 +89,7 @@ source = "byte-identical output of sdk/py/examples/vision/image.py"
 role = "Rec.709 grayscale Vision example evidence"
 
 [[asset]]
-path = "documentation/examples/vision/coverVisionGrayscaleViewer.jpg"
+path = "docs/examples/vision/coverVisionGrayscaleViewer.jpg"
 bytes = 246888
 sha256 = "d378a00903391ba447827f7a6aa484524684e3e48a41a190582e97ec70259f0f"
 license = "LicenseRef-OA-Repository"
@@ -97,7 +97,7 @@ source = "1280x720 GTK-framed OA ExampleVisionImage --preview capture displaying
 role = "Vision example Viewer presentation evidence"
 
 [[asset]]
-path = "documentation/plot/oa-plot-diagnostics-dark.png"
+path = "docs/plot/oa-plot-diagnostics-dark.png"
 bytes = 111529
 sha256 = "00305e3a8b6801ef2fae2a74639ddbc99b9a150e9cdc318825943d246eba908c"
 license = "LicenseRef-OA-Repository"
@@ -105,7 +105,7 @@ source = "OA TutorialPlotGallery deterministic headless render"
 role = "offline SDK and developer-site Plot documentation"
 
 [[asset]]
-path = "documentation/plot/oa-plot-evaluation-dark.png"
+path = "docs/plot/oa-plot-evaluation-dark.png"
 bytes = 98617
 sha256 = "2f563c0b0c887add69e6fe8fa43401f003028cc210823020c367fdaa307865a4"
 license = "LicenseRef-OA-Repository"
@@ -113,7 +113,7 @@ source = "OA TutorialPlotGallery deterministic headless render"
 role = "offline SDK and developer-site Plot documentation"
 
 [[asset]]
-path = "documentation/plot/oa-plot-gallery-dark.png"
+path = "docs/plot/oa-plot-gallery-dark.png"
 bytes = 317433
 sha256 = "2b593ed2453307e13d0b501dfa252dcd5613f0a3b8667dcf8fd31650174c1ca9"
 license = "LicenseRef-OA-Repository"
@@ -121,7 +121,7 @@ source = "OA TutorialPlotGallery deterministic headless render"
 role = "offline SDK and developer-site Plot documentation"
 
 [[asset]]
-path = "documentation/plot/oa-plot-gallery-light.png"
+path = "docs/plot/oa-plot-gallery-light.png"
 bytes = 314856
 sha256 = "18c079f9e934cf44a0ba865a73e7429be61b6ec72d507b497a6e7a3a6f8d0cfb"
 license = "LicenseRef-OA-Repository"
@@ -129,7 +129,7 @@ source = "OA TutorialPlotGallery deterministic headless render"
 role = "offline SDK and developer-site Plot documentation"
 
 [[asset]]
-path = "documentation/plot/oa-plot-intro-dark.png"
+path = "docs/plot/oa-plot-intro-dark.png"
 bytes = 83338
 sha256 = "a552166060470f4b09ac94c31b807efc119668bbd685c33f8c9e46ef5ad346d3"
 license = "LicenseRef-OA-Repository"
@@ -137,7 +137,7 @@ source = "OA TutorialPlotGallery deterministic headless render"
 role = "offline SDK and developer-site Plot documentation"
 
 [[asset]]
-path = "documentation/plot/oa-plot-landscapes-dark.png"
+path = "docs/plot/oa-plot-landscapes-dark.png"
 bytes = 209613
 sha256 = "5f5b9a525034336b44c1634a66d33c57445570e157b3695de6c082193e05dde1"
 license = "LicenseRef-OA-Repository"
@@ -145,7 +145,7 @@ source = "OA TutorialPlotGallery deterministic headless render"
 role = "offline SDK and developer-site Plot documentation"
 
 [[asset]]
-path = "documentation/readme/oaSpaceCathedral.jpg"
+path = "docs/readme/oaSpaceCathedral.jpg"
 bytes = 130198
 sha256 = "0ba84f8c3677bff9596869ee6a888f674cae671a691afc2f7e1b50f1f27d4e66"
 license = "LicenseRef-Realm-Source-Artwork"
@@ -153,7 +153,7 @@ source = "Realm/OA presentation treatment of SpaceCathedral source artwork"
 role = "repository README and offline SDK presentation"
 
 [[asset]]
-path = "documentation/viewer/oa-viewer-space-cathedral.jpg"
+path = "docs/viewer/oa-viewer-space-cathedral.jpg"
 bytes = 198135
 sha256 = "836f3aa5c6ea65be6cba11c1944e0b9f92fa3f51b1ab2ccb5a544160b0a9022b"
 license = "LicenseRef-Realm-Source-Artwork"
@@ -161,7 +161,7 @@ source = "OA TutorialViewerImage capture using SpaceCathedral source artwork"
 role = "offline SDK and developer-site Viewer documentation"
 
 [[asset]]
-path = "documentation/vision/oa-vision-data-augmentation.png"
+path = "docs/vision/oa-vision-data-augmentation.png"
 bytes = 476263
 sha256 = "ea818dd5f205783c2526b8cd9b93bb27ff30583108746ee7552db379da04e42e"
 license = "LicenseRef-OA-Repository"

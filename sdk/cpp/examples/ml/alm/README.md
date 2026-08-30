@@ -34,7 +34,7 @@ This directory contains only the test suite:
 
 ```bash
 cmake --build build/release --target AlmAg -j
-./bin/release/example/ml/almAg
+./bin/release/sdk/examples/ml/almAg
 ```
 
 `AlmAg` is not registered in the default CTest suite because its complete

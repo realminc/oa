@@ -4,6 +4,8 @@
 #include "engine/engineAccess.h"
 #include <oa/runtime/spirv.h>
 #include <oa/runtime/stream.h>
+#include <oa/runtime/timer.h>
+#include <oa/runtime/timerAccess.h>
 #include <oa/runtime/pipeline.h>
 #include <oa/runtime/bindless.h>
 #include <oa/runtime/engine/bindlessAccess.h>
@@ -164,6 +166,7 @@ static oavk::Stream* imageDispatchSetupAndRecord(
 	oa::U32 inGroupsY,
 	oa::U32 inGroupsZ,
 	const oavk::ImageDispatchPipeline* inExactPipeline,
+	oa::Timer* inTimer,
 	oa::Vector<oa::U32>& outStorageImageSlots,
 	oa::Vector<oa::U32>& outSampledImageSlots,
 	oa::Vector<oa::U32>& outSamplerSlots,
@@ -346,6 +349,13 @@ static oavk::Stream* imageDispatchSetupAndRecord(
 		dependency.pImageMemoryBarriers = preBarriers.data();
 		oa::EngineDeviceAccess::get(inRt).deviceDispatch.vkCmdPipelineBarrier2(cmd, &dependency);
 	}
+	if (inTimer != nullptr) {
+		outStatus = oa::TimerAccess::beginDevice(*inTimer, stream);
+		if (not outStatus.isOk()) {
+			oa::EngineSubmissionAccess::releaseStream(inRt, stream);
+			return nullptr;
+		}
+	}
 
 	oa::EngineDeviceAccess::get(inRt).deviceDispatch.vkCmdBindPipeline(
 		cmd, VK_PIPELINE_BIND_POINT_COMPUTE, vkPipeline);
@@ -380,6 +390,14 @@ static oavk::Stream* imageDispatchSetupAndRecord(
 		totalPush,
 		pushBuf);
 	oa::EngineDeviceAccess::get(inRt).deviceDispatch.vkCmdDispatch(cmd, inGroupsX, inGroupsY, inGroupsZ);
+	if (inTimer != nullptr) {
+		outStatus = oa::TimerAccess::endDevice(*inTimer, stream);
+		if (not outStatus.isOk()) {
+			oa::TimerAccess::cancelDevice(*inTimer);
+			oa::EngineSubmissionAccess::releaseStream(inRt, stream);
+			return nullptr;
+		}
+	}
 
 	oa::Vector<VkImageMemoryBarrier2> postBarriers;
 	for (const auto& binding : inBindings) {
@@ -437,6 +455,27 @@ static oavk::Stream* imageDispatchSetupAndRecord(
 	return stream;
 }
 
+static void releaseImageDispatchSlots(
+	oa::Engine& inEngine,
+	oa::Vector<oa::U32>& inOutStorageImageSlots,
+	oa::Vector<oa::U32>& inOutSampledImageSlots,
+	oa::Vector<oa::U32>& inOutSamplerSlots)
+{
+	auto& bindless = oa::EngineBindlessAccess::get(inEngine);
+	for (oa::U32 idx : inOutStorageImageSlots) {
+		bindless.deregisterStorageImage(idx);
+	}
+	for (oa::U32 idx : inOutSampledImageSlots) {
+		bindless.deregisterSampledImage(idx);
+	}
+	for (oa::U32 idx : inOutSamplerSlots) {
+		bindless.deregisterSampler(idx);
+	}
+	inOutStorageImageSlots.clear();
+	inOutSampledImageSlots.clear();
+	inOutSamplerSlots.clear();
+}
+
 oa::Status oavk::ImageDispatch::run(
 	oa::Engine& inRt,
 	oa::StringView inShaderName,
@@ -457,16 +496,17 @@ oa::Status oavk::ImageDispatch::run(
 		inStorageDtype,
 		inGroupsX, inGroupsY, inGroupsZ,
 		nullptr,
+		nullptr,
 		storageImageSlots, sampledImageSlots, samplerSlots, status);
 	if (!stream) {
+		releaseImageDispatchSlots(
+			inRt, storageImageSlots, sampledImageSlots, samplerSlots);
 		return status;
 	}
 	status = stream->submitAndWait(inRt);
 	oa::EngineSubmissionAccess::releaseStream(inRt, stream);
-	auto& bindless = oa::EngineBindlessAccess::get(inRt);
-	for (oa::U32 idx : storageImageSlots) { bindless.deregisterStorageImage(idx); }
-	for (oa::U32 idx : sampledImageSlots) { bindless.deregisterSampledImage(idx); }
-	for (oa::U32 idx : samplerSlots) { bindless.deregisterSampler(idx); }
+	releaseImageDispatchSlots(
+		inRt, storageImageSlots, sampledImageSlots, samplerSlots);
 	return status;
 }
 
@@ -510,8 +550,11 @@ oa::Status oavk::ImageDispatch::runWithDependency(
 		inStorageDtype,
 		inGroupsX, inGroupsY, inGroupsZ,
 		nullptr,
+		nullptr,
 		storageImageSlots, sampledImageSlots, samplerSlots, status);
 	if (!stream) {
+		releaseImageDispatchSlots(
+			inRt, storageImageSlots, sampledImageSlots, samplerSlots);
 		return status;
 	}
 	status = stream->submitWithDependency(inRt, inWaitSem, inWaitValue);
@@ -519,10 +562,8 @@ oa::Status oavk::ImageDispatch::runWithDependency(
 		status = stream->synchronize(oa::EngineDeviceAccess::get(inRt));
 	}
 	oa::EngineSubmissionAccess::releaseStream(inRt, stream);
-	auto& bindless = oa::EngineBindlessAccess::get(inRt);
-	for (oa::U32 idx : storageImageSlots) { bindless.deregisterStorageImage(idx); }
-	for (oa::U32 idx : sampledImageSlots) { bindless.deregisterSampledImage(idx); }
-	for (oa::U32 idx : samplerSlots) { bindless.deregisterSampler(idx); }
+	releaseImageDispatchSlots(
+		inRt, storageImageSlots, sampledImageSlots, samplerSlots);
 	return status;
 }
 
@@ -537,7 +578,8 @@ oa::Result<oavk::ImageDispatchTicket> oavk::ImageDispatch::runWithDependencyAsyn
 	oa::U32 inGroupsY,
 	oa::U32 inGroupsZ,
 	const oavk::TimelineSemaphore& inWaitSem,
-	oa::U64 inWaitValue)
+	oa::U64 inWaitValue,
+	oa::Timer* inTimer)
 {
 	oavk::ImageDispatchTicket ticket;
 	oa::Status status;
@@ -546,24 +588,40 @@ oa::Result<oavk::ImageDispatchTicket> oavk::ImageDispatch::runWithDependencyAsyn
 		inStorageDtype,
 		inGroupsX, inGroupsY, inGroupsZ,
 		nullptr,
+		inTimer,
 		ticket.storageImageSlots_,
 		ticket.sampledImageSlots_,
 		ticket.samplerSlots_,
 		status);
 	if (!stream) {
+		releaseImageDispatchSlots(
+			inRt,
+			ticket.storageImageSlots_,
+			ticket.sampledImageSlots_,
+			ticket.samplerSlots_);
 		return status;
 	}
 	status = stream->submitWithDependency(inRt, inWaitSem, inWaitValue);
 	if (!status.isOk()) {
+		if (inTimer != nullptr) oa::TimerAccess::cancelDevice(*inTimer);
 		oa::EngineSubmissionAccess::releaseStream(inRt, stream);
-		auto& bindless = oa::EngineBindlessAccess::get(inRt);
-		for (oa::U32 idx : ticket.storageImageSlots_) { bindless.deregisterStorageImage(idx); }
-		for (oa::U32 idx : ticket.sampledImageSlots_) { bindless.deregisterSampledImage(idx); }
-		for (oa::U32 idx : ticket.samplerSlots_) { bindless.deregisterSampler(idx); }
+		releaseImageDispatchSlots(
+			inRt,
+			ticket.storageImageSlots_,
+			ticket.sampledImageSlots_,
+			ticket.samplerSlots_);
 		return status;
 	}
 	ticket.engine_ = &inRt;
 	ticket.stream_ = stream;
+	if (inTimer != nullptr) {
+		const oa::Status attachStatus = oa::TimerAccess::attachCompletion(
+			*inTimer, ticket.completion());
+		if (not attachStatus.isOk()) {
+			oa::TimerAccess::cancelDevice(*inTimer);
+			return attachStatus;
+		}
+	}
 	return ticket;
 }
 
@@ -577,7 +635,8 @@ oa::Result<oavk::ImageDispatchTicket> oavk::ImageDispatch::runWithPipelineDepend
 	oa::U32 inGroupsY,
 	oa::U32 inGroupsZ,
 	const oavk::TimelineSemaphore& inWaitSem,
-	oa::U64 inWaitValue)
+	oa::U64 inWaitValue,
+	oa::Timer* inTimer)
 {
 	oavk::ImageDispatchTicket ticket;
 	oa::Status status;
@@ -592,22 +651,40 @@ oa::Result<oavk::ImageDispatchTicket> oavk::ImageDispatch::runWithPipelineDepend
 		inGroupsY,
 		inGroupsZ,
 		&inPipeline,
+		inTimer,
 		ticket.storageImageSlots_,
 		ticket.sampledImageSlots_,
 		ticket.samplerSlots_,
 		status);
-	if (!stream) return status;
+	if (!stream) {
+		releaseImageDispatchSlots(
+			inRt,
+			ticket.storageImageSlots_,
+			ticket.sampledImageSlots_,
+			ticket.samplerSlots_);
+		return status;
+	}
 
 	status = stream->submitWithDependency(inRt, inWaitSem, inWaitValue);
 	if (!status.isOk()) {
+		if (inTimer != nullptr) oa::TimerAccess::cancelDevice(*inTimer);
 		oa::EngineSubmissionAccess::releaseStream(inRt, stream);
-		auto& bindless = oa::EngineBindlessAccess::get(inRt);
-		for (oa::U32 idx : ticket.storageImageSlots_) bindless.deregisterStorageImage(idx);
-		for (oa::U32 idx : ticket.sampledImageSlots_) bindless.deregisterSampledImage(idx);
-		for (oa::U32 idx : ticket.samplerSlots_) bindless.deregisterSampler(idx);
+		releaseImageDispatchSlots(
+			inRt,
+			ticket.storageImageSlots_,
+			ticket.sampledImageSlots_,
+			ticket.samplerSlots_);
 		return status;
 	}
 	ticket.engine_ = &inRt;
 	ticket.stream_ = stream;
+	if (inTimer != nullptr) {
+		const oa::Status attachStatus = oa::TimerAccess::attachCompletion(
+			*inTimer, ticket.completion());
+		if (not attachStatus.isOk()) {
+			oa::TimerAccess::cancelDevice(*inTimer);
+			return attachStatus;
+		}
+	}
 	return ticket;
 }

@@ -7,6 +7,8 @@
 #include <vkl/vkl.h>
 #include <oa/runtime/sync.h>
 
+namespace oa { class Timer; }
+
 namespace oavk {
 
 class Stream;
@@ -153,7 +155,8 @@ public:
 		oa::U32 inGroupsY,
 		oa::U32 inGroupsZ,
 		const oavk::TimelineSemaphore& inWaitSem,
-		oa::U64 inWaitValue);
+		oa::U64 inWaitValue,
+		oa::Timer* inTimer = nullptr);
 
 	[[nodiscard]] static oa::Result<ImageDispatchTicket> runWithPipelineDependencyAsync(
 		oa::Engine& inRt,
@@ -165,7 +168,8 @@ public:
 		oa::U32 inGroupsY,
 		oa::U32 inGroupsZ,
 		const oavk::TimelineSemaphore& inWaitSem,
-		oa::U64 inWaitValue);
+		oa::U64 inWaitValue,
+		oa::Timer* inTimer = nullptr);
 };
 
 } // namespace oavk

@@ -12,7 +12,7 @@ function(oa_add_tutorial TARGET SOURCE SUBDIR)
 		${oa_SOURCE_DIR}/source/cpp/lib
 		${oa_SOURCE_DIR}/source/cpp/thirdparty)
 	set_target_properties(${TARGET} PROPERTIES
-		RUNTIME_OUTPUT_DIRECTORY "${OA_BIN_DIR}/tutorial/${SUBDIR}")
+		RUNTIME_OUTPUT_DIRECTORY "${OA_SDK_BIN_DIR}/tutorials/${SUBDIR}")
 	add_test(NAME ${TARGET} COMMAND ${TARGET})
 	set_tests_properties(${TARGET} PROPERTIES
 		LABELS "gpu_bindless;tutorial"
@@ -31,7 +31,7 @@ function(oa_add_app_tutorial TARGET SOURCE SUBDIR)
 		target_link_libraries(${TARGET} PRIVATE SDL3::SDL3)
 	endif()
 	set_target_properties(${TARGET} PROPERTIES
-		RUNTIME_OUTPUT_DIRECTORY "${OA_BIN_DIR}/tutorial/${SUBDIR}")
+		RUNTIME_OUTPUT_DIRECTORY "${OA_SDK_BIN_DIR}/tutorials/${SUBDIR}")
 	if(TARGET oa_shaders)
 		add_dependencies(${TARGET} oa_shaders)
 	endif()
@@ -89,7 +89,7 @@ oa_add_nlp_tutorial(TutorialNlpCharMamba3Ag tutorialNlpCharMamba3Ag.cpp)
 # motion generator is now the oa::Alm VQ + token-prior pipeline.
 # TutorialMotionGen (VQ + masked-token motion generation) REMOVED 2026-07-09:
 # the motion-generation stack is devkit support consumed by
-# sdk/cpp/applications/gen3dAnim, not an installed OA framework contract.
+# sdk/cpp/apps/gen3danim, not an installed OA framework contract.
 # vQ/rVQ modules remain unit-tested in TestVqAssign.
 # Legacy single-model flow proof. The comparative transformer/moE tutorials below are
 # the current public replacement and retain stable target names for release automation.
@@ -133,7 +133,7 @@ target_link_libraries(TutorialRlLunarLander3dHeadless PRIVATE oaSdkSupport)
 target_include_directories(TutorialRlLunarLander3dHeadless PRIVATE
 	${CMAKE_CURRENT_SOURCE_DIR}/ml/rl/lunarLander3d)
 set_target_properties(TutorialRlLunarLander3dHeadless PROPERTIES
-	RUNTIME_OUTPUT_DIRECTORY "${OA_BIN_DIR}/tutorial/ml/rl")
+	RUNTIME_OUTPUT_DIRECTORY "${OA_SDK_BIN_DIR}/tutorials/ml/rl")
 if(TARGET oa_shaders)
 	add_dependencies(TutorialRlLunarLander3dHeadless oa_shaders)
 endif()

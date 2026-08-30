@@ -2,6 +2,7 @@
 
 #include <oa/core/vlm/vector.h>
 
+#include <oa/core/std/assert.h>
 #include <oa/core/std/limits.h>
 #include <oa/core/std/scalarMath.h>
 #include <oa/core/std/typeTraits.h>
@@ -12,6 +13,9 @@ namespace vlm {
 
 namespace detail {
 template <typename T> struct Quat;
+template <typename T>
+[[nodiscard]] OA_NOINLINE Quat<T> normalizeScaled(
+	const Quat<T>& inValue) noexcept;
 } // namespace detail
 
 template <typename T>
@@ -51,10 +55,14 @@ struct Quat {
 	[[nodiscard]] static Quat fromAxisAngle(
 		const detail::Vec3<T>& inAxis,
 		T inRadians) noexcept {
+		const T axisMagnitude = oa::max(
+			oa::abs(inAxis.x),
+			oa::max(oa::abs(inAxis.y), oa::abs(inAxis.z)));
+		OA_REQUIRE_MSG(
+			inAxis.isFinite() and axisMagnitude > T(0)
+				and oa::isFinite(inRadians),
+			"VLM axis-angle requires a finite non-zero axis and finite angle");
 		const detail::Vec3<T> axis = inAxis.normalized();
-		if (axis.lengthSquared() == T(0) or not oa::isFinite(inRadians)) {
-			return identity();
-		}
 		const T halfAngle = inRadians * T(0.5);
 		const T sine = oa::sin(halfAngle);
 		return {axis.x * sine, axis.y * sine, axis.z * sine, oa::cos(halfAngle)};
@@ -64,17 +72,31 @@ struct Quat {
 		return oa::isFinite(x) and oa::isFinite(y) and oa::isFinite(z) and oa::isFinite(w);
 	}
 	[[nodiscard]] constexpr T normSquared() const noexcept {
-		return x * x + y * y + z * z + w * w;
+		return (x * x + y * y) + (z * z + w * w);
 	}
-	[[nodiscard]] T norm() const noexcept { return oa::sqrt(normSquared()); }
-	[[nodiscard]] Quat normalized() const noexcept {
-		const T normValue = norm();
-		if (not oa::isFinite(normValue)
-			or normValue <= oa::Limits<T>::epsilon()) {
-			return identity();
+	[[nodiscard]] T norm() const noexcept {
+		const T squaredNorm = normSquared();
+		if (oa::isFinite(squaredNorm) and squaredNorm > T(0)) {
+			return oa::sqrt(squaredNorm);
 		}
-		const T inverse = T(1) / normValue;
-		return {x * inverse, y * inverse, z * inverse, w * inverse};
+		if (not isFinite()) return oa::sqrt(squaredNorm);
+		const T magnitude = oa::max(
+			oa::max(oa::abs(x), oa::abs(y)),
+			oa::max(oa::abs(z), oa::abs(w)));
+		if (magnitude == T(0)) return T(0);
+		const T sx = x / magnitude;
+		const T sy = y / magnitude;
+		const T sz = z / magnitude;
+		const T sw = w / magnitude;
+		return magnitude * oa::sqrt(
+			sx * sx + sy * sy + sz * sz + sw * sw);
+	}
+	[[nodiscard]] Quat normalized() const noexcept {
+		const T squaredNorm = normSquared();
+		if (OA_LIKELY(oa::isFinite(squaredNorm) and squaredNorm > T(0))) {
+			return *this * (T(1) / oa::sqrt(squaredNorm));
+		}
+		return normalizeScaled(*this);
 	}
 	[[nodiscard]] constexpr Quat conjugate() const noexcept {
 		return {-x, -y, -z, w};
@@ -147,6 +169,23 @@ struct Quat {
 	[[nodiscard]] constexpr bool operator==(
 		const Quat& inOther) const noexcept = default;
 };
+
+template <typename T>
+[[nodiscard]] OA_NOINLINE Quat<T> normalizeScaled(
+	const Quat<T>& inValue) noexcept {
+	const T magnitude = oa::max(
+		oa::max(oa::abs(inValue.x), oa::abs(inValue.y)),
+		oa::max(oa::abs(inValue.z), oa::abs(inValue.w)));
+	OA_REQUIRE_MSG(
+		inValue.isFinite() and magnitude > T(0),
+		"VLM cannot normalize a zero-length or non-finite quaternion");
+	const Quat<T> scaled{
+		inValue.x / magnitude, inValue.y / magnitude,
+		inValue.z / magnitude, inValue.w / magnitude};
+	const T scaledNorm = scaled.norm();
+	OA_REQUIRE(oa::isFinite(scaledNorm) and scaledNorm > T(0));
+	return scaled / scaledNorm;
+}
 
 template <typename T>
 [[nodiscard]] constexpr Quat<T> operator*(

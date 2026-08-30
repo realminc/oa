@@ -25,8 +25,8 @@ enum class CameraProjection : oa::U8 {
 
 // camera state (POD for functional API)
 struct CameraState {
-	oa::vlm::Vec3            position   = {0.0f, 0.0f, 5.0f};
-	oa::vlm::Quat            rotation   = {0.0f, 0.0f, 0.0f, 1.0f};  // Identity
+	oa::vlm::Vec3 position = {0.0f, 0.0f, 5.0f};
+	oa::vlm::Quat rotation = {0.0f, 0.0f, 0.0f, 1.0f};  // Identity
 	CameraProjection projection = CameraProjection::Perspective;
 
 	// Perspective params
@@ -45,7 +45,7 @@ struct CameraState {
 	// Orthographic params
 	oa::F32 orthoWidth  = 1.0f;
 	oa::F32 orthoHeight = 1.0f;
-	oa::F32 zoom         = 1.0f;
+	oa::F32 zoom        = 1.0f;
 
 	// Screen offset (lens shift / 2D pan in normalized device coords)
 	// Applied to projection matrix for panning without moving the camera.
@@ -54,7 +54,7 @@ struct CameraState {
 
 	// Orbit target (for orbit mode; when non-zero, camera rotates around this point)
 	oa::vlm::Vec3 orbitTarget = {0.0f, 0.0f, 0.0f};
-	bool   useOrbit     = false;
+	bool useOrbit = false;
 };
 
 namespace FnCamera {
@@ -64,8 +64,8 @@ namespace FnCamera {
 // initialize as 3D perspective camera (convenience for default setup)
 void initPerspective(
 	oa::CameraState& inState,
-	const oa::vlm::Vec3&  inPosition    = {0.0f, 2.0f, 5.0f},
-	const oa::vlm::Vec3&  inTarget       = {0.0f, 0.0f, 0.0f},
+	const oa::vlm::Vec3& inPosition = {0.0f, 2.0f, 5.0f},
+	const oa::vlm::Vec3& inTarget   = {0.0f, 0.0f, 0.0f},
 	oa::F32          inFovY         = 60.0f,
 	oa::F32          inAspect       = 1280.0f / 720.0f,
 	oa::F32          inNear         = 0.1f,
@@ -88,7 +88,8 @@ void setRotation(oa::CameraState& inState, const oa::vlm::Quat& inRotation);
 void lookAt(
 	oa::CameraState& inState,
 	const oa::vlm::Vec3& inTarget,
-	const oa::vlm::Vec3& inUp = {0.0f, 1.0f, 0.0f});
+	const oa::vlm::Vec3& inUp = {0.0f, 1.0f, 0.0f}
+);
 
 [[nodiscard]] const oa::vlm::Vec3& getPosition(const oa::CameraState& inState) noexcept;
 [[nodiscard]] const oa::vlm::Quat& getRotation(const oa::CameraState& inState) noexcept;

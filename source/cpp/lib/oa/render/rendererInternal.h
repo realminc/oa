@@ -16,6 +16,13 @@ public:
 			oa::StatusCode::FailedPrecondition,
 			"oa::Renderer was created for UI composition, not mesh rendering");
 	}
+	[[nodiscard]] virtual oa::Status beginSceneFrame(
+		const oa::Scene&,
+		const oa::CameraState&) {
+		return oa::Status::error(
+			oa::StatusCode::FailedPrecondition,
+			"oa::Renderer was created for UI composition, not scene rendering");
+	}
 	[[nodiscard]] virtual oa::Status beginUiFrame(oa::F32, oa::F32) {
 		return oa::Status::error(
 			oa::StatusCode::FailedPrecondition,

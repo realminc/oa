@@ -9,7 +9,9 @@
 // - Y plane: width × height (luma, full resolution)
 // - UV plane: (width/2) × (height/2) (chroma, half resolution, interleaved U/V)
 //
-// Dispatch: (ceil(width/16), ceil(height/16), 1)
+// Dispatch: (ceil(width/16), ceil(height/16), 1). Each 8x8 workgroup covers a
+// 16x16 luma tile. One invocation owns one 2x2 luma block so the four pixels
+// share their single 4:2:0 chroma sample.
 
 // Color space selection
 static const uint COLOR_SPACE_BT601  = 0;
@@ -35,130 +37,53 @@ struct PushConstants {
 [[vk::binding(1, 0)]] RWTexture2D<float4> storage_images[];
 [[vk::binding(3, 0)]] SamplerState samplers[];
 
-float CodeMaximum() {
-    return float((1u << pc.bit_depth) - 1u);
-}
+struct ColorTransform {
+    float luma_scale;
+    float luma_offset;
+    float3 u_coefficients;
+    float3 v_coefficients;
+};
 
-float LimitedLumaOffset() {
-    return float(16u << (pc.bit_depth - 8u)) / CodeMaximum();
-}
+ColorTransform getColorTransform() {
+    ColorTransform transform;
+    float code_maximum = float((1u << pc.bit_depth) - 1u);
+    bool full_range = pc.full_range != 0;
+    transform.luma_scale = full_range ? 1.0f : 1.164f;
+    transform.luma_offset = full_range
+        ? 0.0f
+        : float(16u << (pc.bit_depth - 8u)) / code_maximum;
 
-float ChromaMidpoint() {
-    return float(128u << (pc.bit_depth - 8u)) / CodeMaximum();
-}
-
-// BT.601 (Standard Definition) - Limited Range
-// R = 1.164 * (Y - 16) + 1.596 * (V - 128)
-// G = 1.164 * (Y - 16) - 0.391 * (U - 128) - 0.813 * (V - 128)
-// B = 1.164 * (Y - 16) + 2.018 * (U - 128)
-float3 YuvToRgb_BT601_Limited(float y, float u, float v) {
-    float Y = 1.164f * (y - LimitedLumaOffset());
-    float U = u - ChromaMidpoint();
-    float V = v - ChromaMidpoint();
-    
-    float r = Y + 1.596f * V;
-    float g = Y - 0.391f * U - 0.813f * V;
-    float b = Y + 2.018f * U;
-    
-    return saturate(float3(r, g, b));
-}
-
-// BT.601 (Standard Definition) - Full Range
-float3 YuvToRgb_BT601_Full(float y, float u, float v) {
-    float Y = y;
-    float U = u - ChromaMidpoint();
-    float V = v - ChromaMidpoint();
-    
-    float r = Y + 1.402f * V;
-    float g = Y - 0.344f * U - 0.714f * V;
-    float b = Y + 1.772f * U;
-    
-    return saturate(float3(r, g, b));
-}
-
-// BT.709 (High Definition) - Limited Range
-// R = 1.164 * (Y - 16) + 1.793 * (V - 128)
-// G = 1.164 * (Y - 16) - 0.213 * (U - 128) - 0.533 * (V - 128)
-// B = 1.164 * (Y - 16) + 2.112 * (U - 128)
-float3 YuvToRgb_BT709_Limited(float y, float u, float v) {
-    float Y = 1.164f * (y - LimitedLumaOffset());
-    float U = u - ChromaMidpoint();
-    float V = v - ChromaMidpoint();
-    
-    float r = Y + 1.793f * V;
-    float g = Y - 0.213f * U - 0.533f * V;
-    float b = Y + 2.112f * U;
-    
-    return saturate(float3(r, g, b));
-}
-
-// BT.709 (High Definition) - Full Range
-float3 YuvToRgb_BT709_Full(float y, float u, float v) {
-    float Y = y;
-    float U = u - ChromaMidpoint();
-    float V = v - ChromaMidpoint();
-    
-    float r = Y + 1.5748f * V;
-    float g = Y - 0.1873f * U - 0.4681f * V;
-    float b = Y + 1.8556f * U;
-    
-    return saturate(float3(r, g, b));
-}
-
-// BT.2020 (Ultra High Definition) - Limited Range
-// R = 1.164 * (Y - 16) + 1.678 * (V - 128)
-// G = 1.164 * (Y - 16) - 0.188 * (U - 128) - 0.650 * (V - 128)
-// B = 1.164 * (Y - 16) + 2.148 * (U - 128)
-float3 YuvToRgb_BT2020_Limited(float y, float u, float v) {
-    float Y = 1.164f * (y - LimitedLumaOffset());
-    float U = u - ChromaMidpoint();
-    float V = v - ChromaMidpoint();
-    
-    float r = Y + 1.678f * V;
-    float g = Y - 0.188f * U - 0.650f * V;
-    float b = Y + 2.148f * U;
-    
-    return saturate(float3(r, g, b));
-}
-
-// BT.2020 (Ultra High Definition) - Full Range
-float3 YuvToRgb_BT2020_Full(float y, float u, float v) {
-    float Y = y;
-    float U = u - ChromaMidpoint();
-    float V = v - ChromaMidpoint();
-    
-    float r = Y + 1.4746f * V;
-    float g = Y - 0.1646f * U - 0.5714f * V;
-    float b = Y + 1.8814f * U;
-    
-    return saturate(float3(r, g, b));
-}
-
-// Router function for color space conversion
-float3 YuvToRgb(float y, float u, float v, uint color_space, uint full_range) {
-    if (color_space == COLOR_SPACE_BT709) {
-        return full_range != 0 
-            ? YuvToRgb_BT709_Full(y, u, v)
-            : YuvToRgb_BT709_Limited(y, u, v);
+    if (pc.color_space == COLOR_SPACE_BT709) {
+        transform.u_coefficients = full_range
+            ? float3(0.0f, -0.1873f, 1.8556f)
+            : float3(0.0f, -0.213f, 2.112f);
+        transform.v_coefficients = full_range
+            ? float3(1.5748f, -0.4681f, 0.0f)
+            : float3(1.793f, -0.533f, 0.0f);
+    } else if (pc.color_space == COLOR_SPACE_BT2020) {
+        transform.u_coefficients = full_range
+            ? float3(0.0f, -0.1646f, 1.8814f)
+            : float3(0.0f, -0.188f, 2.148f);
+        transform.v_coefficients = full_range
+            ? float3(1.4746f, -0.5714f, 0.0f)
+            : float3(1.678f, -0.650f, 0.0f);
+    } else {
+        transform.u_coefficients = full_range
+            ? float3(0.0f, -0.344f, 1.772f)
+            : float3(0.0f, -0.391f, 2.018f);
+        transform.v_coefficients = full_range
+            ? float3(1.402f, -0.714f, 0.0f)
+            : float3(1.596f, -0.813f, 0.0f);
     }
-    else if (color_space == COLOR_SPACE_BT2020) {
-        return full_range != 0
-            ? YuvToRgb_BT2020_Full(y, u, v)
-            : YuvToRgb_BT2020_Limited(y, u, v);
-    }
-    else { // BT.601 (default)
-        return full_range != 0
-            ? YuvToRgb_BT601_Full(y, u, v)
-            : YuvToRgb_BT601_Limited(y, u, v);
-    }
+    return transform;
 }
 
-[shader("compute")]
-[numthreads(16, 16, 1)]
-void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
-    uint x = gid.x * 16 + lid.x;
-    uint y = gid.y * 16 + lid.y;
-
+void writePixel(
+    uint x,
+    uint y,
+    ColorTransform transform,
+    float3 chroma_contribution)
+{
     if (x >= pc.width || y >= pc.height) return;
 
     // Sample Y (luma) at full resolution. The VkImage can be larger than the
@@ -166,16 +91,39 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
     float2 y_coord = float2(x + 0.5f, y + 0.5f) / float2(pc.coded_width, pc.coded_height);
     float Y = sampled_images[pc.y_idx].SampleLevel(samplers[pc.sampler_idx], y_coord, 0).r;
 
-    // Sample UV (chroma) at half resolution. One UV texel covers a 2x2 luma
-    // block, so address chroma texel centers explicitly instead of reusing the
-    // luma coordinate.
-    float2 uv_coord = float2((x >> 1) + 0.5f, (y >> 1) + 0.5f)
-        / float2(pc.coded_width >> 1, pc.coded_height >> 1);
-    float2 UV = sampled_images[pc.uv_idx].SampleLevel(samplers[pc.sampler_idx], uv_coord, 0).rg;
-
-    // Convert YUV -> RGB with selected color space
-    float3 rgb = YuvToRgb(Y, UV.r, UV.g, pc.color_space, pc.full_range);
+    float3 rgb = saturate(
+        transform.luma_scale * (Y - transform.luma_offset)
+        + chroma_contribution);
     
     // Store RGB output
     storage_images[pc.out_idx][uint2(x, y)] = float4(rgb, 1.0f);
+}
+
+[shader("compute")]
+[numthreads(8, 8, 1)]
+void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
+    uint x = gid.x * 16 + lid.x * 2;
+    uint y = gid.y * 16 + lid.y * 2;
+    if (x >= pc.width || y >= pc.height) return;
+
+    // NV12/P010 4:2:0 stores exactly one interleaved chroma sample per 2x2
+    // luma block. All four output pixels therefore use the same coordinate,
+    // including with the existing nearest/linear sampler choices.
+    float2 uv_coord = float2((x >> 1) + 0.5f, (y >> 1) + 0.5f)
+        / float2(pc.coded_width >> 1, pc.coded_height >> 1);
+    float2 UV = sampled_images[pc.uv_idx].SampleLevel(
+        samplers[pc.sampler_idx], uv_coord, 0).rg;
+
+    ColorTransform transform = getColorTransform();
+    float chroma_midpoint = float(128u << (pc.bit_depth - 8u))
+        / float((1u << pc.bit_depth) - 1u);
+    float2 centered_chroma = UV - chroma_midpoint;
+    float3 chroma_contribution =
+        centered_chroma.x * transform.u_coefficients
+        + centered_chroma.y * transform.v_coefficients;
+
+    writePixel(x, y, transform, chroma_contribution);
+    writePixel(x + 1, y, transform, chroma_contribution);
+    writePixel(x, y + 1, transform, chroma_contribution);
+    writePixel(x + 1, y + 1, transform, chroma_contribution);
 }

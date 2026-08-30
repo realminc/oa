@@ -12,7 +12,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 DOCS = REPO / "docs" / "external"
-SDK_DOCUMENTATION_ASSETS = REPO / "sdk" / "asset" / "documentation"
+SDK_DOC_ASSETS = REPO / "sdk" / "asset" / "docs"
 STATUS_EXEMPT = {DOCS / "pyPIReadme.md"}
 MARKDOWN_LINK = re.compile(r"!?\[[^\]]*]\(([^)]+)\)")
 FORBIDDEN = {
@@ -30,7 +30,7 @@ def main() -> int:
     errors: list[str] = []
     markdown = sorted([
         *DOCS.rglob("*.md"),
-        *SDK_DOCUMENTATION_ASSETS.rglob("*.md"),
+        *SDK_DOC_ASSETS.rglob("*.md"),
     ])
     if not markdown:
         errors.append("docs/external: no public Markdown files found")

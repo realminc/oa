@@ -69,6 +69,25 @@ matrix/range reconstruction in shader code. AV1's admitted hardware path also
 contains a device-local DPB-to-staging copy; every row performs zero CPU pixel
 readback.
 
+### Isolated conversion attribution — experimental
+
+The newer `BenchVideoRealtime.ColorConvertGpuPair` workload records Vulkan
+timestamps around only the conversion dispatch. Decode, barriers, allocation,
+host waits and oracle readback are outside the timestamp interval. It uses
+independent RGBA targets, requires exact hardware/manual route counters, and
+compares every RGB pixel after timing.
+
+The manual shader now processes one 2x2 luma block per invocation and reuses
+the block's single 4:2:0 chroma sample for all four outputs. A seven-process
+scalar baseline measured 452.031 µs median with 10.81% spread at 1080p. Two
+optimized runs measured 413.385 and 429.115 µs medians, but failed the 15%
+admission gate with 42.30% and 116.68% spreads as the integrated GPU changed
+clock states. The apparent 5.1-8.5% reduction is therefore not a published
+speedup. Correctness is admitted: the 1080p H.264 hardware/manual RGB MAE was
+0.029750 code values with maximum channel error 1, and the focused path passed
+all four 1080p codecs, admitted UHD H.265/AV1, 8/10-bit decoder differentials,
+ASAN, UBSAN, and core/synchronization/GPU-assisted validation.
+
 ## Decode profile coverage
 
 The exact live device query and OA admission matrix cover:
@@ -134,6 +153,11 @@ The final checkpoint passes:
 - exact fixture hash, extent, cadence, codec/profile, frame completion, and
   zero-CPU-readback benchmark gates.
 
+The experimental isolated-dispatch checkpoint separately passes its route,
+full-pixel RGB/alpha oracle, focused ASAN/UBSAN, and three Vulkan validation
+gates. Its performance spread failed, so the older admitted tables above remain
+the public selection evidence.
+
 ## Reproduce
 
 Build and smoke the matrix first:
@@ -147,6 +171,12 @@ OA_VIDEO_BENCH_PAIR_ORDER=hardware-first \
 OA_VIDEO_BENCH_PRIME_FRAMES=120 \
 ./bin/release/test/vision/codec/benchVideoRealtime \
   --gtest_filter=BenchVideoRealtime.DecodePresentYcbcrPair
+
+OA_VIDEO_BENCH_VARIANT=1080p60-h264 \
+OA_VIDEO_CONVERT_BENCH_WARMUP=120 \
+OA_VIDEO_CONVERT_BENCH_SAMPLES=256 \
+./bin/release/test/vision/codec/benchVideoRealtime \
+  --gtest_filter=BenchVideoRealtime.ColorConvertGpuPair
 ```
 
 For publication evidence, wrap that command with

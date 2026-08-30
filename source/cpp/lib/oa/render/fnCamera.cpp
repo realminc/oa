@@ -64,11 +64,8 @@ void setRotation(oa::CameraState& inState, const oa::vlm::Quat& inRotation) {
 }
 
 void lookAt(oa::CameraState& inState, const oa::vlm::Vec3& inTarget, const oa::vlm::Vec3& inUp) {
-	const oa::vlm::Mat4 view = oa::vlm::lookAt(
-		inState.position, inTarget, inUp);
-	// The inverse of the view rotation is the camera's local-to-world rotation.
-	inState.rotation = oa::vlm::quaternionFromMatrix(
-		oa::vlm::transpose(view));
+	inState.rotation = oa::vlm::lookRotation(
+		inTarget - inState.position, inUp);
 }
 
 const oa::vlm::Vec3& getPosition(const oa::CameraState& inState) noexcept {
@@ -153,47 +150,20 @@ oa::CameraProjection getProjectionType(const oa::CameraState& inState) noexcept 
 // ─── matrices ─────────────────────────────────────────────────────────────
 
 oa::vlm::Mat4 getViewMatrix(const oa::CameraState& inState) noexcept {
-	// Camera rotation maps local coordinates into world space. The view matrix
-	// uses its inverse, followed by -position * inverse in the translation row.
-	// No storage transpose or coordinate-system conversion is involved.
-	oa::vlm::Mat4 rot = oa::vlm::quaternionToMatrix(
-		inState.rotation.conjugate());
-	oa::vlm::Mat4 view = rot;
-	view.m[3][0] = -(
-		inState.position.x * rot.m[0][0]
-		+ inState.position.y * rot.m[1][0]
-		+ inState.position.z * rot.m[2][0]);
-	view.m[3][1] = -(
-		inState.position.x * rot.m[0][1]
-		+ inState.position.y * rot.m[1][1]
-		+ inState.position.z * rot.m[2][1]);
-	view.m[3][2] = -(
-		inState.position.x * rot.m[0][2]
-		+ inState.position.y * rot.m[1][2]
-		+ inState.position.z * rot.m[2][2]);
-
-	return view;
+	return oa::vlm::viewFromPose(inState.position, inState.rotation);
 }
 
 oa::vlm::Mat4 getProjectionMatrix(const oa::CameraState& inState) noexcept {
-	oa::vlm::Mat4 proj = {};
-
 	if (inState.projection == oa::CameraProjection::Perspective) {
-		oa::F32 fovY = getEffectiveFovY(inState);
-		proj = oa::vlm::perspective(fovY, inState.aspect, inState.near, inState.far);
-		// apply screen offset (lens shift)
-		proj.m[2][0] = -inState.offsetX;
-		proj.m[2][1] = -inState.offsetY;
-	} else {
-		proj = oa::vlm::orthographic(
-			inState.orthoWidth, inState.orthoHeight,
-			inState.near, inState.far, inState.zoom);
-		// apply screen offset (2D pan)
-		proj.m[3][0] = -inState.offsetX;
-		proj.m[3][1] = -inState.offsetY;
+		return oa::vlm::perspectiveShifted(
+			getEffectiveFovY(inState), inState.aspect,
+			inState.near, inState.far,
+			{inState.offsetX, inState.offsetY});
 	}
-
-	return proj;
+	return oa::vlm::orthographicShifted(
+		inState.orthoWidth, inState.orthoHeight,
+		inState.near, inState.far, inState.zoom,
+		{inState.offsetX, inState.offsetY});
 }
 
 oa::vlm::Mat4 getViewProjectionMatrix(const oa::CameraState& inState) noexcept {

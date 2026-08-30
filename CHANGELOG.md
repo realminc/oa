@@ -4,6 +4,46 @@ All notable changes to OA are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is the single
 `VERSION` file at the repo root (read by CMake, `oa::version()`, and the Python package).
 
+## [0.7.27] — 2026-08-30 (Vulkan Linear Math foundation)
+
+### Added
+
+- Completed the packed CPU-only `oa::vlm` spatial-math surface with `F32` and
+  `F64` vectors, quaternions, `Mat3`/`Mat4`, affine decomposition, all six Euler
+  orders, checked camera/projection builders, reversed-Z, and top-origin
+  viewport project/unproject.
+- Added a correctness-gated 100-pair OA/GLM benchmark spanning 50 operation
+  families in both precisions, with arithmetic and hardened contracts reported
+  separately.
+
+### Changed
+
+- Render camera, mesh, scene, renderer, SDK transform, and skeleton consumers
+  now use VLM as their spatial-formula authority instead of maintaining local
+  matrix and conversion formulas.
+- Specialized fixed-shape matrix multiplication, determinant, normalization,
+  quaternion, look-at, inverse, interpolation, and TRS paths while retaining
+  packed ABI and robust exceptional-value fallbacks.
+- Split the unrelated host batch-reduction probe into `BenchSimd`; VLM remains
+  independent of xsimd and permits ordinary compiler vectorization internally.
+
+### Performance
+
+- On the qualified Intel Core i5-1145G7 / Clang 22.1.8 host, all 27 equivalent
+  arithmetic families reached parity or lower time than GLM 1.1.0 in both
+  precisions. Geometric-mean time was 13.4% lower for `F32` and 11.9% lower for
+  `F64`; `F32` `Mat4` multiplication used 37.8% less time and TRS composition
+  used 64.2%/67.8% less time. See the
+  [VLM benchmark](docs/external/benchmarks/oaVlm.md).
+
+### Verification
+
+- The focused Release, ASAN/LSAN, and UBSAN VLM/Camera/Scene/Transform/Skeleton
+  closure passes without a sanitizer finding.
+- All 100 benchmark precision/case oracles pass; extreme/subnormal
+  normalization, aliasing, output preservation, determinant, inverse,
+  projection, viewport, affine, Euler, and ABI contracts remain covered.
+
 ## [0.7.26] — 2026-08-29 (Python compute-fallback repair)
 
 This immutable patch replaces the blocked `v0.7.25` hosted candidate. The C++

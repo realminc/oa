@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>oa::Network — WebMCP</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <p class="eyebrow">oa::Network</p>
+        <h1>WebMCP for native<br>Vulkan applications</h1>
+        <p class="lede">One live OA engine. One bounded loopback control plane. Configure, restart, and inspect native Vulkan training through the same MCP registry used by the browser and an agent.</p>
+      </div>
+      <div class="status-stack" aria-live="polite">
+        <span id="native-state" class="badge pending">native · connecting</span>
+        <span id="webmcp-state" class="badge pending">webmcp · detecting</span>
+      </div>
+    </header>
+
+    <section class="device-card" aria-labelledby="device-heading">
+      <div class="card-heading">
+        <div>
+          <p class="eyebrow">Live engine</p>
+          <h2 id="device-heading">Vulkan status</h2>
+        </div>
+        <button id="refresh" type="button">Refresh status</button>
+      </div>
+      <dl id="device-grid">
+        <div><dt>Device</dt><dd id="device-name">—</dd></div>
+        <div><dt>Vendor</dt><dd id="device-vendor">—</dd></div>
+        <div><dt>Vulkan</dt><dd id="vulkan-version">—</dd></div>
+        <div><dt>Driver</dt><dd id="driver">—</dd></div>
+        <div><dt>Compute</dt><dd id="compute">—</dd></div>
+        <div><dt>Memory used</dt><dd id="memory">—</dd></div>
+      </dl>
+    </section>
+
+    <section class="device-card training-card" aria-labelledby="training-heading">
+      <div class="card-heading">
+        <div>
+          <p class="eyebrow">Live workload</p>
+          <h2 id="training-heading">Transformer training lab</h2>
+        </div>
+        <div class="control-row">
+          <button id="start-training" type="button">Start training</button>
+          <button id="pause-training" type="button" disabled>Pause</button>
+          <button id="resume-training" type="button" disabled>Resume</button>
+          <button id="checkpoint-training" type="button" disabled>Checkpoint</button>
+          <button id="evaluate-training" type="button" disabled>Evaluate</button>
+        </div>
+      </div>
+      <dl id="training-grid">
+        <div><dt>Run</dt><dd id="training-run">—</dd></div>
+        <div><dt>State</dt><dd id="training-state">—</dd></div>
+        <div><dt>Step</dt><dd id="training-step">0 / 300</dd></div>
+        <div><dt>Loss</dt><dd id="training-loss">—</dd></div>
+        <div><dt>GPU step</dt><dd id="training-gpu">—</dd></div>
+        <div><dt>Wall step</dt><dd id="training-wall">—</dd></div>
+        <div><dt>Learning rate</dt><dd id="training-lr">—</dd></div>
+        <div><dt>Parameters</dt><dd id="training-parameters">—</dd></div>
+        <div><dt>Shape</dt><dd id="training-shape">—</dd></div>
+      </dl>
+      <div class="parameter-row">
+        <label for="learning-rate">Learning rate</label>
+        <input id="learning-rate" type="number" min="0.000001" max="1" step="0.0001" value="0.0100">
+        <button id="apply-learning-rate" type="button" disabled>Apply at safe point</button>
+      </div>
+      <div class="progress-track" aria-hidden="true"><i id="training-progress"></i></div>
+    </section>
+
+    <section class="device-card config-card" aria-labelledby="config-heading">
+      <div class="card-heading">
+        <div>
+          <p class="eyebrow">Fresh-run configuration</p>
+          <h2 id="config-heading">Model and workload</h2>
+        </div>
+        <button id="restart-training" class="primary" type="button">Create new run</button>
+      </div>
+      <div class="config-grid">
+        <label><span>Training steps</span><input id="config-total-steps" type="number" min="1" max="2000" step="1" value="300"></label>
+        <label><span>Model width</span><input id="config-model-width" type="number" min="8" max="256" step="8" value="32"></label>
+        <label><span>Hidden width</span><input id="config-hidden-width" type="number" min="8" max="1024" step="8" value="64"></label>
+        <label><span>Context length</span><input id="config-context-length" type="number" min="4" max="64" step="4" value="16"></label>
+        <label><span>Batch size</span><input id="config-batch-size" type="number" min="1" max="256" step="1" value="64"></label>
+        <label><span>Initial learning rate</span><input id="config-learning-rate" type="number" min="0.000001" max="1" step="0.0001" value="0.0100"></label>
+      </div>
+      <p class="config-note">Restart is destructive for the active in-memory run. OA stops it at a safe point, reuses the single application-owned checkpoint slot, and constructs the new model on the engine-owning thread. Batch × context is capped at 8,192 tokens.</p>
+    </section>
+
+    <section class="device-card artifact-card" aria-labelledby="artifact-heading">
+      <div class="card-heading">
+        <div>
+          <p class="eyebrow">Qualified artifact</p>
+          <h2 id="artifact-heading">Checkpoint reload · greedy generation</h2>
+        </div>
+        <button id="read-generation" type="button" disabled>Read generation</button>
+      </div>
+      <dl>
+        <div><dt>Checkpoint</dt><dd id="checkpoint-roundtrip">waiting</dd></div>
+        <div><dt>Accuracy</dt><dd id="evaluation-accuracy">—</dd></div>
+        <div><dt>Quality gate</dt><dd id="generation-quality">waiting</dd></div>
+      </dl>
+      <pre id="generation-output">Training must complete before OA reloads the application-owned checkpoint and publishes bounded output.</pre>
+    </section>
+
+    <section class="flow" aria-label="Architecture flow">
+      <span>OA Engine</span><i>→</i><span>TrainingSession</span><i>→</i><span>MCP registry</span><i>→</i><span>WebMCP</span>
+    </section>
+
+    <section class="activity" aria-labelledby="activity-heading">
+      <div class="card-heading">
+        <div>
+          <p class="eyebrow">Shared operation result</p>
+          <h2 id="activity-heading">Native MCP activity</h2>
+        </div>
+        <span id="activity-source" class="badge unavailable">no agent calls</span>
+      </div>
+      <pre id="result">Waiting for the native OA runtime…</pre>
+    </section>
+  </main>
+  <script type="module" src="/webmcp.js"></script>
+</body>
+</html>

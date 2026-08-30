@@ -32,6 +32,7 @@ struct VideoDecoderCodecAccess;
 struct VideoDecoderInternal;
 struct VideoDecoderRecordAccess;
 struct Vp9PictureDesc;
+class Timer;
 
 // Decoded-frame resource path — selected once at decoder create() based on
 // device capabilities + queue topology.
@@ -308,11 +309,13 @@ private:
 	[[nodiscard]] oa::Result<oa::Event> convertNv12ToRgbIntoAsync(
 		const VideoFrame& inNv12Frame,
 		const VideoConversionOptions& inOptions,
-		const VideoFrame& inRgbTarget);
+		const VideoFrame& inRgbTarget,
+		oa::Timer* inTimer = nullptr);
 	[[nodiscard]] oa::Result<oa::Event> convertNv12ToRgbHardwareIntoAsync(
 		const VideoFrame& inYcbcrFrame,
 		const VideoConversionOptions& inOptions,
-		const VideoFrame& inRgbTarget);
+		const VideoFrame& inRgbTarget,
+		oa::Timer* inTimer = nullptr);
 	oa::Status destroyHardwareYcbcr_();
 	oa::Status restoreDpbLayerToDecodeLayout(const VideoFrame& inFrame);
 	[[nodiscard]] oa::U64 getBitstreamBufferCapacity() const noexcept;

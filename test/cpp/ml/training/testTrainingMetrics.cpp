@@ -251,6 +251,24 @@ TEST(TrainingSession, McpAdapterUsesTheExistingSafePointAuthority) {
   oa::McpServer server;
   ASSERT_TRUE(oa::McpTraining::registerTools(server, session).isOk());
 
+  oa::McpServer narrowServer;
+  oa::McpTrainingConfig narrowConfig;
+  narrowConfig.enableCheckpoint = false;
+  narrowConfig.enableEvaluate = false;
+  narrowConfig.enableRecapture = false;
+  ASSERT_TRUE(oa::McpTraining::registerTools(
+      narrowServer, session, narrowConfig).isOk());
+  const std::string narrowList = handleMcp(
+      narrowServer,
+      R"({"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}})");
+  EXPECT_NE(narrowList.find(R"("name":"training_pause")"), std::string::npos);
+  EXPECT_NE(narrowList.find(R"("name":"training_resume")"), std::string::npos);
+  EXPECT_NE(narrowList.find(R"("name":"training_set_parameter")"),
+            std::string::npos);
+  EXPECT_EQ(narrowList.find("training_checkpoint"), std::string::npos);
+  EXPECT_EQ(narrowList.find("training_evaluate"), std::string::npos);
+  EXPECT_EQ(narrowList.find("training_request_recapture"), std::string::npos);
+
   const std::string list = handleMcp(
       server,
       R"({"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}})");
@@ -263,6 +281,32 @@ TEST(TrainingSession, McpAdapterUsesTheExistingSafePointAuthority) {
   const std::string initial =
       handleMcp(server, mcpToolRequest(2, "training_status", "{}"));
   EXPECT_NE(initial.find(R"("revision":1,"state":"running")"),
+            std::string::npos);
+  const std::string invalidStatus = handleMcp(
+      server,
+      mcpToolRequest(20, "training_status", R"({"unexpected":true})"));
+  EXPECT_NE(invalidStatus.find(R"("isError":true)"), std::string::npos);
+  EXPECT_NE(invalidStatus.find("training_status accepts no arguments"),
+            std::string::npos);
+  const std::string invalidMetrics = handleMcp(
+      server,
+      mcpToolRequest(21, "training_metrics", R"({"unexpected":true})"));
+  EXPECT_NE(invalidMetrics.find(R"("isError":true)"), std::string::npos);
+  EXPECT_NE(invalidMetrics.find("training_metrics accepts no arguments"),
+            std::string::npos);
+  const std::string invalidResults = handleMcp(
+      server,
+      mcpToolRequest(22, "training_results", R"({"unexpected":true})"));
+  EXPECT_NE(invalidResults.find(R"("isError":true)"), std::string::npos);
+  EXPECT_NE(invalidResults.find("training_results accepts only afterSequence"),
+            std::string::npos);
+  const std::string invalidPause = handleMcp(
+      server,
+      mcpToolRequest(
+          23, "training_pause",
+          R"({"expectedRevision":1,"unexpected":true})"));
+  EXPECT_NE(invalidPause.find(R"("isError":true)"), std::string::npos);
+  EXPECT_NE(invalidPause.find("only expectedRevision is accepted"),
             std::string::npos);
 
   const std::string pause = handleMcp(

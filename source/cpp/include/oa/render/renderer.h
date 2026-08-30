@@ -12,6 +12,7 @@
 #include <oa/core/types.h>
 #include <oa/render/fnCamera.h>
 #include <oa/render/fnMesh.h>
+#include <oa/render/scene.h>
 #include <oa/runtime/texture.h>
 #include <oa/runtime/event.h>
 
@@ -99,6 +100,10 @@ public:
 	// beginFrame copies the complete semantic mesh snapshot before returning.
 	// No caller-owned mesh memory is retained.
 	[[nodiscard]] oa::Status beginFrame(const MeshData& inMesh,	const CameraState& inCamera);
+	// Scene compilation validates stable identities, hierarchy, transforms, and
+	// configured geometry capacity before recording. The semantic scene remains
+	// caller-owned and no caller memory is retained.
+	[[nodiscard]] oa::Status beginFrame(const Scene& inScene, const CameraState& inCamera);
 	// The UI overload starts immediate command collection. ui() is non-null only
 	// for a renderer created with oa::UiRenderConfig.
 	[[nodiscard]] oa::Status beginFrame(oa::F32 inDeltaMs, oa::F32 inContentScale = 1.0F);

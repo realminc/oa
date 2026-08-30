@@ -27,7 +27,7 @@ Build and run:
 
 ```bash
 ninja -C build/release TutorialViewerImage
-bin/release/tutorial/vision/tutorialViewerImage sdk/asset/image/coverMl.jpg
+bin/release/sdk/tutorials/vision/tutorialViewerImage sdk/asset/image/coverMl.jpg
 ```
 
 The Viewer owns its UI, input and compose resources and borrows presentation
@@ -71,7 +71,7 @@ result through `oa::FnImage::saveTextureFile`.
 
 ```bash
 ninja -C build/release TutorialViewerImageHeadless
-bin/release/tutorial/vision/tutorialViewerImageHeadless \
+bin/release/sdk/tutorials/vision/tutorialViewerImageHeadless \
   sdk/asset/image/coverMl.jpg /tmp/oa-image.png
 ```
 

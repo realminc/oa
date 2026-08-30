@@ -20,3 +20,5 @@
 #include <oa/core/vlm/quaternion.h>
 #include <oa/core/vlm/matrix.h>
 #include <oa/core/vlm/math.h>
+#include <oa/core/vlm/affine.h>
+#include <oa/core/vlm/projection.h>

@@ -9,9 +9,18 @@
 
 oa::NlpSuiteRecipe::NlpSuiteRecipe(
 	oa::NlpArchitecture inArchitecture,
-	oa::NlpTokenizerKind inTokenizer)
+	oa::NlpTokenizerKind inTokenizer,
+	oa::I32 inContextLength,
+	oa::I32 inModelWidth,
+	oa::I32 inHiddenWidth)
 	: architecture_(inArchitecture)
-	, tokenizer_(inTokenizer) {
+	, tokenizer_(inTokenizer)
+	, contextLength_(inContextLength)
+	, modelWidth_(inModelWidth)
+	, hiddenWidth_(inHiddenWidth) {
+	OA_REQUIRE_MSG(contextLength_ > 0, "NLP suite context length must be positive");
+	OA_REQUIRE_MSG(modelWidth_ > 0, "NLP suite model width must be positive");
+	OA_REQUIRE_MSG(hiddenWidth_ > 0, "NLP suite hidden width must be positive");
 }
 
 oa::I32 oa::NlpSuiteRecipe::vocabSize() const {
@@ -93,7 +102,7 @@ const char* oa::NlpSuiteRecipe::modelDescription() const {
 	case oa::NlpArchitecture::Gru:
 		return "Embedding(32) -> GRU(32x64) -> Linear(vocab)";
 	case oa::NlpArchitecture::Transformer:
-		return "Embedding(32) -> transformer(FFN=64) -> Linear(vocab)";
+		return "Embedding(modelWidth) -> transformer(hiddenWidth) -> Linear(vocab)";
 	case oa::NlpArchitecture::MoeTransformer:
 		return "Embedding(32) -> moE(E=4,K=2,DFF=16) -> Linear(vocab)";
 	case oa::NlpArchitecture::Mamba3:

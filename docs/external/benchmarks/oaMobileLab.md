@@ -80,12 +80,12 @@ not treated as proof that descriptor behavior is portable.
 ## Reproduce
 
 Build a locally signed package using the environment contract documented in
-[the Mobile Lab README](../../../sdk/android/oaMobileLab/README.md), install it, then run:
+[the Mobile Lab README](../../../sdk/android/mobilelab/README.md), install it, then run:
 
 ```bash
 OA_ANDROID_PACKAGE=com.oa.mobilelab \
 OA_NLP_TIMEOUT_SECONDS=1800 \
-  sdk/android/oaMobileLab/tools/run-nlp-suite.sh
+  sdk/android/mobilelab/tools/run-nlp-suite.sh
 ```
 
 The runner discovers whether the package is debuggable. Debug builds expose the native

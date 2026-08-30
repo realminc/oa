@@ -6,7 +6,7 @@ function(oa_add_example TARGET SOURCE SUBDIR)
 	add_executable(${TARGET} ${SOURCE})
 	target_link_libraries(${TARGET} PRIVATE oaSdkSupport)
 	set_target_properties(${TARGET} PROPERTIES
-		RUNTIME_OUTPUT_DIRECTORY "${OA_BIN_DIR}/example/${SUBDIR}")
+		RUNTIME_OUTPUT_DIRECTORY "${OA_SDK_BIN_DIR}/examples/${SUBDIR}")
 	add_test(NAME ${TARGET} COMMAND ${TARGET})
 	set_tests_properties(${TARGET} PROPERTIES
 		LABELS "example;gpu_bindless"
@@ -30,7 +30,7 @@ if(OA_ENABLE_ALM)
 		${oa_SOURCE_DIR}/source/cpp/lib
 		${oa_SOURCE_DIR}/source/cpp/thirdparty)
 	set_target_properties(AlmAg PROPERTIES
-		RUNTIME_OUTPUT_DIRECTORY "${OA_BIN_DIR}/example/ml")
+		RUNTIME_OUTPUT_DIRECTORY "${OA_SDK_BIN_DIR}/examples/ml")
 	add_test(NAME AlmAg COMMAND AlmAg)
 	set_tests_properties(AlmAg PROPERTIES
 		LABELS "example;legacy;gpu_bindless"

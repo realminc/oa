@@ -135,12 +135,12 @@ else()
 	endif()
 endif()
 
-# ─── Binary output: bin/{preset}/{app,example,tutorial,test}/ ───────────────
-# Native output is already identified by being an executable. Keep `cpp` only
-# in authored source roots; repeating it below an artifact-kind directory adds
-# no useful build axis.
+# ─── Binary output: bin/{preset}/{sdk,test}/ ────────────────────────────────
+# SDK consumer artifacts mirror their source ownership below `sdk/`; OA's test
+# and benchmark artifacts remain a sibling verification boundary.
 cmake_path(GET CMAKE_BINARY_DIR FILENAME OA_PRESET_NAME)
 set(OA_BIN_DIR "${CMAKE_SOURCE_DIR}/bin/${OA_PRESET_NAME}")
+set(OA_SDK_BIN_DIR "${OA_BIN_DIR}/sdk")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${OA_BIN_DIR}")
 if(OA_BUILD_TESTS)
 	file(MAKE_DIRECTORY "${OA_BIN_DIR}/test")
@@ -614,6 +614,7 @@ set(OA_SOURCES
 	# Render — reusable 3D render-to-texture infrastructure
 	source/cpp/lib/oa/render/fnCamera.cpp
 	source/cpp/lib/oa/render/fnMesh.cpp
+	source/cpp/lib/oa/render/fnScene.cpp
 	source/cpp/lib/oa/render/renderer.cpp
 	source/cpp/lib/oa/render/renderer3d.cpp
 
@@ -696,7 +697,7 @@ set(OA_SOURCES
 
 
 	# Network
-	source/cpp/lib/oa/mcp/mcp.cpp
+	source/cpp/lib/oa/network/mcp.cpp
 	source/cpp/lib/oa/network/tcp.cpp
 	source/cpp/lib/oa/network/tcpFramed.cpp
 	source/cpp/lib/oa/network/satelliteProtocol.cpp
@@ -1475,6 +1476,11 @@ install(TARGETS oa oa_headers oa_api
 )
 if(TARGET oa-satellite)
 	install(TARGETS oa-satellite
+		RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+		COMPONENT oa)
+endif()
+if(TARGET oa-webmcp)
+	install(TARGETS oa-webmcp
 		RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 		COMPONENT oa)
 endif()

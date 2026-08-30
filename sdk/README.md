@@ -9,9 +9,9 @@ and does not define a second runtime.
 sdk/
   cpp/{applications,examples,tutorials,include,lib}
   py/{examples,tutorials,lib}
-  android/oaMobileLab
+  android/mobilelab
   asset                       checked-in, manifest-verified SDK media
-    documentation/           offline docs and publication images
+    docs/                    offline docs and publication images
   data/packs.toml             optional remote dataset descriptors
 ```
 
@@ -21,7 +21,7 @@ consumer examples remain here and feed generated documentation from checked code
 
 `sdk/asset` contains the small inputs required by tests, tutorials, generators,
 and platform labs plus the media required by an offline documentation bundle
-under `sdk/asset/documentation`. Verify its complete inventory with:
+under `sdk/asset/docs`. Verify its complete inventory with:
 
 ```bash
 python3 tools/data/checkAssets.py

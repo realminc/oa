@@ -10,8 +10,8 @@
 #include <oa/runtime/executionSession.h>
 #include <oa/runtime/executionSession.h>
 
-#include "../../../sdk/cpp/applications/network/satellite/nlpStep.h"
-#include "../../../sdk/cpp/applications/network/satellite/nlpCoordinator.h"
+#include "../../../sdk/cpp/apps/network/satellite/nlpStep.h"
+#include "../../../sdk/cpp/apps/network/satellite/nlpCoordinator.h"
 
 #include <atomic>
 #include <cmath>

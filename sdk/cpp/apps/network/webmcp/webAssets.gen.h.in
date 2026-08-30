@@ -1,0 +1,9 @@
+#pragma once
+
+namespace oa::sdk::webmcp {
+
+inline constexpr char kIndexHtml[] = R"OA_WEBMCP_HTML(@OA_WEBMCP_INDEX_HTML@)OA_WEBMCP_HTML";
+inline constexpr char kScriptJavaScript[] = R"OA_WEBMCP_JS(@OA_WEBMCP_SCRIPT_JS@)OA_WEBMCP_JS";
+inline constexpr char kStyleCss[] = R"OA_WEBMCP_CSS(@OA_WEBMCP_STYLE_CSS@)OA_WEBMCP_CSS";
+
+} // namespace oa::sdk::webmcp

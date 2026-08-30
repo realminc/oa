@@ -128,13 +128,25 @@ dispositionName(TrainingCommandDisposition inDisposition) {
 }
 
 [[nodiscard]] oa::Result<oa::U64>
-expectedRevision(const McpArguments &inArguments) {
+revisionValue(const McpArguments &inArguments) {
   if (not inArguments.contains("expectedRevision"))
     return oa::Result<oa::U64>(0);
   auto revision = inArguments.unsignedInteger("expectedRevision");
   if (revision.isError())
     return oa::Result<oa::U64>(revision.getStatus());
   return revision;
+}
+
+[[nodiscard]] oa::Result<oa::U64>
+expectedRevision(const McpArguments &inArguments) {
+  const oa::Usize argumentCount = inArguments.size();
+  if (argumentCount > 1U or
+      (argumentCount == 1U and
+       not inArguments.contains("expectedRevision"))) {
+    return oa::Status::invalidArgument(
+        "only expectedRevision is accepted");
+  }
+  return revisionValue(inArguments);
 }
 
 [[nodiscard]] oa::Result<TrainingValue>
@@ -175,6 +187,8 @@ readTool(oa::String inName, oa::String inDescription, oa::String inOutputSchema,
   McpTool tool;
   tool.name = oa::move(inName);
   tool.description = oa::move(inDescription);
+  tool.inputSchemaJson =
+      R"({"type":"object","properties":{},"additionalProperties":false})";
   tool.outputSchemaJson = oa::move(inOutputSchema);
   tool.readOnly = true;
   tool.destructive = false;
@@ -192,7 +206,7 @@ commandTool(oa::String inName, oa::String inDescription, oa::String inInputSchem
   tool.name = oa::move(inName);
   tool.description = oa::move(inDescription);
   tool.inputSchemaJson = oa::move(inInputSchema);
-  tool.outputSchemaJson = R"({"type":"object","properties":{"sequence":{"type":"integer"}},"required":["sequence"]})";
+  tool.outputSchemaJson = R"({"type":"object","properties":{"sequence":{"type":"integer","minimum":1}},"required":["sequence"],"additionalProperties":false})";
   tool.readOnly = false;
   tool.destructive = inDestructive;
   tool.idempotent = false;
@@ -217,8 +231,12 @@ oa::Status McpTraining::registerTools(McpServer &inServer, oa::TrainingSession &
   tools.pushBack(readTool(
       "training_status",
       "Read the latest immutable training state and scalar timing snapshot.",
-      R"({"type":"object","properties":{"revision":{"type":"integer"},"state":{"type":"string"},"step":{"type":"integer"},"epoch":{"type":"integer"},"learningRate":{"type":["number","null"]},"loss":{"type":["number","null"]},"gpuMs":{"type":["number","null"]},"wallMs":{"type":["number","null"]}},"required":["revision","state"]})",
-      [&inSession](const McpArguments &) -> oa::Result<McpToolResult> {
+      R"({"type":"object","properties":{"revision":{"type":"integer","minimum":0},"state":{"type":"string"},"step":{"type":"integer","minimum":0},"epoch":{"type":"integer","minimum":0},"learningRate":{"type":["number","null"]},"loss":{"type":["number","null"]},"gpuMs":{"type":["number","null"]},"wallMs":{"type":["number","null"]}},"required":["revision","state","step","epoch","learningRate","loss","gpuMs","wallMs"],"additionalProperties":false})",
+      [&inSession](const McpArguments &inArguments) -> oa::Result<McpToolResult> {
+        if (not inArguments.empty()) {
+          return oa::Status::invalidArgument(
+              "training_status accepts no arguments");
+        }
         const oa::String json = snapshotJson(inSession);
         McpToolResult result = McpToolResult::success(json);
         result.structuredContentJson = json;
@@ -227,8 +245,12 @@ oa::Status McpTraining::registerTools(McpServer &inServer, oa::TrainingSession &
   tools.pushBack(readTool(
       "training_metrics",
       "Read metric samples from the latest immutable training snapshot.",
-      R"({"type":"object","properties":{"metrics":{"type":"array","items":{"type":"object"}}},"required":["metrics"]})",
-      [&inSession](const McpArguments &) -> oa::Result<McpToolResult> {
+      R"({"type":"object","properties":{"metrics":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"value":{"type":["number","null"]},"step":{"type":"integer","minimum":0}},"required":["name","value","step"],"additionalProperties":false}}},"required":["metrics"],"additionalProperties":false})",
+      [&inSession](const McpArguments &inArguments) -> oa::Result<McpToolResult> {
+        if (not inArguments.empty()) {
+          return oa::Status::invalidArgument(
+              "training_metrics accepts no arguments");
+        }
         const oa::String json = metricsJson(inSession);
         McpToolResult result = McpToolResult::success(json);
         result.structuredContentJson = json;
@@ -238,9 +260,16 @@ oa::Status McpTraining::registerTools(McpServer &inServer, oa::TrainingSession &
       "training_results",
       "Read the bounded command audit stream after a caller-owned sequence "
       "cursor.",
-      R"({"type":"object","properties":{"results":{"type":"array","items":{"type":"object"}}},"required":["results"]})",
+      R"({"type":"object","properties":{"results":{"type":"array","items":{"type":"object","properties":{"sequence":{"type":"integer","minimum":1},"revision":{"type":"integer","minimum":0},"disposition":{"type":"string"},"state":{"type":"string"},"status":{"type":"string"}},"required":["sequence","revision","disposition","state","status"],"additionalProperties":false}}},"required":["results"],"additionalProperties":false})",
       [&inSession](
           const McpArguments &inArguments) -> oa::Result<McpToolResult> {
+        const oa::Usize argumentCount = inArguments.size();
+        if (argumentCount > 1U or
+            (argumentCount == 1U and
+             not inArguments.contains("afterSequence"))) {
+          return oa::Status::invalidArgument(
+              "training_results accepts only afterSequence");
+        }
         oa::U64 after = 0;
         if (inArguments.contains("afterSequence")) {
           auto value = inArguments.unsignedInteger("afterSequence");
@@ -272,70 +301,86 @@ oa::Status McpTraining::registerTools(McpServer &inServer, oa::TrainingSession &
         return oa::Result<McpToolResult>(oa::move(result));
       }));
   tools.back().inputSchemaJson =
-      R"({"type":"object","properties":{"afterSequence":{"type":"integer","minimum":0}}})";
+      R"({"type":"object","properties":{"afterSequence":{"type":"integer","minimum":0}},"additionalProperties":false})";
 
   if (inConfig.enableCommands) {
     const oa::String revisionSchema =
-        R"({"type":"object","properties":{"expectedRevision":{"type":"integer","minimum":0}}})";
-    tools.pushBack(commandTool(
-        "training_pause", "Pause at the next training safe point.",
-        revisionSchema, false, [&inSession](const McpArguments &inArguments) {
-          auto revision = expectedRevision(inArguments);
-          if (revision.isError()) {
-            return oa::Result<McpToolResult>(revision.getStatus());
-          }
-          return accepted(inSession.pause(*revision));
-        }));
-    tools.pushBack(commandTool(
-        "training_resume",
-        "Resume a paused training session at its next safe point.",
-        revisionSchema, false, [&inSession](const McpArguments &inArguments) {
-          auto revision = expectedRevision(inArguments);
-          if (revision.isError()) {
-            return oa::Result<McpToolResult>(revision.getStatus());
-          }
-          return accepted(inSession.resume(*revision));
-        }));
-    tools.pushBack(commandTool(
-        "training_checkpoint",
-        "Request a checkpoint at the next training safe point.", revisionSchema,
-        false, [&inSession](const McpArguments &inArguments) {
-          auto revision = expectedRevision(inArguments);
-          if (revision.isError()) {
-            return oa::Result<McpToolResult>(revision.getStatus());
-          }
-          return accepted(inSession.checkpoint(*revision));
-        }));
-    tools.pushBack(commandTool(
-        "training_evaluate",
-        "Request evaluation at the next training safe point.", revisionSchema,
-        false, [&inSession](const McpArguments &inArguments) {
-          auto revision = expectedRevision(inArguments);
-          if (revision.isError()) {
-            return oa::Result<McpToolResult>(revision.getStatus());
-          }
-          return accepted(inSession.evaluate(*revision));
-        }));
-    tools.pushBack(commandTool(
+        R"({"type":"object","properties":{"expectedRevision":{"type":"integer","minimum":0}},"additionalProperties":false})";
+    if (inConfig.enablePauseResume) {
+      tools.pushBack(commandTool(
+          "training_pause", "Pause at the next training safe point.",
+          revisionSchema, false, [&inSession](const McpArguments &inArguments) {
+            auto revision = expectedRevision(inArguments);
+            if (revision.isError()) {
+              return oa::Result<McpToolResult>(revision.getStatus());
+            }
+            return accepted(inSession.pause(*revision));
+          }));
+      tools.pushBack(commandTool(
+          "training_resume",
+          "Resume a paused training session at its next safe point.",
+          revisionSchema, false, [&inSession](const McpArguments &inArguments) {
+            auto revision = expectedRevision(inArguments);
+            if (revision.isError()) {
+              return oa::Result<McpToolResult>(revision.getStatus());
+            }
+            return accepted(inSession.resume(*revision));
+          }));
+    }
+    if (inConfig.enableCheckpoint) {
+      tools.pushBack(commandTool(
+          "training_checkpoint",
+          "Request a checkpoint at the next training safe point.", revisionSchema,
+          false, [&inSession](const McpArguments &inArguments) {
+            auto revision = expectedRevision(inArguments);
+            if (revision.isError()) {
+              return oa::Result<McpToolResult>(revision.getStatus());
+            }
+            return accepted(inSession.checkpoint(*revision));
+          }));
+    }
+    if (inConfig.enableEvaluate) {
+      tools.pushBack(commandTool(
+          "training_evaluate",
+          "Request evaluation at the next training safe point.", revisionSchema,
+          false, [&inSession](const McpArguments &inArguments) {
+            auto revision = expectedRevision(inArguments);
+            if (revision.isError()) {
+              return oa::Result<McpToolResult>(revision.getStatus());
+            }
+            return accepted(inSession.evaluate(*revision));
+          }));
+    }
+    if (inConfig.enableSetParameter) tools.pushBack(commandTool(
         "training_set_parameter",
         "queue one allowlisted typed parameter update for a training safe "
         "point.",
-        R"({"type":"object","properties":{"name":{"type":"string"},"value":{"anyOf":[{"type":"boolean"},{"type":"integer"},{"type":"number"},{"type":"string"}]},"expectedRevision":{"type":"integer","minimum":0}},"required":["name","value"]})",
+        R"({"type":"object","properties":{"name":{"type":"string"},"value":{"anyOf":[{"type":"boolean"},{"type":"integer"},{"type":"number"},{"type":"string"}]},"expectedRevision":{"type":"integer","minimum":0}},"required":["name","value"],"additionalProperties":false})",
         false, [&inSession](const McpArguments &inArguments) {
+          const oa::Usize argumentCount = inArguments.size();
+          if ((argumentCount != 2U and argumentCount != 3U) or
+              not inArguments.contains("name") or
+              not inArguments.contains("value") or
+              (argumentCount == 3U and
+               not inArguments.contains("expectedRevision"))) {
+            return oa::Result<McpToolResult>(oa::Status::invalidArgument(
+                "training_set_parameter accepts only name, value, and "
+                "expectedRevision"));
+          }
           auto name = inArguments.string("name");
           if (name.isError())
             return oa::Result<McpToolResult>(name.getStatus());
           auto value = trainingValue(inArguments);
           if (value.isError())
             return oa::Result<McpToolResult>(value.getStatus());
-          auto revision = expectedRevision(inArguments);
+          auto revision = revisionValue(inArguments);
           if (revision.isError()) {
             return oa::Result<McpToolResult>(revision.getStatus());
           }
           return accepted(inSession.setParameter(oa::move(*name),
                                                  oa::move(*value), *revision));
         }));
-    tools.pushBack(commandTool(
+    if (inConfig.enableRecapture) tools.pushBack(commandTool(
         "training_request_recapture",
         "Request graph recapture for a paused training session.",
         revisionSchema, false, [&inSession](const McpArguments &inArguments) {
@@ -350,7 +395,7 @@ oa::Status McpTraining::registerTools(McpServer &inServer, oa::TrainingSession &
     tools.pushBack(commandTool(
         "training_stop",
         "Request terminal training stop at the next safe point.",
-        R"({"type":"object","properties":{"expectedRevision":{"type":"integer","minimum":0}}})",
+        R"({"type":"object","properties":{"expectedRevision":{"type":"integer","minimum":0}},"additionalProperties":false})",
         true, [&inSession](const McpArguments &inArguments) {
           auto revision = expectedRevision(inArguments);
           if (revision.isError()) {

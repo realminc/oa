@@ -122,7 +122,7 @@ continuous playback.
 After a Release build, launch one directly, for example:
 
 ```bash
-bin/release/tutorial/vision/tutorialViewerVideoAv1Main8bit420
+bin/release/sdk/tutorials/vision/tutorialViewerVideoAv1Main8bit420
 ```
 
 The TGL Iris Xe/Mesa evidence accepts all six 720p rows. H.264 Baseline, Main,

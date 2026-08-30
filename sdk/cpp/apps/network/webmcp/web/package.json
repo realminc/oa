@@ -1,0 +1,14 @@
+{
+  "name": "oa-network-webmcp-frontend",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc --project tsconfig.json",
+    "check": "tsc --project tsconfig.json --noEmit",
+    "test": "node testWebmcp.mjs"
+  },
+  "devDependencies": {
+    "typescript": "5.9.2"
+  }
+}

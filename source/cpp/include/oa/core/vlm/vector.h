@@ -8,6 +8,7 @@
 
 #include <oa/core/math.h>
 
+#include <oa/core/std/assert.h>
 #include <oa/core/std/limits.h>
 #include <oa/core/std/scalarMath.h>
 #include <oa/core/std/typeTraits.h>
@@ -20,6 +21,15 @@ namespace detail {
 template <typename T> struct Vec2;
 template <typename T> struct Vec3;
 template <typename T> struct Vec4;
+template <typename T>
+[[nodiscard]] OA_NOINLINE Vec2<T> normalizeScaled(
+	const Vec2<T>& inValue) noexcept;
+template <typename T>
+[[nodiscard]] OA_NOINLINE Vec3<T> normalizeScaled(
+	const Vec3<T>& inValue) noexcept;
+template <typename T>
+[[nodiscard]] OA_NOINLINE Vec4<T> normalizeScaled(
+	const Vec4<T>& inValue) noexcept;
 } // namespace detail
 
 template <typename T>
@@ -67,6 +77,15 @@ struct Vec2 {
 	T x = T(0);
 	T y = T(0);
 
+	[[nodiscard]] constexpr T& at(Usize inIndex) noexcept {
+		OA_REQUIRE(inIndex < 2U);
+		return inIndex == 0U ? x : y;
+	}
+	[[nodiscard]] constexpr const T& at(Usize inIndex) const noexcept {
+		OA_REQUIRE(inIndex < 2U);
+		return inIndex == 0U ? x : y;
+	}
+
 	[[nodiscard]] bool isFinite() const noexcept {
 		return oa::isFinite(x) and oa::isFinite(y);
 	}
@@ -74,14 +93,24 @@ struct Vec2 {
 		return x * x + y * y;
 	}
 	[[nodiscard]] T length() const noexcept {
-		return oa::sqrt(lengthSquared());
+		const T squaredLength = lengthSquared();
+		if (oa::isFinite(squaredLength) and squaredLength > T(0)) {
+			return oa::sqrt(squaredLength);
+		}
+		if (not isFinite()) return oa::sqrt(squaredLength);
+		const T magnitude = oa::max(oa::abs(x), oa::abs(y));
+		if (magnitude == T(0)) return T(0);
+		const T sx = x / magnitude;
+		const T sy = y / magnitude;
+		return magnitude * oa::sqrt(sx * sx + sy * sy);
 	}
 	[[nodiscard]] Vec2 normalized() const noexcept {
-		const T valueLength = length();
-		if (not oa::isFinite(valueLength) or valueLength <= oa::Limits<T>::epsilon()) {
-			return {};
+		const T squaredLength = lengthSquared();
+		if (OA_LIKELY(
+			oa::isFinite(squaredLength) and squaredLength > T(0))) {
+			return *this * (T(1) / oa::sqrt(squaredLength));
 		}
-		return *this / valueLength;
+		return normalizeScaled(*this);
 	}
 
 	[[nodiscard]] constexpr Vec2 operator-() const noexcept {
@@ -120,6 +149,19 @@ struct Vec2 {
 };
 
 template <typename T>
+[[nodiscard]] OA_NOINLINE Vec2<T> normalizeScaled(
+	const Vec2<T>& inValue) noexcept {
+	const T magnitude = oa::max(oa::abs(inValue.x), oa::abs(inValue.y));
+	OA_REQUIRE_MSG(
+		inValue.isFinite() and magnitude > T(0),
+		"VLM cannot normalize a zero-length or non-finite vector");
+	const Vec2<T> scaled{inValue.x / magnitude, inValue.y / magnitude};
+	const T scaledLength = scaled.length();
+	OA_REQUIRE(oa::isFinite(scaledLength) and scaledLength > T(0));
+	return scaled / scaledLength;
+}
+
+template <typename T>
 [[nodiscard]] constexpr Vec2<T> operator*(
 	T inScale,
 	const Vec2<T>& inVector) noexcept {
@@ -134,6 +176,17 @@ struct Vec3 {
 	T y = T(0);
 	T z = T(0);
 
+	[[nodiscard]] constexpr T& at(Usize inIndex) noexcept {
+		OA_REQUIRE(inIndex < 3U);
+		if (inIndex == 0U) return x;
+		return inIndex == 1U ? y : z;
+	}
+	[[nodiscard]] constexpr const T& at(Usize inIndex) const noexcept {
+		OA_REQUIRE(inIndex < 3U);
+		if (inIndex == 0U) return x;
+		return inIndex == 1U ? y : z;
+	}
+
 	[[nodiscard]] bool isFinite() const noexcept {
 		return oa::isFinite(x) and oa::isFinite(y) and oa::isFinite(z);
 	}
@@ -141,14 +194,26 @@ struct Vec3 {
 		return x * x + y * y + z * z;
 	}
 	[[nodiscard]] T length() const noexcept {
-		return oa::sqrt(lengthSquared());
+		const T squaredLength = lengthSquared();
+		if (oa::isFinite(squaredLength) and squaredLength > T(0)) {
+			return oa::sqrt(squaredLength);
+		}
+		if (not isFinite()) return oa::sqrt(squaredLength);
+		const T magnitude = oa::max(
+			oa::abs(x), oa::max(oa::abs(y), oa::abs(z)));
+		if (magnitude == T(0)) return T(0);
+		const T sx = x / magnitude;
+		const T sy = y / magnitude;
+		const T sz = z / magnitude;
+		return magnitude * oa::sqrt(sx * sx + sy * sy + sz * sz);
 	}
 	[[nodiscard]] Vec3 normalized() const noexcept {
-		const T valueLength = length();
-		if (not oa::isFinite(valueLength) or valueLength <= oa::Limits<T>::epsilon()) {
-			return {};
+		const T squaredLength = lengthSquared();
+		if (OA_LIKELY(
+			oa::isFinite(squaredLength) and squaredLength > T(0))) {
+			return *this * (T(1) / oa::sqrt(squaredLength));
 		}
-		return *this / valueLength;
+		return normalizeScaled(*this);
 	}
 
 	[[nodiscard]] constexpr Vec3 operator-() const noexcept {
@@ -187,6 +252,22 @@ struct Vec3 {
 };
 
 template <typename T>
+[[nodiscard]] OA_NOINLINE Vec3<T> normalizeScaled(
+	const Vec3<T>& inValue) noexcept {
+	const T magnitude = oa::max(
+		oa::abs(inValue.x),
+		oa::max(oa::abs(inValue.y), oa::abs(inValue.z)));
+	OA_REQUIRE_MSG(
+		inValue.isFinite() and magnitude > T(0),
+		"VLM cannot normalize a zero-length or non-finite vector");
+	const Vec3<T> scaled{
+		inValue.x / magnitude, inValue.y / magnitude, inValue.z / magnitude};
+	const T scaledLength = scaled.length();
+	OA_REQUIRE(oa::isFinite(scaledLength) and scaledLength > T(0));
+	return scaled / scaledLength;
+}
+
+template <typename T>
 [[nodiscard]] constexpr Vec3<T> operator*(
 	T inScale,
 	const Vec3<T>& inVector) noexcept {
@@ -202,21 +283,49 @@ struct Vec4 {
 	T z = T(0);
 	T w = T(0);
 
+	[[nodiscard]] constexpr T& at(Usize inIndex) noexcept {
+		OA_REQUIRE(inIndex < 4U);
+		if (inIndex == 0U) return x;
+		if (inIndex == 1U) return y;
+		return inIndex == 2U ? z : w;
+	}
+	[[nodiscard]] constexpr const T& at(Usize inIndex) const noexcept {
+		OA_REQUIRE(inIndex < 4U);
+		if (inIndex == 0U) return x;
+		if (inIndex == 1U) return y;
+		return inIndex == 2U ? z : w;
+	}
+
 	[[nodiscard]] bool isFinite() const noexcept {
 		return oa::isFinite(x) and oa::isFinite(y) and oa::isFinite(z) and oa::isFinite(w);
 	}
 	[[nodiscard]] constexpr T lengthSquared() const noexcept {
-		return x * x + y * y + z * z + w * w;
+		return (x * x + y * y) + (z * z + w * w);
 	}
 	[[nodiscard]] T length() const noexcept {
-		return oa::sqrt(lengthSquared());
+		const T squaredLength = lengthSquared();
+		if (oa::isFinite(squaredLength) and squaredLength > T(0)) {
+			return oa::sqrt(squaredLength);
+		}
+		if (not isFinite()) return oa::sqrt(squaredLength);
+		const T magnitude = oa::max(
+			oa::max(oa::abs(x), oa::abs(y)),
+			oa::max(oa::abs(z), oa::abs(w)));
+		if (magnitude == T(0)) return T(0);
+		const T sx = x / magnitude;
+		const T sy = y / magnitude;
+		const T sz = z / magnitude;
+		const T sw = w / magnitude;
+		return magnitude * oa::sqrt(
+			sx * sx + sy * sy + sz * sz + sw * sw);
 	}
 	[[nodiscard]] Vec4 normalized() const noexcept {
-		const T valueLength = length();
-		if (not oa::isFinite(valueLength) or valueLength <= oa::Limits<T>::epsilon()) {
-			return {};
+		const T squaredLength = lengthSquared();
+		if (OA_LIKELY(
+			oa::isFinite(squaredLength) and squaredLength > T(0))) {
+			return *this * (T(1) / oa::sqrt(squaredLength));
 		}
-		return *this / valueLength;
+		return normalizeScaled(*this);
 	}
 
 	[[nodiscard]] constexpr Vec4 operator-() const noexcept {
@@ -253,6 +362,23 @@ struct Vec4 {
 
 	[[nodiscard]] constexpr bool operator==(const Vec4& inOther) const noexcept = default;
 };
+
+template <typename T>
+[[nodiscard]] OA_NOINLINE Vec4<T> normalizeScaled(
+	const Vec4<T>& inValue) noexcept {
+	const T magnitude = oa::max(
+		oa::max(oa::abs(inValue.x), oa::abs(inValue.y)),
+		oa::max(oa::abs(inValue.z), oa::abs(inValue.w)));
+	OA_REQUIRE_MSG(
+		inValue.isFinite() and magnitude > T(0),
+		"VLM cannot normalize a zero-length or non-finite vector");
+	const Vec4<T> scaled{
+		inValue.x / magnitude, inValue.y / magnitude,
+		inValue.z / magnitude, inValue.w / magnitude};
+	const T scaledLength = scaled.length();
+	OA_REQUIRE(oa::isFinite(scaledLength) and scaledLength > T(0));
+	return scaled / scaledLength;
+}
 
 template <typename T>
 [[nodiscard]] constexpr Vec4<T> operator*(

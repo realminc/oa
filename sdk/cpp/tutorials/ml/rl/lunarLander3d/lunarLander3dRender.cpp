@@ -6,8 +6,13 @@
 namespace {
 
 constexpr oa::U32 MaxTerrainCellsPerAxis = 32U;
-constexpr oa::U32 VerticesPerBox = 24U;
-constexpr oa::U32 IndicesPerBox = 36U;
+constexpr oa::SceneMeshId TerrainMeshId{1U};
+constexpr oa::SceneMeshId HullMeshId{2U};
+constexpr oa::SceneMeshId LegMeshId{3U};
+constexpr oa::SceneMeshId FootMeshId{4U};
+constexpr oa::SceneNodeId TerrainNodeId{1U};
+constexpr oa::SceneNodeId LanderRootNodeId{2U};
+constexpr oa::U64 FirstLanderPartNodeId = 100U;
 
 [[nodiscard]] bool isFinite(const oa::vlm::Vec3& inVector) noexcept {
 	return oa::isFinite(inVector.x)
@@ -97,110 +102,42 @@ constexpr oa::U32 IndicesPerBox = 36U;
 	return scale(scaled, 1.0F / oa::sqrt(lengthSquared));
 }
 
-[[nodiscard]] bool bodyPointToWorld(
-	const oa::LunarLander3dState& inState,
-	const oa::vlm::Vec3& inBodyPoint,
-	oa::vlm::Vec3& outWorldPoint) noexcept {
-	const oa::vlm::DVec3 rotated = inState.orientation_.rotate({
-		static_cast<double>(inBodyPoint.x),
-		static_cast<double>(inBodyPoint.y),
-		static_cast<double>(inBodyPoint.z),
-	});
-	return tryToVlm(inState.position_ + rotated, outWorldPoint);
-}
-
-[[nodiscard]] bool bodyDirectionToWorld(
-	const oa::LunarLander3dState& inState,
-	const oa::vlm::Vec3& inBodyDirection,
-	oa::vlm::Vec3& outWorldDirection) noexcept {
-	oa::vlm::Vec3 rotated{};
-	if (not tryToVlm(inState.orientation_.rotate({
-		static_cast<double>(inBodyDirection.x),
-		static_cast<double>(inBodyDirection.y),
-		static_cast<double>(inBodyDirection.z),
-	}), rotated)) {
+[[nodiscard]] bool tryToVlm(
+	const oa::vlm::DQuat& inValue,
+	oa::vlm::Quat& outValue) noexcept {
+	if (not tryNarrowFinite(inValue.x, outValue.x)
+		or not tryNarrowFinite(inValue.y, outValue.y)
+		or not tryNarrowFinite(inValue.z, outValue.z)
+		or not tryNarrowFinite(inValue.w, outValue.w)) {
 		return false;
 	}
-	outWorldDirection = normalize(rotated);
-	return isFinite(outWorldDirection);
+	outValue = outValue.normalized();
+	return outValue.isFinite();
 }
 
-class LunarGeometryWriter {
-public:
-	explicit LunarGeometryWriter(oa::MeshData& inMesh) noexcept
-		: mesh_(inMesh) {}
+[[nodiscard]] oa::MeshData coloredCube(const oa::vlm::Vec4& inColor) {
+	oa::MeshData mesh = oa::FnMesh::createCube(2.0F);
+	for (oa::MeshVertex& vertex : mesh.vertices) vertex.color = inColor;
+	return mesh;
+}
 
-	[[nodiscard]] oa::Status appendBodyBox(
-		const oa::LunarLander3dState& inState,
-		const oa::vlm::Vec3& inCenter,
-		const oa::vlm::Vec3& inHalfExtent,
-		const oa::vlm::Vec4& inColor) {
-		if (not isFinite(inCenter) or not isFinite(inHalfExtent)) {
-			return oa::Status::error(
-				oa::StatusCode::OutOfRange,
-				"LunarLander3d body geometry is not representable as FP32");
-		}
-		static constexpr oa::Array<oa::Array<oa::U32, 4U>, 6U> faces{
-			oa::Array<oa::U32, 4U>{1U, 5U, 7U, 3U},
-			oa::Array<oa::U32, 4U>{4U, 0U, 2U, 6U},
-			oa::Array<oa::U32, 4U>{2U, 3U, 7U, 6U},
-			oa::Array<oa::U32, 4U>{4U, 5U, 1U, 0U},
-			oa::Array<oa::U32, 4U>{5U, 4U, 6U, 7U},
-			oa::Array<oa::U32, 4U>{0U, 1U, 3U, 2U},
-		};
-		static constexpr oa::Array<oa::vlm::Vec3, 6U> Normals{
-			oa::vlm::Vec3{1.0F, 0.0F, 0.0F},
-			oa::vlm::Vec3{-1.0F, 0.0F, 0.0F},
-			oa::vlm::Vec3{0.0F, 1.0F, 0.0F},
-			oa::vlm::Vec3{0.0F, -1.0F, 0.0F},
-			oa::vlm::Vec3{0.0F, 0.0F, 1.0F},
-			oa::vlm::Vec3{0.0F, 0.0F, -1.0F},
-		};
-		oa::Array<oa::vlm::Vec3, 8U> corners{};
-		for (oa::U32 corner = 0U; corner < corners.size(); ++corner) {
-			const oa::vlm::Vec3 offset{
-				(corner & 1U) ? inHalfExtent.x : -inHalfExtent.x,
-				(corner & 2U) ? inHalfExtent.y : -inHalfExtent.y,
-				(corner & 4U) ? inHalfExtent.z : -inHalfExtent.z,
-			};
-			const oa::vlm::Vec3 bodyPoint = add(inCenter, offset);
-			if (not isFinite(bodyPoint)
-				or not bodyPointToWorld(
-					inState, bodyPoint, corners[corner])) {
-				return oa::Status::error(
-					oa::StatusCode::OutOfRange,
-					"LunarLander3d world geometry is not representable as FP32");
-			}
-		}
-		for (oa::U32 face = 0U; face < faces.size(); ++face) {
-			const oa::U32 base = static_cast<oa::U32>(mesh_.vertices.size());
-			oa::vlm::Vec3 normal{};
-			if (not bodyDirectionToWorld(inState, Normals[face], normal)) {
-				return oa::Status::error(
-					oa::StatusCode::OutOfRange,
-					"LunarLander3d world normal is not representable as FP32");
-			}
-			for (oa::U32 corner : faces[face]) {
-				mesh_.vertices.pushBack({
-					corners[corner],
-					normal,
-					{},
-					inColor,
-				});
-			}
-			static constexpr oa::U32 FaceIndices[6] = {
-				0U, 1U, 2U, 2U, 3U, 0U,
-			};
-			for (oa::U32 index : FaceIndices) {
-				mesh_.indices.pushBack(base + index);
-			}
-		}
-		return oa::Status::ok();
-	}
-
-private:
-	oa::MeshData& mesh_;
-};
+void appendPartNode(
+	oa::Scene& inScene,
+	oa::U64& inOutNextNodeId,
+	oa::StringView inName,
+	oa::SceneMeshId inMesh,
+	const oa::vlm::Vec3& inCenter,
+	const oa::vlm::Vec3& inHalfExtent) {
+	inScene.nodes.pushBack({
+		oa::SceneNodeId{inOutNextNodeId++},
+		oa::String(inName),
+		LanderRootNodeId,
+		inMesh,
+		oa::vlm::composeTrs(
+			inCenter, oa::vlm::Quat::identity(), inHalfExtent),
+		true,
+	});
+}
 
 [[nodiscard]] oa::Status buildTerrainMesh(
 	const oa::LunarTerrain& inTerrain,
@@ -343,10 +280,8 @@ private:
 
 class LunarLander3dRenderSession::Impl {
 public:
-	oa::LunarLander3dConfig LanderConfig;
 	LunarLander3dRenderConfig renderConfig;
-	oa::MeshData TerrainMesh;
-	oa::MeshData frameMesh;
+	oa::Scene scene;
 	oa::UniquePtr<oa::Renderer> renderer;
 
 	[[nodiscard]] oa::Status initialize(
@@ -399,34 +334,75 @@ public:
 			}
 		}
 
-		LanderConfig = inLanderConfig;
 		renderConfig = inRenderConfig;
-		OA_RETURN_IF_ERROR(buildTerrainMesh(inTerrain, TerrainMesh));
+		oa::MeshData terrain;
+		OA_RETURN_IF_ERROR(buildTerrainMesh(inTerrain, terrain));
+		scene.meshes.pushBack({TerrainMeshId, "terrain", oa::move(terrain)});
+		scene.meshes.pushBack({
+			HullMeshId, "lander hull cube",
+			coloredCube({0.08F, 0.62F, 0.96F, 1.0F})});
+		scene.meshes.pushBack({
+			LegMeshId, "lander leg cube",
+			coloredCube({0.24F, 0.42F, 0.58F, 1.0F})});
+		scene.meshes.pushBack({
+			FootMeshId, "lander foot cube",
+			coloredCube({0.82F, 0.90F, 0.96F, 1.0F})});
+		scene.nodes.pushBack({
+			TerrainNodeId, "terrain", {}, TerrainMeshId,
+			oa::vlm::Mat4::identity(), true});
+		scene.nodes.pushBack({
+			LanderRootNodeId, "lander", {}, {},
+			oa::vlm::Mat4::identity(), true});
 
-		const oa::U64 boxCount =
-			static_cast<oa::U64>(LanderConfig.bodySupports_.size())
-			+ static_cast<oa::U64>(LanderConfig.footSupports_.size()) * 2U;
-		const oa::U64 vertexCapacity =
-			static_cast<oa::U64>(TerrainMesh.vertices.size())
-			+ boxCount * VerticesPerBox;
-		const oa::U64 indexCapacity =
-			static_cast<oa::U64>(TerrainMesh.indices.size())
-			+ boxCount * IndicesPerBox;
-		if (vertexCapacity > oa::Limits<oa::U32>::max()
-			or indexCapacity > oa::Limits<oa::U32>::max()) {
-			return oa::Status::error(
-				oa::StatusCode::OutOfRange,
-				"LunarLander3d scene exceeds renderer capacity representation");
+		oa::U64 nextNodeId = FirstLanderPartNodeId;
+		for (const oa::LunarSupportSphere& support
+			: inLanderConfig.bodySupports_) {
+			oa::vlm::Vec3 offset{};
+			oa::F32 radius = 0.0F;
+			if (not tryToVlm(support.bodyOffset_, offset)
+				or not tryNarrowFinite(support.radius_, radius)) {
+				return oa::Status::error(
+					oa::StatusCode::OutOfRange,
+					"LunarLander3d body support is not representable as FP32 geometry");
+			}
+			appendPartNode(
+				scene, nextNodeId, "hull", HullMeshId, offset,
+				{radius * 0.72F, radius * 0.72F, radius * 0.72F});
 		}
+		for (const oa::LunarSupportSphere& support
+			: inLanderConfig.footSupports_) {
+			oa::vlm::Vec3 foot{};
+			oa::F32 radius = 0.0F;
+			if (not tryToVlm(support.bodyOffset_, foot)
+				or not tryNarrowFinite(support.radius_, radius)) {
+				return oa::Status::error(
+					oa::StatusCode::OutOfRange,
+					"LunarLander3d foot support is not representable as FP32 geometry");
+			}
+			const oa::F32 attachmentY = -0.20F;
+			const oa::F32 legHalfHeight =
+				oa::max(0.05F, oa::abs(attachmentY - foot.y) * 0.5F);
+			appendPartNode(
+				scene, nextNodeId, "leg", LegMeshId,
+				{foot.x * 0.72F, (attachmentY + foot.y) * 0.5F,
+					foot.z * 0.72F},
+				{0.065F, legHalfHeight, 0.065F});
+			appendPartNode(
+				scene, nextNodeId, "foot", FootMeshId, foot,
+				{radius * 1.35F, radius * 0.35F, radius * 1.35F});
+		}
+
+		auto initialSnapshot = oa::FnScene::compile(scene);
+		if (initialSnapshot.isError()) return initialSnapshot.getStatus();
 
 		oa::RendererConfig rendererConfig;
 		rendererConfig.width_ = renderConfig.width_;
 		rendererConfig.height_ = renderConfig.height_;
 		rendererConfig.targetSlotCount_ = renderConfig.targetSlotCount_;
-		rendererConfig.maxVertexCount_ =
-			static_cast<oa::U32>(vertexCapacity);
-		rendererConfig.maxIndexCount_ =
-			static_cast<oa::U32>(indexCapacity);
+		rendererConfig.maxVertexCount_ = static_cast<oa::U32>(
+			initialSnapshot->vertices.size());
+		rendererConfig.maxIndexCount_ = static_cast<oa::U32>(
+			initialSnapshot->indices.size());
 		rendererConfig.sampleCount_ = renderConfig.sampleCount_;
 		rendererConfig.clearColor_ = renderConfig.clearColor_;
 		auto rendererResult = oa::Renderer::create(inEngine, rendererConfig);
@@ -441,56 +417,22 @@ public:
 			return oa::Status::invalidArgument(
 				"LunarLander3d renderer state snapshot must be finite");
 		}
-		frameMesh = TerrainMesh;
-		LunarGeometryWriter writer(frameMesh);
-		const oa::vlm::Vec4 hullColor{0.08F, 0.62F, 0.96F, 1.0F};
-		const oa::vlm::Vec4 legColor{0.24F, 0.42F, 0.58F, 1.0F};
-		const oa::vlm::Vec4 footColor{0.82F, 0.90F, 0.96F, 1.0F};
-		for (const oa::LunarSupportSphere& support
-			: LanderConfig.bodySupports_) {
-			oa::vlm::Vec3 offset{};
-			oa::F32 radius = 0.0F;
-			if (not tryToVlm(support.bodyOffset_, offset)
-				or not tryNarrowFinite(support.radius_, radius)) {
-				return oa::Status::error(
-					oa::StatusCode::OutOfRange,
-					"LunarLander3d body support is not representable as FP32 geometry");
-			}
-			OA_RETURN_IF_ERROR(writer.appendBodyBox(
-				inState,
-				offset,
-				{radius * 0.72F, radius * 0.72F, radius * 0.72F},
-				hullColor));
+		oa::vlm::Vec3 position{};
+		oa::vlm::Quat orientation{};
+		if (not tryToVlm(inState.position_, position)
+			or not tryToVlm(inState.orientation_, orientation)) {
+			return oa::Status::error(
+				oa::StatusCode::OutOfRange,
+				"LunarLander3d pose is not representable as an FP32 scene transform");
 		}
-		for (const oa::LunarSupportSphere& support
-			: LanderConfig.footSupports_) {
-			oa::vlm::Vec3 foot{};
-			oa::F32 radius = 0.0F;
-			if (not tryToVlm(support.bodyOffset_, foot)
-				or not tryNarrowFinite(support.radius_, radius)) {
-				return oa::Status::error(
-					oa::StatusCode::OutOfRange,
-					"LunarLander3d foot support is not representable as FP32 geometry");
-			}
-			const oa::F32 attachmentY = -0.20F;
-			const oa::F32 legHalfHeight =
-				oa::max(0.05F, oa::abs(attachmentY - foot.y) * 0.5F);
-			const oa::vlm::Vec3 legCenter{
-				foot.x * 0.72F,
-				(attachmentY + foot.y) * 0.5F,
-				foot.z * 0.72F,
-			};
-			OA_RETURN_IF_ERROR(writer.appendBodyBox(
-				inState,
-				legCenter,
-				{0.065F, legHalfHeight, 0.065F},
-				legColor));
-			OA_RETURN_IF_ERROR(writer.appendBodyBox(
-				inState,
-				foot,
-				{radius * 1.35F, radius * 0.35F, radius * 1.35F},
-				footColor));
+		oa::SceneNode* root = oa::FnScene::findNode(scene, LanderRootNodeId);
+		if (root == nullptr) {
+			return oa::Status::error(
+				oa::StatusCode::Internal,
+				"LunarLander3d scene lost its stable lander root identity");
 		}
+		root->localTransform = oa::vlm::composeTrs(
+			position, orientation, {1.0F, 1.0F, 1.0F});
 		return oa::Status::ok();
 	}
 };
@@ -524,7 +466,7 @@ oa::Status LunarLander3dRenderSession::beginFrame(
 			"LunarLander3d renderer session is closed");
 	}
 	OA_RETURN_IF_ERROR(impl_->buildFrame(inState));
-	return impl_->renderer->beginFrame(impl_->frameMesh, inCamera);
+	return impl_->renderer->beginFrame(impl_->scene, inCamera);
 }
 
 oa::Result<oa::RenderFrame> LunarLander3dRenderSession::submitFrame(

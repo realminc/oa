@@ -49,9 +49,9 @@
       "assets": [
         "audio/oaNarration.wav",
         "audio/oaNarration.mp3",
-        "documentation/examples/audio/oaNarrationRoom.wav",
-        "documentation/examples/audio/oaNarrationRoom.mp3",
-        "documentation/examples/audio/oaNarrationRoomViewer.jpg"
+        "docs/examples/audio/oaNarrationRoom.wav",
+        "docs/examples/audio/oaNarrationRoom.mp3",
+        "docs/examples/audio/oaNarrationRoomViewer.jpg"
       ],
       "presentation": [
         {
@@ -77,8 +77,8 @@
               "role": "processed",
               "label": "Processed",
               "description": "Normalized, faded, and rendered through oa::FnAudio::reverb with a 1.5 second tail.",
-              "asset": "documentation/examples/audio/oaNarrationRoom.wav",
-              "fallbackAsset": "documentation/examples/audio/oaNarrationRoom.mp3",
+              "asset": "docs/examples/audio/oaNarrationRoom.wav",
+              "fallbackAsset": "docs/examples/audio/oaNarrationRoom.mp3",
               "mimeType": "audio/wav",
               "fallbackMimeType": "audio/mpeg",
               "sampleRate": 24000,
@@ -93,12 +93,12 @@
           "kind": "viewerCapture",
           "title": "oa::Viewer",
           "description": "The processed WAV opened by this example's optional --preview path in OA's native GPU waveform viewer.",
-          "asset": "documentation/examples/audio/oaNarrationRoomViewer.jpg",
+          "asset": "docs/examples/audio/oaNarrationRoomViewer.jpg",
           "mimeType": "image/jpeg",
           "width": 960,
           "height": 434,
           "alt": "oa::Viewer displaying the processed OA narration as a GPU-rendered waveform",
-          "generatedBy": "bin/release/example/audio/exampleAudio --preview"
+          "generatedBy": "bin/release/sdk/examples/audio/exampleAudio --preview"
         }
       ],
       "cpp": {
@@ -143,8 +143,8 @@
           "description": "Selected live progress redraws and the complete tutorial-style summary from one checked Intel Iris Xe run. Timings are single-run evidence, not a benchmark claim.",
           "filename": "transformer.cpp · output",
           "language": "bash",
-          "generatedBy": "OA_LOG_TRAINING_PHASES=1 bin/release/example/ml/exampleMlTransformer",
-          "code": "$ OA_LOG_TRAINING_PHASES=1 bin/release/example/ml/exampleMlTransformer\n14:15:29.239 [INFO ] [RT  ] ComputeDevice (0): Intel(R) Iris(R) Xe Graphics (TGL GT2), vulkan 1.4.354, 11 GB\n\nOA SDK Example — BPE Transformer · all-position LM\nTokenizer: byte BPE · vocab=300 · context=16\nModel: NnTransformer(width=32, hidden=64, layers=1, heads=1)\nParams: 28620 · AdamW(lr=0.01)\nTraining: 300 steps · batch=64 · sequence=16 tokens\n  2/300   |▏░░░░░░░░░| 0.05s · 23.57 ms/step · 2.72K sample/s · 43.45K token/s · cross_entropy: 5.5437\n  50/300  |█▋░░░░░░░░| 0.37s · 7.43 ms/step · 8.61K sample/s · 137.84K token/s · cross_entropy: 1.1568\n  153/300 |█████▏░░░░| 1.06s · 6.95 ms/step · 9.21K sample/s · 147.33K token/s · cross_entropy: 0.4138\n  300/300 |██████████| 2.02s · 6.74 ms/step · 9.50K sample/s · 151.94K token/s · cross_entropy: 0.2331\n\nSummary:\n  loss: initial 5.842306 · final 0.041481 · mean 0.233055\n  Wall: 6.74 ms/step · 9.50K sample/s · 151.94K token/s\n  GPU: mean 5.139 ms/step · p50 4.444 · p95 7.878 · 12.45K sample/s · 199.26K token/s · wall-GPU gap 24%\n  run: 2.02s · 300 steps · batch 64 · sequence 16 token/sample\n14:15:31.299 [INFO ] [ML  ] training phases: steps=300 total=6.735 ms/step body=0.640 optimizer=0.037 compile=0.048 record=0.124 submit=0.046 wait=5.617 scalar_metric=0.015 callbacks=0.007 unaccounted=0.202\nTransformer training verified: vocab=300, steps=300\nLoss: 5.8423 -> 0.0415\nGenerated: to bepposing end them to be or not to be that is the question whether tis\n"
+          "generatedBy": "OA_LOG_TRAINING_PHASES=1 bin/release/sdk/examples/ml/exampleMlTransformer",
+          "code": "$ OA_LOG_TRAINING_PHASES=1 bin/release/sdk/examples/ml/exampleMlTransformer\n14:15:29.239 [INFO ] [RT  ] ComputeDevice (0): Intel(R) Iris(R) Xe Graphics (TGL GT2), vulkan 1.4.354, 11 GB\n\nOA SDK Example — BPE Transformer · all-position LM\nTokenizer: byte BPE · vocab=300 · context=16\nModel: NnTransformer(width=32, hidden=64, layers=1, heads=1)\nParams: 28620 · AdamW(lr=0.01)\nTraining: 300 steps · batch=64 · sequence=16 tokens\n  2/300   |▏░░░░░░░░░| 0.05s · 23.57 ms/step · 2.72K sample/s · 43.45K token/s · cross_entropy: 5.5437\n  50/300  |█▋░░░░░░░░| 0.37s · 7.43 ms/step · 8.61K sample/s · 137.84K token/s · cross_entropy: 1.1568\n  153/300 |█████▏░░░░| 1.06s · 6.95 ms/step · 9.21K sample/s · 147.33K token/s · cross_entropy: 0.4138\n  300/300 |██████████| 2.02s · 6.74 ms/step · 9.50K sample/s · 151.94K token/s · cross_entropy: 0.2331\n\nSummary:\n  loss: initial 5.842306 · final 0.041481 · mean 0.233055\n  Wall: 6.74 ms/step · 9.50K sample/s · 151.94K token/s\n  GPU: mean 5.139 ms/step · p50 4.444 · p95 7.878 · 12.45K sample/s · 199.26K token/s · wall-GPU gap 24%\n  run: 2.02s · 300 steps · batch 64 · sequence 16 token/sample\n14:15:31.299 [INFO ] [ML  ] training phases: steps=300 total=6.735 ms/step body=0.640 optimizer=0.037 compile=0.048 record=0.124 submit=0.046 wait=5.617 scalar_metric=0.015 callbacks=0.007 unaccounted=0.202\nTransformer training verified: vocab=300, steps=300\nLoss: 5.8423 -> 0.0415\nGenerated: to bepposing end them to be or not to be that is the question whether tis\n"
         },
         {
           "kind": "terminalOutput",
@@ -195,8 +195,8 @@
       "capability": "Vulkan compute",
       "assets": [
         "image/coverVision.jpg",
-        "documentation/examples/vision/coverVisionGrayscale.jpg",
-        "documentation/examples/vision/coverVisionGrayscaleViewer.jpg"
+        "docs/examples/vision/coverVisionGrayscale.jpg",
+        "docs/examples/vision/coverVisionGrayscaleViewer.jpg"
       ],
       "presentation": [
         {
@@ -219,7 +219,7 @@
               "role": "processed",
               "label": "Grayscale output",
               "description": "The full-resolution Rec.709 grayscale image converted on the GPU and saved by the source-owned example.",
-              "asset": "documentation/examples/vision/coverVisionGrayscale.jpg",
+              "asset": "docs/examples/vision/coverVisionGrayscale.jpg",
               "mimeType": "image/jpeg",
               "width": 1672,
               "height": 941,
@@ -232,12 +232,12 @@
           "kind": "viewerCapture",
           "title": "oa::Viewer",
           "description": "The grayscale output opened by this example's optional --preview path in OA's native GPU image viewer.",
-          "asset": "documentation/examples/vision/coverVisionGrayscaleViewer.jpg",
+          "asset": "docs/examples/vision/coverVisionGrayscaleViewer.jpg",
           "mimeType": "image/jpeg",
           "width": 1280,
           "height": 720,
           "alt": "oa::Viewer presenting the grayscale OA Vision cover in a 1280 by 720 window",
-          "generatedBy": "bin/release/example/vision/exampleVisionImage --preview"
+          "generatedBy": "bin/release/sdk/examples/vision/exampleVisionImage --preview"
         }
       ],
       "cpp": {
@@ -305,8 +305,8 @@
       "module": "Ui",
       "capability": "Vulkan graphics",
       "assets": [
-        "documentation/examples/ui/trainingLoss.jpg",
-        "documentation/examples/ui/trainingLossViewer.jpg"
+        "docs/examples/ui/trainingLoss.jpg",
+        "docs/examples/ui/trainingLossViewer.jpg"
       ],
       "presentation": [
         {
@@ -318,7 +318,7 @@
               "role": "output",
               "label": "Training loss",
               "description": "A dark retained line plot rendered by OA's GPU compositor and saved through oa::FnImage.",
-              "asset": "documentation/examples/ui/trainingLoss.jpg",
+              "asset": "docs/examples/ui/trainingLoss.jpg",
               "mimeType": "image/jpeg",
               "width": 960,
               "height": 540,
@@ -331,12 +331,12 @@
           "kind": "viewerCapture",
           "title": "oa::Viewer",
           "description": "The saved plot opened by this example's optional --preview path in OA's native GPU image viewer.",
-          "asset": "documentation/examples/ui/trainingLossViewer.jpg",
+          "asset": "docs/examples/ui/trainingLossViewer.jpg",
           "mimeType": "image/jpeg",
           "width": 1280,
           "height": 720,
           "alt": "oa::Viewer presenting the generated training-loss plot in a 1280 by 720 window",
-          "generatedBy": "bin/release/example/ui/examplePlotLine --preview"
+          "generatedBy": "bin/release/sdk/examples/ui/examplePlotLine --preview"
         }
       ],
       "cpp": {

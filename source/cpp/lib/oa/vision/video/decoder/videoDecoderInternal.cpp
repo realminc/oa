@@ -1,5 +1,6 @@
 #include "videoDecoderInternal.h"
 #include "videoDecoderImpl.h"
+#include <oa/runtime/timer.h>
 
 oa::Status oa::VideoDecoderInternal::decodeFrame(
 	oa::VideoDecoder& inDecoder,
@@ -24,6 +25,17 @@ oa::Result<oa::Matrix> oa::VideoDecoderInternal::convertFrameToBf16Hardware(
 	bool inNormalizeImageNet)
 {
 	return inDecoder.convertFrameToBf16Hardware(inFrame, inNormalizeImageNet);
+}
+
+oa::Result<oa::Event> oa::VideoDecoderInternal::convertIntoAsyncProfiled(
+	oa::VideoDecoder& inDecoder,
+	const oa::VideoFrame& inFrame,
+	const oa::VideoConversionOptions& inOptions,
+	const oa::VideoFrame& inRgbTarget,
+	oa::Timer& inTimer)
+{
+	return inDecoder.convertNv12ToRgbIntoAsync(
+		inFrame, inOptions, inRgbTarget, &inTimer);
 }
 
 oa::Status oa::VideoDecoderInternal::restoreDpbLayerToDecodeLayout(

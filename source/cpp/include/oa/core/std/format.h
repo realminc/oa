@@ -245,7 +245,7 @@ inline void appendInteger(Output& out, T inValue, const FormatSpec& inSpec) {
 	requireFormat(inSpec.precision < 0, "integer precision is not supported");
 	const oa::U32 base = type == 'x' or type == 'X' ? 16U : (type == 'b' ? 2U : (type == 'o' ? 8U : 10U));
 	using Value = oa::RemoveCvrefT<T>;
-	constexpr bool isSigned = __is_signed(Value);
+	constexpr bool isSigned = oa::IsSignedV<Value>;
 	const bool negative = isSigned and inValue < 0;
 	const oa::U64 raw = static_cast<oa::U64>(inValue);
 	const oa::U64 magnitude = negative ? oa::U64(0) - raw : raw;

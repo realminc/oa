@@ -12,7 +12,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 DEFAULT_INPUT = REPO / "var" / "example" / "audio" / "oaNarrationRoom.wav"
-DEFAULT_OUTPUT = REPO / "sdk" / "asset" / "documentation" / "examples" / "audio"
+DEFAULT_OUTPUT = REPO / "sdk" / "asset" / "docs" / "examples" / "audio"
 
 
 def probe(path: Path) -> dict[str, int | float]:

@@ -68,6 +68,25 @@ TEST(Camera, OrthographicFitPreservesContentAspect) {
 	EXPECT_FLOAT_EQ(camera.getZoom(), 2.0F);
 	EXPECT_FLOAT_EQ(camera.getOffset().x, 0.25F);
 	EXPECT_FLOAT_EQ(camera.getOffset().y, -0.5F);
+	expectMatrixNear(
+		camera.getProjectionMatrix(),
+		oa::vlm::orthographicShifted(
+			camera.getState().orthoWidth,
+			camera.getState().orthoHeight,
+			camera.getNear(), camera.getFar(), camera.getZoom(),
+			camera.getOffset()));
+}
+
+TEST(Camera, LensShiftUsesVlmProjectionAuthority) {
+	oa::Camera camera(
+		{0.0F, 0.0F, 5.0F}, {0.0F, 0.0F, 0.0F},
+		55.0F, 16.0F / 9.0F, 0.2F, 500.0F);
+	camera.setOffset(0.125F, -0.25F);
+	expectMatrixNear(
+		camera.getProjectionMatrix(),
+		oa::vlm::perspectiveShifted(
+			camera.getEffectiveFovY(), camera.getState().aspect,
+			camera.getNear(), camera.getFar(), camera.getOffset()));
 }
 
 TEST(Camera, FocalLengthOverridesFieldOfView) {

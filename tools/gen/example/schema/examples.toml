@@ -54,9 +54,9 @@ expectedOutput = "Saved reverberated audio (1.5 s tail):"
 assets = [
 	"audio/oaNarration.wav",
 	"audio/oaNarration.mp3",
-	"documentation/examples/audio/oaNarrationRoom.wav",
-	"documentation/examples/audio/oaNarrationRoom.mp3",
-	"documentation/examples/audio/oaNarrationRoomViewer.jpg",
+	"docs/examples/audio/oaNarrationRoom.wav",
+	"docs/examples/audio/oaNarrationRoom.mp3",
+	"docs/examples/audio/oaNarrationRoomViewer.jpg",
 ]
 cppSymbols = [
 	"oa::Audio",
@@ -102,8 +102,8 @@ generatedBy = "OA-authored narration asset"
 role = "processed"
 label = "Processed"
 description = "Normalized, faded, and rendered through oa::FnAudio::reverb with a 1.5 second tail."
-asset = "documentation/examples/audio/oaNarrationRoom.wav"
-fallbackAsset = "documentation/examples/audio/oaNarrationRoom.mp3"
+asset = "docs/examples/audio/oaNarrationRoom.wav"
+fallbackAsset = "docs/examples/audio/oaNarrationRoom.mp3"
 mimeType = "audio/wav"
 fallbackMimeType = "audio/mpeg"
 sampleRate = 24000
@@ -116,12 +116,12 @@ generatedBy = "sdk/py/examples/audio/audio.py"
 kind = "viewerCapture"
 title = "oa::Viewer"
 description = "The processed WAV opened by this example's optional --preview path in OA's native GPU waveform viewer."
-asset = "documentation/examples/audio/oaNarrationRoomViewer.jpg"
+asset = "docs/examples/audio/oaNarrationRoomViewer.jpg"
 mimeType = "image/jpeg"
 width = 960
 height = 434
 alt = "oa::Viewer displaying the processed OA narration as a GPU-rendered waveform"
-generatedBy = "bin/release/example/audio/exampleAudio --preview"
+generatedBy = "bin/release/sdk/examples/audio/exampleAudio --preview"
 
 [[examples]]
 id = "ml-transformer"
@@ -163,8 +163,8 @@ title = "C++"
 description = "Selected live progress redraws and the complete tutorial-style summary from one checked Intel Iris Xe run. Timings are single-run evidence, not a benchmark claim."
 filename = "transformer.cpp · output"
 language = "bash"
-generatedBy = "OA_LOG_TRAINING_PHASES=1 bin/release/example/ml/exampleMlTransformer"
-code = '''$ OA_LOG_TRAINING_PHASES=1 bin/release/example/ml/exampleMlTransformer
+generatedBy = "OA_LOG_TRAINING_PHASES=1 bin/release/sdk/examples/ml/exampleMlTransformer"
+code = '''$ OA_LOG_TRAINING_PHASES=1 bin/release/sdk/examples/ml/exampleMlTransformer
 14:15:29.239 [INFO ] [RT  ] ComputeDevice (0): Intel(R) Iris(R) Xe Graphics (TGL GT2), vulkan 1.4.354, 11 GB
 
 OA SDK Example — BPE Transformer · all-position LM
@@ -232,8 +232,8 @@ pythonProfile = "gpu"
 expectedOutput = "Saved grayscale image:"
 assets = [
 	"image/coverVision.jpg",
-	"documentation/examples/vision/coverVisionGrayscale.jpg",
-	"documentation/examples/vision/coverVisionGrayscaleViewer.jpg",
+	"docs/examples/vision/coverVisionGrayscale.jpg",
+	"docs/examples/vision/coverVisionGrayscaleViewer.jpg",
 ]
 cppSymbols = [
 	"oa::Image",
@@ -270,7 +270,7 @@ generatedBy = "OA-authored Vision module cover"
 role = "processed"
 label = "Grayscale output"
 description = "The full-resolution Rec.709 grayscale image converted on the GPU and saved by the source-owned example."
-asset = "documentation/examples/vision/coverVisionGrayscale.jpg"
+asset = "docs/examples/vision/coverVisionGrayscale.jpg"
 mimeType = "image/jpeg"
 width = 1672
 height = 941
@@ -281,12 +281,12 @@ generatedBy = "sdk/py/examples/vision/image.py"
 kind = "viewerCapture"
 title = "oa::Viewer"
 description = "The grayscale output opened by this example's optional --preview path in OA's native GPU image viewer."
-asset = "documentation/examples/vision/coverVisionGrayscaleViewer.jpg"
+asset = "docs/examples/vision/coverVisionGrayscaleViewer.jpg"
 mimeType = "image/jpeg"
 width = 1280
 height = 720
 alt = "oa::Viewer presenting the grayscale OA Vision cover in a 1280 by 720 window"
-generatedBy = "bin/release/example/vision/exampleVisionImage --preview"
+generatedBy = "bin/release/sdk/examples/vision/exampleVisionImage --preview"
 
 [[examples]]
 id = "crypto-shake256"
@@ -330,8 +330,8 @@ cppTarget = "ExamplePlotLine"
 pythonProfile = "gpu"
 expectedOutput = "Saved training-loss plot:"
 assets = [
-	"documentation/examples/ui/trainingLoss.jpg",
-	"documentation/examples/ui/trainingLossViewer.jpg",
+	"docs/examples/ui/trainingLoss.jpg",
+	"docs/examples/ui/trainingLossViewer.jpg",
 ]
 cppSymbols = [
 	"oa::plot::Figure",
@@ -357,7 +357,7 @@ description = "This is the exact 960×540 JPEG produced by the retained figure i
 role = "output"
 label = "Training loss"
 description = "A dark retained line plot rendered by OA's GPU compositor and saved through oa::FnImage."
-asset = "documentation/examples/ui/trainingLoss.jpg"
+asset = "docs/examples/ui/trainingLoss.jpg"
 mimeType = "image/jpeg"
 width = 960
 height = 540
@@ -368,9 +368,9 @@ generatedBy = "sdk/py/examples/ui/plotFigure.py"
 kind = "viewerCapture"
 title = "oa::Viewer"
 description = "The saved plot opened by this example's optional --preview path in OA's native GPU image viewer."
-asset = "documentation/examples/ui/trainingLossViewer.jpg"
+asset = "docs/examples/ui/trainingLossViewer.jpg"
 mimeType = "image/jpeg"
 width = 1280
 height = 720
 alt = "oa::Viewer presenting the generated training-loss plot in a 1280 by 720 window"
-generatedBy = "bin/release/example/ui/examplePlotLine --preview"
+generatedBy = "bin/release/sdk/examples/ui/examplePlotLine --preview"

@@ -74,29 +74,25 @@ public:
 	static constexpr oa::U32 kMaxFields = 64U;
 
 	[[nodiscard]] static oa::Status validate(const SatelliteMessage& inMessage);
-	[[nodiscard]] static oa::Result<oa::Vector<oa::Byte>> encode(
-		const SatelliteMessage& inMessage);
-	[[nodiscard]] static oa::Result<SatelliteMessage> decode(
-		oa::Span<const oa::Byte> inBytes);
+	[[nodiscard]] static oa::Result<oa::Vector<oa::Byte>> encode(const SatelliteMessage& inMessage);
+	[[nodiscard]] static oa::Result<SatelliteMessage> decode(oa::Span<const oa::Byte> inBytes);
 	// Stable non-cryptographic digest used for wire corruption detection and
 	// opaque content identity. Authentication is supplied separately by the
 	// application-owned satellite service.
 	[[nodiscard]] static oa::Array<oa::Byte, 32> stableDigest(
 		oa::Span<const oa::Byte> inFirst,
-		oa::Span<const oa::Byte> inSecond = {});
+		oa::Span<const oa::Byte> inSecond = {}
+	);
 
-	[[nodiscard]] static const SatelliteField* findField(
-		const SatelliteMessage& inMessage, SatelliteFieldId inId);
+	[[nodiscard]] static const SatelliteField* findField(const SatelliteMessage& inMessage, SatelliteFieldId inId);
 	[[nodiscard]] static oa::Result<oa::U8> readU8(const SatelliteField& inField);
 	[[nodiscard]] static oa::Result<oa::U16> readU16(const SatelliteField& inField);
 	[[nodiscard]] static oa::Result<oa::U32> readU32(const SatelliteField& inField);
 	[[nodiscard]] static oa::Result<oa::U64> readU64(const SatelliteField& inField);
 	[[nodiscard]] static oa::Result<oa::F32> readF32(const SatelliteField& inField);
 	[[nodiscard]] static oa::Result<oa::String> readString(const SatelliteField& inField);
-	[[nodiscard]] static oa::Result<oa::Vector<oa::U64>> readU64Array(
-		const SatelliteField& inField);
-	[[nodiscard]] static oa::Result<oa::Vector<oa::I64>> readI64Array(
-		const SatelliteField& inField);
+	[[nodiscard]] static oa::Result<oa::Vector<oa::U64>> readU64Array(const SatelliteField& inField);
+	[[nodiscard]] static oa::Result<oa::Vector<oa::I64>> readI64Array(const SatelliteField& inField);
 };
 
 } // namespace oa

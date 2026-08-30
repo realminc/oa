@@ -42,14 +42,17 @@ class NlpSuiteRecipe {
 public:
 	NlpSuiteRecipe(
 		NlpArchitecture inArchitecture = NlpArchitecture::Gru,
-		NlpTokenizerKind inTokenizer = NlpTokenizerKind::Byte);
+		NlpTokenizerKind inTokenizer = NlpTokenizerKind::Byte,
+		oa::I32 inContextLength = NlpSuiteContextLength,
+		oa::I32 inModelWidth = NlpSuiteModelWidth,
+		oa::I32 inHiddenWidth = NlpSuiteHiddenWidth);
 
 	[[nodiscard]] NlpArchitecture architecture() const { return architecture_; }
 	[[nodiscard]] NlpTokenizerKind tokenizer() const { return tokenizer_; }
 	[[nodiscard]] oa::I32 vocabSize() const;
-	[[nodiscard]] oa::I32 contextLength() const { return NlpSuiteContextLength; }
-	[[nodiscard]] oa::I32 modelWidth() const { return NlpSuiteModelWidth; }
-	[[nodiscard]] oa::I32 hiddenWidth() const { return NlpSuiteHiddenWidth; }
+	[[nodiscard]] oa::I32 contextLength() const { return contextLength_; }
+	[[nodiscard]] oa::I32 modelWidth() const { return modelWidth_; }
+	[[nodiscard]] oa::I32 hiddenWidth() const { return hiddenWidth_; }
 	[[nodiscard]] oa::F32 learningRate() const;
 	[[nodiscard]] const char* architectureId() const;
 	[[nodiscard]] const char* architectureName() const;
@@ -61,6 +64,9 @@ public:
 private:
 	NlpArchitecture architecture_;
 	NlpTokenizerKind tokenizer_;
+	oa::I32 contextLength_ = NlpSuiteContextLength;
+	oa::I32 modelWidth_ = NlpSuiteModelWidth;
+	oa::I32 hiddenWidth_ = NlpSuiteHiddenWidth;
 };
 
 class NlpSuiteModel final : public oa::Module {

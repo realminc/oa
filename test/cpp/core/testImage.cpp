@@ -393,23 +393,15 @@ TEST(ImageBatch, InvalidRank) {
 
 TEST(ImageBatch, InvalidLayout) {
 	// oa::ImageBatch only supports batched layouts (Nchw or Nhwc)
-	auto data = oa::FnMatrix::zeros(oa::MatrixShape{3, 224, 224});
-#if defined(NDEBUG)
-	oa::ImageBatch batch(
-		std::move(data),
-		oa::ImageLayout::Chw,
-		oa::ImageFormat::Rgb);
-	EXPECT_FALSE(batch.validate());
-#else
 	EXPECT_DEATH(
 		{
+			auto data = oa::FnMatrix::zeros(oa::MatrixShape{3, 224, 224});
 			oa::ImageBatch batch(
 				std::move(data),
 				oa::ImageLayout::Chw,
 				oa::ImageFormat::Rgb);
 		},
 		"oa::ImageBatch: shape/layout/format mismatch");
-#endif
 }
 
 TEST(ImageBatch, AsMatrixRoundTrip) {

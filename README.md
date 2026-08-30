@@ -1,12 +1,12 @@
 <p align="center">
-  <img src="sdk/asset/documentation/readme/oaSpaceCathedral.jpg" width="100%" alt="OA — one Vulkan-native foundation for compute, ML, media, and mobile">
+  <img src="sdk/asset/docs/readme/oaSpaceCathedral.jpg" width="100%" alt="OA — one Vulkan-native foundation for compute, ML, media, and mobile">
 </p>
 
 # OA
 
 **Powerful accelerators. Surrounded by glue.**
 
-OA—One API, Open Architecture—is a unified, GPU-first C++20 and Python library:
+Oa - One API, Open Architecture, is a unified, GPU-first C++20 and Python library:
 one execution system for numerical computing, machine learning, vision, audio,
 media, data, crypto, rendering, interfaces, and plotting.
 
@@ -30,7 +30,7 @@ playback, capture, presentation, and MCP control.
 [![License](https://img.shields.io/badge/license-BSL--1.1-3b3b3b)](LICENSE)
 
 > **Development preview.** The API and artifact formats remain pre-1.0 and may
-> change. Read the [latest release notes](docs/external/releases/v0.7.26.md) for
+> change. Read the [latest release notes](docs/external/releases/v0.7.27.md) for
 > shipped scope, verification, compatibility, and known limitations.
 
 ## One runtime. Two front ends.

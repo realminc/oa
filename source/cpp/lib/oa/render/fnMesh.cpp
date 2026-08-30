@@ -188,17 +188,32 @@ bool hasIndices(const oa::MeshData& inMesh) noexcept {
 
 // ─── Transforms ──────────────────────────────────────────────────────────
 
-void transform(oa::MeshData& inMesh, const oa::vlm::Mat4& inMatrix) {
-	for (auto& v : inMesh.vertices) {
-		oa::vlm::Vec3 p = v.position;
-		oa::vlm::Vec3 t = {
-			inMatrix.m[0][0] * p.x + inMatrix.m[1][0] * p.y + inMatrix.m[2][0] * p.z + inMatrix.m[3][0],
-			inMatrix.m[0][1] * p.x + inMatrix.m[1][1] * p.y + inMatrix.m[2][1] * p.z + inMatrix.m[3][1],
-			inMatrix.m[0][2] * p.x + inMatrix.m[1][2] * p.y + inMatrix.m[2][2] * p.z + inMatrix.m[3][2]
-		};
-		v.position = t;
+oa::Status transform(oa::MeshData& inMesh, const oa::vlm::Mat4& inMatrix) {
+	oa::vlm::Mat3 normalMatrix{};
+	if (not oa::vlm::tryNormalMatrix(inMatrix, normalMatrix)) {
+		return oa::Status::invalidArgument(
+			"FnMesh::transform requires a finite invertible affine transform");
+	}
+	for (const auto& vertex : inMesh.vertices) {
+		const oa::vlm::Vec3 position = oa::vlm::transformPoint(
+			vertex.position, inMatrix);
+		oa::vlm::Vec3 normal{};
+		if (not position.isFinite()
+			or not oa::vlm::tryTransformNormal(
+				vertex.normal, normalMatrix, normal)) {
+			return oa::Status::invalidArgument(
+				"FnMesh::transform produced a non-finite position or normal");
+		}
+	}
+	for (auto& vertex : inMesh.vertices) {
+		vertex.position = oa::vlm::transformPoint(vertex.position, inMatrix);
+		const bool normalValid = oa::vlm::tryTransformNormal(
+			vertex.normal, normalMatrix, vertex.normal);
+		(void)normalValid;
+		OA_ASSERT(normalValid);
 	}
 	inMesh.boundsDirty = true;
+	return oa::Status::ok();
 }
 
 void translate(oa::MeshData& inMesh, const oa::vlm::Vec3& inOffset) {
@@ -210,13 +225,8 @@ void translate(oa::MeshData& inMesh, const oa::vlm::Vec3& inOffset) {
 	inMesh.boundsDirty = true;
 }
 
-void scale(oa::MeshData& inMesh, const oa::vlm::Vec3& inScale) {
-	for (auto& v : inMesh.vertices) {
-		v.position.x *= inScale.x;
-		v.position.y *= inScale.y;
-		v.position.z *= inScale.z;
-	}
-	inMesh.boundsDirty = true;
+oa::Status scale(oa::MeshData& inMesh, const oa::vlm::Vec3& inScale) {
+	return transform(inMesh, oa::vlm::scaleMatrix(inScale));
 }
 
 void flipUvsY(oa::MeshData& inMesh) {

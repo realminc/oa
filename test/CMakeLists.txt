@@ -99,12 +99,19 @@ oa_add_test(TestCli              cpp/core/misc/testCli.cpp              cpp/core
 oa_add_test(TestValidation       cpp/core/misc/testValidation.cpp       cpp/core/misc)
 oa_add_test(TestVlm              cpp/core/vlm/testVlm.cpp               cpp/core/vlm)
 
+# Host-only SIMD microbenchmark. FnSimd and stock xsimd execute equivalent
+# array reductions; release claims use the canonical fresh-process runner.
+add_executable(BenchSimd cpp/core/misc/benchSimd.cpp)
+target_link_libraries(BenchSimd PRIVATE oa)
+target_include_directories(BenchSimd SYSTEM PRIVATE
+	${PROJECT_SOURCE_DIR}/source/cpp/thirdparty/xsimd/include)
+set_target_properties(BenchSimd PROPERTIES
+	RUNTIME_OUTPUT_DIRECTORY "${OA_BIN_DIR}/test/core/misc")
+
 # Host-only VLM microbenchmark. It is deliberately not a CTest: release claims
 # use fresh-process runs with pinned compiler, CPU, clocks, and thermal state.
 add_executable(BenchVlm cpp/core/vlm/benchVlm.cpp)
 target_link_libraries(BenchVlm PRIVATE oa)
-target_include_directories(BenchVlm SYSTEM PRIVATE
-	${PROJECT_SOURCE_DIR}/source/cpp/thirdparty/xsimd/include)
 set_target_properties(BenchVlm PROPERTIES
 	RUNTIME_OUTPUT_DIRECTORY "${OA_BIN_DIR}/test/core/vlm")
 set(OA_VLM_GLM_ROOT "" CACHE PATH
@@ -127,6 +134,8 @@ target_include_directories(TestUi PRIVATE
 	${oa_SOURCE_DIR}/source/cpp/thirdparty)
 oa_add_test(TestCamera           cpp/render/testCamera.cpp              cpp/render)
 set_tests_properties(TestCamera PROPERTIES LABELS "core;render")
+oa_add_test(TestScene            cpp/render/testScene.cpp               cpp/render)
+set_tests_properties(TestScene PROPERTIES LABELS "core;render")
 oa_add_test(TestLunarLander3dRender cpp/render/testLunarLander3dRender.cpp cpp/render)
 target_link_libraries(TestLunarLander3dRender PRIVATE oaSdkSupport)
 target_sources(TestLunarLander3dRender PRIVATE
@@ -149,8 +158,24 @@ oa_add_ml_test(TestMatrixOperators cpp/core/testMatrixOperators.cpp     cpp/core
 oa_add_test(TestThreading        cpp/core/threading/testThreading.cpp   cpp/core/threading)
 
 # Network tests
-oa_add_test(TestMcp              cpp/mcp/testMcp.cpp                     cpp/mcp)
-set_tests_properties(TestMcp PROPERTIES LABELS "core;mcp")
+oa_add_test(TestMcp              cpp/network/mcp/testMcp.cpp             cpp/network/mcp)
+set_tests_properties(TestMcp PROPERTIES LABELS "core;network;mcp")
+oa_add_test(TestWebMcp           cpp/network/mcp/testWebMcp.cpp          cpp/network/mcp)
+target_sources(TestWebMcp PRIVATE
+	${oa_SOURCE_DIR}/sdk/cpp/apps/network/webmcp/webmcp.cpp)
+target_include_directories(TestWebMcp PRIVATE
+	${oa_SOURCE_DIR}/sdk/cpp/apps/network/webmcp)
+set_tests_properties(TestWebMcp PROPERTIES LABELS "core;network;mcp")
+find_program(OA_NODE_EXECUTABLE NAMES node)
+if(OA_NODE_EXECUTABLE)
+	add_test(
+		NAME TestWebMcpBrowserAdapter
+		COMMAND ${OA_NODE_EXECUTABLE} testWebmcp.mjs)
+	set_tests_properties(TestWebMcpBrowserAdapter PROPERTIES
+		WORKING_DIRECTORY
+			${oa_SOURCE_DIR}/sdk/cpp/apps/network/webmcp/web
+		LABELS "network;mcp;web")
+endif()
 oa_add_test(TestTcpFramed        cpp/network/tcp/testTcpFramed.cpp      cpp/network/tcp)
 oa_add_test(TestSatelliteProtocol cpp/network/satellite/testSatelliteProtocol.cpp cpp/network/satellite)
 oa_add_test(TestSatelliteSession cpp/network/satellite/testSatelliteSession.cpp cpp/network/satellite)
@@ -159,8 +184,8 @@ target_include_directories(TestSatelliteVulkan PRIVATE ${oa_SOURCE_DIR}/source/c
 oa_add_ml_test(TestSatelliteNlp cpp/network/satellite/testSatelliteNlp.cpp cpp/network/satellite)
 target_link_libraries(TestSatelliteNlp PRIVATE oaSdkSupport)
 target_sources(TestSatelliteNlp PRIVATE
-	${oa_SOURCE_DIR}/sdk/cpp/applications/network/satellite/nlpCoordinator.cpp
-	${oa_SOURCE_DIR}/sdk/cpp/applications/network/satellite/nlpStep.cpp)
+	${oa_SOURCE_DIR}/sdk/cpp/apps/network/satellite/nlpCoordinator.cpp
+	${oa_SOURCE_DIR}/sdk/cpp/apps/network/satellite/nlpStep.cpp)
 target_include_directories(TestSatelliteNlp PRIVATE ${oa_SOURCE_DIR}/source/cpp/lib)
 set_tests_properties(TestSatelliteNlp PROPERTIES
 	LABELS "gpu_bindless;ml;network;distributed")

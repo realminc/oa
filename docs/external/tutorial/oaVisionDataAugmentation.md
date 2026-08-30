@@ -12,7 +12,7 @@ brightness/contrast, seeded Gaussian noise with clamping, and solarization.
 The fixed noise seed makes the generated presentation asset reproducible; it
 does not imply that production training should reuse one seed indefinitely.
 
-![Six OA GPU vision augmentation views](../../../sdk/asset/documentation/vision/oa-vision-data-augmentation.png)
+![Six OA GPU vision augmentation views](../../../sdk/asset/docs/vision/oa-vision-data-augmentation.png)
 
 ## Run
 
@@ -20,7 +20,7 @@ C++:
 
 ```bash
 cmake --build build/release --target TutorialVisionDataAugmentation
-bin/release/tutorial/vision/tutorialVisionDataAugmentation \
+bin/release/sdk/tutorials/vision/tutorialVisionDataAugmentation \
   sdk/asset/image/visionTestPattern320x180.jpg \
   /tmp/oa-vision-data-augmentation.png
 ```

@@ -8,7 +8,7 @@
 #include <oa/core.h>
 #include <oa/crypto.h>
 #include <oa/data.h>
-#include <oa/mcp.h>
+#include <oa/network/mcp.h>
 #include <oa/vision.h>
 #include <oa/ml.h>
 #include <oa/ml/autograd.h>

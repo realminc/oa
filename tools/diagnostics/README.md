@@ -44,7 +44,7 @@ training graph automatically:
 python3 tools/diagnostics/oaEvidence.py \
   --validation \
   --output var/report/transformer-validation \
-  -- bin/release/tutorial/ml/nlp/tutorialNlpByteTransformerAg
+  -- bin/release/sdk/tutorials/ml/nlp/tutorialNlpByteTransformerAg
 ```
 
 Run the focused execution-graph suite under a named validation profile and
@@ -101,7 +101,7 @@ layout, or naive fallback occurs:
 python3 tools/diagnostics/oaEvidence.py \
   --selection-trace \
   --output var/report/transformer-selection \
-  -- bin/release/tutorial/ml/nlp/tutorialNlpByteTransformerAg
+  -- bin/release/sdk/tutorials/ml/nlp/tutorialNlpByteTransformerAg
 ```
 
 Intentional universal-layout or tiny-naive paths can be declared explicitly
@@ -285,7 +285,7 @@ writes only `oa.device_canary.v1` JSON to stdout; OA diagnostics remain on
 stderr, so the report can be redirected directly:
 
 ```bash
-bin/release/tutorial/core/tutorialCoreDeviceCanary \
+bin/release/sdk/tutorials/core/tutorialCoreDeviceCanary \
   > var/report/device-canary.json
 python3 -m json.tool var/report/device-canary.json
 ```
@@ -299,9 +299,9 @@ Run the same canary under the two Vulkan correctness profiles with:
 
 ```bash
 python3 tools/diagnostics/runValidation.py --mode sync -- \
-  bin/release/tutorial/core/tutorialCoreDeviceCanary
+  bin/release/sdk/tutorials/core/tutorialCoreDeviceCanary
 python3 tools/diagnostics/runValidation.py --mode gpu -- \
-  bin/release/tutorial/core/tutorialCoreDeviceCanary
+  bin/release/sdk/tutorials/core/tutorialCoreDeviceCanary
 ```
 
 This canary samples representative transport, synchronization, reduction, and

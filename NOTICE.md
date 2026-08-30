@@ -56,7 +56,7 @@ files. OA is grateful to their authors.
 | **stb** (`stb_image`, …) | `source/cpp/thirdparty/stb/*` | Sean Barrett ([nothings/stb](https://github.com/nothings/stb)) | Public domain or MIT |
 | **xsimd 14.1.0** | `source/cpp/thirdparty/xsimd/*` | QuantStack and xsimd contributors ([xtensor-stack/xsimd](https://github.com/xtensor-stack/xsimd)) | BSD-3-Clause |
 | **utf8proc 2.11.3** | `source/cpp/thirdparty/utf8proc/*` | utf8proc contributors ([JuliaStrings/utf8proc](https://github.com/JuliaStrings/utf8proc)) | MIT |
-| **libadrenotools** | `sdk/android/oaMobileLab/third_party/libadrenotools/*` (Android only) | Billy Laws ([bylaws/libadrenotools](https://github.com/bylaws/libadrenotools)) | BSD-2-Clause |
+| **libadrenotools** | `sdk/android/mobilelab/third_party/libadrenotools/*` (Android only) | Billy Laws ([bylaws/libadrenotools](https://github.com/bylaws/libadrenotools)) | BSD-2-Clause |
 
 The volk and VMA copies are **modified** (fork/rename/split for OA's build).
 Their MIT notices are centralized in `source/cpp/thirdparty/licenses`, and each

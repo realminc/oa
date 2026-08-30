@@ -1,5 +1,7 @@
 #include "rendererInternal.h"
 
+#include <oa/render/fnScene.h>
+
 #include <oa/core/log.h>
 #include <oa/render/fnMesh.h>
 #include <oa/runtime/engine.h>
@@ -93,21 +95,6 @@ struct RenderSlot {
 		case 64U: return VK_SAMPLE_COUNT_64_BIT;
 		default: return static_cast<VkSampleCountFlagBits>(0U);
 	}
-}
-
-[[nodiscard]] bool isFiniteVlm(const oa::vlm::Mat4& inMatrix) noexcept {
-	for (oa::U32 row = 0U; row < 4U; ++row) {
-		for (oa::U32 column = 0U; column < 4U; ++column) {
-			if (not oa::isFinite(inMatrix.m[row][column])) return false;
-		}
-	}
-	return true;
-}
-
-[[nodiscard]] bool isFiniteVlm(const oa::vlm::Vec3& inVector) noexcept {
-	return oa::isFinite(inVector.x)
-		and oa::isFinite(inVector.y)
-		and oa::isFinite(inVector.z);
 }
 
 [[nodiscard]] oa::Status validateTargetExtent(
@@ -553,6 +540,9 @@ public:
 	[[nodiscard]] oa::Status beginMeshFrame(
 		const oa::MeshData& inMesh,
 		const oa::CameraState& inCamera) override;
+	[[nodiscard]] oa::Status beginSceneFrame(
+		const oa::Scene& inScene,
+		const oa::CameraState& inCamera) override;
 	[[nodiscard]] oa::Result<oa::RenderFrame> submitFrame(
 		oa::Span<const oa::Event> inDependencies) override;
 	[[nodiscard]] oa::Status cancelFrame() override;
@@ -813,7 +803,7 @@ oa::Status oa::Renderer::MeshImpl::initialize(
 		or not oa::isFinite(renderConfig.clearColor_.y)
 		or not oa::isFinite(renderConfig.clearColor_.z)
 		or not oa::isFinite(renderConfig.clearColor_.w)
-		or not isFiniteVlm(renderConfig.lightDirection_)
+		or not renderConfig.lightDirection_.isFinite()
 		or not oa::isFinite(renderConfig.ambientLight_)
 		or renderConfig.ambientLight_ < 0.0F
 		or renderConfig.ambientLight_ > 1.0F) {
@@ -851,8 +841,8 @@ oa::Status oa::Renderer::MeshImpl::writeFrameGeometry(
 			"oa::Renderer: mesh exceeds the configured bounded slot capacity");
 	}
 	for (const oa::MeshVertex& vertex : inMesh.vertices) {
-		if (not isFiniteVlm(vertex.position)
-			or not isFiniteVlm(vertex.normal)
+		if (not vertex.position.isFinite()
+			or not vertex.normal.isFinite()
 			or not oa::isFinite(vertex.color.x)
 			or not oa::isFinite(vertex.color.y)
 			or not oa::isFinite(vertex.color.z)
@@ -894,7 +884,9 @@ oa::Status oa::Renderer::MeshImpl::writeFrameGeometry(
 oa::Status oa::Renderer::MeshImpl::recordFrame(
 	RenderSlot& inSlot,
 	const oa::CameraState& inCamera) {
-	if (not isFiniteVlm(oa::FnCamera::getViewProjectionMatrix(inCamera))) {
+	const oa::vlm::Mat4 viewProjection =
+		oa::FnCamera::getViewProjectionMatrix(inCamera);
+	if (not viewProjection.isFinite()) {
 		return oa::Status::invalidArgument(
 			"oa::Renderer camera matrix must be finite");
 	}
@@ -1105,7 +1097,7 @@ oa::Status oa::Renderer::MeshImpl::recordFrame(
 		static_cast<VkBuffer>(inSlot.indexBuffer.buffer),
 		0U, VK_INDEX_TYPE_UINT32);
 	const RenderPushConstants push{
-		oa::FnCamera::getViewProjectionMatrix(inCamera),
+		viewProjection,
 		{
 			renderConfig.lightDirection_.x,
 			renderConfig.lightDirection_.y,
@@ -1506,6 +1498,17 @@ oa::Status oa::Renderer::MeshImpl::beginMeshFrame(
 	}
 	activeSlot = slotIndex;
 	return oa::Status::ok();
+}
+
+oa::Status oa::Renderer::MeshImpl::beginSceneFrame(
+	const oa::Scene& inScene,
+	const oa::CameraState& inCamera) {
+	oa::FnScene::CompileConfig config;
+	config.maxVertexCount = renderConfig.maxVertexCount_;
+	config.maxIndexCount = renderConfig.maxIndexCount_;
+	auto compiled = oa::FnScene::compile(inScene, config);
+	if (compiled.isError()) return compiled.getStatus();
+	return beginMeshFrame(*compiled, inCamera);
 }
 
 oa::Result<oa::RenderFrame>

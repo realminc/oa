@@ -9,9 +9,11 @@
 
 #include <oa/core/filesystem.h>
 #include <oa/runtime/engine.h>
+#include <oa/runtime/timer.h>
 #include <oa/vision/videoDemuxer.h>
 #include <oa/vision/videoPlayer.h>
 #include <oa/vision/videoEncoder.h>
+#include <oa/vision/video/decoder/videoDecoderInternal.h>
 #include <oa/vision/video/encoder/videoEncoderInternal.h>
 
 #include <cstdio>
@@ -54,6 +56,11 @@ struct DecodePresentMeasurement {
 	Distribution submit;
 	Distribution ready;
 	double throughputFps = 0.0;
+	oa::U64 hardwareYcbcrConversions = 0U;
+};
+
+struct ColorConvertMeasurement {
+	Distribution gpu;
 	oa::U64 hardwareYcbcrConversions = 0U;
 };
 
@@ -369,6 +376,77 @@ oa::Result<DecodePresentMeasurement> runDecodePresent(
 	return measurement;
 }
 
+oa::Result<oa::VideoFrame> decodeFirstVisibleFrame(
+	oa::VideoDemuxer& inDemuxer,
+	oa::VideoDecoder& inDecoder)
+{
+	for (oa::U32 packetIndex = 0U; packetIndex < 64U; ++packetIndex) {
+		oa::VideoPacket packet;
+		OA_RETURN_IF_ERROR(inDemuxer.readNextPacket(packet));
+		auto frame = inDecoder.decode(
+			oa::Span<const oa::U8>(packet.data.data(), packet.data.size()),
+			packet.presentationTimestamp);
+		if (not frame.isOk()) return frame.getStatus();
+		if (frame->imageView != VK_NULL_HANDLE and frame->shown) {
+			OA_RETURN_IF_ERROR(frame->ready.wait());
+			return frame;
+		}
+	}
+	return oa::Status::error(
+		oa::StatusCode::DataLoss,
+		"video color-conversion benchmark found no visible frame");
+}
+
+oa::Result<ColorConvertMeasurement> measureColorConvertGpu(
+	oa::Engine& inEngine,
+	oa::VideoDecoder& inDecoder,
+	const oa::VideoFrame& inYcbcrFrame,
+	const oa::VideoFrame& inRgbTarget,
+	bool inPreferHardware,
+	oa::U32 inWarmup,
+	oa::U32 inSamples)
+{
+	oa::VideoConversionOptions options;
+	options.preferHardwareYCbCr = inPreferHardware;
+	options.filter = oa::Filter::Nearest;
+	const oa::U64 hardwareBefore =
+		oa::VideoDecoderInternal::getHardwareYcbcrDispatchCount(inDecoder);
+
+	for (oa::U32 sample = 0U; sample < inWarmup; ++sample) {
+		auto completion = inDecoder.convertIntoAsync(
+			inYcbcrFrame, options, inRgbTarget);
+		if (not completion.isOk()) return completion.getStatus();
+		OA_RETURN_IF_ERROR(completion->wait());
+		OA_RETURN_IF_ERROR(inDecoder.waitForCompletion());
+	}
+
+	oa::Timer timer(oa::TimerDomain::Device, "video.color_convert");
+	OA_RETURN_IF_ERROR(timer.init(inEngine));
+	oa::Vector<double> gpuMs;
+	gpuMs.reserve(inSamples);
+	for (oa::U32 sample = 0U; sample < inSamples; ++sample) {
+		auto completion = oa::VideoDecoderInternal::convertIntoAsyncProfiled(
+			inDecoder, inYcbcrFrame, options, inRgbTarget, timer);
+		if (not completion.isOk()) return completion.getStatus();
+		OA_RETURN_IF_ERROR(completion->wait());
+		auto elapsed = timer.commit(inEngine);
+		if (not elapsed.isOk()) return elapsed.getStatus();
+		if (*elapsed <= 0.0) {
+			return oa::Status::error(
+				oa::StatusCode::Internal,
+				"video color-conversion benchmark returned a non-positive GPU timestamp");
+		}
+		gpuMs.pushBack(*elapsed);
+		OA_RETURN_IF_ERROR(inDecoder.waitForCompletion());
+	}
+	const oa::U64 hardwareAfter =
+		oa::VideoDecoderInternal::getHardwareYcbcrDispatchCount(inDecoder);
+	return ColorConvertMeasurement{
+		.gpu = distribution(oa::move(gpuMs)),
+		.hardwareYcbcrConversions = hardwareAfter - hardwareBefore,
+	};
+}
+
 oa::Status requireFixture60(
 	const oa::VideoPlayer& inPlayer,
 	const BenchmarkFixture& inFixture)
@@ -676,6 +754,122 @@ TEST_VK(BenchVideoRealtime, DecodePresentYcbcrPair) {
 		hardwareOverCompute,
 		hardware.hardwareYcbcrConversions,
 		compute.hardwareYcbcrConversions).isOk());
+}
+
+TEST_VK(BenchVideoRealtime, ColorConvertGpuPair) {
+	if (not vkTestEngineOk()) GTEST_SKIP() << "no vulkan device";
+	const BenchmarkFixture fixture = benchmarkFixture();
+	ASSERT_TRUE(fixture.valid)
+		<< "OA_VIDEO_BENCH_VARIANT is not a known 60 fps video fixture";
+	const oa::String asset = benchmarkAsset(fixture);
+	if (not oa::Filesystem::exists(oa::Path(asset))) {
+		GTEST_SKIP() << "video benchmark asset is unavailable: " << asset;
+	}
+	ASSERT_TRUE(requireVideoCapabilities(testEngine(), fixture, asset, false).isOk());
+
+	auto demuxerResult = oa::VideoDemuxer::open(asset);
+	ASSERT_TRUE(demuxerResult.isOk()) << demuxerResult.getStatus().toString();
+	oa::VideoDemuxer demuxer = oa::move(*demuxerResult);
+	auto decoderResult = oa::VideoDecoder::create(
+		testEngine(), demuxer.getVideoProfile());
+	ASSERT_TRUE(decoderResult.isOk()) << decoderResult.getStatus().toString();
+	oa::VideoDecoder decoder = oa::move(*decoderResult);
+	auto sourceResult = decodeFirstVisibleFrame(demuxer, decoder);
+	ASSERT_TRUE(sourceResult.isOk()) << sourceResult.getStatus().toString();
+	const oa::VideoFrame source = *sourceResult;
+
+	auto hardwareTargetResult = decoder.allocateRgbaFrame(
+		fixture.width, fixture.height);
+	ASSERT_TRUE(hardwareTargetResult.isOk())
+		<< hardwareTargetResult.getStatus().toString();
+	oa::VideoFrame hardwareTarget = *hardwareTargetResult;
+	auto computeTargetResult = decoder.allocateRgbaFrame(
+		fixture.width, fixture.height);
+	ASSERT_TRUE(computeTargetResult.isOk())
+		<< computeTargetResult.getStatus().toString();
+	oa::VideoFrame computeTarget = *computeTargetResult;
+
+	const oa::U32 warmup = envU32(
+		"OA_VIDEO_CONVERT_BENCH_WARMUP", 120U, 1U, 240U);
+	const oa::U32 samples = envU32(
+		"OA_VIDEO_CONVERT_BENCH_SAMPLES", 256U, 7U, 1200U);
+	const char* order = ::getenv("OA_VIDEO_BENCH_PAIR_ORDER");
+	const bool computeFirst = order != nullptr
+		and ::strcmp(order, "compute-first") == 0;
+
+	oa::Result<ColorConvertMeasurement> first = computeFirst
+		? measureColorConvertGpu(
+			testEngine(), decoder, source, computeTarget, false, warmup, samples)
+		: measureColorConvertGpu(
+			testEngine(), decoder, source, hardwareTarget, true, warmup, samples);
+	ASSERT_TRUE(first.isOk()) << first.getStatus().toString();
+	oa::Result<ColorConvertMeasurement> second = computeFirst
+		? measureColorConvertGpu(
+			testEngine(), decoder, source, hardwareTarget, true, warmup, samples)
+		: measureColorConvertGpu(
+			testEngine(), decoder, source, computeTarget, false, warmup, samples);
+	ASSERT_TRUE(second.isOk()) << second.getStatus().toString();
+	const ColorConvertMeasurement& hardware = computeFirst ? *second : *first;
+	const ColorConvertMeasurement& compute = computeFirst ? *first : *second;
+	ASSERT_EQ(hardware.hardwareYcbcrConversions, warmup + samples);
+	ASSERT_EQ(compute.hardwareYcbcrConversions, 0U);
+
+	auto hardwareRgba = decoder.readbackRgba(hardwareTarget);
+	ASSERT_TRUE(hardwareRgba.isOk()) << hardwareRgba.getStatus().toString();
+	auto computeRgba = decoder.readbackRgba(computeTarget);
+	ASSERT_TRUE(computeRgba.isOk()) << computeRgba.getStatus().toString();
+	ASSERT_EQ(hardwareRgba->size(), computeRgba->size());
+	oa::U64 absoluteError = 0U;
+	oa::U32 maximumError = 0U;
+	for (oa::Usize pixel = 0U; pixel < hardwareRgba->size(); pixel += 4U) {
+		ASSERT_EQ((*hardwareRgba)[pixel + 3U], 255U);
+		ASSERT_EQ((*computeRgba)[pixel + 3U], 255U);
+		for (oa::Usize channel = 0U; channel < 3U; ++channel) {
+			const oa::U8 hardwareValue = (*hardwareRgba)[pixel + channel];
+			const oa::U8 computeValue = (*computeRgba)[pixel + channel];
+			const oa::U32 error = hardwareValue > computeValue
+				? hardwareValue - computeValue
+				: computeValue - hardwareValue;
+			absoluteError += error;
+			maximumError = oa::max(maximumError, error);
+		}
+	}
+	const double rgbMae = static_cast<double>(absoluteError)
+		/ static_cast<double>(fixture.width * fixture.height * 3U);
+	ASSERT_LT(rgbMae, 6.0);
+	ASSERT_LT(maximumError, 96U);
+
+	const double hardwareOverCompute =
+		compute.gpu.p50 / hardware.gpu.p50;
+	ASSERT_TRUE(oa::print(
+		"OABENCH video.realtime.color_convert_gpu "
+		"width={} height={} samples_per_path={} warmup_per_path={} order={} "
+		"hardware_gpu_p50_us={:.3f} hardware_gpu_p95_us={:.3f} "
+		"hardware_gpu_p99_us={:.3f} hardware_gpu_max_us={:.3f} "
+		"compute_gpu_p50_us={:.3f} compute_gpu_p95_us={:.3f} "
+		"compute_gpu_p99_us={:.3f} compute_gpu_max_us={:.3f} "
+		"hardware_over_compute={:.6f} rgb_mae={:.6f} rgb_max_error={} "
+		"hardware_ycbcr_conversions={} compute_ycbcr_conversions={} "
+		"timestamp_scope=shader_dispatch pixel_readback_bytes_timed=0",
+		fixture.width,
+		fixture.height,
+		samples,
+		warmup,
+		computeFirst ? "compute-first" : "hardware-first",
+		hardware.gpu.p50 * 1000.0,
+		hardware.gpu.p95 * 1000.0,
+		hardware.gpu.p99 * 1000.0,
+		hardware.gpu.maximum * 1000.0,
+		compute.gpu.p50 * 1000.0,
+		compute.gpu.p95 * 1000.0,
+		compute.gpu.p99 * 1000.0,
+		compute.gpu.maximum * 1000.0,
+		hardwareOverCompute,
+		rgbMae,
+		maximumError,
+		hardware.hardwareYcbcrConversions,
+		compute.hardwareYcbcrConversions).isOk());
+	ASSERT_TRUE(decoder.close().isOk());
 }
 
 TEST_VK(BenchVideoRealtime, PacedDecodePresent60) {

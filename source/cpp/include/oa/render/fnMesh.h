@@ -9,6 +9,7 @@
 #pragma once
 
 #include <oa/core/types.h>
+#include <oa/core/status.h>
 #include <oa/core/vlm.h>
 
 namespace oa {
@@ -44,7 +45,7 @@ struct MeshVertex {
 // Mesh data (CPU-side POD, can be uploaded to GPU buffers)
 struct MeshData {
 	oa::Vector<MeshVertex> vertices;
-	oa::Vector<oa::U32>        indices;
+	oa::Vector<oa::U32>    indices;
 	Aabb                bounds;
 	bool                boundsDirty = true;
 };
@@ -78,14 +79,17 @@ void computeBounds(oa::MeshData& inMesh);
 
 // ─── Transforms ──────────────────────────────────────────────────────────
 
-// apply a 4x4 matrix to all vertex positions in-place.
-void transform(oa::MeshData& inMesh, const oa::vlm::Mat4& inMatrix);
+// Apply an affine matrix to all positions and normals. The mesh remains
+// unchanged when the transform is singular, non-finite, or produces an
+// invalid vertex.
+[[nodiscard]] oa::Status transform(oa::MeshData& inMesh, const oa::vlm::Mat4& inMatrix);
 
 // translate all vertices in-place.
 void translate(oa::MeshData& inMesh, const oa::vlm::Vec3& inOffset);
 
-// scale all vertices in-place (from center or origin).
-void scale(oa::MeshData& inMesh, const oa::vlm::Vec3& inScale);
+// Scale all positions and normals. Zero and non-finite scales fail without
+// modifying the mesh.
+[[nodiscard]] oa::Status scale(oa::MeshData& inMesh, const oa::vlm::Vec3& inScale);
 
 // Flip UVs vertically for explicitly bottom-origin source content.
 void flipUvsY(oa::MeshData& inMesh);

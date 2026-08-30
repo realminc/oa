@@ -10,7 +10,6 @@
 #include <oa/core.h>
 #include <oa/runtime.h>
 #include <oa/crypto.h>
-#include <oa/mcp.h>
 #include <oa/ml.h>
 #include <oa/vision.h>
 #include <oa/audio.h>

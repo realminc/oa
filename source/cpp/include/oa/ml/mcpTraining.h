@@ -1,6 +1,6 @@
 #pragma once
 
-#include <oa/mcp.h>
+#include <oa/network/mcp.h>
 #include <oa/ml/trainingSession.h>
 
 namespace oa {
@@ -9,6 +9,14 @@ struct McpTrainingConfig {
   // Calling registerTools is the opt-in boundary. This switch permits safe-point
   // pause/resume/checkpoint/evaluate/parameter/recapture commands.
   oa::Bool enableCommands = true;
+  // Individual gates let a narrow application expose only commands for which
+  // it owns a complete lifecycle and handler contract. They are considered
+  // only when enableCommands is true and default to the existing full surface.
+  oa::Bool enablePauseResume = true;
+  oa::Bool enableCheckpoint = true;
+  oa::Bool enableEvaluate = true;
+  oa::Bool enableSetParameter = true;
+  oa::Bool enableRecapture = true;
   // Stop is separately gated because it changes the training terminal path.
   oa::Bool enableStop = false;
 };

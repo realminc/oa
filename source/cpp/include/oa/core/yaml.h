@@ -74,15 +74,15 @@ public:
 	struct Node {
 		operator bool() const { return false; }
 		Node operator[](const char*) const { return Node(); }
-		Node operator[](const std::string&) const { return Node(); }
+		template<typename T> Node operator[](const T&) const { return Node(); }
 		template<typename T> T as() const { return T(); }
 		bool isSequence() const { return false; }
 		Node begin() const { return Node(); }
 		Node end() const { return Node(); }
 	};
-	
-	struct Exception : public std::exception {
-		const char* what() const noexcept override { return "yaml-cpp not available"; }
+
+	struct Exception {
+		const char* what() const noexcept { return "yaml-cpp not available"; }
 	};
 
 	[[nodiscard]] static Node loadFile(const oa::String&) { return Node(); }

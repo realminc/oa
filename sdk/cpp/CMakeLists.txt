@@ -115,12 +115,12 @@ endif()
 # endif()
 
 # Maintained developer-kit applications are ordinary consumers of OA.
-function(oa_add_app TARGET SOURCE)
+function(oa_add_app TARGET SOURCE SUBDIR)
 	add_executable(${TARGET} ${SOURCE})
 	target_link_libraries(${TARGET} PRIVATE oaSdkSupport)
 	set_target_properties(${TARGET} PROPERTIES
-		RUNTIME_OUTPUT_DIRECTORY "${OA_BIN_DIR}/app")
+		RUNTIME_OUTPUT_DIRECTORY "${OA_SDK_BIN_DIR}/apps/${SUBDIR}")
 endfunction()
 
-add_subdirectory(applications)
-add_subdirectory(applications/network)
+add_subdirectory(apps)
+add_subdirectory(apps/network)

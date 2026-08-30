@@ -152,6 +152,37 @@
       ]
     },
     {
+      "name": "vision.video.color_convert_gpu_1080p60_h264",
+      "command_id": "BenchVideoRealtime.ColorConvertGpuPair.1080p60.h264.v1",
+      "command": ["env", "OA_VIDEO_BENCH_VARIANT=1080p60-h264", "OA_VIDEO_CONVERT_BENCH_WARMUP=120", "OA_VIDEO_CONVERT_BENCH_SAMPLES=256", "{binary_root}/test/vision/codec/benchVideoRealtime", "--gtest_filter=BenchVideoRealtime.ColorConvertGpuPair"],
+      "contract": {
+        "asset_sha256": "725351e7586c03b5f371c6fb69140a7622aea1dd1ab9d5a7d7bf9212565aae22",
+        "codec": "h264_high_8bit_420",
+        "path": "isolated_shader_dispatch_hardware_ycbcr_vs_manual_compute",
+        "pixel_readback_bytes_timed": "0",
+        "samples_per_path": "256",
+        "source": "1920x1080_60fps_300_distinct_frames",
+        "timestamp_domain": "vulkan_device",
+        "warmup_per_path": "120"
+      },
+      "metric_regex": "OABENCH video\\.realtime\\.color_convert_gpu[^\\n]*compute_gpu_p50_us=(?P<value>[0-9.]+)",
+      "metric_name": "manual_compute_shader_dispatch_p50",
+      "metric_unit": "us",
+      "direction": "lower",
+      "cooldown": 5.0,
+      "max_spread_percent": 15.0,
+      "thermal_limit_celsius": 65.0,
+      "thermal_sensor_regex": "coretemp:.*:Package id 0",
+      "thermal_timeout": 600.0,
+      "require_regex": [
+        "width=1920 height=1080 samples_per_path=256 warmup_per_path=120",
+        "rgb_mae=[0-5]\\.[0-9]+ rgb_max_error=[0-9]+",
+        "hardware_ycbcr_conversions=376 compute_ycbcr_conversions=0",
+        "timestamp_scope=shader_dispatch pixel_readback_bytes_timed=0",
+        "\\[  PASSED  \\] 1 test"
+      ]
+    },
+    {
       "name": "vision.video.direct_image_1080p60_to_h264_60_saturation",
       "command_id": "BenchVideoRealtime.DirectImageDecodeConvertEncode.1080p60.h264_60.v1",
       "command": ["{binary_root}/test/vision/codec/benchVideoRealtime", "--gtest_filter=BenchVideoRealtime.DirectImageDecodeConvertEncode"],

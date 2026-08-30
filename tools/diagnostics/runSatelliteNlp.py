@@ -24,7 +24,8 @@ def _parseArgs(argv: Sequence[str]) -> argparse.Namespace:
         "--repo", type=pathlib.Path, default=pathlib.Path(__file__).parents[2]
     )
     parser.add_argument(
-        "--binary", type=pathlib.Path, default=pathlib.Path("bin/release/oa-satellite")
+        "--binary", type=pathlib.Path,
+        default=pathlib.Path("bin/release/sdk/apps/network/oa-satellite")
     )
     parser.add_argument("--mode", choices=("standalone", "split-batch"), required=True)
     parser.add_argument("--checkpoint", type=pathlib.Path)

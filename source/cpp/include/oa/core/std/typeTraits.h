@@ -103,6 +103,18 @@ template<> inline constexpr bool IsIntegralBaseV<unsigned long long> = true;
 template<typename T>
 inline constexpr bool IsIntegralV = IsIntegralBaseV<RemoveCvT<T>>;
 
+template<typename T, bool = IsIntegralV<T>>
+struct IsSignedImpl { static constexpr bool Value = false; };
+
+template<typename T>
+struct IsSignedImpl<T, true> {
+	using ValueType = RemoveCvT<T>;
+	static constexpr bool Value = ValueType(-1) < ValueType(0);
+};
+
+template<typename T>
+inline constexpr bool IsSignedV = IsSignedImpl<T>::Value;
+
 template<typename T>
 inline constexpr bool IsFloatingPointBaseV = false;
 

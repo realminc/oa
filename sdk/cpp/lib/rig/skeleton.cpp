@@ -425,11 +425,7 @@ oa::String jointPathFor(const oa::Skeleton& inSkel, oa::I32 inJoint) {
 }
 
 oa::vlm::Mat4 translateMat4(oa::vlm::Vec3 inT) {
-	oa::vlm::Mat4 m = oa::vlm::Mat4::identity();
-	m.m[3][0] = inT.x;
-	m.m[3][1] = inT.y;
-	m.m[3][2] = inT.z;
-	return m;
+	return oa::vlm::translation(inT);
 }
 
 } // namespace

@@ -20,6 +20,12 @@ struct VideoDecoderInternal {
 		oa::VideoDecoder& inDecoder,
 		const oa::VideoFrame& inFrame,
 		bool inNormalizeImageNet = true);
+	static oa::Result<oa::Event> convertIntoAsyncProfiled(
+		oa::VideoDecoder& inDecoder,
+		const oa::VideoFrame& inFrame,
+		const oa::VideoConversionOptions& inOptions,
+		const oa::VideoFrame& inRgbTarget,
+		oa::Timer& inTimer);
 	static oa::Status restoreDpbLayerToDecodeLayout(
 		oa::VideoDecoder& inDecoder,
 		const oa::VideoFrame& inFrame);

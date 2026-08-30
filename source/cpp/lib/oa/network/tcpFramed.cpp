@@ -45,11 +45,10 @@ oa::Status oa::TcpFramed::writeMessage(oa::TcpStream& inStream, oa::Span<const o
 oa::Status oa::TcpFramed::readMessage(
 	oa::TcpStream& inStream,
 	oa::Vector<oa::Byte>& outPayload,
-	oa::U32 inMaxPayloadBytes)
-{
+	oa::U32 inMaxPayloadBytes
+) {
 	if (inMaxPayloadBytes > kMaxPayloadBytes) {
-		return oa::Status::invalidArgument(
-			"tcp framed: requested payload limit exceeds the transport ceiling");
+		return oa::Status::invalidArgument("tcp framed: requested payload limit exceeds the transport ceiling");
 	}
 	oa::Byte header[4];
 	if (tcpReadExact(inStream, header, sizeof(header)) != static_cast<oa::I64>(sizeof(header))) {

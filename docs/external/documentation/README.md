@@ -12,7 +12,7 @@
 | Python names and signatures | nanobind registrations, generated stubs and checked `oa.__all__` | Python reference snapshot |
 | Schema operations | operation schemas and generators | matching C++, Python, validation and reference surfaces |
 | Tutorial excerpts | checked source between `OA_DOC_BEGIN` and `OA_DOC_END` markers | developer-site code examples |
-| Tutorial media | approved files under `sdk/asset/documentation` with provenance | offline SDK and developer-site presentation assets |
+| Tutorial media | approved files under `sdk/asset/docs` with provenance | offline SDK and developer-site presentation assets |
 | API examples | checked SDK source markers plus `tools/gen/example/schema/examples.toml` publication metadata | generated inventory and API-linked source excerpts |
 
 Never hand-copy a signature into generated reference data. Committed generated
@@ -66,7 +66,7 @@ A published tutorial contains:
 - C++ and Python source paths;
 - marker-derived excerpts from those files;
 - source assets with rights/provenance and generated output under
-  `sdk/asset/documentation/<topic>`;
+  `sdk/asset/docs/<topic>`;
 - ownership, synchronization and failure behavior when relevant;
 - an automated correctness or smoke gate;
 - links to the API reference and the next useful tutorial.

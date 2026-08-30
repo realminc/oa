@@ -14,6 +14,7 @@
 #include <oa/runtime/imageDispatch.h>
 #include <oa/runtime/spirv.h>
 #include <oa/runtime/stream.h>
+#include <oa/runtime/timer.h>
 #include <vma/vma.hpp>
 #include <oa/core/fnMatrix.h>
 #include <oa/core/matrixAccess.h>
@@ -1384,7 +1385,8 @@ oa::Status oa::VideoDecoder::convertNv12ToRgbInto(
 oa::Result<oa::Event> oa::VideoDecoder::convertNv12ToRgbHardwareIntoAsync(
 	const oa::VideoFrame& inYcbcrFrame,
 	const oa::VideoConversionOptions& inOptions,
-	const oa::VideoFrame& inRgbTarget)
+	const oa::VideoFrame& inRgbTarget,
+	oa::Timer* inTimer)
 {
 	if (!impl_->engine || !hasHardwareYCbCrConversion(*impl_->engine)) {
 		return oa::Status::error(oa::StatusCode::Unavailable,
@@ -1740,7 +1742,8 @@ oa::Result<oa::Event> oa::VideoDecoder::convertNv12ToRgbHardwareIntoAsync(
 		oa::divCeil(inYcbcrFrame.height, 16U),
 		1U,
 		impl_->timelineSemaphore,
-		impl_->timelineValue);
+		impl_->timelineValue,
+		inTimer);
 	if (!ticketResult.isOk()) return ticketResult.getStatus();
 	oavk::ImageDispatchTicket ticket = oa::move(*ticketResult);
 	const oa::Event completion = ticket.completion();
@@ -1753,7 +1756,8 @@ oa::Result<oa::Event> oa::VideoDecoder::convertNv12ToRgbHardwareIntoAsync(
 oa::Result<oa::Event> oa::VideoDecoder::convertNv12ToRgbIntoAsync(
 	const oa::VideoFrame& inNv12Frame,
 	const oa::VideoConversionOptions& inOptions,
-	const oa::VideoFrame& inRgbTarget)
+	const oa::VideoFrame& inRgbTarget,
+	oa::Timer* inTimer)
 {
 	// shader-path conversion writing to a caller-owned RGBA target. This is
 	// the variant the oa::VideoPlayer reorder buffer uses: each decoded NV12 frame
@@ -1772,7 +1776,7 @@ oa::Result<oa::Event> oa::VideoDecoder::convertNv12ToRgbIntoAsync(
 	}
 	if (inOptions.preferHardwareYCbCr) {
 		auto hardware = convertNv12ToRgbHardwareIntoAsync(
-			inNv12Frame, inOptions, inRgbTarget);
+			inNv12Frame, inOptions, inRgbTarget, inTimer);
 		if (hardware.isOk()) return hardware;
 		if (hardware.getStatus().getCode() != oa::StatusCode::Unavailable) {
 			return hardware.getStatus();
@@ -1852,7 +1856,8 @@ oa::Result<oa::Event> oa::VideoDecoder::convertNv12ToRgbIntoAsync(
 			oa::divCeil(inNv12Frame.height, 16),
 			1,
 			impl_->timelineSemaphore,
-			convertWaitValue);
+			convertWaitValue,
+			inTimer);
 		if (!ticketResult.isOk()) {
 			return ticketResult.getStatus();
 		}
@@ -1940,7 +1945,8 @@ oa::Result<oa::Event> oa::VideoDecoder::convertNv12ToRgbIntoAsync(
 		oa::divCeil(inNv12Frame.height, 16),
 		1,
 		impl_->timelineSemaphore,
-		convertWaitValue);
+		convertWaitValue,
+		inTimer);
 	if (!ticketResult.isOk()) {
 		return ticketResult.getStatus();
 	}

@@ -64,6 +64,17 @@ oa::Status oa::Renderer::beginFrame(
 	return impl_->beginMeshFrame(inMesh, inCamera);
 }
 
+oa::Status oa::Renderer::beginFrame(
+	const oa::Scene& inScene,
+	const oa::CameraState& inCamera) {
+	if (!impl_ || impl_->closed) {
+		return oa::Status::error(
+			oa::StatusCode::FailedPrecondition,
+			"oa::Renderer session is closed");
+	}
+	return impl_->beginSceneFrame(inScene, inCamera);
+}
+
 oa::Status oa::Renderer::beginFrame(oa::F32 inDeltaMs, oa::F32 inContentScale) {
 	if (!impl_ || impl_->closed) {
 		return oa::Status::error(

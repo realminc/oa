@@ -13,8 +13,8 @@ import oaBenchSuite
 class OaBenchSuiteTest(unittest.TestCase):
     def testCheckedInSuiteIsValidAndUnique(self) -> None:
         workloads = oaBenchSuite._loadSuite(oaBenchSuite.DEFAULT_CONFIG)
-        self.assertEqual(len(workloads), 13)
-        self.assertEqual(len({item["name"] for item in workloads}), 13)
+        self.assertEqual(len(workloads), 14)
+        self.assertEqual(len({item["name"] for item in workloads}), 14)
 
     def testRejectsDuplicateWorkload(self) -> None:
         with tempfile.TemporaryDirectory(prefix="oa-bench-suite-test-") as directory:
