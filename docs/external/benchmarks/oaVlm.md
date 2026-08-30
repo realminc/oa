@@ -36,7 +36,7 @@ manifest has SHA-256
 
 | Field | Qualified value |
 |---|---|
-| OA source | Private arithmetic checkpoint `v0.7.9`; namespace-only release repair in sanitized public `v0.7.28` |
+| OA source | Private arithmetic checkpoint `v0.7.9`; release repairs in sanitized public `v0.7.29` |
 | Compiler/build | Clang 22.1.8; C++20; `-O3 -DNDEBUG -march=native` |
 | Host | Intel Core i5-1145G7; 4 physical cores / 8 threads; Linux 7.1.8 |
 | Pinning/power | CPU 2; `intel_pstate` powersave; balanced platform profile |

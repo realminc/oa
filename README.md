@@ -30,7 +30,7 @@ playback, capture, presentation, and MCP control.
 [![License](https://img.shields.io/badge/license-BSL--1.1-3b3b3b)](LICENSE)
 
 > **Development preview.** The API and artifact formats remain pre-1.0 and may
-> change. Read the [latest release notes](docs/external/releases/v0.7.28.md) for
+> change. Read the [latest release notes](docs/external/releases/v0.7.29.md) for
 > shipped scope, verification, compatibility, and known limitations.
 
 ## One runtime. Two front ends.

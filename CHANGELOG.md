@@ -4,6 +4,26 @@ All notable changes to OA are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is the single
 `VERSION` file at the repo root (read by CMake, `oa::version()`, and the Python package).
 
+## [0.7.29] — 2026-08-30 (Hosted sanitizer target repair)
+
+This immutable patch replaces the blocked `v0.7.28` hosted candidate. The VLM
+API, implementation, benchmark workload, and performance evidence are
+unchanged.
+
+### Fixed
+
+- Build `TestScene` and `TestWebMcp` in both hosted sanitizer jobs before the
+  jobs execute the complete `core`-labeled suite. The `v0.7.28` UBSAN run
+  passed all 18 executables it built but correctly failed because these two
+  newly labeled executables were absent.
+
+### Verification
+
+- The exact hosted target list and `ctest -L core` selection are reproduced
+  locally under both ASAN/LSAN and UBSAN before publication.
+- The tagged workflow owns the terminal hosted build, sanitizer, CPU-Vulkan,
+  package, wheel, artifact, checksum, release, and PyPI result.
+
 ## [0.7.28] — 2026-08-30 (Vulkan Linear Math release repair)
 
 This immutable patch replaces the blocked `v0.7.27` hosted candidate. The VLM
@@ -21,8 +41,9 @@ unchanged.
 - Schema coverage remains 316/316 contracts and 246/246 Python exposures.
 - The private Release, ASAN/LSAN, UBSAN, documentation, public-snapshot,
   full-build, focused VLM/Render, staged-package, and installed-consumer gates
-  pass. The tagged workflow owns the hosted package, wheel, sanitizer,
-  CPU-Vulkan, artifact, checksum, and release result.
+  pass. The tagged workflow passed its source-policy and CPU-Vulkan gates, then
+  correctly blocked publication because two `core`-labeled tests were not in
+  the sanitizer build target set. `v0.7.29` repairs that CI closure.
 
 ## [0.7.27] — 2026-08-30 (Vulkan Linear Math foundation)
 
