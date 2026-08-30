@@ -5,7 +5,8 @@
 #include <oa/core/status.h>
 #include <oa/render/scene.h>
 
-namespace oa::FnScene {
+namespace oa {
+namespace FnScene {
 
 struct CompileConfig {
 	oa::U32 maxMeshCount = oa::Limits<oa::U32>::max();
@@ -36,4 +37,5 @@ struct CompileConfig {
 	const oa::Scene& inScene,
 	oa::SceneNodeId inId) noexcept;
 
-} // namespace oa::FnScene
+} // namespace FnScene
+} // namespace oa

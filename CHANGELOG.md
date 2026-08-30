@@ -4,6 +4,26 @@ All notable changes to OA are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is the single
 `VERSION` file at the repo root (read by CMake, `oa::version()`, and the Python package).
 
+## [0.7.28] — 2026-08-30 (Vulkan Linear Math release repair)
+
+This immutable patch replaces the blocked `v0.7.27` hosted candidate. The VLM
+API, implementation, benchmark workload, and performance evidence are
+unchanged.
+
+### Fixed
+
+- Split the sole compressed `namespace oa::FnScene` public declaration into
+  the explicit `oa` and `FnScene` namespace blocks required by the operation
+  schema and generator drift authority.
+
+### Verification
+
+- Schema coverage remains 316/316 contracts and 246/246 Python exposures.
+- The private Release, ASAN/LSAN, UBSAN, documentation, public-snapshot,
+  full-build, focused VLM/Render, staged-package, and installed-consumer gates
+  pass. The tagged workflow owns the hosted package, wheel, sanitizer,
+  CPU-Vulkan, artifact, checksum, and release result.
+
 ## [0.7.27] — 2026-08-30 (Vulkan Linear Math foundation)
 
 ### Added
