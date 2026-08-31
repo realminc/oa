@@ -16,7 +16,7 @@ template <typename T>
 inline constexpr T Pi = T(3.141592653589793238462643383279502884L);
 
 template <typename T>
-inline constexpr T Tolerance = oa::IsSameV<T, F32> ? T(1.0e-5F) : T(1.0e-12);
+inline constexpr T Tolerance = oa::isSameV<T, F32> ? T(1.0e-5F) : T(1.0e-12);
 
 template <typename T>
 inline constexpr T InverseTolerance = oa::Limits<T>::epsilon() * T(32);
@@ -785,7 +785,8 @@ template <typename T>
 	}
 	const T magnitude = oa::max(
 		oa::max(oa::abs(inQuaternion.x), oa::abs(inQuaternion.y)),
-		oa::max(oa::abs(inQuaternion.z), oa::abs(inQuaternion.w)));
+		oa::max(oa::abs(inQuaternion.z), oa::abs(inQuaternion.w))
+	);
 	if (not inQuaternion.isFinite() or magnitude <= T(0)) return false;
 	const detail::Quat<T> scaled = inQuaternion / magnitude;
 	const T scaledNorm = scaled.norm();
@@ -826,7 +827,7 @@ template <typename T>
 	return result;
 }
 
-enum class EulerOrder : oa::U8 {
+enum class RotationOrder : oa::U8 {
 	Xyz,
 	Xzy,
 	Yxz,
@@ -835,14 +836,14 @@ enum class EulerOrder : oa::U8 {
 	Zyx,
 };
 
-[[nodiscard]] constexpr bool isValidEulerOrder(EulerOrder inOrder) noexcept {
+[[nodiscard]] constexpr bool isValidRotationOrder(RotationOrder inOrder) noexcept {
 	switch (inOrder) {
-		case EulerOrder::Xyz:
-		case EulerOrder::Xzy:
-		case EulerOrder::Yxz:
-		case EulerOrder::Yzx:
-		case EulerOrder::Zxy:
-		case EulerOrder::Zyx: return true;
+		case RotationOrder::Xyz:
+		case RotationOrder::Xzy:
+		case RotationOrder::Yxz:
+		case RotationOrder::Yzx:
+		case RotationOrder::Zxy:
+		case RotationOrder::Zyx: return true;
 	}
 	return false;
 }
@@ -850,9 +851,9 @@ enum class EulerOrder : oa::U8 {
 template <typename T>
 [[nodiscard]] detail::Quat<T> quaternionFromEulerRadians(
 	const detail::Vec3<T>& inAngles,
-	EulerOrder inOrder) noexcept {
+	RotationOrder inOrder) noexcept {
 	OA_REQUIRE_MSG(inAngles.isFinite(), "VLM Euler angles must be finite");
-	OA_REQUIRE_MSG(isValidEulerOrder(inOrder), "VLM Euler order is invalid");
+	OA_REQUIRE_MSG(isValidRotationOrder(inOrder), "VLM rotation order is invalid");
 	const detail::Quat<T> x = quaternionFromAxisAngle(
 		{T(1), T(0), T(0)}, inAngles.x);
 	const detail::Quat<T> y = quaternionFromAxisAngle(
@@ -860,21 +861,21 @@ template <typename T>
 	const detail::Quat<T> z = quaternionFromAxisAngle(
 		{T(0), T(0), T(1)}, inAngles.z);
 	switch (inOrder) {
-		case EulerOrder::Xyz: return z * (y * x);
-		case EulerOrder::Xzy: return y * (z * x);
-		case EulerOrder::Yxz: return z * (x * y);
-		case EulerOrder::Yzx: return x * (z * y);
-		case EulerOrder::Zxy: return y * (x * z);
-		case EulerOrder::Zyx: return x * (y * z);
+		case RotationOrder::Xyz: return z * (y * x);
+		case RotationOrder::Xzy: return y * (z * x);
+		case RotationOrder::Yxz: return z * (x * y);
+		case RotationOrder::Yzx: return x * (z * y);
+		case RotationOrder::Zxy: return y * (x * z);
+		case RotationOrder::Zyx: return x * (y * z);
 	}
-	OA_REQUIRE_MSG(false, "VLM Euler order is invalid");
+	OA_REQUIRE_MSG(false, "VLM rotation order is invalid");
 	return detail::Quat<T>::identity();
 }
 
 template <typename T>
 [[nodiscard]] detail::Quat<T> quaternionFromEulerDegrees(
 	const detail::Vec3<T>& inAngles,
-	EulerOrder inOrder) noexcept {
+	RotationOrder inOrder) noexcept {
 	return quaternionFromEulerRadians(
 		detail::Vec3<T>{
 			radians(inAngles.x),
@@ -887,8 +888,8 @@ template <typename T>
 template <typename T>
 [[nodiscard]] detail::Vec3<T> quaternionToEulerRadians(
 	const detail::Quat<T>& inQuaternion,
-	EulerOrder inOrder) noexcept {
-	OA_REQUIRE_MSG(isValidEulerOrder(inOrder), "VLM Euler order is invalid");
+	RotationOrder inOrder) noexcept {
+	OA_REQUIRE_MSG(isValidRotationOrder(inOrder), "VLM rotation order is invalid");
 	const detail::Quat<T> q = inQuaternion.normalized();
 	const T xx = q.x * q.x;
 	const T yy = q.y * q.y;
@@ -913,7 +914,7 @@ template <typename T>
 	const T lock = T(1) - oa::Limits<T>::epsilon() * T(64);
 	detail::Vec3<T> result{};
 	switch (inOrder) {
-		case EulerOrder::Zyx:
+		case RotationOrder::Zyx:
 			result.y = oa::asin(oa::clamp(m13, T(-1), T(1)));
 			if (oa::abs(m13) < lock) {
 				result.x = oa::atan2(-m23, m33);
@@ -922,7 +923,7 @@ template <typename T>
 				result.x = oa::atan2(m32, m22);
 			}
 			break;
-		case EulerOrder::Zxy:
+		case RotationOrder::Zxy:
 			result.x = oa::asin(-oa::clamp(m23, T(-1), T(1)));
 			if (oa::abs(m23) < lock) {
 				result.y = oa::atan2(m13, m33);
@@ -931,7 +932,7 @@ template <typename T>
 				result.y = oa::atan2(-m31, m11);
 			}
 			break;
-		case EulerOrder::Yxz:
+		case RotationOrder::Yxz:
 			result.x = oa::asin(oa::clamp(m32, T(-1), T(1)));
 			if (oa::abs(m32) < lock) {
 				result.y = oa::atan2(-m31, m33);
@@ -940,7 +941,7 @@ template <typename T>
 				result.z = oa::atan2(m21, m11);
 			}
 			break;
-		case EulerOrder::Xyz:
+		case RotationOrder::Xyz:
 			result.y = oa::asin(-oa::clamp(m31, T(-1), T(1)));
 			if (oa::abs(m31) < lock) {
 				result.x = oa::atan2(m32, m33);
@@ -949,7 +950,7 @@ template <typename T>
 				result.z = oa::atan2(-m12, m22);
 			}
 			break;
-		case EulerOrder::Xzy:
+		case RotationOrder::Xzy:
 			result.z = oa::asin(oa::clamp(m21, T(-1), T(1)));
 			if (oa::abs(m21) < lock) {
 				result.x = oa::atan2(-m23, m22);
@@ -958,7 +959,7 @@ template <typename T>
 				result.y = oa::atan2(m13, m33);
 			}
 			break;
-		case EulerOrder::Yzx:
+		case RotationOrder::Yzx:
 			result.z = oa::asin(-oa::clamp(m12, T(-1), T(1)));
 			if (oa::abs(m12) < lock) {
 				result.x = oa::atan2(m32, m22);
@@ -974,7 +975,7 @@ template <typename T>
 template <typename T>
 [[nodiscard]] detail::Vec3<T> quaternionToEulerDegrees(
 	const detail::Quat<T>& inQuaternion,
-	EulerOrder inOrder) noexcept {
+	RotationOrder inOrder) noexcept {
 	const detail::Vec3<T> value = quaternionToEulerRadians(
 		inQuaternion, inOrder);
 	return {degrees(value.x), degrees(value.y), degrees(value.z)};
@@ -988,14 +989,14 @@ template <typename T>
 	T inRollDeg) noexcept {
 	return quaternionFromEulerDegrees(
 		detail::Vec3<T>{inRollDeg, inPitchDeg, inYawDeg},
-		EulerOrder::Xyz);
+		RotationOrder::Xyz);
 }
 
 template <typename T>
 [[nodiscard]] detail::Vec3<T> quaternionToEuler(
 	const detail::Quat<T>& inQuaternion) noexcept {
 	const detail::Vec3<T> xyz = quaternionToEulerDegrees(
-		inQuaternion, EulerOrder::Xyz);
+		inQuaternion, RotationOrder::Xyz);
 	return {xyz.z, xyz.y, xyz.x};
 }
 
@@ -1500,7 +1501,7 @@ template <typename T>
 		}
 	}
 	const detail::Mat4<T> residual = matrixMul(inMatrix, inverse);
-	const T residualFactor = oa::IsSameV<T, F32> ? T(256) : T(65536);
+	const T residualFactor = oa::isSameV<T, F32> ? T(256) : T(65536);
 	const T residualTolerance = oa::max(
 		Tolerance<T> * residualFactor, inTolerance * residualFactor);
 	for (I32 row = 0; row < 4; ++row) {

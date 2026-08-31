@@ -15,59 +15,35 @@ template <typename T> struct Mat4;
 } // namespace detail
 
 template <typename T>
-[[nodiscard]] constexpr detail::Mat3<T> add(
-	const detail::Mat3<T>& inA,
-	const detail::Mat3<T>& inB) noexcept;
+[[nodiscard]] constexpr detail::Mat3<T> add(const detail::Mat3<T>& inA,	const detail::Mat3<T>& inB) noexcept;
 template <typename T>
-[[nodiscard]] constexpr detail::Mat3<T> sub(
-	const detail::Mat3<T>& inA,
-	const detail::Mat3<T>& inB) noexcept;
+[[nodiscard]] constexpr detail::Mat3<T> sub(const detail::Mat3<T>& inA,	const detail::Mat3<T>& inB) noexcept;
 template <typename T>
-[[nodiscard]] constexpr detail::Mat3<T> scale(
-	const detail::Mat3<T>& inValue,
-	T inScale) noexcept;
+[[nodiscard]] constexpr detail::Mat3<T> scale(const detail::Mat3<T>& inValue,	T inScale) noexcept;
 template <typename T>
-[[nodiscard]] constexpr detail::Mat3<T> divide(
-	const detail::Mat3<T>& inValue,
-	T inScale) noexcept;
+[[nodiscard]] constexpr detail::Mat3<T> divide(const detail::Mat3<T>& inValue, T inScale) noexcept;
 template <typename T>
-[[nodiscard]] constexpr detail::Mat3<T> matrixMul(
-	const detail::Mat3<T>& inA,
-	const detail::Mat3<T>& inB) noexcept;
+[[nodiscard]] constexpr detail::Mat3<T> matrixMul(const detail::Mat3<T>& inA,	const detail::Mat3<T>& inB) noexcept;
 template <typename T>
-[[nodiscard]] constexpr detail::Vec3<T> transform(
-	const detail::Vec3<T>& inValue,
-	const detail::Mat3<T>& inMatrix) noexcept;
+[[nodiscard]] constexpr detail::Vec3<T> transform(const detail::Vec3<T>& inValue,	const detail::Mat3<T>& inMatrix) noexcept;
 template <typename T>
-[[nodiscard]] constexpr detail::Mat4<T> add(
-	const detail::Mat4<T>& inA,
-	const detail::Mat4<T>& inB) noexcept;
+[[nodiscard]] constexpr detail::Mat4<T> add(const detail::Mat4<T>& inA,	const detail::Mat4<T>& inB) noexcept;
 template <typename T>
-[[nodiscard]] constexpr detail::Mat4<T> sub(
-	const detail::Mat4<T>& inA,
-	const detail::Mat4<T>& inB) noexcept;
+[[nodiscard]] constexpr detail::Mat4<T> sub(const detail::Mat4<T>& inA,	const detail::Mat4<T>& inB) noexcept;
 template <typename T>
-[[nodiscard]] constexpr detail::Mat4<T> scale(
-	const detail::Mat4<T>& inValue,
-	T inScale) noexcept;
+[[nodiscard]] constexpr detail::Mat4<T> scale(const detail::Mat4<T>& inValue,	T inScale) noexcept;
 template <typename T>
-[[nodiscard]] constexpr detail::Mat4<T> divide(
-	const detail::Mat4<T>& inValue,
-	T inScale) noexcept;
+[[nodiscard]] constexpr detail::Mat4<T> divide(const detail::Mat4<T>& inValue, T inScale) noexcept;
 template <typename T>
-[[nodiscard]] constexpr detail::Mat4<T> matrixMul(
-	const detail::Mat4<T>& inA,
-	const detail::Mat4<T>& inB) noexcept;
+[[nodiscard]] constexpr detail::Mat4<T> matrixMul(const detail::Mat4<T>& inA,	const detail::Mat4<T>& inB) noexcept;
 template <typename T>
-[[nodiscard]] constexpr detail::Vec4<T> transform(
-	const detail::Vec4<T>& inValue,
-	const detail::Mat4<T>& inMatrix) noexcept;
+[[nodiscard]] constexpr detail::Vec4<T> transform(const detail::Vec4<T>& inValue,	const detail::Mat4<T>& inMatrix) noexcept;
 
 namespace detail {
 
 template <typename T>
 struct Mat3 {
-	static_assert(oa::IsFloatingPointV<T>);
+	static_assert(oa::isFloatingPointV<T>);
 
 	// Row-major storage and row-vector multiplication: transformed = value * M.
 	T m[3][3] = {};
@@ -99,15 +75,13 @@ struct Mat3 {
 		return result;
 	}
 
-	[[nodiscard]] constexpr Mat3 operator+(
-		const Mat3& inOther) const noexcept {
+	[[nodiscard]] constexpr Mat3 operator+(const Mat3& inOther) const noexcept {
 		return oa::vlm::add(*this, inOther);
 	}
 	[[nodiscard]] constexpr Mat3 operator-() const noexcept {
 		return oa::vlm::scale(*this, T(-1));
 	}
-	[[nodiscard]] constexpr Mat3 operator-(
-		const Mat3& inOther) const noexcept {
+	[[nodiscard]] constexpr Mat3 operator-(const Mat3& inOther) const noexcept {
 		return oa::vlm::sub(*this, inOther);
 	}
 	[[nodiscard]] constexpr Mat3 operator*(T inScale) const noexcept {
@@ -116,8 +90,7 @@ struct Mat3 {
 	[[nodiscard]] constexpr Mat3 operator/(T inScale) const noexcept {
 		return oa::vlm::divide(*this, inScale);
 	}
-	[[nodiscard]] constexpr Mat3 operator*(
-		const Mat3& inOther) const noexcept {
+	[[nodiscard]] constexpr Mat3 operator*(const Mat3& inOther) const noexcept {
 		return oa::vlm::matrixMul(*this, inOther);
 	}
 	constexpr Mat3& operator+=(const Mat3& inOther) noexcept {
@@ -141,27 +114,22 @@ struct Mat3 {
 		return *this;
 	}
 
-	[[nodiscard]] constexpr bool operator==(
-		const Mat3& inOther) const noexcept = default;
+	[[nodiscard]] constexpr bool operator==(const Mat3& inOther) const noexcept = default;
 };
 
 template <typename T>
-[[nodiscard]] constexpr Mat3<T> operator*(
-	T inScale,
-	const Mat3<T>& inMatrix) noexcept {
+[[nodiscard]] constexpr Mat3<T> operator*(T inScale, const Mat3<T>& inMatrix) noexcept {
 	return oa::vlm::scale(inMatrix, inScale);
 }
 
 template <typename T>
-[[nodiscard]] constexpr Vec3<T> operator*(
-	const Vec3<T>& inValue,
-	const Mat3<T>& inMatrix) noexcept {
+[[nodiscard]] constexpr Vec3<T> operator*(const Vec3<T>& inValue,	const Mat3<T>& inMatrix) noexcept {
 	return oa::vlm::transform(inValue, inMatrix);
 }
 
 template <typename T>
 struct Mat4 {
-	static_assert(oa::IsFloatingPointV<T>);
+	static_assert(oa::isFloatingPointV<T>);
 
 	// Row-major storage and row-vector multiplication: transformed = value * M.
 	T m[4][4] = {};
@@ -170,9 +138,7 @@ struct Mat4 {
 		OA_REQUIRE(inRow < 4U and inColumn < 4U);
 		return m[inRow][inColumn];
 	}
-	[[nodiscard]] constexpr const T& at(
-		Usize inRow,
-		Usize inColumn) const noexcept {
+	[[nodiscard]] constexpr const T& at(Usize inRow, Usize inColumn) const noexcept {
 		OA_REQUIRE(inRow < 4U and inColumn < 4U);
 		return m[inRow][inColumn];
 	}
@@ -194,15 +160,13 @@ struct Mat4 {
 		return result;
 	}
 
-	[[nodiscard]] constexpr Mat4 operator+(
-		const Mat4& inOther) const noexcept {
+	[[nodiscard]] constexpr Mat4 operator+(const Mat4& inOther) const noexcept {
 		return oa::vlm::add(*this, inOther);
 	}
 	[[nodiscard]] constexpr Mat4 operator-() const noexcept {
 		return oa::vlm::scale(*this, T(-1));
 	}
-	[[nodiscard]] constexpr Mat4 operator-(
-		const Mat4& inOther) const noexcept {
+	[[nodiscard]] constexpr Mat4 operator-(const Mat4& inOther) const noexcept {
 		return oa::vlm::sub(*this, inOther);
 	}
 	[[nodiscard]] constexpr Mat4 operator*(T inScale) const noexcept {
@@ -211,8 +175,7 @@ struct Mat4 {
 	[[nodiscard]] constexpr Mat4 operator/(T inScale) const noexcept {
 		return oa::vlm::divide(*this, inScale);
 	}
-	[[nodiscard]] constexpr Mat4 operator*(
-		const Mat4& inOther) const noexcept {
+	[[nodiscard]] constexpr Mat4 operator*(const Mat4& inOther) const noexcept {
 		return oa::vlm::matrixMul(*this, inOther);
 	}
 	constexpr Mat4& operator+=(const Mat4& inOther) noexcept {
@@ -240,25 +203,19 @@ struct Mat4 {
 };
 
 template <typename T>
-[[nodiscard]] constexpr Mat4<T> operator*(
-	T inScale,
-	const Mat4<T>& inMatrix) noexcept {
+[[nodiscard]] constexpr Mat4<T> operator*(T inScale, const Mat4<T>& inMatrix) noexcept {
 	return oa::vlm::scale(inMatrix, inScale);
 }
 
 template <typename T>
-[[nodiscard]] constexpr Vec4<T> operator*(
-	const Vec4<T>& inValue,
-	const Mat4<T>& inMatrix) noexcept {
+[[nodiscard]] constexpr Vec4<T> operator*(const Vec4<T>& inValue,	const Mat4<T>& inMatrix) noexcept {
 	return oa::vlm::transform(inValue, inMatrix);
 }
 
 } // namespace detail
 
 template <typename T>
-[[nodiscard]] constexpr detail::Mat3<T> add(
-	const detail::Mat3<T>& inA,
-	const detail::Mat3<T>& inB) noexcept {
+[[nodiscard]] constexpr detail::Mat3<T> add(const detail::Mat3<T>& inA,	const detail::Mat3<T>& inB) noexcept {
 	detail::Mat3<T> result{};
 	for (I32 row = 0; row < 3; ++row) {
 		result.m[row][0] = inA.m[row][0] + inB.m[row][0];
@@ -269,9 +226,7 @@ template <typename T>
 }
 
 template <typename T>
-[[nodiscard]] constexpr detail::Mat3<T> sub(
-	const detail::Mat3<T>& inA,
-	const detail::Mat3<T>& inB) noexcept {
+[[nodiscard]] constexpr detail::Mat3<T> sub(const detail::Mat3<T>& inA,	const detail::Mat3<T>& inB) noexcept {
 	detail::Mat3<T> result{};
 	for (I32 row = 0; row < 3; ++row) {
 		for (I32 column = 0; column < 3; ++column) {
@@ -282,9 +237,7 @@ template <typename T>
 }
 
 template <typename T>
-[[nodiscard]] constexpr detail::Mat3<T> scale(
-	const detail::Mat3<T>& inValue,
-	T inScale) noexcept {
+[[nodiscard]] constexpr detail::Mat3<T> scale(const detail::Mat3<T>& inValue,	T inScale) noexcept {
 	detail::Mat3<T> result{};
 	for (I32 row = 0; row < 3; ++row) {
 		for (I32 column = 0; column < 3; ++column) {
@@ -295,9 +248,7 @@ template <typename T>
 }
 
 template <typename T>
-[[nodiscard]] constexpr detail::Mat3<T> divide(
-	const detail::Mat3<T>& inValue,
-	T inScale) noexcept {
+[[nodiscard]] constexpr detail::Mat3<T> divide(const detail::Mat3<T>& inValue, T inScale) noexcept {
 	detail::Mat3<T> result{};
 	for (I32 row = 0; row < 3; ++row) {
 		for (I32 column = 0; column < 3; ++column) {
@@ -308,9 +259,7 @@ template <typename T>
 }
 
 template <typename T>
-[[nodiscard]] constexpr detail::Mat3<T> matrixMul(
-	const detail::Mat3<T>& inA,
-	const detail::Mat3<T>& inB) noexcept {
+[[nodiscard]] constexpr detail::Mat3<T> matrixMul(const detail::Mat3<T>& inA,	const detail::Mat3<T>& inB) noexcept {
 	detail::Mat3<T> result{};
 	for (I32 row = 0; row < 3; ++row) {
 		for (I32 column = 0; column < 3; ++column) {
@@ -323,9 +272,7 @@ template <typename T>
 }
 
 template <typename T>
-[[nodiscard]] constexpr detail::Vec3<T> transform(
-	const detail::Vec3<T>& inValue,
-	const detail::Mat3<T>& inMatrix) noexcept {
+[[nodiscard]] constexpr detail::Vec3<T> transform(const detail::Vec3<T>& inValue,	const detail::Mat3<T>& inMatrix) noexcept {
 	return {
 		inValue.x * inMatrix.m[0][0] + inValue.y * inMatrix.m[1][0]
 			+ inValue.z * inMatrix.m[2][0],
@@ -337,9 +284,7 @@ template <typename T>
 }
 
 template <typename T>
-[[nodiscard]] constexpr detail::Mat4<T> add(
-	const detail::Mat4<T>& inA,
-	const detail::Mat4<T>& inB) noexcept {
+[[nodiscard]] constexpr detail::Mat4<T> add(const detail::Mat4<T>& inA,	const detail::Mat4<T>& inB) noexcept {
 	detail::Mat4<T> result{};
 	for (I32 row = 0; row < 4; ++row) {
 		for (I32 column = 0; column < 4; ++column) {
@@ -350,9 +295,7 @@ template <typename T>
 }
 
 template <typename T>
-[[nodiscard]] constexpr detail::Mat4<T> sub(
-	const detail::Mat4<T>& inA,
-	const detail::Mat4<T>& inB) noexcept {
+[[nodiscard]] constexpr detail::Mat4<T> sub(const detail::Mat4<T>& inA,	const detail::Mat4<T>& inB) noexcept {
 	detail::Mat4<T> result{};
 	for (I32 row = 0; row < 4; ++row) {
 		for (I32 column = 0; column < 4; ++column) {
@@ -363,9 +306,7 @@ template <typename T>
 }
 
 template <typename T>
-[[nodiscard]] constexpr detail::Mat4<T> scale(
-	const detail::Mat4<T>& inValue,
-	T inScale) noexcept {
+[[nodiscard]] constexpr detail::Mat4<T> scale(const detail::Mat4<T>& inValue,	T inScale) noexcept {
 	detail::Mat4<T> result{};
 	for (I32 row = 0; row < 4; ++row) {
 		for (I32 column = 0; column < 4; ++column) {
@@ -376,9 +317,7 @@ template <typename T>
 }
 
 template <typename T>
-[[nodiscard]] constexpr detail::Mat4<T> divide(
-	const detail::Mat4<T>& inValue,
-	T inScale) noexcept {
+[[nodiscard]] constexpr detail::Mat4<T> divide(const detail::Mat4<T>& inValue, T inScale) noexcept {
 	detail::Mat4<T> result{};
 	for (I32 row = 0; row < 4; ++row) {
 		for (I32 column = 0; column < 4; ++column) {
@@ -389,9 +328,7 @@ template <typename T>
 }
 
 template <typename T>
-[[nodiscard]] constexpr detail::Mat4<T> matrixMul(
-	const detail::Mat4<T>& inA,
-	const detail::Mat4<T>& inB) noexcept {
+[[nodiscard]] constexpr detail::Mat4<T> matrixMul(const detail::Mat4<T>& inA,	const detail::Mat4<T>& inB) noexcept {
 	detail::Mat4<T> result{};
 	for (I32 row = 0; row < 4; ++row) {
 		result.m[row][0] = inA.m[row][0] * inB.m[0][0]
@@ -415,9 +352,7 @@ template <typename T>
 }
 
 template <typename T>
-[[nodiscard]] constexpr detail::Vec4<T> transform(
-	const detail::Vec4<T>& inValue,
-	const detail::Mat4<T>& inMatrix) noexcept {
+[[nodiscard]] constexpr detail::Vec4<T> transform(const detail::Vec4<T>& inValue,	const detail::Mat4<T>& inMatrix) noexcept {
 	return {
 		inValue.x * inMatrix.m[0][0] + inValue.y * inMatrix.m[1][0]
 			+ inValue.z * inMatrix.m[2][0] + inValue.w * inMatrix.m[3][0],

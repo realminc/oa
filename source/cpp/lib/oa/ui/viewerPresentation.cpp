@@ -25,6 +25,7 @@ oa::Status oa::Viewer::initPresentation(
 	// vsync preference must be set before
 	// initPresentation calls buildSwapchainObjects (which reads it).
 	inPresenter.swapchain().vsync = config_.vsync;
+	inPresenter.swapchain().preferTransparent = windowTransparent_;
 	if (not inPresenter.initPresentation(
 			inSurface,
 			VkExtent2D{ config_.width, config_.height })) {
@@ -290,6 +291,27 @@ void oa::Viewer::beginFrame(oa::F32 inDeltaMs) {
 
 oa::Status oa::Viewer::routeUiEvents(oa::Span<const oa::UiEvent> inEvents) {
 	for (const oa::UiEvent& e : inEvents) {
+		switch (e.type) {
+			case oa::UiEventType::MouseEnter:
+				mediaPointerInside_ = true;
+				revealMediaChrome();
+				break;
+			case oa::UiEventType::MouseLeave:
+				mediaPointerInside_ = false;
+				break;
+			case oa::UiEventType::MouseMove:
+			case oa::UiEventType::MouseDown:
+			case oa::UiEventType::MouseUp:
+			case oa::UiEventType::MouseScroll:
+			case oa::UiEventType::Pinch:
+				mediaPointerInside_ = true;
+				[[fallthrough]];
+			case oa::UiEventType::KeyDown:
+				revealMediaChrome();
+				break;
+			default:
+				break;
+		}
 		// Popups and focused controls own their events before viewport/live-source
 		// navigation and application shortcuts. Unrelated events preserve the
 		// former navigation-then-action ordering.

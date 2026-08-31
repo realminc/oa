@@ -438,7 +438,7 @@ private:
 	oa::LunarScalarEnvironment environment_;
 	oa::UniquePtr<LunarLander3dRenderSession> renderer_;
 	oa::Optional<oa::RenderFrame> currentFrame_;
-	oa::CameraState camera_;
+	oa::Camera camera_;
 	oa::Status failure_ = oa::Status::ok();
 	oa::F32 accumulatorMs_ = 0.0F;
 	oa::F32 terminalHoldMs_ = 0.0F;

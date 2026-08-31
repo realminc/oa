@@ -45,10 +45,10 @@ public:
 	HashMap& operator=(const HashMap&) = default;
 
 	HashMap(HashMap&& inOther) noexcept(
-		oa::IsNothrowMoveConstructibleV<Hash>
-		&& oa::IsNothrowMoveConstructibleV<KeyEq>)
-		requires(oa::IsNothrowMoveConstructibleV<Hash>
-			&& oa::IsNothrowMoveConstructibleV<KeyEq>)
+		oa::isNothrowMoveConstructibleV<Hash>
+		&& oa::isNothrowMoveConstructibleV<KeyEq>)
+		requires(oa::isNothrowMoveConstructibleV<Hash>
+			&& oa::isNothrowMoveConstructibleV<KeyEq>)
 		: hasher_(oa::move(inOther.hasher_)), equal_(oa::move(inOther.equal_)) {
 		// Move the potentially-throwing policy objects before stealing storage.
 		// If policy construction fails, the source still owns every entry.
@@ -60,14 +60,14 @@ public:
 	}
 
 	HashMap(HashMap&&)
-		requires(!(oa::IsNothrowMoveConstructibleV<Hash>
-			&& oa::IsNothrowMoveConstructibleV<KeyEq>)) = delete;
+		requires(!(oa::isNothrowMoveConstructibleV<Hash>
+			&& oa::isNothrowMoveConstructibleV<KeyEq>)) = delete;
 
 	HashMap& operator=(HashMap&& inOther) noexcept
-		requires(oa::IsNothrowMoveConstructibleV<Hash>
-			&& oa::IsNothrowMoveConstructibleV<KeyEq>
-			&& oa::IsNothrowSwappableV<Hash>
-			&& oa::IsNothrowSwappableV<KeyEq>) {
+		requires(oa::isNothrowMoveConstructibleV<Hash>
+			&& oa::isNothrowMoveConstructibleV<KeyEq>
+			&& oa::isNothrowSwappableV<Hash>
+			&& oa::isNothrowSwappableV<KeyEq>) {
 		if (this != &inOther) {
 			HashMap replacement(oa::move(inOther));
 			swap(replacement);
@@ -76,10 +76,10 @@ public:
 	}
 
 	HashMap& operator=(HashMap&&)
-		requires(!(oa::IsNothrowMoveConstructibleV<Hash>
-			&& oa::IsNothrowMoveConstructibleV<KeyEq>
-			&& oa::IsNothrowSwappableV<Hash>
-			&& oa::IsNothrowSwappableV<KeyEq>)) = delete;
+		requires(!(oa::isNothrowMoveConstructibleV<Hash>
+			&& oa::isNothrowMoveConstructibleV<KeyEq>
+			&& oa::isNothrowSwappableV<Hash>
+			&& oa::isNothrowSwappableV<KeyEq>)) = delete;
 
 	class const_iterator;
 
@@ -282,7 +282,7 @@ public:
 	}
 
 	void swap(HashMap& inOther) noexcept
-		requires(oa::IsNothrowSwappableV<Hash> && oa::IsNothrowSwappableV<KeyEq>) {
+		requires(oa::isNothrowSwappableV<Hash> && oa::isNothrowSwappableV<KeyEq>) {
 		if (this == &inOther) return;
 		oa::swapValues(hasher_, inOther.hasher_);
 		oa::swapValues(equal_, inOther.equal_);
@@ -359,7 +359,7 @@ private:
 		replacement.resize(inCapacity);
 		SizeType replacementSize = 0;
 
-		if constexpr (oa::IsCopyConstructibleV<SlotType>) {
+		if constexpr (oa::isCopyConstructibleV<SlotType>) {
 			// Copying keeps the original table byte-for-byte intact until every
 			// hash and value construction in the replacement has succeeded.
 			for (SizeType index = 0; index < slots_.size(); ++index) {
@@ -370,7 +370,7 @@ private:
 				}
 			}
 		} else {
-			static_assert(oa::IsNothrowMoveConstructibleV<SlotType>,
+			static_assert(oa::isNothrowMoveConstructibleV<SlotType>,
 				"HashMap rehash requires a copyable value or nothrow movable storage");
 			// A throwing stateful hasher must run before the first source value is
 			// moved. Once hashes are known, the admitted move-only path is no-throw.

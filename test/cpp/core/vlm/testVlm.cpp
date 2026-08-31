@@ -132,7 +132,7 @@ void verifyInverseScaleAliasAndFailureContracts() {
 	const T smallScale = std::is_same_v<T, oa::F32> ? T(1.0e-12F) : T(1.0e-120);
 	const T largeScale = T(1) / smallScale;
 	const Quat rotation = oa::vlm::quaternionFromEulerRadians(
-		Vec3{T(0.37), T(-0.51), T(0.83)}, oa::vlm::EulerOrder::Yzx);
+		Vec3{T(0.37), T(-0.51), T(0.83)}, oa::vlm::RotationOrder::Yzx);
 	const Mat3 base3 = oa::vlm::linearPart(oa::vlm::composeTrs(
 		Vec3{}, rotation, Vec3{T(2), T(3), T(4)}));
 	for (const T scale : {smallScale, largeScale}) {
@@ -180,10 +180,10 @@ void verifyInverseScaleAliasAndFailureContracts() {
 template <typename T>
 void verifyEulerGimbalBoundaries() {
 	using Vec3 = oa::vlm::detail::Vec3<T>;
-	const oa::vlm::EulerOrder orders[] = {
-		oa::vlm::EulerOrder::Xyz, oa::vlm::EulerOrder::Xzy,
-		oa::vlm::EulerOrder::Yxz, oa::vlm::EulerOrder::Yzx,
-		oa::vlm::EulerOrder::Zxy, oa::vlm::EulerOrder::Zyx,
+	const oa::vlm::RotationOrder orders[] = {
+		oa::vlm::RotationOrder::Xyz, oa::vlm::RotationOrder::Xzy,
+		oa::vlm::RotationOrder::Yxz, oa::vlm::RotationOrder::Yzx,
+		oa::vlm::RotationOrder::Zxy, oa::vlm::RotationOrder::Zyx,
 	};
 	const oa::Usize lockedComponent[] = {1U, 2U, 0U, 2U, 0U, 1U};
 	const T nearLockDelta = std::is_same_v<T, oa::F32> ? T(1.0e-3F) : T(1.0e-8);
@@ -219,7 +219,7 @@ void verifyAffineProperties() {
 			value * T(0.31), value * T(-0.17), value * T(0.07)};
 		input.rotation = oa::vlm::quaternionFromEulerRadians(
 			Vec3{value * T(0.013), value * T(-0.017), value * T(0.019)},
-			static_cast<oa::vlm::EulerOrder>((index - 1) % 6));
+			static_cast<oa::vlm::RotationOrder>((index - 1) % 6));
 		input.scale = {
 			(index % 2 == 0 ? T(-1) : T(1)) * (T(0.25) + value * T(0.01)),
 			(index % 3 == 0 ? T(-1) : T(1)) * (T(0.5) + value * T(0.007)),
@@ -592,10 +592,10 @@ TEST(VlmContract, InverseScaleAliasAndFailureCoverFloatAndDouble) {
 	verifyInverseScaleAliasAndFailureContracts<oa::F64>();
 }
 
-TEST(VlmContract, EveryEulerOrderCoversBothGimbalBoundaries) {
+TEST(VlmContract, EveryRotationOrderCoversBothGimbalBoundaries) {
 	verifyEulerGimbalBoundaries<oa::F32>();
 	verifyEulerGimbalBoundaries<oa::F64>();
-	const auto invalid = static_cast<oa::vlm::EulerOrder>(255U);
+	const auto invalid = static_cast<oa::vlm::RotationOrder>(255U);
 	EXPECT_DEATH(
 		(void)oa::vlm::quaternionFromEulerRadians(oa::vlm::Vec3{}, invalid),
 		"");
@@ -677,16 +677,16 @@ TEST(VlmQuaternion, MatrixAndQuaternionRotationAgreeAcrossFiniteInputs) {
 	}
 }
 
-TEST(VlmQuaternion, NamedEulerOrdersRoundTripRotation) {
-	const oa::vlm::EulerOrder orders[] = {
-		oa::vlm::EulerOrder::Xyz,
-		oa::vlm::EulerOrder::Xzy,
-		oa::vlm::EulerOrder::Yxz,
-		oa::vlm::EulerOrder::Yzx,
-		oa::vlm::EulerOrder::Zxy,
-		oa::vlm::EulerOrder::Zyx,
+TEST(VlmQuaternion, NamedRotationOrdersRoundTripEulerRepresentation) {
+	const oa::vlm::RotationOrder orders[] = {
+		oa::vlm::RotationOrder::Xyz,
+		oa::vlm::RotationOrder::Xzy,
+		oa::vlm::RotationOrder::Yxz,
+		oa::vlm::RotationOrder::Yzx,
+		oa::vlm::RotationOrder::Zxy,
+		oa::vlm::RotationOrder::Zyx,
 	};
-	for (const oa::vlm::EulerOrder order : orders) {
+	for (const oa::vlm::RotationOrder order : orders) {
 		const oa::vlm::Quat rotation = oa::vlm::quaternionFromEulerDegrees(
 			oa::vlm::Vec3{23.0F, -31.0F, 47.0F}, order);
 		const oa::vlm::Vec3 recovered = oa::vlm::quaternionToEulerDegrees(
@@ -836,7 +836,7 @@ TEST(VlmMatrix, ExactTrsDecompositionPreservesReflectionAndRejectsShear) {
 		{7.0F, -2.0F, 11.0F},
 		oa::vlm::quaternionFromEulerDegrees(
 			oa::vlm::Vec3{20.0F, -30.0F, 40.0F},
-			oa::vlm::EulerOrder::Yxz),
+			oa::vlm::RotationOrder::Yxz),
 		{-2.0F, 3.0F, 4.0F});
 	oa::vlm::TrsDecomposition decomposition{};
 	ASSERT_TRUE(oa::vlm::tryDecomposeTrs(matrix, decomposition));
@@ -863,7 +863,7 @@ TEST(VlmMatrix, AffineDecompositionPreservesShearAndReflection) {
 	input.translation = {5.0F, -7.0F, 11.0F};
 	input.rotation = oa::vlm::quaternionFromEulerDegrees(
 		oa::vlm::Vec3{19.0F, -27.0F, 41.0F},
-		oa::vlm::EulerOrder::Zxy);
+		oa::vlm::RotationOrder::Zxy);
 	input.scale = {-2.0F, 3.0F, 4.0F};
 	input.shear = {0.2F, -0.15F, 0.35F};
 	input.reflected = true;
@@ -897,7 +897,7 @@ TEST(VlmMatrix, ViewFromPoseIsInverseOfCameraWorldTransform) {
 	const oa::vlm::Vec3 position{3.0F, 5.0F, -7.0F};
 	const oa::vlm::Quat rotation = oa::vlm::quaternionFromEulerDegrees(
 		oa::vlm::Vec3{15.0F, 25.0F, -35.0F},
-		oa::vlm::EulerOrder::Xyz);
+		oa::vlm::RotationOrder::Xyz);
 	const oa::vlm::Mat4 world = oa::vlm::composeTrs(
 		position, rotation, {1.0F, 1.0F, 1.0F});
 	EXPECT_TRUE(oa::vlm::approximatelyEqual(
@@ -1001,7 +1001,7 @@ TEST(VlmProjection, TopOriginViewportRoundTripIsStable) {
 		{2.0F, 3.0F, 4.0F},
 		oa::vlm::quaternionFromEulerDegrees(
 			oa::vlm::Vec3{10.0F, -20.0F, 5.0F},
-			oa::vlm::EulerOrder::Xyz))
+			oa::vlm::RotationOrder::Xyz))
 		* oa::vlm::perspective(65.0F, 1921.0F / 1081.0F, 0.1F, 500.0F);
 	const oa::vlm::Viewport viewport{
 		13.0F, 17.0F, 1921.0F, 1081.0F, 0.0F, 1.0F};

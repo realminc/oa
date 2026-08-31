@@ -18,15 +18,15 @@ namespace oa {
 
 // True when T is a complete type at the point of instantiation.
 template<typename T, typename = void>
-inline constexpr bool IsCompleteType = false;
+inline constexpr bool isCompleteTypeV = false;
 template<typename T>
-inline constexpr bool IsCompleteType<T, oa::VoidT<decltype(sizeof(T))>> = true;
+inline constexpr bool isCompleteTypeV<T, oa::VoidT<decltype(sizeof(T))>> = true;
 
 template<typename T>
 struct DefaultDelete {
 	constexpr DefaultDelete() noexcept = default;
 
-	template<typename U, typename = oa::EnableIfT<oa::IsConvertibleV<U*, T*>>>
+	template<typename U, typename = oa::EnableIfT<oa::isConvertibleV<U*, T*>>>
 	DefaultDelete(const DefaultDelete<U>&) noexcept {}
 
 	void operator()(T* inP) const noexcept {
@@ -44,49 +44,49 @@ public:
 
 	UniquePtr() noexcept = default;
 
-	explicit UniquePtr(pointer inP) noexcept requires (!oa::IsVoidV<T>)
+	explicit UniquePtr(pointer inP) noexcept requires (!oa::isVoidV<T>)
 		: ptr_(inP)
 	{}
 
 	UniquePtr(pointer inP, const Deleter& inD) noexcept
-		requires(oa::IsNothrowCopyConstructibleV<Deleter>)
+		requires(oa::isNothrowCopyConstructibleV<Deleter>)
 		: ptr_(inP), deleter_(inD)
 	{}
 
 	UniquePtr(pointer, const Deleter&)
-		requires(!oa::IsNothrowCopyConstructibleV<Deleter>) = delete;
+		requires(!oa::isNothrowCopyConstructibleV<Deleter>) = delete;
 
 	UniquePtr(pointer inP, Deleter&& inD) noexcept
-		requires(oa::IsNothrowMoveConstructibleV<Deleter>)
+		requires(oa::isNothrowMoveConstructibleV<Deleter>)
 		: ptr_(inP), deleter_(oa::move(inD))
 	{}
 
 	UniquePtr(pointer, Deleter&&)
-		requires(!oa::IsNothrowMoveConstructibleV<Deleter>) = delete;
+		requires(!oa::isNothrowMoveConstructibleV<Deleter>) = delete;
 
 	UniquePtr(const UniquePtr&) = delete;
 	UniquePtr& operator=(const UniquePtr&) = delete;
 
 	UniquePtr(UniquePtr&& inO) noexcept
-		requires(oa::IsNothrowMoveConstructibleV<Deleter>)
+		requires(oa::isNothrowMoveConstructibleV<Deleter>)
 		: ptr_(nullptr), deleter_(oa::move(inO.deleter_)) {
 		// Do not relinquish ownership until the destination deleter exists.
 		ptr_ = inO.release();
 	}
 
-	UniquePtr(UniquePtr&&) requires(!oa::IsNothrowMoveConstructibleV<Deleter>) = delete;
+	UniquePtr(UniquePtr&&) requires(!oa::isNothrowMoveConstructibleV<Deleter>) = delete;
 
 	template<typename U, typename E,
-		typename = oa::EnableIfT<!oa::IsSameV<U, T> || !oa::IsSameV<E, Deleter>>,
-		typename = oa::EnableIfT<oa::IsConvertibleV<U*, T*>>,
-		typename = oa::EnableIfT<oa::IsNothrowConstructibleV<Deleter, E&&>>>
+		typename = oa::EnableIfT<!oa::isSameV<U, T> || !oa::isSameV<E, Deleter>>,
+		typename = oa::EnableIfT<oa::isConvertibleV<U*, T*>>,
+		typename = oa::EnableIfT<oa::isNothrowConstructibleV<Deleter, E&&>>>
 	UniquePtr(UniquePtr<U, E>&& inO) noexcept
 		: ptr_(nullptr), deleter_(oa::move(inO.getDeleter())) {
 		ptr_ = inO.release();
 	}
 
 	UniquePtr& operator=(UniquePtr&& inO) noexcept
-		requires(oa::IsNothrowMoveAssignableV<Deleter>) {
+		requires(oa::isNothrowMoveAssignableV<Deleter>) {
 		if (this != &inO) {
 			reset();
 			deleter_ = oa::move(inO.deleter_);
@@ -96,7 +96,7 @@ public:
 	}
 
 	UniquePtr& operator=(UniquePtr&&)
-		requires(!oa::IsNothrowMoveAssignableV<Deleter>) = delete;
+		requires(!oa::isNothrowMoveAssignableV<Deleter>) = delete;
 
 	~UniquePtr() noexcept { reset(); }
 
@@ -108,9 +108,9 @@ public:
 
 	explicit operator bool() const noexcept { return ptr_ != nullptr; }
 
-	[[nodiscard]] T& operator*() const requires (!oa::IsVoidV<T>) { return *ptr_; }
+	[[nodiscard]] T& operator*() const requires (!oa::isVoidV<T>) { return *ptr_; }
 
-	[[nodiscard]] pointer operator->() const noexcept requires (!oa::IsVoidV<T>) { return ptr_; }
+	[[nodiscard]] pointer operator->() const noexcept requires (!oa::isVoidV<T>) { return ptr_; }
 
 	[[nodiscard]] pointer release() noexcept {
 		pointer p = ptr_;
@@ -133,7 +133,7 @@ public:
 	}
 
 	void swap(UniquePtr& inO) noexcept
-		requires(oa::IsNothrowSwappableV<Deleter>) {
+		requires(oa::isNothrowSwappableV<Deleter>) {
 		oa::swapValues(deleter_, inO.deleter_);
 		oa::swapValues(ptr_, inO.ptr_);
 	}

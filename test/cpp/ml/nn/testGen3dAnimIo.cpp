@@ -32,7 +32,10 @@ TEST(Gen3dAnimIo, SkeletonBuiltinAndSkelRoundTrip) {
 		EXPECT_EQ(sk2.joints[j].name, sk.joints[j].name);
 		EXPECT_EQ(sk2.joints[j].parentIndex, sk.joints[j].parentIndex);
 		EXPECT_EQ(sk2.joints[j].humanIkId, sk.joints[j].humanIkId);
-		EXPECT_NEAR(sk2.joints[j].rest.translate.z, sk.joints[j].rest.translate.z, 1e-4f);
+		EXPECT_NEAR(
+			sk2.joints[j].rest.getTransform().getPosition().z,
+			sk.joints[j].rest.getTransform().getPosition().z,
+			1e-4f);
 		EXPECT_NEAR(sk2.joints[j].mass, sk.joints[j].mass, 1e-4f);
 	}
 }

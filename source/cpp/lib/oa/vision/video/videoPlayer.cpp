@@ -284,6 +284,21 @@ void oa::VideoPlayer::togglePlay()
 	if (playing_) pause(); else play();
 }
 
+oa::Status oa::VideoPlayer::setMuted(bool inMuted)
+{
+	if (not audio_.hasValue()) {
+		return oa::Status::error(
+			oa::StatusCode::FailedPrecondition,
+			"oa::VideoPlayer::setMuted requires an active audio stream");
+	}
+	return audio_->setMuted(inMuted);
+}
+
+bool oa::VideoPlayer::isMuted() const noexcept
+{
+	return audio_.hasValue() and audio_->isMuted();
+}
+
 void oa::VideoPlayer::setLoop(bool inLoop)
 {
 	cfg_.loop = inLoop;
@@ -562,6 +577,8 @@ void oa::VideoPlayer::tick(oa::F32 inDeltaMs)
 		}
 		if (isDone()) {
 			accumulator_ = 0.0F;
+			playing_ = false;
+			if (audio_.hasValue()) audio_->pause();
 			break;
 		}
 	}
@@ -969,7 +986,10 @@ oa::Status oa::VideoPlayer::seekDisplayFrame_(oa::Usize inTargetFrameIndex) {
 			"oa::VideoPlayer::seekDisplayFrame_: target out of range");
 	}
 
-	if (presentCached_(inTargetFrameIndex)) return oa::Status::ok();
+	if (presentCached_(inTargetFrameIndex)) {
+		reachedEos_ = false;
+		return oa::Status::ok();
+	}
 	const oa::Usize history = oa::max<oa::Usize>(
 		1U, presentationCacheCapacity_);
 	const oa::Usize seekStart = inTargetFrameIndex + 1U > history

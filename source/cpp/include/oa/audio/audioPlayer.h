@@ -38,6 +38,10 @@ public:
   void pause();
   [[nodiscard]] oa::Status seek(oa::U64 inTimestampUs);
   void setLoop(bool inLoop);
+  // Muting is applied by the playback device without stopping decoding or
+  // disturbing the media clock. It is safe to toggle during playback.
+  [[nodiscard]] oa::Status setMuted(bool inMuted);
+  [[nodiscard]] bool isMuted() const noexcept;
   // Stops playback, joins decoding, and releases codec/device state.
   [[nodiscard]] oa::Status close();
 

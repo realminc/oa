@@ -82,20 +82,26 @@ oa::U64 skeletonIdentity_(const oa::Skeleton& inSkeleton) {
 		hashUnsigned_(hash, static_cast<oa::U64>(joint.parentIndex));
 		hashUnsigned_(hash, static_cast<oa::U64>(joint.humanIkId));
 		hashFloat_(hash, joint.mass);
-		hashFloat_(hash, joint.rest.translate.x);
-		hashFloat_(hash, joint.rest.translate.y);
-		hashFloat_(hash, joint.rest.translate.z);
-		hashFloat_(hash, joint.rest.rotate.x);
-		hashFloat_(hash, joint.rest.rotate.y);
-		hashFloat_(hash, joint.rest.rotate.z);
-		hashFloat_(hash, joint.rest.rotate.w);
-		hashFloat_(hash, joint.rest.scale.x);
-		hashFloat_(hash, joint.rest.scale.y);
-		hashFloat_(hash, joint.rest.scale.z);
-		hashFloat_(hash, joint.rest.jointOrient.x);
-		hashFloat_(hash, joint.rest.jointOrient.y);
-		hashFloat_(hash, joint.rest.jointOrient.z);
-		hashFloat_(hash, joint.rest.jointOrient.w);
+		const oa::vlm::Vec3& translation =
+			joint.rest.getTransform().getPosition();
+		const oa::vlm::Quat& rotation =
+			joint.rest.getTransform().getRotation();
+		const oa::vlm::Vec3& scale = joint.rest.getTransform().getScale();
+		hashFloat_(hash, translation.x);
+		hashFloat_(hash, translation.y);
+		hashFloat_(hash, translation.z);
+		hashFloat_(hash, rotation.x);
+		hashFloat_(hash, rotation.y);
+		hashFloat_(hash, rotation.z);
+		hashFloat_(hash, rotation.w);
+		hashFloat_(hash, scale.x);
+		hashFloat_(hash, scale.y);
+		hashFloat_(hash, scale.z);
+		const oa::vlm::Quat& orientation = joint.rest.getOrientation();
+		hashFloat_(hash, orientation.x);
+		hashFloat_(hash, orientation.y);
+		hashFloat_(hash, orientation.z);
+		hashFloat_(hash, orientation.w);
 		hashUnsigned_(hash, joint.hasTranslate ? 1U : 0U);
 		hashUnsigned_(hash, joint.rotDof);
 	}
@@ -325,16 +331,19 @@ oa::Matrix skPoseFkWorld_(const oa::Matrix& inFlat, const oa::Skeleton& inSkelet
 			localT = oa::FnMatrix::slice(inFlat, 1, c, c + 3);
 			c += 3;
 		} else {
-			localT = constVec3_(tokens, joint.rest.translate);
+			localT = constVec3_(
+				tokens, joint.rest.getTransform().getPosition());
 		}
 
 		oa::Matrix localR;
 		if (joint.rotDof == 3) {
 			localR = sixDToMat3_(oa::FnMatrix::slice(inFlat, 1, c, c + 6));
 		} else if (joint.rotDof == 1) {
-			localR = hingeZToMat3_(oa::FnMatrix::slice(inFlat, 1, c, c + 1), joint.rest.jointOrient);
+			localR = hingeZToMat3_(
+				oa::FnMatrix::slice(inFlat, 1, c, c + 1),
+				joint.rest.getOrientation());
 		} else {
-			localR = constMat3_(tokens, joint.rest.orientedRotation());
+			localR = constMat3_(tokens, joint.rest.getOrientedRotation());
 		}
 
 		if (joint.parentIndex < 0) {

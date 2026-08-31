@@ -115,7 +115,7 @@ struct SharedControlDeleter final : SharedControl {
 	SharedControlDeleter(T* inP, const Deleter& inD) : ptr(inP), deleter(inD) {}
 
 	SharedControlDeleter(T* inP, Deleter&& inD) noexcept(
-		oa::IsNothrowMoveConstructibleV<Deleter>)
+		oa::isNothrowMoveConstructibleV<Deleter>)
 		: ptr(inP), deleter(oa::move(inD)) {}
 
 	void releaseObject() noexcept override {
@@ -175,13 +175,13 @@ template<typename Control, typename... Args>
 template<typename T, typename Deleter>
 [[nodiscard]] SharedControl* createSharedControl_(T* inP, Deleter& inD) {
 	using StoredDeleter = oa::DecayT<Deleter>;
-	if constexpr (oa::IsCopyConstructibleV<StoredDeleter>) {
-		static_assert(oa::IsNothrowCopyConstructibleV<StoredDeleter>,
+	if constexpr (oa::isCopyConstructibleV<StoredDeleter>) {
+		static_assert(oa::isNothrowCopyConstructibleV<StoredDeleter>,
 			"A SharedPtr deleter must be nothrow copy constructible");
 		return allocateSharedControl_<SharedControlDeleter<T, StoredDeleter>>(
 			inP, static_cast<const StoredDeleter&>(inD));
 	} else {
-		static_assert(oa::IsNothrowMoveConstructibleV<StoredDeleter>,
+		static_assert(oa::isNothrowMoveConstructibleV<StoredDeleter>,
 			"A move-only SharedPtr deleter must be nothrow move constructible");
 		return allocateSharedControl_<SharedControlDeleter<T, StoredDeleter>>(
 			inP, oa::move(inD));
@@ -189,11 +189,11 @@ template<typename T, typename Deleter>
 }
 
 template<typename Deleter>
-inline constexpr bool IsSharedDeleterV =
-	(oa::IsCopyConstructibleV<oa::DecayT<Deleter>>
-		&& oa::IsNothrowCopyConstructibleV<oa::DecayT<Deleter>>)
-	|| (!oa::IsCopyConstructibleV<oa::DecayT<Deleter>>
-		&& oa::IsNothrowMoveConstructibleV<oa::DecayT<Deleter>>);
+inline constexpr bool isSharedDeleterV =
+	(oa::isCopyConstructibleV<oa::DecayT<Deleter>>
+		&& oa::isNothrowCopyConstructibleV<oa::DecayT<Deleter>>)
+	|| (!oa::isCopyConstructibleV<oa::DecayT<Deleter>>
+		&& oa::isNothrowMoveConstructibleV<oa::DecayT<Deleter>>);
 
 template<typename T>
 [[nodiscard]] SharedControl* createDefaultSharedControl_(T* inP) {
@@ -237,7 +237,7 @@ public:
 	using weak_type = WeakPtr<T>;
 
 	template<typename U, typename... Args>
-	requires (!oa::IsVoidV<U>)
+	requires (!oa::isVoidV<U>)
 	friend SharedPtr<U> makeShared(Args&&... inArgs);
 
 	friend class WeakPtr<T>;
@@ -249,12 +249,12 @@ public:
 
 	SharedPtr(decltype(nullptr)) noexcept {}
 
-	explicit SharedPtr(T* inP) requires (!oa::IsVoidV<T>)
+	explicit SharedPtr(T* inP) requires (!oa::isVoidV<T>)
 		: control_(inP ? createDefaultSharedControl_(inP) : nullptr)
 		, ptr_(inP) {}
 
 	template<typename Deleter>
-	requires oa::IsSharedDeleterV<Deleter>
+	requires oa::isSharedDeleterV<Deleter>
 	SharedPtr(T* inP, Deleter inD)
 		: control_(inP ? createSharedControl_(inP, inD) : nullptr)
 		, ptr_(inP) {}
@@ -283,8 +283,8 @@ public:
 	}
 
 	template<typename U>
-	requires (!oa::IsVoidV<T> && !oa::IsSameV<T, U>
-		&& oa::IsConvertibleV<U*, T*>)
+	requires (!oa::isVoidV<T> && !oa::isSameV<T, U>
+		&& oa::isConvertibleV<U*, T*>)
 	SharedPtr(const SharedPtr<U>& inO) noexcept
 		: control_(inO.control_), ptr_(static_cast<T*>(inO.ptr_)) {
 		if (control_) {
@@ -293,8 +293,8 @@ public:
 	}
 
 	template<typename U>
-	requires (!oa::IsVoidV<T> && !oa::IsSameV<T, U>
-		&& oa::IsConvertibleV<U*, T*>)
+	requires (!oa::isVoidV<T> && !oa::isSameV<T, U>
+		&& oa::isConvertibleV<U*, T*>)
 	SharedPtr(SharedPtr<U>&& inO) noexcept
 		: control_(inO.control_), ptr_(static_cast<T*>(inO.ptr_)) {
 		inO.control_ = nullptr;
@@ -323,8 +323,8 @@ public:
 
 	explicit operator bool() const noexcept { return ptr_ != nullptr; }
 
-	[[nodiscard]] T& operator*() const requires (!oa::IsVoidV<T>) { return *ptr_; }
-	[[nodiscard]] T* operator->() const noexcept requires (!oa::IsVoidV<T>) { return ptr_; }
+	[[nodiscard]] T& operator*() const requires (!oa::isVoidV<T>) { return *ptr_; }
+	[[nodiscard]] T* operator->() const noexcept requires (!oa::isVoidV<T>) { return ptr_; }
 
 	void reset() noexcept {
 		SharedControl* retired = control_;
@@ -333,13 +333,13 @@ public:
 		if (retired) retired->decStrong();
 	}
 
-	void reset(T* inP) requires (!oa::IsVoidV<T>) {
+	void reset(T* inP) requires (!oa::isVoidV<T>) {
 		SharedPtr replacement(inP);
 		swap(replacement);
 	}
 
 	template<typename Deleter>
-	requires oa::IsSharedDeleterV<Deleter>
+	requires oa::isSharedDeleterV<Deleter>
 	void reset(T* inP, Deleter inD) {
 		SharedPtr replacement(inP, oa::move(inD));
 		swap(replacement);
@@ -483,7 +483,7 @@ public:
 	SharedPtr(decltype(nullptr)) noexcept {}
 
 	template<typename Deleter>
-	requires oa::IsSharedDeleterV<Deleter>
+	requires oa::isSharedDeleterV<Deleter>
 	SharedPtr(void* inP, Deleter inD)
 		: control_(inP ? createSharedControl_(inP, inD) : nullptr)
 		, ptr_(inP) {}
@@ -538,7 +538,7 @@ public:
 	}
 
 	template<typename Deleter>
-	requires oa::IsSharedDeleterV<Deleter>
+	requires oa::isSharedDeleterV<Deleter>
 	void reset(void* inP, Deleter inD) {
 		SharedPtr replacement(inP, oa::move(inD));
 		swap(replacement);
@@ -641,7 +641,7 @@ private:
 };
 
 template<typename T, typename... Args>
-requires (!oa::IsVoidV<T>)
+requires (!oa::isVoidV<T>)
 [[nodiscard]] SharedPtr<T> makeShared(Args&&... inArgs) {
 	auto* cb = allocateSharedControl_<SharedControlInline<T>>(
 		oa::forward<Args>(inArgs)...);

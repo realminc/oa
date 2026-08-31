@@ -29,7 +29,7 @@ TEST(Skeleton, MannyBoneLengths) {
 
 // Manny-tPose PIN: forward kinematics over the rest orientations must reproduce a
 // standing pose — pelvis at hip height, spine/head climbing above it, feet near
-// the floor. This is the test that locks the Euler order (Maya XYZ) and the
+// the floor. This test locks the Euler rotation order (Maya XYZ) and the
 // jointOrient compose order; if either is wrong the body won't stand up.
 TEST(Skeleton, MannyRestStanding) {
 	const oa::Skeleton& sk = oa::skMetaHuman();
@@ -59,8 +59,14 @@ TEST(Skeleton, SkelRoundTrip) {
 	for (oa::I32 j = 0; j < sk.jointCount(); ++j) {
 		EXPECT_TRUE(sk2.joints[j].name == sk.joints[j].name);
 		EXPECT_EQ(sk2.joints[j].parentIndex, sk.joints[j].parentIndex);
-		EXPECT_NEAR(sk2.joints[j].rest.translate.x, sk.joints[j].rest.translate.x, 1e-3f);
-		EXPECT_NEAR(sk2.joints[j].rest.jointOrient.w, sk.joints[j].rest.jointOrient.w, 1e-3f);
+		EXPECT_NEAR(
+			sk2.joints[j].rest.getTransform().getPosition().x,
+			sk.joints[j].rest.getTransform().getPosition().x,
+			1e-3f);
+		EXPECT_NEAR(
+			sk2.joints[j].rest.getOrientation().w,
+			sk.joints[j].rest.getOrientation().w,
+			1e-3f);
 	}
 }
 

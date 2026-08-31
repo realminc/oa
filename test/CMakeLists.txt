@@ -98,6 +98,8 @@ oa_add_test(TestCoreMisc         cpp/core/misc/testCoreMisc.cpp         cpp/core
 oa_add_test(TestCli              cpp/core/misc/testCli.cpp              cpp/core/misc)
 oa_add_test(TestValidation       cpp/core/misc/testValidation.cpp       cpp/core/misc)
 oa_add_test(TestVlm              cpp/core/vlm/testVlm.cpp               cpp/core/vlm)
+oa_add_test(TestAnimation        cpp/animation/testAnimation.cpp        cpp/animation)
+set_tests_properties(TestAnimation PROPERTIES LABELS "core;animation")
 
 # Host-only SIMD microbenchmark. FnSimd and stock xsimd execute equivalent
 # array reductions; release claims use the canonical fresh-process runner.
@@ -374,11 +376,10 @@ oa_add_test(TestPoseClip cpp/ml/nn/testPoseClip.cpp cpp/ml/nn)
 target_link_libraries(TestPoseClip PRIVATE oaSdkSupport)
 # Gen3dAnim tests removed — will be redone after sanitization + MotionGpt work.
 
-# 3D anim engine: Core (transform/joint) → Rig (skeleton) → Retarget.
+# 3D animation: installed Animation values → SDK Rig/Retarget consumers.
 oa_add_test(TestTransform cpp/core/transform/testTransform.cpp cpp/core/transform)
 oa_add_test(TestSkeleton cpp/rig/testSkeleton.cpp cpp/rig)
 oa_add_test(TestRetarget cpp/retarget/testRetarget.cpp cpp/retarget)
-target_link_libraries(TestTransform PRIVATE oaSdkSupport)
 target_link_libraries(TestSkeleton PRIVATE oaSdkSupport)
 target_link_libraries(TestRetarget PRIVATE oaSdkSupport)
 

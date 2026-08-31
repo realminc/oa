@@ -38,22 +38,22 @@ public:
 
 	template<typename U>
 	Span(oa::Vector<U>& inVec) noexcept
-		requires(oa::IsConvertibleV<U*, pointer>)
+		requires(oa::isConvertibleV<U*, pointer>)
 		: Span(inVec.data(), inVec.size()) {}
 
 	template<typename U>
 	Span(const oa::Vector<U>& inVec) noexcept
-		requires(oa::IsConvertibleV<const U*, pointer>)
+		requires(oa::isConvertibleV<const U*, pointer>)
 		: Span(inVec.data(), inVec.size()) {}
 
 	template<oa::Usize N>
 	Span(oa::Array<value_type, N>& inArr) noexcept
-		requires(!oa::IsConstV<T>)
+		requires(!oa::isConstV<T>)
 		: ptr_(inArr.data()), size_(N) {}
 
 	template<oa::Usize N>
 	Span(const oa::Array<value_type, N>& inArr) noexcept
-		requires(oa::IsConstV<T>)
+		requires(oa::isConstV<T>)
 		: ptr_(inArr.data()), size_(N) {}
 
 	template<oa::Usize N>

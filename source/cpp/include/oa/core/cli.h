@@ -20,10 +20,10 @@ namespace cliDetail {
 
 template<typename T>
 [[nodiscard]] bool parseValue(oa::StringView inText, T& outValue) noexcept {
-	if constexpr (oa::IsSameV<T, oa::String>) {
+	if constexpr (oa::isSameV<T, oa::String>) {
 		outValue = oa::String(inText);
 		return true;
-	} else if constexpr (oa::IsSameV<T, bool>) {
+	} else if constexpr (oa::isSameV<T, bool>) {
 		if (inText == "true" or inText == "1" or inText == "on" or inText == "yes") {
 			outValue = true;
 			return true;
@@ -33,7 +33,7 @@ template<typename T>
 			return true;
 		}
 		return false;
-	} else if constexpr (oa::IsIntegralV<T>) {
+	} else if constexpr (oa::isIntegralV<T>) {
 		if constexpr (oa::Limits<T>::isSigned) {
 			oa::I64 value = 0;
 			if (not oa::parseI64(inText, value)
@@ -48,13 +48,13 @@ template<typename T>
 			outValue = static_cast<T>(value);
 			return true;
 		}
-	} else if constexpr (oa::IsFloatingPointV<T>) {
+	} else if constexpr (oa::isFloatingPointV<T>) {
 		oa::F64 value = 0.0;
 		if (not oa::parseF64(inText, value)) return false;
 		outValue = static_cast<T>(value);
 		return true;
 	} else {
-		static_assert(oa::IsSameV<T, void>, "unsupported oa::Cli option type");
+		static_assert(oa::isSameV<T, void>, "unsupported oa::Cli option type");
 		return false;
 	}
 }

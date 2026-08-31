@@ -122,6 +122,8 @@ enum class UiEventType : oa::U8 {
 	WindowBlur   = 11,
 	Pinch        = 12,
 	TextEditing  = 13,
+	MouseEnter   = 14,
+	MouseLeave   = 15,
 };
 
 

@@ -1,7 +1,9 @@
 # Fn schema — Render host camera utilities.
 #
-# Camera state and matrix math are CPU value transformations. oa::Renderer owns
+# Camera mutation and matrix math are CPU value transformations. oa::Renderer owns
 # device work; these helpers intentionally have no device-operation contract.
+# FnCamera is a non-instantiable static class; the namespace field below is the
+# generator's qualified C++ operation-owner field, not an attachable object.
 surface = "host_utility"
 category = "Camera"
 namespace = "oa::FnCamera"
@@ -16,7 +18,7 @@ body = "cpu_util"
 generate_declaration = false
 api_return = "void"
 api_params = [
-    "oa::CameraState& inState",
+    "oa::Camera& inCamera",
     "const VlmVec3& inPosition = {0.0f, 2.0f, 5.0f}",
     "const VlmVec3& inTarget = {0.0f, 0.0f, 0.0f}",
     "oa::F32 inFovY = 60.0f",
@@ -24,7 +26,7 @@ api_params = [
     "oa::F32 inNear = 0.1f",
     "oa::F32 inFar = 100.0f",
 ]
-notes = "Initialize a perspective camera state."
+notes = "Initialize a perspective camera value."
 
 [[ops]]
 name = "initOrthographic"
@@ -34,13 +36,13 @@ body = "cpu_util"
 generate_declaration = false
 api_return = "void"
 api_params = [
-    "oa::CameraState& inState",
+    "oa::Camera& inCamera",
     "oa::F32 inWidth = 1.0f",
     "oa::F32 inHeight = 1.0f",
     "oa::F32 inNear = 0.0f",
     "oa::F32 inFar = 1.0f",
 ]
-notes = "Initialize an orthographic camera state."
+notes = "Initialize an orthographic camera value."
 
 [[ops]]
 name = "setPosition"
@@ -49,7 +51,7 @@ kind = "unary"
 body = "cpu_util"
 generate_declaration = false
 api_return = "void"
-api_params = ["oa::CameraState& inState", "const VlmVec3& inPosition"]
+api_params = ["oa::Camera& inCamera", "const VlmVec3& inPosition"]
 notes = "Set camera position."
 
 [[ops]]
@@ -59,7 +61,7 @@ kind = "unary"
 body = "cpu_util"
 generate_declaration = false
 api_return = "void"
-api_params = ["oa::CameraState& inState", "const VlmQuat& inRotation"]
+api_params = ["oa::Camera& inCamera", "const VlmQuat& inRotation"]
 notes = "Set camera rotation."
 
 [[ops]]
@@ -70,7 +72,7 @@ body = "cpu_util"
 generate_declaration = false
 api_return = "void"
 api_params = [
-    "oa::CameraState& inState",
+    "oa::Camera& inCamera",
     "const VlmVec3& inTarget",
     "const VlmVec3& inUp = {0.0f, 1.0f, 0.0f}",
 ]
@@ -83,7 +85,7 @@ kind = "unary"
 body = "cpu_util"
 generate_declaration = false
 api_return = "const VlmVec3&"
-api_params = ["const oa::CameraState& inState"]
+api_params = ["const oa::Camera& inCamera"]
 notes = "Read camera position."
 
 [[ops]]
@@ -93,7 +95,7 @@ kind = "unary"
 body = "cpu_util"
 generate_declaration = false
 api_return = "const VlmQuat&"
-api_params = ["const oa::CameraState& inState"]
+api_params = ["const oa::Camera& inCamera"]
 notes = "Read camera rotation."
 
 [[ops]]
@@ -103,7 +105,7 @@ kind = "unary"
 body = "cpu_util"
 generate_declaration = false
 api_return = "VlmVec3"
-api_params = ["const oa::CameraState& inState"]
+api_params = ["const oa::Camera& inCamera"]
 notes = "Compute the camera forward direction."
 
 [[ops]]
@@ -113,7 +115,7 @@ kind = "unary"
 body = "cpu_util"
 generate_declaration = false
 api_return = "VlmVec3"
-api_params = ["const oa::CameraState& inState"]
+api_params = ["const oa::Camera& inCamera"]
 notes = "Compute the camera right direction."
 
 [[ops]]
@@ -123,7 +125,7 @@ kind = "unary"
 body = "cpu_util"
 generate_declaration = false
 api_return = "VlmVec3"
-api_params = ["const oa::CameraState& inState"]
+api_params = ["const oa::Camera& inCamera"]
 notes = "Compute the camera up direction."
 
 [[ops]]
@@ -134,7 +136,7 @@ body = "cpu_util"
 generate_declaration = false
 api_return = "void"
 api_params = [
-    "oa::CameraState& inState",
+    "oa::Camera& inCamera",
     "oa::F32 inFovY",
     "oa::F32 inAspect",
     "oa::F32 inNear",
@@ -150,7 +152,7 @@ body = "cpu_util"
 generate_declaration = false
 api_return = "void"
 api_params = [
-    "oa::CameraState& inState",
+    "oa::Camera& inCamera",
     "oa::F32 inWidth",
     "oa::F32 inHeight",
     "oa::F32 inNear = 0.0f",
@@ -166,7 +168,7 @@ body = "cpu_util"
 generate_declaration = false
 api_return = "void"
 api_params = [
-    "oa::CameraState& inState",
+    "oa::Camera& inCamera",
     "oa::F32 inWindowWidth",
     "oa::F32 inWindowHeight",
 ]
@@ -179,7 +181,7 @@ kind = "unary"
 body = "cpu_util"
 generate_declaration = false
 api_return = "void"
-api_params = ["oa::CameraState& inState", "oa::F32 inAspect"]
+api_params = ["oa::Camera& inCamera", "oa::F32 inAspect"]
 notes = "Set projection aspect ratio."
 
 [[ops]]
@@ -189,8 +191,28 @@ kind = "unary"
 body = "cpu_util"
 generate_declaration = false
 api_return = "oa::CameraProjection"
-api_params = ["const oa::CameraState& inState"]
+api_params = ["const oa::Camera& inCamera"]
 notes = "Read the projection kind."
+
+[[ops]]
+name = "getAspectRatio"
+category = "Camera"
+kind = "unary"
+body = "cpu_util"
+generate_declaration = false
+api_return = "oa::F32"
+api_params = ["const oa::Camera& inCamera"]
+notes = "Read the perspective aspect ratio."
+
+[[ops]]
+name = "getOrthographicSize"
+category = "Camera"
+kind = "unary"
+body = "cpu_util"
+generate_declaration = false
+api_return = "VlmVec2"
+api_params = ["const oa::Camera& inCamera"]
+notes = "Read the orthographic width and height."
 
 [[ops]]
 name = "getViewMatrix"
@@ -199,7 +221,7 @@ kind = "unary"
 body = "cpu_util"
 generate_declaration = false
 api_return = "VlmMat4"
-api_params = ["const oa::CameraState& inState"]
+api_params = ["const oa::Camera& inCamera"]
 notes = "Compute the view matrix."
 
 [[ops]]
@@ -209,7 +231,7 @@ kind = "unary"
 body = "cpu_util"
 generate_declaration = false
 api_return = "VlmMat4"
-api_params = ["const oa::CameraState& inState"]
+api_params = ["const oa::Camera& inCamera"]
 notes = "Compute the projection matrix."
 
 [[ops]]
@@ -219,7 +241,7 @@ kind = "unary"
 body = "cpu_util"
 generate_declaration = false
 api_return = "VlmMat4"
-api_params = ["const oa::CameraState& inState"]
+api_params = ["const oa::Camera& inCamera"]
 notes = "Compute projection multiplied by view."
 
 [[ops]]
@@ -229,7 +251,7 @@ kind = "unary"
 body = "cpu_util"
 generate_declaration = false
 api_return = "void"
-api_params = ["oa::CameraState& inState", "oa::F32 inNear", "oa::F32 inFar"]
+api_params = ["oa::Camera& inCamera", "oa::F32 inNear", "oa::F32 inFar"]
 notes = "Set near and far clip planes."
 
 [[ops]]
@@ -239,7 +261,7 @@ kind = "unary"
 body = "cpu_util"
 generate_declaration = false
 api_return = "oa::F32"
-api_params = ["const oa::CameraState& inState"]
+api_params = ["const oa::Camera& inCamera"]
 notes = "Read the near clip plane."
 
 [[ops]]
@@ -249,7 +271,7 @@ kind = "unary"
 body = "cpu_util"
 generate_declaration = false
 api_return = "oa::F32"
-api_params = ["const oa::CameraState& inState"]
+api_params = ["const oa::Camera& inCamera"]
 notes = "Read the far clip plane."
 
 [[ops]]
@@ -259,7 +281,7 @@ kind = "unary"
 body = "cpu_util"
 generate_declaration = false
 api_return = "void"
-api_params = ["oa::CameraState& inState", "oa::F32 inFovY"]
+api_params = ["oa::Camera& inCamera", "oa::F32 inFovY"]
 notes = "Set vertical field of view."
 
 [[ops]]
@@ -269,7 +291,7 @@ kind = "unary"
 body = "cpu_util"
 generate_declaration = false
 api_return = "oa::F32"
-api_params = ["const oa::CameraState& inState"]
+api_params = ["const oa::Camera& inCamera"]
 notes = "Read vertical field of view."
 
 [[ops]]
@@ -279,7 +301,7 @@ kind = "unary"
 body = "cpu_util"
 generate_declaration = false
 api_return = "void"
-api_params = ["oa::CameraState& inState", "oa::F32 inZoom"]
+api_params = ["oa::Camera& inCamera", "oa::F32 inZoom"]
 notes = "Set orthographic zoom."
 
 [[ops]]
@@ -289,7 +311,7 @@ kind = "unary"
 body = "cpu_util"
 generate_declaration = false
 api_return = "oa::F32"
-api_params = ["const oa::CameraState& inState"]
+api_params = ["const oa::Camera& inCamera"]
 notes = "Read orthographic zoom."
 
 [[ops]]
@@ -299,7 +321,7 @@ kind = "unary"
 body = "cpu_util"
 generate_declaration = false
 api_return = "void"
-api_params = ["oa::CameraState& inState", "oa::F32 inFocalLengthMm"]
+api_params = ["oa::Camera& inCamera", "oa::F32 inFocalLengthMm"]
 notes = "Set focal length in millimetres."
 
 [[ops]]
@@ -309,7 +331,7 @@ kind = "unary"
 body = "cpu_util"
 generate_declaration = false
 api_return = "oa::F32"
-api_params = ["const oa::CameraState& inState"]
+api_params = ["const oa::Camera& inCamera"]
 notes = "Read focal length in millimetres."
 
 [[ops]]
@@ -319,7 +341,7 @@ kind = "unary"
 body = "cpu_util"
 generate_declaration = false
 api_return = "void"
-api_params = ["oa::CameraState& inState", "oa::F32 inSensorHeightMm"]
+api_params = ["oa::Camera& inCamera", "oa::F32 inSensorHeightMm"]
 notes = "Set sensor height in millimetres."
 
 [[ops]]
@@ -329,7 +351,7 @@ kind = "unary"
 body = "cpu_util"
 generate_declaration = false
 api_return = "oa::F32"
-api_params = ["const oa::CameraState& inState"]
+api_params = ["const oa::Camera& inCamera"]
 notes = "Read sensor height in millimetres."
 
 [[ops]]
@@ -339,7 +361,7 @@ kind = "unary"
 body = "cpu_util"
 generate_declaration = false
 api_return = "oa::F32"
-api_params = ["const oa::CameraState& inState"]
+api_params = ["const oa::Camera& inCamera"]
 notes = "Compute effective vertical field of view."
 
 [[ops]]
@@ -350,7 +372,7 @@ body = "cpu_util"
 generate_declaration = false
 api_return = "void"
 api_params = [
-    "oa::CameraState& inState",
+    "oa::Camera& inCamera",
     "oa::F32 inOffsetX",
     "oa::F32 inOffsetY",
 ]
@@ -363,7 +385,7 @@ kind = "unary"
 body = "cpu_util"
 generate_declaration = false
 api_return = "VlmVec2"
-api_params = ["const oa::CameraState& inState"]
+api_params = ["const oa::Camera& inCamera"]
 notes = "Read projection offset."
 
 [[ops]]
@@ -373,7 +395,7 @@ kind = "unary"
 body = "cpu_util"
 generate_declaration = false
 api_return = "void"
-api_params = ["oa::CameraState& inState", "const VlmVec3& inTarget"]
+api_params = ["oa::Camera& inCamera", "const VlmVec3& inTarget"]
 notes = "Set the orbit target."
 
 [[ops]]
@@ -383,7 +405,7 @@ kind = "unary"
 body = "cpu_util"
 generate_declaration = false
 api_return = "void"
-api_params = ["oa::CameraState& inState", "oa::F32 inDistance"]
+api_params = ["oa::Camera& inCamera", "oa::F32 inDistance"]
 notes = "Set distance from the orbit target."
 
 [[ops]]
@@ -394,7 +416,7 @@ body = "cpu_util"
 generate_declaration = false
 api_return = "void"
 api_params = [
-    "oa::CameraState& inState",
+    "oa::Camera& inCamera",
     "oa::F32 inYawDelta",
     "oa::F32 inPitchDelta",
 ]
@@ -407,7 +429,7 @@ kind = "unary"
 body = "cpu_util"
 generate_declaration = false
 api_return = "void"
-api_params = ["oa::CameraState& inState", "oa::F32 inYaw", "oa::F32 inPitch"]
+api_params = ["oa::Camera& inCamera", "oa::F32 inYaw", "oa::F32 inPitch"]
 notes = "Set absolute orbit yaw and pitch."
 
 [[ops]]
@@ -418,7 +440,7 @@ body = "cpu_util"
 generate_declaration = false
 api_return = "void"
 api_params = [
-    "oa::CameraState& inState",
+    "oa::Camera& inCamera",
     "oa::F32 inYawDeg",
     "oa::F32 inPitchDeg",
     "oa::F32 inRollDeg",
@@ -432,7 +454,7 @@ kind = "unary"
 body = "cpu_util"
 generate_declaration = false
 api_return = "VlmVec3"
-api_params = ["const oa::CameraState& inState"]
+api_params = ["const oa::Camera& inCamera"]
 notes = "Read Euler rotation in degrees."
 
 [[ops]]
@@ -443,7 +465,7 @@ body = "cpu_util"
 generate_declaration = false
 api_return = "void"
 api_params = [
-    "oa::CameraState& inState",
+    "oa::Camera& inCamera",
     "oa::F32 inRight",
     "oa::F32 inUp",
     "oa::F32 inForward",

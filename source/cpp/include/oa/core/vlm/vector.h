@@ -22,14 +22,11 @@ template <typename T> struct Vec2;
 template <typename T> struct Vec3;
 template <typename T> struct Vec4;
 template <typename T>
-[[nodiscard]] OA_NOINLINE Vec2<T> normalizeScaled(
-	const Vec2<T>& inValue) noexcept;
+[[nodiscard]] OA_NOINLINE Vec2<T> normalizeScaled(const Vec2<T>& inValue) noexcept;
 template <typename T>
-[[nodiscard]] OA_NOINLINE Vec3<T> normalizeScaled(
-	const Vec3<T>& inValue) noexcept;
+[[nodiscard]] OA_NOINLINE Vec3<T> normalizeScaled(const Vec3<T>& inValue) noexcept;
 template <typename T>
-[[nodiscard]] OA_NOINLINE Vec4<T> normalizeScaled(
-	const Vec4<T>& inValue) noexcept;
+[[nodiscard]] OA_NOINLINE Vec4<T> normalizeScaled(const Vec4<T>& inValue) noexcept;
 } // namespace detail
 
 template <typename T>
@@ -72,7 +69,7 @@ namespace detail {
 
 template <typename T>
 struct Vec2 {
-	static_assert(oa::IsFloatingPointV<T>);
+	static_assert(oa::isFloatingPointV<T>);
 
 	T x = T(0);
 	T y = T(0);
@@ -170,7 +167,7 @@ template <typename T>
 
 template <typename T>
 struct Vec3 {
-	static_assert(oa::IsFloatingPointV<T>);
+	static_assert(oa::isFloatingPointV<T>);
 
 	T x = T(0);
 	T y = T(0);
@@ -199,8 +196,7 @@ struct Vec3 {
 			return oa::sqrt(squaredLength);
 		}
 		if (not isFinite()) return oa::sqrt(squaredLength);
-		const T magnitude = oa::max(
-			oa::abs(x), oa::max(oa::abs(y), oa::abs(z)));
+		const T magnitude = oa::max(oa::abs(x), oa::max(oa::abs(y), oa::abs(z)));
 		if (magnitude == T(0)) return T(0);
 		const T sx = x / magnitude;
 		const T sy = y / magnitude;
@@ -276,7 +272,7 @@ template <typename T>
 
 template <typename T>
 struct Vec4 {
-	static_assert(oa::IsFloatingPointV<T>);
+	static_assert(oa::isFloatingPointV<T>);
 
 	T x = T(0);
 	T y = T(0);

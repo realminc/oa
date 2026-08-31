@@ -202,6 +202,8 @@ set(OA_STANDALONE_KERNEL_NAMES
 	"DrawGlyphs"
 	"DrawRect"
 	"DrawWaveform"
+	"MaskRoundedViewport"
+	"DrawTriangle"
 	"VertexColorLit.vert"
 	"VertexColorLit.frag"
 	"Stft"
@@ -425,6 +427,8 @@ set(OA_STANDALONE_KERNEL_SOURCES
 	"source/cpp/lib/oa/ui/shader/compute/drawGlyphs.slang"
 	"source/cpp/lib/oa/ui/shader/compute/drawRect.slang"
 	"source/cpp/lib/oa/ui/shader/compute/drawWaveform.slang"
+	"source/cpp/lib/oa/ui/shader/compute/maskRoundedViewport.slang"
+	"source/cpp/lib/oa/ui/shader/compute/drawTriangle.slang"
 	"source/cpp/lib/oa/render/shader/graphics/vertexColorLit.vert.slang"
 	"source/cpp/lib/oa/render/shader/graphics/vertexColorLit.frag.slang"
 	"source/cpp/lib/oa/audio/shader/compute/transform/stft.slang"
@@ -668,8 +672,12 @@ set(OA_STANDALONE_KERNEL_PROFILES
 	"core"
 	"core"
 	"core"
+	"core"
+	"core"
 )
 set(OA_STANDALONE_KERNEL_STAGES
+	"compute"
+	"compute"
 	"compute"
 	"compute"
 	"compute"
@@ -893,6 +901,8 @@ set(OA_STANDALONE_KERNEL_STAGES
 	"compute"
 )
 set(OA_STANDALONE_KERNEL_CONDITIONS
+	"always"
+	"always"
 	"always"
 	"always"
 	"always"

@@ -245,7 +245,7 @@ inline void appendInteger(Output& out, T inValue, const FormatSpec& inSpec) {
 	requireFormat(inSpec.precision < 0, "integer precision is not supported");
 	const oa::U32 base = type == 'x' or type == 'X' ? 16U : (type == 'b' ? 2U : (type == 'o' ? 8U : 10U));
 	using Value = oa::RemoveCvrefT<T>;
-	constexpr bool isSigned = oa::IsSignedV<Value>;
+	constexpr bool isSigned = oa::isSignedV<Value>;
 	const bool negative = isSigned and inValue < 0;
 	const oa::U64 raw = static_cast<oa::U64>(inValue);
 	const oa::U64 magnitude = negative ? oa::U64(0) - raw : raw;
@@ -293,28 +293,28 @@ inline void appendString(Output& out, oa::StringView inValue, const FormatSpec& 
 template<typename Output, typename T>
 inline void appendArgumentValue(Output& out, T&& inValue, const FormatSpec& spec) {
 	using Value = oa::RemoveCvrefT<T>;
-	if constexpr (oa::IsSameV<Value, oa::String>) {
+	if constexpr (oa::isSameV<Value, oa::String>) {
 		appendString(out, inValue.view(), spec);
-	} else if constexpr (oa::IsSameV<Value, oa::StringView>) {
+	} else if constexpr (oa::isSameV<Value, oa::StringView>) {
 		appendString(out, inValue, spec);
-	} else if constexpr (oa::IsSameV<Value, decltype(nullptr)>) {
+	} else if constexpr (oa::isSameV<Value, decltype(nullptr)>) {
 		requireFormat(spec.type == 0 or spec.type == 'p',
 			"pointer format type must be p");
 		FormatSpec pointerSpec = spec;
 		pointerSpec.type = 'x';
 		pointerSpec.alternate = true;
 		appendInteger(out, oa::Usize{0}, pointerSpec);
-	} else if constexpr (oa::IsConvertibleV<T, const char*>) {
+	} else if constexpr (oa::isConvertibleV<T, const char*>) {
 		const char* text = inValue;
 		requireFormat(text != nullptr, "cannot format a null C string");
 		appendString(out, oa::StringView(text), spec);
-	} else if constexpr (oa::IsSameV<Value, bool>) {
+	} else if constexpr (oa::isSameV<Value, bool>) {
 		if (spec.type == 0 or spec.type == 's') {
 			appendString(out, inValue ? oa::StringView("true") : oa::StringView("false"), spec);
 		} else {
 			appendInteger(out, static_cast<oa::U8>(inValue ? 1U : 0U), spec);
 		}
-	} else if constexpr (oa::IsSameV<Value, char>) {
+	} else if constexpr (oa::isSameV<Value, char>) {
 		if (spec.type == 0 or spec.type == 'c') {
 			requireFormat(spec.sign == 0 and not spec.alternate and not spec.zero
 				and spec.precision < 0, "numeric flags are invalid for characters");
@@ -323,11 +323,11 @@ inline void appendArgumentValue(Output& out, T&& inValue, const FormatSpec& spec
 		} else {
 			appendInteger(out, static_cast<unsigned char>(inValue), spec);
 		}
-	} else if constexpr (oa::IsIntegralV<Value>) {
+	} else if constexpr (oa::isIntegralV<Value>) {
 		appendInteger(out, inValue, spec);
-	} else if constexpr (oa::IsEnumV<Value>) {
+	} else if constexpr (oa::isEnumV<Value>) {
 		appendInteger(out, static_cast<__underlying_type(Value)>(inValue), spec);
-	} else if constexpr (oa::IsSameV<Value, float> or oa::IsSameV<Value, double>) {
+	} else if constexpr (oa::isSameV<Value, float> or oa::isSameV<Value, double>) {
 		const char type = spec.type == 0 ? 'g' : spec.type;
 		requireFormat(type == 'f' or type == 'F' or type == 'e' or type == 'E'
 			or type == 'g' or type == 'G',
@@ -350,7 +350,7 @@ inline void appendArgumentValue(Output& out, T&& inValue, const FormatSpec& spec
 			alignedSpec.zero = false;
 		}
 		appendAligned(out, valueView, alignedSpec, true);
-	} else if constexpr (oa::IsPointerV<Value>) {
+	} else if constexpr (oa::isPointerV<Value>) {
 		requireFormat(spec.type == 0 or spec.type == 'p',
 			"pointer format type must be p");
 		FormatSpec pointerSpec = spec;

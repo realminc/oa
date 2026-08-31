@@ -164,10 +164,12 @@ TEST_F(TestUi, ThemePresetsAreDefinedValidatedAndDisplayEncoded)
 	const oa::UiStyle realmLight = oa::UiStyle::realmLight();
 	const oa::UiStyle editorDark = oa::UiStyle::editorDark();
 	const oa::UiStyle editorLight = oa::UiStyle::editorLight();
+	const oa::UiStyle viewerDark = oa::UiStyle::viewerDark();
 	EXPECT_TRUE(realmDark.validate().isOk());
 	EXPECT_TRUE(realmLight.validate().isOk());
 	EXPECT_TRUE(editorDark.validate().isOk());
 	EXPECT_TRUE(editorLight.validate().isOk());
+	EXPECT_TRUE(viewerDark.validate().isOk());
 	EXPECT_EQ(editorDark.background.toU32(), 0x181818FFU);
 	EXPECT_EQ(editorDark.surface.toU32(), 0x313131FFU);
 	EXPECT_EQ(editorDark.accent.toU32(), 0x0078D4FFU);
@@ -183,9 +185,31 @@ TEST_F(TestUi, ThemePresetsAreDefinedValidatedAndDisplayEncoded)
 	EXPECT_FALSE(invalid.validate().isOk());
 
 	const oa::ViewerConfig viewer;
-	EXPECT_EQ(viewer.style.background.toU32(), editorDark.background.toU32());
-	EXPECT_EQ(viewer.style.accent.toU32(), editorDark.accent.toU32());
-	EXPECT_FALSE(viewer.customWindowDecoration);
+	EXPECT_EQ(viewer.style.background.toU32(), 0x181818FFU);
+	EXPECT_EQ(viewer.style.accent.toU32(), 0xF5F5F5FFU);
+	EXPECT_FLOAT_EQ(viewer.style.cornerRadius, 15.0F);
+	EXPECT_EQ(viewer.canvasBackground, oa::ViewerCanvasBackground::Gradient);
+	EXPECT_TRUE(viewer.showCanvasGrid);
+	EXPECT_TRUE(viewer.customWindowDecoration);
+	EXPECT_TRUE(viewer.autoHideControls);
+	EXPECT_EQ(viewer.controlsHideDelayMs, 2'000U);
+	EXPECT_EQ(viewer.motionSpeed, oa::UiMotionSpeed::Fast);
+	EXPECT_FALSE(viewer.showStats);
+
+	EXPECT_STREQ(oa::uiMotionSpeedName(oa::UiMotionSpeed::Normal), "Normal");
+	EXPECT_STREQ(oa::uiMotionSpeedName(oa::UiMotionSpeed::Fast), "Fast");
+	EXPECT_STREQ(oa::uiMotionSpeedName(oa::UiMotionSpeed::Fastest), "Fastest");
+	EXPECT_STREQ(oa::uiMotionSpeedName(oa::UiMotionSpeed::Instant), "Instant");
+	EXPECT_FLOAT_EQ(
+		oa::uiMotionDurationMs(200.0F, oa::UiMotionSpeed::Normal), 200.0F);
+	EXPECT_FLOAT_EQ(
+		oa::uiMotionDurationMs(200.0F, oa::UiMotionSpeed::Fast), 130.0F);
+	EXPECT_FLOAT_EQ(
+		oa::uiMotionDurationMs(200.0F, oa::UiMotionSpeed::Fastest), 70.0F);
+	EXPECT_FLOAT_EQ(
+		oa::uiMotionDurationMs(200.0F, oa::UiMotionSpeed::Instant), 0.0F);
+	EXPECT_FALSE(oa::isValidUiMotionSpeed(
+		static_cast<oa::UiMotionSpeed>(255U)));
 }
 
 TEST_VK(TestUi, UiRejectsInvalidBaseAndStackStylesAtTheirAdmissionBoundary)
@@ -199,6 +223,12 @@ TEST_VK(TestUi, UiRejectsInvalidBaseAndStackStylesAtTheirAdmissionBoundary)
 
 	oa::Ui ui;
 	ASSERT_TRUE(ui.init(*engine, oa::UiStyle::editorDark()).isOk());
+	EXPECT_EQ(ui.motionSpeed(), oa::UiMotionSpeed::Normal);
+	ASSERT_TRUE(ui.setMotionSpeed(oa::UiMotionSpeed::Fastest).isOk());
+	EXPECT_EQ(ui.motionSpeed(), oa::UiMotionSpeed::Fastest);
+	EXPECT_FALSE(ui.setMotionSpeed(
+		static_cast<oa::UiMotionSpeed>(255U)).isOk());
+	EXPECT_EQ(ui.motionSpeed(), oa::UiMotionSpeed::Fastest);
 	ui.beginFrame(16.0F, {0, 0, 16, 16});
 	invalid = oa::UiStyle::editorDark();
 	invalid.accent.a = std::numeric_limits<oa::F32>::infinity();
@@ -228,6 +258,13 @@ TEST_VK(TestUi, UiRejectsInvalidBaseAndStackStylesAtTheirAdmissionBoundary)
 	ui.beginFrame(16.0F, {0, 0, 16, 16});
 	ui.textAt("invalid direction", {0, 0, 16, 16}, {
 		.direction = static_cast<oa::UiTextDirection>(255U),
+	});
+	EXPECT_FALSE(ui.recordRender(VK_NULL_HANDLE, OA_BINDLESS_INVALID).isOk());
+	ui.endFrame();
+
+	ui.beginFrame(16.0F, {0, 0, 16, 16});
+	ui.textAt("invalid font", {0, 0, 16, 16}, {
+		.font = static_cast<oa::FontId>(255U),
 	});
 	EXPECT_FALSE(ui.recordRender(VK_NULL_HANDLE, OA_BINDLESS_INVALID).isOk());
 	ui.endFrame();
@@ -682,6 +719,38 @@ TEST_F(TestUi, ViewerNavigationIsTransactionalAnchoredAndFramePartitionIndepende
 	EXPECT_FALSE(registerViewportShortcuts(input, invalidNavigation).isOk());
 }
 
+TEST_F(TestUi, ViewerNavigationMotionPresetsScaleFitAndCanSnapInstantly)
+{
+	oa::Navigation normal;
+	oa::Navigation fast;
+	oa::Navigation instant;
+	for (oa::Navigation* navigation : {&normal, &fast, &instant}) {
+		ASSERT_TRUE(navigation->setContentSize(1600.0F, 900.0F).isOk());
+		ASSERT_TRUE(navigation->setWindowSize(800.0F, 600.0F).isOk());
+		ASSERT_TRUE(navigation->fitToWindow(false).isOk());
+		ASSERT_TRUE(navigation->keyboardZoomTo100().isOk());
+		ASSERT_TRUE(navigation->update(200.0F).isOk());
+	}
+	ASSERT_TRUE(fast.setMotionSpeed(oa::UiMotionSpeed::Fast).isOk());
+	ASSERT_TRUE(instant.setMotionSpeed(oa::UiMotionSpeed::Instant).isOk());
+	ASSERT_TRUE(normal.keyboardFitToWindow().isOk());
+	ASSERT_TRUE(fast.keyboardFitToWindow().isOk());
+	ASSERT_TRUE(instant.keyboardFitToWindow().isOk());
+	EXPECT_TRUE(normal.isAnimating());
+	EXPECT_TRUE(fast.isAnimating());
+	EXPECT_FALSE(instant.isAnimating());
+	ASSERT_TRUE(normal.update(130.0F).isOk());
+	ASSERT_TRUE(fast.update(130.0F).isOk());
+	EXPECT_TRUE(normal.isAnimating());
+	EXPECT_FALSE(fast.isAnimating());
+	EXPECT_NEAR(fast.zoom(), instant.zoom(), 1.0e-6F);
+	EXPECT_NEAR(fast.panX(), instant.panX(), 1.0e-4F);
+	EXPECT_NEAR(fast.panY(), instant.panY(), 1.0e-4F);
+	EXPECT_FALSE(fast.setMotionSpeed(
+		static_cast<oa::UiMotionSpeed>(255U)).isOk());
+	EXPECT_EQ(fast.motionSpeed(), oa::UiMotionSpeed::Fast);
+}
+
 TEST_F(TestUi, PassiveViewportDescriptorsRejectInvalidGeometryTransactionally)
 {
 	oa::ViewportDesc descriptor{10, 20, 640, 360, 0.0F, 1.0F};
@@ -830,6 +899,164 @@ TEST_VK(TestUi, NodeCanvasGridRendersAdaptiveDecimalHierarchyInOneClip)
 	ASSERT_TRUE(ui.close().isOk());
 }
 
+TEST_VK(TestUi, CanvasGridDithersGradientAndFadesOnlyGuides)
+{
+	auto* engine = testEnginePtr();
+	ASSERT_NE(engine, nullptr);
+	UiStorageTarget target;
+	ASSERT_TRUE(target.init(*engine, 48U, 24U).isOk());
+	oa::Ui ui;
+	ASSERT_TRUE(ui.init(*engine).isOk());
+	ASSERT_TRUE(ui.initBlit(nullptr).isOk());
+
+	ui.beginFrame(16.0F, {0, 0, 48, 24});
+	ui.grid({0, 0, 24, 24}, {
+		.backgroundTop = oa::Color::fromU32(0x202020FFU),
+		.backgroundBottom = oa::Color::fromU32(0x202020FFU),
+		.fillBackground = true,
+		.drawGrid = false,
+		.drawAxes = false,
+		.ditherBackground = true,
+	});
+	ui.grid({24, 0, 24, 24}, {
+		.origin = {36.0F, 12.0F},
+		.minorSpacing = {4.0F, 4.0F},
+		.guideFadeCenter = {36.0F, 12.0F},
+		.guideFadeInnerRadius = 3.0F,
+		.guideFadeOuterRadius = 8.0F,
+		.backgroundTop = {1.0F, 1.0F, 1.0F, 1.0F},
+		.backgroundBottom = {1.0F, 1.0F, 1.0F, 1.0F},
+		.minorColor = {0.0F, 0.0F, 0.0F, 1.0F},
+		.majorColor = {0.0F, 0.0F, 0.0F, 1.0F},
+		.superMajorColor = {0.0F, 0.0F, 0.0F, 1.0F},
+		.fillBackground = true,
+		.drawGrid = true,
+		.drawAxes = false,
+		.radialGuideFade = true,
+	});
+
+	auto streamResult = oavk::Stream::createCompute(
+		oa::EngineDeviceAccess::get(*engine));
+	ASSERT_TRUE(streamResult.isOk()) << streamResult.getStatus().toString();
+	oavk::Stream stream = oa::move(*streamResult);
+	ASSERT_TRUE(stream.begin(oa::EngineDeviceAccess::get(*engine)).isOk());
+	const VkCommandBuffer commandBuffer =
+		static_cast<VkCommandBuffer>(stream.commandBuffer);
+	target.recordInitialize(commandBuffer);
+	ASSERT_TRUE(ui.recordRender(commandBuffer, target.bindlessIndex).isOk());
+	target.recordReadback(stream);
+	ASSERT_TRUE(stream.submitAndWait(*engine).isOk());
+	const oa::Event completion = oa::EventAccess::create(
+		oa::EngineDeviceAccess::get(*engine),
+		stream.timelineSem,
+		stream.timelineValue);
+	ASSERT_TRUE(ui.markFrameSubmitted(completion).isOk());
+	ui.endFrame();
+
+	oa::Array<oa::U8, 48U * 24U * 4U> pixels{};
+	ASSERT_TRUE(oa::EngineResourceAccess::readbackBuffer(
+		*engine, target.readback, 0U, pixels.data(), pixels.size()).isOk());
+	const auto channel = [&](oa::U32 x, oa::U32 y, oa::U32 component) {
+		return pixels[(y * 48U + x) * 4U + component];
+	};
+	oa::U8 ditherMin = 255U;
+	oa::U8 ditherMax = 0U;
+	for (oa::U32 x = 0U; x < 24U; ++x) {
+		ditherMin = oa::min(ditherMin, channel(x, 12U, 0U));
+		ditherMax = oa::max(ditherMax, channel(x, 12U, 0U));
+	}
+	EXPECT_LT(ditherMin, ditherMax);
+	EXPECT_LT(channel(35U, 11U, 0U), 32U);
+	EXPECT_EQ(channel(24U, 0U, 0U), 255U);
+	EXPECT_EQ(channel(47U, 23U, 0U), 255U);
+
+	stream.destroy(oa::EngineDeviceAccess::get(*engine));
+	ASSERT_TRUE(ui.close().isOk());
+}
+
+TEST_VK(TestUi, WaveformTimelineCompositesAndUsesTimelineThumbTravel)
+{
+	auto* engine = testEnginePtr();
+	ASSERT_NE(engine, nullptr);
+	UiStorageTarget target;
+	ASSERT_TRUE(target.init(*engine, 32U, 16U).isOk());
+	oa::Ui ui;
+	ASSERT_TRUE(ui.init(*engine).isOk());
+	ASSERT_TRUE(ui.initBlit(nullptr).isOk());
+
+	const oa::Array<oa::F32, 8> values{
+		-0.5F, 0.5F,
+		-0.5F, 0.5F,
+		-0.5F, 0.5F,
+		-0.5F, 0.5F,
+	};
+	oa::Matrix envelope = oa::FnMatrix::fromBytes(
+		oa::Span<const oa::U8>(
+			reinterpret_cast<const oa::U8*>(values.data()), sizeof(values)),
+		oa::MatrixShape{4, 2},
+		oa::ScalarType::Float32);
+	ASSERT_TRUE(envelope.hasStorage());
+
+	oa::UiStyle style = ui.currentStyle();
+	style.accent = {0.0F, 1.0F, 0.0F, 1.0F};
+	style.textSecondary = {0.0F, 0.0F, 1.0F, 1.0F};
+	style.text = {1.0F, 1.0F, 1.0F, 1.0F};
+	oa::F32 fraction = 0.25F;
+	ui.beginFrame(16.0F, {0, 0, 32, 16});
+	ui.pushStyle(style);
+	ui.rect({0, 0, 32, 16}, {1.0F, 0.0F, 0.0F, 1.0F});
+	EXPECT_FALSE(ui.waveformTimeline(
+		"transparent-waveform", {4, 2, 24, 12}, envelope, fraction));
+	ui.popStyle();
+
+	auto streamResult = oavk::Stream::createCompute(
+		oa::EngineDeviceAccess::get(*engine));
+	ASSERT_TRUE(streamResult.isOk()) << streamResult.getStatus().toString();
+	oavk::Stream stream = oa::move(*streamResult);
+	ASSERT_TRUE(stream.begin(oa::EngineDeviceAccess::get(*engine)).isOk());
+	const VkCommandBuffer commandBuffer =
+		static_cast<VkCommandBuffer>(stream.commandBuffer);
+	target.recordInitialize(commandBuffer);
+	ASSERT_TRUE(ui.recordRender(commandBuffer, target.bindlessIndex).isOk());
+	target.recordReadback(stream);
+	ASSERT_TRUE(stream.submitAndWait(*engine).isOk());
+	const oa::Event completion = oa::EventAccess::create(
+		oa::EngineDeviceAccess::get(*engine),
+		stream.timelineSem,
+		stream.timelineValue);
+	ASSERT_TRUE(ui.markFrameSubmitted(completion).isOk());
+	ui.endFrame();
+
+	oa::Array<oa::U8, 32U * 16U * 4U> pixels{};
+	ASSERT_TRUE(oa::EngineResourceAccess::readbackBuffer(
+		*engine, target.readback, 0U, pixels.data(), pixels.size()).isOk());
+	const auto pixel = [&](oa::U32 inX, oa::U32 inY, oa::U32 inChannel) {
+		return pixels[(inY * 32U + inX) * 4U + inChannel];
+	};
+	// A point inside the waveform bounds but outside the min/max span retains
+	// the exact canvas color: the widget does not paint a separate panel.
+	EXPECT_EQ(pixel(5U, 3U, 0U), 255U);
+	EXPECT_EQ(pixel(5U, 3U, 1U), 0U);
+	EXPECT_EQ(pixel(5U, 3U, 2U), 0U);
+	EXPECT_EQ(pixel(5U, 3U, 3U), 255U);
+	// The played waveform still composites as the configured opaque accent.
+	EXPECT_EQ(pixel(5U, 7U, 0U), 0U);
+	EXPECT_EQ(pixel(5U, 7U, 1U), 255U);
+	EXPECT_EQ(pixel(5U, 7U, 2U), 0U);
+	EXPECT_EQ(pixel(5U, 7U, 3U), 255U);
+	// A 12-pixel timeline thumb travels through the same 24-pixel rect from
+	// center x=10 to x=22. At 25%, the centered two-pixel waveform playhead is
+	// therefore x=12..13, not the old full-width position at x=10.
+	EXPECT_EQ(pixel(10U, 3U, 0U), 255U);
+	EXPECT_EQ(pixel(10U, 3U, 1U), 0U);
+	EXPECT_EQ(pixel(12U, 3U, 0U), 255U);
+	EXPECT_EQ(pixel(12U, 3U, 1U), 255U);
+	EXPECT_EQ(pixel(12U, 3U, 2U), 255U);
+
+	stream.destroy(oa::EngineDeviceAccess::get(*engine));
+	ASSERT_TRUE(ui.close().isOk());
+}
+
 TEST_VK(TestUi, RoundedRectsAndChevronButtonsComposeAccessibleOsdGeometry)
 {
 	auto* engine = testEnginePtr();
@@ -913,6 +1140,210 @@ TEST_VK(TestUi, RoundedRectsAndChevronButtonsComposeAccessibleOsdGeometry)
 	EXPECT_TRUE(ui.chevronButton(
 		"Previous", {32, 0, 24, 24}, oa::UiChevronDirection::Previous));
 	ui.endFrame();
+
+	ui.beginFrame(16.0F, {0, 0, 280, 32});
+	EXPECT_FALSE(ui.iconButton("Play", {0, 0, 24, 24}, oa::UiIcon::Play));
+	EXPECT_FALSE(ui.iconButton(
+		"Menu", {32, 0, 24, 24}, oa::UiIcon::Menu, true,
+		oa::UiIconButtonStyle::Header));
+	EXPECT_FALSE(ui.iconButton(
+		"Minimize", {64, 0, 24, 24}, oa::UiIcon::Minimize, true,
+		oa::UiIconButtonStyle::WindowControl));
+	EXPECT_FALSE(ui.iconButton(
+		"Maximize", {96, 0, 24, 24}, oa::UiIcon::Maximize, true,
+		oa::UiIconButtonStyle::WindowControl));
+	EXPECT_FALSE(ui.iconButton(
+		"Restore", {128, 0, 24, 24}, oa::UiIcon::Restore, true,
+		oa::UiIconButtonStyle::WindowControl));
+	EXPECT_FALSE(ui.iconButton(
+		"Fullscreen", {160, 0, 24, 24}, oa::UiIcon::Fullscreen));
+	EXPECT_FALSE(ui.iconButton(
+		"Volume", {192, 0, 24, 24}, oa::UiIcon::Volume));
+	EXPECT_FALSE(ui.iconButton(
+		"Muted", {224, 0, 24, 24}, oa::UiIcon::Muted));
+	EXPECT_FALSE(ui.iconButton(
+		"Settings", {256, 0, 24, 24}, oa::UiIcon::Settings));
+	const auto iconNodes = ui.accessibilitySnapshot();
+	ASSERT_EQ(iconNodes.size(), 9U);
+	EXPECT_EQ(testStdString(iconNodes[0].label), "Play");
+	EXPECT_EQ(testStdString(iconNodes[1].label), "Menu");
+	EXPECT_EQ(testStdString(iconNodes[2].label), "Minimize");
+	EXPECT_EQ(testStdString(iconNodes[3].label), "Maximize");
+	EXPECT_EQ(testStdString(iconNodes[4].label), "Restore");
+	EXPECT_EQ(testStdString(iconNodes[5].label), "Fullscreen");
+	EXPECT_EQ(testStdString(iconNodes[6].label), "Volume");
+	EXPECT_EQ(testStdString(iconNodes[7].label), "Muted");
+	EXPECT_EQ(testStdString(iconNodes[8].label), "Settings");
+	ui.endFrame();
+	ASSERT_TRUE(ui.close().isOk());
+}
+
+TEST_VK(TestUi, TransportButtonsUseFilledOpaqueGlyphsAndSharedHoverSurface)
+{
+	auto* engine = testEnginePtr();
+	ASSERT_NE(engine, nullptr);
+	UiStorageTarget target;
+	ASSERT_TRUE(target.init(*engine, 160U, 64U).isOk());
+	oa::Ui ui;
+	ASSERT_TRUE(ui.init(*engine).isOk());
+	ASSERT_TRUE(ui.initBlit(nullptr).isOk());
+
+	ui.beginFrame(16.0F, {0, 0, 160, 64});
+	oa::UiEvent move;
+	move.type = oa::UiEventType::MouseMove;
+	move.mouseX = 80.0F;
+	move.mouseY = 32.0F;
+	EXPECT_FALSE(ui.routeEvent(move));
+	EXPECT_FALSE(ui.iconButton(
+		"Previous at rest", {6, 15, 34, 34}, oa::UiIcon::Previous));
+	EXPECT_FALSE(ui.iconButton(
+		"Play hovered", {52, 4, 56, 56}, oa::UiIcon::Play));
+	EXPECT_FALSE(ui.iconButton(
+		"Next at rest", {120, 15, 34, 34}, oa::UiIcon::Next));
+
+	auto streamResult = oavk::Stream::createCompute(
+		oa::EngineDeviceAccess::get(*engine));
+	ASSERT_TRUE(streamResult.isOk()) << streamResult.getStatus().toString();
+	oavk::Stream stream = oa::move(*streamResult);
+	ASSERT_TRUE(stream.begin(oa::EngineDeviceAccess::get(*engine)).isOk());
+	const VkCommandBuffer commandBuffer =
+		static_cast<VkCommandBuffer>(stream.commandBuffer);
+	target.recordInitialize(commandBuffer);
+	ASSERT_TRUE(ui.recordRender(commandBuffer, target.bindlessIndex).isOk());
+	target.recordReadback(stream);
+	ASSERT_TRUE(stream.submitAndWait(*engine).isOk());
+	const oa::Event completion = oa::EventAccess::create(
+		oa::EngineDeviceAccess::get(*engine),
+		stream.timelineSem,
+		stream.timelineValue);
+	ASSERT_TRUE(ui.markFrameSubmitted(completion).isOk());
+	ui.endFrame();
+
+	oa::Array<oa::U8, 160U * 64U * 4U> pixels{};
+	ASSERT_TRUE(oa::EngineResourceAccess::readbackBuffer(
+		*engine, target.readback, 0U, pixels.data(), pixels.size()).isOk());
+	const auto alpha = [&](oa::U32 x, oa::U32 y) {
+		return pixels[(y * 160U + x) * 4U + 3U];
+	};
+	// All three transport interiors are genuinely filled and fully opaque.
+	EXPECT_EQ(alpha(23U, 32U), 255U);
+	EXPECT_EQ(alpha(78U, 32U), 255U);
+	EXPECT_EQ(alpha(137U, 32U), 255U);
+	// Resting icon targets are transparent outside the glyph. Hover uses the
+	// same 15% white surface as every other icon button.
+	EXPECT_EQ(alpha(35U, 32U), 0U);
+	EXPECT_EQ(alpha(125U, 32U), 0U);
+	EXPECT_GE(alpha(100U, 32U), 35U);
+	EXPECT_LE(alpha(100U, 32U), 41U);
+
+	stream.destroy(oa::EngineDeviceAccess::get(*engine));
+	ASSERT_TRUE(ui.close().isOk());
+}
+
+TEST_VK(TestUi, RoundedViewportMaskProducesPremultipliedTransparentCorners)
+{
+	auto* engine = testEnginePtr();
+	ASSERT_NE(engine, nullptr);
+	UiStorageTarget target;
+	ASSERT_TRUE(target.init(*engine, 32U, 32U).isOk());
+	oa::Ui ui;
+	ASSERT_TRUE(ui.init(*engine).isOk());
+	ASSERT_TRUE(ui.initBlit(nullptr).isOk());
+
+	ui.beginFrame(16.0F, {0, 0, 32, 32});
+	ui.rect({0, 0, 32, 32}, oa::Color{0.0F, 1.0F, 0.0F, 1.0F});
+	ui.maskRoundedViewport(12.0F);
+
+	auto streamResult = oavk::Stream::createCompute(
+		oa::EngineDeviceAccess::get(*engine));
+	ASSERT_TRUE(streamResult.isOk()) << streamResult.getStatus().toString();
+	oavk::Stream stream = oa::move(*streamResult);
+	ASSERT_TRUE(stream.begin(oa::EngineDeviceAccess::get(*engine)).isOk());
+	const VkCommandBuffer commandBuffer =
+		static_cast<VkCommandBuffer>(stream.commandBuffer);
+	target.recordInitialize(commandBuffer);
+	ASSERT_TRUE(ui.recordRender(commandBuffer, target.bindlessIndex).isOk());
+	target.recordReadback(stream);
+	ASSERT_TRUE(stream.submitAndWait(*engine).isOk());
+	const oa::Event completion = oa::EventAccess::create(
+		oa::EngineDeviceAccess::get(*engine),
+		stream.timelineSem,
+		stream.timelineValue);
+	ASSERT_TRUE(ui.markFrameSubmitted(completion).isOk());
+	ui.endFrame();
+
+	oa::Array<oa::U8, 32U * 32U * 4U> pixels{};
+	ASSERT_TRUE(oa::EngineResourceAccess::readbackBuffer(
+		*engine, target.readback, 0U, pixels.data(), pixels.size()).isOk());
+	const auto pixel = [&](oa::U32 x, oa::U32 y, oa::U32 channel) {
+		return pixels[(y * 32U + x) * 4U + channel];
+	};
+	EXPECT_EQ(pixel(0U, 0U, 0U), 0U);
+	EXPECT_EQ(pixel(0U, 0U, 1U), 0U);
+	EXPECT_EQ(pixel(0U, 0U, 3U), 0U);
+	EXPECT_EQ(pixel(16U, 16U, 0U), 0U);
+	EXPECT_EQ(pixel(16U, 16U, 1U), 255U);
+	EXPECT_EQ(pixel(16U, 16U, 3U), 255U);
+	EXPECT_EQ(pixel(16U, 0U, 3U), 255U);
+
+	stream.destroy(oa::EngineDeviceAccess::get(*engine));
+	ASSERT_TRUE(ui.close().isOk());
+}
+
+TEST_VK(TestUi, RoundedRectMaskRevealsOpaqueCanvasAtItsCorners)
+{
+	auto* engine = testEnginePtr();
+	ASSERT_NE(engine, nullptr);
+	UiStorageTarget target;
+	ASSERT_TRUE(target.init(*engine, 40U, 32U).isOk());
+	oa::Ui ui;
+	ASSERT_TRUE(ui.init(*engine).isOk());
+	ASSERT_TRUE(ui.initBlit(nullptr).isOk());
+
+	const oa::Color canvas{1.0F, 0.0F, 0.0F, 1.0F};
+	ui.beginFrame(16.0F, {0, 0, 40, 32});
+	ui.rect({0, 0, 40, 32}, canvas);
+	ui.rect({4, 4, 24, 24}, oa::Color{0.0F, 1.0F, 0.0F, 1.0F});
+	ui.maskRoundedRect({4, 4, 24, 24}, 12.0F, canvas);
+
+	auto streamResult = oavk::Stream::createCompute(
+		oa::EngineDeviceAccess::get(*engine));
+	ASSERT_TRUE(streamResult.isOk()) << streamResult.getStatus().toString();
+	oavk::Stream stream = oa::move(*streamResult);
+	ASSERT_TRUE(stream.begin(oa::EngineDeviceAccess::get(*engine)).isOk());
+	const VkCommandBuffer commandBuffer =
+		static_cast<VkCommandBuffer>(stream.commandBuffer);
+	target.recordInitialize(commandBuffer);
+	ASSERT_TRUE(ui.recordRender(commandBuffer, target.bindlessIndex).isOk());
+	target.recordReadback(stream);
+	ASSERT_TRUE(stream.submitAndWait(*engine).isOk());
+	const oa::Event completion = oa::EventAccess::create(
+		oa::EngineDeviceAccess::get(*engine),
+		stream.timelineSem,
+		stream.timelineValue);
+	ASSERT_TRUE(ui.markFrameSubmitted(completion).isOk());
+	ui.endFrame();
+
+	oa::Array<oa::U8, 40U * 32U * 4U> pixels{};
+	ASSERT_TRUE(oa::EngineResourceAccess::readbackBuffer(
+		*engine, target.readback, 0U, pixels.data(), pixels.size()).isOk());
+	const auto pixel = [&](oa::U32 x, oa::U32 y, oa::U32 channel) {
+		return pixels[(y * 40U + x) * 4U + channel];
+	};
+	// The clipped corner reveals the opaque canvas; top-center and interior
+	// retain the visualization, and pixels outside the card remain untouched.
+	EXPECT_EQ(pixel(4U, 4U, 0U), 255U);
+	EXPECT_EQ(pixel(4U, 4U, 1U), 0U);
+	EXPECT_EQ(pixel(4U, 4U, 3U), 255U);
+	// The one-pixel analytic edge is intentionally antialiased.
+	EXPECT_LE(pixel(16U, 4U, 0U), 4U);
+	EXPECT_GE(pixel(16U, 4U, 1U), 251U);
+	EXPECT_EQ(pixel(16U, 16U, 0U), 0U);
+	EXPECT_EQ(pixel(16U, 16U, 1U), 255U);
+	EXPECT_EQ(pixel(32U, 16U, 0U), 255U);
+	EXPECT_EQ(pixel(32U, 16U, 1U), 0U);
+
+	stream.destroy(oa::EngineDeviceAccess::get(*engine));
 	ASSERT_TRUE(ui.close().isOk());
 }
 
@@ -2167,7 +2598,7 @@ TEST_VK(TestUi, RendererUiModeProducesBoundedGenerationSafeTextureFrames)
 	auto renderer = oa::move(*created);
 	ASSERT_NE(renderer->ui(), nullptr);
 	oa::MeshData mesh;
-	oa::CameraState camera;
+	oa::Camera camera;
 	EXPECT_EQ(
 		renderer->beginFrame(mesh, camera).getCode(),
 		oa::StatusCode::FailedPrecondition);
@@ -2374,10 +2805,15 @@ TEST_VK(TestUi, HintedTextAtlasUsesExactFontsAndUtf8Clusters)
 
 	const oa::GlyphInfo* sans13 = atlas.findGlyph(oa::FontId::Sans, 'M', 13.0F);
 	const oa::GlyphInfo* mono13 = atlas.findGlyph(oa::FontId::Mono, 'M', 13.0F);
+	const oa::GlyphInfo* semibold13 = atlas.findGlyph(
+		oa::FontId::SansSemibold, 'M', 13.0F);
 	ASSERT_NE(sans13, nullptr);
 	ASSERT_NE(mono13, nullptr);
+	ASSERT_NE(semibold13, nullptr);
 	EXPECT_FLOAT_EQ(sans13->rasterSize, 13.0F);
 	EXPECT_FLOAT_EQ(mono13->rasterSize, 13.0F);
+	EXPECT_FLOAT_EQ(semibold13->rasterSize, 13.0F);
+	EXPECT_NE(semibold13->atlasY, sans13->atlasY);
 	EXPECT_NE(atlas.findGlyph(oa::FontId::Sans, 0x03A9U, 13.0F), nullptr);
 	EXPECT_EQ(atlas.findGlyph(oa::FontId::Mono, 0x03A9U, 13.0F), nullptr);
 	EXPECT_NE(atlas.findGlyph(oa::FontId::Mono, 0x2500U, 13.0F), nullptr);
@@ -2393,6 +2829,18 @@ TEST_VK(TestUi, HintedTextAtlasUsesExactFontsAndUtf8Clusters)
 	ASSERT_NE(sansW, nullptr);
 	EXPECT_FLOAT_EQ(monoI->advance, monoW->advance);
 	EXPECT_NE(sansI->advance, sansW->advance);
+
+	oa::TextLayout semiboldLayout;
+	oa::Vector<oa::PositionedGlyph> semiboldGlyphs;
+	semiboldLayout.shape(
+		atlas,
+		oa::StringView("M"),
+		{},
+		{.font = oa::FontId::SansSemibold, .size = 14.0F},
+		0xFFFFFFFFU,
+		semiboldGlyphs);
+	ASSERT_EQ(semiboldGlyphs.size(), 1U);
+	EXPECT_EQ(semiboldGlyphs[0].font, oa::FontId::SansSemibold);
 
 	oa::TextLayout layout;
 	oa::TextLayoutConfig config{.font = oa::FontId::Sans, .size = 14.0F};
@@ -2850,6 +3298,85 @@ TEST_VK(TestUi, ButtonsCheckboxesRowsAndKeyboardFocusAreInteractive)
 	atlas = {};
 }
 
+TEST_VK(TestUi, ExplicitTextButtonsPreserveValueAccessibilityAndActivation)
+{
+	auto* engine = testEnginePtr();
+	ASSERT_NE(engine, nullptr);
+	oa::TextAtlas atlas;
+	ASSERT_TRUE(atlas.init(*engine).isOk());
+	oa::Ui ui;
+	ASSERT_TRUE(ui.init(*engine).isOk());
+	ASSERT_TRUE(ui.bindTextAtlas(atlas).isOk());
+	const oa::PixelRect rect{40, 8, 56, 34};
+	const oa::UiTextConfig textConfig{
+		.font = oa::FontId::SansSemibold,
+		.fontSize = 12.0F,
+		.horizontalAlign = oa::UiAlign::End,
+		.verticalAlign = oa::UiAlign::Center,
+	};
+
+	ui.beginFrame(16.0F, {0, 0, 120, 50});
+	EXPECT_FALSE(ui.textButton(
+		"Toggle duration or remaining time",
+		rect,
+		"0:02",
+		textConfig,
+		true,
+		oa::UiEdge{0.0F, 12.0F}));
+	const auto nodes = ui.accessibilitySnapshot();
+	ASSERT_EQ(nodes.size(), 1U);
+	EXPECT_EQ(nodes[0].role, oa::UiAccessibilityRole::Button);
+	EXPECT_EQ(testStdString(nodes[0].label),
+		"Toggle duration or remaining time");
+	EXPECT_EQ(testStdString(nodes[0].value), "0:02");
+	EXPECT_EQ(nodes[0].bounds.x, rect.x);
+	EXPECT_EQ(nodes[0].bounds.w, rect.w);
+	ui.endFrame();
+
+	oa::UiEvent pointer;
+	pointer.type = oa::UiEventType::MouseDown;
+	pointer.button = 1;
+	pointer.mouseX = 80.0F;
+	pointer.mouseY = 20.0F;
+	ui.beginFrame(16.0F, {0, 0, 120, 50});
+	EXPECT_FALSE(ui.routeEvent(pointer));
+	EXPECT_FALSE(ui.textButton(
+		"Toggle duration or remaining time",
+		rect,
+		"0:02",
+		textConfig,
+		true,
+		oa::UiEdge{0.0F, 12.0F}));
+	ui.endFrame();
+
+	pointer.type = oa::UiEventType::MouseUp;
+	ui.beginFrame(16.0F, {0, 0, 120, 50});
+	EXPECT_TRUE(ui.routeEvent(pointer));
+	EXPECT_TRUE(ui.textButton(
+		"Toggle duration or remaining time",
+		rect,
+		"-0:01",
+		textConfig,
+		true,
+		oa::UiEdge{0.0F, 12.0F}));
+	ui.endFrame();
+
+	ui.beginFrame(16.0F, {0, 0, 120, 50});
+	EXPECT_FALSE(ui.textButton(
+		"Unavailable", rect, "No audio stream", textConfig, false));
+	const auto disabledNodes = ui.accessibilitySnapshot();
+	ASSERT_EQ(disabledNodes.size(), 1U);
+	EXPECT_NE(
+		static_cast<oa::U32>(disabledNodes[0].state)
+			& static_cast<oa::U32>(oa::UiAccessibilityState::Disabled),
+		0U);
+	EXPECT_EQ(disabledNodes[0].actions, oa::UiAccessibilityAction::None);
+	ui.endFrame();
+
+	ASSERT_TRUE(ui.close().isOk());
+	atlas = {};
+}
+
 TEST_VK(TestUi, PopupMenusAndDropdownsOwnDismissalFocusAndSelection)
 {
 	auto* engine = testEnginePtr();
@@ -3089,9 +3616,8 @@ TEST_VK(TestUi, PopupCommandsRenderAfterLaterBaseCommandsOnGpu)
 	ui.beginFrame(16.0F, {0, 0, 64, 64});
 	ui.openPopup("overlay", {8, 4, 40, 20});
 	ASSERT_TRUE(ui.beginPopup("overlay", {
-		.width = 40, .height = 30, .gap = 0,
+		.width = 40, .height = 30, .gap = 6,
 		.padding = oa::UiEdge{}}));
-	ui.rect({8, 24, 40, 30}, {0.0F, 1.0F, 0.0F, 1.0F});
 	ui.endPopup();
 	// This base draw is submitted later by the application but must remain below
 	// the explicit overlay layer.
@@ -3122,11 +3648,19 @@ TEST_VK(TestUi, PopupCommandsRenderAfterLaterBaseCommandsOnGpu)
 		0U,
 		pixels.data(),
 		pixels.size()).isOk());
-	const oa::Usize sample = (30U * 64U + 12U) * 4U;
-	EXPECT_EQ(pixels[sample + 0U], 0U);
-	EXPECT_EQ(pixels[sample + 1U], 255U);
-	EXPECT_EQ(pixels[sample + 2U], 0U);
-	EXPECT_EQ(pixels[sample + 3U], 255U);
+	const auto pixel = [&](oa::U32 x, oa::U32 y, oa::U32 channel) {
+		return pixels[(y * 64U + x) * 4U + channel];
+	};
+	// The rounded popup body and its anchored pointer remain above a base draw
+	// submitted later by the application. The exact rounded corner remains base.
+	EXPECT_LT(pixel(20U, 40U, 0U), 64U);
+	EXPECT_LT(pixel(20U, 40U, 1U), 64U);
+	EXPECT_LT(pixel(28U, 27U, 0U), 64U);
+	EXPECT_LT(pixel(28U, 27U, 1U), 64U);
+	EXPECT_EQ(pixel(8U, 30U, 0U), 255U);
+	EXPECT_EQ(pixel(8U, 30U, 1U), 0U);
+	EXPECT_EQ(pixel(8U, 30U, 2U), 0U);
+	EXPECT_EQ(pixel(8U, 30U, 3U), 255U);
 
 	stream.destroy(oa::EngineDeviceAccess::get(*engine));
 	ASSERT_TRUE(ui.close().isOk());
@@ -3844,6 +4378,7 @@ TEST_F(TestUi, WindowDecorationUsesCompositorHitRegions)
 {
 	constexpr oa::I32 width = 1280;
 	constexpr oa::I32 height = 720;
+	EXPECT_EQ(oa::WindowDecorationMetrics{}.cornerRadius, 15);
 
 	EXPECT_EQ(
 		oa::windowDecorationHitTest(3, 3, width, height, true, false),
@@ -3869,10 +4404,16 @@ TEST_F(TestUi, WindowDecorationUsesCompositorHitRegions)
 		oa::WindowDecorationHit::Draggable);
 
 	EXPECT_EQ(
-		oa::windowDecorationControlAt(width - 120, 20, width),
+		oa::windowDecorationControlAt(20, 20, width),
+		oa::WindowDecorationControl::Fullscreen);
+	EXPECT_EQ(
+		oa::windowDecorationControlAt(width - 145, 20, width),
+		oa::WindowDecorationControl::Menu);
+	EXPECT_EQ(
+		oa::windowDecorationControlAt(width - 105, 20, width),
 		oa::WindowDecorationControl::Minimize);
 	EXPECT_EQ(
-		oa::windowDecorationControlAt(width - 70, 20, width),
+		oa::windowDecorationControlAt(width - 68, 20, width),
 		oa::WindowDecorationControl::Maximize);
 	EXPECT_EQ(
 		oa::windowDecorationControlAt(width - 20, 20, width),
@@ -3880,13 +4421,19 @@ TEST_F(TestUi, WindowDecorationUsesCompositorHitRegions)
 	EXPECT_EQ(
 		oa::windowDecorationHitTest(width - 20, 20, width, height, true, false),
 		oa::WindowDecorationHit::Normal);
+	EXPECT_EQ(
+		oa::windowDecorationControlAt(width - 117, 20, width),
+		oa::WindowDecorationControl::None);
 
 	EXPECT_EQ(
-		oa::windowDecorationHitTest(3, 20, width, height, true, true),
+		oa::windowDecorationHitTest(200, 20, width, height, true, true),
 		oa::WindowDecorationHit::Draggable);
 	EXPECT_EQ(
-		oa::windowDecorationHitTest(3, 20, width, height, false, false),
+		oa::windowDecorationHitTest(200, 20, width, height, false, false),
 		oa::WindowDecorationHit::Draggable);
+	EXPECT_EQ(
+		oa::windowDecorationHitTest(20, 20, width, height, false, false),
+		oa::WindowDecorationHit::Normal);
 	EXPECT_EQ(
 		oa::windowDecorationHitTest(-1, 20, width, height, true, false),
 		oa::WindowDecorationHit::Normal);

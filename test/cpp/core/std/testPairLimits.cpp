@@ -43,9 +43,9 @@ TEST(Limits, MatchesStdNumericLimits) {
 	EXPECT_TRUE(oa::Limits<float>::infinity() > oa::Limits<float>::max());
 	EXPECT_TRUE(oa::Limits<float>::quietNaN() != oa::Limits<float>::quietNaN());
 	EXPECT_TRUE(oa::Limits<int>::isSigned);
-	static_assert(oa::IsSignedV<int>);
-	static_assert(not oa::IsSignedV<unsigned int>);
-	static_assert(not oa::IsSignedV<float>);
+	static_assert(oa::isSignedV<int>);
+	static_assert(not oa::isSignedV<unsigned int>);
+	static_assert(not oa::isSignedV<float>);
 	EXPECT_TRUE(oa::Limits<int>::isInteger);
 	EXPECT_FALSE(oa::Limits<float>::isInteger);
 	EXPECT_TRUE(oa::Limits<float>::hasNaN);

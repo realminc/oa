@@ -8,3 +8,5 @@
 { "DrawGlyphs", OA_COMPUTE_KERNEL_ID(oa::computeKernelPrefix::Ui, 6), oa::ComputeKernelCategory::Ui, "oa" },
 { "DrawRect", OA_COMPUTE_KERNEL_ID(oa::computeKernelPrefix::Ui, 7), oa::ComputeKernelCategory::Ui, "oa" },
 { "DrawWaveform", OA_COMPUTE_KERNEL_ID(oa::computeKernelPrefix::Ui, 8), oa::ComputeKernelCategory::Ui, "oa" },
+{ "MaskRoundedViewport", OA_COMPUTE_KERNEL_ID(oa::computeKernelPrefix::Ui, 15), oa::ComputeKernelCategory::Ui, "oa" },
+{ "DrawTriangle", OA_COMPUTE_KERNEL_ID(oa::computeKernelPrefix::Ui, 16), oa::ComputeKernelCategory::Ui, "oa" },

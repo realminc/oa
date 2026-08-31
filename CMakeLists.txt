@@ -390,9 +390,19 @@ set(OA_SOURCES
 	source/cpp/lib/oa/core/thread.cpp
 	source/cpp/lib/oa/core/image.cpp
 	source/cpp/lib/oa/core/color.cpp
+	source/cpp/lib/oa/core/transform.cpp
+	source/cpp/lib/oa/core/fnTransform.cpp
 	source/cpp/lib/oa/core/matrix.cpp
 	source/cpp/lib/oa/core/op.cpp
 	source/cpp/lib/oa/core/autograd.cpp
+
+	# Animation
+	source/cpp/lib/oa/animation/joint.cpp
+	source/cpp/lib/oa/animation/fnJoint.cpp
+	source/cpp/lib/oa/animation/skelPose.cpp
+	source/cpp/lib/oa/animation/animClip.cpp
+	source/cpp/lib/oa/animation/fnAnim.cpp
+
 	source/cpp/lib/oa/core/autograd/autogradAttach.gen.cpp
 	source/cpp/lib/oa/core/fnmatrix/fnMatrix.cpp
 	source/cpp/lib/oa/core/fnmatrix/alloc/fnMatrixAlloc.cpp
@@ -612,6 +622,7 @@ set(OA_SOURCES
 	${OA_AUDIO_FN_AUDIO_GENERATED_SOURCES}
 
 	# Render — reusable 3D render-to-texture infrastructure
+	source/cpp/lib/oa/render/camera.cpp
 	source/cpp/lib/oa/render/fnCamera.cpp
 	source/cpp/lib/oa/render/fnMesh.cpp
 	source/cpp/lib/oa/render/fnScene.cpp
@@ -726,7 +737,7 @@ list(APPEND OA_SOURCES
 # Keep this as a source boundary instead of scattering __ANDROID__ through UI,
 # capture, codec, and networking implementations.
 if(OA_ANDROID_ML)
-	list(FILTER OA_SOURCES EXCLUDE REGEX "/(audio|vision|ui|render|animation|network|crypto)/")
+	list(FILTER OA_SOURCES EXCLUDE REGEX "/(audio|vision|ui|render|network|crypto)/")
 	list(FILTER OA_SOURCES EXCLUDE REGEX "/data/")
 	list(FILTER OA_SOURCES EXCLUDE REGEX "/core/(simd|cpuTopology|perfStat|perfStore|mappedFile)[.]cpp$")
 	list(FILTER OA_SOURCES EXCLUDE REGEX "/runtime/(app|window|imageDispatch|oaVkVideo)[.]cpp$")

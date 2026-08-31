@@ -162,10 +162,17 @@ void bindAudioSession(nb::module_ &inModule) {
           },
           nb::arg("timestampUs"))
       .def("setLoop", &oa::AudioPlayer::setLoop, nb::arg("loop"))
+      .def(
+          "setMuted",
+          [](oa::AudioPlayer &inPlayer, bool inMuted) {
+            throwIfError(inPlayer.setMuted(inMuted));
+          },
+          nb::arg("muted"))
       .def("close",
            [](oa::AudioPlayer &inPlayer) { throwIfError(inPlayer.close()); })
       .def("isOpen", &oa::AudioPlayer::isOpen)
       .def("isPlaying", &oa::AudioPlayer::isPlaying)
+      .def("isMuted", &oa::AudioPlayer::isMuted)
       .def("isEos", &oa::AudioPlayer::isEos)
       .def("sampleRate", &oa::AudioPlayer::sampleRate)
       .def("channelCount", &oa::AudioPlayer::channelCount)

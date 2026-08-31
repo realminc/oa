@@ -16,7 +16,7 @@ from PIL import Image, ImageDraw, ImageFont, features, __version__ as PILLOW_VER
 
 
 # Coverage is deliberately bounded to scripts and technical symbols present in
-# at least one of OA's two vendored faces. The runtime performs explicit
+# at least one of OA's three vendored faces. The runtime performs explicit
 # per-codepoint fallback; it never treats a font's .notdef box as coverage.
 CANDIDATE_RANGES = (
     (0x0020, 0x007E),  # Basic Latin
@@ -209,9 +209,10 @@ def writeCpp(
     glyphs: list[Glyph],
     strikes: tuple[int, ...],
     sansFont: Path,
+    sansSemiboldFont: Path,
     monoFont: Path,
     codepoints: tuple[int, ...],
-    fontCodepoints: tuple[set[int], set[int]],
+    fontCodepoints: tuple[set[int], set[int], set[int]],
 ) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     pixels = list(atlas.getdata())
@@ -220,10 +221,11 @@ def writeCpp(
         stream.write(f"// Pillow version: {PILLOW_VERSION}\n")
         stream.write(f"// FreeType version: {features.version_module('freetype2')}\n")
         stream.write(f'// IBM Plex Sans SHA-256: {sha256(sansFont)}\n')
+        stream.write(f'// IBM Plex Sans SemiBold SHA-256: {sha256(sansSemiboldFont)}\n')
         stream.write(f'// Intel One Mono SHA-256: {sha256(monoFont)}\n')
         stream.write(f"static constexpr oa::U32 kTextAtlasWidth = {atlas.width};\n")
         stream.write(f"static constexpr oa::U32 kTextAtlasHeight = {atlas.height};\n")
-        stream.write(f"static constexpr oa::U32 kTextFontCount = 2;\n")
+        stream.write(f"static constexpr oa::U32 kTextFontCount = 3;\n")
         stream.write(f"static constexpr oa::U32 kTextStrikeCount = {len(strikes)};\n")
         stream.write(f"static constexpr oa::U32 kTextCodepointCount = {len(codepoints)};\n")
         stream.write(f"static constexpr oa::U32 kTextGlyphCount = {len(glyphs)};\n")
@@ -245,6 +247,7 @@ def writeCpp(
         for symbol, fontPath in (
             ("kTextSansFontBytes", sansFont),
             ("kTextMonoFontBytes", monoFont),
+            ("kTextSansSemiboldFontBytes", sansSemiboldFont),
         ):
             fontBytes = fontPath.read_bytes()
             stream.write(f"static constexpr oa::U8 {symbol}[] = {{\n")
@@ -280,6 +283,8 @@ def writeCpp(
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--sans-font", dest="sansFont", required=True, type=Path)
+    parser.add_argument(
+        "--sans-semibold-font", dest="sansSemiboldFont", required=True, type=Path)
     parser.add_argument("--mono-font", dest="monoFont", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--strikes", default=",".join(map(str, DEFAULT_STRIKES)))
@@ -294,16 +299,22 @@ def main() -> None:
         parser.error("--width must be positive and --padding must be at least one")
 
     sansCodepoints = unicodeCmap(args.sansFont)
+    sansSemiboldCodepoints = unicodeCmap(args.sansSemiboldFont)
     monoCodepoints = unicodeCmap(args.monoFont)
-    codepoints = selectedCodepoints(sansCodepoints, monoCodepoints)
+    codepoints = selectedCodepoints(
+        sansCodepoints, monoCodepoints, sansSemiboldCodepoints)
     glyphs = rasterize(
         0, args.sansFont, strikes, codepoints, sansCodepoints)
     glyphs.extend(rasterize(
         1, args.monoFont, strikes, codepoints, monoCodepoints))
+    glyphs.extend(rasterize(
+        2, args.sansSemiboldFont, strikes, codepoints,
+        sansSemiboldCodepoints))
     atlas = pack(glyphs, args.width, args.padding)
     writeCpp(
-        args.output, atlas, glyphs, strikes, args.sansFont, args.monoFont,
-        codepoints, (sansCodepoints, monoCodepoints))
+        args.output, atlas, glyphs, strikes, args.sansFont,
+        args.sansSemiboldFont, args.monoFont, codepoints,
+        (sansCodepoints, monoCodepoints, sansSemiboldCodepoints))
 
 
 if __name__ == "__main__":

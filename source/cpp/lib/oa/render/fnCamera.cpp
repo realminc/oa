@@ -1,320 +1,314 @@
-// oa::Camera implementation
+#include <oa/render/fnCamera.h>
 
-#include <oa/render/camera.h>
+#include <oa/core/fnTransform.h>
+#include <oa/core/std/assert.h>
 #include <oa/core/std/scalarMath.h>
 #include <oa/core/vlm.h>
 
 namespace oa {
 
-namespace FnCamera {
-
-// ─── Factory / init ──────────────────────────────────────────────────────
-
-void initPerspective(
-	oa::CameraState& inState,
-	const oa::vlm::Vec3&  inPosition,
-	const oa::vlm::Vec3&  inTarget,
-	oa::F32          inFovY,
-	oa::F32          inAspect,
-	oa::F32          inNear,
-	oa::F32          inFar
-) {
-	inState.position   = inPosition;
-	inState.rotation   = {0.0f, 0.0f, 0.0f, 1.0f};
-	inState.projection = oa::CameraProjection::Perspective;
-	inState.fovY       = inFovY;
-	inState.aspect     = inAspect;
-	inState.near       = inNear;
-	inState.far        = inFar;
-	inState.focalLength = 0.0f;
-	inState.offsetX    = 0.0f;
-	inState.offsetY    = 0.0f;
-	inState.useOrbit   = false;
-	lookAt(inState, inTarget);
-}
-
-void initOrthographic(
-	oa::CameraState& inState,
-	oa::F32          inWidth,
-	oa::F32          inHeight,
-	oa::F32          inNear,
-	oa::F32          inFar
-) {
-	inState.position    = {0.0f, 0.0f, 1.0f};
-	inState.rotation    = {0.0f, 0.0f, 0.0f, 1.0f};
-	inState.projection  = oa::CameraProjection::Orthographic;
-	inState.orthoWidth  = inWidth;
-	inState.orthoHeight = inHeight;
-	inState.near        = inNear;
-	inState.far         = inFar;
-	inState.zoom        = 1.0f;
-	inState.offsetX     = 0.0f;
-	inState.offsetY     = 0.0f;
-	inState.useOrbit    = false;
-}
-
-// ─── Transform ─────────────────────────────────────────────────────────────
-
-void setPosition(oa::CameraState& inState, const oa::vlm::Vec3& inPosition) {
-	inState.position = inPosition;
-}
-
-void setRotation(oa::CameraState& inState, const oa::vlm::Quat& inRotation) {
-	inState.rotation = inRotation;
-}
-
-void lookAt(oa::CameraState& inState, const oa::vlm::Vec3& inTarget, const oa::vlm::Vec3& inUp) {
-	inState.rotation = oa::vlm::lookRotation(
-		inTarget - inState.position, inUp);
-}
-
-const oa::vlm::Vec3& getPosition(const oa::CameraState& inState) noexcept {
-	return inState.position;
-}
-
-const oa::vlm::Quat& getRotation(const oa::CameraState& inState) noexcept {
-	return inState.rotation;
-}
-
-oa::vlm::Vec3 getForward(const oa::CameraState& inState) noexcept {
-	return oa::vlm::rotateVector(inState.rotation, {0.0f, 0.0f, -1.0f});
-}
-
-oa::vlm::Vec3 getRight(const oa::CameraState& inState) noexcept {
-	return oa::vlm::rotateVector(inState.rotation, {1.0f, 0.0f, 0.0f});
-}
-
-oa::vlm::Vec3 getUp(const oa::CameraState& inState) noexcept {
-	return oa::vlm::rotateVector(inState.rotation, {0.0f, 1.0f, 0.0f});
-}
-
-// ─── projection ───────────────────────────────────────────────────────────
-
-void setPerspective(
-	oa::CameraState& inState,
+void FnCamera::initPerspective(
+	oa::Camera& inCamera,
+	const oa::vlm::Vec3& inPosition,
+	const oa::vlm::Vec3& inTarget,
 	oa::F32 inFovY,
 	oa::F32 inAspect,
 	oa::F32 inNear,
-	oa::F32 inFar
-) {
-	inState.projection = oa::CameraProjection::Perspective;
-	inState.fovY = inFovY;
-	inState.aspect = inAspect;
-	inState.near = inNear;
-	inState.far = inFar;
+	oa::F32 inFar) {
+	inCamera = oa::Camera{};
+	oa::FnTransform::setPosition(inCamera.transform_, inPosition);
+	oa::FnTransform::lookAt(inCamera.transform_, inTarget);
+	setPerspective(inCamera, inFovY, inAspect, inNear, inFar);
 }
 
-void setOrthographic(
-	oa::CameraState& inState,
+void FnCamera::initOrthographic(
+	oa::Camera& inCamera,
 	oa::F32 inWidth,
 	oa::F32 inHeight,
 	oa::F32 inNear,
-	oa::F32 inFar
-) {
-	inState.projection = oa::CameraProjection::Orthographic;
-	inState.orthoWidth = inWidth;
-	inState.orthoHeight = inHeight;
-	inState.near = inNear;
-	inState.far = inFar;
+	oa::F32 inFar) {
+	inCamera = oa::Camera{};
+	oa::FnTransform::setPosition(
+		inCamera.transform_, {0.0F, 0.0F, 1.0F});
+	setOrthographic(inCamera, inWidth, inHeight, inNear, inFar);
 }
 
-void fitToWindow(oa::CameraState& inState, oa::F32 inWindowWidth, oa::F32 inWindowHeight) {
-	if (inState.projection == oa::CameraProjection::Orthographic) {
-		// fit orthographic view to window while maintaining aspect ratio
-		oa::F32 windowAspect = inWindowWidth / inWindowHeight;
-		oa::F32 contentAspect = inState.orthoWidth / inState.orthoHeight;
+void FnCamera::setPerspective(
+	oa::Camera& inCamera,
+	oa::F32 inFovY,
+	oa::F32 inAspect,
+	oa::F32 inNear,
+	oa::F32 inFar) {
+	OA_REQUIRE_MSG(
+		oa::isFinite(inFovY) and inFovY > 0.0F and inFovY < 180.0F,
+		"Camera perspective field of view must be finite and inside (0, 180)");
+	OA_REQUIRE_MSG(
+		oa::isFinite(inAspect) and inAspect > 0.0F,
+		"Camera perspective aspect ratio must be finite and positive");
+	OA_REQUIRE_MSG(
+		oa::isFinite(inNear) and oa::isFinite(inFar)
+			and inNear > 0.0F and inFar > inNear,
+		"Camera perspective near/far planes are invalid");
+	inCamera.projection_ = oa::CameraProjection::Perspective;
+	inCamera.fovY_ = inFovY;
+	inCamera.aspect_ = inAspect;
+	inCamera.near_ = inNear;
+	inCamera.far_ = inFar;
+}
 
+void FnCamera::setOrthographic(
+	oa::Camera& inCamera,
+	oa::F32 inWidth,
+	oa::F32 inHeight,
+	oa::F32 inNear,
+	oa::F32 inFar) {
+	OA_REQUIRE_MSG(
+		oa::isFinite(inWidth) and oa::isFinite(inHeight)
+			and inWidth > 0.0F and inHeight > 0.0F,
+		"Camera orthographic extent must be finite and positive");
+	OA_REQUIRE_MSG(
+		oa::isFinite(inNear) and oa::isFinite(inFar) and inFar > inNear,
+		"Camera orthographic near/far planes are invalid");
+	inCamera.projection_ = oa::CameraProjection::Orthographic;
+	inCamera.orthoWidth_ = inWidth;
+	inCamera.orthoHeight_ = inHeight;
+	inCamera.near_ = inNear;
+	inCamera.far_ = inFar;
+}
+
+void FnCamera::fitToWindow(
+	oa::Camera& inCamera,
+	oa::F32 inWindowWidth,
+	oa::F32 inWindowHeight) {
+	OA_REQUIRE_MSG(
+		oa::isFinite(inWindowWidth) and oa::isFinite(inWindowHeight)
+			and inWindowWidth > 0.0F and inWindowHeight > 0.0F,
+		"Camera window extent must be finite and positive");
+	if (inCamera.projection_ == oa::CameraProjection::Orthographic) {
+		const oa::F32 windowAspect = inWindowWidth / inWindowHeight;
+		const oa::F32 contentAspect =
+			inCamera.orthoWidth_ / inCamera.orthoHeight_;
 		if (windowAspect > contentAspect) {
-			// Window is wider - fit height
-			inState.orthoWidth = inState.orthoHeight * windowAspect;
+			inCamera.orthoWidth_ = inCamera.orthoHeight_ * windowAspect;
 		} else {
-			// Window is taller - fit width
-			inState.orthoHeight = inState.orthoWidth / windowAspect;
+			inCamera.orthoHeight_ = inCamera.orthoWidth_ / windowAspect;
 		}
-	} else {
-		// Update aspect ratio for perspective
-		inState.aspect = inWindowWidth / inWindowHeight;
+		return;
+	}
+	inCamera.aspect_ = inWindowWidth / inWindowHeight;
+}
+
+void FnCamera::setAspectRatio(oa::Camera& inCamera, oa::F32 inAspect) {
+	OA_REQUIRE_MSG(
+		oa::isFinite(inAspect) and inAspect > 0.0F,
+		"Camera aspect ratio must be finite and positive");
+	if (inCamera.projection_ == oa::CameraProjection::Perspective) {
+		inCamera.aspect_ = inAspect;
 	}
 }
 
-void setAspectRatio(oa::CameraState& inState, oa::F32 inAspect) {
-	if (inState.projection == oa::CameraProjection::Perspective) {
-		inState.aspect = inAspect;
-	}
+oa::CameraProjection FnCamera::getProjectionType(
+	const oa::Camera& inCamera) noexcept {
+	return inCamera.projection_;
 }
 
-oa::CameraProjection getProjectionType(const oa::CameraState& inState) noexcept {
-	return inState.projection;
+oa::F32 FnCamera::getAspectRatio(const oa::Camera& inCamera) noexcept {
+	return inCamera.aspect_;
 }
 
-// ─── matrices ─────────────────────────────────────────────────────────────
-
-oa::vlm::Mat4 getViewMatrix(const oa::CameraState& inState) noexcept {
-	return oa::vlm::viewFromPose(inState.position, inState.rotation);
+oa::vlm::Vec2 FnCamera::getOrthographicSize(
+	const oa::Camera& inCamera) noexcept {
+	return {inCamera.orthoWidth_, inCamera.orthoHeight_};
 }
 
-oa::vlm::Mat4 getProjectionMatrix(const oa::CameraState& inState) noexcept {
-	if (inState.projection == oa::CameraProjection::Perspective) {
+oa::vlm::Mat4 FnCamera::getViewMatrix(const oa::Camera& inCamera) noexcept {
+	return oa::vlm::viewFromPose(
+		oa::FnTransform::getPosition(inCamera.transform_),
+		oa::FnTransform::getRotation(inCamera.transform_));
+}
+
+oa::vlm::Mat4 FnCamera::getProjectionMatrix(
+	const oa::Camera& inCamera) noexcept {
+	if (inCamera.projection_ == oa::CameraProjection::Perspective) {
 		return oa::vlm::perspectiveShifted(
-			getEffectiveFovY(inState), inState.aspect,
-			inState.near, inState.far,
-			{inState.offsetX, inState.offsetY});
+			getEffectiveFovY(inCamera),
+			inCamera.aspect_,
+			inCamera.near_,
+			inCamera.far_,
+			{inCamera.offsetX_, inCamera.offsetY_});
 	}
 	return oa::vlm::orthographicShifted(
-		inState.orthoWidth, inState.orthoHeight,
-		inState.near, inState.far, inState.zoom,
-		{inState.offsetX, inState.offsetY});
+		inCamera.orthoWidth_,
+		inCamera.orthoHeight_,
+		inCamera.near_,
+		inCamera.far_,
+		inCamera.zoom_,
+		{inCamera.offsetX_, inCamera.offsetY_});
 }
 
-oa::vlm::Mat4 getViewProjectionMatrix(const oa::CameraState& inState) noexcept {
-	// OA shaders multiply row vectors: mul(position, matrix).
-	return oa::vlm::matrixMul(getViewMatrix(inState), getProjectionMatrix(inState));
+oa::vlm::Mat4 FnCamera::getViewProjectionMatrix(
+	const oa::Camera& inCamera) noexcept {
+	return oa::vlm::matrixMul(
+		getViewMatrix(inCamera), getProjectionMatrix(inCamera));
 }
 
-// ─── Frustum ─────────────────────────────────────────────────────────────
-
-void setNearFar(oa::CameraState& inState, oa::F32 inNear, oa::F32 inFar) {
-	inState.near = inNear;
-	inState.far = inFar;
-}
-
-oa::F32 getNear(const oa::CameraState& inState) noexcept {
-	return inState.near;
-}
-
-oa::F32 getFar(const oa::CameraState& inState) noexcept {
-	return inState.far;
-}
-
-// ─── FOV ─────────────────────────────────────────────────────────────────
-
-void setFovY(oa::CameraState& inState, oa::F32 inFovY) {
-	inState.fovY = inFovY;
-}
-
-oa::F32 getFovY(const oa::CameraState& inState) noexcept {
-	return inState.fovY;
-}
-
-// ─── zoom ────────────────────────────────────────────────────────────────
-
-void setZoom(oa::CameraState& inState, oa::F32 inZoom) {
-	inState.zoom = inZoom;
-}
-
-oa::F32 getZoom(const oa::CameraState& inState) noexcept {
-	return inState.zoom;
-}
-
-// ─── Focal length / Sensor ─────────────────────────────────────────────────
-
-void setFocalLength(oa::CameraState& inState, oa::F32 inFocalLengthMm) {
-	inState.focalLength = inFocalLengthMm;
-}
-
-oa::F32 getFocalLength(const oa::CameraState& inState) noexcept {
-	return inState.focalLength;
-}
-
-void setSensorHeight(oa::CameraState& inState, oa::F32 inSensorHeightMm) {
-	inState.sensorHeight = inSensorHeightMm;
-}
-
-oa::F32 getSensorHeight(const oa::CameraState& inState) noexcept {
-	return inState.sensorHeight;
-}
-
-oa::F32 getEffectiveFovY(const oa::CameraState& inState) noexcept {
-	if (inState.focalLength > 0.0f && inState.sensorHeight > 0.0f) {
-		// FOV = 2 * arctan(sensorHeight / (2 * focalLength))
-		return 2.0f * oa::atan(inState.sensorHeight / (2.0f * inState.focalLength)) * 180.0f / 3.14159265358979323846f;
+void FnCamera::setNearFar(
+	oa::Camera& inCamera,
+	oa::F32 inNear,
+	oa::F32 inFar) {
+	if (inCamera.projection_ == oa::CameraProjection::Perspective) {
+		setPerspective(
+			inCamera, inCamera.fovY_, inCamera.aspect_, inNear, inFar);
+		return;
 	}
-	return inState.fovY;
+	setOrthographic(
+		inCamera,
+		inCamera.orthoWidth_,
+		inCamera.orthoHeight_,
+		inNear,
+		inFar);
 }
 
-// ─── Screen offset ───────────────────────────────────────────────────────
-
-void setOffset(oa::CameraState& inState, oa::F32 inOffsetX, oa::F32 inOffsetY) {
-	inState.offsetX = inOffsetX;
-	inState.offsetY = inOffsetY;
+oa::F32 FnCamera::getNear(const oa::Camera& inCamera) noexcept {
+	return inCamera.near_;
 }
 
-oa::vlm::Vec2 getOffset(const oa::CameraState& inState) noexcept {
-	return {inState.offsetX, inState.offsetY};
+oa::F32 FnCamera::getFar(const oa::Camera& inCamera) noexcept {
+	return inCamera.far_;
 }
 
-// ─── Orbit Controls ──────────────────────────────────────────────────────
-
-void setOrbitTarget(oa::CameraState& inState, const oa::vlm::Vec3& inTarget) {
-	inState.orbitTarget = inTarget;
-	inState.useOrbit = true;
+void FnCamera::setFovY(oa::Camera& inCamera, oa::F32 inFovY) {
+	setPerspective(
+		inCamera, inFovY, inCamera.aspect_, inCamera.near_, inCamera.far_);
 }
 
-void setOrbitDistance(oa::CameraState& inState, oa::F32 inDistance) {
-	// Reposition camera along the forward vector from target
-	oa::vlm::Vec3 forward = getForward(inState);
-	inState.position.x = inState.orbitTarget.x - forward.x * inDistance;
-	inState.position.y = inState.orbitTarget.y - forward.y * inDistance;
-	inState.position.z = inState.orbitTarget.z - forward.z * inDistance;
+oa::F32 FnCamera::getFovY(const oa::Camera& inCamera) noexcept {
+	return inCamera.fovY_;
 }
 
-void orbitYawPitch(oa::CameraState& inState, oa::F32 inYawDelta, oa::F32 inPitchDelta) {
-	oa::vlm::Vec3 offset = oa::vlm::sub(inState.position, inState.orbitTarget);
-	oa::vlm::Vec3 sph = oa::vlm::cartesianToSpherical(offset);
-	if (sph.z < oa::vlm::Tolerance<oa::F32>) return;
-
-	sph.x += oa::vlm::radians(inYawDelta);     // yaw
-	sph.y += oa::vlm::radians(inPitchDelta);  // pitch
-
-	// Clamp pitch
-	oa::F32 pitchLimit = oa::vlm::radians(89.0F);
-	if (sph.y > pitchLimit) sph.y = pitchLimit;
-	if (sph.y < -pitchLimit) sph.y = -pitchLimit;
-
-	inState.position = oa::vlm::add(
-		inState.orbitTarget,
-		oa::vlm::sphericalToCartesian(sph.x, sph.y, sph.z));
-	lookAt(inState, inState.orbitTarget);
+void FnCamera::setZoom(oa::Camera& inCamera, oa::F32 inZoom) {
+	OA_REQUIRE_MSG(
+		oa::isFinite(inZoom) and inZoom > 0.0F,
+		"Camera zoom must be finite and positive");
+	inCamera.zoom_ = inZoom;
 }
 
-void orbitSetYawPitch(oa::CameraState& inState, oa::F32 inYaw, oa::F32 inPitch) {
-	oa::vlm::Vec3 offset = oa::vlm::sub(inState.position, inState.orbitTarget);
-	oa::vlm::Vec3 sph = oa::vlm::cartesianToSpherical(offset);
-	if (sph.z < oa::vlm::Tolerance<oa::F32>) return;
-
-	inState.position = oa::vlm::add(
-		inState.orbitTarget,
-		oa::vlm::sphericalToCartesian(
-			oa::vlm::radians(inYaw),
-			oa::vlm::radians(inPitch),
-			sph.z)
-	);
-	lookAt(inState, inState.orbitTarget);
+oa::F32 FnCamera::getZoom(const oa::Camera& inCamera) noexcept {
+	return inCamera.zoom_;
 }
 
-// ─── Euler Angles ─────────────────────────────────────────────────────────
-
-void setYawPitchRoll(oa::CameraState& inState, oa::F32 inYawDeg, oa::F32 inPitchDeg, oa::F32 inRollDeg) {
-	inState.rotation = oa::vlm::quaternionFromEuler(inYawDeg, inPitchDeg, inRollDeg);
+void FnCamera::setFocalLength(
+	oa::Camera& inCamera,
+	oa::F32 inFocalLengthMm) {
+	OA_REQUIRE_MSG(
+		oa::isFinite(inFocalLengthMm) and inFocalLengthMm >= 0.0F,
+		"Camera focal length must be finite and non-negative");
+	inCamera.focalLength_ = inFocalLengthMm;
 }
 
-oa::vlm::Vec3 getYawPitchRoll(const oa::CameraState& inState) noexcept {
-	return oa::vlm::quaternionToEuler(inState.rotation);
+oa::F32 FnCamera::getFocalLength(const oa::Camera& inCamera) noexcept {
+	return inCamera.focalLength_;
 }
 
-// ─── camera-Space movement ───────────────────────────────────────────────
-
-void panLocal(oa::CameraState& inState, oa::F32 inRight, oa::F32 inUp, oa::F32 inForward) {
-	oa::vlm::Vec3 delta = oa::vlm::add(
-		oa::vlm::add(
-			oa::vlm::scale(getRight(inState), inRight),
-			oa::vlm::scale(getUp(inState), inUp)
-		),
-		oa::vlm::scale(getForward(inState), inForward)
-	);
-	inState.position = oa::vlm::add(inState.position, delta);
+void FnCamera::setSensorHeight(
+	oa::Camera& inCamera,
+	oa::F32 inSensorHeightMm) {
+	OA_REQUIRE_MSG(
+		oa::isFinite(inSensorHeightMm) and inSensorHeightMm > 0.0F,
+		"Camera sensor height must be finite and positive");
+	inCamera.sensorHeight_ = inSensorHeightMm;
 }
 
-} // namespace FnCamera
+oa::F32 FnCamera::getSensorHeight(const oa::Camera& inCamera) noexcept {
+	return inCamera.sensorHeight_;
+}
+
+oa::F32 FnCamera::getEffectiveFovY(const oa::Camera& inCamera) noexcept {
+	const oa::F32 focalLength = inCamera.focalLength_;
+	const oa::F32 sensorHeight = inCamera.sensorHeight_;
+	if (focalLength > 0.0F and sensorHeight > 0.0F) {
+		return 2.0F * oa::atan(sensorHeight / (2.0F * focalLength))
+			* 180.0F / oa::vlm::Pi<oa::F32>;
+	}
+	return inCamera.fovY_;
+}
+
+void FnCamera::setOffset(
+	oa::Camera& inCamera,
+	oa::F32 inOffsetX,
+	oa::F32 inOffsetY) {
+	OA_REQUIRE_MSG(
+		oa::isFinite(inOffsetX) and oa::isFinite(inOffsetY),
+		"Camera lens offset must be finite");
+	inCamera.offsetX_ = inOffsetX;
+	inCamera.offsetY_ = inOffsetY;
+}
+
+oa::vlm::Vec2 FnCamera::getOffset(const oa::Camera& inCamera) noexcept {
+	return {inCamera.offsetX_, inCamera.offsetY_};
+}
+
+void FnCamera::setOrbitTarget(
+	oa::Camera& inCamera,
+	const oa::vlm::Vec3& inTarget) {
+	OA_REQUIRE_MSG(inTarget.isFinite(), "Camera orbit target must be finite");
+	inCamera.orbitTarget_ = inTarget;
+}
+
+void FnCamera::setOrbitDistance(
+	oa::Camera& inCamera,
+	oa::F32 inDistance) {
+	OA_REQUIRE_MSG(
+		oa::isFinite(inDistance) and inDistance > 0.0F,
+		"Camera orbit distance must be finite and positive");
+	oa::FnTransform::setPosition(
+		inCamera.transform_,
+		inCamera.orbitTarget_
+			- oa::FnTransform::getForward(inCamera.transform_) * inDistance);
+}
+
+void FnCamera::orbitYawPitch(
+	oa::Camera& inCamera,
+	oa::F32 inYawDelta,
+	oa::F32 inPitchDelta) {
+	OA_REQUIRE_MSG(
+		oa::isFinite(inYawDelta) and oa::isFinite(inPitchDelta),
+		"Camera orbit deltas must be finite");
+	oa::vlm::Vec3 spherical = oa::vlm::cartesianToSpherical(
+		oa::FnTransform::getPosition(inCamera.transform_)
+			- inCamera.orbitTarget_);
+	if (spherical.z < oa::vlm::Tolerance<oa::F32>) return;
+	spherical.x += oa::vlm::radians(inYawDelta);
+	spherical.y += oa::vlm::radians(inPitchDelta);
+	const oa::F32 pitchLimit = oa::vlm::radians(89.0F);
+	spherical.y = oa::clamp(spherical.y, -pitchLimit, pitchLimit);
+	oa::FnTransform::setPosition(
+		inCamera.transform_,
+		inCamera.orbitTarget_
+			+ oa::vlm::sphericalToCartesian(
+				spherical.x, spherical.y, spherical.z));
+	oa::FnTransform::lookAt(inCamera.transform_, inCamera.orbitTarget_);
+}
+
+void FnCamera::orbitSetYawPitch(
+	oa::Camera& inCamera,
+	oa::F32 inYaw,
+	oa::F32 inPitch) {
+	OA_REQUIRE_MSG(
+		oa::isFinite(inYaw) and oa::isFinite(inPitch),
+		"Camera orbit angles must be finite");
+	const oa::vlm::Vec3 spherical = oa::vlm::cartesianToSpherical(
+		oa::FnTransform::getPosition(inCamera.transform_)
+			- inCamera.orbitTarget_);
+	if (spherical.z < oa::vlm::Tolerance<oa::F32>) return;
+	oa::FnTransform::setPosition(
+		inCamera.transform_,
+		inCamera.orbitTarget_
+			+ oa::vlm::sphericalToCartesian(
+				oa::vlm::radians(inYaw),
+				oa::vlm::radians(inPitch),
+				spherical.z));
+	oa::FnTransform::lookAt(inCamera.transform_, inCamera.orbitTarget_);
+}
 
 } // namespace oa

@@ -18,7 +18,9 @@
 #include <oa/core/status.h>
 #include <oa/ui/style.h>
 #include <oa/ui/event.h>
+#include <oa/ui/motion.h>
 #include <oa/ui/canvas.h>
+#include <oa/ui/text.h>
 #include <oa/runtime/event.h>
 #include <vulkan/vulkan.h>
 
@@ -58,6 +60,32 @@ enum class UiTextDirection : oa::U8 {
 enum class UiChevronDirection : oa::U8 {
 	Previous = 0,
 	Next = 1,
+};
+
+// Small GPU-vector glyphs used by icon-only controls. These are UI semantics,
+// not an asset pack: every icon is rendered by the compositor and remains
+// theme-, scale-, focus- and accessibility-aware.
+enum class UiIcon : oa::U8 {
+	Previous = 0,
+	Next,
+	Play,
+	Pause,
+	Menu,
+	Minimize,
+	Maximize,
+	Restore,
+	Close,
+	Fullscreen,
+	ExitFullscreen,
+	Volume,
+	Muted,
+	Settings,
+};
+
+enum class UiIconButtonStyle : oa::U8 {
+	Overlay = 0,
+	Header,
+	WindowControl,
 };
 
 enum class UiSizingKind : oa::U8 {
@@ -334,6 +362,7 @@ struct UiHeatmapConfig {
 };
 
 struct UiTextConfig {
+	FontId font = FontId::Sans;
 	oa::F32 fontSize = 14.0F;
 	oa::Color color = {0.961F, 0.961F, 0.961F, 1.0F};
 	UiAlign horizontalAlign = UiAlign::Center;
@@ -355,6 +384,12 @@ struct UiGridConfig {
 	oa::F32 axisThickness = 1.25F;
 	// Multiplies line alpha without affecting the optional background fill.
 	oa::F32 opacity = 1.0F;
+	// Optional circular guide falloff in absolute target pixels. Grid and axes
+	// remain fully visible through the inner radius, then fade out at the outer
+	// radius. The background fill always covers the complete rectangle.
+	oa::vlm::Vec2 guideFadeCenter = {0.0F, 0.0F};
+	oa::F32 guideFadeInnerRadius = 0.0F;
+	oa::F32 guideFadeOuterRadius = 1.0F;
 	// alpha zero selects the canonical colors derived from currentStyle().
 	oa::Color backgroundTop = {0.0F, 0.0F, 0.0F, 0.0F};
 	oa::Color backgroundBottom = {0.0F, 0.0F, 0.0F, 0.0F};
@@ -365,6 +400,10 @@ struct UiGridConfig {
 	bool fillBackground = true;
 	bool drawGrid = true;
 	bool drawAxes = true;
+	bool radialGuideFade = false;
+	// Stable spatial dithering prevents low-contrast gradients from exposing
+	// the final 8-bit target's quantization bands.
+	bool ditherBackground = false;
 };
 
 struct UiNodeCanvasGridConfig {
@@ -392,6 +431,8 @@ public:
 	~Ui();
 
 	[[nodiscard]] oa::Status init(oa::Engine& inRt, const UiStyle& inStyle = {});
+	[[nodiscard]] oa::Status setMotionSpeed(oa::UiMotionSpeed inSpeed);
+	[[nodiscard]] oa::UiMotionSpeed motionSpeed() const noexcept;
 	// Borrows the Viewer-owned atlas and allocates completion-tracked dynamic
 	// glyph slots. Bind once before the first frame; the atlas must outlive Ui.
 	[[nodiscard]] oa::Status bindTextAtlas(const TextAtlas& inAtlas);
@@ -551,8 +592,28 @@ public:
 	// traverse focus and Return/Space activate the focused control.
 	// Returns true on click or keyboard activation.
 	[[nodiscard]] bool button(oa::StringView inLabel);
+	// Explicit text-only control for fixed overlay geometry. inLabel is the
+	// stable identity and accessibility label; inText is the rendered value.
+	// The normal surface is transparent and receives the same hover, held and
+	// keyboard-focus treatment as a header icon button. Padding is expressed in
+	// physical pixels and keeps glyph alignment independent of the hit surface.
+	[[nodiscard]] bool textButton(
+		oa::StringView inLabel,
+		PixelRect inRect,
+		oa::StringView inText,
+		const UiTextConfig& inTextConfig = {},
+		bool inEnabled = true,
+		const UiEdge& inTextPadding = {});
+	// Explicit icon-only control. inLabel is the stable widget identity,
+	// accessibility label and tooltip anchor; no text is painted in the button.
+	[[nodiscard]] bool iconButton(
+		oa::StringView inLabel,
+		PixelRect inRect,
+		UiIcon inIcon,
+		bool inEnabled = true,
+		UiIconButtonStyle inButtonStyle = UiIconButtonStyle::Overlay);
 	// Explicit circular OSD control with a GPU-drawn previous/next chevron.
-	// inLabel is both the stable widget identity and accessibility label.
+	// Compatibility convenience over iconButton.
 	[[nodiscard]] bool chevronButton(
 		oa::StringView inLabel,
 		PixelRect inRect,
@@ -652,6 +713,16 @@ public:
 		oa::Color inColor,
 		oa::U32 inThickness = 1,
 		oa::F32 inCornerRadius = 0.0F);
+	// Replaces pixels outside a rounded rectangle with the supplied canvas
+	// color. Unlike an outline, this clips already-composited GPU content.
+	void maskRoundedRect(
+		PixelRect inRect,
+		oa::F32 inCornerRadius,
+		oa::Color inOutsideColor);
+	// Applies a premultiplied-alpha rounded mask to the complete compose
+	// viewport. It is appended after overlay commands so client-side windows can
+	// present a genuinely rounded surface rather than a square opaque buffer.
+	void maskRoundedViewport(oa::F32 inCornerRadius);
 	// draw an anti-aliased screen-space line in one GPU dispatch.
 	void line(
 		oa::vlm::Vec2 inBegin,

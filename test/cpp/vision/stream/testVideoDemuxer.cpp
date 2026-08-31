@@ -591,6 +591,41 @@ TEST(VideoDemuxer, LongPlaybackLoopResetAndBackStep) {
   ASSERT_TRUE(video.close().isOk());
 }
 
+TEST(VideoDemuxer, CachedSeekClearsNonLoopingEndState) {
+  const std::string asset = testStdString(testAssetPath(
+      "video/clip/shibuya_720p_30fps_h264_high_8bit_420.mp4").string());
+  ASSERT_TRUE(datasetAvailable(asset.c_str()));
+  auto *engine = testEnginePtr();
+  if (engine == nullptr or
+      not testVideoDecodeSupported(*engine, oa::VideoCodec::H264)) {
+    GTEST_SKIP() << "Vulkan Video H.264 decode not supported";
+  }
+
+  oa::VideoPlayerConfig cfg;
+  cfg.uri = asset.c_str();
+  cfg.audio = false;
+  cfg.loop = false;
+  cfg.startPlaying = false;
+  cfg.presentationCacheFrames = 32U;
+  auto opened = oa::VideoPlayer::open(*engine, cfg);
+  ASSERT_TRUE(opened.isOk()) << opened.getStatus().toString();
+  oa::VideoPlayer video = oa::move(*opened);
+  ASSERT_GT(video.frameCount(), 0U);
+  ASSERT_TRUE(video.seekFrame(video.frameCount() - 1U).isOk());
+  video.play();
+  video.tick(1'000.0F);
+  ASSERT_TRUE(video.isDone());
+  EXPECT_FALSE(video.isPlaying());
+
+  const oa::Usize cachedFrame = video.currentFrameIndex();
+  const oa::VideoPlayerStats before = video.getPlaybackStats();
+  ASSERT_TRUE(video.seekFrame(cachedFrame).isOk());
+  EXPECT_FALSE(video.isDone());
+  EXPECT_GT(video.getPlaybackStats().presentationCacheHits,
+            before.presentationCacheHits);
+  ASSERT_TRUE(video.close().isOk());
+}
+
 TEST(VideoDemuxer, BackwardSeekReconstructsFrameAcrossCodecs) {
   struct Case {
     const char *path;

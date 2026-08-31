@@ -149,3 +149,25 @@ oa::UiStyle oa::UiStyle::editorLight() {
 	style.error = hex(0xC72E0FFFU);
 	return style;
 }
+
+oa::UiStyle oa::UiStyle::viewerDark() {
+	oa::UiStyle style = editorDark();
+	style.cornerRadius = 15.0F;
+	style.shadowBlur = 12.0F;
+	// VS Code Dark Modern's terminal/panel background.
+	style.background = hex(0x181818FFU);
+	style.surface = hex(0x303030E8U);
+	style.surfaceHover = hex(0x424242F0U);
+	style.surfaceActive = hex(0x505050F5U);
+	style.borderSubtle = hex(0xFFFFFF10U);
+	style.border = hex(0xFFFFFF20U);
+	style.borderStrong = hex(0xFFFFFF38U);
+	style.text = hex(0xFFFFFFFFU);
+	style.textSecondary = hex(0xE6E6E6FFU);
+	style.textMuted = hex(0xB8B8B8FFU);
+	style.textDisabled = hex(0x777777FFU);
+	style.accent = hex(0xF5F5F5FFU);
+	style.accentHover = hex(0xFFFFFFFFU);
+	style.accentActive = hex(0xD8D8D8FFU);
+	return style;
+}

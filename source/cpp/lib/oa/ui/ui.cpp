@@ -97,6 +97,22 @@ struct DrawRectPc {
 };
 static_assert(sizeof(DrawRectPc) == 44U);
 
+// Must match maskRoundedViewport.slang.
+struct MaskRoundedViewportPc {
+	oa::U32 dst_idx;
+	oa::I32 dst_x;
+	oa::I32 dst_y;
+	oa::U32 dst_w;
+	oa::U32 dst_h;
+	oa::F32 corner_radius;
+	oa::U32 outside_rgba;
+	oa::I32 clip_x;
+	oa::I32 clip_y;
+	oa::U32 clip_w;
+	oa::U32 clip_h;
+};
+static_assert(sizeof(MaskRoundedViewportPc) == 44U);
+
 // Must match drawRectOutline.slang.
 struct DrawRectOutlinePc {
 	oa::U32 dst_idx;
@@ -127,6 +143,24 @@ struct DrawLinePc {
 	oa::U32 bounds_w;
 	oa::U32 bounds_h;
 };
+static_assert(sizeof(DrawLinePc) == 44U);
+
+// Must match drawTriangle.slang.
+struct DrawTrianglePc {
+	oa::U32 dst_idx;
+	oa::F32 x0;
+	oa::F32 y0;
+	oa::F32 x1;
+	oa::F32 y1;
+	oa::F32 x2;
+	oa::F32 y2;
+	oa::U32 rgba;
+	oa::U32 bounds_x;
+	oa::U32 bounds_y;
+	oa::U32 bounds_w;
+	oa::U32 bounds_h;
+};
+static_assert(sizeof(DrawTrianglePc) == 48U);
 
 // Must match drawCanvasGrid.slang.
 struct DrawCanvasGridPc {
@@ -151,13 +185,17 @@ struct DrawCanvasGridPc {
 	oa::U32 major_rgba;
 	oa::U32 super_major_rgba;
 	oa::U32 axis_rgba;
+	oa::F32 fade_center_x;
+	oa::F32 fade_center_y;
+	oa::F32 fade_inner_radius;
+	oa::F32 fade_outer_radius;
 	oa::U32 flags;
 	oa::I32 clip_x;
 	oa::I32 clip_y;
 	oa::U32 clip_w;
 	oa::U32 clip_h;
 };
-static_assert(sizeof(DrawCanvasGridPc) == 104U);
+static_assert(sizeof(DrawCanvasGridPc) == 120U);
 
 struct DrawWaveformPc {
 	oa::U32 envelope_idx;
@@ -272,12 +310,14 @@ enum class BlitKind : oa::U8 {
 	Rect,
 	RectOutline,
 	Line,
+	Triangle,
 	CanvasGrid,
 	RectOutlines,
 	Glyphs,
 	Waveform,
 	PlotLine,
 	Heatmap,
+	RoundedViewportMask,
 };
 
 struct BlitCmd {
@@ -296,12 +336,14 @@ struct BlitCmd {
 		DrawRectPc rect;
 		DrawRectOutlinePc rectOutline;
 		DrawLinePc line;
+		DrawTrianglePc triangle;
 		DrawCanvasGridPc canvasGrid;
 		DrawRectOutlinesPc rectOutlines;
 		DrawGlyphsPc glyphs;
 		DrawWaveformPc waveform;
 		DrawPlotLinePc plotLine;
 		DrawHeatmapPc heatmap;
+		MaskRoundedViewportPc roundedViewportMask;
 	};
 };
 
@@ -392,6 +434,13 @@ oa::PixelRect clipToNonNegative(oa::PixelRect inRect) noexcept {
 		static_cast<oa::I32>(oa::min<oa::I64>(
 			bottom - top, oa::Limits<oa::I32>::max())),
 	};
+}
+
+oa::I32 pixelCoordinate(oa::I64 inValue) noexcept {
+	return static_cast<oa::I32>(oa::clamp<oa::I64>(
+		inValue,
+		oa::Limits<oa::I32>::min(),
+		oa::Limits<oa::I32>::max()));
 }
 
 oa::U32 hashWidgetId(oa::StringView inId, oa::U32 inSeed = kWidgetHashOffset) noexcept {
@@ -621,12 +670,14 @@ struct oa::Ui::Impl {
 	oa::ComputePipeline drawRect;
 	oa::ComputePipeline drawRectOutline;
 	oa::ComputePipeline drawLine;
+	oa::ComputePipeline drawTriangle;
 	oa::ComputePipeline drawCanvasGrid;
 	oa::ComputePipeline drawRectOutlines;
 	oa::ComputePipeline drawGlyphs;
 	oa::ComputePipeline drawWaveform;
 	oa::ComputePipeline drawPlotLine;
 	oa::ComputePipeline drawHeatmap;
+	oa::ComputePipeline maskRoundedViewport;
 
 	static constexpr oa::U32 kPlotSlotCount = 4;
 	static constexpr oa::U32 kPlotCapacity = 4096;
@@ -731,6 +782,7 @@ struct oa::Ui::Impl {
 	// before recording.
 	oa::Vector<BlitCmd> blits;
 	oa::Vector<BlitCmd> overlayBlits;
+	oa::Vector<BlitCmd> finalBlits;
 	bool recordingOverlay = false;
 
 	// Panel stack for layout cursor.
@@ -767,6 +819,18 @@ struct oa::Ui::Impl {
 	oa::Vector<ScrollState> scrollStates;
 	oa::Vector<ScrollRecord> scrollRecords;
 	oa::Vector<ScrollRecord> priorScrollRecords;
+	struct MotionState {
+		oa::U32 id = 0U;
+		oa::F32 start = 0.0F;
+		oa::F32 current = 0.0F;
+		oa::F32 target = 0.0F;
+		oa::F32 elapsedMs = 0.0F;
+		oa::F32 normalDurationMs = 0.0F;
+		oa::F32 durationMs = 0.0F;
+		oa::U64 lastSeenFrame = 0U;
+	};
+	oa::Vector<MotionState> motionStates;
+	oa::UiMotionSpeed motionSpeed = oa::UiMotionSpeed::Normal;
 
 	oa::Vector<oa::U32> focusOrder;
 	oa::Vector<oa::U32> priorFocusOrder;
@@ -871,11 +935,94 @@ struct oa::Ui::Impl {
 		else blits.pushBack(oa::move(inCommand));
 	}
 
+	void appendRect(
+		oa::PixelRect inRect,
+		oa::Color inColor,
+		oa::F32 inCornerRadius,
+		bool inFrameClipOnly = false) {
+		if (inRect.w <= 0 or inRect.h <= 0) return;
+		const oa::PixelRect clip = inFrameClipOnly
+			? intersectPixelRects(clipToNonNegative(inRect), frameViewport)
+			: clipFor(inRect);
+		if (clip.w <= 0 or clip.h <= 0) return;
+		BlitCmd command{};
+		command.kind = BlitKind::Rect;
+		command.rect.dst_idx = 0U;
+		command.rect.dst_x = inRect.x;
+		command.rect.dst_y = inRect.y;
+		command.rect.dst_w = static_cast<oa::U32>(inRect.w);
+		command.rect.dst_h = static_cast<oa::U32>(inRect.h);
+		command.rect.rgba = inColor.toU32();
+		command.rect.clip_x = clip.x;
+		command.rect.clip_y = clip.y;
+		command.rect.clip_w = static_cast<oa::U32>(clip.w);
+		command.rect.clip_h = static_cast<oa::U32>(clip.h);
+		command.rect.corner_radius = oa::min(
+			inCornerRadius,
+			0.5F * static_cast<oa::F32>(oa::min(inRect.w, inRect.h)));
+		appendBlit(oa::move(command));
+	}
+
+	void appendTriangle(
+		const oa::vlm::Vec2& inP0,
+		const oa::vlm::Vec2& inP1,
+		const oa::vlm::Vec2& inP2,
+		oa::Color inColor,
+		bool inFrameClipOnly = false) {
+		if (!oa::isFinite(inP0.x) || !oa::isFinite(inP0.y)
+			|| !oa::isFinite(inP1.x) || !oa::isFinite(inP1.y)
+			|| !oa::isFinite(inP2.x) || !oa::isFinite(inP2.y)) {
+			setFrameError(oa::Status::invalidArgument(
+				"oa::Ui triangle geometry must be finite"));
+			return;
+		}
+		const oa::F32 padding = 1.5F;
+		const oa::F32 minimumX = oa::min(inP0.x, oa::min(inP1.x, inP2.x));
+		const oa::F32 minimumY = oa::min(inP0.y, oa::min(inP1.y, inP2.y));
+		const oa::F32 maximumX = oa::max(inP0.x, oa::max(inP1.x, inP2.x));
+		const oa::F32 maximumY = oa::max(inP0.y, oa::max(inP1.y, inP2.y));
+		const oa::I64 x = static_cast<oa::I64>(oa::floor(minimumX - padding));
+		const oa::I64 y = static_cast<oa::I64>(oa::floor(minimumY - padding));
+		const oa::I64 right = static_cast<oa::I64>(oa::ceil(maximumX + padding));
+		const oa::I64 bottom = static_cast<oa::I64>(oa::ceil(maximumY + padding));
+		const oa::PixelRect source{
+			pixelCoordinate(x),
+			pixelCoordinate(y),
+			static_cast<oa::I32>(oa::clamp<oa::I64>(
+				right - x, 0, oa::Limits<oa::I32>::max())),
+			static_cast<oa::I32>(oa::clamp<oa::I64>(
+				bottom - y, 0, oa::Limits<oa::I32>::max())),
+		};
+		const oa::PixelRect bounds = inFrameClipOnly
+			? intersectPixelRects(clipToNonNegative(source), frameViewport)
+			: clipFor(source);
+		if (bounds.w <= 0 || bounds.h <= 0) return;
+		BlitCmd command{};
+		command.kind = BlitKind::Triangle;
+		command.triangle.dst_idx = 0U;
+		command.triangle.x0 = inP0.x;
+		command.triangle.y0 = inP0.y;
+		command.triangle.x1 = inP1.x;
+		command.triangle.y1 = inP1.y;
+		command.triangle.x2 = inP2.x;
+		command.triangle.y2 = inP2.y;
+		command.triangle.rgba = inColor.toU32();
+		command.triangle.bounds_x = static_cast<oa::U32>(bounds.x);
+		command.triangle.bounds_y = static_cast<oa::U32>(bounds.y);
+		command.triangle.bounds_w = static_cast<oa::U32>(bounds.w);
+		command.triangle.bounds_h = static_cast<oa::U32>(bounds.h);
+		appendBlit(oa::move(command));
+	}
+
 	void mergeOverlayBlits() {
 		for (BlitCmd& command : overlayBlits) {
 			blits.pushBack(oa::move(command));
 		}
 		overlayBlits.clear();
+		for (BlitCmd& command : finalBlits) {
+			blits.pushBack(oa::move(command));
+		}
+		finalBlits.clear();
 	}
 
 	[[nodiscard]] bool canInteract(oa::U32 inId) const noexcept {
@@ -977,6 +1124,56 @@ struct oa::Ui::Impl {
 			if (state.id == inId) return &state;
 		}
 		return nullptr;
+	}
+
+	[[nodiscard]] oa::F32 animate(
+		oa::U32 inId,
+		oa::F32 inTarget,
+		oa::F32 inNormalDurationMs) {
+		MotionState* found = nullptr;
+		for (MotionState& state : motionStates) {
+			if (state.id == inId) {
+				found = &state;
+				break;
+			}
+		}
+		if (found == nullptr) {
+			motionStates.pushBack({
+				.id = inId,
+				.start = inTarget,
+				.current = inTarget,
+				.target = inTarget,
+				.normalDurationMs = inNormalDurationMs,
+				.durationMs = oa::uiMotionDurationMs(
+					inNormalDurationMs, motionSpeed),
+				.lastSeenFrame = frameIndex,
+			});
+			return inTarget;
+		}
+		MotionState& state = *found;
+		state.lastSeenFrame = frameIndex;
+		if (state.target != inTarget
+			or state.normalDurationMs != inNormalDurationMs) {
+			state.start = state.current;
+			state.target = inTarget;
+			state.elapsedMs = 0.0F;
+			state.normalDurationMs = inNormalDurationMs;
+			state.durationMs = oa::uiMotionDurationMs(
+				inNormalDurationMs, motionSpeed);
+		}
+		if (state.durationMs <= 0.0F) {
+			state.current = state.target;
+			return state.current;
+		}
+		state.elapsedMs = oa::min(
+			state.durationMs, state.elapsedMs + frameDeltaMs);
+		const oa::F32 linear = oa::clamp(
+			state.elapsedMs / state.durationMs, 0.0F, 1.0F);
+		const oa::F32 inverse = 1.0F - linear;
+		const oa::F32 eased = 1.0F - inverse * inverse * inverse;
+		state.current = state.start
+			+ (state.target - state.start) * eased;
+		return state.current;
 	}
 
 	[[nodiscard]] oa::U32 currentScope() const noexcept {
@@ -1463,6 +1660,9 @@ struct oa::Ui::Impl {
 		const bool validDirection =
 			inConfig.direction == oa::UiTextDirection::LeftToRight
 			or inConfig.direction == oa::UiTextDirection::BottomToTop;
+		const bool validFont = inConfig.font == oa::FontId::Sans
+			or inConfig.font == oa::FontId::Mono
+			or inConfig.font == oa::FontId::SansSemibold;
 		if (not oa::isFinite(inConfig.fontSize)
 			or inConfig.fontSize <= 0.0F
 			or not oa::isFinite(inConfig.color.r)
@@ -1471,7 +1671,8 @@ struct oa::Ui::Impl {
 			or not oa::isFinite(inConfig.color.a)
 			or not validAlign(inConfig.horizontalAlign)
 			or not validAlign(inConfig.verticalAlign)
-			or not validDirection) {
+			or not validDirection
+			or not validFont) {
 			setFrameError(oa::Status::invalidArgument(
 				"oa::Ui positioned text requires finite style, explicit alignment, and a supported direction"));
 			return;
@@ -1487,7 +1688,7 @@ struct oa::Ui::Impl {
 		if (clip.w <= 0 or clip.h <= 0) return;
 
 		const oa::TextLayoutConfig textConfig{
-			.font = oa::FontId::Sans,
+			.font = inConfig.font,
 			.size = inConfig.fontSize,
 		};
 		oa::TextLayout layout;
@@ -1592,7 +1793,7 @@ struct oa::Ui::Impl {
 		command.glyphs.glyph_idx = OA_BINDLESS_INVALID;
 		command.glyphs.first = first;
 		command.glyphs.atlas_idx =
-			textAtlas->atlasBindlessIndex(oa::FontId::Sans);
+			textAtlas->atlasBindlessIndex(inConfig.font);
 		command.glyphs.count = count;
 		command.glyphs.batch = 0U;
 		command.glyphs.batch_count = 1U;
@@ -1729,6 +1930,32 @@ oa::Status oa::Ui::init(oa::Engine& inRt, const oa::UiStyle& inStyle) {
 	return oa::Status::ok();
 }
 
+oa::Status oa::Ui::setMotionSpeed(oa::UiMotionSpeed inSpeed) {
+	if (!impl_) {
+		return oa::Status::error(
+			oa::StatusCode::FailedPrecondition,
+			"oa::Ui::setMotionSpeed requires an initialized oa::Ui");
+	}
+	if (!oa::isValidUiMotionSpeed(inSpeed)) {
+		return oa::Status::invalidArgument(
+			"oa::Ui::setMotionSpeed requires a valid UI motion speed");
+	}
+	if (impl_->motionSpeed == inSpeed) return oa::Status::ok();
+	impl_->motionSpeed = inSpeed;
+	for (Impl::MotionState& state : impl_->motionStates) {
+		state.start = state.current;
+		state.elapsedMs = 0.0F;
+		state.durationMs = oa::uiMotionDurationMs(
+			state.normalDurationMs, inSpeed);
+		if (state.durationMs == 0.0F) state.current = state.target;
+	}
+	return oa::Status::ok();
+}
+
+oa::UiMotionSpeed oa::Ui::motionSpeed() const noexcept {
+	return impl_ ? impl_->motionSpeed : oa::UiMotionSpeed::Normal;
+}
+
 oa::Status oa::Ui::bindTextAtlas(const oa::TextAtlas& inAtlas) {
 	if (!impl_ || impl_->rt == nullptr) {
 		return oa::Status::error(
@@ -1787,12 +2014,15 @@ void oa::Ui::release_() noexcept {
 		impl_->drawRect.destroy(oa::EngineDeviceAccess::get(*impl_->rt));
 		impl_->drawRectOutline.destroy(oa::EngineDeviceAccess::get(*impl_->rt));
 		impl_->drawLine.destroy(oa::EngineDeviceAccess::get(*impl_->rt));
+		impl_->drawTriangle.destroy(oa::EngineDeviceAccess::get(*impl_->rt));
 		impl_->drawCanvasGrid.destroy(oa::EngineDeviceAccess::get(*impl_->rt));
 		impl_->drawRectOutlines.destroy(oa::EngineDeviceAccess::get(*impl_->rt));
 		impl_->drawGlyphs.destroy(oa::EngineDeviceAccess::get(*impl_->rt));
 		impl_->drawWaveform.destroy(oa::EngineDeviceAccess::get(*impl_->rt));
 		impl_->drawPlotLine.destroy(oa::EngineDeviceAccess::get(*impl_->rt));
 		impl_->drawHeatmap.destroy(oa::EngineDeviceAccess::get(*impl_->rt));
+		impl_->maskRoundedViewport.destroy(
+			oa::EngineDeviceAccess::get(*impl_->rt));
 	}
 	impl_.reset();
 	input_ = {};
@@ -1865,12 +2095,15 @@ oa::Status oa::Ui::initBlit(void* /*inComposeImageView*/) {
 	OA_RETURN_IF_ERROR(createBlitPipeline("DrawRect", impl_->drawRect));
 	OA_RETURN_IF_ERROR(createBlitPipeline("DrawRectOutline", impl_->drawRectOutline));
 	OA_RETURN_IF_ERROR(createBlitPipeline("DrawLine", impl_->drawLine));
+	OA_RETURN_IF_ERROR(createBlitPipeline("DrawTriangle", impl_->drawTriangle));
 	OA_RETURN_IF_ERROR(createBlitPipeline("DrawCanvasGrid", impl_->drawCanvasGrid));
 	OA_RETURN_IF_ERROR(createBlitPipeline("DrawRectOutlines", impl_->drawRectOutlines));
 	OA_RETURN_IF_ERROR(createBlitPipeline("DrawGlyphs", impl_->drawGlyphs));
 	OA_RETURN_IF_ERROR(createBlitPipeline("DrawWaveform", impl_->drawWaveform));
 	OA_RETURN_IF_ERROR(createBlitPipeline("DrawPlotLine", impl_->drawPlotLine));
 	OA_RETURN_IF_ERROR(createBlitPipeline("DrawHeatmap", impl_->drawHeatmap));
+	OA_RETURN_IF_ERROR(createBlitPipeline(
+		"MaskRoundedViewport", impl_->maskRoundedViewport));
 	return oa::Status::ok();
 }
 
@@ -1921,6 +2154,13 @@ void oa::Ui::beginFrame(
 			impl_->scrollStates.erase(impl_->scrollStates.begin() + (index - 1U));
 		}
 	}
+	for (oa::Usize index = impl_->motionStates.size(); index > 0U; --index) {
+		if (impl_->frameIndex
+			- impl_->motionStates[index - 1U].lastSeenFrame > 600U) {
+			impl_->motionStates.erase(
+				impl_->motionStates.begin() + (index - 1U));
+		}
+	}
 	for (oa::Usize index = impl_->textureRetentions.size(); index > 0U; --index) {
 		if (impl_->textureRetentions[index - 1U].completion.isComplete()) {
 			impl_->textureRetentions.erase(
@@ -1946,6 +2186,7 @@ void oa::Ui::beginFrame(
 	impl_->accessibilityNodes.clear();
 	impl_->blits.clear();
 	impl_->overlayBlits.clear();
+	impl_->finalBlits.clear();
 	impl_->usedPlots.clear();
 	impl_->usedImagePlanes.clear();
 	impl_->panelStack.clear();
@@ -2366,10 +2607,12 @@ oa::Status oa::Ui::recordRender(
 	if (!impl_->blitRgba.pipeline && !impl_->blitPlanar.pipeline
 		&& !impl_->blitImageRgba.pipeline && !impl_->drawRect.pipeline
 		&& !impl_->drawRectOutline.pipeline && !impl_->drawLine.pipeline
+		&& !impl_->drawTriangle.pipeline
 		&& !impl_->drawCanvasGrid.pipeline
 		&& !impl_->drawRectOutlines.pipeline && !impl_->drawGlyphs.pipeline
 		&& !impl_->drawWaveform.pipeline && !impl_->drawPlotLine.pipeline
-		&& !impl_->drawHeatmap.pipeline) {
+		&& !impl_->drawHeatmap.pipeline
+		&& !impl_->maskRoundedViewport.pipeline) {
 		return oa::Status::ok();
 	}
 
@@ -2416,6 +2659,11 @@ oa::Status oa::Ui::recordRender(
 				groupsX = (bc.line.bounds_w + 7U) / 8U;
 				groupsY = (bc.line.bounds_h + 7U) / 8U;
 				break;
+			case BlitKind::Triangle:
+				hasDispatch = impl_->drawTriangle.pipeline != nullptr;
+				groupsX = (bc.triangle.bounds_w + 7U) / 8U;
+				groupsY = (bc.triangle.bounds_h + 7U) / 8U;
+				break;
 			case BlitKind::CanvasGrid:
 				hasDispatch = impl_->drawCanvasGrid.pipeline != nullptr;
 				groupsX = (bc.canvasGrid.dst_w + 7U) / 8U;
@@ -2437,6 +2685,11 @@ oa::Status oa::Ui::recordRender(
 				hasDispatch = impl_->drawHeatmap.pipeline != nullptr;
 				groupsX = (bc.heatmap.dst_w + 7U) / 8U;
 				groupsY = (bc.heatmap.dst_h + 7U) / 8U;
+				break;
+			case BlitKind::RoundedViewportMask:
+				hasDispatch = impl_->maskRoundedViewport.pipeline != nullptr;
+				groupsX = (bc.roundedViewportMask.dst_w + 7U) / 8U;
+				groupsY = (bc.roundedViewportMask.dst_h + 7U) / 8U;
 				break;
 		}
 		if (hasDispatch) {
@@ -2619,6 +2872,25 @@ oa::Status oa::Ui::recordRender(
 			OA_RETURN_IF_ERROR(dispatch(
 				(pc.bounds_w + 7U) / 8U,
 				(pc.bounds_h + 7U) / 8U, 1));
+		} else if (bc.kind == BlitKind::Triangle) {
+			if (!impl_->drawTriangle.pipeline) continue;
+			DrawTrianglePc pc = bc.triangle;
+			pc.dst_idx = inDstBindlessIdx;
+			oa::EngineDeviceAccess::get(*impl_->rt).deviceDispatch.vkCmdBindPipeline(
+				cmd,
+				VK_PIPELINE_BIND_POINT_COMPUTE,
+				static_cast<VkPipeline>(impl_->drawTriangle.pipeline));
+			oa::EngineDeviceAccess::get(*impl_->rt).deviceDispatch.vkCmdPushConstants(
+				cmd,
+				layout,
+				VK_SHADER_STAGE_COMPUTE_BIT,
+				0,
+				sizeof(pc),
+				&pc);
+			OA_RETURN_IF_ERROR(dispatch(
+				(pc.bounds_w + 7U) / 8U,
+				(pc.bounds_h + 7U) / 8U,
+				1U));
 		} else if (bc.kind == BlitKind::CanvasGrid) {
 			if (!impl_->drawCanvasGrid.pipeline) continue;
 			DrawCanvasGridPc pc = bc.canvasGrid;
@@ -2671,6 +2943,25 @@ oa::Status oa::Ui::recordRender(
 			OA_RETURN_IF_ERROR(dispatch(
 				(pc.dst_w + 7U) / 8U,
 				(pc.dst_h + 7U) / 8U, 1));
+		} else if (bc.kind == BlitKind::RoundedViewportMask) {
+			if (!impl_->maskRoundedViewport.pipeline) continue;
+			MaskRoundedViewportPc pc = bc.roundedViewportMask;
+			pc.dst_idx = inDstBindlessIdx;
+			oa::EngineDeviceAccess::get(*impl_->rt).deviceDispatch.vkCmdBindPipeline(
+				cmd,
+				VK_PIPELINE_BIND_POINT_COMPUTE,
+				static_cast<VkPipeline>(impl_->maskRoundedViewport.pipeline));
+			oa::EngineDeviceAccess::get(*impl_->rt).deviceDispatch.vkCmdPushConstants(
+				cmd,
+				layout,
+				VK_SHADER_STAGE_COMPUTE_BIT,
+				0,
+				sizeof(pc),
+				&pc);
+			OA_RETURN_IF_ERROR(dispatch(
+				(pc.dst_w + 7U) / 8U,
+				(pc.dst_h + 7U) / 8U,
+				1U));
 		}
 
 		// memory barrier between dispatches.
@@ -3924,12 +4215,57 @@ bool oa::Ui::beginPopup(
 	impl_->panelStack.pushBack(panel);
 
 	const oa::UiStyle& style = currentStyle();
-	this->rect(rect, style.background.withAlpha(0.98F));
+	const oa::F32 radius = oa::min(
+		oa::max(0.0F, style.cornerRadius),
+		0.5F * static_cast<oa::F32>(oa::min(rect.w, rect.h)));
+	const oa::Color popupColor = style.surface.withAlpha(0.99F);
 	if (rect.w > 4 && rect.h > 4) {
-		this->rect({rect.x + 2, rect.y + rect.h - 3, rect.w - 4, 2},
-			oa::Color{0.0F, 0.0F, 0.0F, 0.40F});
+		impl_->appendRect(
+			{pixelCoordinate(static_cast<oa::I64>(rect.x) + 2),
+			 pixelCoordinate(static_cast<oa::I64>(rect.y) + 3),
+			 rect.w, rect.h},
+			oa::Color{0.0F, 0.0F, 0.0F, 0.42F},
+			radius,
+			true);
 	}
-	rectOutline(rect, style.borderStrong, 1U);
+	if (inConfig.gap >= 3) {
+		const bool below = static_cast<oa::I64>(rect.y)
+			>= static_cast<oa::I64>(impl_->popupAnchorRect.y)
+				+ impl_->popupAnchorRect.h;
+		const bool above = static_cast<oa::I64>(rect.y) + rect.h
+			<= impl_->popupAnchorRect.y;
+		if ((below or above)
+			and static_cast<oa::F32>(rect.w) > radius * 2.0F + 4.0F) {
+			const oa::F32 maximumHalf = 0.25F
+				* (static_cast<oa::F32>(rect.w) - radius * 2.0F);
+			const oa::F32 halfWidth = oa::max(
+				1.0F,
+				oa::min(6.0F * impl_->contentScale, maximumHalf));
+			const oa::F32 arrowHeight = static_cast<oa::F32>(
+				oa::min(inConfig.gap, oa::max(3, static_cast<oa::I32>(
+					oa::round(6.0F * impl_->contentScale)))));
+			const oa::F32 center = oa::clamp(
+				static_cast<oa::F32>(impl_->popupAnchorRect.x)
+					+ 0.5F * static_cast<oa::F32>(impl_->popupAnchorRect.w),
+				static_cast<oa::F32>(rect.x) + radius + halfWidth,
+				static_cast<oa::F32>(
+					static_cast<oa::I64>(rect.x) + rect.w)
+					- radius - halfWidth);
+			const oa::F32 edge = below
+				? static_cast<oa::F32>(rect.y)
+				: static_cast<oa::F32>(
+					static_cast<oa::I64>(rect.y) + rect.h);
+			const oa::F32 tip = below ? edge - arrowHeight : edge + arrowHeight;
+			impl_->appendTriangle(
+				{center - halfWidth, edge},
+				{center + halfWidth, edge},
+				{center, tip},
+				popupColor,
+				true);
+		}
+	}
+	this->rect(rect, popupColor, radius);
+	rectOutline(rect, style.borderStrong, 1U, radius);
 	return true;
 }
 
@@ -3989,10 +4325,21 @@ bool oa::Ui::menuItem(
 		impl_->lastItemHovered = false;
 	}
 	if (inSelected) {
-		this->rect(rect, style.accent.withAlpha(interaction.hovered ? 0.35F : 0.22F));
-		this->rect({rect.x, rect.y, oa::min(3, rect.w), rect.h}, style.accent);
+		this->rect(
+			rect,
+			style.accent.withAlpha(interaction.hovered ? 0.35F : 0.22F),
+			oa::min(style.cornerRadius * 0.65F,
+				0.5F * static_cast<oa::F32>(rect.h)));
+		this->rect(
+			{rect.x, rect.y, oa::min(3, rect.w), rect.h},
+			style.accent,
+			1.5F);
 	} else if (interaction.held || interaction.hovered) {
-		this->rect(rect, interaction.held ? style.surfaceActive : style.surfaceHover);
+		this->rect(
+			rect,
+			interaction.held ? style.surfaceActive : style.surfaceHover,
+			oa::min(style.cornerRadius * 0.65F,
+				0.5F * static_cast<oa::F32>(rect.h)));
 	}
 	oa::UiAccessibilityState accessibilityState = inSelected
 		? oa::UiAccessibilityState::Selected
@@ -4173,20 +4520,40 @@ bool oa::Ui::button(oa::StringView inLabel) {
 	return interaction.activated;
 }
 
-bool oa::Ui::chevronButton(
+bool oa::Ui::textButton(
 	oa::StringView inLabel,
 	oa::PixelRect inRect,
-	oa::UiChevronDirection inDirection,
-	bool inEnabled) {
+	oa::StringView inText,
+	const oa::UiTextConfig& inTextConfig,
+	bool inEnabled,
+	const oa::UiEdge& inTextPadding) {
 	if (!impl_) return false;
-	if (!inRect.isValid()
-		|| (inDirection != oa::UiChevronDirection::Previous
-			&& inDirection != oa::UiChevronDirection::Next)) {
+	const bool validPadding = oa::isFinite(inTextPadding.top)
+		and oa::isFinite(inTextPadding.right)
+		and oa::isFinite(inTextPadding.bottom)
+		and oa::isFinite(inTextPadding.left)
+		and inTextPadding.top >= 0.0F
+		and inTextPadding.right >= 0.0F
+		and inTextPadding.bottom >= 0.0F
+		and inTextPadding.left >= 0.0F;
+	if (!inRect.isValid() || !validPadding
+		|| inTextPadding.left + inTextPadding.right
+			>= static_cast<oa::F32>(inRect.w)
+		|| inTextPadding.top + inTextPadding.bottom
+			>= static_cast<oa::F32>(inRect.h)) {
 		impl_->setFrameError(oa::Status::invalidArgument(
-			"oa::Ui::chevronButton requires a valid rectangle and direction"));
+			"oa::Ui::textButton requires valid geometry with non-empty padding"));
 		return false;
 	}
-
+	const oa::I32 padTop = static_cast<oa::I32>(oa::round(inTextPadding.top));
+	const oa::I32 padRight = static_cast<oa::I32>(oa::round(inTextPadding.right));
+	const oa::I32 padBottom = static_cast<oa::I32>(oa::round(inTextPadding.bottom));
+	const oa::I32 padLeft = static_cast<oa::I32>(oa::round(inTextPadding.left));
+	if (padLeft + padRight >= inRect.w || padTop + padBottom >= inRect.h) {
+		impl_->setFrameError(oa::Status::invalidArgument(
+			"oa::Ui::textButton rounded padding leaves no text area"));
+		return false;
+	}
 	const oa::U32 id = hashWidgetScope(impl_->currentScope(), inLabel);
 	Impl::ControlInteraction interaction;
 	if (inEnabled) {
@@ -4199,40 +4566,293 @@ bool oa::Ui::chevronButton(
 	const oa::F32 radius = 0.5F
 		* static_cast<oa::F32>(oa::min(inRect.w, inRect.h));
 	const oa::Color fill = !inEnabled
-		? oa::Color{0.04F, 0.04F, 0.04F, 0.42F}
+		? oa::Color{1.0F, 1.0F, 1.0F, 0.0F}
 		: interaction.held || interaction.activated
-			? oa::Color{0.04F, 0.04F, 0.04F, 0.90F}
+			? oa::Color{1.0F, 1.0F, 1.0F, 0.30F}
 			: interaction.hovered
-				? oa::Color{0.04F, 0.04F, 0.04F, 0.80F}
-				: oa::Color{0.04F, 0.04F, 0.04F, 0.68F};
+				? oa::Color{1.0F, 1.0F, 1.0F, 0.15F}
+				: oa::Color{1.0F, 1.0F, 1.0F, 0.0F};
 	this->rect(inRect, fill, radius);
-	rectOutline(
+	if (input_.focusId == id) {
+		rectOutline(inRect, currentStyle().accentHover, 1U, radius);
+	}
+
+	oa::UiTextConfig textConfig = inTextConfig;
+	if (!inEnabled) textConfig.color = currentStyle().textDisabled;
+	textAt(inText, {
+		inRect.x + padLeft,
+		inRect.y + padTop,
+		inRect.w - padLeft - padRight,
+		inRect.h - padTop - padBottom,
+	}, textConfig);
+	const oa::UiAccessibilityState accessibilityState = inEnabled
+		? oa::UiAccessibilityState::None
+		: oa::UiAccessibilityState::Disabled;
+	impl_->addAccessibilityNode(
+		id,
+		oa::UiAccessibilityRole::Button,
 		inRect,
-		input_.focusId == id
-			? currentStyle().accentHover
-			: oa::Color{1.0F, 1.0F, 1.0F, interaction.hovered ? 0.28F : 0.16F},
-		1U,
-		radius);
+		inLabel,
+		inText,
+		accessibilityState,
+		inEnabled
+			? oa::UiAccessibilityAction::Focus | oa::UiAccessibilityAction::Activate
+			: oa::UiAccessibilityAction::None,
+		input_.focusId == id);
+	return interaction.activated;
+}
+
+bool oa::Ui::iconButton(
+	oa::StringView inLabel,
+	oa::PixelRect inRect,
+	oa::UiIcon inIcon,
+	bool inEnabled,
+	oa::UiIconButtonStyle inButtonStyle) {
+	if (!impl_) return false;
+	bool validIcon = false;
+	switch (inIcon) {
+		case oa::UiIcon::Previous:
+		case oa::UiIcon::Next:
+		case oa::UiIcon::Play:
+		case oa::UiIcon::Pause:
+		case oa::UiIcon::Menu:
+		case oa::UiIcon::Minimize:
+		case oa::UiIcon::Maximize:
+		case oa::UiIcon::Restore:
+		case oa::UiIcon::Close:
+		case oa::UiIcon::Fullscreen:
+		case oa::UiIcon::ExitFullscreen:
+		case oa::UiIcon::Volume:
+		case oa::UiIcon::Muted:
+		case oa::UiIcon::Settings:
+			validIcon = true;
+			break;
+	}
+	const bool validButtonStyle = inButtonStyle == oa::UiIconButtonStyle::Overlay
+		|| inButtonStyle == oa::UiIconButtonStyle::Header
+		|| inButtonStyle == oa::UiIconButtonStyle::WindowControl;
+	if (!inRect.isValid() || !validIcon || !validButtonStyle) {
+		impl_->setFrameError(oa::Status::invalidArgument(
+			"oa::Ui::iconButton requires a valid rectangle and icon"));
+		return false;
+	}
+
+	const oa::U32 id = hashWidgetScope(impl_->currentScope(), inLabel);
+	Impl::ControlInteraction interaction;
+	if (inEnabled) {
+		interaction = impl_->interact(input_, id, inRect);
+	} else {
+		impl_->lastItemId = id;
+		impl_->lastItemRect = inRect;
+		impl_->lastItemHovered = false;
+	}
+	const bool windowControl =
+		inButtonStyle == oa::UiIconButtonStyle::WindowControl;
+	oa::PixelRect fillRect = inRect;
+	if (windowControl) {
+		const oa::I32 inset = oa::max<oa::I32>(
+			0, static_cast<oa::I32>(oa::round(5.0F * impl_->contentScale)));
+		if (inRect.w > inset * 2 and inRect.h > inset * 2) {
+			fillRect = {
+				inRect.x + inset,
+				inRect.y + inset,
+				inRect.w - inset * 2,
+				inRect.h - inset * 2,
+			};
+		}
+	}
+	const oa::F32 fillRadius = 0.5F
+		* static_cast<oa::F32>(oa::min(fillRect.w, fillRect.h));
+	const oa::F32 buttonRadius = 0.5F
+		* static_cast<oa::F32>(oa::min(inRect.w, inRect.h));
+	const oa::F32 hoverMix = inEnabled
+		? impl_->animate(id, interaction.hovered ? 1.0F : 0.0F, 120.0F)
+		: 0.0F;
+	const oa::Color fill = !inEnabled
+		? oa::Color{1.0F, 1.0F, 1.0F, 0.0F}
+		: interaction.held || interaction.activated
+			? oa::Color{1.0F, 1.0F, 1.0F, 0.30F}
+			: oa::Color{1.0F, 1.0F, 1.0F, 0.15F * hoverMix};
+	this->rect(fillRect, fill, fillRadius);
+	if (input_.focusId == id) {
+		rectOutline(
+			inRect,
+			currentStyle().accentHover,
+			1U,
+			buttonRadius);
+	}
 
 	const oa::F32 centerX = static_cast<oa::F32>(inRect.x)
 		+ 0.5F * static_cast<oa::F32>(inRect.w);
 	const oa::F32 centerY = static_cast<oa::F32>(inRect.y)
 		+ 0.5F * static_cast<oa::F32>(inRect.h);
+	// GtkWindowControls uses a 16 px symbolic canvas whose minimize, maximize,
+	// restore and close marks occupy the centered 8 px core.
+	const bool primaryTransport =
+		inIcon == oa::UiIcon::Play || inIcon == oa::UiIcon::Pause;
+	const oa::F32 nominalIconSize = windowControl ? 8.0F
+		: primaryTransport ? 32.0F : 16.0F;
+	const oa::F32 maximumSpan = oa::max(
+		3.0F,
+		0.5F * static_cast<oa::F32>(oa::min(inRect.w, inRect.h))
+			- impl_->contentScale * 2.0F);
 	const oa::F32 span = oa::max(
-		2.0F,
-		0.18F * static_cast<oa::F32>(oa::min(inRect.w, inRect.h)));
-	const oa::F32 direction = inDirection == oa::UiChevronDirection::Previous
-		? -1.0F : 1.0F;
-	const oa::vlm::Vec2 tip{centerX + direction * span, centerY};
-	const oa::F32 tailX = centerX - direction * span;
+		3.0F,
+		oa::min(maximumSpan, nominalIconSize * impl_->contentScale * 0.5F));
+	const oa::F32 iconAlpha = inButtonStyle != oa::UiIconButtonStyle::Overlay
+		? interaction.held || interaction.activated
+			? 1.0F : 0.68F + 0.32F * hoverMix
+		: 0.94F;
 	const oa::Color icon = inEnabled
-		? oa::Color{1.0F, 1.0F, 1.0F, 0.94F}
+		? oa::Color{1.0F, 1.0F, 1.0F, iconAlpha}
 		: oa::Color{1.0F, 1.0F, 1.0F, 0.38F};
+	const oa::Color transportIcon = inEnabled
+		? oa::Color{1.0F, 1.0F, 1.0F, 1.0F}
+		: icon;
+	const auto appendFilledTriangle = [this](
+		const oa::vlm::Vec2& inP0,
+		const oa::vlm::Vec2& inP1,
+		const oa::vlm::Vec2& inP2,
+		oa::Color inColor) {
+		impl_->appendTriangle(inP0, inP1, inP2, inColor);
+	};
 	const oa::F32 thickness = oa::max(
 		1.5F,
 		0.055F * static_cast<oa::F32>(oa::min(inRect.w, inRect.h)));
-	line({tailX, centerY - span}, tip, icon, thickness);
-	line(tip, {tailX, centerY + span}, icon, thickness);
+	if (inIcon == oa::UiIcon::Previous || inIcon == oa::UiIcon::Next) {
+		const oa::F32 direction = inIcon == oa::UiIcon::Previous ? -1.0F : 1.0F;
+		const oa::vlm::Vec2 tip{centerX + direction * span, centerY};
+		const oa::F32 tailX = centerX - direction * span;
+		appendFilledTriangle(
+			{tailX, centerY - span},
+			tip,
+			{tailX, centerY + span},
+			transportIcon);
+	} else if (inIcon == oa::UiIcon::Play) {
+		const oa::F32 left = centerX - span * 0.62F;
+		const oa::F32 right = centerX + span * 0.82F;
+		appendFilledTriangle(
+			{left, centerY - span},
+			{right, centerY},
+			{left, centerY + span},
+			transportIcon);
+	} else if (inIcon == oa::UiIcon::Pause) {
+		const oa::I32 barWidth = oa::max<oa::I32>(
+			2, static_cast<oa::I32>(oa::round(thickness * 1.35F)));
+		const oa::I32 barHeight = oa::max<oa::I32>(
+			4, static_cast<oa::I32>(oa::round(span * 2.0F)));
+		const oa::I32 gap = oa::max<oa::I32>(2, barWidth);
+		const oa::I32 top = static_cast<oa::I32>(oa::round(centerY)) - barHeight / 2;
+		this->rect({
+			static_cast<oa::I32>(oa::round(centerX)) - gap - barWidth,
+			top, barWidth, barHeight}, transportIcon);
+		this->rect({
+			static_cast<oa::I32>(oa::round(centerX)) + gap,
+			top, barWidth, barHeight}, transportIcon);
+	} else if (inIcon == oa::UiIcon::Menu) {
+		for (oa::I32 row = -1; row <= 1; ++row) {
+			const oa::F32 y = centerY + static_cast<oa::F32>(row) * span * 0.72F;
+			line({centerX - span, y}, {centerX + span, y}, icon, thickness);
+		}
+	} else if (inIcon == oa::UiIcon::Minimize) {
+		line(
+			{centerX - span, centerY + span * 0.58F},
+			{centerX + span, centerY + span * 0.58F}, icon, thickness);
+	} else if (inIcon == oa::UiIcon::Maximize) {
+		const oa::I32 box = oa::max<oa::I32>(
+			4, static_cast<oa::I32>(oa::round(span * 2.0F)));
+		rectOutline({
+			static_cast<oa::I32>(oa::round(centerX)) - box / 2,
+			static_cast<oa::I32>(oa::round(centerY)) - box / 2,
+			box, box}, icon, oa::max<oa::U32>(1U, static_cast<oa::U32>(thickness)));
+	} else if (inIcon == oa::UiIcon::Restore) {
+		const oa::I32 box = oa::max<oa::I32>(
+			4, static_cast<oa::I32>(oa::round(span * 1.35F)));
+		const oa::I32 offset = oa::max<oa::I32>(2, box / 4);
+		const oa::I32 x = static_cast<oa::I32>(oa::round(centerX)) - box / 2;
+		const oa::I32 y = static_cast<oa::I32>(oa::round(centerY)) - box / 2;
+		rectOutline(
+			{x + offset, y - offset, box, box}, icon,
+			oa::max<oa::U32>(1U, static_cast<oa::U32>(thickness)));
+		rectOutline(
+			{x - offset, y + offset, box, box}, icon,
+			oa::max<oa::U32>(1U, static_cast<oa::U32>(thickness)));
+	} else if (inIcon == oa::UiIcon::Close) {
+		line(
+			{centerX - span, centerY - span},
+			{centerX + span, centerY + span}, icon, thickness);
+		line(
+			{centerX + span, centerY - span},
+			{centerX - span, centerY + span}, icon, thickness);
+	} else if (inIcon == oa::UiIcon::Volume || inIcon == oa::UiIcon::Muted) {
+		const oa::F32 bodyLeft = centerX - span;
+		const oa::F32 bodyRight = centerX - span * 0.42F;
+		const oa::F32 coneRight = centerX + span * 0.18F;
+		line({bodyLeft, centerY - span * 0.32F},
+			{bodyRight, centerY - span * 0.32F}, icon, thickness);
+		line({bodyLeft, centerY - span * 0.32F},
+			{bodyLeft, centerY + span * 0.32F}, icon, thickness);
+		line({bodyLeft, centerY + span * 0.32F},
+			{bodyRight, centerY + span * 0.32F}, icon, thickness);
+		line({bodyRight, centerY - span * 0.32F},
+			{coneRight, centerY - span}, icon, thickness);
+		line({coneRight, centerY - span},
+			{coneRight, centerY + span}, icon, thickness);
+		line({coneRight, centerY + span},
+			{bodyRight, centerY + span * 0.32F}, icon, thickness);
+		if (inIcon == oa::UiIcon::Volume) {
+			line({centerX + span * 0.46F, centerY - span * 0.48F},
+				{centerX + span * 0.78F, centerY}, icon, thickness);
+			line({centerX + span * 0.78F, centerY},
+				{centerX + span * 0.46F, centerY + span * 0.48F}, icon, thickness);
+		} else {
+			line({centerX + span * 0.38F, centerY - span * 0.50F},
+				{centerX + span, centerY + span * 0.50F}, icon, thickness);
+			line({centerX + span, centerY - span * 0.50F},
+				{centerX + span * 0.38F, centerY + span * 0.50F}, icon, thickness);
+		}
+	} else if (inIcon == oa::UiIcon::Settings) {
+		const oa::F32 outer = span * 0.92F;
+		const oa::F32 inner = span * 0.68F;
+		line({centerX - outer, centerY}, {centerX - inner, centerY}, icon, thickness);
+		line({centerX + inner, centerY}, {centerX + outer, centerY}, icon, thickness);
+		line({centerX, centerY - outer}, {centerX, centerY - inner}, icon, thickness);
+		line({centerX, centerY + inner}, {centerX, centerY + outer}, icon, thickness);
+		const oa::F32 diagonalOuter = outer * 0.72F;
+		const oa::F32 diagonalInner = inner * 0.72F;
+		line({centerX - diagonalOuter, centerY - diagonalOuter},
+			{centerX - diagonalInner, centerY - diagonalInner}, icon, thickness);
+		line({centerX + diagonalInner, centerY + diagonalInner},
+			{centerX + diagonalOuter, centerY + diagonalOuter}, icon, thickness);
+		line({centerX + diagonalOuter, centerY - diagonalOuter},
+			{centerX + diagonalInner, centerY - diagonalInner}, icon, thickness);
+		line({centerX - diagonalInner, centerY + diagonalInner},
+			{centerX - diagonalOuter, centerY + diagonalOuter}, icon, thickness);
+		const oa::I32 gearDiameter = oa::max<oa::I32>(
+			4, static_cast<oa::I32>(oa::round(inner * 1.45F)));
+		rectOutline({
+			static_cast<oa::I32>(oa::round(centerX)) - gearDiameter / 2,
+			static_cast<oa::I32>(oa::round(centerY)) - gearDiameter / 2,
+			gearDiameter, gearDiameter}, icon,
+			oa::max<oa::U32>(1U, static_cast<oa::U32>(thickness)),
+			static_cast<oa::F32>(gearDiameter) * 0.5F);
+	} else {
+		const oa::F32 extent = inIcon == oa::UiIcon::Fullscreen
+			? span : span * 0.72F;
+		const oa::F32 leg = oa::max(2.0F, span * 0.62F);
+		const oa::F32 left = centerX - extent;
+		const oa::F32 right = centerX + extent;
+		const oa::F32 top = centerY - extent;
+		const oa::F32 bottom = centerY + extent;
+		line({left, top + leg}, {left, top}, icon, thickness);
+		line({left, top}, {left + leg, top}, icon, thickness);
+		line({right - leg, top}, {right, top}, icon, thickness);
+		line({right, top}, {right, top + leg}, icon, thickness);
+		line({right, bottom - leg}, {right, bottom}, icon, thickness);
+		line({right, bottom}, {right - leg, bottom}, icon, thickness);
+		line({left + leg, bottom}, {left, bottom}, icon, thickness);
+		line({left, bottom}, {left, bottom - leg}, icon, thickness);
+	}
 
 	const oa::UiAccessibilityState state = inEnabled
 		? oa::UiAccessibilityState::None
@@ -4250,6 +4870,27 @@ bool oa::Ui::chevronButton(
 			: oa::UiAccessibilityAction::None,
 		input_.focusId == id);
 	return inEnabled && interaction.activated;
+}
+
+bool oa::Ui::chevronButton(
+	oa::StringView inLabel,
+	oa::PixelRect inRect,
+	oa::UiChevronDirection inDirection,
+	bool inEnabled) {
+	if (inDirection != oa::UiChevronDirection::Previous
+		&& inDirection != oa::UiChevronDirection::Next) {
+		if (impl_) {
+			impl_->setFrameError(oa::Status::invalidArgument(
+				"oa::Ui::chevronButton requires a declared direction"));
+		}
+		return false;
+	}
+	return iconButton(
+		inLabel,
+		inRect,
+		inDirection == oa::UiChevronDirection::Previous
+			? oa::UiIcon::Previous : oa::UiIcon::Next,
+		inEnabled);
 }
 
 bool oa::Ui::checkbox(oa::StringView inLabel, bool& inOutValue) {
@@ -5369,21 +6010,21 @@ void oa::Ui::tooltip(
 			extent.y + inConfig.padding.top + inConfig.padding.bottom)),
 		1,
 		impl_->frameViewport.h);
-	const oa::I32 left = impl_->frameViewport.x;
-	const oa::I32 top = impl_->frameViewport.y;
-	const oa::I32 right = left + impl_->frameViewport.w;
-	const oa::I32 bottom = top + impl_->frameViewport.h;
-	oa::I32 x = static_cast<oa::I32>(oa::floor(input_.mouseX)) + inConfig.gap;
-	if (x + width > right) {
-		x = static_cast<oa::I32>(oa::floor(input_.mouseX))
-			- inConfig.gap - width;
-	}
-	x = oa::clamp(x, left, oa::max(left, right - width));
-	oa::I32 y = impl_->lastItemRect.y + impl_->lastItemRect.h + inConfig.gap;
-	if (y + height > bottom) {
-		y = impl_->lastItemRect.y - inConfig.gap - height;
-	}
-	y = oa::clamp(y, top, oa::max(top, bottom - height));
+	const oa::I64 left = impl_->frameViewport.x;
+	const oa::I64 top = impl_->frameViewport.y;
+	const oa::I64 right = left + impl_->frameViewport.w;
+	const oa::I64 bottom = top + impl_->frameViewport.h;
+	const oa::I64 centeredX = static_cast<oa::I64>(impl_->lastItemRect.x)
+		+ (static_cast<oa::I64>(impl_->lastItemRect.w) - width) / 2;
+	const oa::I32 x = pixelCoordinate(oa::clamp<oa::I64>(
+		centeredX, left, oa::max(left, right - width)));
+	const oa::I64 belowY = static_cast<oa::I64>(impl_->lastItemRect.y)
+		+ impl_->lastItemRect.h + inConfig.gap;
+	const oa::I64 aboveY = static_cast<oa::I64>(impl_->lastItemRect.y)
+		- inConfig.gap - height;
+	const oa::I64 requestedY = belowY + height <= bottom ? belowY : aboveY;
+	const oa::I32 y = pixelCoordinate(oa::clamp<oa::I64>(
+		requestedY, top, oa::max(top, bottom - height)));
 	const oa::PixelRect rect{x, y, width, height};
 
 	const bool previousOverlay = impl_->recordingOverlay;
@@ -5400,8 +6041,56 @@ void oa::Ui::tooltip(
 	panel.scope = hashWidgetScope(impl_->lastItemId, "__tooltip");
 	panel.rowScope = panel.scope;
 	impl_->panelStack.pushBack(panel);
-	this->rect(rect, style.surfaceActive.withAlpha(0.99F));
-	rectOutline(rect, style.borderStrong, 1U);
+	const oa::F32 radius = oa::min(
+		oa::max(0.0F, style.cornerRadius),
+		0.5F * static_cast<oa::F32>(oa::min(rect.w, rect.h)));
+	const oa::Color tooltipColor = style.surfaceActive.withAlpha(0.99F);
+	if (rect.w > 4 && rect.h > 4) {
+		impl_->appendRect(
+			{pixelCoordinate(static_cast<oa::I64>(rect.x) + 1),
+			 pixelCoordinate(static_cast<oa::I64>(rect.y) + 2),
+			 rect.w, rect.h},
+			oa::Color{0.0F, 0.0F, 0.0F, 0.38F},
+			radius,
+			true);
+	}
+	if (inConfig.gap >= 3) {
+		const bool below = static_cast<oa::I64>(rect.y)
+			>= static_cast<oa::I64>(impl_->lastItemRect.y)
+				+ impl_->lastItemRect.h;
+		const bool above = static_cast<oa::I64>(rect.y) + rect.h
+			<= impl_->lastItemRect.y;
+		if ((below || above)
+			&& static_cast<oa::F32>(rect.w) > radius * 2.0F + 4.0F) {
+			const oa::F32 maximumHalf = 0.25F
+				* (static_cast<oa::F32>(rect.w) - radius * 2.0F);
+			const oa::F32 halfWidth = oa::max(
+				1.0F, oa::min(5.0F * impl_->contentScale, maximumHalf));
+			const oa::F32 arrowHeight = static_cast<oa::F32>(oa::min(
+				inConfig.gap,
+				oa::max(3, static_cast<oa::I32>(
+					oa::round(5.0F * impl_->contentScale)))));
+			const oa::F32 center = oa::clamp(
+				static_cast<oa::F32>(impl_->lastItemRect.x)
+					+ 0.5F * static_cast<oa::F32>(impl_->lastItemRect.w),
+				static_cast<oa::F32>(rect.x) + radius + halfWidth,
+				static_cast<oa::F32>(
+					static_cast<oa::I64>(rect.x) + rect.w)
+					- radius - halfWidth);
+			const oa::F32 edge = below
+				? static_cast<oa::F32>(rect.y)
+				: static_cast<oa::F32>(
+					static_cast<oa::I64>(rect.y) + rect.h);
+			impl_->appendTriangle(
+				{center - halfWidth, edge},
+				{center + halfWidth, edge},
+				{center, below ? edge - arrowHeight : edge + arrowHeight},
+				tooltipColor,
+				true);
+		}
+	}
+	this->rect(rect, tooltipColor, radius);
+	rectOutline(rect, style.borderStrong, 1U, radius);
 	impl_->appendText(inText, style, true);
 	impl_->panelStack.popBack();
 	impl_->recordingOverlay = previousOverlay;
@@ -5521,6 +6210,31 @@ void oa::Ui::progressBar(oa::F32 inFraction, oa::StringView inOverlay) {
 	endPanel();
 }
 
+namespace {
+
+oa::I32 timelineBaseHandleDiameter(
+	oa::PixelRect inRect,
+	oa::F32 inContentScale) noexcept {
+	return oa::max<oa::I32>(
+		1,
+		oa::min<oa::I32>(
+			inRect.h,
+			static_cast<oa::I32>(oa::round(20.0F * inContentScale))));
+}
+
+oa::I32 timelineHandleCenterX(
+	oa::PixelRect inRect,
+	oa::F32 inFraction,
+	oa::F32 inContentScale) noexcept {
+	const oa::I32 diameter = timelineBaseHandleDiameter(inRect, inContentScale);
+	const oa::I32 travel = oa::max<oa::I32>(0, inRect.w - diameter);
+	return inRect.x + diameter / 2
+		+ static_cast<oa::I32>(oa::round(
+			static_cast<oa::F32>(travel) * inFraction));
+}
+
+} // namespace
+
 bool oa::Ui::timeline(
 	oa::StringView inId,
 	oa::PixelRect inRect,
@@ -5554,27 +6268,43 @@ bool oa::Ui::timeline(
 
 	inOutFraction = oa::clamp(inOutFraction, 0.0F, 1.0F);
 	const oa::UiStyle& style = currentStyle();
-	this->rect(inRect, style.surface.withAlpha(0.94F));
-	const oa::I32 fillWidth = static_cast<oa::I32>(
-		static_cast<oa::F32>(inRect.w) * inOutFraction + 0.5F);
-	if (fillWidth > 0) {
-		this->rect({inRect.x, inRect.y, fillWidth, inRect.h}, style.accent);
-	}
-	const oa::I32 maximumHandle = oa::max<oa::I32>(1,
-		static_cast<oa::I32>(oa::round(6.0F * impl_->contentScale)));
-	const oa::I32 handleWidth = oa::max<oa::I32>(1,
-		oa::min<oa::I32>(inRect.w, oa::min<oa::I32>(
-			maximumHandle, oa::max<oa::I32>(1, inRect.h / 2))));
-	const oa::I32 handleX = oa::clamp(
-		inRect.x + fillWidth - handleWidth / 2,
+	const oa::I32 trackHeight = oa::max<oa::I32>(
+		1, oa::min<oa::I32>(inRect.h, static_cast<oa::I32>(oa::round(
+			4.0F * impl_->contentScale))));
+	const oa::PixelRect track{
 		inRect.x,
-		inRect.x + inRect.w - handleWidth);
-	const oa::I32 handleOverhang = oa::max<oa::I32>(1,
-		static_cast<oa::I32>(oa::round(3.0F * impl_->contentScale)));
-	this->rect({handleX, inRect.y - handleOverhang,
-		handleWidth, inRect.h + handleOverhang * 2},
+		inRect.y + (inRect.h - trackHeight) / 2,
+		inRect.w,
+		trackHeight,
+	};
+	const oa::F32 trackRadius = 0.5F * static_cast<oa::F32>(trackHeight);
+	this->rect(track, style.surface.withAlpha(0.78F), trackRadius);
+	const oa::I32 fillWidth = static_cast<oa::I32>(oa::round(
+		static_cast<oa::F32>(track.w) * inOutFraction));
+	if (fillWidth > 0) {
+		this->rect(
+			{track.x, track.y, fillWidth, track.h},
+			style.accent,
+			trackRadius);
+	}
+	const oa::F32 hoverMix = impl_->animate(
+		id, interaction.hovered ? 1.0F : 0.0F, 120.0F);
+	const oa::F32 interactiveDiameter = interaction.held
+		? 18.0F : 20.0F + 4.0F * hoverMix;
+	const oa::I32 handleDiameter = oa::max<oa::I32>(
+		1, oa::min<oa::I32>(
+			inRect.h,
+			static_cast<oa::I32>(oa::round(
+				interactiveDiameter * impl_->contentScale))));
+	const oa::I32 handleCenterX = timelineHandleCenterX(
+		inRect, inOutFraction, impl_->contentScale);
+	const oa::I32 handleX = handleCenterX - handleDiameter / 2;
+	const oa::I32 handleY = inRect.y + (inRect.h - handleDiameter) / 2;
+	this->rect(
+		{handleX, handleY, handleDiameter, handleDiameter},
 		interaction.hovered || interaction.held
-			? style.accentHover : style.textSecondary);
+			? style.accentHover : style.text,
+		0.5F * static_cast<oa::F32>(handleDiameter));
 	impl_->addAccessibilityNode(
 		id,
 		oa::UiAccessibilityRole::Timeline,
@@ -5632,7 +6362,6 @@ bool oa::Ui::waveformTimeline(
 	inOutFraction = oa::clamp(inOutFraction, 0.0F, 1.0F);
 
 	const oa::UiStyle& style = currentStyle();
-	this->rect(inRect, style.surface.withAlpha(0.55F));
 	BlitCmd command{};
 	command.kind = BlitKind::Waveform;
 	command.waveform.envelope_idx = static_cast<oa::U32>(inEnvelope.heapSlot());
@@ -5652,17 +6381,20 @@ bool oa::Ui::waveformTimeline(
 	if (clip.w <= 0 || clip.h <= 0) return changed;
 	impl_->appendBlit(oa::move(command));
 
-	const oa::I32 playheadX = oa::clamp(
-		inRect.x + static_cast<oa::I32>(static_cast<oa::F32>(inRect.w) * inOutFraction),
-		inRect.x,
-		inRect.x + inRect.w - 1);
 	const oa::I32 idlePlayhead = oa::max<oa::I32>(1,
 		static_cast<oa::I32>(oa::round(2.0F * impl_->contentScale)));
 	const oa::I32 activePlayhead = oa::max<oa::I32>(idlePlayhead,
 		static_cast<oa::I32>(oa::round(3.0F * impl_->contentScale)));
+	const oa::I32 playheadWidth = interaction.hovered || interaction.held
+		? activePlayhead : idlePlayhead;
+	const oa::I32 playheadCenterX = timelineHandleCenterX(
+		inRect, inOutFraction, impl_->contentScale);
+	const oa::I32 playheadX = oa::clamp(
+		playheadCenterX - playheadWidth / 2,
+		inRect.x,
+		inRect.x + inRect.w - playheadWidth);
 	this->rect({playheadX, inRect.y,
-		interaction.hovered || interaction.held
-			? activePlayhead : idlePlayhead, inRect.h},
+		playheadWidth, inRect.h},
 		interaction.hovered || interaction.held
 			? style.accentHover : style.text);
 	impl_->addAccessibilityNode(
@@ -5852,6 +6584,74 @@ void oa::Ui::rectOutline(
 	impl_->appendBlit(oa::move(bc));
 }
 
+void oa::Ui::maskRoundedViewport(oa::F32 inCornerRadius) {
+	if (!impl_) return;
+	if (!oa::isFinite(inCornerRadius) || inCornerRadius < 0.0F) {
+		impl_->setFrameError(oa::Status::invalidArgument(
+			"oa::Ui::maskRoundedViewport requires a finite non-negative "
+			"corner radius"));
+		return;
+	}
+	if (inCornerRadius == 0.0F
+		|| impl_->frameViewport.w <= 0 || impl_->frameViewport.h <= 0) {
+		return;
+	}
+	BlitCmd command{};
+	command.kind = BlitKind::RoundedViewportMask;
+	command.roundedViewportMask.dst_idx = 0U;
+	command.roundedViewportMask.dst_x = impl_->frameViewport.x;
+	command.roundedViewportMask.dst_y = impl_->frameViewport.y;
+	command.roundedViewportMask.dst_w =
+		static_cast<oa::U32>(impl_->frameViewport.w);
+	command.roundedViewportMask.dst_h =
+		static_cast<oa::U32>(impl_->frameViewport.h);
+	command.roundedViewportMask.corner_radius = oa::min(
+		inCornerRadius,
+		0.5F * static_cast<oa::F32>(oa::min(
+			impl_->frameViewport.w, impl_->frameViewport.h)));
+	command.roundedViewportMask.outside_rgba = 0U;
+	command.roundedViewportMask.clip_x = impl_->frameViewport.x;
+	command.roundedViewportMask.clip_y = impl_->frameViewport.y;
+	command.roundedViewportMask.clip_w =
+		static_cast<oa::U32>(impl_->frameViewport.w);
+	command.roundedViewportMask.clip_h =
+		static_cast<oa::U32>(impl_->frameViewport.h);
+	// The outer mask owns the final alpha edge and therefore follows every
+	// popup/tooltip overlay regardless of the caller's current panel state.
+	impl_->finalBlits.pushBack(oa::move(command));
+}
+
+void oa::Ui::maskRoundedRect(
+	oa::PixelRect inRect,
+	oa::F32 inCornerRadius,
+	oa::Color inOutsideColor) {
+	if (!impl_ || inRect.w <= 0 || inRect.h <= 0) return;
+	if (!oa::isFinite(inCornerRadius) || inCornerRadius < 0.0F) {
+		impl_->setFrameError(oa::Status::invalidArgument(
+			"oa::Ui::maskRoundedRect requires a finite non-negative corner radius"));
+		return;
+	}
+	if (inCornerRadius == 0.0F) return;
+	const oa::PixelRect clip = impl_->clipFor(inRect);
+	if (clip.w <= 0 || clip.h <= 0) return;
+	BlitCmd command{};
+	command.kind = BlitKind::RoundedViewportMask;
+	command.roundedViewportMask.dst_idx = 0U;
+	command.roundedViewportMask.dst_x = inRect.x;
+	command.roundedViewportMask.dst_y = inRect.y;
+	command.roundedViewportMask.dst_w = static_cast<oa::U32>(inRect.w);
+	command.roundedViewportMask.dst_h = static_cast<oa::U32>(inRect.h);
+	command.roundedViewportMask.corner_radius = oa::min(
+		inCornerRadius,
+		0.5F * static_cast<oa::F32>(oa::min(inRect.w, inRect.h)));
+	command.roundedViewportMask.outside_rgba = inOutsideColor.toU32();
+	command.roundedViewportMask.clip_x = clip.x;
+	command.roundedViewportMask.clip_y = clip.y;
+	command.roundedViewportMask.clip_w = static_cast<oa::U32>(clip.w);
+	command.roundedViewportMask.clip_h = static_cast<oa::U32>(clip.h);
+	impl_->appendBlit(oa::move(command));
+}
+
 void oa::Ui::line(
 	oa::vlm::Vec2 inBegin,
 	oa::vlm::Vec2 inEnd,
@@ -5947,9 +6747,17 @@ void oa::Ui::grid(oa::PixelRect inRect, const oa::UiGridConfig& inConfig) {
 		and inConfig.superMajorEvery >= inConfig.majorEvery * 2U
 		and inConfig.superMajorEvery <= 10000U
 		and inConfig.superMajorEvery % inConfig.majorEvery == 0U;
-	if (!inRect.isValid() or not validThickness or not validSpacing) {
+	const bool validFade = oa::isFinite(inConfig.guideFadeCenter.x)
+		and oa::isFinite(inConfig.guideFadeCenter.y)
+		and oa::isFinite(inConfig.guideFadeInnerRadius)
+		and oa::isFinite(inConfig.guideFadeOuterRadius)
+		and inConfig.guideFadeInnerRadius >= 0.0F
+		and inConfig.guideFadeOuterRadius > inConfig.guideFadeInnerRadius
+		and inConfig.guideFadeOuterRadius <= 1.0e7F;
+	if (!inRect.isValid() or not validThickness or not validSpacing
+		or not validFade) {
 		impl_->setFrameError(oa::Status::invalidArgument(
-			"oa::Ui::grid requires a valid rectangle, finite positive spacing/thickness, opacity in [0,1], and divisible decimal tiers"));
+			"oa::Ui::grid requires valid geometry, finite positive spacing/thickness/fade radii, opacity in [0,1], and divisible decimal tiers"));
 		return;
 	}
 	const oa::PixelRect clip = impl_->clipFor(inRect);
@@ -6004,9 +6812,15 @@ void oa::Ui::grid(oa::PixelRect inRect, const oa::UiGridConfig& inConfig) {
 		inConfig.superMajorColor, superMajorDefault).toU32();
 	command.canvasGrid.axis_rgba = resolveLineColor(
 		inConfig.axisColor, axisDefault).toU32();
+	command.canvasGrid.fade_center_x = inConfig.guideFadeCenter.x;
+	command.canvasGrid.fade_center_y = inConfig.guideFadeCenter.y;
+	command.canvasGrid.fade_inner_radius = inConfig.guideFadeInnerRadius;
+	command.canvasGrid.fade_outer_radius = inConfig.guideFadeOuterRadius;
 	command.canvasGrid.flags = (inConfig.fillBackground ? 1U : 0U)
 		| (inConfig.drawAxes ? 2U : 0U)
-		| (inConfig.drawGrid ? 4U : 0U);
+		| (inConfig.drawGrid ? 4U : 0U)
+		| (inConfig.radialGuideFade ? 8U : 0U)
+		| (inConfig.ditherBackground ? 16U : 0U);
 	command.canvasGrid.clip_x = clip.x;
 	command.canvasGrid.clip_y = clip.y;
 	command.canvasGrid.clip_w = static_cast<oa::U32>(clip.w);

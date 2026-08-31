@@ -7,6 +7,7 @@
 #pragma once
 
 #include <oa/core/types.h>
+#include <oa/core/transform.h>
 #include <oa/core/vlm.h>
 #include <oa/render/fnMesh.h>
 
@@ -49,7 +50,7 @@ struct SceneNode {
 	oa::String name;
 	SceneNodeId parent;
 	SceneMeshId mesh;
-	oa::vlm::Mat4 localTransform = oa::vlm::Mat4::identity();
+	oa::Transform localTransform;
 	bool visible = true;
 };
 

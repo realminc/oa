@@ -334,6 +334,8 @@ def test_video_configuration_is_host_only():
 	assert not hasattr(cfg, "Path")
 	assert hasattr(oa.VideoPlayer, "open")
 	assert hasattr(oa.VideoPlayer, "next")
+	assert hasattr(oa.VideoPlayer, "setMuted")
+	assert hasattr(oa.VideoPlayer, "isMuted")
 	assert not hasattr(oa.VideoPlayer, "stepForward")
 
 

@@ -34,6 +34,8 @@
 #include <oa/core/yaml.h>       // oa::Yaml: get, getList, loadFile (yaml-cpp)
 #include <oa/core/config.h>     // checkpoint/log YAML: oa::loadCheckpointYaml, oa::loadLogYaml
 #include <oa/core/simd.h>       // SIMD: oa::FnSimd::dotF32, oa::FnSimd::scaleF32
+#include <oa/core/transform.h>   // Spatial affine value: translation, rotation, scale, shear
+#include <oa/core/fnTransform.h> // Stateless spatial-transform operations
 #include <oa/core/matrixShape.h>      // oa::MatrixShape, OA_MAX_TENSOR_DIMS
 // Complex.h removed along with the SSM module.
 #include <oa/core/constant.h>   // Branding: ASCII banners, app subtitles, crypto info

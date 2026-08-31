@@ -15,6 +15,7 @@
 //   <oa/ui/input.h>   — oa::InputSystem, oa::KeyAction
 //   <oa/ui/platformInput.h> — low-level input snapshots and gesture classification
 //   <oa/ui/navigation.h> — 2D viewer pan/zoom state
+//   <oa/ui/motion.h> — shared widget/navigation animation-speed policy
 //   <oa/runtime/texture.h> — oa::Texture consumed by oa::Ui::image()
 //   <oa/ui/viewport.h> — passive camera/target/view description
 //   <oa/ui/viewer.h>  — the single image/video inspection application
@@ -23,6 +24,7 @@
 #pragma once
 
 #include <oa/ui/style.h>
+#include <oa/ui/motion.h>
 #include <oa/ui/event.h>
 #include <oa/ui/canvas.h>
 #include <oa/ui/text.h>

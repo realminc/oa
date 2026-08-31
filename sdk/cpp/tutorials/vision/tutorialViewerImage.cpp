@@ -8,7 +8,8 @@
 //
 // features:
 //   - oa::Navigation: LMB/MMB/wheel pan, Maya RMB zoom, ctrl+wheel dolly
-//   - keyboard: +/- zoom, 0/F fit, 9 = 100%, arrows pan
+//   - keyboard: +/- zoom, 0/F fit, 9 = 100%, keypad arrows pan
+//   - canvas comparison: B = dark/gradient, G = grid on/off
 //
 // Parallel structure to OpenCV's image display tutorial:
 //   https://docs.opencv.org/4.x/db/deb/tutorial_display_image.html

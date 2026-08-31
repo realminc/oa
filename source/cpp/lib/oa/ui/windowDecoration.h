@@ -14,6 +14,8 @@ namespace oa {
 
 enum class WindowDecorationControl : oa::U8 {
 	None = 0,
+	Fullscreen,
+	Menu,
 	Minimize,
 	Maximize,
 	Close,
@@ -33,8 +35,15 @@ enum class WindowDecorationHit : oa::U8 {
 };
 
 struct WindowDecorationMetrics {
-	oa::I32 titleHeight = 36;
-	oa::I32 controlWidth = 46;
+	// GNOME Showtime / libadwaita geometry in logical pixels.
+	oa::I32 titleHeight = 43;
+	oa::I32 buttonSize = 34;
+	oa::I32 outerMargin = 6;
+	oa::I32 menuSpacing = 6;
+	oa::I32 controlSpacing = 3;
+	// Adwaita client windows and popovers use a 15 logical-pixel silhouette.
+	// Viewer converts this once to framebuffer pixels at the presentation edge.
+	oa::I32 cornerRadius = 15;
 	oa::I32 resizeBorder = 7;
 	oa::I32 resizeCorner = 12;
 };
@@ -60,12 +69,36 @@ windowDecorationControlAt(
 		or inY < 0 or inY >= inMetrics.titleHeight) {
 		return WindowDecorationControl::None;
 	}
-	const oa::I32 controlsBegin = inWindowWidth - inMetrics.controlWidth * 3;
-	if (inX < controlsBegin) return WindowDecorationControl::None;
-	const oa::I32 control = (inX - controlsBegin) / inMetrics.controlWidth;
-	if (control == 0) return WindowDecorationControl::Minimize;
-	if (control == 1) return WindowDecorationControl::Maximize;
-	return WindowDecorationControl::Close;
+	const oa::I32 buttonTop = inMetrics.outerMargin;
+	const oa::I32 buttonBottom = buttonTop + inMetrics.buttonSize;
+	if (inY < buttonTop or inY >= buttonBottom) {
+		return WindowDecorationControl::None;
+	}
+	if (inX >= inMetrics.outerMargin
+		and inX < inMetrics.outerMargin + inMetrics.buttonSize) {
+		return WindowDecorationControl::Fullscreen;
+	}
+	const oa::I32 closeBegin = inWindowWidth
+		- inMetrics.outerMargin - inMetrics.buttonSize;
+	const oa::I32 maximizeBegin = closeBegin
+		- inMetrics.controlSpacing - inMetrics.buttonSize;
+	const oa::I32 minimizeBegin = maximizeBegin
+		- inMetrics.controlSpacing - inMetrics.buttonSize;
+	const oa::I32 menuBegin = minimizeBegin
+		- inMetrics.menuSpacing - inMetrics.buttonSize;
+	if (inX >= menuBegin and inX < menuBegin + inMetrics.buttonSize) {
+		return WindowDecorationControl::Menu;
+	}
+	if (inX >= minimizeBegin and inX < minimizeBegin + inMetrics.buttonSize) {
+		return WindowDecorationControl::Minimize;
+	}
+	if (inX >= maximizeBegin and inX < maximizeBegin + inMetrics.buttonSize) {
+		return WindowDecorationControl::Maximize;
+	}
+	if (inX >= closeBegin and inX < closeBegin + inMetrics.buttonSize) {
+		return WindowDecorationControl::Close;
+	}
+	return WindowDecorationControl::None;
 }
 
 [[nodiscard]] constexpr WindowDecorationHit windowDecorationHitTest(

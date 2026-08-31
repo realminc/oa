@@ -45,10 +45,10 @@ template<typename T>
 struct KeyHash {
 	[[nodiscard]] oa::Usize operator()(T inValue) const noexcept {
 		static_assert(
-			oa::IsIntegralV<T> or oa::IsEnumV<T> or oa::IsPointerV<T>,
+			oa::isIntegralV<T> or oa::isEnumV<T> or oa::isPointerV<T>,
 			"oa::KeyHash supports only admitted scalar, enum, pointer, and text keys"
 		);
-		if constexpr (oa::IsPointerV<T>) {
+		if constexpr (oa::isPointerV<T>) {
 			return oa::mixKeyHash(reinterpret_cast<oa::Usize>(inValue));
 		} else {
 			// Open-addressed tables preserve locality for sequential scalar keys

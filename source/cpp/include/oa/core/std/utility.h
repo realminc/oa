@@ -32,10 +32,10 @@ template<typename T>
 using RemoveReferenceT = typename RemoveReference<T>::Type;
 
 template<typename T>
-inline constexpr bool IsLvalueReferenceV = false;
+inline constexpr bool isLvalueReferenceV = false;
 
 template<typename T>
-inline constexpr bool IsLvalueReferenceV<T&> = true;
+inline constexpr bool isLvalueReferenceV<T&> = true;
 
 template<typename T>
 [[nodiscard]] constexpr RemoveReferenceT<T>&& move(T&& inArg) noexcept {
@@ -49,7 +49,7 @@ template<typename T>
 
 template<typename T>
 [[nodiscard]] constexpr T&& forward(RemoveReferenceT<T>&& inArg) noexcept {
-	static_assert(!IsLvalueReferenceV<T>, "forward: invalid rvalue overload");
+	static_assert(!isLvalueReferenceV<T>, "forward: invalid rvalue overload");
 	return static_cast<T&&>(inArg);
 }
 

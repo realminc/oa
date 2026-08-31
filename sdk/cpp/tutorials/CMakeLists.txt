@@ -249,9 +249,10 @@ oa_add_app_tutorial(TutorialViewerAudio vision/tutorialViewerAudio.cpp vision)
 oa_add_app_tutorial(TutorialViewerImage vision/tutorialViewerImage.cpp vision)
 oa_add_app_tutorial(TutorialViewerImageHeadless vision/tutorialViewerImageHeadless.cpp vision)
 oa_add_app_tutorial(TutorialRendererUi ui/tutorialRendererUi.cpp ui)
-oa_add_app_tutorial(TutorialDetectionVideo vision/tutorialDetectionVideo.cpp vision)
-oa_add_app_tutorial(TutorialDetectionImage vision/tutorialDetectionImage.cpp vision)
-oa_add_app_tutorial(TutorialCvEvaluation vision/tutorialCvEvaluation.cpp vision)
+# The synthetic detection image/video fixtures and the duplicate CV evaluation
+# gallery were removed in 2026-08. Real inference-overlay tutorials will return
+# as model-backed vertical slices; TestFnDetection and TestUi own the underlying
+# metric, annotation, and composition contracts meanwhile.
 oa_add_app_tutorial(TutorialVisionDataAugmentation
 	vision/tutorialVisionDataAugmentation.cpp vision)
 set(_oa_vision_augmentation_artifact

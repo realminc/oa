@@ -1,6 +1,6 @@
 #include <anim/posePack.h>
 
-#include <core/transform.h>
+#include <oa/core/fnTransform.h>
 
 #include <algorithm>
 #include <cmath>
@@ -77,12 +77,12 @@ oa::Result<oa::PoseClip> oa::PosePack::pack(const oa::UsdSkelClip& inUsd, const 
 	auto localTrans = [&](oa::U32 f, oa::I32 s) -> oa::vlm::Vec3 {
 		const oa::I32 u = usdOf[static_cast<oa::Usize>(s)];
 		return (u >= 0) ? inUsd.translations[static_cast<oa::Usize>(f) * usdN + u]
-		                : inSkel.joints[static_cast<oa::Usize>(s)].rest.translate;
+		                : inSkel.joints[static_cast<oa::Usize>(s)].rest.getTransform().getPosition();
 	};
 	auto localRot = [&](oa::U32 f, oa::I32 s) -> oa::vlm::Quat {
 		const oa::I32 u = usdOf[static_cast<oa::Usize>(s)];
 		return (u >= 0) ? inUsd.rotations[static_cast<oa::Usize>(f) * usdN + u]
-		                : inSkel.joints[static_cast<oa::Usize>(s)].rest.orientedRotation();
+		                : inSkel.joints[static_cast<oa::Usize>(s)].rest.getOrientedRotation();
 	};
 
 	// forward kinematics → world position of every joint (contacts only). Skeleton
@@ -134,10 +134,10 @@ oa::Result<oa::PoseClip> oa::PosePack::pack(const oa::UsdSkelClip& inUsd, const 
 			const oa::vlm::Quat q = localRot(f, s);
 			if (j.rotDof == 3) {
 				oa::F32 r6[6];
-				oa::quaternionToSixD(q, r6);
+				oa::FnTransform::quaternionToSixD(q, r6);
 				for (int i = 0; i < 6; ++i) { samples[c++] = r6[i]; }
 			} else if (j.rotDof == 1) {
-				samples[c++] = hingeAngleOf(q, j.rest.jointOrient);
+				samples[c++] = hingeAngleOf(q, j.rest.getOrientation());
 			}
 		}
 
@@ -200,11 +200,11 @@ oa::Result<oa::UsdSkelClip> oa::PosePack::unpack(const oa::PoseClip& inClip, con
 		}
 		usd.jointPaths[static_cast<oa::Usize>(s)] = path;
 		const oa::SkelJoint& j = inSkel.joints[static_cast<oa::Usize>(s)];
-		usd.restTransforms[static_cast<oa::Usize>(s)] = j.rest.localMatrix();
-		usd.bindTransforms[static_cast<oa::Usize>(s)] = oa::trsMatrix(
-			{ 1.0f, 1.0f, 1.0f },
+		usd.restTransforms[static_cast<oa::Usize>(s)] = j.rest.getMatrix();
+		usd.bindTransforms[static_cast<oa::Usize>(s)] = oa::vlm::composeTrs(
+			inSkel.restWorld(s),
 			inSkel.restWorldRotation(s),
-			inSkel.restWorld(s));
+			{1.0F, 1.0F, 1.0F});
 	}
 
 	usd.translations.resize(static_cast<oa::Usize>(frames) * N);
@@ -215,19 +215,19 @@ oa::Result<oa::UsdSkelClip> oa::PosePack::unpack(const oa::PoseClip& inClip, con
 			const oa::SkelJoint& j = inSkel.joints[static_cast<oa::Usize>(s)];
 			oa::Usize c = base + static_cast<oa::Usize>(inSkel.channelOffset(s));
 
-			oa::vlm::Vec3 t = j.rest.translate;
+			oa::vlm::Vec3 t = j.rest.getTransform().getPosition();
 			if (j.hasTranslate) {
 				t = { inClip.samples[c], inClip.samples[c + 1], inClip.samples[c + 2] };
 				c += 3;
 			}
 
-			oa::vlm::Quat q = j.rest.orientedRotation();
+			oa::vlm::Quat q = j.rest.getOrientedRotation();
 			if (j.rotDof == 3) {
 				oa::F32 r6[6];
 				for (int i = 0; i < 6; ++i) { r6[i] = inClip.samples[c + static_cast<oa::Usize>(i)]; }
-				q = oa::quaternionFromSixD(r6);
+				q = oa::FnTransform::quaternionFromSixD(r6);
 			} else if (j.rotDof == 1) {
-				q = hingeQuatFrom(inClip.samples[c], j.rest.jointOrient);
+				q = hingeQuatFrom(inClip.samples[c], j.rest.getOrientation());
 			}
 
 			usd.translations[static_cast<oa::Usize>(f) * N + s] = t;

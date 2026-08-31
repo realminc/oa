@@ -164,7 +164,8 @@ oa::Status oa::Navigation::validate() const {
 		and oa::isFinite(config_.keyboardZoomStep)
 		and config_.keyboardZoomStep > 1.0F
 		and oa::isFinite(config_.animationDurationMs)
-		and config_.animationDurationMs >= 0.0F;
+		and config_.animationDurationMs >= 0.0F
+		and oa::isValidUiMotionSpeed(config_.motionSpeed);
 	if (not configValid) {
 		return oa::Status::invalidArgument(
 			"oa::Navigation requires finite non-negative controls, zoomMinZ <= 1 <= maxZoomOutZ, and keyboardZoomStep > 1");
@@ -188,6 +189,28 @@ oa::Status oa::Navigation::validate() const {
 		return oa::Status::error(
 			oa::StatusCode::FailedPrecondition,
 			"oa::Navigation state is outside its finite admitted range");
+	}
+	return oa::Status::ok();
+}
+
+oa::Status oa::Navigation::setMotionSpeed(oa::UiMotionSpeed inSpeed) {
+	if (not oa::isValidUiMotionSpeed(inSpeed)) {
+		return oa::Status::invalidArgument(
+			"oa::Navigation::setMotionSpeed requires a valid UI motion speed");
+	}
+	if (config_.motionSpeed == inSpeed) return oa::Status::ok();
+	const StateSnapshot previousState = snapshot();
+	const oa::UiMotionSpeed previousSpeed = config_.motionSpeed;
+	const bool resumeAnimation = isAnimating();
+	config_.motionSpeed = inSpeed;
+	if (resumeAnimation) {
+		const oa::Status status = beginAnimation(
+			true, config_.animationDurationMs);
+		if (not status.isOk()) {
+			config_.motionSpeed = previousSpeed;
+			restore(previousState);
+		}
+		return status;
 	}
 	return oa::Status::ok();
 }
@@ -535,7 +558,7 @@ oa::Status oa::Navigation::keyboardZoomOut() {
 }
 
 oa::Status oa::Navigation::keyboardFitToWindow() {
-	return fitToWindow(false);
+	return fitToWindow(true);
 }
 
 oa::Status oa::Navigation::keyboardZoomTo100() {
@@ -619,9 +642,10 @@ oa::Status oa::Navigation::beginAnimation(bool inAnimate, oa::F32 inDurationMs) 
 		return oa::Status::invalidArgument(
 			"oa::Navigation animation duration must be finite and non-negative");
 	}
-	animDurationMs_ = inDurationMs;
+	animDurationMs_ = oa::uiMotionDurationMs(
+		inDurationMs, config_.motionSpeed);
 	animStartMovement_ = movement_;
-	if (not inAnimate or inDurationMs == 0.0F) {
+	if (not inAnimate or animDurationMs_ == 0.0F) {
 		movement_ = targetMovement_;
 		animStartMovement_ = movement_;
 		animTimeMs_ = animDurationMs_;

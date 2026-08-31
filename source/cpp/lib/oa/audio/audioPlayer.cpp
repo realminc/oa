@@ -20,6 +20,7 @@ struct oa::AudioPlayer::Impl {
 	oa::Atomic<bool> eos{false};
 	oa::Atomic<bool> stop{false};
 	oa::Atomic<bool> loop{false};
+	oa::Atomic<bool> muted{false};
 	oa::Atomic<oa::I64> seekRequestUs{-1};
 	oa::Atomic<oa::U64> seekSerial{0U};
 	oa::Atomic<oa::U64> appliedSeekSerial{0U};
@@ -342,6 +343,22 @@ void oa::AudioPlayer::setLoop(bool inLoop) {
 	if (impl_) impl_->loop.store(inLoop, oa::MemoryOrder::Release);
 }
 
+oa::Status oa::AudioPlayer::setMuted(bool inMuted) {
+	if (not impl_ or not impl_->deviceInitialized) {
+		return oa::Status::error(
+			oa::StatusCode::FailedPrecondition,
+			"oa::AudioPlayer::setMuted called on a closed stream");
+	}
+	if (ma_device_set_master_volume(&impl_->device, inMuted ? 0.0F : 1.0F)
+		!= MA_SUCCESS) {
+		return oa::Status::error(
+			oa::StatusCode::Unavailable,
+			"oa::AudioPlayer could not change playback volume");
+	}
+	impl_->muted.store(inMuted, oa::MemoryOrder::Release);
+	return oa::Status::ok();
+}
+
 oa::Status oa::AudioPlayer::close() {
 	if (not impl_) return oa::Status::ok();
 	impl_->stop.store(true, oa::MemoryOrder::Release);
@@ -369,6 +386,9 @@ oa::Status oa::AudioPlayer::close() {
 bool oa::AudioPlayer::isOpen() const noexcept { return impl_ != nullptr; }
 bool oa::AudioPlayer::isPlaying() const noexcept { return impl_ and impl_->playing.load(); }
 bool oa::AudioPlayer::isEos() const noexcept { return not impl_ or impl_->eos.load(); }
+bool oa::AudioPlayer::isMuted() const noexcept {
+	return impl_ and impl_->muted.load(oa::MemoryOrder::Acquire);
+}
 oa::U32 oa::AudioPlayer::sampleRate() const noexcept { return impl_ ? impl_->sampleRate : 0U; }
 oa::U32 oa::AudioPlayer::channelCount() const noexcept { return impl_ ? impl_->channels : 0U; }
 oa::U64 oa::AudioPlayer::durationUs() const noexcept { return impl_ ? impl_->duration : 0U; }

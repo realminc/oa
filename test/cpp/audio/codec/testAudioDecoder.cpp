@@ -23,7 +23,7 @@ oa::Engine* gRt = nullptr;
 
 class TestAudioDecoder : public ::testing::Test {
 protected:
-	static void setUpTestSuite() {
+	static void SetUpTestSuite() {
 		gRt = testEnginePtr();
 		ASSERT_NE(gRt, nullptr)
 			<< "VkTestEnvironment did not create the suite engine";
@@ -174,6 +174,8 @@ TEST_VK(TestAudioDecoder, AudioSessionCloseIsIdempotent)
 	EXPECT_TRUE(capture.close().isOk());
 	EXPECT_TRUE(capture.close().isOk());
 	EXPECT_TRUE(stream.close().isOk());
+	EXPECT_FALSE(stream.setMuted(true).isOk());
+	EXPECT_FALSE(stream.isMuted());
 	EXPECT_TRUE(stream.close().isOk());
 }
 
@@ -220,6 +222,11 @@ TEST_VK(TestAudioDecoder, AudioPlayerPlayPauseSeek)
 	EXPECT_EQ(stream.sampleRate(), 24000U);
 	EXPECT_EQ(stream.channelCount(), 1U);
 	EXPECT_GT(stream.durationUs(), 0U);
+	EXPECT_FALSE(stream.isMuted());
+	ASSERT_TRUE(stream.setMuted(true).isOk());
+	EXPECT_TRUE(stream.isMuted());
+	ASSERT_TRUE(stream.setMuted(false).isOk());
+	EXPECT_FALSE(stream.isMuted());
 	ASSERT_TRUE(stream.play().isOk());
 	// Backend startup may miss the first callback deadline. Give the real device
 	// enough time for several complete quanta instead of baking workstation

@@ -15,7 +15,7 @@ namespace oa {
 
 template<typename T>
 [[nodiscard]] constexpr T gcd(T inA, T inB) noexcept {
-	static_assert(oa::IsIntegralV<T>, "oa::gcd requires an integral type");
+	static_assert(oa::isIntegralV<T>, "oa::gcd requires an integral type");
 	static_assert(sizeof(T) <= sizeof(oa::U64),
 		"oa::gcd currently admits integral types up to 64 bits");
 	constexpr bool isSigned = static_cast<T>(-1) < static_cast<T>(0);

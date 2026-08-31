@@ -35,7 +35,7 @@ struct IterTraits<const T*> {
 };
 
 template<typename It>
-inline constexpr bool IsRandomAccessIteratorV = requires(
+inline constexpr bool isRandomAccessIteratorV = requires(
 	const It& inA,
 	const It& inB,
 	typename IterTraits<It>::difference_type inN
@@ -45,7 +45,7 @@ inline constexpr bool IsRandomAccessIteratorV = requires(
 };
 
 template<typename It>
-inline constexpr bool IsBidirectionalIteratorV = requires(It inIt) {
+inline constexpr bool isBidirectionalIteratorV = requires(It inIt) {
 	--inIt;
 	++inIt;
 	*inIt;
@@ -57,7 +57,7 @@ template<typename It>
 	It inLast
 ) {
 	using Diff = typename IterTraits<It>::difference_type;
-	if constexpr (IsRandomAccessIteratorV<It>) {
+	if constexpr (isRandomAccessIteratorV<It>) {
 		return inLast - inFirst;
 	}
 	Diff len = 0;
@@ -69,9 +69,9 @@ template<typename It>
 
 template<typename It, typename Diff>
 constexpr void advance(It& inIt, Diff inN) {
-	if constexpr (IsRandomAccessIteratorV<It>) {
+	if constexpr (isRandomAccessIteratorV<It>) {
 		inIt += inN;
-	} else if constexpr (IsBidirectionalIteratorV<It>) {
+	} else if constexpr (isBidirectionalIteratorV<It>) {
 		// Count toward zero instead of negating a potentially minimum signed
 		// difference value.
 		while (inN > 0) {
@@ -113,7 +113,7 @@ public:
 	explicit constexpr ReverseIterator(It inCurrent) : current_(inCurrent) {}
 
 	template<typename Other>
-	requires oa::IsConvertibleV<const Other&, It>
+	requires oa::isConvertibleV<const Other&, It>
 	constexpr ReverseIterator(const ReverseIterator<Other>& inOther)
 		: current_(inOther.base()) {}
 
@@ -255,6 +255,6 @@ template<typename Pointer>
 // Pointers are the only iterators for which OA currently promises contiguous
 // storage. Other iterator families remain correct through element-wise copy.
 template<typename It>
-inline constexpr bool IsContiguousIteratorV = oa::IsPointerV<It>;
+inline constexpr bool isContiguousIteratorV = oa::isPointerV<It>;
 
 } // namespace oa

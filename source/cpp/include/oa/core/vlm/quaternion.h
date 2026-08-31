@@ -43,7 +43,7 @@ namespace detail {
 
 template <typename T>
 struct Quat {
-	static_assert(oa::IsFloatingPointV<T>);
+	static_assert(oa::isFloatingPointV<T>);
 
 	// Vector-first storage matches shader and animation payloads: (x, y, z, w).
 	T x = T(0);

@@ -76,9 +76,14 @@ struct UiStyle {
 	[[nodiscard]] static UiStyle realmLight();
 
 	// Compact OA editor presets adapted from the prior editor's Dark Modern and
-	// Light Modern palettes. These are the default Viewer application themes.
+	// Light Modern palettes.
 	[[nodiscard]] static UiStyle editorDark();
 	[[nodiscard]] static UiStyle editorLight();
+
+	// Grayscale, media-first palette for full-bleed Viewer chrome. It keeps
+	// controls readable over arbitrary imagery without importing a desktop
+	// toolkit theme or colored application accent.
+	[[nodiscard]] static UiStyle viewerDark();
 };
 
 }  // namespace oa

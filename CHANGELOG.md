@@ -4,6 +4,53 @@ All notable changes to OA are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is the single
 `VERSION` file at the repo root (read by CMake, `oa::version()`, and the Python package).
 
+## [0.7.30] — 2026-08-31 (Spatial animation and media Viewer)
+
+### Added
+
+- Add the CPU-only `Transform`/`FnTransform`, `Joint`/`FnJoint`, immutable
+  `SkelPose`, uniform `AnimClip`, sparse `Keyframe`/`AnimCurve`, and `FnAnim`
+  foundation for rendering, rigging, retargeting, and simulation consumers.
+- Add one shared `UiMotionSpeed` policy with Normal, Fast, Fastest, and Instant
+  presets for retained widget motion and Viewer navigation.
+
+### Changed
+
+- Consolidate camera state and operations into the public `Camera` and
+  `FnCamera` pair, using the fixed Vulkan-native VLM coordinate convention.
+- Rebuild the image, audio, and video Viewer around one borderless presentation
+  path with an image-space grid, dithered gradient canvas, GNOME-style media
+  chrome, precise timeline/audio scrubbing, and filled transport controls.
+- Give Viewer menus, dropdowns, and tooltips measured content, anchored arrows,
+  viewport-aware placement, shadows, and the same 15-logical-pixel Adwaita
+  silhouette as the normal client window.
+
+### Fixed
+
+- Stop media chrome when the pointer leaves the window, restart non-looping
+  audio/video from the beginning after end-of-stream, and clear stale video EOS
+  state on cache-resident seeks.
+- Preserve exact frame stepping and bidirectional audio waveform/timeline
+  synchronization while retaining the existing explicit media clock ownership.
+- Remove obsolete detection/CV tutorial targets that no longer represented the
+  maintained Viewer and graph contracts.
+
+### Compatibility
+
+- This development-preview source consolidates the former `CameraState` and
+  legacy SDK-local transform/joint surfaces. Rebuild consumers and migrate to
+  `oa::Camera`/`oa::FnCamera`, `oa::Transform`/`oa::FnTransform`, and the
+  `oa::animation` types. Pre-1.0 native ABI compatibility is not claimed.
+
+### Verification
+
+- The 61-case UI suite passes Release, ASAN/LSAN with strict string checks, and
+  UBSAN with halt-on-error on Intel Iris Xe TGL / Mesa 26.1.7 / Vulkan 1.4.354.
+- The focused H.264 hardware-YCbCr replay regression passes, including cached
+  seek recovery from non-looping end-of-stream.
+- The tagged public workflow owns complete hosted build, sanitizer, package,
+  wheel, release-asset, checksum, and PyPI publication evidence.
+
 ## [0.7.29] — 2026-08-30 (Hosted sanitizer target repair)
 
 This immutable patch replaces the blocked `v0.7.28` hosted candidate. The VLM

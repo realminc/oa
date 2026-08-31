@@ -22,8 +22,7 @@ set(OA_SDK_SUPPORT_SOURCES
 	lib/ml/rl/lunarlander3d/lunarLander3dVector.cpp
 	lib/ml/fnLoss.cpp
 	lib/ml/nn/gptOss/gptOss.cpp
-	# 3D anim engine: Core (transform/joint) → Rig (skeleton) → Anim (IO) → Retarget.
-	lib/core/transform.cpp
+	# 3D anim support: installed Core Transform → SDK Joint/Rig → Anim/Retarget.
 	lib/rig/skeleton.cpp
 	lib/anim/poseClip.cpp
 	lib/anim/usd.cpp

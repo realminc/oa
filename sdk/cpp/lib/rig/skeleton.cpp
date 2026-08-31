@@ -2,7 +2,7 @@
 #include <core/streamText.h>
 #include <rig/skeletonUsd.h>
 
-#include <core/transform.h>
+#include <oa/core/fnTransform.h>
 #include <oa/core/vlm.h>
 
 #include <cctype>
@@ -43,9 +43,10 @@ oa::Skeleton buildBody(oa::StringView inName, oa::U32 inId, bool inUseHikNames) 
 		j.name             = (inUseHikNames && b.hikSlot[0] != '\0') ? b.hikSlot : b.name;
 		j.humanIkId        = b.humanIkId;
 		j.mass             = b.mass;
-		j.rest.translate   = { b.tx, b.ty, b.tz };
-		j.rest.jointOrient = oa::eulerXyzDegToQuat({ b.rx, b.ry, b.rz });
-		j.rest.rotate      = { 0.0f, 0.0f, 0.0f, 1.0f };
+		j.rest.getTransform().setPosition({b.tx, b.ty, b.tz});
+		j.rest.setOrientation(oa::vlm::quaternionFromEulerDegrees(
+			oa::vlm::Vec3{b.rx, b.ry, b.rz}, oa::vlm::RotationOrder::Xyz));
+		j.rest.getTransform().setRotation(oa::vlm::Quat::identity());
 		j.hasTranslate     = b.hasTranslate;
 		j.rotDof           = b.rotDof;
 		// Resolve the parent against the table (UE names), not the possibly-renamed
@@ -79,9 +80,10 @@ oa::Skeleton buildHumanMl3d() {
 		j.name             = b.name;
 		j.humanIkId        = b.humanIkId;
 		j.mass             = b.mass;
-		j.rest.translate   = { b.tx, b.ty, b.tz };
-		j.rest.jointOrient = oa::eulerXyzDegToQuat({ b.rx, b.ry, b.rz });
-		j.rest.rotate      = { 0.0f, 0.0f, 0.0f, 1.0f };
+		j.rest.getTransform().setPosition({b.tx, b.ty, b.tz});
+		j.rest.setOrientation(oa::vlm::quaternionFromEulerDegrees(
+			oa::vlm::Vec3{b.rx, b.ry, b.rz}, oa::vlm::RotationOrder::Xyz));
+		j.rest.getTransform().setRotation(oa::vlm::Quat::identity());
 		j.hasTranslate     = b.hasTranslate;
 		j.rotDof           = b.rotDof;
 		j.parentIndex      = (b.parent[0] == '\0') ? -1 : tableIndexOf(b.parent);
@@ -122,7 +124,7 @@ oa::I32 oa::Skeleton::indexOf(oa::StringView inName) const noexcept {
 
 namespace {
 
-// forward-kinematics walk over the rest OaJoints: returns world position and
+// forward-kinematics walk over the rest Joints: returns world position and
 // (optionally) world orientation of inJoint. translate of joint k is expressed
 // in its parent's frame, rotated by the parent's accumulated world rotation;
 // orientation accumulates the rest jointOrients (animated rotate is identity at
@@ -142,8 +144,10 @@ void restFk(
 	oa::vlm::Quat rot = { 0.0f, 0.0f, 0.0f, 1.0f };
 	for (oa::I32 i = static_cast<oa::I32>(chain.size()) - 1; i >= 0; --i) {
 		const oa::SkelJoint& j = inJoints[static_cast<oa::Usize>(chain[static_cast<oa::Usize>(i)])];
-		pos = oa::vlm::add(pos, oa::vlm::rotateVector(rot, j.rest.translate));
-		rot = rot * j.rest.orientedRotation();
+		pos = oa::vlm::add(
+			pos, oa::vlm::rotateVector(
+				rot, j.rest.getTransform().getPosition()));
+		rot = rot * j.rest.getOrientedRotation();
 	}
 	outPos = pos;
 	outRot = rot;
@@ -217,8 +221,8 @@ oa::Status oa::Skeleton::writeSkel(const oa::Path& inPath) const {
 	out << "  \"joints\": [\n";
 	for (oa::I32 i = 0; i < jointCount(); ++i) {
 		const oa::SkelJoint& j = joints[static_cast<oa::Usize>(i)];
-		const oa::vlm::Vec3& t = j.rest.translate;
-		const oa::vlm::Quat& q = j.rest.jointOrient;
+		const oa::vlm::Vec3& t = j.rest.getTransform().getPosition();
+		const oa::vlm::Quat& q = j.rest.getOrientation();
 		out << "    { \"name\": \"";
 		out.write(j.name.data(), static_cast<std::streamsize>(j.name.size()));
 		out << "\"" << ", \"parent\": " << j.parentIndex
@@ -344,7 +348,7 @@ oa::Result<oa::Skeleton> oa::Skeleton::readSkel(const oa::Path& inPath) {
 					return oa::Status::invalidArgument("oa::Skeleton::ReadSkel: bad joint object");
 				}
 				oa::SkelJoint j;
-				j.rest.rotate = { 0.0f, 0.0f, 0.0f, 1.0f };
+				j.rest.getTransform().setRotation(oa::vlm::Quat::identity());
 				while (!c.peek('}')) {
 					if (c.key("name")) {
 						if (!c.str(j.name)) {
@@ -372,7 +376,10 @@ oa::Result<oa::Skeleton> oa::Skeleton::readSkel(const oa::Path& inPath) {
 							if (!c.num(vi)) { return oa::Status::invalidArgument("oa::Skeleton::ReadSkel: bad rest value"); }
 						}
 						c.eat(']');
-						j.rest.translate = { static_cast<oa::F32>(v[0]), static_cast<oa::F32>(v[1]), static_cast<oa::F32>(v[2]) };
+						j.rest.getTransform().setPosition({
+							static_cast<oa::F32>(v[0]),
+							static_cast<oa::F32>(v[1]),
+							static_cast<oa::F32>(v[2])});
 					} else if (c.key("orient")) {
 						if (!c.eat('[')) { return oa::Status::invalidArgument("oa::Skeleton::ReadSkel: bad orient"); }
 						double v[4] = { 0, 0, 0, 1 };
@@ -380,8 +387,11 @@ oa::Result<oa::Skeleton> oa::Skeleton::readSkel(const oa::Path& inPath) {
 							if (!c.num(vi)) { return oa::Status::invalidArgument("oa::Skeleton::ReadSkel: bad orient value"); }
 						}
 						c.eat(']');
-						j.rest.jointOrient = { static_cast<oa::F32>(v[0]), static_cast<oa::F32>(v[1]),
-						                       static_cast<oa::F32>(v[2]), static_cast<oa::F32>(v[3]) };
+						j.rest.setOrientation({
+							static_cast<oa::F32>(v[0]),
+							static_cast<oa::F32>(v[1]),
+							static_cast<oa::F32>(v[2]),
+							static_cast<oa::F32>(v[3])});
 					} else {
 						return oa::Status::invalidArgument("oa::Skeleton::ReadSkel: unknown joint key");
 					}

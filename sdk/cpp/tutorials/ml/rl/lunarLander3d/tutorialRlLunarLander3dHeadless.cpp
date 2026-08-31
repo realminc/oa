@@ -242,7 +242,7 @@ static oa::Status lunarHeadlessBuildPpm(
 static oa::Status lunarHeadlessRenderFrame(
 	LunarLander3dRenderSession& inSession,
 	const oa::LunarLander3dState& inState,
-	const oa::CameraState& inCamera,
+	const oa::Camera& inCamera,
 	const oa::Path& inOutputDirectory,
 	oa::U32 inFrameIndex,
 	LunarHeadlessDigest& inOutImageSequenceDigest,
@@ -435,7 +435,7 @@ static oa::Result<LunarHeadlessSummary> lunarHeadlessRun(
 		traceDigest.addDouble(height);
 	}
 	lunarHeadlessDigestState(traceDigest, environment.state());
-	const oa::CameraState camera =
+	const oa::Camera camera =
 		LunarLander3dRenderSession::defaultCamera(OA_WIDTH, OA_HEIGHT);
 	runStatus = lunarHeadlessRenderFrame(
 		*session, environment.state(), camera, inOutputDirectory,

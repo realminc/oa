@@ -133,8 +133,8 @@ void appendPartNode(
 		oa::String(inName),
 		LanderRootNodeId,
 		inMesh,
-		oa::vlm::composeTrs(
-			inCenter, oa::vlm::Quat::identity(), inHalfExtent),
+		oa::Transform{
+			inCenter, oa::vlm::Quat::identity(), inHalfExtent},
 		true,
 	});
 }
@@ -349,10 +349,10 @@ public:
 			coloredCube({0.82F, 0.90F, 0.96F, 1.0F})});
 		scene.nodes.pushBack({
 			TerrainNodeId, "terrain", {}, TerrainMeshId,
-			oa::vlm::Mat4::identity(), true});
+			oa::Transform{}, true});
 		scene.nodes.pushBack({
 			LanderRootNodeId, "lander", {}, {},
-			oa::vlm::Mat4::identity(), true});
+			oa::Transform{}, true});
 
 		oa::U64 nextNodeId = FirstLanderPartNodeId;
 		for (const oa::LunarSupportSphere& support
@@ -431,8 +431,9 @@ public:
 				oa::StatusCode::Internal,
 				"LunarLander3d scene lost its stable lander root identity");
 		}
-		root->localTransform = oa::vlm::composeTrs(
-			position, orientation, {1.0F, 1.0F, 1.0F});
+		root->localTransform.setPosition(position);
+		root->localTransform.setRotation(orientation);
+		root->localTransform.setScale({1.0F, 1.0F, 1.0F});
 		return oa::Status::ok();
 	}
 };
@@ -459,7 +460,7 @@ LunarLander3dRenderSession::create(
 
 oa::Status LunarLander3dRenderSession::beginFrame(
 	const oa::LunarLander3dState& inState,
-	const oa::CameraState& inCamera) {
+	const oa::Camera& inCamera) {
 	if (not impl_ or not impl_->renderer) {
 		return oa::Status::error(
 			oa::StatusCode::FailedPrecondition,
@@ -554,10 +555,10 @@ oa::Status LunarLander3dRenderSession::close() {
 	return status;
 }
 
-oa::CameraState LunarLander3dRenderSession::defaultCamera(
+oa::Camera LunarLander3dRenderSession::defaultCamera(
 	oa::U32 inWidth,
 	oa::U32 inHeight) {
-	oa::CameraState camera;
+	oa::Camera camera;
 	const oa::F32 aspect = inHeight == 0U
 		? 1.0F
 		: static_cast<oa::F32>(inWidth) / static_cast<oa::F32>(inHeight);

@@ -14,6 +14,7 @@
 #include <oa/core/std/algo.h>
 #include <oa/core/std/chrono.h>
 #include <oa/core/std/cString.h>
+#include <oa/core/std/format.h>
 #include <oa/core/std/scalarMath.h>
 #include <oa/ui/platformInput.h>
 #include <oa/core/validation.h>
@@ -29,7 +30,6 @@
 namespace {
 
 constexpr oa::WindowDecorationMetrics kWindowDecorationMetrics;
-constexpr oa::U32 kMaxWindowTitleGlyphs = 1024U;
 
 class ViewerSdlWindow final : public oa::VulkanWindow {
 public:
@@ -115,45 +115,6 @@ SDL_HitTestResult SDLCALL viewerWindowHitTest(
 		(flags & SDL_WINDOW_RESIZABLE) != 0,
 		(flags & SDL_WINDOW_MAXIMIZED) != 0,
 		kWindowDecorationMetrics));
-}
-
-void appendWindowTitleGlyphs(
-	const oa::TextAtlas& inAtlas,
-	oa::StringView inTitle,
-	oa::F32 inScaleX,
-	oa::F32 inScaleY,
-	oa::Vector<oa::GlyphInstance>& inOutGlyphs) {
-	const oa::F32 fontSize = 13.0F * inScaleY;
-	const oa::F32 baseline = 23.0F * inScaleY;
-	oa::TextLayout layout;
-	oa::TextLayoutConfig config{
-		.font = oa::FontId::Sans,
-		.size = fontSize,
-	};
-	oa::Vector<oa::PositionedGlyph> positioned;
-	layout.shape(
-		inAtlas, inTitle, {20.0F * inScaleX, baseline}, config,
-		oa::Color{0.80F, 0.80F, 0.80F, 1.0F}.toU32(), positioned);
-	for (const auto& item : positioned) {
-		if (inOutGlyphs.size() >= kMaxWindowTitleGlyphs) break;
-		const oa::GlyphInfo* glyph = inAtlas.findGlyph(
-			item.font, item.codepoint, fontSize);
-		if (glyph == nullptr) continue;
-		const oa::F32 glyphScale = fontSize / glyph->rasterSize;
-		inOutGlyphs.pushBack({
-			.anchorX = 0.0F,
-			.anchorY = 0.0F,
-			.offsetX = item.x + glyph->bearingX * glyphScale,
-			.offsetY = item.y - glyph->bearingY * glyphScale,
-			.width = glyph->atlasW * glyphScale,
-			.height = glyph->atlasH * glyphScale,
-			.atlasX = static_cast<oa::U32>(glyph->atlasX),
-			.atlasY = static_cast<oa::U32>(glyph->atlasY),
-			.atlasW = static_cast<oa::U32>(glyph->atlasW),
-			.atlasH = static_cast<oa::U32>(glyph->atlasH),
-			.color = oa::Color{0.80F, 0.80F, 0.80F, 1.0F}.toU32(),
-		});
-	}
 }
 
 } // namespace
@@ -259,33 +220,22 @@ static oa::UiEvent convertSdlEvent(const SDL_Event& inSdl, SDL_Window* inWindow)
 			e.windowH = hPx;
 			break;
 		}
+		case SDL_EVENT_WINDOW_MOUSE_ENTER:
+			e.type = oa::UiEventType::MouseEnter;
+			break;
+		case SDL_EVENT_WINDOW_MOUSE_LEAVE:
+			e.type = oa::UiEventType::MouseLeave;
+			break;
+		case SDL_EVENT_WINDOW_FOCUS_GAINED:
+			e.type = oa::UiEventType::WindowFocus;
+			break;
+		case SDL_EVENT_WINDOW_FOCUS_LOST:
+			e.type = oa::UiEventType::WindowBlur;
+			break;
 		default:
 			break;
 	}
 	return e;
-}
-
-oa::Status oa::Viewer::rebuildWindowTitleGlyphs() {
-	if (not windowDecorationActive_ or config_.title.empty()) {
-		return oa::Status::ok();
-	}
-	if (not windowTitleGlyphs_.isValid()) {
-		return oa::Status::error(
-			oa::StatusCode::FailedPrecondition,
-			"oa::Viewer window title glyph buffer is not initialized");
-	}
-	oa::Vector<oa::GlyphInstance> glyphs;
-	glyphs.reserve(oa::min<oa::Usize>(
-		config_.title.size(),
-		static_cast<oa::Usize>(kMaxWindowTitleGlyphs)));
-	appendWindowTitleGlyphs(
-		textAtlas_,
-		config_.title,
-		windowPixelScaleX_,
-		windowPixelScaleY_,
-		glyphs);
-	return windowTitleGlyphs_.upload(
-		oa::Span<const oa::GlyphInstance>(glyphs.data(), glyphs.size()));
 }
 
 void oa::Viewer::refreshWindowDecorationScale() {
@@ -305,45 +255,33 @@ void oa::Viewer::refreshWindowDecorationScale() {
 		static_cast<oa::F32>(pixelWidth) / static_cast<oa::F32>(logicalWidth);
 	const oa::F32 nextScaleY =
 		static_cast<oa::F32>(pixelHeight) / static_cast<oa::F32>(logicalHeight);
-	const bool changed =
-		oa::abs(nextScaleX - windowPixelScaleX_) > 0.001F
-		or oa::abs(nextScaleY - windowPixelScaleY_) > 0.001F;
 	windowPixelScaleX_ = nextScaleX;
 	windowPixelScaleY_ = nextScaleY;
-	if (changed and windowDecorationActive_ and windowTitleGlyphs_.isValid()) {
-		if (const oa::Status status = rebuildWindowTitleGlyphs();
-			not status.isOk()) {
-			OaLogWarn(oa::LogComponent::Ui,
-				"oa::Viewer title scale refresh failed: {}",
-				status.toString().cStr());
-		}
-	}
 }
 
 oa::Status oa::Viewer::initWindowDecoration() {
 	refreshWindowDecorationScale();
 	if (not windowDecorationActive_) return oa::Status::ok();
-	if (engine_ == nullptr or window_ == nullptr) {
+	if (window_ == nullptr) {
 		return oa::Status::error(
 			oa::StatusCode::FailedPrecondition,
-			"oa::Viewer window decoration requires a window and engine");
+			"oa::Viewer window decoration requires a window");
 	}
-	if (config_.title.empty()) return oa::Status::ok();
-	const oa::Usize requestedCapacity = oa::min<oa::Usize>(
-		oa::max<oa::Usize>(config_.title.size(), 1U),
-		static_cast<oa::Usize>(kMaxWindowTitleGlyphs));
-	auto buffer = oa::GlyphBuffer::createHostUpload(
-		*engine_, static_cast<oa::U32>(requestedCapacity));
-	if (not buffer.isOk()) return buffer.getStatus();
-	windowTitleGlyphs_ = oa::move(*buffer);
-	return rebuildWindowTitleGlyphs();
+	const SDL_WindowFlags flags = SDL_GetWindowFlags(
+		static_cast<SDL_Window*>(window_));
+	windowFullscreen_ = (flags & SDL_WINDOW_FULLSCREEN) != 0;
+	windowMaximized_ = (flags & SDL_WINDOW_MAXIMIZED) != 0;
+	mediaChromeIdleMs_ = 0.0F;
+	mediaPointerInside_ = true;
+	return oa::Status::ok();
 }
 
 void oa::Viewer::destroyWindowDecoration() {
-	windowTitleGlyphs_ = {};
-	windowHoveredControl_ = 0;
-	windowPressedControl_ = 0;
+	mediaChromeIdleMs_ = 0.0F;
+	mediaPointerInside_ = true;
 	windowDecorationActive_ = false;
+	windowTransparent_ = false;
+	windowFullscreen_ = false;
 	windowMaximized_ = false;
 }
 
@@ -351,81 +289,14 @@ bool oa::Viewer::routeWindowDecorationEvent(void* inEvent) {
 	if (not windowDecorationActive_ or window_ == nullptr or inEvent == nullptr) {
 		return false;
 	}
-	auto& event = *static_cast<SDL_Event*>(inEvent);
 	SDL_Window* window = static_cast<SDL_Window*>(window_);
 	const SDL_WindowFlags flags = SDL_GetWindowFlags(window);
+	windowFullscreen_ = (flags & SDL_WINDOW_FULLSCREEN) != 0;
 	windowMaximized_ = (flags & SDL_WINDOW_MAXIMIZED) != 0;
-
-	if (event.type == SDL_EVENT_WINDOW_MOUSE_LEAVE
-		or event.type == SDL_EVENT_WINDOW_FOCUS_LOST) {
-		const bool consumed = windowPressedControl_ != 0;
-		windowHoveredControl_ = 0;
-		windowPressedControl_ = 0;
-		return consumed;
-	}
-
-	oa::F32 mouseX = 0.0F;
-	oa::F32 mouseY = 0.0F;
-	if (event.type == SDL_EVENT_MOUSE_MOTION) {
-		mouseX = event.motion.x;
-		mouseY = event.motion.y;
-	} else if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN
-		or event.type == SDL_EVENT_MOUSE_BUTTON_UP) {
-		mouseX = event.button.x;
-		mouseY = event.button.y;
-	} else {
-		return false;
-	}
-
-	int width = 0;
-	int height = 0;
-	if (not SDL_GetWindowSize(window, &width, &height)) return false;
-	const auto control = oa::windowDecorationControlAt(
-		static_cast<oa::I32>(mouseX),
-		static_cast<oa::I32>(mouseY),
-		width,
-		kWindowDecorationMetrics);
-	windowHoveredControl_ = static_cast<oa::I32>(control);
-
-	if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN
-		and event.button.button == SDL_BUTTON_LEFT
-		and control != oa::WindowDecorationControl::None) {
-		windowPressedControl_ = static_cast<oa::I32>(control);
-		return true;
-	}
-
-	if (event.type == SDL_EVENT_MOUSE_BUTTON_UP
-		and event.button.button == SDL_BUTTON_LEFT
-		and windowPressedControl_ != 0) {
-		const auto pressed = static_cast<oa::WindowDecorationControl>(
-			windowPressedControl_);
-		windowPressedControl_ = 0;
-		if (pressed != control) return true;
-
-		bool succeeded = true;
-		switch (control) {
-			case oa::WindowDecorationControl::Minimize:
-				succeeded = SDL_MinimizeWindow(window);
-				break;
-			case oa::WindowDecorationControl::Maximize:
-				succeeded = windowMaximized_
-					? SDL_RestoreWindow(window)
-					: SDL_MaximizeWindow(window);
-				break;
-			case oa::WindowDecorationControl::Close:
-				running_ = false;
-				break;
-			case oa::WindowDecorationControl::None:
-				break;
-		}
-		if (not succeeded) {
-			OaLogWarn(oa::LogComponent::Ui,
-				"oa::Viewer window control failed: {}", SDL_GetError());
-		}
-		return true;
-	}
-	return control != oa::WindowDecorationControl::None
-		or windowPressedControl_ != 0;
+	// Controls are ordinary Ui widgets. The hit-test callback merely prevents
+	// compositor dragging in their zones; consuming SDL events here would split
+	// pointer, focus, tooltip and accessibility ownership across two systems.
+	return false;
 }
 
 oa::U32 oa::Viewer::windowDecorationHeight() const noexcept {
@@ -438,96 +309,233 @@ oa::U32 oa::Viewer::windowDecorationHeight() const noexcept {
 }
 
 void oa::Viewer::renderWindowDecoration(oa::Ui& inUi) {
-	if (not windowDecorationActive_) return;
-	const oa::I32 width = static_cast<oa::I32>(this->width());
-	const oa::I32 height = static_cast<oa::I32>(windowDecorationHeight());
-	if (width <= 0 or height <= 0) return;
+	if (windowDecorationActive_ and mediaChromeVisible()) {
+		const oa::I32 width = static_cast<oa::I32>(this->width());
+		const oa::I32 height = static_cast<oa::I32>(windowDecorationHeight());
+		if (width > 0 and height > 0) {
+			const oa::I32 buttonSize = oa::max(
+				1,
+				static_cast<oa::I32>(oa::round(
+					static_cast<oa::F32>(kWindowDecorationMetrics.buttonSize)
+					* windowPixelScaleX_)));
+			const oa::I32 insetX = oa::max(
+				1, static_cast<oa::I32>(oa::round(
+					static_cast<oa::F32>(kWindowDecorationMetrics.outerMargin)
+					* windowPixelScaleX_)));
+			const oa::I32 insetY = oa::max(
+				1, static_cast<oa::I32>(oa::round(
+					static_cast<oa::F32>(kWindowDecorationMetrics.outerMargin)
+					* windowPixelScaleY_)));
+			const oa::I32 menuSpacing = oa::max(
+				1, static_cast<oa::I32>(oa::round(
+					static_cast<oa::F32>(kWindowDecorationMetrics.menuSpacing)
+					* windowPixelScaleX_)));
+			const oa::I32 controlSpacing = oa::max(
+				1, static_cast<oa::I32>(oa::round(
+					static_cast<oa::F32>(kWindowDecorationMetrics.controlSpacing)
+					* windowPixelScaleX_)));
+			const oa::PixelRect fullscreenRect{
+				insetX, insetY, buttonSize, buttonSize};
+			const oa::I32 closeX = width - insetX - buttonSize;
+			const oa::I32 maximizeX = closeX - controlSpacing - buttonSize;
+			const oa::I32 minimizeX = maximizeX - controlSpacing - buttonSize;
+			const oa::I32 menuX = minimizeX - menuSpacing - buttonSize;
+			const oa::PixelRect menuRect{
+				menuX, insetY, buttonSize, buttonSize};
+			const oa::PixelRect minimizeRect{
+				minimizeX, insetY, buttonSize, buttonSize};
+			const oa::PixelRect maximizeRect{
+				maximizeX, insetY, buttonSize, buttonSize};
+			const oa::PixelRect closeRect{
+				closeX, insetY, buttonSize, buttonSize};
 
-	const oa::I32 controlWidth = oa::max(
+			if (inUi.iconButton(
+				windowFullscreen_ ? "Exit fullscreen" : "Fullscreen",
+				fullscreenRect,
+				windowFullscreen_
+					? oa::UiIcon::ExitFullscreen : oa::UiIcon::Fullscreen,
+				true,
+				oa::UiIconButtonStyle::Header)) {
+				SDL_Window* window = static_cast<SDL_Window*>(window_);
+				if (SDL_SetWindowFullscreen(window, not windowFullscreen_)) {
+					windowFullscreen_ = not windowFullscreen_;
+				} else {
+					OaLogWarn(oa::LogComponent::Ui,
+						"oa::Viewer fullscreen request failed: {}", SDL_GetError());
+				}
+			}
+			inUi.tooltip(windowFullscreen_ ? "Exit fullscreen" : "Fullscreen");
+
+			if (inUi.iconButton(
+				"Main menu", menuRect, oa::UiIcon::Menu, true,
+				oa::UiIconButtonStyle::Header)) {
+				inUi.openPopup("viewer-window-menu", menuRect);
+			}
+			inUi.tooltip("Main menu");
+			if (inUi.iconButton(
+				"Minimize", minimizeRect, oa::UiIcon::Minimize, true,
+				oa::UiIconButtonStyle::WindowControl)) {
+				if (not SDL_MinimizeWindow(static_cast<SDL_Window*>(window_))) {
+					OaLogWarn(oa::LogComponent::Ui,
+						"oa::Viewer minimize request failed: {}", SDL_GetError());
+				}
+			}
+			inUi.tooltip("Minimize");
+			if (inUi.iconButton(
+				windowMaximized_ ? "Restore" : "Maximize",
+				maximizeRect,
+				windowMaximized_
+					? oa::UiIcon::Restore : oa::UiIcon::Maximize,
+				true,
+				oa::UiIconButtonStyle::WindowControl)) {
+				SDL_Window* window = static_cast<SDL_Window*>(window_);
+				const bool succeeded = windowMaximized_
+					? SDL_RestoreWindow(window)
+					: SDL_MaximizeWindow(window);
+				if (succeeded) {
+					windowMaximized_ = not windowMaximized_;
+				} else {
+					OaLogWarn(oa::LogComponent::Ui,
+						"oa::Viewer maximize request failed: {}", SDL_GetError());
+				}
+			}
+			inUi.tooltip(windowMaximized_ ? "Restore" : "Maximize");
+			if (inUi.iconButton(
+				"Close", closeRect, oa::UiIcon::Close, true,
+				oa::UiIconButtonStyle::WindowControl)) {
+				running_ = false;
+			}
+			inUi.tooltip("Close");
+		}
+	}
+
+	const bool audioSource = audio_.hasValue();
+	const bool visualSource = hasVisualContent();
+	const oa::U32 menuItemCount = 7U
+		+ (visualSource ? 3U : 0U)
+		+ (audioSource ? 3U : 0U);
+	const oa::F32 popupPadding = oa::max(1.0F, 6.0F * inUi.contentScale());
+	const oa::UiStyle& popupStyle = inUi.currentStyle();
+	const oa::F32 menuItemHeight = popupStyle.fontSize
+		+ popupStyle.framePaddingY * 2.0F;
+	const oa::I32 menuPopupHeight = oa::max<oa::I32>(
 		1,
 		static_cast<oa::I32>(oa::ceil(
-			static_cast<oa::F32>(kWindowDecorationMetrics.controlWidth)
-			* windowPixelScaleX_)));
-	const oa::I32 controlsBegin = width - controlWidth * 3;
-	const oa::UiStyle& style = config_.style;
-	const oa::Color titleBackground = style.background;
-	const oa::Color controlHover = style.surfaceHover;
-	const oa::Color controlPressed = style.accent;
-	const oa::Color closeHover = style.error;
-	const oa::Color icon = style.text;
-
-	inUi.rect({0, 0, width, height}, titleBackground);
-	inUi.rect({0, height - 1, width, 1}, style.border);
-	inUi.rect({
-		oa::max(8, static_cast<oa::I32>(12.0F * windowPixelScaleX_)),
-		oa::max(7, static_cast<oa::I32>(9.0F * windowPixelScaleY_)),
-		oa::max(2, static_cast<oa::I32>(3.0F * windowPixelScaleX_)),
-		oa::max(12, static_cast<oa::I32>(18.0F * windowPixelScaleY_))},
-		style.accent);
-
-	for (oa::I32 index = 0; index < 3; ++index) {
-		const oa::I32 control = index + 1;
-		const oa::PixelRect rect{
-			controlsBegin + index * controlWidth, 0, controlWidth, height};
-		if (windowPressedControl_ == control) {
-			inUi.rect(rect, controlPressed);
-		} else if (windowHoveredControl_ == control) {
-			inUi.rect(
-				rect,
-				control == static_cast<oa::I32>(
-					oa::WindowDecorationControl::Close)
-					? closeHover : controlHover);
+			popupPadding * 2.0F
+			+ static_cast<oa::F32>(menuItemCount) * menuItemHeight
+			+ static_cast<oa::F32>(menuItemCount - 1U)
+				* popupStyle.itemSpacing)));
+	if (inUi.beginPopup("viewer-window-menu", {
+		.width = oa::max<oa::I32>(1, static_cast<oa::I32>(oa::round(
+			224.0F * inUi.contentScale()))),
+		.height = menuPopupHeight,
+		.gap = oa::max<oa::I32>(3, static_cast<oa::I32>(oa::round(
+			6.0F * inUi.contentScale()))),
+		.padding = oa::UiEdge{popupPadding},
+	})) {
+		if (inUi.menuItem("Fit to Window", false, hasVisualContent())) {
+			if (const oa::Status status = nav_.keyboardFitToWindow();
+				not status.isOk()) {
+				OaLogWarn(oa::LogComponent::Ui,
+					"oa::Viewer fit request failed: {}", status.toString().cStr());
+			}
 		}
-
-		const oa::F32 centerX =
-			static_cast<oa::F32>(rect.x) + static_cast<oa::F32>(rect.w) * 0.5F;
-		const oa::F32 centerY =
-			static_cast<oa::F32>(rect.h) * 0.5F;
-		const oa::F32 half = oa::max(4.0F, 5.0F * windowPixelScaleX_);
-		if (control == static_cast<oa::I32>(
-			oa::WindowDecorationControl::Minimize)) {
-			inUi.line(
-				{centerX - half, centerY + 3.0F * windowPixelScaleY_},
-				{centerX + half, centerY + 3.0F * windowPixelScaleY_},
-				icon, 1.0F);
-		} else if (control == static_cast<oa::I32>(
-			oa::WindowDecorationControl::Maximize)) {
-			const oa::I32 box = oa::max(
-				8, static_cast<oa::I32>(10.0F * windowPixelScaleX_));
-			const oa::I32 boxX = static_cast<oa::I32>(centerX) - box / 2;
-			const oa::I32 boxY = static_cast<oa::I32>(centerY) - box / 2;
-			if (windowMaximized_) {
-				inUi.rectOutline(
-					{boxX - 2, boxY + 2, box, box}, icon, 1);
-				inUi.rectOutline(
-					{boxX + 2, boxY - 2, box, box}, icon, 1);
+		if (inUi.menuItem("Actual Size", false, hasVisualContent())) {
+			if (const oa::Status status = nav_.keyboardZoomTo100();
+				not status.isOk()) {
+				OaLogWarn(oa::LogComponent::Ui,
+					"oa::Viewer zoom request failed: {}", status.toString().cStr());
+			}
+		}
+		const bool temporal = video_.hasValue() or audio_.hasValue();
+		if (inUi.menuItem("Loop", isMediaLooping(), temporal)) {
+			toggleMediaLoop();
+		}
+		if (inUi.menuItem("Timeline", config_.showTimeline, temporal)) {
+			config_.showTimeline = not config_.showTimeline;
+		}
+		if (inUi.menuItem("Statistics", config_.showStats, video_.hasValue())) {
+			config_.showStats = not config_.showStats;
+		}
+		const oa::String motionLabel = oa::format(
+			"Animation: {}", oa::uiMotionSpeedName(config_.motionSpeed));
+		if (inUi.menuItem(motionLabel.view())) {
+			const oa::UiMotionSpeed previous = config_.motionSpeed;
+			const oa::UiMotionSpeed next = oa::nextUiMotionSpeed(previous);
+			oa::Status status = nav_.setMotionSpeed(next);
+			if (status.isOk()) status = inUi.setMotionSpeed(next);
+			if (status.isOk()) {
+				config_.motionSpeed = next;
 			} else {
-				inUi.rectOutline({boxX, boxY, box, box}, icon, 1);
+				(void)nav_.setMotionSpeed(previous);
+				(void)inUi.setMotionSpeed(previous);
+				OaLogWarn(oa::LogComponent::Ui,
+					"oa::Viewer animation preset failed: {}",
+					status.toString().cStr());
+			}
+		}
+		if (visualSource) {
+			if (inUi.menuItem(
+				"Dark Canvas (B)",
+				config_.canvasBackground
+					== oa::ViewerCanvasBackground::Dark)) {
+				config_.canvasBackground = oa::ViewerCanvasBackground::Dark;
+			}
+			if (inUi.menuItem(
+				"Gradient Canvas (B)",
+				config_.canvasBackground
+					== oa::ViewerCanvasBackground::Gradient)) {
+				config_.canvasBackground = oa::ViewerCanvasBackground::Gradient;
+			}
+			if (inUi.menuItem(
+				"Grid (G)", config_.showCanvasGrid)) {
+				config_.showCanvasGrid = not config_.showCanvasGrid;
+			}
+		}
+		if (audioSource) {
+			if (inUi.menuItem(
+				"Waveform",
+				audioView_ == oa::ViewerAudioView::Waveform,
+				not audioEnvelope_.isEmpty())) {
+				audioView_ = oa::ViewerAudioView::Waveform;
+			}
+			if (inUi.menuItem(
+				"Spectrum",
+				audioView_ == oa::ViewerAudioView::Spectrum,
+				not audioSpectrum_.isEmpty())) {
+				audioView_ = oa::ViewerAudioView::Spectrum;
+			}
+			if (inUi.menuItem(
+				"Mel Spectrogram",
+				audioView_ == oa::ViewerAudioView::Mel,
+				not audioMel_.isEmpty())) {
+				audioView_ = oa::ViewerAudioView::Mel;
+			}
+		}
+		if (inUi.menuItem("Close")) running_ = false;
+		inUi.endPopup();
+	}
+
+	if (inUi.beginPopup("viewer-volume-menu", {
+		.width = oa::max<oa::I32>(1, static_cast<oa::I32>(oa::round(
+			176.0F * inUi.contentScale()))),
+		.height = oa::max<oa::I32>(1, static_cast<oa::I32>(oa::ceil(
+			popupPadding * 2.0F + menuItemHeight))),
+		.gap = oa::max<oa::I32>(3, static_cast<oa::I32>(oa::round(
+			6.0F * inUi.contentScale()))),
+		.padding = oa::UiEdge{popupPadding},
+	})) {
+		if (hasMediaAudio()) {
+			const bool muted = isMediaMuted();
+			if (inUi.menuItem("Mute", muted)) {
+				toggleMediaMuted();
 			}
 		} else {
-			inUi.line(
-				{centerX - half, centerY - half},
-				{centerX + half, centerY + half},
-				icon, 1.25F);
-			inUi.line(
-				{centerX + half, centerY - half},
-				{centerX - half, centerY + half},
-				icon, 1.25F);
+			(void)inUi.menuItem("No audio stream", false, false);
 		}
-	}
-
-	if (windowTitleGlyphs_.isValid()) {
-		const oa::I32 titleClipWidth = oa::max(1, controlsBegin - 8);
-		const oa::PixelRect screen{
-			0, 0, width, static_cast<oa::I32>(this->height())};
-		inUi.glyphs(
-			windowTitleGlyphs_,
-			textAtlas_,
-			screen,
-			{0, 0, titleClipWidth, height});
+		inUi.endPopup();
 	}
 }
-
 
 void oa::Viewer::resizeWindow(oa::U32 inWidth, oa::U32 inHeight) noexcept {
 	if (not window_ or inWidth == 0 or inHeight == 0) return;
@@ -654,18 +662,34 @@ oa::Status oa::Viewer::runApplication(oa::Engine* inBorrowedEngine) {
 		| SDL_WINDOW_RESIZABLE
 		| SDL_WINDOW_HIGH_PIXEL_DENSITY;
 	SDL_WindowFlags flags = baseFlags;
-	if (config_.customWindowDecoration) flags |= SDL_WINDOW_BORDERLESS;
+	windowTransparent_ = false;
+	if (config_.customWindowDecoration) {
+		flags |= SDL_WINDOW_BORDERLESS | SDL_WINDOW_TRANSPARENT;
+	}
 	SDL_Window* win = SDL_CreateWindow(
 		config_.title.cStr(),
 		static_cast<int>(config_.width),
 		static_cast<int>(config_.height),
 		flags);
+	if (win == nullptr and config_.customWindowDecoration) {
+		OaLogWarn(oa::LogComponent::Ui,
+			"SDL transparent window creation is unavailable; retrying an opaque "
+			"client-side frame: {}", SDL_GetError());
+		flags = baseFlags | SDL_WINDOW_BORDERLESS;
+		win = SDL_CreateWindow(
+			config_.title.cStr(),
+			static_cast<int>(config_.width),
+			static_cast<int>(config_.height),
+			flags);
+	}
 	if (win == nullptr) {
 		OaLogError(oa::LogComponent::Ui, "SDL_CreateWindow failed: {}", SDL_GetError());
 		oa::input::shutdown();
 		(void)closeOwnedEngine();
 		return oa::Status::error("SDL_CreateWindow failed");
 	}
+	windowTransparent_ =
+		(SDL_GetWindowFlags(win) & SDL_WINDOW_TRANSPARENT) != 0U;
 	if (not SDL_SetWindowMinimumSize(win, 320, 240)) {
 		OaLogWarn(oa::LogComponent::Ui,
 			"SDL_SetWindowMinimumSize failed: {}", SDL_GetError());
@@ -696,6 +720,7 @@ oa::Status oa::Viewer::runApplication(oa::Engine* inBorrowedEngine) {
 			return oa::Status::error("SDL_CreateWindow fallback failed");
 		}
 		windowDecorationActive_ = false;
+		windowTransparent_ = false;
 		if (not SDL_SetWindowMinimumSize(win, 320, 240)) {
 			OaLogWarn(oa::LogComponent::Ui,
 				"SDL_SetWindowMinimumSize fallback failed: {}",
@@ -703,8 +728,9 @@ oa::Status oa::Viewer::runApplication(oa::Engine* inBorrowedEngine) {
 		}
 	}
 
-	// phase B — opaque surface through the SDL window backend. The raw instance
-	// remains inside oa::Presenter.
+	// phase B — SDL supplies the Vulkan surface. Transparent client frames
+	// request a matching premultiplied-alpha WSI mode from oa::Presenter; every
+	// unsupported seam falls back to the ordinary opaque surface.
 	ViewerSdlWindow surfaceWindow(win);
 	auto surfaceResult = presenter.createSurface(surfaceWindow);
 	if (not surfaceResult.isOk()) {

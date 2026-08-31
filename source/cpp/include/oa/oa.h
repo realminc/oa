@@ -15,5 +15,6 @@
 #include <oa/audio.h>
 #include <oa/network.h>
 #include <oa/data.h>
+#include <oa/animation.h>
 #include <oa/render.h>
 #include <oa/ui.h>

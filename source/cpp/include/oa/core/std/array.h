@@ -84,7 +84,7 @@ public:
 		}
 	}
 
-	void swap(Array& inOther) noexcept(oa::IsNothrowSwappableV<T>) {
+	void swap(Array& inOther) noexcept(oa::isNothrowSwappableV<T>) {
 		for (size_type index = 0; index < N; ++index) {
 			oa::swapValues(elems_[index], inOther.elems_[index]);
 		}

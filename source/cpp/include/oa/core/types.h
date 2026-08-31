@@ -189,20 +189,20 @@ namespace oa {
 
 // Type trait to get ScalarType from a C++ type.
 template<typename T> struct ScalarTypeOf;
-template<> struct ScalarTypeOf<F32>  { static constexpr ScalarType Value = ScalarType::Float32; };
-template<> struct ScalarTypeOf<F64>  { static constexpr ScalarType Value = ScalarType::Float64; };
-template<> struct ScalarTypeOf<I8>   { static constexpr ScalarType Value = ScalarType::Int8; };
-template<> struct ScalarTypeOf<I16>  { static constexpr ScalarType Value = ScalarType::Int16; };
-template<> struct ScalarTypeOf<I32>  { static constexpr ScalarType Value = ScalarType::Int32; };
-template<> struct ScalarTypeOf<I64>  { static constexpr ScalarType Value = ScalarType::Int64; };
-template<> struct ScalarTypeOf<U8>   { static constexpr ScalarType Value = ScalarType::UInt8; };
-template<> struct ScalarTypeOf<U16>  { static constexpr ScalarType Value = ScalarType::UInt16; };
-template<> struct ScalarTypeOf<U32>  { static constexpr ScalarType Value = ScalarType::UInt32; };
-template<> struct ScalarTypeOf<U64>  { static constexpr ScalarType Value = ScalarType::UInt64; };
-template<> struct ScalarTypeOf<bool> { static constexpr ScalarType Value = ScalarType::Bool; };
+template<> struct ScalarTypeOf<F32>  { static constexpr ScalarType value = ScalarType::Float32; };
+template<> struct ScalarTypeOf<F64>  { static constexpr ScalarType value = ScalarType::Float64; };
+template<> struct ScalarTypeOf<I8>   { static constexpr ScalarType value = ScalarType::Int8; };
+template<> struct ScalarTypeOf<I16>  { static constexpr ScalarType value = ScalarType::Int16; };
+template<> struct ScalarTypeOf<I32>  { static constexpr ScalarType value = ScalarType::Int32; };
+template<> struct ScalarTypeOf<I64>  { static constexpr ScalarType value = ScalarType::Int64; };
+template<> struct ScalarTypeOf<U8>   { static constexpr ScalarType value = ScalarType::UInt8; };
+template<> struct ScalarTypeOf<U16>  { static constexpr ScalarType value = ScalarType::UInt16; };
+template<> struct ScalarTypeOf<U32>  { static constexpr ScalarType value = ScalarType::UInt32; };
+template<> struct ScalarTypeOf<U64>  { static constexpr ScalarType value = ScalarType::UInt64; };
+template<> struct ScalarTypeOf<bool> { static constexpr ScalarType value = ScalarType::Bool; };
 
 template<typename T>
-inline constexpr ScalarType ScalarTypeOfV = ScalarTypeOf<T>::Value;
+inline constexpr ScalarType scalarTypeOfV = ScalarTypeOf<T>::value;
 
 // oa::Precision is now auto-generated in type.gen.h
 

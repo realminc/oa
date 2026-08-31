@@ -1,6 +1,6 @@
 #include <retarget/retarget.h>
 
-#include <core/transform.h>
+#include <oa/core/fnTransform.h>
 
 namespace {
 
@@ -14,10 +14,10 @@ void retargetChannel(
 ) {
 	oa::F32 d[6];
 	for (int i = 0; i < 6; ++i) { d[i] = inOut6D[i]; }
-	const oa::vlm::Quat animLocal = oa::quaternionFromSixD(d);
+	const oa::vlm::Quat animLocal = oa::FnTransform::quaternionFromSixD(d);
 	const oa::vlm::Quat delta = inSrcRef.conjugate() * animLocal;
 	const oa::vlm::Quat newLocal = inDstRef * delta;
-	oa::quaternionToSixD(newLocal.normalized(), inOut6D);
+	oa::FnTransform::quaternionToSixD(newLocal.normalized(), inOut6D);
 }
 
 } // namespace

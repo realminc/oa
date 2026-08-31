@@ -109,6 +109,8 @@ def test_audio_import_surface():
 		assert hasattr(oa.FnAudio, name), name
 
 	assert oa.Audio.__module__ == "oa"
+	assert hasattr(oa.AudioPlayer, "setMuted")
+	assert hasattr(oa.AudioPlayer, "isMuted")
 	assert audio.decodeFile is oa.FnAudio.decodeFile
 	assert audio.normalize is oa.FnAudio.normalize
 

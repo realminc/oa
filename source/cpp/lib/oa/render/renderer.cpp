@@ -55,7 +55,7 @@ oa::Renderer::~Renderer() {
 
 oa::Status oa::Renderer::beginFrame(
 	const oa::MeshData& inMesh,
-	const oa::CameraState& inCamera) {
+	const oa::Camera& inCamera) {
 	if (!impl_ || impl_->closed) {
 		return oa::Status::error(
 			oa::StatusCode::FailedPrecondition,
@@ -66,7 +66,7 @@ oa::Status oa::Renderer::beginFrame(
 
 oa::Status oa::Renderer::beginFrame(
 	const oa::Scene& inScene,
-	const oa::CameraState& inCamera) {
+	const oa::Camera& inCamera) {
 	if (!impl_ || impl_->closed) {
 		return oa::Status::error(
 			oa::StatusCode::FailedPrecondition,

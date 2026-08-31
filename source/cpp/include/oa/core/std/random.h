@@ -78,7 +78,7 @@ public:
 	// ── Uniform integer in [inMin, inMax] inclusive (unbiased via rejection) ─
 	template<
 		typename T,
-		typename = oa::EnableIfT<oa::IsIntegralV<T> && (sizeof(T) < sizeof(oa::I64))>
+		typename = oa::EnableIfT<oa::isIntegralV<T> && (sizeof(T) < sizeof(oa::I64))>
 	>
 	T nextRange(T inMin, T inMax) {
 		return static_cast<T>(nextRange(

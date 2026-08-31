@@ -22,7 +22,11 @@ struct PushConstants {
     uint major_rgba;
     uint super_major_rgba;
     uint axis_rgba;
-    uint flags; // bit 0 = gradient fill, bit 1 = axes, bit 2 = grid tiers
+    float fade_center_x;
+    float fade_center_y;
+    float fade_inner_radius;
+    float fade_outer_radius;
+    uint flags; // background, axes, grid tiers, guide fade, background dither
     int clip_x;
     int clip_y;
     uint clip_w;
@@ -58,6 +62,16 @@ float lineCoverage(float distanceToLine, float thickness) {
         distanceToLine);
 }
 
+float spatialDither(uint2 coordinate) {
+    uint value = coordinate.x + coordinate.y * 65537U;
+    value = (value ^ 61U) ^ (value >> 16U);
+    value *= 9U;
+    value ^= value >> 4U;
+    value *= 0x27d4eb2dU;
+    value ^= value >> 15U;
+    return float(value & 255U) / 255.0 - 0.5;
+}
+
 [shader("compute")]
 [numthreads(8, 8, 1)]
 void main(uint3 tid : SV_DispatchThreadID) {
@@ -77,14 +91,26 @@ void main(uint3 tid : SV_DispatchThreadID) {
     const uint2 coordinate = uint2(uint(dstX), uint(dstY));
     const float2 pixel = float2(float(dstX), float(dstY)) + 0.5;
     const float2 relative = pixel - float2(pc.origin_x, pc.origin_y);
+    float fade = 1.0;
+    if ((pc.flags & 8U) != 0U) {
+        fade = 1.0 - smoothstep(
+            pc.fade_inner_radius,
+            pc.fade_outer_radius,
+            length(pixel - float2(pc.fade_center_x, pc.fade_center_y)));
+    }
     float4 color = images[pc.dst_idx][coordinate];
     if ((pc.flags & 1U) != 0U) {
         const float fraction = pc.dst_h <= 1U
             ? 0.0 : float(tid.y) / float(pc.dst_h - 1U);
-        const float4 background = lerp(
+        float4 background = lerp(
             unpackRgba(pc.background_top_rgba),
             unpackRgba(pc.background_bottom_rgba),
             fraction);
+        if ((pc.flags & 16U) != 0U) {
+            background.rgb = saturate(
+                background.rgb
+                    + spatialDither(coordinate) * (2.0 / 255.0));
+        }
         color = blendOver(color, background, 1.0);
     }
 
@@ -93,7 +119,7 @@ void main(uint3 tid : SV_DispatchThreadID) {
             distanceToPeriodicLine(relative.x, pc.minor_spacing_x),
             distanceToPeriodicLine(relative.y, pc.minor_spacing_y));
         color = blendOver(color, unpackRgba(pc.minor_rgba),
-            lineCoverage(minorDistance, pc.minor_thickness));
+            lineCoverage(minorDistance, pc.minor_thickness) * fade);
 
         const float2 majorSpacing = float2(
             pc.minor_spacing_x, pc.minor_spacing_y) * float(pc.major_every);
@@ -101,7 +127,7 @@ void main(uint3 tid : SV_DispatchThreadID) {
             distanceToPeriodicLine(relative.x, majorSpacing.x),
             distanceToPeriodicLine(relative.y, majorSpacing.y));
         color = blendOver(color, unpackRgba(pc.major_rgba),
-            lineCoverage(majorDistance, pc.major_thickness));
+            lineCoverage(majorDistance, pc.major_thickness) * fade);
 
         const float2 superMajorSpacing = float2(
             pc.minor_spacing_x, pc.minor_spacing_y)
@@ -110,13 +136,13 @@ void main(uint3 tid : SV_DispatchThreadID) {
             distanceToPeriodicLine(relative.x, superMajorSpacing.x),
             distanceToPeriodicLine(relative.y, superMajorSpacing.y));
         color = blendOver(color, unpackRgba(pc.super_major_rgba),
-            lineCoverage(superMajorDistance, pc.super_major_thickness));
+            lineCoverage(superMajorDistance, pc.super_major_thickness) * fade);
     }
 
     if ((pc.flags & 2U) != 0U) {
         const float axisDistance = min(abs(relative.x), abs(relative.y));
         color = blendOver(color, unpackRgba(pc.axis_rgba),
-            lineCoverage(axisDistance, pc.axis_thickness));
+            lineCoverage(axisDistance, pc.axis_thickness) * fade);
     }
     images[pc.dst_idx][coordinate] = color;
 }

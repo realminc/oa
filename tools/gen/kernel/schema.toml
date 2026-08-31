@@ -250,6 +250,10 @@ kernels = [
   { name = "DrawGlyphs", prefix = "Ui", local = 6, category = "Ui", origin = "oa", source = "source/cpp/lib/oa/ui/shader/compute/drawGlyphs.slang" },
   { name = "DrawRect", prefix = "Ui", local = 7, category = "Ui", origin = "oa", source = "source/cpp/lib/oa/ui/shader/compute/drawRect.slang" },
   { name = "DrawWaveform", prefix = "Ui", local = 8, category = "Ui", origin = "oa", source = "source/cpp/lib/oa/ui/shader/compute/drawWaveform.slang" },
+  # UI IDs 9-14 are owned by operation schemas; standalone UI kernels resume
+  # at 15 so the packed identity remains unique across both authorities.
+  { name = "MaskRoundedViewport", prefix = "Ui", local = 15, category = "Ui", origin = "oa", source = "source/cpp/lib/oa/ui/shader/compute/maskRoundedViewport.slang" },
+  { name = "DrawTriangle", prefix = "Ui", local = 16, category = "Ui", origin = "oa", source = "source/cpp/lib/oa/ui/shader/compute/drawTriangle.slang" },
   { name = "VertexColorLit.vert", prefix = "Render", local = 3, category = "Render", origin = "oa", source = "source/cpp/lib/oa/render/shader/graphics/vertexColorLit.vert.slang", stage = "vertex" },
   { name = "VertexColorLit.frag", prefix = "Render", local = 4, category = "Render", origin = "oa", source = "source/cpp/lib/oa/render/shader/graphics/vertexColorLit.frag.slang", stage = "fragment" },
   { name = "Stft", prefix = "Audio", local = 1, category = "Audio", origin = "oa", source = "source/cpp/lib/oa/audio/shader/compute/transform/stft.slang" },

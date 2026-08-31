@@ -101,7 +101,7 @@ void expectSceneOracle(const oa::RenderReadback& inReadback) {
 [[nodiscard]] oa::Result<oa::RenderReadback> renderAndRead(
 	LunarLander3dRenderSession& inSession,
 	const oa::LunarLander3dState& inState,
-	const oa::CameraState& inCamera,
+	const oa::Camera& inCamera,
 	oa::RenderFrame* outFrame = nullptr) {
 	const oa::Status begin = inSession.beginFrame(inState, inCamera);
 	if (not begin.isOk()) return begin;
@@ -192,7 +192,7 @@ TEST(LunarLander3dRender, HeadlessReadbackAndSlotLifecycle) {
 	oa::LunarLander3dState state;
 	state.position_ = {0.0, 4.0, 0.0};
 	state.orientation_ = oa::vlm::DQuat::identity();
-	const oa::CameraState camera =
+	const oa::Camera camera =
 		LunarLander3dRenderSession::defaultCamera(160U, 120U);
 	oa::LunarLander3dState oversizedState = state;
 	oversizedState.position_.x =
@@ -245,7 +245,7 @@ TEST(LunarLander3dRender, HeadlessReadbackAndSlotLifecycle) {
 	EXPECT_EQ(
 		session->consumeReadback(*liveFrame).getStatus().getCode(),
 		oa::StatusCode::InvalidArgument);
-	const oa::CameraState resizedCamera =
+	const oa::Camera resizedCamera =
 		LunarLander3dRenderSession::defaultCamera(192U, 128U);
 	auto resizedReadback = renderAndRead(*session, state, resizedCamera);
 	ASSERT_TRUE(resizedReadback.isOk())
@@ -452,7 +452,7 @@ TEST(LunarLander3dRender, AbandonedSessionRetiresThroughEngineClose) {
 		oa::EngineDeviceAccess::get(*engine).queues.graphicsQueueFamily);
 	oa::LunarLander3dState state;
 	state.position_ = {0.0, 4.0, 0.0};
-	const oa::CameraState camera =
+	const oa::Camera camera =
 		LunarLander3dRenderSession::defaultCamera(96U, 72U);
 	ASSERT_TRUE(session->beginFrame(state, camera).isOk());
 	const oa::Event dependencies[1] = {gateEvent};

@@ -5,16 +5,19 @@
 #include <oa/core/fnMatrix.h>
 #include <oa/core/log.h>
 #include <oa/core/std/algo.h>
+#include <oa/core/std/format.h>
 #include <oa/core/std/limits.h>
 #include <oa/core/std/scalarMath.h>
 #include <oa/audio/fnAudio.h>
 #include <oa/render/renderer.h>
 #include <oa/runtime/engine.h>
 #include <oa/runtime/eventAccess.h>
+#include <oa/runtime/presenter.h>
 #include <oa/runtime/engine/allocatorAccess.h>
 #include <oa/ui/ui.h>
 #include <oa/vision/fnImage.h>
 #include "../runtime/textureAccess.h"
+#include "windowDecoration.h"
 
 
 namespace {
@@ -57,6 +60,17 @@ bool isPowerOfTwo(oa::U32 inValue) noexcept {
 	return inValue != 0U and (inValue & (inValue - 1U)) == 0U;
 }
 
+oa::String viewerTimestamp(oa::U64 inTimestampUs) {
+	const oa::U64 totalSeconds = inTimestampUs / 1'000'000U;
+	const oa::U64 seconds = totalSeconds % 60U;
+	const oa::U64 totalMinutes = totalSeconds / 60U;
+	const oa::U64 minutes = totalMinutes % 60U;
+	const oa::U64 hours = totalMinutes / 60U;
+	return hours > 0U
+		? oa::format("{}:{:02}:{:02}", hours, minutes, seconds)
+		: oa::format("{}:{:02}", minutes, seconds);
+}
+
 oa::Status validateAudioAnalysisConfig(const oa::ViewerConfig& inConfig) {
 	switch (inConfig.audioView) {
 		case oa::ViewerAudioView::Waveform:
@@ -90,6 +104,22 @@ oa::Status validateAudioAnalysisConfig(const oa::ViewerConfig& inConfig) {
 	if (inConfig.audioMelBins == 0U or inConfig.audioMelBins > 4096U) {
 		return oa::Status::invalidArgument(
 			"oa::Viewer audio mel bins must be in [1, 4096]");
+	}
+	return oa::Status::ok();
+}
+
+oa::Status validateViewerCanvasConfig(const oa::ViewerConfig& inConfig) {
+	if (not oa::isValidUiMotionSpeed(inConfig.motionSpeed)) {
+		return oa::Status::invalidArgument(
+			"oa::Viewer motion speed is not a declared preset");
+	}
+	switch (inConfig.canvasBackground) {
+		case oa::ViewerCanvasBackground::Dark:
+		case oa::ViewerCanvasBackground::Gradient:
+			break;
+		default:
+			return oa::Status::invalidArgument(
+				"oa::Viewer canvas background is not a declared mode");
 	}
 	return oa::Status::ok();
 }
@@ -489,8 +519,6 @@ oa::Status oa::Viewer::openAudio(oa::Engine& inEngine) {
 		OA_RETURN_IF_ERROR(audio_->play());
 	}
 	audioView_ = config_.audioView;
-	audioViewTabs_.selected = static_cast<oa::I32>(audioView_);
-	audioViewTabs_.firstVisible = 0;
 	resolvedMode_ = oa::ViewerMode::Audio;
 	return oa::Status::ok();
 }
@@ -558,6 +586,15 @@ bool oa::Viewer::isMediaLooping() const noexcept {
 	return config_.loop;
 }
 
+bool oa::Viewer::hasMediaAudio() const noexcept {
+	return video_.hasValue() ? video_->hasAudio() : audio_.hasValue();
+}
+
+bool oa::Viewer::isMediaMuted() const noexcept {
+	if (video_.hasValue()) return video_->isMuted();
+	return audio_.hasValue() and audio_->isMuted();
+}
+
 oa::U64 oa::Viewer::mediaDurationUs() const noexcept {
 	if (video_.hasValue()) return video_->durationUs();
 	if (audio_.hasValue()) return audio_->durationUs();
@@ -587,6 +624,12 @@ oa::F32 oa::Viewer::mediaPositionFraction() const noexcept {
 			/ static_cast<long double>(duration)));
 }
 
+oa::F32 oa::Viewer::displayedMediaFraction() const noexcept {
+	return pendingTimelineSeekFraction_.hasValue()
+		? *pendingTimelineSeekFraction_
+		: mediaPositionFraction();
+}
+
 oa::PixelRect oa::Viewer::timelineRect() const noexcept {
 	const oa::F32 contentScale = oa::max(
 		0.01F, (windowPixelScaleX_ + windowPixelScaleY_) * 0.5F);
@@ -594,17 +637,21 @@ oa::PixelRect oa::Viewer::timelineRect() const noexcept {
 		return oa::max<oa::I32>(1, static_cast<oa::I32>(oa::lround(
 			static_cast<oa::F32>(inLogical) * contentScale)));
 	};
-	const oa::I32 contentTop = static_cast<oa::I32>(windowDecorationHeight());
-	const oa::I32 contentHeight = oa::max<oa::I32>(
-		1, static_cast<oa::I32>(height()) - contentTop);
-	const oa::I32 margin = px(24);
-	const oa::I32 height = px(20);
+	const oa::F32 logicalWidth = static_cast<oa::F32>(this->width())
+		/ contentScale;
+	const oa::I32 toolbarMargin = px(logicalWidth >= 550.0F ? 24 : 12);
+	const oa::I32 contentInset = toolbarMargin + px(12);
+	const oa::I32 timelineHeight = px(34);
+	const oa::I32 timestampHeight = px(34);
+	const oa::I32 timestampBottomMargin = px(3);
 	const oa::I32 width = oa::max<oa::I32>(
-		1, static_cast<oa::I32>(this->width()) - margin * 2);
-	const oa::I32 y = resolvedMode_ == oa::ViewerMode::Audio
-		? contentTop + oa::max<oa::I32>(0, contentHeight - px(28))
-		: contentTop + oa::max<oa::I32>(0, contentHeight - px(52));
-	return {margin, y, width, height};
+		1, static_cast<oa::I32>(this->width()) - contentInset * 2);
+	const oa::I32 y = oa::max<oa::I32>(
+		0,
+		static_cast<oa::I32>(height())
+			- toolbarMargin - timestampBottomMargin
+			- timestampHeight - timelineHeight);
+	return {contentInset, y, width, timelineHeight};
 }
 
 oa::PixelRect oa::Viewer::temporalButtonsRect() const noexcept {
@@ -614,33 +661,16 @@ oa::PixelRect oa::Viewer::temporalButtonsRect() const noexcept {
 		return oa::max<oa::I32>(1, static_cast<oa::I32>(oa::lround(
 			static_cast<oa::F32>(inLogical) * contentScale)));
 	};
-	const oa::PixelRect timeline = timelineRect();
-	const oa::I32 height = px(34);
-	const oa::I32 width = oa::min(timeline.w, px(272));
-	const oa::I32 contentTop = static_cast<oa::I32>(windowDecorationHeight());
+	const oa::I32 groupHeight = px(56);
+	const oa::I32 groupWidth = oa::min<oa::I32>(
+		static_cast<oa::I32>(width()), px(148));
 	return {
-		timeline.x,
-		oa::max(contentTop + px(8), timeline.y - height - px(8)),
-		width,
-		height,
-	};
-}
-
-oa::PixelRect oa::Viewer::audioViewTabRect() const noexcept {
-	const oa::F32 scale = oa::max(
-		0.01F, (windowPixelScaleX_ + windowPixelScaleY_) * 0.5F);
-	const auto px = [scale](oa::I32 inLogical) {
-		return oa::max<oa::I32>(1, static_cast<oa::I32>(oa::lround(
-			static_cast<oa::F32>(inLogical) * scale)));
-	};
-	const oa::I32 margin = px(24);
-	const oa::I32 available = oa::max<oa::I32>(
-		1, static_cast<oa::I32>(width()) - margin * 2);
-	return {
-		margin,
-		static_cast<oa::I32>(windowDecorationHeight()) + px(12),
-		oa::min(available, px(360)),
-		px(28),
+		oa::max<oa::I32>(
+			0, (static_cast<oa::I32>(width()) - groupWidth) / 2),
+		oa::max<oa::I32>(
+			0, (static_cast<oa::I32>(height()) - groupHeight) / 2),
+		groupWidth,
+		groupHeight,
 	};
 }
 
@@ -651,26 +681,36 @@ oa::PixelRect oa::Viewer::audioVisualizationRect() const noexcept {
 		return oa::max<oa::I32>(1, static_cast<oa::I32>(oa::lround(
 			static_cast<oa::F32>(inLogical) * scale)));
 	};
-	const oa::I32 margin = px(24);
+	const oa::PixelRect timeline = timelineRect();
 	const oa::I32 contentTop = static_cast<oa::I32>(windowDecorationHeight());
-	const oa::PixelRect tabs = audioViewTabRect();
-	const oa::I32 top = config_.showAudioViewSelector
-		? tabs.y + tabs.h + px(12)
-		: contentTop + px(24);
+	const oa::I32 top = contentTop + px(24);
+	const oa::I32 titleHeight = px(34);
+	const oa::I32 chromeGap = px(12);
 	const oa::I32 bottom = config_.showTimeline
-		? timelineRect().y - px(12)
+		? timeline.y - titleHeight - chromeGap
 		: static_cast<oa::I32>(height()) - px(24);
 	return {
-		margin,
+		timeline.x,
 		top,
-		oa::max<oa::I32>(1, static_cast<oa::I32>(width()) - margin * 2),
+		timeline.w,
 		oa::max<oa::I32>(1, bottom - top),
 	};
 }
 
 void oa::Viewer::toggleMediaPlayback() {
 	if (video_.hasValue()) {
-		video_->togglePlay();
+		if (video_->isDone()) {
+			const oa::Status status = video_->seekFrame(0U);
+			if (not status.isOk()) {
+				OaLogWarn(oa::LogComponent::Ui,
+					"oa::Viewer video replay failed: {}",
+					status.toString().cStr());
+				return;
+			}
+			video_->play();
+		} else {
+			video_->togglePlay();
+		}
 	} else if (audio_.hasValue()) {
 		if (audio_->isPlaying()) audio_->pause();
 		else if (const oa::Status status = audio_->play(); not status.isOk()) {
@@ -685,6 +725,18 @@ void oa::Viewer::toggleMediaLoop() {
 	config_.loop = loop;
 	if (video_.hasValue()) video_->setLoop(loop);
 	if (audio_.hasValue()) audio_->setLoop(loop);
+}
+
+void oa::Viewer::toggleMediaMuted() {
+	if (not hasMediaAudio()) return;
+	const bool muted = not isMediaMuted();
+	const oa::Status status = video_.hasValue()
+		? video_->setMuted(muted)
+		: audio_->setMuted(muted);
+	if (not status.isOk()) {
+		OaLogWarn(oa::LogComponent::Ui,
+			"oa::Viewer mute request failed: {}", status.toString().cStr());
+	}
 }
 
 void oa::Viewer::pauseMedia() {
@@ -794,8 +846,7 @@ oa::Status oa::Viewer::configureNavigation() {
 		static_cast<oa::F32>(contentHeight)));
 	OA_RETURN_IF_ERROR(nav_.setWindowSize(
 		static_cast<oa::F32>(width()),
-		static_cast<oa::F32>(oa::max<oa::U32>(
-			1U, height() - oa::min(height(), windowDecorationHeight())))));
+		static_cast<oa::F32>(oa::max<oa::U32>(1U, height()))));
 	return nav_.fitToWindow(false);
 }
 
@@ -844,6 +895,23 @@ oa::Status oa::Viewer::registerCommonInput() {
 		keys.panLeft = config_.keyPanLeft;
 		keys.panRight = config_.keyPanRight;
 		OA_RETURN_IF_ERROR(registerViewportShortcuts(input, nav_, keys));
+		input.registerAction({
+			.name = "canvas-background",
+			.binding = {.key = config_.keyCanvasBackground},
+			.callback = [this] {
+				config_.canvasBackground = config_.canvasBackground
+					== oa::ViewerCanvasBackground::Dark
+					? oa::ViewerCanvasBackground::Gradient
+					: oa::ViewerCanvasBackground::Dark;
+			},
+		});
+		input.registerAction({
+			.name = "canvas-grid",
+			.binding = {.key = config_.keyCanvasGrid},
+			.callback = [this] {
+				config_.showCanvasGrid = not config_.showCanvasGrid;
+			},
+		});
 	}
 	return oa::Status::ok();
 }
@@ -882,22 +950,17 @@ void oa::Viewer::registerTemporalInput() {
 		.callback = [this] { stepTemporal(-5); }});
 	if (resolvedMode_ == oa::ViewerMode::Audio) {
 		input.registerAction({.name = "audio-waveform", .binding = {.key = oa::UiKey::W},
-			.callback = [this] {
-				audioView_ = oa::ViewerAudioView::Waveform;
-				audioViewTabs_.selected = 0;
-			}});
+			.callback = [this] { audioView_ = oa::ViewerAudioView::Waveform; }});
 		input.registerAction({.name = "audio-spectrum", .binding = {.key = oa::UiKey::S},
 			.callback = [this] {
 				if (not audioSpectrum_.isEmpty()) {
 					audioView_ = oa::ViewerAudioView::Spectrum;
-					audioViewTabs_.selected = 1;
 				}
 			}});
 		input.registerAction({.name = "audio-mel", .binding = {.key = oa::UiKey::M},
 			.callback = [this] {
 				if (not audioMel_.isEmpty()) {
 					audioView_ = oa::ViewerAudioView::Mel;
-					audioViewTabs_.selected = 2;
 				}
 			}});
 	}
@@ -908,6 +971,9 @@ oa::Status oa::Viewer::initView() {
 		return oa::Status::error("oa::Viewer has no resolved source");
 	}
 
+	OA_RETURN_IF_ERROR(validateViewerCanvasConfig(config_));
+	OA_RETURN_IF_ERROR(ui_.setMotionSpeed(config_.motionSpeed));
+	OA_RETURN_IF_ERROR(nav_.setMotionSpeed(config_.motionSpeed));
 	OA_RETURN_IF_ERROR(initWindowDecoration());
 	OA_RETURN_IF_ERROR(configureNavigation());
 	OA_RETURN_IF_ERROR(configureOverlay());
@@ -953,7 +1019,11 @@ oa::Status oa::Viewer::initView() {
 	} else if (resolvedMode_ == oa::ViewerMode::Live) {
 		OaLogInfo(oa::LogComponent::Ui, "  source: attached live producer");
 	}
-	if (hasVisualContent()) OaLogInfo(oa::LogComponent::Ui, "{}", oa::navigationHelpLine());
+	if (hasVisualContent()) {
+		OaLogInfo(oa::LogComponent::Ui, "{}", oa::navigationHelpLine());
+		OaLogInfo(oa::LogComponent::Ui,
+			"  canvas: B=dark/gradient  G=grid");
+	}
 	OaLogInfo(oa::LogComponent::Ui, "  Q/Esc=Quit");
 	OaLogInfo(oa::LogComponent::Ui, "═══════════════════════════════════════════════════");
 	return oa::Status::ok();
@@ -969,6 +1039,19 @@ oa::Status oa::Viewer::update(oa::F32 inDeltaMs) {
 	}
 	if (video_.hasValue()) video_->tick(inDeltaMs);
 	if (hasVisualContent()) OA_RETURN_IF_ERROR(nav_.update(inDeltaMs));
+	const bool temporal = video_.hasValue() or audio_.hasValue();
+	if (temporal
+		and config_.autoHideControls
+		and isMediaPlaying()
+		and mediaPointerInside_
+		and not ui_.isPopupOpen("viewer-window-menu")
+		and not ui_.isPopupOpen("viewer-volume-menu")) {
+		const oa::F32 maximum = static_cast<oa::F32>(
+			config_.controlsHideDelayMs) + 1.0F;
+		mediaChromeIdleMs_ = oa::min(maximum, mediaChromeIdleMs_ + inDeltaMs);
+	} else {
+		mediaChromeIdleMs_ = 0.0F;
+	}
 
 	statsAccumMs_ += inDeltaMs;
 	++statsFrameCount_;
@@ -982,6 +1065,14 @@ oa::Status oa::Viewer::update(oa::F32 inDeltaMs) {
 }
 
 oa::Status oa::Viewer::routeEvent(const oa::UiEvent& inEvent) {
+	const bool pointerEvent = inEvent.type == oa::UiEventType::MouseDown
+		or inEvent.type == oa::UiEventType::MouseUp
+		or inEvent.type == oa::UiEventType::MouseMove
+		or inEvent.type == oa::UiEventType::MouseScroll;
+	const oa::F32 contentTop = static_cast<oa::F32>(windowDecorationHeight());
+	if (pointerEvent and inEvent.mouseY < contentTop) {
+		return oa::Status::ok();
+	}
 	if (resolvedMode_ == oa::ViewerMode::Live and config_.liveSource != nullptr) {
 		if (liveCapabilities_.receivesEvents) {
 			OA_RETURN_IF_ERROR(config_.liveSource->event(inEvent));
@@ -989,21 +1080,13 @@ oa::Status oa::Viewer::routeEvent(const oa::UiEvent& inEvent) {
 		return oa::Status::ok();
 	}
 	if (not hasVisualContent()) return oa::Status::ok();
-	const oa::F32 contentTop = static_cast<oa::F32>(windowDecorationHeight());
-	if ((inEvent.type == oa::UiEventType::MouseDown
-			or inEvent.type == oa::UiEventType::MouseUp
-			or inEvent.type == oa::UiEventType::MouseMove
-			or inEvent.type == oa::UiEventType::MouseScroll)
-		and inEvent.mouseY < contentTop) {
-		return oa::Status::ok();
-	}
 	const oa::PixelRect controls = timelineRect();
 	const oa::F32 contentScale = oa::max(
 		0.01F, (windowPixelScaleX_ + windowPixelScaleY_) * 0.5F);
-	const oa::F32 controlPadding = 12.0F * contentScale;
-	const oa::F64 controlTop = static_cast<oa::F64>(controls.y) - controlPadding;
+	const oa::F64 controlTop = static_cast<oa::F64>(controls.y)
+		- 34.0 * static_cast<oa::F64>(contentScale);
 	const oa::F64 controlBottom = static_cast<oa::F64>(controls.y)
-		+ controls.h + controlPadding;
+		+ controls.h + 34.0 * static_cast<oa::F64>(contentScale);
 	const bool inControls = static_cast<oa::F64>(inEvent.mouseY) >= controlTop
 		and static_cast<oa::F64>(inEvent.mouseY) < controlBottom;
 	const bool inTemporalButtons = temporalButtonsRect().contains(
@@ -1012,14 +1095,6 @@ oa::Status oa::Viewer::routeEvent(const oa::UiEvent& inEvent) {
 	if (not hasTimeline()
 		or (not inControls and not inTemporalButtons and not timelineActive)) {
 		oa::UiEvent contentEvent = inEvent;
-		if (contentEvent.type == oa::UiEventType::WindowResize) {
-			contentEvent.windowH = oa::max<oa::I32>(
-				1,
-				contentEvent.windowH
-					- static_cast<oa::I32>(windowDecorationHeight()));
-		} else {
-			contentEvent.mouseY -= contentTop;
-		}
 		auto handled = nav_.handleEvent(contentEvent);
 		if (not handled.isOk()) return handled.getStatus();
 	}
@@ -1032,12 +1107,65 @@ void oa::Viewer::drawOverlay(oa::Ui& inUi, oa::PixelRect inDestination) {
 		inUi,
 		textAtlas_,
 		inDestination,
-		{.x = 0, .y = static_cast<oa::I32>(windowDecorationHeight()),
+		{.x = 0, .y = 0,
 		 .w = static_cast<oa::I32>(width()),
-		 .h = oa::max<oa::I32>(
-			1,
-			static_cast<oa::I32>(height())
-				- static_cast<oa::I32>(windowDecorationHeight()))});
+		 .h = oa::max<oa::I32>(1, static_cast<oa::I32>(height()))});
+}
+
+void oa::Viewer::renderVisualWorkspace(
+	oa::Ui& inUi,
+	oa::PixelRect inDestination,
+	bool inDrawGrid) {
+	const bool gradient = config_.canvasBackground
+		== oa::ViewerCanvasBackground::Gradient;
+	const bool drawGrid = inDrawGrid and config_.showCanvasGrid;
+	if (not gradient and not drawGrid) return;
+	const oa::F32 contentScale = inUi.contentScale();
+	oa::F32 minorSpacing = 100.0F * nav_.zoom();
+	for (oa::U32 decade = 0U;
+		minorSpacing < 8.0F and decade < 8U;
+		++decade) {
+		minorSpacing *= 10.0F;
+	}
+	const oa::PixelRect guideRect{
+		0,
+		0,
+		static_cast<oa::I32>(width()),
+		static_cast<oa::I32>(height()),
+	};
+	const oa::vlm::Vec2 guideOrigin{
+		static_cast<oa::F32>(inDestination.x)
+			+ static_cast<oa::F32>(inDestination.w) * 0.5F,
+		static_cast<oa::F32>(inDestination.y)
+			+ static_cast<oa::F32>(inDestination.h) * 0.5F,
+	};
+	const oa::F32 destinationWidth = static_cast<oa::F32>(inDestination.w);
+	const oa::F32 destinationHeight = static_cast<oa::F32>(inDestination.h);
+	const oa::F32 imageRadius = oa::max(
+		1.0F,
+		0.5F * oa::sqrt(
+			destinationWidth * destinationWidth
+				+ destinationHeight * destinationHeight));
+	inUi.grid(guideRect, {
+		.origin = guideOrigin,
+		.minorSpacing = {minorSpacing, minorSpacing},
+		.majorEvery = 10U,
+		.superMajorEvery = 100U,
+		.minorThickness = 0.65F * contentScale,
+		.majorThickness = 0.90F * contentScale,
+		.superMajorThickness = 1.0F * contentScale,
+		.axisThickness = 1.25F * contentScale,
+		.guideFadeCenter = guideOrigin,
+		.guideFadeInnerRadius = imageRadius,
+		.guideFadeOuterRadius = imageRadius * 3.5F,
+		.backgroundTop = oa::Color::fromU32(0x1F1F1FA6U),
+		.backgroundBottom = oa::Color::fromU32(0x181818A6U),
+		.fillBackground = gradient,
+		.drawGrid = drawGrid,
+		.drawAxes = drawGrid,
+		.radialGuideFade = true,
+		.ditherBackground = gradient,
+	});
 }
 
 void oa::Viewer::renderImage(oa::Ui& inUi) {
@@ -1050,7 +1178,8 @@ void oa::Viewer::renderImage(oa::Ui& inUi) {
 		nav_,
 		static_cast<oa::U32>(image.width()),
 		static_cast<oa::U32>(image.height()),
-		windowDecorationHeight());
+		0U);
+	renderVisualWorkspace(inUi, destination, true);
 
 	if (imageMode_ == ImageViewMode::RGB or not planes_.isValid()) {
 		inUi.beginPanel("viewer-image", destination);
@@ -1083,7 +1212,8 @@ void oa::Viewer::renderVideo(oa::Ui& inUi) {
 	}
 
 	const oa::PixelRect destination = viewerContentRect(
-		nav_, frame.width, frame.height, windowDecorationHeight());
+		nav_, frame.width, frame.height, 0U);
+	renderVisualWorkspace(inUi, destination, true);
 	inUi.beginPanel("viewer-video", destination);
 	inUi.imageVkRgba(
 		frame.image,
@@ -1116,19 +1246,27 @@ void oa::Viewer::renderAudio(oa::Ui& inUi) {
 	if (audioAnalysisReady_.isValid()) {
 		setRenderDependency(audioAnalysisReady_);
 	}
-	renderAudioViewSelector(inUi);
+	renderVisualWorkspace(inUi, {
+		0,
+		0,
+		static_cast<oa::I32>(width()),
+		static_cast<oa::I32>(height()),
+	}, false);
 	const oa::U64 duration = mediaDurationUs();
 	if (duration == 0U) return;
-	oa::F32 fraction = mediaPositionFraction();
+	oa::F32 fraction = displayedMediaFraction();
 	const oa::PixelRect visualization = audioVisualizationRect();
+	bool visualizationRendered = false;
 	if (audioView_ == oa::ViewerAudioView::Waveform
 		and not audioEnvelope_.isEmpty()) {
+		visualizationRendered = true;
 		if (inUi.waveformTimeline(
 			"viewer-audio-waveform", visualization, audioEnvelope_, fraction)) {
 			seekMediaFraction(fraction);
 		}
 	} else if (audioView_ == oa::ViewerAudioView::Spectrum
 		and not audioSpectrum_.isEmpty()) {
+		visualizationRendered = true;
 		inUi.beginPanel("viewer-audio-spectrum", visualization);
 		inUi.heatmap("viewer-audio-spectrum-values", audioSpectrum_, {
 			.vMin = -12.0F,
@@ -1138,6 +1276,7 @@ void oa::Viewer::renderAudio(oa::Ui& inUi) {
 		inUi.endPanel();
 	} else if (audioView_ == oa::ViewerAudioView::Mel
 		and not audioMel_.isEmpty()) {
+		visualizationRendered = true;
 		inUi.beginPanel("viewer-audio-mel", visualization);
 		inUi.heatmap("viewer-audio-mel-values", audioMel_, {
 			.vMin = -12.0F,
@@ -1146,95 +1285,214 @@ void oa::Viewer::renderAudio(oa::Ui& inUi) {
 		});
 		inUi.endPanel();
 	}
-	bool timelineActive = false;
-	const bool timelineChanged = config_.showTimeline and inUi.timeline(
-		"viewer-audio-transport", timelineRect(), fraction, &timelineActive);
-	if (config_.showTimeline) {
-		handleTimelineSeek(fraction, timelineChanged, timelineActive);
-	}
-}
-
-void oa::Viewer::renderAudioViewSelector(oa::Ui& inUi) {
-	if (not config_.showAudioViewSelector) return;
-	const oa::UiTabItem items[] = {
-		{.id = "waveform", .label = "Waveform", .closable = false,
-		 .enabled = not audioEnvelope_.isEmpty()},
-		{.id = "spectrum", .label = "Spectrum", .closable = false,
-		 .enabled = not audioSpectrum_.isEmpty()},
-		{.id = "mel", .label = "Mel", .closable = false,
-		 .enabled = not audioMel_.isEmpty()},
-	};
-	const oa::UiTabBarResult result = inUi.tabBar(
-		"viewer-audio-views",
-		audioViewTabRect(),
-		oa::Span<const oa::UiTabItem>(items, 3U),
-		audioViewTabs_,
-		{
-			.minimumTabWidth = 80,
-			.maximumTabWidth = 120,
-			.reorderable = false,
-		});
-	if (result.selectionChanged and audioViewTabs_.selected >= 0
-		and audioViewTabs_.selected <= 2) {
-		audioView_ = static_cast<oa::ViewerAudioView>(audioViewTabs_.selected);
+	if (visualizationRendered) {
+		const oa::F32 radius =
+			static_cast<oa::F32>(WindowDecorationMetrics{}.cornerRadius)
+				* inUi.contentScale();
+		const oa::U32 borderWidth = oa::max<oa::U32>(
+			1U,
+			static_cast<oa::U32>(oa::lround(inUi.contentScale())));
+		inUi.maskRoundedRect(visualization, radius, config_.style.background);
+		inUi.rectOutline(
+			visualization,
+			config_.style.borderStrong,
+			borderWidth,
+			radius);
 	}
 }
 
 void oa::Viewer::renderTimeline(oa::Ui& inUi) {
-	if (not hasTimeline() or resolvedMode_ == oa::ViewerMode::Audio) return;
+	if (not hasTimeline() or not mediaChromeVisible()) return;
 	const oa::U64 duration = mediaDurationUs();
 	if (duration == 0U) return;
-	oa::F32 fraction = mediaPositionFraction();
-	bool timelineActive = false;
-	const bool timelineChanged = inUi.timeline(
-		"viewer-transport", timelineRect(), fraction, &timelineActive);
-	handleTimelineSeek(fraction, timelineChanged, timelineActive);
-
-	const oa::PixelRect rect = timelineRect();
 	const oa::F32 contentScale = inUi.contentScale();
 	const auto px = [contentScale](oa::I32 inLogical) {
 		return oa::max<oa::I32>(1, static_cast<oa::I32>(oa::lround(
 			static_cast<oa::F32>(inLogical) * contentScale)));
 	};
-	const oa::Color playing = isMediaPlaying()
-		? oa::Color::success()
-		: oa::Color::warning();
-	inUi.rect({px(8), rect.y, px(6), rect.h}, playing);
-	if (isMediaLooping()) {
-		inUi.rect({rect.x + rect.w + px(10), rect.y, px(6), rect.h},
-			oa::Color::accent());
+	const oa::PixelRect rect = timelineRect();
+	const oa::F32 logicalWidth = static_cast<oa::F32>(this->width())
+		/ contentScale;
+	const oa::I32 toolbarMargin = px(logicalWidth >= 550.0F ? 24 : 12);
+	const oa::I32 timestampHeight = px(34);
+	const oa::I32 titleHeight = px(34);
+	const oa::I32 buttonSize = px(34);
+	const oa::I32 buttonGap = 0;
+	const oa::PixelRect settingsRect{
+		static_cast<oa::I32>(this->width()) - toolbarMargin - buttonSize,
+		oa::max<oa::I32>(0, rect.y - titleHeight),
+		buttonSize,
+		buttonSize,
+	};
+	const oa::PixelRect volumeRect{
+		settingsRect.x - buttonGap - buttonSize,
+		settingsRect.y,
+		buttonSize,
+		buttonSize,
+	};
+	const oa::I32 titleWidth = oa::max<oa::I32>(
+		1, volumeRect.x - rect.x - px(12));
+	inUi.textAt(
+		config_.title,
+		{rect.x, oa::max<oa::I32>(0, rect.y - titleHeight),
+			titleWidth, titleHeight},
+		{
+			.font = oa::FontId::SansSemibold,
+			.fontSize = 18.0F * contentScale,
+			.color = config_.style.text,
+			.horizontalAlign = oa::UiAlign::Start,
+			.verticalAlign = oa::UiAlign::Center,
+		});
+	const bool muted = isMediaMuted();
+	if (inUi.iconButton(
+		"Adjust volume",
+		volumeRect,
+		muted ? oa::UiIcon::Muted : oa::UiIcon::Volume,
+		true,
+		oa::UiIconButtonStyle::Header)) {
+		inUi.openPopup("viewer-volume-menu", volumeRect);
 	}
+	inUi.tooltip(hasMediaAudio() ? "Adjust volume" : "No audio stream");
+	if (inUi.iconButton(
+		"Playback settings",
+		settingsRect,
+		oa::UiIcon::Settings,
+		true,
+		oa::UiIconButtonStyle::Header)) {
+		inUi.openPopup("viewer-window-menu", settingsRect);
+	}
+	inUi.tooltip("Playback settings");
+	const oa::String positionText = viewerTimestamp(mediaPositionUs());
+	const oa::String durationText = viewerTimestamp(duration);
+	const oa::U64 position = oa::min(mediaPositionUs(), duration);
+	const oa::String remainingText = oa::format(
+		"-{}", viewerTimestamp(duration - position));
+	const oa::String& endText = showRemainingTime_
+		? remainingText : durationText;
+	const oa::PixelRect timestampRect{
+		rect.x, rect.y + rect.h, rect.w, timestampHeight};
+	const oa::PixelRect timestampOuterRect{
+		toolbarMargin,
+		timestampRect.y,
+		oa::max<oa::I32>(
+			1, static_cast<oa::I32>(this->width()) - toolbarMargin * 2),
+		timestampRect.h,
+	};
+	inUi.textAt(positionText, timestampRect, {
+		.font = oa::FontId::SansSemibold,
+		.fontSize = 12.0F * contentScale,
+		.color = config_.style.text,
+		.horizontalAlign = oa::UiAlign::Start,
+		.verticalAlign = oa::UiAlign::Center,
+	});
+	oa::TextLayout endTextLayout;
+	const oa::vlm::Vec2 endTextExtent = endTextLayout.measure(
+		textAtlas_,
+		endText,
+		{.font = oa::FontId::SansSemibold, .size = 12.0F * contentScale});
+	const oa::I32 endButtonWidth = oa::min<oa::I32>(
+		timestampOuterRect.w,
+		oa::max<oa::I32>(
+			px(24),
+			static_cast<oa::I32>(oa::ceil(endTextExtent.x)) + px(24)));
+	const oa::PixelRect endButtonRect{
+		timestampOuterRect.x + timestampOuterRect.w - endButtonWidth,
+		timestampOuterRect.y,
+		endButtonWidth,
+		timestampOuterRect.h,
+	};
+	if (inUi.textButton(
+		"Toggle duration or remaining time",
+		endButtonRect,
+		endText,
+		{
+			.font = oa::FontId::SansSemibold,
+			.fontSize = 12.0F * contentScale,
+			.color = config_.style.text,
+			.horizontalAlign = oa::UiAlign::End,
+			.verticalAlign = oa::UiAlign::Center,
+		},
+		true,
+		oa::UiEdge{0.0F, 12.0F * contentScale})) {
+		showRemainingTime_ = not showRemainingTime_;
+	}
+	inUi.tooltip("Toggle duration/remaining");
+
+	oa::F32 fraction = displayedMediaFraction();
+	bool timelineActive = false;
+	const bool timelineChanged = inUi.timeline(
+		"viewer-transport", timelineRect(), fraction, &timelineActive);
+	handleTimelineSeek(fraction, timelineChanged, timelineActive);
 }
 
 void oa::Viewer::renderTemporalButtons(oa::Ui& inUi) {
-	if (not hasTimeline()) return;
+	if (not hasTimeline() or not mediaChromeVisible()) return;
 	const oa::PixelRect group = temporalButtonsRect();
-	oa::UiLayout layout;
-	layout.padding = oa::UiEdge{};
-	layout.gap = 6.0F * inUi.contentScale();
-	inUi.beginPanel("viewer-transport-controls", group, layout);
-	inUi.beginRow("transport");
-	if (inUi.button("|<")) seekMediaFraction(0.0F);
-	if (inUi.button("<")) {
+	const oa::I32 small = oa::max<oa::I32>(
+		1, static_cast<oa::I32>(oa::round(
+			static_cast<oa::F32>(group.h) * (34.0F / 56.0F))));
+	const oa::I32 large = group.h;
+	const oa::I32 gap = oa::max<oa::I32>(4, (group.w - small * 2 - large) / 2);
+	const oa::I32 rowWidth = small * 2 + large + gap * 2;
+	const oa::I32 left = group.x + oa::max<oa::I32>(0, (group.w - rowWidth) / 2);
+	const oa::I32 smallY = group.y + (group.h - small) / 2;
+	const oa::PixelRect previous{left, smallY, small, small};
+	const oa::PixelRect play{left + small + gap, group.y, large, large};
+	const oa::PixelRect next{play.x + large + gap, smallY, small, small};
+	if (inUi.iconButton("Previous frame", previous, oa::UiIcon::Previous)) {
 		stepTemporal(-1);
 	}
-	if (inUi.button("Play / Pause")) {
+	inUi.tooltip("Previous frame (Left Arrow)");
+	if (inUi.iconButton(
+		isMediaPlaying() ? "Pause" : "Play",
+		play,
+		isMediaPlaying() ? oa::UiIcon::Pause : oa::UiIcon::Play)) {
 		toggleMediaPlayback();
 	}
-	if (inUi.button(">")) {
+	inUi.tooltip(isMediaPlaying() ? "Pause (Space)" : "Play (Space)");
+	if (inUi.iconButton("Next frame", next, oa::UiIcon::Next)) {
 		stepTemporal(1);
 	}
-	if (inUi.button(">|")) seekMediaFraction(1.0F);
-	inUi.endRow();
-	inUi.endPanel();
+	inUi.tooltip("Next frame (Right Arrow)");
+}
+
+bool oa::Viewer::mediaChromeVisible() const noexcept {
+	if ((not video_.hasValue() and not audio_.hasValue())
+		or not config_.autoHideControls) {
+		return true;
+	}
+	if (ui_.isPopupOpen("viewer-window-menu")
+		or ui_.isPopupOpen("viewer-volume-menu")) {
+		return true;
+	}
+	if (not mediaPointerInside_) return false;
+	if (not isMediaPlaying()) return true;
+	return mediaChromeIdleMs_
+		< static_cast<oa::F32>(config_.controlsHideDelayMs);
+}
+
+void oa::Viewer::revealMediaChrome() noexcept {
+	mediaChromeIdleMs_ = 0.0F;
 }
 
 oa::Status oa::Viewer::render(oa::Ui& inUi) {
+	bool timelineRendered = false;
 	if (resolvedMode_ == oa::ViewerMode::Image) {
 		renderImage(inUi);
 	} else if (resolvedMode_ == oa::ViewerMode::Video) {
 		renderVideo(inUi);
 	} else if (resolvedMode_ == oa::ViewerMode::Audio) {
+		const oa::UiInputState& input = inUi.input();
+		const bool timelinePointerPressed = input.lPressed
+			and timelineRect().contains(input.mouseX, input.mouseY);
+		// Once a timeline drag starts, resolve its current interaction before
+		// painting the waveform. Waveform drags retain the inverse order, so each
+		// scrub surface publishes its fraction before the other is drawn.
+		if (pendingTimelineSeekFraction_.hasValue()
+			or timelinePointerPressed) {
+			renderTimeline(inUi);
+			timelineRendered = true;
+		}
 		renderAudio(inUi);
 	} else if (resolvedMode_ == oa::ViewerMode::Live
 		and config_.liveSource != nullptr) {
@@ -1246,9 +1504,16 @@ oa::Status oa::Viewer::render(oa::Ui& inUi) {
 			setRenderDependency(*ready);
 		}
 	}
-	renderTimeline(inUi);
+	if (not timelineRendered) renderTimeline(inUi);
 	renderTemporalButtons(inUi);
 	renderWindowDecoration(inUi);
+	if (windowTransparent_ and presenter_ != nullptr
+		and presenter_->swapchain().transparent
+		and not windowFullscreen_ and not windowMaximized_) {
+		inUi.maskRoundedViewport(
+			static_cast<oa::F32>(WindowDecorationMetrics{}.cornerRadius)
+				* oa::max(windowPixelScaleX_, windowPixelScaleY_));
+	}
 	return oa::Status::ok();
 }
 
@@ -1273,9 +1538,6 @@ oa::Status oa::Viewer::markRenderSubmitted(const oa::Event& inCompletion) {
 	}
 	if (video_.hasValue()) {
 		video_->markCurrentFrameConsumed(inCompletion);
-	}
-	if (windowTitleGlyphs_.isValid()) {
-		OA_RETURN_IF_ERROR(windowTitleGlyphs_.markConsumed(inCompletion));
 	}
 	return detectionOverlay_.markConsumed(inCompletion);
 }
@@ -1337,7 +1599,6 @@ oa::Status oa::Viewer::closeSource() {
 	audioMel_ = {};
 	audioAnalysisReady_ = {};
 	audioView_ = oa::ViewerAudioView::Waveform;
-	audioViewTabs_ = {};
 	image_ = {};
 	planes_ = {};
 	borrowedImage_ = nullptr;

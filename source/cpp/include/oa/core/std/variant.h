@@ -60,7 +60,7 @@ struct FirstIndex<U, Index> {
 
 template<typename U, Size Index, typename Head, typename... Tail>
 struct FirstIndex<U, Index, Head, Tail...> {
-	static constexpr Size value = oa::IsSameV<U, Head>
+	static constexpr Size value = oa::isSameV<U, Head>
 		? Index
 		: FirstIndex<U, Index + 1, Tail...>::value;
 };
@@ -75,7 +75,7 @@ struct FirstDecayIndex<U, Index> {
 
 template<typename U, Size Index, typename Head, typename... Tail>
 struct FirstDecayIndex<U, Index, Head, Tail...> {
-	static constexpr Size value = oa::IsSameV<U, oa::DecayT<Head>>
+	static constexpr Size value = oa::isSameV<U, oa::DecayT<Head>>
 		? Index
 		: FirstDecayIndex<U, Index + 1, Tail...>::value;
 };
@@ -203,7 +203,7 @@ private:
 	Size index_{Npos};
 
 public:
-	Variant() noexcept(oa::IsNothrowConstructibleV<Alt<0>>) : index_(0) {
+	Variant() noexcept(oa::isNothrowConstructibleV<Alt<0>>) : index_(0) {
 		oa::constructAt(reinterpret_cast<Alt<0>*>(raw_()));
 	}
 
@@ -213,7 +213,7 @@ public:
 		}
 	}
 
-	Variant(Variant&& inOther) noexcept((oa::IsNothrowMoveConstructibleV<Ts> && ...))
+	Variant(Variant&& inOther) noexcept((oa::isNothrowMoveConstructibleV<Ts> && ...))
 		: index_(inOther.index_) {
 		if (index_ != Npos) {
 			moveConstructAt_(index_, raw_(), inOther.raw_());
@@ -224,7 +224,7 @@ public:
 	}
 
 	template<typename T>
-	requires (!oa::IsSameV<oa::DecayT<T>, Variant> && decayIndex_<T>() != Npos)
+	requires (!oa::isSameV<oa::DecayT<T>, Variant> && decayIndex_<T>() != Npos)
 	Variant(T&& inValue) : index_(decayIndex_<T>()) {
 		constexpr Size Index = decayIndex_<T>();
 		oa::constructAt(
@@ -242,8 +242,8 @@ public:
 	}
 
 	Variant& operator=(Variant&& inOther) noexcept(
-		(oa::IsNothrowMoveConstructibleV<Ts> && ...) &&
-		(oa::IsNothrowMoveAssignableV<Ts> && ...)) {
+		(oa::isNothrowMoveConstructibleV<Ts> && ...) &&
+		(oa::isNothrowMoveAssignableV<Ts> && ...)) {
 		if (this != &inOther) {
 			destroy_();
 			const Size incomingIndex = inOther.index_;
@@ -338,8 +338,8 @@ public:
 	}
 
 	void swap(Variant& inOther) noexcept(
-		(oa::IsNothrowMoveConstructibleV<Ts> && ...) &&
-		(oa::IsNothrowMoveAssignableV<Ts> && ...)) {
+		(oa::isNothrowMoveConstructibleV<Ts> && ...) &&
+		(oa::isNothrowMoveAssignableV<Ts> && ...)) {
 		Variant temporary(oa::move(*this));
 		*this = oa::move(inOther);
 		inOther = oa::move(temporary);

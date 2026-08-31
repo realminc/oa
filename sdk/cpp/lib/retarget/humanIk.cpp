@@ -1,6 +1,6 @@
 #include <retarget/humanIk.h>
 
-#include <core/transform.h>
+#include <oa/core/fnTransform.h>
 
 namespace {
 
@@ -14,7 +14,8 @@ oa::RefPose buildPose(const RtgRefJoint* inTable) {
 		const RtgRefJoint& r = inTable[i];
 		oa::RefJoint j;
 		j.name        = r.name;
-		j.localOrient = oa::eulerXyzDegToQuat({ r.rx, r.ry, r.rz });
+		j.localOrient = oa::vlm::quaternionFromEulerDegrees(
+			oa::vlm::Vec3{r.rx, r.ry, r.rz}, oa::vlm::RotationOrder::Xyz);
 		j.localTrans  = { r.tx, r.ty, r.tz };
 		pose.joints.pushBack(oa::move(j));
 	}

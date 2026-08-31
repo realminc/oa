@@ -83,7 +83,7 @@ struct GemmRouteCache {
 
 		auto write = [&](const auto& value) {
 			using T = oa::RemoveCvrefT<decltype(value)>;
-			static_assert(oa::IsTriviallyCopyableV<T>);
+			static_assert(oa::isTriviallyCopyableV<T>);
 			bytes.append(reinterpret_cast<const oa::U8*>(&value), sizeof(T));
 		};
 		write(FileMagic);
@@ -128,7 +128,7 @@ struct GemmRouteCache {
 
 		auto read = [&](auto& value) {
 			using T = oa::RemoveCvrefT<decltype(value)>;
-			static_assert(oa::IsTriviallyCopyableV<T>);
+			static_assert(oa::isTriviallyCopyableV<T>);
 			if (sizeof(T) > bytes.size() - oa::min(offset, bytes.size())) return false;
 			oa::memcpy(&value, bytes.data() + offset, sizeof(T));
 			offset += sizeof(T);

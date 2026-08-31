@@ -39,7 +39,7 @@ public:
 
 	template <typename... Values>
 		requires (sizeof...(Values) > 0U and sizeof...(Values) <= 32U
-			and (... and not oa::IsSameV<oa::RemoveCvrefT<Values>, oa::MatrixArgs>))
+			and (... and not oa::isSameV<oa::RemoveCvrefT<Values>, oa::MatrixArgs>))
 	MatrixArgs(Values... inValues)
 		: size_(sizeof...(Values)) {
 		const oa::Matrix* incoming[] = {
@@ -68,7 +68,7 @@ public:
 
 	template <typename... Values>
 		requires (sizeof...(Values) > 0U and sizeof...(Values) <= 16U
-			and (... and not oa::IsSameV<oa::RemoveCvrefT<Values>, oa::OpAttributeArgs>))
+			and (... and not oa::isSameV<oa::RemoveCvrefT<Values>, oa::OpAttributeArgs>))
 	OpAttributeArgs(Values&&... inValues)
 		: size_(sizeof...(Values)) {
 		oa::Usize index = 0;

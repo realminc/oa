@@ -40,8 +40,9 @@ struct GlyphInfo {
 // ─── FontId ─────────────────────────────────────────────────────────────────
 
 enum class FontId : oa::U8 {
-	Sans  = 0,   // IBM Plex Sans
-	Mono  = 1,   // Intel One Mono
+	Sans         = 0,   // IBM Plex Sans Regular
+	Mono         = 1,   // Intel One Mono Regular
+	SansSemibold = 2,   // IBM Plex Sans SemiBold
 };
 
 

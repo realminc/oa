@@ -5,7 +5,7 @@
 #include "../../oaTest.h"
 
 static_assert(oa::scalarTypeToString(oa::ScalarType::Float32)[0] == 'F');
-static_assert(not oa::IsConstructibleV<
+static_assert(not oa::isConstructibleV<
 	oa::MatrixShape,
 	oa::I32,
 	oa::I32,

@@ -11,7 +11,7 @@ namespace detail {
 
 template <typename T>
 struct Viewport {
-	static_assert(oa::IsFloatingPointV<T>);
+	static_assert(oa::isFloatingPointV<T>);
 
 	T x = T(0);
 	T y = T(0);

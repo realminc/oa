@@ -399,6 +399,10 @@ struct HbFontRegistry {
 			kTextSansFontBytes, sizeof(kTextSansFontBytes), oa::FontId::Sans);
 		faces[static_cast<oa::U32>(oa::FontId::Mono)].init(
 			kTextMonoFontBytes, sizeof(kTextMonoFontBytes), oa::FontId::Mono);
+		faces[static_cast<oa::U32>(oa::FontId::SansSemibold)].init(
+			kTextSansSemiboldFontBytes,
+			sizeof(kTextSansSemiboldFontBytes),
+			oa::FontId::SansSemibold);
 	}
 };
 
@@ -415,10 +419,6 @@ bool isCombiningMark(oa::U32 inCodepoint) noexcept {
 		|| category == UTF8PROC_CATEGORY_ME;
 }
 
-oa::FontId alternateFont(oa::FontId inFont) noexcept {
-	return inFont == oa::FontId::Sans ? oa::FontId::Mono : oa::FontId::Sans;
-}
-
 ResolvedScalar resolveScalar(
 	oa::FontId inPrimary,
 	oa::U32 inCodepoint,
@@ -431,15 +431,29 @@ ResolvedScalar resolveScalar(
 	if (fontSupportsCodepoint(inPrimary, inCodepoint)) {
 		return {inPrimary, inCodepoint};
 	}
-	const oa::FontId alternate = alternateFont(inPrimary);
-	if (fontSupportsCodepoint(alternate, inCodepoint)) {
-		return {alternate, inCodepoint};
+	const oa::FontId firstFallback = inPrimary == oa::FontId::SansSemibold
+		? oa::FontId::Sans
+		: inPrimary == oa::FontId::Sans
+			? oa::FontId::Mono
+			: oa::FontId::Sans;
+	if (fontSupportsCodepoint(firstFallback, inCodepoint)) {
+		return {firstFallback, inCodepoint};
+	}
+	const oa::FontId secondFallback = inPrimary == oa::FontId::SansSemibold
+		? oa::FontId::Mono
+		: firstFallback;
+	if (secondFallback != firstFallback
+		and fontSupportsCodepoint(secondFallback, inCodepoint)) {
+		return {secondFallback, inCodepoint};
 	}
 	constexpr oa::U32 replacement = static_cast<oa::U32>('?');
 	if (fontSupportsCodepoint(inPrimary, replacement)) {
 		return {inPrimary, replacement};
 	}
-	return {alternate, replacement};
+	if (fontSupportsCodepoint(firstFallback, replacement)) {
+		return {firstFallback, replacement};
+	}
+	return {secondFallback, replacement};
 }
 
 bool isContinuation(oa::U8 inByte) noexcept {

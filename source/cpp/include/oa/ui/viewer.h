@@ -44,6 +44,11 @@ enum class ViewerAudioView : oa::U8 {
 	Mel,
 };
 
+enum class ViewerCanvasBackground : oa::U8 {
+	Dark,
+	Gradient,
+};
+
 struct ViewerLiveCapabilities {
 	// Raw events are offered after Ui focus/popup ownership and before named
 	// Viewer shortcuts. Registered InputSystem actions do not require this.
@@ -62,28 +67,28 @@ public:
 	virtual ~ViewerLiveSource() = default;
 	[[nodiscard]] virtual ViewerLiveCapabilities capabilities() const noexcept = 0;
 	[[nodiscard]] virtual oa::Status open(oa::Engine&) = 0;
-	virtual oa::Status init(
-		InputSystem&,
-		oa::Fn<void(bool)>) = 0;
+	virtual oa::Status init(InputSystem&,	oa::Fn<void(bool)>) = 0;
 	[[nodiscard]] virtual oa::Status update(oa::F32) = 0;
-	[[nodiscard]] virtual oa::Status render(
-		Ui&, const TextAtlas&, oa::U32, oa::U32) = 0;
+	[[nodiscard]] virtual oa::Status render(Ui&, const TextAtlas&, oa::U32, oa::U32) = 0;
 	[[nodiscard]] virtual oa::Status event(const UiEvent&) {
 		return oa::Status::error(
 			oa::StatusCode::Unimplemented,
-			"ViewerLiveSource does not declare raw-event capability");
+			"ViewerLiveSource does not declare raw-event capability"
+		);
 	}
 	[[nodiscard]] virtual oa::Result<oa::Event> renderReady() const {
 		return oa::Status::error(
 			oa::StatusCode::Unimplemented,
-			"ViewerLiveSource does not declare render-dependency capability");
+			"ViewerLiveSource does not declare render-dependency capability"
+		);
 	}
 	// Retain the exact Viewer submission until every resource rendered by this
 	// frame can be recycled. A source may reject stale or foreign completion.
 	[[nodiscard]] virtual oa::Status markConsumed(const oa::Event&) {
 		return oa::Status::error(
 			oa::StatusCode::Unimplemented,
-			"ViewerLiveSource does not declare consumer-completion capability");
+			"ViewerLiveSource does not declare consumer-completion capability"
+		);
 	}
 	[[nodiscard]] virtual oa::Status close() = 0;
 };
@@ -101,15 +106,25 @@ struct ViewerConfig {
 	oa::String title = "Viewer";
 	oa::U32 width = 1280;
 	oa::U32 height = 720;
-	UiStyle style = UiStyle::editorDark();
+	UiStyle style = UiStyle::viewerDark();
 	bool showHelp = true;
-	bool showStats = true;
+	bool showStats = false;
 	bool showTimeline = true;
 	bool vsync = true;
-	// Use the OA-rendered client-side frame instead of the platform decoration.
-	// This is opt-in so desktop applications follow the host environment.
-	bool customWindowDecoration = false;
+	// The media-first client frame is the default. Unsupported SDL backends
+	// fail safely to the platform decoration before the Vulkan surface exists.
+	bool customWindowDecoration = true;
+	// Playing video hides inactive chrome after this delay. Pointer, keyboard,
+	// popup and paused states reveal it without changing playback ownership.
+	bool autoHideControls = true;
+	oa::U32 controlsHideDelayMs = 2'000U;
+	// One policy controls viewport fit/reset and retained widget transitions.
+	oa::UiMotionSpeed motionSpeed = oa::UiMotionSpeed::Fast;
 	oa::Filter presentFilter = oa::Filter::Nearest;
+	// Visual-source workspace behind the opaque image/video canvas. The grid is
+	// image-space anchored: one source pixel is one world unit.
+	ViewerCanvasBackground canvasBackground = ViewerCanvasBackground::Gradient;
+	bool showCanvasGrid = true;
 
 	// Temporal media options. Ignored for still images.
 	bool loop = true;
@@ -128,7 +143,6 @@ struct ViewerConfig {
 	oa::U32 audioFftSize = 1024;
 	oa::U32 audioHopSize = 256;
 	oa::U32 audioMelBins = 80;
-	bool showAudioViewSelector = true;
 	bool preferHardwareYCbCr = true;
 	oa::Filter filter = oa::Filter::Nearest;
 
@@ -149,6 +163,8 @@ struct ViewerConfig {
 	UiKey keyZoomOut = UiKey::Minus;
 	UiKey keyZoomFit = UiKey::Num0;
 	UiKey keyZoom100 = UiKey::Num9;
+	UiKey keyCanvasBackground = UiKey::B;
+	UiKey keyCanvasGrid = UiKey::G;
 	// Arrow keys are temporal frame controls. keyboard panning follows the
 	// shared numeric-keypad bindings; pointer and touch navigation are unchanged.
 	UiKey keyPanUp = UiKey::Kp8;
@@ -267,9 +283,7 @@ private:
 	[[nodiscard]] oa::Status closeSource();
 	[[nodiscard]] const oa::Texture& imageSource() const noexcept;
 
-	[[nodiscard]] oa::Status initPresentation(
-		oa::Presenter& inPresenter,
-		void* inSurface);
+	[[nodiscard]] oa::Status initPresentation(oa::Presenter& inPresenter, void* inSurface);
 	[[nodiscard]] oa::Status destroyPresentation();
 	[[nodiscard]] oa::Status buildComposeImage(oa::U32 inWidth, oa::U32 inHeight);
 	void destroyComposeImage();
@@ -299,10 +313,8 @@ private:
 	// retains ownership; CloseSource never destroys this resource.
 	const oa::Texture* borrowedImage_ = nullptr;
 	oa::Event borrowedImageReady_;
-	VkPipelineStageFlags2 borrowedImageSourceStageMask_ =
-		VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
-	VkAccessFlags2 borrowedImageSourceAccessMask_ =
-		VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT;
+	VkPipelineStageFlags2 borrowedImageSourceStageMask_ =	VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+	VkAccessFlags2 borrowedImageSourceAccessMask_ =	VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT;
 	oa::Fn<oa::Status(const oa::Event&)> borrowedFrameMarkConsumed_;
 	oa::Fn<oa::Status()> borrowedFrameAbandon_;
 	oa::Fn<oa::Status()> borrowedFrameCollect_;
@@ -314,7 +326,6 @@ private:
 	oa::Matrix audioMel_;
 	oa::Event audioAnalysisReady_;
 	ViewerAudioView audioView_ = ViewerAudioView::Waveform;
-	UiTabBarState audioViewTabs_;
 	oa::Optional<oa::F32> pendingTimelineSeekFraction_;
 	ImageViewMode imageMode_ = ImageViewMode::RGB;
 
@@ -349,15 +360,18 @@ private:
 	[[nodiscard]] bool hasTimeline() const noexcept;
 	[[nodiscard]] bool isMediaPlaying() const noexcept;
 	[[nodiscard]] bool isMediaLooping() const noexcept;
+	[[nodiscard]] bool hasMediaAudio() const noexcept;
+	[[nodiscard]] bool isMediaMuted() const noexcept;
 	[[nodiscard]] oa::U64 mediaDurationUs() const noexcept;
 	[[nodiscard]] oa::U64 mediaPositionUs() const noexcept;
 	[[nodiscard]] oa::F32 mediaPositionFraction() const noexcept;
+	[[nodiscard]] oa::F32 displayedMediaFraction() const noexcept;
 	[[nodiscard]] PixelRect timelineRect() const noexcept;
 	[[nodiscard]] PixelRect temporalButtonsRect() const noexcept;
-	[[nodiscard]] PixelRect audioViewTabRect() const noexcept;
 	[[nodiscard]] PixelRect audioVisualizationRect() const noexcept;
 	void toggleMediaPlayback();
 	void toggleMediaLoop();
+	void toggleMediaMuted();
 	void pauseMedia();
 	void seekMediaUs(oa::U64 inTimestampUs);
 	void seekMediaFraction(oa::F32 inFraction);
@@ -368,27 +382,33 @@ private:
 	[[nodiscard]] oa::Status registerCommonInput();
 	void registerImageInput();
 	void registerTemporalInput();
+	void renderVisualWorkspace(
+		Ui& inUi,
+		PixelRect inDestination,
+		bool inDrawGrid);
 	void renderImage(Ui& inUi);
 	void renderVideo(Ui& inUi);
 	void renderAudio(Ui& inUi);
-	void renderAudioViewSelector(Ui& inUi);
 	void renderTimeline(Ui& inUi);
 	void renderTemporalButtons(Ui& inUi);
+	[[nodiscard]] bool mediaChromeVisible() const noexcept;
+	void revealMediaChrome() noexcept;
 	void drawOverlay(Ui& inUi, PixelRect inDestination);
 	[[nodiscard]] oa::Status initWindowDecoration();
 	void destroyWindowDecoration();
 	void refreshWindowDecorationScale();
-	[[nodiscard]] oa::Status rebuildWindowTitleGlyphs();
 	[[nodiscard]] bool routeWindowDecorationEvent(void* inEvent);
 	void renderWindowDecoration(Ui& inUi);
 	[[nodiscard]] oa::U32 windowDecorationHeight() const noexcept;
 
-	GlyphBuffer windowTitleGlyphs_;
 	oa::F32 windowPixelScaleX_ = 1.0F;
 	oa::F32 windowPixelScaleY_ = 1.0F;
-	oa::I32 windowHoveredControl_ = 0;
-	oa::I32 windowPressedControl_ = 0;
+	oa::F32 mediaChromeIdleMs_ = 0.0F;
+	bool mediaPointerInside_ = true;
+	bool showRemainingTime_ = false;
 	bool windowDecorationActive_ = false;
+	bool windowTransparent_ = false;
+	bool windowFullscreen_ = false;
 	bool windowMaximized_ = false;
 };
 

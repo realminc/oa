@@ -25,7 +25,7 @@ oa::Scene baseScene() {
 		"triangle instance",
 		{},
 		oa::SceneMeshId{10U},
-		oa::vlm::Mat4::identity(),
+		{},
 		true,
 	});
 	return scene;
@@ -36,14 +36,13 @@ oa::Scene baseScene() {
 TEST(Scene, ResolvesOutOfOrderHierarchyAndCompilesStableNodeOrder) {
 	oa::Scene scene = baseScene();
 	scene.nodes[0].parent = oa::SceneNodeId{30U};
-	scene.nodes[0].localTransform = oa::vlm::translation(
-		oa::vlm::Vec3{1.0F, 0.0F, 0.0F});
+	scene.nodes[0].localTransform.setPosition({1.0F, 0.0F, 0.0F});
 	scene.nodes.pushBack({
 		oa::SceneNodeId{30U},
 		"parent declared after child",
 		{},
 		{},
-		oa::vlm::translation(oa::vlm::Vec3{2.0F, 3.0F, 4.0F}),
+		oa::Transform{{2.0F, 3.0F, 4.0F}},
 		true,
 	});
 
@@ -59,8 +58,7 @@ TEST(Scene, ResolvesOutOfOrderHierarchyAndCompilesStableNodeOrder) {
 
 TEST(Scene, UsesInverseTransposeForNonUniformNormalTransform) {
 	oa::Scene scene = baseScene();
-	scene.nodes[0].localTransform = oa::vlm::scaleMatrix(
-		oa::vlm::Vec3{2.0F, 1.0F, 1.0F});
+	scene.nodes[0].localTransform.setScale({2.0F, 1.0F, 1.0F});
 
 	auto compiled = oa::FnScene::compile(scene);
 	ASSERT_TRUE(compiled.isOk()) << compiled.getStatus().toString().cStr();
@@ -119,7 +117,7 @@ TEST(Scene, RejectsDuplicateMissingAndCyclicIdentities) {
 		scene.nodes[0].parent = oa::SceneNodeId{30U};
 		scene.nodes.pushBack({
 			oa::SceneNodeId{30U}, "cycle", oa::SceneNodeId{20U}, {},
-			oa::vlm::Mat4::identity(), true});
+			{}, true});
 		EXPECT_EQ(
 			oa::FnScene::validate(scene).getCode(),
 			oa::StatusCode::InvalidArgument);
@@ -130,7 +128,7 @@ TEST(Scene, EnforcesInheritedVisibilityAndConfiguredCapacity) {
 	oa::Scene scene = baseScene();
 	scene.nodes.pushBack({
 		oa::SceneNodeId{30U}, "second", {}, oa::SceneMeshId{10U},
-		oa::vlm::translation(oa::vlm::Vec3{4.0F, 0.0F, 0.0F}), true});
+		oa::Transform{{4.0F, 0.0F, 0.0F}}, true});
 
 	oa::FnScene::CompileConfig limited;
 	limited.maxVertexCount = 5U;
@@ -142,7 +140,7 @@ TEST(Scene, EnforcesInheritedVisibilityAndConfiguredCapacity) {
 	scene.nodes[0].parent = oa::SceneNodeId{40U};
 	scene.nodes.pushBack({
 		oa::SceneNodeId{40U}, "hidden root", {}, {},
-		oa::vlm::Mat4::identity(), false});
+		{}, false});
 	auto compiled = oa::FnScene::compile(scene);
 	ASSERT_TRUE(compiled.isOk()) << compiled.getStatus().toString().cStr();
 	EXPECT_EQ(compiled->vertices.size(), 3U);
@@ -152,8 +150,7 @@ TEST(Scene, EnforcesInheritedVisibilityAndConfiguredCapacity) {
 TEST(Scene, RejectsSingularTransformsAndZeroNormals) {
 	{
 		oa::Scene scene = baseScene();
-		scene.nodes[0].localTransform = oa::vlm::scaleMatrix(
-			oa::vlm::Vec3{1.0F, 0.0F, 1.0F});
+		scene.nodes[0].localTransform.setScale({1.0F, 0.0F, 1.0F});
 		EXPECT_EQ(
 			oa::FnScene::compile(scene).getStatus().getCode(),
 			oa::StatusCode::InvalidArgument);

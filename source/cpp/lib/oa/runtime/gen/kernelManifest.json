@@ -2213,6 +2213,28 @@
       "stage": "compute"
     },
     {
+      "category": "Ui",
+      "condition": "always",
+      "local": 15,
+      "name": "MaskRoundedViewport",
+      "origin": "oa",
+      "prefix": "Ui",
+      "profile": "core",
+      "source": "source/cpp/lib/oa/ui/shader/compute/maskRoundedViewport.slang",
+      "stage": "compute"
+    },
+    {
+      "category": "Ui",
+      "condition": "always",
+      "local": 16,
+      "name": "DrawTriangle",
+      "origin": "oa",
+      "prefix": "Ui",
+      "profile": "core",
+      "source": "source/cpp/lib/oa/ui/shader/compute/drawTriangle.slang",
+      "stage": "compute"
+    },
+    {
       "category": "Render",
       "condition": "always",
       "local": 3,

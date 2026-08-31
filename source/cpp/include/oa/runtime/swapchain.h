@@ -78,6 +78,13 @@ struct Swapchain {
 	// (vsync — one frame per refresh). When false, prefer MAILBOX, falling back
 	// to IMMEDIATE, then FIFO. set by the presenter owner before init/Recreate.
 	bool                      vsync         = true;
+	// Transparent client-side windows request premultiplied-alpha composition.
+	// The presenter admits it only when the surface reports exact support;
+	// transparent records the selected mode and remains false on opaque fallback.
+	bool                      preferTransparent = false;
+	bool                      transparent = false;
+	VkCompositeAlphaFlagBitsKHR compositeAlpha =
+		VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
 
 	// ─── Convenience accessors ───────────────────────────────────────────────
 	[[nodiscard]] oa::U32 width()      const noexcept { return extent.width;  }

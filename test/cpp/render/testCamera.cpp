@@ -1,8 +1,12 @@
 #include <oa/render/camera.h>
+#include <oa/render/fnCamera.h>
+#include <oa/core/fnTransform.h>
 
 #include <gtest/gtest.h>
 
 #include <cmath>
+
+static_assert(not __is_constructible(oa::FnCamera));
 
 namespace {
 
@@ -29,11 +33,11 @@ TEST(Camera, PerspectiveStateAndMatricesUseRenderContract) {
 		200.0F);
 
 	EXPECT_EQ(camera.getProjectionType(), oa::CameraProjection::Perspective);
-	EXPECT_FLOAT_EQ(camera.getState().aspect, 2.0F);
+	EXPECT_FLOAT_EQ(camera.getAspectRatio(), 2.0F);
 	EXPECT_FLOAT_EQ(camera.getNear(), 0.25F);
 	EXPECT_FLOAT_EQ(camera.getFar(), 200.0F);
 
-	const oa::vlm::Vec3 forward = camera.getForward();
+	const oa::vlm::Vec3 forward = camera.getTransform().getForward();
 	EXPECT_NEAR(forward.x, 0.0F, tolerance);
 	EXPECT_NEAR(forward.y, 0.0F, tolerance);
 	EXPECT_NEAR(forward.z, -1.0F, tolerance);
@@ -47,13 +51,29 @@ TEST(Camera, LookAtReconstructsCanonicalOffAxisViewMatrix) {
 	const oa::vlm::Vec3 position{16.0F, 12.0F, 16.0F};
 	const oa::vlm::Vec3 target{0.0F, 2.0F, 0.0F};
 	const oa::vlm::Vec3 up{0.0F, 1.0F, 0.0F};
-	oa::CameraState state;
+	oa::Camera camera;
 	oa::FnCamera::initPerspective(
-		state, position, target, 48.0F, 4.0F / 3.0F, 0.1F, 100.0F);
+		camera, position, target, 48.0F, 4.0F / 3.0F, 0.1F, 100.0F);
 
 	expectMatrixNear(
-		oa::FnCamera::getViewMatrix(state),
+		oa::FnCamera::getViewMatrix(camera),
 		oa::vlm::lookAt(position, target, up));
+}
+
+TEST(Camera, FunctionalAndMemberSurfacesOperateOnOneValue) {
+	oa::Camera camera;
+	oa::FnTransform::setPosition(
+		camera.getTransform(), {2.0F, 3.0F, 4.0F});
+	EXPECT_EQ(
+		camera.getTransform().getPosition(),
+		(oa::vlm::Vec3{2.0F, 3.0F, 4.0F}));
+
+	camera.setAspectRatio(2.5F);
+	EXPECT_FLOAT_EQ(oa::FnCamera::getAspectRatio(camera), 2.5F);
+
+	oa::FnCamera::setOrthographic(camera, 640.0F, 360.0F, 0.0F, 10.0F);
+	EXPECT_EQ(camera.getProjectionType(), oa::CameraProjection::Orthographic);
+	EXPECT_EQ(camera.getOrthographicSize(), (oa::vlm::Vec2{640.0F, 360.0F}));
 }
 
 TEST(Camera, OrthographicFitPreservesContentAspect) {
@@ -63,16 +83,18 @@ TEST(Camera, OrthographicFitPreservesContentAspect) {
 	camera.setOffset(0.25F, -0.5F);
 
 	EXPECT_EQ(camera.getProjectionType(), oa::CameraProjection::Orthographic);
-	EXPECT_NEAR(camera.getState().orthoWidth, 480.0F * (1920.0F / 1080.0F), tolerance);
-	EXPECT_FLOAT_EQ(camera.getState().orthoHeight, 480.0F);
+	EXPECT_NEAR(
+		camera.getOrthographicSize().x,
+		480.0F * (1920.0F / 1080.0F), tolerance);
+	EXPECT_FLOAT_EQ(camera.getOrthographicSize().y, 480.0F);
 	EXPECT_FLOAT_EQ(camera.getZoom(), 2.0F);
 	EXPECT_FLOAT_EQ(camera.getOffset().x, 0.25F);
 	EXPECT_FLOAT_EQ(camera.getOffset().y, -0.5F);
 	expectMatrixNear(
 		camera.getProjectionMatrix(),
 		oa::vlm::orthographicShifted(
-			camera.getState().orthoWidth,
-			camera.getState().orthoHeight,
+			camera.getOrthographicSize().x,
+			camera.getOrthographicSize().y,
 			camera.getNear(), camera.getFar(), camera.getZoom(),
 			camera.getOffset()));
 }
@@ -85,7 +107,7 @@ TEST(Camera, LensShiftUsesVlmProjectionAuthority) {
 	expectMatrixNear(
 		camera.getProjectionMatrix(),
 		oa::vlm::perspectiveShifted(
-			camera.getEffectiveFovY(), camera.getState().aspect,
+			camera.getEffectiveFovY(), camera.getAspectRatio(),
 			camera.getNear(), camera.getFar(), camera.getOffset()));
 }
 

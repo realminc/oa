@@ -1,5 +1,6 @@
 #include "rendererInternal.h"
 
+#include <oa/render/fnCamera.h>
 #include <oa/render/fnScene.h>
 
 #include <oa/core/log.h>
@@ -526,7 +527,7 @@ public:
 		const oa::MeshData& inMesh);
 	[[nodiscard]] oa::Status recordFrame(
 		RenderSlot& inSlot,
-		const oa::CameraState& inCamera);
+		const oa::Camera& inCamera);
 	void recordReadback(
 		VkCommandBuffer inCommandBuffer,
 		RenderTarget& inTarget) const;
@@ -539,10 +540,10 @@ public:
 
 	[[nodiscard]] oa::Status beginMeshFrame(
 		const oa::MeshData& inMesh,
-		const oa::CameraState& inCamera) override;
+		const oa::Camera& inCamera) override;
 	[[nodiscard]] oa::Status beginSceneFrame(
 		const oa::Scene& inScene,
-		const oa::CameraState& inCamera) override;
+		const oa::Camera& inCamera) override;
 	[[nodiscard]] oa::Result<oa::RenderFrame> submitFrame(
 		oa::Span<const oa::Event> inDependencies) override;
 	[[nodiscard]] oa::Status cancelFrame() override;
@@ -883,7 +884,7 @@ oa::Status oa::Renderer::MeshImpl::writeFrameGeometry(
 
 oa::Status oa::Renderer::MeshImpl::recordFrame(
 	RenderSlot& inSlot,
-	const oa::CameraState& inCamera) {
+	const oa::Camera& inCamera) {
 	const oa::vlm::Mat4 viewProjection =
 		oa::FnCamera::getViewProjectionMatrix(inCamera);
 	if (not viewProjection.isFinite()) {
@@ -1451,7 +1452,7 @@ oa::Renderer::create(
 
 oa::Status oa::Renderer::MeshImpl::beginMeshFrame(
 	const oa::MeshData& inMesh,
-	const oa::CameraState& inCamera) {
+	const oa::Camera& inCamera) {
 	if (closed) {
 		return oa::Status::error(
 			oa::StatusCode::FailedPrecondition,
@@ -1502,7 +1503,7 @@ oa::Status oa::Renderer::MeshImpl::beginMeshFrame(
 
 oa::Status oa::Renderer::MeshImpl::beginSceneFrame(
 	const oa::Scene& inScene,
-	const oa::CameraState& inCamera) {
+	const oa::Camera& inCamera) {
 	oa::FnScene::CompileConfig config;
 	config.maxVertexCount = renderConfig.maxVertexCount_;
 	config.maxIndexCount = renderConfig.maxIndexCount_;

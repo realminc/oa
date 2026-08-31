@@ -92,6 +92,10 @@ void bindVisionVideo(nb::module_& m) {
         .def("pause", &oa::VideoPlayer::pause)
         .def("togglePlay", &oa::VideoPlayer::togglePlay)
         .def("isPlaying", &oa::VideoPlayer::isPlaying)
+        .def("setMuted", [](oa::VideoPlayer& video, bool muted) {
+            throwIfError(video.setMuted(muted));
+        }, nb::arg("muted"))
+        .def("isMuted", &oa::VideoPlayer::isMuted)
         .def("isDone", &oa::VideoPlayer::isDone)
         .def("isEos", &oa::VideoPlayer::isEos)
         .def("hasAudio", &oa::VideoPlayer::hasAudio)

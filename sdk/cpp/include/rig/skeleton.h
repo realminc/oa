@@ -5,7 +5,7 @@
 //
 // The skeleton is the *identity* layer that PoseClip lacks: it names every
 // joint, fixes the parent hierarchy and joint order (⇒ fixed D_pose), and
-// carries each joint's rest transform (an Joint: local offset + rest
+// carries each joint's rest transform (a Joint: local offset + rest
 // orientation) so the IO layer can convert between USD skelAnimation (joints +
 // bind/rest + trans/quat) and the model's packed canonical channels (root
 // trans+6D, per-joint 6D, contacts).
@@ -25,7 +25,7 @@
 // characterization rig used as the retarget hub), and skHumanMl3d() (the
 // HumanML3D/SMPL 22-joint body for the text-to-motion datasets).
 
-#include <core/joint.h>
+#include <oa/animation/joint.h>
 #include <oa/core/filesystem.h>
 #include <oa/core/types.h>
 
@@ -39,8 +39,8 @@ struct SkelJoint {
 	oa::I32    parentIndex = -1;      // index into Skeleton::joints; -1 for root
 	oa::I32    humanIkId   = 0;       // HumanIK slot id from the rtg definition
 	oa::F32    mass        = 0.0f;    // segment mass approximation, kg
-	Joint  rest;                  // rest transform: translate = local offset (cm),
-	                                // jointOrient = rest orientation, rotate = identity
+	Joint rest; // rest transform: position = local offset (cm),
+	            // orientation = rest joint orientation, rotation = identity
 
 	// Channel spec (from the rig's LockSkeleton): which DOFs are actually animated.
 	// locked channels are not stored/predicted — they stay at rest.
@@ -49,7 +49,7 @@ struct SkelJoint {
 
 	// Bone length (cm) = |local offset to parent|. root / zero-offset → 0.
 	[[nodiscard]] oa::F32 length() const noexcept {
-		return oa::vlm::length(rest.translate);
+		return oa::vlm::length(rest.getTransform().getPosition());
 	}
 
 	// Canonical channels this joint contributes: translate (3 if live) + rotation
@@ -109,7 +109,7 @@ struct Skeleton {
 	[[nodiscard]] oa::I32 indexOf(oa::StringView inName) const noexcept;
 
 	// Bind-pose (rest) world position of a joint via forward kinematics over the
-	// per-joint rest OaJoints (orientation-aware). cm, Z-up.
+	// per-joint rest Joints (orientation-aware). cm, Z-up.
 	[[nodiscard]] oa::vlm::Vec3 restWorld(oa::I32 inJoint) const noexcept;
 
 	// Bind-pose world *orientation* of a joint (accumulated rest orientations).

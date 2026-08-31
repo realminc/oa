@@ -394,10 +394,16 @@ bool oa::Presenter::initPresentation(void* inSurface, VkExtent2D inExtent) {
 	swapchain_.presentReady = true;
 	OaLogInfo(oa::LogComponent::Engine,
 		"oa::Presenter: presentation ready ({}x{}, {} swap images, "
-		"retirement={})",
+		"retirement={}, composition={})",
 		swapchain_.extent.width, swapchain_.extent.height, swapchain_.images.size(),
 		oa::EngineDeviceAccess::get(engine_).info.software.hasSwapchainMaintenance1
-			? "present-fence" : "queue-idle-fallback");
+			? "present-fence" : "queue-idle-fallback",
+		swapchain_.transparent ? "premultiplied-alpha" : "opaque");
+	if (swapchain_.preferTransparent and not swapchain_.transparent) {
+		OaLogWarn(oa::LogComponent::Engine,
+			"oa::Presenter: transparent composition unavailable; using the "
+			"surface's opaque fallback");
+	}
 	return true;
 }
 
@@ -535,6 +541,34 @@ bool oa::Presenter::buildSwapchainObjects() {
 	uint32_t imgCount = caps.minImageCount + 1;
 	if (caps.maxImageCount > 0) imgCount = oa::min(imgCount, caps.maxImageCount);
 
+	VkCompositeAlphaFlagBitsKHR compositeAlpha =
+		VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+	bool transparent = false;
+	if (swapchain_.preferTransparent
+		and (caps.supportedCompositeAlpha
+			& VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR) != 0U) {
+		compositeAlpha = VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR;
+		transparent = true;
+	} else if ((caps.supportedCompositeAlpha
+		& VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR) == 0U) {
+		if ((caps.supportedCompositeAlpha
+			& VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR) != 0U) {
+			compositeAlpha = VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR;
+		} else if ((caps.supportedCompositeAlpha
+			& VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR) != 0U) {
+			compositeAlpha = VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR;
+		} else if ((caps.supportedCompositeAlpha
+			& VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR) != 0U) {
+			compositeAlpha = VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR;
+		} else {
+			OaLogError(oa::LogComponent::Engine,
+				"surface reports no supported composite-alpha mode");
+			return false;
+		}
+	}
+	swapchain_.compositeAlpha = compositeAlpha;
+	swapchain_.transparent = transparent;
+
 	VkSwapchainCreateInfoKHR sci{};
 	sci.sType            = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
 	sci.surface          = surf;
@@ -549,7 +583,7 @@ bool oa::Presenter::buildSwapchainObjects() {
 	sci.imageUsage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
 	                     | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 	sci.preTransform     = caps.currentTransform;
-	sci.compositeAlpha   = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+	sci.compositeAlpha   = compositeAlpha;
 	sci.presentMode      = presentMode;
 	sci.clipped          = VK_TRUE;
 

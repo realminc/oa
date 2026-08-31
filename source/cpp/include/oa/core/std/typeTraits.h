@@ -57,111 +57,111 @@ template<bool Condition, typename T = void>
 using EnableIfT = typename EnableIf<Condition, T>::Type;
 
 template<typename A, typename B>
-inline constexpr bool IsSameV = false;
+inline constexpr bool isSameV = false;
 
 template<typename T>
-inline constexpr bool IsSameV<T, T> = true;
+inline constexpr bool isSameV<T, T> = true;
 
 template<typename T>
-inline constexpr bool IsConstV = false;
+inline constexpr bool isConstV = false;
 
 template<typename T>
-inline constexpr bool IsConstV<const T> = true;
+inline constexpr bool isConstV<const T> = true;
 
 template<typename T>
-inline constexpr bool IsVoidV = IsSameV<RemoveCvT<T>, void>;
+inline constexpr bool isVoidV = isSameV<RemoveCvT<T>, void>;
 
 template<typename T>
-struct IsPointerImpl { static constexpr bool Value = false; };
+struct IsPointerImpl { static constexpr bool value = false; };
 
 template<typename T>
-struct IsPointerImpl<T*> { static constexpr bool Value = true; };
+struct IsPointerImpl<T*> { static constexpr bool value = true; };
 
 template<typename T>
-inline constexpr bool IsPointerV = IsPointerImpl<RemoveCvT<T>>::Value;
+inline constexpr bool isPointerV = IsPointerImpl<RemoveCvT<T>>::value;
 
 template<typename T>
-inline constexpr bool IsIntegralBaseV = false;
+inline constexpr bool isIntegralBaseV = false;
 
-template<> inline constexpr bool IsIntegralBaseV<bool> = true;
-template<> inline constexpr bool IsIntegralBaseV<char> = true;
-template<> inline constexpr bool IsIntegralBaseV<signed char> = true;
-template<> inline constexpr bool IsIntegralBaseV<unsigned char> = true;
-template<> inline constexpr bool IsIntegralBaseV<wchar_t> = true;
-template<> inline constexpr bool IsIntegralBaseV<char8_t> = true;
-template<> inline constexpr bool IsIntegralBaseV<char16_t> = true;
-template<> inline constexpr bool IsIntegralBaseV<char32_t> = true;
-template<> inline constexpr bool IsIntegralBaseV<short> = true;
-template<> inline constexpr bool IsIntegralBaseV<unsigned short> = true;
-template<> inline constexpr bool IsIntegralBaseV<int> = true;
-template<> inline constexpr bool IsIntegralBaseV<unsigned int> = true;
-template<> inline constexpr bool IsIntegralBaseV<long> = true;
-template<> inline constexpr bool IsIntegralBaseV<unsigned long> = true;
-template<> inline constexpr bool IsIntegralBaseV<long long> = true;
-template<> inline constexpr bool IsIntegralBaseV<unsigned long long> = true;
+template<> inline constexpr bool isIntegralBaseV<bool> = true;
+template<> inline constexpr bool isIntegralBaseV<char> = true;
+template<> inline constexpr bool isIntegralBaseV<signed char> = true;
+template<> inline constexpr bool isIntegralBaseV<unsigned char> = true;
+template<> inline constexpr bool isIntegralBaseV<wchar_t> = true;
+template<> inline constexpr bool isIntegralBaseV<char8_t> = true;
+template<> inline constexpr bool isIntegralBaseV<char16_t> = true;
+template<> inline constexpr bool isIntegralBaseV<char32_t> = true;
+template<> inline constexpr bool isIntegralBaseV<short> = true;
+template<> inline constexpr bool isIntegralBaseV<unsigned short> = true;
+template<> inline constexpr bool isIntegralBaseV<int> = true;
+template<> inline constexpr bool isIntegralBaseV<unsigned int> = true;
+template<> inline constexpr bool isIntegralBaseV<long> = true;
+template<> inline constexpr bool isIntegralBaseV<unsigned long> = true;
+template<> inline constexpr bool isIntegralBaseV<long long> = true;
+template<> inline constexpr bool isIntegralBaseV<unsigned long long> = true;
 
 template<typename T>
-inline constexpr bool IsIntegralV = IsIntegralBaseV<RemoveCvT<T>>;
+inline constexpr bool isIntegralV = isIntegralBaseV<RemoveCvT<T>>;
 
-template<typename T, bool = IsIntegralV<T>>
-struct IsSignedImpl { static constexpr bool Value = false; };
+template<typename T, bool = isIntegralV<T>>
+struct IsSignedImpl { static constexpr bool value = false; };
 
 template<typename T>
 struct IsSignedImpl<T, true> {
 	using ValueType = RemoveCvT<T>;
-	static constexpr bool Value = ValueType(-1) < ValueType(0);
+	static constexpr bool value = ValueType(-1) < ValueType(0);
 };
 
 template<typename T>
-inline constexpr bool IsSignedV = IsSignedImpl<T>::Value;
+inline constexpr bool isSignedV = IsSignedImpl<T>::value;
 
 template<typename T>
-inline constexpr bool IsFloatingPointBaseV = false;
+inline constexpr bool isFloatingPointBaseV = false;
 
-template<> inline constexpr bool IsFloatingPointBaseV<float> = true;
-template<> inline constexpr bool IsFloatingPointBaseV<double> = true;
-template<> inline constexpr bool IsFloatingPointBaseV<long double> = true;
-
-template<typename T>
-inline constexpr bool IsFloatingPointV = IsFloatingPointBaseV<RemoveCvT<T>>;
+template<> inline constexpr bool isFloatingPointBaseV<float> = true;
+template<> inline constexpr bool isFloatingPointBaseV<double> = true;
+template<> inline constexpr bool isFloatingPointBaseV<long double> = true;
 
 template<typename T>
-inline constexpr bool IsArithmeticV = IsIntegralV<T> or IsFloatingPointV<T>;
+inline constexpr bool isFloatingPointV = isFloatingPointBaseV<RemoveCvT<T>>;
 
 template<typename T>
-inline constexpr bool IsEnumV = __is_enum(T);
+inline constexpr bool isArithmeticV = isIntegralV<T> or isFloatingPointV<T>;
+
+template<typename T>
+inline constexpr bool isEnumV = __is_enum(T);
 
 template<typename From, typename To>
-inline constexpr bool IsConvertibleV = __is_convertible(From, To);
+inline constexpr bool isConvertibleV = __is_convertible(From, To);
 
 template<typename T, typename... Args>
-inline constexpr bool IsConstructibleV = __is_constructible(T, Args...);
+inline constexpr bool isConstructibleV = __is_constructible(T, Args...);
 
 template<typename T, typename... Args>
-inline constexpr bool IsNothrowConstructibleV = __is_nothrow_constructible(T, Args...);
+inline constexpr bool isNothrowConstructibleV = __is_nothrow_constructible(T, Args...);
 
 template<typename T>
-inline constexpr bool IsCopyConstructibleV = __is_constructible(T, const T&);
+inline constexpr bool isCopyConstructibleV = __is_constructible(T, const T&);
 
 template<typename T>
-inline constexpr bool IsNothrowCopyConstructibleV =
+inline constexpr bool isNothrowCopyConstructibleV =
 	__is_nothrow_constructible(T, const T&);
 
 template<typename T>
-inline constexpr bool IsNothrowMoveConstructibleV = __is_nothrow_constructible(T, T&&);
+inline constexpr bool isNothrowMoveConstructibleV = __is_nothrow_constructible(T, T&&);
 
 template<typename T>
-inline constexpr bool IsNothrowMoveAssignableV = __is_nothrow_assignable(T&, T&&);
+inline constexpr bool isNothrowMoveAssignableV = __is_nothrow_assignable(T&, T&&);
 
 template<typename T>
-inline constexpr bool IsNothrowSwappableV =
-	IsNothrowMoveConstructibleV<T> and IsNothrowMoveAssignableV<T>;
+inline constexpr bool isNothrowSwappableV =
+	isNothrowMoveConstructibleV<T> and isNothrowMoveAssignableV<T>;
 
 template<typename T>
-inline constexpr bool IsTriviallyCopyableV = __is_trivially_copyable(T);
+inline constexpr bool isTriviallyCopyableV = __is_trivially_copyable(T);
 
 template<typename T>
-inline constexpr bool IsTriviallyDestructibleV = __is_trivially_destructible(T);
+inline constexpr bool isTriviallyDestructibleV = __is_trivially_destructible(T);
 
 template<typename U>
 struct DecayNoRefImpl { using Type = RemoveCvT<U>; };

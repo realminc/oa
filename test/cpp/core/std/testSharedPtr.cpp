@@ -270,7 +270,7 @@ TEST(SharedPtr, ConcurrentLastStrongAndWeakRelease) {
 	EXPECT_EQ(destructions.load(std::memory_order_relaxed), iterations);
 }
 
-static_assert(!oa::IsSharedDeleterV<StdThrowingCopyDeleter>,
+static_assert(!oa::isSharedDeleterV<StdThrowingCopyDeleter>,
 	"throwing deleters must be rejected at the SharedPtr contract boundary");
 
 TEST(SharedPtr, VoidCustomDeleterReleasesOnce) {

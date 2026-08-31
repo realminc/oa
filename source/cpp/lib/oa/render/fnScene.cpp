@@ -1,5 +1,6 @@
 #include <oa/render/fnScene.h>
 
+#include <oa/core/fnTransform.h>
 #include <oa/core/std/hashMap.h>
 
 namespace {
@@ -76,10 +77,7 @@ struct ResolvedScene {
 			return oa::Status::invalidArgument(
 				"oa::Scene node identity zero is reserved");
 		}
-		if (not node.localTransform.isFinite()) {
-			return oa::Status::invalidArgument(
-				"oa::Scene node transform must be finite");
-		}
+		OA_RETURN_IF_ERROR(oa::FnTransform::validate(node.localTransform));
 		if (not outResolved.nodeIndices.emplace(node.id.value(), index).second) {
 			return oa::Status::invalidArgument(
 				"oa::Scene node identities must be unique");
@@ -123,6 +121,8 @@ struct ResolvedScene {
 			const oa::Usize index = path.back();
 			path.popBack();
 			const oa::SceneNode& node = inScene.nodes[index];
+			const oa::vlm::Mat4 localTransform =
+				oa::FnTransform::getMatrix(node.localTransform);
 			if (node.parent.isValid()) {
 				const oa::Usize parentIndex =
 					outResolved.nodeIndices.at(node.parent.value());
@@ -132,12 +132,12 @@ struct ResolvedScene {
 						"oa::Scene hierarchy resolution order is inconsistent");
 				}
 				outResolved.worldTransforms[index] = oa::vlm::matrixMul(
-					node.localTransform,
+					localTransform,
 					outResolved.worldTransforms[parentIndex]);
 				outResolved.visible[index] =
 					node.visible and outResolved.visible[parentIndex];
 			} else {
-				outResolved.worldTransforms[index] = node.localTransform;
+				outResolved.worldTransforms[index] = localTransform;
 				outResolved.visible[index] = node.visible;
 			}
 			if (not outResolved.worldTransforms[index].isFinite()) {

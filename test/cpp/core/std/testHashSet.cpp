@@ -15,7 +15,7 @@ TEST(HashSet, IteratorKeyIsImmutable) {
 	oa::HashSet<oa::I32> values;
 	values.insert(7);
 	auto iterator = values.begin();
-	static_assert(oa::IsSameV<decltype(*iterator), const oa::I32&>);
+	static_assert(oa::isSameV<decltype(*iterator), const oa::I32&>);
 	EXPECT_EQ(*iterator, 7);
 }
 

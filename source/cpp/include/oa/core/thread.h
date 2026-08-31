@@ -453,7 +453,7 @@ struct ThreadPool {
 		auto task = oa::makeShared<Task<R>>();
 		submitJob_({
 			.run = [task, f = oa::move(inFunc)]() mutable {
-				if constexpr (oa::IsVoidV<R>) {
+				if constexpr (oa::isVoidV<R>) {
 					f();
 					task->complete();
 				} else {
@@ -484,7 +484,8 @@ private:
 		oa::SharedPtr<State> inState,
 		oa::I32 inWorkerId,
 		oa::I32 inCoreId,
-		oa::Bool inPinToCore);
+		oa::Bool inPinToCore
+	);
 	void submitJob_(Job inJob);
 	void abandon_() noexcept;
 

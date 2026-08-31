@@ -24,7 +24,7 @@ public:
 		}
 	}
 
-	Optional(Optional&& inOther) noexcept(oa::IsNothrowMoveConstructibleV<T>)
+	Optional(Optional&& inOther) noexcept(oa::isNothrowMoveConstructibleV<T>)
 		: engaged_(inOther.engaged_) {
 		if (engaged_) {
 			oa::constructAt(ptr_(), oa::move(*inOther.ptr_()));
@@ -51,7 +51,7 @@ public:
 	}
 
 	Optional& operator=(Optional&& inOther) noexcept(
-		oa::IsNothrowMoveAssignableV<T> && oa::IsNothrowMoveConstructibleV<T>) {
+		oa::isNothrowMoveAssignableV<T> && oa::isNothrowMoveConstructibleV<T>) {
 		if (this == &inOther) {
 			return *this;
 		}

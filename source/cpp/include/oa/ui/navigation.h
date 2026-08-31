@@ -17,6 +17,7 @@
 #include <oa/core/vlm.h>
 #include <oa/core/types.h>
 #include <oa/ui/event.h>
+#include <oa/ui/motion.h>
 
 
 namespace oa {
@@ -42,6 +43,7 @@ struct NavigationConfig {
 	oa::F32 keyboardZoomStep = 1.05F;
 
 	oa::F32 animationDurationMs = 200.0F;
+	oa::UiMotionSpeed motionSpeed = oa::UiMotionSpeed::Normal;
 };
 
 class Navigation {
@@ -53,6 +55,10 @@ public:
 	[[nodiscard]] oa::Status validate() const;
 	[[nodiscard]] oa::Status setContentSize(oa::F32 inWidth, oa::F32 inHeight);
 	[[nodiscard]] oa::Status setWindowSize(oa::F32 inWidth, oa::F32 inHeight);
+	[[nodiscard]] oa::Status setMotionSpeed(oa::UiMotionSpeed inSpeed);
+	[[nodiscard]] oa::UiMotionSpeed motionSpeed() const noexcept {
+		return config_.motionSpeed;
+	}
 
 	[[nodiscard]] oa::Status fitToWindow(bool inAnimate = false);
 	[[nodiscard]] oa::Status zoomTo(

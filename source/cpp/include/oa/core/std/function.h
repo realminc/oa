@@ -15,7 +15,7 @@ class Fn;
 namespace fnDetail {
 
 template<typename R, typename F, typename... Args>
-inline constexpr bool IsInvocableR = requires(F& inFunction, Args... inArgs) {
+inline constexpr bool isInvocableRV = requires(F& inFunction, Args... inArgs) {
 	static_cast<R>(inFunction(oa::forward<Args>(inArgs)...));
 };
 
@@ -128,8 +128,8 @@ static constexpr bool useSbo() {
 	constexpr decltype(sizeof(0)) Cap = 40;
 	constexpr decltype(sizeof(0)) Alignment =
 		alignof(long double) > alignof(void*) ? alignof(long double) : alignof(void*);
-	return IsInvocableR<R, FD, Args...> && sizeof(FD) <= Cap &&
-		alignof(FD) <= Alignment && oa::IsNothrowMoveConstructibleV<FD>;
+	return isInvocableRV<R, FD, Args...> && sizeof(FD) <= Cap &&
+		alignof(FD) <= Alignment && oa::isNothrowMoveConstructibleV<FD>;
 }
 
 } // namespace fnDetail
@@ -200,12 +200,12 @@ public:
 	}
 
 	template<typename F>
-	requires (!oa::IsSameV<oa::DecayT<F>, Fn>
-		&& fnDetail::IsInvocableR<R, oa::DecayT<F>, Args...>
-		&& oa::IsCopyConstructibleV<oa::DecayT<F>>)
+	requires (!oa::isSameV<oa::DecayT<F>, Fn>
+		&& fnDetail::isInvocableRV<R, oa::DecayT<F>, Args...>
+		&& oa::isCopyConstructibleV<oa::DecayT<F>>)
 	Fn(F&& inF) {
 		using FD = oa::DecayT<F>;
-		if constexpr (oa::IsPointerV<FD>) {
+		if constexpr (oa::isPointerV<FD>) {
 			// Match std::function's typed-null function-pointer behavior. Treating
 			// it as an engaged callable merely defers the fault until invocation.
 			if (inF == nullptr) return;

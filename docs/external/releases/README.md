@@ -11,7 +11,8 @@ introduction.
 
 ## Releases
 
-- [v0.7.29](v0.7.29.md) — current public development preview; Vulkan Linear Math foundation
+- [v0.7.30](v0.7.30.md) — current public development preview; spatial animation and polished media Viewer
+- [v0.7.29](v0.7.29.md) — Vulkan Linear Math foundation
 - [v0.7.28](v0.7.28.md) — blocked hosted candidate; sanitizer target-set mismatch
 - [v0.7.27](v0.7.27.md) — blocked hosted candidate; generator namespace policy mismatch
 - [v0.7.26](v0.7.26.md) — Python compute-fallback repair

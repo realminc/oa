@@ -134,6 +134,8 @@ public:
   void togglePlay();
   [[nodiscard]] bool isPlaying() const { return playing_; }
   [[nodiscard]] bool hasAudio() const { return audio_.hasValue(); }
+  [[nodiscard]] oa::Status setMuted(bool inMuted);
+  [[nodiscard]] bool isMuted() const noexcept;
   void setLoop(bool inLoop);
   [[nodiscard]] bool isLooping() const { return cfg_.loop; }
   // Unified viewer transport timebase. Public timeline APIs use microseconds;

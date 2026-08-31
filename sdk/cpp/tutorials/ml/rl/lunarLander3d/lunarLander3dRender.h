@@ -36,7 +36,7 @@ public:
 
 	// CPU snapshot boundary. Terrain was copied at create(); state and camera
 	// are copied here before any command is submitted.
-	[[nodiscard]] oa::Status beginFrame(const oa::LunarLander3dState& inState, const oa::CameraState& inCamera);
+	[[nodiscard]] oa::Status beginFrame(const oa::LunarLander3dState& inState, const oa::Camera& inCamera);
 	[[nodiscard]] oa::Result<oa::RenderFrame> submitFrame(oa::Span<const oa::Event> inDependencies = {});
 	[[nodiscard]] oa::Status cancelFrame();
 
@@ -61,7 +61,7 @@ public:
 	// failures.
 	[[nodiscard]] oa::Status close();
 
-	[[nodiscard]] static oa::CameraState defaultCamera(
+	[[nodiscard]] static oa::Camera defaultCamera(
 		oa::U32 inWidth, oa::U32 inHeight);
 
 private:

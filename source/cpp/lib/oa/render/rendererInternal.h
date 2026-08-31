@@ -11,14 +11,14 @@ public:
 
 	[[nodiscard]] virtual oa::Status beginMeshFrame(
 		const oa::MeshData&,
-		const oa::CameraState&) {
+		const oa::Camera&) {
 		return oa::Status::error(
 			oa::StatusCode::FailedPrecondition,
 			"oa::Renderer was created for UI composition, not mesh rendering");
 	}
 	[[nodiscard]] virtual oa::Status beginSceneFrame(
 		const oa::Scene&,
-		const oa::CameraState&) {
+		const oa::Camera&) {
 		return oa::Status::error(
 			oa::StatusCode::FailedPrecondition,
 			"oa::Renderer was created for UI composition, not scene rendering");

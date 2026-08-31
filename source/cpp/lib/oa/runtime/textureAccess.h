@@ -11,7 +11,7 @@ class oa::TextureAccess {
 private:
 	template<typename T>
 	[[nodiscard]] static oa::U64 encodeHandle_(T inHandle) noexcept {
-		if constexpr (oa::IsPointerV<T>) {
+		if constexpr (oa::isPointerV<T>) {
 			return static_cast<oa::U64>(
 				reinterpret_cast<oa::Usize>(inHandle));
 		} else {
@@ -21,7 +21,7 @@ private:
 
 	template<typename T>
 	[[nodiscard]] static T decodeHandle_(oa::U64 inHandle) noexcept {
-		if constexpr (oa::IsPointerV<T>) {
+		if constexpr (oa::isPointerV<T>) {
 			return reinterpret_cast<T>(
 				static_cast<oa::Usize>(inHandle));
 		} else {

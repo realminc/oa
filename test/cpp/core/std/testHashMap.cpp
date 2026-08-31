@@ -18,7 +18,7 @@ TEST(HashMap, IteratorKeyIsImmutable) {
 	oa::HashMap<oa::I32, oa::I32> values;
 	values.emplace(7, 9);
 	auto iterator = values.begin();
-	static_assert(oa::IsSameV<decltype((iterator->first)), const oa::I32&>);
+	static_assert(oa::isSameV<decltype((iterator->first)), const oa::I32&>);
 	EXPECT_EQ(iterator->first, 7);
 	iterator->second = 11;
 	EXPECT_EQ(values.at(7), 11);

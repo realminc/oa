@@ -102,7 +102,7 @@ class Atomic {
 public:
 	using ValueType = T;
 
-	static_assert(oa::IsTriviallyCopyableV<T>,
+	static_assert(oa::isTriviallyCopyableV<T>,
 		"oa::Atomic requires a trivially copyable scalar type");
 
 	Atomic() noexcept = default;
@@ -156,7 +156,7 @@ public:
 	T fetchAdd(
 		T inArg,
 		MemoryOrder inOrder = MemoryOrder::Sequential
-	) noexcept requires(oa::IsIntegralV<T>) {
+	) noexcept requires(oa::isIntegralV<T>) {
 		return __atomic_fetch_add(
 			&value_, inArg, atomicDetail::builtinOrder(inOrder));
 	}
@@ -164,7 +164,7 @@ public:
 	T fetchSub(
 		T inArg,
 		MemoryOrder inOrder = MemoryOrder::Sequential
-	) noexcept requires(oa::IsIntegralV<T>) {
+	) noexcept requires(oa::isIntegralV<T>) {
 		return __atomic_fetch_sub(
 			&value_, inArg, atomicDetail::builtinOrder(inOrder));
 	}
@@ -172,7 +172,7 @@ public:
 	T fetchOr(
 		T inArg,
 		MemoryOrder inOrder = MemoryOrder::Sequential
-	) noexcept requires(oa::IsIntegralV<T>) {
+	) noexcept requires(oa::isIntegralV<T>) {
 		return __atomic_fetch_or(
 			&value_, inArg, atomicDetail::builtinOrder(inOrder));
 	}
@@ -180,7 +180,7 @@ public:
 	T fetchAnd(
 		T inArg,
 		MemoryOrder inOrder = MemoryOrder::Sequential
-	) noexcept requires(oa::IsIntegralV<T>) {
+	) noexcept requires(oa::isIntegralV<T>) {
 		return __atomic_fetch_and(
 			&value_, inArg, atomicDetail::builtinOrder(inOrder));
 	}
@@ -188,7 +188,7 @@ public:
 	T fetchXor(
 		T inArg,
 		MemoryOrder inOrder = MemoryOrder::Sequential
-	) noexcept requires(oa::IsIntegralV<T>) {
+	) noexcept requires(oa::isIntegralV<T>) {
 		return __atomic_fetch_xor(
 			&value_, inArg, atomicDetail::builtinOrder(inOrder));
 	}
@@ -198,24 +198,24 @@ public:
 		store(inDesired);
 		return inDesired;
 	}
-	T operator++() noexcept requires(oa::IsIntegralV<T>) {
+	T operator++() noexcept requires(oa::isIntegralV<T>) {
 		return atomicDetail::wrappingAdd(
 			fetchAdd(static_cast<T>(1)), static_cast<T>(1));
 	}
-	T operator++(int) noexcept requires(oa::IsIntegralV<T>) {
+	T operator++(int) noexcept requires(oa::isIntegralV<T>) {
 		return fetchAdd(static_cast<T>(1));
 	}
-	T operator--() noexcept requires(oa::IsIntegralV<T>) {
+	T operator--() noexcept requires(oa::isIntegralV<T>) {
 		return atomicDetail::wrappingSub(
 			fetchSub(static_cast<T>(1)), static_cast<T>(1));
 	}
-	T operator--(int) noexcept requires(oa::IsIntegralV<T>) {
+	T operator--(int) noexcept requires(oa::isIntegralV<T>) {
 		return fetchSub(static_cast<T>(1));
 	}
-	T operator+=(T inArg) noexcept requires(oa::IsIntegralV<T>) {
+	T operator+=(T inArg) noexcept requires(oa::isIntegralV<T>) {
 		return atomicDetail::wrappingAdd(fetchAdd(inArg), inArg);
 	}
-	T operator-=(T inArg) noexcept requires(oa::IsIntegralV<T>) {
+	T operator-=(T inArg) noexcept requires(oa::isIntegralV<T>) {
 		return atomicDetail::wrappingSub(fetchSub(inArg), inArg);
 	}
 
