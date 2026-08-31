@@ -113,10 +113,15 @@ class ExampleGeneratorTests(unittest.TestCase):
 				[item["role"] for item in presentation["items"]],
 				["source", "processed"],
 			)
-			viewerCapture = examplesById["audio-process"]["presentation"][1]
-			self.assertEqual(viewerCapture["kind"], "viewerCapture")
-			self.assertEqual(viewerCapture["width"], 960)
-			self.assertEqual(viewerCapture["height"], 434)
+			audioPresentation = examplesById["audio-process"]["presentation"]
+			self.assertEqual(
+				[presentation["kind"] for presentation in audioPresentation],
+				["audioComparison", "viewerCapture", "viewerCapture", "viewerCapture"],
+			)
+			self.assertTrue(all(
+				presentation["width"] == 1920 and presentation["height"] == 720
+				for presentation in audioPresentation[1:]
+			))
 			matrixOutput = examplesById["core-matrix-add"]["presentation"][0]
 			self.assertEqual(matrixOutput["kind"], "terminalOutput")
 			self.assertIn("Matrix addition verified", matrixOutput["code"])
@@ -125,8 +130,8 @@ class ExampleGeneratorTests(unittest.TestCase):
 				[presentation["kind"] for presentation in visionPresentation],
 				["imageGallery", "viewerCapture"],
 			)
-			self.assertEqual(visionPresentation[1]["width"], 1280)
-			self.assertEqual(visionPresentation[1]["height"], 720)
+			self.assertEqual(visionPresentation[1]["width"], 1146)
+			self.assertEqual(visionPresentation[1]["height"], 646)
 			plotPresentation = examplesById["plot-line"]["presentation"]
 			self.assertEqual(
 				[presentation["kind"] for presentation in plotPresentation],

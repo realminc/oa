@@ -57,14 +57,6 @@ source = "byte-identical output of sdk/py/examples/audio/audio.py on the checked
 role = "lossless processed audio example evidence"
 
 [[asset]]
-path = "docs/examples/audio/oaNarrationRoomViewer.jpg"
-bytes = 46232
-sha256 = "d93cebbb536b382d3c04041e5e80957ef3d5d7c25f468fdf3ab6785d9db6799a"
-license = "LicenseRef-OA-Repository"
-source = "Cropped GTK-framed OA ExampleAudio --preview capture displaying the checked oaNarrationRoom.wav output"
-role = "processed audio example Viewer presentation evidence"
-
-[[asset]]
 path = "docs/examples/ui/trainingLoss.jpg"
 bytes = 66639
 sha256 = "7c60f7dea23a4180641016ef05eae0c3672bb784570d52f1aa44fcaada2ba762"
@@ -90,10 +82,10 @@ role = "Rec.709 grayscale Vision example evidence"
 
 [[asset]]
 path = "docs/examples/vision/coverVisionGrayscaleViewer.jpg"
-bytes = 246888
-sha256 = "d378a00903391ba447827f7a6aa484524684e3e48a41a190582e97ec70259f0f"
+bytes = 201864
+sha256 = "0f38f31ec6eba8464ce08889cb7c73f17d4cba974aa9d907b0031d168d630422"
 license = "LicenseRef-OA-Repository"
-source = "1280x720 GTK-framed OA ExampleVisionImage --preview capture displaying the checked coverVisionGrayscale.jpg output"
+source = "Current OA ExampleVisionImage --preview X11 window capture displaying the checked grayscale output; captured 2026-08-31"
 role = "Vision example Viewer presentation evidence"
 
 [[asset]]
@@ -153,12 +145,68 @@ source = "Realm/OA presentation treatment of SpaceCathedral source artwork"
 role = "repository README and offline SDK presentation"
 
 [[asset]]
-path = "docs/viewer/oa-viewer-space-cathedral.jpg"
-bytes = 198135
-sha256 = "836f3aa5c6ea65be6cba11c1944e0b9f92fa3f51b1ab2ccb5a544160b0a9022b"
+path = "docs/viewer/oa-viewer-audio-mel.jpg"
+bytes = 145338
+sha256 = "c1600e22f58ab3f75f545d8dab954d876433d42d196c6b25f79d13f288c5c8b6"
+license = "LicenseRef-OA-Repository"
+source = "OA Viewer audio capture compressed from the authored 2026-08-31 PNG"
+role = "developer-site Viewer mel-spectrogram presentation"
+
+[[asset]]
+path = "docs/viewer/oa-viewer-audio-spectrogram.jpg"
+bytes = 166862
+sha256 = "9d9936afdfc13330a13abc4c78f7cca231a4db9092a0d2d46ed71ae7aef7e586"
+license = "LicenseRef-OA-Repository"
+source = "OA Viewer audio capture compressed from the authored 2026-08-31 PNG"
+role = "developer-site Viewer spectrogram presentation"
+
+[[asset]]
+path = "docs/viewer/oa-viewer-audio-waveform.jpg"
+bytes = 77653
+sha256 = "47707d082b578ac0ae27193ed6537d39fbf5fed09e730ec8ea700d3158c070e3"
+license = "LicenseRef-OA-Repository"
+source = "OA Viewer audio capture compressed from the authored 2026-08-31 PNG"
+role = "developer-site Viewer waveform presentation"
+
+[[asset]]
+path = "docs/viewer/oa-viewer-canvas-demo-720p.mp4"
+bytes = 5754704
+sha256 = "d4c78c35c9537e07e5550223bd5223bca1bb5df84456a2ec4c8a82ad0f113aec"
+license = "CC-BY-SA-4.0"
+source = "2026-08-31 OA Viewer canvas screencast using Basile Morin's Shibuya Crossing clip; H.264 720p30 documentation transcode"
+role = "developer-site Viewer canvas interaction presentation"
+
+[[asset]]
+path = "docs/viewer/oa-viewer-image-canvas.jpg"
+bytes = 201147
+sha256 = "7e55a457e9235fb8b53d6f83b25be1c75699219d1d05923d7189da3f55018589"
 license = "LicenseRef-Realm-Source-Artwork"
-source = "OA TutorialViewerImage capture using SpaceCathedral source artwork"
-role = "offline SDK and developer-site Viewer documentation"
+source = "OA Viewer image-canvas capture using SpaceCathedral source artwork; compressed from the authored 2026-08-31 PNG"
+role = "offline SDK and developer-site Viewer canvas presentation"
+
+[[asset]]
+path = "docs/viewer/oa-viewer-image-fullspace.jpg"
+bytes = 461092
+sha256 = "0bbc51387367e672a5f119fc227ae55a296678b9f71b78e7a584ddb6c4570c85"
+license = "LicenseRef-Realm-Source-Artwork"
+source = "OA Viewer fullspace image capture using SpaceCathedral source artwork; compressed from the authored 2026-08-31 PNG"
+role = "offline SDK and developer-site Viewer image presentation"
+
+[[asset]]
+path = "docs/viewer/oa-viewer-video-canvas.jpg"
+bytes = 315308
+sha256 = "7c7839392018cc06cb37851f3ae53411075a4a702933e48ef18267f259f8790e"
+license = "CC-BY-SA-4.0"
+source = "OA Viewer canvas capture using Basile Morin's Shibuya Crossing clip; compressed from the authored 2026-08-31 PNG"
+role = "developer-site Viewer video-canvas presentation"
+
+[[asset]]
+path = "docs/viewer/oa-viewer-video-fullspace.jpg"
+bytes = 616891
+sha256 = "affb4e26cf4e85a8c65c97d5905259bb6f8fbc2b5e8bebc0ad96e300328c8f28"
+license = "CC-BY-SA-4.0"
+source = "OA Viewer fullspace capture using Basile Morin's Shibuya Crossing clip; compressed from the authored 2026-08-31 PNG"
+role = "developer-site Viewer video presentation"
 
 [[asset]]
 path = "docs/vision/oa-vision-data-augmentation.png"

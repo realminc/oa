@@ -791,3 +791,19 @@ else()
 	message(STATUS
 		"Native Iris Xe media profile: UNAVAILABLE (ffmpeg or complete Shibuya dataset missing)")
 endif()
+
+# Keep the sanitizer build set mechanically aligned with the CTest `core`
+# profile. Python-backed core tests need no build target; every same-named CMake
+# target is included automatically so registering a new host core test cannot
+# leave CTest pointing at an executable CI never built.
+get_property(_oa_registered_tests DIRECTORY PROPERTY TESTS)
+set(_oa_host_core_test_targets)
+foreach(_oa_test IN LISTS _oa_registered_tests)
+	get_property(_oa_test_labels TEST ${_oa_test} PROPERTY LABELS)
+	if("core" IN_LIST _oa_test_labels AND TARGET ${_oa_test})
+		list(APPEND _oa_host_core_test_targets ${_oa_test})
+	endif()
+endforeach()
+list(REMOVE_DUPLICATES _oa_host_core_test_targets)
+list(SORT _oa_host_core_test_targets)
+add_custom_target(oa_host_core_tests DEPENDS ${_oa_host_core_test_targets})

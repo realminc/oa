@@ -4,6 +4,37 @@ All notable changes to OA are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is the single
 `VERSION` file at the repo root (read by CMake, `oa::version()`, and the Python package).
 
+## [0.7.32] — 2026-08-31 (Hosted sanitizer-profile closure)
+
+This immutable patch replaces the blocked `v0.7.31` hosted candidate. Runtime
+implementation and public APIs are unchanged.
+
+### Fixed
+
+- Replace the duplicated hosted sanitizer target list with the generated
+  `oa_host_core_tests` aggregate. CMake derives that aggregate from every
+  executable-backed CTest carrying the `core` label, so a newly registered
+  host test cannot be selected by CTest without also being built.
+- Build `TestAnimation` in both hosted sanitizer profiles. The `v0.7.31` jobs
+  passed every executable they built, but correctly blocked publication when
+  CTest found the registered Animation test executable absent.
+
+### Documentation
+
+- Publish the current shared Viewer image, video, waveform, spectrum, and mel
+  captures, plus a bounded 720p30 H.264 presentation clip.
+- Replace obsolete presentation captures and update the asset manifest,
+  generated example catalog, and generator regression tests together.
+
+### Verification
+
+- The repaired aggregate and complete 21-test `core` profile pass locally
+  under ASAN/LSAN and UBSAN, including `TestAnimation`.
+- Example generation, external documentation, asset hashes/licenses, media
+  metadata, architecture checks, and generated-source drift checks pass.
+- The tagged workflow owns the terminal hosted build, sanitizer, CPU-Vulkan,
+  package, wheel, artifact, checksum, release, and PyPI result.
+
 ## [0.7.31] — 2026-08-31 (Hosted architecture-manifest repair)
 
 This immutable patch replaces the blocked `v0.7.30` hosted candidate. The

@@ -257,18 +257,12 @@ parsing, tokenization, and configuration parsing without requiring a GPU:
 
 ```bash
 cmake --preset asan
-cmake --build build/asan --target \
-  TestTypes TestMemory TestContainers TestThreading TestCoreMisc TestValidation \
-  TestCamera TestMcp TestVkDispatch TestTransferWeights TestModelFileIntegrity \
-  TestTokenizer TestGptOssConfig TestOaStd
+cmake --build build/asan --target oa_host_core_tests
 ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:strict_string_checks=1 \
   ctest --test-dir build/asan --output-on-failure --timeout 120 -L core
 
 cmake --preset ubsan
-cmake --build build/ubsan --target \
-  TestTypes TestMemory TestContainers TestThreading TestCoreMisc TestValidation \
-  TestCamera TestMcp TestVkDispatch TestTransferWeights TestModelFileIntegrity \
-  TestTokenizer TestGptOssConfig TestOaStd
+cmake --build build/ubsan --target oa_host_core_tests
 UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
   ctest --test-dir build/ubsan --output-on-failure --timeout 120 -L core
 ```

@@ -56,7 +56,9 @@ assets = [
 	"audio/oaNarration.mp3",
 	"docs/examples/audio/oaNarrationRoom.wav",
 	"docs/examples/audio/oaNarrationRoom.mp3",
-	"docs/examples/audio/oaNarrationRoomViewer.jpg",
+	"docs/viewer/oa-viewer-audio-waveform.jpg",
+	"docs/viewer/oa-viewer-audio-spectrogram.jpg",
+	"docs/viewer/oa-viewer-audio-mel.jpg",
 ]
 cppSymbols = [
 	"oa::Audio",
@@ -114,14 +116,36 @@ generatedBy = "sdk/py/examples/audio/audio.py"
 
 [[examples.presentation]]
 kind = "viewerCapture"
-title = "oa::Viewer"
-description = "The processed WAV opened by this example's optional --preview path in OA's native GPU waveform viewer."
-asset = "docs/examples/audio/oaNarrationRoomViewer.jpg"
+title = "Waveform"
+description = "The current Viewer waveform surface used by the optional --preview path. The processed WAV above remains the exact example artifact."
+asset = "docs/viewer/oa-viewer-audio-waveform.jpg"
 mimeType = "image/jpeg"
-width = 960
-height = 434
-alt = "oa::Viewer displaying the processed OA narration as a GPU-rendered waveform"
-generatedBy = "bin/release/sdk/examples/audio/exampleAudio --preview"
+width = 1920
+height = 720
+alt = "OA Viewer audio transport displaying a waveform overview"
+generatedBy = "OA Viewer documentation capture · 2026-08-31"
+
+[[examples.presentation]]
+kind = "viewerCapture"
+title = "Spectrogram"
+description = "The current Viewer linear-frequency inspection surface, sharing the waveform transport and playhead contract."
+asset = "docs/viewer/oa-viewer-audio-spectrogram.jpg"
+mimeType = "image/jpeg"
+width = 1920
+height = 720
+alt = "OA Viewer audio transport displaying a green spectrogram"
+generatedBy = "OA Viewer documentation capture · 2026-08-31"
+
+[[examples.presentation]]
+kind = "viewerCapture"
+title = "Mel spectrogram"
+description = "The current Viewer perceptual-frequency surface for speech and learned-audio inspection."
+asset = "docs/viewer/oa-viewer-audio-mel.jpg"
+mimeType = "image/jpeg"
+width = 1920
+height = 720
+alt = "OA Viewer audio transport displaying a warm mel spectrogram"
+generatedBy = "OA Viewer documentation capture · 2026-08-31"
 
 [[examples]]
 id = "ml-transformer"
@@ -279,14 +303,14 @@ generatedBy = "sdk/py/examples/vision/image.py"
 
 [[examples.presentation]]
 kind = "viewerCapture"
-title = "oa::Viewer"
-description = "The grayscale output opened by this example's optional --preview path in OA's native GPU image viewer."
+title = "Grayscale preview"
+description = "The exact grayscale output above recaptured edge to edge in the current Viewer through this example's optional --preview path."
 asset = "docs/examples/vision/coverVisionGrayscaleViewer.jpg"
 mimeType = "image/jpeg"
-width = 1280
-height = 720
-alt = "oa::Viewer presenting the grayscale OA Vision cover in a 1280 by 720 window"
-generatedBy = "bin/release/sdk/examples/vision/exampleVisionImage --preview"
+width = 1146
+height = 646
+alt = "Current OA Viewer presenting the grayscale Vision cover edge to edge"
+generatedBy = "SDL_VIDEODRIVER=x11 bin/release/sdk/examples/vision/exampleVisionImage --preview · 2026-08-31"
 
 [[examples]]
 id = "crypto-shake256"

@@ -50,14 +50,16 @@ class GenerateExamplesTest(unittest.TestCase):
             self.assertTrue(item["src"].startswith("/media/oa/"))
             self.assertEqual(len(item["sha256"]), 64)
             self.assertGreater(item["bytes"], 0)
-        viewerCapture = audio["presentation"][1]
-        self.assertEqual(viewerCapture["kind"], "viewerCapture")
-        self.assertEqual(viewerCapture["mimeType"], "image/jpeg")
-        self.assertEqual(viewerCapture["width"], 960)
-        self.assertEqual(viewerCapture["height"], 434)
-        self.assertTrue(viewerCapture["src"].startswith("/media/oa/"))
-        self.assertEqual(len(viewerCapture["sha256"]), 64)
-        self.assertGreater(viewerCapture["bytes"], 0)
+        viewerCaptures = audio["presentation"][1:]
+        self.assertEqual(len(viewerCaptures), 3)
+        for viewerCapture in viewerCaptures:
+            self.assertEqual(viewerCapture["kind"], "viewerCapture")
+            self.assertEqual(viewerCapture["mimeType"], "image/jpeg")
+            self.assertEqual(viewerCapture["width"], 1920)
+            self.assertEqual(viewerCapture["height"], 720)
+            self.assertTrue(viewerCapture["src"].startswith("/media/oa/"))
+            self.assertEqual(len(viewerCapture["sha256"]), 64)
+            self.assertGreater(viewerCapture["bytes"], 0)
         ml = next(entry for entry in generated if entry["id"] == "ml-transformer")
         self.assertEqual(
             [presentation["title"] for presentation in ml["presentation"]],

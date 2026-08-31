@@ -298,13 +298,10 @@ jobs:
       - name: Configure ${{ matrix.name }}
         run: cmake --preset ${{ matrix.preset }}
 
-      - name: Build host ownership and parser tests
+      - name: Build host core sanitizer tests
         run: |
-          cmake --build build/${{ matrix.build_dir }} --parallel "$(nproc)" --target \
-            TestTypes TestMemory TestContainers TestThreading TestCoreMisc TestCli \
-            TestValidation TestVlm TestCamera TestScene TestMcp TestWebMcp \
-            TestTransferWeights TestModelFileIntegrity TestTokenizer \
-            TestGptOssConfig TestOaStd TestVkDispatch
+          cmake --build build/${{ matrix.build_dir }} \
+            --parallel "$(nproc)" --target oa_host_core_tests
 
       - name: Run host sanitizer suite
         run: |
