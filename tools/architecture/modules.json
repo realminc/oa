@@ -60,6 +60,7 @@
     "oavk::Timestamp"
   ],
   "modules": {
+    "animation": {"allows": ["core"]},
     "audio": {"allows": ["core", "runtime"]},
     "core": {"allows": []},
     "crypto": {"allows": ["core", "runtime"]},

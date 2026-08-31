@@ -23,6 +23,7 @@ class OaCheckTest(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.repo = Path(self.temp.name)
         self.root = self.repo / "source/cpp/include/oa"
+        (self.root / "animation").mkdir(parents=True)
         (self.root / "core").mkdir(parents=True)
         (self.root / "runtime").mkdir(parents=True)
         (self.root / "ml").mkdir(parents=True)
@@ -34,6 +35,7 @@ class OaCheckTest(unittest.TestCase):
                     "version": 1,
                     "source_roots": ["source/cpp/include/oa"],
                     "modules": {
+                        "animation": {"allows": ["core"]},
                         "core": {"allows": []},
                         "runtime": {"allows": ["core"]},
                         "ml": {"allows": ["core", "runtime"]},
@@ -62,6 +64,10 @@ class OaCheckTest(unittest.TestCase):
 
     def testAllowedDependencyPasses(self) -> None:
         self._write("ml/model.cpp", "#include <oa/core/matrix.h>\n")
+        self.assertTrue(self._check().ok)
+
+    def testAnimationIsAnAdmittedCoreConsumer(self) -> None:
+        self._write("animation/animClip.cpp", "#include <oa/core/status.h>\n")
         self.assertTrue(self._check().ok)
 
     def testNewForbiddenEdgeFails(self) -> None:

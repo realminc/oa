@@ -4,6 +4,31 @@ All notable changes to OA are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is the single
 `VERSION` file at the repo root (read by CMake, `oa::version()`, and the Python package).
 
+## [0.7.31] — 2026-08-31 (Hosted architecture-manifest repair)
+
+This immutable patch replaces the blocked `v0.7.30` hosted candidate. The
+spatial-animation API, Viewer implementation, runtime behavior, and local
+verification evidence are unchanged.
+
+### Fixed
+
+- Admit the shipped CPU-only `animation` source module in the executable
+  architecture manifest with its sole dependency on Core.
+- Add a checker regression proving that Animation-to-Core includes remain
+  valid without weakening any forbidden edge or raising the dependency
+  baseline.
+
+### Verification
+
+- The exact hosted architecture and diagnostic command sequence passes on the
+  sanitized public snapshot before publication.
+- The `v0.7.30` exact-tree Release build, 159-test suite, ASAN/LSAN, UBSAN,
+  complete public-snapshot build/install, and installed-package consumer
+  evidence carry forward because this repair changes policy metadata, tests,
+  documentation, and version sources only.
+- The tagged workflow owns the terminal hosted build, sanitizer, CPU-Vulkan,
+  package, wheel, artifact, checksum, release, and PyPI result.
+
 ## [0.7.30] — 2026-08-31 (Spatial animation and media Viewer)
 
 ### Added
