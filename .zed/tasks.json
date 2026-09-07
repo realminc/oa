@@ -1,0 +1,62 @@
+[
+  {
+    "label": "Oars - Check",
+    "command": "cargo",
+    "args": ["check"],
+    "group": "build"
+  },
+  {
+    "label": "Oars - Build (Debug)",
+    "command": "cargo",
+    "args": ["build"],
+    "group": "build"
+  },
+  {
+    "label": "Oars - Build (Release)",
+    "command": "cargo",
+    "args": ["build", "--release"],
+    "group": "build"
+  },
+  {
+    "label": "Oars - Clean Build (Debug)",
+    "command": "sh",
+    "args": ["-c", "rm -rf target/debug && cargo build"],
+    "group": "build"
+  },
+  {
+    "label": "Oars - Clean Build (Release)",
+    "command": "sh",
+    "args": ["-c", "rm -rf target/release && cargo build --release"],
+    "group": "build"
+  },
+  {
+    "label": "Oars - Clean",
+    "command": "cargo",
+    "args": ["clean"],
+    "group": "build"
+  },
+  {
+    "label": "Oars - Test",
+    "command": "cargo",
+    "args": ["test"],
+    "group": "test"
+  },
+  {
+    "label": "Oars - Clippy",
+    "command": "cargo",
+    "args": ["clippy", "--all-targets", "--all-features"],
+    "group": "build"
+  },
+  {
+    "label": "Oars - Format",
+    "command": "cargo",
+    "args": ["fmt"],
+    "group": "build"
+  },
+  {
+    "label": "Oars - Format Check",
+    "command": "cargo",
+    "args": ["fmt", "--check"],
+    "group": "build"
+  }
+]

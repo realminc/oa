@@ -1,0 +1,22 @@
+[package]
+name = "oa"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.98"
+
+[lib]
+path = "src/rs/lib.rs"
+
+[dependencies]
+ash = "0.38"
+vk-mem = "0.5"
+
+thiserror = "2"
+bitflags = "2"
+smallvec = "1"
+
+[dev-dependencies]
+anyhow = "1"
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
