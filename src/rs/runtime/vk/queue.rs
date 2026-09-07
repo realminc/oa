@@ -1,1 +1,3 @@
-// Placeholder for queue-related Vulkan utilities
+pub(super) struct Queue {
+	pub(super) handle: ash::vk::Queue,
+}

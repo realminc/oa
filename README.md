@@ -14,29 +14,78 @@ a safe semantic API above narrowly contained unsafe runtime code.
 The target public surface is language-like:
 
 ```rust
-use oa::{matrix, Engine, Matrix};
+use oa::{matrix, Engine};
 
-// Planned syntax; not implemented yet.
+// Engine construction is implemented as an Experimental foundation.
 let engine = Engine::builder().build()?;
-let sum = matrix::add(&left, &right)?;
-let event = engine.submit()?;
-engine.wait(event)?;
+let one = matrix::ones(&engine, [2, 3])?;
+let two = matrix::full(&engine, [2, 3], 2.0)?;
+let sum = matrix::add(&one, &two)?;
+
+// Host observation is the synchronization boundary.
+let values = sum.read_f32()?;
+assert_eq!(values, [3.0; 6]);
 ```
 
-Foundational values live physically under an internal `core/` module and are
-explicitly re-exported from `lib.rs`. Stateless operations live in lowercase
-domain modules. Stateful codecs, streams, presentation, training, and transport
-remain explicit session types that borrow an engine.
+The planned Python binding preserves OA's familiar facade and process engine:
 
-`Engine` is the sole local owner of Vulkan devices, memory, queues, kernels,
-scheduling, and profiling. Recording, submission, completion, readback, and
-session shutdown remain explicit.
+```python
+import oa
+
+one = oa.FnMatrix.ones([2, 3])
+two = oa.FnMatrix.full([2, 3], 2.0)
+sum = oa.FnMatrix.add(one, two)
+```
+
+Foundational values, checked metadata, and shared failure contracts live in the
+public `core` module. Common vocabulary such as `Matrix`, `Image`, `Error`, and
+`Result` is also explicitly re-exported from `lib.rs`. Stateless operations live
+in lowercase domain modules. Stateful codecs, streams, presentation, training,
+and transport remain explicit session types that borrow an engine.
+
+`Engine` is the sole local execution owner. Rust construction stays explicit;
+values retain the internal engine lifetime they need, and ordinary operations
+infer it from their inputs. Explicit submit/event controls are reserved for
+capture, profiling, multi-device, distributed, and other orchestration paths.
+Blocking is visible at host observation (`read::<T>` and `read_f32`) while the
+corresponding `try_*` calls remain non-blocking. Destruction never submits or
+waits.
 
 ## Status
 
-No GPU operation is currently classified as Shipped. The first planned
-checkpoint is one-device FP32 Matrix add from checked upload through explicit
-submission and readback to an independent host oracle.
+The experimental runtime foundation can automatically or explicitly select one
+Vulkan 1.3 compute device, require and enable timeline semaphores plus
+synchronization2 and the descriptor-indexing features required by the kernel
+ABI, and create dense `f32` and `i32` matrices in checked VMA-backed,
+host-visible storage. One dynamic `Matrix` carries a runtime `DType`; sealed
+Rust element types provide checked upload and readback without making the
+storage owner generic.
+
+The first normalized operation schema owns 19 out-of-place elementwise
+operations: `add`, `sub`, `mul`, `div`, `scale`, `neg`, `abs`, `log`, `sqrt`,
+`pow`, `add_scalar`, `sub_scalar`, `div_scalar`, `exp`, `sin`, `cos`,
+`reciprocal`, `clamp_max`, and `clamp_min`. Explicit generation emits their Rust
+functions, stable private kernel IDs and artifacts, bounds-checked Slang entry
+points, and an external hardware-oracle test. The build compiles and reflects
+every schema entry, validates each ABI and Vulkan 1.3 SPIR-V artifact, and embeds
+it. Generated kernels share one engine-owned bindless descriptor heap while
+retaining separate private pipelines. All 19 operations admit `f32`; `add`
+also has one generated exact-dtype `i32` route. Mixed dense dtypes fail rather
+than promoting implicitly.
+
+Each Rust operation validates and returns a matrix while its direct lowerer
+creates a generic compute-dispatch description. One engine submission path
+resolves that description, dispatches asynchronously, and retains its
+timeline-backed completion in the result; the engine contains no per-operation
+entry points. Submitted command buffers retain every referenced allocation
+through asynchronous retirement. Host readback is an explicit observation
+boundary that waits; typed `try_read::<T>` does not. Binary broadcasting and
+in-place mutation are not yet admitted.
+
+No GPU operation is currently classified as Shipped. The active Experimental
+checkpoint is the one-device dense elementwise path from checked initialization
+through asynchronous dispatch and synchronized host observation to schema-owned
+independent golden oracles. The `i32` proof currently covers addition only.
 
 ## Documentation
 
@@ -47,9 +96,16 @@ submission and readback to an independent host oracle.
 
 ## Development
 
+Builds require Python 3, `rustfmt`, `slangc`, and `spirv-val` on `PATH`.
+`PYTHON`, `SLANGC`, and `SPIRV_VAL` may name explicit executables. Missing
+tools, stale generated sources, compilation failure, reflected ABI drift, and
+Vulkan 1.3 SPIR-V validation failure stop the build.
+
 The intended baseline gates are:
 
 ```bash
+python3 -m unittest discover -s tools/gen/fn/tests -v
+python3 tools/gen/fn/generate.py --check
 cargo fmt --check
 cargo clippy --all-targets --all-features -- -D warnings
 cargo test --all-features

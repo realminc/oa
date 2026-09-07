@@ -1,0 +1,344 @@
+{
+  "schema_version": 1,
+  "family": "matrix_elemwise",
+  "domain": "matrix",
+  "dtype": "f32",
+  "workgroup_size": [256, 1, 1],
+  "contracts": {
+    "binary": {
+      "input_kinds": ["matrix", "matrix"],
+      "output_kinds": ["matrix"],
+      "shape_rule": "equal_no_broadcast",
+      "dtype_rule": "same_admitted_dtype",
+      "effects": ["read_inputs", "write_output"],
+      "mutated_inputs": [],
+      "output_alias_inputs": [-1],
+      "differentiation": "none",
+      "lowering": "compute_dispatch"
+    },
+    "unary": {
+      "input_kinds": ["matrix"],
+      "output_kinds": ["matrix"],
+      "shape_rule": "preserve_input",
+      "dtype_rule": "all_f32",
+      "effects": ["read_inputs", "write_output"],
+      "mutated_inputs": [],
+      "output_alias_inputs": [-1],
+      "differentiation": "none",
+      "lowering": "compute_dispatch"
+    },
+    "unary_scalar": {
+      "input_kinds": ["matrix"],
+      "output_kinds": ["matrix"],
+      "shape_rule": "preserve_input",
+      "dtype_rule": "all_f32",
+      "effects": ["read_inputs", "write_output"],
+      "mutated_inputs": [],
+      "output_alias_inputs": [-1],
+      "differentiation": "none",
+      "lowering": "compute_dispatch"
+    }
+  },
+  "operations": [
+    {
+      "stable_id": 1,
+      "name": "add",
+      "kind": "binary",
+      "doc": "Add two matrices elementwise using one admitted dense dtype.",
+      "kernel_id": "MatrixAddF32",
+      "entry_point": "matrixAddF32",
+      "expression": "left + right",
+      "test": {
+        "left": [-2.0, 0.5, 4.0],
+        "right": [0.25, 2.0, -3.0],
+        "expected": [-1.75, 2.5, 1.0],
+        "tolerance": 0.0001
+      },
+      "additional_dtype_variants": [
+        {
+          "dtype": "i32",
+          "stable_id": 20,
+          "kernel_id": "MatrixAddI32",
+          "entry_point": "matrixAddI32",
+          "kernel_name": "add_i32",
+          "source_stem": "add_i32",
+          "integer_overflow": "wrap",
+          "test": {
+            "left": [2147483647, -2147483648, -2],
+            "right": [1, -1, 7],
+            "expected": [-2147483648, 2147483647, 5]
+          }
+        }
+      ]
+    },
+    {
+      "stable_id": 2,
+      "name": "sub",
+      "kind": "binary",
+      "doc": "Subtract two FP32 matrices elementwise.",
+      "kernel_id": "MatrixSubF32",
+      "entry_point": "matrixSubF32",
+      "expression": "left - right",
+      "test": {
+        "left": [-2.0, 0.5, 4.0],
+        "right": [0.25, 2.0, -3.0],
+        "expected": [-2.25, -1.5, 7.0],
+        "tolerance": 0.0001
+      }
+    },
+    {
+      "stable_id": 3,
+      "name": "mul",
+      "kind": "binary",
+      "doc": "Multiply two FP32 matrices elementwise.",
+      "kernel_id": "MatrixMulF32",
+      "entry_point": "matrixMulF32",
+      "expression": "left * right",
+      "test": {
+        "left": [-2.0, 0.5, 4.0],
+        "right": [0.25, 2.0, -3.0],
+        "expected": [-0.5, 1.0, -12.0],
+        "tolerance": 0.0001
+      }
+    },
+    {
+      "stable_id": 4,
+      "name": "div",
+      "kind": "binary",
+      "doc": "Divide two FP32 matrices elementwise.",
+      "kernel_id": "MatrixDivF32",
+      "entry_point": "matrixDivF32",
+      "expression": "left / right",
+      "test": {
+        "left": [-2.0, 0.5, 4.0],
+        "right": [0.25, 2.0, -3.0],
+        "expected": [-8.0, 0.25, -1.3333333333333333],
+        "tolerance": 0.0001
+      }
+    },
+    {
+      "stable_id": 5,
+      "name": "scale",
+      "kind": "unary_scalar",
+      "doc": "Multiply every FP32 matrix element by a scalar.",
+      "kernel_id": "MatrixScaleF32",
+      "entry_point": "matrixScaleF32",
+      "expression": "input * push.scalar",
+      "scalar_name": "scalar",
+      "test": {
+        "input": [-2.0, 0.5, 4.0],
+        "scalar": 1.5,
+        "expected": [-3.0, 0.75, 6.0],
+        "tolerance": 0.0001
+      }
+    },
+    {
+      "stable_id": 6,
+      "name": "neg",
+      "kind": "unary",
+      "doc": "Negate every FP32 matrix element.",
+      "kernel_id": "MatrixNegF32",
+      "entry_point": "matrixNegF32",
+      "expression": "-input",
+      "test": {
+        "input": [-2.0, 0.5, 4.0],
+        "expected": [2.0, -0.5, -4.0],
+        "tolerance": 0.0001
+      }
+    },
+    {
+      "stable_id": 7,
+      "name": "abs",
+      "kind": "unary",
+      "doc": "Take the absolute value of every FP32 matrix element.",
+      "kernel_id": "MatrixAbsF32",
+      "entry_point": "matrixAbsF32",
+      "expression": "abs(input)",
+      "test": {
+        "input": [-2.0, 0.5, 4.0],
+        "expected": [2.0, 0.5, 4.0],
+        "tolerance": 0.0001
+      }
+    },
+    {
+      "stable_id": 8,
+      "name": "log",
+      "kind": "unary",
+      "doc": "Take the natural logarithm of every FP32 matrix element.",
+      "kernel_id": "MatrixLogF32",
+      "entry_point": "matrixLogF32",
+      "expression": "log(input)",
+      "test": {
+        "input": [0.25, 1.0, 4.0],
+        "expected": [-1.3862943611198906, 0.0, 1.3862943611198906],
+        "tolerance": 0.001
+      }
+    },
+    {
+      "stable_id": 9,
+      "name": "sqrt",
+      "kind": "unary",
+      "doc": "Take the square root of every FP32 matrix element.",
+      "kernel_id": "MatrixSqrtF32",
+      "entry_point": "matrixSqrtF32",
+      "expression": "sqrt(input)",
+      "test": {
+        "input": [0.25, 1.0, 4.0],
+        "expected": [0.5, 1.0, 2.0],
+        "tolerance": 0.001
+      }
+    },
+    {
+      "stable_id": 10,
+      "name": "pow",
+      "kind": "unary_scalar",
+      "doc": "Raise every FP32 matrix element to a scalar exponent.",
+      "kernel_id": "MatrixPowF32",
+      "entry_point": "matrixPowF32",
+      "expression": "pow(input, push.scalar)",
+      "scalar_name": "exponent",
+      "test": {
+        "input": [0.25, 1.0, 4.0],
+        "scalar": 1.5,
+        "expected": [0.125, 1.0, 8.0],
+        "tolerance": 0.001
+      }
+    },
+    {
+      "stable_id": 11,
+      "name": "add_scalar",
+      "kind": "unary_scalar",
+      "doc": "Add a scalar to every FP32 matrix element.",
+      "kernel_id": "MatrixAddScalarF32",
+      "entry_point": "matrixAddScalarF32",
+      "expression": "input + push.scalar",
+      "scalar_name": "scalar",
+      "test": {
+        "input": [-2.0, 0.5, 4.0],
+        "scalar": 1.5,
+        "expected": [-0.5, 2.0, 5.5],
+        "tolerance": 0.0001
+      }
+    },
+    {
+      "stable_id": 12,
+      "name": "sub_scalar",
+      "kind": "unary_scalar",
+      "doc": "Subtract a scalar from every FP32 matrix element.",
+      "kernel_id": "MatrixSubScalarF32",
+      "entry_point": "matrixSubScalarF32",
+      "expression": "input - push.scalar",
+      "scalar_name": "scalar",
+      "test": {
+        "input": [-2.0, 0.5, 4.0],
+        "scalar": 1.5,
+        "expected": [-3.5, -1.0, 2.5],
+        "tolerance": 0.0001
+      }
+    },
+    {
+      "stable_id": 13,
+      "name": "div_scalar",
+      "kind": "unary_scalar",
+      "doc": "Divide every FP32 matrix element by a scalar.",
+      "kernel_id": "MatrixDivScalarF32",
+      "entry_point": "matrixDivScalarF32",
+      "expression": "input / push.scalar",
+      "scalar_name": "scalar",
+      "test": {
+        "input": [-2.0, 0.5, 4.0],
+        "scalar": 1.5,
+        "expected": [-1.3333333333333333, 0.3333333333333333, 2.6666666666666665],
+        "tolerance": 0.0001
+      }
+    },
+    {
+      "stable_id": 14,
+      "name": "exp",
+      "kind": "unary",
+      "doc": "Take the exponential of every FP32 matrix element.",
+      "kernel_id": "MatrixExpF32",
+      "entry_point": "matrixExpF32",
+      "expression": "exp(input)",
+      "test": {
+        "input": [-1.0, 0.0, 1.0],
+        "expected": [0.36787944117144233, 1.0, 2.718281828459045],
+        "tolerance": 0.001
+      }
+    },
+    {
+      "stable_id": 15,
+      "name": "sin",
+      "kind": "unary",
+      "doc": "Take the sine of every FP32 matrix element.",
+      "kernel_id": "MatrixSinF32",
+      "entry_point": "matrixSinF32",
+      "expression": "sin(input)",
+      "test": {
+        "input": [-1.0, 0.0, 1.0],
+        "expected": [-0.8414709848078965, 0.0, 0.8414709848078965],
+        "tolerance": 0.001
+      }
+    },
+    {
+      "stable_id": 16,
+      "name": "cos",
+      "kind": "unary",
+      "doc": "Take the cosine of every FP32 matrix element.",
+      "kernel_id": "MatrixCosF32",
+      "entry_point": "matrixCosF32",
+      "expression": "cos(input)",
+      "test": {
+        "input": [-1.0, 0.0, 1.0],
+        "expected": [0.5403023058681398, 1.0, 0.5403023058681398],
+        "tolerance": 0.001
+      }
+    },
+    {
+      "stable_id": 17,
+      "name": "reciprocal",
+      "kind": "unary",
+      "doc": "Take the reciprocal of every FP32 matrix element.",
+      "kernel_id": "MatrixReciprocalF32",
+      "entry_point": "matrixReciprocalF32",
+      "expression": "1.0f / input",
+      "test": {
+        "input": [-2.0, 0.5, 4.0],
+        "expected": [-0.5, 2.0, 0.25],
+        "tolerance": 0.001
+      }
+    },
+    {
+      "stable_id": 18,
+      "name": "clamp_max",
+      "kind": "unary_scalar",
+      "doc": "Cap every FP32 matrix element at an upper bound.",
+      "kernel_id": "MatrixClampMaxF32",
+      "entry_point": "matrixClampMaxF32",
+      "expression": "min(input, push.scalar)",
+      "scalar_name": "maximum",
+      "test": {
+        "input": [-2.0, 0.5, 4.0],
+        "scalar": 1.0,
+        "expected": [-2.0, 0.5, 1.0],
+        "tolerance": 0.0001
+      }
+    },
+    {
+      "stable_id": 19,
+      "name": "clamp_min",
+      "kind": "unary_scalar",
+      "doc": "Raise every FP32 matrix element to a lower bound.",
+      "kernel_id": "MatrixClampMinF32",
+      "entry_point": "matrixClampMinF32",
+      "expression": "max(input, push.scalar)",
+      "scalar_name": "minimum",
+      "test": {
+        "input": [-2.0, 0.5, 4.0],
+        "scalar": 0.0,
+        "expected": [0.0, 0.5, 4.0],
+        "tolerance": 0.0001
+      }
+    }
+  ]
+}

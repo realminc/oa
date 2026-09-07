@@ -1,13 +1,14 @@
 // ML softmax operation
 
 #include "../common/types.slang"
-#include "../common/attributes.slang"
 #include "../common/math.slang"
+
+import attributes;
 
 [kernel_name("softmax")]
 [domain("ml")]
 [variant("generic")]
-[dtype("fp32")]
+[dtype("f32")]
 [status("experimental")]
 [shader("compute")]
 [numthreads(256, 1, 1)]
@@ -25,7 +26,7 @@ void mlSoftmaxGeneric(
 [kernel_name("layer_norm")]
 [domain("ml")]
 [variant("generic")]
-[dtype("fp32")]
+[dtype("f32")]
 [status("experimental")]
 [shader("compute")]
 [numthreads(256, 1, 1)]

@@ -8,27 +8,23 @@
 //! - Stateless operations live in matrix, image, audio, video, vision, render,
 //!   ml, and crypto modules.
 //!
-//! There is no public `core` namespace. Runtime machinery lives under `runtime/`.
+//! Foundational contracts live under `core`; common types are also re-exported
+//! from the crate root. Runtime machinery lives under `runtime`.
 
-mod core;
-
-pub mod error;
 pub mod runtime;
 
 pub mod audio;
+pub mod core;
 pub mod crypto;
-pub mod image;
 pub mod matrix;
 pub mod ml;
 pub mod render;
 pub mod video;
 pub mod vision;
 
-// Re-export public types
-pub use error::{Error, Result};
-
+// Re-export the common public vocabulary.
 pub use audio::Audio;
-pub use core::{Format, Image, Matrix};
+pub use core::{DType, Error, ErrorKind, Format, Image, Matrix, Result};
 pub use video::Video;
 
-pub use runtime::Engine;
+pub use runtime::{DeviceSelection, Engine, EngineBuilder, Event};

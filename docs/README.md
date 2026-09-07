@@ -1,7 +1,8 @@
 # OA Rust documentation
 
-The Rust implementation is at the architecture and repository-foundation
-stage. Documentation distinguishes target contracts from verified behavior;
+The Rust implementation has an Experimental one-device compute foundation,
+schema-generated `f32` elementwise slice, and an `i32` Matrix-add dtype proof.
+Documentation distinguishes target contracts from verified behavior;
 the presence of a source module or shader does not imply a shipped capability.
 
 ## Start here
@@ -12,6 +13,12 @@ the presence of a source module or shader does not imply a shipped capability.
   order and acceptance gates.
 - [OA Compatibility Ledger](internal/porting/oaCompatibility.md) — concepts
   preserved, redesigned, deferred, or rejected from the C++ implementation.
+- [Compute Architecture](internal/compute/oaCompute.md) — current executable
+  path, ownership, synchronization, and graph boundary.
+- [Compute Kernel System](internal/compute/oaComputeKernel.md) — schemas,
+  attributes, dtype tokens, storage helpers, shader ABI, and validation.
+- [Performance Evidence](internal/performance/oaPerformance.md) — benchmark,
+  timing, profiling, and claim protocol.
 - [Initial Rust Architecture](internal/research/initialRustArchitecture.md) —
   original design notebook retained as Research, not current authority.
 

@@ -1,6 +1,6 @@
 [package]
 name = "oa"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 rust-version = "1.98"
 
@@ -11,9 +11,11 @@ path = "src/rs/lib.rs"
 ash = "0.38"
 vk-mem = "0.5"
 
-thiserror = "2"
 bitflags = "2"
 smallvec = "1"
+
+[build-dependencies]
+serde_json = "1"
 
 [dev-dependencies]
 anyhow = "1"

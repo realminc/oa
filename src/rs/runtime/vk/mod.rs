@@ -1,4 +1,18 @@
-pub mod device;
-pub mod instance;
-pub mod physical;
-pub mod queue;
+mod buffer;
+mod command;
+mod descriptor;
+mod device;
+mod features;
+mod instance;
+mod physical;
+mod pipeline;
+mod queue;
+mod retirement;
+mod timeline;
+
+pub(super) use buffer::Buffer;
+pub(super) use command::RecordedCommandBuffer;
+pub(super) use device::Device;
+pub(super) use instance::Instance;
+pub(super) use physical::PhysicalDevice;
+pub(super) use retirement::{RetirementService, RetirementTicket};

@@ -22,9 +22,9 @@ semantic migration map, not a file-by-file port checklist.
 | OA concept | Decision | Rust direction |
 |---|---|---|
 | `oa::Engine` as sole execution owner | Preserve | `Engine` owns Vulkan, devices, memory, queues, kernels, scheduling, and profiling. |
-| Runtime wrapper/default engine | Reject | Construction and discovery belong to `Engine::builder`; no second owner or singleton. |
-| `core/` source boundary | Preserve | Internal `core/` owns foundational values and metadata; `lib.rs` explicitly re-exports admitted root types. |
-| Public `oa.core` namespace | Redesign | Rust root paths are canonical; a Python identity alias may exist only for compatibility. |
+| Runtime wrapper/default engine | Redesign | Rust constructs `Engine` explicitly and values retain its opaque internal lifetime. Python may own one implicit process engine for the established `oa.FnMatrix` facade; neither surface introduces a second runtime type. |
+| `core/` source boundary | Preserve and expose | Public `core` owns foundational values, checked metadata, errors/results, and backend-neutral primitives; `lib.rs` explicitly re-exports the common root vocabulary. |
+| Public `oa.core` namespace | Adopt | Rust exposes `oa::core`; Python mirrors it as `oa.core`. Explicit root re-exports remain identity aliases, not duplicate implementations. |
 | Value / operation / session classification | Preserve | Rust structs/enums, module functions, and explicit stateful session structs. |
 | Shared storage with semantic value types | Preserve | Composition and checked zero-copy views; no inheritance requirement. |
 | C++ Pimpl and access bridges | Redesign | Private fields, crate visibility, typed ownership, and narrow safe runtime interfaces. |
@@ -34,11 +34,13 @@ semantic migration map, not a file-by-file port checklist.
 
 | OA concept | Decision | Rust direction |
 |---|---|---|
-| `oa::FnMatrix`, `oa::FnImage`, other `Fn*` namespaces | Redesign | `matrix::`, `image::`, `vision::`, and other lowercase Rust operation modules. |
+| `oa::FnMatrix`, `oa::FnImage`, other `Fn*` namespaces | Redesign by language | Rust uses `matrix::`, `image::`, `vision::`, and other lowercase operation modules. Python retains admitted `oa.Fn*` compatibility facades generated from the same schema. |
 | PascalCase value and session types | Preserve | Normal Rust type naming. |
 | camelCase methods and parameters | Reject | Rust `snake_case`. |
 | C++ `in`/`out`/`inOut` parameter prefixes | Reject | Borrowing, mutable borrowing, and ownership express access mode. |
 | Root semantic vocabulary | Preserve | Curated explicit re-exports from `lib.rs`. |
+| One `Matrix` for dense scalar dtypes | Preserve with Rust boundary typing | `Matrix` retains runtime `DType`; sealed `Element` implementations make host upload/readback generic over admitted Rust primitives without making device storage generic. |
+| `QuantMatrix` separate from dense `Matrix` | Preserve | Packed payload, scale planes, block policy, and logical layout remain one distinct semantic encoded value; Q4/Q8 are not `DType` variants. |
 | Convenience methods | Redesign | Delegate to the same schema-owned operation; never create a second path. |
 | Operator overloads | Defer | Admit only after graph and error behavior are proven without panics. |
 | Public declarations backed by TODOs | Reject | Keep planned APIs in documentation until implementation and contract tests exist. |
@@ -48,9 +50,11 @@ semantic migration map, not a file-by-file port checklist.
 
 | OA concept | Decision | Rust direction |
 |---|---|---|
-| Explicit `submit` and `Event` completion | Preserve | Fallible submission returns an engine-associated event; waiting is explicit. |
+| Eager `Fn*` calls return values | Preserve | Rust domain operations and Python `Fn*` calls return semantic values without mandatory submit/wait calls. |
+| Explicit `submit` and `Event` completion | Preserve as advanced control | Capture, overlap, profiling, multi-device, and distributed paths return engine-associated events. Ordinary host observation flushes and waits for the exact producer; `try_*` observation does not wait. |
 | Destructor never submits or waits | Preserve | `Drop` releases state only and cannot report completion failure. |
-| OA `Status` / `Result<T>` | Redesign | Typed Rust `Result<T, Error>` with contextual sources. |
+| OA `Status` / `Result<T>` | Redesign | `core::Error`, `core::ErrorKind`, and `core::Result<T>` preserve contextual sources without exposing backend error types; common paths are re-exported at the crate root. |
+| OA logging foundation | Redesign | `core` may own backend-neutral levels and diagnostic vocabulary. Applications install process-wide logging policy; engine-owned diagnostic sinks remain runtime composition rather than global core ownership. |
 | `UniquePtr` / `SharedPtr` translation | Redesign | Borrow or own directly; use `Box` or `Arc` only for proved lifetime needs. |
 | Raw owning Vulkan handles in semantic values | Reject | Opaque, typed, lifetime-safe resource ownership. |
 | Hidden CPU fallback | Reject | Unsupported GPU work fails explicitly. |

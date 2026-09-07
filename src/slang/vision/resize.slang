@@ -1,12 +1,13 @@
 // Vision resize operations
 
 #include "../common/types.slang"
-#include "../common/attributes.slang"
+
+import attributes;
 
 [kernel_name("resize")]
 [domain("vision")]
 [variant("nearest")]
-[dtype("fp32")]
+[dtype("f32")]
 [status("experimental")]
 [shader("compute")]
 [numthreads(8, 8, 1)]

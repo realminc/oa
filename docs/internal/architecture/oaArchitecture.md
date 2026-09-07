@@ -39,11 +39,16 @@ the library boundary.
 3. **Composition for optional systems.** Presentation, codecs, transport,
    collectives, and training sessions borrow an engine. They do not own, wrap,
    subclass, or recreate one.
-4. **No hidden ownership.** Convenience scopes may select an engine-owned
-   semantic recorder, but they never create or retain engines, devices,
-   submissions, or resources.
-5. **No hidden execution.** Recording, planning, submission, waiting, readback,
-   and session shutdown are explicit failure-bearing boundaries.
+4. **One retained execution lifetime.** Rust constructs an `Engine` explicitly.
+   Values may retain an opaque handle to that same engine's services so storage
+   and pending work remain valid; they never create a second engine or device
+   owner. Python may expose one binding-owned process engine for its established
+   `oa.FnMatrix` convenience surface.
+5. **Simple eager authoring, visible blocking.** Ordinary domain operations
+   validate, record, and return values without requiring submit/wait ceremony.
+   Host observation may flush, submit, and wait; `try_*` observation never
+   waits. Explicit submission remains a failure-bearing advanced boundary, and
+   destruction never executes or waits.
 6. **One operator source of truth.** A normalized operation schema owns
    signatures, validation, inference, effects, differentiation, lowering
    identity, language surfaces, documentation, and tests.
@@ -81,9 +86,15 @@ The physical source tree expresses dependency and ownership:
 src/rs/
   lib.rs                    curated public facade
   core.rs
-  core/                     foundational values and metadata
+  core/                     public values, metadata, errors, primitives
   runtime.rs
-  runtime/                  execution, memory, graph, Vulkan
+  runtime/
+    dispatch.rs             generic executable compute descriptions
+    engine.rs               public engine implementation and orchestration
+    event.rs                public completion contract
+    storage.rs              safe value-storage boundary
+    shader/                 private Slang artifacts, reflection, metadata
+    vk/                     private Vulkan handles, memory, execution, pipelines
   matrix.rs + matrix/       matrix operations
   image.rs + image/         image operations
   audio.rs + audio/         audio values, operations, sessions
@@ -94,27 +105,32 @@ src/rs/
   crypto.rs + crypto/       crypto operations
 ```
 
-`core/` is initially an internal Rust module. It owns foundational semantic
-values such as buffer, matrix, image, dtype, shape, layout, and checked size
-metadata. It is not a miscellaneous utility directory and owns no Vulkan
-device, queue, allocator, scheduler, or session.
+`core` is the public foundation module. It owns foundational semantic values
+such as buffer, matrix, image, dtype, shape, and layout; checked size and
+identity metadata; and OA's backend-neutral `Error`, `ErrorKind`, and `Result`
+contracts. It is not a miscellaneous utility directory and owns no Vulkan
+device, queue, allocator, scheduler, logging sink, or session. Stateful
+diagnostic output is application-owned or composed beneath `Engine`; `core`
+may own only backend-neutral diagnostic vocabulary.
 
 `lib.rs` explicitly re-exports the admitted root vocabulary:
 
 ```rust
-mod core;
+pub mod core;
 
-pub use core::{Buffer, DType, Image, Matrix, Shape};
+pub use core::{Buffer, DType, Error, ErrorKind, Image, Matrix, Result, Shape};
 pub use runtime::{DeviceId, Engine, Event};
 ```
 
-Wildcard public re-exports are rejected. Source placement in `core/` does not
-by itself create a public `oa::core` namespace. Python may provide an identity
-alias such as `oa.core.Matrix` only when compatibility requires it; the root
-`oa.Matrix` remains canonical.
+Wildcard public re-exports are rejected. `oa::core` is the owning module path;
+the crate root explicitly re-exports the small common vocabulary so
+`oa::Matrix` and `oa::core::Matrix` identify the same type rather than parallel
+implementations. Python mirrors the public foundation module as `oa.core` while
+retaining admitted root identity aliases where useful.
 
-A crate-local `core` module shadows Rust's built-in `core` name for unqualified
-internal paths. Code that needs the language crate uses `::core::...`.
+The crate-local `core` module shadows Rust's built-in `core` name for
+unqualified internal paths. Code that needs the language crate uses
+`::core::...`.
 
 ## 5. Values and storage
 
@@ -129,11 +145,12 @@ Buffer       byte range, placement, allocation identity, readiness
   Texture    sampled/storage/render usage and image or buffer backing
 ```
 
-An owning resource cannot outlive the engine service required to destroy it.
-The first implementation must choose and test an explicit representation for
-that edge; it must not rely on raw handle copying or destructor ordering by
-convention. Views keep the underlying allocation alive and validate that byte
-ranges, strides, formats, and alias relationships remain valid.
+An owning resource retains the internal services required to destroy its
+storage and complete already-produced work, even if the public `Engine` handle
+is dropped first. This is shared lifetime of the same execution owner, not an
+independent runtime facade. Views keep the underlying allocation alive and
+validate that byte ranges, strides, formats, and alias relationships remain
+valid.
 
 Identifiers with distinct meanings use transparent newtypes. Byte sizes,
 offsets, alignments, element counts, and Vulkan-width integers use checked
@@ -161,28 +178,41 @@ One engine may select one or several local physical devices. Remote machines
 never pretend to be local devices and no local allocator spans unrelated
 logical devices.
 
-Submission returns an `Event` identifying exact completion on its originating
-engine and execution epoch. Polling and waiting validate that association.
-Dropping an event does not wait. Dropping a recorder restores selection only.
-Dropping a session releases host state only; explicit `close`, `flush`, `drain`,
-or `abort` reports terminal failure.
+Explicit submission returns an `Event` identifying exact completion on its
+retained originating device and execution epoch. `Event::is_complete` queries
+that timeline and `Event::wait` is an explicit advanced blocking boundary.
+Eager values retain the completion needed by host observation, so ordinary
+math does not traffic in events. Dropping an event does not wait; the engine's
+retirement service keeps submitted resources and their device graph alive
+until completion. Dropping a recorder restores selection only. Dropping a
+session releases host state only; explicit `close`, `flush`, `drain`, or
+`abort` reports terminal failure.
 
-The public construction shape is expected to begin with:
+The Experimental one-device construction shape is:
 
 ```rust
 let engine = Engine::builder()
-    .devices(DeviceSelection::All)
+    .devices(DeviceSelection::Automatic)
     .build()?;
 ```
 
-This syntax remains Planned until the first vertical slice proves its lifetime
-and error behavior.
+`DeviceSelection::Index` selects an exact physical-device ordinal reported by
+the active Vulkan loader. Multi-device `All` selection remains Planned until
+Stage 5 proves explicit transfer and per-device ownership.
 
 ## 7. Authoring, graphs, and execution
 
 Rust and Python provide eager authoring over the same semantic contracts used
-for compiled execution. Eager authoring does not imply one immediate Vulkan
-submission per operation.
+for compiled execution. An eager operation returns its output value. The
+engine-owned recorder normally batches that work; the current Stage 1 direct
+lowerer may submit asynchronously per operation as an Experimental bridge, but
+that behavior is not the public contract.
+
+Host observation such as `Matrix::read::<T>` or `Matrix::read_f32` flushes the
+producing work and waits for its exact completion before exposing values.
+Non-blocking observation uses an explicitly named `try_*` API. Advanced callers
+may capture work and use explicit engine submission and events for overlap,
+profiling, local multi-device placement, or distributed orchestration.
 
 The semantic graph contains:
 
@@ -199,6 +229,12 @@ The executable graph contains:
 - render, media, and presentation work;
 - queue selection, barriers, ownership transfer, and completion;
 - concrete resources, pipelines, and push/binding layouts.
+
+Domain lowering emits generic executable descriptions such as
+`ComputeDispatch`; it does not add `submit_matrix_add`, `submit_image_resize`,
+or other operation-specific methods to `Engine`. The engine owns generic
+record/submit paths. Kernel identities and pipeline lookup are generated from
+shader metadata as that registry lands.
 
 Compilation proceeds conceptually as:
 
@@ -222,16 +258,21 @@ executable node retains the identity of every contributing semantic operation.
 Stateless operations use lowercase Rust modules:
 
 ```rust
-let sum = matrix::add(&left, &right)?;
-let resized = vision::resize(&image, extent)?;
+let one = matrix::ones(&engine, [2, 3])?;
+let two = matrix::full(&engine, [2, 3], 2.0)?;
+let sum = matrix::add(&one, &two)?;
+let values = sum.read_f32()?;
 ```
 
 Type-local constructors and convenience methods may delegate to the same
 schema-owned implementation when they add no second validation or lowering
-path. C++ `FnMatrix` and similar namespace shapes are not transliterated.
+path. Rust does not transliterate C++ namespace casing: `oa::FnMatrix::add`
+becomes `oa::matrix::add`. Python retains `oa.FnMatrix` compatibility and may
+hide its binding-owned process engine, matching the established three-line
+authoring surface.
 
 Operator traits are deferred until the failure model is proven. An operator
-must not hide a panic, a submission, a wait, or a fallback. If an operator
+must not hide a panic, wait, or fallback. If an operator
 records an infallible semantic node while validation is deferred, that deferred
 failure and its diagnostic boundary must be explicit in the graph contract.
 
@@ -258,6 +299,8 @@ command and verified for drift in CI.
 
 ## 10. Shader and kernel boundary
 
+The detailed contract is [OA Rust Compute Kernel System](../compute/oaComputeKernel.md).
+
 Shipping GPU programs remain first-class Slang sources under `src/slang`.
 Reflection and a small OA attribute schema describe entry points, bindings,
 workgroup geometry, capabilities, dtypes, layouts, specialization parameters,
@@ -271,6 +314,11 @@ static shader attributes.
 Development compilation, precompiled release artifacts, and caches converge on
 one validated artifact representation. Shader compilation or metadata failure
 fails the owning build/generation operation; it is never silently ignored.
+
+Target-independent Slang compilation, reflection, artifact identity, and
+kernel metadata live under `runtime/shader`. Vulkan shader modules, descriptor
+layouts, compute pipelines, and Vulkan pipeline caches live under `runtime/vk`.
+There is no public shader subsystem and no second Vulkan-shaped engine facade.
 
 ## 11. Unsafe, concurrency, and failure
 
@@ -293,6 +341,9 @@ capabilities, allocation failure, compilation failure, or runtime execution
 failure. There is no hidden CPU fallback.
 
 ## 12. Evidence and status
+
+Compute execution is detailed in [OA Rust Compute Architecture](../compute/oaCompute.md),
+and performance claims follow [OA Rust Performance Evidence](../performance/oaPerformance.md).
 
 Every operation needs an independent oracle, property test, differential
 reference, or conformance stream. GPU kernels cover zero, odd, minimal,
