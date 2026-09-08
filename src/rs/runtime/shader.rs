@@ -1,7 +1,5 @@
 //! Private target-independent shader artifacts and metadata.
 
-use std::ffi::CStr;
-
 use crate::{Error, Result};
 
 const SPIRV_MAGIC: u32 = 0x0723_0203;
@@ -9,8 +7,8 @@ const SPIRV_MAGIC: u32 = 0x0723_0203;
 /// A build-validated shader artifact embedded into the OA library.
 pub struct ShaderArtifact {
 	bytes: &'static [u8],
-	pub entry_point: &'static CStr,
 	pub workgroup_size: [u32; 3],
+	pub dispatch_tile_size: [u32; 3],
 	pub push_constant_size: u32,
 }
 
@@ -57,12 +55,22 @@ mod tests {
 	use super::{KernelId, decode_spirv};
 
 	#[test]
-	fn embedded_elementwise_artifacts_match_their_validated_abi() -> crate::Result<()> {
+	fn embedded_matrix_artifacts_match_their_validated_abi() -> crate::Result<()> {
 		for kernel in KernelId::ALL {
 			let artifact = kernel.artifact();
 			assert!(!artifact.spirv_words()?.is_empty());
-			assert_eq!(artifact.workgroup_size, [256, 1, 1]);
-			assert!(matches!(artifact.push_constant_size, 12 | 16));
+			match kernel {
+				KernelId::MatrixMatMulNtTiledF32 => {
+					assert_eq!(artifact.workgroup_size, [256, 1, 1]);
+					assert_eq!(artifact.dispatch_tile_size, [64, 64, 1]);
+					assert_eq!(artifact.push_constant_size, 24);
+				}
+				_ => {
+					assert_eq!(artifact.workgroup_size, [256, 1, 1]);
+					assert_eq!(artifact.dispatch_tile_size, [256, 1, 1]);
+					assert!(matches!(artifact.push_constant_size, 12 | 16));
+				}
+			}
 		}
 		Ok(())
 	}

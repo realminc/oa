@@ -59,7 +59,7 @@ impl ComputePipeline {
 		let stage = ash::vk::PipelineShaderStageCreateInfo::default()
 			.stage(ash::vk::ShaderStageFlags::COMPUTE)
 			.module(module)
-			.name(artifact.entry_point);
+			.name(c"main");
 		let pipeline_info = ash::vk::ComputePipelineCreateInfo::default()
 			.stage(stage)
 			.layout(layout);

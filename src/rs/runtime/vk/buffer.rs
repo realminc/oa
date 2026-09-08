@@ -15,6 +15,7 @@ struct BufferInner {
 	handle: ash::vk::Buffer,
 	allocation: Mutex<vk_mem::Allocation>,
 	size: usize,
+	device_size: ash::vk::DeviceSize,
 	descriptor_index: u32,
 	device: Device,
 }
@@ -71,6 +72,7 @@ impl Buffer {
 				handle,
 				allocation: Mutex::new(allocation),
 				size,
+				device_size,
 				descriptor_index,
 				device: device.clone(),
 			}),
@@ -164,6 +166,14 @@ impl Buffer {
 
 	pub(in crate::runtime) fn descriptor_index(&self) -> u32 {
 		self.inner.descriptor_index
+	}
+
+	pub(in crate::runtime) fn raw(&self) -> ash::vk::Buffer {
+		self.inner.handle
+	}
+
+	pub(in crate::runtime) fn size(&self) -> ash::vk::DeviceSize {
+		self.inner.device_size
 	}
 }
 

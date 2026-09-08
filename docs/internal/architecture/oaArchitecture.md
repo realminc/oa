@@ -92,9 +92,12 @@ src/rs/
     dispatch.rs             generic executable compute descriptions
     engine.rs               public engine implementation and orchestration
     event.rs                public completion contract
+    executable_graph.rs     private owned nodes and resource hazards
+    plan.rs                 public immutable captured execution
+    session.rs              private eager recording and batch ownership
     storage.rs              safe value-storage boundary
     shader/                 private Slang artifacts, reflection, metadata
-    vk/                     private Vulkan handles, memory, execution, pipelines
+    vk/                     private Vulkan handles, memory, execution, timing
   matrix.rs + matrix/       matrix operations
   image.rs + image/         image operations
   audio.rs + audio/         audio values, operations, sessions
@@ -168,7 +171,15 @@ Engine
   kernel artifacts and pipeline caches
   semantic and executable compilation services
   scheduler and profiler
+  structured logging session
 ```
+
+Each engine owns one structured logging session configured by `LogOptions`.
+Weak thread-local selection routes namespaced logging macros on the owning
+thread and restores the previous live selection for nested engines. An
+unassociated thread falls back to standard error. Logging never owns runtime
+services, submits work, waits, or establishes completion; explicit flush and
+close boundaries report retained sink failures.
 
 `DeviceId` identifies a device within one engine and is not a raw Vulkan handle.
 Public `Device` information, if admitted, is a borrowed view or immutable value;
@@ -204,15 +215,46 @@ Stage 5 proves explicit transfer and per-device ownership.
 
 Rust and Python provide eager authoring over the same semantic contracts used
 for compiled execution. An eager operation returns its output value. The
-engine-owned recorder normally batches that work; the current Stage 1 direct
-lowerer may submit asynchronously per operation as an Experimental bridge, but
-that behavior is not the public contract.
+engine-owned private execution session records non-empty operations into an
+eager batch. Blocking host observation submits the producing batch and waits;
+`Engine::checkpoint` explicitly submits pending eager work and returns its
+exact event. This batching policy does not change the domain-operation surface.
 
 Host observation such as `Matrix::read::<T>` or `Matrix::read_f32` flushes the
 producing work and waits for its exact completion before exposing values.
 Non-blocking observation uses an explicitly named `try_*` API. Advanced callers
 may capture work and use explicit engine submission and events for overlap,
 profiling, local multi-device placement, or distributed orchestration.
+
+The Experimental reusable path is:
+
+```rust
+let (plan, output) = engine.capture(|| {
+    let product = matrix::mat_mul_nt(&input, &weight)?;
+    matrix::add(&product, &bias)
+})?;
+let event = engine.submit(&plan)?;
+event.wait()?;
+let values = output.read_f32()?;
+```
+
+Capture is isolated and never submits or waits. It currently requires an empty
+eager session, rejects nesting and empty captures, and restores eager recording
+after success, error, or unwind. Plans retain exact captured buffers and may be
+submitted repeatedly only through their originating engine.
+
+Whole-plan device timing is an explicit instrumented submission rather than a
+property of all execution:
+
+```rust
+let event = engine.submit_timed(&plan)?;
+event.wait()?;
+let device_duration = event.device_duration()?;
+```
+
+The event owns the measurement for that replay. Device duration does not include
+host recording, queue submission, waiting, or readback time and is not a
+host/device clock correlation.
 
 The semantic graph contains:
 
@@ -261,6 +303,7 @@ Stateless operations use lowercase Rust modules:
 let one = matrix::ones(&engine, [2, 3])?;
 let two = matrix::full(&engine, [2, 3], 2.0)?;
 let sum = matrix::add(&one, &two)?;
+let product = matrix::mat_mul_nt(&one, &two)?; // [2, 3] × [2, 3]ᵀ -> [2, 2]
 let values = sum.read_f32()?;
 ```
 
@@ -270,6 +313,12 @@ path. Rust does not transliterate C++ namespace casing: `oa::FnMatrix::add`
 becomes `oa::matrix::add`. Python retains `oa.FnMatrix` compatibility and may
 hide its binding-owned process engine, matching the established three-line
 authoring surface.
+
+The first Experimental BLAS slice names the physical semantic convention
+directly: `matrix::mat_mul_nt` accepts `[M, K]` and `[N, K]` and produces
+`[M, N]`. It submits through the same generic engine boundary as elementwise
+operations; applications do not manually submit or wait unless they enter a
+future explicit orchestration surface.
 
 Operator traits are deferred until the failure model is proven. An operator
 must not hide a panic, wait, or fallback. If an operator
@@ -305,6 +354,13 @@ Shipping GPU programs remain first-class Slang sources under `src/slang`.
 Reflection and a small OA attribute schema describe entry points, bindings,
 workgroup geometry, capabilities, dtypes, layouts, specialization parameters,
 and candidate identity where reliable.
+
+Each compiled shader module owns exactly one stage entry point named `main`.
+Semantic and physical identity comes from its stable kernel ID, OA attributes,
+source/artifact identity, and compiled module hash—not from a globally unique
+Slang function name. A source containing several independently dispatchable
+kernels is split into one module per kernel before it enters the artifact
+registry.
 
 Generated metadata answers what a kernel is and requires. The runtime planner
 answers whether it should run for a particular operation, shape, device, and

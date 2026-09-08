@@ -7,18 +7,26 @@ use std::{
 use serde_json::{Value, json};
 
 const SCHEMA: &str = "tools/gen/fn/schema/matrix_elemwise.json";
+const BLAS_SCHEMA: &str = "tools/gen/fn/schema/matrix_blas.json";
 const GENERATOR: &str = "tools/gen/fn/generate.py";
 const STORAGE: &str = "src/slang/common/storage.slang";
 const ATTRIBUTES: &str = "src/slang/common/attributes.slang";
+const ENTRY_POINT: &str = "main";
+
+struct ShaderBuild<'a> {
+	output_directory: &'a Path,
+	slangc: &'a std::ffi::OsStr,
+	spirv_val: &'a std::ffi::OsStr,
+}
 
 fn main() {
 	if let Err(error) = build_shaders() {
-		panic!("matrix-elementwise shader build failed: {error}");
+		panic!("matrix shader build failed: {error}");
 	}
 }
 
 fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
-	for source in [SCHEMA, GENERATOR, STORAGE, ATTRIBUTES] {
+	for source in [SCHEMA, BLAS_SCHEMA, GENERATOR, STORAGE, ATTRIBUTES] {
 		println!("cargo:rerun-if-changed={source}");
 	}
 	println!("cargo:rerun-if-env-changed=SLANGC");
@@ -36,15 +44,19 @@ fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
 	let output_directory = PathBuf::from(env::var_os("OUT_DIR").ok_or("OUT_DIR is unavailable")?);
 	let slangc = env::var_os("SLANGC").unwrap_or_else(|| "slangc".into());
 	let spirv_val = env::var_os("SPIRV_VAL").unwrap_or_else(|| "spirv-val".into());
+	let build = ShaderBuild {
+		output_directory: &output_directory,
+		slangc: &slangc,
+		spirv_val: &spirv_val,
+	};
 	for operation in operations {
 		build_shader(
 			operation,
 			operation,
 			default_dtype,
 			workgroup_size,
-			&output_directory,
-			&slangc,
-			&spirv_val,
+			"src/slang/matrix/elemwise",
+			&build,
 		)?;
 		if let Some(variants) = operation["additional_dtype_variants"].as_array() {
 			for variant in variants {
@@ -53,12 +65,29 @@ fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
 					variant,
 					default_dtype,
 					workgroup_size,
-					&output_directory,
-					&slangc,
-					&spirv_val,
+					"src/slang/matrix/elemwise",
+					&build,
 				)?;
 			}
 		}
+	}
+
+	let blas_schema: Value = serde_json::from_slice(&fs::read(BLAS_SCHEMA)?)?;
+	let blas_operations = array_at(&blas_schema, "operations")?;
+	let blas_dtype = string_at(&blas_schema, "dtype")?;
+	let blas_workgroup_size = &blas_schema["workgroup_size"];
+	if blas_operations.is_empty() {
+		return Err("matrix BLAS schema contains no operations".into());
+	}
+	for operation in blas_operations {
+		build_shader(
+			operation,
+			operation,
+			blas_dtype,
+			blas_workgroup_size,
+			"src/slang/matrix/blas",
+			&build,
+		)?;
 	}
 	Ok(())
 }
@@ -84,25 +113,27 @@ fn build_shader(
 	variant: &Value,
 	default_dtype: &str,
 	workgroup_size: &Value,
-	output_directory: &Path,
-	slangc: &std::ffi::OsStr,
-	spirv_val: &std::ffi::OsStr,
+	source_directory: &str,
+	build: &ShaderBuild<'_>,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	let name = string_at(operation, "name")?;
-	let entry_point = string_at(variant, "entry_point")?;
 	let dtype = variant["dtype"].as_str().unwrap_or(default_dtype);
 	let kernel_name = variant["kernel_name"].as_str().unwrap_or(name);
 	let source_stem = variant["source_stem"].as_str().unwrap_or(name);
-	let source = format!("src/slang/matrix/elemwise/{source_stem}.gen.slang");
+	let source = format!("{source_directory}/{source_stem}.gen.slang");
 	println!("cargo:rerun-if-changed={source}");
-	let spirv = output_directory.join(format!("matrix_{name}_{dtype}.spv"));
-	let reflection = output_directory.join(format!("matrix_{name}_{dtype}.reflection.json"));
+	let spirv = build
+		.output_directory
+		.join(format!("matrix_{name}_{dtype}.spv"));
+	let reflection = build
+		.output_directory
+		.join(format!("matrix_{name}_{dtype}.reflection.json"));
 
-	let slang_output = Command::new(slangc)
+	let slang_output = Command::new(build.slangc)
 		.arg(&source)
 		.args([
 			"-entry",
-			entry_point,
+			ENTRY_POINT,
 			"-stage",
 			"compute",
 			"-target",
@@ -122,33 +153,28 @@ fn build_shader(
 		.arg("-o")
 		.arg(&spirv)
 		.output()
-		.map_err(|source| format!("could not execute {slangc:?}: {source}"))?;
+		.map_err(|source| format!("could not execute {:?}: {source}", build.slangc))?;
 	if !slang_output.status.success() {
 		return Err(format!(
-			"{slangc:?} failed for matrix.{name} with {}\n{}",
+			"{:?} failed for matrix.{name} with {}\n{}",
+			build.slangc,
 			slang_output.status,
 			String::from_utf8_lossy(&slang_output.stderr)
 		)
 		.into());
 	}
 
-	validate_reflection(
-		&reflection,
-		operation,
-		entry_point,
-		kernel_name,
-		dtype,
-		workgroup_size,
-	)?;
+	validate_reflection(&reflection, operation, kernel_name, dtype, workgroup_size)?;
 
-	let validation_output = Command::new(spirv_val)
+	let validation_output = Command::new(build.spirv_val)
 		.args(["--target-env", "vulkan1.3"])
 		.arg(&spirv)
 		.output()
-		.map_err(|source| format!("could not execute {spirv_val:?}: {source}"))?;
+		.map_err(|source| format!("could not execute {:?}: {source}", build.spirv_val))?;
 	if !validation_output.status.success() {
 		return Err(format!(
-			"{spirv_val:?} failed for matrix.{name} with {}\n{}",
+			"{:?} failed for matrix.{name} with {}\n{}",
+			build.spirv_val,
 			validation_output.status,
 			String::from_utf8_lossy(&validation_output.stderr)
 		)
@@ -160,7 +186,6 @@ fn build_shader(
 fn validate_reflection(
 	path: &Path,
 	operation: &Value,
-	entry_point: &str,
 	kernel_name: &str,
 	dtype: &str,
 	workgroup_size: &Value,
@@ -171,8 +196,8 @@ fn validate_reflection(
 	let entry_points = array_at(&reflection, "entryPoints")?;
 	let entry = entry_points
 		.iter()
-		.find(|entry| entry["name"] == entry_point)
-		.ok_or_else(|| format!("reflection does not contain {entry_point}"))?;
+		.find(|entry| entry["name"] == ENTRY_POINT)
+		.ok_or_else(|| format!("reflection does not contain {ENTRY_POINT}"))?;
 	require_equal(&entry["stage"], &json!("compute"), "entry-point stage")?;
 	require_equal(
 		&entry["threadGroupSize"],
@@ -182,10 +207,11 @@ fn validate_reflection(
 	let attributes = entry["userAttribs"]
 		.as_array()
 		.ok_or("reflection does not contain OA kernel attributes")?;
+	let variant = operation["variant"].as_str().unwrap_or("generic");
 	for (attribute_name, argument) in [
 		("kernel_name", kernel_name),
 		("domain", "matrix"),
-		("variant", "generic"),
+		("variant", variant),
 		("dtype", dtype),
 		("status", "experimental"),
 	] {
@@ -284,7 +310,15 @@ fn expected_push_fields(kind: &str) -> Result<Vec<(&'static str, &'static str, u
 			("element_count", "uint32", 8),
 			("scalar", "float32", 12),
 		]),
-		_ => Err(format!("unsupported matrix elementwise kind {kind}")),
+		"mat_mul_nt" => Ok(vec![
+			("left_index", "uint32", 0),
+			("right_index", "uint32", 4),
+			("output_index", "uint32", 8),
+			("m", "uint32", 12),
+			("n", "uint32", 16),
+			("k", "uint32", 20),
+		]),
+		_ => Err(format!("unsupported matrix operation kind {kind}")),
 	}
 }
 

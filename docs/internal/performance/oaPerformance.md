@@ -1,20 +1,29 @@
 # OA Rust Performance Evidence
 
-**Status:** Canonical protocol; benchmark infrastructure is Planned
+**Status:** Canonical protocol; recording infrastructure is Experimental
 
-**Updated:** 2026-09-07
+**Updated:** 2026-09-08
 
 This document consolidates benchmarking, profiling, and GPU inspection policy
 for the Rust implementation. It preserves the useful C++ OA evidence model
-without claiming that its runners, timestamps, graph counters, or tuned routes
-already exist here.
+while distinguishing the implemented recording foundation from missing
+baseline, calibrated-clock, graph-counter, and tuned-route systems.
 
 ## Current status
 
-OARS has no canonical fresh-process benchmark runner, calibrated Vulkan
-timestamp service, route/fallback telemetry, checked-in benchmark suite, or
-device roofline artifact yet. Consequently it has no admitted performance,
-regression, utilization, occupancy, or bandwidth claims.
+OARS has Experimental whole-plan Vulkan device duration for explicitly timed
+`ExecutionPlan` replay, a generic fresh-process recording runner, and a
+checked-in six-shape FP32 MatMul suite. The workload checks every output before
+timing, identifies its one fixed route and structurally unavailable fallback,
+records synchronized wall and device duration separately, and preserves raw
+logs plus source, executable, toolchain, Vulkan, device, driver, power, and
+thermal provenance.
+
+The runner does not yet accept hardware-scoped baselines or compare OA and
+OARS. The runtime also lacks calibrated host/device clocks, physical shader
+artifact hashes in execution telemetry, general route/fallback counters,
+per-node timing, and a device roofline artifact. Consequently OARS still has no
+admitted performance, regression, utilization, occupancy, or bandwidth claims.
 
 Ordinary `cargo test` timings and one interactive hardware run are correctness
 or development evidence only. They are not a performance baseline.
@@ -79,6 +88,22 @@ GPU timestamps require the queue's timestamp-valid-bit handling and calibrated
 host/device clock provenance when correlated with CPU phases. Unsupported
 calibration is reported as unavailable; no offset is invented.
 
+The current device-only path is:
+
+```rust
+let event = engine.submit_timed(&plan)?;
+event.wait()?;
+let gpu = event.device_duration()?;
+```
+
+The recorded timestamps bracket the complete executable graph. One fresh query
+pair belongs to each timed submission, and the event retains it through exact
+timeline completion. `try_device_duration` is non-blocking; ordinary untimed
+events reject duration readback. Timestamp values use modular subtraction at
+the selected compute queue's valid-bit width and scale by the queried timestamp
+period. This is device elapsed time only—not host submission, synchronized wall
+time, or a calibrated host/device clock mapping.
+
 Validation and GPU-assisted instrumentation are disabled for release timing
 only after the exact artifact passes those profiles separately. The benchmark
 records both configurations.
@@ -121,20 +146,41 @@ operation/kernel identity, and raw artifact. An unavailable counter remains
 unmeasured. Do not infer it from elapsed time, source code, another vendor, or a
 failed capture.
 
-## Runner acceptance contract
+## Recording runner
 
-The future OARS benchmark runner must emit machine-readable raw artifacts with:
+Build and stage the dedicated release workload, then select one or more suite
+entries:
+
+```bash
+cargo build --release --example core_mat_mul_bench
+python3 tools/build/stage.py --profile release --target core_mat_mul_bench
+python3 tools/profiling/suite.py --workload core.matmul_nt.square_1024
+```
+
+`tools/profiling/bench.py` runs every warmup and measured sample in a fresh
+process. `tools/profiling/suite.py` owns the checked-in workload set and writes
+one JSON document plus raw stdout/stderr per workload. It refuses fewer than
+seven measured processes and Vulkan validation-layer timing. A dirty tree
+requires the explicit `--allow-dirty` escape hatch and is always recorded as
+noncanonical. Debug profiles, unresolved selected-device identity, and a
+missing local Vulkan registry are also noncanonical.
+
+The current machine-readable artifacts include:
 
 - executable and commit identity, dirty state, build profile and flags;
 - Rust, Slang, SPIR-V tools, Vulkan loader/registry, device, and driver;
-- schema version, semantic operation, physical kernel ID/hash, and route;
+- schema version, semantic operation, stable command identity, fixed route,
+  and complete executable hash;
 - dimensions, dtype, accumulator policy, layout, batch, and seed;
 - correctness/oracle result and fallback counters;
 - named timing boundaries, warmups, measured samples, cooldown/thermal data;
-- median, spread, and units without discarding raw samples.
+- median, median absolute deviation, percentiles, spread, and units without
+  discarding raw samples.
 
-Until that exists, performance work may be labeled **Exploratory** with exact
-commands and limitations. It cannot be labeled a regression gate, speedup,
+Canonical recording is necessary but is not baseline acceptance. Until
+hardware-scoped baseline comparison and physical artifact telemetry exist,
+numbers may be labeled **Experimental evidence** with exact commands and
+limitations. They cannot be labeled a regression gate, OA-versus-OARS speedup,
 cross-vendor result, or Shipped performance capability.
 
 ## References

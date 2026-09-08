@@ -20,6 +20,10 @@ pub enum ErrorKind {
 	MissingCapability,
 	/// A finite runtime identity, counter, or address space was exhausted.
 	ResourceExhausted,
+	/// An operation was requested in an incompatible lifecycle state.
+	FailedPrecondition,
+	/// A host filesystem or stream operation failed.
+	Io,
 }
 
 /// Error returned by fallible OA operations.
@@ -121,6 +125,22 @@ impl Error {
 			kind: ErrorKind::ResourceExhausted,
 			message: message.into(),
 			source: None,
+		}
+	}
+
+	pub(crate) fn failed_precondition(message: impl Into<String>) -> Self {
+		Self {
+			kind: ErrorKind::FailedPrecondition,
+			message: message.into(),
+			source: None,
+		}
+	}
+
+	pub(crate) fn io(operation: &'static str, source: std::io::Error) -> Self {
+		Self {
+			kind: ErrorKind::Io,
+			message: format!("{operation} failed"),
+			source: Some(Box::new(source)),
 		}
 	}
 }

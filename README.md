@@ -73,6 +73,15 @@ retaining separate private pipelines. All 19 operations admit `f32`; `add`
 also has one generated exact-dtype `i32` route. Mixed dense dtypes fail rather
 than promoting implicitly.
 
+A second normalized matrix schema owns the Experimental FP32
+`matrix::mat_mul_nt` baseline. It preserves OA's `[M, K] × [N, K] -> [M, N]`
+weight-layout convention, generates its public function, stable private kernel
+identity, bounds-checked Slang module, and hardware-oracle test, and lowers
+through the same generic engine submission path. Its current physical route is
+an FP32 64×64×16 shared-memory tile adapted from OA's established GEMM
+arithmetic. It remains Experimental and is not a performance-qualified routing
+system.
+
 Each Rust operation validates and returns a matrix while its direct lowerer
 creates a generic compute-dispatch description. One engine submission path
 resolves that description, dispatches asynchronously, and retains its
@@ -83,9 +92,37 @@ boundary that waits; typed `try_read::<T>` does not. Binary broadcasting and
 in-place mutation are not yet admitted.
 
 No GPU operation is currently classified as Shipped. The active Experimental
-checkpoint is the one-device dense elementwise path from checked initialization
-through asynchronous dispatch and synchronized host observation to schema-owned
-independent golden oracles. The `i32` proof currently covers addition only.
+checkpoint is the one-device dense elementwise and FP32 `mat_mul_nt` path from
+checked initialization through asynchronous dispatch and synchronized host
+observation to schema-owned independent golden oracles. The `i32` proof
+currently covers addition only.
+
+Build and stage the public matmul tutorial, then run its independent CPU
+validation with:
+
+```bash
+cargo build --release --example core_mat_mul_intro
+python3 tools/build/stage.py --profile release --target core_mat_mul_intro
+./bin/release/sdk/tutorials/core/core_mat_mul_intro
+```
+
+Cargo keeps intermediate artifacts under `target/`. The staging step copies
+only runnable binaries into OA's `bin/{debug,release}/` layout.
+
+The Experimental MatMul benchmark companion measures captured-plan replay with
+whole-graph Vulkan timestamps. Its six checked-in workloads use fresh
+processes, independent constant-input correctness checks, fixed warmup and
+cooldown, raw logs, and machine-readable provenance:
+
+```bash
+cargo build --release --example core_mat_mul_bench
+python3 tools/build/stage.py --profile release --target core_mat_mul_bench
+python3 tools/profiling/suite.py
+```
+
+Canonical recording requires a clean release tree and a resolved Vulkan device
+and registry. The runner does not yet accept baselines or establish a release
+performance claim.
 
 ## Documentation
 
@@ -105,6 +142,7 @@ The intended baseline gates are:
 
 ```bash
 python3 -m unittest discover -s tools/gen/fn/tests -v
+python3 -m unittest discover -s tools/profiling/tests -v
 python3 tools/gen/fn/generate.py --check
 cargo fmt --check
 cargo clippy --all-targets --all-features -- -D warnings

@@ -17,18 +17,21 @@ matrix operation schema
   -> generated Rust domain function
   -> shared semantic validation and direct lowering
   -> runtime::ComputeDispatch
-  -> EngineHandle::submit
+  -> private ExecutionSession::record
+  -> owned ExecutableGraph snapshots
+  -> blocking observation or Engine::checkpoint
+  -> one joined hazard-planned graph
   -> runtime/vk command recording
   -> one Vulkan compute queue
   -> timeline Event retained by the output Matrix
   -> read::<T> waits at host observation
 ```
 
-The current Experimental lowerer submits each operation immediately. Eager
-submission is an implementation bridge, not the long-term public contract.
-Ordinary APIs return values and never require callers to invoke `submit` or
-`wait`. The target engine-owned execution session may batch eager work without
-changing that surface.
+The current Experimental lowerer records each non-empty operation into the
+engine-owned private execution session. Ordinary APIs return values and never
+require callers to invoke `submit` or `wait`. Blocking host observation submits
+the pending batch and waits for its exact event; `Engine::checkpoint` is the
+explicit submission boundary.
 
 ## Ownership boundaries
 
@@ -37,6 +40,8 @@ changing that surface.
 | `matrix` and other domain modules | semantic validation, output shape/dtype, operation identity, lowering | Vulkan handles, queues, or per-operation engine methods |
 | operation schema and generator | mechanical API, contracts, kernel identity, shader source, tests | runtime policy or measured route choice |
 | `runtime::ComputeDispatch` | backend-neutral executable bindings, access declarations, push values, workgroups | mathematical semantics or Vulkan handles |
+| private `ExecutableGraph` | owned concrete buffer bindings, copied push values, resource hazards, ordered nodes | public graph editing or semantic inference |
+| private `ExecutionSession` | pending eager graphs, written-storage readiness, batch transfer at submission | device, queue, allocator, or public lifecycle ceremony |
 | `Engine` and its private handle | device services, submission epochs, retirement, future scheduling/profiling | duplicated domain operations |
 | `runtime/vk` | Ash handles, descriptors, pipelines, command recording, queue submission, timeline synchronization | public matrix/image/audio semantics |
 
@@ -72,15 +77,28 @@ generic dispatch description; it never grows `submit_matrix_add`,
 
 ## Submission, synchronization, and observation
 
-Every non-empty current compute operation records one command buffer, submits
-to the same compute queue, and signals the next timeline value. A submission
-waits on the preceding value at `ALL_COMMANDS`, which serializes the current
-one-queue prototype and provides the visibility edge between chained matrix
-operations. This is correct for the admitted path but is not the target
-fine-grained graph scheduler.
+Every non-empty current compute operation records an owned graph snapshot into
+the private execution session. At blocking observation or an explicit
+checkpoint, the session joins all pending nodes, records one command buffer,
+submits it to the same compute queue, and signals the next timeline value.
+Within that graph the recorder tracks each retained buffer and inserts a Vulkan
+buffer barrier for write-to-read, read-to-write, and write-to-write conflicts;
+read-to-read needs no barrier. State is retained across unrelated nodes so a
+dependency is not lost merely because another resource was used between its
+producer and consumer.
 
-Zero-element operations record no dispatch. They still take an engine
-checkpoint so their output owns an exact readiness state.
+All current accesses are storage-buffer accesses on one compute queue. Their
+graph barriers therefore use `COMPUTE_SHADER` for both stages,
+`SHADER_STORAGE_READ` and/or `SHADER_STORAGE_WRITE` for the declared accesses,
+the complete logical buffer range, and no queue-family transfer. A submission
+still waits on the preceding timeline value at `ALL_COMMANDS`, which owns the
+inter-graph visibility edge in the one-queue prototype. Transfers, images,
+indirect dispatch, queue changes, and subranges require distinct executable
+node and synchronization contracts; the compute barrier is not generalized to
+them.
+
+Zero-element operations record no dispatch and their empty output is
+immediately host-ready. They do not force an unrelated eager batch to submit.
 
 `Matrix::read::<T>` and its `read_f32` convenience wrapper are blocking
 host-observation boundaries. They validate the requested Rust element type,
@@ -89,9 +107,17 @@ storage. `Matrix::try_read::<T>` and `try_read_f32` return `NotReady` instead
 of waiting. `Drop` never
 submits, waits, drains, maps, or reads back.
 
-The future executable graph must derive RAW, WAR, and WAW dependencies from
-declared resource access. Any cross-queue path additionally owns stage/access
-masks, queue-family transfer, and completion edges; source order is not proof.
+Recorded output storage uses a shared private readiness state. It moves from
+recorded, to submitted with an exact event, to observable after completion. A
+submission or recording failure makes production failure persistent for later
+observation. `try_read` returns `NotReady` for both recorded and incomplete
+submitted work and never flushes the session.
+
+Isolated capture can transfer the pending graph and written-storage bindings
+into a public immutable `ExecutionPlan`. Capture never submits or waits and
+plan replay returns an exact event. The current plan retains exact buffers and
+re-records a primary command buffer on every submission; command caching,
+stable mutable slots, and semantic graph identity remain incomplete.
 
 ## Numeric contract
 
@@ -119,12 +145,12 @@ dtype tokens; see
 
 | Concern | Current Experimental behavior | Target dependency |
 |---|---|---|
-| Eager execution | direct asynchronous submission per operation | engine-owned batching session |
+| Eager execution | engine-owned batching at observation/checkpoint | scheduling diagnostics and broader executable nodes |
+| Reuse | immutable captured graph re-recorded per submission | compiled command caching and stable slots |
 | Kernel selection | exact schema-generated kernel ID | capability- and measurement-filtered candidates |
-| Dependencies | serialized timeline chain on one compute queue | executable resource-hazard graph |
+| Dependencies | per-buffer graph hazards plus a serialized inter-submit timeline chain | multi-queue executable resource-hazard graph |
 | Memory | checked VMA-backed host-visible storage | upload/readback rings and transient planning |
-| Profiling | no admitted timestamp/statistics API | calibrated timestamps and phase counters |
-| Reuse | pipelines persist; commands retire after one use | immutable compiled plans and replay |
+| Profiling | explicit whole-plan device duration on timed replay | calibrated clocks, phase/node timestamps, and statistics |
 | Devices | one selected physical device | explicit local transfer before automated placement |
 
 ## Porting from C++ OA

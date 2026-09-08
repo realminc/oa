@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "family": "matrix_blas",
+  "domain": "matrix",
+  "dtype": "f32",
+  "workgroup_size": [256, 1, 1],
+  "output_tile_size": [64, 64, 1],
+  "k_tile_size": 16,
+  "operations": [
+    {
+      "stable_id": 21,
+      "name": "mat_mul_nt",
+      "kind": "mat_mul_nt",
+      "doc": "Multiply A by the transpose of B using the OA weight-layout convention.",
+      "kernel_id": "MatrixMatMulNtTiledF32",
+      "kernel_name": "mat_mul_nt",
+      "source_stem": "mat_mul_nt_tiled",
+      "variant": "tiled",
+      "contract": {
+        "input_kinds": ["matrix", "matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "left_mk_right_nk_to_mn",
+        "dtype_rule": "matching_f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "differentiation": "none",
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "shapes": [
+          [2, 2, 3],
+          [1, 7, 5],
+          [9, 3, 5],
+          [3, 11, 7],
+          [5, 4, 0],
+          [0, 4, 3],
+          [4, 0, 3]
+        ],
+        "tolerance": 0.0001
+      }
+    }
+  ]
+}

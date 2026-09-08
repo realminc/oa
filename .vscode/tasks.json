@@ -1,94 +1,122 @@
 {
-  "version": "2.0.0",
-  "tasks": [
-    {
-      "label": "Oars - Check",
-      "type": "shell",
-      "command": "cargo",
-      "args": ["check"],
-      "group": {
-        "kind": "build",
-        "isDefault": false
-      },
-      "presentation": { "reveal": "always", "panel": "shared", "clear": true }
-    },
-    {
-      "label": "Oars - Build (Debug)",
-      "type": "shell",
-      "command": "cargo",
-      "args": ["build"],
-      "group": "build",
-      "presentation": { "reveal": "always", "panel": "shared", "clear": true },
-      "detail": "Incremental debug build to target/debug/"
-    },
-    {
-      "label": "Oars - Build (Release)",
-      "type": "shell",
-      "command": "cargo",
-      "args": ["build", "--release"],
-      "group": "build",
-      "presentation": { "reveal": "always", "panel": "shared", "clear": true },
-      "detail": "Optimized release build to target/release/"
-    },
-    {
-      "label": "Oars - Clean Build (Debug)",
-      "type": "shell",
-      "command": "rm -rf target/debug && cargo build",
-      "group": "build",
-      "presentation": { "reveal": "always", "panel": "shared", "clear": true },
-      "detail": "Remove debug artifacts and rebuild from scratch"
-    },
-    {
-      "label": "Oars - Clean Build (Release)",
-      "type": "shell",
-      "command": "rm -rf target/release && cargo build --release",
-      "group": "build",
-      "presentation": { "reveal": "always", "panel": "shared", "clear": true },
-      "detail": "Remove release artifacts and rebuild from scratch"
-    },
-    {
-      "label": "Oars - Clean",
-      "type": "shell",
-      "command": "cargo",
-      "args": ["clean"],
-      "group": "build",
-      "presentation": { "reveal": "always", "panel": "shared", "clear": true },
-      "detail": "Remove all build artifacts from target/"
-    },
-    {
-      "label": "Oars - Test",
-      "type": "shell",
-      "command": "cargo",
-      "args": ["test"],
-      "group": {
-        "kind": "test",
-        "isDefault": true
-      },
-      "presentation": { "reveal": "always", "panel": "shared", "clear": true }
-    },
-    {
-      "label": "Oars - Clippy",
-      "type": "shell",
-      "command": "cargo",
-      "args": ["clippy", "--all-targets", "--all-features"],
-      "group": "build",
-      "presentation": { "reveal": "always", "panel": "shared", "clear": true }
-    },
-    {
-      "label": "Oars - Format",
-      "type": "shell",
-      "command": "cargo",
-      "args": ["fmt"],
-      "group": "build",
-      "presentation": { "reveal": "always", "panel": "shared", "clear": true }
-    },
-    {
-      "label": "Oars - Format Check",
-      "type": "shell",
-      "command": "cargo",
-      "args": ["fmt", "--check"],
-      "group": "build",
-      "presentation": { "reveal": "always", "panel": "shared", "clear": true }
-    }
-  ]
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Oars - Check",
+			"type": "shell",
+			"command": "cargo check --all-targets --all-features",
+			"group": "build",
+			"problemMatcher": [],
+			"presentation": { "reveal": "always", "panel": "shared", "clear": true }
+		},
+		{
+			"label": "Oars - Build (Debug)",
+			"type": "shell",
+			"command": "cargo build --all-targets --all-features && python3 tools/build/stage.py --profile debug",
+			"group": { "kind": "build", "isDefault": true },
+			"problemMatcher": [],
+			"presentation": { "reveal": "always", "panel": "shared", "clear": true },
+			"detail": "Build in target/debug and stage runnable executables in bin/debug/."
+		},
+		{
+			"label": "Oars - Build (Release)",
+			"type": "shell",
+			"command": "cargo build --release --all-targets --all-features && python3 tools/build/stage.py --profile release",
+			"group": "build",
+			"problemMatcher": [],
+			"presentation": { "reveal": "always", "panel": "shared", "clear": true },
+			"detail": "Build in target/release and stage runnable executables in bin/release/."
+		},
+		{
+			"label": "Oars - Clean Build (Debug)",
+			"type": "shell",
+			"command": "cargo clean --profile dev && python3 tools/build/stage.py --clean --profile debug && cargo build --all-targets --all-features && python3 tools/build/stage.py --profile debug",
+			"group": "build",
+			"problemMatcher": [],
+			"presentation": { "reveal": "always", "panel": "shared", "clear": true },
+			"detail": "Clean only the dev profile, then rebuild it."
+		},
+		{
+			"label": "Oars - Clean Build (Release)",
+			"type": "shell",
+			"command": "cargo clean --release && python3 tools/build/stage.py --clean --profile release && cargo build --release --all-targets --all-features && python3 tools/build/stage.py --profile release",
+			"group": "build",
+			"problemMatcher": [],
+			"presentation": { "reveal": "always", "panel": "shared", "clear": true },
+			"detail": "Clean only the release profile, then rebuild it."
+		},
+		{
+			"label": "Oars - Clean",
+			"type": "shell",
+			"command": "cargo clean && python3 tools/build/stage.py --clean",
+			"group": "build",
+			"problemMatcher": [],
+			"presentation": { "reveal": "always", "panel": "shared", "clear": true }
+		},
+		{
+			"label": "Oars - Generate",
+			"type": "shell",
+			"command": "python3 tools/gen/fn/generate.py",
+			"group": "build",
+			"problemMatcher": [],
+			"presentation": { "reveal": "always", "panel": "shared", "clear": true }
+		},
+		{
+			"label": "Oars - Test",
+			"type": "shell",
+			"command": "cargo test --all-features",
+			"group": { "kind": "test", "isDefault": true },
+			"problemMatcher": [],
+			"presentation": { "reveal": "always", "panel": "shared", "clear": true }
+		},
+		{
+			"label": "Oars - Test MatMul (Vulkan)",
+			"type": "shell",
+			"command": "cargo test --test matrix_blas_generated -- --ignored --nocapture",
+			"group": "test",
+			"problemMatcher": [],
+			"presentation": { "reveal": "always", "panel": "shared", "clear": true }
+		},
+		{
+			"label": "Oars - Clippy",
+			"type": "shell",
+			"command": "cargo clippy --all-targets --all-features -- -D warnings",
+			"group": "build",
+			"problemMatcher": [],
+			"presentation": { "reveal": "always", "panel": "shared", "clear": true }
+		},
+		{
+			"label": "Oars - Format",
+			"type": "shell",
+			"command": "cargo fmt --all",
+			"group": "build",
+			"problemMatcher": [],
+			"presentation": { "reveal": "always", "panel": "shared", "clear": true }
+		},
+		{
+			"label": "Oars - Format Check",
+			"type": "shell",
+			"command": "cargo fmt --all -- --check",
+			"group": "build",
+			"problemMatcher": [],
+			"presentation": { "reveal": "always", "panel": "shared", "clear": true }
+		},
+		{
+			"label": "Oars - SDK - MatMul Intro (Release)",
+			"type": "shell",
+			"command": "cargo build --release --example core_mat_mul_intro && python3 tools/build/stage.py --profile release --target core_mat_mul_intro && ./bin/release/sdk/tutorials/core/core_mat_mul_intro",
+			"group": "test",
+			"problemMatcher": [],
+			"presentation": { "reveal": "always", "panel": "shared", "clear": true }
+		},
+		{
+			"label": "Oars - Benchmark - MatMul Suite (Release)",
+			"type": "shell",
+			"command": "cargo build --release --example core_mat_mul_bench && python3 tools/build/stage.py --profile release --target core_mat_mul_bench && python3 tools/profiling/suite.py",
+			"group": "test",
+			"problemMatcher": [],
+			"presentation": { "reveal": "always", "panel": "shared", "clear": true },
+			"detail": "Run the correctness-gated six-shape MatMul suite in fresh processes. Requires a clean tree."
+		}
+	]
 }

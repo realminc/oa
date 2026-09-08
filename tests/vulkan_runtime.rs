@@ -1,7 +1,39 @@
+fn test_log_directory() -> std::path::PathBuf {
+	std::env::temp_dir().join(format!("oars-engine-log-{}", std::process::id()))
+}
+
 #[test]
 #[ignore = "requires a hardware Vulkan 1.3 compute device"]
 fn creates_and_drops_engine_on_hardware_vulkan() -> oa::Result<()> {
 	let _engine = oa::Engine::new()?;
+	Ok(())
+}
+
+#[test]
+#[ignore = "requires a hardware Vulkan 1.3 compute device"]
+fn engine_owns_flushes_and_closes_its_logging_session() -> Result<(), Box<dyn std::error::Error>> {
+	let directory = test_log_directory();
+	let _ = std::fs::remove_dir_all(&directory);
+	let engine = oa::Engine::builder()
+		.logging(
+			oa::LogOptions::new()
+				.directory(&directory)
+				.prefix("runtime-test")
+				.minimum_level(oa::LogLevel::Info)
+				.console_output(false)
+				.file_output(true),
+		)
+		.build()?;
+	oa::log_info!(oa::LogComponent::RUNTIME, "selected engine logger");
+	engine.flush_log()?;
+	let path = engine
+		.log_path()
+		.ok_or_else(|| std::io::Error::other("engine did not expose its log path"))?;
+	let contents = std::fs::read_to_string(&path)?;
+	assert!(contents.contains("[ENGN] initialized Vulkan compute engine"));
+	assert!(contents.contains("[RT  ] selected engine logger"));
+	engine.close()?;
+	std::fs::remove_dir_all(directory)?;
 	Ok(())
 }
 
@@ -190,21 +222,69 @@ fn matrix_add_rejects_shape_mismatch_without_submission() -> oa::Result<()> {
 
 #[test]
 #[ignore = "requires a hardware Vulkan 1.3 compute device"]
-fn matrix_add_supports_input_aliasing_and_overlapping_submissions() -> oa::Result<()> {
+fn matrix_add_supports_input_aliasing_and_batched_outputs() -> oa::Result<()> {
 	let engine = oa::Engine::new()?;
 	let input = oa::Matrix::from_f32(&engine, [5], &[1.0, -2.0, 3.5, 0.0, 8.0])?;
 
 	let first = oa::matrix::add(&input, &input)?;
 	let second = oa::matrix::add(&input, &input)?;
-	match first.try_read_f32() {
-		Ok(_) => {}
-		Err(error) if error.kind() == oa::ErrorKind::NotReady => {}
-		Err(error) => return Err(error),
-	}
+	let error = first
+		.try_read_f32()
+		.expect_err("non-blocking read submitted or waited for recorded eager work");
+	assert_eq!(error.kind(), oa::ErrorKind::NotReady);
 
 	let expected = [2.0_f32, -4.0, 7.0, 0.0, 16.0];
 	assert_eq!(first.read_f32()?, expected);
 	assert_eq!(second.read_f32()?, expected);
+	Ok(())
+}
+
+#[test]
+#[ignore = "requires a hardware Vulkan 1.3 compute device"]
+fn checkpoint_submits_the_pending_eager_batch() -> oa::Result<()> {
+	let engine = oa::Engine::new()?;
+	let one = oa::matrix::ones(&engine, [4])?;
+	let two = oa::matrix::full(&engine, [4], 2.0)?;
+	let three = oa::matrix::add(&one, &two)?;
+	let six = oa::matrix::add(&three, &three)?;
+
+	assert_eq!(
+		six.try_read_f32().unwrap_err().kind(),
+		oa::ErrorKind::NotReady
+	);
+	let submitted = engine.checkpoint()?;
+	submitted.wait()?;
+	assert_eq!(three.read_f32()?, [3.0; 4]);
+	assert_eq!(six.read_f32()?, [6.0; 4]);
+	Ok(())
+}
+
+#[test]
+#[ignore = "requires a hardware Vulkan 1.3 compute device"]
+fn empty_and_invalid_observation_do_not_flush_unrelated_eager_work() -> oa::Result<()> {
+	let engine = oa::Engine::new()?;
+	let left = oa::Matrix::from_slice(&engine, [2], &[1_i32, 2])?;
+	let right = oa::Matrix::from_slice(&engine, [2], &[3_i32, 4])?;
+	let pending = oa::matrix::add(&left, &right)?;
+
+	let empty_left = oa::Matrix::from_f32(&engine, [0], &[])?;
+	let empty_right = oa::Matrix::from_f32(&engine, [0], &[])?;
+	let empty = oa::matrix::add(&empty_left, &empty_right)?;
+	assert!(empty.read_f32()?.is_empty());
+	assert_eq!(
+		pending.try_read::<i32>().unwrap_err().kind(),
+		oa::ErrorKind::NotReady
+	);
+
+	assert_eq!(
+		pending.read_f32().unwrap_err().kind(),
+		oa::ErrorKind::InvalidArgument
+	);
+	assert_eq!(
+		pending.try_read::<i32>().unwrap_err().kind(),
+		oa::ErrorKind::NotReady
+	);
+	assert_eq!(pending.read::<i32>()?, [4, 6]);
 	Ok(())
 }
 

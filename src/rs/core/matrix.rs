@@ -3,7 +3,7 @@
 use std::{marker::PhantomData, rc::Rc};
 
 use crate::{
-	Engine, Error, Event, Result,
+	Engine, Error, Result,
 	runtime::{EngineHandle, Storage},
 };
 
@@ -99,10 +99,11 @@ impl Matrix {
 	///
 	/// # Errors
 	///
-	/// This is an explicit host-observation boundary: it waits for the exact GPU
-	/// event that most recently produced this matrix before mapping its storage.
-	/// Returns an error when this is not an FP32 matrix or when completion,
-	/// mapping, or cache invalidation fails.
+	/// This is an explicit host-observation boundary: it submits the pending eager
+	/// batch when this matrix is still recorded, then waits for the exact GPU event
+	/// that produced it before mapping its storage. Returns an error when this is
+	/// not an FP32 matrix or when submission, completion, mapping, or cache
+	/// invalidation fails.
 	pub fn read_f32(&self) -> Result<Vec<f32>> {
 		self.read()
 	}
@@ -122,11 +123,15 @@ impl Matrix {
 	///
 	/// # Errors
 	///
-	/// Returns an error before waiting when `T` does not match this matrix's
-	/// dtype. Otherwise this waits for the exact producing event and returns an
-	/// error when completion, mapping, or cache invalidation fails.
+	/// Returns an error before submission or waiting when `T` does not match this
+	/// matrix's dtype. Otherwise this submits its pending eager batch when needed,
+	/// waits for the exact producing event, and returns an error when submission,
+	/// completion, mapping, or cache invalidation fails.
 	pub fn read<T: Element>(&self) -> Result<Vec<T>> {
 		self.validate_element::<T>()?;
+		if self.storage.needs_flush() {
+			self.engine.flush()?;
+		}
 		self.storage.wait_ready()?;
 		self.read_ready::<T>()
 	}
@@ -202,10 +207,6 @@ impl Matrix {
 			element_count,
 			_not_send_sync: PhantomData,
 		})
-	}
-
-	pub(crate) fn mark_pending(&mut self, event: Event) {
-		self.storage.mark_pending(event);
 	}
 }
 

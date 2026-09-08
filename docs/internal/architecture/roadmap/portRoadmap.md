@@ -31,11 +31,31 @@ waiting, non-blocking `try_read_f32`, and independent host-oracle coverage are
 Experimental. Stage 2 now has one normalized schema generating 19 out-of-place
 elementwise Rust functions, 19 `f32` physical variants, and one `i32` add
 variant with stable kernel/artifact lookup, Slang kernels, and hardware-oracle
-tests. A shared engine-owned bindless
-descriptor heap serves all generated pipelines. The direct lowerer currently
-submits each operation; engine-owned eager recording and batching, reusable
-executable plans, broadcasting, mutation contracts, and broader generated
-documentation remain incomplete.
+tests. The first Stage 4 slice has also landed ahead of reusable execution: a
+schema-generated FP32 `matrix::mat_mul_nt` preserving the OA
+`[M, K] × [N, K] -> [M, N]` convention, with a 64×64×16 shared-memory
+physical tile, odd/zero-shape CPU-oracle coverage, and a runnable SDK tutorial.
+It is not yet a performance-qualified GEMM routing system. A shared
+engine-owned bindless
+descriptor heap serves all generated pipelines. A private engine-owned
+execution session records non-empty eager operations, joins their owned graph
+snapshots, and submits one hazard-planned command buffer at blocking host
+observation or `Engine::checkpoint`. `try_read` never submits or waits. The
+graph recorder derives per-buffer RAW, WAR, and WAW barriers while omitting
+read-after-read barriers. Isolated capture and immutable engine-associated
+`ExecutionPlan` replay are Experimental: capture rejects pending eager work,
+nesting, failure, and empty work; replay rejects foreign engines and returns an
+exact event. Explicit timed replay records a fresh Vulkan timestamp query pair
+around the complete executable graph and exposes its wrap-corrected device
+duration through that exact event. An Experimental six-shape MatMul recording
+suite now correctness-gates captured-plan replay, runs at least seven fresh
+processes, and preserves raw timing and build/device provenance. Command-buffer
+caching, calibrated clocks,
+mutable stable input slots, semantic graph identity, broadcasting, mutation
+contracts, and broader generated documentation remain incomplete.
+Engine-owned structured console/file logging, weak thread-local selection,
+custom component tags, release compile-out for trace/debug call sites, and
+explicit failure-bearing flush/close boundaries are Experimental.
 Existing unrelated modules and shaders remain design scaffolding unless a
 later status document names their implementation and verification evidence.
 
@@ -131,10 +151,11 @@ modify checked-in files. The handwritten add registry and shader route have
 been removed. Validation and shape inference remain shared handwritten lowering
 helpers until their schema-generated fixture layer lands.
 
-## Stage 3 — Reusable execution
+## Stage 3 — Reusable execution (Experimental baseline complete)
 
-Add immutable execution plans and explicit repeated submission over the same
-operation contract. Establish:
+The baseline now captures an isolated eager recording into an immutable plan
+and explicitly re-records and submits its retained executable graph repeatedly.
+Remaining work must establish:
 
 - semantic capture ownership;
 - executable plan lifetime;
@@ -142,6 +163,11 @@ operation contract. Establish:
 - event epochs and dependency chaining;
 - observable graph breaks, compilation, and fallback counters;
 - explicit readback and inspection boundaries.
+
+Exact whole-plan device timing and a correctness-gated fresh-process MatMul
+recording suite are Experimental checkpoints. Clock-domain calibration,
+phase/node timestamps, physical artifact telemetry, accepted baselines, and
+cross-implementation comparison remain separate dependencies.
 
 Operator overloading remains deferred until this stage proves where validation
 and lowering failures are reported without panics.
@@ -153,7 +179,8 @@ Grow the Matrix surface by complete schema-owned slices:
 1. creation/upload and fill;
 2. elementwise arithmetic (out-of-place FP32 baseline complete) and broadcasting;
 3. reduction;
-4. GEMM baseline;
+4. GEMM baseline (Experimental FP32 `mat_mul_nt` tiled route and reusable-plan
+   measurement complete; routing, specialized variants, and qualification remain);
 5. autograd seed.
 
 Each operation requires its own oracle and edge-case pack. Kernel variants and

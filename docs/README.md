@@ -15,10 +15,20 @@ the presence of a source module or shader does not imply a shipped capability.
   preserved, redesigned, deferred, or rejected from the C++ implementation.
 - [Compute Architecture](internal/compute/oaCompute.md) — current executable
   path, ownership, synchronization, and graph boundary.
+- [Executable Graph](internal/compute/oaExecutableGraph.md) — owned dispatch
+  snapshots, resource hazards, and current batching boundary.
 - [Compute Kernel System](internal/compute/oaComputeKernel.md) — schemas,
   attributes, dtype tokens, storage helpers, shader ABI, and validation.
 - [Performance Evidence](internal/performance/oaPerformance.md) — benchmark,
   timing, profiling, and claim protocol.
+- [Runtime Logging](internal/runtime/oaLog.md) — engine-owned sinks, component
+  vocabulary, macro routing, and failure-bearing lifecycle.
+- [Execution Session](internal/runtime/oaExecutionSession.md) — private eager
+  recording, automatic submission boundaries, and result readiness.
+- [Execution Plan](internal/runtime/oaExecutionPlan.md) — isolated capture,
+  immutable replay, engine identity, and completion behavior.
+- [Device Timing](internal/runtime/oaDeviceTiming.md) — explicitly instrumented
+  plan replay, event readback, timestamp wrap, and capability behavior.
 - [Initial Rust Architecture](internal/research/initialRustArchitecture.md) —
   original design notebook retained as Research, not current authority.
 

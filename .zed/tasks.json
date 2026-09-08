@@ -1,62 +1,72 @@
 [
-  {
-    "label": "Oars - Check",
-    "command": "cargo",
-    "args": ["check"],
-    "group": "build"
-  },
-  {
-    "label": "Oars - Build (Debug)",
-    "command": "cargo",
-    "args": ["build"],
-    "group": "build"
-  },
-  {
-    "label": "Oars - Build (Release)",
-    "command": "cargo",
-    "args": ["build", "--release"],
-    "group": "build"
-  },
-  {
-    "label": "Oars - Clean Build (Debug)",
-    "command": "sh",
-    "args": ["-c", "rm -rf target/debug && cargo build"],
-    "group": "build"
-  },
-  {
-    "label": "Oars - Clean Build (Release)",
-    "command": "sh",
-    "args": ["-c", "rm -rf target/release && cargo build --release"],
-    "group": "build"
-  },
-  {
-    "label": "Oars - Clean",
-    "command": "cargo",
-    "args": ["clean"],
-    "group": "build"
-  },
-  {
-    "label": "Oars - Test",
-    "command": "cargo",
-    "args": ["test"],
-    "group": "test"
-  },
-  {
-    "label": "Oars - Clippy",
-    "command": "cargo",
-    "args": ["clippy", "--all-targets", "--all-features"],
-    "group": "build"
-  },
-  {
-    "label": "Oars - Format",
-    "command": "cargo",
-    "args": ["fmt"],
-    "group": "build"
-  },
-  {
-    "label": "Oars - Format Check",
-    "command": "cargo",
-    "args": ["fmt", "--check"],
-    "group": "build"
-  }
+	{
+		"label": "Oars - Check",
+		"command": "cargo check --all-targets --all-features",
+		"reveal": "always"
+	},
+	{
+		"label": "Oars - Build (Debug)",
+		"command": "cargo build --all-targets --all-features && python3 tools/build/stage.py --profile debug",
+		"reveal": "always"
+	},
+	{
+		"label": "Oars - Build (Release)",
+		"command": "cargo build --release --all-targets --all-features && python3 tools/build/stage.py --profile release",
+		"reveal": "always"
+	},
+	{
+		"label": "Oars - Clean Build (Debug)",
+		"command": "cargo clean --profile dev && python3 tools/build/stage.py --clean --profile debug && cargo build --all-targets --all-features && python3 tools/build/stage.py --profile debug",
+		"reveal": "always"
+	},
+	{
+		"label": "Oars - Clean Build (Release)",
+		"command": "cargo clean --release && python3 tools/build/stage.py --clean --profile release && cargo build --release --all-targets --all-features && python3 tools/build/stage.py --profile release",
+		"reveal": "always"
+	},
+	{
+		"label": "Oars - Clean",
+		"command": "cargo clean && python3 tools/build/stage.py --clean",
+		"reveal": "always"
+	},
+	{
+		"label": "Oars - Generate",
+		"command": "python3 tools/gen/fn/generate.py",
+		"reveal": "always"
+	},
+	{
+		"label": "Oars - Test",
+		"command": "cargo test --all-features",
+		"reveal": "always"
+	},
+	{
+		"label": "Oars - Test MatMul (Vulkan)",
+		"command": "cargo test --test matrix_blas_generated -- --ignored --nocapture",
+		"reveal": "always"
+	},
+	{
+		"label": "Oars - Clippy",
+		"command": "cargo clippy --all-targets --all-features -- -D warnings",
+		"reveal": "always"
+	},
+	{
+		"label": "Oars - Format",
+		"command": "cargo fmt --all",
+		"reveal": "always"
+	},
+	{
+		"label": "Oars - Format Check",
+		"command": "cargo fmt --all -- --check",
+		"reveal": "always"
+	},
+	{
+		"label": "Oars - SDK - MatMul Intro (Release)",
+		"command": "cargo build --release --example core_mat_mul_intro && python3 tools/build/stage.py --profile release --target core_mat_mul_intro && ./bin/release/sdk/tutorials/core/core_mat_mul_intro",
+		"reveal": "always"
+	},
+	{
+		"label": "Oars - Benchmark - MatMul Suite (Release)",
+		"command": "cargo build --release --example core_mat_mul_bench && python3 tools/build/stage.py --profile release --target core_mat_mul_bench && python3 tools/profiling/suite.py",
+		"reveal": "always"
+	}
 ]

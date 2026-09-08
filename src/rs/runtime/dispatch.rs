@@ -31,10 +31,11 @@ impl<'a> BufferBinding<'a> {
 }
 
 /// One four-byte value in the reflected compute push-constant ABI.
+///
+/// Buffer descriptor indices are runtime-owned ABI data and are prepended in
+/// binding order when the dispatch is recorded.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum PushConstant {
-	/// Descriptor index of the buffer at this binding position.
-	StorageBuffer(usize),
 	U32(u32),
 	F32(f32),
 }

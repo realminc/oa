@@ -9,6 +9,7 @@ mod pipeline;
 mod queue;
 mod retirement;
 mod timeline;
+mod timestamp;
 
 pub(super) use buffer::Buffer;
 pub(super) use command::RecordedCommandBuffer;
@@ -16,3 +17,4 @@ pub(super) use device::Device;
 pub(super) use instance::Instance;
 pub(super) use physical::PhysicalDevice;
 pub(super) use retirement::{RetirementService, RetirementTicket};
+pub(super) use timestamp::TimestampPair;

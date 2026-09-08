@@ -5,7 +5,7 @@ use std::{
 
 use crate::{
 	Error, Result,
-	runtime::{ComputeDispatch, shader::KernelId},
+	runtime::{executable_graph::ExecutableGraph, shader::KernelId},
 };
 
 use super::{
@@ -15,6 +15,7 @@ use super::{
 	pipeline::ComputePipeline,
 	queue::Queue,
 	timeline::Timeline,
+	timestamp::TimestampPair,
 };
 
 #[derive(Clone)]
@@ -31,6 +32,8 @@ struct DeviceInner {
 	pipelines: Vec<ComputePipeline>,
 	_physical: PhysicalDevice,
 	compute_queue: Queue,
+	timestamp_period_ns: f64,
+	compute_timestamp_valid_bits: u32,
 	_instance: Instance,
 }
 
@@ -177,6 +180,8 @@ impl Device {
 				pipelines,
 				_physical: physical,
 				compute_queue,
+				timestamp_period_ns: physical.limits.timestamp_period_ns,
+				compute_timestamp_valid_bits: physical.limits.compute_timestamp_valid_bits,
 				_instance: instance.clone(),
 			}),
 		})
@@ -204,6 +209,10 @@ impl Device {
 		Arc::ptr_eq(&self.inner, &other.inner)
 	}
 
+	pub(super) fn raw(&self) -> &ash::Device {
+		&self.inner.handle
+	}
+
 	pub(in crate::runtime) fn record_empty(&self) -> Result<RecordedCommandBuffer> {
 		let mut command_pool = match self.inner.command_pool.lock() {
 			Ok(command_pool) => command_pool,
@@ -212,36 +221,42 @@ impl Device {
 		command_pool.record_empty(&self.inner.handle)
 	}
 
-	pub(in crate::runtime) fn record_compute(
+	pub(in crate::runtime) fn record_compute_graph(
 		&self,
-		dispatch: &ComputeDispatch<'_>,
+		graph: &ExecutableGraph,
 	) -> Result<RecordedCommandBuffer> {
-		let pipeline = self
-			.inner
-			.pipelines
-			.get(dispatch.kernel.index())
-			.ok_or_else(|| missing_compute_pipeline(dispatch.operation))?;
-		let buffers = dispatch
-			.buffers
-			.iter()
-			.map(|binding| {
-				binding
-					.storage
-					.buffer()
-					.cloned()
-					.ok_or_else(|| missing_dispatch_buffer(dispatch.operation))
-			})
-			.collect::<Result<Vec<_>>>()?;
 		let mut command_pool = match self.inner.command_pool.lock() {
 			Ok(command_pool) => command_pool,
 			Err(poisoned) => poisoned.into_inner(),
 		};
-		command_pool.record_compute(
+		command_pool.record_compute_graph(
 			&self.inner.handle,
-			pipeline,
+			&self.inner.pipelines,
 			self.inner.descriptors.set(),
-			&buffers,
-			dispatch,
+			graph,
+			None,
+		)
+	}
+
+	pub(in crate::runtime) fn record_timed_compute_graph(
+		&self,
+		graph: &ExecutableGraph,
+	) -> Result<RecordedCommandBuffer> {
+		let timing = TimestampPair::new(
+			self,
+			self.inner.timestamp_period_ns,
+			self.inner.compute_timestamp_valid_bits,
+		)?;
+		let mut command_pool = match self.inner.command_pool.lock() {
+			Ok(command_pool) => command_pool,
+			Err(poisoned) => poisoned.into_inner(),
+		};
+		command_pool.record_compute_graph(
+			&self.inner.handle,
+			&self.inner.pipelines,
+			self.inner.descriptors.set(),
+			graph,
+			Some(timing),
 		)
 	}
 
@@ -304,24 +319,6 @@ impl Device {
 	pub(in crate::runtime) fn wait(&self, epoch: u64) -> Result<()> {
 		self.inner.timeline.wait(&self.inner.handle, epoch)
 	}
-}
-
-fn missing_dispatch_buffer(operation: &'static str) -> Error {
-	Error::backend_failure(
-		"Vulkan",
-		"compute-dispatch storage validation",
-		std::io::Error::other(format!(
-			"{operation} references storage without a Vulkan buffer"
-		)),
-	)
-}
-
-fn missing_compute_pipeline(operation: &'static str) -> Error {
-	Error::backend_failure(
-		"Vulkan",
-		"compute-pipeline resolution",
-		std::io::Error::other(format!("{operation} has no initialized compute pipeline")),
-	)
 }
 
 impl Drop for DeviceInner {

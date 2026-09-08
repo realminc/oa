@@ -27,4 +27,7 @@ pub use audio::Audio;
 pub use core::{DType, Error, ErrorKind, Format, Image, Matrix, Result};
 pub use video::Video;
 
-pub use runtime::{DeviceSelection, Engine, EngineBuilder, Event};
+pub use runtime::{
+	DeviceSelection, Engine, EngineBuilder, Event, ExecutionPlan, LogComponent, LogLevel,
+	LogOptions,
+};

@@ -49,10 +49,25 @@ architecture, a plan, and live code disagree, report the conflict.
 
 The repository remains Experimental. No GPU operation is Shipped. The
 one-device runtime, schema-generated out-of-place `f32` elementwise family,
-and `i32` Matrix-add dtype proof are implemented checkpoints; broader integer
-operations, broadcasting, in-place mutations, graphs, low-precision storage,
-and broader domains remain incomplete. Planned APIs and scaffold modules are
-not capability claims.
+`i32` Matrix-add dtype proof, and FP32 `matrix::mat_mul_nt` with a generated
+64×64×16 tiled kernel and runnable SDK oracle are implemented checkpoints.
+Broader integer operations, broadcasting, in-place mutations, GEMM routing and
+specialized variants, low-precision storage, and broader domains remain
+incomplete. Engine-owned structured logging and explicit whole-plan Vulkan
+device timing are Experimental. The fresh-process MatMul recording runner and
+six-shape suite are Experimental; accepted baselines, cross-implementation
+comparison, calibrated host/device clocks, structured runtime metrics, and
+graph diagnostics remain Planned.
+The private executable-graph foundation snapshots resolved compute dispatches,
+records multiple nodes in one primary command buffer, and derives per-buffer
+RAW, WAR, and WAW barriers. A private engine-owned execution session batches
+eager work until blocking observation or `Engine::checkpoint`; `try_read`
+neither submits nor waits. Isolated capture and immutable engine-associated
+plan replay are Experimental. Timed replay uses an independently owned query
+pair per submission. Semantic graph identity, stable mutable plan slots,
+compiled command caching, calibrated clocks, and non-compute graph nodes remain
+Planned.
+Planned APIs and scaffold modules are not capability claims.
 
 ## Required baseline
 
@@ -60,6 +75,7 @@ Run the narrowest relevant proof followed by:
 
 ```bash
 python3 -m unittest discover -s tools/gen/fn/tests -v
+python3 -m unittest discover -s tools/profiling/tests -v
 python3 tools/gen/fn/generate.py --check
 cargo fmt --check
 cargo clippy --all-targets --all-features -- -D warnings

@@ -11,6 +11,8 @@ pub(super) struct DeviceLimits {
 	pub(super) max_compute_work_group_count: [u32; 3],
 	pub(super) max_compute_work_group_size: [u32; 3],
 	pub(super) max_compute_work_group_invocations: u32,
+	pub(super) timestamp_period_ns: f64,
+	pub(super) compute_timestamp_valid_bits: u32,
 }
 
 #[derive(Clone, Copy)]
@@ -82,7 +84,9 @@ impl PhysicalDevice {
 				}
 				continue;
 			};
-			let Some(compute_queue_family) = select_compute_queue_family(&queue_families) else {
+			let Some((compute_queue_family, compute_timestamp_valid_bits)) =
+				select_compute_queue_family(&queue_families)
+			else {
 				if matches!(selection, DeviceSelection::Index(_)) {
 					return Err(Error::no_suitable_device(format!(
 						"Vulkan device index {index} is not a hardware Vulkan 1.3 compute device"
@@ -121,6 +125,8 @@ impl PhysicalDevice {
 				max_compute_work_group_invocations: properties
 					.limits
 					.max_compute_work_group_invocations,
+				timestamp_period_ns: f64::from(properties.limits.timestamp_period),
+				compute_timestamp_valid_bits,
 			};
 
 			let candidate = Self {
@@ -147,7 +153,9 @@ impl PhysicalDevice {
 	}
 }
 
-fn select_compute_queue_family(queue_families: &[ash::vk::QueueFamilyProperties]) -> Option<u32> {
+fn select_compute_queue_family(
+	queue_families: &[ash::vk::QueueFamilyProperties],
+) -> Option<(u32, u32)> {
 	let mut shared_compute = None;
 
 	for (index, properties) in queue_families.iter().enumerate() {
@@ -164,9 +172,9 @@ fn select_compute_queue_family(queue_families: &[ash::vk::QueueFamilyProperties]
 			.queue_flags
 			.contains(ash::vk::QueueFlags::GRAPHICS)
 		{
-			return Some(index);
+			return Some((index, properties.timestamp_valid_bits));
 		}
-		shared_compute.get_or_insert(index);
+		shared_compute.get_or_insert((index, properties.timestamp_valid_bits));
 	}
 
 	shared_compute
@@ -191,6 +199,7 @@ mod tests {
 		ash::vk::QueueFamilyProperties {
 			queue_flags,
 			queue_count,
+			timestamp_valid_bits: 48,
 			..Default::default()
 		}
 	}
@@ -205,7 +214,7 @@ mod tests {
 			queue(ash::vk::QueueFlags::COMPUTE, 1),
 		];
 
-		assert_eq!(select_compute_queue_family(&families), Some(1));
+		assert_eq!(select_compute_queue_family(&families), Some((1, 48)));
 	}
 
 	#[test]
