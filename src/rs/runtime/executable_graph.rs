@@ -5,11 +5,13 @@ use crate::{Error, Result};
 use super::{BufferAccess, ComputeDispatch, PushConstant, shader::KernelId, vk};
 
 /// Owned snapshot of concrete work ready for Vulkan command recording.
+#[derive(Clone)]
 pub(in crate::runtime) struct ExecutableGraph {
 	nodes: Vec<ComputeNode>,
 	barriers: Vec<Vec<BufferHazard>>,
 }
 
+#[derive(Clone)]
 pub(in crate::runtime) struct ComputeNode {
 	pub(in crate::runtime) operation: &'static str,
 	pub(in crate::runtime) kernel: KernelId,
@@ -24,6 +26,7 @@ pub(in crate::runtime) struct BufferUse {
 	pub(in crate::runtime) access: BufferAccess,
 }
 
+#[derive(Clone)]
 pub(in crate::runtime) struct BufferHazard {
 	pub(in crate::runtime) buffer: vk::Buffer,
 	pub(in crate::runtime) source: AccessState,
@@ -113,6 +116,158 @@ impl ExecutableGraph {
 
 	pub(in crate::runtime) fn barriers_before(&self, node: usize) -> &[BufferHazard] {
 		&self.barriers[node]
+	}
+
+	pub(in crate::runtime) fn barrier_count(&self) -> usize {
+		self.barriers.iter().map(Vec::len).sum()
+	}
+
+	pub(in crate::runtime) fn identity(&self) -> u64 {
+		let mut hash = StableHash::new();
+		let mut resources = BTreeMap::<u32, u32>::new();
+		let mut next_resource = 0_u32;
+		hash.usize(self.nodes.len());
+		for node in &self.nodes {
+			hash.bytes(node.operation.as_bytes());
+			hash.u16(node.kernel as u16);
+			hash.u64(node.kernel.artifact().content_id());
+			hash.usize(node.buffers.len());
+			for buffer_use in &node.buffers {
+				let descriptor = buffer_use.buffer.descriptor_index();
+				let resource = *resources.entry(descriptor).or_insert_with(|| {
+					let resource = next_resource;
+					next_resource = next_resource.wrapping_add(1);
+					resource
+				});
+				hash.u32(resource);
+				hash.u8(match buffer_use.access {
+					BufferAccess::Read => 0,
+					BufferAccess::Write => 1,
+				});
+			}
+			hash.usize(node.push_constants.len());
+			for constant in &node.push_constants {
+				match *constant {
+					PushConstant::U32(value) => {
+						hash.u8(0);
+						hash.u32(value);
+					}
+					PushConstant::F32(value) => {
+						hash.u8(1);
+						hash.u32(value.to_bits());
+					}
+				}
+			}
+			for dimension in node.workgroups {
+				hash.u32(dimension);
+			}
+		}
+		hash.finish()
+	}
+
+	pub(in crate::runtime) fn read_only_buffers(&self) -> Vec<vk::Buffer> {
+		let mut resources = BTreeMap::<u32, (vk::Buffer, AccessState)>::new();
+		for node in &self.nodes {
+			for buffer_use in &node.buffers {
+				let state = AccessState::from_access(buffer_use.access);
+				resources
+					.entry(buffer_use.buffer.descriptor_index())
+					.and_modify(|(_, access)| access.merge(state))
+					.or_insert_with(|| (buffer_use.buffer.clone(), state));
+			}
+		}
+		resources
+			.into_values()
+			.filter_map(|(buffer, access)| (!access.write && access.read).then_some(buffer))
+			.collect()
+	}
+
+	pub(in crate::runtime) fn rebind_read_only(
+		&mut self,
+		current: &vk::Buffer,
+		replacement: &vk::Buffer,
+	) -> Result<()> {
+		let mut found = false;
+		for node in &self.nodes {
+			for buffer_use in &node.buffers {
+				if buffer_use.buffer.same_as(current) {
+					found = true;
+					if buffer_use.access != BufferAccess::Read {
+						return Err(Error::invalid_argument(
+							"only read-only execution-plan Matrix inputs can be rebound",
+						));
+					}
+				} else if buffer_use.buffer.same_as(replacement) {
+					return Err(Error::invalid_argument(
+						"execution-plan input rebinding cannot introduce resource aliasing",
+					));
+				}
+			}
+		}
+		if !found {
+			return Err(Error::invalid_argument(
+				"captured Matrix is not an input of this execution plan",
+			));
+		}
+		let mut candidate = self.clone();
+		for node in &mut candidate.nodes {
+			for buffer_use in &mut node.buffers {
+				if buffer_use.buffer.same_as(current) {
+					buffer_use.buffer = replacement.clone();
+				}
+			}
+		}
+		candidate.barriers = plan_barriers(&candidate.nodes)?;
+		*self = candidate;
+		Ok(())
+	}
+}
+
+struct StableHash(u64);
+
+impl StableHash {
+	const OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+	const PRIME: u64 = 0x0000_0100_0000_01b3;
+
+	const fn new() -> Self {
+		Self(Self::OFFSET)
+	}
+
+	fn bytes(&mut self, bytes: &[u8]) {
+		self.usize(bytes.len());
+		self.raw(bytes);
+	}
+
+	fn raw(&mut self, bytes: &[u8]) {
+		for byte in bytes {
+			self.0 ^= u64::from(*byte);
+			self.0 = self.0.wrapping_mul(Self::PRIME);
+		}
+	}
+
+	fn u8(&mut self, value: u8) {
+		self.raw(&value.to_le_bytes());
+	}
+
+	fn u16(&mut self, value: u16) {
+		self.raw(&value.to_le_bytes());
+	}
+
+	fn u32(&mut self, value: u32) {
+		self.raw(&value.to_le_bytes());
+	}
+
+	fn u64(&mut self, value: u64) {
+		self.raw(&value.to_le_bytes());
+	}
+
+	fn usize(&mut self, value: usize) {
+		self.raw(value.to_string().as_bytes());
+		self.u8(0xff);
+	}
+
+	const fn finish(self) -> u64 {
+		self.0
 	}
 }
 

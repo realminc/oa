@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use vk_mem::Alloc;
 
-use crate::{Error, Result};
+use crate::{Error, Result, core::memory};
 
 use super::Device;
 
@@ -104,11 +104,10 @@ impl Buffer {
 
 		// SAFETY: `validate_range` proved `[offset, offset + data.len())` is contained
 		// in the mapped allocation. The byte slices cannot overlap because `data` is a
-		// host borrow independent of OA's private allocation.
+		// host borrow independent of OA's private allocation. GPU upload storage is a
+		// one-way destination that the CPU will not consume before publication.
 		unsafe {
-			mapped
-				.add(offset)
-				.copy_from_nonoverlapping(data.as_ptr(), data.len());
+			memory::copy_streaming_to_ptr(mapped.add(offset), data.as_ptr(), data.len());
 		}
 
 		let flush_result = allocator.flush_allocation(&allocation, offset_u64, length_u64);
@@ -149,9 +148,7 @@ impl Buffer {
 			// SAFETY: `validate_range` proved the source range is contained in the mapped
 			// allocation. `output` is an independent mutable host slice of equal length.
 			unsafe {
-				output
-					.as_mut_ptr()
-					.copy_from_nonoverlapping(mapped.add(offset), output.len());
+				memory::copy_to_ptr(output.as_mut_ptr(), mapped.add(offset), output.len());
 			}
 		}
 
@@ -166,6 +163,10 @@ impl Buffer {
 
 	pub(in crate::runtime) fn descriptor_index(&self) -> u32 {
 		self.inner.descriptor_index
+	}
+
+	pub(in crate::runtime) fn same_as(&self, other: &Self) -> bool {
+		Arc::ptr_eq(&self.inner, &other.inner)
 	}
 
 	pub(in crate::runtime) fn raw(&self) -> ash::vk::Buffer {

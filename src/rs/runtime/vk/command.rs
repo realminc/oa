@@ -6,17 +6,39 @@ use crate::{
 	},
 };
 
-use super::{Buffer, TimestampPair, pipeline::ComputePipeline};
+use std::sync::Arc;
+
+use super::{Buffer, Device, TimestampPair, pipeline::ComputePipeline};
 
 pub(super) struct CommandPool {
 	handle: ash::vk::CommandPool,
 }
 
 pub(in crate::runtime) struct RecordedCommandBuffer {
+	allocation: CommandBufferAllocation,
+	timing: Option<TimestampPair>,
+}
+
+enum CommandBufferAllocation {
+	Owned {
+		handle: ash::vk::CommandBuffer,
+		_resources: Vec<Buffer>,
+		_accesses: Vec<BufferAccess>,
+	},
+	Reusable(ReusableCommandBuffer),
+}
+
+/// Shared ownership of one repeatedly submittable recorded command buffer.
+#[derive(Clone)]
+pub(in crate::runtime) struct ReusableCommandBuffer {
+	inner: Arc<ReusableCommandBufferInner>,
+}
+
+struct ReusableCommandBufferInner {
 	handle: ash::vk::CommandBuffer,
 	_resources: Vec<Buffer>,
 	_accesses: Vec<BufferAccess>,
-	timing: Option<TimestampPair>,
+	device: Device,
 }
 
 struct PreparedDispatch<'a> {
@@ -40,8 +62,9 @@ impl CommandPool {
 	}
 
 	pub(super) fn record_empty(&mut self, device: &ash::Device) -> Result<RecordedCommandBuffer> {
-		let command_buffer = self.begin(device)?;
-		self.finish(device, command_buffer, Vec::new(), Vec::new(), None)
+		let command_buffer =
+			self.begin(device, ash::vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT)?;
+		self.finish(device, command_buffer, Vec::new(), Vec::new(), None, None)
 	}
 
 	pub(super) fn record_compute_graph(
@@ -51,13 +74,19 @@ impl CommandPool {
 		descriptor_set: ash::vk::DescriptorSet,
 		graph: &ExecutableGraph,
 		timing: Option<TimestampPair>,
+		reusable_device: Option<Device>,
 	) -> Result<RecordedCommandBuffer> {
 		let prepared = graph
 			.nodes()
 			.iter()
 			.map(|node| prepare_dispatch(pipelines, node))
 			.collect::<Result<Vec<_>>>()?;
-		let command_buffer = self.begin(device)?;
+		let usage = if reusable_device.is_some() {
+			ash::vk::CommandBufferUsageFlags::SIMULTANEOUS_USE
+		} else {
+			ash::vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT
+		};
+		let command_buffer = self.begin(device, usage)?;
 		let mut resources = Vec::new();
 		let mut accesses = Vec::new();
 		if let Some(timing) = &timing {
@@ -80,10 +109,21 @@ impl CommandPool {
 			timing.record_end(command_buffer);
 		}
 
-		self.finish(device, command_buffer, resources, accesses, timing)
+		self.finish(
+			device,
+			command_buffer,
+			resources,
+			accesses,
+			timing,
+			reusable_device,
+		)
 	}
 
-	fn begin(&mut self, device: &ash::Device) -> Result<ash::vk::CommandBuffer> {
+	fn begin(
+		&mut self,
+		device: &ash::Device,
+		usage: ash::vk::CommandBufferUsageFlags,
+	) -> Result<ash::vk::CommandBuffer> {
 		let allocate_info = ash::vk::CommandBufferAllocateInfo::default()
 			.command_pool(self.handle)
 			.level(ash::vk::CommandBufferLevel::PRIMARY)
@@ -104,8 +144,7 @@ impl CommandPool {
 			));
 		};
 
-		let begin_info = ash::vk::CommandBufferBeginInfo::default()
-			.flags(ash::vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+		let begin_info = ash::vk::CommandBufferBeginInfo::default().flags(usage);
 		// SAFETY: the primary command buffer is in its initial state and exclusively
 		// owned by this function.
 		if let Err(source) = unsafe { device.begin_command_buffer(command_buffer, &begin_info) } {
@@ -131,6 +170,7 @@ impl CommandPool {
 		resources: Vec<Buffer>,
 		accesses: Vec<BufferAccess>,
 		timing: Option<TimestampPair>,
+		reusable_device: Option<Device>,
 	) -> Result<RecordedCommandBuffer> {
 		// SAFETY: the command buffer is recording a complete legal command sequence
 		// and is not concurrently accessed.
@@ -147,19 +187,29 @@ impl CommandPool {
 			));
 		}
 
-		Ok(RecordedCommandBuffer {
-			handle: command_buffer,
-			_resources: resources,
-			_accesses: accesses,
-			timing,
-		})
+		let allocation = match reusable_device {
+			Some(device) => CommandBufferAllocation::Reusable(ReusableCommandBuffer {
+				inner: Arc::new(ReusableCommandBufferInner {
+					handle: command_buffer,
+					_resources: resources,
+					_accesses: accesses,
+					device,
+				}),
+			}),
+			None => CommandBufferAllocation::Owned {
+				handle: command_buffer,
+				_resources: resources,
+				_accesses: accesses,
+			},
+		};
+		Ok(RecordedCommandBuffer { allocation, timing })
 	}
 
-	pub(super) fn free(&mut self, device: &ash::Device, command: RecordedCommandBuffer) {
-		// SAFETY: the retirement service transfers unique ownership of a completed or
-		// never-submitted command buffer back to its originating pool exactly once.
+	pub(super) fn free_handle(&mut self, device: &ash::Device, handle: ash::vk::CommandBuffer) {
+		// SAFETY: the retirement service or final reusable owner transfers a completed
+		// or never-submitted command buffer back to its originating pool exactly once.
 		unsafe {
-			device.free_command_buffers(self.handle, &[command.handle]);
+			device.free_command_buffers(self.handle, &[handle]);
 		}
 	}
 
@@ -321,12 +371,44 @@ fn encode_push_constants(
 }
 
 impl RecordedCommandBuffer {
-	pub(super) const fn raw(&self) -> ash::vk::CommandBuffer {
-		self.handle
+	pub(super) fn raw(&self) -> ash::vk::CommandBuffer {
+		match &self.allocation {
+			CommandBufferAllocation::Owned { handle, .. } => *handle,
+			CommandBufferAllocation::Reusable(command) => command.inner.handle,
+		}
 	}
 
 	pub(in crate::runtime) fn timing(&self) -> Option<TimestampPair> {
 		self.timing.clone()
+	}
+
+	pub(super) fn reusable(&self) -> Option<ReusableCommandBuffer> {
+		match &self.allocation {
+			CommandBufferAllocation::Owned { .. } => None,
+			CommandBufferAllocation::Reusable(command) => Some(command.clone()),
+		}
+	}
+
+	pub(super) fn into_owned_handle(self) -> Option<ash::vk::CommandBuffer> {
+		match self.allocation {
+			CommandBufferAllocation::Owned { handle, .. } => Some(handle),
+			CommandBufferAllocation::Reusable(_) => None,
+		}
+	}
+}
+
+impl ReusableCommandBuffer {
+	pub(in crate::runtime) fn submission(&self) -> RecordedCommandBuffer {
+		RecordedCommandBuffer {
+			allocation: CommandBufferAllocation::Reusable(self.clone()),
+			timing: None,
+		}
+	}
+}
+
+impl Drop for ReusableCommandBufferInner {
+	fn drop(&mut self) {
+		self.device.free_command_buffer_handle(self.handle);
 	}
 }
 

@@ -18,6 +18,6 @@ pub use event::Event;
 #[doc(hidden)]
 pub use log::{__log_should_write, __log_write};
 pub use log::{LogComponent, LogLevel, LogOptions};
-pub use plan::ExecutionPlan;
+pub use plan::{ExecutionPlan, ExecutionPlanDiagnostics};
 pub(crate) use shader::KernelId;
 pub(crate) use storage::Storage;

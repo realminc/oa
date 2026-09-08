@@ -63,6 +63,11 @@ the library boundary.
 10. **One proven path precedes breadth.** A public capability exists only after
     one complete vertical slice passes an independent oracle or conformance
     gate and the applicable Vulkan validation.
+11. **One spatial-math convention and formula authority.** `vlm` uses
+    right-handed `+X` right, `+Y` up, camera-forward `-Z`, row-major storage,
+    row-vector multiplication, and Vulkan `[0, 1]` clip depth. Raster Y belongs
+    to viewport state. Consumers use named VLM operations instead of locally
+    transposing, sign-correcting, or patching spatial matrices.
 
 ## 3. Public contract kinds
 
@@ -87,6 +92,8 @@ src/rs/
   lib.rs                    curated public facade
   core.rs
   core/                     public values, metadata, errors, primitives
+    memory.rs + memory/     host-memory contracts and private ISA paths
+    vlm.rs + vlm/           packed host spatial values and formulas
   runtime.rs
   runtime/
     dispatch.rs             generic executable compute descriptions
@@ -115,6 +122,13 @@ contracts. It is not a miscellaneous utility directory and owns no Vulkan
 device, queue, allocator, scheduler, logging sink, or session. Stateful
 diagnostic output is application-owned or composed beneath `Engine`; `core`
 may own only backend-neutral diagnostic vocabulary.
+
+`core::memory` is a bounded backend-neutral host-memory policy surface. It owns
+checked byte-slice copy, explicit one-way streaming copy, secure erasure, and
+equality contracts. Architecture-specific SIMD remains private; GPU
+allocations, mapped-range lifetimes, upload rings, flushes, and transfer
+submission remain runtime responsibilities. OARS does not replace Rust's
+`core`, `alloc`, or `std` containers and synchronization vocabulary.
 
 `lib.rs` explicitly re-exports the admitted root vocabulary:
 
@@ -240,8 +254,11 @@ let values = output.read_f32()?;
 
 Capture is isolated and never submits or waits. It currently requires an empty
 eager session, rejects nesting and empty captures, and restores eager recording
-after success, error, or unwind. Plans retain exact captured buffers and may be
-submitted repeatedly only through their originating engine.
+after success, error, or unwind. Plans retain their captured outputs and stable
+read-only Matrix input identities and may be submitted repeatedly only through
+their originating engine. Shape- and dtype-identical input rebinding is
+explicit, never waits, rejects aliases, and invalidates the compiled command.
+Unchanged untimed submissions reuse one simultaneously submittable recording.
 
 Whole-plan device timing is an explicit instrumented submission rather than a
 property of all execution:

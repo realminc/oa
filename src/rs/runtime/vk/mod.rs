@@ -12,7 +12,7 @@ mod timeline;
 mod timestamp;
 
 pub(super) use buffer::Buffer;
-pub(super) use command::RecordedCommandBuffer;
+pub(super) use command::{RecordedCommandBuffer, ReusableCommandBuffer};
 pub(super) use device::Device;
 pub(super) use instance::Instance;
 pub(super) use physical::PhysicalDevice;

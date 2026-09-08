@@ -30,49 +30,58 @@ pub enum ErrorKind {
 ///
 /// Backend and dependency errors are retained as sources without exposing their
 /// concrete types through OA's public API.
-#[derive(Debug)]
 pub struct Error {
+	inner: Box<ErrorData>,
+}
+
+struct ErrorData {
 	kind: ErrorKind,
 	message: String,
 	source: Option<Box<dyn StdError + Send + Sync + 'static>>,
 }
 
 impl Error {
+	fn new(data: ErrorData) -> Self {
+		Self {
+			inner: Box::new(data),
+		}
+	}
+
 	/// Return the stable category for this failure.
 	pub const fn kind(&self) -> ErrorKind {
-		self.kind
+		self.inner.kind
 	}
 
 	/// Return the contextual failure message.
 	pub fn message(&self) -> &str {
-		&self.message
+		&self.inner.message
 	}
 
 	pub(crate) fn backend_unavailable<E>(backend: &'static str, source: E) -> Self
 	where
 		E: StdError + Send + Sync + 'static,
 	{
-		Self {
+		Self::new(ErrorData {
 			kind: ErrorKind::BackendUnavailable,
 			message: format!("{backend} backend is unavailable"),
 			source: Some(Box::new(source)),
-		}
+		})
 	}
 
 	pub(crate) fn invalid_argument(message: impl Into<String>) -> Self {
-		Self {
+		Self::new(ErrorData {
 			kind: ErrorKind::InvalidArgument,
 			message: message.into(),
 			source: None,
-		}
+		})
 	}
 
 	pub(crate) fn not_ready(message: impl Into<String>) -> Self {
-		Self {
+		Self::new(ErrorData {
 			kind: ErrorKind::NotReady,
 			message: message.into(),
 			source: None,
-		}
+		})
 	}
 
 	pub(crate) fn backend_failure<E>(
@@ -83,11 +92,11 @@ impl Error {
 	where
 		E: StdError + Send + Sync + 'static,
 	{
-		Self {
+		Self::new(ErrorData {
 			kind: ErrorKind::BackendFailure,
 			message: format!("{backend} {operation} failed"),
 			source: Some(Box::new(source)),
-		}
+		})
 	}
 
 	pub(crate) fn unsupported_backend_version(
@@ -95,65 +104,77 @@ impl Error {
 		required: &'static str,
 		available: String,
 	) -> Self {
-		Self {
+		Self::new(ErrorData {
 			kind: ErrorKind::UnsupportedBackendVersion,
 			message: format!(
 				"{backend} {required} or newer is required; the loader provides {available}"
 			),
 			source: None,
-		}
+		})
 	}
 
 	pub(crate) fn no_suitable_device(message: impl Into<String>) -> Self {
-		Self {
+		Self::new(ErrorData {
 			kind: ErrorKind::NoSuitableDevice,
 			message: message.into(),
 			source: None,
-		}
+		})
 	}
 
 	pub(crate) fn missing_capability(message: impl Into<String>) -> Self {
-		Self {
+		Self::new(ErrorData {
 			kind: ErrorKind::MissingCapability,
 			message: message.into(),
 			source: None,
-		}
+		})
 	}
 
 	pub(crate) fn resource_exhausted(message: impl Into<String>) -> Self {
-		Self {
+		Self::new(ErrorData {
 			kind: ErrorKind::ResourceExhausted,
 			message: message.into(),
 			source: None,
-		}
+		})
 	}
 
 	pub(crate) fn failed_precondition(message: impl Into<String>) -> Self {
-		Self {
+		Self::new(ErrorData {
 			kind: ErrorKind::FailedPrecondition,
 			message: message.into(),
 			source: None,
-		}
+		})
 	}
 
 	pub(crate) fn io(operation: &'static str, source: std::io::Error) -> Self {
-		Self {
+		Self::new(ErrorData {
 			kind: ErrorKind::Io,
 			message: format!("{operation} failed"),
 			source: Some(Box::new(source)),
-		}
+		})
+	}
+}
+
+impl fmt::Debug for Error {
+	fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+		formatter
+			.debug_struct("Error")
+			.field("kind", &self.inner.kind)
+			.field("message", &self.inner.message)
+			.field("source", &self.inner.source)
+			.finish()
 	}
 }
 
 impl fmt::Display for Error {
 	fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-		formatter.write_str(&self.message)
+		formatter.write_str(&self.inner.message)
 	}
 }
 
 impl StdError for Error {
 	fn source(&self) -> Option<&(dyn StdError + 'static)> {
-		self.source
+		self.inner
+			.source
 			.as_deref()
 			.map(|source| source as &(dyn StdError + 'static))
 	}
@@ -166,6 +187,47 @@ pub type Result<T> = std::result::Result<T, Error>;
 mod tests {
 	use super::{Error, ErrorKind};
 	use std::error::Error as _;
+
+	#[test]
+	fn success_results_keep_the_error_payload_off_the_stack() {
+		assert_eq!(size_of::<Error>(), size_of::<usize>());
+		assert_eq!(size_of::<super::Result<()>>(), size_of::<usize>());
+		fn send_sync<T: Send + Sync>() {}
+		send_sync::<Error>();
+	}
+
+	#[test]
+	fn boxed_payload_preserves_debug_and_releases_its_source_once() {
+		use std::sync::{
+			Arc,
+			atomic::{AtomicUsize, Ordering},
+		};
+		#[derive(Debug)]
+		struct Source(Arc<AtomicUsize>);
+		impl std::fmt::Display for Source {
+			fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+				f.write_str("source")
+			}
+		}
+		impl std::error::Error for Source {}
+		impl Drop for Source {
+			fn drop(&mut self) {
+				self.0.fetch_add(1, Ordering::SeqCst);
+			}
+		}
+		let drops = Arc::new(AtomicUsize::new(0));
+		let error = Error::backend_failure("test", "operation", Source(Arc::clone(&drops)));
+		assert!(error.source().unwrap().downcast_ref::<Source>().is_some());
+		assert_eq!(drops.load(Ordering::SeqCst), 0);
+		drop(error);
+		assert_eq!(drops.load(Ordering::SeqCst), 1);
+		let error = Error::invalid_argument("bad input");
+		assert_eq!(error.to_string(), "bad input");
+		assert_eq!(
+			format!("{error:?}"),
+			"Error { kind: InvalidArgument, message: \"bad input\", source: None }"
+		);
+	}
 
 	#[test]
 	fn backend_source_is_preserved_without_entering_the_public_kind() {

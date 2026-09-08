@@ -22,12 +22,14 @@ pub mod render;
 pub mod video;
 pub mod vision;
 
+pub use core::vlm;
+
 // Re-export the common public vocabulary.
 pub use audio::Audio;
 pub use core::{DType, Error, ErrorKind, Format, Image, Matrix, Result};
 pub use video::Video;
 
 pub use runtime::{
-	DeviceSelection, Engine, EngineBuilder, Event, ExecutionPlan, LogComponent, LogLevel,
-	LogOptions,
+	DeviceSelection, Engine, EngineBuilder, Event, ExecutionPlan, ExecutionPlanDiagnostics,
+	LogComponent, LogLevel, LogOptions,
 };

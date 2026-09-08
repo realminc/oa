@@ -150,3 +150,115 @@ fn rejects_foreign_plan_without_poisoning_its_origin() -> oa::Result<()> {
 	assert_eq!(output.read_f32()?, [2.0; 3]);
 	Ok(())
 }
+
+#[test]
+#[ignore = "requires a hardware Vulkan 1.3 compute device"]
+fn reuses_commands_and_rebinds_stable_matrix_inputs() -> oa::Result<()> {
+	let engine = oa::Engine::new()?;
+	let one = oa::matrix::ones(&engine, [2, 3])?;
+	let two = oa::matrix::full(&engine, [2, 3], 2.0)?;
+	let (mut plan, output) = engine.capture(|| {
+		let three = oa::matrix::add(&one, &two)?;
+		oa::matrix::add(&three, &one)
+	})?;
+
+	let initial = plan.diagnostics();
+	assert_ne!(initial.graph_id(), 0);
+	assert_eq!(initial.node_count(), 2);
+	assert_eq!(initial.barrier_count(), 1);
+	assert_eq!(initial.input_binding_count(), 2);
+	assert_eq!(initial.command_recording_count(), 0);
+	assert_eq!(initial.command_cache_hit_count(), 0);
+	assert_eq!(initial.submission_count(), 0);
+	assert_eq!(initial.fallback_count(), 0);
+	let duplicate_one = oa::matrix::ones(&engine, [2, 3])?;
+	let duplicate_two = oa::matrix::full(&engine, [2, 3], 2.0)?;
+	let (equivalent_plan, _equivalent_output) = engine.capture(|| {
+		let three = oa::matrix::add(&duplicate_one, &duplicate_two)?;
+		oa::matrix::add(&three, &duplicate_one)
+	})?;
+	assert_eq!(equivalent_plan.diagnostics().graph_id(), initial.graph_id());
+	drop(equivalent_plan);
+
+	let first = engine.submit(&plan)?;
+	let second = engine.submit(&plan)?;
+	first.wait()?;
+	second.wait()?;
+	assert_eq!(output.read_f32()?, [4.0; 6]);
+	let reused = plan.diagnostics();
+	assert_eq!(reused.command_recording_count(), 1);
+	assert_eq!(reused.command_cache_hit_count(), 1);
+	assert_eq!(reused.submission_count(), 2);
+
+	let four = oa::matrix::full(&engine, [2, 3], 4.0)?;
+	plan.bind_matrix_input(&one, &four)?;
+	let rebound = plan.diagnostics();
+	assert_eq!(rebound.graph_id(), initial.graph_id());
+	assert_eq!(rebound.input_binding_count(), 2);
+	assert_eq!(rebound.input_rebinding_count(), 1);
+
+	let third = engine.submit(&plan)?;
+	let fourth = engine.submit(&plan)?;
+	let final_diagnostics = plan.diagnostics();
+	assert_eq!(final_diagnostics.command_recording_count(), 2);
+	assert_eq!(final_diagnostics.command_cache_hit_count(), 2);
+	assert_eq!(final_diagnostics.submission_count(), 4);
+	assert_eq!(final_diagnostics.fallback_count(), 0);
+	drop(plan);
+	third.wait()?;
+	fourth.wait()?;
+	assert_eq!(output.read_f32()?, [10.0; 6]);
+	Ok(())
+}
+
+#[test]
+#[ignore = "requires a hardware Vulkan 1.3 compute device"]
+fn rejects_invalid_matrix_input_rebinding_without_mutating_the_plan() -> oa::Result<()> {
+	let engine = oa::Engine::new()?;
+	let one = oa::matrix::ones(&engine, [2, 3])?;
+	let two = oa::matrix::full(&engine, [2, 3], 2.0)?;
+	let (mut plan, output) = engine.capture(|| oa::matrix::add(&one, &two))?;
+	let graph_id = plan.diagnostics().graph_id();
+
+	let wrong_shape = oa::matrix::ones(&engine, [3, 2])?;
+	assert_eq!(
+		plan.bind_matrix_input(&one, &wrong_shape)
+			.unwrap_err()
+			.kind(),
+		oa::ErrorKind::InvalidArgument
+	);
+	assert_eq!(
+		plan.bind_matrix_input(&one, &two).unwrap_err().kind(),
+		oa::ErrorKind::InvalidArgument
+	);
+	let replacement_output = oa::matrix::ones(&engine, [2, 3])?;
+	assert_eq!(
+		plan.bind_matrix_input(&output, &replacement_output)
+			.unwrap_err()
+			.kind(),
+		oa::ErrorKind::InvalidArgument
+	);
+	let unrelated = oa::matrix::ones(&engine, [2, 3])?;
+	assert_eq!(
+		plan.bind_matrix_input(&unrelated, &unrelated)
+			.unwrap_err()
+			.kind(),
+		oa::ErrorKind::InvalidArgument
+	);
+	let foreign = oa::Engine::new()?;
+	let foreign_input = oa::matrix::ones(&foreign, [2, 3])?;
+	assert_eq!(
+		plan.bind_matrix_input(&one, &foreign_input)
+			.unwrap_err()
+			.kind(),
+		oa::ErrorKind::InvalidArgument
+	);
+
+	let diagnostics = plan.diagnostics();
+	assert_eq!(diagnostics.graph_id(), graph_id);
+	assert_eq!(diagnostics.input_binding_count(), 2);
+	assert_eq!(diagnostics.input_rebinding_count(), 0);
+	engine.submit(&plan)?.wait()?;
+	assert_eq!(output.read_f32()?, [3.0; 6]);
+	Ok(())
+}

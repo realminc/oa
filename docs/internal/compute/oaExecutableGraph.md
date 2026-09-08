@@ -67,7 +67,7 @@ readback.
 
 Pure hazard and alias invariants live beside the private planner under
 `#[cfg(test)]`; they are absent from normal library builds. Consumer-visible
-API contracts and normal hardware behavior live under `tests/`, including
+API contracts and normal hardware behavior live under `test/rs/runtime/`, including
 automatic observation flush and explicit checkpoint submission. The private
 multi-node recorder additionally retains an ignored unit-level hardware oracle
 until public capture makes that exact boundary externally constructible.
@@ -80,12 +80,16 @@ identity, flushes earlier eager work, records the retained graph, submits
 without waiting, and attaches the exact event to every captured output. The
 same plan can be replayed repeatedly.
 
-The current plan re-records a primary command buffer for each replay and binds
-the exact buffers captured initially. Stable mutable input slots, exact graph
-hashing, compiled command reuse, semantic value identities, and graph
-diagnostics remain incomplete. Vulkan timestamp queries attach to exact
-executable regions and submission events rather than timing operation
-construction.
+An untimed plan records its primary command buffer once and shares it across
+unchanged submissions with `SIMULTANEOUS_USE`. Exact retirement ownership keeps
+that command and its buffers alive through every pending replay. A validated
+read-only Matrix input rebind preserves stable captured-slot identity, replaces
+every occurrence, recomputes hazards, and invalidates the cached command. Alias
+introduction is rejected, so normalized graph structure and its diagnostic ID
+remain stable. Mutable output bindings and general semantic value identity
+remain incomplete. Vulkan timestamp queries attach to exact executable regions
+and submission events rather than timing operation construction; timed replay
+uses a fresh instrumented command rather than the untimed cache.
 
 `Engine::submit_timed` allocates one independent two-query timestamp pool for a
 single replay. Command recording resets it, writes at top-of-pipe immediately

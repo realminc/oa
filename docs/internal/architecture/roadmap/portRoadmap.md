@@ -2,7 +2,7 @@
 
 **Status:** Planned
 
-**Updated:** 2026-09-07
+**Updated:** 2026-09-08
 
 **Architecture:** [OA Rust Architecture](../oaArchitecture.md)
 
@@ -49,10 +49,23 @@ exact event. Explicit timed replay records a fresh Vulkan timestamp query pair
 around the complete executable graph and exposes its wrap-corrected device
 duration through that exact event. An Experimental six-shape MatMul recording
 suite now correctness-gates captured-plan replay, runs at least seven fresh
-processes, and preserves raw timing and build/device provenance. Command-buffer
-caching, calibrated clocks,
-mutable stable input slots, semantic graph identity, broadcasting, mutation
-contracts, and broader generated documentation remain incomplete.
+processes, and preserves raw timing and build/device provenance. Untimed plans
+cache one simultaneously submittable command, validated read-only Matrix inputs
+retain stable slot identity across rebinding, and diagnostic snapshots report a
+normalized executable identity plus graph, cache, submission, rebinding, and
+fallback counters. Calibrated clocks, mutable output slots, general semantic
+value identity, broadcasting, mutation contracts, and broader generated
+documentation remain incomplete.
+The first host-memory foundation slice is Experimental. `core::memory` has
+checked exact-length ordinary and one-way streaming copies, an inlined dynamic
+small-copy dispatcher, runtime-gated AVX2/AVX-512 non-temporal stores in the
+qualified 1 KiB through 4 MiB window, ordinary and fixed-work equality, and
+secure erasure. Vulkan mapped uploads use the one-way policy before allocation
+flush. Exact-bounds, alignment, mismatch, guard-byte, and public API tests pass;
+the matched OA C++/OARS harness and alternating fresh-process recorder are
+implemented. Fixed-clock acceptance remains blocked by the reference
+laptop's degraded performance profile, and this does not replace the planned
+upload ring.
 Engine-owned structured console/file logging, weak thread-local selection,
 custom component tags, release compile-out for trace/debug call sites, and
 explicit failure-bearing flush/close boundaries are Experimental.
@@ -153,8 +166,9 @@ helpers until their schema-generated fixture layer lands.
 
 ## Stage 3 — Reusable execution (Experimental baseline complete)
 
-The baseline now captures an isolated eager recording into an immutable plan
-and explicitly re-records and submits its retained executable graph repeatedly.
+The baseline now captures an isolated eager recording into a structurally
+immutable plan, caches unchanged untimed command recording, and admits validated
+read-only Matrix input rebinding with cache invalidation.
 Remaining work must establish:
 
 - semantic capture ownership;
@@ -171,6 +185,24 @@ cross-implementation comparison remain separate dependencies.
 
 Operator overloading remains deferred until this stage proves where validation
 and lowering failures are reported without panics.
+
+## Independent foundation checkpoint — VLM (Experimental)
+
+The host-only `core::vlm` checkpoint ports OA's packed `f32`/`f64` spatial
+values and formula authority without depending on the Vulkan runtime. It uses
+Rust's standard library, preserves the fixed OA row-vector and Vulkan-depth
+convention, and replaces C++ output-parameter checks with `Option` results that
+leave no partially updated value. Its external contract suite covers packed
+layout, robust normalization, every Euler order, quaternion/matrix parity,
+inverse and singular behavior, signed-scale/shear/reflection decomposition,
+camera-forward `-Z`, Vulkan depth, odd viewport extents, and large-world `f64`.
+
+Consumer migration and source-audit enforcement remain Planned. A matched
+50-case OA C++/GLM/OARS benchmark and alternating fresh-process recorder are
+implemented; the current noncanonical diagnostic identifies checked
+projection, determinant/multiply, quaternion rotation, and normalization as
+optimization targets. SIMD specialization remains deferred until canonical
+fixed-state evidence and a measured consumer workload justify it.
 
 ## Stage 4 — Matrix foundation
 

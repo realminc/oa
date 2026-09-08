@@ -174,6 +174,7 @@ def power_snapshot() -> dict[str, Any]:
 		}
 	)
 	power_profile = None
+	performance_degraded = None
 	powerprofilesctl = shutil.which("powerprofilesctl")
 	if powerprofilesctl:
 		result = subprocess.run(
@@ -181,11 +182,189 @@ def power_snapshot() -> dict[str, Any]:
 		)
 		if result.returncode == 0:
 			power_profile = result.stdout.strip()
+		busctl = shutil.which("busctl")
+		if busctl:
+			degraded = subprocess.run(
+				(
+					busctl,
+					"get-property",
+					"net.hadess.PowerProfiles",
+					"/net/hadess/PowerProfiles",
+					"net.hadess.PowerProfiles",
+					"PerformanceDegraded",
+				),
+				text=True,
+				capture_output=True,
+				check=False,
+			)
+			if degraded.returncode == 0:
+				value = degraded.stdout.strip()
+				performance_degraded = "" if value == 's ""' else value
 	return {
 		"cpu_governors": governors,
 		"intel_pstate_no_turbo": read_text(Path("/sys/devices/system/cpu/intel_pstate/no_turbo")),
 		"power_profile": power_profile,
+		"performance_degraded": performance_degraded,
 	}
+
+
+def frequency_snapshot(
+	cpu_root: Path = Path("/sys/devices/system/cpu"),
+	drm_root: Path = Path("/sys/class/drm"),
+) -> dict[str, Any]:
+	"""Capture the requested and observed Linux CPU/Xe clock state."""
+	cpu_policies = []
+	for root in sorted((cpu_root / "cpufreq").glob("policy*")):
+		fields = {
+			key: read_text(root / source)
+			for key, source in {
+				"minimum_khz": "scaling_min_freq",
+				"maximum_khz": "scaling_max_freq",
+				"current_khz": "scaling_cur_freq",
+				"hardware_minimum_khz": "cpuinfo_min_freq",
+				"hardware_maximum_khz": "cpuinfo_max_freq",
+				"governor": "scaling_governor",
+			}.items()
+		}
+		cpu_policies.append({
+			"policy": root.name,
+			**{key: value for key, value in fields.items() if value is not None},
+		})
+
+	gpu_engines = []
+	for root in sorted(drm_root.glob("card[0-9]*/device/tile*/gt*/freq*")):
+		fields = {
+			key: read_text(root / source)
+			for key, source in {
+				"requested_minimum_mhz": "min_freq",
+				"requested_maximum_mhz": "max_freq",
+				"current_mhz": "cur_freq",
+				"actual_mhz": "act_freq",
+				"hardware_minimum_mhz": "rpn_freq",
+				"hardware_maximum_mhz": "rp0_freq",
+				"throttle_status": "throttle/status",
+				"throttle_reasons": "throttle/reasons",
+			}.items()
+		}
+		gpu_engines.append({
+			"engine": str(root),
+			**{key: value for key, value in fields.items() if value is not None},
+		})
+
+	return {
+		"contract": {
+			key: value
+			for key, value in {
+				"cpu_fixed_khz": os.environ.get("OA_BENCH_CPU_FIXED_KHZ")
+				or os.environ.get("OA_BENCH_CPU_MAX_KHZ"),
+				"gpu_fixed_mhz": os.environ.get("OA_BENCH_GPU_FIXED_MHZ"),
+				"cpu_governor": os.environ.get("OA_BENCH_CPU_GOVERNOR"),
+				"power_profile": os.environ.get("OA_BENCH_POWER_PROFILE"),
+			}.items()
+			if value is not None
+		},
+		"intel_pstate_no_turbo": read_text(cpu_root / "intel_pstate/no_turbo"),
+		"cpu_policies": cpu_policies,
+		"gpu_engines": gpu_engines,
+		"power": power_snapshot(),
+	}
+
+
+def clock_contract_violations(snapshot: dict[str, Any]) -> list[str]:
+	"""Return fail-closed violations for an advertised fixed-clock contract."""
+	contract = snapshot.get("contract", {})
+	if not contract:
+		return []
+	violations: list[str] = []
+
+	def integer(value: Any, label: str) -> int | None:
+		try:
+			return int(str(value))
+		except (TypeError, ValueError):
+			violations.append(f"{label} is unavailable or non-numeric")
+			return None
+
+	fixed_cpu = (
+		integer(contract["cpu_fixed_khz"], "CPU fixed-clock contract")
+		if "cpu_fixed_khz" in contract else None
+	)
+	policies = snapshot.get("cpu_policies", [])
+	if fixed_cpu is not None:
+		if snapshot.get("intel_pstate_no_turbo") != "0":
+			violations.append("Intel Turbo is unavailable or disabled")
+		if not policies:
+			violations.append("CPU frequency policies are unavailable")
+		for policy in policies:
+			name = policy.get("policy", "unknown")
+			for field in ("minimum_khz", "maximum_khz"):
+				observed = integer(policy.get(field), f"CPU {name} {field}")
+				if observed is not None and observed != fixed_cpu:
+					violations.append(
+						f"CPU {name} {field} is {observed}, expected {fixed_cpu}"
+					)
+			current = integer(policy.get("current_khz"), f"CPU {name} current_khz")
+			if current is not None and abs(current - fixed_cpu) > fixed_cpu * 0.02:
+				violations.append(
+					f"CPU {name} current_khz is {current}, expected {fixed_cpu} +/- 2%"
+				)
+	expected_governor = contract.get("cpu_governor")
+	if expected_governor is not None:
+		if not policies:
+			violations.append("CPU governor state is unavailable")
+		for policy in policies:
+			if policy.get("governor") != expected_governor:
+				violations.append(
+					f"CPU {policy.get('policy', 'unknown')} governor is "
+					f"{policy.get('governor', 'unavailable')}, expected {expected_governor}"
+				)
+
+	fixed_gpu = (
+		integer(contract["gpu_fixed_mhz"], "GPU fixed-clock contract")
+		if "gpu_fixed_mhz" in contract else None
+	)
+	engines = snapshot.get("gpu_engines", [])
+	if fixed_gpu is not None:
+		if not engines:
+			violations.append("GPU frequency engines are unavailable")
+		for engine in engines:
+			name = engine.get("engine", "unknown")
+			for field in ("requested_minimum_mhz", "requested_maximum_mhz"):
+				observed = integer(engine.get(field), f"GPU {name} {field}")
+				if observed is not None and observed != fixed_gpu:
+					violations.append(
+						f"GPU {name} {field} is {observed}, expected {fixed_gpu}"
+					)
+			for field in ("current_mhz", "actual_mhz"):
+				observed = integer(engine.get(field), f"GPU {name} {field}")
+				if observed is not None and abs(observed - fixed_gpu) > fixed_gpu * 0.02:
+					violations.append(
+						f"GPU {name} {field} is {observed}, expected {fixed_gpu} +/- 2%"
+					)
+			if engine.get("throttle_status") != "0":
+				violations.append(
+					f"GPU {name} throttle status is "
+					f"{engine.get('throttle_status', 'unavailable')}"
+				)
+			if engine.get("throttle_reasons") != "none":
+				violations.append(
+					f"GPU {name} throttle reasons are "
+					f"{engine.get('throttle_reasons', 'unavailable')}"
+				)
+
+	power = snapshot.get("power", {})
+	expected_profile = contract.get("power_profile")
+	if expected_profile is not None and power.get("power_profile") != expected_profile:
+		violations.append(
+			f"power profile is {power.get('power_profile', 'unavailable')}, "
+			f"expected {expected_profile}"
+		)
+	degraded = power.get("performance_degraded")
+	if expected_profile == "performance":
+		if degraded is None:
+			violations.append("performance degradation state is unavailable")
+		elif degraded:
+			violations.append(f"performance profile is degraded: {degraded}")
+	return violations
 
 
 def thermal_summary(samples: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -343,6 +522,25 @@ def run(args: argparse.Namespace) -> tuple[Path, int]:
 	if not command:
 		raise ValueError("workload command is required after --")
 	contract = parse_contract(args.contract)
+	for key, environment_name in {
+		"cpu_fixed_khz": "OA_BENCH_CPU_FIXED_KHZ",
+		"gpu_fixed_mhz": "OA_BENCH_GPU_FIXED_MHZ",
+		"cpu_governor": "OA_BENCH_CPU_GOVERNOR",
+		"power_profile": "OA_BENCH_POWER_PROFILE",
+	}.items():
+		value = os.environ.get(environment_name)
+		if value is None:
+			continue
+		if key in contract and contract[key] != value:
+			raise ValueError(
+				f"workload contract {key}={contract[key]} conflicts with "
+				f"{environment_name}={value}"
+			)
+		contract[key] = value
+	if "cpu_fixed_khz" not in contract:
+		legacy_cpu = os.environ.get("OA_BENCH_CPU_MAX_KHZ")
+		if legacy_cpu is not None:
+			contract["cpu_fixed_khz"] = legacy_cpu
 	metric_pattern = re.compile(args.metric_regex)
 	required_patterns = [re.compile(pattern) for pattern in args.required_regexes]
 	thermal_pattern = re.compile(args.thermal_regex) if args.thermal_regex else None
@@ -359,6 +557,13 @@ def run(args: argparse.Namespace) -> tuple[Path, int]:
 		thermal_before, thermal_wait = wait_for_thermal_limit(
 			args.thermal_limit, thermal_pattern, args.thermal_timeout
 		)
+		frequency_before = frequency_snapshot()
+		clock_violations_before = clock_contract_violations(frequency_before)
+		if clock_violations_before:
+			raise ValueError(
+				"fixed-clock admission failed before workload: "
+				+ "; ".join(clock_violations_before)
+			)
 		started = time.monotonic()
 		result = subprocess.run(
 			command,
@@ -370,6 +575,8 @@ def run(args: argparse.Namespace) -> tuple[Path, int]:
 			check=False,
 		)
 		process_wall_ms = (time.monotonic() - started) * 1000.0
+		frequency_after = frequency_snapshot()
+		clock_violations_after = clock_contract_violations(frequency_after)
 		thermal_after = thermal_snapshot()
 		stem = f"{phase}-{phase_index:02d}"
 		stdout_path = logs / f"{stem}.stdout.txt"
@@ -399,6 +606,9 @@ def run(args: argparse.Namespace) -> tuple[Path, int]:
 			"thermal_before": thermal_before,
 			"thermal_after": thermal_after,
 			"thermal_wait_seconds": thermal_wait,
+			"frequency_before": frequency_before,
+			"frequency_after": frequency_after,
+			"clock_contract_violations": clock_violations_after,
 			"stdout": {
 				"path": str(stdout_path.relative_to(output.parent)),
 				"bytes": stdout_path.stat().st_size,
@@ -411,7 +621,12 @@ def run(args: argparse.Namespace) -> tuple[Path, int]:
 			},
 		}
 		samples.append(sample)
-		if result.returncode != 0 or not all(required) or metric_value is None:
+		if (
+			result.returncode != 0
+			or not all(required)
+			or metric_value is None
+			or clock_violations_after
+		):
 			failure = True
 			break
 		if phase == "measured":

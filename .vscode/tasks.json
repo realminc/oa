@@ -72,7 +72,7 @@
 		{
 			"label": "Oars - Test MatMul (Vulkan)",
 			"type": "shell",
-			"command": "cargo test --test matrix_blas_generated -- --ignored --nocapture",
+			"command": "cargo test --test matrix blas:: -- --ignored --nocapture",
 			"group": "test",
 			"problemMatcher": [],
 			"presentation": { "reveal": "always", "panel": "shared", "clear": true }

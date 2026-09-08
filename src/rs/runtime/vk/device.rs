@@ -10,7 +10,7 @@ use crate::{
 
 use super::{
 	Instance, PhysicalDevice,
-	command::{CommandPool, RecordedCommandBuffer},
+	command::{CommandPool, RecordedCommandBuffer, ReusableCommandBuffer},
 	descriptor::DescriptorHeap,
 	pipeline::ComputePipeline,
 	queue::Queue,
@@ -235,7 +235,33 @@ impl Device {
 			self.inner.descriptors.set(),
 			graph,
 			None,
+			None,
 		)
+	}
+
+	pub(in crate::runtime) fn record_reusable_compute_graph(
+		&self,
+		graph: &ExecutableGraph,
+	) -> Result<ReusableCommandBuffer> {
+		let mut command_pool = match self.inner.command_pool.lock() {
+			Ok(command_pool) => command_pool,
+			Err(poisoned) => poisoned.into_inner(),
+		};
+		let command = command_pool.record_compute_graph(
+			&self.inner.handle,
+			&self.inner.pipelines,
+			self.inner.descriptors.set(),
+			graph,
+			None,
+			Some(self.clone()),
+		)?;
+		command.reusable().ok_or_else(|| {
+			Error::backend_failure(
+				"Vulkan",
+				"reusable command-buffer recording",
+				std::io::Error::other("recording did not retain reusable ownership"),
+			)
+		})
 	}
 
 	pub(in crate::runtime) fn record_timed_compute_graph(
@@ -257,6 +283,7 @@ impl Device {
 			self.inner.descriptors.set(),
 			graph,
 			Some(timing),
+			None,
 		)
 	}
 
@@ -305,11 +332,24 @@ impl Device {
 	}
 
 	pub(in crate::runtime) fn free(&self, command: RecordedCommandBuffer) {
+		// Drop reusable ownership before taking the pool lock. Its final owner frees
+		// the shared handle through this same mutex.
+		let Some(handle) = command.into_owned_handle() else {
+			return;
+		};
 		let mut command_pool = match self.inner.command_pool.lock() {
 			Ok(command_pool) => command_pool,
 			Err(poisoned) => poisoned.into_inner(),
 		};
-		command_pool.free(&self.inner.handle, command);
+		command_pool.free_handle(&self.inner.handle, handle);
+	}
+
+	pub(in crate::runtime) fn free_command_buffer_handle(&self, handle: ash::vk::CommandBuffer) {
+		let mut command_pool = match self.inner.command_pool.lock() {
+			Ok(command_pool) => command_pool,
+			Err(poisoned) => poisoned.into_inner(),
+		};
+		command_pool.free_handle(&self.inner.handle, handle);
 	}
 
 	pub(in crate::runtime) fn is_complete(&self, epoch: u64) -> Result<bool> {

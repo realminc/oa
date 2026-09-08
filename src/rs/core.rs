@@ -4,6 +4,8 @@ mod dtype;
 mod error;
 mod image;
 mod matrix;
+pub mod memory;
+pub mod vlm;
 
 pub use dtype::{DType, Element};
 pub use error::{Error, ErrorKind, Result};

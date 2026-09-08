@@ -16,13 +16,14 @@ impl ComputePipeline {
 		artifact: &'static ShaderArtifact,
 		limits: DeviceLimits,
 	) -> Result<Self> {
-		validate_artifact_limits(artifact.workgroup_size, artifact.push_constant_size, limits)?;
+		let push_constant_size = artifact.push_constant_size()?;
+		validate_artifact_limits(artifact.workgroup_size, push_constant_size, limits)?;
 
 		let descriptor_layouts = [descriptor_layout];
 		let push_range = ash::vk::PushConstantRange::default()
 			.stage_flags(ash::vk::ShaderStageFlags::COMPUTE)
 			.offset(0)
-			.size(artifact.push_constant_size);
+			.size(push_constant_size);
 		let push_ranges = [push_range];
 		let layout_info = ash::vk::PipelineLayoutCreateInfo::default()
 			.set_layouts(&descriptor_layouts)
@@ -99,7 +100,7 @@ impl ComputePipeline {
 			handle,
 			layout,
 			max_dispatch_group_count: limits.max_compute_work_group_count,
-			push_constant_size: artifact.push_constant_size,
+			push_constant_size,
 		})
 	}
 

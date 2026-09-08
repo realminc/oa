@@ -19,6 +19,10 @@ fn root_exports_are_identities_of_runtime_contracts() -> oa::Result<()> {
 		TypeId::of::<oa::runtime::ExecutionPlan>()
 	);
 	assert_eq!(
+		TypeId::of::<oa::ExecutionPlanDiagnostics>(),
+		TypeId::of::<oa::runtime::ExecutionPlanDiagnostics>()
+	);
+	assert_eq!(
 		TypeId::of::<oa::LogOptions>(),
 		TypeId::of::<oa::runtime::LogOptions>()
 	);

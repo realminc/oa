@@ -1,6 +1,6 @@
 # OA Rust Performance Evidence
 
-**Status:** Canonical protocol; recording infrastructure is Experimental
+**Status:** Canonical protocol; fixed-clock and memory-pair recording implemented
 
 **Updated:** 2026-09-08
 
@@ -18,6 +18,13 @@ timing, identifies its one fixed route and structurally unavailable fallback,
 records synchronized wall and device duration separately, and preserves raw
 logs plus source, executable, toolchain, Vulkan, device, driver, power, and
 thermal provenance.
+
+The checked-in `core_memory_bench` executable exercises Rust and OARS ordinary,
+compiler-sized, and explicit streaming copies with OA C++'s case inventory.
+`memory_rust.py` owns the primary Rust/OARS fresh-process distributions;
+`memory_compare.py` retains the alternating language-pair reference.
+No fixed-clock result has yet been accepted: the reference laptop
+currently reports firmware `lap-detected`, which the state wrapper rejects.
 
 The runner does not yet accept hardware-scoped baselines or compare OA and
 OARS. The runtime also lacks calibrated host/device clocks, physical shader
@@ -63,6 +70,21 @@ Before comparing baseline and candidate:
    an average alone.
 8. Require unexpected fallback counters to be zero.
 9. Re-measure a squash/tag at its final commit; a similar tree is not provenance.
+
+For the reference laptop, the complete command must run beneath:
+
+```bash
+tools/profiling/stable_clocks.sh --cpu-khz 2600000 --gpu-mhz 1000 -- <command>
+```
+
+The wrapper temporarily selects the `performance` power profile and CPU
+governor, fixes every CPU policy to min=max 2.6 GHz, fixes the Xe request to
+min=max 1.0 GHz, and restores the previous state on every exit path. It fails
+before timing when the profile is degraded (including `lap-detected`) or a
+requested state does not stick. The benchmark runner also samples and validates
+profile, governor, requested/observed clocks, and GPU throttle state before and
+after each fresh process. A 2.6 GHz maximum cap with a lower minimum is not a
+fixed-clock run.
 
 Changed precision, workload, batching, synchronization, fallback, oracle, or
 measurement boundary invalidates a direct speedup comparison.
@@ -182,6 +204,53 @@ hardware-scoped baseline comparison and physical artifact telemetry exist,
 numbers may be labeled **Experimental evidence** with exact commands and
 limitations. They cannot be labeled a regression gate, OA-versus-OARS speedup,
 cross-vendor result, or Shipped performance capability.
+
+## Host-memory runner
+
+Build the matched release executable and select one sweep:
+
+```bash
+RUSTFLAGS='-C target-cpu=native -C link-arg=-fuse-ld=lld' \
+  cargo build --release --example core_memory_bench
+./target/release/examples/core_memory_bench --quick --copy
+./target/release/examples/core_memory_bench --streaming
+```
+
+The Rust executable deliberately matches OA C++: identical sizes, offsets,
+64-byte alignment, 64/256 MiB rotating arenas, iteration formulas, five inner
+warmups, 21 measured samples, rotating implementation order, pre-timing
+oracles, median/p10/p90, decimal GB/s, and CSV schema. `rust_std` is
+`copy_from_slice`; `oa_rust` is the dynamic small-copy/bulk-fallback contract;
+`oa_rust_stream` admits a destination that will not be consumed by the CPU
+soon. Compiler-sized rows are diagnostic and remain separate from runtime-size
+API rows.
+
+Harness v2 moves policy selection outside each timed loop and obscures both
+slices on every iteration. This prevents compiler load hoisting and asymmetric
+loop dispatch. Historical v1 numbers are not directly comparable with v2.
+
+The primary recorder compares stock Rust and OARS inside the same process:
+
+```bash
+RUSTFLAGS='-C target-cpu=native -C link-arg=-fuse-ld=lld' \
+  tools/profiling/stable_clocks.sh --cpu-khz 2600000 --gpu-mhz 1000 -- \
+  python3 tools/profiling/memory_rust.py \
+    --binary /absolute/clean/oars/core_memory_bench \
+    --mode copy --output /absolute/result/memory-copy.json
+```
+
+The outer runner uses two warmup processes and seven measured processes,
+preserves every CSV and stderr stream, validates identical case/policy sets,
+and reports process medians plus MAD, percentiles, and spread. Speedups are
+paired stock/OARS latency ratios from each process, not ratios of independently
+aggregated medians. Use `--mode streaming` separately for the one-way contract.
+Run a separate default-target build to detect native-only improvements.
+
+It refuses dirty repositories and a missing fixed-clock contract by default.
+`--observed-clocks` explicitly records noncanonical development evidence when
+the firmware prevents the requested power state. It does not change clocks.
+The older `memory_compare.py` runner retains alternating C++/Rust process
+pairs for porting references; C++ is not the Rust acceptance baseline.
 
 ## References
 

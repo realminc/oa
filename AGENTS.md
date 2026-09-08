@@ -51,21 +51,30 @@ The repository remains Experimental. No GPU operation is Shipped. The
 one-device runtime, schema-generated out-of-place `f32` elementwise family,
 `i32` Matrix-add dtype proof, and FP32 `matrix::mat_mul_nt` with a generated
 64×64×16 tiled kernel and runnable SDK oracle are implemented checkpoints.
+Backend-neutral `core::memory` provides checked ordinary and explicit one-way
+streaming copy, ordinary and fixed-work equality, and secure erasure. The
+x86-64 implementation retains OA's qualified small-copy and AVX2/AVX-512
+streaming policies; Vulkan host uploads use that explicit streaming contract.
+This is an Experimental correctness checkpoint, not a performance claim.
 Broader integer operations, broadcasting, in-place mutations, GEMM routing and
 specialized variants, low-precision storage, and broader domains remain
 incomplete. Engine-owned structured logging and explicit whole-plan Vulkan
 device timing are Experimental. The fresh-process MatMul recording runner and
 six-shape suite are Experimental; accepted baselines, cross-implementation
 comparison, calibrated host/device clocks, structured runtime metrics, and
-graph diagnostics remain Planned.
+accepted regression policy remain Planned. Execution-plan diagnostics now expose
+normalized graph, barrier, recording, cache-hit, submission, rebinding, and
+fallback evidence without exposing Vulkan or kernel routing policy.
 The private executable-graph foundation snapshots resolved compute dispatches,
 records multiple nodes in one primary command buffer, and derives per-buffer
 RAW, WAR, and WAW barriers. A private engine-owned execution session batches
 eager work until blocking observation or `Engine::checkpoint`; `try_read`
 neither submits nor waits. Isolated capture and immutable engine-associated
-plan replay are Experimental. Timed replay uses an independently owned query
-pair per submission. Semantic graph identity, stable mutable plan slots,
-compiled command caching, calibrated clocks, and non-compute graph nodes remain
+plan replay are Experimental. Untimed replay caches one simultaneously
+submittable command; read-only Matrix inputs can be rebound under exact semantic,
+ownership, and no-alias validation, invalidating that cache. Timed replay uses
+an independently owned query pair per submission. Mutable output slots, general
+semantic value identity, calibrated clocks, and non-compute graph nodes remain
 Planned.
 Planned APIs and scaffold modules are not capability claims.
 
@@ -74,8 +83,7 @@ Planned APIs and scaffold modules are not capability claims.
 Run the narrowest relevant proof followed by:
 
 ```bash
-python3 -m unittest discover -s tools/gen/fn/tests -v
-python3 -m unittest discover -s tools/profiling/tests -v
+python3 -m unittest discover -s test/py -v
 python3 tools/gen/fn/generate.py --check
 cargo fmt --check
 cargo clippy --all-targets --all-features -- -D warnings

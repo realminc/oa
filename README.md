@@ -134,15 +134,26 @@ performance claim.
 ## Development
 
 Builds require Python 3, `rustfmt`, `slangc`, and `spirv-val` on `PATH`.
+Linux GNU builds also require Clang, LLD, and LLVM's `llvm-ar`. Repository
+Cargo configuration selects Clang/LLD for linking and Clang/Clang++ for native
+dependencies. Rust source is compiled by the pinned `rustc` with its LLVM
+backend; the `linux-gnu` target retains the system glibc ABI. Explicit `CC`,
+`CXX`, and `AR` environment settings can override the native compiler defaults.
+When setting `RUSTFLAGS`, retain `-C link-arg=-fuse-ld=lld`, because Cargo
+environment flags replace configured flags. For local CPU benchmarks use
+`RUSTFLAGS='-C target-cpu=native -C link-arg=-fuse-ld=lld'`. Native CPU targeting
+is deliberately opt-in so ordinary builds remain portable.
 `PYTHON`, `SLANGC`, and `SPIRV_VAL` may name explicit executables. Missing
 tools, stale generated sources, compilation failure, reflected ABI drift, and
 Vulkan 1.3 SPIR-V validation failure stop the build.
 
 The intended baseline gates are:
 
+Integration suites live under `test/rs/<module>/test_*.rs`; Python tests live
+under `test/py/`. See [test organization and focused commands](test/README.md).
+
 ```bash
-python3 -m unittest discover -s tools/gen/fn/tests -v
-python3 -m unittest discover -s tools/profiling/tests -v
+python3 -m unittest discover -s test/py -v
 python3 tools/gen/fn/generate.py --check
 cargo fmt --check
 cargo clippy --all-targets --all-features -- -D warnings

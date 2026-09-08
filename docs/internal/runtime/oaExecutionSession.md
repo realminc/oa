@@ -55,7 +55,7 @@ fallible recovery or surprise execution.
 ## Tests
 
 Private graph-planner invariants remain inline under `#[cfg(test)]`. Public
-integration tests under `tests/` prove that chained operations need no manual
+integration tests under `test/rs/runtime/` prove that chained operations need no manual
 submission, `try_read` remains non-blocking before submission,
 `Engine::checkpoint` submits a pending batch, results survive public-engine
 drop, and hardware output matches independent host values. Core,

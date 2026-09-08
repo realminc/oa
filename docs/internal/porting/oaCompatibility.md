@@ -2,7 +2,7 @@
 
 **Status:** Planned
 
-**Updated:** 2026-09-07
+**Updated:** 2026-09-08
 
 **Rust architecture:** [OA Rust Architecture](../architecture/oaArchitecture.md)
 
@@ -25,6 +25,8 @@ semantic migration map, not a file-by-file port checklist.
 | Runtime wrapper/default engine | Redesign | Rust constructs `Engine` explicitly and values retain its opaque internal lifetime. Python may own one implicit process engine for the established `oa.FnMatrix` facade; neither surface introduces a second runtime type. |
 | `core/` source boundary | Preserve and expose | Public `core` owns foundational values, checked metadata, errors/results, and backend-neutral primitives; `lib.rs` explicitly re-exports the common root vocabulary. |
 | Public `oa.core` namespace | Adopt | Rust exposes `oa::core`; Python mirrors it as `oa.core`. Explicit root re-exports remain identity aliases, not duplicate implementations. |
+| OA foundation memory primitives | Preserve selectively | `core::memory` owns checked slice copy, explicit one-way streaming copy, fixed-work equality, and secure erasure. Private x86-64 AVX2/AVX-512 paths preserve the qualified OA policy; Rust `std` remains the default foundation rather than being replaced wholesale. |
+| Complete OA C++ foundation/STL replacement | Reject | Rust uses `core`, `alloc`, and `std` for ordinary containers, ownership, synchronization, paths, and I/O. Add an OA primitive only for a distinct contract or correctness-gated measured benefit. |
 | Value / operation / session classification | Preserve | Rust structs/enums, module functions, and explicit stateful session structs. |
 | Shared storage with semantic value types | Preserve | Composition and checked zero-copy views; no inheritance requirement. |
 | C++ Pimpl and access bridges | Redesign | Private fields, crate visibility, typed ownership, and narrow safe runtime interfaces. |
@@ -65,9 +67,9 @@ semantic migration map, not a file-by-file port checklist.
 | OA concept | Decision | Rust direction |
 |---|---|---|
 | Semantic graph | Preserve | Domain values, operations, attributes, effects, aliases, control, and autograd provenance. |
-| Executable Vulkan graph | Preserve progressively | The private Rust graph snapshots concrete compute dispatches and plans buffer RAW/WAR/WAW barriers. Immutable capture/replay is Experimental; semantic identity, command caching, and non-compute nodes remain deferred. |
+| Executable Vulkan graph | Preserve progressively | The private Rust graph snapshots concrete compute dispatches, plans buffer RAW/WAR/WAW barriers, and caches unchanged untimed command recording. Read-only Matrix inputs have stable captured identities and checked rebinding; general semantic identity and non-compute nodes remain deferred. |
 | Private execution session | Preserve with Rust ownership | One engine-owned session now batches eager graph snapshots and tracks output readiness; the C++ access facades and context hierarchy are not reproduced. |
-| Public execution plan | Preserve with Rust ownership | `Engine::capture` returns an immutable engine-associated plan plus the closure result; `Engine::submit(&plan)` replays asynchronously and returns an exact event. |
+| Public execution plan | Preserve with Rust ownership | `Engine::capture` returns a structurally immutable engine-associated plan plus the closure result; `Engine::submit(&plan)` replays asynchronously and returns an exact event. Diagnostics expose handle-free graph/cache evidence. Rust additionally admits explicit shape/dtype/owner/alias-checked rebinding of read-only Matrix inputs. |
 | One operation schema | Preserve | Generate Rust, Python, validation, autograd, registry, docs, and tests from one record. |
 | Existing C++ generator implementation | Redesign | Reuse schema knowledge where sound; generators may be rewritten for deterministic Rust output. |
 | Handwritten kernel and operation registries | Reject | Extend the schema or reflected shader metadata instead. |
@@ -81,7 +83,8 @@ semantic migration map, not a file-by-file port checklist.
 | Volk loader | Reject | `ash::Entry`, `ash::Instance`, and `ash::Device` own dispatch tables. |
 | VMA general allocator | Preserve initially | `vk-mem` stays private behind OA memory contracts and may be replaced by measured path. |
 | Upload/readback rings and transient planning | Defer | Add after the general buffer path proves ownership and completion. |
-| Slang source and SPIR-V | Preserve | First-class `src/slang` source with one `main` entry per compiled module, validated reflection, and embedded artifacts. |
+| Slang source and SPIR-V | Preserve | First-class `src/slang` source with one `main` entry per compiled module, validated build reflection, embedded artifacts, and fail-closed push-block sizing from the exact embedded SPIR-V. `OUT_DIR` is a compile-time boundary, never a runtime shader path. |
+| Embedded pipeline preload | Preserve progressively | Every schema-owned shader is embedded and every generated pipeline is created during engine construction. C++-equivalent preload opt-out and persistent Vulkan pipeline-cache configuration remain Planned. |
 | Shader attributes as sole operation schema | Reject | Attributes describe kernel facts; operation semantics remain schema-owned. |
 | Kernel routing in public APIs | Reject | Internal capability- and measurement-based lowering only. |
 
@@ -89,6 +92,7 @@ semantic migration map, not a file-by-file port checklist.
 
 | OA domain | Decision | Entry condition |
 |---|---|---|
+| Vulkan Linear Math (VLM) | Preserve with Rust-native failure syntax | Experimental packed `f32`/`f64` values and fixed spatial convention use standard-library scalar math; checked C++ output parameters become `Option` results. Consumer migration and qualification remain open. |
 | Matrix | Preserve first | One-device elementwise slice plus FP32 `mat_mul_nt` baseline and schema-owned SDK oracle. |
 | Image and Vision | Preserve | Matrix/storage/event contracts are stable. |
 | ML inference | Preserve | Matrix baseline, GEMM baseline, and schema generation work. |

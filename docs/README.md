@@ -13,6 +13,8 @@ the presence of a source module or shader does not imply a shipped capability.
   order and acceptance gates.
 - [OA Compatibility Ledger](internal/porting/oaCompatibility.md) — concepts
   preserved, redesigned, deferred, or rejected from the C++ implementation.
+- [Vulkan Linear Math](internal/vlm/oaVlm.md) — packed host spatial values,
+  fixed conventions, failure behavior, and current verification.
 - [Compute Architecture](internal/compute/oaCompute.md) — current executable
   path, ownership, synchronization, and graph boundary.
 - [Executable Graph](internal/compute/oaExecutableGraph.md) — owned dispatch
@@ -21,6 +23,10 @@ the presence of a source module or shader does not imply a shipped capability.
   attributes, dtype tokens, storage helpers, shader ABI, and validation.
 - [Performance Evidence](internal/performance/oaPerformance.md) — benchmark,
   timing, profiling, and claim protocol.
+- [Memory Comparison](internal/performance/oaMemoryComparison.md) — matched
+  Rust std/OARS evidence, C++ porting references, and current admission status.
+- [VLM Comparison](internal/performance/oaVlmComparison.md) — matched
+  OA C++/GLM/OARS workload, oracle, and current optimization evidence.
 - [Runtime Logging](internal/runtime/oaLog.md) — engine-owned sinks, component
   vocabulary, macro routing, and failure-bearing lifecycle.
 - [Execution Session](internal/runtime/oaExecutionSession.md) — private eager

@@ -2,7 +2,7 @@
 
 **Status:** Canonical contract; generated elementwise and FP32 `mat_mul_nt` are Experimental
 
-**Updated:** 2026-09-07
+**Updated:** 2026-09-08
 
 OA turns Slang entry points into immutable embedded SPIR-V artifacts and private
 Vulkan pipelines. Applications call semantic operations; they do not compile
@@ -24,7 +24,8 @@ tools/gen/fn/schema/matrix_elemwise.json + matrix_blas.json
      -> reflected ABI and OA-attribute validation
      -> spirv-val --target-env vulkan1.3
      -> SPIR-V under OUT_DIR
-  -> include_bytes! in the private artifact registry
+  -> include_bytes! compile-time embedding in the private artifact registry
+  -> fail-closed push-block reflection from the exact embedded SPIR-V
   -> device-owned ComputePipeline
   -> generic ComputeDispatch recording
 ```
@@ -36,6 +37,14 @@ selection and execution. None of these sources substitutes for another.
 A normal Cargo build never rewrites checked-in files. It fails when generated
 sources drift from the schema, an expected tool is missing, compilation fails,
 reflection differs, or SPIR-V validation fails.
+
+`OUT_DIR` is only the Cargo build boundary between `slangc` and
+`include_bytes!`. No runtime shader path exists: every schema-owned module is
+part of the library binary. Engine construction currently creates every
+generated pipeline eagerly. Push-constant byte size is not repeated in the
+schema or generated registry; pipeline layout and dispatch validation reflect
+it from the exact embedded module, while build-time Slang reflection separately
+checks field names, types, offsets, attributes, and workgroup geometry.
 
 ## Entry-point convention
 

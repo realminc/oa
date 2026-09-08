@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 
-GENERATOR_VERSION = 5
+GENERATOR_VERSION = 6
 DEFAULT_SCHEMA = Path("tools/gen/fn/schema/matrix_elemwise.json")
 DEFAULT_BLAS_SCHEMA = Path("tools/gen/fn/schema/matrix_blas.json")
 IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -429,7 +429,6 @@ def registry_entries(
 					"stable_id": variant["stable_id"],
 					"workgroup_size": elementwise["workgroup_size"],
 					"dispatch_tile_size": elementwise["workgroup_size"],
-					"push_constant_size": 12 if operation["kind"] == "unary" else 16,
 				}
 			)
 	for operation in blas["operations"]:
@@ -441,7 +440,6 @@ def registry_entries(
 				"stable_id": operation["stable_id"],
 				"workgroup_size": blas["workgroup_size"],
 				"dispatch_tile_size": blas["output_tile_size"],
-				"push_constant_size": 24,
 			}
 		)
 	seen_ids: set[int] = set()
@@ -459,7 +457,14 @@ def generate_registry(
 	blas_hash: str,
 ) -> str:
 	entries = registry_entries(elementwise, blas)
-	lines = [registry_banner(elementwise_hash, blas_hash).rstrip(), "", "use super::ShaderArtifact;", ""]
+	lines = [
+		registry_banner(elementwise_hash, blas_hash).rstrip(),
+		"",
+		"use std::sync::OnceLock;",
+		"",
+		"use super::ShaderArtifact;",
+		"",
+	]
 	for entry in entries:
 		name = entry["name"]
 		dtype = entry["dtype"]
@@ -471,7 +476,7 @@ def generate_registry(
 				f'\tbytes: include_bytes!(concat!(env!("OUT_DIR"), "/matrix_{name}_{dtype}.spv")),',
 				f"\tworkgroup_size: [{workgroup[0]}, {workgroup[1]}, {workgroup[2]}],",
 				f"\tdispatch_tile_size: [{dispatch_tile[0]}, {dispatch_tile[1]}, {dispatch_tile[2]}],",
-				f"\tpush_constant_size: {entry['push_constant_size']},",
+				"\tcontent_id: OnceLock::new(),",
 				"};",
 				"",
 			]
@@ -976,8 +981,8 @@ def expected_outputs(
 		root / "src/rs/runtime/shader/generated.rs": format_rust(
 			generate_registry(elementwise, elementwise_hash, blas, blas_hash), root
 		),
-		root / "tests/matrix_elemwise_generated.rs": format_rust(generate_test(elementwise, elementwise_hash), root),
-		root / "tests/matrix_blas_generated.rs": format_rust(generate_blas_test(blas, blas_hash), root),
+		root / "test/rs/matrix/test_elemwise.gen.rs": format_rust(generate_test(elementwise, elementwise_hash), root),
+		root / "test/rs/matrix/test_blas.gen.rs": format_rust(generate_blas_test(blas, blas_hash), root),
 	}
 	for operation in elementwise["operations"]:
 		for variant in operation_variants(elementwise, operation):

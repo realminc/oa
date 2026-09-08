@@ -316,9 +316,13 @@ impl EngineHandle {
 		self.flush()?;
 		let mut state = self.state.borrow_mut();
 		let recorded = if timed {
-			state.device.record_timed_compute_graph(plan.graph())
+			let recorded = state.device.record_timed_compute_graph(plan.graph());
+			if recorded.is_ok() {
+				plan.mark_timed_recorded();
+			}
+			recorded
 		} else {
-			state.device.record_compute_graph(plan.graph())
+			plan.reusable_command(&state.device)
 		};
 		let command = match recorded {
 			Ok(command) => command,

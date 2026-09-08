@@ -114,10 +114,12 @@ observation. `try_read` returns `NotReady` for both recorded and incomplete
 submitted work and never flushes the session.
 
 Isolated capture can transfer the pending graph and written-storage bindings
-into a public immutable `ExecutionPlan`. Capture never submits or waits and
-plan replay returns an exact event. The current plan retains exact buffers and
-re-records a primary command buffer on every submission; command caching,
-stable mutable slots, and semantic graph identity remain incomplete.
+into a public structurally immutable `ExecutionPlan`. Capture never submits or
+waits and plan replay returns an exact event. Untimed replay caches one
+simultaneously submittable primary command; read-only Matrix inputs have stable
+captured identities and may be rebound under exact shape, dtype, ownership, and
+no-alias validation. Rebinding invalidates the recording once. Mutable outputs
+and general semantic value identity remain incomplete.
 
 ## Numeric contract
 
