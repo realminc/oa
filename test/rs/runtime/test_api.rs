@@ -23,6 +23,14 @@ fn root_exports_are_identities_of_runtime_contracts() -> oa::Result<()> {
 		TypeId::of::<oa::runtime::ExecutionPlanDiagnostics>()
 	);
 	assert_eq!(
+		TypeId::of::<oa::CapturedResourceDesc>(),
+		TypeId::of::<oa::runtime::CapturedResourceDesc>()
+	);
+	assert_eq!(
+		TypeId::of::<oa::SemanticStorageBinding>(),
+		TypeId::of::<oa::runtime::SemanticStorageBinding>()
+	);
+	assert_eq!(
 		TypeId::of::<oa::LogOptions>(),
 		TypeId::of::<oa::runtime::LogOptions>()
 	);

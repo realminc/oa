@@ -17,7 +17,14 @@ class InventoryTests(unittest.TestCase):
 		seen = set()
 		while pending:
 			path = pending.pop().resolve()
-			self.assertNotIn(path, seen, f"test source registered twice: {path}")
+			if path in seen:
+				relative = path.relative_to(ROOT)
+				self.assertEqual(
+					relative.parts[:3],
+					("test", "rs", "support"),
+					f"test source registered twice: {path}",
+				)
+				continue
 			self.assertTrue(path.is_file(), f"registered source is missing: {path}")
 			seen.add(path)
 			for child in re.findall(r'#\[path\s*=\s*"([^"]+)"\]\s*mod\s+\w+\s*;', path.read_text()):

@@ -16,6 +16,10 @@
       "kernel_name": "mat_mul_nt",
       "source_stem": "mat_mul_nt_tiled",
       "variant": "tiled",
+      "dnn": {
+        "role": "matmul",
+        "providers": ["blaslt_epilogue", "qkv_projection_group", "gated_ffn"]
+      },
       "contract": {
         "input_kinds": ["matrix", "matrix"],
         "output_kinds": ["matrix"],

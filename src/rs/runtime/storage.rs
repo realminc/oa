@@ -27,6 +27,14 @@ enum Readiness {
 }
 
 impl Storage {
+	pub(super) fn same_as(&self, other: &Self) -> bool {
+		Rc::ptr_eq(&self.inner, &other.inner)
+	}
+
+	pub(super) fn owner_count(&self) -> usize {
+		Rc::strong_count(&self.inner)
+	}
+
 	pub(super) fn from_bytes(device: &vk::Device, bytes: &[u8]) -> Result<Self> {
 		if bytes.is_empty() {
 			return Ok(Self {
@@ -65,8 +73,38 @@ impl Storage {
 		}
 	}
 
+	pub(crate) fn write(&self, input: &[u8]) -> Result<()> {
+		if input.len() != self.inner.byte_len {
+			return Err(crate::Error::invalid_argument(format!(
+				"upload length {} does not match storage length {}",
+				input.len(),
+				self.inner.byte_len
+			)));
+		}
+		match &self.inner.buffer {
+			Some(buffer) => buffer.write(0, input),
+			None => Ok(()),
+		}
+	}
+
 	pub(super) fn buffer(&self) -> Option<&vk::Buffer> {
 		self.inner.buffer.as_ref()
+	}
+
+	pub(super) fn byte_len(&self) -> usize {
+		self.inner.byte_len
+	}
+
+	pub(super) fn prepare_reuse(&self, bytes: &[u8]) -> Result<()> {
+		if bytes.len() != self.inner.byte_len {
+			return Err(Error::invalid_argument(
+				"stable storage reuse requires an equal byte length",
+			));
+		}
+		self.ensure_ready()?;
+		self.write(bytes)?;
+		*self.inner.readiness.borrow_mut() = Readiness::Ready;
+		Ok(())
 	}
 
 	pub(super) fn belongs_to(&self, device: &vk::Device) -> bool {

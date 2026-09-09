@@ -12,7 +12,7 @@
 		{
 			"label": "Oars - Build (Debug)",
 			"type": "shell",
-			"command": "cargo build --all-targets --all-features && python3 tools/build/stage.py --profile debug",
+			"command": "cargo build --all-targets --all-features && python3 tools/build/stage.py --profile debug && python3 tools/build/stage.py --profile debug --tests",
 			"group": { "kind": "build", "isDefault": true },
 			"problemMatcher": [],
 			"presentation": { "reveal": "always", "panel": "shared", "clear": true },
@@ -21,7 +21,7 @@
 		{
 			"label": "Oars - Build (Release)",
 			"type": "shell",
-			"command": "cargo build --release --all-targets --all-features && python3 tools/build/stage.py --profile release",
+			"command": "cargo build --release --all-targets --all-features && python3 tools/build/stage.py --profile release && python3 tools/build/stage.py --profile release --tests",
 			"group": "build",
 			"problemMatcher": [],
 			"presentation": { "reveal": "always", "panel": "shared", "clear": true },
@@ -30,7 +30,7 @@
 		{
 			"label": "Oars - Clean Build (Debug)",
 			"type": "shell",
-			"command": "cargo clean --profile dev && python3 tools/build/stage.py --clean --profile debug && cargo build --all-targets --all-features && python3 tools/build/stage.py --profile debug",
+			"command": "cargo clean --profile dev && python3 tools/build/stage.py --clean --profile debug && cargo build --all-targets --all-features && python3 tools/build/stage.py --profile debug && python3 tools/build/stage.py --profile debug --tests",
 			"group": "build",
 			"problemMatcher": [],
 			"presentation": { "reveal": "always", "panel": "shared", "clear": true },
@@ -39,7 +39,7 @@
 		{
 			"label": "Oars - Clean Build (Release)",
 			"type": "shell",
-			"command": "cargo clean --release && python3 tools/build/stage.py --clean --profile release && cargo build --release --all-targets --all-features && python3 tools/build/stage.py --profile release",
+			"command": "cargo clean --release && python3 tools/build/stage.py --clean --profile release && cargo build --release --all-targets --all-features && python3 tools/build/stage.py --profile release && python3 tools/build/stage.py --profile release --tests",
 			"group": "build",
 			"problemMatcher": [],
 			"presentation": { "reveal": "always", "panel": "shared", "clear": true },
@@ -105,6 +105,22 @@
 			"label": "Oars - SDK - MatMul Intro (Release)",
 			"type": "shell",
 			"command": "cargo build --release --example core_mat_mul_intro && python3 tools/build/stage.py --profile release --target core_mat_mul_intro && ./bin/release/sdk/tutorials/core/core_mat_mul_intro",
+			"group": "test",
+			"problemMatcher": [],
+			"presentation": { "reveal": "always", "panel": "shared", "clear": true }
+		},
+		{
+			"label": "Oars - SDK - Char RNN NLP (Release)",
+			"type": "shell",
+			"command": "cargo build --release --example ml_nlp_char_rnn && python3 tools/build/stage.py --profile release --target ml_nlp_char_rnn && ./bin/release/sdk/tutorials/ml/nlp/ml_nlp_char_rnn",
+			"group": "test",
+			"problemMatcher": [],
+			"presentation": { "reveal": "always", "panel": "shared", "clear": true }
+		},
+		{
+			"label": "Oars - SDK - Char Transformer NLP (Release)",
+			"type": "shell",
+			"command": "cargo build --release --example ml_nlp_char_transformer && python3 tools/build/stage.py --profile release --target ml_nlp_char_transformer && ./bin/release/sdk/tutorials/ml/nlp/ml_nlp_char_transformer",
 			"group": "test",
 			"problemMatcher": [],
 			"presentation": { "reveal": "always", "panel": "shared", "clear": true }

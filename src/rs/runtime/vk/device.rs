@@ -10,6 +10,7 @@ use crate::{
 
 use super::{
 	Instance, PhysicalDevice,
+	buffer::RecycledBuffer,
 	command::{CommandPool, RecordedCommandBuffer, ReusableCommandBuffer},
 	descriptor::DescriptorHeap,
 	pipeline::ComputePipeline,
@@ -17,6 +18,9 @@ use super::{
 	timeline::Timeline,
 	timestamp::TimestampPair,
 };
+
+const MAX_RECYCLED_STORAGE_BUFFERS: usize = 256;
+const MAX_RECYCLED_STORAGE_BYTES: usize = 256 * 1024 * 1024;
 
 #[derive(Clone)]
 pub(in crate::runtime) struct Device {
@@ -29,12 +33,19 @@ struct DeviceInner {
 	command_pool: Mutex<CommandPool>,
 	timeline: Timeline,
 	descriptors: DescriptorHeap,
+	storage_pool: Mutex<StoragePool>,
 	pipelines: Vec<ComputePipeline>,
-	_physical: PhysicalDevice,
+	physical: PhysicalDevice,
 	compute_queue: Queue,
 	timestamp_period_ns: f64,
 	compute_timestamp_valid_bits: u32,
 	_instance: Instance,
+}
+
+#[derive(Default)]
+struct StoragePool {
+	free: Vec<RecycledBuffer>,
+	bytes: usize,
 }
 
 impl Device {
@@ -177,14 +188,19 @@ impl Device {
 				command_pool: Mutex::new(command_pool),
 				timeline,
 				descriptors,
+				storage_pool: Mutex::new(StoragePool::default()),
 				pipelines,
-				_physical: physical,
 				compute_queue,
 				timestamp_period_ns: physical.limits.timestamp_period_ns,
 				compute_timestamp_valid_bits: physical.limits.compute_timestamp_valid_bits,
+				physical,
 				_instance: instance.clone(),
 			}),
 		})
+	}
+
+	pub(in crate::runtime) fn physical(&self) -> &PhysicalDevice {
+		&self.inner.physical
 	}
 
 	pub(super) fn allocator(&self) -> &vk_mem::Allocator {
@@ -203,6 +219,59 @@ impl Device {
 
 	pub(super) fn release_storage_buffer(&self, index: u32) {
 		self.inner.descriptors.release_storage_buffer(index);
+	}
+
+	pub(super) fn take_recycled_storage_buffer(&self, size: usize) -> Option<RecycledBuffer> {
+		let mut pool = match self.inner.storage_pool.lock() {
+			Ok(pool) => pool,
+			Err(poisoned) => poisoned.into_inner(),
+		};
+		let index = pool.free.iter().rposition(|buffer| buffer.size == size)?;
+		let buffer = pool.free.swap_remove(index);
+		pool.bytes = pool.bytes.saturating_sub(buffer.size);
+		Some(buffer)
+	}
+
+	pub(super) fn recycle_storage_buffer(&self, buffer: RecycledBuffer) -> Option<RecycledBuffer> {
+		let mut pool = match self.inner.storage_pool.lock() {
+			Ok(pool) => pool,
+			Err(poisoned) => poisoned.into_inner(),
+		};
+		let Some(bytes) = pool.bytes.checked_add(buffer.size) else {
+			return Some(buffer);
+		};
+		if pool.free.len() >= MAX_RECYCLED_STORAGE_BUFFERS || bytes > MAX_RECYCLED_STORAGE_BYTES {
+			return Some(buffer);
+		}
+		pool.bytes = bytes;
+		pool.free.push(buffer);
+		None
+	}
+
+	pub(super) fn discard_one_recycled_storage_buffer(&self) -> bool {
+		let buffer = {
+			let mut pool = match self.inner.storage_pool.lock() {
+				Ok(pool) => pool,
+				Err(poisoned) => poisoned.into_inner(),
+			};
+			let Some(buffer) = pool.free.pop() else {
+				return false;
+			};
+			pool.bytes = pool.bytes.saturating_sub(buffer.size);
+			buffer
+		};
+		self.destroy_recycled_storage_buffer(buffer);
+		true
+	}
+
+	fn destroy_recycled_storage_buffer(&self, mut buffer: RecycledBuffer) {
+		self.release_storage_buffer(buffer.descriptor_index);
+		// SAFETY: the pool exclusively owns this completed buffer/allocation pair,
+		// and this device owns the allocator that created it.
+		unsafe {
+			self.allocator()
+				.destroy_buffer(buffer.handle, &mut buffer.allocation);
+		}
 	}
 
 	pub(in crate::runtime) fn same_as(&self, other: &Self) -> bool {
@@ -363,6 +432,18 @@ impl Device {
 
 impl Drop for DeviceInner {
 	fn drop(&mut self) {
+		let storage_pool = match self.storage_pool.get_mut() {
+			Ok(pool) => pool,
+			Err(poisoned) => poisoned.into_inner(),
+		};
+		for mut buffer in storage_pool.free.drain(..) {
+			// SAFETY: final device ownership proves no live buffer can reference these
+			// pooled allocations, which were created by this allocator.
+			unsafe {
+				self.allocator
+					.destroy_buffer(buffer.handle, &mut buffer.allocation);
+			}
+		}
 		for pipeline in &mut self.pipelines {
 			pipeline.destroy(&self.handle);
 		}

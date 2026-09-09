@@ -2,7 +2,7 @@
 
 **Status:** Canonical architecture; one-device elementwise execution is Experimental
 
-**Updated:** 2026-09-07
+**Updated:** 2026-09-09
 
 This document owns the Rust compute subsystem contract. The C++ compute system
 provides behavioral evidence and hard-won implementation constraints, but its
@@ -19,6 +19,7 @@ matrix operation schema
   -> runtime::ComputeDispatch
   -> private ExecutionSession::record
   -> owned ExecutableGraph snapshots
+  -> private semantic DNN partitioning and qualified physical replacement
   -> blocking observation or Engine::checkpoint
   -> one joined hazard-planned graph
   -> runtime/vk command recording
@@ -40,7 +41,7 @@ explicit submission boundary.
 | `matrix` and other domain modules | semantic validation, output shape/dtype, operation identity, lowering | Vulkan handles, queues, or per-operation engine methods |
 | operation schema and generator | mechanical API, contracts, kernel identity, shader source, tests | runtime policy or measured route choice |
 | `runtime::ComputeDispatch` | backend-neutral executable bindings, access declarations, push values, workgroups | mathematical semantics or Vulkan handles |
-| private `ExecutableGraph` | owned concrete buffer bindings, copied push values, resource hazards, ordered nodes | public graph editing or semantic inference |
+| private `ExecutableGraph` | owned concrete buffer bindings, copied push values, resource hazards, ordered nodes, and many-to-one semantic ownership after qualified lowering | public graph editing or public provider policy |
 | private `ExecutionSession` | pending eager graphs, written-storage readiness, batch transfer at submission | device, queue, allocator, or public lifecycle ceremony |
 | `Engine` and its private handle | device services, submission epochs, retirement, future scheduling/profiling | duplicated domain operations |
 | `runtime/vk` | Ash handles, descriptors, pipelines, command recording, queue submission, timeline synchronization | public matrix/image/audio semantics |
@@ -53,6 +54,18 @@ The Vulkan device currently owns one bindless storage-buffer descriptor heap
 shared by all generated compute pipelines. Buffers own descriptor indices;
 recorded command buffers retain the buffers they reference until their exact
 timeline epoch retires.
+
+The device also owns a bounded exact-size storage-buffer pool above VMA. The
+final buffer owner may return its Vulkan buffer, VMA allocation, and still-bound
+descriptor slot to that pool only after recorded-command ownership has ended;
+submitted commands retain their buffers through exact timeline retirement.
+Reuse therefore changes allocation policy without weakening the completion
+edge. A reused upload overwrites the complete logical byte range before
+publication, different sizes never alias through this pool, descriptor pressure
+can evict a pooled entry, and device destruction drains pooled allocations
+before destroying the descriptor heap and VMA allocator. The Experimental pool
+is capped at 256 buffers and 256 MiB; upload/readback rings and graph-lifetime
+transient aliasing remain separate Planned mechanisms.
 
 ## Semantic and executable work
 
@@ -121,6 +134,14 @@ captured identities and may be rebound under exact shape, dtype, ownership, and
 no-alias validation. Rebinding invalidates the recording once. Mutable outputs
 and general semantic value identity remain incomplete.
 
+`ExecutionPlan::debug_report_json` emits normalized `oa.execution_graph.v3`
+evidence reconstructed from this same graph and barrier plan. It preserves
+semantic owners, generated kernel/dtype identities, resource lifetimes,
+accesses, exact compute/storage synchronization scopes, compilation state, and
+the latest timeline value while excluding Vulkan handles, addresses,
+descriptors, and push payloads. It is diagnostic evidence, not persisted graph
+serialization.
+
 ## Numeric contract
 
 Keep these facts separate:
@@ -148,10 +169,10 @@ dtype tokens; see
 | Concern | Current Experimental behavior | Target dependency |
 |---|---|---|
 | Eager execution | engine-owned batching at observation/checkpoint | scheduling diagnostics and broader executable nodes |
-| Reuse | immutable captured graph re-recorded per submission | compiled command caching and stable slots |
+| Reuse | cached immutable plans plus fixed-shape training replay over stable input/read-write slots | specialization cache and transient alias planning |
 | Kernel selection | exact schema-generated kernel ID | capability- and measurement-filtered candidates |
 | Dependencies | per-buffer graph hazards plus a serialized inter-submit timeline chain | multi-queue executable resource-hazard graph |
-| Memory | checked VMA-backed host-visible storage | upload/readback rings and transient planning |
+| Memory | checked VMA-backed host-visible storage plus bounded exact-size retired-buffer reuse | upload/readback rings and graph-lifetime transient planning |
 | Profiling | explicit whole-plan device duration on timed replay | calibrated clocks, phase/node timestamps, and statistics |
 | Devices | one selected physical device | explicit local transfer before automated placement |
 

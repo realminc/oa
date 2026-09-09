@@ -25,11 +25,19 @@ pub mod vision;
 pub use core::vlm;
 
 // Re-export the common public vocabulary.
-pub use audio::Audio;
-pub use core::{DType, Error, ErrorKind, Format, Image, Matrix, Result};
+pub use audio::{Audio, AudioChannelLayout};
+pub use core::{
+	DType, Error, ErrorKind, Format, Image, Matrix, OpAttribute, OpAttributeKind, OpAttributeSpec,
+	OpControlFlow, OpDTypeRule, OpDifferentiation, OpEffect, OpLowering, OpShapeRule, OpValueKind,
+	OperationContract, Result,
+};
+pub use crypto::{Hash, Hasher, MerkleProof, MerkleTree, Shake128, Shake256};
 pub use video::Video;
 
 pub use runtime::{
-	DeviceSelection, Engine, EngineBuilder, Event, ExecutionPlan, ExecutionPlanDiagnostics,
-	LogComponent, LogLevel, LogOptions,
+	CapturedResourceDesc, DeviceSelection, Engine, EngineBuilder, Event, ExecutionPlan,
+	ExecutionPlanDiagnostics, LogComponent, LogLevel, LogOptions, SemanticAccessMode,
+	SemanticAliasDesc, SemanticAutogradDesc, SemanticGraph, SemanticLoweringAnalysis,
+	SemanticOpDesc, SemanticOpId, SemanticStorageBinding, SemanticValueAccess, SemanticValueDesc,
+	SemanticValueId,
 };

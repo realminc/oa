@@ -97,6 +97,12 @@ checked initialization through asynchronous dispatch and synchronized host
 observation to schema-owned independent golden oracles. The `i32` proof
 currently covers addition only.
 
+Independent Experimental host-domain checkpoints now provide a checked planar
+FP32 `Audio` value, synchronous WAV/FLAC/MP3 decode, WAV-F32 encode/save, and
+CPU Keccak-f[1600], SHAKE-128/256, KMAC-256, typed hashes, and Merkle proofs.
+These reuse the existing Matrix/Engine and `core::Error` contracts. Audio DSP,
+audio sessions, Vulkan batch hashing, and ML-DSA are not yet ported.
+
 Build and stage the public matmul tutorial, then run its independent CPU
 validation with:
 
@@ -107,7 +113,10 @@ python3 tools/build/stage.py --profile release --target core_mat_mul_intro
 ```
 
 Cargo keeps intermediate artifacts under `target/`. The staging step copies
-only runnable binaries into OA's `bin/{debug,release}/` layout.
+only runnable binaries into OA's `bin/{debug,release}/` layout. Full build tasks
+also use `stage.py --tests` to give Cargo's hashed integration-test executables
+stable paths such as `bin/debug/test/core/test_core`; test compilation remains
+owned by Cargo and no build tree is duplicated.
 
 The Experimental MatMul benchmark companion measures captured-plan replay with
 whole-graph Vulkan timestamps. Its six checked-in workloads use fresh

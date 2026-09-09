@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Generate the schema-owned Rust matrix elementwise surface and kernels."""
+"""Generate schema-owned Rust operation surfaces and kernel metadata."""
 
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
+import math
 import os
 import re
 import struct
@@ -15,9 +16,10 @@ from pathlib import Path
 from typing import Any
 
 
-GENERATOR_VERSION = 6
+GENERATOR_VERSION = 18
 DEFAULT_SCHEMA = Path("tools/gen/fn/schema/matrix_elemwise.json")
 DEFAULT_BLAS_SCHEMA = Path("tools/gen/fn/schema/matrix_blas.json")
+DEFAULT_ML_SCHEMA = Path("tools/gen/fn/schema/ml_training.json")
 IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 KINDS = {"binary", "unary", "unary_scalar"}
 DTYPES = {
@@ -49,6 +51,10 @@ def load_schema(path: Path) -> tuple[dict[str, Any], str]:
 
 def load_blas_schema(path: Path) -> tuple[dict[str, Any], str]:
 	return load_validated_schema(path, validate_blas_schema)
+
+
+def load_ml_schema(path: Path) -> tuple[dict[str, Any], str]:
+	return load_validated_schema(path, validate_ml_schema)
 
 
 def load_validated_schema(path: Path, validator: Any) -> tuple[dict[str, Any], str]:
@@ -89,6 +95,11 @@ def validate_schema(schema: dict[str, Any]) -> None:
 		validate_unique(name, seen_names, f"{where}.name")
 		kind = operation.get("kind")
 		require(kind in KINDS, f"{where}.kind must be one of {sorted(KINDS)}")
+		require(
+			operation.get("differentiation", "none") in {"none", "reverse"},
+			f"{where}.differentiation is unsupported",
+		)
+		validate_dnn_role(operation.get("dnn"), where)
 		require(isinstance(operation.get("doc"), str) and operation["doc"].endswith("."), f"{where}.doc must end with a period")
 		require(isinstance(operation.get("expression"), str) and operation["expression"].strip(), f"{where}.expression must be non-empty")
 		if kind == "unary_scalar":
@@ -153,6 +164,7 @@ def validate_blas_schema(schema: dict[str, Any]) -> None:
 		)
 		validate_unique(stable_id, seen_ids, f"{where}.stable_id")
 		require(operation.get("kind") == "mat_mul_nt", f"{where}.kind must be mat_mul_nt")
+		validate_dnn_role(operation.get("dnn"), where)
 		require(operation.get("variant") == "tiled", f"{where}.variant must be tiled")
 		require(
 			isinstance(operation.get("doc"), str) and operation["doc"].endswith("."),
@@ -161,6 +173,346 @@ def validate_blas_schema(schema: dict[str, Any]) -> None:
 		require(operation.get("kernel_name") == operation["name"], f"{where}.kernel_name must match name")
 		validate_blas_contract(operation.get("contract"), where)
 		validate_blas_test(operation.get("test"), where)
+
+
+def validate_dnn_role(role: Any, where: str) -> None:
+	if role is None:
+		return
+	require(isinstance(role, dict), f"{where}.dnn must be an object")
+	require(
+		set(role).issubset({"role", "providers", "epilogue", "epilogue_requires_input"})
+		and {"role", "providers"}.issubset(role),
+		f"{where}.dnn fields are incomplete or unknown",
+	)
+	require(
+		role["role"]
+		in {
+			"matmul",
+			"bias_add",
+			"relu",
+			"gelu",
+			"silu",
+			"multiply",
+			"add",
+			"rms_norm",
+			"scaled_dot_product_attention",
+			"grouped_gemm",
+			"gated_multiply",
+			"color_convert",
+			"resize_normalize",
+			"residual_rms_norm",
+		},
+		f"{where}.dnn.role is unsupported",
+	)
+	providers = role["providers"]
+	allowed = {
+		"blaslt_epilogue",
+		"qkv_projection_group",
+		"gated_ffn",
+		"residual_norm",
+		"attention",
+		"grouped_moe",
+		"vision_preprocess",
+	}
+	require(
+		isinstance(providers, list)
+		and providers
+		and len(providers) == len(set(providers))
+		and all(provider in allowed for provider in providers),
+		f"{where}.dnn.providers are invalid",
+	)
+	epilogue = role.get("epilogue", "none")
+	require(
+		epilogue in {"none", "bias", "bias_relu", "bias_gelu", "bias_silu"},
+		f"{where}.dnn.epilogue is unsupported",
+	)
+	required_input = role.get("epilogue_requires_input")
+	require(
+		required_input is None
+		or isinstance(required_input, int)
+		and 0 <= required_input < 8,
+		f"{where}.dnn.epilogue_requires_input must be a fixed input index",
+	)
+	require(
+		epilogue != "none" or required_input is None,
+		f"{where}.dnn.epilogue_requires_input requires an epilogue",
+	)
+
+
+def validate_semantic_attributes(attributes: Any, where: str) -> None:
+	require(isinstance(attributes, list), f"{where}.semantic_attributes must be an array")
+	seen: set[str] = set()
+	for index, attribute in enumerate(attributes):
+		label = f"{where}.semantic_attributes[{index}]"
+		require(
+			isinstance(attribute, list) and len(attribute) == 2,
+			f"{label} must contain name and kind",
+		)
+		name, kind = attribute
+		require(
+			isinstance(name, str) and IDENTIFIER.fullmatch(name) is not None,
+			f"{label} name must be an identifier",
+		)
+		validate_unique(name, seen, f"{label} name")
+		require(
+			kind
+			in {
+				"boolean",
+				"signed_integer",
+				"unsigned_integer",
+				"float",
+				"string",
+				"shape",
+				"enum",
+			},
+			f"{label} kind is unsupported",
+		)
+
+
+def validate_ml_schema(schema: dict[str, Any]) -> None:
+	require(schema.get("schema_version") == 1, "ML schema_version must be 1")
+	require(schema.get("family") == "ml_training", "ML family must be ml_training")
+	require(schema.get("domain") == "ml", "ML domain must be ml")
+	require(schema.get("dtype") == "f32", "ML dtype must be f32")
+	require(schema.get("workgroup_size") == [256, 1, 1], "ML workgroup_size must be [256, 1, 1]")
+	operations = schema.get("operations")
+	require(isinstance(operations, list) and operations, "ML operations must be non-empty")
+	validate_ml_port_provenance(schema.get("port_provenance"), operations)
+	seen_ids: set[int] = set()
+	seen_names: set[str] = set()
+	seen_kernels: set[str] = set()
+	seen_sources: set[str] = set()
+	for index, operation in enumerate(operations):
+		where = f"ML operations[{index}]"
+		require(isinstance(operation, dict), f"{where} must be an object")
+		for key, seen in (("name", seen_names), ("kernel_id", seen_kernels)):
+			value = operation.get(key)
+			require(
+				isinstance(value, str) and IDENTIFIER.fullmatch(value) is not None,
+				f"{where}.{key} must be an identifier",
+			)
+			validate_unique(value, seen, f"{where}.{key}")
+		stable_id = operation.get("stable_id")
+		require(
+			isinstance(stable_id, int) and 0 < stable_id <= 65535,
+			f"{where}.stable_id must be a non-zero u16",
+		)
+		validate_unique(stable_id, seen_ids, f"{where}.stable_id")
+		source = operation.get("source")
+		require(isinstance(source, str) and source.endswith(".slang"), f"{where}.source must be a Slang path")
+		validate_unique(source, seen_sources, f"{where}.source")
+		require(operation.get("variant") == "generic", f"{where}.variant must be generic")
+		operation_workgroup = operation.get("workgroup_size", schema["workgroup_size"])
+		operation_dtype = operation.get("dtype", schema["dtype"])
+		lowering_only = operation.get("lowering_only", False)
+		require(isinstance(lowering_only, bool), f"{where}.lowering_only must be boolean")
+		require(operation_dtype in {"f32", "u32"}, f"{where}.dtype is unsupported")
+		require(
+			isinstance(operation_workgroup, list)
+			and len(operation_workgroup) == 3
+			and all(isinstance(value, int) and value > 0 for value in operation_workgroup)
+			and math.prod(operation_workgroup) <= 1024,
+			f"{where}.workgroup_size must contain three positive dimensions with at most 1024 threads",
+		)
+		differentiation = operation.get("differentiation")
+		require(
+			differentiation in {"none", "backward"}
+			or any(candidate.get("name") == differentiation for candidate in operations),
+			f"{where}.differentiation must name an operation, backward, or none",
+		)
+		if lowering_only:
+			require(differentiation == "none", f"{where} lowering-only kernel cannot differentiate")
+			require("contract" not in operation, f"{where} lowering-only kernel cannot own a semantic contract")
+			require("dnn" not in operation, f"{where} lowering-only kernel cannot own a DNN role")
+		else:
+			validate_ml_contract(operation.get("contract"), differentiation, where)
+		replay_role = operation.get("training_replay_role", "safe")
+		require(
+			replay_role
+			in {
+				"safe",
+				"host_stepped_optimizer",
+				"optimizer_state_advance",
+				"optimizer_state_update",
+			},
+			f"{where}.training_replay_role is unsupported",
+		)
+		validate_semantic_attributes(operation.get("semantic_attributes", []), where)
+		validate_dnn_role(operation.get("dnn"), where)
+		validate_ml_test(operation.get("test"), where)
+		fields = operation.get("push_fields")
+		require(isinstance(fields, list) and fields, f"{where}.push_fields must be non-empty")
+		offset = 0
+		seen_fields: set[str] = set()
+		for field_index, field in enumerate(fields):
+			field_where = f"{where}.push_fields[{field_index}]"
+			require(
+				isinstance(field, list) and len(field) == 2,
+				f"{field_where} must contain name and scalar type",
+			)
+			name, scalar_type = field
+			require(
+				isinstance(name, str) and IDENTIFIER.fullmatch(name) is not None,
+				f"{field_where} name must be an identifier",
+			)
+			validate_unique(name, seen_fields, f"{field_where} name")
+			require(scalar_type in {"uint32", "float32"}, f"{field_where} scalar type is unsupported")
+			offset += 4
+		require(offset <= 128, f"{where} push constants exceed the minimum Vulkan limit")
+
+
+def validate_ml_port_provenance(provenance: Any, operations: list[Any]) -> None:
+	require(isinstance(provenance, list) and provenance, "ML port_provenance must be non-empty")
+	operation_names = {
+		operation.get("name") for operation in operations if isinstance(operation, dict)
+	}
+	seen_families: set[str] = set()
+	seen_operations: set[str] = set()
+	for index, record in enumerate(provenance):
+		where = f"ML port_provenance[{index}]"
+		require(isinstance(record, dict), f"{where} must be an object")
+		require(
+			set(record) == {"family", "operations", "classification", "donors", "reason"},
+			f"{where} fields are incomplete or unknown",
+		)
+		family = record["family"]
+		require(
+			isinstance(family, str) and IDENTIFIER.fullmatch(family) is not None,
+			f"{where}.family must be an identifier",
+		)
+		validate_unique(family, seen_families, f"{where}.family")
+		classification = record["classification"]
+		require(
+			classification
+			in {"verbatim", "mechanical_adaptation", "rust_redesign", "replacement", "new"},
+			f"{where}.classification is unsupported",
+		)
+		record_operations = record["operations"]
+		require(
+			isinstance(record_operations, list) and record_operations,
+			f"{where}.operations must be non-empty",
+		)
+		for operation in record_operations:
+			require(
+				isinstance(operation, str) and operation in operation_names,
+				f"{where}.operations must name ML operations",
+			)
+			validate_unique(operation, seen_operations, f"{where}.operations")
+		donors = record["donors"]
+		require(isinstance(donors, list), f"{where}.donors must be an array")
+		if classification == "new":
+			require(not donors, f"{where}.donors must be empty for new work")
+		else:
+			require(
+				donors
+				and all(
+					isinstance(donor, str)
+					and donor.startswith(("source/", "tools/"))
+					and ".." not in donor
+					for donor in donors
+				),
+				f"{where}.donors must contain OA repository paths",
+			)
+		reason = record["reason"]
+		require(
+			isinstance(reason, str) and reason.endswith("."),
+			f"{where}.reason must end with a period",
+		)
+	require(
+		seen_operations == operation_names,
+		"ML port_provenance must cover every operation exactly once",
+	)
+
+
+def validate_ml_contract(contract: Any, differentiation: str, where: str) -> None:
+	require(isinstance(contract, dict), f"{where}.contract must be an object")
+	require(
+		set(contract)
+		== {
+			"input_kinds",
+			"output_kinds",
+			"shape_rule",
+			"dtype_rule",
+			"effects",
+			"mutated_inputs",
+			"output_alias_inputs",
+			"lowering",
+		},
+		f"{where}.contract fields are incomplete or unknown",
+	)
+	inputs = contract["input_kinds"]
+	outputs = contract["output_kinds"]
+	require(isinstance(inputs, list) and inputs, f"{where}.contract.input_kinds must be non-empty")
+	require(isinstance(outputs, list) and outputs, f"{where}.contract.output_kinds must be non-empty")
+	require(
+		all(isinstance(value, str) and value for value in [*inputs, *outputs]),
+		f"{where}.contract input/output kinds must be strings",
+	)
+	require(
+		isinstance(contract["shape_rule"], str) and contract["shape_rule"],
+		f"{where}.contract.shape_rule must be non-empty",
+	)
+	require(
+		contract["dtype_rule"]
+		in {
+			"f32",
+			"all_f32",
+			"u32_state",
+			"f32_parameter_u32_state",
+			"f32_logits_u32_targets",
+			"f32_weight_u32_indices",
+			"u32_indices_f32_gradient_weight",
+		},
+		f"{where}.contract.dtype_rule is unsupported",
+	)
+	require(
+		contract["effects"] in (["read_inputs", "write_output"], ["read_inputs", "write_outputs"]),
+		f"{where}.contract.effects are unsupported",
+	)
+	mutated = contract["mutated_inputs"]
+	require(
+		isinstance(mutated, list)
+		and all(isinstance(value, int) and 0 <= value < len(inputs) for value in mutated)
+		and len(set(mutated)) == len(mutated),
+		f"{where}.contract.mutated_inputs must contain unique input indices",
+	)
+	aliases = contract["output_alias_inputs"]
+	require(
+		isinstance(aliases, list)
+		and len(aliases) == len(outputs)
+		and all(value == -1 or value in mutated for value in aliases)
+		and sorted(value for value in aliases if value >= 0) == sorted(mutated),
+		f"{where}.contract.output_alias_inputs must map every mutated input exactly once",
+	)
+	require(contract["lowering"] == "compute_dispatch", f"{where}.contract lowering is unsupported")
+	require(
+		differentiation in {"none", "backward"} or isinstance(differentiation, str),
+		f"{where} differentiation is invalid",
+	)
+
+
+def validate_ml_test(test: Any, where: str) -> None:
+	require(isinstance(test, dict), f"{where}.test must be an object")
+	require(
+		isinstance(test.get("oracle"), str) and test["oracle"],
+		f"{where}.test.oracle must be non-empty",
+	)
+	shapes = test.get("shapes")
+	require(isinstance(shapes, list) and shapes, f"{where}.test.shapes must be non-empty")
+	for index, shape in enumerate(shapes):
+		require(
+			isinstance(shape, list)
+			and shape
+			and all(isinstance(extent, int) and extent >= 0 for extent in shape),
+			f"{where}.test.shapes[{index}] must contain non-negative extents",
+		)
+	tolerance = test.get("tolerance")
+	require(
+		isinstance(tolerance, (int, float))
+		and not isinstance(tolerance, bool)
+		and tolerance >= 0,
+		f"{where}.test.tolerance must be non-negative",
+	)
 
 
 def validate_blas_contract(contract: Any, where: str) -> None:
@@ -310,12 +662,13 @@ def banner(schema_hash: str, prefix: str, schema_name: str = "matrix_elemwise.js
 	)
 
 
-def registry_banner(elementwise_hash: str, blas_hash: str) -> str:
+def registry_banner(elementwise_hash: str, blas_hash: str, ml_hash: str) -> str:
 	return (
 		"// @generated by tools/gen/fn/generate.py; DO NOT EDIT.\n"
-		f"// schemas=matrix_elemwise.json,matrix_blas.json generator_version={GENERATOR_VERSION}\n"
+		f"// schemas=matrix_elemwise.json,matrix_blas.json,ml_training.json generator_version={GENERATOR_VERSION}\n"
 		f"// matrix_elemwise_sha256={elementwise_hash}\n"
 		f"// matrix_blas_sha256={blas_hash}\n"
+		f"// ml_training_sha256={ml_hash}\n"
 	)
 
 
@@ -356,8 +709,8 @@ def format_rust(source: str, root: Path) -> str:
 	return result.stdout
 
 
-def static_name(name: str, dtype: str) -> str:
-	return f"MATRIX_{name.upper()}_{dtype.upper()}"
+def static_name(domain: str, name: str, dtype: str) -> str:
+	return f"{domain.upper()}_{name.upper()}_{dtype.upper()}"
 
 
 def rust_routes(schema: dict[str, Any], operation: dict[str, Any]) -> str:
@@ -391,7 +744,7 @@ def generate_api(schema: dict[str, Any], schema_hash: str) -> str:
 			lines.extend(
 				[
 					f"pub fn {name}(left: &Matrix, right: &Matrix) -> Result<Matrix> {{",
-					f'\tbinary(left, right, &[{routes}], "matrix.{name}")',
+					f"\tbinary(left, right, &[{routes}], crate::core::operation::matrix::{rust_const_name(name)})",
 					"}",
 				]
 			)
@@ -399,7 +752,7 @@ def generate_api(schema: dict[str, Any], schema_hash: str) -> str:
 			lines.extend(
 				[
 					f"pub fn {name}(input: &Matrix) -> Result<Matrix> {{",
-					f'\tunary(input, &[{routes}], "matrix.{name}")',
+					f"\tunary(input, &[{routes}], crate::core::operation::matrix::{rust_const_name(name)})",
 					"}",
 				]
 			)
@@ -407,7 +760,7 @@ def generate_api(schema: dict[str, Any], schema_hash: str) -> str:
 			lines.extend(
 				[
 					f"pub fn {name}(input: &Matrix, {operation['scalar_name']}: f32) -> Result<Matrix> {{",
-					f'\tunary_scalar(input, {operation["scalar_name"]}, &[{routes}], "matrix.{name}")',
+					f"\tunary_scalar(input, {operation['scalar_name']}, &[{routes}], crate::core::operation::matrix::{rust_const_name(name)})",
 					"}",
 				]
 			)
@@ -416,30 +769,48 @@ def generate_api(schema: dict[str, Any], schema_hash: str) -> str:
 
 
 def registry_entries(
-	elementwise: dict[str, Any], blas: dict[str, Any]
+	elementwise: dict[str, Any], blas: dict[str, Any], ml: dict[str, Any]
 ) -> list[dict[str, Any]]:
 	entries = []
 	for operation in elementwise["operations"]:
 		for variant in operation_variants(elementwise, operation):
 			entries.append(
 				{
+					"domain": "matrix",
 					"name": operation["name"],
 					"dtype": variant["dtype"],
 					"kernel_id": variant["kernel_id"],
 					"stable_id": variant["stable_id"],
 					"workgroup_size": elementwise["workgroup_size"],
 					"dispatch_tile_size": elementwise["workgroup_size"],
+					"training_replay_role": "safe",
 				}
 			)
 	for operation in blas["operations"]:
 		entries.append(
 			{
+				"domain": "matrix",
 				"name": operation["name"],
 				"dtype": blas["dtype"],
 				"kernel_id": operation["kernel_id"],
 				"stable_id": operation["stable_id"],
 				"workgroup_size": blas["workgroup_size"],
 				"dispatch_tile_size": blas["output_tile_size"],
+				"training_replay_role": "safe",
+			}
+		)
+	for operation in ml["operations"]:
+		dtype = operation.get("dtype", ml["dtype"])
+		entries.append(
+			{
+				"domain": "ml",
+				"name": operation["name"],
+				"dtype": dtype,
+				"kernel_id": operation["kernel_id"],
+				"stable_id": operation["stable_id"],
+				"workgroup_size": operation.get("workgroup_size", ml["workgroup_size"]),
+				"dispatch_tile_size": operation.get("workgroup_size", ml["workgroup_size"]),
+				"training_replay_role": operation.get("training_replay_role", "safe"),
 			}
 		)
 	seen_ids: set[int] = set()
@@ -455,10 +826,12 @@ def generate_registry(
 	elementwise_hash: str,
 	blas: dict[str, Any],
 	blas_hash: str,
+	ml: dict[str, Any],
+	ml_hash: str,
 ) -> str:
-	entries = registry_entries(elementwise, blas)
+	entries = registry_entries(elementwise, blas, ml)
 	lines = [
-		registry_banner(elementwise_hash, blas_hash).rstrip(),
+		registry_banner(elementwise_hash, blas_hash, ml_hash).rstrip(),
 		"",
 		"use std::sync::OnceLock;",
 		"",
@@ -466,14 +839,15 @@ def generate_registry(
 		"",
 	]
 	for entry in entries:
+		domain = entry["domain"]
 		name = entry["name"]
 		dtype = entry["dtype"]
 		workgroup = entry["workgroup_size"]
 		dispatch_tile = entry["dispatch_tile_size"]
 		lines.extend(
 			[
-				f"static {static_name(name, dtype)}: ShaderArtifact = ShaderArtifact {{",
-				f'\tbytes: include_bytes!(concat!(env!("OUT_DIR"), "/matrix_{name}_{dtype}.spv")),',
+				f"static {static_name(domain, name, dtype)}: ShaderArtifact = ShaderArtifact {{",
+				f'\tbytes: include_bytes!(concat!(env!("OUT_DIR"), "/{domain}_{name}_{dtype}.spv")),',
 				f"\tworkgroup_size: [{workgroup[0]}, {workgroup[1]}, {workgroup[2]}],",
 				f"\tdispatch_tile_size: [{dispatch_tile[0]}, {dispatch_tile[1]}, {dispatch_tile[2]}],",
 				"\tcontent_id: OnceLock::new(),",
@@ -481,7 +855,21 @@ def generate_registry(
 				"",
 			]
 		)
-	lines.extend(["#[repr(u16)]", "#[derive(Clone, Copy, Debug, PartialEq, Eq)]", "pub(crate) enum KernelId {"])
+	lines.extend(
+		[
+			"#[derive(Clone, Copy, Debug, PartialEq, Eq)]",
+			"pub(crate) enum TrainingReplayRole {",
+			"\tSafe,",
+			"\tHostSteppedOptimizer,",
+			"\tOptimizerStateAdvance,",
+			"\tOptimizerStateUpdate,",
+			"}",
+			"",
+			"#[repr(u16)]",
+			"#[derive(Clone, Copy, Debug, PartialEq, Eq)]",
+			"pub(crate) enum KernelId {",
+		]
+	)
 	for entry in entries:
 		lines.append(f"\t{entry['kernel_id']} = {entry['stable_id']},")
 	lines.extend(["}", "", "impl KernelId {", f"\tpub(crate) const ALL: [Self; {len(entries)}] = ["])
@@ -489,10 +877,56 @@ def generate_registry(
 		lines.append(f"\t\tSelf::{entry['kernel_id']},")
 	lines.extend(["\t];", "", "\tpub(crate) const fn artifact(self) -> &'static ShaderArtifact {", "\t\tmatch self {"])
 	for entry in entries:
-		lines.append(f"\t\t\tSelf::{entry['kernel_id']} => &{static_name(entry['name'], entry['dtype'])},")
+		lines.append(
+			f"\t\t\tSelf::{entry['kernel_id']} => &{static_name(entry['domain'], entry['name'], entry['dtype'])},"
+		)
 	lines.extend(["\t\t}", "\t}", "", "\tpub(crate) const fn index(self) -> usize {", "\t\tmatch self {"])
 	for index, entry in enumerate(entries):
 		lines.append(f"\t\t\tSelf::{entry['kernel_id']} => {index},")
+	replay_roles = {
+		"safe": "Safe",
+		"host_stepped_optimizer": "HostSteppedOptimizer",
+		"optimizer_state_advance": "OptimizerStateAdvance",
+		"optimizer_state_update": "OptimizerStateUpdate",
+	}
+	lines.extend(
+		[
+			"\t\t}",
+			"\t}",
+			"",
+			"\tpub(crate) const fn report_name(self) -> &'static str {",
+			"\t\tmatch self {",
+		]
+	)
+	for entry in entries:
+		name = f"{entry['domain']}.{entry['name']}.{entry['dtype']}"
+		lines.append(f'\t\t\tSelf::{entry["kernel_id"]} => "{name}",')
+	lines.extend(
+		[
+			"\t\t}",
+			"\t}",
+			"",
+			"\tpub(crate) const fn dtype_report_token(self) -> &'static str {",
+			"\t\tmatch self {",
+		]
+	)
+	dtype_tokens = {"f32": "float32", "i32": "int32", "u32": "uint32"}
+	for entry in entries:
+		lines.append(
+			f'\t\t\tSelf::{entry["kernel_id"]} => "{dtype_tokens[entry["dtype"]]}",'
+		)
+	lines.extend(
+		[
+			"\t\t}",
+			"\t}",
+			"",
+			"\tpub(crate) const fn training_replay_role(self) -> TrainingReplayRole {",
+			"\t\tmatch self {",
+		]
+	)
+	for entry in entries:
+		role = replay_roles[entry["training_replay_role"]]
+		lines.append(f"\t\t\tSelf::{entry['kernel_id']} => TrainingReplayRole::{role},")
 	lines.extend(
 		[
 			"\t\t}",
@@ -511,6 +945,206 @@ def generate_registry(
 			"",
 		]
 	)
+	return "\n".join(lines)
+
+
+def semantic_contract_hash(domain: str, name: str, contract: dict[str, Any], attributes: list[dict[str, str]]) -> int:
+	payload = json.dumps(
+		{
+			"name": f"oa::{domain}::{name}",
+			"contract": contract,
+			"attributes": attributes,
+		},
+		sort_keys=True,
+		separators=(",", ":"),
+	).encode("utf-8")
+	value = int.from_bytes(hashlib.sha256(payload).digest()[:8], "big")
+	return value or 1
+
+
+def rust_const_name(name: str) -> str:
+	return name.upper()
+
+
+def semantic_contract_lines(
+	domain: str,
+	name: str,
+	contract: dict[str, Any],
+	attributes: list[dict[str, str]],
+) -> list[str]:
+	inputs = ", ".join("OpValueKind::Matrix" for _ in contract["input_kinds"])
+	outputs = ", ".join("OpValueKind::Matrix" for _ in contract["output_kinds"])
+	shape_rule = (
+		"OpShapeRule::MatMulNt"
+		if contract["shape_rule"] == "left_mk_right_nk_to_mn"
+		else "OpShapeRule::MatchInput"
+		if contract["shape_rule"] in {"equal_no_broadcast", "preserve_input"}
+		else "OpShapeRule::Explicit"
+	)
+	dtype_rule = (
+		"OpDTypeRule::MatchInput"
+		if contract["dtype_rule"] in {"same_admitted_dtype", "all_f32", "matching_f32"}
+		else "OpDTypeRule::Explicit"
+	)
+	differentiation = (
+		"OpDifferentiation::None"
+		if contract.get("differentiation") == "none"
+		else "OpDifferentiation::Reverse"
+	)
+	lowering = (
+		"OpLowering::Gemm"
+		if contract["lowering"] == "gemm"
+		else "OpLowering::Dispatch"
+	)
+	value = semantic_contract_hash(domain, name, contract, attributes)
+	lines = [
+		f"pub const {rust_const_name(name)}: OperationContract = OperationContract::new(",
+		f'\t"oa::{domain}::{name}",',
+		f"\t0x{value:016x},",
+		f"\t&[{inputs}],",
+		f"\t&[{outputs}],",
+		")",
+		f".with_shape_rule({shape_rule})",
+		f".with_dtype_rule({dtype_rule})",
+		f".with_differentiation({differentiation})",
+		f".with_lowering({lowering})",
+		".effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))",
+	]
+	if attributes:
+		attribute_kinds = {
+			"boolean": "Boolean",
+			"signed_integer": "SignedInteger",
+			"unsigned_integer": "UnsignedInteger",
+			"float": "Float",
+			"string": "String",
+			"shape": "Shape",
+			"enum": "Enum",
+		}
+		specs = ", ".join(
+			f'OpAttributeSpec::new("{attribute["name"]}", OpAttributeKind::{attribute_kinds[attribute["kind"]]})'
+			for attribute in attributes
+		)
+		lines.append(f".attributes(&[{specs}])")
+	mutation_mask = sum(1 << input_index for input_index in contract["mutated_inputs"])
+	if mutation_mask:
+		lines.append(f".mutated_inputs(0x{mutation_mask:02x})")
+	for output_index, input_index in enumerate(contract["output_alias_inputs"]):
+		if input_index >= 0:
+			lines.append(f".alias({output_index}, {input_index})")
+	lines[-1] += ";"
+	return lines
+
+
+def generate_operation_registry(
+	elementwise: dict[str, Any],
+	elementwise_hash: str,
+	blas: dict[str, Any],
+	blas_hash: str,
+	ml: dict[str, Any],
+	ml_hash: str,
+) -> str:
+	lines = [
+		banner(elementwise_hash, "//").rstrip(),
+		f"// matrix_blas_sha256={blas_hash}",
+		f"// ml_training_sha256={ml_hash}",
+		"// Current OARS compatibility contracts; donor OA identities replace each row when its full contract lands.",
+		"",
+		"use super::{",
+		"\tOpAttributeKind, OpAttributeSpec, OpDTypeRule, OpDifferentiation, OpEffect, OpLowering,",
+		"\tOpShapeRule, OpValueKind, OperationContract,",
+		"};",
+		"",
+		"/// Generated semantic contracts for Matrix operations.",
+		"pub mod matrix {",
+		"\tuse super::*;",
+		"",
+	]
+	for operation in elementwise["operations"]:
+		contract = dict(elementwise["contracts"][operation["kind"]])
+		contract["differentiation"] = operation.get(
+			"differentiation", contract["differentiation"]
+		)
+		attributes = []
+		if operation["kind"] == "unary_scalar":
+			attributes = [{"name": operation["scalar_name"], "kind": "float"}]
+		for line in semantic_contract_lines("matrix", operation["name"], contract, attributes):
+			lines.append(f"\t{line}" if line else "")
+		lines.append("")
+	for operation in blas["operations"]:
+		for line in semantic_contract_lines("matrix", operation["name"], operation["contract"], []):
+			lines.append(f"\t{line}" if line else "")
+		lines.append("")
+	lines.extend(["}", "", "/// Generated compatibility contracts for current ML kernels.", "pub mod ml {", "\tuse super::*;", ""])
+	for operation in ml["operations"]:
+		if operation.get("lowering_only", False):
+			continue
+		contract = dict(operation["contract"])
+		contract["differentiation"] = (
+			"none" if operation["differentiation"] in {"none", "backward"} else "reverse"
+		)
+		attributes = [
+			{"name": name, "kind": kind}
+			for name, kind in operation.get("semantic_attributes", [])
+		]
+		for line in semantic_contract_lines("ml", operation["name"], contract, attributes):
+			lines.append(f"\t{line}" if line else "")
+		lines.append("")
+	lines.extend(["}", ""])
+	return "\n".join(lines)
+
+
+def dnn_rust_variant(value: str) -> str:
+	overrides = {
+		"blaslt_epilogue": "BlasLtEpilogue",
+		"qkv_projection_group": "QkvProjectionGroup",
+		"gated_ffn": "GatedFfn",
+		"grouped_moe": "GroupedMoe",
+		"rms_norm": "RmsNorm",
+		"residual_rms_norm": "ResidualRmsNorm",
+	}
+	return overrides.get(value, "".join(part.capitalize() for part in value.split("_")))
+
+
+def generate_dnn_roles(
+	elementwise: dict[str, Any],
+	elementwise_hash: str,
+	blas: dict[str, Any],
+	blas_hash: str,
+	ml: dict[str, Any],
+	ml_hash: str,
+) -> str:
+	lines = [
+		banner(elementwise_hash, "//").rstrip(),
+		f"// matrix_blas_sha256={blas_hash}",
+		f"// ml_training_sha256={ml_hash}",
+		"// Candidate roles mirror OA DNN vocabulary while retaining OARS compatibility identities.",
+		"",
+		"pub(super) static DNN_OP_ROLES: &[DnnOpRole] = &[",
+	]
+	for domain, schema in (("matrix", elementwise), ("matrix", blas), ("ml", ml)):
+		for operation in schema["operations"]:
+			role = operation.get("dnn")
+			if role is None:
+				continue
+			providers = " | ".join(
+				f"DnnProvider::{dnn_rust_variant(provider)}.bit()"
+				for provider in role["providers"]
+			)
+			epilogue = dnn_rust_variant(role.get("epilogue", "none"))
+			required_input = role.get("epilogue_requires_input")
+			required_input = "None" if required_input is None else f"Some({required_input})"
+			lines.extend(
+				[
+					"\tDnnOpRole {",
+					f"\t\tcontract: crate::core::operation::{domain}::{rust_const_name(operation['name'])},",
+					f"\t\top_type: DnnOpType::{dnn_rust_variant(role['role'])},",
+					f"\t\tepilogue: DnnEpilogue::{epilogue},",
+					f"\t\tepilogue_required_input: {required_input},",
+					f"\t\tprovider_mask: {providers},",
+					"\t},",
+				]
+			)
+	lines.extend(["];", ""])
 	return "\n".join(lines)
 
 
@@ -587,10 +1221,10 @@ def generate_test(schema: dict[str, Any], schema_hash: str) -> str:
 		"\t}",
 		"}",
 		"",
-		"#[test]",
-		"#[ignore = \"requires a hardware Vulkan 1.3 compute device\"]",
-		"fn generated_elementwise_dtype_variants_match_schema_oracles() -> oa::Result<()> {",
-		"\tlet engine = oa::Engine::new()?;",
+		"test_vk!(",
+		"\tgenerated_elementwise_dtype_variants_match_schema_oracles,",
+		"\tengine,",
+		"{",
 	]
 	samples: dict[tuple[str, str], str] = {}
 	for operation in schema["operations"]:
@@ -685,12 +1319,12 @@ def generate_test(schema: dict[str, Any], schema_hash: str) -> str:
 		[
 			"",
 			"\tOk(())",
-			"}",
+			"});",
 			"",
-			"#[test]",
-			"#[ignore = \"requires a hardware Vulkan 1.3 compute device\"]",
-			"fn generated_elementwise_dtype_variants_preserve_zero_extent() -> oa::Result<()> {",
-			"\tlet engine = oa::Engine::new()?;",
+			"test_vk!(",
+			"\tgenerated_elementwise_dtype_variants_preserve_zero_extent,",
+			"\tengine,",
+			"{",
 		]
 	)
 	dtypes = sorted(
@@ -719,7 +1353,7 @@ def generate_test(schema: dict[str, Any], schema_hash: str) -> str:
 					f"\tassert!({label}_output.read::<{rust_type}>()?.is_empty());",
 				]
 			)
-	lines.extend(["\tOk(())", "}", ""])
+	lines.extend(["\tOk(())", "});", ""])
 	return "\n".join(lines)
 
 
@@ -742,7 +1376,7 @@ def generate_blas_api(schema: dict[str, Any], schema_hash: str) -> str:
 				"/// their K extents differ, they belong to different engines, a dimension",
 				"/// exceeds the admitted shader ABI, or runtime submission fails.",
 				f"pub fn {operation['name']}(left: &Matrix, right: &Matrix) -> Result<Matrix> {{",
-				f"\t{operation['name']}_impl(left, right)",
+				f"\t{operation['name']}_impl(left, right, crate::core::operation::matrix::{rust_const_name(operation['name'])})",
 				"}",
 				"",
 			]
@@ -926,10 +1560,7 @@ fn assert_close(actual: &[f32], expected: &[f32], tolerance: f32) {{
 	}}
 }}
 
-#[test]
-#[ignore = "requires a hardware Vulkan 1.3 compute device"]
-fn generated_mat_mul_nt_matches_schema_oracle() -> oa::Result<()> {{
-	let engine = oa::Engine::new()?;
+test_vk!(generated_mat_mul_nt_matches_schema_oracle, engine, {{
 	for (m, n, k) in [{shapes}] {{
 		let left_values = values(m * k, 3);
 		let right_values = values(n * k, 11);
@@ -942,12 +1573,9 @@ fn generated_mat_mul_nt_matches_schema_oracle() -> oa::Result<()> {{
 		assert_close(&output.read_f32()?, &expected, {tolerance});
 	}}
 	Ok(())
-}}
+}});
 
-#[test]
-#[ignore = "requires a hardware Vulkan 1.3 compute device"]
-fn generated_mat_mul_nt_rejects_invalid_contracts() -> oa::Result<()> {{
-	let engine = oa::Engine::new()?;
+test_vk!(generated_mat_mul_nt_rejects_invalid_contracts, engine, {{
 	let other_engine = oa::Engine::new()?;
 	let rank_one = oa::Matrix::from_f32(&engine, [6], &[0.0; 6])?;
 	let left = oa::Matrix::from_f32(&engine, [2, 3], &[0.0; 6])?;
@@ -964,7 +1592,7 @@ fn generated_mat_mul_nt_rejects_invalid_contracts() -> oa::Result<()> {{
 		assert_eq!(error.kind(), oa::ErrorKind::InvalidArgument);
 	}}
 	Ok(())
-}}
+}});
 """
 
 
@@ -974,12 +1602,23 @@ def expected_outputs(
 	elementwise_hash: str,
 	blas: dict[str, Any],
 	blas_hash: str,
+	ml: dict[str, Any],
+	ml_hash: str,
 ) -> dict[Path, str]:
 	outputs = {
+		root / "src/rs/core/operation/generated.rs": format_rust(
+			generate_operation_registry(
+				elementwise, elementwise_hash, blas, blas_hash, ml, ml_hash
+			),
+			root,
+		),
 		root / "src/rs/matrix/elemwise.gen.rs": format_rust(generate_api(elementwise, elementwise_hash), root),
 		root / "src/rs/matrix/blas.gen.rs": format_rust(generate_blas_api(blas, blas_hash), root),
 		root / "src/rs/runtime/shader/generated.rs": format_rust(
-			generate_registry(elementwise, elementwise_hash, blas, blas_hash), root
+			generate_registry(elementwise, elementwise_hash, blas, blas_hash, ml, ml_hash), root
+		),
+		root / "src/rs/runtime/dnn/generated.rs": format_rust(
+			generate_dnn_roles(elementwise, elementwise_hash, blas, blas_hash, ml, ml_hash), root
 		),
 		root / "test/rs/matrix/test_elemwise.gen.rs": format_rust(generate_test(elementwise, elementwise_hash), root),
 		root / "test/rs/matrix/test_blas.gen.rs": format_rust(generate_blas_test(blas, blas_hash), root),
@@ -1033,6 +1672,7 @@ def parse_args() -> argparse.Namespace:
 	parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[3])
 	parser.add_argument("--schema", type=Path)
 	parser.add_argument("--blas-schema", type=Path)
+	parser.add_argument("--ml-schema", type=Path)
 	parser.add_argument("--check", action="store_true")
 	return parser.parse_args()
 
@@ -1042,14 +1682,24 @@ def main() -> int:
 	root = args.root.resolve()
 	schema_path = args.schema.resolve() if args.schema else root / DEFAULT_SCHEMA
 	blas_schema_path = args.blas_schema.resolve() if args.blas_schema else root / DEFAULT_BLAS_SCHEMA
+	ml_schema_path = args.ml_schema.resolve() if args.ml_schema else root / DEFAULT_ML_SCHEMA
 	try:
 		schema, schema_hash = load_schema(schema_path)
 		blas_schema, blas_schema_hash = load_blas_schema(blas_schema_path)
-		registry_entries(schema, blas_schema)
+		ml_schema, ml_schema_hash = load_ml_schema(ml_schema_path)
+		registry_entries(schema, blas_schema, ml_schema)
 	except (OSError, SchemaError) as error:
-		print(f"matrix operation generation failed: {error}", file=os.sys.stderr)
+		print(f"operation generation failed: {error}", file=os.sys.stderr)
 		return 1
-	outputs = expected_outputs(root, schema, schema_hash, blas_schema, blas_schema_hash)
+	outputs = expected_outputs(
+		root,
+		schema,
+		schema_hash,
+		blas_schema,
+		blas_schema_hash,
+		ml_schema,
+		ml_schema_hash,
+	)
 	shader_directories = [
 		root / "src/slang/matrix/elemwise",
 		root / "src/slang/matrix/blas",

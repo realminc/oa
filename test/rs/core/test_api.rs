@@ -19,8 +19,11 @@ fn admitted_rust_elements_map_to_exact_dense_dtypes() {
 
 	assert_eq!(dtype_of::<f32>(), oa::DType::F32);
 	assert_eq!(dtype_of::<i32>(), oa::DType::I32);
+	assert_eq!(dtype_of::<u32>(), oa::DType::U32);
 	assert_eq!(oa::DType::F32.token(), "f32");
 	assert_eq!(oa::DType::I32.token(), "i32");
+	assert_eq!(oa::DType::U32.token(), "u32");
 	assert_eq!(oa::DType::F32.size_bytes(), size_of::<f32>());
 	assert_eq!(oa::DType::I32.size_bytes(), size_of::<i32>());
+	assert_eq!(oa::DType::U32.size_bytes(), size_of::<u32>());
 }

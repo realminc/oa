@@ -1,9 +1,9 @@
 use std::{cell::RefCell, marker::PhantomData, rc::Rc};
 
-use crate::{Error, LogComponent, LogLevel, LogOptions, Result};
+use crate::{Error, LogComponent, LogLevel, LogOptions, Matrix, Result};
 
 use super::{
-	ComputeDispatch, Event, ExecutionPlan, Storage,
+	ComputeDispatch, Event, ExecutionPlan, SemanticDispatch, Storage,
 	log::{LogSelection, Logger},
 	session::ExecutionSession,
 	vk,
@@ -79,6 +79,11 @@ pub struct Engine {
 	_not_send_sync: PhantomData<Rc<()>>,
 }
 
+pub(crate) enum CaptureAttempt<T> {
+	Captured { plan: Box<ExecutionPlan>, output: T },
+	Rejected { error: Error, output: T },
+}
+
 struct EngineState {
 	// Fields drop in declaration order. Retirement disconnects first and joins only
 	// an already-drained host worker; an active worker retains the device and
@@ -112,6 +117,43 @@ impl Engine {
 		Self::builder().build()
 	}
 
+	pub(crate) fn owns_matrix(&self, matrix: &Matrix) -> bool {
+		self.handle.same_as(matrix.engine_handle())
+	}
+
+	pub(crate) fn same_as_handle(&self, handle: &EngineHandle) -> bool {
+		self.handle.same_as(handle)
+	}
+
+	pub(crate) fn begin_stable_resource_frame(&self) -> Result<()> {
+		self.handle.begin_stable_resource_frame()
+	}
+
+	pub(crate) fn seal_all_stable_resources_external(&self) -> Result<()> {
+		self.handle.seal_all_stable_resources_external()
+	}
+
+	pub(crate) fn seal_stable_resource_inputs(&self) -> Result<()> {
+		self.handle.seal_stable_resource_inputs()
+	}
+
+	pub(crate) fn end_stable_resource_frame(&self) {
+		self.handle.end_stable_resource_frame();
+	}
+
+	pub(crate) fn has_pending_work(&self) -> bool {
+		self.handle.has_pending_work()
+	}
+
+	pub(crate) fn abort_pending_work(&self) {
+		self.handle.abort_pending_work();
+	}
+
+	#[cfg(test)]
+	pub(crate) fn force_next_plan_compilation_failure(&self) {
+		super::plan::force_next_compilation_failure();
+	}
+
 	pub(super) fn build(selection: DeviceSelection, log_options: LogOptions) -> Result<Self> {
 		let logger = Logger::new(log_options)?;
 		let log_selection = logger.select();
@@ -119,7 +161,7 @@ impl Engine {
 		let physical_device = vk::PhysicalDevice::select(&instance, selection)?;
 		let device = vk::Device::new(&instance, physical_device)?;
 		let retirement = vk::RetirementService::new(&device);
-		crate::log_info!(LogComponent::ENGINE, "initialized Vulkan compute engine");
+		log_engine_identity(&device);
 
 		Ok(Self {
 			_log_selection: log_selection,
@@ -148,7 +190,20 @@ impl Engine {
 	/// Returns an error when command recording, submission, or retirement fails,
 	/// or when the engine exhausts its timeline epoch space.
 	pub fn checkpoint(&self) -> Result<Event> {
-		self.handle.checkpoint()
+		self.handle.checkpoint(false)
+	}
+
+	/// Submit pending eager work with one device timestamp pair around the batch.
+	///
+	/// Unlike [`Engine::checkpoint`], this requires at least one pending operation;
+	/// there is no meaningful device interval for an empty queue checkpoint.
+	///
+	/// # Errors
+	///
+	/// Returns the errors from [`Engine::checkpoint`], `MissingCapability` when
+	/// timestamps are unavailable, or `FailedPrecondition` for an empty batch.
+	pub fn checkpoint_timed(&self) -> Result<Event> {
+		self.handle.checkpoint(true)
 	}
 
 	/// Capture an isolated operation sequence as an immutable execution plan.
@@ -164,8 +219,33 @@ impl Engine {
 	pub fn capture<T>(&self, capture: impl FnOnce() -> Result<T>) -> Result<(ExecutionPlan, T)> {
 		let guard = CaptureGuard::begin(self.handle.clone())?;
 		let output = capture()?;
-		let plan = guard.finish()?;
+		let plan = guard.finish(&[])?;
 		Ok((plan, output))
+	}
+
+	pub(crate) fn capture_observed_matrix(
+		&self,
+		capture: impl FnOnce() -> Result<Matrix>,
+	) -> Result<(ExecutionPlan, Matrix)> {
+		let guard = CaptureGuard::begin(self.handle.clone())?;
+		let output = capture()?;
+		let plan = guard.finish(&[&output])?;
+		Ok((plan, output))
+	}
+
+	pub(crate) fn capture_observed_training_matrix_preserving(
+		&self,
+		capture: impl FnOnce() -> Result<Matrix>,
+	) -> Result<CaptureAttempt<Matrix>> {
+		let guard = CaptureGuard::begin(self.handle.clone())?;
+		let output = capture()?;
+		Ok(match guard.finish_preserving(&[&output]) {
+			Ok(plan) => CaptureAttempt::Captured {
+				plan: Box::new(plan),
+				output,
+			},
+			Err(error) => CaptureAttempt::Rejected { error, output },
+		})
 	}
 
 	/// Submit an immutable execution plan to its originating engine.
@@ -254,19 +334,126 @@ impl Engine {
 	}
 }
 
+fn log_engine_identity(device: &vk::Device) {
+	let physical = device.physical();
+	let info = &physical.info;
+	let conformance = info.conformance_version;
+	let driver = if info.driver_info.is_empty() {
+		info.driver_name.clone()
+	} else {
+		format!("{} · {}", info.driver_name, info.driver_info)
+	};
+	crate::log_info!(
+		LogComponent::ENGINE,
+		"oa engine v{} · Vulkan · 1 compute device",
+		env!("CARGO_PKG_VERSION")
+	);
+	crate::log_info!(
+		LogComponent::RUNTIME,
+		"[0] ComputeDevice · {} · {} · Vulkan {} · {}",
+		info.name,
+		info.device_type,
+		info.api_version,
+		format_capacity(info.local_memory_bytes)
+	);
+	crate::log_info!(
+		LogComponent::RUNTIME,
+		"    Driver · {} · id {:?} · version 0x{:08x} · conformance {}.{}.{}.{}",
+		driver,
+		info.driver_id,
+		info.driver_version,
+		conformance.major,
+		conformance.minor,
+		conformance.subminor,
+		conformance.patch
+	);
+	crate::log_info!(
+		LogComponent::RUNTIME,
+		"    Hardware · PCI {:04x}:{:04x} · compute queue family {}",
+		info.vendor_id,
+		info.device_id,
+		physical.compute_queue_family
+	);
+}
+
+fn format_capacity(bytes: u64) -> String {
+	const GIB: u64 = 1024 * 1024 * 1024;
+	const MIB: u64 = 1024 * 1024;
+	if bytes >= GIB {
+		format!("{:.2} GiB local memory", bytes as f64 / GIB as f64)
+	} else {
+		format!("{:.2} MiB local memory", bytes as f64 / MIB as f64)
+	}
+}
+
 impl EngineHandle {
 	pub(crate) fn same_as(&self, other: &Self) -> bool {
 		Rc::ptr_eq(&self.state, &other.state)
 	}
 
 	pub(crate) fn create_storage(&self, bytes: &[u8]) -> Result<Storage> {
-		let device = self.state.borrow().device.clone();
-		Storage::from_bytes(&device, bytes)
+		let mut state = self.state.borrow_mut();
+		let device = state.device.clone();
+		state.session.create_storage(&device, bytes)
 	}
 
-	pub(crate) fn checkpoint(&self) -> Result<Event> {
-		if let Some(event) = self.flush()? {
+	pub(crate) fn begin_stable_resource_frame(&self) -> Result<()> {
+		self.state
+			.borrow_mut()
+			.session
+			.begin_stable_resource_frame()
+	}
+
+	pub(crate) fn seal_all_stable_resources_external(&self) -> Result<()> {
+		self.state
+			.borrow_mut()
+			.session
+			.seal_all_stable_resources_external()
+	}
+
+	pub(crate) fn seal_stable_resource_inputs(&self) -> Result<()> {
+		self.state
+			.borrow_mut()
+			.session
+			.seal_stable_resource_inputs()
+	}
+
+	pub(crate) fn end_stable_resource_frame(&self) {
+		self.state.borrow_mut().session.end_stable_resource_frame();
+	}
+
+	pub(crate) fn has_pending_work(&self) -> bool {
+		!self.state.borrow().session.is_empty()
+	}
+
+	pub(crate) fn abort_pending_work(&self) {
+		self.state.borrow_mut().session.abort();
+	}
+
+	pub(super) fn create_alias_arena(&self, size: usize) -> Result<vk::Buffer> {
+		let device = self.state.borrow().device.clone();
+		vk::Buffer::host_visible_alias_arena(&device, size)
+	}
+
+	pub(super) fn release_stable_transient_resources(&self, retired: &[vk::Buffer]) {
+		self.state
+			.borrow_mut()
+			.session
+			.release_stable_transient_resources(retired);
+	}
+
+	pub(crate) fn capture_active(&self) -> bool {
+		self.state.borrow().capture_active
+	}
+
+	pub(crate) fn checkpoint(&self, timed: bool) -> Result<Event> {
+		if let Some(event) = self.flush_impl(timed)? {
 			return Ok(event);
+		}
+		if timed {
+			return Err(Error::failed_precondition(
+				"timed checkpoint requires pending eager work",
+			));
 		}
 		let mut state = self.state.borrow_mut();
 		let command = state.device.record_empty()?;
@@ -279,17 +466,66 @@ impl EngineHandle {
 		state.session.record(&device, dispatch)
 	}
 
+	pub(crate) fn record_semantic(
+		&self,
+		dispatch: ComputeDispatch<'_>,
+		semantic: SemanticDispatch<'_>,
+	) -> Result<()> {
+		let mut state = self.state.borrow_mut();
+		let device = state.device.clone();
+		state.session.record_semantic(&device, dispatch, semantic)
+	}
+
+	pub(crate) fn attach_semantic_autograd(
+		&self,
+		matrix_value: u64,
+		sequence: u64,
+	) -> Result<Option<(super::SemanticOpId, u64)>> {
+		self.state
+			.borrow_mut()
+			.session
+			.attach_autograd(matrix_value, sequence)
+	}
+
+	pub(crate) fn semantic_operation_count(&self) -> usize {
+		self.state.borrow().session.semantic_operation_count()
+	}
+
+	pub(crate) fn complete_semantic_autograd(
+		&self,
+		forward: super::SemanticOpId,
+		sequence: u64,
+		generation: u64,
+		backward_first: usize,
+	) -> Result<()> {
+		self.state.borrow_mut().session.complete_autograd(
+			forward,
+			sequence,
+			generation,
+			backward_first,
+		)
+	}
+
 	pub(crate) fn flush(&self) -> Result<Option<Event>> {
+		self.flush_impl(false)
+	}
+
+	fn flush_impl(&self, timed: bool) -> Result<Option<Event>> {
 		let mut state = self.state.borrow_mut();
 		if state.capture_active {
 			return Err(Error::failed_precondition(
 				"cannot submit eager work while execution capture is active",
 			));
 		}
-		let Some(pending) = state.session.take()? else {
+		let Some(pending) = state.session.take(&[])? else {
 			return Ok(None);
 		};
-		match state.device.record_compute_graph(&pending.graph) {
+		let recorded = if timed {
+			state.device.record_timed_compute_graph(&pending.graph)
+		} else {
+			state.device.record_compute_graph(&pending.graph)
+		};
+		match recorded {
 			Ok(command) => match submit_recorded(&mut state, command) {
 				Ok(event) => {
 					pending.mark_submitted(&event);
@@ -379,10 +615,35 @@ impl CaptureGuard {
 		})
 	}
 
-	fn finish(mut self) -> Result<ExecutionPlan> {
+	fn finish(mut self, observed_outputs: &[&Matrix]) -> Result<ExecutionPlan> {
 		let pending = {
 			let mut state = self.engine.state.borrow_mut();
-			let pending = state.session.take();
+			let pending = match state.session.take(observed_outputs) {
+				Ok(pending) => pending,
+				Err(error) => {
+					state.session.abort();
+					state.capture_active = false;
+					self.active = false;
+					return Err(error);
+				}
+			};
+			state.capture_active = false;
+			self.active = false;
+			pending
+		};
+		let Some(pending) = pending else {
+			return Err(Error::failed_precondition(
+				"execution capture recorded no executable work",
+			));
+		};
+		pending.mark_captured();
+		ExecutionPlan::new(self.engine.clone(), pending, false)
+	}
+
+	fn finish_preserving(mut self, observed_outputs: &[&Matrix]) -> Result<ExecutionPlan> {
+		let pending = {
+			let mut state = self.engine.state.borrow_mut();
+			let pending = state.session.snapshot(observed_outputs);
 			state.capture_active = false;
 			self.active = false;
 			pending?
@@ -392,9 +653,12 @@ impl CaptureGuard {
 				"execution capture recorded no executable work",
 			));
 		};
-		pending.mark_captured();
-		let (graph, outputs) = pending.into_parts();
-		Ok(ExecutionPlan::new(self.engine.clone(), graph, outputs))
+		let plan = ExecutionPlan::new(self.engine.clone(), pending, true)?;
+		plan.validate_training_replay_safety()?;
+		let mut state = self.engine.state.borrow_mut();
+		plan.precompile(&state.device)?;
+		state.session.commit_captured_snapshot()?;
+		Ok(plan)
 	}
 }
 
@@ -432,8 +696,9 @@ fn submit_recorded(state: &mut EngineState, command: vk::RecordedCommandBuffer) 
 
 #[cfg(test)]
 mod tests {
-	use super::{DeviceSelection, Engine, EngineBuilder};
+	use super::{CaptureAttempt, DeviceSelection, Engine, EngineBuilder, format_capacity};
 	use crate::runtime::{BufferBinding, ComputeDispatch, PushConstant, shader::KernelId};
+	use crate::{Matrix, matrix};
 
 	#[test]
 	fn default_builder_uses_automatic_device_selection() {
@@ -444,12 +709,231 @@ mod tests {
 	}
 
 	#[test]
+	fn formats_device_local_capacity_for_the_startup_banner() {
+		assert_eq!(
+			format_capacity(512 * 1024 * 1024),
+			"512.00 MiB local memory"
+		);
+		assert_eq!(format_capacity(12_338_790_400), "11.49 GiB local memory");
+	}
+
+	#[test]
 	#[ignore = "requires a hardware Vulkan 1.3 compute device"]
 	fn allocates_records_and_frees_an_empty_command_buffer() -> crate::Result<()> {
 		let engine = Engine::new()?;
 		let device = engine.handle.state.borrow().device.clone();
 		let command = device.record_empty()?;
 		device.free(command);
+		Ok(())
+	}
+
+	#[test]
+	#[ignore = "requires a hardware Vulkan 1.3 compute device"]
+	fn reuses_retired_exact_size_storage_without_exposing_old_bytes() -> crate::Result<()> {
+		let engine = Engine::new()?;
+		let handle = engine.handle();
+		let first = handle.create_storage(&[0xa5_u8; 64])?;
+		let first_buffer = first.buffer().expect("nonempty storage has a buffer");
+		let first_raw = first_buffer.raw();
+		let first_descriptor = first_buffer.descriptor_index();
+		drop(first);
+
+		let second = handle.create_storage(&[0_u8; 64])?;
+		let second_buffer = second.buffer().expect("nonempty storage has a buffer");
+		assert_eq!(second_buffer.raw(), first_raw);
+		assert_eq!(second_buffer.descriptor_index(), first_descriptor);
+		let mut bytes = [0xff_u8; 64];
+		second.read(&mut bytes)?;
+		assert_eq!(bytes, [0_u8; 64]);
+		Ok(())
+	}
+
+	#[test]
+	#[ignore = "requires a hardware Vulkan 1.3 compute device"]
+	fn stable_resource_frames_reuse_equal_size_allocation_ordinals() -> crate::Result<()> {
+		let engine = Engine::new()?;
+		engine.begin_stable_resource_frame()?;
+		let first = engine.handle.create_storage(&[0xa5_u8; 64])?;
+		let first_raw = first.buffer().expect("nonempty storage has a buffer").raw();
+		engine.seal_all_stable_resources_external()?;
+		engine.end_stable_resource_frame();
+
+		engine.begin_stable_resource_frame()?;
+		let second = engine.handle.create_storage(&[0x5a_u8; 64])?;
+		engine.seal_all_stable_resources_external()?;
+		engine.end_stable_resource_frame();
+
+		assert_eq!(
+			second
+				.buffer()
+				.expect("nonempty storage has a buffer")
+				.raw(),
+			first_raw
+		);
+		let mut bytes = [0_u8; 64];
+		second.read(&mut bytes)?;
+		assert_eq!(bytes, [0x5a_u8; 64]);
+		Ok(())
+	}
+
+	#[test]
+	#[ignore = "requires a hardware Vulkan 1.3 compute device"]
+	fn capture_preserves_replay_input_and_transient_lifetimes() -> crate::Result<()> {
+		let engine = Engine::new()?;
+		engine.begin_stable_resource_frame()?;
+		let input = Matrix::from_f32(&engine, [4], &[1.0, 2.0, 3.0, 4.0])?;
+		engine.seal_stable_resource_inputs()?;
+		let captured = engine.capture(|| {
+			let intermediate = matrix::add(&input, &input)?;
+			matrix::add(&intermediate, &input)
+		});
+		engine.end_stable_resource_frame();
+		let (plan, output) = captured?;
+
+		let resources = plan.captured_resources();
+		assert_eq!(resources.len(), 3);
+		assert!(resources[0].stable_replay_input());
+		assert!(!resources[0].stable_transient());
+		assert_eq!(
+			(resources[0].first_access(), resources[0].last_access()),
+			(0, 1)
+		);
+		assert!(resources[1].stable_transient());
+		assert_eq!(
+			(resources[1].first_access(), resources[1].last_access()),
+			(0, 1)
+		);
+		assert_eq!(resources[1].unaccounted_owner_count(), 0);
+		assert!(resources[1].alias_candidate());
+		assert!(resources[2].stable_transient());
+		assert_eq!(
+			(resources[2].first_access(), resources[2].last_access()),
+			(1, 1)
+		);
+		assert_eq!(resources[2].unaccounted_owner_count(), 1);
+		assert!(!resources[2].alias_candidate());
+		let diagnostics = plan.diagnostics();
+		assert_eq!(diagnostics.captured_resource_count(), 3);
+		assert_eq!(diagnostics.stable_replay_input_count(), 1);
+		assert_eq!(diagnostics.stable_transient_count(), 2);
+		assert_eq!(diagnostics.alias_candidate_count(), 1);
+		assert_eq!(diagnostics.alias_materialized_count(), 0);
+		assert_eq!(diagnostics.materialized_alias_savings(), 0);
+
+		engine.submit(&plan)?.wait()?;
+		assert_eq!(output.read_f32()?, [3.0, 6.0, 9.0, 12.0]);
+		Ok(())
+	}
+
+	#[test]
+	#[ignore = "requires a hardware Vulkan 1.3 compute device"]
+	fn capture_materializes_non_overlapping_transients_into_one_arena() -> crate::Result<()> {
+		let engine = Engine::new()?;
+		engine.begin_stable_resource_frame()?;
+		let input = Matrix::from_f32(&engine, [4], &[1.0, 2.0, 3.0, 4.0])?;
+		engine.seal_stable_resource_inputs()?;
+		let captured = engine.capture(|| {
+			let first = matrix::add(&input, &input)?;
+			let _dead = matrix::add(&first, &input)?;
+			let second = matrix::add(&input, &input)?;
+			matrix::add(&second, &input)
+		});
+		engine.end_stable_resource_frame();
+		let (plan, output) = captured?;
+		let diagnostics = plan.diagnostics();
+		assert_eq!(diagnostics.alias_candidate_count(), 3);
+		assert_eq!(diagnostics.alias_materialized_count(), 2);
+		assert_eq!(diagnostics.materialized_alias_savings(), 16);
+		assert_eq!(diagnostics.captured_resource_count(), 5);
+		assert_eq!(diagnostics.physical_resource_count(), 4);
+		assert_eq!(diagnostics.fallback_count(), 0);
+		assert_eq!(plan.alias_materialization_fallback_reason(), None);
+		assert!(
+			plan.graph().nodes()[0].buffers[2]
+				.buffer
+				.same_as(&plan.graph().nodes()[2].buffers[2].buffer)
+		);
+		assert_eq!(diagnostics.barrier_count(), 3);
+		assert_eq!(
+			plan.captured_resources()
+				.iter()
+				.filter(|resource| resource.alias_materialized())
+				.count(),
+			2
+		);
+
+		engine.submit(&plan)?.wait()?;
+		assert_eq!(output.read_f32()?, [3.0, 6.0, 9.0, 12.0]);
+		engine.submit(&plan)?.wait()?;
+		assert_eq!(output.read_f32()?, [3.0, 6.0, 9.0, 12.0]);
+		Ok(())
+	}
+
+	#[test]
+	#[ignore = "requires a hardware Vulkan 1.3 compute device"]
+	fn replay_safety_rejection_preserves_the_source_recording() -> crate::Result<()> {
+		let engine = Engine::new()?;
+		let parameter = Matrix::from_f32(&engine, [1], &[1.0])?;
+		let attempt = engine.capture_observed_training_matrix_preserving(|| {
+			let buffers = [BufferBinding::read_write(parameter.storage())];
+			engine.handle.record(ComputeDispatch {
+				operation: "ml.adamw",
+				kernel: KernelId::MlAdamWF32,
+				buffers: &buffers,
+				push_constants: &[PushConstant::U32(1)],
+				workgroups: [1, 1, 1],
+			})?;
+			Ok(parameter.clone())
+		})?;
+		let CaptureAttempt::Rejected { error, .. } = attempt else {
+			panic!("host-stepped AdamW capture must be rejected");
+		};
+		assert_eq!(error.kind(), crate::ErrorKind::FailedPrecondition);
+		assert_eq!(
+			error.message(),
+			"training program operation ml.adamw embeds host-stepped optimizer state; use a replay-state kernel"
+		);
+		let mut state = engine.handle.state.borrow_mut();
+		assert!(!state.session.is_empty());
+		state.session.abort();
+		Ok(())
+	}
+
+	#[test]
+	#[ignore = "requires a hardware Vulkan 1.3 compute device"]
+	fn recorded_storage_is_not_recycled_before_command_retirement() -> crate::Result<()> {
+		let engine = Engine::new()?;
+		let handle = engine.handle();
+		let left = handle.create_storage(&[0_u8; 16])?;
+		let right = handle.create_storage(&[0_u8; 16])?;
+		let output = handle.create_storage(&[0_u8; 16])?;
+		let output_raw = output
+			.buffer()
+			.expect("nonempty storage has a buffer")
+			.raw();
+		let buffers = [
+			BufferBinding::read(&left),
+			BufferBinding::read(&right),
+			BufferBinding::write(&output),
+		];
+		handle.record(ComputeDispatch {
+			operation: "test.retained_add",
+			kernel: KernelId::MatrixAddF32,
+			buffers: &buffers,
+			push_constants: &[PushConstant::U32(4)],
+			workgroups: [1, 1, 1],
+		})?;
+		drop(output);
+
+		let replacement = handle.create_storage(&[0_u8; 16])?;
+		assert_ne!(
+			replacement
+				.buffer()
+				.expect("nonempty storage has a buffer")
+				.raw(),
+			output_raw
+		);
+		handle.checkpoint(false)?.wait()?;
 		Ok(())
 	}
 

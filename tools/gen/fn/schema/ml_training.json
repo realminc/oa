@@ -1,0 +1,884 @@
+{
+  "schema_version": 1,
+  "family": "ml_training",
+  "domain": "ml",
+  "dtype": "f32",
+  "workgroup_size": [256, 1, 1],
+  "port_provenance": [
+    {
+      "family": "linear",
+      "operations": ["linear", "linear_backward", "linear_parameter_backward"],
+      "classification": "replacement",
+      "donors": [
+        "source/cpp/lib/oa/ml/fnmatrix/blas/fnMatrixBlas.cpp",
+        "source/cpp/lib/oa/ml/shader/compute/nn/linear/linearDataBwd.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/linear/linearWeightBiasBwd.slang"
+      ],
+      "reason": "Temporary Rust correctness baseline predating the donor-first port policy."
+    },
+    {
+      "family": "cross_entropy",
+      "operations": ["cross_entropy", "cross_entropy_backward"],
+      "classification": "replacement",
+      "donors": [
+        "source/cpp/lib/oa/ml/shader/compute/nn/crossentropy/crossEntropy.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/crossentropy/crossEntropyBwd.slang",
+        "tools/gen/fn/schema/ml/mlFnLoss.toml"
+      ],
+      "reason": "Temporary Rust correctness baseline predating the donor-first port policy."
+    },
+    {
+      "family": "adamw",
+      "operations": ["adamw", "adamw_graph_advance", "adamw_graph"],
+      "classification": "replacement",
+      "donors": [
+        "source/cpp/lib/oa/ml/shader/compute/optim/adamw/adamw.slang",
+        "source/cpp/lib/oa/ml/shader/compute/optim/adamw/adamwGraphAdvance.slang",
+        "source/cpp/lib/oa/ml/shader/compute/optim/adamw/adamwGraph.slang",
+        "source/cpp/lib/oa/ml/shader/compute/optim/adamw/adamwMany4Graph.slang",
+        "tools/gen/fn/schema/ml/mlFnMatrixOptim.toml"
+      ],
+      "reason": "Temporary Rust correctness baseline predating the donor-first port policy."
+    },
+    {
+      "family": "embedding",
+      "operations": ["embedding", "embedding_backward"],
+      "classification": "replacement",
+      "donors": [
+        "source/cpp/lib/oa/ml/shader/compute/ops/gather.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/gatherBwd.slang",
+        "tools/gen/fn/schema/ml/mlFnMatrixEmbed.toml"
+      ],
+      "reason": "Temporary Rust correctness baseline predating the donor-first port policy."
+    },
+    {
+      "family": "rnn",
+      "operations": ["rnn", "rnn_backward"],
+      "classification": "replacement",
+      "donors": [
+        "source/cpp/lib/oa/ml/shader/compute/nn/rnn/rnnScan.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/rnn/rnnScanBwd.slang",
+        "tools/gen/fn/schema/ml/mlFnMatrixRecurrent.toml"
+      ],
+      "reason": "Temporary Rust correctness baseline predating the donor-first port policy."
+    },
+    {
+      "family": "layer_norm",
+      "operations": ["layer_norm", "layer_norm_backward", "layer_norm_parameter_backward"],
+      "classification": "replacement",
+      "donors": [
+        "source/cpp/lib/oa/ml/shader/compute/nn/layernorm/layerNorm.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/layernorm/layerNormN32.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/layernorm/layerNormBwd.slang",
+        "tools/gen/fn/schema/ml/mlFnMatrixNorm.toml"
+      ],
+      "reason": "Temporary Rust correctness baseline predating the donor-first port policy."
+    },
+    {
+      "family": "gelu",
+      "operations": ["gelu", "gelu_backward"],
+      "classification": "replacement",
+      "donors": [
+        "source/cpp/lib/oa/ml/shader/compute/nn/gelu/gelu.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/gelu/geluBwd.slang",
+        "tools/gen/fn/schema/ml/mlFnMatrixActivation.toml"
+      ],
+      "reason": "Temporary Rust correctness baseline predating the donor-first port policy."
+    },
+    {
+      "family": "attention",
+      "operations": [
+        "scaled_dot_product_attention_causal",
+        "scaled_dot_product_attention_causal_probability_backward",
+        "scaled_dot_product_attention_causal_backward"
+      ],
+      "classification": "replacement",
+      "donors": [
+        "source/cpp/lib/oa/ml/fnmatrix/attention/fnMatrixAttention.cpp",
+        "source/cpp/lib/oa/ml/fnmatrix/attention/fnMatrixFlashAttention.cpp",
+        "tools/gen/fn/schema/ml/mlFnMatrixAttention.toml"
+      ],
+      "reason": "Temporary Rust correctness baseline predating the donor-first port policy."
+    },
+    {
+      "family": "qkv_projection",
+      "operations": ["qkv_projection_bias"],
+      "classification": "mechanical_adaptation",
+      "donors": [
+        "source/cpp/lib/oa/ml/shader/compute/nn/linear/qkvProjectionBias.slang",
+        "source/cpp/lib/oa/runtime/dnn/graphLowering.cpp"
+      ],
+      "reason": "Rust adapts only storage-helper names, attributes, and generated bindless push indexing."
+    },
+    {
+      "family": "swiglu_gate_up",
+      "operations": ["swiglu", "swiglu_backward", "gate_up_swiglu_bias"],
+      "classification": "mechanical_adaptation",
+      "donors": [
+        "source/cpp/lib/oa/ml/shader/compute/nn/swiglu/swiglu.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/swiglu/swigluBwd.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/linear/gateUpSwigluBias.slang",
+        "source/cpp/lib/oa/runtime/dnn/graphLowering.cpp"
+      ],
+      "reason": "Rust adapts storage-helper names, attributes, and generated bindless push indexing while preserving OA math and exact provider qualification."
+    }
+  ],
+  "operations": [
+    {
+      "stable_id": 22,
+      "name": "linear",
+      "kernel_id": "MlLinearF32",
+      "dnn": {
+        "role": "matmul",
+        "providers": ["blaslt_epilogue", "qkv_projection_group", "gated_ffn"],
+        "epilogue": "bias",
+        "epilogue_requires_input": 2
+      },
+      "source": "src/slang/ml/nn/linear.slang",
+      "variant": "generic",
+      "differentiation": "linear_backward",
+      "contract": {
+        "input_kinds": ["matrix", "parameter", "parameter"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "input_bi_weight_oi_bias_o_to_bo",
+        "dtype_rule": "f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "independent_host_linear",
+        "shapes": [[2, 2, 3]],
+        "tolerance": 0.00001
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["weight_index", "uint32"],
+        ["bias_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch", "uint32"],
+        ["input_features", "uint32"],
+        ["output_features", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 23,
+      "name": "linear_backward",
+      "kernel_id": "MlLinearBackwardF32",
+      "source": "src/slang/ml/nn/linear_backward.slang",
+      "variant": "generic",
+      "differentiation": "backward",
+      "contract": {
+        "input_kinds": ["parameter", "matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "linear_input_adjoint",
+        "dtype_rule": "f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "finite_difference",
+        "shapes": [[2, 2, 3]],
+        "tolerance": 0.0002
+      },
+      "push_fields": [
+        ["weight_index", "uint32"],
+        ["output_gradient_index", "uint32"],
+        ["input_gradient_index", "uint32"],
+        ["batch", "uint32"],
+        ["input_features", "uint32"],
+        ["output_features", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 38,
+      "name": "linear_parameter_backward",
+      "kernel_id": "MlLinearParameterBackwardF32",
+      "source": "src/slang/ml/nn/linear_parameter_backward.slang",
+      "variant": "generic",
+      "workgroup_size": [32, 8, 1],
+      "differentiation": "backward",
+      "contract": {
+        "input_kinds": ["matrix", "matrix"],
+        "output_kinds": ["matrix", "matrix"],
+        "shape_rule": "linear_weight_bias_adjoint",
+        "dtype_rule": "f32",
+        "effects": ["read_inputs", "write_outputs"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1, -1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "finite_difference",
+        "shapes": [[2, 2, 3]],
+        "tolerance": 0.0002
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["output_gradient_index", "uint32"],
+        ["weight_gradient_index", "uint32"],
+        ["bias_gradient_index", "uint32"],
+        ["batch", "uint32"],
+        ["input_features", "uint32"],
+        ["output_features", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 24,
+      "name": "cross_entropy",
+      "kernel_id": "MlCrossEntropyF32",
+      "source": "src/slang/ml/loss/cross_entropy.slang",
+      "variant": "generic",
+      "differentiation": "cross_entropy_backward",
+      "contract": {
+        "input_kinds": ["matrix", "class_indices"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "logits_nc_targets_n_to_scalar_mean",
+        "dtype_rule": "f32_logits_u32_targets",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "stable_host_log_sum_exp",
+        "shapes": [[2, 3]],
+        "tolerance": 0.00001
+      },
+      "push_fields": [
+        ["logits_index", "uint32"],
+        ["targets_index", "uint32"],
+        ["output_index", "uint32"],
+        ["rows", "uint32"],
+        ["classes", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 25,
+      "name": "cross_entropy_backward",
+      "kernel_id": "MlCrossEntropyBackwardF32",
+      "source": "src/slang/ml/loss/cross_entropy_backward.slang",
+      "variant": "generic",
+      "differentiation": "backward",
+      "contract": {
+        "input_kinds": ["matrix", "class_indices"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "cross_entropy_logits_adjoint",
+        "dtype_rule": "f32_logits_u32_targets",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "finite_difference",
+        "shapes": [[2, 3]],
+        "tolerance": 0.0002
+      },
+      "push_fields": [
+        ["logits_index", "uint32"],
+        ["targets_index", "uint32"],
+        ["logits_gradient_index", "uint32"],
+        ["rows", "uint32"],
+        ["classes", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 26,
+      "name": "adamw",
+      "kernel_id": "MlAdamWF32",
+      "training_replay_role": "host_stepped_optimizer",
+      "semantic_attributes": [
+        ["step", "unsigned_integer"],
+        ["learning_rate", "float"],
+        ["beta1", "float"],
+        ["beta2", "float"],
+        ["epsilon", "float"],
+        ["weight_decay", "float"]
+      ],
+      "source": "src/slang/ml/optim/adamw.slang",
+      "variant": "generic",
+      "differentiation": "none",
+      "contract": {
+        "input_kinds": ["parameter", "gradient", "first_moment", "second_moment"],
+        "output_kinds": ["parameter", "first_moment", "second_moment"],
+        "shape_rule": "preserve_parameter",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_outputs"],
+        "mutated_inputs": [0, 2, 3],
+        "output_alias_inputs": [0, 2, 3],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "independent_host_adamw",
+        "shapes": [[3, 2], [3]],
+        "tolerance": 0.00002
+      },
+      "push_fields": [
+        ["parameter_index", "uint32"],
+        ["gradient_index", "uint32"],
+        ["first_moment_index", "uint32"],
+        ["second_moment_index", "uint32"],
+        ["element_count", "uint32"],
+        ["step", "uint32"],
+        ["learning_rate", "float32"],
+        ["beta1", "float32"],
+        ["beta2", "float32"],
+        ["epsilon", "float32"],
+        ["weight_decay", "float32"]
+      ]
+    },
+    {
+      "stable_id": 40,
+      "name": "adamw_graph_advance",
+      "kernel_id": "MlAdamWGraphAdvanceU32",
+      "training_replay_role": "optimizer_state_advance",
+      "source": "src/slang/ml/optim/adamw_graph_advance.slang",
+      "variant": "generic",
+      "dtype": "u32",
+      "workgroup_size": [1, 1, 1],
+      "differentiation": "none",
+      "contract": {
+        "input_kinds": ["optimizer_state"],
+        "output_kinds": ["optimizer_state"],
+        "shape_rule": "advance_optimizer_step",
+        "dtype_rule": "u32_state",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [0],
+        "output_alias_inputs": [0],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "host_step_increment",
+        "shapes": [[6]],
+        "tolerance": 0.0
+      },
+      "push_fields": [
+        ["state_index", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 41,
+      "name": "adamw_graph",
+      "kernel_id": "MlAdamWGraphF32",
+      "training_replay_role": "optimizer_state_update",
+      "source": "src/slang/ml/optim/adamw_graph.slang",
+      "variant": "generic",
+      "differentiation": "none",
+      "contract": {
+        "input_kinds": ["parameter", "gradient", "first_moment", "second_moment", "optimizer_state"],
+        "output_kinds": ["parameter", "first_moment", "second_moment"],
+        "shape_rule": "preserve_parameter_with_graph_state",
+        "dtype_rule": "f32_parameter_u32_state",
+        "effects": ["read_inputs", "write_outputs"],
+        "mutated_inputs": [0, 2, 3],
+        "output_alias_inputs": [0, 2, 3],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "independent_host_adamw_replay",
+        "shapes": [[3, 2], [3]],
+        "tolerance": 0.00002
+      },
+      "push_fields": [
+        ["parameter_index", "uint32"],
+        ["gradient_index", "uint32"],
+        ["first_moment_index", "uint32"],
+        ["second_moment_index", "uint32"],
+        ["state_index", "uint32"],
+        ["element_count", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 27,
+      "name": "embedding",
+      "kernel_id": "MlEmbeddingF32",
+      "source": "src/slang/ml/nn/embedding.slang",
+      "variant": "generic",
+      "differentiation": "embedding_backward",
+      "contract": {
+        "input_kinds": ["parameter", "class_indices"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "weight_vd_indices_shape_to_indices_shape_d",
+        "dtype_rule": "f32_weight_u32_indices",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "independent_host_gather",
+        "shapes": [[4, 3, 2, 2]],
+        "tolerance": 0.00001
+      },
+      "push_fields": [
+        ["weight_index", "uint32"],
+        ["indices_index", "uint32"],
+        ["output_index", "uint32"],
+        ["index_count", "uint32"],
+        ["num_embeddings", "uint32"],
+        ["embedding_dim", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 28,
+      "name": "embedding_backward",
+      "kernel_id": "MlEmbeddingBackwardF32",
+      "source": "src/slang/ml/nn/embedding_backward.slang",
+      "variant": "generic",
+      "differentiation": "backward",
+      "contract": {
+        "input_kinds": ["class_indices", "matrix", "parameter"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "embedding_adjoint_scatter_add",
+        "dtype_rule": "u32_indices_f32_gradient_weight",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "finite_difference_with_repeated_indices",
+        "shapes": [[4, 3, 2, 2]],
+        "tolerance": 0.0003
+      },
+      "push_fields": [
+        ["indices_index", "uint32"],
+        ["output_gradient_index", "uint32"],
+        ["weight_gradient_index", "uint32"],
+        ["index_count", "uint32"],
+        ["num_embeddings", "uint32"],
+        ["embedding_dim", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 29,
+      "name": "rnn",
+      "kernel_id": "MlRnnF32",
+      "source": "src/slang/ml/nn/rnn.slang",
+      "variant": "generic",
+      "differentiation": "rnn_backward",
+      "contract": {
+        "input_kinds": ["matrix", "parameter", "parameter", "parameter", "parameter"],
+        "output_kinds": ["matrix", "saved_state"],
+        "shape_rule": "input_bsi_weights_hi_hh_bias_h_to_output_bsh",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_outputs"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1, -1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "independent_host_elman_scan",
+        "shapes": [[2, 3, 2, 3]],
+        "tolerance": 0.00002
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["weight_ih_index", "uint32"],
+        ["weight_hh_index", "uint32"],
+        ["bias_ih_index", "uint32"],
+        ["bias_hh_index", "uint32"],
+        ["output_index", "uint32"],
+        ["hidden_previous_index", "uint32"],
+        ["batch", "uint32"],
+        ["sequence_length", "uint32"],
+        ["input_size", "uint32"],
+        ["hidden_size", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 30,
+      "name": "rnn_backward",
+      "kernel_id": "MlRnnBackwardF32",
+      "source": "src/slang/ml/nn/rnn_backward.slang",
+      "variant": "generic",
+      "differentiation": "backward",
+      "contract": {
+        "input_kinds": ["matrix", "matrix", "saved_output", "saved_state", "parameter", "parameter"],
+        "output_kinds": ["matrix", "matrix", "matrix", "matrix", "matrix"],
+        "shape_rule": "elman_bptt_complete_adjoint",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_outputs"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1, -1, -1, -1, -1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "finite_difference_complete_bptt",
+        "shapes": [[2, 3, 2, 3]],
+        "tolerance": 0.0005
+      },
+      "push_fields": [
+        ["output_gradient_index", "uint32"],
+        ["input_index", "uint32"],
+        ["output_index", "uint32"],
+        ["hidden_previous_index", "uint32"],
+        ["weight_ih_index", "uint32"],
+        ["weight_hh_index", "uint32"],
+        ["input_gradient_index", "uint32"],
+        ["weight_ih_gradient_index", "uint32"],
+        ["weight_hh_gradient_index", "uint32"],
+        ["bias_ih_gradient_index", "uint32"],
+        ["bias_hh_gradient_index", "uint32"],
+        ["batch", "uint32"],
+        ["sequence_length", "uint32"],
+        ["input_size", "uint32"],
+        ["hidden_size", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 31,
+      "name": "layer_norm",
+      "kernel_id": "MlLayerNormF32",
+      "semantic_attributes": [["epsilon", "float"]],
+      "source": "src/slang/ml/nn/layer_norm.slang",
+      "variant": "generic",
+      "differentiation": "layer_norm_backward",
+      "contract": {
+        "input_kinds": ["matrix", "parameter", "parameter"],
+        "output_kinds": ["matrix", "matrix", "matrix"],
+        "shape_rule": "normalize_last_dimension_with_saved_state",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_outputs"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1, -1, -1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "independent_host_layer_norm",
+        "shapes": [[2, 3], [2, 2, 3]],
+        "tolerance": 0.00002
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["weight_index", "uint32"],
+        ["bias_index", "uint32"],
+        ["output_index", "uint32"],
+        ["normalized_index", "uint32"],
+        ["inverse_stddev_index", "uint32"],
+        ["rows", "uint32"],
+        ["columns", "uint32"],
+        ["epsilon", "float32"]
+      ]
+    },
+    {
+      "stable_id": 32,
+      "name": "layer_norm_backward",
+      "kernel_id": "MlLayerNormBackwardF32",
+      "source": "src/slang/ml/nn/layer_norm_backward.slang",
+      "variant": "generic",
+      "differentiation": "backward",
+      "contract": {
+        "input_kinds": ["matrix", "matrix", "parameter", "matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "layer_norm_input_adjoint_from_saved_state",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "finite_difference",
+        "shapes": [[2, 3]],
+        "tolerance": 0.0005
+      },
+      "push_fields": [
+        ["normalized_index", "uint32"],
+        ["inverse_stddev_index", "uint32"],
+        ["weight_index", "uint32"],
+        ["output_gradient_index", "uint32"],
+        ["input_gradient_index", "uint32"],
+        ["rows", "uint32"],
+        ["columns", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 39,
+      "name": "layer_norm_parameter_backward",
+      "kernel_id": "MlLayerNormParameterBackwardF32",
+      "source": "src/slang/ml/nn/layer_norm_parameter_backward.slang",
+      "variant": "generic",
+      "workgroup_size": [32, 8, 1],
+      "differentiation": "backward",
+      "contract": {
+        "input_kinds": ["matrix", "matrix"],
+        "output_kinds": ["matrix", "matrix"],
+        "shape_rule": "layer_norm_weight_bias_adjoint_from_saved_state",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_outputs"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1, -1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "finite_difference",
+        "shapes": [[2, 3]],
+        "tolerance": 0.0005
+      },
+      "push_fields": [
+        ["normalized_index", "uint32"],
+        ["output_gradient_index", "uint32"],
+        ["weight_gradient_index", "uint32"],
+        ["bias_gradient_index", "uint32"],
+        ["rows", "uint32"],
+        ["columns", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 33,
+      "name": "gelu",
+      "kernel_id": "MlGeluF32",
+      "dnn": {
+        "role": "gelu",
+        "providers": ["blaslt_epilogue"]
+      },
+      "source": "src/slang/ml/nn/gelu.slang",
+      "variant": "generic",
+      "differentiation": "gelu_backward",
+      "contract": {
+        "input_kinds": ["matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "preserve_input",
+        "dtype_rule": "f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {"oracle": "independent_host_gelu", "shapes": [[257]], "tolerance": 0.00001},
+      "push_fields": [
+        ["input_index", "uint32"], ["output_index", "uint32"], ["element_count", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 34,
+      "name": "gelu_backward",
+      "kernel_id": "MlGeluBackwardF32",
+      "source": "src/slang/ml/nn/gelu_backward.slang",
+      "variant": "generic",
+      "differentiation": "backward",
+      "contract": {
+        "input_kinds": ["matrix", "matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "preserve_input",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {"oracle": "finite_difference", "shapes": [[7]], "tolerance": 0.0002},
+      "push_fields": [
+        ["input_index", "uint32"], ["output_gradient_index", "uint32"],
+        ["input_gradient_index", "uint32"], ["element_count", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 35,
+      "name": "scaled_dot_product_attention_causal",
+      "kernel_id": "MlScaledDotProductAttentionCausalF32",
+      "dnn": {
+        "role": "scaled_dot_product_attention",
+        "providers": ["attention"]
+      },
+      "semantic_attributes": [
+        ["sequence_length", "unsigned_integer"],
+        ["num_heads", "unsigned_integer"]
+      ],
+      "source": "src/slang/ml/nn/scaled_dot_product_attention_causal.slang",
+      "variant": "generic",
+      "differentiation": "scaled_dot_product_attention_causal_backward",
+      "contract": {
+        "input_kinds": ["matrix", "matrix", "matrix"],
+        "output_kinds": ["matrix", "matrix"],
+        "shape_rule": "qkv_bsd_causal_heads_to_bsd_and_saved_probabilities",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_outputs"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1, -1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {"oracle": "independent_host_causal_attention", "shapes": [[2, 3, 4, 2]], "tolerance": 0.00002},
+      "push_fields": [
+        ["query_index", "uint32"], ["key_index", "uint32"], ["value_index", "uint32"],
+        ["output_index", "uint32"], ["probability_index", "uint32"],
+        ["batch", "uint32"], ["sequence_length", "uint32"],
+        ["model_width", "uint32"], ["num_heads", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 37,
+      "name": "scaled_dot_product_attention_causal_probability_backward",
+      "kernel_id": "MlScaledDotProductAttentionCausalProbabilityBackwardF32",
+      "semantic_attributes": [
+        ["sequence_length", "unsigned_integer"],
+        ["num_heads", "unsigned_integer"]
+      ],
+      "source": "src/slang/ml/nn/scaled_dot_product_attention_causal_probability_backward.slang",
+      "variant": "generic",
+      "differentiation": "backward",
+      "contract": {
+        "input_kinds": ["matrix", "matrix", "matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "saved_probability_adjoint",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {"oracle": "finite_difference", "shapes": [[1, 3, 4, 2]], "tolerance": 0.0005},
+      "push_fields": [
+        ["probability_index", "uint32"], ["value_index", "uint32"],
+        ["output_gradient_index", "uint32"], ["score_gradient_index", "uint32"],
+        ["batch", "uint32"], ["sequence_length", "uint32"],
+        ["model_width", "uint32"], ["num_heads", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 36,
+      "name": "scaled_dot_product_attention_causal_backward",
+      "kernel_id": "MlScaledDotProductAttentionCausalBackwardF32",
+      "semantic_attributes": [
+        ["sequence_length", "unsigned_integer"],
+        ["num_heads", "unsigned_integer"]
+      ],
+      "source": "src/slang/ml/nn/scaled_dot_product_attention_causal_backward.slang",
+      "variant": "generic",
+      "differentiation": "backward",
+      "contract": {
+        "input_kinds": ["matrix", "matrix", "matrix", "matrix", "matrix"],
+        "output_kinds": ["matrix", "matrix", "matrix"],
+        "shape_rule": "causal_attention_qkv_adjoint",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_outputs"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1, -1, -1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {"oracle": "finite_difference", "shapes": [[1, 3, 4, 2]], "tolerance": 0.0005},
+      "push_fields": [
+        ["query_index", "uint32"], ["key_index", "uint32"],
+        ["probability_index", "uint32"], ["score_gradient_index", "uint32"],
+        ["output_gradient_index", "uint32"], ["query_gradient_index", "uint32"],
+        ["key_gradient_index", "uint32"], ["value_gradient_index", "uint32"],
+        ["batch", "uint32"], ["sequence_length", "uint32"], ["model_width", "uint32"],
+        ["num_heads", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 42,
+      "name": "qkv_projection_bias",
+      "kernel_id": "MlQkvProjectionBiasF32",
+      "lowering_only": true,
+      "source": "src/slang/ml/nn/qkv_projection_bias.slang",
+      "variant": "generic",
+      "differentiation": "none",
+      "test": {
+        "oracle": "differential_three_linear_projections",
+        "shapes": [[1024, 32, 32]],
+        "tolerance": 0.00001
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["query_weight_index", "uint32"],
+        ["key_weight_index", "uint32"],
+        ["value_weight_index", "uint32"],
+        ["query_bias_index", "uint32"],
+        ["key_bias_index", "uint32"],
+        ["value_bias_index", "uint32"],
+        ["query_output_index", "uint32"],
+        ["key_output_index", "uint32"],
+        ["value_output_index", "uint32"],
+        ["m", "uint32"],
+        ["n", "uint32"],
+        ["k", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 43,
+      "name": "swiglu",
+      "kernel_id": "MlSwigluF32",
+      "dnn": {
+        "role": "gated_multiply",
+        "providers": ["gated_ffn"]
+      },
+      "source": "src/slang/ml/nn/swiglu.slang",
+      "variant": "generic",
+      "differentiation": "swiglu_backward",
+      "contract": {
+        "input_kinds": ["matrix", "matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "equal_inputs_preserve_shape",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "independent_host_swiglu",
+        "shapes": [[257]],
+        "tolerance": 0.00001
+      },
+      "push_fields": [
+        ["gate_index", "uint32"], ["up_index", "uint32"],
+        ["output_index", "uint32"], ["element_count", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 44,
+      "name": "swiglu_backward",
+      "kernel_id": "MlSwigluBackwardF32",
+      "source": "src/slang/ml/nn/swiglu_backward.slang",
+      "variant": "generic",
+      "differentiation": "backward",
+      "contract": {
+        "input_kinds": ["matrix", "matrix", "matrix"],
+        "output_kinds": ["matrix", "matrix"],
+        "shape_rule": "equal_inputs_preserve_two_gradients",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_outputs"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1, -1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "finite_difference",
+        "shapes": [[7]],
+        "tolerance": 0.0002
+      },
+      "push_fields": [
+        ["gate_index", "uint32"], ["up_index", "uint32"],
+        ["output_gradient_index", "uint32"],
+        ["gate_gradient_index", "uint32"], ["up_gradient_index", "uint32"],
+        ["element_count", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 45,
+      "name": "gate_up_swiglu_bias",
+      "kernel_id": "MlGateUpSwigluBiasF32",
+      "lowering_only": true,
+      "source": "src/slang/ml/nn/gate_up_swiglu_bias.slang",
+      "variant": "generic",
+      "differentiation": "none",
+      "test": {
+        "oracle": "differential_two_linear_swiglu",
+        "shapes": [[1024, 32, 64]],
+        "tolerance": 0.00001
+      },
+      "push_fields": [
+        ["input_index", "uint32"], ["gate_weight_index", "uint32"],
+        ["up_weight_index", "uint32"], ["gate_bias_index", "uint32"],
+        ["up_bias_index", "uint32"], ["output_index", "uint32"],
+        ["m", "uint32"], ["n", "uint32"], ["k", "uint32"]
+      ]
+    }
+  ]
+}

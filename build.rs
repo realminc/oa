@@ -8,9 +8,11 @@ use serde_json::{Value, json};
 
 const SCHEMA: &str = "tools/gen/fn/schema/matrix_elemwise.json";
 const BLAS_SCHEMA: &str = "tools/gen/fn/schema/matrix_blas.json";
+const ML_SCHEMA: &str = "tools/gen/fn/schema/ml_training.json";
 const GENERATOR: &str = "tools/gen/fn/generate.py";
 const STORAGE: &str = "src/slang/common/storage.slang";
 const ATTRIBUTES: &str = "src/slang/common/attributes.slang";
+const ACTIVATIONS: &str = "src/slang/common/activations.slang";
 const ENTRY_POINT: &str = "main";
 
 struct ShaderBuild<'a> {
@@ -21,12 +23,20 @@ struct ShaderBuild<'a> {
 
 fn main() {
 	if let Err(error) = build_shaders() {
-		panic!("matrix shader build failed: {error}");
+		panic!("OA shader build failed: {error}");
 	}
 }
 
 fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
-	for source in [SCHEMA, BLAS_SCHEMA, GENERATOR, STORAGE, ATTRIBUTES] {
+	for source in [
+		SCHEMA,
+		BLAS_SCHEMA,
+		ML_SCHEMA,
+		GENERATOR,
+		STORAGE,
+		ATTRIBUTES,
+		ACTIVATIONS,
+	] {
 		println!("cargo:rerun-if-changed={source}");
 	}
 	println!("cargo:rerun-if-env-changed=SLANGC");
@@ -88,6 +98,22 @@ fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
 			"src/slang/matrix/blas",
 			&build,
 		)?;
+	}
+
+	let ml_schema: Value = serde_json::from_slice(&fs::read(ML_SCHEMA)?)?;
+	let ml_operations = array_at(&ml_schema, "operations")?;
+	let ml_dtype = string_at(&ml_schema, "dtype")?;
+	let ml_workgroup_size = &ml_schema["workgroup_size"];
+	if ml_operations.is_empty() {
+		return Err("ML training schema contains no operations".into());
+	}
+	for operation in ml_operations {
+		let operation_dtype = operation["dtype"].as_str().unwrap_or(ml_dtype);
+		let operation_workgroup_size = operation
+			.get("workgroup_size")
+			.filter(|value| value.is_array())
+			.unwrap_or(ml_workgroup_size);
+		build_ml_shader(operation, operation_dtype, operation_workgroup_size, &build)?;
 	}
 	Ok(())
 }
@@ -257,6 +283,188 @@ fn validate_reflection(
 		require_equal(
 			&field["binding"]["offset"],
 			&json!(offset),
+			"push-constant offset",
+		)?;
+		require_equal(&field["binding"]["size"], &json!(4), "push-constant size")?;
+	}
+
+	let storage = named(parameters, "storage_buffers")?;
+	require_equal(
+		&storage["binding"],
+		&json!({"kind": "descriptorTableSlot", "index": 0}),
+		"storage-buffer binding",
+	)?;
+	require_equal(
+		&storage["type"]["kind"],
+		&json!("array"),
+		"storage-buffer array",
+	)?;
+	require_equal(
+		&storage["type"]["elementCount"],
+		&json!(0),
+		"runtime storage-buffer count",
+	)?;
+	require_equal(
+		&storage["type"]["elementType"]["baseShape"],
+		&json!("byteAddressBuffer"),
+		"storage-buffer shape",
+	)?;
+	require_equal(
+		&storage["type"]["elementType"]["access"],
+		&json!("readWrite"),
+		"storage-buffer access",
+	)?;
+	Ok(())
+}
+
+fn build_ml_shader(
+	operation: &Value,
+	dtype: &str,
+	workgroup_size: &Value,
+	build: &ShaderBuild<'_>,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let name = string_at(operation, "name")?;
+	let source = string_at(operation, "source")?;
+	println!("cargo:rerun-if-changed={source}");
+	let spirv = build
+		.output_directory
+		.join(format!("ml_{name}_{dtype}.spv"));
+	let reflection = build
+		.output_directory
+		.join(format!("ml_{name}_{dtype}.reflection.json"));
+
+	let slang_output = Command::new(build.slangc)
+		.arg(source)
+		.args([
+			"-entry",
+			ENTRY_POINT,
+			"-stage",
+			"compute",
+			"-target",
+			"spirv",
+			"-profile",
+			"glsl_460",
+			"-capability",
+			"spirv_1_6",
+			"-fvk-use-entrypoint-name",
+			"-warnings-as-errors",
+			"all",
+			"-I",
+			"src/slang/common",
+			"-reflection-json",
+		])
+		.arg(&reflection)
+		.arg("-o")
+		.arg(&spirv)
+		.output()
+		.map_err(|source| format!("could not execute {:?}: {source}", build.slangc))?;
+	if !slang_output.status.success() {
+		return Err(format!(
+			"{:?} failed for ml.{name} with {}\n{}",
+			build.slangc,
+			slang_output.status,
+			String::from_utf8_lossy(&slang_output.stderr)
+		)
+		.into());
+	}
+
+	validate_ml_reflection(&reflection, operation, dtype, workgroup_size)?;
+	let validation_output = Command::new(build.spirv_val)
+		.args(["--target-env", "vulkan1.3"])
+		.arg(&spirv)
+		.output()
+		.map_err(|source| format!("could not execute {:?}: {source}", build.spirv_val))?;
+	if !validation_output.status.success() {
+		return Err(format!(
+			"{:?} failed for ml.{name} with {}\n{}",
+			build.spirv_val,
+			validation_output.status,
+			String::from_utf8_lossy(&validation_output.stderr)
+		)
+		.into());
+	}
+	Ok(())
+}
+
+fn validate_ml_reflection(
+	path: &Path,
+	operation: &Value,
+	dtype: &str,
+	workgroup_size: &Value,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let name = string_at(operation, "name")?;
+	let reflection: Value = serde_json::from_slice(&fs::read(path)?)?;
+	let entry = array_at(&reflection, "entryPoints")?
+		.iter()
+		.find(|entry| entry["name"] == ENTRY_POINT)
+		.ok_or_else(|| format!("reflection does not contain {ENTRY_POINT}"))?;
+	require_equal(&entry["stage"], &json!("compute"), "entry-point stage")?;
+	require_equal(
+		&entry["threadGroupSize"],
+		workgroup_size,
+		"thread-group size",
+	)?;
+	let attributes = entry["userAttribs"]
+		.as_array()
+		.ok_or("reflection does not contain OA kernel attributes")?;
+	for (attribute_name, argument) in [
+		("kernel_name", name),
+		("domain", "ml"),
+		("variant", "generic"),
+		("dtype", dtype),
+		("status", "experimental"),
+	] {
+		let attribute = named(attributes, attribute_name)?;
+		require_equal(
+			&attribute["arguments"],
+			&json!([argument]),
+			"kernel attribute",
+		)?;
+	}
+
+	let parameters = array_at(&reflection, "parameters")?;
+	let push = named(parameters, "push")?;
+	require_equal(
+		&push["binding"],
+		&json!({"kind": "pushConstantBuffer", "index": 0}),
+		"push-constant binding",
+	)?;
+	let fields = push
+		.pointer("/type/elementType/fields")
+		.and_then(Value::as_array)
+		.ok_or("reflection does not describe push-constant fields")?;
+	let expected_fields = array_at(operation, "push_fields")?;
+	if fields.len() != expected_fields.len() {
+		return Err(format!(
+			"ml.{name} push constants contain {} fields; expected {}",
+			fields.len(),
+			expected_fields.len()
+		)
+		.into());
+	}
+	for (index, (field, expected)) in fields.iter().zip(expected_fields).enumerate() {
+		let pair = expected
+			.as_array()
+			.ok_or("ML push-field schema entry is not an array")?;
+		let field_name = pair[0]
+			.as_str()
+			.ok_or("ML push-field name is not a string")?;
+		let scalar_type = pair[1]
+			.as_str()
+			.ok_or("ML push-field type is not a string")?;
+		require_equal(
+			&field["name"],
+			&json!(field_name),
+			"push-constant field name",
+		)?;
+		require_equal(
+			&field["type"]["scalarType"],
+			&json!(scalar_type),
+			"push-constant field type",
+		)?;
+		require_equal(
+			&field["binding"]["offset"],
+			&json!(u32::try_from(index)? * 4),
 			"push-constant offset",
 		)?;
 		require_equal(&field["binding"]["size"], &json!(4), "push-constant size")?;

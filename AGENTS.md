@@ -20,6 +20,16 @@ The C++ repository is evidence for behavior and hard-won constraints, not a
 source-layout or implementation template. If the Rust architecture, C++
 architecture, a plan, and live code disagree, report the conflict.
 
+Language-neutral OA implementations are donor source, not merely inspiration.
+Before adding an operation, Slang kernel, graph pass, optimizer path, or
+training facility, audit the corresponding C++ schema, source, tests, and
+documentation. Preserve proven algorithms and shader bodies by default;
+restrict Rust-specific work to ownership, API, ABI, metadata, and mechanical
+module adaptation. A new implementation requires a recorded reason why the OA
+implementation cannot be ported or a correctness-gated measurement proving the
+replacement. See `docs/internal/porting/oaMlPortInventory.md` for the active ML
+ledger.
+
 ## Repository-specific invariants
 
 - `Engine` is the sole local owner of Vulkan instances, logical devices,
@@ -40,6 +50,9 @@ architecture, a plan, and live code disagree, report the conflict.
   submits, waits, drains, reads back, or finalizes a session.
 - One operation schema owns every mechanically derivable Rust, Python,
   validation, autograd, registry, documentation, and test surface.
+- Every ported kernel and algorithm records its OA donor path and adaptation
+  class. Do not independently rewrite a working OA shader to satisfy a Rust
+  call site.
 - Kernel selection is private lowering policy and remains vendor-neutral at the
   public API.
 - Port behavior through complete vertical slices. Do not translate the C++
@@ -58,13 +71,19 @@ streaming policies; Vulkan host uploads use that explicit streaming contract.
 This is an Experimental correctness checkpoint, not a performance claim.
 Broader integer operations, broadcasting, in-place mutations, GEMM routing and
 specialized variants, low-precision storage, and broader domains remain
-incomplete. Engine-owned structured logging and explicit whole-plan Vulkan
-device timing are Experimental. The fresh-process MatMul recording runner and
+incomplete. Engine-owned structured logging, a queried indexed device/driver
+startup banner, and explicit whole-plan Vulkan device timing are Experimental.
+The fresh-process MatMul recording runner and
 six-shape suite are Experimental; accepted baselines, cross-implementation
 comparison, calibrated host/device clocks, structured runtime metrics, and
 accepted regression policy remain Planned. Execution-plan diagnostics now expose
 normalized graph, barrier, recording, cache-hit, submission, rebinding, and
-fallback evidence without exposing Vulkan or kernel routing policy.
+fallback evidence plus logical/physical resource counts without exposing Vulkan
+or kernel routing policy. Training programs additionally expose ordered
+compilation-stage evidence; schema-owned replay roles reject host-stepped AdamW
+and require one optimizer-state advance before replay updates. Plans and
+training programs expose deterministic handle-free `oa.semantic_graph.v2`,
+`oa.execution_graph.v3`, and `oa.training_compilation.v2` evidence reports.
 The private executable-graph foundation snapshots resolved compute dispatches,
 records multiple nodes in one primary command buffer, and derives per-buffer
 RAW, WAR, and WAW barriers. A private engine-owned execution session batches
@@ -77,6 +96,57 @@ an independently owned query pair per submission. Mutable output slots, general
 semantic value identity, calibrated clocks, and non-compute graph nodes remain
 Planned.
 Planned APIs and scaffold modules are not capability claims.
+
+The first host-domain Audio and Crypto slices are Experimental. `Audio`
+composes checked planar FP32 Matrix storage with sample-rate and channel-layout
+semantics; private Symphonia WAV/FLAC/MP3 decode and OA-derived WAV-F32
+encode/save pass synthetic and real-file tests. CPU Keccak-f[1600],
+SHAKE-128/256, KMAC-256, typed hashes, and arbitrary-leaf Merkle proofs pass
+donor KAT and property tests. Audio DSP/session work, Vulkan batch crypto, and
+ML-DSA remain Planned.
+
+The first ML training seed is Experimental. U32 class/token-index Matrix
+storage, FP32 Linear, Embedding, LayerNorm, causal multi-head attention, GELU,
+differentiable residual addition, TransformerBlock, and stacked Elman Rnn, zero-copy
+differentiable reshape, stable mean cross-entropy, a thread-affine consumed
+GradientTape, finite-difference checked parameter gradients, deterministic
+repeated-index scatter-add, complete LayerNorm adjoints and BPTT, and
+out-of-place AdamW updates pass the serial local hardware contract. Object-safe
+`Module` composition adds
+constructor-owned recursive parameter/buffer/child registration, deterministic
+dotted traversal, duplicate-identity rejection, train/eval propagation, and a
+composed character-model optimizer proof. The canonical Char-Transformer row
+matches the C++ topology, 22-tensor and 10,875-scalar parameter contract, final
+loss/accuracy regime, and exact greedy continuation. The standalone canonical
+semantic graph data model and its core operation-contract vocabulary are now a
+direct donor-backed structural port. Matrix schemas generate truthful OARS
+compatibility contracts, Matrix dispatches record typed semantic values and
+metadata-view lineage, and captured plans validate direct executable ownership.
+These compatibility hashes are not presented as OA donor hashes. The private
+donor-backed DNN analyzer consumes that graph, uses generated compatibility
+roles, and applies exact donor-qualified FP32 inference QKV projection+bias and
+Linear+Linear+SwiGLU gate/up replacements while preserving many-to-one semantic
+provenance and eliminated-intermediate lifetime evidence.
+Unqualified and training candidates retain source execution with explicit
+fallback evidence.
+Current non-mutating ML kernels now record generated contracts and semantic
+attributes; AdamW stays on the explicit compatibility route until versioned
+SSA mutation lands. Reached `GradientTape` nodes now attach their forward
+outputs and contiguous backward operation ranges to the captured semantic
+graph. Additional physical OaDna/DNN providers, replay RNG, broader transient allocation policy,
+live training sessions, and most of the OA ML
+operation/module/shader catalog remain unported. A donor-backed `TrainingLoop`
+now owns exact eager/captured completion, epoch/work accounting, loss metrics,
+ordered callback control, device timing, automatic prepare/record capture,
+requested recapture, source-preserving whole-program capture fallback, and
+transactional command pre-recording before the first replay, plus conservative
+allocation-ordinal stable frames after eager warm-up; built-in callbacks,
+schedules, and general optimizer composition remain Planned.
+Generalized autograd, recurrent streaming state, stable checkpoint
+compatibility, and the remainder of the NLP suite remain Planned. The first canonical Char-RNN
+row now completes the exact 300-step corpus/sampler/model workload, reaches the
+C++ small-loss and accuracy regime, and reproduces its fixed-prompt greedy text.
+Its current wall time is not performance parity.
 
 ## Required baseline
 

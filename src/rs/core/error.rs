@@ -22,6 +22,16 @@ pub enum ErrorKind {
 	ResourceExhausted,
 	/// An operation was requested in an incompatible lifecycle state.
 	FailedPrecondition,
+	/// A referenced index or range lies outside its owning object.
+	OutOfRange,
+	/// A requested object or provenance record does not exist.
+	NotFound,
+	/// An object with the same identity already exists.
+	AlreadyExists,
+	/// Application callback policy failed at an explicit lifecycle hook.
+	CallbackFailure,
+	/// OA detected an invalid invariant in its own state.
+	Internal,
 	/// A host filesystem or stream operation failed.
 	Io,
 }
@@ -55,6 +65,18 @@ impl Error {
 	/// Return the contextual failure message.
 	pub fn message(&self) -> &str {
 		&self.inner.message
+	}
+
+	/// Construct an application callback failure without losing its message.
+	///
+	/// Callback implementations may use this when their failure does not already
+	/// originate from another OA operation.
+	pub fn callback(message: impl Into<String>) -> Self {
+		Self::new(ErrorData {
+			kind: ErrorKind::CallbackFailure,
+			message: message.into(),
+			source: None,
+		})
 	}
 
 	pub(crate) fn backend_unavailable<E>(backend: &'static str, source: E) -> Self
@@ -140,6 +162,38 @@ impl Error {
 	pub(crate) fn failed_precondition(message: impl Into<String>) -> Self {
 		Self::new(ErrorData {
 			kind: ErrorKind::FailedPrecondition,
+			message: message.into(),
+			source: None,
+		})
+	}
+
+	pub(crate) fn out_of_range(message: impl Into<String>) -> Self {
+		Self::new(ErrorData {
+			kind: ErrorKind::OutOfRange,
+			message: message.into(),
+			source: None,
+		})
+	}
+
+	pub(crate) fn not_found(message: impl Into<String>) -> Self {
+		Self::new(ErrorData {
+			kind: ErrorKind::NotFound,
+			message: message.into(),
+			source: None,
+		})
+	}
+
+	pub(crate) fn already_exists(message: impl Into<String>) -> Self {
+		Self::new(ErrorData {
+			kind: ErrorKind::AlreadyExists,
+			message: message.into(),
+			source: None,
+		})
+	}
+
+	pub(crate) fn internal(message: impl Into<String>) -> Self {
+		Self::new(ErrorData {
+			kind: ErrorKind::Internal,
 			message: message.into(),
 			source: None,
 		})

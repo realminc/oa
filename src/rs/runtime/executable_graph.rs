@@ -2,7 +2,12 @@ use std::collections::BTreeMap;
 
 use crate::{Error, Result};
 
-use super::{BufferAccess, ComputeDispatch, PushConstant, shader::KernelId, vk};
+use super::{
+	BufferAccess, ComputeDispatch, PushConstant, SemanticGraph, SemanticLoweringAnalysis,
+	SemanticOpId,
+	shader::{KernelId, TrainingReplayRole},
+	vk,
+};
 
 /// Owned snapshot of concrete work ready for Vulkan command recording.
 #[derive(Clone)]
@@ -18,6 +23,8 @@ pub(in crate::runtime) struct ComputeNode {
 	pub(in crate::runtime) buffers: Vec<BufferUse>,
 	pub(in crate::runtime) push_constants: Vec<PushConstant>,
 	pub(in crate::runtime) workgroups: [u32; 3],
+	pub(in crate::runtime) semantic_ops: Vec<SemanticOpId>,
+	pub(in crate::runtime) op_contract_hash: u64,
 }
 
 #[derive(Clone)]
@@ -31,6 +38,12 @@ pub(in crate::runtime) struct BufferHazard {
 	pub(in crate::runtime) buffer: vk::Buffer,
 	pub(in crate::runtime) source: AccessState,
 	pub(in crate::runtime) destination: AccessState,
+}
+
+pub(in crate::runtime) struct ResourceLifetime {
+	pub(in crate::runtime) buffer: vk::Buffer,
+	pub(in crate::runtime) first_access: usize,
+	pub(in crate::runtime) last_access: usize,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -89,11 +102,31 @@ impl ExecutableGraph {
 				buffers,
 				push_constants: dispatch.push_constants.to_vec(),
 				workgroups: dispatch.workgroups,
+				semantic_ops: Vec::new(),
+				op_contract_hash: 0,
 			});
 		}
 
 		let barriers = plan_barriers(&nodes)?;
 		Ok(Self { nodes, barriers })
+	}
+
+	pub(in crate::runtime) fn attach_direct_semantic(
+		&mut self,
+		operation: SemanticOpId,
+		name: &'static str,
+		contract_hash: u64,
+	) -> Result<()> {
+		if self.nodes.len() != 1 || contract_hash == 0 {
+			return Err(Error::failed_precondition(
+				"direct semantic lowering requires one node and a nonzero contract hash",
+			));
+		}
+		let node = &mut self.nodes[0];
+		node.operation = name;
+		node.semantic_ops.push(operation);
+		node.op_contract_hash = contract_hash;
+		Ok(())
 	}
 
 	pub(in crate::runtime) fn join(graphs: Vec<Self>) -> Result<Self> {
@@ -110,8 +143,24 @@ impl ExecutableGraph {
 		Ok(Self { nodes, barriers })
 	}
 
+	pub(in crate::runtime) fn from_nodes(nodes: Vec<ComputeNode>) -> Result<Self> {
+		if nodes.is_empty() {
+			return Err(Error::invalid_argument(
+				"an executable graph requires at least one dispatch",
+			));
+		}
+		let barriers = plan_barriers(&nodes)?;
+		Ok(Self { nodes, barriers })
+	}
+
 	pub(in crate::runtime) fn nodes(&self) -> &[ComputeNode] {
 		&self.nodes
+	}
+
+	pub(in crate::runtime) fn validate_training_replay_safety(&self) -> Result<()> {
+		validate_training_kernel_sequence(
+			self.nodes.iter().map(|node| (node.operation, node.kernel)),
+		)
 	}
 
 	pub(in crate::runtime) fn barriers_before(&self, node: usize) -> &[BufferHazard] {
@@ -129,6 +178,11 @@ impl ExecutableGraph {
 		hash.usize(self.nodes.len());
 		for node in &self.nodes {
 			hash.bytes(node.operation.as_bytes());
+			hash.u64(node.op_contract_hash);
+			hash.usize(node.semantic_ops.len());
+			for operation in &node.semantic_ops {
+				hash.u32(operation.index());
+			}
 			hash.u16(node.kernel as u16);
 			hash.u64(node.kernel.artifact().content_id());
 			hash.usize(node.buffers.len());
@@ -143,6 +197,7 @@ impl ExecutableGraph {
 				hash.u8(match buffer_use.access {
 					BufferAccess::Read => 0,
 					BufferAccess::Write => 1,
+					BufferAccess::ReadWrite => 2,
 				});
 			}
 			hash.usize(node.push_constants.len());
@@ -180,6 +235,27 @@ impl ExecutableGraph {
 			.into_values()
 			.filter_map(|(buffer, access)| (!access.write && access.read).then_some(buffer))
 			.collect()
+	}
+
+	pub(in crate::runtime) fn resource_lifetimes(&self) -> Vec<ResourceLifetime> {
+		let mut resources = Vec::<ResourceLifetime>::new();
+		for (node_index, node) in self.nodes.iter().enumerate() {
+			for buffer_use in &node.buffers {
+				if let Some(lifetime) = resources
+					.iter_mut()
+					.find(|lifetime| lifetime.buffer.same_as(&buffer_use.buffer))
+				{
+					lifetime.last_access = node_index;
+				} else {
+					resources.push(ResourceLifetime {
+						buffer: buffer_use.buffer.clone(),
+						first_access: node_index,
+						last_access: node_index,
+					});
+				}
+			}
+		}
+		resources
 	}
 
 	pub(in crate::runtime) fn rebind_read_only(
@@ -221,6 +297,114 @@ impl ExecutableGraph {
 		*self = candidate;
 		Ok(())
 	}
+
+	pub(in crate::runtime) fn materialize_alias_replacements(
+		&mut self,
+		replacements: &[(vk::Buffer, vk::Buffer)],
+	) -> Result<()> {
+		let mut candidate = self.clone();
+		for node in &mut candidate.nodes {
+			for buffer_use in &mut node.buffers {
+				if let Some((_, replacement)) = replacements
+					.iter()
+					.find(|(source, _)| source.same_as(&buffer_use.buffer))
+				{
+					buffer_use.buffer = replacement.clone();
+				}
+			}
+		}
+		candidate.barriers = plan_barriers(&candidate.nodes)?;
+		*self = candidate;
+		Ok(())
+	}
+
+	pub(in crate::runtime) fn analyze_semantic_lowering(
+		&self,
+		semantic: &SemanticGraph,
+	) -> Result<SemanticLoweringAnalysis> {
+		semantic.validate()?;
+		let mut analysis = SemanticLoweringAnalysis::empty(semantic.operations().len());
+		let mut fusion_membership = vec![false; semantic.operations().len()];
+		for node in &self.nodes {
+			if node.semantic_ops.is_empty() {
+				analysis.note_compatibility_node();
+				continue;
+			}
+			analysis.note_schema_node(node.semantic_ops.len())?;
+			if node.semantic_ops.len() > 1 && node.op_contract_hash != 0 {
+				return Err(Error::failed_precondition(
+					"fused executable node must have a distinct implementation identity",
+				));
+			}
+			let mut owners = BTreeMap::new();
+			for owner in &node.semantic_ops {
+				let operation = semantic
+					.operations()
+					.get(owner.index() as usize)
+					.ok_or_else(|| {
+						Error::out_of_range(
+							"executable node references an unknown semantic operation",
+						)
+					})?;
+				if owners.insert(owner.index(), ()).is_some() {
+					return Err(Error::already_exists(
+						"executable node repeats a semantic operation owner",
+					));
+				}
+				if node.semantic_ops.len() == 1
+					&& (node.operation != operation.name()
+						|| node.op_contract_hash != operation.contract_hash())
+				{
+					return Err(Error::failed_precondition(
+						"executable node identity does not match its semantic operation",
+					));
+				}
+				let count = &mut analysis.node_counts_mut()[owner.index() as usize];
+				*count = count.saturating_add(1);
+				if node.semantic_ops.len() > 1 {
+					fusion_membership[owner.index() as usize] = true;
+				}
+			}
+		}
+		analysis.finish(&fusion_membership)?;
+		Ok(analysis)
+	}
+}
+
+fn validate_training_kernel_sequence<'a>(
+	kernels: impl IntoIterator<Item = (&'a str, KernelId)>,
+) -> Result<()> {
+	let mut optimizer_state_advances = 0_usize;
+	let mut optimizer_state_updates = 0_usize;
+	let mut advance_seen = false;
+	for (operation, kernel) in kernels {
+		match kernel.training_replay_role() {
+			TrainingReplayRole::Safe => {}
+			TrainingReplayRole::HostSteppedOptimizer => {
+				return Err(Error::failed_precondition(format!(
+					"training program operation {operation} embeds host-stepped optimizer state; use a replay-state kernel"
+				)));
+			}
+			TrainingReplayRole::OptimizerStateAdvance => {
+				optimizer_state_advances = optimizer_state_advances.saturating_add(1);
+				advance_seen = true;
+			}
+			TrainingReplayRole::OptimizerStateUpdate => {
+				if !advance_seen {
+					return Err(Error::failed_precondition(format!(
+						"training program operation {operation} reads optimizer replay state before it is advanced"
+					)));
+				}
+				optimizer_state_updates = optimizer_state_updates.saturating_add(1);
+			}
+		}
+	}
+	if optimizer_state_updates != 0 && optimizer_state_advances != 1 {
+		return Err(Error::failed_precondition(format!(
+			"training program requires exactly one optimizer-state advance before replay updates; recorded {optimizer_state_advances}"
+		)));
+	}
+	Ok(())
 }
 
 struct StableHash(u64);
@@ -282,6 +466,10 @@ impl AccessState {
 				read: false,
 				write: true,
 			},
+			BufferAccess::ReadWrite => Self {
+				read: true,
+				write: true,
+			},
 		}
 	}
 
@@ -292,6 +480,14 @@ impl AccessState {
 
 	const fn conflicts_with(self, next: Self) -> bool {
 		self.write || next.write
+	}
+
+	pub(in crate::runtime) const fn reads(self) -> bool {
+		self.read
+	}
+
+	pub(in crate::runtime) const fn writes(self) -> bool {
+		self.write
 	}
 
 	pub(in crate::runtime) fn vk_access(self) -> ash::vk::AccessFlags2 {
@@ -390,8 +586,10 @@ fn plan_access_states<Resource: Copy + Ord>(
 
 #[cfg(test)]
 mod tests {
-	use super::{AccessState, aggregate_accesses, plan_access_states};
-	use crate::runtime::BufferAccess;
+	use super::{
+		AccessState, aggregate_accesses, plan_access_states, validate_training_kernel_sequence,
+	};
+	use crate::runtime::{BufferAccess, shader::KernelId};
 
 	fn state(access: BufferAccess) -> AccessState {
 		AccessState::from_access(access)
@@ -419,6 +617,16 @@ mod tests {
 
 		let waw = plan(&[&[(1, BufferAccess::Write)], &[(1, BufferAccess::Write)]]);
 		assert_eq!(waw[1].len(), 1);
+
+		let raw_in_place = plan(&[&[(1, BufferAccess::Write)], &[(1, BufferAccess::ReadWrite)]]);
+		assert_eq!(raw_in_place[1].len(), 1);
+		assert_eq!(
+			raw_in_place[1][0].destination,
+			AccessState {
+				read: true,
+				write: true,
+			}
+		);
 
 		let rar = plan(&[&[(1, BufferAccess::Read)], &[(1, BufferAccess::Read)]]);
 		assert!(rar[1].is_empty());
@@ -470,6 +678,50 @@ mod tests {
 		assert_eq!(
 			state(BufferAccess::Write).vk_access(),
 			ash::vk::AccessFlags2::SHADER_STORAGE_WRITE
+		);
+		assert_eq!(
+			state(BufferAccess::ReadWrite).vk_access(),
+			ash::vk::AccessFlags2::SHADER_STORAGE_READ
+				| ash::vk::AccessFlags2::SHADER_STORAGE_WRITE
+		);
+	}
+
+	#[test]
+	fn training_replay_requires_one_optimizer_advance_before_all_updates() {
+		validate_training_kernel_sequence([
+			("ml.adamw_graph_advance", KernelId::MlAdamWGraphAdvanceU32),
+			("ml.adamw_graph", KernelId::MlAdamWGraphF32),
+			("ml.adamw_graph", KernelId::MlAdamWGraphF32),
+		])
+		.unwrap();
+
+		let missing =
+			validate_training_kernel_sequence([("ml.adamw_graph", KernelId::MlAdamWGraphF32)])
+				.unwrap_err();
+		assert_eq!(
+			missing.message(),
+			"training program operation ml.adamw_graph reads optimizer replay state before it is advanced"
+		);
+
+		let duplicate = validate_training_kernel_sequence([
+			("ml.adamw_graph_advance", KernelId::MlAdamWGraphAdvanceU32),
+			("ml.adamw_graph_advance", KernelId::MlAdamWGraphAdvanceU32),
+			("ml.adamw_graph", KernelId::MlAdamWGraphF32),
+		])
+		.unwrap_err();
+		assert_eq!(
+			duplicate.message(),
+			"training program requires exactly one optimizer-state advance before replay updates; recorded 2"
+		);
+	}
+
+	#[test]
+	fn training_replay_rejects_host_stepped_optimizer_kernels() {
+		let error =
+			validate_training_kernel_sequence([("ml.adamw", KernelId::MlAdamWF32)]).unwrap_err();
+		assert_eq!(
+			error.message(),
+			"training program operation ml.adamw embeds host-stepped optimizer state; use a replay-state kernel"
 		);
 	}
 }

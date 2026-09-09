@@ -281,6 +281,10 @@ The semantic graph contains:
 - control dependencies and autograd provenance;
 - placement constraints without Vulkan handles.
 
+`SemanticGraph::debug_report_json` serializes that backend-independent evidence
+under the donor `oa.semantic_graph.v2` report schema. This is a diagnostic
+diff surface, not a persisted executable-plan descriptor or cache ABI.
+
 The executable graph contains:
 
 - compute and indirect dispatch;
@@ -342,6 +346,19 @@ must not hide a panic, wait, or fallback. If an operator
 records an infallible semantic node while validation is deferred, that deferred
 failure and its diagnostic boundary must be explicit in the graph contract.
 
+Stateful ML layers implement an object-safe `oa::ml::Module` trait and own one
+constructor-populated `ModuleRegistry`. Direct parameters, non-trainable
+buffers, and owned `Rc<dyn Module>` children share one local namespace.
+Recursive paths, traversal, parameter counts, train/eval propagation, and
+future persistence derive from that single tree. Duplicate identity is an
+error; an optimizer must never update one stable parameter twice through two
+paths. The registry owns structure, not execution: modules and parameters
+retain Matrix handles while `Engine` remains the sole runtime owner.
+
+Rust does not reproduce the C++ `Module` inheritance hierarchy or `Nn*` type
+prefixes. Trait composition and the existing `oa::ml::nn` namespace express
+those roles directly.
+
 ## 9. Schema and generated surfaces
 
 One normalized operation record owns every mechanically derivable surface:
@@ -362,6 +379,15 @@ ownership banners, schema/generator versions where identity persists, and an
 idempotent regeneration gate. A build script writes only below Cargo's
 `OUT_DIR`; checked-in generated source is updated by an explicit generation
 command and verified for drift in CI.
+
+The OA C++ operation schemas, language-neutral algorithms, Slang kernels, and
+their tests are the donor authority for the Rust port. Before creating a Rust
+operation or shader, the port records the donor path and classifies the change
+as verbatim reuse, mechanical ABI/module adaptation, Rust ownership/API
+redesign, or a justified replacement. Rust-native ownership does not justify
+reimplementing an already proven numerical kernel. Replacements require the
+same oracle plus differential and performance evidence against the donor; the
+portable donor path remains available until that gate passes.
 
 ## 10. Shader and kernel boundary
 

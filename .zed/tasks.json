@@ -6,22 +6,22 @@
 	},
 	{
 		"label": "Oars - Build (Debug)",
-		"command": "cargo build --all-targets --all-features && python3 tools/build/stage.py --profile debug",
+		"command": "cargo build --all-targets --all-features && python3 tools/build/stage.py --profile debug && python3 tools/build/stage.py --profile debug --tests",
 		"reveal": "always"
 	},
 	{
 		"label": "Oars - Build (Release)",
-		"command": "cargo build --release --all-targets --all-features && python3 tools/build/stage.py --profile release",
+		"command": "cargo build --release --all-targets --all-features && python3 tools/build/stage.py --profile release && python3 tools/build/stage.py --profile release --tests",
 		"reveal": "always"
 	},
 	{
 		"label": "Oars - Clean Build (Debug)",
-		"command": "cargo clean --profile dev && python3 tools/build/stage.py --clean --profile debug && cargo build --all-targets --all-features && python3 tools/build/stage.py --profile debug",
+		"command": "cargo clean --profile dev && python3 tools/build/stage.py --clean --profile debug && cargo build --all-targets --all-features && python3 tools/build/stage.py --profile debug && python3 tools/build/stage.py --profile debug --tests",
 		"reveal": "always"
 	},
 	{
 		"label": "Oars - Clean Build (Release)",
-		"command": "cargo clean --release && python3 tools/build/stage.py --clean --profile release && cargo build --release --all-targets --all-features && python3 tools/build/stage.py --profile release",
+		"command": "cargo clean --release && python3 tools/build/stage.py --clean --profile release && cargo build --release --all-targets --all-features && python3 tools/build/stage.py --profile release && python3 tools/build/stage.py --profile release --tests",
 		"reveal": "always"
 	},
 	{
@@ -62,6 +62,16 @@
 	{
 		"label": "Oars - SDK - MatMul Intro (Release)",
 		"command": "cargo build --release --example core_mat_mul_intro && python3 tools/build/stage.py --profile release --target core_mat_mul_intro && ./bin/release/sdk/tutorials/core/core_mat_mul_intro",
+		"reveal": "always"
+	},
+	{
+		"label": "Oars - SDK - Char RNN NLP (Release)",
+		"command": "cargo build --release --example ml_nlp_char_rnn && python3 tools/build/stage.py --profile release --target ml_nlp_char_rnn && ./bin/release/sdk/tutorials/ml/nlp/ml_nlp_char_rnn",
+		"reveal": "always"
+	},
+	{
+		"label": "Oars - SDK - Char Transformer NLP (Release)",
+		"command": "cargo build --release --example ml_nlp_char_transformer && python3 tools/build/stage.py --profile release --target ml_nlp_char_transformer && ./bin/release/sdk/tutorials/ml/nlp/ml_nlp_char_transformer",
 		"reveal": "always"
 	},
 	{

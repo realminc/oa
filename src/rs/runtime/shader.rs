@@ -39,7 +39,7 @@ impl ShaderArtifact {
 #[path = "shader/generated.rs"]
 mod generated;
 
-pub(crate) use generated::KernelId;
+pub(crate) use generated::{KernelId, TrainingReplayRole};
 
 fn decode_spirv(bytes: &[u8]) -> Result<Vec<u32>> {
 	if bytes.len() < size_of::<u32>() || !bytes.len().is_multiple_of(size_of::<u32>()) {
@@ -223,22 +223,24 @@ mod tests {
 	use super::{KernelId, SPIRV_MAGIC, decode_spirv, reflect_push_constant_size};
 
 	#[test]
-	fn embedded_matrix_artifacts_match_their_validated_abi() -> crate::Result<()> {
+	fn embedded_artifacts_match_their_validated_abi() -> crate::Result<()> {
 		for kernel in KernelId::ALL {
 			let artifact = kernel.artifact();
 			assert!(!artifact.spirv_words()?.is_empty());
 			assert_ne!(artifact.content_id(), 0);
 			assert_eq!(artifact.content_id(), artifact.content_id());
+			let push_constant_size = artifact.push_constant_size()?;
+			assert!(push_constant_size.is_multiple_of(4));
+			assert!(push_constant_size <= 128);
+			assert!(artifact.workgroup_size.into_iter().all(|extent| extent > 0));
+			assert!(artifact.workgroup_size.into_iter().product::<u32>() <= 1024);
 			match kernel {
 				KernelId::MatrixMatMulNtTiledF32 => {
 					assert_eq!(artifact.workgroup_size, [256, 1, 1]);
 					assert_eq!(artifact.dispatch_tile_size, [64, 64, 1]);
-					assert_eq!(artifact.push_constant_size()?, 24);
 				}
 				_ => {
-					assert_eq!(artifact.workgroup_size, [256, 1, 1]);
-					assert_eq!(artifact.dispatch_tile_size, [256, 1, 1]);
-					assert!(matches!(artifact.push_constant_size()?, 12 | 16));
+					assert_eq!(artifact.dispatch_tile_size, artifact.workgroup_size);
 				}
 			}
 		}

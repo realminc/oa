@@ -44,8 +44,13 @@
       "stable_id": 1,
       "name": "add",
       "kind": "binary",
+      "differentiation": "reverse",
       "doc": "Add two matrices elementwise using one admitted dense dtype.",
       "kernel_id": "MatrixAddF32",
+      "dnn": {
+        "role": "add",
+        "providers": ["residual_norm"]
+      },
       "expression": "left + right",
       "test": {
         "left": [-2.0, 0.5, 4.0],
@@ -89,6 +94,10 @@
       "kind": "binary",
       "doc": "Multiply two FP32 matrices elementwise.",
       "kernel_id": "MatrixMulF32",
+      "dnn": {
+        "role": "multiply",
+        "providers": ["gated_ffn"]
+      },
       "expression": "left * right",
       "test": {
         "left": [-2.0, 0.5, 4.0],

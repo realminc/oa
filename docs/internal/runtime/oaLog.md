@@ -2,7 +2,7 @@
 
 **Status:** Experimental
 
-**Updated:** 2026-09-07
+**Updated:** 2026-09-08
 
 The Rust runtime has one structured host-logging session per `Engine`. The
 engine owns the sink; a weak thread-local selection routes the namespaced
@@ -40,6 +40,26 @@ builds. Every other level checks the selected logger threshold before formatting
 Verbose per-dispatch, graph, barrier, and route diagnostics remain opt-in rather
 than becoming default hot-path output.
 
+After logical-device construction succeeds, the engine emits one version/count
+line followed by one stable indexed compute-device record. The current runtime
+owns one device and therefore reports `[0]`; the index and count syntax extends
+without renaming when multi-device ownership is implemented. The compact
+startup record includes the queried device name/type, Vulkan API, device-local
+heap capacity, driver provider/info/raw version, Vulkan conformance version,
+PCI vendor/device IDs, and selected compute queue family. It exposes no Vulkan
+handles and makes no unqueried vendor inference.
+
+```text
+oa engine v0.1.4 · Vulkan · 1 compute device
+[0] ComputeDevice · Intel(R) Iris(R) Xe Graphics (TGL GT2) · integrated GPU · Vulkan 1.4.354 · 11.49 GiB local memory
+    Driver · Intel open-source Mesa driver · Mesa 26.2.2-arch1.1 · id INTEL_OPEN_SOURCE_MESA · version 0x06802002 · conformance 1.4.0.0
+    Hardware · PCI 8086:9a49 · compute queue family 0
+```
+
+Those values are hardware/driver observations, not stable cross-machine output.
+The preceding Mesa platform warning, when present, is emitted by the driver and
+is intentionally not suppressed or rewritten by OA.
+
 ## Ownership and lifetime
 
 - `Engine` owns the logger; `core` owns no stateful sink.
@@ -59,5 +79,5 @@ facilities. A log timestamp is diagnostic context, never performance evidence.
 
 Unit tests cover component validation, severity filtering without argument
 evaluation, file flushing and closure, and nested thread-local restoration. A
-hardware integration test covers engine configuration, macro routing, explicit
-flush, path exposure, and close.
+hardware integration test covers engine configuration, queried startup identity,
+macro routing, explicit flush, path exposure, and close.

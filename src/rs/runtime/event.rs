@@ -32,6 +32,10 @@ impl Event {
 		}
 	}
 
+	pub(super) const fn epoch(&self) -> u64 {
+		self.epoch
+	}
+
 	/// Return whether this exact submission point has completed.
 	///
 	/// # Errors

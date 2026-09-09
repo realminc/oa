@@ -1,10 +1,21 @@
+use crate::{Matrix, OpAttribute, OperationContract};
+
 use super::{Storage, shader::KernelId};
+
+/// Borrowed semantic inputs and outputs for one executable lowering.
+pub(crate) struct SemanticDispatch<'a> {
+	pub(crate) contract: OperationContract,
+	pub(crate) inputs: &'a [&'a Matrix],
+	pub(crate) outputs: &'a [&'a Matrix],
+	pub(crate) attributes: &'a [OpAttribute],
+}
 
 /// Declared access made by one executable buffer binding.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum BufferAccess {
 	Read,
 	Write,
+	ReadWrite,
 }
 
 /// One storage binding in an executable compute dispatch.
@@ -26,6 +37,13 @@ impl<'a> BufferBinding<'a> {
 		Self {
 			storage,
 			access: BufferAccess::Write,
+		}
+	}
+
+	pub(crate) const fn read_write(storage: &'a Storage) -> Self {
+		Self {
+			storage,
+			access: BufferAccess::ReadWrite,
 		}
 	}
 }

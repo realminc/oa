@@ -1,6 +1,6 @@
 [package]
 name = "oa"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2024"
 rust-version = "1.98"
 autotests = false
@@ -20,6 +20,18 @@ path = "test/rs/test_runtime.rs"
 name = "matrix"
 path = "test/rs/test_matrix.rs"
 
+[[test]]
+name = "ml"
+path = "test/rs/test_ml.rs"
+
+[[test]]
+name = "audio"
+path = "test/rs/test_audio.rs"
+
+[[test]]
+name = "crypto"
+path = "test/rs/test_crypto.rs"
+
 [[example]]
 name = "core_mat_mul_intro"
 path = "sdk/rs/tutorials/core/mat_mul_intro.rs"
@@ -36,6 +48,18 @@ path = "sdk/rs/benchmarks/core/memory.rs"
 name = "core_vlm_bench"
 path = "sdk/rs/benchmarks/core/vlm.rs"
 
+[[example]]
+name = "ml_nlp_char_rnn"
+path = "sdk/rs/tutorials/ml/nlp/char_rnn.rs"
+
+[[example]]
+name = "ml_nlp_char_transformer"
+path = "sdk/rs/tutorials/ml/nlp/char_transformer.rs"
+
+[[example]]
+name = "ml_nlp_char_transformer_profile"
+path = "sdk/rs/benchmarks/ml/nlp/char_transformer.rs"
+
 [dependencies]
 ash = "0.38"
 vk-mem = "0.5"
@@ -43,6 +67,7 @@ vk-mem = "0.5"
 bitflags = "2"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 smallvec = "1"
+symphonia = { version = "0.6", default-features = false, features = ["flac", "mp3", "pcm", "wav"] }
 
 [build-dependencies]
 serde_json = "1"
@@ -50,6 +75,7 @@ serde_json = "1"
 [dev-dependencies]
 anyhow = "1"
 libc = "0.2"
+serde_json = "1"
 
 [lints.rust]
 unsafe_op_in_unsafe_fn = "deny"

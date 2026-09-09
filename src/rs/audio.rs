@@ -1,15 +1,13 @@
-//! Audio - planar Float32 [channels, samples] matrix composition plus sample rate and channel layout
+//! Semantic planar FP32 audio values and synchronous codec boundaries.
+//!
+//! The value and WAV-F32 writer are direct semantic ports of OA. Decoding uses
+//! the safe Rust Symphonia boundary instead of reproducing OA's miniaudio FFI;
+//! only WAV/PCM, FLAC, and MP3 support is enabled.
 
-use crate::Result;
+mod codec;
+mod value;
 
-/// Audio represents audio data with sample rate and channel layout
-pub struct Audio {
-	// TODO: Add planar Float32 matrix, sample rate, channel layout
-}
-
-impl Audio {
-	/// Create audio from samples
-	pub fn new(_samples: Vec<f32>, _sample_rate: u32) -> Result<Self> {
-		todo!("Audio::new")
-	}
-}
+pub use codec::{
+	decode_file, decode_memory, encode_interleaved_wav_f32, encode_wav_f32, save_wav_f32,
+};
+pub use value::{Audio, AudioChannelLayout};

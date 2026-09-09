@@ -6,6 +6,8 @@ pub enum DType {
 	F32,
 	/// 32-bit signed integer.
 	I32,
+	/// 32-bit unsigned integer.
+	U32,
 }
 
 impl DType {
@@ -14,13 +16,14 @@ impl DType {
 		match self {
 			Self::F32 => "f32",
 			Self::I32 => "i32",
+			Self::U32 => "u32",
 		}
 	}
 
 	/// Return the number of storage bytes occupied by one dense element.
 	pub const fn size_bytes(self) -> usize {
 		match self {
-			Self::F32 | Self::I32 => 4,
+			Self::F32 | Self::I32 | Self::U32 => 4,
 		}
 	}
 }
@@ -42,11 +45,16 @@ impl Element for i32 {
 	const DTYPE: DType = DType::I32;
 }
 
+impl Element for u32 {
+	const DTYPE: DType = DType::U32;
+}
+
 mod private {
 	pub trait Sealed {}
 
 	impl Sealed for f32 {}
 	impl Sealed for i32 {}
+	impl Sealed for u32 {}
 }
 
 #[cfg(test)]
@@ -57,7 +65,9 @@ mod tests {
 	fn admitted_host_elements_match_dense_storage_widths() {
 		assert_eq!(<f32 as Element>::DTYPE, DType::F32);
 		assert_eq!(<i32 as Element>::DTYPE, DType::I32);
+		assert_eq!(<u32 as Element>::DTYPE, DType::U32);
 		assert_eq!(size_of::<f32>(), DType::F32.size_bytes());
 		assert_eq!(size_of::<i32>(), DType::I32.size_bytes());
+		assert_eq!(size_of::<u32>(), DType::U32.size_bytes());
 	}
 }

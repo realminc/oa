@@ -2,7 +2,7 @@
 
 **Status:** Planned
 
-**Updated:** 2026-09-08
+**Updated:** 2026-09-09
 
 **Architecture:** [OA Rust Architecture](../oaArchitecture.md)
 
@@ -53,9 +53,20 @@ processes, and preserves raw timing and build/device provenance. Untimed plans
 cache one simultaneously submittable command, validated read-only Matrix inputs
 retain stable slot identity across rebinding, and diagnostic snapshots report a
 normalized executable identity plus graph, cache, submission, rebinding, and
-fallback counters. Calibrated clocks, mutable output slots, general semantic
-value identity, broadcasting, mutation contracts, and broader generated
-documentation remain incomplete.
+fallback counters. Calibrated clocks, mutable output slots, broadcasting,
+mutation contracts, and broader generated documentation remain incomplete.
+The Vulkan device now also owns a bounded exact-size pool for completed
+host-visible storage buffers. Final buffer ownership returns allocations and
+their bindless descriptor slots only after command retirement; full uploads
+overwrite reused bytes, descriptor pressure evicts pooled entries, and device
+shutdown drains the pool before descriptor and allocator destruction. Sealed
+stable-resource capture now qualifies semantic/observed liveness and exact Rust
+owners, then materializes disjoint transient intervals into shared private
+buffer arenas with recomputed hazards. Replaced allocations bypass the pool.
+This is an Experimental Matrix arena slice, not the planned upload/readback
+rings or a cross-placement transient allocator.
+Matrix values now carry a stable private semantic identity used by the first
+reverse-mode ML slice.
 The first host-memory foundation slice is Experimental. `core::memory` has
 checked exact-length ordinary and one-way streaming copies, an inlined dynamic
 small-copy dispatcher, runtime-gated AVX2/AVX-512 non-temporal stores in the
@@ -68,7 +79,38 @@ laptop's degraded performance profile, and this does not replace the planned
 upload ring.
 Engine-owned structured console/file logging, weak thread-local selection,
 custom component tags, release compile-out for trace/debug call sites, and
-explicit failure-bearing flush/close boundaries are Experimental.
+explicit failure-bearing flush/close boundaries are Experimental. The startup
+banner now records engine version plus indexed queried compute-device,
+driver/conformance, memory, PCI identity, and queue-family information.
+The first ML training seed is Experimental: U32 class/token-index storage,
+FP32 Linear, Embedding, and stacked Elman Rnn, zero-copy differentiable reshape,
+stable mean cross-entropy, a consumed thread-affine GradientTape,
+finite-difference-checked parameter gradients, deterministic repeated-index
+scatter-add and complete BPTT, and in-place AdamW parameter/moment updates over
+stable storage pass the serial hardware contract. Constructor-owned recursive
+Module registration now supplies deterministic dotted parameter/buffer traversal,
+duplicate-identity rejection, train/eval propagation, and one composed
+character-model optimizer path. Fixed-shape `TrainingProgram` replay now retains
+stable input/gradient/parameter/moment state, advances AdamW state on the GPU,
+and reuses one cached command for the complete canonical Char-Transformer gate.
+This is not generalized autograd or an NLP-suite completion. The canonical
+Char-RNN and Char-Transformer rows pass their exact 300-step corpus, loss,
+accuracy, and fixed-prompt generation gates. Recurrent streaming state, RNG
+replay, dynamic specialization, built-in callback policies, and the remaining
+NLP matrix remain Planned. The donor-backed `TrainingLoop` connects eager and
+captured completion to epoch/work accounting, loss metrics, ordered callback
+control, and exact GPU timestamps. Its prepare/record path now owns automatic
+second-step capture, cached replay, preparation-node rejection, and explicit
+safe recapture. Plan rejection preserves and eagerly submits the source step,
+then disables capture until recapture is requested. Successful automatic
+capture pre-records the reusable untimed command transactionally, so its first
+replay is a cache hit. Schema-owned replay roles now reject host-stepped AdamW
+and require exactly one graph-state advance before all replay updates. Successful
+programs expose ordered semantic-validation-through-command-recording stage
+evidence and the donor-compatible `oa.training_compilation.v2` JSON report;
+captured semantic and executable state are also available through normalized
+`oa.semantic_graph.v2` and handle-free `oa.execution_graph.v3` reports. Philox
+replay transformation remains Planned.
 Existing unrelated modules and shaders remain design scaffolding unless a
 later status document names their implementation and verification evidence.
 
@@ -168,15 +210,39 @@ helpers until their schema-generated fixture layer lands.
 
 The baseline now captures an isolated eager recording into a structurally
 immutable plan, caches unchanged untimed command recording, and admits validated
-read-only Matrix input rebinding with cache invalidation.
+read-only Matrix input rebinding with cache invalidation. A donor-backed,
+Vulkan-independent `SemanticGraph` structural port now preserves typed value,
+view, operation, attribute, access, alias, mutation, control-dependency, and
+autograd-range provenance. Matrix schemas generate explicit compatibility
+contracts; Matrix dispatches record semantic values and metadata-view lineage,
+captured plans retain the graph, and construction validates semantic-to-executable
+ownership. Compatibility identities remain distinct from exact OA donor hashes
+until the complete donor behavior contract lands. A private donor-backed DNN
+analyzer now consumes the graph, recognizes schema-authorized candidate regions,
+and reports portable versus recognized partitions. Its first physical providers
+mechanically port the exact OA FP32 `[1024,32]` inference QKV projection+bias
+replacement and `M=1024, N=64, K=32` Linear+Linear+SwiGLU gate/up replacement,
+including many-to-one semantic provenance, eliminated-intermediate lifetime
+proof, and explicit source-path fallback. Training capture retains the proven source lowering. Current
+non-mutating ML schemas also emit compatibility contracts; their
+dispatches preserve scalar semantic attributes and a captured Transformer
+forward reaches DNN analysis without compatibility compute nodes. Reached tape
+nodes attach forward outputs to generation-checked contiguous backward ranges,
+and DNN analysis can distinguish their training operations. AdamW remains
+explicitly outside semantic capture until versioned mutation is ported.
 Remaining work must establish:
 
-- semantic capture ownership;
-- executable plan lifetime;
-- stable resource retention;
-- event epochs and dependency chaining;
-- observable graph breaks, compilation, and fallback counters;
-- explicit readback and inspection boundaries.
+- exact OA schema contract identities beyond the Matrix compatibility seed;
+- versioned semantic mutation for optimizer updates;
+- additional capability/lifetime-qualified DNN providers beyond QKV and gate/up;
+- mutable output bindings and shape-specialized variants;
+- multi-queue, multi-device, and distributed scheduling contracts;
+- persisted graph descriptors distinct from diagnostic JSON reports.
+
+The current mixed semantic/compatibility capture is a checkpoint, not the
+completed OA graph port. Extend semantic bindings to the remaining domains,
+then extend the donor-backed, capability/lifetime-qualified DNN physical
+lowering instead of adding tutorial-specific fused execution paths.
 
 Exact whole-plan device timing and a correctness-gated fresh-process MatMul
 recording suite are Experimental checkpoints. Clock-domain calibration,
@@ -218,7 +284,84 @@ Grow the Matrix surface by complete schema-owned slices:
 Each operation requires its own oracle and edge-case pack. Kernel variants and
 tuning enter only after the baseline semantic route is stable.
 
-## Stage 5 — Multi-device local execution
+## Stage 5 — ML training seed (Experimental first slice)
+
+The first complete paths now prove:
+
+```text
+Linear -> mean cross-entropy -> reverse-mode gradients -> AdamW -> lower loss
+Embedding -> reshape -> Linear -> cross-entropy -> scatter-add gradient
+Embedding -> Rnn -> reshape -> Linear -> cross-entropy -> complete BPTT
+Embedding -> LayerNorm -> reshape -> Linear -> cross-entropy -> complete adjoint
+Token/position Embedding -> causal TransformerBlock -> Linear -> 300-step LM
+```
+
+It uses the established Matrix, eager recording, executable graph, embedded
+shader, and Event contracts without a second tensor or execution owner. The
+current tape admits Linear, Embedding, LayerNorm, GELU, causal attention,
+equal-shape FP32 addition, stacked Elman Rnn, and zero-copy reshape chains
+terminating in cross-entropy, and the optimizer updates
+FP32 values out of place. Recursive Module traversal now binds a composed
+character model to that optimizer exactly once per parameter. LayerNorm uses a
+two-pass last-dimension variance calculation and has a complete parameter/input
+adjoint checked through an embedding predecessor. Complete this stage with:
+
+1. port exact OA operation identities over the connected Matrix compatibility
+   seed, attach ML semantic contracts, and qualify DNN partitions for physical lowering;
+2. extend semantic bindings to all domains and port stable-resource frames,
+   replay-safe RNG transformation, transient alias
+   materialization, compilation-stage diagnostics, and graph reports into the
+   existing Rust `ExecutionSession`/`ExecutionPlan` ownership;
+3. replace prototype ML shader bodies with provenance-recorded ports of the OA
+   kernels and routes, beginning with AdamW/AdamwMany4, Linear/GEMM, loss,
+   normalization, recurrent, and attention families;
+4. port remaining Matrix views, broadcasting, reductions, deterministic random
+   creation, and the matmul orientations required by generated backward rules;
+5. port schema-owned generalized reverse traversal and gradient accumulation;
+6. add recurrent streaming state (tutorial-level character RNN convergence is
+   Experimental and complete);
+7. graph-resident AdamW step state, stable gradient/input slots, and fixed-shape
+   training-program replay are Experimental; add RNG state, dynamic
+   specialization, and multi-buffered input staging;
+8. extend the Experimental donor-backed `TrainingLoop` lifecycle from exact
+   eager/captured completion, epoch/work accounting, loss metrics, ordered
+   callback control, GPU timing, automatic prepare/record capture, and safe
+   recapture, and source-preserving capture fallback to checkpoint, evaluation,
+   scheduling, and `TrainingSession` control using the same Rust-native traits
+   and borrowing;
+9. expand beyond the Experimental Char RNN and Char Transformer tutorials
+   across Byte/BPE and the remaining GRU, Transformer, MoE, and Mamba matrix.
+
+The source-by-source authority and current gap are recorded in
+[OA ML port inventory](../../porting/oaMlPortInventory.md). No new ML shader is
+admitted without checking that ledger and the live OA donor first.
+
+The complete NLP suite and performance comparison are release gates, not
+implementation-fragment tests.
+
+## Independent host-domain checkpoint — Audio codecs and Crypto (Experimental)
+
+Two bounded host-facing slices reuse the existing Matrix/runtime foundation
+without changing ML lowering or the generated operation surface:
+
+- `Audio` composes a non-empty planar FP32 `[channels, samples]` Matrix with a
+  non-zero sample rate and checked speaker layout. Synchronous WAV/PCM, FLAC,
+  and MP3 decode uses a private, feature-bounded Symphonia adapter and uploads
+  through the existing engine. OA's checked WAV-F32 encoder is ported directly;
+  semantic encode/save remains an explicit blocking readback boundary.
+- CPU Keccak-f[1600], SHAKE-128/256, KMAC-256, typed 32-byte hashes, and
+  arbitrary-leaf Merkle trees/proofs directly port OA's algorithms. FIPS 202
+  and SP 800-185 known-answer tests plus incremental and malformed-state tests
+  gate the surface. KMAC sponge and temporary encoding storage are securely
+  erased through `core::memory`.
+
+Audio DSP operations are not handwritten around the Matrix schema. Port their
+OA operation records and Slang routes as later complete vertical slices.
+Capture, playback, streaming encode, and low-latency effects remain explicit
+session work. Vulkan batch hash operations and ML-DSA remain Planned until
+their dispatch, dependency, secret-data, and qualification contracts land.
+
+## Stage 6 — Multi-device local execution
 
 Prove explicit transfer between two local devices before adding placement
 automation. Admit transport paths in evidence order:
@@ -229,17 +372,11 @@ automation. Admit transport paths in evidence order:
 
 Remote transport is not part of this stage.
 
-## Stage 6 — Image and vision pipeline
+## Stage 7 — Image and vision pipeline
 
 Add `Image` storage views and metadata, then one complete upload → resize →
 readback slice. Preserve extent, format, layout, color, readiness, and alias
 semantics. Reuse the same engine, schema, graph, event, and shader systems.
-
-## Stage 7 — ML inference seed
-
-Add one small end-to-end inference workload using the established Matrix
-contracts. Establish capability-filtered kernel candidates and a correctness
-baseline before autotuning or vendor-specialized routes.
 
 ## Stage 8 — Stateful media and presentation
 
@@ -249,7 +386,7 @@ Vulkan Video and WSI are implementation backends, not the public media model.
 
 ## Deferred until their dependencies exist
 
-- training and optimizer sessions;
+- generalized training sessions beyond the Stage 5 vertical slice;
 - generalized autograd;
 - distributed execution and collectives;
 - remote workers and satellites;
