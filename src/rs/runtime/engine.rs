@@ -3,7 +3,8 @@ use std::{cell::RefCell, marker::PhantomData, rc::Rc};
 use crate::{Error, LogComponent, LogLevel, LogOptions, Matrix, Result};
 
 use super::{
-	ComputeDispatch, Event, ExecutionPlan, SemanticDispatch, Storage,
+	AudioSemanticDispatch, ComputeDispatch, Event, ExecutionPlan, ImageSemanticDispatch,
+	OptionalSemanticDispatch, SemanticDispatch, Storage,
 	log::{LogSelection, Logger},
 	session::ExecutionSession,
 	vk,
@@ -147,6 +148,38 @@ impl Engine {
 
 	pub(crate) fn abort_pending_work(&self) {
 		self.handle.abort_pending_work();
+	}
+
+	pub(crate) fn query_video_device_capabilities(
+		&self,
+	) -> Result<crate::video::VideoDeviceCapabilities> {
+		self.handle
+			.state
+			.borrow()
+			.device
+			.video_device_capabilities()
+	}
+
+	pub(crate) fn query_video_decode_capabilities(
+		&self,
+		profile: crate::video::VideoDecodeProfile,
+	) -> Result<crate::video::VideoDecodeCapabilities> {
+		self.handle
+			.state
+			.borrow()
+			.device
+			.video_decode_capabilities(profile)
+	}
+
+	pub(crate) fn query_video_decode_formats(
+		&self,
+		profile: crate::video::VideoDecodeProfile,
+	) -> Result<crate::video::VideoDecodeFormats> {
+		self.handle
+			.state
+			.borrow()
+			.device
+			.video_decode_formats(profile)
 	}
 
 	#[cfg(test)]
@@ -460,6 +493,7 @@ impl EngineHandle {
 		submit_recorded(&mut state, command)
 	}
 
+	#[cfg(test)]
 	pub(crate) fn record(&self, dispatch: ComputeDispatch<'_>) -> Result<()> {
 		let mut state = self.state.borrow_mut();
 		let device = state.device.clone();
@@ -474,6 +508,90 @@ impl EngineHandle {
 		let mut state = self.state.borrow_mut();
 		let device = state.device.clone();
 		state.session.record_semantic(&device, dispatch, semantic)
+	}
+
+	pub(crate) fn record_optional_semantic(
+		&self,
+		dispatch: ComputeDispatch<'_>,
+		semantic: OptionalSemanticDispatch<'_>,
+	) -> Result<()> {
+		let mut state = self.state.borrow_mut();
+		let device = state.device.clone();
+		state
+			.session
+			.record_optional_semantic(&device, dispatch, semantic)
+	}
+
+	pub(crate) fn record_fused_semantic(
+		&self,
+		dispatch: ComputeDispatch<'_>,
+		semantics: &[SemanticDispatch<'_>],
+	) -> Result<()> {
+		let mut state = self.state.borrow_mut();
+		let device = state.device.clone();
+		state
+			.session
+			.record_fused_semantic(&device, dispatch, semantics)
+	}
+
+	pub(crate) fn record_split_semantic(
+		&self,
+		dispatches: &[ComputeDispatch<'_>],
+		semantic: SemanticDispatch<'_>,
+	) -> Result<()> {
+		let mut state = self.state.borrow_mut();
+		let device = state.device.clone();
+		state
+			.session
+			.record_split_semantic(&device, dispatches, semantic)
+	}
+
+	pub(crate) fn record_split_optional_semantic(
+		&self,
+		dispatches: &[ComputeDispatch<'_>],
+		semantic: OptionalSemanticDispatch<'_>,
+	) -> Result<()> {
+		let mut state = self.state.borrow_mut();
+		let device = state.device.clone();
+		state
+			.session
+			.record_split_optional_semantic(&device, dispatches, semantic)
+	}
+
+	pub(crate) fn record_audio_semantic(
+		&self,
+		dispatch: ComputeDispatch<'_>,
+		semantic: AudioSemanticDispatch<'_>,
+	) -> Result<()> {
+		let mut state = self.state.borrow_mut();
+		let device = state.device.clone();
+		state
+			.session
+			.record_audio_semantic(&device, dispatch, semantic)
+	}
+
+	pub(crate) fn record_image_semantic(
+		&self,
+		dispatch: ComputeDispatch<'_>,
+		semantic: ImageSemanticDispatch<'_>,
+	) -> Result<()> {
+		let mut state = self.state.borrow_mut();
+		let device = state.device.clone();
+		state
+			.session
+			.record_image_semantic(&device, dispatch, semantic)
+	}
+
+	pub(crate) fn record_audio_split_semantic(
+		&self,
+		dispatches: &[ComputeDispatch<'_>],
+		semantic: AudioSemanticDispatch<'_>,
+	) -> Result<()> {
+		let mut state = self.state.borrow_mut();
+		let device = state.device.clone();
+		state
+			.session
+			.record_audio_split_semantic(&device, dispatches, semantic)
 	}
 
 	pub(crate) fn attach_semantic_autograd(
@@ -728,6 +846,143 @@ mod tests {
 	}
 
 	#[test]
+	#[ignore = "requires a hardware Vulkan Video decode queue"]
+	fn submits_and_retires_an_empty_video_decode_command_buffer() -> crate::Result<()> {
+		let engine = Engine::new()?;
+		let event = {
+			let mut state = engine.handle.state.borrow_mut();
+			let command = state.device.record_video_decode_empty()?;
+			super::submit_recorded(&mut state, command)?
+		};
+		event.wait()
+	}
+
+	#[test]
+	#[ignore = "requires a hardware Vulkan Video decode profile"]
+	fn creates_binds_and_destroys_advertised_video_decode_sessions() -> crate::Result<()> {
+		let engine = Engine::new()?;
+		let device = engine.handle.state.borrow().device.clone();
+		let advertised = device.video_device_capabilities()?;
+		let mut profiles = Vec::new();
+		if advertised.supports_h264_decode() {
+			profiles.push(crate::video::VideoDecodeProfile::h264_420_8bit(
+				crate::video::H264Profile::High,
+			));
+		}
+		if advertised.supports_h265_decode() {
+			profiles.push(crate::video::VideoDecodeProfile::h265_420(
+				crate::video::H265Profile::Main,
+				crate::video::VideoComponentBitDepth::Eight,
+			));
+		}
+		if advertised.supports_av1_decode() {
+			profiles.push(crate::video::VideoDecodeProfile::av1_420(
+				crate::video::Av1Profile::Main,
+				crate::video::VideoComponentBitDepth::Eight,
+				false,
+			));
+		}
+		assert!(!profiles.is_empty());
+		for profile in profiles {
+			let capabilities = device.video_decode_capabilities(profile)?;
+			let dpb_slots = capabilities.max_dpb_slots().min(4);
+			let active_references = capabilities.max_active_reference_pictures().min(dpb_slots);
+			let session = device.create_video_decode_session(
+				profile,
+				capabilities.min_coded_extent(),
+				dpb_slots,
+				active_references,
+			)?;
+			assert!(session.memory_binding_count() <= 64);
+			assert!((1..=2).contains(&session.image_count()));
+			drop(session);
+		}
+		Ok(())
+	}
+
+	#[test]
+	#[ignore = "requires a hardware Vulkan H.264 profile and OA donor fixture"]
+	fn submits_first_h264_idr_decode_commands() -> crate::Result<()> {
+		let engine = Engine::new()?;
+		let device = engine.handle.state.borrow().device.clone();
+		let fixture = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+			.with_file_name("oa")
+			.join("sdk/asset/video/clip/shibuya_720p_30fps_h264_high_8bit_420.mp4");
+		let mut demuxer = crate::video::VideoDemuxer::open(fixture)?;
+		let packet = demuxer
+			.read_next_packet()?
+			.expect("H.264 fixture must contain a first packet");
+		let nals = crate::video::parse_nal_annex_b(packet.data());
+		let sps_nal = nals
+			.iter()
+			.find(|nal| nal.payload()[0] & 0x1f == 7)
+			.expect("demuxed keyframe must include SPS");
+		let pps_nal = nals
+			.iter()
+			.find(|nal| nal.payload()[0] & 0x1f == 8)
+			.expect("demuxed keyframe must include PPS");
+		let sps = crate::video::parse_h264_sps(sps_nal.payload())?;
+		let pps = crate::video::parse_h264_pps(pps_nal.payload(), &sps)?;
+		let mut coded_slices = nals
+			.iter()
+			.filter(|nal| matches!(nal.payload()[0] & 0x1f, 1 | 5));
+		let slice_nal = coded_slices
+			.next()
+			.expect("demuxed keyframe must include one coded slice");
+		assert!(
+			coded_slices.next().is_none(),
+			"first qualification path accepts one coded slice"
+		);
+		let slice = crate::video::parse_h264_slice_header(slice_nal.payload(), &sps, &pps)?;
+		let profile =
+			crate::video::VideoDecodeProfile::h264_420_8bit(crate::video::H264Profile::High);
+		let capabilities = device.video_decode_capabilities(profile)?;
+		let dpb_slots = capabilities.max_dpb_slots().min(4);
+		let active_references = capabilities.max_active_reference_pictures().min(dpb_slots);
+		let mut session = device.create_video_decode_session(
+			profile,
+			crate::video::VideoExtent {
+				width: sps.coded_width()?,
+				height: sps.coded_height()?,
+			},
+			dpb_slots,
+			active_references,
+		)?;
+		let packed_len = session.upload_first_h264_access_unit(packet.data())?;
+		let (payload_len, range) = session
+			.bitstream_upload()
+			.expect("uploaded packet must retain its decode buffer");
+		assert_eq!(payload_len, packed_len);
+		assert_eq!(payload_len, slice_nal.payload().len() + 3);
+		assert!(range >= payload_len as u64);
+		assert!(range.is_multiple_of(capabilities.min_bitstream_size_alignment()));
+		session.set_h264_parameters(&sps, &pps)?;
+		assert!(session.parameters_ready());
+		let command = session.record_first_h264_idr(&device, &sps, &pps, &slice)?;
+		assert!(session.first_decode_recorded());
+		let event = {
+			let mut state = engine.handle.state.borrow_mut();
+			super::submit_recorded(&mut state, command)?
+		};
+		event.wait()?;
+		session.verify_first_decode_result()?;
+		let readback_command = session.record_first_decode_readback(&device)?;
+		let readback_event = {
+			let mut state = engine.handle.state.borrow_mut();
+			super::submit_recorded(&mut state, readback_command)?
+		};
+		readback_event.wait()?;
+		let decoded = session.read_first_decode_yuv420()?;
+		assert_eq!(decoded.len(), 1280 * 720 * 3 / 2);
+		assert_eq!(
+			crate::cryptography::hash(&decoded).to_hex(),
+			"360d151e07a39eac2314dd527bf7ca1802e5ed3b980e42409345b6668736e8fd",
+			"Vulkan H.264 output differs from the independently decoded YUV420 frame"
+		);
+		Ok(())
+	}
+
+	#[test]
 	#[ignore = "requires a hardware Vulkan 1.3 compute device"]
 	fn reuses_retired_exact_size_storage_without_exposing_old_bytes() -> crate::Result<()> {
 		let engine = Engine::new()?;
@@ -877,7 +1132,6 @@ mod tests {
 		let attempt = engine.capture_observed_training_matrix_preserving(|| {
 			let buffers = [BufferBinding::read_write(parameter.storage())];
 			engine.handle.record(ComputeDispatch {
-				operation: "ml.adamw",
 				kernel: KernelId::MlAdamWF32,
 				buffers: &buffers,
 				push_constants: &[PushConstant::U32(1)],
@@ -891,7 +1145,7 @@ mod tests {
 		assert_eq!(error.kind(), crate::ErrorKind::FailedPrecondition);
 		assert_eq!(
 			error.message(),
-			"training program operation ml.adamw embeds host-stepped optimizer state; use a replay-state kernel"
+			"training program operation ml.adamw.f32 embeds host-stepped optimizer state; use a replay-state kernel"
 		);
 		let mut state = engine.handle.state.borrow_mut();
 		assert!(!state.session.is_empty());
@@ -917,7 +1171,6 @@ mod tests {
 			BufferBinding::write(&output),
 		];
 		handle.record(ComputeDispatch {
-			operation: "test.retained_add",
 			kernel: KernelId::MatrixAddF32,
 			buffers: &buffers,
 			push_constants: &[PushConstant::U32(4)],
@@ -966,14 +1219,12 @@ mod tests {
 		let element_count = [PushConstant::U32(4)];
 		let dispatches = [
 			ComputeDispatch {
-				operation: "test.first_add",
 				kernel: KernelId::MatrixAddF32,
 				buffers: &first_buffers,
 				push_constants: &element_count,
 				workgroups: [1, 1, 1],
 			},
 			ComputeDispatch {
-				operation: "test.second_add",
 				kernel: KernelId::MatrixAddF32,
 				buffers: &second_buffers,
 				push_constants: &element_count,

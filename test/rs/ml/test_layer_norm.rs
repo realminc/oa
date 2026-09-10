@@ -229,12 +229,50 @@ test_vk!(layer_norm_backward_matches_finite_differences, engine, {
 	let indices = oa::Matrix::from_slice(&engine, [2, 2], &indices_values)?;
 	let targets = oa::Matrix::from_slice(&engine, [4], &target_values)?;
 
-	let tape = oa::ml::GradientTape::new();
-	let embedded = embedding.forward(&indices)?;
-	let normalized = norm.forward(&embedded)?;
-	let logits = linear.forward(&normalized.reshape([4, FEATURES])?)?;
-	let loss = oa::ml::loss::cross_entropy(&logits, &targets)?;
-	tape.backward(&loss)?;
+	let (plan, ()) = engine.capture(|| {
+		let tape = oa::ml::GradientTape::new();
+		let embedded = embedding.forward(&indices)?;
+		let normalized = norm.forward(&embedded)?;
+		let logits = linear.forward(&normalized.reshape([4, FEATURES])?)?;
+		let loss = oa::ml::loss::cross_entropy(&logits, &targets)?;
+		tape.backward(&loss)
+	})?;
+	let report: serde_json::Value = serde_json::from_str(&plan.debug_report_json("LayerNorm"))
+		.expect("LayerNorm executable report must be valid JSON");
+	let sum_axis_nodes = report["nodes"]
+		.as_array()
+		.expect("LayerNorm executable nodes must be an array")
+		.iter()
+		.filter(|node| node["kernel"] == "matrix.sum_axis.f32")
+		.collect::<Vec<_>>();
+	assert_eq!(sum_axis_nodes.len(), 2);
+	for node in sum_axis_nodes {
+		assert_eq!(node["physical_write"]["writes"][0]["binding"], 1);
+		assert_eq!(
+			node["physical_write"]["writes"][0]["partition"],
+			"exclusive_per_invocation"
+		);
+		assert_eq!(node["physical_write"]["workspace"], "none");
+	}
+	let layer_norm_backward = report["nodes"]
+		.as_array()
+		.expect("LayerNorm executable nodes must be an array")
+		.iter()
+		.find(|node| node["kernel"] == "ml.matrix.layer_norm_backward.f32")
+		.expect("LayerNorm backward candidate must be visible");
+	assert_eq!(
+		layer_norm_backward["physical_write"]["writes"]
+			.as_array()
+			.expect("LayerNorm writes must be an array")
+			.len(),
+		2
+	);
+	assert_eq!(
+		layer_norm_backward["physical_write"]["workspace"],
+		"exclusive_per_workgroup"
+	);
+	assert!(!report.to_string().contains("layer_norm_parameter_backward"));
+	engine.submit(&plan)?.wait()?;
 
 	assert_close(
 		&embedding

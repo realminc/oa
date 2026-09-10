@@ -2,13 +2,38 @@ use std::rc::Rc;
 
 use crate::{DType, Engine, Error, Matrix, Result};
 
-use super::super::{Module, ModuleRegistry, Parameter, autograd, kernels, random};
+use super::super::{
+	Module, ModuleRegistry, Parameter, autograd, lowering::matrix as dispatch, matrix, random,
+};
+
+enum RnnBias {
+	Parameter(Parameter),
+	Zero(Matrix),
+}
+
+impl RnnBias {
+	fn snapshot(&self) -> (Matrix, Option<(Parameter, u64)>, bool) {
+		match self {
+			Self::Parameter(parameter) => {
+				let (value, version, requires_grad) = parameter.snapshot();
+				(
+					value,
+					requires_grad.then(|| (parameter.clone(), version)),
+					requires_grad,
+				)
+			}
+			Self::Zero(value) => (value.clone(), None, false),
+		}
+	}
+}
 
 struct RnnLayer {
+	input_size: usize,
+	hidden_size: usize,
 	weight_ih: Parameter,
 	weight_hh: Parameter,
-	bias_ih: Parameter,
-	bias_hh: Parameter,
+	bias_ih: RnnBias,
+	bias_hh: RnnBias,
 	registry: ModuleRegistry,
 }
 
@@ -17,6 +42,7 @@ impl RnnLayer {
 		engine: &Engine,
 		input_size: usize,
 		hidden_size: usize,
+		bias: bool,
 		seed: u64,
 	) -> Result<Self> {
 		let weight_ih_count = hidden_size
@@ -30,71 +56,97 @@ impl RnnLayer {
 			.ok_or_else(|| Error::invalid_argument("RNN Xavier extent overflows usize"))?;
 		let input_limit = (6.0_f32 / xavier_extent as f32).sqrt();
 		let hidden_limit = (3.0_f32 / hidden_size as f32).sqrt();
-		Self::from_matrices(
-			Matrix::from_f32(
-				engine,
-				[hidden_size, input_size],
-				&random::symmetric_uniform(weight_ih_count, input_limit, seed),
-			)?,
-			Matrix::from_f32(
-				engine,
-				[hidden_size, hidden_size],
-				&random::symmetric_uniform(
-					weight_hh_count,
-					hidden_limit,
-					seed.wrapping_add(0x9e37_79b9_7f4a_7c15),
-				),
-			)?,
-			Matrix::from_f32(engine, [hidden_size], &vec![0.0; hidden_size])?,
-			Matrix::from_f32(engine, [hidden_size], &vec![0.0; hidden_size])?,
-		)
+		let weight_ih = Matrix::from_f32(
+			engine,
+			[hidden_size, input_size],
+			&random::symmetric_uniform(weight_ih_count, input_limit, seed),
+		)?;
+		let weight_hh = Matrix::from_f32(
+			engine,
+			[hidden_size, hidden_size],
+			&random::symmetric_uniform(
+				weight_hh_count,
+				hidden_limit,
+				seed.wrapping_add(0x9e37_79b9_7f4a_7c15),
+			),
+		)?;
+		let bias_ih = bias
+			.then(|| Matrix::from_f32(engine, [hidden_size], &vec![0.0; hidden_size]))
+			.transpose()?;
+		let bias_hh = bias
+			.then(|| Matrix::from_f32(engine, [hidden_size], &vec![0.0; hidden_size]))
+			.transpose()?;
+		Self::from_values(weight_ih, weight_hh, bias_ih, bias_hh)
 	}
 
-	fn from_matrices(
+	fn from_values(
 		weight_ih: Matrix,
 		weight_hh: Matrix,
-		bias_ih: Matrix,
-		bias_hh: Matrix,
+		bias_ih: Option<Matrix>,
+		bias_hh: Option<Matrix>,
 	) -> Result<Self> {
 		let [hidden_size, input_size] = weight_ih.shape() else {
 			return Err(Error::invalid_argument(
-				"RNN input weight must have rank two",
+				"RNN input weight must have shape [H, I]",
 			));
 		};
+		let same_bias_mode = bias_ih.is_some() == bias_hh.is_some();
+		let engine = weight_ih.engine_handle().clone();
 		if *hidden_size == 0
 			|| *input_size == 0
 			|| *hidden_size > 1024
 			|| weight_hh.shape() != [*hidden_size, *hidden_size]
-			|| bias_ih.shape() != [*hidden_size]
-			|| bias_hh.shape() != [*hidden_size]
-			|| [
-				weight_ih.dtype(),
-				weight_hh.dtype(),
-				bias_ih.dtype(),
-				bias_hh.dtype(),
-			] != [DType::F32; 4]
-			|| !weight_ih.engine_handle().same_as(weight_hh.engine_handle())
-			|| !weight_ih.engine_handle().same_as(bias_ih.engine_handle())
-			|| !weight_ih.engine_handle().same_as(bias_hh.engine_handle())
-		{
+			|| weight_ih.dtype() != DType::F32
+			|| weight_hh.dtype() != DType::F32
+			|| !engine.same_as(weight_hh.engine_handle())
+			|| !same_bias_mode
+			|| bias_ih.as_ref().is_some_and(|value| {
+				value.shape() != [*hidden_size]
+					|| value.dtype() != DType::F32
+					|| !engine.same_as(value.engine_handle())
+			}) || bias_hh.as_ref().is_some_and(|value| {
+			value.shape() != [*hidden_size]
+				|| value.dtype() != DType::F32
+				|| !engine.same_as(value.engine_handle())
+		}) {
 			return Err(Error::invalid_argument(
-				"RNN requires same-engine F32 weights [H, I]/[H, H], biases [H], and 1 <= H <= 1024",
+				"RNN requires same-engine F32 weights [H, I]/[H, H], paired biases [H], and 1 <= H <= 1024",
 			));
 		}
+		let input_size = *input_size;
+		let hidden_size = *hidden_size;
 		let weight_ih = Parameter::new("weight_ih", weight_ih)?;
 		let weight_hh = Parameter::new("weight_hh", weight_hh)?;
-		let bias_ih = Parameter::new("bias_ih", bias_ih)?;
-		let bias_hh = Parameter::new("bias_hh", bias_hh)?;
+		let bias_ih = match bias_ih {
+			Some(value) => RnnBias::Parameter(Parameter::new("bias_ih", value)?),
+			None => RnnBias::Zero(Matrix::allocate(
+				&engine,
+				vec![hidden_size],
+				hidden_size,
+				DType::F32,
+			)?),
+		};
+		let bias_hh = match bias_hh {
+			Some(value) => RnnBias::Parameter(Parameter::new("bias_hh", value)?),
+			None => RnnBias::Zero(Matrix::allocate(
+				&engine,
+				vec![hidden_size],
+				hidden_size,
+				DType::F32,
+			)?),
+		};
 		let mut registry = ModuleRegistry::new();
-		for (name, parameter) in [
-			("weight_ih", &weight_ih),
-			("weight_hh", &weight_hh),
-			("bias_ih", &bias_ih),
-			("bias_hh", &bias_hh),
-		] {
-			registry.register_parameter(name, parameter.clone())?;
+		registry.register_parameter("weight_ih", weight_ih.clone())?;
+		registry.register_parameter("weight_hh", weight_hh.clone())?;
+		if let RnnBias::Parameter(parameter) = &bias_ih {
+			registry.register_parameter("bias_ih", parameter.clone())?;
+		}
+		if let RnnBias::Parameter(parameter) = &bias_hh {
+			registry.register_parameter("bias_hh", parameter.clone())?;
 		}
 		Ok(Self {
+			input_size,
+			hidden_size,
 			weight_ih,
 			weight_hh,
 			bias_ih,
@@ -104,41 +156,96 @@ impl RnnLayer {
 	}
 
 	fn forward(&self, input: &Matrix) -> Result<Matrix> {
-		let (weight_ih, weight_ih_version, weight_ih_grad) = self.weight_ih.snapshot();
-		let (weight_hh, weight_hh_version, weight_hh_grad) = self.weight_hh.snapshot();
-		let (bias_ih, bias_ih_version, bias_ih_grad) = self.bias_ih.snapshot();
-		let (bias_hh, bias_hh_version, bias_hh_grad) = self.bias_hh.snapshot();
-		let result = kernels::rnn(input, &weight_ih, &weight_hh, &bias_ih, &bias_hh)?;
-		if weight_ih_grad || weight_hh_grad || bias_ih_grad || bias_hh_grad {
-			autograd::record_rnn(
-				input,
-				&result.output,
-				result.hidden_previous,
-				[
-					self.weight_ih.clone(),
-					self.weight_hh.clone(),
-					self.bias_ih.clone(),
-					self.bias_hh.clone(),
-				],
-				[weight_ih, weight_hh],
-				[
-					weight_ih_version,
-					weight_hh_version,
-					bias_ih_version,
-					bias_hh_version,
-				],
-			)?;
+		let [batch, sequence_length, input_size] = input.shape() else {
+			return Err(Error::invalid_argument(
+				"RNN input must have shape [B, S, I]",
+			));
+		};
+		if *batch == 0 || *sequence_length == 0 || *input_size != self.input_size {
+			return Err(Error::invalid_argument(format!(
+				"RNN requires nonempty input [B, S, {}]; found {:?}",
+				self.input_size,
+				input.shape()
+			)));
 		}
-		Ok(result.output)
+		let rows = batch
+			.checked_mul(*sequence_length)
+			.ok_or_else(|| Error::invalid_argument("RNN flattened row count overflows usize"))?;
+		let flat_input = input.reshape([rows, self.input_size])?;
+		let flat_gates = self.input_projection(&flat_input)?;
+		let gates = flat_gates.reshape([*batch, *sequence_length, self.hidden_size])?;
+		let (weight_hh, weight_hh_version, _) = self.weight_hh.snapshot();
+		let (bias_hh, bias_hh_parameter, _) = self.bias_hh.snapshot();
+		matrix::rnn_scan_parameterized(
+			&gates,
+			(self.weight_hh.clone(), weight_hh, weight_hh_version),
+			bias_hh_parameter,
+			&bias_hh,
+			self.has_bias(),
+		)
 	}
 
-	fn parameters(&self) -> [Parameter; 4] {
-		[
-			self.weight_ih.clone(),
-			self.weight_hh.clone(),
-			self.bias_ih.clone(),
-			self.bias_hh.clone(),
-		]
+	fn input_projection(&self, input: &Matrix) -> Result<Matrix> {
+		let (weight_ih, weight_ih_version, weight_ih_requires_grad) = self.weight_ih.snapshot();
+		let (bias_ih, bias_ih_parameter, bias_ih_requires_grad) = self.bias_ih.snapshot();
+		let gates = dispatch::linear(input, &weight_ih, &bias_ih)?;
+		if weight_ih_requires_grad || bias_ih_requires_grad {
+			autograd::record_linear(
+				input,
+				&gates,
+				self.weight_ih.clone(),
+				weight_ih,
+				weight_ih_version,
+				bias_ih_parameter,
+			)?;
+		}
+		Ok(gates)
+	}
+
+	fn step(&self, input: &Matrix, hidden: &Matrix) -> Result<Matrix> {
+		let [batch, input_size] = input.shape() else {
+			return Err(Error::invalid_argument(
+				"RNN cell input must have shape [B, I]",
+			));
+		};
+		if *batch == 0
+			|| *input_size != self.input_size
+			|| hidden.shape() != [*batch, self.hidden_size]
+		{
+			return Err(Error::invalid_argument(format!(
+				"RNN cell requires input [B, {}] and hidden [B, {}]; found {:?} and {:?}",
+				self.input_size,
+				self.hidden_size,
+				input.shape(),
+				hidden.shape()
+			)));
+		}
+		let gates = self.input_projection(input)?;
+		let (weight_hh, weight_hh_version, _) = self.weight_hh.snapshot();
+		let (bias_hh, bias_hh_parameter, _) = self.bias_hh.snapshot();
+		matrix::rnn_cell_parameterized(
+			&gates,
+			hidden,
+			(self.weight_hh.clone(), weight_hh, weight_hh_version),
+			bias_hh_parameter,
+			&bias_hh,
+			self.has_bias(),
+		)
+	}
+
+	fn parameters(&self) -> Vec<Parameter> {
+		let mut parameters = vec![self.weight_ih.clone(), self.weight_hh.clone()];
+		if let RnnBias::Parameter(parameter) = &self.bias_ih {
+			parameters.push(parameter.clone());
+		}
+		if let RnnBias::Parameter(parameter) = &self.bias_hh {
+			parameters.push(parameter.clone());
+		}
+		parameters
+	}
+
+	fn has_bias(&self) -> bool {
+		matches!(self.bias_ih, RnnBias::Parameter(_))
 	}
 }
 
@@ -152,10 +259,135 @@ impl Module for RnnLayer {
 	}
 }
 
-/// Stacked, batch-first Elman recurrent network.
+/// One Elman recurrent cell with an explicit caller-owned hidden state.
+pub struct RnnCell {
+	layer: RnnLayer,
+}
+
+impl RnnCell {
+	/// Construct a deterministically initialized RNN cell.
+	///
+	/// # Errors
+	///
+	/// Returns an error when dimensions are zero, hidden size exceeds 1024,
+	/// arithmetic overflows, or parameter allocation fails.
+	pub fn with_seed(
+		engine: &Engine,
+		input_size: usize,
+		hidden_size: usize,
+		bias: bool,
+		seed: u64,
+	) -> Result<Self> {
+		if input_size == 0 || hidden_size == 0 || hidden_size > 1024 {
+			return Err(Error::invalid_argument(
+				"RNN cell requires nonzero input/hidden sizes and hidden size <= 1024",
+			));
+		}
+		Ok(Self {
+			layer: RnnLayer::with_seed(engine, input_size, hidden_size, bias, seed)?,
+		})
+	}
+
+	/// Construct a biased RNN cell from exact matrices.
+	///
+	/// # Errors
+	///
+	/// Returns an error unless weights use `[H, I]` and `[H, H]`, biases use
+	/// `[H]`, and all values satisfy the F32 engine and hidden-size contract.
+	pub fn from_matrices(
+		weight_ih: Matrix,
+		weight_hh: Matrix,
+		bias_ih: Matrix,
+		bias_hh: Matrix,
+	) -> Result<Self> {
+		Ok(Self {
+			layer: RnnLayer::from_values(weight_ih, weight_hh, Some(bias_ih), Some(bias_hh))?,
+		})
+	}
+
+	/// Construct a bias-free RNN cell from exact weight matrices.
+	///
+	/// # Errors
+	///
+	/// Returns an error unless both weights satisfy the F32 engine, shape, and
+	/// hidden-size contract.
+	pub fn from_weights(weight_ih: Matrix, weight_hh: Matrix) -> Result<Self> {
+		Ok(Self {
+			layer: RnnLayer::from_values(weight_ih, weight_hh, None, None)?,
+		})
+	}
+
+	/// Create a zero hidden state `[batch, hidden]` on this cell's engine.
+	///
+	/// # Errors
+	///
+	/// Returns an error when batch is zero, shape arithmetic overflows, or
+	/// allocation fails.
+	pub fn zero_state(&self, batch: usize) -> Result<Matrix> {
+		if batch == 0 {
+			return Err(Error::invalid_argument("RNN cell batch must be nonzero"));
+		}
+		let count = batch
+			.checked_mul(self.layer.hidden_size)
+			.ok_or_else(|| Error::invalid_argument("RNN cell state size overflows usize"))?;
+		let (weight, _, _) = self.layer.weight_hh.snapshot();
+		Matrix::allocate(
+			weight.engine_handle(),
+			vec![batch, self.layer.hidden_size],
+			count,
+			DType::F32,
+		)
+	}
+
+	/// Apply one recurrent step to `[B, I]` input and `[B, H]` hidden state.
+	///
+	/// # Errors
+	///
+	/// Returns an error when the input/hidden contract or runtime recording fails.
+	pub fn step(&self, input: &Matrix, hidden: &Matrix) -> Result<Matrix> {
+		self.layer.step(input, hidden)
+	}
+
+	/// Return the configured input width.
+	pub const fn input_size(&self) -> usize {
+		self.layer.input_size
+	}
+
+	/// Return the recurrent hidden width.
+	pub const fn hidden_size(&self) -> usize {
+		self.layer.hidden_size
+	}
+
+	/// Return whether the two biases are trainable parameters.
+	pub fn has_bias(&self) -> bool {
+		self.layer.has_bias()
+	}
+
+	/// Return parameters in weight-ih, weight-hh, bias-ih, bias-hh order.
+	pub fn all_parameters(&self) -> Result<Vec<Parameter>> {
+		Module::all_parameters(self)
+	}
+}
+
+impl Module for RnnCell {
+	fn forward(&self, input: &Matrix) -> Result<Matrix> {
+		let [batch, _] = input.shape() else {
+			return Err(Error::invalid_argument(
+				"RNN cell input must have shape [B, I]",
+			));
+		};
+		self.step(input, &self.zero_state(*batch)?)
+	}
+
+	fn registry(&self) -> &ModuleRegistry {
+		&self.layer.registry
+	}
+}
+
+/// Stacked batch-first Elman recurrent network using whole-sequence GPU scans.
 ///
 /// Input uses `[batch, sequence, input]`; output uses
-/// `[batch, sequence, hidden]`. Each layer starts from a zero hidden state.
+/// `[batch, sequence, hidden]`. Every layer starts from a zero hidden state.
 pub struct Rnn {
 	input_size: usize,
 	hidden_size: usize,
@@ -169,13 +401,31 @@ impl Rnn {
 	/// # Errors
 	///
 	/// Returns an error when a dimension or layer count is zero, hidden size
-	/// exceeds the current 1024-element scan limit, arithmetic overflows, or
-	/// parameter allocation/upload fails.
+	/// exceeds the 1024-element scan limit, arithmetic overflows, or parameter
+	/// allocation and registration fail.
 	pub fn with_seed(
 		engine: &Engine,
 		input_size: usize,
 		hidden_size: usize,
 		num_layers: usize,
+		seed: u64,
+	) -> Result<Self> {
+		Self::with_seed_and_bias(engine, input_size, hidden_size, num_layers, true, seed)
+	}
+
+	/// Construct a deterministically initialized stacked RNN with optional biases.
+	///
+	/// # Errors
+	///
+	/// Returns an error when a dimension or layer count is zero, hidden size
+	/// exceeds the 1024-element scan limit, arithmetic overflows, or parameter
+	/// allocation and registration fail.
+	pub fn with_seed_and_bias(
+		engine: &Engine,
+		input_size: usize,
+		hidden_size: usize,
+		num_layers: usize,
+		bias: bool,
 		seed: u64,
 	) -> Result<Self> {
 		if input_size == 0 || hidden_size == 0 || hidden_size > 1024 || num_layers == 0 {
@@ -191,6 +441,7 @@ impl Rnn {
 				engine,
 				layer_input,
 				hidden_size,
+				bias,
 				seed.wrapping_add((index as u64).wrapping_mul(0xd1b5_4a32_d192_ed03)),
 			)?);
 			registry.register_module(format!("layer{index}"), layer.clone())?;
@@ -204,29 +455,45 @@ impl Rnn {
 		})
 	}
 
-	/// Construct a one-layer RNN from exact matrices.
-	///
-	/// Parameter shapes are `weight_ih [H, I]`, `weight_hh [H, H]`, and two
-	/// biases `[H]`.
+	/// Construct a one-layer biased RNN from exact parameter matrices.
 	///
 	/// # Errors
 	///
-	/// Returns an error when shape, dtype, engine ownership, or hidden-size
-	/// contracts differ.
+	/// Returns an error unless weights use `[H, I]` and `[H, H]`, biases use
+	/// `[H]`, and all values satisfy the F32 engine and hidden-size contract.
 	pub fn from_matrices(
 		weight_ih: Matrix,
 		weight_hh: Matrix,
 		bias_ih: Matrix,
 		bias_hh: Matrix,
 	) -> Result<Self> {
+		Self::from_one_layer(weight_ih, weight_hh, Some(bias_ih), Some(bias_hh))
+	}
+
+	/// Construct a one-layer bias-free RNN from exact weight matrices.
+	///
+	/// # Errors
+	///
+	/// Returns an error unless both weights satisfy the F32 engine, shape, and
+	/// hidden-size contract.
+	pub fn from_weights(weight_ih: Matrix, weight_hh: Matrix) -> Result<Self> {
+		Self::from_one_layer(weight_ih, weight_hh, None, None)
+	}
+
+	fn from_one_layer(
+		weight_ih: Matrix,
+		weight_hh: Matrix,
+		bias_ih: Option<Matrix>,
+		bias_hh: Option<Matrix>,
+	) -> Result<Self> {
 		let [hidden_size, input_size] = weight_ih.shape() else {
 			return Err(Error::invalid_argument(
-				"RNN input weight must have rank two",
+				"RNN input weight must have shape [H, I]",
 			));
 		};
 		let input_size = *input_size;
 		let hidden_size = *hidden_size;
-		let layer = Rc::new(RnnLayer::from_matrices(
+		let layer = Rc::new(RnnLayer::from_values(
 			weight_ih, weight_hh, bias_ih, bias_hh,
 		)?);
 		let mut registry = ModuleRegistry::new();
@@ -239,12 +506,13 @@ impl Rnn {
 		})
 	}
 
-	/// Evaluate the complete sequence from a zero hidden state per layer.
+	/// Evaluate the complete sequence with one input projection and one recurrent
+	/// scan dispatch per layer.
 	///
 	/// # Errors
 	///
 	/// Returns an error unless input is same-engine F32 `[B, S, I]` with nonzero
-	/// dimensions and the declared input width, or when runtime recording fails.
+	/// extents and the configured input width, or when recording fails.
 	pub fn forward(&self, input: &Matrix) -> Result<Matrix> {
 		let [_, _, input_size] = input.shape() else {
 			return Err(Error::invalid_argument(
@@ -264,16 +532,24 @@ impl Rnn {
 		Ok(output)
 	}
 
+	/// Return the configured input width.
 	pub const fn input_size(&self) -> usize {
 		self.input_size
 	}
 
+	/// Return the recurrent hidden width.
 	pub const fn hidden_size(&self) -> usize {
 		self.hidden_size
 	}
 
+	/// Return the number of stacked recurrent layers.
 	pub fn num_layers(&self) -> usize {
 		self.layers.len()
+	}
+
+	/// Return whether layer biases are trainable parameters.
+	pub fn has_bias(&self) -> bool {
+		self.layers.first().is_some_and(|layer| layer.has_bias())
 	}
 
 	/// Return every parameter through the registered layer tree.
@@ -282,8 +558,8 @@ impl Rnn {
 	}
 
 	/// Return one layer's parameters in weight-ih, weight-hh, bias-ih, bias-hh
-	/// order.
-	pub fn layer_parameters(&self, layer: usize) -> Option<[Parameter; 4]> {
+	/// order. Bias-free layers return only the two weights.
+	pub fn layer_parameters(&self, layer: usize) -> Option<Vec<Parameter>> {
 		self.layers.get(layer).map(|layer| layer.parameters())
 	}
 }

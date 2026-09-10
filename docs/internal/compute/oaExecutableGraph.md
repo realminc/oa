@@ -1,109 +1,195 @@
 # OA Rust Executable Graph
 
-**Status:** Experimental private foundation
+**Status:** Experimental private foundation; broader node and scheduling model is Planned
 
-**Updated:** 2026-09-08
+**Updated:** 2026-09-10
 
-The executable graph is OA's private owned snapshot between target-independent
-`ComputeDispatch` lowering and Vulkan command encoding. It is retained by the
-public immutable `ExecutionPlan`, but is not itself a public graph builder,
-semantic graph, or autograd tape.
+The executable graph is the private retained layer between backend-independent
+semantic compilation and Vulkan command encoding. A public immutable
+`ExecutionPlan` owns it, but it is not a public graph builder, the semantic
+graph, an autograd tape, or a DNN-provider API.
 
-## Implemented contract
+## Implemented node contract
 
-Graph construction resolves every borrowed storage binding against the
-submitting engine and copies everything needed after lowering returns:
+Each current node retains:
 
-- stable operation and selected kernel identity;
-- retained Vulkan buffer owners and declared read/write access;
-- copied semantic push constants;
+- the semantic operation owners and selected generated kernel identity;
+- engine-validated buffer owners and `Read`, `Write`, or `ReadWrite` access;
+- copied typed push constants;
 - direct workgroup dimensions.
 
-Construction is transactional: an empty graph, foreign storage, or missing
-buffer fails without recording or submission. Command preflight resolves every
-pipeline, checks all three workgroup dimensions against the selected device,
-prepends retained buffers' bindless indices, and validates the resulting push
-payload against reflected shader ABI before beginning a command buffer.
+Construction is transactional. Empty graphs, foreign storage, invalid resource
+ownership, unavailable pipelines, reflected ABI mismatch and out-of-range
+dispatch dimensions fail before submission. Recorded commands retain all
+referenced resources until their exact timeline epoch retires.
 
-## Buffer hazard planning
+The Vulkan recorder additionally resolves each node into a private
+`PreparedDispatch` before command-buffer recording begins. Current preflight
+proves exact pipeline presence, legal nonzero direct group counts, descriptor
+index and typed push encoding, and reflected push size. The target prepared
+value also carries capability, binding-range, alias, access, workspace, and
+physical write-domain evidence. Failure to prepare any node aborts the complete
+recording transaction.
 
-The planner retains the last relevant access for every live buffer across
-unrelated nodes. Duplicate aliases in one node are merged into one access
-state. It emits a buffer dependency only for a real conflict:
+The target node vocabulary additionally needs transfer/copy/fill, direct and
+indirect compute, image processing, render, video, presentation, external
+semaphore and host-boundary nodes. Each kind carries its own access, layout,
+queue and capability contract; it cannot inherit a generic compute-buffer
+barrier by convenience.
 
-| Previous access | Current access | Dependency |
+## Current hazard plan
+
+The planner retains the last relevant access for every aliased buffer across
+unrelated nodes. Bindings that alias in one node merge into one access state.
+
+| Prior | Current | Dependency |
 |---|---|---|
-| write/read-write | read/read-write | RAW or combined conflict |
-| read/read-write | write/read-write | WAR or combined conflict |
-| write/read-write | write/read-write | WAW or combined conflict |
+| write/read-write | read/read-write | RAW or combined |
+| read/read-write | write/read-write | WAR or combined |
+| write/read-write | write/read-write | WAW or combined |
 | read | read | none |
 
-Several conflicts at the same node boundary share one `DependencyInfo`; each
-resource still receives its own `BufferMemoryBarrier2`. For the current
-compute-only, one-queue graph, both synchronization stages are
-`COMPUTE_SHADER`, access masks come from the exact storage read/write
-declarations, barriers cover the complete buffer, and queue-family indices are
-ignored because no ownership transfer occurs.
+Current nodes are storage-buffer compute on one queue. Barriers therefore use
+`COMPUTE_SHADER` stages, exact shader-storage read/write access masks, full
+logical buffer ranges and ignored queue-family indices. Several conflicts at
+one boundary share a `DependencyInfo`, while each resource gets its own
+`BufferMemoryBarrier2`.
 
-One binding may explicitly declare combined read/write access. This contributes
-one bindless descriptor index to the shader ABI and both Vulkan storage access
-flags to hazard planning; it is not modeled as duplicate read and write
-bindings. In-place AdamW is the first consumer, over stable parameter and moment
-storage.
+Physical disjoint-write metadata is Planned and initially proves race freedom
+inside one dispatch. It does not automatically narrow an inter-node barrier.
+Subrange synchronization requires an independently validated producer and
+consumer range, alias closure, stage/access scope, and lifetime proof; until
+then the full logical buffer remains the conservative synchronization domain.
 
-This rule is deliberately narrow. Transfer, indirect, render, video, image
-layout, subrange, and cross-queue dependencies must add their own node/access
-vocabulary and synchronization proof instead of reusing a generic
-compute-to-compute barrier.
+Inter-submit ordering currently serializes on the previous timeline value at
+`ALL_COMMANDS`. The same engine timeline now admits commands from the selected
+Vulkan Video decode family, and every recorded command carries the pool to
+which retirement must return it. This is queue-lifetime plumbing, not semantic
+graph scheduling: transfers, images, subranges, indirect arguments, external
+resources and cross-queue data use still require producer/consumer-specific
+stages, accesses, layouts, ownership transfer and lifetime edges.
 
-## Current execution boundary
+## Eager batching and observation
 
-The eager lowerer creates one owned snapshot per non-empty operation and records
-it into the engine's private execution session. Blocking observation or
-`Engine::checkpoint` joins pending snapshots and encodes their dependent nodes
-in one primary command buffer. The recorded command retains all referenced
-buffers through exact timeline retirement.
+The private engine-owned `ExecutionSession` accumulates non-empty eager graph
+snapshots. Blocking host observation or `Engine::checkpoint` joins pending
+nodes into one hazard-planned primary command buffer and submits it. A
+zero-element operation produces an immediately ready empty value without
+flushing unrelated work.
 
-Inter-submission ordering remains the current serialized timeline chain. Graph
-state ends at submission; the timeline wait owns the next submission's memory
-edge. Host observation waits for the exact producing event before mapped
-readback.
+`Matrix::read` flushes the producing batch and waits for its exact event.
+`try_read` never flushes or waits and reports `NotReady`. A recording or
+submission failure is retained by affected outputs. `Drop` performs no hidden
+submission or synchronization.
 
-## Testing boundary
+## Capture, compilation and replay
 
-Pure hazard and alias invariants live beside the private planner under
-`#[cfg(test)]`; they are absent from normal library builds. Consumer-visible
-API contracts and normal hardware behavior live under `test/rs/runtime/`, including
-automatic observation flush and explicit checkpoint submission. The private
-multi-node recorder additionally retains an ignored unit-level hardware oracle
-until public capture makes that exact boundary externally constructible.
+Capture is isolated, rejects pending eager work, nesting, failure and empty
+capture, and never submits or waits. A successful immutable plan retains its
+outputs and originating engine identity.
 
-## Capture and replay
+Untimed replay caches one command buffer marked `SIMULTANEOUS_USE`. Stable
+read-only Matrix inputs may be rebound only under exact dtype, shape, ownership
+and no-alias validation; rebinding recomputes hazards and invalidates the cache.
+Exact-type uploads can instead overwrite a stable input after prior completion
+without changing its descriptor or command recording. Timed replay records a
+fresh command because it owns an independent timestamp query pair.
 
-An isolated capture transfers the graph and its written-storage readiness
-bindings into a public immutable `ExecutionPlan`. Submission validates engine
-identity, flushes earlier eager work, records the retained graph, submits
-without waiting, and attaches the exact event to every captured output. The
-same plan can be replayed repeatedly.
+Captured training additionally uses stable read/write parameter, gradient and
+optimizer-state slots, graph-resident AdamW step state, and replay RNG counter
+advances. General mutable output rebinding and persisted executable-plan
+serialization remain Planned.
 
-An untimed plan records its primary command buffer once and shares it across
-unchanged submissions with `SIMULTANEOUS_USE`. Exact retirement ownership keeps
-that command and its buffers alive through every pending replay. A validated
-read-only Matrix input rebind preserves stable captured-slot identity, replaces
-every occurrence, recomputes hazards, and invalidates the cached command. Alias
-introduction is rejected, so normalized graph structure and its diagnostic ID
-remain stable. An exact-type host upload can instead overwrite an unrebound
-read-only input after the preceding replay completes; this preserves its buffer,
-descriptor, graph identity, and cached command. Captured training uses that path
-with stable read/write parameter, moment, and gradient resources plus a
-graph-resident optimizer step. General mutable output rebinding and general
-semantic value identity remain incomplete. Vulkan timestamp queries attach to
-exact executable regions and submission events rather than timing operation
-construction; timed replay uses a fresh instrumented command rather than the
-untimed cache.
+Compilation must eventually be an explicit transaction:
 
-`Engine::submit_timed` allocates one independent two-query timestamp pool for a
-single replay. Command recording resets it, writes at top-of-pipe immediately
-before the graph and bottom-of-pipe immediately after it, and retains it through
-the exact event and command retirement. Ordinary eager and plan submission stay
-uninstrumented.
+```text
+validate semantic graph
+  -> functionalize mutation/aliases
+  -> form legal OaDna partitions
+  -> choose precision, placement and kernel candidates
+  -> plan virtual values, transient memory and workspace
+  -> schedule queues and synchronization
+  -> preflight every pipeline, binding and dispatch
+  -> record reusable executable variants
+  -> publish immutable plan
+```
+
+Failure leaves the source graph and prior plan intact. Source-preserving eager
+fallback is explicit and reported; it is never a silent CPU fallback.
+
+## GPU-driven execution
+
+OARS already avoids repeated host recording for an unchanged captured plan.
+Additional GPU-side control should be capability-gated and justified by an
+end-to-end profile:
+
+- indirect dispatch handles device-produced workgroup counts, with bounds and
+  producer synchronization proven without host mapping;
+- `VK_EXT_device_generated_commands` can let device-written command streams
+  drive supported compute commands, but requires queried layouts, preprocess
+  memory, buffer-device-address rules and explicit synchronization;
+- `VK_AMDX_shader_enqueue` exposes execution-graph behavior only on supporting
+  AMD devices and cannot define the portable baseline;
+- a persistent scheduler kernel can consume a device work queue on ordinary
+  Vulkan compute, but may sacrifice occupancy, fairness, debuggability and
+  watchdog safety.
+
+GPU-driven nodes do not replace the semantic graph. The host still validates
+and compiles an allowed execution envelope; device data chooses only among the
+bounded work admitted by that plan.
+
+## Diagnostics and profiling
+
+`ExecutionPlan::debug_report_json` emits handle-free
+`oa.execution_graph.v3` evidence derived from the same graph and barrier plan.
+It reports normalized identity, nodes, semantic owners, resources, lifetimes,
+accesses, barriers, cache/rebind/submission state and fallback counters. It is a
+diagnostic diff surface, not a stable cache or interchange ABI.
+
+`Engine::submit_timed` resets and writes one Vulkan timestamp pair around the
+complete graph. Its event owns the wrap-corrected device duration. This excludes
+host planning, recording, queue submission, waiting and readback and is not a
+calibrated host/device timeline.
+
+Target profiling adds per-phase and selected-node timestamps, calibrated clock
+correlation where available, pipeline/candidate identity, queue occupancy
+evidence and exact unexpected-fallback counters. Instrumented and normal plans
+remain distinct.
+
+## Reuse and memory
+
+The current exact-size retired-buffer pool and graph-lifetime transient arenas
+reuse allocations only after proven completion/liveness edges. Target planning
+must jointly decide:
+
+- virtual values eliminated by fusion;
+- first/last executable use and observable semantic lifetime;
+- alignment, memory type, usage and alias compatibility;
+- workspace lifetime for tuned providers;
+- stable external/captured slots versus transient storage;
+- queue ownership and retirement epoch.
+
+Memory savings are invalid if an externally visible intermediate, backward
+value, imported resource or asynchronous consumer remains live.
+
+## Acceptance gates
+
+- pure graph tests for RAW/WAR/WAW, alias merge, non-conflicts and deterministic
+  reports;
+- transaction/failure tests for capture, compile, preflight and cache
+  invalidation;
+- hardware oracles for multi-node eager and replay paths;
+- separate core and synchronization validation;
+- GPU-assisted validation for shader bounds and lifetime checkpoints;
+- exact producer/consumer/resource/stage/access/layout/queue/lifetime proof for
+  every new synchronization rule;
+- fresh-process measurement before claiming that a graph feature reduces
+  overhead.
+
+## Primary references
+
+- [Vulkan synchronization chapter](https://registry.khronos.org/vulkan/specs/latest/html/vkspec.html#synchronization)
+- [Vulkan device-generated commands](https://registry.khronos.org/vulkan/specs/latest/pdf/vkspec.pdf)
+- [CUDA Programming Guide: CUDA Graphs](https://docs.nvidia.com/cuda/cuda-programming-guide/04-special-topics/cuda-graphs.html)
+- [`VK_AMDX_shader_enqueue` proposal](https://github.khronos.org/Vulkan-Site/features/latest/features/proposals/VK_AMDX_shader_enqueue.html)
+- [OARS CUDA Rust assessment](oaCudaRust.md)

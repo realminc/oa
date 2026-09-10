@@ -2,7 +2,7 @@
 
 **Status:** Experimental
 
-**Updated:** 2026-09-09
+**Updated:** 2026-09-10
 
 **Architecture:** [OA Rust Architecture](../architecture/oaArchitecture.md)
 
@@ -14,7 +14,7 @@ The first differentiable vertical slice is implemented for one-device Vulkan:
 FP32 input [B, I]
   -> Linear(weight [O, I], bias [O])
   -> FP32 logits [B, O]
-  -> mean cross-entropy(U32 targets [B])
+  -> mean cross-entropy(U32/non-negative I32 targets [B])
   -> scalar FP32 loss
   -> GradientTape backward
   -> parameter gradients
@@ -34,6 +34,11 @@ U32 token IDs [...]
 The recurrent primitive path now extends that chain through a stacked Elman
 RNN with a fused whole-sequence scan and complete BPTT.
 
+The donor GRU sequence path is also connected. Each stacked layer hoists its
+input projection into one existing batched Linear operation and records one
+whole-sequence recurrent scan. Reverse mode records one BPTT scan plus the
+existing Linear parameter adjoint; neither direction submits once per timestep.
+
 The Transformer primitive chain is implemented as a complete training slice:
 
 ```text
@@ -50,18 +55,37 @@ and accepts arbitrary nonempty input rank as long as the final dimension is
 multi-head causal scaled dot-product attention now compose with four Linear
 projections into a pre-normalized `TransformerBlock`.
 
+The attention operation has both the standard materialized-probability route
+and the explicit causal Flash provider under one semantic identity. Flash
+retains row-wise FP32 log-sum-exp and records deterministic Q and K/V adjoints;
+the packed Transformer module remains on the standard route until provider
+selection policy and comparative performance evidence are admitted.
+
 The object-safe `Module` trait and constructor-owned `ModuleRegistry` provide
 direct and recursive parameter/buffer traversal, registration-derived dotted
 paths, duplicate-identity rejection, train/eval propagation, and scoped
 evaluation. A composed `Embedding -> Rnn -> Linear` module tree drives one
 complete backward and AdamW step without manually concatenating leaf parameter
-arrays. Registration-addressed parameter and AdamW checkpoint serialization is
-Experimental; the Char-Transformer gate proves a fresh-owner roundtrip.
+arrays. Registration-addressed persistence now writes and reads the native OA
+`.oam` v3 model-file format: parameters map to Weights, persistent registered
+buffers map to State, Adam/AdamW moments are flattened in registration order,
+no-momentum SGD uses the donor's empty state arrays, and training step/rate map
+to Progress. The integrity test proves atomic overwrite,
+fresh-owner restoration, v1/v2 read compatibility, payload-corruption rejection,
+and bidirectional parsing with the OA C++ `modelctl`. See
+[OARS model files](oaModelFile.md).
 
 The complete NLP consumers are the canonical Char-RNN and Char-Transformer
 tutorials: exact C++ corpus and sampler, `[64, 16]` batches, widths 32/64, 300
 AdamW steps, all-position accuracy, and fixed-prompt greedy generation. See
 [OARS NLP tutorial suite](oaNlpSuite.md).
+
+The first reinforcement-learning dependency is also admitted as a value-only
+contract. `EnvironmentSpace`, `EnvironmentSpec`, and `EnvironmentTransition`
+preserve checked observation, action, reward, termination, and truncation
+metadata without adding another execution owner or synchronizing Matrix data.
+Environment execution and RL algorithms remain Planned. See the
+[reinforcement-learning foundation](oaRl.md).
 
 `Matrix` remains the only numerical value type. `Parameter` is a stable
 trainable handle around a Matrix value and its accumulated gradient; it is not
@@ -71,9 +95,11 @@ bindless descriptor heap, and completion contract as Matrix operations.
 
 The normalized `tools/gen/fn/schema/ml_training.json` record owns semantic
 contracts, differentiation relationships, stable kernel identities, reflected
-push layouts, and oracle requirements for this slice. The Slang sources remain
-first-class implementations under `src/slang/ml` and the generated embedded
-artifact registry is private runtime policy.
+push layouts, and oracle requirements for ML-owned operations in this slice.
+Core `matrix_reduce.json` separately owns Softmax, LogSoftmax, and their
+adjoints. Slang sources remain first-class implementations under their semantic domain in `src/slang`;
+the generated embedded artifact registry lives at
+`runtime/shader/registry.gen.rs` and remains private runtime policy.
 
 ## Reverse-mode ownership
 
@@ -83,17 +109,28 @@ tape, validates saved parameter mutation versions before recording gradient
 work, and accumulates gradients on stable Parameter handles. Backward records
 GPU operations but does not submit or wait.
 
-This checkpoint admits a cross-entropy root and chains composed from Linear,
-Embedding, LayerNorm, Gelu, causal attention, FP32 addition, Rnn, and reshape.
+This checkpoint admits scalar roots from Smooth L1, MSE, L1, BCE,
+cross-entropy, and masked cross-entropy, and chains composed from Linear,
+Embedding, LayerNorm, BatchNorm2d, Conv1d, ConvTranspose1d, Conv2d,
+ConvTranspose2d, RMSNorm,
+the donor activation family (SiLU, ReLU, tanh, sigmoid,
+Leaky ReLU, ELU, Mish, Softplus, and GELU), SwiGLU, standard scaled dot-product
+attention with causal and optional additive masking, axis-aware
+Softmax, LogSoftmax, rank-three BMM NN/NT/TN, NCHW AvgPool2d, MaxPool2d,
+AdaptiveAvgPool2d, and Upsample, FP32 addition, Rnn, Gru, and reshape. Each activation owns a schema row, a paired
+backward row, a mechanically adapted donor Slang kernel, generated attachment
+metadata, and a private reverse-mode node. Leaky ReLU deliberately saves the
+forward input because the donor backward shader branches on input sign; this
+corrects the older donor schema annotation that named the output.
 It does not claim generalized autograd.
-Broadcasting, reductions, other recurrent families, arbitrary roots, higher
+Broadcasting, reductions, remaining recurrent families, arbitrary roots, higher
 derivatives remain Planned. `TrainingProgram` captures the currently admitted
 fixed-shape forward/backward/AdamW chain without making autograd itself a
 general graph compiler.
 
-The Experimental donor-backed `TrainingLoop` is the single ordinary iteration
+The Experimental donor-backed `ItTraining` is the single ordinary iteration
 lifecycle above eager execution and `TrainingProgram`. It owns exact step/epoch
-accounting and completion while borrowing the engine, AdamW optimizer, metrics,
+accounting and completion while borrowing the engine, optimizer, metrics,
 and callbacks. Callback hooks receive immutable snapshots and return explicit
 continue/stop decisions or failures; they do not become another graph owner.
 Its automatic `step(prepare, record)` path performs one eager warm-up, captures
@@ -112,6 +149,31 @@ validator requires exactly one advance before every replay update and rejects
 host-stepped AdamW. Each successful program exposes ordered immutable
 compilation-stage records; automatic capture reports command recording as
 applied, while explicit lazy capture reports it as not run.
+
+The public `training.rs` umbrella owns private `training/iterator.rs`,
+`training/program.rs`, `training/callbacks.rs`, callback-family, and
+`training/schedule.rs` and `training/session.rs` modules, parallel to the
+existing `nn.rs`/`nn/` split.
+`ItTraining` is mutable lifecycle state;
+`TrainingProgram` remains a distinct immutable executable. Built-in
+`ProgressBar`, `TrainingSummary`, `EarlyStopping`, `LearningRateScheduler`,
+`CsvLogger`, `Validation`, `Checkpoint`, and `PhaseSchedule` callbacks expose donor reporting,
+evaluation, and control behavior without becoming graph or synchronization
+owners. Validation publishes one shared completed result and excludes evaluator
+wall time from training throughput. Phase transitions are validated against the
+iterator epoch map and borrow its existing optimizer. AdamW mirrors scheduled
+rates into graph-resident replay state after completion. Checkpoint policy uses
+the same native codec and a sealed persistence capability rather than a second
+AdamW-only save path.
+
+The connected `TrainingSession` is a cloneable thread-safe control and
+observation handle attached to the one `ItTraining` owner. It retains bounded
+commands, revisioned results, and completed-step snapshots while engine-thread
+handlers remain borrowed by the iterator. Commands are applied only before a
+new body begins. Pause/resume/stop, checkpoint/evaluation/rebuild handlers,
+typed live parameters, automatic-program recapture requests, named metrics,
+blocking paused wakeup, and explicit Completed/Failed publication therefore do
+not create a second scheduler or make Vulkan-backed training thread-mobile.
 
 `compilation_debug_report_json` emits the donor's deterministic
 `oa.training_compilation.v2` report: ordered stages, DNN partition analysis,
@@ -149,9 +211,49 @@ providers, not general QKV or gated-FFN claims.
 
 ## Optimizer behavior
 
-AdamW owns parameter update policy and FP32 first/second moment values. A step
-records one in-place read/write dispatch for each parameter with a gradient and
-advances the stable Parameter's mutation version. The parameter and both moment
+`Optimizer` is the object-safe policy contract shared by eager training and
+callbacks. `NoOpOptimizer` supports externally authored updates without taking
+another parameter owner. FP32 `Sgd` owns its selected parameter handles and an
+optional zero-initialized momentum matrix per parameter; its ordinary and
+momentum kernels mechanically preserve the donor shader order. Both routes are
+schema-owned and explicitly classified as host-stepped, so current
+whole-program capture rejects them instead of replaying stale host state. Their
+independent Vulkan oracle passes on Intel Iris Xe with Mesa 26.2.2 and Vulkan
+1.4.354. No-momentum SGD supports exact native checkpoint restoration; a live
+momentum state fails closed because the donor v3 SGD payload has no momentum
+array.
+
+FP32 `Adam` likewise owns zero-initialized first and second moments and
+preserves the donor moment, bias-correction, and parameter-update order. It
+shares eager training and callback policy through `Optimizer`; captured replay
+remains unclaimed. Its independent first-step bias-correction oracle and native
+checkpoint round trip pass on the same Intel Vulkan device.
+
+`ml::optim::clip_grad_norm` mechanically ports OA C++ `FnOptim::clipGradNorm`
+as one asynchronous variadic semantic operation. It skips empty gradients,
+reduces the combined FP32 L2 norm across at most sixteen same-engine matrices,
+then scales every admitted gradient in place without a host read or wait. The
+fixed 18-descriptor push ABI and parameter-buffer threshold preserve the donor
+fix for short gradient collections. Capture records aligned input/output
+aliases for every gradient and maps the operation to its reduction and scaling
+nodes; scratch storage remains a private lowering detail.
+
+FP32 `Muon` owns one momentum matrix per parameter. Rank-two parameters lower
+one semantic optimizer operation into donor Nesterov, Frobenius normalization,
+five-step Newton-Schulz orthogonalization, orientation handling, Moonshot
+scaling, and decoupled-weight-decay dispatches. Other ranks use the donor fused
+vector route; OA does not silently split those parameters into AdamW. Independent
+GPU tests cover the matrix, vector, tall/transposed, and both-dimensions-large
+routes against the donor algorithm. Native `.oam` restoration preserves its one
+moment plus scalar/step state and produces the same following update from a
+fresh owner. Captured device-state Muon remains Planned.
+
+AdamW owns parameter update policy and FP32 first/second moment values. Its
+shader math mechanically preserves OA C++'s decoupled-weight-decay and moment
+update order. A step groups complete sets of four gradients into the donor's
+four-parameter physical kernel and uses the scalar donor kernel for the tail.
+Each grouped node retains four schema-owned AdamW operations in the semantic
+graph rather than inventing a fused public operation. The parameter and both moment
 buffers retain their identities; a previously captured read-only plan therefore
 observes completed optimizer updates without rebinding. Existing Matrix handles
 returned by `Parameter::data` name that stable storage and observe later steps.
@@ -163,9 +265,26 @@ a module registry.
 The current scalar defaults are beta1 `0.9`, beta2 `0.999`, epsilon `1e-8`, and
 weight decay `0.01`. Captured AdamW uses one six-word U32 state buffer for the
 exact replay step and five bit-preserved FP32 scalar settings; one graph-head
-dispatch increments the step before every parameter update. Mixed precision,
-FP32 master weights, learning-rate schedules, fused multi-parameter updates,
-and checkpoint persistence-format stability remain Planned.
+dispatch atomically increments the step before every parameter update. The
+canonical 22-parameter Transformer therefore lowers optimizer updates to five
+four-way nodes plus two scalar tails rather than 22 scalar nodes. Mixed
+precision, FP32 master weights, and captured Muon remain Planned.
+Native `.oam` structural compatibility is implemented;
+public general-purpose `ModelFile`, model translators, quantized restoration,
+serialized replay RNG/descriptors remain Planned.
+
+## Metric observation
+
+`oa::ml::metric::scalar_loss` and `oa::ml::metric::accuracy` are deliberately
+blocking host observations, matching the donor `FnMetric` role. Categorical
+argmax and counting remain on the owning device through the Core
+`oa::matrix::categorical_accuracy_count` operation; only one U32 count is read
+back. The Matrix schema also owns the masked counter used by future sequence
+metrics. U8, U32, and I32 labels are admitted, equal maxima select the first
+class, and the output remains a `[1]` U32 Matrix until a caller explicitly
+observes it. The current completed-step `LossMetric` remains independent of
+prediction/label metrics because the iterator snapshot does not yet carry
+those values.
 
 ## Fixed-shape training replay
 
@@ -192,39 +311,102 @@ unrebound read-only input slot. It waits for the preceding replay before
 overwriting that host-visible buffer, so the command and bindless descriptor
 remain unchanged. Qualified disjoint transient lifetimes may share private
 arenas with an observable distinct-storage fallback. Multi-buffered input
-staging, dynamic shapes, RNG replay state, and broader transient allocator
-policy remain Planned.
+staging, dynamic shapes, and broader transient allocator policy remain Planned.
 
-The current schemas contain no replay-safe Philox kernel family. Random values
-must therefore be prepared outside the captured executable program until the
-donor state-advance/uniform/normal transformation is ported; host seed values
-must never be frozen into reusable command recording.
+Schema-owned Philox uniform/normal operations preserve the complete 64-bit seed
+and distribution parameters. Eager calls use the effective recorded seed.
+Capture replaces each frozen-seed physical kernel with a replay variant reading
+one graph-resident U32 counter, followed by exactly one counter-advance node.
+Training-program validation rejects frozen RNG and unmatched replay/advance
+pairs. Inverted Dropout uses the same transformation in forward and backward,
+so both regenerate the same mask for a step and advance together on later
+replays. The current state is private to each captured operation; shared random
+streams, explicit offsets beyond the current ABI, and serialized RNG state
+remain Planned.
 
 ## Failure and observation
 
-- Linear requires nonempty FP32 feature dimensions, `[B, I]` input,
-  `[O, I]` weight, and `[O]` bias on one engine.
-- Cross-entropy requires nonempty FP32 logits `[N, C]` and U32 targets `[N]`.
+- Linear requires nonempty FP32 feature dimensions, rank-at-least-two
+  `[..., I]` input, `[O, I]` weight, and `[O]` bias on one engine. Lowering
+  flattens the leading extents into GEMM rows and restores them as `[..., O]`.
+- Cross-entropy requires nonempty FP32 logits `[N, C]` and U32 or non-negative
+  I32 targets `[N]`. Negative and out-of-range indices produce NaN without an
+  out-of-bounds access. Donor UInt8 targets and BF16 logits remain gated on
+  those scalar types entering the Rust value/storage contract.
+- Masked cross-entropy additionally requires an FP32 mask `[N]` on the same
+  engine and a caller-supplied `valid_count` in `1..=N`. Zero mask values
+  exclude their rows and produce exact-zero logits adjoints. OARS preserves
+  the donor contract by not reading the mask back to recompute that denominator.
+- Smooth L1, MSE, L1, and BCE require nonempty, equal-shape FP32 prediction and
+  target matrices on one engine and return the mean as a scalar Matrix. Their
+  reverse routes differentiate only prediction. Smooth L1 selects the donor's
+  fused one-workgroup scalar-mean candidate; MSE, L1, and BCE retain explicit
+  per-element loss, Sum, and Scale dispatches. BCE preserves the donor's
+  `[1e-7, 1 - 1e-7]` prediction clamp.
 - Embedding requires FP32 weight `[V, D]` and same-engine U32 indices; it
   preserves the full index shape and appends `D`.
-- Rnn requires nonempty F32 input `[B, S, I]`, returns `[B, S, H]`, and
-  currently admits zero-state biased layers with `H <= 1024`.
+- Rnn requires nonempty F32 input `[B, S, I]`, returns `[B, S, H]`, and admits
+  zero-state biased or bias-free layers with `H <= 1024`. Its input projection
+  uses canonical Linear lowering before the donor-backed recurrent scan.
 - LayerNorm requires nonempty F32 input `[..., D]`, same-engine F32 weight and
   bias `[D]`, and a finite positive epsilon. It preserves the complete shape.
+- BatchNorm2d requires nonempty F32 NCHW input and same-engine F32 channel
+  vectors `[C]`. Training computes centered population statistics and advances
+  persistent running mean/variance with finite momentum in `[0, 1]`; evaluation
+  reads that state without mutation. Both paths have complete input and affine
+  adjoints, and evaluation treats running statistics as fixed.
+- Conv2d requires nonempty F32 NCHW input, square grouped OIHW weight, channel
+  bias, nonzero stride/groups, and input/output channels divisible by groups.
+  Its spatial extent uses floor geometry over symmetric padding. One structured
+  reverse operation produces deterministic input, weight, and bias adjoints.
+- Conv1d requires nonempty F32 NCL input, OIK weight, channel bias, and nonzero
+  stride/dilation. Forward lowers through im2col, tiled MatMulNt, broadcast bias,
+  and batched transpose; padding and dilation use the donor floor geometry.
+  Its current deterministic explicit adjoints are correct but not yet the
+  donor's newer GEMM-composed wide-training route.
+- ConvTranspose1d requires nonempty F32 NCL input, IOK weight, and nonzero
+  stride/dilation. It is bias-free. Its output length is
+  `(input_length - 1) * stride - 2 * padding + effective_kernel`; padding that
+  removes the complete output is rejected. Forward is the Conv1d data adjoint,
+  while backward reuses canonical Conv1d GEMM and parameter-adjoint work.
+- ConvTranspose2d requires nonempty F32 NCHW input, square IOKK weight,
+  output-channel bias, and nonzero stride. Each output extent is
+  `(input_extent - 1) * stride - 2 * padding + kernel`. Forward preserves the
+  donor data-adjoint plus bias lowering; its structured backward produces the
+  input, weight, and bias adjoints without float atomics. The build-time SPIR-V
+  and reflected-ABI gates pass; live GPU oracle execution is still pending.
+- AvgPool2d requires nonempty F32 NCHW input, nonzero square kernel and stride,
+  and a kernel that fits the symmetrically padded input. Its output uses floor
+  spatial geometry, excludes padding from the averaging divisor, and preserves
+  batch and channel dimensions. The input adjoint uses the identical geometry.
+- MaxPool2d uses the same geometry, exposes pooled F32 values plus exact U32
+  flat-input argmax indices, and sends each output adjoint to its saved winner.
+  Equal maxima select the first valid input in row-major window order.
+- AdaptiveAvgPool2d requires nonzero output height and width and computes exact
+  independent floor/ceiling bins. Rectangular and non-divisible geometry is
+  supported; forward and adjoint reject arithmetic outside the U32 shader ABI.
+- Upsample requires nonempty F32 NCHW input and a positive integer scale.
+  Nearest uses exact integer source ownership; bilinear uses the donor
+  align-corners-false half-pixel convention. Both adjoints are deterministic
+  gather kernels.
 - Reshape is a zero-copy storage view with a distinct semantic value identity.
 - An out-of-range target produces NaN without reading beyond the logits row.
 - An out-of-range embedding index produces a NaN row without reading beyond
   the table.
 - Reusing a consumed tape or changing a saved Parameter before backward fails.
-- Host loss/gradient/parameter reads use the normal Matrix observation boundary
-  and therefore submit and wait for the exact producing eager batch.
+- Host loss/metric/gradient/parameter reads use the normal Matrix observation
+  boundary and therefore submit and wait for the exact producing eager batch.
 - There is no CPU execution fallback.
 
 ## Evidence and remaining gates
 
-The external Rust ML test compares Linear, LayerNorm, and stable cross-entropy
-forward results against independent host oracles, compares Linear, LayerNorm,
-and repeated-index Embedding gradients against central finite differences,
+The external Rust ML test compares Linear, LayerNorm, BatchNorm2d, Conv1d,
+ConvTranspose1d, grouped Conv2d, stable cross-entropy,
+masked cross-entropy, Smooth L1, MSE, L1, and BCE forward results against
+independent host oracles,
+compares the four core-loss prediction adjoints plus Linear, LayerNorm,
+BatchNorm2d, Conv1d, ConvTranspose1d, Conv2d, and
+repeated-index Embedding gradients against central finite differences,
 checks LayerNorm input-gradient propagation through an Embedding predecessor,
 checks the reshape adjoint, checks the first in-place AdamW update against an
 independent host implementation, proves a captured reader observes the stable
@@ -234,8 +416,8 @@ also verifies deterministic dotted traversal, persistent buffer metadata,
 recursive mode propagation, duplicate ownership rejection, complete gradient
 reachability, and one optimizer update over the composed character model.
 The Release NLP acceptance run additionally fixes the complete 300-step loss,
-accuracy, and generated-text gates; it is not yet a performance-parity or
-checkpoint-roundtrip claim.
+accuracy, generated-text, and fresh-owner checkpoint gates; it is not yet a
+performance-parity claim.
 
 Run the hardware checkpoint serially:
 

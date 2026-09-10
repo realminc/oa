@@ -1737,7 +1737,7 @@ pub static ML_MATMUL_COOPERATIVE: KernelDesc = KernelDesc {
 This file should be generated:
 
 ```text
-src/shader/generated.rs
+src/shader/registry.gen.rs
 ```
 
 or into Cargo's build output directory and included from Rust.

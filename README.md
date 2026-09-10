@@ -100,8 +100,8 @@ currently covers addition only.
 Independent Experimental host-domain checkpoints now provide a checked planar
 FP32 `Audio` value, synchronous WAV/FLAC/MP3 decode, WAV-F32 encode/save, and
 CPU Keccak-f[1600], SHAKE-128/256, KMAC-256, typed hashes, and Merkle proofs.
-These reuse the existing Matrix/Engine and `core::Error` contracts. Audio DSP,
-audio sessions, Vulkan batch hashing, and ML-DSA are not yet ported.
+These reuse the existing Matrix/Engine and `core::Error` contracts. Public cryptography
+includes CPU primitives, secure host memory, ML-DSA-65, and Vulkan batch hashing.
 
 Build and stage the public matmul tutorial, then run its independent CPU
 validation with:

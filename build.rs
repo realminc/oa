@@ -8,11 +8,20 @@ use serde_json::{Value, json};
 
 const SCHEMA: &str = "tools/gen/fn/schema/matrix_elemwise.json";
 const BLAS_SCHEMA: &str = "tools/gen/fn/schema/matrix_blas.json";
+const REDUCE_SCHEMA: &str = "tools/gen/fn/schema/matrix_reduce.json";
+const RNG_SCHEMA: &str = "tools/gen/fn/schema/matrix_rng.json";
 const ML_SCHEMA: &str = "tools/gen/fn/schema/ml_training.json";
+const AUDIO_SCHEMA: &str = "tools/gen/fn/schema/audio.json";
+const CRYPTOGRAPHY_HASH_SCHEMA: &str = "tools/gen/fn/schema/cryptography_hash.json";
+const IMAGE_SCHEMA: &str = "tools/gen/fn/schema/image.json";
+const VISION_SCHEMA: &str = "tools/gen/fn/schema/vision_detection.json";
 const GENERATOR: &str = "tools/gen/fn/generate.py";
-const STORAGE: &str = "src/slang/common/storage.slang";
-const ATTRIBUTES: &str = "src/slang/common/attributes.slang";
-const ACTIVATIONS: &str = "src/slang/common/activations.slang";
+const STORAGE: &str = "src/slang/core/math/storage.slang";
+const ATTRIBUTES: &str = "src/slang/core/attributes.slang";
+const ACTIVATIONS: &str = "src/slang/core/math/activations.slang";
+const PHILOX: &str = "src/slang/core/rng/philox.slang";
+const DROPOUT_RNG: &str = "src/slang/matrix/rng/dropout_rng.slang";
+const CRYPTOGRAPHY_KECCAK: &str = "src/slang/cryptography/hash/keccak.slang";
 const ENTRY_POINT: &str = "main";
 
 struct ShaderBuild<'a> {
@@ -31,11 +40,20 @@ fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
 	for source in [
 		SCHEMA,
 		BLAS_SCHEMA,
+		REDUCE_SCHEMA,
+		RNG_SCHEMA,
 		ML_SCHEMA,
+		AUDIO_SCHEMA,
+		CRYPTOGRAPHY_HASH_SCHEMA,
+		IMAGE_SCHEMA,
+		VISION_SCHEMA,
 		GENERATOR,
 		STORAGE,
 		ATTRIBUTES,
 		ACTIVATIONS,
+		PHILOX,
+		DROPOUT_RNG,
+		CRYPTOGRAPHY_KECCAK,
 	] {
 		println!("cargo:rerun-if-changed={source}");
 	}
@@ -100,6 +118,42 @@ fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
 		)?;
 	}
 
+	let reduce_schema: Value = serde_json::from_slice(&fs::read(REDUCE_SCHEMA)?)?;
+	let reduce_operations = array_at(&reduce_schema, "operations")?;
+	let reduce_dtype = string_at(&reduce_schema, "dtype")?;
+	let reduce_workgroup_size = &reduce_schema["workgroup_size"];
+	if reduce_operations.is_empty() {
+		return Err("matrix Reduce schema contains no operations".into());
+	}
+	for operation in reduce_operations {
+		build_schema_shader(
+			operation,
+			"matrix",
+			reduce_dtype,
+			reduce_workgroup_size,
+			&build,
+		)?;
+	}
+
+	let rng_schema: Value = serde_json::from_slice(&fs::read(RNG_SCHEMA)?)?;
+	let rng_operations = array_at(&rng_schema, "operations")?;
+	let rng_dtype = string_at(&rng_schema, "dtype")?;
+	let rng_workgroup_size = &rng_schema["workgroup_size"];
+	for operation in rng_operations {
+		let operation_dtype = operation["dtype"].as_str().unwrap_or(rng_dtype);
+		let operation_workgroup_size = operation
+			.get("workgroup_size")
+			.filter(|value| value.is_array())
+			.unwrap_or(rng_workgroup_size);
+		build_schema_shader(
+			operation,
+			"matrix",
+			operation_dtype,
+			operation_workgroup_size,
+			&build,
+		)?;
+	}
+
 	let ml_schema: Value = serde_json::from_slice(&fs::read(ML_SCHEMA)?)?;
 	let ml_operations = array_at(&ml_schema, "operations")?;
 	let ml_dtype = string_at(&ml_schema, "dtype")?;
@@ -113,7 +167,78 @@ fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
 			.get("workgroup_size")
 			.filter(|value| value.is_array())
 			.unwrap_or(ml_workgroup_size);
-		build_ml_shader(operation, operation_dtype, operation_workgroup_size, &build)?;
+		build_schema_shader(
+			operation,
+			"ml",
+			operation_dtype,
+			operation_workgroup_size,
+			&build,
+		)?;
+	}
+
+	let audio_schema: Value = serde_json::from_slice(&fs::read(AUDIO_SCHEMA)?)?;
+	let audio_kernels = array_at(&audio_schema, "kernels")?;
+	let audio_dtype = string_at(&audio_schema, "dtype")?;
+	if audio_kernels.is_empty() {
+		return Err("Audio schema contains no kernels".into());
+	}
+	for kernel in audio_kernels {
+		build_schema_shader(
+			kernel,
+			"audio",
+			audio_dtype,
+			&kernel["workgroup_size"],
+			&build,
+		)?;
+	}
+
+	let cryptography_schema: Value = serde_json::from_slice(&fs::read(CRYPTOGRAPHY_HASH_SCHEMA)?)?;
+	let cryptography_kernels = array_at(&cryptography_schema, "kernels")?;
+	let cryptography_dtype = string_at(&cryptography_schema, "dtype")?;
+	if cryptography_kernels.is_empty() {
+		return Err("Cryptography Hash schema contains no kernels".into());
+	}
+	for kernel in cryptography_kernels {
+		build_schema_shader(
+			kernel,
+			"cryptography",
+			cryptography_dtype,
+			&kernel["workgroup_size"],
+			&build,
+		)?;
+	}
+
+	let image_schema: Value = serde_json::from_slice(&fs::read(IMAGE_SCHEMA)?)?;
+	let image_kernels = array_at(&image_schema, "kernels")?;
+	let image_dtype = string_at(&image_schema, "dtype")?;
+	if image_kernels.is_empty() {
+		return Err("Image schema contains no kernels".into());
+	}
+	for kernel in image_kernels {
+		build_schema_shader(
+			kernel,
+			"image",
+			image_dtype,
+			&kernel["workgroup_size"],
+			&build,
+		)?;
+	}
+
+	let vision_schema: Value = serde_json::from_slice(&fs::read(VISION_SCHEMA)?)?;
+	let vision_kernels = array_at(&vision_schema, "kernels")?;
+	let vision_dtype = string_at(&vision_schema, "dtype")?;
+	if vision_kernels.is_empty() {
+		return Err("Vision schema contains no kernels".into());
+	}
+	for kernel in vision_kernels {
+		let kernel_dtype = kernel["dtype"].as_str().unwrap_or(vision_dtype);
+		build_schema_shader(
+			kernel,
+			"vision",
+			kernel_dtype,
+			&kernel["workgroup_size"],
+			&build,
+		)?;
 	}
 	Ok(())
 }
@@ -172,7 +297,15 @@ fn build_shader(
 			"-warnings-as-errors",
 			"all",
 			"-I",
-			"src/slang/common",
+			"src/slang/core",
+			"-I",
+			"src/slang/core/math",
+			"-I",
+			"src/slang/core/rng",
+			"-I",
+			"src/slang/matrix/rng",
+			"-I",
+			"src/slang/cryptography/hash",
 			"-reflection-json",
 		])
 		.arg(&reflection)
@@ -317,8 +450,9 @@ fn validate_reflection(
 	Ok(())
 }
 
-fn build_ml_shader(
+fn build_schema_shader(
 	operation: &Value,
+	domain: &str,
 	dtype: &str,
 	workgroup_size: &Value,
 	build: &ShaderBuild<'_>,
@@ -328,10 +462,10 @@ fn build_ml_shader(
 	println!("cargo:rerun-if-changed={source}");
 	let spirv = build
 		.output_directory
-		.join(format!("ml_{name}_{dtype}.spv"));
+		.join(format!("{domain}_{name}_{dtype}.spv"));
 	let reflection = build
 		.output_directory
-		.join(format!("ml_{name}_{dtype}.reflection.json"));
+		.join(format!("{domain}_{name}_{dtype}.reflection.json"));
 
 	let slang_output = Command::new(build.slangc)
 		.arg(source)
@@ -350,7 +484,15 @@ fn build_ml_shader(
 			"-warnings-as-errors",
 			"all",
 			"-I",
-			"src/slang/common",
+			"src/slang/core",
+			"-I",
+			"src/slang/core/math",
+			"-I",
+			"src/slang/core/rng",
+			"-I",
+			"src/slang/matrix/rng",
+			"-I",
+			"src/slang/cryptography/hash",
 			"-reflection-json",
 		])
 		.arg(&reflection)
@@ -360,7 +502,7 @@ fn build_ml_shader(
 		.map_err(|source| format!("could not execute {:?}: {source}", build.slangc))?;
 	if !slang_output.status.success() {
 		return Err(format!(
-			"{:?} failed for ml.{name} with {}\n{}",
+			"{:?} failed for {domain}.{name} with {}\n{}",
 			build.slangc,
 			slang_output.status,
 			String::from_utf8_lossy(&slang_output.stderr)
@@ -368,7 +510,7 @@ fn build_ml_shader(
 		.into());
 	}
 
-	validate_ml_reflection(&reflection, operation, dtype, workgroup_size)?;
+	validate_schema_reflection(&reflection, operation, domain, dtype, workgroup_size)?;
 	let validation_output = Command::new(build.spirv_val)
 		.args(["--target-env", "vulkan1.3"])
 		.arg(&spirv)
@@ -376,7 +518,7 @@ fn build_ml_shader(
 		.map_err(|source| format!("could not execute {:?}: {source}", build.spirv_val))?;
 	if !validation_output.status.success() {
 		return Err(format!(
-			"{:?} failed for ml.{name} with {}\n{}",
+			"{:?} failed for {domain}.{name} with {}\n{}",
 			build.spirv_val,
 			validation_output.status,
 			String::from_utf8_lossy(&validation_output.stderr)
@@ -386,9 +528,10 @@ fn build_ml_shader(
 	Ok(())
 }
 
-fn validate_ml_reflection(
+fn validate_schema_reflection(
 	path: &Path,
 	operation: &Value,
+	domain: &str,
 	dtype: &str,
 	workgroup_size: &Value,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -407,10 +550,12 @@ fn validate_ml_reflection(
 	let attributes = entry["userAttribs"]
 		.as_array()
 		.ok_or("reflection does not contain OA kernel attributes")?;
+	let variant = operation["variant"].as_str().unwrap_or("generic");
+	let reflection_name = operation["reflection_name"].as_str().unwrap_or(name);
 	for (attribute_name, argument) in [
-		("kernel_name", name),
-		("domain", "ml"),
-		("variant", "generic"),
+		("kernel_name", reflection_name),
+		("domain", domain),
+		("variant", variant),
 		("dtype", dtype),
 		("status", "experimental"),
 	] {
@@ -436,7 +581,7 @@ fn validate_ml_reflection(
 	let expected_fields = array_at(operation, "push_fields")?;
 	if fields.len() != expected_fields.len() {
 		return Err(format!(
-			"ml.{name} push constants contain {} fields; expected {}",
+			"{domain}.{name} push constants contain {} fields; expected {}",
 			fields.len(),
 			expected_fields.len()
 		)

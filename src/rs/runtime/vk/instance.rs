@@ -11,7 +11,7 @@ pub(in crate::runtime) struct Instance {
 
 struct InstanceInner {
 	// The Vulkan library must remain loaded until after the instance is destroyed.
-	_entry: ash::Entry,
+	entry: ash::Entry,
 	handle: ash::Instance,
 }
 
@@ -50,15 +50,16 @@ impl Instance {
 			.map_err(|source| Error::backend_failure("Vulkan", "instance creation", source))?;
 
 		Ok(Self {
-			inner: Arc::new(InstanceInner {
-				_entry: entry,
-				handle,
-			}),
+			inner: Arc::new(InstanceInner { entry, handle }),
 		})
 	}
 
 	pub(super) fn raw(&self) -> &ash::Instance {
 		&self.inner.handle
+	}
+
+	pub(super) fn entry(&self) -> &ash::Entry {
+		&self.inner.entry
 	}
 }
 

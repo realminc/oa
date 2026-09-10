@@ -8,3 +8,7 @@ mod test_vk_fixture;
 mod blas;
 #[path = "matrix/test_elemwise.gen.rs"]
 mod elemwise;
+#[path = "matrix/test_reduce.gen.rs"]
+mod reduce;
+#[path = "matrix/test_rng.rs"]
+mod rng;

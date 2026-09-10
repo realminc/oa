@@ -127,6 +127,17 @@
       "doc": "Multiply every FP32 matrix element by a scalar.",
       "kernel_id": "MatrixScaleF32",
       "expression": "input * push.scalar",
+      "physical_write": {
+        "writes": [{
+          "binding": 1,
+          "domain": "output_elements",
+          "partition": "exclusive_per_invocation",
+          "extent": "one_element",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "none"
+      },
       "scalar_name": "scalar",
       "test": {
         "input": [-2.0, 0.5, 4.0],

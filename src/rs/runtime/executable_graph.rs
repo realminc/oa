@@ -73,12 +73,13 @@ impl ExecutableGraph {
 
 		let mut nodes = Vec::with_capacity(dispatches.len());
 		for dispatch in dispatches {
+			let operation = dispatch.kernel.report_name();
 			let mut buffers = Vec::with_capacity(dispatch.buffers.len());
 			for binding in dispatch.buffers {
 				if !binding.storage.belongs_to(device) {
 					return Err(Error::invalid_argument(format!(
 						"{} buffers must belong to the submitting engine",
-						dispatch.operation
+						operation
 					)));
 				}
 				let buffer = binding.storage.buffer().cloned().ok_or_else(|| {
@@ -87,7 +88,7 @@ impl ExecutableGraph {
 						"compute-dispatch storage validation",
 						std::io::Error::other(format!(
 							"{} references storage without a Vulkan buffer",
-							dispatch.operation
+							operation
 						)),
 					)
 				})?;
@@ -97,7 +98,7 @@ impl ExecutableGraph {
 				});
 			}
 			nodes.push(ComputeNode {
-				operation: dispatch.operation,
+				operation,
 				kernel: dispatch.kernel,
 				buffers,
 				push_constants: dispatch.push_constants.to_vec(),
@@ -126,6 +127,44 @@ impl ExecutableGraph {
 		node.operation = name;
 		node.semantic_ops.push(operation);
 		node.op_contract_hash = contract_hash;
+		Ok(())
+	}
+
+	pub(in crate::runtime) fn attach_split_semantic(
+		&mut self,
+		operation: SemanticOpId,
+		name: &'static str,
+		contract_hash: u64,
+	) -> Result<()> {
+		if self.nodes.len() < 2 || contract_hash == 0 {
+			return Err(Error::failed_precondition(
+				"split semantic lowering requires multiple nodes and a nonzero contract hash",
+			));
+		}
+		for node in &mut self.nodes {
+			node.operation = name;
+			node.semantic_ops.push(operation);
+			node.op_contract_hash = contract_hash;
+		}
+		Ok(())
+	}
+
+	pub(in crate::runtime) fn attach_fused_semantic(
+		&mut self,
+		operations: &[SemanticOpId],
+	) -> Result<()> {
+		if self.nodes.len() != 1 || operations.len() < 2 {
+			return Err(Error::failed_precondition(
+				"fused semantic lowering requires one node and at least two operations",
+			));
+		}
+		let node = &mut self.nodes[0];
+		if node.kernel.semantic_contract().is_some() {
+			return Err(Error::failed_precondition(
+				"fused semantic lowering requires a distinct lowering-only kernel",
+			));
+		}
+		node.semantic_ops.extend_from_slice(operations);
 		Ok(())
 	}
 
@@ -160,7 +199,35 @@ impl ExecutableGraph {
 	pub(in crate::runtime) fn validate_training_replay_safety(&self) -> Result<()> {
 		validate_training_kernel_sequence(
 			self.nodes.iter().map(|node| (node.operation, node.kernel)),
-		)
+		)?;
+		for (index, replay) in self.nodes.iter().enumerate() {
+			if replay.kernel.training_replay_role() != TrainingReplayRole::ReplayRng {
+				continue;
+			}
+			let advance = &self.nodes[index + 1];
+			let state = replay.buffers.last().ok_or_else(|| {
+				Error::failed_precondition(format!(
+					"training program replay RNG {} has no state binding",
+					replay.operation
+				))
+			})?;
+			let [advanced_state] = advance.buffers.as_slice() else {
+				return Err(Error::failed_precondition(format!(
+					"training program RNG state advance {} must bind exactly one state buffer",
+					advance.operation
+				)));
+			};
+			if state.access != BufferAccess::Read
+				|| advanced_state.access != BufferAccess::ReadWrite
+				|| !state.buffer.same_as(&advanced_state.buffer)
+			{
+				return Err(Error::failed_precondition(format!(
+					"training program RNG state advance {} does not update the state read by {}",
+					advance.operation, replay.operation
+				)));
+			}
+		}
+		Ok(())
 	}
 
 	pub(in crate::runtime) fn barriers_before(&self, node: usize) -> &[BufferHazard] {
@@ -184,7 +251,24 @@ impl ExecutableGraph {
 				hash.u32(operation.index());
 			}
 			hash.u16(node.kernel as u16);
-			hash.u64(node.kernel.artifact().content_id());
+			let artifact = node.kernel.artifact();
+			hash.u64(artifact.content_id());
+			match artifact.physical_write {
+				None => hash.u8(0),
+				Some(contract) => {
+					hash.u8(1);
+					hash.usize(contract.writes.len());
+					for write in contract.writes {
+						hash.u8(write.binding);
+						hash.u8(write.domain as u8);
+						hash.u8(write.partition as u8);
+						hash.u8(write.extent as u8);
+						hash.u8(write.collision as u8);
+						hash.u8(write.tail as u8);
+					}
+					hash.u8(contract.workspace as u8);
+				}
+			}
 			hash.usize(node.buffers.len());
 			for buffer_use in &node.buffers {
 				let descriptor = buffer_use.buffer.descriptor_index();
@@ -377,9 +461,32 @@ fn validate_training_kernel_sequence<'a>(
 	let mut optimizer_state_advances = 0_usize;
 	let mut optimizer_state_updates = 0_usize;
 	let mut advance_seen = false;
+	let mut awaiting_rng_advance = false;
 	for (operation, kernel) in kernels {
-		match kernel.training_replay_role() {
+		let role = kernel.training_replay_role();
+		if awaiting_rng_advance && role != TrainingReplayRole::RngStateAdvance {
+			return Err(Error::failed_precondition(format!(
+				"training program replay RNG must be followed immediately by its state advance; found {operation}"
+			)));
+		}
+		match role {
 			TrainingReplayRole::Safe => {}
+			TrainingReplayRole::FrozenRng => {
+				return Err(Error::failed_precondition(format!(
+					"training program operation {operation} embeds a host seed; use its replay-state kernel"
+				)));
+			}
+			TrainingReplayRole::ReplayRng => {
+				awaiting_rng_advance = true;
+			}
+			TrainingReplayRole::RngStateAdvance => {
+				if !awaiting_rng_advance {
+					return Err(Error::failed_precondition(format!(
+						"training program operation {operation} advances RNG state without a preceding replay RNG operation"
+					)));
+				}
+				awaiting_rng_advance = false;
+			}
 			TrainingReplayRole::HostSteppedOptimizer => {
 				return Err(Error::failed_precondition(format!(
 					"training program operation {operation} embeds host-stepped optimizer state; use a replay-state kernel"
@@ -398,6 +505,11 @@ fn validate_training_kernel_sequence<'a>(
 				optimizer_state_updates = optimizer_state_updates.saturating_add(1);
 			}
 		}
+	}
+	if awaiting_rng_advance {
+		return Err(Error::failed_precondition(
+			"training program contains a replay RNG operation without its state advance",
+		));
 	}
 	if optimizer_state_updates != 0 && optimizer_state_advances != 1 {
 		return Err(Error::failed_precondition(format!(
@@ -723,5 +835,51 @@ mod tests {
 			error.message(),
 			"training program operation ml.adamw embeds host-stepped optimizer state; use a replay-state kernel"
 		);
+	}
+
+	#[test]
+	fn training_replay_requires_one_advance_after_each_rng_operation() {
+		validate_training_kernel_sequence([
+			(
+				"matrix.philox_uniform_replay",
+				KernelId::MatrixPhiloxUniformReplayF32,
+			),
+			(
+				"matrix.philox_replay_advance",
+				KernelId::MatrixPhiloxReplayAdvanceU32,
+			),
+		])
+		.expect("paired replay RNG was rejected");
+		let missing = validate_training_kernel_sequence([(
+			"matrix.philox_normal_replay",
+			KernelId::MatrixPhiloxNormalReplayF32,
+		)])
+		.unwrap_err();
+		assert!(missing.message().contains("without its state advance"));
+		let interleaved = validate_training_kernel_sequence([
+			(
+				"matrix.philox_uniform_replay",
+				KernelId::MatrixPhiloxUniformReplayF32,
+			),
+			("matrix.add", KernelId::MatrixAddF32),
+			(
+				"matrix.philox_replay_advance",
+				KernelId::MatrixPhiloxReplayAdvanceU32,
+			),
+		])
+		.unwrap_err();
+		assert!(interleaved.message().contains("followed immediately"));
+		let orphan = validate_training_kernel_sequence([(
+			"matrix.philox_replay_advance",
+			KernelId::MatrixPhiloxReplayAdvanceU32,
+		)])
+		.unwrap_err();
+		assert!(orphan.message().contains("without a preceding"));
+		let frozen = validate_training_kernel_sequence([(
+			"matrix.philox_uniform",
+			KernelId::MatrixPhiloxUniformF32,
+		)])
+		.unwrap_err();
+		assert!(frozen.message().contains("embeds a host seed"));
 	}
 }

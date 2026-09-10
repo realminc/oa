@@ -16,6 +16,29 @@ pub(crate) enum MatrixNode {
 		right: Matrix,
 		output_id: u64,
 	},
+	Dropout {
+		input: Matrix,
+		output_id: u64,
+		probability: f32,
+		seed: u64,
+	},
+	Softmax {
+		input: Matrix,
+		output: Matrix,
+		output_id: u64,
+		dim: i32,
+	},
+	LogSoftmax {
+		input: Matrix,
+		output: Matrix,
+		output_id: u64,
+		dim: i32,
+	},
+	Sum {
+		input: Matrix,
+		output_id: u64,
+		dim: i32,
+	},
 }
 
 type Recorder = Rc<dyn Fn(MatrixNode) -> Result<()>>;

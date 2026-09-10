@@ -201,3 +201,119 @@ test_vk!(module_registration_rejects_ambiguous_ownership, engine, {
 	assert!(error.message().contains("right.value"));
 	Ok(())
 });
+
+test_vk!(dropout_module_obeys_train_and_eval_modes, engine, {
+	let dropout = oa::ml::nn::Dropout::with_seed(0.5, 0x4452_4f50)?;
+	let input = oa::Matrix::from_f32(&engine, [257], &[1.0; 257])?;
+	let training = dropout.forward(&input)?.read_f32()?;
+	assert!(training.contains(&0.0));
+	assert!(training.contains(&2.0));
+	assert!(dropout.parameters().is_empty());
+
+	dropout.eval();
+	assert_eq!(dropout.forward(&input)?.read_f32()?, vec![1.0; 257]);
+	dropout.train(true);
+	assert_eq!(dropout.forward(&input)?.read_f32()?, training);
+	assert_eq!(dropout.probability(), 0.5);
+	assert_eq!(
+		oa::ml::nn::Dropout::new(f32::NAN)
+			.err()
+			.expect("NaN probability was accepted")
+			.kind(),
+		oa::ErrorKind::InvalidArgument
+	);
+	Ok(())
+});
+
+test_vk!(
+	utility_modules_preserve_views_and_validate_dimensions,
+	engine,
+	{
+		let input = oa::Matrix::from_f32(
+			&engine,
+			[2, 3, 4],
+			&(0..24).map(|value| value as f32).collect::<Vec<_>>(),
+		)?;
+		let identity = oa::ml::nn::Identity::new();
+		let identity_output = identity.forward(&input)?;
+		assert_eq!(identity_output.shape(), [2, 3, 4]);
+		assert_eq!(identity_output.read_f32()?, input.read_f32()?);
+
+		let default_flatten = oa::ml::nn::Flatten::default();
+		assert_eq!(default_flatten.start_dim(), 1);
+		assert_eq!(default_flatten.end_dim(), -1);
+		assert_eq!(default_flatten.forward(&input)?.shape(), [2, 12]);
+		assert_eq!(
+			oa::ml::nn::Flatten::new(0, 1).forward(&input)?.shape(),
+			[6, 4]
+		);
+		assert_eq!(
+			oa::ml::nn::Flatten::new(-2, -1).forward(&input)?.shape(),
+			[2, 12]
+		);
+		assert_eq!(
+			oa::ml::nn::Flatten::new(3, -1).forward(&input)?.shape(),
+			input.shape()
+		);
+		for flatten in [
+			oa::ml::nn::Flatten::new(-4, -1),
+			oa::ml::nn::Flatten::new(2, 1),
+			oa::ml::nn::Flatten::new(0, 3),
+		] {
+			assert_eq!(
+				flatten
+					.forward(&input)
+					.err()
+					.expect("invalid Flatten dimensions were accepted")
+					.kind(),
+				oa::ErrorKind::InvalidArgument
+			);
+		}
+		Ok(())
+	}
+);
+
+test_vk!(
+	sequential_owns_and_forwards_registered_children_in_order,
+	engine,
+	{
+		let flatten = Rc::new(oa::ml::nn::Flatten::default());
+		let head = Rc::new(oa::ml::nn::Linear::with_seed(&engine, 12, 2, 991)?);
+		let relu = Rc::new(oa::ml::nn::Relu::new());
+		let mut sequence = oa::ml::nn::Sequential::new();
+		assert!(sequence.is_empty());
+		sequence.add(flatten)?;
+		sequence.add_named("head", head.clone())?;
+		sequence.add(relu.clone())?;
+		assert_eq!(sequence.len(), 3);
+		assert_eq!(
+			sequence
+				.all_named_parameters()?
+				.iter()
+				.map(|entry| entry.path())
+				.collect::<Vec<_>>(),
+			["head.weight", "head.bias"]
+		);
+
+		let input = oa::Matrix::from_f32(&engine, [2, 3, 4], &[0.25; 24])?;
+		let output = sequence.forward(&input)?;
+		assert_eq!(output.shape(), [2, 2]);
+		assert!(output.read_f32()?.iter().all(|value| *value >= 0.0));
+		sequence.eval();
+		assert!(!sequence.is_training());
+		assert!(!head.is_training());
+		assert!(!relu.is_training());
+
+		let mut duplicate = oa::ml::nn::Sequential::new();
+		duplicate.add(relu.clone())?;
+		assert_eq!(
+			duplicate
+				.add(relu)
+				.err()
+				.expect("duplicate Sequential child was accepted")
+				.kind(),
+			oa::ErrorKind::InvalidArgument
+		);
+		Ok(())
+	}
+);

@@ -1,0 +1,208 @@
+{
+  "schema_version": 1,
+  "family": "matrix_rng",
+  "domain": "matrix",
+  "dtype": "f32",
+  "workgroup_size": [256, 1, 1],
+  "port_provenance": {
+    "classification": "mechanical_adaptation_with_donor_fix",
+    "donors": [
+      "source/cpp/lib/oa/core/shader/compute/math/philox.slang",
+      "source/cpp/lib/oa/core/shader/compute/rng/philoxUniform.slang",
+      "source/cpp/lib/oa/core/shader/compute/rng/philoxNormal.slang",
+      "source/cpp/lib/oa/core/shader/compute/rng/philoxUniformGraph.slang",
+      "source/cpp/lib/oa/core/shader/compute/rng/philoxNormalGraph.slang",
+      "source/cpp/lib/oa/core/shader/compute/rng/philoxGraphAdvance.slang",
+	  "source/cpp/lib/oa/core/fnmatrix/rng/fnMatrixRng.cpp",
+	  "source/cpp/lib/oa/ml/nn/dropout/dropout.cpp",
+      "tools/gen/fn/schema/core/coreFnMatrixRng.toml"
+    ],
+	"reason": "Preserves Philox4x32-10, Box-Muller, and inverted Dropout math while retaining the eager operation's complete 64-bit seed and distribution parameters in replay variants. Dropout is fused into one physical pass instead of materializing the donor composite's random, comparison, and scaling intermediates."
+  },
+  "operations": [
+    {
+      "stable_id": 48,
+      "name": "philox_uniform",
+      "kernel_id": "MatrixPhiloxUniformF32",
+      "training_replay_role": "frozen_rng",
+      "semantic_attributes": [["low", "float"], ["high", "float"], ["seed", "unsigned_integer"]],
+      "source": "src/slang/matrix/rng/philox_uniform.slang",
+      "variant": "generic",
+      "dispatch_tile_size": [1024, 1, 1],
+      "contract": {
+        "input_kinds": ["matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "preserve_input",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "push_fields": [
+        ["input_index", "uint32"], ["output_index", "uint32"], ["element_count", "uint32"],
+        ["seed_low", "uint32"], ["seed_high", "uint32"], ["offset", "uint32"],
+        ["low", "float32"], ["high", "float32"]
+      ]
+    },
+    {
+      "stable_id": 49,
+      "name": "philox_normal",
+      "kernel_id": "MatrixPhiloxNormalF32",
+      "training_replay_role": "frozen_rng",
+      "semantic_attributes": [["mean", "float"], ["stddev", "float"], ["seed", "unsigned_integer"]],
+      "source": "src/slang/matrix/rng/philox_normal.slang",
+      "variant": "generic",
+      "dispatch_tile_size": [512, 1, 1],
+      "contract": {
+        "input_kinds": ["matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "preserve_input",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "push_fields": [
+        ["input_index", "uint32"], ["output_index", "uint32"], ["element_count", "uint32"],
+        ["seed_low", "uint32"], ["seed_high", "uint32"], ["offset", "uint32"],
+        ["mean", "float32"], ["stddev", "float32"]
+      ]
+    },
+    {
+      "stable_id": 50,
+      "name": "philox_uniform_replay",
+      "semantic_operation": "philox_uniform",
+      "kernel_id": "MatrixPhiloxUniformReplayF32",
+      "training_replay_role": "replay_rng",
+      "source": "src/slang/matrix/rng/philox_uniform_replay.slang",
+      "variant": "generic",
+      "dispatch_tile_size": [1024, 1, 1],
+      "push_fields": [
+        ["input_index", "uint32"], ["output_index", "uint32"], ["state_index", "uint32"],
+        ["element_count", "uint32"], ["seed_low", "uint32"],
+        ["seed_high", "uint32"], ["offset", "uint32"],
+        ["low", "float32"], ["high", "float32"]
+      ]
+    },
+    {
+      "stable_id": 51,
+      "name": "philox_normal_replay",
+      "semantic_operation": "philox_normal",
+      "kernel_id": "MatrixPhiloxNormalReplayF32",
+      "training_replay_role": "replay_rng",
+      "source": "src/slang/matrix/rng/philox_normal_replay.slang",
+      "variant": "generic",
+      "dispatch_tile_size": [512, 1, 1],
+      "push_fields": [
+        ["input_index", "uint32"], ["output_index", "uint32"], ["state_index", "uint32"],
+        ["element_count", "uint32"], ["seed_low", "uint32"],
+        ["seed_high", "uint32"], ["offset", "uint32"],
+        ["mean", "float32"], ["stddev", "float32"]
+      ]
+    },
+    {
+      "stable_id": 52,
+      "name": "philox_replay_advance",
+      "kernel_id": "MatrixPhiloxReplayAdvanceU32",
+      "training_replay_role": "rng_state_advance",
+      "dtype": "u32",
+      "workgroup_size": [1, 1, 1],
+      "source": "src/slang/matrix/rng/philox_replay_advance.slang",
+      "variant": "generic",
+      "contract": {
+        "input_kinds": ["rng_state"],
+        "output_kinds": ["rng_state"],
+        "shape_rule": "advance_rng_replay",
+        "dtype_rule": "u32_state",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [0],
+        "output_alias_inputs": [0],
+        "lowering": "compute_dispatch"
+      },
+      "push_fields": [["state_index", "uint32"]]
+    },
+    {
+      "stable_id": 53,
+      "name": "dropout",
+      "kernel_id": "MatrixDropoutF32",
+      "training_replay_role": "frozen_rng",
+      "differentiation": "reverse",
+      "semantic_attributes": [["probability", "float"], ["seed", "unsigned_integer"]],
+      "source": "src/slang/matrix/rng/dropout.slang",
+      "variant": "generic",
+      "dispatch_tile_size": [1024, 1, 1],
+      "contract": {
+        "input_kinds": ["matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "preserve_input",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "push_fields": [
+        ["input_index", "uint32"], ["output_index", "uint32"],
+        ["element_count", "uint32"], ["seed_low", "uint32"],
+        ["seed_high", "uint32"], ["offset", "uint32"], ["probability", "float32"]
+      ]
+    },
+    {
+      "stable_id": 54,
+      "name": "dropout_backward",
+      "kernel_id": "MatrixDropoutBackwardF32",
+      "training_replay_role": "frozen_rng",
+      "semantic_attributes": [["probability", "float"], ["seed", "unsigned_integer"]],
+      "source": "src/slang/matrix/rng/dropout_backward.slang",
+      "variant": "generic",
+      "dispatch_tile_size": [1024, 1, 1],
+      "contract": {
+        "input_kinds": ["gradient"],
+        "output_kinds": ["gradient"],
+        "shape_rule": "preserve_input",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "push_fields": [
+        ["input_index", "uint32"], ["output_index", "uint32"],
+        ["element_count", "uint32"], ["seed_low", "uint32"],
+        ["seed_high", "uint32"], ["offset", "uint32"], ["probability", "float32"]
+      ]
+    },
+    {
+      "stable_id": 55,
+      "name": "dropout_replay",
+      "semantic_operation": "dropout",
+      "kernel_id": "MatrixDropoutReplayF32",
+      "training_replay_role": "replay_rng",
+      "source": "src/slang/matrix/rng/dropout_replay.slang",
+      "variant": "generic",
+      "dispatch_tile_size": [1024, 1, 1],
+      "push_fields": [
+        ["input_index", "uint32"], ["output_index", "uint32"], ["state_index", "uint32"],
+        ["element_count", "uint32"], ["seed_low", "uint32"],
+        ["seed_high", "uint32"], ["offset", "uint32"], ["probability", "float32"]
+      ]
+    },
+    {
+      "stable_id": 56,
+      "name": "dropout_backward_replay",
+      "semantic_operation": "dropout_backward",
+      "kernel_id": "MatrixDropoutBackwardReplayF32",
+      "training_replay_role": "replay_rng",
+      "source": "src/slang/matrix/rng/dropout_backward_replay.slang",
+      "variant": "generic",
+      "dispatch_tile_size": [1024, 1, 1],
+      "push_fields": [
+        ["input_index", "uint32"], ["output_index", "uint32"], ["state_index", "uint32"],
+        ["element_count", "uint32"], ["seed_low", "uint32"],
+        ["seed_high", "uint32"], ["offset", "uint32"], ["probability", "float32"]
+      ]
+    }
+  ]
+}

@@ -1,0 +1,372 @@
+{
+  "schema_version": 1,
+  "family": "matrix_reduce",
+  "domain": "matrix",
+  "dtype": "f32",
+  "workgroup_size": [256, 1, 1],
+  "port_provenance": {
+    "classification": "mechanical_adaptation",
+    "donors": [
+      "tools/gen/fn/schema/core/coreFnMatrixReduce.toml",
+      "source/cpp/lib/oa/core/fnmatrix/reduce/fnMatrixReduce.cpp",
+      "source/cpp/lib/oa/core/autograd/matrix/autogradReduce.h",
+      "source/cpp/lib/oa/core/shader/compute/flat/categoricalAccuracyCount.slang",
+      "source/cpp/lib/oa/core/shader/compute/flat/maskedCategoricalAccuracyCount.slang",
+      "source/cpp/lib/oa/ml/shader/compute/nn/softmax/softmax.slang",
+      "source/cpp/lib/oa/ml/shader/compute/nn/softmax/softmaxBwd.slang",
+      "source/cpp/lib/oa/ml/shader/compute/nn/softmax/logSoftmax.slang",
+      "source/cpp/lib/oa/ml/shader/compute/nn/softmax/logSoftmaxBwd.slang"
+    ],
+    "reason": "Preserves the donor axis-aware stable FP32 Softmax, full and keep-dimension Sum schedules and adjoints, plus device-resident categorical accuracy counters while adapting names, attributes, and the bindless ABI to OARS."
+  },
+  "operations": [
+    {
+      "stable_id": 118,
+      "name": "softmax",
+      "kernel_id": "MatrixSoftmaxF32",
+      "source": "src/slang/matrix/reduce/softmax.slang",
+      "variant": "generic",
+      "physical_write": {
+        "writes": [{
+          "binding": 1,
+          "domain": "axis_slices",
+          "partition": "exclusive_per_workgroup",
+          "extent": "axis_slice",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "differentiation": "reverse",
+      "semantic_attributes": [["dim", "signed_integer"]],
+      "contract": {
+        "input_kinds": ["matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "preserve_input",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "push_fields": [
+        ["input_index", "uint32"], ["output_index", "uint32"],
+        ["outer_size", "uint32"], ["dim_size", "uint32"],
+        ["inner_size", "uint32"]
+      ],
+      "test": {
+        "shape": [2, 3, 4],
+        "dim": 1,
+        "tolerance": 0.00002
+      }
+    },
+    {
+      "stable_id": 119,
+      "name": "softmax_backward",
+      "kernel_id": "MatrixSoftmaxBackwardF32",
+      "source": "src/slang/matrix/reduce/softmax_backward.slang",
+      "variant": "generic",
+      "physical_write": {
+        "writes": [{
+          "binding": 2,
+          "domain": "axis_slices",
+          "partition": "exclusive_per_workgroup",
+          "extent": "axis_slice",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "differentiation": "none",
+      "semantic_attributes": [["dim", "signed_integer"]],
+      "contract": {
+        "input_kinds": ["matrix", "matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "match_input",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "push_fields": [
+        ["forward_output_index", "uint32"],
+        ["output_gradient_index", "uint32"],
+        ["input_gradient_index", "uint32"],
+        ["outer_size", "uint32"], ["dim_size", "uint32"],
+        ["inner_size", "uint32"]
+      ],
+      "test": {
+        "shape": [2, 3, 4],
+        "dim": 1,
+        "tolerance": 0.00003
+      }
+    },
+    {
+      "stable_id": 270,
+      "name": "log_softmax",
+      "kernel_id": "MatrixLogSoftmaxF32",
+      "source": "src/slang/matrix/reduce/log_softmax.slang",
+      "variant": "generic",
+      "physical_write": {
+        "writes": [{
+          "binding": 1,
+          "domain": "axis_slices",
+          "partition": "exclusive_per_workgroup",
+          "extent": "axis_slice",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "differentiation": "reverse",
+      "semantic_attributes": [["dim", "signed_integer"]],
+      "contract": {
+        "input_kinds": ["matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "preserve_input",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "push_fields": [
+        ["input_index", "uint32"], ["output_index", "uint32"],
+        ["outer_size", "uint32"], ["dim_size", "uint32"],
+        ["inner_size", "uint32"]
+      ],
+      "test": {
+        "shape": [2, 3, 4],
+        "dim": 1,
+        "tolerance": 0.00002
+      }
+    },
+    {
+      "stable_id": 271,
+      "name": "log_softmax_backward",
+      "kernel_id": "MatrixLogSoftmaxBackwardF32",
+      "source": "src/slang/matrix/reduce/log_softmax_backward.slang",
+      "variant": "generic",
+      "physical_write": {
+        "writes": [{
+          "binding": 2,
+          "domain": "axis_slices",
+          "partition": "exclusive_per_workgroup",
+          "extent": "axis_slice",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "differentiation": "none",
+      "semantic_attributes": [["dim", "signed_integer"]],
+      "contract": {
+        "input_kinds": ["matrix", "matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "match_input",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "push_fields": [
+        ["forward_output_index", "uint32"],
+        ["output_gradient_index", "uint32"],
+        ["input_gradient_index", "uint32"],
+        ["outer_size", "uint32"], ["dim_size", "uint32"],
+        ["inner_size", "uint32"]
+      ],
+      "test": {
+        "shape": [2, 3, 4],
+        "dim": 1,
+        "tolerance": 0.00003
+      }
+    },
+    {
+      "stable_id": 120,
+      "name": "sum",
+      "kernel_id": "MatrixSumF32",
+      "source": "src/slang/matrix/reduce/sum.slang",
+      "variant": "generic",
+      "physical_write": {
+        "writes": [{
+          "binding": 1,
+          "domain": "scalar",
+          "partition": "exclusive_per_workgroup",
+          "extent": "one_scalar",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "differentiation": "reverse",
+      "semantic_attributes": [["dim", "signed_integer"]],
+      "contract": {
+        "input_kinds": ["matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "explicit",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "push_fields": [
+        ["input_index", "uint32"], ["output_index", "uint32"],
+        ["element_count", "uint32"]
+      ],
+      "test": {
+        "shape": [2, 3, 4],
+        "dim": 1,
+        "tolerance": 0.00002
+      }
+    },
+    {
+      "stable_id": 121,
+      "name": "sum_axis",
+      "semantic_operation": "sum",
+      "lowering_only": true,
+      "kernel_id": "MatrixSumAxisF32",
+      "source": "src/slang/matrix/reduce/sum_axis.slang",
+      "variant": "generic",
+      "physical_write": {
+        "writes": [{
+          "binding": 1,
+          "domain": "output_elements",
+          "partition": "exclusive_per_invocation",
+          "extent": "one_element",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"], ["output_index", "uint32"],
+        ["outer_size", "uint32"], ["dim_size", "uint32"],
+        ["inner_size", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 122,
+      "name": "sum_backward",
+      "kernel_id": "MatrixSumBackwardF32",
+      "source": "src/slang/matrix/reduce/sum_backward.slang",
+      "variant": "generic",
+      "physical_write": {
+        "writes": [{
+          "binding": 1,
+          "domain": "output_elements",
+          "partition": "exclusive_per_invocation",
+          "extent": "one_element",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "none"
+      },
+      "differentiation": "none",
+      "semantic_attributes": [["dim", "signed_integer"]],
+      "contract": {
+        "input_kinds": ["matrix", "matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "explicit",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "push_fields": [
+        ["output_gradient_index", "uint32"],
+        ["input_gradient_index", "uint32"],
+        ["outer_size", "uint32"], ["dim_size", "uint32"],
+        ["inner_size", "uint32"]
+      ],
+      "test": {
+        "shape": [2, 3, 4],
+        "dim": 1,
+        "tolerance": 0.00002
+      }
+    },
+    {
+      "stable_id": 310,
+      "name": "categorical_accuracy_count",
+      "kernel_id": "MatrixCategoricalAccuracyCountF32",
+      "source": "src/slang/matrix/reduce/categorical_accuracy_count.slang",
+      "variant": "generic",
+      "physical_write": {
+        "writes": [{
+          "binding": 2,
+          "domain": "scalar",
+          "partition": "exclusive_per_workgroup",
+          "extent": "one_scalar",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "differentiation": "none",
+      "semantic_attributes": [],
+      "contract": {
+        "input_kinds": ["matrix", "class_indices"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "categorical_rows_to_u32_scalar",
+        "dtype_rule": "f32_logits_u8_u32_or_i32_labels_u32_output",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "push_fields": [
+        ["logits_index", "uint32"], ["labels_index", "uint32"],
+        ["output_index", "uint32"], ["rows", "uint32"],
+        ["classes", "uint32"], ["label_dtype", "uint32"]
+      ],
+      "test": {
+        "shape": [2, 3, 4],
+        "tolerance": 0
+      }
+    },
+    {
+      "stable_id": 234,
+      "name": "masked_categorical_accuracy_count",
+      "kernel_id": "MatrixMaskedCategoricalAccuracyCountF32",
+      "source": "src/slang/matrix/reduce/masked_categorical_accuracy_count.slang",
+      "variant": "generic",
+      "physical_write": {
+        "writes": [{
+          "binding": 3,
+          "domain": "scalar",
+          "partition": "exclusive_per_workgroup",
+          "extent": "one_scalar",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "differentiation": "none",
+      "semantic_attributes": [],
+      "contract": {
+        "input_kinds": ["matrix", "class_indices", "matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "categorical_rows_to_u32_scalar",
+        "dtype_rule": "f32_logits_u8_u32_or_i32_labels_f32_mask_u32_output",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "push_fields": [
+        ["logits_index", "uint32"], ["labels_index", "uint32"],
+        ["mask_index", "uint32"], ["output_index", "uint32"],
+        ["rows", "uint32"], ["classes", "uint32"],
+        ["label_dtype", "uint32"]
+      ],
+      "test": {
+        "shape": [2, 3, 4],
+        "tolerance": 0
+      }
+    }
+  ]
+}

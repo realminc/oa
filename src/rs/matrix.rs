@@ -6,6 +6,11 @@ use crate::{
 	runtime::{BufferBinding, ComputeDispatch, KernelId, PushConstant, SemanticDispatch},
 };
 
+mod rng;
+
+pub(crate) use rng::dropout_backward;
+pub use rng::{dropout, philox_normal, philox_uniform, set_rng_seed};
+
 /// Create an FP32 matrix filled with ones.
 ///
 /// # Errors
@@ -92,7 +97,6 @@ fn binary(
 		let outputs = [&output];
 		engine.record_semantic(
 			ComputeDispatch {
-				operation,
 				kernel,
 				buffers: &buffers,
 				push_constants: &push_constants,
@@ -142,7 +146,6 @@ fn unary(
 		let outputs = [&output];
 		engine.record_semantic(
 			ComputeDispatch {
-				operation,
 				kernel,
 				buffers: &buffers,
 				push_constants: &push_constants,
@@ -190,7 +193,6 @@ fn unary_scalar(
 		}];
 		engine.record_semantic(
 			ComputeDispatch {
-				operation,
 				kernel,
 				buffers: &buffers,
 				push_constants: &push_constants,
@@ -283,11 +285,551 @@ fn mat_mul_nt_impl(left: &Matrix, right: &Matrix, contract: OperationContract) -
 		let outputs = [&output];
 		engine.record_semantic(
 			ComputeDispatch {
-				operation,
 				kernel,
 				buffers: &buffers,
 				push_constants: &push_constants,
 				workgroups: kernel.output_workgroups(m, n),
+			},
+			SemanticDispatch {
+				contract,
+				inputs: &inputs,
+				outputs: &outputs,
+				attributes: &[],
+			},
+		)?;
+	}
+	Ok(output)
+}
+
+struct AxisShape {
+	outer_size: u32,
+	dim_size: u32,
+	inner_size: u32,
+	group_count: u32,
+}
+
+fn resolve_axis(input: &Matrix, dim: i32, operation: &'static str) -> Result<AxisShape> {
+	if input.dtype() != DType::F32 || input.shape().is_empty() || input.num_elements() == 0 {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires a nonempty FP32 matrix"
+		)));
+	}
+	let byte_size = input
+		.num_elements()
+		.checked_mul(DType::F32.size_bytes())
+		.ok_or_else(|| Error::invalid_argument(format!("{operation} byte size overflows usize")))?;
+	u32::try_from(byte_size).map_err(|_| {
+		Error::invalid_argument(format!(
+			"{operation} byte-address range exceeds the admitted shader ABI"
+		))
+	})?;
+	let rank = input.shape().len();
+	let axis = if dim == -1 {
+		rank - 1
+	} else {
+		usize::try_from(dim).map_err(|_| {
+			Error::invalid_argument(format!(
+				"{operation} dim must be -1 or a valid non-negative axis; found {dim}"
+			))
+		})?
+	};
+	if axis >= rank {
+		return Err(Error::invalid_argument(format!(
+			"{operation} dim {dim} is invalid for rank {rank}"
+		)));
+	}
+	let outer_size = input.shape()[..axis]
+		.iter()
+		.try_fold(1_usize, |product, extent| product.checked_mul(*extent))
+		.ok_or_else(|| {
+			Error::invalid_argument(format!("{operation} outer size overflows usize"))
+		})?;
+	let dim_size = input.shape()[axis];
+	let inner_size = input.shape()[axis + 1..]
+		.iter()
+		.try_fold(1_usize, |product, extent| product.checked_mul(*extent))
+		.ok_or_else(|| {
+			Error::invalid_argument(format!("{operation} inner size overflows usize"))
+		})?;
+	let group_count = outer_size.checked_mul(inner_size).ok_or_else(|| {
+		Error::invalid_argument(format!("{operation} dispatch count overflows usize"))
+	})?;
+	Ok(AxisShape {
+		outer_size: u32::try_from(outer_size)
+			.map_err(|_| Error::invalid_argument(format!("{operation} outer size exceeds u32")))?,
+		dim_size: u32::try_from(dim_size)
+			.map_err(|_| Error::invalid_argument(format!("{operation} axis size exceeds u32")))?,
+		inner_size: u32::try_from(inner_size)
+			.map_err(|_| Error::invalid_argument(format!("{operation} inner size exceeds u32")))?,
+		group_count: u32::try_from(group_count).map_err(|_| {
+			Error::invalid_argument(format!("{operation} dispatch count exceeds u32"))
+		})?,
+	})
+}
+
+#[derive(Clone, Copy)]
+enum AxisNormalization {
+	Softmax,
+	LogSoftmax,
+}
+
+fn axis_normalization_impl(
+	input: &Matrix,
+	dim: i32,
+	contract: OperationContract,
+	kernel: KernelId,
+	kind: AxisNormalization,
+) -> Result<Matrix> {
+	let operation = contract.name();
+	let axis = resolve_axis(input, dim, operation)?;
+	let output = Matrix::allocate(
+		input.engine_handle(),
+		input.shape().to_vec(),
+		input.num_elements(),
+		DType::F32,
+	)?;
+	let buffers = [
+		BufferBinding::read(input.storage()),
+		BufferBinding::write(output.storage()),
+	];
+	let push_constants = [
+		PushConstant::U32(axis.outer_size),
+		PushConstant::U32(axis.dim_size),
+		PushConstant::U32(axis.inner_size),
+	];
+	let attributes = [OpAttribute::SignedInteger {
+		name: "dim".into(),
+		value: i64::from(dim),
+	}];
+	let inputs = [input];
+	let outputs = [&output];
+	input.engine_handle().record_semantic(
+		ComputeDispatch {
+			kernel,
+			buffers: &buffers,
+			push_constants: &push_constants,
+			workgroups: [axis.group_count, 1, 1],
+		},
+		SemanticDispatch {
+			contract,
+			inputs: &inputs,
+			outputs: &outputs,
+			attributes: &attributes,
+		},
+	)?;
+	let node = match kind {
+		AxisNormalization::Softmax => MatrixNode::Softmax {
+			input: input.clone(),
+			output: output.clone(),
+			output_id: output.value_id(),
+			dim,
+		},
+		AxisNormalization::LogSoftmax => MatrixNode::LogSoftmax {
+			input: input.clone(),
+			output: output.clone(),
+			output_id: output.value_id(),
+			dim,
+		},
+	};
+	autograd::record(node)?;
+	Ok(output)
+}
+
+fn softmax_impl(input: &Matrix, dim: i32, contract: OperationContract) -> Result<Matrix> {
+	axis_normalization_impl(
+		input,
+		dim,
+		contract,
+		KernelId::MatrixSoftmaxF32,
+		AxisNormalization::Softmax,
+	)
+}
+
+fn log_softmax_impl(input: &Matrix, dim: i32, contract: OperationContract) -> Result<Matrix> {
+	axis_normalization_impl(
+		input,
+		dim,
+		contract,
+		KernelId::MatrixLogSoftmaxF32,
+		AxisNormalization::LogSoftmax,
+	)
+}
+
+fn axis_normalization_backward_impl(
+	forward_output: &Matrix,
+	output_gradient: &Matrix,
+	dim: i32,
+	contract: OperationContract,
+	kernel: KernelId,
+) -> Result<Matrix> {
+	let operation = contract.name();
+	if forward_output.shape() != output_gradient.shape()
+		|| forward_output.dtype() != output_gradient.dtype()
+	{
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires matching forward-output and output-gradient matrices"
+		)));
+	}
+	if !forward_output
+		.engine_handle()
+		.same_as(output_gradient.engine_handle())
+	{
+		return Err(Error::invalid_argument(format!(
+			"{operation} inputs must belong to the same engine"
+		)));
+	}
+	let axis = resolve_axis(forward_output, dim, operation)?;
+	let input_gradient = Matrix::allocate(
+		forward_output.engine_handle(),
+		forward_output.shape().to_vec(),
+		forward_output.num_elements(),
+		DType::F32,
+	)?;
+	let buffers = [
+		BufferBinding::read(forward_output.storage()),
+		BufferBinding::read(output_gradient.storage()),
+		BufferBinding::write(input_gradient.storage()),
+	];
+	let push_constants = [
+		PushConstant::U32(axis.outer_size),
+		PushConstant::U32(axis.dim_size),
+		PushConstant::U32(axis.inner_size),
+	];
+	let attributes = [OpAttribute::SignedInteger {
+		name: "dim".into(),
+		value: i64::from(dim),
+	}];
+	let inputs = [forward_output, output_gradient];
+	let outputs = [&input_gradient];
+	forward_output.engine_handle().record_semantic(
+		ComputeDispatch {
+			kernel,
+			buffers: &buffers,
+			push_constants: &push_constants,
+			workgroups: [axis.group_count, 1, 1],
+		},
+		SemanticDispatch {
+			contract,
+			inputs: &inputs,
+			outputs: &outputs,
+			attributes: &attributes,
+		},
+	)?;
+	Ok(input_gradient)
+}
+
+fn softmax_backward_impl(
+	forward_output: &Matrix,
+	output_gradient: &Matrix,
+	dim: i32,
+	contract: OperationContract,
+) -> Result<Matrix> {
+	axis_normalization_backward_impl(
+		forward_output,
+		output_gradient,
+		dim,
+		contract,
+		KernelId::MatrixSoftmaxBackwardF32,
+	)
+}
+
+fn log_softmax_backward_impl(
+	forward_output: &Matrix,
+	output_gradient: &Matrix,
+	dim: i32,
+	contract: OperationContract,
+) -> Result<Matrix> {
+	axis_normalization_backward_impl(
+		forward_output,
+		output_gradient,
+		dim,
+		contract,
+		KernelId::MatrixLogSoftmaxBackwardF32,
+	)
+}
+
+fn sum_shape(input: &Matrix, dim: i32, operation: &'static str) -> Result<(AxisShape, Vec<usize>)> {
+	if dim < -1 {
+		return Err(Error::invalid_argument(format!(
+			"{operation} dim must be -1 or a valid non-negative axis; found {dim}"
+		)));
+	}
+	if dim == -1 {
+		resolve_axis(input, -1, operation)?;
+		let element_count = u32::try_from(input.num_elements()).map_err(|_| {
+			Error::invalid_argument(format!("{operation} element count exceeds u32"))
+		})?;
+		return Ok((
+			AxisShape {
+				outer_size: 1,
+				dim_size: element_count,
+				inner_size: 1,
+				group_count: 1,
+			},
+			vec![1],
+		));
+	}
+	let axis = resolve_axis(input, dim, operation)?;
+	let mut output_shape = input.shape().to_vec();
+	output_shape[usize::try_from(dim).map_err(|_| {
+		Error::invalid_argument(format!("{operation} dim cannot be represented as usize"))
+	})?] = 1;
+	Ok((axis, output_shape))
+}
+
+fn sum_impl(input: &Matrix, dim: i32, contract: OperationContract) -> Result<Matrix> {
+	let operation = contract.name();
+	let (axis, output_shape) = sum_shape(input, dim, operation)?;
+	let output_count = if dim == -1 {
+		1
+	} else {
+		usize::try_from(axis.group_count).map_err(|_| {
+			Error::invalid_argument(format!("{operation} output count exceeds usize"))
+		})?
+	};
+	let output = Matrix::allocate(
+		input.engine_handle(),
+		output_shape,
+		output_count,
+		DType::F32,
+	)?;
+	let buffers = [
+		BufferBinding::read(input.storage()),
+		BufferBinding::write(output.storage()),
+	];
+	let full_push = [PushConstant::U32(axis.dim_size)];
+	let axis_push = [
+		PushConstant::U32(axis.outer_size),
+		PushConstant::U32(axis.dim_size),
+		PushConstant::U32(axis.inner_size),
+	];
+	let (kernel, push_constants, workgroups) = if dim == -1 {
+		(KernelId::MatrixSumF32, full_push.as_slice(), [1, 1, 1])
+	} else {
+		(
+			KernelId::MatrixSumAxisF32,
+			axis_push.as_slice(),
+			[axis.group_count.div_ceil(256), 1, 1],
+		)
+	};
+	let attributes = [OpAttribute::SignedInteger {
+		name: "dim".into(),
+		value: i64::from(dim),
+	}];
+	let inputs = [input];
+	let outputs = [&output];
+	input.engine_handle().record_semantic(
+		ComputeDispatch {
+			kernel,
+			buffers: &buffers,
+			push_constants,
+			workgroups,
+		},
+		SemanticDispatch {
+			contract,
+			inputs: &inputs,
+			outputs: &outputs,
+			attributes: &attributes,
+		},
+	)?;
+	autograd::record(MatrixNode::Sum {
+		input: input.clone(),
+		output_id: output.value_id(),
+		dim,
+	})?;
+	Ok(output)
+}
+
+fn sum_backward_impl(
+	input: &Matrix,
+	output_gradient: &Matrix,
+	dim: i32,
+	contract: OperationContract,
+) -> Result<Matrix> {
+	let operation = contract.name();
+	let (axis, output_shape) = sum_shape(input, dim, operation)?;
+	if output_gradient.dtype() != DType::F32 || output_gradient.shape() != output_shape {
+		return Err(Error::invalid_argument(format!(
+			"{operation} output gradient has {:?} {}; expected {:?} F32",
+			output_gradient.shape(),
+			output_gradient.dtype().token(),
+			output_shape
+		)));
+	}
+	if !input
+		.engine_handle()
+		.same_as(output_gradient.engine_handle())
+	{
+		return Err(Error::invalid_argument(format!(
+			"{operation} inputs must belong to the same engine"
+		)));
+	}
+	let input_gradient = Matrix::allocate(
+		input.engine_handle(),
+		input.shape().to_vec(),
+		input.num_elements(),
+		DType::F32,
+	)?;
+	let buffers = [
+		BufferBinding::read(output_gradient.storage()),
+		BufferBinding::write(input_gradient.storage()),
+	];
+	let push_constants = [
+		PushConstant::U32(axis.outer_size),
+		PushConstant::U32(axis.dim_size),
+		PushConstant::U32(axis.inner_size),
+	];
+	let attributes = [OpAttribute::SignedInteger {
+		name: "dim".into(),
+		value: i64::from(dim),
+	}];
+	let inputs = [input, output_gradient];
+	let outputs = [&input_gradient];
+	input.engine_handle().record_semantic(
+		ComputeDispatch {
+			kernel: KernelId::MatrixSumBackwardF32,
+			buffers: &buffers,
+			push_constants: &push_constants,
+			workgroups: [
+				u32::try_from(input.num_elements())
+					.map_err(|_| {
+						Error::invalid_argument(format!("{operation} element count exceeds u32"))
+					})?
+					.div_ceil(256),
+				1,
+				1,
+			],
+		},
+		SemanticDispatch {
+			contract,
+			inputs: &inputs,
+			outputs: &outputs,
+			attributes: &attributes,
+		},
+	)?;
+	Ok(input_gradient)
+}
+
+fn categorical_accuracy_count_impl(
+	logits: &Matrix,
+	labels: &Matrix,
+	mask: Option<&Matrix>,
+	contract: OperationContract,
+) -> Result<Matrix> {
+	let operation = contract.name();
+	if logits.dtype() != DType::F32 || logits.shape().len() < 2 || logits.num_elements() == 0 {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires nonempty rank-two-or-greater F32 logits"
+		)));
+	}
+	let classes = *logits.shape().last().ok_or_else(|| {
+		Error::invalid_argument(format!("{operation} logits must expose a class axis"))
+	})?;
+	let label_shape = &logits.shape()[..logits.shape().len() - 1];
+	if labels.shape() != label_shape {
+		return Err(Error::invalid_argument(format!(
+			"{operation} labels have shape {:?}; expected {:?}",
+			labels.shape(),
+			label_shape
+		)));
+	}
+	let label_dtype = match labels.dtype() {
+		DType::U8 => 0,
+		DType::U32 => 1,
+		DType::I32 => 2,
+		_ => {
+			return Err(Error::invalid_argument(format!(
+				"{operation} labels must use U8, U32, or I32; found {}",
+				labels.dtype().token()
+			)));
+		}
+	};
+	let engine = logits.engine_handle();
+	if !engine.same_as(labels.engine_handle()) {
+		return Err(Error::invalid_argument(format!(
+			"{operation} inputs must belong to the same engine"
+		)));
+	}
+	if let Some(mask) = mask {
+		if mask.dtype() != DType::F32 || mask.shape() != label_shape {
+			return Err(Error::invalid_argument(format!(
+				"{operation} mask has shape {:?} {}; expected {:?} F32",
+				mask.shape(),
+				mask.dtype().token(),
+				label_shape
+			)));
+		}
+		if !engine.same_as(mask.engine_handle()) {
+			return Err(Error::invalid_argument(format!(
+				"{operation} inputs must belong to the same engine"
+			)));
+		}
+	}
+	let validate_byte_range = |matrix: &Matrix, label: &str| -> Result<()> {
+		let byte_size = matrix
+			.num_elements()
+			.checked_mul(matrix.dtype().size_bytes())
+			.ok_or_else(|| {
+				Error::invalid_argument(format!("{operation} {label} byte size overflows usize"))
+			})?;
+		u32::try_from(byte_size).map_err(|_| {
+			Error::invalid_argument(format!(
+				"{operation} {label} byte-address range exceeds the shader ABI"
+			))
+		})?;
+		Ok(())
+	};
+	validate_byte_range(logits, "logits")?;
+	validate_byte_range(labels, "labels")?;
+	if let Some(mask) = mask {
+		validate_byte_range(mask, "mask")?;
+	}
+	let rows = u32::try_from(labels.num_elements())
+		.map_err(|_| Error::invalid_argument(format!("{operation} row count exceeds u32")))?;
+	let classes = u32::try_from(classes)
+		.map_err(|_| Error::invalid_argument(format!("{operation} class count exceeds u32")))?;
+	let output = Matrix::allocate(engine, vec![1], 1, DType::U32)?;
+	let push_constants = [
+		PushConstant::U32(rows),
+		PushConstant::U32(classes),
+		PushConstant::U32(label_dtype),
+	];
+	let outputs = [&output];
+	if let Some(mask) = mask {
+		let buffers = [
+			BufferBinding::read(logits.storage()),
+			BufferBinding::read(labels.storage()),
+			BufferBinding::read(mask.storage()),
+			BufferBinding::write(output.storage()),
+		];
+		let inputs = [logits, labels, mask];
+		engine.record_semantic(
+			ComputeDispatch {
+				kernel: KernelId::MatrixMaskedCategoricalAccuracyCountF32,
+				buffers: &buffers,
+				push_constants: &push_constants,
+				workgroups: [1, 1, 1],
+			},
+			SemanticDispatch {
+				contract,
+				inputs: &inputs,
+				outputs: &outputs,
+				attributes: &[],
+			},
+		)?;
+	} else {
+		let buffers = [
+			BufferBinding::read(logits.storage()),
+			BufferBinding::read(labels.storage()),
+			BufferBinding::write(output.storage()),
+		];
+		let inputs = [logits, labels];
+		engine.record_semantic(
+			ComputeDispatch {
+				kernel: KernelId::MatrixCategoricalAccuracyCountF32,
+				buffers: &buffers,
+				push_constants: &push_constants,
+				workgroups: [1, 1, 1],
 			},
 			SemanticDispatch {
 				contract,
@@ -318,3 +860,4 @@ fn select_kernel(
 
 include!("matrix/elemwise.gen.rs");
 include!("matrix/blas.gen.rs");
+include!("matrix/reduce.gen.rs");

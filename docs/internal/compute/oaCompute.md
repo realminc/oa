@@ -1,211 +1,244 @@
 # OA Rust Compute Architecture
 
-**Status:** Canonical architecture; one-device elementwise execution is Experimental
+**Status:** Canonical target; the implemented one-device Vulkan path is Experimental
 
-**Updated:** 2026-09-09
+**Updated:** 2026-09-10
 
-This document owns the Rust compute subsystem contract. The C++ compute system
-provides behavioral evidence and hard-won implementation constraints, but its
-classes and source layout are not a porting template.
+This document owns the compute subsystem boundary in OARS. Compute is not a
+synonym for ML or DNN: GPU-lowered Matrix, Image, Vision, Audio, Video, Render,
+Crypto, and future scientific work shares the same semantic compiler and
+executable Vulkan runtime. [OaDna](oaDna.md) is the private cross-domain
+optimization planner inside that compiler.
 
-## Current executable path
+## Shipped, Experimental, and Planned
 
-The implemented path is:
+Nothing in the GPU compute surface is Shipped yet.
+
+Experimental source currently proves:
+
+- one selected Vulkan 1.3 device and one compute queue;
+- schema-generated dense `f32` elementwise operations, `i32` Matrix add, and
+  one FP32 `matrix::mat_mul_nt` 64x64x16 tiled kernel;
+- an engine-owned bindless storage-buffer heap, exact timeline events, eager
+  batching, RAW/WAR/WAW planning, isolated capture, and immutable replay;
+- one cached simultaneous-use command buffer for unchanged untimed plans;
+- whole-plan Vulkan timestamp measurement for explicitly timed replay;
+- a private donor-backed semantic compatibility analyzer and two exact-shape
+  inference replacements: QKV projection+bias and gate/up+SwiGLU;
+- stable training resource frames, graph-resident replay RNG counters, and
+  in-place AdamW state represented as semantic SSA aliases;
+- generated physical-write contracts and prepared-dispatch binding checks for
+  Core reductions/Scale and ML LayerNorm/RMSNorm/core losses, with unclassified
+  candidates reported explicitly as `null`.
+
+Planned work includes general GEMM routing, candidate selection and autotuning,
+low precision and quantization, image/vision kernels, vision microfusions,
+transfer/image/indirect/render/media graph nodes, multi-queue scheduling,
+multi-device execution, qualified cross-vendor performance packs, explicit
+physical write-domain coverage for every remaining candidate, byte-range and
+alias proofs, and complete prepared-dispatch evidence.
+
+The C++ OA implementation is donor evidence, not OARS shipping evidence. Its
+kernel counts, timing results, and supported-device claims must not be copied
+as Rust status.
+
+## End-to-end path
 
 ```text
-matrix operation schema
-  -> generated Rust domain function
-  -> shared semantic validation and direct lowering
-  -> runtime::ComputeDispatch
-  -> private ExecutionSession::record
-  -> owned ExecutableGraph snapshots
-  -> private semantic DNN partitioning and qualified physical replacement
-  -> blocking observation or Engine::checkpoint
-  -> one joined hazard-planned graph
-  -> runtime/vk command recording
-  -> one Vulkan compute queue
-  -> timeline Event retained by the output Matrix
-  -> read::<T> waits at host observation
+domain operation schema
+  -> generated Rust operation and semantic contract
+  -> SemanticGraph values, operations, effects, aliases, and metadata
+  -> OaDna pattern partitioning and fusion eligibility
+  -> capability/numeric/workspace filter
+  -> kernel-family candidate selection or cached tuning result
+  -> validate physical write domain, collision policy, bindings, and dispatch
+  -> generic executable nodes and physical resources
+  -> lifetime, transient-memory, queue, and synchronization planning
+  -> reusable Vulkan command recording
+  -> explicit timeline Event
 ```
 
-The current Experimental lowerer records each non-empty operation into the
-engine-owned private execution session. Ordinary APIs return values and never
-require callers to invoke `submit` or `wait`. Blocking host observation submits
-the pending batch and waits for its exact event; `Engine::checkpoint` is the
-explicit submission boundary.
+Only the first, simpler form of this path exists today. Current domain
+lowering chooses an exact generated kernel ID before recording a
+`ComputeDispatch`; it does not yet enumerate or tune candidates.
 
 ## Ownership boundaries
 
-| Layer | Owns now | Must not own |
+| Layer | Owns | Never owns |
 |---|---|---|
-| `matrix` and other domain modules | semantic validation, output shape/dtype, operation identity, lowering | Vulkan handles, queues, or per-operation engine methods |
-| operation schema and generator | mechanical API, contracts, kernel identity, shader source, tests | runtime policy or measured route choice |
-| `runtime::ComputeDispatch` | backend-neutral executable bindings, access declarations, push values, workgroups | mathematical semantics or Vulkan handles |
-| private `ExecutableGraph` | owned concrete buffer bindings, copied push values, resource hazards, ordered nodes, and many-to-one semantic ownership after qualified lowering | public graph editing or public provider policy |
-| private `ExecutionSession` | pending eager graphs, written-storage readiness, batch transfer at submission | device, queue, allocator, or public lifecycle ceremony |
-| `Engine` and its private handle | device services, submission epochs, retirement, future scheduling/profiling | duplicated domain operations |
-| `runtime/vk` | Ash handles, descriptors, pipelines, command recording, queue submission, timeline synchronization | public matrix/image/audio semantics |
+| Domain module | semantic validation, result metadata, operation identity | Vulkan handles or route selection |
+| Operation schema | mechanically derivable Rust/Python surface, compatibility roles, validation and test fixtures | runtime measurements or device policy |
+| Semantic graph | typed values, layouts, aliases, mutation, effects, autograd and control provenance | pipelines, descriptors, barriers |
+| OaDna | legal partitions, cross-domain fusions, training/liveness constraints, candidate requests | device/queue lifetime or public vendor knobs |
+| OaBlasLt/OaTile and other private providers | complete physical problem, candidates, plans, workspace, numeric policy | public Matrix/Image semantics |
+| Executable graph | retained resources, concrete nodes, hazards, schedules and semantic provenance | public graph editing |
+| `Engine` | devices, memory, descriptors, pipelines, scheduling, profiling, submission and retirement | duplicated domain APIs |
+| `runtime/vk` | Ash handles, command encoding and Vulkan synchronization | semantic meaning |
 
-`Engine` is the only local execution owner. A value retains the same private
-engine services needed to keep storage and pending work alive; it does not own
-or create another runtime.
+`Engine` remains the sole local execution owner. Values retain opaque access to
+the same engine services needed for storage and pending work; they do not own a
+second runtime. Destructors release ownership only and never submit, wait,
+read back, drain, or close a session.
 
-The Vulkan device currently owns one bindless storage-buffer descriptor heap
-shared by all generated compute pipelines. Buffers own descriptor indices;
-recorded command buffers retain the buffers they reference until their exact
-timeline epoch retires.
+## Semantic work versus executable work
 
-The device also owns a bounded exact-size storage-buffer pool above VMA. The
-final buffer owner may return its Vulkan buffer, VMA allocation, and still-bound
-descriptor slot to that pool only after recorded-command ownership has ended;
-submitted commands retain their buffers through exact timeline retirement.
-Reuse therefore changes allocation policy without weakening the completion
-edge. A reused upload overwrites the complete logical byte range before
-publication, different sizes never alias through this pool, descriptor pressure
-can evict a pooled entry, and device destruction drains pooled allocations
-before destroying the descriptor heap and VMA allocator. The Experimental pool
-is capped at 256 buffers and 256 MiB; upload/readback rings and graph-lifetime
-transient aliasing remain separate Planned mechanisms.
+The semantic graph must preserve everything needed to prove a transformation:
 
-## Semantic and executable work
+- operation and value identity;
+- shape, dtype, stride, offset, layout, color, timing, channel and topology
+  metadata as applicable;
+- aliases, mutations, external values, virtual values and observable outputs;
+- numeric/determinism policy, saved-for-backward data and side effects;
+- control dependencies and semantic owners of fused work.
 
-The semantic layer owns:
+The executable graph owns physical decisions:
 
-- operation identity and typed inputs/outputs;
-- shapes, dtypes, layouts, aliases, mutation, and effects;
-- differentiation and numeric policy when admitted;
-- errors visible to the caller.
+- kernel artifact and specialization identity;
+- storage/image bindings, push data and direct or indirect dimensions;
+- binding ranges, physical write partitions, and collision/reduction policy;
+- workspace and transient allocation;
+- queues, barriers, ownership transfer and completion;
+- reusable recording and profiling instrumentation.
 
-The executable layer owns:
+One semantic operation may lower to several executable nodes. One executable
+microfusion may implement several semantic operations, but it retains all of
+their identities. A fusion is invalid if it changes rounding, color semantics,
+alias visibility, externally observed intermediates, readiness, training data,
+or failure behavior.
 
-- selected kernel identity and artifact;
-- concrete storage bindings and declared access;
-- push-constant bytes and dispatch dimensions;
-- queue, synchronization, resource lifetime, and completion.
+## Cross-domain microfusion
 
-One semantic operation may eventually lower to several executable nodes, and a
-fused node may preserve several semantic owners. Therefore `Engine` accepts a
-generic dispatch description; it never grows `submit_matrix_add`,
-`submit_image_resize`, or equivalent domain-specific forwarding methods.
+OARS should first remove avoidable memory traffic between common adjacent
+operations. These are not DNN-only patterns:
 
-## Submission, synchronization, and observation
+| Domain | Semantic region | Intended physical result |
+|---|---|---|
+| Image/Vision | color conversion -> resize -> scale/bias normalize -> layout conversion -> dtype conversion | one bounds-checked preprocessing kernel when metadata and sampling policy match |
+| Video/Vision | NV12 or P010 planes -> color conversion -> resize -> normalize -> model layout | one or a small pipeline preserving range, matrix, chroma siting, visible extent and readiness |
+| Matrix/ML | matmul -> bias -> activation or residual | a planned GEMM epilogue |
+| Matrix/ML | Q/K/V projections sharing one input | grouped projection or shared-input schedule |
+| Audio | sample-format conversion -> channel mix -> gain/normalize | one bandwidth-oriented kernel when clipping and rounding agree |
+| Render/Image | swizzle -> transfer-function conversion -> pack/unpack | one format kernel when image layout transitions permit it |
+| Crypto/Data | parse/convert -> batched transform -> compact | one device-resident region only when secret-data and bounds policy remain valid |
 
-Every non-empty current compute operation records an owned graph snapshot into
-the private execution session. At blocking observation or an explicit
-checkpoint, the session joins all pending nodes, records one command buffer,
-submits it to the same compute queue, and signals the next timeline value.
-Within that graph the recorder tracks each retained buffer and inserts a Vulkan
-buffer barrier for write-to-read, read-to-write, and write-to-write conflicts;
-read-to-read needs no barrier. State is retained across unrelated nodes so a
-dependency is not lost merely because another resource was used between its
-producer and consumer.
+The portable source chain remains the correctness fallback. Recognition alone
+does not authorize replacement; provider admission, device support, exact
+metadata, liveness, aliasing, workspace, numeric mode and an independent oracle
+must all pass.
 
-All current accesses are storage-buffer accesses on one compute queue. Their
-graph barriers therefore use `COMPUTE_SHADER` for both stages,
-`SHADER_STORAGE_READ` and/or `SHADER_STORAGE_WRITE` for the declared accesses,
-the complete logical buffer range, and no queue-family transfer. A submission
-still waits on the preceding timeline value at `ALL_COMMANDS`, which owns the
-inter-graph visibility edge in the one-queue prototype. Transfers, images,
-indirect dispatch, queue changes, and subranges require distinct executable
-node and synchronization contracts; the compute barrier is not generalized to
-them.
+## Cross-vendor performance strategy
 
-Zero-element operations record no dispatch and their empty output is
-immediately host-ready. They do not force an unrelated eager batch to submit.
+One universal kernel cannot be optimal on an Adreno phone, an Intel integrated
+GPU, a desktop NVIDIA GPU, and an AMD accelerator. Conversely, generating the
+Cartesian product of every tile and knob is not maintainable. OARS uses a
+bounded hierarchy:
 
-`Matrix::read::<T>` and its `read_f32` convenience wrapper are blocking
-host-observation boundaries. They validate the requested Rust element type,
-then wait for the output's producer before invalidating and reading mapped
-storage. `Matrix::try_read::<T>` and `try_read_f32` return `NotReady` instead
-of waiting. `Drop` never
-submits, waits, drains, maps, or reads back.
+1. A portable correctness kernel exists for every admitted operation.
+2. A small set of reusable schedule families covers materially different
+   workloads: direct tiled, small-M, split-K or Stream-K-like, grouped/batched,
+   persistent, reduction, and bandwidth microfusion.
+3. Capability predicates select by facts such as subgroup width, shared-memory
+   budget, cooperative-matrix support, alignment, storage features and queue
+   properties. Vendor/device IDs may select a qualified pack, but do not enter
+   the public API.
+4. A cold-start heuristic ranks a bounded top set using the full problem and a
+   queried device profile.
+5. Optional correctness-gated autotuning measures only those candidates and
+   persists the winner under a versioned exact key.
+6. Exact plan replay pins the selected artifact until invalidation; it never
+   reruns selection on every operation call.
+7. Workload telemetry informs which shapes deserve new schedules. It must not
+   silently upload user data or turn a benchmark override into product policy.
 
-Recorded output storage uses a shared private readiness state. It moves from
-recorded, to submitted with an exact event, to observable after completion. A
-submission or recording failure makes production failure persistent for later
-observation. `try_read` returns `NotReady` for both recorded and incomplete
-submitted work and never flushes the session.
+Slang provides source reuse, interfaces, generics, specialization and SPIR-V
+generation; it does not make one SPIR-V binary optimal everywhere. Candidate
+artifacts remain explicit and validated. See [the kernel system](oaComputeKernel.md),
+[OaTile](oaTile.md), and [OaBlasLt](oaBlasLt.md).
 
-Isolated capture can transfer the pending graph and written-storage bindings
-into a public structurally immutable `ExecutionPlan`. Capture never submits or
-waits and plan replay returns an exact event. Untimed replay caches one
-simultaneously submittable primary command; read-only Matrix inputs have stable
-captured identities and may be rebound under exact shape, dtype, ownership, and
-no-alias validation. Rebinding invalidates the recording once. Mutable outputs
-and general semantic value identity remain incomplete.
+## Submission and overhead
 
-`ExecutionPlan::debug_report_json` emits normalized `oa.execution_graph.v3`
-evidence reconstructed from this same graph and barrier plan. It preserves
-semantic owners, generated kernel/dtype identities, resource lifetimes,
-accesses, exact compute/storage synchronization scopes, compilation state, and
-the latest timeline value while excluding Vulkan handles, addresses,
-descriptors, and push payloads. It is diagnostic evidence, not persisted graph
-serialization.
+Current eager operations accumulate in a private `ExecutionSession`. Blocking
+observation or `Engine::checkpoint` joins pending nodes, records one primary
+command buffer, submits it on the compute queue and signals the next timeline
+value. Zero-work operations record no dispatch and do not flush unrelated work.
+`try_read` never submits or waits.
+
+Captured untimed plans reuse one simultaneously submittable command recording.
+That is the principal portable Vulkan mechanism for amortizing host record
+cost. Future work should prioritize, in evidence order:
+
+1. eliminate repeated planning, pipeline lookup and allocation from steady
+   replay;
+2. pre-record useful command variants and use stable parameter/resource frames;
+3. batch small nodes or replace them with legal microfusions;
+4. add indirect dispatch when dimensions are device-produced;
+5. evaluate `VK_EXT_device_generated_commands` only on queried devices where it
+   reduces end-to-end cost;
+6. evaluate vendor extensions such as `VK_AMDX_shader_enqueue` only as optional
+   device packs, never as the cross-vendor baseline;
+7. use persistent work queues only for measured workloads, with explicit
+   occupancy, fairness, watchdog, memory-ordering and termination proofs.
+
+The previously discussed roughly 0.03-0.04 ms Vulkan versus 0.01 ms CUDA submit
+figures are anecdotal and are not accepted OARS evidence. The comparison must
+use equivalent pre-recorded work, synchronization, clocks, validation state,
+fresh processes and host boundaries before it enters a status document.
 
 ## Numeric contract
 
-Keep these facts separate:
+Keep separate:
 
-1. semantic dtype (`DType::F32`, `DType::I32`, future `DType::Bf16`);
-2. physical storage width and encoding (`f32`, `bf16`, packed Q4/Q8);
+1. semantic dtype and encoding;
+2. physical input/output storage;
 3. compute and accumulator precision;
-4. selected physical kernel or specialization.
+4. reduction order and determinism policy;
+5. selected kernel and specialization.
 
-The current matrix slice admits dense `f32` and `i32` storage through one
-runtime-typed `Matrix`. All generated elementwise operations admit `f32`, while
-`matrix::add` also admits exact same-dtype `i32`; mixed dense dtypes fail without
-implicit promotion. Signed `i32` addition wraps modulo 2^32, including at the
-minimum and maximum boundaries. The sealed Rust `Element` mapping owns checked
-host upload and readback and does not make device storage generic. Packed
-quantization is a separate semantic representation because its payload, scale
-planes, block size, and logical stride are not one dense scalar per element.
-Low-precision storage, reductions, broader integer arithmetic, quantization,
-and numeric modes remain Planned. Kernel metadata uses normalized lowercase
-dtype tokens; see
-[the kernel system](oaComputeKernel.md#dtype-vocabulary).
+Current dense mixed-dtype promotion is not supported. Quantized weights are
+future encoded semantic values with payload, scales, block policy and logical
+shape; they are not byte matrices pretending to be a dense scalar dtype. See
+[numeric stability](oaNumericStability.md) and
+[quantization and dtypes](oaQuantizationAndDtypes.md).
 
-## Current versus target behavior
+## What OARS already does well
 
-| Concern | Current Experimental behavior | Target dependency |
-|---|---|---|
-| Eager execution | engine-owned batching at observation/checkpoint | scheduling diagnostics and broader executable nodes |
-| Reuse | cached immutable plans plus fixed-shape training replay over stable input/read-write slots | specialization cache and transient alias planning |
-| Kernel selection | exact schema-generated kernel ID | capability- and measurement-filtered candidates |
-| Dependencies | per-buffer graph hazards plus a serialized inter-submit timeline chain | multi-queue executable resource-hazard graph |
-| Memory | checked VMA-backed host-visible storage plus bounded exact-size retired-buffer reuse | upload/readback rings and graph-lifetime transient planning |
-| Profiling | explicit whole-plan device duration on timed replay | calibrated clocks, phase/node timestamps, and statistics |
-| Devices | one selected physical device | explicit local transfer before automated placement |
+The strongest current foundation is architectural rather than benchmarked
+speed: one engine owns the whole lifetime, semantic and executable graphs are
+separate, eager and captured execution share lowering, exact events and resource
+retention are explicit, graph reports preserve fused provenance, and training
+state/RNG can remain inside replay. That is a credible base for optimizing an
+entire mixed-domain pipeline rather than handing isolated tensor partitions to
+separate libraries.
 
-## Porting from C++ OA
+This does not establish parity with mature vendor stacks. The missing selector,
+kernel breadth, low-precision routes, database, profiler feedback, packaging,
+device qualification and failure recovery are listed in the
+[vendor compute audit](oaVendorComputeAudit.md).
 
-Preserve:
-
-- the single engine owner;
-- semantic versus executable graph separation;
-- generic dispatch records and exact events;
-- shared bindless descriptors and resource retention;
-- schema-owned operations and generated kernel identity;
-- explicit host observation and fail-closed capability checks.
-
-Do not mechanically reproduce `ExecutionSession`, `ExecutableGraph`, `Stream`,
-pipeline registry classes, or C++ access facades. Add each layer only when its
-Rust ownership, failure, and verification contract is required by the roadmap.
+NVIDIA's first CUDA Rust SIMT and tile projects provide useful independent
+evidence for checked launch tokens and disjoint writable partitions, but they
+do not change OARS's Vulkan/Slang boundary. The dated comparison, adopted
+principles, and rejected integration paths are recorded in the
+[CUDA Rust assessment](oaCudaRust.md).
 
 ## Acceptance gates
 
 A compute checkpoint requires:
 
-- public contract tests plus an independent oracle or conformance reference;
-- zero, odd, minimal, boundary, invalid, alias, reuse, and poison cases where
+- a schema-owned semantic contract and independent oracle;
+- zero, odd/tail, boundary, invalid, alias, reuse and poison cases where
   meaningful;
-- deterministic schema generation and an empty drift check;
-- reflected descriptor, push-constant, entry-point, attribute, and workgroup
-  validation;
-- `spirv-val` for every configured artifact;
-- core, synchronization, and applicable GPU-assisted validation run separately;
-- explicit device, driver, loader/registry, tool, build, and dirty-state evidence;
-- performance claims only through the protocol in
-  [OA performance evidence](../performance/oaPerformance.md).
+- deterministic generation and exact reflection/SPIR-V validation;
+- separate core, synchronization and applicable GPU-assisted validation;
+- exact route, candidate, fallback, device, driver, compiler, build and dirty
+  state in evidence;
+- at least seven correctness-gated fresh-process measurements with median and
+  spread for a performance claim;
+- no claim that a generated row, recognized pattern, compiled pipeline or
+  passing host test is by itself Shipped.
 
-No module, generated function, compiled shader, or passing host-only test is by
-itself a Shipped capability.
+## Primary references
+
+- [Vulkan specification, device-generated commands](https://registry.khronos.org/vulkan/specs/latest/pdf/vkspec.pdf)
+- [CUDA Programming Guide: CUDA Graphs](https://docs.nvidia.com/cuda/cuda-programming-guide/04-special-topics/cuda-graphs.html)
+- [Slang reflection](https://docs.shader-slang.org/en/stable/external/slang/docs/user-guide/09-reflection.html)

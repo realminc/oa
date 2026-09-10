@@ -260,6 +260,7 @@ pub struct OperationContract {
 	output_kinds: &'static [OpValueKind],
 	variadic_input: Option<(OpValueKind, usize)>,
 	variadic_output: Option<(OpValueKind, usize)>,
+	aligned_variadic_aliases: bool,
 	attributes: &'static [OpAttributeSpec],
 	shape_rule: OpShapeRule,
 	dtype_rule: OpDTypeRule,
@@ -292,6 +293,7 @@ impl OperationContract {
 			output_kinds,
 			variadic_input: None,
 			variadic_output: None,
+			aligned_variadic_aliases: false,
 			attributes: &[],
 			shape_rule: OpShapeRule::MatchInput,
 			dtype_rule: OpDTypeRule::MatchInput,
@@ -314,6 +316,13 @@ impl OperationContract {
 	/// Declare a homogeneous variadic output tail and its minimum length.
 	pub const fn variadic_outputs(mut self, kind: OpValueKind, minimum: usize) -> Self {
 		self.variadic_output = Some((kind, minimum));
+		self
+	}
+
+	/// Declare that each variadic output aliases and mutates the variadic input
+	/// at the same tail position.
+	pub const fn aligned_variadic_aliases(mut self) -> Self {
+		self.aligned_variadic_aliases = true;
 		self
 	}
 
@@ -450,7 +459,8 @@ impl OperationContract {
 	}
 
 	pub(crate) const fn mutates_input(self, index: usize) -> bool {
-		index < Self::MAX_VALUES && self.mutated_input_mask & (1 << index) != 0
+		(index < Self::MAX_VALUES && self.mutated_input_mask & (1 << index) != 0)
+			|| (self.aligned_variadic_aliases && index >= self.input_kinds.len())
 	}
 
 	pub(crate) const fn input_is_optional(self, index: usize) -> bool {
@@ -458,11 +468,26 @@ impl OperationContract {
 	}
 
 	pub(crate) fn alias_input(self, output: usize) -> Option<usize> {
-		self.output_alias_inputs
+		let fixed = self
+			.output_alias_inputs
 			.get(output)
 			.copied()
 			.flatten()
-			.map(usize::from)
+			.map(usize::from);
+		fixed.or_else(|| {
+			(self.aligned_variadic_aliases && output >= self.output_kinds.len())
+				.then(|| self.input_kinds.len() + (output - self.output_kinds.len()))
+		})
+	}
+
+	pub(crate) fn variadic_alias_counts_match(
+		self,
+		input_count: usize,
+		output_count: usize,
+	) -> bool {
+		!self.aligned_variadic_aliases
+			|| input_count.saturating_sub(self.input_kinds.len())
+				== output_count.saturating_sub(self.output_kinds.len())
 	}
 
 	pub(crate) fn validate(self, attributes: &[OpAttribute]) -> bool {
@@ -490,12 +515,33 @@ impl OperationContract {
 		{
 			return false;
 		}
+		if self.aligned_variadic_aliases
+			&& (!matches!(
+				(self.variadic_input, self.variadic_output),
+				(Some((input, input_minimum)), Some((output, output_minimum)))
+					if input == output && input_minimum == output_minimum
+			) || !self.effects.contains(OpEffect::WRITE_OUTPUTS))
+		{
+			return false;
+		}
 		for (output, alias) in self.output_alias_inputs.iter().copied().enumerate() {
 			let Some(input) = alias else { continue };
 			let input = usize::from(input);
 			if output >= self.output_kinds.len()
 				|| input >= self.input_kinds.len()
 				|| !self.mutates_input(input)
+			{
+				return false;
+			}
+		}
+		for input in 0..self.input_kinds.len() {
+			if self.mutates_input(input)
+				&& self
+					.output_alias_inputs
+					.iter()
+					.take(self.output_kinds.len())
+					.filter(|alias| alias.is_some_and(|alias| usize::from(alias) == input))
+					.count() != 1
 			{
 				return false;
 			}

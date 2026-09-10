@@ -1,123 +1,193 @@
-use std::{fs, path::Path};
+use std::path::Path;
 
-use crate::{Engine, Error, Matrix, Result};
+use crate::{DType, Engine, Error, Matrix, Result};
 
-use super::{AdamW, Module, optimizer::AdamWRestore};
+use super::{
+	CheckpointOptimizer, Module,
+	model_file::{
+		ModelFile, Optimizer as PersistedOptimizer, Progress, ScalarType, Tensor, TensorEncoding,
+	},
+	optimizer::{OptimizerCheckpoint, OptimizerRestore},
+};
 
-const MAGIC: &[u8; 8] = b"OARSML01";
-const VERSION: u32 = 1;
+mod manager;
 
-/// Save registration-addressed model parameters and complete AdamW state.
+pub use manager::{CheckpointManager, CheckpointManagerConfig};
+
+pub(super) struct CheckpointProgress {
+	pub(super) step: u64,
+	pub(super) metric: f64,
+	pub(super) metric_name: String,
+	pub(super) lower_is_better: bool,
+}
+
+/// Save a module and its complete optimizer state in the native OA `.oam` format.
 ///
-/// This is an explicit host-observation boundary.
+/// Registration-derived parameter paths become the Weights index. Persistent
+/// module buffers become the State index; non-persistent buffers are excluded.
+/// This is an explicit host-observation boundary. The completed file is
+/// durably written to a sibling temporary path and atomically renamed.
 ///
 /// # Errors
 ///
 /// Returns an error for ambiguous module ownership, optimizer/model mismatch,
-/// arithmetic overflow, readback failure, or filesystem failure.
+/// unsupported Matrix metadata, readback failure, arithmetic overflow, or a
+/// filesystem failure.
 pub fn save_checkpoint(
 	path: impl AsRef<Path>,
 	model: &dyn Module,
-	optimizer: &AdamW,
+	optimizer: &dyn CheckpointOptimizer,
+) -> Result<()> {
+	save_checkpoint_with_progress(path.as_ref(), model, optimizer, None)
+}
+
+pub(super) fn save_checkpoint_with_progress(
+	path: &Path,
+	model: &dyn Module,
+	optimizer: &dyn CheckpointOptimizer,
+	progress: Option<CheckpointProgress>,
 ) -> Result<()> {
 	let named = model.all_named_parameters()?;
-	let optimizer_state = optimizer.checkpoint();
-	if named.len() != optimizer_state.states.len() {
+	let buffers = model.all_named_buffers()?;
+	let optimizer_state = optimizer.checkpoint_state()?;
+	validate_optimizer_snapshot(&optimizer_state)?;
+	if named.len() != optimizer_state.parameters.len() {
 		return Err(Error::invalid_argument(
 			"checkpoint optimizer does not cover the complete model parameter tree",
 		));
 	}
-	let mut bytes = Vec::new();
-	bytes.extend_from_slice(MAGIC);
-	write_u32(&mut bytes, VERSION);
-	write_u32(&mut bytes, optimizer_state.step);
-	for value in [
-		optimizer_state.learning_rate,
-		optimizer_state.beta1,
-		optimizer_state.beta2,
-		optimizer_state.epsilon,
-		optimizer_state.weight_decay,
-	] {
-		write_f32(&mut bytes, value);
-	}
-	write_u32(
-		&mut bytes,
-		checked_u32(named.len(), "checkpoint parameter count")?,
-	);
+
+	let mut file = ModelFile::new();
 	for entry in named {
 		let parameter = entry.parameter();
-		let Some((_, first_moment, second_moment)) = optimizer_state
-			.states
+		if !optimizer_state
+			.parameters
 			.iter()
-			.find(|(candidate, _, _)| candidate.same_as(&parameter))
-		else {
+			.any(|candidate| candidate.same_as(&parameter))
+		{
 			return Err(Error::invalid_argument(
 				"checkpoint optimizer parameter does not match the model tree",
 			));
-		};
-		let data = parameter.data();
-		let path_bytes = entry.path().as_bytes();
-		write_u32(
-			&mut bytes,
-			checked_u32(path_bytes.len(), "checkpoint path length")?,
-		);
-		bytes.extend_from_slice(path_bytes);
-		write_u32(
-			&mut bytes,
-			checked_u32(data.shape().len(), "checkpoint rank")?,
-		);
-		for extent in data.shape() {
-			write_u64(
-				&mut bytes,
-				u64::try_from(*extent)
-					.map_err(|_| Error::invalid_argument("checkpoint extent exceeds u64"))?,
-			);
 		}
-		let count = checked_u32(data.num_elements(), "checkpoint element count")?;
-		write_u32(&mut bytes, count);
-		for matrix in [&data, first_moment, second_moment] {
-			for value in matrix.read_f32()? {
-				write_f32(&mut bytes, value);
+		file.weights
+			.push(matrix_tensor(entry.path(), &parameter.data())?);
+	}
+	for buffer in buffers.into_iter().filter(|buffer| buffer.persistent()) {
+		file.state
+			.push(matrix_tensor(buffer.path(), &buffer.data())?);
+	}
+
+	let mut first_moment = Vec::new();
+	let mut second_moment = Vec::new();
+	for first in &optimizer_state.first_state {
+		first_moment.extend(first.read_f32()?);
+	}
+	for second in &optimizer_state.second_state {
+		second_moment.extend(second.read_f32()?);
+	}
+	let step = i64::try_from(optimizer_state.step)
+		.map_err(|_| Error::resource_exhausted("optimizer step exceeds .oam progress range"))?;
+	file.optimizer = Some(PersistedOptimizer {
+		kind: optimizer_state.kind.to_owned(),
+		learning_rate: optimizer_state.learning_rate,
+		beta1: optimizer_state.beta1,
+		beta2: optimizer_state.beta2,
+		epsilon: optimizer_state.epsilon,
+		weight_decay: optimizer_state.weight_decay,
+		step,
+		first_moment,
+		second_moment,
+	});
+	file.progress = match progress {
+		Some(progress) => {
+			if progress.step != optimizer_state.step || !progress.metric.is_finite() {
+				return Err(Error::invalid_argument(
+					"checkpoint progress does not match completed optimizer state",
+				));
+			}
+			Progress {
+				step,
+				learning_rate: optimizer_state.learning_rate,
+				best_metric: progress.metric as f32,
+				lower_is_better: progress.lower_is_better,
+				metric_name: progress.metric_name,
+				..Progress::default()
 			}
 		}
-	}
-	fs::write(path, bytes).map_err(|source| Error::io("write ML checkpoint", source))
+		None => Progress {
+			step,
+			learning_rate: optimizer_state.learning_rate,
+			..Progress::default()
+		},
+	};
+	file.save(path)
 }
 
-/// Load a complete model/AdamW checkpoint into existing matching owners.
+/// Load a native OA `.oam` checkpoint into existing matching owners.
 ///
-/// The file is parsed and structurally validated before any parameter handle is
-/// replaced. `engine` remains the sole owner of newly uploaded storage.
+/// The complete file, section hashes, tensor metadata, module paths, shapes,
+/// dtypes, and optimizer payload are validated before any live handle changes.
+/// `engine` remains the sole owner of newly uploaded storage.
 ///
 /// # Errors
 ///
-/// Returns an error for malformed/truncated data, model path/shape mismatch,
-/// optimizer mismatch, allocation failure, or filesystem failure.
+/// Returns [`crate::ErrorKind::CheckpointCorrupt`] for malformed, truncated, or
+/// integrity-invalid `.oam` data. Returns another error for a valid file that
+/// does not match the destination model/optimizer, or for allocation/runtime
+/// and filesystem failures.
 pub fn load_checkpoint(
 	engine: &Engine,
 	path: impl AsRef<Path>,
 	model: &dyn Module,
-	optimizer: &mut AdamW,
+	optimizer: &mut dyn CheckpointOptimizer,
 ) -> Result<()> {
-	let bytes = fs::read(path).map_err(|source| Error::io("read ML checkpoint", source))?;
-	let mut reader = Reader::new(&bytes);
-	if reader.take(MAGIC.len())? != MAGIC || reader.u32()? != VERSION {
-		return Err(Error::invalid_argument("unsupported ML checkpoint header"));
+	load_checkpoint_impl(engine, path.as_ref(), model, optimizer, None)
+}
+
+pub(super) fn load_checkpoint_at_step(
+	engine: &Engine,
+	path: &Path,
+	model: &dyn Module,
+	optimizer: &mut dyn CheckpointOptimizer,
+	expected_step: u64,
+) -> Result<()> {
+	load_checkpoint_impl(engine, path, model, optimizer, Some(expected_step))
+}
+
+fn load_checkpoint_impl(
+	engine: &Engine,
+	path: &Path,
+	model: &dyn Module,
+	optimizer: &mut dyn CheckpointOptimizer,
+	expected_step: Option<u64>,
+) -> Result<()> {
+	let file = ModelFile::load(path)?;
+	if let Some(expected_step) = expected_step {
+		let progress_step = u64::try_from(file.progress.step)
+			.map_err(|_| Error::invalid_argument(".oam progress step is negative"))?;
+		if progress_step != expected_step {
+			return Err(Error::invalid_argument(
+				"checkpoint filename step does not match .oam progress",
+			));
+		}
 	}
-	let step = reader.u32()?;
-	let learning_rate = reader.f32()?;
-	let beta1 = reader.f32()?;
-	let beta2 = reader.f32()?;
-	let epsilon = reader.f32()?;
-	let weight_decay = reader.f32()?;
-	let count = reader.usize_u32()?;
 	let named = model.all_named_parameters()?;
-	let optimizer_state = optimizer.checkpoint();
-	if count != named.len() || count != optimizer_state.states.len() {
+	let buffers = model
+		.all_named_buffers()?
+		.into_iter()
+		.filter(|buffer| buffer.persistent())
+		.collect::<Vec<_>>();
+	let optimizer_state = optimizer.checkpoint_state()?;
+	validate_optimizer_snapshot(&optimizer_state)?;
+	if file.weights.len() != named.len()
+		|| file.state.len() != buffers.len()
+		|| named.len() != optimizer_state.parameters.len()
+	{
 		return Err(Error::invalid_argument(
-			"ML checkpoint parameter count mismatch",
+			".oam tensor count does not match the destination module",
 		));
 	}
+
 	let engine_handle = engine.handle();
 	if named.iter().any(|entry| {
 		!entry
@@ -125,150 +195,237 @@ pub fn load_checkpoint(
 			.data()
 			.engine_handle()
 			.same_as(&engine_handle)
-	}) {
-		return Err(Error::invalid_argument(
-			"ML checkpoint engine does not own the destination model",
-		));
-	}
-	let mut loaded = Vec::with_capacity(count);
-	for expected in &named {
-		let path_length = reader.usize_u32()?;
-		let path = std::str::from_utf8(reader.take(path_length)?)
-			.map_err(|_| Error::invalid_argument("ML checkpoint path is not UTF-8"))?;
-		if path != expected.path() {
-			return Err(Error::invalid_argument(format!(
-				"ML checkpoint expected parameter {}, found {path}",
-				expected.path()
-			)));
-		}
-		let rank = reader.usize_u32()?;
-		let parameter = expected.parameter();
-		let expected_data = parameter.data();
-		if rank != expected_data.shape().len() {
-			return Err(Error::invalid_argument(format!(
-				"ML checkpoint rank mismatch for {path}"
-			)));
-		}
-		let mut shape = Vec::with_capacity(rank);
-		for _ in 0..rank {
-			shape.push(
-				usize::try_from(reader.u64()?)
-					.map_err(|_| Error::invalid_argument("checkpoint extent exceeds usize"))?,
-			);
-		}
-		let element_count = reader.usize_u32()?;
-		if expected_data.shape() != shape || expected_data.num_elements() != element_count {
-			return Err(Error::invalid_argument(format!(
-				"ML checkpoint shape mismatch for {path}"
-			)));
-		}
-		let required_value_bytes = element_count
-			.checked_mul(3)
-			.and_then(|count| count.checked_mul(size_of::<f32>()))
-			.ok_or_else(|| Error::invalid_argument("ML checkpoint value extent overflows usize"))?;
-		if required_value_bytes > reader.remaining() {
-			return Err(Error::invalid_argument("truncated ML checkpoint values"));
-		}
-		let mut matrices = Vec::with_capacity(3);
-		for _ in 0..3 {
-			let mut values = Vec::with_capacity(element_count);
-			for _ in 0..element_count {
-				values.push(reader.f32()?);
-			}
-			matrices.push(Matrix::from_f32(engine, shape.clone(), &values)?);
-		}
-		loaded.push((
-			parameter,
-			matrices.remove(0),
-			matrices.remove(0),
-			matrices.remove(0),
-		));
-	}
-	if !reader.is_empty() {
-		return Err(Error::invalid_argument(
-			"ML checkpoint contains trailing data",
-		));
-	}
-	for ((parameter, _, _), (loaded_parameter, _, _, _)) in
-		optimizer_state.states.iter().zip(&loaded)
+	}) || buffers
+		.iter()
+		.any(|entry| !entry.data().engine_handle().same_as(&engine_handle))
 	{
-		if !parameter.same_as(loaded_parameter) {
+		return Err(Error::invalid_argument(
+			"checkpoint engine does not own the destination module",
+		));
+	}
+
+	let mut loaded_parameters = Vec::with_capacity(named.len());
+	for (expected, tensor) in named.iter().zip(&file.weights) {
+		let parameter = expected.parameter();
+		let data = parameter.data();
+		validate_tensor_contract(tensor, expected.path(), &data)?;
+		loaded_parameters.push((parameter, matrix_from_tensor(engine, tensor)?));
+	}
+	let mut loaded_buffers = Vec::with_capacity(buffers.len());
+	for (expected, tensor) in buffers.iter().zip(&file.state) {
+		let data = expected.data();
+		validate_tensor_contract(tensor, expected.path(), &data)?;
+		loaded_buffers.push((expected, matrix_from_tensor(engine, tensor)?));
+	}
+
+	let persisted = file
+		.optimizer
+		.as_ref()
+		.ok_or_else(|| Error::invalid_argument(".oam has no optimizer state"))?;
+	if persisted.kind != optimizer_state.kind {
+		return Err(Error::invalid_argument(format!(
+			".oam optimizer {} cannot restore {}",
+			persisted.kind, optimizer_state.kind
+		)));
+	}
+	let step = u64::try_from(persisted.step)
+		.map_err(|_| Error::invalid_argument(".oam optimizer step is negative"))?;
+	let scalar_count = named.iter().try_fold(0_usize, |total, entry| {
+		total
+			.checked_add(entry.parameter().data().num_elements())
+			.ok_or_else(|| Error::resource_exhausted("checkpoint parameter count overflow"))
+	})?;
+	let expected_first = if optimizer_state.first_state.is_empty() {
+		0
+	} else {
+		scalar_count
+	};
+	let expected_second = if optimizer_state.second_state.is_empty() {
+		0
+	} else {
+		scalar_count
+	};
+	if persisted.first_moment.len() != expected_first
+		|| persisted.second_moment.len() != expected_second
+	{
+		return Err(Error::invalid_argument(
+			".oam optimizer state does not cover the destination parameters",
+		));
+	}
+	let first_state = matrices_from_flat(engine, &named, &persisted.first_moment)?;
+	let second_state = matrices_from_flat(engine, &named, &persisted.second_moment)?;
+	for (parameter, (loaded, _)) in optimizer_state.parameters.iter().zip(&loaded_parameters) {
+		if !parameter.same_as(loaded) {
 			return Err(Error::invalid_argument(
 				"checkpoint optimizer order differs from module traversal",
 			));
 		}
 	}
-	let mut moments = Vec::with_capacity(loaded.len());
-	for (parameter, data, first, second) in loaded {
+	for (parameter, _) in &loaded_parameters {
+		parameter.validate_can_update()?;
+	}
+	let restore = OptimizerRestore {
+		kind: persisted.kind.clone(),
+		step,
+		learning_rate: persisted.learning_rate,
+		beta1: persisted.beta1,
+		beta2: persisted.beta2,
+		epsilon: persisted.epsilon,
+		weight_decay: persisted.weight_decay,
+		first_state,
+		second_state,
+	};
+	optimizer.validate_checkpoint_state(&restore)?;
+
+	// All fallible wire, ownership, shape, and allocation work has completed.
+	for (parameter, data) in loaded_parameters {
 		parameter.replace_data(data)?;
 		parameter.clear_gradient();
-		moments.push((first, second));
 	}
-	optimizer.restore_checkpoint(AdamWRestore {
-		step,
-		learning_rate,
-		beta1,
-		beta2,
-		epsilon,
-		weight_decay,
-		moments,
-	})
+	for (buffer, data) in loaded_buffers {
+		buffer.replace_data(data)?;
+	}
+	optimizer.restore_checkpoint_state(restore)
 }
 
-fn checked_u32(value: usize, label: &'static str) -> Result<u32> {
-	u32::try_from(value).map_err(|_| Error::invalid_argument(format!("{label} exceeds u32")))
-}
-fn write_u32(bytes: &mut Vec<u8>, value: u32) {
-	bytes.extend_from_slice(&value.to_le_bytes());
-}
-fn write_u64(bytes: &mut Vec<u8>, value: u64) {
-	bytes.extend_from_slice(&value.to_le_bytes());
-}
-fn write_f32(bytes: &mut Vec<u8>, value: f32) {
-	bytes.extend_from_slice(&value.to_le_bytes());
+fn validate_optimizer_snapshot(state: &OptimizerCheckpoint) -> Result<()> {
+	let parameter_count = state.parameters.len();
+	if parameter_count == 0
+		|| (!state.first_state.is_empty() && state.first_state.len() != parameter_count)
+		|| (!state.second_state.is_empty() && state.second_state.len() != parameter_count)
+	{
+		return Err(Error::invalid_argument(
+			"optimizer persistence state does not match its parameter set",
+		));
+	}
+	Ok(())
 }
 
-struct Reader<'a> {
-	bytes: &'a [u8],
-	offset: usize,
+fn matrices_from_flat(
+	engine: &Engine,
+	parameters: &[super::NamedParameter],
+	values: &[f32],
+) -> Result<Vec<Matrix>> {
+	if values.is_empty() {
+		return Ok(Vec::new());
+	}
+	let mut matrices = Vec::with_capacity(parameters.len());
+	let mut offset = 0_usize;
+	for entry in parameters {
+		let data = entry.parameter().data();
+		let end = offset
+			.checked_add(data.num_elements())
+			.ok_or_else(|| Error::resource_exhausted("optimizer state offset overflows usize"))?;
+		matrices.push(Matrix::from_f32(
+			engine,
+			data.shape().to_vec(),
+			&values[offset..end],
+		)?);
+		offset = end;
+	}
+	Ok(matrices)
 }
-impl<'a> Reader<'a> {
-	const fn new(bytes: &'a [u8]) -> Self {
-		Self { bytes, offset: 0 }
+
+fn matrix_tensor(name: &str, matrix: &Matrix) -> Result<Tensor> {
+	let shape = matrix
+		.shape()
+		.iter()
+		.map(|extent| {
+			u64::try_from(*extent)
+				.map_err(|_| Error::resource_exhausted("checkpoint extent exceeds u64"))
+		})
+		.collect::<Result<Vec<_>>>()?;
+	let data = match matrix.dtype() {
+		DType::U8 => matrix.read::<u8>()?,
+		DType::F32 => matrix
+			.read::<f32>()?
+			.into_iter()
+			.flat_map(f32::to_le_bytes)
+			.collect(),
+		DType::I32 => matrix
+			.read::<i32>()?
+			.into_iter()
+			.flat_map(i32::to_le_bytes)
+			.collect(),
+		DType::U32 => matrix
+			.read::<u32>()?
+			.into_iter()
+			.flat_map(u32::to_le_bytes)
+			.collect(),
+	};
+	Tensor::dense(name, matrix.dtype(), shape, data)
+}
+
+fn validate_tensor_contract(tensor: &Tensor, path: &str, matrix: &Matrix) -> Result<()> {
+	let dtype = tensor_dtype(tensor)?;
+	let shape = tensor_shape(tensor)?;
+	if tensor.name != path || dtype != matrix.dtype() || shape != matrix.shape() {
+		return Err(Error::invalid_argument(format!(
+			".oam tensor {} does not match destination {path}",
+			tensor.name
+		)));
 	}
-	fn take(&mut self, count: usize) -> Result<&'a [u8]> {
-		let end = self
-			.offset
-			.checked_add(count)
-			.ok_or_else(|| Error::invalid_argument("checkpoint offset overflow"))?;
-		let value = self
-			.bytes
-			.get(self.offset..end)
-			.ok_or_else(|| Error::invalid_argument("truncated ML checkpoint"))?;
-		self.offset = end;
-		Ok(value)
+	if tensor.encoding != TensorEncoding::Dense || tensor.block_size != 0 {
+		return Err(Error::invalid_argument(format!(
+			"checkpoint restore requires dense tensor {path}"
+		)));
 	}
-	fn u32(&mut self) -> Result<u32> {
-		Ok(u32::from_le_bytes(self.take(4)?.try_into().map_err(
-			|_| Error::invalid_argument("invalid u32 checkpoint field"),
-		)?))
+	Ok(())
+}
+
+fn matrix_from_tensor(engine: &Engine, tensor: &Tensor) -> Result<Matrix> {
+	let shape = tensor_shape(tensor)?;
+	match tensor_dtype(tensor)? {
+		DType::U8 => Matrix::from_slice(engine, shape, &tensor.data),
+		DType::F32 => Matrix::from_slice(engine, shape, &decode_f32(&tensor.data)?),
+		DType::I32 => Matrix::from_slice(engine, shape, &decode_i32(&tensor.data)?),
+		DType::U32 => Matrix::from_slice(engine, shape, &decode_u32(&tensor.data)?),
 	}
-	fn u64(&mut self) -> Result<u64> {
-		Ok(u64::from_le_bytes(self.take(8)?.try_into().map_err(
-			|_| Error::invalid_argument("invalid u64 checkpoint field"),
-		)?))
+}
+
+fn tensor_dtype(tensor: &Tensor) -> Result<DType> {
+	match tensor.dtype {
+		ScalarType::U8 => Ok(DType::U8),
+		ScalarType::F32 => Ok(DType::F32),
+		ScalarType::I32 => Ok(DType::I32),
+		ScalarType::U32 => Ok(DType::U32),
+		_ => Err(Error::invalid_argument(format!(
+			"checkpoint restore does not support persisted dtype for {}",
+			tensor.name
+		))),
 	}
-	fn f32(&mut self) -> Result<f32> {
-		Ok(f32::from_bits(self.u32()?))
+}
+
+fn tensor_shape(tensor: &Tensor) -> Result<Vec<usize>> {
+	tensor
+		.shape
+		.iter()
+		.map(|extent| {
+			usize::try_from(*extent)
+				.map_err(|_| Error::invalid_argument(".oam extent exceeds usize"))
+		})
+		.collect()
+}
+
+fn decode_f32(bytes: &[u8]) -> Result<Vec<f32>> {
+	decode_words(bytes, f32::from_le_bytes)
+}
+
+fn decode_i32(bytes: &[u8]) -> Result<Vec<i32>> {
+	decode_words(bytes, i32::from_le_bytes)
+}
+
+fn decode_u32(bytes: &[u8]) -> Result<Vec<u32>> {
+	decode_words(bytes, u32::from_le_bytes)
+}
+
+fn decode_words<T>(bytes: &[u8], decode: impl Fn([u8; 4]) -> T) -> Result<Vec<T>> {
+	let (chunks, remainder) = bytes.as_chunks::<4>();
+	let values = chunks.iter().copied().map(decode).collect::<Vec<_>>();
+	if !remainder.is_empty() {
+		return Err(Error::checkpoint_corrupt(
+			"dense tensor byte count is not word aligned",
+		));
 	}
-	fn usize_u32(&mut self) -> Result<usize> {
-		usize::try_from(self.u32()?)
-			.map_err(|_| Error::invalid_argument("checkpoint count exceeds usize"))
-	}
-	fn is_empty(&self) -> bool {
-		self.offset == self.bytes.len()
-	}
-	fn remaining(&self) -> usize {
-		self.bytes.len() - self.offset
-	}
+	Ok(values)
 }

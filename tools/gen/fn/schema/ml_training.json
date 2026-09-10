@@ -4,41 +4,127 @@
   "domain": "ml",
   "dtype": "f32",
   "workgroup_size": [256, 1, 1],
+  "retired_stable_ids": [39, 115],
   "port_provenance": [
     {
       "family": "linear",
       "operations": ["linear", "linear_backward", "linear_parameter_backward"],
-      "classification": "replacement",
+      "classification": "mechanical_adaptation",
       "donors": [
+        "source/cpp/lib/oa/core/shader/compute/blas/gemm/gemmTiled.slang",
         "source/cpp/lib/oa/ml/fnmatrix/blas/fnMatrixBlas.cpp",
         "source/cpp/lib/oa/ml/shader/compute/nn/linear/linearDataBwd.slang",
-        "source/cpp/lib/oa/ml/shader/compute/nn/linear/linearWeightBiasBwd.slang"
+        "source/cpp/lib/oa/ml/shader/compute/nn/linear/linearWeightBiasBwdRows32.slang"
       ],
-      "reason": "Temporary Rust correctness baseline predating the donor-first port policy."
+      "reason": "Preserves the donor FP32 64x64x16 tiled GEMM with bias epilogue and both tiled adjoints while adapting attributes, storage-helper names, and bindless ABI spelling."
     },
     {
       "family": "cross_entropy",
-      "operations": ["cross_entropy", "cross_entropy_backward"],
-      "classification": "replacement",
+      "operations": [
+        "cross_entropy", "cross_entropy_sum", "cross_entropy_backward",
+        "masked_cross_entropy", "masked_cross_entropy_backward"
+      ],
+      "classification": "mechanical_adaptation",
       "donors": [
         "source/cpp/lib/oa/ml/shader/compute/nn/crossentropy/crossEntropy.slang",
         "source/cpp/lib/oa/ml/shader/compute/nn/crossentropy/crossEntropyBwd.slang",
-        "tools/gen/fn/schema/ml/mlFnLoss.toml"
+        "source/cpp/lib/oa/ml/shader/compute/nn/crossentropy/maskedCrossEntropy.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/crossentropy/maskedCrossEntropyBwd.slang",
+        "source/cpp/lib/oa/core/shader/compute/flat/sum.slang",
+        "source/cpp/lib/oa/ml/fnloss/fnLoss.cpp",
+        "source/cpp/lib/oa/ml/autograd/loss/autogradLoss.h",
+        "tools/gen/fn/schema/ml/mlFnLoss.toml",
+        "tools/gen/fn/schema/ml/mlFnLossCore.toml"
       ],
-      "reason": "Temporary Rust correctness baseline predating the donor-first port policy."
+      "reason": "Preserves the donor row-cooperative unmasked and masked loss/gradient kernels, explicit FP32 sum-and-mean lowering, mask-zero behavior, selected-row normalization, and logits-only adjoint while adapting attributes, storage-helper names, and the currently admitted U32/Int32 target ABI."
+    },
+    {
+      "family": "core_loss",
+      "operations": [
+        "smooth_l1", "smooth_l1_backward", "smooth_l1_mean",
+        "mse", "mse_backward",
+        "l1", "l1_backward",
+        "bce", "bce_backward"
+      ],
+      "classification": "mechanical_adaptation",
+      "donors": [
+        "tools/gen/fn/schema/ml/mlFnLossCore.toml",
+        "source/cpp/lib/oa/ml/fnloss/fnLoss.cpp",
+        "source/cpp/lib/oa/ml/autograd/loss/autogradLoss.h",
+        "source/cpp/lib/oa/ml/shader/compute/loss/smoothL1.slang",
+        "source/cpp/lib/oa/ml/shader/compute/loss/smoothL1Bwd.slang",
+        "source/cpp/lib/oa/ml/shader/compute/loss/smoothL1Mean.slang",
+        "source/cpp/lib/oa/ml/shader/compute/loss/mse.slang",
+        "source/cpp/lib/oa/ml/shader/compute/loss/mseBwd.slang",
+        "source/cpp/lib/oa/ml/shader/compute/loss/l1.slang",
+        "source/cpp/lib/oa/ml/shader/compute/loss/l1Bwd.slang",
+        "source/cpp/lib/oa/ml/shader/compute/loss/bce.slang",
+        "source/cpp/lib/oa/ml/shader/compute/loss/bceBwd.slang"
+      ],
+      "reason": "Preserves the donor FP32 per-element loss formulas, fused Smooth-L1 scalar mean candidate, detached targets, and explicit prediction adjoints while adapting names, attributes, storage helpers, and bindless ABI spelling."
     },
     {
       "family": "adamw",
-      "operations": ["adamw", "adamw_graph_advance", "adamw_graph"],
-      "classification": "replacement",
+      "operations": ["adamw", "adamw_graph_advance", "adamw_graph", "adamw_many4", "adamw_many4_graph"],
+      "classification": "mechanical_adaptation",
       "donors": [
         "source/cpp/lib/oa/ml/shader/compute/optim/adamw/adamw.slang",
         "source/cpp/lib/oa/ml/shader/compute/optim/adamw/adamwGraphAdvance.slang",
         "source/cpp/lib/oa/ml/shader/compute/optim/adamw/adamwGraph.slang",
+        "source/cpp/lib/oa/ml/shader/compute/optim/adamw/adamwMany4.slang",
         "source/cpp/lib/oa/ml/shader/compute/optim/adamw/adamwMany4Graph.slang",
         "tools/gen/fn/schema/ml/mlFnMatrixOptim.toml"
       ],
-      "reason": "Temporary Rust correctness baseline predating the donor-first port policy."
+      "reason": "Preserves donor AdamW operation order and four-tensor batching while adapting naming, attributes, and bindless ABI spelling to Rust OA."
+    },
+    {
+      "family": "gradient_clipping",
+      "operations": ["clip_grad_norm", "clip_grad_norm_scale"],
+      "classification": "mechanical_adaptation",
+      "donors": [
+        "source/cpp/include/oa/ml/fnOptim.h",
+        "source/cpp/lib/oa/ml/optim/fnOptim.cpp",
+        "source/cpp/lib/oa/ml/shader/compute/optim/gradclip/clipGradNormReduce.slang",
+        "source/cpp/lib/oa/ml/shader/compute/optim/gradclip/clipGradNormScale.slang",
+        "tools/gen/fn/schema/ml/mlFnKernelIdentity.toml"
+      ],
+      "reason": "Preserves the donor two-dispatch FP32 global-norm reduction and in-place gradient scaling without a host synchronization boundary while adapting the fixed bindless ABI and variadic semantic aliases."
+    },
+    {
+      "family": "sgd",
+      "operations": ["sgd", "sgd_momentum"],
+      "classification": "mechanical_adaptation",
+      "donors": [
+        "source/cpp/lib/oa/ml/shader/compute/optim/sgd/sgd.slang",
+        "source/cpp/lib/oa/ml/shader/compute/optim/sgd/sgdMomentum.slang"
+      ],
+      "reason": "Preserves the donor FP32 SGD and momentum update order while adapting attributes, storage helpers, and bindless ABI spelling."
+    },
+    {
+      "family": "adam",
+      "operations": ["adam"],
+      "classification": "mechanical_adaptation",
+      "donors": [
+        "source/cpp/lib/oa/ml/shader/compute/optim/adam/adam.slang",
+        "source/cpp/lib/oa/ml/optim/adam.cpp"
+      ],
+      "reason": "Preserves the donor FP32 Adam moment, bias-correction, and parameter-update order while adapting attributes, storage helpers, and bindless ABI spelling."
+    },
+    {
+      "family": "muon",
+      "operations": ["muon", "muon_vector", "muon_normalize", "muon_mat_mul_axpby", "muon_linear_combination", "muon_transpose", "muon_apply"],
+      "classification": "mechanical_adaptation",
+      "donors": [
+        "source/cpp/lib/oa/ml/optim/muon.cpp",
+        "source/cpp/lib/oa/ml/optim/fnOptim.cpp",
+        "source/cpp/lib/oa/ml/shader/compute/optim/muon/muonNesterov.slang",
+        "source/cpp/lib/oa/ml/shader/compute/optim/muon/muonVector.slang",
+        "source/cpp/lib/oa/ml/shader/compute/optim/muon/muonNormalize.slang",
+        "source/cpp/lib/oa/ml/shader/compute/optim/muon/muonMatMulAxpby.slang",
+        "source/cpp/lib/oa/ml/shader/compute/optim/muon/muonLinearCombination.slang",
+        "source/cpp/lib/oa/ml/shader/compute/optim/muon/muonApply.slang"
+      ],
+      "reason": "Preserves the donor FP32 Nesterov, Newton-Schulz5, Moonshot scaling, vector fallback, and native one-moment persistence contracts while adapting the bindless ABI and semantic-to-executable provenance."
     },
     {
       "family": "embedding",
@@ -53,18 +139,92 @@
     },
     {
       "family": "rnn",
-      "operations": ["rnn", "rnn_backward"],
-      "classification": "replacement",
+      "operations": ["rnn_scan", "rnn_scan_backward", "rnn_cell", "rnn_cell_backward"],
+      "classification": "mechanical_adaptation",
       "donors": [
         "source/cpp/lib/oa/ml/shader/compute/nn/rnn/rnnScan.slang",
         "source/cpp/lib/oa/ml/shader/compute/nn/rnn/rnnScanBwd.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/rnn/rnnCellLinear.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/rnn/rnnCellPointwiseBwd.slang",
         "tools/gen/fn/schema/ml/mlFnMatrixRecurrent.toml"
       ],
-      "reason": "Temporary Rust correctness baseline predating the donor-first port policy."
+      "reason": "Preserves the donor hoisted whole-sequence input projection, one-workgroup-per-batch recurrent scan, explicit caller-owned cell state, zero initial state, optional recurrent bias, saved recurrent state, and one-dispatch BPTT. Input projection and parameter adjoints reuse canonical Linear operations instead of retaining the temporary monolithic Rust kernels."
+    },
+    {
+      "family": "batched_matrix_multiply",
+      "operations": ["bmm", "bmm_tiled_16", "bmm_nt", "bmm_nt_tiled_16", "bmm_tn", "bmm_tn_tiled_16"],
+      "classification": "mechanical_adaptation",
+      "donors": [
+        "source/cpp/lib/oa/ml/fnmatrix/bmm/fnMatrixBmm.cpp",
+        "source/cpp/lib/oa/ml/shader/compute/ops/bmm.slang",
+        "source/cpp/lib/oa/ml/shader/compute/ops/bmmTiled16.slang",
+        "source/cpp/lib/oa/ml/shader/compute/ops/bmmNt.slang",
+        "source/cpp/lib/oa/ml/shader/compute/ops/bmmNtTiled16.slang",
+        "source/cpp/lib/oa/ml/shader/compute/ops/bmmTn.slang",
+        "source/cpp/lib/oa/ml/shader/compute/ops/bmmTnTiled16.slang",
+        "tools/gen/fn/schema/ml/mlFnMatrixAttention.toml"
+      ],
+      "reason": "Preserves the donor rank-three NN, NT, and TN layouts, FP32 accumulation, 16x16 shared-memory candidates, exact >=8 route threshold, and reverse formulas composed from the same three semantic operations. OARS allocates unused local IDs because committed compatibility identities occupy donor-local IDs 293-295."
+    },
+    {
+      "family": "attention_head_transform",
+      "operations": ["split_heads", "merge_heads"],
+      "classification": "mechanical_adaptation",
+      "donors": [
+        "source/cpp/lib/oa/ml/fnmatrix/attention/fnMatrixAttention.cpp",
+        "source/cpp/lib/oa/ml/shader/compute/nn/attention/splitHeads.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/attention/mergeHeads.slang",
+        "tools/gen/fn/schema/ml/mlFnMatrixAttention.toml"
+      ],
+      "reason": "Preserves the donor contiguous BS,D to BH,S,D/H permutation, its exact inverse, and inverse-operation adjoints. The one-head path remains a zero-copy differentiable reshape view."
+    },
+    {
+      "family": "scaled_masked_softmax",
+      "operations": ["softmax_scaled_masked", "softmax_scaled_masked_n32", "softmax_scaled_masked_backward"],
+      "classification": "mechanical_adaptation",
+      "donors": [
+        "source/cpp/lib/oa/ml/fnmatrix/backward/fnMatrixBackward.cpp",
+        "source/cpp/lib/oa/ml/shader/compute/nn/softmax/softmaxScaledMasked.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/softmax/softmaxScaledMaskedN32.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/softmax/softmaxScaledMaskedBwd.slang",
+        "tools/gen/fn/schema/ml/mlFnMatrixBackward.toml"
+      ],
+      "reason": "Preserves the donor fused scale-plus-additive-mask final-axis softmax, the <=32-column narrow schedule, detached mask semantics, and saved-output adjoint."
+    },
+    {
+      "family": "scaled_dot_product_attention",
+      "operations": [
+        "scaled_dot_product_attention",
+        "sdpa_softmax_n32",
+        "flash_attention_causal",
+        "scaled_dot_product_attention_backward",
+        "flash_attention_causal_backward_kv"
+      ],
+      "classification": "mechanical_adaptation",
+      "donors": [
+        "source/cpp/lib/oa/ml/fnmatrix/attention/fnMatrixFlashAttention.cpp",
+        "source/cpp/lib/oa/ml/shader/compute/nn/attention/sdpaSoftmax.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/attention/sdpaSoftmaxN32.slang",
+        "tools/gen/fn/schema/ml/mlFnMatrixAttention.toml"
+      ],
+      "reason": "Preserves the donor standard provider as BMM-NT, implicit-causal or optional-additive-mask Softmax, and BMM, plus the causal Flash provider with FP32 log-sum-exp saved state and its deterministic two-dispatch adjoint. Both providers retain one SDPA semantic identity."
+    },
+    {
+      "family": "moe_route_weights",
+      "operations": ["moe_route_weights", "moe_route_weights_backward"],
+      "classification": "mechanical_adaptation",
+      "donors": [
+        "tools/gen/fn/schema/ml/mlFnMatrixMoe.toml",
+        "source/cpp/lib/oa/ml/fnmatrix/moe/fnMatrixMoe.cpp",
+        "source/cpp/lib/oa/ml/autograd/matrix/autogradMoe.h",
+        "source/cpp/lib/oa/ml/shader/compute/nn/moe/moeRouteWeights.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/moe/moeRouteWeightsBwd.slang"
+      ],
+      "reason": "Preserves the donor selected-expert probability normalization, invalid-index behavior, detached routing decisions, and exact dense probability adjoint while adapting names, attributes, storage helpers, and the bindless ABI spelling."
     },
     {
       "family": "layer_norm",
-      "operations": ["layer_norm", "layer_norm_backward", "layer_norm_parameter_backward"],
+      "operations": ["layer_norm", "layer_norm_backward"],
       "classification": "replacement",
       "donors": [
         "source/cpp/lib/oa/ml/shader/compute/nn/layernorm/layerNorm.slang",
@@ -73,6 +233,32 @@
         "tools/gen/fn/schema/ml/mlFnMatrixNorm.toml"
       ],
       "reason": "Temporary Rust correctness baseline predating the donor-first port policy."
+    },
+    {
+      "family": "rms_norm",
+      "operations": ["rms_norm", "rms_norm_backward"],
+      "classification": "mechanical_adaptation",
+      "donors": [
+        "tools/gen/fn/schema/ml/mlFnMatrixNorm.toml",
+        "tools/gen/fn/schema/ml/mlFnMatrixBackwardStructured.toml",
+        "source/cpp/lib/oa/ml/shader/compute/nn/rmsnorm/rmsNorm.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/rmsnorm/rmsNormBwd.slang",
+        "source/cpp/lib/oa/core/shader/compute/math/reductions.slang"
+      ],
+      "reason": "Preserves the donor FP32 last-axis RMS, input adjoint, per-row weight contribution, epsilon, reduction order, and bindless buffer order while adapting names and OA attributes."
+    },
+    {
+      "family": "rope",
+      "operations": ["rope", "rope_backward"],
+      "classification": "mechanical_adaptation",
+      "donors": [
+        "source/cpp/lib/oa/ml/nn/rope/rope.cpp",
+        "source/cpp/lib/oa/ml/autograd/matrix/autogradRope.h",
+        "source/cpp/lib/oa/ml/shader/compute/nn/rope/ropeApply.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/rope/ropeApplyBwd.slang",
+        "tools/gen/fn/schema/ml/mlFnKernelIdentity.toml"
+      ],
+      "reason": "Preserves the donor Llama-style split-half rotary pairing, theta base, position offset, forward rotation, transpose adjoint, and one-thread-per-pair dispatch while adapting names, attributes, and bindless ABI spelling."
     },
     {
       "family": "gelu",
@@ -86,19 +272,177 @@
       "reason": "Temporary Rust correctness baseline predating the donor-first port policy."
     },
     {
-      "family": "attention",
+      "family": "activation",
       "operations": [
-        "scaled_dot_product_attention_causal",
-        "scaled_dot_product_attention_causal_probability_backward",
-        "scaled_dot_product_attention_causal_backward"
+        "silu", "silu_backward", "relu", "relu_backward",
+        "tanh", "tanh_backward", "sigmoid", "sigmoid_backward",
+        "leaky_relu", "leaky_relu_backward", "elu", "elu_backward",
+        "mish", "mish_backward", "softplus", "softplus_backward"
+      ],
+      "classification": "mechanical_adaptation",
+      "donors": [
+        "tools/gen/fn/schema/ml/mlFnMatrixActivation.toml",
+        "tools/gen/fn/schema/ml/mlFnMatrixBackward.toml",
+        "source/cpp/lib/oa/ml/shader/compute/nn/activation",
+        "source/cpp/lib/oa/ml/shader/compute/nn/relu/reluBwd.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/silu/siluBwd.slang"
+      ],
+      "reason": "Preserves the donor FP32 activation formulas, saved-input/output adjoint choices, scalar alpha parameters, and elementwise dispatch while adapting names, attributes, and bindless ABI spelling."
+    },
+    {
+      "family": "max_pool_2d",
+      "operations": ["max_pool_2d", "max_pool_2d_backward"],
+      "classification": "mechanical_adaptation",
+      "donors": [
+        "tools/gen/fn/schema/ml/mlFnMatrixPool.toml",
+        "tools/gen/fn/schema/ml/mlFnMatrixBackward.toml",
+        "tools/gen/nn/schema/ml/mlNnPool.toml",
+        "source/cpp/lib/oa/ml/shader/compute/nn/pooling/maxPool2d.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/pooling/maxPool2dBwd.slang"
+      ],
+      "reason": "Preserves the donor NCHW FP32 max selection, first-maximum tie rule, explicit argmax result, deterministic gather-style adjoint, and parameterless module contract while correcting the donor shader's float-encoded UInt32 index mismatch and adapting Rust naming, checked arithmetic, attributes, and bindless ABI spelling."
+    },
+    {
+      "family": "adaptive_avg_pool_2d",
+      "operations": ["adaptive_avg_pool_2d", "adaptive_avg_pool_2d_backward"],
+      "classification": "replacement",
+      "donors": [
+        "tools/gen/nn/schema/ml/mlNnVisionAdvanced.toml",
+        "source/cpp/lib/oa/ml/nn/adaptiveavgpool2d/adaptiveAvgPool2d.cpp"
+      ],
+      "reason": "The donor-generated header accepts one square extent while its tests call two extents, and its implementation derives both spatial axes from height before invoking a square fixed-window pool. OARS implements the intended independent adaptive-bin geometry for rectangular and non-divisible inputs while retaining NCHW ownership and deterministic adjoints."
+    },
+    {
+      "family": "batch_norm_2d",
+      "operations": [
+        "batch_norm_2d", "batch_norm_2d_with_stats",
+        "batch_norm_2d_running_update", "batch_norm_2d_backward",
+        "batch_norm_2d_input_backward"
       ],
       "classification": "replacement",
       "donors": [
-        "source/cpp/lib/oa/ml/fnmatrix/attention/fnMatrixAttention.cpp",
-        "source/cpp/lib/oa/ml/fnmatrix/attention/fnMatrixFlashAttention.cpp",
-        "tools/gen/fn/schema/ml/mlFnMatrixAttention.toml"
+        "tools/gen/nn/schema/ml/mlNnVisionAdvanced.toml",
+        "source/cpp/lib/oa/ml/nn/batchnorm2d/batchNorm2d.cpp",
+        "source/cpp/lib/oa/ml/fnmatrix/backward/fnMatrixBackward.cpp",
+        "source/cpp/lib/oa/vision/shader/compute/nn/batchNorm2dStats.slang",
+        "source/cpp/lib/oa/vision/shader/compute/nn/batchNorm2dNorm.slang"
       ],
-      "reason": "Temporary Rust correctness baseline predating the donor-first port policy."
+      "reason": "Preserves NCHW per-channel normalization, affine parameters, momentum running state, and train/eval behavior while replacing the donor's cancellation-prone E[x^2]-E[x]^2 variance with centered variance and honoring inference mode in the input adjoint."
+    },
+    {
+      "family": "upsample_2d",
+      "operations": [
+        "upsample_2d", "upsample_2d_bilinear",
+        "upsample_2d_backward", "upsample_2d_bilinear_backward"
+      ],
+      "classification": "mechanical_adaptation",
+      "donors": [
+        "tools/gen/nn/schema/ml/mlNnVision.toml",
+        "tools/gen/fn/schema/ml/mlFnMatrixBackward.toml",
+        "tools/gen/fn/schema/vision/visionFnKernelIdentity.toml",
+        "source/cpp/lib/oa/ml/nn/upsample/upsample.cpp",
+        "source/cpp/lib/oa/ml/fnmatrix/backward/fnMatrixBackward.cpp",
+        "source/cpp/lib/oa/vision/shader/compute/geometric/resizeNearest.slang",
+        "source/cpp/lib/oa/vision/shader/compute/geometric/resizeNearestBwd.slang",
+        "source/cpp/lib/oa/vision/shader/compute/geometric/resizeBilinear.slang",
+        "source/cpp/lib/oa/vision/shader/compute/geometric/resizeBilinearBwd.slang"
+      ],
+      "reason": "Preserves the donor integer-scale nearest and align-corners-false half-pixel bilinear NCHW formulas while replacing the bilinear float-atomic adjoint with deterministic gather ownership and adapting Rust naming, validation, attributes, and bindless ABI spelling."
+    },
+    {
+      "family": "conv_2d",
+      "operations": ["conv_2d", "conv_2d_backward", "conv_2d_parameter_backward"],
+      "classification": "mechanical_adaptation",
+      "donors": [
+        "tools/gen/nn/schema/ml/mlNnConv.toml",
+        "tools/gen/fn/schema/ml/mlFnMatrixConv.toml",
+        "source/cpp/lib/oa/ml/fnmatrix/modules/fnMatrixModules.cpp",
+        "source/cpp/lib/oa/ml/autograd/matrix/autogradConv.h",
+        "source/cpp/lib/oa/ml/shader/compute/nn/conv/conv2d.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/conv/conv2dBwdData.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/conv/conv2dBwdWeight.slang"
+      ],
+      "reason": "Preserves the donor NCHW grouped-convolution geometry, OIHW-grouped weight layout, bias epilogue, and all three adjoints while replacing unsigned coordinate underflow and the donor parameter-adjoint shader's invalid bias identifiers with deterministic signed-coordinate gather reductions."
+    },
+    {
+      "family": "conv_1d",
+      "operations": [
+        "conv_1d", "conv_1d_bias_add", "conv_1d_transpose",
+        "conv_1d_backward", "conv_1d_parameter_backward"
+      ],
+      "classification": "mechanical_adaptation",
+      "donors": [
+        "tools/gen/nn/schema/ml/mlNnConv.toml",
+        "tools/gen/fn/schema/ml/mlFnMatrixConv.toml",
+        "source/cpp/lib/oa/ml/fnmatrix/conv/fnMatrixConv1dGemm.cpp",
+        "source/cpp/lib/oa/ml/autograd/matrix/autogradConv.h",
+        "source/cpp/lib/oa/ml/shader/compute/nn/conv/im2Col1d.slang",
+        "source/cpp/lib/oa/ml/shader/compute/ops/biasAdd.slang",
+        "source/cpp/lib/oa/core/shader/compute/matrix/transposeBatched.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/conv/conv1dBwdData.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/conv/conv1dBwdWeight.slang"
+      ],
+      "reason": "Preserves the donor NCL im2col layout, existing 64x64x16 tiled MatMulNt route, in-place last-axis bias broadcast, batched channels-first transpose, dilation geometry, and explicit deterministic data/parameter adjoints while representing the four-node forward and two-node backward as single semantic operations."
+    },
+    {
+      "family": "conv_transpose_1d",
+      "operations": ["conv_transpose_1d", "conv_transpose_1d_backward"],
+      "classification": "mechanical_adaptation",
+      "donors": [
+        "tools/gen/nn/schema/ml/mlNnConv.toml",
+        "tools/gen/fn/schema/ml/mlFnMatrixConv.toml",
+        "source/cpp/lib/oa/ml/nn/convtranspose1d/convTranspose1d.cpp",
+        "source/cpp/lib/oa/ml/autograd/matrix/autogradConv.h",
+        "source/cpp/lib/oa/ml/shader/compute/nn/conv/conv1dBwdData.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/conv/im2Col1d.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/conv/conv1dBwdWeight.slang"
+      ],
+      "reason": "Preserves the donor bias-free NCL transposed-convolution geometry and IOK weight layout. Forward is the existing Conv1d data adjoint; backward reuses the canonical Conv1d im2col plus 64x64x16 tiled MatMulNt route and deterministic parameter adjoint as one semantic operation rather than introducing a second convolution implementation."
+    },
+    {
+      "family": "conv_transpose_2d",
+      "operations": [
+        "conv_transpose_2d", "conv_transpose_2d_bias_add",
+        "conv_transpose_2d_backward", "conv_transpose_2d_parameter_backward"
+      ],
+      "classification": "mechanical_adaptation",
+      "donors": [
+        "tools/gen/nn/schema/ml/mlNnConv.toml",
+        "tools/gen/fn/schema/ml/mlFnMatrixConv.toml",
+        "source/cpp/lib/oa/ml/fnmatrix/modules/fnMatrixModules.cpp",
+        "source/cpp/lib/oa/ml/nn/convtranspose2d/convTranspose2d.cpp",
+        "source/cpp/lib/oa/ml/autograd/matrix/autogradConv.h",
+        "source/cpp/lib/oa/ml/shader/compute/nn/conv/conv2dBwdData.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/conv/convTranspose2dBwdWeight.slang"
+      ],
+      "reason": "Preserves the donor NCHW transposed-convolution geometry, IOKK weight layout, channel-bias epilogue, Conv2d data-adjoint forward, regular-Conv2d input adjoint, and deterministic weight/bias adjoints while replacing donor unsigned coordinate underflow with signed checks and retaining one semantic forward and backward operation."
+    },
+    {
+      "family": "gru",
+      "operations": ["gru_scan", "gru_scan_backward", "gru_cell", "gru_cell_backward"],
+      "classification": "mechanical_adaptation",
+      "donors": [
+        "tools/gen/fn/schema/ml/mlFnMatrixRecurrent.toml",
+        "tools/gen/nn/schema/ml/mlNnRecurrent.toml",
+        "source/cpp/lib/oa/ml/nn/gru/gru.cpp",
+        "source/cpp/lib/oa/ml/autograd/matrix/autogradGruScan.cpp",
+        "source/cpp/lib/oa/ml/shader/compute/nn/gru/gruScan.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/gru/gruScanBwd.slang"
+      ],
+      "reason": "Preserves the donor whole-sequence GRU scan, reset/update/candidate gate order, zero initial state, optional recurrent bias, saved previous-hidden state, and one-dispatch BPTT recurrence. The recurrence-free input projection and recurrent parameter adjoint reuse the canonical Linear operations, so no timestep-level host loop or duplicate GEMM path is introduced."
+    },
+    {
+      "family": "avg_pool_2d",
+      "operations": ["avg_pool_2d", "avg_pool_2d_backward"],
+      "classification": "mechanical_adaptation",
+      "donors": [
+        "tools/gen/fn/schema/ml/mlFnMatrixPool.toml",
+        "tools/gen/fn/schema/ml/mlFnMatrixBackward.toml",
+        "tools/gen/nn/schema/ml/mlNnPool.toml",
+        "source/cpp/lib/oa/ml/shader/compute/nn/pooling/avgPool2d.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/pooling/avgPool2dBwd.slang"
+      ],
+      "reason": "Preserves the donor NCHW FP32 window geometry, edge-count divisor, one-output/one-input invocation ownership, saved-input adjoint, and parameterless module contract while adapting Rust naming, checked arithmetic, attributes, and bindless ABI spelling."
     },
     {
       "family": "qkv_projection",
@@ -127,6 +471,7 @@
     {
       "stable_id": 22,
       "name": "linear",
+      "semantic_domain": "ml::matrix",
       "kernel_id": "MlLinearF32",
       "dnn": {
         "role": "matmul",
@@ -134,13 +479,15 @@
         "epilogue": "bias",
         "epilogue_requires_input": 2
       },
-      "source": "src/slang/ml/nn/linear.slang",
+      "source": "src/slang/ml/nn/linear/linear.slang",
       "variant": "generic",
+      "dispatch_tile_size": [64, 64, 1],
       "differentiation": "linear_backward",
+      "autograd": {"mode": "manual", "family": "matrix/linear"},
       "contract": {
         "input_kinds": ["matrix", "parameter", "parameter"],
         "output_kinds": ["matrix"],
-        "shape_rule": "input_bi_weight_oi_bias_o_to_bo",
+        "shape_rule": "input_leading_i_weight_oi_bias_o_to_leading_o",
         "dtype_rule": "f32",
         "effects": ["read_inputs", "write_output"],
         "mutated_inputs": [],
@@ -165,9 +512,12 @@
     {
       "stable_id": 23,
       "name": "linear_backward",
+      "semantic_domain": "ml::matrix",
       "kernel_id": "MlLinearBackwardF32",
-      "source": "src/slang/ml/nn/linear_backward.slang",
+      "source": "src/slang/ml/nn/linear/linear_backward.slang",
       "variant": "generic",
+      "workgroup_size": [64, 1, 1],
+      "dispatch_tile_size": [32, 32, 1],
       "differentiation": "backward",
       "contract": {
         "input_kinds": ["parameter", "matrix"],
@@ -196,8 +546,9 @@
     {
       "stable_id": 38,
       "name": "linear_parameter_backward",
+      "semantic_domain": "ml::matrix",
       "kernel_id": "MlLinearParameterBackwardF32",
-      "source": "src/slang/ml/nn/linear_parameter_backward.slang",
+      "source": "src/slang/ml/nn/linear/linear_parameter_backward.slang",
       "variant": "generic",
       "workgroup_size": [32, 8, 1],
       "differentiation": "backward",
@@ -229,15 +580,23 @@
     {
       "stable_id": 24,
       "name": "cross_entropy",
+      "semantic_domain": "ml::loss",
       "kernel_id": "MlCrossEntropyF32",
-      "source": "src/slang/ml/loss/cross_entropy.slang",
+      "source": "src/slang/ml/loss/cross_entropy/cross_entropy_forward.slang",
       "variant": "generic",
       "differentiation": "cross_entropy_backward",
+      "autograd": {
+        "mode": "generated",
+        "family": "loss/core",
+        "node": "CrossEntropy",
+        "inputs": ["logits", "targets"],
+        "saved_matrices": ["logits", "targets"]
+      },
       "contract": {
         "input_kinds": ["matrix", "class_indices"],
         "output_kinds": ["matrix"],
         "shape_rule": "logits_nc_targets_n_to_scalar_mean",
-        "dtype_rule": "f32_logits_u32_targets",
+        "dtype_rule": "f32_logits_u32_or_i32_targets",
         "effects": ["read_inputs", "write_output"],
         "mutated_inputs": [],
         "output_alias_inputs": [-1],
@@ -253,21 +612,42 @@
         ["targets_index", "uint32"],
         ["output_index", "uint32"],
         ["rows", "uint32"],
-        ["classes", "uint32"]
+        ["classes", "uint32"],
+        ["target_dtype", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 57,
+      "name": "cross_entropy_sum",
+      "kernel_id": "MlCrossEntropySumF32",
+      "source": "src/slang/ml/loss/cross_entropy/cross_entropy_sum.slang",
+      "variant": "generic",
+      "lowering_only": true,
+      "differentiation": "none",
+      "test": {
+        "oracle": "independent_host_sum",
+        "shapes": [[257]],
+        "tolerance": 0.00001
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["output_index", "uint32"],
+        ["element_count", "uint32"]
       ]
     },
     {
       "stable_id": 25,
       "name": "cross_entropy_backward",
+      "semantic_domain": "ml::loss",
       "kernel_id": "MlCrossEntropyBackwardF32",
-      "source": "src/slang/ml/loss/cross_entropy_backward.slang",
+      "source": "src/slang/ml/loss/cross_entropy/cross_entropy_backward.slang",
       "variant": "generic",
       "differentiation": "backward",
       "contract": {
         "input_kinds": ["matrix", "class_indices"],
         "output_kinds": ["matrix"],
         "shape_rule": "cross_entropy_logits_adjoint",
-        "dtype_rule": "f32_logits_u32_targets",
+        "dtype_rule": "f32_logits_u32_or_i32_targets",
         "effects": ["read_inputs", "write_output"],
         "mutated_inputs": [],
         "output_alias_inputs": [-1],
@@ -283,12 +663,623 @@
         ["targets_index", "uint32"],
         ["logits_gradient_index", "uint32"],
         ["rows", "uint32"],
-        ["classes", "uint32"]
+        ["classes", "uint32"],
+        ["target_dtype", "uint32"]
       ]
+    },
+    {
+      "stable_id": 232,
+      "name": "masked_cross_entropy",
+      "semantic_domain": "ml::loss",
+      "kernel_id": "MlMaskedCrossEntropyF32",
+      "source": "src/slang/ml/loss/masked_cross_entropy/masked_cross_entropy_forward.slang",
+      "variant": "generic",
+      "physical_write": {
+        "writes": [{"binding": 3, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"}],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "differentiation": "masked_cross_entropy_backward",
+      "semantic_attributes": [["valid_count", "signed_integer"]],
+      "autograd": {
+        "mode": "generated",
+        "family": "loss/core",
+        "node": "MaskedCrossEntropy",
+        "inputs": ["logits", "targets", "mask"],
+        "saved_matrices": ["logits", "targets", "mask"],
+        "saved_scalars": [["valid_count", "usize"]]
+      },
+      "contract": {
+        "input_kinds": ["matrix", "class_indices", "matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "masked_cross_entropy_to_scalar_mean",
+        "dtype_rule": "f32_logits_u32_or_i32_targets_f32_mask",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "independent_host_masked_cross_entropy_mean",
+        "shapes": [[4, 3]],
+        "tolerance": 0.00002
+      },
+      "push_fields": [
+        ["logits_index", "uint32"],
+        ["targets_index", "uint32"],
+        ["mask_index", "uint32"],
+        ["output_index", "uint32"],
+        ["rows", "uint32"],
+        ["classes", "uint32"],
+        ["target_dtype", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 233,
+      "name": "masked_cross_entropy_backward",
+      "semantic_domain": "ml::loss",
+      "kernel_id": "MlMaskedCrossEntropyBackwardF32",
+      "source": "src/slang/ml/loss/masked_cross_entropy/masked_cross_entropy_backward.slang",
+      "variant": "generic",
+      "physical_write": {
+        "writes": [{"binding": 3, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"}],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "differentiation": "backward",
+      "semantic_attributes": [["valid_count", "signed_integer"]],
+      "contract": {
+        "input_kinds": ["matrix", "class_indices", "matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "masked_cross_entropy_logits_adjoint",
+        "dtype_rule": "f32_logits_u32_or_i32_targets_f32_mask",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "finite_difference_selected_rows",
+        "shapes": [[4, 3]],
+        "tolerance": 0.0002
+      },
+      "push_fields": [
+        ["logits_index", "uint32"],
+        ["targets_index", "uint32"],
+        ["mask_index", "uint32"],
+        ["logits_gradient_index", "uint32"],
+        ["rows", "uint32"],
+        ["classes", "uint32"],
+        ["target_dtype", "uint32"],
+        ["valid_count", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 297,
+      "name": "smooth_l1",
+      "semantic_domain": "ml::loss",
+      "kernel_id": "MlSmoothL1F32",
+      "source": "src/slang/ml/loss/smooth_l1/smooth_l1_forward.slang",
+      "variant": "generic",
+      "physical_write": {
+        "writes": [{"binding": 2, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"}],
+        "workspace": "none"
+      },
+      "differentiation": "smooth_l1_backward",
+      "autograd": {"mode": "generated", "family": "loss/core", "node": "SmoothL1", "inputs": ["prediction", "target"], "saved_matrices": ["prediction", "target"]},
+      "contract": {
+        "input_kinds": ["matrix", "matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "matching_nonempty_inputs_to_scalar_mean",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {"oracle": "independent_host_smooth_l1_mean", "shapes": [[2, 3]], "tolerance": 0.00002},
+      "push_fields": [["prediction_index", "uint32"], ["target_index", "uint32"], ["output_index", "uint32"], ["element_count", "uint32"]]
+    },
+    {
+      "stable_id": 298,
+      "name": "smooth_l1_backward",
+      "semantic_domain": "ml::loss",
+      "kernel_id": "MlSmoothL1BackwardF32",
+      "source": "src/slang/ml/loss/smooth_l1/smooth_l1_backward.slang",
+      "variant": "generic",
+      "physical_write": {
+        "writes": [{"binding": 2, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"}],
+        "workspace": "none"
+      },
+      "differentiation": "backward",
+      "contract": {
+        "input_kinds": ["matrix", "matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "matching_inputs_to_prediction_adjoint",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {"oracle": "finite_difference", "shapes": [[2, 3]], "tolerance": 0.0002},
+      "push_fields": [["prediction_index", "uint32"], ["target_index", "uint32"], ["prediction_gradient_index", "uint32"], ["element_count", "uint32"]]
+    },
+    {
+      "stable_id": 358,
+      "name": "smooth_l1_mean",
+      "kernel_id": "MlSmoothL1MeanF32",
+      "lowering_only": true,
+      "semantic_operation": "smooth_l1",
+      "source": "src/slang/ml/loss/smooth_l1/smooth_l1_mean_forward.slang",
+      "variant": "generic",
+      "physical_write": {
+        "writes": [{"binding": 2, "domain": "scalar", "partition": "exclusive_per_workgroup", "extent": "one_scalar", "collision": "exclusive", "tail": "bounds_checked"}],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "differentiation": "none",
+      "test": {"oracle": "differential_smooth_l1_mean", "shapes": [[2, 3]], "tolerance": 0.00002},
+      "push_fields": [["prediction_index", "uint32"], ["target_index", "uint32"], ["output_index", "uint32"], ["element_count", "uint32"]]
+    },
+    {
+      "stable_id": 299,
+      "name": "mse",
+      "semantic_domain": "ml::loss",
+      "kernel_id": "MlMseF32",
+      "source": "src/slang/ml/loss/mse/mse_forward.slang",
+      "variant": "generic",
+      "physical_write": {
+        "writes": [{"binding": 2, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"}],
+        "workspace": "none"
+      },
+      "differentiation": "mse_backward",
+      "autograd": {"mode": "generated", "family": "loss/core", "node": "Mse", "inputs": ["prediction", "target"], "saved_matrices": ["prediction", "target"]},
+      "contract": {
+        "input_kinds": ["matrix", "matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "matching_nonempty_inputs_to_scalar_mean",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {"oracle": "independent_host_mse_mean", "shapes": [[2, 3]], "tolerance": 0.00002},
+      "push_fields": [["prediction_index", "uint32"], ["target_index", "uint32"], ["output_index", "uint32"], ["element_count", "uint32"]]
+    },
+    {
+      "stable_id": 300,
+      "name": "mse_backward",
+      "semantic_domain": "ml::loss",
+      "kernel_id": "MlMseBackwardF32",
+      "source": "src/slang/ml/loss/mse/mse_backward.slang",
+      "variant": "generic",
+      "physical_write": {
+        "writes": [{"binding": 2, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"}],
+        "workspace": "none"
+      },
+      "differentiation": "backward",
+      "contract": {
+        "input_kinds": ["matrix", "matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "matching_inputs_to_prediction_adjoint",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {"oracle": "finite_difference", "shapes": [[2, 3]], "tolerance": 0.0002},
+      "push_fields": [["prediction_index", "uint32"], ["target_index", "uint32"], ["prediction_gradient_index", "uint32"], ["element_count", "uint32"]]
+    },
+    {
+      "stable_id": 301,
+      "name": "l1",
+      "semantic_domain": "ml::loss",
+      "kernel_id": "MlL1F32",
+      "source": "src/slang/ml/loss/l1/l1_forward.slang",
+      "variant": "generic",
+      "physical_write": {
+        "writes": [{"binding": 2, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"}],
+        "workspace": "none"
+      },
+      "differentiation": "l1_backward",
+      "autograd": {"mode": "generated", "family": "loss/core", "node": "L1", "inputs": ["prediction", "target"], "saved_matrices": ["prediction", "target"]},
+      "contract": {
+        "input_kinds": ["matrix", "matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "matching_nonempty_inputs_to_scalar_mean",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {"oracle": "independent_host_l1_mean", "shapes": [[2, 3]], "tolerance": 0.00002},
+      "push_fields": [["prediction_index", "uint32"], ["target_index", "uint32"], ["output_index", "uint32"], ["element_count", "uint32"]]
+    },
+    {
+      "stable_id": 302,
+      "name": "l1_backward",
+      "semantic_domain": "ml::loss",
+      "kernel_id": "MlL1BackwardF32",
+      "source": "src/slang/ml/loss/l1/l1_backward.slang",
+      "variant": "generic",
+      "physical_write": {
+        "writes": [{"binding": 2, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"}],
+        "workspace": "none"
+      },
+      "differentiation": "backward",
+      "contract": {
+        "input_kinds": ["matrix", "matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "matching_inputs_to_prediction_adjoint",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {"oracle": "finite_difference_away_from_cusp", "shapes": [[2, 3]], "tolerance": 0.0002},
+      "push_fields": [["prediction_index", "uint32"], ["target_index", "uint32"], ["prediction_gradient_index", "uint32"], ["element_count", "uint32"]]
+    },
+    {
+      "stable_id": 303,
+      "name": "bce",
+      "semantic_domain": "ml::loss",
+      "kernel_id": "MlBceF32",
+      "source": "src/slang/ml/loss/bce/bce_forward.slang",
+      "variant": "generic",
+      "physical_write": {
+        "writes": [{"binding": 2, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"}],
+        "workspace": "none"
+      },
+      "differentiation": "bce_backward",
+      "autograd": {"mode": "generated", "family": "loss/core", "node": "Bce", "inputs": ["prediction", "target"], "saved_matrices": ["prediction", "target"]},
+      "contract": {
+        "input_kinds": ["matrix", "matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "matching_nonempty_inputs_to_scalar_mean",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {"oracle": "independent_host_bce_mean", "shapes": [[2, 3]], "tolerance": 0.00002},
+      "push_fields": [["prediction_index", "uint32"], ["target_index", "uint32"], ["output_index", "uint32"], ["element_count", "uint32"]]
+    },
+    {
+      "stable_id": 304,
+      "name": "bce_backward",
+      "semantic_domain": "ml::loss",
+      "kernel_id": "MlBceBackwardF32",
+      "source": "src/slang/ml/loss/bce/bce_backward.slang",
+      "variant": "generic",
+      "physical_write": {
+        "writes": [{"binding": 2, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"}],
+        "workspace": "none"
+      },
+      "differentiation": "backward",
+      "contract": {
+        "input_kinds": ["matrix", "matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "matching_inputs_to_prediction_adjoint",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {"oracle": "finite_difference_inside_probability_domain", "shapes": [[2, 3]], "tolerance": 0.0003},
+      "push_fields": [["prediction_index", "uint32"], ["target_index", "uint32"], ["prediction_gradient_index", "uint32"], ["element_count", "uint32"]]
+    },
+    {
+      "stable_id": 82,
+      "name": "sgd",
+      "semantic_domain": "ml::optim",
+      "kernel_id": "MlSgdF32",
+      "training_replay_role": "host_stepped_optimizer",
+      "semantic_attributes": [
+        ["learning_rate", "float"],
+        ["weight_decay", "float"]
+      ],
+      "source": "src/slang/ml/optim/sgd/sgd.slang",
+      "variant": "generic",
+      "differentiation": "none",
+      "contract": {
+        "input_kinds": ["parameter", "gradient"],
+        "output_kinds": ["parameter"],
+        "shape_rule": "preserve_parameter",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [0],
+        "output_alias_inputs": [0],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "independent_host_sgd",
+        "shapes": [[3, 2], [3]],
+        "tolerance": 0.000001
+      },
+      "push_fields": [
+        ["parameter_index", "uint32"],
+        ["gradient_index", "uint32"],
+        ["element_count", "uint32"],
+        ["learning_rate", "float32"],
+        ["weight_decay", "float32"]
+      ]
+    },
+    {
+      "stable_id": 351,
+      "name": "clip_grad_norm",
+      "semantic_domain": "ml::optim",
+      "kernel_id": "MlClipGradNormReduceF32",
+      "source": "src/slang/ml/optim/grad_clip/clip_grad_norm_reduce.slang",
+      "variant": "generic",
+      "physical_write": {
+        "writes": [{"binding": 1, "domain": "output_elements", "partition": "exclusive_per_workgroup", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"}],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "differentiation": "none",
+      "semantic_attributes": [["max_norm", "float"]],
+      "contract": {
+        "input_kinds": [],
+        "output_kinds": [],
+        "variadic_input": {"kind": "matrix", "minimum": 1},
+        "variadic_output": {"kind": "matrix", "minimum": 1},
+        "aligned_variadic_aliases": true,
+        "shape_rule": "preserve_each_gradient",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_outputs"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "independent_host_global_l2_norm_clip",
+        "shapes": [[3], [2, 2]],
+        "tolerance": 0.000001
+      },
+      "push_fields": [
+        ["params_index", "uint32"],
+        ["partials_index", "uint32"],
+        ["gradient_0_index", "uint32"],
+        ["gradient_1_index", "uint32"],
+        ["gradient_2_index", "uint32"],
+        ["gradient_3_index", "uint32"],
+        ["gradient_4_index", "uint32"],
+        ["gradient_5_index", "uint32"],
+        ["gradient_6_index", "uint32"],
+        ["gradient_7_index", "uint32"],
+        ["gradient_8_index", "uint32"],
+        ["gradient_9_index", "uint32"],
+        ["gradient_10_index", "uint32"],
+        ["gradient_11_index", "uint32"],
+        ["gradient_12_index", "uint32"],
+        ["gradient_13_index", "uint32"],
+        ["gradient_14_index", "uint32"],
+        ["gradient_15_index", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 352,
+      "name": "clip_grad_norm_scale",
+      "kernel_id": "MlClipGradNormScaleF32",
+      "lowering_only": true,
+      "semantic_operation": "clip_grad_norm",
+      "source": "src/slang/ml/optim/grad_clip/clip_grad_norm_scale.slang",
+      "variant": "generic",
+      "differentiation": "none",
+      "test": {
+        "oracle": "differential_clip_grad_norm_pipeline",
+        "shapes": [[3], [2, 2]],
+        "tolerance": 0.000001
+      },
+      "push_fields": [
+        ["params_index", "uint32"],
+        ["partials_index", "uint32"],
+        ["gradient_0_index", "uint32"],
+        ["gradient_1_index", "uint32"],
+        ["gradient_2_index", "uint32"],
+        ["gradient_3_index", "uint32"],
+        ["gradient_4_index", "uint32"],
+        ["gradient_5_index", "uint32"],
+        ["gradient_6_index", "uint32"],
+        ["gradient_7_index", "uint32"],
+        ["gradient_8_index", "uint32"],
+        ["gradient_9_index", "uint32"],
+        ["gradient_10_index", "uint32"],
+        ["gradient_11_index", "uint32"],
+        ["gradient_12_index", "uint32"],
+        ["gradient_13_index", "uint32"],
+        ["gradient_14_index", "uint32"],
+        ["gradient_15_index", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 83,
+      "name": "sgd_momentum",
+      "semantic_domain": "ml::optim",
+      "kernel_id": "MlSgdMomentumF32",
+      "training_replay_role": "host_stepped_optimizer",
+      "semantic_attributes": [
+        ["learning_rate", "float"],
+        ["momentum", "float"],
+        ["weight_decay", "float"]
+      ],
+      "source": "src/slang/ml/optim/sgd/sgd_momentum.slang",
+      "variant": "generic",
+      "differentiation": "none",
+      "contract": {
+        "input_kinds": ["parameter", "gradient", "momentum"],
+        "output_kinds": ["parameter", "momentum"],
+        "shape_rule": "preserve_parameter",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_outputs"],
+        "mutated_inputs": [0, 2],
+        "output_alias_inputs": [0, 2],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "independent_host_sgd_momentum",
+        "shapes": [[3, 2], [3]],
+        "tolerance": 0.000001
+      },
+      "push_fields": [
+        ["parameter_index", "uint32"],
+        ["gradient_index", "uint32"],
+        ["momentum_index", "uint32"],
+        ["element_count", "uint32"],
+        ["learning_rate", "float32"],
+        ["momentum_coefficient", "float32"],
+        ["weight_decay", "float32"]
+      ]
+    },
+    {
+      "stable_id": 84,
+      "name": "adam",
+      "semantic_domain": "ml::optim",
+      "kernel_id": "MlAdamF32",
+      "training_replay_role": "host_stepped_optimizer",
+      "semantic_attributes": [
+        ["step", "unsigned_integer"],
+        ["learning_rate", "float"],
+        ["beta1", "float"],
+        ["beta2", "float"],
+        ["epsilon", "float"]
+      ],
+      "source": "src/slang/ml/optim/adam/adam.slang",
+      "variant": "generic",
+      "differentiation": "none",
+      "contract": {
+        "input_kinds": ["parameter", "gradient", "first_moment", "second_moment"],
+        "output_kinds": ["parameter", "first_moment", "second_moment"],
+        "shape_rule": "preserve_parameter",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_outputs"],
+        "mutated_inputs": [0, 2, 3],
+        "output_alias_inputs": [0, 2, 3],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "independent_host_adam",
+        "shapes": [[3, 2], [3]],
+        "tolerance": 0.00002
+      },
+      "push_fields": [
+        ["parameter_index", "uint32"],
+        ["gradient_index", "uint32"],
+        ["first_moment_index", "uint32"],
+        ["second_moment_index", "uint32"],
+        ["element_count", "uint32"],
+        ["learning_rate", "float32"],
+        ["beta1", "float32"],
+        ["beta2", "float32"],
+        ["epsilon", "float32"],
+        ["step", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 85,
+      "name": "muon",
+      "semantic_domain": "ml::optim",
+      "kernel_id": "MlMuonNesterovF32",
+      "training_replay_role": "host_stepped_optimizer",
+      "semantic_attributes": [["learning_rate", "float"], ["beta", "float"], ["weight_decay", "float"], ["epsilon", "float"], ["ns5_iterations", "unsigned_integer"]],
+      "source": "src/slang/ml/optim/muon/muon_nesterov.slang",
+      "variant": "generic",
+      "differentiation": "none",
+      "contract": {
+        "input_kinds": ["parameter", "gradient", "momentum"],
+        "output_kinds": ["parameter", "momentum"],
+        "shape_rule": "preserve_parameter",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_outputs"],
+        "mutated_inputs": [0, 2],
+        "output_alias_inputs": [0, 2],
+        "lowering": "compute_dispatch"
+      },
+      "test": {"oracle": "independent_host_muon", "shapes": [[4, 8], [37]], "tolerance": 0.002},
+      "push_fields": [["gradient_index", "uint32"], ["momentum_index", "uint32"], ["update_index", "uint32"], ["element_count", "uint32"], ["beta", "float32"]]
+    },
+    {
+      "stable_id": 86,
+      "name": "muon_vector",
+      "kernel_id": "MlMuonVectorF32",
+      "lowering_only": true,
+      "semantic_operation": "muon",
+      "training_replay_role": "host_stepped_optimizer",
+      "source": "src/slang/ml/optim/muon/muon_vector.slang",
+      "variant": "generic",
+      "differentiation": "none",
+      "test": {"oracle": "independent_host_muon_vector", "shapes": [[37]], "tolerance": 0.000001},
+      "push_fields": [["parameter_index", "uint32"], ["gradient_index", "uint32"], ["momentum_index", "uint32"], ["element_count", "uint32"], ["learning_rate", "float32"], ["beta", "float32"], ["weight_decay", "float32"]]
+    },
+    {
+      "stable_id": 87,
+      "name": "muon_normalize",
+      "kernel_id": "MlMuonNormalizeF32",
+      "lowering_only": true,
+      "training_replay_role": "host_stepped_optimizer",
+      "source": "src/slang/ml/optim/muon/muon_normalize.slang",
+      "variant": "generic",
+      "differentiation": "none",
+      "test": {"oracle": "differential_muon_pipeline", "shapes": [[4, 8]], "tolerance": 0.000001},
+      "push_fields": [["input_index", "uint32"], ["output_index", "uint32"], ["norm_index", "uint32"], ["rows", "uint32"], ["columns", "uint32"], ["epsilon", "float32"]]
+    },
+    {
+      "stable_id": 88,
+      "name": "muon_mat_mul_axpby",
+      "kernel_id": "MlMuonMatMulAxpbyF32",
+      "lowering_only": true,
+      "training_replay_role": "host_stepped_optimizer",
+      "source": "src/slang/ml/optim/muon/muon_mat_mul_axpby.slang",
+      "variant": "generic",
+      "differentiation": "none",
+      "workgroup_size": [16, 16, 1],
+      "dispatch_tile_size": [16, 16, 1],
+      "test": {"oracle": "differential_muon_pipeline", "shapes": [[4, 8]], "tolerance": 0.002},
+      "push_fields": [["a_index", "uint32"], ["b_index", "uint32"], ["residual_index", "uint32"], ["output_index", "uint32"], ["m", "uint32"], ["n", "uint32"], ["k", "uint32"], ["alpha", "float32"], ["beta", "float32"]]
+    },
+    {
+      "stable_id": 89,
+      "name": "muon_linear_combination",
+      "kernel_id": "MlMuonLinearCombinationF32",
+      "lowering_only": true,
+      "training_replay_role": "host_stepped_optimizer",
+      "source": "src/slang/ml/optim/muon/muon_linear_combination.slang",
+      "variant": "generic",
+      "differentiation": "none",
+      "test": {"oracle": "differential_muon_pipeline", "shapes": [[4, 8]], "tolerance": 0.000001},
+      "push_fields": [["a_index", "uint32"], ["b_index", "uint32"], ["output_index", "uint32"], ["element_count", "uint32"], ["scale_a", "float32"], ["scale_b", "float32"]]
+    },
+    {
+      "stable_id": 90,
+      "name": "muon_transpose",
+      "kernel_id": "MlMuonTransposeF32",
+      "lowering_only": true,
+      "training_replay_role": "host_stepped_optimizer",
+      "source": "src/slang/ml/optim/muon/muon_transpose.slang",
+      "variant": "generic",
+      "differentiation": "none",
+      "test": {"oracle": "differential_muon_pipeline", "shapes": [[8, 4]], "tolerance": 0.0},
+      "push_fields": [["input_index", "uint32"], ["output_index", "uint32"], ["rows", "uint32"], ["columns", "uint32"]]
+    },
+    {
+      "stable_id": 91,
+      "name": "muon_apply",
+      "kernel_id": "MlMuonApplyF32",
+      "lowering_only": true,
+      "training_replay_role": "host_stepped_optimizer",
+      "source": "src/slang/ml/optim/muon/muon_apply.slang",
+      "variant": "generic",
+      "differentiation": "none",
+      "test": {"oracle": "differential_muon_pipeline", "shapes": [[4, 8]], "tolerance": 0.002},
+      "push_fields": [["parameter_index", "uint32"], ["orthogonal_index", "uint32"], ["element_count", "uint32"], ["learning_rate", "float32"], ["weight_decay", "float32"], ["moonshot_scale", "float32"]]
     },
     {
       "stable_id": 26,
       "name": "adamw",
+      "semantic_domain": "ml::optim",
       "kernel_id": "MlAdamWF32",
       "training_replay_role": "host_stepped_optimizer",
       "semantic_attributes": [
@@ -299,7 +1290,7 @@
         ["epsilon", "float"],
         ["weight_decay", "float"]
       ],
-      "source": "src/slang/ml/optim/adamw.slang",
+      "source": "src/slang/ml/optim/adamw/adamw.slang",
       "variant": "generic",
       "differentiation": "none",
       "contract": {
@@ -334,9 +1325,10 @@
     {
       "stable_id": 40,
       "name": "adamw_graph_advance",
+      "semantic_domain": "ml::optim",
       "kernel_id": "MlAdamWGraphAdvanceU32",
       "training_replay_role": "optimizer_state_advance",
-      "source": "src/slang/ml/optim/adamw_graph_advance.slang",
+      "source": "src/slang/ml/optim/adamw/adamw_graph_advance.slang",
       "variant": "generic",
       "dtype": "u32",
       "workgroup_size": [1, 1, 1],
@@ -363,9 +1355,10 @@
     {
       "stable_id": 41,
       "name": "adamw_graph",
+      "semantic_domain": "ml::optim",
       "kernel_id": "MlAdamWGraphF32",
       "training_replay_role": "optimizer_state_update",
-      "source": "src/slang/ml/optim/adamw_graph.slang",
+      "source": "src/slang/ml/optim/adamw/adamw_graph.slang",
       "variant": "generic",
       "differentiation": "none",
       "contract": {
@@ -395,10 +1388,12 @@
     {
       "stable_id": 27,
       "name": "embedding",
+      "semantic_domain": "ml::matrix",
       "kernel_id": "MlEmbeddingF32",
-      "source": "src/slang/ml/nn/embedding.slang",
+      "source": "src/slang/ml/nn/embedding/embedding.slang",
       "variant": "generic",
       "differentiation": "embedding_backward",
+      "autograd": {"mode": "manual", "family": "matrix/embedding"},
       "contract": {
         "input_kinds": ["parameter", "class_indices"],
         "output_kinds": ["matrix"],
@@ -426,8 +1421,9 @@
     {
       "stable_id": 28,
       "name": "embedding_backward",
+      "semantic_domain": "ml::matrix",
       "kernel_id": "MlEmbeddingBackwardF32",
-      "source": "src/slang/ml/nn/embedding_backward.slang",
+      "source": "src/slang/ml/nn/embedding/embedding_backward.slang",
       "variant": "generic",
       "differentiation": "backward",
       "contract": {
@@ -456,15 +1452,18 @@
     },
     {
       "stable_id": 29,
-      "name": "rnn",
-      "kernel_id": "MlRnnF32",
-      "source": "src/slang/ml/nn/rnn.slang",
+      "name": "rnn_scan",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlRnnScanF32",
+      "source": "src/slang/ml/nn/rnn/rnn_scan.slang",
       "variant": "generic",
-      "differentiation": "rnn_backward",
+      "differentiation": "rnn_scan_backward",
+	  "semantic_attributes": [["has_bias", "boolean"]],
+      "autograd": {"mode": "manual", "family": "matrix/recurrent"},
       "contract": {
-        "input_kinds": ["matrix", "parameter", "parameter", "parameter", "parameter"],
+        "input_kinds": ["matrix", "parameter", "parameter"],
         "output_kinds": ["matrix", "saved_state"],
-        "shape_rule": "input_bsi_weights_hi_hh_bias_h_to_output_bsh",
+        "shape_rule": "gates_bs_h_recurrent_weight_hh_bias_h_to_output_bsh",
         "dtype_rule": "all_f32",
         "effects": ["read_inputs", "write_outputs"],
         "mutated_inputs": [],
@@ -477,34 +1476,34 @@
         "tolerance": 0.00002
       },
       "push_fields": [
-        ["input_index", "uint32"],
-        ["weight_ih_index", "uint32"],
+        ["gates_i_index", "uint32"],
         ["weight_hh_index", "uint32"],
-        ["bias_ih_index", "uint32"],
         ["bias_hh_index", "uint32"],
         ["output_index", "uint32"],
         ["hidden_previous_index", "uint32"],
-        ["batch", "uint32"],
+        ["hidden_size", "uint32"],
         ["sequence_length", "uint32"],
-        ["input_size", "uint32"],
-        ["hidden_size", "uint32"]
+        ["batch", "uint32"],
+        ["has_bias", "uint32"]
       ]
     },
     {
       "stable_id": 30,
-      "name": "rnn_backward",
-      "kernel_id": "MlRnnBackwardF32",
-      "source": "src/slang/ml/nn/rnn_backward.slang",
+      "name": "rnn_scan_backward",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlRnnScanBackwardF32",
+      "source": "src/slang/ml/nn/rnn/rnn_scan_backward.slang",
       "variant": "generic",
       "differentiation": "backward",
+	  "semantic_attributes": [["has_bias", "boolean"]],
       "contract": {
-        "input_kinds": ["matrix", "matrix", "saved_output", "saved_state", "parameter", "parameter"],
-        "output_kinds": ["matrix", "matrix", "matrix", "matrix", "matrix"],
-        "shape_rule": "elman_bptt_complete_adjoint",
+        "input_kinds": ["matrix", "matrix", "saved_state", "parameter", "parameter"],
+        "output_kinds": ["matrix", "matrix", "matrix"],
+        "shape_rule": "elman_scan_input_recurrent_weight_bias_adjoint",
         "dtype_rule": "all_f32",
         "effects": ["read_inputs", "write_outputs"],
         "mutated_inputs": [],
-        "output_alias_inputs": [-1, -1, -1, -1, -1],
+        "output_alias_inputs": [-1, -1, -1],
         "lowering": "compute_dispatch"
       },
       "test": {
@@ -514,30 +1513,57 @@
       },
       "push_fields": [
         ["output_gradient_index", "uint32"],
-        ["input_index", "uint32"],
-        ["output_index", "uint32"],
+        ["gates_i_index", "uint32"],
         ["hidden_previous_index", "uint32"],
-        ["weight_ih_index", "uint32"],
         ["weight_hh_index", "uint32"],
-        ["input_gradient_index", "uint32"],
-        ["weight_ih_gradient_index", "uint32"],
-        ["weight_hh_gradient_index", "uint32"],
-        ["bias_ih_gradient_index", "uint32"],
-        ["bias_hh_gradient_index", "uint32"],
-        ["batch", "uint32"],
+        ["bias_hh_index", "uint32"],
+        ["gates_i_gradient_index", "uint32"],
+        ["gates_h_gradient_index", "uint32"],
+        ["hidden_size", "uint32"],
         ["sequence_length", "uint32"],
-        ["input_size", "uint32"],
-        ["hidden_size", "uint32"]
+        ["batch", "uint32"],
+        ["has_bias", "uint32"]
       ]
     },
     {
       "stable_id": 31,
       "name": "layer_norm",
+      "semantic_domain": "ml::matrix",
       "kernel_id": "MlLayerNormF32",
       "semantic_attributes": [["epsilon", "float"]],
-      "source": "src/slang/ml/nn/layer_norm.slang",
+      "source": "src/slang/ml/nn/layer_norm/layer_norm.slang",
       "variant": "generic",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 3,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 4,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 5,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "exclusive_per_workgroup"
+      },
       "differentiation": "layer_norm_backward",
+      "autograd": {"mode": "manual", "family": "matrix/norm"},
       "contract": {
         "input_kinds": ["matrix", "parameter", "parameter"],
         "output_kinds": ["matrix", "matrix", "matrix"],
@@ -568,18 +1594,40 @@
     {
       "stable_id": 32,
       "name": "layer_norm_backward",
+      "semantic_domain": "ml::matrix",
       "kernel_id": "MlLayerNormBackwardF32",
-      "source": "src/slang/ml/nn/layer_norm_backward.slang",
+      "source": "src/slang/ml/nn/layer_norm/layer_norm_backward.slang",
       "variant": "generic",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 4,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 5,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "exclusive_per_workgroup"
+      },
       "differentiation": "backward",
       "contract": {
         "input_kinds": ["matrix", "matrix", "parameter", "matrix"],
-        "output_kinds": ["matrix"],
-        "shape_rule": "layer_norm_input_adjoint_from_saved_state",
+        "output_kinds": ["matrix", "matrix", "matrix"],
+        "shape_rule": "layer_norm_adjoint_from_saved_state",
         "dtype_rule": "all_f32",
-        "effects": ["read_inputs", "write_output"],
+        "effects": ["read_inputs", "write_outputs"],
         "mutated_inputs": [],
-        "output_alias_inputs": [-1],
+        "output_alias_inputs": [-1, -1, -1],
         "lowering": "compute_dispatch"
       },
       "test": {
@@ -593,22 +1641,94 @@
         ["weight_index", "uint32"],
         ["output_gradient_index", "uint32"],
         ["input_gradient_index", "uint32"],
+        ["weight_contribution_index", "uint32"],
         ["rows", "uint32"],
         ["columns", "uint32"]
       ]
     },
     {
-      "stable_id": 39,
-      "name": "layer_norm_parameter_backward",
-      "kernel_id": "MlLayerNormParameterBackwardF32",
-      "source": "src/slang/ml/nn/layer_norm_parameter_backward.slang",
+      "stable_id": 113,
+      "name": "rms_norm",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlRmsNormF32",
+      "dnn": {
+        "role": "rms_norm",
+        "providers": ["residual_norm"]
+      },
+      "semantic_attributes": [["epsilon", "float"]],
+      "source": "src/slang/ml/nn/rms_norm/rms_norm.slang",
       "variant": "generic",
-      "workgroup_size": [32, 8, 1],
+      "physical_write": {
+        "writes": [{
+          "binding": 2,
+          "domain": "rows",
+          "partition": "exclusive_per_workgroup",
+          "extent": "row_width",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "differentiation": "rms_norm_backward",
+      "autograd": {"mode": "manual", "family": "matrix/norm"},
+      "contract": {
+        "input_kinds": ["matrix", "parameter"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "normalize_last_dimension",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "independent_host_rms_norm",
+        "shapes": [[2, 3], [2, 2, 3]],
+        "tolerance": 0.00002
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["weight_index", "uint32"],
+        ["output_index", "uint32"],
+        ["rows", "uint32"],
+        ["columns", "uint32"],
+        ["epsilon", "float32"]
+      ]
+    },
+    {
+      "stable_id": 114,
+      "name": "rms_norm_backward",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlRmsNormBackwardF32",
+      "semantic_attributes": [["epsilon", "float"]],
+      "source": "src/slang/ml/nn/rms_norm/rms_norm_backward.slang",
+      "variant": "generic",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 3,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 4,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "exclusive_per_workgroup"
+      },
       "differentiation": "backward",
       "contract": {
-        "input_kinds": ["matrix", "matrix"],
+        "input_kinds": ["matrix", "parameter", "matrix"],
         "output_kinds": ["matrix", "matrix"],
-        "shape_rule": "layer_norm_weight_bias_adjoint_from_saved_state",
+        "shape_rule": "rms_norm_input_and_weight_adjoint",
         "dtype_rule": "all_f32",
         "effects": ["read_inputs", "write_outputs"],
         "mutated_inputs": [],
@@ -616,30 +1736,40 @@
         "lowering": "compute_dispatch"
       },
       "test": {
-        "oracle": "finite_difference",
-        "shapes": [[2, 3]],
+        "oracle": "finite_difference_rank_three",
+        "shapes": [[2, 2, 3]],
         "tolerance": 0.0005
       },
       "push_fields": [
-        ["normalized_index", "uint32"],
+        ["input_index", "uint32"],
+        ["weight_index", "uint32"],
         ["output_gradient_index", "uint32"],
-        ["weight_gradient_index", "uint32"],
-        ["bias_gradient_index", "uint32"],
+        ["input_gradient_index", "uint32"],
+        ["weight_contribution_index", "uint32"],
         ["rows", "uint32"],
-        ["columns", "uint32"]
+        ["columns", "uint32"],
+        ["epsilon", "float32"]
       ]
     },
     {
       "stable_id": 33,
       "name": "gelu",
+      "semantic_domain": "ml::matrix",
       "kernel_id": "MlGeluF32",
       "dnn": {
         "role": "gelu",
         "providers": ["blaslt_epilogue"]
       },
-      "source": "src/slang/ml/nn/gelu.slang",
+      "source": "src/slang/ml/nn/activation/gelu.slang",
       "variant": "generic",
       "differentiation": "gelu_backward",
+      "autograd": {
+        "mode": "generated",
+        "family": "matrix/activation",
+        "node": "Gelu",
+        "inputs": ["input"],
+        "saved_matrices": ["input"]
+      },
       "contract": {
         "input_kinds": ["matrix"],
         "output_kinds": ["matrix"],
@@ -658,8 +1788,9 @@
     {
       "stable_id": 34,
       "name": "gelu_backward",
+      "semantic_domain": "ml::matrix",
       "kernel_id": "MlGeluBackwardF32",
-      "source": "src/slang/ml/nn/gelu_backward.slang",
+      "source": "src/slang/ml/nn/activation/gelu_backward.slang",
       "variant": "generic",
       "differentiation": "backward",
       "contract": {
@@ -679,104 +1810,150 @@
       ]
     },
     {
-      "stable_id": 35,
-      "name": "scaled_dot_product_attention_causal",
-      "kernel_id": "MlScaledDotProductAttentionCausalF32",
-      "dnn": {
-        "role": "scaled_dot_product_attention",
-        "providers": ["attention"]
-      },
-      "semantic_attributes": [
-        ["sequence_length", "unsigned_integer"],
-        ["num_heads", "unsigned_integer"]
-      ],
-      "source": "src/slang/ml/nn/scaled_dot_product_attention_causal.slang",
-      "variant": "generic",
-      "differentiation": "scaled_dot_product_attention_causal_backward",
-      "contract": {
-        "input_kinds": ["matrix", "matrix", "matrix"],
-        "output_kinds": ["matrix", "matrix"],
-        "shape_rule": "qkv_bsd_causal_heads_to_bsd_and_saved_probabilities",
-        "dtype_rule": "all_f32",
-        "effects": ["read_inputs", "write_outputs"],
-        "mutated_inputs": [],
-        "output_alias_inputs": [-1, -1],
-        "lowering": "compute_dispatch"
-      },
-      "test": {"oracle": "independent_host_causal_attention", "shapes": [[2, 3, 4, 2]], "tolerance": 0.00002},
-      "push_fields": [
-        ["query_index", "uint32"], ["key_index", "uint32"], ["value_index", "uint32"],
-        ["output_index", "uint32"], ["probability_index", "uint32"],
-        ["batch", "uint32"], ["sequence_length", "uint32"],
-        ["model_width", "uint32"], ["num_heads", "uint32"]
-      ]
+      "stable_id": 92, "name": "silu", "semantic_domain": "ml::matrix",
+      "kernel_id": "MlSiluF32", "source": "src/slang/ml/nn/activation/silu.slang",
+      "variant": "generic", "differentiation": "silu_backward",
+      "dnn": {"role": "silu", "providers": ["blaslt_epilogue", "gated_ffn"]},
+      "autograd": {"mode": "generated", "family": "matrix/activation", "node": "Silu", "inputs": ["input"], "saved_matrices": ["input"]},
+      "contract": {"input_kinds": ["matrix"], "output_kinds": ["matrix"], "shape_rule": "preserve_input", "dtype_rule": "f32", "effects": ["read_inputs", "write_output"], "mutated_inputs": [], "output_alias_inputs": [-1], "lowering": "compute_dispatch"},
+      "test": {"oracle": "independent_host_silu", "shapes": [[257]], "tolerance": 0.00001},
+      "push_fields": [["input_index", "uint32"], ["output_index", "uint32"], ["element_count", "uint32"]]
     },
     {
-      "stable_id": 37,
-      "name": "scaled_dot_product_attention_causal_probability_backward",
-      "kernel_id": "MlScaledDotProductAttentionCausalProbabilityBackwardF32",
-      "semantic_attributes": [
-        ["sequence_length", "unsigned_integer"],
-        ["num_heads", "unsigned_integer"]
-      ],
-      "source": "src/slang/ml/nn/scaled_dot_product_attention_causal_probability_backward.slang",
-      "variant": "generic",
-      "differentiation": "backward",
-      "contract": {
-        "input_kinds": ["matrix", "matrix", "matrix"],
-        "output_kinds": ["matrix"],
-        "shape_rule": "saved_probability_adjoint",
-        "dtype_rule": "all_f32",
-        "effects": ["read_inputs", "write_output"],
-        "mutated_inputs": [],
-        "output_alias_inputs": [-1],
-        "lowering": "compute_dispatch"
-      },
-      "test": {"oracle": "finite_difference", "shapes": [[1, 3, 4, 2]], "tolerance": 0.0005},
-      "push_fields": [
-        ["probability_index", "uint32"], ["value_index", "uint32"],
-        ["output_gradient_index", "uint32"], ["score_gradient_index", "uint32"],
-        ["batch", "uint32"], ["sequence_length", "uint32"],
-        ["model_width", "uint32"], ["num_heads", "uint32"]
-      ]
+      "stable_id": 93, "name": "silu_backward", "semantic_domain": "ml::matrix",
+      "kernel_id": "MlSiluBackwardF32", "source": "src/slang/ml/nn/activation/silu_backward.slang",
+      "variant": "generic", "differentiation": "backward",
+      "contract": {"input_kinds": ["matrix", "matrix"], "output_kinds": ["matrix"], "shape_rule": "preserve_input", "dtype_rule": "all_f32", "effects": ["read_inputs", "write_output"], "mutated_inputs": [], "output_alias_inputs": [-1], "lowering": "compute_dispatch"},
+      "test": {"oracle": "finite_difference", "shapes": [[7]], "tolerance": 0.0002},
+      "push_fields": [["input_index", "uint32"], ["output_gradient_index", "uint32"], ["input_gradient_index", "uint32"], ["element_count", "uint32"]]
     },
     {
-      "stable_id": 36,
-      "name": "scaled_dot_product_attention_causal_backward",
-      "kernel_id": "MlScaledDotProductAttentionCausalBackwardF32",
-      "semantic_attributes": [
-        ["sequence_length", "unsigned_integer"],
-        ["num_heads", "unsigned_integer"]
-      ],
-      "source": "src/slang/ml/nn/scaled_dot_product_attention_causal_backward.slang",
-      "variant": "generic",
-      "differentiation": "backward",
-      "contract": {
-        "input_kinds": ["matrix", "matrix", "matrix", "matrix", "matrix"],
-        "output_kinds": ["matrix", "matrix", "matrix"],
-        "shape_rule": "causal_attention_qkv_adjoint",
-        "dtype_rule": "all_f32",
-        "effects": ["read_inputs", "write_outputs"],
-        "mutated_inputs": [],
-        "output_alias_inputs": [-1, -1, -1],
-        "lowering": "compute_dispatch"
-      },
-      "test": {"oracle": "finite_difference", "shapes": [[1, 3, 4, 2]], "tolerance": 0.0005},
-      "push_fields": [
-        ["query_index", "uint32"], ["key_index", "uint32"],
-        ["probability_index", "uint32"], ["score_gradient_index", "uint32"],
-        ["output_gradient_index", "uint32"], ["query_gradient_index", "uint32"],
-        ["key_gradient_index", "uint32"], ["value_gradient_index", "uint32"],
-        ["batch", "uint32"], ["sequence_length", "uint32"], ["model_width", "uint32"],
-        ["num_heads", "uint32"]
-      ]
+      "stable_id": 94, "name": "relu", "semantic_domain": "ml::matrix",
+      "kernel_id": "MlReluF32", "source": "src/slang/ml/nn/activation/relu.slang",
+      "variant": "generic", "differentiation": "relu_backward",
+      "dnn": {"role": "relu", "providers": ["blaslt_epilogue"]},
+      "autograd": {"mode": "generated", "family": "matrix/activation", "node": "Relu", "inputs": ["input"], "saved_matrices": ["output"]},
+      "contract": {"input_kinds": ["matrix"], "output_kinds": ["matrix"], "shape_rule": "preserve_input", "dtype_rule": "f32", "effects": ["read_inputs", "write_output"], "mutated_inputs": [], "output_alias_inputs": [-1], "lowering": "compute_dispatch"},
+      "test": {"oracle": "independent_host_relu", "shapes": [[257]], "tolerance": 0.000001},
+      "push_fields": [["input_index", "uint32"], ["output_index", "uint32"], ["element_count", "uint32"]]
+    },
+    {
+      "stable_id": 95, "name": "relu_backward", "semantic_domain": "ml::matrix",
+      "kernel_id": "MlReluBackwardF32", "source": "src/slang/ml/nn/activation/relu_backward.slang",
+      "variant": "generic", "differentiation": "backward",
+      "contract": {"input_kinds": ["matrix", "matrix"], "output_kinds": ["matrix"], "shape_rule": "preserve_input", "dtype_rule": "all_f32", "effects": ["read_inputs", "write_output"], "mutated_inputs": [], "output_alias_inputs": [-1], "lowering": "compute_dispatch"},
+      "test": {"oracle": "finite_difference", "shapes": [[7]], "tolerance": 0.000001},
+      "push_fields": [["saved_output_index", "uint32"], ["output_gradient_index", "uint32"], ["input_gradient_index", "uint32"], ["element_count", "uint32"]]
+    },
+    {
+      "stable_id": 96, "name": "tanh", "semantic_domain": "ml::matrix",
+      "kernel_id": "MlTanhF32", "source": "src/slang/ml/nn/activation/tanh.slang",
+      "variant": "generic", "differentiation": "tanh_backward",
+      "autograd": {"mode": "generated", "family": "matrix/activation", "node": "Tanh", "inputs": ["input"], "saved_matrices": ["output"]},
+      "contract": {"input_kinds": ["matrix"], "output_kinds": ["matrix"], "shape_rule": "preserve_input", "dtype_rule": "f32", "effects": ["read_inputs", "write_output"], "mutated_inputs": [], "output_alias_inputs": [-1], "lowering": "compute_dispatch"},
+      "test": {"oracle": "independent_host_tanh", "shapes": [[257]], "tolerance": 0.00001},
+      "push_fields": [["input_index", "uint32"], ["output_index", "uint32"], ["element_count", "uint32"]]
+    },
+    {
+      "stable_id": 97, "name": "tanh_backward", "semantic_domain": "ml::matrix",
+      "kernel_id": "MlTanhBackwardF32", "source": "src/slang/ml/nn/activation/tanh_backward.slang",
+      "variant": "generic", "differentiation": "backward",
+      "contract": {"input_kinds": ["matrix", "matrix"], "output_kinds": ["matrix"], "shape_rule": "preserve_input", "dtype_rule": "all_f32", "effects": ["read_inputs", "write_output"], "mutated_inputs": [], "output_alias_inputs": [-1], "lowering": "compute_dispatch"},
+      "test": {"oracle": "finite_difference", "shapes": [[7]], "tolerance": 0.0002},
+      "push_fields": [["saved_output_index", "uint32"], ["output_gradient_index", "uint32"], ["input_gradient_index", "uint32"], ["element_count", "uint32"]]
+    },
+    {
+      "stable_id": 98, "name": "sigmoid", "semantic_domain": "ml::matrix",
+      "kernel_id": "MlSigmoidF32", "source": "src/slang/ml/nn/activation/sigmoid.slang",
+      "variant": "generic", "differentiation": "sigmoid_backward",
+      "autograd": {"mode": "generated", "family": "matrix/activation", "node": "Sigmoid", "inputs": ["input"], "saved_matrices": ["output"]},
+      "contract": {"input_kinds": ["matrix"], "output_kinds": ["matrix"], "shape_rule": "preserve_input", "dtype_rule": "f32", "effects": ["read_inputs", "write_output"], "mutated_inputs": [], "output_alias_inputs": [-1], "lowering": "compute_dispatch"},
+      "test": {"oracle": "independent_host_sigmoid", "shapes": [[257]], "tolerance": 0.00001},
+      "push_fields": [["input_index", "uint32"], ["output_index", "uint32"], ["element_count", "uint32"]]
+    },
+    {
+      "stable_id": 99, "name": "sigmoid_backward", "semantic_domain": "ml::matrix",
+      "kernel_id": "MlSigmoidBackwardF32", "source": "src/slang/ml/nn/activation/sigmoid_backward.slang",
+      "variant": "generic", "differentiation": "backward",
+      "contract": {"input_kinds": ["matrix", "matrix"], "output_kinds": ["matrix"], "shape_rule": "preserve_input", "dtype_rule": "all_f32", "effects": ["read_inputs", "write_output"], "mutated_inputs": [], "output_alias_inputs": [-1], "lowering": "compute_dispatch"},
+      "test": {"oracle": "finite_difference", "shapes": [[7]], "tolerance": 0.0002},
+      "push_fields": [["saved_output_index", "uint32"], ["output_gradient_index", "uint32"], ["input_gradient_index", "uint32"], ["element_count", "uint32"]]
+    },
+    {
+      "stable_id": 100, "name": "leaky_relu", "semantic_domain": "ml::matrix",
+      "kernel_id": "MlLeakyReluF32", "source": "src/slang/ml/nn/activation/leaky_relu.slang",
+      "variant": "generic", "differentiation": "leaky_relu_backward",
+      "semantic_attributes": [["alpha", "float"]],
+      "autograd": {"mode": "generated", "family": "matrix/activation", "node": "LeakyRelu", "inputs": ["input"], "saved_matrices": ["input"], "saved_scalars": [["alpha", "f32"]]},
+      "contract": {"input_kinds": ["matrix"], "output_kinds": ["matrix"], "shape_rule": "preserve_input", "dtype_rule": "f32", "effects": ["read_inputs", "write_output"], "mutated_inputs": [], "output_alias_inputs": [-1], "lowering": "compute_dispatch"},
+      "test": {"oracle": "independent_host_leaky_relu", "shapes": [[257]], "tolerance": 0.000001},
+      "push_fields": [["input_index", "uint32"], ["output_index", "uint32"], ["element_count", "uint32"], ["alpha", "float32"]]
+    },
+    {
+      "stable_id": 101, "name": "leaky_relu_backward", "semantic_domain": "ml::matrix",
+      "kernel_id": "MlLeakyReluBackwardF32", "source": "src/slang/ml/nn/activation/leaky_relu_backward.slang",
+      "variant": "generic", "differentiation": "backward", "semantic_attributes": [["alpha", "float"]],
+      "contract": {"input_kinds": ["matrix", "matrix"], "output_kinds": ["matrix"], "shape_rule": "preserve_input", "dtype_rule": "all_f32", "effects": ["read_inputs", "write_output"], "mutated_inputs": [], "output_alias_inputs": [-1], "lowering": "compute_dispatch"},
+      "test": {"oracle": "finite_difference", "shapes": [[7]], "tolerance": 0.0002},
+      "push_fields": [["input_index", "uint32"], ["output_gradient_index", "uint32"], ["input_gradient_index", "uint32"], ["element_count", "uint32"], ["alpha", "float32"]]
+    },
+    {
+      "stable_id": 102, "name": "elu", "semantic_domain": "ml::matrix",
+      "kernel_id": "MlEluF32", "source": "src/slang/ml/nn/activation/elu.slang",
+      "variant": "generic", "differentiation": "elu_backward", "semantic_attributes": [["alpha", "float"]],
+      "autograd": {"mode": "generated", "family": "matrix/activation", "node": "Elu", "inputs": ["input"], "saved_matrices": ["output"], "saved_scalars": [["alpha", "f32"]]},
+      "contract": {"input_kinds": ["matrix"], "output_kinds": ["matrix"], "shape_rule": "preserve_input", "dtype_rule": "f32", "effects": ["read_inputs", "write_output"], "mutated_inputs": [], "output_alias_inputs": [-1], "lowering": "compute_dispatch"},
+      "test": {"oracle": "independent_host_elu", "shapes": [[257]], "tolerance": 0.00001},
+      "push_fields": [["input_index", "uint32"], ["output_index", "uint32"], ["element_count", "uint32"], ["alpha", "float32"]]
+    },
+    {
+      "stable_id": 103, "name": "elu_backward", "semantic_domain": "ml::matrix",
+      "kernel_id": "MlEluBackwardF32", "source": "src/slang/ml/nn/activation/elu_backward.slang",
+      "variant": "generic", "differentiation": "backward", "semantic_attributes": [["alpha", "float"]],
+      "contract": {"input_kinds": ["matrix", "matrix"], "output_kinds": ["matrix"], "shape_rule": "preserve_input", "dtype_rule": "all_f32", "effects": ["read_inputs", "write_output"], "mutated_inputs": [], "output_alias_inputs": [-1], "lowering": "compute_dispatch"},
+      "test": {"oracle": "finite_difference", "shapes": [[7]], "tolerance": 0.0002},
+      "push_fields": [["saved_output_index", "uint32"], ["output_gradient_index", "uint32"], ["input_gradient_index", "uint32"], ["element_count", "uint32"], ["alpha", "float32"]]
+    },
+    {
+      "stable_id": 104, "name": "mish", "semantic_domain": "ml::matrix",
+      "kernel_id": "MlMishF32", "source": "src/slang/ml/nn/activation/mish.slang",
+      "variant": "generic", "differentiation": "mish_backward",
+      "autograd": {"mode": "generated", "family": "matrix/activation", "node": "Mish", "inputs": ["input"], "saved_matrices": ["input"]},
+      "contract": {"input_kinds": ["matrix"], "output_kinds": ["matrix"], "shape_rule": "preserve_input", "dtype_rule": "f32", "effects": ["read_inputs", "write_output"], "mutated_inputs": [], "output_alias_inputs": [-1], "lowering": "compute_dispatch"},
+      "test": {"oracle": "independent_host_mish", "shapes": [[257]], "tolerance": 0.00001},
+      "push_fields": [["input_index", "uint32"], ["output_index", "uint32"], ["element_count", "uint32"]]
+    },
+    {
+      "stable_id": 105, "name": "mish_backward", "semantic_domain": "ml::matrix",
+      "kernel_id": "MlMishBackwardF32", "source": "src/slang/ml/nn/activation/mish_backward.slang",
+      "variant": "generic", "differentiation": "backward",
+      "contract": {"input_kinds": ["matrix", "matrix"], "output_kinds": ["matrix"], "shape_rule": "preserve_input", "dtype_rule": "all_f32", "effects": ["read_inputs", "write_output"], "mutated_inputs": [], "output_alias_inputs": [-1], "lowering": "compute_dispatch"},
+      "test": {"oracle": "finite_difference", "shapes": [[7]], "tolerance": 0.0003},
+      "push_fields": [["input_index", "uint32"], ["output_gradient_index", "uint32"], ["input_gradient_index", "uint32"], ["element_count", "uint32"]]
+    },
+    {
+      "stable_id": 106, "name": "softplus", "semantic_domain": "ml::matrix",
+      "kernel_id": "MlSoftplusF32", "source": "src/slang/ml/nn/activation/softplus.slang",
+      "variant": "generic", "differentiation": "softplus_backward",
+      "autograd": {"mode": "generated", "family": "matrix/activation", "node": "Softplus", "inputs": ["input"], "saved_matrices": ["output"]},
+      "contract": {"input_kinds": ["matrix"], "output_kinds": ["matrix"], "shape_rule": "preserve_input", "dtype_rule": "f32", "effects": ["read_inputs", "write_output"], "mutated_inputs": [], "output_alias_inputs": [-1], "lowering": "compute_dispatch"},
+      "test": {"oracle": "independent_host_softplus", "shapes": [[257]], "tolerance": 0.00001},
+      "push_fields": [["input_index", "uint32"], ["output_index", "uint32"], ["element_count", "uint32"]]
+    },
+    {
+      "stable_id": 107, "name": "softplus_backward", "semantic_domain": "ml::matrix",
+      "kernel_id": "MlSoftplusBackwardF32", "source": "src/slang/ml/nn/activation/softplus_backward.slang",
+      "variant": "generic", "differentiation": "backward",
+      "contract": {"input_kinds": ["matrix", "matrix"], "output_kinds": ["matrix"], "shape_rule": "preserve_input", "dtype_rule": "all_f32", "effects": ["read_inputs", "write_output"], "mutated_inputs": [], "output_alias_inputs": [-1], "lowering": "compute_dispatch"},
+      "test": {"oracle": "finite_difference", "shapes": [[7]], "tolerance": 0.0002},
+      "push_fields": [["saved_output_index", "uint32"], ["output_gradient_index", "uint32"], ["input_gradient_index", "uint32"], ["element_count", "uint32"]]
     },
     {
       "stable_id": 42,
       "name": "qkv_projection_bias",
       "kernel_id": "MlQkvProjectionBiasF32",
       "lowering_only": true,
-      "source": "src/slang/ml/nn/qkv_projection_bias.slang",
+      "source": "src/slang/ml/nn/linear/qkv_projection_bias.slang",
       "variant": "generic",
       "differentiation": "none",
       "test": {
@@ -803,14 +1980,22 @@
     {
       "stable_id": 43,
       "name": "swiglu",
+      "semantic_domain": "ml::matrix",
       "kernel_id": "MlSwigluF32",
       "dnn": {
         "role": "gated_multiply",
         "providers": ["gated_ffn"]
       },
-      "source": "src/slang/ml/nn/swiglu.slang",
+      "source": "src/slang/ml/nn/swiglu/swiglu.slang",
       "variant": "generic",
       "differentiation": "swiglu_backward",
+      "autograd": {
+        "mode": "generated",
+        "family": "matrix/activation",
+        "node": "Swiglu",
+        "inputs": ["gate", "up"],
+        "saved_matrices": ["gate", "up"]
+      },
       "contract": {
         "input_kinds": ["matrix", "matrix"],
         "output_kinds": ["matrix"],
@@ -834,8 +2019,9 @@
     {
       "stable_id": 44,
       "name": "swiglu_backward",
+      "semantic_domain": "ml::matrix",
       "kernel_id": "MlSwigluBackwardF32",
-      "source": "src/slang/ml/nn/swiglu_backward.slang",
+      "source": "src/slang/ml/nn/swiglu/swiglu_backward.slang",
       "variant": "generic",
       "differentiation": "backward",
       "contract": {
@@ -865,7 +2051,7 @@
       "name": "gate_up_swiglu_bias",
       "kernel_id": "MlGateUpSwigluBiasF32",
       "lowering_only": true,
-      "source": "src/slang/ml/nn/gate_up_swiglu_bias.slang",
+      "source": "src/slang/ml/nn/linear/gate_up_swiglu_bias.slang",
       "variant": "generic",
       "differentiation": "none",
       "test": {
@@ -878,6 +2064,2540 @@
         ["up_weight_index", "uint32"], ["gate_bias_index", "uint32"],
         ["up_bias_index", "uint32"], ["output_index", "uint32"],
         ["m", "uint32"], ["n", "uint32"], ["k", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 46,
+      "name": "adamw_many4",
+      "kernel_id": "MlAdamWMany4F32",
+      "lowering_only": true,
+      "training_replay_role": "host_stepped_optimizer",
+      "source": "src/slang/ml/optim/adamw/adamw_many4.slang",
+      "variant": "generic",
+      "differentiation": "none",
+      "test": {
+        "oracle": "differential_four_adamw_operations",
+        "shapes": [[2048], [512], [64], [32]],
+        "tolerance": 0.002
+      },
+      "push_fields": [
+        ["parameter0_index", "uint32"], ["gradient0_index", "uint32"],
+        ["first_moment0_index", "uint32"], ["second_moment0_index", "uint32"],
+        ["parameter1_index", "uint32"], ["gradient1_index", "uint32"],
+        ["first_moment1_index", "uint32"], ["second_moment1_index", "uint32"],
+        ["parameter2_index", "uint32"], ["gradient2_index", "uint32"],
+        ["first_moment2_index", "uint32"], ["second_moment2_index", "uint32"],
+        ["parameter3_index", "uint32"], ["gradient3_index", "uint32"],
+        ["first_moment3_index", "uint32"], ["second_moment3_index", "uint32"],
+        ["count0", "uint32"], ["count1", "uint32"],
+        ["count2", "uint32"], ["count3", "uint32"],
+        ["learning_rate", "float32"], ["beta1", "float32"],
+        ["beta2", "float32"], ["epsilon", "float32"],
+        ["weight_decay", "float32"], ["step", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 47,
+      "name": "adamw_many4_graph",
+      "kernel_id": "MlAdamWMany4GraphF32",
+      "lowering_only": true,
+      "training_replay_role": "optimizer_state_update",
+      "source": "src/slang/ml/optim/adamw/adamw_many4_graph.slang",
+      "variant": "generic",
+      "differentiation": "none",
+      "test": {
+        "oracle": "differential_four_adamw_graph_operations",
+        "shapes": [[2048], [512], [64], [32]],
+        "tolerance": 0.002
+      },
+      "push_fields": [
+        ["parameter0_index", "uint32"], ["gradient0_index", "uint32"],
+        ["first_moment0_index", "uint32"], ["second_moment0_index", "uint32"],
+        ["parameter1_index", "uint32"], ["gradient1_index", "uint32"],
+        ["first_moment1_index", "uint32"], ["second_moment1_index", "uint32"],
+        ["parameter2_index", "uint32"], ["gradient2_index", "uint32"],
+        ["first_moment2_index", "uint32"], ["second_moment2_index", "uint32"],
+        ["parameter3_index", "uint32"], ["gradient3_index", "uint32"],
+        ["first_moment3_index", "uint32"], ["second_moment3_index", "uint32"],
+        ["state_index", "uint32"], ["count0", "uint32"],
+        ["count1", "uint32"], ["count2", "uint32"], ["count3", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 116,
+      "name": "rope",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlRopeF32",
+      "source": "src/slang/ml/nn/rope/rope.slang",
+      "variant": "generic",
+      "differentiation": "rope_backward",
+      "semantic_attributes": [
+        ["num_heads", "unsigned_integer"],
+        ["head_dim", "unsigned_integer"],
+        ["theta_base", "float"],
+        ["position_offset", "unsigned_integer"]
+      ],
+      "autograd": {"mode": "manual", "family": "matrix/position"},
+      "contract": {
+        "input_kinds": ["matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "tokens_by_heads_times_even_head_dim_preserve_shape",
+        "dtype_rule": "f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {"oracle": "independent_host_rope", "shapes": [[3, 8, 2, 4]], "tolerance": 0.00001},
+      "push_fields": [
+        ["input_index", "uint32"], ["output_index", "uint32"],
+        ["tokens", "uint32"], ["num_heads", "uint32"], ["head_dim", "uint32"],
+        ["theta_base", "float32"], ["position_offset", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 117,
+      "name": "rope_backward",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlRopeBackwardF32",
+      "source": "src/slang/ml/nn/rope/rope_backward.slang",
+      "variant": "generic",
+      "differentiation": "backward",
+      "semantic_attributes": [
+        ["num_heads", "unsigned_integer"],
+        ["head_dim", "unsigned_integer"],
+        ["theta_base", "float"],
+        ["position_offset", "unsigned_integer"]
+      ],
+      "contract": {
+        "input_kinds": ["matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "rope_transpose_adjoint_preserves_shape",
+        "dtype_rule": "f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {"oracle": "finite_difference", "shapes": [[3, 8, 2, 4]], "tolerance": 0.0002},
+      "push_fields": [
+        ["output_gradient_index", "uint32"], ["input_gradient_index", "uint32"],
+        ["tokens", "uint32"], ["num_heads", "uint32"], ["head_dim", "uint32"],
+        ["theta_base", "float32"], ["position_offset", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 272,
+      "name": "avg_pool_2d",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlAvgPool2dF32",
+      "source": "src/slang/ml/nn/pooling/avg_pool_2d.slang",
+      "variant": "generic",
+      "workgroup_size": [16, 16, 1],
+      "dispatch_tile_size": [16, 16, 1],
+      "differentiation": "avg_pool_2d_backward",
+      "semantic_attributes": [
+        ["kernel_size", "unsigned_integer"],
+        ["stride", "unsigned_integer"],
+        ["padding", "unsigned_integer"]
+      ],
+      "autograd": {"mode": "manual", "family": "matrix/pool"},
+      "physical_write": {
+        "writes": [{
+          "binding": 1,
+          "domain": "output_elements",
+          "partition": "exclusive_per_invocation",
+          "extent": "one_element",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "none"
+      },
+      "contract": {
+        "input_kinds": ["matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "nchw_pool_geometry",
+        "dtype_rule": "f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {"oracle": "independent_host_avg_pool_2d", "shapes": [[1, 2, 4, 5]], "tolerance": 0.00001},
+      "push_fields": [
+        ["input_index", "uint32"], ["output_index", "uint32"],
+        ["batch_size", "uint32"], ["channels", "uint32"],
+        ["input_height", "uint32"], ["input_width", "uint32"],
+        ["output_height", "uint32"], ["output_width", "uint32"],
+        ["kernel_size", "uint32"], ["stride", "uint32"],
+        ["padding", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 273,
+      "name": "avg_pool_2d_backward",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlAvgPool2dBackwardF32",
+      "source": "src/slang/ml/nn/pooling/avg_pool_2d_backward.slang",
+      "variant": "generic",
+      "workgroup_size": [16, 16, 1],
+      "dispatch_tile_size": [16, 16, 1],
+      "differentiation": "backward",
+      "semantic_attributes": [
+        ["kernel_size", "unsigned_integer"],
+        ["stride", "unsigned_integer"],
+        ["padding", "unsigned_integer"]
+      ],
+      "physical_write": {
+        "writes": [{
+          "binding": 1,
+          "domain": "output_elements",
+          "partition": "exclusive_per_invocation",
+          "extent": "one_element",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "none"
+      },
+      "contract": {
+        "input_kinds": ["matrix", "matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "nchw_pool_input_adjoint",
+        "dtype_rule": "f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {"oracle": "finite_difference_avg_pool_2d", "shapes": [[1, 2, 4, 5]], "tolerance": 0.0002},
+      "push_fields": [
+        ["output_gradient_index", "uint32"], ["input_gradient_index", "uint32"],
+        ["batch_size", "uint32"], ["channels", "uint32"],
+        ["input_height", "uint32"], ["input_width", "uint32"],
+        ["output_height", "uint32"], ["output_width", "uint32"],
+        ["kernel_size", "uint32"], ["stride", "uint32"],
+        ["padding", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 274,
+      "name": "max_pool_2d",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlMaxPool2dF32",
+      "source": "src/slang/ml/nn/pooling/max_pool_2d.slang",
+      "variant": "generic",
+      "workgroup_size": [16, 16, 1],
+      "dispatch_tile_size": [16, 16, 1],
+      "differentiation": "max_pool_2d_backward",
+      "semantic_attributes": [
+        ["kernel_size", "unsigned_integer"],
+        ["stride", "unsigned_integer"],
+        ["padding", "unsigned_integer"]
+      ],
+      "autograd": {"mode": "manual", "family": "matrix/pool"},
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 2,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "contract": {
+        "input_kinds": ["matrix"],
+        "output_kinds": ["matrix", "matrix"],
+        "shape_rule": "nchw_pool_geometry_with_argmax",
+        "dtype_rule": "f32_with_u32_indices",
+        "effects": ["read_inputs", "write_outputs"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1, -1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {"oracle": "independent_host_max_pool_2d", "shapes": [[1, 2, 4, 5]], "tolerance": 0.00001},
+      "push_fields": [
+        ["input_index", "uint32"], ["output_index", "uint32"], ["indices_index", "uint32"],
+        ["batch_size", "uint32"], ["channels", "uint32"],
+        ["input_height", "uint32"], ["input_width", "uint32"],
+        ["output_height", "uint32"], ["output_width", "uint32"],
+        ["kernel_size", "uint32"], ["stride", "uint32"],
+        ["padding", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 275,
+      "name": "max_pool_2d_backward",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlMaxPool2dBackwardF32",
+      "source": "src/slang/ml/nn/pooling/max_pool_2d_backward.slang",
+      "variant": "generic",
+      "workgroup_size": [16, 16, 1],
+      "dispatch_tile_size": [16, 16, 1],
+      "differentiation": "backward",
+      "semantic_attributes": [
+        ["kernel_size", "unsigned_integer"],
+        ["stride", "unsigned_integer"],
+        ["padding", "unsigned_integer"]
+      ],
+      "physical_write": {
+        "writes": [{
+          "binding": 2,
+          "domain": "output_elements",
+          "partition": "exclusive_per_invocation",
+          "extent": "one_element",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "none"
+      },
+      "contract": {
+        "input_kinds": ["matrix", "matrix", "matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "nchw_max_pool_input_adjoint",
+        "dtype_rule": "f32_with_u32_indices",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {"oracle": "finite_difference_max_pool_2d", "shapes": [[1, 2, 4, 5]], "tolerance": 0.0002},
+      "push_fields": [
+        ["indices_index", "uint32"], ["output_gradient_index", "uint32"], ["input_gradient_index", "uint32"],
+        ["batch_size", "uint32"], ["channels", "uint32"],
+        ["input_height", "uint32"], ["input_width", "uint32"],
+        ["output_height", "uint32"], ["output_width", "uint32"],
+        ["kernel_size", "uint32"], ["stride", "uint32"],
+        ["padding", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 276,
+      "name": "adaptive_avg_pool_2d",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlAdaptiveAvgPool2dF32",
+      "source": "src/slang/ml/nn/pooling/adaptive_avg_pool_2d.slang",
+      "variant": "generic",
+      "workgroup_size": [16, 16, 1],
+      "dispatch_tile_size": [16, 16, 1],
+      "differentiation": "adaptive_avg_pool_2d_backward",
+      "semantic_attributes": [
+        ["output_height", "unsigned_integer"],
+        ["output_width", "unsigned_integer"]
+      ],
+      "autograd": {"mode": "manual", "family": "matrix/pool"},
+      "physical_write": {
+        "writes": [{
+          "binding": 1,
+          "domain": "output_elements",
+          "partition": "exclusive_per_invocation",
+          "extent": "one_element",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "none"
+      },
+      "contract": {
+        "input_kinds": ["matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "nchw_adaptive_pool_geometry",
+        "dtype_rule": "f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {"oracle": "independent_host_adaptive_avg_pool_2d", "shapes": [[1, 2, 5, 7]], "tolerance": 0.00001},
+      "push_fields": [
+        ["input_index", "uint32"], ["output_index", "uint32"],
+        ["batch_size", "uint32"], ["channels", "uint32"],
+        ["input_height", "uint32"], ["input_width", "uint32"],
+        ["output_height", "uint32"], ["output_width", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 277,
+      "name": "adaptive_avg_pool_2d_backward",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlAdaptiveAvgPool2dBackwardF32",
+      "source": "src/slang/ml/nn/pooling/adaptive_avg_pool_2d_backward.slang",
+      "variant": "generic",
+      "workgroup_size": [16, 16, 1],
+      "dispatch_tile_size": [16, 16, 1],
+      "differentiation": "backward",
+      "semantic_attributes": [
+        ["output_height", "unsigned_integer"],
+        ["output_width", "unsigned_integer"]
+      ],
+      "physical_write": {
+        "writes": [{
+          "binding": 1,
+          "domain": "output_elements",
+          "partition": "exclusive_per_invocation",
+          "extent": "one_element",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "none"
+      },
+      "contract": {
+        "input_kinds": ["matrix", "matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "nchw_adaptive_pool_input_adjoint",
+        "dtype_rule": "f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {"oracle": "finite_difference_adaptive_avg_pool_2d", "shapes": [[1, 2, 5, 7]], "tolerance": 0.0002},
+      "push_fields": [
+        ["output_gradient_index", "uint32"], ["input_gradient_index", "uint32"],
+        ["batch_size", "uint32"], ["channels", "uint32"],
+        ["input_height", "uint32"], ["input_width", "uint32"],
+        ["output_height", "uint32"], ["output_width", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 278,
+      "name": "batch_norm_2d",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlBatchNorm2dF32",
+      "source": "src/slang/ml/nn/batch_norm_2d/batch_norm_2d.slang",
+      "variant": "generic",
+      "workgroup_size": [256, 1, 1],
+      "dispatch_tile_size": [1, 1, 1],
+      "differentiation": "batch_norm_2d_backward",
+      "semantic_attributes": [["epsilon", "float"]],
+      "autograd": {"mode": "manual", "family": "matrix/norm"},
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 2,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "contract": {
+        "input_kinds": ["matrix", "parameter", "parameter"],
+        "output_kinds": ["matrix", "matrix", "matrix"],
+        "shape_rule": "nchw_batch_norm_with_saved_channel_statistics",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_outputs"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1, -1, -1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "independent_host_batch_norm_2d_training",
+        "shapes": [[2, 3, 3, 5]],
+        "tolerance": 0.0001
+      },
+      "push_fields": [
+        ["input_index", "uint32"], ["mean_index", "uint32"],
+        ["variance_index", "uint32"], ["batch_size", "uint32"],
+        ["channels", "uint32"], ["height", "uint32"], ["width", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 279,
+      "name": "batch_norm_2d_with_stats",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlBatchNorm2dWithStatsF32",
+      "source": "src/slang/ml/nn/batch_norm_2d/batch_norm_2d_with_stats.slang",
+      "variant": "generic",
+      "workgroup_size": [16, 16, 1],
+      "dispatch_tile_size": [16, 16, 1],
+      "differentiation": "batch_norm_2d_backward",
+      "semantic_attributes": [["epsilon", "float"]],
+      "autograd": {"mode": "manual", "family": "matrix/norm"},
+      "physical_write": {
+        "writes": [{
+          "binding": 5,
+          "domain": "output_elements",
+          "partition": "exclusive_per_invocation",
+          "extent": "one_element",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "none"
+      },
+      "contract": {
+        "input_kinds": ["matrix", "matrix", "matrix", "parameter", "parameter"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "nchw_batch_norm_from_channel_statistics",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "independent_host_batch_norm_2d_inference",
+        "shapes": [[2, 3, 3, 5]],
+        "tolerance": 0.0001
+      },
+      "push_fields": [
+        ["input_index", "uint32"], ["mean_index", "uint32"],
+        ["variance_index", "uint32"], ["weight_index", "uint32"],
+        ["bias_index", "uint32"], ["output_index", "uint32"],
+        ["batch_size", "uint32"], ["channels", "uint32"],
+        ["height", "uint32"], ["width", "uint32"], ["epsilon", "float32"]
+      ]
+    },
+    {
+      "stable_id": 280,
+      "name": "batch_norm_2d_running_update",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlBatchNorm2dRunningUpdateF32",
+      "source": "src/slang/ml/nn/batch_norm_2d/batch_norm_2d_running_update.slang",
+      "variant": "generic",
+      "workgroup_size": [256, 1, 1],
+      "dispatch_tile_size": [256, 1, 1],
+      "differentiation": "none",
+      "semantic_attributes": [["momentum", "float"]],
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 4,
+            "domain": "rows",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 5,
+            "domain": "rows",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "contract": {
+        "input_kinds": ["matrix", "matrix", "matrix", "matrix"],
+        "output_kinds": ["matrix", "matrix"],
+        "shape_rule": "batch_norm_channel_running_state_update",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_outputs"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1, -1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "host_exponential_moving_average",
+        "shapes": [[3]],
+        "tolerance": 0.00001
+      },
+      "push_fields": [
+        ["running_mean_index", "uint32"], ["running_variance_index", "uint32"],
+        ["batch_mean_index", "uint32"], ["batch_variance_index", "uint32"],
+        ["updated_mean_index", "uint32"], ["updated_variance_index", "uint32"],
+        ["channels", "uint32"], ["momentum", "float32"]
+      ]
+    },
+    {
+      "stable_id": 281,
+      "name": "batch_norm_2d_backward",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlBatchNorm2dBackwardF32",
+      "source": "src/slang/ml/nn/batch_norm_2d/batch_norm_2d_backward.slang",
+      "variant": "generic",
+      "workgroup_size": [256, 1, 1],
+      "dispatch_tile_size": [1, 1, 1],
+      "differentiation": "backward",
+      "semantic_attributes": [["epsilon", "float"], ["training", "boolean"]],
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 4,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 5,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "contract": {
+        "input_kinds": ["matrix", "parameter", "matrix", "matrix", "matrix"],
+        "output_kinds": ["matrix", "matrix", "matrix"],
+        "shape_rule": "batch_norm_input_weight_bias_adjoint",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_outputs"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1, -1, -1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "finite_difference_batch_norm_2d",
+        "shapes": [[2, 2, 2, 3]],
+        "tolerance": 0.001
+      },
+      "push_fields": [
+        ["input_index", "uint32"], ["mean_index", "uint32"],
+        ["variance_index", "uint32"], ["output_gradient_index", "uint32"],
+        ["weight_gradient_index", "uint32"], ["bias_gradient_index", "uint32"],
+        ["batch_size", "uint32"], ["channels", "uint32"],
+        ["height", "uint32"], ["width", "uint32"], ["epsilon", "float32"]
+      ]
+    },
+    {
+      "stable_id": 282,
+      "name": "batch_norm_2d_input_backward",
+      "kernel_id": "MlBatchNorm2dInputBackwardF32",
+      "lowering_only": true,
+      "source": "src/slang/ml/nn/batch_norm_2d/batch_norm_2d_input_backward.slang",
+      "variant": "generic",
+      "workgroup_size": [256, 1, 1],
+      "dispatch_tile_size": [256, 1, 1],
+      "differentiation": "none",
+      "test": {
+        "oracle": "finite_difference_batch_norm_2d_input",
+        "shapes": [[2, 2, 2, 3]],
+        "tolerance": 0.001
+      },
+      "push_fields": [
+        ["input_index", "uint32"], ["mean_index", "uint32"],
+        ["variance_index", "uint32"], ["weight_index", "uint32"],
+        ["output_gradient_index", "uint32"], ["weight_gradient_index", "uint32"],
+        ["bias_gradient_index", "uint32"], ["input_gradient_index", "uint32"],
+        ["element_count", "uint32"], ["channels", "uint32"],
+        ["height", "uint32"], ["width", "uint32"],
+        ["epsilon", "float32"], ["training", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 283,
+      "name": "upsample_2d",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlUpsample2dNearestF32",
+      "source": "src/slang/ml/nn/upsample/upsample_2d_nearest.slang",
+      "variant": "generic",
+      "workgroup_size": [16, 16, 1],
+      "dispatch_tile_size": [16, 16, 1],
+      "differentiation": "upsample_2d_backward",
+      "semantic_attributes": [
+        ["scale_factor", "unsigned_integer"],
+        ["mode", "enum"]
+      ],
+      "autograd": {"mode": "manual", "family": "matrix/upsample"},
+      "physical_write": {
+        "writes": [{
+          "binding": 1,
+          "domain": "output_elements",
+          "partition": "exclusive_per_invocation",
+          "extent": "one_element",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "none"
+      },
+      "contract": {
+        "input_kinds": ["matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "nchw_integer_scale_upsample",
+        "dtype_rule": "f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "independent_host_nearest_upsample_2d",
+        "shapes": [[1, 2, 3, 5]],
+        "tolerance": 0.00001
+      },
+      "push_fields": [
+        ["input_index", "uint32"], ["output_index", "uint32"],
+        ["batch_size", "uint32"], ["channels", "uint32"],
+        ["input_height", "uint32"], ["input_width", "uint32"],
+        ["output_height", "uint32"], ["output_width", "uint32"],
+        ["scale_factor", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 284,
+      "name": "upsample_2d_bilinear",
+      "kernel_id": "MlUpsample2dBilinearF32",
+      "lowering_only": true,
+      "semantic_operation": "upsample_2d",
+      "source": "src/slang/ml/nn/upsample/upsample_2d_bilinear.slang",
+      "variant": "generic",
+      "workgroup_size": [16, 16, 1],
+      "dispatch_tile_size": [16, 16, 1],
+      "differentiation": "none",
+      "physical_write": {
+        "writes": [{
+          "binding": 1,
+          "domain": "output_elements",
+          "partition": "exclusive_per_invocation",
+          "extent": "one_element",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "none"
+      },
+      "test": {
+        "oracle": "independent_host_bilinear_upsample_2d",
+        "shapes": [[1, 2, 3, 5]],
+        "tolerance": 0.00001
+      },
+      "push_fields": [
+        ["input_index", "uint32"], ["output_index", "uint32"],
+        ["batch_size", "uint32"], ["channels", "uint32"],
+        ["input_height", "uint32"], ["input_width", "uint32"],
+        ["output_height", "uint32"], ["output_width", "uint32"],
+        ["scale_factor", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 285,
+      "name": "upsample_2d_backward",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlUpsample2dNearestBackwardF32",
+      "source": "src/slang/ml/nn/upsample/upsample_2d_nearest_backward.slang",
+      "variant": "generic",
+      "workgroup_size": [16, 16, 1],
+      "dispatch_tile_size": [16, 16, 1],
+      "differentiation": "backward",
+      "semantic_attributes": [
+        ["scale_factor", "unsigned_integer"],
+        ["mode", "enum"]
+      ],
+      "physical_write": {
+        "writes": [{
+          "binding": 1,
+          "domain": "output_elements",
+          "partition": "exclusive_per_invocation",
+          "extent": "one_element",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "none"
+      },
+      "contract": {
+        "input_kinds": ["matrix", "matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "nchw_integer_scale_upsample_input_adjoint",
+        "dtype_rule": "f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "finite_difference_upsample_2d",
+        "shapes": [[1, 2, 3, 5]],
+        "tolerance": 0.0002
+      },
+      "push_fields": [
+        ["output_gradient_index", "uint32"], ["input_gradient_index", "uint32"],
+        ["batch_size", "uint32"], ["channels", "uint32"],
+        ["input_height", "uint32"], ["input_width", "uint32"],
+        ["output_height", "uint32"], ["output_width", "uint32"],
+        ["scale_factor", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 286,
+      "name": "upsample_2d_bilinear_backward",
+      "kernel_id": "MlUpsample2dBilinearBackwardF32",
+      "lowering_only": true,
+      "semantic_operation": "upsample_2d_backward",
+      "source": "src/slang/ml/nn/upsample/upsample_2d_bilinear_backward.slang",
+      "variant": "generic",
+      "workgroup_size": [16, 16, 1],
+      "dispatch_tile_size": [16, 16, 1],
+      "differentiation": "none",
+      "physical_write": {
+        "writes": [{
+          "binding": 1,
+          "domain": "output_elements",
+          "partition": "exclusive_per_invocation",
+          "extent": "one_element",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "none"
+      },
+      "test": {
+        "oracle": "finite_difference_bilinear_upsample_2d",
+        "shapes": [[1, 2, 3, 5]],
+        "tolerance": 0.0002
+      },
+      "push_fields": [
+        ["output_gradient_index", "uint32"], ["input_gradient_index", "uint32"],
+        ["batch_size", "uint32"], ["channels", "uint32"],
+        ["input_height", "uint32"], ["input_width", "uint32"],
+        ["output_height", "uint32"], ["output_width", "uint32"],
+        ["scale_factor", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 287,
+      "name": "conv_2d",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlConv2dF32",
+      "source": "src/slang/ml/nn/conv/conv_2d.slang",
+      "variant": "generic",
+      "workgroup_size": [256, 1, 1],
+      "dispatch_tile_size": [256, 1, 1],
+      "differentiation": "conv_2d_backward",
+      "semantic_attributes": [
+        ["stride", "unsigned_integer"],
+        ["padding", "unsigned_integer"],
+        ["groups", "unsigned_integer"]
+      ],
+      "autograd": {"mode": "manual", "family": "matrix/conv"},
+      "physical_write": {
+        "writes": [{
+          "binding": 3,
+          "domain": "output_elements",
+          "partition": "exclusive_per_invocation",
+          "extent": "one_element",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "none"
+      },
+      "contract": {
+        "input_kinds": ["matrix", "parameter", "parameter"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "nchw_grouped_conv_2d",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "independent_host_grouped_conv_2d",
+        "shapes": [[1, 4, 4, 5]],
+        "tolerance": 0.00002
+      },
+      "push_fields": [
+        ["input_index", "uint32"], ["weight_index", "uint32"],
+        ["bias_index", "uint32"], ["output_index", "uint32"],
+        ["batch_size", "uint32"], ["input_channels", "uint32"],
+        ["output_channels", "uint32"], ["input_height", "uint32"],
+        ["input_width", "uint32"], ["kernel_size", "uint32"],
+        ["stride", "uint32"], ["padding", "uint32"],
+        ["output_height", "uint32"], ["output_width", "uint32"],
+        ["groups", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 288,
+      "name": "conv_2d_backward",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlConv2dBackwardF32",
+      "source": "src/slang/ml/nn/conv/conv_2d_backward.slang",
+      "variant": "generic",
+      "workgroup_size": [256, 1, 1],
+      "dispatch_tile_size": [256, 1, 1],
+      "differentiation": "backward",
+      "semantic_attributes": [
+        ["stride", "unsigned_integer"],
+        ["padding", "unsigned_integer"],
+        ["groups", "unsigned_integer"]
+      ],
+      "physical_write": {
+        "writes": [{
+          "binding": 2,
+          "domain": "output_elements",
+          "partition": "exclusive_per_invocation",
+          "extent": "one_element",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "none"
+      },
+      "contract": {
+        "input_kinds": ["matrix", "parameter", "matrix"],
+        "output_kinds": ["matrix", "matrix", "matrix"],
+        "shape_rule": "grouped_conv_2d_input_weight_bias_adjoint",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_outputs"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1, -1, -1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "finite_difference_grouped_conv_2d",
+        "shapes": [[1, 4, 4, 5]],
+        "tolerance": 0.001
+      },
+      "push_fields": [
+        ["output_gradient_index", "uint32"], ["weight_index", "uint32"],
+        ["input_gradient_index", "uint32"], ["batch_size", "uint32"],
+        ["input_channels", "uint32"], ["output_channels", "uint32"],
+        ["input_height", "uint32"], ["input_width", "uint32"],
+        ["kernel_size", "uint32"], ["stride", "uint32"],
+        ["padding", "uint32"], ["output_height", "uint32"],
+        ["output_width", "uint32"], ["groups", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 289,
+      "name": "conv_2d_parameter_backward",
+      "kernel_id": "MlConv2dParameterBackwardF32",
+      "lowering_only": true,
+      "semantic_operation": "conv_2d_backward",
+      "source": "src/slang/ml/nn/conv/conv_2d_parameter_backward.slang",
+      "variant": "generic",
+      "workgroup_size": [256, 1, 1],
+      "dispatch_tile_size": [256, 1, 1],
+      "differentiation": "none",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 2,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 3,
+            "domain": "rows",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "test": {
+        "oracle": "finite_difference_grouped_conv_2d_parameters",
+        "shapes": [[1, 4, 4, 5]],
+        "tolerance": 0.001
+      },
+      "push_fields": [
+        ["input_index", "uint32"], ["output_gradient_index", "uint32"],
+        ["weight_gradient_index", "uint32"], ["bias_gradient_index", "uint32"],
+        ["batch_size", "uint32"], ["input_channels", "uint32"],
+        ["output_channels", "uint32"], ["input_height", "uint32"],
+        ["input_width", "uint32"], ["kernel_size", "uint32"],
+        ["stride", "uint32"], ["padding", "uint32"],
+        ["output_height", "uint32"], ["output_width", "uint32"],
+        ["groups", "uint32"], ["parameter_count", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 290,
+      "name": "conv_1d",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlConv1dIm2ColF32",
+      "source": "src/slang/ml/nn/conv/conv_1d_im2_col.slang",
+      "variant": "generic",
+      "workgroup_size": [256, 1, 1],
+      "dispatch_tile_size": [256, 1, 1],
+      "differentiation": "conv_1d_backward",
+      "semantic_attributes": [
+        ["stride", "unsigned_integer"],
+        ["padding", "unsigned_integer"],
+        ["dilation", "unsigned_integer"]
+      ],
+      "autograd": {"mode": "manual", "family": "matrix/conv"},
+      "physical_write": {
+        "writes": [{
+          "binding": 1,
+          "domain": "output_elements",
+          "partition": "exclusive_per_invocation",
+          "extent": "one_element",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "none"
+      },
+      "contract": {
+        "input_kinds": ["matrix", "parameter", "parameter"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "ncl_conv_1d_im2col_gemm",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "independent_host_conv_1d",
+        "shapes": [[2, 3, 9]],
+        "tolerance": 0.00003
+      },
+      "push_fields": [
+        ["input_index", "uint32"], ["columns_index", "uint32"],
+        ["batch_size", "uint32"], ["input_channels", "uint32"],
+        ["input_length", "uint32"], ["kernel_size", "uint32"],
+        ["stride", "uint32"], ["padding", "uint32"],
+        ["dilation", "uint32"], ["output_length", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 291,
+      "name": "conv_1d_bias_add",
+      "kernel_id": "MlConv1dBiasAddF32",
+      "lowering_only": true,
+      "semantic_operation": "conv_1d",
+      "source": "src/slang/ml/nn/conv/conv_1d_bias_add.slang",
+      "variant": "generic",
+      "workgroup_size": [256, 1, 1],
+      "dispatch_tile_size": [256, 1, 1],
+      "differentiation": "none",
+      "physical_write": {
+        "writes": [{
+          "binding": 0,
+          "domain": "output_elements",
+          "partition": "exclusive_per_invocation",
+          "extent": "one_element",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "none"
+      },
+      "test": {
+        "oracle": "independent_host_last_axis_bias_add",
+        "shapes": [[18, 5]],
+        "tolerance": 0.00001
+      },
+      "push_fields": [
+        ["values_index", "uint32"], ["bias_index", "uint32"],
+        ["rows", "uint32"], ["columns", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 292,
+      "name": "conv_1d_transpose",
+      "kernel_id": "MlConv1dTransposeF32",
+      "lowering_only": true,
+      "semantic_operation": "conv_1d",
+      "source": "src/slang/ml/nn/conv/conv_1d_transpose.slang",
+      "variant": "generic",
+      "workgroup_size": [32, 32, 1],
+      "dispatch_tile_size": [32, 32, 1],
+      "differentiation": "none",
+      "physical_write": {
+        "writes": [{
+          "binding": 1,
+          "domain": "output_elements",
+          "partition": "exclusive_per_workgroup",
+          "extent": "one_element",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "test": {
+        "oracle": "independent_host_batched_last_two_axis_transpose",
+        "shapes": [[2, 7, 5]],
+        "tolerance": 0.0
+      },
+      "push_fields": [
+        ["input_index", "uint32"], ["output_index", "uint32"],
+        ["batch_size", "uint32"], ["rows", "uint32"], ["columns", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 293,
+      "name": "conv_1d_backward",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlConv1dBackwardF32",
+      "source": "src/slang/ml/nn/conv/conv_1d_backward.slang",
+      "variant": "generic",
+      "workgroup_size": [256, 1, 1],
+      "dispatch_tile_size": [256, 1, 1],
+      "differentiation": "backward",
+      "semantic_attributes": [
+        ["stride", "unsigned_integer"],
+        ["padding", "unsigned_integer"],
+        ["dilation", "unsigned_integer"]
+      ],
+      "physical_write": {
+        "writes": [{
+          "binding": 2,
+          "domain": "output_elements",
+          "partition": "exclusive_per_invocation",
+          "extent": "one_element",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "none"
+      },
+      "contract": {
+        "input_kinds": ["matrix", "parameter", "matrix"],
+        "output_kinds": ["matrix", "matrix", "matrix"],
+        "shape_rule": "conv_1d_input_weight_bias_adjoint",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_outputs"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1, -1, -1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "finite_difference_conv_1d",
+        "shapes": [[1, 2, 6]],
+        "tolerance": 0.001
+      },
+      "push_fields": [
+        ["output_gradient_index", "uint32"], ["weight_index", "uint32"],
+        ["input_gradient_index", "uint32"], ["batch_size", "uint32"],
+        ["input_channels", "uint32"], ["output_channels", "uint32"],
+        ["input_length", "uint32"], ["kernel_size", "uint32"],
+        ["stride", "uint32"], ["padding", "uint32"],
+        ["dilation", "uint32"], ["output_length", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 294,
+      "name": "conv_1d_parameter_backward",
+      "kernel_id": "MlConv1dParameterBackwardF32",
+      "lowering_only": true,
+      "semantic_operation": "conv_1d_backward",
+      "source": "src/slang/ml/nn/conv/conv_1d_parameter_backward.slang",
+      "variant": "generic",
+      "workgroup_size": [256, 1, 1],
+      "dispatch_tile_size": [256, 1, 1],
+      "differentiation": "none",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 2,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 3,
+            "domain": "rows",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "test": {
+        "oracle": "finite_difference_conv_1d_parameters",
+        "shapes": [[1, 2, 6]],
+        "tolerance": 0.001
+      },
+      "push_fields": [
+        ["input_index", "uint32"], ["output_gradient_index", "uint32"],
+        ["weight_gradient_index", "uint32"], ["bias_gradient_index", "uint32"],
+        ["batch_size", "uint32"], ["input_channels", "uint32"],
+        ["output_channels", "uint32"], ["input_length", "uint32"],
+        ["kernel_size", "uint32"], ["stride", "uint32"],
+        ["padding", "uint32"], ["dilation", "uint32"],
+        ["output_length", "uint32"], ["parameter_count", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 295,
+      "name": "conv_transpose_1d",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlConvTranspose1dF32",
+      "source": "src/slang/ml/nn/conv/conv_transpose_1d.slang",
+      "variant": "generic",
+      "workgroup_size": [256, 1, 1],
+      "dispatch_tile_size": [256, 1, 1],
+      "differentiation": "conv_transpose_1d_backward",
+      "semantic_attributes": [
+        ["stride", "unsigned_integer"],
+        ["padding", "unsigned_integer"],
+        ["dilation", "unsigned_integer"]
+      ],
+      "autograd": {"mode": "manual", "family": "matrix/conv"},
+      "physical_write": {
+        "writes": [{
+          "binding": 2,
+          "domain": "output_elements",
+          "partition": "exclusive_per_invocation",
+          "extent": "one_element",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "none"
+      },
+      "contract": {
+        "input_kinds": ["matrix", "parameter"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "ncl_conv_transpose_1d",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "independent_host_conv_transpose_1d",
+        "shapes": [[2, 3, 5]],
+        "tolerance": 0.00003
+      },
+      "push_fields": [
+        ["input_index", "uint32"], ["weight_index", "uint32"],
+        ["output_index", "uint32"], ["batch_size", "uint32"],
+        ["input_channels", "uint32"], ["output_channels", "uint32"],
+        ["input_length", "uint32"], ["kernel_size", "uint32"],
+        ["stride", "uint32"], ["padding", "uint32"],
+        ["dilation", "uint32"], ["output_length", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 296,
+      "name": "conv_transpose_1d_backward",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlConvTranspose1dBackwardF32",
+      "source": "src/slang/ml/nn/conv/conv_transpose_1d_backward.slang",
+      "variant": "generic",
+      "workgroup_size": [256, 1, 1],
+      "dispatch_tile_size": [256, 1, 1],
+      "differentiation": "backward",
+      "semantic_attributes": [
+        ["stride", "unsigned_integer"],
+        ["padding", "unsigned_integer"],
+        ["dilation", "unsigned_integer"]
+      ],
+      "physical_write": {
+        "writes": [{
+          "binding": 1,
+          "domain": "output_elements",
+          "partition": "exclusive_per_invocation",
+          "extent": "one_element",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "none"
+      },
+      "contract": {
+        "input_kinds": ["matrix", "parameter", "matrix"],
+        "output_kinds": ["matrix", "matrix"],
+        "shape_rule": "conv_transpose_1d_input_weight_adjoint",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_outputs"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1, -1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "finite_difference_conv_transpose_1d",
+        "shapes": [[1, 2, 4]],
+        "tolerance": 0.001
+      },
+      "push_fields": [
+        ["input_index", "uint32"], ["columns_index", "uint32"],
+        ["batch_size", "uint32"], ["input_channels", "uint32"],
+        ["input_length", "uint32"], ["kernel_size", "uint32"],
+        ["stride", "uint32"], ["padding", "uint32"],
+        ["dilation", "uint32"], ["output_length", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 305,
+      "name": "conv_transpose_2d",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlConvTranspose2dF32",
+      "source": "src/slang/ml/nn/conv/conv_transpose_2d.slang",
+      "variant": "generic",
+      "workgroup_size": [256, 1, 1],
+      "dispatch_tile_size": [256, 1, 1],
+      "differentiation": "conv_transpose_2d_backward",
+      "semantic_attributes": [
+        ["stride", "unsigned_integer"],
+        ["padding", "unsigned_integer"]
+      ],
+      "autograd": {"mode": "manual", "family": "matrix/conv"},
+      "physical_write": {
+        "writes": [{
+          "binding": 2,
+          "domain": "output_elements",
+          "partition": "exclusive_per_invocation",
+          "extent": "one_element",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "none"
+      },
+      "contract": {
+        "input_kinds": ["matrix", "parameter", "parameter"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "nchw_conv_transpose_2d",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "independent_host_conv_transpose_2d",
+        "shapes": [[2, 2, 3, 4]],
+        "tolerance": 0.00003
+      },
+      "push_fields": [
+        ["input_index", "uint32"], ["weight_index", "uint32"],
+        ["output_index", "uint32"], ["batch_size", "uint32"],
+        ["input_channels", "uint32"], ["output_channels", "uint32"],
+        ["input_height", "uint32"], ["input_width", "uint32"],
+        ["kernel_size", "uint32"], ["stride", "uint32"],
+        ["padding", "uint32"], ["output_height", "uint32"],
+        ["output_width", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 306,
+      "name": "conv_transpose_2d_bias_add",
+      "kernel_id": "MlConvTranspose2dBiasAddF32",
+      "lowering_only": true,
+      "semantic_operation": "conv_transpose_2d",
+      "source": "src/slang/ml/nn/conv/conv_transpose_2d_bias_add.slang",
+      "variant": "generic",
+      "workgroup_size": [256, 1, 1],
+      "dispatch_tile_size": [256, 1, 1],
+      "differentiation": "none",
+      "physical_write": {
+        "writes": [{
+          "binding": 0,
+          "domain": "output_elements",
+          "partition": "exclusive_per_invocation",
+          "extent": "one_element",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "none"
+      },
+      "test": {
+        "oracle": "independent_host_nchw_bias_add",
+        "shapes": [[2, 3, 5, 7]],
+        "tolerance": 0.00001
+      },
+      "push_fields": [
+        ["values_index", "uint32"], ["bias_index", "uint32"],
+        ["batch_size", "uint32"], ["channels", "uint32"],
+        ["height", "uint32"], ["width", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 307,
+      "name": "conv_transpose_2d_backward",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlConvTranspose2dBackwardF32",
+      "source": "src/slang/ml/nn/conv/conv_transpose_2d_backward.slang",
+      "variant": "generic",
+      "workgroup_size": [256, 1, 1],
+      "dispatch_tile_size": [256, 1, 1],
+      "differentiation": "backward",
+      "semantic_attributes": [
+        ["stride", "unsigned_integer"],
+        ["padding", "unsigned_integer"]
+      ],
+      "physical_write": {
+        "writes": [{
+          "binding": 2,
+          "domain": "output_elements",
+          "partition": "exclusive_per_invocation",
+          "extent": "one_element",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "none"
+      },
+      "contract": {
+        "input_kinds": ["matrix", "parameter", "matrix"],
+        "output_kinds": ["matrix", "matrix", "matrix"],
+        "shape_rule": "conv_transpose_2d_input_weight_bias_adjoint",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_outputs"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1, -1, -1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "finite_difference_conv_transpose_2d",
+        "shapes": [[1, 2, 2, 3]],
+        "tolerance": 0.001
+      },
+      "push_fields": [
+        ["output_gradient_index", "uint32"], ["weight_index", "uint32"],
+        ["input_gradient_index", "uint32"], ["batch_size", "uint32"],
+        ["input_channels", "uint32"], ["output_channels", "uint32"],
+        ["input_height", "uint32"], ["input_width", "uint32"],
+        ["kernel_size", "uint32"], ["stride", "uint32"],
+        ["padding", "uint32"], ["output_height", "uint32"],
+        ["output_width", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 308,
+      "name": "conv_transpose_2d_parameter_backward",
+      "kernel_id": "MlConvTranspose2dParameterBackwardF32",
+      "lowering_only": true,
+      "semantic_operation": "conv_transpose_2d_backward",
+      "source": "src/slang/ml/nn/conv/conv_transpose_2d_parameter_backward.slang",
+      "variant": "generic",
+      "workgroup_size": [256, 1, 1],
+      "dispatch_tile_size": [256, 1, 1],
+      "differentiation": "none",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 2,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 3,
+            "domain": "rows",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "test": {
+        "oracle": "finite_difference_conv_transpose_2d_parameters",
+        "shapes": [[1, 2, 2, 3]],
+        "tolerance": 0.001
+      },
+      "push_fields": [
+        ["input_index", "uint32"], ["output_gradient_index", "uint32"],
+        ["weight_gradient_index", "uint32"], ["bias_gradient_index", "uint32"],
+        ["batch_size", "uint32"], ["input_channels", "uint32"],
+        ["output_channels", "uint32"], ["input_height", "uint32"],
+        ["input_width", "uint32"], ["kernel_size", "uint32"],
+        ["stride", "uint32"], ["padding", "uint32"],
+        ["output_height", "uint32"], ["output_width", "uint32"],
+        ["parameter_count", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 311,
+      "name": "gru_scan",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlGruScanF32",
+      "source": "src/slang/ml/nn/gru/gru_scan.slang",
+      "variant": "generic",
+      "workgroup_size": [256, 1, 1],
+      "dispatch_tile_size": [1, 1, 1],
+      "differentiation": "gru_scan_backward",
+      "semantic_attributes": [["has_bias", "boolean"]],
+      "autograd": {"mode": "manual", "family": "matrix/recurrent"},
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 3,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 4,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "contract": {
+        "input_kinds": ["matrix", "parameter", "parameter"],
+        "output_kinds": ["matrix", "saved_state"],
+        "shape_rule": "gates_bsx3h_recurrent_weight_3hxh_bias_3h_to_output_bsh",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_outputs"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1, -1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "independent_host_gru_scan",
+        "shapes": [[2, 3, 2]],
+        "tolerance": 0.00003
+      },
+      "push_fields": [
+        ["gates_i_index", "uint32"], ["weight_hh_index", "uint32"],
+        ["bias_hh_index", "uint32"], ["output_index", "uint32"],
+        ["hidden_previous_index", "uint32"], ["hidden_size", "uint32"],
+        ["sequence_length", "uint32"], ["batch", "uint32"],
+        ["has_bias", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 312,
+      "name": "gru_scan_backward",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlGruScanBackwardF32",
+      "source": "src/slang/ml/nn/gru/gru_scan_backward.slang",
+      "variant": "generic",
+      "workgroup_size": [256, 1, 1],
+      "dispatch_tile_size": [1, 1, 1],
+      "differentiation": "backward",
+      "semantic_attributes": [["has_bias", "boolean"]],
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 5,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 6,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "contract": {
+        "input_kinds": ["matrix", "matrix", "saved_state", "parameter", "parameter"],
+        "output_kinds": ["matrix", "matrix", "matrix"],
+        "shape_rule": "gru_scan_input_recurrent_weight_bias_adjoint",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_outputs"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1, -1, -1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "finite_difference_gru_scan",
+        "shapes": [[2, 3, 2]],
+        "tolerance": 0.0007
+      },
+      "push_fields": [
+        ["output_gradient_index", "uint32"], ["gates_i_index", "uint32"],
+        ["hidden_previous_index", "uint32"], ["weight_hh_index", "uint32"],
+        ["bias_hh_index", "uint32"], ["gates_i_gradient_index", "uint32"],
+        ["gates_h_gradient_index", "uint32"], ["hidden_size", "uint32"],
+        ["sequence_length", "uint32"], ["batch", "uint32"],
+        ["has_bias", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 313,
+      "name": "gru_cell",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlGruCellF32",
+      "source": "src/slang/ml/nn/gru/gru_cell.slang",
+      "variant": "generic",
+      "workgroup_size": [256, 1, 1],
+      "dispatch_tile_size": [1, 1, 1],
+      "differentiation": "gru_cell_backward",
+      "semantic_attributes": [["has_bias", "boolean"]],
+      "autograd": {"mode": "manual", "family": "matrix/recurrent"},
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 4,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 5,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "contract": {
+        "input_kinds": ["matrix", "matrix", "parameter", "parameter"],
+        "output_kinds": ["matrix", "saved_state"],
+        "shape_rule": "gates_bx3h_hidden_bxh_recurrent_weight_3hxh_bias_3h_to_hidden_bxh",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_outputs"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1, -1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "independent_host_gru_cell",
+        "shapes": [[2, 3]],
+        "tolerance": 0.00003
+      },
+      "push_fields": [
+        ["hidden_index", "uint32"], ["weight_hh_index", "uint32"],
+        ["bias_hh_index", "uint32"], ["gates_i_index", "uint32"],
+        ["output_index", "uint32"], ["gates_h_index", "uint32"],
+        ["hidden_size", "uint32"], ["batch", "uint32"],
+        ["has_bias", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 314,
+      "name": "gru_cell_backward",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlGruCellBackwardF32",
+      "source": "src/slang/ml/nn/gru/gru_cell_backward.slang",
+      "variant": "generic",
+      "workgroup_size": [256, 1, 1],
+      "dispatch_tile_size": [256, 1, 1],
+      "differentiation": "backward",
+      "semantic_attributes": [["has_bias", "boolean"]],
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 4,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "up_to_four_elements",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 5,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "up_to_four_elements",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 6,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "contract": {
+        "input_kinds": ["matrix", "saved_state", "matrix", "matrix", "parameter", "parameter"],
+        "output_kinds": ["matrix", "matrix", "matrix", "matrix"],
+        "shape_rule": "gru_cell_gates_hidden_recurrent_parameter_adjoint",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_outputs"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1, -1, -1, -1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "finite_difference_gru_cell",
+        "shapes": [[2, 3]],
+        "tolerance": 0.0007
+      },
+      "push_fields": [
+        ["gates_i_index", "uint32"], ["gates_h_index", "uint32"],
+        ["hidden_index", "uint32"], ["output_gradient_index", "uint32"],
+        ["gates_i_gradient_index", "uint32"], ["gates_h_gradient_index", "uint32"],
+        ["direct_hidden_gradient_index", "uint32"], ["hidden_size", "uint32"],
+        ["element_count", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 315,
+      "name": "rnn_cell",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlRnnCellF32",
+      "source": "src/slang/ml/nn/rnn/rnn_cell.slang",
+      "variant": "generic",
+      "workgroup_size": [256, 1, 1],
+      "dispatch_tile_size": [1, 1, 1],
+      "differentiation": "rnn_cell_backward",
+      "semantic_attributes": [["has_bias", "boolean"]],
+      "autograd": {"mode": "manual", "family": "matrix/recurrent"},
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 4,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 5,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "contract": {
+        "input_kinds": ["matrix", "matrix", "parameter", "parameter"],
+        "output_kinds": ["matrix", "saved_state"],
+        "shape_rule": "gates_bxh_hidden_bxh_recurrent_weight_hxh_bias_h_to_hidden_bxh",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_outputs"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1, -1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "independent_host_elman_cell",
+        "shapes": [[2, 3]],
+        "tolerance": 0.00002
+      },
+      "push_fields": [
+        ["hidden_index", "uint32"], ["weight_hh_index", "uint32"],
+        ["bias_hh_index", "uint32"], ["gates_i_index", "uint32"],
+        ["output_index", "uint32"], ["gates_h_index", "uint32"],
+        ["hidden_size", "uint32"], ["batch", "uint32"],
+        ["has_bias", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 316,
+      "name": "rnn_cell_backward",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlRnnCellBackwardF32",
+      "source": "src/slang/ml/nn/rnn/rnn_cell_backward.slang",
+      "variant": "generic",
+      "workgroup_size": [256, 1, 1],
+      "dispatch_tile_size": [256, 1, 1],
+      "differentiation": "backward",
+      "semantic_attributes": [["has_bias", "boolean"]],
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 3,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 4,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "contract": {
+        "input_kinds": ["matrix", "saved_state", "matrix", "matrix", "parameter", "parameter"],
+        "output_kinds": ["matrix", "matrix", "matrix", "matrix"],
+        "shape_rule": "elman_cell_gates_hidden_recurrent_parameter_adjoint",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_outputs"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1, -1, -1, -1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "finite_difference_elman_cell",
+        "shapes": [[2, 3]],
+        "tolerance": 0.0005
+      },
+      "push_fields": [
+        ["gates_i_index", "uint32"], ["gates_h_index", "uint32"],
+        ["output_gradient_index", "uint32"], ["gates_i_gradient_index", "uint32"],
+        ["gates_h_gradient_index", "uint32"], ["element_count", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 317,
+      "name": "bmm",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlBmmF32",
+      "source": "src/slang/ml/nn/attention/bmm.slang",
+      "variant": "generic",
+      "workgroup_size": [256, 1, 1],
+      "dispatch_tile_size": [256, 1, 1],
+      "differentiation": "reverse",
+      "autograd": {"mode": "manual", "family": "matrix/attention"},
+      "physical_write": {
+        "writes": [{
+          "binding": 2,
+          "domain": "output_elements",
+          "partition": "exclusive_per_invocation",
+          "extent": "one_element",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "none"
+      },
+      "contract": {
+        "input_kinds": ["matrix", "matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "bmm_nmk_nkp_to_nmp",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "independent_host_bmm",
+        "shapes": [[2, 3, 5, 4], [2, 9, 11, 10]],
+        "tolerance": 0.00003
+      },
+      "push_fields": [
+        ["left_index", "uint32"], ["right_index", "uint32"],
+        ["output_index", "uint32"], ["batch", "uint32"],
+        ["rows", "uint32"], ["inner", "uint32"], ["columns", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 318,
+      "name": "bmm_tiled_16",
+      "kernel_id": "MlBmmTiled16F32",
+      "lowering_only": true,
+      "semantic_operation": "bmm",
+      "source": "src/slang/ml/nn/attention/bmm_tiled_16.slang",
+      "variant": "tiled_16",
+      "workgroup_size": [16, 16, 1],
+      "dispatch_tile_size": [16, 16, 1],
+      "differentiation": "none",
+      "physical_write": {
+        "writes": [{
+          "binding": 2,
+          "domain": "output_elements",
+          "partition": "exclusive_per_workgroup",
+          "extent": "tile_16x16",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "test": {
+        "oracle": "independent_host_bmm",
+        "shapes": [[2, 17, 19, 18]],
+        "tolerance": 0.00005
+      },
+      "push_fields": [
+        ["left_index", "uint32"], ["right_index", "uint32"],
+        ["output_index", "uint32"], ["batch", "uint32"],
+        ["rows", "uint32"], ["inner", "uint32"], ["columns", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 319,
+      "name": "bmm_nt",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlBmmNtF32",
+      "source": "src/slang/ml/nn/attention/bmm_nt.slang",
+      "variant": "generic",
+      "workgroup_size": [256, 1, 1],
+      "dispatch_tile_size": [256, 1, 1],
+      "differentiation": "reverse",
+      "autograd": {"mode": "manual", "family": "matrix/attention"},
+      "physical_write": {
+        "writes": [{
+          "binding": 2,
+          "domain": "output_elements",
+          "partition": "exclusive_per_invocation",
+          "extent": "one_element",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "none"
+      },
+      "contract": {
+        "input_kinds": ["matrix", "matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "bmm_nt_nmk_npk_to_nmp",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "independent_host_bmm_nt",
+        "shapes": [[2, 3, 5, 4], [2, 9, 11, 10]],
+        "tolerance": 0.00003
+      },
+      "push_fields": [
+        ["left_index", "uint32"], ["right_index", "uint32"],
+        ["output_index", "uint32"], ["batch", "uint32"],
+        ["rows", "uint32"], ["inner", "uint32"], ["columns", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 320,
+      "name": "bmm_nt_tiled_16",
+      "kernel_id": "MlBmmNtTiled16F32",
+      "lowering_only": true,
+      "semantic_operation": "bmm_nt",
+      "source": "src/slang/ml/nn/attention/bmm_nt_tiled_16.slang",
+      "variant": "tiled_16",
+      "workgroup_size": [16, 16, 1],
+      "dispatch_tile_size": [16, 16, 1],
+      "differentiation": "none",
+      "physical_write": {
+        "writes": [{
+          "binding": 2,
+          "domain": "output_elements",
+          "partition": "exclusive_per_workgroup",
+          "extent": "tile_16x16",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "test": {
+        "oracle": "independent_host_bmm_nt",
+        "shapes": [[2, 17, 19, 18]],
+        "tolerance": 0.00005
+      },
+      "push_fields": [
+        ["left_index", "uint32"], ["right_index", "uint32"],
+        ["output_index", "uint32"], ["batch", "uint32"],
+        ["rows", "uint32"], ["inner", "uint32"], ["columns", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 321,
+      "name": "bmm_tn",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlBmmTnF32",
+      "source": "src/slang/ml/nn/attention/bmm_tn.slang",
+      "variant": "generic",
+      "workgroup_size": [256, 1, 1],
+      "dispatch_tile_size": [256, 1, 1],
+      "differentiation": "reverse",
+      "autograd": {"mode": "manual", "family": "matrix/attention"},
+      "physical_write": {
+        "writes": [{
+          "binding": 2,
+          "domain": "output_elements",
+          "partition": "exclusive_per_invocation",
+          "extent": "one_element",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "none"
+      },
+      "contract": {
+        "input_kinds": ["matrix", "matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "bmm_tn_nkm_nkp_to_nmp",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "independent_host_bmm_tn",
+        "shapes": [[2, 3, 5, 4], [2, 9, 11, 10]],
+        "tolerance": 0.00003
+      },
+      "push_fields": [
+        ["left_index", "uint32"], ["right_index", "uint32"],
+        ["output_index", "uint32"], ["batch", "uint32"],
+        ["rows", "uint32"], ["inner", "uint32"], ["columns", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 322,
+      "name": "bmm_tn_tiled_16",
+      "kernel_id": "MlBmmTnTiled16F32",
+      "lowering_only": true,
+      "semantic_operation": "bmm_tn",
+      "source": "src/slang/ml/nn/attention/bmm_tn_tiled_16.slang",
+      "variant": "tiled_16",
+      "workgroup_size": [16, 16, 1],
+      "dispatch_tile_size": [16, 16, 1],
+      "differentiation": "none",
+      "physical_write": {
+        "writes": [{
+          "binding": 2,
+          "domain": "output_elements",
+          "partition": "exclusive_per_workgroup",
+          "extent": "tile_16x16",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "test": {
+        "oracle": "independent_host_bmm_tn",
+        "shapes": [[2, 17, 19, 18]],
+        "tolerance": 0.00005
+      },
+      "push_fields": [
+        ["left_index", "uint32"], ["right_index", "uint32"],
+        ["output_index", "uint32"], ["batch", "uint32"],
+        ["rows", "uint32"], ["inner", "uint32"], ["columns", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 323,
+      "name": "split_heads",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlSplitHeadsF32",
+      "source": "src/slang/ml/nn/attention/split_heads.slang",
+      "variant": "generic",
+      "workgroup_size": [256, 1, 1],
+      "dispatch_tile_size": [256, 1, 1],
+      "differentiation": "reverse",
+      "semantic_attributes": [
+        ["batch", "unsigned_integer"],
+        ["sequence_length", "unsigned_integer"],
+        ["num_heads", "unsigned_integer"]
+      ],
+      "autograd": {"mode": "manual", "family": "matrix/attention"},
+      "physical_write": {
+        "writes": [{
+          "binding": 1,
+          "domain": "output_elements",
+          "partition": "exclusive_per_invocation",
+          "extent": "one_element",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "none"
+      },
+      "contract": {
+        "input_kinds": ["matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "bs_d_to_bh_s_dh",
+        "dtype_rule": "f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "independent_host_split_heads",
+        "shapes": [[2, 3, 2, 4]],
+        "tolerance": 0.0
+      },
+      "push_fields": [
+        ["input_index", "uint32"], ["output_index", "uint32"],
+        ["batch", "uint32"], ["sequence_length", "uint32"],
+        ["num_heads", "uint32"], ["head_dim", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 324,
+      "name": "merge_heads",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlMergeHeadsF32",
+      "source": "src/slang/ml/nn/attention/merge_heads.slang",
+      "variant": "generic",
+      "workgroup_size": [256, 1, 1],
+      "dispatch_tile_size": [256, 1, 1],
+      "differentiation": "reverse",
+      "semantic_attributes": [
+        ["batch", "unsigned_integer"],
+        ["sequence_length", "unsigned_integer"],
+        ["num_heads", "unsigned_integer"]
+      ],
+      "autograd": {"mode": "manual", "family": "matrix/attention"},
+      "physical_write": {
+        "writes": [{
+          "binding": 1,
+          "domain": "output_elements",
+          "partition": "exclusive_per_invocation",
+          "extent": "one_element",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "none"
+      },
+      "contract": {
+        "input_kinds": ["matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "bh_s_dh_to_bs_d",
+        "dtype_rule": "f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "independent_host_merge_heads",
+        "shapes": [[2, 3, 2, 4]],
+        "tolerance": 0.0
+      },
+      "push_fields": [
+        ["input_index", "uint32"], ["output_index", "uint32"],
+        ["batch", "uint32"], ["sequence_length", "uint32"],
+        ["num_heads", "uint32"], ["head_dim", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 325,
+      "name": "softmax_scaled_masked",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlSoftmaxScaledMaskedF32",
+      "source": "src/slang/ml/nn/softmax/softmax_scaled_masked.slang",
+      "variant": "generic",
+      "workgroup_size": [256, 1, 1],
+      "dispatch_tile_size": [1, 1, 1],
+      "differentiation": "softmax_scaled_masked_backward",
+      "semantic_attributes": [["scale", "float"]],
+      "autograd": {"mode": "manual", "family": "matrix/attention"},
+      "physical_write": {
+        "writes": [{
+          "binding": 2,
+          "domain": "rows",
+          "partition": "exclusive_per_workgroup",
+          "extent": "row_width",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "contract": {
+        "input_kinds": ["matrix", "matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "equal_shape_final_axis_softmax",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "independent_host_scaled_masked_softmax",
+        "shapes": [[3, 37]],
+        "tolerance": 0.00002
+      },
+      "push_fields": [
+        ["scores_index", "uint32"], ["mask_index", "uint32"],
+        ["output_index", "uint32"], ["rows", "uint32"],
+        ["columns", "uint32"], ["scale", "float32"]
+      ]
+    },
+    {
+      "stable_id": 326,
+      "name": "softmax_scaled_masked_n32",
+      "kernel_id": "MlSoftmaxScaledMaskedN32F32",
+      "lowering_only": true,
+      "semantic_operation": "softmax_scaled_masked",
+      "source": "src/slang/ml/nn/softmax/softmax_scaled_masked_n32.slang",
+      "variant": "n32",
+      "workgroup_size": [32, 1, 1],
+      "dispatch_tile_size": [1, 1, 1],
+      "differentiation": "none",
+      "physical_write": {
+        "writes": [{
+          "binding": 2,
+          "domain": "rows",
+          "partition": "exclusive_per_workgroup",
+          "extent": "row_width",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "test": {
+        "oracle": "independent_host_scaled_masked_softmax",
+        "shapes": [[5, 13]],
+        "tolerance": 0.00002
+      },
+      "push_fields": [
+        ["scores_index", "uint32"], ["mask_index", "uint32"],
+        ["output_index", "uint32"], ["rows", "uint32"],
+        ["columns", "uint32"], ["scale", "float32"]
+      ]
+    },
+    {
+      "stable_id": 327,
+      "name": "softmax_scaled_masked_backward",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlSoftmaxScaledMaskedBackwardF32",
+      "source": "src/slang/ml/nn/softmax/softmax_scaled_masked_backward.slang",
+      "variant": "generic",
+      "workgroup_size": [256, 1, 1],
+      "dispatch_tile_size": [1, 1, 1],
+      "differentiation": "none",
+      "semantic_attributes": [["scale", "float"]],
+      "physical_write": {
+        "writes": [{
+          "binding": 2,
+          "domain": "rows",
+          "partition": "exclusive_per_workgroup",
+          "extent": "row_width",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "contract": {
+        "input_kinds": ["matrix", "matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "equal_shape_final_axis_softmax_adjoint",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "independent_host_scaled_masked_softmax_backward",
+        "shapes": [[3, 37]],
+        "tolerance": 0.00003
+      },
+      "push_fields": [
+        ["forward_output_index", "uint32"], ["output_gradient_index", "uint32"],
+        ["input_gradient_index", "uint32"], ["rows", "uint32"],
+        ["columns", "uint32"], ["scale", "float32"]
+      ]
+    },
+    {
+      "stable_id": 328,
+      "name": "scaled_dot_product_attention",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlSdpaSoftmaxF32",
+      "source": "src/slang/ml/nn/attention/sdpa_softmax.slang",
+      "variant": "standard",
+      "workgroup_size": [256, 1, 1],
+      "dispatch_tile_size": [1, 1, 1],
+      "differentiation": "reverse",
+      "semantic_attributes": [["scale", "float"], ["causal", "boolean"]],
+      "autograd": {"mode": "manual", "family": "matrix/attention"},
+      "dnn": {"role": "scaled_dot_product_attention", "providers": ["attention"]},
+      "physical_write": {
+        "writes": [{
+          "binding": 2,
+          "domain": "rows",
+          "partition": "exclusive_per_workgroup",
+          "extent": "row_width",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "contract": {
+        "input_kinds": ["matrix", "matrix", "matrix", "matrix"],
+        "optional_inputs": [3],
+        "output_kinds": ["matrix", "matrix"],
+        "shape_rule": "qkv_bhsd_optional_flat_mask_to_bhsd_and_probabilities",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_outputs"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1, -1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "independent_host_scaled_dot_product_attention",
+        "shapes": [[2, 5, 8]],
+        "tolerance": 0.00004
+      },
+      "push_fields": [
+        ["scores_index", "uint32"], ["mask_index", "uint32"],
+        ["probability_index", "uint32"], ["rows", "uint32"],
+        ["columns", "uint32"], ["scale", "float32"],
+        ["has_mask", "uint32"], ["causal", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 329,
+      "name": "sdpa_softmax_n32",
+      "kernel_id": "MlSdpaSoftmaxN32F32",
+      "lowering_only": true,
+      "semantic_operation": "scaled_dot_product_attention",
+      "source": "src/slang/ml/nn/attention/sdpa_softmax_n32.slang",
+      "variant": "standard_n32",
+      "workgroup_size": [32, 1, 1],
+      "dispatch_tile_size": [1, 1, 1],
+      "differentiation": "none",
+      "physical_write": {
+        "writes": [{
+          "binding": 2,
+          "domain": "rows",
+          "partition": "exclusive_per_workgroup",
+          "extent": "row_width",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "test": {
+        "oracle": "independent_host_scaled_dot_product_attention",
+        "shapes": [[2, 5, 8]],
+        "tolerance": 0.00004
+      },
+      "push_fields": [
+        ["scores_index", "uint32"], ["mask_index", "uint32"],
+        ["probability_index", "uint32"], ["rows", "uint32"],
+        ["columns", "uint32"], ["scale", "float32"],
+        ["has_mask", "uint32"], ["causal", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 330,
+      "name": "flash_attention_causal",
+      "kernel_id": "MlFlashAttentionCausalF32",
+      "lowering_only": true,
+      "semantic_operation": "scaled_dot_product_attention",
+      "source": "src/slang/ml/nn/attention/flash_causal.slang",
+      "variant": "flash_causal",
+      "workgroup_size": [64, 1, 1],
+      "dispatch_tile_size": [1, 1, 1],
+      "differentiation": "none",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 3,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 4,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "test": {
+        "oracle": "differential_standard_causal_attention",
+        "shapes": [[4, 5, 8]],
+        "tolerance": 0.00002
+      },
+      "push_fields": [
+        ["query_index", "uint32"], ["key_index", "uint32"],
+        ["value_index", "uint32"], ["output_index", "uint32"],
+        ["log_sum_exp_index", "uint32"], ["batch_heads", "uint32"],
+        ["sequence_length", "uint32"], ["head_dim", "uint32"],
+        ["scale", "float32"]
+      ]
+    },
+    {
+      "stable_id": 331,
+      "name": "scaled_dot_product_attention_backward",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlFlashAttentionCausalBackwardQF32",
+      "source": "src/slang/ml/nn/attention/flash_causal_backward_q.slang",
+      "variant": "flash_causal_q",
+      "workgroup_size": [64, 1, 1],
+      "dispatch_tile_size": [1, 1, 1],
+      "differentiation": "none",
+      "semantic_attributes": [["scale", "float"], ["causal", "boolean"]],
+      "physical_write": {
+        "writes": [{
+          "binding": 6,
+          "domain": "rows",
+          "partition": "exclusive_per_workgroup",
+          "extent": "row_width",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "contract": {
+        "input_kinds": ["matrix", "matrix", "matrix", "matrix", "matrix", "matrix"],
+        "optional_inputs": [3],
+        "output_kinds": ["matrix", "matrix", "matrix"],
+        "shape_rule": "qkv_optional_output_saved_state_and_output_adjoint_to_qkv_adjoint",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_outputs"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1, -1, -1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "differential_standard_attention_adjoint",
+        "shapes": [[2, 4, 4]],
+        "tolerance": 0.00008
+      },
+      "push_fields": [
+        ["query_index", "uint32"], ["key_index", "uint32"],
+        ["value_index", "uint32"], ["output_index", "uint32"],
+        ["output_gradient_index", "uint32"], ["log_sum_exp_index", "uint32"],
+        ["query_gradient_index", "uint32"], ["batch_heads", "uint32"],
+        ["sequence_length", "uint32"], ["head_dim", "uint32"],
+        ["scale", "float32"]
+      ]
+    },
+    {
+      "stable_id": 332,
+      "name": "flash_attention_causal_backward_kv",
+      "kernel_id": "MlFlashAttentionCausalBackwardKvF32",
+      "lowering_only": true,
+      "semantic_operation": "scaled_dot_product_attention_backward",
+      "source": "src/slang/ml/nn/attention/flash_causal_backward_kv.slang",
+      "variant": "flash_causal_kv",
+      "workgroup_size": [64, 1, 1],
+      "dispatch_tile_size": [1, 1, 1],
+      "differentiation": "none",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 6,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 7,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "test": {
+        "oracle": "differential_standard_attention_adjoint",
+        "shapes": [[2, 4, 4]],
+        "tolerance": 0.00008
+      },
+      "push_fields": [
+        ["query_index", "uint32"], ["key_index", "uint32"],
+        ["value_index", "uint32"], ["output_index", "uint32"],
+        ["output_gradient_index", "uint32"], ["log_sum_exp_index", "uint32"],
+        ["key_gradient_index", "uint32"], ["value_gradient_index", "uint32"],
+        ["batch_heads", "uint32"], ["sequence_length", "uint32"],
+        ["head_dim", "uint32"], ["scale", "float32"]
+      ]
+    },
+    {
+      "stable_id": 333,
+      "name": "moe_route_weights",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlMoeRouteWeightsF32",
+      "source": "src/slang/ml/nn/moe/moe_route_weights.slang",
+      "variant": "generic",
+      "differentiation": "moe_route_weights_backward",
+      "autograd": {"mode": "manual", "family": "matrix/moe"},
+      "physical_write": {
+        "writes": [{
+          "binding": 2,
+          "domain": "rows",
+          "partition": "exclusive_per_invocation",
+          "extent": "row_width",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "none"
+      },
+      "contract": {
+        "input_kinds": ["matrix", "matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "probabilities_te_and_expert_indices_tk_to_route_weights_tk",
+        "dtype_rule": "f32_probabilities_i32_indices",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "independent_host_selected_probability_normalization",
+        "shapes": [[3, 4, 2]],
+        "tolerance": 0.00001
+      },
+      "push_fields": [
+        ["probabilities_index", "uint32"], ["expert_indices_index", "uint32"],
+        ["output_index", "uint32"], ["tokens", "uint32"],
+        ["experts", "uint32"], ["routes_per_token", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 334,
+      "name": "moe_route_weights_backward",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlMoeRouteWeightsBackwardF32",
+      "source": "src/slang/ml/nn/moe/moe_route_weights_backward.slang",
+      "variant": "generic",
+      "differentiation": "backward",
+      "physical_write": {
+        "writes": [{
+          "binding": 4,
+          "domain": "output_elements",
+          "partition": "exclusive_per_invocation",
+          "extent": "one_element",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "none"
+      },
+      "contract": {
+        "input_kinds": ["matrix", "matrix", "matrix", "matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "route_adjoint_probabilities_indices_route_weights_to_probability_adjoint",
+        "dtype_rule": "f32_gradients_probabilities_route_weights_i32_indices",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "finite_difference_selected_probability_normalization",
+        "shapes": [[2, 4, 2]],
+        "tolerance": 0.0003
+      },
+      "push_fields": [
+        ["output_gradient_index", "uint32"], ["probabilities_index", "uint32"],
+        ["expert_indices_index", "uint32"], ["route_weights_index", "uint32"],
+        ["probability_gradient_index", "uint32"], ["tokens", "uint32"],
+        ["experts", "uint32"], ["routes_per_token", "uint32"]
       ]
     }
   ]

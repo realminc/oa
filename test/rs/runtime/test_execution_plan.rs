@@ -67,6 +67,10 @@ test_vk!(captures_and_replays_an_immutable_plan, engine, {
 	assert_eq!(report["nodes"][0]["dtype_class"], serde_json::Value::Null);
 	assert_eq!(report["nodes"][0]["dtype"], "float32");
 	assert_eq!(report["nodes"][0]["kernel_selection"], "direct");
+	assert_eq!(
+		report["nodes"][0]["physical_write"],
+		serde_json::Value::Null
+	);
 	assert_eq!(report["nodes"][0]["effects"][0]["resource"], 0);
 	assert_eq!(report["nodes"][0]["effects"][0]["access"], "read");
 	let serialized = report.to_string();
@@ -438,7 +442,7 @@ test_vk!(
 		let (plan, output) = engine.capture(|| {
 			let gate_output = gate.forward(&input)?;
 			let up_output = up.forward(&input)?;
-			oa::ml::swiglu(&gate_output, &up_output)
+			oa::ml::matrix::swiglu(&gate_output, &up_output)
 		})?;
 
 		let diagnostics = plan.diagnostics();
@@ -481,7 +485,7 @@ test_vk!(
 		let (plan, (_escaped, output)) = engine.capture(|| {
 			let gate_output = gate.forward(&input)?;
 			let up_output = up.forward(&input)?;
-			let output = oa::ml::swiglu(&gate_output, &up_output)?;
+			let output = oa::ml::matrix::swiglu(&gate_output, &up_output)?;
 			Ok((gate_output, output))
 		})?;
 		let diagnostics = plan.diagnostics();

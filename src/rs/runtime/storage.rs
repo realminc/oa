@@ -27,7 +27,7 @@ enum Readiness {
 }
 
 impl Storage {
-	pub(super) fn same_as(&self, other: &Self) -> bool {
+	pub(crate) fn same_as(&self, other: &Self) -> bool {
 		Rc::ptr_eq(&self.inner, &other.inner)
 	}
 
@@ -59,10 +59,12 @@ impl Storage {
 		})
 	}
 
-	pub(crate) fn read(&self, output: &mut [u8]) -> Result<()> {
-		if output.len() != self.inner.byte_len {
+	pub(crate) fn read_prefix(&self, output: &mut [u8]) -> Result<()> {
+		// Byte-oriented matrices may have a padded physical allocation. Typed
+		// readback observes only the exact logical prefix.
+		if output.len() > self.inner.byte_len {
 			return Err(crate::Error::invalid_argument(format!(
-				"readback length {} does not match storage length {}",
+				"readback length {} exceeds storage length {}",
 				output.len(),
 				self.inner.byte_len
 			)));
@@ -71,6 +73,18 @@ impl Storage {
 			Some(buffer) => buffer.read(0, output),
 			None => Ok(()),
 		}
+	}
+
+	#[cfg(test)]
+	pub(crate) fn read(&self, output: &mut [u8]) -> Result<()> {
+		if output.len() != self.inner.byte_len {
+			return Err(crate::Error::invalid_argument(format!(
+				"readback length {} does not match storage length {}",
+				output.len(),
+				self.inner.byte_len
+			)));
+		}
+		self.read_prefix(output)
 	}
 
 	pub(crate) fn write(&self, input: &[u8]) -> Result<()> {

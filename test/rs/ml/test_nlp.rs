@@ -133,26 +133,26 @@ test_vk!(
 				.map(|entry| entry.path())
 				.collect::<Vec<_>>(),
 			[
-				"tok_embed.weight",
-				"pos_embed.weight",
-				"block.ln_attn.weight",
-				"block.ln_attn.bias",
-				"block.attention.q_proj.weight",
-				"block.attention.q_proj.bias",
-				"block.attention.k_proj.weight",
-				"block.attention.k_proj.bias",
-				"block.attention.v_proj.weight",
-				"block.attention.v_proj.bias",
-				"block.attention.out_proj.weight",
-				"block.attention.out_proj.bias",
-				"block.ln_ffn.weight",
-				"block.ln_ffn.bias",
-				"block.ffn1.weight",
-				"block.ffn1.bias",
-				"block.ffn2.weight",
-				"block.ffn2.bias",
-				"ln_final.weight",
-				"ln_final.bias",
+				"token_embedding.weight",
+				"position_embedding.weight",
+				"block_0.ln_attn.weight",
+				"block_0.ln_attn.bias",
+				"block_0.attention.q_proj.weight",
+				"block_0.attention.q_proj.bias",
+				"block_0.attention.k_proj.weight",
+				"block_0.attention.k_proj.bias",
+				"block_0.attention.v_proj.weight",
+				"block_0.attention.v_proj.bias",
+				"block_0.attention.out_proj.weight",
+				"block_0.attention.out_proj.bias",
+				"block_0.ln_ffn.weight",
+				"block_0.ln_ffn.bias",
+				"block_0.ffn1.weight",
+				"block_0.ffn1.bias",
+				"block_0.ffn2.weight",
+				"block_0.ffn2.bias",
+				"final_norm.weight",
+				"final_norm.bias",
 				"head.weight",
 				"head.bias",
 			]
@@ -183,11 +183,11 @@ test_vk!(
 			.semantic_graph()
 			.operations()
 			.iter()
-			.find(|operation| operation.name() == "oa::ml::scaled_dot_product_attention_causal")
+			.find(|operation| operation.name() == "oa::ml::matrix::scaled_dot_product_attention")
 			.expect("Transformer capture omitted semantic attention");
 		assert_eq!(attention.attributes().len(), 2);
-		assert_eq!(attention.attributes()[0].name(), "sequence_length");
-		assert_eq!(attention.attributes()[1].name(), "num_heads");
+		assert_eq!(attention.attributes()[0].name(), "scale");
+		assert_eq!(attention.attributes()[1].name(), "causal");
 		engine.submit(&plan)?.wait()?;
 		Ok(())
 	}
@@ -236,6 +236,9 @@ test_vk!(
 		assert_eq!(diagnostics.command_cache_hit_count(), 299);
 		assert_eq!(diagnostics.submission_count(), 300);
 		assert_eq!(diagnostics.input_upload_count(), 598);
+		assert!(diagnostics.semantic_fused_node_count() >= 5);
+		assert!(diagnostics.semantic_fused_operation_count() >= 20);
+		assert_eq!(diagnostics.maximum_semantic_operations_per_node(), 4);
 		let logits = model.forward(&input)?;
 		let final_loss = oa::ml::loss::cross_entropy(&logits, &target)?.read_f32()?[0];
 		let accuracy = nlp::accuracy(&logits, &target)?;

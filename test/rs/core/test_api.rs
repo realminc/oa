@@ -4,6 +4,14 @@ use std::any::TypeId;
 fn root_exports_are_identities_of_core_contracts() {
 	assert_eq!(TypeId::of::<oa::Matrix>(), TypeId::of::<oa::core::Matrix>());
 	assert_eq!(TypeId::of::<oa::Image>(), TypeId::of::<oa::core::Image>());
+	assert_eq!(
+		TypeId::of::<oa::ImageFormat>(),
+		TypeId::of::<oa::core::ImageFormat>()
+	);
+	assert_eq!(
+		TypeId::of::<oa::ImageLayout>(),
+		TypeId::of::<oa::core::ImageLayout>()
+	);
 	assert_eq!(TypeId::of::<oa::DType>(), TypeId::of::<oa::core::DType>());
 	assert_eq!(TypeId::of::<oa::Error>(), TypeId::of::<oa::core::Error>());
 

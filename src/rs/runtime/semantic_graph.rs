@@ -339,7 +339,7 @@ impl SemanticValueAccess {
 	}
 }
 
-/// Proven alias from one semantic output to one semantic input.
+/// Proven storage alias from one fresh semantic output version to its input.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SemanticAliasDesc {
 	output: SemanticValueId,
@@ -640,6 +640,7 @@ impl SemanticGraph {
 		}
 		if !contract.accepts_input_count(inputs.len())
 			|| !contract.accepts_output_count(outputs.len())
+			|| !contract.variadic_alias_counts_match(inputs.len(), outputs.len())
 		{
 			return Err(Error::invalid_argument(
 				"semantic operation arity does not match its contract",
@@ -679,6 +680,11 @@ impl SemanticGraph {
 					"semantic operation output already has a producer",
 				));
 			}
+			if inputs.contains(&Some(output)) {
+				return Err(Error::invalid_argument(
+					"semantic operation outputs must be fresh SSA values",
+				));
+			}
 			if let Some(alias_input) = contract.alias_input(index) {
 				if alias_input >= inputs.len() {
 					return Err(Error::out_of_range(
@@ -690,13 +696,6 @@ impl SemanticGraph {
 						"semantic output cannot alias an optional input",
 					));
 				}
-			}
-		}
-		for index in 0..OperationContract::MAX_VALUES {
-			if contract.mutates_input(index) && index >= inputs.len() {
-				return Err(Error::out_of_range(
-					"semantic mutation references an unknown input",
-				));
 			}
 		}
 		let mut seen_dependencies = BTreeSet::new();
@@ -953,9 +952,24 @@ impl SemanticGraph {
 				|| operation.aliases.iter().any(|alias| {
 					alias.output.usize() >= self.values.len()
 						|| alias.input.usize() >= self.values.len()
+						|| alias.output == alias.input
+						|| !operation.outputs.contains(&alias.output)
+						|| !operation.inputs.contains(&Some(alias.input))
+						|| !operation.mutated_inputs.contains(&alias.input)
 				}) {
 				return Err(Error::internal(
 					"semantic operation has invalid value provenance",
+				));
+			}
+			if operation.mutated_inputs.iter().any(|mutated| {
+				operation
+					.aliases
+					.iter()
+					.filter(|alias| alias.input == *mutated)
+					.count() != 1
+			}) {
+				return Err(Error::internal(
+					"semantic mutation does not produce one fresh alias version",
 				));
 			}
 			if operation
@@ -1246,6 +1260,7 @@ impl SemanticGraph {
 
 const fn dtype_report_token(dtype: DType) -> &'static str {
 	match dtype {
+		DType::U8 => "uint8",
 		DType::F32 => "float32",
 		DType::I32 => "int32",
 		DType::U32 => "uint32",

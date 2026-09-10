@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "family": "vision_detection",
+  "domain": "vision",
+  "dtype": "f32",
+  "contracts": [
+    {"name":"box_iou","input_kinds":["matrix","matrix"],"output_kinds":["matrix"],"shape_rule":"explicit","dtype_rule":"f32","attributes":[]},
+    {"name":"nms","input_kinds":["matrix","matrix","matrix"],"output_kinds":["matrix","matrix"],"shape_rule":"explicit","dtype_rule":"explicit","attributes":[["iou_threshold","float"],["score_threshold","float"],["max_detections","signed_integer"],["class_agnostic","boolean"]]},
+    {"name":"confusion_matrix","input_kinds":["matrix","matrix"],"output_kinds":["matrix"],"shape_rule":"explicit","dtype_rule":"explicit","attributes":[["class_count","signed_integer"]]},
+    {"name":"binary_mask_counts","input_kinds":["matrix","matrix"],"output_kinds":["matrix"],"shape_rule":"explicit","dtype_rule":"explicit","attributes":[]},
+    {"name":"evaluate","input_kinds":["matrix","matrix","matrix","matrix","matrix","matrix","matrix","matrix"],"output_kinds":["matrix","matrix","matrix","matrix"],"shape_rule":"explicit","dtype_rule":"explicit","attributes":[["class_count","signed_integer"],["score_threshold","float"]]},
+    {"name":"evaluate_segmentation","input_kinds":["matrix","matrix"],"output_kinds":["matrix","matrix","matrix","matrix"],"shape_rule":"explicit","dtype_rule":"explicit","attributes":[["class_count","signed_integer"]]}
+  ],
+  "kernels": [
+    {
+      "stable_id": 125, "name": "box_iou", "kernel_id": "VisionBoxIouF32", "source": "src/slang/vision/detection/box_iou.slang", "variant": "pairwise_center_xywh", "workgroup_size": [256, 1, 1], "dispatch_tile_size": [256, 1, 1], "semantic_operation": "box_iou",
+      "physical_write": {"writes":[{"binding":2,"domain":"output_elements","partition":"exclusive_per_invocation","extent":"one_element","collision":"exclusive","tail":"bounds_checked"}],"workspace":"none"},
+      "push_fields": [["boxes_a_index","uint32"],["boxes_b_index","uint32"],["output_index","uint32"],["rows_a","uint32"],["rows_b","uint32"]]
+    },
+    {
+      "stable_id": 126, "name": "nms", "kernel_id": "VisionNmsF32", "source": "src/slang/vision/detection/nms.slang", "variant": "deterministic_serial", "workgroup_size": [1, 1, 1], "semantic_operation": "nms",
+      "physical_write": {"writes":[{"binding":3,"domain":"rows","partition":"exclusive_per_workgroup","extent":"row_width","collision":"exclusive","tail":"bounds_checked"},{"binding":4,"domain":"scalar","partition":"exclusive_per_workgroup","extent":"one_scalar","collision":"exclusive","tail":"bounds_checked"}],"workspace":"none"},
+      "push_fields": [["boxes_index","uint32"],["scores_index","uint32"],["classes_index","uint32"],["indices_index","uint32"],["count_index","uint32"],["box_count","uint32"],["maximum","uint32"],["class_agnostic","uint32"],["iou_threshold","float32"],["score_threshold","float32"]]
+    },
+    {
+      "stable_id": 127, "name": "confusion_matrix", "kernel_id": "VisionConfusionMatrixI32", "source": "src/slang/vision/detection/confusion_matrix.slang", "variant": "atomic_u32", "dtype": "i32", "workgroup_size": [256, 1, 1], "semantic_operation": "confusion_matrix",
+      "physical_write": {"writes":[{"binding":2,"domain":"output_elements","partition":"shared_atomic_contributors","extent":"one_element","collision":"atomic_u32","tail":"bounds_checked"}],"workspace":"none"},
+      "push_fields": [["predicted_index","uint32"],["target_index","uint32"],["output_index","uint32"],["element_count","uint32"],["class_count","uint32"]]
+    },
+    {
+      "stable_id": 128, "name": "binary_mask_counts", "kernel_id": "VisionBinaryMaskCountsU8", "source": "src/slang/vision/detection/binary_mask_counts.slang", "variant": "atomic_u32", "dtype": "u8", "workgroup_size": [256, 1, 1], "semantic_operation": "binary_mask_counts",
+      "physical_write": {"writes":[{"binding":2,"domain":"output_elements","partition":"shared_atomic_contributors","extent":"one_element","collision":"atomic_u32","tail":"bounds_checked"}],"workspace":"none"},
+      "push_fields": [["predicted_index","uint32"],["target_index","uint32"],["output_index","uint32"],["element_count","uint32"]]
+    },
+    {
+      "stable_id": 129, "name": "detection_metric_curves", "kernel_id": "VisionDetectionMetricCurvesF32", "source": "src/slang/vision/detection/detection_metric_curves.slang", "variant": "greedy_score_rank", "workgroup_size": [1, 1, 1], "semantic_operation": "evaluate",
+      "physical_write": {"writes":[{"binding":8,"domain":"rows","partition":"exclusive_per_invocation","extent":"row_width","collision":"exclusive","tail":"bounds_checked"},{"binding":9,"domain":"rows","partition":"exclusive_per_invocation","extent":"row_width","collision":"exclusive","tail":"bounds_checked"},{"binding":10,"domain":"rows","partition":"exclusive_per_invocation","extent":"row_width","collision":"exclusive","tail":"bounds_checked"},{"binding":11,"domain":"rows","partition":"exclusive_per_invocation","extent":"row_width","collision":"exclusive","tail":"bounds_checked"}],"workspace":"none"},
+      "push_fields": [["predicted_boxes_index","uint32"],["predicted_scores_index","uint32"],["predicted_classes_index","uint32"],["predicted_images_index","uint32"],["target_boxes_index","uint32"],["target_classes_index","uint32"],["target_images_index","uint32"],["thresholds_index","uint32"],["state_index","uint32"],["curve_index","uint32"],["counts_index","uint32"],["metrics_index","uint32"],["predicted_count","uint32"],["target_count","uint32"],["threshold_count","uint32"],["class_count","uint32"],["state_stride","uint32"],["score_threshold","float32"]]
+    },
+    {
+      "stable_id": 130, "name": "detection_average_precision", "kernel_id": "VisionDetectionAveragePrecisionF32", "source": "src/slang/vision/detection/detection_average_precision.slang", "variant": "interpolated_101_point", "workgroup_size": [1, 1, 1], "semantic_operation": "evaluate",
+      "physical_write": {"writes":[{"binding":2,"domain":"output_elements","partition":"exclusive_per_invocation","extent":"one_element","collision":"exclusive","tail":"bounds_checked"}],"workspace":"none"},
+      "push_fields": [["curve_index","uint32"],["counts_index","uint32"],["metrics_index","uint32"],["predicted_count","uint32"],["pair_count","uint32"]]
+    },
+    {
+      "stable_id": 131, "name": "detection_mean_average_precision", "kernel_id": "VisionDetectionMeanAveragePrecisionF32", "source": "src/slang/vision/detection/detection_mean_average_precision.slang", "variant": "target_present_classes", "workgroup_size": [1, 1, 1], "semantic_operation": "evaluate",
+      "physical_write": {"writes":[{"binding":2,"domain":"rows","partition":"exclusive_per_workgroup","extent":"row_width","collision":"exclusive","tail":"bounds_checked"},{"binding":3,"domain":"scalar","partition":"exclusive_per_workgroup","extent":"one_scalar","collision":"exclusive","tail":"bounds_checked"}],"workspace":"none"},
+      "push_fields": [["counts_index","uint32"],["metrics_index","uint32"],["map_index","uint32"],["mean_index","uint32"],["threshold_count","uint32"],["class_count","uint32"]]
+    },
+    {
+      "stable_id": 132, "name": "segmentation_confusion", "kernel_id": "VisionSegmentationConfusionI32", "source": "src/slang/vision/detection/segmentation_confusion.slang", "variant": "atomic_u32", "dtype": "i32", "workgroup_size": [256, 1, 1], "semantic_operation": "evaluate_segmentation",
+      "physical_write": {"writes":[{"binding":2,"domain":"output_elements","partition":"shared_atomic_contributors","extent":"one_element","collision":"atomic_u32","tail":"bounds_checked"}],"workspace":"none"},
+      "push_fields": [["predicted_index","uint32"],["target_index","uint32"],["output_index","uint32"],["element_count","uint32"],["class_count","uint32"]]
+    },
+    {
+      "stable_id": 133, "name": "segmentation_metrics", "kernel_id": "VisionSegmentationMetricsF32", "source": "src/slang/vision/detection/segmentation_metrics.slang", "variant": "per_class_and_means", "workgroup_size": [1, 1, 1], "semantic_operation": "evaluate_segmentation",
+      "physical_write": {"writes":[{"binding":1,"domain":"rows","partition":"exclusive_per_workgroup","extent":"row_width","collision":"exclusive","tail":"bounds_checked"},{"binding":2,"domain":"scalar","partition":"exclusive_per_workgroup","extent":"one_scalar","collision":"exclusive","tail":"bounds_checked"},{"binding":3,"domain":"scalar","partition":"exclusive_per_workgroup","extent":"one_scalar","collision":"exclusive","tail":"bounds_checked"}],"workspace":"none"},
+      "push_fields": [["confusion_index","uint32"],["per_class_index","uint32"],["mean_iou_index","uint32"],["pixel_accuracy_index","uint32"],["class_count","uint32"]]
+    },
+    {
+      "stable_id": 134, "name": "confusion_matrix_clear", "kernel_id": "VisionConfusionMatrixClearU32", "source": "src/slang/vision/detection/confusion_matrix_clear.slang", "variant": "replay_safe_zero", "dtype": "u32", "workgroup_size": [256, 1, 1], "semantic_operation": "confusion_matrix",
+      "physical_write": {"writes":[{"binding":0,"domain":"output_elements","partition":"exclusive_per_invocation","extent":"one_element","collision":"exclusive","tail":"bounds_checked"}],"workspace":"none"},
+      "push_fields": [["output_index","uint32"],["element_count","uint32"]]
+    },
+    {
+      "stable_id": 135, "name": "binary_mask_counts_clear", "kernel_id": "VisionBinaryMaskCountsClearU32", "source": "src/slang/vision/detection/binary_mask_counts_clear.slang", "variant": "replay_safe_zero", "dtype": "u32", "workgroup_size": [256, 1, 1], "semantic_operation": "binary_mask_counts",
+      "physical_write": {"writes":[{"binding":0,"domain":"output_elements","partition":"exclusive_per_invocation","extent":"one_element","collision":"exclusive","tail":"bounds_checked"}],"workspace":"none"},
+      "push_fields": [["output_index","uint32"],["element_count","uint32"]]
+    },
+    {
+      "stable_id": 136, "name": "segmentation_confusion_clear", "kernel_id": "VisionSegmentationConfusionClearU32", "source": "src/slang/vision/detection/segmentation_confusion_clear.slang", "variant": "replay_safe_zero", "dtype": "u32", "workgroup_size": [256, 1, 1], "semantic_operation": "evaluate_segmentation",
+      "physical_write": {"writes":[{"binding":0,"domain":"output_elements","partition":"exclusive_per_invocation","extent":"one_element","collision":"exclusive","tail":"bounds_checked"}],"workspace":"none"},
+      "push_fields": [["output_index","uint32"],["element_count","uint32"]]
+    }
+  ]
+}

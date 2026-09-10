@@ -28,8 +28,14 @@ pub enum ErrorKind {
 	NotFound,
 	/// An object with the same identity already exists.
 	AlreadyExists,
+	/// Optimistic concurrency rejected work against a stale revision.
+	Aborted,
 	/// Application callback policy failed at an explicit lifecycle hook.
 	CallbackFailure,
+	/// A persisted OA model/checkpoint failed its wire-format integrity contract.
+	CheckpointCorrupt,
+	/// External encoded data is truncated, malformed, or internally inconsistent.
+	DataLoss,
 	/// OA detected an invalid invariant in its own state.
 	Internal,
 	/// A host filesystem or stream operation failed.
@@ -194,6 +200,22 @@ impl Error {
 	pub(crate) fn internal(message: impl Into<String>) -> Self {
 		Self::new(ErrorData {
 			kind: ErrorKind::Internal,
+			message: message.into(),
+			source: None,
+		})
+	}
+
+	pub(crate) fn checkpoint_corrupt(message: impl Into<String>) -> Self {
+		Self::new(ErrorData {
+			kind: ErrorKind::CheckpointCorrupt,
+			message: format!("corrupt .oam: {}", message.into()),
+			source: None,
+		})
+	}
+
+	pub(crate) fn data_loss(message: impl Into<String>) -> Self {
+		Self::new(ErrorData {
+			kind: ErrorKind::DataLoss,
 			message: message.into(),
 			source: None,
 		})

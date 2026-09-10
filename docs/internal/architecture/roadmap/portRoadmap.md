@@ -2,7 +2,7 @@
 
 **Status:** Planned
 
-**Updated:** 2026-09-09
+**Updated:** 2026-09-10
 
 **Architecture:** [OA Rust Architecture](../oaArchitecture.md)
 
@@ -95,11 +95,18 @@ stable input/gradient/parameter/moment state, advances AdamW state on the GPU,
 and reuses one cached command for the complete canonical Char-Transformer gate.
 This is not generalized autograd or an NLP-suite completion. The canonical
 Char-RNN and Char-Transformer rows pass their exact 300-step corpus, loss,
-accuracy, and fixed-prompt generation gates. Recurrent streaming state, RNG
-replay, dynamic specialization, built-in callback policies, and the remaining
-NLP matrix remain Planned. The donor-backed `TrainingLoop` connects eager and
-captured completion to epoch/work accounting, loss metrics, ordered callback
-control, and exact GPU timestamps. Its prepare/record path now owns automatic
+accuracy, and fixed-prompt generation gates. Recurrent streaming state, shared
+and serialized RNG streams, dynamic specialization,
+and the remaining NLP matrix remain Planned. The donor-backed `ItTraining`
+connects eager and captured completion to epoch/work accounting, loss metrics,
+ordered callback control, exact GPU timing distributions, and progress/summary,
+CSV, validation, checkpoint/restore-best, early-stop, phase, and learning-rate-schedule policies. Its
+object-safe optimizer behavior seam and eager constructor now admit the donor
+no-op owner, FP32 SGD with optional momentum, and FP32 Adam; their checked
+hardware oracles pass on Intel Iris Xe with Mesa 26.2.2 and Vulkan 1.4.354.
+Adam, AdamW, exact no-momentum SGD, and Muon state share the native `.oam` checkpoint
+path and bounded checkpoint-manager policy. The
+prepare/record path now owns automatic
 second-step capture, cached replay, preparation-node rejection, and explicit
 safe recapture. Plan rejection preserves and eagerly submits the source step,
 then disables capture until recapture is requested. Successful automatic
@@ -109,8 +116,10 @@ and require exactly one graph-state advance before all replay updates. Successfu
 programs expose ordered semantic-validation-through-command-recording stage
 evidence and the donor-compatible `oa.training_compilation.v2` JSON report;
 captured semantic and executable state are also available through normalized
-`oa.semantic_graph.v2` and handle-free `oa.execution_graph.v3` reports. Philox
-replay transformation remains Planned.
+`oa.semantic_graph.v2` and handle-free `oa.execution_graph.v3` reports.
+Schema-owned Philox uniform/normal and inverted Dropout now select replay
+kernels with graph-resident per-operation counters and fail-closed pairing
+validation.
 Existing unrelated modules and shaders remain design scaffolding unless a
 later status document names their implementation and verification evidence.
 
@@ -223,17 +232,24 @@ and reports portable versus recognized partitions. Its first physical providers
 mechanically port the exact OA FP32 `[1024,32]` inference QKV projection+bias
 replacement and `M=1024, N=64, K=32` Linear+Linear+SwiGLU gate/up replacement,
 including many-to-one semantic provenance, eliminated-intermediate lifetime
-proof, and explicit source-path fallback. Training capture retains the proven source lowering. Current
-non-mutating ML schemas also emit compatibility contracts; their
+proof, and explicit source-path fallback. Training capture retains the proven
+source lowering. Current ML schemas emit compatibility contracts; their
 dispatches preserve scalar semantic attributes and a captured Transformer
 forward reaches DNN analysis without compatibility compute nodes. Reached tape
 nodes attach forward outputs to generation-checked contiguous backward ranges,
-and DNN analysis can distinguish their training operations. AdamW remains
-explicitly outside semantic capture until versioned mutation is ported.
+and DNN analysis can distinguish their training operations. Private in-place
+AdamW operations functionalize each state, parameter, and moment write as a
+fresh semantic value aliasing its prior SSA version while the execution binding
+retains the same storage.
 Remaining work must establish:
 
 - exact OA schema contract identities beyond the Matrix compatibility seed;
-- versioned semantic mutation for optimizer updates;
+- semantic mutation coverage for future public and stateful in-place writers;
+- schema/candidate-owned access ranges, physical write domains, collision
+  policies, and generated overlap rejection evidence;
+- complete private prepared-dispatch evidence joining capabilities, bindings,
+  aliases, workspace, dispatch geometry, and reflected ABI before command
+  encoding;
 - additional capability/lifetime-qualified DNN providers beyond QKV and gate/up;
 - mutable output bindings and shape-specialized variants;
 - multi-queue, multi-device, and distributed scheduling contracts;
@@ -298,7 +314,8 @@ Token/position Embedding -> causal TransformerBlock -> Linear -> 300-step LM
 
 It uses the established Matrix, eager recording, executable graph, embedded
 shader, and Event contracts without a second tensor or execution owner. The
-current tape admits Linear, Embedding, LayerNorm, GELU, causal attention,
+current tape admits Linear, Embedding, LayerNorm, GELU, standard composed
+scaled dot-product attention with causal and optional additive masking,
 equal-shape FP32 addition, stacked Elman Rnn, and zero-copy reshape chains
 terminating in cross-entropy, and the optimizer updates
 FP32 values out of place. Recursive Module traversal now binds a composed
@@ -308,7 +325,7 @@ adjoint checked through an embedding predecessor. Complete this stage with:
 
 1. port exact OA operation identities over the connected Matrix compatibility
    seed, attach ML semantic contracts, and qualify DNN partitions for physical lowering;
-2. extend semantic bindings to all domains and port stable-resource frames,
+2. extend semantic bindings to all domains and extend stable-resource frames,
    replay-safe RNG transformation, transient alias
    materialization, compilation-stage diagnostics, and graph reports into the
    existing Rust `ExecutionSession`/`ExecutionPlan` ownership;
@@ -320,15 +337,17 @@ adjoint checked through an embedding predecessor. Complete this stage with:
 5. port schema-owned generalized reverse traversal and gradient accumulation;
 6. add recurrent streaming state (tutorial-level character RNN convergence is
    Experimental and complete);
-7. graph-resident AdamW step state, stable gradient/input slots, and fixed-shape
-   training-program replay are Experimental; add RNG state, dynamic
+7. graph-resident AdamW step state, stable gradient/input slots, fixed-shape
+   training-program replay, and private per-operation RNG counters are
+   Experimental; add serialized/shared RNG state, dynamic
    specialization, and multi-buffered input staging;
-8. extend the Experimental donor-backed `TrainingLoop` lifecycle from exact
+8. extend the Experimental donor-backed `ItTraining` lifecycle from exact
    eager/captured completion, epoch/work accounting, loss metrics, ordered
-   callback control, GPU timing, automatic prepare/record capture, and safe
-   recapture, and source-preserving capture fallback to checkpoint, evaluation,
-   scheduling, and `TrainingSession` control using the same Rust-native traits
-   and borrowing;
+   callback control, GPU timing distributions, progress/summary presentation,
+   automatic prepare/record capture, safe recapture, and source-preserving
+   capture fallback to checkpoint, evaluation, scheduling, and the connected
+   bounded `TrainingSession` safe-point control plane using the same
+   Rust-native traits and borrowing;
 9. expand beyond the Experimental Char RNN and Char Transformer tutorials
    across Byte/BPE and the remaining GRU, Transformer, MoE, and Mamba matrix.
 
@@ -339,7 +358,7 @@ admitted without checking that ledger and the live OA donor first.
 The complete NLP suite and performance comparison are release gates, not
 implementation-fragment tests.
 
-## Independent host-domain checkpoint — Audio codecs and Crypto (Experimental)
+## Independent host-domain checkpoint — Audio and Cryptography (Experimental)
 
 Two bounded host-facing slices reuse the existing Matrix/runtime foundation
 without changing ML lowering or the generated operation surface:
@@ -349,17 +368,39 @@ without changing ML lowering or the generated operation surface:
   and MP3 decode uses a private, feature-bounded Symphonia adapter and uploads
   through the existing engine. OA's checked WAV-F32 encoder is ported directly;
   semantic encode/save remains an explicit blocking readback boundary.
+- The donor's 17 Audio operations enter through the shared schema and typed
+  Audio semantic values, lowering to 24 generated kernel identities. Signal,
+  filtering, reverb, STFT, Mel, and MFCC oracles pass on the named Vulkan
+  device.
+- `AudioCapture` and `AudioPlayer` use CPAL device streams and bounded
+  lock-free SPSC rings; incremental playback decode remains private to the
+  player. `AudioEncoder` preserves explicit packet flush/close semantics.
 - CPU Keccak-f[1600], SHAKE-128/256, KMAC-256, typed 32-byte hashes, and
   arbitrary-leaf Merkle trees/proofs directly port OA's algorithms. FIPS 202
   and SP 800-185 known-answer tests plus incremental and malformed-state tests
   gate the surface. KMAC sponge and temporary encoding storage are securely
   erased through `core::memory`.
+- `SecureBuffer` preserves the donor's non-owning erase-on-drop contract with
+  observable best-effort Linux page locking. CPU ML-DSA-65 owns typed keys and
+  signatures; secret state is non-serializing and zeroized by the dependency.
+- Schema-owned U8 Matrix kernels port batch SHAKE-128/256, Keccak-f[1600], and
+  power-of-two Merkle reduction. Multi-level Merkle is one semantic operation,
+  and deferred SHAKE output can feed it without host observation.
 
-Audio DSP operations are not handwritten around the Matrix schema. Port their
-OA operation records and Slang routes as later complete vertical slices.
-Capture, playback, streaming encode, and low-latency effects remain explicit
-session work. Vulkan batch hash operations and ML-DSA remain Planned until
-their dispatch, dependency, secret-data, and qualification contracts land.
+Audio device sessions remain Experimental pending cross-backend hardware
+qualification. Compressed streaming encode and low-latency effects remain
+Planned. Device-side ML-DSA remains Planned; the donor experiments were
+incomplete and were not exposed by its public signing API.
+
+The dependency-ordered device cryptography plan is owned by the
+[vkPQC roadmap](vkPqcRoadmap.md). Its first possible Experimental checkpoint is
+public-data ML-DSA-65 batch verification. Full ML-KEM and ML-DSA secret-bearing
+operations require the separate
+[GPU secret execution and observability](../../cryptography/oaGpuSecretSecurity.md)
+contract; ordinary device-local memory, short lifetimes, and erasure do not
+prevent capture by the owning process or a privileged debugger. Generic
+cuPQC-style BigInt, arbitrary-field NTT, Poseidon2, and broad Merkle facilities
+remain optional later projects rather than dependencies of the PK slice.
 
 ## Stage 6 — Multi-device local execution
 
@@ -374,15 +415,133 @@ Remote transport is not part of this stage.
 
 ## Stage 7 — Image and vision pipeline
 
-Add `Image` storage views and metadata, then one complete upload → resize →
-readback slice. Preserve extent, format, layout, color, readiness, and alias
-semantics. Reuse the same engine, schema, graph, event, and shader systems.
+The initial semantic value is Experimental: `Image` now composes one dense
+`Matrix`, validates NCHW/NHWC/CHW/HWC/HW rank and channel contracts, and
+exposes immutable zero-copy borrowing plus consuming extraction. The former
+zero-sized `Image`, `Video`, and `Presenter` TODO APIs and the TODO-backed
+`vision::resize`/`normalize` functions were removed rather than treated as
+capabilities.
+
+The complete donor geometric family is Experimental under `image`: resize,
+crop, flip, rotate, pad, center crop, remap, affine warp, and perspective warp.
+Its schema-owned FP32 kernels preserve NCHW/CHW Image layout and format, keep
+coordinate and transform inputs as Matrix-kind graph values, declare exclusive
+physical output writes, and pass odd-shape independent host oracles—including
+all five border modes—on the recorded Intel/Mesa device. The clean Vulkan
+validation gate remains blocked by the pre-existing
+Philox/Dropout `shaderInt64` mismatch
+(`VUID-VkShaderModuleCreateInfo-pCode-08740`); this is not a qualification
+claim.
+
+The complete donor 20-operation pixel family is Experimental under `image`:
+pointwise thresholds and intensity transforms, grayscale, explicit semantic
+channel reorder, blending/compositing/erase, color twist, and explicit-seed
+Philox noise. Independent scalar and image-layout oracles pass on the same
+Intel/Mesa device. The noise artifacts share the documented `shaderInt64`
+validation prerequisite; hardware execution alone is not a clean-validation
+claim.
+
+The 20-operation filter family and per-channel normalization are Experimental,
+completing all 50 tensor-native donor `FnImage` operations. Shared physical
+filter lowering remains internal to 20 distinct schema contracts. Exact
+identity/zero/fixed-derivative and normalization oracles pass on the same
+Intel/Mesa device; composite morphology is a correctness reference path with no
+throughput claim.
+
+The donor still-image boundary is also Experimental under `image`: JPEG, PNG,
+WebP, BMP, and TGA memory/file decoding uploads normalized FP32 NCHW Images;
+encoding and file saving perform explicit blocking readback. JPEG/WebP quality,
+path inference, capability queries, and the packed RGBA8 render-session sink
+are checked. Color conversion, fused resize-normalize, and segmentation overlay
+preserve semantic Image/Matrix graph kinds and pass hardware oracles.
+Texture saving remains Render-owned and awaits the Texture value.
+
+The complete donor `FnDetection` surface is Experimental in `vision`: pairwise
+IoU, deterministic class-aware/agnostic NMS, classification confusion,
+binary-mask counts, three-stage detection AP/mAP, and segmentation confusion
+plus metrics. Schema-owned kernels preserve GPU-resident outputs, async
+readiness, semantic decomposition provenance, explicit atomic U32 collision
+ownership, and replay-safe accumulator clearing. Donor vectors, odd dispatches,
+ignored labels, deterministic tie breaking, invalid contracts, and repeated
+plan submission pass the local hardware suite. It shares the same
+clean-validation blocker above and is not yet a cross-device qualification
+claim. Tracking and future typed detection values remain later Vision work.
+
+Continue the stage by clearing that shared validation prerequisite, then extend
+metadata only alongside its consuming operation. Preserve extent, format,
+layout, color, readiness, and alias semantics. Reuse the same engine, schema,
+graph, event, and shader systems. Image codecs and transformations belong to
+`image`; detection, tracking, segmentation, and other interpretation belong to
+`vision`. Do not reproduce the donor C++ Vision umbrella as the Rust owner of
+Image or Video.
 
 ## Stage 8 — Stateful media and presentation
 
+The first `VideoFrame` value path is Experimental. It retains one packed Image,
+rejects batches and empty spatial extents, and carries checked presentation
+timing plus source matrix/range metadata. Its optional Image access anticipates
+native multi-plane backing without exposing raw Vulkan handles or pretending
+that every decoded frame is a dense Matrix.
+
+The first packet-source session is Experimental. `VideoDemuxer` builds a
+bounded, validated index for one unfragmented MP4 video track; reads payloads
+incrementally, normalizes AVC/HEVC access units to Annex-B, prepends codec
+configuration after open/seek, and defines explicit EOS/seek/close behavior.
+H.264, H.265, AV1, and VP9 donor fixtures pass open/read/seek/close tests. A
+separate selected-device query reports physical Vulkan Video queue and codec
+extension support. Engine construction enables the advertised queue/extension
+chain. Exact typed profile/format queries, decode-family command submission and
+pool-correct retirement, plus private H.264/H.265/AV1 session creation and
+memory binding now pass on the local Intel/Mesa device. Parsed donor H.264
+SPS/PPS records also create and destroy a dependent Khronos standard-video
+session-parameter object on that device. Exact-profile native output and layered
+DPB image allocation now passes for every advertised typed decoder, selecting
+distinct or coincident ownership from the queried capability flags and failing
+closed on unsupported disjoint plane binding. The H.264 qualification extracts
+its one VCL NAL from the donor access unit, emits the three-byte byte-stream
+prefix used by the Khronos/FFmpeg Vulkan paths, and uploads it into a
+profile-chained `VIDEO_DECODE_SRC` buffer whose initialized range satisfies the
+queried size and offset alignments. One progressive donor H.264 IDR command now
+binds session parameters, reconstructed DPB slot zero, output resource, reset,
+image/buffer barriers, decode-family submission, and timeline retirement. The selected
+queue family's result-status support is reported independently; an
+exact-profile status query encloses the operation and returns `COMPLETE` on the
+local Intel/Mesa device after event completion. An explicit decode-family
+release and matching compute-family acquire then copy the NV12 planes to
+host-visible storage; planar normalization matches all 1,382,400 bytes of an
+independently decoded FFmpeg first frame through a fixed SHAKE-256 oracle. Session
+availability remains false until the remaining codec parameter objects,
+reusable DPB state, and public decoded-frame synchronization land. H.264 VUI
+and optional HRD syntax now parse into typed backend-neutral values and lower
+into the standard-video VUI table; incompatible dual HRD tables fail closed.
+Sequence/PPS scaling-list syntax likewise retains its presence/default masks
+and 4x4/8x8 values, including SPS-resolved 4:4:4 list counts, and lowers without
+reordering into `StdVideoH264ScalingLists`. HEVC SPS/PPS scaling-list syntax now
+resolves default and predicted matrices, DC coefficients, and diagonal scans
+into owned raster-order 4x4/8x8/16x16/32x32 values; Vulkan HEVC parameter-object
+lowering remains the next codec checkpoint. HEVC SPS short-term reference sets
+now retain direct and predictor masks plus resolved delta-POC order, fixing the
+old skip walk's lost predicted-set cardinality; long-term SPS references retain
+their POC-LSB and current-picture flag.
+
 Add one session at a time after its state machine, borrowed-engine lifetime,
 external synchronization, and explicit close/drain behavior are specified.
-Vulkan Video and WSI are implementation backends, not the public media model.
+`audio` and `video` remain direct public domains. The sibling `media` module is
+introduced only for cross-track sources, clocks, transport, and synchronized
+playback. Render owns Texture and Presenter adapters for Image, VideoFrame, or
+scene output. Vulkan Video, platform codecs, sound libraries, and WSI are
+implementation backends, not the public media model.
+
+Principal values and lifecycle-bearing sessions may be explicitly re-exported
+from `lib.rs` as identity aliases. Operations remain module-only. This permits
+both `oa::AudioPlayer` and `oa::audio::AudioPlayer` without two
+implementations; callers may locally alias `oa::audio` as `oaa`.
+
+The first Render resource is Experimental: `Texture` retains exact packed
+RGBA8 U8 storage with checked host upload/readback and the Image-codec file
+sink. It deliberately claims no native sampled-image or render-target support.
+Schema-owned Texture conversion/clear/blit, native backing, a headless Renderer
+target ring, graphics/Scene, and Presenter follow in that dependency order.
 
 ## Deferred until their dependencies exist
 

@@ -16,10 +16,16 @@ from pathlib import Path
 from typing import Any
 
 
-GENERATOR_VERSION = 18
+GENERATOR_VERSION = 41
 DEFAULT_SCHEMA = Path("tools/gen/fn/schema/matrix_elemwise.json")
 DEFAULT_BLAS_SCHEMA = Path("tools/gen/fn/schema/matrix_blas.json")
+DEFAULT_REDUCE_SCHEMA = Path("tools/gen/fn/schema/matrix_reduce.json")
+DEFAULT_RNG_SCHEMA = Path("tools/gen/fn/schema/matrix_rng.json")
 DEFAULT_ML_SCHEMA = Path("tools/gen/fn/schema/ml_training.json")
+DEFAULT_AUDIO_SCHEMA = Path("tools/gen/fn/schema/audio.json")
+DEFAULT_CRYPTOGRAPHY_HASH_SCHEMA = Path("tools/gen/fn/schema/cryptography_hash.json")
+DEFAULT_IMAGE_SCHEMA = Path("tools/gen/fn/schema/image.json")
+DEFAULT_VISION_SCHEMA = Path("tools/gen/fn/schema/vision_detection.json")
 IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 KINDS = {"binary", "unary", "unary_scalar"}
 DTYPES = {
@@ -39,10 +45,88 @@ DTYPES = {
 	},
 }
 
+PHYSICAL_WRITE_DOMAINS = {"axis_slices", "output_elements", "rows", "scalar"}
+PHYSICAL_WRITE_PARTITIONS = {
+	"exclusive_per_invocation",
+	"exclusive_per_workgroup",
+	"shared_atomic_contributors",
+}
+PHYSICAL_WRITE_EXTENTS = {
+	"axis_slice",
+	"one_element",
+	"one_scalar",
+	"row_width",
+	"tile_16x16",
+	"up_to_two_elements",
+	"up_to_four_elements",
+}
+PHYSICAL_WRITE_COLLISIONS = {"exclusive", "atomic_u32"}
+PHYSICAL_WRITE_TAILS = {"bounds_checked"}
+WORKSPACE_PARTITIONS = {"exclusive_per_workgroup", "none"}
+
 
 class SchemaError(ValueError):
 	"""The operation schema is structurally invalid.
 	"""
+
+
+def validate_physical_write(value: Any, where: str, *, required: bool) -> None:
+	if value is None:
+		require(not required, f"{where}.physical_write is required")
+		return
+	require(isinstance(value, dict), f"{where}.physical_write must be an object")
+	require(
+		set(value) == {"writes", "workspace"},
+		f"{where}.physical_write fields are incomplete or unknown",
+	)
+	writes = value.get("writes")
+	require(
+		isinstance(writes, list) and writes,
+		f"{where}.physical_write.writes must be a non-empty array",
+	)
+	seen_bindings: set[int] = set()
+	for index, write in enumerate(writes):
+		label = f"{where}.physical_write.writes[{index}]"
+		require(isinstance(write, dict), f"{label} must be an object")
+		require(
+			set(write) == {"binding", "domain", "partition", "extent", "collision", "tail"},
+			f"{label} fields are incomplete or unknown",
+		)
+		binding = write.get("binding")
+		require(
+			isinstance(binding, int) and not isinstance(binding, bool) and 0 <= binding <= 255,
+			f"{label}.binding must be a u8 binding ordinal",
+		)
+		validate_unique(binding, seen_bindings, f"{label}.binding")
+		require(write.get("domain") in PHYSICAL_WRITE_DOMAINS, f"{label}.domain is unsupported")
+		require(
+			write.get("partition") in PHYSICAL_WRITE_PARTITIONS,
+			f"{label}.partition is unsupported",
+		)
+		require(write.get("extent") in PHYSICAL_WRITE_EXTENTS, f"{label}.extent is unsupported")
+		require(
+			write.get("collision") in PHYSICAL_WRITE_COLLISIONS,
+			f"{label}.collision is unsupported",
+		)
+		require(write.get("tail") in PHYSICAL_WRITE_TAILS, f"{label}.tail is unsupported")
+	workspace = value.get("workspace")
+	require(workspace in WORKSPACE_PARTITIONS, f"{where}.physical_write.workspace is unsupported")
+	if workspace == "exclusive_per_workgroup":
+		require(
+			all(write["partition"] == "exclusive_per_workgroup" for write in writes),
+			f"{where}.physical_write workspace and write partitions are contradictory",
+		)
+	for write in writes:
+		if write["partition"] == "shared_atomic_contributors":
+			require(
+				write["collision"] == "atomic_u32",
+				f"{where}.physical_write shared contributors require atomic_u32 collision policy",
+			)
+		if write["collision"] == "atomic_u32":
+			require(
+				write["partition"] == "shared_atomic_contributors",
+				f"{where}.physical_write atomic_u32 requires shared contributors",
+			)
 
 
 def load_schema(path: Path) -> tuple[dict[str, Any], str]:
@@ -53,8 +137,32 @@ def load_blas_schema(path: Path) -> tuple[dict[str, Any], str]:
 	return load_validated_schema(path, validate_blas_schema)
 
 
+def load_reduce_schema(path: Path) -> tuple[dict[str, Any], str]:
+	return load_validated_schema(path, validate_reduce_schema)
+
+
 def load_ml_schema(path: Path) -> tuple[dict[str, Any], str]:
 	return load_validated_schema(path, validate_ml_schema)
+
+
+def load_rng_schema(path: Path) -> tuple[dict[str, Any], str]:
+	return load_validated_schema(path, validate_rng_schema)
+
+
+def load_audio_schema(path: Path) -> tuple[dict[str, Any], str]:
+	return load_validated_schema(path, validate_audio_schema)
+
+
+def load_cryptography_hash_schema(path: Path) -> tuple[dict[str, Any], str]:
+	return load_validated_schema(path, validate_cryptography_hash_schema)
+
+
+def load_image_schema(path: Path) -> tuple[dict[str, Any], str]:
+	return load_validated_schema(path, validate_image_schema)
+
+
+def load_vision_schema(path: Path) -> tuple[dict[str, Any], str]:
+	return load_validated_schema(path, validate_vision_schema)
 
 
 def load_validated_schema(path: Path, validator: Any) -> tuple[dict[str, Any], str]:
@@ -175,6 +283,596 @@ def validate_blas_schema(schema: dict[str, Any]) -> None:
 		validate_blas_test(operation.get("test"), where)
 
 
+def validate_reduce_schema(schema: dict[str, Any]) -> None:
+	require(schema.get("schema_version") == 1, "Reduce schema_version must be 1")
+	require(schema.get("family") == "matrix_reduce", "Reduce family must be matrix_reduce")
+	require(schema.get("domain") == "matrix", "Reduce domain must be matrix")
+	require(schema.get("dtype") == "f32", "Reduce dtype must be f32")
+	require(
+		schema.get("workgroup_size") == [256, 1, 1],
+		"Reduce workgroup_size must be [256, 1, 1]",
+	)
+	provenance = schema.get("port_provenance")
+	require(isinstance(provenance, dict), "Reduce port_provenance must be an object")
+	require(
+		set(provenance) == {"classification", "donors", "reason"},
+		"Reduce port_provenance fields are incomplete or unknown",
+	)
+	require(
+		provenance.get("classification") == "mechanical_adaptation",
+		"Reduce port classification must be mechanical_adaptation",
+	)
+	require(
+		isinstance(provenance.get("donors"), list)
+		and provenance["donors"]
+		and all(
+			isinstance(donor, str)
+			and donor.startswith(("source/", "tools/"))
+			and ".." not in donor
+			for donor in provenance["donors"]
+		),
+		"Reduce donor paths must be non-empty",
+	)
+	require(
+		isinstance(provenance.get("reason"), str) and provenance["reason"].endswith("."),
+		"Reduce port reason must end with a period",
+	)
+	operations = schema.get("operations")
+	require(
+		isinstance(operations, list) and len(operations) == 9,
+		"Reduce operations must contain the admitted Softmax, LogSoftmax, Sum, and categorical-count families",
+	)
+	require(
+		[operation.get("name") for operation in operations]
+		== [
+			"softmax",
+			"softmax_backward",
+			"log_softmax",
+			"log_softmax_backward",
+			"sum",
+			"sum_axis",
+			"sum_backward",
+			"categorical_accuracy_count",
+			"masked_categorical_accuracy_count",
+		],
+		"Reduce operations are not in canonical family order",
+	)
+	operation_names = {operation["name"] for operation in operations}
+	seen_ids: set[int] = set()
+	seen_kernels: set[str] = set()
+	seen_sources: set[str] = set()
+	for index, operation in enumerate(operations):
+		where = f"Reduce operations[{index}]"
+		require(isinstance(operation, dict), f"{where} must be an object")
+		validate_physical_write(operation.get("physical_write"), where, required=True)
+		stable_id = operation.get("stable_id")
+		require(
+			isinstance(stable_id, int) and 0 < stable_id <= 65535,
+			f"{where}.stable_id must be a non-zero u16",
+		)
+		validate_unique(stable_id, seen_ids, f"{where}.stable_id")
+		kernel_id = operation.get("kernel_id")
+		require(
+			isinstance(kernel_id, str) and IDENTIFIER.fullmatch(kernel_id) is not None,
+			f"{where}.kernel_id must be an identifier",
+		)
+		validate_unique(kernel_id, seen_kernels, f"{where}.kernel_id")
+		source = operation.get("source")
+		require(
+			isinstance(source, str) and source.endswith(".slang"),
+			f"{where}.source must be a Slang path",
+		)
+		validate_unique(source, seen_sources, f"{where}.source")
+		require(operation.get("variant") == "generic", f"{where}.variant must be generic")
+		lowering_only = operation.get("lowering_only", False)
+		if lowering_only:
+			require(
+				operation["name"] == "sum_axis"
+				and operation.get("semantic_operation") == "sum"
+				and operation["semantic_operation"] in operation_names,
+				f"{where} must be the private Sum axis lowering",
+			)
+			for forbidden in ("differentiation", "semantic_attributes", "contract", "test"):
+				require(forbidden not in operation, f"{where}.{forbidden} is invalid for lowering-only work")
+		else:
+			require(
+				"semantic_operation" not in operation,
+				f"{where}.semantic_operation is valid only for lowering-only work",
+			)
+			differentiation = operation.get("differentiation")
+			expected_differentiation = (
+				"reverse"
+				if operation["name"] in {"softmax", "log_softmax", "sum"}
+				else "none"
+			)
+			require(
+				differentiation == expected_differentiation,
+				f"{where}.differentiation must be {expected_differentiation}",
+			)
+			validate_semantic_attributes(operation.get("semantic_attributes"), where)
+			expected_attributes = (
+				[]
+				if operation["name"].endswith("categorical_accuracy_count")
+				else [["dim", "signed_integer"]]
+			)
+			require(
+				operation["semantic_attributes"] == expected_attributes,
+				f"{where} semantic attributes are invalid; reductions require a signed dim attribute and categorical counts require none",
+			)
+			validate_ml_contract(operation.get("contract"), differentiation, where)
+			expected_inputs = {
+				"softmax": ["matrix"],
+				"softmax_backward": ["matrix", "matrix"],
+				"log_softmax": ["matrix"],
+				"log_softmax_backward": ["matrix", "matrix"],
+				"sum": ["matrix"],
+				"sum_backward": ["matrix", "matrix"],
+				"categorical_accuracy_count": ["matrix", "class_indices"],
+				"masked_categorical_accuracy_count": [
+					"matrix",
+					"class_indices",
+					"matrix",
+				],
+			}[operation["name"]]
+			require(
+				operation["contract"]["input_kinds"] == expected_inputs,
+				f"{where} input kinds are invalid",
+			)
+			fields = operation.get("push_fields")
+			expected_field_count = {
+				"softmax": 5,
+				"softmax_backward": 6,
+				"log_softmax": 5,
+				"log_softmax_backward": 6,
+				"sum": 3,
+				"sum_axis": 5,
+				"sum_backward": 5,
+				"categorical_accuracy_count": 6,
+				"masked_categorical_accuracy_count": 7,
+			}[operation["name"]]
+		require(
+			isinstance(fields, list) and len(fields) == expected_field_count,
+			f"{where}.push_fields has the wrong width",
+		)
+		seen_fields: set[str] = set()
+		for field in fields:
+			require(
+				isinstance(field, list) and len(field) == 2,
+				f"{where}.push_fields entry is invalid",
+			)
+			name, scalar_type = field
+			require(
+				isinstance(name, str) and IDENTIFIER.fullmatch(name) is not None,
+				f"{where}.push field name is invalid",
+			)
+			validate_unique(name, seen_fields, f"{where}.push field name")
+			require(scalar_type == "uint32", f"{where}.push fields must be uint32")
+		if not lowering_only:
+			test = operation.get("test")
+			require(isinstance(test, dict), f"{where}.test must be an object")
+			require(
+				isinstance(test.get("shape"), list)
+				and test["shape"]
+				and all(isinstance(value, int) and value > 0 for value in test["shape"]),
+				f"{where}.test.shape must contain positive dimensions",
+			)
+			if not operation["name"].endswith("categorical_accuracy_count"):
+				require(isinstance(test.get("dim"), int), f"{where}.test.dim must be signed")
+			require(
+				isinstance(test.get("tolerance"), (int, float))
+				and test["tolerance"] >= 0,
+				f"{where}.test.tolerance must be non-negative",
+			)
+
+
+def validate_rng_schema(schema: dict[str, Any]) -> None:
+	require(schema.get("schema_version") == 1, "RNG schema_version must be 1")
+	require(schema.get("family") == "matrix_rng", "RNG family must be matrix_rng")
+	require(schema.get("domain") == "matrix", "RNG domain must be matrix")
+	require(schema.get("dtype") == "f32", "RNG dtype must be f32")
+	require(schema.get("workgroup_size") == [256, 1, 1], "RNG workgroup_size must be [256, 1, 1]")
+	operations = schema.get("operations")
+	require(isinstance(operations, list) and operations, "RNG operations must be non-empty")
+	names = {operation.get("name") for operation in operations if isinstance(operation, dict)}
+	seen_ids: set[int] = set()
+	seen_names: set[str] = set()
+	seen_kernels: set[str] = set()
+	seen_sources: set[str] = set()
+	for index, operation in enumerate(operations):
+		where = f"RNG operations[{index}]"
+		require(isinstance(operation, dict), f"{where} must be an object")
+		for key, seen in (("name", seen_names), ("kernel_id", seen_kernels)):
+			value = operation.get(key)
+			require(isinstance(value, str) and IDENTIFIER.fullmatch(value) is not None, f"{where}.{key} must be an identifier")
+			validate_unique(value, seen, f"{where}.{key}")
+		stable_id = operation.get("stable_id")
+		require(isinstance(stable_id, int) and 0 < stable_id <= 65535, f"{where}.stable_id must be a non-zero u16")
+		validate_unique(stable_id, seen_ids, f"{where}.stable_id")
+		source = operation.get("source")
+		require(isinstance(source, str) and source.endswith(".slang"), f"{where}.source must be a Slang path")
+		validate_unique(source, seen_sources, f"{where}.source")
+		require(operation.get("variant") == "generic", f"{where}.variant must be generic")
+		dtype = operation.get("dtype", schema["dtype"])
+		require(dtype in {"f32", "u32"}, f"{where}.dtype is unsupported")
+		workgroup = operation.get("workgroup_size", schema["workgroup_size"])
+		require(isinstance(workgroup, list) and len(workgroup) == 3 and all(isinstance(value, int) and value > 0 for value in workgroup) and math.prod(workgroup) <= 1024, f"{where}.workgroup_size is invalid")
+		tile = operation.get("dispatch_tile_size", workgroup)
+		require(isinstance(tile, list) and len(tile) == 3 and all(isinstance(value, int) and value > 0 for value in tile), f"{where}.dispatch_tile_size is invalid")
+		semantic_operation = operation.get("semantic_operation")
+		if semantic_operation is None:
+			differentiation = operation.get("differentiation", "none")
+			require(
+				differentiation in {"none", "reverse"},
+				f"{where}.differentiation is unsupported",
+			)
+			validate_ml_contract(operation.get("contract"), differentiation, where)
+		else:
+			require(semantic_operation in names, f"{where}.semantic_operation must name an RNG operation")
+			require("contract" not in operation, f"{where} implementation variant cannot own another contract")
+		validate_semantic_attributes(operation.get("semantic_attributes", []), where)
+		replay_role = operation.get("training_replay_role", "safe")
+		require(replay_role in {"safe", "frozen_rng", "replay_rng", "rng_state_advance"}, f"{where}.training_replay_role is unsupported")
+		fields = operation.get("push_fields")
+		require(isinstance(fields, list) and fields, f"{where}.push_fields must be non-empty")
+		seen_fields: set[str] = set()
+		for field in fields:
+			require(isinstance(field, list) and len(field) == 2, f"{where}.push_fields entry is invalid")
+			name, scalar_type = field
+			require(isinstance(name, str) and IDENTIFIER.fullmatch(name) is not None, f"{where}.push field name is invalid")
+			validate_unique(name, seen_fields, f"{where}.push field name")
+			require(scalar_type in {"uint32", "float32"}, f"{where}.push field type is unsupported")
+		require(len(fields) * 4 <= 128, f"{where}.push constants exceed Vulkan minimum guarantee")
+
+
+def validate_audio_schema(schema: dict[str, Any]) -> None:
+	require(schema.get("schema_version") == 1, "Audio schema_version must be 1")
+	require(schema.get("family") == "audio", "Audio family must be audio")
+	require(schema.get("domain") == "audio", "Audio domain must be audio")
+	require(schema.get("dtype") == "f32", "Audio dtype must be f32")
+	contracts = schema.get("contracts")
+	require(isinstance(contracts, list) and contracts, "Audio contracts must be non-empty")
+	contract_names: set[str] = set()
+	for index, contract in enumerate(contracts):
+		where = f"Audio contracts[{index}]"
+		require(isinstance(contract, dict), f"{where} must be an object")
+		require(
+			set(contract)
+			== {"name", "input_kinds", "output_kinds", "shape_rule", "dtype_rule", "attributes"},
+			f"{where} fields are incomplete or unknown",
+		)
+		name = contract["name"]
+		require(isinstance(name, str) and IDENTIFIER.fullmatch(name) is not None, f"{where}.name is invalid")
+		validate_unique(name, contract_names, f"{where}.name")
+		require(
+			isinstance(contract["input_kinds"], list)
+			and contract["input_kinds"]
+			and all(kind == "audio" for kind in contract["input_kinds"]),
+			f"{where}.input_kinds must contain Audio values",
+		)
+		require(
+			contract["output_kinds"] in (["audio"], ["matrix"]),
+			f"{where}.output_kinds must contain one Audio or Matrix value",
+		)
+		require(contract["shape_rule"] in {"match_input", "explicit"}, f"{where}.shape_rule is invalid")
+		require(contract["dtype_rule"] == "f32", f"{where}.dtype_rule must be f32")
+		validate_semantic_attributes(contract["attributes"], where)
+	kernels = schema.get("kernels")
+	require(isinstance(kernels, list) and kernels, "Audio kernels must be non-empty")
+	seen_ids: set[int] = set()
+	seen_names: set[str] = set()
+	seen_kernel_ids: set[str] = set()
+	seen_sources: set[str] = set()
+	for index, kernel in enumerate(kernels):
+		where = f"Audio kernels[{index}]"
+		require(isinstance(kernel, dict), f"{where} must be an object")
+		for key, seen in (("name", seen_names), ("kernel_id", seen_kernel_ids), ("source", seen_sources)):
+			value = kernel.get(key)
+			require(isinstance(value, str) and value, f"{where}.{key} must be non-empty")
+			validate_unique(value, seen, f"{where}.{key}")
+		stable_id = kernel.get("stable_id")
+		require(isinstance(stable_id, int) and 0 < stable_id <= 65535, f"{where}.stable_id is invalid")
+		validate_unique(stable_id, seen_ids, f"{where}.stable_id")
+		semantic = kernel.get("semantic_operation")
+		require(semantic is None or semantic in contract_names, f"{where}.semantic_operation is unknown")
+		workgroup = kernel.get("workgroup_size")
+		require(
+			isinstance(workgroup, list)
+			and len(workgroup) == 3
+			and all(isinstance(value, int) and value > 0 for value in workgroup)
+			and math.prod(workgroup) <= 1024,
+			f"{where}.workgroup_size is invalid",
+		)
+		tile = kernel.get("dispatch_tile_size", workgroup)
+		require(
+			isinstance(tile, list) and len(tile) == 3 and all(isinstance(value, int) and value > 0 for value in tile),
+			f"{where}.dispatch_tile_size is invalid",
+		)
+		fields = kernel.get("push_fields")
+		require(isinstance(fields, list) and fields, f"{where}.push_fields must be non-empty")
+		seen_fields: set[str] = set()
+		for field in fields:
+			require(isinstance(field, list) and len(field) == 2, f"{where}.push_fields entry is invalid")
+			name, scalar_type = field
+			require(isinstance(name, str) and IDENTIFIER.fullmatch(name) is not None, f"{where}.push field name is invalid")
+			validate_unique(name, seen_fields, f"{where}.push field name")
+			require(scalar_type in {"uint32", "float32"}, f"{where}.push field type is unsupported")
+		require(len(fields) * 4 <= 128, f"{where}.push constants exceed Vulkan minimum guarantee")
+
+
+def validate_cryptography_hash_schema(schema: dict[str, Any]) -> None:
+	require(schema.get("schema_version") == 1, "Cryptography Hash schema_version must be 1")
+	require(schema.get("family") == "cryptography_hash", "Cryptography Hash family is invalid")
+	require(schema.get("domain") == "cryptography::hash", "Cryptography Hash domain is invalid")
+	require(schema.get("dtype") == "u8", "Cryptography Hash dtype must be u8")
+	contracts = schema.get("contracts")
+	require(isinstance(contracts, list) and contracts, "Cryptography Hash contracts must be non-empty")
+	contract_names: set[str] = set()
+	for index, contract in enumerate(contracts):
+		where = f"Cryptography Hash contracts[{index}]"
+		require(isinstance(contract, dict), f"{where} must be an object")
+		require(
+			set(contract) == {"name", "input_kinds", "output_kinds", "shape_rule", "dtype_rule", "attributes"},
+			f"{where} fields are incomplete or unknown",
+		)
+		name = contract["name"]
+		require(isinstance(name, str) and IDENTIFIER.fullmatch(name) is not None, f"{where}.name is invalid")
+		validate_unique(name, contract_names, f"{where}.name")
+		require(contract["input_kinds"] == ["matrix"], f"{where}.input_kinds must contain one Matrix")
+		require(contract["output_kinds"] == ["matrix"], f"{where}.output_kinds must contain one Matrix")
+		require(contract["shape_rule"] in {"match_input", "explicit"}, f"{where}.shape_rule is invalid")
+		require(contract["dtype_rule"] == "u8", f"{where}.dtype_rule must be u8")
+		validate_semantic_attributes(contract["attributes"], where)
+	kernels = schema.get("kernels")
+	require(isinstance(kernels, list) and kernels, "Cryptography Hash kernels must be non-empty")
+	seen_ids: set[int] = set()
+	seen_names: set[str] = set()
+	seen_kernel_ids: set[str] = set()
+	seen_sources: set[str] = set()
+	for index, kernel in enumerate(kernels):
+		where = f"Cryptography Hash kernels[{index}]"
+		require(isinstance(kernel, dict), f"{where} must be an object")
+		for key, seen in (("name", seen_names), ("kernel_id", seen_kernel_ids), ("source", seen_sources)):
+			value = kernel.get(key)
+			require(isinstance(value, str) and value, f"{where}.{key} must be non-empty")
+			validate_unique(value, seen, f"{where}.{key}")
+		stable_id = kernel.get("stable_id")
+		require(isinstance(stable_id, int) and 0 < stable_id <= 65535, f"{where}.stable_id is invalid")
+		validate_unique(stable_id, seen_ids, f"{where}.stable_id")
+		require(kernel.get("semantic_operation") in contract_names, f"{where}.semantic_operation is unknown")
+		workgroup = kernel.get("workgroup_size")
+		require(
+			isinstance(workgroup, list)
+			and len(workgroup) == 3
+			and all(isinstance(value, int) and value > 0 for value in workgroup)
+			and math.prod(workgroup) <= 1024,
+			f"{where}.workgroup_size is invalid",
+		)
+		fields = kernel.get("push_fields")
+		require(isinstance(fields, list) and fields, f"{where}.push_fields must be non-empty")
+		seen_fields: set[str] = set()
+		for field in fields:
+			require(isinstance(field, list) and len(field) == 2, f"{where}.push_fields entry is invalid")
+			name, scalar_type = field
+			require(isinstance(name, str) and IDENTIFIER.fullmatch(name) is not None, f"{where}.push field name is invalid")
+			validate_unique(name, seen_fields, f"{where}.push field name")
+			require(scalar_type == "uint32", f"{where}.push field type must be uint32")
+		require(len(fields) * 4 <= 128, f"{where}.push constants exceed Vulkan minimum guarantee")
+
+
+def validate_image_schema(schema: dict[str, Any]) -> None:
+	require(schema.get("schema_version") == 1, "Image schema_version must be 1")
+	require(schema.get("family") == "image", "Image family must be image")
+	require(schema.get("domain") == "image", "Image domain must be image")
+	require(schema.get("dtype") == "f32", "Image dtype must be f32")
+	contracts = schema.get("contracts")
+	expected_contracts = {
+		"resize": ["image"],
+		"crop": ["image"],
+		"flip": ["image"],
+		"rotate": ["image"],
+		"pad": ["image"],
+		"center_crop": ["image"],
+		"remap": ["image", "matrix"],
+		"warp_affine": ["image", "matrix"],
+		"warp_perspective": ["image", "matrix"],
+		"threshold_binary": ["image"],
+		"threshold_binary_inv": ["image"],
+		"threshold_truncate": ["image"],
+		"threshold_to_zero": ["image"],
+		"threshold_to_zero_inv": ["image"],
+		"in_range": ["image"],
+		"clamp": ["image"],
+		"invert": ["image"],
+		"brightness_contrast": ["image"],
+		"gamma_contrast": ["image"],
+		"solarize": ["image"],
+		"posterize": ["image"],
+		"grayscale": ["image"],
+		"alpha_blend": ["image", "image"],
+		"composite": ["image", "image", "image"],
+		"erase": ["image"],
+		"color_twist": ["image", "matrix"],
+		"channel_reorder": ["image"],
+		"gaussian_noise": ["image"],
+		"salt_pepper_noise": ["image"],
+		"convolve_2d": ["image", "matrix"],
+		"separable_convolve_2d": ["image", "matrix", "matrix"],
+		"average_blur": ["image"],
+		"sobel": ["image"],
+		"scharr": ["image"],
+		"laplacian": ["image"],
+		"erode": ["image"],
+		"dilate": ["image"],
+		"morphology_open": ["image"],
+		"morphology_close": ["image"],
+		"morphology_gradient": ["image"],
+		"gaussian_blur": ["image"],
+		"sharpen": ["image"],
+		"median_blur": ["image"],
+		"bilateral_filter": ["image"],
+		"unsharp_mask": ["image"],
+		"morphology_top_hat": ["image"],
+		"morphology_black_hat": ["image"],
+		"adaptive_threshold_mean": ["image"],
+		"adaptive_threshold_gaussian": ["image"],
+		"normalize": ["image"],
+		"convert_color": ["image"],
+		"resize_normalize": ["image"],
+		"segmentation_overlay": ["image", "matrix", "matrix"],
+	}
+	require(
+		isinstance(contracts, list)
+		and [contract.get("name") for contract in contracts] == list(expected_contracts),
+		"Image contracts must contain the complete geometric surface in canonical order",
+	)
+	contract_names: set[str] = set()
+	for index, contract in enumerate(contracts):
+		where = f"Image contracts[{index}]"
+		require(isinstance(contract, dict), f"{where} must be an object")
+		require(
+			set(contract)
+			== {"name", "input_kinds", "output_kinds", "shape_rule", "dtype_rule", "attributes"},
+			f"{where} fields are incomplete or unknown",
+		)
+		name = contract["name"]
+		require(isinstance(name, str) and IDENTIFIER.fullmatch(name) is not None, f"{where}.name is invalid")
+		validate_unique(name, contract_names, f"{where}.name")
+		require(
+			contract["input_kinds"] == expected_contracts[name],
+			f"{where}.input_kinds are invalid",
+		)
+		require(contract["output_kinds"] == ["image"], f"{where}.output_kinds must contain one Image")
+		require(contract["shape_rule"] == "explicit", f"{where}.shape_rule must be explicit")
+		require(contract["dtype_rule"] in {"f32", "explicit"}, f"{where}.dtype_rule is invalid")
+		validate_semantic_attributes(contract["attributes"], where)
+	kernels = schema.get("kernels")
+	require(isinstance(kernels, list) and kernels, "Image kernels must be non-empty")
+	seen_ids: set[int] = set()
+	seen_names: set[str] = set()
+	seen_kernel_ids: set[str] = set()
+	for index, kernel in enumerate(kernels):
+		where = f"Image kernels[{index}]"
+		require(isinstance(kernel, dict), f"{where} must be an object")
+		for key, seen in (("name", seen_names), ("kernel_id", seen_kernel_ids)):
+			value = kernel.get(key)
+			require(isinstance(value, str) and value, f"{where}.{key} must be non-empty")
+			validate_unique(value, seen, f"{where}.{key}")
+		require(isinstance(kernel.get("source"), str) and kernel["source"], f"{where}.source must be non-empty")
+		stable_id = kernel.get("stable_id")
+		require(isinstance(stable_id, int) and 0 < stable_id <= 65535, f"{where}.stable_id is invalid")
+		validate_unique(stable_id, seen_ids, f"{where}.stable_id")
+		require(kernel.get("semantic_operation") in contract_names, f"{where}.semantic_operation is unknown")
+		workgroup = kernel.get("workgroup_size")
+		require(
+			isinstance(workgroup, list)
+			and len(workgroup) == 3
+			and all(isinstance(value, int) and value > 0 for value in workgroup)
+			and math.prod(workgroup) <= 1024,
+			f"{where}.workgroup_size is invalid",
+		)
+		tile = kernel.get("dispatch_tile_size", workgroup)
+		require(
+			isinstance(tile, list)
+			and len(tile) == 3
+			and all(isinstance(value, int) and value > 0 for value in tile),
+			f"{where}.dispatch_tile_size is invalid",
+		)
+		validate_physical_write(kernel.get("physical_write"), where, required=True)
+		fields = kernel.get("push_fields")
+		require(isinstance(fields, list) and fields, f"{where}.push_fields must be non-empty")
+		seen_fields: set[str] = set()
+		for field in fields:
+			require(isinstance(field, list) and len(field) == 2, f"{where}.push_fields entry is invalid")
+			name, scalar_type = field
+			require(isinstance(name, str) and IDENTIFIER.fullmatch(name) is not None, f"{where}.push field name is invalid")
+			validate_unique(name, seen_fields, f"{where}.push field name")
+			require(scalar_type in {"uint32", "float32"}, f"{where}.push field type is unsupported")
+	require(len(fields) * 4 <= 128, f"{where}.push constants exceed Vulkan minimum guarantee")
+
+
+def validate_vision_schema(schema: dict[str, Any]) -> None:
+	require(schema.get("schema_version") == 1, "Vision schema_version must be 1")
+	require(schema.get("family") == "vision_detection", "Vision family must be vision_detection")
+	require(schema.get("domain") == "vision", "Vision domain must be vision")
+	require(schema.get("dtype") == "f32", "Vision dtype must be f32")
+	contracts = schema.get("contracts")
+	require(isinstance(contracts, list) and len(contracts) == 6, "Vision contracts must contain the complete detection surface")
+	expected_contracts = {
+		"box_iou": (["matrix", "matrix"], ["matrix"], "f32"),
+		"nms": (["matrix", "matrix", "matrix"], ["matrix", "matrix"], "explicit"),
+		"confusion_matrix": (["matrix", "matrix"], ["matrix"], "explicit"),
+		"binary_mask_counts": (["matrix", "matrix"], ["matrix"], "explicit"),
+		"evaluate": (["matrix"] * 8, ["matrix"] * 4, "explicit"),
+		"evaluate_segmentation": (["matrix", "matrix"], ["matrix"] * 4, "explicit"),
+	}
+	require(
+		[contract.get("name") for contract in contracts] == list(expected_contracts),
+		"Vision contracts are not in canonical detection order",
+	)
+	contract_names: set[str] = set()
+	for index, contract in enumerate(contracts):
+		where = f"Vision contracts[{index}]"
+		require(isinstance(contract, dict), f"{where} must be an object")
+		require(
+			set(contract)
+			== {"name", "input_kinds", "output_kinds", "shape_rule", "dtype_rule", "attributes"},
+			f"{where} fields are incomplete or unknown",
+		)
+		name = contract["name"]
+		require(isinstance(name, str) and IDENTIFIER.fullmatch(name) is not None, f"{where}.name is invalid")
+		validate_unique(name, contract_names, f"{where}.name")
+		expected_inputs, expected_outputs, expected_dtype = expected_contracts[name]
+		require(contract["input_kinds"] == expected_inputs, f"{where}.input_kinds are invalid")
+		require(contract["output_kinds"] == expected_outputs, f"{where}.output_kinds are invalid")
+		require(contract["shape_rule"] == "explicit", f"{where}.shape_rule must be explicit")
+		require(contract["dtype_rule"] == expected_dtype, f"{where}.dtype_rule is invalid")
+		validate_semantic_attributes(contract["attributes"], where)
+	kernels = schema.get("kernels")
+	require(isinstance(kernels, list) and kernels, "Vision kernels must be non-empty")
+	seen_ids: set[int] = set()
+	seen_names: set[str] = set()
+	seen_kernel_ids: set[str] = set()
+	seen_sources: set[str] = set()
+	for index, kernel in enumerate(kernels):
+		where = f"Vision kernels[{index}]"
+		require(isinstance(kernel, dict), f"{where} must be an object")
+		for key, seen in (("name", seen_names), ("kernel_id", seen_kernel_ids), ("source", seen_sources)):
+			value = kernel.get(key)
+			require(isinstance(value, str) and value, f"{where}.{key} must be non-empty")
+			validate_unique(value, seen, f"{where}.{key}")
+		stable_id = kernel.get("stable_id")
+		require(isinstance(stable_id, int) and 0 < stable_id <= 65535, f"{where}.stable_id is invalid")
+		validate_unique(stable_id, seen_ids, f"{where}.stable_id")
+		require(kernel.get("semantic_operation") in contract_names, f"{where}.semantic_operation is unknown")
+		require(kernel.get("dtype", schema["dtype"]) in {"f32", "i32", "u8", "u32"}, f"{where}.dtype is unsupported")
+		workgroup = kernel.get("workgroup_size")
+		require(
+			isinstance(workgroup, list)
+			and len(workgroup) == 3
+			and all(isinstance(value, int) and value > 0 for value in workgroup)
+			and math.prod(workgroup) <= 1024,
+			f"{where}.workgroup_size is invalid",
+		)
+		tile = kernel.get("dispatch_tile_size", workgroup)
+		require(
+			isinstance(tile, list)
+			and len(tile) == 3
+			and all(isinstance(value, int) and value > 0 for value in tile),
+			f"{where}.dispatch_tile_size is invalid",
+		)
+		validate_physical_write(kernel.get("physical_write"), where, required=True)
+		fields = kernel.get("push_fields")
+		require(isinstance(fields, list) and fields, f"{where}.push_fields must be non-empty")
+		seen_fields: set[str] = set()
+		for field in fields:
+			require(isinstance(field, list) and len(field) == 2, f"{where}.push_fields entry is invalid")
+			name, scalar_type = field
+			require(isinstance(name, str) and IDENTIFIER.fullmatch(name) is not None, f"{where}.push field name is invalid")
+			validate_unique(name, seen_fields, f"{where}.push field name")
+			require(scalar_type in {"uint32", "float32"}, f"{where}.push field type is unsupported")
+		require(len(fields) * 4 <= 128, f"{where}.push constants exceed Vulkan minimum guarantee")
+
+
 def validate_dnn_role(role: Any, where: str) -> None:
 	if role is None:
 		return
@@ -278,13 +976,31 @@ def validate_ml_schema(schema: dict[str, Any]) -> None:
 	operations = schema.get("operations")
 	require(isinstance(operations, list) and operations, "ML operations must be non-empty")
 	validate_ml_port_provenance(schema.get("port_provenance"), operations)
-	seen_ids: set[int] = set()
+	contract_names = {
+		operation.get("name")
+		for operation in operations
+		if isinstance(operation, dict) and not operation.get("lowering_only", False)
+	}
+	contract_domains = {
+		operation.get("name"): operation.get("semantic_domain")
+		for operation in operations
+		if isinstance(operation, dict) and not operation.get("lowering_only", False)
+	}
+	seen_ids = validate_retired_stable_ids(
+		schema.get("retired_stable_ids", []), "ML retired_stable_ids"
+	)
 	seen_names: set[str] = set()
 	seen_kernels: set[str] = set()
 	seen_sources: set[str] = set()
 	for index, operation in enumerate(operations):
 		where = f"ML operations[{index}]"
 		require(isinstance(operation, dict), f"{where} must be an object")
+		validate_physical_write(
+			operation.get("physical_write"),
+			where,
+			required=operation.get("name")
+			in {"layer_norm", "layer_norm_backward", "rms_norm", "rms_norm_backward"},
+		)
 		for key, seen in (("name", seen_names), ("kernel_id", seen_kernels)):
 			value = operation.get(key)
 			require(
@@ -301,11 +1017,62 @@ def validate_ml_schema(schema: dict[str, Any]) -> None:
 		source = operation.get("source")
 		require(isinstance(source, str) and source.endswith(".slang"), f"{where}.source must be a Slang path")
 		validate_unique(source, seen_sources, f"{where}.source")
-		require(operation.get("variant") == "generic", f"{where}.variant must be generic")
+		variant = operation.get("variant")
+		require(
+			isinstance(variant, str) and IDENTIFIER.fullmatch(variant) is not None,
+			f"{where}.variant must be an identifier",
+		)
 		operation_workgroup = operation.get("workgroup_size", schema["workgroup_size"])
 		operation_dtype = operation.get("dtype", schema["dtype"])
 		lowering_only = operation.get("lowering_only", False)
 		require(isinstance(lowering_only, bool), f"{where}.lowering_only must be boolean")
+		semantic_domain = operation.get("semantic_domain")
+		if lowering_only:
+			require(
+				semantic_domain is None,
+				f"{where} lowering-only kernel cannot own a semantic domain",
+			)
+		else:
+			require(
+				semantic_domain in {"ml::matrix", "ml::loss", "ml::optim"},
+				f"{where}.semantic_domain must name its public Rust operation owner",
+			)
+		semantic_operation = operation.get("semantic_operation")
+		require(
+			semantic_operation is None or semantic_operation in contract_names,
+			f"{where}.semantic_operation must name a semantic ML operation",
+		)
+		require(
+			lowering_only or semantic_operation is None,
+			f"{where}.semantic_operation is only valid for a lowering-only kernel",
+		)
+		owner_domain = (
+			contract_domains.get(semantic_operation) if lowering_only else semantic_domain
+		)
+		if owner_domain == "ml::loss":
+			require(
+				Path(source).name not in {"forward.slang", "backward.slang"},
+				f"{where}.source must retain the loss name before _forward.slang or _backward.slang",
+			)
+		if owner_domain == "ml::optim" or source.startswith("src/slang/ml/optim/"):
+			optimizer_family = (
+				"grad_clip"
+				if operation["name"].startswith("clip_grad_norm")
+				else "adamw"
+				if operation["name"].startswith("adamw")
+				else "adam"
+				if operation["name"] == "adam"
+				else "sgd"
+				if operation["name"].startswith("sgd")
+				else "muon"
+				if operation["name"].startswith("muon")
+				else None
+			)
+			require(
+				optimizer_family is not None
+				and Path(source).parent == Path("src/slang/ml/optim") / optimizer_family,
+				f"{where}.source must live under its optimizer-family directory",
+			)
 		require(operation_dtype in {"f32", "u32"}, f"{where}.dtype is unsupported")
 		require(
 			isinstance(operation_workgroup, list)
@@ -316,9 +1083,9 @@ def validate_ml_schema(schema: dict[str, Any]) -> None:
 		)
 		differentiation = operation.get("differentiation")
 		require(
-			differentiation in {"none", "backward"}
+			differentiation in {"none", "backward", "reverse"}
 			or any(candidate.get("name") == differentiation for candidate in operations),
-			f"{where}.differentiation must name an operation, backward, or none",
+			f"{where}.differentiation must name an operation, reverse, backward, or none",
 		)
 		if lowering_only:
 			require(differentiation == "none", f"{where} lowering-only kernel cannot differentiate")
@@ -326,6 +1093,9 @@ def validate_ml_schema(schema: dict[str, Any]) -> None:
 			require("dnn" not in operation, f"{where} lowering-only kernel cannot own a DNN role")
 		else:
 			validate_ml_contract(operation.get("contract"), differentiation, where)
+		validate_ml_autograd(
+			operation.get("autograd"), differentiation, semantic_domain, lowering_only, where
+		)
 		replay_role = operation.get("training_replay_role", "safe")
 		require(
 			replay_role
@@ -359,6 +1129,88 @@ def validate_ml_schema(schema: dict[str, Any]) -> None:
 			require(scalar_type in {"uint32", "float32"}, f"{field_where} scalar type is unsupported")
 			offset += 4
 		require(offset <= 128, f"{where} push constants exceed the minimum Vulkan limit")
+
+
+def validate_ml_autograd(
+	autograd: Any,
+	differentiation: str,
+	semantic_domain: Any,
+	lowering_only: bool,
+	where: str,
+) -> None:
+	differentiable = not lowering_only and differentiation not in {"none", "backward"}
+	if not differentiable:
+		require(autograd is None, f"{where}.autograd is valid only for a differentiable forward operation")
+		return
+	require(isinstance(autograd, dict), f"{where}.autograd must own attachment policy")
+	mode = autograd.get("mode")
+	family = autograd.get("family")
+	require(mode in {"generated", "manual"}, f"{where}.autograd.mode is unsupported")
+	require(
+		isinstance(family, str)
+		and family
+		and all(IDENTIFIER.fullmatch(part) is not None for part in family.split("/")),
+		f"{where}.autograd.family must be an identifier path",
+	)
+	expected_root = {
+		"ml::matrix": "matrix/",
+		"ml::loss": "loss/",
+	}.get(semantic_domain)
+	require(
+		expected_root is not None and family.startswith(expected_root),
+		f"{where}.autograd.family must match its semantic owner",
+	)
+	if mode == "manual":
+		require(
+			set(autograd) == {"mode", "family"},
+			f"{where}.autograd manual policy has unknown fields",
+		)
+		return
+	require(
+		set(autograd) in (
+			{"mode", "family", "node", "inputs", "saved_matrices"},
+			{"mode", "family", "node", "inputs", "saved_matrices", "saved_scalars"},
+		),
+		f"{where}.autograd generated policy fields are incomplete or unknown",
+	)
+	node = autograd["node"]
+	require(
+		isinstance(node, str)
+		and IDENTIFIER.fullmatch(node) is not None
+		and node[0].isupper(),
+		f"{where}.autograd.node must be a PascalCase identifier",
+	)
+	saved = autograd["saved_matrices"]
+	inputs = autograd["inputs"]
+	require(
+		isinstance(inputs, list)
+		and inputs
+		and len(inputs) == len(set(inputs))
+		and all(isinstance(name, str) and IDENTIFIER.fullmatch(name) is not None for name in inputs),
+		f"{where}.autograd.inputs must contain unique identifiers",
+	)
+	require(
+		isinstance(saved, list)
+		and saved
+		and len(saved) == len(set(saved))
+		and all(isinstance(name, str) and IDENTIFIER.fullmatch(name) is not None for name in saved),
+		f"{where}.autograd.saved_matrices must contain unique identifiers",
+	)
+	scalars = autograd.get("saved_scalars", [])
+	require(isinstance(scalars, list), f"{where}.autograd.saved_scalars must be an array")
+	seen_scalars: set[str] = set()
+	for index, scalar in enumerate(scalars):
+		label = f"{where}.autograd.saved_scalars[{index}]"
+		require(
+			isinstance(scalar, list)
+			and len(scalar) == 2
+			and isinstance(scalar[0], str)
+			and IDENTIFIER.fullmatch(scalar[0]) is not None
+			and scalar[1] in {"f32", "usize"},
+			f"{label} must contain an identifier and supported Rust scalar type",
+		)
+		validate_unique(scalar[0], seen_scalars, f"{label} name")
+		require(scalar[0] not in saved, f"{label} collides with a saved matrix")
 
 
 def validate_ml_port_provenance(provenance: Any, operations: list[Any]) -> None:
@@ -426,27 +1278,70 @@ def validate_ml_port_provenance(provenance: Any, operations: list[Any]) -> None:
 
 def validate_ml_contract(contract: Any, differentiation: str, where: str) -> None:
 	require(isinstance(contract, dict), f"{where}.contract must be an object")
+	base_fields = {
+		"input_kinds",
+		"output_kinds",
+		"shape_rule",
+		"dtype_rule",
+		"effects",
+		"mutated_inputs",
+		"output_alias_inputs",
+		"lowering",
+	}
+	variadic_fields = {"variadic_input", "variadic_output", "aligned_variadic_aliases"}
+	optional_fields = {"optional_inputs"}
+	extra_fields = set(contract) - base_fields
 	require(
-		set(contract)
-		== {
-			"input_kinds",
-			"output_kinds",
-			"shape_rule",
-			"dtype_rule",
-			"effects",
-			"mutated_inputs",
-			"output_alias_inputs",
-			"lowering",
-		},
+		set(contract).issuperset(base_fields)
+		and extra_fields
+		in (set(), optional_fields, variadic_fields, variadic_fields | optional_fields),
 		f"{where}.contract fields are incomplete or unknown",
 	)
 	inputs = contract["input_kinds"]
 	outputs = contract["output_kinds"]
-	require(isinstance(inputs, list) and inputs, f"{where}.contract.input_kinds must be non-empty")
-	require(isinstance(outputs, list) and outputs, f"{where}.contract.output_kinds must be non-empty")
+	variadic = variadic_fields.issubset(extra_fields)
+	require(
+		isinstance(inputs, list) and (inputs or variadic),
+		f"{where}.contract.input_kinds must be non-empty without a variadic input",
+	)
+	require(
+		isinstance(outputs, list) and (outputs or variadic),
+		f"{where}.contract.output_kinds must be non-empty without a variadic output",
+	)
 	require(
 		all(isinstance(value, str) and value for value in [*inputs, *outputs]),
 		f"{where}.contract input/output kinds must be strings",
+	)
+	if variadic:
+		variadic_input = contract["variadic_input"]
+		variadic_output = contract["variadic_output"]
+		for label, value in (("variadic_input", variadic_input), ("variadic_output", variadic_output)):
+			require(
+				isinstance(value, dict)
+				and set(value) == {"kind", "minimum"}
+				and isinstance(value["kind"], str)
+				and value["kind"]
+				and isinstance(value["minimum"], int)
+				and not isinstance(value["minimum"], bool)
+				and value["minimum"] > 0,
+				f"{where}.contract.{label} must declare a kind and positive minimum",
+			)
+		require(
+			variadic_input == variadic_output
+			and contract["aligned_variadic_aliases"] is True,
+			f"{where}.contract aligned variadic aliases require identical input/output tails",
+		)
+	optional_inputs = contract.get("optional_inputs", [])
+	require(
+		isinstance(optional_inputs, list)
+		and all(
+			isinstance(index, int)
+			and not isinstance(index, bool)
+			and 0 <= index < len(inputs)
+			for index in optional_inputs
+		)
+		and len(set(optional_inputs)) == len(optional_inputs),
+		f"{where}.contract.optional_inputs must contain unique fixed input indices",
 	)
 	require(
 		isinstance(contract["shape_rule"], str) and contract["shape_rule"],
@@ -457,11 +1352,18 @@ def validate_ml_contract(contract: Any, differentiation: str, where: str) -> Non
 		in {
 			"f32",
 			"all_f32",
+			"f32_logits_u32_or_i32_targets_f32_mask",
+			"f32_logits_u8_u32_or_i32_labels_u32_output",
+			"f32_logits_u8_u32_or_i32_labels_f32_mask_u32_output",
 			"u32_state",
 			"f32_parameter_u32_state",
 			"f32_logits_u32_targets",
+			"f32_logits_u32_or_i32_targets",
 			"f32_weight_u32_indices",
+			"f32_with_u32_indices",
 			"u32_indices_f32_gradient_weight",
+			"f32_probabilities_i32_indices",
+			"f32_gradients_probabilities_route_weights_i32_indices",
 		},
 		f"{where}.contract.dtype_rule is unsupported",
 	)
@@ -484,6 +1386,11 @@ def validate_ml_contract(contract: Any, differentiation: str, where: str) -> Non
 		and sorted(value for value in aliases if value >= 0) == sorted(mutated),
 		f"{where}.contract.output_alias_inputs must map every mutated input exactly once",
 	)
+	if variadic:
+		require(
+			not mutated and not aliases,
+			f"{where}.contract variadic aliases cannot duplicate fixed mutation metadata",
+		)
 	require(contract["lowering"] == "compute_dispatch", f"{where}.contract lowering is unsupported")
 	require(
 		differentiation in {"none", "backward"} or isinstance(differentiation, str),
@@ -649,6 +1556,18 @@ def validate_unique(value: Any, seen: set[Any], label: str) -> None:
 	seen.add(value)
 
 
+def validate_retired_stable_ids(value: Any, label: str) -> set[int]:
+	require(isinstance(value, list), f"{label} must be an array")
+	retired: set[int] = set()
+	for index, stable_id in enumerate(value):
+		require(
+			isinstance(stable_id, int) and 0 < stable_id <= 65535,
+			f"{label}[{index}] must be a non-zero u16",
+		)
+		validate_unique(stable_id, retired, f"{label}[{index}]")
+	return retired
+
+
 def require(condition: bool, message: str) -> None:
 	if not condition:
 		raise SchemaError(message)
@@ -662,13 +1581,29 @@ def banner(schema_hash: str, prefix: str, schema_name: str = "matrix_elemwise.js
 	)
 
 
-def registry_banner(elementwise_hash: str, blas_hash: str, ml_hash: str) -> str:
+def registry_banner(
+	elementwise_hash: str,
+	blas_hash: str,
+	reduce_hash: str,
+	rng_hash: str,
+	ml_hash: str,
+	audio_hash: str,
+	cryptography_hash: str,
+	image_hash: str,
+	vision_hash: str,
+) -> str:
 	return (
 		"// @generated by tools/gen/fn/generate.py; DO NOT EDIT.\n"
-		f"// schemas=matrix_elemwise.json,matrix_blas.json,ml_training.json generator_version={GENERATOR_VERSION}\n"
+		f"// schemas=matrix_elemwise.json,matrix_blas.json,matrix_reduce.json,matrix_rng.json,ml_training.json,audio.json,cryptography_hash.json,image.json,vision_detection.json generator_version={GENERATOR_VERSION}\n"
 		f"// matrix_elemwise_sha256={elementwise_hash}\n"
 		f"// matrix_blas_sha256={blas_hash}\n"
+		f"// matrix_reduce_sha256={reduce_hash}\n"
+		f"// matrix_rng_sha256={rng_hash}\n"
 		f"// ml_training_sha256={ml_hash}\n"
+		f"// audio_sha256={audio_hash}\n"
+		f"// cryptography_hash_sha256={cryptography_hash}\n"
+		f"// image_sha256={image_hash}\n"
+		f"// vision_detection_sha256={vision_hash}\n"
 	)
 
 
@@ -769,7 +1704,15 @@ def generate_api(schema: dict[str, Any], schema_hash: str) -> str:
 
 
 def registry_entries(
-	elementwise: dict[str, Any], blas: dict[str, Any], ml: dict[str, Any]
+	elementwise: dict[str, Any],
+	blas: dict[str, Any],
+	reduce: dict[str, Any],
+	rng: dict[str, Any],
+	ml: dict[str, Any],
+	audio: dict[str, Any],
+	cryptography: dict[str, Any],
+	image: dict[str, Any],
+	vision: dict[str, Any],
 ) -> list[dict[str, Any]]:
 	entries = []
 	for operation in elementwise["operations"]:
@@ -784,6 +1727,8 @@ def registry_entries(
 					"workgroup_size": elementwise["workgroup_size"],
 					"dispatch_tile_size": elementwise["workgroup_size"],
 					"training_replay_role": "safe",
+					"physical_write": operation.get("physical_write"),
+					"semantic_contract": f"crate::core::operation::matrix::{rust_const_name(operation['name'])}",
 				}
 			)
 	for operation in blas["operations"]:
@@ -797,28 +1742,197 @@ def registry_entries(
 				"workgroup_size": blas["workgroup_size"],
 				"dispatch_tile_size": blas["output_tile_size"],
 				"training_replay_role": "safe",
+				"physical_write": operation.get("physical_write"),
+				"semantic_contract": f"crate::core::operation::matrix::{rust_const_name(operation['name'])}",
+			}
+		)
+	for operation in reduce["operations"]:
+		semantic = operation.get("semantic_operation", operation["name"])
+		entries.append(
+			{
+				"domain": "matrix",
+				"name": operation["name"],
+				"dtype": reduce["dtype"],
+				"kernel_id": operation["kernel_id"],
+				"stable_id": operation["stable_id"],
+				"workgroup_size": reduce["workgroup_size"],
+				"dispatch_tile_size": [1, 1, 1],
+				"training_replay_role": "safe",
+				"physical_write": operation.get("physical_write"),
+				"semantic_contract": f"crate::core::operation::matrix::{rust_const_name(semantic)}",
+			}
+		)
+	for operation in rng["operations"]:
+		name = operation["name"]
+		semantic = operation.get("semantic_operation", name)
+		entries.append(
+			{
+				"domain": "matrix",
+				"name": name,
+				"dtype": operation.get("dtype", rng["dtype"]),
+				"kernel_id": operation["kernel_id"],
+				"stable_id": operation["stable_id"],
+				"workgroup_size": operation.get("workgroup_size", rng["workgroup_size"]),
+				"dispatch_tile_size": operation.get(
+					"dispatch_tile_size", operation.get("workgroup_size", rng["workgroup_size"])
+				),
+				"training_replay_role": operation.get("training_replay_role", "safe"),
+				"physical_write": operation.get("physical_write"),
+				"semantic_contract": f"crate::core::operation::matrix::{rust_const_name(semantic)}",
 			}
 		)
 	for operation in ml["operations"]:
 		dtype = operation.get("dtype", ml["dtype"])
+		semantic = operation.get("semantic_operation", operation["name"])
 		entries.append(
 			{
 				"domain": "ml",
+				"report_domain": operation.get("semantic_domain", "ml").replace("::", "."),
 				"name": operation["name"],
 				"dtype": dtype,
 				"kernel_id": operation["kernel_id"],
 				"stable_id": operation["stable_id"],
 				"workgroup_size": operation.get("workgroup_size", ml["workgroup_size"]),
-				"dispatch_tile_size": operation.get("workgroup_size", ml["workgroup_size"]),
+				"dispatch_tile_size": operation.get(
+					"dispatch_tile_size", operation.get("workgroup_size", ml["workgroup_size"])
+				),
 				"training_replay_role": operation.get("training_replay_role", "safe"),
+				"physical_write": operation.get("physical_write"),
+				"semantic_contract": (
+					None
+					if operation.get("lowering_only", False) and "semantic_operation" not in operation
+					else f"crate::core::operation::ml::{rust_const_name(semantic)}"
+				),
 			}
 		)
-	seen_ids: set[int] = set()
+	for kernel in audio["kernels"]:
+		semantic = kernel.get("semantic_operation")
+		entries.append(
+			{
+				"domain": "audio",
+				"name": kernel["name"],
+				"dtype": audio["dtype"],
+				"kernel_id": kernel["kernel_id"],
+				"stable_id": kernel["stable_id"],
+				"workgroup_size": kernel["workgroup_size"],
+				"dispatch_tile_size": kernel.get("dispatch_tile_size", kernel["workgroup_size"]),
+				"training_replay_role": "safe",
+				"physical_write": kernel.get("physical_write"),
+				"semantic_contract": (
+					None
+					if semantic is None
+					else f"crate::core::operation::audio::{rust_const_name(semantic)}"
+				),
+			}
+		)
+	for kernel in cryptography["kernels"]:
+		semantic = kernel["semantic_operation"]
+		entries.append(
+			{
+				"domain": "cryptography",
+				"report_domain": "cryptography.hash",
+				"name": kernel["name"],
+				"dtype": cryptography["dtype"],
+				"kernel_id": kernel["kernel_id"],
+				"stable_id": kernel["stable_id"],
+				"workgroup_size": kernel["workgroup_size"],
+				"dispatch_tile_size": kernel.get("dispatch_tile_size", kernel["workgroup_size"]),
+				"training_replay_role": "safe",
+				"physical_write": kernel.get("physical_write"),
+				"semantic_contract": f"crate::core::operation::cryptography::hash::{rust_const_name(semantic)}",
+			}
+		)
+	for kernel in image["kernels"]:
+		semantic = kernel["semantic_operation"]
+		entries.append(
+			{
+				"domain": "image",
+				"name": kernel["name"],
+				"dtype": image["dtype"],
+				"kernel_id": kernel["kernel_id"],
+				"stable_id": kernel["stable_id"],
+				"workgroup_size": kernel["workgroup_size"],
+				"dispatch_tile_size": kernel.get("dispatch_tile_size", kernel["workgroup_size"]),
+				"training_replay_role": "safe",
+				"physical_write": kernel["physical_write"],
+				"semantic_contract": f"crate::core::operation::image::{rust_const_name(semantic)}",
+			}
+		)
+	for kernel in vision["kernels"]:
+		semantic = kernel["semantic_operation"]
+		entries.append(
+			{
+				"domain": "vision",
+				"name": kernel["name"],
+				"dtype": kernel.get("dtype", vision["dtype"]),
+				"kernel_id": kernel["kernel_id"],
+				"stable_id": kernel["stable_id"],
+				"workgroup_size": kernel["workgroup_size"],
+				"dispatch_tile_size": kernel.get("dispatch_tile_size", kernel["workgroup_size"]),
+				"training_replay_role": "safe",
+				"physical_write": kernel["physical_write"],
+				"semantic_contract": f"crate::core::operation::vision::{rust_const_name(semantic)}",
+			}
+		)
+	seen_ids = validate_retired_stable_ids(
+		ml.get("retired_stable_ids", []), "ML retired_stable_ids"
+	)
 	seen_kernels: set[str] = set()
 	for entry in entries:
+		validate_physical_write(
+			entry["physical_write"], f"kernel candidate {entry['kernel_id']}", required=False
+		)
 		validate_unique(entry["stable_id"], seen_ids, "stable kernel ID across schemas")
 		validate_unique(entry["kernel_id"], seen_kernels, "kernel ID across schemas")
 	return entries
+
+
+def rust_physical_write(value: dict[str, Any] | None) -> str:
+	if value is None:
+		return "None"
+	domains = {
+		"axis_slices": "AxisSlices",
+		"output_elements": "OutputElements",
+		"rows": "Rows",
+		"scalar": "Scalar",
+	}
+	partitions = {
+		"exclusive_per_invocation": "ExclusivePerInvocation",
+		"exclusive_per_workgroup": "ExclusivePerWorkgroup",
+		"shared_atomic_contributors": "SharedAtomicContributors",
+	}
+	extents = {
+		"axis_slice": "AxisSlice",
+		"one_element": "OneElement",
+		"one_scalar": "OneScalar",
+		"row_width": "RowWidth",
+		"tile_16x16": "Tile16x16",
+		"up_to_two_elements": "UpToTwoElements",
+		"up_to_four_elements": "UpToFourElements",
+	}
+	collisions = {
+		"exclusive": "Exclusive",
+		"atomic_u32": "AtomicU32",
+	}
+	tails = {"bounds_checked": "BoundsChecked", "exact": "Exact"}
+	workspaces = {"exclusive_per_workgroup": "ExclusivePerWorkgroup", "none": "None"}
+	writes = ", ".join(
+		"PhysicalWrite { "
+		f"binding: {write['binding']}, "
+		f"domain: LogicalWriteDomain::{domains[write['domain']]}, "
+		f"partition: WritePartition::{partitions[write['partition']]}, "
+		f"extent: WriteExtent::{extents[write['extent']]}, "
+		f"collision: CollisionPolicy::{collisions[write['collision']]}, "
+		f"tail: TailPolicy::{tails[write['tail']]} "
+		"}"
+		for write in value["writes"]
+	)
+	return (
+		"Some(PhysicalWriteContract { "
+		f"writes: &[{writes}], "
+		f"workspace: WorkspacePartition::{workspaces[value['workspace']]} "
+		"})"
+	)
 
 
 def generate_registry(
@@ -826,16 +1940,38 @@ def generate_registry(
 	elementwise_hash: str,
 	blas: dict[str, Any],
 	blas_hash: str,
+	reduce: dict[str, Any],
+	reduce_hash: str,
+	rng: dict[str, Any],
+	rng_hash: str,
 	ml: dict[str, Any],
 	ml_hash: str,
+	audio: dict[str, Any],
+	audio_hash: str,
+	cryptography: dict[str, Any],
+	cryptography_hash: str,
+	image: dict[str, Any],
+	image_hash: str,
+	vision: dict[str, Any],
+	vision_hash: str,
 ) -> str:
-	entries = registry_entries(elementwise, blas, ml)
+	entries = registry_entries(elementwise, blas, reduce, rng, ml, audio, cryptography, image, vision)
 	lines = [
-		registry_banner(elementwise_hash, blas_hash, ml_hash).rstrip(),
+		registry_banner(
+			elementwise_hash,
+			blas_hash,
+			reduce_hash,
+			rng_hash,
+			ml_hash,
+			audio_hash,
+			cryptography_hash,
+			image_hash,
+			vision_hash,
+		).rstrip(),
 		"",
 		"use std::sync::OnceLock;",
 		"",
-		"use super::ShaderArtifact;",
+		"use super::{CollisionPolicy, LogicalWriteDomain, PhysicalWrite, PhysicalWriteContract, ShaderArtifact, TailPolicy, WorkspacePartition, WriteExtent, WritePartition};",
 		"",
 	]
 	for entry in entries:
@@ -844,12 +1980,14 @@ def generate_registry(
 		dtype = entry["dtype"]
 		workgroup = entry["workgroup_size"]
 		dispatch_tile = entry["dispatch_tile_size"]
+		physical_write = rust_physical_write(entry["physical_write"])
 		lines.extend(
 			[
 				f"static {static_name(domain, name, dtype)}: ShaderArtifact = ShaderArtifact {{",
 				f'\tbytes: include_bytes!(concat!(env!("OUT_DIR"), "/{domain}_{name}_{dtype}.spv")),',
 				f"\tworkgroup_size: [{workgroup[0]}, {workgroup[1]}, {workgroup[2]}],",
 				f"\tdispatch_tile_size: [{dispatch_tile[0]}, {dispatch_tile[1]}, {dispatch_tile[2]}],",
+				f"\tphysical_write: {physical_write},",
 				"\tcontent_id: OnceLock::new(),",
 				"};",
 				"",
@@ -863,6 +2001,9 @@ def generate_registry(
 			"\tHostSteppedOptimizer,",
 			"\tOptimizerStateAdvance,",
 			"\tOptimizerStateUpdate,",
+			"\tFrozenRng,",
+			"\tReplayRng,",
+			"\tRngStateAdvance,",
 			"}",
 			"",
 			"#[repr(u16)]",
@@ -888,7 +2029,23 @@ def generate_registry(
 		"host_stepped_optimizer": "HostSteppedOptimizer",
 		"optimizer_state_advance": "OptimizerStateAdvance",
 		"optimizer_state_update": "OptimizerStateUpdate",
+		"frozen_rng": "FrozenRng",
+		"replay_rng": "ReplayRng",
+		"rng_state_advance": "RngStateAdvance",
 	}
+	lines.extend(
+		[
+			"\t\t}",
+			"\t}",
+			"",
+			"\tpub(crate) const fn semantic_contract(self) -> Option<crate::OperationContract> {",
+			"\t\tmatch self {",
+		]
+	)
+	for entry in entries:
+		contract = entry["semantic_contract"]
+		value = "None" if contract is None else f"Some({contract})"
+		lines.append(f"\t\t\tSelf::{entry['kernel_id']} => {value},")
 	lines.extend(
 		[
 			"\t\t}",
@@ -899,7 +2056,7 @@ def generate_registry(
 		]
 	)
 	for entry in entries:
-		name = f"{entry['domain']}.{entry['name']}.{entry['dtype']}"
+		name = f"{entry.get('report_domain', entry['domain'])}.{entry['name']}.{entry['dtype']}"
 		lines.append(f'\t\t\tSelf::{entry["kernel_id"]} => "{name}",')
 	lines.extend(
 		[
@@ -910,7 +2067,7 @@ def generate_registry(
 			"\t\tmatch self {",
 		]
 	)
-	dtype_tokens = {"f32": "float32", "i32": "int32", "u32": "uint32"}
+	dtype_tokens = {"f32": "float32", "i32": "int32", "u32": "uint32", "u8": "uint8"}
 	for entry in entries:
 		lines.append(
 			f'\t\t\tSelf::{entry["kernel_id"]} => "{dtype_tokens[entry["dtype"]]}",'
@@ -972,18 +2129,24 @@ def semantic_contract_lines(
 	contract: dict[str, Any],
 	attributes: list[dict[str, str]],
 ) -> list[str]:
-	inputs = ", ".join("OpValueKind::Matrix" for _ in contract["input_kinds"])
-	outputs = ", ".join("OpValueKind::Matrix" for _ in contract["output_kinds"])
+	kind_names = {
+		"matrix": "Matrix",
+		"parameter": "Matrix",
+		"audio": "Audio",
+		"image": "Image",
+	}
+	inputs = ", ".join(f"OpValueKind::{kind_names.get(kind, 'Matrix')}" for kind in contract["input_kinds"])
+	outputs = ", ".join(f"OpValueKind::{kind_names.get(kind, 'Matrix')}" for kind in contract["output_kinds"])
 	shape_rule = (
 		"OpShapeRule::MatMulNt"
 		if contract["shape_rule"] == "left_mk_right_nk_to_mn"
 		else "OpShapeRule::MatchInput"
-		if contract["shape_rule"] in {"equal_no_broadcast", "preserve_input"}
+		if contract["shape_rule"] in {"equal_no_broadcast", "preserve_input", "match_input"}
 		else "OpShapeRule::Explicit"
 	)
 	dtype_rule = (
 		"OpDTypeRule::MatchInput"
-		if contract["dtype_rule"] in {"same_admitted_dtype", "all_f32", "matching_f32"}
+		if contract["dtype_rule"] in {"same_admitted_dtype", "all_f32", "matching_f32", "f32"}
 		else "OpDTypeRule::Explicit"
 	)
 	differentiation = (
@@ -1004,12 +2167,26 @@ def semantic_contract_lines(
 		f"\t&[{inputs}],",
 		f"\t&[{outputs}],",
 		")",
-		f".with_shape_rule({shape_rule})",
-		f".with_dtype_rule({dtype_rule})",
-		f".with_differentiation({differentiation})",
-		f".with_lowering({lowering})",
-		".effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))",
 	]
+	if "variadic_input" in contract:
+		variadic_input = contract["variadic_input"]
+		variadic_output = contract["variadic_output"]
+		lines.extend(
+			[
+				f".variadic_inputs(OpValueKind::{kind_names.get(variadic_input['kind'], 'Matrix')}, {variadic_input['minimum']})",
+				f".variadic_outputs(OpValueKind::{kind_names.get(variadic_output['kind'], 'Matrix')}, {variadic_output['minimum']})",
+				".aligned_variadic_aliases()",
+			]
+		)
+	lines.extend(
+		[
+			f".with_shape_rule({shape_rule})",
+			f".with_dtype_rule({dtype_rule})",
+			f".with_differentiation({differentiation})",
+			f".with_lowering({lowering})",
+			".effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))",
+		]
+	)
 	if attributes:
 		attribute_kinds = {
 			"boolean": "Boolean",
@@ -1025,6 +2202,9 @@ def semantic_contract_lines(
 			for attribute in attributes
 		)
 		lines.append(f".attributes(&[{specs}])")
+	optional_mask = sum(1 << input_index for input_index in contract.get("optional_inputs", []))
+	if optional_mask:
+		lines.append(f".optional_inputs(0x{optional_mask:02x})")
 	mutation_mask = sum(1 << input_index for input_index in contract["mutated_inputs"])
 	if mutation_mask:
 		lines.append(f".mutated_inputs(0x{mutation_mask:02x})")
@@ -1040,13 +2220,31 @@ def generate_operation_registry(
 	elementwise_hash: str,
 	blas: dict[str, Any],
 	blas_hash: str,
+	reduce: dict[str, Any],
+	reduce_hash: str,
+	rng: dict[str, Any],
+	rng_hash: str,
 	ml: dict[str, Any],
 	ml_hash: str,
+	audio: dict[str, Any],
+	audio_hash: str,
+	cryptography: dict[str, Any],
+	cryptography_hash: str,
+	image: dict[str, Any],
+	image_hash: str,
+	vision: dict[str, Any],
+	vision_hash: str,
 ) -> str:
 	lines = [
 		banner(elementwise_hash, "//").rstrip(),
 		f"// matrix_blas_sha256={blas_hash}",
+		f"// matrix_reduce_sha256={reduce_hash}",
+		f"// matrix_rng_sha256={rng_hash}",
 		f"// ml_training_sha256={ml_hash}",
+		f"// audio_sha256={audio_hash}",
+		f"// cryptography_hash_sha256={cryptography_hash}",
+		f"// image_sha256={image_hash}",
+		f"// vision_detection_sha256={vision_hash}",
 		"// Current OARS compatibility contracts; donor OA identities replace each row when its full contract lands.",
 		"",
 		"use super::{",
@@ -1074,6 +2272,30 @@ def generate_operation_registry(
 		for line in semantic_contract_lines("matrix", operation["name"], operation["contract"], []):
 			lines.append(f"\t{line}" if line else "")
 		lines.append("")
+	for operation in reduce["operations"]:
+		if operation.get("lowering_only", False):
+			continue
+		contract = dict(operation["contract"])
+		contract["differentiation"] = operation["differentiation"]
+		attributes = [
+			{"name": name, "kind": kind}
+			for name, kind in operation["semantic_attributes"]
+		]
+		for line in semantic_contract_lines("matrix", operation["name"], contract, attributes):
+			lines.append(f"\t{line}" if line else "")
+		lines.append("")
+	for operation in rng["operations"]:
+		if "contract" not in operation:
+			continue
+		contract = dict(operation["contract"])
+		contract["differentiation"] = operation.get("differentiation", "none")
+		attributes = [
+			{"name": name, "kind": kind}
+			for name, kind in operation.get("semantic_attributes", [])
+		]
+		for line in semantic_contract_lines("matrix", operation["name"], contract, attributes):
+			lines.append(f"\t{line}" if line else "")
+		lines.append("")
 	lines.extend(["}", "", "/// Generated compatibility contracts for current ML kernels.", "pub mod ml {", "\tuse super::*;", ""])
 	for operation in ml["operations"]:
 		if operation.get("lowering_only", False):
@@ -1086,7 +2308,88 @@ def generate_operation_registry(
 			{"name": name, "kind": kind}
 			for name, kind in operation.get("semantic_attributes", [])
 		]
-		for line in semantic_contract_lines("ml", operation["name"], contract, attributes):
+		for line in semantic_contract_lines(
+			operation["semantic_domain"], operation["name"], contract, attributes
+		):
+			lines.append(f"\t{line}" if line else "")
+		lines.append("")
+	lines.extend(["}", "", "/// Generated semantic contracts for Audio operations.", "pub mod audio {", "\tuse super::*;", ""])
+	for operation in audio["contracts"]:
+		contract = {
+			"input_kinds": operation["input_kinds"],
+			"output_kinds": operation["output_kinds"],
+			"shape_rule": operation["shape_rule"],
+			"dtype_rule": operation["dtype_rule"],
+			"effects": ["read_inputs", "write_outputs"],
+			"mutated_inputs": [],
+			"output_alias_inputs": [-1] * len(operation["output_kinds"]),
+			"differentiation": "none",
+			"lowering": "compute_dispatch",
+		}
+		attributes = [{"name": name, "kind": kind} for name, kind in operation["attributes"]]
+		for line in semantic_contract_lines("audio", operation["name"], contract, attributes):
+			lines.append(f"\t{line}" if line else "")
+		lines.append("")
+	lines.extend([
+		"}",
+		"",
+		"/// Generated semantic contracts for cryptographic batch hashing.",
+		"pub mod cryptography {",
+		"\tuse super::*;",
+		"",
+		"\tpub mod hash {",
+		"\t\tuse super::*;",
+		"",
+	])
+	for operation in cryptography["contracts"]:
+		contract = {
+			"input_kinds": operation["input_kinds"],
+			"output_kinds": operation["output_kinds"],
+			"shape_rule": operation["shape_rule"],
+			"dtype_rule": operation["dtype_rule"],
+			"effects": ["read_inputs", "write_outputs"],
+			"mutated_inputs": [],
+			"output_alias_inputs": [-1],
+			"differentiation": "none",
+			"lowering": "compute_dispatch",
+		}
+		attributes = [{"name": name, "kind": kind} for name, kind in operation["attributes"]]
+		for line in semantic_contract_lines("cryptography::hash", operation["name"], contract, attributes):
+			lines.append(f"\t\t{line}" if line else "")
+		lines.append("")
+	lines.extend(["\t}", "}", "", "/// Generated semantic contracts for Image operations.", "pub mod image {", "\tuse super::*;", ""])
+	for operation in image["contracts"]:
+		contract = {
+			"input_kinds": operation["input_kinds"],
+			"output_kinds": operation["output_kinds"],
+			"shape_rule": operation["shape_rule"],
+			"dtype_rule": operation["dtype_rule"],
+			"effects": ["read_inputs", "write_outputs"],
+			"mutated_inputs": [],
+			"output_alias_inputs": [-1],
+			"differentiation": "none",
+			"lowering": "compute_dispatch",
+		}
+		attributes = [{"name": name, "kind": kind} for name, kind in operation["attributes"]]
+		for line in semantic_contract_lines("image", operation["name"], contract, attributes):
+			lines.append(f"\t{line}" if line else "")
+		lines.append("")
+	lines.extend(["}", ""])
+	lines.extend(["/// Generated semantic contracts for Vision operations.", "pub mod vision {", "\tuse super::*;", ""])
+	for operation in vision["contracts"]:
+		contract = {
+			"input_kinds": operation["input_kinds"],
+			"output_kinds": operation["output_kinds"],
+			"shape_rule": operation["shape_rule"],
+			"dtype_rule": operation["dtype_rule"],
+			"effects": ["read_inputs", "write_outputs"],
+			"mutated_inputs": [],
+			"output_alias_inputs": [-1] * len(operation["output_kinds"]),
+			"differentiation": "none",
+			"lowering": "compute_dispatch",
+		}
+		attributes = [{"name": name, "kind": kind} for name, kind in operation["attributes"]]
+		for line in semantic_contract_lines("vision", operation["name"], contract, attributes):
 			lines.append(f"\t{line}" if line else "")
 		lines.append("")
 	lines.extend(["}", ""])
@@ -1110,18 +2413,28 @@ def generate_dnn_roles(
 	elementwise_hash: str,
 	blas: dict[str, Any],
 	blas_hash: str,
+	reduce: dict[str, Any],
+	reduce_hash: str,
+	rng_hash: str,
 	ml: dict[str, Any],
 	ml_hash: str,
 ) -> str:
 	lines = [
 		banner(elementwise_hash, "//").rstrip(),
 		f"// matrix_blas_sha256={blas_hash}",
+		f"// matrix_reduce_sha256={reduce_hash}",
+		f"// matrix_rng_sha256={rng_hash}",
 		f"// ml_training_sha256={ml_hash}",
 		"// Candidate roles mirror OA DNN vocabulary while retaining OARS compatibility identities.",
 		"",
 		"pub(super) static DNN_OP_ROLES: &[DnnOpRole] = &[",
 	]
-	for domain, schema in (("matrix", elementwise), ("matrix", blas), ("ml", ml)):
+	for domain, schema in (
+		("matrix", elementwise),
+		("matrix", blas),
+		("matrix", reduce),
+		("ml", ml),
+	):
 		for operation in schema["operations"]:
 			role = operation.get("dnn")
 			if role is None:
@@ -1145,6 +2458,58 @@ def generate_dnn_roles(
 				]
 			)
 	lines.extend(["];", ""])
+	return "\n".join(lines)
+
+
+def generate_ml_autograd_attachments(
+	ml: dict[str, Any], ml_hash: str, family: str
+) -> str:
+	operations = [
+		operation
+		for operation in ml["operations"]
+		if operation.get("autograd", {}).get("mode") == "generated"
+		and operation["autograd"]["family"] == family
+	]
+	lines = [
+		banner(ml_hash, "//", "ml_training.json").rstrip(),
+		"// Mechanical tape attachments; concrete saved-state node behavior remains private.",
+		"",
+		"use crate::{Matrix, Result};",
+		"",
+		"use super::{node::Node, tape::record_node};",
+		"",
+	]
+	for operation in operations:
+		autograd = operation["autograd"]
+		inputs = autograd["inputs"]
+		saved = autograd["saved_matrices"]
+		scalars = autograd.get("saved_scalars", [])
+		matrices = [*inputs, *(name for name in saved if name not in inputs)]
+		arguments = ", ".join(
+			[
+				*(f"{name}: &Matrix" for name in matrices),
+				*(f"{name}: {scalar_type}" for name, scalar_type in scalars),
+				"result: &Matrix",
+			]
+		)
+		lines.extend(
+			[
+				f"pub(in crate::ml) fn record_{operation['name']}({arguments}) -> Result<()> {{",
+				f"\trecord_node(Node::{autograd['node']} {{",
+			]
+		)
+		for name in matrices:
+			lines.append(f"\t\t{name}: {name}.clone(),")
+		for name, _ in scalars:
+			lines.append(f"\t\t{name},")
+		lines.extend(
+			[
+				"\t\toutput_id: result.value_id(),",
+				"\t})",
+				"}",
+				"",
+			]
+		)
 	return "\n".join(lines)
 
 
@@ -1596,33 +2961,458 @@ test_vk!(generated_mat_mul_nt_rejects_invalid_contracts, engine, {{
 """
 
 
+def generate_reduce_api(schema: dict[str, Any], schema_hash: str) -> str:
+	(
+		softmax,
+		softmax_backward,
+		log_softmax,
+		log_softmax_backward,
+		sum_operation,
+		_,
+		sum_backward,
+		accuracy_count,
+		masked_accuracy_count,
+	) = schema["operations"]
+	return f"""{banner(schema_hash, '//', 'matrix_reduce.json').rstrip()}
+
+/// Stable Softmax over `dim`, where `-1` selects the last dimension.
+///
+/// The operation records asynchronously and returns its output immediately.
+///
+/// # Errors
+///
+/// Returns an error when the input is empty or not FP32, `dim` is invalid, an
+/// axis extent or dispatch count exceeds the shader ABI, allocation fails, or
+/// runtime recording fails.
+pub fn {softmax['name']}(input: &Matrix, dim: i32) -> Result<Matrix> {{
+	softmax_impl(
+		input,
+		dim,
+		crate::core::operation::matrix::{rust_const_name(softmax['name'])},
+	)
+}}
+
+pub(crate) fn {softmax_backward['name']}(
+	forward_output: &Matrix,
+	output_gradient: &Matrix,
+	dim: i32,
+) -> Result<Matrix> {{
+	softmax_backward_impl(
+		forward_output,
+		output_gradient,
+		dim,
+		crate::core::operation::matrix::{rust_const_name(softmax_backward['name'])},
+	)
+}}
+
+/// Stable LogSoftmax over `dim`, where `-1` selects the last dimension.
+///
+/// The operation records asynchronously and returns its output immediately.
+///
+/// # Errors
+///
+/// Returns an error when the input is empty or not FP32, `dim` is invalid, an
+/// axis extent or dispatch count exceeds the shader ABI, allocation fails, or
+/// runtime recording fails.
+pub fn {log_softmax['name']}(input: &Matrix, dim: i32) -> Result<Matrix> {{
+	log_softmax_impl(
+		input,
+		dim,
+		crate::core::operation::matrix::{rust_const_name(log_softmax['name'])},
+	)
+}}
+
+pub(crate) fn {log_softmax_backward['name']}(
+	forward_output: &Matrix,
+	output_gradient: &Matrix,
+	dim: i32,
+) -> Result<Matrix> {{
+	log_softmax_backward_impl(
+		forward_output,
+		output_gradient,
+		dim,
+		crate::core::operation::matrix::{rust_const_name(log_softmax_backward['name'])},
+	)
+}}
+
+/// Sum all values when `dim` is `-1`, or keep and reduce one selected axis.
+///
+/// A full reduction returns shape `[1]`; an axis reduction preserves rank and
+/// replaces the selected extent with one. The operation records asynchronously.
+///
+/// # Errors
+///
+/// Returns an error when the input is empty or not FP32, `dim` is invalid, a
+/// size exceeds the admitted shader ABI, allocation fails, or recording fails.
+pub fn {sum_operation['name']}(input: &Matrix, dim: i32) -> Result<Matrix> {{
+	sum_impl(
+		input,
+		dim,
+		crate::core::operation::matrix::{rust_const_name(sum_operation['name'])},
+	)
+}}
+
+pub(crate) fn {sum_backward['name']}(
+	input: &Matrix,
+	output_gradient: &Matrix,
+	dim: i32,
+) -> Result<Matrix> {{
+	sum_backward_impl(
+		input,
+		output_gradient,
+		dim,
+		crate::core::operation::matrix::{rust_const_name(sum_backward['name'])},
+	)
+}}
+
+/// Count rows whose last-axis FP32 argmax equals the integer class label.
+///
+/// The returned `[1]` U32 Matrix remains device-resident. Reading it is an
+/// explicit synchronization boundary.
+///
+/// # Errors
+///
+/// Returns an error when logits are not a nonempty rank-two-or-greater FP32
+/// Matrix, labels do not match the leading logits shape or use U8/U32/I32,
+/// inputs belong to different engines, a size exceeds the shader ABI,
+/// allocation fails, or recording fails.
+pub fn {accuracy_count['name']}(logits: &Matrix, labels: &Matrix) -> Result<Matrix> {{
+	categorical_accuracy_count_impl(
+		logits,
+		labels,
+		None,
+		crate::core::operation::matrix::{rust_const_name(accuracy_count['name'])},
+	)
+}}
+
+/// Count correct categorical predictions only where the FP32 mask is nonzero.
+///
+/// The returned `[1]` U32 Matrix remains device-resident. Reading it is an
+/// explicit synchronization boundary.
+///
+/// # Errors
+///
+/// Returns an error under the same conditions as
+/// [`categorical_accuracy_count`], or when the mask is not FP32, does not match
+/// the labels shape, or belongs to another engine.
+pub fn {masked_accuracy_count['name']}(
+	logits: &Matrix,
+	labels: &Matrix,
+	mask: &Matrix,
+) -> Result<Matrix> {{
+	categorical_accuracy_count_impl(
+		logits,
+		labels,
+		Some(mask),
+		crate::core::operation::matrix::{rust_const_name(masked_accuracy_count['name'])},
+	)
+}}
+"""
+
+
+def generate_reduce_test(schema: dict[str, Any], schema_hash: str) -> str:
+	softmax = schema["operations"][0]
+	log_softmax = schema["operations"][2]
+	sum_operation = schema["operations"][4]
+	accuracy_count = schema["operations"][7]
+	masked_accuracy_count = schema["operations"][8]
+	shape = softmax["test"]["shape"]
+	dim = softmax["test"]["dim"]
+	tolerance = rust_float(softmax["test"]["tolerance"])
+	return f"""{banner(schema_hash, '//', 'matrix_reduce.json').rstrip()}
+
+fn softmax_reference(input: &[f32], shape: &[usize], dim: usize) -> Vec<f32> {{
+	let outer: usize = shape[..dim].iter().product();
+	let width = shape[dim];
+	let inner: usize = shape[dim + 1..].iter().product();
+	let mut output = vec![0.0; input.len()];
+	for outer_index in 0..outer {{
+		for inner_index in 0..inner {{
+			let base = outer_index * width * inner + inner_index;
+			let maximum = (0..width)
+				.map(|axis_index| input[base + axis_index * inner])
+				.fold(f32::NEG_INFINITY, f32::max);
+			let sum: f32 = (0..width)
+				.map(|axis_index| (input[base + axis_index * inner] - maximum).exp())
+				.sum();
+			for axis_index in 0..width {{
+				let index = base + axis_index * inner;
+				output[index] = (input[index] - maximum).exp() / sum;
+			}}
+		}}
+	}}
+	output
+}}
+
+fn log_softmax_reference(input: &[f32], shape: &[usize], dim: usize) -> Vec<f32> {{
+	let outer: usize = shape[..dim].iter().product();
+	let width = shape[dim];
+	let inner: usize = shape[dim + 1..].iter().product();
+	let mut output = vec![0.0; input.len()];
+	for outer_index in 0..outer {{
+		for inner_index in 0..inner {{
+			let base = outer_index * width * inner + inner_index;
+			let maximum = (0..width)
+				.map(|axis_index| input[base + axis_index * inner])
+				.fold(f32::NEG_INFINITY, f32::max);
+			let sum: f32 = (0..width)
+				.map(|axis_index| (input[base + axis_index * inner] - maximum).exp())
+				.sum();
+			let log_normalizer = maximum + sum.ln();
+			for axis_index in 0..width {{
+				let index = base + axis_index * inner;
+				output[index] = input[index] - log_normalizer;
+			}}
+		}}
+	}}
+	output
+}}
+
+fn rejected(result: oa::Result<oa::Matrix>, message: &str) -> oa::Error {{
+	match result {{
+		Err(error) => error,
+		Ok(_) => panic!("{{message}}"),
+	}}
+}}
+
+fn sum_reference(input: &[f32], shape: &[usize], dim: usize) -> Vec<f32> {{
+	let outer: usize = shape[..dim].iter().product();
+	let width = shape[dim];
+	let inner: usize = shape[dim + 1..].iter().product();
+	let mut output = vec![0.0; outer * inner];
+	for outer_index in 0..outer {{
+		for inner_index in 0..inner {{
+			let base = outer_index * width * inner + inner_index;
+			for axis_index in 0..width {{
+				output[outer_index * inner + inner_index] +=
+					input[base + axis_index * inner];
+			}}
+		}}
+	}}
+	output
+}}
+
+test_vk!(generated_softmax_matches_axis_oracle, engine, {{
+	let shape = {shape!r};
+	let values = (0..shape.iter().product::<usize>())
+		.map(|index| ((index * 7 % 17) as f32 - 8.0) * 0.17)
+		.collect::<Vec<_>>();
+	let input = oa::Matrix::from_f32(&engine, shape, &values)?;
+	let expected = softmax_reference(&values, &shape, {dim});
+	let output = oa::matrix::{softmax['name']}(&input, {dim})?;
+	let actual = output.read_f32()?;
+	for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {{
+		assert!(
+			(actual - expected).abs() <= {tolerance},
+			"element {{index}}: expected {{expected}}, found {{actual}}"
+		);
+	}}
+	let last = oa::matrix::{softmax['name']}(&input, -1)?.read_f32()?;
+	let expected_last = softmax_reference(&values, &shape, shape.len() - 1);
+	for (actual, expected) in last.iter().zip(expected_last) {{
+		assert!((actual - expected).abs() <= {tolerance});
+	}}
+	Ok(())
+}});
+
+test_vk!(generated_log_softmax_matches_axis_oracle, engine, {{
+	let shape = {shape!r};
+	let values = (0..shape.iter().product::<usize>())
+		.map(|index| ((index * 7 % 17) as f32 - 8.0) * 0.17)
+		.collect::<Vec<_>>();
+	let input = oa::Matrix::from_f32(&engine, shape, &values)?;
+	let expected = log_softmax_reference(&values, &shape, {dim});
+	let output = oa::matrix::{log_softmax['name']}(&input, {dim})?;
+	for (index, (actual, expected)) in output.read_f32()?.iter().zip(expected).enumerate() {{
+		assert!(
+			(actual - expected).abs() <= {tolerance},
+			"element {{index}}: expected {{expected}}, found {{actual}}"
+		);
+	}}
+	let last = oa::matrix::{log_softmax['name']}(&input, -1)?.read_f32()?;
+	let expected_last = log_softmax_reference(&values, &shape, shape.len() - 1);
+	for (actual, expected) in last.iter().zip(expected_last) {{
+		assert!((actual - expected).abs() <= {tolerance});
+	}}
+	Ok(())
+}});
+
+test_vk!(generated_softmax_rejects_invalid_contracts, engine, {{
+	let empty = oa::Matrix::from_f32(&engine, [0], &[])?;
+	let integer = oa::Matrix::from_slice(&engine, [2], &[1_i32, 2])?;
+	let input = oa::Matrix::from_f32(&engine, [2, 2], &[1.0, 2.0, 3.0, 4.0])?;
+	for error in [
+		rejected(oa::matrix::{softmax['name']}(&empty, -1), "empty input was accepted"),
+		rejected(oa::matrix::{softmax['name']}(&integer, -1), "I32 input was accepted"),
+		rejected(oa::matrix::{softmax['name']}(&input, -2), "negative non-sentinel dim was accepted"),
+		rejected(oa::matrix::{softmax['name']}(&input, 2), "out-of-range dim was accepted"),
+		rejected(oa::matrix::{log_softmax['name']}(&empty, -1), "empty LogSoftmax input was accepted"),
+		rejected(oa::matrix::{log_softmax['name']}(&integer, -1), "I32 LogSoftmax input was accepted"),
+		rejected(oa::matrix::{log_softmax['name']}(&input, -2), "negative non-sentinel LogSoftmax dim was accepted"),
+		rejected(oa::matrix::{log_softmax['name']}(&input, 2), "out-of-range LogSoftmax dim was accepted"),
+	] {{
+		assert_eq!(error.kind(), oa::ErrorKind::InvalidArgument);
+	}}
+	Ok(())
+}});
+
+test_vk!(generated_sum_matches_full_and_axis_oracles, engine, {{
+	let shape = {shape!r};
+	let values = (0..shape.iter().product::<usize>())
+		.map(|index| ((index * 11 % 23) as f32 - 11.0) * 0.13)
+		.collect::<Vec<_>>();
+	let input = oa::Matrix::from_f32(&engine, shape, &values)?;
+	let axis = oa::matrix::{sum_operation['name']}(&input, {dim})?;
+	assert_eq!(axis.shape(), [shape[0], 1, shape[2]]);
+	for (actual, expected) in axis.read_f32()?.iter().zip(sum_reference(&values, &shape, {dim})) {{
+		assert!((actual - expected).abs() <= {tolerance});
+	}}
+	let full = oa::matrix::{sum_operation['name']}(&input, -1)?;
+	assert_eq!(full.shape(), [1]);
+	assert!((full.read_f32()?[0] - values.iter().sum::<f32>()).abs() <= {tolerance});
+	Ok(())
+}});
+
+test_vk!(generated_categorical_accuracy_counts_match_exact_oracles, engine, {{
+	let logits = oa::Matrix::from_f32(
+		&engine,
+		[4, 3],
+		&[
+			4.0, 4.0, 1.0,
+			0.0, 2.0, 1.0,
+			0.0, 1.0, 3.0,
+			3.0, 1.0, 0.0,
+		],
+	)?;
+	for labels in [
+		oa::Matrix::from_slice(&engine, [4], &[0_u8, 1, 0, 0])?,
+		oa::Matrix::from_slice(&engine, [4], &[0_u32, 1, 0, 0])?,
+		oa::Matrix::from_slice(&engine, [4], &[0_i32, 1, -1, 0])?,
+	] {{
+		let count = oa::matrix::{accuracy_count['name']}(&logits, &labels)?;
+		assert_eq!(count.shape(), [1]);
+		assert_eq!(count.dtype(), oa::DType::U32);
+		assert_eq!(count.read::<u32>()?, vec![3]);
+	}}
+	let labels = oa::Matrix::from_slice(&engine, [4], &[0_u32, 1, 2, 0])?;
+	let mask = oa::Matrix::from_f32(&engine, [4], &[1.0, 0.0, -2.0, 1.0])?;
+	assert_eq!(
+		oa::matrix::{masked_accuracy_count['name']}(&logits, &labels, &mask)?
+			.read::<u32>()?,
+		vec![3]
+	);
+	Ok(())
+}});
+
+test_vk!(generated_categorical_accuracy_count_rejects_invalid_contracts, engine, {{
+	let other_engine = oa::Engine::new()?;
+	let logits = oa::Matrix::from_f32(&engine, [2, 3], &[1.0, 2.0, 3.0, 3.0, 2.0, 1.0])?;
+	let rank_one = oa::Matrix::from_f32(&engine, [6], &[0.0; 6])?;
+	let labels = oa::Matrix::from_slice(&engine, [2], &[2_u32, 0])?;
+	let wrong_shape = oa::Matrix::from_slice(&engine, [1], &[2_u32])?;
+	let float_labels = oa::Matrix::from_f32(&engine, [2], &[2.0, 0.0])?;
+	let foreign_labels = oa::Matrix::from_slice(&other_engine, [2], &[2_u32, 0])?;
+	let mask = oa::Matrix::from_f32(&engine, [2], &[1.0, 1.0])?;
+	let integer_mask = oa::Matrix::from_slice(&engine, [2], &[1_u32, 1])?;
+
+	for error in [
+		rejected(oa::matrix::{accuracy_count['name']}(&rank_one, &labels), "rank-one logits were accepted"),
+		rejected(oa::matrix::{accuracy_count['name']}(&logits, &wrong_shape), "wrong label shape was accepted"),
+		rejected(oa::matrix::{accuracy_count['name']}(&logits, &float_labels), "F32 labels were accepted"),
+		rejected(oa::matrix::{accuracy_count['name']}(&logits, &foreign_labels), "foreign labels were accepted"),
+		rejected(
+			oa::matrix::{masked_accuracy_count['name']}(&logits, &labels, &integer_mask),
+			"integer mask was accepted",
+		),
+	] {{
+		assert_eq!(error.kind(), oa::ErrorKind::InvalidArgument);
+	}}
+	assert_eq!(
+		oa::matrix::{masked_accuracy_count['name']}(&logits, &labels, &mask)?
+			.read::<u32>()?,
+		vec![2]
+	);
+	Ok(())
+}});
+
+test_vk!(generated_categorical_accuracy_capture_retains_semantic_and_physical_evidence, engine, {{
+	let logits = oa::Matrix::from_f32(&engine, [2, 3], &[1.0, 2.0, 3.0, 3.0, 2.0, 1.0])?;
+	let labels = oa::Matrix::from_slice(&engine, [2], &[2_u32, 0])?;
+	let (plan, count) = engine.capture(|| oa::matrix::{accuracy_count['name']}(&logits, &labels))?;
+	assert_eq!(plan.semantic_graph().operations().len(), 1);
+	assert_eq!(
+		plan.semantic_graph().operations()[0].name(),
+		"oa::matrix::{accuracy_count['name']}"
+	);
+	let report: serde_json::Value = serde_json::from_str(&plan.debug_report_json("accuracy"))
+		.expect("categorical-accuracy execution report must be valid JSON");
+	let nodes = report["nodes"].as_array().expect("execution nodes must be an array");
+	assert_eq!(nodes.len(), 1);
+	assert_eq!(nodes[0]["kernel"], "matrix.{accuracy_count['name']}.f32");
+	assert!(!nodes[0]["physical_write"].is_null());
+	engine.submit(&plan)?.wait()?;
+	assert_eq!(count.read::<u32>()?, vec![2]);
+	Ok(())
+}});
+"""
+
+
 def expected_outputs(
 	root: Path,
 	elementwise: dict[str, Any],
 	elementwise_hash: str,
 	blas: dict[str, Any],
 	blas_hash: str,
+	reduce: dict[str, Any],
+	reduce_hash: str,
+	rng: dict[str, Any],
+	rng_hash: str,
 	ml: dict[str, Any],
 	ml_hash: str,
+	audio: dict[str, Any],
+	audio_hash: str,
+	cryptography: dict[str, Any],
+	cryptography_hash: str,
+	image: dict[str, Any],
+	image_hash: str,
+	vision: dict[str, Any],
+	vision_hash: str,
 ) -> dict[Path, str]:
 	outputs = {
 		root / "src/rs/core/operation/generated.rs": format_rust(
 			generate_operation_registry(
-				elementwise, elementwise_hash, blas, blas_hash, ml, ml_hash
+				elementwise, elementwise_hash, blas, blas_hash, reduce, reduce_hash, rng, rng_hash, ml, ml_hash, audio, audio_hash, cryptography, cryptography_hash, image, image_hash, vision, vision_hash
 			),
 			root,
 		),
 		root / "src/rs/matrix/elemwise.gen.rs": format_rust(generate_api(elementwise, elementwise_hash), root),
 		root / "src/rs/matrix/blas.gen.rs": format_rust(generate_blas_api(blas, blas_hash), root),
-		root / "src/rs/runtime/shader/generated.rs": format_rust(
-			generate_registry(elementwise, elementwise_hash, blas, blas_hash, ml, ml_hash), root
+		root / "src/rs/matrix/reduce.gen.rs": format_rust(
+			generate_reduce_api(reduce, reduce_hash), root
+		),
+		root / "src/rs/runtime/shader/registry.gen.rs": format_rust(
+			generate_registry(elementwise, elementwise_hash, blas, blas_hash, reduce, reduce_hash, rng, rng_hash, ml, ml_hash, audio, audio_hash, cryptography, cryptography_hash, image, image_hash, vision, vision_hash), root
 		),
 		root / "src/rs/runtime/dnn/generated.rs": format_rust(
-			generate_dnn_roles(elementwise, elementwise_hash, blas, blas_hash, ml, ml_hash), root
+			generate_dnn_roles(elementwise, elementwise_hash, blas, blas_hash, reduce, reduce_hash, rng_hash, ml, ml_hash), root
 		),
 		root / "test/rs/matrix/test_elemwise.gen.rs": format_rust(generate_test(elementwise, elementwise_hash), root),
 		root / "test/rs/matrix/test_blas.gen.rs": format_rust(generate_blas_test(blas, blas_hash), root),
+		root / "test/rs/matrix/test_reduce.gen.rs": format_rust(
+			generate_reduce_test(reduce, reduce_hash), root
+		),
 	}
+	autograd_families = sorted(
+		{
+			operation["autograd"]["family"]
+			for operation in ml["operations"]
+			if operation.get("autograd", {}).get("mode") == "generated"
+		}
+	)
+	for family in autograd_families:
+		outputs[root / f"src/rs/ml/autograd/{family}.gen.rs"] = format_rust(
+			generate_ml_autograd_attachments(ml, ml_hash, family), root
+		)
 	for operation in elementwise["operations"]:
 		for variant in operation_variants(elementwise, operation):
 			outputs[root / f"src/slang/matrix/elemwise/{variant['source_stem']}.gen.slang"] = generate_shader(
@@ -1672,7 +3462,13 @@ def parse_args() -> argparse.Namespace:
 	parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[3])
 	parser.add_argument("--schema", type=Path)
 	parser.add_argument("--blas-schema", type=Path)
+	parser.add_argument("--reduce-schema", type=Path)
+	parser.add_argument("--rng-schema", type=Path)
 	parser.add_argument("--ml-schema", type=Path)
+	parser.add_argument("--audio-schema", type=Path)
+	parser.add_argument("--cryptography-hash-schema", type=Path)
+	parser.add_argument("--image-schema", type=Path)
+	parser.add_argument("--vision-schema", type=Path)
 	parser.add_argument("--check", action="store_true")
 	return parser.parse_args()
 
@@ -1682,12 +3478,36 @@ def main() -> int:
 	root = args.root.resolve()
 	schema_path = args.schema.resolve() if args.schema else root / DEFAULT_SCHEMA
 	blas_schema_path = args.blas_schema.resolve() if args.blas_schema else root / DEFAULT_BLAS_SCHEMA
+	reduce_schema_path = (
+		args.reduce_schema.resolve() if args.reduce_schema else root / DEFAULT_REDUCE_SCHEMA
+	)
+	rng_schema_path = args.rng_schema.resolve() if args.rng_schema else root / DEFAULT_RNG_SCHEMA
 	ml_schema_path = args.ml_schema.resolve() if args.ml_schema else root / DEFAULT_ML_SCHEMA
+	audio_schema_path = args.audio_schema.resolve() if args.audio_schema else root / DEFAULT_AUDIO_SCHEMA
+	cryptography_schema_path = args.cryptography_hash_schema.resolve() if args.cryptography_hash_schema else root / DEFAULT_CRYPTOGRAPHY_HASH_SCHEMA
+	image_schema_path = args.image_schema.resolve() if args.image_schema else root / DEFAULT_IMAGE_SCHEMA
+	vision_schema_path = args.vision_schema.resolve() if args.vision_schema else root / DEFAULT_VISION_SCHEMA
 	try:
 		schema, schema_hash = load_schema(schema_path)
 		blas_schema, blas_schema_hash = load_blas_schema(blas_schema_path)
+		reduce_schema, reduce_schema_hash = load_reduce_schema(reduce_schema_path)
+		rng_schema, rng_schema_hash = load_rng_schema(rng_schema_path)
 		ml_schema, ml_schema_hash = load_ml_schema(ml_schema_path)
-		registry_entries(schema, blas_schema, ml_schema)
+		audio_schema, audio_schema_hash = load_audio_schema(audio_schema_path)
+		cryptography_schema, cryptography_schema_hash = load_cryptography_hash_schema(cryptography_schema_path)
+		image_schema, image_schema_hash = load_image_schema(image_schema_path)
+		vision_schema, vision_schema_hash = load_vision_schema(vision_schema_path)
+		registry_entries(
+			schema,
+			blas_schema,
+			reduce_schema,
+			rng_schema,
+			ml_schema,
+			audio_schema,
+			cryptography_schema,
+			image_schema,
+			vision_schema,
+		)
 	except (OSError, SchemaError) as error:
 		print(f"operation generation failed: {error}", file=os.sys.stderr)
 		return 1
@@ -1697,8 +3517,20 @@ def main() -> int:
 		schema_hash,
 		blas_schema,
 		blas_schema_hash,
+		reduce_schema,
+		reduce_schema_hash,
+		rng_schema,
+		rng_schema_hash,
 		ml_schema,
 		ml_schema_hash,
+		audio_schema,
+		audio_schema_hash,
+		cryptography_schema,
+		cryptography_schema_hash,
+		image_schema,
+		image_schema_hash,
+		vision_schema,
+		vision_schema_hash,
 	)
 	shader_directories = [
 		root / "src/slang/matrix/elemwise",

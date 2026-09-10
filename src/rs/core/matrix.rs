@@ -96,7 +96,13 @@ impl Matrix {
 		// `DType::size_bytes`. `values` is an initialized contiguous slice, and the
 		// checked calculation proves its exact byte extent.
 		let bytes = unsafe { std::slice::from_raw_parts(values.as_ptr().cast(), byte_len) };
-		let storage = engine.create_storage(bytes)?;
+		let storage = if T::DTYPE == DType::U8 {
+			let mut padded = vec![0_u8; byte_storage_len(byte_len, T::DTYPE)?];
+			padded[..byte_len].copy_from_slice(bytes);
+			engine.create_storage(&padded)?
+		} else {
+			engine.create_storage(bytes)?
+		};
 
 		let semantic = matrix_semantic(&shape, T::DTYPE, None)?;
 		Ok(Self {
@@ -236,7 +242,7 @@ impl Matrix {
 		// not exceed the vector's initialized extent.
 		let output_bytes =
 			unsafe { std::slice::from_raw_parts_mut(output.as_mut_ptr().cast::<u8>(), byte_len) };
-		self.storage.read(output_bytes)?;
+		self.storage.read_prefix(output_bytes)?;
 		Ok(output)
 	}
 
@@ -280,7 +286,13 @@ impl Matrix {
 		// SAFETY: `Element` is sealed to initialized, no-padding OA scalar types and
 		// the checked length covers exactly the supplied slice.
 		let bytes = unsafe { std::slice::from_raw_parts(values.as_ptr().cast(), byte_len) };
-		self.storage.write(bytes)
+		if self.dtype == DType::U8 {
+			let mut padded = vec![0_u8; byte_storage_len(byte_len, self.dtype)?];
+			padded[..byte_len].copy_from_slice(bytes);
+			self.storage.write(&padded)
+		} else {
+			self.storage.write(bytes)
+		}
 	}
 
 	pub(crate) fn reshape_view(&self, shape: Vec<usize>) -> Result<Self> {
@@ -309,9 +321,10 @@ impl Matrix {
 		element_count: usize,
 		dtype: DType,
 	) -> Result<Self> {
-		let byte_len = element_count
+		let logical_byte_len = element_count
 			.checked_mul(dtype.size_bytes())
 			.ok_or_else(|| Error::invalid_argument("matrix byte size overflows usize"))?;
+		let byte_len = byte_storage_len(logical_byte_len, dtype)?;
 		let storage = engine.create_storage(&vec![0_u8; byte_len])?;
 		let semantic = matrix_semantic(&shape, dtype, None)?;
 		Ok(Self {
@@ -324,6 +337,17 @@ impl Matrix {
 			_not_send_sync: PhantomData,
 		})
 	}
+}
+
+fn byte_storage_len(logical_byte_len: usize, dtype: DType) -> Result<usize> {
+	if dtype != DType::U8 {
+		return Ok(logical_byte_len);
+	}
+	logical_byte_len
+		.max(1)
+		.checked_add(3)
+		.map(|length| length & !3)
+		.ok_or_else(|| Error::invalid_argument("byte matrix storage size overflows usize"))
 }
 
 fn matrix_semantic(

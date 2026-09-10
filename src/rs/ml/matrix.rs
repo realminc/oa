@@ -1,0 +1,46 @@
+//! ML-specialized stateless Matrix operations.
+//!
+//! This module corresponds to the ML-owned extension of C++ `oa::FnMatrix`.
+//! General numerical operations remain in [`crate::matrix`], losses remain in
+//! [`crate::ml::loss`], and stateful layers remain in [`crate::ml::nn`].
+
+mod activation;
+mod attention;
+mod conv;
+mod moe;
+mod norm;
+mod pool;
+mod position;
+mod recurrent;
+mod upsample;
+
+pub use activation::{elu, gelu, leaky_relu, mish, relu, sigmoid, silu, softplus, swiglu, tanh};
+pub use attention::{
+	bmm, bmm_nt, bmm_tn, flash_attention_causal, merge_heads, scaled_dot_product_attention,
+	scaled_dot_product_attention_causal, softmax_scaled_masked, split_heads,
+};
+pub use conv::{conv_1d, conv_2d, conv_transpose_1d, conv_transpose_2d};
+pub(in crate::ml) use conv::{
+	conv_1d_backward, conv_1d_parameterized, conv_2d_backward, conv_2d_parameterized,
+	conv_transpose_1d_backward, conv_transpose_1d_parameterized, conv_transpose_2d_backward,
+	conv_transpose_2d_parameterized,
+};
+pub use moe::moe_route_weights;
+pub(in crate::ml) use moe::moe_route_weights_backward;
+pub use norm::{BatchNorm2dResult, batch_norm_2d, batch_norm_2d_with_stats, rms_norm};
+pub(in crate::ml) use norm::{
+	batch_norm_2d_backward, batch_norm_2d_forward, batch_norm_2d_running_update,
+	batch_norm_2d_with_stats_forward,
+};
+pub use pool::{MaxPool2dResult, adaptive_avg_pool_2d, avg_pool_2d, max_pool_2d};
+pub(in crate::ml) use pool::{
+	adaptive_avg_pool_2d_backward, avg_pool_2d_backward, max_pool_2d_backward,
+};
+pub use position::rope;
+pub use recurrent::{gru_cell, gru_scan, rnn_cell, rnn_scan};
+pub(in crate::ml) use recurrent::{
+	gru_cell_backward, gru_cell_parameterized, gru_scan_backward, gru_scan_parameterized,
+	rnn_cell_backward, rnn_cell_parameterized, rnn_scan_backward, rnn_scan_parameterized,
+};
+pub(in crate::ml) use upsample::upsample_2d_backward;
+pub use upsample::{UpsampleMode, upsample_2d};

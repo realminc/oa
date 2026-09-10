@@ -13,7 +13,10 @@ Before changing architecture or public behavior, read:
    current implementation stage.
 3. `docs/internal/porting/oaCompatibility.md` when translating an OA C++
    concept.
-4. The relevant linked `.cursor/rules/*.mdc`, subsystem document, source, and
+4. `docs/internal/architecture/oaSourceStructure.md` and
+   `docs/internal/porting/oaCppToRust.md` when adding or moving a public module,
+   type, operation, session, or re-export.
+5. The relevant linked `.cursor/rules/*.mdc`, subsystem document, source, and
    tests.
 
 The C++ repository is evidence for behavior and hard-won constraints, not a
@@ -38,6 +41,12 @@ ledger.
 - `core` is the public foundation module for semantic values, checked metadata,
   shared error/result contracts, and other backend-neutral primitives. `lib.rs`
   explicitly re-exports the admitted common vocabulary at the crate root.
+- Every public type has one owning module and implementation. `lib.rs` may
+  explicitly re-export admitted principal values and session types at the root
+  so `oa::AudioPlayer` and `oa::audio::AudioPlayer` are the same item.
+  Stateless operations remain module functions such as `oa::matrix::add` and
+  are never duplicated at the root. Short names such as `oaa` or `oaml` are
+  caller-local `use ... as ...` aliases, not additional OA crates or modules.
 - Raw Vulkan, allocator, OS, and third-party errors remain private to their
   adapters and are translated into the backend-neutral `core::Error` contract.
 - Values preserve semantics when storage is shared. Operations are stateless;
@@ -81,7 +90,8 @@ normalized graph, barrier, recording, cache-hit, submission, rebinding, and
 fallback evidence plus logical/physical resource counts without exposing Vulkan
 or kernel routing policy. Training programs additionally expose ordered
 compilation-stage evidence; schema-owned replay roles reject host-stepped AdamW
-and require one optimizer-state advance before replay updates. Plans and
+and frozen RNG, require one optimizer-state advance before replay updates, and
+pair every replay RNG use with one graph-resident counter advance. Plans and
 training programs expose deterministic handle-free `oa.semantic_graph.v2`,
 `oa.execution_graph.v3`, and `oa.training_compilation.v2` evidence reports.
 The private executable-graph foundation snapshots resolved compute dispatches,
@@ -97,13 +107,35 @@ semantic value identity, calibrated clocks, and non-compute graph nodes remain
 Planned.
 Planned APIs and scaffold modules are not capability claims.
 
-The first host-domain Audio and Crypto slices are Experimental. `Audio`
-composes checked planar FP32 Matrix storage with sample-rate and channel-layout
-semantics; private Symphonia WAV/FLAC/MP3 decode and OA-derived WAV-F32
-encode/save pass synthetic and real-file tests. CPU Keccak-f[1600],
+The host-domain Audio and Cryptography slices are Experimental. `Audio` composes
+checked planar FP32 Matrix storage with sample-rate and channel-layout
+semantics; private Symphonia WAV/FLAC/MP3 decode, OA-derived WAV-F32
+encode/save, schema-owned Audio DSP, typed semantic dispatch, and CPAL-backed
+capture/player sessions are implemented checkpoints. CPU Keccak-f[1600],
 SHAKE-128/256, KMAC-256, typed hashes, and arbitrary-leaf Merkle proofs pass
-donor KAT and property tests. Audio DSP/session work, Vulkan batch crypto, and
-ML-DSA remain Planned.
+donor KAT and property tests. Borrowed secure memory, CPU ML-DSA-65, U8 Matrix,
+and schema-owned Vulkan batch SHAKE/Keccak/Merkle are implemented checkpoints.
+Cross-backend Audio device qualification, compressed streaming encode, and
+device-side ML-DSA remain Planned.
+
+The complete 50-operation donor tensor-native Image surface is Experimental. `oa::image` has
+schema-owned resize, crop, flip, rotate, pad, center-crop, remap, affine-warp,
+and perspective-warp FP32 NCHW/CHW kernels, preserves Image layout,
+format, and semantic graph identity, and passes independent odd-shape host
+oracles on the recorded Intel/Mesa device. Clean Vulkan qualification remains
+blocked by the pre-existing Philox/Dropout `shaderInt64` feature mismatch.
+Typed color/resize-normalize/segmentation compositions and JPEG/PNG/WebP/BMP/TGA
+one-shot codecs also pass their focused tests; additional layouts and image
+autograd remain Planned.
+
+The donor `FnDetection` surface is Experimental in `oa::vision`: schema-owned
+pairwise IoU, deterministic NMS, classification confusion, binary-mask counts,
+three-stage detection AP/mAP, and replay-safe segmentation metrics pass donor
+vectors and local hardware oracles. Atomic U32 accumulators have explicit
+collision ownership and schema-owned clear stages for repeatable plan replay.
+Clean Vulkan qualification shares the pre-existing Philox/Dropout
+`shaderInt64` blocker; tracking, typed detection values, and cross-device
+qualification remain Planned.
 
 The first ML training seed is Experimental. U32 class/token-index Matrix
 storage, FP32 Linear, Embedding, LayerNorm, causal multi-head attention, GELU,
@@ -129,23 +161,33 @@ Linear+Linear+SwiGLU gate/up replacements while preserving many-to-one semantic
 provenance and eliminated-intermediate lifetime evidence.
 Unqualified and training candidates retain source execution with explicit
 fallback evidence.
-Current non-mutating ML kernels now record generated contracts and semantic
-attributes; AdamW stays on the explicit compatibility route until versioned
-SSA mutation lands. Reached `GradientTape` nodes now attach their forward
+Current ML kernels record generated contracts and semantic attributes.
+Schema-owned Philox uniform/normal and inverted Dropout preserve explicit
+64-bit seeds; capture selects replay variants with private device counters, and
+the Dropout adjoint regenerates the exact forward mask. A Rust-native Dropout
+module provides recursive train/eval behavior. Private
+in-place AdamW state/parameter/moment writes produce fresh semantic SSA values
+aliasing their prior versions while retaining the same physical storage;
+captured optimizer nodes therefore have schema-owned provenance. Reached
+`GradientTape` nodes now attach their forward
 outputs and contiguous backward operation ranges to the captured semantic
-graph. Additional physical OaDna/DNN providers, replay RNG, broader transient allocation policy,
+graph. Additional physical OaDna/DNN providers, shared/serialized RNG streams, broader transient allocation policy,
 live training sessions, and most of the OA ML
 operation/module/shader catalog remain unported. A donor-backed `TrainingLoop`
 now owns exact eager/captured completion, epoch/work accounting, loss metrics,
 ordered callback control, device timing, automatic prepare/record capture,
 requested recapture, source-preserving whole-program capture fallback, and
 transactional command pre-recording before the first replay, plus conservative
-allocation-ordinal stable frames after eager warm-up; built-in callbacks,
-schedules, and general optimizer composition remain Planned.
-Generalized autograd, recurrent streaming state, stable checkpoint
-compatibility, and the remainder of the NLP suite remain Planned. The first canonical Char-RNN
-row now completes the exact 300-step corpus/sampler/model workload, reaches the
-C++ small-loss and accuracy regime, and reproduces its fixed-prompt greedy text.
+allocation-ordinal stable frames after eager warm-up. Progress, summary, CSV,
+validation, checkpoint/restore-best, early-stop, phase, and learning-rate-schedule
+callbacks are connected. The eager iterator accepts the object-safe optimizer
+contract; SGD, Adam, AdamW, and Muon use donor-backed GPU updates, while Adam,
+AdamW, exact no-momentum SGD, and Muon persistence share the native `.oam`
+codec. Generalized autograd, recurrent streaming state, live training control,
+captured device-state Muon, and the remainder of the NLP suite remain Planned. The canonical
+Char-RNN and Char-Transformer rows complete their exact 300-step
+corpus/sampler/model workloads, reach the C++ loss and accuracy gates, and
+reproduce their fixed-prompt greedy text.
 Its current wall time is not performance parity.
 
 ## Required baseline

@@ -3,6 +3,7 @@ use crate::{
 	runtime::{
 		BufferAccess, PushConstant,
 		executable_graph::{BufferHazard, ComputeNode, ExecutableGraph},
+		shader::PhysicalWriteContract,
 	},
 };
 
@@ -12,6 +13,13 @@ use super::{Buffer, Device, TimestampPair, pipeline::ComputePipeline};
 
 pub(super) struct CommandPool {
 	handle: ash::vk::CommandPool,
+	kind: CommandPoolKind,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum CommandPoolKind {
+	Compute,
+	VideoDecode,
 }
 
 pub(in crate::runtime) struct RecordedCommandBuffer {
@@ -22,6 +30,7 @@ pub(in crate::runtime) struct RecordedCommandBuffer {
 enum CommandBufferAllocation {
 	Owned {
 		handle: ash::vk::CommandBuffer,
+		pool: CommandPoolKind,
 		_resources: Vec<Buffer>,
 		_accesses: Vec<BufferAccess>,
 	},
@@ -45,10 +54,15 @@ struct PreparedDispatch<'a> {
 	node: &'a ComputeNode,
 	pipeline: &'a ComputePipeline,
 	push: Vec<u8>,
+	physical_write: Option<PhysicalWriteContract>,
 }
 
 impl CommandPool {
-	pub(super) fn new(device: &ash::Device, queue_family: u32) -> Result<Self> {
+	pub(super) fn new(
+		device: &ash::Device,
+		queue_family: u32,
+		kind: CommandPoolKind,
+	) -> Result<Self> {
 		let create_info = ash::vk::CommandPoolCreateInfo::default()
 			.flags(ash::vk::CommandPoolCreateFlags::TRANSIENT)
 			.queue_family_index(queue_family);
@@ -58,12 +72,31 @@ impl CommandPool {
 		let handle = unsafe { device.create_command_pool(&create_info, None) }
 			.map_err(|source| Error::backend_failure("Vulkan", "command-pool creation", source))?;
 
-		Ok(Self { handle })
+		Ok(Self { handle, kind })
 	}
 
 	pub(super) fn record_empty(&mut self, device: &ash::Device) -> Result<RecordedCommandBuffer> {
 		let command_buffer =
 			self.begin(device, ash::vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT)?;
+		self.finish(device, command_buffer, Vec::new(), Vec::new(), None, None)
+	}
+
+	#[cfg(test)]
+	pub(super) fn record_custom(
+		&mut self,
+		device: &ash::Device,
+		record: impl FnOnce(ash::vk::CommandBuffer) -> Result<()>,
+	) -> Result<RecordedCommandBuffer> {
+		let command_buffer =
+			self.begin(device, ash::vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT)?;
+		if let Err(error) = record(command_buffer) {
+			// SAFETY: recording failed before submission and this pool exclusively owns
+			// the command buffer, which may be freed from the recording state.
+			unsafe {
+				device.free_command_buffers(self.handle, &[command_buffer]);
+			}
+			return Err(error);
+		}
 		self.finish(device, command_buffer, Vec::new(), Vec::new(), None, None)
 	}
 
@@ -198,6 +231,7 @@ impl CommandPool {
 			}),
 			None => CommandBufferAllocation::Owned {
 				handle: command_buffer,
+				pool: self.kind,
 				_resources: resources,
 				_accesses: accesses,
 			},
@@ -263,11 +297,56 @@ fn prepare_dispatch<'a>(
 			pipeline.push_constant_size()
 		)));
 	}
+	let physical_write = node.kernel.artifact().physical_write;
+	if let Some(contract) = physical_write {
+		let accesses = node
+			.buffers
+			.iter()
+			.map(|usage| usage.access)
+			.collect::<Vec<_>>();
+		validate_physical_write_accesses(node.operation, &accesses, contract)?;
+	}
 	Ok(PreparedDispatch {
 		node,
 		pipeline,
 		push,
+		physical_write,
 	})
+}
+
+fn validate_physical_write_accesses(
+	operation: &'static str,
+	accesses: &[BufferAccess],
+	contract: PhysicalWriteContract,
+) -> Result<()> {
+	let mut declared = vec![false; accesses.len()];
+	for write in contract.writes {
+		let binding = usize::from(write.binding);
+		let Some(access) = accesses.get(binding).copied() else {
+			return Err(Error::internal(format!(
+				"{operation} physical-write contract names missing binding {binding}"
+			)));
+		};
+		if declared[binding] {
+			return Err(Error::internal(format!(
+				"{operation} physical-write contract repeats binding {binding}"
+			)));
+		}
+		if access == BufferAccess::Read {
+			return Err(Error::internal(format!(
+				"{operation} physical-write binding {binding} is bound read-only"
+			)));
+		}
+		declared[binding] = true;
+	}
+	for (binding, access) in accesses.iter().copied().enumerate() {
+		if access != BufferAccess::Read && !declared[binding] {
+			return Err(Error::internal(format!(
+				"{operation} writable binding {binding} has no physical-write contract"
+			)));
+		}
+	}
+	Ok(())
 }
 
 fn record_barriers(
@@ -313,8 +392,14 @@ fn record_dispatch(
 ) {
 	// SAFETY: the command buffer is recording; pipeline, layout, shared descriptor
 	// set, and every descriptor-backed buffer remain live through retained graph
-	// resources. Preflight proved exact push ABI and legal nonzero workgroups.
+	// resources. Preflight proved exact push ABI, legal nonzero workgroups, and
+	// agreement between classified writable bindings and the selected artifact's
+	// physical-write contract.
 	unsafe {
+		debug_assert_eq!(
+			dispatch.physical_write,
+			dispatch.node.kernel.artifact().physical_write
+		);
 		device.cmd_bind_pipeline(
 			command_buffer,
 			ash::vk::PipelineBindPoint::COMPUTE,
@@ -378,6 +463,13 @@ impl RecordedCommandBuffer {
 		}
 	}
 
+	pub(super) fn pool_kind(&self) -> CommandPoolKind {
+		match &self.allocation {
+			CommandBufferAllocation::Owned { pool, .. } => *pool,
+			CommandBufferAllocation::Reusable(_) => CommandPoolKind::Compute,
+		}
+	}
+
 	pub(in crate::runtime) fn timing(&self) -> Option<TimestampPair> {
 		self.timing.clone()
 	}
@@ -389,9 +481,9 @@ impl RecordedCommandBuffer {
 		}
 	}
 
-	pub(super) fn into_owned_handle(self) -> Option<ash::vk::CommandBuffer> {
+	pub(super) fn into_owned_handle(self) -> Option<(ash::vk::CommandBuffer, CommandPoolKind)> {
 		match self.allocation {
-			CommandBufferAllocation::Owned { handle, .. } => Some(handle),
+			CommandBufferAllocation::Owned { handle, pool, .. } => Some((handle, pool)),
 			CommandBufferAllocation::Reusable(_) => None,
 		}
 	}
@@ -414,8 +506,26 @@ impl Drop for ReusableCommandBufferInner {
 
 #[cfg(test)]
 mod tests {
-	use super::encode_push_constants;
-	use crate::runtime::PushConstant;
+	use super::{encode_push_constants, validate_physical_write_accesses};
+	use crate::runtime::{
+		BufferAccess, PushConstant,
+		shader::{
+			CollisionPolicy, LogicalWriteDomain, PhysicalWrite, PhysicalWriteContract, TailPolicy,
+			WorkspacePartition, WriteExtent, WritePartition,
+		},
+	};
+
+	const WRITE_OUTPUT: PhysicalWriteContract = PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::OutputElements,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::OneElement,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	};
 
 	#[test]
 	fn prepends_bindless_indices_before_typed_push_payload() -> crate::Result<()> {
@@ -436,5 +546,37 @@ mod tests {
 		expected.extend_from_slice(&(-1.5_f32).to_ne_bytes());
 		assert_eq!(encoded, expected);
 		Ok(())
+	}
+
+	#[test]
+	fn physical_write_preflight_accepts_the_exact_writable_binding_set() -> crate::Result<()> {
+		validate_physical_write_accesses(
+			"test.compute",
+			&[BufferAccess::Read, BufferAccess::Write],
+			WRITE_OUTPUT,
+		)
+	}
+
+	#[test]
+	fn physical_write_preflight_rejects_host_candidate_disagreement() {
+		for (accesses, message) in [
+			(
+				&[BufferAccess::Read, BufferAccess::Read][..],
+				"binding 1 is bound read-only",
+			),
+			(
+				&[
+					BufferAccess::Read,
+					BufferAccess::Write,
+					BufferAccess::ReadWrite,
+				][..],
+				"writable binding 2 has no physical-write contract",
+			),
+			(&[BufferAccess::Read][..], "names missing binding 1"),
+		] {
+			let error = validate_physical_write_accesses("test.compute", accesses, WRITE_OUTPUT)
+				.expect_err("mismatched write access must fail before command recording");
+			assert!(error.message().contains(message), "{}", error.message());
+		}
 	}
 }

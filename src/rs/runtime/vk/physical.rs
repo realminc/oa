@@ -21,9 +21,25 @@ pub(super) struct DeviceLimits {
 pub(in crate::runtime) struct PhysicalDevice {
 	pub(super) handle: ash::vk::PhysicalDevice,
 	pub(in crate::runtime) compute_queue_family: u32,
+	pub(super) video: VideoPhysicalCapabilities,
 	pub(super) features: DeviceFeatures,
 	pub(super) limits: DeviceLimits,
 	pub(in crate::runtime) info: PhysicalDeviceInfo,
+}
+
+#[derive(Clone, Copy, Default)]
+pub(super) struct VideoPhysicalCapabilities {
+	pub(super) decode_queue_family: Option<u32>,
+	pub(super) encode_queue_family: Option<u32>,
+	pub(super) decode_result_status_queries: bool,
+	pub(super) encode_result_status_queries: bool,
+	pub(super) h264_decode: bool,
+	pub(super) h265_decode: bool,
+	pub(super) av1_decode: bool,
+	pub(super) vp9_decode: bool,
+	pub(super) h264_encode: bool,
+	pub(super) h265_encode: bool,
+	pub(super) av1_encode: bool,
 }
 
 #[derive(Clone)]
@@ -109,6 +125,7 @@ impl PhysicalDevice {
 					.raw()
 					.get_physical_device_queue_family_properties(handle)
 			};
+			let video = query_video_capabilities(instance, handle, &queue_families)?;
 
 			if properties.api_version < ash::vk::API_VERSION_1_3 {
 				if matches!(selection, DeviceSelection::Index(_)) {
@@ -174,6 +191,7 @@ impl PhysicalDevice {
 			let candidate = Self {
 				handle,
 				compute_queue_family,
+				video,
 				features,
 				limits,
 				info: PhysicalDeviceInfo {
@@ -206,6 +224,91 @@ impl PhysicalDevice {
 				)
 			})
 	}
+}
+
+fn query_video_capabilities(
+	instance: &Instance,
+	handle: ash::vk::PhysicalDevice,
+	queue_families: &[ash::vk::QueueFamilyProperties],
+) -> Result<VideoPhysicalCapabilities> {
+	// SAFETY: the physical device belongs to the live instance and enumeration
+	// only writes immutable extension records owned by the caller.
+	let extensions = unsafe { instance.raw().enumerate_device_extension_properties(handle) }
+		.map_err(|source| {
+			Error::backend_failure("Vulkan", "video device-extension enumeration", source)
+		})?;
+	let has_extension = |name: &[u8]| {
+		extensions.iter().any(|property| {
+			// SAFETY: Vulkan guarantees a NUL-terminated extension_name array.
+			unsafe { CStr::from_ptr(property.extension_name.as_ptr()) }.to_bytes() == name
+		})
+	};
+	let video_queue = has_extension(b"VK_KHR_video_queue");
+	let result_status_support = if video_queue {
+		query_video_result_status_support(instance, handle, queue_families.len())
+	} else {
+		vec![false; queue_families.len()]
+	};
+	let queue_family = |flag| {
+		queue_families
+			.iter()
+			.enumerate()
+			.filter(|(_, properties)| {
+				properties.queue_count > 0 && properties.queue_flags.contains(flag)
+			})
+			.min_by_key(|(index, _)| (!result_status_support[*index], *index))
+			.and_then(|(index, _)| u32::try_from(index).ok())
+	};
+	let decode_queue_family = (video_queue && has_extension(b"VK_KHR_video_decode_queue"))
+		.then(|| queue_family(ash::vk::QueueFlags::VIDEO_DECODE_KHR))
+		.flatten();
+	let encode_queue_family = (video_queue && has_extension(b"VK_KHR_video_encode_queue"))
+		.then(|| queue_family(ash::vk::QueueFlags::VIDEO_ENCODE_KHR))
+		.flatten();
+	Ok(VideoPhysicalCapabilities {
+		decode_queue_family,
+		encode_queue_family,
+		decode_result_status_queries: decode_queue_family
+			.and_then(|family| result_status_support.get(family as usize))
+			.copied()
+			.unwrap_or(false),
+		encode_result_status_queries: encode_queue_family
+			.and_then(|family| result_status_support.get(family as usize))
+			.copied()
+			.unwrap_or(false),
+		h264_decode: decode_queue_family.is_some() && has_extension(b"VK_KHR_video_decode_h264"),
+		h265_decode: decode_queue_family.is_some() && has_extension(b"VK_KHR_video_decode_h265"),
+		av1_decode: decode_queue_family.is_some() && has_extension(b"VK_KHR_video_decode_av1"),
+		vp9_decode: decode_queue_family.is_some() && has_extension(b"VK_KHR_video_decode_vp9"),
+		h264_encode: encode_queue_family.is_some() && has_extension(b"VK_KHR_video_encode_h264"),
+		h265_encode: encode_queue_family.is_some() && has_extension(b"VK_KHR_video_encode_h265"),
+		av1_encode: encode_queue_family.is_some() && has_extension(b"VK_KHR_video_encode_av1"),
+	})
+}
+
+fn query_video_result_status_support(
+	instance: &Instance,
+	handle: ash::vk::PhysicalDevice,
+	queue_family_count: usize,
+) -> Vec<bool> {
+	let mut status =
+		vec![ash::vk::QueueFamilyQueryResultStatusPropertiesKHR::default(); queue_family_count];
+	let mut properties = status
+		.iter_mut()
+		.map(|status| ash::vk::QueueFamilyProperties2::default().push_next(status))
+		.collect::<Vec<_>>();
+	// SAFETY: `handle` belongs to the live instance. Every output structure and
+	// its result-status pNext record is initialized and remains live for the call.
+	unsafe {
+		instance
+			.raw()
+			.get_physical_device_queue_family_properties2(handle, &mut properties);
+	}
+	drop(properties);
+	status
+		.into_iter()
+		.map(|properties| properties.query_result_status_support != ash::vk::FALSE)
+		.collect()
 }
 
 fn format_api_version(version: u32) -> String {

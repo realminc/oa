@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "family": "cryptography_hash",
+  "domain": "cryptography::hash",
+  "dtype": "u8",
+  "contracts": [
+    {"name":"shake128","input_kinds":["matrix"],"output_kinds":["matrix"],"shape_rule":"explicit","dtype_rule":"u8","attributes":[["output_length","unsigned_integer"]]},
+    {"name":"shake256","input_kinds":["matrix"],"output_kinds":["matrix"],"shape_rule":"explicit","dtype_rule":"u8","attributes":[["output_length","unsigned_integer"]]},
+    {"name":"keccak_f1600","input_kinds":["matrix"],"output_kinds":["matrix"],"shape_rule":"match_input","dtype_rule":"u8","attributes":[]},
+    {"name":"merkle_root","input_kinds":["matrix"],"output_kinds":["matrix"],"shape_rule":"explicit","dtype_rule":"u8","attributes":[]}
+  ],
+  "kernels": [
+    {"stable_id":200,"name":"shake128","kernel_id":"CryptographyShake128U8","source":"src/slang/cryptography/hash/shake128.slang","workgroup_size":[256,1,1],"semantic_operation":"shake128","push_fields":[["input_index","uint32"],["output_index","uint32"],["count","uint32"],["message_len","uint32"],["num_blocks","uint32"],["squeeze_u64","uint32"]]},
+    {"stable_id":201,"name":"shake256","kernel_id":"CryptographyShake256U8","source":"src/slang/cryptography/hash/shake256.slang","workgroup_size":[256,1,1],"semantic_operation":"shake256","push_fields":[["input_index","uint32"],["output_index","uint32"],["count","uint32"],["message_len","uint32"],["num_blocks","uint32"],["squeeze_u64","uint32"]]},
+    {"stable_id":202,"name":"keccak_f1600","kernel_id":"CryptographyKeccakF1600U8","source":"src/slang/cryptography/hash/keccak_f1600.slang","workgroup_size":[256,1,1],"semantic_operation":"keccak_f1600","push_fields":[["input_index","uint32"],["output_index","uint32"],["count","uint32"]]},
+    {"stable_id":203,"name":"merkle_reduce","kernel_id":"CryptographyMerkleReduceU8","source":"src/slang/cryptography/hash/merkle_reduce.slang","workgroup_size":[256,1,1],"semantic_operation":"merkle_root","push_fields":[["input_index","uint32"],["output_index","uint32"],["count","uint32"],["hash_bytes","uint32"]]},
+    {"stable_id":204,"name":"merkle_copy","kernel_id":"CryptographyMerkleCopyU8","source":"src/slang/cryptography/hash/merkle_copy.slang","workgroup_size":[256,1,1],"semantic_operation":"merkle_root","push_fields":[["input_index","uint32"],["output_index","uint32"],["count","uint32"]]}
+  ]
+}

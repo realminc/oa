@@ -233,12 +233,7 @@ impl Module for CharRnn {
 
 /// Canonical 10,875-parameter character Transformer language model.
 pub struct CharTransformer {
-	registry: ModuleRegistry,
-	token_embedding: Rc<nn::Embedding>,
-	position_embedding: Rc<nn::Embedding>,
-	block: Rc<nn::TransformerBlock>,
-	final_norm: Rc<nn::LayerNorm>,
-	head: Rc<nn::Linear>,
+	inner: nn::Transformer,
 }
 
 impl CharTransformer {
@@ -248,48 +243,18 @@ impl CharTransformer {
 	///
 	/// Returns an error when parameter construction or registration fails.
 	pub fn new(engine: &Engine) -> Result<Self> {
-		let token_embedding = Rc::new(nn::Embedding::with_seed(
+		let inner = nn::Transformer::with_seed(
 			engine,
 			CHAR_VOCAB_SIZE,
-			MODEL_WIDTH,
-			RNG_SEED,
-		)?);
-		let position_embedding = Rc::new(nn::Embedding::with_seed(
-			engine,
 			CONTEXT_LENGTH,
-			MODEL_WIDTH,
-			RNG_SEED.wrapping_add(1),
-		)?);
-		let block = Rc::new(nn::TransformerBlock::with_seed(
-			engine,
 			MODEL_WIDTH,
 			HIDDEN_WIDTH,
-			CONTEXT_LENGTH,
+			1,
 			1,
 			1.0e-5,
-			RNG_SEED.wrapping_add(2),
-		)?);
-		let final_norm = Rc::new(nn::LayerNorm::new(engine, MODEL_WIDTH, 1.0e-5)?);
-		let head = Rc::new(nn::Linear::with_seed(
-			engine,
-			MODEL_WIDTH,
-			CHAR_VOCAB_SIZE,
-			RNG_SEED.wrapping_add(8),
-		)?);
-		let mut registry = ModuleRegistry::new();
-		registry.register_module("tok_embed", token_embedding.clone())?;
-		registry.register_module("pos_embed", position_embedding.clone())?;
-		registry.register_module("block", block.clone())?;
-		registry.register_module("ln_final", final_norm.clone())?;
-		registry.register_module("head", head.clone())?;
-		Ok(Self {
-			registry,
-			token_embedding,
-			position_embedding,
-			block,
-			final_norm,
-			head,
-		})
+			RNG_SEED,
+		)?;
+		Ok(Self { inner })
 	}
 
 	/// Evaluate all-position next-character logits for `[B, 16]` tokens.
@@ -298,32 +263,7 @@ impl CharTransformer {
 	///
 	/// Returns an error unless tokens are nonempty U32 `[B, 16]`, or recording fails.
 	pub fn forward(&self, tokens: &Matrix) -> Result<Matrix> {
-		let [batch, sequence] = tokens.shape() else {
-			return Err(Error::invalid_argument(
-				"Char Transformer tokens must have shape [B, 16]",
-			));
-		};
-		if *batch == 0 || *sequence != CONTEXT_LENGTH || tokens.dtype() != DType::U32 {
-			return Err(Error::invalid_argument(
-				"Char Transformer tokens must be nonempty U32 [B, 16]",
-			));
-		}
-		let rows = batch
-			.checked_mul(*sequence)
-			.ok_or_else(|| Error::invalid_argument("Transformer row count overflows usize"))?;
-		let position_values = (0..rows)
-			.map(|index| (index % CONTEXT_LENGTH) as u32)
-			.collect::<Vec<_>>();
-		let position_ids =
-			Matrix::from_slice_handle(tokens.engine_handle(), vec![rows], &position_values)?;
-		let token_values = self
-			.token_embedding
-			.forward(tokens)?
-			.reshape([rows, MODEL_WIDTH])?;
-		let position_values = self.position_embedding.forward(&position_ids)?;
-		let value = crate::matrix::add(&token_values, &position_values)?;
-		let value = self.block.forward(&value)?;
-		self.head.forward(&self.final_norm.forward(&value)?)
+		self.inner.forward(tokens)
 	}
 }
 
@@ -333,7 +273,7 @@ impl Module for CharTransformer {
 	}
 
 	fn registry(&self) -> &ModuleRegistry {
-		&self.registry
+		self.inner.registry()
 	}
 }
 
@@ -355,25 +295,13 @@ pub fn accuracy(logits: &Matrix, targets: &Matrix) -> Result<f32> {
 		|| *classes == 0
 		|| logits.dtype() != DType::F32
 		|| targets.dtype() != DType::U32
-		|| targets.num_elements() != *rows
+		|| targets.shape() != [*rows]
 	{
 		return Err(Error::invalid_argument(
-			"NLP accuracy requires nonempty F32 logits [N, C] and N U32 targets",
+			"NLP accuracy requires nonempty F32 logits [N, C] and U32 targets [N]",
 		));
 	}
-	let logits = logits.read_f32()?;
-	let targets = targets.read::<u32>()?;
-	let mut correct = 0_usize;
-	for (row, target) in targets.iter().copied().enumerate() {
-		let begin = row * classes;
-		let predicted = logits[begin..begin + classes]
-			.iter()
-			.enumerate()
-			.max_by(|left, right| left.1.total_cmp(right.1))
-			.map_or(0, |(column, _)| column);
-		correct += usize::from(predicted == target as usize);
-	}
-	Ok(correct as f32 / *rows as f32)
+	super::metric::accuracy(logits, targets)
 }
 
 /// Greedily generate characters with the canonical left-filled/sliding window.

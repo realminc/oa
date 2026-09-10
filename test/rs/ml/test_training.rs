@@ -330,7 +330,7 @@ test_vk!(
 		assert_eq!(targets.read::<u32>()?, target_values);
 		let layer = oa::ml::nn::Linear::from_matrices(weight, bias)?;
 		let weight_parameter = layer.weight();
-		let bias_parameter = layer.bias();
+		let bias_parameter = layer.bias().expect("biased Linear is missing its bias");
 		let mut optimizer = oa::ml::AdamW::new(layer.parameters(), LEARNING_RATE)?;
 
 		let tape = oa::ml::GradientTape::new();
@@ -372,6 +372,205 @@ test_vk!(
 		optimizer.zero_grad();
 		assert!(weight_parameter.gradient().is_none());
 		assert!(bias_parameter.gradient().is_none());
+		Ok(())
+	}
+);
+
+test_vk!(
+	linear_preserves_arbitrary_leading_dimensions_and_adjoint,
+	engine,
+	{
+		const ROWS: usize = 4;
+		const INPUT_FEATURES: usize = 3;
+		const OUTPUT_FEATURES: usize = 2;
+		let input_values = [
+			0.2_f32, -0.4, 0.8, 1.1, -0.7, 0.3, 0.5, -0.2, 0.9, -1.0, 0.1, 0.6,
+		];
+		let weight_values = [0.4_f32, -0.3, 0.7, -0.6, 0.9, 0.2];
+		let bias_values = [0.1_f32, -0.2];
+		let target_values = [0.0_f32, -0.4, 0.7, 0.2, -0.5, 0.8, 0.3, -0.1];
+		let expected_output = cpu_linear(
+			&input_values,
+			&weight_values,
+			&bias_values,
+			ROWS,
+			INPUT_FEATURES,
+			OUTPUT_FEATURES,
+		);
+		let output_gradient = expected_output
+			.iter()
+			.zip(target_values)
+			.map(|(output, target)| 2.0 * (output - target) / expected_output.len() as f32)
+			.collect::<Vec<_>>();
+		let mut expected_input_gradient = vec![0.0_f32; input_values.len()];
+		let mut expected_weight_gradient = vec![0.0_f32; weight_values.len()];
+		let mut expected_bias_gradient = vec![0.0_f32; bias_values.len()];
+		for row in 0..ROWS {
+			for output_feature in 0..OUTPUT_FEATURES {
+				let gradient = output_gradient[row * OUTPUT_FEATURES + output_feature];
+				expected_bias_gradient[output_feature] += gradient;
+				for input_feature in 0..INPUT_FEATURES {
+					expected_input_gradient[row * INPUT_FEATURES + input_feature] +=
+						gradient * weight_values[output_feature * INPUT_FEATURES + input_feature];
+					expected_weight_gradient[output_feature * INPUT_FEATURES + input_feature] +=
+						gradient * input_values[row * INPUT_FEATURES + input_feature];
+				}
+			}
+		}
+
+		let embedding = oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(
+			&engine,
+			[ROWS, INPUT_FEATURES],
+			&input_values,
+		)?)?;
+		let indices = oa::Matrix::from_slice(&engine, [2, 2], &[0_u32, 1, 2, 3])?;
+		let layer = oa::ml::nn::Linear::from_matrices(
+			oa::Matrix::from_f32(&engine, [OUTPUT_FEATURES, INPUT_FEATURES], &weight_values)?,
+			oa::Matrix::from_f32(&engine, [OUTPUT_FEATURES], &bias_values)?,
+		)?;
+		let target = oa::Matrix::from_f32(&engine, [2, 2, OUTPUT_FEATURES], &target_values)?;
+		let tape = oa::ml::GradientTape::new();
+		let output = layer.forward(&embedding.forward(&indices)?)?;
+		assert_eq!(output.shape(), [2, 2, OUTPUT_FEATURES]);
+		let loss = oa::ml::loss::mse(&output, &target)?;
+		tape.backward(&loss)?;
+
+		assert_close(&output.read_f32()?, &expected_output, 1.0e-5);
+		assert_close(
+			&embedding
+				.weight()
+				.gradient()
+				.expect("rank-three Linear input adjoint is missing")
+				.read_f32()?,
+			&expected_input_gradient,
+			2.0e-5,
+		);
+		assert_close(
+			&layer
+				.weight()
+				.gradient()
+				.expect("rank-three Linear weight adjoint is missing")
+				.read_f32()?,
+			&expected_weight_gradient,
+			2.0e-5,
+		);
+		assert_close(
+			&layer
+				.bias()
+				.expect("biased Linear is missing its bias")
+				.gradient()
+				.expect("rank-three Linear bias adjoint is missing")
+				.read_f32()?,
+			&expected_bias_gradient,
+			2.0e-5,
+		);
+		Ok(())
+	}
+);
+
+test_vk!(
+	cross_entropy_capture_retains_one_semantic_operation_with_three_executable_nodes,
+	engine,
+	{
+		let logits = oa::Matrix::from_f32(&engine, [2, 3], &[1.0, 2.0, 3.0, -1.0, 0.5, 0.25])?;
+		let targets = oa::Matrix::from_slice(&engine, [2], &[2_u32, 1])?;
+		let (plan, loss) = engine.capture(|| oa::ml::loss::cross_entropy(&logits, &targets))?;
+		let diagnostics = plan.diagnostics();
+		let lowering = plan.semantic_lowering();
+
+		assert_eq!(diagnostics.semantic_operation_count(), 1);
+		assert_eq!(diagnostics.node_count(), 3);
+		assert_eq!(lowering.schema_owned_node_count(), 3);
+		assert_eq!(lowering.compatibility_node_count(), 0);
+		assert_eq!(lowering.direct_op_count(), 0);
+		assert_eq!(lowering.decomposed_op_count(), 1);
+		assert_eq!(lowering.maximum_nodes_per_op(), 3);
+		let operation = plan.semantic_graph().operations()[0].id();
+		assert_eq!(lowering.executable_node_count(operation), 3);
+
+		engine.submit(&plan)?.wait()?;
+		let expected = cpu_cross_entropy(&[1.0, 2.0, 3.0, -1.0, 0.5, 0.25], &[2, 1], 3);
+		assert!((loss.read_f32()?[0] - expected).abs() <= 1.0e-5);
+		Ok(())
+	}
+);
+
+test_vk!(
+	dropout_backward_reuses_the_exact_forward_philox_mask,
+	engine,
+	{
+		const BATCH: usize = 2;
+		const FEATURES: usize = 2;
+		let input_values = [1.0_f32, 0.25, -0.5, 1.5];
+		let weight_values = [0.8_f32, -0.3, 0.4, 0.9];
+		let bias_values = [0.2_f32, -0.1];
+		let target_values = [0_u32, 1];
+		let input = oa::Matrix::from_f32(&engine, [BATCH, FEATURES], &input_values)?;
+		let weight = oa::Matrix::from_f32(&engine, [FEATURES, FEATURES], &weight_values)?;
+		let bias = oa::Matrix::from_f32(&engine, [FEATURES], &bias_values)?;
+		let targets = oa::Matrix::from_slice(&engine, [BATCH], &target_values)?;
+		let layer = oa::ml::nn::Linear::from_matrices(weight, bias)?;
+
+		let tape = oa::ml::GradientTape::new();
+		let logits = layer.forward(&input)?;
+		let dropped = oa::matrix::dropout(&logits, 0.5, 0x4452_4f50_5554)?;
+		let loss = oa::ml::loss::cross_entropy(&dropped, &targets)?;
+		tape.backward(&loss)?;
+
+		let logits = logits.read_f32()?;
+		let dropped = dropped.read_f32()?;
+		let mut logits_gradient = [0.0_f32; BATCH * FEATURES];
+		for batch in 0..BATCH {
+			let row = &dropped[batch * FEATURES..(batch + 1) * FEATURES];
+			let maximum = row.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+			let denominator = row
+				.iter()
+				.map(|value| (*value - maximum).exp())
+				.sum::<f32>();
+			for feature in 0..FEATURES {
+				let index = batch * FEATURES + feature;
+				let probability = (dropped[index] - maximum).exp() / denominator;
+				let target = feature == target_values[batch] as usize;
+				let dropout_scale = if dropped[index] == 0.0 {
+					0.0
+				} else {
+					dropped[index] / logits[index]
+				};
+				logits_gradient[index] =
+					(probability - if target { 1.0 } else { 0.0 }) * dropout_scale / BATCH as f32;
+			}
+		}
+		let mut expected_weight = [0.0_f32; FEATURES * FEATURES];
+		let mut expected_bias = [0.0_f32; FEATURES];
+		for batch in 0..BATCH {
+			for output in 0..FEATURES {
+				let gradient = logits_gradient[batch * FEATURES + output];
+				expected_bias[output] += gradient;
+				for input_feature in 0..FEATURES {
+					expected_weight[output * FEATURES + input_feature] +=
+						gradient * input_values[batch * FEATURES + input_feature];
+				}
+			}
+		}
+		assert_close(
+			&layer
+				.weight()
+				.gradient()
+				.expect("Dropout backward did not reach the weight")
+				.read_f32()?,
+			&expected_weight,
+			2.0e-5,
+		);
+		assert_close(
+			&layer
+				.bias()
+				.expect("biased Linear is missing its bias")
+				.gradient()
+				.expect("Dropout backward did not reach the bias")
+				.read_f32()?,
+			&expected_bias,
+			2.0e-5,
+		);
 		Ok(())
 	}
 );
@@ -473,8 +672,35 @@ test_vk!(
 			diagnostics.schema_owned_node_count() + diagnostics.compatibility_node_count(),
 			diagnostics.node_count()
 		);
-		assert!(diagnostics.compatibility_node_count() > 0);
-		assert!(diagnostics.schema_owned_node_count() > diagnostics.compatibility_node_count());
+		assert_eq!(diagnostics.compatibility_node_count(), 0);
+		assert_eq!(
+			diagnostics.schema_owned_node_count(),
+			diagnostics.node_count()
+		);
+		let semantic = program.semantic_graph();
+		let advance = semantic
+			.operations()
+			.iter()
+			.find(|operation| operation.name() == "oa::ml::optim::adamw_graph_advance")
+			.expect("captured optimizer state advance must retain semantic ownership");
+		assert_eq!(advance.mutated_inputs().len(), 1);
+		assert_eq!(advance.aliases().len(), 1);
+		assert_ne!(advance.inputs()[0], Some(advance.outputs()[0]));
+		assert_eq!(advance.aliases()[0].input(), advance.inputs()[0].unwrap());
+		assert_eq!(advance.aliases()[0].output(), advance.outputs()[0]);
+		let updates = semantic
+			.operations()
+			.iter()
+			.filter(|operation| operation.name() == "oa::ml::optim::adamw_graph")
+			.collect::<Vec<_>>();
+		assert_eq!(updates.len(), captured_layer.parameters().len());
+		for update in updates {
+			assert_eq!(update.mutated_inputs().len(), 3);
+			assert_eq!(update.aliases().len(), 3);
+			for alias in update.aliases() {
+				assert_ne!(alias.input(), alias.output());
+			}
+		}
 		assert!(diagnostics.semantic_autograd_attachment_count() > 0);
 		assert_eq!(
 			diagnostics.semantic_autograd_expanded_count(),
@@ -509,6 +735,75 @@ test_vk!(
 				.kind(),
 			oa::ErrorKind::FailedPrecondition
 		);
+		Ok(())
+	}
+);
+
+test_vk!(
+	captured_training_program_advances_dropout_forward_and_backward,
+	engine,
+	{
+		let input = oa::Matrix::from_f32(
+			&engine,
+			[4, 2],
+			&[1.0, 0.0, 0.0, 1.0, -1.0, 0.5, 0.25, -0.75],
+		)?;
+		let targets = oa::Matrix::from_slice(&engine, [4], &[0_u32, 1, 1, 0])?;
+		let layer = oa::ml::nn::Linear::with_seed(&engine, 2, 2, 0x4452_4f50)?;
+		let mut optimizer = oa::ml::AdamW::new(layer.parameters(), 0.01)?;
+		let mut program = oa::ml::TrainingProgram::capture(&engine, &mut optimizer, || {
+			let tape = oa::ml::GradientTape::new();
+			let logits = layer.forward(&input)?;
+			let dropped = oa::matrix::dropout(&logits, 0.25, 0x5245_504c_4159)?;
+			let loss = oa::ml::loss::cross_entropy(&dropped, &targets)?;
+			tape.backward(&loss)?;
+			Ok(loss)
+		})?;
+		let operations = program
+			.semantic_graph()
+			.operations()
+			.iter()
+			.map(|operation| operation.name())
+			.collect::<Vec<_>>();
+		assert_eq!(
+			operations
+				.iter()
+				.filter(|name| **name == "oa::matrix::dropout")
+				.count(),
+			1
+		);
+		assert_eq!(
+			operations
+				.iter()
+				.filter(|name| **name == "oa::matrix::dropout_backward")
+				.count(),
+			1
+		);
+		assert_eq!(
+			operations
+				.iter()
+				.filter(|name| **name == "oa::matrix::philox_replay_advance")
+				.count(),
+			2
+		);
+		assert_eq!(program.diagnostics().compatibility_node_count(), 0);
+
+		let first_loss = program.replay_and_wait(&engine, &mut optimizer)?;
+		let second_loss = program.replay_and_wait(&engine, &mut optimizer)?;
+		assert!(first_loss.is_finite());
+		assert!(second_loss.is_finite());
+		assert_eq!(optimizer.step_count(), 2);
+		assert_eq!(program.diagnostics().command_recording_count(), 1);
+		assert_eq!(program.diagnostics().command_cache_hit_count(), 1);
+		for parameter in layer.parameters() {
+			assert!(
+				parameter
+					.data()
+					.read_f32()?
+					.iter()
+					.all(|value| value.is_finite())
+			);
+		}
 		Ok(())
 	}
 );
@@ -704,11 +999,31 @@ test_vk!(
 		assert_eq!(rnn.input_size(), 2);
 		assert_eq!(rnn.hidden_size(), 3);
 		assert_eq!(rnn.num_layers(), 2);
+		assert!(rnn.has_bias());
 		assert_eq!(rnn.all_parameters()?.len(), 8);
 		let input = oa::Matrix::from_f32(&engine, [2, 3, 2], &[0.1; 12])?;
 		let output = rnn.forward(&input)?;
 		assert_eq!(output.shape(), [2, 3, 3]);
 		assert!(output.read_f32()?.iter().all(|value| value.is_finite()));
+
+		let bias_free = oa::ml::nn::Rnn::with_seed_and_bias(&engine, 2, 3, 2, false, 0x0052_4e4e)?;
+		assert!(!bias_free.has_bias());
+		assert_eq!(bias_free.all_parameters()?.len(), 4);
+		assert_eq!(
+			bias_free
+				.layer_parameters(0)
+				.expect("missing RNN layer")
+				.len(),
+			2
+		);
+		let bias_free_output = bias_free.forward(&input)?;
+		assert_eq!(bias_free_output.shape(), [2, 3, 3]);
+		assert!(
+			bias_free_output
+				.read_f32()?
+				.iter()
+				.all(|value| value.is_finite())
+		);
 
 		assert_eq!(
 			oa::ml::nn::Rnn::with_seed(&engine, 2, 1025, 1, 7)
@@ -792,10 +1107,10 @@ test_vk!(
 		);
 
 		let logits = oa::Matrix::from_f32(&engine, [2, 3], &[0.0; 6])?;
-		let signed_targets = oa::Matrix::from_slice(&engine, [2], &[0_i32; 2])?;
-		let error = oa::ml::loss::cross_entropy(&logits, &signed_targets)
+		let floating_targets = oa::Matrix::from_f32(&engine, [2], &[0.0; 2])?;
+		let error = oa::ml::loss::cross_entropy(&logits, &floating_targets)
 			.err()
-			.expect("signed targets were accepted");
+			.expect("floating targets were accepted");
 		assert_eq!(error.kind(), oa::ErrorKind::InvalidArgument);
 		let wrong_targets = oa::Matrix::from_slice(&engine, [1], &[0_u32])?;
 		let error = oa::ml::loss::cross_entropy(&logits, &wrong_targets)
@@ -817,6 +1132,23 @@ test_vk!(
 		Ok(())
 	}
 );
+
+test_vk!(cross_entropy_accepts_donor_32bit_target_dtypes, engine, {
+	let logits = oa::Matrix::from_f32(&engine, [2, 3], &[1.0, 2.0, 3.0, -1.0, 0.5, 0.25])?;
+	let unsigned_targets = oa::Matrix::from_slice(&engine, [2], &[2_u32, 1])?;
+	let signed_targets = oa::Matrix::from_slice(&engine, [2], &[2_i32, 1])?;
+	let unsigned_loss = oa::ml::loss::cross_entropy(&logits, &unsigned_targets)?.read_f32()?[0];
+	let signed_loss = oa::ml::loss::cross_entropy(&logits, &signed_targets)?.read_f32()?[0];
+	assert_eq!(unsigned_loss.to_bits(), signed_loss.to_bits());
+
+	let tape = oa::ml::GradientTape::new();
+	let signed_loss = oa::ml::loss::cross_entropy(&logits, &signed_targets)?;
+	tape.backward(&signed_loss)?;
+	let negative_targets = oa::Matrix::from_slice(&engine, [2], &[-1_i32, 1])?;
+	let invalid_loss = oa::ml::loss::cross_entropy(&logits, &negative_targets)?;
+	assert!(invalid_loss.read_f32()?[0].is_nan());
+	Ok(())
+});
 
 test_vk!(
 	out_of_range_cross_entropy_target_produces_nan_without_oob_access,

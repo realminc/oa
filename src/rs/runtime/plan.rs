@@ -35,6 +35,9 @@ pub struct ExecutionPlanDiagnostics {
 	semantic_backward_operation_count: usize,
 	schema_owned_node_count: usize,
 	compatibility_node_count: usize,
+	semantic_fused_operation_count: usize,
+	semantic_fused_node_count: usize,
+	maximum_semantic_operations_per_node: usize,
 	dnn_graph_hash: u64,
 	dnn_value_count: usize,
 	dnn_external_value_count: usize,
@@ -111,6 +114,21 @@ impl ExecutionPlanDiagnostics {
 	/// Return executable nodes still using the compatibility route.
 	pub const fn compatibility_node_count(self) -> usize {
 		self.compatibility_node_count
+	}
+
+	/// Return semantic operations represented by multi-operation executable nodes.
+	pub const fn semantic_fused_operation_count(self) -> usize {
+		self.semantic_fused_operation_count
+	}
+
+	/// Return executable nodes that own more than one semantic operation.
+	pub const fn semantic_fused_node_count(self) -> usize {
+		self.semantic_fused_node_count
+	}
+
+	/// Return the widest semantic fusion represented by one executable node.
+	pub const fn maximum_semantic_operations_per_node(self) -> usize {
+		self.maximum_semantic_operations_per_node
 	}
 
 	/// Return the deterministic identity of DNN planning inputs.
@@ -473,10 +491,10 @@ impl ExecutionPlan {
 					&semantic_storage,
 					&observed_outputs,
 					&outputs,
-				)?;
+				);
 				let stable_owner_count = stable_resources
 					.iter()
-					.filter(|candidate| candidate.storage.same_as(owner))
+					.filter(|candidate| owner.is_some_and(|owner| candidate.storage.same_as(owner)))
 					.count()
 					.saturating_mul(2);
 				let source_copy_count = usize::from(source_recording_retained);
@@ -484,26 +502,30 @@ impl ExecutionPlan {
 					.saturating_add(
 						semantic_storage
 							.iter()
-							.filter(|candidate| candidate.storage.same_as(owner))
+							.filter(|candidate| {
+								owner.is_some_and(|owner| candidate.storage.same_as(owner))
+							})
 							.count()
 							.saturating_mul(1 + source_copy_count),
 					)
 					.saturating_add(
 						observed_outputs
 							.iter()
-							.filter(|candidate| candidate.same_as(owner))
+							.filter(|candidate| owner.is_some_and(|owner| candidate.same_as(owner)))
 							.count(),
 					)
 					.saturating_add(
 						outputs
 							.iter()
-							.filter(|candidate| candidate.same_as(owner))
+							.filter(|candidate| owner.is_some_and(|owner| candidate.same_as(owner)))
 							.count()
 							.saturating_mul(1 + source_copy_count),
 					);
-				let unaccounted_owner_count = owner
-					.owner_count()
-					.saturating_sub(capture_retained_owner_count);
+				let unaccounted_owner_count = owner.map_or(0, |owner| {
+					owner
+						.owner_count()
+						.saturating_sub(capture_retained_owner_count)
+				});
 				Ok(CapturedResourceDesc {
 					resource: u32::try_from(resource).map_err(|_| {
 						Error::resource_exhausted("captured resource identity exceeds u32")
@@ -785,6 +807,10 @@ impl ExecutionPlan {
 				.sum(),
 			schema_owned_node_count: self.semantic_lowering.schema_owned_node_count() as usize,
 			compatibility_node_count: self.semantic_lowering.compatibility_node_count() as usize,
+			semantic_fused_operation_count: self.semantic_lowering.fused_op_count() as usize,
+			semantic_fused_node_count: self.semantic_lowering.fused_node_count() as usize,
+			maximum_semantic_operations_per_node: self.semantic_lowering.maximum_ops_per_node()
+				as usize,
 			dnn_graph_hash: self.dnn.graph_hash(),
 			dnn_value_count: self.dnn.value_count(),
 			dnn_external_value_count: self.dnn.external_value_count(),
@@ -1013,6 +1039,34 @@ impl ExecutionPlan {
 			crate::core::push_json_string(&mut output, node.kernel.report_name());
 			output.push_str(", \"dtype_class\": null, \"dtype\": ");
 			crate::core::push_json_string(&mut output, node.kernel.dtype_report_token());
+			output.push_str(", \"physical_write\": ");
+			match node.kernel.artifact().physical_write {
+				None => output.push_str("null"),
+				Some(contract) => {
+					output.push_str("{\"writes\": [");
+					for (write_index, write) in contract.writes.iter().enumerate() {
+						if write_index != 0 {
+							output.push_str(", ");
+						}
+						crate::core::push_format(
+							&mut output,
+							format_args!(
+								"{{\"binding\": {}, \"domain\": \"{}\", \"partition\": \"{}\", \"extent\": \"{}\", \"collision\": \"{}\", \"tail\": \"{}\"}}",
+								write.binding,
+								write.domain.token(),
+								write.partition.token(),
+								write.extent.token(),
+								write.collision.token(),
+								write.tail.token(),
+							),
+						);
+					}
+					crate::core::push_format(
+						&mut output,
+						format_args!("], \"workspace\": \"{}\"}}", contract.workspace.token()),
+					);
+				}
+			}
 			crate::core::push_format(
 				&mut output,
 				format_args!(
@@ -1174,7 +1228,11 @@ fn find_resource_storage<'a>(
 	semantic_storage: &'a [SemanticStorageSnapshot],
 	observed_outputs: &'a [Storage],
 	outputs: &'a [Storage],
-) -> Result<&'a Storage> {
+) -> Option<&'a Storage> {
+	// A lowering may create an immutable physical parameter buffer that is not a
+	// semantic value or public output. The executable graph's vk::Buffer retains
+	// that allocation; absence here only means there is no Matrix-level owner to
+	// count or consider for transient aliasing.
 	stable_resources
 		.iter()
 		.map(|candidate| &candidate.storage)
@@ -1186,7 +1244,6 @@ fn find_resource_storage<'a>(
 				.buffer()
 				.is_some_and(|candidate| candidate.same_as(buffer))
 		})
-		.ok_or_else(|| Error::internal("captured graph resource has no retained storage owner"))
 }
 
 struct AliasGroup {

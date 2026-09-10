@@ -1,6 +1,6 @@
 use crate::{DType, Engine, Error, Matrix, Result};
 
-use super::super::{Module, ModuleRegistry, Parameter, autograd, kernels};
+use super::super::{Module, ModuleRegistry, Parameter, autograd, lowering::matrix as dispatch};
 
 /// Trainable FP32 LayerNorm over the final input dimension.
 pub struct LayerNorm {
@@ -83,7 +83,7 @@ impl LayerNorm {
 	pub fn forward(&self, input: &Matrix) -> Result<Matrix> {
 		let (weight, weight_version, weight_requires_grad) = self.weight.snapshot();
 		let (bias, bias_version, bias_requires_grad) = self.bias.snapshot();
-		let result = kernels::layer_norm(input, &weight, &bias, self.epsilon)?;
+		let result = dispatch::layer_norm(input, &weight, &bias, self.epsilon)?;
 		if weight_requires_grad || bias_requires_grad {
 			autograd::record_layer_norm(
 				input,

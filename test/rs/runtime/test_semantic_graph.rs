@@ -38,6 +38,17 @@ const BACKWARD: OperationContract =
 	OperationContract::new("oa::GradAdd", 0xda77_9010_8b5a_3511, MATRIX, MATRIX)
 		.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS));
 
+const CLIP_GRAD_NORM: OperationContract = OperationContract::new(
+	"oa::ml::optim::clip_grad_norm",
+	0x2c3b_9516_f973_c14a,
+	&[],
+	&[],
+)
+.variadic_inputs(OpValueKind::Matrix, 1)
+.variadic_outputs(OpValueKind::Matrix, 1)
+.aligned_variadic_aliases()
+.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS));
+
 fn matrix(name: &str, shape: &[usize], external: bool) -> SemanticValueDesc {
 	SemanticValueDesc::new(name, OpValueKind::Matrix, shape, DType::F32)
 		.expect("valid test shape")
@@ -193,6 +204,50 @@ fn ports_mutation_alias_and_autograd_provenance() -> oa::Result<()> {
 }
 
 #[test]
+fn supports_aligned_variadic_mutation_beyond_the_fixed_arity_limit() -> oa::Result<()> {
+	let mut graph = SemanticGraph::new();
+	let inputs = (0..10)
+		.map(|index| graph.add_value(matrix(&format!("gradient_{index}"), &[4], true)))
+		.collect::<oa::Result<Vec<_>>>()?;
+	let outputs = (0..10)
+		.map(|index| graph.add_value(matrix(&format!("clipped_{index}"), &[4], false)))
+		.collect::<oa::Result<Vec<_>>>()?;
+	let optional_inputs = inputs.iter().copied().map(Some).collect::<Vec<_>>();
+
+	let operation = graph.add_operation(CLIP_GRAD_NORM, &optional_inputs, &outputs, &[], &[])?;
+	graph.validate()?;
+
+	let operation = &graph.operations()[operation.index() as usize];
+	assert_eq!(operation.mutated_inputs(), inputs);
+	assert_eq!(operation.aliases().len(), 10);
+	for (index, alias) in operation.aliases().iter().enumerate() {
+		assert_eq!(alias.input(), inputs[index]);
+		assert_eq!(alias.output(), outputs[index]);
+	}
+	Ok(())
+}
+
+#[test]
+fn rejects_misaligned_variadic_alias_counts() -> oa::Result<()> {
+	let mut graph = SemanticGraph::new();
+	let first = graph.add_value(matrix("first", &[4], true))?;
+	let second = graph.add_value(matrix("second", &[4], true))?;
+	let output = graph.add_value(matrix("output", &[4], false))?;
+
+	let error = graph
+		.add_operation(
+			CLIP_GRAD_NORM,
+			&[Some(first), Some(second)],
+			&[output],
+			&[],
+			&[],
+		)
+		.unwrap_err();
+	assert_eq!(error.kind(), ErrorKind::InvalidArgument);
+	Ok(())
+}
+
+#[test]
 fn rejects_invalid_contract_edges_transactionally() -> oa::Result<()> {
 	let mut graph = SemanticGraph::new();
 	let input = graph.add_value(matrix("input", &[4], true))?;
@@ -218,6 +273,18 @@ fn rejects_invalid_contract_edges_transactionally() -> oa::Result<()> {
 				name: "wrong".into(),
 				value: 1.0,
 			}],
+		)
+		.unwrap_err();
+	assert_eq!(error.kind(), ErrorKind::InvalidArgument);
+	assert!(graph.operations().is_empty());
+
+	let error = graph
+		.add_operation(
+			ADD_IN_PLACE,
+			&[Some(input), Some(input)],
+			&[input],
+			&[],
+			&[],
 		)
 		.unwrap_err();
 	assert_eq!(error.kind(), ErrorKind::InvalidArgument);

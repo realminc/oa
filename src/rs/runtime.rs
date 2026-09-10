@@ -14,7 +14,9 @@ mod storage;
 mod vk;
 
 pub(crate) use dispatch::{
-	BufferAccess, BufferBinding, ComputeDispatch, PushConstant, SemanticDispatch,
+	AudioSemanticDispatch, AudioSemanticOutput, BufferAccess, BufferBinding, ComputeDispatch,
+	ImageSemanticDispatch, ImageSemanticInput, OptionalSemanticDispatch, PushConstant,
+	SemanticDispatch,
 };
 pub(crate) use engine::{CaptureAttempt, EngineHandle};
 pub use engine::{DeviceSelection, Engine, EngineBuilder};

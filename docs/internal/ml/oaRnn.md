@@ -1,74 +1,107 @@
 # OARS Elman RNN
 
-**Status:** Experimental forward and complete BPTT baseline
+**Status:** Experimental donor-backed sequence scan and explicit-state cell
 
-**Updated:** 2026-09-08
+**Updated:** 2026-09-10
+
+**Donor references:** OA C++ `ml/nn/rnn/rnn.cpp`,
+`ml/fnmatrix/nn/fnMatrixRnn.cpp`, `rnnScan.slang`, `rnnScanBwd.slang`, and
+`mlFnMatrixRecurrent.toml`
 
 ## Contract
 
 `oa::ml::nn::Rnn` is a batch-first, stacked Elman recurrent module:
 
 ```text
-h[b,t] = tanh(
-    input[b,t] @ weight_ih^T + bias_ih
-  + h[b,t-1] @ weight_hh^T + bias_hh
-)
+gates_i[b,t] = input[b,t] @ weight_ih^T + bias_ih
+h[b,t] = tanh(gates_i[b,t] + h[b,t-1] @ weight_hh^T + bias_hh)
 ```
 
-Input has shape `[B, S, I]`; output has shape `[B, S, H]`. Each layer starts
-from zero hidden state and feeds its complete output sequence into the next
-layer. Parameter order is layer order, then `weight_ih`, `weight_hh`,
-`bias_ih`, and `bias_hh`. The current public baseline always has biases and
-admits `1 <= H <= 1024` because the scan stores one hidden vector in shared
+Input has shape `[B, S, I]`; output has shape `[B, S, H]`. Every layer starts
+from a zero hidden state and feeds its complete output sequence into the next
+layer. The public constructor preserves the existing biased default;
+`with_seed_and_bias(..., false, ...)` and `from_weights` admit the donor's
+bias-free contract. Parameter order is layer order, then `weight_ih`,
+`weight_hh`, and the two biases when present. The current scan admits
+`1 <= H <= 1024` because one workgroup retains the hidden vector in shared
 memory.
 
-## Execution
+## Execution ownership
 
-Forward records one whole-sequence Vulkan scan per layer, with one workgroup per
-batch sequence. Hidden recurrence stays on the GPU; there are no per-timestep
-host submissions, slices, or temporary Matrix values.
+The Rust module now follows the donor decomposition rather than owning a second
+combined RNN implementation:
 
-Backward records one deterministic full-BPTT dispatch per layer. The baseline
-assigns the complete batch to one workgroup, walks time in reverse, and owns
-every input and parameter-gradient element without float atomics. It produces
-input, input-weight, recurrent-weight, and both bias gradients. This serialized
-parameter accumulation is a correctness baseline, not a performance claim.
-Future parallel, segmented, or fused implementations must preserve the same
-result and remain private kernel routing choices.
+1. reshape `[B, S, I]` to `[B*S, I]` without copying storage;
+2. run the canonical `linear` operation once for the complete input projection;
+3. reshape its result to `[B, S, H]` without copying storage;
+4. run one `rnn_scan` workgroup per batch element across all timesteps.
 
-## Autograd and ownership
+The scan owns only the recurrent dependency. Hidden state remains in
+group-shared memory while time advances, so the host does not submit per-step
+slices, matrix multiplications, or pointwise operations. Bias presence is a
+structural forward attribute; freezing a bias never removes its numerical
+contribution.
 
-The RNN owns four stable `Parameter` handles per layer but no engine or
-submission state. Tape nodes save the input, output, previous hidden sequence,
-the two weight values, and all four parameter versions. Backward preflights
-versions before recording any adjoint. The input gradient reconnects to earlier
-Embedding, reshape, or recurrent nodes by Matrix semantic identity.
+Stable operation IDs 29 and 30 now name `rnn_scan` and `rnn_scan_backward`;
+IDs 315 and 316 name `rnn_cell` and `rnn_cell_backward`.
+Their shader metadata, semantic contracts, registry entries, and autograd
+pairing come from `tools/gen/fn/schema/ml_training.json`. The old monolithic
+`rnn` and `rnn_backward` Rust kernels and lowering path are removed.
 
-Stateful streaming `step`, caller-provided initial/final hidden state,
-bidirectionality, dropout, bias-free layers, packed variable-length sequences,
-and truncated BPTT are Planned. They must not be simulated through hidden
-mutable module state.
+## Backward decomposition
+
+`rnn_scan_backward` performs the reverse-time recurrence once per batch:
+
+```text
+delta_t = (d_output_t + d_hidden_from_t_plus_1) * (1 - h_t * h_t)
+d_gates_i_t = delta_t
+d_gates_h_t = delta_t
+d_hidden_from_t = delta_t @ weight_hh
+```
+
+The semantic backward operation lowers to the donor scan adjoint followed by
+the existing Linear parameter adjoint over saved previous-hidden rows. The
+ordinary input projection's existing Linear node then computes the original
+input, `weight_ih`, and `bias_ih` gradients. This preserves one operation
+authority for Linear validation and gradient math instead of duplicating it in
+RNN.
+
+The tape saves the projected gates, previous-hidden sequence, recurrent weight,
+optional recurrent bias, and relevant parameter versions. It reconnects the
+projected-gate gradient through the two reshape views to the Linear node and
+then to preceding modules by semantic value identity.
 
 ## Evidence
 
-The Rust hardware test covers an actual character-model chain:
+Generator tests pin IDs 29/30 and 315/316, manual recurrent autograd ownership, donor
+provenance, and regeneration idempotence. Build-time Slang compilation,
+SPIR-V reflection, and the complete Rust ML test binary compile with the new
+route. The sequence hardware oracle passes on Intel Iris Xe with Mesa 26.2.2
+and Vulkan 1.4.354:
 
 ```text
 U32 tokens -> Embedding -> Rnn -> reshape -> Linear -> cross-entropy
            <- embedding gradient <- complete BPTT <- parameter gradients
 ```
 
-Forward values match an independent host recurrence. Embedding and all four
-recurrent parameter gradients match central finite differences, including a
-repeated token. A separate two-layer test verifies shape, finite values,
-parameter order, and hidden-limit/input-width rejection.
+It checks forward values against an independent host recurrence and checks all
+four biased parameter gradients plus the embedding gradient against central
+finite differences. The stacked test also passes bias-free registration,
+shape, finite output, parameter order, hidden-size rejection, and input-width
+rejection. Focused cell tests pass on the same device and additionally cover a nonzero caller-owned hidden
+state, zero-state construction, all four parameter adjoints by finite
+difference, frozen-bias semantics, bias-free registration, and invalid input
+width.
 
-Run:
+Run the focused gate with:
 
 ```bash
-cargo test --all-features --test ml -- --ignored --test-threads=1
+cargo test --all-features --test ml training::character_rnn_forward_and_complete_bptt_match_independent_oracles -- --ignored --exact
+cargo test --all-features --test ml training::stacked_rnn_preserves_batch_sequence_and_parameter_order -- --ignored --exact
+cargo test --all-features --test ml rnn::rnn_cell_parameter_gradients_match_finite_differences -- --ignored --exact
 ```
 
-Synchronization validation, GPU-assisted validation, odd/large shape packs,
-performance qualification, long-sequence stability, and tutorial-level
-convergence remain open.
+Returning the final state from a sequence, stateful streaming sessions,
+bidirectionality, dropout, packed variable-length sequences, and truncated
+BPTT remain Planned. They must not be simulated through hidden mutable module
+state.

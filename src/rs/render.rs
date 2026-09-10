@@ -1,15 +1,9 @@
-//! Render - presentation, rendering, and composition
+//! Rendering, texture, scene, and presentation contracts.
+//!
+//! This namespace intentionally exposes no placeholder renderer or presenter.
+//! Stateful rendering and presentation types are admitted only with explicit
+//! engine ownership, synchronization, failure, and lifecycle behavior.
 
-use crate::Result;
+mod texture;
 
-/// Presenter owns WSI/swapchain presentation state
-pub struct Presenter {
-	// TODO: Add WSI/swapchain state
-}
-
-impl Presenter {
-	/// Create a new presenter
-	pub fn new() -> Result<Self> {
-		todo!("Presenter::new")
-	}
-}
+pub use texture::{Texture, save_texture_file, texture_from_rgba8};

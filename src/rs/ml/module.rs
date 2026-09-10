@@ -1,4 +1,7 @@
-use std::{cell::Cell, rc::Rc};
+use std::{
+	cell::{Cell, RefCell},
+	rc::Rc,
+};
 
 use crate::{Error, Matrix, Result};
 
@@ -25,7 +28,7 @@ impl NamedParameter {
 /// Owned dotted path and non-trainable Matrix buffer.
 pub struct NamedBuffer {
 	path: String,
-	data: Matrix,
+	data: Rc<RefCell<Matrix>>,
 	persistent: bool,
 }
 
@@ -37,12 +40,28 @@ impl NamedBuffer {
 
 	/// Return a cheap handle to the registered value.
 	pub fn data(&self) -> Matrix {
-		self.data.clone()
+		self.data.borrow().clone()
 	}
 
 	/// Return whether persistence must include this buffer.
 	pub const fn persistent(&self) -> bool {
 		self.persistent
+	}
+
+	pub(crate) fn replace_data(&self, data: Matrix) -> Result<()> {
+		let current = self.data.borrow();
+		if current.shape() != data.shape()
+			|| current.dtype() != data.dtype()
+			|| !current.engine_handle().same_as(data.engine_handle())
+		{
+			return Err(Error::invalid_argument(format!(
+				"replacement data does not match module buffer {}",
+				self.path
+			)));
+		}
+		drop(current);
+		*self.data.borrow_mut() = data;
+		Ok(())
 	}
 }
 
@@ -53,7 +72,7 @@ struct ParameterEntry {
 
 struct BufferEntry {
 	name: String,
-	data: Matrix,
+	data: Rc<RefCell<Matrix>>,
 	persistent: bool,
 }
 
@@ -125,7 +144,7 @@ impl ModuleRegistry {
 		if self
 			.buffers
 			.iter()
-			.any(|entry| entry.data.same_value_as(&data))
+			.any(|entry| entry.data.borrow().same_value_as(&data))
 		{
 			return Err(Error::invalid_argument(
 				"module buffer value is already registered",
@@ -133,7 +152,7 @@ impl ModuleRegistry {
 		}
 		self.buffers.push(BufferEntry {
 			name,
-			data,
+			data: Rc::new(RefCell::new(data)),
 			persistent,
 		});
 		Ok(())
@@ -187,6 +206,21 @@ impl ModuleRegistry {
 		}
 		Ok(name)
 	}
+
+	pub(crate) fn child_modules(&self) -> impl ExactSizeIterator<Item = &Rc<dyn Module>> {
+		self.children.iter().map(|entry| &entry.module)
+	}
+
+	pub(crate) fn buffer_handle(&self, name: &str) -> Option<NamedBuffer> {
+		self.buffers
+			.iter()
+			.find(|entry| entry.name == name)
+			.map(|entry| NamedBuffer {
+				path: entry.name.clone(),
+				data: entry.data.clone(),
+				persistent: entry.persistent,
+			})
+	}
 }
 
 impl Default for ModuleRegistry {
@@ -229,7 +263,7 @@ pub trait Module {
 		self.registry()
 			.buffers
 			.iter()
-			.map(|entry| entry.data.clone())
+			.map(|entry| entry.data.borrow().clone())
 			.collect()
 	}
 
@@ -395,7 +429,7 @@ fn collect_named_buffers(
 	for entry in &registry.buffers {
 		if output
 			.iter()
-			.any(|existing| existing.data.same_value_as(&entry.data))
+			.any(|existing| existing.data.borrow().same_value_as(&entry.data.borrow()))
 		{
 			return Err(Error::failed_precondition(format!(
 				"buffer registered through multiple module paths, including {}",

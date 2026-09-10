@@ -1,4 +1,5 @@
 use std::{
+	ffi::CStr,
 	mem::ManuallyDrop,
 	sync::{Arc, Mutex},
 };
@@ -11,7 +12,7 @@ use crate::{
 use super::{
 	Instance, PhysicalDevice,
 	buffer::RecycledBuffer,
-	command::{CommandPool, RecordedCommandBuffer, ReusableCommandBuffer},
+	command::{CommandPool, CommandPoolKind, RecordedCommandBuffer, ReusableCommandBuffer},
 	descriptor::DescriptorHeap,
 	pipeline::ComputePipeline,
 	queue::Queue,
@@ -31,12 +32,15 @@ struct DeviceInner {
 	handle: ash::Device,
 	allocator: ManuallyDrop<vk_mem::Allocator>,
 	command_pool: Mutex<CommandPool>,
+	video_decode_command_pool: Mutex<Option<CommandPool>>,
 	timeline: Timeline,
 	descriptors: DescriptorHeap,
 	storage_pool: Mutex<StoragePool>,
 	pipelines: Vec<ComputePipeline>,
 	physical: PhysicalDevice,
 	compute_queue: Queue,
+	video_decode_queue: Option<Queue>,
+	video_encode_queue: Option<Queue>,
 	timestamp_period_ns: f64,
 	compute_timestamp_valid_bits: u32,
 	_instance: Instance,
@@ -49,11 +53,104 @@ struct StoragePool {
 }
 
 impl Device {
+	pub(in crate::runtime) fn video_device_capabilities(
+		&self,
+	) -> Result<crate::video::VideoDeviceCapabilities> {
+		let video = self.inner.physical.video;
+
+		Ok(crate::video::VideoDeviceCapabilities {
+			decode_queue_family: video.decode_queue_family,
+			encode_queue_family: video.encode_queue_family,
+			decode_result_status_queries: video.decode_result_status_queries,
+			encode_result_status_queries: video.encode_result_status_queries,
+			h264_decode: video.h264_decode,
+			h265_decode: video.h265_decode,
+			av1_decode: video.av1_decode,
+			vp9_decode: video.vp9_decode,
+			h264_encode: video.h264_encode,
+			h265_encode: video.h265_encode,
+			av1_encode: video.av1_encode,
+			video_queues_enabled: self.inner.video_decode_queue.is_some()
+				|| self.inner.video_encode_queue.is_some(),
+			decoder_sessions_available: false,
+			encoder_sessions_available: false,
+		})
+	}
+
+	pub(in crate::runtime) fn video_decode_capabilities(
+		&self,
+		profile: crate::video::VideoDecodeProfile,
+	) -> Result<crate::video::VideoDecodeCapabilities> {
+		super::video::query_decode_capabilities(
+			&self.inner._instance,
+			&self.inner.physical,
+			profile,
+		)
+	}
+
+	pub(in crate::runtime) fn video_decode_formats(
+		&self,
+		profile: crate::video::VideoDecodeProfile,
+	) -> Result<crate::video::VideoDecodeFormats> {
+		super::video::query_decode_formats(&self.inner._instance, &self.inner.physical, profile)
+	}
+
 	pub(in crate::runtime) fn new(instance: &Instance, physical: PhysicalDevice) -> Result<Self> {
 		let priorities = [1.0_f32];
-		let queue_create_infos = [ash::vk::DeviceQueueCreateInfo::default()
-			.queue_family_index(physical.compute_queue_family)
-			.queue_priorities(&priorities)];
+		let mut queue_family_indices = vec![physical.compute_queue_family];
+		for family in [
+			physical.video.decode_queue_family,
+			physical.video.encode_queue_family,
+		]
+		.into_iter()
+		.flatten()
+		{
+			if !queue_family_indices.contains(&family) {
+				queue_family_indices.push(family);
+			}
+		}
+		let queue_create_infos: Vec<_> = queue_family_indices
+			.iter()
+			.map(|family| {
+				ash::vk::DeviceQueueCreateInfo::default()
+					.queue_family_index(*family)
+					.queue_priorities(&priorities)
+			})
+			.collect();
+		let mut extensions = Vec::<&CStr>::new();
+		if physical.video.decode_queue_family.is_some()
+			|| physical.video.encode_queue_family.is_some()
+		{
+			extensions.push(ash::khr::video_queue::NAME);
+		}
+		if physical.video.decode_queue_family.is_some() {
+			extensions.push(ash::khr::video_decode_queue::NAME);
+		}
+		if physical.video.h264_decode {
+			extensions.push(ash::khr::video_decode_h264::NAME);
+		}
+		if physical.video.h265_decode {
+			extensions.push(ash::khr::video_decode_h265::NAME);
+		}
+		if physical.video.av1_decode {
+			extensions.push(ash::khr::video_decode_av1::NAME);
+		}
+		if physical.video.vp9_decode {
+			extensions.push(c"VK_KHR_video_decode_vp9");
+		}
+		if physical.video.encode_queue_family.is_some() {
+			extensions.push(ash::khr::video_encode_queue::NAME);
+		}
+		if physical.video.h264_encode {
+			extensions.push(ash::khr::video_encode_h264::NAME);
+		}
+		if physical.video.h265_encode {
+			extensions.push(ash::khr::video_encode_h265::NAME);
+		}
+		if physical.video.av1_encode {
+			extensions.push(c"VK_KHR_video_encode_av1");
+		}
+		let extension_names: Vec<_> = extensions.iter().map(|name| name.as_ptr()).collect();
 		let mut features12 = ash::vk::PhysicalDeviceVulkan12Features::default()
 			.timeline_semaphore(physical.features.timeline_semaphore)
 			.runtime_descriptor_array(physical.features.runtime_descriptor_array)
@@ -74,6 +171,7 @@ impl Device {
 			.synchronization2(physical.features.synchronization2);
 		let create_info = ash::vk::DeviceCreateInfo::default()
 			.queue_create_infos(&queue_create_infos)
+			.enabled_extension_names(&extension_names)
 			.push_next(&mut features12)
 			.push_next(&mut features13);
 
@@ -95,7 +193,20 @@ impl Device {
 		let compute_queue = Queue {
 			handle: compute_queue_handle,
 		};
-		let mut command_pool = match CommandPool::new(&handle, physical.compute_queue_family) {
+		let video_decode_queue = physical.video.decode_queue_family.map(|family| Queue {
+			// SAFETY: logical-device creation requested queue zero from every unique
+			// selected video queue family and the device owns the returned handle.
+			handle: unsafe { handle.get_device_queue(family, 0) },
+		});
+		let video_encode_queue = physical.video.encode_queue_family.map(|family| Queue {
+			// SAFETY: same queue-creation proof as the decode queue above.
+			handle: unsafe { handle.get_device_queue(family, 0) },
+		});
+		let mut command_pool = match CommandPool::new(
+			&handle,
+			physical.compute_queue_family,
+			CommandPoolKind::Compute,
+		) {
 			Ok(command_pool) => command_pool,
 			Err(error) => {
 				// SAFETY: command-pool creation failed, so the device has no live child
@@ -186,11 +297,14 @@ impl Device {
 				handle,
 				allocator: ManuallyDrop::new(allocator),
 				command_pool: Mutex::new(command_pool),
+				video_decode_command_pool: Mutex::new(None),
 				timeline,
 				descriptors,
 				storage_pool: Mutex::new(StoragePool::default()),
 				pipelines,
 				compute_queue,
+				video_decode_queue,
+				video_encode_queue,
 				timestamp_period_ns: physical.limits.timestamp_period_ns,
 				compute_timestamp_valid_bits: physical.limits.compute_timestamp_valid_bits,
 				physical,
@@ -201,6 +315,27 @@ impl Device {
 
 	pub(in crate::runtime) fn physical(&self) -> &PhysicalDevice {
 		&self.inner.physical
+	}
+
+	pub(super) fn instance(&self) -> &Instance {
+		&self.inner._instance
+	}
+
+	#[cfg(test)]
+	pub(in crate::runtime) fn create_video_decode_session(
+		&self,
+		profile: crate::video::VideoDecodeProfile,
+		coded_extent: crate::video::VideoExtent,
+		max_dpb_slots: u32,
+		max_active_references: u32,
+	) -> Result<super::video::DecodeSession> {
+		super::video::create_decode_session(
+			self,
+			profile,
+			coded_extent,
+			max_dpb_slots,
+			max_active_references,
+		)
 	}
 
 	pub(super) fn allocator(&self) -> &vk_mem::Allocator {
@@ -288,6 +423,50 @@ impl Device {
 			Err(poisoned) => poisoned.into_inner(),
 		};
 		command_pool.record_empty(&self.inner.handle)
+	}
+
+	#[cfg(test)]
+	pub(in crate::runtime) fn record_compute_commands(
+		&self,
+		record: impl FnOnce(ash::vk::CommandBuffer) -> Result<()>,
+	) -> Result<RecordedCommandBuffer> {
+		let mut command_pool = match self.inner.command_pool.lock() {
+			Ok(command_pool) => command_pool,
+			Err(poisoned) => poisoned.into_inner(),
+		};
+		command_pool.record_custom(&self.inner.handle, record)
+	}
+
+	#[cfg(test)]
+	pub(in crate::runtime) fn record_video_decode_empty(&self) -> Result<RecordedCommandBuffer> {
+		self.record_video_decode(|_| Ok(()))
+	}
+
+	#[cfg(test)]
+	pub(in crate::runtime) fn record_video_decode(
+		&self,
+		record: impl FnOnce(ash::vk::CommandBuffer) -> Result<()>,
+	) -> Result<RecordedCommandBuffer> {
+		let family = self
+			.inner
+			.physical
+			.video
+			.decode_queue_family
+			.ok_or_else(|| Error::missing_capability("no Vulkan Video decode queue is enabled"))?;
+		let mut slot = match self.inner.video_decode_command_pool.lock() {
+			Ok(slot) => slot,
+			Err(poisoned) => poisoned.into_inner(),
+		};
+		if slot.is_none() {
+			*slot = Some(CommandPool::new(
+				&self.inner.handle,
+				family,
+				CommandPoolKind::VideoDecode,
+			)?);
+		}
+		slot.as_mut()
+			.expect("video decode command pool was initialized")
+			.record_custom(&self.inner.handle, record)
 	}
 
 	pub(in crate::runtime) fn record_compute_graph(
@@ -380,22 +559,32 @@ impl Device {
 			.wait_semaphore_infos(wait_infos)
 			.command_buffer_infos(&command_infos)
 			.signal_semaphore_infos(&signal_infos)];
+		let queue = match command.pool_kind() {
+			CommandPoolKind::Compute => self.inner.compute_queue.handle,
+			CommandPoolKind::VideoDecode => {
+				self.inner
+					.video_decode_queue
+					.as_ref()
+					.ok_or_else(|| {
+						Error::missing_capability("no Vulkan Video decode queue is enabled")
+					})?
+					.handle
+			}
+		};
 
 		// SAFETY: synchronization2 and timeline semaphores were enabled; the recorded
-		// primary command buffer belongs to this queue family and is not pending. The
-		// previous signal's first scope covers every earlier operation on this compute
-		// queue; this submission waits on that exact timeline value at ALL_COMMANDS,
+		// primary command buffer belongs to the selected queue family and is not pending.
+		// The previous signal's first scope covers every earlier engine submission;
+		// this submission waits on that exact timeline value at ALL_COMMANDS,
 		// making writes to any Matrix input buffer available and visible before its
-		// consumer dispatch. Producer and consumer use the same queue family, buffers
-		// have no image layout, and no ownership transfer is required. Recorded commands
-		// retain those buffers until the signaled epoch is retired. The new signal uses
-		// the next strictly increasing value.
+		// consumer dispatch. Buffer/image ownership transfers remain the recording
+		// path's responsibility when queue families differ. Recorded commands retain
+		// their resources until the signaled epoch is retired. The new signal uses the
+		// next strictly increasing value.
 		unsafe {
-			self.inner.handle.queue_submit2(
-				self.inner.compute_queue.handle,
-				&submit_infos,
-				ash::vk::Fence::null(),
-			)
+			self.inner
+				.handle
+				.queue_submit2(queue, &submit_infos, ash::vk::Fence::null())
 		}
 		.map_err(|source| Error::backend_failure("Vulkan", "queue submission", source))
 	}
@@ -403,14 +592,27 @@ impl Device {
 	pub(in crate::runtime) fn free(&self, command: RecordedCommandBuffer) {
 		// Drop reusable ownership before taking the pool lock. Its final owner frees
 		// the shared handle through this same mutex.
-		let Some(handle) = command.into_owned_handle() else {
+		let Some((handle, pool)) = command.into_owned_handle() else {
 			return;
 		};
-		let mut command_pool = match self.inner.command_pool.lock() {
-			Ok(command_pool) => command_pool,
-			Err(poisoned) => poisoned.into_inner(),
-		};
-		command_pool.free_handle(&self.inner.handle, handle);
+		match pool {
+			CommandPoolKind::Compute => {
+				let mut command_pool = match self.inner.command_pool.lock() {
+					Ok(command_pool) => command_pool,
+					Err(poisoned) => poisoned.into_inner(),
+				};
+				command_pool.free_handle(&self.inner.handle, handle);
+			}
+			CommandPoolKind::VideoDecode => {
+				let mut slot = match self.inner.video_decode_command_pool.lock() {
+					Ok(slot) => slot,
+					Err(poisoned) => poisoned.into_inner(),
+				};
+				if let Some(command_pool) = slot.as_mut() {
+					command_pool.free_handle(&self.inner.handle, handle);
+				}
+			}
+		}
 	}
 
 	pub(in crate::runtime) fn free_command_buffer_handle(&self, handle: ash::vk::CommandBuffer) {
@@ -459,7 +661,14 @@ impl Drop for DeviceInner {
 			Err(poisoned) => poisoned.into_inner(),
 		};
 		command_pool.destroy(&self.handle);
-		// SAFETY: the allocator, timeline, and command pool have been destroyed, and no
+		let video_decode_pool = match self.video_decode_command_pool.get_mut() {
+			Ok(pool) => pool,
+			Err(poisoned) => poisoned.into_inner(),
+		};
+		if let Some(pool) = video_decode_pool.as_mut() {
+			pool.destroy(&self.handle);
+		}
+		// SAFETY: the allocator, timeline, and command pools have been destroyed, and no
 		// other logical-device children remain at this checkpoint.
 		unsafe {
 			self.handle.destroy_device(None);

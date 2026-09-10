@@ -68,11 +68,61 @@ fn profile_attention(
 	let target = oa::Matrix::from_slice(engine, [rows], &vec![0_u32; rows])?;
 	let (plan, _) = engine.capture(|| {
 		let tape = oa::ml::GradientTape::new();
-		let logits =
-			oa::ml::scaled_dot_product_attention_causal(&query, &key, &value, sequence, heads)?;
+		let logits = oa::ml::matrix::scaled_dot_product_attention_causal(
+			&query, &key, &value, sequence, heads,
+		)?;
 		let loss = oa::ml::loss::cross_entropy(&logits, &target)?;
 		tape.backward(&loss)?;
 		Ok(loss)
+	})?;
+	median_device_time(engine, &plan)
+}
+
+fn profile_sdpa_provider(
+	engine: &oa::Engine,
+	batch_heads: usize,
+	sequence: usize,
+	head_dim: usize,
+	flash: bool,
+) -> oa::Result<Duration> {
+	let shape = [batch_heads, sequence, head_dim];
+	let query = oa::matrix::full(engine, shape, 0.125)?;
+	let key = oa::matrix::full(engine, shape, -0.25)?;
+	let value = oa::matrix::full(engine, shape, 0.375)?;
+	let target = oa::matrix::full(engine, shape, 0.0)?;
+	let scale = 1.0 / (head_dim as f32).sqrt();
+	let (plan, _) = engine.capture(|| {
+		let tape = oa::ml::GradientTape::new();
+		let output = if flash {
+			oa::ml::matrix::flash_attention_causal(&query, &key, &value, scale)?
+		} else {
+			oa::ml::matrix::scaled_dot_product_attention(&query, &key, &value, None, scale, true)?
+		};
+		let loss = oa::ml::loss::mse(&output, &target)?;
+		tape.backward(&loss)?;
+		Ok(loss)
+	})?;
+	median_device_time(engine, &plan)
+}
+
+fn profile_sdpa_forward_provider(
+	engine: &oa::Engine,
+	batch_heads: usize,
+	sequence: usize,
+	head_dim: usize,
+	flash: bool,
+) -> oa::Result<Duration> {
+	let shape = [batch_heads, sequence, head_dim];
+	let query = oa::matrix::full(engine, shape, 0.125)?;
+	let key = oa::matrix::full(engine, shape, -0.25)?;
+	let value = oa::matrix::full(engine, shape, 0.375)?;
+	let scale = 1.0 / (head_dim as f32).sqrt();
+	let (plan, _) = engine.capture(|| {
+		if flash {
+			oa::ml::matrix::flash_attention_causal(&query, &key, &value, scale)
+		} else {
+			oa::ml::matrix::scaled_dot_product_attention(&query, &key, &value, None, scale, true)
+		}
 	})?;
 	median_device_time(engine, &plan)
 }
@@ -121,6 +171,34 @@ fn main() -> oa::Result<()> {
 	println!(
 		"attention 64x16x32x1 forward/backward GPU: {:.3} ms",
 		milliseconds(profile_attention(&engine, 64, 16, 32, 1)?)
+	);
+	let standard = profile_sdpa_provider(&engine, 64, 16, 32, false)?;
+	let flash = profile_sdpa_provider(&engine, 64, 16, 32, true)?;
+	let standard_forward = profile_sdpa_forward_provider(&engine, 64, 16, 32, false)?;
+	let flash_forward = profile_sdpa_forward_provider(&engine, 64, 16, 32, true)?;
+	println!(
+		"SDPA [64,16,32] standard forward GPU: {:.3} ms",
+		milliseconds(standard_forward)
+	);
+	println!(
+		"SDPA [64,16,32] Flash forward GPU: {:.3} ms",
+		milliseconds(flash_forward)
+	);
+	println!(
+		"SDPA [64,16,32] Flash forward gain: {:.2}%",
+		(1.0 - flash_forward.as_secs_f64() / standard_forward.as_secs_f64()) * 100.0
+	);
+	println!(
+		"SDPA [64,16,32] standard forward/backward GPU: {:.3} ms",
+		milliseconds(standard)
+	);
+	println!(
+		"SDPA [64,16,32] Flash forward/backward GPU: {:.3} ms",
+		milliseconds(flash)
+	);
+	println!(
+		"SDPA [64,16,32] Flash gain: {:.2}%",
+		(1.0 - flash.as_secs_f64() / standard.as_secs_f64()) * 100.0
 	);
 	Ok(())
 }

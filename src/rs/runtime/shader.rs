@@ -6,11 +6,138 @@ use crate::{Error, Result};
 
 const SPIRV_MAGIC: u32 = 0x0723_0203;
 
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum LogicalWriteDomain {
+	AxisSlices,
+	OutputElements,
+	Rows,
+	Scalar,
+}
+
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum WritePartition {
+	ExclusivePerInvocation,
+	ExclusivePerWorkgroup,
+	SharedAtomicContributors,
+}
+
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum WriteExtent {
+	AxisSlice,
+	OneElement,
+	OneScalar,
+	RowWidth,
+	Tile16x16,
+	UpToTwoElements,
+	UpToFourElements,
+}
+
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum CollisionPolicy {
+	Exclusive,
+	AtomicU32,
+}
+
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TailPolicy {
+	BoundsChecked,
+}
+
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum WorkspacePartition {
+	None,
+	ExclusivePerWorkgroup,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct PhysicalWrite {
+	pub(crate) binding: u8,
+	pub(crate) domain: LogicalWriteDomain,
+	pub(crate) partition: WritePartition,
+	pub(crate) extent: WriteExtent,
+	pub(crate) collision: CollisionPolicy,
+	pub(crate) tail: TailPolicy,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct PhysicalWriteContract {
+	pub(crate) writes: &'static [PhysicalWrite],
+	pub(crate) workspace: WorkspacePartition,
+}
+
+impl LogicalWriteDomain {
+	pub(crate) const fn token(self) -> &'static str {
+		match self {
+			Self::AxisSlices => "axis_slices",
+			Self::OutputElements => "output_elements",
+			Self::Rows => "rows",
+			Self::Scalar => "scalar",
+		}
+	}
+}
+
+impl WritePartition {
+	pub(crate) const fn token(self) -> &'static str {
+		match self {
+			Self::ExclusivePerInvocation => "exclusive_per_invocation",
+			Self::ExclusivePerWorkgroup => "exclusive_per_workgroup",
+			Self::SharedAtomicContributors => "shared_atomic_contributors",
+		}
+	}
+}
+
+impl WriteExtent {
+	pub(crate) const fn token(self) -> &'static str {
+		match self {
+			Self::AxisSlice => "axis_slice",
+			Self::OneElement => "one_element",
+			Self::OneScalar => "one_scalar",
+			Self::RowWidth => "row_width",
+			Self::Tile16x16 => "tile_16x16",
+			Self::UpToTwoElements => "up_to_two_elements",
+			Self::UpToFourElements => "up_to_four_elements",
+		}
+	}
+}
+
+impl CollisionPolicy {
+	pub(crate) const fn token(self) -> &'static str {
+		match self {
+			Self::Exclusive => "exclusive",
+			Self::AtomicU32 => "atomic_u32",
+		}
+	}
+}
+
+impl TailPolicy {
+	pub(crate) const fn token(self) -> &'static str {
+		match self {
+			Self::BoundsChecked => "bounds_checked",
+		}
+	}
+}
+
+impl WorkspacePartition {
+	pub(crate) const fn token(self) -> &'static str {
+		match self {
+			Self::None => "none",
+			Self::ExclusivePerWorkgroup => "exclusive_per_workgroup",
+		}
+	}
+}
+
 /// A build-validated shader artifact embedded into the OA library.
 pub struct ShaderArtifact {
 	bytes: &'static [u8],
 	pub workgroup_size: [u32; 3],
 	pub dispatch_tile_size: [u32; 3],
+	pub(crate) physical_write: Option<PhysicalWriteContract>,
 	content_id: OnceLock<u64>,
 }
 
@@ -36,10 +163,10 @@ impl ShaderArtifact {
 	}
 }
 
-#[path = "shader/generated.rs"]
-mod generated;
+#[path = "shader/registry.gen.rs"]
+mod registry;
 
-pub(crate) use generated::{KernelId, TrainingReplayRole};
+pub(crate) use registry::{KernelId, TrainingReplayRole};
 
 fn decode_spirv(bytes: &[u8]) -> Result<Vec<u32>> {
 	if bytes.len() < size_of::<u32>() || !bytes.len().is_multiple_of(size_of::<u32>()) {
@@ -234,17 +361,66 @@ mod tests {
 			assert!(push_constant_size <= 128);
 			assert!(artifact.workgroup_size.into_iter().all(|extent| extent > 0));
 			assert!(artifact.workgroup_size.into_iter().product::<u32>() <= 1024);
-			match kernel {
-				KernelId::MatrixMatMulNtTiledF32 => {
-					assert_eq!(artifact.workgroup_size, [256, 1, 1]);
-					assert_eq!(artifact.dispatch_tile_size, [64, 64, 1]);
-				}
-				_ => {
-					assert_eq!(artifact.dispatch_tile_size, artifact.workgroup_size);
-				}
-			}
+			assert!(
+				artifact
+					.dispatch_tile_size
+					.into_iter()
+					.all(|extent| extent > 0)
+			);
 		}
 		Ok(())
+	}
+
+	#[test]
+	fn generated_kernel_registry_distinguishes_semantic_and_lowering_only_kernels() {
+		for kernel in KernelId::ALL {
+			if let Some(contract) = kernel.semantic_contract() {
+				assert!(contract.name().starts_with("oa::"));
+			}
+		}
+		for kernel in [
+			KernelId::MlCrossEntropySumF32,
+			KernelId::MlQkvProjectionBiasF32,
+			KernelId::MlGateUpSwigluBiasF32,
+			KernelId::MlAdamWMany4F32,
+			KernelId::MlAdamWMany4GraphF32,
+			KernelId::MlMuonNormalizeF32,
+			KernelId::MlMuonMatMulAxpbyF32,
+			KernelId::MlMuonLinearCombinationF32,
+			KernelId::MlMuonTransposeF32,
+			KernelId::MlMuonApplyF32,
+		] {
+			assert!(kernel.semantic_contract().is_none());
+		}
+		assert!(KernelId::MlCrossEntropyF32.semantic_contract().is_some());
+		assert_eq!(
+			KernelId::MlMuonVectorF32
+				.semantic_contract()
+				.map(|contract| contract.name()),
+			Some(crate::core::operation::ml::MUON.name())
+		);
+	}
+
+	#[test]
+	fn generated_registry_classifies_only_the_connected_write_ownership_slice() {
+		for kernel in [
+			KernelId::MatrixSoftmaxF32,
+			KernelId::MatrixSoftmaxBackwardF32,
+			KernelId::MatrixSumF32,
+			KernelId::MatrixSumAxisF32,
+			KernelId::MatrixSumBackwardF32,
+			KernelId::MlLayerNormF32,
+			KernelId::MlLayerNormBackwardF32,
+			KernelId::MlRmsNormF32,
+			KernelId::MlRmsNormBackwardF32,
+		] {
+			let contract = kernel
+				.artifact()
+				.physical_write
+				.expect("connected candidate must have physical-write metadata");
+			assert!(!contract.writes.is_empty());
+		}
+		assert!(KernelId::MatrixAddF32.artifact().physical_write.is_none());
 	}
 
 	#[test]

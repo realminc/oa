@@ -1,6 +1,8 @@
 use crate::{DType, Engine, Error, Matrix, Result};
 
-use super::super::{Module, ModuleRegistry, Parameter, autograd, kernels, random};
+use super::super::{
+	Module, ModuleRegistry, Parameter, autograd, lowering::matrix as dispatch, random,
+};
 
 /// Trainable FP32 lookup table indexed by an arbitrary-shape U32 matrix.
 pub struct Embedding {
@@ -77,7 +79,7 @@ impl Embedding {
 	/// arithmetic overflows, or runtime recording fails.
 	pub fn forward(&self, indices: &Matrix) -> Result<Matrix> {
 		let (weight, version, requires_grad) = self.weight.snapshot();
-		let output = kernels::embedding(&weight, indices)?;
+		let output = dispatch::embedding(&weight, indices)?;
 		if requires_grad {
 			autograd::record_embedding(indices, &output, self.weight.clone(), weight, version)?;
 		}

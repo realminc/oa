@@ -99,7 +99,7 @@ impl LogComponent {
 	/// Network operations and sessions.
 	pub const NETWORK: Self = Self::constant(*b"NET ", 3);
 	/// Cryptographic operations.
-	pub const CRYPTO: Self = Self::constant(*b"CRYP", 4);
+	pub const CRYPTOGRAPHY: Self = Self::constant(*b"CRYP", 4);
 	/// Python binding diagnostics.
 	pub const PYTHON: Self = Self::constant(*b"PY  ", 2);
 	/// Application and SDK diagnostics.

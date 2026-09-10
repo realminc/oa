@@ -10,6 +10,7 @@ mod queue;
 mod retirement;
 mod timeline;
 mod timestamp;
+mod video;
 
 pub(super) use buffer::Buffer;
 pub(super) use command::{RecordedCommandBuffer, ReusableCommandBuffer};

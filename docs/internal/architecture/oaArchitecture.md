@@ -2,11 +2,13 @@
 
 **Status:** Canonical
 
-**Updated:** 2026-09-07
+**Updated:** 2026-09-10
 
 **Roadmap:** [Rust port roadmap](roadmap/portRoadmap.md)
 
 **Compatibility:** [OA compatibility ledger](../porting/oaCompatibility.md)
+
+**Source mapping:** [Rust source and module structure](oaSourceStructure.md)
 
 This document defines the target architecture of OA's Rust implementation.
 Current source proves implementation status; the roadmap orders planned work;
@@ -17,7 +19,7 @@ subsystem documents may add detail without redefining these boundaries.
 OA is a GPU-first semantic computing library implemented on Vulkan. It owns:
 
 - typed device-resident values;
-- stateless numerical, ML, vision, audio, render, and crypto operations;
+- stateless numerical, ML, vision, audio, render, and cryptography operations;
 - stateful sessions for external and iterative processes;
 - semantic and executable graph compilation;
 - Vulkan execution, memory, synchronization, diagnostics, and profiling;
@@ -76,8 +78,8 @@ Every public contract is one of:
 | Kind | Responsibility | Examples |
 |---|---|---|
 | Value | Data plus semantic metadata; no active process | `Buffer`, `Matrix`, `Image`, `Audio`, `VideoFrame` |
-| Operation | Stateless transformation, query, or explicit one-shot effect | `matrix::add`, `vision::resize` |
-| Session | Stateful lifecycle, protocol, stream, or iterative process | `VideoDecoder`, `Presenter`, `TrainingSession` |
+| Operation | Stateless transformation, query, or explicit one-shot effect | `matrix::add`, `image::resize` |
+| Session | Stateful lifecycle, protocol, stream, or iterative process | `VideoDecoder`, `MediaPlayer`, `Presenter`, `TrainingSession` |
 
 Values may be cheap handles or views over owned storage. Operations do not own
 engines or long-lived mutable state. Sessions borrow dependencies explicitly
@@ -106,13 +108,14 @@ src/rs/
     shader/                 private Slang artifacts, reflection, metadata
     vk/                     private Vulkan handles, memory, execution, timing
   matrix.rs + matrix/       matrix operations
-  image.rs + image/         image operations
-  audio.rs + audio/         audio values, operations, sessions
-  video.rs + video/         video values, operations, sessions
-  vision.rs + vision/       vision operations
+  image.rs + image/         image codecs and stateless image operations
+  audio.rs + audio/         audio values, codecs, operations, device sessions
+  video.rs + video/         video-frame values, codecs, and device sessions
+  media.rs + media/         cross-track sources, clocks, transport, and playback
+  vision.rs + vision/       image/video interpretation operations
   render.rs + render/       render operations and sessions
   ml.rs + ml/               ML operations and sessions
-  crypto.rs + crypto/       crypto operations
+  cryptography.rs + cryptography/  hashing, secure memory, and PQC operations
 ```
 
 `core` is the public foundation module. It owns foundational semantic values
@@ -134,33 +137,70 @@ submission remain runtime responsibilities. OARS does not replace Rust's
 
 ```rust
 pub mod core;
+pub mod audio;
 
 pub use core::{Buffer, DType, Error, ErrorKind, Image, Matrix, Result, Shape};
+pub use audio::{Audio, AudioCapture, AudioEncoder, AudioPlayer};
 pub use runtime::{DeviceId, Engine, Event};
 ```
 
-Wildcard public re-exports are rejected. `oa::core` is the owning module path;
-the crate root explicitly re-exports the small common vocabulary so
-`oa::Matrix` and `oa::core::Matrix` identify the same type rather than parallel
-implementations. Python mirrors the public foundation module as `oa.core` while
-retaining admitted root identity aliases where useful.
+The example includes Planned types and describes the target facade; source and
+subsystem status documents decide what currently exists. Wildcard public
+re-exports are rejected. Each type has one owning module and implementation;
+the crate root explicitly re-exports admitted principal values and sessions as
+identity aliases. Thus `oa::Matrix` and `oa::core::Matrix`, or
+`oa::AudioPlayer` and `oa::audio::AudioPlayer`, identify the same item rather
+than parallel implementations. Stateless functions remain on their owning
+lowercase module and are not duplicated at the root.
+
+Callers may introduce local OpenMaya-style abbreviations without expanding the
+OA public surface:
+
+```rust,ignore
+use oa::{audio as oaa, core as oac, ml as oaml, vision as oacv};
+
+let player = oaa::AudioPlayer::open(&engine, config)?;
+```
+
+OA does not publish separate `oaa`, `oac`, `oaml`, or `oacv` crates or alias
+modules. Python mirrors the owning modules and may expose the same admitted
+root class identity, so `oa.AudioPlayer is oa.audio.AudioPlayer`.
 
 The crate-local `core` module shadows Rust's built-in `core` name for
 unqualified internal paths. Code that needs the language crate uses
 `::core::...`.
 
+Domain nesting is not ontology. Audio and Video are media domains, but remain
+public siblings of `media`: `media` coordinates timed tracks and transport
+rather than owning every audio/video value or operation. Likewise, Vision
+consumes Image and VideoFrame values; it does not own their codecs or storage.
+Render consumes Image and VideoFrame through Texture or other typed resource
+views; it does not redefine those source values. The detailed target is
+[OA Rust media boundary](../media/oaMedia.md).
+
 ## 5. Values and storage
 
-The target value model is conceptual composition, not inheritance:
+The target value model is conceptual composition over shared storage, not
+inheritance:
 
 ```text
-Buffer       byte range, placement, allocation identity, readiness
-  Matrix     dtype, shape, strides, offset, numeric semantics
-  Image      extent, format, layout, planes, color semantics
-  Audio      channels, samples, sample rate, channel layout
-  VideoFrame planes, coded/visible extent, timestamps, readiness
-  Texture    sampled/storage/render usage and image or buffer backing
+Buffer / BufferView     byte range, placement, allocation identity, readiness
+  ├─ Matrix             dtype, shape, strides, offset, numeric semantics
+  │    ├─ Audio         planar samples, sample rate, channel layout
+  │    └─ Image         when one dense matrix represents admitted pixels
+  ├─ Image planes       extent, format, layout, color semantics
+  │    └─ VideoFrame    coded/visible extent, timestamps, decode readiness
+  └─ other typed views  encoded bytes, vertices, indices, or native resources
+
+Texture                 sampled/storage/render usage over admitted image or
+                        buffer backing; never an alias for Image or VideoFrame
 ```
+
+These edges mean “is backed by” or “exposes a checked view of,” never “is a.”
+`Matrix` is OA's N-dimensional dense numerical value and replaces a separate
+Tensor vocabulary; it is not the universal storage base. Compressed packets,
+multi-plane video images, render textures, and topology-bearing geometry must
+not be forced into Matrix merely because some of their storage is numeric.
 
 An owning resource retains the internal services required to destroy its
 storage and complete already-produced work, even if the public `Engine` handle
@@ -171,7 +211,9 @@ valid.
 
 Identifiers with distinct meanings use transparent newtypes. Byte sizes,
 offsets, alignments, element counts, and Vulkan-width integers use checked
-arithmetic and fallible conversion at their owning boundary.
+arithmetic and fallible conversion at their owning boundary. See
+[OA Rust values and storage](../core/oaValues.md) for the per-value contracts
+and admission gate.
 
 ## 6. Engine, device, and completion
 
@@ -330,10 +372,11 @@ let values = sum.read_f32()?;
 
 Type-local constructors and convenience methods may delegate to the same
 schema-owned implementation when they add no second validation or lowering
-path. Rust does not transliterate C++ namespace casing: `oa::FnMatrix::add`
-becomes `oa::matrix::add`. Python retains `oa.FnMatrix` compatibility and may
-hide its binding-owned process engine, matching the established three-line
-authoring surface.
+path. Rust does not transliterate C++ namespace casing or emulate namespace
+reopening: Core `oa::FnMatrix::add` becomes `oa::matrix::add`, while the ML
+extension `oa::FnMatrix::gelu` becomes `oa::ml::matrix::gelu`. Python retains
+`oa.FnMatrix` compatibility and may hide its binding-owned process engine,
+matching the established three-line authoring surface.
 
 The first Experimental BLAS slice names the physical semantic convention
 directly: `matrix::mat_mul_nt` accepts `[M, K]` and `[N, K]` and produces
@@ -358,6 +401,46 @@ retain Matrix handles while `Engine` remains the sole runtime owner.
 Rust does not reproduce the C++ `Module` inheritance hierarchy or `Nn*` type
 prefixes. Trait composition and the existing `oa::ml::nn` namespace express
 those roles directly.
+
+The public translation rule is uniform:
+
+| OA C++ | Rust | Role |
+|---|---|---|
+| `oa::Matrix` | `oa::Matrix` | Semantic value identity is preserved. |
+| Core `oa::FnMatrix::add` | `oa::matrix::add` | Core numerical operation module replaces the `Fn*` namespace. |
+| ML `oa::FnMatrix::gelu` | `oa::ml::matrix::gelu` | ML ownership replaces C++ namespace reopening. |
+| `oa::FnLoss::crossEntropy` | `oa::ml::loss::cross_entropy` | Losses retain their distinct ML operation family. |
+| `oa::Image` | `oa::Image` | Reusable pixel value; not owned by Vision, Render, or UI. |
+| `oa::FnImage::resize` | `oa::image::resize` | Stateless image transformation. |
+| `oa::Audio` | `oa::Audio` | Finite planar audio value over Matrix storage. |
+| `oa::FnAudio::normalize` | `oa::audio::normalize` | Stateless audio transformation. |
+| `oa::VideoFrame` | `oa::VideoFrame` | Timed, readiness-bearing frame value. |
+| `oa::FnVideo::*` | `oa::video::*` | Stateless video/bitstream transformations only. |
+| `oa::FnDetection::*` | `oa::vision::*` | Image/video interpretation. |
+| `oa::AudioEncoder` | `oa::audio::AudioEncoder` | Stateful session type and methods. |
+| `oa::AudioCapture` | `oa::audio::AudioCapture` | Stateful device-input session. |
+| `oa::AudioPlayer` | `oa::audio::AudioPlayer` | Stateful incremental decode/output session. |
+| `oa::VideoPlayer` | `oa::media::MediaPlayer` where synchronized A/V is intended | Cross-track playback session rather than a Vision owner. |
+
+One-shot verbs use verb modules or functions such as `audio::decode_file`.
+Noun modules such as `decoder` or `encoder` are reserved for stateful session
+implementations when that distinction prevents ambiguity. File boundaries may
+remain private beneath a facade; only explicit re-exports define public API.
+The complete migration spelling and placement rules live in
+[C++ to Rust API translation](../porting/oaCppToRust.md).
+
+Principal public values and stateful sessions may additionally be explicitly
+re-exported from `lib.rs`:
+
+```rust,ignore
+let player = oa::AudioPlayer::open(&engine, config)?;
+let same_type = oa::audio::AudioPlayer::open(&engine, config)?;
+```
+
+This is one definition with two identity paths. Root aliases preserve the
+compact C++/Python class vocabulary; owning modules preserve discovery and
+domain structure. Free operations such as `audio::decode_file` and
+`matrix::add` remain module-only.
 
 ## 9. Schema and generated surfaces
 
@@ -396,7 +479,9 @@ The detailed contract is [OA Rust Compute Kernel System](../compute/oaComputeKer
 Shipping GPU programs remain first-class Slang sources under `src/slang`.
 Reflection and a small OA attribute schema describe entry points, bindings,
 workgroup geometry, capabilities, dtypes, layouts, specialization parameters,
-and candidate identity where reliable.
+candidate identity, writable-range partitioning, and collision policy where
+reliable. Non-atomic writes require a proved exclusive physical domain; atomic
+and reduction routes record their storage and numeric-order contract.
 
 Each compiled shader module owns exactly one stage entry point named `main`.
 Semantic and physical identity comes from its stable kernel ID, OA attributes,

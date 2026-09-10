@@ -151,8 +151,9 @@ test_vk!(
 		let q_matrix = q_embedding.forward(&indices)?;
 		let k_matrix = k_embedding.forward(&indices)?;
 		let v_matrix = v_embedding.forward(&indices)?;
-		let context =
-			oa::ml::scaled_dot_product_attention_causal(&q_matrix, &k_matrix, &v_matrix, S, H)?;
+		let context = oa::ml::matrix::scaled_dot_product_attention_causal(
+			&q_matrix, &k_matrix, &v_matrix, S, H,
+		)?;
 		assert_close(
 			&context.read_f32()?,
 			&cpu_attention(&q, &k, &v, S, D, H),
@@ -192,19 +193,17 @@ test_vk!(
 );
 
 test_vk!(
-	causal_attention_rejects_sequence_lengths_beyond_saved_state_capacity,
+	causal_attention_accepts_sequence_lengths_beyond_the_retired_monolithic_limit,
 	engine,
 	{
 		let values = vec![0.0_f32; 1025];
 		let query = oa::Matrix::from_f32(&engine, [1025, 1], &values)?;
 		let key = oa::Matrix::from_f32(&engine, [1025, 1], &values)?;
 		let value = oa::Matrix::from_f32(&engine, [1025, 1], &values)?;
-		assert_eq!(
-			oa::ml::scaled_dot_product_attention_causal(&query, &key, &value, 1025, 1)
-				.err()
-				.map(|error| error.kind()),
-			Some(oa::ErrorKind::InvalidArgument)
-		);
+		let output =
+			oa::ml::matrix::scaled_dot_product_attention_causal(&query, &key, &value, 1025, 1)?;
+		assert_eq!(output.shape(), [1025, 1]);
+		assert!(output.read_f32()?.into_iter().all(|value| value == 0.0));
 		Ok(())
 	}
 );
@@ -217,7 +216,11 @@ test_vk!(
 		let expected =
 			values.map(|x| 0.5 * x * (1.0 + (0.797_884_6 * (x + 0.044_715 * x * x * x)).tanh()));
 		let input = oa::Matrix::from_f32(&engine, [7], &values)?;
-		assert_close(&oa::ml::gelu(&input)?.read_f32()?, &expected, 1.0e-6);
+		assert_close(
+			&oa::ml::matrix::gelu(&input)?.read_f32()?,
+			&expected,
+			1.0e-6,
+		);
 		let embedding =
 			oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [7, 1], &values)?)?;
 		let indices = oa::Matrix::from_slice(&engine, [7], &[0_u32, 1, 2, 3, 4, 5, 6])?;
@@ -242,7 +245,7 @@ test_vk!(
 		)?;
 		let target_matrix = oa::Matrix::from_slice(&engine, [7], &targets)?;
 		let tape = oa::ml::GradientTape::new();
-		let activated = oa::ml::gelu(&embedding.forward(&indices)?)?;
+		let activated = oa::ml::matrix::gelu(&embedding.forward(&indices)?)?;
 		let loss = oa::ml::loss::cross_entropy(&linear.forward(&activated)?, &target_matrix)?;
 		tape.backward(&loss)?;
 		assert_close(
@@ -270,17 +273,21 @@ test_vk!(
 		});
 		let gate = oa::Matrix::from_f32(&engine, [7], &gate_values)?;
 		let up = oa::Matrix::from_f32(&engine, [7], &up_values)?;
-		assert_close(&oa::ml::swiglu(&gate, &up)?.read_f32()?, &expected, 1.0e-6);
+		assert_close(
+			&oa::ml::matrix::swiglu(&gate, &up)?.read_f32()?,
+			&expected,
+			1.0e-6,
+		);
 		let wrong_shape = oa::Matrix::from_f32(&engine, [1], &[1.0])?;
 		assert_eq!(
-			oa::ml::swiglu(&gate, &wrong_shape)
+			oa::ml::matrix::swiglu(&gate, &wrong_shape)
 				.err()
 				.map(|error| error.kind()),
 			Some(oa::ErrorKind::InvalidArgument)
 		);
 		let wrong_dtype = oa::Matrix::from_slice(&engine, [7], &[1_u32; 7])?;
 		assert_eq!(
-			oa::ml::swiglu(&gate, &wrong_dtype)
+			oa::ml::matrix::swiglu(&gate, &wrong_dtype)
 				.err()
 				.map(|error| error.kind()),
 			Some(oa::ErrorKind::InvalidArgument)
@@ -318,7 +325,7 @@ test_vk!(
 		)?;
 		let target_matrix = oa::Matrix::from_slice(&engine, [7], &targets)?;
 		let tape = oa::ml::GradientTape::new();
-		let activated = oa::ml::swiglu(
+		let activated = oa::ml::matrix::swiglu(
 			&gate_embedding.forward(&indices)?,
 			&up_embedding.forward(&indices)?,
 		)?;

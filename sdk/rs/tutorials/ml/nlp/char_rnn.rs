@@ -1,37 +1,102 @@
-use std::time::Instant;
-
-use oa::ml::{Module, nlp};
+use oa::ml::{ItTraining, ItTrainingConfig, LossMetric, Module, ProgressBar, TrainingSummary, nlp};
 
 fn main() -> oa::Result<()> {
 	let engine = oa::Engine::new()?;
 	let model = nlp::CharRnn::new(&engine)?;
 	let mut optimizer = oa::ml::AdamW::new(model.all_parameters()?, 0.01)?;
 	let mut sampler = nlp::CharSampler::new(nlp::BATCH_SIZE)?;
-	let mut initial_loss = 0.0_f32;
-	let mut final_loss = 0.0_f32;
-	let mut final_batch = None;
-	let started = Instant::now();
 
-	for step in 0..nlp::TRAINING_STEPS {
-		let (input, target) = sampler.next(&engine)?;
-		optimizer.zero_grad();
-		let tape = oa::ml::GradientTape::new();
-		let logits = model.forward(&input)?;
-		let flat_target = target.reshape([nlp::BATCH_SIZE * nlp::CONTEXT_LENGTH])?;
-		let loss = oa::ml::loss::cross_entropy(&logits, &flat_target)?;
-		tape.backward(&loss)?;
-		final_loss = loss.read_f32()?[0];
-		if step == 0 {
-			initial_loss = final_loss;
+	println!("\n╔══════════════════════════════════════════════════════════════════╗");
+	println!("║  OA Tutorial — Char RNN · all-position LM (autograd)             ║");
+	println!("╚══════════════════════════════════════════════════════════════════╝\n");
+	println!(
+		"tokenizer: character · vocab={} (a-z + space)",
+		nlp::CHAR_VOCAB_SIZE
+	);
+	println!("Task: dense next-character prediction at every position\n");
+	println!(
+		"Model: Embedding({}) → RNN({}) → Linear({})",
+		nlp::MODEL_WIDTH,
+		nlp::HIDDEN_WIDTH,
+		nlp::CHAR_VOCAB_SIZE
+	);
+	println!(
+		"params: {}    Optimizer: AdamW(lr=0.01)\n",
+		model.num_parameters()?
+	);
+	println!(
+		"training: {} steps · batch={} · sequence={} character tokens",
+		nlp::TRAINING_STEPS,
+		nlp::BATCH_SIZE,
+		nlp::CONTEXT_LENGTH
+	);
+
+	let mut loss_metric = LossMetric::default();
+	let mut progress = ProgressBar::default();
+	let mut summary_callback = TrainingSummary::default();
+	let mut training = ItTraining::new(
+		&engine,
+		&mut optimizer,
+		ItTrainingConfig {
+			total_steps: nlp::TRAINING_STEPS as u64,
+			batch_size: nlp::BATCH_SIZE as u64,
+			sequence_length: nlp::CONTEXT_LENGTH as u64,
+			sequence_unit: "token".into(),
+			timer_name: "char_rnn_training_step".into(),
+			enable_gpu_timing: true,
+			..ItTrainingConfig::default()
+		},
+	)?;
+	training.add_metric(&mut loss_metric);
+	training.add_callback(&mut progress);
+	training.add_callback(&mut summary_callback);
+
+	let mut initial_loss = 0.0_f32;
+	let mut last_input = Vec::new();
+	let mut last_target = Vec::new();
+	while training.step(
+		|| {
+			let (input_values, target_values) = sampler.next_values()?;
+			last_input.clone_from(&input_values);
+			last_target.clone_from(&target_values);
+			Ok((
+				oa::Matrix::from_slice(
+					&engine,
+					[nlp::BATCH_SIZE, nlp::CONTEXT_LENGTH],
+					&input_values,
+				)?,
+				oa::Matrix::from_slice(
+					&engine,
+					[nlp::BATCH_SIZE * nlp::CONTEXT_LENGTH],
+					&target_values,
+				)?,
+			))
+		},
+		|(input, target)| {
+			let tape = oa::ml::GradientTape::new();
+			let logits = model.forward(&input)?;
+			let loss = oa::ml::loss::cross_entropy(&logits, &target)?;
+			tape.backward(&loss)?;
+			Ok(loss)
+		},
+	)? {
+		if training.snapshot().step_count() == 1 {
+			initial_loss = training.snapshot().last_loss().unwrap_or_default();
 		}
-		optimizer.step()?;
-		if (step + 1) % 50 == 0 || step == 0 {
-			println!("step {:>3}/300 loss {:.6}", step + 1, final_loss);
-		}
-		final_batch = Some((input, flat_target));
 	}
-	let elapsed = started.elapsed();
-	let (input, target) = final_batch.expect("the fixed 300-step loop is nonempty");
+	let program_diagnostics = training
+		.training_program()
+		.map(|program| program.diagnostics());
+	let training_result = training.finish()?;
+	let final_loss = training_result.last_loss().unwrap_or_default();
+
+	let input =
+		oa::Matrix::from_slice(&engine, [nlp::BATCH_SIZE, nlp::CONTEXT_LENGTH], &last_input)?;
+	let target = oa::Matrix::from_slice(
+		&engine,
+		[nlp::BATCH_SIZE * nlp::CONTEXT_LENGTH],
+		&last_target,
+	)?;
 	let accuracy = nlp::accuracy(&model.forward(&input)?, &target)?;
 	let generated = nlp::generate_greedy(
 		&engine,
@@ -40,18 +105,55 @@ fn main() -> oa::Result<()> {
 		nlp::GENERATION_LENGTH,
 	)?;
 
-	println!("loss: initial {initial_loss:.6} final {final_loss:.6}");
-	println!("accuracy: {:.1}%", accuracy * 100.0);
+	println!("\nEvaluation:");
 	println!(
-		"wall: {:.3} ms/step",
-		1000.0 * elapsed.as_secs_f64() / nlp::TRAINING_STEPS as f64
+		"  Random-loss baseline ln({}) = {:.4}",
+		nlp::CHAR_VOCAB_SIZE,
+		(nlp::CHAR_VOCAB_SIZE as f64).ln()
 	);
-	println!("prompt: {:?}", nlp::GENERATION_PROMPT);
-	println!("generated: {generated:?}");
+	println!(
+		"  character-token accuracy: {:.1}% (compare within Char only)",
+		accuracy * 100.0
+	);
+	println!(
+		"\nGeneration:\n  prompt: {:?}\n  generated: {:?}",
+		nlp::GENERATION_PROMPT,
+		generated
+	);
+	if let Some(diagnostics) = program_diagnostics {
+		println!(
+			"program: {} nodes · {} recording · {} cache hits · {} uploads",
+			diagnostics.node_count(),
+			diagnostics.command_recording_count(),
+			diagnostics.command_cache_hit_count(),
+			diagnostics.input_upload_count(),
+		);
+	}
 
 	assert!(initial_loss > 3.0);
 	assert!(final_loss < 0.25);
 	assert!(accuracy > 0.9);
 	assert_eq!(generated, nlp::CHAR_RNN_REFERENCE_GENERATION);
+
+	let checkpoint = std::env::temp_dir().join("oars_char_rnn.oam");
+	oa::ml::save_checkpoint(&checkpoint, &model, &optimizer)?;
+	let reloaded = nlp::CharRnn::new(&engine)?;
+	let mut reloaded_optimizer = oa::ml::AdamW::new(reloaded.all_parameters()?, 0.01)?;
+	oa::ml::load_checkpoint(&engine, &checkpoint, &reloaded, &mut reloaded_optimizer)?;
+	assert_eq!(reloaded_optimizer.step_count(), optimizer.step_count());
+	assert_eq!(
+		nlp::accuracy(&reloaded.forward(&input)?, &target)?,
+		accuracy
+	);
+	assert_eq!(
+		nlp::generate_greedy(
+			&engine,
+			&reloaded,
+			nlp::GENERATION_PROMPT,
+			nlp::GENERATION_LENGTH
+		)?,
+		generated
+	);
+	std::fs::remove_file(checkpoint).expect("remove completed RNN checkpoint");
 	Ok(())
 }
