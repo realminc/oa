@@ -1,15 +1,21 @@
 //! Stateless Matrix operations.
 
 use crate::{
-	DType, Engine, Error, Matrix, OpAttribute, OperationContract, Result,
+	DType, Engine, Error, Matrix, OpAttribute, OpShapeRule, OperationContract, Result,
 	core::autograd::{self, MatrixNode},
 	runtime::{BufferBinding, ComputeDispatch, KernelId, PushConstant, SemanticDispatch},
 };
 
+mod index;
 mod rng;
 
+pub use index::{
+	MoeExpertPlan, TopKResult, concat, equal, gather_last_dim, moe_expert_plan,
+	moe_routing_bias_update, repeat_interleave, slice, top_k, top_k_mask,
+};
+pub(crate) use index::{gather_last_dim_backward, repeat_interleave_backward, slice_backward};
 pub(crate) use rng::dropout_backward;
-pub use rng::{dropout, philox_normal, philox_uniform, set_rng_seed};
+pub use rng::{dropout, philox_normal, philox_uniform, sample_logits, set_rng_seed};
 
 /// Create an FP32 matrix filled with ones.
 ///
@@ -50,6 +56,15 @@ pub fn reshape(input: &Matrix, shape: impl Into<Vec<usize>>) -> Result<Matrix> {
 	Ok(output)
 }
 
+pub(crate) fn reshape_semantic_output(input: &Matrix, shape: Vec<usize>) -> Result<Matrix> {
+	let output = input.reshape_semantic_output(shape)?;
+	autograd::record(MatrixNode::Reshape {
+		input: input.clone(),
+		output_id: output.value_id(),
+	})?;
+	Ok(output)
+}
+
 fn binary(
 	left: &Matrix,
 	right: &Matrix,
@@ -57,13 +72,6 @@ fn binary(
 	contract: OperationContract,
 ) -> Result<Matrix> {
 	let operation = contract.name();
-	if left.shape() != right.shape() {
-		return Err(Error::invalid_argument(format!(
-			"{operation} requires equal shapes; left is {:?}, right is {:?}",
-			left.shape(),
-			right.shape()
-		)));
-	}
 	if left.dtype() != right.dtype() {
 		return Err(Error::invalid_argument(format!(
 			"{operation} requires equal dtypes; left is {}, right is {}",
@@ -71,36 +79,156 @@ fn binary(
 			right.dtype().token()
 		)));
 	}
-	let kernel = select_kernel(left.dtype(), routes, operation)?;
 	let engine = left.engine_handle();
 	if !engine.same_as(right.engine_handle()) {
 		return Err(Error::invalid_argument(format!(
 			"{operation} inputs must belong to the same engine"
 		)));
 	}
-	let element_count = u32::try_from(left.element_count())
-		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
+	let output = if left.shape() == right.shape() {
+		let kernel = select_kernel(left.dtype(), routes, operation)?;
+		let element_count = u32::try_from(left.element_count()).map_err(|_| {
+			Error::invalid_argument(format!("{operation} element count exceeds u32"))
+		})?;
+		let output = Matrix::allocate(
+			engine,
+			left.shape().to_vec(),
+			left.element_count(),
+			left.dtype(),
+		)?;
+		if element_count != 0 {
+			let buffers = [
+				BufferBinding::read(left.storage()),
+				BufferBinding::read(right.storage()),
+				BufferBinding::write(output.storage()),
+			];
+			let push_constants = [PushConstant::U32(element_count)];
+			let inputs = [left, right];
+			let outputs = [&output];
+			engine.record_semantic(
+				ComputeDispatch {
+					kernel,
+					buffers: &buffers,
+					push_constants: &push_constants,
+					workgroups: kernel.linear_workgroups(element_count),
+				},
+				SemanticDispatch {
+					contract,
+					inputs: &inputs,
+					outputs: &outputs,
+					attributes: &[],
+				},
+			)?;
+		}
+		output
+	} else if contract.shape_rule() == OpShapeRule::Broadcast {
+		binary_broadcast(left, right, contract)?
+	} else {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires equal shapes; left is {:?}, right is {:?}",
+			left.shape(),
+			right.shape()
+		)));
+	};
+	if contract.hash() == crate::core::operation::matrix::ADD.hash() && left.dtype() == DType::F32 {
+		autograd::record(MatrixNode::Add {
+			left: left.clone(),
+			right: right.clone(),
+			output_id: output.value_id(),
+		})?;
+	} else if contract.hash() == crate::core::operation::matrix::SUB.hash()
+		&& left.dtype() == DType::F32
+	{
+		autograd::record(MatrixNode::Sub {
+			left: left.clone(),
+			right: right.clone(),
+			output_id: output.value_id(),
+		})?;
+	} else if contract.hash() == crate::core::operation::matrix::MUL.hash()
+		&& left.dtype() == DType::F32
+	{
+		autograd::record(MatrixNode::Mul {
+			left: left.clone(),
+			right: right.clone(),
+			output_id: output.value_id(),
+		})?;
+	} else if contract.hash() == crate::core::operation::matrix::DIV.hash()
+		&& left.dtype() == DType::F32
+	{
+		autograd::record(MatrixNode::Div {
+			left: left.clone(),
+			right: right.clone(),
+			output_id: output.value_id(),
+		})?;
+	}
+	Ok(output)
+}
+
+const BROADCAST_RANK_LIMIT: usize = 8;
+
+struct BroadcastLayout {
+	output_shape: Vec<usize>,
+	output_dims: [u32; BROADCAST_RANK_LIMIT],
+	left_strides: [u32; BROADCAST_RANK_LIMIT],
+	right_strides: [u32; BROADCAST_RANK_LIMIT],
+	element_count: u32,
+	rank: u32,
+}
+
+fn binary_broadcast(left: &Matrix, right: &Matrix, contract: OperationContract) -> Result<Matrix> {
+	let operation = contract.name();
+	let layout = resolve_broadcast(left.shape(), right.shape(), operation)?;
+	let kernel = match (contract.hash(), left.dtype()) {
+		(hash, DType::F32) if hash == crate::core::operation::matrix::ADD.hash() => {
+			KernelId::MatrixAddBroadcastF32
+		}
+		(hash, DType::I32) if hash == crate::core::operation::matrix::ADD.hash() => {
+			KernelId::MatrixAddBroadcastI32
+		}
+		(hash, DType::F32) if hash == crate::core::operation::matrix::MUL.hash() => {
+			KernelId::MatrixMulBroadcastF32
+		}
+		(hash, DType::F32) if hash == crate::core::operation::matrix::SUB.hash() => {
+			KernelId::MatrixSubBroadcastF32
+		}
+		(hash, DType::F32) if hash == crate::core::operation::matrix::DIV.hash() => {
+			KernelId::MatrixDivBroadcastF32
+		}
+		_ => {
+			return Err(Error::invalid_argument(format!(
+				"{operation} does not support dtype {}",
+				left.dtype().token()
+			)));
+		}
+	};
+	let output_count = usize::try_from(layout.element_count)
+		.expect("u32 element count always fits the supported Rust targets");
 	let output = Matrix::allocate(
-		engine,
-		left.shape().to_vec(),
-		left.element_count(),
+		left.engine_handle(),
+		layout.output_shape,
+		output_count,
 		left.dtype(),
 	)?;
-	if element_count != 0 {
+	if layout.element_count != 0 {
 		let buffers = [
 			BufferBinding::read(left.storage()),
 			BufferBinding::read(right.storage()),
 			BufferBinding::write(output.storage()),
 		];
-		let push_constants = [PushConstant::U32(element_count)];
+		let mut push_constants = Vec::with_capacity(26);
+		push_constants.push(PushConstant::U32(layout.element_count));
+		push_constants.push(PushConstant::U32(layout.rank));
+		push_constants.extend(layout.output_dims.map(PushConstant::U32));
+		push_constants.extend(layout.left_strides.map(PushConstant::U32));
+		push_constants.extend(layout.right_strides.map(PushConstant::U32));
 		let inputs = [left, right];
 		let outputs = [&output];
-		engine.record_semantic(
+		left.engine_handle().record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
 				push_constants: &push_constants,
-				workgroups: kernel.linear_workgroups(element_count),
+				workgroups: kernel.linear_workgroups(layout.element_count),
 			},
 			SemanticDispatch {
 				contract,
@@ -110,14 +238,85 @@ fn binary(
 			},
 		)?;
 	}
-	if contract.hash() == crate::core::operation::matrix::ADD.hash() && left.dtype() == DType::F32 {
-		autograd::record(MatrixNode::Add {
-			left: left.clone(),
-			right: right.clone(),
-			output_id: output.value_id(),
+	Ok(output)
+}
+
+fn resolve_broadcast(
+	left: &[usize],
+	right: &[usize],
+	operation: &'static str,
+) -> Result<BroadcastLayout> {
+	let rank = left.len().max(right.len());
+	if rank > BROADCAST_RANK_LIMIT {
+		return Err(Error::invalid_argument(format!(
+			"{operation} supports at most {BROADCAST_RANK_LIMIT} broadcast axes"
+		)));
+	}
+	let mut output_shape = vec![1_usize; rank];
+	for (axis, output_extent) in output_shape.iter_mut().enumerate() {
+		let left_extent = aligned_extent(left, rank, axis);
+		let right_extent = aligned_extent(right, rank, axis);
+		*output_extent = if left_extent == right_extent {
+			left_extent
+		} else if left_extent == 1 {
+			right_extent
+		} else if right_extent == 1 {
+			left_extent
+		} else {
+			return Err(Error::invalid_argument(format!(
+				"{operation} cannot broadcast shapes {left:?} and {right:?}"
+			)));
+		};
+	}
+	let element_count = output_shape.iter().try_fold(1_usize, |product, extent| {
+		product.checked_mul(*extent).ok_or_else(|| {
+			Error::invalid_argument(format!("{operation} output size overflows usize"))
+		})
+	})?;
+	let element_count = u32::try_from(element_count)
+		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
+	let mut output_dims = [1_u32; BROADCAST_RANK_LIMIT];
+	for (destination, extent) in output_dims.iter_mut().zip(&output_shape) {
+		*destination = u32::try_from(*extent).map_err(|_| {
+			Error::invalid_argument(format!("{operation} output extent exceeds u32"))
 		})?;
 	}
-	Ok(output)
+	Ok(BroadcastLayout {
+		left_strides: broadcast_strides(left, &output_shape, operation)?,
+		right_strides: broadcast_strides(right, &output_shape, operation)?,
+		output_shape,
+		output_dims,
+		element_count,
+		rank: u32::try_from(rank).expect("broadcast rank limit fits u32"),
+	})
+}
+
+fn broadcast_strides(
+	shape: &[usize],
+	output_shape: &[usize],
+	operation: &'static str,
+) -> Result<[u32; BROADCAST_RANK_LIMIT]> {
+	let rank = output_shape.len();
+	let offset = rank - shape.len();
+	let mut strides = [0_u32; BROADCAST_RANK_LIMIT];
+	let mut contiguous_stride = 1_usize;
+	for source_axis in (0..shape.len()).rev() {
+		let axis = offset + source_axis;
+		if shape[source_axis] != 1 || output_shape[axis] == 1 {
+			strides[axis] = u32::try_from(contiguous_stride).map_err(|_| {
+				Error::invalid_argument(format!("{operation} input stride exceeds u32"))
+			})?;
+		}
+		contiguous_stride = contiguous_stride
+			.checked_mul(shape[source_axis])
+			.ok_or_else(|| Error::invalid_argument(format!("{operation} input size overflows")))?;
+	}
+	Ok(strides)
+}
+
+fn aligned_extent(shape: &[usize], rank: usize, axis: usize) -> usize {
+	axis.checked_sub(rank - shape.len())
+		.map_or(1, |source_axis| shape[source_axis])
 }
 
 fn unary(
@@ -158,6 +357,46 @@ fn unary(
 				attributes: &[],
 			},
 		)?;
+	}
+	if contract.hash() == crate::core::operation::matrix::RECIPROCAL.hash() {
+		autograd::record(MatrixNode::Reciprocal {
+			input: input.clone(),
+			output: output.clone(),
+			output_id: output.value_id(),
+		})?;
+	} else if contract.hash() == crate::core::operation::matrix::EXP.hash() {
+		autograd::record(MatrixNode::Exp {
+			input: input.clone(),
+			output: output.clone(),
+			output_id: output.value_id(),
+		})?;
+	} else if contract.hash() == crate::core::operation::matrix::LOG.hash() {
+		autograd::record(MatrixNode::Log {
+			input: input.clone(),
+			output_id: output.value_id(),
+		})?;
+	} else if contract.hash() == crate::core::operation::matrix::ABS.hash() {
+		autograd::record(MatrixNode::Abs {
+			input: input.clone(),
+			output_id: output.value_id(),
+		})?;
+	} else if contract.hash() == crate::core::operation::matrix::COPY.hash() {
+		autograd::record(MatrixNode::Copy {
+			input: input.clone(),
+			output_id: output.value_id(),
+		})?;
+	} else if contract.hash() == crate::core::operation::matrix::SQRT.hash() {
+		autograd::record(MatrixNode::Sqrt {
+			input: input.clone(),
+			output: output.clone(),
+			output_id: output.value_id(),
+		})?;
+	} else if contract.hash() == crate::core::operation::matrix::NEG.hash() {
+		autograd::record(MatrixNode::Scale {
+			input: input.clone(),
+			output_id: output.value_id(),
+			scalar: -1.0,
+		})?;
 	}
 	Ok(output)
 }
@@ -205,6 +444,39 @@ fn unary_scalar(
 				attributes: &attributes,
 			},
 		)?;
+	}
+	if contract.hash() == crate::core::operation::matrix::SCALE.hash() {
+		autograd::record(MatrixNode::Scale {
+			input: input.clone(),
+			output_id: output.value_id(),
+			scalar,
+		})?;
+	} else if contract.hash() == crate::core::operation::matrix::ADD_SCALAR.hash()
+		|| contract.hash() == crate::core::operation::matrix::SUB_SCALAR.hash()
+	{
+		autograd::record(MatrixNode::Scale {
+			input: input.clone(),
+			output_id: output.value_id(),
+			scalar: 1.0,
+		})?;
+	} else if contract.hash() == crate::core::operation::matrix::DIV_SCALAR.hash() {
+		autograd::record(MatrixNode::Scale {
+			input: input.clone(),
+			output_id: output.value_id(),
+			scalar: 1.0 / scalar,
+		})?;
+	} else if contract.hash() == crate::core::operation::matrix::CLAMP_MAX.hash() {
+		autograd::record(MatrixNode::ClampMax {
+			input: input.clone(),
+			output_id: output.value_id(),
+			maximum: scalar,
+		})?;
+	} else if contract.hash() == crate::core::operation::matrix::CLAMP_MIN.hash() {
+		autograd::record(MatrixNode::ClampMin {
+			input: input.clone(),
+			output_id: output.value_id(),
+			minimum: scalar,
+		})?;
 	}
 	Ok(output)
 }
@@ -297,6 +569,11 @@ fn mat_mul_nt_impl(left: &Matrix, right: &Matrix, contract: OperationContract) -
 				attributes: &[],
 			},
 		)?;
+		autograd::record(MatrixNode::MatMulNt {
+			left: left.clone(),
+			right: right.clone(),
+			output_id: output.value_id(),
+		})?;
 	}
 	Ok(output)
 }

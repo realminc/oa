@@ -16,6 +16,7 @@ SCHEMA_PATH = GENERATOR_ROOT / "schema/matrix_elemwise.json"
 BLAS_SCHEMA_PATH = GENERATOR_ROOT / "schema/matrix_blas.json"
 REDUCE_SCHEMA_PATH = GENERATOR_ROOT / "schema/matrix_reduce.json"
 RNG_SCHEMA_PATH = GENERATOR_ROOT / "schema/matrix_rng.json"
+INDEX_SCHEMA_PATH = GENERATOR_ROOT / "schema/matrix_index.json"
 ML_SCHEMA_PATH = GENERATOR_ROOT / "schema/ml_training.json"
 AUDIO_SCHEMA_PATH = GENERATOR_ROOT / "schema/audio.json"
 CRYPTOGRAPHY_HASH_SCHEMA_PATH = GENERATOR_ROOT / "schema/cryptography_hash.json"
@@ -23,6 +24,7 @@ IMAGE_SCHEMA_PATH = GENERATOR_ROOT / "schema/image.json"
 VISION_SCHEMA_PATH = GENERATOR_ROOT / "schema/vision_detection.json"
 REPOSITORY_ROOT = GENERATOR_ROOT.parents[2]
 SLANG_ROOT = REPOSITORY_ROOT / "src/slang"
+SDK_SLANG_ROOT = REPOSITORY_ROOT / "sdk/rs/slang"
 
 
 class GeneratorTests(unittest.TestCase):
@@ -31,6 +33,7 @@ class GeneratorTests(unittest.TestCase):
 		self.blas_schema = json.loads(BLAS_SCHEMA_PATH.read_text(encoding="utf-8"))
 		self.reduce_schema = json.loads(REDUCE_SCHEMA_PATH.read_text(encoding="utf-8"))
 		self.rng_schema = json.loads(RNG_SCHEMA_PATH.read_text(encoding="utf-8"))
+		self.index_schema = json.loads(INDEX_SCHEMA_PATH.read_text(encoding="utf-8"))
 		self.ml_schema = json.loads(ML_SCHEMA_PATH.read_text(encoding="utf-8"))
 		self.audio_schema = json.loads(AUDIO_SCHEMA_PATH.read_text(encoding="utf-8"))
 		self.cryptography_hash_schema = json.loads(
@@ -44,6 +47,7 @@ class GeneratorTests(unittest.TestCase):
 		GENERATOR.validate_blas_schema(self.blas_schema)
 		GENERATOR.validate_reduce_schema(self.reduce_schema)
 		GENERATOR.validate_rng_schema(self.rng_schema)
+		GENERATOR.validate_index_schema(self.index_schema)
 		GENERATOR.validate_ml_schema(self.ml_schema)
 		GENERATOR.validate_audio_schema(self.audio_schema)
 		GENERATOR.validate_cryptography_hash_schema(self.cryptography_hash_schema)
@@ -61,6 +65,8 @@ class GeneratorTests(unittest.TestCase):
 				"6" * 64,
 				self.rng_schema,
 				"2" * 64,
+				self.index_schema,
+				"9" * 64,
 				self.ml_schema,
 				"3" * 64,
 				self.audio_schema,
@@ -274,6 +280,7 @@ class GeneratorTests(unittest.TestCase):
 		for schema in (
 			self.reduce_schema,
 			self.rng_schema,
+			self.index_schema,
 			self.ml_schema,
 			self.audio_schema,
 			self.cryptography_hash_schema,
@@ -290,21 +297,28 @@ class GeneratorTests(unittest.TestCase):
 			for variant in GENERATOR.operation_variants(self.schema, operation)
 		}
 		generated_sources.update(
+			lowering["source"]
+			for operation in self.schema["operations"]
+			for lowering in GENERATOR.operation_lowering_variants(operation)
+		)
+		generated_sources.update(
 			f"src/slang/matrix/blas/{operation['source_stem']}.gen.slang"
 			for operation in self.blas_schema["operations"]
 		)
 		expected = schema_sources | generated_sources
 		actual = {
 			path.relative_to(REPOSITORY_ROOT).as_posix()
-			for path in SLANG_ROOT.rglob("*.slang")
+			for root in (SLANG_ROOT, SDK_SLANG_ROOT)
+			for path in root.rglob("*.slang")
 			if "void main(" in path.read_text(encoding="utf-8")
 		}
 
 		self.assertEqual(actual, expected)
 		self.assertTrue(all((REPOSITORY_ROOT / source).is_file() for source in expected))
-		for path in SLANG_ROOT.rglob("*.slang"):
-			text = path.read_text(encoding="utf-8")
-			self.assertNotIn("TODO: Add common", text, path.as_posix())
+		for root in (SLANG_ROOT, SDK_SLANG_ROOT):
+			for path in root.rglob("*.slang"):
+				text = path.read_text(encoding="utf-8")
+				self.assertNotIn("TODO: Add common", text, path.as_posix())
 
 	def test_blas_tile_geometry_is_validated(self):
 		invalid = copy.deepcopy(self.blas_schema)
@@ -317,6 +331,14 @@ class GeneratorTests(unittest.TestCase):
 		invalid["operations"][0]["semantic_attributes"] = []
 		with self.assertRaisesRegex(GENERATOR.SchemaError, "signed dim attribute"):
 			GENERATOR.validate_reduce_schema(invalid)
+
+	def test_elemwise_abs_preserves_reverse_differentiation(self):
+		operation = next(
+			operation
+			for operation in self.schema["operations"]
+			if operation["name"] == "abs"
+		)
+		self.assertEqual(operation["differentiation"], "reverse")
 
 	def test_reduce_schema_owns_log_softmax_and_its_adjoint(self):
 		operations = self.reduce_schema["operations"]
@@ -437,6 +459,113 @@ class GeneratorTests(unittest.TestCase):
 		with self.assertRaisesRegex(GENERATOR.SchemaError, "differentiation"):
 			GENERATOR.validate_rng_schema(invalid)
 
+	def test_categorical_matrix_dependencies_have_stable_schema_ownership(self):
+		gather = next(
+			operation
+			for operation in self.index_schema["operations"]
+			if operation["name"] == "gather_last_dim"
+		)
+		gather_backward = next(
+			operation
+			for operation in self.index_schema["operations"]
+			if operation["name"] == "gather_last_dim_backward"
+		)
+		self.assertEqual(gather["stable_id"], 388)
+		self.assertEqual(gather_backward["stable_id"], 389)
+		self.assertEqual(gather["differentiation"], "reverse")
+		self.assertEqual(
+			gather["contract"]["dtype_rule"], "f32_values_i32_indices"
+		)
+
+		sampling = {
+			operation["name"]: operation
+			for operation in self.rng_schema["operations"]
+			if operation["name"].startswith("sample_logits")
+		}
+		self.assertEqual(
+			list(sampling),
+			["sample_logits", "sample_logits_dense", "sample_logits_sorted"],
+		)
+		self.assertEqual(
+			[operation["stable_id"] for operation in sampling.values()],
+			[390, 391, 392],
+		)
+		self.assertEqual(
+			[operation["variant"] for operation in sampling.values()],
+			["greedy", "dense", "top_k_top_p"],
+		)
+		self.assertNotIn("semantic_operation", sampling["sample_logits"])
+		for operation in (
+			sampling["sample_logits_dense"],
+			sampling["sample_logits_sorted"],
+		):
+			self.assertEqual(operation["semantic_operation"], "sample_logits")
+
+	def test_ml_composites_preserve_contracts_and_read_only_aliases(self):
+		operations = {
+			operation["name"]: operation
+			for operation in self.ml_schema["composite_contracts"]
+		}
+		self.assertEqual(list(operations), [
+			"normalize_observation",
+			"scale_action",
+			"clip_reward",
+			"normalize",
+			"ppo",
+			"dqn",
+			"sac_critic",
+			"sac_actor",
+			"sample_categorical",
+			"evaluate_categorical",
+			"sample_tanh_normal",
+			"evaluate_tanh_normal",
+		])
+		for name in ("normalize_observation", "scale_action", "clip_reward"):
+			self.assertEqual(operations[name]["semantic_domain"], "ml::environment")
+			self.assertEqual(
+				operations[name]["contract"]["output_alias_inputs"], [-1]
+			)
+		self.assertEqual(
+			operations["normalize"]["semantic_domain"], "ml::advantage"
+		)
+		self.assertEqual(
+			operations["normalize"]["contract"]["output_alias_inputs"], [-1]
+		)
+		self.assertEqual(operations["ppo"]["semantic_domain"], "ml::loss")
+		self.assertEqual(
+			operations["ppo"]["contract"]["output_alias_inputs"], [-1, -1, -1, -1]
+		)
+		self.assertEqual(operations["dqn"]["semantic_domain"], "ml::loss")
+		self.assertEqual(
+			operations["dqn"]["contract"]["output_alias_inputs"], [-1, -1, -1]
+		)
+		self.assertEqual(
+			operations["sac_critic"]["contract"]["output_alias_inputs"],
+			[-1, -1, -1, -1],
+		)
+		self.assertEqual(
+			operations["sac_actor"]["contract"]["output_alias_inputs"], [-1]
+		)
+		self.assertEqual(
+			operations["sample_categorical"]["contract"]["output_alias_inputs"],
+			[-1, -1, -1, 1],
+		)
+		self.assertEqual(
+			operations["evaluate_categorical"]["contract"]["output_alias_inputs"],
+			[1, -1, -1, 2],
+		)
+		self.assertEqual(
+			operations["sample_tanh_normal"]["contract"]["output_alias_inputs"],
+			[-1, -1, -1, -1, 2],
+		)
+		self.assertEqual(
+			operations["evaluate_tanh_normal"]["contract"]["output_alias_inputs"],
+			[-1, 2, -1, -1, 3],
+		)
+		self.assertTrue(
+			all(not operation["contract"]["mutated_inputs"] for operation in operations.values())
+		)
+
 	def test_stable_ids_must_be_unique_across_schema_families(self):
 		invalid = copy.deepcopy(self.blas_schema)
 		invalid["operations"][0]["stable_id"] = self.schema["operations"][0]["stable_id"]
@@ -446,6 +575,7 @@ class GeneratorTests(unittest.TestCase):
 				invalid,
 				self.reduce_schema,
 				self.rng_schema,
+				self.index_schema,
 				self.ml_schema,
 				self.audio_schema,
 				self.cryptography_hash_schema,

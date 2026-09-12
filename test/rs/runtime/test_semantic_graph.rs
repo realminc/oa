@@ -38,6 +38,15 @@ const BACKWARD: OperationContract =
 	OperationContract::new("oa::GradAdd", 0xda77_9010_8b5a_3511, MATRIX, MATRIX)
 		.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS));
 
+const PASS_THROUGH: OperationContract = OperationContract::new(
+	"oa::test::pass_through",
+	0x6dd2_a194_7703_c517,
+	MATRIX,
+	MATRIX,
+)
+.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+.alias(0, 0);
+
 const CLIP_GRAD_NORM: OperationContract = OperationContract::new(
 	"oa::ml::optim::clip_grad_norm",
 	0x2c3b_9516_f973_c14a,
@@ -200,6 +209,24 @@ fn ports_mutation_alias_and_autograd_provenance() -> oa::Result<()> {
 	assert_eq!(report["operations"][2]["aliases"][0]["output"], 5);
 	assert_eq!(report["autograd"][0]["backward_expanded"], true);
 	assert_eq!(report["autograd"][0]["backward_first_operation"], 1);
+	Ok(())
+}
+
+#[test]
+fn preserves_read_only_alias_as_a_fresh_ssa_output() -> oa::Result<()> {
+	let mut graph = SemanticGraph::new();
+	let input = graph.add_value(matrix("input", &[4], true))?;
+	let output = graph.add_value(matrix("output", &[4], false))?;
+	let operation = graph.add_operation(PASS_THROUGH, &[Some(input)], &[output], &[], &[])?;
+	graph.validate()?;
+
+	let operation = &graph.operations()[operation.index() as usize];
+	assert!(operation.mutated_inputs().is_empty());
+	assert_eq!(operation.aliases().len(), 1);
+	assert_eq!(operation.aliases()[0].input(), input);
+	assert_eq!(operation.aliases()[0].output(), output);
+	assert_eq!(operation.accesses()[0].mode(), SemanticAccessMode::Read);
+	assert_eq!(operation.accesses()[1].mode(), SemanticAccessMode::Write);
 	Ok(())
 }
 

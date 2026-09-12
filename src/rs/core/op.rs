@@ -374,7 +374,11 @@ impl OperationContract {
 		self
 	}
 
-	/// Declare that one output aliases a fixed input.
+	/// Declare that one output aliases a fixed input's storage.
+	///
+	/// Aliasing does not imply mutation. A pass-through output is a fresh SSA
+	/// value over the same bytes; an in-place write additionally declares the
+	/// input in [`Self::mutated_inputs`].
 	pub const fn alias(mut self, output: usize, input: u8) -> Self {
 		assert!(
 			output < Self::MAX_VALUES,
@@ -527,10 +531,7 @@ impl OperationContract {
 		for (output, alias) in self.output_alias_inputs.iter().copied().enumerate() {
 			let Some(input) = alias else { continue };
 			let input = usize::from(input);
-			if output >= self.output_kinds.len()
-				|| input >= self.input_kinds.len()
-				|| !self.mutates_input(input)
-			{
+			if output >= self.output_kinds.len() || input >= self.input_kinds.len() {
 				return false;
 			}
 		}

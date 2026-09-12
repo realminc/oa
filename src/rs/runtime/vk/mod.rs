@@ -19,3 +19,5 @@ pub(super) use instance::Instance;
 pub(super) use physical::PhysicalDevice;
 pub(super) use retirement::{RetirementService, RetirementTicket};
 pub(super) use timestamp::TimestampPair;
+pub(in crate::runtime) use video::DecodeSession;
+pub(crate) use video::NativeDecodedFrame;

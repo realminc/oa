@@ -121,8 +121,9 @@ features and `webp` 0.3.1 for quality-controlled libwebp encoding. These
 dependencies remain private. JPEG and WebP quality is checked in `[1,100]`;
 other formats ignore quality. Codec calls do not become semantic GPU
 operations and do not introduce a hidden CPU execution fallback.
-`saveTextureFile` is not published before OARS has a Texture value and a
-render-owned completion/readback contract.
+The donor `saveTextureFile` responsibility is published as
+`render::save_texture_file`, because Texture and its completion/readback
+contract are Render-owned rather than Image-owned.
 
 ## Verified evidence
 

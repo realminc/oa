@@ -18,7 +18,9 @@ pub(crate) use dispatch::{
 	ImageSemanticDispatch, ImageSemanticInput, OptionalSemanticDispatch, PushConstant,
 	SemanticDispatch,
 };
-pub(crate) use engine::{CaptureAttempt, EngineHandle};
+pub(crate) use engine::{
+	CaptureAttempt, EngineHandle, RecordingTransaction, SemanticLoweringScope, VideoDecoderBackend,
+};
 pub use engine::{DeviceSelection, Engine, EngineBuilder};
 pub use event::Event;
 #[doc(hidden)]
@@ -34,3 +36,4 @@ pub use semantic_graph::{
 };
 pub(crate) use shader::KernelId;
 pub(crate) use storage::Storage;
+pub(crate) use vk::NativeDecodedFrame;

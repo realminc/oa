@@ -4,6 +4,20 @@
   "domain": "matrix",
   "dtype": "f32",
   "workgroup_size": [256, 1, 1],
+  "port_provenance": {
+    "classification": "mechanical_adaptation_with_compatibility_ids",
+    "donors": [
+      "tools/gen/fn/schema/core/coreFnMatrixElemwise.toml",
+      "source/cpp/lib/oa/core/fnmatrix/fnMatrix.cpp",
+      "source/cpp/lib/oa/core/fnmatrix/elemwise/fnMatrixElemwise.cpp",
+      "source/cpp/lib/oa/core/shader/compute/flat/addBcast.slang",
+      "source/cpp/lib/oa/core/shader/compute/flat/subBcast.slang",
+      "source/cpp/lib/oa/core/shader/compute/flat/divBcast.slang",
+      "source/cpp/lib/oa/core/autograd/matrix/autogradElemwise.h",
+      "source/cpp/lib/oa/core/autograd/matrix/autogradElemwise.gen.h"
+    ],
+    "reason": "Preserves OA Add/Sub/Mul/Div multidirectional broadcasting and sum-to-input-shape adjoints while retaining the existing exact-shape candidates, and ports Log, Sqrt, scalar arithmetic, Exp, Reciprocal, and clamp reverse formulas needed by policy composition. OARS corrects the donor GradClampMax/GradClampMin masks, which propagate through the clamped side: Rust uses the mathematical inclusive derivative on the retained side and proves both boundaries on Vulkan. Broadcast candidates use OARS compatibility IDs because donor-local registry identities are not globally unique in the current Rust registry."
+  },
   "contracts": {
     "binary": {
       "input_kinds": ["matrix", "matrix"],
@@ -45,7 +59,8 @@
       "name": "add",
       "kind": "binary",
       "differentiation": "reverse",
-      "doc": "Add two matrices elementwise using one admitted dense dtype.",
+      "shape_rule": "broadcast",
+      "doc": "Add two matrices elementwise using multidirectional broadcasting.",
       "kernel_id": "MatrixAddF32",
       "dnn": {
         "role": "add",
@@ -72,13 +87,69 @@
             "expected": [-2147483648, 2147483647, 5]
           }
         }
+      ],
+      "additional_lowering_variants": [
+        {
+          "stable_id": 373,
+          "name": "add_broadcast",
+          "kernel_id": "MatrixAddBroadcastF32",
+          "source": "src/slang/matrix/elemwise/add_broadcast.slang",
+          "dtype": "f32",
+          "variant": "broadcast",
+          "workgroup_size": [256, 1, 1],
+          "dispatch_tile_size": [256, 1, 1],
+          "physical_write": {
+            "writes": [
+              {"binding": 2, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"}
+            ],
+            "workspace": "none"
+          },
+          "push_fields": [
+            ["left_index", "uint32"], ["right_index", "uint32"], ["output_index", "uint32"],
+            ["element_count", "uint32"], ["rank", "uint32"],
+            ["output_dim_0", "uint32"], ["output_dim_1", "uint32"], ["output_dim_2", "uint32"], ["output_dim_3", "uint32"],
+            ["output_dim_4", "uint32"], ["output_dim_5", "uint32"], ["output_dim_6", "uint32"], ["output_dim_7", "uint32"],
+            ["left_stride_0", "uint32"], ["left_stride_1", "uint32"], ["left_stride_2", "uint32"], ["left_stride_3", "uint32"],
+            ["left_stride_4", "uint32"], ["left_stride_5", "uint32"], ["left_stride_6", "uint32"], ["left_stride_7", "uint32"],
+            ["right_stride_0", "uint32"], ["right_stride_1", "uint32"], ["right_stride_2", "uint32"], ["right_stride_3", "uint32"],
+            ["right_stride_4", "uint32"], ["right_stride_5", "uint32"], ["right_stride_6", "uint32"], ["right_stride_7", "uint32"]
+          ]
+        },
+        {
+          "stable_id": 374,
+          "name": "add_broadcast_i32",
+          "kernel_id": "MatrixAddBroadcastI32",
+          "source": "src/slang/matrix/elemwise/add_broadcast_i32.slang",
+          "dtype": "i32",
+          "variant": "broadcast",
+          "workgroup_size": [256, 1, 1],
+          "dispatch_tile_size": [256, 1, 1],
+          "physical_write": {
+            "writes": [
+              {"binding": 2, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"}
+            ],
+            "workspace": "none"
+          },
+          "push_fields": [
+            ["left_index", "uint32"], ["right_index", "uint32"], ["output_index", "uint32"],
+            ["element_count", "uint32"], ["rank", "uint32"],
+            ["output_dim_0", "uint32"], ["output_dim_1", "uint32"], ["output_dim_2", "uint32"], ["output_dim_3", "uint32"],
+            ["output_dim_4", "uint32"], ["output_dim_5", "uint32"], ["output_dim_6", "uint32"], ["output_dim_7", "uint32"],
+            ["left_stride_0", "uint32"], ["left_stride_1", "uint32"], ["left_stride_2", "uint32"], ["left_stride_3", "uint32"],
+            ["left_stride_4", "uint32"], ["left_stride_5", "uint32"], ["left_stride_6", "uint32"], ["left_stride_7", "uint32"],
+            ["right_stride_0", "uint32"], ["right_stride_1", "uint32"], ["right_stride_2", "uint32"], ["right_stride_3", "uint32"],
+            ["right_stride_4", "uint32"], ["right_stride_5", "uint32"], ["right_stride_6", "uint32"], ["right_stride_7", "uint32"]
+          ]
+        }
       ]
     },
     {
       "stable_id": 2,
       "name": "sub",
       "kind": "binary",
-      "doc": "Subtract two FP32 matrices elementwise.",
+      "differentiation": "reverse",
+      "shape_rule": "broadcast",
+      "doc": "Subtract two FP32 matrices elementwise using multidirectional broadcasting.",
       "kernel_id": "MatrixSubF32",
       "expression": "left - right",
       "test": {
@@ -86,12 +157,42 @@
         "right": [0.25, 2.0, -3.0],
         "expected": [-2.25, -1.5, 7.0],
         "tolerance": 0.0001
-      }
+      },
+      "additional_lowering_variants": [
+        {
+          "stable_id": 394,
+          "name": "sub_broadcast",
+          "kernel_id": "MatrixSubBroadcastF32",
+          "source": "src/slang/matrix/elemwise/sub_broadcast.slang",
+          "dtype": "f32",
+          "variant": "broadcast",
+          "workgroup_size": [256, 1, 1],
+          "dispatch_tile_size": [256, 1, 1],
+          "physical_write": {
+            "writes": [
+              {"binding": 2, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"}
+            ],
+            "workspace": "none"
+          },
+          "push_fields": [
+            ["left_index", "uint32"], ["right_index", "uint32"], ["output_index", "uint32"],
+            ["element_count", "uint32"], ["rank", "uint32"],
+            ["output_dim_0", "uint32"], ["output_dim_1", "uint32"], ["output_dim_2", "uint32"], ["output_dim_3", "uint32"],
+            ["output_dim_4", "uint32"], ["output_dim_5", "uint32"], ["output_dim_6", "uint32"], ["output_dim_7", "uint32"],
+            ["left_stride_0", "uint32"], ["left_stride_1", "uint32"], ["left_stride_2", "uint32"], ["left_stride_3", "uint32"],
+            ["left_stride_4", "uint32"], ["left_stride_5", "uint32"], ["left_stride_6", "uint32"], ["left_stride_7", "uint32"],
+            ["right_stride_0", "uint32"], ["right_stride_1", "uint32"], ["right_stride_2", "uint32"], ["right_stride_3", "uint32"],
+            ["right_stride_4", "uint32"], ["right_stride_5", "uint32"], ["right_stride_6", "uint32"], ["right_stride_7", "uint32"]
+          ]
+        }
+      ]
     },
     {
       "stable_id": 3,
       "name": "mul",
       "kind": "binary",
+      "differentiation": "reverse",
+      "shape_rule": "broadcast",
       "doc": "Multiply two FP32 matrices elementwise.",
       "kernel_id": "MatrixMulF32",
       "dnn": {
@@ -104,13 +205,43 @@
         "right": [0.25, 2.0, -3.0],
         "expected": [-0.5, 1.0, -12.0],
         "tolerance": 0.0001
-      }
+      },
+      "additional_lowering_variants": [
+        {
+          "stable_id": 375,
+          "name": "mul_broadcast",
+          "kernel_id": "MatrixMulBroadcastF32",
+          "source": "src/slang/matrix/elemwise/mul_broadcast.slang",
+          "dtype": "f32",
+          "variant": "broadcast",
+          "workgroup_size": [256, 1, 1],
+          "dispatch_tile_size": [256, 1, 1],
+          "physical_write": {
+            "writes": [
+              {"binding": 2, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"}
+            ],
+            "workspace": "none"
+          },
+          "push_fields": [
+            ["left_index", "uint32"], ["right_index", "uint32"], ["output_index", "uint32"],
+            ["element_count", "uint32"], ["rank", "uint32"],
+            ["output_dim_0", "uint32"], ["output_dim_1", "uint32"], ["output_dim_2", "uint32"], ["output_dim_3", "uint32"],
+            ["output_dim_4", "uint32"], ["output_dim_5", "uint32"], ["output_dim_6", "uint32"], ["output_dim_7", "uint32"],
+            ["left_stride_0", "uint32"], ["left_stride_1", "uint32"], ["left_stride_2", "uint32"], ["left_stride_3", "uint32"],
+            ["left_stride_4", "uint32"], ["left_stride_5", "uint32"], ["left_stride_6", "uint32"], ["left_stride_7", "uint32"],
+            ["right_stride_0", "uint32"], ["right_stride_1", "uint32"], ["right_stride_2", "uint32"], ["right_stride_3", "uint32"],
+            ["right_stride_4", "uint32"], ["right_stride_5", "uint32"], ["right_stride_6", "uint32"], ["right_stride_7", "uint32"]
+          ]
+        }
+      ]
     },
     {
       "stable_id": 4,
       "name": "div",
       "kind": "binary",
-      "doc": "Divide two FP32 matrices elementwise.",
+      "differentiation": "reverse",
+      "shape_rule": "broadcast",
+      "doc": "Divide two FP32 matrices elementwise using multidirectional broadcasting.",
       "kernel_id": "MatrixDivF32",
       "expression": "left / right",
       "test": {
@@ -118,12 +249,41 @@
         "right": [0.25, 2.0, -3.0],
         "expected": [-8.0, 0.25, -1.3333333333333333],
         "tolerance": 0.0001
-      }
+      },
+      "additional_lowering_variants": [
+        {
+          "stable_id": 395,
+          "name": "div_broadcast",
+          "kernel_id": "MatrixDivBroadcastF32",
+          "source": "src/slang/matrix/elemwise/div_broadcast.slang",
+          "dtype": "f32",
+          "variant": "broadcast",
+          "workgroup_size": [256, 1, 1],
+          "dispatch_tile_size": [256, 1, 1],
+          "physical_write": {
+            "writes": [
+              {"binding": 2, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"}
+            ],
+            "workspace": "none"
+          },
+          "push_fields": [
+            ["left_index", "uint32"], ["right_index", "uint32"], ["output_index", "uint32"],
+            ["element_count", "uint32"], ["rank", "uint32"],
+            ["output_dim_0", "uint32"], ["output_dim_1", "uint32"], ["output_dim_2", "uint32"], ["output_dim_3", "uint32"],
+            ["output_dim_4", "uint32"], ["output_dim_5", "uint32"], ["output_dim_6", "uint32"], ["output_dim_7", "uint32"],
+            ["left_stride_0", "uint32"], ["left_stride_1", "uint32"], ["left_stride_2", "uint32"], ["left_stride_3", "uint32"],
+            ["left_stride_4", "uint32"], ["left_stride_5", "uint32"], ["left_stride_6", "uint32"], ["left_stride_7", "uint32"],
+            ["right_stride_0", "uint32"], ["right_stride_1", "uint32"], ["right_stride_2", "uint32"], ["right_stride_3", "uint32"],
+            ["right_stride_4", "uint32"], ["right_stride_5", "uint32"], ["right_stride_6", "uint32"], ["right_stride_7", "uint32"]
+          ]
+        }
+      ]
     },
     {
       "stable_id": 5,
       "name": "scale",
       "kind": "unary_scalar",
+      "differentiation": "reverse",
       "doc": "Multiply every FP32 matrix element by a scalar.",
       "kernel_id": "MatrixScaleF32",
       "expression": "input * push.scalar",
@@ -150,6 +310,7 @@
       "stable_id": 6,
       "name": "neg",
       "kind": "unary",
+      "differentiation": "reverse",
       "doc": "Negate every FP32 matrix element.",
       "kernel_id": "MatrixNegF32",
       "expression": "-input",
@@ -163,6 +324,7 @@
       "stable_id": 7,
       "name": "abs",
       "kind": "unary",
+	  "differentiation": "reverse",
       "doc": "Take the absolute value of every FP32 matrix element.",
       "kernel_id": "MatrixAbsF32",
       "expression": "abs(input)",
@@ -176,6 +338,7 @@
       "stable_id": 8,
       "name": "log",
       "kind": "unary",
+	  "differentiation": "reverse",
       "doc": "Take the natural logarithm of every FP32 matrix element.",
       "kernel_id": "MatrixLogF32",
       "expression": "log(input)",
@@ -189,6 +352,7 @@
       "stable_id": 9,
       "name": "sqrt",
       "kind": "unary",
+      "differentiation": "reverse",
       "doc": "Take the square root of every FP32 matrix element.",
       "kernel_id": "MatrixSqrtF32",
       "expression": "sqrt(input)",
@@ -217,6 +381,7 @@
       "stable_id": 11,
       "name": "add_scalar",
       "kind": "unary_scalar",
+      "differentiation": "reverse",
       "doc": "Add a scalar to every FP32 matrix element.",
       "kernel_id": "MatrixAddScalarF32",
       "expression": "input + push.scalar",
@@ -232,6 +397,7 @@
       "stable_id": 12,
       "name": "sub_scalar",
       "kind": "unary_scalar",
+      "differentiation": "reverse",
       "doc": "Subtract a scalar from every FP32 matrix element.",
       "kernel_id": "MatrixSubScalarF32",
       "expression": "input - push.scalar",
@@ -247,6 +413,7 @@
       "stable_id": 13,
       "name": "div_scalar",
       "kind": "unary_scalar",
+      "differentiation": "reverse",
       "doc": "Divide every FP32 matrix element by a scalar.",
       "kernel_id": "MatrixDivScalarF32",
       "expression": "input / push.scalar",
@@ -262,6 +429,7 @@
       "stable_id": 14,
       "name": "exp",
       "kind": "unary",
+	  "differentiation": "reverse",
       "doc": "Take the exponential of every FP32 matrix element.",
       "kernel_id": "MatrixExpF32",
       "expression": "exp(input)",
@@ -301,6 +469,7 @@
       "stable_id": 17,
       "name": "reciprocal",
       "kind": "unary",
+      "differentiation": "reverse",
       "doc": "Take the reciprocal of every FP32 matrix element.",
       "kernel_id": "MatrixReciprocalF32",
       "expression": "1.0f / input",
@@ -314,6 +483,7 @@
       "stable_id": 18,
       "name": "clamp_max",
       "kind": "unary_scalar",
+      "differentiation": "reverse",
       "doc": "Cap every FP32 matrix element at an upper bound.",
       "kernel_id": "MatrixClampMaxF32",
       "expression": "min(input, push.scalar)",
@@ -329,6 +499,7 @@
       "stable_id": 19,
       "name": "clamp_min",
       "kind": "unary_scalar",
+      "differentiation": "reverse",
       "doc": "Raise every FP32 matrix element to a lower bound.",
       "kernel_id": "MatrixClampMinF32",
       "expression": "max(input, push.scalar)",
@@ -339,6 +510,56 @@
         "expected": [0.0, 0.5, 4.0],
         "tolerance": 0.0001
       }
+    },
+    {
+      "stable_id": 400,
+      "name": "copy",
+      "kind": "unary",
+      "differentiation": "reverse",
+      "doc": "Deep-copy a dense matrix into independent device storage.",
+      "kernel_id": "MatrixCopyF32",
+      "expression": "input",
+      "test": {
+        "input": [-2.0, 0.5, 4.0],
+        "expected": [-2.0, 0.5, 4.0],
+        "tolerance": 0.0
+      },
+      "additional_dtype_variants": [
+        {
+          "dtype": "u8",
+          "stable_id": 401,
+          "kernel_id": "MatrixCopyU8",
+          "kernel_name": "copy_u8",
+          "source_stem": "copy_u8",
+          "test": {
+            "input": [0, 17, 255],
+            "expected": [0, 17, 255]
+          }
+        },
+        {
+          "dtype": "i32",
+          "stable_id": 402,
+          "kernel_id": "MatrixCopyI32",
+          "kernel_name": "copy_i32",
+          "source_stem": "copy_i32",
+          "integer_overflow": "wrap",
+          "test": {
+            "input": [-2147483648, 0, 2147483647],
+            "expected": [-2147483648, 0, 2147483647]
+          }
+        },
+        {
+          "dtype": "u32",
+          "stable_id": 403,
+          "kernel_id": "MatrixCopyU32",
+          "kernel_name": "copy_u32",
+          "source_stem": "copy_u32",
+          "test": {
+            "input": [0, 17, 4294967295],
+            "expected": [0, 17, 4294967295]
+          }
+        }
+      ]
     }
   ]
 }

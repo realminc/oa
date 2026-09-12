@@ -2,7 +2,7 @@
 
 **Status:** Planned
 
-**Updated:** 2026-09-10
+**Updated:** 2026-09-12
 
 **Architecture:** [OA Rust Architecture](../oaArchitecture.md)
 
@@ -349,7 +349,9 @@ adjoint checked through an embedding predecessor. Complete this stage with:
    bounded `TrainingSession` safe-point control plane using the same
    Rust-native traits and borrowing;
 9. expand beyond the Experimental Char RNN and Char Transformer tutorials
-   across Byte/BPE and the remaining GRU, Transformer, MoE, and Mamba matrix.
+   across Byte/BPE and the remaining GRU, Transformer, MoE, and Mamba model
+   matrix; the Mamba grouped-SISO primitive and short adjoint are connected,
+   but its module, step, MIMO, long backward, and tutorial are not.
 
 The source-by-source authority and current gap are recorded in
 [OA ML port inventory](../../porting/oaMlPortInventory.md). No new ML shader is
@@ -454,7 +456,8 @@ encoding and file saving perform explicit blocking readback. JPEG/WebP quality,
 path inference, capability queries, and the packed RGBA8 render-session sink
 are checked. Color conversion, fused resize-normalize, and segmentation overlay
 preserve semantic Image/Matrix graph kinds and pass hardware oracles.
-Texture saving remains Render-owned and awaits the Texture value.
+Texture saving is Render-owned and uses the admitted packed RGBA8 Texture
+value plus explicit Matrix readback.
 
 The complete donor `FnDetection` surface is Experimental in `vision`: pairwise
 IoU, deterministic class-aware/agnostic NMS, classification confusion,
@@ -477,52 +480,189 @@ Image or Video.
 
 ## Stage 8 — Stateful media and presentation
 
-The first `VideoFrame` value path is Experimental. It retains one packed Image,
-rejects batches and empty spatial extents, and carries checked presentation
-timing plus source matrix/range metadata. Its optional Image access anticipates
-native multi-plane backing without exposing raw Vulkan handles or pretending
-that every decoded frame is a dense Matrix.
+The `VideoFrame` value path is Experimental. It retains one packed Image, one
+packed RGBA8 Texture, shared immutable planar YUV420 host bytes, or a private
+native decoded-image slot, validates each backing's shape, and carries checked
+presentation timing plus source matrix/range metadata. The donor
+`FnVideo::fromTexture` bridge shares Texture storage and producer readiness
+without a copy or Image semantic erasure. Native frames expose only
+backend-neutral format, coded extent, producer completion, and a same-Engine
+consumer-completion contract; raw Vulkan handles remain private and decoded
+planes are not misrepresented as a dense Matrix.
 
 The first packet-source session is Experimental. `VideoDemuxer` builds a
 bounded, validated index for one unfragmented MP4 video track; reads payloads
 incrementally, normalizes AVC/HEVC access units to Annex-B, prepends codec
 configuration after open/seek, and defines explicit EOS/seek/close behavior.
 H.264, H.265, AV1, and VP9 donor fixtures pass open/read/seek/close tests. A
-separate selected-device query reports physical Vulkan Video queue and codec
+matching packet-sink session is Experimental. `VideoMuxer` streams H.264/H.265
+samples into an extended-size MP4 `mdat`, records bounded sample metadata,
+selects 32- or 64-bit chunk offsets, and finalizes AVC/HEVC configuration plus
+an optional native PCM-S16 track only at its explicit `finalize` boundary.
+`close` and Drop never manufacture a movie trailer. Synthetic multi-sample and
+PCM-track files reopen through `VideoDemuxer`; single donor AVC High and HEVC
+Main streams also reopen and decode through an independent FFmpeg check.
+Encoded packets retain distinct microsecond presentation and decode timestamps;
+the muxer emits signed version-one composition offsets when order differs, so
+the donor streams preserve B-frame timing instead of flattening it. A separate
+selected-device query reports physical Vulkan Video queue and codec
 extension support. Engine construction enables the advertised queue/extension
 chain. Exact typed profile/format queries, decode-family command submission and
-pool-correct retirement, plus private H.264/H.265/AV1 session creation and
+pool-correct retirement, plus private H.264/H.265/AV1/VP9 session creation and
 memory binding now pass on the local Intel/Mesa device. Parsed donor H.264
-SPS/PPS records also create and destroy a dependent Khronos standard-video
-session-parameter object on that device. Exact-profile native output and layered
-DPB image allocation now passes for every advertised typed decoder, selecting
-distinct or coincident ownership from the queried capability flags and failing
-closed on unsupported disjoint plane binding. The H.264 qualification extracts
-its one VCL NAL from the donor access unit, emits the three-byte byte-stream
+SPS/PPS and HEVC VPS/SPS/PPS records also create and destroy dependent Khronos
+standard-video session-parameter objects on that device. The HEVC record path
+retains and lowers baseline profile-tier-level, DPB, scaling, short-/long-term
+references, PCM, VUI/HRD, and tile geometry; unsupported HEVC extension syntax
+fails closed. Exact-profile native output and DPB image allocation now passes
+for every advertised typed decoder. Coincident profiles use separate one-layer
+slot images when advertised and otherwise use a layered image; distinct-only
+profiles use separate layered output and DPB images. Allocation fails
+closed on unsupported disjoint plane binding. The H.264/H.265 recorders extract
+their one VCL NAL from each donor access unit, emit the three-byte byte-stream
 prefix used by the Khronos/FFmpeg Vulkan paths, and uploads it into a
 profile-chained `VIDEO_DECODE_SRC` buffer whose initialized range satisfies the
-queried size and offset alignments. One progressive donor H.264 IDR command now
-binds session parameters, reconstructed DPB slot zero, output resource, reset,
-image/buffer barriers, decode-family submission, and timeline retirement. The selected
+queried size and offset alignments. Source buffers use dedicated memory so each
+replacement remains bound at offset zero; this avoids the local Mesa recorder's
+invalid CPU mapping of a non-zero VMA suballocation. Progressive donor H.264
+and H.265 commands bind session parameters, reconstructed DPB slots, output
+resources, planned resets, image/buffer barriers, decode-family submission,
+and timeline retirement. The selected
 queue family's result-status support is reported independently; an
 exact-profile status query encloses the operation and returns `COMPLETE` on the
 local Intel/Mesa device after event completion. An explicit decode-family
 release and matching compute-family acquire then copy the NV12 planes to
-host-visible storage; planar normalization matches all 1,382,400 bytes of an
-independently decoded FFmpeg first frame through a fixed SHAKE-256 oracle. Session
-availability remains false until the remaining codec parameter objects,
-reusable DPB state, and public decoded-frame synchronization land. H.264 VUI
+host-visible storage; planar normalization matches all 1,382,400 bytes of each
+independently decoded FFmpeg first frame through fixed SHAKE-256 oracles. H.264 VUI
 and optional HRD syntax now parse into typed backend-neutral values and lower
 into the standard-video VUI table; incompatible dual HRD tables fail closed.
 Sequence/PPS scaling-list syntax likewise retains its presence/default masks
 and 4x4/8x8 values, including SPS-resolved 4:4:4 list counts, and lowers without
 reordering into `StdVideoH264ScalingLists`. HEVC SPS/PPS scaling-list syntax now
 resolves default and predicted matrices, DC coefficients, and diagonal scans
-into owned raster-order 4x4/8x8/16x16/32x32 values; Vulkan HEVC parameter-object
-lowering remains the next codec checkpoint. HEVC SPS short-term reference sets
+into owned raster-order 4x4/8x8/16x16/32x32 values and now lowers them into the
+live HEVC parameter object. HEVC SPS short-term reference sets
 now retain direct and predictor masks plus resolved delta-POC order, fixing the
 old skip walk's lost predicted-set cardinality; long-term SPS references retain
-their POC-LSB and current-picture flag.
+their POC-LSB and current-picture flag. HEVC slice parsing now consumes the
+inline-versus-SPS RPS selector even when the SPS contains no sets, fixing the
+donor stream's shifted second-picture reference syntax. A transactional private
+DPB planner derives wrap-aware POC, reset/retention/recycling decisions, and
+exact current-before/current-after reference slots for every donor HEVC sample.
+The reusable Vulkan recorder now consumes those plans, binds active slot POCs
+and current reference lists, orders prior decode writes before DPB reads, and
+submits all 60 reordered donor pictures with `COMPLETE` result status on the
+recorded Intel/Mesa device. Qualification then performs an explicit
+decode-family release, compute-family acquire/copy/release, and next-decode
+acquire for every output slot. The corresponding H.264 planner/recorder handles
+progressive POC-type-zero streams, sliding-window references, and MMCO 1/5/6;
+MMCO 2–4 and multi-slice pictures fail closed. Presentation ordering for both
+60-picture donors matches independently decoded FFmpeg planar YUV420 frames
+byte-for-byte.
+
+Those qualified AVC/HEVC paths now run through `oa::video::VideoDecoder` and
+its root identity alias. Creation binds exact demux metadata to the Engine-owned
+session; synchronous `decode` materializes host-retained planar YUV420 frames
+with packet timing and parsed VUI color metadata, then emits them in bounded
+presentation order using the SPS reorder depth. Explicit `flush` returns the
+delayed tail and requires a new random-access packet, `close` releases the idle
+session, and Drop performs no submission or wait. Public API tests match all 60
+decoder-ordered frames per codec to FFmpeg, then prove flush/seek/keyframe
+reuse. Decoder-session availability is true only for enabled,
+status-query-capable progressive H.264 Baseline/Main/High, H.265 Main, AV1
+Main without film grain, and VP9 Profile 0, all 8-bit 4:2:0 rows.
+
+Synchronous `decode_native` follows that same codec and display-order path
+without the decode-to-host copy. A returned frame retains its qualified native
+image set and slot. Live clones and pending consumer events exclude the slot
+from DPB recycling; the consumer event must belong to the same Engine and
+follow producer readiness. Retirement keeps storage alive through completion
+even after frame, decoder, and original Engine handles are released. Complete
+60-picture H.264, H.265, AV1, and VP9 native-output tests prove retention and recycling on
+the recorded Intel/Mesa device. Decoder-owned retained-slot readback now
+performs the explicit decode/compute/decode ownership round trip and matches all
+60 display-order frames per codec byte-for-byte against FFmpeg. The qualified
+device uses one queue family; the recorded split-family barriers remain
+unqualified. Public asynchronous delivery, visible crop and plane-stride
+metadata, and typed Render/ML native consumers remain planned.
+
+The first composed `oa::video::VideoPlayer` now owns one demuxer and one public
+decoder rather than adding another codec path. Open returns with the first
+display-order frame ready; explicit advance, checked wall-clock pacing,
+play/pause, looping/non-looping EOS, timestamp seek through a preceding
+keyframe, reset, flush, counters, and close are shipped for local admitted
+streams. Bounded shared-backing presentation history adds exact backward and
+signed frame stepping; cache misses deterministically replay through a bounded
+preceding window. A validated container timestamp index also admits absolute
+display-frame seek without confusing decode order for display order. The
+60-frame AVC donor proves monotonic presentation order, EOS, seek/reset reuse,
+pacing, close, zero-decode cache hits, byte-identical replay after eviction,
+and exact frame-30 selection after EOS. Audio synchronization, network
+reconnect, RGBA conversion pools, and native frame consumption remain planned
+Media/Render integration work; the player continues to request host-planar
+decoder output.
+
+Exact H.264 High and H.265 Main encode capability and format discovery is now
+public and backend-neutral. The query reports common encode limits,
+rate-control/feedback support, typed codec-specific level/slice/reference/QP
+and HEVC tile/block limits, plus recognized and unknown input/DPB formats. Both
+donor profiles pass on Intel Iris Xe/Mesa 26.2.2. This is the evidence seam for
+session allocation; encoder-session availability remains false until an actual
+create/encode/flush/close path and independent bitstream oracle pass.
+
+The next decoder checkpoint is asynchronous native display delivery, followed
+by typed Render/ML native-plane consumers and conversion. AV1 now has bounded
+borrowed OBU parsing, raw/IVF access-unit picture inventory, and an owned
+backend-neutral sequence-header record covering operating points, timing,
+profile, extent, coding tools, component/chroma/color configuration, and film
+grain. The complete 60-packet donor locks Main 8-bit 4:2:0 1280-by-720
+metadata, while a synthetic reduced still-picture header locks the
+specification's implicit operating-point-ID branch rather than the donor's
+misaligned read. That record now lowers to the Khronos AV1 standard-video color,
+timing, flags, extent, and tool fields; exact-profile validation rejects
+mismatches before Vulkan, and the local Intel/Mesa device accepts the resulting
+session-parameter object. Backend-neutral AV1 frame parsing now carries explicit
+eight-slot reference state through every donor coded/show-existing picture and
+retains the standard-video submission fields through quantization,
+segmentation, loop filter, CDEF, restoration, transform, skip, and admitted
+motion/grain syntax. Checked tile parsing produces access-unit-relative byte
+ranges for every donor combined or separate tile group. Frame IDs,
+decoder-model removal timing, short-reference derivation, non-uniform tiles,
+non-identity global motion, and applied film grain remain fail-closed. AV1 frame
+fields now lower to owned standard-video picture tables; quantizer U/V
+difference, feature/update masks, restoration metadata, and Q16 identity global
+motion have direct tests. Transactional DPB planning maps eight logical
+references onto bounded physical slots, deduplicates active bindings, resolves
+show-existing frames without decode allocation, respects unavailable native
+leases, and leaves state unchanged on failure. The AV1 recorder now binds
+deduplicated active references plus an inactive begin-coding reconstruction
+association, submits exact frame-header/tile ranges, queries result status, and
+performs the existing explicit decode/readback ownership round trip. The first
+donor keyframe completes on Intel Iris Xe/Mesa 26.2.2 and its complete YUV420
+readback matches FFmpeg through a fixed SHAKE-256 oracle. The public decoder
+now assembles complete pictures transactionally, decodes hidden pictures,
+resolves show-existing frames from the physical DPB, and exposes both
+host-planar and retained-native outputs. All 60 displayed donor frames match
+FFmpeg byte-for-byte in both modes; the native proof retains an early frame
+across later DPB recycling. Per-picture size override, super-resolution,
+distinct render size and the broader syntax listed above remain planned.
+VP9 now has exact `vpcC` Profile 0 admission, complete raw/IVF and superframe
+parsing, retained loop-filter/segmentation/reference state, transactional
+logical-to-physical DPB planning, and Khronos standard-video picture lowering.
+The released Ash loader remains authoritative while a revision-pinned official
+Ash binding contributes only the missing Vulkan-Headers-1.4.350 VP9 C-ABI
+records through raw `pNext` chains. Complete 60-frame host-planar and
+retained-native runs return `COMPLETE` on Intel Iris Xe/Mesa 26.2.2 and match independent
+FFmpeg YUV420 output byte-for-byte. Higher VP9 profiles, 10/12-bit output,
+dynamic coded/render extents, and broader container syntax remain planned.
+The muxer now supplies the container sink needed by a future
+encoder and recorder, but it does not make either session shipped.
+
+The H.264 expansion now has a transactional progressive POC-type-zero DPB
+planner consumed by the reusable Vulkan recorder and public decoder. It plans
+and decodes every reordered donor High-profile sample within the SPS and
+16-slot bounds. Long-term MMCO 2–4, interlaced content, and multi-slice pictures
+remain fail-closed.
 
 Add one session at a time after its state machine, borrowed-engine lifetime,
 external synchronization, and explicit close/drain behavior are specified.

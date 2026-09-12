@@ -5,7 +5,8 @@ use oa::{
 	ErrorKind,
 	video::{
 		Av1Profile, H264Profile, H265Profile, VideoCodec, VideoComponentBitDepth,
-		VideoDecodeProfile, VideoDemuxer, length_prefixed_to_annex_b, parse_nal_annex_b,
+		VideoDecodeProfile, VideoDemuxer, Vp9Profile, length_prefixed_to_annex_b,
+		parse_nal_annex_b,
 	},
 };
 
@@ -76,7 +77,10 @@ fn mp4_demux_reads_and_seeks_all_donor_codecs() -> oa::Result<()> {
 				VideoComponentBitDepth::Eight,
 				false,
 			)),
-			VideoCodec::Vp9 => None,
+			VideoCodec::Vp9 => Some(VideoDecodeProfile::vp9_420(
+				Vp9Profile::Profile0,
+				VideoComponentBitDepth::Eight,
+			)),
 		};
 		assert_eq!(info.decode_profile(), expected_profile);
 		assert_eq!((info.width(), info.height()), (1280, 720));
@@ -118,6 +122,7 @@ fn demuxed_profiles_drive_exact_device_queries() -> oa::Result<()> {
 		"shibuya_720p_30fps_h264_high_8bit_420.mp4",
 		"shibuya_720p_30fps_h265_main_8bit_420.mp4",
 		"shibuya_720p_30fps_av1_main_8bit_420.mp4",
+		"shibuya_720p_30fps_vp9_profile0_8bit_420.mp4",
 	] {
 		let demuxer = VideoDemuxer::open(fixture(name))?;
 		let profile = demuxer

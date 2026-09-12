@@ -212,6 +212,292 @@ pub struct H264SliceHeader {
 	pub memory_management: Vec<H264MemoryManagementControl>,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct H264DpbSlot {
+	in_use: bool,
+	is_reference: bool,
+	is_long_term: bool,
+	frame_number: u32,
+	picture_order_count: i32,
+	decode_sequence: u64,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct H264DpbState {
+	slots: Vec<H264DpbSlot>,
+	previous_poc_lsb: i32,
+	previous_poc_msb: i32,
+	decode_sequence: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct H264PicturePlan {
+	pub(crate) setup_slot: u32,
+	pub(crate) picture_order_count: i32,
+	pub(crate) frame_number: u32,
+	pub(crate) long_term: bool,
+	pub(crate) reset_dpb: bool,
+	pub(crate) references: Vec<H264ReferencePlan>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct H264ReferencePlan {
+	pub(crate) slot: u32,
+	pub(crate) frame_number: u32,
+	pub(crate) picture_order_count: i32,
+	pub(crate) long_term: bool,
+}
+
+impl H264DpbState {
+	pub(crate) fn new(slot_count: u32) -> Result<Self> {
+		if slot_count == 0 || slot_count > 16 {
+			return Err(Error::invalid_argument(
+				"H.264 DPB planner requires 1..=16 slots",
+			));
+		}
+		Ok(Self {
+			slots: vec![H264DpbSlot::default(); slot_count as usize],
+			previous_poc_lsb: 0,
+			previous_poc_msb: 0,
+			decode_sequence: 0,
+		})
+	}
+
+	#[cfg(test)]
+	pub(crate) fn plan(
+		&mut self,
+		sps: &H264SequenceParameterSet,
+		slice: &H264SliceHeader,
+	) -> Result<H264PicturePlan> {
+		self.plan_with_unavailable(sps, slice, &[])
+	}
+
+	pub(crate) fn plan_with_unavailable(
+		&mut self,
+		sps: &H264SequenceParameterSet,
+		slice: &H264SliceHeader,
+		unavailable: &[bool],
+	) -> Result<H264PicturePlan> {
+		if !unavailable.is_empty() && unavailable.len() != self.slots.len() {
+			return Err(Error::invalid_argument(
+				"H.264 unavailable-slot mask does not match DPB capacity",
+			));
+		}
+		let mut next = self.clone();
+		let plan = next.plan_in_place(sps, slice, unavailable)?;
+		*self = next;
+		Ok(plan)
+	}
+
+	fn plan_in_place(
+		&mut self,
+		sps: &H264SequenceParameterSet,
+		slice: &H264SliceHeader,
+		unavailable: &[bool],
+	) -> Result<H264PicturePlan> {
+		if slice.field_picture {
+			return Err(Error::missing_capability(
+				"H.264 DPB planning currently admits progressive pictures only",
+			));
+		}
+		if sps.pic_order_count_type != 0 {
+			return Err(Error::missing_capability(
+				"H.264 DPB planning currently admits POC type zero only",
+			));
+		}
+		if slice.is_idr {
+			self.slots.fill(H264DpbSlot::default());
+			self.previous_poc_lsb = 0;
+			self.previous_poc_msb = 0;
+		}
+		let poc_lsb =
+			i32::try_from(slice.picture_order_count_lsb.ok_or_else(|| {
+				Error::data_loss("H.264 POC type zero slice has no coded POC LSB")
+			})?)
+			.map_err(|_| Error::data_loss("H.264 POC LSB exceeds i32"))?;
+		let poc_bits = sps
+			.log2_max_pic_order_count_lsb_minus_4
+			.checked_add(4)
+			.ok_or_else(|| Error::data_loss("H.264 POC width overflows"))?;
+		let max_poc_lsb = 1_i32
+			.checked_shl(poc_bits)
+			.ok_or_else(|| Error::data_loss("H.264 POC width exceeds i32"))?;
+		let half = max_poc_lsb / 2;
+		let poc_msb = if poc_lsb < self.previous_poc_lsb && self.previous_poc_lsb - poc_lsb >= half
+		{
+			self.previous_poc_msb
+				.checked_add(max_poc_lsb)
+				.ok_or_else(|| Error::data_loss("H.264 POC MSB overflows"))?
+		} else if poc_lsb > self.previous_poc_lsb && poc_lsb - self.previous_poc_lsb > half {
+			self.previous_poc_msb
+				.checked_sub(max_poc_lsb)
+				.ok_or_else(|| Error::data_loss("H.264 POC MSB underflows"))?
+		} else {
+			self.previous_poc_msb
+		};
+		let picture_order_count = poc_msb
+			.checked_add(poc_lsb)
+			.ok_or_else(|| Error::data_loss("H.264 picture order count overflows"))?;
+		if slice.is_reference {
+			self.previous_poc_lsb = poc_lsb;
+			self.previous_poc_msb = poc_msb;
+		}
+
+		let references = self
+			.slots
+			.iter()
+			.enumerate()
+			.filter(|(_, slot)| slot.in_use && slot.is_reference)
+			.map(|(index, slot)| H264ReferencePlan {
+				slot: index as u32,
+				frame_number: slot.frame_number,
+				picture_order_count: slot.picture_order_count,
+				long_term: slot.is_long_term,
+			})
+			.collect::<Vec<_>>();
+		let setup_slot = self
+			.slots
+			.iter()
+			.enumerate()
+			.find(|(index, slot)| {
+				!slot.in_use && !unavailable.get(*index).copied().unwrap_or(false)
+			})
+			.map(|(index, _)| index)
+			.or_else(|| {
+				self.slots
+					.iter()
+					.enumerate()
+					.filter(|(index, slot)| {
+						!slot.is_reference && !unavailable.get(*index).copied().unwrap_or(false)
+					})
+					.min_by_key(|(_, slot)| slot.decode_sequence)
+					.map(|(index, _)| index)
+			})
+			.ok_or_else(|| {
+				Error::resource_exhausted("all H.264 DPB slots are references or consumer-leased")
+			})?;
+		self.slots[setup_slot] = H264DpbSlot {
+			in_use: slice.is_reference,
+			is_reference: slice.is_reference,
+			is_long_term: slice.is_idr && slice.long_term_reference,
+			frame_number: slice.frame_number,
+			picture_order_count,
+			decode_sequence: self.decode_sequence,
+		};
+		self.decode_sequence = self
+			.decode_sequence
+			.checked_add(1)
+			.ok_or_else(|| Error::resource_exhausted("H.264 decode sequence exhausted"))?;
+
+		if slice.is_reference && !slice.is_idr && slice.adaptive_reference_picture_marking {
+			self.apply_mmco(sps, slice, setup_slot)?;
+		} else if slice.is_reference && !slice.is_idr {
+			self.apply_sliding_window(sps, slice.frame_number, setup_slot)?;
+		}
+		Ok(H264PicturePlan {
+			setup_slot: setup_slot as u32,
+			picture_order_count,
+			frame_number: slice.frame_number,
+			long_term: self.slots[setup_slot].is_long_term,
+			reset_dpb: slice.is_idr,
+			references,
+		})
+	}
+
+	fn apply_sliding_window(
+		&mut self,
+		sps: &H264SequenceParameterSet,
+		current_frame_number: u32,
+		current_slot: usize,
+	) -> Result<()> {
+		let maximum = usize::try_from(sps.max_num_ref_frames.max(1))
+			.map_err(|_| Error::data_loss("H.264 reference count exceeds usize"))?;
+		while self.slots.iter().filter(|slot| slot.is_reference).count() > maximum {
+			let frame_bits = sps
+				.log2_max_frame_num_minus_4
+				.checked_add(4)
+				.ok_or_else(|| Error::data_loss("H.264 frame-number width overflows"))?;
+			let max_frame_number = 1_i64
+				.checked_shl(frame_bits)
+				.ok_or_else(|| Error::data_loss("H.264 frame-number width exceeds i64"))?;
+			let current = i64::from(current_frame_number);
+			let oldest = self
+				.slots
+				.iter()
+				.enumerate()
+				.filter(|(index, slot)| {
+					*index != current_slot && slot.is_reference && !slot.is_long_term
+				})
+				.min_by_key(|(_, slot)| {
+					let frame = i64::from(slot.frame_number);
+					if frame > current {
+						frame - max_frame_number
+					} else {
+						frame
+					}
+				})
+				.map(|(index, _)| index)
+				.ok_or_else(|| {
+					Error::resource_exhausted("H.264 sliding window has no short-term victim")
+				})?;
+			self.slots[oldest] = H264DpbSlot::default();
+		}
+		Ok(())
+	}
+
+	fn apply_mmco(
+		&mut self,
+		sps: &H264SequenceParameterSet,
+		slice: &H264SliceHeader,
+		current_slot: usize,
+	) -> Result<()> {
+		let frame_bits = sps
+			.log2_max_frame_num_minus_4
+			.checked_add(4)
+			.ok_or_else(|| Error::data_loss("H.264 frame-number width overflows"))?;
+		let max_frame_number = 1_i64
+			.checked_shl(frame_bits)
+			.ok_or_else(|| Error::data_loss("H.264 frame-number width exceeds i64"))?;
+		for command in &slice.memory_management {
+			match command.operation {
+				1 => {
+					let difference = i64::from(command.difference_of_picture_numbers_minus_1) + 1;
+					let target = i64::from(slice.frame_number) - difference;
+					if let Some((_, slot)) = self.slots.iter_mut().enumerate().find(|(_, slot)| {
+						if !slot.is_reference || slot.is_long_term {
+							return false;
+						}
+						let frame = i64::from(slot.frame_number);
+						let wrapped = if frame > i64::from(slice.frame_number) {
+							frame - max_frame_number
+						} else {
+							frame
+						};
+						wrapped == target
+					}) {
+						*slot = H264DpbSlot::default();
+					}
+				}
+				5 => {
+					for (index, slot) in self.slots.iter_mut().enumerate() {
+						if index != current_slot {
+							*slot = H264DpbSlot::default();
+						}
+					}
+				}
+				6 => self.slots[current_slot].is_long_term = true,
+				2..=4 => {
+					return Err(Error::missing_capability(
+						"H.264 long-term MMCO operations 2..=4 are not yet planned",
+					));
+				}
+				_ => return Err(Error::data_loss("H.264 MMCO operation exceeds six")),
+			}
+		}
+		Ok(())
+	}
+}
+
 /// Parse one raw H.264 SPS NAL unit without an Annex-B start code.
 pub fn parse_h264_sps(nal: &[u8]) -> Result<H264SequenceParameterSet> {
 	validate_nal(nal, 7, "SPS")?;
@@ -913,7 +1199,10 @@ const fn high_profile(profile_idc: u32) -> bool {
 
 #[cfg(test)]
 mod tests {
-	use super::{BitReader, read_h264_scaling_list};
+	use super::{
+		BitReader, H264DpbState, parse_h264_pps, parse_h264_slice_header, parse_h264_sps,
+		read_h264_scaling_list,
+	};
 
 	#[test]
 	fn scaling_list_retains_explicit_and_default_syntax() -> crate::Result<()> {
@@ -926,6 +1215,64 @@ mod tests {
 		let mut default_bits = BitReader::new(&[0b0000_1000, 0b1000_0000]);
 		assert!(read_h264_scaling_list(&mut default_bits, &mut default)?);
 		assert_eq!(default, [8; 16]);
+		Ok(())
+	}
+
+	#[test]
+	#[ignore = "requires OA donor H.264 fixture"]
+	fn plans_every_donor_picture_in_decode_order() -> crate::Result<()> {
+		let fixture = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+			.with_file_name("oa")
+			.join("sdk/asset/video/clip/shibuya_720p_30fps_h264_high_8bit_420.mp4");
+		let mut demuxer = crate::video::VideoDemuxer::open(fixture)?;
+		let expected = demuxer.info().sample_count();
+		let mut sps = None;
+		let mut pps = None;
+		let mut planner = H264DpbState::new(16)?;
+		let mut picture_order = Vec::new();
+		let mut resets = 0_u32;
+		while let Some(packet) = demuxer.read_next_packet()? {
+			let nals = crate::video::parse_nal_annex_b(packet.data());
+			if sps.is_none() {
+				let payload = nals
+					.iter()
+					.find(|nal| nal.nal_unit_type() == 7)
+					.expect("initial AVC packet must contain SPS")
+					.payload();
+				sps = Some(parse_h264_sps(payload)?);
+			}
+			if pps.is_none() {
+				let payload = nals
+					.iter()
+					.find(|nal| nal.nal_unit_type() == 8)
+					.expect("initial AVC packet must contain PPS")
+					.payload();
+				pps = Some(parse_h264_pps(payload, sps.as_ref().expect("SPS cached"))?);
+			}
+			let mut coded = nals
+				.iter()
+				.filter(|nal| matches!(nal.nal_unit_type(), 1 | 5));
+			let slice_nal = coded.next().expect("every donor packet has one slice");
+			assert!(
+				coded.next().is_none(),
+				"qualification accepts one AVC slice"
+			);
+			let sps = sps.as_ref().expect("SPS cached");
+			let slice = parse_h264_slice_header(
+				slice_nal.payload(),
+				sps,
+				pps.as_ref().expect("PPS cached"),
+			)?;
+			let plan = planner.plan(sps, &slice)?;
+			assert!(plan.setup_slot < 16);
+			assert!(plan.references.iter().all(|reference| reference.slot < 16));
+			assert!(plan.references.len() <= sps.max_num_ref_frames as usize);
+			resets += u32::from(plan.reset_dpb);
+			picture_order.push(plan.picture_order_count);
+		}
+		assert_eq!(picture_order.len(), expected as usize);
+		assert_eq!(resets, 1);
+		assert!(picture_order.windows(2).any(|pair| pair[1] < pair[0]));
 		Ok(())
 	}
 }

@@ -85,6 +85,411 @@ pub(crate) enum CaptureAttempt<T> {
 	Rejected { error: Error, output: T },
 }
 
+/// Runtime-owned implementation for public hardware video decoder sessions.
+pub(crate) struct VideoDecoderBackend {
+	engine: EngineHandle,
+	session: vk::DecodeSession,
+	av1_ready: Vec<Option<Event>>,
+	av1_host_frames: Vec<Option<Vec<u8>>>,
+	vp9_ready: Vec<Option<Event>>,
+	vp9_host_frames: Vec<Option<Vec<u8>>>,
+}
+
+impl VideoDecoderBackend {
+	pub(crate) fn create(
+		engine: &Engine,
+		profile: crate::video::VideoDecodeProfile,
+		coded_extent: crate::video::VideoExtent,
+	) -> Result<Self> {
+		let capabilities = engine.query_video_decode_capabilities(profile)?;
+		let device_capabilities = engine.query_video_device_capabilities()?;
+		if !device_capabilities.supports_decode_result_status_queries() {
+			return Err(Error::missing_capability(
+				"the public decoder requires Vulkan Video result-status queries",
+			));
+		}
+		let max_dpb_slots = if matches!(profile, crate::video::VideoDecodeProfile::H264 { .. }) {
+			capabilities.max_dpb_slots().min(16)
+		} else {
+			capabilities.max_dpb_slots()
+		};
+		let max_active_references = capabilities
+			.max_active_reference_pictures()
+			.min(max_dpb_slots);
+		let session = engine
+			.handle
+			.state
+			.borrow()
+			.device
+			.create_video_decode_session(
+				profile,
+				coded_extent,
+				max_dpb_slots,
+				max_active_references,
+			)?;
+		Ok(Self {
+			engine: engine.handle.clone(),
+			session,
+			av1_ready: vec![None; max_dpb_slots as usize],
+			av1_host_frames: vec![None; max_dpb_slots as usize],
+			vp9_ready: vec![None; max_dpb_slots as usize],
+			vp9_host_frames: vec![None; max_dpb_slots as usize],
+		})
+	}
+
+	pub(crate) fn set_h264_parameters(
+		&mut self,
+		sps: &crate::video::H264SequenceParameterSet,
+		pps: &crate::video::H264PictureParameterSet,
+	) -> Result<()> {
+		self.session.set_h264_parameters(sps, pps)
+	}
+
+	pub(crate) fn set_h265_parameters(
+		&mut self,
+		vps: &crate::video::H265VideoParameterSet,
+		sps: &crate::video::H265SequenceParameterSet,
+		pps: &crate::video::H265PictureParameterSet,
+	) -> Result<()> {
+		self.session.set_h265_parameters(vps, sps, pps)
+	}
+
+	pub(crate) fn set_av1_parameters(
+		&mut self,
+		sequence: &crate::video::Av1SequenceHeader,
+	) -> Result<()> {
+		self.session.set_av1_parameters(sequence)
+	}
+
+	pub(crate) fn decode_h264(
+		&mut self,
+		access_unit: &[u8],
+		sps: &crate::video::H264SequenceParameterSet,
+		pps: &crate::video::H264PictureParameterSet,
+		slice: &crate::video::H264SliceHeader,
+	) -> Result<Vec<u8>> {
+		let device = self.engine.state.borrow().device.clone();
+		self.session.upload_h264_access_unit(access_unit)?;
+		let command = self
+			.session
+			.record_h264_picture_for_readback(&device, sps, pps, slice)?;
+		let event = {
+			let mut state = self.engine.state.borrow_mut();
+			submit_recorded(&mut state, command)?
+		};
+		event.wait()?;
+		self.session.verify_decode_result()?;
+		let command = self.session.record_decode_readback(&device)?;
+		let event = {
+			let mut state = self.engine.state.borrow_mut();
+			submit_recorded(&mut state, command)?
+		};
+		event.wait()?;
+		self.session.read_decode_yuv420()
+	}
+
+	pub(crate) fn decode_h264_native(
+		&mut self,
+		access_unit: &[u8],
+		sps: &crate::video::H264SequenceParameterSet,
+		pps: &crate::video::H264PictureParameterSet,
+		slice: &crate::video::H264SliceHeader,
+	) -> Result<crate::runtime::NativeDecodedFrame> {
+		let device = self.engine.state.borrow().device.clone();
+		self.session.upload_h264_access_unit(access_unit)?;
+		let (command, slot) = self
+			.session
+			.record_h264_picture_native(&device, sps, pps, slice)?;
+		let event = {
+			let mut state = self.engine.state.borrow_mut();
+			submit_recorded(&mut state, command)?
+		};
+		event.wait()?;
+		self.session.verify_decode_result()?;
+		self.session.native_frame(slot, event)
+	}
+
+	pub(crate) fn decode_h265(
+		&mut self,
+		access_unit: &[u8],
+		sps: &crate::video::H265SequenceParameterSet,
+		pps: &crate::video::H265PictureParameterSet,
+		slice: &crate::video::H265SliceHeader,
+	) -> Result<Vec<u8>> {
+		let device = self.engine.state.borrow().device.clone();
+		self.session.upload_h265_access_unit(access_unit)?;
+		let command = self
+			.session
+			.record_h265_picture_for_readback(&device, sps, pps, slice)?;
+		let event = {
+			let mut state = self.engine.state.borrow_mut();
+			submit_recorded(&mut state, command)?
+		};
+		event.wait()?;
+		self.session.verify_decode_result()?;
+		let command = self.session.record_decode_readback(&device)?;
+		let event = {
+			let mut state = self.engine.state.borrow_mut();
+			submit_recorded(&mut state, command)?
+		};
+		event.wait()?;
+		self.session.read_decode_yuv420()
+	}
+
+	pub(crate) fn decode_h265_native(
+		&mut self,
+		access_unit: &[u8],
+		sps: &crate::video::H265SequenceParameterSet,
+		pps: &crate::video::H265PictureParameterSet,
+		slice: &crate::video::H265SliceHeader,
+	) -> Result<crate::runtime::NativeDecodedFrame> {
+		let device = self.engine.state.borrow().device.clone();
+		self.session.upload_h265_access_unit(access_unit)?;
+		let (command, slot) = self
+			.session
+			.record_h265_picture_native(&device, sps, pps, slice)?;
+		let event = {
+			let mut state = self.engine.state.borrow_mut();
+			submit_recorded(&mut state, command)?
+		};
+		event.wait()?;
+		self.session.verify_decode_result()?;
+		self.session.native_frame(slot, event)
+	}
+
+	pub(crate) fn decode_av1(
+		&mut self,
+		access_unit: &[u8],
+		picture: &crate::video::Av1Picture,
+	) -> Result<Vec<u8>> {
+		let tiles = picture
+			.tiles
+			.as_ref()
+			.ok_or_else(|| Error::invalid_argument("coded AV1 picture has no tile payloads"))?;
+		let device = self.engine.state.borrow().device.clone();
+		self.session.upload_av1_access_unit(access_unit)?;
+		let (command, slot) = self.session.record_av1_picture_for_readback(
+			&device,
+			&picture.sequence,
+			&picture.frame,
+			picture.frame_header_offset,
+			tiles,
+		)?;
+		let decode_event = {
+			let mut state = self.engine.state.borrow_mut();
+			submit_recorded(&mut state, command)?
+		};
+		decode_event.wait()?;
+		self.session.verify_decode_result()?;
+		let command = self.session.record_decode_readback(&device)?;
+		let event = {
+			let mut state = self.engine.state.borrow_mut();
+			submit_recorded(&mut state, command)?
+		};
+		event.wait()?;
+		let decoded = self.session.read_decode_yuv420()?;
+		let index =
+			usize::try_from(slot).map_err(|_| Error::internal("AV1 output slot exceeds usize"))?;
+		*self
+			.av1_ready
+			.get_mut(index)
+			.ok_or_else(|| Error::internal("AV1 output slot exceeds readiness storage"))? =
+			Some(decode_event);
+		*self
+			.av1_host_frames
+			.get_mut(index)
+			.ok_or_else(|| Error::internal("AV1 output slot exceeds host-frame storage"))? =
+			Some(decoded.clone());
+		Ok(decoded)
+	}
+
+	pub(crate) fn decode_av1_native(
+		&mut self,
+		access_unit: &[u8],
+		picture: &crate::video::Av1Picture,
+	) -> Result<crate::runtime::NativeDecodedFrame> {
+		let tiles = picture
+			.tiles
+			.as_ref()
+			.ok_or_else(|| Error::invalid_argument("coded AV1 picture has no tile payloads"))?;
+		let device = self.engine.state.borrow().device.clone();
+		self.session.upload_av1_access_unit(access_unit)?;
+		let (command, slot) = self.session.record_av1_picture_native(
+			&device,
+			&picture.sequence,
+			&picture.frame,
+			picture.frame_header_offset,
+			tiles,
+		)?;
+		let event = {
+			let mut state = self.engine.state.borrow_mut();
+			submit_recorded(&mut state, command)?
+		};
+		event.wait()?;
+		self.session.verify_decode_result()?;
+		let index =
+			usize::try_from(slot).map_err(|_| Error::internal("AV1 output slot exceeds usize"))?;
+		*self
+			.av1_ready
+			.get_mut(index)
+			.ok_or_else(|| Error::internal("AV1 output slot exceeds readiness storage"))? =
+			Some(event.clone());
+		self.session.native_frame(slot, event)
+	}
+
+	pub(crate) fn show_existing_av1(
+		&mut self,
+		frame: &crate::video::Av1FrameHeader,
+	) -> Result<Vec<u8>> {
+		let slot = self.session.resolve_av1_show_existing_slot(frame)?;
+		let index = usize::try_from(slot)
+			.map_err(|_| Error::internal("AV1 show-existing slot exceeds usize"))?;
+		self.av1_host_frames
+			.get(index)
+			.and_then(Clone::clone)
+			.ok_or_else(|| {
+				Error::failed_precondition("AV1 show-existing host frame is unavailable")
+			})
+	}
+
+	pub(crate) fn show_existing_av1_native(
+		&mut self,
+		frame: &crate::video::Av1FrameHeader,
+	) -> Result<crate::runtime::NativeDecodedFrame> {
+		let slot = self.session.resolve_av1_show_existing_slot(frame)?;
+		let index = usize::try_from(slot)
+			.map_err(|_| Error::internal("AV1 show-existing slot exceeds usize"))?;
+		let ready = self
+			.av1_ready
+			.get(index)
+			.and_then(Clone::clone)
+			.ok_or_else(|| {
+				Error::failed_precondition("AV1 show-existing readiness is unavailable")
+			})?;
+		self.session.native_frame(slot, ready)
+	}
+
+	pub(crate) fn decode_vp9(
+		&mut self,
+		access_unit: &[u8],
+		picture: &crate::video::Vp9Picture,
+	) -> Result<Vec<u8>> {
+		let device = self.engine.state.borrow().device.clone();
+		self.session.upload_vp9_picture(access_unit, picture)?;
+		let (command, slot) = self
+			.session
+			.record_vp9_picture_for_readback(&device, picture)?;
+		let decode_event = {
+			let mut state = self.engine.state.borrow_mut();
+			submit_recorded(&mut state, command)?
+		};
+		decode_event.wait()?;
+		self.session.verify_decode_result()?;
+		let command = self.session.record_decode_readback(&device)?;
+		let event = {
+			let mut state = self.engine.state.borrow_mut();
+			submit_recorded(&mut state, command)?
+		};
+		event.wait()?;
+		let decoded = self.session.read_decode_yuv420()?;
+		let index =
+			usize::try_from(slot).map_err(|_| Error::internal("VP9 output slot exceeds usize"))?;
+		*self
+			.vp9_ready
+			.get_mut(index)
+			.ok_or_else(|| Error::internal("VP9 output slot exceeds readiness storage"))? =
+			Some(decode_event);
+		*self
+			.vp9_host_frames
+			.get_mut(index)
+			.ok_or_else(|| Error::internal("VP9 output slot exceeds host-frame storage"))? =
+			Some(decoded.clone());
+		Ok(decoded)
+	}
+
+	pub(crate) fn decode_vp9_native(
+		&mut self,
+		access_unit: &[u8],
+		picture: &crate::video::Vp9Picture,
+	) -> Result<crate::runtime::NativeDecodedFrame> {
+		let device = self.engine.state.borrow().device.clone();
+		self.session.upload_vp9_picture(access_unit, picture)?;
+		let (command, slot) = self.session.record_vp9_picture_native(&device, picture)?;
+		let event = {
+			let mut state = self.engine.state.borrow_mut();
+			submit_recorded(&mut state, command)?
+		};
+		event.wait()?;
+		self.session.verify_decode_result()?;
+		let index =
+			usize::try_from(slot).map_err(|_| Error::internal("VP9 output slot exceeds usize"))?;
+		*self
+			.vp9_ready
+			.get_mut(index)
+			.ok_or_else(|| Error::internal("VP9 output slot exceeds readiness storage"))? =
+			Some(event.clone());
+		self.session.native_frame(slot, event)
+	}
+
+	pub(crate) fn show_existing_vp9(
+		&mut self,
+		picture: &crate::video::Vp9Picture,
+	) -> Result<Vec<u8>> {
+		let slot = self.session.resolve_vp9_show_existing_slot(picture)?;
+		let index = usize::try_from(slot)
+			.map_err(|_| Error::internal("VP9 show-existing slot exceeds usize"))?;
+		self.vp9_host_frames
+			.get(index)
+			.and_then(Clone::clone)
+			.ok_or_else(|| {
+				Error::failed_precondition("VP9 show-existing host frame is unavailable")
+			})
+	}
+
+	pub(crate) fn show_existing_vp9_native(
+		&mut self,
+		picture: &crate::video::Vp9Picture,
+	) -> Result<crate::runtime::NativeDecodedFrame> {
+		let slot = self.session.resolve_vp9_show_existing_slot(picture)?;
+		let index = usize::try_from(slot)
+			.map_err(|_| Error::internal("VP9 show-existing slot exceeds usize"))?;
+		let ready = self
+			.vp9_ready
+			.get(index)
+			.and_then(Clone::clone)
+			.ok_or_else(|| {
+				Error::failed_precondition("VP9 show-existing readiness is unavailable")
+			})?;
+		self.session.native_frame(slot, ready)
+	}
+
+	pub(crate) fn read_native_yuv420(
+		&mut self,
+		frame: &crate::runtime::NativeDecodedFrame,
+	) -> Result<Vec<u8>> {
+		frame.ready().wait()?;
+		let device = self.engine.state.borrow().device.clone();
+		let (release, copy, acquire) = self.session.record_native_readback(&device, frame)?;
+		{
+			let mut state = self.engine.state.borrow_mut();
+			let _release_event = submit_recorded(&mut state, release)?;
+		}
+		let copy_event = {
+			let mut state = self.engine.state.borrow_mut();
+			submit_recorded(&mut state, copy)?
+		};
+		let completion = if let Some(acquire) = acquire {
+			let mut state = self.engine.state.borrow_mut();
+			submit_recorded(&mut state, acquire)?
+		} else {
+			copy_event
+		};
+		frame.mark_consumed(&completion)?;
+		completion.wait()?;
+		self.session.read_decode_yuv420()
+	}
+}
+
 struct EngineState {
 	// Fields drop in declaration order. Retirement disconnects first and joins only
 	// an already-drained host worker; an active worker retains the device and
@@ -100,6 +505,16 @@ struct EngineState {
 #[derive(Clone)]
 pub(crate) struct EngineHandle {
 	state: Rc<RefCell<EngineState>>,
+}
+
+/// Transactional ownership of one semantic operation's composite lowering.
+///
+/// Child operations retain executable work while their semantic identities are
+/// suppressed. The outermost commit assigns every emitted node to the parent
+/// contract; dropping an unfinished scope rolls back only its emitted work.
+pub(crate) struct SemanticLoweringScope {
+	engine: EngineHandle,
+	active: bool,
 }
 
 impl Engine {
@@ -180,6 +595,28 @@ impl Engine {
 			.borrow()
 			.device
 			.video_decode_formats(profile)
+	}
+
+	pub(crate) fn query_video_encode_capabilities(
+		&self,
+		profile: crate::video::VideoEncodeProfile,
+	) -> Result<crate::video::VideoEncodeCapabilities> {
+		self.handle
+			.state
+			.borrow()
+			.device
+			.video_encode_capabilities(profile)
+	}
+
+	pub(crate) fn query_video_encode_formats(
+		&self,
+		profile: crate::video::VideoEncodeProfile,
+	) -> Result<crate::video::VideoEncodeFormats> {
+		self.handle
+			.state
+			.borrow()
+			.device
+			.video_encode_formats(profile)
 	}
 
 	#[cfg(test)]
@@ -479,6 +916,14 @@ impl EngineHandle {
 		self.state.borrow().capture_active
 	}
 
+	pub(crate) fn begin_semantic_lowering(&self) -> Result<SemanticLoweringScope> {
+		self.state.borrow_mut().session.begin_semantic_lowering()?;
+		Ok(SemanticLoweringScope {
+			engine: self.clone(),
+			active: true,
+		})
+	}
+
 	pub(crate) fn checkpoint(&self, timed: bool) -> Result<Event> {
 		if let Some(event) = self.flush_impl(timed)? {
 			return Ok(event);
@@ -706,9 +1151,62 @@ impl EngineHandle {
 	}
 }
 
+impl SemanticLoweringScope {
+	/// Record one private physical dispatch owned by this composite lowering.
+	pub(crate) fn record_physical(&self, dispatch: ComputeDispatch<'_>) -> Result<()> {
+		let mut state = self.engine.state.borrow_mut();
+		let device = state.device.clone();
+		state.session.record_physical_lowering(&device, dispatch)
+	}
+
+	pub(crate) fn commit(mut self, semantic: SemanticDispatch<'_>) -> Result<()> {
+		let result = self
+			.engine
+			.state
+			.borrow_mut()
+			.session
+			.finish_semantic_lowering(semantic);
+		self.active = false;
+		result.map(|_| ())
+	}
+}
+
+impl Drop for SemanticLoweringScope {
+	fn drop(&mut self) {
+		if !self.active {
+			return;
+		}
+		self.engine
+			.state
+			.borrow_mut()
+			.session
+			.cancel_semantic_lowering();
+	}
+}
+
 struct CaptureGuard {
 	engine: EngineHandle,
 	active: bool,
+}
+
+/// Movable private recording transaction used by stateful domain sessions.
+pub(crate) struct RecordingTransaction {
+	guard: Option<CaptureGuard>,
+}
+
+impl RecordingTransaction {
+	pub(crate) fn begin(engine: EngineHandle) -> Result<Self> {
+		Ok(Self {
+			guard: Some(CaptureGuard::begin(engine)?),
+		})
+	}
+
+	pub(crate) fn submit(mut self) -> Result<Event> {
+		let guard = self.guard.take().expect("recording transaction guard");
+		let engine = guard.engine.clone();
+		let plan = guard.finish(&[])?;
+		engine.submit_plan(&plan, false)
+	}
 }
 
 impl CaptureGuard {
@@ -725,6 +1223,7 @@ impl CaptureGuard {
 					"pending eager work must be submitted before execution capture",
 				));
 			}
+			state.session.begin_capture()?;
 			state.capture_active = true;
 		}
 		Ok(Self {
@@ -739,12 +1238,13 @@ impl CaptureGuard {
 			let pending = match state.session.take(observed_outputs) {
 				Ok(pending) => pending,
 				Err(error) => {
-					state.session.abort();
+					state.session.abort_capture();
 					state.capture_active = false;
 					self.active = false;
 					return Err(error);
 				}
 			};
+			state.session.end_capture();
 			state.capture_active = false;
 			self.active = false;
 			pending
@@ -764,6 +1264,7 @@ impl CaptureGuard {
 			let pending = state.session.snapshot(observed_outputs);
 			state.capture_active = false;
 			self.active = false;
+			state.session.end_capture();
 			pending?
 		};
 		let Some(pending) = pending else {
@@ -786,7 +1287,7 @@ impl Drop for CaptureGuard {
 			return;
 		}
 		let mut state = self.engine.state.borrow_mut();
-		state.session.abort();
+		state.session.abort_capture();
 		state.capture_active = false;
 	}
 }
@@ -894,8 +1395,341 @@ mod tests {
 				active_references,
 			)?;
 			assert!(session.memory_binding_count() <= 64);
-			assert!((1..=2).contains(&session.image_count()));
+			let expected_images = if capabilities.dpb_and_output_coincide() {
+				if capabilities.separate_reference_images() {
+					dpb_slots as usize
+				} else {
+					1
+				}
+			} else {
+				2
+			};
+			assert_eq!(session.image_count(), expected_images);
 			drop(session);
+		}
+		Ok(())
+	}
+
+	#[test]
+	#[ignore = "requires a hardware Vulkan AV1 profile and OA donor fixture"]
+	fn submits_first_av1_picture_from_donor_sequence() -> crate::Result<()> {
+		let engine = Engine::new()?;
+		let device = engine.handle.state.borrow().device.clone();
+		let fixture = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+			.with_file_name("oa")
+			.join("sdk/asset/video/clip/shibuya_720p_30fps_av1_main_8bit_420.mp4");
+		let mut demuxer = crate::video::VideoDemuxer::open(fixture)?;
+		let packet = demuxer
+			.read_next_packet()?
+			.expect("AV1 fixture must contain a first packet");
+		let sequence_obu = crate::video::parse_av1_obus(packet.data())?
+			.into_iter()
+			.find(|obu| obu.type_() == crate::video::Av1ObuType::SequenceHeader)
+			.expect("demuxed AV1 keyframe must include a sequence header");
+		let sequence = crate::video::parse_av1_sequence_header(sequence_obu.payload())?;
+		let profile = crate::video::VideoDecodeProfile::Av1 {
+			profile: sequence.profile,
+			film_grain_support: sequence.film_grain_params_present,
+			chroma_subsampling: sequence.color.chroma_subsampling,
+			luma_bit_depth: sequence.color.bit_depth,
+			chroma_bit_depth: sequence.color.bit_depth,
+		};
+		let capabilities = device.video_decode_capabilities(profile)?;
+		let dpb_slots = capabilities.max_dpb_slots().min(8);
+		let active_references = capabilities.max_active_reference_pictures().min(dpb_slots);
+		let mut session = device.create_video_decode_session(
+			profile,
+			crate::video::VideoExtent {
+				width: sequence.coded_width(),
+				height: sequence.coded_height(),
+			},
+			dpb_slots,
+			active_references,
+		)?;
+		session.set_av1_parameters(&sequence)?;
+		assert!(session.parameters_ready());
+		let mut references = crate::video::Av1ReferenceState::default();
+		let mut parsed_frame = None;
+		for obu in crate::video::parse_av1_obus(packet.data())? {
+			if matches!(
+				obu.type_(),
+				crate::video::Av1ObuType::Frame | crate::video::Av1ObuType::FrameHeader
+			) {
+				let frame =
+					crate::video::parse_av1_frame_header(obu.payload(), &sequence, &references)?;
+				if !frame.show_existing_frame {
+					let tiles = crate::video::parse_av1_tile_group(obu, &frame)?;
+					parsed_frame = Some((
+						frame,
+						u32::try_from(obu.header_offset()).map_err(|_| {
+							crate::Error::out_of_range("AV1 frame-header offset exceeds u32")
+						})?,
+						tiles,
+					));
+					break;
+				}
+				references.refresh(&frame);
+			}
+		}
+		let (frame, frame_header_offset, tiles) =
+			parsed_frame.expect("first donor packet must contain a coded AV1 picture");
+		assert_eq!(
+			session.upload_av1_access_unit(packet.data())?,
+			packet.data().len()
+		);
+		let (command, _) = session.record_av1_picture_for_readback(
+			&device,
+			&sequence,
+			&frame,
+			frame_header_offset,
+			&tiles,
+		)?;
+		let event = {
+			let mut state = engine.handle.state.borrow_mut();
+			super::submit_recorded(&mut state, command)?
+		};
+		event.wait()?;
+		session.verify_decode_result()?;
+		let readback = session.record_decode_readback(&device)?;
+		let event = {
+			let mut state = engine.handle.state.borrow_mut();
+			super::submit_recorded(&mut state, readback)?
+		};
+		event.wait()?;
+		let decoded = session.read_decode_yuv420()?;
+		assert_eq!(decoded.len(), 1280_usize * 720 + 2 * 640 * 360);
+		assert_eq!(
+			crate::cryptography::hash(&decoded).to_hex(),
+			"beb7230253bfa12918347b1e01c0b7ee3f9687ec66d71d58d25922e54bccb66d",
+			"Vulkan AV1 output differs from the independently decoded FFmpeg frame"
+		);
+		Ok(())
+	}
+
+	#[test]
+	#[ignore = "requires a hardware Vulkan H.265 profile and OA donor fixture"]
+	fn submits_first_h265_idr_decode_commands() -> crate::Result<()> {
+		let engine = Engine::new()?;
+		let device = engine.handle.state.borrow().device.clone();
+		let fixture = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+			.with_file_name("oa")
+			.join("sdk/asset/video/clip/shibuya_720p_30fps_h265_main_8bit_420.mp4");
+		let mut demuxer = crate::video::VideoDemuxer::open(fixture)?;
+		let packet = demuxer
+			.read_next_packet()?
+			.expect("H.265 fixture must contain a first packet");
+		let nals = crate::video::parse_nal_annex_b(packet.data());
+		let find = |nal_type| {
+			nals.iter()
+				.find(|nal| (nal.payload()[0] >> 1) & 0x3f == nal_type)
+				.map(|nal| nal.payload())
+				.expect("demuxed keyframe must include the requested H.265 parameter set")
+		};
+		let vps = crate::video::parse_h265_vps(find(32))?;
+		let sps = crate::video::parse_h265_sps(find(33))?;
+		let pps = crate::video::parse_h265_pps(find(34))?;
+		let mut coded_slices = nals
+			.iter()
+			.filter(|nal| ((nal.payload()[0] >> 1) & 0x3f) < 32);
+		let slice_nal = coded_slices
+			.next()
+			.expect("demuxed keyframe must include one H.265 coded slice segment");
+		assert!(
+			coded_slices.next().is_none(),
+			"first qualification path accepts one H.265 coded slice segment"
+		);
+		let slice = crate::video::parse_h265_slice_header(slice_nal.payload(), &sps, &pps)?;
+		let profile = crate::video::VideoDecodeProfile::h265_420(
+			crate::video::H265Profile::Main,
+			crate::video::VideoComponentBitDepth::Eight,
+		);
+		let capabilities = device.video_decode_capabilities(profile)?;
+		let dpb_slots = capabilities.max_dpb_slots().min(4);
+		let active_references = capabilities.max_active_reference_pictures().min(dpb_slots);
+		let mut session = device.create_video_decode_session(
+			profile,
+			crate::video::VideoExtent {
+				width: sps.coded_width,
+				height: sps.coded_height,
+			},
+			dpb_slots,
+			active_references,
+		)?;
+		let packed_len = session.upload_first_h265_access_unit(packet.data())?;
+		let (payload_len, range) = session
+			.bitstream_upload()
+			.expect("uploaded H.265 packet must retain its decode buffer");
+		assert_eq!(payload_len, packed_len);
+		assert_eq!(payload_len, slice_nal.payload().len() + 3);
+		assert!(range >= payload_len as u64);
+		assert!(range.is_multiple_of(capabilities.min_bitstream_size_alignment()));
+		session.set_h265_parameters(&vps, &sps, &pps)?;
+		assert!(session.parameters_ready());
+		let command = session.record_first_h265_idr(&device, &sps, &pps, &slice)?;
+		assert!(session.first_decode_recorded());
+		let event = {
+			let mut state = engine.handle.state.borrow_mut();
+			super::submit_recorded(&mut state, command)?
+		};
+		event.wait()?;
+		session.verify_first_decode_result()?;
+		let readback_command = session.record_first_decode_readback(&device)?;
+		let readback_event = {
+			let mut state = engine.handle.state.borrow_mut();
+			super::submit_recorded(&mut state, readback_command)?
+		};
+		readback_event.wait()?;
+		let decoded = session.read_first_decode_yuv420()?;
+		assert_eq!(decoded.len(), 1280 * 720 * 3 / 2);
+		assert_eq!(
+			crate::cryptography::hash(&decoded).to_hex(),
+			"eb1e3c9d708df539d31382a0329653b59058cb538c78d85b444e1b372a80d512",
+			"Vulkan H.265 output differs from the independently decoded YUV420 frame"
+		);
+		Ok(())
+	}
+
+	#[test]
+	#[ignore = "requires Vulkan H.265 hardware, OA donor fixture, and FFmpeg"]
+	fn submits_complete_h265_stream_with_references() -> crate::Result<()> {
+		let engine = Engine::new()?;
+		let device = engine.handle.state.borrow().device.clone();
+		let fixture = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+			.with_file_name("oa")
+			.join("sdk/asset/video/clip/shibuya_720p_30fps_h265_main_8bit_420.mp4");
+		let mut demuxer = crate::video::VideoDemuxer::open(&fixture)?;
+		let expected_pictures = demuxer.info().sample_count();
+		let first_packet = demuxer
+			.read_next_packet()?
+			.expect("H.265 fixture must contain a first packet");
+		let first_nals = crate::video::parse_nal_annex_b(first_packet.data());
+		let find = |nal_type| {
+			first_nals
+				.iter()
+				.find(|nal| (nal.payload()[0] >> 1) & 0x3f == nal_type)
+				.map(|nal| nal.payload())
+				.expect("demuxed keyframe must include the requested H.265 parameter set")
+		};
+		let vps = crate::video::parse_h265_vps(find(32))?;
+		let sps = crate::video::parse_h265_sps(find(33))?;
+		let pps = crate::video::parse_h265_pps(find(34))?;
+		let profile = crate::video::VideoDecodeProfile::h265_420(
+			crate::video::H265Profile::Main,
+			crate::video::VideoComponentBitDepth::Eight,
+		);
+		let capabilities = device.video_decode_capabilities(profile)?;
+		let required_dpb_slots = sps
+			.max_decoded_picture_buffering_minus_1
+			.first()
+			.copied()
+			.unwrap_or(0)
+			.checked_add(1)
+			.ok_or_else(|| crate::Error::data_loss("H.265 SPS DPB slot count overflows"))?;
+		if required_dpb_slots > capabilities.max_dpb_slots() {
+			return Err(crate::Error::missing_capability(
+				"device cannot admit the donor H.265 DPB slot count",
+			));
+		}
+		let active_references = capabilities
+			.max_active_reference_pictures()
+			.min(required_dpb_slots);
+		let mut session = device.create_video_decode_session(
+			profile,
+			crate::video::VideoExtent {
+				width: sps.coded_width,
+				height: sps.coded_height,
+			},
+			required_dpb_slots,
+			active_references,
+		)?;
+		session.set_h265_parameters(&vps, &sps, &pps)?;
+		let mut picture_count = 0_u32;
+		let mut decoded_by_poc = std::collections::BTreeMap::new();
+		let mut decode_packet = |packet: &crate::video::VideoPacket| -> crate::Result<()> {
+			let nals = crate::video::parse_nal_annex_b(packet.data());
+			let mut coded = nals
+				.iter()
+				.filter(|nal| ((nal.payload()[0] >> 1) & 0x3f) < 32);
+			let slice_nal = coded
+				.next()
+				.expect("every donor packet must contain one H.265 coded slice");
+			assert!(
+				coded.next().is_none(),
+				"reusable qualification accepts one H.265 slice per picture"
+			);
+			let slice = crate::video::parse_h265_slice_header(slice_nal.payload(), &sps, &pps)?;
+			let picture_order_count = i32::try_from(slice.picture_order_count_lsb.unwrap_or(0))
+				.map_err(|_| crate::Error::data_loss("H.265 donor POC exceeds i32"))?;
+			session.upload_first_h265_access_unit(packet.data())?;
+			let command = session.record_h265_picture_for_readback(&device, &sps, &pps, &slice)?;
+			let event = {
+				let mut state = engine.handle.state.borrow_mut();
+				super::submit_recorded(&mut state, command)?
+			};
+			event.wait()?;
+			session.verify_first_decode_result()?;
+			let readback_command = session.record_decode_readback(&device)?;
+			let readback_event = {
+				let mut state = engine.handle.state.borrow_mut();
+				super::submit_recorded(&mut state, readback_command)?
+			};
+			readback_event.wait()?;
+			let decoded = session.read_first_decode_yuv420()?;
+			if decoded_by_poc
+				.insert(picture_order_count, decoded)
+				.is_some()
+			{
+				return Err(crate::Error::data_loss(
+					"H.265 donor produced a duplicate picture-order count",
+				));
+			}
+			picture_count = picture_count
+				.checked_add(1)
+				.expect("fixture picture count must fit u32");
+			Ok(())
+		};
+		decode_packet(&first_packet)?;
+		while let Some(packet) = demuxer.read_next_packet()? {
+			decode_packet(&packet)?;
+		}
+		assert_eq!(picture_count, expected_pictures);
+		assert_eq!(decoded_by_poc.len(), picture_count as usize);
+		let reference = std::process::Command::new("ffmpeg")
+			.args(["-v", "error", "-i"])
+			.arg(&fixture)
+			.args([
+				"-map", "0:v:0", "-pix_fmt", "yuv420p", "-f", "rawvideo", "-",
+			])
+			.output()
+			.map_err(|source| crate::Error::backend_failure("FFmpeg", "HEVC oracle", source))?;
+		if !reference.status.success() {
+			return Err(crate::Error::data_loss(format!(
+				"FFmpeg HEVC oracle failed: {}",
+				String::from_utf8_lossy(&reference.stderr)
+			)));
+		}
+		let frame_size = usize::try_from(sps.coded_width)
+			.ok()
+			.and_then(|width| {
+				usize::try_from(sps.coded_height)
+					.ok()
+					.and_then(|height| width.checked_mul(height))
+			})
+			.and_then(|luma| luma.checked_mul(3))
+			.and_then(|size| size.checked_div(2))
+			.ok_or_else(|| crate::Error::out_of_range("H.265 oracle frame size overflows"))?;
+		let expected_size = frame_size
+			.checked_mul(picture_count as usize)
+			.ok_or_else(|| crate::Error::out_of_range("H.265 oracle stream size overflows"))?;
+		assert_eq!(reference.stdout.len(), expected_size);
+		for ((picture_order_count, decoded), expected) in decoded_by_poc
+			.iter()
+			.zip(reference.stdout.chunks_exact(frame_size))
+		{
+			assert_eq!(
+				decoded, expected,
+				"Vulkan H.265 output differs from FFmpeg at POC {picture_order_count}"
+			);
 		}
 		Ok(())
 	}
@@ -948,7 +1782,7 @@ mod tests {
 			dpb_slots,
 			active_references,
 		)?;
-		let packed_len = session.upload_first_h264_access_unit(packet.data())?;
+		let packed_len = session.upload_h264_access_unit(packet.data())?;
 		let (payload_len, range) = session
 			.bitstream_upload()
 			.expect("uploaded packet must retain its decode buffer");
@@ -979,6 +1813,146 @@ mod tests {
 			"360d151e07a39eac2314dd527bf7ca1802e5ed3b980e42409345b6668736e8fd",
 			"Vulkan H.264 output differs from the independently decoded YUV420 frame"
 		);
+		Ok(())
+	}
+
+	#[test]
+	#[ignore = "requires Vulkan H.264 hardware, OA donor fixture, and FFmpeg"]
+	fn submits_complete_h264_stream_with_references() -> crate::Result<()> {
+		let engine = Engine::new()?;
+		let device = engine.handle.state.borrow().device.clone();
+		let fixture = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+			.with_file_name("oa")
+			.join("sdk/asset/video/clip/shibuya_720p_30fps_h264_high_8bit_420.mp4");
+		let mut demuxer = crate::video::VideoDemuxer::open(&fixture)?;
+		let expected_pictures = demuxer.info().sample_count();
+		let first_packet = demuxer
+			.read_next_packet()?
+			.expect("H.264 fixture must contain a first packet");
+		let first_nals = crate::video::parse_nal_annex_b(first_packet.data());
+		let sps_nal = first_nals
+			.iter()
+			.find(|nal| nal.nal_unit_type() == 7)
+			.expect("initial AVC packet must contain SPS");
+		let pps_nal = first_nals
+			.iter()
+			.find(|nal| nal.nal_unit_type() == 8)
+			.expect("initial AVC packet must contain PPS");
+		let sps = crate::video::parse_h264_sps(sps_nal.payload())?;
+		let pps = crate::video::parse_h264_pps(pps_nal.payload(), &sps)?;
+		let profile =
+			crate::video::VideoDecodeProfile::h264_420_8bit(crate::video::H264Profile::High);
+		let capabilities = device.video_decode_capabilities(profile)?;
+		let required_dpb_slots = sps
+			.max_num_ref_frames
+			.checked_add(1)
+			.ok_or_else(|| crate::Error::data_loss("H.264 SPS DPB slot count overflows"))?
+			.min(16);
+		if required_dpb_slots > capabilities.max_dpb_slots()
+			|| sps.max_num_ref_frames > capabilities.max_active_reference_pictures()
+		{
+			return Err(crate::Error::missing_capability(
+				"device cannot admit the donor H.264 DPB requirements",
+			));
+		}
+		let mut session = device.create_video_decode_session(
+			profile,
+			crate::video::VideoExtent {
+				width: sps.coded_width()?,
+				height: sps.coded_height()?,
+			},
+			required_dpb_slots,
+			sps.max_num_ref_frames,
+		)?;
+		session.set_h264_parameters(&sps, &pps)?;
+		let mut picture_count = 0_u32;
+		let mut decoded_by_pts = std::collections::BTreeMap::new();
+		let mut decode_packet = |packet: &crate::video::VideoPacket| -> crate::Result<()> {
+			let nals = crate::video::parse_nal_annex_b(packet.data());
+			let mut coded = nals
+				.iter()
+				.filter(|nal| matches!(nal.nal_unit_type(), 1 | 5));
+			let slice_nal = coded
+				.next()
+				.expect("every donor packet must contain one H.264 coded slice");
+			assert!(
+				coded.next().is_none(),
+				"reusable qualification accepts one H.264 slice per picture"
+			);
+			let slice = crate::video::parse_h264_slice_header(slice_nal.payload(), &sps, &pps)?;
+			session.upload_h264_access_unit(packet.data())?;
+			let command = session.record_h264_picture_for_readback(&device, &sps, &pps, &slice)?;
+			let event = {
+				let mut state = engine.handle.state.borrow_mut();
+				super::submit_recorded(&mut state, command)?
+			};
+			event.wait()?;
+			session.verify_first_decode_result()?;
+			let readback_command = session.record_decode_readback(&device)?;
+			let readback_event = {
+				let mut state = engine.handle.state.borrow_mut();
+				super::submit_recorded(&mut state, readback_command)?
+			};
+			readback_event.wait()?;
+			let decoded = session.read_first_decode_yuv420()?;
+			if decoded_by_pts
+				.insert(packet.presentation_timestamp(), decoded)
+				.is_some()
+			{
+				return Err(crate::Error::data_loss(
+					"H.264 donor produced a duplicate presentation timestamp",
+				));
+			}
+			picture_count = picture_count
+				.checked_add(1)
+				.expect("fixture picture count must fit u32");
+			Ok(())
+		};
+		decode_packet(&first_packet)?;
+		while let Some(packet) = demuxer.read_next_packet()? {
+			decode_packet(&packet)?;
+		}
+		assert_eq!(picture_count, expected_pictures);
+		assert_eq!(decoded_by_pts.len(), picture_count as usize);
+		let reference = std::process::Command::new("ffmpeg")
+			.args(["-v", "error", "-i"])
+			.arg(&fixture)
+			.args([
+				"-map", "0:v:0", "-pix_fmt", "yuv420p", "-f", "rawvideo", "-",
+			])
+			.output()
+			.map_err(|source| crate::Error::backend_failure("FFmpeg", "AVC oracle", source))?;
+		if !reference.status.success() {
+			return Err(crate::Error::data_loss(format!(
+				"FFmpeg AVC oracle failed: {}",
+				String::from_utf8_lossy(&reference.stderr)
+			)));
+		}
+		let coded_width = sps.coded_width()?;
+		let coded_height = sps.coded_height()?;
+		let frame_size = usize::try_from(coded_width)
+			.ok()
+			.and_then(|width| {
+				usize::try_from(coded_height)
+					.ok()
+					.and_then(|height| width.checked_mul(height))
+			})
+			.and_then(|luma| luma.checked_mul(3))
+			.and_then(|size| size.checked_div(2))
+			.ok_or_else(|| crate::Error::out_of_range("H.264 oracle frame size overflows"))?;
+		let expected_size = frame_size
+			.checked_mul(picture_count as usize)
+			.ok_or_else(|| crate::Error::out_of_range("H.264 oracle stream size overflows"))?;
+		assert_eq!(reference.stdout.len(), expected_size);
+		for ((presentation_timestamp, decoded), expected) in decoded_by_pts
+			.iter()
+			.zip(reference.stdout.chunks_exact(frame_size))
+		{
+			assert_eq!(
+				decoded, expected,
+				"Vulkan H.264 output differs from FFmpeg at PTS {presentation_timestamp}"
+			);
+		}
 		Ok(())
 	}
 
@@ -1242,6 +2216,22 @@ mod tests {
 			.map(|word| f32::from_ne_bytes([word[0], word[1], word[2], word[3]]))
 			.collect::<Vec<_>>();
 		assert_eq!(actual, [21.0, 42.0, 63.0, 84.0]);
+		Ok(())
+	}
+
+	#[test]
+	#[ignore = "requires a hardware Vulkan 1.3 compute device"]
+	fn abandoned_semantic_lowering_rolls_back_only_its_work() -> crate::Result<()> {
+		let engine = Engine::new()?;
+		let left = Matrix::from_f32(&engine, [2], &[1.0, 2.0])?;
+		let right = Matrix::from_f32(&engine, [2], &[3.0, 4.0])?;
+		{
+			let _lowering = left.engine_handle().begin_semantic_lowering()?;
+			let _abandoned = matrix::add(&left, &right)?;
+			assert!(engine.has_pending_work());
+		}
+		assert!(!engine.has_pending_work());
+		assert_eq!(left.read_f32()?, [1.0, 2.0]);
 		Ok(())
 	}
 }

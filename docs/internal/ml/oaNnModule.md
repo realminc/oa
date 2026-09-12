@@ -174,12 +174,23 @@ immutable causal/zero masks are prepared once per encountered batch geometry
 and cached instead of adding a mask dispatch to every replay. Runtime sequence
 length may change without rebuilding projection weights. `TransformerBlock`
 owns the two pre-normalization modules, attention, and two-layer GELU FFN; both
-residual additions participate in reverse-mode traversal. The generic causal
+residual additions participate in reverse-mode traversal. Conditioned dense
+and MoE constructors additionally own a zero-initialized
+`adaptive_modulation` Linear child from `C` to `6D`. Their AdaLN-Zero forward
+repeats each `[B,6D]` modulation row across the sequence, applies the donor's
+attention and feed-forward scale/shift/gate order, and starts as an exact
+identity residual path. Rust construction replaces the donor's mutable
+`enableAdaptiveConditioning`: the complete child registry is fixed before the
+block is returned. Core `matrix::repeat_interleave` supplies the differentiable
+rank-one through rank-four expansion; its adjoint corrects the donor's
+non-leading-axis coordinate decomposition by reducing with input dimensions
+and expanded-output strides. The generic causal
 attention route supports any positive head count dividing `D` and is proven
 with a two-head forward and Q/K/V finite-difference case. Module-policy tests
 prove Standard/Flash forward equivalence, bidirectional visibility, additive
-masking, bias-free projection ownership, and TransformerBlock policy
-propagation, masked forward, and sequence-length changes. Captured train/eval
+masking, bias-free projection ownership, AdaLN-Zero dense/MoE identity and
+adaptive-parameter gradients, and TransformerBlock policy propagation, masked
+forward, and sequence-length changes. Captured train/eval
 and reverse evidence additionally proves that
 attention Dropout advances through replay and regenerates its exact adjoint
 mask.

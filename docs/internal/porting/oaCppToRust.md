@@ -27,6 +27,10 @@ stage, and acceptance gate still decide whether a capability is admitted.
 | `oa::FnOptim` | `oa::ml::optim` | Stateless optimizer primitives; stateful optimizers remain types owned by `oa::ml`. |
 | `oa::FnFlow` | `oa::ml::flow` | Stateless flow-model operations. |
 | `oa::FnPolicy`, `oa::FnAdvantage`, `oa::FnEnvironment` | `oa::ml::policy`, `oa::ml::advantage`, `oa::ml::environment` | RL operations stay within ML without creating another framework root. |
+| `oa::PolicyEvaluator::evaluateCategorical` | `oa::ml::evaluation::evaluate_categorical` | One-shot evaluation is a free operation, not a zero-sized Rust service type. |
+| `oa::Environment`, `oa::RolloutCollector` | `oa::ml::environment::Environment`, `oa::ml::RolloutCollector` | Stateful lifecycle/collection contracts remain named behaviors or sessions. |
+| SDK `oa::CartPole` | `oa::sdk::ml::rl::CartPole` | Keep a concrete workload SDK-owned while compiling its native type and schema-owned kernel pack into the one crate and Engine. |
+| SDK `oa::LunarEpisodeManifest` | `oa::sdk::ml::rl::LunarEpisodeManifest` | Keep task-specific reproducibility metadata with the Lunar workload; preserve its versioned seed contract before admitting terrain, physics, or vector execution. |
 | `oa::FnImage` | `oa::image` | Lowercase stateless operation module. |
 | `oa::FnAudio` | `oa::audio` | Lowercase stateless operation module. |
 | `oa::FnHash` | `oa::cryptography::hash` | Device batch hashing remains distinct from CPU one-shot primitives at `oa::cryptography`. |
@@ -50,6 +54,8 @@ oa::FnLoss::crossEntropy(x, y)     -> oa::ml::loss::cross_entropy(&x, &y)
 oa::FnOptim::clipGradNorm(gs, max) -> oa::ml::optim::clip_grad_norm(&gs, max)
 oa::FnImage::resize(image, size)   -> oa::image::resize(&image, size)
 oa::FnAudio::decodeFile(path)      -> oa::audio::decode_file(&engine, path)
+oa::FnMatrix::vqAssign(z, codes)   -> oa::ml::matrix::vq_assign(&z, &codes)
+oa::VectorQuantizer                -> oa::ml::nn::VectorQuantizer
 oa::FnHash::shake256(bytes, n)     -> oa::cryptography::hash::shake256(&bytes, n)
 oa::FnVideo::parseNalAnnexB(bytes) -> oa::video::parse_nal_annex_b(bytes)
 oa::FnDetection::boxIou(a, b)      -> oa::vision::box_iou(&a, &b)

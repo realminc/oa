@@ -73,6 +73,9 @@ The repository remains Experimental. No GPU operation is Shipped. The
 one-device runtime, schema-generated out-of-place `f32` elementwise family,
 `i32` Matrix-add dtype proof, and FP32 `matrix::mat_mul_nt` with a generated
 64×64×16 tiled kernel and runnable SDK oracle are implemented checkpoints.
+Donor last-axis gather/reverse and categorical `sample_logits`
+greedy/dense/TopK/nucleus routes are connected; captured stochastic selection
+uses an immediately advanced graph-resident Philox counter.
 Backend-neutral `core::memory` provides checked ordinary and explicit one-way
 streaming copy, ordinary and fixed-work equality, and secure erasure. The
 x86-64 implementation retains OA's qualified small-copy and AVX2/AVX-512

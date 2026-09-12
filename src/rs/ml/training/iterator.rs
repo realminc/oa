@@ -1446,6 +1446,16 @@ impl<'engine, 'hooks> ItTraining<'engine, 'hooks> {
 		Err(error)
 	}
 
+	pub(super) fn fail_composed_step<T>(&mut self, error: Error) -> Result<T> {
+		self.fail(error)
+	}
+
+	pub(super) fn cancel_composed_step(&mut self) {
+		self.close_stable_resource_frame();
+		self.stop_requested = true;
+		self.body_pending = false;
+	}
+
 	fn seal_stable_resources(&self) -> Result<()> {
 		if self.stable_resource_frame_open && !self.stable_resource_inputs_sealed {
 			self.engine.seal_all_stable_resources_external()?;

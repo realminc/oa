@@ -6,13 +6,15 @@ use super::{
 	AudioSemanticDispatch, AudioSemanticOutput, BufferAccess, ComputeDispatch,
 	ImageSemanticDispatch, ImageSemanticInput, OptionalSemanticDispatch, SemanticDispatch,
 	SemanticGraph, SemanticValueDesc, SemanticValueId, Storage, executable_graph::ExecutableGraph,
-	vk,
+	storage::ReadinessSnapshot, vk,
 };
 
 /// Private mutable eager-recording owner for one engine.
 pub(super) struct ExecutionSession {
 	graphs: Vec<ExecutableGraph>,
 	outputs: Vec<Storage>,
+	capture_output_readiness: Option<Vec<(Storage, ReadinessSnapshot)>>,
+	capture_created_storage: Vec<Storage>,
 	semantic: SemanticGraph,
 	semantic_values: BTreeMap<SemanticValueKey, SemanticValueBinding>,
 	semantic_storage: BTreeMap<SemanticValueId, Storage>,
@@ -22,6 +24,7 @@ pub(super) struct ExecutionSession {
 	stable_external_resource_count: usize,
 	stable_resource_frame_active: bool,
 	stable_resource_inputs_sealed: bool,
+	semantic_lowering: Option<SemanticLoweringState>,
 }
 
 pub(super) struct PendingExecution {
@@ -46,6 +49,12 @@ struct SemanticValueBinding {
 	storage: Storage,
 }
 
+struct SemanticLoweringState {
+	depth: usize,
+	first_graph: usize,
+	first_output: usize,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum SemanticValueKey {
 	Matrix(u64),
@@ -64,6 +73,8 @@ impl ExecutionSession {
 		Self {
 			graphs: Vec::new(),
 			outputs: Vec::new(),
+			capture_output_readiness: None,
+			capture_created_storage: Vec::new(),
 			semantic: SemanticGraph::new(),
 			semantic_values: BTreeMap::new(),
 			semantic_storage: BTreeMap::new(),
@@ -73,12 +84,114 @@ impl ExecutionSession {
 			stable_external_resource_count: 0,
 			stable_resource_frame_active: false,
 			stable_resource_inputs_sealed: false,
+			semantic_lowering: None,
 		}
+	}
+
+	pub(super) fn begin_capture(&mut self) -> Result<()> {
+		if self.capture_output_readiness.is_some() {
+			return Err(Error::failed_precondition(
+				"nested execution capture is not supported",
+			));
+		}
+		self.capture_output_readiness = Some(Vec::new());
+		self.capture_created_storage.clear();
+		Ok(())
+	}
+
+	pub(super) fn end_capture(&mut self) {
+		self.capture_output_readiness = None;
+		self.capture_created_storage.clear();
+	}
+
+	pub(super) fn begin_semantic_lowering(&mut self) -> Result<()> {
+		if let Some(lowering) = &mut self.semantic_lowering {
+			lowering.depth = lowering
+				.depth
+				.checked_add(1)
+				.ok_or_else(|| Error::resource_exhausted("semantic lowering depth exhausted"))?;
+			return Ok(());
+		}
+		self.semantic_lowering = Some(SemanticLoweringState {
+			depth: 1,
+			first_graph: self.graphs.len(),
+			first_output: self.outputs.len(),
+		});
+		Ok(())
+	}
+
+	pub(super) fn finish_semantic_lowering(
+		&mut self,
+		semantic: SemanticDispatch<'_>,
+	) -> Result<Option<super::SemanticOpId>> {
+		let lowering = self.semantic_lowering.as_mut().ok_or_else(|| {
+			Error::failed_precondition("semantic lowering commit has no matching begin")
+		})?;
+		if lowering.depth > 1 {
+			lowering.depth -= 1;
+			return Ok(None);
+		}
+		let lowering = self
+			.semantic_lowering
+			.take()
+			.expect("validated semantic lowering state");
+		if lowering.first_graph == self.graphs.len() {
+			return Ok(None);
+		}
+
+		let mut candidate = self.semantic.clone();
+		let mut values = self.semantic_values.clone();
+		let mut storage = self.semantic_storage.clone();
+		let operation =
+			match admit_semantic_dispatch(&mut candidate, &mut values, &mut storage, &semantic) {
+				Ok(operation) => operation,
+				Err(error) => {
+					self.rollback_semantic_lowering(lowering);
+					return Err(error);
+				}
+			};
+		if let Err(error) = candidate.validate() {
+			self.rollback_semantic_lowering(lowering);
+			return Err(error);
+		}
+		for graph in &mut self.graphs[lowering.first_graph..] {
+			graph.attach_composite_semantic(
+				operation,
+				semantic.contract.name(),
+				semantic.contract.hash(),
+			)?;
+		}
+		self.semantic = candidate;
+		self.semantic_values = values;
+		self.semantic_storage = storage;
+		Ok(Some(operation))
+	}
+
+	pub(super) fn cancel_semantic_lowering(&mut self) {
+		let Some(lowering) = &mut self.semantic_lowering else {
+			return;
+		};
+		if lowering.depth > 1 {
+			lowering.depth -= 1;
+			return;
+		}
+		let lowering = self
+			.semantic_lowering
+			.take()
+			.expect("validated semantic lowering state");
+		self.rollback_semantic_lowering(lowering);
+	}
+
+	fn rollback_semantic_lowering(&mut self, lowering: SemanticLoweringState) {
+		self.graphs.truncate(lowering.first_graph);
+		self.rollback_outputs_from(lowering.first_output);
 	}
 
 	pub(super) fn create_storage(&mut self, device: &vk::Device, bytes: &[u8]) -> Result<Storage> {
 		if !self.stable_resource_frame_active || bytes.is_empty() {
-			return Storage::from_bytes(device, bytes);
+			let storage = Storage::from_bytes(device, bytes)?;
+			self.track_capture_created(&storage);
+			return Ok(storage);
 		}
 		let slot = self.stable_resource_cursor;
 		self.stable_resource_cursor = self
@@ -92,12 +205,19 @@ impl ExecutionSession {
 			return Ok(existing.clone());
 		}
 		let storage = Storage::from_bytes(device, bytes)?;
+		self.track_capture_created(&storage);
 		if slot < self.stable_resources.len() {
 			self.stable_resources[slot] = storage.clone();
 		} else {
 			self.stable_resources.push(storage.clone());
 		}
 		Ok(storage)
+	}
+
+	fn track_capture_created(&mut self, storage: &Storage) {
+		if self.capture_output_readiness.is_some() {
+			self.capture_created_storage.push(storage.clone());
+		}
 	}
 
 	pub(super) fn begin_stable_resource_frame(&mut self) -> Result<()> {
@@ -175,6 +295,19 @@ impl ExecutionSession {
 		self.record_impl(device, dispatch, &[])
 	}
 
+	pub(super) fn record_physical_lowering(
+		&mut self,
+		device: &vk::Device,
+		dispatch: ComputeDispatch<'_>,
+	) -> Result<()> {
+		if self.semantic_lowering.is_none() {
+			return Err(Error::failed_precondition(
+				"physical lowering dispatch requires an active semantic lowering",
+			));
+		}
+		self.record_impl(device, dispatch, &[])
+	}
+
 	pub(super) fn record_semantic(
 		&mut self,
 		device: &vk::Device,
@@ -201,6 +334,10 @@ impl ExecutionSession {
 			.map(|binding| binding.storage.clone())
 			.collect::<Vec<_>>();
 		let mut graph = ExecutableGraph::from_dispatches(device, std::slice::from_ref(&dispatch))?;
+		if self.semantic_lowering.is_some() {
+			self.push_graph(graph, outputs);
+			return Ok(());
+		}
 		let mut candidate = self.semantic.clone();
 		let mut values = self.semantic_values.clone();
 		let mut storage = self.semantic_storage.clone();
@@ -216,10 +353,7 @@ impl ExecutionSession {
 		self.semantic_values = values;
 		self.semantic_storage = storage;
 		self.graphs.push(graph);
-		for output in &outputs {
-			output.mark_recorded();
-		}
-		self.outputs.extend(outputs);
+		self.record_outputs(outputs);
 		Ok(())
 	}
 
@@ -271,6 +405,10 @@ impl ExecutionSession {
 			.map(|binding| binding.storage.clone())
 			.collect::<Vec<_>>();
 		let mut graph = ExecutableGraph::from_dispatches(device, dispatches)?;
+		if self.semantic_lowering.is_some() {
+			self.push_graph(graph, outputs);
+			return Ok(());
+		}
 		let mut candidate = self.semantic.clone();
 		let mut values = self.semantic_values.clone();
 		let mut storage = self.semantic_storage.clone();
@@ -286,10 +424,7 @@ impl ExecutionSession {
 		self.semantic_values = values;
 		self.semantic_storage = storage;
 		self.graphs.push(graph);
-		for output in &outputs {
-			output.mark_recorded();
-		}
-		self.outputs.extend(outputs);
+		self.record_outputs(outputs);
 		Ok(())
 	}
 
@@ -329,6 +464,10 @@ impl ExecutionSession {
 			.map(|binding| binding.storage.clone())
 			.collect::<Vec<_>>();
 		let mut graph = ExecutableGraph::from_dispatches(device, dispatches)?;
+		if self.semantic_lowering.is_some() {
+			self.push_graph(graph, outputs);
+			return Ok(());
+		}
 		let mut candidate = self.semantic.clone();
 		let mut values = self.semantic_values.clone();
 		let mut storage = self.semantic_storage.clone();
@@ -344,10 +483,7 @@ impl ExecutionSession {
 		self.semantic_values = values;
 		self.semantic_storage = storage;
 		self.graphs.push(graph);
-		for output in &outputs {
-			output.mark_recorded();
-		}
-		self.outputs.extend(outputs);
+		self.record_outputs(outputs);
 		Ok(())
 	}
 
@@ -368,6 +504,10 @@ impl ExecutionSession {
 			.map(|binding| binding.storage.clone())
 			.collect::<Vec<_>>();
 		let mut graph = ExecutableGraph::from_dispatches(device, std::slice::from_ref(&dispatch))?;
+		if self.semantic_lowering.is_some() {
+			self.push_graph(graph, outputs);
+			return Ok(());
+		}
 		let mut candidate = self.semantic.clone();
 		let mut values = self.semantic_values.clone();
 		let mut storage = self.semantic_storage.clone();
@@ -383,10 +523,7 @@ impl ExecutionSession {
 		self.semantic_values = values;
 		self.semantic_storage = storage;
 		self.graphs.push(graph);
-		for output in &outputs {
-			output.mark_recorded();
-		}
-		self.outputs.extend(outputs);
+		self.record_outputs(outputs);
 		Ok(())
 	}
 
@@ -407,6 +544,10 @@ impl ExecutionSession {
 			.map(|binding| binding.storage.clone())
 			.collect::<Vec<_>>();
 		let mut graph = ExecutableGraph::from_dispatches(device, std::slice::from_ref(&dispatch))?;
+		if self.semantic_lowering.is_some() {
+			self.push_graph(graph, outputs);
+			return Ok(());
+		}
 		let mut candidate = self.semantic.clone();
 		let mut values = self.semantic_values.clone();
 		let mut storage = self.semantic_storage.clone();
@@ -422,10 +563,7 @@ impl ExecutionSession {
 		self.semantic_values = values;
 		self.semantic_storage = storage;
 		self.graphs.push(graph);
-		for output in &outputs {
-			output.mark_recorded();
-		}
-		self.outputs.extend(outputs);
+		self.record_outputs(outputs);
 		Ok(())
 	}
 
@@ -452,6 +590,10 @@ impl ExecutionSession {
 			.map(|binding| binding.storage.clone())
 			.collect::<Vec<_>>();
 		let mut graph = ExecutableGraph::from_dispatches(device, dispatches)?;
+		if self.semantic_lowering.is_some() {
+			self.push_graph(graph, outputs);
+			return Ok(());
+		}
 		let mut candidate = self.semantic.clone();
 		let mut values = self.semantic_values.clone();
 		let mut storage = self.semantic_storage.clone();
@@ -467,10 +609,7 @@ impl ExecutionSession {
 		self.semantic_values = values;
 		self.semantic_storage = storage;
 		self.graphs.push(graph);
-		for output in &outputs {
-			output.mark_recorded();
-		}
-		self.outputs.extend(outputs);
+		self.record_outputs(outputs);
 		Ok(())
 	}
 
@@ -498,6 +637,10 @@ impl ExecutionSession {
 			.map(|binding| binding.storage.clone())
 			.collect::<Vec<_>>();
 		let mut graph = ExecutableGraph::from_dispatches(device, std::slice::from_ref(&dispatch))?;
+		if self.semantic_lowering.is_some() {
+			self.push_graph(graph, outputs);
+			return Ok(());
+		}
 		if !semantics.is_empty() {
 			let mut candidate = self.semantic.clone();
 			let mut values = self.semantic_values.clone();
@@ -527,11 +670,23 @@ impl ExecutionSession {
 		}
 
 		self.graphs.push(graph);
+		self.record_outputs(outputs);
+		Ok(())
+	}
+
+	fn push_graph(&mut self, graph: ExecutableGraph, outputs: Vec<Storage>) {
+		self.graphs.push(graph);
+		self.record_outputs(outputs);
+	}
+
+	fn record_outputs(&mut self, outputs: Vec<Storage>) {
 		for output in &outputs {
-			output.mark_recorded();
+			let readiness = output.mark_recorded();
+			if let Some(capture) = &mut self.capture_output_readiness {
+				capture.push((output.clone(), readiness));
+			}
 		}
 		self.outputs.extend(outputs);
-		Ok(())
 	}
 
 	pub(super) fn is_empty(&self) -> bool {
@@ -539,6 +694,7 @@ impl ExecutionSession {
 	}
 
 	pub(super) fn abort(&mut self) {
+		self.semantic_lowering = None;
 		self.graphs.clear();
 		self.semantic.reset();
 		self.semantic_values.clear();
@@ -546,12 +702,55 @@ impl ExecutionSession {
 		for output in self.outputs.drain(..) {
 			output.mark_failed();
 		}
+		self.end_capture();
+	}
+
+	pub(super) fn abort_capture(&mut self) {
+		self.semantic_lowering = None;
+		self.graphs.clear();
+		self.semantic.reset();
+		self.semantic_values.clear();
+		self.semantic_storage.clear();
+		self.rollback_outputs_from(0);
+		self.end_capture();
+	}
+
+	fn rollback_outputs_from(&mut self, first: usize) {
+		let outputs = self.outputs.drain(first..).collect::<Vec<_>>();
+		let Some(readiness) = &mut self.capture_output_readiness else {
+			for output in outputs {
+				output.mark_failed();
+			}
+			return;
+		};
+		let snapshots = readiness.drain(first..).collect::<Vec<_>>();
+		debug_assert_eq!(outputs.len(), snapshots.len());
+		self.restore_capture_snapshots(snapshots);
+	}
+
+	fn restore_capture_snapshots(&self, snapshots: Vec<(Storage, ReadinessSnapshot)>) {
+		for (output, previous) in snapshots.into_iter().rev() {
+			if self
+				.capture_created_storage
+				.iter()
+				.any(|created| created.same_as(&output))
+			{
+				output.mark_failed();
+			} else {
+				output.restore_readiness(previous);
+			}
+		}
 	}
 
 	pub(super) fn take(
 		&mut self,
 		observed_outputs: &[&Matrix],
 	) -> Result<Option<PendingExecution>> {
+		if self.semantic_lowering.is_some() {
+			return Err(Error::failed_precondition(
+				"cannot submit an incomplete semantic lowering",
+			));
+		}
 		if self.graphs.is_empty() {
 			return Ok(None);
 		}
@@ -585,8 +784,13 @@ impl ExecutionSession {
 				observed_outputs,
 			})),
 			Err(error) => {
-				for output in outputs {
-					output.mark_failed();
+				if let Some(readiness) = &mut self.capture_output_readiness {
+					let snapshots = std::mem::take(readiness);
+					self.restore_capture_snapshots(snapshots);
+				} else {
+					for output in outputs {
+						output.mark_failed();
+					}
 				}
 				Err(error)
 			}
@@ -597,6 +801,11 @@ impl ExecutionSession {
 		&self,
 		observed_outputs: &[&Matrix],
 	) -> Result<Option<PendingExecution>> {
+		if self.semantic_lowering.is_some() {
+			return Err(Error::failed_precondition(
+				"cannot capture an incomplete semantic lowering",
+			));
+		}
 		if self.graphs.is_empty() {
 			return Ok(None);
 		}
@@ -645,6 +854,7 @@ impl ExecutionSession {
 		for output in self.outputs.drain(..) {
 			output.mark_captured();
 		}
+		self.end_capture();
 		Ok(())
 	}
 
@@ -760,12 +970,7 @@ fn admit_semantic_dispatch(
 				));
 			}
 			if matrix.same_value_as(input) {
-				if !semantic.contract.mutates_input(input_index) {
-					return Err(Error::invalid_argument(
-						"semantic in-place alias requires a declared input mutation",
-					));
-				}
-				return admit_matrix_version(
+				return admit_matrix_alias_version(
 					graph,
 					values,
 					storage,
@@ -1015,7 +1220,7 @@ fn admit_matrix_semantic(
 	Ok(value)
 }
 
-fn admit_matrix_version(
+fn admit_matrix_alias_version(
 	graph: &mut SemanticGraph,
 	values: &mut BTreeMap<SemanticValueKey, SemanticValueBinding>,
 	storage_bindings: &mut BTreeMap<SemanticValueId, Storage>,
@@ -1024,11 +1229,11 @@ fn admit_matrix_version(
 ) -> Result<SemanticValueId> {
 	let key = SemanticValueKey::Matrix(matrix.value_id());
 	let current = values.get(&key).ok_or_else(|| {
-		Error::internal("semantic mutation input was not admitted before its output")
+		Error::internal("semantic alias input was not admitted before its output")
 	})?;
 	if current.value != expected_input || !current.storage.same_as(matrix.storage()) {
 		return Err(Error::internal(
-			"semantic mutation does not target the current value and storage version",
+			"semantic alias does not target the current value and storage version",
 		));
 	}
 	let value = graph.add_value(SemanticValueDesc::new(

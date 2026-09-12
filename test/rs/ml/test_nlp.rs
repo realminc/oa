@@ -9,6 +9,9 @@ fn canonical_character_contract_matches_oa_cpp() -> oa::Result<()> {
 	assert_eq!(nlp::CONTEXT_LENGTH, 16);
 	assert_eq!(nlp::MODEL_WIDTH, 32);
 	assert_eq!(nlp::HIDDEN_WIDTH, 64);
+	assert_eq!(nlp::MOE_EXPERT_HIDDEN_WIDTH, 16);
+	assert_eq!(nlp::MOE_NUM_EXPERTS, 4);
+	assert_eq!(nlp::MOE_EXPERTS_PER_TOKEN, 2);
 	assert_eq!(nlp::TRAINING_STEPS, 300);
 	assert_eq!(nlp::BATCH_SIZE, 64);
 	assert_eq!(nlp::RNG_SEED, 20_260_714);
@@ -21,6 +24,12 @@ fn canonical_character_contract_matches_oa_cpp() -> oa::Result<()> {
 	);
 	assert_eq!(
 		nlp::CHAR_TRANSFORMER_REFERENCE_GENERATION.chars().count(),
+		nlp::GENERATION_PROMPT.len() + nlp::GENERATION_LENGTH
+	);
+	assert_eq!(
+		nlp::CHAR_MOE_TRANSFORMER_REFERENCE_GENERATION
+			.chars()
+			.count(),
 		nlp::GENERATION_PROMPT.len() + nlp::GENERATION_LENGTH
 	);
 	assert_eq!(
@@ -282,6 +291,149 @@ test_vk!(
 		assert_eq!(reloaded_generation, generated);
 		assert_eq!(reloaded_optimizer.step_count(), optimizer.step_count());
 		std::fs::remove_file(&checkpoint).expect("remove completed Transformer checkpoint");
+		Ok(())
+	}
+);
+
+test_vk!(
+	canonical_char_moe_transformer_matches_the_cpp_recipe,
+	engine,
+	{
+		let model = nlp::CharMoeTransformer::new(&engine)?;
+		assert_eq!(model.num_parameters()?, 13_183);
+		let named = model.all_named_parameters()?;
+		assert_eq!(named.len(), 23);
+		assert_eq!(named[0].path(), "token_embedding.weight");
+		assert_eq!(named[1].path(), "position_embedding.weight");
+		assert_eq!(named[2].path(), "block_0.ln_attn.weight");
+		assert_eq!(named[12].path(), "block_0.moe.expert_gate_up_weight");
+		assert_eq!(named[15].path(), "block_0.moe.expert_down_bias");
+		assert_eq!(named[16].path(), "block_0.moe.norm.weight");
+		assert_eq!(named[17].path(), "block_0.moe.router.weight");
+		assert_eq!(named[19].path(), "final_norm.weight");
+		assert_eq!(named[21].path(), "head.weight");
+		assert_eq!(model.moe().num_experts(), 4);
+		assert_eq!(model.moe().experts_per_token(), 2);
+
+		let mut sampler = nlp::CharSampler::new(2)?;
+		let (input, target) = sampler.next(&engine)?;
+		let target = target.reshape([2 * nlp::CONTEXT_LENGTH])?;
+		let tape = oa::ml::GradientTape::new();
+		let logits = model.forward(&input)?;
+		assert_eq!(
+			logits.shape(),
+			[2 * nlp::CONTEXT_LENGTH, nlp::CHAR_VOCAB_SIZE]
+		);
+		let loss = oa::ml::loss::cross_entropy(&logits, &target)?;
+		tape.backward(&loss)?;
+		for parameter in model.all_parameters()? {
+			assert!(
+				parameter
+					.gradient()
+					.expect("Char MoE Transformer parameter gradient is missing")
+					.read_f32()?
+					.iter()
+					.all(|value| value.is_finite())
+			);
+		}
+		Ok(())
+	}
+);
+
+test_vk!(
+	canonical_char_moe_transformer_completes_the_cpp_300_step_gate,
+	engine,
+	{
+		let model = nlp::CharMoeTransformer::new(&engine)?;
+		let mut optimizer = oa::ml::AdamW::new(model.all_parameters()?, 0.01)?;
+		let mut sampler = nlp::CharSampler::new(nlp::BATCH_SIZE)?;
+		let (initial_input, initial_target) = sampler.next_values()?;
+		let input = oa::Matrix::from_slice(
+			&engine,
+			[nlp::BATCH_SIZE, nlp::CONTEXT_LENGTH],
+			&initial_input,
+		)?;
+		let target = oa::Matrix::from_slice(
+			&engine,
+			[nlp::BATCH_SIZE * nlp::CONTEXT_LENGTH],
+			&initial_target,
+		)?;
+		let mut program = oa::ml::TrainingProgram::capture(&engine, &mut optimizer, || {
+			let tape = oa::ml::GradientTape::new();
+			let logits = model.forward(&input)?;
+			let loss = oa::ml::loss::cross_entropy(&logits, &target)?;
+			tape.backward(&loss)?;
+			Ok(loss)
+		})?;
+		let mut initial_loss = 0.0_f32;
+		let mut training_loss = 0.0_f32;
+		for step in 0..nlp::TRAINING_STEPS {
+			if step != 0 {
+				let (next_input, next_target) = sampler.next_values()?;
+				program.upload_input(&input, &next_input)?;
+				program.upload_input(&target, &next_target)?;
+			}
+			training_loss = program.replay_and_wait(&engine, &mut optimizer)?;
+			if step == 0 {
+				initial_loss = training_loss;
+			}
+		}
+		let diagnostics = program.diagnostics();
+		assert_eq!(diagnostics.command_recording_count(), 1);
+		assert_eq!(diagnostics.command_cache_hit_count(), 299);
+		assert_eq!(diagnostics.submission_count(), 300);
+		assert_eq!(diagnostics.input_upload_count(), 598);
+		let logits = model.forward(&input)?;
+		let final_loss = oa::ml::loss::cross_entropy(&logits, &target)?.read_f32()?[0];
+		let accuracy = nlp::accuracy(&logits, &target)?;
+		let generated = nlp::generate_greedy(
+			&engine,
+			&model,
+			nlp::GENERATION_PROMPT,
+			nlp::GENERATION_LENGTH,
+		)?;
+		eprintln!(
+			"Char MoE: initial={initial_loss:.6} training={training_loss:.6} final={final_loss:.6} accuracy={:.3}% generated={generated:?}",
+			accuracy * 100.0
+		);
+		assert!(initial_loss > 3.0);
+		assert!(
+			(final_loss - nlp::CHAR_MOE_TRANSFORMER_CPP_FINAL_LOSS).abs() < 0.02,
+			"final loss {final_loss} missed C++ {}; last training loss {training_loss}",
+			nlp::CHAR_MOE_TRANSFORMER_CPP_FINAL_LOSS
+		);
+		assert!(
+			(accuracy - nlp::CHAR_MOE_TRANSFORMER_CPP_ACCURACY).abs() < 0.01,
+			"accuracy {}% missed C++ {}%",
+			accuracy * 100.0,
+			nlp::CHAR_MOE_TRANSFORMER_CPP_ACCURACY * 100.0
+		);
+		assert_eq!(optimizer.step_count(), nlp::TRAINING_STEPS as u32);
+		assert_eq!(generated, nlp::CHAR_MOE_TRANSFORMER_REFERENCE_GENERATION);
+
+		let checkpoint = std::env::temp_dir().join(format!(
+			"oars-char-moe-transformer-{}.oam",
+			std::process::id()
+		));
+		oa::ml::save_checkpoint(&checkpoint, &model, &optimizer)?;
+		let reloaded = nlp::CharMoeTransformer::new(&engine)?;
+		let mut reloaded_optimizer = oa::ml::AdamW::new(reloaded.all_parameters()?, 0.01)?;
+		oa::ml::load_checkpoint(&engine, &checkpoint, &reloaded, &mut reloaded_optimizer)?;
+		assert_eq!(
+			nlp::accuracy(&reloaded.forward(&input)?, &target)?,
+			accuracy
+		);
+		assert_eq!(
+			nlp::generate_greedy(
+				&engine,
+				&reloaded,
+				nlp::GENERATION_PROMPT,
+				nlp::GENERATION_LENGTH,
+			)?,
+			generated
+		);
+		assert_eq!(reloaded_optimizer.step_count(), optimizer.step_count());
+		std::fs::remove_file(&checkpoint).expect("remove completed MoE checkpoint");
 		Ok(())
 	}
 );

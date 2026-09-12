@@ -80,6 +80,152 @@ pub fn philox_normal(input: &Matrix, mean: f32, stddev: f32, seed: u64) -> Resul
 	)
 }
 
+/// Sample one I32 class index from each final-axis row of FP32 logits.
+///
+/// Nonpositive temperature selects the first maximum deterministically.
+/// Positive temperature uses the donor Philox categorical route; positive
+/// `top_k` restricts candidates and `top_p` applies nucleus truncation after
+/// descending TopK. Rank-one input is treated as one row.
+///
+/// # Errors
+///
+/// Returns an error when logits are not nonempty rank-one or rank-two FP32,
+/// a sorted candidate count exceeds 1024, sizes do not fit the shader ABI,
+/// allocation fails, or runtime recording fails.
+pub fn sample_logits(
+	logits: &Matrix,
+	temperature: f32,
+	top_k: i32,
+	top_p: f32,
+	seed: u64,
+) -> Result<Matrix> {
+	const CONTRACT: OperationContract = crate::core::operation::matrix::SAMPLE_LOGITS;
+	let operation = CONTRACT.name();
+	if logits.dtype() != DType::F32 || !(1..=2).contains(&logits.shape().len()) {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires rank-one or rank-two F32 logits"
+		)));
+	}
+	let vocabulary = *logits.shape().last().expect("validated logits rank");
+	let rows = if logits.shape().len() == 1 {
+		1
+	} else {
+		logits.shape()[0]
+	};
+	if rows == 0 || vocabulary == 0 {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires positive row and vocabulary extents"
+		)));
+	}
+	let rows_u32 = u32::try_from(rows)
+		.map_err(|_| Error::invalid_argument(format!("{operation} row count exceeds u32")))?;
+	let vocabulary_u32 = u32::try_from(vocabulary).map_err(|_| {
+		Error::invalid_argument(format!("{operation} vocabulary extent exceeds u32"))
+	})?;
+	let candidates = if top_k > 0 {
+		usize::try_from(top_k)
+			.expect("positive i32 fits usize")
+			.min(vocabulary)
+	} else {
+		vocabulary
+	};
+	let normalized_top_p = top_p.clamp(1.0e-7, 1.0);
+	let sorted_route = top_k > 0 || normalized_top_p < 1.0;
+	let effective_seed = if temperature > 0.0 {
+		resolve_seed(seed)
+	} else {
+		seed
+	};
+	let output = Matrix::allocate(logits.engine_handle(), vec![rows], rows, DType::I32)?;
+	let attributes = [
+		OpAttribute::Float {
+			name: "temperature".into(),
+			value: f64::from(temperature),
+		},
+		OpAttribute::SignedInteger {
+			name: "top_k".into(),
+			value: i64::from(top_k),
+		},
+		OpAttribute::Float {
+			name: "top_p".into(),
+			value: f64::from(normalized_top_p),
+		},
+		OpAttribute::UnsignedInteger {
+			name: "seed".into(),
+			value: effective_seed,
+		},
+	];
+	let inputs = [logits];
+	let outputs = [&output];
+	let semantic = SemanticDispatch {
+		contract: CONTRACT,
+		inputs: &inputs,
+		outputs: &outputs,
+		attributes: &attributes,
+	};
+	if temperature <= 0.0 {
+		let buffers = [
+			BufferBinding::read(logits.storage()),
+			BufferBinding::write(output.storage()),
+		];
+		let push_constants = [
+			PushConstant::U32(rows_u32),
+			PushConstant::U32(vocabulary_u32),
+		];
+		logits.engine_handle().record_semantic(
+			ComputeDispatch {
+				kernel: KernelId::MatrixSampleLogitsGreedyF32,
+				buffers: &buffers,
+				push_constants: &push_constants,
+				workgroups: KernelId::MatrixSampleLogitsGreedyF32.linear_workgroups(rows_u32),
+			},
+			semantic,
+		)?;
+		return Ok(output);
+	}
+
+	if sorted_route && candidates > 1024 {
+		return Err(Error::invalid_argument(format!(
+			"{operation} top-k/top-p candidate count exceeds 1024"
+		)));
+	}
+	let random = Matrix::allocate(logits.engine_handle(), vec![rows], rows, DType::F32)?;
+	let random_payload = [
+		PushConstant::U32(rows_u32),
+		PushConstant::U32(effective_seed as u32),
+		PushConstant::U32((effective_seed >> 32) as u32),
+		PushConstant::U32(0),
+		PushConstant::F32(0.0),
+		PushConstant::F32(1.0),
+	];
+	if !sorted_route {
+		record_dense_logits_sample(
+			logits,
+			&random,
+			&output,
+			temperature,
+			rows_u32,
+			vocabulary_u32,
+			&random_payload,
+			semantic,
+		)?;
+	} else {
+		record_sorted_logits_sample(
+			logits,
+			&random,
+			&output,
+			temperature,
+			normalized_top_p,
+			rows_u32,
+			vocabulary_u32,
+			candidates,
+			&random_payload,
+			semantic,
+		)?;
+	}
+	Ok(output)
+}
+
 /// Apply inverted Dropout with a Philox-generated mask.
 ///
 /// Kept values are scaled by `1 / (1 - probability)`. The effective seed is
@@ -131,6 +277,205 @@ pub(crate) fn dropout_backward(gradient: &Matrix, probability: f32, seed: u64) -
 		KernelId::MatrixDropoutBackwardF32,
 		KernelId::MatrixDropoutBackwardReplayF32,
 	)
+}
+
+#[allow(
+	clippy::too_many_arguments,
+	reason = "preserves the donor dense categorical sampling ABI explicitly"
+)]
+fn record_dense_logits_sample(
+	logits: &Matrix,
+	random: &Matrix,
+	output: &Matrix,
+	temperature: f32,
+	rows: u32,
+	vocabulary: u32,
+	random_payload: &[PushConstant],
+	semantic: SemanticDispatch<'_>,
+) -> Result<()> {
+	let random_buffers_eager = [
+		BufferBinding::read(logits.storage()),
+		BufferBinding::write(random.storage()),
+	];
+	let sample_buffers = [
+		BufferBinding::read(logits.storage()),
+		BufferBinding::read(random.storage()),
+		BufferBinding::write(output.storage()),
+	];
+	let sample_payload = [
+		PushConstant::U32(rows),
+		PushConstant::U32(vocabulary),
+		PushConstant::F32(temperature),
+	];
+	let engine = logits.engine_handle();
+	if engine.capture_active() {
+		let state = Matrix::from_slice_handle(engine, vec![1], &[0_u32])?;
+		let random_buffers = [
+			BufferBinding::read(logits.storage()),
+			BufferBinding::write(random.storage()),
+			BufferBinding::read(state.storage()),
+		];
+		let advance_buffers = [BufferBinding::read_write(state.storage())];
+		let dispatches = [
+			ComputeDispatch {
+				kernel: KernelId::MatrixPhiloxUniformReplayF32,
+				buffers: &random_buffers,
+				push_constants: random_payload,
+				workgroups: KernelId::MatrixPhiloxUniformReplayF32.linear_workgroups(rows),
+			},
+			ComputeDispatch {
+				kernel: KernelId::MatrixPhiloxReplayAdvanceU32,
+				buffers: &advance_buffers,
+				push_constants: &[],
+				workgroups: [1, 1, 1],
+			},
+			ComputeDispatch {
+				kernel: KernelId::MatrixSampleLogitsDenseF32,
+				buffers: &sample_buffers,
+				push_constants: &sample_payload,
+				workgroups: KernelId::MatrixSampleLogitsDenseF32.linear_workgroups(rows),
+			},
+		];
+		engine.record_split_semantic(&dispatches, semantic)
+	} else {
+		let dispatches = [
+			ComputeDispatch {
+				kernel: KernelId::MatrixPhiloxUniformF32,
+				buffers: &random_buffers_eager,
+				push_constants: random_payload,
+				workgroups: KernelId::MatrixPhiloxUniformF32.linear_workgroups(rows),
+			},
+			ComputeDispatch {
+				kernel: KernelId::MatrixSampleLogitsDenseF32,
+				buffers: &sample_buffers,
+				push_constants: &sample_payload,
+				workgroups: KernelId::MatrixSampleLogitsDenseF32.linear_workgroups(rows),
+			},
+		];
+		engine.record_split_semantic(&dispatches, semantic)
+	}
+}
+
+#[allow(
+	clippy::too_many_arguments,
+	reason = "preserves the donor TopK plus nucleus sampling ABI explicitly"
+)]
+fn record_sorted_logits_sample(
+	logits: &Matrix,
+	random: &Matrix,
+	output: &Matrix,
+	temperature: f32,
+	top_p: f32,
+	rows: u32,
+	vocabulary: u32,
+	candidates: usize,
+	random_payload: &[PushConstant],
+	semantic: SemanticDispatch<'_>,
+) -> Result<()> {
+	let operation = semantic.contract.name();
+	let candidates_u32 = u32::try_from(candidates)
+		.map_err(|_| Error::invalid_argument(format!("{operation} candidate count exceeds u32")))?;
+	let candidate_count = usize::try_from(rows)
+		.expect("u32 fits usize")
+		.checked_mul(candidates)
+		.ok_or_else(|| Error::invalid_argument(format!("{operation} candidate size overflows")))?;
+	let values = Matrix::allocate(
+		logits.engine_handle(),
+		vec![rows as usize, candidates],
+		candidate_count,
+		DType::F32,
+	)?;
+	let indices = Matrix::allocate(
+		logits.engine_handle(),
+		vec![rows as usize, candidates],
+		candidate_count,
+		DType::I32,
+	)?;
+	let top_k_buffers = [
+		BufferBinding::read(logits.storage()),
+		BufferBinding::write(values.storage()),
+		BufferBinding::write(indices.storage()),
+	];
+	let top_k_payload = [
+		PushConstant::U32(rows),
+		PushConstant::U32(vocabulary),
+		PushConstant::U32(candidates_u32),
+	];
+	let random_buffers_eager = [
+		BufferBinding::read(logits.storage()),
+		BufferBinding::write(random.storage()),
+	];
+	let sample_buffers = [
+		BufferBinding::read(values.storage()),
+		BufferBinding::read(indices.storage()),
+		BufferBinding::read(random.storage()),
+		BufferBinding::write(output.storage()),
+	];
+	let sample_payload = [
+		PushConstant::U32(rows),
+		PushConstant::U32(candidates_u32),
+		PushConstant::F32(temperature),
+		PushConstant::F32(top_p),
+	];
+	let engine = logits.engine_handle();
+	if engine.capture_active() {
+		let state = Matrix::from_slice_handle(engine, vec![1], &[0_u32])?;
+		let random_buffers = [
+			BufferBinding::read(logits.storage()),
+			BufferBinding::write(random.storage()),
+			BufferBinding::read(state.storage()),
+		];
+		let advance_buffers = [BufferBinding::read_write(state.storage())];
+		let dispatches = [
+			ComputeDispatch {
+				kernel: KernelId::MatrixTopKF32,
+				buffers: &top_k_buffers,
+				push_constants: &top_k_payload,
+				workgroups: [rows, 1, 1],
+			},
+			ComputeDispatch {
+				kernel: KernelId::MatrixPhiloxUniformReplayF32,
+				buffers: &random_buffers,
+				push_constants: random_payload,
+				workgroups: KernelId::MatrixPhiloxUniformReplayF32.linear_workgroups(rows),
+			},
+			ComputeDispatch {
+				kernel: KernelId::MatrixPhiloxReplayAdvanceU32,
+				buffers: &advance_buffers,
+				push_constants: &[],
+				workgroups: [1, 1, 1],
+			},
+			ComputeDispatch {
+				kernel: KernelId::MatrixSampleLogitsSortedF32,
+				buffers: &sample_buffers,
+				push_constants: &sample_payload,
+				workgroups: KernelId::MatrixSampleLogitsSortedF32.linear_workgroups(rows),
+			},
+		];
+		engine.record_split_semantic(&dispatches, semantic)
+	} else {
+		let dispatches = [
+			ComputeDispatch {
+				kernel: KernelId::MatrixTopKF32,
+				buffers: &top_k_buffers,
+				push_constants: &top_k_payload,
+				workgroups: [rows, 1, 1],
+			},
+			ComputeDispatch {
+				kernel: KernelId::MatrixPhiloxUniformF32,
+				buffers: &random_buffers_eager,
+				push_constants: random_payload,
+				workgroups: KernelId::MatrixPhiloxUniformF32.linear_workgroups(rows),
+			},
+			ComputeDispatch {
+				kernel: KernelId::MatrixSampleLogitsSortedF32,
+				buffers: &sample_buffers,
+				push_constants: &sample_payload,
+				workgroups: KernelId::MatrixSampleLogitsSortedF32.linear_workgroups(rows),
+			},
+		];
+		engine.record_split_semantic(&dispatches, semantic)
+	}
 }
 
 fn record_rng(

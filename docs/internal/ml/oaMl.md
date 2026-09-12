@@ -34,10 +34,28 @@ U32 token IDs [...]
 The recurrent primitive path now extends that chain through a stacked Elman
 RNN with a fused whole-sequence scan and complete BPTT.
 
+The donor VQ-VAE bottleneck is connected through `ml::matrix::{vq_assign,
+vq_lookup,vq_ema_update,detach}` and `ml::nn::{VectorQuantizer,
+ResidualVectorQuantizer}`. Assignment preserves squared-L2 lower-index tie
+breaking and emits I32 tokens. The module applies one zero-copy stop-gradient
+view for the straight-through estimator, retains codebook/EMA state as
+persistent non-gradient buffers, and functionally advances that state through
+the semantic graph. Highest-norm deterministic seeding is an explicit host
+completion boundary. See [Vector quantization](oaVq.md).
+
 The donor GRU sequence path is also connected. Each stacked layer hoists its
 input projection into one existing batched Linear operation and records one
 whole-sequence recurrent scan. Reverse mode records one BPTT scan plus the
 existing Linear parameter adjoint; neither direction submits once per timestep.
+
+The first Mamba-3 slice connects the grouped SISO selective-state recurrence
+and the donor short backward as generated semantic operations. Forward remains
+one physical dispatch; backward transactionally owns its six private stages
+and returns all eleven adjoints through the ordinary `GradientTape`. An
+independent CPU recurrence, complete finite differences, and grouped-versus-
+expanded-head equivalence pass on Intel Vulkan. The module, recurrent step,
+MIMO, long-sequence backward, and tutorial remain pending. See
+[Mamba-3](oaMamba3.md).
 
 The Transformer primitive chain is implemented as a complete training slice:
 
@@ -54,6 +72,28 @@ and accepts arbitrary nonempty input rank as long as the final dimension is
 `D`. Tanh-approximate GELU, differentiable equal-shape residual addition, and
 multi-head causal scaled dot-product attention now compose with four Linear
 projections into a pre-normalized `TransformerBlock`.
+
+The same block now has construction-time conditioned dense and MoE variants.
+They immutably register a zero-initialized `C -> 6D` adaptive projection and
+preserve the donor AdaLN-Zero scale, shift, and residual-gate order. The block
+therefore begins as an exact identity on the residual stream while its
+adaptive gates receive gradients. This intentionally replaces the donor's
+post-construction `enableAdaptiveConditioning` mutation so one Rust module
+keeps one fixed structural registry.
+
+Those primitives now drive the first complete generative-model consumer.
+`FlowTimeEmbedding` retains the donor's GPU sinusoidal path and nonpersistent
+frequency buffer. `FlowTransformer` composes dense or dropless-MoE blocks with
+bidirectional attention, optional padding masks, mutable sequence geometry,
+AdaLN-Zero conditioning, and a final LayerNorm. `FlowDenoiser` adds trainable
+positions, input/output projections, optional per-sample condition dropout,
+and classifier-free guidance without introducing another execution owner.
+The Rust construction path is deterministic by explicit seed; its registered
+position parameter is bridged into the active tape before ordinary Matrix
+composition so it receives a real gradient. See [Flow models](oaFlow.md).
+The sibling `ml::flow` operation module owns linear flow matching, explicit
+Euler integration, and broadcast-masked MSE with schema-generated identities,
+single-pass forward providers, and complete reverse paths.
 
 The attention operation has both the standard materialized-probability route
 and the explicit causal Flash provider under one semantic identity. Flash
@@ -80,11 +120,44 @@ tutorials: exact C++ corpus and sampler, `[64, 16]` batches, widths 32/64, 300
 AdamW steps, all-position accuracy, and fixed-prompt greedy generation. See
 [OARS NLP tutorial suite](oaNlpSuite.md).
 
-The first reinforcement-learning dependency is also admitted as a value-only
-contract. `EnvironmentSpace`, `EnvironmentSpec`, and `EnvironmentTransition`
+The reinforcement-learning foundation admits its value contract, first GPU
+algorithm primitive, and fixed-capacity rollout session. `EnvironmentSpace`, `EnvironmentSpec`, and `EnvironmentTransition`
 preserve checked observation, action, reward, termination, and truncation
 metadata without adding another execution owner or synchronizing Matrix data.
-Environment execution and RL algorithms remain Planned. See the
+Its public graph-native normalization, action-scaling, and reward-clipping
+operations compose existing differentiable Core kernels under generated
+Environment semantic identities;
+`ml::advantage::{normalize,gae}` mechanically ports OA's differentiable
+whole-rollout standardization and reverse-time estimator with exact
+termination/truncation semantics. `RolloutBuffer` records fused time-major
+append, allocation-free GAE finalization, and device-side validity reset while
+retaining all storage across collection cycles. `ItRolloutTraining` composes
+the donor Collect/Update schedule and existing `ItTraining` lifecycle,
+including transactional capture rejection and host-cursor rollback before an
+update. `ReplayBuffer` adds
+preallocated circular off-policy append and deterministic seeded device-side
+sampling with exact sampled indices. Core `matrix::sample_logits` now owns
+greedy, dense, TopK, and nucleus categorical selection with replay-safe Philox
+state, while `matrix::gather_last_dim` and its deterministic adjoint provide
+the policy/DQN selection primitive. Categorical and tanh-normal policy result
+compositions are connected with one semantic operation each. The object-safe
+`ActorCritic` contract and seeded default categorical two-tower Module feed a
+complete caller-driven `PpoTrainer`; its clipped-policy forward/backward,
+policy/value/entropy total-loss composition, GAE, full-batch update, metrics,
+and rejected-collection rollback are connected. DQN selected-action,
+detached Bellman-target, Smooth-L1 composition,
+and Q-only reverse mode are connected as one semantic operation. The DQN
+trainer now composes ReplayBuffer, target-network deep copies, modules,
+autograd, Optimizer, and `ItTraining` without introducing another execution or
+training owner. SAC twin-critic and actor objectives likewise preserve detached
+targets, entropy regularization, and differentiable minimum-Q selection under
+their own semantic identities. Its trainer composes independently observable
+actor and critic `ItTraining` units, continuous replay, target inference, and
+exact twin-target synchronization. Native Environment transaction ownership,
+categorical rollout collection, and deterministic evaluation telemetry are
+connected through the same Engine. Native CartPole and its donor-sized PPO
+learning/checkpoint gate now run through this path; atomic trainer-progress
+checkpoint/resume remains Planned. See the
 [reinforcement-learning foundation](oaRl.md).
 
 `Matrix` remains the only numerical value type. `Parameter` is a stable

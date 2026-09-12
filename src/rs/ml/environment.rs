@@ -1,4 +1,10 @@
-use crate::{DType, Error, Matrix, Result};
+use crate::{DType, Error, Matrix, OpAttribute, Result, matrix};
+
+use crate::runtime::SemanticDispatch;
+
+mod session;
+
+pub use session::{Environment, EnvironmentExecution};
 
 /// Structural domain of one reinforcement-learning environment field.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -401,4 +407,174 @@ impl EnvironmentTransition {
 	pub const fn truncated(&self) -> &Matrix {
 		&self.truncated
 	}
+}
+
+/// Normalize and symmetrically clip FP32 observations.
+///
+/// Computes `clamp((observation - mean) / (stddev + epsilon), -clip, clip)`
+/// through differentiable Core Matrix operations under one Environment
+/// semantic identity.
+///
+/// # Errors
+///
+/// Returns an error for empty/non-FP32 inputs, invalid epsilon/clip, incompatible
+/// broadcasting or ownership, or composite lowering failure.
+pub fn normalize_observation(
+	observation: &Matrix,
+	mean: &Matrix,
+	stddev: &Matrix,
+	epsilon: f32,
+	clip: f32,
+) -> Result<Matrix> {
+	const CONTRACT: crate::OperationContract = crate::core::operation::ml::NORMALIZE_OBSERVATION;
+	if [observation, mean, stddev]
+		.into_iter()
+		.any(|input| input.dtype() != DType::F32 || input.num_elements() == 0)
+		|| !epsilon.is_finite()
+		|| epsilon <= 0.0
+		|| !clip.is_finite()
+		|| clip <= 0.0
+	{
+		return Err(Error::invalid_argument(format!(
+			"{} requires nonempty FP32 inputs and positive finite epsilon/clip",
+			CONTRACT.name()
+		)));
+	}
+	let lowering = observation.engine_handle().begin_semantic_lowering()?;
+	let centered = matrix::sub(observation, mean)?;
+	let denominator = matrix::add_scalar(stddev, epsilon)?;
+	let normalized = matrix::div(&centered, &denominator)?;
+	let result = clamp(&normalized, -clip, clip)?;
+	let attributes = [
+		OpAttribute::Float {
+			name: "epsilon".into(),
+			value: f64::from(epsilon),
+		},
+		OpAttribute::Float {
+			name: "clip".into(),
+			value: f64::from(clip),
+		},
+	];
+	lowering.commit(SemanticDispatch {
+		contract: CONTRACT,
+		inputs: &[observation, mean, stddev],
+		outputs: &[&result],
+		attributes: &attributes,
+	})?;
+	Ok(result)
+}
+
+/// Affinely map FP32 actions between two finite ranges.
+///
+/// # Errors
+///
+/// Returns an error for an empty/non-FP32 input, unordered/non-finite bounds,
+/// or Matrix/composite lowering failure.
+pub fn scale_action(
+	action: &Matrix,
+	source_minimum: f32,
+	source_maximum: f32,
+	target_minimum: f32,
+	target_maximum: f32,
+	clamp_source: bool,
+) -> Result<Matrix> {
+	const CONTRACT: crate::OperationContract = crate::core::operation::ml::SCALE_ACTION;
+	if action.dtype() != DType::F32
+		|| action.num_elements() == 0
+		|| !source_minimum.is_finite()
+		|| !source_maximum.is_finite()
+		|| !target_minimum.is_finite()
+		|| !target_maximum.is_finite()
+		|| source_minimum >= source_maximum
+		|| target_minimum >= target_maximum
+	{
+		return Err(Error::invalid_argument(format!(
+			"{} requires nonempty FP32 actions and ordered finite bounds",
+			CONTRACT.name()
+		)));
+	}
+	let lowering = action.engine_handle().begin_semantic_lowering()?;
+	let source = if clamp_source {
+		clamp(action, source_minimum, source_maximum)?
+	} else {
+		action.clone()
+	};
+	let scale = (target_maximum - target_minimum) / (source_maximum - source_minimum);
+	let result = matrix::add_scalar(
+		&matrix::scale(&matrix::sub_scalar(&source, source_minimum)?, scale)?,
+		target_minimum,
+	)?;
+	let attributes = [
+		OpAttribute::Float {
+			name: "source_minimum".into(),
+			value: f64::from(source_minimum),
+		},
+		OpAttribute::Float {
+			name: "source_maximum".into(),
+			value: f64::from(source_maximum),
+		},
+		OpAttribute::Float {
+			name: "target_minimum".into(),
+			value: f64::from(target_minimum),
+		},
+		OpAttribute::Float {
+			name: "target_maximum".into(),
+			value: f64::from(target_maximum),
+		},
+		OpAttribute::Boolean {
+			name: "clamp".into(),
+			value: clamp_source,
+		},
+	];
+	lowering.commit(SemanticDispatch {
+		contract: CONTRACT,
+		inputs: &[action],
+		outputs: &[&result],
+		attributes: &attributes,
+	})?;
+	Ok(result)
+}
+
+/// Clip FP32 rewards to an inclusive finite range.
+///
+/// # Errors
+///
+/// Returns an error for an empty/non-FP32 input, unordered/non-finite bounds,
+/// or Matrix/composite lowering failure.
+pub fn clip_reward(reward: &Matrix, minimum: f32, maximum: f32) -> Result<Matrix> {
+	const CONTRACT: crate::OperationContract = crate::core::operation::ml::CLIP_REWARD;
+	if reward.dtype() != DType::F32
+		|| reward.num_elements() == 0
+		|| !minimum.is_finite()
+		|| !maximum.is_finite()
+		|| minimum > maximum
+	{
+		return Err(Error::invalid_argument(format!(
+			"{} requires nonempty FP32 rewards and ordered finite bounds",
+			CONTRACT.name()
+		)));
+	}
+	let lowering = reward.engine_handle().begin_semantic_lowering()?;
+	let result = clamp(reward, minimum, maximum)?;
+	let attributes = [
+		OpAttribute::Float {
+			name: "minimum".into(),
+			value: f64::from(minimum),
+		},
+		OpAttribute::Float {
+			name: "maximum".into(),
+			value: f64::from(maximum),
+		},
+	];
+	lowering.commit(SemanticDispatch {
+		contract: CONTRACT,
+		inputs: &[reward],
+		outputs: &[&result],
+		attributes: &attributes,
+	})?;
+	Ok(result)
+}
+
+fn clamp(input: &Matrix, minimum: f32, maximum: f32) -> Result<Matrix> {
+	matrix::clamp_max(&matrix::clamp_min(input, minimum)?, maximum)
 }

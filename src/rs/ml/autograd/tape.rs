@@ -4,13 +4,16 @@ use std::{
 	rc::{Rc, Weak},
 };
 
+use crate::ml::Parameter;
 use crate::{
 	DType, Error, Matrix, Result,
 	core::autograd::{self as core_autograd, MatrixNode},
 	matrix,
 };
 
-use crate::ml::lowering::{attention as attention_lowering, loss, matrix as matrix_lowering};
+use crate::ml::lowering::{
+	attention as attention_lowering, flow as flow_lowering, loss, matrix as matrix_lowering,
+};
 
 use super::node::Node;
 
@@ -26,7 +29,14 @@ struct TapeEntry {
 
 struct TapeInner {
 	nodes: RefCell<Vec<TapeEntry>>,
+	watched_parameters: RefCell<Vec<WatchedParameter>>,
 	consumed: Cell<bool>,
+}
+
+struct WatchedParameter {
+	parameter: Parameter,
+	data_id: u64,
+	version: u64,
 }
 
 /// Thread-affine reverse-mode recording scope.
@@ -46,6 +56,7 @@ impl GradientTape {
 	pub fn new() -> Self {
 		let inner = Rc::new(TapeInner {
 			nodes: RefCell::new(Vec::new()),
+			watched_parameters: RefCell::new(Vec::new()),
 			consumed: Cell::new(false),
 		});
 		ACTIVE_TAPES.with(|tapes| tapes.borrow_mut().push(Rc::downgrade(&inner)));
@@ -64,6 +75,136 @@ impl GradientTape {
 					left,
 					right,
 					output_id,
+				},
+				MatrixNode::Mul {
+					left,
+					right,
+					output_id,
+				} => Node::Mul {
+					left,
+					right,
+					output_id,
+				},
+				MatrixNode::Div {
+					left,
+					right,
+					output_id,
+				} => Node::Div {
+					left,
+					right,
+					output_id,
+				},
+				MatrixNode::Scale {
+					input,
+					output_id,
+					scalar,
+				} => Node::Scale {
+					input,
+					output_id,
+					scalar,
+				},
+				MatrixNode::Reciprocal {
+					input,
+					output,
+					output_id,
+				} => Node::Reciprocal {
+					input,
+					output,
+					output_id,
+				},
+				MatrixNode::Exp {
+					input,
+					output,
+					output_id,
+				} => Node::Exp {
+					input,
+					output,
+					output_id,
+				},
+				MatrixNode::Log { input, output_id } => Node::Log { input, output_id },
+				MatrixNode::Abs { input, output_id } => Node::Abs { input, output_id },
+				MatrixNode::Copy { input, output_id } => Node::Copy { input, output_id },
+				MatrixNode::Sqrt {
+					input,
+					output,
+					output_id,
+				} => Node::Sqrt {
+					input,
+					output,
+					output_id,
+				},
+				MatrixNode::ClampMax {
+					input,
+					output_id,
+					maximum,
+				} => Node::ClampMax {
+					input,
+					output_id,
+					maximum,
+				},
+				MatrixNode::ClampMin {
+					input,
+					output_id,
+					minimum,
+				} => Node::ClampMin {
+					input,
+					output_id,
+					minimum,
+				},
+				MatrixNode::Sub {
+					left,
+					right,
+					output_id,
+				} => Node::Sub {
+					left,
+					right,
+					output_id,
+				},
+				MatrixNode::Slice {
+					input,
+					output_id,
+					dim,
+					start,
+					end,
+				} => Node::Slice {
+					input,
+					output_id,
+					dim,
+					start,
+					end,
+				},
+				MatrixNode::RepeatInterleave {
+					input,
+					output_id,
+					repeats,
+					dim,
+				} => Node::RepeatInterleave {
+					input,
+					output_id,
+					repeats,
+					dim,
+				},
+				MatrixNode::Concat {
+					inputs,
+					output_id,
+					dim,
+					sizes,
+				} => Node::Concat {
+					inputs,
+					output_id,
+					dim,
+					sizes,
+				},
+				MatrixNode::GatherLastDim {
+					input,
+					indices,
+					output_id,
+					input_width,
+				} => Node::GatherLastDim {
+					input,
+					indices,
+					output_id,
+					input_width,
 				},
 				MatrixNode::Dropout {
 					input,
@@ -107,6 +248,15 @@ impl GradientTape {
 					output_id,
 					dim,
 				},
+				MatrixNode::MatMulNt {
+					left,
+					right,
+					output_id,
+				} => Node::MatMulNt {
+					left,
+					right,
+					output_id,
+				},
 			};
 			record_node_for(&tape, node)
 		});
@@ -132,15 +282,15 @@ impl GradientTape {
 
 	/// Record the reverse-mode operations leading to one scalar loss.
 	///
-	/// The current checkpoint supports the admitted scalar mean-loss roots and any recorded
-	/// chain of admitted Linear, Embedding, and reshape operations leading into
-	/// it. Gradients accumulate on stable [`crate::ml::Parameter`] handles. This method
-	/// records but does not submit or wait.
+	/// The current checkpoint supports any recorded FP32 scalar result whose
+	/// reverse path is composed entirely from admitted operations. Gradients
+	/// accumulate on stable [`crate::ml::Parameter`] handles. This method records
+	/// but does not submit or wait.
 	///
 	/// # Errors
 	///
-	/// Returns an error when the tape was already consumed, `root` is not one of its
-	/// scalar loss results, a saved parameter changed before backward, or
+	/// Returns an error when the tape was already consumed, `root` was not
+	/// produced by this tape, a saved parameter changed before backward, or
 	/// gradient operation validation/allocation/recording fails.
 	pub fn backward(&self, root: &Matrix) -> Result<()> {
 		let self_weak = Rc::downgrade(&self.inner);
@@ -169,7 +319,7 @@ impl GradientTape {
 		let nodes = self.inner.nodes.borrow();
 		let root_found = nodes
 			.iter()
-			.any(|entry| entry.node.is_loss_root(root.value_id()));
+			.any(|entry| entry.node.output_id() == root.value_id());
 		if !root_found {
 			return Err(Error::failed_precondition(
 				"gradient tape root was not produced by this tape",
@@ -177,6 +327,29 @@ impl GradientTape {
 		}
 		for entry in nodes.iter() {
 			match &entry.node {
+				Node::GroupedGemmM {
+					weight,
+					weight_version,
+					..
+				} => {
+					if let (Some(weight), Some(weight_version)) = (weight, weight_version) {
+						weight.validate_version(*weight_version)?;
+					}
+				}
+				Node::GroupedLinearM {
+					weight,
+					weight_version,
+					bias,
+					bias_version,
+					..
+				} => {
+					if let (Some(weight), Some(weight_version)) = (weight, weight_version) {
+						weight.validate_version(*weight_version)?;
+					}
+					if let (Some(bias), Some(bias_version)) = (bias, bias_version) {
+						bias.validate_version(*bias_version)?;
+					}
+				}
 				Node::Linear {
 					weight,
 					weight_version,
@@ -303,6 +476,26 @@ impl GradientTape {
 					}
 				}
 				Node::Add { .. }
+				| Node::Mul { .. }
+				| Node::Div { .. }
+				| Node::Scale { .. }
+				| Node::Reciprocal { .. }
+				| Node::Exp { .. }
+				| Node::Log { .. }
+				| Node::Abs { .. }
+				| Node::Copy { .. }
+				| Node::Sqrt { .. }
+				| Node::ClampMax { .. }
+				| Node::ClampMin { .. }
+				| Node::Sub { .. }
+				| Node::Slice { .. }
+				| Node::RepeatInterleave { .. }
+				| Node::Concat { .. }
+				| Node::GatherLastDim { .. }
+				| Node::FlowLinearState { .. }
+				| Node::FlowLinearVelocity { .. }
+				| Node::FlowEulerStep { .. }
+				| Node::FlowMaskedMse { .. }
 				| Node::Reshape { .. }
 				| Node::Dropout { .. }
 				| Node::Gelu { .. }
@@ -324,7 +517,9 @@ impl GradientTape {
 				| Node::AdaptiveAvgPool2d { .. }
 				| Node::Upsample2d { .. }
 				| Node::Sum { .. }
+				| Node::MatMulNt { .. }
 				| Node::Swiglu { .. }
+				| Node::SiluMul { .. }
 				| Node::Bmm { .. }
 				| Node::BmmNt { .. }
 				| Node::BmmTn { .. }
@@ -334,30 +529,35 @@ impl GradientTape {
 				| Node::ScaledDotProductAttention { .. }
 				| Node::FlashAttention { .. }
 				| Node::MoeRouteWeights { .. }
+				| Node::MoeGather { .. }
+				| Node::MoeCombine { .. }
 				| Node::CrossEntropy { .. }
 				| Node::MaskedCrossEntropy { .. }
 				| Node::SmoothL1 { .. }
 				| Node::Mse { .. }
 				| Node::L1 { .. }
-				| Node::Bce { .. } => {}
+				| Node::Bce { .. }
+				| Node::Mamba3Siso(_)
+				| Node::PpoClippedPolicy { .. } => {}
 			}
+		}
+		for watched in self.inner.watched_parameters.borrow().iter() {
+			watched.parameter.validate_version(watched.version)?;
 		}
 		self.inner.consumed.set(true);
 
-		let mut gradients = HashMap::<u64, Matrix>::new();
 		let engine = root.engine_handle().clone();
+		let mut gradients = HashMap::<u64, Matrix>::new();
+		gradients.insert(
+			root.value_id(),
+			Matrix::from_slice_handle(&engine, vec![], &[1.0_f32])?,
+		);
 		for entry in nodes.iter().rev() {
 			let node = &entry.node;
-			let reaches_root =
-				node.is_loss_root(root.value_id()) || gradients.contains_key(&node.output_id());
-			if !reaches_root {
+			if !gradients.contains_key(&node.output_id()) {
 				continue;
 			}
-			let attachment = if matches!(node, Node::Reshape { .. }) {
-				None
-			} else {
-				engine.attach_semantic_autograd(node.output_id(), entry.sequence)?
-			};
+			let attachment = engine.attach_semantic_autograd(node.output_id(), entry.sequence)?;
 			let backward_first = engine.semantic_operation_count();
 			match node {
 				Node::Add {
@@ -371,9 +571,376 @@ impl GradientTape {
 					accumulate_value_gradient(
 						&mut gradients,
 						left.value_id(),
+						sum_to_shape(&output_gradient, left.shape())?,
+					)?;
+					accumulate_value_gradient(
+						&mut gradients,
+						right.value_id(),
+						sum_to_shape(&output_gradient, right.shape())?,
+					)?;
+				}
+				Node::Mul {
+					left,
+					right,
+					output_id,
+				} => {
+					let Some(output_gradient) = gradients.remove(output_id) else {
+						continue;
+					};
+					let left_gradient = matrix::mul(&output_gradient, right)?;
+					let right_gradient = matrix::mul(&output_gradient, left)?;
+					accumulate_value_gradient(
+						&mut gradients,
+						left.value_id(),
+						sum_to_shape(&left_gradient, left.shape())?,
+					)?;
+					accumulate_value_gradient(
+						&mut gradients,
+						right.value_id(),
+						sum_to_shape(&right_gradient, right.shape())?,
+					)?;
+				}
+				Node::Div {
+					left,
+					right,
+					output_id,
+				} => {
+					let Some(output_gradient) = gradients.remove(output_id) else {
+						continue;
+					};
+					let left_gradient = matrix::div(&output_gradient, right)?;
+					let denominator = matrix::mul(right, right)?;
+					let right_gradient = matrix::scale(
+						&matrix::div(&matrix::mul(&output_gradient, left)?, &denominator)?,
+						-1.0,
+					)?;
+					accumulate_value_gradient(
+						&mut gradients,
+						left.value_id(),
+						sum_to_shape(&left_gradient, left.shape())?,
+					)?;
+					accumulate_value_gradient(
+						&mut gradients,
+						right.value_id(),
+						sum_to_shape(&right_gradient, right.shape())?,
+					)?;
+				}
+				Node::Scale {
+					input,
+					output_id,
+					scalar,
+				} => {
+					let Some(output_gradient) = gradients.remove(output_id) else {
+						continue;
+					};
+					accumulate_value_gradient(
+						&mut gradients,
+						input.value_id(),
+						matrix::scale(&output_gradient, *scalar)?,
+					)?;
+				}
+				Node::Reciprocal {
+					input,
+					output,
+					output_id,
+				} => {
+					let Some(output_gradient) = gradients.remove(output_id) else {
+						continue;
+					};
+					let output_squared = matrix::mul(output, output)?;
+					let input_gradient =
+						matrix::scale(&matrix::mul(&output_gradient, &output_squared)?, -1.0)?;
+					accumulate_value_gradient(&mut gradients, input.value_id(), input_gradient)?;
+				}
+				Node::Exp {
+					input,
+					output,
+					output_id,
+				} => {
+					let Some(output_gradient) = gradients.remove(output_id) else {
+						continue;
+					};
+					let input_gradient = matrix::mul(&output_gradient, output)?;
+					accumulate_value_gradient(&mut gradients, input.value_id(), input_gradient)?;
+				}
+				Node::Log { input, output_id } => {
+					let Some(output_gradient) = gradients.remove(output_id) else {
+						continue;
+					};
+					let input_gradient = matrix::div(&output_gradient, input)?;
+					accumulate_value_gradient(&mut gradients, input.value_id(), input_gradient)?;
+				}
+				Node::Abs { input, output_id } => {
+					let Some(output_gradient) = gradients.remove(output_id) else {
+						continue;
+					};
+					let positive = matrix::equal(&matrix::clamp_max(input, 0.0)?, 0.0)?;
+					let negative = matrix::equal(&matrix::clamp_min(input, 0.0)?, 0.0)?;
+					let sign = matrix::sub(&positive, &negative)?;
+					let input_gradient = matrix::mul(&output_gradient, &sign)?;
+					accumulate_value_gradient(&mut gradients, input.value_id(), input_gradient)?;
+				}
+				Node::Copy { input, output_id } => {
+					let Some(output_gradient) = gradients.remove(output_id) else {
+						continue;
+					};
+					accumulate_value_gradient(&mut gradients, input.value_id(), output_gradient)?;
+				}
+				Node::Sqrt {
+					input,
+					output,
+					output_id,
+				} => {
+					let Some(output_gradient) = gradients.remove(output_id) else {
+						continue;
+					};
+					let input_gradient =
+						matrix::div(&output_gradient, &matrix::scale(output, 2.0)?)?;
+					accumulate_value_gradient(&mut gradients, input.value_id(), input_gradient)?;
+				}
+				Node::ClampMax {
+					input,
+					output_id,
+					maximum,
+				} => {
+					let Some(output_gradient) = gradients.remove(output_id) else {
+						continue;
+					};
+					let difference = matrix::sub_scalar(input, *maximum)?;
+					let mask = matrix::equal(&matrix::clamp_min(&difference, 0.0)?, 0.0)?;
+					let input_gradient = matrix::mul(&output_gradient, &mask)?;
+					accumulate_value_gradient(&mut gradients, input.value_id(), input_gradient)?;
+				}
+				Node::ClampMin {
+					input,
+					output_id,
+					minimum,
+				} => {
+					let Some(output_gradient) = gradients.remove(output_id) else {
+						continue;
+					};
+					let difference = matrix::sub_scalar(input, *minimum)?;
+					let mask = matrix::equal(&matrix::clamp_max(&difference, 0.0)?, 0.0)?;
+					let input_gradient = matrix::mul(&output_gradient, &mask)?;
+					accumulate_value_gradient(&mut gradients, input.value_id(), input_gradient)?;
+				}
+				Node::Sub {
+					left,
+					right,
+					output_id,
+				} => {
+					let Some(output_gradient) = gradients.remove(output_id) else {
+						continue;
+					};
+					accumulate_value_gradient(
+						&mut gradients,
+						left.value_id(),
+						sum_to_shape(&output_gradient, left.shape())?,
+					)?;
+					accumulate_value_gradient(
+						&mut gradients,
+						right.value_id(),
+						sum_to_shape(&matrix::scale(&output_gradient, -1.0)?, right.shape())?,
+					)?;
+				}
+				Node::Slice {
+					input,
+					output_id,
+					dim,
+					start,
+					end,
+				} => {
+					let Some(output_gradient) = gradients.remove(output_id) else {
+						continue;
+					};
+					let input_gradient = matrix::slice_backward(
+						input.shape(),
+						*dim,
+						*start,
+						*end,
+						&output_gradient,
+					)?;
+					accumulate_value_gradient(&mut gradients, input.value_id(), input_gradient)?;
+				}
+				Node::RepeatInterleave {
+					input,
+					output_id,
+					repeats,
+					dim,
+				} => {
+					let Some(output_gradient) = gradients.remove(output_id) else {
+						continue;
+					};
+					let input_gradient = matrix::repeat_interleave_backward(
+						input.shape(),
+						*repeats,
+						*dim,
+						&output_gradient,
+					)?;
+					accumulate_value_gradient(&mut gradients, input.value_id(), input_gradient)?;
+				}
+				Node::Concat {
+					inputs,
+					output_id,
+					dim,
+					sizes,
+				} => {
+					let Some(output_gradient) = gradients.remove(output_id) else {
+						continue;
+					};
+					let mut start = 0_usize;
+					for (input, size) in inputs.iter().zip(sizes) {
+						let end = start.checked_add(*size).ok_or_else(|| {
+							Error::internal("saved Concat interval overflows usize")
+						})?;
+						if *size != 0 {
+							let dim = i32::try_from(*dim)
+								.map_err(|_| Error::internal("saved Concat axis exceeds i32"))?;
+							let start_i64 = i64::try_from(start).map_err(|_| {
+								Error::internal("saved Concat interval exceeds i64")
+							})?;
+							let end_i64 = i64::try_from(end).map_err(|_| {
+								Error::internal("saved Concat interval exceeds i64")
+							})?;
+							let input_gradient =
+								matrix::slice(&output_gradient, dim, start_i64, end_i64)?;
+							accumulate_value_gradient(
+								&mut gradients,
+								input.value_id(),
+								input_gradient,
+							)?;
+						}
+						start = end;
+					}
+				}
+				Node::GatherLastDim {
+					input,
+					indices,
+					output_id,
+					input_width,
+				} => {
+					let Some(output_gradient) = gradients.remove(output_id) else {
+						continue;
+					};
+					let input_gradient =
+						matrix::gather_last_dim_backward(&output_gradient, indices, *input_width)?;
+					accumulate_value_gradient(&mut gradients, input.value_id(), input_gradient)?;
+				}
+				Node::FlowLinearState {
+					clean,
+					noise,
+					time,
+					output_id,
+				} => {
+					let Some(output_gradient) = gradients.remove(output_id) else {
+						continue;
+					};
+					let one_minus_time = matrix::add_scalar(&matrix::scale(time, -1.0)?, 1.0)?;
+					let clean_gradient = matrix::mul(&output_gradient, &one_minus_time)?;
+					let noise_gradient = matrix::mul(&output_gradient, time)?;
+					let velocity = matrix::sub(noise, clean)?;
+					let time_gradient = matrix::mul(&output_gradient, &velocity)?;
+					accumulate_value_gradient(
+						&mut gradients,
+						clean.value_id(),
+						sum_to_shape(&clean_gradient, clean.shape())?,
+					)?;
+					accumulate_value_gradient(
+						&mut gradients,
+						noise.value_id(),
+						sum_to_shape(&noise_gradient, noise.shape())?,
+					)?;
+					accumulate_value_gradient(
+						&mut gradients,
+						time.value_id(),
+						sum_to_flow_time_shape(&time_gradient, time.shape(), clean.shape())?,
+					)?;
+				}
+				Node::FlowLinearVelocity {
+					clean,
+					noise,
+					output_id,
+				} => {
+					let Some(output_gradient) = gradients.remove(output_id) else {
+						continue;
+					};
+					accumulate_value_gradient(
+						&mut gradients,
+						clean.value_id(),
+						matrix::scale(&output_gradient, -1.0)?,
+					)?;
+					accumulate_value_gradient(&mut gradients, noise.value_id(), output_gradient)?;
+				}
+				Node::FlowEulerStep {
+					state,
+					velocity,
+					delta_time,
+					output_id,
+				} => {
+					let Some(output_gradient) = gradients.remove(output_id) else {
+						continue;
+					};
+					accumulate_value_gradient(
+						&mut gradients,
+						state.value_id(),
 						output_gradient.clone(),
 					)?;
-					accumulate_value_gradient(&mut gradients, right.value_id(), output_gradient)?;
+					accumulate_value_gradient(
+						&mut gradients,
+						velocity.value_id(),
+						matrix::scale(&output_gradient, *delta_time)?,
+					)?;
+				}
+				Node::FlowMaskedMse {
+					prediction,
+					target,
+					mask,
+					denominator,
+					output_id,
+				} => {
+					let Some(output_gradient) = gradients.remove(output_id) else {
+						continue;
+					};
+					let prediction_gradient = flow_lowering::masked_mse_backward(
+						prediction,
+						target,
+						mask,
+						denominator,
+						&output_gradient,
+					)?;
+					accumulate_value_gradient(
+						&mut gradients,
+						prediction.value_id(),
+						prediction_gradient,
+					)?;
+				}
+				Node::MatMulNt {
+					left,
+					right,
+					output_id,
+				} => {
+					let Some(output_gradient) = gradients.remove(output_id) else {
+						continue;
+					};
+					let [rows, inner] = left.shape() else {
+						return Err(Error::internal("saved MatMulNt left rank changed"));
+					};
+					let [columns, right_inner] = right.shape() else {
+						return Err(Error::internal("saved MatMulNt right rank changed"));
+					};
+					if inner != right_inner {
+						return Err(Error::internal("saved MatMulNt inner extent changed"));
+					}
+					let output_gradient = output_gradient.reshape([1, *rows, *columns])?;
+					let left_batched = left.reshape([1, *rows, *inner])?;
+					let right_batched = right.reshape([1, *columns, *inner])?;
+					let left_gradient = crate::ml::matrix::bmm(&output_gradient, &right_batched)?
+						.reshape(left.shape().to_vec())?;
+					let right_gradient =
+						crate::ml::matrix::bmm_tn(&output_gradient, &left_batched)?
+							.reshape(right.shape().to_vec())?;
+					accumulate_value_gradient(&mut gradients, left.value_id(), left_gradient)?;
+					accumulate_value_gradient(&mut gradients, right.value_id(), right_gradient)?;
 				}
 				Node::Dropout {
 					input,
@@ -392,8 +959,14 @@ impl GradientTape {
 					logits,
 					targets,
 					output_id,
-				} if *output_id == root.value_id() => {
-					let gradient = loss::cross_entropy_backward(logits, targets)?;
+				} => {
+					let Some(output_gradient) = gradients.remove(output_id) else {
+						continue;
+					};
+					let gradient = matrix::mul(
+						&loss::cross_entropy_backward(logits, targets)?,
+						&output_gradient,
+					)?;
 					accumulate_value_gradient(&mut gradients, logits.value_id(), gradient)?;
 				}
 				Node::MaskedCrossEntropy {
@@ -402,42 +975,90 @@ impl GradientTape {
 					mask,
 					valid_count,
 					output_id,
-				} if *output_id == root.value_id() => {
-					let gradient =
-						loss::masked_cross_entropy_backward(logits, targets, mask, *valid_count)?;
+				} => {
+					let Some(output_gradient) = gradients.remove(output_id) else {
+						continue;
+					};
+					let gradient = matrix::mul(
+						&loss::masked_cross_entropy_backward(logits, targets, mask, *valid_count)?,
+						&output_gradient,
+					)?;
 					accumulate_value_gradient(&mut gradients, logits.value_id(), gradient)?;
 				}
 				Node::SmoothL1 {
 					prediction,
 					target,
 					output_id,
-				} if *output_id == root.value_id() => {
-					let gradient = loss::smooth_l1_backward(prediction, target)?;
+				} => {
+					let Some(output_gradient) = gradients.remove(output_id) else {
+						continue;
+					};
+					let gradient = matrix::mul(
+						&loss::smooth_l1_backward(prediction, target)?,
+						&output_gradient,
+					)?;
 					accumulate_value_gradient(&mut gradients, prediction.value_id(), gradient)?;
 				}
 				Node::Mse {
 					prediction,
 					target,
 					output_id,
-				} if *output_id == root.value_id() => {
-					let gradient = loss::mse_backward(prediction, target)?;
+				} => {
+					let Some(output_gradient) = gradients.remove(output_id) else {
+						continue;
+					};
+					let gradient =
+						matrix::mul(&loss::mse_backward(prediction, target)?, &output_gradient)?;
 					accumulate_value_gradient(&mut gradients, prediction.value_id(), gradient)?;
 				}
 				Node::L1 {
 					prediction,
 					target,
 					output_id,
-				} if *output_id == root.value_id() => {
-					let gradient = loss::l1_backward(prediction, target)?;
+				} => {
+					let Some(output_gradient) = gradients.remove(output_id) else {
+						continue;
+					};
+					let gradient =
+						matrix::mul(&loss::l1_backward(prediction, target)?, &output_gradient)?;
 					accumulate_value_gradient(&mut gradients, prediction.value_id(), gradient)?;
 				}
 				Node::Bce {
 					prediction,
 					target,
 					output_id,
-				} if *output_id == root.value_id() => {
-					let gradient = loss::bce_backward(prediction, target)?;
+				} => {
+					let Some(output_gradient) = gradients.remove(output_id) else {
+						continue;
+					};
+					let gradient =
+						matrix::mul(&loss::bce_backward(prediction, target)?, &output_gradient)?;
 					accumulate_value_gradient(&mut gradients, prediction.value_id(), gradient)?;
+				}
+				Node::PpoClippedPolicy {
+					new_log_probability,
+					old_log_probability,
+					advantage,
+					clip_epsilon,
+					output_id,
+				} => {
+					let Some(output_gradient) = gradients.remove(output_id) else {
+						continue;
+					};
+					let gradient = matrix::mul(
+						&loss::ppo_clipped_policy_backward(
+							new_log_probability,
+							old_log_probability,
+							advantage,
+							*clip_epsilon,
+						)?,
+						&output_gradient,
+					)?;
+					accumulate_value_gradient(
+						&mut gradients,
+						new_log_probability.value_id(),
+						gradient,
+					)?;
 				}
 				Node::Linear {
 					input,
@@ -962,6 +1583,21 @@ impl GradientTape {
 					accumulate_value_gradient(&mut gradients, gate.value_id(), gate_gradient)?;
 					accumulate_value_gradient(&mut gradients, up.value_id(), up_gradient)?;
 				}
+				Node::SiluMul {
+					input,
+					intermediate_size,
+					output_id,
+				} => {
+					let Some(output_gradient) = gradients.remove(output_id) else {
+						continue;
+					};
+					let input_gradient = crate::ml::matrix::silu_mul_backward(
+						input,
+						&output_gradient,
+						*intermediate_size,
+					)?;
+					accumulate_value_gradient(&mut gradients, input.value_id(), input_gradient)?;
+				}
 				Node::Bmm {
 					left,
 					right,
@@ -1135,6 +1771,144 @@ impl GradientTape {
 						probability_gradient,
 					)?;
 				}
+				Node::MoeGather {
+					input,
+					inverse,
+					output_id,
+				} => {
+					let Some(output_gradient) = gradients.remove(output_id) else {
+						continue;
+					};
+					let input_gradient = crate::ml::matrix::moe_gather_backward(
+						&output_gradient,
+						inverse,
+						input.shape()[0],
+					)?;
+					accumulate_value_gradient(&mut gradients, input.value_id(), input_gradient)?;
+				}
+				Node::MoeCombine {
+					packed,
+					route_gate,
+					inverse,
+					packed_slot,
+					output_id,
+				} => {
+					let Some(output_gradient) = gradients.remove(output_id) else {
+						continue;
+					};
+					let result = crate::ml::matrix::moe_combine_backward(
+						&output_gradient,
+						packed,
+						route_gate,
+						inverse,
+						packed_slot,
+					)?;
+					accumulate_value_gradient(&mut gradients, packed.value_id(), result.packed)?;
+					accumulate_value_gradient(
+						&mut gradients,
+						route_gate.value_id(),
+						result.route_gate,
+					)?;
+				}
+				Node::GroupedGemmM {
+					input,
+					weight,
+					weight_value,
+					offsets,
+					output_id,
+					..
+				} => {
+					let Some(output_gradient) = gradients.remove(output_id) else {
+						continue;
+					};
+					let result = crate::ml::matrix::grouped_gemm_m_backward(
+						&output_gradient,
+						input,
+						weight_value,
+						offsets,
+					)?;
+					accumulate_value_gradient(&mut gradients, input.value_id(), result.input)?;
+					accumulate_value_gradient(
+						&mut gradients,
+						weight_value.value_id(),
+						result.weight.clone(),
+					)?;
+					if let Some(weight) = weight {
+						weight.accumulate_gradient(result.weight)?;
+					}
+				}
+				Node::GroupedLinearM {
+					input,
+					weight,
+					weight_value,
+					bias,
+					bias_value,
+					offsets,
+					output_id,
+					..
+				} => {
+					let Some(output_gradient) = gradients.remove(output_id) else {
+						continue;
+					};
+					let result = crate::ml::matrix::grouped_linear_m_backward(
+						&output_gradient,
+						input,
+						weight_value,
+						offsets,
+					)?;
+					accumulate_value_gradient(&mut gradients, input.value_id(), result.input)?;
+					accumulate_value_gradient(
+						&mut gradients,
+						weight_value.value_id(),
+						result.weight.clone(),
+					)?;
+					accumulate_value_gradient(
+						&mut gradients,
+						bias_value.value_id(),
+						result.bias.clone(),
+					)?;
+					if let Some(weight) = weight {
+						weight.accumulate_gradient(result.weight)?;
+					}
+					if let Some(bias) = bias {
+						bias.accumulate_gradient(result.bias)?;
+					}
+				}
+				Node::Mamba3Siso(node) => {
+					let Some(output_gradient) = gradients.remove(&node.output_id) else {
+						continue;
+					};
+					let result = crate::ml::matrix::mamba3_siso_backward(
+						&output_gradient,
+						&node.c,
+						&node.b,
+						&node.x,
+						&node.z,
+						&node.adt,
+						&node.dt,
+						&node.trap,
+						&node.angle,
+						&node.c_bias,
+						&node.b_bias,
+						&node.d,
+						node.config,
+					)?;
+					for (input, gradient) in [
+						(&node.c, result.c),
+						(&node.b, result.b),
+						(&node.x, result.x),
+						(&node.z, result.z),
+						(&node.adt, result.adt),
+						(&node.dt, result.dt),
+						(&node.trap, result.trap),
+						(&node.angle, result.angle),
+						(&node.c_bias, result.c_bias),
+						(&node.b_bias, result.b_bias),
+						(&node.d, result.d),
+					] {
+						accumulate_value_gradient(&mut gradients, input.value_id(), gradient)?;
+					}
+				}
 				Node::RnnScan(node) => {
 					let Some(output_gradient) = gradients.remove(&node.output_id) else {
 						continue;
@@ -1302,12 +2076,6 @@ impl GradientTape {
 					let input_gradient = output_gradient.reshape(input.shape().to_vec())?;
 					accumulate_value_gradient(&mut gradients, input.value_id(), input_gradient)?;
 				}
-				Node::CrossEntropy { .. }
-				| Node::MaskedCrossEntropy { .. }
-				| Node::SmoothL1 { .. }
-				| Node::Mse { .. }
-				| Node::L1 { .. }
-				| Node::Bce { .. } => {}
 			}
 			if let Some((forward, generation)) = attachment {
 				engine.complete_semantic_autograd(
@@ -1316,6 +2084,11 @@ impl GradientTape {
 					generation,
 					backward_first,
 				)?;
+			}
+		}
+		for watched in self.inner.watched_parameters.borrow().iter() {
+			if let Some(gradient) = gradients.remove(&watched.data_id) {
+				watched.parameter.accumulate_gradient(gradient)?;
 			}
 		}
 		Ok(())
@@ -1339,6 +2112,30 @@ pub(super) fn record_node(node: Node) -> Result<()> {
 		let active = tapes.borrow().last().and_then(Weak::upgrade);
 		if let Some(active) = active {
 			record_node_for(&active, node)?;
+		}
+		Ok(())
+	})
+}
+
+pub(in crate::ml) fn record_parameter_leaf(parameter: &Parameter) -> Result<()> {
+	let (data, version, requires_grad) = parameter.snapshot();
+	if !requires_grad {
+		return Ok(());
+	}
+	ACTIVE_TAPES.with(|tapes| {
+		let active = tapes.borrow().last().and_then(Weak::upgrade);
+		if let Some(active) = active {
+			let mut watched = active.watched_parameters.borrow_mut();
+			if !watched
+				.iter()
+				.any(|candidate| candidate.parameter.same_as(parameter))
+			{
+				watched.push(WatchedParameter {
+					parameter: parameter.clone(),
+					data_id: data.value_id(),
+					version,
+				});
+			}
 		}
 		Ok(())
 	})
@@ -1368,4 +2165,57 @@ fn accumulate_value_gradient(
 		gradients.insert(value_id, gradient);
 	}
 	Ok(())
+}
+
+fn sum_to_shape(gradient: &Matrix, target_shape: &[usize]) -> Result<Matrix> {
+	if gradient.shape() == target_shape {
+		return Ok(gradient.clone());
+	}
+	if gradient.shape().len() < target_shape.len() {
+		return Err(Error::internal(
+			"broadcast adjoint target rank exceeds output-gradient rank",
+		));
+	}
+	let gradient_shape = gradient.shape().to_vec();
+	let leading = gradient_shape.len() - target_shape.len();
+	let mut result = gradient.clone();
+	for (axis, extent) in gradient_shape.iter().copied().enumerate() {
+		let target_extent = axis
+			.checked_sub(leading)
+			.map_or(1, |target_axis| target_shape[target_axis]);
+		if target_extent == 1 && extent > 1 {
+			result = matrix::sum(
+				&result,
+				i32::try_from(axis)
+					.map_err(|_| Error::internal("broadcast adjoint axis exceeds i32"))?,
+			)?;
+		}
+	}
+	if result.shape() != target_shape {
+		result = result.reshape(target_shape.to_vec())?;
+	}
+	Ok(result)
+}
+
+fn sum_to_flow_time_shape(
+	gradient: &Matrix,
+	time_shape: &[usize],
+	state_shape: &[usize],
+) -> Result<Matrix> {
+	if time_shape.len() == 1
+		&& state_shape.len() > 1
+		&& time_shape[0] != 1
+		&& time_shape[0] == state_shape[0]
+	{
+		let mut result = gradient.clone();
+		for axis in 1..state_shape.len() {
+			result = matrix::sum(
+				&result,
+				i32::try_from(axis)
+					.map_err(|_| Error::internal("flow time adjoint axis exceeds i32"))?,
+			)?;
+		}
+		return result.reshape(time_shape.to_vec());
+	}
+	sum_to_shape(gradient, time_shape)
 }

@@ -13,7 +13,21 @@ pub(super) struct DescriptorHeap {
 }
 
 impl DescriptorHeap {
-	pub(super) fn new(device: &ash::Device, limits: DeviceLimits) -> Result<Self> {
+	pub(super) fn new(device: &ash::Device, mut limits: DeviceLimits) -> Result<Self> {
+		let minimum_capacity = limits.storage_buffer_descriptors.min(65_536);
+		loop {
+			match Self::try_new(device, limits) {
+				Ok(heap) => return Ok(heap),
+				Err(_) if limits.storage_buffer_descriptors > minimum_capacity => {
+					limits.storage_buffer_descriptors =
+						(limits.storage_buffer_descriptors / 2).max(minimum_capacity);
+				}
+				Err(error) => return Err(error),
+			}
+		}
+	}
+
+	fn try_new(device: &ash::Device, limits: DeviceLimits) -> Result<Self> {
 		let binding = ash::vk::DescriptorSetLayoutBinding::default()
 			.binding(0)
 			.descriptor_type(ash::vk::DescriptorType::STORAGE_BUFFER)

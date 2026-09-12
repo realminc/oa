@@ -126,6 +126,14 @@
 			"presentation": { "reveal": "always", "panel": "shared", "clear": true }
 		},
 		{
+			"label": "Oars - SDK - Char MoE Transformer NLP (Release)",
+			"type": "shell",
+			"command": "cargo build --release --example ml_nlp_char_moe_transformer && python3 tools/build/stage.py --profile release --target ml_nlp_char_moe_transformer && ./bin/release/sdk/tutorials/ml/nlp/ml_nlp_char_moe_transformer",
+			"group": "test",
+			"problemMatcher": [],
+			"presentation": { "reveal": "always", "panel": "shared", "clear": true }
+		},
+		{
 			"label": "Oars - Benchmark - MatMul Suite (Release)",
 			"type": "shell",
 			"command": "cargo build --release --example core_mat_mul_bench && python3 tools/build/stage.py --profile release --target core_mat_mul_bench && python3 tools/profiling/suite.py",

@@ -34,6 +34,8 @@ class MlSchemaTests(unittest.TestCase):
 		self.assertEqual(
 			[operation["name"] for operation in self.schema["operations"]],
 			[
+				"ppo_clipped_policy",
+				"ppo_clipped_policy_backward",
 				"linear",
 				"linear_backward",
 				"linear_parameter_backward",
@@ -153,6 +155,43 @@ class MlSchemaTests(unittest.TestCase):
 				"flash_attention_causal_backward_kv",
 				"moe_route_weights",
 				"moe_route_weights_backward",
+				"moe_gather",
+				"moe_gather_backward",
+				"moe_combine",
+				"moe_combine_backward",
+				"grouped_linear_m",
+				"grouped_linear_m_backward",
+				"grouped_linear_m_parameter_backward",
+				"silu_mul",
+				"silu_mul_backward",
+				"grouped_gemm_m",
+				"grouped_gemm_m_backward",
+				"grouped_gemm_m_parameter_backward",
+				"linear_match",
+				"euler_step",
+				"masked_mse",
+				"masked_mse_backward",
+				"gae",
+				"append",
+				"reset",
+				"append_batch",
+				"sample",
+				"dqn_target",
+				"sac_target",
+				"cart_pole_reset",
+				"cart_pole_step",
+				"lunar_lander_reset",
+				"lunar_lander_step",
+				"mamba3_siso",
+				"mamba3_siso_backward",
+				"mamba3_siso_backward_state",
+				"mamba3_siso_backward_reverse_p16",
+				"mamba3_siso_backward_finalize",
+				"mamba3_siso_backward_reduce",
+				"mamba3_siso_backward_group_reduce",
+				"vq_assign",
+				"vq_lookup",
+				"vq_ema_update",
 			],
 		)
 		covered = {
@@ -162,8 +201,39 @@ class MlSchemaTests(unittest.TestCase):
 		}
 		self.assertEqual(
 			covered,
-			{operation["name"] for operation in self.schema["operations"]},
+			{
+				operation["name"]
+				for family in ("operations", "composite_contracts")
+				for operation in self.schema.get(family, [])
+			},
 		)
+
+	def test_lunar_lander_preserves_donor_vector_contracts(self) -> None:
+		operations = {
+			operation["name"]: operation for operation in self.schema["operations"]
+		}
+		reset = operations["lunar_lander_reset"]
+		step = operations["lunar_lander_step"]
+		self.assertEqual((reset["stable_id"], step["stable_id"]), (406, 407))
+		self.assertEqual(reset["test"]["oracle"], "independent_scalar_lunar_lander_reset")
+		self.assertEqual(step["test"]["oracle"], "independent_scalar_lunar_lander_step")
+		self.assertEqual(step["contract"]["input_kinds"], ["matrix"] * 5)
+		self.assertEqual(step["contract"]["output_kinds"], [])
+		self.assertEqual(
+			step["contract"]["variadic_input"],
+			{"kind": "matrix", "minimum": 8},
+		)
+		self.assertEqual(
+			step["contract"]["variadic_output"],
+			{"kind": "matrix", "minimum": 8},
+		)
+		self.assertTrue(step["contract"]["aligned_variadic_aliases"])
+		provenance = next(
+			record
+			for record in self.schema["port_provenance"]
+			if record["family"] == "lunar_lander"
+		)
+		self.assertEqual(provenance["classification"], "mechanical_adaptation")
 
 	def test_ml_schema_rejects_duplicate_stable_identity(self) -> None:
 		schema = copy.deepcopy(self.schema)
@@ -660,7 +730,10 @@ class MlSchemaTests(unittest.TestCase):
 
 	def test_autograd_family_must_match_semantic_owner(self) -> None:
 		schema = copy.deepcopy(self.schema)
-		schema["operations"][0]["autograd"]["family"] = "loss/linear"
+		linear = next(
+			operation for operation in schema["operations"] if operation["name"] == "linear"
+		)
+		linear["autograd"]["family"] = "loss/linear"
 		with self.assertRaisesRegex(generate.SchemaError, "match its semantic owner"):
 			self.validate_copy(schema)
 
@@ -746,7 +819,10 @@ class MlSchemaTests(unittest.TestCase):
 
 	def test_ml_schema_requires_complete_port_provenance(self) -> None:
 		schema = copy.deepcopy(self.schema)
-		schema["port_provenance"][0]["operations"].remove("linear")
+		linear = next(
+			record for record in schema["port_provenance"] if "linear" in record["operations"]
+		)
+		linear["operations"].remove("linear")
 		with self.assertRaisesRegex(generate.SchemaError, "cover every operation"):
 			self.validate_copy(schema)
 

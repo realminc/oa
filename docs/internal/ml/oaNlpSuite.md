@@ -1,8 +1,8 @@
 # OARS NLP tutorial suite
 
-**Status:** Experimental Char-RNN and Char-Transformer rows
+**Status:** Experimental Char-RNN, Char-Transformer, and Char-MoE rows
 
-**Updated:** 2026-09-08
+**Updated:** 2026-09-09
 
 ## Implemented Char-RNN row
 
@@ -112,8 +112,48 @@ python3 tools/build/stage.py --profile release --target ml_nlp_char_transformer
 ./bin/release/sdk/tutorials/ml/nlp/ml_nlp_char_transformer
 ```
 
+## Implemented Char-MoE Transformer row
+
+The Rust MoE row ports the donor's exact character recipe:
+
+```text
+token Embedding(27, 32) + position Embedding(16, 32)
+  -> pre-norm one-head causal attention + residual
+  -> RMSNorm -> router(32, 4) -> deterministic top-2 routing
+  -> four stacked SwiGLU experts with DFF=16 -> residual
+  -> final LayerNorm -> Linear(32, 27)
+```
+
+It owns 23 parameter tensors and 13,183 scalars, matching OA C++. The accepted
+Release hardware gate captures forward, complete backward, and AdamW once;
+replays the graph for 300 steps with 598 stable input uploads; evaluates loss
+and accuracy; generates 80 characters from `to be`; and reloads parameters,
+persistent routing state, and optimizer moments from `.oam`.
+
+The first unqualified local Iris Xe tutorial run produced initial loss
+`3.514067`, final training loss `0.190367`, final evaluation loss `0.183673`,
+92.578% accuracy, 5.89 ms wall per step, and 4.940 ms mean GPU time:
+
+```text
+"to be that is the question whether tis nobler in the mind to suffer the slings and ar"
+```
+
+That is within the OA C++/Android reference regime of loss `0.1907` and 93.2%
+accuracy. It was not run under the fixed-clock seven-process protocol, so the
+timings are an absolute observation rather than a qualified OA C++ comparison.
+
+```sh
+cargo test --release --test ml \
+  nlp::canonical_char_moe_transformer_completes_the_cpp_300_step_gate \
+  -- --ignored --exact --test-threads=1 --nocapture
+
+cargo build --release --example ml_nlp_char_moe_transformer
+python3 tools/build/stage.py --profile release --target ml_nlp_char_moe_transformer
+./bin/release/sdk/tutorials/ml/nlp/ml_nlp_char_moe_transformer
+```
+
 The shared `ItTraining` lifecycle and progress/summary callbacks are now used by
-both Char tutorials. The GRU primitive is implemented separately, but no GRU
-tutorial row is admitted here yet. Fixed-clock fresh-process performance
+all three Char tutorials. The GRU primitive is implemented separately, but no
+GRU tutorial row is admitted here yet. Fixed-clock fresh-process performance
 qualification and the remaining Byte/BPE × RNN/GRU/Transformer/MoE/Mamba-3
 rows remain Planned.

@@ -7,10 +7,15 @@
 pub(super) use super::{AdamW, CheckpointOptimizer, Optimizer};
 
 mod callbacks;
+mod dqn;
 mod iterator;
+mod ppo;
 mod program;
+mod rollout;
+mod sac;
 mod schedule;
 mod session;
+mod target;
 
 pub use callbacks::{
 	CbCheckpoint, CbCsvLogger, CbEarlyStop, CbLrScheduler, CbPhase, CbProgressBar, CbSummary,
@@ -19,11 +24,16 @@ pub use callbacks::{
 	ValidationResult,
 };
 
+pub use dqn::{DqnTrainer, DqnTrainerConfig, DqnTrainerMetrics};
+pub use sac::{SacTrainer, SacTrainerConfig, SacTrainerMetrics};
+
 pub use iterator::{
 	GpuTimingStats, ItTraining, ItTrainingConfig, LossAggregation, LossMetric, TrainingCallback,
 	TrainingCallbackContext, TrainingControl, TrainingLoop, TrainingLoopConfig, TrainingMetric,
 	TrainingSnapshot,
 };
+pub use ppo::{PpoTrainer, PpoTrainerConfig, PpoTrainerMetrics};
+pub use rollout::{ItRolloutTraining, ItRolloutTrainingConfig, RolloutTrainingPhase};
 
 pub use program::{
 	TrainingCompilationStage, TrainingCompilationStageRecord, TrainingCompilationState,

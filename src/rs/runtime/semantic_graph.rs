@@ -955,7 +955,6 @@ impl SemanticGraph {
 						|| alias.output == alias.input
 						|| !operation.outputs.contains(&alias.output)
 						|| !operation.inputs.contains(&Some(alias.input))
-						|| !operation.mutated_inputs.contains(&alias.input)
 				}) {
 				return Err(Error::internal(
 					"semantic operation has invalid value provenance",

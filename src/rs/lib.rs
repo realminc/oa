@@ -13,6 +13,9 @@
 
 pub mod runtime;
 
+#[path = "../../sdk/rs/mod.rs"]
+pub mod sdk;
+
 pub mod audio;
 pub mod core;
 pub mod cryptography;
@@ -35,7 +38,7 @@ pub use core::{
 pub use cryptography::pqc::{Keypair, PublicKey, SecretKey, Signature};
 pub use cryptography::{Hash, Hasher, MerkleProof, MerkleTree, SecureBuffer, Shake128, Shake256};
 pub use render::Texture;
-pub use video::{VideoDemuxer, VideoFrame};
+pub use video::{VideoDecoder, VideoDemuxer, VideoFrame, VideoMuxer, VideoPlayer};
 
 pub use runtime::{
 	CapturedResourceDesc, DeviceSelection, Engine, EngineBuilder, Event, ExecutionPlan,

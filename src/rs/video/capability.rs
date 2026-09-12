@@ -54,6 +54,15 @@ pub enum Av1Profile {
 	Professional,
 }
 
+/// VP9 profile identity used for exact decoder capability queries.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Vp9Profile {
+	Profile0,
+	Profile1,
+	Profile2,
+	Profile3,
+}
+
 /// One complete decode profile presented to the selected device.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum VideoDecodeProfile {
@@ -73,6 +82,12 @@ pub enum VideoDecodeProfile {
 	Av1 {
 		profile: Av1Profile,
 		film_grain_support: bool,
+		chroma_subsampling: VideoChromaSubsampling,
+		luma_bit_depth: VideoComponentBitDepth,
+		chroma_bit_depth: VideoComponentBitDepth,
+	},
+	Vp9 {
+		profile: Vp9Profile,
 		chroma_subsampling: VideoChromaSubsampling,
 		luma_bit_depth: VideoComponentBitDepth,
 		chroma_bit_depth: VideoComponentBitDepth,
@@ -113,6 +128,55 @@ impl VideoDecodeProfile {
 			chroma_subsampling: VideoChromaSubsampling::Yuv420,
 			luma_bit_depth: bit_depth,
 			chroma_bit_depth: bit_depth,
+		}
+	}
+
+	/// Construct the common VP9 4:2:0 profile at one component precision.
+	pub const fn vp9_420(profile: Vp9Profile, bit_depth: VideoComponentBitDepth) -> Self {
+		Self::Vp9 {
+			profile,
+			chroma_subsampling: VideoChromaSubsampling::Yuv420,
+			luma_bit_depth: bit_depth,
+			chroma_bit_depth: bit_depth,
+		}
+	}
+}
+
+/// One exact encode profile presented to the selected device.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum VideoEncodeProfile {
+	H264 {
+		profile: H264Profile,
+		chroma_subsampling: VideoChromaSubsampling,
+		luma_bit_depth: VideoComponentBitDepth,
+		chroma_bit_depth: VideoComponentBitDepth,
+	},
+	H265 {
+		profile: H265Profile,
+		chroma_subsampling: VideoChromaSubsampling,
+		luma_bit_depth: VideoComponentBitDepth,
+		chroma_bit_depth: VideoComponentBitDepth,
+	},
+}
+
+impl VideoEncodeProfile {
+	/// Construct the donor H.264 High 4:2:0 8-bit encode profile.
+	pub const fn h264_high_420_8bit() -> Self {
+		Self::H264 {
+			profile: H264Profile::High,
+			chroma_subsampling: VideoChromaSubsampling::Yuv420,
+			luma_bit_depth: VideoComponentBitDepth::Eight,
+			chroma_bit_depth: VideoComponentBitDepth::Eight,
+		}
+	}
+
+	/// Construct the donor H.265 Main 4:2:0 8-bit encode profile.
+	pub const fn h265_main_420_8bit() -> Self {
+		Self::H265 {
+			profile: H265Profile::Main,
+			chroma_subsampling: VideoChromaSubsampling::Yuv420,
+			luma_bit_depth: VideoComponentBitDepth::Eight,
+			chroma_bit_depth: VideoComponentBitDepth::Eight,
 		}
 	}
 }
@@ -192,6 +256,34 @@ pub struct VideoDecodeFormats {
 	pub(crate) unrecognized_dpb_formats: usize,
 }
 
+/// Encode-input and reconstructed-picture formats for one exact profile.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VideoEncodeFormats {
+	pub(crate) profile: VideoEncodeProfile,
+	pub(crate) input: Vec<VideoImageFormat>,
+	pub(crate) dpb: Vec<VideoImageFormat>,
+	pub(crate) unrecognized_input_formats: usize,
+	pub(crate) unrecognized_dpb_formats: usize,
+}
+
+impl VideoEncodeFormats {
+	pub const fn profile(&self) -> VideoEncodeProfile {
+		self.profile
+	}
+	pub fn input(&self) -> &[VideoImageFormat] {
+		&self.input
+	}
+	pub fn dpb(&self) -> &[VideoImageFormat] {
+		&self.dpb
+	}
+	pub const fn unrecognized_input_formats(&self) -> usize {
+		self.unrecognized_input_formats
+	}
+	pub const fn unrecognized_dpb_formats(&self) -> usize {
+		self.unrecognized_dpb_formats
+	}
+}
+
 impl VideoDecodeFormats {
 	/// Return the exact profile used for this query.
 	pub const fn profile(&self) -> VideoDecodeProfile {
@@ -225,6 +317,7 @@ pub enum VideoDecodeLevel {
 	H264(u32),
 	H265(u32),
 	Av1(u32),
+	Vp9(u32),
 }
 
 /// Exact device limits for one supported decode profile.
@@ -244,6 +337,131 @@ pub struct VideoDecodeCapabilities {
 	pub(crate) dpb_and_output_distinct: bool,
 	pub(crate) protected_content: bool,
 	pub(crate) separate_reference_images: bool,
+}
+
+/// Codec-specific limits returned with an exact encode capability query.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum VideoEncodeCodecCapabilities {
+	H264 {
+		max_level: u32,
+		max_slice_count: u32,
+		max_p_l0_references: u32,
+		max_b_l0_references: u32,
+		max_l1_references: u32,
+		max_temporal_layers: u32,
+		min_qp: i32,
+		max_qp: i32,
+	},
+	H265 {
+		max_level: u32,
+		max_slice_segment_count: u32,
+		max_tiles: VideoExtent,
+		ctb_size_16: bool,
+		ctb_size_32: bool,
+		ctb_size_64: bool,
+		transform_size_4: bool,
+		transform_size_8: bool,
+		transform_size_16: bool,
+		transform_size_32: bool,
+		max_p_l0_references: u32,
+		max_b_l0_references: u32,
+		max_l1_references: u32,
+		max_sub_layers: u32,
+		min_qp: i32,
+		max_qp: i32,
+	},
+}
+
+/// Backend-neutral device limits for one exact encode profile.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct VideoEncodeCapabilities {
+	pub(crate) profile: VideoEncodeProfile,
+	pub(crate) min_coded_extent: VideoExtent,
+	pub(crate) max_coded_extent: VideoExtent,
+	pub(crate) picture_access_granularity: VideoExtent,
+	pub(crate) input_picture_granularity: VideoExtent,
+	pub(crate) min_bitstream_offset_alignment: u64,
+	pub(crate) min_bitstream_size_alignment: u64,
+	pub(crate) max_dpb_slots: u32,
+	pub(crate) max_active_reference_pictures: u32,
+	pub(crate) max_rate_control_layers: u32,
+	pub(crate) max_bitrate: u64,
+	pub(crate) max_quality_levels: u32,
+	pub(crate) constant_qp: bool,
+	pub(crate) cbr: bool,
+	pub(crate) vbr: bool,
+	pub(crate) feedback_offset: bool,
+	pub(crate) feedback_bytes_written: bool,
+	pub(crate) feedback_overrides: bool,
+	pub(crate) protected_content: bool,
+	pub(crate) separate_reference_images: bool,
+	pub(crate) codec: VideoEncodeCodecCapabilities,
+}
+
+impl VideoEncodeCapabilities {
+	pub const fn profile(self) -> VideoEncodeProfile {
+		self.profile
+	}
+	pub const fn min_coded_extent(self) -> VideoExtent {
+		self.min_coded_extent
+	}
+	pub const fn max_coded_extent(self) -> VideoExtent {
+		self.max_coded_extent
+	}
+	pub const fn picture_access_granularity(self) -> VideoExtent {
+		self.picture_access_granularity
+	}
+	pub const fn input_picture_granularity(self) -> VideoExtent {
+		self.input_picture_granularity
+	}
+	pub const fn min_bitstream_offset_alignment(self) -> u64 {
+		self.min_bitstream_offset_alignment
+	}
+	pub const fn min_bitstream_size_alignment(self) -> u64 {
+		self.min_bitstream_size_alignment
+	}
+	pub const fn max_dpb_slots(self) -> u32 {
+		self.max_dpb_slots
+	}
+	pub const fn max_active_reference_pictures(self) -> u32 {
+		self.max_active_reference_pictures
+	}
+	pub const fn max_rate_control_layers(self) -> u32 {
+		self.max_rate_control_layers
+	}
+	pub const fn max_bitrate(self) -> u64 {
+		self.max_bitrate
+	}
+	pub const fn max_quality_levels(self) -> u32 {
+		self.max_quality_levels
+	}
+	pub const fn supports_constant_qp(self) -> bool {
+		self.constant_qp
+	}
+	pub const fn supports_cbr(self) -> bool {
+		self.cbr
+	}
+	pub const fn supports_vbr(self) -> bool {
+		self.vbr
+	}
+	pub const fn supports_feedback_offset(self) -> bool {
+		self.feedback_offset
+	}
+	pub const fn supports_feedback_bytes_written(self) -> bool {
+		self.feedback_bytes_written
+	}
+	pub const fn supports_feedback_overrides(self) -> bool {
+		self.feedback_overrides
+	}
+	pub const fn protected_content(self) -> bool {
+		self.protected_content
+	}
+	pub const fn separate_reference_images(self) -> bool {
+		self.separate_reference_images
+	}
+	pub const fn codec(self) -> VideoEncodeCodecCapabilities {
+		self.codec
+	}
 }
 
 impl VideoDecodeCapabilities {
@@ -322,9 +540,8 @@ impl VideoDecodeCapabilities {
 ///
 /// Hardware advertisement is distinct from OA session availability. The
 /// Engine creation enables advertised video queue/codec extensions, while
-/// [`VideoDeviceCapabilities::decoder_sessions_available`] and
-/// [`VideoDeviceCapabilities::encoder_sessions_available`] remain false until
-/// OA has a complete corresponding session path.
+/// Session availability is narrower than hardware advertisement: it becomes
+/// true only when OA has enabled and qualified at least one corresponding path.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct VideoDeviceCapabilities {
 	pub(crate) decode_queue_family: Option<u32>,
@@ -418,7 +635,8 @@ impl VideoDeviceCapabilities {
 /// Query Vulkan Video queues and codec extensions on the Engine's selected device.
 ///
 /// This query reports both physical-device advertisement and whether Engine
-/// creation enabled video queues, without implying a codec session exists.
+/// creation enabled video queues, and whether at least one qualified codec
+/// session path exists.
 ///
 /// # Errors
 ///
@@ -456,4 +674,20 @@ pub fn query_decode_formats(
 	profile: VideoDecodeProfile,
 ) -> Result<VideoDecodeFormats> {
 	engine.query_video_decode_formats(profile)
+}
+
+/// Query exact H.264 or H.265 encoder limits without creating a session.
+pub fn query_encode_capabilities(
+	engine: &Engine,
+	profile: VideoEncodeProfile,
+) -> Result<VideoEncodeCapabilities> {
+	engine.query_video_encode_capabilities(profile)
+}
+
+/// Enumerate encode-input and DPB formats for one exact profile.
+pub fn query_encode_formats(
+	engine: &Engine,
+	profile: VideoEncodeProfile,
+) -> Result<VideoEncodeFormats> {
+	engine.query_video_encode_formats(profile)
 }

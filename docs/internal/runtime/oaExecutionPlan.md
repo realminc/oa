@@ -30,6 +30,15 @@ returns `NotReady`; blocking observation and use by another operation fail with
 `FailedPrecondition` until the plan is submitted. This prevents an unsubmitted
 captured producer from silently entering an eager or second captured graph.
 
+The Engine's bindless storage heap is sized from queried update-after-bind
+limits and capped at 262,144 buffers on integrated GPUs or 1,048,576 on
+discrete GPUs, matching the donor's conservative device classes. If a driver
+cannot allocate its advertised request, creation halves the request down to at
+most 65,536 rather than failing immediately. This replaces the early
+1,024-buffer prototype ceiling, which could not represent a complete 500-step
+policy-evaluation graph. Descriptor slots remain retirement-owned and are never
+recycled while submitted work can reference them.
+
 ## Submission and replay
 
 ```rust

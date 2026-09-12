@@ -10,6 +10,112 @@ pub(super) enum Node {
 		right: Matrix,
 		output_id: u64,
 	},
+	Mul {
+		left: Matrix,
+		right: Matrix,
+		output_id: u64,
+	},
+	Div {
+		left: Matrix,
+		right: Matrix,
+		output_id: u64,
+	},
+	Scale {
+		input: Matrix,
+		output_id: u64,
+		scalar: f32,
+	},
+	Reciprocal {
+		input: Matrix,
+		output: Matrix,
+		output_id: u64,
+	},
+	Exp {
+		input: Matrix,
+		output: Matrix,
+		output_id: u64,
+	},
+	Log {
+		input: Matrix,
+		output_id: u64,
+	},
+	Abs {
+		input: Matrix,
+		output_id: u64,
+	},
+	Copy {
+		input: Matrix,
+		output_id: u64,
+	},
+	Sqrt {
+		input: Matrix,
+		output: Matrix,
+		output_id: u64,
+	},
+	ClampMax {
+		input: Matrix,
+		output_id: u64,
+		maximum: f32,
+	},
+	ClampMin {
+		input: Matrix,
+		output_id: u64,
+		minimum: f32,
+	},
+	Sub {
+		left: Matrix,
+		right: Matrix,
+		output_id: u64,
+	},
+	Slice {
+		input: Matrix,
+		output_id: u64,
+		dim: usize,
+		start: usize,
+		end: usize,
+	},
+	RepeatInterleave {
+		input: Matrix,
+		output_id: u64,
+		repeats: usize,
+		dim: usize,
+	},
+	Concat {
+		inputs: Vec<Matrix>,
+		output_id: u64,
+		dim: usize,
+		sizes: Vec<usize>,
+	},
+	GatherLastDim {
+		input: Matrix,
+		indices: Matrix,
+		output_id: u64,
+		input_width: usize,
+	},
+	FlowLinearState {
+		clean: Matrix,
+		noise: Matrix,
+		time: Matrix,
+		output_id: u64,
+	},
+	FlowLinearVelocity {
+		clean: Matrix,
+		noise: Matrix,
+		output_id: u64,
+	},
+	FlowEulerStep {
+		state: Matrix,
+		velocity: Matrix,
+		delta_time: f32,
+		output_id: u64,
+	},
+	FlowMaskedMse {
+		prediction: Matrix,
+		target: Matrix,
+		mask: Matrix,
+		denominator: Matrix,
+		output_id: u64,
+	},
 	Dropout {
 		input: Matrix,
 		output_id: u64,
@@ -205,9 +311,19 @@ pub(super) enum Node {
 		output_id: u64,
 		dim: i32,
 	},
+	MatMulNt {
+		left: Matrix,
+		right: Matrix,
+		output_id: u64,
+	},
 	Swiglu {
 		gate: Matrix,
 		up: Matrix,
+		output_id: u64,
+	},
+	SiluMul {
+		input: Matrix,
+		intermediate_size: usize,
 		output_id: u64,
 	},
 	Bmm {
@@ -268,6 +384,37 @@ pub(super) enum Node {
 		output: Matrix,
 		output_id: u64,
 	},
+	MoeGather {
+		input: Matrix,
+		inverse: Matrix,
+		output_id: u64,
+	},
+	MoeCombine {
+		packed: Matrix,
+		route_gate: Matrix,
+		inverse: Matrix,
+		packed_slot: Matrix,
+		output_id: u64,
+	},
+	GroupedGemmM {
+		input: Matrix,
+		weight: Option<Parameter>,
+		weight_value: Matrix,
+		weight_version: Option<u64>,
+		offsets: Matrix,
+		output_id: u64,
+	},
+	GroupedLinearM {
+		input: Matrix,
+		weight: Option<Parameter>,
+		weight_value: Matrix,
+		weight_version: Option<u64>,
+		bias: Option<Parameter>,
+		bias_value: Matrix,
+		bias_version: Option<u64>,
+		offsets: Matrix,
+		output_id: u64,
+	},
 	Embedding {
 		indices: Matrix,
 		output_id: u64,
@@ -279,6 +426,7 @@ pub(super) enum Node {
 	GruScan(Box<GruScanNode>),
 	RnnCell(Box<RnnCellNode>),
 	RnnScan(Box<RnnScanNode>),
+	Mamba3Siso(Box<Mamba3SisoNode>),
 	CrossEntropy {
 		logits: Matrix,
 		targets: Matrix,
@@ -311,12 +459,39 @@ pub(super) enum Node {
 		target: Matrix,
 		output_id: u64,
 	},
+	PpoClippedPolicy {
+		new_log_probability: Matrix,
+		old_log_probability: Matrix,
+		advantage: Matrix,
+		clip_epsilon: f32,
+		output_id: u64,
+	},
 }
 
 impl Node {
 	pub(super) const fn output_id(&self) -> u64 {
 		match self {
 			Self::Add { output_id, .. }
+			| Self::Mul { output_id, .. }
+			| Self::Div { output_id, .. }
+			| Self::Scale { output_id, .. }
+			| Self::Reciprocal { output_id, .. }
+			| Self::Exp { output_id, .. }
+			| Self::Log { output_id, .. }
+			| Self::Abs { output_id, .. }
+			| Self::Copy { output_id, .. }
+			| Self::Sqrt { output_id, .. }
+			| Self::ClampMax { output_id, .. }
+			| Self::ClampMin { output_id, .. }
+			| Self::Sub { output_id, .. }
+			| Self::Slice { output_id, .. }
+			| Self::RepeatInterleave { output_id, .. }
+			| Self::Concat { output_id, .. }
+			| Self::GatherLastDim { output_id, .. }
+			| Self::FlowLinearState { output_id, .. }
+			| Self::FlowLinearVelocity { output_id, .. }
+			| Self::FlowEulerStep { output_id, .. }
+			| Self::FlowMaskedMse { output_id, .. }
 			| Self::Reshape { output_id, .. }
 			| Self::Dropout { output_id, .. }
 			| Self::Linear { output_id, .. }
@@ -344,7 +519,9 @@ impl Node {
 			| Self::AdaptiveAvgPool2d { output_id, .. }
 			| Self::Upsample2d { output_id, .. }
 			| Self::Sum { output_id, .. }
+			| Self::MatMulNt { output_id, .. }
 			| Self::Swiglu { output_id, .. }
+			| Self::SiluMul { output_id, .. }
 			| Self::Bmm { output_id, .. }
 			| Self::BmmNt { output_id, .. }
 			| Self::BmmTn { output_id, .. }
@@ -354,32 +531,41 @@ impl Node {
 			| Self::ScaledDotProductAttention { output_id, .. }
 			| Self::FlashAttention { output_id, .. }
 			| Self::MoeRouteWeights { output_id, .. }
+			| Self::MoeGather { output_id, .. }
+			| Self::MoeCombine { output_id, .. }
+			| Self::GroupedGemmM { output_id, .. }
+			| Self::GroupedLinearM { output_id, .. }
 			| Self::Embedding { output_id, .. }
 			| Self::CrossEntropy { output_id, .. }
 			| Self::MaskedCrossEntropy { output_id, .. }
 			| Self::SmoothL1 { output_id, .. }
 			| Self::Mse { output_id, .. }
 			| Self::L1 { output_id, .. }
-			| Self::Bce { output_id, .. } => *output_id,
+			| Self::Bce { output_id, .. }
+			| Self::PpoClippedPolicy { output_id, .. } => *output_id,
 			Self::GruCell(node) => node.output_id,
 			Self::GruScan(node) => node.output_id,
 			Self::RnnCell(node) => node.output_id,
 			Self::RnnScan(node) => node.output_id,
+			Self::Mamba3Siso(node) => node.output_id,
 		}
 	}
+}
 
-	pub(super) const fn is_loss_root(&self, value_id: u64) -> bool {
-		matches!(
-			self,
-			Self::CrossEntropy { output_id, .. }
-				| Self::MaskedCrossEntropy { output_id, .. }
-				| Self::SmoothL1 { output_id, .. }
-				| Self::Mse { output_id, .. }
-				| Self::L1 { output_id, .. }
-				| Self::Bce { output_id, .. }
-				if *output_id == value_id
-		)
-	}
+pub(super) struct Mamba3SisoNode {
+	pub(super) c: Matrix,
+	pub(super) b: Matrix,
+	pub(super) x: Matrix,
+	pub(super) z: Matrix,
+	pub(super) adt: Matrix,
+	pub(super) dt: Matrix,
+	pub(super) trap: Matrix,
+	pub(super) angle: Matrix,
+	pub(super) c_bias: Matrix,
+	pub(super) b_bias: Matrix,
+	pub(super) d: Matrix,
+	pub(super) config: crate::ml::matrix::SsmConfig,
+	pub(super) output_id: u64,
 }
 
 pub(super) struct RnnScanNode {

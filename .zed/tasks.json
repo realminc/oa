@@ -75,6 +75,11 @@
 		"reveal": "always"
 	},
 	{
+		"label": "Oars - SDK - Char MoE Transformer NLP (Release)",
+		"command": "cargo build --release --example ml_nlp_char_moe_transformer && python3 tools/build/stage.py --profile release --target ml_nlp_char_moe_transformer && ./bin/release/sdk/tutorials/ml/nlp/ml_nlp_char_moe_transformer",
+		"reveal": "always"
+	},
+	{
 		"label": "Oars - Benchmark - MatMul Suite (Release)",
 		"command": "cargo build --release --example core_mat_mul_bench && python3 tools/build/stage.py --profile release --target core_mat_mul_bench && python3 tools/profiling/suite.py",
 		"reveal": "always"

@@ -474,7 +474,27 @@ impl ExecutionPlan {
 				current: buffer,
 			})
 			.collect();
-		let resource_lifetimes = graph.resource_lifetimes();
+		let mut resource_lifetimes = graph.resource_lifetimes();
+		// Composite semantic operations may expose a zero-copy input as an output
+		// without any physical dispatch reading it. Retain that semantic-only
+		// resource in the plan inventory even though it has no GPU access edge.
+		// This keeps the semantic graph complete without manufacturing a shader
+		// read or weakening storage identity checks.
+		for binding in &semantic_storage {
+			let Some(buffer) = binding.storage.buffer() else {
+				continue;
+			};
+			if !resource_lifetimes
+				.iter()
+				.any(|lifetime| lifetime.buffer.same_as(buffer))
+			{
+				resource_lifetimes.push(super::executable_graph::ResourceLifetime {
+					buffer: buffer.clone(),
+					first_access: 0,
+					last_access: 0,
+				});
+			}
+		}
 		let mut captured_resources = resource_lifetimes
 			.iter()
 			.enumerate()

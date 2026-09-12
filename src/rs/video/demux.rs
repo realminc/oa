@@ -11,7 +11,7 @@ use crate::{Error, Result};
 
 use super::{
 	Av1Profile, H264PictureLayout, H264Profile, H265Profile, VideoChromaSubsampling,
-	VideoComponentBitDepth, VideoDecodeProfile,
+	VideoComponentBitDepth, VideoDecodeProfile, Vp9Profile,
 };
 
 const MAX_MP4_TABLE_ENTRIES: usize = 8 * 1024 * 1024;
@@ -137,8 +137,8 @@ impl VideoContainerInfo {
 
 	/// Return the exact Vulkan-queryable stream profile when representable.
 	///
-	/// VP9 and codec profiles outside the current Vulkan standard-video binding
-	/// return `None`; this does not mean the container or bitstream is invalid.
+	/// Codec profiles outside the current Vulkan standard-video binding return
+	/// `None`; this does not mean the container or bitstream is invalid.
 	pub const fn decode_profile(self) -> Option<VideoDecodeProfile> {
 		self.decode_profile
 	}
@@ -263,6 +263,16 @@ impl VideoDemuxer {
 	/// Return the zero-based index of the next sample.
 	pub const fn current_sample_index(&self) -> usize {
 		self.current_sample
+	}
+
+	pub(crate) fn presentation_timestamps(&self) -> Result<Vec<u64>> {
+		let mut timestamps = Vec::new();
+		timestamps
+			.try_reserve_exact(self.samples.len())
+			.map_err(|_| Error::resource_exhausted("video timestamp index allocation failed"))?;
+		timestamps.extend(self.samples.iter().map(|sample| sample.pts));
+		timestamps.sort_unstable();
+		Ok(timestamps)
 	}
 
 	/// Read the next compressed access unit, or `None` at end of stream.
@@ -782,6 +792,9 @@ fn parse_stsd(data: &[u8]) -> Result<SampleDescription> {
 					decode_profile = parse_av1c_profile(child.payload)?;
 					codec_config = child.payload.get(4..).unwrap_or_default().to_vec();
 				}
+				(VideoCodec::Vp9, b"vpcC") => {
+					decode_profile = parse_vpcc_profile(child.payload)?;
+				}
 				_ => {}
 			}
 		}
@@ -950,6 +963,36 @@ fn parse_av1c_profile(data: &[u8]) -> Result<Option<VideoDecodeProfile>> {
 	Ok(Some(VideoDecodeProfile::Av1 {
 		profile,
 		film_grain_support: false,
+		chroma_subsampling: chroma,
+		luma_bit_depth: depth,
+		chroma_bit_depth: depth,
+	}))
+}
+
+fn parse_vpcc_profile(data: &[u8]) -> Result<Option<VideoDecodeProfile>> {
+	// `vpcC` is a FullBox. Its four-byte version/flags prefix is followed by
+	// profile, level, and packed bit-depth/chroma/range metadata.
+	let profile = match *data
+		.get(4)
+		.ok_or_else(|| Error::data_loss("truncated vpcC profile"))?
+	{
+		0 => Vp9Profile::Profile0,
+		1 => Vp9Profile::Profile1,
+		2 => Vp9Profile::Profile2,
+		3 => Vp9Profile::Profile3,
+		_ => return Ok(None),
+	};
+	let format = *data
+		.get(6)
+		.ok_or_else(|| Error::data_loss("truncated vpcC format"))?;
+	let depth = parse_bit_depth(u32::from(format >> 4))?;
+	let chroma = match format & 7 {
+		3 => VideoChromaSubsampling::Yuv422,
+		4 => VideoChromaSubsampling::Yuv444,
+		_ => VideoChromaSubsampling::Yuv420,
+	};
+	Ok(Some(VideoDecodeProfile::Vp9 {
+		profile,
 		chroma_subsampling: chroma,
 		luma_bit_depth: depth,
 		chroma_bit_depth: depth,

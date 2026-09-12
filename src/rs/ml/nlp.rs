@@ -12,6 +12,12 @@ pub const CONTEXT_LENGTH: usize = 16;
 pub const MODEL_WIDTH: usize = 32;
 /// Recurrent width used by the OA NLP comparison suite.
 pub const HIDDEN_WIDTH: usize = 64;
+/// Per-expert hidden width used by the canonical MoE Transformer row.
+pub const MOE_EXPERT_HIDDEN_WIDTH: usize = 16;
+/// Routed expert count used by the canonical MoE Transformer row.
+pub const MOE_NUM_EXPERTS: usize = 4;
+/// Experts selected for each token in the canonical MoE Transformer row.
+pub const MOE_EXPERTS_PER_TOKEN: usize = 2;
 /// Complete optimizer steps in one canonical tutorial run.
 pub const TRAINING_STEPS: usize = 300;
 /// Windows in one canonical training batch.
@@ -30,10 +36,17 @@ pub const CHAR_RNN_REFERENCE_GENERATION: &str =
 /// Reference greedy result produced by OA C++'s canonical Char Transformer.
 pub const CHAR_TRANSFORMER_REFERENCE_GENERATION: &str =
 	"to be or not to be that is the question whether tis nobler in the mind to suffer the ";
+/// Reference greedy result produced by the accepted Char MoE Transformer run.
+pub const CHAR_MOE_TRANSFORMER_REFERENCE_GENERATION: &str =
+	"to be that is the question whether tis nobler in the mind to suffer the slings and ar";
 /// OA C++ final-loss reference from the canonical local 300-step run.
 pub const CHAR_TRANSFORMER_CPP_FINAL_LOSS: f32 = 0.190_238;
 /// OA C++ final-batch accuracy reference from the canonical local 300-step run.
 pub const CHAR_TRANSFORMER_CPP_ACCURACY: f32 = 0.927;
+/// OA C++/Android Char MoE final-loss reference for the canonical workload.
+pub const CHAR_MOE_TRANSFORMER_CPP_FINAL_LOSS: f32 = 0.190_7;
+/// OA C++/Android Char MoE final-batch accuracy reference.
+pub const CHAR_MOE_TRANSFORMER_CPP_ACCURACY: f32 = 0.932;
 
 /// Exact 576-character teaching corpus shared with OA C++.
 pub const CORPUS: &str = concat!(
@@ -270,6 +283,62 @@ impl CharTransformer {
 impl Module for CharTransformer {
 	fn forward(&self, input: &Matrix) -> Result<Matrix> {
 		CharTransformer::forward(self, input)
+	}
+
+	fn registry(&self) -> &ModuleRegistry {
+		self.inner.registry()
+	}
+}
+
+/// Canonical character Transformer with four sparse top-two experts.
+pub struct CharMoeTransformer {
+	inner: nn::Transformer,
+}
+
+impl CharMoeTransformer {
+	/// Construct the donor one-block, one-head MoE Transformer recipe.
+	///
+	/// # Errors
+	///
+	/// Returns an error when parameter construction or registration fails.
+	pub fn new(engine: &Engine) -> Result<Self> {
+		let inner = nn::Transformer::with_seed_moe(
+			engine,
+			CHAR_VOCAB_SIZE,
+			CONTEXT_LENGTH,
+			MODEL_WIDTH,
+			MOE_EXPERT_HIDDEN_WIDTH,
+			1,
+			1,
+			MOE_NUM_EXPERTS,
+			MOE_EXPERTS_PER_TOKEN,
+			1.0e-5,
+			RNG_SEED,
+		)?;
+		Ok(Self { inner })
+	}
+
+	/// Evaluate all-position next-character logits for `[B, 16]` tokens.
+	///
+	/// # Errors
+	///
+	/// Returns an error unless tokens are nonempty U32 `[B, 16]`, or recording fails.
+	pub fn forward(&self, tokens: &Matrix) -> Result<Matrix> {
+		self.inner.forward(tokens)
+	}
+
+	/// Return the canonical routed expert module.
+	pub fn moe(&self) -> &nn::Moe {
+		self.inner
+			.block(0)
+			.and_then(nn::TransformerBlock::moe)
+			.expect("CharMoeTransformer always owns one MoE block")
+	}
+}
+
+impl Module for CharMoeTransformer {
+	fn forward(&self, input: &Matrix) -> Result<Matrix> {
+		CharMoeTransformer::forward(self, input)
 	}
 
 	fn registry(&self) -> &ModuleRegistry {

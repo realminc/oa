@@ -63,11 +63,13 @@ the presence of a source module or shader does not imply a shipped capability.
   integrity, checkpoint mapping, and OA C++ interoperability.
 - [Elman RNN](internal/ml/oaRnn.md) — GPU whole-sequence scan, complete BPTT,
   limitations, and numerical evidence.
+- [Vector Quantization](internal/ml/oaVq.md) — GPU nearest-code assignment,
+  straight-through gradients, persistent EMA state, and residual VQ.
 - [NLP Tutorial Suite](internal/ml/oaNlpSuite.md) — canonical 300-step Char-RNN
   and Char-Transformer training gates
   workload and current correctness/performance evidence.
-- [Reinforcement Learning](internal/ml/oaRl.md) — checked environment value
-  contracts and the dependency order before RL execution and algorithms.
+- [Reinforcement Learning](internal/ml/oaRl.md) — checked environment values,
+  native CartPole/Lunar workflows, and PPO/DQN/SAC execution contracts.
 - [Compute Architecture](internal/compute/oaCompute.md) — current executable
   path, ownership, synchronization, and graph boundary.
 - [Executable Graph](internal/compute/oaExecutableGraph.md) — owned dispatch

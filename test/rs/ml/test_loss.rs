@@ -205,6 +205,73 @@ test_vk!(smooth_l1_selects_the_donor_fused_mean_candidate, engine, {
 });
 
 test_vk!(
+	composed_scalar_loss_scales_and_accumulates_adjoint,
+	engine,
+	{
+		let embedding = oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(
+			&engine,
+			[3, 1],
+			&[1.0, -2.0, 0.5],
+		)?)?;
+		let indices = oa::Matrix::from_slice(&engine, [3], &[0_u32, 1, 2])?;
+		let target = oa::Matrix::from_f32(&engine, [3, 1], &[0.0; 3])?;
+		let tape = oa::ml::GradientTape::new();
+		let prediction = embedding.forward(&indices)?;
+		let loss = oa::ml::loss::mse(&prediction, &target)?;
+		let scaled = oa::matrix::scale(&loss, 2.0)?;
+		let combined = oa::matrix::add(&loss, &scaled)?;
+		assert_close(&combined.read_f32()?, &[5.25], 1.0e-6);
+		tape.backward(&combined)?;
+		assert_close(
+			&embedding
+				.weight()
+				.gradient()
+				.expect("composed scalar loss gradient is missing")
+				.read_f32()?,
+			&[2.0, -4.0, 1.0],
+			1.0e-6,
+		);
+		Ok(())
+	}
+);
+
+test_vk!(broadcast_mul_reverse_reduces_expanded_axes, engine, {
+	let left =
+		oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [2, 1], &[2.0, -1.0])?)?;
+	let right = oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(
+		&engine,
+		[1, 3],
+		&[3.0, 0.5, -2.0],
+	)?)?;
+	let left_rows = oa::Matrix::from_slice(&engine, [2], &[0_u32, 1])?;
+	let right_rows = oa::Matrix::from_slice(&engine, [1], &[0_u32])?;
+	let target = oa::Matrix::from_f32(&engine, [2, 3], &[0.0; 6])?;
+	let tape = oa::ml::GradientTape::new();
+	let product = oa::matrix::mul(&left.forward(&left_rows)?, &right.forward(&right_rows)?)?;
+	let loss = oa::ml::loss::mse(&product, &target)?;
+	tape.backward(&loss)?;
+	assert_close(
+		&left
+			.weight()
+			.gradient()
+			.expect("broadcast left gradient is missing")
+			.read_f32()?,
+		&[8.833_333, -4.416_666_5],
+		2.0e-6,
+	);
+	assert_close(
+		&right
+			.weight()
+			.gradient()
+			.expect("broadcast right gradient is missing")
+			.read_f32()?,
+		&[5.0, 0.833_333_3, -3.333_333_3],
+		2.0e-6,
+	);
+	Ok(())
+});
+
+test_vk!(
 	core_losses_reject_invalid_inputs_before_recording,
 	engine,
 	{

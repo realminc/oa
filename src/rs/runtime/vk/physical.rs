@@ -4,7 +4,8 @@ use crate::{DeviceSelection, Error, Result};
 
 use super::{Instance, features::DeviceFeatures};
 
-const EXPERIMENTAL_STORAGE_BUFFER_CAPACITY: u32 = 1024;
+const DISCRETE_STORAGE_BUFFER_CAPACITY: u32 = 1_048_576;
+const INTEGRATED_STORAGE_BUFFER_CAPACITY: u32 = 262_144;
 
 #[derive(Clone, Copy)]
 pub(super) struct DeviceLimits {
@@ -175,9 +176,12 @@ impl PhysicalDevice {
 				}
 				continue;
 			}
+			let storage_buffer_capacity = match properties.device_type {
+				ash::vk::PhysicalDeviceType::DISCRETE_GPU => DISCRETE_STORAGE_BUFFER_CAPACITY,
+				_ => INTEGRATED_STORAGE_BUFFER_CAPACITY,
+			};
 			let limits = DeviceLimits {
-				storage_buffer_descriptors: descriptor_limit
-					.min(EXPERIMENTAL_STORAGE_BUFFER_CAPACITY),
+				storage_buffer_descriptors: descriptor_limit.min(storage_buffer_capacity),
 				max_push_constants_size: properties.limits.max_push_constants_size,
 				max_compute_work_group_count: properties.limits.max_compute_work_group_count,
 				max_compute_work_group_size: properties.limits.max_compute_work_group_size,

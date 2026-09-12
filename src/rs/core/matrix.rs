@@ -315,6 +315,26 @@ impl Matrix {
 		})
 	}
 
+	pub(crate) fn reshape_semantic_output(&self, shape: Vec<usize>) -> Result<Self> {
+		let element_count = checked_element_count(&shape)?;
+		if element_count != self.element_count {
+			return Err(Error::invalid_argument(format!(
+				"matrix reshape requires {} elements; requested shape {:?} contains {element_count}",
+				self.element_count, shape
+			)));
+		}
+		let semantic = matrix_semantic(&shape, self.dtype, None)?;
+		Ok(Self {
+			engine: self.engine.clone(),
+			storage: self.storage.clone(),
+			shape,
+			dtype: self.dtype,
+			element_count,
+			semantic,
+			_not_send_sync: PhantomData,
+		})
+	}
+
 	pub(crate) fn allocate(
 		engine: &EngineHandle,
 		shape: Vec<usize>,

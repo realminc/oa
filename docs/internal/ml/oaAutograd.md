@@ -2,7 +2,7 @@
 
 **Status:** Experimental narrow implementation; generalized coverage Planned
 
-**Updated:** 2026-09-10
+**Updated:** 2026-09-11
 
 **Authority:** [OA Rust Architecture](../architecture/oaArchitecture.md) and
 [OA Rust source and module structure](../architecture/oaSourceStructure.md)
@@ -23,7 +23,9 @@ Rust does not port the donor's concrete `Grad*` classes into public types. A
 failed backward returns `oa::Error`; there is no logging-only compatibility
 overload.
 
-The current root must be a scalar F32 result produced by an admitted loss.
+The current root must be a recorded scalar F32 result. Reverse traversal seeds
+that value with one, so admitted losses can be scaled, added, or composed with
+an auxiliary scalar before backward.
 Supported paths are composed from:
 
 - `ml::nn::Linear`;
@@ -38,12 +40,18 @@ Supported paths are composed from:
   `ml::nn::ConvTranspose2d`;
 - `ml::nn::RmsNorm` and `ml::matrix::rope` over packed rotary heads;
 - donor-backed `ml::matrix::{silu, relu, tanh, sigmoid, leaky_relu, elu,
-  mish, softplus, gelu, swiglu}` activations;
+  mish, softplus, gelu, swiglu, silu_mul}` activations;
+- sparse `ml::nn::Moe`, including selected-route normalization, stable packing,
+  grouped gate/up and down projections, direct combine, and all input/router/
+  normalization/expert parameter adjoints; standalone bias-free
+  `ml::matrix::grouped_gemm_m` also carries exact input/weight adjoints;
 - rank-three `ml::matrix::{bmm, bmm_nt, bmm_tn}` batched products;
 - `ml::matrix::scaled_dot_product_attention`, including causal and optional
   additive-mask execution, its explicit causal Flash provider, and its packed
   causal compatibility composition;
-- equal-shape FP32 `matrix::add` residual paths;
+- multidirectionally broadcast FP32 `matrix::{add,sub,mul,div}` paths and FP32
+  `matrix::{scale,neg,exp,log,sqrt,add_scalar,
+  sub_scalar,div_scalar,clamp_min,clamp_max}`;
 - axis-aware FP32 `matrix::{softmax, log_softmax}` using their saved forward
   outputs;
 - NCHW FP32 `ml::matrix::{avg_pool_2d, max_pool_2d}` with saved pooling
@@ -55,14 +63,42 @@ Supported paths are composed from:
 - `ml::nn::GruCell` explicit-state steps and stacked `ml::nn::Gru` batched
   input projections plus whole-sequence scans;
 - zero-copy `Matrix::reshape` / `matrix::reshape` views;
+- materialized rank-one through rank-four FP32 `matrix::slice` and its
+  zero-padded copy-region adjoint;
 - `ml::loss::{smooth_l1, mse, l1, bce, cross_entropy,
   masked_cross_entropy}`; the four matching-shape losses detach their target,
-  while both cross-entropy variants differentiate only their logits;
+  both cross-entropy variants differentiate only their logits, and every loss
+  multiplies its local adjoint by the incoming scalar gradient;
 - gradient addition at converging paths.
 
-This is not a generalized autograd claim. Broadcasting, other reductions, arbitrary
-roots, detached/no-grad scopes, higher derivatives, remaining recurrent families,
-and the remaining Matrix/ML catalog are Planned.
+PPO clipped-policy reverse uses the donor explicit adjoint and differentiates
+only new log probability. The composed PPO total loss then routes gradients
+through the clipped-policy, MSE value, and mean-entropy children without a
+second monolithic backward implementation; old log probability, normalized
+advantage, and target return remain detached.
+
+The categorical-policy composition uses these ordinary Core nodes rather than
+a policy-specific backward implementation. Its entropy path differentiates
+through LogSoftmax, Exp, Mul, Sum, and Neg, while discrete action sampling stays
+detached. The final produced-shape views keep distinct semantic output identity
+under the one parent policy operation.
+
+Tanh-normal policy additionally differentiates through Div, Log, scalar
+arithmetic, ML Tanh, and the reparameterized `mean + exp(log_stddev) * noise`
+path. Philox noise is detached. Clamp reverse uses the schema-owned detached
+FP32 equality mask. OARS corrects the donor clamp-node masks: gradients pass
+through values retained by the clamp (including the exact bound), not values
+replaced by it.
+
+Advantage normalization differentiates through the ordinary full Sum, Scale,
+broadcast Sub/Mul/Div, AddScalar, and saved-output Sqrt nodes. Its analytic
+oracle covers both mean-removal terms and the variance projection; there is no
+second normalization-specific backward implementation.
+
+This is not a generalized autograd claim. Non-scalar roots, remaining
+elementwise operations, other reductions, detached/no-grad scopes, higher
+derivatives, remaining recurrent families, and the remaining Matrix/ML catalog
+are Planned.
 
 ## Operation and node pairing
 
@@ -86,7 +122,7 @@ The physical implementation is:
 | `ml/autograd/tape.rs` | Tape lifecycle, reverse traversal, version preflight, accumulation, and semantic provenance. |
 | `ml/autograd/matrix.rs` | Private ML Matrix attachment facade. |
 | `ml/autograd/matrix/activation.gen.rs` | Schema-generated activation attachments whose original inputs, saved forward values, and typed scalar state are mechanically derivable. |
-| `ml/autograd/matrix/{linear,embedding,norm,conv,pool,upsample,position,recurrent,attention}.rs` | Family-owned attachments whose compound saved state or node construction remains explicit. |
+| `ml/autograd/matrix/{linear,embedding,norm,conv,pool,upsample,position,recurrent,attention,moe}.rs` | Family-owned attachments whose compound saved state or node construction remains explicit. |
 | `ml/autograd/loss.rs` | Private loss attachment facade. |
 | `ml/autograd/loss/core.gen.rs` | Schema-generated Smooth L1, MSE, L1, BCE, cross-entropy, and masked-cross-entropy attachments. |
 | `ml/autograd/node.rs` | Compact private saved-value record for the currently admitted catalog. |
@@ -212,6 +248,59 @@ Embedding backward assigns one invocation to each table scalar and gathers
 matching token contributions in input order, giving deterministic repeated-index
 accumulation without float atomics. This is a correctness baseline, not a
 performance qualification.
+
+Sparse MoE routing decisions and expert plans are detached values. Route-weight
+reverse mode writes the dense selected-probability adjoint. Expert-major gather
+reverse assigns one invocation to each token scalar and sums its routes in
+stable slot order. Combine reverse emits packed-value and route-gate adjoints in
+one dispatch; the packed adjoint then flows through gather. Grouped Linear
+reverse records one semantic operation split across a tiled data-adjoint kernel
+and a fused weight/bias-adjoint kernel. Concatenated `silu_mul` writes both input
+halves from one exclusive invocation. The complete `nn::Moe` residual path has
+an end-to-end finite-difference oracle covering its input, RMSNorm, router, and
+four stacked expert parameters. No MoE reverse path reads routing metadata back
+to the host or uses float atomics.
+
+Core Add and Sub preserve the donor's multidirectional broadcast adjoint: each
+incoming gradient is reduced across leading and singleton-expanded axes, then
+reshaped to the exact saved input shape. MoE uses this path to add its
+gradient-free persistent `[1,E]` bias to `[T,E]` selection logits. Because TopK
+is detached and route-gate magnitudes come from the unbiased Softmax, the bias
+does not create a parameter gradient or distort the router-probability adjoint.
+
+Core Mul and Div use the same broadcast reduction after applying the saved
+opposite-operand derivative. Scale multiplies the incoming gradient
+by its saved Rust scalar. These operations, scalar-root seeding, and upstream
+loss scaling connect the donor Switch/GShard MoE auxiliary loss without a
+special-case MoE node or fused backward kernel.
+
+Core Sub negates the right-operand contribution before its broadcast reduction.
+Sqrt divides by twice its saved forward output. Slice saves only the source
+shape and checked axis/range;
+its reverse operation copies the incoming slice gradient into a zero-initialized
+matrix of the original shape. Together with LogSoftmax, these operations retain
+the donor's stable router z-loss identity instead of recomputing an unstable
+exponential reduction.
+
+Core Reciprocal reuses its saved forward value for `-dout * output^2`.
+Core Abs composes an exact `sign(input)` mask from existing clamp/equality
+operations and chooses zero at the nondifferentiable origin. OARS deliberately
+reverses the OA donor `GradAbs` mask subtraction, whose negative/positive
+derivatives are inverted; SAC's differentiable minimum provides an end-to-end
+oracle for both branches.
+MatMulNt preserves the donor two-input reverse contract and composes the
+existing batched NN and TN multiplication providers after zero-copy rank-three
+views. Dense MoE additionally registers its four stacked parameter matrices as
+tape leaves; all per-expert Slice paths accumulate by value identity before one
+gradient is committed to each stable Parameter handle. This leaf bridge exists
+for composite parameter expressions and does not duplicate module parameters.
+
+Core last-axis gather saves its I32 selection matrix and source width. Its
+adjoint assigns one invocation to each input scalar and gathers matching output
+contributions in selected-slot order. Repeated indices therefore accumulate
+deterministically without float atomics, while invalid forward indices produce
+zero and contribute no gradient. This is the donor policy/DQN selection
+contract rather than the expert-major MoE gather route.
 
 Activation adjoints preserve the donor formulas and saved-state choices. ReLU,
 tanh, sigmoid, ELU, and Softplus use the forward result where that is sufficient;

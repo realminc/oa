@@ -19,6 +19,10 @@ Experimental source currently proves:
 - one selected Vulkan 1.3 device and one compute queue;
 - schema-generated dense `f32` elementwise operations, `i32` Matrix add, and
   one FP32 `matrix::mat_mul_nt` 64x64x16 tiled kernel;
+- deterministic last-axis gather/reverse and categorical `sample_logits`
+  greedy, dense, TopK, and nucleus routes with replay-safe Philox state;
+- transactional composite lowering that maps nested generic Matrix work to one
+  schema-owned semantic operation, including read-only zero-copy output aliases;
 - an engine-owned bindless storage-buffer heap, exact timeline events, eager
   batching, RAW/WAR/WAW planning, isolated capture, and immutable replay;
 - one cached simultaneous-use command buffer for unchanged untimed plans;
@@ -100,7 +104,15 @@ The executable graph owns physical decisions:
 - queues, barriers, ownership transfer and completion;
 - reusable recording and profiling instrumentation.
 
-One semantic operation may lower to several executable nodes. One executable
+One semantic operation may lower to several executable nodes. The current
+private lowering scope retains those nodes while suppressing their child
+semantic identities, commits one generated parent contract transactionally,
+and rewrites every retained node to that owner. A dropped or failed outer scope
+removes only its newly recorded work; nested scopes defer ownership to the
+outermost operation. Semantic-only pass-through resources remain in captured
+plan inventory without manufacturing a shader access.
+
+One executable
 microfusion may implement several semantic operations, but it retains all of
 their identities. A fusion is invalid if it changes rounding, color semantics,
 alias visibility, externally observed intermediates, readiness, training data,

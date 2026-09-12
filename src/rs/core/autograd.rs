@@ -11,10 +11,92 @@ pub(crate) enum MatrixNode {
 		input: Matrix,
 		output_id: u64,
 	},
+	Copy {
+		input: Matrix,
+		output_id: u64,
+	},
 	Add {
 		left: Matrix,
 		right: Matrix,
 		output_id: u64,
+	},
+	Mul {
+		left: Matrix,
+		right: Matrix,
+		output_id: u64,
+	},
+	Div {
+		left: Matrix,
+		right: Matrix,
+		output_id: u64,
+	},
+	Scale {
+		input: Matrix,
+		output_id: u64,
+		scalar: f32,
+	},
+	Reciprocal {
+		input: Matrix,
+		output: Matrix,
+		output_id: u64,
+	},
+	Exp {
+		input: Matrix,
+		output: Matrix,
+		output_id: u64,
+	},
+	Log {
+		input: Matrix,
+		output_id: u64,
+	},
+	Abs {
+		input: Matrix,
+		output_id: u64,
+	},
+	Sqrt {
+		input: Matrix,
+		output: Matrix,
+		output_id: u64,
+	},
+	ClampMax {
+		input: Matrix,
+		output_id: u64,
+		maximum: f32,
+	},
+	ClampMin {
+		input: Matrix,
+		output_id: u64,
+		minimum: f32,
+	},
+	Sub {
+		left: Matrix,
+		right: Matrix,
+		output_id: u64,
+	},
+	Slice {
+		input: Matrix,
+		output_id: u64,
+		dim: usize,
+		start: usize,
+		end: usize,
+	},
+	RepeatInterleave {
+		input: Matrix,
+		output_id: u64,
+		repeats: usize,
+		dim: usize,
+	},
+	Concat {
+		inputs: Vec<Matrix>,
+		output_id: u64,
+		dim: usize,
+		sizes: Vec<usize>,
+	},
+	GatherLastDim {
+		input: Matrix,
+		indices: Matrix,
+		output_id: u64,
+		input_width: usize,
 	},
 	Dropout {
 		input: Matrix,
@@ -38,6 +120,11 @@ pub(crate) enum MatrixNode {
 		input: Matrix,
 		output_id: u64,
 		dim: i32,
+	},
+	MatMulNt {
+		left: Matrix,
+		right: Matrix,
+		output_id: u64,
 	},
 }
 

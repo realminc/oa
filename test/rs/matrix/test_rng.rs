@@ -45,6 +45,35 @@ fn assert_close(left: &[f32], right: &[f32], tolerance: f32) {
 	}
 }
 
+fn cpu_sample_dense(
+	logits: &[f32],
+	rows: usize,
+	vocabulary: usize,
+	temperature: f32,
+	seed: u64,
+) -> Vec<i32> {
+	let random = cpu_uniform(rows, 0.0, 1.0, seed);
+	(0..rows)
+		.map(|row| {
+			let values = &logits[row * vocabulary..(row + 1) * vocabulary];
+			let maximum = values.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+			let total = values
+				.iter()
+				.map(|value| ((value - maximum) / temperature).exp())
+				.sum::<f32>();
+			let threshold = random[row] * total;
+			let mut cumulative = 0.0;
+			for (column, value) in values.iter().enumerate() {
+				cumulative += ((value - maximum) / temperature).exp();
+				if cumulative >= threshold {
+					return column as i32;
+				}
+			}
+			(vocabulary - 1) as i32
+		})
+		.collect()
+}
+
 test_vk!(
 	philox_eager_preserves_seed_and_distribution_contracts,
 	engine,
@@ -194,6 +223,77 @@ test_vk!(dropout_rejects_invalid_public_contracts, engine, {
 		oa::matrix::dropout(&integer, 0.5, 1)
 			.err()
 			.expect("integer dropout input was accepted"),
+	] {
+		assert_eq!(error.kind(), oa::ErrorKind::InvalidArgument);
+	}
+	Ok(())
+});
+
+test_vk!(sample_logits_preserves_all_donor_routes, engine, {
+	let greedy_logits = oa::Matrix::from_f32(&engine, [2, 3], &[1.0, 4.0, 2.0, -1.0, 3.0, 3.0])?;
+	assert_eq!(
+		oa::matrix::sample_logits(&greedy_logits, 0.0, 0, 1.0, 0)?.read::<i32>()?,
+		vec![1, 1]
+	);
+
+	let dense_host = [2.0, 1.0, 0.0, -1.0, 0.0, 1.0, 2.0, 3.0, 1.0, 1.0, 1.0, 1.0];
+	let dense_logits = oa::Matrix::from_f32(&engine, [3, 4], &dense_host)?;
+	let seed = 0x1234_5678_9abc_def0;
+	let dense = oa::matrix::sample_logits(&dense_logits, 0.75, 0, 1.0, seed)?;
+	assert_eq!(
+		dense.read::<i32>()?,
+		cpu_sample_dense(&dense_host, 3, 4, 0.75, seed)
+	);
+
+	let sorted = oa::matrix::sample_logits(&dense_logits, 0.8, 1, 0.9, 123)?;
+	assert_eq!(sorted.read::<i32>()?, vec![0, 3, 0]);
+	let nucleus = oa::matrix::sample_logits(&dense_logits, 0.8, 0, 1.0e-7, 456)?;
+	assert_eq!(nucleus.read::<i32>()?, vec![0, 3, 0]);
+
+	let wide_dense = oa::Matrix::from_f32(&engine, [1025], &[0.0; 1025])?;
+	let wide_sample = oa::matrix::sample_logits(&wide_dense, 1.0, 0, 1.0, 789)?;
+	assert_eq!(wide_sample.read::<i32>()?.len(), 1);
+	Ok(())
+});
+
+test_vk!(
+	sample_logits_capture_advances_its_private_philox_state,
+	engine,
+	{
+		let logits = oa::Matrix::from_f32(&engine, [257, 4], &[0.0; 1028])?;
+		let seed = 0x4452_4f50_4c49_4359;
+		let eager = oa::matrix::sample_logits(&logits, 1.0, 0, 1.0, seed)?.read::<i32>()?;
+		let (plan, sampled) =
+			engine.capture(|| oa::matrix::sample_logits(&logits, 1.0, 0, 1.0, seed))?;
+		assert_eq!(plan.diagnostics().semantic_operation_count(), 1);
+		assert_eq!(
+			plan.semantic_graph().operations()[0].name(),
+			"oa::matrix::sample_logits"
+		);
+		engine.submit(&plan)?.wait()?;
+		let first = sampled.read::<i32>()?;
+		engine.submit(&plan)?.wait()?;
+		let second = sampled.read::<i32>()?;
+		assert_eq!(first, eager);
+		assert_ne!(second, first);
+		Ok(())
+	}
+);
+
+test_vk!(sample_logits_rejects_invalid_public_contracts, engine, {
+	let integer = oa::Matrix::from_slice(&engine, [2], &[1_i32, 2])?;
+	let rank_three = oa::Matrix::from_f32(&engine, [1, 1, 2], &[0.0, 1.0])?;
+	let wide = oa::Matrix::from_f32(&engine, [1, 1025], &[0.0; 1025])?;
+	for error in [
+		oa::matrix::sample_logits(&integer, 1.0, 0, 1.0, 1)
+			.err()
+			.expect("integer logits were accepted"),
+		oa::matrix::sample_logits(&rank_three, 1.0, 0, 1.0, 1)
+			.err()
+			.expect("rank-three logits were accepted"),
+		oa::matrix::sample_logits(&wide, 1.0, 0, 0.9, 1)
+			.err()
+			.expect("oversized sorted vocabulary was accepted"),
 	] {
 		assert_eq!(error.kind(), oa::ErrorKind::InvalidArgument);
 	}

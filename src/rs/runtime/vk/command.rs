@@ -81,7 +81,6 @@ impl CommandPool {
 		self.finish(device, command_buffer, Vec::new(), Vec::new(), None, None)
 	}
 
-	#[cfg(test)]
 	pub(super) fn record_custom(
 		&mut self,
 		device: &ash::Device,

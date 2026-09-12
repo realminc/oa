@@ -112,3 +112,23 @@ pub fn swiglu(gate: &Matrix, up: &Matrix) -> Result<Matrix> {
 	autograd::record_swiglu(gate, up, &output)?;
 	Ok(output)
 }
+
+/// Apply `SiLU(gate) * up` to concatenated halves of the final input axis.
+///
+/// # Errors
+///
+/// Returns an error unless `input` is F32 with final extent exactly twice the
+/// nonzero `intermediate_size`, or runtime recording fails.
+pub fn silu_mul(input: &Matrix, intermediate_size: usize) -> Result<Matrix> {
+	let output = dispatch::silu_mul(input, intermediate_size)?;
+	autograd::record_silu_mul(input, intermediate_size, &output)?;
+	Ok(output)
+}
+
+pub(in crate::ml) fn silu_mul_backward(
+	input: &Matrix,
+	output_gradient: &Matrix,
+	intermediate_size: usize,
+) -> Result<Matrix> {
+	dispatch::silu_mul_backward(input, output_gradient, intermediate_size)
+}

@@ -14,11 +14,11 @@ struct StorageInner {
 	buffer: Option<vk::Buffer>,
 	byte_len: usize,
 	device: vk::Device,
-	readiness: RefCell<Readiness>,
+	readiness: RefCell<ReadinessSnapshot>,
 }
 
 #[derive(Clone)]
-enum Readiness {
+pub(super) enum ReadinessSnapshot {
 	Ready,
 	Recorded,
 	Captured,
@@ -42,7 +42,7 @@ impl Storage {
 					buffer: None,
 					byte_len: 0,
 					device: device.clone(),
-					readiness: RefCell::new(Readiness::Ready),
+					readiness: RefCell::new(ReadinessSnapshot::Ready),
 				}),
 			});
 		}
@@ -54,7 +54,7 @@ impl Storage {
 				buffer: Some(buffer),
 				byte_len: bytes.len(),
 				device: device.clone(),
-				readiness: RefCell::new(Readiness::Ready),
+				readiness: RefCell::new(ReadinessSnapshot::Ready),
 			}),
 		})
 	}
@@ -117,7 +117,7 @@ impl Storage {
 		}
 		self.ensure_ready()?;
 		self.write(bytes)?;
-		*self.inner.readiness.borrow_mut() = Readiness::Ready;
+		*self.inner.readiness.borrow_mut() = ReadinessSnapshot::Ready;
 		Ok(())
 	}
 
@@ -126,62 +126,71 @@ impl Storage {
 	}
 
 	pub(crate) fn needs_flush(&self) -> bool {
-		matches!(*self.inner.readiness.borrow(), Readiness::Recorded)
+		matches!(*self.inner.readiness.borrow(), ReadinessSnapshot::Recorded)
 	}
 
 	pub(crate) fn ensure_ready(&self) -> Result<()> {
 		match self.inner.readiness.borrow().clone() {
-			Readiness::Ready => Ok(()),
-			Readiness::Recorded => Err(Error::not_ready(
+			ReadinessSnapshot::Ready => Ok(()),
+			ReadinessSnapshot::Recorded => Err(Error::not_ready(
 				"matrix storage is recorded but has not been submitted",
 			)),
-			Readiness::Captured => Err(Error::not_ready(
+			ReadinessSnapshot::Captured => Err(Error::not_ready(
 				"matrix storage belongs to a plan that has not been submitted",
 			)),
-			Readiness::Submitted(event) if event.is_complete()? => Ok(()),
-			Readiness::Submitted(_) => Err(Error::not_ready("matrix storage is not ready")),
-			Readiness::Failed => Err(production_failed()),
+			ReadinessSnapshot::Submitted(event) if event.is_complete()? => Ok(()),
+			ReadinessSnapshot::Submitted(_) => Err(Error::not_ready("matrix storage is not ready")),
+			ReadinessSnapshot::Failed => Err(production_failed()),
 		}
 	}
 
 	pub(crate) fn wait_ready(&self) -> Result<()> {
 		match self.inner.readiness.borrow().clone() {
-			Readiness::Ready => Ok(()),
-			Readiness::Recorded => Err(Error::failed_precondition(
+			ReadinessSnapshot::Ready => Ok(()),
+			ReadinessSnapshot::Recorded => Err(Error::failed_precondition(
 				"matrix storage was not submitted before blocking observation",
 			)),
-			Readiness::Captured => Err(Error::failed_precondition(
+			ReadinessSnapshot::Captured => Err(Error::failed_precondition(
 				"matrix storage cannot be observed before its execution plan is submitted",
 			)),
-			Readiness::Submitted(event) => event.wait(),
-			Readiness::Failed => Err(production_failed()),
+			ReadinessSnapshot::Submitted(event) => event.wait(),
+			ReadinessSnapshot::Failed => Err(production_failed()),
 		}
 	}
 
-	pub(crate) fn mark_recorded(&self) {
-		*self.inner.readiness.borrow_mut() = Readiness::Recorded;
+	pub(super) fn mark_recorded(&self) -> ReadinessSnapshot {
+		std::mem::replace(
+			&mut *self.inner.readiness.borrow_mut(),
+			ReadinessSnapshot::Recorded,
+		)
+	}
+
+	pub(super) fn restore_readiness(&self, readiness: ReadinessSnapshot) {
+		*self.inner.readiness.borrow_mut() = readiness;
 	}
 
 	pub(crate) fn mark_submitted(&self, event: Event) {
-		*self.inner.readiness.borrow_mut() = Readiness::Submitted(event);
+		*self.inner.readiness.borrow_mut() = ReadinessSnapshot::Submitted(event);
 	}
 
 	pub(crate) fn mark_captured(&self) {
-		*self.inner.readiness.borrow_mut() = Readiness::Captured;
+		*self.inner.readiness.borrow_mut() = ReadinessSnapshot::Captured;
 	}
 
 	pub(crate) fn validate_recording_access(&self) -> Result<()> {
 		match &*self.inner.readiness.borrow() {
-			Readiness::Ready | Readiness::Recorded | Readiness::Submitted(_) => Ok(()),
-			Readiness::Captured => Err(Error::failed_precondition(
+			ReadinessSnapshot::Ready
+			| ReadinessSnapshot::Recorded
+			| ReadinessSnapshot::Submitted(_) => Ok(()),
+			ReadinessSnapshot::Captured => Err(Error::failed_precondition(
 				"captured matrix storage must be submitted before another operation can use it",
 			)),
-			Readiness::Failed => Err(production_failed()),
+			ReadinessSnapshot::Failed => Err(production_failed()),
 		}
 	}
 
 	pub(crate) fn mark_failed(&self) {
-		*self.inner.readiness.borrow_mut() = Readiness::Failed;
+		*self.inner.readiness.borrow_mut() = ReadinessSnapshot::Failed;
 	}
 }
 

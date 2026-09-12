@@ -31,8 +31,13 @@ struct Retirement {
 }
 
 struct RetirementCompletion {
-	state: Mutex<RetirementState>,
+	state: Mutex<RetirementStateData>,
 	changed: Condvar,
+}
+
+struct RetirementStateData {
+	state: RetirementState,
+	retained: Vec<Box<dyn Send>>,
 }
 
 struct WorkerControl {
@@ -145,6 +150,19 @@ impl RetirementTicket {
 		self.control.join_if_drained();
 		Ok(())
 	}
+
+	pub(in crate::runtime) fn retain_until_complete<T>(&self, value: T)
+	where
+		T: Send + 'static,
+	{
+		let mut state = match self.completion.state.lock() {
+			Ok(state) => state,
+			Err(poisoned) => poisoned.into_inner(),
+		};
+		if state.state == RetirementState::Pending {
+			state.retained.push(Box::new(value));
+		}
+	}
 }
 
 impl WorkerControl {
@@ -184,7 +202,10 @@ impl WorkerControl {
 impl RetirementCompletion {
 	fn new() -> Self {
 		Self {
-			state: Mutex::new(RetirementState::Pending),
+			state: Mutex::new(RetirementStateData {
+				state: RetirementState::Pending,
+				retained: Vec::new(),
+			}),
 			changed: Condvar::new(),
 		}
 	}
@@ -194,7 +215,8 @@ impl RetirementCompletion {
 			Ok(state) => state,
 			Err(poisoned) => poisoned.into_inner(),
 		};
-		*state = finished;
+		state.state = finished;
+		state.retained.clear();
 		self.changed.notify_all();
 	}
 
@@ -203,13 +225,13 @@ impl RetirementCompletion {
 			Ok(state) => state,
 			Err(poisoned) => poisoned.into_inner(),
 		};
-		while *state == RetirementState::Pending {
+		while state.state == RetirementState::Pending {
 			state = match self.changed.wait(state) {
 				Ok(state) => state,
 				Err(poisoned) => poisoned.into_inner(),
 			};
 		}
-		match *state {
+		match state.state {
 			RetirementState::Retired => Ok(()),
 			RetirementState::Failed => Err(retirement_unavailable()),
 			RetirementState::Pending => Err(retirement_unavailable()),
@@ -226,4 +248,40 @@ fn retirement_unavailable() -> Error {
 			"retirement worker is unavailable",
 		),
 	)
+}
+
+#[cfg(test)]
+mod tests {
+	use std::sync::{
+		Arc,
+		atomic::{AtomicUsize, Ordering},
+	};
+
+	use super::{RetirementCompletion, RetirementState, RetirementTicket, WorkerControl};
+
+	struct DropCounter(Arc<AtomicUsize>);
+
+	impl Drop for DropCounter {
+		fn drop(&mut self) {
+			self.0.fetch_add(1, Ordering::SeqCst);
+		}
+	}
+
+	#[test]
+	fn ticket_retains_resources_only_until_submission_completion() {
+		let completion = Arc::new(RetirementCompletion::new());
+		let ticket = RetirementTicket {
+			completion: completion.clone(),
+			control: Arc::new(WorkerControl::new()),
+		};
+		let drops = Arc::new(AtomicUsize::new(0));
+		ticket.retain_until_complete(DropCounter(drops.clone()));
+		assert_eq!(drops.load(Ordering::SeqCst), 0);
+
+		completion.finish(RetirementState::Retired);
+		assert_eq!(drops.load(Ordering::SeqCst), 1);
+
+		ticket.retain_until_complete(DropCounter(drops.clone()));
+		assert_eq!(drops.load(Ordering::SeqCst), 2);
+	}
 }

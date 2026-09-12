@@ -2,6 +2,7 @@ use std::{any::TypeId, time::Duration};
 
 use oa::{
 	ErrorKind, Image, ImageFormat, ImageLayout, Matrix, VideoFrame,
+	render::texture_from_rgba8,
 	video::{VideoColorInfo, VideoColorMatrix, VideoColorRange, VideoFrameTiming},
 };
 
@@ -43,6 +44,47 @@ fn timing_and_color_metadata_are_explicit() -> oa::Result<()> {
 		VideoColorInfo::unspecified().matrix(),
 		VideoColorMatrix::Unspecified
 	);
+	Ok(())
+}
+
+#[test]
+fn planar_yuv420_frames_validate_and_share_bytes() -> oa::Result<()> {
+	let bytes = (0_u8..24).collect::<Vec<_>>();
+	let frame = VideoFrame::from_yuv420p(
+		bytes.clone(),
+		4,
+		4,
+		VideoFrameTiming::from_microseconds(7, 3),
+		VideoColorInfo::unspecified(),
+	)?;
+	assert_eq!(frame.width(), 4);
+	assert_eq!(frame.height(), 4);
+	assert_eq!(frame.as_yuv420p(), Some(bytes.as_slice()));
+	assert_eq!(frame.clone().as_yuv420p(), Some(bytes.as_slice()));
+	assert!(frame.as_image().is_none());
+	assert!(frame.into_image().is_none());
+
+	let Err(error) = VideoFrame::from_yuv420p(
+		vec![0; 24],
+		3,
+		4,
+		VideoFrameTiming::from_microseconds(0, 1),
+		VideoColorInfo::unspecified(),
+	) else {
+		panic!("odd YUV420 dimensions must fail");
+	};
+	assert_eq!(error.kind(), ErrorKind::InvalidArgument);
+
+	let Err(error) = VideoFrame::from_yuv420p(
+		vec![0; 23],
+		4,
+		4,
+		VideoFrameTiming::from_microseconds(0, 1),
+		VideoColorInfo::unspecified(),
+	) else {
+		panic!("incorrect YUV420 byte count must fail");
+	};
+	assert_eq!(error.kind(), ErrorKind::InvalidArgument);
 	Ok(())
 }
 
@@ -101,3 +143,39 @@ test_vk!(video_frame_rejects_batches_and_empty_extents, engine, {
 	assert_eq!(error.kind(), ErrorKind::InvalidArgument);
 	Ok(())
 });
+
+test_vk!(
+	video_from_texture_retains_render_storage_without_image_erasure,
+	engine,
+	{
+		let rgba = (0_u8..32).collect::<Vec<_>>();
+		let texture = texture_from_rgba8(&engine, &rgba, 4, 2)?;
+		let timing = VideoFrameTiming::from_microseconds(123, 33);
+		let color = VideoColorInfo::new(VideoColorMatrix::Bt709, VideoColorRange::Full);
+		let frame = oa::video::from_texture(&texture, timing, color);
+
+		assert_eq!(frame.width(), 4);
+		assert_eq!(frame.height(), 2);
+		assert_eq!(frame.timing(), timing);
+		assert_eq!(frame.color_info(), color);
+		assert!(frame.as_image().is_none());
+		assert!(frame.as_yuv420p().is_none());
+		assert_eq!(
+			frame
+				.as_texture()
+				.expect("texture-backed frame")
+				.read_rgba8()?,
+			rgba
+		);
+		assert_eq!(
+			frame
+				.clone()
+				.into_texture()
+				.expect("retained texture backing")
+				.read_rgba8()?,
+			rgba
+		);
+		assert!(frame.into_image().is_none());
+		Ok(())
+	}
+);

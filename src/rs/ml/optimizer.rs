@@ -1074,9 +1074,42 @@ impl AdamW {
 		parameters: impl IntoIterator<Item = Parameter>,
 		learning_rate: f32,
 	) -> Result<Self> {
+		Self::with_hyperparameters(parameters, learning_rate, 0.9, 0.999, 1.0e-8, 0.01)
+	}
+
+	/// Bind AdamW with explicit scalar hyperparameters.
+	///
+	/// # Errors
+	///
+	/// Returns an error for non-finite or out-of-range scalars, an empty or
+	/// duplicate parameter set, mixed-engine ownership, or moment allocation.
+	pub fn with_hyperparameters(
+		parameters: impl IntoIterator<Item = Parameter>,
+		learning_rate: f32,
+		beta1: f32,
+		beta2: f32,
+		epsilon: f32,
+		weight_decay: f32,
+	) -> Result<Self> {
 		if !learning_rate.is_finite() || learning_rate < 0.0 {
 			return Err(Error::invalid_argument(
 				"AdamW learning rate must be finite and non-negative",
+			));
+		}
+		if !beta1.is_finite() || !(0.0..1.0).contains(&beta1) {
+			return Err(Error::invalid_argument("AdamW beta1 must be in [0, 1)"));
+		}
+		if !beta2.is_finite() || !(0.0..1.0).contains(&beta2) {
+			return Err(Error::invalid_argument("AdamW beta2 must be in [0, 1)"));
+		}
+		if !epsilon.is_finite() || epsilon <= 0.0 {
+			return Err(Error::invalid_argument(
+				"AdamW epsilon must be finite and positive",
+			));
+		}
+		if !weight_decay.is_finite() || weight_decay < 0.0 {
+			return Err(Error::invalid_argument(
+				"AdamW weight decay must be finite and non-negative",
 			));
 		}
 		let parameters = parameters.into_iter().collect::<Vec<_>>();
@@ -1129,10 +1162,10 @@ impl AdamW {
 			id: next_optimizer_id()?,
 			parameters: states,
 			learning_rate,
-			beta1: 0.9,
-			beta2: 0.999,
-			epsilon: 1.0e-8,
-			weight_decay: 0.01,
+			beta1,
+			beta2,
+			epsilon,
+			weight_decay,
 			step: 0,
 			graph_state: None,
 		})
@@ -1577,7 +1610,8 @@ fn next_optimizer_id() -> Result<u64> {
 
 #[cfg(test)]
 mod tests {
-	use super::{NoOpOptimizer, Optimizer};
+	use super::{AdamW, NoOpOptimizer, Optimizer};
+	use crate::ml::Parameter;
 
 	#[test]
 	fn no_op_optimizer_is_an_object_safe_policy_owner() {
@@ -1597,5 +1631,15 @@ mod tests {
 		assert!(NoOpOptimizer::new(f32::NAN).is_err());
 		let mut optimizer = NoOpOptimizer::default();
 		assert!(optimizer.set_learning_rate(-1.0).is_err());
+	}
+
+	#[test]
+	fn adamw_explicit_hyperparameters_reject_invalid_scalars_before_allocation() {
+		let empty = || std::iter::empty::<Parameter>();
+		assert!(AdamW::with_hyperparameters(empty(), f32::NAN, 0.9, 0.999, 1.0e-8, 0.0).is_err());
+		assert!(AdamW::with_hyperparameters(empty(), 1.0e-3, 1.0, 0.999, 1.0e-8, 0.0).is_err());
+		assert!(AdamW::with_hyperparameters(empty(), 1.0e-3, 0.9, -0.1, 1.0e-8, 0.0).is_err());
+		assert!(AdamW::with_hyperparameters(empty(), 1.0e-3, 0.9, 0.999, 0.0, 0.0).is_err());
+		assert!(AdamW::with_hyperparameters(empty(), 1.0e-3, 0.9, 0.999, 1.0e-8, -0.1).is_err());
 	}
 }

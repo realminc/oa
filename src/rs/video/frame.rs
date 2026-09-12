@@ -1,8 +1,10 @@
 //! Timestamped video frames with retained semantic backing.
 
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
-use crate::{Error, Image, Result};
+use crate::{Error, Event, Image, Result, Texture, runtime::NativeDecodedFrame};
+
+use super::VideoPixelFormat;
 
 /// Matrix coefficients associated with a frame's source color conversion.
 ///
@@ -128,6 +130,37 @@ pub struct VideoFrame {
 }
 
 impl VideoFrame {
+	pub(crate) const fn native_backing(&self) -> Option<&NativeDecodedFrame> {
+		match &self.backing {
+			VideoFrameBacking::Native(frame) => Some(frame),
+			_ => None,
+		}
+	}
+
+	pub(crate) fn from_native(
+		frame: NativeDecodedFrame,
+		timing: VideoFrameTiming,
+		color: VideoColorInfo,
+	) -> Self {
+		Self {
+			backing: VideoFrameBacking::Native(frame),
+			timing,
+			color,
+		}
+	}
+
+	pub(crate) fn from_texture(
+		texture: Texture,
+		timing: VideoFrameTiming,
+		color: VideoColorInfo,
+	) -> Self {
+		Self {
+			backing: VideoFrameBacking::Texture(texture),
+			timing,
+			color,
+		}
+	}
+
 	/// Attach single-frame timing and color semantics to a packed image.
 	///
 	/// Batched image layouts are accepted only when their batch extent is one.
@@ -161,6 +194,49 @@ impl VideoFrame {
 		})
 	}
 
+	/// Attach frame semantics to tightly packed planar 8-bit YUV 4:2:0 bytes.
+	///
+	/// Planes are stored as full-resolution Y followed by quarter-resolution U
+	/// and V. Width and height must both be non-zero and even.
+	///
+	/// # Errors
+	///
+	/// Returns an error for invalid 4:2:0 geometry, arithmetic overflow, or a
+	/// byte count other than `width * height * 3 / 2`.
+	pub fn from_yuv420p(
+		bytes: Vec<u8>,
+		width: usize,
+		height: usize,
+		timing: VideoFrameTiming,
+		color: VideoColorInfo,
+	) -> Result<Self> {
+		if width == 0 || height == 0 || !width.is_multiple_of(2) || !height.is_multiple_of(2) {
+			return Err(Error::invalid_argument(
+				"planar YUV420 video frames require non-zero even dimensions",
+			));
+		}
+		let expected = width
+			.checked_mul(height)
+			.and_then(|luma| luma.checked_mul(3))
+			.and_then(|samples| samples.checked_div(2))
+			.ok_or_else(|| Error::out_of_range("planar YUV420 frame size overflows usize"))?;
+		if bytes.len() != expected {
+			return Err(Error::invalid_argument(format!(
+				"planar YUV420 frame requires {expected} bytes, but received {}",
+				bytes.len()
+			)));
+		}
+		Ok(Self {
+			backing: VideoFrameBacking::PlanarYuv420 {
+				bytes: Arc::from(bytes),
+				width,
+				height,
+			},
+			timing,
+			color,
+		})
+	}
+
 	/// Return the visible frame width.
 	pub fn width(&self) -> usize {
 		self.backing.width()
@@ -188,6 +264,73 @@ impl VideoFrame {
 	pub const fn as_image(&self) -> Option<&Image> {
 		match &self.backing {
 			VideoFrameBacking::PackedImage(image) => Some(image),
+			VideoFrameBacking::Texture(_)
+			| VideoFrameBacking::Native(_)
+			| VideoFrameBacking::PlanarYuv420 { .. } => None,
+		}
+	}
+
+	/// Borrow the retained render Texture when this frame has one.
+	///
+	/// Texture backing remains semantically distinct from packed Image and
+	/// planar codec output. Its Matrix producer readiness remains attached to the
+	/// retained Texture.
+	pub const fn as_texture(&self) -> Option<&Texture> {
+		match &self.backing {
+			VideoFrameBacking::Texture(texture) => Some(texture),
+			VideoFrameBacking::PackedImage(_)
+			| VideoFrameBacking::Native(_)
+			| VideoFrameBacking::PlanarYuv420 { .. } => None,
+		}
+	}
+
+	/// Borrow tightly packed planar 8-bit YUV 4:2:0 bytes when present.
+	pub fn as_yuv420p(&self) -> Option<&[u8]> {
+		match &self.backing {
+			VideoFrameBacking::PlanarYuv420 { bytes, .. } => Some(bytes),
+			VideoFrameBacking::PackedImage(_)
+			| VideoFrameBacking::Texture(_)
+			| VideoFrameBacking::Native(_) => None,
+		}
+	}
+
+	/// Return the native decoded-plane format when this frame retains one.
+	pub const fn native_format(&self) -> Option<VideoPixelFormat> {
+		match &self.backing {
+			VideoFrameBacking::Native(frame) => Some(frame.format()),
+			_ => None,
+		}
+	}
+
+	/// Return the exact native decoder submission completion when present.
+	///
+	/// The current native decoder waits for this event before publishing the
+	/// frame, but retaining it keeps the producer dependency explicit for future
+	/// asynchronous delivery.
+	pub const fn ready_event(&self) -> Option<&Event> {
+		match &self.backing {
+			VideoFrameBacking::Native(frame) => Some(frame.ready()),
+			_ => None,
+		}
+	}
+
+	/// Retain native decoded storage until a GPU consumer completes.
+	///
+	/// Multiple consumers may register events from the same Engine; the latest
+	/// timeline point controls slot reuse. Dropping every frame clone declares
+	/// immediate reuse only when no consumer event was registered.
+	///
+	/// # Errors
+	///
+	/// Returns an error when this is not a native decoded frame, the event belongs
+	/// to another Engine or precedes producer readiness, or the native lease is no
+	/// longer active.
+	pub fn mark_consumed(&self, event: &Event) -> Result<()> {
+		match &self.backing {
+			VideoFrameBacking::Native(frame) => frame.mark_consumed(event),
+			_ => Err(Error::failed_precondition(
+				"consumer completion applies only to native decoded video frames",
+			)),
 		}
 	}
 
@@ -195,6 +338,19 @@ impl VideoFrame {
 	pub fn into_image(self) -> Option<Image> {
 		match self.backing {
 			VideoFrameBacking::PackedImage(image) => Some(image),
+			VideoFrameBacking::Texture(_)
+			| VideoFrameBacking::Native(_)
+			| VideoFrameBacking::PlanarYuv420 { .. } => None,
+		}
+	}
+
+	/// Consume the frame and return its render Texture backing when present.
+	pub fn into_texture(self) -> Option<Texture> {
+		match self.backing {
+			VideoFrameBacking::Texture(texture) => Some(texture),
+			VideoFrameBacking::PackedImage(_)
+			| VideoFrameBacking::Native(_)
+			| VideoFrameBacking::PlanarYuv420 { .. } => None,
 		}
 	}
 }
@@ -202,18 +358,31 @@ impl VideoFrame {
 #[derive(Clone)]
 enum VideoFrameBacking {
 	PackedImage(Image),
+	Texture(Texture),
+	Native(NativeDecodedFrame),
+	PlanarYuv420 {
+		bytes: Arc<[u8]>,
+		width: usize,
+		height: usize,
+	},
 }
 
 impl VideoFrameBacking {
 	fn width(&self) -> usize {
 		match self {
 			Self::PackedImage(image) => image.width(),
+			Self::Texture(texture) => texture.width(),
+			Self::Native(frame) => frame.extent().width as usize,
+			Self::PlanarYuv420 { width, .. } => *width,
 		}
 	}
 
 	fn height(&self) -> usize {
 		match self {
 			Self::PackedImage(image) => image.height(),
+			Self::Texture(texture) => texture.height(),
+			Self::Native(frame) => frame.extent().height as usize,
+			Self::PlanarYuv420 { height, .. } => *height,
 		}
 	}
 }

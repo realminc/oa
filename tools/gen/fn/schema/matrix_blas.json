@@ -28,7 +28,7 @@
         "effects": ["read_inputs", "write_output"],
         "mutated_inputs": [],
         "output_alias_inputs": [-1],
-        "differentiation": "none",
+        "differentiation": "reverse",
         "lowering": "compute_dispatch"
       },
       "test": {

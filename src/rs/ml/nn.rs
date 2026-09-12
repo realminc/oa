@@ -5,9 +5,11 @@ mod conv;
 mod dropout;
 mod embedding;
 mod ffn;
+mod flow;
 mod gru;
 mod layer_norm;
 mod linear;
+mod moe;
 mod pool;
 mod rms_norm;
 mod rnn;
@@ -18,6 +20,7 @@ mod swiglu;
 mod transformer;
 mod upsample;
 mod utility;
+mod vq;
 
 pub use activation::{Gelu, Relu, Silu};
 pub use attention::{AttentionBackend, AttentionMode, MultiHeadAttention};
@@ -26,9 +29,13 @@ pub use conv::{Conv1d, Conv2d, ConvTranspose1d, ConvTranspose2d};
 pub use dropout::Dropout;
 pub use embedding::Embedding;
 pub use ffn::Ffn;
+pub use flow::{
+	FlowDenoiser, FlowDenoiserConfig, FlowTimeEmbedding, FlowTransformer, FlowTransformerConfig,
+};
 pub use gru::{Gru, GruCell};
 pub use layer_norm::LayerNorm;
 pub use linear::Linear;
+pub use moe::{Moe, MoeRouteStats};
 pub use pool::{AdaptiveAvgPool2d, AvgPool2d, MaxPool2d};
 pub use rms_norm::RmsNorm;
 pub use rnn::{Rnn, RnnCell};
@@ -39,3 +46,6 @@ pub use swiglu::Swiglu;
 pub use transformer::{Transformer, TransformerBlock};
 pub use upsample::{Upsample, UpsampleMode};
 pub use utility::{Flatten, Identity};
+pub use vq::{
+	ResidualVectorQuantizer, ResidualVqResult, VectorQuantizer, VectorQuantizerConfig, VqResult,
+};

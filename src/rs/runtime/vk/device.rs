@@ -57,6 +57,9 @@ impl Device {
 		&self,
 	) -> Result<crate::video::VideoDeviceCapabilities> {
 		let video = self.inner.physical.video;
+		let decoder_available = self.inner.video_decode_queue.is_some()
+			&& video.decode_result_status_queries
+			&& (video.h264_decode || video.h265_decode || video.av1_decode || video.vp9_decode);
 
 		Ok(crate::video::VideoDeviceCapabilities {
 			decode_queue_family: video.decode_queue_family,
@@ -72,7 +75,7 @@ impl Device {
 			av1_encode: video.av1_encode,
 			video_queues_enabled: self.inner.video_decode_queue.is_some()
 				|| self.inner.video_encode_queue.is_some(),
-			decoder_sessions_available: false,
+			decoder_sessions_available: decoder_available,
 			encoder_sessions_available: false,
 		})
 	}
@@ -93,6 +96,24 @@ impl Device {
 		profile: crate::video::VideoDecodeProfile,
 	) -> Result<crate::video::VideoDecodeFormats> {
 		super::video::query_decode_formats(&self.inner._instance, &self.inner.physical, profile)
+	}
+
+	pub(in crate::runtime) fn video_encode_capabilities(
+		&self,
+		profile: crate::video::VideoEncodeProfile,
+	) -> Result<crate::video::VideoEncodeCapabilities> {
+		super::video::query_encode_capabilities(
+			&self.inner._instance,
+			&self.inner.physical,
+			profile,
+		)
+	}
+
+	pub(in crate::runtime) fn video_encode_formats(
+		&self,
+		profile: crate::video::VideoEncodeProfile,
+	) -> Result<crate::video::VideoEncodeFormats> {
+		super::video::query_encode_formats(&self.inner._instance, &self.inner.physical, profile)
 	}
 
 	pub(in crate::runtime) fn new(instance: &Instance, physical: PhysicalDevice) -> Result<Self> {
@@ -321,7 +342,6 @@ impl Device {
 		&self.inner._instance
 	}
 
-	#[cfg(test)]
 	pub(in crate::runtime) fn create_video_decode_session(
 		&self,
 		profile: crate::video::VideoDecodeProfile,
@@ -425,7 +445,6 @@ impl Device {
 		command_pool.record_empty(&self.inner.handle)
 	}
 
-	#[cfg(test)]
 	pub(in crate::runtime) fn record_compute_commands(
 		&self,
 		record: impl FnOnce(ash::vk::CommandBuffer) -> Result<()>,
@@ -442,7 +461,6 @@ impl Device {
 		self.record_video_decode(|_| Ok(()))
 	}
 
-	#[cfg(test)]
 	pub(in crate::runtime) fn record_video_decode(
 		&self,
 		record: impl FnOnce(ash::vk::CommandBuffer) -> Result<()>,

@@ -10,6 +10,7 @@ const SCHEMA: &str = "tools/gen/fn/schema/matrix_elemwise.json";
 const BLAS_SCHEMA: &str = "tools/gen/fn/schema/matrix_blas.json";
 const REDUCE_SCHEMA: &str = "tools/gen/fn/schema/matrix_reduce.json";
 const RNG_SCHEMA: &str = "tools/gen/fn/schema/matrix_rng.json";
+const INDEX_SCHEMA: &str = "tools/gen/fn/schema/matrix_index.json";
 const ML_SCHEMA: &str = "tools/gen/fn/schema/ml_training.json";
 const AUDIO_SCHEMA: &str = "tools/gen/fn/schema/audio.json";
 const CRYPTOGRAPHY_HASH_SCHEMA: &str = "tools/gen/fn/schema/cryptography_hash.json";
@@ -42,6 +43,7 @@ fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
 		BLAS_SCHEMA,
 		REDUCE_SCHEMA,
 		RNG_SCHEMA,
+		INDEX_SCHEMA,
 		ML_SCHEMA,
 		AUDIO_SCHEMA,
 		CRYPTOGRAPHY_HASH_SCHEMA,
@@ -98,6 +100,20 @@ fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
 				)?;
 			}
 		}
+		if let Some(lowerings) = operation["additional_lowering_variants"].as_array() {
+			for lowering in lowerings {
+				build_schema_shader(
+					lowering,
+					"matrix",
+					string_at(lowering, "dtype")?,
+					lowering
+						.get("workgroup_size")
+						.filter(|value| value.is_array())
+						.unwrap_or(workgroup_size),
+					&build,
+				)?;
+			}
+		}
 	}
 
 	let blas_schema: Value = serde_json::from_slice(&fs::read(BLAS_SCHEMA)?)?;
@@ -145,6 +161,28 @@ fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
 			.get("workgroup_size")
 			.filter(|value| value.is_array())
 			.unwrap_or(rng_workgroup_size);
+		build_schema_shader(
+			operation,
+			"matrix",
+			operation_dtype,
+			operation_workgroup_size,
+			&build,
+		)?;
+	}
+
+	let index_schema: Value = serde_json::from_slice(&fs::read(INDEX_SCHEMA)?)?;
+	let index_operations = array_at(&index_schema, "operations")?;
+	let index_dtype = string_at(&index_schema, "dtype")?;
+	let index_workgroup_size = &index_schema["workgroup_size"];
+	if index_operations.is_empty() {
+		return Err("matrix Index schema contains no operations".into());
+	}
+	for operation in index_operations {
+		let operation_dtype = operation["dtype"].as_str().unwrap_or(index_dtype);
+		let operation_workgroup_size = operation
+			.get("workgroup_size")
+			.filter(|value| value.is_array())
+			.unwrap_or(index_workgroup_size);
 		build_schema_shader(
 			operation,
 			"matrix",

@@ -13,11 +13,13 @@
       "source/cpp/lib/oa/core/shader/compute/rng/philoxUniformGraph.slang",
       "source/cpp/lib/oa/core/shader/compute/rng/philoxNormalGraph.slang",
       "source/cpp/lib/oa/core/shader/compute/rng/philoxGraphAdvance.slang",
+	  "source/cpp/lib/oa/core/shader/compute/flat/sampleDenseLogits.slang",
+	  "source/cpp/lib/oa/core/shader/compute/flat/sampleSortedLogits.slang",
 	  "source/cpp/lib/oa/core/fnmatrix/rng/fnMatrixRng.cpp",
 	  "source/cpp/lib/oa/ml/nn/dropout/dropout.cpp",
       "tools/gen/fn/schema/core/coreFnMatrixRng.toml"
     ],
-	"reason": "Preserves Philox4x32-10, Box-Muller, and inverted Dropout math while retaining the eager operation's complete 64-bit seed and distribution parameters in replay variants. Dropout is fused into one physical pass instead of materializing the donor composite's random, comparison, and scaling intermediates."
+	"reason": "Preserves Philox4x32-10, Box-Muller, inverted Dropout math, and SampleLogits greedy/dense/top-k/top-p routes while retaining complete 64-bit seeds and distribution parameters in replay variants. Dropout is fused into one physical pass instead of materializing the donor composite's random, comparison, and scaling intermediates. The greedy SampleLogits candidate is a direct specialization of the donor TopK(k=1) first-maximum rule so the one semantic operation does not publish an unused values result; compatibility IDs 390-392 avoid occupied donor-local identities."
   },
   "operations": [
     {
@@ -172,6 +174,75 @@
         ["input_index", "uint32"], ["output_index", "uint32"],
         ["element_count", "uint32"], ["seed_low", "uint32"],
         ["seed_high", "uint32"], ["offset", "uint32"], ["probability", "float32"]
+      ]
+    },
+    {
+      "stable_id": 390,
+      "name": "sample_logits",
+      "kernel_id": "MatrixSampleLogitsGreedyF32",
+      "source": "src/slang/matrix/rng/sample_logits_greedy.slang",
+      "variant": "greedy",
+      "semantic_attributes": [
+        ["temperature", "float"], ["top_k", "signed_integer"],
+        ["top_p", "float"], ["seed", "unsigned_integer"]
+      ],
+      "contract": {
+        "input_kinds": ["matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "explicit",
+        "dtype_rule": "f32_logits_i32_indices",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "physical_write": {
+        "writes": [
+          {"binding": 1, "domain": "rows", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"}
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["logits_index", "uint32"], ["output_index", "uint32"],
+        ["rows", "uint32"], ["vocabulary", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 391,
+      "name": "sample_logits_dense",
+      "semantic_operation": "sample_logits",
+      "kernel_id": "MatrixSampleLogitsDenseF32",
+      "source": "src/slang/matrix/rng/sample_logits_dense.slang",
+      "variant": "dense",
+      "physical_write": {
+        "writes": [
+          {"binding": 2, "domain": "rows", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"}
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["logits_index", "uint32"], ["random_index", "uint32"], ["output_index", "uint32"],
+        ["rows", "uint32"], ["vocabulary", "uint32"], ["temperature", "float32"]
+      ]
+    },
+    {
+      "stable_id": 392,
+      "name": "sample_logits_sorted",
+      "semantic_operation": "sample_logits",
+      "kernel_id": "MatrixSampleLogitsSortedF32",
+      "source": "src/slang/matrix/rng/sample_logits_sorted.slang",
+      "variant": "top_k_top_p",
+      "physical_write": {
+        "writes": [
+          {"binding": 3, "domain": "rows", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"}
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["values_index", "uint32"], ["indices_index", "uint32"],
+        ["random_index", "uint32"], ["output_index", "uint32"],
+        ["rows", "uint32"], ["candidate_count", "uint32"],
+        ["temperature", "float32"], ["top_p", "float32"]
       ]
     },
     {

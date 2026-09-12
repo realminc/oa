@@ -40,6 +40,139 @@ pub struct H265ProfileTierLevel {
 	pub frame_only_constraint: bool,
 }
 
+/// H.265 decoded-picture-buffer limits for every temporal sub-layer.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct H265DecodedPictureBuffer {
+	pub max_decoded_picture_buffering_minus_1: [u32; MAX_SUB_LAYERS],
+	pub max_num_reorder_pictures: [u32; MAX_SUB_LAYERS],
+	pub max_latency_increase_plus_1: [u32; MAX_SUB_LAYERS],
+}
+
+/// One coded-picture-buffer entry in an H.265 HRD sub-layer.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct H265CpbEntry {
+	pub bit_rate_value_minus_1: u32,
+	pub cpb_size_value_minus_1: u32,
+	pub cpb_size_du_value_minus_1: u32,
+	pub bit_rate_du_value_minus_1: u32,
+	pub constant_bit_rate: bool,
+}
+
+/// H.265 HRD syntax for one temporal sub-layer.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct H265SubLayerHrdParameters {
+	pub fixed_picture_rate_general: bool,
+	pub fixed_picture_rate_within_cvs: bool,
+	pub low_delay: bool,
+	pub elemental_duration_in_tc_minus_1: u32,
+	pub nal_entries: Vec<H265CpbEntry>,
+	pub vcl_entries: Vec<H265CpbEntry>,
+}
+
+/// H.265 hypothetical-reference-decoder parameters.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct H265HrdParameters {
+	pub nal_parameters_present: bool,
+	pub vcl_parameters_present: bool,
+	pub sub_picture_parameters_present: bool,
+	pub sub_picture_cpb_parameters_in_picture_timing_sei: bool,
+	pub tick_divisor_minus_2: u8,
+	pub du_cpb_removal_delay_increment_length_minus_1: u8,
+	pub dpb_output_delay_du_length_minus_1: u8,
+	pub bit_rate_scale: u8,
+	pub cpb_size_scale: u8,
+	pub cpb_size_du_scale: u8,
+	pub initial_cpb_removal_delay_length_minus_1: u8,
+	pub au_cpb_removal_delay_length_minus_1: u8,
+	pub dpb_output_delay_length_minus_1: u8,
+	pub sub_layers: Vec<H265SubLayerHrdParameters>,
+}
+
+/// One VPS HRD table and the layer set to which it applies.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct H265VpsHrdParameters {
+	pub layer_set_index: u32,
+	pub parameters: H265HrdParameters,
+}
+
+/// H.265 timing syntax shared by VPS and VUI records.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct H265TimingInfo {
+	pub num_units_in_tick: u32,
+	pub time_scale: u32,
+	pub num_ticks_poc_diff_one_minus_1: Option<u32>,
+}
+
+/// H.265 pulse-code-modulation syntax retained by an SPS.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct H265PcmParameters {
+	pub sample_bit_depth_luma_minus_1: u8,
+	pub sample_bit_depth_chroma_minus_1: u8,
+	pub log2_min_luma_coding_block_size_minus_3: u32,
+	pub log2_diff_max_min_luma_coding_block_size: u32,
+	pub loop_filter_disabled: bool,
+}
+
+/// H.265 sample-aspect-ratio syntax.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct H265AspectRatio {
+	pub idc: u8,
+	pub sar_width: u16,
+	pub sar_height: u16,
+}
+
+/// H.265 colour-description syntax.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct H265ColourDescription {
+	pub colour_primaries: u8,
+	pub transfer_characteristics: u8,
+	pub matrix_coefficients: u8,
+}
+
+/// H.265 video-signal syntax.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct H265VideoSignal {
+	pub video_format: u8,
+	pub full_range: bool,
+	pub colour_description: Option<H265ColourDescription>,
+}
+
+/// H.265 chroma-sample-location syntax.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct H265ChromaLocation {
+	pub top_field: u32,
+	pub bottom_field: u32,
+}
+
+/// H.265 VUI bitstream restrictions.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct H265BitstreamRestriction {
+	pub tiles_fixed_structure: bool,
+	pub motion_vectors_over_picture_boundaries: bool,
+	pub restricted_reference_picture_lists: bool,
+	pub min_spatial_segmentation_idc: u32,
+	pub max_bytes_per_picture_denom: u32,
+	pub max_bits_per_min_coding_unit_denom: u32,
+	pub log2_max_motion_vector_length_horizontal: u32,
+	pub log2_max_motion_vector_length_vertical: u32,
+}
+
+/// H.265 video-usability information retained by an SPS.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct H265VuiParameters {
+	pub aspect_ratio: Option<H265AspectRatio>,
+	pub overscan_appropriate: Option<bool>,
+	pub video_signal: Option<H265VideoSignal>,
+	pub chroma_location: Option<H265ChromaLocation>,
+	pub neutral_chroma_indication: bool,
+	pub field_sequence: bool,
+	pub frame_field_info_present: bool,
+	pub default_display_window: Option<[u32; 4]>,
+	pub timing: Option<H265TimingInfo>,
+	pub hrd: Option<H265HrdParameters>,
+	pub bitstream_restriction: Option<H265BitstreamRestriction>,
+}
+
 /// Fully resolved H.265 scaling matrices in raster order.
 ///
 /// Prediction-mode references and diagonal coefficient walks are resolved by
@@ -115,6 +248,12 @@ pub struct H265VideoParameterSet {
 	pub max_sub_layers_minus_1: u32,
 	pub temporal_id_nesting: bool,
 	pub profile_tier_level: H265ProfileTierLevel,
+	pub sub_layer_ordering_info_present: bool,
+	pub decoded_picture_buffer: H265DecodedPictureBuffer,
+	pub max_layer_id: u8,
+	pub layer_id_included: Vec<Vec<bool>>,
+	pub timing: Option<H265TimingInfo>,
+	pub hrd_parameters: Vec<H265VpsHrdParameters>,
 }
 
 /// Parsed H.265 sequence parameter set required by decode-session setup.
@@ -123,6 +262,7 @@ pub struct H265SequenceParameterSet {
 	pub id: u32,
 	pub video_parameter_set_id: u32,
 	pub max_sub_layers_minus_1: u32,
+	pub profile_tier_level: H265ProfileTierLevel,
 	pub chroma_format_idc: u32,
 	pub width: u32,
 	pub height: u32,
@@ -146,13 +286,16 @@ pub struct H265SequenceParameterSet {
 	pub scaling_lists: Option<H265ScalingLists>,
 	pub asymmetric_motion_partitions_enabled: bool,
 	pub sample_adaptive_offset_enabled: bool,
+	/// Compatibility summary; equivalent to `pcm.is_some()`.
 	pub pcm_enabled: bool,
+	pub pcm: Option<H265PcmParameters>,
 	pub long_term_reference_pictures: Vec<H265LongTermReferencePicture>,
 	pub temporal_mvp_enabled: bool,
 	pub strong_intra_smoothing_enabled: bool,
 	pub max_decoded_picture_buffering_minus_1: [u32; MAX_SUB_LAYERS],
 	pub max_num_reorder_pictures: [u32; MAX_SUB_LAYERS],
 	pub max_latency_increase_plus_1: [u32; MAX_SUB_LAYERS],
+	pub vui: Option<H265VuiParameters>,
 }
 
 /// Parsed H.265 picture parameter set required by decode-session setup.
@@ -172,6 +315,8 @@ pub struct H265PictureParameterSet {
 	pub log2_parallel_merge_level_minus_2: u32,
 	pub num_tile_columns_minus_1: u32,
 	pub num_tile_rows_minus_1: u32,
+	pub column_width_minus_1: Vec<u32>,
+	pub row_height_minus_1: Vec<u32>,
 	pub dependent_slice_segments_enabled: bool,
 	pub output_flag_present: bool,
 	pub sign_data_hiding_enabled: bool,
@@ -244,11 +389,74 @@ pub fn parse_h265_vps(nal: &[u8]) -> Result<H265VideoParameterSet> {
 	let temporal_id_nesting = bits.read_bits(1)? != 0;
 	bits.skip_bits(16)?;
 	let profile_tier_level = read_profile_tier_level(&mut bits, max_sub_layers_minus_1)?;
+	let sub_layer_ordering_info_present = bits.read_bits(1)? != 0;
+	let decoded_picture_buffer = parse_decoded_picture_buffer(
+		&mut bits,
+		max_sub_layers_minus_1,
+		sub_layer_ordering_info_present,
+	)?;
+	let max_layer_id = bits.read_bits(6)? as u8;
+	let num_layer_sets_minus_1 = bits.read_ue()?;
+	if num_layer_sets_minus_1 > 1023 {
+		return Err(Error::data_loss("H.265 VPS layer-set count exceeds 1024"));
+	}
+	let mut layer_id_included = Vec::new();
+	for _ in 0..num_layer_sets_minus_1 {
+		let mut layer_set = Vec::with_capacity(usize::from(max_layer_id) + 1);
+		for _ in 0..=max_layer_id {
+			layer_set.push(bits.read_bits(1)? != 0);
+		}
+		layer_id_included.push(layer_set);
+	}
+	let timing = if bits.read_bits(1)? != 0 {
+		Some(parse_h265_timing(&mut bits)?)
+	} else {
+		None
+	};
+	let mut hrd_parameters = Vec::new();
+	if timing.is_some() {
+		let count = bits.read_ue()?;
+		if count > 1024 {
+			return Err(Error::data_loss("H.265 VPS HRD count exceeds 1024"));
+		}
+		for index in 0..count {
+			let layer_set_index = bits.read_ue()?;
+			if layer_set_index > num_layer_sets_minus_1 {
+				return Err(Error::data_loss(
+					"H.265 VPS HRD references an absent layer set",
+				));
+			}
+			let common_present = index == 0 || bits.read_bits(1)? != 0;
+			let inherited = hrd_parameters
+				.last()
+				.map(|previous: &H265VpsHrdParameters| &previous.parameters);
+			hrd_parameters.push(H265VpsHrdParameters {
+				layer_set_index,
+				parameters: parse_h265_hrd(
+					&mut bits,
+					common_present,
+					max_sub_layers_minus_1,
+					inherited,
+				)?,
+			});
+		}
+	}
+	if bits.read_bits(1)? != 0 {
+		return Err(Error::missing_capability(
+			"H.265 multi-layer VPS extensions are not supported",
+		));
+	}
 	Ok(H265VideoParameterSet {
 		id,
 		max_sub_layers_minus_1,
 		temporal_id_nesting,
 		profile_tier_level,
+		sub_layer_ordering_info_present,
+		decoded_picture_buffer,
+		max_layer_id,
+		layer_id_included,
+		timing,
+		hrd_parameters,
 	})
 }
 
@@ -262,7 +470,7 @@ pub fn parse_h265_sps(nal: &[u8]) -> Result<H265SequenceParameterSet> {
 	let max_sub_layers_minus_1 = bits.read_bits(3)?;
 	validate_sub_layers(max_sub_layers_minus_1)?;
 	let temporal_id_nesting = bits.read_bits(1)? != 0;
-	read_profile_tier_level(&mut bits, max_sub_layers_minus_1)?;
+	let profile_tier_level = read_profile_tier_level(&mut bits, max_sub_layers_minus_1)?;
 	let id = bits.read_ue()?;
 	if id > 15 {
 		return Err(Error::data_loss("H.265 SPS identifier exceeds 15"));
@@ -309,27 +517,16 @@ pub fn parse_h265_sps(nal: &[u8]) -> Result<H265SequenceParameterSet> {
 	let bit_depth_chroma_minus_8 = bits.read_ue()?;
 	let log2_max_pic_order_count_lsb_minus_4 = bits.read_ue()?;
 	let sub_layer_ordering_info_present = bits.read_bits(1)? != 0;
-	let ordering_start = if sub_layer_ordering_info_present {
-		0
-	} else {
-		max_sub_layers_minus_1 as usize
-	};
-	let mut max_decoded_picture_buffering_minus_1 = [0; MAX_SUB_LAYERS];
-	let mut max_num_reorder_pictures = [0; MAX_SUB_LAYERS];
-	let mut max_latency_increase_plus_1 = [0; MAX_SUB_LAYERS];
-	for index in ordering_start..=max_sub_layers_minus_1 as usize {
-		max_decoded_picture_buffering_minus_1[index] = bits.read_ue()?;
-		max_num_reorder_pictures[index] = bits.read_ue()?;
-		max_latency_increase_plus_1[index] = bits.read_ue()?;
-	}
-	if !sub_layer_ordering_info_present {
-		for index in 0..ordering_start {
-			max_decoded_picture_buffering_minus_1[index] =
-				max_decoded_picture_buffering_minus_1[ordering_start];
-			max_num_reorder_pictures[index] = max_num_reorder_pictures[ordering_start];
-			max_latency_increase_plus_1[index] = max_latency_increase_plus_1[ordering_start];
-		}
-	}
+	let decoded_picture_buffer = parse_decoded_picture_buffer(
+		&mut bits,
+		max_sub_layers_minus_1,
+		sub_layer_ordering_info_present,
+	)?;
+	let H265DecodedPictureBuffer {
+		max_decoded_picture_buffering_minus_1,
+		max_num_reorder_pictures,
+		max_latency_increase_plus_1,
+	} = decoded_picture_buffer;
 	let log2_min_luma_coding_block_size_minus_3 = bits.read_ue()?;
 	let log2_diff_max_min_luma_coding_block_size = bits.read_ue()?;
 	let log2_min_luma_transform_block_size_minus_2 = bits.read_ue()?;
@@ -343,13 +540,17 @@ pub fn parse_h265_sps(nal: &[u8]) -> Result<H265SequenceParameterSet> {
 		.transpose()?;
 	let asymmetric_motion_partitions_enabled = bits.read_bits(1)? != 0;
 	let sample_adaptive_offset_enabled = bits.read_bits(1)? != 0;
-	let pcm_enabled = bits.read_bits(1)? != 0;
-	if pcm_enabled {
-		bits.skip_bits(8)?;
-		bits.read_ue()?;
-		bits.read_ue()?;
-		bits.skip_bits(1)?;
-	}
+	let pcm = if bits.read_bits(1)? != 0 {
+		Some(H265PcmParameters {
+			sample_bit_depth_luma_minus_1: bits.read_bits(4)? as u8,
+			sample_bit_depth_chroma_minus_1: bits.read_bits(4)? as u8,
+			log2_min_luma_coding_block_size_minus_3: bits.read_ue()?,
+			log2_diff_max_min_luma_coding_block_size: bits.read_ue()?,
+			loop_filter_disabled: bits.read_bits(1)? != 0,
+		})
+	} else {
+		None
+	};
 	let num_short_term_reference_picture_sets = bits.read_ue()?;
 	let count = num_short_term_reference_picture_sets as usize;
 	if count > MAX_SHORT_TERM_REFERENCE_SETS {
@@ -407,10 +608,31 @@ pub fn parse_h265_sps(nal: &[u8]) -> Result<H265SequenceParameterSet> {
 	}
 	let temporal_mvp_enabled = bits.read_bits(1)? != 0;
 	let strong_intra_smoothing_enabled = bits.read_bits(1)? != 0;
+	let vui = if bits.read_bits(1)? != 0 {
+		Some(parse_h265_vui(&mut bits, max_sub_layers_minus_1)?)
+	} else {
+		None
+	};
+	if bits.read_bits(1)? != 0 {
+		let range_extension = bits.read_bits(1)? != 0;
+		let multilayer_extension = bits.read_bits(1)? != 0;
+		let three_d_extension = bits.read_bits(1)? != 0;
+		let scc_extension = bits.read_bits(1)? != 0;
+		bits.skip_bits(4)?;
+		if range_extension || multilayer_extension || three_d_extension || scc_extension {
+			return Err(Error::missing_capability(
+				"H.265 SPS range, multilayer, 3D, and SCC extensions are not supported",
+			));
+		}
+		while bits.more_rbsp_data() {
+			bits.read_bits(1)?;
+		}
+	}
 	Ok(H265SequenceParameterSet {
 		id,
 		video_parameter_set_id,
 		max_sub_layers_minus_1,
+		profile_tier_level,
 		chroma_format_idc,
 		width,
 		height,
@@ -434,13 +656,15 @@ pub fn parse_h265_sps(nal: &[u8]) -> Result<H265SequenceParameterSet> {
 		scaling_lists,
 		asymmetric_motion_partitions_enabled,
 		sample_adaptive_offset_enabled,
-		pcm_enabled,
+		pcm_enabled: pcm.is_some(),
+		pcm,
 		long_term_reference_pictures,
 		temporal_mvp_enabled,
 		strong_intra_smoothing_enabled,
 		max_decoded_picture_buffering_minus_1,
 		max_num_reorder_pictures,
 		max_latency_increase_plus_1,
+		vui,
 	})
 }
 
@@ -482,10 +706,12 @@ pub fn parse_h265_pps(nal: &[u8]) -> Result<H265PictureParameterSet> {
 	let (mut num_tile_columns_minus_1, mut num_tile_rows_minus_1) = (0, 0);
 	let mut uniform_spacing = true;
 	let mut loop_filter_across_tiles_enabled = false;
+	let mut column_width_minus_1 = Vec::new();
+	let mut row_height_minus_1 = Vec::new();
 	if tiles_enabled {
 		num_tile_columns_minus_1 = bits.read_ue()?;
 		num_tile_rows_minus_1 = bits.read_ue()?;
-		if num_tile_columns_minus_1 > 1024 || num_tile_rows_minus_1 > 1024 {
+		if num_tile_columns_minus_1 > 19 || num_tile_rows_minus_1 > 21 {
 			return Err(Error::data_loss(
 				"H.265 PPS tile count exceeds safety bound",
 			));
@@ -493,10 +719,10 @@ pub fn parse_h265_pps(nal: &[u8]) -> Result<H265PictureParameterSet> {
 		uniform_spacing = bits.read_bits(1)? != 0;
 		if !uniform_spacing {
 			for _ in 0..num_tile_columns_minus_1 {
-				bits.read_ue()?;
+				column_width_minus_1.push(bits.read_ue()?);
 			}
 			for _ in 0..num_tile_rows_minus_1 {
-				bits.read_ue()?;
+				row_height_minus_1.push(bits.read_ue()?);
 			}
 		}
 		loop_filter_across_tiles_enabled = bits.read_bits(1)? != 0;
@@ -521,6 +747,11 @@ pub fn parse_h265_pps(nal: &[u8]) -> Result<H265PictureParameterSet> {
 	let log2_parallel_merge_level_minus_2 = bits.read_ue()?;
 	let slice_segment_header_extension_present = bits.read_bits(1)? != 0;
 	let extension_present = bits.read_bits(1)? != 0;
+	if extension_present {
+		return Err(Error::missing_capability(
+			"H.265 PPS range, multilayer, 3D, and SCC extensions are not supported",
+		));
+	}
 	Ok(H265PictureParameterSet {
 		id,
 		sequence_parameter_set_id,
@@ -536,6 +767,8 @@ pub fn parse_h265_pps(nal: &[u8]) -> Result<H265PictureParameterSet> {
 		log2_parallel_merge_level_minus_2,
 		num_tile_columns_minus_1,
 		num_tile_rows_minus_1,
+		column_width_minus_1,
+		row_height_minus_1,
 		dependent_slice_segments_enabled,
 		output_flag_present,
 		sign_data_hiding_enabled,
@@ -662,7 +895,10 @@ pub fn parse_h265_slice_header(
 		picture_order_count_lsb = Some(bits.read_bits(poc_bits as usize)?);
 		let reference_set_count = u32::try_from(sps.short_term_reference_picture_sets.len())
 			.map_err(|_| Error::data_loss("H.265 SPS reference-set count exceeds u32"))?;
-		short_term_reference_picture_set_sps = reference_set_count != 0 && bits.read_bits(1)? != 0;
+		// `short_term_ref_pic_set_sps_flag` is present for every non-IDR
+		// picture. A zero SPS-set count only makes its true value invalid; it does
+		// not remove the flag bit from the slice header.
+		short_term_reference_picture_set_sps = bits.read_bits(1)? != 0;
 		if short_term_reference_picture_set_sps {
 			if reference_set_count == 0 {
 				return Err(Error::data_loss(
@@ -761,6 +997,264 @@ const fn ceil_log2(value: u32) -> u32 {
 	} else {
 		u32::BITS - (value - 1).leading_zeros()
 	}
+}
+
+fn parse_decoded_picture_buffer(
+	bits: &mut BitReader<'_>,
+	max_sub_layers_minus_1: u32,
+	ordering_info_present: bool,
+) -> Result<H265DecodedPictureBuffer> {
+	let start = if ordering_info_present {
+		0
+	} else {
+		max_sub_layers_minus_1 as usize
+	};
+	let mut result = H265DecodedPictureBuffer::default();
+	for index in start..=max_sub_layers_minus_1 as usize {
+		result.max_decoded_picture_buffering_minus_1[index] = bits.read_ue()?;
+		result.max_num_reorder_pictures[index] = bits.read_ue()?;
+		result.max_latency_increase_plus_1[index] = bits.read_ue()?;
+		if result.max_num_reorder_pictures[index]
+			> result.max_decoded_picture_buffering_minus_1[index]
+		{
+			return Err(Error::data_loss(
+				"H.265 reorder count exceeds decoded-picture-buffer capacity",
+			));
+		}
+	}
+	if !ordering_info_present {
+		for index in 0..start {
+			result.max_decoded_picture_buffering_minus_1[index] =
+				result.max_decoded_picture_buffering_minus_1[start];
+			result.max_num_reorder_pictures[index] = result.max_num_reorder_pictures[start];
+			result.max_latency_increase_plus_1[index] = result.max_latency_increase_plus_1[start];
+		}
+	}
+	Ok(result)
+}
+
+fn parse_h265_timing(bits: &mut BitReader<'_>) -> Result<H265TimingInfo> {
+	let num_units_in_tick = bits.read_bits(32)?;
+	let time_scale = bits.read_bits(32)?;
+	let num_ticks_poc_diff_one_minus_1 = if bits.read_bits(1)? != 0 {
+		Some(bits.read_ue()?)
+	} else {
+		None
+	};
+	Ok(H265TimingInfo {
+		num_units_in_tick,
+		time_scale,
+		num_ticks_poc_diff_one_minus_1,
+	})
+}
+
+fn parse_h265_hrd(
+	bits: &mut BitReader<'_>,
+	common_present: bool,
+	max_sub_layers_minus_1: u32,
+	inherited: Option<&H265HrdParameters>,
+) -> Result<H265HrdParameters> {
+	let mut result = if common_present {
+		H265HrdParameters::default()
+	} else {
+		let mut inherited = inherited.cloned().ok_or_else(|| {
+			Error::data_loss("H.265 HRD omits common syntax without a preceding table")
+		})?;
+		inherited.sub_layers.clear();
+		inherited
+	};
+	if common_present {
+		result.nal_parameters_present = bits.read_bits(1)? != 0;
+		result.vcl_parameters_present = bits.read_bits(1)? != 0;
+		if result.nal_parameters_present || result.vcl_parameters_present {
+			result.sub_picture_parameters_present = bits.read_bits(1)? != 0;
+			if result.sub_picture_parameters_present {
+				result.tick_divisor_minus_2 = bits.read_bits(8)? as u8;
+				result.du_cpb_removal_delay_increment_length_minus_1 = bits.read_bits(5)? as u8;
+				result.sub_picture_cpb_parameters_in_picture_timing_sei = bits.read_bits(1)? != 0;
+				result.dpb_output_delay_du_length_minus_1 = bits.read_bits(5)? as u8;
+			}
+			result.bit_rate_scale = bits.read_bits(4)? as u8;
+			result.cpb_size_scale = bits.read_bits(4)? as u8;
+			if result.sub_picture_parameters_present {
+				result.cpb_size_du_scale = bits.read_bits(4)? as u8;
+			}
+			result.initial_cpb_removal_delay_length_minus_1 = bits.read_bits(5)? as u8;
+			result.au_cpb_removal_delay_length_minus_1 = bits.read_bits(5)? as u8;
+			result.dpb_output_delay_length_minus_1 = bits.read_bits(5)? as u8;
+		}
+	}
+	for _ in 0..=max_sub_layers_minus_1 {
+		let fixed_picture_rate_general = bits.read_bits(1)? != 0;
+		let fixed_picture_rate_within_cvs = fixed_picture_rate_general || bits.read_bits(1)? != 0;
+		let elemental_duration_in_tc_minus_1 = if fixed_picture_rate_within_cvs {
+			bits.read_ue()?
+		} else {
+			0
+		};
+		let low_delay = !fixed_picture_rate_within_cvs && bits.read_bits(1)? != 0;
+		let cpb_count_minus_1 = if low_delay { 0 } else { bits.read_ue()? };
+		if cpb_count_minus_1 > 31 {
+			return Err(Error::data_loss("H.265 HRD CPB count exceeds 32"));
+		}
+		let nal_entries = if result.nal_parameters_present {
+			parse_h265_cpb_entries(
+				bits,
+				cpb_count_minus_1,
+				result.sub_picture_parameters_present,
+			)?
+		} else {
+			Vec::new()
+		};
+		let vcl_entries = if result.vcl_parameters_present {
+			parse_h265_cpb_entries(
+				bits,
+				cpb_count_minus_1,
+				result.sub_picture_parameters_present,
+			)?
+		} else {
+			Vec::new()
+		};
+		result.sub_layers.push(H265SubLayerHrdParameters {
+			fixed_picture_rate_general,
+			fixed_picture_rate_within_cvs,
+			low_delay,
+			elemental_duration_in_tc_minus_1,
+			nal_entries,
+			vcl_entries,
+		});
+	}
+	Ok(result)
+}
+
+fn parse_h265_cpb_entries(
+	bits: &mut BitReader<'_>,
+	cpb_count_minus_1: u32,
+	sub_picture_parameters_present: bool,
+) -> Result<Vec<H265CpbEntry>> {
+	let mut entries = Vec::with_capacity(cpb_count_minus_1 as usize + 1);
+	for _ in 0..=cpb_count_minus_1 {
+		let bit_rate_value_minus_1 = bits.read_ue()?;
+		let cpb_size_value_minus_1 = bits.read_ue()?;
+		let (cpb_size_du_value_minus_1, bit_rate_du_value_minus_1) =
+			if sub_picture_parameters_present {
+				(bits.read_ue()?, bits.read_ue()?)
+			} else {
+				(0, 0)
+			};
+		entries.push(H265CpbEntry {
+			bit_rate_value_minus_1,
+			cpb_size_value_minus_1,
+			cpb_size_du_value_minus_1,
+			bit_rate_du_value_minus_1,
+			constant_bit_rate: bits.read_bits(1)? != 0,
+		});
+	}
+	Ok(entries)
+}
+
+fn parse_h265_vui(
+	bits: &mut BitReader<'_>,
+	max_sub_layers_minus_1: u32,
+) -> Result<H265VuiParameters> {
+	let aspect_ratio = if bits.read_bits(1)? != 0 {
+		let idc = bits.read_bits(8)? as u8;
+		let (sar_width, sar_height) = if idc == 255 {
+			(bits.read_bits(16)? as u16, bits.read_bits(16)? as u16)
+		} else {
+			(0, 0)
+		};
+		Some(H265AspectRatio {
+			idc,
+			sar_width,
+			sar_height,
+		})
+	} else {
+		None
+	};
+	let overscan_appropriate = if bits.read_bits(1)? != 0 {
+		Some(bits.read_bits(1)? != 0)
+	} else {
+		None
+	};
+	let video_signal = if bits.read_bits(1)? != 0 {
+		let video_format = bits.read_bits(3)? as u8;
+		let full_range = bits.read_bits(1)? != 0;
+		let colour_description = if bits.read_bits(1)? != 0 {
+			Some(H265ColourDescription {
+				colour_primaries: bits.read_bits(8)? as u8,
+				transfer_characteristics: bits.read_bits(8)? as u8,
+				matrix_coefficients: bits.read_bits(8)? as u8,
+			})
+		} else {
+			None
+		};
+		Some(H265VideoSignal {
+			video_format,
+			full_range,
+			colour_description,
+		})
+	} else {
+		None
+	};
+	let chroma_location = if bits.read_bits(1)? != 0 {
+		Some(H265ChromaLocation {
+			top_field: bits.read_ue()?,
+			bottom_field: bits.read_ue()?,
+		})
+	} else {
+		None
+	};
+	let neutral_chroma_indication = bits.read_bits(1)? != 0;
+	let field_sequence = bits.read_bits(1)? != 0;
+	let frame_field_info_present = bits.read_bits(1)? != 0;
+	let default_display_window = if bits.read_bits(1)? != 0 {
+		Some([
+			bits.read_ue()?,
+			bits.read_ue()?,
+			bits.read_ue()?,
+			bits.read_ue()?,
+		])
+	} else {
+		None
+	};
+	let timing = if bits.read_bits(1)? != 0 {
+		Some(parse_h265_timing(bits)?)
+	} else {
+		None
+	};
+	let hrd = if timing.is_some() && bits.read_bits(1)? != 0 {
+		Some(parse_h265_hrd(bits, true, max_sub_layers_minus_1, None)?)
+	} else {
+		None
+	};
+	let bitstream_restriction = if bits.read_bits(1)? != 0 {
+		Some(H265BitstreamRestriction {
+			tiles_fixed_structure: bits.read_bits(1)? != 0,
+			motion_vectors_over_picture_boundaries: bits.read_bits(1)? != 0,
+			restricted_reference_picture_lists: bits.read_bits(1)? != 0,
+			min_spatial_segmentation_idc: bits.read_ue()?,
+			max_bytes_per_picture_denom: bits.read_ue()?,
+			max_bits_per_min_coding_unit_denom: bits.read_ue()?,
+			log2_max_motion_vector_length_horizontal: bits.read_ue()?,
+			log2_max_motion_vector_length_vertical: bits.read_ue()?,
+		})
+	} else {
+		None
+	};
+	Ok(H265VuiParameters {
+		aspect_ratio,
+		overscan_appropriate,
+		video_signal,
+		chroma_location,
+		neutral_chroma_indication,
+		field_sequence,
+		frame_field_info_present,
+		default_display_window,
+		timing,
+		hrd,
+		bitstream_restriction,
+	})
 }
 
 fn read_profile_tier_level(bits: &mut BitReader<'_>, layers: u32) -> Result<H265ProfileTierLevel> {
@@ -1095,9 +1589,54 @@ fn validate_sub_layers(value: u32) -> Result<()> {
 mod tests {
 	use super::{
 		BitReader, H265_DEFAULT_SCALING_LIST_INTER, H265_DEFAULT_SCALING_LIST_INTRA,
-		H265_DIAGONAL_SCAN_4X4_X, H265_DIAGONAL_SCAN_4X4_Y, parse_h265_scaling_lists,
-		parse_short_term_reference_picture_set,
+		H265_DIAGONAL_SCAN_4X4_X, H265_DIAGONAL_SCAN_4X4_Y, parse_h265_hrd,
+		parse_h265_scaling_lists, parse_short_term_reference_picture_set,
 	};
+
+	#[test]
+	fn hrd_parser_retains_sub_picture_cpb_syntax() -> crate::Result<()> {
+		let mut syntax = vec![true, false, true];
+		push_bits(&mut syntax, 17, 8);
+		push_bits(&mut syntax, 6, 5);
+		syntax.push(true);
+		push_bits(&mut syntax, 7, 5);
+		push_bits(&mut syntax, 3, 4);
+		push_bits(&mut syntax, 4, 4);
+		push_bits(&mut syntax, 5, 4);
+		push_bits(&mut syntax, 8, 5);
+		push_bits(&mut syntax, 9, 5);
+		push_bits(&mut syntax, 10, 5);
+		syntax.push(true);
+		push_ue(&mut syntax, 2);
+		push_ue(&mut syntax, 1);
+		for (bit_rate, cpb_size, cpb_size_du, bit_rate_du, cbr) in
+			[(10, 20, 30, 40, true), (11, 21, 31, 41, false)]
+		{
+			push_ue(&mut syntax, bit_rate);
+			push_ue(&mut syntax, cpb_size);
+			push_ue(&mut syntax, cpb_size_du);
+			push_ue(&mut syntax, bit_rate_du);
+			syntax.push(cbr);
+		}
+		let bytes = pack_bits(&syntax);
+		let mut bits = BitReader::new(&bytes);
+		let hrd = parse_h265_hrd(&mut bits, true, 0, None)?;
+		assert!(hrd.nal_parameters_present);
+		assert!(!hrd.vcl_parameters_present);
+		assert!(hrd.sub_picture_parameters_present);
+		assert_eq!(hrd.tick_divisor_minus_2, 17);
+		assert_eq!(hrd.bit_rate_scale, 3);
+		assert_eq!(hrd.sub_layers.len(), 1);
+		assert!(hrd.sub_layers[0].fixed_picture_rate_general);
+		assert_eq!(hrd.sub_layers[0].elemental_duration_in_tc_minus_1, 2);
+		assert_eq!(hrd.sub_layers[0].nal_entries.len(), 2);
+		assert_eq!(
+			hrd.sub_layers[0].nal_entries[1].bit_rate_du_value_minus_1,
+			41
+		);
+		assert!(!hrd.sub_layers[0].nal_entries[1].constant_bit_rate);
+		Ok(())
+	}
 
 	#[test]
 	fn scaling_lists_resolve_defaults_predictions_and_diagonal_order() -> crate::Result<()> {
@@ -1206,6 +1745,12 @@ mod tests {
 			value.unsigned_abs() * 2
 		};
 		push_ue(bits, code);
+	}
+
+	fn push_bits(bits: &mut Vec<bool>, value: u32, width: u32) {
+		for shift in (0..width).rev() {
+			bits.push(value & (1 << shift) != 0);
+		}
 	}
 
 	fn pack_bits(bits: &[bool]) -> Vec<u8> {

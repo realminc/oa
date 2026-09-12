@@ -2,7 +2,7 @@
 
 **Status:** Architecture reference
 
-**Updated:** 2026-09-10
+**Updated:** 2026-09-12
 
 **Authority:** [OA Rust Architecture](oaArchitecture.md)
 
@@ -89,12 +89,18 @@ The concrete file ownership is:
 | `core/matrix.rs` | The `Matrix` semantic value, checked metadata, storage handle, and observation boundary. It owns no stateless math operation. |
 | `matrix.rs` and `matrix/` | The public `oa::matrix` facade for Core numerical operations, their validation, output construction, autograd attachment, and first lowering request. Schema-owned families use names such as `elemwise.gen.rs`, `reduce.gen.rs`, and `blas.gen.rs`. |
 | `image.rs` and `image/` | The public still-image facade. `geometric`, `pixel`, `filter`, and `color` own typed transforms; `codec.rs` plus `codec/` own one-shot host codecs without moving Image storage or semantics into Vision. |
-| `video.rs` and `video/` | The public Video facade. `frame.rs` owns packed-frame semantics, `nal.rs` bounded elementary-stream operations, `capability.rs` backend-neutral device evidence, and `demux.rs` the bounded MP4 packet-source session. |
+| `video.rs` and `video/` | The public Video facade. `frame.rs` owns packed-frame semantics, `nal.rs` bounded elementary-stream operations, `capability.rs` backend-neutral device evidence, `demux.rs` the bounded MP4 packet-source session, and `mux.rs` the streaming MP4 sink session. |
+| `runtime/vk/video.rs` and `runtime/vk/video/` | The private Vulkan Video session and shared image/bitstream/synchronization implementation. Codec children such as `video/av1.rs` own only codec-specific StdVideo lowering and transactional DPB plans; they do not own sessions, queues, submission, or public parsing. |
 | `vision.rs` and `vision/` | The public interpretation facade. Families such as `detection` consume semantic Matrix, Image, or VideoFrame values but do not own those value types, codecs, or transforms. |
 | `cryptography.rs` and `cryptography/` | The public `oa::cryptography` facade. General CPU primitives remain at the facade root, schema-owned device hashing lives in `hash`, secret-bearing ML-DSA lives in `pqc`, and `SecureBuffer` remains a host-only value. |
 | `cryptography/hash.rs` and `cryptography/hash/lowering.rs` | Public batch-hash signatures and their private semantic-to-executable lowering. Multi-level Merkle reduction remains one semantic operation. |
 | `ml/matrix.rs` and `ml/matrix/` | The public `oa::ml::matrix` facade for the ML-owned C++ `FnMatrix` extension. Operation-family wrappers live here; this directory owns neither loss nor optimizer lowering. |
 | `ml/loss.rs` and `ml/loss/` | The public `oa::ml::loss` operation facade corresponding to C++ `FnLoss`; generated loss families remain adjacent to this owner. |
+| `ml/policy.rs` | The public `oa::ml::policy` operation facade and `PolicyResult`. Composite policy functions reuse Core Matrix operations inside one private runtime lowering transaction; they own no policy-only kernels or graph. |
+| `ml/environment.rs` and `ml/environment/session.rs` | Checked environment values and graph-native transforms plus the native `Environment` behavior and `EnvironmentExecution` lifecycle. The session borrows the sole Engine recorder as a movable transaction; it owns no second graph, queue, allocator, or scheduler. |
+| `ml/collector.rs` | Borrowed same-device categorical rollout collection. One complete horizon becomes one Environment transaction and exact Event without an implicit wait. |
+| `ml/evaluation.rs` | One-shot deterministic policy evaluation and its explicit telemetry boundary: one horizon, one submission/wait, and three compact rollout readbacks. |
+| `ml/actor_critic.rs` | The environment-neutral discrete Actor-Critic behavior contract and default seeded two-tower categorical MLP. It is a registered Module composition, not an RL runtime or operation facade. |
 | `ml/lowering.rs` and `ml/lowering/` | Transitional private lowering partitioned into `matrix`, `loss`, `optim`, and shared semantic-dispatch mechanics. Each owner is deleted as schema-generated family implementations land; this is not a public facade or kernel registry. |
 | `ml/autograd.rs` | The public autograd facade. It exports `GradientTape`, not concrete gradient nodes or backward-kernel helpers. |
 | `ml/autograd/tape.rs` | Thread-local tape selection, saved-node traversal, version preflight, gradient accumulation, and semantic forward/backward provenance. It records work but never submits or waits. |
@@ -103,13 +109,19 @@ The concrete file ownership is:
 | `ml/autograd/matrix/{linear,embedding,norm,recurrent,attention}.rs` | Explicit family attachments for compound saved state; the schema still owns their exhaustive `manual` policy and family placement. |
 | `ml/autograd/node.rs` | The current compact private saved-value record. As coverage grows, family records split below `ml/autograd/matrix/` and `ml/autograd/loss/`; no public node catalog is introduced. |
 | `ml/optimizer.rs` and `ml/optim.rs` | `optimizer.rs` owns object-safe optimizer policy plus stateful SGD/Adam/AdamW/Muon state. The public `optim` operation facade owns stateless optimizer-adjacent transformations such as global gradient-norm clipping. Optimizer dispatches do not become Matrix-Core operations. |
-| `ml/training.rs` and `ml/training/` | Public training umbrella over the iterator, immutable captured program, callbacks, and schedules. These files share one lifecycle and do not create a second graph or runtime owner. |
+| `ml/training.rs` and `ml/training/` | Public training umbrella over the iterator, immutable captured program, callbacks, schedules, and algorithm coordinators. These files share one lifecycle and do not create a second graph or runtime owner. |
+| `ml/training/rollout.rs` | Alternating Collect/Update coordinator over one retained RolloutBuffer and the ordinary ItTraining lifecycle. |
+| `ml/training/ppo.rs` | Complete caller-driven categorical PPO collection and full-batch update coordinator over ActorCritic and ItRolloutTraining. |
+| `ml/training/dqn.rs` | Environment-neutral DQN update coordinator over caller-owned Modules, Optimizer, and ReplayBuffer. It composes `ItTraining`; it owns no second trainer base, graph, allocator, or queue. |
+| `ml/training/sac.rs` | Fixed-temperature SAC coordinator with separate actor and twin-critic optimizer lifecycles over one replay and Engine owner. |
+| `ml/training/target.rs` | Private preflighted exact named-parameter synchronization shared by off-policy trainers. |
 | `ml/training/schedule.rs` | Pure donor-backed step/metric-to-learning-rate policies. Policy mutation passes through the callback context's `Optimizer` behavior contract; concrete state remains in its optimizer owner. |
 | `ml/training/callbacks.rs` and `ml/training/callbacks/` | Built-in presentation and control policies grouped below one callback facade. CSV, validation, checkpoint, phase, early-stop, and schedule families consume completed snapshots and may request cooperative stop, exclude external wall time, persist exact optimizer state, or update exposed optimizer policy. |
 | `ml/checkpoint.rs` and `ml/checkpoint/` | Translation between a registered live Module plus sealed `CheckpointOptimizer` owner and the native model-file representation, with best/latest path and rotation policy. It owns host observation and engine upload boundaries, not wire parsing. |
 | `ml/model_file.rs` | Private native `.oam` wire codec and integrity authority. A future public `oa::ml::ModelFile` facade may expose this semantic artifact without renaming it Archive or duplicating the codec under `io`. External format translators remain separate operations. |
 | `core/operation/generated.rs` | Stable backend-neutral operation contracts generated from the operation schemas. |
 | `runtime/semantic_graph.rs` | Backend-neutral values, views, operation SSA, mutation versions, attributes, and autograd provenance. It contains no selected kernel identity or Vulkan handle. |
+| `runtime/session.rs` and the private engine lowering scope | Transactional composition of multiple retained executable graphs beneath one generated semantic contract. Nested scopes defer to the outer owner; abandoned scopes roll back only their new work. |
 | `runtime/dnn.rs` and `runtime/dnn/` | Private donor-compatible OaDna/DNN analysis and graph replacement. It consumes semantic operations and may replace their source executable nodes; it is not the public `ml` API and owns no second graph. |
 | `runtime/executable_graph.rs` | Concrete executable nodes, hazards, resource lifetimes, and the many-to-many link back to semantic operations. Its current nodes execute on Vulkan, but their orchestration remains engine-owned rather than a second Vulkan runtime. |
 | `runtime/shader.rs` and `runtime/shader/` | Target-independent generated kernel identity, embedded artifact bytes, reflection, and shader metadata. A generated kernel row owns its optional semantic-operation contract mapping. |
@@ -123,7 +135,7 @@ backend mechanics:
 | --- | --- |
 | `core/` | Entry-point-free metadata and reusable support modules. Activation and storage formulas live in `core/math`; deterministic random primitives live in `core/rng`. |
 | `matrix/<family>/` | Core Matrix operation kernels grouped as `elemwise`, `reduce`, `rng`, and `blas`. |
-| `ml/nn/<family>/` | Neural-network entry points grouped by operation family, including `activation`, `attention`, `embedding`, `layer_norm`, `linear`, `rms_norm`, `rnn`, `rope`, and `swiglu`. |
+| `ml/nn/<family>/` | Neural-network entry points grouped by operation family, including `activation`, `attention`, `embedding`, `layer_norm`, `linear`, `rms_norm`, `rnn`, `rope`, `swiglu`, and `vq`. |
 | `ml/loss/<family>/` and `ml/optim/<family>/` | Loss and optimizer kernels are grouped by semantic family. Forward/backward loss files retain the loss name (`<loss>/<loss>_forward.slang` and `<loss>/<loss>_backward.slang`); generic `forward.slang` and `backward.slang` basenames are forbidden. Optimizer families currently include `sgd`, `adam`, `adamw`, `muon`, and `grad_clip`, with descriptive basenames retained inside each owner. |
 | `<domain>/<family>/` | Image, Vision, Audio, Cryptography, and later admitted domains use the same semantic-family rule. |
 
@@ -285,10 +297,16 @@ receive root identity aliases; their configuration and packet types do not.
 
 ```text
 src/rs/video.rs              curated value and operation facade
-src/rs/video/frame.rs        retained VideoFrame, timing, and color metadata
+src/rs/video/av1.rs          bounded OBU inventory and semantic sequence-header parsing
+src/rs/video/av1/frame.rs    frame-header, reference-state, and tile-range parsing
+src/rs/video/frame.rs        retained Image/Texture/host/native VideoFrame backing and metadata
+src/rs/video/texture.rs      stateless Texture-to-VideoFrame adaptation
 src/rs/video/nal.rs          CPU-only Annex-B split, emit, and parameter sets
 src/rs/video/capability.rs   queried hardware/session capability separation
+src/rs/video/decoder.rs      stateful H.264/H.265 hardware decode session
 src/rs/video/demux.rs        bounded seekable MP4 packet-source session
+src/rs/video/mux.rs          streaming H.264/H.265 MP4 sink and packet contract
+src/rs/video/player.rs       composed local demux/decode/playback session
 ```
 
 `oa::VideoFrame` is the root identity alias of `oa::video::VideoFrame`.
@@ -296,8 +314,10 @@ src/rs/video/demux.rs        bounded seekable MP4 packet-source session
 descriptors remain supporting types in `oa::video`. The donor's stateless
 `FnVideo` NAL utilities are free functions on that same module; they are not
 duplicated at the root and do not create a Rust `FnVideo` facade. The
-lifecycle-bearing `VideoDemuxer` receives a root identity alias; no forwarding
-implementation is introduced.
+lifecycle-bearing `VideoDecoder`, `VideoDemuxer`, `VideoMuxer`, and
+`VideoPlayer` receive root identity aliases; no forwarding implementation is
+introduced. Their configuration, container, packet, codec, statistics, and
+audio-track descriptors remain supporting types under `oa::video`.
 
 `vision.rs` curates the admitted donor `FnDetection` operations from
 `vision/detection.rs`. Their generated schema, executable lowering, and
@@ -313,6 +333,11 @@ src/rs/ml/training/program.rs     immutable captured TrainingProgram
 src/rs/ml/training/callbacks.rs   built-in callback facade and presentation
 src/rs/ml/training/callbacks/     CSV, validation, phase, and policy families
 src/rs/ml/training/schedule.rs    pure learning-rate schedule policies
+src/rs/ml/training/rollout.rs     shared Collect/Update lifecycle
+src/rs/ml/training/ppo.rs         categorical PPO coordinator
+src/rs/ml/training/dqn.rs         DQN replay and target-update coordinator
+src/rs/ml/training/sac.rs         paired SAC actor and critic coordinator
+src/rs/ml/training/target.rs      private exact target synchronization
 ```
 
 This mirrors `ml/nn.rs` plus `ml/nn/`: the facade defines one subsystem and
@@ -321,6 +346,33 @@ curates its public surface, while the directory separates responsibilities.
 step, epoch, callback, and timing state; the program owns one compiled replay
 contract that may be retained by the iterator. `oa::ml::ItTraining` is an
 identity re-export of `oa::ml::training::ItTraining`, not a forwarding type.
+
+## SDK-owned Rust workloads
+
+Concrete tutorial workloads remain below `sdk/rs` even when they need native
+Rust types or GPU kernels:
+
+```text
+sdk/rs/mod.rs                              crate-connected SDK facade
+sdk/rs/ml/rl/cart_pole.rs                  native vectorized CartPole session
+sdk/rs/ml/rl/lunar_lander.rs               versioned Lunar workload facade
+sdk/rs/ml/rl/lunar_lander/environment.rs   scalar episode/reward oracle
+sdk/rs/ml/rl/lunar_lander/terrain.rs       checked deterministic terrain oracle
+sdk/rs/ml/rl/lunar_lander/physics.rs       scalar dynamics/observation oracle
+sdk/rs/ml/rl/lunar_lander/vector.rs        native vector Environment session
+sdk/rs/ml/rl/lunar_lander/training.rs      task policy curriculum and evaluation evidence
+sdk/rs/tutorials/ml/rl/lunar_lander_ppo.rs runnable teacher/raw-PPO workflow
+sdk/rs/slang/ml/rl/cart_pole/reset.slang   schema-owned reset kernel
+sdk/rs/slang/ml/rl/cart_pole/step.slang    schema-owned dynamics kernel
+sdk/rs/slang/ml/rl/lunar_lander/reset.slang schema-owned Lunar reset kernel
+sdk/rs/slang/ml/rl/lunar_lander/step.slang schema-owned Lunar dynamics kernel
+```
+
+The facade is available as `oa::sdk` so examples and tests consume one type
+identity, while reusable `oa::ml` remains environment-neutral. SDK workloads
+borrow the same Engine, record the same semantic and executable graphs, and use
+the same generated shader registry. They do not own a second runtime, expose
+raw Vulkan, or move task-specific policy into the ML library.
 
 ## Migration rule
 

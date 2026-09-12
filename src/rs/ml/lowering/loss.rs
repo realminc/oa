@@ -7,6 +7,263 @@ use crate::{
 
 use super::common::{record_semantic, shader_u32};
 
+pub(in crate::ml) fn ppo_clipped_policy(
+	new_log_probability: &Matrix,
+	old_log_probability: &Matrix,
+	advantage: &Matrix,
+	clip_epsilon: f32,
+) -> Result<Matrix> {
+	let contract = crate::core::operation::ml::PPO_CLIPPED_POLICY;
+	let count = validate_ppo_inputs(
+		new_log_probability,
+		old_log_probability,
+		advantage,
+		clip_epsilon,
+		contract.name(),
+	)?;
+	let per_sample = Matrix::allocate(
+		new_log_probability.engine_handle(),
+		new_log_probability.shape().to_vec(),
+		new_log_probability.num_elements(),
+		DType::F32,
+	)?;
+	let sum = Matrix::allocate(
+		new_log_probability.engine_handle(),
+		Vec::new(),
+		1,
+		DType::F32,
+	)?;
+	let output = Matrix::allocate(
+		new_log_probability.engine_handle(),
+		Vec::new(),
+		1,
+		DType::F32,
+	)?;
+	let policy_buffers = [
+		BufferBinding::read(new_log_probability.storage()),
+		BufferBinding::read(old_log_probability.storage()),
+		BufferBinding::read(advantage.storage()),
+		BufferBinding::write(per_sample.storage()),
+	];
+	let policy_push = [PushConstant::U32(count), PushConstant::F32(clip_epsilon)];
+	let sum_buffers = [
+		BufferBinding::read(per_sample.storage()),
+		BufferBinding::write(sum.storage()),
+	];
+	let sum_push = [PushConstant::U32(count)];
+	let mean_buffers = [
+		BufferBinding::read(sum.storage()),
+		BufferBinding::write(output.storage()),
+	];
+	let mean_push = [PushConstant::U32(1), PushConstant::F32(1.0 / count as f32)];
+	let kernel = KernelId::MlPpoClippedPolicyF32;
+	let dispatches = [
+		ComputeDispatch {
+			kernel,
+			buffers: &policy_buffers,
+			push_constants: &policy_push,
+			workgroups: kernel.linear_workgroups(count),
+		},
+		ComputeDispatch {
+			kernel: KernelId::MatrixSumF32,
+			buffers: &sum_buffers,
+			push_constants: &sum_push,
+			workgroups: [1, 1, 1],
+		},
+		ComputeDispatch {
+			kernel: KernelId::MatrixScaleF32,
+			buffers: &mean_buffers,
+			push_constants: &mean_push,
+			workgroups: [1, 1, 1],
+		},
+	];
+	let attributes = [OpAttribute::Float {
+		name: "clip_epsilon".into(),
+		value: f64::from(clip_epsilon),
+	}];
+	new_log_probability.engine_handle().record_split_semantic(
+		&dispatches,
+		SemanticDispatch {
+			contract,
+			inputs: &[new_log_probability, old_log_probability, advantage],
+			outputs: &[&output],
+			attributes: &attributes,
+		},
+	)?;
+	Ok(output)
+}
+
+pub(in crate::ml) fn ppo_clipped_policy_backward(
+	new_log_probability: &Matrix,
+	old_log_probability: &Matrix,
+	advantage: &Matrix,
+	clip_epsilon: f32,
+) -> Result<Matrix> {
+	let contract = crate::core::operation::ml::PPO_CLIPPED_POLICY_BACKWARD;
+	let count = validate_ppo_inputs(
+		new_log_probability,
+		old_log_probability,
+		advantage,
+		clip_epsilon,
+		contract.name(),
+	)?;
+	let gradient = Matrix::allocate(
+		new_log_probability.engine_handle(),
+		new_log_probability.shape().to_vec(),
+		new_log_probability.num_elements(),
+		DType::F32,
+	)?;
+	let buffers = [
+		BufferBinding::read(new_log_probability.storage()),
+		BufferBinding::read(old_log_probability.storage()),
+		BufferBinding::read(advantage.storage()),
+		BufferBinding::write(gradient.storage()),
+	];
+	let push_constants = [PushConstant::U32(count), PushConstant::F32(clip_epsilon)];
+	let attributes = [OpAttribute::Float {
+		name: "clip_epsilon".into(),
+		value: f64::from(clip_epsilon),
+	}];
+	let kernel = KernelId::MlPpoClippedPolicyBackwardF32;
+	record_semantic(
+		&[new_log_probability, old_log_probability, advantage],
+		&[&gradient],
+		&attributes,
+		kernel,
+		&buffers,
+		&push_constants,
+		kernel.linear_workgroups(count),
+	)?;
+	Ok(gradient)
+}
+
+#[allow(
+	clippy::too_many_arguments,
+	reason = "the private DQN target lowering retains all four donor fields and its shape ABI"
+)]
+pub(in crate::ml) fn dqn_target(
+	lowering: &crate::runtime::SemanticLoweringScope,
+	reward: &Matrix,
+	next_q: &Matrix,
+	terminated: &Matrix,
+	truncated: &Matrix,
+	batch: u32,
+	actions: u32,
+	discount: f32,
+) -> Result<Matrix> {
+	let output = Matrix::allocate(
+		reward.engine_handle(),
+		reward.shape().to_vec(),
+		reward.num_elements(),
+		DType::F32,
+	)?;
+	let buffers = [
+		BufferBinding::read(reward.storage()),
+		BufferBinding::read(next_q.storage()),
+		BufferBinding::read(terminated.storage()),
+		BufferBinding::read(truncated.storage()),
+		BufferBinding::write(output.storage()),
+	];
+	let push_constants = [
+		PushConstant::U32(batch),
+		PushConstant::U32(actions),
+		PushConstant::F32(discount),
+	];
+	let kernel = KernelId::MlDqnTargetF32;
+	lowering.record_physical(ComputeDispatch {
+		kernel,
+		buffers: &buffers,
+		push_constants: &push_constants,
+		workgroups: kernel.linear_workgroups(batch),
+	})?;
+	Ok(output)
+}
+
+#[allow(
+	clippy::too_many_arguments,
+	reason = "the private SAC target lowering retains all six donor fields and its scalar ABI"
+)]
+pub(in crate::ml) fn sac_target(
+	lowering: &crate::runtime::SemanticLoweringScope,
+	reward: &Matrix,
+	next_q1: &Matrix,
+	next_q2: &Matrix,
+	next_log_probability: &Matrix,
+	terminated: &Matrix,
+	truncated: &Matrix,
+	batch: u32,
+	discount: f32,
+	entropy_coefficient: f32,
+) -> Result<Matrix> {
+	let output = Matrix::allocate(
+		reward.engine_handle(),
+		reward.shape().to_vec(),
+		reward.num_elements(),
+		DType::F32,
+	)?;
+	let buffers = [
+		BufferBinding::read(reward.storage()),
+		BufferBinding::read(next_q1.storage()),
+		BufferBinding::read(next_q2.storage()),
+		BufferBinding::read(next_log_probability.storage()),
+		BufferBinding::read(terminated.storage()),
+		BufferBinding::read(truncated.storage()),
+		BufferBinding::write(output.storage()),
+	];
+	let push_constants = [
+		PushConstant::U32(batch),
+		PushConstant::F32(discount),
+		PushConstant::F32(entropy_coefficient),
+	];
+	let kernel = KernelId::MlSacTargetF32;
+	lowering.record_physical(ComputeDispatch {
+		kernel,
+		buffers: &buffers,
+		push_constants: &push_constants,
+		workgroups: kernel.linear_workgroups(batch),
+	})?;
+	Ok(output)
+}
+
+fn validate_ppo_inputs(
+	new_log_probability: &Matrix,
+	old_log_probability: &Matrix,
+	advantage: &Matrix,
+	clip_epsilon: f32,
+	operation: &'static str,
+) -> Result<u32> {
+	for input in [old_log_probability, advantage] {
+		if input.shape() != new_log_probability.shape() || input.dtype() != DType::F32 {
+			return Err(Error::invalid_argument(format!(
+				"{operation} requires matching F32 inputs"
+			)));
+		}
+		if !new_log_probability
+			.engine_handle()
+			.same_as(input.engine_handle())
+		{
+			return Err(Error::invalid_argument(format!(
+				"{operation} inputs must belong to the same engine"
+			)));
+		}
+	}
+	if new_log_probability.dtype() != DType::F32 || new_log_probability.num_elements() == 0 {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires nonempty F32 inputs"
+		)));
+	}
+	if !clip_epsilon.is_finite() || !(0.0..1.0).contains(&clip_epsilon) {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires clip epsilon in (0, 1)"
+		)));
+	}
+	shader_u32(
+		new_log_probability.num_elements(),
+		"element count",
+		operation,
+	)
+}
+
 pub(in crate::ml) fn smooth_l1(prediction: &Matrix, target: &Matrix) -> Result<Matrix> {
 	let operation = crate::core::operation::ml::SMOOTH_L1.name();
 	let element_count = validate_pointwise_loss_inputs(prediction, target, operation)?;

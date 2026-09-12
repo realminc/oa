@@ -226,6 +226,16 @@ impl DnnPlan {
 				training: training_operations.contains(&operation.id()),
 			});
 		}
+		let produced_values = operations
+			.iter()
+			.flat_map(|operation| operation.outputs.iter().copied())
+			.collect::<BTreeSet<_>>();
+		for value in &mut values {
+			// Shape/rank filtering may omit a semantic producer while retaining a
+			// downstream DNN-compatible consumer. That value is an input boundary of
+			// the captured DNN subgraph even though it is internal to the full graph.
+			value.external |= !produced_values.contains(&value.id);
+		}
 		validate_capture(&values, &operations)?;
 		let partitions = partition(&operations, &values, policy);
 		let source_operation_count = checked_u32(graph.operations().len(), "DNN source operation")?;

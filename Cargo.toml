@@ -1,6 +1,6 @@
 [package]
 name = "oa"
-version = "0.1.5"
+version = "0.1.6"
 edition = "2024"
 rust-version = "1.98"
 autotests = false
@@ -73,11 +73,29 @@ name = "ml_nlp_char_transformer"
 path = "sdk/rs/tutorials/ml/nlp/char_transformer.rs"
 
 [[example]]
+name = "ml_nlp_char_moe_transformer"
+path = "sdk/rs/tutorials/ml/nlp/char_moe_transformer.rs"
+
+[[example]]
 name = "ml_nlp_char_transformer_profile"
 path = "sdk/rs/benchmarks/ml/nlp/char_transformer.rs"
 
+[[example]]
+name = "ml_rl_cart_pole_ppo"
+path = "sdk/rs/tutorials/ml/rl/cart_pole_ppo.rs"
+
+[[example]]
+name = "ml_rl_cart_pole_rollout"
+path = "sdk/rs/tutorials/ml/rl/cart_pole_rollout.rs"
+
+[[example]]
+name = "ml_rl_lunar_lander_ppo"
+path = "sdk/rs/tutorials/ml/rl/lunar_lander_ppo.rs"
+
 [dependencies]
 ash = "0.38"
+# VP9 C-ABI structs only; released Ash remains the Vulkan loader and vk-mem ABI.
+ash-vp9 = { package = "ash", git = "https://github.com/ash-rs/ash.git", rev = "33d758c81475c4852166d30655c85834e11b0731", default-features = false }
 vk-mem = "0.5"
 
 bitflags = "2"

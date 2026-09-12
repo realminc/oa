@@ -7,6 +7,8 @@ Runnable source-companion validation for the OA Rust crate.
 ```
 sdk/
 ├── rs/
+│   ├── ml/           # SDK-owned native workloads and environments
+│   ├── slang/        # SDK kernel packs compiled into the OA crate
 │   ├── benchmarks/   # Correctness-gated measurement workloads
 │   │   └── core/
 │   └── tutorials/    # Runnable Rust workflows
@@ -14,6 +16,21 @@ sdk/
 │       └── ml/nlp/
 └── py/               # Future generated-binding consumers
 ```
+
+SDK-owned workloads are available below `oa::sdk` without moving concrete
+tasks into the reusable ML library. The native vectorized CartPole environment
+is `oa::sdk::ml::rl::CartPole`; it borrows the crate's sole Engine and uses
+schema-owned SDK shaders through the ordinary semantic and executable graphs.
+The Lunar Lander port exposes its versioned deterministic manifest, checked
+terrain, scalar double-precision dynamics/observation, complete episode reward
+and termination behavior, and scripted controller through `oa::sdk::ml::rl`.
+Its full seeded scalar trace matches the C++ donor digest. The native flat-terrain
+`LunarLander3dVector` records mechanically adapted donor reset/step shaders
+through the same Engine, semantic graph, executable graph, and Event lifecycle.
+Hardware tests compare reset, a five-lane 24-step trace, and complete contact /
+terminal episodes against independent scalar environments. They also cover
+transactional reseeding, FP32 admission edges, compact telemetry, completed-lane
+reset, and repeated poisoned-action reuse across 257 lanes.
 
 ## Core matrix multiplication
 
@@ -71,6 +88,54 @@ python3 tools/build/stage.py --profile release --target ml_nlp_char_transformer
 The 300-step executable requires final loss below `0.3`, accuracy above 90%,
 the exact C++ reference continuation from prompt `to be`, and a fresh-model
 parameter/AdamW checkpoint roundtrip preserving step, accuracy, and generation.
+
+## Character MoE Transformer training
+
+`ml_nlp_char_moe_transformer` ports the donor sparse-MoE row: the same character
+workload and attention topology with four width-16 experts and deterministic
+top-two routing. Its 23 registered parameter tensors contain exactly 13,183
+scalars. The default execution path is the grouped sparse route; the dense
+all-expert path remains an opt-in correctness oracle.
+
+```sh
+cargo build --release --example ml_nlp_char_moe_transformer
+python3 tools/build/stage.py --profile release --target ml_nlp_char_moe_transformer
+./bin/release/sdk/tutorials/ml/nlp/ml_nlp_char_moe_transformer
+```
+
+The tutorial uses the shared training iterator, loss metric, progress bar,
+wall/GPU timing summary, captured training program, evaluation, greedy
+generation, and complete parameter/buffer/AdamW checkpoint round trip.
+
+## CartPole PPO training
+
+`ml_rl_cart_pole_ppo` ports the donor's complete native acceptance workload:
+64 vectorized GPU environments, 128-step rollouts, four full-batch PPO epochs,
+40 rollouts, independent `4 -> 64 -> 64` actor/critic towers, and AdamW at
+`2.5e-4` with zero weight decay.
+
+```sh
+cargo run --release --example ml_rl_cart_pole_ppo
+```
+
+The executable compares a fixed-seed greedy evaluation before and after
+training, requires at least +25 mean return and an absolute return of 75, and
+round-trips the complete model plus AdamW state through native `.oam`. The
+Intel Iris Xe validation run improved mean completed return from `33.36` to
+`453.30`; restore reproduced `453.30` exactly at optimizer step 160. The
+timestamp-enabled run took 188.09 seconds end to end, while the 160 optimizer
+updates averaged 14.48 ms of Vulkan device time each; collection graph
+construction, submission preparation, and evaluation dominate the wall gap.
+
+The smaller donor rollout tutorial is also available independently:
+
+```sh
+cargo run --release --example ml_rl_cart_pole_rollout
+```
+
+Its fixed policy collected all 2,048 transitions in one GPU transaction,
+produced 2,048 reward and one completed episode, finalized GAE, and performed no
+host tensor reads during collection.
 
 ## Core matrix multiplication benchmark
 

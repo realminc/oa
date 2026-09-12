@@ -22,6 +22,9 @@ src/rs/ml/training/callbacks.rs   built-in presentation callbacks
 src/rs/ml/training/callbacks/     validation, checkpoint, phase, CSV, and policy families
 src/rs/ml/training/schedule.rs    pure learning-rate schedule policies
 src/rs/ml/training/session.rs     bounded live commands, results, parameters, and snapshots
+src/rs/ml/training/dqn.rs         DQN replay/update coordinator composed over ItTraining
+src/rs/ml/training/sac.rs         paired actor/critic coordinator over two ItTraining units
+src/rs/ml/training/target.rs      shared exact target-network synchronization
 ```
 
 `ItTraining` and `TrainingProgram` are intentionally not merged. The former is

@@ -149,6 +149,26 @@ impl ExecutableGraph {
 		Ok(())
 	}
 
+	pub(in crate::runtime) fn attach_composite_semantic(
+		&mut self,
+		operation: SemanticOpId,
+		name: &'static str,
+		contract_hash: u64,
+	) -> Result<()> {
+		if self.nodes.is_empty() || contract_hash == 0 {
+			return Err(Error::failed_precondition(
+				"composite semantic lowering requires executable nodes and a nonzero contract hash",
+			));
+		}
+		for node in &mut self.nodes {
+			node.operation = name;
+			node.semantic_ops.clear();
+			node.semantic_ops.push(operation);
+			node.op_contract_hash = contract_hash;
+		}
+		Ok(())
+	}
+
 	pub(in crate::runtime) fn attach_fused_semantic(
 		&mut self,
 		operations: &[SemanticOpId],

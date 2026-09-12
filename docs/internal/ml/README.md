@@ -2,7 +2,7 @@
 
 **Status:** Canonical migration ledger
 
-**Updated:** 2026-09-10
+**Updated:** 2026-09-11
 
 The C++ OA repository contains both current subsystem contracts and large
 model/research records. OARS migrates a document only when its dependency is
@@ -25,13 +25,21 @@ in OARS.
   and numerical evidence.
 - [GRU](oaGru.md): hoisted input projection, whole-sequence recurrent scan,
   BPTT composition, optional bias ownership, and qualification status.
+- [Mamba-3](oaMamba3.md): grouped SISO selective-state forward, donor short
+  backward, complete eleven-input autograd, current limits, and evidence.
+- [Mixture of Experts](oaMoe.md): sparse top-k routing, native stacked expert
+  parameters, grouped projections, an opt-in dense differential oracle, full
+  reverse mode, current evidence, and remaining integration work.
+- [Vector quantization](oaVq.md): deterministic nearest-code assignment,
+  straight-through gradients, persistent EMA codebooks, dead-code revival, and
+  residual quantization.
 - [Batched matrix multiplication](oaBmm.md): NN/NT/TN shape contracts,
   private generic/tiled routing, reverse composition, and Vulkan evidence.
 - [Scaled dot-product attention](oaAttention.md): head transforms, optional
   masks, standard and causal Flash lowering, reverse mode, and provider boundary.
 - [NLP tutorial suite](oaNlpSuite.md): the implemented canonical 300-step
-  Char-RNN and Char-Transformer rows, exact workloads, quality evidence, and
-  remaining matrix.
+  Char-RNN, Char-Transformer, and sparse Char-MoE Transformer rows, exact
+  workloads, quality evidence, and remaining matrix.
 - [Reinforcement-learning foundation](oaRl.md): checked environment spaces and
   transition values, plus the execution and algorithm admission order.
 - [Precision and dtype](oaPrecisionDtype.md): exact current `DType` vocabulary
@@ -51,10 +59,9 @@ in OARS.
 The following OA documents remain useful source evidence but are not copied
 into OARS yet:
 
-- Remaining MoE routing/packing/grouped-projection operations, Mamba-3,
-  gpt-oss, and weight transfer require their primitive operation and module
-  packs first. Reinforcement-learning execution
-  and algorithms remain deferred beyond the admitted environment value layer.
+- Remaining MoE model integration work, the Mamba-3 module/MIMO/step/tutorial,
+  gpt-oss, and weight transfer require their remaining operation and module
+  packs first.
 - ALM, Empyrealm, cognitive-architecture, and sequence-model documents are
   research or application programs rather than Rust foundation contracts.
 

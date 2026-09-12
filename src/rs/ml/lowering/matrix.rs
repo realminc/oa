@@ -1026,6 +1026,126 @@ pub(in crate::ml) fn swiglu_backward(
 	Ok((gate_gradient, up_gradient))
 }
 
+pub(in crate::ml) fn silu_mul(input: &Matrix, intermediate_size: usize) -> Result<Matrix> {
+	const OPERATION: &str = crate::core::operation::ml::SILU_MUL.name();
+	validate_f32_same_engine(OPERATION, &[input])?;
+	let Some(last_extent) = input.shape().last() else {
+		return Err(Error::invalid_argument(format!(
+			"{OPERATION} input must have at least one dimension"
+		)));
+	};
+	let concatenated = intermediate_size.checked_mul(2).ok_or_else(|| {
+		Error::invalid_argument(format!("{OPERATION} intermediate size overflows usize"))
+	})?;
+	if intermediate_size == 0 || *last_extent != concatenated {
+		return Err(Error::invalid_argument(format!(
+			"{OPERATION} requires final input extent 2 * intermediate_size"
+		)));
+	}
+	let output_count = input.num_elements() / 2;
+	let output_count_u32 = shader_u32(output_count, "output element count", OPERATION)?;
+	let intermediate_u32 = shader_u32(intermediate_size, "intermediate size", OPERATION)?;
+	let mut output_shape = input.shape().to_vec();
+	*output_shape.last_mut().expect("validated nonempty shape") = intermediate_size;
+	let output = Matrix::allocate(
+		input.engine_handle(),
+		output_shape,
+		output_count,
+		DType::F32,
+	)?;
+	let buffers = [
+		BufferBinding::read(input.storage()),
+		BufferBinding::write(output.storage()),
+	];
+	let push_constants = [
+		PushConstant::U32(output_count_u32),
+		PushConstant::U32(intermediate_u32),
+	];
+	let attributes = [OpAttribute::SignedInteger {
+		name: "intermediate_size".into(),
+		value: i64::try_from(intermediate_size).map_err(|_| {
+			Error::invalid_argument(format!("{OPERATION} intermediate size exceeds i64"))
+		})?,
+	}];
+	let kernel = KernelId::MlSiluMulF32;
+	record_semantic(
+		&[input],
+		&[&output],
+		&attributes,
+		kernel,
+		&buffers,
+		&push_constants,
+		kernel.linear_workgroups(output_count_u32),
+	)?;
+	Ok(output)
+}
+
+pub(in crate::ml) fn silu_mul_backward(
+	input: &Matrix,
+	output_gradient: &Matrix,
+	intermediate_size: usize,
+) -> Result<Matrix> {
+	const OPERATION: &str = crate::core::operation::ml::SILU_MUL_BACKWARD.name();
+	validate_f32_same_engine(OPERATION, &[input, output_gradient])?;
+	let Some(last_extent) = input.shape().last() else {
+		return Err(Error::invalid_argument(format!(
+			"{OPERATION} input must have at least one dimension"
+		)));
+	};
+	let concatenated = intermediate_size.checked_mul(2).ok_or_else(|| {
+		Error::invalid_argument(format!("{OPERATION} intermediate size overflows usize"))
+	})?;
+	let mut expected_gradient_shape = input.shape().to_vec();
+	if intermediate_size == 0 || *last_extent != concatenated {
+		return Err(Error::invalid_argument(format!(
+			"{OPERATION} requires final input extent 2 * intermediate_size"
+		)));
+	}
+	*expected_gradient_shape
+		.last_mut()
+		.expect("validated nonempty shape") = intermediate_size;
+	if output_gradient.shape() != expected_gradient_shape {
+		return Err(Error::invalid_argument(format!(
+			"{OPERATION} output gradient shape must equal the half-width output shape"
+		)));
+	}
+	let output_count = output_gradient.num_elements();
+	let output_count_u32 = shader_u32(output_count, "output element count", OPERATION)?;
+	let intermediate_u32 = shader_u32(intermediate_size, "intermediate size", OPERATION)?;
+	let input_gradient = Matrix::allocate(
+		input.engine_handle(),
+		input.shape().to_vec(),
+		input.num_elements(),
+		DType::F32,
+	)?;
+	let buffers = [
+		BufferBinding::read(input.storage()),
+		BufferBinding::read(output_gradient.storage()),
+		BufferBinding::write(input_gradient.storage()),
+	];
+	let push_constants = [
+		PushConstant::U32(output_count_u32),
+		PushConstant::U32(intermediate_u32),
+	];
+	let attributes = [OpAttribute::SignedInteger {
+		name: "intermediate_size".into(),
+		value: i64::try_from(intermediate_size).map_err(|_| {
+			Error::invalid_argument(format!("{OPERATION} intermediate size exceeds i64"))
+		})?,
+	}];
+	let kernel = KernelId::MlSiluMulBackwardF32;
+	record_semantic(
+		&[input, output_gradient],
+		&[&input_gradient],
+		&attributes,
+		kernel,
+		&buffers,
+		&push_constants,
+		kernel.linear_workgroups(output_count_u32),
+	)?;
+	Ok(input_gradient)
+}
+
 pub(in crate::ml) fn embedding(weight: &Matrix, indices: &Matrix) -> Result<Matrix> {
 	const OPERATION: &str = crate::core::operation::ml::EMBEDDING.name();
 	let [num_embeddings, embedding_dim] = weight.shape() else {

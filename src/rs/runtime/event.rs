@@ -18,6 +18,10 @@ pub struct Event {
 }
 
 impl Event {
+	pub(crate) fn same_as(&self, other: &Self) -> bool {
+		self.epoch == other.epoch && self.device.same_as(&other.device)
+	}
+
 	pub(super) const fn new(
 		device: Device,
 		epoch: u64,
@@ -34,6 +38,17 @@ impl Event {
 
 	pub(super) const fn epoch(&self) -> u64 {
 		self.epoch
+	}
+
+	pub(in crate::runtime) fn comes_from(&self, device: &Device) -> bool {
+		self.device.same_as(device)
+	}
+
+	pub(in crate::runtime) fn retain_until_complete<T>(&self, value: T)
+	where
+		T: Send + 'static,
+	{
+		self.retirement.retain_until_complete(value);
 	}
 
 	/// Return whether this exact submission point has completed.
