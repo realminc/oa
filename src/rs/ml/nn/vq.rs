@@ -43,7 +43,7 @@ pub struct VqResult {
 	pub quantized: Matrix,
 	/// I32 nearest-code indices `[N]`.
 	pub indices: Matrix,
-	/// Scalar `[1]` commitment loss.
+	/// Rank-zero scalar commitment loss.
 	pub commitment_loss: Matrix,
 }
 
@@ -153,10 +153,8 @@ impl VectorQuantizer {
 		let quantized = core_matrix::add(latent, &detached_delta)?;
 		let difference = core_matrix::sub(latent, &assignment.quantized)?;
 		let squared = core_matrix::mul(&difference, &difference)?;
-		let mean = core_matrix::scale(
-			&core_matrix::sum(&squared, -1)?,
-			1.0 / squared.num_elements() as f32,
-		)?;
+		let total = core_matrix::reshape(&core_matrix::sum(&squared, -1)?, [])?;
+		let mean = core_matrix::scale(&total, 1.0 / squared.num_elements() as f32)?;
 		let commitment_loss = core_matrix::scale(&mean, self.config.commitment_beta)?;
 		Ok(VqResult {
 			quantized,
@@ -282,7 +280,7 @@ pub struct ResidualVqResult {
 	pub indices: Vec<Matrix>,
 	/// Input residual used by each level's EMA update.
 	pub residuals: Vec<Matrix>,
-	/// Scalar `[1]` commitment loss against the summed code vectors.
+	/// Rank-zero scalar commitment loss against the summed code vectors.
 	pub commitment_loss: Matrix,
 }
 
@@ -363,8 +361,9 @@ impl ResidualVectorQuantizer {
 			core_matrix::add(latent, &matrix::detach(&core_matrix::sub(&total, latent)?)?)?;
 		let difference = core_matrix::sub(latent, &total)?;
 		let squared = core_matrix::mul(&difference, &difference)?;
+		let total = core_matrix::reshape(&core_matrix::sum(&squared, -1)?, [])?;
 		let commitment_loss = core_matrix::scale(
-			&core_matrix::sum(&squared, -1)?,
+			&total,
 			self.config.commitment_beta / squared.num_elements() as f32,
 		)?;
 		Ok(ResidualVqResult {

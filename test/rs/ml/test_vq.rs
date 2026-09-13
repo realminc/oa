@@ -84,6 +84,7 @@ test_vk!(
 		let latent_values = [1.8_f32, 0.1, 0.2, 1.7, 0.1, 0.2, 1.0, 1.0];
 		let latent = oa::Matrix::from_f32(&engine, [4, 2], &latent_values)?;
 		let result = quantizer.quantize(&latent)?;
+		assert!(result.commitment_loss.shape().is_empty());
 		assert_eq!(result.indices.read::<i32>()?, [0, 1, 2, 2]);
 		assert_eq!(
 			result.quantized.read_f32()?,

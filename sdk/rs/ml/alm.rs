@@ -4,6 +4,7 @@ mod clip;
 mod model;
 mod prior;
 mod tokenizer;
+pub mod training;
 
 pub use clip::{ClipImportReport, ClipText, ClipTextConfig};
 pub use model::{Alm, AlmConfig};

@@ -184,6 +184,7 @@ test_vk!(
 		let quantized = model.quantize(&latent)?;
 		assert_eq!(quantized.indices.len(), 1);
 		assert_eq!(quantized.indices[0].shape(), [8]);
+		assert!(quantized.commitment_loss.shape().is_empty());
 		assert!(quantized.commitment_loss.read_f32()?[0].is_finite());
 		let reconstruction = model.decode(&quantized.quantized, 2)?;
 		assert_eq!(reconstruction.shape(), [2, 8, 3]);
