@@ -257,8 +257,9 @@ impl AlmTokenizer {
 	/// # Errors
 	///
 	/// Returns an error unless the input is nonempty rank-three F32, its feature
-	/// width matches the configuration, and its frame count is divisible by the
-	/// downsample factor, or a recorded operation fails.
+	/// width matches the configuration, and it contains at least one complete
+	/// downsample interval, or a recorded operation fails. A non-divisible tail is
+	/// omitted by the strided encoder, matching the donor tokenizer.
 	pub fn encode(&self, input: &Matrix) -> Result<Matrix> {
 		let [batch, frames, input_dim] = input.shape() else {
 			return Err(Error::invalid_argument(
@@ -266,13 +267,12 @@ impl AlmTokenizer {
 			));
 		};
 		if *batch == 0
-			|| *frames == 0
+			|| *frames < self.downsample_factor
 			|| *input_dim != self.config.input_dim
 			|| input.dtype() != DType::F32
-			|| frames % self.downsample_factor != 0
 		{
 			return Err(Error::invalid_argument(
-				"ALM tokenizer input must be nonempty F32 with configured feature width and frame count divisible by its downsample factor",
+				"ALM tokenizer input must be nonempty F32 with configured feature width and enough frames for one downsample interval",
 			));
 		}
 		let channels_first = matrix::transpose(input, 1, 2)?;

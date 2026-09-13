@@ -369,6 +369,12 @@ sdk/rs/ml/alm/prior.rs                     causal motion-token prior
 sdk/rs/ml/alm/model.rs                     product ownership/persistence tree
 sdk/rs/ml/alm/clip.rs                      native frozen CLIP text tower
 sdk/rs/ml/alm/tokenizer.rs                 explicit canonical CLIP byte-BPE asset parser
+sdk/rs/ml/alm/training.rs                  ALM training facade and deterministic window contracts
+sdk/rs/ml/alm/training/tokenizer.rs        temporal VQ-VAE optimizer/EMA lifecycle
+sdk/rs/ml/alm/training/prior.rs            true-boundary causal-prior optimizer lifecycle
+sdk/rs/ml/alm/training/workflow.rs         HumanML3D tokenizer-to-prior orchestration
+sdk/rs/apps/ml/alm/train.rs                 runnable two-stage ALM training application
+sdk/rs/apps/ml/alm/generate.rs              runnable bundle generation and NPY export application
 sdk/rs/tutorials/ml/rl/lunar_lander_ppo.rs runnable teacher/raw-PPO workflow
 sdk/rs/slang/ml/rl/cart_pole/reset.slang   schema-owned reset kernel
 sdk/rs/slang/ml/rl/cart_pole/step.slang    schema-owned dynamics kernel

@@ -238,6 +238,22 @@
 			"presentation": { "reveal": "always", "panel": "shared", "clear": true }
 		},
 		{
+			"label": "Oars - SDK - Train ALM (Release)",
+			"type": "shell",
+			"command": "cargo build --release --example ml_alm_train && python3 tools/build/stage.py --profile release --target ml_alm_train && ./bin/release/sdk/apps/ml/alm/ml_alm_train --help",
+			"group": "test",
+			"problemMatcher": [],
+			"presentation": { "reveal": "always", "panel": "shared", "clear": true }
+		},
+		{
+			"label": "Oars - SDK - Generate ALM (Release)",
+			"type": "shell",
+			"command": "cargo build --release --example ml_alm_generate && python3 tools/build/stage.py --profile release --target ml_alm_generate && ./bin/release/sdk/apps/ml/alm/ml_alm_generate --help",
+			"group": "test",
+			"problemMatcher": [],
+			"presentation": { "reveal": "always", "panel": "shared", "clear": true }
+		},
+		{
 			"label": "Oars - Benchmark - MatMul Suite (Release)",
 			"type": "shell",
 			"command": "cargo build --release --example core_mat_mul_bench && python3 tools/build/stage.py --profile release --target core_mat_mul_bench && python3 tools/profiling/suite.py",

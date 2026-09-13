@@ -8,9 +8,11 @@ use crate::{Error, Result, sdk::data::HumanMl3dDataset};
 
 mod prior;
 mod tokenizer;
+mod workflow;
 
 pub use prior::{PriorConditioning, PriorTrainingConfig, PriorTrainingReport, train_prior};
 pub use tokenizer::{TokenizerTrainingConfig, TokenizerTrainingReport, train_tokenizer};
+pub use workflow::{AlmTrainingConfig, AlmTrainingReport, tokenize_corpus, train_alm};
 
 /// One fixed-length motion window used to train the ALM tokenizer.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

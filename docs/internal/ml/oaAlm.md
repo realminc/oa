@@ -55,7 +55,9 @@ unrelated asset path or caller-assembled tokenizer.
   -> [B,T,input_dim]
 ```
 
-The factor is `2^downsample_stages`; input frame counts must divide it exactly.
+The factor is `2^downsample_stages`. Fixed training windows divide it exactly;
+whole-corpus tokenization accepts longer non-divisible clips and omits the
+incomplete strided tail, matching the donor convolution geometry.
 Channel normalization is currently the differentiable
 transpose–`LayerNorm`–transpose composition. This is mathematically equivalent
 to the donor training fallback and intentionally remains visible until a fused
@@ -130,6 +132,22 @@ Release-mode hardware gates on Intel Iris Xe, Mesa 26.2.2, Vulkan 1.4.354 prove:
   text-feature identity/rows, and explicit clip upload. Independent host tests
   reproduce the donor's exact identity/perturbation gates for world-joint
   recovery, MPJPE, velocity error, contact accuracy, and foot skating.
+- deterministic tokenizer windows preserve half-window overlap plus one exact
+  tail window, while prior windows enumerate every valid start without
+  manufacturing SOM/EOM at interior boundaries;
+- hardware-backed tokenizer training executes reconstruction Smooth L1,
+  temporal-velocity Smooth L1, rank-zero commitment loss, complete reverse
+  mode, AdamW, cosine warmup, and one EMA transition per step;
+- hardware-backed prior training executes masked true-boundary cross entropy,
+  optional frozen caption features, MoE auxiliary loss/routing updates,
+  complete reverse mode, AdamW, callbacks, and Vulkan timestamp evidence; and
+- `train_alm` composes the two stages over the SDK HumanML3D owner, performs an
+  explicit one-time token-corpus readback, validates cached text identity, and
+  returns one product `Alm` ownership tree.
+- runnable Rust `ml_alm_train` and `ml_alm_generate` applications stage below
+  `bin/<profile>/sdk/apps/ml/alm`. Generation writes denormalized F32 NPY motion
+  plus a transparent provenance sidecar; USD skeletal previews remain owned by
+  the not-yet-ported USD/Render integration.
 
 These are correctness and integration results, not a performance claim.
 
@@ -139,9 +157,8 @@ The following donor surfaces remain Planned:
 
 - fused channel-normalization and Conv1d/ReLU lowering with qualified timing;
 - KV-cache generation;
-- ALM stage trainer, window iterators, validation callbacks, and runnable
-  `trainalm`/`genalm` applications consuming the connected HumanML3D-layout
-  dataset;
+- held-out tokenizer/prior validation callbacks, atomic stage checkpoint/resume,
+  native-CLIP assembly flags in `ml_alm_train`, and USD skeletal previews;
 - donor checkpoint differential conversion, broader shapes/dtypes, validation
   layers, and canonical fresh-process performance qualification.
 

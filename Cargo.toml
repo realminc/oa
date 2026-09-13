@@ -148,6 +148,14 @@ path = "sdk/rs/tutorials/ml/rl/cart_pole_rollout.rs"
 name = "ml_rl_lunar_lander_ppo"
 path = "sdk/rs/tutorials/ml/rl/lunar_lander_ppo.rs"
 
+[[example]]
+name = "ml_alm_train"
+path = "sdk/rs/apps/ml/alm/train.rs"
+
+[[example]]
+name = "ml_alm_generate"
+path = "sdk/rs/apps/ml/alm/generate.rs"
+
 [dependencies]
 ash = "0.38"
 # VP9 C-ABI structs only; released Ash remains the Vulkan loader and vk-mem ABI.
