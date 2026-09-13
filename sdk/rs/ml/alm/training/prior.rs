@@ -5,15 +5,15 @@ use std::{cell::Cell, rc::Rc};
 use crate::{
 	Engine, Error, Matrix, Result, matrix,
 	ml::{
-		AdamW, GradientTape, ItTraining, ItTrainingConfig, LinearWarmupCosineScheduler,
-		LossAggregation, LossMetric, LrScheduler, Module, ProgressBar, TrainingSummary, Validation,
-		loss,
+		AdamW, Checkpoint, CheckpointManager, CheckpointManagerConfig, GradientTape, ItTraining,
+		ItTrainingConfig, LinearWarmupCosineScheduler, LossAggregation, LossMetric, LrScheduler,
+		Module, ProgressBar, TrainingSummary, Validation, loss,
 	},
 };
 
 use super::{
-	PriorSpecialTokens, PriorValidationConfig, PriorValidationReport, build_prior_windows,
-	evaluate_prior, gather_prior_batch,
+	PriorSpecialTokens, PriorValidationConfig, PriorValidationReport, StageCheckpointConfig,
+	build_prior_windows, evaluate_prior, gather_prior_batch,
 };
 use crate::sdk::ml::alm::AlmPrior;
 
@@ -33,7 +33,7 @@ pub struct PriorConditioning<'data> {
 }
 
 /// Complete optimizer and iteration policy for [`train_prior`].
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct PriorTrainingConfig {
 	/// Number of complete passes through the true-boundary window inventory.
 	pub epochs: u64,
@@ -54,6 +54,8 @@ pub struct PriorTrainingConfig {
 	pub enable_gpu_timing: bool,
 	/// Print the standard OA progress bar and final training summary.
 	pub show_progress: bool,
+	/// Optional native model/optimizer/progress checkpoint policy.
+	pub checkpoint: Option<StageCheckpointConfig>,
 }
 
 impl Default for PriorTrainingConfig {
@@ -68,6 +70,7 @@ impl Default for PriorTrainingConfig {
 			weight_decay: 0.01,
 			enable_gpu_timing: true,
 			show_progress: true,
+			checkpoint: None,
 		}
 	}
 }
@@ -93,6 +96,8 @@ pub struct PriorTrainingReport {
 	pub gpu_median_ms: f64,
 	/// 95th-percentile device milliseconds per step, or zero when disabled.
 	pub gpu_p95_ms: f64,
+	/// Completed step restored before this process began, or zero for a fresh run.
+	pub resumed_from_step: u64,
 	/// Most recent held-out result, when validation was configured.
 	pub validation: Option<PriorValidationReport>,
 }
@@ -149,7 +154,7 @@ pub fn train_prior_with_validation(
 	validation: Option<PriorValidation<'_>>,
 	config: PriorTrainingConfig,
 ) -> Result<PriorTrainingReport> {
-	validate_training_config(prior, sequences, conditioning, config)?;
+	validate_training_config(prior, sequences, conditioning, &config)?;
 	let windows = build_prior_windows(sequences, config.window_len)?;
 	if windows.is_empty() {
 		return Err(Error::invalid_argument(
@@ -179,13 +184,41 @@ pub fn train_prior_with_validation(
 		1.0e-8,
 		config.weight_decay,
 	)?;
+	let mut checkpoint_manager = config
+		.checkpoint
+		.as_ref()
+		.map(|checkpoint| {
+			CheckpointManager::new(
+				engine,
+				CheckpointManagerConfig {
+					directory: checkpoint.directory.clone(),
+					model_name: checkpoint.model_name.clone(),
+					context: checkpoint.context.clone(),
+					max_keep: checkpoint.max_keep,
+					save_best: true,
+					metric_name: if validation.is_some() {
+						"val_loss".to_owned()
+					} else {
+						"cross_entropy".to_owned()
+					},
+					lower_is_better: true,
+				},
+			)
+		})
+		.transpose()?;
+	let resumed_from_step = match (config.checkpoint.as_ref(), checkpoint_manager.as_mut()) {
+		(Some(checkpoint), Some(manager)) if checkpoint.resume => {
+			manager.resume_latest_into(prior, &mut optimizer)?
+		}
+		_ => 0,
+	};
 	let schedule = LinearWarmupCosineScheduler::new(
 		config.warmup_steps,
 		total_steps,
 		config.learning_rate,
 		config.minimum_learning_rate,
 	)?;
-	optimizer.set_learning_rate(schedule.learning_rate(1))?;
+	optimizer.set_learning_rate(schedule.learning_rate(resumed_from_step.saturating_add(1)))?;
 	let mut schedule_callback = crate::ml::LearningRateScheduler::new(&schedule);
 	let mut loss_metric = LossMetric::new("cross_entropy", LossAggregation::Mean);
 	let mut progress = ProgressBar::default();
@@ -211,10 +244,25 @@ pub fn train_prior_with_validation(
 			)
 		})
 		.transpose()?;
+	let validation_metric = validation_callback.as_ref().map(Validation::metric);
+	let mut checkpoint_callback = match (config.checkpoint.as_ref(), checkpoint_manager.as_mut()) {
+		(Some(checkpoint), Some(manager)) => {
+			let mut callback = Checkpoint::new(manager, prior);
+			callback.set_save_every(checkpoint.save_every);
+			callback.set_restore_best(checkpoint.restore_best);
+			callback.set_verbose(checkpoint.verbose);
+			if let Some(metric) = validation_metric {
+				callback.set_validation_metric(metric);
+			}
+			Some(callback)
+		}
+		_ => None,
+	};
 	let mut training = ItTraining::new_eager_checkpointable(
 		engine,
 		&mut optimizer,
 		ItTrainingConfig {
+			initial_step: resumed_from_step,
 			total_steps,
 			steps_per_epoch,
 			batch_size: config.batch_size as u64,
@@ -229,13 +277,16 @@ pub fn train_prior_with_validation(
 	if let Some(callback) = validation_callback.as_mut() {
 		training.add_callback(callback);
 	}
+	if let Some(callback) = checkpoint_callback.as_mut() {
+		training.add_callback(callback);
+	}
 	training.add_callback(&mut schedule_callback);
 	if config.show_progress {
 		training.add_callback(&mut progress);
 		training.add_callback(&mut summary);
 	}
 
-	let mut completed_steps = 0_u64;
+	let mut completed_steps = resumed_from_step;
 	let mut initial_loss = None;
 	while training.begin_step()? {
 		let completed_usize = usize::try_from(completed_steps)
@@ -312,6 +363,7 @@ pub fn train_prior_with_validation(
 		gpu_mean_ms: gpu.mean_ms,
 		gpu_median_ms: gpu.median_ms,
 		gpu_p95_ms: gpu.p95_ms,
+		resumed_from_step,
 		validation: latest_validation.get(),
 	})
 }
@@ -320,7 +372,7 @@ fn validate_training_config(
 	prior: &AlmPrior,
 	sequences: &[Vec<i32>],
 	conditioning: Option<PriorConditioning<'_>>,
-	config: PriorTrainingConfig,
+	config: &PriorTrainingConfig,
 ) -> Result<()> {
 	if config.epochs == 0 || config.batch_size == 0 || config.window_len == 0 {
 		return Err(Error::invalid_argument(

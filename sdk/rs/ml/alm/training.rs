@@ -4,6 +4,8 @@
 //! tokenizer-window and true-boundary language-model window builders. They do
 //! not own an [`crate::Engine`] or submit work.
 
+use std::path::PathBuf;
+
 use crate::{Error, Result, sdk::data::HumanMl3dDataset};
 
 mod prior;
@@ -27,6 +29,43 @@ pub use workflow::{
 	AlmTrainingConfig, AlmTrainingReport, AlmValidation, tokenize_corpus, train_alm,
 	train_alm_with_validation,
 };
+
+/// Native `.oam` persistence policy for one ALM training stage.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StageCheckpointConfig {
+	/// Root directory beneath the stage's model directory.
+	pub directory: PathBuf,
+	/// Portable stage model name used in checkpoint filenames.
+	pub model_name: String,
+	/// Optional portable run/context suffix.
+	pub context: String,
+	/// Maximum retained incremental checkpoints; zero disables rotation.
+	pub max_keep: usize,
+	/// Save a resumable mid-epoch checkpoint every N steps; zero disables it.
+	pub save_every: u64,
+	/// Restore the highest-step incremental checkpoint before training.
+	pub resume: bool,
+	/// Restore the best validation/epoch checkpoint after the final step.
+	pub restore_best: bool,
+	/// Print checkpoint decisions through the standard callback.
+	pub verbose: bool,
+}
+
+impl StageCheckpointConfig {
+	/// Construct the donor-style bounded epoch checkpoint policy.
+	pub fn new(directory: impl Into<PathBuf>, model_name: impl Into<String>) -> Self {
+		Self {
+			directory: directory.into(),
+			model_name: model_name.into(),
+			context: String::new(),
+			max_keep: 5,
+			save_every: 0,
+			resume: false,
+			restore_best: true,
+			verbose: true,
+		}
+	}
+}
 
 /// One fixed-length motion window used to train the ALM tokenizer.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

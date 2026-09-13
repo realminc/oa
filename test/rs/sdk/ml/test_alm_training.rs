@@ -140,6 +140,7 @@ test_vk!(
 				weight_decay: 0.0,
 				enable_gpu_timing: true,
 				show_progress: false,
+				checkpoint: None,
 			},
 		)?;
 		assert_eq!(report.steps, 3);
@@ -194,6 +195,7 @@ test_vk!(
 				seed_codebook: true,
 				enable_gpu_timing: true,
 				show_progress: false,
+				checkpoint: None,
 			},
 		)?;
 		assert_eq!(report.steps, 3);
@@ -202,6 +204,266 @@ test_vk!(
 		assert!(report.initial_reconstruction_loss.is_finite());
 		assert!(report.final_reconstruction_loss.is_finite());
 		assert!(report.gpu_mean_ms > 0.0);
+		Ok(())
+	}
+);
+
+test_vk!(
+	tokenizer_checkpoint_resume_matches_uninterrupted_parameters_and_ema_state,
+	engine,
+	{
+		use std::time::SystemTime;
+
+		use oa::{
+			ml::Module,
+			sdk::ml::alm::{
+				AlmTokenizer, AlmTokenizerConfig,
+				training::{StageCheckpointConfig, TokenizerTrainingConfig, train_tokenizer},
+			},
+		};
+		let directory = std::env::temp_dir().join(format!(
+			"oars-alm-resume-{}-{}",
+			std::process::id(),
+			SystemTime::now()
+				.duration_since(SystemTime::UNIX_EPOCH)
+				.expect("system clock predates Unix epoch")
+				.as_nanos()
+		));
+		let model_config = AlmTokenizerConfig {
+			input_dim: 3,
+			width: 4,
+			code_dim: 4,
+			num_codes: 2,
+			downsample_stages: 1,
+			depth: 1,
+			commitment_beta: 0.25,
+			ema_decay: 0.9,
+			ema_epsilon: 1.0e-5,
+			dead_threshold: 0.0,
+		};
+		let clips = vec![
+			vec![0.0, 0.1, 0.2, 0.2, 0.3, 0.4, 0.4, 0.5, 0.6, 0.6, 0.7, 0.8],
+			vec![0.8, 0.7, 0.6, 0.6, 0.5, 0.4, 0.4, 0.3, 0.2, 0.2, 0.1, 0.0],
+		];
+		let checkpoint = StageCheckpointConfig {
+			directory: directory.clone(),
+			model_name: "TokenizerResume".into(),
+			context: "gate".into(),
+			max_keep: 8,
+			save_every: 1,
+			resume: false,
+			restore_best: false,
+			verbose: false,
+		};
+		let training_config = TokenizerTrainingConfig {
+			epochs: 2,
+			batch_size: 1,
+			sequence_len: 4,
+			learning_rate: 1.0e-3,
+			minimum_learning_rate: 1.0e-4,
+			warmup_steps: 1,
+			weight_decay: 0.0,
+			seed_codebook: true,
+			enable_gpu_timing: false,
+			show_progress: false,
+			checkpoint: Some(checkpoint.clone()),
+		};
+		let uninterrupted = AlmTokenizer::with_seed(&engine, model_config, 29)?;
+		let uninterrupted_report =
+			train_tokenizer(&engine, &uninterrupted, &clips, training_config.clone())?;
+		assert_eq!(uninterrupted_report.steps, 4);
+
+		let incremental = directory.join("TokenizerResume").join("checkpoint_gate");
+		for entry in std::fs::read_dir(&incremental).expect("read tokenizer checkpoints") {
+			let path = entry.expect("read tokenizer checkpoint entry").path();
+			if !path
+				.file_name()
+				.and_then(|name| name.to_str())
+				.is_some_and(|name| name.contains("_step1_"))
+			{
+				std::fs::remove_file(path).expect("remove later synthetic checkpoint");
+			}
+		}
+		let resumed = AlmTokenizer::with_seed(&engine, model_config, 991)?;
+		let mut resumed_config = training_config;
+		resumed_config
+			.checkpoint
+			.as_mut()
+			.expect("checkpoint policy")
+			.resume = true;
+		let resumed_report = train_tokenizer(&engine, &resumed, &clips, resumed_config)?;
+		assert_eq!(resumed_report.resumed_from_step, 1);
+		assert_eq!(resumed_report.steps, 4);
+		assert_eq!(resumed_report.ema_steps, 4);
+
+		for (expected, actual) in uninterrupted
+			.all_named_parameters()?
+			.into_iter()
+			.zip(resumed.all_named_parameters()?)
+		{
+			assert_eq!(expected.path(), actual.path());
+			let expected_values = expected.parameter().data().read_f32()?;
+			let actual_values = actual.parameter().data().read_f32()?;
+			let maximum_error = expected_values
+				.iter()
+				.zip(&actual_values)
+				.map(|(left, right)| (left - right).abs())
+				.fold(0.0_f32, f32::max);
+			// Restored execution rebuilds transient graphs and is numerically, not
+			// bitwise, equivalent across the Vulkan reduction schedule.
+			assert!(
+				maximum_error <= 2.0e-3,
+				"parameter {} diverged after resume",
+				expected.path()
+			);
+		}
+		for (expected, actual) in uninterrupted
+			.all_named_buffers()?
+			.into_iter()
+			.filter(|buffer| buffer.persistent())
+			.zip(
+				resumed
+					.all_named_buffers()?
+					.into_iter()
+					.filter(|buffer| buffer.persistent()),
+			) {
+			assert_eq!(expected.path(), actual.path());
+			let expected_values = expected.data().read_f32()?;
+			let actual_values = actual.data().read_f32()?;
+			let maximum_error = expected_values
+				.iter()
+				.zip(&actual_values)
+				.map(|(left, right)| (left - right).abs())
+				.fold(0.0_f32, f32::max);
+			assert_eq!(
+				maximum_error,
+				0.0,
+				"buffer {} was not restored exactly",
+				expected.path()
+			);
+		}
+		assert_eq!(
+			uninterrupted
+				.all_named_state_u32()?
+				.into_iter()
+				.map(|state| (state.path().to_owned(), state.value()))
+				.collect::<Vec<_>>(),
+			resumed
+				.all_named_state_u32()?
+				.into_iter()
+				.map(|state| (state.path().to_owned(), state.value()))
+				.collect::<Vec<_>>()
+		);
+		std::fs::remove_dir_all(directory).expect("remove tokenizer resume fixture");
+		Ok(())
+	}
+);
+
+test_vk!(
+	prior_checkpoint_resume_preserves_absolute_cursor_and_optimizer_state,
+	engine,
+	{
+		use std::time::SystemTime;
+
+		use oa::{
+			ml::Module,
+			sdk::ml::alm::{
+				AlmPrior, AlmPriorConfig,
+				training::{PriorTrainingConfig, StageCheckpointConfig, train_prior},
+			},
+		};
+		let directory = std::env::temp_dir().join(format!(
+			"oars-alm-prior-resume-{}-{}",
+			std::process::id(),
+			SystemTime::now()
+				.duration_since(SystemTime::UNIX_EPOCH)
+				.expect("system clock predates Unix epoch")
+				.as_nanos()
+		));
+		let mut model_config = AlmPriorConfig {
+			model_width: 8,
+			num_heads: 1,
+			num_layers: 1,
+			hidden_width: 16,
+			batch_size: 2,
+			sequence_length: 4,
+			max_sequence_length: 8,
+			..AlmPriorConfig::default()
+		};
+		model_config.sync_vocab(4)?;
+		let sequences = vec![vec![0, 1, 2], vec![1, 2, 3]];
+		let checkpoint = StageCheckpointConfig {
+			directory: directory.clone(),
+			model_name: "PriorResume".into(),
+			context: "gate".into(),
+			max_keep: 8,
+			save_every: 1,
+			resume: false,
+			restore_best: false,
+			verbose: false,
+		};
+		let training_config = PriorTrainingConfig {
+			epochs: 3,
+			batch_size: 2,
+			window_len: 4,
+			learning_rate: 1.0e-3,
+			minimum_learning_rate: 1.0e-4,
+			warmup_steps: 1,
+			weight_decay: 0.0,
+			enable_gpu_timing: false,
+			show_progress: false,
+			checkpoint: Some(checkpoint),
+		};
+		let uninterrupted = AlmPrior::with_seed(&engine, model_config, 41)?;
+		let uninterrupted_report = train_prior(
+			&engine,
+			&uninterrupted,
+			&sequences,
+			None,
+			training_config.clone(),
+		)?;
+		assert_eq!(uninterrupted_report.steps, 3);
+		let incremental = directory.join("PriorResume").join("checkpoint_gate");
+		for entry in std::fs::read_dir(&incremental).expect("read prior checkpoints") {
+			let path = entry.expect("read prior checkpoint entry").path();
+			if !path
+				.file_name()
+				.and_then(|name| name.to_str())
+				.is_some_and(|name| name.contains("_step1_"))
+			{
+				std::fs::remove_file(path).expect("remove later synthetic checkpoint");
+			}
+		}
+		let resumed = AlmPrior::with_seed(&engine, model_config, 999)?;
+		let mut resumed_config = training_config;
+		resumed_config
+			.checkpoint
+			.as_mut()
+			.expect("checkpoint policy")
+			.resume = true;
+		let resumed_report = train_prior(&engine, &resumed, &sequences, None, resumed_config)?;
+		assert_eq!(resumed_report.resumed_from_step, 1);
+		assert_eq!(resumed_report.steps, 3);
+		for (expected, actual) in uninterrupted
+			.all_named_parameters()?
+			.into_iter()
+			.zip(resumed.all_named_parameters()?)
+		{
+			assert_eq!(expected.path(), actual.path());
+			let expected_values = expected.parameter().data().read_f32()?;
+			let actual_values = actual.parameter().data().read_f32()?;
+			let maximum_error = expected_values
+				.iter()
+				.zip(&actual_values)
+				.map(|(left, right)| (left - right).abs())
+				.fold(0.0_f32, f32::max);
+			assert!(
+				maximum_error <= 2.0e-3,
+				"prior parameter {} diverged after resume",
+				expected.path()
+			);
+		}
+		std::fs::remove_dir_all(directory).expect("remove prior resume fixture");
 		Ok(())
 	}
 );
@@ -312,6 +574,7 @@ test_vk!(
 					seed_codebook: true,
 					enable_gpu_timing: false,
 					show_progress: false,
+					checkpoint: None,
 				},
 				prior: PriorTrainingConfig {
 					epochs: 3,
@@ -323,6 +586,7 @@ test_vk!(
 					weight_decay: 0.0,
 					enable_gpu_timing: false,
 					show_progress: false,
+					checkpoint: None,
 				},
 				text_seed: 42,
 			},

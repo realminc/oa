@@ -6,7 +6,7 @@ use oa::sdk::{
 		AlmFfnType, AlmPrior, AlmPriorConfig, AlmTokenizer, AlmTokenizerConfig,
 		training::{
 			AlmTrainingConfig, AlmValidation, PriorTrainingConfig, PriorValidationConfig,
-			TokenizerTrainingConfig, TokenizerValidationConfig, train_alm,
+			StageCheckpointConfig, TokenizerTrainingConfig, TokenizerValidationConfig, train_alm,
 			train_alm_with_validation,
 		},
 	},
@@ -37,6 +37,12 @@ struct Options {
 	max_sequence_len: usize,
 	ffn_type: AlmFfnType,
 	text_conditioning: bool,
+	checkpoint_directory: PathBuf,
+	checkpoint_save_every: u64,
+	checkpoint_keep: usize,
+	checkpoint_enabled: bool,
+	resume: bool,
+	restore_best: bool,
 }
 
 impl Default for Options {
@@ -66,12 +72,21 @@ impl Default for Options {
 			max_sequence_len: 260,
 			ffn_type: AlmFfnType::Dense,
 			text_conditioning: true,
+			checkpoint_directory: "var/model/dev".into(),
+			checkpoint_save_every: 0,
+			checkpoint_keep: 5,
+			checkpoint_enabled: true,
+			resume: false,
+			restore_best: true,
 		}
 	}
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
 	let options = parse_options()?;
+	if options.resume && !options.checkpoint_enabled {
+		return Err(argument_error("--resume conflicts with --no-checkpoint"));
+	}
 	let dataset = HumanMl3dDataset::open_cmp(&options.dataset, &options.split, options.max_clips)?;
 	let validation = match HumanMl3dDataset::open_cmp(
 		&options.dataset,
@@ -176,11 +191,24 @@ fn main() -> Result<(), Box<dyn Error>> {
 		}
 	);
 
+	let stage_checkpoint = |model_name: &str| {
+		options.checkpoint_enabled.then(|| StageCheckpointConfig {
+			directory: options.checkpoint_directory.clone(),
+			model_name: model_name.to_owned(),
+			context: String::new(),
+			max_keep: options.checkpoint_keep,
+			save_every: options.checkpoint_save_every,
+			resume: options.resume,
+			restore_best: options.restore_best,
+			verbose: true,
+		})
+	};
 	let training_config = AlmTrainingConfig {
 		tokenizer: TokenizerTrainingConfig {
 			epochs: options.tokenizer_epochs,
 			batch_size: options.batch_size,
 			sequence_len: options.sequence_len,
+			checkpoint: stage_checkpoint("AlmTokenizer"),
 			..TokenizerTrainingConfig::default()
 		},
 		prior: PriorTrainingConfig {
@@ -190,6 +218,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 				.prior_sequence_len
 				.checked_add(1)
 				.ok_or_else(|| argument_error("prior window length overflows usize"))?,
+			checkpoint: stage_checkpoint("AlmPrior"),
 			..PriorTrainingConfig::default()
 		},
 		text_seed: options.seed,
@@ -232,6 +261,12 @@ fn main() -> Result<(), Box<dyn Error>> {
 		report.prior.initial_loss,
 		report.prior.final_loss
 	);
+	if report.tokenizer.resumed_from_step > 0 || report.prior.resumed_from_step > 0 {
+		println!(
+			"  resumed: tokenizer step {} · prior step {}",
+			report.tokenizer.resumed_from_step, report.prior.resumed_from_step
+		);
+	}
 	if let Some(validation) = report.tokenizer.validation {
 		println!(
 			"  tokenizer validation: loss {:.6} · velocity {:.6} · MPJPE {:.3} cm · contact {:.2}% · foot skate {:.3} cm/frame · codes {}/{} · perplexity {:.2}",
@@ -290,6 +325,14 @@ fn parse_options() -> Result<Options, Box<dyn Error>> {
 			"--lm-layers" => options.num_layers = parse(&value()?, &argument)?,
 			"--lm-ffn" => options.hidden_width = parse(&value()?, &argument)?,
 			"--lm-max-seq-len" => options.max_sequence_len = parse(&value()?, &argument)?,
+			"--checkpoint-dir" => options.checkpoint_directory = value()?.into(),
+			"--checkpoint-save-every" => {
+				options.checkpoint_save_every = parse(&value()?, &argument)?
+			}
+			"--checkpoint-keep" => options.checkpoint_keep = parse(&value()?, &argument)?,
+			"--resume" => options.resume = true,
+			"--no-checkpoint" => options.checkpoint_enabled = false,
+			"--no-restore-best" => options.restore_best = false,
 			"--lm-ffn-type" => {
 				options.ffn_type = match value()?.as_str() {
 					"dense" => AlmFfnType::Dense,
@@ -329,6 +372,8 @@ fn print_help() {
 		 --tok-epochs N --lm-epochs N --batch N --seq-len N --lm-seq-len N\n\
 		 --codes N --width N --code-dim N --down-t N --depth N\n\
 		 --dmodel N --lm-heads N --lm-layers N --lm-ffn N\n\
-		 --lm-max-seq-len N --lm-ffn-type dense|moe|hybrid [--unconditional] [--seed N]"
+		 --lm-max-seq-len N --lm-ffn-type dense|moe|hybrid [--unconditional] [--seed N]\n\
+		 [--checkpoint-dir DIR] [--checkpoint-save-every N] [--checkpoint-keep N]\n\
+		 [--resume] [--no-restore-best] [--no-checkpoint]"
 	);
 }

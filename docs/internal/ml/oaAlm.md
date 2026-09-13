@@ -154,12 +154,21 @@ Release-mode hardware gates on Intel Iris Xe, Mesa 26.2.2, Vulkan 1.4.354 prove:
   `Validation` callback lifecycle at epoch boundaries. Evaluation time is
   excluded from training throughput and the latest rich reports remain in the
   stage results for application output.
+- both stage policies optionally attach the native `.oam` checkpoint callback.
+  Resume restores the registered model tree, persistent tokenizer EMA buffers
+  and scalar counter, complete AdamW moments/scalars, absolute iterator step,
+  data-window cursor, scheduler position, and historical best-metric policy
+  before admitting another update. `total_steps` remains the absolute final
+  budget. The first step in a restarted process rebuilds transient allocation
+  ordinals before stable-resource reuse.
 - runnable Rust `ml_alm_train` and `ml_alm_generate` applications stage below
   `bin/<profile>/sdk/apps/ml/alm`. Training admits the donor `--val-split` and
   `--val-batches` policy and degrades explicitly to no validation when that
-  split is unavailable. Generation writes denormalized F32 NPY motion plus a
-  transparent provenance sidecar; USD skeletal previews remain owned by the
-  not-yet-ported USD/Render integration.
+  split is unavailable. Native checkpoint controls include directory,
+  mid-epoch interval, retention, resume, restore-best, and explicit disable.
+  Generation writes denormalized F32 NPY motion plus a transparent provenance
+  sidecar; USD skeletal previews remain owned by the not-yet-ported USD/Render
+  integration.
 
 These are correctness and integration results, not a performance claim.
 
@@ -169,8 +178,7 @@ The following donor surfaces remain Planned:
 
 - fused channel-normalization and Conv1d/ReLU lowering with qualified timing;
 - KV-cache generation;
-- atomic stage checkpoint/resume, native-CLIP assembly flags in `ml_alm_train`,
-  and USD skeletal previews;
+- native-CLIP assembly flags in `ml_alm_train` and USD skeletal previews;
 - donor checkpoint differential conversion, broader shapes/dtypes, validation
   layers, and canonical fresh-process performance qualification.
 

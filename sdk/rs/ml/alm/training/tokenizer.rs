@@ -5,21 +5,21 @@ use std::{cell::Cell, rc::Rc};
 use crate::{
 	Engine, Error, Matrix, Result, matrix,
 	ml::{
-		AdamW, GradientTape, ItTraining, ItTrainingConfig, LinearWarmupCosineScheduler,
-		LossAggregation, LossMetric, LrScheduler, Module, ProgressBar, TrainingSummary, Validation,
-		loss,
+		AdamW, Checkpoint, CheckpointManager, CheckpointManagerConfig, GradientTape, ItTraining,
+		ItTrainingConfig, LinearWarmupCosineScheduler, LossAggregation, LossMetric, LrScheduler,
+		Module, ProgressBar, TrainingSummary, Validation, loss,
 	},
 	sdk::data::HumanMl3dDataset,
 };
 
 use super::{
-	TokenizerValidationConfig, TokenizerValidationReport, build_tokenizer_windows,
-	evaluate_tokenizer, gather_tokenizer_clip_batch,
+	StageCheckpointConfig, TokenizerValidationConfig, TokenizerValidationReport,
+	build_tokenizer_windows, evaluate_tokenizer, gather_tokenizer_clip_batch,
 };
 use crate::sdk::ml::alm::AlmTokenizer;
 
 /// Complete optimizer and iteration policy for [`train_tokenizer`].
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TokenizerTrainingConfig {
 	/// Number of complete passes through the window inventory.
 	pub epochs: u64,
@@ -42,6 +42,8 @@ pub struct TokenizerTrainingConfig {
 	pub enable_gpu_timing: bool,
 	/// Print the standard OA progress bar and final training summary.
 	pub show_progress: bool,
+	/// Optional native model/optimizer/progress checkpoint policy.
+	pub checkpoint: Option<StageCheckpointConfig>,
 }
 
 impl Default for TokenizerTrainingConfig {
@@ -57,6 +59,7 @@ impl Default for TokenizerTrainingConfig {
 			seed_codebook: true,
 			enable_gpu_timing: true,
 			show_progress: true,
+			checkpoint: None,
 		}
 	}
 }
@@ -84,6 +87,8 @@ pub struct TokenizerTrainingReport {
 	pub gpu_p95_ms: f64,
 	/// Quantizer EMA transition count after the run.
 	pub ema_steps: u32,
+	/// Completed step restored before this process began, or zero for a fresh run.
+	pub resumed_from_step: u64,
 	/// Most recent held-out result, when validation was configured.
 	pub validation: Option<TokenizerValidationReport>,
 }
@@ -136,7 +141,7 @@ pub fn train_tokenizer_with_validation<T: AsRef<[f32]>>(
 	validation: Option<TokenizerValidation<'_>>,
 	config: TokenizerTrainingConfig,
 ) -> Result<TokenizerTrainingReport> {
-	validate_training_config(tokenizer, clips, config)?;
+	validate_training_config(tokenizer, clips, &config)?;
 	let frame_counts = clips
 		.iter()
 		.map(|clip| clip.as_ref().len() / tokenizer.config().input_dim);
@@ -193,13 +198,41 @@ pub fn train_tokenizer_with_validation<T: AsRef<[f32]>>(
 		1.0e-8,
 		config.weight_decay,
 	)?;
+	let mut checkpoint_manager = config
+		.checkpoint
+		.as_ref()
+		.map(|checkpoint| {
+			CheckpointManager::new(
+				engine,
+				CheckpointManagerConfig {
+					directory: checkpoint.directory.clone(),
+					model_name: checkpoint.model_name.clone(),
+					context: checkpoint.context.clone(),
+					max_keep: checkpoint.max_keep,
+					save_best: true,
+					metric_name: if validation.is_some() {
+						"val_loss".to_owned()
+					} else {
+						"reconstruction".to_owned()
+					},
+					lower_is_better: true,
+				},
+			)
+		})
+		.transpose()?;
+	let resumed_from_step = match (config.checkpoint.as_ref(), checkpoint_manager.as_mut()) {
+		(Some(checkpoint), Some(manager)) if checkpoint.resume => {
+			manager.resume_latest_into(tokenizer, &mut optimizer)?
+		}
+		_ => 0,
+	};
 	let schedule = LinearWarmupCosineScheduler::new(
 		config.warmup_steps,
 		total_steps,
 		config.learning_rate,
 		config.minimum_learning_rate,
 	)?;
-	optimizer.set_learning_rate(schedule.learning_rate(1))?;
+	optimizer.set_learning_rate(schedule.learning_rate(resumed_from_step.saturating_add(1)))?;
 	let mut schedule_callback = crate::ml::LearningRateScheduler::new(&schedule);
 	let mut loss_metric = LossMetric::new("reconstruction", LossAggregation::Mean);
 	let mut progress = ProgressBar::default();
@@ -224,10 +257,25 @@ pub fn train_tokenizer_with_validation<T: AsRef<[f32]>>(
 			)
 		})
 		.transpose()?;
+	let validation_metric = validation_callback.as_ref().map(Validation::metric);
+	let mut checkpoint_callback = match (config.checkpoint.as_ref(), checkpoint_manager.as_mut()) {
+		(Some(checkpoint), Some(manager)) => {
+			let mut callback = Checkpoint::new(manager, tokenizer);
+			callback.set_save_every(checkpoint.save_every);
+			callback.set_restore_best(checkpoint.restore_best);
+			callback.set_verbose(checkpoint.verbose);
+			if let Some(metric) = validation_metric {
+				callback.set_validation_metric(metric);
+			}
+			Some(callback)
+		}
+		_ => None,
+	};
 	let mut training = ItTraining::new_eager_checkpointable(
 		engine,
 		&mut optimizer,
 		ItTrainingConfig {
+			initial_step: resumed_from_step,
 			total_steps,
 			steps_per_epoch,
 			batch_size: config.batch_size as u64,
@@ -242,13 +290,16 @@ pub fn train_tokenizer_with_validation<T: AsRef<[f32]>>(
 	if let Some(callback) = validation_callback.as_mut() {
 		training.add_callback(callback);
 	}
+	if let Some(callback) = checkpoint_callback.as_mut() {
+		training.add_callback(callback);
+	}
 	training.add_callback(&mut schedule_callback);
 	if config.show_progress {
 		training.add_callback(&mut progress);
 		training.add_callback(&mut summary);
 	}
 
-	let mut completed_steps = 0_u64;
+	let mut completed_steps = resumed_from_step;
 	let mut initial_loss = None;
 	while training.begin_step()? {
 		let completed_usize = usize::try_from(completed_steps)
@@ -315,6 +366,7 @@ pub fn train_tokenizer_with_validation<T: AsRef<[f32]>>(
 		gpu_median_ms: gpu.median_ms,
 		gpu_p95_ms: gpu.p95_ms,
 		ema_steps: tokenizer.rvq().level(0).map_or(0, |level| level.ema_step()),
+		resumed_from_step,
 		validation: latest_validation.get(),
 	})
 }
@@ -339,7 +391,7 @@ pub(super) fn velocity_smooth_l1(
 fn validate_training_config<T: AsRef<[f32]>>(
 	tokenizer: &AlmTokenizer,
 	clips: &[T],
-	config: TokenizerTrainingConfig,
+	config: &TokenizerTrainingConfig,
 ) -> Result<()> {
 	if config.epochs == 0 || config.batch_size == 0 || config.sequence_len < 2 {
 		return Err(Error::invalid_argument(

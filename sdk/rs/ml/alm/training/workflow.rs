@@ -12,7 +12,7 @@ use super::{
 use crate::sdk::ml::alm::{Alm, AlmPrior, AlmTokenizer};
 
 /// Stage policies for one complete tokenizer-then-prior ALM run.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct AlmTrainingConfig {
 	/// Temporal VQ-VAE stage policy.
 	pub tokenizer: TokenizerTrainingConfig,
