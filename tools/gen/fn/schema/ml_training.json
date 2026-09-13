@@ -7,6 +7,24 @@
   "retired_stable_ids": [39, 115],
   "port_provenance": [
     {
+      "family": "channel_norm",
+      "operations": [
+        "channel_norm", "channel_norm_backward",
+        "channel_norm_relu", "channel_norm_relu_backward"
+      ],
+      "classification": "mechanical_adaptation",
+      "donors": [
+        "source/cpp/lib/oa/ml/fnmatrix/norm/fnMatrixChannelNorm.cpp",
+        "source/cpp/lib/oa/ml/autograd/matrix/autogradChannelNorm.h",
+        "source/cpp/lib/oa/ml/shader/compute/nn/channelNorm/channelNorm.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/channelNorm/channelNormBwd.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/channelNorm/channelNormRelu.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/channelNorm/channelNormReluBwd.slang",
+        "tools/gen/fn/schema/ml/mlFnMatrixChannelNorm.toml"
+      ],
+      "reason": "Preserves donor BCT channel-axis normalization, affine transform, fused ReLU, and complete input/weight/bias adjoints. OARS assigns crate-global IDs because donor-local 326 through 329 already identify the scaled masked-softmax and attention family, makes the donor shader's four-values-per-lane limit an explicit 1024-channel contract, and uses the schema-owned ordered sum-axis reducer for affine adjoints."
+    },
+    {
       "family": "rms_norm_gated",
       "operations": ["rms_norm_gated", "rms_norm_gated_backward"],
       "classification": "mechanical_adaptation",
@@ -2009,6 +2027,128 @@
         ["num_embeddings", "uint32"],
         ["embedding_dim", "uint32"]
       ]
+    },
+    {
+      "stable_id": 443,
+      "name": "channel_norm",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlChannelNormF32",
+      "source": "src/slang/ml/nn/channel_norm/channel_norm.slang",
+      "variant": "generic",
+      "workgroup_size": [256, 1, 1],
+      "dispatch_tile_size": [1, 1, 1],
+      "physical_write": {
+        "writes": [{"binding": 3, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"}],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "differentiation": "channel_norm_backward",
+      "semantic_attributes": [["batch", "unsigned_integer"], ["channels", "unsigned_integer"], ["sequence_length", "unsigned_integer"], ["epsilon", "float"]],
+      "autograd": {"mode": "manual", "family": "matrix/norm"},
+      "contract": {
+        "input_kinds": ["matrix", "parameter", "parameter"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "bct_channel_axis_normalization",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {"oracle": "independent_host_channel_norm", "shapes": [[2, 5, 3]], "tolerance": 0.00002},
+      "push_fields": [["input_index", "uint32"], ["weight_index", "uint32"], ["bias_index", "uint32"], ["output_index", "uint32"], ["batch", "uint32"], ["channels", "uint32"], ["sequence_length", "uint32"], ["epsilon", "float32"]]
+    },
+    {
+      "stable_id": 444,
+      "name": "channel_norm_backward",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlChannelNormBackwardF32",
+      "source": "src/slang/ml/nn/channel_norm/channel_norm_backward.slang",
+      "variant": "generic",
+      "workgroup_size": [256, 1, 1],
+      "dispatch_tile_size": [1, 1, 1],
+      "physical_write": {
+        "writes": [
+          {"binding": 3, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 4, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 5, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"}
+        ],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "differentiation": "backward",
+      "semantic_attributes": [["batch", "unsigned_integer"], ["channels", "unsigned_integer"], ["sequence_length", "unsigned_integer"], ["epsilon", "float"]],
+      "contract": {
+        "input_kinds": ["matrix", "parameter", "matrix"],
+        "output_kinds": ["matrix", "matrix", "matrix"],
+        "shape_rule": "bct_channel_norm_complete_adjoint",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_outputs"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1, -1, -1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {"oracle": "finite_difference_complete_channel_norm", "shapes": [[2, 5, 3]], "tolerance": 0.0005},
+      "push_fields": [["input_index", "uint32"], ["weight_index", "uint32"], ["output_gradient_index", "uint32"], ["input_gradient_index", "uint32"], ["weight_contribution_index", "uint32"], ["bias_contribution_index", "uint32"], ["batch", "uint32"], ["channels", "uint32"], ["sequence_length", "uint32"], ["epsilon", "float32"]]
+    },
+    {
+      "stable_id": 445,
+      "name": "channel_norm_relu",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlChannelNormReluF32",
+      "source": "src/slang/ml/nn/channel_norm/channel_norm_relu.slang",
+      "variant": "generic",
+      "workgroup_size": [256, 1, 1],
+      "dispatch_tile_size": [1, 1, 1],
+      "physical_write": {
+        "writes": [{"binding": 3, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"}],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "differentiation": "channel_norm_relu_backward",
+      "semantic_attributes": [["batch", "unsigned_integer"], ["channels", "unsigned_integer"], ["sequence_length", "unsigned_integer"], ["epsilon", "float"]],
+      "autograd": {"mode": "manual", "family": "matrix/norm"},
+      "contract": {
+        "input_kinds": ["matrix", "parameter", "parameter"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "bct_channel_axis_normalization_relu",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {"oracle": "independent_host_channel_norm_relu", "shapes": [[2, 5, 3]], "tolerance": 0.00002},
+      "push_fields": [["input_index", "uint32"], ["weight_index", "uint32"], ["bias_index", "uint32"], ["output_index", "uint32"], ["batch", "uint32"], ["channels", "uint32"], ["sequence_length", "uint32"], ["epsilon", "float32"]]
+    },
+    {
+      "stable_id": 446,
+      "name": "channel_norm_relu_backward",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlChannelNormReluBackwardF32",
+      "source": "src/slang/ml/nn/channel_norm/channel_norm_relu_backward.slang",
+      "variant": "generic",
+      "workgroup_size": [256, 1, 1],
+      "dispatch_tile_size": [1, 1, 1],
+      "physical_write": {
+        "writes": [
+          {"binding": 4, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 5, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 6, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"}
+        ],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "differentiation": "backward",
+      "semantic_attributes": [["batch", "unsigned_integer"], ["channels", "unsigned_integer"], ["sequence_length", "unsigned_integer"], ["epsilon", "float"]],
+      "contract": {
+        "input_kinds": ["matrix", "parameter", "saved_state", "matrix"],
+        "output_kinds": ["matrix", "matrix", "matrix"],
+        "shape_rule": "bct_channel_norm_relu_complete_adjoint",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_outputs"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1, -1, -1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {"oracle": "finite_difference_complete_channel_norm_relu", "shapes": [[2, 5, 3]], "tolerance": 0.0005},
+      "push_fields": [["input_index", "uint32"], ["weight_index", "uint32"], ["forward_output_index", "uint32"], ["output_gradient_index", "uint32"], ["input_gradient_index", "uint32"], ["weight_contribution_index", "uint32"], ["bias_contribution_index", "uint32"], ["batch", "uint32"], ["channels", "uint32"], ["sequence_length", "uint32"], ["epsilon", "float32"]]
     },
     {
       "stable_id": 438,

@@ -418,12 +418,11 @@ impl AlmTokenizer {
 	}
 
 	fn channel_norm(&self, norm: &LayerNorm, input: &Matrix) -> Result<Matrix> {
-		let channels_last = matrix::transpose(input, 1, 2)?;
-		matrix::transpose(&norm.forward(&channels_last)?, 1, 2)
+		norm.forward_channel(input)
 	}
 
 	fn channel_norm_relu(&self, norm: &LayerNorm, input: &Matrix) -> Result<Matrix> {
-		ml_matrix::relu(&self.channel_norm(norm, input)?)
+		norm.forward_channel_relu(input)
 	}
 
 	fn residual_stack(

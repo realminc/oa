@@ -5,7 +5,7 @@
 // matrix_reduce_sha256=3d19602cebc66c26057cdb581aac03a244d971ba66d7cffc49fa5ed75e909444
 // matrix_rng_sha256=69eed5c6190ddac53512aee48f3705713d2edaddf0876b557ada5a2a043b130e
 // matrix_index_sha256=90a8202c1bb5468f5e27feb8f80a7f3829c443e51bc687b06a4f34c0ca0b84db
-// ml_training_sha256=b4deebc5ebb87a2ba8b92107684b03636a5ced02fca67f7b6ca663fb54d943cb
+// ml_training_sha256=a91a4037b547cf1257c704e8d929ad93bcae70c1f918352987a72b2bf0638cf2
 // audio_sha256=76b31413ecac5427d1036ca55abcd5235d506705c2f3524fac53dadf550afdb9
 // cryptography_hash_sha256=5ce349b25f0c065c096fbc89d0351d1d9750bd17a4dc29f2730f2ebc1f610678
 // image_sha256=29ee176c7f91e2c038cf2a90f150b7cf4aa640ee1c241ba9c617a2f6338161bf
@@ -1176,6 +1176,103 @@ pub mod ml {
 	.with_differentiation(OpDifferentiation::None)
 	.with_lowering(OpLowering::Dispatch)
 	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS));
+
+	pub const CHANNEL_NORM: OperationContract = OperationContract::new(
+		"oa::ml::matrix::channel_norm",
+		0xb19754f4ad595633,
+		&[
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+		],
+		&[OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::Reverse)
+	.with_lowering(OpLowering::Dispatch)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("batch", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("channels", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("sequence_length", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("epsilon", OpAttributeKind::Float),
+	]);
+
+	pub const CHANNEL_NORM_BACKWARD: OperationContract = OperationContract::new(
+		"oa::ml::matrix::channel_norm_backward",
+		0x05718ab0c40354e2,
+		&[
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+		],
+		&[
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+		],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("batch", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("channels", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("sequence_length", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("epsilon", OpAttributeKind::Float),
+	]);
+
+	pub const CHANNEL_NORM_RELU: OperationContract = OperationContract::new(
+		"oa::ml::matrix::channel_norm_relu",
+		0x8c87c9a07ec6d989,
+		&[
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+		],
+		&[OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::Reverse)
+	.with_lowering(OpLowering::Dispatch)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("batch", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("channels", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("sequence_length", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("epsilon", OpAttributeKind::Float),
+	]);
+
+	pub const CHANNEL_NORM_RELU_BACKWARD: OperationContract = OperationContract::new(
+		"oa::ml::matrix::channel_norm_relu_backward",
+		0x1b963b9ffb53f168,
+		&[
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+		],
+		&[
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+		],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("batch", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("channels", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("sequence_length", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("epsilon", OpAttributeKind::Float),
+	]);
 
 	pub const RNN_SCAN: OperationContract = OperationContract::new(
 		"oa::ml::matrix::rnn_scan",

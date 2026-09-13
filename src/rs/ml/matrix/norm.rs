@@ -25,6 +25,114 @@ pub struct RmsNormGatedBackward {
 	pub gate: Matrix,
 }
 
+/// Complete adjoints of channel-axis normalization over BCT storage.
+pub struct ChannelNormBackward {
+	/// Gradient of the BCT input.
+	pub input: Matrix,
+	/// Gradient of the channel affine weight.
+	pub weight: Matrix,
+	/// Gradient of the channel affine bias.
+	pub bias: Matrix,
+}
+
+pub(in crate::ml) fn channel_norm_forward(
+	input: &Matrix,
+	weight: &Matrix,
+	bias: &Matrix,
+	epsilon: f32,
+	relu: bool,
+) -> Result<Matrix> {
+	let output = dispatch::channel_norm(input, weight, bias, epsilon, relu)?;
+	autograd::record_channel_norm(
+		input,
+		&output,
+		None,
+		weight.clone(),
+		None,
+		bias.clone(),
+		epsilon,
+		relu,
+	)?;
+	Ok(output)
+}
+
+/// Normalize the channel axis of a nonempty FP32 `[B, C, T]` Matrix.
+///
+/// # Errors
+///
+/// Returns an error unless the affine vectors match `C`, all values belong to
+/// one Engine, epsilon is finite and positive, `C <= 1024`, or recording fails.
+pub fn channel_norm(
+	input: &Matrix,
+	weight: &Matrix,
+	bias: &Matrix,
+	epsilon: f32,
+) -> Result<Matrix> {
+	channel_norm_forward(input, weight, bias, epsilon, false)
+}
+
+/// Normalize the channel axis of `[B, C, T]` and fuse the following ReLU.
+///
+/// # Errors
+///
+/// Returns an error under the same conditions as [`channel_norm`], or when
+/// runtime recording fails.
+pub fn channel_norm_relu(
+	input: &Matrix,
+	weight: &Matrix,
+	bias: &Matrix,
+	epsilon: f32,
+) -> Result<Matrix> {
+	channel_norm_forward(input, weight, bias, epsilon, true)
+}
+
+/// Compute complete explicit channel-normalization adjoints.
+///
+/// # Errors
+///
+/// Returns an error when the forward contract or output gradient is invalid,
+/// or runtime recording fails.
+pub fn channel_norm_backward(
+	input: &Matrix,
+	weight: &Matrix,
+	output_gradient: &Matrix,
+	epsilon: f32,
+) -> Result<ChannelNormBackward> {
+	let result = dispatch::channel_norm_backward(input, weight, None, output_gradient, epsilon)?;
+	Ok(ChannelNormBackward {
+		input: result.input,
+		weight: result.weight,
+		bias: result.bias,
+	})
+}
+
+/// Compute complete adjoints of fused channel normalization and ReLU.
+///
+/// # Errors
+///
+/// Returns an error when saved output or gradient does not match the forward
+/// contract, or runtime recording fails.
+pub fn channel_norm_relu_backward(
+	input: &Matrix,
+	weight: &Matrix,
+	forward_output: &Matrix,
+	output_gradient: &Matrix,
+	epsilon: f32,
+) -> Result<ChannelNormBackward> {
+	let result = dispatch::channel_norm_backward(
+		input,
+		weight,
+		Some(forward_output),
+		output_gradient,
+		epsilon,
+	)?;
+	Ok(ChannelNormBackward {
+		input: result.input,
+		weight: result.weight,
+		bias: result.bias,
+	})
+}
+
 /// Normalize an NCHW Matrix using statistics computed from the current batch.
 ///
 /// # Errors

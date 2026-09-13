@@ -70,6 +70,10 @@ class MlSchemaTests(unittest.TestCase):
 				"adamw_graph",
 				"embedding",
 				"embedding_backward",
+				"channel_norm",
+				"channel_norm_backward",
+				"channel_norm_relu",
+				"channel_norm_relu_backward",
 				"embedding_u8",
 				"embedding_backward_u8",
 				"rnn_scan",
@@ -257,6 +261,41 @@ class MlSchemaTests(unittest.TestCase):
 			record
 			for record in self.schema["port_provenance"]
 			if record["family"] == "lunar_lander"
+		)
+		self.assertEqual(provenance["classification"], "mechanical_adaptation")
+
+	def test_channel_norm_preserves_fused_donor_family(self) -> None:
+		operations = {
+			operation["name"]: operation for operation in self.schema["operations"]
+		}
+		self.assertEqual(
+			[
+				operations[name]["stable_id"]
+				for name in (
+					"channel_norm",
+					"channel_norm_backward",
+					"channel_norm_relu",
+					"channel_norm_relu_backward",
+				)
+			],
+			[443, 444, 445, 446],
+		)
+		self.assertEqual(
+			operations["channel_norm"]["differentiation"],
+			"channel_norm_backward",
+		)
+		self.assertEqual(
+			operations["channel_norm_relu"]["differentiation"],
+			"channel_norm_relu_backward",
+		)
+		self.assertEqual(
+			operations["channel_norm_backward"]["contract"]["output_kinds"],
+			["matrix", "matrix", "matrix"],
+		)
+		provenance = next(
+			record
+			for record in self.schema["port_provenance"]
+			if record["family"] == "channel_norm"
 		)
 		self.assertEqual(provenance["classification"], "mechanical_adaptation")
 

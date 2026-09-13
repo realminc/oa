@@ -28,7 +28,8 @@ pub(in crate::ml) use moe::{
 	record_moe_route_weights, record_silu_mul,
 };
 pub(in crate::ml) use norm::{
-	record_batch_norm_2d, record_layer_norm, record_rms_norm, record_rms_norm_gated,
+	record_batch_norm_2d, record_channel_norm, record_layer_norm, record_rms_norm,
+	record_rms_norm_gated,
 };
 pub(in crate::ml) use pool::{record_adaptive_avg_pool_2d, record_avg_pool_2d, record_max_pool_2d};
 pub(in crate::ml) use position::record_rope;

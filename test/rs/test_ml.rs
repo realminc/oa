@@ -57,6 +57,9 @@ mod sac_trainer;
 #[path = "ml/test_layer_norm.rs"]
 mod layer_norm;
 
+#[path = "ml/test_channel_norm.rs"]
+mod channel_norm;
+
 #[path = "ml/test_batch_norm.rs"]
 mod batch_norm;
 

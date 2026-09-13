@@ -5,6 +5,42 @@ use super::super::{node::Node, tape::record_node};
 
 #[allow(
 	clippy::too_many_arguments,
+	reason = "the node retains affine values, optional parameters, and fused activation state"
+)]
+pub(in crate::ml) fn record_channel_norm(
+	input: &Matrix,
+	output: &Matrix,
+	weight: Option<(Parameter, u64)>,
+	weight_value: Matrix,
+	bias: Option<(Parameter, u64)>,
+	bias_value: Matrix,
+	epsilon: f32,
+	relu: bool,
+) -> Result<()> {
+	let (weight, weight_version) = weight
+		.map(|(parameter, version)| (Some(parameter), Some(version)))
+		.unwrap_or((None, None));
+	let (bias, bias_version) = bias
+		.map(|(parameter, version)| (Some(parameter), Some(version)))
+		.unwrap_or((None, None));
+	record_node(Node::ChannelNorm(Box::new(
+		super::super::node::ChannelNormNode {
+			input: input.clone(),
+			output: relu.then(|| output.clone()),
+			output_id: output.value_id(),
+			weight,
+			weight_value,
+			weight_version,
+			bias,
+			bias_value,
+			bias_version,
+			epsilon,
+		},
+	)))
+}
+
+#[allow(
+	clippy::too_many_arguments,
 	reason = "the node retains exact BatchNorm state and optional module parameters"
 )]
 pub(in crate::ml) fn record_batch_norm_2d(

@@ -471,6 +471,14 @@ impl GradientTape {
 						bias.validate_version(version)?;
 					}
 				}
+				Node::ChannelNorm(node) => {
+					if let (Some(weight), Some(version)) = (&node.weight, node.weight_version) {
+						weight.validate_version(version)?;
+					}
+					if let (Some(bias), Some(version)) = (&node.bias, node.bias_version) {
+						bias.validate_version(version)?;
+					}
+				}
 				Node::GruCell(node) => {
 					if let (Some(weight), Some(version)) = (&node.weight, node.weight_version) {
 						weight.validate_version(version)?;
@@ -1440,6 +1448,35 @@ impl GradientTape {
 						if let Some(bias) = &node.bias {
 							bias.accumulate_gradient(bias_gradient)?;
 						}
+					}
+				}
+				Node::ChannelNorm(node) => {
+					let Some(output_gradient) = gradients.remove(&node.output_id) else {
+						continue;
+					};
+					let result = matrix_lowering::channel_norm_backward(
+						&node.input,
+						&node.weight_value,
+						node.output.as_ref(),
+						&output_gradient,
+						node.epsilon,
+					)?;
+					accumulate_value_gradient(&mut gradients, node.input.value_id(), result.input)?;
+					accumulate_value_gradient(
+						&mut gradients,
+						node.weight_value.value_id(),
+						result.weight.clone(),
+					)?;
+					accumulate_value_gradient(
+						&mut gradients,
+						node.bias_value.value_id(),
+						result.bias.clone(),
+					)?;
+					if let Some(weight) = &node.weight {
+						weight.accumulate_gradient(result.weight)?;
+					}
+					if let Some(bias) = &node.bias {
+						bias.accumulate_gradient(result.bias)?;
 					}
 				}
 				Node::Rope {

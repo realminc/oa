@@ -36,8 +36,9 @@ pub(in crate::ml) use moe::{
 	moe_combine_backward, moe_gather_backward, moe_route_weights_backward,
 };
 pub use norm::{
-	BatchNorm2dResult, RmsNormGatedBackward, batch_norm_2d, batch_norm_2d_with_stats, rms_norm,
-	rms_norm_gated, rms_norm_gated_backward,
+	BatchNorm2dResult, ChannelNormBackward, RmsNormGatedBackward, batch_norm_2d,
+	batch_norm_2d_with_stats, channel_norm, channel_norm_backward, channel_norm_relu,
+	channel_norm_relu_backward, rms_norm, rms_norm_gated, rms_norm_gated_backward,
 };
 pub(in crate::ml) use norm::{
 	batch_norm_2d_backward, batch_norm_2d_forward, batch_norm_2d_running_update,

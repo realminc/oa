@@ -228,6 +228,7 @@ pub(super) enum Node {
 		epsilon: f32,
 	},
 	RmsNormGated(Box<RmsNormGatedNode>),
+	ChannelNorm(Box<ChannelNormNode>),
 	Rope {
 		input: Matrix,
 		output_id: u64,
@@ -482,6 +483,19 @@ pub(super) enum Node {
 	},
 }
 
+pub(super) struct ChannelNormNode {
+	pub(super) input: Matrix,
+	pub(super) output: Option<Matrix>,
+	pub(super) output_id: u64,
+	pub(super) weight: Option<Parameter>,
+	pub(super) weight_value: Matrix,
+	pub(super) weight_version: Option<u64>,
+	pub(super) bias: Option<Parameter>,
+	pub(super) bias_value: Matrix,
+	pub(super) bias_version: Option<u64>,
+	pub(super) epsilon: f32,
+}
+
 impl Node {
 	pub(super) fn output_id(&self) -> u64 {
 		match self {
@@ -564,6 +578,7 @@ impl Node {
 			Self::RnnCell(node) => node.output_id,
 			Self::RnnScan(node) => node.output_id,
 			Self::RmsNormGated(node) => node.output_id,
+			Self::ChannelNorm(node) => node.output_id,
 			Self::Mamba3Preprocess(node) => node.outputs[0].value_id(),
 			Self::Mamba3Siso(node) => node.output_id,
 			Self::Mamba3Mimo(node) => node.output_id,

@@ -216,7 +216,11 @@ test_vk!(
 			.map(|index| ((index as f32 * 0.173).sin() + index as f32 * 0.01) * 0.5)
 			.collect::<Vec<_>>();
 		let input = oa::Matrix::from_f32(&engine, [2, 8, 3], &input_values)?;
-		let latent = model.encode(&input)?;
+		let (encode_plan, latent) = engine.capture(|| model.encode(&input))?;
+		let encode_report = encode_plan.debug_report_json("ALM tokenizer encode");
+		assert!(encode_report.contains("ml.matrix.channel_norm_relu.f32"));
+		assert!(!encode_report.contains("ml.matrix.layer_norm.f32"));
+		engine.submit(&encode_plan)?.wait()?;
 		assert_eq!(latent.shape(), [8, 4]);
 		for row in latent.read_f32()?.as_chunks::<4>().0 {
 			let rms = (row.iter().map(|value| value * value).sum::<f32>() / 4.0).sqrt();
@@ -279,10 +283,11 @@ test_vk!(
 		);
 		std::fs::remove_dir_all(directory).expect("remove ALM checkpoint directory");
 
-		assert!(
+		assert_eq!(
 			model
-				.encode(&oa::Matrix::from_f32(&engine, [1, 7, 3], &[0.0; 21])?)
-				.is_err()
+				.encode(&oa::Matrix::from_f32(&engine, [1, 7, 3], &[0.0; 21])?)?
+				.shape(),
+			[3, 4]
 		);
 		assert!(
 			model

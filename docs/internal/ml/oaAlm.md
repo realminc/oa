@@ -58,11 +58,14 @@ unrelated asset path or caller-assembled tokenizer.
 The factor is `2^downsample_stages`. Fixed training windows divide it exactly;
 whole-corpus tokenization accepts longer non-divisible clips and omits the
 incomplete strided tail, matching the donor convolution geometry.
-Channel normalization is currently the differentiable
-transpose–`LayerNorm`–transpose composition. This is mathematically equivalent
-to the donor training fallback and intentionally remains visible until a fused
-channel-normalization lowering has its own schema, adjoint, and performance
-evidence.
+Channel normalization uses the donor's fused BCT operation directly. The
+schema owns separate affine and affine-plus-ReLU forward/adjoint identities;
+each forward replaces the former transpose–`LayerNorm`–transpose chain, while
+each backward records one semantic operation over the fused row kernel and two
+ordered affine reductions. The donor shader retains at most four channel
+values per 256-lane invocation, so OARS rejects `C > 1024` instead of allowing
+register-array overflow. Qualified timing remains separate from this
+correctness result.
 
 Convolution weights consume one continuous donor-compatible LCG stream with
 Glorot-uniform bounds. `new` uses the donor `0xC0FFEE` seed; `with_seed` makes
@@ -108,6 +111,9 @@ Release-mode hardware gates on Intel Iris Xe, Mesa 26.2.2, Vulkan 1.4.354 prove:
 - rank-two/rank-three tiled transpose and exact transpose adjoint;
 - exact configured tokenizer shapes, unit-RMS latents, finite reconstruction,
   token lookup equivalence, and error rejection;
+- donor-equivalent fused BCT channel normalization and fused ReLU against an
+  independent host oracle, complete explicit and tape adjoints, the explicit
+  1024-channel shader bound, and ALM encode without LayerNorm kernels;
 - backward reachability and finite gradients for every tokenizer parameter;
 - exact `.oam` restoration of parameters, codebook buffers, and next EMA step;
 - dense and hybrid-MoE prior forward, text-prefix shape behavior, complete
@@ -191,7 +197,7 @@ These are correctness and integration results, not a performance claim.
 
 The following donor surfaces remain Planned:
 
-- fused channel-normalization and Conv1d/ReLU lowering with qualified timing;
+- fused Conv1d/ReLU lowering and qualified channel-normalization timing;
 - KV-cache generation;
 - USD skeletal previews;
 - donor checkpoint differential conversion, broader shapes/dtypes, validation
