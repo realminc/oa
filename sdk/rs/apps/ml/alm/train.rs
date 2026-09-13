@@ -3,11 +3,11 @@ use std::{env, error::Error, path::PathBuf, rc::Rc};
 use oa::sdk::{
 	data::HumanMl3dDataset,
 	ml::alm::{
-		AlmFfnType, AlmPrior, AlmPriorConfig, AlmTokenizer, AlmTokenizerConfig,
+		AlmFfnType, AlmPrior, AlmPriorConfig, AlmTokenizer, AlmTokenizerConfig, ClipText,
 		training::{
 			AlmTrainingConfig, AlmValidation, PriorTrainingConfig, PriorValidationConfig,
 			StageCheckpointConfig, TokenizerTrainingConfig, TokenizerValidationConfig, train_alm,
-			train_alm_with_validation,
+			train_alm_with_native_text, train_alm_with_validation,
 		},
 	},
 };
@@ -37,6 +37,8 @@ struct Options {
 	max_sequence_len: usize,
 	ffn_type: AlmFfnType,
 	text_conditioning: bool,
+	clip_text_model: PathBuf,
+	clip_merges: PathBuf,
 	checkpoint_directory: PathBuf,
 	checkpoint_save_every: u64,
 	checkpoint_keep: usize,
@@ -72,6 +74,8 @@ impl Default for Options {
 			max_sequence_len: 260,
 			ffn_type: AlmFfnType::Dense,
 			text_conditioning: true,
+			clip_text_model: "var/model/ref/ClipText/ClipText.oam".into(),
+			clip_merges: "var/model/ref/ClipText/merges.txt".into(),
 			checkpoint_directory: "var/model/dev".into(),
 			checkpoint_save_every: 0,
 			checkpoint_keep: 5,
@@ -103,6 +107,13 @@ fn main() -> Result<(), Box<dyn Error>> {
 		}
 	};
 	let engine = oa::Engine::new()?;
+	let native_text = if options.text_conditioning {
+		let model = Rc::new(ClipText::load_model(&engine, &options.clip_text_model)?);
+		let merges = std::fs::read(&options.clip_merges)?;
+		Some((model, merges))
+	} else {
+		None
+	};
 	let tokenizer = Rc::new(AlmTokenizer::with_seed(
 		&engine,
 		AlmTokenizerConfig {
@@ -119,16 +130,9 @@ fn main() -> Result<(), Box<dyn Error>> {
 		},
 		options.seed,
 	)?);
-	let text_feature_dim = if options.text_conditioning {
-		dataset.text_feature_dim()
-	} else {
-		0
-	};
-	if options.text_conditioning && text_feature_dim == 0 {
-		return Err(argument_error(
-			"--text-conditioning requires the dataset's oa_clip_text_v1 cache",
-		));
-	}
+	let text_feature_dim = native_text
+		.as_ref()
+		.map_or(0, |(model, _)| model.config().projection_dim);
 	let mut prior_config = AlmPriorConfig {
 		model_width: options.model_width,
 		num_heads: options.num_heads,
@@ -187,9 +191,16 @@ fn main() -> Result<(), Box<dyn Error>> {
 		if text_feature_dim == 0 {
 			"none"
 		} else {
-			"CLIP"
+			"native CLIP"
 		}
 	);
+	if native_text.is_some() {
+		println!(
+			"  CLIP: {} · merges {}",
+			options.clip_text_model.display(),
+			options.clip_merges.display()
+		);
+	}
 
 	let stage_checkpoint = |model_name: &str| {
 		options.checkpoint_enabled.then(|| StageCheckpointConfig {
@@ -203,6 +214,10 @@ fn main() -> Result<(), Box<dyn Error>> {
 			verbose: true,
 		})
 	};
+	let prior_window_len = options
+		.prior_sequence_len
+		.checked_add(1)
+		.ok_or_else(|| argument_error("prior window length overflows usize"))?;
 	let training_config = AlmTrainingConfig {
 		tokenizer: TokenizerTrainingConfig {
 			epochs: options.tokenizer_epochs,
@@ -214,40 +229,48 @@ fn main() -> Result<(), Box<dyn Error>> {
 		prior: PriorTrainingConfig {
 			epochs: options.prior_epochs,
 			batch_size: options.batch_size,
-			window_len: options
-				.prior_sequence_len
-				.checked_add(1)
-				.ok_or_else(|| argument_error("prior window length overflows usize"))?,
+			window_len: prior_window_len,
 			checkpoint: stage_checkpoint("AlmPrior"),
 			..PriorTrainingConfig::default()
 		},
 		text_seed: options.seed,
 	};
-	let report = match validation.as_ref() {
-		Some(validation) => train_alm_with_validation(
+	let validation_policy = validation.as_ref().map(|validation| AlmValidation {
+		dataset: validation,
+		tokenizer: TokenizerValidationConfig {
+			sequence_len: options.sequence_len,
+			batch_size: options.batch_size,
+			max_batches: options.validation_batches,
+		},
+		prior: PriorValidationConfig {
+			window_len: prior_window_len,
+			batch_size: options.batch_size,
+			max_batches: options.validation_batches,
+		},
+	});
+	let report = if let Some((clip_text, clip_merges)) = native_text {
+		train_alm_with_native_text(
 			&engine,
 			&dataset,
-			AlmValidation {
-				dataset: validation,
-				tokenizer: TokenizerValidationConfig {
-					sequence_len: options.sequence_len,
-					batch_size: options.batch_size,
-					max_batches: options.validation_batches,
-				},
-				prior: PriorValidationConfig {
-					window_len: options
-						.prior_sequence_len
-						.checked_add(1)
-						.ok_or_else(|| argument_error("prior window length overflows usize"))?,
-					batch_size: options.batch_size,
-					max_batches: options.validation_batches,
-				},
-			},
+			validation_policy,
 			tokenizer,
 			prior,
+			clip_text,
+			&clip_merges,
 			training_config,
-		)?,
-		None => train_alm(&engine, &dataset, tokenizer, prior, training_config)?,
+		)?
+	} else {
+		match validation_policy {
+			Some(validation) => train_alm_with_validation(
+				&engine,
+				&dataset,
+				validation,
+				tokenizer,
+				prior,
+				training_config,
+			)?,
+			None => train_alm(&engine, &dataset, tokenizer, prior, training_config)?,
+		}
 	};
 	if let Some(parent) = options.output.parent() {
 		std::fs::create_dir_all(parent)?;
@@ -325,6 +348,8 @@ fn parse_options() -> Result<Options, Box<dyn Error>> {
 			"--lm-layers" => options.num_layers = parse(&value()?, &argument)?,
 			"--lm-ffn" => options.hidden_width = parse(&value()?, &argument)?,
 			"--lm-max-seq-len" => options.max_sequence_len = parse(&value()?, &argument)?,
+			"--clip-text-model" => options.clip_text_model = value()?.into(),
+			"--clip-merges" => options.clip_merges = value()?.into(),
 			"--checkpoint-dir" => options.checkpoint_directory = value()?.into(),
 			"--checkpoint-save-every" => {
 				options.checkpoint_save_every = parse(&value()?, &argument)?
@@ -372,7 +397,8 @@ fn print_help() {
 		 --tok-epochs N --lm-epochs N --batch N --seq-len N --lm-seq-len N\n\
 		 --codes N --width N --code-dim N --down-t N --depth N\n\
 		 --dmodel N --lm-heads N --lm-layers N --lm-ffn N\n\
-		 --lm-max-seq-len N --lm-ffn-type dense|moe|hybrid [--unconditional] [--seed N]\n\
+		 --lm-max-seq-len N --lm-ffn-type dense|moe|hybrid [--seed N]\n\
+		 [--clip-text-model MODEL.oam] [--clip-merges merges.txt] [--unconditional]\n\
 		 [--checkpoint-dir DIR] [--checkpoint-save-every N] [--checkpoint-keep N]\n\
 		 [--resume] [--no-restore-best] [--no-checkpoint]"
 	);

@@ -1,4 +1,4 @@
-use std::time::SystemTime;
+use std::{rc::Rc, time::SystemTime};
 
 use oa::ml::Module as _;
 
@@ -66,6 +66,49 @@ fn clip_tokenizer_matches_pinned_openai_ids_when_asset_is_available() -> oa::Res
 	}
 	Ok(())
 }
+
+test_vk!(
+	native_clip_assets_encode_and_enter_one_alm_owner_when_available,
+	engine,
+	{
+		let (Some(model_path), Some(merges_path)) = (
+			std::env::var_os("OA_CLIP_OAM"),
+			std::env::var_os("OA_CLIP_MERGES"),
+		) else {
+			return Ok(());
+		};
+		let merges = std::fs::read(merges_path).expect("read configured CLIP merges");
+		let mut text_tokenizer = oa::sdk::ml::alm::ClipTokenizer::new();
+		text_tokenizer.load_merges(&merges)?;
+		let clip = Rc::new(oa::sdk::ml::alm::ClipText::load_model(&engine, model_path)?);
+		let features = clip.forward_prompts(
+			&text_tokenizer,
+			&["a person walks forward", "turn left"],
+			true,
+		)?;
+		assert_eq!(features.shape(), [2, 768]);
+		assert!(features.read_f32()?.into_iter().all(f32::is_finite));
+
+		let motion_tokenizer = Rc::new(oa::sdk::ml::alm::AlmTokenizer::with_seed(
+			&engine,
+			tiny_config(),
+			31,
+		)?);
+		let prior = Rc::new(oa::sdk::ml::alm::AlmPrior::with_seed(
+			&engine,
+			tiny_prior_config(oa::sdk::ml::alm::AlmFfnType::Dense, 768),
+			37,
+		)?);
+		let model =
+			oa::sdk::ml::alm::Alm::from_native_text_parts(motion_tokenizer, prior, clip, &merges)?;
+		assert!(model.has_native_text_encoder());
+		assert_eq!(
+			model.text_encoder_identity(),
+			Some("openai/clip-vit-large-patch14")
+		);
+		Ok(())
+	}
+);
 
 fn tiny_config() -> oa::sdk::ml::alm::AlmTokenizerConfig {
 	oa::sdk::ml::alm::AlmTokenizerConfig {

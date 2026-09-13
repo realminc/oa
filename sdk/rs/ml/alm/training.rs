@@ -27,7 +27,7 @@ pub use validation::{
 };
 pub use workflow::{
 	AlmTrainingConfig, AlmTrainingReport, AlmValidation, tokenize_corpus, train_alm,
-	train_alm_with_validation,
+	train_alm_with_native_text, train_alm_with_validation,
 };
 
 /// Native `.oam` persistence policy for one ALM training stage.

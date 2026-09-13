@@ -123,6 +123,9 @@ Release-mode hardware gates on Intel Iris Xe, Mesa 26.2.2, Vulkan 1.4.354 prove:
   are reported as unused while unknown text weights fail closed;
 - frozen CLIP `OaClipTextAg` v1 `.oam` round-trip through canonical donor tensor
   paths and its exact packed 48-byte architecture payload;
+- direct loading of the OA C++ 495 MB ViT-L/14 artifact, finite two-prompt
+  Vulkan encoding, native product admission with its pinned merge asset, and a
+  one-step tokenizer → uncached caption bake → conditioned-prior training gate;
 - one product-level registered `tokenizer.*` / `prior.*` tree; and
 - optimizer-free `OaAlmAg` v3 bundle save/load through the donor's exact packed
   205-byte architecture payload. Training-only EMA host counters remain in
@@ -144,6 +147,11 @@ Release-mode hardware gates on Intel Iris Xe, Mesa 26.2.2, Vulkan 1.4.354 prove:
 - `train_alm` composes the two stages over the SDK HumanML3D owner, performs an
   explicit one-time token-corpus readback, validates cached text identity, and
   returns one product `Alm` ownership tree.
+- `train_alm_with_native_text` validates the pinned ViT-L/14 tower and canonical
+  merge table before either training stage, encodes every training and held-out
+  caption in deterministic clip/caption order through frozen Vulkan CLIP
+  batches of 16, and embeds that same tower plus merge bytes in the returned
+  product. It does not require or silently consume a dataset feature cache.
 - held-out tokenizer evaluation preserves the donor's non-wrapping final batch
   and reports reconstruction/velocity loss, MPJPE, contact accuracy, planted
   foot skating, live code count, and codebook perplexity;
@@ -164,8 +172,11 @@ Release-mode hardware gates on Intel Iris Xe, Mesa 26.2.2, Vulkan 1.4.354 prove:
 - runnable Rust `ml_alm_train` and `ml_alm_generate` applications stage below
   `bin/<profile>/sdk/apps/ml/alm`. Training admits the donor `--val-split` and
   `--val-batches` policy and degrades explicitly to no validation when that
-  split is unavailable. Native checkpoint controls include directory,
-  mid-epoch interval, retention, resume, restore-best, and explicit disable.
+  split is unavailable. Conditioned training loads the donor-compatible native
+  CLIP `.oam` and exact merges through `--clip-text-model` / `--clip-merges`;
+  `--unconditional` is the explicit no-text route. Native checkpoint controls
+  include directory, mid-epoch interval, retention, resume, restore-best, and
+  explicit disable.
   Generation writes denormalized F32 NPY motion plus a transparent provenance
   sidecar; USD skeletal previews remain owned by the not-yet-ported USD/Render
   integration.
@@ -178,7 +189,7 @@ The following donor surfaces remain Planned:
 
 - fused channel-normalization and Conv1d/ReLU lowering with qualified timing;
 - KV-cache generation;
-- native-CLIP assembly flags in `ml_alm_train` and USD skeletal previews;
+- USD skeletal previews;
 - donor checkpoint differential conversion, broader shapes/dtypes, validation
   layers, and canonical fresh-process performance qualification.
 

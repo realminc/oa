@@ -9,7 +9,7 @@ use super::{
 	PriorValidationConfig, TokenizerTrainingConfig, TokenizerTrainingReport, TokenizerValidation,
 	TokenizerValidationConfig, train_prior_with_validation, train_tokenizer_with_validation,
 };
-use crate::sdk::ml::alm::{Alm, AlmPrior, AlmTokenizer};
+use crate::sdk::ml::alm::{Alm, AlmPrior, AlmTokenizer, ClipText, ClipTextConfig, ClipTokenizer};
 
 /// Stage policies for one complete tokenizer-then-prior ALM run.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -111,7 +111,7 @@ pub fn train_alm(
 	prior: Rc<AlmPrior>,
 	config: AlmTrainingConfig,
 ) -> Result<AlmTrainingReport> {
-	train_alm_impl(engine, dataset, tokenizer, prior, None, config)
+	train_alm_impl(engine, dataset, tokenizer, prior, None, None, config)
 }
 
 /// Train both ALM stages while evaluating a held-out HumanML3D split at every
@@ -133,7 +133,60 @@ pub fn train_alm_with_validation(
 	prior: Rc<AlmPrior>,
 	config: AlmTrainingConfig,
 ) -> Result<AlmTrainingReport> {
-	train_alm_impl(engine, dataset, tokenizer, prior, Some(validation), config)
+	train_alm_impl(
+		engine,
+		dataset,
+		tokenizer,
+		prior,
+		Some(validation),
+		None,
+		config,
+	)
+}
+
+/// Train both ALM stages with native frozen CLIP caption features and embed
+/// the text tower plus exact BPE merge asset in the resulting product bundle.
+///
+/// Caption features are baked in memory in deterministic dataset/caption order,
+/// so this route does not require a pre-existing `text_feats` cache. Optional
+/// held-out data uses the identical frozen encoder and tokenizer asset.
+///
+/// # Errors
+///
+/// Returns the same errors as [`train_alm_with_validation`], plus CLIP model,
+/// merge-table, caption tokenization/encoding, projection-width, or native
+/// product-composition failures.
+#[allow(
+	clippy::too_many_arguments,
+	reason = "the stage owners, frozen text owner, data, and policy stay explicit"
+)]
+pub fn train_alm_with_native_text(
+	engine: &Engine,
+	dataset: &HumanMl3dDataset,
+	validation: Option<AlmValidation<'_>>,
+	tokenizer: Rc<AlmTokenizer>,
+	prior: Rc<AlmPrior>,
+	clip_text: Rc<ClipText>,
+	clip_merges: &[u8],
+	config: AlmTrainingConfig,
+) -> Result<AlmTrainingReport> {
+	train_alm_impl(
+		engine,
+		dataset,
+		tokenizer,
+		prior,
+		validation,
+		Some(NativeText {
+			model: clip_text,
+			merges: clip_merges,
+		}),
+		config,
+	)
+}
+
+struct NativeText<'asset> {
+	model: Rc<ClipText>,
+	merges: &'asset [u8],
 }
 
 fn train_alm_impl(
@@ -142,6 +195,7 @@ fn train_alm_impl(
 	tokenizer: Rc<AlmTokenizer>,
 	prior: Rc<AlmPrior>,
 	validation: Option<AlmValidation<'_>>,
+	native_text: Option<NativeText<'_>>,
 	config: AlmTrainingConfig,
 ) -> Result<AlmTrainingReport> {
 	if dataset.feature_dim() != tokenizer.config().input_dim {
@@ -154,6 +208,33 @@ fn train_alm_impl(
 			"ALM tokenizer and prior code counts do not match",
 		));
 	}
+	if prior.config().text_feature_dim == 0 && native_text.is_some() {
+		return Err(Error::invalid_argument(
+			"native CLIP training requires a conditioned ALM prior",
+		));
+	}
+	if let Some(native) = native_text.as_ref()
+		&& native.model.config().projection_dim != prior.config().text_feature_dim
+	{
+		return Err(Error::invalid_argument(
+			"native CLIP projection width does not match the ALM prior",
+		));
+	}
+	if let Some(native) = native_text.as_ref()
+		&& *native.model.config() != ClipTextConfig::default()
+	{
+		return Err(Error::invalid_argument(
+			"native ALM training requires the pinned CLIP ViT-L/14 configuration",
+		));
+	}
+	let native_tokenizer = native_text
+		.as_ref()
+		.map(|native| {
+			let mut tokenizer = ClipTokenizer::new();
+			tokenizer.load_merges(native.merges)?;
+			Ok(tokenizer)
+		})
+		.transpose()?;
 	let clips = (0..dataset.len())
 		.map(|index| {
 			dataset.clip_data(index).ok_or_else(|| {
@@ -161,6 +242,40 @@ fn train_alm_impl(
 			})
 		})
 		.collect::<Result<Vec<_>>>()?;
+	let text_features = if prior.config().text_feature_dim == 0 {
+		None
+	} else if let Some(native) = native_text.as_ref() {
+		Some(encode_caption_rows(
+			dataset,
+			&native.model,
+			native_tokenizer
+				.as_ref()
+				.ok_or_else(|| Error::internal("native CLIP tokenizer was not constructed"))?,
+		)?)
+	} else {
+		Some(cached_conditioning_rows(dataset, &prior)?)
+	};
+	let validation_text_features = match validation {
+		Some(specification) if prior.config().text_feature_dim != 0 => {
+			if let Some(native) = native_text.as_ref() {
+				Some(encode_caption_rows(
+					specification.dataset,
+					&native.model,
+					native_tokenizer.as_ref().ok_or_else(|| {
+						Error::internal("native CLIP tokenizer was not constructed")
+					})?,
+				)?)
+			} else {
+				if specification.dataset.text_feature_model() != dataset.text_feature_model() {
+					return Err(Error::invalid_argument(
+						"training and validation text encoder identities differ",
+					));
+				}
+				Some(cached_conditioning_rows(specification.dataset, &prior)?)
+			}
+		}
+		_ => None,
+	};
 	let tokenizer_report = train_tokenizer_with_validation(
 		engine,
 		&tokenizer,
@@ -181,22 +296,6 @@ fn train_alm_impl(
 			.ok_or_else(|| Error::resource_exhausted("ALM token corpus size overflows usize"))
 	})?;
 
-	let text_features = if prior.config().text_feature_dim == 0 {
-		None
-	} else {
-		Some(cached_conditioning_rows(dataset, &prior)?)
-	};
-	let validation_text_features = match validation {
-		Some(specification) if prior.config().text_feature_dim != 0 => {
-			if specification.dataset.text_feature_model() != dataset.text_feature_model() {
-				return Err(Error::invalid_argument(
-					"training and validation text encoder identities differ",
-				));
-			}
-			Some(cached_conditioning_rows(specification.dataset, &prior)?)
-		}
-		_ => None,
-	};
 	let conditioning = text_features.as_deref().map(|rows| PriorConditioning {
 		by_sequence: rows,
 		feature_dim: prior.config().text_feature_dim,
@@ -226,6 +325,8 @@ fn train_alm_impl(
 	)?;
 	let model = if prior.config().text_feature_dim == 0 {
 		Alm::from_parts(tokenizer, prior)?
+	} else if let Some(native) = native_text {
+		Alm::from_native_text_parts(tokenizer, prior, native.model, native.merges)?
 	} else {
 		Alm::from_external_text_parts(
 			tokenizer,
@@ -241,6 +342,60 @@ fn train_alm_impl(
 		prior: prior_report,
 		corpus_tokens,
 	})
+}
+
+fn encode_caption_rows(
+	dataset: &HumanMl3dDataset,
+	clip_text: &ClipText,
+	tokenizer: &ClipTokenizer,
+) -> Result<Vec<Vec<f32>>> {
+	let mut counts = Vec::with_capacity(dataset.len());
+	let mut prompts = Vec::new();
+	for index in 0..dataset.len() {
+		let captions = dataset
+			.clip_captions(index)
+			.ok_or_else(|| Error::internal("HumanML3D dataset lost clip captions"))?;
+		if captions.is_empty() {
+			return Err(Error::invalid_argument(format!(
+				"HumanML3D clip {index} has no caption for native CLIP conditioning"
+			)));
+		}
+		counts.push(captions.len());
+		prompts.extend(captions.iter().map(|caption| caption.text.as_str()));
+	}
+	let feature_dim = clip_text.config().projection_dim;
+	let capacity = prompts
+		.len()
+		.checked_mul(feature_dim)
+		.ok_or_else(|| Error::resource_exhausted("native CLIP feature corpus exceeds usize"))?;
+	let mut flat = Vec::with_capacity(capacity);
+	for batch in prompts.chunks(16) {
+		flat.extend(
+			clip_text
+				.forward_prompts(tokenizer, batch, true)?
+				.read_f32()?,
+		);
+	}
+	if flat.len() != capacity {
+		return Err(Error::internal(
+			"native CLIP returned an invalid feature corpus shape",
+		));
+	}
+	let mut offset = 0_usize;
+	counts
+		.into_iter()
+		.map(|count| {
+			let value_count = count.checked_mul(feature_dim).ok_or_else(|| {
+				Error::resource_exhausted("native CLIP clip feature size exceeds usize")
+			})?;
+			let end = offset
+				.checked_add(value_count)
+				.ok_or_else(|| Error::resource_exhausted("native CLIP offset exceeds usize"))?;
+			let values = flat[offset..end].to_vec();
+			offset = end;
+			Ok(values)
+		})
+		.collect()
 }
 
 fn cached_conditioning_rows(dataset: &HumanMl3dDataset, prior: &AlmPrior) -> Result<Vec<Vec<f32>>> {

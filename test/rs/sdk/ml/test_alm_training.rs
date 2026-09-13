@@ -656,6 +656,136 @@ test_vk!(
 	}
 );
 
+test_vk!(
+	native_clip_caption_bake_trains_one_complete_alm_when_assets_are_available,
+	engine,
+	{
+		use std::{rc::Rc, time::SystemTime};
+
+		use oa::sdk::{
+			data::HumanMl3dDataset,
+			ml::alm::{
+				AlmPrior, AlmPriorConfig, AlmTokenizer, AlmTokenizerConfig, ClipText,
+				training::{
+					AlmTrainingConfig, PriorTrainingConfig, TokenizerTrainingConfig,
+					train_alm_with_native_text,
+				},
+			},
+		};
+
+		let (Some(model_path), Some(merges_path)) = (
+			std::env::var_os("OA_CLIP_OAM"),
+			std::env::var_os("OA_CLIP_MERGES"),
+		) else {
+			return Ok(());
+		};
+		let directory = std::env::temp_dir().join(format!(
+			"oars-alm-native-training-{}-{}",
+			std::process::id(),
+			SystemTime::now()
+				.duration_since(SystemTime::UNIX_EPOCH)
+				.expect("system clock predates Unix epoch")
+				.as_nanos()
+		));
+		std::fs::create_dir_all(directory.join("new_joint_vecs"))
+			.expect("create native motion fixture directory");
+		std::fs::create_dir_all(directory.join("texts"))
+			.expect("create native caption fixture directory");
+		write_npy(&directory.join("Mean.npy"), &[263], &vec![0.0; 263]);
+		write_npy(&directory.join("Std.npy"), &[263], &vec![1.0; 263]);
+		let motion = (0..4 * 263)
+			.map(|index| (index as f32 * 0.013).sin() * 0.1)
+			.collect::<Vec<_>>();
+		write_npy(
+			&directory.join("new_joint_vecs/walk.npy"),
+			&[4, 263],
+			&motion,
+		);
+		std::fs::write(
+			directory.join("texts/walk.txt"),
+			"a person walks forward#tags#0#0\n",
+		)
+		.expect("write native caption fixture");
+		std::fs::write(directory.join("train.txt"), "walk\n").expect("write native split fixture");
+		let dataset = HumanMl3dDataset::open_cmp(&directory, "train", 0)?;
+		assert_eq!(dataset.text_feature_dim(), 0);
+
+		let clip = Rc::new(ClipText::load_model(&engine, model_path)?);
+		let merges = std::fs::read(merges_path).expect("read configured CLIP merges");
+		let tokenizer = Rc::new(AlmTokenizer::with_seed(
+			&engine,
+			AlmTokenizerConfig {
+				input_dim: 263,
+				width: 4,
+				code_dim: 4,
+				num_codes: 2,
+				downsample_stages: 1,
+				depth: 1,
+				commitment_beta: 0.25,
+				ema_decay: 0.9,
+				ema_epsilon: 1.0e-5,
+				dead_threshold: 0.0,
+			},
+			41,
+		)?);
+		let mut prior_config = AlmPriorConfig {
+			model_width: 8,
+			num_heads: 1,
+			num_layers: 1,
+			hidden_width: 16,
+			text_feature_dim: 768,
+			sequence_length: 4,
+			max_sequence_length: 8,
+			..AlmPriorConfig::default()
+		};
+		prior_config.sync_vocab(2)?;
+		let prior = Rc::new(AlmPrior::with_seed(&engine, prior_config, 43)?);
+		let report = train_alm_with_native_text(
+			&engine,
+			&dataset,
+			None,
+			tokenizer,
+			prior,
+			clip,
+			&merges,
+			AlmTrainingConfig {
+				tokenizer: TokenizerTrainingConfig {
+					epochs: 1,
+					batch_size: 1,
+					sequence_len: 4,
+					learning_rate: 1.0e-3,
+					minimum_learning_rate: 1.0e-4,
+					warmup_steps: 0,
+					weight_decay: 0.0,
+					seed_codebook: true,
+					enable_gpu_timing: false,
+					show_progress: false,
+					checkpoint: None,
+				},
+				prior: PriorTrainingConfig {
+					epochs: 1,
+					batch_size: 1,
+					window_len: 3,
+					learning_rate: 1.0e-3,
+					minimum_learning_rate: 1.0e-4,
+					warmup_steps: 0,
+					weight_decay: 0.0,
+					enable_gpu_timing: false,
+					show_progress: false,
+					checkpoint: None,
+				},
+				text_seed: 47,
+			},
+		)?;
+		assert_eq!(report.tokenizer.steps, 1);
+		assert_eq!(report.prior.steps, 1);
+		assert!(report.model.has_native_text_encoder());
+		assert_eq!(report.model.encode_prompt("turn left")?.shape(), [1, 768]);
+		std::fs::remove_dir_all(directory).expect("remove native ALM fixture");
+		Ok(())
+	}
+);
+
 fn write_npy(path: &std::path::Path, shape: &[usize], values: &[f32]) {
 	assert_eq!(shape.iter().product::<usize>(), values.len());
 	let dimensions = shape
