@@ -102,7 +102,7 @@ impl CommandPool {
 	pub(super) fn record_compute_graph(
 		&mut self,
 		device: &ash::Device,
-		pipelines: &[ComputePipeline],
+		pipelines: &[Option<ComputePipeline>],
 		descriptor_set: ash::vk::DescriptorSet,
 		graph: &ExecutableGraph,
 		timing: Option<TimestampPair>,
@@ -256,19 +256,18 @@ impl CommandPool {
 }
 
 fn prepare_dispatch<'a>(
-	pipelines: &'a [ComputePipeline],
+	pipelines: &'a [Option<ComputePipeline>],
 	node: &'a ComputeNode,
 ) -> Result<PreparedDispatch<'a>> {
-	let pipeline = pipelines.get(node.kernel.index()).ok_or_else(|| {
-		Error::backend_failure(
-			"Vulkan",
-			"compute-pipeline resolution",
-			std::io::Error::other(format!(
-				"{} has no initialized compute pipeline",
+	let pipeline = pipelines
+		.get(node.kernel.index())
+		.and_then(Option::as_ref)
+		.ok_or_else(|| {
+			Error::missing_capability(format!(
+				"{} has no admitted compute pipeline on the selected Vulkan device",
 				node.operation
-			)),
-		)
-	})?;
+			))
+		})?;
 	if node
 		.workgroups
 		.into_iter()

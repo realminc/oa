@@ -2,8 +2,12 @@ use super::Instance;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct DeviceFeatures {
+	pub(super) shader_int64: bool,
 	pub(super) timeline_semaphore: bool,
 	pub(super) synchronization2: bool,
+	pub(super) storage_buffer_8_bit_access: bool,
+	pub(super) uniform_and_storage_buffer_8_bit_access: bool,
+	pub(super) shader_int8: bool,
 	pub(super) runtime_descriptor_array: bool,
 	pub(super) descriptor_binding_partially_bound: bool,
 	pub(super) descriptor_binding_storage_buffer_update_after_bind: bool,
@@ -27,8 +31,14 @@ impl DeviceFeatures {
 		}
 
 		Self {
+			shader_int64: features2.features.shader_int64 == ash::vk::TRUE,
 			timeline_semaphore: features12.timeline_semaphore == ash::vk::TRUE,
 			synchronization2: features13.synchronization2 == ash::vk::TRUE,
+			storage_buffer_8_bit_access: features12.storage_buffer8_bit_access == ash::vk::TRUE,
+			uniform_and_storage_buffer_8_bit_access: features12
+				.uniform_and_storage_buffer8_bit_access
+				== ash::vk::TRUE,
+			shader_int8: features12.shader_int8 == ash::vk::TRUE,
 			runtime_descriptor_array: features12.runtime_descriptor_array == ash::vk::TRUE,
 			descriptor_binding_partially_bound: features12.descriptor_binding_partially_bound
 				== ash::vk::TRUE,
@@ -75,8 +85,12 @@ mod tests {
 	fn complete_runtime_requirements_have_no_missing_feature() {
 		assert_eq!(
 			DeviceFeatures {
+				shader_int64: true,
 				timeline_semaphore: true,
 				synchronization2: true,
+				storage_buffer_8_bit_access: true,
+				uniform_and_storage_buffer_8_bit_access: true,
+				shader_int8: true,
 				runtime_descriptor_array: true,
 				descriptor_binding_partially_bound: true,
 				descriptor_binding_storage_buffer_update_after_bind: true,
@@ -91,8 +105,12 @@ mod tests {
 	fn missing_requirements_are_reported_exactly() {
 		assert_eq!(
 			DeviceFeatures {
+				shader_int64: false,
 				timeline_semaphore: false,
 				synchronization2: true,
+				storage_buffer_8_bit_access: false,
+				uniform_and_storage_buffer_8_bit_access: false,
+				shader_int8: false,
 				runtime_descriptor_array: false,
 				descriptor_binding_partially_bound: true,
 				descriptor_binding_storage_buffer_update_after_bind: false,

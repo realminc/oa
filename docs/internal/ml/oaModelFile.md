@@ -1,8 +1,8 @@
 # OARS native model files
 
-**Status:** Experimental checkpoint integration; general artifact API Planned
+**Status:** Experimental checkpoint and architecture-bound artifact integration; general artifact API Planned
 
-**Updated:** 2026-09-10
+**Updated:** 2026-09-11
 
 **Donor authority:** OA C++ `source/cpp/include/oa/ml/modelFile.h` and
 `source/cpp/lib/oa/ml/modelFile.cpp`
@@ -17,9 +17,21 @@ that host representation and live engine-owned Module plus sealed
 
 The current public surface includes `oa::ml::save_checkpoint`,
 `oa::ml::load_checkpoint`, and `CheckpointManager` policy used by
-`CbCheckpoint`. A future general artifact surface is named
-`oa::ml::ModelFile`. External formats belong to explicit translator/import
-operations; an `io` module must not become a second owner of `.oam`.
+`CbCheckpoint`. Architecture owners additionally expose focused product
+operations: `ClipText::{save_model,load_model}` and
+`Alm::{save_bundle,load_bundle}`. All routes delegate to the same private
+codec. A future general artifact surface is named `oa::ml::ModelFile`.
+External formats belong to explicit translator/import operations; an `io`
+module must not become a second owner of `.oam`.
+
+The first admitted external translator is
+`ClipText::import_safetensors`. Its private `ml/weights` backend validates the
+SafeTensors header, dtype/shape byte counts, file bounds, and non-overlapping
+payload ranges. The model-specific layer requires the complete pinned
+ViT-L/14 FP32 text inventory, validates optional `position_ids`, rejects
+unknown text-namespace tensors, deliberately ignores unrelated vision tensors,
+and writes through this codec. The container is not exposed as another model
+representation.
 
 ## Implemented wire contract
 
@@ -47,6 +59,7 @@ training restore—returns a normal contract error instead.
 Module registration path                 .oam section
 trainable Parameter                      Weights
 persistent registered buffer             State
+registered `u32` scalar module state      State as a rank-zero dense tensor
 non-persistent registered buffer         excluded
 Adam/AdamW first/second moments          Optimizer, flattened in parameter order
 Muon momentum                            Optimizer first-state array
@@ -57,8 +70,20 @@ optimizer step and learning rate         Optimizer + Progress
 Loading validates the entire file, destination paths, shapes, dtypes, engine
 ownership, optimizer kind, step identity, and all allocations before replacing live values.
 Parameters retain their stable handles and advance mutation versions. Named
-persistent buffers retain stable registry handles. Non-persistent buffers are
-not read or overwritten.
+persistent buffers and registered scalar state retain stable registry handles.
+Non-persistent buffers are not read or overwritten. Scalar state uses the same
+dotted module paths and wire tensor validation as numerical state; it does not
+create a Rust-only sidecar format.
+
+Optimizer-free product artifacts intentionally follow the donor Module-file
+contract instead: trainable parameters map to Weights and persistent Matrix
+buffers map to State, while optimizer progress and Rust host scalar training
+state are excluded. Consequently the ALM VQ `ema_step` is preserved by a
+training checkpoint but resets on product-bundle construction, matching C++.
+The CLIP translator maps Rust's identifier-safe internal registry names to the
+canonical donor tensor paths such as
+`text_model.encoder.layers.0.mlp.fc1.weight`; those names are an artifact
+contract, not a second module tree.
 
 ## Evidence
 
@@ -67,6 +92,8 @@ not read or overwritten.
 - exact v3 header, section count, size, and alignment/padding behavior;
 - replacement of an existing artifact through the atomic save path;
 - parameter and persistent-state restoration with non-persistent exclusion;
+- exact `VectorQuantizer` EMA-counter restoration and equality of the next
+  dead-code revival transition against uninterrupted execution;
 - payload bit-flip rejection as `CheckpointCorrupt`;
 - v1 legacy and v2 manifest checksum compatibility;
 - OA C++ `modelctl verify` accepting a Rust-written artifact; and
@@ -75,7 +102,12 @@ not read or overwritten.
 - Adam, AdamW, and no-momentum SGD fresh-owner restoration, with live momentum
   SGD rejected instead of silently omitting state; and
 - best/latest selection, bounded incremental rotation, filename/progress step
-  agreement, and callback-driven restore-best behavior.
+  agreement, and callback-driven restore-best behavior;
+- frozen CLIP v1 model save/load with the donor's exact 48-byte architecture
+  payload and tensor paths; and
+- ALM v3 product-bundle save/load with the donor's exact packed 205-byte
+  architecture payload and optimizer-free state mapping; the OA C++ `modelctl`
+  independently accepts the Rust-written bundle.
 
 Run the cross-language proof with:
 
@@ -88,8 +120,9 @@ OA_CPP_MODELCTL=/path/to/oa/bin/release/sdk/apps/ml/modelctl \
 
 ## Remaining work
 
-The public general `ModelFile` object, architecture-specific config access,
-quantization creation/loading, model translators, Windows
+The public general `ModelFile` object, generic architecture-config access,
+quantization creation/loading, additional external-format/model translators,
+sharded SafeTensors packages, Windows
 durable replacement evidence, and serialized
 execution-plan/RNG state remain Planned. These extend this codec; they must not
 introduce another `.oam` implementation.

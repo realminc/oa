@@ -60,6 +60,89 @@ test_vk!(top_k_matches_deterministic_last_axis_oracle, engine, {
 	Ok(())
 });
 
+test_vk!(
+	transpose_matches_tiled_rank_two_rank_three_and_adjoint_oracles,
+	engine,
+	{
+		let rank_two = oa::Matrix::from_f32(&engine, [2, 3], &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0])?;
+		let transposed = oa::matrix::transpose(&rank_two, -2, -1)?;
+		assert_eq!(transposed.shape(), [3, 2]);
+		assert_eq!(transposed.read_f32()?, [1.0, 4.0, 2.0, 5.0, 3.0, 6.0]);
+
+		let embedding = oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(
+			&engine,
+			[2, 6],
+			&(0..12).map(|value| value as f32).collect::<Vec<_>>(),
+		)?)?;
+		let rows = oa::Matrix::from_slice(&engine, [2], &[0_u32, 1])?;
+		let tape = oa::ml::GradientTape::new();
+		let input = embedding.forward(&rows)?.reshape([2, 2, 3])?;
+		let output = oa::matrix::transpose(&input, 1, 2)?;
+		assert_eq!(output.shape(), [2, 3, 2]);
+		assert_eq!(
+			output.read_f32()?,
+			[0.0, 3.0, 1.0, 4.0, 2.0, 5.0, 6.0, 9.0, 7.0, 10.0, 8.0, 11.0]
+		);
+		let target = oa::Matrix::from_f32(&engine, [2, 3, 2], &[0.0; 12])?;
+		let loss = oa::ml::loss::mse(&output, &target)?;
+		tape.backward(&loss)?;
+		let gradient = embedding
+			.weight()
+			.gradient()
+			.expect("transpose input gradient is missing")
+			.read_f32()?;
+		for (index, actual) in gradient.iter().enumerate() {
+			assert!((*actual - index as f32 / 6.0).abs() <= 1.0e-6);
+		}
+
+		let integers = oa::Matrix::from_slice(&engine, [2, 2], &[0_i32; 4])?;
+		assert!(oa::matrix::transpose(&integers, 0, 1).is_err());
+		assert!(oa::matrix::transpose(&rank_two, 0, 0).is_err());
+		assert!(oa::matrix::transpose(&rank_two, -3, -1).is_err());
+		Ok(())
+	}
+);
+
+test_vk!(
+	gather_matches_i32_bounds_and_repeated_row_adjoint,
+	engine,
+	{
+		let embedding = oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(
+			&engine,
+			[4, 3],
+			&[
+				1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0,
+			],
+		)?)?;
+		let table_ids = oa::Matrix::from_slice(&engine, [4], &[0_u32, 1, 2, 3])?;
+		let tape = oa::ml::GradientTape::new();
+		let table = embedding.forward(&table_ids)?;
+		let indices = oa::Matrix::from_slice(&engine, [3], &[2_i32, 0, 2])?;
+		let gathered = oa::matrix::gather(&table, &indices)?;
+		assert_eq!(gathered.shape(), [3, 3]);
+		assert_eq!(
+			gathered.read_f32()?,
+			[7.0, 8.0, 9.0, 1.0, 2.0, 3.0, 7.0, 8.0, 9.0]
+		);
+		let loss = oa::matrix::sum(&oa::matrix::sum(&gathered, -1)?, -1)?.reshape([])?;
+		tape.backward(&loss)?;
+		assert_eq!(
+			embedding
+				.weight()
+				.gradient()
+				.expect("gather adjoint did not reach table")
+				.read_f32()?,
+			[1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 2.0, 2.0, 2.0, 0.0, 0.0, 0.0]
+		);
+
+		let invalid =
+			oa::matrix::gather(&table, &oa::Matrix::from_slice(&engine, [2], &[-1_i32, 4])?)?
+				.read_f32()?;
+		assert!(invalid.into_iter().all(f32::is_nan));
+		Ok(())
+	}
+);
+
 test_vk!(top_k_mask_matches_exact_membership_oracle, engine, {
 	let indices = oa::Matrix::from_slice(&engine, [3, 2], &[2_i32, 0, 1, 2, 0, 1])?;
 	let mask = oa::matrix::top_k_mask(&indices, 4)?;

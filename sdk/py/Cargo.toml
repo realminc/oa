@@ -1,0 +1,18 @@
+[package]
+name = "oa-python"
+version = "0.1.7"
+edition = "2024"
+rust-version = "1.98"
+publish = false
+
+[lib]
+name = "oa_native"
+crate-type = ["cdylib"]
+path = "../../src/py/lib.rs"
+
+[dependencies]
+oa = { path = "../.." }
+pyo3 = { version = "0.27", features = ["abi3-py310", "extension-module"] }
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"

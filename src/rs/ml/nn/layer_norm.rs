@@ -100,6 +100,46 @@ impl LayerNorm {
 		Ok(result.output)
 	}
 
+	fn forward_channel_impl(&self, input: &Matrix, relu: bool) -> Result<Matrix> {
+		let (weight, weight_version, weight_requires_grad) = self.weight.snapshot();
+		let (bias, bias_version, bias_requires_grad) = self.bias.snapshot();
+		let output = dispatch::channel_norm(input, &weight, &bias, self.epsilon, relu)?;
+		autograd::record_channel_norm(
+			input,
+			&output,
+			weight_requires_grad.then(|| (self.weight.clone(), weight_version)),
+			weight,
+			bias_requires_grad.then(|| (self.bias.clone(), bias_version)),
+			bias,
+			self.epsilon,
+			relu,
+		)?;
+		Ok(output)
+	}
+
+	/// Normalize channels directly in `[B, C, T]` storage.
+	///
+	/// This uses the same affine parameters as ordinary LayerNorm without the
+	/// transpose pair otherwise needed to place `C` last.
+	///
+	/// # Errors
+	///
+	/// Returns an error unless the input satisfies the channel-normalization
+	/// contract or runtime recording fails.
+	pub fn forward_channel(&self, input: &Matrix) -> Result<Matrix> {
+		self.forward_channel_impl(input, false)
+	}
+
+	/// Normalize channels in `[B, C, T]` storage and fuse ReLU.
+	///
+	/// # Errors
+	///
+	/// Returns an error unless the input satisfies the channel-normalization
+	/// contract or runtime recording fails.
+	pub fn forward_channel_relu(&self, input: &Matrix) -> Result<Matrix> {
+		self.forward_channel_impl(input, true)
+	}
+
 	/// Return the normalized final-dimension width.
 	pub const fn normalized_shape(&self) -> usize {
 		self.normalized_shape

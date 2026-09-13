@@ -72,6 +72,7 @@ PHYSICAL_WRITE_EXTENTS = {
 	"one_scalar",
 	"row_width",
 	"tile_16x16",
+	"tile_32x32",
 	"up_to_two_elements",
 	"up_to_four_elements",
 }
@@ -606,9 +607,12 @@ def validate_index_schema(schema: dict[str, Any]) -> None:
 			"slice_backward",
 			"repeat_interleave",
 			"repeat_interleave_backward",
+			"gather",
+			"gather_backward",
 			"gather_last_dim",
 			"gather_last_dim_backward",
 			"concat",
+			"transpose",
 			"equal",
 		],
 		"Index operations must preserve the admitted donor family order",
@@ -1468,7 +1472,6 @@ def validate_ml_contract(contract: Any, differentiation: str, where: str) -> Non
 	outputs = contract["output_kinds"]
 	variadic_input = contract.get("variadic_input")
 	variadic_output = contract.get("variadic_output")
-	variadic = variadic_input is not None or variadic_output is not None
 	require(
 		isinstance(inputs, list) and (inputs or variadic_input is not None),
 		f"{where}.contract.input_kinds must be non-empty without a variadic input",
@@ -1533,8 +1536,12 @@ def validate_ml_contract(contract: Any, differentiation: str, where: str) -> Non
 			"f32_logits_u32_targets",
 			"f32_logits_u32_or_i32_targets",
 			"f32_weight_u32_indices",
+			"f32_weight_u8_or_u32_indices",
+			"f32_weight_u8_u32_or_nonnegative_i32_indices",
 			"f32_with_u32_indices",
 			"u32_indices_f32_gradient_weight",
+			"u8_or_u32_indices_f32_gradient_weight",
+			"u8_u32_or_i32_indices_f32_gradient_weight",
 			"f32_probabilities_i32_indices",
 			"f32_gradients_probabilities_route_weights_i32_indices",
 			"f32_values_u8_boundaries",
@@ -1566,10 +1573,10 @@ def validate_ml_contract(contract: Any, differentiation: str, where: str) -> Non
 		and all(aliases.count(value) == 1 for value in mutated),
 		f"{where}.contract.output_alias_inputs must reference inputs and map every mutated input exactly once",
 	)
-	if variadic:
+	if contract.get("aligned_variadic_aliases", False):
 		require(
 			not mutated and all(alias == -1 for alias in aliases),
-			f"{where}.contract variadic aliases cannot duplicate fixed mutation metadata",
+			f"{where}.contract aligned variadic aliases cannot duplicate fixed mutation metadata",
 		)
 	require(contract["lowering"] == "compute_dispatch", f"{where}.contract lowering is unsupported")
 	require(
@@ -2137,6 +2144,7 @@ def rust_physical_write(value: dict[str, Any] | None) -> str:
 		"one_scalar": "OneScalar",
 		"row_width": "RowWidth",
 		"tile_16x16": "Tile16x16",
+		"tile_32x32": "Tile32x32",
 		"up_to_two_elements": "UpToTwoElements",
 		"up_to_four_elements": "UpToFourElements",
 	}

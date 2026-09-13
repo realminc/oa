@@ -116,6 +116,11 @@ src/rs/
   render.rs + render/       render operations and sessions
   ml.rs + ml/               ML operations and sessions
   cryptography.rs + cryptography/  hashing, secure memory, and PQC operations
+src/py/
+  lib.rs + *.rs             PyO3 bindings over the Rust public API
+sdk/py/
+  python/oa/                importable Python package and type information
+  test/ + tutorials/        Python verification and SDK workflows
 ```
 
 `core` is the public foundation module. It owns foundational semantic values

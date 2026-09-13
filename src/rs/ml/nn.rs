@@ -1,14 +1,17 @@
 mod activation;
 mod attention;
 mod batch_norm;
+mod byte;
 mod conv;
 mod dropout;
 mod embedding;
+mod empyrealm;
 mod ffn;
 mod flow;
 mod gru;
 mod layer_norm;
 mod linear;
+mod mamba3;
 mod moe;
 mod pool;
 mod rms_norm;
@@ -25,9 +28,11 @@ mod vq;
 pub use activation::{Gelu, Relu, Silu};
 pub use attention::{AttentionBackend, AttentionMode, MultiHeadAttention};
 pub use batch_norm::BatchNorm2d;
+pub use byte::{ByteEmbedding, ByteHead};
 pub use conv::{Conv1d, Conv2d, ConvTranspose1d, ConvTranspose2d};
 pub use dropout::Dropout;
 pub use embedding::Embedding;
+pub use empyrealm::EmpyrealmCore;
 pub use ffn::Ffn;
 pub use flow::{
 	FlowDenoiser, FlowDenoiserConfig, FlowTimeEmbedding, FlowTransformer, FlowTransformerConfig,
@@ -35,6 +40,7 @@ pub use flow::{
 pub use gru::{Gru, GruCell};
 pub use layer_norm::LayerNorm;
 pub use linear::Linear;
+pub use mamba3::{Mamba3, Mamba3Config, Mamba3State};
 pub use moe::{Moe, MoeRouteStats};
 pub use pool::{AdaptiveAvgPool2d, AvgPool2d, MaxPool2d};
 pub use rms_norm::RmsNorm;

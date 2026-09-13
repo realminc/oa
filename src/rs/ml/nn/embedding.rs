@@ -4,7 +4,7 @@ use super::super::{
 	Module, ModuleRegistry, Parameter, autograd, lowering::matrix as dispatch, random,
 };
 
-/// Trainable FP32 lookup table indexed by an arbitrary-shape U32 matrix.
+/// Trainable FP32 lookup table indexed by an arbitrary-shape U8, U32, or I32 matrix.
 pub struct Embedding {
 	num_embeddings: usize,
 	embedding_dim: usize,
@@ -68,15 +68,16 @@ impl Embedding {
 		})
 	}
 
-	/// Gather one embedding row per U32 index.
+	/// Gather one embedding row per U8, U32, or non-negative I32 index.
 	///
 	/// The output shape is the complete index shape followed by `embedding_dim`.
 	/// Out-of-range indices produce NaN rows without reading outside the table.
 	///
 	/// # Errors
 	///
-	/// Returns an error when indices are not U32, the engines differ, shape or ABI
-	/// arithmetic overflows, or runtime recording fails.
+	/// Returns an error when indices are not U8/U32/I32, the engines differ, shape
+	/// or ABI arithmetic overflows, or runtime recording fails. Negative I32 and
+	/// other out-of-range indices produce NaN rows without an out-of-bounds read.
 	pub fn forward(&self, indices: &Matrix) -> Result<Matrix> {
 		let (weight, version, requires_grad) = self.weight.snapshot();
 		let output = dispatch::embedding(&weight, indices)?;

@@ -1,8 +1,27 @@
 # OARS NLP tutorial suite
 
-**Status:** Experimental Char-RNN, Char-Transformer, and Char-MoE rows
+**Status:** Experimental canonical 5×3 comparison suite complete
 
-**Updated:** 2026-09-09
+**Updated:** 2026-09-12
+
+## Canonical suite matrix
+
+The Rust SDK now implements the complete donor comparison matrix: RNN, GRU,
+Transformer, sparse-MoE Transformer, and Mamba-3 over Char, raw Byte, and BPE
+tokenization. All 15 rows run the same 576-byte corpus, `[64, 16]` batches,
+300 optimizer steps, all-position cross-entropy, fixed-prompt greedy generation,
+and native checkpoint reload. BPE rows additionally round-trip their
+`oa_bpe_v1` vocabulary.
+
+| Tokenization | RNN | GRU | Transformer | sparse MoE | Mamba-3 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Char | complete | complete | complete | complete | complete |
+| Byte | complete | complete | complete | complete | complete |
+| BPE | complete | complete | complete | complete | complete |
+
+“Complete” here means the deterministic single-device correctness gate and
+runnable tutorial are connected. It is not a fixed-clock performance-parity or
+cross-device qualification claim.
 
 ## Implemented Char-RNN row
 
@@ -152,8 +171,82 @@ python3 tools/build/stage.py --profile release --target ml_nlp_char_moe_transfor
 ./bin/release/sdk/tutorials/ml/nlp/ml_nlp_char_moe_transformer
 ```
 
-The shared `ItTraining` lifecycle and progress/summary callbacks are now used by
-all three Char tutorials. The GRU primitive is implemented separately, but no
-GRU tutorial row is admitted here yet. Fixed-clock fresh-process performance
-qualification and the remaining Byte/BPE × RNN/GRU/Transformer/MoE/Mamba-3
-rows remain Planned.
+## Implemented Char-Mamba-3 row
+
+The Rust row preserves the donor character model's 10,915 trainable scalars:
+
+```text
+Embedding(27, 32)
+  -> Mamba3(model 32, inner 64, state 32, heads 4, groups 1, effective rank 1)
+  -> gated RMSNorm inside the Mamba block
+  -> Linear(32, 27)
+```
+
+It trains for exactly 300 AdamW steps at learning rate 0.003 through the same
+`ItTraining` metrics/progress/summary lifecycle, evaluates the complete fixed
+corpus, greedily generates 80 characters from `to be`, and verifies a native
+`.oam` checkpoint in fresh owners. The deterministic Intel Iris Xe gate reports
+initial loss 3.303064, final training loss 0.194512, evaluation loss 0.190578,
+92.9688% accuracy, and exact continuation:
+
+```text
+"to be that is the question whether tis nobler in the mind to suffer the slings and ar"
+```
+
+One unqualified Release tutorial run completed in 2.46 seconds, or 8.19 ms per
+step wall time, with 7.482 ms mean GPU time. This is a functional diagnostic,
+not a fixed-clock multi-process performance comparison.
+
+```sh
+cargo test --release --test ml \
+  nlp::canonical_char_mamba3_completes_the_cpp_300_step_gate \
+  -- --ignored --exact --test-threads=1 --nocapture
+
+cargo build --release --example ml_nlp_char_mamba3
+python3 tools/build/stage.py --profile release --target ml_nlp_char_mamba3
+./bin/release/sdk/tutorials/ml/nlp/ml_nlp_char_mamba3
+```
+
+The shared `ItTraining` lifecycle and progress/summary callbacks are used by all
+15 canonical NLP tutorials plus the Empyrealm-Core fidelity row. Deterministic
+`oa_bpe_v1` tokenization, raw U8 upload, packed-U8 Embedding forward/adjoint,
+ByteEmbedding/ByteHead, and exact byte-logit decoding are connected as documented in
+[Byte and BPE NLP](oaByteNlp.md). Every Char, Byte, and BPE architecture now
+completes the same 300-step, evaluation, generation, and checkpoint contract.
+The fidelity row preserves its distinct module/parameter topology but shares
+the Mamba-3 operation providers because the donor shader bodies are identical.
+Fixed-clock fresh-process performance qualification and cross-device coverage
+remain Planned.
+
+## Implemented Byte and BPE rows
+
+The raw-byte rows preserve the donor's 256-token vocabulary and canonical
+all-position sampler. They accept packed U8 inputs while retaining U32
+cross-entropy targets. BPE learns 64 deterministic merges, compresses the
+576-byte corpus to 210 tokens, records exact source-byte throughput, and stores
+its vocabulary separately from model/optimizer ownership. Every row captures
+the complete forward/backward/AdamW program, reuses one command recording for
+299 subsequent untimed replays, generates exact bytes, and reloads fresh owners.
+
+```text
+Byte RNN: loss 5.569197 -> 0.186080 · accuracy 92.1875%
+Byte GRU: loss 5.550348 -> 0.499343 · accuracy 85.5469%
+Byte Transformer: loss 5.656755 -> 0.190565 · accuracy 92.8711%
+Byte MoE: loss 5.686717 -> 0.193275 · accuracy 92.5781%
+Byte Mamba-3: loss 5.539418 -> 0.207903 · accuracy 92.9688%
+BPE RNN: loss 5.774095 -> 0.020861 · accuracy 98.8281%
+BPE GRU: loss 5.766479 -> 0.021224 · accuracy 98.8281%
+BPE Transformer: loss 5.871271 -> 0.020028 · accuracy 98.9258%
+BPE MoE: loss 5.844332 -> 0.019962 · accuracy 98.8281%
+BPE Mamba-3: loss 5.774934 -> 0.019415 · accuracy 98.9258%
+```
+
+```sh
+cargo test --release --test ml nlp::canonical_byte_rnn_completes_the_cpp_300_step_gate \
+  -- --ignored --exact --test-threads=1 --nocapture
+cargo test --release --test ml nlp::canonical_byte_gru_completes_the_cpp_300_step_gate \
+  -- --ignored --exact --test-threads=1 --nocapture
+
+cargo build --release --examples
+python3 tools/build/stage.py --profile release
+```

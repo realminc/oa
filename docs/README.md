@@ -1,8 +1,9 @@
 # OA Rust documentation
 
 The Rust implementation has an Experimental one-device compute foundation,
-schema-generated Matrix operations, and differentiable FP32 Linear, U32
-Embedding, stacked Elman Rnn, reshape, cross-entropy, and AdamW training slices.
+schema-generated Matrix operations, broad differentiable ML and training
+slices, typed media/vision/cryptography values, and a first native PyO3 Matrix
+binding.
 Recursive Rust-native Module ownership supplies deterministic parameter and
 buffer traversal for composed models. Fixed-shape `TrainingProgram` capture
 replays the complete Char-Transformer forward/backward/AdamW graph through one
@@ -33,6 +34,8 @@ the presence of a source module or shader does not imply a shipped capability.
   preserved, redesigned, deferred, or rejected from the C++ implementation.
 - [C++ to Rust API Translation](internal/porting/oaCppToRust.md) — `Fn*` to
   lowercase modules, root identity aliases, naming, and session mapping.
+- [Rust to Python Binding](internal/porting/oaPython.md) — one module graph,
+  root identity aliases, caller-local abbreviations, and the admitted preview.
 - [Values and Storage](internal/core/oaValues.md) — Buffer backing, Matrix,
   Image, Audio, VideoFrame, Texture, and checked zero-copy relationships.
 - [Media Boundary](internal/media/oaMedia.md) — Audio/Video sibling domains,

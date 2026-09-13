@@ -93,11 +93,13 @@ duplicate-identity rejection, train/eval propagation, and one composed
 character-model optimizer path. Fixed-shape `TrainingProgram` replay now retains
 stable input/gradient/parameter/moment state, advances AdamW state on the GPU,
 and reuses one cached command for the complete canonical Char-Transformer gate.
-This is not generalized autograd or an NLP-suite completion. The canonical
-Char-RNN and Char-Transformer rows pass their exact 300-step corpus, loss,
-accuracy, and fixed-prompt generation gates. Recurrent streaming state, shared
-and serialized RNG streams, dynamic specialization,
-and the remaining NLP matrix remain Planned. The donor-backed `ItTraining`
+This is not generalized autograd. The complete canonical 5×3 Char/Byte/BPE
+comparison matrix passes its exact 300-step corpus, loss, accuracy,
+fixed-prompt generation, and fresh-owner checkpoint gates. Recurrent streaming
+state, shared and serialized RNG streams, dynamic specialization, and qualified
+performance remain Planned. The separate Empyrealm-Core fidelity tutorial is
+connected without copying the donor's currently identical renamed shaders.
+The donor-backed `ItTraining`
 connects eager and captured completion to epoch/work accounting, loss metrics,
 ordered callback control, exact GPU timing distributions, and progress/summary,
 CSV, validation, checkpoint/restore-best, early-stop, phase, and learning-rate-schedule policies. Its
@@ -348,10 +350,14 @@ adjoint checked through an embedding predecessor. Complete this stage with:
    capture fallback to checkpoint, evaluation, scheduling, and the connected
    bounded `TrainingSession` safe-point control plane using the same
    Rust-native traits and borrowing;
-9. expand beyond the Experimental Char RNN and Char Transformer tutorials
-   across Byte/BPE and the remaining GRU, Transformer, MoE, and Mamba model
-   matrix; the Mamba grouped-SISO primitive and short adjoint are connected,
-   but its module, step, MIMO, long backward, and tutorial are not.
+9. the Experimental canonical 5×3 Char/Byte/BPE NLP comparison matrix and
+	distinct Empyrealm-Core fidelity row are connected through the same
+	operation/module/training owners without duplicating the Mamba-3 providers.
+	The Mamba fused preprocess, multi-output tape node, grouped-SISO and
+	shared-state MIMO primitives, short/chunked/bounded-generic adjoints, gated
+	normalization, parameter-owning module, and explicit recurrent step/cache are
+	connected; broader dtypes, mobile qualification, and canonical performance
+	remain gated.
 
 The source-by-source authority and current gap are recorded in
 [OA ML port inventory](../../porting/oaMlPortInventory.md). No new ML shader is
@@ -429,11 +435,12 @@ crop, flip, rotate, pad, center crop, remap, affine warp, and perspective warp.
 Its schema-owned FP32 kernels preserve NCHW/CHW Image layout and format, keep
 coordinate and transform inputs as Matrix-kind graph values, declare exclusive
 physical output writes, and pass odd-shape independent host oracles—including
-all five border modes—on the recorded Intel/Mesa device. The clean Vulkan
-validation gate remains blocked by the pre-existing
-Philox/Dropout `shaderInt64` mismatch
-(`VUID-VkShaderModuleCreateInfo-pCode-08740`); this is not a qualification
-claim.
+all five border modes—on the recorded Intel/Mesa device. The engine now enables
+available Int64/Int8/8-bit-storage features, derives per-artifact requirements
+from SPIR-V, omits unsupported pipelines, and rejects their use during
+executable-graph construction. The prior shader-module VUID is absent from
+fresh core and synchronization-validation ML runs. Image still requires its own
+fresh validation qualification; this roadmap entry is not that evidence.
 
 The complete donor 20-operation pixel family is Experimental under `image`:
 pointwise thresholds and intensity transforms, grayscale, explicit semantic

@@ -165,6 +165,13 @@ provenance and eliminated-intermediate lifetime evidence.
 Unqualified and training candidates retain source execution with explicit
 fallback evidence.
 Current ML kernels record generated contracts and semantic attributes.
+The fused Mamba-3 projection preprocess records eight semantic outputs through
+one tape node and one deterministic two-stage backward, zero-filling unused
+output adjoints without duplicating backward execution.
+The parameter-owning FP32 SISO/MIMO module, donor gated RMSNorm, canonical
+300-step Char Mamba-3 tutorial, explicit four-buffer recurrent step/cache, and
+short/chunked/bounded-generic SISO adjoint providers are connected. BF16,
+Android-specific provider qualification, and canonical performance remain gated.
 Schema-owned Philox uniform/normal and inverted Dropout preserve explicit
 64-bit seeds; capture selects replay variants with private device counters, and
 the Dropout adjoint regenerates the exact forward mask. A Rust-native Dropout
@@ -186,11 +193,17 @@ validation, checkpoint/restore-best, early-stop, phase, and learning-rate-schedu
 callbacks are connected. The eager iterator accepts the object-safe optimizer
 contract; SGD, Adam, AdamW, and Muon use donor-backed GPU updates, while Adam,
 AdamW, exact no-momentum SGD, and Muon persistence share the native `.oam`
-codec. Generalized autograd, recurrent streaming state, live training control,
-captured device-state Muon, and the remainder of the NLP suite remain Planned. The canonical
-Char-RNN and Char-Transformer rows complete their exact 300-step
-corpus/sampler/model workloads, reach the C++ loss and accuracy gates, and
-reproduce their fixed-prompt greedy text.
+codec. Registered `u32` scalar module state extends that same State section;
+VQ EMA counters now resume into the exact next dead-code revival transition.
+Generalized autograd, recurrent streaming state, live training control,
+and captured device-state Muon remain Planned. The complete canonical 5×3 NLP
+comparison matrix—RNN, GRU, Transformer, sparse MoE, and Mamba-3 over Char,
+packed-U8 Byte, and deterministic BPE—completes its exact 300-step
+corpus/sampler/model workload, post-update loss/accuracy and fixed-prompt greedy
+generation gates, and native checkpoint reload. BPE rows also reload the
+separate `oa_bpe_v1` vocabulary. The distinct Empyrealm-Core fidelity tutorial
+preserves its module/parameter topology while sharing the identical Mamba-3
+operation providers rather than copying donor shader bodies under new names.
 Its current wall time is not performance parity.
 
 ## Required baseline

@@ -2,7 +2,7 @@
 
 **Status:** Experimental
 
-**Updated:** 2026-09-10
+**Updated:** 2026-09-12
 
 **Architecture:** [OA Rust Architecture](../architecture/oaArchitecture.md)
 
@@ -24,7 +24,7 @@ FP32 input [B, I]
 The next admitted chain is also implemented:
 
 ```text
-U32 token IDs [...]
+U8/U32/non-negative I32 token IDs [...]
   -> Embedding(weight [V, D]) -> F32 [..., D]
   -> zero-copy reshape [N, D]
   -> Linear -> cross-entropy
@@ -39,22 +39,31 @@ vq_lookup,vq_ema_update,detach}` and `ml::nn::{VectorQuantizer,
 ResidualVectorQuantizer}`. Assignment preserves squared-L2 lower-index tie
 breaking and emits I32 tokens. The module applies one zero-copy stop-gradient
 view for the straight-through estimator, retains codebook/EMA state as
-persistent non-gradient buffers, and functionally advances that state through
-the semantic graph. Highest-norm deterministic seeding is an explicit host
+persistent non-gradient buffers, retains its EMA transition counter as named
+scalar module state, and functionally advances the numerical state through the
+semantic graph. Native `.oam` restore reproduces the exact next dead-code
+revival transition. Highest-norm deterministic seeding is an explicit host
 completion boundary. See [Vector quantization](oaVq.md).
+
+The first real VQ consumer is connected under `oa::sdk::ml::alm`. Its temporal
+Conv1d VQ-VAE, causal dense/hybrid-MoE prior, optional text-feature prefix,
+autoregressive token generation, motion decode, and product-level module tree
+reuse the same Matrix, autograd, VQ, Transformer, routing, and checkpoint
+owners. See [Animation Language Model](oaAlm.md).
 
 The donor GRU sequence path is also connected. Each stacked layer hoists its
 input projection into one existing batched Linear operation and records one
 whole-sequence recurrent scan. Reverse mode records one BPTT scan plus the
 existing Linear parameter adjoint; neither direction submits once per timestep.
 
-The first Mamba-3 slice connects the grouped SISO selective-state recurrence
-and the donor short backward as generated semantic operations. Forward remains
-one physical dispatch; backward transactionally owns its six private stages
-and returns all eleven adjoints through the ordinary `GradientTape`. An
-independent CPU recurrence, complete finite differences, and grouped-versus-
-expanded-head equivalence pass on Intel Vulkan. The module, recurrent step,
-MIMO, long-sequence backward, and tutorial remain pending. See
+Mamba-3 connects the complete donor FP32 grouped-SISO and shared-state-MIMO
+topology as generated semantic operations. SISO lowering routes internally
+between the deterministic short reverse, optimized chunk-16 reverse, and
+bounded generic recomputation while returning one eleven-adjoint operation.
+MIMO forward/backward/step returns one fifteen-adjoint operation. The
+parameter-owning module, explicit recurrent state, `.oam` round trip, and
+canonical 300-step Char tutorial all use those same paths. Independent CPU
+recurrences and complete finite differences pass on Intel Vulkan. See
 [Mamba-3](oaMamba3.md).
 
 The Transformer primitive chain is implemented as a complete training slice:
@@ -115,10 +124,14 @@ fresh-owner restoration, v1/v2 read compatibility, payload-corruption rejection,
 and bidirectional parsing with the OA C++ `modelctl`. See
 [OARS model files](oaModelFile.md).
 
-The complete NLP consumers are the canonical Char-RNN and Char-Transformer
-tutorials: exact C++ corpus and sampler, `[64, 16]` batches, widths 32/64, 300
-AdamW steps, all-position accuracy, and fixed-prompt greedy generation. See
-[OARS NLP tutorial suite](oaNlpSuite.md).
+The complete canonical NLP comparison matrix includes RNN, GRU, Transformer,
+sparse MoE, and Mamba-3 over Char, packed-U8 Byte, and deterministic BPE:
+exact C++ corpus and sampler, `[64, 16]` batches, widths 32/64, 300 AdamW steps,
+all-position accuracy, fixed-prompt greedy generation, and `.oam` reload. BPE
+rows additionally reload their separate `oa_bpe_v1` vocabulary. See
+[OARS NLP tutorial suite](oaNlpSuite.md). The additional Byte Empyrealm-Core
+fidelity tutorial preserves its nested module topology while sharing Mamba-3
+providers that are algorithmically identical in the donor.
 
 The reinforcement-learning foundation admits its value contract, first GPU
 algorithm primitive, and fixed-capacity rollout session. `EnvironmentSpace`, `EnvironmentSpec`, and `EnvironmentTransition`
@@ -184,7 +197,7 @@ GPU operations but does not submit or wait.
 
 This checkpoint admits scalar roots from Smooth L1, MSE, L1, BCE,
 cross-entropy, and masked cross-entropy, and chains composed from Linear,
-Embedding, LayerNorm, BatchNorm2d, Conv1d, ConvTranspose1d, Conv2d,
+Embedding, ByteEmbedding, LayerNorm, BatchNorm2d, Conv1d, ConvTranspose1d, Conv2d,
 ConvTranspose2d, RMSNorm,
 the donor activation family (SiLU, ReLU, tanh, sigmoid,
 Leaky ReLU, ELU, Mish, Softplus, and GELU), SwiGLU, standard scaled dot-product
@@ -416,7 +429,7 @@ remain Planned.
   fused one-workgroup scalar-mean candidate; MSE, L1, and BCE retain explicit
   per-element loss, Sum, and Scale dispatches. BCE preserves the donor's
   `[1e-7, 1 - 1e-7]` prediction clamp.
-- Embedding requires FP32 weight `[V, D]` and same-engine U32 indices; it
+- Embedding requires FP32 weight `[V, D]` and same-engine U8, U32, or I32 indices; it
   preserves the full index shape and appends `D`.
 - Rnn requires nonempty F32 input `[B, S, I]`, returns `[B, S, H]`, and admits
   zero-state biased or bias-free layers with `H <= 1024`. Its input projection

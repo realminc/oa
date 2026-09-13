@@ -172,12 +172,15 @@ Vulkan 1.4.354. This proves the tested storage and execution path, not general
 driver or device qualification. Both resize SPIR-V artifacts declare only
 `Shader` and `RuntimeDescriptorArray` capabilities.
 
-Core and synchronization-validation runs reach and pass the resize tests, but
-the repository-wide clean-validation gate is blocked before dispatch by eight
-pre-existing Matrix Philox/Dropout artifacts that declare `Int64` while the
-engine does not enable `shaderInt64`. The exact reported rule is
-`VUID-VkShaderModuleCreateInfo-pCode-08740`. No clean-validation or GPU-assisted
-claim is made for this checkpoint until that engine-wide mismatch is fixed.
+The engine now queries and enables available `shaderInt64`, `shaderInt8`, and
+8-bit-storage features, derives per-artifact requirements from embedded SPIR-V,
+and omits unsupported pipelines while preserving generated kernel indices.
+Executable-graph construction rejects unavailable kernels before state changes.
+This removed the previously reported
+`VUID-VkShaderModuleCreateInfo-pCode-08740` mismatch on the recorded Intel
+device. The runtime correction has a clean core-validation SISO run and
+separate synchronization-validation chunked-backward run; Image still needs a
+fresh subsystem-specific validation and GPU-assisted qualification pass.
 
 ## Remaining Stage 7 work
 

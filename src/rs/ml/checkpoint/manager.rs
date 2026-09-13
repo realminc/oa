@@ -10,6 +10,7 @@ use crate::{Engine, Error, Result};
 use super::{
 	CheckpointProgress, load_checkpoint, load_checkpoint_at_step, save_checkpoint_with_progress,
 };
+use crate::ml::model_file::ModelFile;
 use crate::ml::{CheckpointOptimizer, Module};
 
 /// Filesystem and metric policy for [`CheckpointManager`].
@@ -218,6 +219,7 @@ impl<'engine> CheckpointManager<'engine> {
 	///
 	/// The manager prefers files recorded in this session and otherwise scans its
 	/// incremental directory using the same strict filename grammar it writes.
+	/// The returned value is the exact completed step restored into the optimizer.
 	///
 	/// # Errors
 	///
@@ -226,7 +228,7 @@ impl<'engine> CheckpointManager<'engine> {
 		&self,
 		model: &dyn Module,
 		optimizer: &mut dyn CheckpointOptimizer,
-	) -> Result<()> {
+	) -> Result<u64> {
 		let path = self.latest_path()?.ok_or_else(|| {
 			Error::failed_precondition(format!(
 				"no checkpoints in {}",
@@ -236,7 +238,46 @@ impl<'engine> CheckpointManager<'engine> {
 		let step = parse_step(&path).ok_or_else(|| {
 			Error::failed_precondition("latest checkpoint has no valid step segment")
 		})?;
-		load_checkpoint_at_step(self.engine, &path, model, optimizer, step)
+		load_checkpoint_at_step(self.engine, &path, model, optimizer, step)?;
+		Ok(step)
+	}
+
+	/// Restore the latest incremental state and recover historical best-metric
+	/// selection from the master checkpoint when it exists.
+	///
+	/// This joins model, optimizer, completed step, and best-checkpoint policy at
+	/// one restart boundary. A master file written for another metric or ordering
+	/// policy is rejected instead of silently resetting selection history.
+	///
+	/// # Errors
+	///
+	/// Returns the same errors as [`Self::load_latest_into`], plus malformed or
+	/// incompatible master progress metadata.
+	pub fn resume_latest_into(
+		&mut self,
+		model: &dyn Module,
+		optimizer: &mut dyn CheckpointOptimizer,
+	) -> Result<u64> {
+		let master = self.master_path();
+		let restored_best = if master.is_file() {
+			let file = ModelFile::load(&master)?;
+			if file.progress.metric_name != self.config.metric_name
+				|| file.progress.lower_is_better != self.config.lower_is_better
+				|| !file.progress.best_metric.is_finite()
+			{
+				return Err(Error::invalid_argument(
+					"master checkpoint progress does not match resume policy",
+				));
+			}
+			Some(f64::from(file.progress.best_metric))
+		} else {
+			None
+		};
+		let step = self.load_latest_into(model, optimizer)?;
+		if let Some(best) = restored_best {
+			self.best_metric = best;
+		}
+		Ok(step)
 	}
 
 	fn progress(&self, step: u64, metric: f64, metric_name: &str) -> CheckpointProgress {

@@ -669,21 +669,24 @@ impl Transformer {
 		})
 	}
 
-	/// Evaluate all-position vocabulary logits for U32 tokens `[B, S]`.
+	/// Evaluate all-position vocabulary logits for U8 or U32 tokens `[B, S]`.
 	///
 	/// # Errors
 	///
 	/// Returns an error unless `S` equals the configured context length and the
-	/// input is nonempty U32, or a child operation fails.
+	/// input is nonempty U8/U32, or a child operation fails.
 	pub fn forward(&self, tokens: &Matrix) -> Result<Matrix> {
 		let [batch, sequence] = tokens.shape() else {
 			return Err(Error::invalid_argument(
 				"Transformer tokens must have shape [batch, context_length]",
 			));
 		};
-		if *batch == 0 || *sequence != self.context_length || tokens.dtype() != DType::U32 {
+		if *batch == 0
+			|| *sequence != self.context_length
+			|| !matches!(tokens.dtype(), DType::U8 | DType::U32)
+		{
 			return Err(Error::invalid_argument(
-				"Transformer tokens must be nonempty U32 [batch, context_length]",
+				"Transformer tokens must be nonempty U8 or U32 [batch, context_length]",
 			));
 		}
 		let rows = batch

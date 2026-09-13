@@ -92,6 +92,17 @@ pub(crate) enum MatrixNode {
 		dim: usize,
 		sizes: Vec<usize>,
 	},
+	Transpose {
+		input: Matrix,
+		output_id: u64,
+		dim0: usize,
+		dim1: usize,
+	},
+	Gather {
+		input: Matrix,
+		indices: Matrix,
+		output_id: u64,
+	},
 	GatherLastDim {
 		input: Matrix,
 		indices: Matrix,

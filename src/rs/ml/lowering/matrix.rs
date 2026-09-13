@@ -2,7 +2,10 @@
 
 use crate::{
 	DType, Error, Matrix, OpAttribute, Result,
-	runtime::{BufferBinding, ComputeDispatch, KernelId, PushConstant, SemanticDispatch},
+	runtime::{
+		BufferBinding, ComputeDispatch, KernelId, OptionalSemanticDispatch, PushConstant,
+		SemanticDispatch,
+	},
 };
 
 use super::common::{record_semantic, shader_u32, validate_f32_same_engine};
@@ -371,6 +374,298 @@ pub(in crate::ml) fn layer_norm_backward(
 	Ok((input_gradient, weight_gradient, bias_gradient))
 }
 
+pub(in crate::ml) struct ChannelNormBackwardOutput {
+	pub(in crate::ml) input: Matrix,
+	pub(in crate::ml) weight: Matrix,
+	pub(in crate::ml) bias: Matrix,
+}
+
+fn channel_norm_geometry(
+	input: &Matrix,
+	weight: &Matrix,
+	bias: Option<&Matrix>,
+	epsilon: f32,
+	operation: &'static str,
+) -> Result<(u32, u32, u32)> {
+	let [batch, channels, sequence_length] = input.shape() else {
+		return Err(Error::invalid_argument(format!(
+			"{operation} input must have BCT rank three; found {:?}",
+			input.shape()
+		)));
+	};
+	if *batch == 0 || *channels == 0 || *sequence_length == 0 {
+		return Err(Error::invalid_argument(format!(
+			"{operation} BCT extents must be nonzero"
+		)));
+	}
+	if *channels > 1024 {
+		return Err(Error::invalid_argument(format!(
+			"{operation} currently supports at most 1024 channels; found {channels}"
+		)));
+	}
+	if weight.shape() != [*channels] || bias.is_some_and(|value| value.shape() != [*channels]) {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires weight and bias vectors matching C={channels}"
+		)));
+	}
+	if !epsilon.is_finite() || epsilon <= 0.0 {
+		return Err(Error::invalid_argument(format!(
+			"{operation} epsilon must be finite and positive"
+		)));
+	}
+	let mut matrices = vec![input, weight];
+	if let Some(bias) = bias {
+		matrices.push(bias);
+	}
+	validate_f32_same_engine(operation, &matrices)?;
+	Ok((
+		shader_u32(*batch, "batch", operation)?,
+		shader_u32(*channels, "channel count", operation)?,
+		shader_u32(*sequence_length, "sequence length", operation)?,
+	))
+}
+
+fn channel_norm_attributes(
+	batch: u32,
+	channels: u32,
+	sequence_length: u32,
+	epsilon: f32,
+) -> [OpAttribute; 4] {
+	[
+		OpAttribute::UnsignedInteger {
+			name: "batch".into(),
+			value: u64::from(batch),
+		},
+		OpAttribute::UnsignedInteger {
+			name: "channels".into(),
+			value: u64::from(channels),
+		},
+		OpAttribute::UnsignedInteger {
+			name: "sequence_length".into(),
+			value: u64::from(sequence_length),
+		},
+		OpAttribute::Float {
+			name: "epsilon".into(),
+			value: f64::from(epsilon),
+		},
+	]
+}
+
+pub(in crate::ml) fn channel_norm(
+	input: &Matrix,
+	weight: &Matrix,
+	bias: &Matrix,
+	epsilon: f32,
+	relu: bool,
+) -> Result<Matrix> {
+	let contract = if relu {
+		crate::core::operation::ml::CHANNEL_NORM_RELU
+	} else {
+		crate::core::operation::ml::CHANNEL_NORM
+	};
+	let operation = contract.name();
+	let (batch, channels, sequence_length) =
+		channel_norm_geometry(input, weight, Some(bias), epsilon, operation)?;
+	let output = Matrix::allocate(
+		input.engine_handle(),
+		input.shape().to_vec(),
+		input.num_elements(),
+		DType::F32,
+	)?;
+	let buffers = [
+		BufferBinding::read(input.storage()),
+		BufferBinding::read(weight.storage()),
+		BufferBinding::read(bias.storage()),
+		BufferBinding::write(output.storage()),
+	];
+	let push_constants = [
+		PushConstant::U32(batch),
+		PushConstant::U32(channels),
+		PushConstant::U32(sequence_length),
+		PushConstant::F32(epsilon),
+	];
+	let attributes = channel_norm_attributes(batch, channels, sequence_length, epsilon);
+	let kernel = if relu {
+		KernelId::MlChannelNormReluF32
+	} else {
+		KernelId::MlChannelNormF32
+	};
+	record_semantic(
+		&[input, weight, bias],
+		&[&output],
+		&attributes,
+		kernel,
+		&buffers,
+		&push_constants,
+		[
+			batch.checked_mul(sequence_length).ok_or_else(|| {
+				Error::invalid_argument(format!("{operation} row count exceeds u32"))
+			})?,
+			1,
+			1,
+		],
+	)?;
+	Ok(output)
+}
+
+#[allow(
+	clippy::too_many_arguments,
+	reason = "the fused adjoint consumes its complete saved forward state"
+)]
+pub(in crate::ml) fn channel_norm_backward(
+	input: &Matrix,
+	weight: &Matrix,
+	forward_output: Option<&Matrix>,
+	output_gradient: &Matrix,
+	epsilon: f32,
+) -> Result<ChannelNormBackwardOutput> {
+	let contract = if forward_output.is_some() {
+		crate::core::operation::ml::CHANNEL_NORM_RELU_BACKWARD
+	} else {
+		crate::core::operation::ml::CHANNEL_NORM_BACKWARD
+	};
+	let operation = contract.name();
+	let (batch, channels, sequence_length) =
+		channel_norm_geometry(input, weight, None, epsilon, operation)?;
+	if output_gradient.shape() != input.shape()
+		|| forward_output.is_some_and(|value| value.shape() != input.shape())
+	{
+		return Err(Error::invalid_argument(format!(
+			"{operation} saved output and output gradient must match the input shape"
+		)));
+	}
+	let mut matrices = vec![output_gradient];
+	if let Some(output) = forward_output {
+		matrices.push(output);
+	}
+	validate_f32_same_engine(operation, &matrices)?;
+	let rows = batch
+		.checked_mul(sequence_length)
+		.ok_or_else(|| Error::invalid_argument(format!("{operation} row count exceeds u32")))?;
+	let input_gradient = Matrix::allocate(
+		input.engine_handle(),
+		input.shape().to_vec(),
+		input.num_elements(),
+		DType::F32,
+	)?;
+	let contribution_count = (rows as usize)
+		.checked_mul(channels as usize)
+		.ok_or_else(|| {
+			Error::invalid_argument(format!("{operation} contribution size overflows"))
+		})?;
+	let weight_contribution = Matrix::allocate(
+		input.engine_handle(),
+		vec![rows as usize, channels as usize],
+		contribution_count,
+		DType::F32,
+	)?;
+	let bias_contribution = Matrix::allocate(
+		input.engine_handle(),
+		vec![rows as usize, channels as usize],
+		contribution_count,
+		DType::F32,
+	)?;
+	let weight_gradient = Matrix::allocate(
+		input.engine_handle(),
+		weight.shape().to_vec(),
+		weight.num_elements(),
+		DType::F32,
+	)?;
+	let bias_gradient = Matrix::allocate(
+		input.engine_handle(),
+		weight.shape().to_vec(),
+		weight.num_elements(),
+		DType::F32,
+	)?;
+	let push_constants = [
+		PushConstant::U32(batch),
+		PushConstant::U32(channels),
+		PushConstant::U32(sequence_length),
+		PushConstant::F32(epsilon),
+	];
+	let plain_buffers = [
+		BufferBinding::read(input.storage()),
+		BufferBinding::read(weight.storage()),
+		BufferBinding::read(output_gradient.storage()),
+		BufferBinding::write(input_gradient.storage()),
+		BufferBinding::write(weight_contribution.storage()),
+		BufferBinding::write(bias_contribution.storage()),
+	];
+	let relu_buffers = forward_output.map(|output| {
+		[
+			BufferBinding::read(input.storage()),
+			BufferBinding::read(weight.storage()),
+			BufferBinding::read(output.storage()),
+			BufferBinding::read(output_gradient.storage()),
+			BufferBinding::write(input_gradient.storage()),
+			BufferBinding::write(weight_contribution.storage()),
+			BufferBinding::write(bias_contribution.storage()),
+		]
+	});
+	let sum_push_constants = [
+		PushConstant::U32(1),
+		PushConstant::U32(rows),
+		PushConstant::U32(channels),
+	];
+	let weight_buffers = [
+		BufferBinding::read(weight_contribution.storage()),
+		BufferBinding::write(weight_gradient.storage()),
+	];
+	let bias_buffers = [
+		BufferBinding::read(bias_contribution.storage()),
+		BufferBinding::write(bias_gradient.storage()),
+	];
+	let primary = ComputeDispatch {
+		kernel: if forward_output.is_some() {
+			KernelId::MlChannelNormReluBackwardF32
+		} else {
+			KernelId::MlChannelNormBackwardF32
+		},
+		buffers: relu_buffers
+			.as_ref()
+			.map_or(&plain_buffers[..], |buffers| &buffers[..]),
+		push_constants: &push_constants,
+		workgroups: [rows, 1, 1],
+	};
+	let sum_workgroups = KernelId::MatrixSumAxisF32.linear_workgroups(channels);
+	let dispatches = [
+		primary,
+		ComputeDispatch {
+			kernel: KernelId::MatrixSumAxisF32,
+			buffers: &weight_buffers,
+			push_constants: &sum_push_constants,
+			workgroups: sum_workgroups,
+		},
+		ComputeDispatch {
+			kernel: KernelId::MatrixSumAxisF32,
+			buffers: &bias_buffers,
+			push_constants: &sum_push_constants,
+			workgroups: sum_workgroups,
+		},
+	];
+	let mut inputs = vec![input, weight];
+	if let Some(output) = forward_output {
+		inputs.push(output);
+	}
+	inputs.push(output_gradient);
+	let outputs = [&input_gradient, &weight_gradient, &bias_gradient];
+	let attributes = channel_norm_attributes(batch, channels, sequence_length, epsilon);
+	input.engine_handle().record_split_semantic(
+		&dispatches,
+		SemanticDispatch {
+			contract,
+			inputs: &inputs,
+			outputs: &outputs,
+			attributes: &attributes,
+		},
+	)?;
+	Ok(ChannelNormBackwardOutput {
+		input: input_gradient,
+		weight: weight_gradient,
+		bias: bias_gradient,
+	})
+}
+
 pub(in crate::ml) fn rms_norm(input: &Matrix, weight: &Matrix, epsilon: f32) -> Result<Matrix> {
 	const OPERATION: &str = crate::core::operation::ml::RMS_NORM.name();
 	let (rows, columns) = validate_rms_norm_inputs(input, weight, epsilon, OPERATION)?;
@@ -491,6 +786,288 @@ pub(in crate::ml) fn rms_norm_backward(
 		},
 	)?;
 	Ok((input_gradient, weight_gradient))
+}
+
+pub(in crate::ml) struct RmsNormGatedBackward {
+	pub(in crate::ml) input: Matrix,
+	pub(in crate::ml) weight: Matrix,
+	pub(in crate::ml) bias: Option<Matrix>,
+	pub(in crate::ml) gate: Matrix,
+}
+
+pub(in crate::ml) fn rms_norm_gated(
+	input: &Matrix,
+	weight: &Matrix,
+	bias: Option<&Matrix>,
+	gate: &Matrix,
+	epsilon: f32,
+) -> Result<Matrix> {
+	const OPERATION: &str = crate::core::operation::ml::RMS_NORM_GATED.name();
+	let (rows, columns, groups, _) =
+		validate_rms_norm_gated_inputs(input, weight, bias, gate, epsilon, OPERATION)?;
+	let output = Matrix::allocate(
+		input.engine_handle(),
+		input.shape().to_vec(),
+		input.num_elements(),
+		DType::F32,
+	)?;
+	let physical_bias = bias.unwrap_or(weight);
+	let buffers = [
+		BufferBinding::read(input.storage()),
+		BufferBinding::read(weight.storage()),
+		BufferBinding::read(physical_bias.storage()),
+		BufferBinding::read(gate.storage()),
+		BufferBinding::write(output.storage()),
+	];
+	let push_constants = [
+		PushConstant::U32(rows),
+		PushConstant::U32(columns),
+		PushConstant::U32(groups),
+		PushConstant::F32(epsilon),
+		PushConstant::U32(u32::from(bias.is_some())),
+	];
+	let attributes = [
+		OpAttribute::Float {
+			name: "epsilon".into(),
+			value: f64::from(epsilon),
+		},
+		OpAttribute::Boolean {
+			name: "has_bias".into(),
+			value: bias.is_some(),
+		},
+	];
+	let semantic_inputs = [Some(input), Some(weight), bias, Some(gate)];
+	input.engine_handle().record_optional_semantic(
+		ComputeDispatch {
+			kernel: KernelId::MlRmsNormGatedF32,
+			buffers: &buffers,
+			push_constants: &push_constants,
+			workgroups: [rows, 1, 1],
+		},
+		OptionalSemanticDispatch {
+			contract: crate::core::operation::ml::RMS_NORM_GATED,
+			inputs: &semantic_inputs,
+			outputs: &[&output],
+			attributes: &attributes,
+		},
+	)?;
+	Ok(output)
+}
+
+pub(in crate::ml) fn rms_norm_gated_backward(
+	input: &Matrix,
+	weight: &Matrix,
+	bias: Option<&Matrix>,
+	gate: &Matrix,
+	output_gradient: &Matrix,
+	epsilon: f32,
+) -> Result<RmsNormGatedBackward> {
+	const OPERATION: &str = crate::core::operation::ml::RMS_NORM_GATED_BACKWARD.name();
+	let (rows, columns, groups, outer_rows) =
+		validate_rms_norm_gated_inputs(input, weight, bias, gate, epsilon, OPERATION)?;
+	validate_f32_same_engine(OPERATION, &[input, weight, gate, output_gradient])?;
+	if output_gradient.shape() != input.shape() {
+		return Err(Error::invalid_argument(format!(
+			"{OPERATION} output gradient must match input shape; found {:?} and {:?}",
+			output_gradient.shape(),
+			input.shape()
+		)));
+	}
+	let input_gradient = Matrix::allocate(
+		input.engine_handle(),
+		input.shape().to_vec(),
+		input.num_elements(),
+		DType::F32,
+	)?;
+	let gate_gradient = Matrix::allocate(
+		input.engine_handle(),
+		gate.shape().to_vec(),
+		gate.num_elements(),
+		DType::F32,
+	)?;
+	let weight_contribution = Matrix::allocate(
+		input.engine_handle(),
+		input.shape().to_vec(),
+		input.num_elements(),
+		DType::F32,
+	)?;
+	let weight_gradient = Matrix::allocate(
+		input.engine_handle(),
+		weight.shape().to_vec(),
+		weight.num_elements(),
+		DType::F32,
+	)?;
+	let bias_contribution = if bias.is_some() {
+		Matrix::allocate(
+			input.engine_handle(),
+			input.shape().to_vec(),
+			input.num_elements(),
+			DType::F32,
+		)?
+	} else {
+		Matrix::from_slice_handle(input.engine_handle(), vec![1], &[0.0_f32])?
+	};
+	let bias_gradient = match bias {
+		Some(value) => Some(Matrix::allocate(
+			input.engine_handle(),
+			value.shape().to_vec(),
+			value.num_elements(),
+			DType::F32,
+		)?),
+		None => None,
+	};
+	let physical_bias = bias.unwrap_or(weight);
+	let backward_buffers = [
+		BufferBinding::read(input.storage()),
+		BufferBinding::read(weight.storage()),
+		BufferBinding::read(physical_bias.storage()),
+		BufferBinding::read(gate.storage()),
+		BufferBinding::read(output_gradient.storage()),
+		BufferBinding::write(input_gradient.storage()),
+		BufferBinding::write(gate_gradient.storage()),
+		BufferBinding::write(weight_contribution.storage()),
+		BufferBinding::write(bias_contribution.storage()),
+	];
+	let backward_push_constants = [
+		PushConstant::U32(rows),
+		PushConstant::U32(columns),
+		PushConstant::U32(groups),
+		PushConstant::F32(epsilon),
+		PushConstant::U32(u32::from(bias.is_some())),
+	];
+	let affine_elements = shader_u32(weight.num_elements(), "affine element count", OPERATION)?;
+	let reduction_push_constants = [
+		PushConstant::U32(1),
+		PushConstant::U32(outer_rows),
+		PushConstant::U32(affine_elements),
+	];
+	let weight_reduction_buffers = [
+		BufferBinding::read(weight_contribution.storage()),
+		BufferBinding::write(weight_gradient.storage()),
+	];
+	let backward_dispatch = ComputeDispatch {
+		kernel: KernelId::MlRmsNormGatedBackwardF32,
+		buffers: &backward_buffers,
+		push_constants: &backward_push_constants,
+		workgroups: [rows, 1, 1],
+	};
+	let weight_dispatch = ComputeDispatch {
+		kernel: KernelId::MatrixSumAxisF32,
+		buffers: &weight_reduction_buffers,
+		push_constants: &reduction_push_constants,
+		workgroups: KernelId::MatrixSumAxisF32.linear_workgroups(affine_elements),
+	};
+	let semantic_inputs = [
+		Some(input),
+		Some(weight),
+		bias,
+		Some(gate),
+		Some(output_gradient),
+	];
+	let bias_placeholder = bias_gradient.as_ref().unwrap_or(&bias_contribution);
+	let semantic_outputs = [
+		&input_gradient,
+		&weight_gradient,
+		bias_placeholder,
+		&gate_gradient,
+	];
+	let attributes = [
+		OpAttribute::Float {
+			name: "epsilon".into(),
+			value: f64::from(epsilon),
+		},
+		OpAttribute::Boolean {
+			name: "has_bias".into(),
+			value: bias.is_some(),
+		},
+	];
+	if let Some(bias_gradient) = &bias_gradient {
+		let bias_reduction_buffers = [
+			BufferBinding::read(bias_contribution.storage()),
+			BufferBinding::write(bias_gradient.storage()),
+		];
+		let bias_dispatch = ComputeDispatch {
+			kernel: KernelId::MatrixSumAxisF32,
+			buffers: &bias_reduction_buffers,
+			push_constants: &reduction_push_constants,
+			workgroups: KernelId::MatrixSumAxisF32.linear_workgroups(affine_elements),
+		};
+		input.engine_handle().record_split_optional_semantic(
+			&[backward_dispatch, weight_dispatch, bias_dispatch],
+			OptionalSemanticDispatch {
+				contract: crate::core::operation::ml::RMS_NORM_GATED_BACKWARD,
+				inputs: &semantic_inputs,
+				outputs: &semantic_outputs,
+				attributes: &attributes,
+			},
+		)?;
+	} else {
+		input.engine_handle().record_split_optional_semantic(
+			&[backward_dispatch, weight_dispatch],
+			OptionalSemanticDispatch {
+				contract: crate::core::operation::ml::RMS_NORM_GATED_BACKWARD,
+				inputs: &semantic_inputs,
+				outputs: &semantic_outputs,
+				attributes: &attributes,
+			},
+		)?;
+	}
+	Ok(RmsNormGatedBackward {
+		input: input_gradient,
+		weight: weight_gradient,
+		bias: bias_gradient,
+		gate: gate_gradient,
+	})
+}
+
+fn validate_rms_norm_gated_inputs(
+	input: &Matrix,
+	weight: &Matrix,
+	bias: Option<&Matrix>,
+	gate: &Matrix,
+	epsilon: f32,
+	operation: &'static str,
+) -> Result<(u32, u32, u32, u32)> {
+	let Some(&columns) = input.shape().last() else {
+		return Err(Error::invalid_argument(format!(
+			"{operation} input must have at least one dimension"
+		)));
+	};
+	let affine_elements = weight.num_elements();
+	if columns == 0
+		|| input.num_elements() == 0
+		|| gate.shape() != input.shape()
+		|| affine_elements == 0
+		|| !affine_elements.is_multiple_of(columns)
+		|| bias.is_some_and(|value| value.shape() != weight.shape())
+	{
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires matching nonempty input/gate and optional bias matching a broadcast affine weight ending in the normalized dimension"
+		)));
+	}
+	if !epsilon.is_finite() || epsilon <= 0.0 {
+		return Err(Error::invalid_argument(format!(
+			"{operation} epsilon must be finite and positive"
+		)));
+	}
+	let rows = input.num_elements() / columns;
+	let groups = affine_elements / columns;
+	if groups == 0 || !rows.is_multiple_of(groups) {
+		return Err(Error::invalid_argument(format!(
+			"{operation} affine groups must divide the flattened row count"
+		)));
+	}
+	let mut matrices = vec![input, weight, gate];
+	if let Some(bias) = bias {
+		matrices.push(bias);
+	}
+	validate_f32_same_engine(operation, &matrices)?;
+	Ok((
+		shader_u32(rows, "row count", operation)?,
+		shader_u32(columns, "normalized dimension", operation)?,
+		shader_u32(groups, "affine group count", operation)?,
+		shader_u32(rows / groups, "outer row count", operation)?,
+	))
 }
 
 fn validate_rms_norm_inputs(
@@ -1158,9 +1735,9 @@ pub(in crate::ml) fn embedding(weight: &Matrix, indices: &Matrix) -> Result<Matr
 			"{OPERATION} requires a nonempty FP32 weight [V, D]"
 		)));
 	}
-	if indices.dtype() != DType::U32 {
+	if !matches!(indices.dtype(), DType::U8 | DType::U32 | DType::I32) {
 		return Err(Error::invalid_argument(format!(
-			"{OPERATION} requires U32 indices; found {}",
+			"{OPERATION} requires U8, U32, or I32 indices; found {}",
 			indices.dtype().token()
 		)));
 	}
@@ -1198,7 +1775,11 @@ pub(in crate::ml) fn embedding(weight: &Matrix, indices: &Matrix) -> Result<Matr
 			PushConstant::U32(num_embeddings),
 			PushConstant::U32(embedding_dim),
 		];
-		let kernel = KernelId::MlEmbeddingF32;
+		let kernel = match indices.dtype() {
+			DType::U8 => KernelId::MlEmbeddingU8F32,
+			DType::U32 | DType::I32 => KernelId::MlEmbeddingF32,
+			_ => unreachable!("validated embedding index dtype"),
+		};
 		record_semantic(
 			&[weight, indices],
 			&[&output],
@@ -1225,7 +1806,7 @@ pub(in crate::ml) fn embedding_backward(
 	};
 	let mut expected_gradient_shape = indices.shape().to_vec();
 	expected_gradient_shape.push(*embedding_dim);
-	if indices.dtype() != DType::U32
+	if !matches!(indices.dtype(), DType::U8 | DType::U32 | DType::I32)
 		|| weight.dtype() != DType::F32
 		|| output_gradient.dtype() != DType::F32
 		|| output_gradient.shape() != expected_gradient_shape
@@ -1235,7 +1816,7 @@ pub(in crate::ml) fn embedding_backward(
 			.same_as(output_gradient.engine_handle())
 	{
 		return Err(Error::invalid_argument(format!(
-			"{OPERATION} requires same-engine U32 indices, FP32 gradient [..., D], and FP32 weight [V, D]"
+			"{OPERATION} requires same-engine U8, U32, or I32 indices, FP32 gradient [..., D], and FP32 weight [V, D]"
 		)));
 	}
 	let gradient = Matrix::allocate(
@@ -1259,7 +1840,11 @@ pub(in crate::ml) fn embedding_backward(
 			PushConstant::U32(num_embeddings),
 			PushConstant::U32(embedding_dim),
 		];
-		let kernel = KernelId::MlEmbeddingBackwardF32;
+		let kernel = match indices.dtype() {
+			DType::U8 => KernelId::MlEmbeddingBackwardU8F32,
+			DType::U32 | DType::I32 => KernelId::MlEmbeddingBackwardF32,
+			_ => unreachable!("validated embedding-backward index dtype"),
+		};
 		record_semantic(
 			&[indices, output_gradient, weight],
 			&[&gradient],

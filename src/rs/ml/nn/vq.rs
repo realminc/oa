@@ -1,8 +1,8 @@
-use std::{cell::Cell, rc::Rc};
+use std::rc::Rc;
 
 use crate::{DType, Engine, Error, Matrix, Result, matrix as core_matrix};
 
-use super::super::{Module, ModuleRegistry, NamedBuffer, matrix, random};
+use super::super::{Module, ModuleRegistry, NamedBuffer, NamedStateU32, matrix, random};
 
 /// Configuration for one EMA-trained vector-quantization codebook.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -43,7 +43,7 @@ pub struct VqResult {
 	pub quantized: Matrix,
 	/// I32 nearest-code indices `[N]`.
 	pub indices: Matrix,
-	/// Scalar `[1]` commitment loss.
+	/// Rank-zero scalar commitment loss.
 	pub commitment_loss: Matrix,
 }
 
@@ -53,7 +53,7 @@ pub struct VectorQuantizer {
 	codebook: NamedBuffer,
 	embed_sum: NamedBuffer,
 	cluster_size: NamedBuffer,
-	ema_step: Cell<u32>,
+	ema_step: NamedStateU32,
 	registry: ModuleRegistry,
 }
 
@@ -119,6 +119,7 @@ impl VectorQuantizer {
 		registry.register_buffer("codebook", codebook, true)?;
 		registry.register_buffer("embed_sum", embed_sum, true)?;
 		registry.register_buffer("cluster_size", cluster_size, true)?;
+		let ema_step = registry.register_state_u32("ema_step", 0)?;
 		let codebook = registry
 			.buffer_handle("codebook")
 			.ok_or_else(|| Error::internal("VQ codebook registration was lost"))?;
@@ -133,7 +134,7 @@ impl VectorQuantizer {
 			codebook,
 			embed_sum,
 			cluster_size,
-			ema_step: Cell::new(0),
+			ema_step,
 			registry,
 		})
 	}
@@ -152,10 +153,8 @@ impl VectorQuantizer {
 		let quantized = core_matrix::add(latent, &detached_delta)?;
 		let difference = core_matrix::sub(latent, &assignment.quantized)?;
 		let squared = core_matrix::mul(&difference, &difference)?;
-		let mean = core_matrix::scale(
-			&core_matrix::sum(&squared, -1)?,
-			1.0 / squared.num_elements() as f32,
-		)?;
+		let total = core_matrix::reshape(&core_matrix::sum(&squared, -1)?, [])?;
+		let mean = core_matrix::scale(&total, 1.0 / squared.num_elements() as f32)?;
 		let commitment_loss = core_matrix::scale(&mean, self.config.commitment_beta)?;
 		Ok(VqResult {
 			quantized,
@@ -170,7 +169,7 @@ impl VectorQuantizer {
 	///
 	/// Returns an error for incompatible inputs or failed runtime recording.
 	pub fn ema_update(&self, latent: &Matrix, indices: &Matrix) -> Result<()> {
-		let step = self.ema_step.get();
+		let step = self.ema_step.value();
 		let state = matrix::vq_ema_update(
 			latent,
 			indices,
@@ -186,7 +185,7 @@ impl VectorQuantizer {
 		self.embed_sum.replace_data(state.embed_sum)?;
 		self.cluster_size.replace_data(state.cluster_size)?;
 		self.codebook.replace_data(state.codebook)?;
-		self.ema_step.set(step.wrapping_add(1));
+		self.ema_step.replace_value(step.wrapping_add(1));
 		Ok(())
 	}
 
@@ -258,8 +257,8 @@ impl VectorQuantizer {
 	}
 
 	/// Return the number of completed EMA transitions modulo `u32`.
-	pub const fn ema_step(&self) -> u32 {
-		self.ema_step.get()
+	pub fn ema_step(&self) -> u32 {
+		self.ema_step.value()
 	}
 }
 
@@ -281,7 +280,7 @@ pub struct ResidualVqResult {
 	pub indices: Vec<Matrix>,
 	/// Input residual used by each level's EMA update.
 	pub residuals: Vec<Matrix>,
-	/// Scalar `[1]` commitment loss against the summed code vectors.
+	/// Rank-zero scalar commitment loss against the summed code vectors.
 	pub commitment_loss: Matrix,
 }
 
@@ -362,8 +361,9 @@ impl ResidualVectorQuantizer {
 			core_matrix::add(latent, &matrix::detach(&core_matrix::sub(&total, latent)?)?)?;
 		let difference = core_matrix::sub(latent, &total)?;
 		let squared = core_matrix::mul(&difference, &difference)?;
+		let total = core_matrix::reshape(&core_matrix::sum(&squared, -1)?, [])?;
 		let commitment_loss = core_matrix::scale(
-			&core_matrix::sum(&squared, -1)?,
+			&total,
 			self.config.commitment_beta / squared.num_elements() as f32,
 		)?;
 		Ok(ResidualVqResult {

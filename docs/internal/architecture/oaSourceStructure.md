@@ -127,6 +127,8 @@ The concrete file ownership is:
 | `runtime/shader.rs` and `runtime/shader/` | Target-independent generated kernel identity, embedded artifact bytes, reflection, and shader metadata. A generated kernel row owns its optional semantic-operation contract mapping. |
 | `runtime/vk/` | Vulkan instance/device/queue/buffer/descriptor/pipeline/command implementation. It consumes executable nodes and shader artifacts without deciding public operation semantics. |
 | `src/slang/` | Slang modules and kernel source. Shader bodies do not own Rust API validation or graph policy. |
+| `src/py/` | Native PyO3 binding implementation. It mirrors the admitted Rust ownership graph and owns no second runtime or operation implementation. |
+| `sdk/py/` | Importable `oa` package, build metadata, tests, examples, and tutorials. Its Cargo target points at the native implementation in `src/py`. |
 
 Within `src/slang`, physical directories name semantic owners rather than
 backend mechanics:
@@ -194,6 +196,9 @@ to an active ML tape, preserving the dependency direction from Core to ML.
   are not retained.
 - Generated checked-in files use the repository's `.gen.rs` convention and
   remain schema-owned. Build-time generation writes below `OUT_DIR`.
+- External weight containers are private adapters below `ml/weights`; explicit
+  model translators own source-name/shape policy and emit the single native
+  `.oam` codec. They are not placed in a generic `io` or `archive` namespace.
 
 File placement and public path need not be identical. A private implementation
 module may be explicitly re-exported through its domain facade. A principal
@@ -361,6 +366,17 @@ sdk/rs/ml/rl/lunar_lander/terrain.rs       checked deterministic terrain oracle
 sdk/rs/ml/rl/lunar_lander/physics.rs       scalar dynamics/observation oracle
 sdk/rs/ml/rl/lunar_lander/vector.rs        native vector Environment session
 sdk/rs/ml/rl/lunar_lander/training.rs      task policy curriculum and evaluation evidence
+sdk/rs/ml/alm.rs                           ALM SDK facade and temporal tokenizer
+sdk/rs/ml/alm/prior.rs                     causal motion-token prior
+sdk/rs/ml/alm/model.rs                     product ownership/persistence tree
+sdk/rs/ml/alm/clip.rs                      native frozen CLIP text tower
+sdk/rs/ml/alm/tokenizer.rs                 explicit canonical CLIP byte-BPE asset parser
+sdk/rs/ml/alm/training.rs                  ALM training facade and deterministic window contracts
+sdk/rs/ml/alm/training/tokenizer.rs        temporal VQ-VAE optimizer/EMA lifecycle
+sdk/rs/ml/alm/training/prior.rs            true-boundary causal-prior optimizer lifecycle
+sdk/rs/ml/alm/training/workflow.rs         HumanML3D tokenizer-to-prior orchestration
+sdk/rs/apps/ml/alm/train.rs                 runnable two-stage ALM training application
+sdk/rs/apps/ml/alm/generate.rs              runnable bundle generation and NPY export application
 sdk/rs/tutorials/ml/rl/lunar_lander_ppo.rs runnable teacher/raw-PPO workflow
 sdk/rs/slang/ml/rl/cart_pole/reset.slang   schema-owned reset kernel
 sdk/rs/slang/ml/rl/cart_pole/step.slang    schema-owned dynamics kernel

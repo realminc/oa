@@ -10,10 +10,12 @@ mod index;
 mod rng;
 
 pub use index::{
-	MoeExpertPlan, TopKResult, concat, equal, gather_last_dim, moe_expert_plan,
-	moe_routing_bias_update, repeat_interleave, slice, top_k, top_k_mask,
+	MoeExpertPlan, TopKResult, concat, equal, gather, gather_last_dim, moe_expert_plan,
+	moe_routing_bias_update, repeat_interleave, slice, top_k, top_k_mask, transpose,
 };
-pub(crate) use index::{gather_last_dim_backward, repeat_interleave_backward, slice_backward};
+pub(crate) use index::{
+	gather_backward, gather_last_dim_backward, repeat_interleave_backward, slice_backward,
+};
 pub(crate) use rng::dropout_backward;
 pub use rng::{dropout, philox_normal, philox_uniform, sample_logits, set_rng_seed};
 

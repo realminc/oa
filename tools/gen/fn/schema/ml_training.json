@@ -7,12 +7,66 @@
   "retired_stable_ids": [39, 115],
   "port_provenance": [
     {
+      "family": "channel_norm",
+      "operations": [
+        "channel_norm", "channel_norm_backward",
+        "channel_norm_relu", "channel_norm_relu_backward"
+      ],
+      "classification": "mechanical_adaptation",
+      "donors": [
+        "source/cpp/lib/oa/ml/fnmatrix/norm/fnMatrixChannelNorm.cpp",
+        "source/cpp/lib/oa/ml/autograd/matrix/autogradChannelNorm.h",
+        "source/cpp/lib/oa/ml/shader/compute/nn/channelNorm/channelNorm.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/channelNorm/channelNormBwd.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/channelNorm/channelNormRelu.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/channelNorm/channelNormReluBwd.slang",
+        "tools/gen/fn/schema/ml/mlFnMatrixChannelNorm.toml"
+      ],
+      "reason": "Preserves donor BCT channel-axis normalization, affine transform, fused ReLU, and complete input/weight/bias adjoints. OARS assigns crate-global IDs because donor-local 326 through 329 already identify the scaled masked-softmax and attention family, makes the donor shader's four-values-per-lane limit an explicit 1024-channel contract, and uses the schema-owned ordered sum-axis reducer for affine adjoints."
+    },
+    {
+      "family": "rms_norm_gated",
+      "operations": ["rms_norm_gated", "rms_norm_gated_backward"],
+      "classification": "mechanical_adaptation",
+      "donors": [
+        "source/cpp/lib/oa/ml/fnmatrix/norm/fnMatrixNorm.cpp",
+        "source/cpp/lib/oa/ml/autograd/matrix/autogradNorm.h",
+        "source/cpp/lib/oa/ml/shader/compute/nn/rmsnorm/rmsNormGated.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/rmsnorm/rmsNormGatedBwd.slang",
+        "tools/gen/fn/schema/ml/mlFnMatrixNorm.toml"
+      ],
+      "reason": "Preserves donor norm-before-gate RMS normalization, cyclic broadcast affine groups, optional bias, SiLU gate, complete input/gate/affine adjoints, and ordered affine reduction. Rust exposes optional bias explicitly and reuses the existing schema-owned sum-axis reducer."
+    },
+    {
+      "family": "mamba3_preprocess",
+      "operations": [
+        "mamba3_preprocess", "mamba3_preprocess_backward",
+        "mamba3_preprocess_backward_reduce"
+      ],
+      "classification": "mechanical_adaptation",
+      "donors": [
+        "source/cpp/lib/oa/ml/fnmatrix/ssm/fnMatrixMamba3.cpp",
+        "source/cpp/lib/oa/ml/autograd/matrix/autogradSsm.h",
+        "source/cpp/lib/oa/ml/shader/compute/nn/ssm/mamba3/mamba3Preprocess.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/ssm/mamba3/mamba3PreprocessBwd.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/math/ssmMath.slang",
+        "tools/gen/fn/schema/ml/mlFnMatrixSsm.toml"
+      ],
+      "reason": "Preserves the donor fused projection split, per-group B/C RMS normalization, clamped softplus dt, heavy-tail A-times-dt transform, eight-output semantic boundary, and fused reverse formula. Rust assigns crate-global IDs because donor-local ID 204 already names the Cryptography Merkle copy, replaces the donor contended floating-point atomic with an ordered second-stage dt-bias reduction, and represents all output adjoints with one tape node."
+    },
+    {
       "family": "mamba3_siso",
       "operations": [
         "mamba3_siso", "mamba3_siso_backward",
         "mamba3_siso_backward_state", "mamba3_siso_backward_reverse_p16",
         "mamba3_siso_backward_finalize", "mamba3_siso_backward_reduce",
-        "mamba3_siso_backward_group_reduce"
+        "mamba3_siso_backward_group_reduce", "mamba3_siso_backward_generic",
+        "mamba3_siso_backward_generic_reduce", "mamba3_siso_chunk_summary",
+        "mamba3_siso_chunk_prefix", "mamba3_siso_chunk_dpre",
+        "mamba3_siso_chunk_backward_summary", "mamba3_siso_chunk_backward_prefix",
+        "mamba3_siso_chunk_backward", "mamba3_siso_chunk_finalize",
+        "mamba3_siso_chunk_reduce",
+        "mamba3_siso_step"
       ],
       "classification": "mechanical_adaptation",
       "donors": [
@@ -21,12 +75,43 @@
         "source/cpp/lib/oa/ml/shader/compute/nn/ssm/mamba3/mamba3SisoBwdShortPrepare.slang",
         "source/cpp/lib/oa/ml/shader/compute/nn/ssm/mamba3/mamba3SisoBwdShortState.slang",
         "source/cpp/lib/oa/ml/shader/compute/nn/ssm/mamba3/mamba3SisoBwdShortReverseP16.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/ssm/mamba3/mamba3SisoChunkSummary.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/ssm/mamba3/mamba3SisoChunkPrefix.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/ssm/mamba3/mamba3SisoChunkDpre.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/ssm/mamba3/mamba3SisoChunkBwdSummary.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/ssm/mamba3/mamba3SisoChunkBwdPrefix.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/ssm/mamba3/mamba3SisoChunkBwd.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/ssm/mamba3/mamba3SisoChunkFinalize.slang",
         "source/cpp/lib/oa/ml/shader/compute/nn/ssm/mamba3/mamba3SisoBwdShortFinalize.slang",
         "source/cpp/lib/oa/ml/shader/compute/nn/ssm/mamba3/mamba3SisoBwdShortReduce.slang",
         "source/cpp/lib/oa/ml/shader/compute/nn/ssm/mamba3/mamba3SisoBwdGroupReduce.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/ssm/mamba3/mamba3SisoBwd.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/ssm/mamba3/mamba3SisoStep.slang",
         "tools/gen/fn/schema/ml/mlFnMatrixSsm.toml"
       ],
-      "reason": "Preserves the donor FP32 SISO selective recurrence, grouped Q/K sharing, rotary cumulative angle, trapezoidal gate coupling, optional z and D paths, deterministic short-sequence reverse stages, and exact eleven-input/eleven-adjoint semantic boundary. The initial Rust route admits the donor short-training envelope while the generic and chunked physical routes remain to be ported."
+      "reason": "Preserves the donor FP32 SISO selective recurrence, grouped Q/K sharing, rotary cumulative angle, trapezoidal gate coupling, optional z and D paths, deterministic short-sequence reverse stages, bounded generic chunk-recompute reverse, exact eleven-input/eleven-adjoint semantic boundary, and four-buffer recurrent step state. Rust models each mutated recurrent buffer as an explicit semantic alias output so graph state advances in SSA order; one deterministic lowering-only reduction replaces the donor's nested general-purpose semantic reductions."
+    },
+    {
+      "family": "mamba3_mimo",
+      "operations": [
+        "mamba3_mimo", "mamba3_mimo_backward", "mamba3_mimo_step",
+        "mamba3_mimo_backward_prepare", "mamba3_mimo_backward_post",
+        "mamba3_mimo_backward_rotate", "mamba3_mimo_backward_reduce"
+      ],
+      "classification": "mechanical_adaptation",
+      "donors": [
+        "source/cpp/lib/oa/ml/fnmatrix/ssm/fnMatrixMamba3.cpp",
+        "source/cpp/lib/oa/ml/autograd/matrix/autogradMamba3.h",
+        "source/cpp/lib/oa/ml/shader/compute/nn/ssm/mamba3/mamba3MimoFwd.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/ssm/mamba3/mamba3MimoBwdPrepare.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/ssm/mamba3/mamba3MimoBwdPost.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/ssm/mamba3/mamba3MimoBwdCore.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/ssm/mamba3/mamba3MimoBwdRotate.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/ssm/mamba3/mamba3MimoBwdReduce.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/ssm/mamba3/mamba3MimoStep.slang",
+        "tools/gen/fn/schema/ml/mlFnMatrixSsm.toml"
+      ],
+      "reason": "Preserves the donor shared-state MIMO rank expansion and contraction, optional rankwise gate and output normalization, deterministic complete adjoint, grouped Q/K reduction, and four-buffer recurrent step. OARS uses crate-global identities because donor-local 399 through 405 collide with existing operation families, and models recurrent mutation as explicit fixed semantic alias outputs ahead of the homogeneous read-only tail."
     },
     {
       "family": "vector_quantization",
@@ -246,14 +331,14 @@
     },
     {
       "family": "embedding",
-      "operations": ["embedding", "embedding_backward"],
-      "classification": "replacement",
+	  "operations": ["embedding", "embedding_backward", "embedding_u8", "embedding_backward_u8"],
+	  "classification": "mechanical_adaptation",
       "donors": [
         "source/cpp/lib/oa/ml/shader/compute/ops/gather.slang",
         "source/cpp/lib/oa/ml/shader/compute/nn/gatherBwd.slang",
         "tools/gen/fn/schema/ml/mlFnMatrixEmbed.toml"
       ],
-      "reason": "Temporary Rust correctness baseline predating the donor-first port policy."
+	  "reason": "Preserves donor U32 token and packed-U8 byte lookup, out-of-range NaN rows, deterministic repeated-index table adjoints, shape behavior, and bindless ABI. Separate physical candidates keep ordinary U32 embedding independent of byte-addressing capabilities; the packed helper avoids a native Int8 SPIR-V requirement."
     },
     {
       "family": "rnn",
@@ -1891,7 +1976,7 @@
         "input_kinds": ["parameter", "class_indices"],
         "output_kinds": ["matrix"],
         "shape_rule": "weight_vd_indices_shape_to_indices_shape_d",
-        "dtype_rule": "f32_weight_u32_indices",
+        "dtype_rule": "f32_weight_u8_u32_or_nonnegative_i32_indices",
         "effects": ["read_inputs", "write_output"],
         "mutated_inputs": [],
         "output_alias_inputs": [-1],
@@ -1923,7 +2008,7 @@
         "input_kinds": ["class_indices", "matrix", "parameter"],
         "output_kinds": ["matrix"],
         "shape_rule": "embedding_adjoint_scatter_add",
-        "dtype_rule": "u32_indices_f32_gradient_weight",
+        "dtype_rule": "u8_u32_or_i32_indices_f32_gradient_weight",
         "effects": ["read_inputs", "write_output"],
         "mutated_inputs": [],
         "output_alias_inputs": [-1],
@@ -1941,6 +2026,172 @@
         ["index_count", "uint32"],
         ["num_embeddings", "uint32"],
         ["embedding_dim", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 443,
+      "name": "channel_norm",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlChannelNormF32",
+      "source": "src/slang/ml/nn/channel_norm/channel_norm.slang",
+      "variant": "generic",
+      "workgroup_size": [256, 1, 1],
+      "dispatch_tile_size": [1, 1, 1],
+      "physical_write": {
+        "writes": [{"binding": 3, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"}],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "differentiation": "channel_norm_backward",
+      "semantic_attributes": [["batch", "unsigned_integer"], ["channels", "unsigned_integer"], ["sequence_length", "unsigned_integer"], ["epsilon", "float"]],
+      "autograd": {"mode": "manual", "family": "matrix/norm"},
+      "contract": {
+        "input_kinds": ["matrix", "parameter", "parameter"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "bct_channel_axis_normalization",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {"oracle": "independent_host_channel_norm", "shapes": [[2, 5, 3]], "tolerance": 0.00002},
+      "push_fields": [["input_index", "uint32"], ["weight_index", "uint32"], ["bias_index", "uint32"], ["output_index", "uint32"], ["batch", "uint32"], ["channels", "uint32"], ["sequence_length", "uint32"], ["epsilon", "float32"]]
+    },
+    {
+      "stable_id": 444,
+      "name": "channel_norm_backward",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlChannelNormBackwardF32",
+      "source": "src/slang/ml/nn/channel_norm/channel_norm_backward.slang",
+      "variant": "generic",
+      "workgroup_size": [256, 1, 1],
+      "dispatch_tile_size": [1, 1, 1],
+      "physical_write": {
+        "writes": [
+          {"binding": 3, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 4, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 5, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"}
+        ],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "differentiation": "backward",
+      "semantic_attributes": [["batch", "unsigned_integer"], ["channels", "unsigned_integer"], ["sequence_length", "unsigned_integer"], ["epsilon", "float"]],
+      "contract": {
+        "input_kinds": ["matrix", "parameter", "matrix"],
+        "output_kinds": ["matrix", "matrix", "matrix"],
+        "shape_rule": "bct_channel_norm_complete_adjoint",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_outputs"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1, -1, -1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {"oracle": "finite_difference_complete_channel_norm", "shapes": [[2, 5, 3]], "tolerance": 0.0005},
+      "push_fields": [["input_index", "uint32"], ["weight_index", "uint32"], ["output_gradient_index", "uint32"], ["input_gradient_index", "uint32"], ["weight_contribution_index", "uint32"], ["bias_contribution_index", "uint32"], ["batch", "uint32"], ["channels", "uint32"], ["sequence_length", "uint32"], ["epsilon", "float32"]]
+    },
+    {
+      "stable_id": 445,
+      "name": "channel_norm_relu",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlChannelNormReluF32",
+      "source": "src/slang/ml/nn/channel_norm/channel_norm_relu.slang",
+      "variant": "generic",
+      "workgroup_size": [256, 1, 1],
+      "dispatch_tile_size": [1, 1, 1],
+      "physical_write": {
+        "writes": [{"binding": 3, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"}],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "differentiation": "channel_norm_relu_backward",
+      "semantic_attributes": [["batch", "unsigned_integer"], ["channels", "unsigned_integer"], ["sequence_length", "unsigned_integer"], ["epsilon", "float"]],
+      "autograd": {"mode": "manual", "family": "matrix/norm"},
+      "contract": {
+        "input_kinds": ["matrix", "parameter", "parameter"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "bct_channel_axis_normalization_relu",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {"oracle": "independent_host_channel_norm_relu", "shapes": [[2, 5, 3]], "tolerance": 0.00002},
+      "push_fields": [["input_index", "uint32"], ["weight_index", "uint32"], ["bias_index", "uint32"], ["output_index", "uint32"], ["batch", "uint32"], ["channels", "uint32"], ["sequence_length", "uint32"], ["epsilon", "float32"]]
+    },
+    {
+      "stable_id": 446,
+      "name": "channel_norm_relu_backward",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlChannelNormReluBackwardF32",
+      "source": "src/slang/ml/nn/channel_norm/channel_norm_relu_backward.slang",
+      "variant": "generic",
+      "workgroup_size": [256, 1, 1],
+      "dispatch_tile_size": [1, 1, 1],
+      "physical_write": {
+        "writes": [
+          {"binding": 4, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 5, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 6, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"}
+        ],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "differentiation": "backward",
+      "semantic_attributes": [["batch", "unsigned_integer"], ["channels", "unsigned_integer"], ["sequence_length", "unsigned_integer"], ["epsilon", "float"]],
+      "contract": {
+        "input_kinds": ["matrix", "parameter", "saved_state", "matrix"],
+        "output_kinds": ["matrix", "matrix", "matrix"],
+        "shape_rule": "bct_channel_norm_relu_complete_adjoint",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_outputs"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1, -1, -1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {"oracle": "finite_difference_complete_channel_norm_relu", "shapes": [[2, 5, 3]], "tolerance": 0.0005},
+      "push_fields": [["input_index", "uint32"], ["weight_index", "uint32"], ["forward_output_index", "uint32"], ["output_gradient_index", "uint32"], ["input_gradient_index", "uint32"], ["weight_contribution_index", "uint32"], ["bias_contribution_index", "uint32"], ["batch", "uint32"], ["channels", "uint32"], ["sequence_length", "uint32"], ["epsilon", "float32"]]
+    },
+    {
+      "stable_id": 438,
+      "name": "embedding_u8",
+      "kernel_id": "MlEmbeddingU8F32",
+      "lowering_only": true,
+      "semantic_operation": "embedding",
+      "source": "src/slang/ml/nn/embedding/embedding_u8.slang",
+      "variant": "packed_u8",
+      "differentiation": "none",
+      "physical_write": {
+        "writes": [
+          {"binding": 2, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"}
+        ],
+        "workspace": "none"
+      },
+      "test": {"oracle": "independent_host_byte_gather", "shapes": [[1, 256, 4]], "tolerance": 0.00001},
+      "push_fields": [
+        ["weight_index", "uint32"], ["indices_index", "uint32"],
+        ["output_index", "uint32"], ["index_count", "uint32"],
+        ["num_embeddings", "uint32"], ["embedding_dim", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 439,
+      "name": "embedding_backward_u8",
+      "kernel_id": "MlEmbeddingBackwardU8F32",
+      "lowering_only": true,
+      "semantic_operation": "embedding_backward",
+      "source": "src/slang/ml/nn/embedding/embedding_backward_u8.slang",
+      "variant": "packed_u8",
+      "differentiation": "none",
+      "physical_write": {
+        "writes": [
+          {"binding": 2, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"}
+        ],
+        "workspace": "none"
+      },
+      "test": {"oracle": "finite_difference_byte_embedding_with_repeated_indices", "shapes": [[1, 6, 4]], "tolerance": 0.0003},
+      "push_fields": [
+        ["indices_index", "uint32"], ["output_gradient_index", "uint32"],
+        ["weight_gradient_index", "uint32"], ["index_count", "uint32"],
+        ["num_embeddings", "uint32"], ["embedding_dim", "uint32"]
       ]
     },
     {
@@ -6040,6 +6291,202 @@
       ]
     },
     {
+      "stable_id": 419,
+      "name": "rms_norm_gated",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlRmsNormGatedF32",
+      "source": "src/slang/ml/nn/rms_norm/rms_norm_gated.slang",
+      "variant": "generic",
+      "workgroup_size": [256, 1, 1],
+      "dispatch_tile_size": [1, 1, 1],
+      "differentiation": "rms_norm_gated_backward",
+      "semantic_attributes": [["epsilon", "float"], ["has_bias", "boolean"]],
+      "autograd": {"mode": "manual", "family": "matrix/norm"},
+      "physical_write": {
+        "writes": [
+          {"binding": 4, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"}
+        ],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "contract": {
+        "input_kinds": ["matrix", "parameter", "parameter", "matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "gated_rms_norm_broadcast_affine",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "optional_inputs": [2],
+        "lowering": "compute_dispatch"
+      },
+      "test": {"oracle": "independent_host_gated_rms_norm", "shapes": [[2, 3, 2, 5]], "tolerance": 0.00002},
+      "push_fields": [
+        ["input_index", "uint32"], ["weight_index", "uint32"],
+        ["bias_index", "uint32"], ["gate_index", "uint32"],
+        ["output_index", "uint32"], ["rows", "uint32"],
+        ["columns", "uint32"], ["groups", "uint32"],
+        ["epsilon", "float32"], ["has_bias", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 420,
+      "name": "rms_norm_gated_backward",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlRmsNormGatedBackwardF32",
+      "source": "src/slang/ml/nn/rms_norm/rms_norm_gated_backward.slang",
+      "variant": "generic",
+      "workgroup_size": [256, 1, 1],
+      "dispatch_tile_size": [1, 1, 1],
+      "differentiation": "backward",
+      "semantic_attributes": [["epsilon", "float"], ["has_bias", "boolean"]],
+      "physical_write": {
+        "writes": [
+          {"binding": 5, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 6, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 7, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 8, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"}
+        ],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "contract": {
+        "input_kinds": ["matrix", "parameter", "parameter", "matrix", "matrix"],
+        "output_kinds": ["matrix", "matrix", "matrix", "matrix"],
+        "shape_rule": "gated_rms_norm_complete_adjoint",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_outputs"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1, -1, -1, -1],
+        "optional_inputs": [2],
+        "lowering": "compute_dispatch"
+      },
+      "test": {"oracle": "finite_difference_gated_rms_norm", "shapes": [[2, 3, 2, 5]], "tolerance": 0.0005},
+      "push_fields": [
+        ["input_index", "uint32"], ["weight_index", "uint32"],
+        ["bias_index", "uint32"], ["gate_index", "uint32"],
+        ["output_gradient_index", "uint32"], ["input_gradient_index", "uint32"],
+        ["gate_gradient_index", "uint32"], ["weight_contribution_index", "uint32"],
+        ["bias_contribution_index", "uint32"], ["rows", "uint32"],
+        ["columns", "uint32"], ["groups", "uint32"],
+        ["epsilon", "float32"], ["has_bias", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 416,
+      "name": "mamba3_preprocess",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlMamba3PreprocessF32",
+      "source": "src/slang/ml/nn/mamba3/mamba3_preprocess.slang",
+      "variant": "fused",
+      "workgroup_size": [256, 1, 1],
+      "dispatch_tile_size": [1, 1, 1],
+      "differentiation": "mamba3_preprocess_backward",
+      "semantic_attributes": [["config_identity", "unsigned_integer"]],
+      "autograd": {"mode": "manual", "family": "matrix/ssm"},
+      "physical_write": {
+        "writes": [
+          {"binding": 2, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 3, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 4, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 5, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 6, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 7, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 8, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 9, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"}
+        ],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "contract": {
+        "input_kinds": ["matrix", "matrix"],
+        "output_kinds": ["matrix", "matrix", "matrix", "matrix", "matrix", "matrix", "matrix", "matrix"],
+        "shape_rule": "mamba3_preprocess_explicit_config",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_outputs"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1, -1, -1, -1, -1, -1, -1, -1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {"oracle": "independent_host_mamba3_preprocess", "shapes": [[2, 4, 3, 5, 2, 1, 2]], "tolerance": 0.0001},
+      "push_fields": [
+        ["projected_index", "uint32"], ["dt_bias_index", "uint32"],
+        ["z_index", "uint32"], ["x_index", "uint32"],
+        ["bh_index", "uint32"], ["ch_index", "uint32"],
+        ["dt_index", "uint32"], ["adt_index", "uint32"],
+        ["trap_index", "uint32"], ["angle_index", "uint32"],
+        ["rows", "uint32"], ["inner_size", "uint32"],
+        ["state_size", "uint32"], ["heads", "uint32"],
+        ["rope_angles", "uint32"], ["bc_rows", "uint32"],
+        ["epsilon", "float32"], ["dt_min", "float32"],
+        ["dt_max", "float32"], ["a_floor", "float32"]
+      ]
+    },
+    {
+      "stable_id": 417,
+      "name": "mamba3_preprocess_backward",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlMamba3PreprocessBackwardF32",
+      "source": "src/slang/ml/nn/mamba3/mamba3_preprocess_backward.slang",
+      "variant": "fused",
+      "workgroup_size": [256, 1, 1],
+      "dispatch_tile_size": [1, 1, 1],
+      "differentiation": "backward",
+      "semantic_attributes": [["config_identity", "unsigned_integer"]],
+      "physical_write": {
+        "writes": [
+          {"binding": 10, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 11, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"}
+        ],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "contract": {
+        "input_kinds": [],
+        "output_kinds": ["matrix", "matrix"],
+        "variadic_input": {"kind": "matrix", "minimum": 10},
+        "shape_rule": "mamba3_preprocess_explicit_adjoint",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_outputs"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1, -1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {"oracle": "finite_difference_mamba3_preprocess_complete", "shapes": [[2, 2, 3, 3, 2, 1, 1]], "tolerance": 0.002},
+      "push_fields": [
+        ["projected_index", "uint32"], ["dt_bias_index", "uint32"],
+        ["z_gradient_index", "uint32"], ["x_gradient_index", "uint32"],
+        ["bh_gradient_index", "uint32"], ["ch_gradient_index", "uint32"],
+        ["dt_gradient_index", "uint32"], ["adt_gradient_index", "uint32"],
+        ["trap_gradient_index", "uint32"], ["angle_gradient_index", "uint32"],
+        ["projected_gradient_index", "uint32"], ["dt_bias_partial_index", "uint32"],
+        ["rows", "uint32"], ["inner_size", "uint32"],
+        ["state_size", "uint32"], ["heads", "uint32"],
+        ["rope_angles", "uint32"], ["bc_rows", "uint32"],
+        ["epsilon", "float32"], ["dt_min", "float32"],
+        ["dt_max", "float32"], ["a_floor", "float32"]
+      ]
+    },
+    {
+      "stable_id": 418,
+      "name": "mamba3_preprocess_backward_reduce",
+      "kernel_id": "MlMamba3PreprocessBackwardReduceF32",
+      "lowering_only": true,
+      "semantic_operation": "mamba3_preprocess_backward",
+      "source": "src/slang/ml/nn/mamba3/mamba3_preprocess_backward_reduce.slang",
+      "variant": "deterministic_reduce",
+      "workgroup_size": [256, 1, 1],
+      "dispatch_tile_size": [256, 1, 1],
+      "differentiation": "none",
+      "physical_write": {
+        "writes": [
+          {"binding": 1, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"}
+        ],
+        "workspace": "none"
+      },
+      "test": {"oracle": "finite_difference_mamba3_preprocess_complete", "shapes": [[2, 2, 3, 3, 2, 1, 1]], "tolerance": 0.002},
+      "push_fields": [
+        ["partial_index", "uint32"], ["output_index", "uint32"],
+        ["rows", "uint32"], ["heads", "uint32"]
+      ]
+    },
+    {
       "stable_id": 342,
       "name": "mamba3_siso",
       "semantic_domain": "ml::matrix",
@@ -6126,6 +6573,52 @@
         ["decay_idx", "uint32"], ["gamma_idx", "uint32"],
         ["scale_idx", "uint32"], ["b", "uint32"], ["l", "uint32"],
         ["h", "uint32"], ["g", "uint32"], ["n", "uint32"], ["a", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 343,
+      "name": "mamba3_siso_step",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlMamba3SisoStepF32",
+      "source": "src/slang/ml/nn/mamba3/mamba3_siso_step.slang",
+      "variant": "recurrent",
+      "workgroup_size": [128, 1, 1],
+      "dispatch_tile_size": [1, 1, 1],
+      "differentiation": "none",
+      "semantic_attributes": [["config_identity", "unsigned_integer"]],
+      "physical_write": {
+        "writes": [
+          {"binding": 11, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 12, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 13, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 14, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 15, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"}
+        ],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "contract": {
+        "input_kinds": ["matrix", "matrix", "matrix", "matrix"],
+        "output_kinds": ["matrix", "matrix", "matrix", "matrix", "matrix"],
+        "variadic_input": {"kind": "matrix", "minimum": 11},
+        "shape_rule": "mamba3_siso_step_explicit_state",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_outputs"],
+        "mutated_inputs": [0, 1, 2, 3],
+        "output_alias_inputs": [-1, 0, 1, 2, 3],
+        "lowering": "compute_dispatch"
+      },
+      "test": {"oracle": "full_scan_equals_recurrent_steps", "shapes": [[2, 6, 2, 3, 4, 2]], "tolerance": 0.0001},
+      "push_fields": [
+        ["c_idx", "uint32"], ["b_idx", "uint32"], ["x_idx", "uint32"],
+        ["z_idx", "uint32"], ["adt_idx", "uint32"], ["dt_idx", "uint32"],
+        ["trap_idx", "uint32"], ["angle_idx", "uint32"],
+        ["cbias_idx", "uint32"], ["bbias_idx", "uint32"],
+        ["d_idx", "uint32"], ["y_idx", "uint32"],
+        ["ssm_idx", "uint32"], ["angle_state_idx", "uint32"],
+        ["k_state_idx", "uint32"], ["v_state_idx", "uint32"],
+        ["b", "uint32"], ["h", "uint32"], ["g", "uint32"],
+        ["p", "uint32"], ["n", "uint32"], ["a", "uint32"],
+        ["has_z", "uint32"], ["has_d", "uint32"]
       ]
     },
     {
@@ -6276,6 +6769,1832 @@
         ["dc_group_idx", "uint32"], ["db_group_idx", "uint32"],
         ["b", "uint32"], ["l", "uint32"], ["h", "uint32"],
         ["g", "uint32"], ["n", "uint32"], ["count", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 421,
+      "name": "mamba3_mimo",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlMamba3MimoF32",
+      "source": "src/slang/ml/nn/mamba3/mamba3_mimo.slang",
+      "variant": "generic",
+      "workgroup_size": [
+        128,
+        1,
+        1
+      ],
+      "dispatch_tile_size": [
+        1,
+        1,
+        1
+      ],
+      "differentiation": "mamba3_mimo_backward",
+      "semantic_attributes": [
+        [
+          "config_identity",
+          "unsigned_integer"
+        ]
+      ],
+      "autograd": {
+        "mode": "manual",
+        "family": "matrix/ssm"
+      },
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 15,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "contract": {
+        "input_kinds": [],
+        "output_kinds": [
+          "matrix"
+        ],
+        "variadic_input": {
+          "kind": "matrix",
+          "minimum": 15
+        },
+        "shape_rule": "mamba3_mimo_explicit_config",
+        "dtype_rule": "all_f32",
+        "effects": [
+          "read_inputs",
+          "write_outputs"
+        ],
+        "mutated_inputs": [],
+        "output_alias_inputs": [
+          -1
+        ],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "independent_host_mamba3_mimo_recurrence",
+        "shapes": [
+          [
+            1,
+            3,
+            2,
+            2,
+            3,
+            2,
+            2
+          ]
+        ],
+        "tolerance": 0.0002
+      },
+      "push_fields": [
+        [
+          "c_idx",
+          "uint32"
+        ],
+        [
+          "b_idx",
+          "uint32"
+        ],
+        [
+          "x_idx",
+          "uint32"
+        ],
+        [
+          "z_idx",
+          "uint32"
+        ],
+        [
+          "adt_idx",
+          "uint32"
+        ],
+        [
+          "dt_idx",
+          "uint32"
+        ],
+        [
+          "trap_idx",
+          "uint32"
+        ],
+        [
+          "angle_idx",
+          "uint32"
+        ],
+        [
+          "cbias_idx",
+          "uint32"
+        ],
+        [
+          "bbias_idx",
+          "uint32"
+        ],
+        [
+          "d_idx",
+          "uint32"
+        ],
+        [
+          "mx_idx",
+          "uint32"
+        ],
+        [
+          "mz_idx",
+          "uint32"
+        ],
+        [
+          "mo_idx",
+          "uint32"
+        ],
+        [
+          "norm_idx",
+          "uint32"
+        ],
+        [
+          "y_idx",
+          "uint32"
+        ],
+        [
+          "b",
+          "uint32"
+        ],
+        [
+          "l",
+          "uint32"
+        ],
+        [
+          "h",
+          "uint32"
+        ],
+        [
+          "g",
+          "uint32"
+        ],
+        [
+          "p",
+          "uint32"
+        ],
+        [
+          "n",
+          "uint32"
+        ],
+        [
+          "a",
+          "uint32"
+        ],
+        [
+          "r",
+          "uint32"
+        ],
+        [
+          "has_z",
+          "uint32"
+        ],
+        [
+          "has_d",
+          "uint32"
+        ],
+        [
+          "has_norm",
+          "uint32"
+        ],
+        [
+          "eps",
+          "float32"
+        ]
+      ]
+    },
+    {
+      "stable_id": 422,
+      "name": "mamba3_mimo_backward",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlMamba3MimoBackwardCoreF32",
+      "source": "src/slang/ml/nn/mamba3/mamba3_mimo_backward_core.slang",
+      "reflection_name": "mamba3_mimo_backward_core",
+      "variant": "reverse",
+      "workgroup_size": [
+        1,
+        1,
+        1
+      ],
+      "dispatch_tile_size": [
+        1,
+        1,
+        1
+      ],
+      "differentiation": "backward",
+      "semantic_attributes": [
+        [
+          "config_identity",
+          "unsigned_integer"
+        ]
+      ],
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 12,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 13,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 14,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 15,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 16,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 17,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 18,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 19,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 20,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "contract": {
+        "input_kinds": [],
+        "output_kinds": [],
+        "variadic_input": {
+          "kind": "matrix",
+          "minimum": 16
+        },
+        "variadic_output": {
+          "kind": "matrix",
+          "minimum": 15
+        },
+        "shape_rule": "mamba3_mimo_explicit_config",
+        "dtype_rule": "all_f32",
+        "effects": [
+          "read_inputs",
+          "write_outputs"
+        ],
+        "mutated_inputs": [],
+        "output_alias_inputs": [],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "finite_difference_mamba3_mimo_complete",
+        "shapes": [
+          [
+            1,
+            3,
+            2,
+            2,
+            3,
+            2,
+            2
+          ]
+        ],
+        "tolerance": 0.003
+      },
+      "push_fields": [
+        [
+          "dpre_idx",
+          "uint32"
+        ],
+        [
+          "x_idx",
+          "uint32"
+        ],
+        [
+          "d_idx",
+          "uint32"
+        ],
+        [
+          "mx_idx",
+          "uint32"
+        ],
+        [
+          "q_idx",
+          "uint32"
+        ],
+        [
+          "k_idx",
+          "uint32"
+        ],
+        [
+          "hprev_idx",
+          "uint32"
+        ],
+        [
+          "decay_idx",
+          "uint32"
+        ],
+        [
+          "gamma_idx",
+          "uint32"
+        ],
+        [
+          "scale_idx",
+          "uint32"
+        ],
+        [
+          "dt_idx",
+          "uint32"
+        ],
+        [
+          "trap_idx",
+          "uint32"
+        ],
+        [
+          "dq_idx",
+          "uint32"
+        ],
+        [
+          "dk_idx",
+          "uint32"
+        ],
+        [
+          "dx_idx",
+          "uint32"
+        ],
+        [
+          "dadt_idx",
+          "uint32"
+        ],
+        [
+          "ddt_idx",
+          "uint32"
+        ],
+        [
+          "dtrap_idx",
+          "uint32"
+        ],
+        [
+          "dd_batch_idx",
+          "uint32"
+        ],
+        [
+          "dmx_batch_idx",
+          "uint32"
+        ],
+        [
+          "dscale_tmp_idx",
+          "uint32"
+        ],
+        [
+          "b",
+          "uint32"
+        ],
+        [
+          "l",
+          "uint32"
+        ],
+        [
+          "h",
+          "uint32"
+        ],
+        [
+          "p",
+          "uint32"
+        ],
+        [
+          "n",
+          "uint32"
+        ],
+        [
+          "r",
+          "uint32"
+        ],
+        [
+          "has_d",
+          "uint32"
+        ]
+      ]
+    },
+    {
+      "stable_id": 423,
+      "name": "mamba3_mimo_step",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlMamba3MimoStepF32",
+      "source": "src/slang/ml/nn/mamba3/mamba3_mimo_step.slang",
+      "variant": "recurrent",
+      "workgroup_size": [
+        128,
+        1,
+        1
+      ],
+      "dispatch_tile_size": [
+        1,
+        1,
+        1
+      ],
+      "differentiation": "none",
+      "semantic_attributes": [
+        [
+          "config_identity",
+          "unsigned_integer"
+        ]
+      ],
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 15,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 16,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 17,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 18,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 19,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "contract": {
+        "input_kinds": [
+          "matrix",
+          "matrix",
+          "matrix",
+          "matrix"
+        ],
+        "output_kinds": [
+          "matrix",
+          "matrix",
+          "matrix",
+          "matrix",
+          "matrix"
+        ],
+        "variadic_input": {
+          "kind": "matrix",
+          "minimum": 15
+        },
+        "shape_rule": "mamba3_mimo_explicit_config",
+        "dtype_rule": "all_f32",
+        "effects": [
+          "read_inputs",
+          "write_outputs"
+        ],
+        "mutated_inputs": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "output_alias_inputs": [
+          -1,
+          0,
+          1,
+          2,
+          3
+        ],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "full_mimo_scan_equals_recurrent_steps",
+        "shapes": [
+          [
+            1,
+            3,
+            2,
+            2,
+            3,
+            2,
+            2
+          ]
+        ],
+        "tolerance": 0.0002
+      },
+      "push_fields": [
+        [
+          "c_idx",
+          "uint32"
+        ],
+        [
+          "b_idx",
+          "uint32"
+        ],
+        [
+          "x_idx",
+          "uint32"
+        ],
+        [
+          "z_idx",
+          "uint32"
+        ],
+        [
+          "adt_idx",
+          "uint32"
+        ],
+        [
+          "dt_idx",
+          "uint32"
+        ],
+        [
+          "trap_idx",
+          "uint32"
+        ],
+        [
+          "angle_idx",
+          "uint32"
+        ],
+        [
+          "cbias_idx",
+          "uint32"
+        ],
+        [
+          "bbias_idx",
+          "uint32"
+        ],
+        [
+          "d_idx",
+          "uint32"
+        ],
+        [
+          "mx_idx",
+          "uint32"
+        ],
+        [
+          "mz_idx",
+          "uint32"
+        ],
+        [
+          "mo_idx",
+          "uint32"
+        ],
+        [
+          "norm_idx",
+          "uint32"
+        ],
+        [
+          "y_idx",
+          "uint32"
+        ],
+        [
+          "ssm_idx",
+          "uint32"
+        ],
+        [
+          "angle_state_idx",
+          "uint32"
+        ],
+        [
+          "k_state_idx",
+          "uint32"
+        ],
+        [
+          "v_state_idx",
+          "uint32"
+        ],
+        [
+          "b",
+          "uint32"
+        ],
+        [
+          "h",
+          "uint32"
+        ],
+        [
+          "g",
+          "uint32"
+        ],
+        [
+          "p",
+          "uint32"
+        ],
+        [
+          "n",
+          "uint32"
+        ],
+        [
+          "a",
+          "uint32"
+        ],
+        [
+          "r",
+          "uint32"
+        ],
+        [
+          "has_z",
+          "uint32"
+        ],
+        [
+          "has_d",
+          "uint32"
+        ],
+        [
+          "has_norm",
+          "uint32"
+        ],
+        [
+          "eps",
+          "float32"
+        ]
+      ]
+    },
+    {
+      "stable_id": 424,
+      "name": "mamba3_mimo_backward_prepare",
+      "kernel_id": "MlMamba3MimoBackwardPrepareF32",
+      "source": "src/slang/ml/nn/mamba3/mamba3_mimo_backward_prepare.slang",
+      "variant": "prepare",
+      "workgroup_size": [
+        128,
+        1,
+        1
+      ],
+      "dispatch_tile_size": [
+        1,
+        1,
+        1
+      ],
+      "lowering_only": true,
+      "semantic_operation": "mamba3_mimo_backward",
+      "differentiation": "none",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 10,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 11,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 12,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 13,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 14,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 15,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 16,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "test": {
+        "oracle": "finite_difference_mamba3_mimo_complete",
+        "shapes": [
+          [
+            1,
+            3,
+            2,
+            2,
+            3,
+            2,
+            2
+          ]
+        ],
+        "tolerance": 0.003
+      },
+      "push_fields": [
+        [
+          "c_idx",
+          "uint32"
+        ],
+        [
+          "b_idx",
+          "uint32"
+        ],
+        [
+          "x_idx",
+          "uint32"
+        ],
+        [
+          "adt_idx",
+          "uint32"
+        ],
+        [
+          "dt_idx",
+          "uint32"
+        ],
+        [
+          "trap_idx",
+          "uint32"
+        ],
+        [
+          "angle_idx",
+          "uint32"
+        ],
+        [
+          "cbias_idx",
+          "uint32"
+        ],
+        [
+          "bbias_idx",
+          "uint32"
+        ],
+        [
+          "mx_idx",
+          "uint32"
+        ],
+        [
+          "q_idx",
+          "uint32"
+        ],
+        [
+          "k_idx",
+          "uint32"
+        ],
+        [
+          "theta_idx",
+          "uint32"
+        ],
+        [
+          "hprev_idx",
+          "uint32"
+        ],
+        [
+          "decay_idx",
+          "uint32"
+        ],
+        [
+          "gamma_idx",
+          "uint32"
+        ],
+        [
+          "scale_idx",
+          "uint32"
+        ],
+        [
+          "b",
+          "uint32"
+        ],
+        [
+          "l",
+          "uint32"
+        ],
+        [
+          "h",
+          "uint32"
+        ],
+        [
+          "g",
+          "uint32"
+        ],
+        [
+          "p",
+          "uint32"
+        ],
+        [
+          "n",
+          "uint32"
+        ],
+        [
+          "a",
+          "uint32"
+        ],
+        [
+          "r",
+          "uint32"
+        ]
+      ]
+    },
+    {
+      "stable_id": 425,
+      "name": "mamba3_mimo_backward_post",
+      "kernel_id": "MlMamba3MimoBackwardPostF32",
+      "source": "src/slang/ml/nn/mamba3/mamba3_mimo_backward_post.slang",
+      "variant": "post",
+      "workgroup_size": [
+        1,
+        1,
+        1
+      ],
+      "dispatch_tile_size": [
+        1,
+        1,
+        1
+      ],
+      "lowering_only": true,
+      "semantic_operation": "mamba3_mimo_backward",
+      "differentiation": "none",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 13,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 14,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 15,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 16,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 17,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "test": {
+        "oracle": "finite_difference_mamba3_mimo_complete",
+        "shapes": [
+          [
+            1,
+            3,
+            2,
+            2,
+            3,
+            2,
+            2
+          ]
+        ],
+        "tolerance": 0.003
+      },
+      "push_fields": [
+        [
+          "dout_idx",
+          "uint32"
+        ],
+        [
+          "x_idx",
+          "uint32"
+        ],
+        [
+          "z_idx",
+          "uint32"
+        ],
+        [
+          "d_idx",
+          "uint32"
+        ],
+        [
+          "mx_idx",
+          "uint32"
+        ],
+        [
+          "mz_idx",
+          "uint32"
+        ],
+        [
+          "mo_idx",
+          "uint32"
+        ],
+        [
+          "norm_idx",
+          "uint32"
+        ],
+        [
+          "q_idx",
+          "uint32"
+        ],
+        [
+          "k_idx",
+          "uint32"
+        ],
+        [
+          "hprev_idx",
+          "uint32"
+        ],
+        [
+          "decay_idx",
+          "uint32"
+        ],
+        [
+          "gamma_idx",
+          "uint32"
+        ],
+        [
+          "dpre_idx",
+          "uint32"
+        ],
+        [
+          "dz_idx",
+          "uint32"
+        ],
+        [
+          "dmz_batch_idx",
+          "uint32"
+        ],
+        [
+          "dmo_batch_idx",
+          "uint32"
+        ],
+        [
+          "dnorm_batch_idx",
+          "uint32"
+        ],
+        [
+          "b",
+          "uint32"
+        ],
+        [
+          "l",
+          "uint32"
+        ],
+        [
+          "h",
+          "uint32"
+        ],
+        [
+          "p",
+          "uint32"
+        ],
+        [
+          "n",
+          "uint32"
+        ],
+        [
+          "r",
+          "uint32"
+        ],
+        [
+          "has_z",
+          "uint32"
+        ],
+        [
+          "has_d",
+          "uint32"
+        ],
+        [
+          "has_norm",
+          "uint32"
+        ],
+        [
+          "eps",
+          "float32"
+        ]
+      ]
+    },
+    {
+      "stable_id": 426,
+      "name": "mamba3_mimo_backward_rotate",
+      "kernel_id": "MlMamba3MimoBackwardRotateF32",
+      "source": "src/slang/ml/nn/mamba3/mamba3_mimo_backward_rotate.slang",
+      "variant": "rotate",
+      "workgroup_size": [
+        1,
+        1,
+        1
+      ],
+      "dispatch_tile_size": [
+        1,
+        1,
+        1
+      ],
+      "lowering_only": true,
+      "semantic_operation": "mamba3_mimo_backward",
+      "differentiation": "none",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 9,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 10,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 11,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 12,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 13,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 14,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "test": {
+        "oracle": "finite_difference_mamba3_mimo_complete",
+        "shapes": [
+          [
+            1,
+            3,
+            2,
+            2,
+            3,
+            2,
+            2
+          ]
+        ],
+        "tolerance": 0.003
+      },
+      "push_fields": [
+        [
+          "dq_idx",
+          "uint32"
+        ],
+        [
+          "dk_idx",
+          "uint32"
+        ],
+        [
+          "c_idx",
+          "uint32"
+        ],
+        [
+          "b_idx",
+          "uint32"
+        ],
+        [
+          "dt_idx",
+          "uint32"
+        ],
+        [
+          "angle_idx",
+          "uint32"
+        ],
+        [
+          "cbias_idx",
+          "uint32"
+        ],
+        [
+          "bbias_idx",
+          "uint32"
+        ],
+        [
+          "theta_idx",
+          "uint32"
+        ],
+        [
+          "dc_idx",
+          "uint32"
+        ],
+        [
+          "db_idx",
+          "uint32"
+        ],
+        [
+          "dangle_head_idx",
+          "uint32"
+        ],
+        [
+          "dc_bias_batch_idx",
+          "uint32"
+        ],
+        [
+          "db_bias_batch_idx",
+          "uint32"
+        ],
+        [
+          "ddt_idx",
+          "uint32"
+        ],
+        [
+          "b",
+          "uint32"
+        ],
+        [
+          "l",
+          "uint32"
+        ],
+        [
+          "h",
+          "uint32"
+        ],
+        [
+          "g",
+          "uint32"
+        ],
+        [
+          "n",
+          "uint32"
+        ],
+        [
+          "a",
+          "uint32"
+        ],
+        [
+          "r",
+          "uint32"
+        ]
+      ]
+    },
+    {
+      "stable_id": 427,
+      "name": "mamba3_mimo_backward_reduce",
+      "kernel_id": "MlMamba3MimoBackwardReduceF32",
+      "source": "src/slang/ml/nn/mamba3/mamba3_mimo_backward_reduce.slang",
+      "variant": "reduce",
+      "workgroup_size": [
+        256,
+        1,
+        1
+      ],
+      "dispatch_tile_size": [
+        256,
+        1,
+        1
+      ],
+      "lowering_only": true,
+      "semantic_operation": "mamba3_mimo_backward",
+      "differentiation": "none",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 10,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 11,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 12,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 13,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 14,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 15,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 16,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 17,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 18,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 19,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "test": {
+        "oracle": "finite_difference_mamba3_mimo_complete",
+        "shapes": [
+          [
+            1,
+            3,
+            2,
+            2,
+            3,
+            2,
+            2
+          ]
+        ],
+        "tolerance": 0.003
+      },
+      "push_fields": [
+        [
+          "dc_head_idx",
+          "uint32"
+        ],
+        [
+          "db_head_idx",
+          "uint32"
+        ],
+        [
+          "dangle_head_idx",
+          "uint32"
+        ],
+        [
+          "dc_bias_batch_idx",
+          "uint32"
+        ],
+        [
+          "db_bias_batch_idx",
+          "uint32"
+        ],
+        [
+          "dd_batch_idx",
+          "uint32"
+        ],
+        [
+          "dmx_batch_idx",
+          "uint32"
+        ],
+        [
+          "dmz_batch_idx",
+          "uint32"
+        ],
+        [
+          "dmo_batch_idx",
+          "uint32"
+        ],
+        [
+          "dnorm_batch_idx",
+          "uint32"
+        ],
+        [
+          "dc_idx",
+          "uint32"
+        ],
+        [
+          "db_idx",
+          "uint32"
+        ],
+        [
+          "dangle_idx",
+          "uint32"
+        ],
+        [
+          "dc_bias_idx",
+          "uint32"
+        ],
+        [
+          "db_bias_idx",
+          "uint32"
+        ],
+        [
+          "dd_idx",
+          "uint32"
+        ],
+        [
+          "dmx_idx",
+          "uint32"
+        ],
+        [
+          "dmz_idx",
+          "uint32"
+        ],
+        [
+          "dmo_idx",
+          "uint32"
+        ],
+        [
+          "dnorm_idx",
+          "uint32"
+        ],
+        [
+          "b",
+          "uint32"
+        ],
+        [
+          "l",
+          "uint32"
+        ],
+        [
+          "h",
+          "uint32"
+        ],
+        [
+          "g",
+          "uint32"
+        ],
+        [
+          "p",
+          "uint32"
+        ],
+        [
+          "n",
+          "uint32"
+        ],
+        [
+          "a",
+          "uint32"
+        ],
+        [
+          "r",
+          "uint32"
+        ],
+        [
+          "count",
+          "uint32"
+        ]
+      ]
+    },
+    {
+      "stable_id": 428,
+      "name": "mamba3_siso_backward_generic",
+      "kernel_id": "MlMamba3SisoBackwardGenericF32",
+      "lowering_only": true,
+      "semantic_operation": "mamba3_siso_backward",
+      "source": "src/slang/ml/nn/mamba3/mamba3_siso_backward_generic.slang",
+      "variant": "bounded_chunk_recompute",
+	  "slang_optimization": "O0",
+	  "slang_capabilities": [
+		"spvGroupNonUniformBallot",
+		"spvGroupNonUniformArithmetic"
+	  ],
+      "workgroup_size": [128, 1, 1],
+      "dispatch_tile_size": [1, 1, 1],
+      "differentiation": "none",
+      "physical_write": {
+        "writes": [
+          {"binding": 12, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 13, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 14, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 15, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 16, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 17, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 18, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 19, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 20, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 21, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 22, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 23, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"}
+        ],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "test": {"oracle": "finite_difference_mamba3_siso_complete", "shapes": [[1, 33, 2, 17, 4, 2]], "tolerance": 0.002},
+      "push_fields": [
+        ["c_idx", "uint32"], ["b_idx", "uint32"], ["x_idx", "uint32"],
+        ["z_idx", "uint32"], ["adt_idx", "uint32"], ["dt_idx", "uint32"],
+        ["trap_idx", "uint32"], ["angle_idx", "uint32"],
+        ["cbias_idx", "uint32"], ["bbias_idx", "uint32"],
+        ["d_idx", "uint32"], ["dout_idx", "uint32"],
+        ["entry_idx", "uint32"], ["thetaentry_idx", "uint32"],
+        ["chunkbuf_idx", "uint32"], ["dc_idx", "uint32"],
+        ["db_idx", "uint32"], ["dx_idx", "uint32"], ["dz_idx", "uint32"],
+        ["dadt_idx", "uint32"], ["ddt_idx", "uint32"],
+        ["dtrap_idx", "uint32"], ["dangle_idx", "uint32"],
+        ["ddtok_idx", "uint32"], ["b", "uint32"], ["l", "uint32"],
+        ["h", "uint32"], ["g", "uint32"], ["p", "uint32"],
+        ["n", "uint32"], ["a", "uint32"], ["flags", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 429,
+      "name": "mamba3_siso_backward_generic_reduce",
+      "kernel_id": "MlMamba3SisoBackwardGenericReduceF32",
+      "lowering_only": true,
+      "semantic_operation": "mamba3_siso_backward",
+      "source": "src/slang/ml/nn/mamba3/mamba3_siso_backward_generic_reduce.slang",
+      "variant": "deterministic_reduce",
+      "workgroup_size": [256, 1, 1],
+      "dispatch_tile_size": [256, 1, 1],
+      "differentiation": "none",
+      "physical_write": {
+        "writes": [
+          {"binding": 6, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 7, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 8, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 9, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 10, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 11, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 12, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"}
+        ],
+        "workspace": "none"
+      },
+      "test": {"oracle": "finite_difference_mamba3_siso_complete", "shapes": [[1, 33, 2, 17, 4, 2]], "tolerance": 0.002},
+      "push_fields": [
+        ["dc_head_idx", "uint32"], ["db_head_idx", "uint32"],
+        ["dangle_head_idx", "uint32"], ["ddtok_idx", "uint32"],
+        ["trap_idx", "uint32"], ["dtrap_partial_idx", "uint32"],
+        ["dc_idx", "uint32"], ["db_idx", "uint32"],
+        ["dangle_idx", "uint32"], ["cbias_idx", "uint32"],
+        ["bbias_idx", "uint32"], ["dd_idx", "uint32"],
+        ["dtrap_idx", "uint32"], ["b", "uint32"], ["l", "uint32"],
+        ["h", "uint32"], ["g", "uint32"], ["n", "uint32"],
+        ["a", "uint32"], ["count", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 430,
+      "name": "mamba3_siso_chunk_summary",
+      "kernel_id": "MlMamba3SisoChunkSummaryF32",
+      "lowering_only": true,
+      "semantic_operation": "mamba3_siso_backward",
+      "source": "src/slang/ml/nn/mamba3/mamba3_siso_chunk_summary.slang",
+      "variant": "chunk16",
+      "workgroup_size": [128, 1, 1],
+      "dispatch_tile_size": [1, 1, 1],
+      "differentiation": "none",
+      "physical_write": {
+        "writes": [
+          {"binding": 4, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 5, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"}
+        ],
+        "workspace": "none"
+      },
+      "test": {"oracle": "finite_difference_mamba3_siso_complete", "shapes": [[1, 64, 2, 16, 8, 2]], "tolerance": 0.002},
+      "push_fields": [
+        ["brot_idx", "uint32"], ["x_idx", "uint32"],
+        ["decay_idx", "uint32"], ["scale_idx", "uint32"],
+        ["summary_idx", "uint32"], ["product_idx", "uint32"],
+        ["b", "uint32"], ["l", "uint32"], ["h", "uint32"],
+        ["p", "uint32"], ["n", "uint32"], ["chunks", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 431,
+      "name": "mamba3_siso_chunk_prefix",
+      "kernel_id": "MlMamba3SisoChunkPrefixF32",
+      "lowering_only": true,
+      "semantic_operation": "mamba3_siso_backward",
+      "source": "src/slang/ml/nn/mamba3/mamba3_siso_chunk_prefix.slang",
+      "variant": "chunk16",
+      "workgroup_size": [128, 1, 1],
+      "dispatch_tile_size": [1, 1, 1],
+      "differentiation": "none",
+      "physical_write": {
+        "writes": [
+          {"binding": 2, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"}
+        ],
+        "workspace": "none"
+      },
+      "test": {"oracle": "finite_difference_mamba3_siso_complete", "shapes": [[1, 64, 2, 16, 8, 2]], "tolerance": 0.002},
+      "push_fields": [
+        ["summary_idx", "uint32"], ["product_idx", "uint32"],
+        ["entry_idx", "uint32"], ["bh", "uint32"],
+        ["p", "uint32"], ["n", "uint32"], ["chunks", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 432,
+      "name": "mamba3_siso_chunk_dpre",
+      "kernel_id": "MlMamba3SisoChunkDpreF32",
+      "lowering_only": true,
+      "semantic_operation": "mamba3_siso_backward",
+      "source": "src/slang/ml/nn/mamba3/mamba3_siso_chunk_dpre.slang",
+      "variant": "chunk16",
+      "workgroup_size": [64, 1, 1],
+      "dispatch_tile_size": [1, 1, 1],
+      "differentiation": "none",
+      "physical_write": {
+        "writes": [
+          {"binding": 11, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 12, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 13, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"}
+        ],
+        "workspace": "none"
+      },
+      "test": {"oracle": "finite_difference_mamba3_siso_complete", "shapes": [[1, 64, 2, 16, 8, 2]], "tolerance": 0.002},
+      "push_fields": [
+        ["crot_idx", "uint32"], ["brot_idx", "uint32"],
+        ["x_idx", "uint32"], ["z_idx", "uint32"],
+        ["decay_idx", "uint32"], ["gamma_idx", "uint32"],
+        ["scale_idx", "uint32"], ["qk_idx", "uint32"],
+        ["d_idx", "uint32"], ["dout_idx", "uint32"],
+        ["entry_idx", "uint32"], ["hprev_idx", "uint32"],
+        ["dpre_idx", "uint32"], ["dz_idx", "uint32"],
+        ["b", "uint32"], ["l", "uint32"], ["h", "uint32"],
+        ["p", "uint32"], ["n", "uint32"], ["chunks", "uint32"],
+        ["has_z", "uint32"], ["has_d", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 433,
+      "name": "mamba3_siso_chunk_backward_summary",
+      "kernel_id": "MlMamba3SisoChunkBackwardSummaryF32",
+      "lowering_only": true,
+      "semantic_operation": "mamba3_siso_backward",
+      "source": "src/slang/ml/nn/mamba3/mamba3_siso_chunk_backward_summary.slang",
+      "variant": "chunk16",
+      "workgroup_size": [128, 1, 1],
+      "dispatch_tile_size": [1, 1, 1],
+      "differentiation": "none",
+      "physical_write": {
+        "writes": [
+          {"binding": 3, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"}
+        ],
+        "workspace": "none"
+      },
+      "test": {"oracle": "finite_difference_mamba3_siso_complete", "shapes": [[1, 64, 2, 16, 8, 2]], "tolerance": 0.002},
+      "push_fields": [
+        ["crot_idx", "uint32"], ["decay_idx", "uint32"],
+        ["dpre_idx", "uint32"], ["summary_idx", "uint32"],
+        ["b", "uint32"], ["l", "uint32"], ["h", "uint32"],
+        ["p", "uint32"], ["n", "uint32"], ["chunks", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 434,
+      "name": "mamba3_siso_chunk_backward_prefix",
+      "kernel_id": "MlMamba3SisoChunkBackwardPrefixF32",
+      "lowering_only": true,
+      "semantic_operation": "mamba3_siso_backward",
+      "source": "src/slang/ml/nn/mamba3/mamba3_siso_chunk_backward_prefix.slang",
+      "variant": "chunk16",
+      "workgroup_size": [128, 1, 1],
+      "dispatch_tile_size": [1, 1, 1],
+      "differentiation": "none",
+      "physical_write": {
+        "writes": [
+          {"binding": 2, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"}
+        ],
+        "workspace": "none"
+      },
+      "test": {"oracle": "finite_difference_mamba3_siso_complete", "shapes": [[1, 64, 2, 16, 8, 2]], "tolerance": 0.002},
+      "push_fields": [
+        ["summary_idx", "uint32"], ["product_idx", "uint32"],
+        ["exit_idx", "uint32"], ["bh", "uint32"],
+        ["p", "uint32"], ["n", "uint32"], ["chunks", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 435,
+      "name": "mamba3_siso_chunk_backward",
+      "kernel_id": "MlMamba3SisoChunkBackwardF32",
+      "lowering_only": true,
+      "semantic_operation": "mamba3_siso_backward",
+      "source": "src/slang/ml/nn/mamba3/mamba3_siso_chunk_backward.slang",
+      "variant": "chunk16",
+      "workgroup_size": [64, 1, 1],
+      "dispatch_tile_size": [1, 1, 1],
+      "differentiation": "none",
+      "physical_write": {
+        "writes": [
+          {"binding": 12, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 13, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 14, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 15, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 16, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 17, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 18, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 19, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"}
+        ],
+        "workspace": "none"
+      },
+      "test": {"oracle": "finite_difference_mamba3_siso_complete", "shapes": [[1, 64, 2, 16, 8, 2]], "tolerance": 0.002},
+      "push_fields": [
+        ["crot_idx", "uint32"], ["brot_idx", "uint32"],
+        ["theta_idx", "uint32"], ["x_idx", "uint32"],
+        ["decay_idx", "uint32"], ["gamma_idx", "uint32"],
+        ["scale_idx", "uint32"], ["qk_idx", "uint32"],
+        ["d_idx", "uint32"], ["dpre_idx", "uint32"],
+        ["hprev_idx", "uint32"], ["exit_idx", "uint32"],
+        ["dc_idx", "uint32"], ["db_idx", "uint32"],
+        ["dx_idx", "uint32"], ["dadt_idx", "uint32"],
+        ["dgamma_idx", "uint32"], ["dscale_idx", "uint32"],
+        ["dtheta_idx", "uint32"], ["ddtoken_idx", "uint32"],
+        ["b", "uint32"], ["l", "uint32"], ["h", "uint32"],
+        ["p", "uint32"], ["n", "uint32"], ["a", "uint32"],
+        ["chunks", "uint32"], ["has_d", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 436,
+      "name": "mamba3_siso_chunk_finalize",
+      "kernel_id": "MlMamba3SisoChunkFinalizeF32",
+      "lowering_only": true,
+      "semantic_operation": "mamba3_siso_backward",
+      "source": "src/slang/ml/nn/mamba3/mamba3_siso_chunk_finalize.slang",
+      "variant": "chunk16",
+      "workgroup_size": [64, 1, 1],
+      "dispatch_tile_size": [64, 1, 1],
+      "differentiation": "none",
+      "physical_write": {
+        "writes": [
+          {"binding": 6, "domain": "rows", "partition": "exclusive_per_invocation", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 7, "domain": "rows", "partition": "exclusive_per_invocation", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 8, "domain": "rows", "partition": "exclusive_per_invocation", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"}
+        ],
+        "workspace": "none"
+      },
+      "test": {"oracle": "finite_difference_mamba3_siso_complete", "shapes": [[1, 64, 2, 16, 8, 2]], "tolerance": 0.002},
+      "push_fields": [
+        ["dt_idx", "uint32"], ["trap_idx", "uint32"],
+        ["angle_idx", "uint32"], ["dgamma_idx", "uint32"],
+        ["dscale_idx", "uint32"], ["dtheta_idx", "uint32"],
+        ["ddt_idx", "uint32"], ["dtrap_idx", "uint32"],
+        ["danglehead_idx", "uint32"], ["b", "uint32"],
+        ["l", "uint32"], ["h", "uint32"], ["a", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 437,
+      "name": "mamba3_siso_chunk_reduce",
+      "kernel_id": "MlMamba3SisoChunkReduceF32",
+      "lowering_only": true,
+      "semantic_operation": "mamba3_siso_backward",
+      "source": "src/slang/ml/nn/mamba3/mamba3_siso_chunk_reduce.slang",
+      "variant": "deterministic_reduce",
+      "workgroup_size": [256, 1, 1],
+      "dispatch_tile_size": [256, 1, 1],
+      "differentiation": "none",
+      "physical_write": {
+        "writes": [
+          {"binding": 4, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 5, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 6, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 7, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 8, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 9, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"}
+        ],
+        "workspace": "none"
+      },
+      "test": {"oracle": "finite_difference_mamba3_siso_complete", "shapes": [[1, 64, 2, 16, 8, 2]], "tolerance": 0.002},
+      "push_fields": [
+        ["dc_head_idx", "uint32"], ["db_head_idx", "uint32"],
+        ["dangle_head_idx", "uint32"], ["ddtoken_idx", "uint32"],
+        ["dc_idx", "uint32"], ["db_idx", "uint32"],
+        ["dangle_idx", "uint32"], ["cbias_idx", "uint32"],
+        ["bbias_idx", "uint32"], ["dd_idx", "uint32"],
+        ["b", "uint32"], ["l", "uint32"], ["h", "uint32"],
+        ["g", "uint32"], ["n", "uint32"], ["a", "uint32"],
+        ["count", "uint32"]
       ]
     },
     {

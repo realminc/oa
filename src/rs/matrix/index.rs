@@ -9,6 +9,149 @@ use crate::{
 const TOP_K_LIMIT: usize = 1024;
 const EXPERT_LIMIT: usize = 256;
 
+/// Gather rows from an FP32 table using arbitrary-shape integer indices.
+///
+/// The table must be `[rows,width]`; indices are flattened and output is
+/// `[num_indices,width]`, matching OA C++ `FnMatrix::gather`. U8, U32, and I32
+/// indices use one bounded kernel. Invalid rows produce NaN without reading
+/// outside the table.
+///
+/// # Errors
+///
+/// Returns an error for incompatible rank, dtype, Engine ownership, shader ABI,
+/// allocation, or recording.
+pub fn gather(input: &Matrix, indices: &Matrix) -> Result<Matrix> {
+	const CONTRACT: OperationContract = crate::core::operation::matrix::GATHER;
+	let operation = CONTRACT.name();
+	let [rows, width] = input.shape() else {
+		return Err(Error::invalid_argument(format!(
+			"{operation} input must have shape [rows,width]"
+		)));
+	};
+	if *rows == 0
+		|| *width == 0
+		|| input.dtype() != DType::F32
+		|| indices.shape().is_empty()
+		|| !matches!(indices.dtype(), DType::U8 | DType::U32 | DType::I32)
+		|| !input.engine_handle().same_as(indices.engine_handle())
+	{
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires a nonempty FP32 [rows,width] table and same-engine U8/U32/I32 indices"
+		)));
+	}
+	let count = indices.num_elements();
+	let output_count = count.checked_mul(*width).ok_or_else(|| {
+		Error::invalid_argument(format!("{operation} output size overflows usize"))
+	})?;
+	let output = Matrix::allocate(
+		input.engine_handle(),
+		vec![count, *width],
+		output_count,
+		DType::F32,
+	)?;
+	let output_count_u32 = as_u32(output_count, operation, "output element count")?;
+	if output_count_u32 != 0 {
+		let buffers = [
+			BufferBinding::read(input.storage()),
+			BufferBinding::read(indices.storage()),
+			BufferBinding::write(output.storage()),
+		];
+		let push_constants = [
+			PushConstant::U32(as_u32(count, operation, "index count")?),
+			PushConstant::U32(as_u32(*rows, operation, "table row count")?),
+			PushConstant::U32(as_u32(*width, operation, "table row width")?),
+			PushConstant::U32(u32::from(indices.dtype() != DType::U8)),
+		];
+		input.engine_handle().record_semantic(
+			ComputeDispatch {
+				kernel: KernelId::MatrixGatherF32,
+				buffers: &buffers,
+				push_constants: &push_constants,
+				workgroups: KernelId::MatrixGatherF32.linear_workgroups(output_count_u32),
+			},
+			SemanticDispatch {
+				contract: CONTRACT,
+				inputs: &[input, indices],
+				outputs: &[&output],
+				attributes: &[],
+			},
+		)?;
+	}
+	autograd::record(MatrixNode::Gather {
+		input: input.clone(),
+		indices: indices.clone(),
+		output_id: output.value_id(),
+	})?;
+	Ok(output)
+}
+
+pub(crate) fn gather_backward(
+	input_shape: &[usize],
+	indices: &Matrix,
+	output_gradient: &Matrix,
+) -> Result<Matrix> {
+	const CONTRACT: OperationContract = crate::core::operation::matrix::GATHER_BACKWARD;
+	let operation = CONTRACT.name();
+	let [rows, width] = input_shape else {
+		return Err(Error::invalid_argument(format!(
+			"{operation} input shape must be [rows,width]"
+		)));
+	};
+	let count = indices.num_elements();
+	if *rows == 0
+		|| *width == 0
+		|| indices.shape().is_empty()
+		|| !matches!(indices.dtype(), DType::U8 | DType::U32 | DType::I32)
+		|| output_gradient.dtype() != DType::F32
+		|| output_gradient.shape() != [count, *width]
+		|| !indices
+			.engine_handle()
+			.same_as(output_gradient.engine_handle())
+	{
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires integer indices and matching FP32 [num_indices,width] gradient"
+		)));
+	}
+	let gradient = Matrix::allocate(
+		output_gradient.engine_handle(),
+		input_shape.to_vec(),
+		rows.checked_mul(*width)
+			.ok_or_else(|| Error::invalid_argument(format!("{operation} size overflows usize")))?,
+		DType::F32,
+	)?;
+	let rows_u32 = as_u32(*rows, operation, "table row count")?;
+	let buffers = [
+		BufferBinding::read(indices.storage()),
+		BufferBinding::read(output_gradient.storage()),
+		BufferBinding::write(gradient.storage()),
+	];
+	let push_constants = [
+		PushConstant::U32(as_u32(count, operation, "index count")?),
+		PushConstant::U32(rows_u32),
+		PushConstant::U32(as_u32(*width, operation, "table row width")?),
+		PushConstant::U32(u32::from(indices.dtype() != DType::U8)),
+	];
+	let attributes = [OpAttribute::Shape {
+		name: "input_shape".into(),
+		value: input_shape.to_vec(),
+	}];
+	output_gradient.engine_handle().record_semantic(
+		ComputeDispatch {
+			kernel: KernelId::MatrixGatherBackwardF32,
+			buffers: &buffers,
+			push_constants: &push_constants,
+			workgroups: [rows_u32, 1, 1],
+		},
+		SemanticDispatch {
+			contract: CONTRACT,
+			inputs: &[indices, output_gradient],
+			outputs: &[&gradient],
+			attributes: &attributes,
+		},
+	)?;
+	Ok(gradient)
+}
+
 /// Largest values and exact I32 source indices returned by [`top_k`].
 #[must_use]
 pub struct TopKResult {
@@ -945,6 +1088,114 @@ pub fn concat(inputs: &[Matrix], dim: i32) -> Result<Matrix> {
 		output_id: output.value_id(),
 		dim,
 		sizes,
+	})?;
+	Ok(output)
+}
+
+/// Materialize a swap of the last two axes of a rank-two or rank-three Matrix.
+///
+/// `dim0` and `dim1` accept positive or negative axes, but the current donor
+/// contract only admits the final two axes in either order. The result owns new
+/// storage and preserves the input dtype and batch order.
+///
+/// # Errors
+///
+/// Returns an error unless the input is rank-two or rank-three F32, the axes
+/// select the distinct final two dimensions, all geometry fits the shader ABI,
+/// allocation succeeds, and runtime recording succeeds.
+pub fn transpose(input: &Matrix, dim0: i32, dim1: i32) -> Result<Matrix> {
+	const CONTRACT: OperationContract = crate::core::operation::matrix::TRANSPOSE;
+	let operation = CONTRACT.name();
+	let rank = input.shape().len();
+	if input.dtype() != DType::F32 || !(2..=3).contains(&rank) {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires a rank-two or rank-three F32 matrix"
+		)));
+	}
+	let resolve = |dim: i32| -> Result<usize> {
+		let rank_i32 = i32::try_from(rank)
+			.map_err(|_| Error::invalid_argument(format!("{operation} rank exceeds i32")))?;
+		let resolved = if dim < 0 {
+			dim.checked_add(rank_i32).ok_or_else(|| {
+				Error::invalid_argument(format!("{operation} axis normalization overflows i32"))
+			})?
+		} else {
+			dim
+		};
+		usize::try_from(resolved)
+			.ok()
+			.filter(|axis| *axis < rank)
+			.ok_or_else(|| {
+				Error::invalid_argument(format!("{operation} axis {dim} is outside rank {rank}"))
+			})
+	};
+	let dim0 = resolve(dim0)?;
+	let dim1 = resolve(dim1)?;
+	let final_axes = [rank - 2, rank - 1];
+	if dim0 == dim1 || !final_axes.contains(&dim0) || !final_axes.contains(&dim1) {
+		return Err(Error::invalid_argument(format!(
+			"{operation} supports only a swap of the final two axes"
+		)));
+	}
+
+	let rows = input.shape()[rank - 2];
+	let columns = input.shape()[rank - 1];
+	let batch_size = if rank == 3 { input.shape()[0] } else { 1 };
+	let mut output_shape = input.shape().to_vec();
+	output_shape.swap(rank - 2, rank - 1);
+	let output = Matrix::allocate(
+		input.engine_handle(),
+		output_shape,
+		input.element_count(),
+		DType::F32,
+	)?;
+	if batch_size != 0 && rows != 0 && columns != 0 {
+		let batch_size = as_u32(batch_size, operation, "batch size")?;
+		let rows = as_u32(rows, operation, "row count")?;
+		let columns = as_u32(columns, operation, "column count")?;
+		let buffers = [
+			BufferBinding::read(input.storage()),
+			BufferBinding::write(output.storage()),
+		];
+		let push_constants = [
+			PushConstant::U32(batch_size),
+			PushConstant::U32(rows),
+			PushConstant::U32(columns),
+		];
+		let inputs = [input];
+		let outputs = [&output];
+		let attributes = [
+			OpAttribute::SignedInteger {
+				name: "dim0".into(),
+				value: i64::try_from(dim0)
+					.map_err(|_| Error::invalid_argument("transpose dim0 exceeds i64"))?,
+			},
+			OpAttribute::SignedInteger {
+				name: "dim1".into(),
+				value: i64::try_from(dim1)
+					.map_err(|_| Error::invalid_argument("transpose dim1 exceeds i64"))?,
+			},
+		];
+		input.engine_handle().record_semantic(
+			ComputeDispatch {
+				kernel: KernelId::MatrixTransposeF32,
+				buffers: &buffers,
+				push_constants: &push_constants,
+				workgroups: [columns.div_ceil(32), rows.div_ceil(32), batch_size],
+			},
+			SemanticDispatch {
+				contract: CONTRACT,
+				inputs: &inputs,
+				outputs: &outputs,
+				attributes: &attributes,
+			},
+		)?;
+	}
+	autograd::record(MatrixNode::Transpose {
+		input: input.clone(),
+		output_id: output.value_id(),
+		dim0,
+		dim1,
 	})?;
 	Ok(output)
 }

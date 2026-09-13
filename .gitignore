@@ -4,3 +4,5 @@
 Cargo.lock
 __pycache__/
 *.py[cod]
+.venv/
+sdk/py/python/oa/*.so

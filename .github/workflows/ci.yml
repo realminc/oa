@@ -1,0 +1,106 @@
+name: Python release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Annotated OA release tag to build and publish
+        required: true
+        default: v0.8.0
+  push:
+    tags:
+      - "v*"
+
+env:
+  RUSTUP_TOOLCHAIN: "1.98.1"
+
+jobs:
+  wheel:
+    name: Build and test manylinux wheel
+    if: github.repository == 'realminc/oa'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.release_tag || github.ref }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify release identity
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          test "$(git describe --tags --exact-match)" = "$RELEASE_TAG"
+          python - <<'PY'
+          import os, pathlib, tomllib
+          expected = os.environ["RELEASE_TAG"].removeprefix("v")
+          root = tomllib.loads(pathlib.Path("Cargo.toml").read_text())["package"]["version"]
+          python = tomllib.loads(pathlib.Path("sdk/py/pyproject.toml").read_text())["project"]["version"]
+          assert root == python == expected, (root, python, expected)
+          PY
+
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang lld libasound2-dev libvulkan-dev mesa-vulkan-drivers pkg-config spirv-tools
+          curl -fsSL -o "$RUNNER_TEMP/slang.tar.gz" \
+            https://github.com/shader-slang/slang/releases/download/v2026.5.2/slang-2026.5.2-linux-x86_64.tar.gz
+          sudo mkdir -p /opt/slang
+          sudo tar -xzf "$RUNNER_TEMP/slang.tar.gz" -C /opt/slang
+          echo /opt/slang/bin >> "$GITHUB_PATH"
+
+      - name: Install Rust and Python build tools
+        run: |
+          rustup self update
+          rustup toolchain uninstall 1.98.1 || true
+          rustup toolchain install 1.98.1 --profile minimal --component rustfmt
+          python -m pip install --upgrade pip
+          python -m pip install maturin patchelf ziglang
+
+      - name: Build portable ABI3 wheel
+        working-directory: sdk/py
+        run: python -m maturin build --release --zig
+
+      - name: Smoke-test installed wheel
+        run: |
+          python -m venv "$RUNNER_TEMP/oa-wheel-smoke"
+          "$RUNNER_TEMP/oa-wheel-smoke/bin/pip" install target/wheels/oapython-*.whl
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/oa-wheel-smoke/bin/python" - <<'PY'
+          import importlib.metadata
+          import oa
+          assert importlib.metadata.version("oapython") == oa.__version__
+          assert callable(oa.Engine)
+          assert callable(oa.matrix.add)
+          assert oa.audio.Audio is oa.Audio
+          assert oa.image.Image is oa.Image
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: oapython-wheel
+          retention-days: 7
+          path: target/wheels/oapython-*.whl
+
+  pypi:
+    name: Publish oapython to PyPI
+    needs: wheel
+    runs-on: ubuntu-24.04
+    environment:
+      name: pypi
+      url: https://pypi.org/p/oapython
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: oapython-wheel
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@release/v1

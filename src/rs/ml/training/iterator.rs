@@ -17,6 +17,12 @@ use super::{
 /// Configuration for one explicit training loop.
 #[derive(Clone, Debug)]
 pub struct ItTrainingConfig {
+	/// Completed optimizer steps restored before this lifecycle starts.
+	///
+	/// `total_steps` remains the absolute final budget, not an additional-step
+	/// count. Restored steps select the next epoch/cursor/scheduler position but
+	/// are excluded from this process's loss and timing aggregates.
+	pub initial_step: u64,
 	/// Completed-step budget; zero keeps the loop open-ended.
 	pub total_steps: u64,
 	/// Fixed steps per epoch; zero disables epoch boundaries.
@@ -43,6 +49,7 @@ pub struct ItTrainingConfig {
 impl Default for ItTrainingConfig {
 	fn default() -> Self {
 		Self {
+			initial_step: 0,
 			total_steps: 0,
 			steps_per_epoch: 0,
 			epoch_steps: Vec::new(),
@@ -607,6 +614,12 @@ impl<'engine, 'hooks> ItTraining<'engine, 'hooks> {
 		}
 		config.batch_size = config.batch_size.max(1);
 		let epoch_offsets = normalize_epoch_schedule(&mut config)?;
+		if config.total_steps > 0 && config.initial_step > config.total_steps {
+			return Err(Error::invalid_argument(
+				"training initial step exceeds the absolute step budget",
+			));
+		}
+		let initial_step = config.initial_step;
 		let now = Instant::now();
 		Ok(Self {
 			engine,
@@ -626,7 +639,7 @@ impl<'engine, 'hooks> ItTraining<'engine, 'hooks> {
 			last_program_capture_fallback: None,
 			stable_resource_frame_open: false,
 			stable_resource_inputs_sealed: false,
-			step_count: 0,
+			step_count: initial_step,
 			last_epoch_started: 0,
 			pending_source_units: None,
 			last_loss: None,
@@ -788,7 +801,10 @@ impl<'engine, 'hooks> ItTraining<'engine, 'hooks> {
 				return Ok(false);
 			}
 		}
-		if self.step_count > 1
+		// A restored absolute step does not replace this process's eager warm-up.
+		// Stable-resource allocation ordinals are learned locally, so the first
+		// post-restore step must establish them before reuse begins.
+		if self.training_loss_count > 0
 			&& matches!(
 				self.execution_mode,
 				Some(ExecutionMode::Eager | ExecutionMode::Automatic)
