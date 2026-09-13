@@ -1,6 +1,6 @@
 [package]
 name = "oa-python"
-version = "0.1.6"
+version = "0.8.0"
 edition = "2024"
 rust-version = "1.98"
 publish = false
@@ -11,7 +11,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 oa = { path = "../.." }
-pyo3 = { version = "0.27", features = ["extension-module"] }
+pyo3 = { version = "0.27", features = ["abi3-py310", "extension-module"] }
 
 [lints.rust]
 unsafe_op_in_unsafe_fn = "deny"

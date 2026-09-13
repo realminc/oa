@@ -3,21 +3,31 @@ requires = ["maturin>=1.9,<2"]
 build-backend = "maturin"
 
 [project]
-name = "oa"
-version = "0.1.6"
-description = "Python bindings for OA's Rust GPU-first semantic computing engine"
+name = "oapython"
+version = "0.8.0"
+description = "OA — Rust cross-vendor Vulkan GPU compute, ML, image, audio, and crypto"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "BUSL-1.1" }
-authors = [{ name = "Realm" }]
+license = "BUSL-1.1"
+authors = [{ name = "Lukasz Biernat" }]
 classifiers = [
   "Development Status :: 3 - Alpha",
+  "Operating System :: POSIX :: Linux",
   "Programming Language :: Python :: 3",
   "Programming Language :: Rust",
-  "Topic :: Scientific/Engineering",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
+
+[project.urls]
+Homepage = "https://github.com/realminc/oa"
+Source = "https://github.com/realminc/oa"
+Documentation = "https://dev.realm.software/"
+Issues = "https://github.com/realminc/oa/issues"
 
 [tool.maturin]
 module-name = "oa._native"
 python-source = "python"
 features = ["pyo3/extension-module"]
+compatibility = "manylinux_2_17"
+exclude = ["**/__pycache__/**", "**/*.pyc"]
+strip = true

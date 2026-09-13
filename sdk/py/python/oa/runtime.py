@@ -1,5 +1,5 @@
 """OA execution owners."""
 
-from ._native import Engine
+from ._native import Engine, Event
 
-__all__ = ["Engine"]
+__all__ = ["Engine", "Event"]

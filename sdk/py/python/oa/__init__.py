@@ -1,7 +1,10 @@
 """Python bindings for OA's Rust semantic API."""
 
-from . import core, matrix, runtime
-from ._native import Engine, Matrix
+from . import audio, core, image, matrix, ml, runtime
+from ._native import Audio, Engine, Event, Image, Matrix
 
-__all__ = ["Engine", "Matrix", "core", "matrix", "runtime"]
-__version__ = "0.1.6"
+__all__ = [
+	"Audio", "Engine", "Event", "Image", "Matrix", "audio", "core", "image",
+	"matrix", "ml", "runtime",
+]
+__version__ = "0.8.0"

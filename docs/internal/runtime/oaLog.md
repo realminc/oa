@@ -50,7 +50,7 @@ PCI vendor/device IDs, and selected compute queue family. It exposes no Vulkan
 handles and makes no unqueried vendor inference.
 
 ```text
-oa engine v0.1.6 · Vulkan · 1 compute device
+oa engine v0.8.0 · Vulkan · 1 compute device
 [0] ComputeDevice · Intel(R) Iris(R) Xe Graphics (TGL GT2) · integrated GPU · Vulkan 1.4.354 · 11.49 GiB local memory
     Driver · Intel open-source Mesa driver · Mesa 26.2.2-arch1.1 · id INTEL_OPEN_SOURCE_MESA · version 0x06802002 · conformance 1.4.0.0
     Hardware · PCI 8086:9a49 · compute queue family 0

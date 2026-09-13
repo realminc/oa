@@ -1,29 +1,91 @@
-"""Stateless Matrix operations matching Rust ``oa::matrix``."""
+"""Stateless Matrix operations matching Rust :mod:`oa::matrix`."""
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from ._native import (
+	Engine,
+	Matrix,
+	matrix_abs as abs,
+	matrix_add as add,
+	matrix_add_scalar as add_scalar,
+	matrix_clamp_max as clamp_max,
+	matrix_clamp_min as clamp_min,
+	matrix_concat as concat,
+	matrix_copy as copy,
+	matrix_cos as cos,
+	matrix_div as div,
+	matrix_div_scalar as div_scalar,
+	matrix_dropout as dropout,
+	matrix_equal as equal,
+	matrix_exp as exp,
+	matrix_full as full,
+	matrix_gather as gather,
+	matrix_gather_last_dim as gather_last_dim,
+	matrix_log as log,
+	matrix_log_softmax as log_softmax,
+	matrix_mat_mul_nt as mat_mul_nt,
+	matrix_mul as mul,
+	matrix_neg as neg,
+	matrix_ones as ones,
+	matrix_philox_normal as philox_normal,
+	matrix_philox_uniform as philox_uniform,
+	matrix_pow as pow,
+	matrix_reciprocal as reciprocal,
+	matrix_repeat_interleave as repeat_interleave,
+	matrix_reshape as reshape,
+	matrix_sample_logits as sample_logits,
+	matrix_scale as scale,
+	matrix_set_rng_seed as set_rng_seed,
+	matrix_sin as sin,
+	matrix_slice as slice,
+	matrix_softmax as softmax,
+	matrix_sqrt as sqrt,
+	matrix_sub as sub,
+	matrix_sub_scalar as sub_scalar,
+	matrix_sum as sum,
+	matrix_top_k as top_k,
+	matrix_transpose as transpose,
+)
 
-from ._native import Engine, Matrix
-
-__all__ = ["add", "full", "mat_mul_nt", "ones"]
-
-
-def ones(engine: Engine, shape: Sequence[int]) -> Matrix:
-	"""Create an FP32 Matrix filled with ones."""
-	return engine._ones(shape)
-
-
-def full(engine: Engine, shape: Sequence[int], value: float) -> Matrix:
-	"""Create an FP32 Matrix filled with ``value``."""
-	return engine._full(shape, value)
-
-
-def add(left: Matrix, right: Matrix) -> Matrix:
-	"""Add equal-shaped Matrices elementwise."""
-	return left._add(right)
-
-
-def mat_mul_nt(left: Matrix, right: Matrix) -> Matrix:
-	"""Multiply ``[M,K]`` by donor-layout ``[N,K]`` into ``[M,N]``."""
-	return left._mat_mul_nt(right)
+__all__ = [
+	"abs",
+	"add",
+	"add_scalar",
+	"clamp_max",
+	"clamp_min",
+	"concat",
+	"copy",
+	"cos",
+	"div",
+	"div_scalar",
+	"dropout",
+	"equal",
+	"exp",
+	"full",
+	"gather",
+	"gather_last_dim",
+	"log",
+	"log_softmax",
+	"mat_mul_nt",
+	"mul",
+	"neg",
+	"ones",
+	"philox_normal",
+	"philox_uniform",
+	"pow",
+	"reciprocal",
+	"repeat_interleave",
+	"reshape",
+	"sample_logits",
+	"scale",
+	"set_rng_seed",
+	"sin",
+	"slice",
+	"softmax",
+	"sqrt",
+	"sub",
+	"sub_scalar",
+	"sum",
+	"top_k",
+	"transpose",
+]

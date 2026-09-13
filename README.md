@@ -129,6 +129,26 @@ python3 tools/build/stage.py --profile release --target core_mat_mul_intro
 
 ## Python preview
 
+The PyPI distribution is `oapython`; the imported package is `oa`:
+
+```bash
+python -m pip install oapython
+```
+
+Python follows the Rust module graph directly:
+
+```python
+import oa
+
+engine = oa.Engine()
+one = oa.matrix.ones(engine, [2, 3])
+two = oa.matrix.full(engine, [2, 3], 2.0)
+total = oa.matrix.add(one, two)
+assert total.to_list() == [3.0] * 6
+```
+
+For a source checkout:
+
 ```bash
 cd sdk/py
 python -m venv .venv
@@ -137,8 +157,8 @@ python -m venv .venv
 .venv/bin/python -m unittest discover -s test -v
 ```
 
-The Python package is intentionally a separate extension crate over the same
-Rust library. It does not create a second runtime or CPU implementation.
+The Python extension is a separate packaging crate over the same Rust library.
+It does not create a second runtime or CPU implementation.
 
 ## Verification
 
