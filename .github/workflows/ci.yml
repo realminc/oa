@@ -1,21 +1,24 @@
+# OA Rust CI — Build, Test, Release
+#
+# GitHub-hosted runners use Lavapipe for a bounded, no-skip CPU-Vulkan smoke
+# profile. Full ML/crypto, Vulkan Video, WSI, validation, and performance tests
+# remain capability-gated to a discrete or integrated GPU.
+#
+# Triggers:
+#   realminc/oa tag (v*) on main → build + test + release
+#   realminc/oa pull request     → build + test
+#
+# Every job is repository-gated. The private empyrealm/oars staging repository
+# may receive the same refs, but it must not consume hosted or self-hosted
+# runner time.
+
 name: CI
 
 on:
   push:
-    branches: [main]
-    tags: ["v*"]
+    tags: ['v*']
   pull_request:
-    branches: [main]
-  workflow_dispatch:
-    inputs:
-      release_tag:
-        description: Existing annotated OA tag to rebuild and publish
-        required: true
-        default: v0.8.0
-
-concurrency:
-  group: oa-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+    branches: [dev, main]
 
 env:
   RUSTUP_TOOLCHAIN: "1.98.1"
@@ -23,36 +26,47 @@ env:
 
 jobs:
   build:
-    name: Build, test, and package Rust
+    name: Build & Test
     if: github.repository == 'realminc/oa'
     runs-on: ubuntu-24.04
-    permissions:
-      contents: read
     steps:
       - uses: actions/checkout@v4
         with:
+          # Tag validation needs the tagged commit's ancestry, not only the tag and
+          # current main tips. A depth-1 fetch makes a valid ancestor look unrelated.
           fetch-depth: 0
-          ref: ${{ inputs.release_tag || github.ref }}
 
-      - name: Verify release identity
-        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
-        env:
-          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+      - name: Verify release tag and version sources agree
+        if: github.repository == 'realminc/oa' && startsWith(github.ref, 'refs/tags/v')
         run: |
           set -euo pipefail
-          test "$(git describe --tags --exact-match)" = "$RELEASE_TAG"
-          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
-          git merge-base --is-ancestor HEAD origin/main
-          python3 - <<'PY'
-          import os
-          import pathlib
-          import tomllib
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          CARGO_VERSION="$(python3 -c 'import tomllib; print(tomllib.loads(open("Cargo.toml").read())["package"]["version"])')"
+          PYTHON_VERSION="$(python3 -c 'import tomllib; print(tomllib.loads(open("sdk/py/pyproject.toml").read())["project"]["version"])')"
+          test "$CARGO_VERSION" = "$TAG_VERSION" || {
+            echo "::error::Cargo.toml=$CARGO_VERSION does not match tag $TAG_VERSION"
+            exit 1
+          }
+          test "$PYTHON_VERSION" = "$TAG_VERSION" || {
+            echo "::error::pyproject.toml=$PYTHON_VERSION does not match tag $TAG_VERSION"
+            exit 1
+          }
 
-          expected = os.environ["RELEASE_TAG"].removeprefix("v")
-          root = tomllib.loads(pathlib.Path("Cargo.toml").read_text())["package"]["version"]
-          python = tomllib.loads(pathlib.Path("sdk/py/pyproject.toml").read_text())["project"]["version"]
-          assert root == python == expected, (root, python, expected)
-          PY
+      - name: Validate generated and Python tooling
+        run: |
+          python3 -m unittest discover -s test/py -v
+          python3 tools/gen/fn/generate.py --check
+          git diff --check
+          git diff --exit-code
+
+      - name: Verify tag is on main
+        if: github.repository == 'realminc/oa' && startsWith(github.ref, 'refs/tags/v')
+        run: |
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor ${{ github.sha }} origin/main; then
+            echo "::error::Tag must be on main branch"
+            exit 1
+          fi
 
       - name: Install native build dependencies
         run: |
@@ -78,13 +92,6 @@ jobs:
             --profile minimal --component clippy --component rustfmt
           rustup override set "$RUSTUP_TOOLCHAIN"
 
-      - name: Validate generated and Python tooling
-        run: |
-          python3 -m unittest discover -s test/py -v
-          python3 tools/gen/fn/generate.py --check
-          git diff --check
-          git diff --exit-code
-
       - name: Format, lint, test, and document
         run: |
           cargo fmt --all --check
@@ -92,8 +99,9 @@ jobs:
           cargo test --workspace --all-features --locked
           RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --no-deps --locked
 
+      # ── Packaging (tags only) ──────────────────────────────────────────────
       - name: Build and stage SDK programs
-        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        if: github.repository == 'realminc/oa' && startsWith(github.ref, 'refs/tags/v')
         run: |
           cargo build -p oa --release --examples --locked
           python3 tools/build/stage.py --clean --profile release
@@ -101,12 +109,10 @@ jobs:
           test -n "$(find bin/release/sdk -type f -perm -111 -print -quit)"
 
       - name: Package source, SDK programs, and build evidence
-        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
-        env:
-          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+        if: github.repository == 'realminc/oa' && startsWith(github.ref, 'refs/tags/v')
         run: |
           set -euo pipefail
-          version="${RELEASE_TAG#v}"
+          version="${GITHUB_REF_NAME#v}"
           epoch="$(git show -s --format=%ct HEAD)"
           source_name="oa-${version}-source"
           sdk_name="oa-sdk-${version}-linux-x86_64"
@@ -125,7 +131,7 @@ jobs:
           cargo tree --workspace --all-features --locked --prefix none \
             > "dist/oa-${version}-dependencies.txt"
           {
-            echo "OA ${RELEASE_TAG}"
+            echo "OA ${GITHUB_REF_NAME}"
             echo "commit=$(git rev-parse HEAD)"
             echo "source_date_epoch=${epoch}"
             rustc -Vv
@@ -136,17 +142,17 @@ jobs:
           } > "dist/oa-${version}-build-info.txt"
 
       - name: Upload Rust release assets
-        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        if: github.repository == 'realminc/oa' && startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@v4
         with:
-          name: oa-rust-release
+          name: oa-dist
           retention-days: 7
           if-no-files-found: error
           path: dist/*
 
   wheel:
     name: Build and test portable Python wheel
-    if: github.repository == 'realminc/oa' && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch')
+    if: github.repository == 'realminc/oa' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -154,28 +160,25 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ inputs.release_tag || github.ref }}
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
       - name: Verify release identity
-        env:
-          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
         run: |
           set -euo pipefail
-          test "$(git describe --tags --exact-match)" = "$RELEASE_TAG"
-          python3 - <<'PY'
-          import os
-          import pathlib
-          import tomllib
-
-          expected = os.environ["RELEASE_TAG"].removeprefix("v")
-          root = tomllib.loads(pathlib.Path("Cargo.toml").read_text())["package"]["version"]
-          python = tomllib.loads(pathlib.Path("sdk/py/pyproject.toml").read_text())["project"]["version"]
-          assert root == python == expected, (root, python, expected)
-          PY
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          CARGO_VERSION="$(python3 -c 'import tomllib; print(tomllib.loads(open("Cargo.toml").read())["package"]["version"])')"
+          PYTHON_VERSION="$(python3 -c 'import tomllib; print(tomllib.loads(open("sdk/py/pyproject.toml").read())["project"]["version"])')"
+          test "$CARGO_VERSION" = "$TAG_VERSION" || {
+            echo "::error::Cargo.toml=$CARGO_VERSION does not match tag $TAG_VERSION"
+            exit 1
+          }
+          test "$PYTHON_VERSION" = "$TAG_VERSION" || {
+            echo "::error::pyproject.toml=$PYTHON_VERSION does not match tag $TAG_VERSION"
+            exit 1
+          }
 
       - name: Install native build dependencies
         run: |
@@ -229,50 +232,62 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: oapython-wheel
+          name: oa-wheel
           retention-days: 7
           if-no-files-found: error
           path: target/wheels/oapython-*.whl
 
   pypi:
-    name: Publish oapython with trusted identity
-    needs: [build, wheel]
-    if: github.repository == 'realminc/oa' && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch')
+    name: Publish to PyPI (oapython preview)
     runs-on: ubuntu-24.04
-    environment:
-      name: pypi
-      url: https://pypi.org/p/oapython
+    needs: [build, wheel]
+    if: github.repository == 'realminc/oa' && startsWith(github.ref, 'refs/tags/v')
+    environment: pypi
     permissions:
       id-token: write
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: oapython-wheel
+          name: oa-wheel
           path: dist
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           skip-existing: true
 
   release:
-    name: Publish complete GitHub release
-    needs: [build, wheel, pypi]
-    if: github.repository == 'realminc/oa' && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch')
+    name: Release
     runs-on: ubuntu-24.04
+    needs: [build, wheel, pypi]
+    if: github.repository == 'realminc/oa' && startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v4
         with:
-          name: oa-rust-release
+          # Keep the full ancestry so a tag remains verifiable after main advances.
+          fetch-depth: 0
+
+      - name: Verify tag is on main
+        run: |
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor ${{ github.sha }} origin/main; then
+            echo "::error::Release tags must be on main branch"
+            exit 1
+          fi
+
+      - name: Download packaged artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: oa-dist
           path: dist
-      - uses: actions/download-artifact@v4
+
+      - name: Download wheel artifact
+        uses: actions/download-artifact@v4
         with:
-          name: oapython-wheel
+          name: oa-wheel
           path: dist
 
       - name: Use the exact wheel published by PyPI
-        env:
-          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
         run: |
           set -euo pipefail
           find dist -maxdepth 1 -type f -name '*.whl' -delete
@@ -284,7 +299,7 @@ jobs:
           import time
           import urllib.request
 
-          version = os.environ["RELEASE_TAG"].removeprefix("v")
+          version = os.environ["GITHUB_REF_NAME"].removeprefix("v")
           metadata = None
           for attempt in range(12):
               try:
@@ -323,48 +338,74 @@ jobs:
             sha256sum -c SHA256SUMS.txt
           )
 
-      - name: Create or update release
+      - name: Create release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ inputs.release_tag || github.ref_name }}
           generate_release_notes: true
           draft: false
           prerelease: true
-          make_latest: true
-          fail_on_unmatched_files: true
           body: |
-            ## OA ${{ inputs.release_tag || github.ref_name }} — Rust development preview
+            ## OA ${{ github.ref_name }} — Rust development preview
 
-            This release publishes one verified Rust/Vulkan source checkpoint,
-            runnable Linux SDK programs, dependency/build evidence, a complete
-            checksum manifest, and the exact ABI3 wheel published to PyPI.
+            This prerelease publishes the exact tagged OA source together with the
+            automated Rust runtime and SDK packages. When the independent wheel job
+            succeeds, it attaches and publishes the matching `oapython` wheel.
 
-            **Preview, not a stable API.** Hardware routes remain capability-gated;
-            consult the compatibility ledger and README before relying on an
-            experimental subsystem.
+            ⚠️ **Preview, not a stable API.** Read the README's honest preview
+            boundaries and the changelog for this tag before depending on
+            experimental hardware paths.
 
             ### Python 3.10+
             ```bash
             python -m pip install oapython
             ```
 
-            ### Verify every downloadable artifact
+            ### Verify automated package assets
             ```bash
             sha256sum -c SHA256SUMS.txt
             ```
-          files: dist/*
+          files: |
+            dist/*.tar.gz
+            dist/SHA256SUMS.txt
+            dist/*.whl
 
-      - name: Verify the public release anonymously
+      - name: Publish and anonymously verify complete checksum manifest
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
         run: |
           set -euo pipefail
-          mkdir -p public-assets
-          gh release download "$RELEASE_TAG" \
+          mkdir -p release-assets public-assets
+          gh release download "$GITHUB_REF_NAME" \
             --repo "$GITHUB_REPOSITORY" \
-            --dir public-assets
+            --dir release-assets
+          (
+            cd release-assets
+            rm -f SHA256SUMS.txt
+            manifest_tmp="$(mktemp)"
+            find . -maxdepth 1 -type f ! -name SHA256SUMS.txt -printf '%f\n' \
+              | LC_ALL=C sort \
+              | while IFS= read -r asset; do sha256sum "$asset"; done \
+              > "$manifest_tmp"
+            mv "$manifest_tmp" SHA256SUMS.txt
+            gh release upload "$GITHUB_REF_NAME" SHA256SUMS.txt \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+          )
+
+          release_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}"
+          curl -fsSL --retry 5 --retry-delay 2 \
+            -H 'Cache-Control: no-cache' \
+            "${release_url}/sHA256SUMS.txt?run=${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            -o public-assets/SHA256SUMS.txt
+          cmp release-assets/SHA256SUMS.txt public-assets/SHA256SUMS.txt
           (
             cd public-assets
+            while read -r digest asset; do
+              test -n "$digest"
+              test -n "$asset"
+              curl -fsSL --retry 5 --retry-delay 2 \
+                "${release_url}/${asset}" \
+                -o "$asset"
+            done < SHA256SUMS.txt
             sha256sum -c SHA256SUMS.txt
           )
