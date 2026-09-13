@@ -48,6 +48,10 @@ path = "test/rs/test_video.rs"
 name = "render"
 path = "test/rs/test_render.rs"
 
+[[test]]
+name = "sdk"
+path = "test/rs/test_sdk.rs"
+
 [[example]]
 name = "core_mat_mul_intro"
 path = "sdk/rs/tutorials/core/mat_mul_intro.rs"

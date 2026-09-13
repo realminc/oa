@@ -125,6 +125,11 @@ Release-mode hardware gates on Intel Iris Xe, Mesa 26.2.2, Vulkan 1.4.354 prove:
 - optimizer-free `OaAlmAg` v3 bundle save/load through the donor's exact packed
   205-byte architecture payload. Training-only EMA host counters remain in
   optimizer checkpoints rather than changing the C++ product state index.
+- SDK-owned HumanML3D/CMP/KIT-ML host loading preserves little-endian C-order
+  F32 NPY assets, Mean/Std standardization, all caption ranges, optional frozen
+  text-feature identity/rows, and explicit clip upload. Independent host tests
+  reproduce the donor's exact identity/perturbation gates for world-joint
+  recovery, MPJPE, velocity error, contact accuracy, and foot skating.
 
 These are correctness and integration results, not a performance claim.
 
@@ -134,8 +139,9 @@ The following donor surfaces remain Planned:
 
 - fused channel-normalization and Conv1d/ReLU lowering with qualified timing;
 - KV-cache generation;
-- HumanML3D/KIT/CMP dataset, normalization, stage trainer, validation metrics,
-  callbacks, and runnable `trainalm`/`genalm` applications;
+- ALM stage trainer, window iterators, validation callbacks, and runnable
+  `trainalm`/`genalm` applications consuming the connected HumanML3D-layout
+  dataset;
 - donor checkpoint differential conversion, broader shapes/dtypes, validation
   layers, and canonical fresh-process performance qualification.
 
