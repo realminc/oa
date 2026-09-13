@@ -52,6 +52,14 @@ jobs:
             exit 1
           }
 
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup self update
+          rustup toolchain uninstall "$RUSTUP_TOOLCHAIN" || true
+          rustup toolchain install "$RUSTUP_TOOLCHAIN" \
+            --profile minimal --component clippy --component rustfmt
+          rustup override set "$RUSTUP_TOOLCHAIN"
+
       - name: Validate generated and Python tooling
         run: |
           python3 -m unittest discover -s test/py -v
@@ -83,14 +91,6 @@ jobs:
           sudo tar -xzf "$RUNNER_TEMP/slang.tar.gz" -C /opt/slang
           test -x /opt/slang/bin/slangc
           echo /opt/slang/bin >> "$GITHUB_PATH"
-
-      - name: Install pinned Rust toolchain
-        run: |
-          rustup self update
-          rustup toolchain uninstall "$RUSTUP_TOOLCHAIN" || true
-          rustup toolchain install "$RUSTUP_TOOLCHAIN" \
-            --profile minimal --component clippy --component rustfmt
-          rustup override set "$RUSTUP_TOOLCHAIN"
 
       - name: Format, lint, test, and document
         run: |
