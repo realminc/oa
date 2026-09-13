@@ -14,8 +14,13 @@ sdk/
 │   └── tutorials/    # Runnable Rust workflows
 │       ├── core/
 │       └── ml/nlp/
-└── py/               # Future generated-binding consumers
+└── py/               # Native PyO3 preview and Python tests
 ```
+
+The Python preview mirrors Rust ownership: root `Engine`/`Matrix` identities,
+`oa.core` and `oa.runtime` discovery modules, and stateless functions under
+`oa.matrix`. It currently binds the introductory dense FP32 Matrix slice; see
+[`py/README.md`](py/README.md).
 
 SDK-owned workloads are available below `oa::sdk` without moving concrete
 tasks into the reusable ML library. The native vectorized CartPole environment

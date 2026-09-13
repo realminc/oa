@@ -1,165 +1,146 @@
-# oa
+# OA
 
-Rust implementation of OA's GPU-first semantic computing architecture.
+OA is a GPU-first semantic computing engine written in Rust. One explicit
+`Engine` owns Vulkan devices, memory, queues, scheduling, kernels, and
+profiling; typed values and domain operations build on that owner without
+exposing backend machinery through the public API.
 
-The project is currently establishing its ownership model, source boundaries,
-generation contracts, and first executable Vulkan slice. Existing modules and
-shaders are structural prototypes unless named by a verified checkpoint.
+This repository is the new primary OA implementation. The earlier C++ codebase
+continues separately as the donor and compatibility reference.
 
-## Direction
+## Three lines of compute
 
-OA keeps Vulkan explicit through `ash`, uses Slang for GPU programs, and places
-a safe semantic API above narrowly contained unsafe runtime code.
-
-The target public surface is language-like:
+Rust:
 
 ```rust
 use oa::{matrix, Engine};
 
-// Engine construction is implemented as an Experimental foundation.
-let engine = Engine::builder().build()?;
+let engine = Engine::new()?;
 let one = matrix::ones(&engine, [2, 3])?;
 let two = matrix::full(&engine, [2, 3], 2.0)?;
-let sum = matrix::add(&one, &two)?;
+let total = matrix::add(&one, &two)?;
 
-// Host observation is the synchronization boundary.
-let values = sum.read_f32()?;
-assert_eq!(values, [3.0; 6]);
+assert_eq!(total.read_f32()?, [3.0; 6]);
+# Ok::<(), oa::Error>(())
 ```
 
-The planned Python binding preserves OA's familiar facade and process engine:
+Python preview—the same module ownership and native runtime:
 
 ```python
 import oa
 
-one = oa.FnMatrix.ones([2, 3])
-two = oa.FnMatrix.full([2, 3], 2.0)
-sum = oa.FnMatrix.add(one, two)
+engine = oa.Engine()
+one = oa.matrix.ones(engine, [2, 3])
+two = oa.matrix.full(engine, [2, 3], 2.0)
+total = oa.matrix.add(one, two)
+
+assert total.read_f32() == [3.0] * 6
 ```
 
-Foundational values, checked metadata, and shared failure contracts live in the
-public `core` module. Common vocabulary such as `Matrix`, `Image`, `Error`, and
-`Result` is also explicitly re-exported from `lib.rs`. Stateless operations live
-in lowercase domain modules. Stateful codecs, streams, presentation, training,
-and transport remain explicit session types that borrow an engine.
+Python abbreviations are ordinary local imports, not parallel APIs:
 
-`Engine` is the sole local execution owner. Rust construction stays explicit;
-values retain the internal engine lifetime they need, and ordinary operations
-infer it from their inputs. Explicit submit/event controls are reserved for
-capture, profiling, multi-device, distributed, and other orchestration paths.
-Blocking is visible at host observation (`read::<T>` and `read_f32`) while the
-corresponding `try_*` calls remain non-blocking. Destruction never submits or
-waits.
+```python
+import oa.core as oac
+import oa.matrix as oam
+```
 
-## Status
+## What works today
 
-The experimental runtime foundation can automatically or explicitly select one
-Vulkan 1.3 compute device, require and enable timeline semaphores plus
-synchronization2 and the descriptor-indexing features required by the kernel
-ABI, and create dense `f32` and `i32` matrices in checked VMA-backed,
-host-visible storage. One dynamic `Matrix` carries a runtime `DType`; sealed
-Rust element types provide checked upload and readback without making the
-storage owner generic.
+OA is an experimental, executable rewrite—not a structure-only stub. Current
+checked vertical slices include:
 
-The first normalized operation schema owns 19 out-of-place elementwise
-operations: `add`, `sub`, `mul`, `div`, `scale`, `neg`, `abs`, `log`, `sqrt`,
-`pow`, `add_scalar`, `sub_scalar`, `div_scalar`, `exp`, `sin`, `cos`,
-`reciprocal`, `clamp_max`, and `clamp_min`. Explicit generation emits their Rust
-functions, stable private kernel IDs and artifacts, bounds-checked Slang entry
-points, and an external hardware-oracle test. The build compiles and reflects
-every schema entry, validates each ABI and Vulkan 1.3 SPIR-V artifact, and embeds
-it. Generated kernels share one engine-owned bindless descriptor heap while
-retaining separate private pipelines. All 19 operations admit `f32`; `add`
-also has one generated exact-dtype `i32` route. Mixed dense dtypes fail rather
-than promoting implicitly.
+- Vulkan 1.3 device selection, VMA-backed storage, bindless descriptors,
+  asynchronous retirement, timeline events, eager batching, semantic capture,
+  immutable execution plans, replay, rebinding, hazard analysis, and Vulkan
+  timestamp evidence;
+- schema-owned Matrix elementwise, reduction, indexing, RNG, transpose, gather,
+  tiled FP32 matrix multiplication, broadcasting, and reverse-mode operations;
+- ML modules, autograd, Adam/AdamW/SGD/Muon, training iterators, callbacks,
+  checkpoints, RNN/GRU/Transformer/MoE/Mamba-3 NLP tutorials, reinforcement
+  learning, VQ, and the in-progress Animation Language Model stack;
+- Image operations and codecs, planar Audio and codecs/DSP/sessions, Video
+  containers/decoding, Vision detection/metrics, Render value foundations,
+  cryptographic hashes/Merkle/PQC, secure memory, and Vulkan batch hashing;
+- a native PyO3 binding preview for Engine, FP32 Matrix creation, addition,
+  `mat_mul_nt`, metadata, and synchronized readback.
 
-A second normalized matrix schema owns the Experimental FP32
-`matrix::mat_mul_nt` baseline. It preserves OA's `[M, K] × [N, K] -> [M, N]`
-weight-layout convention, generates its public function, stable private kernel
-identity, bounds-checked Slang module, and hardware-oracle test, and lowers
-through the same generic engine submission path. Its current physical route is
-an FP32 64×64×16 shared-memory tile adapted from OA's established GEMM
-arithmetic. It remains Experimental and is not a performance-qualified routing
-system.
+No GPU operation is classified as stable yet. Capability claims are tied to
+the compatibility ledger, independent oracles, and recorded hardware evidence.
 
-Each Rust operation validates and returns a matrix while its direct lowerer
-creates a generic compute-dispatch description. One engine submission path
-resolves that description, dispatches asynchronously, and retains its
-timeline-backed completion in the result; the engine contains no per-operation
-entry points. Submitted command buffers retain every referenced allocation
-through asynchronous retirement. Host readback is an explicit observation
-boundary that waits; typed `try_read::<T>` does not. Binary broadcasting and
-in-place mutation are not yet admitted.
+## Architecture
 
-No GPU operation is currently classified as Shipped. The active Experimental
-checkpoint is the one-device dense elementwise and FP32 `mat_mul_nt` path from
-checked initialization through asynchronous dispatch and synchronized host
-observation to schema-owned independent golden oracles. The `i32` proof
-currently covers addition only.
+```text
+semantic values and operations
+             │
+             ▼
+      semantic operation graph
+             │ private lowering
+             ▼
+      executable Vulkan graph
+             │
+             ▼
+ Engine-owned queues, memory, events, profiling
+```
 
-Independent Experimental host-domain checkpoints now provide a checked planar
-FP32 `Audio` value, synchronous WAV/FLAC/MP3 decode, WAV-F32 encode/save, and
-CPU Keccak-f[1600], SHAKE-128/256, KMAC-256, typed hashes, and Merkle proofs.
-These reuse the existing Matrix/Engine and `core::Error` contracts. Public cryptography
-includes CPU primitives, secure host memory, ML-DSA-65, and Vulkan batch hashing.
+- Values carry semantics; shared storage does not erase type identity.
+- Operations are stateless. Stateful external or iterative work is a session.
+- The semantic graph stays separate from executable backend work.
+- Eager operations return values; explicit submit/wait is reserved for capture,
+  orchestration, profiling, multi-device, and distributed work.
+- One operation schema owns derivable Rust, Python, validation, autograd,
+  registry, documentation, and test surfaces.
+- Slang kernels are embedded in the binary; runtime users do not ship loose
+  `.spv` files.
 
-Build and stage the public matmul tutorial, then run its independent CPU
-validation with:
+## Performance
+
+The Rust rewrite does not assume safety costs speed. OA contains measured
+low-level paths where a distinct contract earns them—for example native-target
+small copies reached up to 1.82× stock Rust and explicit one-way streaming
+reached 1.16–1.77× for tested 1 KiB–4 MiB chunks. Portable ordinary copy remains
+within the recorded 3% band in the complete sweep. These are platform-local
+experimental results, not universal claims; the full distributions, clocks,
+temperatures, binaries, and counterexamples are retained in the
+[memory comparison](docs/internal/performance/oaMemoryComparison.md).
+
+The [VLM comparison](docs/internal/performance/oaVlmComparison.md) likewise
+publishes wins, parity, and remaining C++ gaps. GPU matrix multiplication is
+correctness-gated but not yet performance-qualified against the full donor
+routing system.
+
+## Build
+
+Requirements: Rust 1.98, Python 3, `slangc`, `spirv-val`, Vulkan 1.3, and a
+compatible driver. Linux builds use Clang/LLD for native linking while `rustc`
+and LLVM compile Rust.
 
 ```bash
-cargo build --release --example core_mat_mul_intro
+cargo build --release
+cargo run --release --example core_mat_mul_intro
+```
+
+Cargo keeps intermediate artifacts in `target/`. OA’s staging tool copies only
+runnable executables into `bin/<profile>/`:
+
+```bash
 python3 tools/build/stage.py --profile release --target core_mat_mul_intro
 ./bin/release/sdk/tutorials/core/core_mat_mul_intro
 ```
 
-Cargo keeps intermediate artifacts under `target/`. The staging step copies
-only runnable binaries into OA's `bin/{debug,release}/` layout. Full build tasks
-also use `stage.py --tests` to give Cargo's hashed integration-test executables
-stable paths such as `bin/debug/test/core/test_core`; test compilation remains
-owned by Cargo and no build tree is duplicated.
-
-The Experimental MatMul benchmark companion measures captured-plan replay with
-whole-graph Vulkan timestamps. Its six checked-in workloads use fresh
-processes, independent constant-input correctness checks, fixed warmup and
-cooldown, raw logs, and machine-readable provenance:
+## Python preview
 
 ```bash
-cargo build --release --example core_mat_mul_bench
-python3 tools/build/stage.py --profile release --target core_mat_mul_bench
-python3 tools/profiling/suite.py
+cd sdk/py
+python -m venv .venv
+.venv/bin/pip install maturin
+.venv/bin/maturin develop
+.venv/bin/python -m unittest discover -s test -v
 ```
 
-Canonical recording requires a clean release tree and a resolved Vulkan device
-and registry. The runner does not yet accept baselines or establish a release
-performance claim.
+The Python package is intentionally a separate extension crate over the same
+Rust library. It does not create a second runtime or CPU implementation.
 
-## Documentation
-
-- [Documentation index](docs/README.md)
-- [Canonical architecture](docs/internal/architecture/oaArchitecture.md)
-- [Port roadmap](docs/internal/architecture/roadmap/portRoadmap.md)
-- [C++ to Rust compatibility ledger](docs/internal/porting/oaCompatibility.md)
-
-## Development
-
-Builds require Python 3, `rustfmt`, `slangc`, and `spirv-val` on `PATH`.
-Linux GNU builds also require Clang, LLD, and LLVM's `llvm-ar`. Repository
-Cargo configuration selects Clang/LLD for linking and Clang/Clang++ for native
-dependencies. Rust source is compiled by the pinned `rustc` with its LLVM
-backend; the `linux-gnu` target retains the system glibc ABI. Explicit `CC`,
-`CXX`, and `AR` environment settings can override the native compiler defaults.
-When setting `RUSTFLAGS`, retain `-C link-arg=-fuse-ld=lld`, because Cargo
-environment flags replace configured flags. For local CPU benchmarks use
-`RUSTFLAGS='-C target-cpu=native -C link-arg=-fuse-ld=lld'`. Native CPU targeting
-is deliberately opt-in so ordinary builds remain portable.
-`PYTHON`, `SLANGC`, and `SPIRV_VAL` may name explicit executables. Missing
-tools, stale generated sources, compilation failure, reflected ABI drift, and
-Vulkan 1.3 SPIR-V validation failure stop the build.
-
-The intended baseline gates are:
-
-Integration suites live under `test/rs/<module>/test_*.rs`; Python tests live
-under `test/py/`. See [test organization and focused commands](test/README.md).
+## Verification
 
 ```bash
 python3 -m unittest discover -s test/py -v
@@ -170,6 +151,15 @@ cargo test --all-features
 git diff --check
 ```
 
-These baseline gates establish source hygiene. The first vertical slice adds
-the independent correctness and Vulkan validation gates needed for a capability
-claim; a successful compile or empty test run is not such a claim.
+Hardware tests are explicitly ignored by the default harness and run serially
+on admitted devices. See [test organization](test/README.md).
+
+## Documentation
+
+- [Documentation index](docs/README.md)
+- [Canonical architecture](docs/internal/architecture/oaArchitecture.md)
+- [Port roadmap](docs/internal/architecture/roadmap/portRoadmap.md)
+- [C++ donor compatibility ledger](docs/internal/porting/oaCompatibility.md)
+- [ML port inventory](docs/internal/porting/oaMlPortInventory.md)
+
+OA is licensed under the Business Source License 1.1. See `LICENSE`.

@@ -1,0 +1,23 @@
+[build-system]
+requires = ["maturin>=1.9,<2"]
+build-backend = "maturin"
+
+[project]
+name = "oa"
+version = "0.1.6"
+description = "Python bindings for OA's Rust GPU-first semantic computing engine"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "BUSL-1.1" }
+authors = [{ name = "Realm" }]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Rust",
+  "Topic :: Scientific/Engineering",
+]
+
+[tool.maturin]
+module-name = "oa._native"
+python-source = "python"
+features = ["pyo3/extension-module"]
