@@ -1,14 +1,21 @@
 //! ALM temporal VQ-VAE tokenizer training lifecycle.
 
+use std::{cell::Cell, rc::Rc};
+
 use crate::{
 	Engine, Error, Matrix, Result, matrix,
 	ml::{
 		AdamW, GradientTape, ItTraining, ItTrainingConfig, LinearWarmupCosineScheduler,
-		LossAggregation, LossMetric, LrScheduler, Module, ProgressBar, TrainingSummary, loss,
+		LossAggregation, LossMetric, LrScheduler, Module, ProgressBar, TrainingSummary, Validation,
+		loss,
 	},
+	sdk::data::HumanMl3dDataset,
 };
 
-use super::{build_tokenizer_windows, gather_tokenizer_clip_batch};
+use super::{
+	TokenizerValidationConfig, TokenizerValidationReport, build_tokenizer_windows,
+	evaluate_tokenizer, gather_tokenizer_clip_batch,
+};
 use crate::sdk::ml::alm::AlmTokenizer;
 
 /// Complete optimizer and iteration policy for [`train_tokenizer`].
@@ -77,6 +84,17 @@ pub struct TokenizerTrainingReport {
 	pub gpu_p95_ms: f64,
 	/// Quantizer EMA transition count after the run.
 	pub ema_steps: u32,
+	/// Most recent held-out result, when validation was configured.
+	pub validation: Option<TokenizerValidationReport>,
+}
+
+/// Borrowed held-out split evaluated at every completed tokenizer epoch.
+#[derive(Clone, Copy)]
+pub struct TokenizerValidation<'data> {
+	/// Standardized HumanML3D validation split.
+	pub dataset: &'data HumanMl3dDataset,
+	/// Validation batching policy.
+	pub config: TokenizerValidationConfig,
 }
 
 /// Train the temporal ALM VQ-VAE over normalized row-major motion clips.
@@ -97,6 +115,25 @@ pub fn train_tokenizer<T: AsRef<[f32]>>(
 	engine: &Engine,
 	tokenizer: &AlmTokenizer,
 	clips: &[T],
+	config: TokenizerTrainingConfig,
+) -> Result<TokenizerTrainingReport> {
+	train_tokenizer_with_validation(engine, tokenizer, clips, None, config)
+}
+
+/// Train the tokenizer and evaluate one held-out split at every epoch end.
+///
+/// This is the same training implementation as [`train_tokenizer`]; the extra
+/// argument only attaches OA's shared [`Validation`] callback.
+///
+/// # Errors
+///
+/// Returns the same errors as [`train_tokenizer`], plus held-out evaluation or
+/// callback failures.
+pub fn train_tokenizer_with_validation<T: AsRef<[f32]>>(
+	engine: &Engine,
+	tokenizer: &AlmTokenizer,
+	clips: &[T],
+	validation: Option<TokenizerValidation<'_>>,
 	config: TokenizerTrainingConfig,
 ) -> Result<TokenizerTrainingReport> {
 	validate_training_config(tokenizer, clips, config)?;
@@ -167,6 +204,26 @@ pub fn train_tokenizer<T: AsRef<[f32]>>(
 	let mut loss_metric = LossMetric::new("reconstruction", LossAggregation::Mean);
 	let mut progress = ProgressBar::default();
 	let mut summary = TrainingSummary::new(true);
+	let latest_validation = Rc::new(Cell::new(None));
+	let mut validation_callback = validation
+		.map(|specification| {
+			let latest_validation = Rc::clone(&latest_validation);
+			Validation::new(
+				move |_| {
+					let report = evaluate_tokenizer(
+						engine,
+						tokenizer,
+						specification.dataset,
+						specification.config,
+					)?;
+					latest_validation.set(Some(report));
+					Ok(report.callback_result())
+				},
+				"val_loss",
+				0,
+			)
+		})
+		.transpose()?;
 	let mut training = ItTraining::new_eager_checkpointable(
 		engine,
 		&mut optimizer,
@@ -182,6 +239,9 @@ pub fn train_tokenizer<T: AsRef<[f32]>>(
 		},
 	)?;
 	training.add_metric(&mut loss_metric);
+	if let Some(callback) = validation_callback.as_mut() {
+		training.add_callback(callback);
+	}
 	training.add_callback(&mut schedule_callback);
 	if config.show_progress {
 		training.add_callback(&mut progress);
@@ -255,10 +315,15 @@ pub fn train_tokenizer<T: AsRef<[f32]>>(
 		gpu_median_ms: gpu.median_ms,
 		gpu_p95_ms: gpu.p95_ms,
 		ema_steps: tokenizer.rvq().level(0).map_or(0, |level| level.ema_step()),
+		validation: latest_validation.get(),
 	})
 }
 
-fn velocity_smooth_l1(prediction: &Matrix, target: &Matrix, sequence_len: usize) -> Result<Matrix> {
+pub(super) fn velocity_smooth_l1(
+	prediction: &Matrix,
+	target: &Matrix,
+	sequence_len: usize,
+) -> Result<Matrix> {
 	let end = i64::try_from(sequence_len)
 		.map_err(|_| Error::resource_exhausted("ALM tokenizer sequence length exceeds i64"))?;
 	let prediction_left = matrix::slice(prediction, 1, 0, end - 1)?;

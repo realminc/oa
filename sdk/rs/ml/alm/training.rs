@@ -8,11 +8,25 @@ use crate::{Error, Result, sdk::data::HumanMl3dDataset};
 
 mod prior;
 mod tokenizer;
+mod validation;
 mod workflow;
 
-pub use prior::{PriorConditioning, PriorTrainingConfig, PriorTrainingReport, train_prior};
-pub use tokenizer::{TokenizerTrainingConfig, TokenizerTrainingReport, train_tokenizer};
-pub use workflow::{AlmTrainingConfig, AlmTrainingReport, tokenize_corpus, train_alm};
+pub use prior::{
+	PriorConditioning, PriorTrainingConfig, PriorTrainingReport, PriorValidation, train_prior,
+	train_prior_with_validation,
+};
+pub use tokenizer::{
+	TokenizerTrainingConfig, TokenizerTrainingReport, TokenizerValidation, train_tokenizer,
+	train_tokenizer_with_validation,
+};
+pub use validation::{
+	PriorValidationConfig, PriorValidationReport, TokenizerValidationConfig,
+	TokenizerValidationReport, evaluate_prior, evaluate_tokenizer,
+};
+pub use workflow::{
+	AlmTrainingConfig, AlmTrainingReport, AlmValidation, tokenize_corpus, train_alm,
+	train_alm_with_validation,
+};
 
 /// One fixed-length motion window used to train the ALM tokenizer.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

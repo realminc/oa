@@ -4,13 +4,19 @@ use oa::sdk::{
 	data::HumanMl3dDataset,
 	ml::alm::{
 		AlmFfnType, AlmPrior, AlmPriorConfig, AlmTokenizer, AlmTokenizerConfig,
-		training::{AlmTrainingConfig, PriorTrainingConfig, TokenizerTrainingConfig, train_alm},
+		training::{
+			AlmTrainingConfig, AlmValidation, PriorTrainingConfig, PriorValidationConfig,
+			TokenizerTrainingConfig, TokenizerValidationConfig, train_alm,
+			train_alm_with_validation,
+		},
 	},
 };
 
 struct Options {
 	dataset: PathBuf,
 	split: String,
+	validation_split: String,
+	validation_batches: usize,
 	output: PathBuf,
 	max_clips: usize,
 	seed: u64,
@@ -38,6 +44,8 @@ impl Default for Options {
 		Self {
 			dataset: "data/humanMl3d/Cmp".into(),
 			split: "train".into(),
+			validation_split: "val".into(),
+			validation_batches: 0,
 			output: "var/model/dev/Alm/Alm.oam".into(),
 			max_clips: 0,
 			seed: 42,
@@ -65,6 +73,20 @@ impl Default for Options {
 fn main() -> Result<(), Box<dyn Error>> {
 	let options = parse_options()?;
 	let dataset = HumanMl3dDataset::open_cmp(&options.dataset, &options.split, options.max_clips)?;
+	let validation = match HumanMl3dDataset::open_cmp(
+		&options.dataset,
+		&options.validation_split,
+		options.max_clips,
+	) {
+		Ok(dataset) => Some(dataset),
+		Err(error) => {
+			eprintln!(
+				"validation split '{}' unavailable; validation disabled: {error}",
+				options.validation_split
+			);
+			None
+		}
+	};
 	let engine = oa::Engine::new()?;
 	let tokenizer = Rc::new(AlmTokenizer::with_seed(
 		&engine,
@@ -122,6 +144,19 @@ fn main() -> Result<(), Box<dyn Error>> {
 		dataset.total_frames(),
 		dataset.feature_dim()
 	);
+	if let Some(validation) = validation.as_ref() {
+		println!(
+			"  validation: {} · {} clips · {} frames · max batches {}",
+			options.validation_split,
+			validation.len(),
+			validation.total_frames(),
+			if options.validation_batches == 0 {
+				"all".to_owned()
+			} else {
+				options.validation_batches.to_string()
+			}
+		);
+	}
 	println!(
 		"  tokenizer: {} epochs · batch {} · {} frames · {} codes",
 		options.tokenizer_epochs, options.batch_size, options.sequence_len, options.num_codes
@@ -141,30 +176,50 @@ fn main() -> Result<(), Box<dyn Error>> {
 		}
 	);
 
-	let report = train_alm(
-		&engine,
-		&dataset,
-		tokenizer,
-		prior,
-		AlmTrainingConfig {
-			tokenizer: TokenizerTrainingConfig {
-				epochs: options.tokenizer_epochs,
-				batch_size: options.batch_size,
-				sequence_len: options.sequence_len,
-				..TokenizerTrainingConfig::default()
-			},
-			prior: PriorTrainingConfig {
-				epochs: options.prior_epochs,
-				batch_size: options.batch_size,
-				window_len: options
-					.prior_sequence_len
-					.checked_add(1)
-					.ok_or_else(|| argument_error("prior window length overflows usize"))?,
-				..PriorTrainingConfig::default()
-			},
-			text_seed: options.seed,
+	let training_config = AlmTrainingConfig {
+		tokenizer: TokenizerTrainingConfig {
+			epochs: options.tokenizer_epochs,
+			batch_size: options.batch_size,
+			sequence_len: options.sequence_len,
+			..TokenizerTrainingConfig::default()
 		},
-	)?;
+		prior: PriorTrainingConfig {
+			epochs: options.prior_epochs,
+			batch_size: options.batch_size,
+			window_len: options
+				.prior_sequence_len
+				.checked_add(1)
+				.ok_or_else(|| argument_error("prior window length overflows usize"))?,
+			..PriorTrainingConfig::default()
+		},
+		text_seed: options.seed,
+	};
+	let report = match validation.as_ref() {
+		Some(validation) => train_alm_with_validation(
+			&engine,
+			&dataset,
+			AlmValidation {
+				dataset: validation,
+				tokenizer: TokenizerValidationConfig {
+					sequence_len: options.sequence_len,
+					batch_size: options.batch_size,
+					max_batches: options.validation_batches,
+				},
+				prior: PriorValidationConfig {
+					window_len: options
+						.prior_sequence_len
+						.checked_add(1)
+						.ok_or_else(|| argument_error("prior window length overflows usize"))?,
+					batch_size: options.batch_size,
+					max_batches: options.validation_batches,
+				},
+			},
+			tokenizer,
+			prior,
+			training_config,
+		)?,
+		None => train_alm(&engine, &dataset, tokenizer, prior, training_config)?,
+	};
 	if let Some(parent) = options.output.parent() {
 		std::fs::create_dir_all(parent)?;
 	}
@@ -177,6 +232,28 @@ fn main() -> Result<(), Box<dyn Error>> {
 		report.prior.initial_loss,
 		report.prior.final_loss
 	);
+	if let Some(validation) = report.tokenizer.validation {
+		println!(
+			"  tokenizer validation: loss {:.6} · velocity {:.6} · MPJPE {:.3} cm · contact {:.2}% · foot skate {:.3} cm/frame · codes {}/{} · perplexity {:.2}",
+			validation.reconstruction_loss,
+			validation.velocity_loss,
+			validation.mpjpe_cm,
+			validation.contact_accuracy * 100.0,
+			validation.foot_skate_cm_per_frame,
+			validation.live_codes,
+			options.num_codes,
+			validation.codebook_perplexity,
+		);
+	}
+	if let Some(validation) = report.prior.validation {
+		println!(
+			"  prior validation: loss {:.6} · perplexity {:.3} · token accuracy {:.2}% · EOS accuracy {:.2}%",
+			validation.loss,
+			validation.perplexity,
+			validation.token_accuracy * 100.0,
+			validation.eos_accuracy * 100.0,
+		);
+	}
 	println!("saved {}", options.output.display());
 	Ok(())
 }
@@ -193,6 +270,8 @@ fn parse_options() -> Result<Options, Box<dyn Error>> {
 		match argument.as_str() {
 			"--dataset" => options.dataset = value()?.into(),
 			"--split" => options.split = value()?,
+			"--val-split" => options.validation_split = value()?,
+			"--val-batches" => options.validation_batches = parse(&value()?, &argument)?,
 			"--output" => options.output = value()?.into(),
 			"--max-clips" => options.max_clips = parse(&value()?, &argument)?,
 			"--seed" => options.seed = parse(&value()?, &argument)?,
@@ -245,7 +324,8 @@ fn argument_error(message: &str) -> Box<dyn Error> {
 
 fn print_help() {
 	println!(
-		"trainalm --dataset DIR --output MODEL.oam [--split train] [--max-clips N]\n\
+		"trainalm --dataset DIR --output MODEL.oam [--split train] [--val-split val]\n\
+		 [--val-batches N] [--max-clips N]\n\
 		 --tok-epochs N --lm-epochs N --batch N --seq-len N --lm-seq-len N\n\
 		 --codes N --width N --code-dim N --down-t N --depth N\n\
 		 --dmodel N --lm-heads N --lm-layers N --lm-ffn N\n\

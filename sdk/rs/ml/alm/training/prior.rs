@@ -1,14 +1,20 @@
 //! ALM prior training lifecycle.
 
+use std::{cell::Cell, rc::Rc};
+
 use crate::{
 	Engine, Error, Matrix, Result, matrix,
 	ml::{
 		AdamW, GradientTape, ItTraining, ItTrainingConfig, LinearWarmupCosineScheduler,
-		LossAggregation, LossMetric, LrScheduler, Module, ProgressBar, TrainingSummary, loss,
+		LossAggregation, LossMetric, LrScheduler, Module, ProgressBar, TrainingSummary, Validation,
+		loss,
 	},
 };
 
-use super::{PriorSpecialTokens, build_prior_windows, gather_prior_batch};
+use super::{
+	PriorSpecialTokens, PriorValidationConfig, PriorValidationReport, build_prior_windows,
+	evaluate_prior, gather_prior_batch,
+};
 use crate::sdk::ml::alm::AlmPrior;
 
 /// Frozen text features associated with each motion-token sequence.
@@ -87,6 +93,19 @@ pub struct PriorTrainingReport {
 	pub gpu_median_ms: f64,
 	/// 95th-percentile device milliseconds per step, or zero when disabled.
 	pub gpu_p95_ms: f64,
+	/// Most recent held-out result, when validation was configured.
+	pub validation: Option<PriorValidationReport>,
+}
+
+/// Borrowed held-out corpus evaluated at every completed prior epoch.
+#[derive(Clone, Copy)]
+pub struct PriorValidation<'data> {
+	/// Held-out motion-token sequences.
+	pub sequences: &'data [Vec<i32>],
+	/// Optional held-out frozen text features.
+	pub conditioning: Option<PriorConditioning<'data>>,
+	/// Validation batching policy.
+	pub config: PriorValidationConfig,
 }
 
 /// Train an ALM prior with true-boundary token windows and the shared OA
@@ -108,6 +127,26 @@ pub fn train_prior(
 	prior: &AlmPrior,
 	sequences: &[Vec<i32>],
 	conditioning: Option<PriorConditioning<'_>>,
+	config: PriorTrainingConfig,
+) -> Result<PriorTrainingReport> {
+	train_prior_with_validation(engine, prior, sequences, conditioning, None, config)
+}
+
+/// Train the prior and evaluate one held-out corpus at every epoch end.
+///
+/// This is the same training implementation as [`train_prior`]; the extra
+/// argument only attaches OA's shared [`Validation`] callback.
+///
+/// # Errors
+///
+/// Returns the same errors as [`train_prior`], plus held-out evaluation or
+/// callback failures.
+pub fn train_prior_with_validation(
+	engine: &Engine,
+	prior: &AlmPrior,
+	sequences: &[Vec<i32>],
+	conditioning: Option<PriorConditioning<'_>>,
+	validation: Option<PriorValidation<'_>>,
 	config: PriorTrainingConfig,
 ) -> Result<PriorTrainingReport> {
 	validate_training_config(prior, sequences, conditioning, config)?;
@@ -151,6 +190,27 @@ pub fn train_prior(
 	let mut loss_metric = LossMetric::new("cross_entropy", LossAggregation::Mean);
 	let mut progress = ProgressBar::default();
 	let mut summary = TrainingSummary::new(true);
+	let latest_validation = Rc::new(Cell::new(None));
+	let mut validation_callback = validation
+		.map(|specification| {
+			let latest_validation = Rc::clone(&latest_validation);
+			Validation::new(
+				move |_| {
+					let report = evaluate_prior(
+						engine,
+						prior,
+						specification.sequences,
+						specification.conditioning,
+						specification.config,
+					)?;
+					latest_validation.set(Some(report));
+					Ok(report.callback_result())
+				},
+				"val_loss",
+				0,
+			)
+		})
+		.transpose()?;
 	let mut training = ItTraining::new_eager_checkpointable(
 		engine,
 		&mut optimizer,
@@ -166,6 +226,9 @@ pub fn train_prior(
 		},
 	)?;
 	training.add_metric(&mut loss_metric);
+	if let Some(callback) = validation_callback.as_mut() {
+		training.add_callback(callback);
+	}
 	training.add_callback(&mut schedule_callback);
 	if config.show_progress {
 		training.add_callback(&mut progress);
@@ -249,6 +312,7 @@ pub fn train_prior(
 		gpu_mean_ms: gpu.mean_ms,
 		gpu_median_ms: gpu.median_ms,
 		gpu_p95_ms: gpu.p95_ms,
+		validation: latest_validation.get(),
 	})
 }
 

@@ -217,7 +217,9 @@ test_vk!(
 			ml::alm::{
 				Alm, AlmPrior, AlmPriorConfig, AlmTokenizer, AlmTokenizerConfig,
 				training::{
-					AlmTrainingConfig, PriorTrainingConfig, TokenizerTrainingConfig, train_alm,
+					AlmTrainingConfig, AlmValidation, PriorTrainingConfig, PriorValidationConfig,
+					TokenizerTrainingConfig, TokenizerValidationConfig, evaluate_prior,
+					evaluate_tokenizer, tokenize_corpus, train_alm_with_validation,
 				},
 			},
 		};
@@ -280,9 +282,22 @@ test_vk!(
 		};
 		prior_config.sync_vocab(2)?;
 		let prior = Rc::new(AlmPrior::with_seed(&engine, prior_config, 18)?);
-		let report = train_alm(
+		let report = train_alm_with_validation(
 			&engine,
 			&dataset,
+			AlmValidation {
+				dataset: &dataset,
+				tokenizer: TokenizerValidationConfig {
+					sequence_len: 4,
+					batch_size: 2,
+					max_batches: 1,
+				},
+				prior: PriorValidationConfig {
+					window_len: 3,
+					batch_size: 2,
+					max_batches: 1,
+				},
+			},
 			tokenizer,
 			prior,
 			AlmTrainingConfig {
@@ -315,6 +330,59 @@ test_vk!(
 		assert_eq!(report.corpus_tokens, 4);
 		assert_eq!(report.tokenizer.steps, 4);
 		assert_eq!(report.prior.steps, 3);
+		assert_eq!(
+			report
+				.tokenizer
+				.validation
+				.expect("tokenizer validation")
+				.samples,
+			2
+		);
+		assert_eq!(
+			report
+				.prior
+				.validation
+				.expect("prior validation")
+				.valid_tokens,
+			6
+		);
+		let tokenizer_validation = evaluate_tokenizer(
+			&engine,
+			report.model.tokenizer(),
+			&dataset,
+			TokenizerValidationConfig {
+				sequence_len: 4,
+				batch_size: 2,
+				max_batches: 0,
+			},
+		)?;
+		assert_eq!(tokenizer_validation.samples, 4);
+		assert_eq!(tokenizer_validation.batches, 2);
+		assert_eq!(tokenizer_validation.tokens, 8);
+		assert!(tokenizer_validation.reconstruction_loss.is_finite());
+		assert!(tokenizer_validation.velocity_loss.is_finite());
+		assert!(tokenizer_validation.mpjpe_cm.is_finite());
+		assert!((0.0..=1.0).contains(&tokenizer_validation.contact_accuracy));
+		assert!((1..=2).contains(&tokenizer_validation.live_codes));
+		let sequences = tokenize_corpus(&engine, report.model.tokenizer(), &dataset)?;
+		let prior_validation = evaluate_prior(
+			&engine,
+			report.model.prior(),
+			&sequences,
+			None,
+			PriorValidationConfig {
+				window_len: 3,
+				batch_size: 2,
+				max_batches: 0,
+			},
+		)?;
+		assert_eq!(prior_validation.batches, 1);
+		assert_eq!(prior_validation.valid_tokens, 6);
+		assert_eq!(prior_validation.eos_tokens, 2);
+		assert!(prior_validation.loss.is_finite());
+		assert!(prior_validation.perplexity.is_finite());
+		assert!((0.0..=1.0).contains(&prior_validation.token_accuracy));
+		assert!((0.0..=1.0).contains(&prior_validation.eos_accuracy));
 		let path = directory.join("Alm.oam");
 		report.model.save_bundle(&path)?;
 		let restored = Alm::load_bundle(&engine, &path)?;

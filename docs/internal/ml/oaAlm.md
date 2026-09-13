@@ -144,10 +144,22 @@ Release-mode hardware gates on Intel Iris Xe, Mesa 26.2.2, Vulkan 1.4.354 prove:
 - `train_alm` composes the two stages over the SDK HumanML3D owner, performs an
   explicit one-time token-corpus readback, validates cached text identity, and
   returns one product `Alm` ownership tree.
+- held-out tokenizer evaluation preserves the donor's non-wrapping final batch
+  and reports reconstruction/velocity loss, MPJPE, contact accuracy, planted
+  foot skating, live code count, and codebook perplexity;
+- held-out prior evaluation preserves true sequence boundaries, uses the first
+  cached caption row per clip, and reports valid-token-weighted cross entropy,
+  perplexity, token accuracy, and EOM accuracy;
+- `train_alm_with_validation` attaches both evaluators to the existing
+  `Validation` callback lifecycle at epoch boundaries. Evaluation time is
+  excluded from training throughput and the latest rich reports remain in the
+  stage results for application output.
 - runnable Rust `ml_alm_train` and `ml_alm_generate` applications stage below
-  `bin/<profile>/sdk/apps/ml/alm`. Generation writes denormalized F32 NPY motion
-  plus a transparent provenance sidecar; USD skeletal previews remain owned by
-  the not-yet-ported USD/Render integration.
+  `bin/<profile>/sdk/apps/ml/alm`. Training admits the donor `--val-split` and
+  `--val-batches` policy and degrades explicitly to no validation when that
+  split is unavailable. Generation writes denormalized F32 NPY motion plus a
+  transparent provenance sidecar; USD skeletal previews remain owned by the
+  not-yet-ported USD/Render integration.
 
 These are correctness and integration results, not a performance claim.
 
@@ -157,8 +169,8 @@ The following donor surfaces remain Planned:
 
 - fused channel-normalization and Conv1d/ReLU lowering with qualified timing;
 - KV-cache generation;
-- held-out tokenizer/prior validation callbacks, atomic stage checkpoint/resume,
-  native-CLIP assembly flags in `ml_alm_train`, and USD skeletal previews;
+- atomic stage checkpoint/resume, native-CLIP assembly flags in `ml_alm_train`,
+  and USD skeletal previews;
 - donor checkpoint differential conversion, broader shapes/dtypes, validation
   layers, and canonical fresh-process performance qualification.
 
