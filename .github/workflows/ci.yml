@@ -82,6 +82,8 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             clang libasound2-dev libvulkan-dev mesa-vulkan-drivers \
             pkg-config spirv-tools unzip
+          # Set AR to use system ar instead of llvm-ar
+          echo "AR=ar" >> $GITHUB_ENV
 
       - name: Install Slang
         run: |
@@ -186,6 +188,8 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             clang libasound2-dev libvulkan-dev mesa-vulkan-drivers \
             pkg-config spirv-tools
+          # Set AR to use system ar instead of llvm-ar
+          echo "AR=ar" >> $GITHUB_ENV
           curl -fsSL -o "$RUNNER_TEMP/slang.tar.gz" \
             "https://github.com/shader-slang/slang/releases/download/v${SLANG_VERSION}/slang-${SLANG_VERSION}-linux-x86_64.tar.gz"
           sudo mkdir -p /opt/slang
