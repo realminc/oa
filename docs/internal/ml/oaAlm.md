@@ -176,7 +176,11 @@ Release-mode hardware gates on Intel Iris Xe, Mesa 26.2.2, Vulkan 1.4.354 prove:
   CLIP `.oam` and exact merges through `--clip-text-model` / `--clip-merges`;
   `--unconditional` is the explicit no-text route. Native checkpoint controls
   include directory, mid-epoch interval, retention, resume, restore-best, and
-  explicit disable.
+  explicit disable. The donor's VQ health values, AdamW peak/floor/warmup/decay
+  policy, dense/MoE/hybrid architecture, routed-expert counts/cadence, and both
+  MoE regularization policies are CLI-owned rather than hardcoded. Donor
+  `--text-conditioning` and `--ckpt-*` spellings coexist with the shorter Rust
+  compatibility flags and reach the same fields.
   Generation writes denormalized F32 NPY motion plus a transparent provenance
   sidecar; USD skeletal previews remain owned by the not-yet-ported USD/Render
   integration.

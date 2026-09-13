@@ -30,15 +30,33 @@ struct Options {
 	code_dim: usize,
 	downsample_stages: usize,
 	depth: usize,
+	commitment_beta: f32,
+	ema_decay: f32,
+	ema_epsilon: f32,
+	dead_threshold: f32,
 	model_width: usize,
 	num_heads: usize,
 	num_layers: usize,
 	hidden_width: usize,
 	max_sequence_len: usize,
 	ffn_type: AlmFfnType,
+	moe_num_experts: usize,
+	moe_experts_per_token: usize,
+	moe_every: usize,
+	moe_balance_rate: f32,
+	moe_aux_loss_alpha: f32,
+	moe_router_z_loss_beta: f32,
 	text_conditioning: bool,
 	clip_text_model: PathBuf,
 	clip_merges: PathBuf,
+	tokenizer_learning_rate: f32,
+	tokenizer_minimum_learning_rate: f32,
+	tokenizer_warmup_steps: u64,
+	tokenizer_weight_decay: f32,
+	prior_learning_rate: f32,
+	prior_minimum_learning_rate: f32,
+	prior_warmup_steps: u64,
+	prior_weight_decay: f32,
 	checkpoint_directory: PathBuf,
 	checkpoint_save_every: u64,
 	checkpoint_keep: usize,
@@ -67,21 +85,39 @@ impl Default for Options {
 			code_dim: 256,
 			downsample_stages: 2,
 			depth: 3,
+			commitment_beta: 0.25,
+			ema_decay: 0.99,
+			ema_epsilon: 1.0e-5,
+			dead_threshold: 2.0,
 			model_width: 384,
 			num_heads: 6,
 			num_layers: 6,
 			hidden_width: 1536,
 			max_sequence_len: 260,
 			ffn_type: AlmFfnType::Dense,
+			moe_num_experts: 4,
+			moe_experts_per_token: 2,
+			moe_every: 2,
+			moe_balance_rate: 1.0e-3,
+			moe_aux_loss_alpha: 0.01,
+			moe_router_z_loss_beta: 1.0e-3,
 			text_conditioning: true,
 			clip_text_model: "var/model/ref/ClipText/ClipText.oam".into(),
 			clip_merges: "var/model/ref/ClipText/merges.txt".into(),
+			tokenizer_learning_rate: 2.0e-4,
+			tokenizer_minimum_learning_rate: 2.0e-5,
+			tokenizer_warmup_steps: 500,
+			tokenizer_weight_decay: 0.0,
+			prior_learning_rate: 1.0e-4,
+			prior_minimum_learning_rate: 1.0e-5,
+			prior_warmup_steps: 300,
+			prior_weight_decay: 0.01,
 			checkpoint_directory: "var/model/dev".into(),
 			checkpoint_save_every: 0,
 			checkpoint_keep: 5,
 			checkpoint_enabled: true,
 			resume: false,
-			restore_best: true,
+			restore_best: false,
 		}
 	}
 }
@@ -123,10 +159,10 @@ fn main() -> Result<(), Box<dyn Error>> {
 			num_codes: options.num_codes,
 			downsample_stages: options.downsample_stages,
 			depth: options.depth,
-			commitment_beta: 0.25,
-			ema_decay: 0.99,
-			ema_epsilon: 1.0e-5,
-			dead_threshold: 2.0,
+			commitment_beta: options.commitment_beta,
+			ema_decay: options.ema_decay,
+			ema_epsilon: options.ema_epsilon,
+			dead_threshold: options.dead_threshold,
 		},
 		options.seed,
 	)?);
@@ -140,12 +176,21 @@ fn main() -> Result<(), Box<dyn Error>> {
 		hidden_width: options.hidden_width,
 		text_feature_dim,
 		ffn_type: options.ffn_type,
+		moe_num_experts: options.moe_num_experts,
+		moe_experts_per_token: options.moe_experts_per_token,
+		moe_every: options.moe_every,
+		moe_balance_rate: options.moe_balance_rate,
+		moe_aux_loss_alpha: options.moe_aux_loss_alpha,
+		moe_router_z_loss_beta: options.moe_router_z_loss_beta,
 		batch_size: options.batch_size,
 		sequence_length: options
 			.prior_sequence_len
 			.checked_add(1 + usize::from(text_feature_dim > 0))
 			.ok_or_else(|| argument_error("prior sequence length overflows usize"))?,
 		max_sequence_length: options.max_sequence_len,
+		learning_rate: options.prior_learning_rate,
+		num_epochs: usize::try_from(options.prior_epochs)
+			.map_err(|_| argument_error("prior epoch count exceeds usize"))?,
 		..AlmPriorConfig::default()
 	};
 	prior_config.sync_vocab(options.num_codes)?;
@@ -181,6 +226,13 @@ fn main() -> Result<(), Box<dyn Error>> {
 		options.tokenizer_epochs, options.batch_size, options.sequence_len, options.num_codes
 	);
 	println!(
+		"    AdamW: lr {:.3e} → {:.3e} · warmup {} · weight decay {:.3e}",
+		options.tokenizer_learning_rate,
+		options.tokenizer_minimum_learning_rate,
+		options.tokenizer_warmup_steps,
+		options.tokenizer_weight_decay
+	);
+	println!(
 		"  prior: {} epochs · batch {} · {} token pairs · text {}",
 		options.prior_epochs,
 		options.batch_size,
@@ -193,6 +245,13 @@ fn main() -> Result<(), Box<dyn Error>> {
 		} else {
 			"native CLIP"
 		}
+	);
+	println!(
+		"    AdamW: lr {:.3e} → {:.3e} · warmup {} · weight decay {:.3e}",
+		options.prior_learning_rate,
+		options.prior_minimum_learning_rate,
+		options.prior_warmup_steps,
+		options.prior_weight_decay
 	);
 	if native_text.is_some() {
 		println!(
@@ -223,6 +282,10 @@ fn main() -> Result<(), Box<dyn Error>> {
 			epochs: options.tokenizer_epochs,
 			batch_size: options.batch_size,
 			sequence_len: options.sequence_len,
+			learning_rate: options.tokenizer_learning_rate,
+			minimum_learning_rate: options.tokenizer_minimum_learning_rate,
+			warmup_steps: options.tokenizer_warmup_steps,
+			weight_decay: options.tokenizer_weight_decay,
 			checkpoint: stage_checkpoint("AlmTokenizer"),
 			..TokenizerTrainingConfig::default()
 		},
@@ -230,6 +293,10 @@ fn main() -> Result<(), Box<dyn Error>> {
 			epochs: options.prior_epochs,
 			batch_size: options.batch_size,
 			window_len: prior_window_len,
+			learning_rate: options.prior_learning_rate,
+			minimum_learning_rate: options.prior_minimum_learning_rate,
+			warmup_steps: options.prior_warmup_steps,
+			weight_decay: options.prior_weight_decay,
 			checkpoint: stage_checkpoint("AlmPrior"),
 			..PriorTrainingConfig::default()
 		},
@@ -343,21 +410,44 @@ fn parse_options() -> Result<Options, Box<dyn Error>> {
 			"--code-dim" => options.code_dim = parse(&value()?, &argument)?,
 			"--down-t" => options.downsample_stages = parse(&value()?, &argument)?,
 			"--depth" => options.depth = parse(&value()?, &argument)?,
+			"--commit-beta" => options.commitment_beta = parse(&value()?, &argument)?,
+			"--ema-decay" => options.ema_decay = parse(&value()?, &argument)?,
+			"--ema-eps" => options.ema_epsilon = parse(&value()?, &argument)?,
+			"--dead-thresh" => options.dead_threshold = parse(&value()?, &argument)?,
 			"--dmodel" => options.model_width = parse(&value()?, &argument)?,
 			"--lm-heads" => options.num_heads = parse(&value()?, &argument)?,
 			"--lm-layers" => options.num_layers = parse(&value()?, &argument)?,
 			"--lm-ffn" => options.hidden_width = parse(&value()?, &argument)?,
 			"--lm-max-seq-len" => options.max_sequence_len = parse(&value()?, &argument)?,
+			"--lm-moe-experts" => options.moe_num_experts = parse(&value()?, &argument)?,
+			"--lm-moe-top-k" => options.moe_experts_per_token = parse(&value()?, &argument)?,
+			"--lm-moe-every" => options.moe_every = parse(&value()?, &argument)?,
+			"--lm-moe-balance-rate" => options.moe_balance_rate = parse(&value()?, &argument)?,
+			"--lm-moe-aux-alpha" => options.moe_aux_loss_alpha = parse(&value()?, &argument)?,
+			"--lm-moe-z-beta" => options.moe_router_z_loss_beta = parse(&value()?, &argument)?,
+			"--tok-lr" => options.tokenizer_learning_rate = parse(&value()?, &argument)?,
+			"--tok-min-lr" => {
+				options.tokenizer_minimum_learning_rate = parse(&value()?, &argument)?
+			}
+			"--tok-warmup" => options.tokenizer_warmup_steps = parse(&value()?, &argument)?,
+			"--tok-wd" => options.tokenizer_weight_decay = parse(&value()?, &argument)?,
+			"--lm-lr" => options.prior_learning_rate = parse(&value()?, &argument)?,
+			"--lm-min-lr" => options.prior_minimum_learning_rate = parse(&value()?, &argument)?,
+			"--lm-warmup" => options.prior_warmup_steps = parse(&value()?, &argument)?,
+			"--lm-wd" => options.prior_weight_decay = parse(&value()?, &argument)?,
 			"--clip-text-model" => options.clip_text_model = value()?.into(),
 			"--clip-merges" => options.clip_merges = value()?.into(),
-			"--checkpoint-dir" => options.checkpoint_directory = value()?.into(),
-			"--checkpoint-save-every" => {
+			"--checkpoint-dir" | "--model-dir" => options.checkpoint_directory = value()?.into(),
+			"--checkpoint-save-every" | "--ckpt-save-every" => {
 				options.checkpoint_save_every = parse(&value()?, &argument)?
 			}
-			"--checkpoint-keep" => options.checkpoint_keep = parse(&value()?, &argument)?,
+			"--checkpoint-keep" | "--ckpt-max-keep" => {
+				options.checkpoint_keep = parse(&value()?, &argument)?
+			}
 			"--resume" => options.resume = true,
 			"--no-checkpoint" => options.checkpoint_enabled = false,
 			"--no-restore-best" => options.restore_best = false,
+			"--restore-best" | "--ckpt-restore-best" => options.restore_best = true,
 			"--lm-ffn-type" => {
 				options.ffn_type = match value()?.as_str() {
 					"dense" => AlmFfnType::Dense,
@@ -367,6 +457,15 @@ fn parse_options() -> Result<Options, Box<dyn Error>> {
 						return Err(argument_error(
 							"--lm-ffn-type must be dense, moe, or hybrid",
 						));
+					}
+				}
+			}
+			"--text-conditioning" => {
+				options.text_conditioning = match value()?.as_str() {
+					"clip" => true,
+					"none" => false,
+					_ => {
+						return Err(argument_error("--text-conditioning must be clip or none"));
 					}
 				}
 			}
@@ -396,10 +495,16 @@ fn print_help() {
 		 [--val-batches N] [--max-clips N]\n\
 		 --tok-epochs N --lm-epochs N --batch N --seq-len N --lm-seq-len N\n\
 		 --codes N --width N --code-dim N --down-t N --depth N\n\
+		 [--commit-beta F] [--ema-decay F] [--ema-eps F] [--dead-thresh F]\n\
 		 --dmodel N --lm-heads N --lm-layers N --lm-ffn N\n\
-		 --lm-max-seq-len N --lm-ffn-type dense|moe|hybrid [--seed N]\n\
-		 [--clip-text-model MODEL.oam] [--clip-merges merges.txt] [--unconditional]\n\
+		 --lm-max-seq-len N --lm-ffn-type dense|moe|hybrid\n\
+		 [--lm-moe-experts N] [--lm-moe-top-k N] [--lm-moe-every N]\n\
+		 [--lm-moe-balance-rate F] [--lm-moe-aux-alpha F] [--lm-moe-z-beta F]\n\
+		 [--tok-lr F] [--tok-min-lr F] [--tok-warmup N] [--tok-wd F]\n\
+		 [--lm-lr F] [--lm-min-lr F] [--lm-warmup N] [--lm-wd F] [--seed N]\n\
+		 [--text-conditioning clip|none] [--clip-text-model MODEL.oam]\n\
+		 [--clip-merges merges.txt] [--unconditional]\n\
 		 [--checkpoint-dir DIR] [--checkpoint-save-every N] [--checkpoint-keep N]\n\
-		 [--resume] [--no-restore-best] [--no-checkpoint]"
+		 [--resume] [--restore-best|--no-restore-best] [--no-checkpoint]"
 	);
 }
