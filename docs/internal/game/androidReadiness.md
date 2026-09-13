@@ -29,9 +29,9 @@ behavior, and complete Android lifecycle behavior remain unqualified.
 
 | Component | Audited state |
 |---|---|
-| Android SDK | `/home/empyrealm/Android/Sdk`; `ANDROID_HOME` and `ANDROID_SDK_ROOT` resolve to it |
+| Android SDK | `ANDROID_HOME` and `ANDROID_SDK_ROOT` resolve to the audited SDK installation |
 | ADB | 1.0.41, Platform Tools 37.0.0 |
-| Android Studio | `/home/empyrealm/Apps/android-studio`; bundled OpenJDK 21.0.10 |
+| Android Studio | Local stable installation; bundled OpenJDK 21.0.10 |
 | SDK platforms | Android 36 revision 2 |
 | build-tools | 35.0.0 and 36.0.0 |
 | NDK | 29.0.14206865; `ANDROID_NDK_HOME` resolves to it |
@@ -138,8 +138,8 @@ rustc --version
 cargo --version
 rustup target list --installed
 cargo ndk --version
-/home/empyrealm/Android/Sdk/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android33-clang --version
-cd /home/empyrealm/Code/GitHub/oa/sdk/android/mobilelab
+"$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android33-clang" --version
+cd "$OA_CPP_REPO/sdk/android/mobilelab"
 ./gradlew --offline --no-daemon --version
 ```
 

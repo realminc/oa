@@ -184,7 +184,7 @@ as a win for its dependent checked-inverse workload.
 - All source records are clean. Baseline and candidate use identical
   `-C target-cpu=native -C link-arg=-fuse-ld=lld` flags.
 - Intel Core i5-1145G7; rustc 1.98.1 / LLVM 22.1.8; Clang/LLD 22.1.8.
-- GLM 1.1.0 from `/home/empyrealm/Code/3d/glm-master`. The 432-file `glm/`
+- GLM 1.1.0 from a clean local upstream checkout. The 432-file `glm/`
   manifest SHA-256 is `43da209efa40ab8761f458e06654f3d1f97511f6d0ccbe0d5541c12d9ab2dad7`:
   sorted root-relative paths, each line `<file SHA-256>  <path>\n`.
 - Baseline Rust executable SHA-256:
@@ -269,8 +269,8 @@ RUSTFLAGS='-C target-cpu=native -C link-arg=-fuse-ld=lld' \
   cargo build --release --example core_vlm_bench
 tools/profiling/stable_clocks.sh --cpu-khz 2600000 --gpu-mhz 1000 -- \
   python3 tools/profiling/vlm_compare.py \
-    --oa-repo /home/empyrealm/Code/GitHub/oa \
-    --oars-repo /home/empyrealm/Code/GitHub/oars \
+    --oa-repo "$OA_CPP_REPO" \
+    --oars-repo "$OA_RS_REPO" \
     --oa-binary /absolute/clean/oa/benchVlm \
     --oars-binary /absolute/clean/oars/core_vlm_bench \
     --oars-rustflags '-C target-cpu=native -C link-arg=-fuse-ld=lld' \

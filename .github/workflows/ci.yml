@@ -1,23 +1,152 @@
-name: Python release
+name: CI
 
 on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Annotated OA release tag to build and publish
+        description: Existing annotated OA tag to rebuild and publish
         required: true
         default: v0.8.0
-  push:
-    tags:
-      - "v*"
+
+concurrency:
+  group: oa-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/v') }}
 
 env:
   RUSTUP_TOOLCHAIN: "1.98.1"
+  SLANG_VERSION: "2026.5.2"
 
 jobs:
-  wheel:
-    name: Build and test manylinux wheel
+  build:
+    name: Build, test, and package Rust
     if: github.repository == 'realminc/oa'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.release_tag || github.ref }}
+
+      - name: Verify release identity
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          test "$(git describe --tags --exact-match)" = "$RELEASE_TAG"
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          git merge-base --is-ancestor HEAD origin/main
+          python3 - <<'PY'
+          import os
+          import pathlib
+          import tomllib
+
+          expected = os.environ["RELEASE_TAG"].removeprefix("v")
+          root = tomllib.loads(pathlib.Path("Cargo.toml").read_text())["package"]["version"]
+          python = tomllib.loads(pathlib.Path("sdk/py/pyproject.toml").read_text())["project"]["version"]
+          assert root == python == expected, (root, python, expected)
+          PY
+
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang lld libasound2-dev libvulkan-dev mesa-vulkan-drivers \
+            pkg-config spirv-tools unzip
+
+      - name: Install Slang
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/slang.tar.gz" \
+            "https://github.com/shader-slang/slang/releases/download/v${SLANG_VERSION}/slang-${SLANG_VERSION}-linux-x86_64.tar.gz"
+          sudo mkdir -p /opt/slang
+          sudo tar -xzf "$RUNNER_TEMP/slang.tar.gz" -C /opt/slang
+          test -x /opt/slang/bin/slangc
+          echo /opt/slang/bin >> "$GITHUB_PATH"
+
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup self update
+          rustup toolchain uninstall "$RUSTUP_TOOLCHAIN" || true
+          rustup toolchain install "$RUSTUP_TOOLCHAIN" \
+            --profile minimal --component clippy --component rustfmt
+          rustup override set "$RUSTUP_TOOLCHAIN"
+
+      - name: Validate generated and Python tooling
+        run: |
+          python3 -m unittest discover -s test/py -v
+          python3 tools/gen/fn/generate.py --check
+          git diff --check
+          git diff --exit-code
+
+      - name: Format, lint, test, and document
+        run: |
+          cargo fmt --all --check
+          cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+          cargo test --workspace --all-features --locked
+          RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --no-deps --locked
+
+      - name: Build and stage SDK programs
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        run: |
+          cargo build -p oa --release --examples --locked
+          python3 tools/build/stage.py --clean --profile release
+          python3 tools/build/stage.py --profile release
+          test -n "$(find bin/release/sdk -type f -perm -111 -print -quit)"
+
+      - name: Package source, SDK programs, and build evidence
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#v}"
+          epoch="$(git show -s --format=%ct HEAD)"
+          source_name="oa-${version}-source"
+          sdk_name="oa-sdk-${version}-linux-x86_64"
+          mkdir -p dist "stage/$source_name" "stage/$sdk_name"
+
+          git archive --format=tar HEAD | tar -xf - -C "stage/$source_name"
+          cp Cargo.lock "stage/$source_name/Cargo.lock"
+          cp -a bin/release/sdk "stage/$sdk_name/sdk"
+          cp README.md LICENSE NOTICE.md "stage/$sdk_name/"
+
+          tar --sort=name --mtime="@${epoch}" --owner=0 --group=0 --numeric-owner \
+            -czf "dist/${source_name}.tar.gz" -C stage "$source_name"
+          tar --sort=name --mtime="@${epoch}" --owner=0 --group=0 --numeric-owner \
+            -czf "dist/${sdk_name}.tar.gz" -C stage "$sdk_name"
+
+          cargo tree --workspace --all-features --locked --prefix none \
+            > "dist/oa-${version}-dependencies.txt"
+          {
+            echo "OA ${RELEASE_TAG}"
+            echo "commit=$(git rev-parse HEAD)"
+            echo "source_date_epoch=${epoch}"
+            rustc -Vv
+            cargo -V
+            clang --version | head -n 1
+            slangc -version
+            spirv-val --version
+          } > "dist/oa-${version}-build-info.txt"
+
+      - name: Upload Rust release assets
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: oa-rust-release
+          retention-days: 7
+          if-no-files-found: error
+          path: dist/*
+
+  wheel:
+    name: Build and test portable Python wheel
+    if: github.repository == 'realminc/oa' && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -37,8 +166,11 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git describe --tags --exact-match)" = "$RELEASE_TAG"
-          python - <<'PY'
-          import os, pathlib, tomllib
+          python3 - <<'PY'
+          import os
+          import pathlib
+          import tomllib
+
           expected = os.environ["RELEASE_TAG"].removeprefix("v")
           root = tomllib.loads(pathlib.Path("Cargo.toml").read_text())["package"]["version"]
           python = tomllib.loads(pathlib.Path("sdk/py/pyproject.toml").read_text())["project"]["version"]
@@ -49,26 +181,28 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            clang lld libasound2-dev libvulkan-dev mesa-vulkan-drivers pkg-config spirv-tools
+            clang lld libasound2-dev libvulkan-dev mesa-vulkan-drivers \
+            pkg-config spirv-tools
           curl -fsSL -o "$RUNNER_TEMP/slang.tar.gz" \
-            https://github.com/shader-slang/slang/releases/download/v2026.5.2/slang-2026.5.2-linux-x86_64.tar.gz
+            "https://github.com/shader-slang/slang/releases/download/v${SLANG_VERSION}/slang-${SLANG_VERSION}-linux-x86_64.tar.gz"
           sudo mkdir -p /opt/slang
           sudo tar -xzf "$RUNNER_TEMP/slang.tar.gz" -C /opt/slang
           echo /opt/slang/bin >> "$GITHUB_PATH"
 
-      - name: Install Rust and Python build tools
+      - name: Install pinned Rust and Python build tools
         run: |
           rustup self update
-          rustup toolchain uninstall 1.98.1 || true
-          rustup toolchain install 1.98.1 --profile minimal --component rustfmt
+          rustup toolchain uninstall "$RUSTUP_TOOLCHAIN" || true
+          rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal --component rustfmt
+          rustup override set "$RUSTUP_TOOLCHAIN"
           python -m pip install --upgrade pip
           python -m pip install maturin patchelf ziglang
 
       - name: Build portable ABI3 wheel
         working-directory: sdk/py
-        run: python -m maturin build --release --zig
+        run: python -m maturin build --release --zig --locked
 
-      - name: Smoke-test installed wheel
+      - name: Smoke-test complete installed wheel
         run: |
           python -m venv "$RUNNER_TEMP/oa-wheel-smoke"
           "$RUNNER_TEMP/oa-wheel-smoke/bin/pip" install target/wheels/oapython-*.whl
@@ -76,22 +210,34 @@ jobs:
           "$RUNNER_TEMP/oa-wheel-smoke/bin/python" - <<'PY'
           import importlib.metadata
           import oa
+
           assert importlib.metadata.version("oapython") == oa.__version__
           assert callable(oa.Engine)
           assert callable(oa.matrix.add)
           assert oa.audio.Audio is oa.Audio
           assert oa.image.Image is oa.Image
           PY
+          unzip -l "$GITHUB_WORKSPACE"/target/wheels/oapython-*.whl > wheel-files.txt
+          grep -q 'oa/_native.abi3.so' wheel-files.txt
+          grep -q 'oa/_native.pyi' wheel-files.txt
+          grep -q 'oa/py.typed' wheel-files.txt
+          grep -q 'oa/ml/matrix.py' wheel-files.txt
+          if grep -q '__pycache__\|\.pyc' wheel-files.txt; then
+            echo "::error::wheel contains Python cache files"
+            exit 1
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
           name: oapython-wheel
           retention-days: 7
+          if-no-files-found: error
           path: target/wheels/oapython-*.whl
 
   pypi:
-    name: Publish oapython to PyPI
-    needs: wheel
+    name: Publish oapython with trusted identity
+    needs: [build, wheel]
+    if: github.repository == 'realminc/oa' && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-24.04
     environment:
       name: pypi
@@ -104,3 +250,121 @@ jobs:
           name: oapython-wheel
           path: dist
       - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
+
+  release:
+    name: Publish complete GitHub release
+    needs: [build, wheel, pypi]
+    if: github.repository == 'realminc/oa' && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: oa-rust-release
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: oapython-wheel
+          path: dist
+
+      - name: Use the exact wheel published by PyPI
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          find dist -maxdepth 1 -type f -name '*.whl' -delete
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import pathlib
+          import time
+          import urllib.request
+
+          version = os.environ["RELEASE_TAG"].removeprefix("v")
+          metadata = None
+          for attempt in range(12):
+              try:
+                  with urllib.request.urlopen(
+                      f"https://pypi.org/pypi/oapython/{version}/json?attempt={attempt}"
+                  ) as response:
+                      metadata = json.load(response)
+                  break
+              except Exception:
+                  if attempt == 11:
+                      raise
+                  time.sleep(5)
+          candidates = [
+              item for item in metadata["urls"]
+              if item["packagetype"] == "bdist_wheel"
+              and "cp310-abi3-manylinux" in item["filename"]
+              and not item["yanked"]
+          ]
+          assert len(candidates) == 1, [item["filename"] for item in candidates]
+          item = candidates[0]
+          target = pathlib.Path("dist", item["filename"])
+          urllib.request.urlretrieve(item["url"], target)
+          actual = hashlib.sha256(target.read_bytes()).hexdigest()
+          assert actual == item["digests"]["sha256"], (actual, item["digests"]["sha256"])
+          PY
+
+      - name: Create complete checksum manifest
+        run: |
+          set -euo pipefail
+          (
+            cd dist
+            find . -maxdepth 1 -type f ! -name SHA256SUMS.txt -printf '%f\n' \
+              | LC_ALL=C sort \
+              | while IFS= read -r asset; do sha256sum "$asset"; done \
+              > SHA256SUMS.txt
+            sha256sum -c SHA256SUMS.txt
+          )
+
+      - name: Create or update release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_tag || github.ref_name }}
+          generate_release_notes: true
+          draft: false
+          prerelease: true
+          make_latest: true
+          fail_on_unmatched_files: true
+          body: |
+            ## OA ${{ inputs.release_tag || github.ref_name }} — Rust development preview
+
+            This release publishes one verified Rust/Vulkan source checkpoint,
+            runnable Linux SDK programs, dependency/build evidence, a complete
+            checksum manifest, and the exact ABI3 wheel published to PyPI.
+
+            **Preview, not a stable API.** Hardware routes remain capability-gated;
+            consult the compatibility ledger and README before relying on an
+            experimental subsystem.
+
+            ### Python 3.10+
+            ```bash
+            python -m pip install oapython
+            ```
+
+            ### Verify every downloadable artifact
+            ```bash
+            sha256sum -c SHA256SUMS.txt
+            ```
+          files: dist/*
+
+      - name: Verify the public release anonymously
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          mkdir -p public-assets
+          gh release download "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --dir public-assets
+          (
+            cd public-assets
+            sha256sum -c SHA256SUMS.txt
+          )

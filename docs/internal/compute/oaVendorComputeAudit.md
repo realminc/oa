@@ -11,10 +11,9 @@ packaging, observability and device qualification.
 
 ## Evidence and provenance
 
-The ROCm code audit used the local tree at
-`/home/empyrealm/Code/Ml/rocm-libraries-develop`. The directory is a ROCm
-libraries super-repository snapshot but is not itself a Git worktree, so an
-immutable commit cannot be recorded. Findings below name live paths and the
+The ROCm code audit used a local `rocm-libraries-develop` super-repository
+snapshot. The snapshot was not itself a Git worktree, so an immutable commit
+cannot be recorded. Findings below name repository-relative paths and the
 2026-09-09 audit date; re-audit against a commit before using them as release
 evidence.
 

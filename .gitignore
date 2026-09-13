@@ -1,7 +1,6 @@
 /target
 /bin
 /var
-Cargo.lock
 __pycache__/
 *.py[cod]
 .venv/

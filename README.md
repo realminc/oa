@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="sdk/asset/docs/readme/oaSpaceCathedral.jpg" width="100%" alt="OA — one Rust and Vulkan foundation for compute, ML, media, and intelligent systems">
+</p>
+
 # OA
 
 OA is a GPU-first semantic computing engine written in Rust. One explicit
@@ -7,6 +11,11 @@ exposing backend machinery through the public API.
 
 This repository is the new primary OA implementation. The earlier C++ codebase
 continues separately as the donor and compatibility reference.
+
+[![Release](https://img.shields.io/github/v/release/realminc/oa?include_prereleases&label=preview)](https://github.com/realminc/oa/releases)
+[![CI](https://github.com/realminc/oa/actions/workflows/ci.yml/badge.svg)](https://github.com/realminc/oa/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/oapython?label=pypi)](https://pypi.org/project/oapython/)
+[![License](https://img.shields.io/badge/license-BSL--1.1-3b3b3b)](LICENSE)
 
 ## Three lines of compute
 
@@ -61,8 +70,9 @@ checked vertical slices include:
 - Image operations and codecs, planar Audio and codecs/DSP/sessions, Video
   containers/decoding, Vision detection/metrics, Render value foundations,
   cryptographic hashes/Merkle/PQC, secure memory, and Vulkan batch hashing;
-- a native PyO3 binding preview for Engine, FP32 Matrix creation, addition,
-  `mat_mul_nt`, metadata, and synchronized readback.
+- native PyO3 bindings for Engine/Event, typed dense Matrix construction and
+  operations, the current functional ML spine, Image codecs/transforms, Audio
+  codecs/DSP/features, metadata, and explicit synchronized host observation.
 
 No GPU operation is classified as stable yet. Capability claims are tied to
 the compatibility ledger, independent oracles, and recorded hardware evidence.
@@ -160,6 +170,22 @@ python -m venv .venv
 The native PyO3 implementation lives in `src/py`. The importable `oa` package,
 packaging, tests, examples, and tutorials live in `sdk/py`; neither creates a
 second runtime or CPU implementation.
+
+## Release artifacts
+
+Every public release is assembled by the tagged CI workflow and publishes:
+
+- an exact Rust source archive with the resolved `Cargo.lock`;
+- a Linux x86-64 SDK archive containing the runnable tutorials, benchmarks,
+  and applications staged from the same Release build;
+- one portable CPython 3.10+ ABI3 wheel, published to PyPI and then downloaded
+  back from PyPI before attachment to GitHub;
+- dependency and toolchain evidence plus one checksum manifest covering every
+  downloadable artifact.
+
+GitHub-hosted validation proves the host and compilation contracts. Tests that
+require a real GPU remain explicit capability gates and are not silently
+reclassified as CPU-Vulkan validation.
 
 ## Verification
 

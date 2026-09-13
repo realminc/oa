@@ -114,8 +114,8 @@ The canonical invocation is:
 ```bash
 tools/profiling/stable_clocks.sh --cpu-khz 2600000 --gpu-mhz 1000 -- \
   python3 tools/profiling/vlm_compare.py \
-    --oa-repo /home/empyrealm/Code/GitHub/oa \
-    --oars-repo /home/empyrealm/Code/GitHub/oars \
+    --oa-repo "$OA_CPP_REPO" \
+    --oars-repo "$OA_RS_REPO" \
     --oa-binary /absolute/clean/oa/benchVlm \
     --oars-binary /absolute/clean/oars/core_vlm_bench \
     --oars-rustflags '-C target-cpu=native -C link-arg=-fuse-ld=lld' \
