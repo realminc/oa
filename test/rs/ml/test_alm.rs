@@ -350,6 +350,59 @@ test_vk!(
 				.len(),
 			1
 		);
+		let directory = std::env::temp_dir().join(format!(
+			"oars-alm-bundle-{}-{}",
+			std::process::id(),
+			SystemTime::now()
+				.duration_since(SystemTime::UNIX_EPOCH)
+				.expect("system clock predates Unix epoch")
+				.as_nanos()
+		));
+		std::fs::create_dir_all(&directory).expect("create ALM bundle test directory");
+		let path = directory.join("alm.oam");
+		bundle.save_bundle(&path)?;
+		let bytes = std::fs::read(&path).expect("read ALM bundle");
+		assert!(bytes.windows(7).any(|window| window == b"OaAlmAg"));
+		assert!(
+			bytes
+				.windows(b"tokenizer.enc_in.weight".len())
+				.any(|window| window == b"tokenizer.enc_in.weight")
+		);
+		assert!(
+			bytes
+				.windows(b"prior.token_embed.weight".len())
+				.any(|window| window == b"prior.token_embed.weight")
+		);
+		assert!(!bytes.windows(8).any(|window| window == b"ema_step"));
+		if let Ok(modelctl) = std::env::var("OA_CPP_MODELCTL") {
+			let status = std::process::Command::new(modelctl)
+				.args(["verify", path.to_str().expect("UTF-8 temporary path")])
+				.status()
+				.expect("run OA C++ modelctl");
+			assert!(status.success(), "OA C++ rejected Rust-written ALM bundle");
+		}
+		let restored = oa::sdk::ml::alm::Alm::load_bundle(&engine, &path)?;
+		assert_eq!(restored.config().tokenizer, bundle.config().tokenizer);
+		assert_eq!(
+			restored.config().prior.model_width,
+			bundle.config().prior.model_width
+		);
+		assert_eq!(
+			restored.config().prior.num_layers,
+			bundle.config().prior.num_layers
+		);
+		assert_eq!(
+			restored.config().prior.max_sequence_length,
+			bundle.config().prior.max_sequence_length
+		);
+		assert_eq!(
+			restored.config().prior.max_generation_length,
+			bundle.config().prior.max_generation_length
+		);
+		assert_eq!(restored.text_encoder_identity(), None);
+		assert!(!restored.has_native_text_encoder());
+		assert_module_state_equal(&bundle, &restored)?;
+		std::fs::remove_dir_all(directory).expect("remove ALM bundle test directory");
 		Ok(())
 	}
 );
@@ -399,6 +452,38 @@ test_vk!(
 				.shape(),
 			[2, 3, 7]
 		);
+
+		let directory = std::env::temp_dir().join(format!(
+			"oars-clip-model-{}-{}",
+			std::process::id(),
+			SystemTime::now()
+				.duration_since(SystemTime::UNIX_EPOCH)
+				.expect("system clock predates Unix epoch")
+				.as_nanos()
+		));
+		std::fs::create_dir_all(&directory).expect("create CLIP model test directory");
+		let path = directory.join("clip.oam");
+		clip.save_model(&path)?;
+		let bytes = std::fs::read(&path).expect("read CLIP model");
+		assert!(
+			bytes
+				.windows(b"text_model.embeddings.token_embedding.weight".len())
+				.any(|window| window == b"text_model.embeddings.token_embedding.weight")
+		);
+		assert!(
+			bytes
+				.windows(b"text_model.encoder.layers.0.mlp.fc1.weight".len())
+				.any(|window| window == b"text_model.encoder.layers.0.mlp.fc1.weight")
+		);
+		let restored = oa::sdk::ml::alm::ClipText::load_model(&engine, &path)?;
+		assert_module_state_equal(&clip, &restored)?;
+		assert!(
+			restored
+				.all_parameters()?
+				.into_iter()
+				.all(|parameter| !parameter.requires_grad())
+		);
+		std::fs::remove_dir_all(directory).expect("remove CLIP model test directory");
 		Ok(())
 	}
 );

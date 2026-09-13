@@ -1,8 +1,9 @@
-use std::rc::Rc;
+use std::{path::Path, rc::Rc};
 
 use crate::ml::{
-	Module, ModuleRegistry, matrix as ml_matrix,
+	Module, ModuleArtifact, ModuleArtifactMetadata, ModuleRegistry, matrix as ml_matrix,
 	nn::{Embedding, LayerNorm, Linear, MultiHeadAttention},
+	save_module_artifact,
 };
 use crate::{DType, Engine, Error, Matrix, Result, matrix};
 
@@ -201,6 +202,77 @@ impl ClipText {
 		Self::with_seed(engine, config, 0)
 	}
 
+	/// Save this frozen text tower as an OA `OaClipTextAg` v1 model file.
+	///
+	/// Tensor names and the 48-byte architecture payload match the C++ model
+	/// translator, allowing the same `.oam` artifact to cross language boundaries.
+	///
+	/// # Errors
+	///
+	/// Returns an error for unsupported integer widths, incomplete module
+	/// ownership, readback, serialization, or filesystem failure.
+	pub fn save_model(&self, path: impl AsRef<Path>) -> Result<()> {
+		save_module_artifact(
+			path.as_ref(),
+			self,
+			ModuleArtifactMetadata {
+				architecture: "OaClipTextAg".to_owned(),
+				config_version: 1,
+				d_model: u32::try_from(self.config.hidden_size)
+					.map_err(|_| Error::resource_exhausted("CLIP hidden size exceeds u32"))?,
+				n_layers: u32::try_from(self.config.num_layers)
+					.map_err(|_| Error::resource_exhausted("CLIP layer count exceeds u32"))?,
+				d_vocab: u32::try_from(self.config.vocab_size)
+					.map_err(|_| Error::resource_exhausted("CLIP vocabulary exceeds u32"))?,
+				arch_config: encode_config(self.config)?,
+			},
+			clip_artifact_path,
+		)
+	}
+
+	/// Load an OA C++/Rust `OaClipTextAg` v1 model file.
+	///
+	/// The wire file is fully validated before its architecture is constructed;
+	/// every tensor is then shape/dtype/name checked before any live parameter is
+	/// replaced.
+	///
+	/// # Errors
+	///
+	/// Returns `CheckpointCorrupt` for the wrong architecture/version/payload or
+	/// malformed wire data, and another error for invalid model geometry,
+	/// allocation, upload, or destination mismatch.
+	pub fn load_model(engine: &Engine, path: impl AsRef<Path>) -> Result<Self> {
+		let artifact = ModuleArtifact::load(path.as_ref())?;
+		let metadata = artifact.metadata();
+		if metadata.architecture != "OaClipTextAg"
+			|| metadata.config_version != 1
+			|| metadata.arch_config.len() != 48
+		{
+			return Err(Error::checkpoint_corrupt(
+				"checkpoint is not an OaClipTextAg v1 model",
+			));
+		}
+		let config = decode_config(&metadata.arch_config)?;
+		let d_model = u32::try_from(config.hidden_size)
+			.map_err(|_| Error::checkpoint_corrupt("CLIP hidden size exceeds u32"))?;
+		let n_layers = u32::try_from(config.num_layers)
+			.map_err(|_| Error::checkpoint_corrupt("CLIP layer count exceeds u32"))?;
+		let d_vocab = u32::try_from(config.vocab_size)
+			.map_err(|_| Error::checkpoint_corrupt("CLIP vocabulary exceeds u32"))?;
+		if metadata.d_model != d_model
+			|| metadata.n_layers != n_layers
+			|| metadata.d_vocab != d_vocab
+		{
+			return Err(Error::checkpoint_corrupt(
+				"CLIP summary metadata disagrees with its architecture payload",
+			));
+		}
+		let model = Self::new(engine, config)?;
+		artifact.restore(engine, &model, clip_artifact_path)?;
+		model.freeze()?;
+		Ok(model)
+	}
+
 	/// Evaluate pre-tokenized fixed-context text and gather tokenizer-provided EOS rows.
 	pub fn forward_tokens(&self, token_ids: &Matrix, flat_eos_rows: &Matrix) -> Result<Matrix> {
 		let [batch, context] = token_ids.shape() else {
@@ -290,8 +362,12 @@ impl Module for ClipText {
 			DType::U32 => token_ids
 				.read::<u32>()?
 				.into_iter()
-				.map(|value| i32::try_from(value).unwrap_or(i32::MAX))
-				.collect(),
+				.map(|value| {
+					i32::try_from(value).map_err(|_| {
+						Error::out_of_range("CLIP token ID exceeds the supported I32 vocabulary")
+					})
+				})
+				.collect::<Result<Vec<_>>>()?,
 			_ => return Err(Error::invalid_argument("CLIP token ids must be I32 or U32")),
 		};
 		let rows = values
@@ -338,4 +414,120 @@ fn validate_config(config: ClipTextConfig) -> Result<()> {
 		return Err(Error::invalid_argument("invalid CLIP text configuration"));
 	}
 	Ok(())
+}
+
+pub(super) fn clip_artifact_path(path: &str) -> Result<String> {
+	if let Some(suffix) = path.strip_prefix("token_embedding") {
+		return Ok(format!("text_model.embeddings.token_embedding{suffix}"));
+	}
+	if let Some(suffix) = path.strip_prefix("position_embedding") {
+		return Ok(format!("text_model.embeddings.position_embedding{suffix}"));
+	}
+	if let Some(suffix) = path.strip_prefix("final_layer_norm") {
+		return Ok(format!("text_model.final_layer_norm{suffix}"));
+	}
+	if path == "text_projection.weight" {
+		return Ok(path.to_owned());
+	}
+	let (layer, suffix) = path
+		.split_once('.')
+		.ok_or_else(|| Error::internal(format!("unrecognized CLIP parameter path {path}")))?;
+	let index = layer
+		.strip_prefix("layer_")
+		.ok_or_else(|| Error::internal(format!("unrecognized CLIP parameter path {path}")))?;
+	if index.is_empty() || !index.bytes().all(|byte| byte.is_ascii_digit()) {
+		return Err(Error::internal(format!("invalid CLIP layer path {path}")));
+	}
+	let suffix = if let Some(value) = suffix.strip_prefix("mlp_fc1") {
+		format!("mlp.fc1{value}")
+	} else if let Some(value) = suffix.strip_prefix("mlp_fc2") {
+		format!("mlp.fc2{value}")
+	} else {
+		suffix.to_owned()
+	};
+	Ok(format!("text_model.encoder.layers.{index}.{suffix}"))
+}
+
+fn encode_config(config: ClipTextConfig) -> Result<Vec<u8>> {
+	let integers = [
+		config.vocab_size,
+		config.context_length,
+		config.hidden_size,
+		config.intermediate_size,
+		config.num_heads,
+		config.num_layers,
+		config.projection_dim,
+	];
+	let tokens = [config.bos_token, config.eos_token, config.pad_token];
+	let mut bytes = Vec::with_capacity(48);
+	for value in integers {
+		bytes.extend_from_slice(
+			&i32::try_from(value)
+				.map_err(|_| Error::resource_exhausted("CLIP configuration exceeds i32"))?
+				.to_le_bytes(),
+		);
+	}
+	bytes.extend_from_slice(&config.layer_norm_epsilon.to_le_bytes());
+	bytes.extend_from_slice(&config.quick_gelu_alpha.to_le_bytes());
+	for value in tokens {
+		bytes.extend_from_slice(&value.to_le_bytes());
+	}
+	debug_assert_eq!(bytes.len(), 48);
+	Ok(bytes)
+}
+
+fn decode_config(bytes: &[u8]) -> Result<ClipTextConfig> {
+	if bytes.len() != 48 {
+		return Err(Error::checkpoint_corrupt(
+			"CLIP architecture payload must contain 48 bytes",
+		));
+	}
+	let mut offset = 0_usize;
+	let mut word = || {
+		let value = bytes
+			.get(offset..offset + 4)
+			.and_then(|value| value.try_into().ok())
+			.map(i32::from_le_bytes)
+			.ok_or_else(|| Error::checkpoint_corrupt("truncated CLIP architecture payload"));
+		offset += 4;
+		value
+	};
+	let vocab_size = positive_usize(word()?, "vocabulary")?;
+	let context_length = positive_usize(word()?, "context length")?;
+	let hidden_size = positive_usize(word()?, "hidden size")?;
+	let intermediate_size = positive_usize(word()?, "intermediate size")?;
+	let num_heads = positive_usize(word()?, "head count")?;
+	let num_layers = positive_usize(word()?, "layer count")?;
+	let projection_dim = positive_usize(word()?, "projection width")?;
+	let layer_norm_epsilon = f32::from_bits(u32::from_le_bytes(word()?.to_le_bytes()));
+	let quick_gelu_alpha = f32::from_bits(u32::from_le_bytes(word()?.to_le_bytes()));
+	let bos_token = word()?;
+	let eos_token = word()?;
+	let pad_token = word()?;
+	let config = ClipTextConfig {
+		vocab_size,
+		context_length,
+		hidden_size,
+		intermediate_size,
+		num_heads,
+		num_layers,
+		projection_dim,
+		layer_norm_epsilon,
+		quick_gelu_alpha,
+		bos_token,
+		eos_token,
+		pad_token,
+	};
+	validate_config(config)?;
+	Ok(config)
+}
+
+fn positive_usize(value: i32, field: &str) -> Result<usize> {
+	if value <= 0 {
+		return Err(Error::checkpoint_corrupt(format!(
+			"CLIP {field} must be a positive integer"
+		)));
+	}
+	usize::try_from(value)
+		.map_err(|_| Error::checkpoint_corrupt(format!("CLIP {field} exceeds usize")))
 }

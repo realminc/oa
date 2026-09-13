@@ -34,6 +34,7 @@ pub use autograd::GradientTape;
 pub use checkpoint::{
 	CheckpointManager, CheckpointManagerConfig, load_checkpoint, save_checkpoint,
 };
+pub(crate) use checkpoint::{ModuleArtifact, ModuleArtifactMetadata, save_module_artifact};
 pub use collector::{RolloutCollector, RolloutCollectorConfig, RolloutCollectorMetrics};
 pub use environment::{
 	EnvironmentSpace, EnvironmentSpaceKind, EnvironmentSpec, EnvironmentTransition,

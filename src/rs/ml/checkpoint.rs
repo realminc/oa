@@ -5,7 +5,8 @@ use crate::{DType, Engine, Error, Matrix, Result};
 use super::{
 	CheckpointOptimizer, Module,
 	model_file::{
-		ModelFile, Optimizer as PersistedOptimizer, Progress, ScalarType, Tensor, TensorEncoding,
+		Config as PersistedConfig, ModelFile, Optimizer as PersistedOptimizer, Progress,
+		ScalarType, Tensor, TensorEncoding,
 	},
 	optimizer::{OptimizerCheckpoint, OptimizerRestore},
 };
@@ -19,6 +20,144 @@ pub(super) struct CheckpointProgress {
 	pub(super) metric: f64,
 	pub(super) metric_name: String,
 	pub(super) lower_is_better: bool,
+}
+
+/// Private architecture metadata carried by an optimizer-free module artifact.
+pub(crate) struct ModuleArtifactMetadata {
+	pub(crate) architecture: String,
+	pub(crate) config_version: u32,
+	pub(crate) d_model: u32,
+	pub(crate) n_layers: u32,
+	pub(crate) d_vocab: u32,
+	pub(crate) arch_config: Vec<u8>,
+}
+
+/// Validated, host-owned `.oam` artifact awaiting an exact module owner.
+pub(crate) struct ModuleArtifact {
+	file: ModelFile,
+}
+
+impl ModuleArtifact {
+	pub(crate) fn load(path: &Path) -> Result<Self> {
+		Ok(Self {
+			file: ModelFile::load(path)?,
+		})
+	}
+
+	pub(crate) fn metadata(&self) -> ModuleArtifactMetadata {
+		ModuleArtifactMetadata {
+			architecture: self.file.config.architecture.clone(),
+			config_version: self.file.config.config_version,
+			d_model: self.file.config.d_model,
+			n_layers: self.file.config.n_layers,
+			d_vocab: self.file.config.d_vocab,
+			arch_config: self.file.config.arch_config.clone(),
+		}
+	}
+
+	pub(crate) fn restore(
+		self,
+		engine: &Engine,
+		model: &dyn Module,
+		artifact_name: impl Fn(&str) -> Result<String>,
+	) -> Result<()> {
+		let named = model.all_named_parameters()?;
+		let buffers = model
+			.all_named_buffers()?
+			.into_iter()
+			.filter(|buffer| buffer.persistent())
+			.collect::<Vec<_>>();
+		if self.file.weights.len() != named.len() || self.file.state.len() != buffers.len() {
+			return Err(Error::checkpoint_corrupt(
+				"module artifact tensor count does not match its architecture",
+			));
+		}
+		let owner = engine.handle();
+		if named
+			.iter()
+			.any(|entry| !entry.parameter().data().engine_handle().same_as(&owner))
+			|| buffers
+				.iter()
+				.any(|entry| !entry.data().engine_handle().same_as(&owner))
+		{
+			return Err(Error::invalid_argument(
+				"module artifact engine does not own the destination module",
+			));
+		}
+
+		let mut loaded_parameters = Vec::with_capacity(named.len());
+		for expected in &named {
+			let path = artifact_name(expected.path())?;
+			let tensor = self
+				.file
+				.weights
+				.iter()
+				.find(|tensor| tensor.name == path)
+				.ok_or_else(|| Error::checkpoint_corrupt(format!("missing weight {path}")))?;
+			let parameter = expected.parameter();
+			validate_tensor_contract(tensor, &path, &parameter.data())?;
+			loaded_parameters.push((parameter, matrix_from_tensor(engine, tensor)?));
+		}
+		let mut loaded_buffers = Vec::with_capacity(buffers.len());
+		for expected in &buffers {
+			let path = artifact_name(expected.path())?;
+			let tensor = self
+				.file
+				.state
+				.iter()
+				.find(|tensor| tensor.name == path)
+				.ok_or_else(|| Error::checkpoint_corrupt(format!("missing state {path}")))?;
+			validate_tensor_contract(tensor, &path, &expected.data())?;
+			loaded_buffers.push((expected, matrix_from_tensor(engine, tensor)?));
+		}
+		for (parameter, _) in &loaded_parameters {
+			parameter.validate_can_update()?;
+		}
+		for (parameter, data) in loaded_parameters {
+			parameter.replace_data(data)?;
+			parameter.clear_gradient();
+		}
+		for (buffer, data) in loaded_buffers {
+			buffer.replace_data(data)?;
+		}
+		Ok(())
+	}
+}
+
+pub(crate) fn save_module_artifact(
+	path: &Path,
+	model: &dyn Module,
+	metadata: ModuleArtifactMetadata,
+	artifact_name: impl Fn(&str) -> Result<String>,
+) -> Result<()> {
+	let mut file = ModelFile::new();
+	file.config = PersistedConfig {
+		architecture: metadata.architecture,
+		config_version: metadata.config_version,
+		flags: 0,
+		d_model: metadata.d_model,
+		n_layers: metadata.n_layers,
+		d_vocab: metadata.d_vocab,
+		arch_config: metadata.arch_config,
+		weight_dtype: ScalarType::F32,
+		state_dtype: ScalarType::F32,
+		compute_dtype: ScalarType::F32,
+	};
+	for entry in model.all_named_parameters()? {
+		file.weights.push(matrix_tensor(
+			&artifact_name(entry.path())?,
+			&entry.parameter().data(),
+		)?);
+	}
+	for entry in model
+		.all_named_buffers()?
+		.into_iter()
+		.filter(|buffer| buffer.persistent())
+	{
+		file.state
+			.push(matrix_tensor(&artifact_name(entry.path())?, &entry.data())?);
+	}
+	file.save(path)
 }
 
 /// Save a module and its complete optimizer state in the native OA `.oam` format.

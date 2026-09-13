@@ -17,16 +17,23 @@ children:
 Alm
 ├── tokenizer   temporal Conv1d VQ-VAE
 ├── prior       causal motion-token Transformer
-└── text_encoder  optional frozen CLIP text tower
+├── text_encoder  optional frozen CLIP text tower
+└── text_tokenizer_merges  optional persistent byte-BPE asset
 ```
 
 An optional `text_encoder` child owns the frozen CLIP text-with-projection
 tower when its projection width matches the conditioned prior. All children
 borrow the caller's sole `Engine`. Their operations record into
 the normal semantic/executable graph, their parameters and persistent buffers
-use the ordinary `ModuleRegistry`, and a native `.oam` checkpoint traverses one
+use the ordinary `ModuleRegistry`, and a native `.oam` artifact traverses one
 unambiguous `tokenizer.*` / `prior.*` tree. There is no ALM allocator,
 scheduler, graph, or shader registry.
+
+`from_external_text_parts` records an exact encoder identity while leaving
+features caller-owned. `from_native_text_parts` admits only the pinned
+`openai/clip-vit-large-patch14` tower and canonical merge table, then owns both
+as one product. `encode_prompt` and `generate_motion_prompt` therefore need no
+unrelated asset path or caller-assembled tokenizer.
 
 ## Tokenizer
 
@@ -109,7 +116,12 @@ Release-mode hardware gates on Intel Iris Xe, Mesa 26.2.2, Vulkan 1.4.354 prove:
 - native canonical 49,408-token CLIP byte-BPE parsing, BOS/EOS padding,
   truncation, and pinned OpenAI token-ID compatibility when the merge asset is
   supplied;
-- one product-level registered `tokenizer.*` / `prior.*` tree.
+- frozen CLIP `OaClipTextAg` v1 `.oam` round-trip through canonical donor tensor
+  paths and its exact packed 48-byte architecture payload;
+- one product-level registered `tokenizer.*` / `prior.*` tree; and
+- optimizer-free `OaAlmAg` v3 bundle save/load through the donor's exact packed
+  205-byte architecture payload. Training-only EMA host counters remain in
+  optimizer checkpoints rather than changing the C++ product state index.
 
 These are correctness and integration results, not a performance claim.
 
@@ -119,13 +131,10 @@ The following donor surfaces remain Planned:
 
 - fused channel-normalization and Conv1d/ReLU lowering with qualified timing;
 - KV-cache generation;
-- CLIP weight translator/archive loader; the merge table remains an explicit
-  external asset by design;
+- external CLIP weight translation into the native `.oam` model; native product
+  bundles already own the merge table rather than requiring an application path;
 - HumanML3D/KIT/CMP dataset, normalization, stage trainer, validation metrics,
   callbacks, and runnable `trainalm`/`genalm` applications;
-- architecture-specific ALM `.oam` config payload and optimizer-free bundle
-  load/save; generic module/optimizer checkpoints already preserve the complete
-  registered numerical state;
 - donor checkpoint differential conversion, broader shapes/dtypes, validation
   layers, and canonical fresh-process performance qualification.
 
