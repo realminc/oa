@@ -37,6 +37,12 @@ pub(crate) struct ModuleArtifact {
 	file: ModelFile,
 }
 
+pub(crate) struct DenseArtifactTensor {
+	pub(crate) name: String,
+	pub(crate) shape: Vec<usize>,
+	pub(crate) data: Vec<u8>,
+}
+
 impl ModuleArtifact {
 	pub(crate) fn load(path: &Path) -> Result<Self> {
 		Ok(Self {
@@ -156,6 +162,39 @@ pub(crate) fn save_module_artifact(
 	{
 		file.state
 			.push(matrix_tensor(&artifact_name(entry.path())?, &entry.data())?);
+	}
+	file.save(path)
+}
+
+pub(crate) fn save_dense_artifact(
+	path: &Path,
+	metadata: ModuleArtifactMetadata,
+	tensors: Vec<DenseArtifactTensor>,
+) -> Result<()> {
+	let mut file = ModelFile::new();
+	file.config = PersistedConfig {
+		architecture: metadata.architecture,
+		config_version: metadata.config_version,
+		flags: 0,
+		d_model: metadata.d_model,
+		n_layers: metadata.n_layers,
+		d_vocab: metadata.d_vocab,
+		arch_config: metadata.arch_config,
+		weight_dtype: ScalarType::F32,
+		state_dtype: ScalarType::F32,
+		compute_dtype: ScalarType::F32,
+	};
+	for tensor in tensors {
+		let shape = tensor
+			.shape
+			.into_iter()
+			.map(|extent| {
+				u64::try_from(extent)
+					.map_err(|_| Error::resource_exhausted("artifact extent exceeds u64"))
+			})
+			.collect::<Result<Vec<_>>>()?;
+		file.weights
+			.push(Tensor::dense(tensor.name, DType::F32, shape, tensor.data)?);
 	}
 	file.save(path)
 }

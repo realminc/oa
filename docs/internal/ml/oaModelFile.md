@@ -24,6 +24,15 @@ codec. A future general artifact surface is named `oa::ml::ModelFile`.
 External formats belong to explicit translator/import operations; an `io`
 module must not become a second owner of `.oam`.
 
+The first admitted external translator is
+`ClipText::import_safetensors`. Its private `ml/weights` backend validates the
+SafeTensors header, dtype/shape byte counts, file bounds, and non-overlapping
+payload ranges. The model-specific layer requires the complete pinned
+ViT-L/14 FP32 text inventory, validates optional `position_ids`, rejects
+unknown text-namespace tensors, deliberately ignores unrelated vision tensors,
+and writes through this codec. The container is not exposed as another model
+representation.
+
 ## Implemented wire contract
 
 OARS writes version 3 and reads versions 1 through 3. It preserves the donor's:
@@ -112,7 +121,8 @@ OA_CPP_MODELCTL=/path/to/oa/bin/release/sdk/apps/ml/modelctl \
 ## Remaining work
 
 The public general `ModelFile` object, generic architecture-config access,
-quantization creation/loading, external-format model translators, Windows
+quantization creation/loading, additional external-format/model translators,
+sharded SafeTensors packages, Windows
 durable replacement evidence, and serialized
 execution-plan/RNG state remain Planned. These extend this codec; they must not
 introduce another `.oam` implementation.

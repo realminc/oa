@@ -1,9 +1,10 @@
-use std::{path::Path, rc::Rc};
+use std::{collections::HashSet, path::Path, rc::Rc};
 
 use crate::ml::{
-	Module, ModuleArtifact, ModuleArtifactMetadata, ModuleRegistry, matrix as ml_matrix,
+	DenseArtifactTensor, Module, ModuleArtifact, ModuleArtifactMetadata, ModuleRegistry,
+	SafeTensorsSource, matrix as ml_matrix,
 	nn::{Embedding, LayerNorm, Linear, MultiHeadAttention},
-	save_module_artifact,
+	save_dense_artifact, save_module_artifact,
 };
 use crate::{DType, Engine, Error, Matrix, Result, matrix};
 
@@ -43,6 +44,21 @@ impl Default for ClipTextConfig {
 			pad_token: 49_407,
 		}
 	}
+}
+
+/// Summary of one external CLIP SafeTensors translation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ClipImportReport {
+	/// Complete tensor count in the source container.
+	pub source_tensors: usize,
+	/// Text-tower tensors consumed by the exact translator.
+	pub used_source_tensors: usize,
+	/// Native `.oam` weight count.
+	pub output_tensors: usize,
+	/// Total dense FP32 tensor bytes written to Weights.
+	pub output_bytes: usize,
+	/// Source tensors intentionally excluded, including the vision tower.
+	pub unused_source_tensors: usize,
 }
 
 struct ClipResidualBlock {
@@ -136,6 +152,24 @@ pub struct ClipText {
 }
 
 impl ClipText {
+	/// Translate the published CLIP ViT-L/14 SafeTensors image into native `.oam`.
+	///
+	/// The translator admits every and only text-tower FP32 tensor, validates exact
+	/// shapes, ignores unrelated vision/logit-scale tensors, and rejects unknown
+	/// names below the text namespaces. No Vulkan Engine is needed for this host
+	/// conversion.
+	///
+	/// # Errors
+	///
+	/// Returns an error for malformed SafeTensors data, a missing/unexpected text
+	/// tensor, dtype or shape mismatch, arithmetic overflow, or output failure.
+	pub fn import_safetensors(
+		input: impl AsRef<Path>,
+		output: impl AsRef<Path>,
+	) -> Result<ClipImportReport> {
+		import_safetensors_config(input.as_ref(), output.as_ref(), ClipTextConfig::default())
+	}
+
 	pub fn with_seed(engine: &Engine, config: ClipTextConfig, seed: u64) -> Result<Self> {
 		validate_config(config)?;
 		let token_embedding = Rc::new(Embedding::with_seed(
@@ -476,6 +510,134 @@ fn encode_config(config: ClipTextConfig) -> Result<Vec<u8>> {
 	Ok(bytes)
 }
 
+fn import_safetensors_config(
+	input: &Path,
+	output: &Path,
+	config: ClipTextConfig,
+) -> Result<ClipImportReport> {
+	validate_config(config)?;
+	let source = SafeTensorsSource::open(input)?;
+	let expected = expected_tensors(config);
+	let expected_names = expected
+		.iter()
+		.map(|(name, _)| name.as_str())
+		.collect::<HashSet<_>>();
+	if let Some(shape) = source.shape("text_model.embeddings.position_ids")
+		&& shape != [1, config.context_length]
+	{
+		return Err(Error::invalid_argument(
+			"CLIP position_ids buffer has the wrong shape",
+		));
+	}
+	for name in source.names() {
+		let text_tensor = name.starts_with("text_model.") || name.starts_with("text_projection");
+		if text_tensor
+			&& name != "text_model.embeddings.position_ids"
+			&& !expected_names.contains(name)
+		{
+			return Err(Error::failed_precondition(format!(
+				"unexpected CLIP text tensor: {name}"
+			)));
+		}
+	}
+
+	let mut tensors = Vec::with_capacity(expected.len());
+	let mut output_bytes = 0_usize;
+	for (name, shape) in expected {
+		let source_shape = source
+			.shape(&name)
+			.ok_or_else(|| Error::not_found(format!("CLIP tensor missing: {name}")))?;
+		if source_shape != shape {
+			return Err(Error::invalid_argument(format!(
+				"CLIP shape mismatch: {name}"
+			)));
+		}
+		let data = source.f32_bytes(&name)?.to_vec();
+		output_bytes = output_bytes
+			.checked_add(data.len())
+			.ok_or_else(|| Error::resource_exhausted("CLIP output byte count overflows usize"))?;
+		tensors.push(DenseArtifactTensor { name, shape, data });
+	}
+	let source_tensors = source.names().count();
+	let output_tensors = tensors.len();
+	save_dense_artifact(
+		output,
+		ModuleArtifactMetadata {
+			architecture: "OaClipTextAg".to_owned(),
+			config_version: 1,
+			d_model: u32::try_from(config.hidden_size)
+				.map_err(|_| Error::resource_exhausted("CLIP hidden size exceeds u32"))?,
+			n_layers: u32::try_from(config.num_layers)
+				.map_err(|_| Error::resource_exhausted("CLIP layer count exceeds u32"))?,
+			d_vocab: u32::try_from(config.vocab_size)
+				.map_err(|_| Error::resource_exhausted("CLIP vocabulary exceeds u32"))?,
+			arch_config: encode_config(config)?,
+		},
+		tensors,
+	)?;
+	Ok(ClipImportReport {
+		source_tensors,
+		used_source_tensors: output_tensors,
+		output_tensors,
+		output_bytes,
+		unused_source_tensors: source_tensors.saturating_sub(output_tensors),
+	})
+}
+
+fn expected_tensors(config: ClipTextConfig) -> Vec<(String, Vec<usize>)> {
+	let mut tensors = Vec::with_capacity(5 + config.num_layers * 16);
+	tensors.push((
+		"text_model.embeddings.token_embedding.weight".to_owned(),
+		vec![config.vocab_size, config.hidden_size],
+	));
+	tensors.push((
+		"text_model.embeddings.position_embedding.weight".to_owned(),
+		vec![config.context_length, config.hidden_size],
+	));
+	for layer in 0..config.num_layers {
+		let root = format!("text_model.encoder.layers.{layer}");
+		for projection in ["q_proj", "k_proj", "v_proj", "out_proj"] {
+			let base = format!("{root}.self_attn.{projection}");
+			tensors.push((
+				format!("{base}.weight"),
+				vec![config.hidden_size, config.hidden_size],
+			));
+			tensors.push((format!("{base}.bias"), vec![config.hidden_size]));
+		}
+		for norm in ["layer_norm1", "layer_norm2"] {
+			let base = format!("{root}.{norm}");
+			tensors.push((format!("{base}.weight"), vec![config.hidden_size]));
+			tensors.push((format!("{base}.bias"), vec![config.hidden_size]));
+		}
+		tensors.push((
+			format!("{root}.mlp.fc1.weight"),
+			vec![config.intermediate_size, config.hidden_size],
+		));
+		tensors.push((
+			format!("{root}.mlp.fc1.bias"),
+			vec![config.intermediate_size],
+		));
+		tensors.push((
+			format!("{root}.mlp.fc2.weight"),
+			vec![config.hidden_size, config.intermediate_size],
+		));
+		tensors.push((format!("{root}.mlp.fc2.bias"), vec![config.hidden_size]));
+	}
+	tensors.push((
+		"text_model.final_layer_norm.weight".to_owned(),
+		vec![config.hidden_size],
+	));
+	tensors.push((
+		"text_model.final_layer_norm.bias".to_owned(),
+		vec![config.hidden_size],
+	));
+	tensors.push((
+		"text_projection.weight".to_owned(),
+		vec![config.projection_dim, config.hidden_size],
+	));
+	tensors
+}
+
 fn decode_config(bytes: &[u8]) -> Result<ClipTextConfig> {
 	if bytes.len() != 48 {
 		return Err(Error::checkpoint_corrupt(
@@ -530,4 +692,102 @@ fn positive_usize(value: i32, field: &str) -> Result<usize> {
 	}
 	usize::try_from(value)
 		.map_err(|_| Error::checkpoint_corrupt(format!("CLIP {field} exceeds usize")))
+}
+
+#[cfg(test)]
+mod tests {
+	use std::time::SystemTime;
+
+	use serde_json::{Map, Value, json};
+
+	use super::{ClipTextConfig, expected_tensors, import_safetensors_config};
+
+	#[test]
+	fn safe_tensors_translation_emits_exact_text_inventory() -> crate::Result<()> {
+		let config = ClipTextConfig {
+			vocab_size: 8,
+			context_length: 4,
+			hidden_size: 4,
+			intermediate_size: 8,
+			num_heads: 1,
+			num_layers: 1,
+			projection_dim: 3,
+			layer_norm_epsilon: 1.0e-5,
+			quick_gelu_alpha: 1.702,
+			bos_token: 6,
+			eos_token: 7,
+			pad_token: 7,
+		};
+		let directory = std::env::temp_dir().join(format!(
+			"oars-clip-import-{}-{}",
+			std::process::id(),
+			SystemTime::now()
+				.duration_since(SystemTime::UNIX_EPOCH)
+				.expect("system clock predates Unix epoch")
+				.as_nanos()
+		));
+		std::fs::create_dir_all(&directory).expect("create CLIP import test directory");
+		let input = directory.join("clip.safetensors");
+		let output = directory.join("clip.oam");
+
+		let mut header = Map::new();
+		let mut payload = Vec::new();
+		for (name, shape) in expected_tensors(config) {
+			let start = payload.len();
+			let elements = shape.iter().product::<usize>();
+			payload.resize(start + elements * 4, 0);
+			header.insert(
+				name,
+				json!({"dtype": "F32", "shape": shape, "data_offsets": [start, payload.len()]}),
+			);
+		}
+		let start = payload.len();
+		payload.resize(start + config.context_length * 8, 0);
+		header.insert(
+			"text_model.embeddings.position_ids".to_owned(),
+			json!({
+				"dtype": "I64",
+				"shape": [1, config.context_length],
+				"data_offsets": [start, payload.len()]
+			}),
+		);
+		let start = payload.len();
+		payload.resize(start + 4, 0);
+		header.insert(
+			"visual.unused.weight".to_owned(),
+			json!({"dtype": "F32", "shape": [1], "data_offsets": [start, payload.len()]}),
+		);
+		header.insert(
+			"__metadata__".to_owned(),
+			Value::Object(Map::from_iter([(
+				"format".to_owned(),
+				Value::String("pt".to_owned()),
+			)])),
+		);
+		let header = serde_json::to_vec(&Value::Object(header)).expect("serialize test header");
+		let mut file = Vec::with_capacity(8 + header.len() + payload.len());
+		file.extend_from_slice(&(header.len() as u64).to_le_bytes());
+		file.extend_from_slice(&header);
+		file.extend_from_slice(&payload);
+		std::fs::write(&input, file).expect("write synthetic SafeTensors");
+
+		let report = import_safetensors_config(&input, &output, config)?;
+		assert_eq!(report.output_tensors, 21);
+		assert_eq!(report.source_tensors, 23);
+		assert_eq!(report.used_source_tensors, 21);
+		assert_eq!(report.unused_source_tensors, 2);
+		assert_eq!(
+			report.output_bytes,
+			payload.len() - config.context_length * 8 - 4
+		);
+		let artifact = std::fs::read(&output).expect("read translated CLIP model");
+		assert_eq!(&artifact[..4], b"OAM\0");
+		assert!(
+			artifact
+				.windows(b"text_model.encoder.layers.0.mlp.fc1.weight".len())
+				.any(|window| window == b"text_model.encoder.layers.0.mlp.fc1.weight")
+		);
+		std::fs::remove_dir_all(directory).expect("remove CLIP import test directory");
+		Ok(())
+	}
 }

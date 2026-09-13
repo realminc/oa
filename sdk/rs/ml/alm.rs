@@ -5,7 +5,7 @@ mod model;
 mod prior;
 mod tokenizer;
 
-pub use clip::{ClipText, ClipTextConfig};
+pub use clip::{ClipImportReport, ClipText, ClipTextConfig};
 pub use model::{Alm, AlmConfig};
 pub use prior::{AlmFfnType, AlmGenerationOptions, AlmPrior, AlmPriorConfig};
 pub use tokenizer::{ClipTokenBatch, ClipTokenizer};

@@ -116,6 +116,9 @@ Release-mode hardware gates on Intel Iris Xe, Mesa 26.2.2, Vulkan 1.4.354 prove:
 - native canonical 49,408-token CLIP byte-BPE parsing, BOS/EOS padding,
   truncation, and pinned OpenAI token-ID compatibility when the merge asset is
   supplied;
+- bounded host-side SafeTensors parsing and exact ViT-L/14 text-tower
+  translation through `ClipText::import_safetensors`; unrelated vision weights
+  are reported as unused while unknown text weights fail closed;
 - frozen CLIP `OaClipTextAg` v1 `.oam` round-trip through canonical donor tensor
   paths and its exact packed 48-byte architecture payload;
 - one product-level registered `tokenizer.*` / `prior.*` tree; and
@@ -131,8 +134,6 @@ The following donor surfaces remain Planned:
 
 - fused channel-normalization and Conv1d/ReLU lowering with qualified timing;
 - KV-cache generation;
-- external CLIP weight translation into the native `.oam` model; native product
-  bundles already own the merge table rather than requiring an application path;
 - HumanML3D/KIT/CMP dataset, normalization, stage trainer, validation metrics,
   callbacks, and runnable `trainalm`/`genalm` applications;
 - donor checkpoint differential conversion, broader shapes/dtypes, validation

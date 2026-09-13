@@ -194,6 +194,9 @@ to an active ML tape, preserving the dependency direction from Core to ML.
   are not retained.
 - Generated checked-in files use the repository's `.gen.rs` convention and
   remain schema-owned. Build-time generation writes below `OUT_DIR`.
+- External weight containers are private adapters below `ml/weights`; explicit
+  model translators own source-name/shape policy and emit the single native
+  `.oam` codec. They are not placed in a generic `io` or `archive` namespace.
 
 File placement and public path need not be identical. A private implementation
 module may be explicitly re-exported through its domain facade. A principal
