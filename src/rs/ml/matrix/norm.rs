@@ -13,6 +13,18 @@ pub struct BatchNorm2dResult {
 	pub variance: Matrix,
 }
 
+/// Complete adjoints of broadcast-affine gated RMS normalization.
+pub struct RmsNormGatedBackward {
+	/// Gradient of the normalized input.
+	pub input: Matrix,
+	/// Gradient of the broadcast affine weight.
+	pub weight: Matrix,
+	/// Gradient of the optional affine bias.
+	pub bias: Option<Matrix>,
+	/// Gradient of the SiLU gate input.
+	pub gate: Matrix,
+}
+
 /// Normalize an NCHW Matrix using statistics computed from the current batch.
 ///
 /// # Errors
@@ -151,4 +163,59 @@ pub fn rms_norm(input: &Matrix, weight: &Matrix, epsilon: f32) -> Result<Matrix>
 	let output = dispatch::rms_norm(input, weight, epsilon)?;
 	autograd::record_rms_norm(input, &output, None, weight.clone(), epsilon)?;
 	Ok(output)
+}
+
+/// Apply per-row RMS normalization, a cyclic broadcast affine, and a SiLU gate.
+///
+/// Normalization is over the final input dimension. The affine value may have
+/// one or more leading groups; those groups repeat over the flattened input
+/// rows. An optional bias must exactly match `weight`.
+///
+/// # Errors
+///
+/// Returns an error for incompatible shape, dtype, Engine ownership or
+/// epsilon, or when runtime recording fails.
+pub fn rms_norm_gated(
+	input: &Matrix,
+	weight: &Matrix,
+	bias: Option<&Matrix>,
+	gate: &Matrix,
+	epsilon: f32,
+) -> Result<Matrix> {
+	let output = dispatch::rms_norm_gated(input, weight, bias, gate, epsilon)?;
+	autograd::record_rms_norm_gated(
+		input,
+		&output,
+		None,
+		weight.clone(),
+		None,
+		bias.cloned(),
+		gate,
+		epsilon,
+	)?;
+	Ok(output)
+}
+
+/// Compute all gated RMS normalization adjoints explicitly.
+///
+/// # Errors
+///
+/// Returns an error for an incompatible output gradient or forward contract,
+/// or when runtime recording fails.
+pub fn rms_norm_gated_backward(
+	input: &Matrix,
+	weight: &Matrix,
+	bias: Option<&Matrix>,
+	gate: &Matrix,
+	output_gradient: &Matrix,
+	epsilon: f32,
+) -> Result<RmsNormGatedBackward> {
+	let result =
+		dispatch::rms_norm_gated_backward(input, weight, bias, gate, output_gradient, epsilon)?;
+	Ok(RmsNormGatedBackward {
+		input: result.input,
+		weight: result.weight,
+		bias: result.bias,
+		gate: result.gate,
+	})
 }

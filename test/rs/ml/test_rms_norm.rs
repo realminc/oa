@@ -70,6 +70,132 @@ fn numerical_gradient(values: &[f32], loss: impl Fn(&[f32]) -> f32) -> Vec<f32> 
 		.collect()
 }
 
+fn host_rms_norm_gated(
+	input: &[f32],
+	weight: &[f32],
+	bias: Option<&[f32]>,
+	gate: &[f32],
+	columns: usize,
+	groups: usize,
+	epsilon: f32,
+) -> Vec<f32> {
+	input
+		.chunks_exact(columns)
+		.enumerate()
+		.flat_map(|(row_index, row)| {
+			let affine = (row_index % groups) * columns;
+			let inverse_rms = (row.iter().map(|value| value * value).sum::<f32>() / columns as f32
+				+ epsilon)
+				.sqrt()
+				.recip();
+			row.iter().enumerate().map(move |(column, value)| {
+				let normalized = value * inverse_rms * weight[affine + column]
+					+ bias.map_or(0.0, |bias| bias[affine + column]);
+				let gate_value = gate[row_index * columns + column];
+				normalized * gate_value / (1.0 + (-gate_value).exp())
+			})
+		})
+		.collect()
+}
+
+test_vk!(
+	gated_rms_norm_matches_forward_and_complete_finite_differences,
+	engine,
+	{
+		const EPSILON: f32 = 0.003;
+		const COLUMNS: usize = 3;
+		const GROUPS: usize = 2;
+		let input_values = [
+			-0.8_f32, 0.2, 1.1, 0.4, -1.2, 0.7, 1.3, -0.5, 0.1, -0.3, 0.9, -1.0,
+		];
+		let weight_values = [0.8_f32, -0.4, 1.2, 0.5, 1.1, -0.7];
+		let bias_values = [0.1_f32, -0.2, 0.05, -0.1, 0.15, 0.2];
+		let gate_values = [
+			0.3_f32, -0.6, 1.0, -0.2, 0.8, 0.4, 1.2, -0.7, 0.5, -0.4, 0.6, 0.9,
+		];
+		let output_gradient_values = [
+			0.5_f32, -0.3, 0.7, -0.2, 0.4, 0.8, -0.6, 0.1, 0.9, 0.3, -0.5, 0.2,
+		];
+		let loss = |input: &[f32], weight: &[f32], bias: &[f32], gate: &[f32]| {
+			host_rms_norm_gated(input, weight, Some(bias), gate, COLUMNS, GROUPS, EPSILON)
+				.iter()
+				.zip(output_gradient_values)
+				.map(|(value, gradient)| value * gradient)
+				.sum::<f32>()
+		};
+		let expected_input = numerical_gradient(&input_values, |values| {
+			loss(values, &weight_values, &bias_values, &gate_values)
+		});
+		let expected_weight = numerical_gradient(&weight_values, |values| {
+			loss(&input_values, values, &bias_values, &gate_values)
+		});
+		let expected_bias = numerical_gradient(&bias_values, |values| {
+			loss(&input_values, &weight_values, values, &gate_values)
+		});
+		let expected_gate = numerical_gradient(&gate_values, |values| {
+			loss(&input_values, &weight_values, &bias_values, values)
+		});
+
+		let input = oa::Matrix::from_f32(&engine, [2, 2, COLUMNS], &input_values)?;
+		let weight = oa::Matrix::from_f32(&engine, [GROUPS, COLUMNS], &weight_values)?;
+		let bias = oa::Matrix::from_f32(&engine, [GROUPS, COLUMNS], &bias_values)?;
+		let gate = oa::Matrix::from_f32(&engine, [2, 2, COLUMNS], &gate_values)?;
+		let output_gradient =
+			oa::Matrix::from_f32(&engine, [2, 2, COLUMNS], &output_gradient_values)?;
+		let output = oa::ml::matrix::rms_norm_gated(&input, &weight, Some(&bias), &gate, EPSILON)?;
+		assert_close(
+			&output.read_f32()?,
+			&host_rms_norm_gated(
+				&input_values,
+				&weight_values,
+				Some(&bias_values),
+				&gate_values,
+				COLUMNS,
+				GROUPS,
+				EPSILON,
+			),
+			2.0e-5,
+			"gated RMSNorm forward",
+		);
+		let backward = oa::ml::matrix::rms_norm_gated_backward(
+			&input,
+			&weight,
+			Some(&bias),
+			&gate,
+			&output_gradient,
+			EPSILON,
+		)?;
+		assert_close(
+			&backward.input.read_f32()?,
+			&expected_input,
+			8.0e-4,
+			"gated RMSNorm input gradient",
+		);
+		assert_close(
+			&backward.weight.read_f32()?,
+			&expected_weight,
+			8.0e-4,
+			"gated RMSNorm weight gradient",
+		);
+		assert_close(
+			&backward
+				.bias
+				.expect("gated RMSNorm bias gradient is missing")
+				.read_f32()?,
+			&expected_bias,
+			8.0e-4,
+			"gated RMSNorm bias gradient",
+		);
+		assert_close(
+			&backward.gate.read_f32()?,
+			&expected_gate,
+			8.0e-4,
+			"gated RMSNorm gate gradient",
+		);
+		Ok(())
+	}
+);
+
 test_vk!(
 	rms_norm_matches_rank_three_forward_and_reverse_oracles,
 	engine,

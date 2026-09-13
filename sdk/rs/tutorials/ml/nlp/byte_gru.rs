@@ -1,0 +1,17 @@
+mod byte_common;
+
+fn main() -> oa::Result<()> {
+	byte_common::run(
+		byte_common::Tutorial {
+			title: "OA Tutorial — Byte GRU · all-position LM (autograd)",
+			description: "ByteEmbedding(32) → GRU(64) → ByteHead(256)",
+			timer_name: "byte_gru_training_step",
+			checkpoint_stem: "oars_byte_gru",
+			learning_rate: 0.01,
+			expected_loss: oa::ml::nlp::BYTE_GRU_FINAL_LOSS,
+			expected_accuracy: oa::ml::nlp::BYTE_GRU_ACCURACY,
+			expected_generation: oa::ml::nlp::BYTE_GRU_REFERENCE_GENERATION,
+		},
+		oa::ml::nlp::ByteGru::new,
+	)
+}

@@ -73,6 +73,7 @@ impl ExecutableGraph {
 
 		let mut nodes = Vec::with_capacity(dispatches.len());
 		for dispatch in dispatches {
+			device.require_kernel(dispatch.kernel)?;
 			let operation = dispatch.kernel.report_name();
 			let mut buffers = Vec::with_capacity(dispatch.buffers.len());
 			for binding in dispatch.buffers {

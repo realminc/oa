@@ -2,7 +2,7 @@
 
 **Status:** Experimental checkpoint integration; general artifact API Planned
 
-**Updated:** 2026-09-10
+**Updated:** 2026-09-11
 
 **Donor authority:** OA C++ `source/cpp/include/oa/ml/modelFile.h` and
 `source/cpp/lib/oa/ml/modelFile.cpp`
@@ -47,6 +47,7 @@ training restore—returns a normal contract error instead.
 Module registration path                 .oam section
 trainable Parameter                      Weights
 persistent registered buffer             State
+registered `u32` scalar module state      State as a rank-zero dense tensor
 non-persistent registered buffer         excluded
 Adam/AdamW first/second moments          Optimizer, flattened in parameter order
 Muon momentum                            Optimizer first-state array
@@ -57,8 +58,10 @@ optimizer step and learning rate         Optimizer + Progress
 Loading validates the entire file, destination paths, shapes, dtypes, engine
 ownership, optimizer kind, step identity, and all allocations before replacing live values.
 Parameters retain their stable handles and advance mutation versions. Named
-persistent buffers retain stable registry handles. Non-persistent buffers are
-not read or overwritten.
+persistent buffers and registered scalar state retain stable registry handles.
+Non-persistent buffers are not read or overwritten. Scalar state uses the same
+dotted module paths and wire tensor validation as numerical state; it does not
+create a Rust-only sidecar format.
 
 ## Evidence
 
@@ -67,6 +70,8 @@ not read or overwritten.
 - exact v3 header, section count, size, and alignment/padding behavior;
 - replacement of an existing artifact through the atomic save path;
 - parameter and persistent-state restoration with non-persistent exclusion;
+- exact `VectorQuantizer` EMA-counter restoration and equality of the next
+  dead-code revival transition against uninterrupted execution;
 - payload bit-flip rejection as `CheckpointCorrupt`;
 - v1 legacy and v2 manifest checksum compatibility;
 - OA C++ `modelctl verify` accepting a Rust-written artifact; and

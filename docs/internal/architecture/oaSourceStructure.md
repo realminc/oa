@@ -361,6 +361,11 @@ sdk/rs/ml/rl/lunar_lander/terrain.rs       checked deterministic terrain oracle
 sdk/rs/ml/rl/lunar_lander/physics.rs       scalar dynamics/observation oracle
 sdk/rs/ml/rl/lunar_lander/vector.rs        native vector Environment session
 sdk/rs/ml/rl/lunar_lander/training.rs      task policy curriculum and evaluation evidence
+sdk/rs/ml/alm.rs                           ALM SDK facade and temporal tokenizer
+sdk/rs/ml/alm/prior.rs                     causal motion-token prior
+sdk/rs/ml/alm/model.rs                     product ownership/persistence tree
+sdk/rs/ml/alm/clip.rs                      native frozen CLIP text tower
+sdk/rs/ml/alm/tokenizer.rs                 explicit canonical CLIP byte-BPE asset parser
 sdk/rs/tutorials/ml/rl/lunar_lander_ppo.rs runnable teacher/raw-PPO workflow
 sdk/rs/slang/ml/rl/cart_pole/reset.slang   schema-owned reset kernel
 sdk/rs/slang/ml/rl/cart_pole/step.slang    schema-owned dynamics kernel

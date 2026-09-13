@@ -70,6 +70,71 @@
 		"reveal": "always"
 	},
 	{
+		"label": "Oars - SDK - Byte RNN NLP (Release)",
+		"command": "cargo build --release --example ml_nlp_byte_rnn && python3 tools/build/stage.py --profile release --target ml_nlp_byte_rnn && ./bin/release/sdk/tutorials/ml/nlp/ml_nlp_byte_rnn",
+		"reveal": "always"
+	},
+	{
+		"label": "Oars - SDK - Byte GRU NLP (Release)",
+		"command": "cargo build --release --example ml_nlp_byte_gru && python3 tools/build/stage.py --profile release --target ml_nlp_byte_gru && ./bin/release/sdk/tutorials/ml/nlp/ml_nlp_byte_gru",
+		"reveal": "always"
+	},
+	{
+		"label": "Oars - SDK - Byte Transformer NLP (Release)",
+		"command": "cargo build --release --example ml_nlp_byte_transformer && python3 tools/build/stage.py --profile release --target ml_nlp_byte_transformer && ./bin/release/sdk/tutorials/ml/nlp/ml_nlp_byte_transformer",
+		"reveal": "always"
+	},
+	{
+		"label": "Oars - SDK - Byte MoE NLP (Release)",
+		"command": "cargo build --release --example ml_nlp_byte_moe && python3 tools/build/stage.py --profile release --target ml_nlp_byte_moe && ./bin/release/sdk/tutorials/ml/nlp/ml_nlp_byte_moe",
+		"reveal": "always"
+	},
+	{
+		"label": "Oars - SDK - Byte Mamba-3 NLP (Release)",
+		"command": "cargo build --release --example ml_nlp_byte_mamba3 && python3 tools/build/stage.py --profile release --target ml_nlp_byte_mamba3 && ./bin/release/sdk/tutorials/ml/nlp/ml_nlp_byte_mamba3",
+		"reveal": "always"
+	},
+	{
+		"label": "Oars - SDK - Byte Empyrealm NLP (Release)",
+		"command": "cargo build --release --example ml_nlp_byte_empyrealm && python3 tools/build/stage.py --profile release --target ml_nlp_byte_empyrealm && ./bin/release/sdk/tutorials/ml/nlp/ml_nlp_byte_empyrealm",
+		"reveal": "always"
+	},
+	{
+		"label": "Oars - SDK - BPE RNN NLP (Release)",
+		"command": "cargo build --release --example ml_nlp_bpe_rnn && python3 tools/build/stage.py --profile release --target ml_nlp_bpe_rnn && ./bin/release/sdk/tutorials/ml/nlp/ml_nlp_bpe_rnn",
+		"reveal": "always"
+	},
+	{
+		"label": "Oars - SDK - BPE GRU NLP (Release)",
+		"command": "cargo build --release --example ml_nlp_bpe_gru && python3 tools/build/stage.py --profile release --target ml_nlp_bpe_gru && ./bin/release/sdk/tutorials/ml/nlp/ml_nlp_bpe_gru",
+		"reveal": "always"
+	},
+	{
+		"label": "Oars - SDK - BPE Transformer NLP (Release)",
+		"command": "cargo build --release --example ml_nlp_bpe_transformer && python3 tools/build/stage.py --profile release --target ml_nlp_bpe_transformer && ./bin/release/sdk/tutorials/ml/nlp/ml_nlp_bpe_transformer",
+		"reveal": "always"
+	},
+	{
+		"label": "Oars - SDK - BPE MoE NLP (Release)",
+		"command": "cargo build --release --example ml_nlp_bpe_moe && python3 tools/build/stage.py --profile release --target ml_nlp_bpe_moe && ./bin/release/sdk/tutorials/ml/nlp/ml_nlp_bpe_moe",
+		"reveal": "always"
+	},
+	{
+		"label": "Oars - SDK - BPE Mamba-3 NLP (Release)",
+		"command": "cargo build --release --example ml_nlp_bpe_mamba3 && python3 tools/build/stage.py --profile release --target ml_nlp_bpe_mamba3 && ./bin/release/sdk/tutorials/ml/nlp/ml_nlp_bpe_mamba3",
+		"reveal": "always"
+	},
+	{
+		"label": "Oars - SDK - Char GRU NLP (Release)",
+		"command": "cargo build --release --example ml_nlp_char_gru && python3 tools/build/stage.py --profile release --target ml_nlp_char_gru && ./bin/release/sdk/tutorials/ml/nlp/ml_nlp_char_gru",
+		"reveal": "always"
+	},
+	{
+		"label": "Oars - SDK - Char Mamba-3 NLP (Release)",
+		"command": "cargo build --release --example ml_nlp_char_mamba3 && python3 tools/build/stage.py --profile release --target ml_nlp_char_mamba3 && ./bin/release/sdk/tutorials/ml/nlp/ml_nlp_char_mamba3",
+		"reveal": "always"
+	},
+	{
 		"label": "Oars - SDK - Char Transformer NLP (Release)",
 		"command": "cargo build --release --example ml_nlp_char_transformer && python3 tools/build/stage.py --profile release --target ml_nlp_char_transformer && ./bin/release/sdk/tutorials/ml/nlp/ml_nlp_char_transformer",
 		"reveal": "always"

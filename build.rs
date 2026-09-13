@@ -20,6 +20,7 @@ const GENERATOR: &str = "tools/gen/fn/generate.py";
 const STORAGE: &str = "src/slang/core/math/storage.slang";
 const ATTRIBUTES: &str = "src/slang/core/attributes.slang";
 const ACTIVATIONS: &str = "src/slang/core/math/activations.slang";
+const SSM_MATH: &str = "src/slang/core/math/ssm_math.slang";
 const PHILOX: &str = "src/slang/core/rng/philox.slang";
 const DROPOUT_RNG: &str = "src/slang/matrix/rng/dropout_rng.slang";
 const CRYPTOGRAPHY_KECCAK: &str = "src/slang/cryptography/hash/keccak.slang";
@@ -53,6 +54,7 @@ fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
 		STORAGE,
 		ATTRIBUTES,
 		ACTIVATIONS,
+		SSM_MATH,
 		PHILOX,
 		DROPOUT_RNG,
 		CRYPTOGRAPHY_KECCAK,
@@ -505,34 +507,51 @@ fn build_schema_shader(
 		.output_directory
 		.join(format!("{domain}_{name}_{dtype}.reflection.json"));
 
-	let slang_output = Command::new(build.slangc)
-		.arg(source)
-		.args([
-			"-entry",
-			ENTRY_POINT,
-			"-stage",
-			"compute",
-			"-target",
-			"spirv",
-			"-profile",
-			"glsl_460",
-			"-capability",
-			"spirv_1_6",
-			"-fvk-use-entrypoint-name",
-			"-warnings-as-errors",
-			"all",
-			"-I",
-			"src/slang/core",
-			"-I",
-			"src/slang/core/math",
-			"-I",
-			"src/slang/core/rng",
-			"-I",
-			"src/slang/matrix/rng",
-			"-I",
-			"src/slang/cryptography/hash",
-			"-reflection-json",
-		])
+	let mut command = Command::new(build.slangc);
+	command.arg(source).args([
+		"-entry",
+		ENTRY_POINT,
+		"-stage",
+		"compute",
+		"-target",
+		"spirv",
+		"-profile",
+		"glsl_460",
+		"-capability",
+		"spirv_1_6",
+		"-fvk-use-entrypoint-name",
+		"-warnings-as-errors",
+		"all",
+		"-I",
+		"src/slang/core",
+		"-I",
+		"src/slang/core/math",
+		"-I",
+		"src/slang/core/rng",
+		"-I",
+		"src/slang/matrix/rng",
+		"-I",
+		"src/slang/cryptography/hash",
+	]);
+	if let Some(optimization) = operation["slang_optimization"].as_str() {
+		match optimization {
+			"O0" => {
+				command.arg("-O0");
+			}
+			_ => return Err(format!("unsupported Slang optimization {optimization}").into()),
+		}
+	}
+	if let Some(capabilities) = operation["slang_capabilities"].as_array() {
+		for capability in capabilities {
+			command.arg("-capability").arg(
+				capability
+					.as_str()
+					.ok_or_else(|| format!("{domain}.{name} has a non-string Slang capability"))?,
+			);
+		}
+	}
+	let slang_output = command
+		.arg("-reflection-json")
 		.arg(&reflection)
 		.arg("-o")
 		.arg(&spirv)

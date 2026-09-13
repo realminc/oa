@@ -2,11 +2,12 @@
 
 **Status:** Experimental recursive module ownership and native persistence
 
-**Updated:** 2026-09-10
+**Updated:** 2026-09-11
 
 ## Current implementation
 
-`oa::ml::nn::Linear`, `oa::ml::nn::Embedding`, `oa::ml::nn::LayerNorm`,
+`oa::ml::nn::Linear`, `oa::ml::nn::Embedding`,
+`oa::ml::nn::{ByteEmbedding, ByteHead}`, `oa::ml::nn::LayerNorm`,
 `oa::ml::nn::BatchNorm2d`,
 `oa::ml::nn::{Conv1d, ConvTranspose1d, Conv2d, ConvTranspose2d}`, and
 `oa::ml::nn::{RnnCell, Rnn, GruCell, Gru}` are state-owning Rust types implementing the object-safe
@@ -23,11 +24,16 @@ currently thread-affine, matching the engine.
 `Linear` owns weight `[O, I]` and an optional bias `[O]`, accepts input
 `[..., I]` with rank at least two, and preserves every leading dimension. A
 bias-free Linear retains only a private physical zero vector for the current
-GEMM ABI; it registers and exposes no fake trainable bias. `Embedding` owns weight `[V, D]`,
-accepts arbitrary-shape U32 indices, and returns `indices_shape + [D]` rather
+GEMM ABI; it registers and exposes no fake trainable bias. `Embedding` owns
+weight `[V, D]`, accepts arbitrary-shape U8, U32, or I32 indices, and returns
+`indices_shape + [D]` rather
 than OA C++'s flattened gather result. The richer shape is an intentional Rust
 API improvement; callers can obtain `[N, D]` through the zero-copy differentiable
 reshape view when required.
+
+`ByteEmbedding` fixes `V` at 256 while reusing that same parameter, lowering,
+and adjoint owner. `ByteHead` is the same composition over Linear with 256
+outputs. Neither wrapper introduces a second registry or operation route.
 
 `Rnn` owns weights `[H, I]` and `[H, H]` per layer plus optional paired biases
 `[H]`, accepts `[B, S, I]`, and returns `[B, S, H]`. Each layer lowers through
@@ -207,6 +213,7 @@ A module owns one `ModuleRegistry` and registers during construction:
 
 - direct trainable parameters;
 - named non-trainable buffers;
+- named persistent `u32` scalar state;
 - named child modules.
 
 Registration takes `&mut ModuleRegistry`; after a module is shared through
@@ -215,7 +222,7 @@ while parameters remain stable `Rc<RefCell<_>>` handles. The registry does not
 borrow objects that can outlive their owners and does not own an engine.
 
 Local names are nonempty ASCII identifiers without dots. Parameters, buffers,
-and children share one local namespace. Dotted recursive paths such as
+scalar state, and children share one local namespace. Dotted recursive paths such as
 `recurrent.layer0.weight_ih` are derived from the tree rather than supplied by
 callers. Registration rejects duplicate local parameter, buffer, and child
 identity. Recursive traversal also rejects a child, parameter, or buffer
@@ -225,14 +232,17 @@ ambiguous aliases. `AdamW` independently rejects duplicate handles at its own
 boundary.
 
 `parameters` and `named_parameters` expose only direct parameters.
-`all_parameters`, `all_named_parameters`, and `all_named_buffers` traverse in
-deterministic depth-first registration order. `num_parameters` counts trainable
+`all_parameters`, `all_named_parameters`, `all_named_buffers`, and
+`all_named_state_u32` traverse in deterministic depth-first registration
+order. `num_parameters` counts trainable
 scalar values with checked arithmetic. `train`, `eval`, and the RAII
 `scoped_eval` guard propagate through the same child tree. Buffers retain an
 explicit persistence flag. Native `.oam` checkpoints serialize persistent
 buffers into State and exclude non-persistent buffers. Named buffer records
 retain stable interior handles so a validated restore updates the registry's
-live value without rebuilding the module tree.
+live value without rebuilding the module tree. Compact algorithmic counters use
+`register_state_u32`; they persist as rank-zero dense State tensors without
+allocating device storage or imposing a per-step host/device transfer.
 
 The Vulkan integration proof builds an owned
 `Embedding -> Rnn -> Linear` character model, observes seven unique parameter

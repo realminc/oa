@@ -60,6 +60,9 @@ mod layer_norm;
 #[path = "ml/test_batch_norm.rs"]
 mod batch_norm;
 
+#[path = "ml/test_byte.rs"]
+mod byte;
+
 #[path = "ml/test_attention.rs"]
 mod attention;
 
@@ -117,6 +120,9 @@ mod actor_critic;
 #[path = "ml/test_nlp.rs"]
 mod nlp;
 
+#[path = "ml/test_tokenizer.rs"]
+mod tokenizer;
+
 #[path = "ml/test_it_training.rs"]
 mod it_training;
 
@@ -137,6 +143,9 @@ mod optimizer;
 
 #[path = "ml/test_vq.rs"]
 mod vq;
+
+#[path = "ml/test_alm.rs"]
+mod alm;
 
 #[path = "ml/test_mamba3.rs"]
 mod mamba3;

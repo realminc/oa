@@ -24,3 +24,8 @@ pub(super) fn symmetric_uniform(length: usize, limit: f32, seed: u64) -> Vec<f32
 		.map(|_| (random.next_f32() * 2.0 - 1.0) * limit)
 		.collect()
 }
+
+pub(super) fn unit_uniform(length: usize, seed: u64) -> Vec<f32> {
+	let mut random = SplitMix64::new(seed);
+	(0..length).map(|_| random.next_f32()).collect()
+}

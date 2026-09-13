@@ -49,6 +49,7 @@ pub(super) fn save_checkpoint_with_progress(
 ) -> Result<()> {
 	let named = model.all_named_parameters()?;
 	let buffers = model.all_named_buffers()?;
+	let state_u32 = model.all_named_state_u32()?;
 	let optimizer_state = optimizer.checkpoint_state()?;
 	validate_optimizer_snapshot(&optimizer_state)?;
 	if named.len() != optimizer_state.parameters.len() {
@@ -75,6 +76,14 @@ pub(super) fn save_checkpoint_with_progress(
 	for buffer in buffers.into_iter().filter(|buffer| buffer.persistent()) {
 		file.state
 			.push(matrix_tensor(buffer.path(), &buffer.data())?);
+	}
+	for state in state_u32 {
+		file.state.push(Tensor::dense(
+			state.path(),
+			DType::U32,
+			Vec::new(),
+			state.value().to_le_bytes().to_vec(),
+		)?);
 	}
 
 	let mut first_moment = Vec::new();
@@ -177,10 +186,15 @@ fn load_checkpoint_impl(
 		.into_iter()
 		.filter(|buffer| buffer.persistent())
 		.collect::<Vec<_>>();
+	let state_u32 = model.all_named_state_u32()?;
 	let optimizer_state = optimizer.checkpoint_state()?;
 	validate_optimizer_snapshot(&optimizer_state)?;
+	let expected_state_count = buffers
+		.len()
+		.checked_add(state_u32.len())
+		.ok_or_else(|| Error::resource_exhausted("checkpoint state count overflows usize"))?;
 	if file.weights.len() != named.len()
-		|| file.state.len() != buffers.len()
+		|| file.state.len() != expected_state_count
 		|| named.len() != optimizer_state.parameters.len()
 	{
 		return Err(Error::invalid_argument(
@@ -212,10 +226,21 @@ fn load_checkpoint_impl(
 		loaded_parameters.push((parameter, matrix_from_tensor(engine, tensor)?));
 	}
 	let mut loaded_buffers = Vec::with_capacity(buffers.len());
-	for (expected, tensor) in buffers.iter().zip(&file.state) {
+	for (expected, tensor) in buffers.iter().zip(file.state.iter().take(buffers.len())) {
 		let data = expected.data();
 		validate_tensor_contract(tensor, expected.path(), &data)?;
 		loaded_buffers.push((expected, matrix_from_tensor(engine, tensor)?));
+	}
+	let mut loaded_state_u32 = Vec::with_capacity(state_u32.len());
+	for (expected, tensor) in state_u32.iter().zip(file.state.iter().skip(buffers.len())) {
+		validate_state_u32_contract(tensor, expected.path())?;
+		let value =
+			u32::from_le_bytes(
+				tensor.data.as_slice().try_into().map_err(|_| {
+					Error::invalid_argument(".oam u32 state has invalid byte count")
+				})?,
+			);
+		loaded_state_u32.push((expected, value));
 	}
 
 	let persisted = file
@@ -284,6 +309,9 @@ fn load_checkpoint_impl(
 	}
 	for (buffer, data) in loaded_buffers {
 		buffer.replace_data(data)?;
+	}
+	for (state, value) in loaded_state_u32 {
+		state.replace_value(value);
 	}
 	optimizer.restore_checkpoint_state(restore)
 }
@@ -368,6 +396,22 @@ fn validate_tensor_contract(tensor: &Tensor, path: &str, matrix: &Matrix) -> Res
 	if tensor.encoding != TensorEncoding::Dense || tensor.block_size != 0 {
 		return Err(Error::invalid_argument(format!(
 			"checkpoint restore requires dense tensor {path}"
+		)));
+	}
+	Ok(())
+}
+
+fn validate_state_u32_contract(tensor: &Tensor, path: &str) -> Result<()> {
+	if tensor.name != path
+		|| tensor.dtype != ScalarType::U32
+		|| !tensor.shape.is_empty()
+		|| tensor.encoding != TensorEncoding::Dense
+		|| tensor.block_size != 0
+		|| tensor.data.len() != size_of::<u32>()
+	{
+		return Err(Error::invalid_argument(format!(
+			".oam scalar state {} does not match destination {path}",
+			tensor.name
 		)));
 	}
 	Ok(())

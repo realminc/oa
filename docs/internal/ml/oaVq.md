@@ -20,8 +20,10 @@
 - `vq_ema_update` produces fresh `embed_sum`, `cluster_size`, and `codebook`
   Matrix values from the previous state.
 
-`oa::ml::nn::VectorQuantizer` owns one persistent codebook and its two EMA
-buffers. They are registered buffers, never gradient parameters. Its
+`oa::ml::nn::VectorQuantizer` owns one persistent codebook, its two EMA
+buffers, and one registered `u32` EMA transition counter. The numerical values
+are registered buffers, never gradient parameters; the compact counter is
+named scalar module state rather than a fake one-element device Matrix. Its
 `quantize` method returns the donor straight-through value
 `z_e + detach(z_q - z_e)` and `beta * mean((z_e - z_q)^2)`. The hard assignment
 and codebook path remain detached; the encoder receives the identity adjoint
@@ -75,8 +77,15 @@ gradient identity through an Embedding parameter, EMA equations, exact
 dead-code revival, unit-RMS normalization, highest-norm seeding, lookup,
 residual decode equivalence, and recursive persistent-buffer ownership.
 
-The donor VQ tutorial/model consumer, broader odd-size randomized differential
-pack, performance qualification, and persistence of the non-buffer EMA step
-counter remain pending. A model-file round trip preserves all three registered
-state buffers but is not yet an exact mid-training resume claim because revival
-depends on that step counter.
+The native model-file path persists each level's `ema_step` beside the three
+registered state buffers. A hardware-backed resume proof advances two EMA
+transitions, restores a fresh module and optimizer, then verifies that the next
+dead-code revival produces the exact uninterrupted codebook and counter. VQ
+mid-training module state is therefore resumable; atomic restoration of the
+surrounding data iterator remains the application/training-session owner's
+contract.
+
+The SDK-owned ALM temporal VQ-VAE is now the first complete consumer, including
+unit-RMS encoding, straight-through reconstruction gradients, token round trip,
+EMA transition, and exact checkpoint continuation. A broader odd-size
+randomized differential pack and performance qualification remain pending.

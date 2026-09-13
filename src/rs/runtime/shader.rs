@@ -6,6 +6,15 @@ use crate::{Error, Result};
 
 const SPIRV_MAGIC: u32 = 0x0723_0203;
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct ShaderRequirements {
+	pub(crate) shader_int64: bool,
+	pub(crate) shader_int8: bool,
+	pub(crate) uniform_and_storage_buffer_8_bit_access: bool,
+	pub(crate) subgroup_basic: bool,
+	pub(crate) subgroup_arithmetic: bool,
+}
+
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum LogicalWriteDomain {
@@ -31,6 +40,7 @@ pub(crate) enum WriteExtent {
 	OneScalar,
 	RowWidth,
 	Tile16x16,
+	Tile32x32,
 	UpToTwoElements,
 	UpToFourElements,
 }
@@ -100,6 +110,7 @@ impl WriteExtent {
 			Self::OneScalar => "one_scalar",
 			Self::RowWidth => "row_width",
 			Self::Tile16x16 => "tile_16x16",
+			Self::Tile32x32 => "tile_32x32",
 			Self::UpToTwoElements => "up_to_two_elements",
 			Self::UpToFourElements => "up_to_four_elements",
 		}
@@ -152,6 +163,11 @@ impl ShaderArtifact {
 		reflect_push_constant_size(&self.spirv_words()?)
 	}
 
+	/// Derive the optional Vulkan feature contract from SPIR-V capabilities.
+	pub(crate) fn requirements(&self) -> Result<ShaderRequirements> {
+		reflect_shader_requirements(&self.spirv_words()?)
+	}
+
 	pub(crate) fn content_id(&self) -> u64 {
 		*self.content_id.get_or_init(|| {
 			self.bytes
@@ -184,6 +200,64 @@ fn decode_spirv(bytes: &[u8]) -> Result<Vec<u32>> {
 		return Err(invalid_artifact("SPIR-V magic number is invalid"));
 	}
 	Ok(words)
+}
+
+fn reflect_shader_requirements(words: &[u32]) -> Result<ShaderRequirements> {
+	const OP_CAPABILITY: u16 = 17;
+	const CAPABILITY_SHADER: u32 = 1;
+	const CAPABILITY_INT64: u32 = 11;
+	const CAPABILITY_INT8: u32 = 39;
+	const CAPABILITY_GROUP_NON_UNIFORM: u32 = 61;
+	const CAPABILITY_GROUP_NON_UNIFORM_ARITHMETIC: u32 = 63;
+	const CAPABILITY_UNIFORM_AND_STORAGE_BUFFER_8_BIT_ACCESS: u32 = 4449;
+	const CAPABILITY_RUNTIME_DESCRIPTOR_ARRAY: u32 = 5302;
+
+	if words.len() < 5 || words[0] != SPIRV_MAGIC {
+		return Err(invalid_artifact("SPIR-V header is invalid"));
+	}
+	let mut requirements = ShaderRequirements::default();
+	let mut cursor = 5_usize;
+	while cursor < words.len() {
+		let instruction = words[cursor];
+		let word_count = usize::from((instruction >> 16) as u16);
+		let opcode = instruction as u16;
+		if word_count == 0 {
+			return Err(invalid_artifact("SPIR-V instruction has zero words"));
+		}
+		let end = cursor
+			.checked_add(word_count)
+			.ok_or_else(|| invalid_artifact("SPIR-V instruction range overflows usize"))?;
+		if end > words.len() {
+			return Err(invalid_artifact("SPIR-V instruction exceeds module bounds"));
+		}
+		if opcode == OP_CAPABILITY {
+			if word_count != 2 {
+				return Err(invalid_artifact(
+					"SPIR-V OpCapability has an invalid word count",
+				));
+			}
+			match words[cursor + 1] {
+				CAPABILITY_SHADER | CAPABILITY_RUNTIME_DESCRIPTOR_ARRAY => {}
+				CAPABILITY_INT64 => requirements.shader_int64 = true,
+				CAPABILITY_INT8 => requirements.shader_int8 = true,
+				CAPABILITY_UNIFORM_AND_STORAGE_BUFFER_8_BIT_ACCESS => {
+					requirements.uniform_and_storage_buffer_8_bit_access = true;
+				}
+				CAPABILITY_GROUP_NON_UNIFORM => requirements.subgroup_basic = true,
+				CAPABILITY_GROUP_NON_UNIFORM_ARITHMETIC => {
+					requirements.subgroup_basic = true;
+					requirements.subgroup_arithmetic = true;
+				}
+				capability => {
+					return Err(invalid_artifact(format!(
+						"SPIR-V capability {capability} has no Vulkan admission rule"
+					)));
+				}
+			}
+		}
+		cursor = end;
+	}
+	Ok(requirements)
 }
 
 #[derive(Clone, Default)]
@@ -347,13 +421,17 @@ fn invalid_artifact(message: impl Into<String>) -> Error {
 
 #[cfg(test)]
 mod tests {
-	use super::{KernelId, SPIRV_MAGIC, decode_spirv, reflect_push_constant_size};
+	use super::{
+		KernelId, SPIRV_MAGIC, ShaderRequirements, decode_spirv, reflect_push_constant_size,
+		reflect_shader_requirements,
+	};
 
 	#[test]
 	fn embedded_artifacts_match_their_validated_abi() -> crate::Result<()> {
 		for kernel in KernelId::ALL {
 			let artifact = kernel.artifact();
 			assert!(!artifact.spirv_words()?.is_empty());
+			artifact.requirements()?;
 			assert_ne!(artifact.content_id(), 0);
 			assert_eq!(artifact.content_id(), artifact.content_id());
 			let push_constant_size = artifact.push_constant_size()?;
@@ -430,5 +508,43 @@ mod tests {
 		assert!(decode_spirv(&[3, 2, 35]).is_err());
 		assert!(reflect_push_constant_size(&[SPIRV_MAGIC, 0, 0, 1, 0]).is_err());
 		assert!(reflect_push_constant_size(&[SPIRV_MAGIC, 0, 0, 2, 0, 0]).is_err());
+		assert!(reflect_shader_requirements(&[SPIRV_MAGIC, 0, 0, 1, 0, 0]).is_err());
+		assert!(
+			reflect_shader_requirements(&[SPIRV_MAGIC, 0, 0, 1, 0, (2 << 16) | 17, 9999]).is_err()
+		);
+	}
+
+	#[test]
+	fn shader_requirements_are_derived_from_capabilities() -> crate::Result<()> {
+		let words = [
+			SPIRV_MAGIC,
+			0,
+			0,
+			1,
+			0,
+			(2 << 16) | 17,
+			1,
+			(2 << 16) | 17,
+			11,
+			(2 << 16) | 17,
+			39,
+			(2 << 16) | 17,
+			63,
+			(2 << 16) | 17,
+			4449,
+			(2 << 16) | 17,
+			5302,
+		];
+		assert_eq!(
+			reflect_shader_requirements(&words)?,
+			ShaderRequirements {
+				shader_int64: true,
+				shader_int8: true,
+				uniform_and_storage_buffer_8_bit_access: true,
+				subgroup_basic: true,
+				subgroup_arithmetic: true,
+			}
+		);
+		Ok(())
 	}
 }

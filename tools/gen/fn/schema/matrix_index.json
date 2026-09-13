@@ -14,6 +14,11 @@
       "source/cpp/lib/oa/core/shader/compute/flat/equal.slang",
       "source/cpp/lib/oa/core/shader/compute/flat/topK.slang",
       "source/cpp/lib/oa/core/shader/compute/flat/topKMask.slang",
+      "tools/gen/fn/schema/core/coreFnMatrixShape.toml",
+      "source/cpp/lib/oa/core/fnmatrix/index/fnMatrixIndex.cpp",
+      "source/cpp/lib/oa/core/shader/compute/matrix/transposeBatched.slang",
+      "source/cpp/lib/oa/ml/shader/compute/ops/gather.slang",
+      "source/cpp/lib/oa/ml/shader/compute/nn/gatherBwd.slang",
       "source/cpp/lib/oa/ml/shader/compute/ops/gatherLastDim.slang",
       "source/cpp/lib/oa/ml/shader/compute/ops/gatherLastDimBwd.slang",
       "source/cpp/lib/oa/ml/shader/compute/ops/repeatInterleave.slang",
@@ -21,7 +26,7 @@
       "source/cpp/lib/oa/ml/shader/compute/nn/moe/moeExpertPlan.slang",
       "source/cpp/lib/oa/ml/shader/compute/nn/moe/moeRoutingBiasUpdate.slang"
     ],
-    "reason": "Preserves OA's deterministic last-axis TopK, dense membership mask, stable dropless expert-major route plan, device-resident auxiliary-loss-free routing-bias update, rank-one through rank-four FP32 Slice and variadic Concat over the shared copy-region algorithm, Slice's zero-padded adjoint, RepeatInterleave with its reduction adjoint, last-axis indexed gather with its deterministic reduction adjoint, and FP32 scalar equality masks used by donor adjoints. The RepeatInterleave adjoint corrects the donor's non-leading-axis coordinate decomposition by using input dimensions and output strides. MoeExpertPlan uses OARS compatibility ID 359 because donor-local ID 315 was already assigned to RnnCell before this family landed. MoeRoutingBiasUpdate uses OARS compatibility ID 372 because donor-local ID 311 was already assigned to GruScan. Slice, SliceBackward, and Concat use OARS compatibility IDs 376-378 because the donor registry does not publish numeric kernel identities for MatrixCopyRegion. GatherLastDim and its adjoint use OARS compatibility IDs 388-389 because donor-local IDs 319-320 were already assigned to batched matrix multiplication. Equal uses OARS compatibility ID 393 because its donor registry identity is not globally unique in OARS."
+    "reason": "Preserves OA's deterministic last-axis TopK, dense membership mask, stable dropless expert-major route plan, device-resident auxiliary-loss-free routing-bias update, rank-one through rank-four FP32 Slice and variadic Concat over the shared copy-region algorithm, Slice's zero-padded adjoint, RepeatInterleave with its reduction adjoint, first-axis table Gather with deterministic scatter-add adjoint, last-axis indexed gather with its deterministic reduction adjoint, FP32 scalar equality masks used by donor adjoints, and the tiled rank-two/rank-three last-axis Transpose with its self-inverse adjoint. The RepeatInterleave adjoint corrects the donor's non-leading-axis coordinate decomposition by using input dimensions and output strides. Gather additionally bounds invalid indices instead of preserving the donor shader's out-of-range access. MoeExpertPlan uses OARS compatibility ID 359 because donor-local ID 315 was already assigned to RnnCell before this family landed. MoeRoutingBiasUpdate uses OARS compatibility ID 372 because donor-local ID 311 was already assigned to GruScan. Slice, SliceBackward, and Concat use OARS compatibility IDs 376-378 because the donor registry does not publish numeric kernel identities for MatrixCopyRegion. GatherLastDim and its adjoint use OARS compatibility IDs 388-389 because donor-local IDs 319-320 were already assigned to batched matrix multiplication. Equal uses OARS compatibility ID 393 because its donor registry identity is not globally unique in OARS. Transpose and Gather use OARS compatibility IDs 440-442 because the donor operation registry does not expose global numeric semantic identities distinct from its physical kernel IDs."
   },
   "operations": [
     {
@@ -273,6 +278,62 @@
       ]
     },
     {
+      "stable_id": 441,
+      "name": "gather",
+      "kernel_id": "MatrixGatherF32",
+      "source": "src/slang/matrix/index/gather.slang",
+      "variant": "generic",
+      "differentiation": "reverse",
+      "contract": {
+        "input_kinds": ["matrix", "class_indices"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "explicit",
+        "dtype_rule": "explicit",
+        "effects": ["read_inputs", "write_outputs"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "physical_write": {
+        "writes": [
+          {"binding": 2, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"}
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["table_index", "uint32"], ["indices_index", "uint32"], ["output_index", "uint32"],
+        ["num_indices", "uint32"], ["num_rows", "uint32"], ["row_size", "uint32"], ["index_dtype", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 442,
+      "name": "gather_backward",
+      "kernel_id": "MatrixGatherBackwardF32",
+      "source": "src/slang/matrix/index/gather_backward.slang",
+      "variant": "generic",
+      "semantic_attributes": [["input_shape", "shape"]],
+      "contract": {
+        "input_kinds": ["class_indices", "gradient"],
+        "output_kinds": ["gradient"],
+        "shape_rule": "explicit",
+        "dtype_rule": "explicit",
+        "effects": ["read_inputs", "write_outputs"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "physical_write": {
+        "writes": [
+          {"binding": 2, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"}
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["indices_index", "uint32"], ["output_gradient_index", "uint32"], ["input_gradient_index", "uint32"],
+        ["num_indices", "uint32"], ["num_rows", "uint32"], ["row_size", "uint32"], ["index_dtype", "uint32"]
+      ]
+    },
+    {
       "stable_id": 388,
       "name": "gather_last_dim",
       "kernel_id": "MatrixGatherLastDimF32",
@@ -359,6 +420,37 @@
         ["source_dim_0", "uint32"], ["source_dim_1", "uint32"], ["source_dim_2", "uint32"], ["source_dim_3", "uint32"],
         ["destination_dim_0", "uint32"], ["destination_dim_1", "uint32"], ["destination_dim_2", "uint32"], ["destination_dim_3", "uint32"],
         ["copy_dim_0", "uint32"], ["copy_dim_1", "uint32"], ["copy_dim_2", "uint32"], ["copy_dim_3", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 440,
+      "name": "transpose",
+      "kernel_id": "MatrixTransposeF32",
+      "source": "src/slang/matrix/index/transpose.slang",
+      "variant": "generic",
+      "workgroup_size": [32, 32, 1],
+      "dispatch_tile_size": [32, 32, 1],
+      "differentiation": "reverse",
+      "semantic_attributes": [["dim0", "signed_integer"], ["dim1", "signed_integer"]],
+      "contract": {
+        "input_kinds": ["matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "explicit",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_outputs"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "physical_write": {
+        "writes": [
+          {"binding": 1, "domain": "output_elements", "partition": "exclusive_per_workgroup", "extent": "tile_32x32", "collision": "exclusive", "tail": "bounds_checked"}
+        ],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "push_fields": [
+        ["input_index", "uint32"], ["output_index", "uint32"],
+        ["batch_size", "uint32"], ["rows", "uint32"], ["columns", "uint32"]
       ]
     },
     {

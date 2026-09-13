@@ -85,3 +85,39 @@ pub(in crate::ml) fn record_rms_norm(
 		epsilon,
 	})
 }
+
+#[allow(
+	clippy::too_many_arguments,
+	reason = "the node retains the complete gated normalization state and optional parameters"
+)]
+pub(in crate::ml) fn record_rms_norm_gated(
+	input: &Matrix,
+	output: &Matrix,
+	weight: Option<(Parameter, u64)>,
+	weight_value: Matrix,
+	bias: Option<(Parameter, u64)>,
+	bias_value: Option<Matrix>,
+	gate: &Matrix,
+	epsilon: f32,
+) -> Result<()> {
+	let (weight, weight_version) = weight
+		.map(|(parameter, version)| (Some(parameter), Some(version)))
+		.unwrap_or((None, None));
+	let (bias, bias_version) = bias
+		.map(|(parameter, version)| (Some(parameter), Some(version)))
+		.unwrap_or((None, None));
+	record_node(Node::RmsNormGated(Box::new(
+		super::super::node::RmsNormGatedNode {
+			input: input.clone(),
+			weight,
+			weight_value,
+			weight_version,
+			bias,
+			bias_value,
+			bias_version,
+			gate: gate.clone(),
+			epsilon,
+			output_id: output.value_id(),
+		},
+	)))
+}

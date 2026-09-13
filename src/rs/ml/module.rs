@@ -32,6 +32,33 @@ pub struct NamedBuffer {
 	persistent: bool,
 }
 
+/// Owned dotted path and host scalar that participates in module persistence.
+///
+/// Scalar state is intended for small algorithmic counters and flags whose
+/// value affects the next device operation but does not belong in a Matrix
+/// buffer. It is traversed and checkpointed with the same deterministic module
+/// tree as parameters and buffers.
+pub struct NamedStateU32 {
+	path: String,
+	value: Rc<Cell<u32>>,
+}
+
+impl NamedStateU32 {
+	/// Return the registration-derived dotted path.
+	pub fn path(&self) -> &str {
+		&self.path
+	}
+
+	/// Return the current scalar value.
+	pub fn value(&self) -> u32 {
+		self.value.get()
+	}
+
+	pub(crate) fn replace_value(&self, value: u32) {
+		self.value.set(value);
+	}
+}
+
 impl NamedBuffer {
 	/// Return the registration-derived dotted path.
 	pub fn path(&self) -> &str {
@@ -76,6 +103,11 @@ struct BufferEntry {
 	persistent: bool,
 }
 
+struct StateU32Entry {
+	name: String,
+	value: Rc<Cell<u32>>,
+}
+
 struct ChildEntry {
 	name: String,
 	module: Rc<dyn Module>,
@@ -88,6 +120,7 @@ struct ChildEntry {
 pub struct ModuleRegistry {
 	parameters: Vec<ParameterEntry>,
 	buffers: Vec<BufferEntry>,
+	state_u32: Vec<StateU32Entry>,
 	children: Vec<ChildEntry>,
 	training: Cell<bool>,
 }
@@ -98,6 +131,7 @@ impl ModuleRegistry {
 		Self {
 			parameters: Vec::new(),
 			buffers: Vec::new(),
+			state_u32: Vec::new(),
 			children: Vec::new(),
 			training: Cell::new(true),
 		}
@@ -158,6 +192,29 @@ impl ModuleRegistry {
 		Ok(())
 	}
 
+	/// Register one direct persistent `u32` scalar state value.
+	///
+	/// This is for compact host metadata whose value changes the next operation,
+	/// such as an EMA transition counter. Bulk numerical state remains a Matrix
+	/// buffer.
+	///
+	/// # Errors
+	///
+	/// Returns an error for an invalid or duplicate local name.
+	pub fn register_state_u32(
+		&mut self,
+		name: impl Into<String>,
+		value: u32,
+	) -> Result<NamedStateU32> {
+		let name = self.validate_new_name(name.into())?;
+		let value = Rc::new(Cell::new(value));
+		self.state_u32.push(StateU32Entry {
+			name: name.clone(),
+			value: value.clone(),
+		});
+		Ok(NamedStateU32 { path: name, value })
+	}
+
 	/// Register one owned child handle.
 	///
 	/// The child immediately inherits this registry's train/eval mode.
@@ -198,6 +255,7 @@ impl ModuleRegistry {
 		}
 		if self.parameters.iter().any(|entry| entry.name == name)
 			|| self.buffers.iter().any(|entry| entry.name == name)
+			|| self.state_u32.iter().any(|entry| entry.name == name)
 			|| self.children.iter().any(|entry| entry.name == name)
 		{
 			return Err(Error::invalid_argument(format!(
@@ -311,6 +369,19 @@ pub trait Module {
 		let mut output = Vec::new();
 		let mut modules = Vec::new();
 		collect_named_buffers(self.registry(), "", &mut modules, &mut output)?;
+		Ok(output)
+	}
+
+	/// Return all direct and recursive persistent `u32` scalar state in
+	/// deterministic depth-first order.
+	///
+	/// # Errors
+	///
+	/// Returns `FailedPrecondition` for duplicate child ownership.
+	fn all_named_state_u32(&self) -> Result<Vec<NamedStateU32>> {
+		let mut output = Vec::new();
+		let mut modules = Vec::new();
+		collect_named_state_u32(self.registry(), "", &mut modules, &mut output)?;
 		Ok(output)
 	}
 
@@ -444,6 +515,30 @@ fn collect_named_buffers(
 	}
 	for child in &registry.children {
 		collect_named_buffers(
+			child.module.registry(),
+			&join_path(prefix, &child.name),
+			modules,
+			output,
+		)?;
+	}
+	Ok(())
+}
+
+fn collect_named_state_u32(
+	registry: &ModuleRegistry,
+	prefix: &str,
+	modules: &mut Vec<*const ModuleRegistry>,
+	output: &mut Vec<NamedStateU32>,
+) -> Result<()> {
+	register_tree_node(registry, prefix, modules)?;
+	for entry in &registry.state_u32 {
+		output.push(NamedStateU32 {
+			path: join_path(prefix, &entry.name),
+			value: entry.value.clone(),
+		});
+	}
+	for child in &registry.children {
+		collect_named_state_u32(
 			child.module.registry(),
 			&join_path(prefix, &child.name),
 			modules,

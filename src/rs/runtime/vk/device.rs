@@ -6,7 +6,10 @@ use std::{
 
 use crate::{
 	Error, Result,
-	runtime::{executable_graph::ExecutableGraph, shader::KernelId},
+	runtime::{
+		executable_graph::ExecutableGraph,
+		shader::{KernelId, ShaderRequirements},
+	},
 };
 
 use super::{
@@ -36,7 +39,7 @@ struct DeviceInner {
 	timeline: Timeline,
 	descriptors: DescriptorHeap,
 	storage_pool: Mutex<StoragePool>,
-	pipelines: Vec<ComputePipeline>,
+	pipelines: Vec<Option<ComputePipeline>>,
 	physical: PhysicalDevice,
 	compute_queue: Queue,
 	video_decode_queue: Option<Queue>,
@@ -117,6 +120,10 @@ impl Device {
 	}
 
 	pub(in crate::runtime) fn new(instance: &Instance, physical: PhysicalDevice) -> Result<Self> {
+		let shader_requirements = KernelId::ALL
+			.into_iter()
+			.map(|kernel| kernel.artifact().requirements())
+			.collect::<Result<Vec<_>>>()?;
 		let priorities = [1.0_f32];
 		let mut queue_family_indices = vec![physical.compute_queue_family];
 		for family in [
@@ -172,8 +179,15 @@ impl Device {
 			extensions.push(c"VK_KHR_video_encode_av1");
 		}
 		let extension_names: Vec<_> = extensions.iter().map(|name| name.as_ptr()).collect();
+		let core_features =
+			ash::vk::PhysicalDeviceFeatures::default().shader_int64(physical.features.shader_int64);
 		let mut features12 = ash::vk::PhysicalDeviceVulkan12Features::default()
 			.timeline_semaphore(physical.features.timeline_semaphore)
+			.storage_buffer8_bit_access(physical.features.storage_buffer_8_bit_access)
+			.uniform_and_storage_buffer8_bit_access(
+				physical.features.uniform_and_storage_buffer_8_bit_access,
+			)
+			.shader_int8(physical.features.shader_int8)
 			.runtime_descriptor_array(physical.features.runtime_descriptor_array)
 			.descriptor_binding_partially_bound(
 				physical.features.descriptor_binding_partially_bound,
@@ -193,6 +207,7 @@ impl Device {
 		let create_info = ash::vk::DeviceCreateInfo::default()
 			.queue_create_infos(&queue_create_infos)
 			.enabled_extension_names(&extension_names)
+			.enabled_features(&core_features)
 			.push_next(&mut features12)
 			.push_next(&mut features13);
 
@@ -288,16 +303,25 @@ impl Device {
 			}
 		};
 		let mut pipelines = Vec::with_capacity(KernelId::ALL.len());
-		for kernel in KernelId::ALL {
+		for (kernel, requirements) in KernelId::ALL.into_iter().zip(shader_requirements) {
+			if !supports_shader_requirements(
+				physical.features,
+				physical.limits.subgroup_supported_stages,
+				physical.limits.subgroup_supported_operations,
+				requirements,
+			) {
+				pipelines.push(None);
+				continue;
+			}
 			match ComputePipeline::new(
 				&handle,
 				descriptors.layout(),
 				kernel.artifact(),
 				physical.limits,
 			) {
-				Ok(pipeline) => pipelines.push(pipeline),
+				Ok(pipeline) => pipelines.push(Some(pipeline)),
 				Err(error) => {
-					for pipeline in &mut pipelines {
+					for pipeline in pipelines.iter_mut().flatten() {
 						pipeline.destroy(&handle);
 					}
 					descriptors.destroy(&handle);
@@ -431,6 +455,30 @@ impl Device {
 
 	pub(in crate::runtime) fn same_as(&self, other: &Self) -> bool {
 		Arc::ptr_eq(&self.inner, &other.inner)
+	}
+
+	pub(in crate::runtime) fn require_kernel(&self, kernel: KernelId) -> Result<()> {
+		let pipeline = self.inner.pipelines.get(kernel.index()).ok_or_else(|| {
+			Error::internal(format!(
+				"{} has no generated pipeline-table slot",
+				kernel.report_name()
+			))
+		})?;
+		if pipeline.is_some() {
+			return Ok(());
+		}
+		let requirements = kernel.artifact().requirements()?;
+		let missing = missing_shader_requirements(
+			self.inner.physical.features,
+			self.inner.physical.limits.subgroup_supported_stages,
+			self.inner.physical.limits.subgroup_supported_operations,
+			requirements,
+		);
+		Err(Error::missing_capability(format!(
+			"{} requires unsupported Vulkan capabilities: {}",
+			kernel.report_name(),
+			missing.join(", ")
+		)))
 	}
 
 	pub(super) fn raw(&self) -> &ash::Device {
@@ -664,7 +712,7 @@ impl Drop for DeviceInner {
 					.destroy_buffer(buffer.handle, &mut buffer.allocation);
 			}
 		}
-		for pipeline in &mut self.pipelines {
+		for pipeline in self.pipelines.iter_mut().flatten() {
 			pipeline.destroy(&self.handle);
 		}
 		self.descriptors.destroy(&self.handle);
@@ -691,5 +739,101 @@ impl Drop for DeviceInner {
 		unsafe {
 			self.handle.destroy_device(None);
 		}
+	}
+}
+
+fn supports_shader_requirements(
+	features: super::features::DeviceFeatures,
+	subgroup_stages: ash::vk::ShaderStageFlags,
+	subgroup_operations: ash::vk::SubgroupFeatureFlags,
+	requirements: ShaderRequirements,
+) -> bool {
+	missing_shader_requirements(features, subgroup_stages, subgroup_operations, requirements)
+		.is_empty()
+}
+
+fn missing_shader_requirements(
+	features: super::features::DeviceFeatures,
+	subgroup_stages: ash::vk::ShaderStageFlags,
+	subgroup_operations: ash::vk::SubgroupFeatureFlags,
+	requirements: ShaderRequirements,
+) -> Vec<&'static str> {
+	let mut missing = Vec::new();
+	if requirements.shader_int64 && !features.shader_int64 {
+		missing.push("shaderInt64");
+	}
+	if requirements.shader_int8 && !features.shader_int8 {
+		missing.push("shaderInt8");
+	}
+	if requirements.uniform_and_storage_buffer_8_bit_access
+		&& !features.uniform_and_storage_buffer_8_bit_access
+	{
+		missing.push("uniformAndStorageBuffer8BitAccess");
+	}
+	if requirements.subgroup_basic
+		&& (!subgroup_stages.contains(ash::vk::ShaderStageFlags::COMPUTE)
+			|| !subgroup_operations.contains(ash::vk::SubgroupFeatureFlags::BASIC))
+	{
+		missing.push("compute subgroup basic operations");
+	}
+	if requirements.subgroup_arithmetic
+		&& !subgroup_operations.contains(ash::vk::SubgroupFeatureFlags::ARITHMETIC)
+	{
+		missing.push("compute subgroup arithmetic operations");
+	}
+	missing
+}
+
+#[cfg(test)]
+mod tests {
+	use super::{missing_shader_requirements, supports_shader_requirements};
+	use crate::runtime::{shader::ShaderRequirements, vk::features::DeviceFeatures};
+
+	fn features(shader_int64: bool, shader_int8: bool, storage8: bool) -> DeviceFeatures {
+		DeviceFeatures {
+			shader_int64,
+			timeline_semaphore: true,
+			synchronization2: true,
+			storage_buffer_8_bit_access: storage8,
+			uniform_and_storage_buffer_8_bit_access: storage8,
+			shader_int8,
+			runtime_descriptor_array: true,
+			descriptor_binding_partially_bound: true,
+			descriptor_binding_storage_buffer_update_after_bind: true,
+			descriptor_binding_update_unused_while_pending: true,
+		}
+	}
+
+	#[test]
+	fn optional_shader_requirements_fail_closed() {
+		let requirements = ShaderRequirements {
+			shader_int64: true,
+			shader_int8: true,
+			uniform_and_storage_buffer_8_bit_access: true,
+			subgroup_basic: true,
+			subgroup_arithmetic: true,
+		};
+		let missing = missing_shader_requirements(
+			features(false, false, false),
+			ash::vk::ShaderStageFlags::empty(),
+			ash::vk::SubgroupFeatureFlags::empty(),
+			requirements,
+		);
+		assert_eq!(
+			missing,
+			[
+				"shaderInt64",
+				"shaderInt8",
+				"uniformAndStorageBuffer8BitAccess",
+				"compute subgroup basic operations",
+				"compute subgroup arithmetic operations",
+			]
+		);
+		assert!(supports_shader_requirements(
+			features(true, true, true),
+			ash::vk::ShaderStageFlags::COMPUTE,
+			ash::vk::SubgroupFeatureFlags::BASIC | ash::vk::SubgroupFeatureFlags::ARITHMETIC,
+			requirements,
+		));
 	}
 }

@@ -1,4 +1,48 @@
-use oa::ml::Module as _;
+use std::{rc::Rc, time::SystemTime};
+
+use oa::ml::{Module as _, ModuleRegistry};
+
+struct CheckpointVq {
+	registry: ModuleRegistry,
+	quantizer: Rc<oa::ml::nn::VectorQuantizer>,
+}
+
+impl CheckpointVq {
+	fn new(
+		engine: &oa::Engine,
+		config: oa::ml::nn::VectorQuantizerConfig,
+		seed: u64,
+	) -> oa::Result<Self> {
+		let encoder = Rc::new(oa::ml::nn::Linear::with_seed(
+			engine,
+			config.code_dim,
+			config.code_dim,
+			seed,
+		)?);
+		let quantizer = Rc::new(oa::ml::nn::VectorQuantizer::with_seed(
+			engine,
+			config,
+			seed.wrapping_add(1),
+		)?);
+		let mut registry = ModuleRegistry::new();
+		registry.register_module("encoder", encoder)?;
+		registry.register_module("quantizer", quantizer.clone())?;
+		Ok(Self {
+			registry,
+			quantizer,
+		})
+	}
+}
+
+impl oa::ml::Module for CheckpointVq {
+	fn forward(&self, input: &oa::Matrix) -> oa::Result<oa::Matrix> {
+		self.quantizer.forward(input)
+	}
+
+	fn registry(&self) -> &ModuleRegistry {
+		&self.registry
+	}
+}
 
 fn assert_close(actual: &[f32], expected: &[f32], tolerance: f32) {
 	assert_eq!(actual.len(), expected.len());
@@ -178,6 +222,83 @@ test_vk!(
 			let rms = ((row[0] * row[0] + row[1] * row[1]) / 2.0).sqrt();
 			assert!((rms - 1.0).abs() <= 1.0e-6);
 		}
+		Ok(())
+	}
+);
+
+test_vk!(
+	vq_checkpoint_restores_the_exact_next_ema_transition,
+	engine,
+	{
+		let config = oa::ml::nn::VectorQuantizerConfig {
+			num_codes: 4,
+			code_dim: 2,
+			commitment_beta: 0.25,
+			ema_decay: 0.5,
+			ema_epsilon: 1.0e-5,
+			dead_threshold: 10.0,
+			normalize_codes: false,
+		};
+		let source = CheckpointVq::new(&engine, config, 41)?;
+		let latent = oa::Matrix::from_f32(
+			&engine,
+			[6, 2],
+			&[
+				1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0,
+			],
+		)?;
+		source.quantizer.seed(&latent)?;
+		for _ in 0..2 {
+			let assignment = source.quantizer.quantize(&latent)?;
+			source.quantizer.ema_update(&latent, &assignment.indices)?;
+		}
+		assert_eq!(source.quantizer.ema_step(), 2);
+		let state = source.all_named_state_u32()?;
+		assert_eq!(state.len(), 1);
+		assert_eq!(state[0].path(), "quantizer.ema_step");
+		assert_eq!(state[0].value(), 2);
+
+		let directory = std::env::temp_dir().join(format!(
+			"oars-vq-oam-{}-{}",
+			std::process::id(),
+			SystemTime::now()
+				.duration_since(SystemTime::UNIX_EPOCH)
+				.expect("system clock predates Unix epoch")
+				.as_nanos()
+		));
+		std::fs::create_dir_all(&directory).expect("create VQ checkpoint directory");
+		let path = directory.join("vq.oam");
+		let source_optimizer = oa::ml::AdamW::new(source.all_parameters()?, 0.01)?;
+		oa::ml::save_checkpoint(&path, &source, &source_optimizer)?;
+
+		let destination = CheckpointVq::new(&engine, config, 99)?;
+		let mut destination_optimizer = oa::ml::AdamW::new(destination.all_parameters()?, 0.25)?;
+		oa::ml::load_checkpoint(&engine, &path, &destination, &mut destination_optimizer)?;
+		assert_eq!(destination.quantizer.ema_step(), 2);
+		assert_eq!(
+			destination.quantizer.codebook().read_f32()?,
+			source.quantizer.codebook().read_f32()?
+		);
+
+		let source_assignment = source.quantizer.quantize(&latent)?;
+		let destination_assignment = destination.quantizer.quantize(&latent)?;
+		assert_eq!(
+			destination_assignment.indices.read::<i32>()?,
+			source_assignment.indices.read::<i32>()?
+		);
+		source
+			.quantizer
+			.ema_update(&latent, &source_assignment.indices)?;
+		destination
+			.quantizer
+			.ema_update(&latent, &destination_assignment.indices)?;
+		assert_eq!(source.quantizer.ema_step(), 3);
+		assert_eq!(destination.quantizer.ema_step(), 3);
+		assert_eq!(
+			destination.quantizer.codebook().read_f32()?,
+			source.quantizer.codebook().read_f32()?
+		);
+		std::fs::remove_dir_all(directory).expect("remove VQ checkpoint directory");
 		Ok(())
 	}
 );

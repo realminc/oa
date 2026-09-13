@@ -86,6 +86,17 @@ pub(super) enum Node {
 		dim: usize,
 		sizes: Vec<usize>,
 	},
+	Transpose {
+		input: Matrix,
+		output_id: u64,
+		dim0: usize,
+		dim1: usize,
+	},
+	Gather {
+		input: Matrix,
+		indices: Matrix,
+		output_id: u64,
+	},
 	GatherLastDim {
 		input: Matrix,
 		indices: Matrix,
@@ -216,6 +227,7 @@ pub(super) enum Node {
 		weight_version: Option<u64>,
 		epsilon: f32,
 	},
+	RmsNormGated(Box<RmsNormGatedNode>),
 	Rope {
 		input: Matrix,
 		output_id: u64,
@@ -426,7 +438,9 @@ pub(super) enum Node {
 	GruScan(Box<GruScanNode>),
 	RnnCell(Box<RnnCellNode>),
 	RnnScan(Box<RnnScanNode>),
+	Mamba3Preprocess(Box<Mamba3PreprocessNode>),
 	Mamba3Siso(Box<Mamba3SisoNode>),
+	Mamba3Mimo(Box<Mamba3MimoNode>),
 	CrossEntropy {
 		logits: Matrix,
 		targets: Matrix,
@@ -469,7 +483,7 @@ pub(super) enum Node {
 }
 
 impl Node {
-	pub(super) const fn output_id(&self) -> u64 {
+	pub(super) fn output_id(&self) -> u64 {
 		match self {
 			Self::Add { output_id, .. }
 			| Self::Mul { output_id, .. }
@@ -487,6 +501,8 @@ impl Node {
 			| Self::Slice { output_id, .. }
 			| Self::RepeatInterleave { output_id, .. }
 			| Self::Concat { output_id, .. }
+			| Self::Transpose { output_id, .. }
+			| Self::Gather { output_id, .. }
 			| Self::GatherLastDim { output_id, .. }
 			| Self::FlowLinearState { output_id, .. }
 			| Self::FlowLinearVelocity { output_id, .. }
@@ -547,9 +563,42 @@ impl Node {
 			Self::GruScan(node) => node.output_id,
 			Self::RnnCell(node) => node.output_id,
 			Self::RnnScan(node) => node.output_id,
+			Self::RmsNormGated(node) => node.output_id,
+			Self::Mamba3Preprocess(node) => node.outputs[0].value_id(),
 			Self::Mamba3Siso(node) => node.output_id,
+			Self::Mamba3Mimo(node) => node.output_id,
 		}
 	}
+
+	pub(super) fn produces(&self, value_id: u64) -> bool {
+		match self {
+			Self::Mamba3Preprocess(node) => node
+				.outputs
+				.iter()
+				.any(|output| output.value_id() == value_id),
+			_ => self.output_id() == value_id,
+		}
+	}
+}
+
+pub(super) struct RmsNormGatedNode {
+	pub(super) input: Matrix,
+	pub(super) weight: Option<Parameter>,
+	pub(super) weight_value: Matrix,
+	pub(super) weight_version: Option<u64>,
+	pub(super) bias: Option<Parameter>,
+	pub(super) bias_value: Option<Matrix>,
+	pub(super) bias_version: Option<u64>,
+	pub(super) gate: Matrix,
+	pub(super) epsilon: f32,
+	pub(super) output_id: u64,
+}
+
+pub(super) struct Mamba3PreprocessNode {
+	pub(super) projected: Matrix,
+	pub(super) dt_bias: Matrix,
+	pub(super) outputs: [Matrix; 8],
+	pub(super) config: crate::ml::matrix::Mamba3PreprocessConfig,
 }
 
 pub(super) struct Mamba3SisoNode {
@@ -564,6 +613,12 @@ pub(super) struct Mamba3SisoNode {
 	pub(super) c_bias: Matrix,
 	pub(super) b_bias: Matrix,
 	pub(super) d: Matrix,
+	pub(super) config: crate::ml::matrix::SsmConfig,
+	pub(super) output_id: u64,
+}
+
+pub(super) struct Mamba3MimoNode {
+	pub(super) inputs: [Matrix; 15],
 	pub(super) config: crate::ml::matrix::SsmConfig,
 	pub(super) output_id: u64,
 }

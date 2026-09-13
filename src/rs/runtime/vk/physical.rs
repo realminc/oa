@@ -14,6 +14,8 @@ pub(super) struct DeviceLimits {
 	pub(super) max_compute_work_group_count: [u32; 3],
 	pub(super) max_compute_work_group_size: [u32; 3],
 	pub(super) max_compute_work_group_invocations: u32,
+	pub(super) subgroup_supported_stages: ash::vk::ShaderStageFlags,
+	pub(super) subgroup_supported_operations: ash::vk::SubgroupFeatureFlags,
 	pub(super) timestamp_period_ns: f64,
 	pub(super) compute_timestamp_valid_bits: u32,
 }
@@ -88,10 +90,12 @@ impl PhysicalDevice {
 
 			// SAFETY: `handle` was returned by this live instance. Both queries only read
 			// immutable physical-device properties.
+			let mut subgroup_properties = ash::vk::PhysicalDeviceSubgroupProperties::default();
 			let mut driver_properties = ash::vk::PhysicalDeviceDriverProperties::default();
 			let mut properties12 = ash::vk::PhysicalDeviceVulkan12Properties::default();
 			let mut properties2 = ash::vk::PhysicalDeviceProperties2::default()
 				.push_next(&mut properties12)
+				.push_next(&mut subgroup_properties)
 				.push_next(&mut driver_properties);
 			unsafe {
 				instance
@@ -188,6 +192,8 @@ impl PhysicalDevice {
 				max_compute_work_group_invocations: properties
 					.limits
 					.max_compute_work_group_invocations,
+				subgroup_supported_stages: subgroup_properties.supported_stages,
+				subgroup_supported_operations: subgroup_properties.supported_operations,
 				timestamp_period_ns: f64::from(properties.limits.timestamp_period),
 				compute_timestamp_valid_bits,
 			};
