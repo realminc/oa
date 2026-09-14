@@ -151,6 +151,11 @@ jobs:
           sudo apt-get install -y --no-install-recommends ruby ruby-dev build-essential rpm zstd libarchive-tools
           sudo gem install --no-document fpm
 
+          # Create staging directory for distro packages
+          mkdir -p stage/oa-distro
+          cp -a bin/release/sdk/* stage/oa-distro/
+          cp README.md LICENSE NOTICE.md stage/oa-distro/
+
           MAINT="Empyrealm <realminc.depravity737@passinbox.com>"
           URL="https://github.com/realminc/oa"; LIC="BUSL-1.1"
           pkg() {  # pkg <target> <name> <root> <desc> <dep...>
@@ -161,9 +166,9 @@ jobs:
               "${deps[@]}" -C "$root" -p dist/ usr
           }
           # runtime (oa): the Vulkan loader dependency name differs per distro.
-          pkg deb    oa     stage/oa-sdk     "OA — Vulkan 1.4 compute & ML runtime library and SDK" libvulkan1
-          pkg rpm    oa     stage/oa-sdk     "OA — Vulkan 1.4 compute & ML runtime library and SDK" vulkan-loader
-          pkg pacman oa     stage/oa-sdk     "OA — Vulkan 1.4 compute & ML runtime library and SDK" vulkan-icd-loader
+          pkg deb    oa     stage/oa-distro     "OA — Vulkan 1.4 compute & ML runtime library and SDK" libvulkan1
+          pkg rpm    oa     stage/oa-distro     "OA — Vulkan 1.4 compute & ML runtime library and SDK" vulkan-loader
+          pkg pacman oa     stage/oa-distro     "OA — Vulkan 1.4 compute & ML runtime library and SDK" vulkan-icd-loader
 
           ( cd dist && sha256sum *.tar.gz *.deb *.rpm *.pkg.tar.zst > SHA256SUMS.txt )
           echo "### 📦 Distro packages" >> "$GITHUB_STEP_SUMMARY"
