@@ -384,6 +384,7 @@ jobs:
           generate_release_notes: true
           draft: false
           prerelease: true
+          update_existing: true
           body: |
             ## OA ${{ github.ref_name }} — Rust development preview
 
