@@ -151,10 +151,10 @@ jobs:
           sudo apt-get install -y --no-install-recommends ruby ruby-dev build-essential rpm zstd libarchive-tools
           sudo gem install --no-document fpm
 
-          # Create staging directory for distro packages
-          mkdir -p stage/oa-distro
-          cp -a bin/release/sdk/* stage/oa-distro/
-          cp README.md LICENSE NOTICE.md stage/oa-distro/
+          # Create staging directory for distro packages with /usr structure
+          mkdir -p stage/oa-distro/usr
+          cp -a bin/release/sdk/* stage/oa-distro/usr/
+          cp README.md LICENSE NOTICE.md stage/oa-distro/usr/
 
           MAINT="Empyrealm <realminc.depravity737@passinbox.com>"
           URL="https://github.com/realminc/oa"; LIC="BUSL-1.1"
