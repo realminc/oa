@@ -143,6 +143,32 @@ jobs:
             spirv-val --version
           } > "dist/oa-${version}-build-info.txt"
 
+      - name: Build distro packages
+        if: github.repository == 'realminc/oa' && startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          sudo apt-get install -y --no-install-recommends ruby ruby-dev build-essential rpm zstd libarchive-tools
+          sudo gem install --no-document fpm
+
+          MAINT="Empyrealm <realminc.depravity737@passinbox.com>"
+          URL="https://github.com/realminc/oa"; LIC="BUSL-1.1"
+          pkg() {  # pkg <target> <name> <root> <desc> <dep...>
+            local tgt="$1" name="$2" root="$3" desc="$4"; shift 4
+            local deps=(); local d; for d in "$@"; do deps+=(--depends "$d"); done
+            fpm -s dir -t "$tgt" -n "$name" -v "$VERSION" -a x86_64 --vendor "Realm" \
+              --license "$LIC" --maintainer "$MAINT" --url "$URL" --description "$desc" \
+              "${deps[@]}" -C "$root" -p dist/ usr
+          }
+          # runtime (oa): the Vulkan loader dependency name differs per distro.
+          pkg deb    oa     stage/oa-sdk     "OA — Vulkan 1.4 compute & ML runtime library and SDK" libvulkan1
+          pkg rpm    oa     stage/oa-sdk     "OA — Vulkan 1.4 compute & ML runtime library and SDK" vulkan-loader
+          pkg pacman oa     stage/oa-sdk     "OA — Vulkan 1.4 compute & ML runtime library and SDK" vulkan-icd-loader
+
+          ( cd dist && sha256sum *.tar.gz *.deb *.rpm *.pkg.tar.zst > SHA256SUMS.txt )
+          echo "### 📦 Distro packages" >> "$GITHUB_STEP_SUMMARY"
+          ls -lh dist/*.deb dist/*.rpm dist/*.pkg.tar.zst | awk '{print "- " $NF " (" $5 ")"}' >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload Rust release assets
         if: github.repository == 'realminc/oa' && startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@v4
@@ -150,7 +176,12 @@ jobs:
           name: oa-dist
           retention-days: 7
           if-no-files-found: error
-          path: dist/*
+          path: |
+            dist/*.tar.gz
+            dist/*.deb
+            dist/*.rpm
+            dist/*.pkg.tar.zst
+            dist/*.txt
 
   wheel:
     name: Build and test portable Python wheel
@@ -359,6 +390,13 @@ jobs:
             boundaries and the changelog for this tag before depending on
             experimental hardware paths.
 
+            ### Install (Arch / AUR)
+            ```bash
+            paru -S oa-bin      # prebuilt (this release)
+            # or build from source:
+            paru -S oa-git
+            ```
+
             ### Python 3.10+
             ```bash
             python -m pip install oapython
@@ -370,8 +408,11 @@ jobs:
             ```
           files: |
             dist/*.tar.gz
-            dist/SHA256SUMS.txt
+            dist/*.deb
+            dist/*.rpm
+            dist/*.pkg.tar.zst
             dist/*.whl
+            dist/SHA256SUMS.txt
 
       - name: Publish and anonymously verify complete checksum manifest
         env:
