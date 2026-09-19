@@ -48,7 +48,7 @@ contain Rust values directly. Matrix, ML, Image, and Audio
 operations remain GPU-native; typed reads and `to_list` are explicit host
 synchronization and copy boundaries. Encoded media crosses Python as `bytes`.
 
-Version `0.8.2` is the Rust-first continuation of the historical `oapython`
+Version `0.8.3` is the Rust-first continuation of the historical `oapython`
 `0.7.x` C++ binding line.
 
 **Shipped:** runtime ownership and logging, explicit events, the currently

@@ -54,7 +54,7 @@ PATH="$PWD/.venv/bin:$PATH" .venv/bin/maturin build --release --zig
 The explicit Zig build prevents a developer workstation's newer glibc symbols
 from leaking into a wheel labeled for PyPI.
 
-The `0.8.2` Rust-first preview ships runtime ownership and logging, explicit
+The `0.8.3` Rust-first preview ships runtime ownership and logging, explicit
 events, typed dense matrices, Matrix and ML functional operations, Image
 values/codecs/transforms, Audio values/codecs/DSP/capture/playback,
 cryptography, vision metrics, and the current video

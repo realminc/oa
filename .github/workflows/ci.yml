@@ -251,23 +251,36 @@ jobs:
         working-directory: sdk/py
         run: ZIG_COMMAND=python-zig python -m maturin build --release --zig --locked --compatibility manylinux_2_38
 
-      - name: Test complete installed wheel
+      - name: Test installed wheel package integrity
         run: |
           python -m venv "$RUNNER_TEMP/oa-wheel-smoke"
           "$RUNNER_TEMP/oa-wheel-smoke/bin/pip" install target/wheels/oapython-*.whl
           cd "$RUNNER_TEMP"
           "$RUNNER_TEMP/oa-wheel-smoke/bin/python" - <<'PY'
           import importlib.metadata
+          import pathlib
           import oa
+          import oa.audio
+          import oa.core
+          import oa.cryptography
+          import oa.image
+          import oa.matrix
+          import oa.ml
+          import oa.render
+          import oa.runtime
+          import oa.video
+          import oa.vision
 
           assert importlib.metadata.version("oapython") == oa.__version__
           assert callable(oa.Engine)
           assert callable(oa.matrix.add)
           assert oa.audio.Audio is oa.Audio
           assert oa.image.Image is oa.Image
+          assert pathlib.Path(oa.__file__).is_file()
           PY
-          "$RUNNER_TEMP/oa-wheel-smoke/bin/python" -m unittest discover \
-            -s "$GITHUB_WORKSPACE/test/py" -v
+          package_root="$("$RUNNER_TEMP/oa-wheel-smoke/bin/python" -c \
+            'import pathlib, oa; print(pathlib.Path(oa.__file__).parent)')"
+          "$RUNNER_TEMP/oa-wheel-smoke/bin/python" -m compileall -q "$package_root"
           unzip -l "$GITHUB_WORKSPACE"/target/wheels/oapython-*.whl > wheel-files.txt
           grep -q 'oa/_native.abi3.so' wheel-files.txt
           grep -q 'oa/_native.pyi' wheel-files.txt

@@ -55,7 +55,11 @@ metadata, install/import tests, and compatibility policy exist. This is the
 intentional Rust replacement for the old C++ split runtime/SDK packages, not a
 claim that the old runtime artifact has already been ported.
 
-The wheel is independently installed and tested before PyPI publication. The
-release job then downloads that exact PyPI wheel, checks its digest, attaches it
-beside the native packages and evidence, regenerates the complete checksum
-manifest, and anonymously downloads and verifies every published asset.
+The wheel is independently installed into a clean environment before PyPI
+publication. CI imports every packaged domain, checks root/module type identity,
+compiles the Python surface, and audits the archive inventory without claiming
+that a software Vulkan runner qualifies hardware execution. Physical-device
+Python tests remain a separate release gate. The release job then downloads
+that exact PyPI wheel, checks its digest, attaches it beside the native packages
+and evidence, regenerates the complete checksum manifest, and anonymously
+downloads and verifies every published asset.
