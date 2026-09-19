@@ -8,7 +8,7 @@ use crate::{
 };
 
 use super::AdamW;
-use crate::ml::optimizer::AdamWProgramSignature;
+use crate::ml::optim::AdamWProgramSignature;
 
 /// Ordered compilation stage for a captured training program.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -257,12 +257,7 @@ impl TrainingProgram {
 		self.replay_impl(engine, optimizer, true)
 	}
 
-	fn replay_impl(
-		&mut self,
-		engine: &Engine,
-		optimizer: &mut AdamW,
-		timed: bool,
-	) -> Result<Event> {
+	fn replay_impl(&mut self, engine: &Engine, optimizer: &mut AdamW, timed: bool) -> Result<Event> {
 		let expected_step = self
 			.optimizer
 			.base_step
@@ -472,7 +467,8 @@ impl TrainingProgram {
 		);
 		crate::core::push_json_string(
 			&mut output,
-			self.plan
+			self
+				.plan
 				.alias_materialization_fallback_reason()
 				.unwrap_or(""),
 		);

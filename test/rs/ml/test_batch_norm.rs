@@ -20,9 +20,8 @@ fn host_statistics(input: &[f32], shape: [usize; 4]) -> (Vec<f32>, Vec<f32>) {
 		let square_sum = (0..batch)
 			.flat_map(|batch_index| {
 				(0..spatial).map(move |spatial_index| {
-					let value = f64::from(
-						input[(batch_index * channels + channel) * spatial + spatial_index],
-					);
+					let value =
+						f64::from(input[(batch_index * channels + channel) * spatial + spatial_index]);
 					(value - channel_mean).powi(2)
 				})
 			})
@@ -47,8 +46,7 @@ fn host_batch_norm(
 	let mut output = vec![0.0; input.len()];
 	for batch_index in 0..batch {
 		for channel in 0..channels {
-			let inverse_stddev =
-				1.0_f64 / (f64::from(variance[channel]) + f64::from(epsilon)).sqrt();
+			let inverse_stddev = 1.0_f64 / (f64::from(variance[channel]) + f64::from(epsilon)).sqrt();
 			for spatial_index in 0..spatial {
 				let index = (batch_index * channels + channel) * spatial + spatial_index;
 				output[index] = ((f64::from(input[index]) - f64::from(mean[channel]))
@@ -97,8 +95,8 @@ fn assert_close(actual: &[f32], expected: &[f32], tolerance: f32) {
 test_vk!(batch_norm_2d_training_matches_independent_oracle, engine, {
 	let shape = [2, 2, 2, 3];
 	let input_values = [
-		0.2_f32, -0.7, 1.1, 0.8, 0.3, -0.4, 1.2, -0.1, 0.5, -0.8, 0.6, 0.9, -0.3, 0.4, 1.5, -1.0,
-		0.7, 0.1, 0.25, -0.55, 0.35, 1.25, -0.2, 0.75,
+		0.2_f32, -0.7, 1.1, 0.8, 0.3, -0.4, 1.2, -0.1, 0.5, -0.8, 0.6, 0.9, -0.3, 0.4, 1.5, -1.0, 0.7,
+		0.1, 0.25, -0.55, 0.35, 1.25, -0.2, 0.75,
 	];
 	let weight_values = [0.75_f32, -1.25];
 	let bias_values = [0.1_f32, -0.2];
@@ -236,11 +234,8 @@ test_vk!(
 			host_loss(&input_values, &weight_values, values)
 		});
 
-		let embedding = oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(
-			&engine,
-			[4, 3],
-			&input_values,
-		)?)?;
+		let embedding =
+			oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [4, 3], &input_values)?)?;
 		let indices = oa::Matrix::from_slice(&engine, [1, 2, 2], &[0_u32, 1, 2, 3])?;
 		let module = oa::ml::nn::BatchNorm2d::from_matrices(
 			oa::Matrix::from_f32(&engine, [2], &weight_values)?,
@@ -303,11 +298,8 @@ test_vk!(
 				&target_values,
 			)
 		});
-		let embedding = oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(
-			&engine,
-			[1, 4],
-			&input_values,
-		)?)?;
+		let embedding =
+			oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [1, 4], &input_values)?)?;
 		let indices = oa::Matrix::from_slice(&engine, [1, 1, 1], &[0_u32])?;
 		let module = oa::ml::nn::BatchNorm2d::from_matrices(
 			oa::Matrix::from_f32(&engine, [1], &weight)?,

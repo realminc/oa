@@ -69,11 +69,7 @@ impl RouteGeometry {
 			tokens: shader_u32(*tokens, "token count", operation)?,
 			experts: shader_u32(*experts, "expert count", operation)?,
 			routes_per_token: shader_u32(*routes_per_token, "routes per token", operation)?,
-			probability_count: shader_u32(
-				probability_count,
-				"probability element count",
-				operation,
-			)?,
+			probability_count: shader_u32(probability_count, "probability element count", operation)?,
 		})
 	}
 
@@ -207,9 +203,9 @@ pub(in crate::ml) fn gather(
 			"{OPERATION} requires same-engine F32 input [T, D] and U32 packed-token/inverse maps [R] with R % T == 0"
 		)));
 	}
-	let output_count = routes.checked_mul(*row_width).ok_or_else(|| {
-		Error::invalid_argument(format!("{OPERATION} output size overflows usize"))
-	})?;
+	let output_count = routes
+		.checked_mul(*row_width)
+		.ok_or_else(|| Error::invalid_argument(format!("{OPERATION} output size overflows usize")))?;
 	let routes_u32 = shader_u32(*routes, "route count", OPERATION)?;
 	let row_width_u32 = shader_u32(*row_width, "row width", OPERATION)?;
 	let output_count_u32 = shader_u32(output_count, "output element count", OPERATION)?;
@@ -265,9 +261,9 @@ pub(in crate::ml) fn gather_backward(
 			"{OPERATION} requires same-engine F32 source [R, D], U32 inverse [R], and positive output rows dividing R"
 		)));
 	}
-	let output_count = output_rows.checked_mul(*row_width).ok_or_else(|| {
-		Error::invalid_argument(format!("{OPERATION} output size overflows usize"))
-	})?;
+	let output_count = output_rows
+		.checked_mul(*row_width)
+		.ok_or_else(|| Error::invalid_argument(format!("{OPERATION} output size overflows usize")))?;
 	let routes_u32 = shader_u32(*routes, "route count", OPERATION)?;
 	let row_width_u32 = shader_u32(*row_width, "row width", OPERATION)?;
 	let tokens_u32 = shader_u32(output_rows, "output row count", OPERATION)?;
@@ -391,9 +387,7 @@ pub(in crate::ml) fn combine_backward(
 	let dispatch_count = geometry
 		.routes
 		.checked_mul(geometry.row_width)
-		.ok_or_else(|| {
-			Error::invalid_argument(format!("{OPERATION} dispatch count exceeds u32"))
-		})?;
+		.ok_or_else(|| Error::invalid_argument(format!("{OPERATION} dispatch count exceeds u32")))?;
 	let kernel = KernelId::MlMoeCombineBackwardF32;
 	record_semantic(
 		&[output_gradient, packed, route_gate, inverse, packed_slot],
@@ -436,9 +430,9 @@ impl CombineGeometry {
 				"{operation} route gates must have shape [T, K]"
 			)));
 		};
-		let expected_routes = tokens.checked_mul(*routes_per_token).ok_or_else(|| {
-			Error::invalid_argument(format!("{operation} route count overflows usize"))
-		})?;
+		let expected_routes = tokens
+			.checked_mul(*routes_per_token)
+			.ok_or_else(|| Error::invalid_argument(format!("{operation} route count overflows usize")))?;
 		if packed.dtype() != DType::F32
 			|| route_gate.dtype() != DType::F32
 			|| inverse.dtype() != DType::U32
@@ -458,9 +452,9 @@ impl CombineGeometry {
 				"{operation} requires same-engine F32 packed [T*K, D], F32 route gates [T, K], and U32 inverse/packed-slot maps [T*K]"
 			)));
 		}
-		let output_count = tokens.checked_mul(*row_width).ok_or_else(|| {
-			Error::invalid_argument(format!("{operation} output size overflows usize"))
-		})?;
+		let output_count = tokens
+			.checked_mul(*row_width)
+			.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))?;
 		Ok(Self {
 			tokens: shader_u32(*tokens, "token count", operation)?,
 			routes_per_token: shader_u32(*routes_per_token, "routes per token", operation)?,
@@ -555,9 +549,7 @@ pub(in crate::ml) fn grouped_gemm_m(
 	let geometry = GroupedLinearGeometry::resolve(input, weight, None, offsets, OPERATION)?;
 	let output_count = (geometry.rows as usize)
 		.checked_mul(geometry.output_features as usize)
-		.ok_or_else(|| {
-			Error::invalid_argument(format!("{OPERATION} output size overflows usize"))
-		})?;
+		.ok_or_else(|| Error::invalid_argument(format!("{OPERATION} output size overflows usize")))?;
 	let output = Matrix::allocate(
 		input.engine_handle(),
 		vec![geometry.rows as usize, geometry.output_features as usize],
@@ -680,9 +672,7 @@ pub(in crate::ml) fn grouped_linear_m(
 	let geometry = GroupedLinearGeometry::resolve(input, weight, Some(bias), offsets, OPERATION)?;
 	let output_count = (geometry.rows as usize)
 		.checked_mul(geometry.output_features as usize)
-		.ok_or_else(|| {
-			Error::invalid_argument(format!("{OPERATION} output size overflows usize"))
-		})?;
+		.ok_or_else(|| Error::invalid_argument(format!("{OPERATION} output size overflows usize")))?;
 	let output = Matrix::allocate(
 		input.engine_handle(),
 		vec![geometry.rows as usize, geometry.output_features as usize],

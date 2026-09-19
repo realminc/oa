@@ -327,10 +327,8 @@ pub fn dqn(
 		config.discount,
 	)?;
 	let action_column = matrix::reshape(action, vec![*batch, 1])?;
-	let selected_q = matrix::reshape_semantic_output(
-		&matrix::gather_last_dim(q, &action_column)?,
-		vec![*batch],
-	)?;
+	let selected_q =
+		matrix::reshape_semantic_output(&matrix::gather_last_dim(q, &action_column)?, vec![*batch])?;
 	let loss = smooth_l1(&selected_q, &target_q)?;
 	let result = DqnLossResult {
 		selected_q,

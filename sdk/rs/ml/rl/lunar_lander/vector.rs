@@ -171,13 +171,7 @@ impl<'engine> LunarLander3dVector<'engine> {
 				1.0,
 			)?,
 			EnvironmentSpace::discrete("action", 8, DType::I32)?,
-			EnvironmentSpace::continuous(
-				"reward",
-				[],
-				DType::F32,
-				f64::NEG_INFINITY,
-				f64::INFINITY,
-			)?,
+			EnvironmentSpace::continuous("reward", [], DType::F32, f64::NEG_INFINITY, f64::INFINITY)?,
 			EnvironmentSpace::binary("terminated", [])?,
 			EnvironmentSpace::binary("truncated", [])?,
 		)?;
@@ -249,7 +243,8 @@ impl<'engine> LunarLander3dVector<'engine> {
 					step.truncated.clone(),
 				);
 				if let Err(error) =
-					self.spec
+					self
+						.spec
 						.validate_transition(action, &transition, self.config.environments)
 				{
 					let _ = Environment::cancel(self);
@@ -521,8 +516,7 @@ fn serialize_config_f32(config: &LunarLander3dConfig, terrain: &LunarTerrain) ->
 			support.radius,
 		] {
 			let converted = value as f32;
-			if !converted.is_finite()
-				|| (value != 0.0 && (converted == 0.0 || converted.is_subnormal()))
+			if !converted.is_finite() || (value != 0.0 && (converted == 0.0 || converted.is_subnormal()))
 			{
 				return Err(Error::out_of_range(
 					"Lunar Lander support cannot be represented as normal finite FP32",
@@ -566,19 +560,14 @@ fn validate_serialized_config(values: &[f32], config: &LunarLander3dConfig) -> R
 		.all(reciprocal_safe);
 	let bounds = values[18] < values[19] && values[42] < values[43] && values[44] < values[45];
 	let substep = values[0] / config.physics_substeps as f32;
-	let representable_substep = substep > 0.0
-		&& substep.is_finite()
-		&& !substep.is_subnormal()
-		&& (1.0 / substep).is_finite();
+	let representable_substep =
+		substep > 0.0 && substep.is_finite() && !substep.is_subnormal() && (1.0 / substep).is_finite();
 	let debit_valid = |rate: f32| {
 		if rate == 0.0 {
 			true
 		} else {
 			let debit = rate * substep;
-			debit > 0.0
-				&& debit.is_finite()
-				&& !debit.is_subnormal()
-				&& values[8] - debit != values[8]
+			debit > 0.0 && debit.is_finite() && !debit.is_subnormal() && values[8] - debit != values[8]
 		}
 	};
 	let supports = (0..7).all(|support| values[47 + support * 4 + 3] > 0.0);
@@ -586,7 +575,8 @@ fn validate_serialized_config(values: &[f32], config: &LunarLander3dConfig) -> R
 	let fuel = f64::from(values[8]) * f64::from(values[35] + values[36]);
 	let terminal = f64::from(values[39].max(values[40].abs()));
 	let reward = (1.0 + f64::from(values[30])) * potential
-		+ fuel + 4.0 * f64::from(values[37])
+		+ fuel
+		+ 4.0 * f64::from(values[37])
 		+ f64::from(values[38])
 		+ terminal;
 	let bounded = reward.is_finite()

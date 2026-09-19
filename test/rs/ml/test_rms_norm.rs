@@ -13,12 +13,14 @@ fn host_rms_norm(input: &[f32], weight: &[f32], epsilon: f32) -> Vec<f32> {
 	input
 		.chunks_exact(weight.len())
 		.flat_map(|row| {
-			let mean_square =
-				row.iter()
-					.map(|value| f64::from(*value) * f64::from(*value))
-					.sum::<f64>() / row.len() as f64;
+			let mean_square = row
+				.iter()
+				.map(|value| f64::from(*value) * f64::from(*value))
+				.sum::<f64>()
+				/ row.len() as f64;
 			let inverse_rms = (mean_square + f64::from(epsilon)).sqrt().recip() as f32;
-			row.iter()
+			row
+				.iter()
 				.zip(weight)
 				.map(move |(value, weight)| value * inverse_rms * weight)
 		})
@@ -40,10 +42,12 @@ fn host_loss(
 	for (row_index, row) in normalized.chunks_exact(width).enumerate() {
 		let logits = (0..classes)
 			.map(|class| {
-				row.iter()
+				row
+					.iter()
 					.zip(&linear_weight[class * width..(class + 1) * width])
 					.map(|(input, weight)| input * weight)
-					.sum::<f32>() + linear_bias[class]
+					.sum::<f32>()
+					+ linear_bias[class]
 			})
 			.collect::<Vec<_>>();
 		let maximum = logits.iter().copied().fold(f32::NEG_INFINITY, f32::max);
@@ -51,8 +55,7 @@ fn host_loss(
 			.iter()
 			.map(|value| f64::from(*value - maximum).exp())
 			.sum::<f64>();
-		loss +=
-			f64::from(maximum) + denominator.ln() - f64::from(logits[targets[row_index] as usize]);
+		loss += f64::from(maximum) + denominator.ln() - f64::from(logits[targets[row_index] as usize]);
 	}
 	(loss / targets.len() as f64) as f32
 }
@@ -140,8 +143,7 @@ test_vk!(
 		let weight = oa::Matrix::from_f32(&engine, [GROUPS, COLUMNS], &weight_values)?;
 		let bias = oa::Matrix::from_f32(&engine, [GROUPS, COLUMNS], &bias_values)?;
 		let gate = oa::Matrix::from_f32(&engine, [2, 2, COLUMNS], &gate_values)?;
-		let output_gradient =
-			oa::Matrix::from_f32(&engine, [2, 2, COLUMNS], &output_gradient_values)?;
+		let output_gradient = oa::Matrix::from_f32(&engine, [2, 2, COLUMNS], &output_gradient_values)?;
 		let output = oa::ml::matrix::rms_norm_gated(&input, &weight, Some(&bias), &gate, EPSILON)?;
 		assert_close(
 			&output.read_f32()?,
@@ -243,11 +245,8 @@ test_vk!(
 
 		let indices = oa::Matrix::from_slice(&engine, [2, 2], &[0_u32, 1, 2, 3])?;
 		let target_matrix = oa::Matrix::from_slice(&engine, [4], &targets)?;
-		let embedding = oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(
-			&engine,
-			[4, 3],
-			&input_values,
-		)?)?;
+		let embedding =
+			oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [4, 3], &input_values)?)?;
 		let rms_norm = oa::ml::nn::RmsNorm::from_matrix(
 			oa::Matrix::from_f32(&engine, [3], &rms_weight_values)?,
 			EPSILON,

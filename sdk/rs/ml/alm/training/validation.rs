@@ -162,8 +162,7 @@ pub fn evaluate_tokenizer(
 			.checked_mul(config.batch_size)
 			.ok_or_else(|| Error::resource_exhausted("validation cursor exceeds usize"))?;
 		let rows = config.batch_size.min(windows.len() - begin);
-		let mut target =
-			gather_tokenizer_batch(dataset, &windows, begin, rows, config.sequence_len)?;
+		let mut target = gather_tokenizer_batch(dataset, &windows, begin, rows, config.sequence_len)?;
 		let input = Matrix::from_slice(
 			engine,
 			[rows, config.sequence_len, dataset.feature_dim()],
@@ -290,8 +289,7 @@ pub fn evaluate_prior(
 			.checked_mul(config.batch_size)
 			.ok_or_else(|| Error::resource_exhausted("validation cursor exceeds usize"))?;
 		let rows = config.batch_size.min(windows.len() - begin);
-		let batch =
-			gather_prior_batch(sequences, &windows, begin, rows, config.window_len, special)?;
+		let batch = gather_prior_batch(sequences, &windows, begin, rows, config.window_len, special)?;
 		let element_count = rows
 			.checked_mul(config.window_len)
 			.ok_or_else(|| Error::resource_exhausted("validation batch size exceeds usize"))?;

@@ -26,18 +26,20 @@ fn host_avg_pool_2d(
 							let input_x = input_x_start + kernel_x as isize;
 							if input_y >= 0
 								&& input_y < input_height as isize
-								&& input_x >= 0 && input_x < input_width as isize
+								&& input_x >= 0
+								&& input_x < input_width as isize
 							{
-								let input_index = ((batch_index * channels + channel)
-									* input_height + input_y as usize)
-									* input_width + input_x as usize;
+								let input_index = ((batch_index * channels + channel) * input_height
+									+ input_y as usize)
+									* input_width
+									+ input_x as usize;
 								sum += input[input_index];
 								count += 1;
 							}
 						}
 					}
-					let output_index = ((batch_index * channels + channel) * output_height
-						+ output_y) * output_width
+					let output_index = ((batch_index * channels + channel) * output_height + output_y)
+						* output_width
 						+ output_x;
 					output[output_index] = sum / count as f32;
 				}
@@ -83,14 +85,15 @@ fn host_adaptive_avg_pool_2d(
 					let mut sum = 0.0;
 					for input_y in input_y_start..input_y_end {
 						for input_x in input_x_start..input_x_end {
-							let input_index = ((batch_index * channels + channel) * input_height
-								+ input_y) * input_width + input_x;
+							let input_index = ((batch_index * channels + channel) * input_height + input_y)
+								* input_width
+								+ input_x;
 							sum += input[input_index];
 						}
 					}
 					let count = (input_y_end - input_y_start) * (input_x_end - input_x_start);
-					let output_index = ((batch_index * channels + channel) * output_height
-						+ output_y) * output_width
+					let output_index = ((batch_index * channels + channel) * output_height + output_y)
+						* output_width
 						+ output_x;
 					output[output_index] = sum / count as f32;
 				}
@@ -218,8 +221,7 @@ test_vk!(
 	engine,
 	{
 		let input_values = [
-			1.0_f32, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0,
-			16.0,
+			1.0_f32, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
 		];
 		let input = oa::Matrix::from_f32(&engine, [1, 1, 4, 4], &input_values)?;
 		let result = oa::ml::matrix::max_pool_2d(&input, 2, 2, 0)?;
@@ -232,11 +234,8 @@ test_vk!(
 		assert_eq!(tie.output.read_f32()?, [5.0]);
 		assert_eq!(tie.indices.read::<u32>()?, [0]);
 
-		let embedding = oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(
-			&engine,
-			[4, 4],
-			&input_values,
-		)?)?;
+		let embedding =
+			oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [4, 4], &input_values)?)?;
 		let indices = oa::Matrix::from_slice(&engine, [1, 1, 4], &[0_u32, 1, 2, 3])?;
 		let target = oa::Matrix::from_f32(&engine, [1, 1, 2, 2], &[0.0; 4])?;
 		let module = oa::ml::nn::MaxPool2d::new(2)?;
@@ -281,11 +280,8 @@ test_vk!(
 			1.0e-6,
 		);
 
-		let embedding = oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(
-			&engine,
-			[3, 4],
-			&input_values,
-		)?)?;
+		let embedding =
+			oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [3, 4], &input_values)?)?;
 		let indices = oa::Matrix::from_slice(&engine, [1, 1, 3], &[0_u32, 1, 2])?;
 		let target = oa::Matrix::from_f32(&engine, [1, 1, 2, 3], &target_values)?;
 		let pool = oa::ml::nn::AdaptiveAvgPool2d::with_output_size(2, 3)?;
@@ -315,7 +311,8 @@ test_vk!(
 						.iter()
 						.zip(target_values)
 						.map(|(actual, target)| (actual - target).powi(2))
-						.sum::<f32>() / target_values.len() as f32
+						.sum::<f32>()
+						/ target_values.len() as f32
 				};
 				(mse(&above) - mse(&below)) / (2.0 * DELTA)
 			})

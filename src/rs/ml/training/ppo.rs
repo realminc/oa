@@ -244,7 +244,8 @@ impl<'engine, 'hooks> PpoTrainer<'engine, 'hooks> {
 				"PPO end_collection requires active collection",
 			));
 		}
-		self.training
+		self
+			.training
 			.finalize_rollout(&mut self.rollout, self.config.gae)?;
 		self.collecting = false;
 		Ok(())
@@ -306,8 +307,7 @@ impl<'engine, 'hooks> PpoTrainer<'engine, 'hooks> {
 			.checked_mul(self.config.environments)
 			.ok_or_else(|| Error::resource_exhausted("PPO batch size overflows usize"))?;
 		let rollout = self.rollout.batch();
-		let observation =
-			matrix::reshape(rollout.observation(), [batch, self.observation_elements])?;
+		let observation = matrix::reshape(rollout.observation(), [batch, self.observation_elements])?;
 		let action = matrix::reshape(rollout.action(), [batch])?;
 		let old_log_probability = matrix::reshape(rollout.old_log_probability(), [batch])?;
 		let advantage = matrix::reshape(rollout.advantage(), [batch])?;

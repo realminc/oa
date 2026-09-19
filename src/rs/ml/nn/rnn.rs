@@ -208,9 +208,7 @@ impl RnnLayer {
 				"RNN cell input must have shape [B, I]",
 			));
 		};
-		if *batch == 0
-			|| *input_size != self.input_size
-			|| hidden.shape() != [*batch, self.hidden_size]
+		if *batch == 0 || *input_size != self.input_size || hidden.shape() != [*batch, self.hidden_size]
 		{
 			return Err(Error::invalid_argument(format!(
 				"RNN cell requires input [B, {}] and hidden [B, {}]; found {:?} and {:?}",

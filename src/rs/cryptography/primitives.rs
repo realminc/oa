@@ -83,14 +83,10 @@ impl Hash {
 		debug_assert!(remainder.is_empty());
 		for (index, pair) in pairs.iter().enumerate() {
 			let high = hex_nibble(pair[0]).ok_or_else(|| {
-				Error::invalid_argument(
-					"Hash hexadecimal text contains a non-hexadecimal character",
-				)
+				Error::invalid_argument("Hash hexadecimal text contains a non-hexadecimal character")
 			})?;
 			let low = hex_nibble(pair[1]).ok_or_else(|| {
-				Error::invalid_argument(
-					"Hash hexadecimal text contains a non-hexadecimal character",
-				)
+				Error::invalid_argument("Hash hexadecimal text contains a non-hexadecimal character")
 			})?;
 			bytes[index] = (high << 4) | low;
 		}
@@ -133,11 +129,8 @@ pub fn keccak_f1600(state: &mut [u64; 25]) {
 	for round_constant in ROUND_CONSTANTS {
 		let mut columns = [0_u64; 5];
 		for index in 0..5 {
-			columns[index] = state[index]
-				^ state[5 + index]
-				^ state[10 + index]
-				^ state[15 + index]
-				^ state[20 + index];
+			columns[index] =
+				state[index] ^ state[5 + index] ^ state[10 + index] ^ state[15 + index] ^ state[20 + index];
 		}
 		let mut differences = [0_u64; 5];
 		for index in 0..5 {
@@ -477,9 +470,10 @@ impl MerkleProof {
 ///
 /// Returns an error for an empty tree or an out-of-range leaf index.
 pub fn merkle_proof(tree: &MerkleTree, leaf_index: usize) -> Result<MerkleProof> {
-	let leaves = tree.levels.first().ok_or_else(|| {
-		Error::invalid_argument("cannot prove membership in an empty Merkle tree")
-	})?;
+	let leaves = tree
+		.levels
+		.first()
+		.ok_or_else(|| Error::invalid_argument("cannot prove membership in an empty Merkle tree"))?;
 	if leaf_index >= leaves.len() {
 		return Err(Error::out_of_range("Merkle leaf index is out of range"));
 	}

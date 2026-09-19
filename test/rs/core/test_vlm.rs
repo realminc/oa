@@ -35,12 +35,8 @@ macro_rules! matrix_product_contract {
 				}
 				let mut assigned = left;
 				assigned *= right;
-				for (value, expected) in assigned.m.iter().flatten().zip(actual.m.iter().flatten())
-				{
-					assert!(
-						value.is_nan() && expected.is_nan()
-							|| value.to_bits() == expected.to_bits()
-					);
+				for (value, expected) in assigned.m.iter().flatten().zip(actual.m.iter().flatten()) {
+					assert!(value.is_nan() && expected.is_nan() || value.to_bits() == expected.to_bits());
 				}
 			};
 			let mut seed = 0x1234_5678_u32;
@@ -543,8 +539,8 @@ fn projection_variants_preserve_lens_and_depth_contracts() {
 			.z,
 		1.0 / 3.0,
 	));
-	let infinite = Mat4::try_perspective_reverse_z_infinite(90.0, 1.0, 0.5)
-		.expect("valid infinite projection");
+	let infinite =
+		Mat4::try_perspective_reverse_z_infinite(90.0, 1.0, 0.5).expect("valid infinite projection");
 	assert!(close(
 		infinite
 			.try_project_point(

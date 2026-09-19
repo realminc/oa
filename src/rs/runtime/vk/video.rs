@@ -182,8 +182,8 @@ impl NativeFrameLeases {
 	}
 
 	fn lease(self: &Arc<Self>, slot: u32, ready: Event) -> Result<NativeDecodedFrame> {
-		let index = usize::try_from(slot)
-			.map_err(|_| Error::out_of_range("native video slot exceeds usize"))?;
+		let index =
+			usize::try_from(slot).map_err(|_| Error::out_of_range("native video slot exceeds usize"))?;
 		{
 			let mut slots = self
 				.slots
@@ -219,8 +219,8 @@ impl NativeFrameLeases {
 				"video consumer event belongs to another engine",
 			));
 		}
-		let index = usize::try_from(slot)
-			.map_err(|_| Error::out_of_range("native video slot exceeds usize"))?;
+		let index =
+			usize::try_from(slot).map_err(|_| Error::out_of_range("native video slot exceeds usize"))?;
 		let mut slots = self
 			.slots
 			.lock()
@@ -245,8 +245,8 @@ impl NativeFrameLeases {
 	}
 
 	fn validate_live_frame(&self, slot: u32) -> Result<()> {
-		let index = usize::try_from(slot)
-			.map_err(|_| Error::out_of_range("native video slot exceeds usize"))?;
+		let index =
+			usize::try_from(slot).map_err(|_| Error::out_of_range("native video slot exceeds usize"))?;
 		let slots = self
 			.slots
 			.lock()
@@ -301,7 +301,8 @@ impl Drop for DecodeImageStorage {
 			let mut allocation = image.allocation;
 			// SAFETY: no retained view or frame lease remains for this image.
 			unsafe {
-				self.device
+				self
+					.device
 					.allocator()
 					.destroy_image(image.handle, &mut allocation);
 			}
@@ -407,14 +408,15 @@ impl H265DpbState {
 		let max_poc_lsb = 1_i32
 			.checked_shl(poc_bits)
 			.ok_or_else(|| Error::data_loss("H.265 maximum POC LSB exceeds i32"))?;
-		let poc_lsb = if slice.is_idr {
-			0
-		} else {
-			i32::try_from(slice.picture_order_count_lsb.ok_or_else(|| {
-				Error::data_loss("non-IDR H.265 picture omitted picture-order-count LSB")
-			})?)
-			.map_err(|_| Error::data_loss("H.265 picture-order-count LSB exceeds i32"))?
-		};
+		let poc_lsb =
+			if slice.is_idr {
+				0
+			} else {
+				i32::try_from(slice.picture_order_count_lsb.ok_or_else(|| {
+					Error::data_loss("non-IDR H.265 picture omitted picture-order-count LSB")
+				})?)
+				.map_err(|_| Error::data_loss("H.265 picture-order-count LSB exceeds i32"))?
+			};
 		if poc_lsb >= max_poc_lsb {
 			return Err(Error::data_loss(
 				"H.265 picture-order-count LSB exceeds the SPS width",
@@ -425,15 +427,12 @@ impl H265DpbState {
 		let mut poc_msb = self.previous_poc_msb;
 		if reset_dpb || !self.has_previous_poc {
 			poc_msb = 0;
-		} else if poc_lsb < self.previous_poc_lsb
-			&& self.previous_poc_lsb - poc_lsb >= max_poc_lsb / 2
+		} else if poc_lsb < self.previous_poc_lsb && self.previous_poc_lsb - poc_lsb >= max_poc_lsb / 2
 		{
 			poc_msb = poc_msb
 				.checked_add(max_poc_lsb)
 				.ok_or_else(|| Error::out_of_range("H.265 POC MSB exceeds i32"))?;
-		} else if poc_lsb > self.previous_poc_lsb
-			&& poc_lsb - self.previous_poc_lsb > max_poc_lsb / 2
-		{
+		} else if poc_lsb > self.previous_poc_lsb && poc_lsb - self.previous_poc_lsb > max_poc_lsb / 2 {
 			poc_msb = poc_msb
 				.checked_sub(max_poc_lsb)
 				.ok_or_else(|| Error::out_of_range("H.265 POC MSB is below i32"))?;
@@ -463,12 +462,11 @@ impl H265DpbState {
 			.slots
 			.iter()
 			.enumerate()
-			.find(|(index, slot)| {
-				!slot.in_use && !unavailable.get(*index).copied().unwrap_or(false)
-			})
+			.find(|(index, slot)| !slot.in_use && !unavailable.get(*index).copied().unwrap_or(false))
 			.map(|(index, _)| index)
 			.or_else(|| {
-				self.slots
+				self
+					.slots
 					.iter()
 					.enumerate()
 					.filter(|(index, slot)| {
@@ -477,9 +475,7 @@ impl H265DpbState {
 					.min_by_key(|(_, slot)| slot.decode_index)
 					.map(|(index, _)| index)
 			})
-			.ok_or_else(|| {
-				Error::resource_exhausted("H.265 DPB has no unleased recyclable slot")
-			})?;
+			.ok_or_else(|| Error::resource_exhausted("H.265 DPB has no unleased recyclable slot"))?;
 
 		let resolve = |deltas: &[i32]| -> Result<Vec<u8>> {
 			let mut resolved = Vec::new();
@@ -493,15 +489,10 @@ impl H265DpbState {
 				let index = self
 					.slots
 					.iter()
-					.position(|slot| {
-						slot.in_use && slot.is_reference && slot.picture_order_count == target
-					})
-					.ok_or_else(|| {
-						Error::data_loss("H.265 reference picture is absent from DPB")
-					})?;
+					.position(|slot| slot.in_use && slot.is_reference && slot.picture_order_count == target)
+					.ok_or_else(|| Error::data_loss("H.265 reference picture is absent from DPB"))?;
 				resolved.push(
-					u8::try_from(index)
-						.map_err(|_| Error::internal("H.265 DPB slot index exceeds u8"))?,
+					u8::try_from(index).map_err(|_| Error::internal("H.265 DPB slot index exceeds u8"))?,
 				);
 			}
 			Ok(resolved)
@@ -958,8 +949,7 @@ pub(super) fn create_decode_session(
 		} else if limits.dpb_and_output_distinct() {
 			let output_formats =
 				query_formats(&instance_loader, physical.handle, vk_profile, output_usage)?;
-			let dpb_formats =
-				query_formats(&instance_loader, physical.handle, vk_profile, dpb_usage)?;
+			let dpb_formats = query_formats(&instance_loader, physical.handle, vk_profile, dpb_usage)?;
 			(
 				select_image_format(output_formats, output_usage, "decode output")?,
 				select_image_format(dpb_formats, dpb_usage, "decode DPB")?,
@@ -971,9 +961,12 @@ pub(super) fn create_decode_session(
 			));
 		};
 		let create_info = ash::vk::VideoSessionCreateInfoKHR::default()
-			.queue_family_index(physical.video.decode_queue_family.ok_or_else(|| {
-				Error::missing_capability("no Vulkan Video decode queue is enabled")
-			})?)
+			.queue_family_index(
+				physical
+					.video
+					.decode_queue_family
+					.ok_or_else(|| Error::missing_capability("no Vulkan Video decode queue is enabled"))?,
+			)
 			.video_profile(vk_profile)
 			.picture_format(output_format.format)
 			.max_coded_extent(ash::vk::Extent2D {
@@ -1066,15 +1059,9 @@ pub(super) fn create_decode_session(
 			// SAFETY: the selected decode queue family reports result-status support,
 			// and the complete profile chain is identical to the session profile.
 			session.result_status_pool =
-				unsafe { session.device.raw().create_query_pool(&query_info, None) }.map_err(
-					|source| {
-						Error::backend_failure(
-							"Vulkan",
-							"video result-status query-pool creation",
-							source,
-						)
-					},
-				)?;
+				unsafe { session.device.raw().create_query_pool(&query_info, None) }.map_err(|source| {
+					Error::backend_failure("Vulkan", "video result-status query-pool creation", source)
+				})?;
 		}
 		let requirements = session.memory_requirements()?;
 		let mut bindings = Vec::new();
@@ -1084,9 +1071,7 @@ pub(super) fn create_decode_session(
 		session
 			.allocations
 			.try_reserve_exact(requirements.len())
-			.map_err(|_| {
-				Error::resource_exhausted("video-session memory ownership allocation failed")
-			})?;
+			.map_err(|_| Error::resource_exhausted("video-session memory ownership allocation failed"))?;
 		for (index, requirement) in requirements.iter().enumerate() {
 			if requirement.memory_requirements.size == 0
 				|| requirement.memory_requirements.alignment == 0
@@ -1165,16 +1150,13 @@ pub(super) fn create_decode_session(
 				));
 			}
 		}
-		let images = Arc::get_mut(&mut session.images).ok_or_else(|| {
-			Error::internal("decode-image storage was shared before initialization")
-		})?;
+		let images = Arc::get_mut(&mut session.images)
+			.ok_or_else(|| Error::internal("decode-image storage was shared before initialization"))?;
 		if image_set == DecodeImageSet::CoincidentSeparate {
 			images
 				.images
 				.try_reserve_exact(max_dpb_slots as usize)
-				.map_err(|_| {
-					Error::resource_exhausted("decode-image ownership allocation failed")
-				})?;
+				.map_err(|_| Error::resource_exhausted("decode-image ownership allocation failed"))?;
 			for _ in 0..max_dpb_slots {
 				images.images.push(create_decode_image(
 					device,
@@ -1259,8 +1241,7 @@ fn create_decode_image(
 	let mut profile_list = ash::vk::VideoProfileListInfoKHR::default().profiles(&profiles);
 	let image_info = ash::vk::ImageCreateInfo::default()
 		.flags(
-			properties.image_create_flags
-				& !ash::vk::ImageCreateFlags::VIDEO_PROFILE_INDEPENDENT_KHR,
+			properties.image_create_flags & !ash::vk::ImageCreateFlags::VIDEO_PROFILE_INDEPENDENT_KHR,
 		)
 		.image_type(properties.image_type)
 		.format(properties.format)
@@ -1457,18 +1438,20 @@ fn yuv420_8bit_copy_layout(
 		layer_count: 1,
 	};
 	let region = |offset, aspect_mask, plane_width: u64, plane_height: u64| {
-		Ok(ash::vk::BufferImageCopy::default()
-			.buffer_offset(offset)
-			.buffer_row_length(0)
-			.buffer_image_height(0)
-			.image_subresource(layer(aspect_mask))
-			.image_extent(ash::vk::Extent3D {
-				width: u32::try_from(plane_width)
-					.map_err(|_| Error::out_of_range("video plane width exceeds u32"))?,
-				height: u32::try_from(plane_height)
-					.map_err(|_| Error::out_of_range("video plane height exceeds u32"))?,
-				depth: 1,
-			}))
+		Ok(
+			ash::vk::BufferImageCopy::default()
+				.buffer_offset(offset)
+				.buffer_row_length(0)
+				.buffer_image_height(0)
+				.image_subresource(layer(aspect_mask))
+				.image_extent(ash::vk::Extent3D {
+					width: u32::try_from(plane_width)
+						.map_err(|_| Error::out_of_range("video plane width exceeds u32"))?,
+					height: u32::try_from(plane_height)
+						.map_err(|_| Error::out_of_range("video plane height exceeds u32"))?,
+					depth: 1,
+				}),
+		)
 	};
 	let mut regions = vec![region(
 		0,
@@ -1610,9 +1593,10 @@ impl DecodeSession {
 				Ok((image, slot, image, slot))
 			}
 			DecodeImageSet::CoincidentSeparate => {
-				let image = self.images.get(slot as usize).ok_or_else(|| {
-					Error::data_loss("video picture slot exceeds separate decode images")
-				})?;
+				let image = self
+					.images
+					.get(slot as usize)
+					.ok_or_else(|| Error::data_loss("video picture slot exceeds separate decode images"))?;
 				Ok((image, 0, image, 0))
 			}
 			DecodeImageSet::DistinctLayered => {
@@ -1643,7 +1627,8 @@ impl DecodeSession {
 			// SAFETY: callers wait for each synchronous decode/readback round trip
 			// before replacement; the session uniquely owns this retired allocation.
 			unsafe {
-				self.device
+				self
+					.device
 					.allocator()
 					.destroy_buffer(previous.handle, &mut previous.allocation);
 			}
@@ -1672,10 +1657,7 @@ impl DecodeSession {
 	}
 
 	#[allow(dead_code, reason = "consumed by the public AV1 decoder checkpoint")]
-	pub(in crate::runtime) fn upload_av1_access_unit(
-		&mut self,
-		access_unit: &[u8],
-	) -> Result<usize> {
+	pub(in crate::runtime) fn upload_av1_access_unit(&mut self, access_unit: &[u8]) -> Result<usize> {
 		let uploaded_len = access_unit.len();
 		self.upload_bitstream(access_unit)?;
 		Ok(uploaded_len)
@@ -1733,9 +1715,10 @@ impl DecodeSession {
 				"the selected Vulkan Video decode queue lacks result-status queries",
 			));
 		}
-		let output = self.images.first().ok_or_else(|| {
-			Error::failed_precondition("H.264 decode output image is not initialized")
-		})?;
+		let output = self
+			.images
+			.first()
+			.ok_or_else(|| Error::failed_precondition("H.264 decode output image is not initialized"))?;
 		let (readback_size, _) = yuv420_8bit_copy_layout(output.format, self.coded_extent, 0)?;
 		self.readback = Some(super::Buffer::host_visible_storage(device, readback_size)?);
 		if pps.sequence_parameter_set_id != sps.id
@@ -1749,9 +1732,10 @@ impl DecodeSession {
 				"the first Vulkan H.264 decode path accepts one progressive IDR I-slice",
 			));
 		}
-		let bitstream = self.bitstream.as_ref().ok_or_else(|| {
-			Error::failed_precondition("H.264 decode requires an uploaded bitstream")
-		})?;
+		let bitstream = self
+			.bitstream
+			.as_ref()
+			.ok_or_else(|| Error::failed_precondition("H.264 decode requires an uploaded bitstream"))?;
 		let command = device.record_video_decode(|command_buffer| {
 			record_first_h264_idr(
 				device.raw(),
@@ -1798,9 +1782,10 @@ impl DecodeSession {
 				"the selected Vulkan Video decode queue lacks result-status queries",
 			));
 		}
-		let output = self.images.first().ok_or_else(|| {
-			Error::failed_precondition("H.265 decode output image is not initialized")
-		})?;
+		let output = self
+			.images
+			.first()
+			.ok_or_else(|| Error::failed_precondition("H.265 decode output image is not initialized"))?;
 		let (readback_size, _) = yuv420_8bit_copy_layout(output.format, self.coded_extent, 0)?;
 		self.readback = Some(super::Buffer::host_visible_storage(device, readback_size)?);
 		if pps.sequence_parameter_set_id != sps.id
@@ -1815,9 +1800,10 @@ impl DecodeSession {
 				"the first Vulkan H.265 decode path accepts one IDR I-slice segment",
 			));
 		}
-		let bitstream = self.bitstream.as_ref().ok_or_else(|| {
-			Error::failed_precondition("H.265 decode requires an uploaded bitstream")
-		})?;
+		let bitstream = self
+			.bitstream
+			.as_ref()
+			.ok_or_else(|| Error::failed_precondition("H.265 decode requires an uploaded bitstream"))?;
 		let command = device.record_video_decode(|command_buffer| {
 			record_first_h265_idr(
 				device.raw(),
@@ -1844,7 +1830,8 @@ impl DecodeSession {
 		slice: &video::H264SliceHeader,
 	) -> Result<super::RecordedCommandBuffer> {
 		let unavailable = self.native_unavailable_slots()?;
-		self.record_h264_picture_impl(device, sps, pps, slice, true, &unavailable)
+		self
+			.record_h264_picture_impl(device, sps, pps, slice, true, &unavailable)
 			.map(|(command, _)| command)
 	}
 
@@ -1898,9 +1885,10 @@ impl DecodeSession {
 				"reusable H.264 decode accepts one complete progressive slice per picture",
 			));
 		}
-		let bitstream = self.bitstream.as_ref().ok_or_else(|| {
-			Error::failed_precondition("H.264 decode requires an uploaded bitstream")
-		})?;
+		let bitstream = self
+			.bitstream
+			.as_ref()
+			.ok_or_else(|| Error::failed_precondition("H.264 decode requires an uploaded bitstream"))?;
 		let mut next_dpb = self.h264_dpb_state.clone().ok_or_else(|| {
 			Error::failed_precondition("H.264 session has no decoded-picture-buffer state")
 		})?;
@@ -1942,7 +1930,8 @@ impl DecodeSession {
 		slice: &video::H265SliceHeader,
 	) -> Result<super::RecordedCommandBuffer> {
 		let unavailable = self.native_unavailable_slots()?;
-		self.record_h265_picture_impl(device, sps, pps, slice, true, &unavailable)
+		self
+			.record_h265_picture_impl(device, sps, pps, slice, true, &unavailable)
 			.map(|(command, _)| command)
 	}
 
@@ -2007,9 +1996,10 @@ impl DecodeSession {
 				"H.265 current reference-picture set exceeds the standard-video list bound",
 			));
 		}
-		let bitstream = self.bitstream.as_ref().ok_or_else(|| {
-			Error::failed_precondition("H.265 decode requires an uploaded bitstream")
-		})?;
+		let bitstream = self
+			.bitstream
+			.as_ref()
+			.ok_or_else(|| Error::failed_precondition("H.265 decode requires an uploaded bitstream"))?;
 		let mut next_dpb = self.h265_dpb_state.clone().ok_or_else(|| {
 			Error::failed_precondition("H.265 session has no decoded-picture-buffer state")
 		})?;
@@ -2128,9 +2118,10 @@ impl DecodeSession {
 				"AV1 sequence extent differs from the decode session",
 			));
 		}
-		let bitstream = self.bitstream.as_ref().ok_or_else(|| {
-			Error::failed_precondition("AV1 decode requires an uploaded bitstream")
-		})?;
+		let bitstream = self
+			.bitstream
+			.as_ref()
+			.ok_or_else(|| Error::failed_precondition("AV1 decode requires an uploaded bitstream"))?;
 		let mut next_dpb = self.av1_dpb_state.clone().ok_or_else(|| {
 			Error::failed_precondition("AV1 session has no decoded-picture-buffer state")
 		})?;
@@ -2237,9 +2228,10 @@ impl DecodeSession {
 				"VP9 picture extent differs from the decode session",
 			));
 		}
-		let bitstream = self.bitstream.as_ref().ok_or_else(|| {
-			Error::failed_precondition("VP9 decode requires an uploaded bitstream")
-		})?;
+		let bitstream = self
+			.bitstream
+			.as_ref()
+			.ok_or_else(|| Error::failed_precondition("VP9 decode requires an uploaded bitstream"))?;
 		let mut next_dpb = self.vp9_dpb_state.clone().ok_or_else(|| {
 			Error::failed_precondition("VP9 session has no decoded-picture-buffer state")
 		})?;
@@ -2292,7 +2284,8 @@ impl DecodeSession {
 	}
 
 	fn native_unavailable_slots(&self) -> Result<Vec<bool>> {
-		self.native_leases
+		self
+			.native_leases
 			.as_ref()
 			.ok_or_else(|| Error::failed_precondition("native video lease pool is unavailable"))?
 			.unavailable_slots()
@@ -2303,7 +2296,8 @@ impl DecodeSession {
 		slot: u32,
 		ready: Event,
 	) -> Result<NativeDecodedFrame> {
-		self.native_leases
+		self
+			.native_leases
 			.as_ref()
 			.ok_or_else(|| Error::failed_precondition("native video lease pool is unavailable"))?
 			.lease(slot, ready)
@@ -2679,7 +2673,8 @@ impl DecodeSession {
 
 	#[cfg(test)]
 	pub(in crate::runtime) fn bitstream_upload(&self) -> Option<(usize, u64)> {
-		self.bitstream
+		self
+			.bitstream
 			.as_ref()
 			.map(|bitstream| (bitstream.payload_len, bitstream.range))
 	}
@@ -2927,9 +2922,10 @@ impl DecodeSession {
 				"picture readback commands have not been recorded",
 			));
 		}
-		let output = self.images.first().ok_or_else(|| {
-			Error::failed_precondition("video decode output image is not initialized")
-		})?;
+		let output = self
+			.images
+			.first()
+			.ok_or_else(|| Error::failed_precondition("video decode output image is not initialized"))?;
 		let readback = self.readback.as_ref().ok_or_else(|| {
 			Error::failed_precondition("video decode readback buffer is not initialized")
 		})?;
@@ -3060,8 +3056,8 @@ fn record_first_h264_idr(
 		device.cmd_reset_query_pool(command_buffer, session.result_status_pool, 0, 1);
 		(loader.fp().cmd_begin_video_coding_khr)(command_buffer, &begin_info);
 	}
-	let control = ash::vk::VideoCodingControlInfoKHR::default()
-		.flags(ash::vk::VideoCodingControlFlagsKHR::RESET);
+	let control =
+		ash::vk::VideoCodingControlInfoKHR::default().flags(ash::vk::VideoCodingControlFlagsKHR::RESET);
 	// SAFETY: the command buffer is inside its first coding scope; RESET changes
 	// the newly created session from uninitialized to initialized state.
 	unsafe {
@@ -3072,8 +3068,7 @@ fn record_first_h264_idr(
 	image_barriers.push(decode_image_barrier(
 		dpb,
 		ash::vk::ImageLayout::VIDEO_DECODE_DPB_KHR,
-		ash::vk::AccessFlags2::VIDEO_DECODE_READ_KHR
-			| ash::vk::AccessFlags2::VIDEO_DECODE_WRITE_KHR,
+		ash::vk::AccessFlags2::VIDEO_DECODE_READ_KHR | ash::vk::AccessFlags2::VIDEO_DECODE_WRITE_KHR,
 	));
 	if output.handle != dpb.handle {
 		image_barriers.push(decode_image_barrier(
@@ -3135,8 +3130,7 @@ fn record_first_h264_idr(
 	let release = ash::vk::ImageMemoryBarrier2::default()
 		.src_stage_mask(ash::vk::PipelineStageFlags2::VIDEO_DECODE_KHR)
 		.src_access_mask(
-			ash::vk::AccessFlags2::VIDEO_DECODE_READ_KHR
-				| ash::vk::AccessFlags2::VIDEO_DECODE_WRITE_KHR,
+			ash::vk::AccessFlags2::VIDEO_DECODE_READ_KHR | ash::vk::AccessFlags2::VIDEO_DECODE_WRITE_KHR,
 		)
 		.dst_stage_mask(if same_family {
 			ash::vk::PipelineStageFlags2::TRANSFER
@@ -3274,8 +3268,8 @@ fn record_first_h265_idr(
 		device.cmd_reset_query_pool(command_buffer, session.result_status_pool, 0, 1);
 		(loader.fp().cmd_begin_video_coding_khr)(command_buffer, &begin_info);
 	}
-	let control = ash::vk::VideoCodingControlInfoKHR::default()
-		.flags(ash::vk::VideoCodingControlFlagsKHR::RESET);
+	let control =
+		ash::vk::VideoCodingControlInfoKHR::default().flags(ash::vk::VideoCodingControlFlagsKHR::RESET);
 	// SAFETY: this is the first coding scope for the newly created session.
 	unsafe {
 		(loader.fp().cmd_control_video_coding_khr)(command_buffer, &control);
@@ -3285,8 +3279,7 @@ fn record_first_h265_idr(
 	image_barriers.push(decode_image_barrier(
 		dpb,
 		ash::vk::ImageLayout::VIDEO_DECODE_DPB_KHR,
-		ash::vk::AccessFlags2::VIDEO_DECODE_READ_KHR
-			| ash::vk::AccessFlags2::VIDEO_DECODE_WRITE_KHR,
+		ash::vk::AccessFlags2::VIDEO_DECODE_READ_KHR | ash::vk::AccessFlags2::VIDEO_DECODE_WRITE_KHR,
 	));
 	if output.handle != dpb.handle {
 		image_barriers.push(decode_image_barrier(
@@ -3346,8 +3339,7 @@ fn record_first_h265_idr(
 	let release = ash::vk::ImageMemoryBarrier2::default()
 		.src_stage_mask(ash::vk::PipelineStageFlags2::VIDEO_DECODE_KHR)
 		.src_access_mask(
-			ash::vk::AccessFlags2::VIDEO_DECODE_READ_KHR
-				| ash::vk::AccessFlags2::VIDEO_DECODE_WRITE_KHR,
+			ash::vk::AccessFlags2::VIDEO_DECODE_READ_KHR | ash::vk::AccessFlags2::VIDEO_DECODE_WRITE_KHR,
 		)
 		.dst_stage_mask(if same_family {
 			ash::vk::PipelineStageFlags2::TRANSFER
@@ -3475,8 +3467,8 @@ fn record_h264_picture(
 		.coded_extent(extent)
 		.base_array_layer(dpb_layer)
 		.image_view_binding(dpb.view);
-	let setup_slot_index = i32::try_from(plan.setup_slot)
-		.map_err(|_| Error::internal("H.264 setup slot exceeds i32"))?;
+	let setup_slot_index =
+		i32::try_from(plan.setup_slot).map_err(|_| Error::internal("H.264 setup slot exceeds i32"))?;
 	let setup_slot = ash::vk::VideoReferenceSlotInfoKHR::default()
 		.slot_index(setup_slot_index)
 		.picture_resource(&setup_resource)
@@ -3522,9 +3514,8 @@ fn record_h264_picture(
 	}
 	for index in 0..reference_count {
 		h264_reference_slots[index].p_std_reference_info = &std_references[index];
-		reference_slots[index].p_next = (&h264_reference_slots[index]
-			as *const ash::vk::VideoDecodeH264DpbSlotInfoKHR<'_>)
-			.cast();
+		reference_slots[index].p_next =
+			(&h264_reference_slots[index] as *const ash::vk::VideoDecodeH264DpbSlotInfoKHR<'_>).cast();
 		reference_slots[index].p_picture_resource = &reference_resources[index];
 	}
 	let mut inactive_setup = setup_slot;
@@ -3707,8 +3698,8 @@ fn record_h264_picture(
 			})
 			.image(output.handle)
 			.subresource_range(decode_image_subresource(output_layer, 1));
-		let release_dependency = ash::vk::DependencyInfo::default()
-			.image_memory_barriers(std::slice::from_ref(&release));
+		let release_dependency =
+			ash::vk::DependencyInfo::default().image_memory_barriers(std::slice::from_ref(&release));
 		unsafe {
 			device.cmd_pipeline_barrier2(command_buffer, &release_dependency);
 		}
@@ -3736,14 +3727,13 @@ fn record_h265_picture(
 	let num_delta_pocs = if slice.short_term_reference_picture_set_sps {
 		let index = slice
 			.short_term_reference_picture_set_index
-			.ok_or_else(|| {
-				Error::data_loss("H.265 SPS reference-set selection omitted its index")
-			})?;
+			.ok_or_else(|| Error::data_loss("H.265 SPS reference-set selection omitted its index"))?;
 		let set = sps
 			.short_term_reference_picture_sets
-			.get(usize::try_from(index).map_err(|_| {
-				Error::data_loss("H.265 reference-set index exceeds host address space")
-			})?)
+			.get(
+				usize::try_from(index)
+					.map_err(|_| Error::data_loss("H.265 reference-set index exceeds host address space"))?,
+			)
 			.ok_or_else(|| Error::data_loss("H.265 reference-set index exceeds the SPS"))?;
 		set.delta_pocs.len()
 	} else {
@@ -3803,8 +3793,8 @@ fn record_h265_picture(
 		.coded_extent(extent)
 		.base_array_layer(dpb_layer)
 		.image_view_binding(dpb.view);
-	let setup_slot_index = i32::try_from(plan.setup_slot)
-		.map_err(|_| Error::internal("H.265 setup slot exceeds i32"))?;
+	let setup_slot_index =
+		i32::try_from(plan.setup_slot).map_err(|_| Error::internal("H.265 setup slot exceeds i32"))?;
 	let setup_slot = ash::vk::VideoReferenceSlotInfoKHR::default()
 		.slot_index(setup_slot_index)
 		.picture_resource(&setup_resource)
@@ -3846,9 +3836,8 @@ fn record_h265_picture(
 	}
 	for index in 0..reference_count {
 		h265_reference_slots[index].p_std_reference_info = &std_references[index];
-		reference_slots[index].p_next = (&h265_reference_slots[index]
-			as *const ash::vk::VideoDecodeH265DpbSlotInfoKHR<'_>)
-			.cast();
+		reference_slots[index].p_next =
+			(&h265_reference_slots[index] as *const ash::vk::VideoDecodeH265DpbSlotInfoKHR<'_>).cast();
 		reference_slots[index].p_picture_resource = &reference_resources[index];
 	}
 	let mut inactive_setup = setup_slot;
@@ -4034,8 +4023,8 @@ fn record_h265_picture(
 			})
 			.image(output.handle)
 			.subresource_range(decode_image_subresource(output_layer, 1));
-		let release_dependency = ash::vk::DependencyInfo::default()
-			.image_memory_barriers(std::slice::from_ref(&release));
+		let release_dependency =
+			ash::vk::DependencyInfo::default().image_memory_barriers(std::slice::from_ref(&release));
 		// SAFETY: decode owns this exact output layer. The caller submits the
 		// matching compute-family acquire only after this queue signals completion.
 		unsafe {
@@ -4075,8 +4064,7 @@ fn record_decode_readback_release(
 	let release = ash::vk::ImageMemoryBarrier2::default()
 		.src_stage_mask(ash::vk::PipelineStageFlags2::VIDEO_DECODE_KHR)
 		.src_access_mask(
-			ash::vk::AccessFlags2::VIDEO_DECODE_READ_KHR
-				| ash::vk::AccessFlags2::VIDEO_DECODE_WRITE_KHR,
+			ash::vk::AccessFlags2::VIDEO_DECODE_READ_KHR | ash::vk::AccessFlags2::VIDEO_DECODE_WRITE_KHR,
 		)
 		.dst_stage_mask(if same_family {
 			ash::vk::PipelineStageFlags2::TRANSFER
@@ -4137,8 +4125,8 @@ fn record_decode_readback(
 			.dst_queue_family_index(compute_family)
 			.image(output.handle)
 			.subresource_range(decode_image_subresource(output_layer, 1));
-		let dependency = ash::vk::DependencyInfo::default()
-			.image_memory_barriers(std::slice::from_ref(&acquire));
+		let dependency =
+			ash::vk::DependencyInfo::default().image_memory_barriers(std::slice::from_ref(&acquire));
 		// SAFETY: this matches the release recorded on the decode queue. The engine
 		// timeline wait orders this acquire after that queue's signal operation.
 		unsafe {
@@ -4207,8 +4195,7 @@ fn record_decode_readback_round_trip(
 			ash::vk::PipelineStageFlags2::NONE
 		})
 		.dst_access_mask(if same_family {
-			ash::vk::AccessFlags2::VIDEO_DECODE_READ_KHR
-				| ash::vk::AccessFlags2::VIDEO_DECODE_WRITE_KHR
+			ash::vk::AccessFlags2::VIDEO_DECODE_READ_KHR | ash::vk::AccessFlags2::VIDEO_DECODE_WRITE_KHR
 		} else {
 			ash::vk::AccessFlags2::NONE
 		})
@@ -4253,8 +4240,7 @@ fn record_decode_readback_acquire(
 		.src_access_mask(ash::vk::AccessFlags2::NONE)
 		.dst_stage_mask(ash::vk::PipelineStageFlags2::VIDEO_DECODE_KHR)
 		.dst_access_mask(
-			ash::vk::AccessFlags2::VIDEO_DECODE_READ_KHR
-				| ash::vk::AccessFlags2::VIDEO_DECODE_WRITE_KHR,
+			ash::vk::AccessFlags2::VIDEO_DECODE_READ_KHR | ash::vk::AccessFlags2::VIDEO_DECODE_WRITE_KHR,
 		)
 		.old_layout(ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
 		.new_layout(decoded_layout)
@@ -4309,7 +4295,8 @@ impl Drop for DecodeSession {
 			// SAFETY: no decode submission can exist for this private qualification
 			// session, which uniquely owns the buffer/allocation pair.
 			unsafe {
-				self.device
+				self
+					.device
 					.allocator()
 					.destroy_buffer(bitstream.handle, &mut bitstream.allocation);
 			}
@@ -4318,7 +4305,8 @@ impl Drop for DecodeSession {
 			// SAFETY: this private session owns the pool. Its submitted qualification
 			// command is explicitly completed before session teardown in the test path.
 			unsafe {
-				self.device
+				self
+					.device
 					.raw()
 					.destroy_query_pool(self.result_status_pool, None);
 			}
@@ -4379,7 +4367,8 @@ mod h265_dpb_tests {
 			let nals = crate::video::parse_nal_annex_b(packet.data());
 			if parameter_sets.is_none() {
 				let find = |nal_type| {
-					nals.iter()
+					nals
+						.iter()
 						.find(|nal| (nal.payload()[0] >> 1) & 0x3f == nal_type)
 						.map(|nal| nal.payload())
 				};
@@ -4421,17 +4410,20 @@ mod h265_dpb_tests {
 			reset_count += u32::from(plan.reset_dpb);
 			assert!(plan.setup_slot < slot_count);
 			assert!(
-				plan.active_references
+				plan
+					.active_references
 					.iter()
 					.all(|reference| reference.slot < slot_count)
 			);
 			assert!(
-				plan.current_before_slots
+				plan
+					.current_before_slots
 					.iter()
 					.all(|slot| u32::from(*slot) < slot_count)
 			);
 			assert!(
-				plan.current_after_slots
+				plan
+					.current_after_slots
 					.iter()
 					.all(|slot| u32::from(*slot) < slot_count)
 			);
@@ -4551,10 +4543,8 @@ fn std_h265_hrd(hrd: &video::H265HrdParameters) -> Result<StdH265Hrd> {
 		fixed_general |= u32::from(layer.fixed_picture_rate_general) << index;
 		fixed_within |= u32::from(layer.fixed_picture_rate_within_cvs) << index;
 		low_delay |= u32::from(layer.low_delay) << index;
-		elemental_duration_in_tc_minus1[index] =
-			u16::try_from(layer.elemental_duration_in_tc_minus_1).map_err(|_| {
-				Error::data_loss("H.265 HRD elemental duration exceeds StdVideo storage")
-			})?;
+		elemental_duration_in_tc_minus1[index] = u16::try_from(layer.elemental_duration_in_tc_minus_1)
+			.map_err(|_| Error::data_loss("H.265 HRD elemental duration exceeds StdVideo storage"))?;
 		let entries = if hrd.nal_parameters_present {
 			&layer.nal_entries
 		} else {
@@ -4594,8 +4584,7 @@ fn std_h265_hrd(hrd: &video::H265HrdParameters) -> Result<StdH265Hrd> {
 			),
 		},
 		tick_divisor_minus2: hrd.tick_divisor_minus_2,
-		du_cpb_removal_delay_increment_length_minus1: hrd
-			.du_cpb_removal_delay_increment_length_minus_1,
+		du_cpb_removal_delay_increment_length_minus1: hrd.du_cpb_removal_delay_increment_length_minus_1,
 		dpb_output_delay_du_length_minus1: hrd.dpb_output_delay_du_length_minus_1,
 		bit_rate_scale: hrd.bit_rate_scale,
 		cpb_size_scale: hrd.cpb_size_scale,
@@ -4935,31 +4924,25 @@ fn std_h265_vui(
 		transfer_characteristics: colour.transfer_characteristics,
 		matrix_coeffs: colour.matrix_coefficients,
 		chroma_sample_loc_type_top_field: h265_u8(chroma.top_field, "top chroma location")?,
-		chroma_sample_loc_type_bottom_field: h265_u8(
-			chroma.bottom_field,
-			"bottom chroma location",
-		)?,
+		chroma_sample_loc_type_bottom_field: h265_u8(chroma.bottom_field, "bottom chroma location")?,
 		reserved1: 0,
 		reserved2: 0,
-		def_disp_win_left_offset: u16::try_from(display[0]).map_err(|_| {
-			Error::data_loss("H.265 display-window left offset exceeds StdVideo storage")
-		})?,
+		def_disp_win_left_offset: u16::try_from(display[0])
+			.map_err(|_| Error::data_loss("H.265 display-window left offset exceeds StdVideo storage"))?,
 		def_disp_win_right_offset: u16::try_from(display[1]).map_err(|_| {
 			Error::data_loss("H.265 display-window right offset exceeds StdVideo storage")
 		})?,
-		def_disp_win_top_offset: u16::try_from(display[2]).map_err(|_| {
-			Error::data_loss("H.265 display-window top offset exceeds StdVideo storage")
-		})?,
+		def_disp_win_top_offset: u16::try_from(display[2])
+			.map_err(|_| Error::data_loss("H.265 display-window top offset exceeds StdVideo storage"))?,
 		def_disp_win_bottom_offset: u16::try_from(display[3]).map_err(|_| {
 			Error::data_loss("H.265 display-window bottom offset exceeds StdVideo storage")
 		})?,
 		vui_num_units_in_tick: timing.num_units_in_tick,
 		vui_time_scale: timing.time_scale,
 		vui_num_ticks_poc_diff_one_minus1: timing.num_ticks_poc_diff_one_minus_1.unwrap_or(0),
-		min_spatial_segmentation_idc: u16::try_from(restriction.min_spatial_segmentation_idc)
-			.map_err(|_| {
-				Error::data_loss("H.265 minimum spatial segmentation exceeds StdVideo storage")
-			})?,
+		min_spatial_segmentation_idc: u16::try_from(restriction.min_spatial_segmentation_idc).map_err(
+			|_| Error::data_loss("H.265 minimum spatial segmentation exceeds StdVideo storage"),
+		)?,
 		reserved3: 0,
 		max_bytes_per_pic_denom: h265_u8(
 			restriction.max_bytes_per_picture_denom,
@@ -5142,9 +5125,7 @@ fn std_h264_sps(
 		offset_for_non_ref_pic: sps.offset_for_non_ref_pic,
 		offset_for_top_to_bottom_field: sps.offset_for_top_to_bottom_field,
 		log2_max_pic_order_cnt_lsb_minus4: u8::try_from(sps.log2_max_pic_order_count_lsb_minus_4)
-			.map_err(|_| {
-			Error::data_loss("H.264 POC width exceeds StdVideo storage")
-		})?,
+			.map_err(|_| Error::data_loss("H.264 POC width exceeds StdVideo storage"))?,
 		num_ref_frames_in_pic_order_cnt_cycle: u8::try_from(sps.offset_for_ref_frame.len())
 			.map_err(|_| Error::data_loss("H.264 POC cycle exceeds StdVideo storage"))?,
 		max_num_ref_frames: u8::try_from(sps.max_num_ref_frames)
@@ -5295,9 +5276,8 @@ fn std_h264_vui(
 			.map_err(|_| Error::data_loss("H.264 DPB limit exceeds StdVideo storage"))?,
 		chroma_sample_loc_type_top_field: u8::try_from(chroma.top_field)
 			.map_err(|_| Error::data_loss("H.264 top chroma location exceeds StdVideo storage"))?,
-		chroma_sample_loc_type_bottom_field: u8::try_from(chroma.bottom_field).map_err(|_| {
-			Error::data_loss("H.264 bottom chroma location exceeds StdVideo storage")
-		})?,
+		chroma_sample_loc_type_bottom_field: u8::try_from(chroma.bottom_field)
+			.map_err(|_| Error::data_loss("H.264 bottom chroma location exceeds StdVideo storage"))?,
 		reserved1: 0,
 		pHrdParameters: std_hrd,
 	})
@@ -5327,14 +5307,14 @@ fn std_h264_pps(
 			.map_err(|_| Error::data_loss("H.264 PPS SPS id exceeds StdVideo storage"))?,
 		pic_parameter_set_id: u8::try_from(pps.id)
 			.map_err(|_| Error::data_loss("H.264 PPS id exceeds StdVideo storage"))?,
-		num_ref_idx_l0_default_active_minus1: u8::try_from(
-			pps.num_ref_idx_l0_default_active_minus_1,
-		)
-		.map_err(|_| Error::data_loss("H.264 L0 reference count exceeds StdVideo storage"))?,
-		num_ref_idx_l1_default_active_minus1: u8::try_from(
-			pps.num_ref_idx_l1_default_active_minus_1,
-		)
-		.map_err(|_| Error::data_loss("H.264 L1 reference count exceeds StdVideo storage"))?,
+		num_ref_idx_l0_default_active_minus1: u8::try_from(pps.num_ref_idx_l0_default_active_minus_1)
+			.map_err(|_| {
+			Error::data_loss("H.264 L0 reference count exceeds StdVideo storage")
+		})?,
+		num_ref_idx_l1_default_active_minus1: u8::try_from(pps.num_ref_idx_l1_default_active_minus_1)
+			.map_err(|_| {
+			Error::data_loss("H.264 L1 reference count exceeds StdVideo storage")
+		})?,
 		weighted_bipred_idc: pps.weighted_bipred_idc,
 		pic_init_qp_minus26: i8::try_from(pps.pic_init_qp_minus_26)
 			.map_err(|_| Error::data_loss("H.264 initial QP exceeds StdVideo storage"))?,
@@ -5342,9 +5322,8 @@ fn std_h264_pps(
 			.map_err(|_| Error::data_loss("H.264 initial QS exceeds StdVideo storage"))?,
 		chroma_qp_index_offset: i8::try_from(pps.chroma_qp_index_offset)
 			.map_err(|_| Error::data_loss("H.264 chroma QP offset exceeds StdVideo storage"))?,
-		second_chroma_qp_index_offset: i8::try_from(pps.second_chroma_qp_index_offset).map_err(
-			|_| Error::data_loss("H.264 second chroma QP offset exceeds StdVideo storage"),
-		)?,
+		second_chroma_qp_index_offset: i8::try_from(pps.second_chroma_qp_index_offset)
+			.map_err(|_| Error::data_loss("H.264 second chroma QP offset exceeds StdVideo storage"))?,
 		pScalingLists: std_scaling,
 	})
 }
@@ -5417,8 +5396,8 @@ fn with_decode_profile<T>(
 			luma_bit_depth,
 			chroma_bit_depth,
 		} => {
-			let mut codec = ash::vk::VideoDecodeH265ProfileInfoKHR::default()
-				.std_profile_idc(h265_profile(profile));
+			let mut codec =
+				ash::vk::VideoDecodeH265ProfileInfoKHR::default().std_profile_idc(h265_profile(profile));
 			let profile = common_profile(
 				ash::vk::VideoCodecOperationFlagsKHR::DECODE_H265,
 				chroma_subsampling,
@@ -5453,8 +5432,8 @@ fn with_decode_profile<T>(
 			luma_bit_depth,
 			chroma_bit_depth,
 		} => {
-			let mut codec = ash_vp9::vk::VideoDecodeVP9ProfileInfoKHR::default()
-				.std_profile(vp9_profile(profile));
+			let mut codec =
+				ash_vp9::vk::VideoDecodeVP9ProfileInfoKHR::default().std_profile(vp9_profile(profile));
 			let mut profile = common_profile(
 				vp9_operation(),
 				chroma_subsampling,
@@ -5478,8 +5457,8 @@ fn with_encode_profile<T>(
 			luma_bit_depth,
 			chroma_bit_depth,
 		} => {
-			let mut codec = ash::vk::VideoEncodeH264ProfileInfoKHR::default()
-				.std_profile_idc(h264_profile(profile));
+			let mut codec =
+				ash::vk::VideoEncodeH264ProfileInfoKHR::default().std_profile_idc(h264_profile(profile));
 			let profile = common_profile(
 				ash::vk::VideoCodecOperationFlagsKHR::ENCODE_H264,
 				chroma_subsampling,
@@ -5495,8 +5474,8 @@ fn with_encode_profile<T>(
 			luma_bit_depth,
 			chroma_bit_depth,
 		} => {
-			let mut codec = ash::vk::VideoEncodeH265ProfileInfoKHR::default()
-				.std_profile_idc(h265_profile(profile));
+			let mut codec =
+				ash::vk::VideoEncodeH265ProfileInfoKHR::default().std_profile_idc(h265_profile(profile));
 			let profile = common_profile(
 				ash::vk::VideoCodecOperationFlagsKHR::ENCODE_H265,
 				chroma_subsampling,
@@ -5899,18 +5878,10 @@ const fn vp9_operation() -> ash::vk::VideoCodecOperationFlagsKHR {
 
 const fn vp9_profile(value: video::Vp9Profile) -> ash_vp9::vk::native::StdVideoVP9Profile {
 	match value {
-		video::Vp9Profile::Profile0 => {
-			ash_vp9::vk::native::StdVideoVP9Profile_STD_VIDEO_VP9_PROFILE_0
-		}
-		video::Vp9Profile::Profile1 => {
-			ash_vp9::vk::native::StdVideoVP9Profile_STD_VIDEO_VP9_PROFILE_1
-		}
-		video::Vp9Profile::Profile2 => {
-			ash_vp9::vk::native::StdVideoVP9Profile_STD_VIDEO_VP9_PROFILE_2
-		}
-		video::Vp9Profile::Profile3 => {
-			ash_vp9::vk::native::StdVideoVP9Profile_STD_VIDEO_VP9_PROFILE_3
-		}
+		video::Vp9Profile::Profile0 => ash_vp9::vk::native::StdVideoVP9Profile_STD_VIDEO_VP9_PROFILE_0,
+		video::Vp9Profile::Profile1 => ash_vp9::vk::native::StdVideoVP9Profile_STD_VIDEO_VP9_PROFILE_1,
+		video::Vp9Profile::Profile2 => ash_vp9::vk::native::StdVideoVP9Profile_STD_VIDEO_VP9_PROFILE_2,
+		video::Vp9Profile::Profile3 => ash_vp9::vk::native::StdVideoVP9Profile_STD_VIDEO_VP9_PROFILE_3,
 	}
 }
 
@@ -5996,8 +5967,7 @@ fn std_av1_sequence(
 			"AV1 coded extent exceeds its declared field width",
 		));
 	}
-	if sequence.enable_order_hint != (sequence.order_hint_bits != 0) || sequence.order_hint_bits > 8
-	{
+	if sequence.enable_order_hint != (sequence.order_hint_bits != 0) || sequence.order_hint_bits > 8 {
 		return Err(Error::data_loss(
 			"AV1 order-hint flag and bit width are inconsistent",
 		));
@@ -6140,9 +6110,7 @@ mod tests {
 	#[test]
 	fn rejects_unsupported_h264_access_unit_shapes() {
 		assert!(pack_h264_vulkan_access_unit(&[0, 0, 1, 0x67, 0x64]).is_err());
-		assert!(
-			pack_h264_vulkan_access_unit(&[0, 0, 1, 0x65, 0x88, 0, 0, 1, 0x61, 0x99,]).is_err()
-		);
+		assert!(pack_h264_vulkan_access_unit(&[0, 0, 1, 0x65, 0x88, 0, 0, 1, 0x61, 0x99,]).is_err());
 	}
 
 	#[test]

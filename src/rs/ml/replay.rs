@@ -161,9 +161,7 @@ impl ReplayBuffer {
 		let observation_count = config
 			.capacity
 			.checked_mul(observation_elements)
-			.ok_or_else(|| {
-				Error::resource_exhausted("replay observation storage overflows usize")
-			})?;
+			.ok_or_else(|| Error::resource_exhausted("replay observation storage overflows usize"))?;
 		let action_count = config
 			.capacity
 			.checked_mul(action_elements)
@@ -201,18 +199,8 @@ impl ReplayBuffer {
 				DType::F32,
 			)?,
 			reward: Matrix::allocate(&handle, vec![config.capacity], config.capacity, DType::F32)?,
-			terminated: Matrix::allocate(
-				&handle,
-				vec![config.capacity],
-				config.capacity,
-				DType::U8,
-			)?,
-			truncated: Matrix::allocate(
-				&handle,
-				vec![config.capacity],
-				config.capacity,
-				DType::U8,
-			)?,
+			terminated: Matrix::allocate(&handle, vec![config.capacity], config.capacity, DType::U8)?,
+			truncated: Matrix::allocate(&handle, vec![config.capacity], config.capacity, DType::U8)?,
 			index: Matrix::allocate(&handle, vec![config.capacity], config.capacity, DType::U32)?,
 		};
 		Ok(Self {

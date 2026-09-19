@@ -55,9 +55,7 @@ impl LrScheduler for CosineScheduler {
 		}
 		let progress = step as f32 / self.total_steps as f32;
 		self.min_learning_rate
-			+ 0.5
-				* (self.max_learning_rate - self.min_learning_rate)
-				* (1.0 + (progress * PI).cos())
+			+ 0.5 * (self.max_learning_rate - self.min_learning_rate) * (1.0 + (progress * PI).cos())
 	}
 }
 
@@ -110,7 +108,8 @@ impl LrScheduler for WarmupScheduler {
 		if step < self.warmup_steps {
 			return self.target_learning_rate * (step + 1) as f32 / self.warmup_steps as f32;
 		}
-		self.after
+		self
+			.after
 			.as_ref()
 			.map_or(self.target_learning_rate, |after| {
 				after.learning_rate(step - self.warmup_steps)
@@ -375,9 +374,7 @@ impl LrScheduler for CosineWarmRestartsScheduler {
 		};
 		let progress = current as f32 / period as f32;
 		self.min_learning_rate
-			+ 0.5
-				* (self.max_learning_rate - self.min_learning_rate)
-				* (1.0 + (PI * progress).cos())
+			+ 0.5 * (self.max_learning_rate - self.min_learning_rate) * (1.0 + (PI * progress).cos())
 	}
 }
 

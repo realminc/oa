@@ -214,9 +214,7 @@ impl RolloutBuffer {
 			.ok_or_else(|| Error::resource_exhausted("rollout size overflows usize"))?;
 		let observation_count = rollout_elements
 			.checked_mul(observation_elements)
-			.ok_or_else(|| {
-				Error::resource_exhausted("rollout observation storage overflows usize")
-			})?;
+			.ok_or_else(|| Error::resource_exhausted("rollout observation storage overflows usize"))?;
 		let observation_elements = u32::try_from(observation_elements).map_err(|_| {
 			Error::resource_exhausted("rollout observation size exceeds GPU u32 indexing")
 		})?;

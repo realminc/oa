@@ -170,7 +170,8 @@ impl Image {
 
 	/// Return the batch extent, or one for an unbatched layout.
 	pub fn batch_size(&self) -> usize {
-		self.layout
+		self
+			.layout
 			.axes()
 			.batch
 			.map_or(1, |axis| self.data.shape()[axis])

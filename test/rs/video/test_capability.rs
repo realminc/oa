@@ -5,8 +5,7 @@ test_vk!(
 		let capabilities = oa::video::query_device_capabilities(&engine)?;
 		assert_eq!(
 			capabilities.video_queues_enabled(),
-			capabilities.decode_queue_family().is_some()
-				|| capabilities.encode_queue_family().is_some()
+			capabilities.decode_queue_family().is_some() || capabilities.encode_queue_family().is_some()
 		);
 		assert_eq!(
 			capabilities.decoder_sessions_available(),
@@ -158,8 +157,7 @@ test_vk!(
 	{
 		let advertised = oa::video::query_device_capabilities(&engine)?;
 		if advertised.supports_h264_decode() {
-			let profile =
-				oa::video::VideoDecodeProfile::h264_420_8bit(oa::video::H264Profile::High);
+			let profile = oa::video::VideoDecodeProfile::h264_420_8bit(oa::video::H264Profile::High);
 			let capabilities = oa::video::query_decode_capabilities(&engine, profile)?;
 			assert_eq!(capabilities.profile(), profile);
 			assert!(matches!(

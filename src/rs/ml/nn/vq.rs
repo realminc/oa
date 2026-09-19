@@ -78,8 +78,7 @@ impl VectorQuantizer {
 		let values = random::symmetric_uniform(count, limit, seed);
 		let codebook = Matrix::from_f32(engine, [config.num_codes, config.code_dim], &values)?;
 		let embed_sum = Matrix::from_f32(engine, [config.num_codes, config.code_dim], &values)?;
-		let cluster_size =
-			Matrix::from_f32(engine, [config.num_codes], &vec![1.0; config.num_codes])?;
+		let cluster_size = Matrix::from_f32(engine, [config.num_codes], &vec![1.0; config.num_codes])?;
 		Self::from_state(config, codebook, embed_sum, cluster_size)
 	}
 
@@ -357,8 +356,7 @@ impl ResidualVectorQuantizer {
 			residual = core_matrix::sub(&residual, &assignment.quantized)?;
 		}
 		let total = total.ok_or_else(|| Error::internal("residual VQ lost all levels"))?;
-		let quantized =
-			core_matrix::add(latent, &matrix::detach(&core_matrix::sub(&total, latent)?)?)?;
+		let quantized = core_matrix::add(latent, &matrix::detach(&core_matrix::sub(&total, latent)?)?)?;
 		let difference = core_matrix::sub(latent, &total)?;
 		let squared = core_matrix::mul(&difference, &difference)?;
 		let total = core_matrix::reshape(&core_matrix::sum(&squared, -1)?, [])?;
@@ -380,8 +378,7 @@ impl ResidualVectorQuantizer {
 	///
 	/// Returns an error when the result has the wrong level count or an update fails.
 	pub fn ema_update(&self, result: &ResidualVqResult) -> Result<()> {
-		if result.indices.len() != self.levels.len() || result.residuals.len() != self.levels.len()
-		{
+		if result.indices.len() != self.levels.len() || result.residuals.len() != self.levels.len() {
 			return Err(Error::invalid_argument(
 				"residual VQ result level count does not match module",
 			));

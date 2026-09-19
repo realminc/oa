@@ -59,8 +59,7 @@ fn host_loss(
 		for class in 0..classes {
 			logits[class] = bias[class];
 			for column in 0..columns {
-				logits[class] +=
-					probabilities[row * columns + column] * weight[class * columns + column];
+				logits[class] += probabilities[row * columns + column] * weight[class * columns + column];
 			}
 		}
 		let maximum = logits.iter().copied().fold(f32::NEG_INFINITY, f32::max);
@@ -134,11 +133,8 @@ test_vk!(
 		let target_values = [
 			-0.5_f32, -1.5, -0.9, -1.0, -0.8, -1.7, -2.1, -1.0, -0.6, -0.4, -2.0, -1.3,
 		];
-		let embedding = oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(
-			&engine,
-			[4, 3],
-			&input_values,
-		)?)?;
+		let embedding =
+			oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [4, 3], &input_values)?)?;
 		let indices = oa::Matrix::from_slice(&engine, [4], &[0_u32, 1, 2, 3])?;
 		let target = oa::Matrix::from_f32(&engine, [4, 3], &target_values)?;
 		let log_softmax = oa::ml::nn::LogSoftmax::new(-1);

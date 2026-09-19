@@ -5,8 +5,8 @@ use crate::{Error, Result};
 
 use super::{
 	LUNAR_ENVIRONMENT_VERSION, LUNAR_OBSERVATION_SIZE, LUNAR_OBSERVATION_VERSION,
-	LUNAR_PHYSICS_VERSION, LUNAR_REWARD_VERSION, LUNAR_TERRAIN_VERSION, LunarAction,
-	LunarEndReason, LunarTerrain, LunarTerrainConfig,
+	LUNAR_PHYSICS_VERSION, LUNAR_REWARD_VERSION, LUNAR_TERRAIN_VERSION, LunarAction, LunarEndReason,
+	LunarTerrain, LunarTerrainConfig,
 };
 
 /// One spherical collision support fixed in lander body space.
@@ -848,8 +848,7 @@ fn resolve_support(
 			.clamp(0.0, config.max_contact_impulse);
 		apply_impulse(config, state, lever, direction * friction_impulse);
 	}
-	diagnostics.maximum_friction_impulse =
-		diagnostics.maximum_friction_impulse.max(friction_impulse);
+	diagnostics.maximum_friction_impulse = diagnostics.maximum_friction_impulse.max(friction_impulse);
 	let correction = config
 		.max_position_correction_per_contact
 		.min(penetration * config.penetration_correction_fraction);

@@ -228,7 +228,8 @@ impl Tensor {
 			}
 			TensorEncoding::Q4 | TensorEncoding::Q8 => {
 				if version < 3
-					|| !weight || self.dtype != ScalarType::F32
+					|| !weight
+					|| self.dtype != ScalarType::F32
 					|| self.block_size != 32
 					|| elements == 0
 				{
@@ -395,8 +396,8 @@ impl ModelFile {
 				.ok_or_else(|| Error::resource_exhausted(".oam file size overflow"))?;
 		}
 
-		let total_size = u64::try_from(offset)
-			.map_err(|_| Error::resource_exhausted(".oam file size exceeds u64"))?;
+		let total_size =
+			u64::try_from(offset).map_err(|_| Error::resource_exhausted(".oam file size exceeds u64"))?;
 		let mut header = encode_file_header(payloads.len(), total_size, 0)?;
 		let section_table = encode_section_table(&sections);
 		let mut manifest = header.clone();
@@ -480,10 +481,8 @@ impl ModelFile {
 			}
 			let checksum = table_reader.u64()?;
 			table_reader.skip(20)?;
-			let start =
-				usize::try_from(offset).map_err(|_| corrupt("section offset exceeds usize"))?;
-			let size_usize =
-				usize::try_from(size).map_err(|_| corrupt("section size exceeds usize"))?;
+			let start = usize::try_from(offset).map_err(|_| corrupt("section offset exceeds usize"))?;
+			let size_usize = usize::try_from(size).map_err(|_| corrupt("section size exceeds usize"))?;
 			let end = start
 				.checked_add(size_usize)
 				.ok_or_else(|| corrupt("section range overflow"))?;
@@ -524,8 +523,7 @@ impl ModelFile {
 				.iter()
 				.find(|section| section.kind == kind)
 				.ok_or_else(|| corrupt("required section is missing"))?;
-			let start =
-				usize::try_from(section.offset).map_err(|_| corrupt("offset exceeds usize"))?;
+			let start = usize::try_from(section.offset).map_err(|_| corrupt("offset exceeds usize"))?;
 			let size = usize::try_from(section.size).map_err(|_| corrupt("size exceeds usize"))?;
 			Ok(&bytes[start..start + size])
 		};
@@ -685,8 +683,7 @@ fn encode_tensors(tensors: &[Tensor]) -> Result<Vec<u8>> {
 	let mut bytes = Vec::with_capacity(index_size + blob_size);
 	push_u32(
 		&mut bytes,
-		u32::try_from(tensors.len())
-			.map_err(|_| Error::resource_exhausted("too many .oam tensors"))?,
+		u32::try_from(tensors.len()).map_err(|_| Error::resource_exhausted("too many .oam tensors"))?,
 	);
 	push_u32(&mut bytes, 0);
 	let mut blob_offset = 0_u64;
@@ -724,8 +721,7 @@ fn encode_tensors(tensors: &[Tensor]) -> Result<Vec<u8>> {
 
 fn decode_tensors(bytes: &[u8], weight: bool, version: u32) -> Result<Vec<Tensor>> {
 	let mut reader = Reader::new(bytes);
-	let count =
-		usize::try_from(reader.u32()?).map_err(|_| corrupt("tensor count exceeds usize"))?;
+	let count = usize::try_from(reader.u32()?).map_err(|_| corrupt("tensor count exceeds usize"))?;
 	if reader.u32()? != 0 {
 		return Err(corrupt("tensor index reserved field is nonzero"));
 	}
@@ -993,11 +989,13 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
 	temporary.push(format!(".tmp.{}.{}", std::process::id(), sequence));
 	let temporary = PathBuf::from(temporary);
 	let result = (|| {
-		let mut file = File::create(&temporary)
-			.map_err(|source| Error::io("create temporary .oam", source))?;
-		file.write_all(bytes)
+		let mut file =
+			File::create(&temporary).map_err(|source| Error::io("create temporary .oam", source))?;
+		file
+			.write_all(bytes)
 			.map_err(|source| Error::io("write temporary .oam", source))?;
-		file.sync_all()
+		file
+			.sync_all()
 			.map_err(|source| Error::io("sync temporary .oam", source))?;
 		drop(file);
 		fs::rename(&temporary, path).map_err(|source| Error::io("replace .oam", source))?;

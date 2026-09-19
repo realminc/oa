@@ -4,8 +4,7 @@ test_vk!(
 	donor_transformer_model_owns_and_differentiates_its_stack,
 	engine,
 	{
-		let model =
-			oa::ml::nn::Transformer::with_seed(&engine, 5, 3, 4, 7, 2, 2, 1.0e-5, 0x5452_4e53)?;
+		let model = oa::ml::nn::Transformer::with_seed(&engine, 5, 3, 4, 7, 2, 2, 1.0e-5, 0x5452_4e53)?;
 		assert_eq!(model.vocab_size(), 5);
 		assert_eq!(model.context_length(), 3);
 		assert_eq!(model.model_width(), 4);
@@ -84,19 +83,8 @@ test_vk!(
 	moe_transformer_owns_and_differentiates_donor_topology,
 	engine,
 	{
-		let model = oa::ml::nn::Transformer::with_seed_moe(
-			&engine,
-			5,
-			3,
-			4,
-			3,
-			1,
-			2,
-			2,
-			1,
-			1.0e-5,
-			0x4d4f_4554,
-		)?;
+		let model =
+			oa::ml::nn::Transformer::with_seed_moe(&engine, 5, 3, 4, 3, 1, 2, 2, 1, 1.0e-5, 0x4d4f_4554)?;
 		assert!(model.is_moe());
 		let block = model.block(0).expect("MoE Transformer lost its block");
 		assert!(block.is_moe());
@@ -195,8 +183,7 @@ test_vk!(
 			&engine,
 			[4, 4],
 			&[
-				0.2, -0.3, 0.5, 0.7, -0.1, 0.4, -0.6, 0.8, 0.9, -0.2, 0.3, -0.5, 0.6, 0.1, -0.7,
-				0.4,
+				0.2, -0.3, 0.5, 0.7, -0.1, 0.4, -0.6, 0.8, 0.9, -0.2, 0.3, -0.5, 0.6, 0.1, -0.7, 0.4,
 			],
 		)?;
 		let condition = oa::Matrix::from_f32(&engine, [2, 3], &[0.25, -0.5, 0.75, -0.2, 0.4, 0.8])?;

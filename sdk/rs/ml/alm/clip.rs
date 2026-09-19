@@ -293,10 +293,7 @@ impl ClipText {
 			.map_err(|_| Error::checkpoint_corrupt("CLIP layer count exceeds u32"))?;
 		let d_vocab = u32::try_from(config.vocab_size)
 			.map_err(|_| Error::checkpoint_corrupt("CLIP vocabulary exceeds u32"))?;
-		if metadata.d_model != d_model
-			|| metadata.n_layers != n_layers
-			|| metadata.d_vocab != d_vocab
-		{
+		if metadata.d_model != d_model || metadata.n_layers != n_layers || metadata.d_vocab != d_vocab {
 			return Err(Error::checkpoint_corrupt(
 				"CLIP summary metadata disagrees with its architecture payload",
 			));
@@ -337,7 +334,8 @@ impl ClipText {
 			hidden = layer.forward(&hidden)?;
 		}
 		hidden = self.final_layer_norm.forward(&hidden)?;
-		self.text_projection
+		self
+			.text_projection
 			.forward(&matrix::gather(&hidden, flat_eos_rows)?)
 	}
 
@@ -397,9 +395,8 @@ impl Module for ClipText {
 				.read::<u32>()?
 				.into_iter()
 				.map(|value| {
-					i32::try_from(value).map_err(|_| {
-						Error::out_of_range("CLIP token ID exceeds the supported I32 vocabulary")
-					})
+					i32::try_from(value)
+						.map_err(|_| Error::out_of_range("CLIP token ID exceeds the supported I32 vocabulary"))
 				})
 				.collect::<Result<Vec<_>>>()?,
 			_ => return Err(Error::invalid_argument("CLIP token ids must be I32 or U32")),
@@ -531,9 +528,7 @@ fn import_safetensors_config(
 	}
 	for name in source.names() {
 		let text_tensor = name.starts_with("text_model.") || name.starts_with("text_projection");
-		if text_tensor
-			&& name != "text_model.embeddings.position_ids"
-			&& !expected_names.contains(name)
+		if text_tensor && name != "text_model.embeddings.position_ids" && !expected_names.contains(name)
 		{
 			return Err(Error::failed_precondition(format!(
 				"unexpected CLIP text tensor: {name}"

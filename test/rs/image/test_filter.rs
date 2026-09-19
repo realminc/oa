@@ -42,16 +42,9 @@ test_vk!(
 			[2.0; 9]
 		);
 		assert_eq!(
-			oa::image::adaptive_threshold_gaussian(
-				&image,
-				1,
-				0.1,
-				3.0,
-				0.0,
-				BorderMode::Replicate,
-			)?
-			.as_matrix()
-			.read_f32()?,
+			oa::image::adaptive_threshold_gaussian(&image, 1, 0.1, 3.0, 0.0, BorderMode::Replicate,)?
+				.as_matrix()
+				.read_f32()?,
 			[3.0; 9]
 		);
 

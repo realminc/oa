@@ -317,9 +317,9 @@ impl MimoGeometry {
 
 fn checked_count(shape: &[usize], operation: &'static str) -> Result<usize> {
 	shape.iter().try_fold(1_usize, |count, extent| {
-		count.checked_mul(*extent).ok_or_else(|| {
-			Error::invalid_argument(format!("{operation} tensor size overflows usize"))
-		})
+		count
+			.checked_mul(*extent)
+			.ok_or_else(|| Error::invalid_argument(format!("{operation} tensor size overflows usize")))
 	})
 }
 
@@ -372,9 +372,7 @@ impl PreprocessGeometry {
 		let bc_rows = config
 			.num_groups
 			.checked_mul(config.mimo_rank)
-			.ok_or_else(|| {
-				Error::invalid_argument(format!("{operation} B/C row count overflows"))
-			})?;
+			.ok_or_else(|| Error::invalid_argument(format!("{operation} B/C row count overflows")))?;
 		let bc_width = bc_rows
 			.checked_mul(config.state_size)
 			.ok_or_else(|| Error::invalid_argument(format!("{operation} B/C width overflows")))?;
@@ -1357,45 +1355,33 @@ pub(in crate::ml) fn mamba3_mimo_backward(
 		.and_then(|value| value.checked_mul(geometry.rank))
 		.and_then(|value| value.checked_mul(geometry.groups))
 		.and_then(|value| value.checked_mul(geometry.state_size))
-		.ok_or_else(|| {
-			Error::invalid_argument(format!("{operation} group reduction exceeds u32"))
-		})?;
+		.ok_or_else(|| Error::invalid_argument(format!("{operation} group reduction exceeds u32")))?;
 	let angle_count = geometry
 		.batch
 		.checked_mul(geometry.length)
 		.and_then(|value| value.checked_mul(geometry.angles))
-		.ok_or_else(|| {
-			Error::invalid_argument(format!("{operation} angle reduction exceeds u32"))
-		})?;
+		.ok_or_else(|| Error::invalid_argument(format!("{operation} angle reduction exceeds u32")))?;
 	let bias_count = geometry
 		.heads
 		.checked_mul(geometry.rank)
 		.and_then(|value| value.checked_mul(geometry.state_size))
-		.ok_or_else(|| {
-			Error::invalid_argument(format!("{operation} bias reduction exceeds u32"))
-		})?;
+		.ok_or_else(|| Error::invalid_argument(format!("{operation} bias reduction exceeds u32")))?;
 	let mimo_count = geometry
 		.heads
 		.checked_mul(geometry.rank)
 		.and_then(|value| value.checked_mul(geometry.head_dim))
-		.ok_or_else(|| {
-			Error::invalid_argument(format!("{operation} MIMO reduction exceeds u32"))
-		})?;
+		.ok_or_else(|| Error::invalid_argument(format!("{operation} MIMO reduction exceeds u32")))?;
 	let norm_count = geometry
 		.heads
 		.checked_mul(geometry.head_dim)
-		.ok_or_else(|| {
-			Error::invalid_argument(format!("{operation} norm reduction exceeds u32"))
-		})?;
+		.ok_or_else(|| Error::invalid_argument(format!("{operation} norm reduction exceeds u32")))?;
 	let reduce_count = group_count
 		.checked_add(angle_count)
 		.and_then(|value| value.checked_add(bias_count))
 		.and_then(|value| value.checked_add(geometry.heads))
 		.and_then(|value| value.checked_add(mimo_count))
 		.and_then(|value| value.checked_add(norm_count))
-		.ok_or_else(|| {
-			Error::invalid_argument(format!("{operation} reduction size exceeds u32"))
-		})?;
+		.ok_or_else(|| Error::invalid_argument(format!("{operation} reduction size exceeds u32")))?;
 	let reduce_buffers = [
 		BufferBinding::read(d_c_head.storage()),
 		BufferBinding::read(d_b_head.storage()),
@@ -1776,9 +1762,7 @@ pub(in crate::ml) fn mamba3_siso_backward(
 				.and_then(|twice_hn| value.checked_add(twice_hn))
 		})
 		.and_then(|value| value.checked_add(geometry.heads))
-		.ok_or_else(|| {
-			Error::invalid_argument(format!("{operation} reduction size exceeds u32"))
-		})?;
+		.ok_or_else(|| Error::invalid_argument(format!("{operation} reduction size exceeds u32")))?;
 	let reduce_buffers = [
 		BufferBinding::read(d_angle_head.storage()),
 		BufferBinding::read(d_c_bias_batch.storage()),
@@ -1802,9 +1786,7 @@ pub(in crate::ml) fn mamba3_siso_backward(
 		.checked_mul(geometry.length)
 		.and_then(|value| value.checked_mul(geometry.groups))
 		.and_then(|value| value.checked_mul(geometry.state_size))
-		.ok_or_else(|| {
-			Error::invalid_argument(format!("{operation} group reduction exceeds u32"))
-		})?;
+		.ok_or_else(|| Error::invalid_argument(format!("{operation} group reduction exceeds u32")))?;
 	let group_buffers = [
 		BufferBinding::read(d_c_head.storage()),
 		BufferBinding::read(d_b_head.storage()),

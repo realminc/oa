@@ -150,8 +150,8 @@ fn run_lunar_vector_episode_differential(
 			expected_terminated[lane] = transition.terminated;
 			expected_truncated[lane] = transition.truncated;
 			expected_reasons[lane] = transition.end_reason;
-			contact_phase[lane] |= transition.contact.foot_contact_occurred
-				|| transition.contact.body_contact_occurred;
+			contact_phase[lane] |=
+				transition.contact.foot_contact_occurred || transition.contact.body_contact_occurred;
 		}
 
 		let action = Matrix::from_slice(engine, [ENVIRONMENTS], &actions)?;
@@ -174,12 +174,7 @@ fn run_lunar_vector_episode_differential(
 					step_index + 1,
 				);
 			} else {
-				assert_lunar_observation_close(
-					actual,
-					&expected_observations[lane],
-					lane,
-					step_index + 1,
-				);
+				assert_lunar_observation_close(actual, &expected_observations[lane], lane, step_index + 1);
 			}
 			assert_f32_close(
 				rewards[lane],
@@ -471,8 +466,7 @@ fn lunar_scalar_free_fall_matches_semi_implicit_solution() -> oa::Result<()> {
 		(state.position.z - (initial.position.z - 0.5 * config.policy_time_step)).abs() < 1.0e-14
 	);
 	assert!(
-		(state.linear_velocity.y - (1.0 - config.gravity * config.policy_time_step)).abs()
-			< 1.0e-14
+		(state.linear_velocity.y - (1.0 - config.gravity * config.policy_time_step)).abs() < 1.0e-14
 	);
 	Ok(())
 }
@@ -492,12 +486,11 @@ fn lunar_scalar_thrusters_preserve_donor_fuel_and_axis_contracts() -> oa::Result
 	assert_eq!(main.linear_velocity.x, 0.0);
 	assert_eq!(main.linear_velocity.z, 0.0);
 	assert!(
-		(main.fuel - (config.fuel_capacity - config.main_fuel_rate * config.policy_time_step))
-			.abs() < 1.0e-12
+		(main.fuel - (config.fuel_capacity - config.main_fuel_rate * config.policy_time_step)).abs()
+			< 1.0e-12
 	);
 	assert!(
-		(main_result.main_fuel_used - config.main_fuel_rate * config.policy_time_step).abs()
-			< 1.0e-14
+		(main_result.main_fuel_used - config.main_fuel_rate * config.policy_time_step).abs() < 1.0e-14
 	);
 
 	let mut pitch = initial;
@@ -509,8 +502,8 @@ fn lunar_scalar_thrusters_preserve_donor_fuel_and_axis_contracts() -> oa::Result
 	assert_eq!(pitch.linear_velocity.length_squared(), 0.0);
 	assert!((pitch.orientation.norm() - 1.0).abs() < 1.0e-15);
 	assert!(
-		(pitch_result.attitude_fuel_used - config.attitude_fuel_rate * config.policy_time_step)
-			.abs() < 1.0e-14
+		(pitch_result.attitude_fuel_used - config.attitude_fuel_rate * config.policy_time_step).abs()
+			< 1.0e-14
 	);
 	Ok(())
 }
@@ -827,12 +820,7 @@ test_vk!(
 			.map(|lane| {
 				LunarScalarEnvironment::flat(
 					scalar_config,
-					LunarEpisodeManifest::derive(
-						config.seed,
-						lane,
-						0,
-						scalar_config.contract_fingerprint(),
-					),
+					LunarEpisodeManifest::derive(config.seed, lane, 0, scalar_config.contract_fingerprint()),
 				)
 			})
 			.collect::<oa::Result<Vec<_>>>()?;

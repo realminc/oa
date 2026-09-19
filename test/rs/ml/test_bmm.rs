@@ -73,9 +73,7 @@ fn host_bmm(
 						Layout::Tn => (batch_index * inner + inner_index) * rows + row,
 					};
 					let right_index = match layout {
-						Layout::Nn | Layout::Tn => {
-							(batch_index * inner + inner_index) * columns + column
-						}
+						Layout::Nn | Layout::Tn => (batch_index * inner + inner_index) * columns + column,
 						Layout::Nt => (batch_index * columns + column) * inner + inner_index,
 					};
 					value += left[left_index] * right[right_index];
@@ -169,7 +167,8 @@ fn loss_and_gradients(
 	let loss_value = loss.read_f32()?[0];
 	let gradients = if backward {
 		[
-			left.weight()
+			left
+				.weight()
 				.gradient()
 				.expect("left BMM gradient is missing")
 				.read_f32()?[0],

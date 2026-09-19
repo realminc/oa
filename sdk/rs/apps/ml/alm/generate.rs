@@ -1,67 +1,163 @@
-use std::{env, error::Error, path::PathBuf, time::Instant};
+use std::{error::Error, path::PathBuf, time::Instant};
 
+use oa::Cli;
 use oa::sdk::{
 	data::HumanMl3dDataset,
 	ml::alm::{Alm, AlmGenerationOptions},
 };
 
-struct Options {
-	model: PathBuf,
-	dataset: PathBuf,
+// ─── config ──────────────────────────────────────────────────────────────────
+
+struct AlmGenerateConfig {
+	model: String,
+	dataset: String,
 	split: String,
-	output: PathBuf,
+	output: String,
 	count: usize,
 	temperature: f32,
 	max_len: usize,
 	seed: u64,
 	conditioning_clip: usize,
 	caption_index: usize,
-	prompt: Option<String>,
+	prompt: String,
 }
 
+impl Default for AlmGenerateConfig {
+	fn default() -> Self {
+		Self {
+			model: String::new(),
+			dataset: "data/humanMl3d/Cmp".into(),
+			split: "train".into(),
+			output: "var/alm".into(),
+			count: 3,
+			temperature: 1.0,
+			max_len: 64,
+			seed: 42,
+			conditioning_clip: 0,
+			caption_index: 0,
+			prompt: String::new(),
+		}
+	}
+}
+
+// ─── main ────────────────────────────────────────────────────────────────────
+
 fn main() -> Result<(), Box<dyn Error>> {
-	let options = parse_options()?;
+	let mut cli = Cli::new("genalm", "generate ALM motion sequences");
+	cli.add_option(
+		"--model",
+		|c: &mut AlmGenerateConfig| &mut c.model,
+		"ALM bundle path (required)",
+	);
+	cli.add_option(
+		"--dataset",
+		|c: &mut AlmGenerateConfig| &mut c.dataset,
+		"dataset directory",
+	);
+	cli.add_option(
+		"--split",
+		|c: &mut AlmGenerateConfig| &mut c.split,
+		"dataset split name",
+	);
+	cli.add_option(
+		"--out-dir",
+		|c: &mut AlmGenerateConfig| &mut c.output,
+		"output directory",
+	);
+	cli.add_option(
+		"--gen-count",
+		|c: &mut AlmGenerateConfig| &mut c.count,
+		"number of sequences to generate",
+	);
+	cli.add_option(
+		"--gen-temp",
+		|c: &mut AlmGenerateConfig| &mut c.temperature,
+		"sampling temperature",
+	);
+	cli.add_option(
+		"--gen-len",
+		|c: &mut AlmGenerateConfig| &mut c.max_len,
+		"max generation length (tokens)",
+	);
+	cli.add_option(
+		"--seed",
+		|c: &mut AlmGenerateConfig| &mut c.seed,
+		"random seed",
+	);
+	cli.add_option(
+		"--conditioning-clip",
+		|c: &mut AlmGenerateConfig| &mut c.conditioning_clip,
+		"conditioning clip index",
+	);
+	cli.add_option(
+		"--caption-index",
+		|c: &mut AlmGenerateConfig| &mut c.caption_index,
+		"caption index within clip",
+	);
+	cli.add_option(
+		"--prompt",
+		|c: &mut AlmGenerateConfig| &mut c.prompt,
+		"text prompt (requires native CLIP)",
+	);
+	if !cli.parse() {
+		return Ok(());
+	}
+	let cfg = cli.into_config();
+
+	if cfg.model.is_empty() {
+		return Err(argument_error("--model is required"));
+	}
+
+	let model_path = PathBuf::from(&cfg.model);
+	let dataset_path = PathBuf::from(&cfg.dataset);
+	let output_path = PathBuf::from(&cfg.output);
+	let prompt_opt: Option<&str> = if cfg.prompt.is_empty() {
+		None
+	} else {
+		Some(&cfg.prompt)
+	};
+
 	let engine = oa::Engine::new()?;
-	let model = Alm::load_bundle(&engine, &options.model)?;
+	let model = Alm::load_bundle(&engine, &model_path)?;
 	let conditioned = model.config().prior.text_feature_dim > 0;
-	let load_count = if conditioned && options.prompt.is_none() {
-		options.conditioning_clip + 1
+	let load_count = if conditioned && prompt_opt.is_none() {
+		cfg.conditioning_clip + 1
 	} else {
 		1
 	};
-	let dataset = HumanMl3dDataset::open_cmp(&options.dataset, &options.split, load_count)?;
-	std::fs::create_dir_all(&options.output)?;
-	let cached_feature = if conditioned && options.prompt.is_none() {
-		Some(caption_feature(&engine, &model, &dataset, &options)?)
+	let dataset = HumanMl3dDataset::open_cmp(&dataset_path, &cfg.split, load_count)?;
+	std::fs::create_dir_all(&output_path)?;
+	let cached_feature = if conditioned && prompt_opt.is_none() {
+		Some(caption_feature(&engine, &model, &dataset, &cfg)?)
 	} else {
 		None
 	};
-	if !conditioned && options.prompt.is_some() {
+	if !conditioned && prompt_opt.is_some() {
 		return Err(argument_error(
 			"an unconditional ALM cannot accept --prompt",
 		));
 	}
-	if options.prompt.is_some() && !model.has_native_text_encoder() {
+	if prompt_opt.is_some() && !model.has_native_text_encoder() {
 		return Err(argument_error(
 			"--prompt requires an ALM bundle with native CLIP and merge assets",
 		));
 	}
 	println!(
 		"\ngenalm — {} clips · max {} tokens · temperature {:.2}",
-		options.count, options.max_len, options.temperature
+		cfg.count, cfg.max_len, cfg.temperature
 	);
 	let run_start = Instant::now();
-	for index in 0..options.count {
+	for index in 0..cfg.count {
 		let generation = AlmGenerationOptions {
-			temperature: options.temperature,
+			temperature: cfg.temperature,
 			top_k: 0,
 			top_p: 0.9,
-			max_length: options.max_len,
-			seed: options.seed.wrapping_add(index as u64),
+			max_length: cfg.max_len,
+			seed: cfg.seed.wrapping_add(index as u64),
 			use_cache: true,
 		};
 		let start = Instant::now();
-		let motion = if let Some(prompt) = options.prompt.as_deref() {
+		let motion = if let Some(prompt) = prompt_opt {
 			model.generate_motion_prompt(prompt, generation)?
 		} else if let Some(feature) = cached_feature.as_ref() {
 			model.generate_motion_conditioned(feature, generation)?
@@ -83,22 +179,22 @@ fn main() -> Result<(), Box<dyn Error>> {
 		}
 		let mut values = motion.read_f32()?;
 		dataset.denormalize(&mut values)?;
-		let stem = format!("alm_gen_{index}_t{:.1}", options.temperature);
-		let path = options.output.join(format!("{stem}.npy"));
+		let stem = format!("alm_gen_{index}_t{:.1}", cfg.temperature);
+		let path = output_path.join(format!("{stem}.npy"));
 		write_npy_f32(&path, &[*frames, *feature_dim], &values)?;
 		let metadata = format!(
 			"format=oa_alm_generation_v1\nbundle={}\ndataset={}\nsplit={}\nseed={}\ntemperature={}\nmax_motion_tokens={}\nframes={}\nfeature_dim={}\nprompt={}\n",
-			options.model.display(),
-			options.dataset.display(),
-			options.split,
+			model_path.display(),
+			dataset_path.display(),
+			cfg.split,
 			generation.seed,
 			generation.temperature,
 			generation.max_length,
 			frames,
 			feature_dim,
-			options.prompt.as_deref().unwrap_or("")
+			prompt_opt.unwrap_or("")
 		);
-		std::fs::write(options.output.join(format!("{stem}.meta.txt")), metadata)?;
+		std::fs::write(output_path.join(format!("{stem}.meta.txt")), metadata)?;
 		println!(
 			"  [{index}] {frames} frames × {feature_dim} · {:.1} ms · saved {}",
 			elapsed.as_secs_f64() * 1000.0,
@@ -116,7 +212,7 @@ fn caption_feature(
 	engine: &oa::Engine,
 	model: &Alm,
 	dataset: &HumanMl3dDataset,
-	options: &Options,
+	cfg: &AlmGenerateConfig,
 ) -> Result<oa::Matrix, Box<dyn Error>> {
 	if dataset.text_feature_format() != Some("oa_clip_text_v1")
 		|| dataset.text_feature_model() != model.text_encoder_identity()
@@ -127,22 +223,22 @@ fn caption_feature(
 		));
 	}
 	let features = dataset
-		.clip_text_features(options.conditioning_clip)
+		.clip_text_features(cfg.conditioning_clip)
 		.ok_or_else(|| argument_error("conditioning clip is outside the loaded split"))?;
 	let captions = dataset
-		.clip_captions(options.conditioning_clip)
+		.clip_captions(cfg.conditioning_clip)
 		.ok_or_else(|| argument_error("conditioning clip has no captions"))?;
 	let width = dataset.text_feature_dim();
 	let expected = captions
 		.len()
 		.checked_mul(width)
 		.ok_or_else(|| argument_error("cached caption-feature size overflows usize"))?;
-	if options.caption_index >= captions.len() || features.len() != expected {
+	if cfg.caption_index >= captions.len() || features.len() != expected {
 		return Err(argument_error(
 			"caption index or cached text-feature geometry is invalid",
 		));
 	}
-	let start = options.caption_index * width;
+	let start = cfg.caption_index * width;
 	Ok(oa::Matrix::from_f32(
 		engine,
 		[1, width],
@@ -175,59 +271,6 @@ fn write_npy_f32(path: &std::path::Path, shape: &[usize], values: &[f32]) -> std
 		bytes.extend_from_slice(&value.to_le_bytes());
 	}
 	std::fs::write(path, bytes)
-}
-
-fn parse_options() -> Result<Options, Box<dyn Error>> {
-	let mut options = Options {
-		model: PathBuf::new(),
-		dataset: "data/humanMl3d/Cmp".into(),
-		split: "train".into(),
-		output: "var/alm".into(),
-		count: 3,
-		temperature: 1.0,
-		max_len: 64,
-		seed: 42,
-		conditioning_clip: 0,
-		caption_index: 0,
-		prompt: None,
-	};
-	let mut arguments = env::args().skip(1);
-	while let Some(argument) = arguments.next() {
-		let mut value = || {
-			arguments
-				.next()
-				.ok_or_else(|| argument_error(&format!("{argument} requires a value")))
-		};
-		match argument.as_str() {
-			"--model" => options.model = value()?.into(),
-			"--dataset" => options.dataset = value()?.into(),
-			"--split" => options.split = value()?,
-			"--out-dir" => options.output = value()?.into(),
-			"--gen-count" => options.count = parse(&value()?, &argument)?,
-			"--gen-temp" => options.temperature = parse(&value()?, &argument)?,
-			"--gen-len" => options.max_len = parse(&value()?, &argument)?,
-			"--seed" => options.seed = parse(&value()?, &argument)?,
-			"--conditioning-clip" => options.conditioning_clip = parse(&value()?, &argument)?,
-			"--caption-index" => options.caption_index = parse(&value()?, &argument)?,
-			"--prompt" => options.prompt = Some(value()?),
-			"--help" | "-h" => {
-				println!(
-					"genalm --model MODEL.oam [--dataset DIR] [--split NAME] [--out-dir DIR] [--gen-count N] [--gen-temp F] [--gen-len N] [--seed N] [--conditioning-clip N] [--caption-index N] [--prompt TEXT]"
-				);
-				std::process::exit(0);
-			}
-			_ => return Err(argument_error(&format!("unknown option {argument}"))),
-		}
-	}
-	if options.model.as_os_str().is_empty() {
-		return Err(argument_error("--model is required"));
-	}
-	Ok(options)
-}
-
-fn parse<T: std::str::FromStr>(text: &str, option: &str) -> Result<T, Box<dyn Error>> {
-	text.parse()
-		.map_err(|_| argument_error(&format!("{option} has an invalid value")))
 }
 
 fn argument_error(message: &str) -> Box<dyn Error> {

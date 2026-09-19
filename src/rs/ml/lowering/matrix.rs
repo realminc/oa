@@ -40,12 +40,10 @@ pub(in crate::ml) fn linear(input: &Matrix, weight: &Matrix, bias: &Matrix) -> R
 	let batch = input.shape()[..input.shape().len() - 1]
 		.iter()
 		.try_fold(1_usize, |product, extent| product.checked_mul(*extent))
-		.ok_or_else(|| {
-			Error::invalid_argument(format!("{OPERATION} leading size overflows usize"))
-		})?;
-	let output_count = batch.checked_mul(*output_features).ok_or_else(|| {
-		Error::invalid_argument(format!("{OPERATION} output size overflows usize"))
-	})?;
+		.ok_or_else(|| Error::invalid_argument(format!("{OPERATION} leading size overflows usize")))?;
+	let output_count = batch
+		.checked_mul(*output_features)
+		.ok_or_else(|| Error::invalid_argument(format!("{OPERATION} output size overflows usize")))?;
 	let mut output_shape = input.shape().to_vec();
 	*output_shape
 		.last_mut()
@@ -128,9 +126,7 @@ pub(in crate::ml) fn linear_backward(
 	let batch = input.shape()[..input.shape().len() - 1]
 		.iter()
 		.try_fold(1_usize, |product, extent| product.checked_mul(*extent))
-		.ok_or_else(|| {
-			Error::invalid_argument(format!("{OPERATION} leading size overflows usize"))
-		})?;
+		.ok_or_else(|| Error::invalid_argument(format!("{OPERATION} leading size overflows usize")))?;
 	let batch_u32 = shader_u32(batch, "flattened row count", OPERATION)?;
 	let input_features_u32 = shader_u32(input_features, "input feature count", OPERATION)?;
 	let output_features_u32 = shader_u32(*output_features, "output feature count", OPERATION)?;
@@ -498,9 +494,9 @@ pub(in crate::ml) fn channel_norm(
 		&buffers,
 		&push_constants,
 		[
-			batch.checked_mul(sequence_length).ok_or_else(|| {
-				Error::invalid_argument(format!("{operation} row count exceeds u32"))
-			})?,
+			batch
+				.checked_mul(sequence_length)
+				.ok_or_else(|| Error::invalid_argument(format!("{operation} row count exceeds u32")))?,
 			1,
 			1,
 		],
@@ -550,9 +546,7 @@ pub(in crate::ml) fn channel_norm_backward(
 	)?;
 	let contribution_count = (rows as usize)
 		.checked_mul(channels as usize)
-		.ok_or_else(|| {
-			Error::invalid_argument(format!("{operation} contribution size overflows"))
-		})?;
+		.ok_or_else(|| Error::invalid_argument(format!("{operation} contribution size overflows")))?;
 	let weight_contribution = Matrix::allocate(
 		input.engine_handle(),
 		vec![rows as usize, channels as usize],
@@ -1213,9 +1207,7 @@ fn validate_rope(
 	let pair_count = tokens
 		.checked_mul(num_heads)
 		.and_then(|count| count.checked_mul(head_dim / 2))
-		.ok_or_else(|| {
-			Error::invalid_argument(format!("{operation} pair count overflows usize"))
-		})?;
+		.ok_or_else(|| Error::invalid_argument(format!("{operation} pair count overflows usize")))?;
 	Ok((
 		shader_u32(*tokens, "token count", operation)?,
 		shader_u32(num_heads, "head count", operation)?,
@@ -1640,9 +1632,8 @@ pub(in crate::ml) fn silu_mul(input: &Matrix, intermediate_size: usize) -> Resul
 	];
 	let attributes = [OpAttribute::SignedInteger {
 		name: "intermediate_size".into(),
-		value: i64::try_from(intermediate_size).map_err(|_| {
-			Error::invalid_argument(format!("{OPERATION} intermediate size exceeds i64"))
-		})?,
+		value: i64::try_from(intermediate_size)
+			.map_err(|_| Error::invalid_argument(format!("{OPERATION} intermediate size exceeds i64")))?,
 	}];
 	let kernel = KernelId::MlSiluMulF32;
 	record_semantic(
@@ -1706,9 +1697,8 @@ pub(in crate::ml) fn silu_mul_backward(
 	];
 	let attributes = [OpAttribute::SignedInteger {
 		name: "intermediate_size".into(),
-		value: i64::try_from(intermediate_size).map_err(|_| {
-			Error::invalid_argument(format!("{OPERATION} intermediate size exceeds i64"))
-		})?,
+		value: i64::try_from(intermediate_size)
+			.map_err(|_| Error::invalid_argument(format!("{OPERATION} intermediate size exceeds i64")))?,
 	}];
 	let kernel = KernelId::MlSiluMulBackwardF32;
 	record_semantic(
@@ -1749,9 +1739,7 @@ pub(in crate::ml) fn embedding(weight: &Matrix, indices: &Matrix) -> Result<Matr
 	let output_count = indices
 		.num_elements()
 		.checked_mul(*embedding_dim)
-		.ok_or_else(|| {
-			Error::invalid_argument(format!("{OPERATION} output size overflows usize"))
-		})?;
+		.ok_or_else(|| Error::invalid_argument(format!("{OPERATION} output size overflows usize")))?;
 	let mut output_shape = indices.shape().to_vec();
 	output_shape.push(*embedding_dim);
 	let output = Matrix::allocate(
@@ -1932,8 +1920,7 @@ fn validate_batch_norm_affine(
 	operation: &'static str,
 ) -> Result<BatchNorm2dGeometry> {
 	let geometry = BatchNorm2dGeometry::resolve(input, operation)?;
-	if weight.shape() != [geometry.channels as usize]
-		|| bias.shape() != [geometry.channels as usize]
+	if weight.shape() != [geometry.channels as usize] || bias.shape() != [geometry.channels as usize]
 	{
 		return Err(Error::invalid_argument(format!(
 			"{operation} requires weight and bias [{}]; found {:?} and {:?}",
@@ -2260,8 +2247,7 @@ pub(in crate::ml) fn batch_norm_2d_backward(
 			kernel: KernelId::MlBatchNorm2dInputBackwardF32,
 			buffers: &input_buffers,
 			push_constants: &input_push_constants,
-			workgroups: KernelId::MlBatchNorm2dInputBackwardF32
-				.linear_workgroups(geometry.element_count),
+			workgroups: KernelId::MlBatchNorm2dInputBackwardF32.linear_workgroups(geometry.element_count),
 		},
 	];
 	let inputs = [input, weight, mean, variance, output_gradient];

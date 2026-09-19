@@ -480,8 +480,8 @@ test_vk!(
 				Alm, AlmPrior, AlmPriorConfig, AlmTokenizer, AlmTokenizerConfig,
 				training::{
 					AlmTrainingConfig, AlmValidation, PriorTrainingConfig, PriorValidationConfig,
-					TokenizerTrainingConfig, TokenizerValidationConfig, evaluate_prior,
-					evaluate_tokenizer, tokenize_corpus, train_alm_with_validation,
+					TokenizerTrainingConfig, TokenizerValidationConfig, evaluate_prior, evaluate_tokenizer,
+					tokenize_corpus, train_alm_with_validation,
 				},
 			},
 		};
@@ -514,8 +514,7 @@ test_vk!(
 			)
 			.expect("write caption fixture");
 		}
-		std::fs::write(directory.join("train.txt"), "first\nsecond\n")
-			.expect("write split fixture");
+		std::fs::write(directory.join("train.txt"), "first\nsecond\n").expect("write split fixture");
 		let dataset = HumanMl3dDataset::open_cmp(&directory, "train", 0)?;
 		let tokenizer = Rc::new(AlmTokenizer::with_seed(
 			&engine,

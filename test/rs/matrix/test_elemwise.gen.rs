@@ -408,8 +408,7 @@ test_vk!(
 				f32::from_bits(0x40800000),
 			]),
 		)?;
-		let reciprocal_f32_actual: Vec<f32> =
-			oa::matrix::reciprocal(&reciprocal_f32_input)?.read()?;
+		let reciprocal_f32_actual: Vec<f32> = oa::matrix::reciprocal(&reciprocal_f32_input)?.read()?;
 		assert_close(
 			&reciprocal_f32_actual,
 			&repeated(&[

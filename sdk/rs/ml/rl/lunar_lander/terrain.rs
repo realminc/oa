@@ -80,8 +80,7 @@ impl LunarTerrainConfig {
 				"lunar terrain bounds must be finite and non-negative",
 			));
 		}
-		let available =
-			(f64::from(self.cells_x).min(f64::from(self.cells_z)) * self.cell_size) * 0.5;
+		let available = (f64::from(self.cells_x).min(f64::from(self.cells_z)) * self.cell_size) * 0.5;
 		if self.pad_half_extent + self.cell_size + self.pad_transition_width > available {
 			return Err(Error::invalid_argument(
 				"lunar terrain pad and guarded transition do not fit the tile",
@@ -425,8 +424,7 @@ fn terrain_mix(mut value: u64) -> u64 {
 }
 fn signed_unit(seed: u64, x: u32, z: u32) -> f64 {
 	let bits = terrain_mix(
-		seed ^ u64::from(x).wrapping_mul(TERRAIN_HASH_X)
-			^ u64::from(z).wrapping_mul(TERRAIN_HASH_Z),
+		seed ^ u64::from(x).wrapping_mul(TERRAIN_HASH_X) ^ u64::from(z).wrapping_mul(TERRAIN_HASH_Z),
 	);
 	((bits >> 11) as f64) * (1.0 / 9_007_199_254_740_992.0) * 2.0 - 1.0
 }

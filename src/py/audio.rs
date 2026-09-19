@@ -2,6 +2,8 @@ use pyo3::{exceptions::PyValueError, prelude::*, types::PyBytes};
 
 use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonEngine};
 
+mod sessions;
+
 fn layout_from_token(token: &str) -> PyResult<oa::audio::AudioChannelLayout> {
 	match token {
 		"mono" => Ok(oa::audio::AudioChannelLayout::Mono),
@@ -321,7 +323,86 @@ pub(crate) fn audio_mel_spectrogram(
 		.map_err(python_error)
 }
 
+#[pyfunction]
+#[pyo3(signature = (input, num_coeffs=13, num_mels=80, fft_size=1024, hop_size=256, f_min=0.0, f_max=0.0, log_scale=true, normalize=false))]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn audio_mfcc(
+	input: &PythonAudio,
+	num_coeffs: u32,
+	num_mels: u32,
+	fft_size: u32,
+	hop_size: u32,
+	f_min: f32,
+	f_max: f32,
+	log_scale: bool,
+	normalize: bool,
+) -> PyResult<PythonMatrix> {
+	let config = oa::audio::MfccConfig {
+		num_coeffs,
+		mel: oa::audio::MelConfig {
+			fft_size,
+			hop_size,
+			num_mels,
+			f_min,
+			f_max,
+			log_scale,
+			normalize,
+		},
+	};
+	oa::audio::mfcc(&input.inner, config)
+		.map(PythonMatrix::wrap)
+		.map_err(python_error)
+}
+
+#[pyfunction]
+pub(crate) fn audio_encode_interleaved_wav_f32(
+	py: Python<'_>,
+	samples: Vec<f32>,
+	sample_rate: u32,
+	channels: usize,
+) -> PyResult<Py<PyBytes>> {
+	let encoded =
+		oa::audio::encode_interleaved_wav_f32(&samples, sample_rate, channels).map_err(python_error)?;
+	Ok(PyBytes::new(py, &encoded).unbind())
+}
+
+#[pyfunction]
+pub(crate) fn audio_biquad(
+	input: &PythonAudio,
+	b0: f32,
+	b1: f32,
+	b2: f32,
+	a1: f32,
+	a2: f32,
+) -> PyResult<PythonAudio> {
+	let coefficients = oa::audio::BiquadCoefficients { b0, b1, b2, a1, a2 };
+	oa::audio::biquad(&input.inner, coefficients)
+		.map(PythonAudio::wrap)
+		.map_err(python_error)
+}
+
+#[pyfunction]
+pub(crate) fn audio_sos_filter(
+	input: &PythonAudio,
+	sections: Vec<[f32; 5]>,
+) -> PyResult<PythonAudio> {
+	let coefficients = sections
+		.into_iter()
+		.map(|s| oa::audio::BiquadCoefficients {
+			b0: s[0],
+			b1: s[1],
+			b2: s[2],
+			a1: s[3],
+			a2: s[4],
+		})
+		.collect::<Vec<_>>();
+	oa::audio::sos_filter(&input.inner, &coefficients)
+		.map(PythonAudio::wrap)
+		.map_err(python_error)
+}
+
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
+	sessions::register(module)?;
 	module.add_class::<PythonAudio>()?;
 	macro_rules! add_functions {
 		($($function:ident),+ $(,)?) => { $(module.add_function(wrap_pyfunction!($function, module)?)?;)+ };
@@ -330,6 +411,7 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
 		audio_decode_file,
 		audio_decode_memory,
 		audio_encode_wav_f32,
+		audio_encode_interleaved_wav_f32,
 		audio_save_wav_f32,
 		audio_normalize,
 		audio_resample,
@@ -345,6 +427,9 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
 		audio_waveform_envelope,
 		audio_stft,
 		audio_mel_spectrogram,
+		audio_mfcc,
+		audio_biquad,
+		audio_sos_filter,
 	);
 	Ok(())
 }

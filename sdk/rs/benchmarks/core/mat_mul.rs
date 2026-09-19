@@ -142,7 +142,8 @@ fn parse_count(flag: &str, value: Option<String>) -> anyhow::Result<usize> {
 }
 
 fn checked_element_count(left: usize, right: usize, label: &str) -> anyhow::Result<usize> {
-	left.checked_mul(right)
+	left
+		.checked_mul(right)
 		.with_context(|| format!("{label} element count overflows usize"))
 }
 

@@ -276,9 +276,10 @@ pub fn gather_tokenizer_clip_batch<T: AsRef<[f32]>>(
 			.ok_or_else(|| Error::invalid_argument("ALM tokenizer cursor overflows usize"))?
 			% windows.len();
 		let window = windows[index];
-		let clip = clips.get(window.clip).map(AsRef::as_ref).ok_or_else(|| {
-			Error::invalid_argument("ALM tokenizer window has invalid clip index")
-		})?;
+		let clip = clips
+			.get(window.clip)
+			.map(AsRef::as_ref)
+			.ok_or_else(|| Error::invalid_argument("ALM tokenizer window has invalid clip index"))?;
 		let source_start = window
 			.start
 			.checked_mul(feature_dim)
@@ -286,9 +287,9 @@ pub fn gather_tokenizer_clip_batch<T: AsRef<[f32]>>(
 		let source_end = source_start
 			.checked_add(row_len)
 			.ok_or_else(|| Error::invalid_argument("ALM tokenizer window size overflows usize"))?;
-		let source = clip.get(source_start..source_end).ok_or_else(|| {
-			Error::invalid_argument("ALM tokenizer window exceeds its source clip")
-		})?;
+		let source = clip
+			.get(source_start..source_end)
+			.ok_or_else(|| Error::invalid_argument("ALM tokenizer window exceeds its source clip"))?;
 		batch[row * row_len..(row + 1) * row_len].copy_from_slice(source);
 	}
 	Ok(batch)
@@ -317,9 +318,9 @@ pub fn build_prior_windows(sequences: &[Vec<i32>], window_len: usize) -> Result<
 			.checked_add(1)
 			.ok_or_else(|| Error::invalid_argument("ALM prior pair count overflows usize"))?;
 		if pairs <= window_len {
-			windows.try_reserve(1).map_err(|_| {
-				Error::resource_exhausted("ALM prior window inventory exceeds host memory")
-			})?;
+			windows
+				.try_reserve(1)
+				.map_err(|_| Error::resource_exhausted("ALM prior window inventory exceeds host memory"))?;
 			windows.push(PriorWindow {
 				sequence,
 				start: 0,
@@ -328,9 +329,9 @@ pub fn build_prior_windows(sequences: &[Vec<i32>], window_len: usize) -> Result<
 			continue;
 		}
 		let count = pairs - window_len + 1;
-		windows.try_reserve(count).map_err(|_| {
-			Error::resource_exhausted("ALM prior window inventory exceeds host memory")
-		})?;
+		windows
+			.try_reserve(count)
+			.map_err(|_| Error::resource_exhausted("ALM prior window inventory exceeds host memory"))?;
 		for start in 0..count {
 			windows.push(PriorWindow {
 				sequence,
@@ -388,9 +389,9 @@ pub fn gather_prior_batch(
 			.ok_or_else(|| Error::invalid_argument("ALM prior cursor overflows usize"))?
 			% windows.len();
 		let window = windows[index];
-		let codes = sequences.get(window.sequence).ok_or_else(|| {
-			Error::invalid_argument("ALM prior window has invalid sequence index")
-		})?;
+		let codes = sequences
+			.get(window.sequence)
+			.ok_or_else(|| Error::invalid_argument("ALM prior window has invalid sequence index"))?;
 		let pairs = codes
 			.len()
 			.checked_add(1)

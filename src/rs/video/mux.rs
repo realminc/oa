@@ -185,9 +185,9 @@ impl VideoMuxer {
 	pub fn create(path: impl AsRef<Path>, config: VideoMuxerConfig) -> Result<Self> {
 		let path = path.as_ref();
 		validate_config(path, config)?;
-		let mut file =
-			File::create(path).map_err(|source| Error::io("MP4 output create", source))?;
-		file.write_all(&stream_header())
+		let mut file = File::create(path).map_err(|source| Error::io("MP4 output create", source))?;
+		file
+			.write_all(&stream_header())
 			.map_err(|source| Error::io("MP4 stream header write", source))?;
 		Ok(Self {
 			file: Some(file),
@@ -300,9 +300,11 @@ impl VideoMuxer {
 		}
 		self.video_offsets.push(offset);
 		self.video_sizes.push(sample_size);
-		self.video_presentation_timestamps_micros
+		self
+			.video_presentation_timestamps_micros
 			.push(packet.presentation_timestamp_micros);
-		self.video_decode_timestamps_micros
+		self
+			.video_decode_timestamps_micros
 			.push(packet.decode_timestamp_micros);
 		self.video_keyframes.push(packet.keyframe);
 		self.mdat_payload_bytes = next_payload;
@@ -488,9 +490,10 @@ impl VideoMuxer {
 			append(
 				&mut payload,
 				&build_audio_track(
-					self.config.audio.ok_or_else(|| {
-						Error::internal("audio samples lost their track configuration")
-					})?,
+					self
+						.config
+						.audio
+						.ok_or_else(|| Error::internal("audio samples lost their track configuration"))?,
 					&self.audio_offsets,
 					&self.audio_durations,
 					timescale,
@@ -739,9 +742,7 @@ fn sample_deltas(timestamps: &[u64], timescale: u32, frame_rate: u32) -> Result<
 				.checked_sub(pair[0])
 				.filter(|delta| *delta > 0)
 				.ok_or_else(|| {
-					Error::invalid_argument(
-						"video timestamps collapse in the configured MP4 time base",
-					)
+					Error::invalid_argument("video timestamps collapse in the configured MP4 time base")
 				})?,
 		);
 	}
@@ -932,7 +933,8 @@ fn time_to_sample(deltas: &[u32]) -> Result<Vec<u8>> {
 	let mut payload = zeroed(
 		8_usize
 			.checked_add(
-				runs.len()
+				runs
+					.len()
 					.checked_mul(8)
 					.ok_or_else(|| Error::out_of_range("MP4 stts size exceeds usize"))?,
 			)
@@ -968,7 +970,8 @@ fn composition_time_to_sample(offsets: &[i32]) -> Result<Vec<u8>> {
 	let mut payload = zeroed(
 		8_usize
 			.checked_add(
-				runs.len()
+				runs
+					.len()
 					.checked_mul(8)
 					.ok_or_else(|| Error::out_of_range("MP4 ctts size exceeds usize"))?,
 			)
@@ -1206,7 +1209,8 @@ fn build_audio_sample_table(
 	let mut stsc_payload = zeroed(
 		8_usize
 			.checked_add(
-				runs.len()
+				runs
+					.len()
 					.checked_mul(12)
 					.ok_or_else(|| Error::out_of_range("MP4 audio stsc exceeds usize"))?,
 			)

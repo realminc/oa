@@ -12,7 +12,6 @@ pub use lunar_lander::{
 	LunarLander3dEpisodeTelemetry, LunarLander3dState, LunarLander3dVector,
 	LunarLander3dVectorConfig, LunarLander3dVectorStep, LunarPhysicsResult, LunarRandomPurpose,
 	LunarRewardTerms, LunarScalarEnvironment, LunarSupportSphere, LunarTeacherConfig,
-	LunarTeacherMetrics, LunarTerrain, LunarTerrainConfig, LunarTerrainSample,
-	LunarTerrainTriangle, LunarTransition, collect_ppo_rollout, evaluate_first_episodes,
-	pretrain_scripted_teacher,
+	LunarTeacherMetrics, LunarTerrain, LunarTerrainConfig, LunarTerrainSample, LunarTerrainTriangle,
+	LunarTransition, collect_ppo_rollout, evaluate_first_episodes, pretrain_scripted_teacher,
 };

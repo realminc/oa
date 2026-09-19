@@ -37,8 +37,8 @@ test_vk!(split_and_merge_heads_match_donor_permutation, engine, {
 	assert_eq!(
 		split.read_f32()?,
 		[
-			0.0, 1.0, 4.0, 5.0, 8.0, 9.0, 2.0, 3.0, 6.0, 7.0, 10.0, 11.0, 12.0, 13.0, 16.0, 17.0,
-			20.0, 21.0, 14.0, 15.0, 18.0, 19.0, 22.0, 23.0,
+			0.0, 1.0, 4.0, 5.0, 8.0, 9.0, 2.0, 3.0, 6.0, 7.0, 10.0, 11.0, 12.0, 13.0, 16.0, 17.0, 20.0,
+			21.0, 14.0, 15.0, 18.0, 19.0, 22.0, 23.0,
 		]
 	);
 	assert_eq!(merged.read_f32()?, values);
@@ -148,9 +148,8 @@ test_vk!(
 			let mask = oa::Matrix::from_f32(&engine, [rows, columns], &mask)?;
 			let (plan, output) =
 				engine.capture(|| oa::ml::matrix::softmax_scaled_masked(&scores, &mask, 0.7))?;
-			let report: serde_json::Value =
-				serde_json::from_str(&plan.debug_report_json("softmax"))
-					.expect("scaled-masked Softmax report must be valid JSON");
+			let report: serde_json::Value = serde_json::from_str(&plan.debug_report_json("softmax"))
+				.expect("scaled-masked Softmax report must be valid JSON");
 			assert_eq!(report["nodes"][0]["kernel"], expected_kernel);
 			let _event = engine.submit(&plan)?;
 			plan.wait()?;
@@ -176,8 +175,7 @@ test_vk!(
 		let tape = oa::ml::GradientTape::new();
 		let score_values = score_parameter.forward(&indices)?;
 		let mask_values = mask_parameter.forward(&indices)?;
-		let probability =
-			oa::ml::matrix::softmax_scaled_masked(&score_values, &mask_values, scale)?;
+		let probability = oa::ml::matrix::softmax_scaled_masked(&score_values, &mask_values, scale)?;
 		let target_matrix = oa::Matrix::from_f32(&engine, [2, 4], &target)?;
 		let loss = oa::ml::loss::mse(&probability, &target_matrix)?;
 		tape.backward(&loss)?;
@@ -262,8 +260,7 @@ fn host_sdpa(
 				let probability = (scores[key_row] - maximum).exp() / sum;
 				for feature in 0..head_dim {
 					output[(batch_head * sequence_length + query_row) * head_dim + feature] +=
-						probability
-							* value[(batch_head * sequence_length + key_row) * head_dim + feature];
+						probability * value[(batch_head * sequence_length + key_row) * head_dim + feature];
 				}
 			}
 		}
@@ -285,8 +282,8 @@ test_vk!(
 			0.5_f32, -0.2, 0.1, 0.4, 0.7, -0.5, -0.3, 0.8, 0.6, 0.2, -0.1, 0.9,
 		];
 		let mask_values = [
-			0.0_f32, -0.2, -1.0, 0.0, 0.0, -0.4, -0.8, 0.0, 0.0, 0.0, -0.3, 0.0, 0.0, -0.6, -0.1,
-			0.0, 0.0, -0.5,
+			0.0_f32, -0.2, -1.0, 0.0, 0.0, -0.4, -0.8, 0.0, 0.0, 0.0, -0.3, 0.0, 0.0, -0.6, -0.1, 0.0,
+			0.0, -0.5,
 		];
 		let query_matrix = oa::Matrix::from_f32(&engine, [2, 3, 2], &query)?;
 		let key_matrix = oa::Matrix::from_f32(&engine, [2, 3, 2], &key)?;
@@ -692,8 +689,7 @@ test_vk!(
 	{
 		use oa::ml::{Module, nn::MultiHeadAttention};
 
-		let attention =
-			MultiHeadAttention::with_seed_and_bias(&engine, 4, 2, 3, false, 0x4e4f_4249)?;
+		let attention = MultiHeadAttention::with_seed_and_bias(&engine, 4, 2, 3, false, 0x4e4f_4249)?;
 		assert!(!attention.has_bias());
 		let named = attention.all_named_parameters()?;
 		assert_eq!(named.len(), 4);

@@ -123,11 +123,8 @@ test_vk!(
 			1.0e-6,
 		);
 
-		let embedding = oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(
-			&engine,
-			[4, 2],
-			&latent_values,
-		)?)?;
+		let embedding =
+			oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [4, 2], &latent_values)?)?;
 		let row_ids = oa::Matrix::from_slice(&engine, [4], &[0_u32, 1, 2, 3])?;
 		let tape = oa::ml::GradientTape::new();
 		let encoded = embedding.forward(&row_ids)?;
@@ -193,8 +190,7 @@ test_vk!(
 		let codebook = state.codebook.read_f32()?;
 		let populations = state.cluster_size.read_f32()?;
 		for code in 1_u32..3 {
-			let mut hash =
-				(code + 1).wrapping_mul(2_654_435_761) ^ 7_u32.wrapping_mul(2_246_822_519);
+			let mut hash = (code + 1).wrapping_mul(2_654_435_761) ^ 7_u32.wrapping_mul(2_246_822_519);
 			hash ^= hash >> 13;
 			hash = hash.wrapping_mul(3_266_489_917);
 			hash ^= hash >> 16;

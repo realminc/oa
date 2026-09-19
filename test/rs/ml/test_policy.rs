@@ -254,15 +254,7 @@ test_vk!(
 		let log_stddev = oa::Matrix::from_f32(&engine, [3, 2], &[-0.5, 0.1, -1.0, 0.3, 0.0, -0.2])?;
 		let value = oa::Matrix::from_f32(&engine, [3], &[1.0, 2.0, 3.0])?;
 		let (plan, first) = engine.capture(|| {
-			oa::ml::policy::sample_tanh_normal(
-				&mean,
-				&log_stddev,
-				&value,
-				-1.5,
-				2.5,
-				918_273,
-				1.0e-6,
-			)
+			oa::ml::policy::sample_tanh_normal(&mean, &log_stddev, &value, -1.5, 2.5, 918_273, 1.0e-6)
 		})?;
 		assert_eq!(plan.diagnostics().semantic_operation_count(), 1);
 		assert_eq!(
@@ -271,15 +263,8 @@ test_vk!(
 		);
 		assert_eq!(plan.semantic_graph().operations()[0].attributes().len(), 4);
 		engine.submit(&plan)?.wait()?;
-		let second = oa::ml::policy::sample_tanh_normal(
-			&mean,
-			&log_stddev,
-			&value,
-			-1.5,
-			2.5,
-			918_273,
-			1.0e-6,
-		)?;
+		let second =
+			oa::ml::policy::sample_tanh_normal(&mean, &log_stddev, &value, -1.5, 2.5, 918_273, 1.0e-6)?;
 		assert_eq!(first.raw_action.read_f32()?, second.raw_action.read_f32()?);
 		assert_eq!(first.action.read_f32()?, second.action.read_f32()?);
 		let evaluated = oa::ml::policy::evaluate_tanh_normal(
@@ -359,8 +344,7 @@ test_vk!(tanh_normal_policy_rejects_invalid_contracts, engine, {
 		.is_err()
 	);
 	assert!(
-		oa::ml::policy::sample_tanh_normal(&mean, &log_stddev, &value, 1.0, -1.0, 7, 1.0e-6,)
-			.is_err()
+		oa::ml::policy::sample_tanh_normal(&mean, &log_stddev, &value, 1.0, -1.0, 7, 1.0e-6,).is_err()
 	);
 	Ok(())
 });

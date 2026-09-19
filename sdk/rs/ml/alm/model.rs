@@ -1,8 +1,7 @@
 use std::{path::Path, rc::Rc};
 
 use crate::ml::{
-	Module, ModuleArtifact, ModuleArtifactMetadata, ModuleRegistry, NamedBuffer,
-	save_module_artifact,
+	Module, ModuleArtifact, ModuleArtifactMetadata, ModuleRegistry, NamedBuffer, save_module_artifact,
 };
 use crate::{Engine, Error, Matrix, Result};
 
@@ -189,10 +188,11 @@ impl Alm {
 					"ALM CLIP projection width must match prior text_feature_dim",
 				));
 			}
-			let clip_parameter =
-				clip.all_parameters()?.into_iter().next().ok_or_else(|| {
-					Error::failed_precondition("ALM CLIP tower has no parameters")
-				})?;
+			let clip_parameter = clip
+				.all_parameters()?
+				.into_iter()
+				.next()
+				.ok_or_else(|| Error::failed_precondition("ALM CLIP tower has no parameters"))?;
 			if !tokenizer_data
 				.engine_handle()
 				.same_as(clip_parameter.data().engine_handle())
@@ -237,11 +237,8 @@ impl Alm {
 					"native ALM CLIP merges cannot be empty",
 				));
 			}
-			let data = Matrix::from_slice_handle(
-				tokenizer_data.engine_handle(),
-				vec![bytes.len()],
-				bytes,
-			)?;
+			let data =
+				Matrix::from_slice_handle(tokenizer_data.engine_handle(), vec![bytes.len()], bytes)?;
 			registry.register_buffer("text_tokenizer_merges", data, true)?;
 			Some(
 				registry
@@ -281,11 +278,7 @@ impl Alm {
 	/// # Errors
 	///
 	/// Returns an error from the prior's conditioned forward contract.
-	pub fn forward_conditioned(
-		&self,
-		token_ids: &Matrix,
-		text_features: &Matrix,
-	) -> Result<Matrix> {
+	pub fn forward_conditioned(&self, token_ids: &Matrix, text_features: &Matrix) -> Result<Matrix> {
 		self.prior.forward_conditioned(token_ids, text_features)
 	}
 
@@ -354,9 +347,10 @@ impl Alm {
 		flat_eos_rows: &Matrix,
 		options: AlmGenerationOptions,
 	) -> Result<Option<Matrix>> {
-		let clip = self.clip_text.as_ref().ok_or_else(|| {
-			Error::failed_precondition("ALM bundle has no native CLIP text encoder")
-		})?;
+		let clip = self
+			.clip_text
+			.as_ref()
+			.ok_or_else(|| Error::failed_precondition("ALM bundle has no native CLIP text encoder"))?;
 		let features = clip.forward_tokens(text_token_ids, flat_eos_rows)?;
 		self.generate_motion_conditioned(&features, options)
 	}
@@ -374,9 +368,10 @@ impl Alm {
 		truncate: bool,
 		options: AlmGenerationOptions,
 	) -> Result<Option<Matrix>> {
-		let clip = self.clip_text.as_ref().ok_or_else(|| {
-			Error::failed_precondition("ALM bundle has no native CLIP text encoder")
-		})?;
+		let clip = self
+			.clip_text
+			.as_ref()
+			.ok_or_else(|| Error::failed_precondition("ALM bundle has no native CLIP text encoder"))?;
 		let features = clip.forward_prompts(tokenizer, prompts, truncate)?;
 		self.generate_motion_conditioned(&features, options)
 	}
@@ -391,9 +386,10 @@ impl Alm {
 	/// Returns `FailedPrecondition` unless both native CLIP assets are bundled, or
 	/// a readback, tokenizer, upload, or text-tower operation fails.
 	pub fn encode_prompts<S: AsRef<str>>(&self, prompts: &[S]) -> Result<Matrix> {
-		let clip = self.clip_text.as_ref().ok_or_else(|| {
-			Error::failed_precondition("ALM bundle has no native CLIP text encoder")
-		})?;
+		let clip = self
+			.clip_text
+			.as_ref()
+			.ok_or_else(|| Error::failed_precondition("ALM bundle has no native CLIP text encoder"))?;
 		let merges = self
 			.text_tokenizer_merges
 			.as_ref()
@@ -578,8 +574,7 @@ fn encode_bundle_config(model: &Alm) -> Result<Vec<u8>> {
 	}
 	if merge_bytes > 0
 		&& (identity != NATIVE_TEXT_ENCODER
-			|| model.clip_text.as_ref().map(|clip| *clip.config())
-				!= Some(ClipTextConfig::default()))
+			|| model.clip_text.as_ref().map(|clip| *clip.config()) != Some(ClipTextConfig::default()))
 	{
 		return Err(Error::failed_precondition(
 			"native ALM bundle does not match the pinned CLIP ViT-L/14 contract",

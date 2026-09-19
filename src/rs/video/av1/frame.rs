@@ -358,8 +358,7 @@ pub fn parse_av1_frame_header(
 		&& sequence.enable_order_hint
 	{
 		for hint in &mut logical_order_hints {
-			*hint =
-				to_u8(reader.bits(u32::from(sequence.order_hint_bits), "reference order hint")?)?;
+			*hint = to_u8(reader.bits(u32::from(sequence.order_hint_bits), "reference order hint")?)?;
 		}
 	}
 
@@ -376,8 +375,7 @@ pub fn parse_av1_frame_header(
 		}
 	} else {
 		if sequence.enable_order_hint {
-			output.frame_references_short_signaling =
-				reader.bit("short-reference-signaling flag")?;
+			output.frame_references_short_signaling = reader.bit("short-reference-signaling flag")?;
 			if output.frame_references_short_signaling {
 				return Err(Error::missing_capability(
 					"AV1 short reference signaling is not implemented",
@@ -429,8 +427,7 @@ pub fn parse_av1_frame_header(
 		};
 		output.motion_mode_switchable = reader.bit("motion-mode-switchable flag")?;
 		if !output.error_resilient_mode && sequence.enable_reference_frame_motion_vectors {
-			output.use_reference_frame_motion_vectors =
-				reader.bit("use-reference-frame-MVs flag")?;
+			output.use_reference_frame_motion_vectors = reader.bit("use-reference-frame-MVs flag")?;
 		}
 	}
 
@@ -682,8 +679,7 @@ fn parse_tile_info(
 	let minimum_column_log2 = floor_log2(superblock_columns.div_ceil(max_tile_width));
 	let mut maximum_column_log2 = floor_log2(superblock_columns.max(1));
 	while maximum_column_log2 > 0
-		&& (superblock_rows * superblock_columns.div_ceil(1_u32 << maximum_column_log2))
-			> max_tile_area
+		&& (superblock_rows * superblock_columns.div_ceil(1_u32 << maximum_column_log2)) > max_tile_area
 	{
 		maximum_column_log2 -= 1;
 	}
@@ -787,8 +783,7 @@ fn parse_delta_quantization(
 	if output.delta_q_present {
 		output.delta_loop_filter_present = reader.bit("delta-loop-filter-present flag")?;
 		if output.delta_loop_filter_present {
-			output.delta_loop_filter_resolution =
-				to_u8(reader.bits(2, "delta-loop-filter resolution")?)?;
+			output.delta_loop_filter_resolution = to_u8(reader.bits(2, "delta-loop-filter resolution")?)?;
 			output.delta_loop_filter_multi = reader.bit("delta-loop-filter-multi flag")?;
 		}
 	}
@@ -910,15 +905,15 @@ fn parse_skip_mode(
 		};
 		let distance = relative_distance(hint, output.order_hint, sequence.order_hint_bits);
 		if distance < 0
-			&& nearest_forward.is_none_or(|(_, current)| {
-				relative_distance(hint, current, sequence.order_hint_bits) > 0
-			}) {
+			&& nearest_forward
+				.is_none_or(|(_, current)| relative_distance(hint, current, sequence.order_hint_bits) > 0)
+		{
 			nearest_forward = Some((name, hint));
 		}
 		if distance > 0
-			&& nearest_backward.is_none_or(|(_, current)| {
-				relative_distance(hint, current, sequence.order_hint_bits) < 0
-			}) {
+			&& nearest_backward
+				.is_none_or(|(_, current)| relative_distance(hint, current, sequence.order_hint_bits) < 0)
+		{
 			nearest_backward = Some((name, hint));
 		}
 		if distance > 0 {
@@ -935,9 +930,9 @@ fn parse_skip_mode(
 				continue;
 			};
 			if relative_distance(hint, nearest_hint, sequence.order_hint_bits) < 0
-				&& second_forward.is_none_or(|(_, current)| {
-					relative_distance(hint, current, sequence.order_hint_bits) > 0
-				}) {
+				&& second_forward
+					.is_none_or(|(_, current)| relative_distance(hint, current, sequence.order_hint_bits) > 0)
+			{
 				second_forward = Some((name, hint));
 			}
 		}

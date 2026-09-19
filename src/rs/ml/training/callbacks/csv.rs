@@ -49,8 +49,7 @@ impl CsvLogger {
 	fn begin(&mut self) -> Result<()> {
 		self.file = None;
 		self.buffer.clear();
-		let file =
-			File::create(&self.path).map_err(|error| Error::io("create training CSV", error))?;
+		let file = File::create(&self.path).map_err(|error| Error::io("create training CSV", error))?;
 		self.file = Some(file);
 		self.buffer.extend_from_slice(HEADER.as_bytes());
 		Ok(())
@@ -101,9 +100,11 @@ impl CsvLogger {
 			.file
 			.as_mut()
 			.ok_or_else(|| Error::callback("training CSV is not open"))?;
-		file.write_all(&self.buffer)
+		file
+			.write_all(&self.buffer)
 			.map_err(|error| Error::io("write training CSV", error))?;
-		file.flush()
+		file
+			.flush()
 			.map_err(|error| Error::io("flush training CSV", error))?;
 		self.buffer.clear();
 		Ok(())
@@ -125,10 +126,7 @@ impl TrainingCallback for CsvLogger {
 		Ok(TrainingControl::Continue)
 	}
 
-	fn on_step_end(
-		&mut self,
-		context: &mut TrainingCallbackContext<'_>,
-	) -> Result<TrainingControl> {
+	fn on_step_end(&mut self, context: &mut TrainingCallbackContext<'_>) -> Result<TrainingControl> {
 		self.append_step(context)?;
 		Ok(TrainingControl::Continue)
 	}

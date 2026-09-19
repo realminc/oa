@@ -113,12 +113,12 @@ impl AlmTokenizer {
 	/// Returns the same errors as [`Self::new`].
 	pub fn with_seed(engine: &Engine, config: AlmTokenizerConfig, seed: u64) -> Result<Self> {
 		validate_config(config)?;
-		let downsample_factor =
-			1_usize
-				.checked_shl(u32::try_from(config.downsample_stages).map_err(|_| {
-					Error::invalid_argument("ALM downsample stage count exceeds u32")
-				})?)
-				.ok_or_else(|| Error::invalid_argument("ALM downsample factor overflows usize"))?;
+		let downsample_factor = 1_usize
+			.checked_shl(
+				u32::try_from(config.downsample_stages)
+					.map_err(|_| Error::invalid_argument("ALM downsample stage count exceeds u32"))?,
+			)
+			.ok_or_else(|| Error::invalid_argument("ALM downsample factor overflows usize"))?;
 		let mut rng = seed;
 		let mut registry = ModuleRegistry::new();
 
@@ -190,24 +190,24 @@ impl AlmTokenizer {
 			.checked_add(
 				config
 					.downsample_stages
-					.checked_mul(1_usize.checked_add(config.depth).ok_or_else(|| {
-						Error::invalid_argument("ALM encoder norm count overflows usize")
-					})?)
-					.ok_or_else(|| {
-						Error::invalid_argument("ALM encoder norm count overflows usize")
-					})?,
+					.checked_mul(
+						1_usize
+							.checked_add(config.depth)
+							.ok_or_else(|| Error::invalid_argument("ALM encoder norm count overflows usize"))?,
+					)
+					.ok_or_else(|| Error::invalid_argument("ALM encoder norm count overflows usize"))?,
 			)
 			.ok_or_else(|| Error::invalid_argument("ALM encoder norm count overflows usize"))?;
 		let decoder_norm_count = 2_usize
 			.checked_add(
 				config
 					.downsample_stages
-					.checked_mul(1_usize.checked_add(config.depth).ok_or_else(|| {
-						Error::invalid_argument("ALM decoder norm count overflows usize")
-					})?)
-					.ok_or_else(|| {
-						Error::invalid_argument("ALM decoder norm count overflows usize")
-					})?,
+					.checked_mul(
+						1_usize
+							.checked_add(config.depth)
+							.ok_or_else(|| Error::invalid_argument("ALM decoder norm count overflows usize"))?,
+					)
+					.ok_or_else(|| Error::invalid_argument("ALM decoder norm count overflows usize"))?,
 			)
 			.ok_or_else(|| Error::invalid_argument("ALM decoder norm count overflows usize"))?;
 		let mut enc_norms = Vec::with_capacity(encoder_norm_count);
@@ -526,15 +526,17 @@ fn glorot_values(
 		.ok_or_else(|| Error::invalid_argument("ALM Glorot extent overflows usize"))?;
 	let bound = (6.0_f32 / denominator as f32).sqrt();
 	let divisor = (u32::MAX >> 1) as f32;
-	Ok((0..count)
-		.map(|_| {
-			*rng = rng
-				.wrapping_mul(6_364_136_223_846_793_005)
-				.wrapping_add(1_442_695_040_888_963_407);
-			let uniform = ((*rng >> 33) as u32) as f32 / divisor;
-			((uniform * 2.0) - 1.0) * bound
-		})
-		.collect())
+	Ok(
+		(0..count)
+			.map(|_| {
+				*rng = rng
+					.wrapping_mul(6_364_136_223_846_793_005)
+					.wrapping_add(1_442_695_040_888_963_407);
+				let uniform = ((*rng >> 33) as u32) as f32 / divisor;
+				((uniform * 2.0) - 1.0) * bound
+			})
+			.collect(),
+	)
 }
 
 fn validate_config(config: AlmTokenizerConfig) -> Result<()> {

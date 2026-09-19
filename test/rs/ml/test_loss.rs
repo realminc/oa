@@ -238,11 +238,8 @@ test_vk!(
 test_vk!(broadcast_mul_reverse_reduces_expanded_axes, engine, {
 	let left =
 		oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [2, 1], &[2.0, -1.0])?)?;
-	let right = oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(
-		&engine,
-		[1, 3],
-		&[3.0, 0.5, -2.0],
-	)?)?;
+	let right =
+		oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [1, 3], &[3.0, 0.5, -2.0])?)?;
 	let left_rows = oa::Matrix::from_slice(&engine, [2], &[0_u32, 1])?;
 	let right_rows = oa::Matrix::from_slice(&engine, [1], &[0_u32])?;
 	let target = oa::Matrix::from_f32(&engine, [2, 3], &[0.0; 6])?;
@@ -377,11 +374,10 @@ test_vk!(
 		let wrong_dtype = oa::Matrix::from_slice(&engine, [2], &[1_i32, 1])?;
 		let mask = oa::Matrix::from_f32(&engine, [2], &[1.0, 1.0])?;
 		for (candidate, count) in [(&wrong_shape, 1), (&wrong_dtype, 1), (&mask, 0), (&mask, 3)] {
-			let error =
-				match oa::ml::loss::masked_cross_entropy(&logits, &targets, candidate, count) {
-					Ok(_) => panic!("invalid masked loss input was accepted"),
-					Err(error) => error,
-				};
+			let error = match oa::ml::loss::masked_cross_entropy(&logits, &targets, candidate, count) {
+				Ok(_) => panic!("invalid masked loss input was accepted"),
+				Err(error) => error,
+			};
 			assert_eq!(error.kind(), oa::ErrorKind::InvalidArgument);
 		}
 		Ok(())

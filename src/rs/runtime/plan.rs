@@ -448,14 +448,8 @@ impl ExecutionPlan {
 		pending: PendingExecution,
 		source_recording_retained: bool,
 	) -> Result<Self> {
-		let (
-			mut graph,
-			mut outputs,
-			semantic,
-			stable_resources,
-			semantic_storage,
-			observed_outputs,
-		) = pending.into_parts();
+		let (mut graph, mut outputs, semantic, stable_resources, semantic_storage, observed_outputs) =
+			pending.into_parts();
 		#[cfg(test)]
 		if FORCE_NEXT_COMPILATION_FAILURE.replace(false) {
 			return Err(Error::internal("forced plan compilation failure"));
@@ -522,9 +516,7 @@ impl ExecutionPlan {
 					.saturating_add(
 						semantic_storage
 							.iter()
-							.filter(|candidate| {
-								owner.is_some_and(|owner| candidate.storage.same_as(owner))
-							})
+							.filter(|candidate| owner.is_some_and(|owner| candidate.storage.same_as(owner)))
 							.count()
 							.saturating_mul(1 + source_copy_count),
 					)
@@ -547,9 +539,8 @@ impl ExecutionPlan {
 						.saturating_sub(capture_retained_owner_count)
 				});
 				Ok(CapturedResourceDesc {
-					resource: u32::try_from(resource).map_err(|_| {
-						Error::resource_exhausted("captured resource identity exceeds u32")
-					})?,
+					resource: u32::try_from(resource)
+						.map_err(|_| Error::resource_exhausted("captured resource identity exceeds u32"))?,
 					byte_len: lifetime.buffer.byte_len(),
 					first_access: lifetime.first_access,
 					last_access: lifetime.last_access,
@@ -690,29 +681,21 @@ impl ExecutionPlan {
 	///
 	/// Returns an error when `captured` is not an unrebound read-only plan input,
 	/// the element type or count differs, or prior completion/upload fails.
-	pub fn upload_matrix_input<T: Element>(
-		&mut self,
-		captured: &Matrix,
-		values: &[T],
-	) -> Result<()> {
+	pub fn upload_matrix_input<T: Element>(&mut self, captured: &Matrix, values: &[T]) -> Result<()> {
 		if !self.engine.same_as(captured.engine_handle()) {
 			return Err(Error::invalid_argument(
 				"execution-plan Matrix input belongs to another engine",
 			));
 		}
 		let captured_buffer = captured.storage().buffer().ok_or_else(|| {
-			Error::invalid_argument(
-				"zero-sized Matrix storage cannot identify a captured plan input",
-			)
+			Error::invalid_argument("zero-sized Matrix storage cannot identify a captured plan input")
 		})?;
 		let binding = self
 			.input_bindings
 			.iter()
 			.find(|binding| binding.original.same_as(captured_buffer))
 			.ok_or_else(|| {
-				Error::invalid_argument(
-					"captured Matrix is not a read-only input of this execution plan",
-				)
+				Error::invalid_argument("captured Matrix is not a read-only input of this execution plan")
 			})?;
 		if !binding.current.same_as(&binding.original) {
 			return Err(Error::failed_precondition(
@@ -773,14 +756,10 @@ impl ExecutionPlan {
 		}
 		replacement.storage().validate_recording_access()?;
 		let captured_buffer = captured.storage().buffer().ok_or_else(|| {
-			Error::invalid_argument(
-				"zero-sized Matrix storage cannot identify a captured plan input",
-			)
+			Error::invalid_argument("zero-sized Matrix storage cannot identify a captured plan input")
 		})?;
 		let replacement_buffer = replacement.storage().buffer().ok_or_else(|| {
-			Error::invalid_argument(
-				"zero-sized Matrix storage cannot replace a captured plan input",
-			)
+			Error::invalid_argument("zero-sized Matrix storage cannot replace a captured plan input")
 		})?;
 
 		let existing = self
@@ -788,9 +767,7 @@ impl ExecutionPlan {
 			.iter()
 			.position(|binding| binding.original.same_as(captured_buffer))
 			.ok_or_else(|| {
-				Error::invalid_argument(
-					"captured Matrix is not a read-only input of this execution plan",
-				)
+				Error::invalid_argument("captured Matrix is not a read-only input of this execution plan")
 			})?;
 		let current = self.input_bindings[existing].current.clone();
 		if current.same_as(replacement_buffer) {
@@ -829,8 +806,7 @@ impl ExecutionPlan {
 			compatibility_node_count: self.semantic_lowering.compatibility_node_count() as usize,
 			semantic_fused_operation_count: self.semantic_lowering.fused_op_count() as usize,
 			semantic_fused_node_count: self.semantic_lowering.fused_node_count() as usize,
-			maximum_semantic_operations_per_node: self.semantic_lowering.maximum_ops_per_node()
-				as usize,
+			maximum_semantic_operations_per_node: self.semantic_lowering.maximum_ops_per_node() as usize,
 			dnn_graph_hash: self.dnn.graph_hash(),
 			dnn_value_count: self.dnn.value_count(),
 			dnn_external_value_count: self.dnn.external_value_count(),
@@ -999,9 +975,8 @@ impl ExecutionPlan {
 				barrier_index = barrier_index.saturating_add(1);
 				let resource = graph_resource_id(&lifetimes, &barrier.buffer)
 					.expect("planned barrier resource must have a lifetime");
-				let source_node =
-					previous_access_node(&self.graph, destination_node, &barrier.buffer)
-						.expect("planned barrier must have a source access");
+				let source_node = previous_access_node(&self.graph, destination_node, &barrier.buffer)
+					.expect("planned barrier must have a source access");
 				let source_stage = ash::vk::PipelineStageFlags2::COMPUTE_SHADER.as_raw();
 				let source_access = barrier.source.vk_access().as_raw();
 				let destination_access = barrier.destination.vk_access().as_raw();
@@ -1296,10 +1271,9 @@ fn materialize_aliases(
 	for group in groups.iter().filter(|group| group.resources.len() > 1) {
 		let arena = engine.create_alias_arena(group.required_size)?;
 		let original_bytes = group.resources.iter().try_fold(0_usize, |sum, resource| {
-			sum.checked_add(captured_resources[*resource].byte_len)
-				.ok_or_else(|| {
-					Error::resource_exhausted("materialized alias byte accounting overflowed")
-				})
+			sum
+				.checked_add(captured_resources[*resource].byte_len)
+				.ok_or_else(|| Error::resource_exhausted("materialized alias byte accounting overflowed"))
 		})?;
 		savings = savings
 			.checked_add(original_bytes.saturating_sub(group.required_size))

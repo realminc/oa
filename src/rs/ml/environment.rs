@@ -341,16 +341,21 @@ impl EnvironmentSpec {
 		transition: &EnvironmentTransition,
 		environments: u32,
 	) -> Result<()> {
-		self.observation
+		self
+			.observation
 			.validate_matrix(&transition.observation, environments)?;
 		self.action.validate_matrix(action, environments)?;
-		self.observation
+		self
+			.observation
 			.validate_matrix(&transition.next_observation, environments)?;
-		self.reward
+		self
+			.reward
 			.validate_matrix(&transition.reward, environments)?;
-		self.terminated
+		self
+			.terminated
 			.validate_matrix(&transition.terminated, environments)?;
-		self.truncated
+		self
+			.truncated
 			.validate_matrix(&transition.truncated, environments)
 	}
 }

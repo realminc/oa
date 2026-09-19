@@ -29,15 +29,20 @@ or `import oa.core as oac`; OA does not publish duplicate alias modules. Host
 observation through `read_f32()` or `to_list()` is the synchronization boundary.
 
 The canonical PyO3 implementation lives in `../../src/py`. This SDK directory
-owns the importable package, packaging metadata, tests, examples, and tutorials.
+owns the importable package, packaging metadata, and tutorials.
 
-Build and test from this directory with:
+Build from this directory with:
 
 ```bash
 python -m venv .venv
 .venv/bin/pip install maturin patchelf ziglang
 .venv/bin/maturin develop
-.venv/bin/python -m unittest discover -s test -v
+```
+
+Tests are located in the repository `test/py/` directory and run with:
+
+```bash
+python -m unittest discover -s test/py -v
 ```
 
 Build the portable Python 3.10+ Linux wheel with:
@@ -49,8 +54,15 @@ PATH="$PWD/.venv/bin:$PATH" .venv/bin/maturin build --release --zig
 The explicit Zig build prevents a developer workstation's newer glibc symbols
 from leaking into a wheel labeled for PyPI.
 
-The `0.8.0` Rust-first preview binds runtime events, typed dense matrices,
-Matrix and ML functional operations, byte-model helpers, Image values/codecs/
-transforms, and Audio values/codecs/DSP/features. Stateful neural-network,
-training, media, render, and presentation objects remain Rust-only until their
-Python lifetime and callback contracts are admitted.
+The `0.8.2` Rust-first preview ships runtime ownership and logging, explicit
+events, typed dense matrices, Matrix and ML functional operations, Image
+values/codecs/transforms, Audio values/codecs/DSP/capture/playback,
+cryptography, vision metrics, and the current video
+demux/decode/mux/playback surface.
+
+Neural-network modules, optimizers, training sessions and programs, callbacks,
+reinforcement-learning trainers, flow matching, and SDK NLP recipes are
+experimental adapters used for port validation. They are not a promise that
+every Rust SDK helper is a permanent Python API. Presenter/UI, plotting,
+complete render and capture/recorder support, generated type stubs, and final
+C++ Python API reconciliation remain planned work.

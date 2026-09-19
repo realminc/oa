@@ -42,9 +42,7 @@ impl Upsample2dGeometry {
 			.checked_mul(*channels)
 			.and_then(|value| value.checked_mul(output_height))
 			.and_then(|value| value.checked_mul(output_width))
-			.ok_or_else(|| {
-				Error::invalid_argument(format!("{operation} output size overflows usize"))
-			})?;
+			.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))?;
 		let batch_size = shader_u32(*batch_size, "batch size", operation)?;
 		let channels = shader_u32(*channels, "channel count", operation)?;
 		batch_size.checked_mul(channels).ok_or_else(|| {
@@ -125,9 +123,7 @@ pub(in crate::ml) fn upsample_2d(
 	let output_count = output_shape
 		.iter()
 		.try_fold(1_usize, |product, extent| product.checked_mul(*extent))
-		.ok_or_else(|| {
-			Error::invalid_argument(format!("{operation} output size overflows usize"))
-		})?;
+		.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))?;
 	let output = Matrix::allocate(
 		input.engine_handle(),
 		output_shape,

@@ -19,8 +19,7 @@ fn clip_tokenizer_preserves_canonical_ids_padding_and_failure_state() -> oa::Res
 	assert_eq!(
 		encoded.token_ids,
 		[
-			49_406, 320, 256, 49_407, 49_407, 49_407, 49_406, 49_407, 49_407, 49_407, 49_407,
-			49_407
+			49_406, 320, 256, 49_407, 49_407, 49_407, 49_406, 49_407, 49_407, 49_407, 49_407, 49_407
 		]
 	);
 	assert_eq!(encoded.flat_eos_rows, [3, 7]);
@@ -360,8 +359,7 @@ test_vk!(
 		assert_eq!(generated.shape()[0], 2);
 
 		let tokenizer = oa::sdk::ml::alm::AlmTokenizer::with_seed(&engine, tiny_config(), 31)?;
-		let generated_codes =
-			oa::Matrix::from_slice(&engine, [2, 4], &[4_i32, 0, 1, 5, 4, 2, 3, 5])?;
+		let generated_codes = oa::Matrix::from_slice(&engine, [2, 4], &[4_i32, 0, 1, 5, 4, 2, 3, 5])?;
 		let motion = dense
 			.decode_to_motion(&generated_codes, &tokenizer)?
 			.expect("two motion tokens per row");
@@ -477,7 +475,8 @@ test_vk!(
 		let clip = oa::sdk::ml::alm::ClipText::with_seed(&engine, config, 101)?;
 		assert_eq!(clip.config(), &config);
 		assert!(
-			clip.all_parameters()?
+			clip
+				.all_parameters()?
 				.into_iter()
 				.all(|parameter| !parameter.requires_grad())
 		);

@@ -166,10 +166,7 @@ impl<'eval> Validation<'eval> {
 }
 
 impl TrainingCallback for Validation<'_> {
-	fn on_step_end(
-		&mut self,
-		context: &mut TrainingCallbackContext<'_>,
-	) -> Result<TrainingControl> {
+	fn on_step_end(&mut self, context: &mut TrainingCallbackContext<'_>) -> Result<TrainingControl> {
 		let snapshot = context.snapshot();
 		if snapshot.total_epochs() == 0
 			&& self.step_interval > 0
@@ -180,18 +177,12 @@ impl TrainingCallback for Validation<'_> {
 		Ok(TrainingControl::Continue)
 	}
 
-	fn on_epoch_end(
-		&mut self,
-		context: &mut TrainingCallbackContext<'_>,
-	) -> Result<TrainingControl> {
+	fn on_epoch_end(&mut self, context: &mut TrainingCallbackContext<'_>) -> Result<TrainingControl> {
 		self.run(context)?;
 		Ok(TrainingControl::Continue)
 	}
 
-	fn on_train_end(
-		&mut self,
-		context: &mut TrainingCallbackContext<'_>,
-	) -> Result<TrainingControl> {
+	fn on_train_end(&mut self, context: &mut TrainingCallbackContext<'_>) -> Result<TrainingControl> {
 		let snapshot = context.snapshot();
 		if snapshot.total_epochs() == 0 && self.last_eval_step != Some(snapshot.step_count()) {
 			self.run(context)?;

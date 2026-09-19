@@ -223,11 +223,7 @@ impl ModuleRegistry {
 	///
 	/// Returns an error for an invalid/duplicate local name or when the same child
 	/// handle is already registered directly.
-	pub fn register_module(
-		&mut self,
-		name: impl Into<String>,
-		module: Rc<dyn Module>,
-	) -> Result<()> {
+	pub fn register_module(&mut self, name: impl Into<String>, module: Rc<dyn Module>) -> Result<()> {
 		let name = self.validate_new_name(name.into())?;
 		if self
 			.children
@@ -270,7 +266,8 @@ impl ModuleRegistry {
 	}
 
 	pub(crate) fn buffer_handle(&self, name: &str) -> Option<NamedBuffer> {
-		self.buffers
+		self
+			.buffers
 			.iter()
 			.find(|entry| entry.name == name)
 			.map(|entry| NamedBuffer {
@@ -297,7 +294,8 @@ pub trait Module {
 
 	/// Return direct parameters only.
 	fn parameters(&self) -> Vec<Parameter> {
-		self.registry()
+		self
+			.registry()
 			.parameters
 			.iter()
 			.map(|entry| entry.parameter.clone())
@@ -306,7 +304,8 @@ pub trait Module {
 
 	/// Return direct parameters with local registration names.
 	fn named_parameters(&self) -> Vec<NamedParameter> {
-		self.registry()
+		self
+			.registry()
 			.parameters
 			.iter()
 			.map(|entry| NamedParameter {
@@ -318,7 +317,8 @@ pub trait Module {
 
 	/// Return direct non-trainable buffers only.
 	fn buffers(&self) -> Vec<Matrix> {
-		self.registry()
+		self
+			.registry()
 			.buffers
 			.iter()
 			.map(|entry| entry.data.borrow().clone())
@@ -327,7 +327,8 @@ pub trait Module {
 
 	/// Return direct buffers with local registration names and persistence flags.
 	fn named_buffers(&self) -> Vec<NamedBuffer> {
-		self.registry()
+		self
+			.registry()
 			.buffers
 			.iter()
 			.map(|entry| NamedBuffer {
@@ -345,10 +346,12 @@ pub trait Module {
 	/// Returns `FailedPrecondition` if independently constructed registries expose
 	/// one shared parameter through multiple tree paths.
 	fn all_parameters(&self) -> Result<Vec<Parameter>> {
-		Ok(collect_named_parameters(self.registry())?
-			.into_iter()
-			.map(|entry| entry.parameter)
-			.collect())
+		Ok(
+			collect_named_parameters(self.registry())?
+				.into_iter()
+				.map(|entry| entry.parameter)
+				.collect(),
+		)
 	}
 
 	/// Return every parameter with its registration-derived dotted path.
@@ -391,14 +394,13 @@ pub trait Module {
 	///
 	/// Returns an error for duplicate parameter identity or count overflow.
 	fn num_parameters(&self) -> Result<usize> {
-		self.all_parameters()?
+		self
+			.all_parameters()?
 			.into_iter()
 			.try_fold(0_usize, |total, parameter| {
 				total
 					.checked_add(parameter.data().num_elements())
-					.ok_or_else(|| {
-						Error::resource_exhausted("module parameter count overflows usize")
-					})
+					.ok_or_else(|| Error::resource_exhausted("module parameter count overflows usize"))
 			})
 	}
 

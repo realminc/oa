@@ -17,8 +17,7 @@ fn host_route_weights(
 			.sum::<f32>();
 		if denominator > 0.0 {
 			for route_slot in 0..routes_per_token {
-				if let Ok(expert) =
-					usize::try_from(expert_indices[token * routes_per_token + route_slot])
+				if let Ok(expert) = usize::try_from(expert_indices[token * routes_per_token + route_slot])
 					&& expert < experts
 				{
 					output[token * routes_per_token + route_slot] =
@@ -65,8 +64,7 @@ fn host_grouped_linear_m(
 				let mut value = bias[expert * output_features + output_feature];
 				for input_feature in 0..input_features {
 					value += input[row * input_features + input_feature]
-						* weight[(expert * output_features + output_feature) * input_features
-							+ input_feature];
+						* weight[(expert * output_features + output_feature) * input_features + input_feature];
 				}
 				output[row * output_features + output_feature] = value;
 			}
@@ -129,9 +127,7 @@ fn host_sparse_moe(
 			.map(|expert| {
 				router_bias[expert]
 					+ (0..model_width)
-						.map(|column| {
-							normalized[column] * router_weight[expert * model_width + column]
-						})
+						.map(|column| normalized[column] * router_weight[expert * model_width + column])
 						.sum::<f32>()
 			})
 			.collect::<Vec<_>>();
@@ -162,16 +158,13 @@ fn host_sparse_moe(
 			let mut hidden = vec![0.0; hidden_width];
 			for hidden_feature in 0..hidden_width {
 				let mut gate = gate_up_bias[expert * 2 * hidden_width + hidden_feature];
-				let mut up =
-					gate_up_bias[expert * 2 * hidden_width + hidden_width + hidden_feature];
+				let mut up = gate_up_bias[expert * 2 * hidden_width + hidden_width + hidden_feature];
 				for column in 0..model_width {
 					gate += normalized[column]
-						* gate_up_weight
-							[(expert * 2 * hidden_width + hidden_feature) * model_width + column];
+						* gate_up_weight[(expert * 2 * hidden_width + hidden_feature) * model_width + column];
 					up += normalized[column]
-						* gate_up_weight[(expert * 2 * hidden_width
-							+ hidden_width + hidden_feature)
-							* model_width + column];
+						* gate_up_weight
+							[(expert * 2 * hidden_width + hidden_width + hidden_feature) * model_width + column];
 				}
 				hidden[hidden_feature] = gate / (1.0 + (-gate).exp()) * up;
 			}
@@ -179,8 +172,7 @@ fn host_sparse_moe(
 				let mut delta = down_bias[expert * model_width + column];
 				for hidden_feature in 0..hidden_width {
 					delta += hidden[hidden_feature]
-						* down_weight
-							[(expert * model_width + column) * hidden_width + hidden_feature];
+						* down_weight[(expert * model_width + column) * hidden_width + hidden_feature];
 				}
 				output[token * model_width + column] += route_gate * delta;
 			}
@@ -355,11 +347,8 @@ test_vk!(
 		let probabilities = [0.15_f32, 0.2, 0.35, 0.3, 0.4, 0.1, 0.2, 0.3];
 		let expert_indices = [2_i32, 0, 3, 1];
 		let target = [0.6_f32, 0.4, 0.7, 0.3];
-		let parameter = oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(
-			&engine,
-			[2, 4],
-			&probabilities,
-		)?)?;
+		let parameter =
+			oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [2, 4], &probabilities)?)?;
 		let rows = oa::Matrix::from_slice(&engine, [2], &[0_u32, 1])?;
 		let expert_indices_matrix = oa::Matrix::from_slice(&engine, [2, 2], &expert_indices)?;
 		let tape = oa::ml::GradientTape::new();
@@ -551,8 +540,8 @@ test_vk!(
 		let weight = oa::Matrix::from_f32(&engine, [3, 2, 2], &weight)?;
 		let bias = oa::Matrix::from_f32(&engine, [3, 2], &bias)?;
 		let offsets = oa::Matrix::from_slice(&engine, [4], &offsets)?;
-		let (plan, output) = engine
-			.capture(|| oa::ml::matrix::grouped_linear_m(&input, &weight, &bias, &offsets))?;
+		let (plan, output) =
+			engine.capture(|| oa::ml::matrix::grouped_linear_m(&input, &weight, &bias, &offsets))?;
 		assert_eq!(output.shape(), [6, 2]);
 		assert_eq!(plan.semantic_graph().operations().len(), 1);
 		assert_eq!(
@@ -614,8 +603,7 @@ test_vk!(grouped_linear_m_reverse_matches_closed_form, engine, {
 		for row in offsets_values[expert] as usize..offsets_values[expert + 1] as usize {
 			for output_feature in 0..2 {
 				let gradient = loss_scale
-					* (expected_output[row * 2 + output_feature]
-						- target[row * 2 + output_feature]);
+					* (expected_output[row * 2 + output_feature] - target[row * 2 + output_feature]);
 				expected_bias[expert * 2 + output_feature] += gradient;
 				for input_feature in 0..2 {
 					expected_input[row * 2 + input_feature] +=
@@ -692,8 +680,8 @@ test_vk!(sparse_moe_matches_independent_cpu_oracle, engine, {
 	let router_weight = [0.8_f32, -0.2, -0.5, 0.7, 0.15, -0.9];
 	let router_bias = [0.1_f32, -0.05, 0.2];
 	let gate_up_weight = [
-		0.2_f32, -0.3, 0.4, 0.1, -0.6, 0.5, 0.7, -0.2, -0.1, 0.8, 0.3, -0.4, 0.9, 0.2, -0.5, 0.6,
-		0.45, -0.25, -0.7, 0.35, 0.15, 0.55, -0.3, -0.8,
+		0.2_f32, -0.3, 0.4, 0.1, -0.6, 0.5, 0.7, -0.2, -0.1, 0.8, 0.3, -0.4, 0.9, 0.2, -0.5, 0.6, 0.45,
+		-0.25, -0.7, 0.35, 0.15, 0.55, -0.3, -0.8,
 	];
 	let gate_up_bias = [
 		0.05_f32, -0.1, 0.2, 0.0, -0.15, 0.25, 0.1, -0.2, 0.3, -0.05, -0.1, 0.15,
@@ -862,19 +850,18 @@ test_vk!(
 					&down_bias,
 				)
 			});
-		let expected_router_bias =
-			finite_difference(&router_bias, DIFFERENCE_EPSILON, |candidate| {
-				host_loss(
-					&input_values,
-					&norm_weight,
-					&router_weight,
-					candidate,
-					&gate_up_weight,
-					&gate_up_bias,
-					&down_weight,
-					&down_bias,
-				)
-			});
+		let expected_router_bias = finite_difference(&router_bias, DIFFERENCE_EPSILON, |candidate| {
+			host_loss(
+				&input_values,
+				&norm_weight,
+				&router_weight,
+				candidate,
+				&gate_up_weight,
+				&gate_up_bias,
+				&down_weight,
+				&down_bias,
+			)
+		});
 		let expected_gate_weight =
 			finite_difference(&gate_up_weight, DIFFERENCE_EPSILON, |candidate| {
 				host_loss(
@@ -888,32 +875,30 @@ test_vk!(
 					&down_bias,
 				)
 			});
-		let expected_gate_bias =
-			finite_difference(&gate_up_bias, DIFFERENCE_EPSILON, |candidate| {
-				host_loss(
-					&input_values,
-					&norm_weight,
-					&router_weight,
-					&router_bias,
-					&gate_up_weight,
-					candidate,
-					&down_weight,
-					&down_bias,
-				)
-			});
-		let expected_down_weight =
-			finite_difference(&down_weight, DIFFERENCE_EPSILON, |candidate| {
-				host_loss(
-					&input_values,
-					&norm_weight,
-					&router_weight,
-					&router_bias,
-					&gate_up_weight,
-					&gate_up_bias,
-					candidate,
-					&down_bias,
-				)
-			});
+		let expected_gate_bias = finite_difference(&gate_up_bias, DIFFERENCE_EPSILON, |candidate| {
+			host_loss(
+				&input_values,
+				&norm_weight,
+				&router_weight,
+				&router_bias,
+				&gate_up_weight,
+				candidate,
+				&down_weight,
+				&down_bias,
+			)
+		});
+		let expected_down_weight = finite_difference(&down_weight, DIFFERENCE_EPSILON, |candidate| {
+			host_loss(
+				&input_values,
+				&norm_weight,
+				&router_weight,
+				&router_bias,
+				&gate_up_weight,
+				&gate_up_bias,
+				candidate,
+				&down_bias,
+			)
+		});
 		let expected_down_bias = finite_difference(&down_bias, DIFFERENCE_EPSILON, |candidate| {
 			host_loss(
 				&input_values,
@@ -1038,16 +1023,10 @@ test_vk!(
 		let left_values = [1.0_f32, 2.0, 3.0, 4.0];
 		let right_values = [2.0_f32, 1.0, 1.0, 3.0];
 		let rows = oa::Matrix::from_slice(&engine, [2], &[0_u32, 1])?;
-		let left = oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(
-			&engine,
-			[2, 2],
-			&left_values,
-		)?)?;
-		let right = oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(
-			&engine,
-			[2, 2],
-			&right_values,
-		)?)?;
+		let left =
+			oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [2, 2], &left_values)?)?;
+		let right =
+			oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [2, 2], &right_values)?)?;
 		let tape = oa::ml::GradientTape::new();
 		let left_matrix = left.forward(&rows)?;
 		let right_matrix = right.forward(&rows)?;
@@ -1174,7 +1153,8 @@ test_vk!(
 		let input = oa::Matrix::from_f32(&engine, [3, 2], &[1.0, 0.0, 0.0, 1.0, -1.0, 2.0])?;
 		let _first = moe.forward(&input)?;
 		assert_eq!(
-			moe.last_selection_mask()
+			moe
+				.last_selection_mask()
 				.expect("first selection mask is missing")
 				.read_f32()?,
 			vec![1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0]
@@ -1188,13 +1168,15 @@ test_vk!(
 
 		let _second = moe.forward(&input)?;
 		assert_eq!(
-			moe.last_selection_mask()
+			moe
+				.last_selection_mask()
 				.expect("second selection mask is missing")
 				.read_f32()?,
 			vec![0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 1.0]
 		);
 		assert_close(
-			&moe.last_gate_probabilities()
+			&moe
+				.last_gate_probabilities()
 				.expect("unbiased gate probabilities are missing")
 				.read_f32()?,
 			&[0.25; 12],
@@ -1351,8 +1333,7 @@ test_vk!(
 			&engine,
 			[4, 4],
 			&[
-				0.2, -0.4, 0.7, 1.1, -0.3, 0.8, 0.1, -0.9, 1.0, 0.5, -0.2, 0.4, -0.7, 0.3, 0.9,
-				-0.1,
+				0.2, -0.4, 0.7, 1.1, -0.3, 0.8, 0.1, -0.9, 1.0, 0.5, -0.2, 0.4, -0.7, 0.3, 0.9, -0.1,
 			],
 		)?;
 		let base_output = base.forward(&input)?;

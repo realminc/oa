@@ -116,9 +116,10 @@ impl DpbState {
 				.ok_or_else(|| Error::data_loss("AV1 reference is absent from the DPB"))?;
 			let physical_index = usize::try_from(physical)
 				.map_err(|_| Error::internal("AV1 physical reference index exceeds usize"))?;
-			let state = self.physical.get(physical_index).ok_or_else(|| {
-				Error::internal("AV1 logical reference exceeds physical DPB capacity")
-			})?;
+			let state = self
+				.physical
+				.get(physical_index)
+				.ok_or_else(|| Error::internal("AV1 logical reference exceeds physical DPB capacity"))?;
 			if state.is_none() {
 				return Err(Error::internal(
 					"AV1 logical reference points at an empty physical slot",
@@ -130,7 +131,8 @@ impl DpbState {
 		}
 
 		let mapped_after_refresh = |physical: u32| {
-			self.logical_to_physical
+			self
+				.logical_to_physical
 				.iter()
 				.enumerate()
 				.any(|(logical, mapped)| {
@@ -142,9 +144,7 @@ impl DpbState {
 			.iter()
 			.enumerate()
 			.find(|(index, state)| {
-				state.is_none()
-					&& !protected[*index]
-					&& !unavailable.get(*index).copied().unwrap_or(false)
+				state.is_none() && !protected[*index] && !unavailable.get(*index).copied().unwrap_or(false)
 			})
 			.map(|(index, _)| index)
 			.or_else(|| {
@@ -157,8 +157,8 @@ impl DpbState {
 				})
 			})
 			.ok_or_else(|| Error::resource_exhausted("AV1 DPB has no recyclable physical slot"))?;
-		let setup_slot = u32::try_from(setup_index)
-			.map_err(|_| Error::internal("AV1 setup slot exceeds u32"))?;
+		let setup_slot =
+			u32::try_from(setup_index).map_err(|_| Error::internal("AV1 setup slot exceeds u32"))?;
 
 		let mut active_references = Vec::new();
 		active_references
@@ -168,12 +168,10 @@ impl DpbState {
 			if !is_protected {
 				continue;
 			}
-			let record = self.physical[index].ok_or_else(|| {
-				Error::internal("AV1 protected reference points at an empty slot")
-			})?;
+			let record = self.physical[index]
+				.ok_or_else(|| Error::internal("AV1 protected reference points at an empty slot"))?;
 			active_references.push((
-				u32::try_from(index)
-					.map_err(|_| Error::internal("AV1 reference slot exceeds u32"))?,
+				u32::try_from(index).map_err(|_| Error::internal("AV1 reference slot exceeds u32"))?,
 				record,
 			));
 		}
@@ -195,8 +193,8 @@ impl DpbState {
 			self.physical[setup_index] = None;
 		}
 		for (index, state) in self.physical.iter_mut().enumerate() {
-			let physical = u32::try_from(index)
-				.map_err(|_| Error::internal("AV1 physical slot exceeds u32"))?;
+			let physical =
+				u32::try_from(index).map_err(|_| Error::internal("AV1 physical slot exceeds u32"))?;
 			if !self.logical_to_physical.contains(&Some(physical)) {
 				*state = None;
 			}
@@ -424,9 +422,7 @@ impl PictureParameters {
 					u32::from(frame.use_superres),
 					u32::from(frame.render_and_frame_size_different),
 					u32::from(frame.allow_screen_content_tools),
-					u32::from(
-						frame.interpolation_filter == video::Av1InterpolationFilter::Switchable,
-					),
+					u32::from(frame.interpolation_filter == video::Av1InterpolationFilter::Switchable),
 					u32::from(frame.force_integer_motion_vectors),
 					u32::from(frame.frame_size_override),
 					0,
@@ -561,15 +557,15 @@ pub(super) fn record_picture(
 	let parameters = PictureParameters::new(sequence, frame)?;
 	let tile_info = parameters.tile_info(frame);
 	let std_picture = parameters.picture_info(frame, &tile_info);
-	let mut av1_picture =
-		ash::vk::VideoDecodeAV1PictureInfoKHR::default()
-			.std_picture_info(&std_picture)
-			.reference_name_slot_indices(plan.reference_name_slot_indices)
-			.frame_header_offset(u32::try_from(frame_header_offset).map_err(|_| {
-				Error::out_of_range("AV1 frame-header offset exceeds Vulkan storage")
-			})?)
-			.tile_offsets(&tiles.tile_offsets)
-			.tile_sizes(&tiles.tile_sizes);
+	let mut av1_picture = ash::vk::VideoDecodeAV1PictureInfoKHR::default()
+		.std_picture_info(&std_picture)
+		.reference_name_slot_indices(plan.reference_name_slot_indices)
+		.frame_header_offset(
+			u32::try_from(frame_header_offset)
+				.map_err(|_| Error::out_of_range("AV1 frame-header offset exceeds Vulkan storage"))?,
+		)
+		.tile_offsets(&tiles.tile_offsets)
+		.tile_sizes(&tiles.tile_sizes);
 
 	let setup_record = ReferenceRecord::from(frame);
 	let setup_std_reference = reference_info(setup_record);
@@ -586,8 +582,7 @@ pub(super) fn record_picture(
 		.image_view_binding(dpb.view);
 	let setup_slot = ash::vk::VideoReferenceSlotInfoKHR::default()
 		.slot_index(
-			i32::try_from(setup_slot_index)
-				.map_err(|_| Error::internal("AV1 setup slot exceeds i32"))?,
+			i32::try_from(setup_slot_index).map_err(|_| Error::internal("AV1 setup slot exceeds i32"))?,
 		)
 		.picture_resource(&setup_resource)
 		.push_next(&mut setup_av1_slot);
@@ -630,9 +625,8 @@ pub(super) fn record_picture(
 	}
 	for index in 0..reference_count {
 		av1_reference_slots[index].p_std_reference_info = &std_references[index];
-		reference_slots[index].p_next = (&av1_reference_slots[index]
-			as *const ash::vk::VideoDecodeAV1DpbSlotInfoKHR<'_>)
-			.cast();
+		reference_slots[index].p_next =
+			(&av1_reference_slots[index] as *const ash::vk::VideoDecodeAV1DpbSlotInfoKHR<'_>).cast();
 		reference_slots[index].p_picture_resource = &reference_resources[index];
 	}
 	let mut inactive_setup = setup_slot;
@@ -821,8 +815,8 @@ pub(super) fn record_picture(
 			})
 			.image(output.handle)
 			.subresource_range(decode_image_subresource(output_layer, 1));
-		let release_dependency = ash::vk::DependencyInfo::default()
-			.image_memory_barriers(std::slice::from_ref(&release));
+		let release_dependency =
+			ash::vk::DependencyInfo::default().image_memory_barriers(std::slice::from_ref(&release));
 		// SAFETY: decode owns this exact output layer; the readback command records
 		// the matching acquire/copy transition before host observation.
 		unsafe {
@@ -852,8 +846,8 @@ fn fill_uniform_axis<const STARTS: usize, const WIDTHS: usize>(
 				.checked_shl(superblock_shift)
 				.ok_or_else(|| Error::out_of_range("AV1 tile MI start overflowed"))?
 		};
-		starts[tile] = u16::try_from(start_mi)
-			.map_err(|_| Error::data_loss("AV1 tile MI start exceeds u16"))?;
+		starts[tile] =
+			u16::try_from(start_mi).map_err(|_| Error::data_loss("AV1 tile MI start exceeds u16"))?;
 		if tile > 0 {
 			let previous = (tile_u32 - 1)
 				.saturating_mul(tile_size)
@@ -886,9 +880,7 @@ fn ceil_div(value: u32, divisor: u32) -> Result<u32> {
 
 const fn std_frame_type(value: video::Av1FrameType) -> ash::vk::native::StdVideoAV1FrameType {
 	match value {
-		video::Av1FrameType::Key => {
-			ash::vk::native::StdVideoAV1FrameType_STD_VIDEO_AV1_FRAME_TYPE_KEY
-		}
+		video::Av1FrameType::Key => ash::vk::native::StdVideoAV1FrameType_STD_VIDEO_AV1_FRAME_TYPE_KEY,
 		video::Av1FrameType::Inter => {
 			ash::vk::native::StdVideoAV1FrameType_STD_VIDEO_AV1_FRAME_TYPE_INTER
 		}

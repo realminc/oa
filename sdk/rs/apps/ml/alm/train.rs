@@ -1,5 +1,6 @@
-use std::{env, error::Error, path::PathBuf, rc::Rc};
+use std::{error::Error, path::PathBuf, rc::Rc};
 
+use oa::Cli;
 use oa::sdk::{
 	data::HumanMl3dDataset,
 	ml::alm::{
@@ -12,12 +13,18 @@ use oa::sdk::{
 	},
 };
 
-struct Options {
-	dataset: PathBuf,
+// ─── config ──────────────────────────────────────────────────────────────────
+//
+// Paths are stored as String (ParseCliValue) and converted to PathBuf when
+// passed to the SDK. String enum fields (ffn_type, text_conditioning) are
+// validated and converted after parse.
+
+struct AlmTrainConfig {
+	dataset: String,
 	split: String,
 	validation_split: String,
 	validation_batches: usize,
-	output: PathBuf,
+	output: String,
 	max_clips: usize,
 	seed: u64,
 	tokenizer_epochs: u64,
@@ -39,16 +46,18 @@ struct Options {
 	num_layers: usize,
 	hidden_width: usize,
 	max_sequence_len: usize,
-	ffn_type: AlmFfnType,
+	/// "dense" | "moe" | "hybrid"
+	ffn_type: String,
 	moe_num_experts: usize,
 	moe_experts_per_token: usize,
 	moe_every: usize,
 	moe_balance_rate: f32,
 	moe_aux_loss_alpha: f32,
 	moe_router_z_loss_beta: f32,
-	text_conditioning: bool,
-	clip_text_model: PathBuf,
-	clip_merges: PathBuf,
+	/// "clip" | "none"
+	text_conditioning: String,
+	clip_text_model: String,
+	clip_merges: String,
 	tokenizer_learning_rate: f32,
 	tokenizer_minimum_learning_rate: f32,
 	tokenizer_warmup_steps: u64,
@@ -57,15 +66,15 @@ struct Options {
 	prior_minimum_learning_rate: f32,
 	prior_warmup_steps: u64,
 	prior_weight_decay: f32,
-	checkpoint_directory: PathBuf,
+	checkpoint_directory: String,
 	checkpoint_save_every: u64,
 	checkpoint_keep: usize,
-	checkpoint_enabled: bool,
+	no_checkpoint: bool,
 	resume: bool,
 	restore_best: bool,
 }
 
-impl Default for Options {
+impl Default for AlmTrainConfig {
 	fn default() -> Self {
 		Self {
 			dataset: "data/humanMl3d/Cmp".into(),
@@ -94,14 +103,14 @@ impl Default for Options {
 			num_layers: 6,
 			hidden_width: 1536,
 			max_sequence_len: 260,
-			ffn_type: AlmFfnType::Dense,
+			ffn_type: "dense".into(),
 			moe_num_experts: 4,
 			moe_experts_per_token: 2,
 			moe_every: 2,
 			moe_balance_rate: 1.0e-3,
 			moe_aux_loss_alpha: 0.01,
 			moe_router_z_loss_beta: 1.0e-3,
-			text_conditioning: true,
+			text_conditioning: "clip".into(),
 			clip_text_model: "var/model/ref/ClipText/ClipText.oam".into(),
 			clip_merges: "var/model/ref/ClipText/merges.txt".into(),
 			tokenizer_learning_rate: 2.0e-4,
@@ -115,37 +124,371 @@ impl Default for Options {
 			checkpoint_directory: "var/model/dev".into(),
 			checkpoint_save_every: 0,
 			checkpoint_keep: 5,
-			checkpoint_enabled: true,
+			no_checkpoint: false,
 			resume: false,
 			restore_best: false,
 		}
 	}
 }
 
+// ─── main ────────────────────────────────────────────────────────────────────
+
 fn main() -> Result<(), Box<dyn Error>> {
-	let options = parse_options()?;
-	if options.resume && !options.checkpoint_enabled {
-		return Err(argument_error("--resume conflicts with --no-checkpoint"));
+	let mut cli = Cli::new("trainalm", "OARS tokenizer + Transformer prior");
+	cli.add_option(
+		"--dataset",
+		|c: &mut AlmTrainConfig| &mut c.dataset,
+		"dataset directory",
+	);
+	cli.add_option(
+		"--split",
+		|c: &mut AlmTrainConfig| &mut c.split,
+		"training split name",
+	);
+	cli.add_option(
+		"--val-split",
+		|c: &mut AlmTrainConfig| &mut c.validation_split,
+		"validation split name",
+	);
+	cli.add_option(
+		"--val-batches",
+		|c: &mut AlmTrainConfig| &mut c.validation_batches,
+		"max validation batches (0=all)",
+	);
+	cli.add_option(
+		"--output",
+		|c: &mut AlmTrainConfig| &mut c.output,
+		"output model path",
+	);
+	cli.add_option(
+		"--max-clips",
+		|c: &mut AlmTrainConfig| &mut c.max_clips,
+		"max clips to load (0=all)",
+	);
+	cli.add_option(
+		"--seed",
+		|c: &mut AlmTrainConfig| &mut c.seed,
+		"random seed",
+	);
+	cli.add_option(
+		"--tok-epochs",
+		|c: &mut AlmTrainConfig| &mut c.tokenizer_epochs,
+		"tokenizer training epochs",
+	);
+	cli.add_option(
+		"--lm-epochs",
+		|c: &mut AlmTrainConfig| &mut c.prior_epochs,
+		"prior training epochs",
+	);
+	cli.add_option(
+		"--batch",
+		|c: &mut AlmTrainConfig| &mut c.batch_size,
+		"batch size",
+	);
+	cli.add_option(
+		"--seq-len",
+		|c: &mut AlmTrainConfig| &mut c.sequence_len,
+		"tokenizer sequence length",
+	);
+	cli.add_option(
+		"--lm-seq-len",
+		|c: &mut AlmTrainConfig| &mut c.prior_sequence_len,
+		"prior sequence length",
+	);
+	cli.add_option(
+		"--codes",
+		|c: &mut AlmTrainConfig| &mut c.num_codes,
+		"number of VQ codes",
+	);
+	cli.add_option(
+		"--width",
+		|c: &mut AlmTrainConfig| &mut c.tokenizer_width,
+		"tokenizer width",
+	);
+	cli.add_option(
+		"--code-dim",
+		|c: &mut AlmTrainConfig| &mut c.code_dim,
+		"code dimension",
+	);
+	cli.add_option(
+		"--down-t",
+		|c: &mut AlmTrainConfig| &mut c.downsample_stages,
+		"downsample stages",
+	);
+	cli.add_option(
+		"--depth",
+		|c: &mut AlmTrainConfig| &mut c.depth,
+		"tokenizer depth",
+	);
+	cli.add_option(
+		"--commit-beta",
+		|c: &mut AlmTrainConfig| &mut c.commitment_beta,
+		"VQ commitment beta",
+	);
+	cli.add_option(
+		"--ema-decay",
+		|c: &mut AlmTrainConfig| &mut c.ema_decay,
+		"EMA decay",
+	);
+	cli.add_option(
+		"--ema-eps",
+		|c: &mut AlmTrainConfig| &mut c.ema_epsilon,
+		"EMA epsilon",
+	);
+	cli.add_option(
+		"--dead-thresh",
+		|c: &mut AlmTrainConfig| &mut c.dead_threshold,
+		"dead code threshold",
+	);
+	cli.add_option(
+		"--dmodel",
+		|c: &mut AlmTrainConfig| &mut c.model_width,
+		"prior model width",
+	);
+	cli.add_option(
+		"--lm-heads",
+		|c: &mut AlmTrainConfig| &mut c.num_heads,
+		"prior attention heads",
+	);
+	cli.add_option(
+		"--lm-layers",
+		|c: &mut AlmTrainConfig| &mut c.num_layers,
+		"prior layers",
+	);
+	cli.add_option(
+		"--lm-ffn",
+		|c: &mut AlmTrainConfig| &mut c.hidden_width,
+		"prior FFN hidden width",
+	);
+	cli.add_option(
+		"--lm-max-seq-len",
+		|c: &mut AlmTrainConfig| &mut c.max_sequence_len,
+		"prior max sequence length",
+	);
+	cli.add_option(
+		"--lm-ffn-type",
+		|c: &mut AlmTrainConfig| &mut c.ffn_type,
+		"FFN type: dense|moe|hybrid",
+	);
+	cli.add_option(
+		"--lm-moe-experts",
+		|c: &mut AlmTrainConfig| &mut c.moe_num_experts,
+		"MoE expert count",
+	);
+	cli.add_option(
+		"--lm-moe-top-k",
+		|c: &mut AlmTrainConfig| &mut c.moe_experts_per_token,
+		"MoE top-k",
+	);
+	cli.add_option(
+		"--lm-moe-every",
+		|c: &mut AlmTrainConfig| &mut c.moe_every,
+		"MoE every N layers",
+	);
+	cli.add_option(
+		"--lm-moe-balance-rate",
+		|c: &mut AlmTrainConfig| &mut c.moe_balance_rate,
+		"MoE balance rate",
+	);
+	cli.add_option(
+		"--lm-moe-aux-alpha",
+		|c: &mut AlmTrainConfig| &mut c.moe_aux_loss_alpha,
+		"MoE aux loss alpha",
+	);
+	cli.add_option(
+		"--lm-moe-z-beta",
+		|c: &mut AlmTrainConfig| &mut c.moe_router_z_loss_beta,
+		"MoE router z-loss beta",
+	);
+	cli.add_option(
+		"--tok-lr",
+		|c: &mut AlmTrainConfig| &mut c.tokenizer_learning_rate,
+		"tokenizer learning rate",
+	);
+	cli.add_option(
+		"--tok-min-lr",
+		|c: &mut AlmTrainConfig| &mut c.tokenizer_minimum_learning_rate,
+		"tokenizer min lr",
+	);
+	cli.add_option(
+		"--tok-warmup",
+		|c: &mut AlmTrainConfig| &mut c.tokenizer_warmup_steps,
+		"tokenizer warmup steps",
+	);
+	cli.add_option(
+		"--tok-wd",
+		|c: &mut AlmTrainConfig| &mut c.tokenizer_weight_decay,
+		"tokenizer weight decay",
+	);
+	cli.add_option(
+		"--lm-lr",
+		|c: &mut AlmTrainConfig| &mut c.prior_learning_rate,
+		"prior learning rate",
+	);
+	cli.add_option(
+		"--lm-min-lr",
+		|c: &mut AlmTrainConfig| &mut c.prior_minimum_learning_rate,
+		"prior min lr",
+	);
+	cli.add_option(
+		"--lm-warmup",
+		|c: &mut AlmTrainConfig| &mut c.prior_warmup_steps,
+		"prior warmup steps",
+	);
+	cli.add_option(
+		"--lm-wd",
+		|c: &mut AlmTrainConfig| &mut c.prior_weight_decay,
+		"prior weight decay",
+	);
+	cli.add_option(
+		"--text-conditioning",
+		|c: &mut AlmTrainConfig| &mut c.text_conditioning,
+		"text conditioning: clip|none",
+	);
+	cli.add_option(
+		"--clip-text-model",
+		|c: &mut AlmTrainConfig| &mut c.clip_text_model,
+		"CLIP text model path",
+	);
+	cli.add_option(
+		"--clip-merges",
+		|c: &mut AlmTrainConfig| &mut c.clip_merges,
+		"CLIP BPE merges path",
+	);
+	cli.add_option(
+		"--checkpoint-dir",
+		|c: &mut AlmTrainConfig| &mut c.checkpoint_directory,
+		"checkpoint directory",
+	);
+	cli.add_option(
+		"--model-dir",
+		|c: &mut AlmTrainConfig| &mut c.checkpoint_directory,
+		"checkpoint directory (alias)",
+	);
+	cli.add_option(
+		"--checkpoint-save-every",
+		|c: &mut AlmTrainConfig| &mut c.checkpoint_save_every,
+		"save every N steps",
+	);
+	cli.add_option(
+		"--ckpt-save-every",
+		|c: &mut AlmTrainConfig| &mut c.checkpoint_save_every,
+		"save every N steps (alias)",
+	);
+	cli.add_option(
+		"--checkpoint-keep",
+		|c: &mut AlmTrainConfig| &mut c.checkpoint_keep,
+		"max checkpoints to keep",
+	);
+	cli.add_option(
+		"--ckpt-max-keep",
+		|c: &mut AlmTrainConfig| &mut c.checkpoint_keep,
+		"max checkpoints to keep (alias)",
+	);
+	cli.add_flag(
+		"--resume",
+		|c: &mut AlmTrainConfig, v| c.resume = v,
+		"resume from latest checkpoint",
+	);
+	cli.add_flag(
+		"--no-checkpoint",
+		|c: &mut AlmTrainConfig, v| c.no_checkpoint = v,
+		"disable checkpointing",
+	);
+	cli.add_flag(
+		"--restore-best",
+		|c: &mut AlmTrainConfig, v| c.restore_best = v,
+		"restore best checkpoint after training",
+	);
+	cli.add_flag(
+		"--ckpt-restore-best",
+		|c: &mut AlmTrainConfig, v| c.restore_best = v,
+		"restore best (alias)",
+	);
+	cli.add_flag(
+		"--no-restore-best",
+		|c: &mut AlmTrainConfig, v| c.restore_best = !v,
+		"do not restore best",
+	);
+	cli.add_flag(
+		"--unconditional",
+		|c: &mut AlmTrainConfig, v| {
+			if v {
+				c.text_conditioning = "none".into();
+			}
+		},
+		"disable text conditioning",
+	);
+	cli.set_epilog(
+		"trainalm --dataset DIR --output MODEL.oam [--split train] [--val-split val]\n\
+		 [--val-batches N] [--max-clips N]\n\
+		 --tok-epochs N --lm-epochs N --batch N --seq-len N --lm-seq-len N\n\
+		 --codes N --width N --code-dim N --down-t N --depth N\n\
+		 [--commit-beta F] [--ema-decay F] [--ema-eps F] [--dead-thresh F]\n\
+		 --dmodel N --lm-heads N --lm-layers N --lm-ffn N\n\
+		 --lm-max-seq-len N --lm-ffn-type dense|moe|hybrid\n\
+		 [--lm-moe-experts N] [--lm-moe-top-k N] [--lm-moe-every N]\n\
+		 [--lm-moe-balance-rate F] [--lm-moe-aux-alpha F] [--lm-moe-z-beta F]\n\
+		 [--tok-lr F] [--tok-min-lr F] [--tok-warmup N] [--tok-wd F]\n\
+		 [--lm-lr F] [--lm-min-lr F] [--lm-warmup N] [--lm-wd F] [--seed N]\n\
+		 [--text-conditioning clip|none] [--clip-text-model MODEL.oam]\n\
+		 [--clip-merges merges.txt] [--unconditional]\n\
+		 [--checkpoint-dir DIR] [--checkpoint-save-every N] [--checkpoint-keep N]\n\
+		 [--resume] [--restore-best|--no-restore-best] [--no-checkpoint]",
+	);
+	if !cli.parse() {
+		return Ok(());
 	}
-	let dataset = HumanMl3dDataset::open_cmp(&options.dataset, &options.split, options.max_clips)?;
-	let validation = match HumanMl3dDataset::open_cmp(
-		&options.dataset,
-		&options.validation_split,
-		options.max_clips,
-	) {
-		Ok(dataset) => Some(dataset),
-		Err(error) => {
-			eprintln!(
-				"validation split '{}' unavailable; validation disabled: {error}",
-				options.validation_split
-			);
-			None
+	let cfg = cli.into_config();
+
+	// Validate and convert string enum fields.
+	let ffn_type = match cfg.ffn_type.as_str() {
+		"dense" => AlmFfnType::Dense,
+		"moe" => AlmFfnType::Moe,
+		"hybrid" => AlmFfnType::Hybrid,
+		other => {
+			return Err(argument_error(&format!(
+				"--lm-ffn-type must be dense, moe, or hybrid; got {other:?}"
+			)));
 		}
 	};
+	let use_text = match cfg.text_conditioning.as_str() {
+		"clip" => true,
+		"none" => false,
+		other => {
+			return Err(argument_error(&format!(
+				"--text-conditioning must be clip or none; got {other:?}"
+			)));
+		}
+	};
+	if cfg.resume && cfg.no_checkpoint {
+		return Err(argument_error("--resume conflicts with --no-checkpoint"));
+	}
+	let checkpoint_enabled = !cfg.no_checkpoint;
+
+	// Convert String paths to PathBuf.
+	let dataset_path = PathBuf::from(&cfg.dataset);
+	let output_path = PathBuf::from(&cfg.output);
+	let ckpt_dir = PathBuf::from(&cfg.checkpoint_directory);
+	let clip_model = PathBuf::from(&cfg.clip_text_model);
+	let clip_merges = PathBuf::from(&cfg.clip_merges);
+
+	let dataset = HumanMl3dDataset::open_cmp(&dataset_path, &cfg.split, cfg.max_clips)?;
+	let validation =
+		match HumanMl3dDataset::open_cmp(&dataset_path, &cfg.validation_split, cfg.max_clips) {
+			Ok(dataset) => Some(dataset),
+			Err(error) => {
+				eprintln!(
+					"validation split '{}' unavailable; validation disabled: {error}",
+					cfg.validation_split
+				);
+				None
+			}
+		};
 	let engine = oa::Engine::new()?;
-	let native_text = if options.text_conditioning {
-		let model = Rc::new(ClipText::load_model(&engine, &options.clip_text_model)?);
-		let merges = std::fs::read(&options.clip_merges)?;
+	let native_text = if use_text {
+		let model = Rc::new(ClipText::load_model(&engine, &clip_model)?);
+		let merges = std::fs::read(&clip_merges)?;
 		Some((model, merges))
 	} else {
 		None
@@ -154,56 +497,56 @@ fn main() -> Result<(), Box<dyn Error>> {
 		&engine,
 		AlmTokenizerConfig {
 			input_dim: dataset.feature_dim(),
-			width: options.tokenizer_width,
-			code_dim: options.code_dim,
-			num_codes: options.num_codes,
-			downsample_stages: options.downsample_stages,
-			depth: options.depth,
-			commitment_beta: options.commitment_beta,
-			ema_decay: options.ema_decay,
-			ema_epsilon: options.ema_epsilon,
-			dead_threshold: options.dead_threshold,
+			width: cfg.tokenizer_width,
+			code_dim: cfg.code_dim,
+			num_codes: cfg.num_codes,
+			downsample_stages: cfg.downsample_stages,
+			depth: cfg.depth,
+			commitment_beta: cfg.commitment_beta,
+			ema_decay: cfg.ema_decay,
+			ema_epsilon: cfg.ema_epsilon,
+			dead_threshold: cfg.dead_threshold,
 		},
-		options.seed,
+		cfg.seed,
 	)?);
 	let text_feature_dim = native_text
 		.as_ref()
 		.map_or(0, |(model, _)| model.config().projection_dim);
 	let mut prior_config = AlmPriorConfig {
-		model_width: options.model_width,
-		num_heads: options.num_heads,
-		num_layers: options.num_layers,
-		hidden_width: options.hidden_width,
+		model_width: cfg.model_width,
+		num_heads: cfg.num_heads,
+		num_layers: cfg.num_layers,
+		hidden_width: cfg.hidden_width,
 		text_feature_dim,
-		ffn_type: options.ffn_type,
-		moe_num_experts: options.moe_num_experts,
-		moe_experts_per_token: options.moe_experts_per_token,
-		moe_every: options.moe_every,
-		moe_balance_rate: options.moe_balance_rate,
-		moe_aux_loss_alpha: options.moe_aux_loss_alpha,
-		moe_router_z_loss_beta: options.moe_router_z_loss_beta,
-		batch_size: options.batch_size,
-		sequence_length: options
+		ffn_type,
+		moe_num_experts: cfg.moe_num_experts,
+		moe_experts_per_token: cfg.moe_experts_per_token,
+		moe_every: cfg.moe_every,
+		moe_balance_rate: cfg.moe_balance_rate,
+		moe_aux_loss_alpha: cfg.moe_aux_loss_alpha,
+		moe_router_z_loss_beta: cfg.moe_router_z_loss_beta,
+		batch_size: cfg.batch_size,
+		sequence_length: cfg
 			.prior_sequence_len
 			.checked_add(1 + usize::from(text_feature_dim > 0))
 			.ok_or_else(|| argument_error("prior sequence length overflows usize"))?,
-		max_sequence_length: options.max_sequence_len,
-		learning_rate: options.prior_learning_rate,
-		num_epochs: usize::try_from(options.prior_epochs)
+		max_sequence_length: cfg.max_sequence_len,
+		learning_rate: cfg.prior_learning_rate,
+		num_epochs: usize::try_from(cfg.prior_epochs)
 			.map_err(|_| argument_error("prior epoch count exceeds usize"))?,
 		..AlmPriorConfig::default()
 	};
-	prior_config.sync_vocab(options.num_codes)?;
+	prior_config.sync_vocab(cfg.num_codes)?;
 	let prior = Rc::new(AlmPrior::with_seed(
 		&engine,
 		prior_config,
-		options.seed.wrapping_add(1),
+		cfg.seed.wrapping_add(1),
 	)?);
 
 	println!("\ntrainalm — OARS tokenizer + Transformer prior");
 	println!(
 		"  data: {} · {} clips · {} frames · feature dim {}",
-		options.dataset.display(),
+		dataset_path.display(),
 		dataset.len(),
 		dataset.total_frames(),
 		dataset.feature_dim()
@@ -211,32 +554,32 @@ fn main() -> Result<(), Box<dyn Error>> {
 	if let Some(validation) = validation.as_ref() {
 		println!(
 			"  validation: {} · {} clips · {} frames · max batches {}",
-			options.validation_split,
+			cfg.validation_split,
 			validation.len(),
 			validation.total_frames(),
-			if options.validation_batches == 0 {
+			if cfg.validation_batches == 0 {
 				"all".to_owned()
 			} else {
-				options.validation_batches.to_string()
+				cfg.validation_batches.to_string()
 			}
 		);
 	}
 	println!(
 		"  tokenizer: {} epochs · batch {} · {} frames · {} codes",
-		options.tokenizer_epochs, options.batch_size, options.sequence_len, options.num_codes
+		cfg.tokenizer_epochs, cfg.batch_size, cfg.sequence_len, cfg.num_codes
 	);
 	println!(
 		"    AdamW: lr {:.3e} → {:.3e} · warmup {} · weight decay {:.3e}",
-		options.tokenizer_learning_rate,
-		options.tokenizer_minimum_learning_rate,
-		options.tokenizer_warmup_steps,
-		options.tokenizer_weight_decay
+		cfg.tokenizer_learning_rate,
+		cfg.tokenizer_minimum_learning_rate,
+		cfg.tokenizer_warmup_steps,
+		cfg.tokenizer_weight_decay
 	);
 	println!(
 		"  prior: {} epochs · batch {} · {} token pairs · text {}",
-		options.prior_epochs,
-		options.batch_size,
-		options
+		cfg.prior_epochs,
+		cfg.batch_size,
+		cfg
 			.prior_sequence_len
 			.checked_add(1)
 			.ok_or_else(|| argument_error("prior sequence length overflows usize"))?,
@@ -248,74 +591,74 @@ fn main() -> Result<(), Box<dyn Error>> {
 	);
 	println!(
 		"    AdamW: lr {:.3e} → {:.3e} · warmup {} · weight decay {:.3e}",
-		options.prior_learning_rate,
-		options.prior_minimum_learning_rate,
-		options.prior_warmup_steps,
-		options.prior_weight_decay
+		cfg.prior_learning_rate,
+		cfg.prior_minimum_learning_rate,
+		cfg.prior_warmup_steps,
+		cfg.prior_weight_decay
 	);
 	if native_text.is_some() {
 		println!(
 			"  CLIP: {} · merges {}",
-			options.clip_text_model.display(),
-			options.clip_merges.display()
+			clip_model.display(),
+			clip_merges.display()
 		);
 	}
 
 	let stage_checkpoint = |model_name: &str| {
-		options.checkpoint_enabled.then(|| StageCheckpointConfig {
-			directory: options.checkpoint_directory.clone(),
+		checkpoint_enabled.then(|| StageCheckpointConfig {
+			directory: ckpt_dir.clone(),
 			model_name: model_name.to_owned(),
 			context: String::new(),
-			max_keep: options.checkpoint_keep,
-			save_every: options.checkpoint_save_every,
-			resume: options.resume,
-			restore_best: options.restore_best,
+			max_keep: cfg.checkpoint_keep,
+			save_every: cfg.checkpoint_save_every,
+			resume: cfg.resume,
+			restore_best: cfg.restore_best,
 			verbose: true,
 		})
 	};
-	let prior_window_len = options
+	let prior_window_len = cfg
 		.prior_sequence_len
 		.checked_add(1)
 		.ok_or_else(|| argument_error("prior window length overflows usize"))?;
 	let training_config = AlmTrainingConfig {
 		tokenizer: TokenizerTrainingConfig {
-			epochs: options.tokenizer_epochs,
-			batch_size: options.batch_size,
-			sequence_len: options.sequence_len,
-			learning_rate: options.tokenizer_learning_rate,
-			minimum_learning_rate: options.tokenizer_minimum_learning_rate,
-			warmup_steps: options.tokenizer_warmup_steps,
-			weight_decay: options.tokenizer_weight_decay,
+			epochs: cfg.tokenizer_epochs,
+			batch_size: cfg.batch_size,
+			sequence_len: cfg.sequence_len,
+			learning_rate: cfg.tokenizer_learning_rate,
+			minimum_learning_rate: cfg.tokenizer_minimum_learning_rate,
+			warmup_steps: cfg.tokenizer_warmup_steps,
+			weight_decay: cfg.tokenizer_weight_decay,
 			checkpoint: stage_checkpoint("AlmTokenizer"),
 			..TokenizerTrainingConfig::default()
 		},
 		prior: PriorTrainingConfig {
-			epochs: options.prior_epochs,
-			batch_size: options.batch_size,
+			epochs: cfg.prior_epochs,
+			batch_size: cfg.batch_size,
 			window_len: prior_window_len,
-			learning_rate: options.prior_learning_rate,
-			minimum_learning_rate: options.prior_minimum_learning_rate,
-			warmup_steps: options.prior_warmup_steps,
-			weight_decay: options.prior_weight_decay,
+			learning_rate: cfg.prior_learning_rate,
+			minimum_learning_rate: cfg.prior_minimum_learning_rate,
+			warmup_steps: cfg.prior_warmup_steps,
+			weight_decay: cfg.prior_weight_decay,
 			checkpoint: stage_checkpoint("AlmPrior"),
 			..PriorTrainingConfig::default()
 		},
-		text_seed: options.seed,
+		text_seed: cfg.seed,
 	};
 	let validation_policy = validation.as_ref().map(|validation| AlmValidation {
 		dataset: validation,
 		tokenizer: TokenizerValidationConfig {
-			sequence_len: options.sequence_len,
-			batch_size: options.batch_size,
-			max_batches: options.validation_batches,
+			sequence_len: cfg.sequence_len,
+			batch_size: cfg.batch_size,
+			max_batches: cfg.validation_batches,
 		},
 		prior: PriorValidationConfig {
 			window_len: prior_window_len,
-			batch_size: options.batch_size,
-			max_batches: options.validation_batches,
+			batch_size: cfg.batch_size,
+			max_batches: cfg.validation_batches,
 		},
 	});
-	let report = if let Some((clip_text, clip_merges)) = native_text {
+	let report = if let Some((clip_text, clip_merges_bytes)) = native_text {
 		train_alm_with_native_text(
 			&engine,
 			&dataset,
@@ -323,7 +666,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 			tokenizer,
 			prior,
 			clip_text,
-			&clip_merges,
+			&clip_merges_bytes,
 			training_config,
 		)?
 	} else {
@@ -339,10 +682,10 @@ fn main() -> Result<(), Box<dyn Error>> {
 			None => train_alm(&engine, &dataset, tokenizer, prior, training_config)?,
 		}
 	};
-	if let Some(parent) = options.output.parent() {
+	if let Some(parent) = output_path.parent() {
 		std::fs::create_dir_all(parent)?;
 	}
-	report.model.save_bundle(&options.output)?;
+	report.model.save_bundle(&output_path)?;
 	println!(
 		"\nALM complete: {} tokens · tokenizer {:.6} → {:.6} · prior {:.6} → {:.6}",
 		report.corpus_tokens,
@@ -366,7 +709,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 			validation.contact_accuracy * 100.0,
 			validation.foot_skate_cm_per_frame,
 			validation.live_codes,
-			options.num_codes,
+			cfg.num_codes,
 			validation.codebook_perplexity,
 		);
 	}
@@ -379,132 +722,10 @@ fn main() -> Result<(), Box<dyn Error>> {
 			validation.eos_accuracy * 100.0,
 		);
 	}
-	println!("saved {}", options.output.display());
+	println!("saved {}", output_path.display());
 	Ok(())
-}
-
-fn parse_options() -> Result<Options, Box<dyn Error>> {
-	let mut options = Options::default();
-	let mut arguments = env::args().skip(1);
-	while let Some(argument) = arguments.next() {
-		let mut value = || {
-			arguments
-				.next()
-				.ok_or_else(|| argument_error(&format!("{argument} requires a value")))
-		};
-		match argument.as_str() {
-			"--dataset" => options.dataset = value()?.into(),
-			"--split" => options.split = value()?,
-			"--val-split" => options.validation_split = value()?,
-			"--val-batches" => options.validation_batches = parse(&value()?, &argument)?,
-			"--output" => options.output = value()?.into(),
-			"--max-clips" => options.max_clips = parse(&value()?, &argument)?,
-			"--seed" => options.seed = parse(&value()?, &argument)?,
-			"--tok-epochs" => options.tokenizer_epochs = parse(&value()?, &argument)?,
-			"--lm-epochs" => options.prior_epochs = parse(&value()?, &argument)?,
-			"--batch" => options.batch_size = parse(&value()?, &argument)?,
-			"--seq-len" => options.sequence_len = parse(&value()?, &argument)?,
-			"--lm-seq-len" => options.prior_sequence_len = parse(&value()?, &argument)?,
-			"--codes" => options.num_codes = parse(&value()?, &argument)?,
-			"--width" => options.tokenizer_width = parse(&value()?, &argument)?,
-			"--code-dim" => options.code_dim = parse(&value()?, &argument)?,
-			"--down-t" => options.downsample_stages = parse(&value()?, &argument)?,
-			"--depth" => options.depth = parse(&value()?, &argument)?,
-			"--commit-beta" => options.commitment_beta = parse(&value()?, &argument)?,
-			"--ema-decay" => options.ema_decay = parse(&value()?, &argument)?,
-			"--ema-eps" => options.ema_epsilon = parse(&value()?, &argument)?,
-			"--dead-thresh" => options.dead_threshold = parse(&value()?, &argument)?,
-			"--dmodel" => options.model_width = parse(&value()?, &argument)?,
-			"--lm-heads" => options.num_heads = parse(&value()?, &argument)?,
-			"--lm-layers" => options.num_layers = parse(&value()?, &argument)?,
-			"--lm-ffn" => options.hidden_width = parse(&value()?, &argument)?,
-			"--lm-max-seq-len" => options.max_sequence_len = parse(&value()?, &argument)?,
-			"--lm-moe-experts" => options.moe_num_experts = parse(&value()?, &argument)?,
-			"--lm-moe-top-k" => options.moe_experts_per_token = parse(&value()?, &argument)?,
-			"--lm-moe-every" => options.moe_every = parse(&value()?, &argument)?,
-			"--lm-moe-balance-rate" => options.moe_balance_rate = parse(&value()?, &argument)?,
-			"--lm-moe-aux-alpha" => options.moe_aux_loss_alpha = parse(&value()?, &argument)?,
-			"--lm-moe-z-beta" => options.moe_router_z_loss_beta = parse(&value()?, &argument)?,
-			"--tok-lr" => options.tokenizer_learning_rate = parse(&value()?, &argument)?,
-			"--tok-min-lr" => {
-				options.tokenizer_minimum_learning_rate = parse(&value()?, &argument)?
-			}
-			"--tok-warmup" => options.tokenizer_warmup_steps = parse(&value()?, &argument)?,
-			"--tok-wd" => options.tokenizer_weight_decay = parse(&value()?, &argument)?,
-			"--lm-lr" => options.prior_learning_rate = parse(&value()?, &argument)?,
-			"--lm-min-lr" => options.prior_minimum_learning_rate = parse(&value()?, &argument)?,
-			"--lm-warmup" => options.prior_warmup_steps = parse(&value()?, &argument)?,
-			"--lm-wd" => options.prior_weight_decay = parse(&value()?, &argument)?,
-			"--clip-text-model" => options.clip_text_model = value()?.into(),
-			"--clip-merges" => options.clip_merges = value()?.into(),
-			"--checkpoint-dir" | "--model-dir" => options.checkpoint_directory = value()?.into(),
-			"--checkpoint-save-every" | "--ckpt-save-every" => {
-				options.checkpoint_save_every = parse(&value()?, &argument)?
-			}
-			"--checkpoint-keep" | "--ckpt-max-keep" => {
-				options.checkpoint_keep = parse(&value()?, &argument)?
-			}
-			"--resume" => options.resume = true,
-			"--no-checkpoint" => options.checkpoint_enabled = false,
-			"--no-restore-best" => options.restore_best = false,
-			"--restore-best" | "--ckpt-restore-best" => options.restore_best = true,
-			"--lm-ffn-type" => {
-				options.ffn_type = match value()?.as_str() {
-					"dense" => AlmFfnType::Dense,
-					"moe" => AlmFfnType::Moe,
-					"hybrid" => AlmFfnType::Hybrid,
-					_ => {
-						return Err(argument_error(
-							"--lm-ffn-type must be dense, moe, or hybrid",
-						));
-					}
-				}
-			}
-			"--text-conditioning" => {
-				options.text_conditioning = match value()?.as_str() {
-					"clip" => true,
-					"none" => false,
-					_ => {
-						return Err(argument_error("--text-conditioning must be clip or none"));
-					}
-				}
-			}
-			"--unconditional" => options.text_conditioning = false,
-			"--help" | "-h" => {
-				print_help();
-				std::process::exit(0);
-			}
-			_ => return Err(argument_error(&format!("unknown option {argument}"))),
-		}
-	}
-	Ok(options)
-}
-
-fn parse<T: std::str::FromStr>(text: &str, option: &str) -> Result<T, Box<dyn Error>> {
-	text.parse()
-		.map_err(|_| argument_error(&format!("{option} has an invalid value")))
 }
 
 fn argument_error(message: &str) -> Box<dyn Error> {
 	std::io::Error::new(std::io::ErrorKind::InvalidInput, message).into()
-}
-
-fn print_help() {
-	println!(
-		"trainalm --dataset DIR --output MODEL.oam [--split train] [--val-split val]\n\
-		 [--val-batches N] [--max-clips N]\n\
-		 --tok-epochs N --lm-epochs N --batch N --seq-len N --lm-seq-len N\n\
-		 --codes N --width N --code-dim N --down-t N --depth N\n\
-		 [--commit-beta F] [--ema-decay F] [--ema-eps F] [--dead-thresh F]\n\
-		 --dmodel N --lm-heads N --lm-layers N --lm-ffn N\n\
-		 --lm-max-seq-len N --lm-ffn-type dense|moe|hybrid\n\
-		 [--lm-moe-experts N] [--lm-moe-top-k N] [--lm-moe-every N]\n\
-		 [--lm-moe-balance-rate F] [--lm-moe-aux-alpha F] [--lm-moe-z-beta F]\n\
-		 [--tok-lr F] [--tok-min-lr F] [--tok-warmup N] [--tok-wd F]\n\
-		 [--lm-lr F] [--lm-min-lr F] [--lm-warmup N] [--lm-wd F] [--seed N]\n\
-		 [--text-conditioning clip|none] [--clip-text-model MODEL.oam]\n\
-		 [--clip-merges merges.txt] [--unconditional]\n\
-		 [--checkpoint-dir DIR] [--checkpoint-save-every N] [--checkpoint-keep N]\n\
-		 [--resume] [--restore-best|--no-restore-best] [--no-checkpoint]"
-	);
 }

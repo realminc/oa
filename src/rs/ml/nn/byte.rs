@@ -104,7 +104,8 @@ impl ByteHead {
 
 	/// Output bias handle.
 	pub fn bias(&self) -> Parameter {
-		self.inner
+		self
+			.inner
 			.bias()
 			.expect("byte head always constructs a trainable bias")
 	}

@@ -197,8 +197,7 @@ test_vk!(
 		let labels = oa::Matrix::from_slice(&engine, [4], &[0_u32, 1, 2, 0])?;
 		let mask = oa::Matrix::from_f32(&engine, [4], &[1.0, 0.0, -2.0, 1.0])?;
 		assert_eq!(
-			oa::matrix::masked_categorical_accuracy_count(&logits, &labels, &mask)?
-				.read::<u32>()?,
+			oa::matrix::masked_categorical_accuracy_count(&logits, &labels, &mask)?.read::<u32>()?,
 			vec![3]
 		);
 		Ok(())
@@ -244,8 +243,7 @@ test_vk!(
 			assert_eq!(error.kind(), oa::ErrorKind::InvalidArgument);
 		}
 		assert_eq!(
-			oa::matrix::masked_categorical_accuracy_count(&logits, &labels, &mask)?
-				.read::<u32>()?,
+			oa::matrix::masked_categorical_accuracy_count(&logits, &labels, &mask)?.read::<u32>()?,
 			vec![2]
 		);
 		Ok(())

@@ -1,7 +1,7 @@
 use oa::ml::{
 	CategoricalActorCritic, CategoricalActorCriticConfig, EnvironmentSpace, EnvironmentSpaceKind,
-	EnvironmentSpec, EnvironmentTransition, RolloutBuffer, RolloutCollector,
-	RolloutCollectorConfig, RolloutConfig,
+	EnvironmentSpec, EnvironmentTransition, RolloutBuffer, RolloutCollector, RolloutCollectorConfig,
+	RolloutConfig,
 	environment::{Environment, EnvironmentExecution},
 	evaluation::{PolicyEvaluationConfig, evaluate_categorical},
 };
@@ -126,8 +126,7 @@ fn cart_pole_spec() -> oa::Result<EnvironmentSpec> {
 
 #[test]
 fn environment_spaces_preserve_donor_shape_and_dtype_contracts() -> oa::Result<()> {
-	let observation =
-		EnvironmentSpace::continuous("observation", [4], oa::DType::F32, -10.0, 10.0)?;
+	let observation = EnvironmentSpace::continuous("observation", [4], oa::DType::F32, -10.0, 10.0)?;
 	assert_eq!(observation.kind(), EnvironmentSpaceKind::Box);
 	assert_eq!(observation.name(), "observation");
 	assert_eq!(observation.shape(), [4]);
@@ -217,14 +216,16 @@ test_vk!(
 
 		let wrong_action = oa::Matrix::from_slice(&engine, [3], &[0_u32, 1, 0])?;
 		assert_eq!(
-			spec.validate_action(&wrong_action, 3)
+			spec
+				.validate_action(&wrong_action, 3)
 				.expect_err("wrong action dtype was accepted")
 				.kind(),
 			oa::ErrorKind::InvalidArgument
 		);
 		let wrong_observation = oa::Matrix::from_f32(&engine, [2, 4], &[0.0; 8])?;
 		assert_eq!(
-			spec.validate_reset(&wrong_observation, 3)
+			spec
+				.validate_reset(&wrong_observation, 3)
 				.expect_err("wrong observation batch was accepted")
 				.kind(),
 			oa::ErrorKind::InvalidArgument

@@ -65,15 +65,11 @@ impl Pool2dGeometry {
 		let last_y = output_height
 			.saturating_sub(1)
 			.checked_mul(stride)
-			.ok_or_else(|| {
-				Error::invalid_argument(format!("{operation} Y origin overflows usize"))
-			})?;
+			.ok_or_else(|| Error::invalid_argument(format!("{operation} Y origin overflows usize")))?;
 		let last_x = output_width
 			.saturating_sub(1)
 			.checked_mul(stride)
-			.ok_or_else(|| {
-				Error::invalid_argument(format!("{operation} X origin overflows usize"))
-			})?;
+			.ok_or_else(|| Error::invalid_argument(format!("{operation} X origin overflows usize")))?;
 		let last_y_end = last_y.checked_add(kernel_size).ok_or_else(|| {
 			Error::invalid_argument(format!("{operation} final Y window overflows usize"))
 		})?;
@@ -165,9 +161,7 @@ pub(in crate::ml) fn avg_pool_2d(
 	let output_count = output_shape
 		.iter()
 		.try_fold(1_usize, |product, extent| product.checked_mul(*extent))
-		.ok_or_else(|| {
-			Error::invalid_argument(format!("{operation} output size overflows usize"))
-		})?;
+		.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))?;
 	shader_u32(output_count, "output element count", operation)?;
 	let output = Matrix::allocate(
 		input.engine_handle(),
@@ -286,9 +280,7 @@ pub(in crate::ml) fn max_pool_2d(
 	let output_count = output_shape
 		.iter()
 		.try_fold(1_usize, |product, extent| product.checked_mul(*extent))
-		.ok_or_else(|| {
-			Error::invalid_argument(format!("{operation} output size overflows usize"))
-		})?;
+		.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))?;
 	shader_u32(output_count, "output element count", operation)?;
 	let output = Matrix::allocate(
 		input.engine_handle(),
@@ -446,9 +438,7 @@ impl AdaptivePool2dGeometry {
 			.checked_mul(*channels)
 			.and_then(|value| value.checked_mul(output_height))
 			.and_then(|value| value.checked_mul(output_width))
-			.ok_or_else(|| {
-				Error::invalid_argument(format!("{operation} output size overflows usize"))
-			})?;
+			.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))?;
 		shader_u32(output_count, "output element count", operation)?;
 		for (label, output_extent, input_extent) in [
 			("height", output_height, *input_height),

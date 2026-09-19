@@ -284,8 +284,7 @@ impl LunarScalarEnvironment {
 		{
 			self.state.terminated = true;
 			self.state.end_reason = LunarEndReason::OutOfBounds;
-		} else if physics.contact.body_contact_occurred || self.state.body_contacts.contains(&true)
-		{
+		} else if physics.contact.body_contact_occurred || self.state.body_contacts.contains(&true) {
 			self.state.terminated = true;
 			self.state.end_reason = LunarEndReason::BodyImpact;
 		} else if physics.contact.maximum_foot_closing_speed > self.config.hard_foot_impact_speed {

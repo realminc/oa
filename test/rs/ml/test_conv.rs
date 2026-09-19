@@ -34,10 +34,10 @@ fn host_conv_1d(
 						if input_position >= input_length {
 							continue;
 						}
-						let input_offset = (batch * input_channels + input_channel) * input_length
-							+ input_position;
-						let weight_offset = (output_channel * input_channels + input_channel)
-							* kernel_size + kernel;
+						let input_offset =
+							(batch * input_channels + input_channel) * input_length + input_position;
+						let weight_offset =
+							(output_channel * input_channels + input_channel) * kernel_size + kernel;
 						value += f64::from(input[input_offset]) * f64::from(weight[weight_offset]);
 					}
 				}
@@ -72,8 +72,7 @@ fn host_conv_transpose_1d(
 	for batch in 0..batch_size {
 		for input_channel in 0..input_channels {
 			for input_position in 0..input_length {
-				let input_offset =
-					(batch * input_channels + input_channel) * input_length + input_position;
+				let input_offset = (batch * input_channels + input_channel) * input_length + input_position;
 				for output_channel in 0..output_channels {
 					for kernel in 0..kernel_size {
 						let padded_position = input_position * stride + kernel * dilation;
@@ -84,10 +83,10 @@ fn host_conv_transpose_1d(
 						if output_position >= output_length {
 							continue;
 						}
-						let weight_offset = (input_channel * output_channels + output_channel)
-							* kernel_size + kernel;
-						let output_offset = (batch * output_channels + output_channel)
-							* output_length + output_position;
+						let weight_offset =
+							(input_channel * output_channels + output_channel) * kernel_size + kernel;
+						let output_offset =
+							(batch * output_channels + output_channel) * output_length + output_position;
 						output[output_offset] += input[input_offset] * weight[weight_offset];
 					}
 				}
@@ -126,9 +125,9 @@ fn host_conv_transpose_2d(
 		for (output_channel, &bias_value) in bias.iter().enumerate().take(output_channels) {
 			for output_y in 0..output_height {
 				for output_x in 0..output_width {
-					let output_offset = ((batch * output_channels + output_channel)
-						* output_height + output_y)
-						* output_width + output_x;
+					let output_offset =
+						((batch * output_channels + output_channel) * output_height + output_y) * output_width
+							+ output_x;
 					output[output_offset] = f64::from(bias_value);
 				}
 			}
@@ -136,8 +135,8 @@ fn host_conv_transpose_2d(
 		for input_channel in 0..input_channels {
 			for input_y in 0..input_height {
 				for input_x in 0..input_width {
-					let input_offset = ((batch * input_channels + input_channel) * input_height
-						+ input_y) * input_width
+					let input_offset = ((batch * input_channels + input_channel) * input_height + input_y)
+						* input_width
 						+ input_x;
 					for output_channel in 0..output_channels {
 						for kernel_y in 0..kernel_size {
@@ -158,14 +157,16 @@ fn host_conv_transpose_2d(
 								if output_x >= output_width {
 									continue;
 								}
-								let weight_offset = ((input_channel * output_channels
-									+ output_channel) * kernel_size
-									+ kernel_y) * kernel_size + kernel_x;
-								let output_offset = ((batch * output_channels + output_channel)
-									* output_height + output_y) * output_width
+								let weight_offset =
+									((input_channel * output_channels + output_channel) * kernel_size + kernel_y)
+										* kernel_size
+										+ kernel_x;
+								let output_offset = ((batch * output_channels + output_channel) * output_height
+									+ output_y)
+									* output_width
 									+ output_x;
-								output[output_offset] += f64::from(input[input_offset])
-									* f64::from(weight[weight_offset]);
+								output[output_offset] +=
+									f64::from(input[input_offset]) * f64::from(weight[weight_offset]);
 							}
 						}
 					}
@@ -223,20 +224,21 @@ fn host_conv_2d(
 								if input_y >= input_height || input_x >= input_width {
 									continue;
 								}
-								let input_offset = ((batch * input_channels + input_channel)
-									* input_height + input_y) * input_width
-									+ input_x;
-								let weight_offset = ((output_channel * input_channels_per_group
-									+ local_input_channel) * kernel_size
-									+ kernel_y) * kernel_size + kernel_x;
-								value += f64::from(input[input_offset])
-									* f64::from(weight[weight_offset]);
+								let input_offset =
+									((batch * input_channels + input_channel) * input_height + input_y) * input_width
+										+ input_x;
+								let weight_offset =
+									((output_channel * input_channels_per_group + local_input_channel) * kernel_size
+										+ kernel_y)
+										* kernel_size
+										+ kernel_x;
+								value += f64::from(input[input_offset]) * f64::from(weight[weight_offset]);
 							}
 						}
 					}
-					let output_offset = ((batch * output_channels + output_channel)
-						* output_height + output_y)
-						* output_width + output_x;
+					let output_offset =
+						((batch * output_channels + output_channel) * output_height + output_y) * output_width
+							+ output_x;
 					output[output_offset] = value as f32;
 				}
 			}
@@ -345,11 +347,8 @@ test_vk!(
 			host_loss(&input_values, &weight_values, values)
 		});
 
-		let embedding = oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(
-			&engine,
-			[2, 6],
-			&input_values,
-		)?)?;
+		let embedding =
+			oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [2, 6], &input_values)?)?;
 		let indices = oa::Matrix::from_slice(&engine, [1, 2], &[0_u32, 1])?;
 		let module = oa::ml::nn::Conv1d::from_matrices(
 			oa::Matrix::from_f32(&engine, weight_shape, &weight_values)?,
@@ -482,11 +481,8 @@ test_vk!(
 		let expected_weight =
 			numerical_gradient(&weight_values, |values| host_loss(&input_values, values));
 
-		let embedding = oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(
-			&engine,
-			[2, 3],
-			&input_values,
-		)?)?;
+		let embedding =
+			oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [2, 3], &input_values)?)?;
 		let indices = oa::Matrix::from_slice(&engine, [1, 2], &[0_u32, 1])?;
 		let module = oa::ml::nn::ConvTranspose1d::from_matrix(
 			oa::Matrix::from_f32(&engine, weight_shape, &weight_values)?,
@@ -594,8 +590,7 @@ test_vk!(
 		let weight_shape = [2, 2, 2, 2];
 		let input_values = [0.2_f32, -0.7, 1.1, 0.8, 0.3, -0.4, 0.6, 0.9];
 		let weight_values = [
-			0.3_f32, -0.2, 0.5, 0.7, -0.4, 0.6, 0.1, -0.3, 0.25, -0.15, 0.45, -0.35, 0.2, 0.4,
-			-0.1, 0.55,
+			0.3_f32, -0.2, 0.5, 0.7, -0.4, 0.6, 0.1, -0.3, 0.25, -0.15, 0.45, -0.35, 0.2, 0.4, -0.1, 0.55,
 		];
 		let bias_values = [0.15_f32, -0.25];
 		let target_values = (0..32)
@@ -617,11 +612,8 @@ test_vk!(
 			host_loss(&input_values, &weight_values, values)
 		});
 
-		let embedding = oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(
-			&engine,
-			[4, 2],
-			&input_values,
-		)?)?;
+		let embedding =
+			oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [4, 2], &input_values)?)?;
 		let indices = oa::Matrix::from_slice(&engine, [1, 2, 2], &[0_u32, 1, 2, 3])?;
 		let module = oa::ml::nn::ConvTranspose2d::from_matrices(
 			oa::Matrix::from_f32(&engine, weight_shape, &weight_values)?,
@@ -740,8 +732,8 @@ test_vk!(
 		let input_shape = [1, 2, 3, 3];
 		let weight_shape = [2, 1, 2, 2];
 		let input_values = [
-			0.2_f32, -0.7, 1.1, 0.8, 0.3, -0.4, 1.2, -0.1, 0.5, -0.8, 0.6, 0.9, -0.3, 0.4, 1.5,
-			-1.0, 0.7, 0.1,
+			0.2_f32, -0.7, 1.1, 0.8, 0.3, -0.4, 1.2, -0.1, 0.5, -0.8, 0.6, 0.9, -0.3, 0.4, 1.5, -1.0,
+			0.7, 0.1,
 		];
 		let weight_values = [0.3_f32, -0.2, 0.5, 0.7, -0.4, 0.6, 0.1, -0.3];
 		let bias_values = [0.15_f32, -0.25];
@@ -762,11 +754,8 @@ test_vk!(
 			host_loss(&input_values, &weight_values, values)
 		});
 
-		let embedding = oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(
-			&engine,
-			[6, 3],
-			&input_values,
-		)?)?;
+		let embedding =
+			oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [6, 3], &input_values)?)?;
 		let indices = oa::Matrix::from_slice(&engine, [1, 2, 3], &[0_u32, 1, 2, 3, 4, 5])?;
 		let module = oa::ml::nn::Conv2d::from_matrices(
 			oa::Matrix::from_f32(&engine, weight_shape, &weight_values)?,

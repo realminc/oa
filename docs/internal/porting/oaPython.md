@@ -42,21 +42,41 @@ python -c "import oa; print(oa.__version__)"
 ```
 
 The native PyO3 implementation lives below `src/py`. The importable package,
-Cargo/Maturin metadata, tests, examples, and tutorials live below `sdk/py`; its
+Cargo/Maturin metadata, and tutorials live below `sdk/py`; its
 Cargo library target points at the canonical native binding root. PyO3 wrappers
 contain Rust values directly. Matrix, ML, Image, and Audio
 operations remain GPU-native; typed reads and `to_list` are explicit host
 synchronization and copy boundaries. Encoded media crosses Python as `bytes`.
 
-Version `0.8.0` is the Rust-first continuation of the historical `oapython`
-`0.7.x` C++ binding line. Its admitted surface includes runtime events, all
-currently bound dense dtypes, the functional Matrix and ML operation spine,
-byte-model helpers, Image values/codecs/common transforms, and Audio values/
-codecs/DSP/features. Stateful neural-network, training, media, render, and
-presentation objects remain Rust-only pending explicit lifetime and callback
-contracts.
+Version `0.8.2` is the Rust-first continuation of the historical `oapython`
+`0.7.x` C++ binding line.
+
+**Shipped:** runtime ownership and logging, explicit events, the currently
+bound dense Matrix dtypes and operations, Image values/codecs/transforms,
+Audio values/codecs/DSP/capture/playback, cryptography, vision metrics, and
+the current video demux/decode/mux/playback value and session surface. The
+wheel is exercised through the installed `oa` package rather than by importing
+the source tree.
+
+**Experimental:** neural-network modules, optimizers, training sessions,
+training programs, callbacks, reinforcement-learning trainers, flow matching,
+and SDK NLP recipe wrappers are hand-written PyO3 adapters. They are useful
+for port validation, but their presence is not evidence of C++ Python API
+parity. In particular, SDK recipe wrappers are not automatically part of the
+long-term public binding merely because the underlying Rust SDK owns them.
+
+**Planned:** generate the Python binding and type-stub surfaces from the
+operation schema, reconcile the experimental surface with the C++ Python API,
+and port the remaining presenter/UI, plotting, render, capture, recorder, and
+video capability APIs. Each admitted session still requires an explicit
+ownership, callback, shutdown, and error contract.
+
+**Rejected:** duplicating every Rust SDK helper as a permanent Python public
+type, treating a passing import as parity, or keeping stale declarations in
+the type stub.
 
 Python exceptions currently preserve OA's contextual display message. Stable
-typed exception categories, generated binding signatures, zero-copy NumPy/
-buffer exchange, awaitable events, and remaining domains are follow-up gates.
-Python tests execute against the same hardware Vulkan path as Rust.
+typed exception categories, generated binding signatures and stubs, zero-copy
+NumPy/buffer exchange, awaitable events, and the remaining domains are
+follow-up gates. Python tests execute against the same hardware Vulkan path as
+Rust.

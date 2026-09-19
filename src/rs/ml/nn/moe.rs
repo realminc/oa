@@ -288,8 +288,7 @@ impl Moe {
 			]
 			.iter()
 			.any(|matrix| {
-				matrix.dtype() != DType::F32
-					|| !norm_value.engine_handle().same_as(matrix.engine_handle())
+				matrix.dtype() != DType::F32 || !norm_value.engine_handle().same_as(matrix.engine_handle())
 			}) {
 			return Err(Error::invalid_argument(
 				"MoE matrices do not match the donor stacked expert layout on one engine",
@@ -308,8 +307,7 @@ impl Moe {
 		registry.register_module("norm", norm.clone())?;
 		registry.register_module("router", router.clone())?;
 		for (index, expert) in shared_experts.iter().enumerate() {
-			if expert.input_features() != model_width || expert.intermediate_size() != hidden_width
-			{
+			if expert.input_features() != model_width || expert.intermediate_size() != hidden_width {
 				return Err(Error::invalid_argument(
 					"shared MoE expert dimensions do not match the routed experts",
 				));
@@ -338,8 +336,7 @@ impl Moe {
 		let routing_bias = registry
 			.buffer_handle("routing_bias")
 			.ok_or_else(|| Error::internal("MoE routing-bias registration was lost"))?;
-		let zero_aux_loss =
-			Matrix::from_slice_handle(norm_value.engine_handle(), vec![], &[0.0_f32])?;
+		let zero_aux_loss = Matrix::from_slice_handle(norm_value.engine_handle(), vec![], &[0.0_f32])?;
 		Ok(Self {
 			model_width,
 			hidden_width,
@@ -417,8 +414,7 @@ impl Moe {
 		} else {
 			let gate_unnormalized = core_matrix::mul(&probabilities, &selection_mask)?;
 			let denominator = core_matrix::sum(&gate_unnormalized, 1)?;
-			let gate =
-				core_matrix::mul(&gate_unnormalized, &core_matrix::reciprocal(&denominator)?)?;
+			let gate = core_matrix::mul(&gate_unnormalized, &core_matrix::reciprocal(&denominator)?)?;
 			self.dense_expert_delta(&normalized, &gate)?
 		};
 		for shared_expert in &self.shared_experts {
@@ -483,8 +479,8 @@ impl Moe {
 			let end = start + 1;
 			let expert_gate_up_weight = core_matrix::slice(&gate_up_weight, 0, start, end)?
 				.reshape([2 * self.hidden_width, self.model_width])?;
-			let expert_gate_up_bias = core_matrix::slice(&gate_up_bias, 0, start, end)?
-				.reshape([2 * self.hidden_width])?;
+			let expert_gate_up_bias =
+				core_matrix::slice(&gate_up_bias, 0, start, end)?.reshape([2 * self.hidden_width])?;
 			let expert_down_weight = core_matrix::slice(&down_weight, 0, start, end)?
 				.reshape([self.model_width, self.hidden_width])?;
 			let expert_down_bias =
@@ -596,7 +592,8 @@ impl Moe {
 	/// Non-finite or non-positive values disable the loss. The default is zero,
 	/// so the module's established forward and gradient graph remain unchanged.
 	pub fn set_aux_loss_alpha(&self, alpha: f32) {
-		self.aux_loss_alpha
+		self
+			.aux_loss_alpha
 			.set(if alpha.is_finite() && alpha > 0.0 {
 				alpha
 			} else {
@@ -615,7 +612,8 @@ impl Moe {
 	/// `beta * mean(logsumexp(router_logits)^2)` and is evaluated through a stable
 	/// LogSoftmax identity.
 	pub fn set_router_z_loss_beta(&self, beta: f32) {
-		self.router_z_loss_beta
+		self
+			.router_z_loss_beta
 			.set(if beta.is_finite() && beta > 0.0 {
 				beta
 			} else {

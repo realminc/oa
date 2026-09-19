@@ -115,9 +115,7 @@ pub fn equal_constant_time(left: &[u8], right: &[u8]) -> bool {
 	{
 		// SAFETY: the feature checks admit AVX-512F and AVX-512BW. Both
 		// slices contain the same number of initialized bytes and remain live.
-		return unsafe {
-			x86::equal_constant_time_avx512(left.as_ptr(), right.as_ptr(), left.len())
-		};
+		return unsafe { x86::equal_constant_time_avx512(left.as_ptr(), right.as_ptr(), left.len()) };
 	}
 
 	#[cfg(all(target_arch = "x86_64", not(miri)))]

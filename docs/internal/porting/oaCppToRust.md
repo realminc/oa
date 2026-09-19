@@ -182,6 +182,10 @@ generated authority such as the backend-neutral operation-contract catalog; it
 must not become a dumping ground for unrelated domain functions. Runtime shader
 identity remains generated separately from public operation functions.
 
+Use the copy-ready [Rust module template](../documentation/template.rs) for the
+handwritten module shape, rustdoc contract, generated-file preamble, formatting,
+and deterministic regeneration rules.
+
 Autograd remains owned by the same operation row. Forward and explicit
 backward operation wrappers are generated into the owning operation family;
 private tape attachments are generated into the matching

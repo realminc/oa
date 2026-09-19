@@ -102,7 +102,8 @@ impl<'engine> CheckpointManager<'engine> {
 
 	/// Return the master/best checkpoint path.
 	pub fn master_path(&self) -> PathBuf {
-		self.model_directory()
+		self
+			.model_directory()
 			.join(format!("{}.oam", self.config.model_name))
 	}
 
@@ -235,9 +236,8 @@ impl<'engine> CheckpointManager<'engine> {
 				self.incremental_directory().display()
 			))
 		})?;
-		let step = parse_step(&path).ok_or_else(|| {
-			Error::failed_precondition("latest checkpoint has no valid step segment")
-		})?;
+		let step = parse_step(&path)
+			.ok_or_else(|| Error::failed_precondition("latest checkpoint has no valid step segment"))?;
 		load_checkpoint_at_step(self.engine, &path, model, optimizer, step)?;
 		Ok(step)
 	}

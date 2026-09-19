@@ -87,8 +87,7 @@ impl HumanMl3dDataset {
 			if max_clips > 0 && clips.len() >= max_clips {
 				break;
 			}
-			let Ok(mut motion) =
-				load_npy_f32(&root.join("new_joint_vecs").join(format!("{id}.npy")))
+			let Ok(mut motion) = load_npy_f32(&root.join("new_joint_vecs").join(format!("{id}.npy")))
 			else {
 				continue;
 			};
@@ -96,9 +95,9 @@ impl HumanMl3dDataset {
 				continue;
 			}
 			let frames = motion.shape[0];
-			total_frames = total_frames.checked_add(frames).ok_or_else(|| {
-				Error::resource_exhausted("HumanML3D frame count overflows usize")
-			})?;
+			total_frames = total_frames
+				.checked_add(frames)
+				.ok_or_else(|| Error::resource_exhausted("HumanML3D frame count overflows usize"))?;
 			for row in motion.data.chunks_exact_mut(feature_dim) {
 				for ((value, mean), deviation) in
 					row.iter_mut().zip(&mean.data).zip(&standard_deviation.data)
@@ -108,8 +107,7 @@ impl HumanMl3dDataset {
 			}
 			let captions = read_captions(&root.join("texts").join(format!("{id}.txt")))?;
 			let text_features = if let Some(manifest) = &manifest {
-				load_clip_text_features(root, &id, captions.len(), manifest.dimension)
-					.unwrap_or_default()
+				load_clip_text_features(root, &id, captions.len(), manifest.dimension).unwrap_or_default()
 			} else {
 				Vec::new()
 			};
@@ -191,7 +189,8 @@ impl HumanMl3dDataset {
 		self.text_feature_model.as_deref()
 	}
 	pub fn clip_text_features(&self, index: usize) -> Option<&[f32]> {
-		self.clips
+		self
+			.clips
 			.get(index)
 			.map(|clip| clip.text_features.as_slice())
 	}
@@ -213,8 +212,7 @@ impl HumanMl3dDataset {
 			));
 		}
 		for row in features.chunks_exact_mut(self.feature_dim) {
-			for ((value, deviation), mean) in
-				row.iter_mut().zip(&self.standard_deviation).zip(&self.mean)
+			for ((value, deviation), mean) in row.iter_mut().zip(&self.standard_deviation).zip(&self.mean)
 			{
 				*value = *value * deviation + mean;
 			}
@@ -302,8 +300,7 @@ pub fn human_ml3d_recover_world_joints(
 }
 
 pub fn human_ml3d_mpjpe_cm(predicted: &[f32], target: &[f32]) -> Result<f64> {
-	if predicted.is_empty() || predicted.len() != target.len() || !predicted.len().is_multiple_of(3)
-	{
+	if predicted.is_empty() || predicted.len() != target.len() || !predicted.len().is_multiple_of(3) {
 		return Err(Error::invalid_argument(
 			"world-joint arrays must be equal nonempty xyz triples",
 		));
@@ -350,9 +347,8 @@ pub fn human_ml3d_evaluate_motion(
 		for joint in 0..joints {
 			let i = (frame * joints + joint) * 3;
 			let p = i - joints * 3;
-			let dx = f64::from(
-				(predicted_world[i] - predicted_world[p]) - (target_world[i] - target_world[p]),
-			);
+			let dx =
+				f64::from((predicted_world[i] - predicted_world[p]) - (target_world[i] - target_world[p]));
 			let dy = f64::from(
 				(predicted_world[i + 1] - predicted_world[p + 1])
 					- (target_world[i + 1] - target_world[p + 1]),
@@ -491,39 +487,42 @@ fn load_npy_f32(path: &Path) -> Result<NpyF32> {
 }
 
 fn read_nonempty_lines(path: &Path) -> Result<Vec<String>> {
-	let text =
-		fs::read_to_string(path).map_err(|source| Error::io("read HumanML3D text", source))?;
-	Ok(text
-		.lines()
-		.map(str::trim_end)
-		.filter(|line| !line.is_empty())
-		.map(str::to_owned)
-		.collect())
+	let text = fs::read_to_string(path).map_err(|source| Error::io("read HumanML3D text", source))?;
+	Ok(
+		text
+			.lines()
+			.map(str::trim_end)
+			.filter(|line| !line.is_empty())
+			.map(str::to_owned)
+			.collect(),
+	)
 }
 fn read_captions(path: &Path) -> Result<Vec<HumanMl3dCaption>> {
 	let Ok(text) = fs::read_to_string(path) else {
 		return Ok(Vec::new());
 	};
-	Ok(text
-		.lines()
-		.filter(|line| !line.is_empty())
-		.map(|line| {
-			let fields = line.split('#').collect::<Vec<_>>();
-			let range_seconds = if fields.len() >= 4 {
-				fields[2]
-					.parse::<f32>()
-					.ok()
-					.zip(fields[3].parse::<f32>().ok())
-					.filter(|(a, b)| a.is_finite() && b.is_finite() && (*a != 0.0 || *b != 0.0))
-			} else {
-				None
-			};
-			HumanMl3dCaption {
-				text: fields[0].to_owned(),
-				range_seconds,
-			}
-		})
-		.collect())
+	Ok(
+		text
+			.lines()
+			.filter(|line| !line.is_empty())
+			.map(|line| {
+				let fields = line.split('#').collect::<Vec<_>>();
+				let range_seconds = if fields.len() >= 4 {
+					fields[2]
+						.parse::<f32>()
+						.ok()
+						.zip(fields[3].parse::<f32>().ok())
+						.filter(|(a, b)| a.is_finite() && b.is_finite() && (*a != 0.0 || *b != 0.0))
+				} else {
+					None
+				};
+				HumanMl3dCaption {
+					text: fields[0].to_owned(),
+					range_seconds,
+				}
+			})
+			.collect(),
+	)
 }
 struct TextManifest {
 	format: String,
@@ -564,8 +563,7 @@ fn load_clip_text_features(
 	dimension: usize,
 ) -> Result<Vec<f32>> {
 	let array = load_npy_f32(&root.join("text_feats").join(format!("{id}.npy")))?;
-	let valid =
-		array.shape == [captions, dimension] || (captions == 1 && array.shape == [dimension]);
+	let valid = array.shape == [captions, dimension] || (captions == 1 && array.shape == [dimension]);
 	if !valid {
 		return Err(Error::data_loss(
 			"text feature shape does not match captions",

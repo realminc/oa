@@ -82,10 +82,7 @@ impl EmpyrealmCore {
 				"EmpyrealmCore embedded input must have shape [B, S, D]",
 			));
 		};
-		if embedded.dtype() != DType::F32
-			|| *batch == 0
-			|| *sequence == 0
-			|| *width != self.model_width
+		if embedded.dtype() != DType::F32 || *batch == 0 || *sequence == 0 || *width != self.model_width
 		{
 			return Err(Error::invalid_argument(format!(
 				"EmpyrealmCore requires nonempty F32 [B, S, {}]; found {:?} {}",

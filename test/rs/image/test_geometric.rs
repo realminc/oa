@@ -147,7 +147,8 @@ test_vk!(
 			)
 		})?;
 		assert_eq!(
-			plan.semantic_graph()
+			plan
+				.semantic_graph()
 				.values()
 				.iter()
 				.map(|value| value.kind())

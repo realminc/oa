@@ -132,16 +132,8 @@ impl HostInputs {
 				],
 				&self.angle,
 			)?,
-			c_bias: oa::Matrix::from_f32(
-				engine,
-				[config.num_heads, config.state_size],
-				&self.c_bias,
-			)?,
-			b_bias: oa::Matrix::from_f32(
-				engine,
-				[config.num_heads, config.state_size],
-				&self.b_bias,
-			)?,
+			c_bias: oa::Matrix::from_f32(engine, [config.num_heads, config.state_size], &self.c_bias)?,
+			b_bias: oa::Matrix::from_f32(engine, [config.num_heads, config.state_size], &self.b_bias)?,
 			d: oa::Matrix::from_f32(engine, [config.num_heads], &self.d)?,
 		})
 	}
@@ -252,8 +244,7 @@ fn reference_forward(input: &HostInputs, config: SsmConfig) -> Vec<f32> {
 	};
 	let heads_per_group = config.num_heads / groups;
 	let vector_index = |batch: usize, time: usize, head: usize, feature: usize| {
-		((batch * config.sequence_length + time) * config.num_heads + head) * config.head_dim
-			+ feature
+		((batch * config.sequence_length + time) * config.num_heads + head) * config.head_dim + feature
 	};
 	let scalar_index = |batch: usize, time: usize, head: usize| {
 		(batch * config.sequence_length + time) * config.num_heads + head
@@ -286,14 +277,12 @@ fn reference_forward(input: &HostInputs, config: SsmConfig) -> Vec<f32> {
 				let decay = input.adt[scalar].exp();
 				let mut c = (0..config.state_size)
 					.map(|n| {
-						input.c[qk_index(batch, time, group, n)]
-							+ input.c_bias[head * config.state_size + n]
+						input.c[qk_index(batch, time, group, n)] + input.c_bias[head * config.state_size + n]
 					})
 					.collect::<Vec<_>>();
 				let mut b = (0..config.state_size)
 					.map(|n| {
-						input.b[qk_index(batch, time, group, n)]
-							+ input.b_bias[head * config.state_size + n]
+						input.b[qk_index(batch, time, group, n)] + input.b_bias[head * config.state_size + n]
 					})
 					.collect::<Vec<_>>();
 				for (angle, theta) in theta.iter_mut().enumerate() {
@@ -432,10 +421,8 @@ impl MimoHostInputs {
 				.map(|index| 0.35 * (0.61 * (index + offset) as f32 + 0.9).sin())
 				.collect::<Vec<_>>()
 		};
-		let qk_count = config.batch_size
-			* config.sequence_length
-			* config.mimo_rank
-			* groups * config.state_size;
+		let qk_count =
+			config.batch_size * config.sequence_length * config.mimo_rank * groups * config.state_size;
 		let vector_count =
 			config.batch_size * config.sequence_length * config.num_heads * config.head_dim;
 		let scalar_count = config.batch_size * config.sequence_length * config.num_heads;
@@ -496,8 +483,7 @@ impl MimoHostInputs {
 		} else {
 			config.num_groups
 		};
-		let matrix =
-			|shape: Vec<usize>, values: &[f32]| oa::Matrix::from_f32(engine, shape, values);
+		let matrix = |shape: Vec<usize>, values: &[f32]| oa::Matrix::from_f32(engine, shape, values);
 		Ok(MimoDeviceInputs {
 			c: matrix(
 				vec![
@@ -710,8 +696,7 @@ fn reference_mimo_forward(input: &MimoHostInputs, config: SsmConfig) -> Vec<f32>
 	};
 	let heads_per_group = config.num_heads / groups;
 	let vector_index = |batch: usize, time: usize, head: usize, feature: usize| {
-		((batch * config.sequence_length + time) * config.num_heads + head) * config.head_dim
-			+ feature
+		((batch * config.sequence_length + time) * config.num_heads + head) * config.head_dim + feature
 	};
 	let scalar_index = |batch: usize, time: usize, head: usize| {
 		(batch * config.sequence_length + time) * config.num_heads + head
@@ -719,7 +704,8 @@ fn reference_mimo_forward(input: &MimoHostInputs, config: SsmConfig) -> Vec<f32>
 	let qk_index = |batch: usize, time: usize, rank: usize, group: usize, state: usize| {
 		(((batch * config.sequence_length + time) * (config.mimo_rank * groups)
 			+ rank * groups
-			+ group) * config.state_size)
+			+ group)
+			* config.state_size)
 			+ state
 	};
 	let parameter_index = |head: usize, rank: usize, extent: usize, index: usize| {
@@ -756,10 +742,8 @@ fn reference_mimo_forward(input: &MimoHostInputs, config: SsmConfig) -> Vec<f32>
 					for n in 0..config.state_size {
 						let index = rank * config.state_size + n;
 						let bias = parameter_index(head, rank, config.state_size, n);
-						q[index] =
-							input.c[qk_index(batch, time, rank, group, n)] + input.c_bias[bias];
-						k[index] =
-							input.b[qk_index(batch, time, rank, group, n)] + input.b_bias[bias];
+						q[index] = input.c[qk_index(batch, time, rank, group, n)] + input.c_bias[bias];
+						k[index] = input.b[qk_index(batch, time, rank, group, n)] + input.b_bias[bias];
 					}
 					for (angle, theta_value) in theta.iter().copied().enumerate() {
 						let even = rank * config.state_size + 2 * angle;
@@ -780,16 +764,15 @@ fn reference_mimo_forward(input: &MimoHostInputs, config: SsmConfig) -> Vec<f32>
 					for (n, u_value) in u.iter_mut().enumerate() {
 						for rank in 0..config.mimo_rank {
 							let projection = parameter_index(head, rank, config.head_dim, feature);
-							*u_value +=
-								xv * input.mimo_x[projection] * k[rank * config.state_size + n];
+							*u_value += xv * input.mimo_x[projection] * k[rank * config.state_size + n];
 						}
 					}
 					for rank in 0..config.mimo_rank {
 						let mut value = 0.0;
 						for (n, u_value) in u.iter().copied().enumerate() {
 							let state_index = feature * config.state_size + n;
-							value += q[rank * config.state_size + n]
-								* (decay * state[state_index] + gamma * u_value);
+							value +=
+								q[rank * config.state_size + n] * (decay * state[state_index] + gamma * u_value);
 						}
 						let projection = parameter_index(head, rank, config.head_dim, feature);
 						if config.has_d {
@@ -816,8 +799,7 @@ fn reference_mimo_forward(input: &MimoHostInputs, config: SsmConfig) -> Vec<f32>
 						let projection = parameter_index(head, rank, config.head_dim, feature);
 						let mut core = pre[rank * config.head_dim + feature];
 						if config.has_output_norm {
-							core *=
-								inverse_rms * input.norm_weight[head * config.head_dim + feature];
+							core *= inverse_rms * input.norm_weight[head * config.head_dim + feature];
 						}
 						let gate = if config.has_z {
 							let value = input.z[vector] * input.mimo_z[projection];
@@ -848,11 +830,10 @@ fn expand_qk_to_heads(input: &HostInputs, config: SsmConfig) -> (HostInputs, Ssm
 			for head in 0..config.num_heads {
 				let group = head / heads_per_group;
 				for state in 0..config.state_size {
-					let source = ((batch * config.sequence_length + time) * groups + group)
+					let source =
+						((batch * config.sequence_length + time) * groups + group) * config.state_size + state;
+					let destination = ((batch * config.sequence_length + time) * config.num_heads + head)
 						* config.state_size
-						+ state;
-					let destination = ((batch * config.sequence_length + time) * config.num_heads
-						+ head) * config.state_size
 						+ state;
 					expanded.c[destination] = input.c[source];
 					expanded.b[destination] = input.b[source];
@@ -875,12 +856,11 @@ fn reduce_head_gradients_to_groups(values: &[f32], config: SsmConfig) -> Vec<f32
 			for head in 0..config.num_heads {
 				let group = head / heads_per_group;
 				for state in 0..config.state_size {
-					let source = ((batch * config.sequence_length + time) * config.num_heads
-						+ head) * config.state_size
-						+ state;
-					let destination = ((batch * config.sequence_length + time) * groups + group)
+					let source = ((batch * config.sequence_length + time) * config.num_heads + head)
 						* config.state_size
 						+ state;
+					let destination =
+						((batch * config.sequence_length + time) * groups + group) * config.state_size + state;
 					reduced[destination] += values[source];
 				}
 			}
@@ -1473,9 +1453,8 @@ fn host_preprocess(
 		let row_base = row * width;
 		result.z[row * config.inner_size..(row + 1) * config.inner_size]
 			.copy_from_slice(&projected[row_base..row_base + config.inner_size]);
-		result.x[row * config.inner_size..(row + 1) * config.inner_size].copy_from_slice(
-			&projected[row_base + config.inner_size..row_base + 2 * config.inner_size],
-		);
+		result.x[row * config.inner_size..(row + 1) * config.inner_size]
+			.copy_from_slice(&projected[row_base + config.inner_size..row_base + 2 * config.inner_size]);
 		for (output, offset) in [
 			(&mut result.bh, 2 * config.inner_size),
 			(&mut result.ch, 2 * config.inner_size + bc_width),
@@ -1485,7 +1464,8 @@ fn host_preprocess(
 				let square_mean = projected[input_base..input_base + config.state_size]
 					.iter()
 					.map(|value| value * value)
-					.sum::<f32>() / config.state_size as f32;
+					.sum::<f32>()
+					/ config.state_size as f32;
 				let inverse_rms = 1.0 / (square_mean + config.epsilon).sqrt();
 				let output_base = row * bc_width + bc_row * config.state_size;
 				for index in 0..config.state_size {
@@ -1510,11 +1490,9 @@ fn host_preprocess(
 			result.trap[scalar] = projected[row_base + dt_offset + 2 * config.num_heads + head];
 		}
 		let angle_offset = dt_offset + 3 * config.num_heads;
-		result.angle[row * config.num_rope_angles..(row + 1) * config.num_rope_angles]
-			.copy_from_slice(
-				&projected
-					[row_base + angle_offset..row_base + angle_offset + config.num_rope_angles],
-			);
+		result.angle[row * config.num_rope_angles..(row + 1) * config.num_rope_angles].copy_from_slice(
+			&projected[row_base + angle_offset..row_base + angle_offset + config.num_rope_angles],
+		);
 	}
 	result
 }
@@ -1892,8 +1870,7 @@ test_vk!(
 		let input_values = (0..batch * length * config.model_width)
 			.map(|index| ((index as f32 + 0.4) * 0.37).sin() * 0.3)
 			.collect::<Vec<_>>();
-		let input =
-			oa::Matrix::from_f32(&engine, [batch, length, config.model_width], &input_values)?;
+		let input = oa::Matrix::from_f32(&engine, [batch, length, config.model_width], &input_values)?;
 		let targets = oa::Matrix::from_slice(&engine, [batch * length], &[0_u32, 1, 2, 3, 1, 0])?;
 		let tape = oa::ml::GradientTape::new();
 		let output = module.forward(&input)?;
@@ -1963,8 +1940,7 @@ test_vk!(
 		let input_values = (0..batch * length * config.model_width)
 			.map(|index| ((index as f32 + 0.7) * 0.31).cos() * 0.3)
 			.collect::<Vec<_>>();
-		let input =
-			oa::Matrix::from_f32(&engine, [batch, length, config.model_width], &input_values)?;
+		let input = oa::Matrix::from_f32(&engine, [batch, length, config.model_width], &input_values)?;
 		let expected = module.forward(&input)?.read_f32()?;
 		let mut state = module.new_state(batch)?;
 		assert_eq!(state.batch_size(), batch);

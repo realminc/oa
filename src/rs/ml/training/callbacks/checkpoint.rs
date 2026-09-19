@@ -82,17 +82,15 @@ impl<'owner, 'engine> Checkpoint<'owner, 'engine> {
 	}
 
 	fn metric_name(&self) -> &str {
-		self.validation_metric
+		self
+			.validation_metric
 			.as_ref()
 			.map_or_else(|| self.manager.metric_name(), ValidationMetric::name)
 	}
 }
 
 impl TrainingCallback for Checkpoint<'_, '_> {
-	fn on_step_end(
-		&mut self,
-		context: &mut TrainingCallbackContext<'_>,
-	) -> Result<TrainingControl> {
+	fn on_step_end(&mut self, context: &mut TrainingCallbackContext<'_>) -> Result<TrainingControl> {
 		let snapshot = context.snapshot();
 		if self.save_every == 0
 			|| snapshot.is_epoch_boundary()
@@ -120,10 +118,7 @@ impl TrainingCallback for Checkpoint<'_, '_> {
 		Ok(TrainingControl::Continue)
 	}
 
-	fn on_epoch_end(
-		&mut self,
-		context: &mut TrainingCallbackContext<'_>,
-	) -> Result<TrainingControl> {
+	fn on_epoch_end(&mut self, context: &mut TrainingCallbackContext<'_>) -> Result<TrainingControl> {
 		let snapshot = context.snapshot();
 		let metric = self.metric(snapshot);
 		let metric_name = self.metric_name().to_owned();
@@ -165,10 +160,7 @@ impl TrainingCallback for Checkpoint<'_, '_> {
 		Ok(TrainingControl::Continue)
 	}
 
-	fn on_train_end(
-		&mut self,
-		context: &mut TrainingCallbackContext<'_>,
-	) -> Result<TrainingControl> {
+	fn on_train_end(&mut self, context: &mut TrainingCallbackContext<'_>) -> Result<TrainingControl> {
 		let snapshot = context.snapshot();
 		if snapshot.total_epochs() == 0 {
 			let metric = self.metric(snapshot);

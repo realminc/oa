@@ -166,9 +166,12 @@ impl ClipTokenizer {
 					encoded.push_str(&self.byte_map[byte as usize]);
 				}
 				for piece in self.bpe(&encoded) {
-					ids.push(*self.encoder.get(&piece).ok_or_else(|| {
-						Error::failed_precondition("CLIP BPE emitted an unknown piece")
-					})?);
+					ids.push(
+						*self
+							.encoder
+							.get(&piece)
+							.ok_or_else(|| Error::failed_precondition("CLIP BPE emitted an unknown piece"))?,
+					);
 				}
 			}
 			ids.push(EOS_TOKEN);
@@ -251,7 +254,8 @@ impl ClipTokenizer {
 			}
 			word = merged;
 		}
-		self.cache
+		self
+			.cache
 			.borrow_mut()
 			.insert(token.to_owned(), word.clone());
 		word
@@ -356,8 +360,6 @@ fn is_whitespace(value: char) -> bool {
 fn is_number(value: char) -> bool {
 	matches!(
 		get_general_category(value),
-		GeneralCategory::DecimalNumber
-			| GeneralCategory::LetterNumber
-			| GeneralCategory::OtherNumber
+		GeneralCategory::DecimalNumber | GeneralCategory::LetterNumber | GeneralCategory::OtherNumber
 	)
 }

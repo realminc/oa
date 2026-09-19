@@ -40,9 +40,9 @@ pub fn gather(input: &Matrix, indices: &Matrix) -> Result<Matrix> {
 		)));
 	}
 	let count = indices.num_elements();
-	let output_count = count.checked_mul(*width).ok_or_else(|| {
-		Error::invalid_argument(format!("{operation} output size overflows usize"))
-	})?;
+	let output_count = count
+		.checked_mul(*width)
+		.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))?;
 	let output = Matrix::allocate(
 		input.engine_handle(),
 		vec![count, *width],
@@ -115,7 +115,8 @@ pub(crate) fn gather_backward(
 	let gradient = Matrix::allocate(
 		output_gradient.engine_handle(),
 		input_shape.to_vec(),
-		rows.checked_mul(*width)
+		rows
+			.checked_mul(*width)
 			.ok_or_else(|| Error::invalid_argument(format!("{operation} size overflows usize")))?,
 		DType::F32,
 	)?;
@@ -279,9 +280,9 @@ pub fn top_k(input: &Matrix, k: i32, dim: i32) -> Result<TopKResult> {
 	} else {
 		input.shape()[0]
 	};
-	let output_count = rows.checked_mul(selected).ok_or_else(|| {
-		Error::invalid_argument(format!("{operation} output size overflows usize"))
-	})?;
+	let output_count = rows
+		.checked_mul(selected)
+		.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))?;
 	let mut output_shape = input.shape().to_vec();
 	*output_shape.last_mut().expect("validated nonempty rank") = selected;
 	let values = Matrix::allocate(
@@ -364,9 +365,9 @@ pub fn top_k_mask(indices: &Matrix, num_experts: usize) -> Result<Matrix> {
 			"{operation} requires at least one expert"
 		)));
 	}
-	let output_count = tokens.checked_mul(num_experts).ok_or_else(|| {
-		Error::invalid_argument(format!("{operation} output size overflows usize"))
-	})?;
+	let output_count = tokens
+		.checked_mul(num_experts)
+		.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))?;
 	let tokens_u32 = as_u32(*tokens, operation, "token count")?;
 	let experts_u32 = as_u32(num_experts, operation, "expert count")?;
 	let routes_u32 = as_u32(*routes_per_token, operation, "routes per token")?;
@@ -390,9 +391,8 @@ pub fn top_k_mask(indices: &Matrix, num_experts: usize) -> Result<Matrix> {
 	let outputs = [&output];
 	let attributes = [OpAttribute::SignedInteger {
 		name: "num_experts".into(),
-		value: i64::try_from(num_experts).map_err(|_| {
-			Error::invalid_argument(format!("{operation} expert count exceeds i64"))
-		})?,
+		value: i64::try_from(num_experts)
+			.map_err(|_| Error::invalid_argument(format!("{operation} expert count exceeds i64")))?,
 	}];
 	indices.engine_handle().record_semantic(
 		ComputeDispatch {
@@ -439,12 +439,12 @@ pub fn moe_expert_plan(indices: &Matrix, num_experts: usize) -> Result<MoeExpert
 			"{operation} expert count must be in 1..={EXPERT_LIMIT}"
 		)));
 	}
-	let route_count = tokens.checked_mul(*routes_per_token).ok_or_else(|| {
-		Error::invalid_argument(format!("{operation} route count overflows usize"))
-	})?;
-	let offsets_count = num_experts.checked_add(1).ok_or_else(|| {
-		Error::invalid_argument(format!("{operation} offset count overflows usize"))
-	})?;
+	let route_count = tokens
+		.checked_mul(*routes_per_token)
+		.ok_or_else(|| Error::invalid_argument(format!("{operation} route count overflows usize")))?;
+	let offsets_count = num_experts
+		.checked_add(1)
+		.ok_or_else(|| Error::invalid_argument(format!("{operation} offset count overflows usize")))?;
 	let tokens_u32 = as_u32(*tokens, operation, "token count")?;
 	let routes_per_token_u32 = as_u32(*routes_per_token, operation, "routes per token")?;
 	let experts_u32 = as_u32(num_experts, operation, "expert count")?;
@@ -646,9 +646,9 @@ pub fn repeat_interleave(input: &Matrix, repeats: usize, dim: i32) -> Result<Mat
 		.checked_mul(repeats)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} shape overflows usize")))?;
 	let output_count = output_shape.iter().try_fold(1_usize, |count, extent| {
-		count.checked_mul(*extent).ok_or_else(|| {
-			Error::invalid_argument(format!("{operation} output size overflows usize"))
-		})
+		count
+			.checked_mul(*extent)
+			.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))
 	})?;
 	let count = as_u32(output_count, operation, "output element count")?;
 	let output = Matrix::allocate(
@@ -737,9 +737,9 @@ pub(crate) fn repeat_interleave_backward(
 		)));
 	}
 	let input_count = input_shape.iter().try_fold(1_usize, |count, extent| {
-		count.checked_mul(*extent).ok_or_else(|| {
-			Error::invalid_argument(format!("{operation} output size overflows usize"))
-		})
+		count
+			.checked_mul(*extent)
+			.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))
 	})?;
 	let count = as_u32(input_count, operation, "input element count")?;
 	let output = Matrix::allocate(
@@ -831,9 +831,9 @@ pub fn gather_last_dim(input: &Matrix, indices: &Matrix) -> Result<Matrix> {
 			"{operation} requires same-engine F32 [R,C] and I32 [R,K] with C > 0"
 		)));
 	}
-	let output_count = rows.checked_mul(*selected_width).ok_or_else(|| {
-		Error::invalid_argument(format!("{operation} output size overflows usize"))
-	})?;
+	let output_count = rows
+		.checked_mul(*selected_width)
+		.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))?;
 	let rows_u32 = as_u32(*rows, operation, "row count")?;
 	let input_width_u32 = as_u32(*input_width, operation, "input width")?;
 	let selected_width_u32 = as_u32(*selected_width, operation, "selected width")?;
@@ -905,9 +905,9 @@ pub(crate) fn gather_last_dim_backward(
 			"{operation} received invalid saved gather geometry"
 		)));
 	}
-	let output_count = rows.checked_mul(input_width).ok_or_else(|| {
-		Error::invalid_argument(format!("{operation} output size overflows usize"))
-	})?;
+	let output_count = rows
+		.checked_mul(input_width)
+		.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))?;
 	let rows_u32 = as_u32(*rows, operation, "row count")?;
 	let input_width_u32 = as_u32(input_width, operation, "input width")?;
 	let selected_width_u32 = as_u32(*selected_width, operation, "selected width")?;
@@ -940,8 +940,7 @@ pub(crate) fn gather_last_dim_backward(
 				kernel: KernelId::MatrixGatherLastDimBackwardF32,
 				buffers: &buffers,
 				push_constants: &push_constants,
-				workgroups: KernelId::MatrixGatherLastDimBackwardF32
-					.linear_workgroups(output_count_u32),
+				workgroups: KernelId::MatrixGatherLastDimBackwardF32.linear_workgroups(output_count_u32),
 			},
 			SemanticDispatch {
 				contract: CONTRACT,
@@ -1013,9 +1012,9 @@ pub fn concat(inputs: &[Matrix], dim: i32) -> Result<Matrix> {
 	let mut output_shape = first.shape().to_vec();
 	output_shape[dim] = total_extent;
 	let output_count = output_shape.iter().try_fold(1_usize, |count, extent| {
-		count.checked_mul(*extent).ok_or_else(|| {
-			Error::invalid_argument(format!("{operation} output size overflows usize"))
-		})
+		count
+			.checked_mul(*extent)
+			.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))
 	})?;
 	as_u32(output_count, operation, "output element count")?;
 	i64::try_from(total_extent)
@@ -1237,9 +1236,9 @@ pub fn slice(input: &Matrix, dim: i32, start: i64, end: i64) -> Result<Matrix> {
 	let mut output_shape = input.shape().to_vec();
 	output_shape[dim] = end - start;
 	let output_count = output_shape.iter().try_fold(1_usize, |count, extent| {
-		count.checked_mul(*extent).ok_or_else(|| {
-			Error::invalid_argument(format!("{operation} output size overflows usize"))
-		})
+		count
+			.checked_mul(*extent)
+			.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))
 	})?;
 	let count = as_u32(output_count, operation, "output element count")?;
 	let output = Matrix::allocate(
@@ -1333,9 +1332,9 @@ pub(crate) fn slice_backward(
 		)));
 	}
 	let output_count = input_shape.iter().try_fold(1_usize, |count, extent| {
-		count.checked_mul(*extent).ok_or_else(|| {
-			Error::invalid_argument(format!("{operation} output size overflows usize"))
-		})
+		count
+			.checked_mul(*extent)
+			.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))
 	})?;
 	let copy_count = as_u32(
 		output_gradient.num_elements(),

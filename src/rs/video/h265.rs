@@ -432,12 +432,7 @@ pub fn parse_h265_vps(nal: &[u8]) -> Result<H265VideoParameterSet> {
 				.map(|previous: &H265VpsHrdParameters| &previous.parameters);
 			hrd_parameters.push(H265VpsHrdParameters {
 				layer_set_index,
-				parameters: parse_h265_hrd(
-					&mut bits,
-					common_present,
-					max_sub_layers_minus_1,
-					inherited,
-				)?,
+				parameters: parse_h265_hrd(&mut bits, common_present, max_sub_layers_minus_1, inherited)?,
 			});
 		}
 	}
@@ -563,11 +558,8 @@ pub fn parse_h265_sps(nal: &[u8]) -> Result<H265SequenceParameterSet> {
 		.try_reserve_exact(count)
 		.map_err(|_| Error::resource_exhausted("H.265 reference-set allocation failed"))?;
 	for index in 0..count {
-		let set = parse_short_term_reference_picture_set(
-			&mut bits,
-			index,
-			&short_term_reference_picture_sets,
-		)?;
+		let set =
+			parse_short_term_reference_picture_set(&mut bits, index, &short_term_reference_picture_sets)?;
 		if set.delta_pocs.len()
 			> max_decoded_picture_buffering_minus_1[max_sub_layers_minus_1 as usize] as usize
 		{
@@ -588,9 +580,7 @@ pub fn parse_h265_sps(nal: &[u8]) -> Result<H265SequenceParameterSet> {
 		}
 		long_term_reference_pictures
 			.try_reserve_exact(count as usize)
-			.map_err(|_| {
-				Error::resource_exhausted("H.265 long-term reference allocation failed")
-			})?;
+			.map_err(|_| Error::resource_exhausted("H.265 long-term reference allocation failed"))?;
 		let poc_bits = log2_max_pic_order_count_lsb_minus_4
 			.checked_add(4)
 			.ok_or_else(|| Error::data_loss("H.265 long-term POC width overflows"))?;
@@ -911,9 +901,7 @@ pub fn parse_h265_slice_header(
 			} else {
 				bits.read_bits(index_bits as usize)?
 			});
-			if short_term_reference_picture_set_index
-				.is_some_and(|index| index >= reference_set_count)
-			{
+			if short_term_reference_picture_set_index.is_some_and(|index| index >= reference_set_count) {
 				return Err(Error::data_loss(
 					"H.265 short-term reference-set index is out of range",
 				));
@@ -1014,8 +1002,7 @@ fn parse_decoded_picture_buffer(
 		result.max_decoded_picture_buffering_minus_1[index] = bits.read_ue()?;
 		result.max_num_reorder_pictures[index] = bits.read_ue()?;
 		result.max_latency_increase_plus_1[index] = bits.read_ue()?;
-		if result.max_num_reorder_pictures[index]
-			> result.max_decoded_picture_buffering_minus_1[index]
+		if result.max_num_reorder_pictures[index] > result.max_decoded_picture_buffering_minus_1[index]
 		{
 			return Err(Error::data_loss(
 				"H.265 reorder count exceeds decoded-picture-buffer capacity",
@@ -1057,9 +1044,9 @@ fn parse_h265_hrd(
 	let mut result = if common_present {
 		H265HrdParameters::default()
 	} else {
-		let mut inherited = inherited.cloned().ok_or_else(|| {
-			Error::data_loss("H.265 HRD omits common syntax without a preceding table")
-		})?;
+		let mut inherited = inherited
+			.cloned()
+			.ok_or_else(|| Error::data_loss("H.265 HRD omits common syntax without a preceding table"))?;
 		inherited.sub_layers.clear();
 		inherited
 	};
@@ -1136,12 +1123,11 @@ fn parse_h265_cpb_entries(
 	for _ in 0..=cpb_count_minus_1 {
 		let bit_rate_value_minus_1 = bits.read_ue()?;
 		let cpb_size_value_minus_1 = bits.read_ue()?;
-		let (cpb_size_du_value_minus_1, bit_rate_du_value_minus_1) =
-			if sub_picture_parameters_present {
-				(bits.read_ue()?, bits.read_ue()?)
-			} else {
-				(0, 0)
-			};
+		let (cpb_size_du_value_minus_1, bit_rate_du_value_minus_1) = if sub_picture_parameters_present {
+			(bits.read_ue()?, bits.read_ue()?)
+		} else {
+			(0, 0)
+		};
 		entries.push(H265CpbEntry {
 			bit_rate_value_minus_1,
 			cpb_size_value_minus_1,
@@ -1307,9 +1293,8 @@ fn parse_h265_scaling_lists(bits: &mut BitReader<'_>) -> Result<H265ScalingLists
 		for matrix_id in (0..6).step_by(matrix_step) {
 			let dense_matrix_id = matrix_id / matrix_step;
 			if bits.read_bits(1)? == 0 {
-				let delta = usize::try_from(bits.read_ue()?).map_err(|_| {
-					Error::data_loss("H.265 scaling-list predictor delta exceeds usize")
-				})?;
+				let delta = usize::try_from(bits.read_ue()?)
+					.map_err(|_| Error::data_loss("H.265 scaling-list predictor delta exceeds usize"))?;
 				if delta > dense_matrix_id {
 					return Err(Error::data_loss(
 						"H.265 scaling-list predictor precedes the first matrix",
@@ -1340,14 +1325,11 @@ fn parse_h265_scaling_lists(bits: &mut BitReader<'_>) -> Result<H265ScalingLists
 			let coefficient_count = if size_id == 0 { 16 } else { 64 };
 			for coefficient in 0..coefficient_count {
 				let delta = bits.read_se()?;
-				next_coefficient =
-					(i64::from(next_coefficient) + i64::from(delta)).rem_euclid(256) as u8;
+				next_coefficient = (i64::from(next_coefficient) + i64::from(delta)).rem_euclid(256) as u8;
 				let position = if size_id == 0 {
-					4 * H265_DIAGONAL_SCAN_4X4_Y[coefficient]
-						+ H265_DIAGONAL_SCAN_4X4_X[coefficient]
+					4 * H265_DIAGONAL_SCAN_4X4_Y[coefficient] + H265_DIAGONAL_SCAN_4X4_X[coefficient]
 				} else {
-					8 * H265_DIAGONAL_SCAN_8X8_Y[coefficient]
-						+ H265_DIAGONAL_SCAN_8X8_X[coefficient]
+					8 * H265_DIAGONAL_SCAN_8X8_Y[coefficient] + H265_DIAGONAL_SCAN_8X8_X[coefficient]
 				};
 				set_h265_scaling_value(
 					&mut lists,
@@ -1443,9 +1425,7 @@ fn parse_short_term_reference_picture_set(
 		let mut included = Vec::new();
 		included
 			.try_reserve_exact(reference.delta_pocs.len() + 1)
-			.map_err(|_| {
-				Error::resource_exhausted("H.265 predicted reference allocation failed")
-			})?;
+			.map_err(|_| Error::resource_exhausted("H.265 predicted reference allocation failed"))?;
 		for candidate in 0..=reference.delta_pocs.len() {
 			let used_by_current = bits.read_bits(1)? != 0;
 			let use_delta = used_by_current || bits.read_bits(1)? != 0;
@@ -1455,9 +1435,9 @@ fn parse_short_term_reference_picture_set(
 			if use_delta {
 				use_delta_mask |= 1 << candidate;
 				let reference_delta = reference.delta_pocs.get(candidate).copied().unwrap_or(0);
-				let delta = delta_rps.checked_add(reference_delta).ok_or_else(|| {
-					Error::data_loss("H.265 predicted picture-order delta overflows")
-				})?;
+				let delta = delta_rps
+					.checked_add(reference_delta)
+					.ok_or_else(|| Error::data_loss("H.265 predicted picture-order delta overflows"))?;
 				if delta != 0 {
 					included.push((delta, used_by_current));
 				}
@@ -1496,13 +1476,16 @@ fn parse_short_term_reference_picture_set(
 		.checked_add(positive_count)
 		.ok_or_else(|| Error::data_loss("H.265 RPS entry count overflows"))?;
 	let mut set = H265ShortTermReferencePictureSet::default();
-	set.negative_delta_poc_minus_1
+	set
+		.negative_delta_poc_minus_1
 		.try_reserve_exact(negative_count)
 		.map_err(|_| Error::resource_exhausted("H.265 negative RPS allocation failed"))?;
-	set.positive_delta_poc_minus_1
+	set
+		.positive_delta_poc_minus_1
 		.try_reserve_exact(positive_count)
 		.map_err(|_| Error::resource_exhausted("H.265 positive RPS allocation failed"))?;
-	set.delta_pocs
+	set
+		.delta_pocs
 		.try_reserve_exact(total)
 		.map_err(|_| Error::resource_exhausted("H.265 RPS delta allocation failed"))?;
 	let mut delta_poc = 0_i32;
@@ -1589,8 +1572,8 @@ fn validate_sub_layers(value: u32) -> Result<()> {
 mod tests {
 	use super::{
 		BitReader, H265_DEFAULT_SCALING_LIST_INTER, H265_DEFAULT_SCALING_LIST_INTRA,
-		H265_DIAGONAL_SCAN_4X4_X, H265_DIAGONAL_SCAN_4X4_Y, parse_h265_hrd,
-		parse_h265_scaling_lists, parse_short_term_reference_picture_set,
+		H265_DIAGONAL_SCAN_4X4_X, H265_DIAGONAL_SCAN_4X4_Y, parse_h265_hrd, parse_h265_scaling_lists,
+		parse_short_term_reference_picture_set,
 	};
 
 	#[test]

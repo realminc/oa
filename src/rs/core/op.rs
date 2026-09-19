@@ -2,6 +2,21 @@
 
 use bitflags::bitflags;
 
+// ─── BufferAccess ────────────────────────────────────────────────────────────
+
+/// Read/write access qualifier for a buffer binding.
+///
+/// Port provenance: `oa::BufferAccess` in `oa/core/bufferAccess.h`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BufferAccess {
+	/// Buffer is read-only at this binding site.
+	Read,
+	/// Buffer is write-only at this binding site.
+	Write,
+	/// Buffer is both read and written at this binding site.
+	ReadWrite,
+}
+
 /// Semantic kind of one operation value.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -435,28 +450,32 @@ impl OperationContract {
 	}
 
 	pub(crate) fn accepts_input_count(self, count: usize) -> bool {
-		self.variadic_input
+		self
+			.variadic_input
 			.map_or(count == self.input_kinds.len(), |(_, minimum)| {
 				count >= self.input_kinds.len().saturating_add(minimum)
 			})
 	}
 
 	pub(crate) fn accepts_output_count(self, count: usize) -> bool {
-		self.variadic_output
+		self
+			.variadic_output
 			.map_or(count == self.output_kinds.len(), |(_, minimum)| {
 				count >= self.output_kinds.len().saturating_add(minimum)
 			})
 	}
 
 	pub(crate) fn input_kind(self, index: usize) -> Option<OpValueKind> {
-		self.input_kinds
+		self
+			.input_kinds
 			.get(index)
 			.copied()
 			.or_else(|| self.variadic_input.map(|(kind, _)| kind))
 	}
 
 	pub(crate) fn output_kind(self, index: usize) -> Option<OpValueKind> {
-		self.output_kinds
+		self
+			.output_kinds
 			.get(index)
 			.copied()
 			.or_else(|| self.variadic_output.map(|(kind, _)| kind))
@@ -484,11 +503,7 @@ impl OperationContract {
 		})
 	}
 
-	pub(crate) fn variadic_alias_counts_match(
-		self,
-		input_count: usize,
-		output_count: usize,
-	) -> bool {
+	pub(crate) fn variadic_alias_counts_match(self, input_count: usize, output_count: usize) -> bool {
 		!self.aligned_variadic_aliases
 			|| input_count.saturating_sub(self.input_kinds.len())
 				== output_count.saturating_sub(self.output_kinds.len())
@@ -542,7 +557,8 @@ impl OperationContract {
 					.iter()
 					.take(self.output_kinds.len())
 					.filter(|alias| alias.is_some_and(|alias| usize::from(alias) == input))
-					.count() != 1
+					.count()
+					!= 1
 			{
 				return false;
 			}

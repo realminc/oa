@@ -125,9 +125,7 @@ impl<'engine, 'hooks> ItRolloutTraining<'engine, 'hooks> {
 	/// Returns an error outside the idle Collect phase, for mismatched geometry,
 	/// or when device-side validity reset cannot be recorded.
 	pub fn begin_rollout(&mut self, rollout: &mut RolloutBuffer) -> Result<()> {
-		if self.phase != RolloutTrainingPhase::Collect
-			|| self.rollout_open
-			|| self.update_body_pending
+		if self.phase != RolloutTrainingPhase::Collect || self.rollout_open || self.update_body_pending
 		{
 			return Err(Error::failed_precondition(
 				"begin_rollout requires an idle Collect phase",
@@ -152,11 +150,7 @@ impl<'engine, 'hooks> ItRolloutTraining<'engine, 'hooks> {
 	///
 	/// Returns an error for the wrong phase/buffer, incomplete collection, or
 	/// GAE recording failure.
-	pub fn finalize_rollout(
-		&mut self,
-		rollout: &mut RolloutBuffer,
-		config: GaeConfig,
-	) -> Result<()> {
+	pub fn finalize_rollout(&mut self, rollout: &mut RolloutBuffer, config: GaeConfig) -> Result<()> {
 		if self.phase != RolloutTrainingPhase::Collect
 			|| !self.rollout_open
 			|| self.update_body_pending
@@ -184,9 +178,8 @@ impl<'engine, 'hooks> ItRolloutTraining<'engine, 'hooks> {
 	/// Returns an error for another buffer or after any update began.
 	pub fn abort_rollout(&mut self, rollout: &mut RolloutBuffer) -> Result<()> {
 		let open = self.phase == RolloutTrainingPhase::Collect && self.rollout_open;
-		let finalized = self.phase == RolloutTrainingPhase::Update
-			&& !self.rollout_open
-			&& self.update_epoch == 0;
+		let finalized =
+			self.phase == RolloutTrainingPhase::Update && !self.rollout_open && self.update_epoch == 0;
 		if (!open && !finalized) || self.update_body_pending || !self.active_is(rollout) {
 			return Err(Error::failed_precondition(
 				"abort_rollout requires an unsubmitted collection before its first update",
@@ -318,7 +311,8 @@ impl<'engine, 'hooks> ItRolloutTraining<'engine, 'hooks> {
 	}
 
 	fn active_is(&self, rollout: &RolloutBuffer) -> bool {
-		self.active_rollout
+		self
+			.active_rollout
 			.is_some_and(|active| std::ptr::eq(active, std::ptr::from_ref(rollout)))
 	}
 }

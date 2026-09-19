@@ -39,7 +39,8 @@ fn h265_parameter_sets_match_donor_stream_geometry() -> oa::Result<()> {
 		.expect("H.265 fixture must contain a first packet");
 	let nals = parse_nal_annex_b(packet.data());
 	let find = |nal_type| {
-		nals.iter()
+		nals
+			.iter()
 			.find(|nal| (nal.payload()[0] >> 1) & 0x3f == nal_type)
 			.map(|nal| nal.payload())
 			.expect("demuxed keyframe must include the parameter set")
@@ -50,7 +51,8 @@ fn h265_parameter_sets_match_donor_stream_geometry() -> oa::Result<()> {
 	assert_eq!(vps.profile_tier_level.profile_idc, 1);
 	assert_eq!(vps.profile_tier_level.level_idc, 93);
 	assert_eq!(
-		vps.decoded_picture_buffer
+		vps
+			.decoded_picture_buffer
 			.max_decoded_picture_buffering_minus_1[0],
 		4
 	);

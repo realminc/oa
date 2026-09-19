@@ -28,10 +28,8 @@ fn cpu_attention(
 				for key in 0..=query {
 					let mut score = 0.0_f64;
 					for feature in 0..head_width {
-						let q_index =
-							(batch * sequence + query) * width + head * head_width + feature;
-						let k_index =
-							(batch * sequence + key) * width + head * head_width + feature;
+						let q_index = (batch * sequence + query) * width + head * head_width + feature;
+						let k_index = (batch * sequence + key) * width + head * head_width + feature;
 						score += f64::from(q[q_index]) * f64::from(k[k_index]);
 					}
 					scores.push(score * scale);
@@ -151,9 +149,8 @@ test_vk!(
 		let q_matrix = q_embedding.forward(&indices)?;
 		let k_matrix = k_embedding.forward(&indices)?;
 		let v_matrix = v_embedding.forward(&indices)?;
-		let context = oa::ml::matrix::scaled_dot_product_attention_causal(
-			&q_matrix, &k_matrix, &v_matrix, S, H,
-		)?;
+		let context =
+			oa::ml::matrix::scaled_dot_product_attention_causal(&q_matrix, &k_matrix, &v_matrix, S, H)?;
 		assert_close(
 			&context.read_f32()?,
 			&cpu_attention(&q, &k, &v, S, D, H),
@@ -294,11 +291,8 @@ test_vk!(
 		);
 
 		let indices = oa::Matrix::from_slice(&engine, [7], &[0_u32, 1, 2, 3, 4, 5, 6])?;
-		let gate_embedding = oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(
-			&engine,
-			[7, 1],
-			&gate_values,
-		)?)?;
+		let gate_embedding =
+			oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [7, 1], &gate_values)?)?;
 		let up_embedding =
 			oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [7, 1], &up_values)?)?;
 		let linear_weight = [0.4_f32, -0.6];
@@ -316,8 +310,7 @@ test_vk!(
 				2,
 			)
 		};
-		let expected_gate =
-			numerical_gradient(&gate_values, |values| host_loss(values, &up_values));
+		let expected_gate = numerical_gradient(&gate_values, |values| host_loss(values, &up_values));
 		let expected_up = numerical_gradient(&up_values, |values| host_loss(&gate_values, values));
 		let linear = oa::ml::nn::Linear::from_matrices(
 			oa::Matrix::from_f32(&engine, [2, 1], &linear_weight)?,

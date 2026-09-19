@@ -76,8 +76,7 @@ impl CommandPool {
 	}
 
 	pub(super) fn record_empty(&mut self, device: &ash::Device) -> Result<RecordedCommandBuffer> {
-		let command_buffer =
-			self.begin(device, ash::vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT)?;
+		let command_buffer = self.begin(device, ash::vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT)?;
 		self.finish(device, command_buffer, Vec::new(), Vec::new(), None, None)
 	}
 
@@ -86,8 +85,7 @@ impl CommandPool {
 		device: &ash::Device,
 		record: impl FnOnce(ash::vk::CommandBuffer) -> Result<()>,
 	) -> Result<RecordedCommandBuffer> {
-		let command_buffer =
-			self.begin(device, ash::vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT)?;
+		let command_buffer = self.begin(device, ash::vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT)?;
 		if let Err(error) = record(command_buffer) {
 			// SAFETY: recording failed before submission and this pool exclusively owns
 			// the command buffer, which may be freed from the recording state.
@@ -162,17 +160,13 @@ impl CommandPool {
 			.command_buffer_count(1);
 		// SAFETY: this pool belongs to `device`; the request count is one and the pool
 		// remains live until the returned command buffer is explicitly retired.
-		let command_buffers =
-			unsafe { device.allocate_command_buffers(&allocate_info) }.map_err(|source| {
-				Error::backend_failure("Vulkan", "command-buffer allocation", source)
-			})?;
+		let command_buffers = unsafe { device.allocate_command_buffers(&allocate_info) }
+			.map_err(|source| Error::backend_failure("Vulkan", "command-buffer allocation", source))?;
 		let Some(command_buffer) = command_buffers.first().copied() else {
 			return Err(Error::backend_failure(
 				"Vulkan",
 				"command-buffer allocation",
-				std::io::Error::other(
-					"Vulkan returned no command buffer for a successful allocation",
-				),
+				std::io::Error::other("Vulkan returned no command buffer for a successful allocation"),
 			));
 		};
 

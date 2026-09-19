@@ -207,8 +207,7 @@ impl<T: Float> Vec3<T> {
 
 	pub fn refract(self, normal: Self, eta: T) -> Self {
 		let normal_dot_incident = normal.dot(self);
-		let discriminant =
-			T::ONE - eta * eta * (T::ONE - normal_dot_incident * normal_dot_incident);
+		let discriminant = T::ONE - eta * eta * (T::ONE - normal_dot_incident * normal_dot_incident);
 		if discriminant < T::ZERO {
 			return Self::default();
 		}
@@ -230,10 +229,7 @@ impl<T: Float> Vec3<T> {
 		}
 		let denominator = onto.dot(onto);
 		let squared_tolerance = tolerance * tolerance;
-		if denominator.is_finite()
-			&& squared_tolerance.is_finite()
-			&& denominator > squared_tolerance
-		{
+		if denominator.is_finite() && squared_tolerance.is_finite() && denominator > squared_tolerance {
 			let factor = self.dot(onto) / denominator;
 			let projection = onto * factor;
 			if factor.is_finite() && projection.is_finite() {

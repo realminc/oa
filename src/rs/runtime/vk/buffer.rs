@@ -128,10 +128,7 @@ impl Buffer {
 		}
 	}
 
-	pub(in crate::runtime) fn host_visible_alias_arena(
-		device: &Device,
-		size: usize,
-	) -> Result<Self> {
+	pub(in crate::runtime) fn host_visible_alias_arena(device: &Device, size: usize) -> Result<Self> {
 		if size == 0 {
 			return Err(Error::invalid_argument(
 				"Vulkan alias arenas must be nonempty",
@@ -311,7 +308,8 @@ impl Drop for BufferInner {
 			let mut allocation = allocation;
 			// SAFETY: final Buffer ownership uniquely owns the VMA-created pair.
 			unsafe {
-				self.device
+				self
+					.device
 					.allocator()
 					.destroy_buffer(self.handle, &mut allocation);
 			}
@@ -327,12 +325,14 @@ impl Drop for BufferInner {
 		let Some(mut recycled) = self.device.recycle_storage_buffer(recycled) else {
 			return;
 		};
-		self.device
+		self
+			.device
 			.release_storage_buffer(recycled.descriptor_index);
 		// SAFETY: `Self` uniquely owns this buffer/allocation pair. Its `Device` keeps
 		// the allocator alive throughout this call, and VMA created the pair together.
 		unsafe {
-			self.device
+			self
+				.device
 				.allocator()
 				.destroy_buffer(recycled.handle, &mut recycled.allocation);
 		}

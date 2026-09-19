@@ -757,8 +757,7 @@ fn validate_neighborhood(size: u32, operation: &str) -> Result<()> {
 }
 
 fn image_extent(input: &Image, operation: &str) -> Result<(u32, u32, u32, u32)> {
-	if input.dtype() != DType::F32
-		|| !matches!(input.layout(), ImageLayout::Nchw | ImageLayout::Chw)
+	if input.dtype() != DType::F32 || !matches!(input.layout(), ImageLayout::Nchw | ImageLayout::Chw)
 	{
 		return Err(Error::invalid_argument(format!(
 			"{operation} requires an FP32 NCHW or CHW image"

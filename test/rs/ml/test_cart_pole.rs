@@ -22,8 +22,7 @@ fn step_cpu(state: &[f32], action: i32, episode_steps: u32, config: CartPoleConf
 	let pole_mass_length = config.pole_mass * config.half_pole_length;
 	let cosine = angle.cos();
 	let sine = angle.sin();
-	let temporary =
-		(force + pole_mass_length * angle_velocity * angle_velocity * sine) / total_mass;
+	let temporary = (force + pole_mass_length * angle_velocity * angle_velocity * sine) / total_mass;
 	let angle_acceleration = (config.gravity * sine - cosine * temporary)
 		/ (config.half_pole_length * (4.0 / 3.0 - config.pole_mass * cosine * cosine / total_mass));
 	let x_acceleration = temporary - pole_mass_length * angle_acceleration * cosine / total_mass;

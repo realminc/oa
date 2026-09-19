@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "oapython"
-version = "0.8.1"
+version = "0.8.2"
 description = "OA — Rust cross-vendor Vulkan GPU compute, ML, image, audio, and crypto"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -26,7 +26,7 @@ Issues = "https://github.com/realminc/oa/issues"
 
 [tool.maturin]
 module-name = "oa._native"
-python-source = "python"
+python-source = "binding"
 features = ["pyo3/extension-module"]
 compatibility = "manylinux_2_17"
 exclude = ["**/__pycache__/**", "**/*.pyc"]

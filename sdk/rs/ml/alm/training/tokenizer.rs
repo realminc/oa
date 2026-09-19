@@ -435,9 +435,7 @@ fn validate_training_config<T: AsRef<[f32]>>(
 	let provisional_total = config
 		.epochs
 		.checked_mul(provisional_steps)
-		.ok_or_else(|| {
-			Error::resource_exhausted("ALM tokenizer provisional total steps exceed u64")
-		})?;
+		.ok_or_else(|| Error::resource_exhausted("ALM tokenizer provisional total steps exceed u64"))?;
 	if config.warmup_steps >= provisional_total {
 		return Err(Error::invalid_argument(
 			"ALM tokenizer warmup must be shorter than the training run",

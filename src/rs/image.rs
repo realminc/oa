@@ -11,8 +11,7 @@ mod geometric;
 mod pixel;
 
 pub use codec::{
-	ImageCodec, can_decode, can_encode, decode_file, decode_memory, encode, save_file,
-	save_rgba_file,
+	ImageCodec, can_decode, can_encode, decode_file, decode_memory, encode, save_file, save_rgba_file,
 };
 pub use color::{
 	NormalizationParams, convert_color, normalize, resize_normalize, segmentation_overlay,
@@ -26,8 +25,8 @@ pub use filter::{
 };
 
 pub use geometric::{
-	BorderMode, InterpolationMode, center_crop, crop, flip, pad, remap, resize, rotate,
-	warp_affine, warp_perspective,
+	BorderMode, InterpolationMode, center_crop, crop, flip, pad, remap, resize, rotate, warp_affine,
+	warp_perspective,
 };
 pub use pixel::{
 	alpha_blend, brightness_contrast, channel_reorder, clamp, color_twist, composite, erase,

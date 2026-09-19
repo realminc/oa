@@ -105,10 +105,8 @@ test_vk!(
 			identity.clone(),
 			oa::Matrix::from_f32(&engine, [2], &[0.0; 2])?,
 		)?;
-		let noise = oa::ml::nn::Linear::from_matrices(
-			identity,
-			oa::Matrix::from_f32(&engine, [2], &[0.0; 2])?,
-		)?;
+		let noise =
+			oa::ml::nn::Linear::from_matrices(identity, oa::Matrix::from_f32(&engine, [2], &[0.0; 2])?)?;
 		let time = oa::Matrix::from_f32(&engine, [1], &[0.25])?;
 		let tape = oa::ml::GradientTape::new();
 		let matched =
@@ -234,17 +232,13 @@ test_vk!(
 			&engine,
 			[2, 2, 4],
 			&[
-				1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, -1.0, -2.0, -3.0, -4.0, -5.0, -6.0, -7.0,
-				-8.0,
+				1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, -1.0, -2.0, -3.0, -4.0, -5.0, -6.0, -7.0, -8.0,
 			],
 		)?;
 		let condition = oa::Matrix::from_f32(&engine, [2, 4], &[0.5; 8])?;
 		for moe in [false, true] {
-			let model = oa::ml::nn::FlowTransformer::with_seed(
-				&engine,
-				transformer_config(moe),
-				0x464c_4f57,
-			)?;
+			let model =
+				oa::ml::nn::FlowTransformer::with_seed(&engine, transformer_config(moe), 0x464c_4f57)?;
 			assert_eq!(model.is_moe(), moe);
 			assert_eq!(model.num_layers(), 1);
 			assert_eq!(
@@ -310,8 +304,7 @@ test_vk!(
 				&[0.1, 0.2, 0.3, 0.4, -0.1, -0.2, -0.3, -0.4],
 			)?;
 			let time = oa::Matrix::from_f32(&engine, [2, 1], &[0.25, 0.75])?;
-			let condition =
-				oa::Matrix::from_f32(&engine, [2, 3], &[1.0, 0.0, -1.0, 0.5, 0.25, -0.5])?;
+			let condition = oa::Matrix::from_f32(&engine, [2, 3], &[1.0, 0.0, -1.0, 0.5, 0.25, -0.5])?;
 
 			let tape = oa::ml::GradientTape::new();
 			let output = model.forward_conditioned(&sample, &time, Some(&condition), None)?;
@@ -333,8 +326,7 @@ test_vk!(
 
 			model.eval();
 			let zero_condition = oa::Matrix::from_f32(&engine, [2, 3], &[0.0; 6])?;
-			let unconditional =
-				model.forward_conditioned(&sample, &time, Some(&zero_condition), None)?;
+			let unconditional = model.forward_conditioned(&sample, &time, Some(&zero_condition), None)?;
 			let conditional = model.forward_conditioned(&sample, &time, Some(&condition), None)?;
 			let guidance_zero = model.forward_guided(&sample, &time, &condition, 0.0, None)?;
 			let guidance_one = model.forward_guided(&sample, &time, &condition, 1.0, None)?;

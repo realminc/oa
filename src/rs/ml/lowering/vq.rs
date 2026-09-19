@@ -100,9 +100,9 @@ pub(in crate::ml) fn lookup(codebook: &Matrix, indices: &Matrix) -> Result<Matri
 			"{operation} requires same-engine F32 codebook [K,D] and I32 indices [N]"
 		)));
 	}
-	let output_count = index_count.checked_mul(*code_dim).ok_or_else(|| {
-		Error::invalid_argument(format!("{operation} output size overflows usize"))
-	})?;
+	let output_count = index_count
+		.checked_mul(*code_dim)
+		.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))?;
 	let index_count_u32 = shader_u32(*index_count, "index count", operation)?;
 	let num_codes_u32 = shader_u32(*num_codes, "code count", operation)?;
 	let code_dim_u32 = shader_u32(*code_dim, "code dimension", operation)?;

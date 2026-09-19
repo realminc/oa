@@ -246,9 +246,9 @@ impl MultiHeadAttention {
 		let value = split_heads(&value, batch, sequence_length, self.num_heads)?;
 		let scale = 1.0 / ((self.model_width / self.num_heads) as f32).sqrt();
 		let context = if self.is_training() && self.dropout_probability > 0.0 {
-			let batch_heads = batch.checked_mul(self.num_heads).ok_or_else(|| {
-				Error::invalid_argument("attention batch by head count overflows usize")
-			})?;
+			let batch_heads = batch
+				.checked_mul(self.num_heads)
+				.ok_or_else(|| Error::invalid_argument("attention batch by head count overflows usize"))?;
 			let score_rows = batch_heads
 				.checked_mul(sequence_length)
 				.ok_or_else(|| Error::invalid_argument("attention score rows overflow usize"))?;
@@ -283,9 +283,9 @@ impl MultiHeadAttention {
 		}) {
 			return Ok(mask.value.clone());
 		}
-		let batch_heads = batch.checked_mul(self.num_heads).ok_or_else(|| {
-			Error::invalid_argument("attention batch by head count overflows usize")
-		})?;
+		let batch_heads = batch
+			.checked_mul(self.num_heads)
+			.ok_or_else(|| Error::invalid_argument("attention batch by head count overflows usize"))?;
 		let score_rows = batch_heads
 			.checked_mul(sequence_length)
 			.ok_or_else(|| Error::invalid_argument("attention score rows overflow usize"))?;

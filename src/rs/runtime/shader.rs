@@ -170,7 +170,8 @@ impl ShaderArtifact {
 
 	pub(crate) fn content_id(&self) -> u64 {
 		*self.content_id.get_or_init(|| {
-			self.bytes
+			self
+				.bytes
 				.iter()
 				.fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
 					(hash ^ u64::from(*byte)).wrapping_mul(0x0000_0100_0000_01b3)
@@ -374,9 +375,8 @@ fn reflect_push_constant_size(words: &[u32]) -> Result<u32> {
 	let mut size = 0_u32;
 	for (member, offset) in members.iter().zip(offsets) {
 		let member_size = spirv_type_size(&types, *member)?;
-		let offset = offset.ok_or_else(|| {
-			invalid_artifact("SPIR-V push-constant member is missing its byte offset")
-		})?;
+		let offset = offset
+			.ok_or_else(|| invalid_artifact("SPIR-V push-constant member is missing its byte offset"))?;
 		let end = offset
 			.checked_add(member_size)
 			.ok_or_else(|| invalid_artifact("SPIR-V push-constant size overflows u32"))?;
@@ -509,9 +509,7 @@ mod tests {
 		assert!(reflect_push_constant_size(&[SPIRV_MAGIC, 0, 0, 1, 0]).is_err());
 		assert!(reflect_push_constant_size(&[SPIRV_MAGIC, 0, 0, 2, 0, 0]).is_err());
 		assert!(reflect_shader_requirements(&[SPIRV_MAGIC, 0, 0, 1, 0, 0]).is_err());
-		assert!(
-			reflect_shader_requirements(&[SPIRV_MAGIC, 0, 0, 1, 0, (2 << 16) | 17, 9999]).is_err()
-		);
+		assert!(reflect_shader_requirements(&[SPIRV_MAGIC, 0, 0, 1, 0, (2 << 16) | 17, 9999]).is_err());
 	}
 
 	#[test]

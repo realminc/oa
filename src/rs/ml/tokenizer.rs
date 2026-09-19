@@ -109,9 +109,9 @@ impl BpeTokenizer {
 		pending.extend(tokens.iter().rev().copied());
 		while let Some(token) = pending.pop() {
 			if token < BASE_VOCAB_SIZE as u32 {
-				output.try_reserve(1).map_err(|_| {
-					Error::resource_exhausted("BPE decoded output allocation failed")
-				})?;
+				output
+					.try_reserve(1)
+					.map_err(|_| Error::resource_exhausted("BPE decoded output allocation failed"))?;
 				output.push(token as u8);
 				continue;
 			}
@@ -230,9 +230,9 @@ impl BpeTokenizer {
 		let mut pending = vec![token];
 		while let Some(token) = pending.pop() {
 			if token < BASE_VOCAB_SIZE as u32 {
-				length = length.checked_add(1).ok_or_else(|| {
-					Error::resource_exhausted("BPE token byte length overflows usize")
-				})?;
+				length = length
+					.checked_add(1)
+					.ok_or_else(|| Error::resource_exhausted("BPE token byte length overflows usize"))?;
 				continue;
 			}
 			let Ok(rank) = usize::try_from(token - BASE_VOCAB_SIZE as u32) else {

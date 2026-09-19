@@ -62,7 +62,8 @@ jobs:
 
       - name: Validate generated and Python tooling
         run: |
-          python3 -m unittest discover -s test/py -v
+          python3 -m unittest discover -s test/py/tools -v
+          python3 -m unittest discover -s test/py -p test_inventory.py -v
           python3 tools/gen/fn/generate.py --check
           git diff --check
           git diff --exit-code
@@ -143,7 +144,7 @@ jobs:
             spirv-val --version
           } > "dist/oa-${version}-build-info.txt"
 
-      - name: Build distro packages
+      - name: Build SDK distro packages
         if: github.repository == 'realminc/oa' && startsWith(github.ref, 'refs/tags/v')
         run: |
           set -euo pipefail
@@ -151,10 +152,13 @@ jobs:
           sudo apt-get install -y --no-install-recommends ruby ruby-dev build-essential rpm zstd libarchive-tools
           sudo gem install --no-document fpm
 
-          # Create staging directory for distro packages with /usr structure
-          mkdir -p stage/oa-distro/usr
-          cp -a bin/release/sdk/* stage/oa-distro/usr/
-          cp README.md LICENSE NOTICE.md stage/oa-distro/usr/
+          # Rust has no stable native ABI. Package the runnable SDK programs under
+          # their truthful name; do not publish the internal Rust library as a
+          # system runtime .so.
+          mkdir -p stage/oa-sdk-distro/usr
+          cp -a bin/release/sdk/* stage/oa-sdk-distro/usr/
+          mkdir -p stage/oa-sdk-distro/usr/share/doc/oa-sdk
+          cp README.md LICENSE NOTICE.md stage/oa-sdk-distro/usr/share/doc/oa-sdk/
 
           MAINT="Empyrealm <realminc.depravity737@passinbox.com>"
           URL="https://github.com/realminc/oa"; LIC="BUSL-1.1"
@@ -165,10 +169,10 @@ jobs:
               --license "$LIC" --maintainer "$MAINT" --url "$URL" --description "$desc" \
               "${deps[@]}" -C "$root" -p dist/ usr
           }
-          # runtime (oa): the Vulkan loader dependency name differs per distro.
-          pkg deb    oa     stage/oa-distro     "OA — Vulkan 1.4 compute & ML runtime library and SDK" libvulkan1
-          pkg rpm    oa     stage/oa-distro     "OA — Vulkan 1.4 compute & ML runtime library and SDK" vulkan-loader
-          pkg pacman oa     stage/oa-distro     "OA — Vulkan 1.4 compute & ML runtime library and SDK" vulkan-icd-loader
+          # The Vulkan loader dependency name differs per distro.
+          pkg deb    oa-sdk stage/oa-sdk-distro "OA runnable Rust SDK programs" libvulkan1
+          pkg rpm    oa-sdk stage/oa-sdk-distro "OA runnable Rust SDK programs" vulkan-loader
+          pkg pacman oa-sdk stage/oa-sdk-distro "OA runnable Rust SDK programs" vulkan-icd-loader
 
           ( cd dist && sha256sum *.tar.gz *.deb *.rpm *.pkg.tar.zst > SHA256SUMS.txt )
           echo "### 📦 Distro packages" >> "$GITHUB_STEP_SUMMARY"
@@ -190,7 +194,7 @@ jobs:
 
   wheel:
     name: Build and test portable Python wheel
-    if: github.repository == 'realminc/oa' && startsWith(github.ref, 'refs/tags/v')
+    if: github.repository == 'realminc/oa' && (github.event_name == 'pull_request' || startsWith(github.ref, 'refs/tags/v'))
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -204,6 +208,7 @@ jobs:
           python-version: "3.12"
 
       - name: Verify release identity
+        if: startsWith(github.ref, 'refs/tags/v')
         run: |
           set -euo pipefail
           TAG_VERSION="${GITHUB_REF_NAME#v}"
@@ -240,12 +245,13 @@ jobs:
           rustup override set "$RUSTUP_TOOLCHAIN"
           python -m pip install --upgrade pip
           python -m pip install maturin patchelf ziglang
+          python-zig version
 
       - name: Build portable ABI3 wheel
         working-directory: sdk/py
-        run: python -m maturin build --release --zig --locked
+        run: ZIG_COMMAND=python-zig python -m maturin build --release --zig --locked --compatibility manylinux_2_38
 
-      - name: Smoke-test complete installed wheel
+      - name: Test complete installed wheel
         run: |
           python -m venv "$RUNNER_TEMP/oa-wheel-smoke"
           "$RUNNER_TEMP/oa-wheel-smoke/bin/pip" install target/wheels/oapython-*.whl
@@ -260,6 +266,8 @@ jobs:
           assert oa.audio.Audio is oa.Audio
           assert oa.image.Image is oa.Image
           PY
+          "$RUNNER_TEMP/oa-wheel-smoke/bin/python" -m unittest discover \
+            -s "$GITHUB_WORKSPACE/test/py" -v
           unzip -l "$GITHUB_WORKSPACE"/target/wheels/oapython-*.whl > wheel-files.txt
           grep -q 'oa/_native.abi3.so' wheel-files.txt
           grep -q 'oa/_native.pyi' wheel-files.txt
@@ -389,7 +397,7 @@ jobs:
             ## OA ${{ github.ref_name }} — Rust development preview
 
             This prerelease publishes the exact tagged OA source together with the
-            automated Rust runtime and SDK packages. When the independent wheel job
+            automated Rust source and SDK packages. When the independent wheel job
             succeeds, it attaches and publishes the matching `oapython` wheel.
 
             ⚠️ **Preview, not a stable API.** Read the README's honest preview
@@ -418,7 +426,7 @@ jobs:
             dist/*.rpm
             dist/*.pkg.tar.zst
             dist/*.whl
-            dist/SHA256SUMS.txt
+            dist/*.txt
 
       - name: Publish and anonymously verify complete checksum manifest
         env:
@@ -446,7 +454,7 @@ jobs:
           release_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}"
           curl -fsSL --retry 5 --retry-delay 2 \
             -H 'Cache-Control: no-cache' \
-            "${release_url}/sHA256SUMS.txt?run=${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            "${release_url}/SHA256SUMS.txt?run=${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
             -o public-assets/SHA256SUMS.txt
           cmp release-assets/SHA256SUMS.txt public-assets/SHA256SUMS.txt
           (

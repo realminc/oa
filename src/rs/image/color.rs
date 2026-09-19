@@ -26,15 +26,13 @@ impl Default for NormalizationParams {
 
 /// Apply `(pixel - mean[channel]) / std[channel]` to up to three channels.
 pub fn normalize(input: &Image, parameters: NormalizationParams) -> Result<Image> {
-	if input.dtype() != DType::F32
-		|| !matches!(input.layout(), ImageLayout::Nchw | ImageLayout::Chw)
+	if input.dtype() != DType::F32 || !matches!(input.layout(), ImageLayout::Nchw | ImageLayout::Chw)
 	{
 		return Err(Error::invalid_argument(
 			"image::normalize requires an FP32 NCHW or CHW image",
 		));
 	}
-	if input.channels() > 3 || input.batch_size() == 0 || input.height() == 0 || input.width() == 0
-	{
+	if input.channels() > 3 || input.batch_size() == 0 || input.height() == 0 || input.width() == 0 {
 		return Err(Error::invalid_argument(
 			"image::normalize requires a nonempty image with at most three channels",
 		));

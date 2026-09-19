@@ -141,8 +141,7 @@ impl BatchNorm2d {
 		let (bias_value, bias_version, bias_requires_grad) = self.bias.snapshot();
 		let training = self.is_training();
 		let (output, mean, variance) = if training {
-			let result =
-				matrix::batch_norm_2d_forward(input, &weight_value, &bias_value, self.epsilon)?;
+			let result = matrix::batch_norm_2d_forward(input, &weight_value, &bias_value, self.epsilon)?;
 			let running_mean = self.running_mean.data();
 			let running_variance = self.running_variance.data();
 			let (updated_mean, updated_variance) = matrix::batch_norm_2d_running_update(

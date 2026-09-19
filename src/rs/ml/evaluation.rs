@@ -177,9 +177,9 @@ fn summarize(
 				minimum = minimum.min(*lane_return);
 				maximum = maximum.max(*lane_return);
 				*lane_return = 0.0;
-				completed = completed.checked_add(1).ok_or_else(|| {
-					Error::resource_exhausted("completed episode count exhausted")
-				})?;
+				completed = completed
+					.checked_add(1)
+					.ok_or_else(|| Error::resource_exhausted("completed episode count exhausted"))?;
 			}
 		}
 	}

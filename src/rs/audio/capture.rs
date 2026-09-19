@@ -104,14 +104,13 @@ impl AudioCapture {
 		});
 
 		let host = cpal::default_host();
-		let device = host.default_input_device().ok_or_else(|| {
-			Error::no_suitable_device("AudioCapture found no default input device")
-		})?;
+		let device = host
+			.default_input_device()
+			.ok_or_else(|| Error::no_suitable_device("AudioCapture found no default input device"))?;
 		let ranges = device
 			.supported_input_configs()
 			.map_err(|error| cpal_error("input configuration query", error))?;
-		let stream_config =
-			select_config(ranges, config.sample_rate, config.channel_count, "input")?;
+		let stream_config = select_config(ranges, config.sample_rate, config.channel_count, "input")?;
 		let sample_format = stream_config.sample_format();
 		let callback_shared = Arc::clone(&shared);
 		let error_shared = Arc::clone(&shared);
@@ -216,9 +215,8 @@ impl AudioCapture {
 			channel_count: self.config.channel_count,
 			frame_count,
 			first_frame_index: first.index,
-			presentation_timestamp_us: epoch.saturating_add(
-				first.index.saturating_mul(1_000_000) / u64::from(self.config.sample_rate),
-			),
+			presentation_timestamp_us: epoch
+				.saturating_add(first.index.saturating_mul(1_000_000) / u64::from(self.config.sample_rate)),
 		})
 	}
 
@@ -263,7 +261,8 @@ impl Drop for AudioCapture {
 impl CaptureService {
 	fn close(self, was_started: bool) -> Result<()> {
 		if was_started {
-			self.stream
+			self
+				.stream
 				.pause()
 				.map_err(|error| cpal_error("capture stream stop", error))?;
 		}
@@ -302,16 +301,12 @@ fn capture_callback(
 	match input.sample_format() {
 		SampleFormat::I8 => capture_input::<i8>(shared, producer, input, sample_rate, channels),
 		SampleFormat::I16 => capture_input::<i16>(shared, producer, input, sample_rate, channels),
-		SampleFormat::I24 => {
-			capture_input::<cpal::I24>(shared, producer, input, sample_rate, channels)
-		}
+		SampleFormat::I24 => capture_input::<cpal::I24>(shared, producer, input, sample_rate, channels),
 		SampleFormat::I32 => capture_input::<i32>(shared, producer, input, sample_rate, channels),
 		SampleFormat::I64 => capture_input::<i64>(shared, producer, input, sample_rate, channels),
 		SampleFormat::U8 => capture_input::<u8>(shared, producer, input, sample_rate, channels),
 		SampleFormat::U16 => capture_input::<u16>(shared, producer, input, sample_rate, channels),
-		SampleFormat::U24 => {
-			capture_input::<cpal::U24>(shared, producer, input, sample_rate, channels)
-		}
+		SampleFormat::U24 => capture_input::<cpal::U24>(shared, producer, input, sample_rate, channels),
 		SampleFormat::U32 => capture_input::<u32>(shared, producer, input, sample_rate, channels),
 		SampleFormat::U64 => capture_input::<u64>(shared, producer, input, sample_rate, channels),
 		SampleFormat::F32 => capture_input::<f32>(shared, producer, input, sample_rate, channels),

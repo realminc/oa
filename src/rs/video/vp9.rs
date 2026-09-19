@@ -330,9 +330,9 @@ mod tests {
 		let mut existing = 0_usize;
 		let mut packet_index = 0_usize;
 		while let Some(packet) = demuxer.read_next_packet()? {
-			let pictures = parser.parse_access_unit(packet.data()).map_err(|source| {
-				Error::data_loss(format!("VP9 donor packet {packet_index}: {source}"))
-			})?;
+			let pictures = parser
+				.parse_access_unit(packet.data())
+				.map_err(|source| Error::data_loss(format!("VP9 donor packet {packet_index}: {source}")))?;
 			for picture in pictures {
 				assert_eq!(picture.profile, 0);
 				assert_eq!((picture.frame_width, picture.frame_height), (1280, 720));
@@ -398,8 +398,8 @@ impl<'a> BitReader<'a> {
 		if count > 32 {
 			return Err(Error::internal("VP9 bit reader request exceeds 32 bits"));
 		}
-		let count = usize::try_from(count)
-			.map_err(|_| Error::out_of_range("VP9 bit count exceeds usize"))?;
+		let count =
+			usize::try_from(count).map_err(|_| Error::out_of_range("VP9 bit count exceeds usize"))?;
 		let end = self
 			.bit_offset
 			.checked_add(count)
@@ -810,8 +810,7 @@ impl Vp9Parser {
 		let delta_q_uv_dc = read_delta_q(&mut reader)?;
 		let delta_q_uv_ac = read_delta_q(&mut reader)?;
 		let (segmentation_enabled, segmentation) = self.parse_segmentation(&mut reader)?;
-		let (tile_columns_log2, tile_rows_log2) =
-			parse_tile_layout(&mut reader, prefix.frame_width)?;
+		let (tile_columns_log2, tile_rows_log2) = parse_tile_layout(&mut reader, prefix.frame_width)?;
 		let compressed_header_size = reader.bits(16, "compressed-header size")?;
 		let compressed_header_offset = to_u32(reader.consumed_bytes())?;
 		let tiles_offset = compressed_header_offset
@@ -951,8 +950,7 @@ impl Vp9Parser {
 				&mut reference_frame_indices,
 				&mut reference_frame_sign_bias_mask,
 			)?;
-			allow_high_precision_motion_vectors =
-				reader.bit("high-precision motion-vector flag")?;
+			allow_high_precision_motion_vectors = reader.bit("high-precision motion-vector flag")?;
 			interpolation_filter = parse_interpolation_filter(reader)?;
 		}
 		Ok(FramePrefix {
@@ -1025,8 +1023,7 @@ impl Vp9Parser {
 				for index in 0..2 {
 					if reader.bit("loop-filter mode-delta update flag")? {
 						update_mode_delta |= 1 << index;
-						self.loop_filter_mode_deltas[index] =
-							read_signed(reader, 6, "loop-filter mode delta")?;
+						self.loop_filter_mode_deltas[index] = read_signed(reader, 6, "loop-filter mode delta")?;
 					}
 				}
 			}
@@ -1043,10 +1040,7 @@ impl Vp9Parser {
 		})
 	}
 
-	fn parse_segmentation(
-		&mut self,
-		reader: &mut BitReader<'_>,
-	) -> Result<(bool, Vp9Segmentation)> {
+	fn parse_segmentation(&mut self, reader: &mut BitReader<'_>) -> Result<(bool, Vp9Segmentation)> {
 		let enabled = reader.bit("segmentation-enabled flag")?;
 		let mut segmentation = Vp9Segmentation {
 			feature_enabled: self.segmentation_feature_enabled,
@@ -1062,8 +1056,7 @@ impl Vp9Parser {
 		}
 		segmentation.update_data = reader.bit("segmentation data-update flag")?;
 		if segmentation.update_data {
-			segmentation.absolute_or_delta_update =
-				reader.bit("segmentation absolute-value flag")?;
+			segmentation.absolute_or_delta_update = reader.bit("segmentation absolute-value flag")?;
 			parse_segmentation_features(reader, &mut segmentation)?;
 			self.segmentation_feature_enabled = segmentation.feature_enabled;
 			self.segmentation_feature_data = segmentation.feature_data;

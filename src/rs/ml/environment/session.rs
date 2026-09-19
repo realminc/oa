@@ -64,9 +64,10 @@ impl EnvironmentExecution {
 	}
 
 	fn wait(&mut self, event: &Event) -> Result<()> {
-		let pending = self.pending.as_ref().ok_or_else(|| {
-			Error::failed_precondition("environment wait requires a submitted event")
-		})?;
+		let pending = self
+			.pending
+			.as_ref()
+			.ok_or_else(|| Error::failed_precondition("environment wait requires a submitted event"))?;
 		if !pending.same_as(event) {
 			return Err(Error::invalid_argument(
 				"environment wait event does not match its pending submission",
@@ -220,9 +221,9 @@ pub trait Environment {
 				return Err(error);
 			}
 		};
-		if let Err(error) =
-			self.spec()
-				.validate_transition(action, &transition, self.environments())
+		if let Err(error) = self
+			.spec()
+			.validate_transition(action, &transition, self.environments())
 		{
 			let _ = self.execution_mut().cancel();
 			self.rollback_recorded_state();

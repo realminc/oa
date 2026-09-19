@@ -121,12 +121,7 @@ impl VideoDecoderBackend {
 			.state
 			.borrow()
 			.device
-			.create_video_decode_session(
-				profile,
-				coded_extent,
-				max_dpb_slots,
-				max_active_references,
-			)?;
+			.create_video_decode_session(profile, coded_extent, max_dpb_slots, max_active_references)?;
 		Ok(Self {
 			engine: engine.handle.clone(),
 			session,
@@ -342,14 +337,13 @@ impl VideoDecoderBackend {
 		frame: &crate::video::Av1FrameHeader,
 	) -> Result<Vec<u8>> {
 		let slot = self.session.resolve_av1_show_existing_slot(frame)?;
-		let index = usize::try_from(slot)
-			.map_err(|_| Error::internal("AV1 show-existing slot exceeds usize"))?;
-		self.av1_host_frames
+		let index =
+			usize::try_from(slot).map_err(|_| Error::internal("AV1 show-existing slot exceeds usize"))?;
+		self
+			.av1_host_frames
 			.get(index)
 			.and_then(Clone::clone)
-			.ok_or_else(|| {
-				Error::failed_precondition("AV1 show-existing host frame is unavailable")
-			})
+			.ok_or_else(|| Error::failed_precondition("AV1 show-existing host frame is unavailable"))
 	}
 
 	pub(crate) fn show_existing_av1_native(
@@ -357,15 +351,13 @@ impl VideoDecoderBackend {
 		frame: &crate::video::Av1FrameHeader,
 	) -> Result<crate::runtime::NativeDecodedFrame> {
 		let slot = self.session.resolve_av1_show_existing_slot(frame)?;
-		let index = usize::try_from(slot)
-			.map_err(|_| Error::internal("AV1 show-existing slot exceeds usize"))?;
+		let index =
+			usize::try_from(slot).map_err(|_| Error::internal("AV1 show-existing slot exceeds usize"))?;
 		let ready = self
 			.av1_ready
 			.get(index)
 			.and_then(Clone::clone)
-			.ok_or_else(|| {
-				Error::failed_precondition("AV1 show-existing readiness is unavailable")
-			})?;
+			.ok_or_else(|| Error::failed_precondition("AV1 show-existing readiness is unavailable"))?;
 		self.session.native_frame(slot, ready)
 	}
 
@@ -436,14 +428,13 @@ impl VideoDecoderBackend {
 		picture: &crate::video::Vp9Picture,
 	) -> Result<Vec<u8>> {
 		let slot = self.session.resolve_vp9_show_existing_slot(picture)?;
-		let index = usize::try_from(slot)
-			.map_err(|_| Error::internal("VP9 show-existing slot exceeds usize"))?;
-		self.vp9_host_frames
+		let index =
+			usize::try_from(slot).map_err(|_| Error::internal("VP9 show-existing slot exceeds usize"))?;
+		self
+			.vp9_host_frames
 			.get(index)
 			.and_then(Clone::clone)
-			.ok_or_else(|| {
-				Error::failed_precondition("VP9 show-existing host frame is unavailable")
-			})
+			.ok_or_else(|| Error::failed_precondition("VP9 show-existing host frame is unavailable"))
 	}
 
 	pub(crate) fn show_existing_vp9_native(
@@ -451,15 +442,13 @@ impl VideoDecoderBackend {
 		picture: &crate::video::Vp9Picture,
 	) -> Result<crate::runtime::NativeDecodedFrame> {
 		let slot = self.session.resolve_vp9_show_existing_slot(picture)?;
-		let index = usize::try_from(slot)
-			.map_err(|_| Error::internal("VP9 show-existing slot exceeds usize"))?;
+		let index =
+			usize::try_from(slot).map_err(|_| Error::internal("VP9 show-existing slot exceeds usize"))?;
 		let ready = self
 			.vp9_ready
 			.get(index)
 			.and_then(Clone::clone)
-			.ok_or_else(|| {
-				Error::failed_precondition("VP9 show-existing readiness is unavailable")
-			})?;
+			.ok_or_else(|| Error::failed_precondition("VP9 show-existing readiness is unavailable"))?;
 		self.session.native_frame(slot, ready)
 	}
 
@@ -568,7 +557,8 @@ impl Engine {
 	pub(crate) fn query_video_device_capabilities(
 		&self,
 	) -> Result<crate::video::VideoDeviceCapabilities> {
-		self.handle
+		self
+			.handle
 			.state
 			.borrow()
 			.device
@@ -579,7 +569,8 @@ impl Engine {
 		&self,
 		profile: crate::video::VideoDecodeProfile,
 	) -> Result<crate::video::VideoDecodeCapabilities> {
-		self.handle
+		self
+			.handle
 			.state
 			.borrow()
 			.device
@@ -590,7 +581,8 @@ impl Engine {
 		&self,
 		profile: crate::video::VideoDecodeProfile,
 	) -> Result<crate::video::VideoDecodeFormats> {
-		self.handle
+		self
+			.handle
 			.state
 			.borrow()
 			.device
@@ -601,7 +593,8 @@ impl Engine {
 		&self,
 		profile: crate::video::VideoEncodeProfile,
 	) -> Result<crate::video::VideoEncodeCapabilities> {
-		self.handle
+		self
+			.handle
 			.state
 			.borrow()
 			.device
@@ -612,7 +605,8 @@ impl Engine {
 		&self,
 		profile: crate::video::VideoEncodeProfile,
 	) -> Result<crate::video::VideoEncodeFormats> {
-		self.handle
+		self
+			.handle
 			.state
 			.borrow()
 			.device
@@ -753,12 +747,7 @@ impl Engine {
 	///
 	/// Returns the first retained console or file output failure, or an error if
 	/// the logging session has already been closed.
-	pub fn log(
-		&self,
-		level: LogLevel,
-		component: LogComponent,
-		text: impl AsRef<str>,
-	) -> Result<()> {
+	pub fn log(&self, level: LogLevel, component: LogComponent, text: impl AsRef<str>) -> Result<()> {
 		self.logger.write_text(level, component, text.as_ref())
 	}
 
@@ -868,21 +857,24 @@ impl EngineHandle {
 	}
 
 	pub(crate) fn begin_stable_resource_frame(&self) -> Result<()> {
-		self.state
+		self
+			.state
 			.borrow_mut()
 			.session
 			.begin_stable_resource_frame()
 	}
 
 	pub(crate) fn seal_all_stable_resources_external(&self) -> Result<()> {
-		self.state
+		self
+			.state
 			.borrow_mut()
 			.session
 			.seal_all_stable_resources_external()
 	}
 
 	pub(crate) fn seal_stable_resource_inputs(&self) -> Result<()> {
-		self.state
+		self
+			.state
 			.borrow_mut()
 			.session
 			.seal_stable_resource_inputs()
@@ -906,7 +898,8 @@ impl EngineHandle {
 	}
 
 	pub(super) fn release_stable_transient_resources(&self, retired: &[vk::Buffer]) {
-		self.state
+		self
+			.state
 			.borrow_mut()
 			.session
 			.release_stable_transient_resources(retired);
@@ -1044,7 +1037,8 @@ impl EngineHandle {
 		matrix_value: u64,
 		sequence: u64,
 	) -> Result<Option<(super::SemanticOpId, u64)>> {
-		self.state
+		self
+			.state
 			.borrow_mut()
 			.session
 			.attach_autograd(matrix_value, sequence)
@@ -1061,12 +1055,11 @@ impl EngineHandle {
 		generation: u64,
 		backward_first: usize,
 	) -> Result<()> {
-		self.state.borrow_mut().session.complete_autograd(
-			forward,
-			sequence,
-			generation,
-			backward_first,
-		)
+		self
+			.state
+			.borrow_mut()
+			.session
+			.complete_autograd(forward, sequence, generation, backward_first)
 	}
 
 	pub(crate) fn flush(&self) -> Result<Option<Event>> {
@@ -1176,7 +1169,8 @@ impl Drop for SemanticLoweringScope {
 		if !self.active {
 			return;
 		}
-		self.engine
+		self
+			.engine
 			.state
 			.borrow_mut()
 			.session
@@ -1455,15 +1449,13 @@ mod tests {
 				obu.type_(),
 				crate::video::Av1ObuType::Frame | crate::video::Av1ObuType::FrameHeader
 			) {
-				let frame =
-					crate::video::parse_av1_frame_header(obu.payload(), &sequence, &references)?;
+				let frame = crate::video::parse_av1_frame_header(obu.payload(), &sequence, &references)?;
 				if !frame.show_existing_frame {
 					let tiles = crate::video::parse_av1_tile_group(obu, &frame)?;
 					parsed_frame = Some((
 						frame,
-						u32::try_from(obu.header_offset()).map_err(|_| {
-							crate::Error::out_of_range("AV1 frame-header offset exceeds u32")
-						})?,
+						u32::try_from(obu.header_offset())
+							.map_err(|_| crate::Error::out_of_range("AV1 frame-header offset exceeds u32"))?,
 						tiles,
 					));
 					break;
@@ -1520,7 +1512,8 @@ mod tests {
 			.expect("H.265 fixture must contain a first packet");
 		let nals = crate::video::parse_nal_annex_b(packet.data());
 		let find = |nal_type| {
-			nals.iter()
+			nals
+				.iter()
 				.find(|nal| (nal.payload()[0] >> 1) & 0x3f == nal_type)
 				.map(|nal| nal.payload())
 				.expect("demuxed keyframe must include the requested H.265 parameter set")
@@ -1768,8 +1761,7 @@ mod tests {
 			"first qualification path accepts one coded slice"
 		);
 		let slice = crate::video::parse_h264_slice_header(slice_nal.payload(), &sps, &pps)?;
-		let profile =
-			crate::video::VideoDecodeProfile::h264_420_8bit(crate::video::H264Profile::High);
+		let profile = crate::video::VideoDecodeProfile::h264_420_8bit(crate::video::H264Profile::High);
 		let capabilities = device.video_decode_capabilities(profile)?;
 		let dpb_slots = capabilities.max_dpb_slots().min(4);
 		let active_references = capabilities.max_active_reference_pictures().min(dpb_slots);
@@ -1840,8 +1832,7 @@ mod tests {
 			.expect("initial AVC packet must contain PPS");
 		let sps = crate::video::parse_h264_sps(sps_nal.payload())?;
 		let pps = crate::video::parse_h264_pps(pps_nal.payload(), &sps)?;
-		let profile =
-			crate::video::VideoDecodeProfile::h264_420_8bit(crate::video::H264Profile::High);
+		let profile = crate::video::VideoDecodeProfile::h264_420_8bit(crate::video::H264Profile::High);
 		let capabilities = device.video_decode_capabilities(profile)?;
 		let required_dpb_slots = sps
 			.max_num_ref_frames
@@ -2084,7 +2075,8 @@ mod tests {
 		);
 		assert_eq!(diagnostics.barrier_count(), 3);
 		assert_eq!(
-			plan.captured_resources()
+			plan
+				.captured_resources()
 				.iter()
 				.filter(|resource| resource.alias_materialized())
 				.count(),

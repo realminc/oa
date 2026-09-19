@@ -13,16 +13,12 @@ fn host_forward(
 	for batch_index in 0..batch {
 		for time in 0..sequence {
 			let mean = (0..channels)
-				.map(|channel| {
-					f64::from(input[(batch_index * channels + channel) * sequence + time])
-				})
+				.map(|channel| f64::from(input[(batch_index * channels + channel) * sequence + time]))
 				.sum::<f64>()
 				/ channels as f64;
 			let variance = (0..channels)
 				.map(|channel| {
-					let value =
-						f64::from(input[(batch_index * channels + channel) * sequence + time])
-							- mean;
+					let value = f64::from(input[(batch_index * channels + channel) * sequence + time]) - mean;
 					value * value
 				})
 				.sum::<f64>()

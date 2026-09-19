@@ -77,7 +77,8 @@ test_vk!(ffn_rejects_invalid_configuration_and_input, engine, {
 	let ffn = oa::ml::nn::Ffn::with_seed(&engine, 4, 7, 1.0e-5, 1)?;
 	let input = oa::Matrix::from_f32(&engine, [2, 3], &[1.0; 6])?;
 	assert_eq!(
-		ffn.forward(&input)
+		ffn
+			.forward(&input)
 			.err()
 			.expect("wrong-width FFN input was accepted")
 			.kind(),

@@ -199,8 +199,7 @@ pub fn mamba3_preprocess_backward(
 	output_gradients: &Mamba3PreprocessResult,
 	config: Mamba3PreprocessConfig,
 ) -> Result<Mamba3PreprocessBackward> {
-	let result =
-		dispatch::mamba3_preprocess_backward(projected, dt_bias, output_gradients, config)?;
+	let result = dispatch::mamba3_preprocess_backward(projected, dt_bias, output_gradients, config)?;
 	Ok(Mamba3PreprocessBackward {
 		projected: result.projected,
 		dt_bias: result.dt_bias,
@@ -295,8 +294,7 @@ pub fn mamba3_siso(
 	d: &Matrix,
 	config: SsmConfig,
 ) -> Result<Matrix> {
-	let output =
-		dispatch::mamba3_siso(c, b, x, z, adt, dt, trap, angle, c_bias, b_bias, d, config)?;
+	let output = dispatch::mamba3_siso(c, b, x, z, adt, dt, trap, angle, c_bias, b_bias, d, config)?;
 	autograd::record_mamba3_siso(
 		[c, b, x, z, adt, dt, trap, angle, c_bias, b_bias, d],
 		&output,

@@ -239,34 +239,33 @@ impl Av1Parser {
 					let frame = parse_av1_frame_header(obu.payload(), sequence, &self.references)?;
 					let picture = Av1Picture {
 						sequence: sequence.clone(),
-						frame_header_offset: u32::try_from(obu.header_offset()).map_err(|_| {
-							Error::out_of_range("AV1 frame-header offset exceeds u32")
-						})?,
+						frame_header_offset: u32::try_from(obu.header_offset())
+							.map_err(|_| Error::out_of_range("AV1 frame-header offset exceeds u32"))?,
 						tiles: None,
 						frame,
 					};
 					self.references.refresh(&picture.frame);
 					if picture.frame.show_existing_frame {
-						pictures.try_reserve(1).map_err(|_| {
-							Error::resource_exhausted("AV1 picture allocation failed")
-						})?;
+						pictures
+							.try_reserve(1)
+							.map_err(|_| Error::resource_exhausted("AV1 picture allocation failed"))?;
 						pictures.push(picture);
 					} else if obu.type_() == Av1ObuType::Frame {
 						let mut picture = picture;
 						picture.tiles = Some(parse_av1_tile_group(obu, &picture.frame)?);
 						validate_complete_picture(&picture)?;
-						pictures.try_reserve(1).map_err(|_| {
-							Error::resource_exhausted("AV1 picture allocation failed")
-						})?;
+						pictures
+							.try_reserve(1)
+							.map_err(|_| Error::resource_exhausted("AV1 picture allocation failed"))?;
 						pictures.push(picture);
 					} else {
 						pending = Some(picture);
 					}
 				}
 				Av1ObuType::TileGroup => {
-					let picture = pending.as_mut().ok_or_else(|| {
-						Error::data_loss("AV1 tile group has no preceding frame header")
-					})?;
+					let picture = pending
+						.as_mut()
+						.ok_or_else(|| Error::data_loss("AV1 tile group has no preceding frame header"))?;
 					let group = parse_av1_tile_group(obu, &picture.frame)?;
 					let tiles = picture.tiles.get_or_insert_with(|| Av1TileGroup {
 						first_tile: 0,
@@ -455,8 +454,7 @@ pub fn parse_av1_sequence_header(payload: &[u8]) -> Result<Av1SequenceHeader> {
 				.then(|| reader.bits(4, "operating-point initial display delay"))
 				.transpose()?
 				.map(|value| {
-					u8::try_from(value)
-						.expect("a four-bit AV1 initial display delay always fits in u8")
+					u8::try_from(value).expect("a four-bit AV1 initial display delay always fits in u8")
 				})
 		} else {
 			None
@@ -749,8 +747,8 @@ impl<'a> Av1BitReader<'a> {
 		if count > 32 {
 			return Err(Error::internal("AV1 bit reader request exceeds 32 bits"));
 		}
-		let count = usize::try_from(count)
-			.map_err(|_| Error::out_of_range("AV1 bit count exceeds usize"))?;
+		let count =
+			usize::try_from(count).map_err(|_| Error::out_of_range("AV1 bit count exceeds usize"))?;
 		let end = self
 			.bit_offset
 			.checked_add(count)
@@ -851,7 +849,8 @@ pub fn parse_av1_obus(bytes: &[u8]) -> Result<Vec<Av1Obu<'_>>> {
 		let payload = bytes
 			.get(offset..payload_end)
 			.ok_or_else(|| Error::data_loss("AV1 OBU payload exceeds access unit"))?;
-		obus.try_reserve(1)
+		obus
+			.try_reserve(1)
 			.map_err(|_| Error::resource_exhausted("AV1 OBU inventory allocation failed"))?;
 		obus.push(Av1Obu {
 			type_,

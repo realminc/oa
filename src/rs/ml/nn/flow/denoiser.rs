@@ -218,8 +218,7 @@ impl FlowDenoiser {
 		let tokens = matrix::add(&tokens, &position)?;
 		let mut context = self.time_embedding.forward(time)?;
 		if let (Some(projection), Some(condition)) = (&self.condition_projection, condition) {
-			let condition = if self.is_training() && self.config.condition_dropout_probability > 0.0
-			{
+			let condition = if self.is_training() && self.config.condition_dropout_probability > 0.0 {
 				let seed_column = matrix::slice(condition, 1, 0, 1)?;
 				let ones = matrix::add_scalar(&matrix::scale(&seed_column, 0.0)?, 1.0)?;
 				let keep = matrix::scale(
@@ -249,10 +248,7 @@ impl FlowDenoiser {
 		guidance_scale: f32,
 		token_mask: Option<&Matrix>,
 	) -> Result<Matrix> {
-		if self.condition_projection.is_none()
-			|| !guidance_scale.is_finite()
-			|| guidance_scale < 0.0
-		{
+		if self.condition_projection.is_none() || !guidance_scale.is_finite() || guidance_scale < 0.0 {
 			return Err(Error::invalid_argument(
 				"FlowDenoiser guidance requires configured conditions and a finite nonnegative scale",
 			));

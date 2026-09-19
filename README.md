@@ -178,10 +178,17 @@ Every public release is assembled by the tagged CI workflow and publishes:
 - an exact Rust source archive with the resolved `Cargo.lock`;
 - a Linux x86-64 SDK archive containing the runnable tutorials, benchmarks,
   and applications staged from the same Release build;
+- matching `oa-sdk` packages for Debian, RPM, and Arch Linux;
 - one portable CPython 3.10+ ABI3 wheel, published to PyPI and then downloaded
   back from PyPI before attachment to GitHub;
 - dependency and toolchain evidence plus one checksum manifest covering every
   downloadable artifact.
+
+The Rust crate currently links into its consumers and does not expose a stable
+C ABI. Consequently these releases do not label an internal Rust `dylib` as an
+OA runtime `.so`; a separate `oa` runtime system package is Planned for the
+checkpoint that introduces a supported dynamic-library boundary. The Python
+wheel does contain and test its native ABI3 extension.
 
 GitHub-hosted validation proves the host and compilation contracts. Tests that
 require a real GPU remain explicit capability gates and are not silently

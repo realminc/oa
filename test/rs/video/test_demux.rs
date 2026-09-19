@@ -4,9 +4,8 @@ use std::path::PathBuf;
 use oa::{
 	ErrorKind,
 	video::{
-		Av1Profile, H264Profile, H265Profile, VideoCodec, VideoComponentBitDepth,
-		VideoDecodeProfile, VideoDemuxer, Vp9Profile, length_prefixed_to_annex_b,
-		parse_nal_annex_b,
+		Av1Profile, H264Profile, H265Profile, VideoCodec, VideoComponentBitDepth, VideoDecodeProfile,
+		VideoDemuxer, Vp9Profile, length_prefixed_to_annex_b, parse_nal_annex_b,
 	},
 };
 

@@ -6,7 +6,7 @@
 
 use std::time::{Duration, Instant};
 
-use crate::{DType, Engine, Error, Matrix, Result, ml::optimizer::AdamWProgramSignature};
+use crate::{DType, Engine, Error, Matrix, Result, ml::optim::AdamWProgramSignature};
 
 use super::{
 	AdamW, CheckpointOptimizer, Optimizer, TrainingParameterDesc, TrainingProgram, TrainingSession,
@@ -338,10 +338,7 @@ pub trait TrainingCallback {
 		Ok(TrainingControl::Continue)
 	}
 
-	fn on_step_end(
-		&mut self,
-		_context: &mut TrainingCallbackContext<'_>,
-	) -> Result<TrainingControl> {
+	fn on_step_end(&mut self, _context: &mut TrainingCallbackContext<'_>) -> Result<TrainingControl> {
 		Ok(TrainingControl::Continue)
 	}
 
@@ -721,16 +718,14 @@ impl<'engine, 'hooks> ItTraining<'engine, 'hooks> {
 	///
 	/// Returns an error without an attached session, during a pending step, or
 	/// for an invalid or duplicate descriptor.
-	pub fn register_session_parameter(
-		&mut self,
-		desc: TrainingParameterDesc<'hooks>,
-	) -> Result<()> {
+	pub fn register_session_parameter(&mut self, desc: TrainingParameterDesc<'hooks>) -> Result<()> {
 		if self.body_pending {
 			return Err(Error::failed_precondition(
 				"training parameters may only be registered at a safe point",
 			));
 		}
-		self.session
+		self
+			.session
 			.as_mut()
 			.ok_or_else(|| Error::failed_precondition("no training session is attached"))?
 			.register_parameter(desc)
@@ -972,9 +967,7 @@ impl<'engine, 'hooks> ItTraining<'engine, 'hooks> {
 				Err(error) => return self.fail(error),
 			};
 			let capture =
-				TrainingProgram::capture_preserving_recording(self.engine, optimizer, || {
-					record(prepared)
-				});
+				TrainingProgram::capture_preserving_recording(self.engine, optimizer, || record(prepared));
 			match capture {
 				Ok(TrainingProgramCapture::Captured(program)) => self.program = Some(*program),
 				Ok(TrainingProgramCapture::Rejected {
@@ -1284,9 +1277,7 @@ impl<'engine, 'hooks> ItTraining<'engine, 'hooks> {
 				.config
 				.batch_size
 				.checked_mul(self.config.sequence_length)
-				.ok_or_else(|| {
-					Error::resource_exhausted("training sequence-unit count overflows u64")
-				})?;
+				.ok_or_else(|| Error::resource_exhausted("training sequence-unit count overflows u64"))?;
 			let total_units = checked_add(self.total_units, units, "training sequence-unit")?;
 			let source = match self.pending_source_units {
 				Some(value) => value,
@@ -1294,10 +1285,8 @@ impl<'engine, 'hooks> ItTraining<'engine, 'hooks> {
 			};
 			let total_source_units =
 				checked_add(self.total_source_units, source, "training source-unit")?;
-			let epoch_source_units =
-				checked_add(self.epoch_source_units, source, "epoch source unit")?;
-			let (gpu_timed_samples, gpu_timed_units, gpu_timed_source_units) = if gpu_time.is_some()
-			{
+			let epoch_source_units = checked_add(self.epoch_source_units, source, "epoch source unit")?;
+			let (gpu_timed_samples, gpu_timed_units, gpu_timed_source_units) = if gpu_time.is_some() {
 				(
 					checked_add(
 						self.gpu_timed_samples,
@@ -1522,7 +1511,8 @@ impl<'engine, 'hooks> ItTraining<'engine, 'hooks> {
 		if self.config.steps_per_epoch == 0 || self.config.total_steps == 0 {
 			return 0;
 		}
-		self.config
+		self
+			.config
 			.total_steps
 			.div_ceil(self.config.steps_per_epoch)
 	}
@@ -1591,7 +1581,8 @@ pub type TrainingLoop<'engine, 'hooks> = ItTraining<'engine, 'hooks>;
 pub type TrainingLoopConfig = ItTrainingConfig;
 
 fn checked_add(left: u64, right: u64, name: &'static str) -> Result<u64> {
-	left.checked_add(right)
+	left
+		.checked_add(right)
 		.ok_or_else(|| Error::resource_exhausted(format!("{name} count overflows u64")))
 }
 

@@ -76,7 +76,8 @@ impl SemanticLoweringAnalysis {
 
 	/// Return how many executable nodes lower one semantic operation.
 	pub fn executable_node_count(&self, operation: SemanticOpId) -> u32 {
-		self.executable_node_counts
+		self
+			.executable_node_counts
 			.get(operation.usize())
 			.copied()
 			.unwrap_or(0)
@@ -765,9 +766,8 @@ impl SemanticGraph {
 		}
 		for (index, output) in outputs.iter().copied().enumerate() {
 			if let Some(alias_input) = contract.alias_input(index) {
-				let input = inputs[alias_input].ok_or_else(|| {
-					Error::invalid_argument("semantic output cannot alias an absent input")
-				})?;
+				let input = inputs[alias_input]
+					.ok_or_else(|| Error::invalid_argument("semantic output cannot alias an absent input"))?;
 				operation.aliases.push(SemanticAliasDesc { output, input });
 			}
 		}
@@ -786,9 +786,10 @@ impl SemanticGraph {
 		output_index: usize,
 		sequence: u64,
 	) -> Result<()> {
-		let operation = self.operations.get(forward_op.usize()).ok_or_else(|| {
-			Error::out_of_range("semantic autograd references an unknown operation")
-		})?;
+		let operation = self
+			.operations
+			.get(forward_op.usize())
+			.ok_or_else(|| Error::out_of_range("semantic autograd references an unknown operation"))?;
 		if operation.differentiation != OpDifferentiation::Reverse {
 			return Err(Error::invalid_argument(
 				"semantic autograd requires a reverse-mode operation contract",
@@ -836,9 +837,7 @@ impl SemanticGraph {
 			.autograd
 			.iter()
 			.position(|entry| entry.forward_op == forward_op && entry.sequence == sequence)
-			.ok_or_else(|| {
-				Error::not_found("semantic backward expansion has no tape attachment")
-			})?;
+			.ok_or_else(|| Error::not_found("semantic backward expansion has no tape attachment"))?;
 		if self.autograd[attachment_index].backward_expanded {
 			return Err(Error::already_exists(
 				"semantic backward expansion is already complete",
@@ -909,9 +908,7 @@ impl SemanticGraph {
 			}
 		}
 		for (index, operation) in self.operations.iter().enumerate() {
-			if operation.id.usize() != index
-				|| operation.name.is_empty()
-				|| operation.contract_hash == 0
+			if operation.id.usize() != index || operation.name.is_empty() || operation.contract_hash == 0
 			{
 				return Err(Error::internal("semantic operation identity is invalid"));
 			}
@@ -965,7 +962,8 @@ impl SemanticGraph {
 					.aliases
 					.iter()
 					.filter(|alias| alias.input == *mutated)
-					.count() != 1
+					.count()
+					!= 1
 			}) {
 				return Err(Error::internal(
 					"semantic mutation does not produce one fresh alias version",
@@ -995,9 +993,7 @@ impl SemanticGraph {
 			let operation = self
 				.operations
 				.get(attachment.forward_op.usize())
-				.ok_or_else(|| {
-					Error::internal("semantic autograd has an invalid forward operation")
-				})?;
+				.ok_or_else(|| Error::internal("semantic autograd has an invalid forward operation"))?;
 			if operation.differentiation != OpDifferentiation::Reverse
 				|| operation.outputs.get(attachment.output_index) != Some(&attachment.output)
 				|| attachment.sequence == 0
@@ -1237,7 +1233,8 @@ impl SemanticGraph {
 
 	/// Return the number of metadata-only views.
 	pub fn view_count(&self) -> usize {
-		self.values
+		self
+			.values
 			.iter()
 			.filter(|value| value.view_source.is_some())
 			.count()

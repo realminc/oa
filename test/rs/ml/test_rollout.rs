@@ -153,8 +153,7 @@ test_vk!(
 				} else {
 					0.0
 				};
-				let delta =
-					reward[index] + config.gamma * bootstrap * next_value[index] - value[index];
+				let delta = reward[index] + config.gamma * bootstrap * next_value[index] - value[index];
 				let advantage = delta + config.gamma * config.lambda * trace * next_advantage;
 				expected_advantage[index] = advantage;
 				expected_return[index] = advantage + value[index];

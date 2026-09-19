@@ -135,9 +135,8 @@ test_vk!(
 			[1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 2.0, 2.0, 2.0, 0.0, 0.0, 0.0]
 		);
 
-		let invalid =
-			oa::matrix::gather(&table, &oa::Matrix::from_slice(&engine, [2], &[-1_i32, 4])?)?
-				.read_f32()?;
+		let invalid = oa::matrix::gather(&table, &oa::Matrix::from_slice(&engine, [2], &[-1_i32, 4])?)?
+			.read_f32()?;
 		assert!(invalid.into_iter().all(f32::is_nan));
 		Ok(())
 	}
@@ -288,8 +287,7 @@ test_vk!(concat_matches_variadic_copy_and_reverse_oracles, engine, {
 
 	let first =
 		oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [1, 2], &[1.5, -3.0])?)?;
-	let second =
-		oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [1, 1], &[4.5])?)?;
+	let second = oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [1, 1], &[4.5])?)?;
 	let index = oa::Matrix::from_slice(&engine, [1], &[0_u32])?;
 	let tape = oa::ml::GradientTape::new();
 	let first_value = first.forward(&index)?;
@@ -377,8 +375,7 @@ test_vk!(
 		engine.submit(&slice_plan)?.wait()?;
 		assert_eq!(slice.read_f32()?, vec![3.0, 2.0, 4.0, 5.0]);
 
-		let (repeat_plan, repeated) =
-			engine.capture(|| oa::matrix::repeat_interleave(&input, 2, 1))?;
+		let (repeat_plan, repeated) = engine.capture(|| oa::matrix::repeat_interleave(&input, 2, 1))?;
 		assert_eq!(repeat_plan.semantic_graph().operations().len(), 1);
 		assert_eq!(
 			repeat_plan.semantic_graph().operations()[0].name(),

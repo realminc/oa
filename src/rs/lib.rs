@@ -31,9 +31,13 @@ pub use core::vlm;
 // Re-export the common public vocabulary.
 pub use audio::{Audio, AudioCapture, AudioEncoder, AudioPlayer};
 pub use core::{
-	DType, Error, ErrorKind, Image, ImageFormat, ImageLayout, Matrix, OpAttribute, OpAttributeKind,
+	BufferAccess, COMPACT_BANNER, Callback, CallbackSet, CheckpointConfig, Cli, DType, Datetime,
+	EnvFlag, Error, ErrorKind, Filesystem, Image, ImageFormat, ImageLayout, IteratorContext,
+	LogConfig, LogMetrics, MappedFile, Matrix, NumericMode, OpAttribute, OpAttributeKind,
 	OpAttributeSpec, OpControlFlow, OpDTypeRule, OpDifferentiation, OpEffect, OpLowering,
-	OpShapeRule, OpValueKind, OperationContract, Result,
+	OpShapeRule, OpValueKind, OperationContract, Path, PerfStat, REALM_BANNER, Result, ScopedTimer,
+	Stopwatch, Timestamp, VIEWPORT_TITLE, Validation, ValidationSeverity, apply_numeric_mode,
+	brand_viewport,
 };
 pub use cryptography::pqc::{Keypair, PublicKey, SecretKey, Signature};
 pub use cryptography::{Hash, Hasher, MerkleProof, MerkleTree, SecureBuffer, Shake128, Shake256};
@@ -43,7 +47,6 @@ pub use video::{VideoDecoder, VideoDemuxer, VideoFrame, VideoMuxer, VideoPlayer}
 pub use runtime::{
 	CapturedResourceDesc, DeviceSelection, Engine, EngineBuilder, Event, ExecutionPlan,
 	ExecutionPlanDiagnostics, LogComponent, LogLevel, LogOptions, SemanticAccessMode,
-	SemanticAliasDesc, SemanticAutogradDesc, SemanticGraph, SemanticLoweringAnalysis,
-	SemanticOpDesc, SemanticOpId, SemanticStorageBinding, SemanticValueAccess, SemanticValueDesc,
-	SemanticValueId,
+	SemanticAliasDesc, SemanticAutogradDesc, SemanticGraph, SemanticLoweringAnalysis, SemanticOpDesc,
+	SemanticOpId, SemanticStorageBinding, SemanticValueAccess, SemanticValueDesc, SemanticValueId,
 };

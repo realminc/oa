@@ -392,8 +392,7 @@ test_vk!(
 					|| {
 						prepare_count += 1;
 						let scale = prepare_count as f32;
-						let input =
-							oa::Matrix::from_f32(&engine, [2, 2], &[scale, 0.0, 0.0, scale])?;
+						let input = oa::Matrix::from_f32(&engine, [2, 2], &[scale, 0.0, 0.0, scale])?;
 						let targets = oa::Matrix::from_slice(&engine, [2], &[0_u32, 1])?;
 						Ok((input, targets))
 					},

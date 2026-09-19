@@ -118,9 +118,8 @@ fn decode_source(engine: &Engine, source: Box<dyn MediaSource>, hint: &Hint) -> 
 		decoded.copy_to_slice_interleaved(&mut interleaved[start..]);
 	}
 
-	let (channels, sample_rate) = stream_spec.ok_or_else(|| {
-		Error::invalid_argument("audio stream did not produce any decoded samples")
-	})?;
+	let (channels, sample_rate) = stream_spec
+		.ok_or_else(|| Error::invalid_argument("audio stream did not produce any decoded samples"))?;
 	upload_interleaved(engine, &interleaved, channels, sample_rate)
 }
 

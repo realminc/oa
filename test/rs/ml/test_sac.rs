@@ -14,11 +14,8 @@ fn parameter_vector(
 	engine: &oa::Engine,
 	values: &[f32],
 ) -> oa::Result<(oa::ml::nn::Embedding, oa::Matrix)> {
-	let parameter = oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(
-		engine,
-		[values.len(), 1],
-		values,
-	)?)?;
+	let parameter =
+		oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(engine, [values.len(), 1], values)?)?;
 	let rows = oa::Matrix::from_slice(
 		engine,
 		[values.len()],

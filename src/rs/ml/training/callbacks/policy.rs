@@ -123,16 +123,12 @@ impl EarlyStopping {
 
 impl Default for EarlyStopping {
 	fn default() -> Self {
-		Self::new(5, 1.0e-4, EarlyStopMode::Min)
-			.expect("the constant OA early-stop defaults are valid")
+		Self::new(5, 1.0e-4, EarlyStopMode::Min).expect("the constant OA early-stop defaults are valid")
 	}
 }
 
 impl TrainingCallback for EarlyStopping {
-	fn on_epoch_end(
-		&mut self,
-		context: &mut TrainingCallbackContext<'_>,
-	) -> Result<TrainingControl> {
+	fn on_epoch_end(&mut self, context: &mut TrainingCallbackContext<'_>) -> Result<TrainingControl> {
 		let snapshot = context.snapshot();
 		let metric = (self.monitor)(snapshot);
 		if !metric.is_finite() {
@@ -181,10 +177,7 @@ impl<'schedule> LearningRateScheduler<'schedule> {
 }
 
 impl TrainingCallback for LearningRateScheduler<'_> {
-	fn on_step_end(
-		&mut self,
-		context: &mut TrainingCallbackContext<'_>,
-	) -> Result<TrainingControl> {
+	fn on_step_end(&mut self, context: &mut TrainingCallbackContext<'_>) -> Result<TrainingControl> {
 		let next_step = context.snapshot().step_count().saturating_add(1);
 		let learning_rate = self.schedule.learning_rate(next_step);
 		context.optimizer().set_learning_rate(learning_rate)?;

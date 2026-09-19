@@ -231,12 +231,13 @@ impl TransformerBlock {
 				"Transformer adaptive condition width must be nonzero",
 			));
 		}
-		let modulation_width = self.model_width.checked_mul(6).ok_or_else(|| {
-			Error::invalid_argument("Transformer modulation width overflows usize")
-		})?;
-		let weight_count = condition_dim.checked_mul(modulation_width).ok_or_else(|| {
-			Error::invalid_argument("Transformer modulation size overflows usize")
-		})?;
+		let modulation_width = self
+			.model_width
+			.checked_mul(6)
+			.ok_or_else(|| Error::invalid_argument("Transformer modulation width overflows usize"))?;
+		let weight_count = condition_dim
+			.checked_mul(modulation_width)
+			.ok_or_else(|| Error::invalid_argument("Transformer modulation size overflows usize"))?;
 		let weight = Matrix::from_f32(
 			engine,
 			[modulation_width, condition_dim],
@@ -244,7 +245,8 @@ impl TransformerBlock {
 		)?;
 		let bias = Matrix::from_f32(engine, [modulation_width], &vec![0.0; modulation_width])?;
 		let adaptive_modulation = Rc::new(Linear::from_matrices(weight, bias)?);
-		self.registry
+		self
+			.registry
 			.register_module("adaptive_modulation", adaptive_modulation.clone())?;
 		self.adaptive_modulation = Some(adaptive_modulation);
 		self.condition_dim = Some(condition_dim);

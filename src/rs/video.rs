@@ -29,17 +29,16 @@ pub use av1::{
 	Av1AccessUnitInfo, Av1ChromaSamplePosition, Av1CodingToolChoice, Av1ColorConfig,
 	Av1ColorDescription, Av1FrameHeader, Av1FrameType, Av1InterpolationFilter, Av1Obu, Av1ObuType,
 	Av1OperatingPoint, Av1ReferenceState, Av1RestorationType, Av1SequenceHeader, Av1TileGroup,
-	Av1TimingInfo, Av1TransformMode, inspect_av1_access_unit, parse_av1_frame_header,
-	parse_av1_obus, parse_av1_sequence_header, parse_av1_tile_group,
+	Av1TimingInfo, Av1TransformMode, inspect_av1_access_unit, parse_av1_frame_header, parse_av1_obus,
+	parse_av1_sequence_header, parse_av1_tile_group,
 };
 pub use capability::{
 	Av1Profile, H264PictureLayout, H264Profile, H265Profile, VideoChromaSubsampling,
 	VideoComponentBitDepth, VideoDecodeCapabilities, VideoDecodeFormats, VideoDecodeLevel,
 	VideoDecodeProfile, VideoDeviceCapabilities, VideoEncodeCapabilities,
 	VideoEncodeCodecCapabilities, VideoEncodeFormats, VideoEncodeProfile, VideoExtent,
-	VideoImageFormat, VideoPixelFormat, Vp9Profile, query_decode_capabilities,
-	query_decode_formats, query_device_capabilities, query_encode_capabilities,
-	query_encode_formats,
+	VideoImageFormat, VideoPixelFormat, Vp9Profile, query_decode_capabilities, query_decode_formats,
+	query_device_capabilities, query_encode_capabilities, query_encode_formats,
 };
 pub use decoder::VideoDecoder;
 pub use demux::{
@@ -59,8 +58,8 @@ pub use h265::{
 	H265PcmParameters, H265PictureParameterSet, H265ProfileTierLevel, H265ScalingLists,
 	H265SequenceParameterSet, H265ShortTermReferencePictureSet, H265SliceHeader, H265SliceType,
 	H265SubLayerHrdParameters, H265TimingInfo, H265VideoParameterSet, H265VideoSignal,
-	H265VpsHrdParameters, H265VuiParameters, parse_h265_pps, parse_h265_slice_header,
-	parse_h265_sps, parse_h265_vps,
+	H265VpsHrdParameters, H265VuiParameters, parse_h265_pps, parse_h265_slice_header, parse_h265_sps,
+	parse_h265_vps,
 };
 pub use mux::{EncodedVideoPacket, VideoMuxer, VideoMuxerAudioConfig, VideoMuxerConfig};
 pub use nal::{

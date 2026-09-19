@@ -89,9 +89,7 @@ impl RetirementService {
 					retirement.completion.finish(RetirementState::Retired);
 				}
 			})
-			.map_err(|source| {
-				Error::backend_failure("Vulkan", "retirement-worker creation", source)
-			})?;
+			.map_err(|source| Error::backend_failure("Vulkan", "retirement-worker creation", source))?;
 
 		self.sender = Some(sender);
 		self.control.install(worker);

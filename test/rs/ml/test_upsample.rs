@@ -14,15 +14,15 @@ fn host_upsample_2d(
 		for channel in 0..channels {
 			for output_y in 0..output_height {
 				for output_x in 0..output_width {
-					let output_index = ((batch_index * channels + channel) * output_height
-						+ output_y) * output_width
+					let output_index = ((batch_index * channels + channel) * output_height + output_y)
+						* output_width
 						+ output_x;
 					output[output_index] = match mode {
 						UpsampleMode::Nearest => {
 							let input_y = output_y / scale_factor;
 							let input_x = output_x / scale_factor;
-							input[((batch_index * channels + channel) * input_height + input_y)
-								* input_width + input_x]
+							input[((batch_index * channels + channel) * input_height + input_y) * input_width
+								+ input_x]
 						}
 						UpsampleMode::Bilinear => {
 							let source_y = ((output_y as f64 + 0.5) / scale_factor as f64 - 0.5)
@@ -37,8 +37,7 @@ fn host_upsample_2d(
 							let fx = source_x - x0 as f64;
 							let value = |y: usize, x: usize| {
 								f64::from(
-									input[((batch_index * channels + channel) * input_height + y)
-										* input_width + x],
+									input[((batch_index * channels + channel) * input_height + y) * input_width + x],
 								)
 							};
 							let top = value(y0, x0) * (1.0 - fx) + value(y0, x1) * fx;
@@ -127,11 +126,8 @@ test_vk!(
 			let expected = numerical_gradient(&values, |candidate| {
 				mse(&host_upsample_2d(candidate, shape, 2, mode), &target_values)
 			});
-			let embedding = oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(
-				&engine,
-				[2, 3],
-				&values,
-			)?)?;
+			let embedding =
+				oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [2, 3], &values)?)?;
 			let indices = oa::Matrix::from_slice(&engine, [1, 1, 2], &[0_u32, 1])?;
 			let target = oa::Matrix::from_f32(&engine, [1, 1, 4, 6], &target_values)?;
 			let module = oa::ml::nn::Upsample::with_mode(2, mode)?;

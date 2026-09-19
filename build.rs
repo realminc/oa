@@ -290,11 +290,13 @@ fn verify_generated_sources() -> Result<(), Box<dyn std::error::Error>> {
 		.output()
 		.map_err(|source| format!("could not execute {python:?}: {source}"))?;
 	if !output.status.success() {
-		return Err(format!(
-			"generated operation sources are stale; run `python3 {GENERATOR}`\n{}",
-			String::from_utf8_lossy(&output.stderr)
-		)
-		.into());
+		return Err(
+			format!(
+				"generated operation sources are stale; run `python3 {GENERATOR}`\n{}",
+				String::from_utf8_lossy(&output.stderr)
+			)
+			.into(),
+		);
 	}
 	Ok(())
 }
@@ -354,13 +356,15 @@ fn build_shader(
 		.output()
 		.map_err(|source| format!("could not execute {:?}: {source}", build.slangc))?;
 	if !slang_output.status.success() {
-		return Err(format!(
-			"{:?} failed for matrix.{name} with {}\n{}",
-			build.slangc,
-			slang_output.status,
-			String::from_utf8_lossy(&slang_output.stderr)
-		)
-		.into());
+		return Err(
+			format!(
+				"{:?} failed for matrix.{name} with {}\n{}",
+				build.slangc,
+				slang_output.status,
+				String::from_utf8_lossy(&slang_output.stderr)
+			)
+			.into(),
+		);
 	}
 
 	validate_reflection(&reflection, operation, kernel_name, dtype, workgroup_size)?;
@@ -371,13 +375,15 @@ fn build_shader(
 		.output()
 		.map_err(|source| format!("could not execute {:?}: {source}", build.spirv_val))?;
 	if !validation_output.status.success() {
-		return Err(format!(
-			"{:?} failed for matrix.{name} with {}\n{}",
-			build.spirv_val,
-			validation_output.status,
-			String::from_utf8_lossy(&validation_output.stderr)
-		)
-		.into());
+		return Err(
+			format!(
+				"{:?} failed for matrix.{name} with {}\n{}",
+				build.spirv_val,
+				validation_output.status,
+				String::from_utf8_lossy(&validation_output.stderr)
+			)
+			.into(),
+		);
 	}
 	Ok(())
 }
@@ -435,12 +441,14 @@ fn validate_reflection(
 		.ok_or("reflection does not describe push-constant fields")?;
 	let expected_fields = expected_push_fields(kind)?;
 	if fields.len() != expected_fields.len() {
-		return Err(format!(
-			"matrix.{name} push constants contain {} fields; expected {}",
-			fields.len(),
-			expected_fields.len()
-		)
-		.into());
+		return Err(
+			format!(
+				"matrix.{name} push constants contain {} fields; expected {}",
+				fields.len(),
+				expected_fields.len()
+			)
+			.into(),
+		);
 	}
 	for (field, (field_name, scalar_type, offset)) in fields.iter().zip(expected_fields) {
 		require_equal(
@@ -558,13 +566,15 @@ fn build_schema_shader(
 		.output()
 		.map_err(|source| format!("could not execute {:?}: {source}", build.slangc))?;
 	if !slang_output.status.success() {
-		return Err(format!(
-			"{:?} failed for {domain}.{name} with {}\n{}",
-			build.slangc,
-			slang_output.status,
-			String::from_utf8_lossy(&slang_output.stderr)
-		)
-		.into());
+		return Err(
+			format!(
+				"{:?} failed for {domain}.{name} with {}\n{}",
+				build.slangc,
+				slang_output.status,
+				String::from_utf8_lossy(&slang_output.stderr)
+			)
+			.into(),
+		);
 	}
 
 	validate_schema_reflection(&reflection, operation, domain, dtype, workgroup_size)?;
@@ -574,13 +584,15 @@ fn build_schema_shader(
 		.output()
 		.map_err(|source| format!("could not execute {:?}: {source}", build.spirv_val))?;
 	if !validation_output.status.success() {
-		return Err(format!(
-			"{:?} failed for {domain}.{name} with {}\n{}",
-			build.spirv_val,
-			validation_output.status,
-			String::from_utf8_lossy(&validation_output.stderr)
-		)
-		.into());
+		return Err(
+			format!(
+				"{:?} failed for {domain}.{name} with {}\n{}",
+				build.spirv_val,
+				validation_output.status,
+				String::from_utf8_lossy(&validation_output.stderr)
+			)
+			.into(),
+		);
 	}
 	Ok(())
 }
@@ -637,12 +649,14 @@ fn validate_schema_reflection(
 		.ok_or("reflection does not describe push-constant fields")?;
 	let expected_fields = array_at(operation, "push_fields")?;
 	if fields.len() != expected_fields.len() {
-		return Err(format!(
-			"{domain}.{name} push constants contain {} fields; expected {}",
-			fields.len(),
-			expected_fields.len()
-		)
-		.into());
+		return Err(
+			format!(
+				"{domain}.{name} push constants contain {} fields; expected {}",
+				fields.len(),
+				expected_fields.len()
+			)
+			.into(),
+		);
 	}
 	for (index, (field, expected)) in fields.iter().zip(expected_fields).enumerate() {
 		let pair = expected

@@ -35,8 +35,7 @@ impl RmsNorm {
 		let [dimension] = weight.shape() else {
 			return Err(Error::invalid_argument("RMSNorm weight must be rank one"));
 		};
-		if *dimension == 0 || weight.dtype() != DType::F32 || !epsilon.is_finite() || epsilon <= 0.0
-		{
+		if *dimension == 0 || weight.dtype() != DType::F32 || !epsilon.is_finite() || epsilon <= 0.0 {
 			return Err(Error::invalid_argument(
 				"RMSNorm requires a nonempty F32 weight vector and finite positive epsilon",
 			));

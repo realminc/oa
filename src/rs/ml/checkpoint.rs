@@ -5,10 +5,10 @@ use crate::{DType, Engine, Error, Matrix, Result};
 use super::{
 	CheckpointOptimizer, Module,
 	model_file::{
-		Config as PersistedConfig, ModelFile, Optimizer as PersistedOptimizer, Progress,
-		ScalarType, Tensor, TensorEncoding,
+		Config as PersistedConfig, ModelFile, Optimizer as PersistedOptimizer, Progress, ScalarType,
+		Tensor, TensorEncoding,
 	},
-	optimizer::{OptimizerCheckpoint, OptimizerRestore},
+	optim::{OptimizerCheckpoint, OptimizerRestore},
 };
 
 mod manager;
@@ -160,7 +160,8 @@ pub(crate) fn save_module_artifact(
 		.into_iter()
 		.filter(|buffer| buffer.persistent())
 	{
-		file.state
+		file
+			.state
 			.push(matrix_tensor(&artifact_name(entry.path())?, &entry.data())?);
 	}
 	file.save(path)
@@ -189,11 +190,11 @@ pub(crate) fn save_dense_artifact(
 			.shape
 			.into_iter()
 			.map(|extent| {
-				u64::try_from(extent)
-					.map_err(|_| Error::resource_exhausted("artifact extent exceeds u64"))
+				u64::try_from(extent).map_err(|_| Error::resource_exhausted("artifact extent exceeds u64"))
 			})
 			.collect::<Result<Vec<_>>>()?;
-		file.weights
+		file
+			.weights
 			.push(Tensor::dense(tensor.name, DType::F32, shape, tensor.data)?);
 	}
 	file.save(path)
@@ -248,11 +249,13 @@ pub(super) fn save_checkpoint_with_progress(
 				"checkpoint optimizer parameter does not match the model tree",
 			));
 		}
-		file.weights
+		file
+			.weights
 			.push(matrix_tensor(entry.path(), &parameter.data())?);
 	}
 	for buffer in buffers.into_iter().filter(|buffer| buffer.persistent()) {
-		file.state
+		file
+			.state
 			.push(matrix_tensor(buffer.path(), &buffer.data())?);
 	}
 	for state in state_u32 {
@@ -412,12 +415,13 @@ fn load_checkpoint_impl(
 	let mut loaded_state_u32 = Vec::with_capacity(state_u32.len());
 	for (expected, tensor) in state_u32.iter().zip(file.state.iter().skip(buffers.len())) {
 		validate_state_u32_contract(tensor, expected.path())?;
-		let value =
-			u32::from_le_bytes(
-				tensor.data.as_slice().try_into().map_err(|_| {
-					Error::invalid_argument(".oam u32 state has invalid byte count")
-				})?,
-			);
+		let value = u32::from_le_bytes(
+			tensor
+				.data
+				.as_slice()
+				.try_into()
+				.map_err(|_| Error::invalid_argument(".oam u32 state has invalid byte count"))?,
+		);
 		loaded_state_u32.push((expected, value));
 	}
 
@@ -537,8 +541,7 @@ fn matrix_tensor(name: &str, matrix: &Matrix) -> Result<Tensor> {
 		.shape()
 		.iter()
 		.map(|extent| {
-			u64::try_from(*extent)
-				.map_err(|_| Error::resource_exhausted("checkpoint extent exceeds u64"))
+			u64::try_from(*extent).map_err(|_| Error::resource_exhausted("checkpoint extent exceeds u64"))
 		})
 		.collect::<Result<Vec<_>>>()?;
 	let data = match matrix.dtype() {
@@ -623,8 +626,7 @@ fn tensor_shape(tensor: &Tensor) -> Result<Vec<usize>> {
 		.shape
 		.iter()
 		.map(|extent| {
-			usize::try_from(*extent)
-				.map_err(|_| Error::invalid_argument(".oam extent exceeds usize"))
+			usize::try_from(*extent).map_err(|_| Error::invalid_argument(".oam extent exceeds usize"))
 		})
 		.collect()
 }

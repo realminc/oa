@@ -165,7 +165,8 @@ fn pack_planar(
 		.checked_mul(output_channels)
 		.ok_or_else(|| Error::out_of_range("packed image byte count overflows usize"))?;
 	let mut data = Vec::new();
-	data.try_reserve_exact(output_len)
+	data
+		.try_reserve_exact(output_len)
 		.map_err(|_| Error::resource_exhausted("packed image allocation failed"))?;
 	data.resize(output_len, 0);
 	let sample = |pixel: usize, channel: usize| quantize(planar[channel * pixels + pixel]);
@@ -224,9 +225,7 @@ fn encode_packed(pixels: &PackedPixels, codec: ImageCodec, quality: u32) -> Resu
 		let quality = u8::try_from(quality)
 			.map_err(|_| Error::invalid_argument("image::encode quality exceeds u8"))?;
 		let encoder = match pixels.format {
-			ImageFormat::Rgb => {
-				webp_codec::Encoder::from_rgb(&pixels.data, pixels.width, pixels.height)
-			}
+			ImageFormat::Rgb => webp_codec::Encoder::from_rgb(&pixels.data, pixels.width, pixels.height),
 			ImageFormat::Rgba => {
 				webp_codec::Encoder::from_rgba(&pixels.data, pixels.width, pixels.height)
 			}
@@ -247,8 +246,7 @@ fn encode_packed(pixels: &PackedPixels, codec: ImageCodec, quality: u32) -> Resu
 	if codec == ImageCodec::Jpeg {
 		let quality = u8::try_from(quality)
 			.map_err(|_| Error::invalid_argument("image::encode quality exceeds u8"))?;
-		let encoder =
-			image_codec::codecs::jpeg::JpegEncoder::new_with_quality(&mut encoded, quality);
+		let encoder = image_codec::codecs::jpeg::JpegEncoder::new_with_quality(&mut encoded, quality);
 		dynamic
 			.write_with_encoder(encoder)
 			.map_err(|source| Error::backend_failure("image", "JPEG encode", source))?;
@@ -265,12 +263,9 @@ fn encode_packed(pixels: &PackedPixels, codec: ImageCodec, quality: u32) -> Resu
 fn dynamic_image(pixels: &PackedPixels) -> Result<DynamicImage> {
 	macro_rules! buffer {
 		($pixel:ty, $variant:ident) => {{
-			let image = ImageBuffer::<$pixel, _>::from_raw(
-				pixels.width,
-				pixels.height,
-				pixels.data.clone(),
-			)
-			.ok_or_else(|| Error::internal("packed image metadata is inconsistent"))?;
+			let image =
+				ImageBuffer::<$pixel, _>::from_raw(pixels.width, pixels.height, pixels.data.clone())
+					.ok_or_else(|| Error::internal("packed image metadata is inconsistent"))?;
 			DynamicImage::$variant(image)
 		}};
 	}

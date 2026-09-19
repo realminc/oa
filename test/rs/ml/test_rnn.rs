@@ -95,7 +95,8 @@ fn gpu_cell_loss_and_gradients(
 	}
 	let loss_value = loss.read_f32()?[0];
 	let gradients = if backward {
-		cell.all_parameters()?
+		cell
+			.all_parameters()?
 			.into_iter()
 			.map(|parameter| {
 				parameter

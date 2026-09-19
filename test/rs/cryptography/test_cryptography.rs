@@ -207,8 +207,7 @@ fn root_exports_are_cryptography_value_identities() {
 	fn root_public_key(_: oa::PublicKey) {}
 	fn root_signature(_: oa::Signature) {}
 	fn root_keypair(_: oa::Keypair) {}
-	let keypair: oa::cryptography::pqc::Keypair =
-		generate_keypair().expect("key generation failed");
+	let keypair: oa::cryptography::pqc::Keypair = generate_keypair().expect("key generation failed");
 	let signature: oa::cryptography::pqc::Signature =
 		sign(b"identity", &keypair.secret_key).expect("signing failed");
 	root_signature(signature);

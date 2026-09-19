@@ -287,7 +287,8 @@ test_vk!(reuses_commands_and_rebinds_stable_matrix_inputs, engine, {
 	assert_eq!(initial.observed_output_count(), 0);
 	assert_eq!(plan.semantic_bindings().len(), 4);
 	assert_eq!(
-		plan.captured_resources()
+		plan
+			.captured_resources()
 			.iter()
 			.filter(|resource| resource.semantic_external())
 			.count(),
@@ -322,9 +323,8 @@ test_vk!(reuses_commands_and_rebinds_stable_matrix_inputs, engine, {
 	assert_eq!(rebound.graph_id(), initial.graph_id());
 	assert_eq!(rebound.input_binding_count(), 2);
 	assert_eq!(rebound.input_rebinding_count(), 1);
-	let rebound_report: serde_json::Value =
-		serde_json::from_str(&plan.debug_report_json("rebound"))
-			.expect("rebound executable report must be valid JSON");
+	let rebound_report: serde_json::Value = serde_json::from_str(&plan.debug_report_json("rebound"))
+		.expect("rebound executable report must be valid JSON");
 	assert_eq!(rebound_report["compiled"], false);
 
 	let third = engine.submit(&plan)?;
@@ -510,7 +510,8 @@ test_vk!(
 
 		let wrong_shape = oa::matrix::ones(&engine, [3, 2])?;
 		assert_eq!(
-			plan.bind_matrix_input(&one, &wrong_shape)
+			plan
+				.bind_matrix_input(&one, &wrong_shape)
 				.unwrap_err()
 				.kind(),
 			oa::ErrorKind::InvalidArgument
@@ -521,14 +522,16 @@ test_vk!(
 		);
 		let replacement_output = oa::matrix::ones(&engine, [2, 3])?;
 		assert_eq!(
-			plan.bind_matrix_input(&output, &replacement_output)
+			plan
+				.bind_matrix_input(&output, &replacement_output)
 				.unwrap_err()
 				.kind(),
 			oa::ErrorKind::InvalidArgument
 		);
 		let unrelated = oa::matrix::ones(&engine, [2, 3])?;
 		assert_eq!(
-			plan.bind_matrix_input(&unrelated, &unrelated)
+			plan
+				.bind_matrix_input(&unrelated, &unrelated)
 				.unwrap_err()
 				.kind(),
 			oa::ErrorKind::InvalidArgument
@@ -536,7 +539,8 @@ test_vk!(
 		let foreign = oa::Engine::new()?;
 		let foreign_input = oa::matrix::ones(&foreign, [2, 3])?;
 		assert_eq!(
-			plan.bind_matrix_input(&one, &foreign_input)
+			plan
+				.bind_matrix_input(&one, &foreign_input)
 				.unwrap_err()
 				.kind(),
 			oa::ErrorKind::InvalidArgument

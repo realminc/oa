@@ -30,6 +30,8 @@ the presence of a source module or shader does not imply a shipped capability.
   ownership, facade/re-export rules, domain dependencies, and file naming.
 - [Rust Port Roadmap](internal/architecture/roadmap/portRoadmap.md) — dependency
   order and acceptance gates.
+- [Release and Publication](internal/release.md) — private/public version lanes,
+  snapshot creation, artifact ownership, and publication gates.
 - [OA Compatibility Ledger](internal/porting/oaCompatibility.md) — concepts
   preserved, redesigned, deferred, or rejected from the C++ implementation.
 - [C++ to Rust API Translation](internal/porting/oaCppToRust.md) — `Fn*` to

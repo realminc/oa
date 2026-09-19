@@ -336,11 +336,7 @@ impl AlmPrior {
 	///
 	/// Returns `FailedPrecondition` for an unconditional prior, or an
 	/// input/recording error from the common forward path.
-	pub fn forward_conditioned(
-		&self,
-		token_ids: &Matrix,
-		text_features: &Matrix,
-	) -> Result<Matrix> {
+	pub fn forward_conditioned(&self, token_ids: &Matrix, text_features: &Matrix) -> Result<Matrix> {
 		if self.config.text_feature_dim == 0 {
 			return Err(Error::failed_precondition(
 				"unconditional ALM prior has no text projection",
@@ -491,7 +487,8 @@ impl AlmPrior {
 	/// This is an explicit host boundary and returns an error if reduction or
 	/// readback fails.
 	pub fn moe_route_stats(&self) -> Result<Vec<MoeRouteStats>> {
-		self.layers
+		self
+			.layers
 			.iter()
 			.filter_map(|layer| layer.moe())
 			.map(|moe| moe.route_stats())
@@ -672,8 +669,7 @@ impl AlmPrior {
 				.read::<u32>()?
 				.into_iter()
 				.map(|value| {
-					i32::try_from(value)
-						.map_err(|_| Error::invalid_argument("ALM U32 token exceeds I32"))
+					i32::try_from(value).map_err(|_| Error::invalid_argument("ALM U32 token exceeds I32"))
 				})
 				.collect::<Result<Vec<_>>>()?,
 			_ => unreachable!("validated ALM generated-token dtype"),
@@ -681,7 +677,8 @@ impl AlmPrior {
 		let minimum_end = (0..*batch)
 			.map(|batch_index| {
 				let row = &ids[batch_index * sequence..(batch_index + 1) * sequence];
-				row.iter()
+				row
+					.iter()
 					.position(|token| *token == self.config.eom_token)
 					.unwrap_or(*sequence)
 			})
@@ -696,11 +693,8 @@ impl AlmPrior {
 			let start = batch_index * sequence + 1;
 			flat.extend_from_slice(&ids[start..start + token_length]);
 		}
-		let indices = Matrix::from_slice_handle(
-			token_ids.engine_handle(),
-			vec![batch * token_length],
-			&flat,
-		)?;
+		let indices =
+			Matrix::from_slice_handle(token_ids.engine_handle(), vec![batch * token_length], &flat)?;
 		Ok(Some(tokenizer.detokenize(&[indices], *batch)?))
 	}
 

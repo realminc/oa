@@ -235,9 +235,9 @@ impl ConvTranspose1d {
 		let fan_in = output_channels
 			.checked_mul(kernel_size)
 			.ok_or_else(|| Error::invalid_argument("ConvTranspose1d fan-in overflows usize"))?;
-		let weight_count = input_channels.checked_mul(fan_in).ok_or_else(|| {
-			Error::invalid_argument("ConvTranspose1d weight size overflows usize")
-		})?;
+		let weight_count = input_channels
+			.checked_mul(fan_in)
+			.ok_or_else(|| Error::invalid_argument("ConvTranspose1d weight size overflows usize"))?;
 		let limit = 1.0_f32 / (fan_in as f32).sqrt();
 		let values = random::symmetric_uniform(weight_count, limit, seed);
 		let weight = Matrix::from_f32(
@@ -393,9 +393,9 @@ impl ConvTranspose2d {
 			.checked_mul(kernel_size)
 			.and_then(|count| count.checked_mul(kernel_size))
 			.ok_or_else(|| Error::invalid_argument("ConvTranspose2d fan-in overflows usize"))?;
-		let weight_count = input_channels.checked_mul(fan_in).ok_or_else(|| {
-			Error::invalid_argument("ConvTranspose2d weight size overflows usize")
-		})?;
+		let weight_count = input_channels
+			.checked_mul(fan_in)
+			.ok_or_else(|| Error::invalid_argument("ConvTranspose2d weight size overflows usize"))?;
 		let limit = 1.0_f32 / (fan_in as f32).sqrt();
 		let values = random::symmetric_uniform(weight_count, limit, seed);
 		let weight = Matrix::from_f32(

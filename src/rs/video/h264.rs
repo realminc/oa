@@ -138,14 +138,16 @@ pub struct H264VuiParameters {
 impl H264SequenceParameterSet {
 	/// Return the coded width in luma samples before cropping.
 	pub fn coded_width(&self) -> Result<u32> {
-		self.width_in_macroblocks
+		self
+			.width_in_macroblocks
 			.checked_mul(16)
 			.ok_or_else(|| Error::data_loss("H.264 coded width overflows u32"))
 	}
 
 	/// Return the coded height in luma samples before cropping.
 	pub fn coded_height(&self) -> Result<u32> {
-		self.height_in_map_units
+		self
+			.height_in_map_units
 			.checked_mul(if self.frame_mbs_only { 16 } else { 32 })
 			.ok_or_else(|| Error::data_loss("H.264 coded height overflows u32"))
 	}
@@ -310,11 +312,12 @@ impl H264DpbState {
 			self.previous_poc_lsb = 0;
 			self.previous_poc_msb = 0;
 		}
-		let poc_lsb =
-			i32::try_from(slice.picture_order_count_lsb.ok_or_else(|| {
-				Error::data_loss("H.264 POC type zero slice has no coded POC LSB")
-			})?)
-			.map_err(|_| Error::data_loss("H.264 POC LSB exceeds i32"))?;
+		let poc_lsb = i32::try_from(
+			slice
+				.picture_order_count_lsb
+				.ok_or_else(|| Error::data_loss("H.264 POC type zero slice has no coded POC LSB"))?,
+		)
+		.map_err(|_| Error::data_loss("H.264 POC LSB exceeds i32"))?;
 		let poc_bits = sps
 			.log2_max_pic_order_count_lsb_minus_4
 			.checked_add(4)
@@ -323,13 +326,14 @@ impl H264DpbState {
 			.checked_shl(poc_bits)
 			.ok_or_else(|| Error::data_loss("H.264 POC width exceeds i32"))?;
 		let half = max_poc_lsb / 2;
-		let poc_msb = if poc_lsb < self.previous_poc_lsb && self.previous_poc_lsb - poc_lsb >= half
-		{
-			self.previous_poc_msb
+		let poc_msb = if poc_lsb < self.previous_poc_lsb && self.previous_poc_lsb - poc_lsb >= half {
+			self
+				.previous_poc_msb
 				.checked_add(max_poc_lsb)
 				.ok_or_else(|| Error::data_loss("H.264 POC MSB overflows"))?
 		} else if poc_lsb > self.previous_poc_lsb && poc_lsb - self.previous_poc_lsb > half {
-			self.previous_poc_msb
+			self
+				.previous_poc_msb
 				.checked_sub(max_poc_lsb)
 				.ok_or_else(|| Error::data_loss("H.264 POC MSB underflows"))?
 		} else {
@@ -359,12 +363,11 @@ impl H264DpbState {
 			.slots
 			.iter()
 			.enumerate()
-			.find(|(index, slot)| {
-				!slot.in_use && !unavailable.get(*index).copied().unwrap_or(false)
-			})
+			.find(|(index, slot)| !slot.in_use && !unavailable.get(*index).copied().unwrap_or(false))
 			.map(|(index, _)| index)
 			.or_else(|| {
-				self.slots
+				self
+					.slots
 					.iter()
 					.enumerate()
 					.filter(|(index, slot)| {
@@ -425,9 +428,7 @@ impl H264DpbState {
 				.slots
 				.iter()
 				.enumerate()
-				.filter(|(index, slot)| {
-					*index != current_slot && slot.is_reference && !slot.is_long_term
-				})
+				.filter(|(index, slot)| *index != current_slot && slot.is_reference && !slot.is_long_term)
 				.min_by_key(|(_, slot)| {
 					let frame = i64::from(slot.frame_number);
 					if frame > current {
@@ -1052,8 +1053,8 @@ fn read_h264_scaling_list(bits: &mut BitReader<'_>, output: &mut [u8]) -> Result
 		} else {
 			next_scale
 		};
-		*value = u8::try_from(scale)
-			.map_err(|_| Error::data_loss("H.264 scaling-list value exceeds u8"))?;
+		*value =
+			u8::try_from(scale).map_err(|_| Error::data_loss("H.264 scaling-list value exceeds u8"))?;
 		last_scale = scale;
 	}
 	Ok(use_default)
@@ -1258,11 +1259,8 @@ mod tests {
 				"qualification accepts one AVC slice"
 			);
 			let sps = sps.as_ref().expect("SPS cached");
-			let slice = parse_h264_slice_header(
-				slice_nal.payload(),
-				sps,
-				pps.as_ref().expect("PPS cached"),
-			)?;
+			let slice =
+				parse_h264_slice_header(slice_nal.payload(), sps, pps.as_ref().expect("PPS cached"))?;
 			let plan = planner.plan(sps, &slice)?;
 			assert!(plan.setup_slot < 16);
 			assert!(plan.references.iter().all(|reference| reference.slot < 16));

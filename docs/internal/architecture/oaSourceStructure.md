@@ -128,7 +128,7 @@ The concrete file ownership is:
 | `runtime/vk/` | Vulkan instance/device/queue/buffer/descriptor/pipeline/command implementation. It consumes executable nodes and shader artifacts without deciding public operation semantics. |
 | `src/slang/` | Slang modules and kernel source. Shader bodies do not own Rust API validation or graph policy. |
 | `src/py/` | Native PyO3 binding implementation. It mirrors the admitted Rust ownership graph and owns no second runtime or operation implementation. |
-| `sdk/py/` | Importable `oa` package, build metadata, tests, examples, and tutorials. Its Cargo target points at the native implementation in `src/py`. |
+| `sdk/py/` | Importable `oa` package, build metadata, and tutorials. Its Cargo target points at the native implementation in `src/py`. |
 
 Within `src/slang`, physical directories name semantic owners rather than
 backend mechanics:

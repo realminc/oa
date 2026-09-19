@@ -110,10 +110,8 @@ test_vk!(
 	gae_matches_the_donor_oracle_and_boundary_semantics,
 	engine,
 	{
-		let reward =
-			oa::Matrix::from_f32(&engine, [4, 2], &[1.0, 0.5, 0.2, 1.0, 2.0, 0.3, 0.7, 1.5])?;
-		let value =
-			oa::Matrix::from_f32(&engine, [4, 2], &[0.4, 0.1, 0.3, 0.5, 0.8, 0.2, 0.6, 0.9])?;
+		let reward = oa::Matrix::from_f32(&engine, [4, 2], &[1.0, 0.5, 0.2, 1.0, 2.0, 0.3, 0.7, 1.5])?;
+		let value = oa::Matrix::from_f32(&engine, [4, 2], &[0.4, 0.1, 0.3, 0.5, 0.8, 0.2, 0.6, 0.9])?;
 		let next_value =
 			oa::Matrix::from_f32(&engine, [4, 2], &[0.3, 0.5, 99.0, 4.0, 0.6, 0.9, 0.2, 0.4])?;
 		let terminated = oa::Matrix::from_slice(&engine, [4, 2], &[0_u8, 0, 1, 0, 0, 0, 0, 0])?;

@@ -64,8 +64,7 @@ pub(in crate::ml) fn gae_into(
 	let inputs = [reward, value, next_value, terminated, truncated];
 	if advantage.storage().same_as(returns.storage())
 		|| inputs.iter().any(|input| {
-			input.storage().same_as(advantage.storage())
-				|| input.storage().same_as(returns.storage())
+			input.storage().same_as(advantage.storage()) || input.storage().same_as(returns.storage())
 		}) {
 		return Err(Error::invalid_argument(format!(
 			"{OPERATION} outputs must not alias inputs or each other"
@@ -73,9 +72,8 @@ pub(in crate::ml) fn gae_into(
 	}
 	let time = u32::try_from(reward.shape()[0])
 		.map_err(|_| Error::invalid_argument(format!("{OPERATION} time exceeds u32")))?;
-	let environments = u32::try_from(reward.shape()[1]).map_err(|_| {
-		Error::invalid_argument(format!("{OPERATION} environment count exceeds u32"))
-	})?;
+	let environments = u32::try_from(reward.shape()[1])
+		.map_err(|_| Error::invalid_argument(format!("{OPERATION} environment count exceeds u32")))?;
 	let buffers = [
 		BufferBinding::read(reward.storage()),
 		BufferBinding::read(value.storage()),

@@ -266,11 +266,7 @@ impl<T: Float> Mat4<T> {
 		result.is_finite().then_some(result)
 	}
 
-	pub fn try_perspective_reverse_z_infinite(
-		fov_y_degrees: T,
-		aspect: T,
-		near: T,
-	) -> Option<Self> {
+	pub fn try_perspective_reverse_z_infinite(fov_y_degrees: T, aspect: T, near: T) -> Option<Self> {
 		if !fov_y_degrees.is_finite()
 			|| !aspect.is_finite()
 			|| !near.is_finite()

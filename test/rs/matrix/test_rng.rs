@@ -121,8 +121,8 @@ test_vk!(
 	engine,
 	{
 		let shape = oa::Matrix::from_f32(&engine, [1031], &[0.0; 1031])?;
-		let (plan, random) = engine
-			.capture(|| oa::matrix::philox_uniform(&shape, -3.0, 7.0, 0xfedc_ba98_7654_3210))?;
+		let (plan, random) =
+			engine.capture(|| oa::matrix::philox_uniform(&shape, -3.0, 7.0, 0xfedc_ba98_7654_3210))?;
 		assert_eq!(plan.diagnostics().compatibility_node_count(), 0);
 		assert_eq!(plan.diagnostics().semantic_operation_count(), 2);
 		assert_eq!(
@@ -142,8 +142,8 @@ test_vk!(
 		assert!(replay0.iter().all(|value| (-3.0..7.0).contains(value)));
 		assert!(replay1.iter().all(|value| (-3.0..7.0).contains(value)));
 
-		let (fresh_plan, fresh_random) = engine
-			.capture(|| oa::matrix::philox_uniform(&shape, -3.0, 7.0, 0xfedc_ba98_7654_3210))?;
+		let (fresh_plan, fresh_random) =
+			engine.capture(|| oa::matrix::philox_uniform(&shape, -3.0, 7.0, 0xfedc_ba98_7654_3210))?;
 		engine.submit(&fresh_plan)?.wait()?;
 		assert_exact(&replay0, &fresh_random.read_f32()?);
 		Ok(())

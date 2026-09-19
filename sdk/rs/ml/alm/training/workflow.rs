@@ -77,8 +77,7 @@ pub fn tokenize_corpus(
 				"HumanML3D clip {index} is shorter than one tokenizer downsample interval"
 			)));
 		}
-		let input =
-			Matrix::from_slice(engine, [1, frames, tokenizer.config().input_dim], features)?;
+		let input = Matrix::from_slice(engine, [1, frames, tokenizer.config().input_dim], features)?;
 		let mut levels = tokenizer.tokenize(&input)?;
 		let tokens = levels
 			.pop()
@@ -261,9 +260,9 @@ fn train_alm_impl(
 				Some(encode_caption_rows(
 					specification.dataset,
 					&native.model,
-					native_tokenizer.as_ref().ok_or_else(|| {
-						Error::internal("native CLIP tokenizer was not constructed")
-					})?,
+					native_tokenizer
+						.as_ref()
+						.ok_or_else(|| Error::internal("native CLIP tokenizer was not constructed"))?,
 				)?)
 			} else {
 				if specification.dataset.text_feature_model() != dataset.text_feature_model() {
@@ -385,9 +384,9 @@ fn encode_caption_rows(
 	counts
 		.into_iter()
 		.map(|count| {
-			let value_count = count.checked_mul(feature_dim).ok_or_else(|| {
-				Error::resource_exhausted("native CLIP clip feature size exceeds usize")
-			})?;
+			let value_count = count
+				.checked_mul(feature_dim)
+				.ok_or_else(|| Error::resource_exhausted("native CLIP clip feature size exceeds usize"))?;
 			let end = offset
 				.checked_add(value_count)
 				.ok_or_else(|| Error::resource_exhausted("native CLIP offset exceeds usize"))?;

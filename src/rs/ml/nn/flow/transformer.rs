@@ -150,7 +150,8 @@ impl FlowTransformer {
 		let (batch, rows, batched) = match tokens.shape() {
 			[rows, features]
 				if *features == config.model_width
-					&& *rows != 0 && rows.is_multiple_of(config.sequence_length) =>
+					&& *rows != 0
+					&& rows.is_multiple_of(config.sequence_length) =>
 			{
 				(rows / config.sequence_length, *rows, false)
 			}
@@ -237,9 +238,7 @@ impl FlowTransformer {
 		let repeats = config
 			.num_heads
 			.checked_mul(config.sequence_length)
-			.ok_or_else(|| {
-				Error::invalid_argument("FlowTransformer mask repeat count overflows")
-			})?;
+			.ok_or_else(|| Error::invalid_argument("FlowTransformer mask repeat count overflows"))?;
 		let additive = matrix::repeat_interleave(&key_mask, repeats, 1)?;
 		let mask_rows = batch
 			.checked_mul(repeats)

@@ -87,11 +87,7 @@ impl Device {
 		&self,
 		profile: crate::video::VideoDecodeProfile,
 	) -> Result<crate::video::VideoDecodeCapabilities> {
-		super::video::query_decode_capabilities(
-			&self.inner._instance,
-			&self.inner.physical,
-			profile,
-		)
+		super::video::query_decode_capabilities(&self.inner._instance, &self.inner.physical, profile)
 	}
 
 	pub(in crate::runtime) fn video_decode_formats(
@@ -105,11 +101,7 @@ impl Device {
 		&self,
 		profile: crate::video::VideoEncodeProfile,
 	) -> Result<crate::video::VideoEncodeCapabilities> {
-		super::video::query_encode_capabilities(
-			&self.inner._instance,
-			&self.inner.physical,
-			profile,
-		)
+		super::video::query_encode_capabilities(&self.inner._instance, &self.inner.physical, profile)
 	}
 
 	pub(in crate::runtime) fn video_encode_formats(
@@ -146,8 +138,7 @@ impl Device {
 			})
 			.collect();
 		let mut extensions = Vec::<&CStr>::new();
-		if physical.video.decode_queue_family.is_some()
-			|| physical.video.encode_queue_family.is_some()
+		if physical.video.decode_queue_family.is_some() || physical.video.encode_queue_family.is_some()
 		{
 			extensions.push(ash::khr::video_queue::NAME);
 		}
@@ -189,9 +180,7 @@ impl Device {
 			)
 			.shader_int8(physical.features.shader_int8)
 			.runtime_descriptor_array(physical.features.runtime_descriptor_array)
-			.descriptor_binding_partially_bound(
-				physical.features.descriptor_binding_partially_bound,
-			)
+			.descriptor_binding_partially_bound(physical.features.descriptor_binding_partially_bound)
 			.descriptor_binding_storage_buffer_update_after_bind(
 				physical
 					.features
@@ -224,8 +213,7 @@ impl Device {
 
 		// SAFETY: logical-device creation requested queue zero from this family, and
 		// the logical device remains alive for the returned queue's full lifetime.
-		let compute_queue_handle =
-			unsafe { handle.get_device_queue(physical.compute_queue_family, 0) };
+		let compute_queue_handle = unsafe { handle.get_device_queue(physical.compute_queue_family, 0) };
 		let compute_queue = Queue {
 			handle: compute_queue_handle,
 		};
@@ -391,7 +379,8 @@ impl Device {
 		buffer: ash::vk::Buffer,
 		size: ash::vk::DeviceSize,
 	) -> Result<u32> {
-		self.inner
+		self
+			.inner
 			.descriptors
 			.bind_storage_buffer(&self.inner.handle, buffer, size)
 	}
@@ -448,7 +437,8 @@ impl Device {
 		// SAFETY: the pool exclusively owns this completed buffer/allocation pair,
 		// and this device owns the allocator that created it.
 		unsafe {
-			self.allocator()
+			self
+				.allocator()
 				.destroy_buffer(buffer.handle, &mut buffer.allocation);
 		}
 	}
@@ -530,7 +520,8 @@ impl Device {
 				CommandPoolKind::VideoDecode,
 			)?);
 		}
-		slot.as_mut()
+		slot
+			.as_mut()
 			.expect("video decode command pool was initialized")
 			.record_custom(&self.inner.handle, record)
 	}
@@ -606,8 +597,7 @@ impl Device {
 		command: &RecordedCommandBuffer,
 		epoch: u64,
 	) -> Result<()> {
-		let command_infos =
-			[ash::vk::CommandBufferSubmitInfo::default().command_buffer(command.raw())];
+		let command_infos = [ash::vk::CommandBufferSubmitInfo::default().command_buffer(command.raw())];
 		let signal_infos = [ash::vk::SemaphoreSubmitInfo::default()
 			.semaphore(self.inner.timeline.raw())
 			.value(epoch)
@@ -628,12 +618,11 @@ impl Device {
 		let queue = match command.pool_kind() {
 			CommandPoolKind::Compute => self.inner.compute_queue.handle,
 			CommandPoolKind::VideoDecode => {
-				self.inner
+				self
+					.inner
 					.video_decode_queue
 					.as_ref()
-					.ok_or_else(|| {
-						Error::missing_capability("no Vulkan Video decode queue is enabled")
-					})?
+					.ok_or_else(|| Error::missing_capability("no Vulkan Video decode queue is enabled"))?
 					.handle
 			}
 		};
@@ -648,7 +637,8 @@ impl Device {
 		// their resources until the signaled epoch is retired. The new signal uses the
 		// next strictly increasing value.
 		unsafe {
-			self.inner
+			self
+				.inner
 				.handle
 				.queue_submit2(queue, &submit_infos, ash::vk::Fence::null())
 		}
@@ -708,7 +698,8 @@ impl Drop for DeviceInner {
 			// SAFETY: final device ownership proves no live buffer can reference these
 			// pooled allocations, which were created by this allocator.
 			unsafe {
-				self.allocator
+				self
+					.allocator
 					.destroy_buffer(buffer.handle, &mut buffer.allocation);
 			}
 		}

@@ -208,8 +208,7 @@ impl<T: Float> Mat4<T> {
 		};
 		let row_x = x * decomposition.scale.x;
 		let row_y = (y + x * decomposition.shear.x) * decomposition.scale.y;
-		let row_z =
-			(z + x * decomposition.shear.y + y * decomposition.shear.z) * decomposition.scale.z;
+		let row_z = (z + x * decomposition.shear.y + y * decomposition.shear.z) * decomposition.scale.z;
 		Some(Self::from_affine(
 			Mat3 {
 				m: [

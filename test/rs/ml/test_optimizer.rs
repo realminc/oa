@@ -41,8 +41,8 @@ test_vk!(
 		assert_eq!(error.kind(), oa::ErrorKind::InvalidArgument);
 
 		let integer = oa::Matrix::from_slice(&engine, [1], &[1_i32])?;
-		let error = oa::ml::optim::clip_grad_norm(&[integer], 1.0)
-			.expect_err("integer gradient was accepted");
+		let error =
+			oa::ml::optim::clip_grad_norm(&[integer], 1.0).expect_err("integer gradient was accepted");
 		assert_eq!(error.kind(), oa::ErrorKind::InvalidArgument);
 
 		let gradients = (0..17)
@@ -105,9 +105,7 @@ test_vk!(sgd_matches_the_donor_fp32_update_order, engine, {
 	let expected = initial
 		.iter()
 		.zip(&gradient)
-		.map(|(parameter, gradient)| {
-			parameter - LEARNING_RATE * (gradient + WEIGHT_DECAY * parameter)
-		})
+		.map(|(parameter, gradient)| parameter - LEARNING_RATE * (gradient + WEIGHT_DECAY * parameter))
 		.collect::<Vec<_>>();
 	optimizer.step()?;
 	assert_eq!(optimizer.step_count(), 1);
@@ -137,9 +135,7 @@ test_vk!(adam_matches_the_donor_first_step_bias_correction, engine, {
 	let expected = initial
 		.iter()
 		.zip(&gradient)
-		.map(|(parameter, gradient)| {
-			parameter - LEARNING_RATE * gradient / (gradient.abs() + EPSILON)
-		})
+		.map(|(parameter, gradient)| parameter - LEARNING_RATE * gradient / (gradient.abs() + EPSILON))
 		.collect::<Vec<_>>();
 	optimizer.step()?;
 	assert_eq!(optimizer.step_count(), 1);
@@ -322,8 +318,7 @@ fn muon_matrix_reference(
 	};
 	let scale = 0.2 * (rows.max(columns) as f32).sqrt();
 	for (weight, orthogonal) in weights.iter_mut().zip(orthogonal) {
-		*weight =
-			(1.0 - learning_rate * weight_decay) * *weight - learning_rate * scale * orthogonal;
+		*weight = (1.0 - learning_rate * weight_decay) * *weight - learning_rate * scale * orthogonal;
 	}
 }
 
@@ -391,8 +386,7 @@ fn muon_vector_reference(
 		let next_momentum = beta * momentum[index] + (1.0 - beta) * gradients[index];
 		let update = (1.0 - beta) * gradients[index] + beta * next_momentum;
 		momentum[index] = next_momentum;
-		weights[index] =
-			(1.0 - learning_rate * weight_decay) * weights[index] - learning_rate * update;
+		weights[index] = (1.0 - learning_rate * weight_decay) * weights[index] - learning_rate * update;
 	}
 }
 

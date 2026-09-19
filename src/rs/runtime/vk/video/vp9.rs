@@ -65,9 +65,7 @@ impl DpbState {
 				.get(logical)
 				.copied()
 				.flatten()
-				.ok_or_else(|| {
-					Error::data_loss("VP9 show-existing reference is absent from the DPB")
-				})?;
+				.ok_or_else(|| Error::data_loss("VP9 show-existing reference is absent from the DPB"))?;
 			return Ok(PicturePlan {
 				setup_slot: None,
 				show_existing_slot: Some(slot),
@@ -86,11 +84,10 @@ impl DpbState {
 		let mut protected = vec![false; self.physical_extents.len()];
 		if !picture.frame_is_intra {
 			for (name, logical) in picture.reference_frame_indices.iter().copied().enumerate() {
-				let slot = self.logical_to_physical[usize::from(logical)].ok_or_else(|| {
-					Error::data_loss("VP9 named reference is absent from the DPB")
-				})?;
-				let index = usize::try_from(slot)
-					.map_err(|_| Error::internal("VP9 physical slot exceeds usize"))?;
+				let slot = self.logical_to_physical[usize::from(logical)]
+					.ok_or_else(|| Error::data_loss("VP9 named reference is absent from the DPB"))?;
+				let index =
+					usize::try_from(slot).map_err(|_| Error::internal("VP9 physical slot exceeds usize"))?;
 				if self
 					.physical_extents
 					.get(index)
@@ -103,13 +100,14 @@ impl DpbState {
 					));
 				}
 				protected[index] = true;
-				named[name] = i32::try_from(slot)
-					.map_err(|_| Error::internal("VP9 reference slot exceeds i32"))?;
+				named[name] =
+					i32::try_from(slot).map_err(|_| Error::internal("VP9 reference slot exceeds i32"))?;
 			}
 		}
 
 		let remains_mapped = |slot: u32| {
-			self.logical_to_physical
+			self
+				.logical_to_physical
 				.iter()
 				.enumerate()
 				.any(|(logical, mapped)| {
@@ -121,13 +119,12 @@ impl DpbState {
 			.iter()
 			.enumerate()
 			.find(|(index, value)| {
-				value.is_none()
-					&& !protected[*index]
-					&& !unavailable.get(*index).copied().unwrap_or(false)
+				value.is_none() && !protected[*index] && !unavailable.get(*index).copied().unwrap_or(false)
 			})
 			.map(|(index, _)| index)
 			.or_else(|| {
-				self.physical_extents
+				self
+					.physical_extents
 					.iter()
 					.enumerate()
 					.find_map(|(index, _)| {
@@ -139,15 +136,14 @@ impl DpbState {
 					})
 			})
 			.ok_or_else(|| Error::resource_exhausted("VP9 DPB has no recyclable physical slot"))?;
-		let setup_slot = u32::try_from(setup_index)
-			.map_err(|_| Error::internal("VP9 setup slot exceeds u32"))?;
+		let setup_slot =
+			u32::try_from(setup_index).map_err(|_| Error::internal("VP9 setup slot exceeds u32"))?;
 
 		let mut active_references = Vec::new();
 		for (index, active) in protected.into_iter().enumerate() {
 			if active {
 				active_references.push(
-					u32::try_from(index)
-						.map_err(|_| Error::internal("VP9 active reference exceeds u32"))?,
+					u32::try_from(index).map_err(|_| Error::internal("VP9 active reference exceeds u32"))?,
 				);
 			}
 		}
@@ -167,8 +163,8 @@ impl DpbState {
 			self.physical_extents[setup_index] = None;
 		}
 		for (index, extent) in self.physical_extents.iter_mut().enumerate() {
-			let slot = u32::try_from(index)
-				.map_err(|_| Error::internal("VP9 physical slot exceeds u32"))?;
+			let slot =
+				u32::try_from(index).map_err(|_| Error::internal("VP9 physical slot exceeds u32"))?;
 			if !self.logical_to_physical.contains(&Some(slot)) {
 				*extent = None;
 			}
@@ -294,8 +290,7 @@ pub(super) fn record_picture(
 		.image_view_binding(dpb.view);
 	let setup_slot = ash::vk::VideoReferenceSlotInfoKHR::default()
 		.slot_index(
-			i32::try_from(setup_slot_index)
-				.map_err(|_| Error::internal("VP9 setup slot exceeds i32"))?,
+			i32::try_from(setup_slot_index).map_err(|_| Error::internal("VP9 setup slot exceeds i32"))?,
 		)
 		.picture_resource(&setup_resource);
 
@@ -534,8 +529,7 @@ fn record_release_for_readback(
 	let release = ash::vk::ImageMemoryBarrier2::default()
 		.src_stage_mask(ash::vk::PipelineStageFlags2::VIDEO_DECODE_KHR)
 		.src_access_mask(
-			ash::vk::AccessFlags2::VIDEO_DECODE_READ_KHR
-				| ash::vk::AccessFlags2::VIDEO_DECODE_WRITE_KHR,
+			ash::vk::AccessFlags2::VIDEO_DECODE_READ_KHR | ash::vk::AccessFlags2::VIDEO_DECODE_WRITE_KHR,
 		)
 		.dst_stage_mask(if same_family {
 			ash::vk::PipelineStageFlags2::TRANSFER

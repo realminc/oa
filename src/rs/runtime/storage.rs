@@ -179,9 +179,9 @@ impl Storage {
 
 	pub(crate) fn validate_recording_access(&self) -> Result<()> {
 		match &*self.inner.readiness.borrow() {
-			ReadinessSnapshot::Ready
-			| ReadinessSnapshot::Recorded
-			| ReadinessSnapshot::Submitted(_) => Ok(()),
+			ReadinessSnapshot::Ready | ReadinessSnapshot::Recorded | ReadinessSnapshot::Submitted(_) => {
+				Ok(())
+			}
 			ReadinessSnapshot::Captured => Err(Error::failed_precondition(
 				"captured matrix storage must be submitted before another operation can use it",
 			)),

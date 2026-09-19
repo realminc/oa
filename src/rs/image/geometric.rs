@@ -151,9 +151,9 @@ pub fn resize(
 		.iter()
 		.copied()
 		.try_fold(1_usize, |count, extent| {
-			count.checked_mul(extent).ok_or_else(|| {
-				Error::out_of_range("image::resize output element count exceeds usize")
-			})
+			count
+				.checked_mul(extent)
+				.ok_or_else(|| Error::out_of_range("image::resize output element count exceeds usize"))
 		})?;
 	u32_extent(output_elements, "image::resize output element count")?;
 	let output_matrix = Matrix::allocate(
@@ -524,8 +524,7 @@ fn validate_image(input: &Image, operation: &str) -> Result<ImageExtent> {
 			input.layout()
 		)));
 	}
-	if input.batch_size() == 0 || input.channels() == 0 || input.height() == 0 || input.width() == 0
-	{
+	if input.batch_size() == 0 || input.channels() == 0 || input.height() == 0 || input.width() == 0 {
 		return Err(Error::invalid_argument(format!(
 			"{operation} requires a nonempty image"
 		)));
@@ -649,9 +648,7 @@ fn record_image(
 		output
 			.batch_size()
 			.checked_mul(output.channels())
-			.ok_or_else(|| {
-				Error::out_of_range("image operation batch-channel dispatch exceeds usize")
-			})?,
+			.ok_or_else(|| Error::out_of_range("image operation batch-channel dispatch exceeds usize"))?,
 		"image operation batch-channel dispatch",
 	)?;
 	let mut workgroups = kernel.output_workgroups(width, height);
@@ -690,9 +687,7 @@ fn record_warp(
 		output
 			.batch_size()
 			.checked_mul(output.channels())
-			.ok_or_else(|| {
-				Error::out_of_range("image warp batch-channel dispatch exceeds usize")
-			})?,
+			.ok_or_else(|| Error::out_of_range("image warp batch-channel dispatch exceeds usize"))?,
 		"image warp batch-channel dispatch",
 	)?;
 	let mut workgroups = kernel.output_workgroups(width, height);

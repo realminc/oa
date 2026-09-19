@@ -1,6 +1,6 @@
 [package]
 name = "oa"
-version = "0.8.1"
+version = "0.8.2"
 edition = "2024"
 rust-version = "1.98"
 autotests = false
@@ -61,8 +61,16 @@ name = "sdk"
 path = "test/rs/test_sdk.rs"
 
 [[example]]
-name = "core_mat_mul_intro"
-path = "sdk/rs/tutorials/core/mat_mul_intro.rs"
+name = "tu_core_mat_mul_intro"
+path = "sdk/rs/tutorials/core/tu_core_mat_mul_intro.rs"
+
+[[example]]
+name = "tu_core_device_canary"
+path = "sdk/rs/tutorials/core/tu_core_device_canary.rs"
+
+[[example]]
+name = "tu_core_engine_intro"
+path = "sdk/rs/tutorials/core/tu_core_engine_intro.rs"
 
 [[example]]
 name = "core_mat_mul_bench"
@@ -77,84 +85,84 @@ name = "core_vlm_bench"
 path = "sdk/rs/benchmarks/core/vlm.rs"
 
 [[example]]
-name = "ml_nlp_char_rnn"
-path = "sdk/rs/tutorials/ml/nlp/char_rnn.rs"
+name = "tu_nlp_char_rnn"
+path = "sdk/rs/tutorials/ml/nlp/tu_nlp_char_rnn.rs"
 
 [[example]]
-name = "ml_nlp_char_gru"
-path = "sdk/rs/tutorials/ml/nlp/char_gru.rs"
+name = "tu_nlp_char_gru"
+path = "sdk/rs/tutorials/ml/nlp/tu_nlp_char_gru.rs"
 
 [[example]]
-name = "ml_nlp_char_transformer"
-path = "sdk/rs/tutorials/ml/nlp/char_transformer.rs"
+name = "tu_nlp_char_transformer"
+path = "sdk/rs/tutorials/ml/nlp/tu_nlp_char_transformer.rs"
 
 [[example]]
-name = "ml_nlp_char_moe_transformer"
-path = "sdk/rs/tutorials/ml/nlp/char_moe_transformer.rs"
+name = "tu_nlp_char_moe_transformer"
+path = "sdk/rs/tutorials/ml/nlp/tu_nlp_char_moe_transformer.rs"
 
 [[example]]
-name = "ml_nlp_char_mamba3"
-path = "sdk/rs/tutorials/ml/nlp/char_mamba3.rs"
+name = "tu_nlp_char_mamba3"
+path = "sdk/rs/tutorials/ml/nlp/tu_nlp_char_mamba3.rs"
 
 [[example]]
-name = "ml_nlp_byte_rnn"
-path = "sdk/rs/tutorials/ml/nlp/byte_rnn.rs"
+name = "tu_nlp_byte_rnn"
+path = "sdk/rs/tutorials/ml/nlp/tu_nlp_byte_rnn.rs"
 
 [[example]]
-name = "ml_nlp_byte_gru"
-path = "sdk/rs/tutorials/ml/nlp/byte_gru.rs"
+name = "tu_nlp_byte_gru"
+path = "sdk/rs/tutorials/ml/nlp/tu_nlp_byte_gru.rs"
 
 [[example]]
-name = "ml_nlp_byte_transformer"
-path = "sdk/rs/tutorials/ml/nlp/byte_transformer.rs"
+name = "tu_nlp_byte_transformer"
+path = "sdk/rs/tutorials/ml/nlp/tu_nlp_byte_transformer.rs"
 
 [[example]]
-name = "ml_nlp_byte_moe"
-path = "sdk/rs/tutorials/ml/nlp/byte_moe.rs"
+name = "tu_nlp_byte_moe"
+path = "sdk/rs/tutorials/ml/nlp/tu_nlp_byte_moe.rs"
 
 [[example]]
-name = "ml_nlp_byte_mamba3"
-path = "sdk/rs/tutorials/ml/nlp/byte_mamba3.rs"
+name = "tu_nlp_byte_mamba3"
+path = "sdk/rs/tutorials/ml/nlp/tu_nlp_byte_mamba3.rs"
 
 [[example]]
-name = "ml_nlp_byte_empyrealm"
-path = "sdk/rs/tutorials/ml/nlp/byte_empyrealm.rs"
+name = "tu_nlp_byte_empyrealm"
+path = "sdk/rs/tutorials/ml/nlp/tu_nlp_byte_empyrealm.rs"
 
 [[example]]
-name = "ml_nlp_bpe_rnn"
-path = "sdk/rs/tutorials/ml/nlp/bpe_rnn.rs"
+name = "tu_nlp_bpe_rnn"
+path = "sdk/rs/tutorials/ml/nlp/tu_nlp_bpe_rnn.rs"
 
 [[example]]
-name = "ml_nlp_bpe_gru"
-path = "sdk/rs/tutorials/ml/nlp/bpe_gru.rs"
+name = "tu_nlp_bpe_gru"
+path = "sdk/rs/tutorials/ml/nlp/tu_nlp_bpe_gru.rs"
 
 [[example]]
-name = "ml_nlp_bpe_transformer"
-path = "sdk/rs/tutorials/ml/nlp/bpe_transformer.rs"
+name = "tu_nlp_bpe_transformer"
+path = "sdk/rs/tutorials/ml/nlp/tu_nlp_bpe_transformer.rs"
 
 [[example]]
-name = "ml_nlp_bpe_moe"
-path = "sdk/rs/tutorials/ml/nlp/bpe_moe.rs"
+name = "tu_nlp_bpe_moe"
+path = "sdk/rs/tutorials/ml/nlp/tu_nlp_bpe_moe.rs"
 
 [[example]]
-name = "ml_nlp_bpe_mamba3"
-path = "sdk/rs/tutorials/ml/nlp/bpe_mamba3.rs"
+name = "tu_nlp_bpe_mamba3"
+path = "sdk/rs/tutorials/ml/nlp/tu_nlp_bpe_mamba3.rs"
 
 [[example]]
 name = "ml_nlp_char_transformer_profile"
 path = "sdk/rs/benchmarks/ml/nlp/char_transformer.rs"
 
 [[example]]
-name = "ml_rl_cart_pole_ppo"
-path = "sdk/rs/tutorials/ml/rl/cart_pole_ppo.rs"
+name = "tu_rl_cart_pole_ppo"
+path = "sdk/rs/tutorials/ml/rl/tu_rl_cart_pole_ppo.rs"
 
 [[example]]
-name = "ml_rl_cart_pole_rollout"
-path = "sdk/rs/tutorials/ml/rl/cart_pole_rollout.rs"
+name = "tu_rl_cart_pole_rollout"
+path = "sdk/rs/tutorials/ml/rl/tu_rl_cart_pole_rollout.rs"
 
 [[example]]
-name = "ml_rl_lunar_lander_ppo"
-path = "sdk/rs/tutorials/ml/rl/lunar_lander_ppo.rs"
+name = "tu_rl_lunar_lander_ppo"
+path = "sdk/rs/tutorials/ml/rl/tu_rl_lunar_lander_ppo.rs"
 
 [[example]]
 name = "ml_alm_train"
@@ -163,6 +171,26 @@ path = "sdk/rs/apps/ml/alm/train.rs"
 [[example]]
 name = "ml_alm_generate"
 path = "sdk/rs/apps/ml/alm/generate.rs"
+
+[[example]]
+name = "ex_matrix"
+path = "sdk/rs/examples/core/ex_matrix.rs"
+
+[[example]]
+name = "ex_audio"
+path = "sdk/rs/examples/audio/ex_audio.rs"
+
+[[example]]
+name = "ex_crypto_shake256"
+path = "sdk/rs/examples/crypto/ex_crypto_shake256.rs"
+
+[[example]]
+name = "ex_image"
+path = "sdk/rs/examples/vision/ex_image.rs"
+
+[[example]]
+name = "ex_ml_regression"
+path = "sdk/rs/examples/ml/ex_ml_regression.rs"
 
 [dependencies]
 ash = "0.38"
@@ -182,6 +210,7 @@ symphonia = { version = "0.6", default-features = false, features = ["flac", "mp
 image-codec = { package = "image", version = "0.25.10", default-features = false, features = ["bmp", "jpeg", "png", "tga", "webp"] }
 webp-codec = { package = "webp", version = "0.3.1", default-features = false }
 libc = "0.2"
+memmap2 = "0.9"
 ml-dsa = { version = "0.1.1", default-features = false, features = ["alloc", "getrandom", "zeroize"] }
 
 [build-dependencies]

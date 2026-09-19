@@ -120,9 +120,8 @@ test_vk!(
 			assert!(status.success(), "OA C++ could not rewrite Rust .oam");
 			let cpp_destination = CheckpointModule::new(&engine, 0.0, 0, 0)?;
 			let mut cpp_optimizer = AdamW::new(cpp_destination.all_parameters()?, 0.01)?;
-			let error =
-				oa::ml::load_checkpoint(&engine, &cpp_path, &cpp_destination, &mut cpp_optimizer)
-					.expect_err("inference-only C++ artifact retained optimizer state");
+			let error = oa::ml::load_checkpoint(&engine, &cpp_path, &cpp_destination, &mut cpp_optimizer)
+				.expect_err("inference-only C++ artifact retained optimizer state");
 			assert_eq!(error.kind(), oa::ErrorKind::InvalidArgument);
 			assert_eq!(
 				error.message(),
@@ -235,9 +234,8 @@ test_vk!(
 		let momentum_model = oa::ml::nn::Linear::with_seed(&engine, 2, 2, 0x4d4f_4d45)?;
 		let mut momentum = Sgd::new(momentum_model.all_parameters()?, 0.05, 0.9, 0.0)?;
 		train_linear_once(&momentum_model, &input, &targets, &mut momentum)?;
-		let error =
-			oa::ml::save_checkpoint(directory.join("momentum.oam"), &momentum_model, &momentum)
-				.expect_err("live SGD momentum was silently omitted from .oam");
+		let error = oa::ml::save_checkpoint(directory.join("momentum.oam"), &momentum_model, &momentum)
+			.expect_err("live SGD momentum was silently omitted from .oam");
 		assert_eq!(error.kind(), oa::ErrorKind::FailedPrecondition);
 
 		std::fs::remove_dir_all(directory).expect("remove optimizer checkpoint directory");
@@ -299,7 +297,8 @@ test_vk!(
 			.iter()
 			.map(std::fs::DirEntry::path)
 			.find(|path| {
-				path.file_name()
+				path
+					.file_name()
 					.and_then(|name| name.to_str())
 					.is_some_and(|name| name.contains("_step3_"))
 			})

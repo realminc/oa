@@ -131,9 +131,9 @@ impl AudioPlayer {
 		});
 
 		let host = cpal::default_host();
-		let device = host.default_output_device().ok_or_else(|| {
-			Error::no_suitable_device("AudioPlayer found no default output device")
-		})?;
+		let device = host
+			.default_output_device()
+			.ok_or_else(|| Error::no_suitable_device("AudioPlayer found no default output device"))?;
 		let ranges = device
 			.supported_output_configs()
 			.map_err(|error| cpal_error("output configuration query", error))?;
@@ -162,9 +162,7 @@ impl AudioPlayer {
 		let decoder_thread = thread::Builder::new()
 			.name("oa-audio-decode".into())
 			.spawn(move || decode_loop(decoder, sender, capacity, thread_shared))
-			.map_err(|source| {
-				Error::backend_failure("host", "AudioPlayer decoder thread", source)
-			})?;
+			.map_err(|source| Error::backend_failure("host", "AudioPlayer decoder thread", source))?;
 		Ok(Self {
 			_engine: engine.handle(),
 			service: Some(PlayerService {
@@ -307,7 +305,8 @@ impl AudioPlayer {
 	}
 
 	pub fn position_us(&self) -> u64 {
-		self.shared
+		self
+			.shared
 			.position_frame
 			.load(Ordering::Relaxed)
 			.saturating_mul(1_000_000)
@@ -554,8 +553,7 @@ fn wait_decoder(shared: &PlayerShared, duration: Duration) {
 
 impl StreamingDecoder {
 	fn open(path: &Path) -> Result<(Self, u64)> {
-		let file =
-			File::open(path).map_err(|source| Error::io("AudioPlayer source open", source))?;
+		let file = File::open(path).map_err(|source| Error::io("AudioPlayer source open", source))?;
 		let stream = MediaSourceStream::new(Box::new(file), Default::default());
 		let mut hint = Hint::new();
 		if let Some(extension) = path.extension().and_then(|value| value.to_str()) {
@@ -569,9 +567,9 @@ impl StreamingDecoder {
 				MetadataOptions::default(),
 			)
 			.map_err(|source| Error::backend_failure("Symphonia", "AudioPlayer probe", source))?;
-		let track = format.default_track(TrackType::Audio).ok_or_else(|| {
-			Error::invalid_argument("AudioPlayer source has no decodable audio track")
-		})?;
+		let track = format
+			.default_track(TrackType::Audio)
+			.ok_or_else(|| Error::invalid_argument("AudioPlayer source has no decodable audio track"))?;
 		let parameters = track
 			.codec_params
 			.as_ref()
@@ -608,18 +606,20 @@ impl StreamingDecoder {
 
 	fn read_frames(&mut self) -> Result<Option<Vec<f32>>> {
 		loop {
-			let Some(packet) = self.format.next_packet().map_err(|source| {
-				Error::backend_failure("Symphonia", "AudioPlayer packet read", source)
-			})?
+			let Some(packet) = self
+				.format
+				.next_packet()
+				.map_err(|source| Error::backend_failure("Symphonia", "AudioPlayer packet read", source))?
 			else {
 				return Ok(None);
 			};
 			if packet.track_id != self.track_id {
 				continue;
 			}
-			let decoded = self.decoder.decode(&packet).map_err(|source| {
-				Error::backend_failure("Symphonia", "AudioPlayer decode", source)
-			})?;
+			let decoded = self
+				.decoder
+				.decode(&packet)
+				.map_err(|source| Error::backend_failure("Symphonia", "AudioPlayer decode", source))?;
 			if decoded.spec().channels().count() != self.channels
 				|| decoded.spec().rate() != self.sample_rate
 			{

@@ -11,8 +11,7 @@ mod primitives;
 mod secure_buffer;
 
 pub use primitives::{
-	Hash, Hasher, MerkleProof, MerkleTree, Shake128, Shake256, build_merkle_tree, hash,
-	hash_combine, keccak_f1600, kmac256, merkle_proof, merkle_root, shake128, shake256,
-	verify_merkle_proof,
+	Hash, Hasher, MerkleProof, MerkleTree, Shake128, Shake256, build_merkle_tree, hash, hash_combine,
+	keccak_f1600, kmac256, merkle_proof, merkle_root, shake128, shake256, verify_merkle_proof,
 };
 pub use secure_buffer::SecureBuffer;

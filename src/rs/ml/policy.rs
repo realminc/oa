@@ -298,10 +298,7 @@ fn evaluate_tanh_normal_lowering(
 	Ok(ContinuousPolicyResult {
 		action,
 		raw_action: raw_action.clone(),
-		log_probability: matrix::reshape_semantic_output(
-			&log_probability_column,
-			vec![environments],
-		)?,
+		log_probability: matrix::reshape_semantic_output(&log_probability_column, vec![environments])?,
 		entropy: matrix::reshape_semantic_output(&entropy_column, vec![environments])?,
 		value: value.clone(),
 	})
@@ -353,9 +350,8 @@ fn validate_categorical(
 			"{operation} expects FP32 logits [E,A] and values [E] on one engine"
 		)));
 	}
-	u32::try_from(*environments).map_err(|_| {
-		Error::invalid_argument(format!("{operation} environment count exceeds u32"))
-	})?;
+	u32::try_from(*environments)
+		.map_err(|_| Error::invalid_argument(format!("{operation} environment count exceeds u32")))?;
 	if let Some(action) = action
 		&& (action.dtype() != DType::I32
 			|| action.shape() != [*environments]
@@ -404,9 +400,8 @@ fn validate_continuous(
 			"{operation} expects matching FP32 [E,A] inputs, FP32 values [E], finite ordered bounds, and epsilon in (0,1) on one engine"
 		)));
 	}
-	u32::try_from(*environments).map_err(|_| {
-		Error::invalid_argument(format!("{operation} environment count exceeds u32"))
-	})?;
+	u32::try_from(*environments)
+		.map_err(|_| Error::invalid_argument(format!("{operation} environment count exceeds u32")))?;
 	u32::try_from(mean.element_count())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	Ok(())

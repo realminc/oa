@@ -14,8 +14,7 @@ use crate::{Engine, Error, Matrix, Result, matrix};
 
 use super::{
 	LUNAR_OBSERVATION_SIZE, LunarEndReason, LunarEpisodeManifest, LunarLander3dConfig,
-	LunarLander3dVector, LunarLander3dVectorConfig, LunarScalarEnvironment,
-	scripted_landing_action,
+	LunarLander3dVector, LunarLander3dVectorConfig, LunarScalarEnvironment, scripted_landing_action,
 };
 
 /// Deterministic flat-terrain scripted-teacher curriculum.
@@ -497,9 +496,10 @@ fn evaluate_first_episodes_impl(
 		}
 		let event = environment.submit()?;
 		environment.wait(&event)?;
-		result.submissions = result.submissions.checked_add(1).ok_or_else(|| {
-			Error::resource_exhausted("Lunar evaluation submission count overflows")
-		})?;
+		result.submissions = result
+			.submissions
+			.checked_add(1)
+			.ok_or_else(|| Error::resource_exhausted("Lunar evaluation submission count overflows"))?;
 		let actions = history.batch().action().read::<i32>()?;
 		let values = history.batch().value().read_f32()?;
 		let rewards = history.batch().reward().read_f32()?;
@@ -563,8 +563,7 @@ fn evaluate_first_episodes_impl(
 			if completed[lane] {
 				let reason = end_reason_from_u32(reasons[lane])?;
 				if reason == LunarEndReason::None
-					|| (terminal_reasons[lane] != LunarEndReason::None
-						&& terminal_reasons[lane] != reason)
+					|| (terminal_reasons[lane] != LunarEndReason::None && terminal_reasons[lane] != reason)
 				{
 					return Err(Error::data_loss(
 						"Lunar evaluation terminal reason changed after completion",
@@ -772,8 +771,7 @@ fn wilson_lower_95(successes: u32, trials: u32) -> f64 {
 	let z_squared = Z * Z;
 	let denominator = 1.0 + z_squared / trials;
 	let center = proportion + z_squared / (2.0 * trials);
-	let radius =
-		Z * ((proportion * (1.0 - proportion) + z_squared / (4.0 * trials)) / trials).sqrt();
+	let radius = Z * ((proportion * (1.0 - proportion) + z_squared / (4.0 * trials)) / trials).sqrt();
 	((center - radius) / denominator).max(0.0)
 }
 

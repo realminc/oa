@@ -101,13 +101,13 @@ impl SafeTensorsSource {
 		let mut metadata = HashMap::new();
 		for (name, value) in entries {
 			if name == "__metadata__" {
-				let values = value.as_object().ok_or_else(|| {
-					Error::data_loss("SafeTensors metadata must be a string object")
-				})?;
+				let values = value
+					.as_object()
+					.ok_or_else(|| Error::data_loss("SafeTensors metadata must be a string object"))?;
 				for (key, value) in values {
-					let value = value.as_str().ok_or_else(|| {
-						Error::data_loss("SafeTensors metadata values must be strings")
-					})?;
+					let value = value
+						.as_str()
+						.ok_or_else(|| Error::data_loss("SafeTensors metadata values must be strings"))?;
 					metadata.insert(key.clone(), value.to_owned());
 				}
 				continue;
@@ -115,9 +115,9 @@ impl SafeTensorsSource {
 			if name.is_empty() || name.as_bytes().contains(&0) {
 				return Err(Error::data_loss("SafeTensors tensor name is invalid"));
 			}
-			let object = value.as_object().ok_or_else(|| {
-				Error::data_loss(format!("SafeTensors tensor {name} is not an object"))
-			})?;
+			let object = value
+				.as_object()
+				.ok_or_else(|| Error::data_loss(format!("SafeTensors tensor {name} is not an object")))?;
 			let dtype = ScalarType::parse(
 				object
 					.get("dtype")
@@ -133,9 +133,7 @@ impl SafeTensorsSource {
 					extent
 						.as_u64()
 						.and_then(|value| usize::try_from(value).ok())
-						.ok_or_else(|| {
-							Error::data_loss(format!("tensor {name} has an invalid extent"))
-						})
+						.ok_or_else(|| Error::data_loss(format!("tensor {name} has an invalid extent")))
 				})
 				.collect::<Result<Vec<_>>>()?;
 			let offsets = object
@@ -151,9 +149,9 @@ impl SafeTensorsSource {
 				)));
 			}
 			let elements = shape.iter().try_fold(1_usize, |count, extent| {
-				count.checked_mul(*extent).ok_or_else(|| {
-					Error::data_loss(format!("tensor {name} element count overflows"))
-				})
+				count
+					.checked_mul(*extent)
+					.ok_or_else(|| Error::data_loss(format!("tensor {name} element count overflows")))
 			})?;
 			let expected = elements
 				.checked_mul(dtype.size_bytes())

@@ -429,11 +429,7 @@ impl<T: Float> Mat4<T> {
 		Some(result)
 	}
 
-	pub fn try_compose_trs(
-		translation: Vec3<T>,
-		rotation: Quat<T>,
-		scale: Vec3<T>,
-	) -> Option<Self> {
+	pub fn try_compose_trs(translation: Vec3<T>, rotation: Quat<T>, scale: Vec3<T>) -> Option<Self> {
 		if !translation.is_finite() || !scale.is_finite() {
 			return None;
 		}

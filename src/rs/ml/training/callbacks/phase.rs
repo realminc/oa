@@ -147,16 +147,15 @@ impl<'hook> PhaseSchedule<'hook> {
 
 		let mut epoch = 0_usize;
 		for phase in &self.phases {
-			let phase_epochs = usize::try_from(phase.epochs).map_err(|_| {
-				Error::resource_exhausted("training phase epoch count exceeds usize")
-			})?;
-			let end = epoch.checked_add(phase_epochs).ok_or_else(|| {
-				Error::resource_exhausted("training phase epoch range overflows usize")
-			})?;
+			let phase_epochs = usize::try_from(phase.epochs)
+				.map_err(|_| Error::resource_exhausted("training phase epoch count exceeds usize"))?;
+			let end = epoch
+				.checked_add(phase_epochs)
+				.ok_or_else(|| Error::resource_exhausted("training phase epoch range overflows usize"))?;
 			let actual_steps = actual[epoch..end].iter().try_fold(0_u64, |sum, steps| {
-				sum.checked_add(*steps).ok_or_else(|| {
-					Error::resource_exhausted("iterator phase step count overflows u64")
-				})
+				sum
+					.checked_add(*steps)
+					.ok_or_else(|| Error::resource_exhausted("iterator phase step count overflows u64"))
 			})?;
 			if actual_steps != phase.steps {
 				return Err(Error::invalid_argument(format!(
@@ -177,9 +176,9 @@ impl<'hook> PhaseSchedule<'hook> {
 		}
 		let mut epochs_before = 0_u64;
 		for (index, phase) in self.phases.iter().enumerate() {
-			let end = epochs_before.checked_add(phase.epochs).ok_or_else(|| {
-				Error::resource_exhausted("training phase epoch range overflows u64")
-			})?;
+			let end = epochs_before
+				.checked_add(phase.epochs)
+				.ok_or_else(|| Error::resource_exhausted("training phase epoch range overflows u64"))?;
 			if epoch <= end {
 				return Ok((index, epoch - epochs_before));
 			}

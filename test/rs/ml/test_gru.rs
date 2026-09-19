@@ -34,8 +34,7 @@ fn host_gru(case: HostGruCase<'_>) -> Vec<f32> {
 				gates_i[gate] = bias_ih[gate];
 				gates_h[gate] = bias_hh[gate];
 				for feature in 0..input_size {
-					gates_i[gate] +=
-						input[input_base + feature] * weight_ih[gate * input_size + feature];
+					gates_i[gate] += input[input_base + feature] * weight_ih[gate * input_size + feature];
 				}
 				for feature in 0..hidden_size {
 					gates_h[gate] += hidden[feature] * weight_hh[gate * hidden_size + feature];
@@ -44,13 +43,10 @@ fn host_gru(case: HostGruCase<'_>) -> Vec<f32> {
 			let output_base = (batch_index * sequence + time) * hidden_size;
 			for feature in 0..hidden_size {
 				let reset = 1.0 / (1.0 + (-(gates_i[feature] + gates_h[feature])).exp());
-				let update = 1.0
-					/ (1.0
-						+ (-(gates_i[hidden_size + feature] + gates_h[hidden_size + feature]))
-							.exp());
-				let candidate = (gates_i[2 * hidden_size + feature]
-					+ reset * gates_h[2 * hidden_size + feature])
-					.tanh();
+				let update =
+					1.0 / (1.0 + (-(gates_i[hidden_size + feature] + gates_h[hidden_size + feature])).exp());
+				let candidate =
+					(gates_i[2 * hidden_size + feature] + reset * gates_h[2 * hidden_size + feature]).tanh();
 				hidden[feature] = (1.0 - update) * candidate + update * hidden[feature];
 				output[output_base + feature] = hidden[feature];
 			}
@@ -91,8 +87,7 @@ fn host_gru_cell(case: HostGruCellCase<'_>) -> Vec<f32> {
 			gates_i[gate] += case.input[feature] * case.weight_ih[gate * case.input_size + feature];
 		}
 		for feature in 0..case.hidden_size {
-			gates_h[gate] +=
-				case.hidden[feature] * case.weight_hh[gate * case.hidden_size + feature];
+			gates_h[gate] += case.hidden[feature] * case.weight_hh[gate * case.hidden_size + feature];
 		}
 	}
 	(0..case.hidden_size)
@@ -100,9 +95,7 @@ fn host_gru_cell(case: HostGruCellCase<'_>) -> Vec<f32> {
 			let reset = 1.0 / (1.0 + (-(gates_i[feature] + gates_h[feature])).exp());
 			let update = 1.0
 				/ (1.0
-					+ (-(gates_i[case.hidden_size + feature]
-						+ gates_h[case.hidden_size + feature]))
-						.exp());
+					+ (-(gates_i[case.hidden_size + feature] + gates_h[case.hidden_size + feature])).exp());
 			let candidate = (gates_i[2 * case.hidden_size + feature]
 				+ reset * gates_h[2 * case.hidden_size + feature])
 				.tanh();
@@ -209,7 +202,8 @@ fn gpu_loss_and_gradients(
 	}
 	let loss_value = loss.read_f32()?[0];
 	let gradients = if backward {
-		gru.layer_parameters(0)
+		gru
+			.layer_parameters(0)
 			.expect("missing GRU layer")
 			.into_iter()
 			.map(|parameter| {
@@ -250,7 +244,8 @@ fn gpu_cell_loss_and_gradients(
 	}
 	let loss_value = loss.read_f32()?[0];
 	let gradients = if backward {
-		cell.all_parameters()?
+		cell
+			.all_parameters()?
 			.into_iter()
 			.map(|parameter| {
 				parameter

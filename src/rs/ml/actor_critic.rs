@@ -135,9 +135,7 @@ impl CategoricalActorCritic {
 				"categorical actor-critic observations must have rank two",
 			));
 		};
-		if *batch == 0
-			|| *features != self.config.observation_size
-			|| observation.dtype() != DType::F32
+		if *batch == 0 || *features != self.config.observation_size || observation.dtype() != DType::F32
 		{
 			return Err(Error::invalid_argument(format!(
 				"categorical actor-critic requires nonempty FP32 observations [batch, {}]",

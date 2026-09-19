@@ -1,4 +1,5 @@
-use oa::ml::{Module, nlp};
+use oa::ml::Module;
+use oa::sdk::ml::nlp;
 
 struct BpeTrainingRun {
 	optimizer: oa::ml::AdamW,
@@ -701,8 +702,7 @@ test_vk!(
 		assert!((accuracy - nlp::BYTE_RNN_ACCURACY).abs() < 0.001);
 		assert_eq!(generated, nlp::BYTE_RNN_REFERENCE_GENERATION);
 		assert_eq!(optimizer.step_count(), 300);
-		let checkpoint =
-			std::env::temp_dir().join(format!("oars-byte-rnn-{}.oam", std::process::id()));
+		let checkpoint = std::env::temp_dir().join(format!("oars-byte-rnn-{}.oam", std::process::id()));
 		oa::ml::save_checkpoint(&checkpoint, &model, &optimizer)?;
 		let reloaded = nlp::ByteRnn::new(&engine)?;
 		let mut reloaded_optimizer = oa::ml::AdamW::new(reloaded.all_parameters()?, 0.01)?;
@@ -787,8 +787,7 @@ test_vk!(
 		assert!((accuracy - nlp::BYTE_GRU_ACCURACY).abs() < 0.001);
 		assert_eq!(generated, nlp::BYTE_GRU_REFERENCE_GENERATION);
 		assert_eq!(optimizer.step_count(), 300);
-		let checkpoint =
-			std::env::temp_dir().join(format!("oars-byte-gru-{}.oam", std::process::id()));
+		let checkpoint = std::env::temp_dir().join(format!("oars-byte-gru-{}.oam", std::process::id()));
 		oa::ml::save_checkpoint(&checkpoint, &model, &optimizer)?;
 		let reloaded = nlp::ByteGru::new(&engine)?;
 		let mut reloaded_optimizer = oa::ml::AdamW::new(reloaded.all_parameters()?, 0.01)?;
@@ -979,8 +978,7 @@ test_vk!(
 		assert_eq!(run.generated, nlp::BPE_TRANSFORMER_REFERENCE_GENERATION);
 		assert_eq!(run.optimizer.step_count(), 300);
 
-		let base =
-			std::env::temp_dir().join(format!("oars-bpe-transformer-{}", std::process::id()));
+		let base = std::env::temp_dir().join(format!("oars-bpe-transformer-{}", std::process::id()));
 		let checkpoint = base.with_extension("oam");
 		let vocabulary = base.with_extension("bpe");
 		oa::ml::save_checkpoint(&checkpoint, &model, &run.optimizer)?;

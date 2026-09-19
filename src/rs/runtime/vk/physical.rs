@@ -67,9 +67,8 @@ impl PhysicalDevice {
 	) -> Result<Self> {
 		// SAFETY: the instance is live and enumeration only writes Vulkan-owned handles
 		// into storage managed by Ash.
-		let handles = unsafe { instance.raw().enumerate_physical_devices() }.map_err(|source| {
-			Error::backend_failure("Vulkan", "physical-device enumeration", source)
-		})?;
+		let handles = unsafe { instance.raw().enumerate_physical_devices() }
+			.map_err(|source| Error::backend_failure("Vulkan", "physical-device enumeration", source))?;
 
 		if let DeviceSelection::Index(index) = selection
 			&& index >= handles.len()
@@ -189,9 +188,7 @@ impl PhysicalDevice {
 				max_push_constants_size: properties.limits.max_push_constants_size,
 				max_compute_work_group_count: properties.limits.max_compute_work_group_count,
 				max_compute_work_group_size: properties.limits.max_compute_work_group_size,
-				max_compute_work_group_invocations: properties
-					.limits
-					.max_compute_work_group_invocations,
+				max_compute_work_group_invocations: properties.limits.max_compute_work_group_invocations,
 				subgroup_supported_stages: subgroup_properties.supported_stages,
 				subgroup_supported_operations: subgroup_properties.supported_operations,
 				timestamp_period_ns: f64::from(properties.limits.timestamp_period),
@@ -263,9 +260,7 @@ fn query_video_capabilities(
 		queue_families
 			.iter()
 			.enumerate()
-			.filter(|(_, properties)| {
-				properties.queue_count > 0 && properties.queue_flags.contains(flag)
-			})
+			.filter(|(_, properties)| properties.queue_count > 0 && properties.queue_flags.contains(flag))
 			.min_by_key(|(index, _)| (!result_status_support[*index], *index))
 			.and_then(|(index, _)| u32::try_from(index).ok())
 	};

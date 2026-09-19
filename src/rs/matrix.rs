@@ -89,9 +89,8 @@ fn binary(
 	}
 	let output = if left.shape() == right.shape() {
 		let kernel = select_kernel(left.dtype(), routes, operation)?;
-		let element_count = u32::try_from(left.element_count()).map_err(|_| {
-			Error::invalid_argument(format!("{operation} element count exceeds u32"))
-		})?;
+		let element_count = u32::try_from(left.element_count())
+			.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 		let output = Matrix::allocate(
 			engine,
 			left.shape().to_vec(),
@@ -271,17 +270,16 @@ fn resolve_broadcast(
 		};
 	}
 	let element_count = output_shape.iter().try_fold(1_usize, |product, extent| {
-		product.checked_mul(*extent).ok_or_else(|| {
-			Error::invalid_argument(format!("{operation} output size overflows usize"))
-		})
+		product
+			.checked_mul(*extent)
+			.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))
 	})?;
 	let element_count = u32::try_from(element_count)
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	let mut output_dims = [1_u32; BROADCAST_RANK_LIMIT];
 	for (destination, extent) in output_dims.iter_mut().zip(&output_shape) {
-		*destination = u32::try_from(*extent).map_err(|_| {
-			Error::invalid_argument(format!("{operation} output extent exceeds u32"))
-		})?;
+		*destination = u32::try_from(*extent)
+			.map_err(|_| Error::invalid_argument(format!("{operation} output extent exceeds u32")))?;
 	}
 	Ok(BroadcastLayout {
 		left_strides: broadcast_strides(left, &output_shape, operation)?,
@@ -305,9 +303,8 @@ fn broadcast_strides(
 	for source_axis in (0..shape.len()).rev() {
 		let axis = offset + source_axis;
 		if shape[source_axis] != 1 || output_shape[axis] == 1 {
-			strides[axis] = u32::try_from(contiguous_stride).map_err(|_| {
-				Error::invalid_argument(format!("{operation} input stride exceeds u32"))
-			})?;
+			strides[axis] = u32::try_from(contiguous_stride)
+				.map_err(|_| Error::invalid_argument(format!("{operation} input stride exceeds u32")))?;
 		}
 		contiguous_stride = contiguous_stride
 			.checked_mul(shape[source_axis])
@@ -317,7 +314,8 @@ fn broadcast_strides(
 }
 
 fn aligned_extent(shape: &[usize], rank: usize, axis: usize) -> usize {
-	axis.checked_sub(rank - shape.len())
+	axis
+		.checked_sub(rank - shape.len())
 		.map_or(1, |source_axis| shape[source_axis])
 }
 
@@ -518,9 +516,9 @@ fn mat_mul_nt_impl(left: &Matrix, right: &Matrix, contract: OperationContract) -
 		)));
 	}
 
-	let output_count = m.checked_mul(*n).ok_or_else(|| {
-		Error::invalid_argument(format!("{operation} output size overflows usize"))
-	})?;
+	let output_count = m
+		.checked_mul(*n)
+		.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))?;
 	let m = u32::try_from(*m)
 		.map_err(|_| Error::invalid_argument(format!("{operation} M extent exceeds u32")))?;
 	let n = u32::try_from(*n)
@@ -620,16 +618,12 @@ fn resolve_axis(input: &Matrix, dim: i32, operation: &'static str) -> Result<Axi
 	let outer_size = input.shape()[..axis]
 		.iter()
 		.try_fold(1_usize, |product, extent| product.checked_mul(*extent))
-		.ok_or_else(|| {
-			Error::invalid_argument(format!("{operation} outer size overflows usize"))
-		})?;
+		.ok_or_else(|| Error::invalid_argument(format!("{operation} outer size overflows usize")))?;
 	let dim_size = input.shape()[axis];
 	let inner_size = input.shape()[axis + 1..]
 		.iter()
 		.try_fold(1_usize, |product, extent| product.checked_mul(*extent))
-		.ok_or_else(|| {
-			Error::invalid_argument(format!("{operation} inner size overflows usize"))
-		})?;
+		.ok_or_else(|| Error::invalid_argument(format!("{operation} inner size overflows usize")))?;
 	let group_count = outer_size.checked_mul(inner_size).ok_or_else(|| {
 		Error::invalid_argument(format!("{operation} dispatch count overflows usize"))
 	})?;
@@ -640,9 +634,8 @@ fn resolve_axis(input: &Matrix, dim: i32, operation: &'static str) -> Result<Axi
 			.map_err(|_| Error::invalid_argument(format!("{operation} axis size exceeds u32")))?,
 		inner_size: u32::try_from(inner_size)
 			.map_err(|_| Error::invalid_argument(format!("{operation} inner size exceeds u32")))?,
-		group_count: u32::try_from(group_count).map_err(|_| {
-			Error::invalid_argument(format!("{operation} dispatch count exceeds u32"))
-		})?,
+		group_count: u32::try_from(group_count)
+			.map_err(|_| Error::invalid_argument(format!("{operation} dispatch count exceeds u32")))?,
 	})
 }
 
@@ -835,9 +828,8 @@ fn sum_shape(input: &Matrix, dim: i32, operation: &'static str) -> Result<(AxisS
 	}
 	if dim == -1 {
 		resolve_axis(input, -1, operation)?;
-		let element_count = u32::try_from(input.num_elements()).map_err(|_| {
-			Error::invalid_argument(format!("{operation} element count exceeds u32"))
-		})?;
+		let element_count = u32::try_from(input.num_elements())
+			.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 		return Ok((
 			AxisShape {
 				outer_size: 1,
@@ -862,9 +854,8 @@ fn sum_impl(input: &Matrix, dim: i32, contract: OperationContract) -> Result<Mat
 	let output_count = if dim == -1 {
 		1
 	} else {
-		usize::try_from(axis.group_count).map_err(|_| {
-			Error::invalid_argument(format!("{operation} output count exceeds usize"))
-		})?
+		usize::try_from(axis.group_count)
+			.map_err(|_| Error::invalid_argument(format!("{operation} output count exceeds usize")))?
 	};
 	let output = Matrix::allocate(
 		input.engine_handle(),
@@ -971,9 +962,7 @@ fn sum_backward_impl(
 			push_constants: &push_constants,
 			workgroups: [
 				u32::try_from(input.num_elements())
-					.map_err(|_| {
-						Error::invalid_argument(format!("{operation} element count exceeds u32"))
-					})?
+					.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?
 					.div_ceil(256),
 				1,
 				1,

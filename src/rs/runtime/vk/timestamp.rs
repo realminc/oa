@@ -34,10 +34,8 @@ impl TimestampPair {
 		// SAFETY: `device` is live, the timestamp query count is nonzero, and no
 		// allocation callbacks are installed. The returned pool is owned by the
 		// timestamp pair and destroyed through the same device.
-		let pool =
-			unsafe { device.raw().create_query_pool(&create_info, None) }.map_err(|source| {
-				Error::backend_failure("Vulkan", "timestamp-pool creation", source)
-			})?;
+		let pool = unsafe { device.raw().create_query_pool(&create_info, None) }
+			.map_err(|source| Error::backend_failure("Vulkan", "timestamp-pool creation", source))?;
 
 		Ok(Self {
 			inner: Arc::new(TimestampPairInner {
@@ -55,12 +53,11 @@ impl TimestampPair {
 		// The fresh pool's two queries are first reset to unavailable, then query zero
 		// is written at TOP_OF_PIPE, a single stage valid for a compute queue.
 		unsafe {
-			self.inner.device.raw().cmd_reset_query_pool(
-				command_buffer,
-				self.inner.pool,
-				0,
-				QUERY_COUNT,
-			);
+			self
+				.inner
+				.device
+				.raw()
+				.cmd_reset_query_pool(command_buffer, self.inner.pool, 0, QUERY_COUNT);
 			self.inner.device.raw().cmd_write_timestamp2(
 				command_buffer,
 				ash::vk::PipelineStageFlags2::TOP_OF_PIPE,

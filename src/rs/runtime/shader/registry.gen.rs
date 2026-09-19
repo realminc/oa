@@ -7964,9 +7964,7 @@ impl KernelId {
 			Self::MlConvTranspose2dF32 => &ML_CONV_TRANSPOSE_2D_F32,
 			Self::MlConvTranspose2dBiasAddF32 => &ML_CONV_TRANSPOSE_2D_BIAS_ADD_F32,
 			Self::MlConvTranspose2dBackwardF32 => &ML_CONV_TRANSPOSE_2D_BACKWARD_F32,
-			Self::MlConvTranspose2dParameterBackwardF32 => {
-				&ML_CONV_TRANSPOSE_2D_PARAMETER_BACKWARD_F32
-			}
+			Self::MlConvTranspose2dParameterBackwardF32 => &ML_CONV_TRANSPOSE_2D_PARAMETER_BACKWARD_F32,
 			Self::MlGruScanF32 => &ML_GRU_SCAN_F32,
 			Self::MlGruScanBackwardF32 => &ML_GRU_SCAN_BACKWARD_F32,
 			Self::MlGruCellF32 => &ML_GRU_CELL_F32,
@@ -7987,9 +7985,7 @@ impl KernelId {
 			Self::MlSdpaSoftmaxF32 => &ML_SCALED_DOT_PRODUCT_ATTENTION_F32,
 			Self::MlSdpaSoftmaxN32F32 => &ML_SDPA_SOFTMAX_N32_F32,
 			Self::MlFlashAttentionCausalF32 => &ML_FLASH_ATTENTION_CAUSAL_F32,
-			Self::MlFlashAttentionCausalBackwardQF32 => {
-				&ML_SCALED_DOT_PRODUCT_ATTENTION_BACKWARD_F32
-			}
+			Self::MlFlashAttentionCausalBackwardQF32 => &ML_SCALED_DOT_PRODUCT_ATTENTION_BACKWARD_F32,
 			Self::MlFlashAttentionCausalBackwardKvF32 => &ML_FLASH_ATTENTION_CAUSAL_BACKWARD_KV_F32,
 			Self::MlMoeRouteWeightsF32 => &ML_MOE_ROUTE_WEIGHTS_F32,
 			Self::MlMoeRouteWeightsBackwardF32 => &ML_MOE_ROUTE_WEIGHTS_BACKWARD_F32,
@@ -7999,9 +7995,7 @@ impl KernelId {
 			Self::MlMoeCombineBackwardF32 => &ML_MOE_COMBINE_BACKWARD_F32,
 			Self::MlGroupedLinearMF32 => &ML_GROUPED_LINEAR_M_F32,
 			Self::MlGroupedLinearMDataBackwardF32 => &ML_GROUPED_LINEAR_M_BACKWARD_F32,
-			Self::MlGroupedLinearMParameterBackwardF32 => {
-				&ML_GROUPED_LINEAR_M_PARAMETER_BACKWARD_F32
-			}
+			Self::MlGroupedLinearMParameterBackwardF32 => &ML_GROUPED_LINEAR_M_PARAMETER_BACKWARD_F32,
 			Self::MlSiluMulF32 => &ML_SILU_MUL_F32,
 			Self::MlSiluMulBackwardF32 => &ML_SILU_MUL_BACKWARD_F32,
 			Self::MlGroupedGemmMF32 => &ML_GROUPED_GEMM_M_F32,
@@ -8043,9 +8037,7 @@ impl KernelId {
 			Self::MlMamba3MimoBackwardRotateF32 => &ML_MAMBA3_MIMO_BACKWARD_ROTATE_F32,
 			Self::MlMamba3MimoBackwardReduceF32 => &ML_MAMBA3_MIMO_BACKWARD_REDUCE_F32,
 			Self::MlMamba3SisoBackwardGenericF32 => &ML_MAMBA3_SISO_BACKWARD_GENERIC_F32,
-			Self::MlMamba3SisoBackwardGenericReduceF32 => {
-				&ML_MAMBA3_SISO_BACKWARD_GENERIC_REDUCE_F32
-			}
+			Self::MlMamba3SisoBackwardGenericReduceF32 => &ML_MAMBA3_SISO_BACKWARD_GENERIC_REDUCE_F32,
 			Self::MlMamba3SisoChunkSummaryF32 => &ML_MAMBA3_SISO_CHUNK_SUMMARY_F32,
 			Self::MlMamba3SisoChunkPrefixF32 => &ML_MAMBA3_SISO_CHUNK_PREFIX_F32,
 			Self::MlMamba3SisoChunkDpreF32 => &ML_MAMBA3_SISO_CHUNK_DPRE_F32,
@@ -8146,9 +8138,7 @@ impl KernelId {
 			Self::VisionBinaryMaskCountsU8 => &VISION_BINARY_MASK_COUNTS_U8,
 			Self::VisionDetectionMetricCurvesF32 => &VISION_DETECTION_METRIC_CURVES_F32,
 			Self::VisionDetectionAveragePrecisionF32 => &VISION_DETECTION_AVERAGE_PRECISION_F32,
-			Self::VisionDetectionMeanAveragePrecisionF32 => {
-				&VISION_DETECTION_MEAN_AVERAGE_PRECISION_F32
-			}
+			Self::VisionDetectionMeanAveragePrecisionF32 => &VISION_DETECTION_MEAN_AVERAGE_PRECISION_F32,
 			Self::VisionSegmentationConfusionI32 => &VISION_SEGMENTATION_CONFUSION_I32,
 			Self::VisionSegmentationMetricsF32 => &VISION_SEGMENTATION_METRICS_F32,
 			Self::VisionConfusionMatrixClearU32 => &VISION_CONFUSION_MATRIX_CLEAR_U32,
@@ -8543,9 +8533,7 @@ impl KernelId {
 			Self::MatrixCopyU32 => Some(crate::core::operation::matrix::COPY),
 			Self::MatrixMatMulNtTiledF32 => Some(crate::core::operation::matrix::MAT_MUL_NT),
 			Self::MatrixSoftmaxF32 => Some(crate::core::operation::matrix::SOFTMAX),
-			Self::MatrixSoftmaxBackwardF32 => {
-				Some(crate::core::operation::matrix::SOFTMAX_BACKWARD)
-			}
+			Self::MatrixSoftmaxBackwardF32 => Some(crate::core::operation::matrix::SOFTMAX_BACKWARD),
 			Self::MatrixLogSoftmaxF32 => Some(crate::core::operation::matrix::LOG_SOFTMAX),
 			Self::MatrixLogSoftmaxBackwardF32 => {
 				Some(crate::core::operation::matrix::LOG_SOFTMAX_BACKWARD)
@@ -8561,26 +8549,16 @@ impl KernelId {
 			}
 			Self::MatrixPhiloxUniformF32 => Some(crate::core::operation::matrix::PHILOX_UNIFORM),
 			Self::MatrixPhiloxNormalF32 => Some(crate::core::operation::matrix::PHILOX_NORMAL),
-			Self::MatrixPhiloxUniformReplayF32 => {
-				Some(crate::core::operation::matrix::PHILOX_UNIFORM)
-			}
-			Self::MatrixPhiloxNormalReplayF32 => {
-				Some(crate::core::operation::matrix::PHILOX_NORMAL)
-			}
+			Self::MatrixPhiloxUniformReplayF32 => Some(crate::core::operation::matrix::PHILOX_UNIFORM),
+			Self::MatrixPhiloxNormalReplayF32 => Some(crate::core::operation::matrix::PHILOX_NORMAL),
 			Self::MatrixPhiloxReplayAdvanceU32 => {
 				Some(crate::core::operation::matrix::PHILOX_REPLAY_ADVANCE)
 			}
 			Self::MatrixDropoutF32 => Some(crate::core::operation::matrix::DROPOUT),
-			Self::MatrixDropoutBackwardF32 => {
-				Some(crate::core::operation::matrix::DROPOUT_BACKWARD)
-			}
-			Self::MatrixSampleLogitsGreedyF32 => {
-				Some(crate::core::operation::matrix::SAMPLE_LOGITS)
-			}
+			Self::MatrixDropoutBackwardF32 => Some(crate::core::operation::matrix::DROPOUT_BACKWARD),
+			Self::MatrixSampleLogitsGreedyF32 => Some(crate::core::operation::matrix::SAMPLE_LOGITS),
 			Self::MatrixSampleLogitsDenseF32 => Some(crate::core::operation::matrix::SAMPLE_LOGITS),
-			Self::MatrixSampleLogitsSortedF32 => {
-				Some(crate::core::operation::matrix::SAMPLE_LOGITS)
-			}
+			Self::MatrixSampleLogitsSortedF32 => Some(crate::core::operation::matrix::SAMPLE_LOGITS),
 			Self::MatrixDropoutReplayF32 => Some(crate::core::operation::matrix::DROPOUT),
 			Self::MatrixDropoutBackwardReplayF32 => {
 				Some(crate::core::operation::matrix::DROPOUT_BACKWARD)
@@ -8593,9 +8571,7 @@ impl KernelId {
 			}
 			Self::MatrixSliceF32 => Some(crate::core::operation::matrix::SLICE),
 			Self::MatrixSliceBackwardF32 => Some(crate::core::operation::matrix::SLICE_BACKWARD),
-			Self::MatrixRepeatInterleaveF32 => {
-				Some(crate::core::operation::matrix::REPEAT_INTERLEAVE)
-			}
+			Self::MatrixRepeatInterleaveF32 => Some(crate::core::operation::matrix::REPEAT_INTERLEAVE),
 			Self::MatrixRepeatInterleaveBackwardF32 => {
 				Some(crate::core::operation::matrix::REPEAT_INTERLEAVE_BACKWARD)
 			}
@@ -8619,9 +8595,7 @@ impl KernelId {
 			}
 			Self::MlCrossEntropyF32 => Some(crate::core::operation::ml::CROSS_ENTROPY),
 			Self::MlCrossEntropySumF32 => None,
-			Self::MlCrossEntropyBackwardF32 => {
-				Some(crate::core::operation::ml::CROSS_ENTROPY_BACKWARD)
-			}
+			Self::MlCrossEntropyBackwardF32 => Some(crate::core::operation::ml::CROSS_ENTROPY_BACKWARD),
 			Self::MlMaskedCrossEntropyF32 => Some(crate::core::operation::ml::MASKED_CROSS_ENTROPY),
 			Self::MlMaskedCrossEntropyBackwardF32 => {
 				Some(crate::core::operation::ml::MASKED_CROSS_ENTROPY_BACKWARD)
@@ -8653,9 +8627,7 @@ impl KernelId {
 			Self::MlEmbeddingF32 => Some(crate::core::operation::ml::EMBEDDING),
 			Self::MlEmbeddingBackwardF32 => Some(crate::core::operation::ml::EMBEDDING_BACKWARD),
 			Self::MlChannelNormF32 => Some(crate::core::operation::ml::CHANNEL_NORM),
-			Self::MlChannelNormBackwardF32 => {
-				Some(crate::core::operation::ml::CHANNEL_NORM_BACKWARD)
-			}
+			Self::MlChannelNormBackwardF32 => Some(crate::core::operation::ml::CHANNEL_NORM_BACKWARD),
 			Self::MlChannelNormReluF32 => Some(crate::core::operation::ml::CHANNEL_NORM_RELU),
 			Self::MlChannelNormReluBackwardF32 => {
 				Some(crate::core::operation::ml::CHANNEL_NORM_RELU_BACKWARD)
@@ -8703,15 +8675,11 @@ impl KernelId {
 				Some(crate::core::operation::ml::ADAPTIVE_AVG_POOL_2D_BACKWARD)
 			}
 			Self::MlBatchNorm2dF32 => Some(crate::core::operation::ml::BATCH_NORM_2D),
-			Self::MlBatchNorm2dWithStatsF32 => {
-				Some(crate::core::operation::ml::BATCH_NORM_2D_WITH_STATS)
-			}
+			Self::MlBatchNorm2dWithStatsF32 => Some(crate::core::operation::ml::BATCH_NORM_2D_WITH_STATS),
 			Self::MlBatchNorm2dRunningUpdateF32 => {
 				Some(crate::core::operation::ml::BATCH_NORM_2D_RUNNING_UPDATE)
 			}
-			Self::MlBatchNorm2dBackwardF32 => {
-				Some(crate::core::operation::ml::BATCH_NORM_2D_BACKWARD)
-			}
+			Self::MlBatchNorm2dBackwardF32 => Some(crate::core::operation::ml::BATCH_NORM_2D_BACKWARD),
 			Self::MlBatchNorm2dInputBackwardF32 => None,
 			Self::MlUpsample2dNearestF32 => Some(crate::core::operation::ml::UPSAMPLE_2D),
 			Self::MlUpsample2dBilinearF32 => Some(crate::core::operation::ml::UPSAMPLE_2D),
@@ -8723,24 +8691,18 @@ impl KernelId {
 			}
 			Self::MlConv2dF32 => Some(crate::core::operation::ml::CONV_2D),
 			Self::MlConv2dBackwardF32 => Some(crate::core::operation::ml::CONV_2D_BACKWARD),
-			Self::MlConv2dParameterBackwardF32 => {
-				Some(crate::core::operation::ml::CONV_2D_BACKWARD)
-			}
+			Self::MlConv2dParameterBackwardF32 => Some(crate::core::operation::ml::CONV_2D_BACKWARD),
 			Self::MlConv1dIm2ColF32 => Some(crate::core::operation::ml::CONV_1D),
 			Self::MlConv1dBiasAddF32 => Some(crate::core::operation::ml::CONV_1D),
 			Self::MlConv1dTransposeF32 => Some(crate::core::operation::ml::CONV_1D),
 			Self::MlConv1dBackwardF32 => Some(crate::core::operation::ml::CONV_1D_BACKWARD),
-			Self::MlConv1dParameterBackwardF32 => {
-				Some(crate::core::operation::ml::CONV_1D_BACKWARD)
-			}
+			Self::MlConv1dParameterBackwardF32 => Some(crate::core::operation::ml::CONV_1D_BACKWARD),
 			Self::MlConvTranspose1dF32 => Some(crate::core::operation::ml::CONV_TRANSPOSE_1D),
 			Self::MlConvTranspose1dBackwardF32 => {
 				Some(crate::core::operation::ml::CONV_TRANSPOSE_1D_BACKWARD)
 			}
 			Self::MlConvTranspose2dF32 => Some(crate::core::operation::ml::CONV_TRANSPOSE_2D),
-			Self::MlConvTranspose2dBiasAddF32 => {
-				Some(crate::core::operation::ml::CONV_TRANSPOSE_2D)
-			}
+			Self::MlConvTranspose2dBiasAddF32 => Some(crate::core::operation::ml::CONV_TRANSPOSE_2D),
 			Self::MlConvTranspose2dBackwardF32 => {
 				Some(crate::core::operation::ml::CONV_TRANSPOSE_2D_BACKWARD)
 			}
@@ -8761,21 +8723,13 @@ impl KernelId {
 			Self::MlBmmTnTiled16F32 => Some(crate::core::operation::ml::BMM_TN),
 			Self::MlSplitHeadsF32 => Some(crate::core::operation::ml::SPLIT_HEADS),
 			Self::MlMergeHeadsF32 => Some(crate::core::operation::ml::MERGE_HEADS),
-			Self::MlSoftmaxScaledMaskedF32 => {
-				Some(crate::core::operation::ml::SOFTMAX_SCALED_MASKED)
-			}
-			Self::MlSoftmaxScaledMaskedN32F32 => {
-				Some(crate::core::operation::ml::SOFTMAX_SCALED_MASKED)
-			}
+			Self::MlSoftmaxScaledMaskedF32 => Some(crate::core::operation::ml::SOFTMAX_SCALED_MASKED),
+			Self::MlSoftmaxScaledMaskedN32F32 => Some(crate::core::operation::ml::SOFTMAX_SCALED_MASKED),
 			Self::MlSoftmaxScaledMaskedBackwardF32 => {
 				Some(crate::core::operation::ml::SOFTMAX_SCALED_MASKED_BACKWARD)
 			}
-			Self::MlSdpaSoftmaxF32 => {
-				Some(crate::core::operation::ml::SCALED_DOT_PRODUCT_ATTENTION)
-			}
-			Self::MlSdpaSoftmaxN32F32 => {
-				Some(crate::core::operation::ml::SCALED_DOT_PRODUCT_ATTENTION)
-			}
+			Self::MlSdpaSoftmaxF32 => Some(crate::core::operation::ml::SCALED_DOT_PRODUCT_ATTENTION),
+			Self::MlSdpaSoftmaxN32F32 => Some(crate::core::operation::ml::SCALED_DOT_PRODUCT_ATTENTION),
 			Self::MlFlashAttentionCausalF32 => {
 				Some(crate::core::operation::ml::SCALED_DOT_PRODUCT_ATTENTION)
 			}
@@ -8812,9 +8766,7 @@ impl KernelId {
 			Self::MlFlowLinearMatchF32 => Some(crate::core::operation::ml::LINEAR_MATCH),
 			Self::MlFlowEulerStepF32 => Some(crate::core::operation::ml::EULER_STEP),
 			Self::MlFlowMaskedMseF32 => Some(crate::core::operation::ml::MASKED_MSE),
-			Self::MlFlowMaskedMseBackwardF32 => {
-				Some(crate::core::operation::ml::MASKED_MSE_BACKWARD)
-			}
+			Self::MlFlowMaskedMseBackwardF32 => Some(crate::core::operation::ml::MASKED_MSE_BACKWARD),
 			Self::MlGaeF32 => Some(crate::core::operation::ml::GAE),
 			Self::MlRolloutAppendF32 => Some(crate::core::operation::ml::APPEND),
 			Self::MlRolloutResetU8 => Some(crate::core::operation::ml::RESET),
@@ -8827,9 +8779,7 @@ impl KernelId {
 			Self::MlLunarLanderResetF32 => Some(crate::core::operation::ml::LUNAR_LANDER_RESET),
 			Self::MlLunarLanderStepF32 => Some(crate::core::operation::ml::LUNAR_LANDER_STEP),
 			Self::MlRmsNormGatedF32 => Some(crate::core::operation::ml::RMS_NORM_GATED),
-			Self::MlRmsNormGatedBackwardF32 => {
-				Some(crate::core::operation::ml::RMS_NORM_GATED_BACKWARD)
-			}
+			Self::MlRmsNormGatedBackwardF32 => Some(crate::core::operation::ml::RMS_NORM_GATED_BACKWARD),
 			Self::MlMamba3PreprocessF32 => Some(crate::core::operation::ml::MAMBA3_PREPROCESS),
 			Self::MlMamba3PreprocessBackwardF32 => {
 				Some(crate::core::operation::ml::MAMBA3_PREPROCESS_BACKWARD)
@@ -8842,68 +8792,44 @@ impl KernelId {
 				Some(crate::core::operation::ml::MAMBA3_SISO_BACKWARD)
 			}
 			Self::MlMamba3SisoStepF32 => Some(crate::core::operation::ml::MAMBA3_SISO_STEP),
-			Self::MlMamba3SisoBackwardStateF32 => {
-				Some(crate::core::operation::ml::MAMBA3_SISO_BACKWARD)
-			}
+			Self::MlMamba3SisoBackwardStateF32 => Some(crate::core::operation::ml::MAMBA3_SISO_BACKWARD),
 			Self::MlMamba3SisoBackwardReverseP16F32 => {
 				Some(crate::core::operation::ml::MAMBA3_SISO_BACKWARD)
 			}
 			Self::MlMamba3SisoBackwardFinalizeF32 => {
 				Some(crate::core::operation::ml::MAMBA3_SISO_BACKWARD)
 			}
-			Self::MlMamba3SisoBackwardReduceF32 => {
-				Some(crate::core::operation::ml::MAMBA3_SISO_BACKWARD)
-			}
+			Self::MlMamba3SisoBackwardReduceF32 => Some(crate::core::operation::ml::MAMBA3_SISO_BACKWARD),
 			Self::MlMamba3SisoBackwardGroupReduceF32 => {
 				Some(crate::core::operation::ml::MAMBA3_SISO_BACKWARD)
 			}
 			Self::MlMamba3MimoF32 => Some(crate::core::operation::ml::MAMBA3_MIMO),
-			Self::MlMamba3MimoBackwardCoreF32 => {
-				Some(crate::core::operation::ml::MAMBA3_MIMO_BACKWARD)
-			}
+			Self::MlMamba3MimoBackwardCoreF32 => Some(crate::core::operation::ml::MAMBA3_MIMO_BACKWARD),
 			Self::MlMamba3MimoStepF32 => Some(crate::core::operation::ml::MAMBA3_MIMO_STEP),
 			Self::MlMamba3MimoBackwardPrepareF32 => {
 				Some(crate::core::operation::ml::MAMBA3_MIMO_BACKWARD)
 			}
-			Self::MlMamba3MimoBackwardPostF32 => {
-				Some(crate::core::operation::ml::MAMBA3_MIMO_BACKWARD)
-			}
-			Self::MlMamba3MimoBackwardRotateF32 => {
-				Some(crate::core::operation::ml::MAMBA3_MIMO_BACKWARD)
-			}
-			Self::MlMamba3MimoBackwardReduceF32 => {
-				Some(crate::core::operation::ml::MAMBA3_MIMO_BACKWARD)
-			}
+			Self::MlMamba3MimoBackwardPostF32 => Some(crate::core::operation::ml::MAMBA3_MIMO_BACKWARD),
+			Self::MlMamba3MimoBackwardRotateF32 => Some(crate::core::operation::ml::MAMBA3_MIMO_BACKWARD),
+			Self::MlMamba3MimoBackwardReduceF32 => Some(crate::core::operation::ml::MAMBA3_MIMO_BACKWARD),
 			Self::MlMamba3SisoBackwardGenericF32 => {
 				Some(crate::core::operation::ml::MAMBA3_SISO_BACKWARD)
 			}
 			Self::MlMamba3SisoBackwardGenericReduceF32 => {
 				Some(crate::core::operation::ml::MAMBA3_SISO_BACKWARD)
 			}
-			Self::MlMamba3SisoChunkSummaryF32 => {
-				Some(crate::core::operation::ml::MAMBA3_SISO_BACKWARD)
-			}
-			Self::MlMamba3SisoChunkPrefixF32 => {
-				Some(crate::core::operation::ml::MAMBA3_SISO_BACKWARD)
-			}
-			Self::MlMamba3SisoChunkDpreF32 => {
-				Some(crate::core::operation::ml::MAMBA3_SISO_BACKWARD)
-			}
+			Self::MlMamba3SisoChunkSummaryF32 => Some(crate::core::operation::ml::MAMBA3_SISO_BACKWARD),
+			Self::MlMamba3SisoChunkPrefixF32 => Some(crate::core::operation::ml::MAMBA3_SISO_BACKWARD),
+			Self::MlMamba3SisoChunkDpreF32 => Some(crate::core::operation::ml::MAMBA3_SISO_BACKWARD),
 			Self::MlMamba3SisoChunkBackwardSummaryF32 => {
 				Some(crate::core::operation::ml::MAMBA3_SISO_BACKWARD)
 			}
 			Self::MlMamba3SisoChunkBackwardPrefixF32 => {
 				Some(crate::core::operation::ml::MAMBA3_SISO_BACKWARD)
 			}
-			Self::MlMamba3SisoChunkBackwardF32 => {
-				Some(crate::core::operation::ml::MAMBA3_SISO_BACKWARD)
-			}
-			Self::MlMamba3SisoChunkFinalizeF32 => {
-				Some(crate::core::operation::ml::MAMBA3_SISO_BACKWARD)
-			}
-			Self::MlMamba3SisoChunkReduceF32 => {
-				Some(crate::core::operation::ml::MAMBA3_SISO_BACKWARD)
-			}
+			Self::MlMamba3SisoChunkBackwardF32 => Some(crate::core::operation::ml::MAMBA3_SISO_BACKWARD),
+			Self::MlMamba3SisoChunkFinalizeF32 => Some(crate::core::operation::ml::MAMBA3_SISO_BACKWARD),
+			Self::MlMamba3SisoChunkReduceF32 => Some(crate::core::operation::ml::MAMBA3_SISO_BACKWARD),
 			Self::MlVqAssignF32 => Some(crate::core::operation::ml::VQ_ASSIGN),
 			Self::MlVqLookupF32 => Some(crate::core::operation::ml::VQ_LOOKUP),
 			Self::MlVqEmaUpdateF32 => Some(crate::core::operation::ml::VQ_EMA_UPDATE),
@@ -8914,9 +8840,7 @@ impl KernelId {
 			Self::AudioFadeF32 => Some(crate::core::operation::audio::FADE),
 			Self::AudioMixF32 => Some(crate::core::operation::audio::MIX),
 			Self::AudioAmplitudeToDbF32 => Some(crate::core::operation::audio::AMPLITUDE_TO_DB),
-			Self::AudioWaveformEnvelopeF32 => {
-				Some(crate::core::operation::audio::WAVEFORM_ENVELOPE)
-			}
+			Self::AudioWaveformEnvelopeF32 => Some(crate::core::operation::audio::WAVEFORM_ENVELOPE),
 			Self::AudioPreEmphasisF32 => Some(crate::core::operation::audio::PRE_EMPHASIS),
 			Self::AudioToMonoF32 => Some(crate::core::operation::audio::TO_MONO),
 			Self::AudioNormalizeLevelF32 => None,
@@ -8933,12 +8857,8 @@ impl KernelId {
 			Self::AudioMelNormalizeF32 => None,
 			Self::AudioMfccDctF32 => None,
 			Self::AudioSosFilterF32 => Some(crate::core::operation::audio::SOS_FILTER),
-			Self::CryptographyShake128U8 => {
-				Some(crate::core::operation::cryptography::hash::SHAKE128)
-			}
-			Self::CryptographyShake256U8 => {
-				Some(crate::core::operation::cryptography::hash::SHAKE256)
-			}
+			Self::CryptographyShake128U8 => Some(crate::core::operation::cryptography::hash::SHAKE128),
+			Self::CryptographyShake256U8 => Some(crate::core::operation::cryptography::hash::SHAKE256),
 			Self::CryptographyKeccakF1600U8 => {
 				Some(crate::core::operation::cryptography::hash::KECCAK_F1600)
 			}
@@ -8959,12 +8879,8 @@ impl KernelId {
 			Self::ImageWarpAffineF32 => Some(crate::core::operation::image::WARP_AFFINE),
 			Self::ImageWarpPerspectiveF32 => Some(crate::core::operation::image::WARP_PERSPECTIVE),
 			Self::ImageThresholdBinaryF32 => Some(crate::core::operation::image::THRESHOLD_BINARY),
-			Self::ImageThresholdBinaryInvF32 => {
-				Some(crate::core::operation::image::THRESHOLD_BINARY_INV)
-			}
-			Self::ImageThresholdTruncateF32 => {
-				Some(crate::core::operation::image::THRESHOLD_TRUNCATE)
-			}
+			Self::ImageThresholdBinaryInvF32 => Some(crate::core::operation::image::THRESHOLD_BINARY_INV),
+			Self::ImageThresholdTruncateF32 => Some(crate::core::operation::image::THRESHOLD_TRUNCATE),
 			Self::ImageThresholdToZeroF32 => Some(crate::core::operation::image::THRESHOLD_TO_ZERO),
 			Self::ImageThresholdToZeroInvF32 => {
 				Some(crate::core::operation::image::THRESHOLD_TO_ZERO_INV)
@@ -8972,9 +8888,7 @@ impl KernelId {
 			Self::ImageInRangeF32 => Some(crate::core::operation::image::IN_RANGE),
 			Self::ImageClampF32 => Some(crate::core::operation::image::CLAMP),
 			Self::ImageInvertF32 => Some(crate::core::operation::image::INVERT),
-			Self::ImageBrightnessContrastF32 => {
-				Some(crate::core::operation::image::BRIGHTNESS_CONTRAST)
-			}
+			Self::ImageBrightnessContrastF32 => Some(crate::core::operation::image::BRIGHTNESS_CONTRAST),
 			Self::ImageGammaContrastF32 => Some(crate::core::operation::image::GAMMA_CONTRAST),
 			Self::ImageSolarizeF32 => Some(crate::core::operation::image::SOLARIZE),
 			Self::ImagePosterizeF32 => Some(crate::core::operation::image::POSTERIZE),
@@ -8998,20 +8912,14 @@ impl KernelId {
 			Self::ImageDilateF32 => Some(crate::core::operation::image::DILATE),
 			Self::ImageMorphologyOpenF32 => Some(crate::core::operation::image::MORPHOLOGY_OPEN),
 			Self::ImageMorphologyCloseF32 => Some(crate::core::operation::image::MORPHOLOGY_CLOSE),
-			Self::ImageMorphologyGradientF32 => {
-				Some(crate::core::operation::image::MORPHOLOGY_GRADIENT)
-			}
+			Self::ImageMorphologyGradientF32 => Some(crate::core::operation::image::MORPHOLOGY_GRADIENT),
 			Self::ImageGaussianBlurF32 => Some(crate::core::operation::image::GAUSSIAN_BLUR),
 			Self::ImageSharpenF32 => Some(crate::core::operation::image::SHARPEN),
 			Self::ImageMedianBlurF32 => Some(crate::core::operation::image::MEDIAN_BLUR),
 			Self::ImageBilateralFilterF32 => Some(crate::core::operation::image::BILATERAL_FILTER),
 			Self::ImageUnsharpMaskF32 => Some(crate::core::operation::image::UNSHARP_MASK),
-			Self::ImageMorphologyTopHatF32 => {
-				Some(crate::core::operation::image::MORPHOLOGY_TOP_HAT)
-			}
-			Self::ImageMorphologyBlackHatF32 => {
-				Some(crate::core::operation::image::MORPHOLOGY_BLACK_HAT)
-			}
+			Self::ImageMorphologyTopHatF32 => Some(crate::core::operation::image::MORPHOLOGY_TOP_HAT),
+			Self::ImageMorphologyBlackHatF32 => Some(crate::core::operation::image::MORPHOLOGY_BLACK_HAT),
 			Self::ImageAdaptiveThresholdMeanF32 => {
 				Some(crate::core::operation::image::ADAPTIVE_THRESHOLD_MEAN)
 			}
@@ -9026,16 +8934,10 @@ impl KernelId {
 			}
 			Self::VisionBoxIouF32 => Some(crate::core::operation::vision::BOX_IOU),
 			Self::VisionNmsF32 => Some(crate::core::operation::vision::NMS),
-			Self::VisionConfusionMatrixI32 => {
-				Some(crate::core::operation::vision::CONFUSION_MATRIX)
-			}
-			Self::VisionBinaryMaskCountsU8 => {
-				Some(crate::core::operation::vision::BINARY_MASK_COUNTS)
-			}
+			Self::VisionConfusionMatrixI32 => Some(crate::core::operation::vision::CONFUSION_MATRIX),
+			Self::VisionBinaryMaskCountsU8 => Some(crate::core::operation::vision::BINARY_MASK_COUNTS),
 			Self::VisionDetectionMetricCurvesF32 => Some(crate::core::operation::vision::EVALUATE),
-			Self::VisionDetectionAveragePrecisionF32 => {
-				Some(crate::core::operation::vision::EVALUATE)
-			}
+			Self::VisionDetectionAveragePrecisionF32 => Some(crate::core::operation::vision::EVALUATE),
 			Self::VisionDetectionMeanAveragePrecisionF32 => {
 				Some(crate::core::operation::vision::EVALUATE)
 			}
@@ -9045,9 +8947,7 @@ impl KernelId {
 			Self::VisionSegmentationMetricsF32 => {
 				Some(crate::core::operation::vision::EVALUATE_SEGMENTATION)
 			}
-			Self::VisionConfusionMatrixClearU32 => {
-				Some(crate::core::operation::vision::CONFUSION_MATRIX)
-			}
+			Self::VisionConfusionMatrixClearU32 => Some(crate::core::operation::vision::CONFUSION_MATRIX),
 			Self::VisionBinaryMaskCountsClearU32 => {
 				Some(crate::core::operation::vision::BINARY_MASK_COUNTS)
 			}
@@ -9229,9 +9129,7 @@ impl KernelId {
 			Self::MlConvTranspose2dF32 => "ml.matrix.conv_transpose_2d.f32",
 			Self::MlConvTranspose2dBiasAddF32 => "ml.conv_transpose_2d_bias_add.f32",
 			Self::MlConvTranspose2dBackwardF32 => "ml.matrix.conv_transpose_2d_backward.f32",
-			Self::MlConvTranspose2dParameterBackwardF32 => {
-				"ml.conv_transpose_2d_parameter_backward.f32"
-			}
+			Self::MlConvTranspose2dParameterBackwardF32 => "ml.conv_transpose_2d_parameter_backward.f32",
 			Self::MlGruScanF32 => "ml.matrix.gru_scan.f32",
 			Self::MlGruScanBackwardF32 => "ml.matrix.gru_scan_backward.f32",
 			Self::MlGruCellF32 => "ml.matrix.gru_cell.f32",
@@ -9248,18 +9146,14 @@ impl KernelId {
 			Self::MlMergeHeadsF32 => "ml.matrix.merge_heads.f32",
 			Self::MlSoftmaxScaledMaskedF32 => "ml.matrix.softmax_scaled_masked.f32",
 			Self::MlSoftmaxScaledMaskedN32F32 => "ml.softmax_scaled_masked_n32.f32",
-			Self::MlSoftmaxScaledMaskedBackwardF32 => {
-				"ml.matrix.softmax_scaled_masked_backward.f32"
-			}
+			Self::MlSoftmaxScaledMaskedBackwardF32 => "ml.matrix.softmax_scaled_masked_backward.f32",
 			Self::MlSdpaSoftmaxF32 => "ml.matrix.scaled_dot_product_attention.f32",
 			Self::MlSdpaSoftmaxN32F32 => "ml.sdpa_softmax_n32.f32",
 			Self::MlFlashAttentionCausalF32 => "ml.flash_attention_causal.f32",
 			Self::MlFlashAttentionCausalBackwardQF32 => {
 				"ml.matrix.scaled_dot_product_attention_backward.f32"
 			}
-			Self::MlFlashAttentionCausalBackwardKvF32 => {
-				"ml.flash_attention_causal_backward_kv.f32"
-			}
+			Self::MlFlashAttentionCausalBackwardKvF32 => "ml.flash_attention_causal_backward_kv.f32",
 			Self::MlMoeRouteWeightsF32 => "ml.matrix.moe_route_weights.f32",
 			Self::MlMoeRouteWeightsBackwardF32 => "ml.matrix.moe_route_weights_backward.f32",
 			Self::MlMoeGatherF32 => "ml.matrix.moe_gather.f32",
@@ -9268,9 +9162,7 @@ impl KernelId {
 			Self::MlMoeCombineBackwardF32 => "ml.matrix.moe_combine_backward.f32",
 			Self::MlGroupedLinearMF32 => "ml.matrix.grouped_linear_m.f32",
 			Self::MlGroupedLinearMDataBackwardF32 => "ml.matrix.grouped_linear_m_backward.f32",
-			Self::MlGroupedLinearMParameterBackwardF32 => {
-				"ml.grouped_linear_m_parameter_backward.f32"
-			}
+			Self::MlGroupedLinearMParameterBackwardF32 => "ml.grouped_linear_m_parameter_backward.f32",
 			Self::MlSiluMulF32 => "ml.matrix.silu_mul.f32",
 			Self::MlSiluMulBackwardF32 => "ml.matrix.silu_mul_backward.f32",
 			Self::MlGroupedGemmMF32 => "ml.matrix.grouped_gemm_m.f32",
@@ -9312,15 +9204,11 @@ impl KernelId {
 			Self::MlMamba3MimoBackwardRotateF32 => "ml.mamba3_mimo_backward_rotate.f32",
 			Self::MlMamba3MimoBackwardReduceF32 => "ml.mamba3_mimo_backward_reduce.f32",
 			Self::MlMamba3SisoBackwardGenericF32 => "ml.mamba3_siso_backward_generic.f32",
-			Self::MlMamba3SisoBackwardGenericReduceF32 => {
-				"ml.mamba3_siso_backward_generic_reduce.f32"
-			}
+			Self::MlMamba3SisoBackwardGenericReduceF32 => "ml.mamba3_siso_backward_generic_reduce.f32",
 			Self::MlMamba3SisoChunkSummaryF32 => "ml.mamba3_siso_chunk_summary.f32",
 			Self::MlMamba3SisoChunkPrefixF32 => "ml.mamba3_siso_chunk_prefix.f32",
 			Self::MlMamba3SisoChunkDpreF32 => "ml.mamba3_siso_chunk_dpre.f32",
-			Self::MlMamba3SisoChunkBackwardSummaryF32 => {
-				"ml.mamba3_siso_chunk_backward_summary.f32"
-			}
+			Self::MlMamba3SisoChunkBackwardSummaryF32 => "ml.mamba3_siso_chunk_backward_summary.f32",
 			Self::MlMamba3SisoChunkBackwardPrefixF32 => "ml.mamba3_siso_chunk_backward_prefix.f32",
 			Self::MlMamba3SisoChunkBackwardF32 => "ml.mamba3_siso_chunk_backward.f32",
 			Self::MlMamba3SisoChunkFinalizeF32 => "ml.mamba3_siso_chunk_finalize.f32",
@@ -9417,9 +9305,7 @@ impl KernelId {
 			Self::VisionBinaryMaskCountsU8 => "vision.binary_mask_counts.u8",
 			Self::VisionDetectionMetricCurvesF32 => "vision.detection_metric_curves.f32",
 			Self::VisionDetectionAveragePrecisionF32 => "vision.detection_average_precision.f32",
-			Self::VisionDetectionMeanAveragePrecisionF32 => {
-				"vision.detection_mean_average_precision.f32"
-			}
+			Self::VisionDetectionMeanAveragePrecisionF32 => "vision.detection_mean_average_precision.f32",
 			Self::VisionSegmentationConfusionI32 => "vision.segmentation_confusion.i32",
 			Self::VisionSegmentationMetricsF32 => "vision.segmentation_metrics.f32",
 			Self::VisionConfusionMatrixClearU32 => "vision.confusion_matrix_clear.u32",

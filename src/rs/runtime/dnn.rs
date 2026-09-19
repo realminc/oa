@@ -317,13 +317,15 @@ impl DnnPlan {
 	}
 
 	pub(super) fn fallback_reasons(&self) -> impl Iterator<Item = &str> {
-		self.partitions
+		self
+			.partitions
 			.iter()
 			.filter_map(|partition| partition.fallback_reason.as_deref())
 	}
 
 	pub(super) fn portable_partition_count(&self) -> usize {
-		self.partitions
+		self
+			.partitions
 			.iter()
 			.filter(|partition| partition.engine == DnnEngineType::Portable)
 			.count()
@@ -417,9 +419,7 @@ impl DnnPlan {
 		let mut fallback = 0_u32;
 		for partition in &self.partitions {
 			if partition.engine == DnnEngineType::Portable {
-				if partition.state != DnnPartitionState::Analyzed
-					|| partition.fallback_reason.is_some()
-				{
+				if partition.state != DnnPartitionState::Analyzed || partition.fallback_reason.is_some() {
 					return Err(Error::internal(
 						"portable DNN partition acquired a provider state",
 					));
@@ -465,7 +465,8 @@ impl DnnPlan {
 	}
 
 	pub(super) fn virtual_value_count(&self) -> usize {
-		self.values
+		self
+			.values
 			.iter()
 			.filter(|value| value.virtual_value)
 			.count()
@@ -964,8 +965,7 @@ fn hash_attribute(hash: &mut StableHash, attribute: &OpAttribute) {
 }
 
 fn checked_u32(value: usize, label: &str) -> Result<u32> {
-	u32::try_from(value)
-		.map_err(|_| Error::resource_exhausted(format!("{label} count exceeds u32")))
+	u32::try_from(value).map_err(|_| Error::resource_exhausted(format!("{label} count exceeds u32")))
 }
 
 struct StableHash(u64);

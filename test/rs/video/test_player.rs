@@ -36,13 +36,15 @@ fn player_steps_through_cache_and_replays_evicted_history() -> oa::Result<()> {
 		},
 	)?;
 	let frame_hash = |player: &VideoPlayer| -> oa::Result<String> {
-		Ok(oa::cryptography::hash(
-			player
-				.current_frame()?
-				.as_yuv420p()
-				.expect("player retains decoded planar frame"),
+		Ok(
+			oa::cryptography::hash(
+				player
+					.current_frame()?
+					.as_yuv420p()
+					.expect("player retains decoded planar frame"),
+			)
+			.to_hex(),
 		)
-		.to_hex())
 	};
 	let mut hashes = vec![frame_hash(&player)?];
 	for _ in 0..5 {

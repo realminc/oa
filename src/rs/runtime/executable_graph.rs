@@ -218,9 +218,7 @@ impl ExecutableGraph {
 	}
 
 	pub(in crate::runtime) fn validate_training_replay_safety(&self) -> Result<()> {
-		validate_training_kernel_sequence(
-			self.nodes.iter().map(|node| (node.operation, node.kernel)),
-		)?;
+		validate_training_kernel_sequence(self.nodes.iter().map(|node| (node.operation, node.kernel)))?;
 		for (index, replay) in self.nodes.iter().enumerate() {
 			if replay.kernel.training_replay_role() != TrainingReplayRole::ReplayRng {
 				continue;
@@ -447,9 +445,7 @@ impl ExecutableGraph {
 					.operations()
 					.get(owner.index() as usize)
 					.ok_or_else(|| {
-						Error::out_of_range(
-							"executable node references an unknown semantic operation",
-						)
+						Error::out_of_range("executable node references an unknown semantic operation")
 					})?;
 				if owners.insert(owner.index(), ()).is_some() {
 					return Err(Error::already_exists(
@@ -661,9 +657,7 @@ fn plan_barriers(nodes: &[ComputeNode]) -> Result<Vec<Vec<BufferHazard>>> {
 						Error::backend_failure(
 							"Vulkan",
 							"executable-graph hazard planning",
-							std::io::Error::other(
-								"planned hazard lost its retained buffer identity",
-							),
+							std::io::Error::other("planned hazard lost its retained buffer identity"),
 						)
 					})?;
 					Ok(BufferHazard {
@@ -814,8 +808,7 @@ mod tests {
 		);
 		assert_eq!(
 			state(BufferAccess::ReadWrite).vk_access(),
-			ash::vk::AccessFlags2::SHADER_STORAGE_READ
-				| ash::vk::AccessFlags2::SHADER_STORAGE_WRITE
+			ash::vk::AccessFlags2::SHADER_STORAGE_READ | ash::vk::AccessFlags2::SHADER_STORAGE_WRITE
 		);
 	}
 

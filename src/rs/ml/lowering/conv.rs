@@ -95,15 +95,13 @@ impl Conv1dGeometry {
 		let columns_count = rows.checked_mul(inner_size).ok_or_else(|| {
 			Error::invalid_argument(format!("{operation} column storage size overflows usize"))
 		})?;
-		let output_count = rows.checked_mul(*output_channels).ok_or_else(|| {
-			Error::invalid_argument(format!("{operation} output size overflows usize"))
-		})?;
+		let output_count = rows
+			.checked_mul(*output_channels)
+			.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))?;
 		let weight_count = output_channels
 			.checked_mul(*input_channels)
 			.and_then(|count| count.checked_mul(*kernel_size))
-			.ok_or_else(|| {
-				Error::invalid_argument(format!("{operation} weight size overflows usize"))
-			})?;
+			.ok_or_else(|| Error::invalid_argument(format!("{operation} weight size overflows usize")))?;
 		if weight_count != weight.num_elements() {
 			return Err(Error::internal(format!(
 				"{operation} validated weight shape disagrees with its storage extent"
@@ -485,15 +483,11 @@ impl ConvTranspose1dGeometry {
 		let output_count = batch_size
 			.checked_mul(*output_channels)
 			.and_then(|count| count.checked_mul(output_length))
-			.ok_or_else(|| {
-				Error::invalid_argument(format!("{operation} output size overflows usize"))
-			})?;
+			.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))?;
 		let weight_count = input_channels
 			.checked_mul(*output_channels)
 			.and_then(|count| count.checked_mul(*kernel_size))
-			.ok_or_else(|| {
-				Error::invalid_argument(format!("{operation} weight size overflows usize"))
-			})?;
+			.ok_or_else(|| Error::invalid_argument(format!("{operation} weight size overflows usize")))?;
 		if weight_count != weight.num_elements() {
 			return Err(Error::internal(format!(
 				"{operation} validated weight shape disagrees with its storage extent"
@@ -725,15 +719,13 @@ pub(in crate::ml) fn conv_transpose_1d_backward(
 			kernel: KernelId::MlConvTranspose1dBackwardF32,
 			buffers: &unfold_buffers,
 			push_constants: &unfold_constants,
-			workgroups: KernelId::MlConvTranspose1dBackwardF32
-				.linear_workgroups(forward.columns_count),
+			workgroups: KernelId::MlConvTranspose1dBackwardF32.linear_workgroups(forward.columns_count),
 		},
 		ComputeDispatch {
 			kernel: KernelId::MatrixMatMulNtTiledF32,
 			buffers: &gemm_buffers,
 			push_constants: &gemm_constants,
-			workgroups: KernelId::MatrixMatMulNtTiledF32
-				.output_workgroups(rows, forward.output_channels),
+			workgroups: KernelId::MatrixMatMulNtTiledF32.output_workgroups(rows, forward.output_channels),
 		},
 		ComputeDispatch {
 			kernel: KernelId::MlConv1dTransposeF32,
@@ -749,8 +741,7 @@ pub(in crate::ml) fn conv_transpose_1d_backward(
 			kernel: KernelId::MlConv1dParameterBackwardF32,
 			buffers: &parameter_buffers,
 			push_constants: &parameter_constants,
-			workgroups: KernelId::MlConv1dParameterBackwardF32
-				.linear_workgroups(forward.parameter_count),
+			workgroups: KernelId::MlConv1dParameterBackwardF32.linear_workgroups(forward.parameter_count),
 		},
 	];
 	let attributes = transposed.attributes();
@@ -862,16 +853,12 @@ impl ConvTranspose2dGeometry {
 			.checked_mul(*output_channels)
 			.and_then(|count| count.checked_mul(output_height))
 			.and_then(|count| count.checked_mul(output_width))
-			.ok_or_else(|| {
-				Error::invalid_argument(format!("{operation} output size overflows usize"))
-			})?;
+			.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))?;
 		let weight_count = input_channels
 			.checked_mul(*output_channels)
 			.and_then(|count| count.checked_mul(*kernel_height))
 			.and_then(|count| count.checked_mul(*kernel_width))
-			.ok_or_else(|| {
-				Error::invalid_argument(format!("{operation} weight size overflows usize"))
-			})?;
+			.ok_or_else(|| Error::invalid_argument(format!("{operation} weight size overflows usize")))?;
 		if weight_count != weight.num_elements() {
 			return Err(Error::internal(format!(
 				"{operation} validated weight shape disagrees with its storage extent"
@@ -1007,8 +994,7 @@ pub(in crate::ml) fn conv_transpose_2d(
 			kernel: KernelId::MlConvTranspose2dBiasAddF32,
 			buffers: &bias_buffers,
 			push_constants: &bias_constants,
-			workgroups: KernelId::MlConvTranspose2dBiasAddF32
-				.linear_workgroups(geometry.output_count),
+			workgroups: KernelId::MlConvTranspose2dBiasAddF32.linear_workgroups(geometry.output_count),
 		},
 	];
 	let attributes = geometry.attributes();
@@ -1036,8 +1022,7 @@ pub(in crate::ml) fn conv_transpose_2d_backward(
 	let contract = crate::core::operation::ml::CONV_TRANSPOSE_2D_BACKWARD;
 	let operation = contract.name();
 	validate_f32_same_engine(operation, &[input, weight, output_gradient])?;
-	let geometry =
-		ConvTranspose2dGeometry::resolve(input, weight, None, stride, padding, operation)?;
+	let geometry = ConvTranspose2dGeometry::resolve(input, weight, None, stride, padding, operation)?;
 	let expected_output_shape = [
 		geometry.batch_size as usize,
 		geometry.output_channels as usize,
@@ -1208,16 +1193,12 @@ impl Conv2dGeometry {
 			.checked_mul(*output_channels)
 			.and_then(|count| count.checked_mul(output_height))
 			.and_then(|count| count.checked_mul(output_width))
-			.ok_or_else(|| {
-				Error::invalid_argument(format!("{operation} output size overflows usize"))
-			})?;
+			.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))?;
 		let weight_count = output_channels
 			.checked_mul(*weight_input_channels)
 			.and_then(|count| count.checked_mul(*kernel_height))
 			.and_then(|count| count.checked_mul(*kernel_width))
-			.ok_or_else(|| {
-				Error::invalid_argument(format!("{operation} weight size overflows usize"))
-			})?;
+			.ok_or_else(|| Error::invalid_argument(format!("{operation} weight size overflows usize")))?;
 		if weight_count != weight.num_elements() {
 			return Err(Error::internal(format!(
 				"{operation} validated weight shape disagrees with its storage extent"
@@ -1371,8 +1352,7 @@ pub(in crate::ml) fn conv_2d_backward(
 	let contract = crate::core::operation::ml::CONV_2D_BACKWARD;
 	let operation = contract.name();
 	validate_f32_same_engine(operation, &[input, weight, output_gradient])?;
-	let geometry =
-		Conv2dGeometry::resolve(input, weight, None, stride, padding, groups, operation)?;
+	let geometry = Conv2dGeometry::resolve(input, weight, None, stride, padding, groups, operation)?;
 	let expected_output_shape = [
 		geometry.batch_size as usize,
 		geometry.output_channels as usize,

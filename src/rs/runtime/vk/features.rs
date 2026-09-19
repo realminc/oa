@@ -35,8 +35,7 @@ impl DeviceFeatures {
 			timeline_semaphore: features12.timeline_semaphore == ash::vk::TRUE,
 			synchronization2: features13.synchronization2 == ash::vk::TRUE,
 			storage_buffer_8_bit_access: features12.storage_buffer8_bit_access == ash::vk::TRUE,
-			uniform_and_storage_buffer_8_bit_access: features12
-				.uniform_and_storage_buffer8_bit_access
+			uniform_and_storage_buffer_8_bit_access: features12.uniform_and_storage_buffer8_bit_access
 				== ash::vk::TRUE,
 			shader_int8: features12.shader_int8 == ash::vk::TRUE,
 			runtime_descriptor_array: features12.runtime_descriptor_array == ash::vk::TRUE,

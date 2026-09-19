@@ -98,9 +98,8 @@ test_vk!(
 				.all(|value| value.kind() == OpValueKind::Matrix)
 		);
 		assert_eq!(plan.semantic_lowering().direct_op_count(), 1);
-		let report: serde_json::Value =
-			serde_json::from_str(&plan.debug_report_json("vision-box-iou"))
-				.expect("execution report must be valid JSON");
+		let report: serde_json::Value = serde_json::from_str(&plan.debug_report_json("vision-box-iou"))
+			.expect("execution report must be valid JSON");
 		assert_eq!(report["nodes"][0]["kernel"], "vision.box_iou.f32");
 		assert_eq!(
 			report["nodes"][0]["physical_write"]["writes"][0]["binding"],
@@ -150,8 +149,8 @@ test_vk!(nms_is_class_aware_score_ranked_and_deterministic, engine, {
 		&engine,
 		[5, 4],
 		&[
-			0.50, 0.50, 0.40, 0.40, 0.51, 0.50, 0.40, 0.40, 0.50, 0.50, 0.40, 0.40, 0.10, 0.10,
-			0.10, 0.10, 0.90, 0.90, 0.10, 0.10,
+			0.50, 0.50, 0.40, 0.40, 0.51, 0.50, 0.40, 0.40, 0.50, 0.50, 0.40, 0.40, 0.10, 0.10, 0.10,
+			0.10, 0.90, 0.90, 0.10, 0.10,
 		],
 	)?;
 	let scores = Matrix::from_f32(&engine, [5], &[0.90, 0.80, 0.85, 0.70, 0.70])?;
@@ -232,8 +231,8 @@ test_vk!(
 			&engine,
 			[4, 4],
 			&[
-				0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.50, 0.50, 0.20, 0.20, 0.80, 0.80,
-				0.20, 0.20,
+				0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.50, 0.50, 0.20, 0.20, 0.80, 0.80, 0.20,
+				0.20,
 			],
 		)?;
 		let predicted_scores = Matrix::from_f32(&engine, [4], &[0.90, 0.80, 0.70, 0.60])?;

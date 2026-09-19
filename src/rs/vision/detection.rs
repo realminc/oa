@@ -542,9 +542,9 @@ pub fn evaluate_segmentation(
 		"vision::evaluate_segmentation",
 	)?;
 	let classes = positive_class_count(class_count, "vision::evaluate_segmentation")?;
-	let confusion_elements = classes.checked_mul(classes).ok_or_else(|| {
-		Error::out_of_range("vision::evaluate_segmentation confusion exceeds u32")
-	})?;
+	let confusion_elements = classes
+		.checked_mul(classes)
+		.ok_or_else(|| Error::out_of_range("vision::evaluate_segmentation confusion exceeds u32"))?;
 	let per_class_elements = classes
 		.checked_mul(4)
 		.ok_or_else(|| Error::out_of_range("vision::evaluate_segmentation metrics exceed u32"))?;

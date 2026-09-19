@@ -37,8 +37,8 @@ impl DescriptorHeap {
 		let binding_flags = [ash::vk::DescriptorBindingFlags::UPDATE_AFTER_BIND
 			| ash::vk::DescriptorBindingFlags::UPDATE_UNUSED_WHILE_PENDING
 			| ash::vk::DescriptorBindingFlags::PARTIALLY_BOUND];
-		let mut binding_flags_info = ash::vk::DescriptorSetLayoutBindingFlagsCreateInfo::default()
-			.binding_flags(&binding_flags);
+		let mut binding_flags_info =
+			ash::vk::DescriptorSetLayoutBindingFlagsCreateInfo::default().binding_flags(&binding_flags);
 		let layout_info = ash::vk::DescriptorSetLayoutCreateInfo::default()
 			.flags(ash::vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL)
 			.bindings(&bindings)
@@ -46,9 +46,10 @@ impl DescriptorHeap {
 		// SAFETY: the single binding and its binding-flags entry have matching
 		// counts, all required descriptor-indexing features were queried and enabled,
 		// and no allocation callbacks are installed.
-		let layout = unsafe { device.create_descriptor_set_layout(&layout_info, None) }.map_err(
-			|source| Error::backend_failure("Vulkan", "compute descriptor-layout creation", source),
-		)?;
+		let layout =
+			unsafe { device.create_descriptor_set_layout(&layout_info, None) }.map_err(|source| {
+				Error::backend_failure("Vulkan", "compute descriptor-layout creation", source)
+			})?;
 
 		let pool_size = ash::vk::DescriptorPoolSize::default()
 			.ty(ash::vk::DescriptorType::STORAGE_BUFFER)
@@ -95,9 +96,7 @@ impl DescriptorHeap {
 			return Err(Error::backend_failure(
 				"Vulkan",
 				"compute descriptor-set allocation",
-				std::io::Error::other(
-					"Vulkan returned no descriptor set after successful allocation",
-				),
+				std::io::Error::other("Vulkan returned no descriptor set after successful allocation"),
 			));
 		};
 
@@ -105,9 +104,7 @@ impl DescriptorHeap {
 			pool,
 			layout,
 			set,
-			free_storage_indices: Mutex::new(
-				(0..limits.storage_buffer_descriptors).rev().collect(),
-			),
+			free_storage_indices: Mutex::new((0..limits.storage_buffer_descriptors).rev().collect()),
 		})
 	}
 
@@ -124,9 +121,9 @@ impl DescriptorHeap {
 				std::io::Error::other("storage descriptor allocator lock was poisoned"),
 			)
 		})?;
-		let index = free.pop().ok_or_else(|| {
-			Error::resource_exhausted("Vulkan storage descriptor capacity exhausted")
-		})?;
+		let index = free
+			.pop()
+			.ok_or_else(|| Error::resource_exhausted("Vulkan storage descriptor capacity exhausted"))?;
 		let buffer_info = ash::vk::DescriptorBufferInfo::default()
 			.buffer(buffer)
 			.offset(0)

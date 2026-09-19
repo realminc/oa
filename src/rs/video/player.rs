@@ -104,11 +104,7 @@ impl VideoPlayer {
 	///
 	/// Returns an error for invalid pacing, demux/decode failure, unsupported
 	/// codec/device capabilities, or a source with no displayable frame.
-	pub fn open(
-		engine: &Engine,
-		path: impl AsRef<Path>,
-		config: VideoPlayerConfig,
-	) -> Result<Self> {
+	pub fn open(engine: &Engine, path: impl AsRef<Path>, config: VideoPlayerConfig) -> Result<Self> {
 		if config
 			.frame_rate_override
 			.is_some_and(|rate| !rate.is_finite() || rate <= 0.0)
@@ -290,8 +286,8 @@ impl VideoPlayer {
 	/// seeks to a bounded preceding presentation window and rebuilds decoder
 	/// state through the requested frame.
 	pub fn seek_frame(&mut self, index: u64) -> Result<()> {
-		let target = usize::try_from(index)
-			.map_err(|_| Error::out_of_range("video frame index exceeds usize"))?;
+		let target =
+			usize::try_from(index).map_err(|_| Error::out_of_range("video frame index exceeds usize"))?;
 		if target >= self.state_ref()?.display_timestamps.len() {
 			return Err(Error::out_of_range(
 				"video frame index is outside the display sequence",
@@ -362,7 +358,8 @@ impl VideoPlayer {
 
 	/// Borrow the currently presented frame.
 	pub fn current_frame(&self) -> Result<&VideoFrame> {
-		self.state_ref()?
+		self
+			.state_ref()?
 			.current
 			.as_ref()
 			.ok_or_else(|| Error::failed_precondition("VideoPlayer has no current frame"))
@@ -422,8 +419,7 @@ impl VideoPlayer {
 			let state = self.state_mut()?;
 			if let Some(frame) = state.drained.pop_front() {
 				Self::present_new(state, frame)?;
-				if state.drained.is_empty() && state.demuxer.is_eos() && !state.config.loop_playback
-				{
+				if state.drained.is_empty() && state.demuxer.is_eos() && !state.config.loop_playback {
 					state.done = true;
 				}
 				return Ok(true);
@@ -452,14 +448,16 @@ impl VideoPlayer {
 						return Ok(false);
 					}
 					state.demuxer.seek(0)?;
-					state.stats.loop_restarts =
-						state.stats.loop_restarts.checked_add(1).ok_or_else(|| {
-							Error::resource_exhausted("video loop counter overflowed")
-						})?;
-					state.stats.seek_resets =
-						state.stats.seek_resets.checked_add(1).ok_or_else(|| {
-							Error::resource_exhausted("video seek counter overflowed")
-						})?;
+					state.stats.loop_restarts = state
+						.stats
+						.loop_restarts
+						.checked_add(1)
+						.ok_or_else(|| Error::resource_exhausted("video loop counter overflowed"))?;
+					state.stats.seek_resets = state
+						.stats
+						.seek_resets
+						.checked_add(1)
+						.ok_or_else(|| Error::resource_exhausted("video seek counter overflowed"))?;
 					state.display_index = 0;
 					state.next_display_index = 0;
 					Self::clear_presentation_cache(state);
@@ -496,10 +494,11 @@ impl VideoPlayer {
 		state.next_display_index = index
 			.checked_add(1)
 			.ok_or_else(|| Error::resource_exhausted("video display index overflowed"))?;
-		state.stats.presented_frames =
-			state.stats.presented_frames.checked_add(1).ok_or_else(|| {
-				Error::resource_exhausted("video presented-frame counter overflowed")
-			})?;
+		state.stats.presented_frames = state
+			.stats
+			.presented_frames
+			.checked_add(1)
+			.ok_or_else(|| Error::resource_exhausted("video presented-frame counter overflowed"))?;
 		Self::retain_presentation(state, index, frame)?;
 		Ok(())
 	}
@@ -517,10 +516,11 @@ impl VideoPlayer {
 		state.current = Some(frame);
 		state.display_index = index;
 		state.done = false;
-		state.stats.presented_frames =
-			state.stats.presented_frames.checked_add(1).ok_or_else(|| {
-				Error::resource_exhausted("video presented-frame counter overflowed")
-			})?;
+		state.stats.presented_frames = state
+			.stats
+			.presented_frames
+			.checked_add(1)
+			.ok_or_else(|| Error::resource_exhausted("video presented-frame counter overflowed"))?;
 		state.stats.presentation_cache_hits = state
 			.stats
 			.presentation_cache_hits
@@ -586,9 +586,7 @@ impl VideoPlayer {
 						.stats
 						.seek_replay_frames
 						.checked_add(1)
-						.ok_or_else(|| {
-							Error::resource_exhausted("video replay counter overflowed")
-						})?;
+						.ok_or_else(|| Error::resource_exhausted("video replay counter overflowed"))?;
 				}
 				usize::try_from(state.display_index)
 					.map_err(|_| Error::out_of_range("video display index exceeds usize"))?
@@ -643,13 +641,15 @@ impl VideoPlayer {
 	}
 
 	fn state_ref(&self) -> Result<&PlayerState> {
-		self.state
+		self
+			.state
 			.as_ref()
 			.ok_or_else(|| Error::failed_precondition("VideoPlayer is closed"))
 	}
 
 	fn state_mut(&mut self) -> Result<&mut PlayerState> {
-		self.state
+		self
+			.state
 			.as_mut()
 			.ok_or_else(|| Error::failed_precondition("VideoPlayer is closed"))
 	}

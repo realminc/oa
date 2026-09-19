@@ -133,9 +133,9 @@ fn sos_filter(input: &Audio, sections: &[BiquadCoefficients]) -> Result<Audio> {
 	let section_count = u32::try_from(sections.len())
 		.map_err(|_| Error::out_of_range("audio::sos_filter section count exceeds u32"))?;
 	let mut packed = Vec::new();
-	packed.try_reserve_exact(sections.len() * 5).map_err(|_| {
-		Error::resource_exhausted("audio::sos_filter coefficient allocation failed")
-	})?;
+	packed
+		.try_reserve_exact(sections.len() * 5)
+		.map_err(|_| Error::resource_exhausted("audio::sos_filter coefficient allocation failed"))?;
 	for section in sections {
 		packed.extend_from_slice(&[section.b0, section.b1, section.b2, section.a1, section.a2]);
 	}
@@ -237,9 +237,9 @@ pub(super) fn reverb(input: &Audio, decay_seconds: f32, wet: f32) -> Result<Audi
 		delays[index] = (delay_seconds[index] * f64::from(input.sample_rate()))
 			.round()
 			.max(1.0) as u32;
-		feedback[index] = 0.001_f64.powf(
-			(f64::from(delays[index]) / f64::from(input.sample_rate())) / f64::from(decay_seconds),
-		) as f32;
+		feedback[index] = 0.001_f64
+			.powf((f64::from(delays[index]) / f64::from(input.sample_rate())) / f64::from(decay_seconds))
+			as f32;
 		denominator += 1.0 / (1.0 - f64::from(feedback[index]));
 	}
 	let allpass_delays = [

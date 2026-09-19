@@ -119,8 +119,8 @@ src/rs/
 src/py/
   lib.rs + *.rs             PyO3 bindings over the Rust public API
 sdk/py/
-  python/oa/                importable Python package and type information
-  test/ + tutorials/        Python verification and SDK workflows
+  binding/oa/               importable Python package and type information
+  tutorials/                Python SDK workflows
 ```
 
 `core` is the public foundation module. It owns foundational semantic values

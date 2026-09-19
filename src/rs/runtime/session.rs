@@ -3,10 +3,9 @@ use std::collections::BTreeMap;
 use crate::{Audio, Error, Image, Matrix, OpValueKind, Result, core::MatrixSemantic};
 
 use super::{
-	AudioSemanticDispatch, AudioSemanticOutput, BufferAccess, ComputeDispatch,
-	ImageSemanticDispatch, ImageSemanticInput, OptionalSemanticDispatch, SemanticDispatch,
-	SemanticGraph, SemanticValueDesc, SemanticValueId, Storage, executable_graph::ExecutableGraph,
-	storage::ReadinessSnapshot, vk,
+	AudioSemanticDispatch, AudioSemanticOutput, BufferAccess, ComputeDispatch, ImageSemanticDispatch,
+	ImageSemanticInput, OptionalSemanticDispatch, SemanticDispatch, SemanticGraph, SemanticValueDesc,
+	SemanticValueId, Storage, executable_graph::ExecutableGraph, storage::ReadinessSnapshot, vk,
 };
 
 /// Private mutable eager-recording owner for one engine.
@@ -278,7 +277,8 @@ impl ExecutionSession {
 				buffer.disable_recycling();
 			}
 		}
-		self.stable_resources
+		self
+			.stable_resources
 			.truncate(self.stable_external_resource_count);
 		self.stable_resource_count = self.stable_external_resource_count;
 		if self.stable_resource_frame_active {
@@ -384,8 +384,7 @@ impl ExecutionSession {
 		}
 		if !dispatches.iter().any(|dispatch| {
 			dispatch.kernel.semantic_contract().is_some_and(|contract| {
-				contract.name() == semantic.contract.name()
-					&& contract.hash() == semantic.contract.hash()
+				contract.name() == semantic.contract.name() && contract.hash() == semantic.contract.hash()
 			})
 		}) {
 			return Err(Error::internal(format!(
@@ -412,8 +411,7 @@ impl ExecutionSession {
 		let mut candidate = self.semantic.clone();
 		let mut values = self.semantic_values.clone();
 		let mut storage = self.semantic_storage.clone();
-		let operation =
-			admit_semantic_dispatch(&mut candidate, &mut values, &mut storage, &semantic)?;
+		let operation = admit_semantic_dispatch(&mut candidate, &mut values, &mut storage, &semantic)?;
 		candidate.validate()?;
 		graph.attach_split_semantic(
 			operation,
@@ -441,8 +439,7 @@ impl ExecutionSession {
 		}
 		let owner = dispatches.iter().find(|dispatch| {
 			dispatch.kernel.semantic_contract().is_some_and(|contract| {
-				contract.name() == semantic.contract.name()
-					&& contract.hash() == semantic.contract.hash()
+				contract.name() == semantic.contract.name() && contract.hash() == semantic.contract.hash()
 			})
 		});
 		let Some(owner) = owner else {
@@ -742,10 +739,7 @@ impl ExecutionSession {
 		}
 	}
 
-	pub(super) fn take(
-		&mut self,
-		observed_outputs: &[&Matrix],
-	) -> Result<Option<PendingExecution>> {
+	pub(super) fn take(&mut self, observed_outputs: &[&Matrix]) -> Result<Option<PendingExecution>> {
 		if self.semantic_lowering.is_some() {
 			return Err(Error::failed_precondition(
 				"cannot submit an incomplete semantic lowering",
@@ -797,10 +791,7 @@ impl ExecutionSession {
 		}
 	}
 
-	pub(super) fn snapshot(
-		&self,
-		observed_outputs: &[&Matrix],
-	) -> Result<Option<PendingExecution>> {
+	pub(super) fn snapshot(&self, observed_outputs: &[&Matrix]) -> Result<Option<PendingExecution>> {
 		if self.semantic_lowering.is_some() {
 			return Err(Error::failed_precondition(
 				"cannot capture an incomplete semantic lowering",
@@ -874,17 +865,19 @@ impl ExecutionSession {
 				"stable resource frame contains an invalid replay-input prefix",
 			));
 		}
-		Ok(self
-			.stable_resources
-			.iter()
-			.take(used)
-			.enumerate()
-			.map(|(index, storage)| StableResourceSnapshot {
-				storage: storage.clone(),
-				replay_input: index < self.stable_external_resource_count,
-				transient: index >= self.stable_external_resource_count,
-			})
-			.collect())
+		Ok(
+			self
+				.stable_resources
+				.iter()
+				.take(used)
+				.enumerate()
+				.map(|(index, storage)| StableResourceSnapshot {
+					storage: storage.clone(),
+					replay_input: index < self.stable_external_resource_count,
+					transient: index >= self.stable_external_resource_count,
+				})
+				.collect(),
+		)
 	}
 
 	pub(super) fn attach_autograd(
@@ -907,7 +900,8 @@ impl ExecutionSession {
 			.iter()
 			.position(|output| *output == value)
 			.ok_or_else(|| Error::internal("semantic producer omitted its output value"))?;
-		self.semantic
+		self
+			.semantic
 			.attach_autograd(forward, output_index, sequence)?;
 		Ok(Some((forward, self.semantic.generation())))
 	}
@@ -975,9 +969,8 @@ fn admit_semantic_dispatch(
 					values,
 					storage,
 					matrix,
-					inputs[input_index].ok_or_else(|| {
-						Error::internal("semantic alias references an absent input")
-					})?,
+					inputs[input_index]
+						.ok_or_else(|| Error::internal("semantic alias references an absent input"))?,
 				);
 			}
 			admit_matrix(graph, values, storage, matrix, false)
@@ -1063,9 +1056,7 @@ fn admit_audio_semantic_dispatch(
 		.iter()
 		.map(|output| match output {
 			AudioSemanticOutput::Audio(audio) => admit_audio(graph, values, storage, audio, false),
-			AudioSemanticOutput::Matrix(matrix) => {
-				admit_matrix(graph, values, storage, matrix, false)
-			}
+			AudioSemanticOutput::Matrix(matrix) => admit_matrix(graph, values, storage, matrix, false),
 		})
 		.collect::<Result<Vec<_>>>()?;
 	graph.add_operation(
@@ -1228,9 +1219,9 @@ fn admit_matrix_alias_version(
 	expected_input: SemanticValueId,
 ) -> Result<SemanticValueId> {
 	let key = SemanticValueKey::Matrix(matrix.value_id());
-	let current = values.get(&key).ok_or_else(|| {
-		Error::internal("semantic alias input was not admitted before its output")
-	})?;
+	let current = values
+		.get(&key)
+		.ok_or_else(|| Error::internal("semantic alias input was not admitted before its output"))?;
 	if current.value != expected_input || !current.storage.same_as(matrix.storage()) {
 		return Err(Error::internal(
 			"semantic alias does not target the current value and storage version",

@@ -147,8 +147,8 @@ impl Mamba3 {
 				"Mamba3 head count must be nonzero and divisible by num_groups",
 			));
 		}
-		let rope_width = ((config.state_size as f64 * f64::from(config.rope_fraction)).floor()
-			as usize) & !1_usize;
+		let rope_width =
+			((config.state_size as f64 * f64::from(config.rope_fraction)).floor() as usize) & !1_usize;
 		let num_rope_angles = rope_width / 2;
 		if num_rope_angles > 64 {
 			return Err(Error::invalid_argument(
@@ -512,9 +512,9 @@ impl Mamba3 {
 		let owner = self.in_projection.data();
 		let allocate = |shape: Vec<usize>| -> Result<Matrix> {
 			let count = shape.iter().try_fold(1_usize, |count, extent| {
-				count.checked_mul(*extent).ok_or_else(|| {
-					Error::invalid_argument("Mamba3 recurrent state size overflows usize")
-				})
+				count
+					.checked_mul(*extent)
+					.ok_or_else(|| Error::invalid_argument("Mamba3 recurrent state size overflows usize"))
 			})?;
 			Matrix::allocate(owner.engine_handle(), shape, count, DType::F32)
 		};
@@ -603,10 +603,9 @@ impl Mamba3 {
 				a_floor: self.config.a_floor,
 			},
 		)?;
-		let x =
-			preprocess
-				.x
-				.reshape([state.batch_size, 1, self.num_heads, self.config.head_dim])?;
+		let x = preprocess
+			.x
+			.reshape([state.batch_size, 1, self.num_heads, self.config.head_dim])?;
 		let z = preprocess.z.reshape(x.shape().to_vec())?;
 		let b = preprocess.bh.reshape([
 			state.batch_size,
@@ -707,12 +706,7 @@ impl Mamba3 {
 		output.reshape([state.batch_size, 1, self.config.model_width])
 	}
 
-	fn parameter_linear(
-		&self,
-		input: &Matrix,
-		weight: &Parameter,
-		bias: &Matrix,
-	) -> Result<Matrix> {
+	fn parameter_linear(&self, input: &Matrix, weight: &Parameter, bias: &Matrix) -> Result<Matrix> {
 		let (weight_value, version, requires_grad) = weight.snapshot();
 		let output = dispatch::linear(input, &weight_value, bias)?;
 		if requires_grad {

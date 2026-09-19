@@ -472,8 +472,7 @@ impl TrainingSession {
 		value: TrainingValue,
 		expected_revision: u64,
 	) -> Result<u64> {
-		let mut command =
-			TrainingCommand::new(TrainingCommandKind::SetParameter, expected_revision);
+		let mut command = TrainingCommand::new(TrainingCommandKind::SetParameter, expected_revision);
 		command.parameter = name.into();
 		command.value = value;
 		self.enqueue(command)
@@ -489,8 +488,7 @@ impl TrainingSession {
 
 	/// Enqueue an application-owned rebuild request.
 	pub fn request_rebuild(&self, value: TrainingValue, expected_revision: u64) -> Result<u64> {
-		let mut command =
-			TrainingCommand::new(TrainingCommandKind::RequestRebuild, expected_revision);
+		let mut command = TrainingCommand::new(TrainingCommandKind::RequestRebuild, expected_revision);
 		command.value = value;
 		self.enqueue(command)
 	}
@@ -519,7 +517,8 @@ impl TrainingSession {
 
 	/// Return the most recently cached value of a registered parameter.
 	pub fn parameter(&self, name: &str) -> Option<TrainingValue> {
-		self.lock()
+		self
+			.lock()
 			.parameters
 			.iter()
 			.find_map(|(candidate, value)| (candidate == name).then(|| value.clone()))
@@ -538,22 +537,21 @@ impl TrainingSession {
 	/// Combine the live state and revision with the latest published metrics.
 	pub fn current_snapshot(&self) -> TrainingSessionSnapshot {
 		let state = self.lock();
-		let mut snapshot =
-			state
-				.snapshots
-				.back()
-				.cloned()
-				.unwrap_or_else(|| TrainingSessionSnapshot {
-					revision: state.revision,
-					state: state.state,
-					step: 0,
-					epoch: 0,
-					learning_rate: 0.0,
-					loss: 0.0,
-					gpu_ms: 0.0,
-					wall_ms: 0.0,
-					metrics: Vec::new(),
-				});
+		let mut snapshot = state
+			.snapshots
+			.back()
+			.cloned()
+			.unwrap_or_else(|| TrainingSessionSnapshot {
+				revision: state.revision,
+				state: state.state,
+				step: 0,
+				epoch: 0,
+				learning_rate: 0.0,
+				loss: 0.0,
+				gpu_ms: 0.0,
+				wall_ms: 0.0,
+				metrics: Vec::new(),
+			});
 		snapshot.revision = state.revision;
 		snapshot.state = state.state;
 		snapshot
@@ -566,7 +564,8 @@ impl TrainingSession {
 
 	/// Return retained results newer than an observer-owned sequence cursor.
 	pub fn results_after(&self, sequence: u64) -> Vec<TrainingCommandResult> {
-		self.lock()
+		self
+			.lock()
 			.results
 			.iter()
 			.filter(|result| result.sequence > sequence)
@@ -593,7 +592,8 @@ impl TrainingSession {
 	}
 
 	fn lock(&self) -> MutexGuard<'_, SessionState> {
-		self.shared
+		self
+			.shared
 			.state
 			.lock()
 			.unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -825,12 +825,10 @@ impl<'a> TrainingSessionAttachment<'a> {
 						transition = Some(TrainingState::Running);
 						None
 					}
-					TrainingCommandKind::Stop if state.is_terminal() => {
-						Some(TrainingCommandError::new(
-							ErrorKind::FailedPrecondition,
-							"stop requires an active training session",
-						))
-					}
+					TrainingCommandKind::Stop if state.is_terminal() => Some(TrainingCommandError::new(
+						ErrorKind::FailedPrecondition,
+						"stop requires an active training session",
+					)),
 					TrainingCommandKind::Stop => {
 						actions.stop = true;
 						transition = Some(TrainingState::Stopping);
@@ -842,9 +840,7 @@ impl<'a> TrainingSessionAttachment<'a> {
 					TrainingCommandKind::Evaluate => {
 						invoke_handler(self.handlers.evaluate.as_mut(), "evaluation")
 					}
-					TrainingCommandKind::SetParameter => {
-						self.set_parameter(&command, state, optimizer)
-					}
+					TrainingCommandKind::SetParameter => self.set_parameter(&command, state, optimizer),
 					TrainingCommandKind::RequestRecapture if state != TrainingState::Paused => {
 						Some(TrainingCommandError::new(
 							ErrorKind::FailedPrecondition,
@@ -923,9 +919,7 @@ impl<'a> TrainingSessionAttachment<'a> {
 				format!("training parameter is immutable: {}", command.parameter),
 			));
 		}
-		if parameter.parameter_class != TrainingParameterClass::Hot
-			&& state != TrainingState::Paused
-		{
+		if parameter.parameter_class != TrainingParameterClass::Hot && state != TrainingState::Paused {
 			return Some(TrainingCommandError::new(
 				ErrorKind::FailedPrecondition,
 				"recapture/rebuild parameters require a paused session",
@@ -955,7 +949,8 @@ impl<'a> TrainingSessionAttachment<'a> {
 		if let Err(error) = set(&command.value) {
 			return Some(TrainingCommandError::from_error(&error));
 		}
-		self.session
+		self
+			.session
 			.update_parameter(&parameter.name, (parameter.get)());
 		None
 	}

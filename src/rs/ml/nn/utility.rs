@@ -90,14 +90,13 @@ impl Flatten {
 				"Flatten start dimension {start} exceeds end dimension {end}"
 			)));
 		}
-		let flattened =
-			input.shape()[start..=end]
-				.iter()
-				.try_fold(1_usize, |extent, dimension| {
-					extent
-						.checked_mul(*dimension)
-						.ok_or_else(|| Error::resource_exhausted("Flatten extent overflows usize"))
-				})?;
+		let flattened = input.shape()[start..=end]
+			.iter()
+			.try_fold(1_usize, |extent, dimension| {
+				extent
+					.checked_mul(*dimension)
+					.ok_or_else(|| Error::resource_exhausted("Flatten extent overflows usize"))
+			})?;
 		let mut shape = Vec::with_capacity(rank - (end - start));
 		shape.extend_from_slice(&input.shape()[..start]);
 		shape.push(flattened);
@@ -123,12 +122,12 @@ impl Module for Flatten {
 }
 
 fn resolve_dim(dimension: isize, rank: usize, label: &str) -> Result<usize> {
-	let rank = isize::try_from(rank)
-		.map_err(|_| Error::resource_exhausted("Matrix rank exceeds isize"))?;
+	let rank =
+		isize::try_from(rank).map_err(|_| Error::resource_exhausted("Matrix rank exceeds isize"))?;
 	let resolved = if dimension < 0 {
-		rank.checked_add(dimension).ok_or_else(|| {
-			Error::invalid_argument(format!("Flatten {label} dimension is invalid"))
-		})?
+		rank
+			.checked_add(dimension)
+			.ok_or_else(|| Error::invalid_argument(format!("Flatten {label} dimension is invalid")))?
 	} else {
 		dimension
 	};

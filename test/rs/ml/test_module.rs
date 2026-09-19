@@ -44,7 +44,8 @@ impl Module for CharRnn {
 		};
 		// Matrix construction already proved the complete shape product fits usize.
 		let rows = batch * sequence;
-		self.head
+		self
+			.head
 			.forward(&recurrent.reshape([rows, self.hidden_size])?)
 	}
 

@@ -42,10 +42,12 @@ fn host_loss(input: &[f32], linear_weight: &[f32], linear_bias: &[f32], targets:
 	for (row_index, row) in rotated.as_chunks::<4>().0.iter().enumerate() {
 		let logits = (0..2)
 			.map(|class| {
-				row.iter()
+				row
+					.iter()
 					.zip(&linear_weight[class * 4..(class + 1) * 4])
 					.map(|(input, weight)| input * weight)
-					.sum::<f32>() + linear_bias[class]
+					.sum::<f32>()
+					+ linear_bias[class]
 			})
 			.collect::<Vec<_>>();
 		let maximum = logits.iter().copied().fold(f32::NEG_INFINITY, f32::max);
@@ -53,8 +55,7 @@ fn host_loss(input: &[f32], linear_weight: &[f32], linear_bias: &[f32], targets:
 			.iter()
 			.map(|value| f64::from(*value - maximum).exp())
 			.sum::<f64>();
-		loss +=
-			f64::from(maximum) + denominator.ln() - f64::from(logits[targets[row_index] as usize]);
+		loss += f64::from(maximum) + denominator.ln() - f64::from(logits[targets[row_index] as usize]);
 	}
 	(loss / targets.len() as f64) as f32
 }

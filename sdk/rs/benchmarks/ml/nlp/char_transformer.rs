@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use oa::ml::nlp;
+use oa::sdk::ml::nlp;
 
 const WARMUP_REPLAYS: usize = 5;
 const MEASURED_REPLAYS: usize = 15;
@@ -68,9 +68,8 @@ fn profile_attention(
 	let target = oa::Matrix::from_slice(engine, [rows], &vec![0_u32; rows])?;
 	let (plan, _) = engine.capture(|| {
 		let tape = oa::ml::GradientTape::new();
-		let logits = oa::ml::matrix::scaled_dot_product_attention_causal(
-			&query, &key, &value, sequence, heads,
-		)?;
+		let logits =
+			oa::ml::matrix::scaled_dot_product_attention_causal(&query, &key, &value, sequence, heads)?;
 		let loss = oa::ml::loss::cross_entropy(&logits, &target)?;
 		tape.backward(&loss)?;
 		Ok(loss)

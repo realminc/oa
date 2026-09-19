@@ -249,7 +249,8 @@ impl fmt::Display for Error {
 
 impl StdError for Error {
 	fn source(&self) -> Option<&(dyn StdError + 'static)> {
-		self.inner
+		self
+			.inner
 			.source
 			.as_deref()
 			.map(|source| source as &(dyn StdError + 'static))
@@ -307,8 +308,7 @@ mod tests {
 
 	#[test]
 	fn backend_source_is_preserved_without_entering_the_public_kind() {
-		let error =
-			Error::backend_failure("test", "operation", std::io::Error::other("source detail"));
+		let error = Error::backend_failure("test", "operation", std::io::Error::other("source detail"));
 
 		assert_eq!(error.kind(), ErrorKind::BackendFailure);
 		assert_eq!(error.message(), "test operation failed");

@@ -521,9 +521,8 @@ fn noise(
 	attributes: &[OpAttribute],
 ) -> Result<Image> {
 	image_extent(input, contract.name())?;
-	let element_count = u32::try_from(input.as_matrix().num_elements()).map_err(|_| {
-		Error::out_of_range(format!("{} element count exceeds u32", contract.name()))
-	})?;
+	let element_count = u32::try_from(input.as_matrix().num_elements())
+		.map_err(|_| Error::out_of_range(format!("{} element count exceeds u32", contract.name())))?;
 	let output = allocate(
 		input,
 		input.as_matrix().shape().to_vec(),
@@ -567,9 +566,8 @@ fn composite_dispatch(
 	kernel: KernelId,
 ) -> Result<Image> {
 	let (batch, channels, height, width) = image_extent(a, contract.name())?;
-	let mask_channels = u32::try_from(mask.channels()).map_err(|_| {
-		Error::out_of_range(format!("{} mask channels exceed u32", contract.name()))
-	})?;
+	let mask_channels = u32::try_from(mask.channels())
+		.map_err(|_| Error::out_of_range(format!("{} mask channels exceed u32", contract.name())))?;
 	let output = allocate(
 		a,
 		a.as_matrix().shape().to_vec(),
@@ -639,8 +637,7 @@ fn validate_matching_images(a: &Image, b: &Image, operation: &str) -> Result<()>
 }
 
 fn image_extent(input: &Image, operation: &str) -> Result<(u32, u32, u32, u32)> {
-	if input.dtype() != DType::F32
-		|| !matches!(input.layout(), ImageLayout::Nchw | ImageLayout::Chw)
+	if input.dtype() != DType::F32 || !matches!(input.layout(), ImageLayout::Nchw | ImageLayout::Chw)
 	{
 		return Err(Error::invalid_argument(format!(
 			"{operation} requires an FP32 NCHW or CHW image"

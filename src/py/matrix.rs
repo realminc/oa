@@ -59,7 +59,8 @@ impl PythonMatrix {
 	}
 
 	fn reshape(&self, shape: Vec<usize>) -> PyResult<Self> {
-		self.inner
+		self
+			.inner
 			.reshape(shape)
 			.map(Self::wrap)
 			.map_err(python_error)
@@ -77,8 +78,10 @@ impl PythonMatrix {
 		self.inner.read::<u32>().map_err(python_error)
 	}
 
-	fn read_u8(&self) -> PyResult<Vec<u8>> {
-		self.inner.read::<u8>().map_err(python_error)
+	fn read_u8(&self, py: Python<'_>) -> PyResult<Py<pyo3::types::PyList>> {
+		let bytes = self.inner.read::<u8>().map_err(python_error)?;
+		let list = pyo3::types::PyList::new(py, bytes.iter().map(|&b| b as u32))?;
+		Ok(list.unbind())
 	}
 
 	fn to_list(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
@@ -157,10 +160,7 @@ impl PythonMatrix {
 macro_rules! binary_operation {
 	($binding:ident, $operation:path) => {
 		#[pyfunction]
-		pub(crate) fn $binding(
-			left: &PythonMatrix,
-			right: &PythonMatrix,
-		) -> PyResult<PythonMatrix> {
+		pub(crate) fn $binding(left: &PythonMatrix, right: &PythonMatrix) -> PyResult<PythonMatrix> {
 			$operation(&left.inner, &right.inner)
 				.map(PythonMatrix::wrap)
 				.map_err(python_error)
@@ -328,6 +328,88 @@ pub(crate) fn matrix_top_k(
 }
 
 #[pyfunction]
+pub(crate) fn matrix_top_k_mask(
+	indices: &PythonMatrix,
+	num_experts: usize,
+) -> PyResult<PythonMatrix> {
+	oa::matrix::top_k_mask(&indices.inner, num_experts)
+		.map(PythonMatrix::wrap)
+		.map_err(python_error)
+}
+
+// MoeExpertPlan result type
+#[pyclass(name = "MoeExpertPlan", unsendable)]
+pub(crate) struct PythonMoeExpertPlan {
+	pub counts: PythonMatrix,
+	pub offsets: PythonMatrix,
+	pub packed_token: PythonMatrix,
+	pub packed_expert: PythonMatrix,
+	pub packed_slot: PythonMatrix,
+	pub inverse: PythonMatrix,
+}
+
+#[pymethods]
+impl PythonMoeExpertPlan {
+	#[getter]
+	fn counts(&self) -> PythonMatrix {
+		PythonMatrix::wrap(self.counts.inner.clone())
+	}
+
+	#[getter]
+	fn offsets(&self) -> PythonMatrix {
+		PythonMatrix::wrap(self.offsets.inner.clone())
+	}
+
+	#[getter]
+	fn packed_token(&self) -> PythonMatrix {
+		PythonMatrix::wrap(self.packed_token.inner.clone())
+	}
+
+	#[getter]
+	fn packed_expert(&self) -> PythonMatrix {
+		PythonMatrix::wrap(self.packed_expert.inner.clone())
+	}
+
+	#[getter]
+	fn packed_slot(&self) -> PythonMatrix {
+		PythonMatrix::wrap(self.packed_slot.inner.clone())
+	}
+
+	#[getter]
+	fn inverse(&self) -> PythonMatrix {
+		PythonMatrix::wrap(self.inverse.inner.clone())
+	}
+}
+
+#[pyfunction]
+pub(crate) fn matrix_moe_expert_plan(
+	indices: &PythonMatrix,
+	num_experts: usize,
+) -> PyResult<PythonMoeExpertPlan> {
+	oa::matrix::moe_expert_plan(&indices.inner, num_experts)
+		.map(|r| PythonMoeExpertPlan {
+			counts: PythonMatrix::wrap(r.counts),
+			offsets: PythonMatrix::wrap(r.offsets),
+			packed_token: PythonMatrix::wrap(r.packed_token),
+			packed_expert: PythonMatrix::wrap(r.packed_expert),
+			packed_slot: PythonMatrix::wrap(r.packed_slot),
+			inverse: PythonMatrix::wrap(r.inverse),
+		})
+		.map_err(python_error)
+}
+
+#[pyfunction]
+pub(crate) fn matrix_moe_routing_bias_update(
+	selection_mask: &PythonMatrix,
+	bias: &PythonMatrix,
+	experts_per_token: usize,
+	gamma: f32,
+) -> PyResult<()> {
+	oa::matrix::moe_routing_bias_update(&selection_mask.inner, &bias.inner, experts_per_token, gamma)
+		.map_err(python_error)
+}
+
+#[pyfunction]
 pub(crate) fn matrix_philox_uniform(
 	input: &PythonMatrix,
 	low: f32,
@@ -382,6 +464,7 @@ pub(crate) fn matrix_set_rng_seed(seed: u64) {
 
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
 	module.add_class::<PythonMatrix>()?;
+	module.add_class::<PythonMoeExpertPlan>()?;
 	macro_rules! add_functions {
 		($($function:ident),+ $(,)?) => { $(module.add_function(wrap_pyfunction!($function, module)?)?;)+ };
 	}
@@ -417,6 +500,9 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
 		matrix_gather_last_dim,
 		matrix_equal,
 		matrix_top_k,
+		matrix_top_k_mask,
+		matrix_moe_expert_plan,
+		matrix_moe_routing_bias_update,
 		matrix_repeat_interleave,
 		matrix_concat,
 		matrix_transpose,

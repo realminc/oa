@@ -163,10 +163,7 @@ impl TrainingCallback for ProgressBar {
 		Ok(TrainingControl::Continue)
 	}
 
-	fn on_step_end(
-		&mut self,
-		context: &mut TrainingCallbackContext<'_>,
-	) -> Result<TrainingControl> {
+	fn on_step_end(&mut self, context: &mut TrainingCallbackContext<'_>) -> Result<TrainingControl> {
 		let state = context.snapshot();
 		if state.is_epoch_boundary() {
 			return Ok(TrainingControl::Continue);
@@ -188,19 +185,13 @@ impl TrainingCallback for ProgressBar {
 		Ok(TrainingControl::Continue)
 	}
 
-	fn on_epoch_end(
-		&mut self,
-		context: &mut TrainingCallbackContext<'_>,
-	) -> Result<TrainingControl> {
+	fn on_epoch_end(&mut self, context: &mut TrainingCallbackContext<'_>) -> Result<TrainingControl> {
 		self.render(context, true)?;
 		self.last_finalized_step = context.snapshot().step_count();
 		Ok(TrainingControl::Continue)
 	}
 
-	fn on_train_end(
-		&mut self,
-		context: &mut TrainingCallbackContext<'_>,
-	) -> Result<TrainingControl> {
+	fn on_train_end(&mut self, context: &mut TrainingCallbackContext<'_>) -> Result<TrainingControl> {
 		let state = context.snapshot();
 		if self.last_finalized_step != state.step_count() {
 			self.render(context, true)?;
@@ -236,12 +227,10 @@ impl TrainingSummary {
 		let mut report = String::from("\nSummary:\n");
 		match (self.initial_loss, state.last_loss()) {
 			(_, None) => report.push_str("  loss: n/a (no loss recorded)\n"),
-			(Some(initial), Some(final_loss)) if self.track_initial_loss => {
-				report.push_str(&format!(
-					"  loss: initial {initial:.6} · final {final_loss:.6} · mean {:.6}\n",
-					state.training_mean_loss()
-				))
-			}
+			(Some(initial), Some(final_loss)) if self.track_initial_loss => report.push_str(&format!(
+				"  loss: initial {initial:.6} · final {final_loss:.6} · mean {:.6}\n",
+				state.training_mean_loss()
+			)),
 			(_, Some(final_loss)) => report.push_str(&format!(
 				"  loss: final {final_loss:.6} · mean {:.6}\n",
 				state.training_mean_loss()
@@ -336,10 +325,7 @@ impl Default for TrainingSummary {
 }
 
 impl TrainingCallback for TrainingSummary {
-	fn on_step_end(
-		&mut self,
-		context: &mut TrainingCallbackContext<'_>,
-	) -> Result<TrainingControl> {
+	fn on_step_end(&mut self, context: &mut TrainingCallbackContext<'_>) -> Result<TrainingControl> {
 		if self.track_initial_loss
 			&& self.initial_loss.is_none()
 			&& context.snapshot().step_count() == 1
@@ -349,10 +335,7 @@ impl TrainingCallback for TrainingSummary {
 		Ok(TrainingControl::Continue)
 	}
 
-	fn on_train_end(
-		&mut self,
-		context: &mut TrainingCallbackContext<'_>,
-	) -> Result<TrainingControl> {
+	fn on_train_end(&mut self, context: &mut TrainingCallbackContext<'_>) -> Result<TrainingControl> {
 		write_stdout(&self.render_report(context.snapshot(), context.config()))?;
 		Ok(TrainingControl::Continue)
 	}

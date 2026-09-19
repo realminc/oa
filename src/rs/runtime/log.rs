@@ -126,9 +126,8 @@ impl LogComponent {
 		}
 		let mut bytes = [b' '; 4];
 		bytes[..source.len()].copy_from_slice(source);
-		let len = u8::try_from(source.len()).map_err(|_| {
-			Error::invalid_argument("log component tag length exceeds its storage width")
-		})?;
+		let len = u8::try_from(source.len())
+			.map_err(|_| Error::invalid_argument("log component tag length exceeds its storage width"))?;
 		Ok(Self { bytes, len })
 	}
 
@@ -337,7 +336,8 @@ impl Logger {
 	}
 
 	pub(crate) fn set_level(&self, level: LogLevel) {
-		self.inner
+		self
+			.inner
 			.minimum_level
 			.store(level as u8, Ordering::Relaxed);
 	}
@@ -655,11 +655,11 @@ mod tests {
 		logger.write_text(LogLevel::Debug, LogComponent::CORE, "filtered")?;
 		logger.write_text(LogLevel::Info, LogComponent::CORE, "written")?;
 		logger.flush()?;
-		let path = logger.path().ok_or_else(|| {
-			crate::Error::failed_precondition("file logger did not expose its path")
-		})?;
-		let contents = fs::read_to_string(path)
-			.map_err(|source| crate::Error::io("test log reading", source))?;
+		let path = logger
+			.path()
+			.ok_or_else(|| crate::Error::failed_precondition("file logger did not expose its path"))?;
+		let contents =
+			fs::read_to_string(path).map_err(|source| crate::Error::io("test log reading", source))?;
 		assert!(!contents.contains("filtered"));
 		assert!(contents.contains("[INFO ] [CORE] written"));
 		logger.close()?;
@@ -669,8 +669,7 @@ mod tests {
 				.map_err(|error| error.kind()),
 			Err(ErrorKind::FailedPrecondition)
 		);
-		fs::remove_dir_all(directory)
-			.map_err(|source| crate::Error::io("test log cleanup", source))?;
+		fs::remove_dir_all(directory).map_err(|source| crate::Error::io("test log cleanup", source))?;
 		Ok(())
 	}
 
@@ -698,12 +697,12 @@ mod tests {
 		drop(first_selection);
 		first.flush()?;
 		second.flush()?;
-		let first_path = first.path().ok_or_else(|| {
-			crate::Error::failed_precondition("first logger did not expose its path")
-		})?;
-		let second_path = second.path().ok_or_else(|| {
-			crate::Error::failed_precondition("second logger did not expose its path")
-		})?;
+		let first_path = first
+			.path()
+			.ok_or_else(|| crate::Error::failed_precondition("first logger did not expose its path"))?;
+		let second_path = second
+			.path()
+			.ok_or_else(|| crate::Error::failed_precondition("second logger did not expose its path"))?;
 		let first_text = fs::read_to_string(first_path)
 			.map_err(|source| crate::Error::io("first test log reading", source))?;
 		let second_text = fs::read_to_string(second_path)

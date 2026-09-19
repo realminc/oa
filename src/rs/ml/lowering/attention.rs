@@ -120,9 +120,7 @@ impl BmmGeometry {
 		let output_count = left_batch
 			.checked_mul(rows)
 			.and_then(|count| count.checked_mul(columns))
-			.ok_or_else(|| {
-				Error::invalid_argument(format!("{operation} output size overflows usize"))
-			})?;
+			.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))?;
 		Ok(Self {
 			batch: shader_u32(*left_batch, "batch", operation)?,
 			rows: shader_u32(rows, "row count", operation)?,
@@ -267,9 +265,9 @@ pub(in crate::ml) fn merge_heads(
 		)));
 	}
 	validate_f32_same_engine(OPERATION, &[input])?;
-	let model_width = num_heads.checked_mul(*head_dim).ok_or_else(|| {
-		Error::invalid_argument(format!("{OPERATION} model width overflows usize"))
-	})?;
+	let model_width = num_heads
+		.checked_mul(*head_dim)
+		.ok_or_else(|| Error::invalid_argument(format!("{OPERATION} model width overflows usize")))?;
 	let output_rows = batch.checked_mul(sequence_length).ok_or_else(|| {
 		Error::invalid_argument(format!("{OPERATION} output row count overflows usize"))
 	})?;

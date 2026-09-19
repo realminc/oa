@@ -260,9 +260,7 @@ impl<'engine, 'hooks> SacTrainer<'engine, 'hooks> {
 			.action_dimensions
 			.checked_mul(2)
 			.ok_or_else(|| Error::resource_exhausted("SAC actor width overflows usize"))?;
-		if output.shape() != [self.config.batch_size, expected_width]
-			|| output.dtype() != DType::F32
-		{
+		if output.shape() != [self.config.batch_size, expected_width] || output.dtype() != DType::F32 {
 			return Err(Error::invalid_argument(
 				"SAC actor must return F32 [batch, 2 * action_dimensions]",
 			));
@@ -374,7 +372,8 @@ fn shape_elements(shape: &[usize], label: &'static str) -> Result<usize> {
 }
 
 fn checked_seed(base: u64, offset: u64, label: &'static str) -> Result<u64> {
-	base.checked_add(offset)
+	base
+		.checked_add(offset)
 		.ok_or_else(|| Error::resource_exhausted(format!("SAC {label} seed exhausted")))
 }
 

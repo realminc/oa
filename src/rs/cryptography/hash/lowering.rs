@@ -37,7 +37,8 @@ pub(super) fn shake(input: &Matrix, output_length: usize, kind: ShakeKind) -> Re
 	let output_row_bytes = output_length
 		.checked_add(7)
 		.ok_or_else(|| Error::invalid_argument("SHAKE output length overflows usize"))?
-		/ 8 * 8;
+		/ 8
+		* 8;
 	let element_count = rows
 		.checked_mul(output_row_bytes)
 		.ok_or_else(|| Error::invalid_argument("SHAKE output size overflows usize"))?;

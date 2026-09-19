@@ -91,9 +91,9 @@ pub(in crate::ml) fn append(
 	let observation_count = batch_u32.checked_mul(observation_elements).ok_or_else(|| {
 		Error::resource_exhausted(format!("{OPERATION} observation count exceeds u32"))
 	})?;
-	let action_count = batch_u32.checked_mul(action_elements).ok_or_else(|| {
-		Error::resource_exhausted(format!("{OPERATION} action count exceeds u32"))
-	})?;
+	let action_count = batch_u32
+		.checked_mul(action_elements)
+		.ok_or_else(|| Error::resource_exhausted(format!("{OPERATION} action count exceeds u32")))?;
 	let inputs = [
 		transition.observation(),
 		transition.action(),
@@ -168,9 +168,7 @@ pub(in crate::ml) fn sample(
 	let batch_u32 = shader_u32(batch, "batch", OPERATION)?;
 	let observation_count = batch
 		.checked_mul(observation_elements as usize)
-		.ok_or_else(|| {
-			Error::resource_exhausted("replay sample observation size overflows usize")
-		})?;
+		.ok_or_else(|| Error::resource_exhausted("replay sample observation size overflows usize"))?;
 	let action_count = batch
 		.checked_mul(action_elements as usize)
 		.ok_or_else(|| Error::resource_exhausted("replay sample action size overflows usize"))?;
@@ -189,12 +187,7 @@ pub(in crate::ml) fn sample(
 			DType::F32,
 		)?,
 		action: Matrix::allocate(engine, action_shape, action_count, config.action_dtype)?,
-		next_observation: Matrix::allocate(
-			engine,
-			observation_shape,
-			observation_count,
-			DType::F32,
-		)?,
+		next_observation: Matrix::allocate(engine, observation_shape, observation_count, DType::F32)?,
 		reward: Matrix::allocate(engine, vec![batch], batch, DType::F32)?,
 		terminated: Matrix::allocate(engine, vec![batch], batch, DType::U8)?,
 		truncated: Matrix::allocate(engine, vec![batch], batch, DType::U8)?,

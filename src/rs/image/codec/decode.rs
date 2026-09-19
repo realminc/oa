@@ -101,8 +101,7 @@ fn upload_packed(
 	planar.resize(elements, 0.0_f32);
 	for pixel in 0..pixels {
 		for channel in 0..channels {
-			planar[channel * pixels + pixel] =
-				f32::from(packed[pixel * channels + channel]) / 255.0;
+			planar[channel * pixels + pixel] = f32::from(packed[pixel * channels + channel]) / 255.0;
 		}
 	}
 	let matrix = Matrix::from_slice(engine, [1, channels, height, width], &planar)?;

@@ -1,7 +1,9 @@
+.bob/
+
 /target
 /bin
 /var
 __pycache__/
 *.py[cod]
 .venv/
-sdk/py/python/oa/*.so
+sdk/py/binding/oa/*.so

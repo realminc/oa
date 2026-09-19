@@ -119,9 +119,8 @@ pub fn sample_logits(
 	}
 	let rows_u32 = u32::try_from(rows)
 		.map_err(|_| Error::invalid_argument(format!("{operation} row count exceeds u32")))?;
-	let vocabulary_u32 = u32::try_from(vocabulary).map_err(|_| {
-		Error::invalid_argument(format!("{operation} vocabulary extent exceeds u32"))
-	})?;
+	let vocabulary_u32 = u32::try_from(vocabulary)
+		.map_err(|_| Error::invalid_argument(format!("{operation} vocabulary extent exceeds u32")))?;
 	let candidates = if top_k > 0 {
 		usize::try_from(top_k)
 			.expect("positive i32 fits usize")

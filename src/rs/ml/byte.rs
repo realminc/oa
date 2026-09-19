@@ -95,12 +95,12 @@ fn decode_sampled(
 		));
 	}
 	let ids = crate::matrix::sample_logits(logits, temperature, top_k, top_p, seed)?;
-	ids.read::<i32>()?
+	ids
+		.read::<i32>()?
 		.into_iter()
 		.map(|id| {
-			u8::try_from(id).map_err(|_| {
-				Error::internal("256-class byte sampling produced an out-of-range token")
-			})
+			u8::try_from(id)
+				.map_err(|_| Error::internal("256-class byte sampling produced an out-of-range token"))
 		})
 		.collect()
 }

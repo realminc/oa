@@ -171,11 +171,7 @@ impl VideoFrame {
 	///
 	/// Returns an error when `image` has a batch extent other than one or a zero
 	/// spatial extent.
-	pub fn from_image(
-		image: Image,
-		timing: VideoFrameTiming,
-		color: VideoColorInfo,
-	) -> Result<Self> {
+	pub fn from_image(image: Image, timing: VideoFrameTiming, color: VideoColorInfo) -> Result<Self> {
 		if image.batch_size() != 1 {
 			return Err(Error::invalid_argument(format!(
 				"video frame requires one image, but the batch extent is {}",

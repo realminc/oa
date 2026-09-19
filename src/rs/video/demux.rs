@@ -302,9 +302,11 @@ impl VideoDemuxer {
 			.try_reserve_exact(size)
 			.map_err(|_| Error::resource_exhausted("video packet allocation failed"))?;
 		encoded.resize(size, 0);
-		file.seek(SeekFrom::Start(sample.offset))
+		file
+			.seek(SeekFrom::Start(sample.offset))
 			.map_err(|source| Error::io("video packet seek", source))?;
-		file.read_exact(&mut encoded)
+		file
+			.read_exact(&mut encoded)
 			.map_err(|source| Error::io("video packet read", source))?;
 
 		let mut data = if let Some(length_size) = self.nal_length_size {
@@ -317,9 +319,7 @@ impl VideoDemuxer {
 				.codec_config
 				.len()
 				.checked_add(data.len())
-				.ok_or_else(|| {
-					Error::out_of_range("video packet plus codec config overflows usize")
-				})?;
+				.ok_or_else(|| Error::out_of_range("video packet plus codec config overflows usize"))?;
 			let mut prefixed = Vec::new();
 			prefixed
 				.try_reserve_exact(capacity)
@@ -356,7 +356,8 @@ impl VideoDemuxer {
 			.filter(|(_, sample)| sample.keyframe && sample.pts <= presentation_timestamp)
 			.max_by_key(|(_, sample)| sample.pts)
 			.or_else(|| {
-				self.samples
+				self
+					.samples
 					.iter()
 					.enumerate()
 					.find(|(_, sample)| sample.keyframe)
@@ -463,7 +464,8 @@ fn read_moov(file: &mut File, file_size: u64) -> Result<Vec<u8>> {
 	let mut offset = 0_u64;
 	let mut saw_ftyp = false;
 	while offset < file_size {
-		file.seek(SeekFrom::Start(offset))
+		file
+			.seek(SeekFrom::Start(offset))
 			.map_err(|source| Error::io("MP4 box seek", source))?;
 		let header = read_file_box_header(file, offset, file_size)?;
 		if header.kind == *b"ftyp" {
@@ -487,7 +489,8 @@ fn read_moov(file: &mut File, file_size: u64) -> Result<Vec<u8>> {
 				.try_reserve_exact(payload_len)
 				.map_err(|_| Error::resource_exhausted("MP4 movie box allocation failed"))?;
 			payload.resize(payload_len, 0);
-			file.read_exact(&mut payload)
+			file
+				.read_exact(&mut payload)
 				.map_err(|source| Error::io("MP4 movie box read", source))?;
 			return Ok(payload);
 		}
@@ -504,7 +507,8 @@ struct FileBoxHeader {
 
 fn read_file_box_header(file: &mut File, offset: u64, limit: u64) -> Result<FileBoxHeader> {
 	let mut bytes = [0_u8; 8];
-	file.read_exact(&mut bytes)
+	file
+		.read_exact(&mut bytes)
 		.map_err(|source| Error::io("MP4 box header read", source))?;
 	let size32 = u32::from_be_bytes(
 		bytes[..4]
@@ -516,7 +520,8 @@ fn read_file_box_header(file: &mut File, offset: u64, limit: u64) -> Result<File
 		.map_err(|_| Error::internal("fixed MP4 box-type slice conversion failed"))?;
 	let (size, header_size) = if size32 == 1 {
 		let mut extended = [0_u8; 8];
-		file.read_exact(&mut extended)
+		file
+			.read_exact(&mut extended)
 			.map_err(|source| Error::io("MP4 extended box header read", source))?;
 		(u64::from_be_bytes(extended), 16_u64)
 	} else if size32 == 0 {
@@ -620,8 +625,7 @@ fn parse_trak(data: &[u8], file_size: u64) -> Result<Option<ParsedTrack>> {
 	.ok_or_else(|| Error::data_loss("MP4 video track lacks a sample table"))?;
 	let tables = parse_sample_table(stbl, file_size)?;
 	Ok(Some(ParsedTrack {
-		track_id: track_id
-			.ok_or_else(|| Error::data_loss("MP4 video track lacks a valid track id"))?,
+		track_id: track_id.ok_or_else(|| Error::data_loss("MP4 video track lacks a valid track id"))?,
 		codec: tables.codec,
 		width: tables.width,
 		height: tables.height,
@@ -707,8 +711,8 @@ fn parse_sample_table(data: &[u8], file_size: u64) -> Result<SampleTables> {
 		.map_err(|_| Error::resource_exhausted("MP4 sample index allocation failed"))?;
 	for index in 0..sizes.len() {
 		let pts = checked_signed_add(dts, composition_offsets[index])?;
-		let sample_number = u32::try_from(index + 1)
-			.map_err(|_| Error::out_of_range("MP4 sample number exceeds u32"))?;
+		let sample_number =
+			u32::try_from(index + 1).map_err(|_| Error::out_of_range("MP4 sample number exceeds u32"))?;
 		samples.push(Sample {
 			offset: offsets[index],
 			size: sizes[index],
@@ -1001,7 +1005,8 @@ fn parse_vpcc_profile(data: &[u8]) -> Result<Option<VideoDecodeProfile>> {
 
 fn h264_profile_from_config(config: &[u8]) -> Result<Option<VideoDecodeProfile>> {
 	let Some(sps) = super::parse_nal_annex_b(config).into_iter().find(|nal| {
-		nal.payload()
+		nal
+			.payload()
 			.first()
 			.is_some_and(|header| header & 0x1f == 7)
 	}) else {
@@ -1284,8 +1289,7 @@ fn boxes(mut data: &[u8]) -> Result<Vec<SliceBox<'_>>> {
 			(data.len(), 8)
 		} else {
 			(
-				usize::try_from(size32)
-					.map_err(|_| Error::out_of_range("MP4 child box exceeds usize"))?,
+				usize::try_from(size32).map_err(|_| Error::out_of_range("MP4 child box exceeds usize"))?,
 				8,
 			)
 		};
@@ -1302,10 +1306,12 @@ fn boxes(mut data: &[u8]) -> Result<Vec<SliceBox<'_>>> {
 }
 
 fn find_descendant<'a>(data: &'a [u8], kind: &[u8; 4]) -> Result<Option<&'a [u8]>> {
-	Ok(boxes(data)?
-		.into_iter()
-		.find(|child| &child.kind == kind)
-		.map(|child| child.payload))
+	Ok(
+		boxes(data)?
+			.into_iter()
+			.find(|child| &child.kind == kind)
+			.map(|child| child.payload),
+	)
 }
 
 fn table_count(data: &[u8], stride: usize, name: &'static str) -> Result<usize> {
@@ -1373,8 +1379,7 @@ fn checked_signed_add(value: u64, offset: i64) -> Result<u64> {
 	if offset >= 0 {
 		value
 			.checked_add(
-				u64::try_from(offset)
-					.map_err(|_| Error::data_loss("positive ctts conversion failed"))?,
+				u64::try_from(offset).map_err(|_| Error::data_loss("positive ctts conversion failed"))?,
 			)
 			.ok_or_else(|| Error::data_loss("video presentation timestamp overflows u64"))
 	} else {

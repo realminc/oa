@@ -480,9 +480,7 @@ pub(in crate::ml) fn gru_scan(
 	let output_count = batch
 		.checked_mul(*sequence_length)
 		.and_then(|count| count.checked_mul(*hidden_size))
-		.ok_or_else(|| {
-			Error::invalid_argument(format!("{OPERATION} output size overflows usize"))
-		})?;
+		.ok_or_else(|| Error::invalid_argument(format!("{OPERATION} output size overflows usize")))?;
 	let output_shape = vec![*batch, *sequence_length, *hidden_size];
 	let output = Matrix::allocate(
 		gates_i.engine_handle(),

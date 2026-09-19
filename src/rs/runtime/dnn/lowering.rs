@@ -158,14 +158,13 @@ pub(super) fn lower_captured_plan(
 			continue;
 		}
 
-		let candidate =
-			match build_qkv_projection(plan, partition_index, bindings, resources, source) {
-				Ok(candidate) => candidate,
-				Err(reason) => {
-					mark_fallback(plan, partition_index, reason, false);
-					continue;
-				}
-			};
+		let candidate = match build_qkv_projection(plan, partition_index, bindings, resources, source) {
+			Ok(candidate) => candidate,
+			Err(reason) => {
+				mark_fallback(plan, partition_index, reason, false);
+				continue;
+			}
+		};
 		if candidate.first_node < source_cursor {
 			mark_fallback(
 				plan,
@@ -256,9 +255,7 @@ fn build_qkv_projection(
 			|| value.byte_offset != 0
 			|| !exact_row_major(value)
 		{
-			return Err(
-				"QKV multi-output provider requires distinct zero-offset row-major F32 values",
-			);
+			return Err("QKV multi-output provider requires distinct zero-offset row-major F32 values");
 		}
 		if resources[resource].buffer.byte_len() != byte_len {
 			return Err("QKV multi-output semantic and physical layouts disagree");
@@ -564,7 +561,8 @@ fn exact_row_major(value: &DnnValueDesc) -> bool {
 }
 
 fn find_operation(plan: &DnnPlan, id: SemanticOpId) -> Option<&DnnOpDesc> {
-	plan.operations
+	plan
+		.operations
 		.iter()
 		.find(|operation| operation.source_op == id)
 }
