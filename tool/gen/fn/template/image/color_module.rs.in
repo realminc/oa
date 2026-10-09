@@ -1,0 +1,84 @@
+//! Per-channel image color transforms.
+
+use crate::{
+	DType, Error, Image, ImageLayout, Matrix, OpAttribute, Result,
+	runtime::{
+		BufferBinding, ComputeDispatch, ImageSemanticDispatch, ImageSemanticInput, KernelId,
+		PushConstant,
+	},
+};
+
+{{items}}
+
+
+fn validate_normalization(input: &Image, parameters: NormalizationParams) -> Result<()> {
+	if input.dtype() != DType::F32
+		|| !matches!(input.layout(), ImageLayout::Nchw | ImageLayout::Chw)
+		|| input.channels() > 3
+		|| input.batch_size() == 0
+		|| input.height() == 0
+		|| input.width() == 0
+	{
+		return Err(Error::invalid_argument(
+			"image normalization requires a nonempty FP32 NCHW/CHW image with at most three channels",
+		));
+	}
+	for channel in 0..input.channels() {
+		if !parameters.mean[channel].is_finite()
+			|| !parameters.std[channel].is_finite()
+			|| parameters.std[channel] <= 0.0
+		{
+			return Err(Error::invalid_argument(
+				"image normalization requires finite means and positive finite standard deviations",
+			));
+		}
+	}
+	Ok(())
+}
+
+fn allocate(input: &Image, shape: Vec<usize>, format: crate::ImageFormat) -> Result<Image> {
+	let elements = shape.iter().copied().try_fold(1usize, |count, value| {
+		count
+			.checked_mul(value)
+			.ok_or_else(|| Error::out_of_range("image output size exceeds usize"))
+	})?;
+	u32::try_from(elements).map_err(|_| Error::out_of_range("image output size exceeds u32"))?;
+	Image::new(
+		Matrix::allocate(input.engine_handle(), shape, elements, DType::F32)?,
+		input.layout(),
+		format,
+	)
+}
+
+fn extent(value: usize, label: &str) -> Result<u32> {
+	u32::try_from(value).map_err(|_| Error::out_of_range(format!("image {label} exceeds u32")))
+}
+fn unsigned(name: &str, value: u32) -> OpAttribute {
+	OpAttribute::UnsignedInteger {
+		name: name.into(),
+		value: u64::from(value),
+	}
+}
+fn enumeration(name: &str, value: &str) -> OpAttribute {
+	OpAttribute::Enum {
+		name: name.into(),
+		value: value.into(),
+	}
+}
+const fn format_token(format: crate::ImageFormat) -> &'static str {
+	match format {
+		crate::ImageFormat::Gray => "gray",
+		crate::ImageFormat::GrayAlpha => "gray_alpha",
+		crate::ImageFormat::Rgb => "rgb",
+		crate::ImageFormat::Rgba => "rgba",
+		crate::ImageFormat::Bgr => "bgr",
+		crate::ImageFormat::Bgra => "bgra",
+	}
+}
+
+fn float(name: &str, value: f32) -> OpAttribute {
+	OpAttribute::Float {
+		name: name.into(),
+		value: f64::from(value),
+	}
+}

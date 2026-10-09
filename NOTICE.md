@@ -1,109 +1,33 @@
 # NOTICE — Third-Party Software and Attributions
 
-OA is licensed under the Business Source License 1.1 (see `LICENSE`). This file
-records software incorporated into OA distributions, optional build/runtime
-dependencies, and the provenance of interoperability data and formats. Each
-third-party work remains under its own license. Listing a project or mark does
-not imply endorsement by, or affiliation with, its owners.
+OA is licensed under the Business Source License 1.1; see `LICENSE`. Third-party
+works retain their own licenses. Listing a project or mark does not imply
+endorsement or affiliation.
 
-Release packages install this file, OA's `LICENSE`, and the package-manager
-copyright files for direct dependencies compiled into the release. Source-tree
-copies retain their upstream notices at the paths listed below.
-
-## Epic Games — MetaHuman, CitySample, Unreal Engine, "Manny" / "Quinn"
-
-The skeletal rig and reference-pose data under `sdk/cpp/{include,lib}/{rig,retarget,anim}`
-(e.g. the 64-joint clean base skeleton and the UE-mannequin t-pose/a-pose tables)
-are derived from Epic Games' **MetaHuman** and **CitySample** sample content and the
-Unreal Engine mannequins **"Manny"** and **"Quinn"**.
-
-- MetaHuman, CitySample, Unreal Engine, Manny, and Quinn are trademarks or
-  registered trademarks of **Epic Games, Inc.**
-- MetaHuman characters and animations are, since the 2025 licensing update
-  (Unreal Engine 5.6), classified as "non-engine products" that may be used outside
-  Unreal Engine. Use of MetaHuman-derived data is subject to the MetaHuman license
-  (<https://www.metahuman.com/license>) and the Unreal Engine EULA. OA's rig/anim
-  tooling is an **interoperability bridge** for content authored in these ecosystems;
-  it neither includes nor redistributes Unreal Engine or the MetaHuman Creator.
-
-## Autodesk — HumanIK, Maya, MotionBuilder, FBX
-
-- **HumanIK**, **Maya**, **MotionBuilder**, and **FBX** are trademarks or registered
-  trademarks of **Autodesk, Inc.**
-- OA implements a HumanIK-**compatible** characterization (slot names + ids) used as a
-  retarget interop hub. This is a naming/mapping convention only — OA does **not**
-  include, link, or redistribute the Autodesk HumanIK SDK / middleware, which Autodesk
-  licenses separately.
-- OA's FBX export is a clean-room ASCII writer for interoperability. It does **not**
-  use or include the Autodesk FBX SDK.
-
-## Other formats
-
-- **USD** (Universal Scene Description) support is written against the open USD format;
-  Pixar/OpenUSD are not affiliated with OA.
-
-## Vendored open-source components
-
-OA bundles the following third-party libraries. Each is used under its own permissive
-license; the full copyright/permission text is retained in the corresponding source
-files. OA is grateful to their authors.
-
-| Component | In OA as | Author | License |
-|---|---|---|---|
-| **volk / VKL** (Vulkan meta-loader) | `source/cpp/thirdparty/vkl` (hard fork; collision-safe `vkl*` C ABI) | Arseny Kapoulkine ([zeux/volk](https://github.com/zeux/volk)) | MIT |
-| **Vulkan Memory Allocator (VMA)** | `source/cpp/thirdparty/vma` (hard fork; split unity implementation) | Advanced Micro Devices, Inc. ([GPUOpen VMA](https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator)) | MIT |
-| **miniaudio** | `source/cpp/thirdparty/miniaudio/*` | David Reid ([mackron](https://github.com/mackron/miniaudio)) | Public domain or MIT-0 |
-| **stb** (`stb_image`, …) | `source/cpp/thirdparty/stb/*` | Sean Barrett ([nothings/stb](https://github.com/nothings/stb)) | Public domain or MIT |
-| **xsimd 14.1.0** | `source/cpp/thirdparty/xsimd/*` | QuantStack and xsimd contributors ([xtensor-stack/xsimd](https://github.com/xtensor-stack/xsimd)) | BSD-3-Clause |
-| **utf8proc 2.11.3** | `source/cpp/thirdparty/utf8proc/*` | utf8proc contributors ([JuliaStrings/utf8proc](https://github.com/JuliaStrings/utf8proc)) | MIT |
-| **libadrenotools** | `sdk/android/mobilelab/third_party/libadrenotools/*` (Android only) | Billy Laws ([bylaws/libadrenotools](https://github.com/bylaws/libadrenotools)) | BSD-2-Clause |
-
-The volk and VMA copies are **modified** (fork/rename/split for OA's build).
-Their MIT notices are centralized in `source/cpp/thirdparty/licenses`, and each
-fork records exact provenance and local changes in its adjacent `UPSTREAM.md`.
-libadrenotools and its linkernsbypass copy retain their `LICENSE` files in place.
-
-## Direct build and link dependencies
-
-These dependencies are resolved by vcpkg or the host package manager; they are
-not copied into OA's source tree. Whether a component is present in a particular
-binary depends on that build's feature flags and platform. Copyright files from
-the active vcpkg installation are copied into release packages automatically.
+The Rust build resolves these direct dependencies through Cargo:
 
 | Component | OA use | License |
-|---|---|---|
-| yaml-cpp | YAML configuration and model metadata | MIT |
-| Vulkan-Headers | Vulkan API declarations | Apache-2.0 OR MIT |
-| SDL3 | windows, input and camera integration | Zlib; selected configurations also contain MIT/Apache-2.0 code |
-| liboqs | optional post-quantum cryptography | MIT, with separately licensed code identified by liboqs |
-| nanobind | optional Python extension bindings | BSD-3-Clause |
+| --- | --- | --- |
+| Ash / ash-vp9 | Vulkan and VP9 C-ABI bindings | Apache-2.0 OR MIT |
+| vk-mem | Vulkan Memory Allocator binding | MIT |
+| bitflags | typed flags | MIT OR Apache-2.0 |
+| chrono | host timestamps | MIT OR Apache-2.0 |
+| smallvec | compact retained collections | MIT OR Apache-2.0 |
+| serde_json | metadata and evidence serialization | MIT OR Apache-2.0 |
+| unicode-normalization / unicode-general-category | text processing | MIT OR Apache-2.0 |
+| CPAL / rtrb | audio sessions and ring buffers | Apache-2.0 / MIT |
+| Symphonia | audio codecs | MPL-2.0 |
+| image / webp | image codecs | MIT OR Apache-2.0 / MIT |
+| libc | platform ABI | MIT OR Apache-2.0 |
+| ml-dsa | post-quantum signatures | Apache-2.0 OR MIT |
+| PyO3 | optional Python extension binding | Apache-2.0 OR MIT |
 
-Slang (Apache-2.0 with LLVM exception) compiles OA shaders during the build but
-is not linked into the OA runtime. GoogleTest (BSD-3-Clause) is used only by the
-test targets. NVTX headers (Apache-2.0 with LLVM exception) are used only for
-optional profiling markers when an NVTX installation is detected.
+Slang (Apache-2.0 with LLVM exception) and SPIR-V Tools (Apache-2.0) compile and
+validate shaders during the build but are not linked into the OA runtime. The
+system Vulkan loader and device driver remain host-provided components.
 
-On Linux, OA may dynamically link host-provided Vulkan loader, SDL3,
-PipeWire and libportal libraries. OA packages do not redistribute those system
-libraries; their licenses and notices are supplied by the operating-system
-packages. `ldd`/the platform package metadata is the authority for the exact
-dynamic dependency closure of a given binary.
-
-## Reference implementations and test oracles
-
-PyTorch, TensorFlow, OpenCV and FFmpeg are used in documentation as behavioral,
-API, or differential-testing references. OA does not bundle or link their source
-or libraries. Their licenses therefore are not licenses of incorporated OA
-components and are intentionally not reproduced as if they were dependencies.
-
-In particular, some video tests invoke a separately installed `ffmpeg` executable
-to build fixtures or compare decoded frames. FFmpeg is not invoked by the OA
-runtime and no `libav*` library is linked. FFmpeg is LGPL-2.1-or-later by default;
-an FFmpeg build that enables its optional GPL components is covered by GPL-2.0-or-later.
-
-## Regenerating the derived data (maintainers)
-
-The baked tables in `sdk/cpp/lib/{rig,retarget}/*.inc` are checked in; building
-OA does **not** require the generators. `tools/gen/animation/*.py` can rebuild them from a
-local, privately-held copy of the source definitions (pointed at via the `OA3D_*`
-environment variables). Those private sources are not distributed with OA.
+The OA C++ repository is used as behavioral donor evidence and as a differential
+test reference. Its source is not copied into Rust release binaries. PyTorch,
+TensorFlow, NumPy, GLM, OpenCV, and FFmpeg may appear in documentation or tests
+as interoperability or differential references; they are not linked into the
+core Rust library unless a dependency manifest explicitly says otherwise.

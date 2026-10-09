@@ -1,0 +1,103 @@
+	let operation = contract.name();
+	if left.dtype() != right.dtype() {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires equal dtypes; left is {}, right is {}",
+			left.dtype().token(),
+			right.dtype().token()
+		)));
+	}
+	let engine = left.engine_handle();
+	if !engine.same_as(right.engine_handle()) {
+		return Err(Error::invalid_argument(format!(
+			"{operation} inputs must belong to the same engine"
+		)));
+	}
+	let output = if left.shape() == right.shape() {
+		let kernel = select_kernel(left.dtype(), routes, operation)?;
+		let element_count = u32::try_from(left.element_count())
+			.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
+		let output = Matrix::allocate(
+			engine,
+			left.shape().to_vec(),
+			left.element_count(),
+			left.dtype(),
+		)?;
+		if element_count != 0 {
+			let buffers = [
+				BufferBinding::read(left.storage()),
+				BufferBinding::read(right.storage()),
+				BufferBinding::write(output.storage()),
+			];
+			let push_constants = [PushConstant::U32(element_count)];
+			let inputs = [left, right];
+			let outputs = [&output];
+			engine.record_semantic(
+				ComputeDispatch {
+					kernel,
+					buffers: &buffers,
+					push_constants: &push_constants,
+					workgroups: kernel.linear_workgroups(element_count),
+				},
+				SemanticDispatch {
+					contract,
+					inputs: &inputs,
+					outputs: &outputs,
+					attributes: &[],
+				},
+			)?;
+		}
+		output
+	} else if contract.shape_rule() == OpShapeRule::Broadcast {
+		let operation = contract.name();
+		let layout = resolve_broadcast(left.shape(), right.shape(), operation)?;
+		let kernel = select_kernel(left.dtype(), broadcast_routes, operation)?;
+		let output_count = usize::try_from(layout.element_count)
+			.expect("u32 element count always fits the supported Rust targets");
+		let output = Matrix::allocate(
+			left.engine_handle(),
+			layout.output_shape,
+			output_count,
+			left.dtype(),
+		)?;
+		if layout.element_count != 0 {
+			let buffers = [
+				BufferBinding::read(left.storage()),
+				BufferBinding::read(right.storage()),
+				BufferBinding::write(output.storage()),
+			];
+			let push_constants: [PushConstant; 26] = std::array::from_fn(|index| {
+				PushConstant::U32(match index {
+					0 => layout.element_count,
+					1 => layout.rank,
+					2..=9 => layout.output_dims[index - 2],
+					10..=17 => layout.left_strides[index - 10],
+					_ => layout.right_strides[index - 18],
+				})
+			});
+			let inputs = [left, right];
+			let outputs = [&output];
+			left.engine_handle().record_semantic(
+				ComputeDispatch {
+					kernel,
+					buffers: &buffers,
+					push_constants: &push_constants,
+					workgroups: kernel.linear_workgroups(layout.element_count),
+				},
+				SemanticDispatch {
+					contract,
+					inputs: &inputs,
+					outputs: &outputs,
+					attributes: &[],
+				},
+			)?;
+		}
+		output
+	} else {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires equal shapes; left is {:?}, right is {:?}",
+			left.shape(),
+			right.shape()
+		)));
+	};
+$autograd
+	Ok(output)

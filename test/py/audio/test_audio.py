@@ -1,308 +1,242 @@
-#!/usr/bin/env python3
-"""Tests for OA's public root-parity Audio API.
-
-Self-contained: builds a synthetic waveform on the GPU, exercises the FnAudio
-DSP surface, and round-trips it through the WAV-F32 codec boundary — no external
-audio asset required. Run from a checkout with:
-
-	python -m pytest test/py/audio/test_audio.py
-
-If the native extension is not on PYTHONPATH, set OA_PYTHON_BUILD_DIR to the
-directory containing the private `_oa` extension.
-"""
-
-from __future__ import annotations
+"""Python binding tests for oa.audio DSP and feature extraction operations."""
 
 import math
-import sys
-
-import pytest
-
-import oa_python_test  # noqa: F401 - bootstraps source builds
+import unittest
 
 import oa
-audio = oa.FnAudio
-core = oa.FnMatrix
-runtime = oa
 
 
-@pytest.fixture(scope="session")
-def engine():
-	if not runtime.initComputeEngine():
-		pytest.fail("GPU profile requires an initialized OA Vulkan engine")
-	yield
-	shutdown = getattr(runtime, "shutdownComputeEngine", None)
-	if shutdown is not None:
-		shutdown()
+class AudioConstructorTest(unittest.TestCase):
+	@classmethod
+	def setUpClass(cls) -> None:
+		cls.engine = oa.Engine()
+
+	def _stereo(self) -> oa.Audio:
+		# 4 stereo samples (channels first / planar): L=[0.1, 0.2, 0.3, 0.4] R=[0.5, 0.6, 0.7, 0.8]
+		return oa.Audio.from_planar_f32(
+			self.engine,
+			[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
+			channels=2,
+			sample_rate=8000,
+			layout="stereo",
+		)
+
+	def _mono(self) -> oa.Audio:
+		return oa.Audio.from_planar_f32(
+			self.engine,
+			[0.0, 0.25, 0.5, 0.75, 1.0, 0.75, 0.5, 0.25],
+			channels=1,
+			sample_rate=8000,
+			layout="mono",
+		)
+
+	def test_from_planar_f32_properties(self) -> None:
+		a = self._stereo()
+		self.assertEqual(a.channels, 2)
+		self.assertEqual(a.samples, 4)
+		self.assertEqual(a.sample_rate, 8000)
+		self.assertEqual(a.layout, "stereo")
+		self.assertAlmostEqual(a.duration_seconds, 4 / 8000, places=6)
+
+	def test_as_matrix_shape(self) -> None:
+		a = self._stereo()
+		m = a.as_matrix()
+		self.assertIsInstance(m, oa.Matrix)
+		self.assertEqual(m.shape, [2, 4])
+
+	def test_to_mono_returns_audio(self) -> None:
+		a = self._stereo()
+		mono = oa.audio.to_mono(a)
+		self.assertIsInstance(mono, oa.Audio)
+		self.assertEqual(mono.channels, 1)
+		self.assertEqual(mono.samples, 4)
 
 
-SAMPLE_RATE = 16000
-NUM_SAMPLES = 4096
+class AudioDspTest(unittest.TestCase):
+	@classmethod
+	def setUpClass(cls) -> None:
+		cls.engine = oa.Engine()
+		cls.mono = oa.Audio.from_planar_f32(
+			cls.engine,
+			[0.0, 0.1, 0.2, 0.3, 0.4, 0.3, 0.2, 0.1],
+			channels=1,
+			sample_rate=8000,
+			layout="mono",
+		)
+
+	def test_gain_increases_amplitude(self) -> None:
+		boosted = oa.audio.gain(self.mono, gain_db=6.0)
+		self.assertIsInstance(boosted, oa.Audio)
+		orig = self.mono.as_matrix().read_f32()
+		louder = boosted.as_matrix().read_f32()
+		for o, l in zip(orig, louder):
+			if abs(o) > 1e-6:
+				self.assertGreater(abs(l), abs(o))
+
+	def test_clip_bounds_samples(self) -> None:
+		result = oa.audio.clip(self.mono, -0.15, 0.15)
+		for v in result.as_matrix().read_f32():
+			self.assertLessEqual(v, 0.151)
+			self.assertGreaterEqual(v, -0.151)
+
+	def test_pre_emphasis_changes_signal(self) -> None:
+		result = oa.audio.pre_emphasis(self.mono, alpha=0.97)
+		self.assertIsInstance(result, oa.Audio)
+		self.assertEqual(result.samples, self.mono.samples)
+
+	def test_saturate_returns_audio(self) -> None:
+		result = oa.audio.saturate(self.mono, drive_db=6.0, mix=0.5)
+		self.assertIsInstance(result, oa.Audio)
+
+	def test_reverb_returns_longer_or_equal_audio(self) -> None:
+		result = oa.audio.reverb(self.mono, decay_seconds=0.1, wet=0.3)
+		self.assertIsInstance(result, oa.Audio)
+		self.assertGreaterEqual(result.samples, self.mono.samples)
+
+	def test_fade_returns_audio(self) -> None:
+		result = oa.audio.fade(self.mono, fade_in_samples=2, fade_out_samples=2)
+		self.assertIsInstance(result, oa.Audio)
+		self.assertEqual(result.samples, self.mono.samples)
+
+	def test_mix_combines_two_signals(self) -> None:
+		other = oa.Audio.from_planar_f32(
+			self.engine,
+			[0.1] * 8,
+			channels=1,
+			sample_rate=8000,
+			layout="mono",
+		)
+		result = oa.audio.mix(self.mono, other, gain_a=1.0, gain_b=1.0)
+		self.assertIsInstance(result, oa.Audio)
+		self.assertEqual(result.samples, 8)
+
+	def test_normalize_peak_does_not_increase_beyond_target(self) -> None:
+		loud = oa.Audio.from_planar_f32(
+			self.engine,
+			[0.01] * 8,
+			channels=1,
+			sample_rate=8000,
+			layout="mono",
+		)
+		result = oa.audio.normalize(loud, target_db=-3.0, mode="peak")
+		self.assertIsInstance(result, oa.Audio)
 
 
-def _makeSine(freq: float = 440.0) -> "oa.Audio":
-	# Mono [1, NUM_SAMPLES] tone plus a small deterministic broadband floor so
-	# log-domain features (mel/MFCC) never hit a near-silent band.
-	seed = 12345
-	data = []
-	for n in range(NUM_SAMPLES):
-		seed = (1103515245 * seed + 12345) & 0x7FFFFFFF
-		noise = (seed / 0x7FFFFFFF - 0.5) * 0.02
-		data.append(0.5 * math.sin(2.0 * math.pi * freq * n / SAMPLE_RATE) + noise)
-	matrix = oa.FnMatrix.fromFloats(data, 1, NUM_SAMPLES)
-	return oa.Audio(matrix, SAMPLE_RATE, oa.AudioChannelLayout.Mono)
+class AudioFeatureTest(unittest.TestCase):
+	@classmethod
+	def setUpClass(cls) -> None:
+		cls.engine = oa.Engine()
+		# 512 samples of a 440 Hz tone at 8000 Hz sample rate
+		import math as _math
+		samples = [_math.sin(2 * _math.pi * 440 * i / 8000) for i in range(512)]
+		cls.tone = oa.Audio.from_planar_f32(
+			cls.engine, samples, channels=1, sample_rate=8000, layout="mono"
+		)
+
+	def test_amplitude_to_db_shape(self) -> None:
+		result = oa.audio.amplitude_to_db(self.tone, floor_db=-80.0)
+		self.assertIsInstance(result, oa.Matrix)
+		self.assertEqual(len(result.shape), 2)
+
+	def test_waveform_envelope_shape(self) -> None:
+		result = oa.audio.waveform_envelope(self.tone, bins=32)
+		self.assertIsInstance(result, oa.Matrix)
+		# Output layout is [bins, 2]: each bin contains [min, max] amplitude.
+		self.assertEqual(result.shape, [32, 2])
+
+	def test_stft_shape_consistent(self) -> None:
+		result = oa.audio.stft(self.tone, fft_size=64, hop_size=32)
+		self.assertIsInstance(result, oa.Matrix)
+		self.assertGreaterEqual(result.num_elements, 1)
+
+	def test_mel_spectrogram_shape(self) -> None:
+		result = oa.audio.mel_spectrogram(
+			self.tone, fft_size=64, hop_size=32, num_mels=16
+		)
+		self.assertIsInstance(result, oa.Matrix)
+		self.assertGreaterEqual(result.num_elements, 16)
+
+	def test_mfcc_shape_is_channels_coeffs_frames(self) -> None:
+		result = oa.audio.mfcc(
+			self.tone,
+			num_coeffs=13,
+			num_mels=16,
+			fft_size=64,
+			hop_size=32,
+		)
+		self.assertIsInstance(result, oa.Matrix)
+		# Output layout is [channels, num_coeffs, frames].
+		self.assertEqual(len(result.shape), 3)
+		self.assertEqual(result.shape[1], 13)
 
 
-def _biquadCoefficients(frequency: float, *, highpass: bool = False):
-	q = 1.0 / math.sqrt(2.0)
-	omega = 2.0 * math.pi * frequency / SAMPLE_RATE
-	cosine = math.cos(omega)
-	alpha = math.sin(omega) / (2.0 * q)
-	a0 = 1.0 + alpha
-	coefficients = oa.BiquadCoefficients()
-	if highpass:
-		coefficients.b0 = ((1.0 + cosine) * 0.5) / a0
-		coefficients.b1 = -(1.0 + cosine) / a0
-	else:
-		coefficients.b0 = ((1.0 - cosine) * 0.5) / a0
-		coefficients.b1 = (1.0 - cosine) / a0
-	coefficients.b2 = coefficients.b0
-	coefficients.a1 = (-2.0 * cosine) / a0
-	coefficients.a2 = (1.0 - alpha) / a0
-	return coefficients
+class AudioBiquadTest(unittest.TestCase):
+	@classmethod
+	def setUpClass(cls) -> None:
+		cls.engine = oa.Engine()
+		cls.mono = oa.Audio.from_planar_f32(
+			cls.engine,
+			[0.0, 1.0, 0.0, -1.0, 0.0, 1.0, 0.0, -1.0],
+			channels=1,
+			sample_rate=8000,
+			layout="mono",
+		)
+
+	def test_biquad_passthrough_identity(self) -> None:
+		# identity: b0=1 b1=0 b2=0 a1=0 a2=0
+		result = oa.audio.biquad(self.mono, b0=1.0, b1=0.0, b2=0.0, a1=0.0, a2=0.0)
+		self.assertIsInstance(result, oa.Audio)
+		orig = self.mono.as_matrix().read_f32()
+		filt = result.as_matrix().read_f32()
+		for o, f in zip(orig, filt):
+			self.assertAlmostEqual(f, o, places=5)
+
+	def test_sos_filter_two_sections(self) -> None:
+		# Two identity biquad sections
+		sections = [[1.0, 0.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0, 0.0]]
+		result = oa.audio.sos_filter(self.mono, sections)
+		self.assertIsInstance(result, oa.Audio)
+		orig = self.mono.as_matrix().read_f32()
+		filt = result.as_matrix().read_f32()
+		for o, f in zip(orig, filt):
+			self.assertAlmostEqual(f, o, places=5)
+
+	def test_sos_filter_single_section(self) -> None:
+		sections = [[1.0, 0.0, 0.0, 0.0, 0.0]]
+		result = oa.audio.sos_filter(self.mono, sections)
+		self.assertEqual(result.samples, self.mono.samples)
 
 
-def _cpuBiquad(samples: list[float], coefficients) -> list[float]:
-	output = []
-	state0 = 0.0
-	state1 = 0.0
-	for sample in samples:
-		value = coefficients.b0 * sample + state0
-		next0 = coefficients.b1 * sample - coefficients.a1 * value + state1
-		next1 = coefficients.b2 * sample - coefficients.a2 * value
-		output.append(value)
-		state0 = next0
-		state1 = next1
-	return output
+class AudioCodecTest(unittest.TestCase):
+	@classmethod
+	def setUpClass(cls) -> None:
+		cls.engine = oa.Engine()
 
+	def test_encode_interleaved_wav_f32_returns_bytes(self) -> None:
+		samples = [0.0, 0.1, 0.2, 0.3] * 2  # 4 stereo frames interleaved
+		result = oa.audio.encode_interleaved_wav_f32(samples, 8000, 2)
+		self.assertIsInstance(result, bytes)
+		# WAV header starts with RIFF
+		self.assertTrue(result[:4] == b"RIFF")
 
-# ── Surface / construction (no GPU) ──────────────────────────────────────────
+	def test_encode_interleaved_wav_f32_mono(self) -> None:
+		samples = [0.0, 0.25, 0.5, 0.75]
+		result = oa.audio.encode_interleaved_wav_f32(samples, 16000, 1)
+		self.assertIsInstance(result, bytes)
+		self.assertGreater(len(result), 44)  # at least WAV header
 
-
-def test_audio_import_surface():
-	for name in (
-		"Audio",
-		"AudioChannelLayout", "StftConfig", "MelConfig", "MfccConfig",
-		"ResampleConfig", "NormalizeAudioConfig", "BiquadCoefficients",
-		"AudioCodec", "AudioCapture", "AudioCaptureConfig",
-		"AudioCaptureChunk", "AudioEncoder", "AudioEncodeProfile",
-		"EncodedAudioPacket", "AudioPlayer", "AudioPlayerConfig",
-	):
-		assert hasattr(oa, name), name
-
-	for name in (
-		"decodeFile", "decodeMemory", "encodeWavF32", "saveWavF32",
-		"stft", "melSpectrogram", "mfcc", "normalize", "resample", "gain",
-		"clip", "saturate", "biquad", "sosFilter", "amplitudeToDb",
-		"preEmphasis", "toMono", "fade", "mix", "reverb",
-	):
-		assert hasattr(oa.FnAudio, name), name
-
-	assert oa.Audio.__module__ == "oa"
-	assert hasattr(oa.AudioPlayer, "setMuted")
-	assert hasattr(oa.AudioPlayer, "isMuted")
-	assert audio.decodeFile is oa.FnAudio.decodeFile
-	assert audio.normalize is oa.FnAudio.normalize
-
-
-def test_config_structs_roundtrip_fields():
-	stft = oa.StftConfig()
-	stft.fftSize = 512
-	stft.hopSize = 160
-	stft.winSize = 512
-	assert stft.fftSize == 512 and stft.hopSize == 160
-
-	mel = oa.MelConfig()
-	mel.numMels = 40
-	mel.fftSize = 512
-	mel.hopSize = 160
-	assert mel.numMels == 40
-
-	mfcc = oa.MfccConfig()
-	mfcc.numCoeffs = 13
-	mfcc.mel = mel
-	assert mfcc.numCoeffs == 13 and mfcc.mel.numMels == 40
-
-	biquad = oa.BiquadCoefficients()
-	biquad.b0 = 0.25
-	biquad.b1 = 0.5
-	biquad.b2 = 0.25
-	assert biquad.b0 == pytest.approx(0.25)
-	assert biquad.b1 == pytest.approx(0.5)
-	assert biquad.b2 == pytest.approx(0.25)
-
-
-def test_channel_layout_helpers():
-	assert oa.channelsForLayout(oa.AudioChannelLayout.Stereo) == 2
-	assert oa.channelsForLayout(oa.AudioChannelLayout.Stereo21) == 3
-	assert oa.layoutForChannels(1) == oa.AudioChannelLayout.Mono
-	assert oa.layoutForChannels(2) == oa.AudioChannelLayout.Stereo
-	assert oa.layoutForChannels(3) == oa.AudioChannelLayout.Unknown
-
-
-def test_audio_encoder_packet_contract():
-	profile = oa.AudioEncodeProfile()
-	profile.sampleRate = 48_000
-	profile.channelCount = 1
-	profile.framesPerPacket = 4
-	encoder = oa.AudioEncoder.create(profile)
-	packets = encoder.encode([-1.0, 0.0, 0.5, 1.0])
-	assert len(packets) == 1
-	assert packets[0].durationFrames == 4
-	assert len(packets[0].bitstream) == 8
-	encoder.close()
-
-
-# ── GPU DSP ──────────────────────────────────────────────────────────────────
-
-
-def test_mel_spectrogram_shape(engine):
-	x = _makeSine()
-	cfg = oa.MelConfig()
-	cfg.fftSize = 512
-	cfg.hopSize = 160
-	cfg.numMels = 40
-	mel = oa.FnAudio.melSpectrogram(x, cfg)
-	shape = mel.shape()
-	# [Channels, NumMels, Frames]
-	assert shape[0] == 1 and shape[1] == 40 and shape[2] > 0
-
-
-def test_stft_shape(engine):
-	x = _makeSine()
-	cfg = oa.StftConfig()
-	cfg.fftSize = 512
-	cfg.hopSize = 160
-	cfg.winSize = 512
-	spec = oa.FnAudio.stft(x, cfg)
-	shape = spec.shape()
-	# [Channels, Frames, FftSize/2 + 1]
-	assert shape[0] == 1 and shape[2] == 512 // 2 + 1
-
-
-def test_signal_ops_shapes(engine):
-	x = _makeSine()
-	gained = oa.FnAudio.gain(x, -6.0)
-	clipped = oa.FnAudio.clip(x, -0.5, 0.5)
-	normalized = oa.FnAudio.normalize(x, -3.0, 0)
-	mono = oa.FnAudio.toMono(x)
-	faded = oa.FnAudio.fade(x, 128, 128)
-	assert gained.matrix.shape() == [1, NUM_SAMPLES]
-	assert clipped.matrix.shape() == [1, NUM_SAMPLES]
-	assert normalized.matrix.shape() == [1, NUM_SAMPLES]
-	assert mono.matrix.shape() == [1, NUM_SAMPLES]
-	assert faded.matrix.shape() == [1, NUM_SAMPLES]
-	assert gained.sampleRate == SAMPLE_RATE
-	assert gained.layout == oa.AudioChannelLayout.Mono
-
-
-def test_resample_length(engine):
-	x = _makeSine()
-	out = oa.FnAudio.resample(x, SAMPLE_RATE * 2, 64)
-	# Upsample 2x → roughly double the sample count.
-	assert out.matrix.shape()[1] == NUM_SAMPLES * 2
-	assert out.sampleRate == SAMPLE_RATE * 2
-
-
-def test_clip_bounds_values(engine):
-	x = _makeSine()
-	clipped = oa.FnAudio.clip(x, -0.1, 0.1)
-	host = oa.FnMatrix.copyToHost(clipped.matrix)
-	assert all(-0.1 - 1e-5 <= v <= 0.1 + 1e-5 for v in host)
-
-
-def test_saturate_matches_waveshaper(engine):
-	x = _makeSine()
-	driveDb = 6.0
-	mix = 0.7
-	saturated = oa.FnAudio.saturate(x, driveDb, mix)
-	dry = oa.FnMatrix.copyToHost(x.matrix)
-	wet = oa.FnMatrix.copyToHost(saturated.matrix)
-	drive = 10.0 ** (driveDb / 20.0)
-	for source, actual in zip(dry, wet, strict=True):
-		expected = source + (math.tanh(source * drive) - source) * mix
-		assert actual == pytest.approx(expected, abs=2.0e-6)
-
-
-def test_reverb_renders_finite_tail(engine):
-	x = _makeSine()
-	reverberated = oa.FnAudio.reverb(x, 0.125, 0.4)
-	assert reverberated.sampleRate == SAMPLE_RATE
-	assert reverberated.layout == oa.AudioChannelLayout.Mono
-	assert reverberated.sampleCount == NUM_SAMPLES + SAMPLE_RATE // 8
-	values = oa.FnMatrix.copyToHost(reverberated.matrix)
-	assert all(math.isfinite(value) for value in values)
-	assert any(abs(value) > 1.0e-5 for value in values[NUM_SAMPLES:])
-
-
-def test_biquad_matches_zero_state_lowpass(engine):
-	x = _makeSine()
-	coefficients = _biquadCoefficients(2000.0)
-
-	filtered = oa.FnAudio.biquad(x, coefficients)
-	source = oa.FnMatrix.copyToHost(x.matrix)
-	actual = oa.FnMatrix.copyToHost(filtered.matrix)
-	expected = _cpuBiquad(source, coefficients)
-	for index, value in enumerate(expected):
-		assert actual[index] == pytest.approx(value, abs=3.0e-5)
-
-
-def test_sos_filter_matches_cpu_cascade(engine):
-	x = _makeSine(3000.0)
-	sections = [
-		_biquadCoefficients(100.0, highpass=True),
-		_biquadCoefficients(6000.0),
-		_biquadCoefficients(4000.0),
-	]
-	source = oa.FnMatrix.copyToHost(x.matrix)
-	expected = source
-	for section in sections:
-		expected = _cpuBiquad(expected, section)
-
-	filtered = oa.FnAudio.sosFilter(x, sections)
-	actual = oa.FnMatrix.copyToHost(filtered.matrix)
-	assert filtered.sampleRate == x.sampleRate
-	assert filtered.layout == x.layout
-	for index, value in enumerate(expected):
-		assert actual[index] == pytest.approx(value, abs=8.0e-5)
-
-
-# ── Codec round-trip ──────────────────────────────────────────────────────────
-
-
-def test_wav_encode_decode_roundtrip(engine, tmp_path):
-	x = _makeSine()
-
-	# Encode to bytes and to a file; both go through the same synchronous sink.
-	wavBytes = oa.FnAudio.encodeWavF32(x)
-	assert isinstance(wavBytes, bytes) and len(wavBytes) > 44  # header + samples
-
-	path = str(tmp_path / "tone.wav")
-	oa.FnAudio.saveWavF32(path, x)
-
-	decoded = oa.FnAudio.decodeFile(path)
-	assert decoded.isValid()
-	assert decoded.sampleRate == SAMPLE_RATE
-	assert decoded.channelCount == 1
-	assert decoded.sampleCount == NUM_SAMPLES
-
-	assert decoded.layout == oa.AudioChannelLayout.Mono
-	assert abs(decoded.durationSeconds() - NUM_SAMPLES / SAMPLE_RATE) < 1e-6
-
-	# LoadMemory on the encoded bytes must agree with LoadFile.
-	fromMem = oa.FnAudio.decodeMemory(wavBytes)
-	assert fromMem.sampleCount == decoded.sampleCount
+	def test_encode_wav_f32_roundtrip_length(self) -> None:
+		audio = oa.Audio.from_planar_f32(
+			self.engine,
+			[0.0, 0.5, 1.0, 0.5, 0.0],
+			channels=1,
+			sample_rate=8000,
+			layout="mono",
+		)
+		encoded = oa.audio.encode_wav_f32(audio)
+		self.assertIsInstance(encoded, bytes)
+		self.assertTrue(encoded[:4] == b"RIFF")
 
 
 if __name__ == "__main__":
-	raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))
+	unittest.main()

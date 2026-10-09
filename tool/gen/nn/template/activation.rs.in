@@ -1,0 +1,38 @@
+/// {{doc}}
+pub struct {{name}} {
+	registry: ModuleRegistry,
+}
+
+impl {{name}} {
+	/// Construct the parameterless activation module.
+	pub const fn new() -> Self {
+		Self {
+			registry: ModuleRegistry::new(),
+		}
+	}
+
+	/// Apply the activation without submitting or waiting.
+	///
+	/// # Errors
+	///
+	/// Returns an error from the underlying Matrix operation.
+	pub fn forward(&self, input: &Matrix) -> Result<Matrix> {
+		{{operation}}(input)
+	}
+}
+
+impl Default for {{name}} {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
+impl Module for {{name}} {
+	fn forward(&self, input: &Matrix) -> Result<Matrix> {
+		{{name}}::forward(self, input)
+	}
+
+	fn registry(&self) -> &ModuleRegistry {
+		&self.registry
+	}
+}

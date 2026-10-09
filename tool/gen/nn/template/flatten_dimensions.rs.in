@@ -1,0 +1,17 @@
+fn resolve_dim(dimension: isize, rank: usize, label: &str) -> Result<usize> {
+	let rank =
+		isize::try_from(rank).map_err(|_| Error::resource_exhausted("Matrix rank exceeds isize"))?;
+	let resolved = if dimension < 0 {
+		rank
+			.checked_add(dimension)
+			.ok_or_else(|| Error::invalid_argument(format!("Flatten {label} dimension is invalid")))?
+	} else {
+		dimension
+	};
+	if !(0..rank).contains(&resolved) {
+		return Err(Error::invalid_argument(format!(
+			"Flatten {label} dimension {dimension} is outside rank {rank}"
+		)));
+	}
+	Ok(resolved as usize)
+}

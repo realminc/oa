@@ -1,0 +1,726 @@
+/// GPU sinusoidal embedding for normalized continuous flow time.
+pub struct {{time_type}} {
+	embedding_dim: usize,
+	max_period: f32,
+	time_scale: f32,
+	frequencies: Matrix,
+	registry: ModuleRegistry,
+}
+
+impl {{time_type}} {
+	/// Construct the donor sinusoidal time embedding.
+	///
+	/// # Errors
+	///
+	/// Returns an error unless `embedding_dim` is positive and even,
+	/// `max_period` is finite and greater than one, and `time_scale` is finite
+	/// and positive.
+	pub fn new(
+		engine: &Engine,
+		embedding_dim: usize,
+		max_period: f32,
+		time_scale: f32,
+	) -> Result<Self> {
+		if embedding_dim == 0
+			|| !embedding_dim.is_multiple_of(2)
+			|| !max_period.is_finite()
+			|| max_period <= 1.0
+			|| !time_scale.is_finite()
+			|| time_scale <= 0.0
+		{
+			return Err(Error::invalid_argument(
+				"{{time_type}} requires a positive even dimension, finite max period greater than one, and finite positive scale",
+			));
+		}
+		let half = embedding_dim / 2;
+		let log_period = max_period.ln();
+		let frequencies = (0..half)
+			.map(|index| time_scale * (-log_period * index as f32 / half as f32).exp())
+			.collect::<Vec<_>>();
+		let frequencies = Matrix::from_f32(engine, [1, half], &frequencies)?;
+		let mut registry = ModuleRegistry::new();
+		registry.register_buffer("{{frequency_name}}", frequencies.clone(), false)?;
+		Ok(Self {
+			embedding_dim,
+			max_period,
+			time_scale,
+			frequencies,
+			registry,
+		})
+	}
+
+	/// Embed F32 time values shaped `[B]` or `[B, 1]` as `[B, D]`.
+	///
+	/// # Errors
+	///
+	/// Returns an error for any other shape or dtype, another engine, or a
+	/// failed Matrix operation.
+	pub fn forward(&self, time: &Matrix) -> Result<Matrix> {
+		let batch = match time.shape() {
+			[batch] => *batch,
+			[batch, 1] => *batch,
+			_ => {
+				return Err(Error::invalid_argument(
+					"{{time_type}} expects F32 [B] or [B, 1]",
+				));
+			}
+		};
+		if time.dtype() != DType::F32
+			|| !time
+				.engine_handle()
+				.same_as(self.frequencies.engine_handle())
+		{
+			return Err(Error::invalid_argument(
+				"{{time_type}} expects same-engine F32 [B] or [B, 1]",
+			));
+		}
+		let time = {{reshape_operation}}(time, [batch, 1])?;
+		let phase = {{multiply_operation}}(&time, &self.frequencies)?;
+		{{concat_operation}}(&[{{sin_operation}}(&phase)?, {{cos_operation}}(&phase)?], 1)
+	}
+
+	/// Return the output embedding width.
+	pub const fn embedding_dim(&self) -> usize {
+		self.embedding_dim
+	}
+
+	/// Return the maximum sinusoidal period.
+	pub const fn max_period(&self) -> f32 {
+		self.max_period
+	}
+
+	/// Return the multiplicative input-time scale.
+	pub const fn time_scale(&self) -> f32 {
+		self.time_scale
+	}
+}
+
+impl Module for {{time_type}} {
+	fn forward(&self, input: &Matrix) -> Result<Matrix> {
+		{{time_type}}::forward(self, input)
+	}
+
+	fn registry(&self) -> &ModuleRegistry {
+		&self.registry
+	}
+}
+
+
+/// Configuration for a bidirectional flow/diffusion Transformer backbone.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct {{transformer_config_type}} {
+	pub model_width: usize,
+	pub hidden_width: usize,
+	pub sequence_length: usize,
+	pub num_layers: usize,
+	pub num_heads: usize,
+	pub num_experts: usize,
+	pub experts_per_token: usize,
+	pub epsilon: f32,
+	pub adaptive_conditioning: bool,
+}
+
+impl Default for {{transformer_config_type}} {
+	fn default() -> Self {
+		Self {
+			model_width: 0,
+			hidden_width: 0,
+			sequence_length: 0,
+			num_layers: 1,
+			num_heads: 1,
+			num_experts: 0,
+			experts_per_token: 0,
+			epsilon: 1.0e-5,
+			adaptive_conditioning: true,
+		}
+	}
+}
+
+/// Reusable bidirectional Transformer backbone for flow/diffusion denoisers.
+pub struct {{transformer_type}} {
+	config: Cell<{{transformer_config_type}}>,
+	blocks: Vec<Rc<TransformerBlock>>,
+	output_norm: Rc<LayerNorm>,
+	registry: ModuleRegistry,
+}
+
+impl {{transformer_type}} {
+	/// Construct a deterministic dense or dropless-MoE flow Transformer.
+	///
+	/// # Errors
+	///
+	/// Returns an error for invalid geometry, expert routing, epsilon, or failed
+	/// child construction and registration.
+	pub fn with_seed(engine: &Engine, config: {{transformer_config_type}}, seed: u64) -> Result<Self> {
+		validate_config(config)?;
+		let mut registry = ModuleRegistry::new();
+		let mut blocks = Vec::with_capacity(config.num_layers);
+		for index in 0..config.num_layers {
+			let block_seed = seed.wrapping_add((index as u64).wrapping_mul(16));
+			let block = if config.num_experts == 0 {
+				if config.adaptive_conditioning {
+					{{dense_conditioned_constructor}}(
+						engine,
+						config.model_width,
+						config.hidden_width,
+						config.sequence_length,
+						config.num_heads,
+						config.model_width,
+						config.epsilon,
+						block_seed,
+					)?
+				} else {
+					{{dense_constructor}}(
+						engine,
+						config.model_width,
+						config.hidden_width,
+						config.sequence_length,
+						config.num_heads,
+						config.epsilon,
+						block_seed,
+					)?
+				}
+			} else if config.adaptive_conditioning {
+				{{moe_conditioned_constructor}}(
+					engine,
+					config.model_width,
+					config.hidden_width,
+					config.sequence_length,
+					config.num_heads,
+					config.num_experts,
+					config.experts_per_token,
+					config.model_width,
+					config.epsilon,
+					block_seed,
+				)?
+			} else {
+				{{moe_constructor}}(
+					engine,
+					config.model_width,
+					config.hidden_width,
+					config.sequence_length,
+					config.num_heads,
+					config.num_experts,
+					config.experts_per_token,
+					config.epsilon,
+					block_seed,
+				)?
+			};
+			block.set_attention_mode(AttentionMode::Bidirectional);
+			let block = Rc::new(block);
+			registry.register_module(format!("{{block_prefix}}{index}"), block.clone())?;
+			blocks.push(block);
+		}
+		let output_norm = Rc::new({{norm_constructor}}(engine, config.model_width, config.epsilon)?);
+		registry.register_module("{{output_norm_name}}", output_norm.clone())?;
+		Ok(Self {
+			config: Cell::new(config),
+			blocks,
+			output_norm,
+			registry,
+		})
+	}
+
+	/// Apply the unmasked backbone to rank-two or rank-three token state.
+	pub fn forward(&self, tokens: &Matrix) -> Result<Matrix> {
+		self.forward_impl(tokens, None, None)
+	}
+
+	/// Apply the backbone with a binary key mask shaped `[B,S]` or `[B,S,1]`.
+	pub fn forward_masked(&self, tokens: &Matrix, token_mask: &Matrix) -> Result<Matrix> {
+		self.forward_impl(tokens, Some(token_mask), None)
+	}
+
+	/// Apply adaptive conditioning with an optional binary key mask.
+	pub fn forward_conditioned(
+		&self,
+		tokens: &Matrix,
+		condition: &Matrix,
+		token_mask: Option<&Matrix>,
+	) -> Result<Matrix> {
+		self.forward_impl(tokens, token_mask, Some(condition))
+	}
+
+	fn forward_impl(
+		&self,
+		tokens: &Matrix,
+		token_mask: Option<&Matrix>,
+		condition: Option<&Matrix>,
+	) -> Result<Matrix> {
+		let config = self.config.get();
+		let (batch, rows, batched) = match tokens.shape() {
+			[rows, features]
+				if *features == config.model_width
+					&& *rows != 0
+					&& rows.is_multiple_of(config.sequence_length) =>
+			{
+				(rows / config.sequence_length, *rows, false)
+			}
+			[batch, sequence, features]
+				if *features == config.model_width
+					&& *sequence == config.sequence_length
+					&& *batch != 0 =>
+			{
+				(
+					*batch,
+					batch.checked_mul(*sequence).ok_or_else(|| {
+						Error::invalid_argument("{{transformer_type}} token row count overflows usize")
+					})?,
+					true,
+				)
+			}
+			_ => {
+				return Err(Error::invalid_argument(
+					"{{transformer_type}} expects F32 [B*S,D] or [B,S,D] matching its configured geometry",
+				));
+			}
+		};
+		if tokens.dtype() != DType::F32 {
+			return Err(Error::invalid_argument(
+				"{{transformer_type}} tokens must be F32",
+			));
+		}
+		if let Some(condition) = condition
+			&& (!config.adaptive_conditioning
+				|| condition.shape() != [batch, config.model_width]
+				|| condition.dtype() != DType::F32
+				|| !tokens.engine_handle().same_as(condition.engine_handle()))
+		{
+			return Err(Error::invalid_argument(
+				"{{transformer_type}} condition requires enabled same-engine F32 [B,D] adaptive conditioning",
+			));
+		}
+
+		let additive_mask = token_mask
+			.map(|mask| self.additive_mask(tokens, mask, batch, config))
+			.transpose()?;
+		let mut output = if batched {
+			{{reshape_operation}}(tokens, [rows, config.model_width])?
+		} else {
+			tokens.clone()
+		};
+		for block in &self.blocks {
+			output = match (condition, additive_mask.as_ref()) {
+				(Some(condition), Some(mask)) => {
+					block.forward_conditioned_masked(&output, condition, mask)?
+				}
+				(Some(condition), None) => block.forward_conditioned(&output, condition)?,
+				(None, Some(mask)) => block.forward_masked(&output, mask)?,
+				(None, None) => block.forward(&output)?,
+			};
+		}
+		let output = self.output_norm.forward(&output)?;
+		if batched {
+			{{reshape_operation}}(&output, tokens.shape().to_vec())
+		} else {
+			Ok(output)
+		}
+	}
+
+	fn additive_mask(
+		&self,
+		tokens: &Matrix,
+		mask: &Matrix,
+		batch: usize,
+		config: {{transformer_config_type}},
+	) -> Result<Matrix> {
+		let valid_shape = mask.shape() == [batch, config.sequence_length]
+			|| mask.shape() == [batch, config.sequence_length, 1];
+		if !valid_shape
+			|| mask.dtype() != DType::F32
+			|| !tokens.engine_handle().same_as(mask.engine_handle())
+		{
+			return Err(Error::invalid_argument(
+				"{{transformer_type}} token mask must be same-engine F32 [B,S] or [B,S,1]",
+			));
+		}
+		let key_mask = {{reshape_operation}}(mask, [batch, 1, config.sequence_length])?;
+		let key_mask = {{scale_operation}}(&{{subtract_scalar_operation}}(&key_mask, 1.0)?, 1.0e4)?;
+		let repeats = config
+			.num_heads
+			.checked_mul(config.sequence_length)
+			.ok_or_else(|| Error::invalid_argument("{{transformer_type}} mask repeat count overflows"))?;
+		let additive = {{repeat_operation}}(&key_mask, repeats, 1)?;
+		let mask_rows = batch
+			.checked_mul(repeats)
+			.ok_or_else(|| Error::invalid_argument("{{transformer_type}} mask row count overflows"))?;
+		{{reshape_operation}}(&additive, [mask_rows, config.sequence_length])
+	}
+
+	/// Update sequence geometry without rebuilding parameters.
+	pub fn set_sequence_length(&self, sequence_length: usize) -> Result<()> {
+		if sequence_length == 0 {
+			return Err(Error::invalid_argument(
+				"{{transformer_type}} sequence length must be positive",
+			));
+		}
+		for block in &self.blocks {
+			block.set_sequence_length(sequence_length)?;
+		}
+		let mut config = self.config.get();
+		config.sequence_length = sequence_length;
+		self.config.set(config);
+		Ok(())
+	}
+
+	pub fn config(&self) -> {{transformer_config_type}} {
+		self.config.get()
+	}
+
+	pub fn is_moe(&self) -> bool {
+		self.config.get().num_experts > 0
+	}
+
+	pub fn num_layers(&self) -> usize {
+		self.blocks.len()
+	}
+
+	pub fn block(&self, index: usize) -> Option<&TransformerBlock> {
+		self.blocks.get(index).map(Rc::as_ref)
+	}
+}
+
+impl Module for {{transformer_type}} {
+	fn forward(&self, input: &Matrix) -> Result<Matrix> {
+		{{transformer_type}}::forward(self, input)
+	}
+
+	fn registry(&self) -> &ModuleRegistry {
+		&self.registry
+	}
+}
+
+fn validate_config(config: {{transformer_config_type}}) -> Result<()> {
+	let dense = config.num_experts == 0 && config.experts_per_token == 0;
+	let moe = config.num_experts > 0
+		&& config.experts_per_token > 0
+		&& config.experts_per_token <= config.num_experts;
+	if config.model_width == 0
+		|| config.hidden_width == 0
+		|| config.sequence_length == 0
+		|| config.num_layers == 0
+		|| config.num_heads == 0
+		|| !config.model_width.is_multiple_of(config.num_heads)
+		|| !config.epsilon.is_finite()
+		|| config.epsilon <= 0.0
+		|| !(dense || moe)
+	{
+		return Err(Error::invalid_argument(
+			"{{transformer_type}} requires positive geometry, D divisible by H, finite positive epsilon, and either 0/0 dense experts or 0 < K <= E",
+		));
+	}
+	Ok(())
+}
+
+
+/// Configuration for a modality-independent flow/diffusion denoiser.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct {{config_type}} {
+	pub input_dim: usize,
+	pub condition_dim: usize,
+	pub backbone: {{transformer_config_type}},
+	pub time_max_period: f32,
+	pub time_scale: f32,
+	/// Per-sample conditioning dropout used only in training mode.
+	pub condition_dropout_probability: f32,
+}
+
+impl Default for {{config_type}} {
+	fn default() -> Self {
+		Self {
+			input_dim: 0,
+			condition_dim: 0,
+			backbone: {{transformer_config_type}}::default(),
+			time_max_period: 10_000.0,
+			time_scale: 1_000.0,
+			condition_dropout_probability: 0.0,
+		}
+	}
+}
+
+/// {{doc}}
+pub struct {{name}} {
+	config: {{config_type}},
+	input_projection: Rc<Linear>,
+	time_embedding: Rc<{{time_type}}>,
+	condition_projection: Option<Rc<Linear>>,
+	backbone: Rc<{{transformer_type}}>,
+	output_projection: Rc<Linear>,
+	position: Parameter,
+	registry: ModuleRegistry,
+}
+
+impl {{name}} {
+	/// Construct a deterministic dense or MoE denoiser.
+	///
+	/// # Errors
+	///
+	/// Returns an error for invalid model/time/dropout geometry or failed child,
+	/// parameter, and buffer construction.
+	pub fn with_seed(engine: &Engine, config: {{config_type}}, seed: u64) -> Result<Self> {
+		if config.input_dim == 0
+			|| config.backbone.model_width == 0
+			|| config.backbone.sequence_length == 0
+			|| !config.time_max_period.is_finite()
+			|| config.time_max_period <= 1.0
+			|| !config.time_scale.is_finite()
+			|| config.time_scale <= 0.0
+			|| !config.condition_dropout_probability.is_finite()
+			|| !(0.0..1.0).contains(&config.condition_dropout_probability)
+		{
+			return Err(Error::invalid_argument(
+				"{{name}} requires positive input/model/sequence/time geometry and finite condition dropout in [0, 1)",
+			));
+		}
+		if !config.backbone.adaptive_conditioning {
+			return Err(Error::invalid_argument(
+				"{{name}} requires adaptive conditioning in its backbone",
+			));
+		}
+
+		let input_projection = Rc::new({{projection_constructor}}(
+			engine,
+			config.input_dim,
+			config.backbone.model_width,
+			seed,
+		)?);
+		let time_embedding = Rc::new({{time_type}}::new(
+			engine,
+			config.backbone.model_width,
+			config.time_max_period,
+			config.time_scale,
+		)?);
+		let condition_projection = if config.condition_dim == 0 {
+			None
+		} else {
+			Some(Rc::new({{projection_constructor}}(
+				engine,
+				config.condition_dim,
+				config.backbone.model_width,
+				seed.wrapping_add(1),
+			)?))
+		};
+		let backbone = Rc::new({{transformer_type}}::with_seed(
+			engine,
+			config.backbone,
+			seed.wrapping_add(2),
+		)?);
+		let output_projection = Rc::new({{projection_constructor}}(
+			engine,
+			config.backbone.model_width,
+			config.input_dim,
+			seed.wrapping_add(3),
+		)?);
+		let position_count = config
+			.backbone
+			.sequence_length
+			.checked_mul(config.backbone.model_width)
+			.ok_or_else(|| Error::invalid_argument("{{name}} position size overflows usize"))?;
+		let position_template = Matrix::allocate(
+			&engine.handle(),
+			vec![config.backbone.sequence_length, config.backbone.model_width],
+			position_count,
+			DType::F32,
+		)?;
+		let position = {{position_initializer}}(&position_template, 0.0, 0.02, seed.wrapping_add(4))?;
+		let position = Parameter::new("{{position_name}}", position)?;
+
+		let mut registry = ModuleRegistry::new();
+		registry.register_parameter("{{position_name}}", position.clone())?;
+		registry.register_module("{{input_projection_name}}", input_projection.clone())?;
+		registry.register_module("{{time_embedding_name}}", time_embedding.clone())?;
+		if let Some(condition_projection) = &condition_projection {
+			registry.register_module("{{condition_projection_name}}", condition_projection.clone())?;
+		}
+		registry.register_module("{{backbone_name}}", backbone.clone())?;
+		registry.register_module("{{output_projection_name}}", output_projection.clone())?;
+		Ok(Self {
+			config,
+			input_projection,
+			time_embedding,
+			condition_projection,
+			backbone,
+			output_projection,
+			position,
+			registry,
+		})
+	}
+
+	/// Denoise using zero time and, when configured, zero condition features.
+	pub fn forward(&self, sample: &Matrix) -> Result<Matrix> {
+		let batch = self.validate_sample(sample)?;
+		let time = zero_matrix(sample, vec![batch, 1])?;
+		let condition = if self.config.condition_dim == 0 {
+			None
+		} else {
+			Some(zero_matrix(sample, vec![batch, self.config.condition_dim])?)
+		};
+		self.forward_conditioned(sample, &time, condition.as_ref(), None)
+	}
+
+	/// Denoise a sample with explicit time, optional condition, and token mask.
+	///
+	/// # Errors
+	///
+	/// Returns an error unless inputs match the configured same-engine F32
+	/// contracts or a recorded child operation fails.
+	pub fn forward_conditioned(
+		&self,
+		sample: &Matrix,
+		time: &Matrix,
+		condition: Option<&Matrix>,
+		token_mask: Option<&Matrix>,
+	) -> Result<Matrix> {
+		let batch = self.validate_sample(sample)?;
+		let time_valid =
+			matches!(time.shape(), [value] if *value == batch) || time.shape() == [batch, 1];
+		if !time_valid
+			|| time.dtype() != DType::F32
+			|| !sample.engine_handle().same_as(time.engine_handle())
+		{
+			return Err(Error::invalid_argument(
+				"{{name}} time must be same-engine F32 [B] or [B,1]",
+			));
+		}
+		match (self.config.condition_dim, condition) {
+			(0, None) => {}
+			(0, Some(_)) => {
+				return Err(Error::invalid_argument(
+					"{{name}} was configured without condition features",
+				));
+			}
+			(width, Some(value))
+				if value.shape() == [batch, width]
+					&& value.dtype() == DType::F32
+					&& sample.engine_handle().same_as(value.engine_handle()) => {}
+			_ => {
+				return Err(Error::invalid_argument(
+					"{{name}} condition must be same-engine F32 [B,condition_dim]",
+				));
+			}
+		}
+
+		let rows = batch
+			.checked_mul(self.config.backbone.sequence_length)
+			.ok_or_else(|| Error::invalid_argument("{{name}} row count overflows usize"))?;
+		let sample_rows = {{reshape_operation}}(sample, [rows, self.config.input_dim])?;
+		let tokens = self.input_projection.forward(&sample_rows)?;
+		let tokens = {{reshape_operation}}(
+			&tokens,
+			[
+				batch,
+				self.config.backbone.sequence_length,
+				self.config.backbone.model_width,
+			],
+		)?;
+		{{parameter_leaf_operation}}(&self.position)?;
+		let position = {{reshape_operation}}(
+			&self.position.data(),
+			[
+				1,
+				self.config.backbone.sequence_length,
+				self.config.backbone.model_width,
+			],
+		)?;
+		let tokens = {{add_operation}}(&tokens, &position)?;
+		let mut context = self.time_embedding.forward(time)?;
+		if let (Some(projection), Some(condition)) = (&self.condition_projection, condition) {
+			let condition = if self.is_training() && self.config.condition_dropout_probability > 0.0 {
+				let seed_column = {{slice_operation}}(condition, 1, 0, 1)?;
+				let ones = {{add_scalar_operation}}(&{{scale_operation}}(&seed_column, 0.0)?, 1.0)?;
+				let keep = {{scale_operation}}(
+					&{{dropout_operation}}(&ones, self.config.condition_dropout_probability, 0)?,
+					1.0 - self.config.condition_dropout_probability,
+				)?;
+				{{multiply_operation}}(condition, &keep)?
+			} else {
+				condition.clone()
+			};
+			context = {{add_operation}}(&context, &projection.forward(&condition)?)?;
+		}
+		let hidden = self
+			.backbone
+			.forward_conditioned(&tokens, &context, token_mask)?;
+		let hidden = {{reshape_operation}}(&hidden, [rows, self.config.backbone.model_width])?;
+		let output = self.output_projection.forward(&hidden)?;
+		{{reshape_operation}}(&output, sample.shape().to_vec())
+	}
+
+	/// Apply classifier-free guidance in a bounded evaluation-mode scope.
+	pub fn forward_guided(
+		&self,
+		sample: &Matrix,
+		time: &Matrix,
+		condition: &Matrix,
+		guidance_scale: f32,
+		token_mask: Option<&Matrix>,
+	) -> Result<Matrix> {
+		if self.condition_projection.is_none() || !guidance_scale.is_finite() || guidance_scale < 0.0 {
+			return Err(Error::invalid_argument(
+				"{{name}} guidance requires configured conditions and a finite nonnegative scale",
+			));
+		}
+		let _eval = self.scoped_eval();
+		let unconditional_condition = zero_matrix(condition, condition.shape().to_vec())?;
+		let unconditional =
+			self.forward_conditioned(sample, time, Some(&unconditional_condition), token_mask)?;
+		let conditional = self.forward_conditioned(sample, time, Some(condition), token_mask)?;
+		{{add_operation}}(
+			&unconditional,
+			&{{scale_operation}}(&{{subtract_operation}}(&conditional, &unconditional)?, guidance_scale)?,
+		)
+	}
+
+	fn validate_sample(&self, sample: &Matrix) -> Result<usize> {
+		let [batch, sequence, features] = sample.shape() else {
+			return Err(Error::invalid_argument(
+				"{{name}} sample must be F32 [B,S,input_dim]",
+			));
+		};
+		if *batch == 0
+			|| *sequence != self.config.backbone.sequence_length
+			|| *features != self.config.input_dim
+			|| sample.dtype() != DType::F32
+		{
+			return Err(Error::invalid_argument(
+				"{{name}} sample must be nonempty F32 [B,S,input_dim] matching its configuration",
+			));
+		}
+		Ok(*batch)
+	}
+
+	pub const fn config(&self) -> {{config_type}} {
+		self.config
+	}
+
+	pub fn is_moe(&self) -> bool {
+		self.backbone.is_moe()
+	}
+
+	pub fn backbone(&self) -> &{{transformer_type}} {
+		&self.backbone
+	}
+
+	pub fn position(&self) -> Parameter {
+		self.position.clone()
+	}
+}
+
+impl Module for {{name}} {
+	fn forward(&self, input: &Matrix) -> Result<Matrix> {
+		{{name}}::forward(self, input)
+	}
+
+	fn registry(&self) -> &ModuleRegistry {
+		&self.registry
+	}
+}
+
+fn zero_matrix(reference: &Matrix, shape: Vec<usize>) -> Result<Matrix> {
+	let count = shape.iter().try_fold(1_usize, |count, extent| {
+		count
+			.checked_mul(*extent)
+			.ok_or_else(|| Error::invalid_argument("zero Matrix shape overflows usize"))
+	})?;
+	Matrix::allocate(reference.engine_handle(), shape, count, DType::F32)
+}

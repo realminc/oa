@@ -1,192 +1,242 @@
 <p align="center">
-  <img src="sdk/asset/docs/readme/oaSpaceCathedral.jpg" width="100%" alt="OA — one Vulkan-native foundation for compute, ML, media, and mobile">
+  <img src="sdk/asset/docs/readme/oaSpaceCathedral.jpg" width="100%" alt="OA — one Rust and Vulkan foundation for compute, ML, media, and intelligent systems">
 </p>
 
 # OA
 
-**Powerful accelerators. Surrounded by glue.**
+OA is a GPU-first semantic computing engine written in Rust. One explicit
+`Engine` owns Vulkan devices, memory, queues, scheduling, kernels, and
+profiling; typed values and domain operations build on that owner without
+exposing backend machinery through the public API.
 
-Oa - One API, Open Architecture, is a unified, GPU-first C++20 and Python library:
-one execution system for numerical computing, machine learning, vision, audio,
-media, data, crypto, rendering, interfaces, and plotting.
-
-A useful intelligent system does not end at matrix multiplication. It captures or
-decodes data, transforms it, trains or executes a model, evaluates the result,
-preserves state, and then displays, plays, encodes, or transmits the output.
-Conventional workflows split that path across libraries, allocators, queues,
-runtimes, and language boundaries. Every handoff can add integration work,
-conversion, allocation, copying, synchronization, deployment dependencies, or an
-opaque fallback.
-
-OA answers with one library, one engine, one resource model, and one completion
-contract. `oa::Engine` owns the Vulkan device, memory, queues, scheduling, kernels,
-and profiling. Semantic values preserve their domain meaning, stateless `oa::Fn*`
-operations transform them, and sessions own stateful activity such as training,
-playback, capture, presentation, and MCP control.
+This repository is the new primary OA implementation. The earlier C++ codebase
+continues separately as the donor and compatibility reference.
 
 [![Release](https://img.shields.io/github/v/release/realminc/oa?include_prereleases&label=preview)](https://github.com/realminc/oa/releases)
 [![CI](https://github.com/realminc/oa/actions/workflows/ci.yml/badge.svg)](https://github.com/realminc/oa/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/oapython?label=pypi)](https://pypi.org/project/oapython/)
 [![License](https://img.shields.io/badge/license-BSL--1.1-3b3b3b)](LICENSE)
 
-> **Development preview.** The API and artifact formats remain pre-1.0 and may
-> change. Read the [latest release notes](docs/external/releases/v0.7.32.md) for
-> shipped scope, verification, compatibility, and known limitations.
+<p align="center">
+  <a href="sdk/asset/docs/readme/realmIdentityAscii.mp4">
+    <img src="sdk/asset/docs/readme/realmIdentityAscii.gif" width="100%" alt="Realm ASCII identity display forming under a right-to-left hover, rippling under three liquid presses, then returning to a sine wave">
+  </a>
+</p>
 
-## One runtime. Two front ends.
+## Three lines of compute
 
-Python is an authoring surface over the same native OA values, operations, and
-Vulkan execution as C++. Matrices, gradients, optimizer state, and graph execution
-remain inside OA rather than moving through a second host implementation between
-operations. Devices enter through Vulkan capability checks and qualified execution
-routes, never through a brand allow-list; unsupported paths fail closed instead of
-silently changing the workload.
+Rust:
 
-## Quick start
+```rust
+use oa::{matrix, Engine};
 
-### C++
+let engine = Engine::new()?;
+let one = matrix::ones(&engine, [2, 3])?;
+let two = matrix::full(&engine, [2, 3], 2.0)?;
+let total = matrix::add(&one, &two)?;
 
-```cpp
-#include <oa/oa.h>
-
-OA_MAIN("ExampleCoreMatrix") {
-	auto one = oa::FnMatrix::ones({2, 3});
-	auto two = oa::FnMatrix::full({2, 3}, 2.0F);
-	auto sum = oa::FnMatrix::add(one, two);
-
-	oa::Array<oa::F32, 6> values{};
-	if (not oa::FnMatrix::copyToHost(sum, values.data(), sizeof(values)).isOk()) {
-		return 1;
-	}
-	for (const oa::F32 value : values) {
-		if (oa::abs(value - 3.0F) > 1e-06F) {
-			return 1;
-		}
-	}
-
-	if (not oa::print("Matrix addition verified: every value is 3").isOk()) {
-		return 1;
-	}
-	return 0;
-}
+assert_eq!(total.read_f32()?, [3.0; 6]);
+# Ok::<(), oa::Error>(())
 ```
 
-This is the runnable [SDK C++ matrix example](sdk/cpp/examples/core/matrix.cpp).
-`OA_MAIN` provides one lexical engine owner; the checked `copyToHost` sink is the
-completion boundary for the recorded matrix work. Advanced applications can own
-`oa::Engine` directly when they need explicit capture, submission, and event control.
+Python preview—the same module ownership and native runtime:
 
-### Python
+```python
+import oa
 
-Install the Linux preview wheel as `oapython`; import it as `oa`:
+engine = oa.Engine()
+one = oa.matrix.ones(engine, [2, 3])
+two = oa.matrix.full(engine, [2, 3], 2.0)
+total = oa.matrix.add(one, two)
+
+assert total.read_f32() == [3.0] * 6
+```
+
+Python abbreviations are ordinary local imports, not parallel APIs:
+
+```python
+import oa.core as oac
+import oa.matrix as oam
+```
+
+## What works today
+
+OA is an experimental, executable rewrite—not a structure-only stub. Current
+checked vertical slices include:
+
+- Vulkan device selection with Strict 1.3 and bounded Compatibility 1.2
+  compute profiles, VMA-backed storage, profile-specific descriptors,
+  asynchronous retirement, timeline events, eager batching, semantic capture,
+  immutable execution plans, replay, rebinding, hazard analysis, and Vulkan
+  timestamp evidence;
+- schema-owned Matrix elementwise, reduction, indexing, RNG, transpose, gather,
+  tiled FP32 matrix multiplication, broadcasting, and reverse-mode operations;
+- ML modules, autograd, Adam/AdamW/SGD/Muon, training iterators, callbacks,
+  checkpoints, RNN/GRU/Transformer/MoE/Mamba-3 NLP tutorials, reinforcement
+  learning, VQ, and the in-progress Animation Language Model stack;
+- Image operations and codecs, planar Audio and codecs/DSP/sessions, Video
+  containers/decoding, Vision detection/metrics, Render value foundations,
+  cryptographic hashes/Merkle/PQC, secure memory, and Vulkan batch hashing;
+- native PyO3 bindings for Engine/Event, typed dense Matrix construction and
+  operations, the current functional ML spine, Image codecs/transforms, Audio
+  codecs/DSP/features, metadata, and explicit synchronized host observation.
+
+No GPU operation is classified as stable yet. Capability claims are tied to
+the compatibility ledger, independent oracles, and recorded hardware evidence.
+
+## Architecture
+
+```text
+semantic values and operations
+             │
+             ▼
+      semantic operation graph
+             │ private lowering
+             ▼
+      executable Vulkan graph
+             │
+             ▼
+ Engine-owned queues, memory, events, profiling
+```
+
+- Values carry semantics; shared storage does not erase type identity.
+- Operations are stateless. Stateful external or iterative work is a session.
+- The semantic graph stays separate from executable backend work.
+- Eager operations return values; explicit submit/wait is reserved for capture,
+  orchestration, profiling, multi-device, and distributed work.
+- One operation schema owns derivable Rust, Python, validation, autograd,
+  registry, documentation, and test surfaces.
+- Slang kernels are embedded in the binary; runtime users do not ship loose
+  `.spv` files.
+
+## Distribution names
+
+The project and API namespace are `oa`. The language-specific distribution
+names are `oarust` on crates.io and `oapython` on PyPI; Python uses `import oa`.
+
+The [published `oarust` 0.0.1 package](https://crates.io/crates/oarust) currently
+reserves the name and contains documentation only. It does not provide the
+framework. Until the framework crate is published, Rust consumers use this
+source checkout or the release source archive. The root Cargo package is still
+`oa`; the planned `oarust` publication will preserve `use oa::...`.
+
+## Build
+
+Requirements: Rust 1.98, Python 3, `slangc`, `spirv-val`, and a compatible
+Vulkan driver. Strict execution requires Vulkan 1.3; bounded Compatibility
+compute supports admitted Vulkan 1.2 devices. Compatibility presentation is
+not yet qualified. Linux builds use Clang/LLD for native linking while `rustc`
+and LLVM compile Rust.
+
+```bash
+cargo build --release
+cargo run --release --example core_mat_mul_intro
+```
+
+Cargo keeps intermediate artifacts and build-script shader output in `target/`.
+Optional generator previews also belong under `target/gen/`; live schema-owned
+`.gen.rs` and Slang sources remain in their owning source directories. OA’s
+staging tool copies only runnable executables into `bin/<profile>/`:
+
+```bash
+python3 tool/build/stage.py --profile release --target core_mat_mul_intro
+./bin/release/sdk/tutorials/core/core_mat_mul_intro
+```
+
+VS Code and Zed expose matching **Build** and **Clean Build** tasks for Debug
+and Release, each with an optional Python variant. The shared command-line
+workflow is also available directly:
+
+```bash
+python3 tool/build/workflow.py --profile debug
+python3 tool/build/workflow.py --profile release --clean --python
+```
+
+It stages Rust executables and test runners under `bin/debug/` or
+`bin/release/`. `--python` creates the repository-root `.venv`, installs
+Maturin there if needed, and installs the matching native extension. Clean
+builds remove only the selected Cargo profile and staged output; with
+`--python`, they also recreate the venv. On Linux, before rebuilding, the
+workflow stops this user's running executables from that profile's staged tree.
+
+## Python preview
+
+The PyPI distribution is `oapython`; the imported package is `oa`:
 
 ```bash
 python -m pip install oapython
 ```
 
+Python follows the Rust module graph directly:
+
 ```python
 import oa
 
-one = oa.FnMatrix.ones([2, 3])
-two = oa.FnMatrix.full([2, 3], 2.0)
-sum = oa.FnMatrix.add(one, two)
-
-values = oa.FnMatrix.copyToHost(sum)
-assert len(values) == 6
-assert all(abs(value - 3.0) <= 1e-06 for value in values)
-
-print("Matrix addition verified: every value is 3")
+engine = oa.Engine()
+one = oa.matrix.ones(engine, [2, 3])
+two = oa.matrix.full(engine, [2, 3], 2.0)
+total = oa.matrix.add(one, two)
+assert total.to_list() == [3.0] * 6
 ```
 
-This is the runnable [SDK Python matrix example](sdk/py/examples/core/matrix.py).
-Import is host-only. The first device-backed request creates the binding host lazily;
-Python calls the same C++ values and Vulkan kernels rather than a NumPy or CPU fallback.
-
-## Build from source
-
-Requirements: Linux, CMake 3.20+, Ninja, a C++20 compiler, the Vulkan SDK/loader,
-Slang, and vcpkg. Vulkan 1.4 is the release target; individual routes remain
-capability-gated.
+For a source checkout, run from the repository root:
 
 ```bash
-cmake --preset release
-cmake --build build/release -j
-ctest --test-dir build/release --output-on-failure
-cmake --install build/release --prefix ~/.local
+python -m venv .venv
+.venv/bin/pip install maturin
+.venv/bin/maturin develop
+.venv/bin/python -m unittest discover -s test/py -v
 ```
 
-Applications consume OA through CMake:
+The native PyO3 implementation lives in `src/py`. Root `pyproject.toml` and
+`uv.lock` own the checkout-wide Python environment and distribution metadata;
+the importable `oa` package, PyO3 crate, examples, and tutorials live in
+`sdk/py`. Neither creates a second runtime or CPU implementation.
 
-```cmake
-find_package(oa CONFIG REQUIRED)
-target_link_libraries(my_app PRIVATE oa::oa)
-```
+## Release artifacts
 
-### Binary packages
+Every public release is assembled by the tagged CI workflow and publishes:
 
-Each [GitHub prerelease](https://github.com/realminc/oa/releases) builds runtime and SDK
-tarballs plus `.deb`, `.rpm`, and `.pkg.tar.zst` packages. These packages are built on
-Ubuntu 24.04 and require glibc 2.39 or newer.
+- an exact Rust source archive with the resolved `Cargo.lock`;
+- a Linux x86-64 SDK archive containing the runnable tutorials, benchmarks,
+  and applications staged from the same Release build;
+- matching `oa-sdk` packages for Debian, RPM, and Arch Linux;
+- one portable CPython 3.10+ ABI3 wheel, published to PyPI and then downloaded
+  back from PyPI before attachment to GitHub;
+- dependency and toolchain evidence plus one checksum manifest covering every
+  downloadable artifact.
 
-On Arch Linux:
+The Rust crate currently links into its consumers and does not expose a stable
+C ABI. Consequently these releases do not label an internal Rust `dylib` as an
+OA runtime `.so`; a separate `oa` runtime system package is Planned for the
+checkpoint that introduces a supported dynamic-library boundary. The Python
+wheel does contain and test its native ABI3 extension.
+
+GitHub-hosted validation proves the host and compilation contracts. Tests that
+require a real GPU remain explicit capability gates and are not silently
+reclassified as CPU-Vulkan validation.
+
+## Verification
 
 ```bash
-paru -S oa-bin oa-sdk-bin       # release binaries
-paru -S oa-git oa-sdk-git       # current source
+.venv/bin/python -m unittest discover -s test/py -v
+python3 tool/gen/fn/generate.py --check
+cargo fmt --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test --all-features
+git diff --check
 ```
 
-## Architecture
+Hardware tests are explicitly ignored by the default harness and run serially
+on admitted devices. See [test organization](test/README.md).
 
-```text
-C++ / Python / Android
-          │
-          ▼
- semantic values + oa::Fn* operations + sessions
-          │
-          ▼
- oa::Engine ── capture → oa::ExecutionPlan
-            └─ submit  → oa::Event
-          │
-          ▼
- private semantic lowering + Vulkan execution graph
-          │
-          ▼
- embedded Slang → SPIR-V kernel manifest
-```
+## SDK and source reference
 
-The public API does not expose Vulkan graphs, queues, allocators, routers, pipeline
-objects, or a public `oa::ExecutionSession`. Values carry domain semantics even when storage can be
-shared. Operations are stateless transformations. Sessions own stateful external or
-iterative processes. `oa::Engine` is the sole local execution owner; presentation, media,
-training, and MCP services borrow it through composition.
-
-Public headers live under `source/cpp/include/oa/`; implementations and shaders
-under `source/cpp/lib/oa/`; vendored C/C++ dependencies under
-`source/cpp/thirdparty/`; Python mirrors the public module boundaries under
-`source/py/`.
-
-## Documentation
-
-- [Developer documentation](https://dev.realm.software/)
-- [GitHub releases](https://github.com/realminc/oa/releases)
-- [Release notes](docs/external/releases/README.md)
-- [Changelog](CHANGELOG.md)
-- [OA foundation benchmark](docs/external/benchmarks/oaStd.md)
-- [NLP training benchmark](docs/external/benchmarks/oaNlpSuite.md)
-- [Desktop/mobile NLP validation](docs/external/benchmarks/oaMobileLab.md)
-- [C++ tutorials](sdk/cpp/tutorials)
+- [Rust tutorials](sdk/rs/tutorials)
+- [Rust examples](sdk/rs/examples)
 - [Python tutorials](sdk/py/tutorials)
+- [Python examples](sdk/py/examples)
+- [Python SDK guide](sdk/py/README.md)
+- [Test organization](test/README.md)
 
-## License
-
-[Business Source License 1.1](LICENSE). Source is available for reading, modification,
-non-production use, and the production uses permitted by OA's Additional Use Grant. Each
-version converts to Apache-2.0 on its stated Change Date. Commercial licensing:
-`realminc.depravity737@passinbox.com`.
-
-Copyright © 2025–2026 Lukasz Biernat, trading as Realm.
-
-OA vendors or integrates permissively licensed components. Release packages include
-OA's license, the attribution manifest, and available dependency copyright files. See
-[NOTICE.md](NOTICE.md) for the exact dependency boundary, including components used only
-by tests or build tooling.
+OA is licensed under the Business Source License 1.1. See `LICENSE`.

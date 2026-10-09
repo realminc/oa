@@ -1,79 +1,56 @@
-#!/usr/bin/env python3
-"""Host-only tests for OA path and filesystem bindings."""
-
-from __future__ import annotations
+"""Installed-wheel coverage for OA Path and Filesystem bindings."""
 
 import os
-from pathlib import Path
+import tempfile
 import unittest
-from unittest.mock import patch
+from pathlib import Path as NativePath
 
-import oa_python_test  # noqa: F401 - bootstraps source builds
-
-from oa import Filesystem, Path, Paths
+import oa
 
 
-class TestFilesystem(unittest.TestCase):
-	def setUp(self) -> None:
-		self.work = Paths.temp() / f"oa_python_filesystem_{os.getpid()}"
-		if Filesystem.exists(self.work):
-			Filesystem.removeDirectory(self.work, recursive=True)
-		Filesystem.createDirectories(self.work)
+class FilesystemBindingTest(unittest.TestCase):
+	def test_root_and_core_identities(self) -> None:
+		self.assertIs(oa.Path, oa.core.Path)
+		self.assertIs(oa.Filesystem, oa.core.Filesystem)
 
-	def tearDown(self) -> None:
-		if Filesystem.exists(self.work):
-			Filesystem.removeDirectory(self.work, recursive=True)
+	def test_path_accepts_pathlike_and_preserves_oa_operations(self) -> None:
+		path = oa.Path(NativePath("alpha") / "beta.txt")
+		self.assertEqual(os.fspath(path), "alpha/beta.txt")
+		self.assertEqual(path.name(), "beta.txt")
+		self.assertEqual(path.stem(), "beta")
+		self.assertEqual(path.suffix(), "txt")
+		self.assertEqual(path.parent(), oa.Path("alpha"))
+		self.assertEqual(path / "child", oa.Path("alpha/beta.txt/child"))
+		self.assertEqual(oa.Path.empty(), oa.Path())
 
-	def test_path_value_and_pathlike_protocol(self) -> None:
-		path = Path("one") / "two" / "file.txt"
-		self.assertEqual(path.filename().string(), "file.txt")
-		self.assertEqual(path.stem().string(), "file")
-		self.assertEqual(path.extension().string(), ".txt")
-		self.assertEqual(os.fspath(path), path.string())
-		self.assertEqual(Path(Path("one") / "two"), Path("one/two"))
-		self.assertEqual(Path(b"one/two"), Path("one/two"))
-		with self.assertRaises(ValueError):
-			Path("bad\0path")
-		with self.assertRaises(TypeError):
-			Path(42)
+	def test_named_locations_return_oa_paths(self) -> None:
+		for location in (oa.Path.asset(), oa.Path.var(), oa.Path.data(), oa.Path.home(), oa.Path.temp()):
+			with self.subTest(location=location):
+				self.assertIsInstance(location, oa.Path)
 
-	def test_text_binary_and_listing_round_trip(self) -> None:
-		textPath = self.work / "nested" / "sample.txt"
-		Filesystem.writeText(textPath, "first\n")
-		Filesystem.appendText(textPath, "second\n")
-		self.assertEqual(Filesystem.readText(textPath), "first\nsecond\n")
-		self.assertEqual(Filesystem.readLines(textPath), ["first", "second"])
+	def test_filesystem_round_trip_and_path_results(self) -> None:
+		with tempfile.TemporaryDirectory() as directory:
+			root = NativePath(directory)
+			text = root / "nested" / "sample.txt"
+			binary = root / "nested" / "sample.bin"
 
-		binaryPath = Path(os.fspath(self.work)) / "sample.bin"
-		Filesystem.writeBinary(binaryPath, b"\x00\xffOA")
-		self.assertEqual(Filesystem.readBinary(binaryPath), b"\x00\xffOA")
+			oa.Filesystem.write_text(text, "first\n")
+			oa.Filesystem.append_text(text, "second\n")
+			self.assertEqual(oa.Filesystem.read_lines(text), ["first", "second"])
+			self.assertTrue(oa.Filesystem.is_file(text))
+			self.assertEqual(oa.Filesystem.get_file_size(text), len("first\nsecond\n"))
 
-		files = Filesystem.listFiles(self.work, ".bin")
-		self.assertEqual([path.filename().string() for path in files], ["sample.bin"])
-		self.assertEqual(
-			[path.filename().string() for path in Filesystem.glob(self.work, "*.bin")],
-			["sample.bin"],
-		)
+			oa.Filesystem.write_binary(binary, b"\x00\x01\xff")
+			self.assertEqual(oa.Filesystem.read_binary(binary), b"\x00\x01\xff")
 
-	def test_named_asset_location(self) -> None:
-		fixture = Paths.asset("image/visionTestPattern320x180.jpg")
-		self.assertTrue(Filesystem.isFile(fixture))
+			files = oa.Filesystem.list_files(root / "nested")
+			self.assertEqual([os.fspath(path) for path in files], sorted(os.fspath(path) for path in files))
+			self.assertTrue(all(isinstance(path, oa.Path) for path in files))
+			self.assertEqual([path.name() for path in oa.Filesystem.glob(root / "nested", "*.txt")], ["sample.txt"])
 
-	def test_named_var_environment_override(self) -> None:
-		override = self.work / "custom-var"
-		with patch.dict(os.environ, {"OA_VAR_DIR": os.fspath(override)}):
-			self.assertEqual(
-				Paths.var("report.json"),
-				override / "report.json",
-			)
-
-	def test_named_data_environment_override(self) -> None:
-		override = self.work / "custom-data"
-		with patch.dict(os.environ, {"OA_DATA_DIR": os.fspath(override)}):
-			self.assertEqual(
-				Paths.data("fashionMnist"),
-				override / "fashionMnist",
-			)
+			absolute = oa.Filesystem.absolute(text)
+			self.assertIsInstance(absolute, oa.Path)
+			self.assertTrue(absolute.is_absolute())
 
 
 if __name__ == "__main__":

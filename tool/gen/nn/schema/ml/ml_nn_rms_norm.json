@@ -1,0 +1,23 @@
+{
+	"version": 1,
+	"family": "rms_norm",
+	"imports": [
+		"use crate::{DType, Engine, Error, Matrix, Result};",
+		"use super::super::{Module, ModuleRegistry, Parameter, autograd, matrix};"
+	],
+	"helper": "",
+	"layers": [
+		{
+			"name": "RmsNorm",
+			"doc": "Trainable FP32 RMSNorm over the final input dimension.",
+			"template": "rms_norm",
+			"values": {
+				"operation": "matrix::rms_norm_forward",
+				"autograd_operation": "autograd::record_rms_norm",
+				"weight_name": "weight"
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/rmsnorm/rmsNorm.cpp",
+			"adaptation": "Preserve existing Rust initialization, parameter versions and autograd; adapt donor structure to ModuleRegistry ownership"
+		}
+	]
+}

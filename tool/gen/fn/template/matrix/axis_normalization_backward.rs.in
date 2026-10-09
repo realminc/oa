@@ -1,0 +1,54 @@
+	let operation = contract.name();
+	if forward_output.shape() != output_gradient.shape()
+		|| forward_output.dtype() != output_gradient.dtype()
+	{
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires matching forward-output and output-gradient matrices"
+		)));
+	}
+	if !forward_output
+		.engine_handle()
+		.same_as(output_gradient.engine_handle())
+	{
+		return Err(Error::invalid_argument(format!(
+			"{operation} inputs must belong to the same engine"
+		)));
+	}
+	let axis = resolve_axis(forward_output, dim, operation)?;
+	let input_gradient = Matrix::allocate(
+		forward_output.engine_handle(),
+		forward_output.shape().to_vec(),
+		forward_output.num_elements(),
+		DType::F32,
+	)?;
+	let buffers = [
+		BufferBinding::read(forward_output.storage()),
+		BufferBinding::read(output_gradient.storage()),
+		BufferBinding::write(input_gradient.storage()),
+	];
+	let push_constants = [
+		PushConstant::U32(axis.outer_size),
+		PushConstant::U32(axis.dim_size),
+		PushConstant::U32(axis.inner_size),
+	];
+	let attributes = [OpAttribute::SignedInteger {
+		name: "dim".into(),
+		value: i64::from(dim),
+	}];
+	let inputs = [forward_output, output_gradient];
+	let outputs = [&input_gradient];
+	forward_output.engine_handle().record_semantic(
+		ComputeDispatch {
+			kernel,
+			buffers: &buffers,
+			push_constants: &push_constants,
+			workgroups: [axis.group_count, 1, 1],
+		},
+		SemanticDispatch {
+			contract,
+			inputs: &inputs,
+			outputs: &outputs,
+			attributes: &attributes,
+		},
+	)?;
+	Ok(input_gradient)

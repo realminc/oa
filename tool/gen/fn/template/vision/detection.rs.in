@@ -1,0 +1,399 @@
+// OA donor: source/cpp/lib/oa/vision/fndetection/fnDetection.cpp
+// Mechanical generation adaptation of OARS v0.5.5; preserve algorithms and recording order.
+// @operation box_iou
+	let rows_a = box_rows(boxes_a, "boxes_a")?;
+	let rows_b = box_rows(boxes_b, "boxes_b")?;
+	let engine = boxes_a.engine_handle();
+	if !engine.same_as(boxes_b.engine_handle()) {
+		return Err(Error::invalid_argument(
+			"vision::box_iou inputs must belong to the same engine",
+		));
+	}
+	let pair_count = rows_a
+		.checked_mul(rows_b)
+		.ok_or_else(|| Error::out_of_range("vision::box_iou pair count exceeds u32"))?;
+	let output_elements = usize::try_from(pair_count)
+		.map_err(|_| Error::out_of_range("vision::box_iou pair count exceeds usize"))?;
+	let output = Matrix::allocate(
+		engine,
+		vec![rows_a as usize, rows_b as usize],
+		output_elements,
+		DType::F32,
+	)?;
+	let {{binding_name:0}} = [{{bindings:0}}];
+	let {{push_name:0}} = [{{push:0}}];
+	let inputs = [boxes_a, boxes_b];
+	let outputs = [&output];
+	engine.record_semantic(
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			{{binding_name:0}}: &{{binding_name:0}},
+			{{push_name:0}}: &{{push_name:0}},
+			workgroups: {{workgroups:0}},
+		},
+		SemanticDispatch {
+			contract: {{contract}},
+			inputs: &inputs,
+			outputs: &outputs,
+			attributes: &[{{attributes}}],
+		},
+	)?;
+	Ok(output)
+
+// @operation nms
+	let count = box_rows(boxes, "boxes")?;
+	vector(scores, "scores", count as usize, DType::F32)?;
+	vector(classes, "classes", count as usize, DType::I32)?;
+	validate_same_engine(boxes, &[scores, classes], "vision::nms")?;
+	if !config.iou_threshold.is_finite() || !(0.0..=1.0).contains(&config.iou_threshold) {
+		return Err(Error::invalid_argument(
+			"vision::nms iou_threshold must be finite and in [0, 1]",
+		));
+	}
+	if !config.score_threshold.is_finite() {
+		return Err(Error::invalid_argument(
+			"vision::nms score_threshold must be finite",
+		));
+	}
+	let maximum = u32::try_from(config.max_detections)
+		.map_err(|_| Error::invalid_argument("vision::nms max_detections must be positive"))?
+		.min(count);
+	if maximum == 0 {
+		return Err(Error::invalid_argument(
+			"vision::nms max_detections must be positive",
+		));
+	}
+	let engine = boxes.engine_handle();
+	let indices = Matrix::allocate(engine, vec![maximum as usize], maximum as usize, DType::I32)?;
+	let selected_count = Matrix::allocate(engine, vec![1], 1, DType::U32)?;
+	let {{binding_name:0}} = [{{bindings:0}}];
+	let {{push_name:0}} = [{{push:0}}];
+	let inputs = [boxes, scores, classes];
+	let outputs = [&indices, &selected_count];
+	let attributes = [{{attributes}}];
+	engine.record_semantic(
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			{{binding_name:0}}: &{{binding_name:0}},
+			{{push_name:0}}: &{{push_name:0}},
+			workgroups: {{workgroups:0}},
+		},
+		SemanticDispatch {
+			contract: {{contract}},
+			inputs: &inputs,
+			outputs: &outputs,
+			attributes: &attributes,
+		},
+	)?;
+	Ok(NmsResult {
+		indices,
+		count: selected_count,
+	})
+
+// @operation confusion_matrix
+	let element_count = equal_nonempty(predicted, target, DType::I32, "vision::confusion_matrix")?;
+	if predicted.shape().len() != 1 {
+		return Err(Error::invalid_argument(format!(
+			"vision::confusion_matrix inputs must be vectors; received {:?}",
+			predicted.shape()
+		)));
+	}
+	let classes = positive_class_count(class_count, "vision::confusion_matrix")?;
+	let output_elements = classes
+		.checked_mul(classes)
+		.ok_or_else(|| Error::out_of_range("vision::confusion_matrix output exceeds u32"))?;
+	let output = Matrix::allocate(
+		predicted.engine_handle(),
+		vec![classes as usize, classes as usize],
+		output_elements as usize,
+		DType::U32,
+	)?;
+	let clear_count = output_elements;
+	let {{binding_name:0}} = [{{bindings:0}}];
+	let {{push_name:0}} = [{{push:0}}];
+	let {{binding_name:1}} = [{{bindings:1}}];
+	let {{push_name:1}} = [{{push:1}}];
+	let dispatches = [
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &{{binding_name:0}},
+			push_constants: &{{push_name:0}},
+			workgroups: {{workgroups:0}},
+		},
+		ComputeDispatch {
+			kernel: {{kernel:1}},
+			buffers: &{{binding_name:1}},
+			push_constants: &{{push_name:1}},
+			workgroups: {{workgroups:1}},
+		},
+	];
+	let inputs = [predicted, target];
+	let outputs = [&output];
+	let attributes = [{{attributes}}];
+	predicted.engine_handle().record_split_semantic(
+		&dispatches,
+		SemanticDispatch {
+			contract: {{contract}},
+			inputs: &inputs,
+			outputs: &outputs,
+			attributes: &attributes,
+		},
+	)?;
+	Ok(output)
+
+// @operation binary_mask_counts
+	let element_count = equal_nonempty(predicted, target, DType::U8, "vision::binary_mask_counts")?;
+	let output = Matrix::allocate(predicted.engine_handle(), vec![4], 4, DType::U32)?;
+	let {{binding_name:0}} = [{{bindings:0}}];
+	let {{push_name:0}} = [{{push:0}}];
+	let {{binding_name:1}} = [{{bindings:1}}];
+	let {{push_name:1}} = [{{push:1}}];
+	let dispatches = [
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &{{binding_name:0}},
+			push_constants: &{{push_name:0}},
+			workgroups: {{workgroups:0}},
+		},
+		ComputeDispatch {
+			kernel: {{kernel:1}},
+			buffers: &{{binding_name:1}},
+			push_constants: &{{push_name:1}},
+			workgroups: {{workgroups:1}},
+		},
+	];
+	let inputs = [predicted, target];
+	let outputs = [&output];
+	predicted.engine_handle().record_split_semantic(
+		&dispatches,
+		SemanticDispatch {
+			contract: {{contract}},
+			inputs: &inputs,
+			outputs: &outputs,
+			attributes: &[{{attributes}}],
+		},
+	)?;
+	Ok(output)
+
+// @operation evaluate
+	let predicted = box_rows(predicted_boxes, "predicted_boxes")?;
+	let targets = box_rows(target_boxes, "target_boxes")?;
+	vector(
+		predicted_scores,
+		"predicted_scores",
+		predicted as usize,
+		DType::F32,
+	)?;
+	vector(
+		predicted_classes,
+		"predicted_classes",
+		predicted as usize,
+		DType::I32,
+	)?;
+	vector(
+		predicted_image_ids,
+		"predicted_image_ids",
+		predicted as usize,
+		DType::I32,
+	)?;
+	vector(
+		target_classes,
+		"target_classes",
+		targets as usize,
+		DType::I32,
+	)?;
+	vector(
+		target_image_ids,
+		"target_image_ids",
+		targets as usize,
+		DType::I32,
+	)?;
+	let threshold_count = nonempty_vector(iou_thresholds, "iou_thresholds", DType::F32)?;
+	let classes = positive_class_count(class_count, "vision::evaluate")?;
+	if !score_threshold.is_finite() {
+		return Err(Error::invalid_argument(
+			"vision::evaluate score_threshold must be finite",
+		));
+	}
+	validate_same_engine(
+		predicted_boxes,
+		&[
+			predicted_scores,
+			predicted_classes,
+			predicted_image_ids,
+			target_boxes,
+			target_classes,
+			target_image_ids,
+			iou_thresholds,
+		],
+		"vision::evaluate",
+	)?;
+	let pair_count = threshold_count
+		.checked_mul(classes)
+		.ok_or_else(|| Error::out_of_range("vision::evaluate threshold-class pairs exceed u32"))?;
+	let state_stride = predicted
+		.checked_add(targets)
+		.ok_or_else(|| Error::out_of_range("vision::evaluate state stride exceeds u32"))?;
+	let state_elements = pair_count
+		.checked_mul(state_stride)
+		.ok_or_else(|| Error::out_of_range("vision::evaluate state scratch exceeds u32"))?;
+	let curve_elements = pair_count
+		.checked_mul(predicted)
+		.and_then(|value| value.checked_mul(2))
+		.ok_or_else(|| Error::out_of_range("vision::evaluate curve scratch exceeds u32"))?;
+	let counts_elements = pair_count
+		.checked_mul(3)
+		.ok_or_else(|| Error::out_of_range("vision::evaluate counts output exceeds u32"))?;
+	let metrics_elements = pair_count
+		.checked_mul(4)
+		.ok_or_else(|| Error::out_of_range("vision::evaluate metrics output exceeds u32"))?;
+	let engine = predicted_boxes.engine_handle();
+	let state = allocate(
+		engine,
+		&[pair_count, state_stride],
+		state_elements,
+		DType::U32,
+	)?;
+	let curve = allocate(
+		engine,
+		&[pair_count, predicted, 2],
+		curve_elements,
+		DType::F32,
+	)?;
+	let counts = allocate(
+		engine,
+		&[threshold_count, classes, 3],
+		counts_elements,
+		DType::U32,
+	)?;
+	let per_class = allocate(
+		engine,
+		&[threshold_count, classes, 4],
+		metrics_elements,
+		DType::F32,
+	)?;
+	let map_by_threshold = allocate(engine, &[threshold_count], threshold_count, DType::F32)?;
+	let mean_average_precision = allocate(engine, &[1], 1, DType::F32)?;
+
+	let {{binding_name:0}} = [{{bindings:0}}];
+	let {{push_name:0}} = [{{push:0}}];
+	let {{binding_name:1}} = [{{bindings:1}}];
+	let {{push_name:1}} = [{{push:1}}];
+	let {{binding_name:2}} = [{{bindings:2}}];
+	let {{push_name:2}} = [{{push:2}}];
+	let dispatches = [
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &{{binding_name:0}},
+			push_constants: &{{push_name:0}},
+			workgroups: {{workgroups:0}},
+		},
+		ComputeDispatch {
+			kernel: {{kernel:1}},
+			buffers: &{{binding_name:1}},
+			push_constants: &{{push_name:1}},
+			workgroups: {{workgroups:1}},
+		},
+		ComputeDispatch {
+			kernel: {{kernel:2}},
+			buffers: &{{binding_name:2}},
+			push_constants: &{{push_name:2}},
+			workgroups: {{workgroups:2}},
+		},
+	];
+	let inputs = [
+		predicted_boxes,
+		predicted_scores,
+		predicted_classes,
+		predicted_image_ids,
+		target_boxes,
+		target_classes,
+		target_image_ids,
+		iou_thresholds,
+	];
+	let outputs = [
+		&counts,
+		&per_class,
+		&map_by_threshold,
+		&mean_average_precision,
+	];
+	let attributes = [{{attributes}}];
+	engine.record_split_semantic(
+		&dispatches,
+		SemanticDispatch {
+			contract: {{contract}},
+			inputs: &inputs,
+			outputs: &outputs,
+			attributes: &attributes,
+		},
+	)?;
+	Ok(DetectionMetricsResult {
+		counts,
+		per_class,
+		mean_average_precision_by_threshold: map_by_threshold,
+		mean_average_precision,
+	})
+
+// @operation evaluate_segmentation
+	let element_count = equal_nonempty(
+		predicted,
+		target,
+		DType::I32,
+		"vision::evaluate_segmentation",
+	)?;
+	let classes = positive_class_count(class_count, "vision::evaluate_segmentation")?;
+	let confusion_elements = classes
+		.checked_mul(classes)
+		.ok_or_else(|| Error::out_of_range("vision::evaluate_segmentation confusion exceeds u32"))?;
+	let per_class_elements = classes
+		.checked_mul(4)
+		.ok_or_else(|| Error::out_of_range("vision::evaluate_segmentation metrics exceed u32"))?;
+	let engine = predicted.engine_handle();
+	let confusion = allocate(engine, &[classes, classes], confusion_elements, DType::U32)?;
+	let per_class = allocate(engine, &[classes, 4], per_class_elements, DType::F32)?;
+	let mean_iou = allocate(engine, &[1], 1, DType::F32)?;
+	let pixel_accuracy = allocate(engine, &[1], 1, DType::F32)?;
+	let {{binding_name:1}} = [{{bindings:1}}];
+	let {{push_name:1}} = [{{push:1}}];
+	let {{binding_name:0}} = [{{bindings:0}}];
+	let {{push_name:0}} = [{{push:0}}];
+	let {{binding_name:2}} = [{{bindings:2}}];
+	let {{push_name:2}} = [{{push:2}}];
+	let dispatches = [
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &{{binding_name:0}},
+			push_constants: &{{push_name:0}},
+			workgroups: {{workgroups:0}},
+		},
+		ComputeDispatch {
+			kernel: {{kernel:1}},
+			buffers: &{{binding_name:1}},
+			push_constants: &{{push_name:1}},
+			workgroups: {{workgroups:1}},
+		},
+		ComputeDispatch {
+			kernel: {{kernel:2}},
+			buffers: &{{binding_name:2}},
+			push_constants: &{{push_name:2}},
+			workgroups: {{workgroups:2}},
+		},
+	];
+	let inputs = [predicted, target];
+	let outputs = [&confusion, &per_class, &mean_iou, &pixel_accuracy];
+	let attributes = [{{attributes}}];
+	engine.record_split_semantic(
+		&dispatches,
+		SemanticDispatch {
+			contract: {{contract}},
+			inputs: &inputs,
+			outputs: &outputs,
+			attributes: &attributes,
+		},
+	)?;
+	Ok(SegmentationMetricsResult {
+		confusion,
+		per_class,
+		mean_iou,
+		pixel_accuracy,
+	})

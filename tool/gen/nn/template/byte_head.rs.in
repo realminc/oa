@@ -1,0 +1,54 @@
+/// {{doc}}
+pub struct {{name}} {
+	inner: Linear,
+}
+
+impl {{name}} {
+	/// Construct a deterministically initialized byte head.
+	///
+	/// # Errors
+	///
+	/// Returns an error when `input_features` is zero or initialization fails.
+	pub fn with_seed(engine: &Engine, input_features: usize, seed: u64) -> Result<Self> {
+		Ok(Self {
+			inner: {{constructor}}(engine, input_features, {{vocabulary}}, seed)?,
+		})
+	}
+
+	/// Project hidden states to 256 byte logits.
+	///
+	/// # Errors
+	///
+	/// Returns an error for an invalid input or runtime recording failure.
+	pub fn forward(&self, hidden: &Matrix) -> Result<Matrix> {
+		self.inner.forward(hidden)
+	}
+
+	/// Hidden input width.
+	pub const fn input_features(&self) -> usize {
+		self.inner.input_features()
+	}
+
+	/// Output weight handle.
+	pub fn weight(&self) -> Parameter {
+		self.inner.weight()
+	}
+
+	/// Output bias handle.
+	pub fn bias(&self) -> Parameter {
+		self
+			.inner
+			.bias()
+			.expect("byte head always constructs a trainable bias")
+	}
+}
+
+impl Module for {{name}} {
+	fn forward(&self, input: &Matrix) -> Result<Matrix> {
+		{{name}}::forward(self, input)
+	}
+
+	fn registry(&self) -> &ModuleRegistry {
+		self.inner.registry()
+	}
+}

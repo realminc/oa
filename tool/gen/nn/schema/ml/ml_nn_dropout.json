@@ -1,0 +1,21 @@
+{
+	"version": 1,
+	"family": "dropout",
+	"imports": [
+		"use crate::{Error, Matrix, Result, matrix};",
+		"use super::super::{Module, ModuleRegistry};"
+	],
+	"helper": "",
+	"layers": [
+		{
+			"name": "Dropout",
+			"doc": "Inverted Dropout with explicit train/eval behavior.",
+			"template": "dropout",
+			"values": {
+				"default_seed": 0
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/dropout/dropout.cpp",
+			"adaptation": "Rust ownership, ModuleRegistry and checked error contracts; preserved operation behavior"
+		}
+	]
+}

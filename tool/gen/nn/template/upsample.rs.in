@@ -1,0 +1,64 @@
+/// {{doc}}
+pub struct {{name}} {
+	scale_factor: usize,
+	mode: UpsampleMode,
+	registry: ModuleRegistry,
+}
+
+impl {{name}} {
+	/// Construct bilinear {{name}} with the requested integer scale factor.
+	///
+	/// # Errors
+	///
+	/// Returns an error when `scale_factor` is zero.
+	pub fn new(scale_factor: usize) -> Result<Self> {
+		Self::with_mode(scale_factor, {{default_mode}})
+	}
+
+	/// Construct {{name}} with an explicit interpolation mode.
+	///
+	/// # Errors
+	///
+	/// Returns an error when `scale_factor` is zero.
+	pub fn with_mode(scale_factor: usize, mode: UpsampleMode) -> Result<Self> {
+		if scale_factor == 0 {
+			return Err(crate::Error::invalid_argument(
+				"{{name}} scale factor must be nonzero",
+			));
+		}
+		Ok(Self {
+			scale_factor,
+			mode,
+			registry: ModuleRegistry::new(),
+		})
+	}
+
+	/// {{name}} one NCHW Matrix without submitting or waiting.
+	///
+	/// # Errors
+	///
+	/// Returns an error from the underlying Matrix operation.
+	pub fn forward(&self, input: &Matrix) -> Result<Matrix> {
+		{{operation}}(input, self.scale_factor, self.mode)
+	}
+
+	/// Return the integer spatial scale factor.
+	pub const fn scale_factor(&self) -> usize {
+		self.scale_factor
+	}
+
+	/// Return the interpolation mode.
+	pub const fn mode(&self) -> UpsampleMode {
+		self.mode
+	}
+}
+
+impl Module for {{name}} {
+	fn forward(&self, input: &Matrix) -> Result<Matrix> {
+		{{name}}::forward(self, input)
+	}
+
+	fn registry(&self) -> &ModuleRegistry {
+		&self.registry
+	}
+}

@@ -1,0 +1,124 @@
+	let operation = contract.name();
+	if logits.dtype() != DType::F32 || logits.shape().len() < 2 || logits.num_elements() == 0 {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires nonempty rank-two-or-greater F32 logits"
+		)));
+	}
+	let classes = *logits.shape().last().ok_or_else(|| {
+		Error::invalid_argument(format!("{operation} logits must expose a class axis"))
+	})?;
+	let label_shape = &logits.shape()[..logits.shape().len() - 1];
+	if labels.shape() != label_shape {
+		return Err(Error::invalid_argument(format!(
+			"{operation} labels have shape {:?}; expected {:?}",
+			labels.shape(),
+			label_shape
+		)));
+	}
+	let label_dtype = match labels.dtype() {
+		DType::U8 => 0,
+		DType::U32 => 1,
+		DType::I32 => 2,
+		_ => {
+			return Err(Error::invalid_argument(format!(
+				"{operation} labels must use U8, U32, or I32; found {}",
+				labels.dtype().token()
+			)));
+		}
+	};
+	let engine = logits.engine_handle();
+	if !engine.same_as(labels.engine_handle()) {
+		return Err(Error::invalid_argument(format!(
+			"{operation} inputs must belong to the same engine"
+		)));
+	}
+	if let Some(mask) = mask {
+		if mask.dtype() != DType::F32 || mask.shape() != label_shape {
+			return Err(Error::invalid_argument(format!(
+				"{operation} mask has shape {:?} {}; expected {:?} F32",
+				mask.shape(),
+				mask.dtype().token(),
+				label_shape
+			)));
+		}
+		if !engine.same_as(mask.engine_handle()) {
+			return Err(Error::invalid_argument(format!(
+				"{operation} inputs must belong to the same engine"
+			)));
+		}
+	}
+	let validate_byte_range = |matrix: &Matrix, label: &str| -> Result<()> {
+		let byte_size = matrix
+			.num_elements()
+			.checked_mul(matrix.dtype().size_bytes())
+			.ok_or_else(|| {
+				Error::invalid_argument(format!("{operation} {label} byte size overflows usize"))
+			})?;
+		u32::try_from(byte_size).map_err(|_| {
+			Error::invalid_argument(format!(
+				"{operation} {label} byte-address range exceeds the shader ABI"
+			))
+		})?;
+		Ok(())
+	};
+	validate_byte_range(logits, "logits")?;
+	validate_byte_range(labels, "labels")?;
+	if let Some(mask) = mask {
+		validate_byte_range(mask, "mask")?;
+	}
+	let rows = u32::try_from(labels.num_elements())
+		.map_err(|_| Error::invalid_argument(format!("{operation} row count exceeds u32")))?;
+	let classes = u32::try_from(classes)
+		.map_err(|_| Error::invalid_argument(format!("{operation} class count exceeds u32")))?;
+	let output = Matrix::allocate(engine, vec![1], 1, DType::U32)?;
+	let push_constants = [
+		PushConstant::U32(rows),
+		PushConstant::U32(classes),
+		PushConstant::U32(label_dtype),
+	];
+	let outputs = [&output];
+	if let Some(mask) = mask {
+		let buffers = [
+			BufferBinding::read(logits.storage()),
+			BufferBinding::read(labels.storage()),
+			BufferBinding::read(mask.storage()),
+			BufferBinding::write(output.storage()),
+		];
+		let inputs = [logits, labels, mask];
+		engine.record_semantic(
+			ComputeDispatch {
+				kernel: KernelId::MatrixMaskedCategoricalAccuracyCountF32,
+				buffers: &buffers,
+				push_constants: &push_constants,
+				workgroups: [1, 1, 1],
+			},
+			SemanticDispatch {
+				contract,
+				inputs: &inputs,
+				outputs: &outputs,
+				attributes: &[],
+			},
+		)?;
+	} else {
+		let buffers = [
+			BufferBinding::read(logits.storage()),
+			BufferBinding::read(labels.storage()),
+			BufferBinding::write(output.storage()),
+		];
+		let inputs = [logits, labels];
+		engine.record_semantic(
+			ComputeDispatch {
+				kernel: KernelId::MatrixCategoricalAccuracyCountF32,
+				buffers: &buffers,
+				push_constants: &push_constants,
+				workgroups: [1, 1, 1],
+			},
+			SemanticDispatch {
+				contract,
+				inputs: &inputs,
+				outputs: &outputs,
+				attributes: &[],
+			},
+		)?;
+	}
+	Ok(output)

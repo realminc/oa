@@ -1,1 +1,0 @@
-"""Matmul tile-lattice generator."""

@@ -1,0 +1,60 @@
+// Tape traversal adapters; numerical adjoints live in index.rs.
+
+// @operation slice
+// @fields input,output_id,dim,start,end
+let Some(output_gradient) = gradients.take_output(*output_id) else {
+		return Ok(false);
+	};
+	let input_gradient = matrix::slice_backward(input.shape(), *dim, *start, *end, &output_gradient)?;
+	gradients.accumulate(input.value_id(), input_gradient)?;
+	Ok(true)
+
+// @operation repeat_interleave
+// @fields input,output_id,repeats,dim
+let Some(output_gradient) = gradients.take_output(*output_id) else {
+		return Ok(false);
+	};
+	let input_gradient =
+		matrix::repeat_interleave_backward(input.shape(), *repeats, *dim, &output_gradient)?;
+	gradients.accumulate(input.value_id(), input_gradient)?;
+	Ok(true)
+
+// @operation concat
+// @fields inputs,output_id,dim,sizes
+let Some(output_gradient) = gradients.take_output(*output_id) else {
+return Ok(false);
+};
+let input_gradients = matrix::concat_backward(&output_gradient, *dim, sizes)?;
+for (input, input_gradient) in inputs.iter().zip(input_gradients) {
+if let Some(input_gradient) = input_gradient {
+gradients.accumulate(input.value_id(), input_gradient)?;
+}
+}
+Ok(true)
+
+// @operation transpose
+// @fields input,output_id,dim0,dim1
+let Some(output_gradient) = gradients.take_output(*output_id) else {
+return Ok(false);
+};
+let input_gradient = matrix::transpose_backward(&output_gradient, *dim0, *dim1)?;
+gradients.accumulate(input.value_id(), input_gradient)?;
+Ok(true)
+
+// @operation gather
+// @fields input,indices,output_id
+let Some(output_gradient) = gradients.take_output(*output_id) else {
+		return Ok(false);
+	};
+	let input_gradient = matrix::gather_backward(input.shape(), indices, &output_gradient)?;
+	gradients.accumulate(input.value_id(), input_gradient)?;
+	Ok(true)
+
+// @operation gather_last_dim
+// @fields input,indices,output_id,input_width
+let Some(output_gradient) = gradients.take_output(*output_id) else {
+		return Ok(false);
+	};
+	let input_gradient = matrix::gather_last_dim_backward(&output_gradient, indices, *input_width)?;
+	gradients.accumulate(input.value_id(), input_gradient)?;
+	Ok(true)

@@ -1,0 +1,30 @@
+{
+	"version": 1,
+	"family": "utility",
+	"imports": [
+		"use crate::{Error, Matrix, Result};",
+		"use super::super::{Module, ModuleRegistry};"
+	],
+	"helper": "flatten_dimensions",
+	"layers": [
+		{
+			"name": "Identity",
+			"doc": "Return the input value unchanged.",
+			"template": "identity",
+			"values": {},
+			"donor": "source/cpp/lib/oa/ml/nn/identity/identity.cpp",
+			"adaptation": "Rust ownership, ModuleRegistry and checked error contracts; preserved operation behavior"
+		},
+		{
+			"name": "Flatten",
+			"doc": "Flatten an inclusive range of Matrix dimensions into one dimension.",
+			"template": "flatten",
+			"values": {
+				"start_dim": 1,
+				"end_dim": -1
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/flatten/flatten.cpp",
+			"adaptation": "Rust ownership, ModuleRegistry and checked error contracts; preserved operation behavior"
+		}
+	]
+}

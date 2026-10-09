@@ -1,0 +1,12 @@
+// OA adjoint recipes mechanically extracted from the admitted Rust reverse traversal.
+// Donor source and adaptation: see README.md. No shader or numerical formula changes.
+
+// @operation upsample_2d
+let Self { input, output_id, scale_factor, mode } = self;
+let Some(output_gradient) = gradients.remove(output_id) else {
+	return Ok(BackwardStatus::Skipped);
+};
+let input_gradient =
+	crate::ml::matrix::upsample_2d_backward(input, &output_gradient, *scale_factor, *mode)?;
+accumulate_value_gradient(gradients, input.value_id(), input_gradient)?;
+Ok(BackwardStatus::Recorded)

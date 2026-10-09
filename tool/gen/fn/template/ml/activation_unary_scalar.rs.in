@@ -1,0 +1,54 @@
+/// {{doc}}
+///
+/// # Errors
+///
+/// Returns an error unless `input` is F32 or runtime recording fails.
+pub fn {{name}}(input: &Matrix, {{scalar}}: f32) -> Result<Matrix> {
+	let contract = {{contract}};
+	let operation = contract.name();
+	let engine = input.engine_handle();
+	if input.dtype() != DType::F32 {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires F32 matrices; found {}",
+			input.dtype().token()
+		)));
+	}
+	let element_count = u32::try_from(input.num_elements())
+		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
+	let output = Matrix::allocate(
+		engine,
+		input.shape().to_vec(),
+		input.num_elements(),
+		DType::F32,
+	)?;
+	if element_count != 0 {
+		let buffers = [
+			BufferBinding::read(input.storage()),
+			BufferBinding::write(output.storage()),
+		];
+		let attributes = [OpAttribute::Float {
+			name: "{{scalar}}".into(),
+			value: f64::from({{scalar}}),
+		}];
+		let push_constants = [
+			PushConstant::U32(element_count),
+			PushConstant::F32({{scalar}}),
+		];
+		engine.record_semantic(
+			ComputeDispatch {
+				kernel: KernelId::{{kernel}},
+				buffers: &buffers,
+				push_constants: &push_constants,
+				workgroups: KernelId::{{kernel}}.linear_workgroups(element_count),
+			},
+			SemanticDispatch {
+				contract,
+				inputs: &[input],
+				outputs: &[&output],
+				attributes: &attributes,
+			},
+		)?;
+	}
+{{autograd_call}}
+	Ok(output)
+}

@@ -1,0 +1,23 @@
+{
+	"version": 1,
+	"family": "upsample",
+	"imports": [
+		"use crate::{Matrix, Result};",
+		"pub use super::super::matrix::UpsampleMode;",
+		"use super::super::{Module, ModuleRegistry, matrix};"
+	],
+	"helper": "",
+	"layers": [
+		{
+			"name": "Upsample",
+			"doc": "Parameterless spatial upsampling module for FP32 NCHW matrices.",
+			"template": "upsample",
+			"values": {
+				"operation": "matrix::upsample_2d",
+				"default_mode": "UpsampleMode::Bilinear"
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/upsample/upsample.cpp",
+			"adaptation": "Preserved bilinear default and checked scale; existing Matrix provider owns interpolation and deterministic adjoints"
+		}
+	]
+}

@@ -1,0 +1,122 @@
+// Tape traversal adapters; numerical adjoints live beside forward providers.
+
+// @operation copy
+// @fields input,output_id
+let Some(output_gradient) = gradients.take_output(*output_id) else {
+return Ok(false);
+};
+let input_gradient = matrix::copy_backward(output_gradient)?;
+gradients.accumulate(input.value_id(), input_gradient)?;
+Ok(true)
+
+// @operation add
+// @fields left,right,output_id
+let Some(output_gradient) = gradients.take_output(*output_id) else {
+return Ok(false);
+};
+let (left_gradient, right_gradient) = matrix::add_backward(left, right, &output_gradient)?;
+gradients.accumulate(left.value_id(), left_gradient)?;
+gradients.accumulate(right.value_id(), right_gradient)?;
+Ok(true)
+
+// @operation mul
+// @fields left,right,output_id
+let Some(output_gradient) = gradients.take_output(*output_id) else {
+return Ok(false);
+};
+let (left_gradient, right_gradient) = matrix::mul_backward(left, right, &output_gradient)?;
+gradients.accumulate(left.value_id(), left_gradient)?;
+gradients.accumulate(right.value_id(), right_gradient)?;
+Ok(true)
+
+// @operation div
+// @fields left,right,output_id
+let Some(output_gradient) = gradients.take_output(*output_id) else {
+return Ok(false);
+};
+let (left_gradient, right_gradient) = matrix::div_backward(left, right, &output_gradient)?;
+gradients.accumulate(left.value_id(), left_gradient)?;
+gradients.accumulate(right.value_id(), right_gradient)?;
+Ok(true)
+
+// @operation scale
+// @fields input,output_id,scalar
+let Some(output_gradient) = gradients.take_output(*output_id) else {
+return Ok(false);
+};
+let input_gradient = matrix::scale_backward(&output_gradient, *scalar)?;
+gradients.accumulate(input.value_id(), input_gradient)?;
+Ok(true)
+
+// @operation reciprocal
+// @fields input,output,output_id
+let Some(output_gradient) = gradients.take_output(*output_id) else {
+return Ok(false);
+};
+let input_gradient = matrix::reciprocal_backward(output, &output_gradient)?;
+gradients.accumulate(input.value_id(), input_gradient)?;
+Ok(true)
+
+// @operation exp
+// @fields input,output,output_id
+let Some(output_gradient) = gradients.take_output(*output_id) else {
+return Ok(false);
+};
+let input_gradient = matrix::exp_backward(output, &output_gradient)?;
+gradients.accumulate(input.value_id(), input_gradient)?;
+Ok(true)
+
+// @operation log
+// @fields input,output_id
+let Some(output_gradient) = gradients.take_output(*output_id) else {
+return Ok(false);
+};
+let input_gradient = matrix::log_backward(input, &output_gradient)?;
+gradients.accumulate(input.value_id(), input_gradient)?;
+Ok(true)
+
+// @operation abs
+// @fields input,output_id
+let Some(output_gradient) = gradients.take_output(*output_id) else {
+return Ok(false);
+};
+let input_gradient = matrix::abs_backward(input, &output_gradient)?;
+gradients.accumulate(input.value_id(), input_gradient)?;
+Ok(true)
+
+// @operation sqrt
+// @fields input,output,output_id
+let Some(output_gradient) = gradients.take_output(*output_id) else {
+return Ok(false);
+};
+let input_gradient = matrix::sqrt_backward(output, &output_gradient)?;
+gradients.accumulate(input.value_id(), input_gradient)?;
+Ok(true)
+
+// @operation clamp_max
+// @fields input,output_id,maximum
+let Some(output_gradient) = gradients.take_output(*output_id) else {
+return Ok(false);
+};
+let input_gradient = matrix::clamp_max_backward(input, &output_gradient, *maximum)?;
+gradients.accumulate(input.value_id(), input_gradient)?;
+Ok(true)
+
+// @operation clamp_min
+// @fields input,output_id,minimum
+let Some(output_gradient) = gradients.take_output(*output_id) else {
+return Ok(false);
+};
+let input_gradient = matrix::clamp_min_backward(input, &output_gradient, *minimum)?;
+gradients.accumulate(input.value_id(), input_gradient)?;
+Ok(true)
+
+// @operation sub
+// @fields left,right,output_id
+let Some(output_gradient) = gradients.take_output(*output_id) else {
+return Ok(false);
+};
+let (left_gradient, right_gradient) = matrix::sub_backward(left, right, &output_gradient)?;
+gradients.accumulate(left.value_id(), left_gradient)?;
+gradients.accumulate(right.value_id(), right_gradient)?;
+Ok(true)

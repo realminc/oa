@@ -1,0 +1,113 @@
+//! Elementwise Matrix operations and shared broadcast-shape inference.
+
+use crate::{
+	DType, Error, Matrix, OpAttribute, OpShapeRule, Result,
+	matrix::{self, autograd, sum_to_shape},
+	runtime::{BufferBinding, ComputeDispatch, KernelId, PushConstant, SemanticDispatch},
+};
+
+const BROADCAST_RANK_LIMIT: usize = 8;
+
+struct BroadcastLayout {
+	output_shape: Vec<usize>,
+	output_dims: [u32; BROADCAST_RANK_LIMIT],
+	left_strides: [u32; BROADCAST_RANK_LIMIT],
+	right_strides: [u32; BROADCAST_RANK_LIMIT],
+	element_count: u32,
+	rank: u32,
+}
+
+fn resolve_broadcast(
+	left: &[usize],
+	right: &[usize],
+	operation: &'static str,
+) -> Result<BroadcastLayout> {
+	let rank = left.len().max(right.len());
+	if rank > BROADCAST_RANK_LIMIT {
+		return Err(Error::invalid_argument(format!(
+			"{operation} supports at most {BROADCAST_RANK_LIMIT} broadcast axes"
+		)));
+	}
+	let mut output_shape = vec![1_usize; rank];
+	for (axis, output_extent) in output_shape.iter_mut().enumerate() {
+		let left_extent = aligned_extent(left, rank, axis);
+		let right_extent = aligned_extent(right, rank, axis);
+		*output_extent = if left_extent == right_extent {
+			left_extent
+		} else if left_extent == 1 {
+			right_extent
+		} else if right_extent == 1 {
+			left_extent
+		} else {
+			return Err(Error::invalid_argument(format!(
+				"{operation} cannot broadcast shapes {left:?} and {right:?}"
+			)));
+		};
+	}
+	let element_count = output_shape.iter().try_fold(1_usize, |product, extent| {
+		product
+			.checked_mul(*extent)
+			.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))
+	})?;
+	let element_count = u32::try_from(element_count)
+		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
+	let mut output_dims = [1_u32; BROADCAST_RANK_LIMIT];
+	for (destination, extent) in output_dims.iter_mut().zip(&output_shape) {
+		*destination = u32::try_from(*extent)
+			.map_err(|_| Error::invalid_argument(format!("{operation} output extent exceeds u32")))?;
+	}
+	Ok(BroadcastLayout {
+		left_strides: broadcast_strides(left, &output_shape, operation)?,
+		right_strides: broadcast_strides(right, &output_shape, operation)?,
+		output_shape,
+		output_dims,
+		element_count,
+		rank: u32::try_from(rank).expect("broadcast rank limit fits u32"),
+	})
+}
+
+fn broadcast_strides(
+	shape: &[usize],
+	output_shape: &[usize],
+	operation: &'static str,
+) -> Result<[u32; BROADCAST_RANK_LIMIT]> {
+	let rank = output_shape.len();
+	let offset = rank - shape.len();
+	let mut strides = [0_u32; BROADCAST_RANK_LIMIT];
+	let mut contiguous_stride = 1_usize;
+	for source_axis in (0..shape.len()).rev() {
+		let axis = offset + source_axis;
+		if shape[source_axis] != 1 || output_shape[axis] == 1 {
+			strides[axis] = u32::try_from(contiguous_stride)
+				.map_err(|_| Error::invalid_argument(format!("{operation} input stride exceeds u32")))?;
+		}
+		contiguous_stride = contiguous_stride
+			.checked_mul(shape[source_axis])
+			.ok_or_else(|| Error::invalid_argument(format!("{operation} input size overflows")))?;
+	}
+	Ok(strides)
+}
+
+fn aligned_extent(shape: &[usize], rank: usize, axis: usize) -> usize {
+	axis
+		.checked_sub(rank - shape.len())
+		.map_or(1, |source_axis| shape[source_axis])
+}
+
+fn select_kernel(
+	dtype: DType,
+	routes: &[(DType, KernelId)],
+	operation: &'static str,
+) -> Result<KernelId> {
+	routes
+		.iter()
+		.find_map(|(candidate, kernel)| (*candidate == dtype).then_some(*kernel))
+		.ok_or_else(|| {
+			Error::invalid_argument(format!(
+				"{operation} does not support dtype {}",
+				dtype.token()
+			))
+		})
+}
+
+{{items}}

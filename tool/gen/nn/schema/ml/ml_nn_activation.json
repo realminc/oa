@@ -1,0 +1,41 @@
+{
+	"version": 1,
+	"family": "activation",
+	"imports": [
+		"use crate::{Matrix, Result};",
+		"use super::super::{Module, ModuleRegistry, matrix};"
+	],
+	"helper": "",
+	"layers": [
+		{
+			"name": "Relu",
+			"doc": "Rectified linear unit module.",
+			"template": "activation",
+			"values": {
+				"operation": "matrix::relu"
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/relu/relu.cpp",
+			"adaptation": "Rust ownership, ModuleRegistry and checked error contracts; preserved operation behavior"
+		},
+		{
+			"name": "Gelu",
+			"doc": "Gaussian error linear unit module using OA's tanh approximation.",
+			"template": "activation",
+			"values": {
+				"operation": "matrix::gelu"
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/gelu/gelu.cpp",
+			"adaptation": "Rust ownership, ModuleRegistry and checked error contracts; preserved operation behavior"
+		},
+		{
+			"name": "Silu",
+			"doc": "Sigmoid linear unit module.",
+			"template": "activation",
+			"values": {
+				"operation": "matrix::silu"
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/silu/silu.cpp",
+			"adaptation": "Rust ownership, ModuleRegistry and checked error contracts; preserved operation behavior"
+		}
+	]
+}

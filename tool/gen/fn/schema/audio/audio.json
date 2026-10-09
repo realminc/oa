@@ -1,0 +1,497 @@
+{
+  "schema_version": 1,
+  "family": "audio",
+  "domain": "audio",
+  "dtype": "f32",
+  "contracts": [
+    {
+      "name": "normalize",
+      "input_kinds": ["audio"],
+      "output_kinds": ["audio"],
+      "shape_rule": "match_input",
+      "dtype_rule": "f32",
+      "attributes": [["target_db", "float"], ["mode", "unsigned_integer"]],
+      "rust": {
+        "category": "signal",
+        "parameters": [["input", "&Audio"], ["config", "NormalizeAudioConfig"]],
+        "returns": "Audio",
+        "doc": "Normalize global peak or RMS level to the configured decibel target.",
+        "attribute_sources": {"target_db": "config.target_db", "mode": "u64::from(mode)"},
+        "bindings": [
+          {"name": "level_buffers", "values": {"input_index": ["read", "input"], "level_index": ["write", "level"]}},
+          {"name": "apply_buffers", "values": {"input_index": ["read", "input"], "level_index": ["read", "level"], "output_index": ["write", "output"]}}
+        ],
+        "push_constants": [
+          {"name": "level_push", "values": {"count": ["U32", "count"], "mode": ["U32", "mode"]}},
+          {"name": "apply_push", "values": {"count": ["U32", "count"], "target_linear": ["F32", "10.0_f32.powf(config.target_db / 20.0)"]}}
+        ],
+        "dispatches": [
+          {"kernel": "AudioNormalizeLevelF32", "buffers": "&level_buffers", "push_constants": "&level_push", "workgroups": "[1, 1, 1]"},
+          {"kernel": "AudioNormalizeApplyF32", "buffers": "&apply_buffers", "push_constants": "&apply_push", "workgroups": "KernelId::AudioNormalizeApplyF32.linear_workgroups(count)"}
+        ]
+      }
+    },
+    {
+      "name": "resample",
+      "input_kinds": ["audio"],
+      "output_kinds": ["audio"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [["out_rate", "unsigned_integer"], ["filter_half_width", "unsigned_integer"]],
+      "rust": {
+        "category": "signal",
+        "parameters": [["input", "&Audio"], ["config", "ResampleConfig"]],
+        "returns": "Audio",
+        "doc": "Resample planar audio using the donor windowed-sinc gather kernel.",
+        "attribute_sources": {"out_rate": "u64::from(config.out_rate)", "filter_half_width": "u64::from(config.filter_half_width)"},
+        "bindings": [
+          {"name": "buffers", "values": {"input_index": ["read", "input"], "output_index": ["write", "output"]}}
+        ],
+        "push_constants": [
+          {"name": "push", "values": {"count": ["U32", "count"], "in_rate_r": ["U32", "in_rate"], "out_rate_r": ["U32", "out_rate"], "filter_half_width": ["U32", "config.filter_half_width"], "in_samples": ["U32", "in_samples"], "out_samples": ["U32", "out_samples_u32"]}}
+        ],
+        "dispatches": [
+          {"kernel": "AudioResampleF32", "buffers": "&buffers", "push_constants": "&push", "workgroups": "KernelId::AudioResampleF32.linear_workgroups(count)"}
+        ]
+      }
+    },
+    {
+      "name": "gain",
+      "input_kinds": ["audio"],
+      "output_kinds": ["audio"],
+      "shape_rule": "match_input",
+      "dtype_rule": "f32",
+      "attributes": [["gain_db", "float"]],
+      "rust": {
+        "category": "signal",
+        "parameters": [["input", "&Audio"], ["gain_db", "f32"]],
+        "returns": "Audio",
+        "doc": "Apply scalar gain in decibels.",
+        "attribute_sources": {"gain_db": "gain_db"},
+        "bindings": [
+          {"name": "buffers", "values": {"input_index": ["read", "input"], "output_index": ["write", "output"]}}
+        ],
+        "push_constants": [
+          {"name": "push", "values": {"count": ["U32", "count"], "gain_db": ["F32", "gain_db"]}}
+        ],
+        "dispatches": [
+          {"kernel": "AudioGainF32", "buffers": "&buffers", "push_constants": "&push", "workgroups": "KernelId::AudioGainF32.linear_workgroups(count)"}
+        ]
+      }
+    },
+    {
+      "name": "clip",
+      "input_kinds": ["audio"],
+      "output_kinds": ["audio"],
+      "shape_rule": "match_input",
+      "dtype_rule": "f32",
+      "attributes": [["minimum", "float"], ["maximum", "float"]],
+      "rust": {
+        "category": "signal",
+        "parameters": [["input", "&Audio"], ["minimum", "f32"], ["maximum", "f32"]],
+        "returns": "Audio",
+        "doc": "Clamp every sample to an inclusive finite interval.",
+        "attribute_sources": {"minimum": "minimum", "maximum": "maximum"},
+        "bindings": [
+          {"name": "buffers", "values": {"input_index": ["read", "input"], "output_index": ["write", "output"]}}
+        ],
+        "push_constants": [
+          {"name": "push", "values": {"count": ["U32", "count"], "minimum": ["F32", "minimum"], "maximum": ["F32", "maximum"]}}
+        ],
+        "dispatches": [
+          {"kernel": "AudioClipF32", "buffers": "&buffers", "push_constants": "&push", "workgroups": "KernelId::AudioClipF32.linear_workgroups(count)"}
+        ]
+      }
+    },
+    {
+      "name": "saturate",
+      "input_kinds": ["audio"],
+      "output_kinds": ["audio"],
+      "shape_rule": "match_input",
+      "dtype_rule": "f32",
+      "attributes": [["drive_db", "float"], ["mix", "float"]],
+      "rust": {
+        "category": "signal",
+        "parameters": [["input", "&Audio"], ["drive_db", "f32"], ["mix", "f32"]],
+        "returns": "Audio",
+        "doc": "Apply tanh soft clipping with a dry/wet mix.",
+        "attribute_sources": {"drive_db": "drive_db", "mix": "mix"},
+        "bindings": [
+          {"name": "buffers", "values": {"input_index": ["read", "input"], "output_index": ["write", "output"]}}
+        ],
+        "push_constants": [
+          {"name": "push", "values": {"count": ["U32", "count"], "drive_db": ["F32", "drive_db"], "mix": ["F32", "mix"]}}
+        ],
+        "dispatches": [
+          {"kernel": "AudioSaturateF32", "buffers": "&buffers", "push_constants": "&push", "workgroups": "KernelId::AudioSaturateF32.linear_workgroups(count)"}
+        ]
+      }
+    },
+    {
+      "name": "biquad",
+      "input_kinds": ["audio"],
+      "output_kinds": ["audio"],
+      "shape_rule": "match_input",
+      "dtype_rule": "f32",
+      "attributes": [["b0", "float"], ["b1", "float"], ["b2", "float"], ["a1", "float"], ["a2", "float"]],
+      "rust": {
+        "category": "signal",
+        "parameters": [["input", "&Audio"], ["coefficients", "BiquadCoefficients"]],
+        "returns": "Audio",
+        "doc": "Apply one stable zero-state biquad independently to every channel.",
+        "attribute_sources": {"b0": "coefficients.b0", "b1": "coefficients.b1", "b2": "coefficients.b2", "a1": "coefficients.a1", "a2": "coefficients.a2"},
+        "bindings": [
+          {"name": "summary_buffers", "values": {"input_index": ["read", "input"], "summary_index": ["write", "summaries"]}},
+          {"name": "scan_buffers", "values": {"summary_index": ["read", "summaries"], "state_index": ["write", "states"]}},
+          {"name": "apply_buffers", "values": {"input_index": ["read", "input"], "state_index": ["read", "states"], "output_index": ["write", "output"]}}
+        ],
+        "push_constants": [
+          {"name": "filter_push", "values": {"channels": ["U32", "channels"], "samples": ["U32", "samples"], "blocks": ["U32", "blocks"], "block_size": ["U32", "BIQUAD_BLOCK_SIZE"], "b0": ["F32", "coefficients.b0"], "b1": ["F32", "coefficients.b1"], "b2": ["F32", "coefficients.b2"], "a1": ["F32", "coefficients.a1"], "a2": ["F32", "coefficients.a2"]}},
+          {"name": "scan_push", "values": {"channels": ["U32", "channels"], "blocks": ["U32", "blocks"]}}
+        ],
+        "dispatches": [
+          {"kernel": "AudioBiquadSummaryF32", "buffers": "&summary_buffers", "push_constants": "&filter_push", "workgroups": "KernelId::AudioBiquadSummaryF32.linear_workgroups(tasks)"},
+          {"kernel": "AudioBiquadScanF32", "buffers": "&scan_buffers", "push_constants": "&scan_push", "workgroups": "KernelId::AudioBiquadScanF32.linear_workgroups(channels)"},
+          {"kernel": "AudioBiquadApplyF32", "buffers": "&apply_buffers", "push_constants": "&filter_push", "workgroups": "KernelId::AudioBiquadApplyF32.linear_workgroups(tasks)"}
+        ]
+      }
+    },
+    {
+      "name": "reverb",
+      "input_kinds": ["audio"],
+      "output_kinds": ["audio"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [["decay_seconds", "float"], ["wet", "float"]],
+      "rust": {
+        "category": "signal",
+        "parameters": [["input", "&Audio"], ["decay_seconds", "f32"], ["wet", "f32"]],
+        "returns": "Audio",
+        "doc": "Render a finite zero-state Schroeder reverberation tail.",
+        "attribute_sources": {"decay_seconds": "decay_seconds", "wet": "wet"},
+        "bindings": [
+          {"name": "comb_buffers_0", "values": {"input_index": ["read", "input"], "output_index": ["write", "combs[0]"]}},
+          {"name": "comb_buffers_1", "values": {"input_index": ["read", "input"], "output_index": ["write", "combs[1]"]}},
+          {"name": "comb_buffers_2", "values": {"input_index": ["read", "input"], "output_index": ["write", "combs[2]"]}},
+          {"name": "comb_buffers_3", "values": {"input_index": ["read", "input"], "output_index": ["write", "combs[3]"]}},
+          {"name": "sum_buffers", "values": {"a_index": ["read", "combs[0]"], "b_index": ["read", "combs[1]"], "c_index": ["read", "combs[2]"], "d_index": ["read", "combs[3]"], "output_index": ["write", "summed"]}},
+          {"name": "allpass_a_buffers", "values": {"input_index": ["read", "summed"], "output_index": ["write", "diffuse_a"]}},
+          {"name": "allpass_b_buffers", "values": {"input_index": ["read", "diffuse_a"], "output_index": ["write", "diffuse_b"]}},
+          {"name": "mix_buffers", "values": {"dry_index": ["read", "input"], "wet_index": ["read", "diffuse_b"], "output_index": ["write", "output"]}}
+        ],
+        "push_constants": [
+          {"name": "comb_push_0", "values": {"channels": ["U32", "channels"], "in_samples": ["U32", "in_samples"], "out_samples": ["U32", "out_samples"], "delay_samples": ["U32", "delays[0]"], "feedback": ["F32", "feedback[0]"]}},
+          {"name": "comb_push_1", "values": {"channels": ["U32", "channels"], "in_samples": ["U32", "in_samples"], "out_samples": ["U32", "out_samples"], "delay_samples": ["U32", "delays[1]"], "feedback": ["F32", "feedback[1]"]}},
+          {"name": "comb_push_2", "values": {"channels": ["U32", "channels"], "in_samples": ["U32", "in_samples"], "out_samples": ["U32", "out_samples"], "delay_samples": ["U32", "delays[2]"], "feedback": ["F32", "feedback[2]"]}},
+          {"name": "comb_push_3", "values": {"channels": ["U32", "channels"], "in_samples": ["U32", "in_samples"], "out_samples": ["U32", "out_samples"], "delay_samples": ["U32", "delays[3]"], "feedback": ["F32", "feedback[3]"]}},
+          {"name": "sum_push", "values": {"count": ["U32", "count"], "normalization": ["F32", "(1.0 / denominator) as f32"]}},
+          {"name": "allpass_a_push", "values": {"channels": ["U32", "channels"], "samples": ["U32", "out_samples"], "delay_samples": ["U32", "allpass_delays[0]"], "gain": ["F32", "0.7"]}},
+          {"name": "allpass_b_push", "values": {"channels": ["U32", "channels"], "samples": ["U32", "out_samples"], "delay_samples": ["U32", "allpass_delays[1]"], "gain": ["F32", "0.7"]}},
+          {"name": "mix_push", "values": {"channels": ["U32", "channels"], "in_samples": ["U32", "in_samples"], "out_samples": ["U32", "out_samples"], "wet": ["F32", "wet"]}}
+        ],
+        "dispatches": [
+          {"kernel": "AudioReverbCombF32", "buffers": "&comb_buffers_0", "push_constants": "&comb_push_0", "workgroups": "KernelId::AudioReverbCombF32.linear_workgroups(channels * delays[0])"},
+          {"kernel": "AudioReverbCombF32", "buffers": "&comb_buffers_1", "push_constants": "&comb_push_1", "workgroups": "KernelId::AudioReverbCombF32.linear_workgroups(channels * delays[1])"},
+          {"kernel": "AudioReverbCombF32", "buffers": "&comb_buffers_2", "push_constants": "&comb_push_2", "workgroups": "KernelId::AudioReverbCombF32.linear_workgroups(channels * delays[2])"},
+          {"kernel": "AudioReverbCombF32", "buffers": "&comb_buffers_3", "push_constants": "&comb_push_3", "workgroups": "KernelId::AudioReverbCombF32.linear_workgroups(channels * delays[3])"},
+          {"kernel": "AudioReverbSumF32", "buffers": "&sum_buffers", "push_constants": "&sum_push", "workgroups": "KernelId::AudioReverbSumF32.linear_workgroups(count)"},
+          {"kernel": "AudioReverbAllpassF32", "buffers": "&allpass_a_buffers", "push_constants": "&allpass_a_push", "workgroups": "KernelId::AudioReverbAllpassF32.linear_workgroups(channels * allpass_delays[0])"},
+          {"kernel": "AudioReverbAllpassF32", "buffers": "&allpass_b_buffers", "push_constants": "&allpass_b_push", "workgroups": "KernelId::AudioReverbAllpassF32.linear_workgroups(channels * allpass_delays[1])"},
+          {"kernel": "AudioReverbMixF32", "buffers": "&mix_buffers", "push_constants": "&mix_push", "workgroups": "KernelId::AudioReverbMixF32.linear_workgroups(count)"}
+        ]
+      }
+    },
+    {
+      "name": "sos_filter",
+      "input_kinds": ["audio"],
+      "output_kinds": ["audio"],
+      "shape_rule": "match_input",
+      "dtype_rule": "f32",
+      "attributes": [["section_count", "unsigned_integer"], ["coefficient_hash", "unsigned_integer"]],
+      "rust": {
+        "category": "signal",
+        "parameters": [["input", "&Audio"], ["sections", "&[BiquadCoefficients]"]],
+        "returns": "Audio",
+        "doc": "Apply one to 64 stable biquad sections as a zero-state cascade.",
+        "attribute_sources": {"section_count": "u64::from(section_count)", "coefficient_hash": "hash"},
+        "bindings": [
+          {"name": "buffers", "values": {"input_index": ["read", "input"], "coefficients_index": ["read", "coefficient_matrix"], "output_index": ["write", "output"]}}
+        ],
+        "push_constants": [
+          {"name": "push", "values": {"channels": ["U32", "channels"], "samples": ["U32", "samples"], "section_count": ["U32", "section_count"]}}
+        ],
+        "dispatches": [
+          {"kernel": "AudioSosFilterF32", "buffers": "&buffers", "push_constants": "&push", "workgroups": "KernelId::AudioSosFilterF32.linear_workgroups(channels)"}
+        ]
+      }
+    },
+    {
+      "name": "pre_emphasis",
+      "input_kinds": ["audio"],
+      "output_kinds": ["audio"],
+      "shape_rule": "match_input",
+      "dtype_rule": "f32",
+      "attributes": [["alpha", "float"]],
+      "rust": {
+        "category": "signal",
+        "parameters": [["input", "&Audio"], ["alpha", "f32"]],
+        "returns": "Audio",
+        "doc": "Apply `y[n] = x[n] - alpha*x[n-1]` independently per channel.",
+        "attribute_sources": {"alpha": "alpha"},
+        "bindings": [
+          {"name": "buffers", "values": {"input_index": ["read", "input"], "output_index": ["write", "output"]}}
+        ],
+        "push_constants": [
+          {"name": "push", "values": {"count": ["U32", "count"], "samples": ["U32", "samples"], "alpha": ["F32", "alpha"]}}
+        ],
+        "dispatches": [
+          {"kernel": "AudioPreEmphasisF32", "buffers": "&buffers", "push_constants": "&push", "workgroups": "KernelId::AudioPreEmphasisF32.linear_workgroups(count)"}
+        ]
+      }
+    },
+    {
+      "name": "to_mono",
+      "input_kinds": ["audio"],
+      "output_kinds": ["audio"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [],
+      "rust": {
+        "category": "signal",
+        "parameters": [["input", "&Audio"]],
+        "returns": "Audio",
+        "doc": "Average all channels into one mono channel.",
+        "attribute_sources": {},
+        "bindings": [
+          {"name": "buffers", "values": {"input_index": ["read", "input"], "output_index": ["write", "output"]}}
+        ],
+        "push_constants": [
+          {"name": "push", "values": {"channels": ["U32", "channels"], "samples": ["U32", "samples"]}}
+        ],
+        "dispatches": [
+          {"kernel": "AudioToMonoF32", "buffers": "&buffers", "push_constants": "&push", "workgroups": "KernelId::AudioToMonoF32.linear_workgroups(samples)"}
+        ]
+      }
+    },
+    {
+      "name": "fade",
+      "input_kinds": ["audio"],
+      "output_kinds": ["audio"],
+      "shape_rule": "match_input",
+      "dtype_rule": "f32",
+      "attributes": [["fade_in_samples", "unsigned_integer"], ["fade_out_samples", "unsigned_integer"]],
+      "rust": {
+        "category": "signal",
+        "parameters": [["input", "&Audio"], ["fade_in_samples", "u64"], ["fade_out_samples", "u64"]],
+        "returns": "Audio",
+        "doc": "Apply linear fade-in and fade-out envelopes measured in samples.",
+        "attribute_sources": {"fade_in_samples": "fade_in_samples", "fade_out_samples": "fade_out_samples"},
+        "bindings": [
+          {"name": "buffers", "values": {"input_index": ["read", "input"], "output_index": ["write", "output"]}}
+        ],
+        "push_constants": [
+          {"name": "push", "values": {"count": ["U32", "count"], "samples": ["U32", "samples"], "fade_in": ["U32", "fade_in"], "fade_out": ["U32", "fade_out"]}}
+        ],
+        "dispatches": [
+          {"kernel": "AudioFadeF32", "buffers": "&buffers", "push_constants": "&push", "workgroups": "KernelId::AudioFadeF32.linear_workgroups(count)"}
+        ]
+      }
+    },
+    {
+      "name": "mix",
+      "input_kinds": ["audio", "audio"],
+      "output_kinds": ["audio"],
+      "shape_rule": "match_input",
+      "dtype_rule": "f32",
+      "attributes": [["gain_a", "float"], ["gain_b", "float"]],
+      "rust": {
+        "category": "signal",
+        "parameters": [["a", "&Audio"], ["b", "&Audio"], ["gain_a", "f32"], ["gain_b", "f32"]],
+        "returns": "Audio",
+        "doc": "Compute a weighted sum of matching Audio values.",
+        "attribute_sources": {"gain_a": "gain_a", "gain_b": "gain_b"},
+        "bindings": [
+          {"name": "buffers", "values": {"a_index": ["read", "a"], "b_index": ["read", "b"], "output_index": ["write", "output"]}}
+        ],
+        "push_constants": [
+          {"name": "push", "values": {"count": ["U32", "count"], "gain_a": ["F32", "gain_a"], "gain_b": ["F32", "gain_b"]}}
+        ],
+        "dispatches": [
+          {"kernel": "AudioMixF32", "buffers": "&buffers", "push_constants": "&push", "workgroups": "KernelId::AudioMixF32.linear_workgroups(count)"}
+        ]
+      }
+    },
+    {
+      "name": "amplitude_to_db",
+      "input_kinds": ["audio"],
+      "output_kinds": ["matrix"],
+      "shape_rule": "match_input",
+      "dtype_rule": "f32",
+      "attributes": [["floor_db", "float"]],
+      "rust": {
+        "category": "signal",
+        "parameters": [["input", "&Audio"], ["floor_db", "f32"]],
+        "returns": "Matrix",
+        "doc": "Convert absolute amplitude to finite decibels with a silence floor.",
+        "attribute_sources": {"floor_db": "floor_db"},
+        "bindings": [
+          {"name": "buffers", "values": {"input_index": ["read", "input"], "output_index": ["write", "output"]}}
+        ],
+        "push_constants": [
+          {"name": "push", "values": {"count": ["U32", "count"], "floor_db": ["F32", "floor_db"]}}
+        ],
+        "dispatches": [
+          {"kernel": "AudioAmplitudeToDbF32", "buffers": "&buffers", "push_constants": "&push", "workgroups": "KernelId::AudioAmplitudeToDbF32.linear_workgroups(count)"}
+        ]
+      }
+    },
+    {
+      "name": "waveform_envelope",
+      "input_kinds": ["audio"],
+      "output_kinds": ["matrix"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [["bins", "unsigned_integer"]],
+      "rust": {
+        "category": "signal",
+        "parameters": [["input", "&Audio"], ["bins", "u32"]],
+        "returns": "Matrix",
+        "doc": "Reduce multichannel audio to `[bins, 2]` minimum/maximum pairs.",
+        "attribute_sources": {"bins": "u64::from(bins)"},
+        "bindings": [
+          {"name": "buffers", "values": {"input_index": ["read", "input"], "output_index": ["write", "output"]}}
+        ],
+        "push_constants": [
+          {"name": "push", "values": {"channels": ["U32", "channels"], "samples": ["U32", "samples"], "bins": ["U32", "bins"]}}
+        ],
+        "dispatches": [
+          {"kernel": "AudioWaveformEnvelopeF32", "buffers": "&buffers", "push_constants": "&push", "workgroups": "KernelId::AudioWaveformEnvelopeF32.linear_workgroups(bins)"}
+        ]
+      }
+    },
+    {
+      "name": "stft",
+      "input_kinds": ["audio"],
+      "output_kinds": ["matrix"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [["fft_size", "unsigned_integer"], ["hop_size", "unsigned_integer"], ["win_size", "unsigned_integer"], ["window", "unsigned_integer"], ["center", "boolean"]],
+      "rust": {
+        "category": "transform",
+        "parameters": [["input", "&Audio"], ["config", "StftConfig"]],
+        "returns": "Matrix",
+        "doc": "Compute magnitude STFT features in `[channels, frames, frequency_bins]` layout.",
+        "attribute_sources": {"fft_size": "u64::from(config.fft_size)", "hop_size": "u64::from(config.hop_size)", "win_size": "u64::from(config.win_size)", "window": "u64::from(window)", "center": "config.center"},
+        "bindings": [
+          {"name": "buffers", "values": {"input_index": ["read", "input"], "output_index": ["write", "output"]}}
+        ],
+        "push_constants": [
+          {"name": "push", "values": {"fft_size": ["U32", "config.fft_size"], "hop_size": ["U32", "config.hop_size"], "win_size": ["U32", "win_size"], "window": ["U32", "window"], "channels": ["U32", "shape.channels"], "samples": ["U32", "shape.samples"], "frames": ["U32", "shape.frames"], "freq_bins": ["U32", "shape.freq_bins"], "center": ["U32", "u32::from(config.center)"]}}
+        ],
+        "dispatches": [
+          {"kernel": "AudioStftF32", "buffers": "&buffers", "push_constants": "&push", "workgroups": "[shape.frames, 1, shape.channels]"}
+        ]
+      }
+    },
+    {
+      "name": "mel_spectrogram",
+      "input_kinds": ["audio"],
+      "output_kinds": ["matrix"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [["fft_size", "unsigned_integer"], ["hop_size", "unsigned_integer"], ["num_mels", "unsigned_integer"], ["f_min", "float"], ["f_max", "float"], ["log_scale", "boolean"], ["normalize", "boolean"]],
+      "rust": {
+        "category": "transform",
+        "parameters": [["input", "&Audio"], ["config", "MelConfig"]],
+        "returns": "Matrix",
+        "doc": "Compute HTK triangular-filter mel features in `[channels, mels, frames]` layout.",
+        "attribute_sources": {"fft_size": "u64::from(config.fft_size)", "hop_size": "u64::from(config.hop_size)", "num_mels": "u64::from(config.num_mels)", "f_min": "config.f_min", "f_max": "config.f_max", "log_scale": "config.log_scale", "normalize": "config.normalize"},
+        "bindings": [
+          {"name": "spectrum_buffers", "values": {"input_index": ["read", "input"], "output_index": ["write", "spectrum"]}},
+          {"name": "mel_buffers", "values": {"input_index": ["read", "spectrum"], "output_index": ["write", "raw"], "filterbank_index": ["read", "filterbank"]}},
+          {"name": "normalize_buffers", "values": {"input_index": ["read", "raw"], "output_index": ["write", "output"]}},
+          {"name": "mel_buffers", "values": {"input_index": ["read", "spectrum"], "output_index": ["write", "output"], "filterbank_index": ["read", "filterbank"]}}
+        ],
+        "push_constants": [
+          {"name": "spectrum_push", "values": {"fft_size": ["U32", "stft_config.fft_size"], "hop_size": ["U32", "stft_config.hop_size"], "win_size": ["U32", "win_size"], "window": ["U32", "window"], "channels": ["U32", "shape.channels"], "samples": ["U32", "shape.samples"], "frames": ["U32", "shape.frames"], "freq_bins": ["U32", "shape.freq_bins"], "center": ["U32", "u32::from(stft_config.center)"]}},
+          {"name": "mel_push", "values": {"channels": ["U32", "shape.channels"], "frames": ["U32", "shape.frames"], "freq_bins": ["U32", "shape.freq_bins"], "num_mels": ["U32", "config.num_mels"], "log_scale": ["U32", "u32::from(config.log_scale)"]}},
+          {"name": "normalize_push", "values": {"channels": ["U32", "shape.channels"], "values_per_channel": ["U32", "values_per_channel"]}}
+        ],
+        "dispatches": [
+          {"kernel": "AudioStftF32", "buffers": "&spectrum_buffers", "push_constants": "&spectrum_push", "workgroups": "[shape.frames, 1, shape.channels]"},
+          {"kernel": "AudioMelFilterbankF32", "buffers": "&mel_buffers", "push_constants": "&mel_push", "workgroups": "[config.num_mels.div_ceil(32), shape.frames, shape.channels]"},
+          {"kernel": "AudioMelNormalizeF32", "buffers": "&normalize_buffers", "push_constants": "&normalize_push", "workgroups": "[shape.channels, 1, 1]"},
+          {"kernel": "AudioStftF32", "buffers": "&spectrum_buffers", "push_constants": "&spectrum_push", "workgroups": "[shape.frames, 1, shape.channels]"},
+          {"kernel": "AudioMelFilterbankF32", "buffers": "&mel_buffers", "push_constants": "&mel_push", "workgroups": "[config.num_mels.div_ceil(32), shape.frames, shape.channels]"}
+        ]
+      }
+    },
+    {
+      "name": "mfcc",
+      "input_kinds": ["audio"],
+      "output_kinds": ["matrix"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [["num_coeffs", "unsigned_integer"], ["fft_size", "unsigned_integer"], ["hop_size", "unsigned_integer"], ["num_mels", "unsigned_integer"], ["f_min", "float"], ["f_max", "float"], ["log_scale", "boolean"], ["normalize", "boolean"]],
+      "rust": {
+        "category": "transform",
+        "parameters": [["input", "&Audio"], ["config", "MfccConfig"]],
+        "returns": "Matrix",
+        "doc": "Compute orthonormal DCT-II coefficients in `[channels, coefficients, frames]` layout.",
+        "attribute_sources": {"num_coeffs": "u64::from(config.num_coeffs)", "fft_size": "u64::from(config.mel.fft_size)", "hop_size": "u64::from(config.mel.hop_size)", "num_mels": "u64::from(config.mel.num_mels)", "f_min": "config.mel.f_min", "f_max": "config.mel.f_max", "log_scale": "config.mel.log_scale", "normalize": "config.mel.normalize"},
+        "bindings": [
+          {"name": "spectrum_buffers", "values": {"input_index": ["read", "input"], "output_index": ["write", "spectrum"]}},
+          {"name": "mel_buffers", "values": {"input_index": ["read", "spectrum"], "output_index": ["write", "mel"], "filterbank_index": ["read", "filterbank"]}},
+          {"name": "dct_buffers", "values": {"mel_index": ["read", "mel"], "output_index": ["write", "output"]}}
+        ],
+        "push_constants": [
+          {"name": "spectrum_push", "values": {"fft_size": ["U32", "stft_config.fft_size"], "hop_size": ["U32", "stft_config.hop_size"], "win_size": ["U32", "win_size"], "window": ["U32", "window"], "channels": ["U32", "shape.channels"], "samples": ["U32", "shape.samples"], "frames": ["U32", "shape.frames"], "freq_bins": ["U32", "shape.freq_bins"], "center": ["U32", "u32::from(stft_config.center)"]}},
+          {"name": "mel_push", "values": {"channels": ["U32", "shape.channels"], "frames": ["U32", "shape.frames"], "freq_bins": ["U32", "shape.freq_bins"], "num_mels": ["U32", "mel_config.num_mels"], "log_scale": ["U32", "u32::from(mel_config.log_scale)"]}},
+          {"name": "dct_push", "values": {"channels": ["U32", "shape.channels"], "frames": ["U32", "shape.frames"], "num_mels": ["U32", "config.mel.num_mels"], "num_coeffs": ["U32", "config.num_coeffs"]}}
+        ],
+        "dispatches": [
+          {"kernel": "AudioStftF32", "buffers": "&spectrum_buffers", "push_constants": "&spectrum_push", "workgroups": "[shape.frames, 1, shape.channels]"},
+          {"kernel": "AudioMelFilterbankF32", "buffers": "&mel_buffers", "push_constants": "&mel_push", "workgroups": "[\n\t\t\t\tmel_config.num_mels.div_ceil(32),\n\t\t\t\tshape.frames,\n\t\t\t\tshape.channels,\n\t\t\t]"},
+          {"kernel": "AudioMfccDctF32", "buffers": "&dct_buffers", "push_constants": "&dct_push", "workgroups": "[config.num_coeffs.div_ceil(32), shape.frames, shape.channels]"}
+        ]
+      }
+    }
+  ],
+  "kernels": [
+    {"stable_id": 58, "name": "gain", "kernel_id": "AudioGainF32", "source": "src/slang/audio/signal/gain.slang", "workgroup_size": [256, 1, 1], "semantic_operation": "gain", "push_fields": [["input_index", "uint32"], ["output_index", "uint32"], ["count", "uint32"], ["gain_db", "float32"]]},
+    {"stable_id": 59, "name": "clip", "kernel_id": "AudioClipF32", "source": "src/slang/audio/signal/clip.slang", "workgroup_size": [256, 1, 1], "semantic_operation": "clip", "push_fields": [["input_index", "uint32"], ["output_index", "uint32"], ["count", "uint32"], ["minimum", "float32"], ["maximum", "float32"]]},
+    {"stable_id": 60, "name": "saturate", "kernel_id": "AudioSaturateF32", "source": "src/slang/audio/signal/saturate.slang", "workgroup_size": [256, 1, 1], "semantic_operation": "saturate", "push_fields": [["input_index", "uint32"], ["output_index", "uint32"], ["count", "uint32"], ["drive_db", "float32"], ["mix", "float32"]]},
+    {"stable_id": 61, "name": "resample", "kernel_id": "AudioResampleF32", "source": "src/slang/audio/signal/resample.slang", "workgroup_size": [256, 1, 1], "semantic_operation": "resample", "push_fields": [["input_index", "uint32"], ["output_index", "uint32"], ["count", "uint32"], ["in_rate_r", "uint32"], ["out_rate_r", "uint32"], ["filter_half_width", "uint32"], ["in_samples", "uint32"], ["out_samples", "uint32"]]},
+    {"stable_id": 62, "name": "fade", "kernel_id": "AudioFadeF32", "source": "src/slang/audio/signal/fade.slang", "workgroup_size": [256, 1, 1], "semantic_operation": "fade", "push_fields": [["input_index", "uint32"], ["output_index", "uint32"], ["count", "uint32"], ["samples", "uint32"], ["fade_in", "uint32"], ["fade_out", "uint32"]]},
+    {"stable_id": 63, "name": "mix", "kernel_id": "AudioMixF32", "source": "src/slang/audio/signal/mix.slang", "workgroup_size": [256, 1, 1], "semantic_operation": "mix", "push_fields": [["a_index", "uint32"], ["b_index", "uint32"], ["output_index", "uint32"], ["count", "uint32"], ["gain_a", "float32"], ["gain_b", "float32"]]},
+    {"stable_id": 64, "name": "amplitude_to_db", "kernel_id": "AudioAmplitudeToDbF32", "source": "src/slang/audio/signal/amplitude_to_db.slang", "workgroup_size": [256, 1, 1], "semantic_operation": "amplitude_to_db", "push_fields": [["input_index", "uint32"], ["output_index", "uint32"], ["count", "uint32"], ["floor_db", "float32"]]},
+    {"stable_id": 65, "name": "waveform_envelope", "kernel_id": "AudioWaveformEnvelopeF32", "source": "src/slang/audio/signal/waveform_envelope.slang", "workgroup_size": [256, 1, 1], "semantic_operation": "waveform_envelope", "push_fields": [["input_index", "uint32"], ["output_index", "uint32"], ["channels", "uint32"], ["samples", "uint32"], ["bins", "uint32"]]},
+    {"stable_id": 66, "name": "pre_emphasis", "kernel_id": "AudioPreEmphasisF32", "source": "src/slang/audio/signal/pre_emphasis.slang", "workgroup_size": [256, 1, 1], "semantic_operation": "pre_emphasis", "push_fields": [["input_index", "uint32"], ["output_index", "uint32"], ["count", "uint32"], ["samples", "uint32"], ["alpha", "float32"]]},
+    {"stable_id": 67, "name": "to_mono", "kernel_id": "AudioToMonoF32", "source": "src/slang/audio/signal/to_mono.slang", "workgroup_size": [256, 1, 1], "semantic_operation": "to_mono", "push_fields": [["input_index", "uint32"], ["output_index", "uint32"], ["channels", "uint32"], ["samples", "uint32"]]},
+    {"stable_id": 68, "name": "normalize_level", "kernel_id": "AudioNormalizeLevelF32", "source": "src/slang/audio/signal/normalize_level.slang", "workgroup_size": [1, 1, 1], "push_fields": [["input_index", "uint32"], ["level_index", "uint32"], ["count", "uint32"], ["mode", "uint32"]]},
+    {"stable_id": 69, "name": "normalize_apply", "kernel_id": "AudioNormalizeApplyF32", "source": "src/slang/audio/signal/normalize_apply.slang", "workgroup_size": [256, 1, 1], "push_fields": [["input_index", "uint32"], ["level_index", "uint32"], ["output_index", "uint32"], ["count", "uint32"], ["target_linear", "float32"]]},
+    {"stable_id": 70, "name": "biquad_summary", "kernel_id": "AudioBiquadSummaryF32", "source": "src/slang/audio/signal/biquad_summary.slang", "workgroup_size": [64, 1, 1], "push_fields": [["input_index", "uint32"], ["summary_index", "uint32"], ["channels", "uint32"], ["samples", "uint32"], ["blocks", "uint32"], ["block_size", "uint32"], ["b0", "float32"], ["b1", "float32"], ["b2", "float32"], ["a1", "float32"], ["a2", "float32"]]},
+    {"stable_id": 71, "name": "biquad_scan", "kernel_id": "AudioBiquadScanF32", "source": "src/slang/audio/signal/biquad_scan.slang", "workgroup_size": [64, 1, 1], "push_fields": [["summary_index", "uint32"], ["state_index", "uint32"], ["channels", "uint32"], ["blocks", "uint32"]]},
+    {"stable_id": 72, "name": "biquad_apply", "kernel_id": "AudioBiquadApplyF32", "source": "src/slang/audio/signal/biquad_apply.slang", "workgroup_size": [64, 1, 1], "push_fields": [["input_index", "uint32"], ["state_index", "uint32"], ["output_index", "uint32"], ["channels", "uint32"], ["samples", "uint32"], ["blocks", "uint32"], ["block_size", "uint32"], ["b0", "float32"], ["b1", "float32"], ["b2", "float32"], ["a1", "float32"], ["a2", "float32"]]},
+    {"stable_id": 73, "name": "reverb_comb", "kernel_id": "AudioReverbCombF32", "source": "src/slang/audio/signal/reverb_comb.slang", "workgroup_size": [256, 1, 1], "push_fields": [["input_index", "uint32"], ["output_index", "uint32"], ["channels", "uint32"], ["in_samples", "uint32"], ["out_samples", "uint32"], ["delay_samples", "uint32"], ["feedback", "float32"]]},
+    {"stable_id": 74, "name": "reverb_sum", "kernel_id": "AudioReverbSumF32", "source": "src/slang/audio/signal/reverb_sum.slang", "workgroup_size": [256, 1, 1], "push_fields": [["a_index", "uint32"], ["b_index", "uint32"], ["c_index", "uint32"], ["d_index", "uint32"], ["output_index", "uint32"], ["count", "uint32"], ["normalization", "float32"]]},
+    {"stable_id": 75, "name": "reverb_allpass", "kernel_id": "AudioReverbAllpassF32", "source": "src/slang/audio/signal/reverb_allpass.slang", "workgroup_size": [256, 1, 1], "push_fields": [["input_index", "uint32"], ["output_index", "uint32"], ["channels", "uint32"], ["samples", "uint32"], ["delay_samples", "uint32"], ["gain", "float32"]]},
+    {"stable_id": 76, "name": "reverb_mix", "kernel_id": "AudioReverbMixF32", "source": "src/slang/audio/signal/reverb_mix.slang", "workgroup_size": [256, 1, 1], "push_fields": [["dry_index", "uint32"], ["wet_index", "uint32"], ["output_index", "uint32"], ["channels", "uint32"], ["in_samples", "uint32"], ["out_samples", "uint32"], ["wet", "float32"]]},
+    {"stable_id": 77, "name": "stft", "kernel_id": "AudioStftF32", "source": "src/slang/audio/transform/stft.slang", "workgroup_size": [256, 1, 1], "semantic_operation": "stft", "dispatch_tile_size": [1, 1, 1], "push_fields": [["input_index", "uint32"], ["output_index", "uint32"], ["fft_size", "uint32"], ["hop_size", "uint32"], ["win_size", "uint32"], ["window", "uint32"], ["channels", "uint32"], ["samples", "uint32"], ["frames", "uint32"], ["freq_bins", "uint32"], ["center", "uint32"]]},
+    {"stable_id": 78, "name": "mel_filterbank", "kernel_id": "AudioMelFilterbankF32", "source": "src/slang/audio/transform/mel_filterbank.slang", "workgroup_size": [32, 1, 1], "push_fields": [["input_index", "uint32"], ["output_index", "uint32"], ["filterbank_index", "uint32"], ["channels", "uint32"], ["frames", "uint32"], ["freq_bins", "uint32"], ["num_mels", "uint32"], ["log_scale", "uint32"]]},
+    {"stable_id": 79, "name": "mel_normalize", "kernel_id": "AudioMelNormalizeF32", "source": "src/slang/audio/transform/mel_normalize.slang", "workgroup_size": [1, 1, 1], "push_fields": [["input_index", "uint32"], ["output_index", "uint32"], ["channels", "uint32"], ["values_per_channel", "uint32"]]},
+    {"stable_id": 80, "name": "mfcc_dct", "kernel_id": "AudioMfccDctF32", "source": "src/slang/audio/transform/mfcc_dct.slang", "workgroup_size": [32, 1, 1], "push_fields": [["mel_index", "uint32"], ["output_index", "uint32"], ["channels", "uint32"], ["frames", "uint32"], ["num_mels", "uint32"], ["num_coeffs", "uint32"]]},
+    {"stable_id": 81, "name": "sos_filter", "kernel_id": "AudioSosFilterF32", "source": "src/slang/audio/signal/sos_filter.slang", "workgroup_size": [64, 1, 1], "semantic_operation": "sos_filter", "push_fields": [["input_index", "uint32"], ["coefficients_index", "uint32"], ["output_index", "uint32"], ["channels", "uint32"], ["samples", "uint32"], ["section_count", "uint32"]]}
+  ],
+  "types": [
+    {"category": "signal", "name": "NormalizeAudioMode", "before": "normalize", "kind": "enum", "visibility": "pub", "derive": ["Clone", "Copy", "Debug", "Default", "PartialEq", "Eq"], "doc": "Global level estimator used by [`normalize`].", "fields": [], "variants": [{"name": "Peak", "doc": "Normalize the largest absolute sample."}, {"name": "Rms", "doc": "Normalize the root-mean-square level over all channels and samples."}], "defaults": null, "default_variant": "Peak"},
+    {"category": "signal", "name": "NormalizeAudioConfig", "before": "normalize", "kind": "struct", "visibility": "pub", "derive": ["Clone", "Copy", "Debug", "PartialEq"], "doc": "Parameters for [`normalize`].", "fields": [{"name": "target_db", "type": "f32", "visibility": "pub", "doc": ""}, {"name": "mode", "type": "NormalizeAudioMode", "visibility": "pub", "doc": ""}], "variants": [], "defaults": {"target_db": "-3.0", "mode": "NormalizeAudioMode::Peak"}, "default_variant": null},
+    {"category": "signal", "name": "ResampleConfig", "before": "resample", "kind": "struct", "visibility": "pub", "derive": ["Clone", "Copy", "Debug", "PartialEq", "Eq"], "doc": "Parameters for [`resample`].", "fields": [{"name": "out_rate", "type": "u32", "visibility": "pub", "doc": ""}, {"name": "filter_half_width", "type": "u32", "visibility": "pub", "doc": ""}], "variants": [], "defaults": {"out_rate": "16_000", "filter_half_width": "64"}, "default_variant": null},
+    {"category": "signal", "name": "BiquadCoefficients", "before": "biquad", "kind": "struct", "visibility": "pub", "derive": ["Clone", "Copy", "Debug", "PartialEq"], "doc": "Real, `a0`-normalized coefficients for one stable biquad section.", "fields": [{"name": "b0", "type": "f32", "visibility": "pub", "doc": ""}, {"name": "b1", "type": "f32", "visibility": "pub", "doc": ""}, {"name": "b2", "type": "f32", "visibility": "pub", "doc": ""}, {"name": "a1", "type": "f32", "visibility": "pub", "doc": ""}, {"name": "a2", "type": "f32", "visibility": "pub", "doc": ""}], "variants": [], "defaults": {"b0": "1.0", "b1": "0.0", "b2": "0.0", "a1": "0.0", "a2": "0.0"}, "default_variant": null},
+    {"category": "transform", "name": "StftWindow", "before": "stft", "kind": "enum", "visibility": "pub", "derive": ["Clone", "Copy", "Debug", "Default", "PartialEq", "Eq"], "doc": "Window function applied before each FFT frame.", "fields": [], "variants": [{"name": "Hann", "doc": ""}, {"name": "Hamming", "doc": ""}, {"name": "Blackman", "doc": ""}, {"name": "Rectangular", "doc": ""}], "defaults": null, "default_variant": "Hann"},
+    {"category": "transform", "name": "StftConfig", "before": "stft", "kind": "struct", "visibility": "pub", "derive": ["Clone", "Copy", "Debug", "PartialEq", "Eq"], "doc": "Short-time Fourier transform configuration.", "fields": [{"name": "fft_size", "type": "u32", "visibility": "pub", "doc": ""}, {"name": "hop_size", "type": "u32", "visibility": "pub", "doc": ""}, {"name": "win_size", "type": "u32", "visibility": "pub", "doc": "Zero selects `fft_size`."}, {"name": "window", "type": "StftWindow", "visibility": "pub", "doc": ""}, {"name": "center", "type": "bool", "visibility": "pub", "doc": ""}], "variants": [], "defaults": {"fft_size": "1_024", "hop_size": "256", "win_size": "0", "window": "StftWindow::Hann", "center": "true"}, "default_variant": null},
+    {"category": "transform", "name": "MelConfig", "before": "mel_spectrogram", "kind": "struct", "visibility": "pub", "derive": ["Clone", "Copy", "Debug", "PartialEq"], "doc": "Mel-spectrogram configuration.", "fields": [{"name": "fft_size", "type": "u32", "visibility": "pub", "doc": ""}, {"name": "hop_size", "type": "u32", "visibility": "pub", "doc": ""}, {"name": "num_mels", "type": "u32", "visibility": "pub", "doc": ""}, {"name": "f_min", "type": "f32", "visibility": "pub", "doc": ""}, {"name": "f_max", "type": "f32", "visibility": "pub", "doc": "Zero selects the Nyquist frequency."}, {"name": "log_scale", "type": "bool", "visibility": "pub", "doc": ""}, {"name": "normalize", "type": "bool", "visibility": "pub", "doc": ""}], "variants": [], "defaults": {"fft_size": "1_024", "hop_size": "256", "num_mels": "80", "f_min": "0.0", "f_max": "0.0", "log_scale": "true", "normalize": "false"}, "default_variant": null},
+    {"category": "transform", "name": "MfccConfig", "before": "mfcc", "kind": "struct", "visibility": "pub", "derive": ["Clone", "Copy", "Debug", "PartialEq"], "doc": "Mel-frequency cepstral coefficient configuration.", "fields": [{"name": "num_coeffs", "type": "u32", "visibility": "pub", "doc": ""}, {"name": "mel", "type": "MelConfig", "visibility": "pub", "doc": ""}], "variants": [], "defaults": {"num_coeffs": "13", "mel": "MelConfig::default()"}, "default_variant": null},
+    {"category": "transform", "name": "StftShape", "before": "stft", "kind": "struct", "visibility": "", "derive": ["Clone", "Copy"], "doc": "", "fields": [{"name": "channels", "type": "u32", "visibility": "", "doc": ""}, {"name": "samples", "type": "u32", "visibility": "", "doc": ""}, {"name": "frames", "type": "u32", "visibility": "", "doc": ""}, {"name": "freq_bins", "type": "u32", "visibility": "", "doc": ""}], "variants": [], "defaults": null, "default_variant": null}
+  ]
+}

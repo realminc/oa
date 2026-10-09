@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "family": "ui",
+  "domain": "ui",
+  "dtype": "f32",
+  "contracts": [],
+  "kernels": [
+    {
+      "stable_id": 450, "name": "clear_compose", "kernel_id": "UiClearCompose",
+      "source": "src/slang/ui/clear_compose.slang",
+      "workgroup_size": [8, 8, 1],
+      "push_fields": [["dst_index","uint32"],["dst_w","uint32"],["dst_h","uint32"],["rgba","uint32"]]
+    },
+    {
+      "stable_id": 451, "name": "draw_rect", "kernel_id": "UiDrawRect",
+      "source": "src/slang/ui/draw_rect.slang",
+      "workgroup_size": [8, 8, 1],
+      "push_fields": [["dst_index","uint32"],["dst_x","int32"],["dst_y","int32"],["dst_w","uint32"],["dst_h","uint32"],["rgba","uint32"],["clip_x","int32"],["clip_y","int32"],["clip_w","int32"],["clip_h","int32"],["corner_radius","float32"]]
+    },
+    {
+      "stable_id": 452, "name": "draw_rect_outline", "kernel_id": "UiDrawRectOutline",
+      "source": "src/slang/ui/draw_rect_outline.slang",
+      "workgroup_size": [8, 8, 1],
+      "push_fields": [["dst_index","uint32"],["dst_x","int32"],["dst_y","int32"],["dst_w","uint32"],["dst_h","uint32"],["thickness","uint32"],["rgba","uint32"],["clip_x","int32"],["clip_y","int32"],["clip_w","int32"],["clip_h","int32"],["corner_radius","float32"]]
+    },
+    {
+      "stable_id": 453, "name": "draw_line", "kernel_id": "UiDrawLine",
+      "source": "src/slang/ui/draw_line.slang",
+      "workgroup_size": [8, 8, 1],
+      "push_fields": [["dst_index","uint32"],["x0","float32"],["y0","float32"],["x1","float32"],["y1","float32"],["thickness","float32"],["rgba","uint32"],["bounds_x","uint32"],["bounds_y","uint32"],["bounds_w","uint32"],["bounds_h","uint32"]]
+    },
+    {
+      "stable_id": 454, "name": "blit_rgba", "kernel_id": "UiBlitRgba",
+      "source": "src/slang/ui/blit_rgba.slang",
+      "workgroup_size": [8, 8, 1],
+      "push_fields": [["src_index","uint32"],["dst_index","uint32"],["src_w","uint32"],["src_h","uint32"],["dst_x","int32"],["dst_y","int32"],["dst_w","uint32"],["dst_h","uint32"],["clip_x","int32"],["clip_y","int32"],["clip_w","int32"],["clip_h","int32"],["channel","uint32"]]
+    },
+    {
+      "stable_id": 455, "name": "draw_plot_line", "kernel_id": "UiDrawPlotLine",
+      "source": "src/slang/ui/draw_plot_line.slang",
+      "workgroup_size": [64, 1, 1],
+      "push_fields": [["values_index","uint32"],["count","uint32"],["dst_index","uint32"],["dst_x","int32"],["dst_y","int32"],["dst_w","uint32"],["dst_h","uint32"],["x_min","float32"],["x_max","float32"],["y_min","float32"],["y_max","float32"],["rgba","uint32"],["flags","uint32"],["antialias_samples","uint32"],["line_width","float32"],["clip_x","int32"],["clip_y","int32"],["clip_w","int32"],["clip_h","int32"]]
+    },
+    {
+      "stable_id": 456, "name": "draw_glyphs", "kernel_id": "UiDrawGlyphs",
+      "source": "src/slang/ui/draw_glyphs.slang",
+      "workgroup_size": [8, 8, 1],
+      "push_fields": [["glyph_index","uint32"],["glyph_offset","uint32"],["atlas_index","uint32"],["count","uint32"],["dst_offset_x","uint32"],["dst_offset_y","uint32"],["dst_index","uint32"],["canvas_x","int32"],["canvas_y","int32"],["canvas_w","uint32"],["canvas_h","uint32"],["clip_x","int32"],["clip_y","int32"],["clip_w","int32"],["clip_h","int32"],["atlas_w","uint32"],["atlas_h","uint32"],["scale","float32"]]
+    }
+  ]
+}

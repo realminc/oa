@@ -1,0 +1,21 @@
+{
+	"version": 1,
+	"family": "rope",
+	"imports": [
+		"use crate::{Error, Matrix, Result};",
+		"use super::super::{Module, ModuleRegistry, matrix};"
+	],
+	"helper": "",
+	"layers": [
+		{
+			"name": "Rope",
+			"doc": "Llama-style split-half rotary position embedding module.",
+			"template": "rope",
+			"values": {
+				"operation": "matrix::rope"
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/rope/rope.cpp",
+			"adaptation": "Preserved checked head geometry, finite positive theta and zero position offset; existing Matrix provider owns donor split-half rotation and adjoint"
+		}
+	]
+}

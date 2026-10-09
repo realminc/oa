@@ -1,0 +1,4946 @@
+{
+  "schema_version": 1,
+  "family": "image",
+  "domain": "image",
+  "dtype": "f32",
+  "contracts": [
+    {
+      "name": "resize",
+      "input_kinds": ["image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [["target_width", "unsigned_integer"], ["target_height", "unsigned_integer"], ["interpolation", "enum"]],
+      "rust": {
+        "category": "geometric",
+        "parameters": [["input", "&Image"], ["target_width", "u32"], ["target_height", "u32"], ["interpolation", "InterpolationMode"]],
+        "returns": "Image",
+        "doc": [
+          "Resize an FP32 channel-first image while preserving its layout and format.",
+          "",
+          "NCHW and CHW storage are supported. Nearest sampling follows the donor OA",
+          "floor-coordinate rule. Bilinear sampling uses half-pixel centers with",
+          "`align_corners = false`.",
+          "",
+          "The call records work asynchronously and returns an Image immediately.",
+          "Reading its backing matrix is an explicit submission and observation point.",
+          "",
+          "# Errors",
+          "",
+          "Returns an error for a zero target extent, an empty source extent, a dtype or",
+          "layout outside the admitted checkpoint, checked-size overflow, or a runtime",
+          "recording failure."
+        ],
+        "attribute_sources": {
+          "target_width": {"encoding": "inline_unsigned", "value": "target_width"},
+          "target_height": {"encoding": "inline_unsigned", "value": "target_height"},
+          "interpolation": {"encoding": "inline_enum", "value": "interpolation.token()"}
+        },
+        "bindings": [{"name": "buffers", "values": {"input_index": ["read", "input"], "output_index": ["write", "output"]}}],
+        "push_constants": [
+          {
+            "name": "push_constants",
+            "values": {
+              "batch_size": ["U32", "batch"],
+              "channels": ["U32", "channels"],
+              "input_height": ["U32", "input_height"],
+              "input_width": ["U32", "input_width"],
+              "output_height": ["U32", "target_height"],
+              "output_width": ["U32", "target_width"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageResizeNearestF32", "ImageResizeBilinearF32"],
+            "kernel": "kernel",
+            "workgroups": "workgroups"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "crop",
+      "input_kinds": ["image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [
+        ["x", "unsigned_integer"],
+        ["y", "unsigned_integer"],
+        ["width", "unsigned_integer"],
+        ["height", "unsigned_integer"]
+      ],
+      "rust": {
+        "category": "geometric",
+        "parameters": [["input", "&Image"], ["x", "u32"], ["y", "u32"], ["width", "u32"], ["height", "u32"]],
+        "returns": "Image",
+        "doc": ["Extract a region, clipping its right and bottom edges to the source extent."],
+        "attribute_sources": {
+          "x": {"encoding": "unsigned", "value": "x"},
+          "y": {"encoding": "unsigned", "value": "y"},
+          "width": {"encoding": "unsigned", "value": "width"},
+          "height": {"encoding": "unsigned", "value": "height"}
+        },
+        "bindings": [{"name": null, "values": {"input_index": ["read", "input"], "output_index": ["write", "output"]}}],
+        "push_constants": [
+          {
+            "name": null,
+            "values": {
+              "batch_size": ["U32", "extent.batch"],
+              "channels": ["U32", "extent.channels"],
+              "input_height": ["U32", "extent.height"],
+              "input_width": ["U32", "extent.width"],
+              "crop_x": ["U32", "x"],
+              "crop_y": ["U32", "y"],
+              "output_height": ["U32", "output_height"],
+              "output_width": ["U32", "output_width"]
+            }
+          }
+        ],
+        "dispatches": [{"kernels": ["ImageCropF32"], "kernel": "KernelId::ImageCropF32", "workgroups": "workgroups"}],
+        "annotations": []
+      }
+    },
+    {
+      "name": "flip",
+      "input_kinds": ["image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [["horizontal", "boolean"], ["vertical", "boolean"]],
+      "rust": {
+        "category": "geometric",
+        "parameters": [["input", "&Image"], ["horizontal", "bool"], ["vertical", "bool"]],
+        "returns": "Image",
+        "doc": ["Flip an image horizontally, vertically, or along both axes."],
+        "attribute_sources": {
+          "horizontal": {"encoding": "boolean", "value": "horizontal"},
+          "vertical": {"encoding": "boolean", "value": "vertical"}
+        },
+        "bindings": [{"name": null, "values": {"input_index": ["read", "input"], "output_index": ["write", "output"]}}],
+        "push_constants": [
+          {
+            "name": null,
+            "values": {
+              "batch_size": ["U32", "extent.batch"],
+              "channels": ["U32", "extent.channels"],
+              "height": ["U32", "extent.height"],
+              "width": ["U32", "extent.width"],
+              "horizontal": ["U32", "u32::from(horizontal)"],
+              "vertical": ["U32", "u32::from(vertical)"]
+            }
+          }
+        ],
+        "dispatches": [{"kernels": ["ImageFlipF32"], "kernel": "KernelId::ImageFlipF32", "workgroups": "workgroups"}],
+        "annotations": []
+      }
+    },
+    {
+      "name": "rotate",
+      "input_kinds": ["image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [["degrees", "unsigned_integer"]],
+      "rust": {
+        "category": "geometric",
+        "parameters": [["input", "&Image"], ["degrees", "u32"]],
+        "returns": "Image",
+        "doc": ["Rotate clockwise by a multiple of 90 degrees."],
+        "attribute_sources": {"degrees": {"encoding": "unsigned", "value": "degrees"}},
+        "bindings": [{"name": null, "values": {"input_index": ["read", "input"], "output_index": ["write", "output"]}}],
+        "push_constants": [
+          {
+            "name": null,
+            "values": {
+              "batch_size": ["U32", "extent.batch"],
+              "channels": ["U32", "extent.channels"],
+              "input_height": ["U32", "extent.height"],
+              "input_width": ["U32", "extent.width"],
+              "output_height": ["U32", "output_height"],
+              "output_width": ["U32", "output_width"],
+              "degrees": ["U32", "normalized"]
+            }
+          }
+        ],
+        "dispatches": [{"kernels": ["ImageRotateF32"], "kernel": "KernelId::ImageRotateF32", "workgroups": "workgroups"}],
+        "annotations": []
+      }
+    },
+    {
+      "name": "pad",
+      "input_kinds": ["image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [
+        ["left", "unsigned_integer"],
+        ["right", "unsigned_integer"],
+        ["top", "unsigned_integer"],
+        ["bottom", "unsigned_integer"],
+        ["border", "enum"],
+        ["border_value", "float"]
+      ],
+      "rust": {
+        "category": "geometric",
+        "parameters": [
+          ["input", "&Image"],
+          ["left", "u32"],
+          ["right", "u32"],
+          ["top", "u32"],
+          ["bottom", "u32"],
+          ["border", "BorderMode"],
+          ["border_value", "f32"]
+        ],
+        "returns": "Image",
+        "doc": ["Add asymmetric padding with an explicit border policy."],
+        "attribute_sources": {
+          "left": {"encoding": "unsigned", "value": "left"},
+          "right": {"encoding": "unsigned", "value": "right"},
+          "top": {"encoding": "unsigned", "value": "top"},
+          "bottom": {"encoding": "unsigned", "value": "bottom"},
+          "border": {"encoding": "enumeration", "value": "border.token()"},
+          "border_value": {"encoding": "float", "value": "border_value"}
+        },
+        "bindings": [{"name": null, "values": {"input_index": ["read", "input"], "output_index": ["write", "output"]}}],
+        "push_constants": [
+          {
+            "name": null,
+            "values": {
+              "batch_size": ["U32", "extent.batch"],
+              "channels": ["U32", "extent.channels"],
+              "input_height": ["U32", "extent.height"],
+              "input_width": ["U32", "extent.width"],
+              "output_height": ["U32", "output_height"],
+              "output_width": ["U32", "output_width"],
+              "pad_top": ["U32", "top"],
+              "pad_left": ["U32", "left"],
+              "border_mode": ["U32", "border.code()"],
+              "border_value": ["F32", "border_value"]
+            }
+          }
+        ],
+        "dispatches": [{"kernels": ["ImagePadF32"], "kernel": "KernelId::ImagePadF32", "workgroups": "workgroups"}],
+        "annotations": ["allow(clippy::too_many_arguments)"]
+      }
+    },
+    {
+      "name": "center_crop",
+      "input_kinds": ["image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [["width", "unsigned_integer"], ["height", "unsigned_integer"]],
+      "rust": {
+        "category": "geometric",
+        "parameters": [["input", "&Image"], ["width", "u32"], ["height", "u32"]],
+        "returns": "Image",
+        "doc": ["Extract a centered region with the requested exact extent."],
+        "attribute_sources": {"width": {"encoding": "unsigned", "value": "width"}, "height": {"encoding": "unsigned", "value": "height"}},
+        "bindings": [{"name": null, "values": {"input_index": ["read", "input"], "output_index": ["write", "output"]}}],
+        "push_constants": [
+          {
+            "name": null,
+            "values": {
+              "batch_size": ["U32", "extent.batch"],
+              "channels": ["U32", "extent.channels"],
+              "input_height": ["U32", "extent.height"],
+              "input_width": ["U32", "extent.width"],
+              "crop_x": ["U32", "x"],
+              "crop_y": ["U32", "y"],
+              "output_height": ["U32", "height"],
+              "output_width": ["U32", "width"]
+            }
+          }
+        ],
+        "dispatches": [{"kernels": ["ImageCenterCropF32"], "kernel": "KernelId::ImageCenterCropF32", "workgroups": "workgroups"}],
+        "annotations": []
+      }
+    },
+    {
+      "name": "remap",
+      "input_kinds": ["image", "matrix"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [["interpolation", "enum"], ["border", "enum"], ["border_value", "float"]],
+      "rust": {
+        "category": "geometric",
+        "parameters": [
+          ["input", "&Image"],
+          ["map", "&Matrix"],
+          ["interpolation", "InterpolationMode"],
+          ["border", "BorderMode"],
+          ["border_value", "f32"]
+        ],
+        "returns": "Image",
+        "doc": [
+          "Resample an image from an FP32 absolute-coordinate map shaped",
+          "`[1|batch, 2, output_height, output_width]`."
+        ],
+        "attribute_sources": {
+          "interpolation": {"encoding": "enumeration", "value": "interpolation.token()"},
+          "border": {"encoding": "enumeration", "value": "border.token()"},
+          "border_value": {"encoding": "float", "value": "border_value"}
+        },
+        "bindings": [
+          {
+            "name": null,
+            "values": {"input_index": ["read", "input"], "map_index": ["read", "map"], "output_index": ["write", "output"]}
+          }
+        ],
+        "push_constants": [
+          {
+            "name": null,
+            "values": {
+              "batch_size": ["U32", "extent.batch"],
+              "channels": ["U32", "extent.channels"],
+              "input_height": ["U32", "extent.height"],
+              "input_width": ["U32", "extent.width"],
+              "output_height": ["U32", "output_height"],
+              "output_width": ["U32", "output_width"],
+              "interpolation": ["U32", "interpolation.code()"],
+              "border_mode": ["U32", "border.code()"],
+              "map_batch": ["U32", "map_batch"],
+              "border_value": ["F32", "border_value"]
+            }
+          }
+        ],
+        "dispatches": [{"kernels": ["ImageRemapF32"], "kernel": "KernelId::ImageRemapF32", "workgroups": "workgroups"}],
+        "annotations": []
+      }
+    },
+    {
+      "name": "warp_affine",
+      "input_kinds": ["image", "matrix"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [
+        ["width", "unsigned_integer"],
+        ["height", "unsigned_integer"],
+        ["interpolation", "enum"],
+        ["border", "enum"],
+        ["border_value", "float"]
+      ],
+      "rust": {
+        "category": "geometric",
+        "parameters": [
+          ["input", "&Image"],
+          ["transform", "&Matrix"],
+          ["width", "u32"],
+          ["height", "u32"],
+          ["interpolation", "InterpolationMode"],
+          ["border", "BorderMode"],
+          ["border_value", "f32"]
+        ],
+        "returns": "Image",
+        "doc": ["Apply an inverse FP32 2x3 affine transform to an image."],
+        "attribute_sources": {
+          "width": {"encoding": "unsigned", "value": "width"},
+          "height": {"encoding": "unsigned", "value": "height"},
+          "interpolation": {"encoding": "enumeration", "value": "interpolation.token()"},
+          "border": {"encoding": "enumeration", "value": "border.token()"},
+          "border_value": {"encoding": "float", "value": "border_value"}
+        },
+        "bindings": [
+          {
+            "name": null,
+            "values": {
+              "input_index": ["read", "input"],
+              "transform_index": ["read", "transform"],
+              "output_index": ["write", "output"]
+            }
+          }
+        ],
+        "push_constants": [
+          {
+            "name": null,
+            "values": {
+              "batch_size": ["U32", "extent.batch"],
+              "channels": ["U32", "extent.channels"],
+              "input_height": ["U32", "extent.height"],
+              "input_width": ["U32", "extent.width"],
+              "output_height": ["U32", "height"],
+              "output_width": ["U32", "width"],
+              "interpolation": ["U32", "interpolation.code()"],
+              "border_mode": ["U32", "border.code()"],
+              "border_value": ["F32", "border_value"]
+            }
+          }
+        ],
+        "dispatches": [{"kernels": ["ImageWarpAffineF32"], "kernel": "KernelId::ImageWarpAffineF32", "workgroups": "workgroups"}],
+        "annotations": ["allow(clippy::too_many_arguments)"]
+      }
+    },
+    {
+      "name": "warp_perspective",
+      "input_kinds": ["image", "matrix"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [
+        ["width", "unsigned_integer"],
+        ["height", "unsigned_integer"],
+        ["interpolation", "enum"],
+        ["border", "enum"],
+        ["border_value", "float"]
+      ],
+      "rust": {
+        "category": "geometric",
+        "parameters": [
+          ["input", "&Image"],
+          ["transform", "&Matrix"],
+          ["width", "u32"],
+          ["height", "u32"],
+          ["interpolation", "InterpolationMode"],
+          ["border", "BorderMode"],
+          ["border_value", "f32"]
+        ],
+        "returns": "Image",
+        "doc": ["Apply an inverse FP32 3x3 perspective transform to an image."],
+        "attribute_sources": {
+          "width": {"encoding": "unsigned", "value": "width"},
+          "height": {"encoding": "unsigned", "value": "height"},
+          "interpolation": {"encoding": "enumeration", "value": "interpolation.token()"},
+          "border": {"encoding": "enumeration", "value": "border.token()"},
+          "border_value": {"encoding": "float", "value": "border_value"}
+        },
+        "bindings": [
+          {
+            "name": null,
+            "values": {
+              "input_index": ["read", "input"],
+              "transform_index": ["read", "transform"],
+              "output_index": ["write", "output"]
+            }
+          }
+        ],
+        "push_constants": [
+          {
+            "name": null,
+            "values": {
+              "batch_size": ["U32", "extent.batch"],
+              "channels": ["U32", "extent.channels"],
+              "input_height": ["U32", "extent.height"],
+              "input_width": ["U32", "extent.width"],
+              "output_height": ["U32", "height"],
+              "output_width": ["U32", "width"],
+              "interpolation": ["U32", "interpolation.code()"],
+              "border_mode": ["U32", "border.code()"],
+              "border_value": ["F32", "border_value"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageWarpPerspectiveF32"],
+            "kernel": "KernelId::ImageWarpPerspectiveF32",
+            "workgroups": "workgroups"
+          }
+        ],
+        "annotations": ["allow(clippy::too_many_arguments)"]
+      }
+    },
+    {
+      "name": "threshold_binary",
+      "input_kinds": ["image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [["threshold", "float"], ["max_value", "float"]],
+      "rust": {
+        "category": "pixel",
+        "parameters": [["input", "&Image"], ["threshold", "f32"], ["max_value", "f32"]],
+        "returns": "Image",
+        "doc": ["Replace values above `threshold` with `max_value` and all others with zero."],
+        "attribute_sources": {
+          "threshold": {"encoding": "float", "value": "threshold"},
+          "max_value": {"encoding": "float", "value": "max_value"}
+        },
+        "bindings": [{"name": null, "values": {"input_index": ["read", "input"], "output_index": ["write", "output"]}}],
+        "push_constants": [
+          {
+            "name": null,
+            "values": {
+              "element_count": ["U32", "element_count"],
+              "operation": ["U32", "0"],
+              "p0": ["F32", "threshold"],
+              "p1": ["F32", "max_value"],
+              "p2": ["F32", "0.0"],
+              "p3": ["F32", "0.0"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageThresholdBinaryF32"],
+            "kernel": "KernelId::ImageThresholdBinaryF32",
+            "workgroups": "KernelId::ImageThresholdBinaryF32.linear_workgroups(element_count)"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "threshold_binary_inv",
+      "input_kinds": ["image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [["threshold", "float"], ["max_value", "float"]],
+      "rust": {
+        "category": "pixel",
+        "parameters": [["input", "&Image"], ["threshold", "f32"], ["max_value", "f32"]],
+        "returns": "Image",
+        "doc": ["Replace values at or below `threshold` with `max_value` and all others with zero."],
+        "attribute_sources": {
+          "threshold": {"encoding": "float", "value": "threshold"},
+          "max_value": {"encoding": "float", "value": "max_value"}
+        },
+        "bindings": [{"name": null, "values": {"input_index": ["read", "input"], "output_index": ["write", "output"]}}],
+        "push_constants": [
+          {
+            "name": null,
+            "values": {
+              "element_count": ["U32", "element_count"],
+              "operation": ["U32", "1"],
+              "p0": ["F32", "threshold"],
+              "p1": ["F32", "max_value"],
+              "p2": ["F32", "0.0"],
+              "p3": ["F32", "0.0"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageThresholdBinaryInvF32"],
+            "kernel": "KernelId::ImageThresholdBinaryInvF32",
+            "workgroups": "KernelId::ImageThresholdBinaryInvF32.linear_workgroups(element_count)"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "threshold_truncate",
+      "input_kinds": ["image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [["threshold", "float"]],
+      "rust": {
+        "category": "pixel",
+        "parameters": [["input", "&Image"], ["threshold", "f32"]],
+        "returns": "Image",
+        "doc": ["Truncate values above `threshold`."],
+        "attribute_sources": {"threshold": {"encoding": "float", "value": "threshold"}},
+        "bindings": [{"name": null, "values": {"input_index": ["read", "input"], "output_index": ["write", "output"]}}],
+        "push_constants": [
+          {
+            "name": null,
+            "values": {
+              "element_count": ["U32", "element_count"],
+              "operation": ["U32", "2"],
+              "p0": ["F32", "threshold"],
+              "p1": ["F32", "0.0"],
+              "p2": ["F32", "0.0"],
+              "p3": ["F32", "0.0"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageThresholdTruncateF32"],
+            "kernel": "KernelId::ImageThresholdTruncateF32",
+            "workgroups": "KernelId::ImageThresholdTruncateF32.linear_workgroups(element_count)"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "threshold_to_zero",
+      "input_kinds": ["image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [["threshold", "float"]],
+      "rust": {
+        "category": "pixel",
+        "parameters": [["input", "&Image"], ["threshold", "f32"]],
+        "returns": "Image",
+        "doc": ["Replace values at or below `threshold` with zero."],
+        "attribute_sources": {"threshold": {"encoding": "float", "value": "threshold"}},
+        "bindings": [{"name": null, "values": {"input_index": ["read", "input"], "output_index": ["write", "output"]}}],
+        "push_constants": [
+          {
+            "name": null,
+            "values": {
+              "element_count": ["U32", "element_count"],
+              "operation": ["U32", "3"],
+              "p0": ["F32", "threshold"],
+              "p1": ["F32", "0.0"],
+              "p2": ["F32", "0.0"],
+              "p3": ["F32", "0.0"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageThresholdToZeroF32"],
+            "kernel": "KernelId::ImageThresholdToZeroF32",
+            "workgroups": "KernelId::ImageThresholdToZeroF32.linear_workgroups(element_count)"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "threshold_to_zero_inv",
+      "input_kinds": ["image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [["threshold", "float"]],
+      "rust": {
+        "category": "pixel",
+        "parameters": [["input", "&Image"], ["threshold", "f32"]],
+        "returns": "Image",
+        "doc": ["Replace values above `threshold` with zero."],
+        "attribute_sources": {"threshold": {"encoding": "float", "value": "threshold"}},
+        "bindings": [{"name": null, "values": {"input_index": ["read", "input"], "output_index": ["write", "output"]}}],
+        "push_constants": [
+          {
+            "name": null,
+            "values": {
+              "element_count": ["U32", "element_count"],
+              "operation": ["U32", "4"],
+              "p0": ["F32", "threshold"],
+              "p1": ["F32", "0.0"],
+              "p2": ["F32", "0.0"],
+              "p3": ["F32", "0.0"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageThresholdToZeroInvF32"],
+            "kernel": "KernelId::ImageThresholdToZeroInvF32",
+            "workgroups": "KernelId::ImageThresholdToZeroInvF32.linear_workgroups(element_count)"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "in_range",
+      "input_kinds": ["image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [["low", "float"], ["high", "float"], ["true_value", "float"]],
+      "rust": {
+        "category": "pixel",
+        "parameters": [["input", "&Image"], ["low", "f32"], ["high", "f32"], ["true_value", "f32"]],
+        "returns": "Image",
+        "doc": ["Produce `true_value` for values inside the inclusive interval and zero outside it."],
+        "attribute_sources": {
+          "low": {"encoding": "float", "value": "low"},
+          "high": {"encoding": "float", "value": "high"},
+          "true_value": {"encoding": "float", "value": "true_value"}
+        },
+        "bindings": [{"name": null, "values": {"input_index": ["read", "input"], "output_index": ["write", "output"]}}],
+        "push_constants": [
+          {
+            "name": null,
+            "values": {
+              "element_count": ["U32", "element_count"],
+              "operation": ["U32", "5"],
+              "p0": ["F32", "low"],
+              "p1": ["F32", "high"],
+              "p2": ["F32", "true_value"],
+              "p3": ["F32", "0.0"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageInRangeF32"],
+            "kernel": "KernelId::ImageInRangeF32",
+            "workgroups": "KernelId::ImageInRangeF32.linear_workgroups(element_count)"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "clamp",
+      "input_kinds": ["image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [["low", "float"], ["high", "float"]],
+      "rust": {
+        "category": "pixel",
+        "parameters": [["input", "&Image"], ["low", "f32"], ["high", "f32"]],
+        "returns": "Image",
+        "doc": ["Clamp every pixel to the inclusive interval."],
+        "attribute_sources": {"low": {"encoding": "float", "value": "low"}, "high": {"encoding": "float", "value": "high"}},
+        "bindings": [{"name": null, "values": {"input_index": ["read", "input"], "output_index": ["write", "output"]}}],
+        "push_constants": [
+          {
+            "name": null,
+            "values": {
+              "element_count": ["U32", "element_count"],
+              "operation": ["U32", "6"],
+              "p0": ["F32", "low"],
+              "p1": ["F32", "high"],
+              "p2": ["F32", "0.0"],
+              "p3": ["F32", "0.0"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageClampF32"],
+            "kernel": "KernelId::ImageClampF32",
+            "workgroups": "KernelId::ImageClampF32.linear_workgroups(element_count)"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "invert",
+      "input_kinds": ["image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [["max_value", "float"]],
+      "rust": {
+        "category": "pixel",
+        "parameters": [["input", "&Image"], ["max_value", "f32"]],
+        "returns": "Image",
+        "doc": ["Invert every value around `max_value`."],
+        "attribute_sources": {"max_value": {"encoding": "float", "value": "max_value"}},
+        "bindings": [{"name": null, "values": {"input_index": ["read", "input"], "output_index": ["write", "output"]}}],
+        "push_constants": [
+          {
+            "name": null,
+            "values": {
+              "element_count": ["U32", "element_count"],
+              "operation": ["U32", "7"],
+              "p0": ["F32", "max_value"],
+              "p1": ["F32", "0.0"],
+              "p2": ["F32", "0.0"],
+              "p3": ["F32", "0.0"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageInvertF32"],
+            "kernel": "KernelId::ImageInvertF32",
+            "workgroups": "KernelId::ImageInvertF32.linear_workgroups(element_count)"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "brightness_contrast",
+      "input_kinds": ["image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [["brightness", "float"], ["contrast", "float"]],
+      "rust": {
+        "category": "pixel",
+        "parameters": [["input", "&Image"], ["brightness", "f32"], ["contrast", "f32"]],
+        "returns": "Image",
+        "doc": ["Apply `value * contrast + brightness`."],
+        "attribute_sources": {
+          "brightness": {"encoding": "float", "value": "brightness"},
+          "contrast": {"encoding": "float", "value": "contrast"}
+        },
+        "bindings": [{"name": null, "values": {"input_index": ["read", "input"], "output_index": ["write", "output"]}}],
+        "push_constants": [
+          {
+            "name": null,
+            "values": {
+              "element_count": ["U32", "element_count"],
+              "operation": ["U32", "8"],
+              "p0": ["F32", "contrast"],
+              "p1": ["F32", "brightness"],
+              "p2": ["F32", "0.0"],
+              "p3": ["F32", "0.0"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageBrightnessContrastF32"],
+            "kernel": "KernelId::ImageBrightnessContrastF32",
+            "workgroups": "KernelId::ImageBrightnessContrastF32.linear_workgroups(element_count)"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "gamma_contrast",
+      "input_kinds": ["image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [["gamma", "float"], ["gain", "float"]],
+      "rust": {
+        "category": "pixel",
+        "parameters": [["input", "&Image"], ["gamma", "f32"], ["gain", "f32"]],
+        "returns": "Image",
+        "doc": ["Apply `max(value, 0)^gamma * gain`."],
+        "attribute_sources": {"gamma": {"encoding": "float", "value": "gamma"}, "gain": {"encoding": "float", "value": "gain"}},
+        "bindings": [{"name": null, "values": {"input_index": ["read", "input"], "output_index": ["write", "output"]}}],
+        "push_constants": [
+          {
+            "name": null,
+            "values": {
+              "element_count": ["U32", "element_count"],
+              "operation": ["U32", "9"],
+              "p0": ["F32", "gamma"],
+              "p1": ["F32", "gain"],
+              "p2": ["F32", "0.0"],
+              "p3": ["F32", "0.0"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageGammaContrastF32"],
+            "kernel": "KernelId::ImageGammaContrastF32",
+            "workgroups": "KernelId::ImageGammaContrastF32.linear_workgroups(element_count)"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "solarize",
+      "input_kinds": ["image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [["threshold", "float"], ["max_value", "float"]],
+      "rust": {
+        "category": "pixel",
+        "parameters": [["input", "&Image"], ["threshold", "f32"], ["max_value", "f32"]],
+        "returns": "Image",
+        "doc": ["Invert values at or above `threshold` around `max_value`."],
+        "attribute_sources": {
+          "threshold": {"encoding": "float", "value": "threshold"},
+          "max_value": {"encoding": "float", "value": "max_value"}
+        },
+        "bindings": [{"name": null, "values": {"input_index": ["read", "input"], "output_index": ["write", "output"]}}],
+        "push_constants": [
+          {
+            "name": null,
+            "values": {
+              "element_count": ["U32", "element_count"],
+              "operation": ["U32", "10"],
+              "p0": ["F32", "threshold"],
+              "p1": ["F32", "max_value"],
+              "p2": ["F32", "0.0"],
+              "p3": ["F32", "0.0"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageSolarizeF32"],
+            "kernel": "KernelId::ImageSolarizeF32",
+            "workgroups": "KernelId::ImageSolarizeF32.linear_workgroups(element_count)"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "posterize",
+      "input_kinds": ["image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [["levels", "unsigned_integer"], ["low", "float"], ["high", "float"]],
+      "rust": {
+        "category": "pixel",
+        "parameters": [["input", "&Image"], ["levels", "u32"], ["low", "f32"], ["high", "f32"]],
+        "returns": "Image",
+        "doc": ["Quantize `[low, high]` to `levels` evenly spaced values using round-half-up."],
+        "attribute_sources": {
+          "levels": {"encoding": "unsigned", "value": "levels"},
+          "low": {"encoding": "float", "value": "low"},
+          "high": {"encoding": "float", "value": "high"}
+        },
+        "bindings": [{"name": null, "values": {"input_index": ["read", "input"], "output_index": ["write", "output"]}}],
+        "push_constants": [
+          {
+            "name": null,
+            "values": {
+              "element_count": ["U32", "element_count"],
+              "operation": ["U32", "11"],
+              "p0": ["F32", "levels as f32"],
+              "p1": ["F32", "low"],
+              "p2": ["F32", "high"],
+              "p3": ["F32", "0.0"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImagePosterizeF32"],
+            "kernel": "KernelId::ImagePosterizeF32",
+            "workgroups": "KernelId::ImagePosterizeF32.linear_workgroups(element_count)"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "grayscale",
+      "input_kinds": ["image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [],
+      "rust": {
+        "category": "pixel",
+        "parameters": [["input", "&Image"]],
+        "returns": "Image",
+        "doc": ["Convert an RGB or RGBA image to Rec.709 grayscale."],
+        "attribute_sources": {},
+        "bindings": [{"name": null, "values": {"input_index": ["read", "input"], "output_index": ["write", "output"]}}],
+        "push_constants": [
+          {
+            "name": null,
+            "values": {
+              "batch_size": ["U32", "batch"],
+              "input_channels": ["U32", "channels"],
+              "height": ["U32", "height"],
+              "width": ["U32", "width"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageGrayscaleF32"],
+            "kernel": "KernelId::ImageGrayscaleF32",
+            "workgroups": "[width.div_ceil(16), height.div_ceil(16), batch]"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "alpha_blend",
+      "input_kinds": ["image", "image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [["alpha", "float"]],
+      "rust": {
+        "category": "pixel",
+        "parameters": [["a", "&Image"], ["b", "&Image"], ["alpha", "f32"]],
+        "returns": "Image",
+        "doc": ["Blend two equal semantic images using `a * (1-alpha) + b * alpha`."],
+        "attribute_sources": {"alpha": {"encoding": "float", "value": "alpha"}},
+        "bindings": [
+          {
+            "name": "buffers",
+            "values": {
+              "a_index": ["read", "a"],
+              "b_index": ["read", "b"],
+              "mask_index": ["read", "a"],
+              "output_index": ["write", "output"]
+            }
+          }
+        ],
+        "push_constants": [
+          {
+            "name": "push_constants",
+            "values": {
+              "batch_size": ["U32", "batch"],
+              "channels": ["U32", "channels"],
+              "height": ["U32", "height"],
+              "width": ["U32", "width"],
+              "operation": ["U32", "0"],
+              "mask_channels": ["U32", "mask_channels"],
+              "rect_x": ["U32", "0"],
+              "rect_y": ["U32", "0"],
+              "rect_width": ["U32", "0"],
+              "rect_height": ["U32", "0"],
+              "alpha": ["F32", "alpha"],
+              "value": ["F32", "0.0"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageAlphaBlendF32"],
+            "kernel": "KernelId::ImageAlphaBlendF32",
+            "workgroups": "[width.div_ceil(16), height.div_ceil(16), batch * channels]"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "composite",
+      "input_kinds": ["image", "image", "image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [],
+      "rust": {
+        "category": "pixel",
+        "parameters": [["a", "&Image"], ["b", "&Image"], ["mask", "&Image"]],
+        "returns": "Image",
+        "doc": ["Composite two equal images with a clamped Gray or per-channel mask."],
+        "attribute_sources": {},
+        "bindings": [
+          {
+            "name": "buffers",
+            "values": {
+              "a_index": ["read", "a"],
+              "b_index": ["read", "b"],
+              "mask_index": ["read", "mask"],
+              "output_index": ["write", "output"]
+            }
+          }
+        ],
+        "push_constants": [
+          {
+            "name": "push_constants",
+            "values": {
+              "batch_size": ["U32", "batch"],
+              "channels": ["U32", "channels"],
+              "height": ["U32", "height"],
+              "width": ["U32", "width"],
+              "operation": ["U32", "1"],
+              "mask_channels": ["U32", "mask_channels"],
+              "rect_x": ["U32", "0"],
+              "rect_y": ["U32", "0"],
+              "rect_width": ["U32", "0"],
+              "rect_height": ["U32", "0"],
+              "alpha": ["F32", "0.0"],
+              "value": ["F32", "0.0"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageCompositeF32"],
+            "kernel": "KernelId::ImageCompositeF32",
+            "workgroups": "[width.div_ceil(16), height.div_ceil(16), batch * channels]"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "erase",
+      "input_kinds": ["image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [
+        ["x", "unsigned_integer"],
+        ["y", "unsigned_integer"],
+        ["width", "unsigned_integer"],
+        ["height", "unsigned_integer"],
+        ["value", "float"]
+      ],
+      "rust": {
+        "category": "pixel",
+        "parameters": [["input", "&Image"], ["x", "u32"], ["y", "u32"], ["width", "u32"], ["height", "u32"], ["value", "f32"]],
+        "returns": "Image",
+        "doc": ["Fill the intersection of a rectangle and the image with one finite value."],
+        "attribute_sources": {
+          "x": {"encoding": "unsigned", "value": "x"},
+          "y": {"encoding": "unsigned", "value": "y"},
+          "width": {"encoding": "unsigned", "value": "width"},
+          "height": {"encoding": "unsigned", "value": "height"},
+          "value": {"encoding": "float", "value": "value"}
+        },
+        "bindings": [
+          {
+            "name": "buffers",
+            "values": {
+              "a_index": ["read", "input"],
+              "b_index": ["read", "input"],
+              "mask_index": ["read", "input"],
+              "output_index": ["write", "output"]
+            }
+          }
+        ],
+        "push_constants": [
+          {
+            "name": "push_constants",
+            "values": {
+              "batch_size": ["U32", "batch"],
+              "channels": ["U32", "channels"],
+              "height": ["U32", "image_height"],
+              "width": ["U32", "image_width"],
+              "operation": ["U32", "2"],
+              "mask_channels": ["U32", "mask_channels"],
+              "rect_x": ["U32", "x"],
+              "rect_y": ["U32", "y"],
+              "rect_width": ["U32", "width"],
+              "rect_height": ["U32", "height"],
+              "alpha": ["F32", "0.0"],
+              "value": ["F32", "value"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageEraseF32"],
+            "kernel": "KernelId::ImageEraseF32",
+            "workgroups": "[\n\t\t\t\timage_width.div_ceil(16),\n\t\t\t\timage_height.div_ceil(16),\n\t\t\t\tbatch * channels,\n\t\t\t]"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "color_twist",
+      "input_kinds": ["image", "matrix"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [],
+      "rust": {
+        "category": "pixel",
+        "parameters": [["input", "&Image"], ["transform", "&Matrix"]],
+        "returns": "Image",
+        "doc": ["Apply one shared FP32 `[3, 4]` affine color transform to RGB channels."],
+        "attribute_sources": {},
+        "bindings": [
+          {
+            "name": null,
+            "values": {
+              "input_index": ["read", "input"],
+              "transform_index": ["read", "transform"],
+              "output_index": ["write", "output"]
+            }
+          }
+        ],
+        "push_constants": [
+          {
+            "name": null,
+            "values": {
+              "batch_size": ["U32", "batch"],
+              "channels": ["U32", "channels"],
+              "height": ["U32", "height"],
+              "width": ["U32", "width"]
+            }
+          }
+        ],
+        "dispatches": [{"kernels": ["ImageColorTwistF32"], "kernel": "KernelId::ImageColorTwistF32", "workgroups": "workgroups"}],
+        "annotations": []
+      }
+    },
+    {
+      "name": "channel_reorder",
+      "input_kinds": ["image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [
+        ["channel_0", "unsigned_integer"],
+        ["channel_1", "unsigned_integer"],
+        ["channel_2", "unsigned_integer"],
+        ["channel_3", "unsigned_integer"],
+        ["output_format", "enum"]
+      ],
+      "rust": {
+        "category": "pixel",
+        "parameters": [["input", "&Image"], ["order", "[u32; 4]"], ["output_format", "ImageFormat"]],
+        "returns": "Image",
+        "doc": [
+          "Reorder one to four channels and explicitly assign the resulting format.",
+          "",
+          "`order[c]` selects the source channel for output channel `c`. The output",
+          "format must have the same channel count as the input so pixel data and",
+          "semantic metadata cannot diverge."
+        ],
+        "attribute_sources": {
+          "channel_0": {"encoding": "unsigned", "value": "order[0]"},
+          "channel_1": {"encoding": "unsigned", "value": "order[1]"},
+          "channel_2": {"encoding": "unsigned", "value": "order[2]"},
+          "channel_3": {"encoding": "unsigned", "value": "order[3]"},
+          "output_format": {"encoding": "enumeration", "value": "image_format_token(output_format)"}
+        },
+        "bindings": [{"name": null, "values": {"input_index": ["read", "input"], "output_index": ["write", "output"]}}],
+        "push_constants": [
+          {
+            "name": null,
+            "values": {
+              "batch_size": ["U32", "batch"],
+              "channels": ["U32", "channels"],
+              "height": ["U32", "height"],
+              "width": ["U32", "width"],
+              "channel_0": ["U32", "order[0]"],
+              "channel_1": ["U32", "order[1]"],
+              "channel_2": ["U32", "order[2]"],
+              "channel_3": ["U32", "order[3]"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageChannelReorderF32"],
+            "kernel": "KernelId::ImageChannelReorderF32",
+            "workgroups": "[width.div_ceil(16), height.div_ceil(16), batch * channels]"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "gaussian_noise",
+      "input_kinds": ["image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [["mean", "float"], ["stddev", "float"], ["seed", "unsigned_integer"]],
+      "rust": {
+        "category": "pixel",
+        "parameters": [["input", "&Image"], ["mean", "f32"], ["stddev", "f32"], ["seed", "u64"]],
+        "returns": "Image",
+        "doc": ["Add explicit-seed Philox Gaussian noise to every pixel."],
+        "attribute_sources": {
+          "mean": {"encoding": "float", "value": "mean"},
+          "stddev": {"encoding": "float", "value": "stddev"},
+          "seed": {"encoding": "unsigned64", "value": "seed"}
+        },
+        "bindings": [{"name": null, "values": {"input_index": ["read", "input"], "output_index": ["write", "output"]}}],
+        "push_constants": [
+          {
+            "name": "push_constants",
+            "values": {
+              "element_count": ["U32", "element_count"],
+              "seed_low": ["U32", "seed as u32"],
+              "seed_high": ["U32", "(seed >> 32) as u32"],
+              "mean": ["F32", "mean"],
+              "stddev": ["F32", "stddev"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageGaussianNoiseF32"],
+            "kernel": "KernelId::ImageGaussianNoiseF32",
+            "workgroups": "KernelId::ImageGaussianNoiseF32.linear_workgroups(element_count)"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "salt_pepper_noise",
+      "input_kinds": ["image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [["probability", "float"], ["salt_value", "float"], ["pepper_value", "float"], ["seed", "unsigned_integer"]],
+      "rust": {
+        "category": "pixel",
+        "parameters": [["input", "&Image"], ["probability", "f32"], ["salt_value", "f32"], ["pepper_value", "f32"], ["seed", "u64"]],
+        "returns": "Image",
+        "doc": ["Replace a seeded fraction of pixels with salt or pepper values."],
+        "attribute_sources": {
+          "probability": {"encoding": "float", "value": "probability"},
+          "salt_value": {"encoding": "float", "value": "salt_value"},
+          "pepper_value": {"encoding": "float", "value": "pepper_value"},
+          "seed": {"encoding": "unsigned64", "value": "seed"}
+        },
+        "bindings": [{"name": null, "values": {"input_index": ["read", "input"], "output_index": ["write", "output"]}}],
+        "push_constants": [
+          {
+            "name": "push_constants",
+            "values": {
+              "element_count": ["U32", "element_count"],
+              "seed_low": ["U32", "seed as u32"],
+              "seed_high": ["U32", "(seed >> 32) as u32"],
+              "probability": ["F32", "probability"],
+              "salt_value": ["F32", "salt_value"],
+              "pepper_value": ["F32", "pepper_value"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageSaltPepperNoiseF32"],
+            "kernel": "KernelId::ImageSaltPepperNoiseF32",
+            "workgroups": "KernelId::ImageSaltPepperNoiseF32.linear_workgroups(element_count)"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "convolve_2d",
+      "input_kinds": ["image", "matrix"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [["border", "enum"], ["border_value", "float"]],
+      "rust": {
+        "category": "filter",
+        "parameters": [["input", "&Image"], ["kernel", "&Matrix"], ["border", "BorderMode"], ["border_value", "f32"]],
+        "returns": "Image",
+        "doc": ["Apply same-shape 2D cross-correlation with an odd FP32 kernel up to 31×31."],
+        "attribute_sources": {
+          "border": {"encoding": "enumeration", "value": "border.token()"},
+          "border_value": {"encoding": "float", "value": "border_value"}
+        },
+        "bindings": [
+          {
+            "name": "buffers",
+            "values": {
+              "input_index": ["read", "input"],
+              "kernel_x_index": ["read", "kernel"],
+              "kernel_y_index": ["read", "kernel"],
+              "output_index": ["write", "output"]
+            }
+          }
+        ],
+        "push_constants": [
+          {
+            "name": "push_constants",
+            "values": {
+              "batch_size": ["U32", "batch"],
+              "channels": ["U32", "channels"],
+              "height": ["U32", "image_height"],
+              "width": ["U32", "image_width"],
+              "operation": ["U32", "0"],
+              "border_mode": ["U32", "border.code()"],
+              "kernel_width": ["U32", "kernel.shape()[1] as u32"],
+              "kernel_height": ["U32", "kernel.shape()[0] as u32"],
+              "kernel_size": ["U32", "1"],
+              "dx": ["U32", "0"],
+              "dy": ["U32", "0"],
+              "p0": ["F32", "0.0"],
+              "p1": ["F32", "0.0"],
+              "p2": ["F32", "0.0"],
+              "p3": ["F32", "0.0"],
+              "border_value": ["F32", "border_value"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageConvolve2dF32"],
+            "kernel": "KernelId::ImageConvolve2dF32",
+            "workgroups": "[\n\t\t\t\timage_width.div_ceil(16),\n\t\t\t\timage_height.div_ceil(16),\n\t\t\t\tbatch * channels,\n\t\t\t]"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "separable_convolve_2d",
+      "input_kinds": ["image", "matrix", "matrix"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [["border", "enum"], ["border_value", "float"]],
+      "rust": {
+        "category": "filter",
+        "parameters": [
+          ["input", "&Image"],
+          ["kernel_x", "&Matrix"],
+          ["kernel_y", "&Matrix"],
+          ["border", "BorderMode"],
+          ["border_value", "f32"]
+        ],
+        "returns": "Image",
+        "doc": ["Apply horizontal and vertical odd FP32 vector kernels up to length 31."],
+        "attribute_sources": {
+          "border": {"encoding": "enumeration", "value": "border.token()"},
+          "border_value": {"encoding": "float", "value": "border_value"}
+        },
+        "bindings": [
+          {
+            "name": "buffers",
+            "values": {
+              "input_index": ["read", "input"],
+              "kernel_x_index": ["read", "kernel_x"],
+              "kernel_y_index": ["read", "kernel_y"],
+              "output_index": ["write", "output"]
+            }
+          }
+        ],
+        "push_constants": [
+          {
+            "name": "push_constants",
+            "values": {
+              "batch_size": ["U32", "batch"],
+              "channels": ["U32", "channels"],
+              "height": ["U32", "image_height"],
+              "width": ["U32", "image_width"],
+              "operation": ["U32", "1"],
+              "border_mode": ["U32", "border.code()"],
+              "kernel_width": ["U32", "kernel_x.num_elements() as u32"],
+              "kernel_height": ["U32", "kernel_y.num_elements() as u32"],
+              "kernel_size": ["U32", "1"],
+              "dx": ["U32", "0"],
+              "dy": ["U32", "0"],
+              "p0": ["F32", "0.0"],
+              "p1": ["F32", "0.0"],
+              "p2": ["F32", "0.0"],
+              "p3": ["F32", "0.0"],
+              "border_value": ["F32", "border_value"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageSeparableConvolve2dF32"],
+            "kernel": "KernelId::ImageSeparableConvolve2dF32",
+            "workgroups": "[\n\t\t\t\timage_width.div_ceil(16),\n\t\t\t\timage_height.div_ceil(16),\n\t\t\t\tbatch * channels,\n\t\t\t]"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "average_blur",
+      "input_kinds": ["image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [["kernel_width", "unsigned_integer"], ["kernel_height", "unsigned_integer"], ["border", "enum"]],
+      "rust": {
+        "category": "filter",
+        "parameters": [["input", "&Image"], ["width", "u32"], ["height", "u32"], ["border", "BorderMode"]],
+        "returns": "Image",
+        "doc": ["Average an odd rectangular neighborhood up to 31×31."],
+        "attribute_sources": {
+          "kernel_width": {"encoding": "unsigned", "value": "width"},
+          "kernel_height": {"encoding": "unsigned", "value": "height"},
+          "border": {"encoding": "enumeration", "value": "border.token()"}
+        },
+        "bindings": [
+          {
+            "name": "buffers",
+            "values": {
+              "input_index": ["read", "input"],
+              "kernel_x_index": ["read", "input"],
+              "kernel_y_index": ["read", "input"],
+              "output_index": ["write", "output"]
+            }
+          }
+        ],
+        "push_constants": [
+          {
+            "name": "push_constants",
+            "values": {
+              "batch_size": ["U32", "batch"],
+              "channels": ["U32", "channels"],
+              "height": ["U32", "image_height"],
+              "width": ["U32", "image_width"],
+              "operation": ["U32", "2"],
+              "border_mode": ["U32", "border.code()"],
+              "kernel_width": ["U32", "width"],
+              "kernel_height": ["U32", "height"],
+              "kernel_size": ["U32", "1"],
+              "dx": ["U32", "0"],
+              "dy": ["U32", "0"],
+              "p0": ["F32", "0.0"],
+              "p1": ["F32", "0.0"],
+              "p2": ["F32", "0.0"],
+              "p3": ["F32", "0.0"],
+              "border_value": ["F32", "0.0"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageAverageBlurF32"],
+            "kernel": "KernelId::ImageAverageBlurF32",
+            "workgroups": "[\n\t\t\t\timage_width.div_ceil(16),\n\t\t\t\timage_height.div_ceil(16),\n\t\t\t\tbatch * channels,\n\t\t\t]"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "sobel",
+      "input_kinds": ["image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [["dx", "unsigned_integer"], ["dy", "unsigned_integer"], ["border", "enum"]],
+      "rust": {
+        "category": "filter",
+        "parameters": [["input", "&Image"], ["dx", "u32"], ["dy", "u32"], ["border", "BorderMode"]],
+        "returns": "Image",
+        "doc": ["Compute one first-order Sobel derivative."],
+        "attribute_sources": {
+          "dx": {"encoding": "unsigned", "value": "dx"},
+          "dy": {"encoding": "unsigned", "value": "dy"},
+          "border": {"encoding": "enumeration", "value": "border.token()"}
+        },
+        "bindings": [
+          {
+            "name": "buffers",
+            "values": {
+              "input_index": ["read", "input"],
+              "kernel_x_index": ["read", "input"],
+              "kernel_y_index": ["read", "input"],
+              "output_index": ["write", "output"]
+            }
+          }
+        ],
+        "push_constants": [
+          {
+            "name": "push_constants",
+            "values": {
+              "batch_size": ["U32", "batch"],
+              "channels": ["U32", "channels"],
+              "height": ["U32", "image_height"],
+              "width": ["U32", "image_width"],
+              "operation": ["U32", "3"],
+              "border_mode": ["U32", "border.code()"],
+              "kernel_width": ["U32", "1"],
+              "kernel_height": ["U32", "1"],
+              "kernel_size": ["U32", "1"],
+              "dx": ["U32", "dx"],
+              "dy": ["U32", "dy"],
+              "p0": ["F32", "0.0"],
+              "p1": ["F32", "0.0"],
+              "p2": ["F32", "0.0"],
+              "p3": ["F32", "0.0"],
+              "border_value": ["F32", "0.0"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageSobelF32"],
+            "kernel": "KernelId::ImageSobelF32",
+            "workgroups": "[\n\t\t\t\timage_width.div_ceil(16),\n\t\t\t\timage_height.div_ceil(16),\n\t\t\t\tbatch * channels,\n\t\t\t]"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "scharr",
+      "input_kinds": ["image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [["dx", "unsigned_integer"], ["dy", "unsigned_integer"], ["border", "enum"]],
+      "rust": {
+        "category": "filter",
+        "parameters": [["input", "&Image"], ["dx", "u32"], ["dy", "u32"], ["border", "BorderMode"]],
+        "returns": "Image",
+        "doc": ["Compute one first-order Scharr derivative."],
+        "attribute_sources": {
+          "dx": {"encoding": "unsigned", "value": "dx"},
+          "dy": {"encoding": "unsigned", "value": "dy"},
+          "border": {"encoding": "enumeration", "value": "border.token()"}
+        },
+        "bindings": [
+          {
+            "name": "buffers",
+            "values": {
+              "input_index": ["read", "input"],
+              "kernel_x_index": ["read", "input"],
+              "kernel_y_index": ["read", "input"],
+              "output_index": ["write", "output"]
+            }
+          }
+        ],
+        "push_constants": [
+          {
+            "name": "push_constants",
+            "values": {
+              "batch_size": ["U32", "batch"],
+              "channels": ["U32", "channels"],
+              "height": ["U32", "image_height"],
+              "width": ["U32", "image_width"],
+              "operation": ["U32", "4"],
+              "border_mode": ["U32", "border.code()"],
+              "kernel_width": ["U32", "1"],
+              "kernel_height": ["U32", "1"],
+              "kernel_size": ["U32", "1"],
+              "dx": ["U32", "dx"],
+              "dy": ["U32", "dy"],
+              "p0": ["F32", "0.0"],
+              "p1": ["F32", "0.0"],
+              "p2": ["F32", "0.0"],
+              "p3": ["F32", "0.0"],
+              "border_value": ["F32", "0.0"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageScharrF32"],
+            "kernel": "KernelId::ImageScharrF32",
+            "workgroups": "[\n\t\t\t\timage_width.div_ceil(16),\n\t\t\t\timage_height.div_ceil(16),\n\t\t\t\tbatch * channels,\n\t\t\t]"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "laplacian",
+      "input_kinds": ["image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [["border", "enum"]],
+      "rust": {
+        "category": "filter",
+        "parameters": [["input", "&Image"], ["border", "BorderMode"]],
+        "returns": "Image",
+        "doc": ["Apply the four-neighbor discrete Laplacian."],
+        "attribute_sources": {"border": {"encoding": "enumeration", "value": "border.token()"}},
+        "bindings": [
+          {
+            "name": "buffers",
+            "values": {
+              "input_index": ["read", "input"],
+              "kernel_x_index": ["read", "input"],
+              "kernel_y_index": ["read", "input"],
+              "output_index": ["write", "output"]
+            }
+          }
+        ],
+        "push_constants": [
+          {
+            "name": "push_constants",
+            "values": {
+              "batch_size": ["U32", "batch"],
+              "channels": ["U32", "channels"],
+              "height": ["U32", "image_height"],
+              "width": ["U32", "image_width"],
+              "operation": ["U32", "5"],
+              "border_mode": ["U32", "border.code()"],
+              "kernel_width": ["U32", "1"],
+              "kernel_height": ["U32", "1"],
+              "kernel_size": ["U32", "1"],
+              "dx": ["U32", "0"],
+              "dy": ["U32", "0"],
+              "p0": ["F32", "0.0"],
+              "p1": ["F32", "0.0"],
+              "p2": ["F32", "0.0"],
+              "p3": ["F32", "0.0"],
+              "border_value": ["F32", "0.0"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageLaplacianF32"],
+            "kernel": "KernelId::ImageLaplacianF32",
+            "workgroups": "[\n\t\t\t\timage_width.div_ceil(16),\n\t\t\t\timage_height.div_ceil(16),\n\t\t\t\tbatch * channels,\n\t\t\t]"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "erode",
+      "input_kinds": ["image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [
+        ["kernel_width", "unsigned_integer"],
+        ["kernel_height", "unsigned_integer"],
+        ["border", "enum"],
+        ["border_value", "float"]
+      ],
+      "rust": {
+        "category": "filter",
+        "parameters": [["input", "&Image"], ["width", "u32"], ["height", "u32"], ["border", "BorderMode"], ["border_value", "f32"]],
+        "returns": "Image",
+        "doc": ["Erode with an odd rectangular structuring element up to 31×31."],
+        "attribute_sources": {
+          "kernel_width": {"encoding": "unsigned", "value": "width"},
+          "kernel_height": {"encoding": "unsigned", "value": "height"},
+          "border": {"encoding": "enumeration", "value": "border.token()"},
+          "border_value": {"encoding": "float", "value": "border_value"}
+        },
+        "bindings": [
+          {
+            "name": "buffers",
+            "values": {
+              "input_index": ["read", "input"],
+              "kernel_x_index": ["read", "input"],
+              "kernel_y_index": ["read", "input"],
+              "output_index": ["write", "output"]
+            }
+          }
+        ],
+        "push_constants": [
+          {
+            "name": "push_constants",
+            "values": {
+              "batch_size": ["U32", "batch"],
+              "channels": ["U32", "channels"],
+              "height": ["U32", "image_height"],
+              "width": ["U32", "image_width"],
+              "operation": ["U32", "6"],
+              "border_mode": ["U32", "border.code()"],
+              "kernel_width": ["U32", "width"],
+              "kernel_height": ["U32", "height"],
+              "kernel_size": ["U32", "1"],
+              "dx": ["U32", "0"],
+              "dy": ["U32", "0"],
+              "p0": ["F32", "0.0"],
+              "p1": ["F32", "0.0"],
+              "p2": ["F32", "0.0"],
+              "p3": ["F32", "0.0"],
+              "border_value": ["F32", "border_value"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageErodeF32"],
+            "kernel": "KernelId::ImageErodeF32",
+            "workgroups": "[\n\t\t\t\timage_width.div_ceil(16),\n\t\t\t\timage_height.div_ceil(16),\n\t\t\t\tbatch * channels,\n\t\t\t]"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "dilate",
+      "input_kinds": ["image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [
+        ["kernel_width", "unsigned_integer"],
+        ["kernel_height", "unsigned_integer"],
+        ["border", "enum"],
+        ["border_value", "float"]
+      ],
+      "rust": {
+        "category": "filter",
+        "parameters": [["input", "&Image"], ["width", "u32"], ["height", "u32"], ["border", "BorderMode"], ["border_value", "f32"]],
+        "returns": "Image",
+        "doc": ["Dilate with an odd rectangular structuring element up to 31×31."],
+        "attribute_sources": {
+          "kernel_width": {"encoding": "unsigned", "value": "width"},
+          "kernel_height": {"encoding": "unsigned", "value": "height"},
+          "border": {"encoding": "enumeration", "value": "border.token()"},
+          "border_value": {"encoding": "float", "value": "border_value"}
+        },
+        "bindings": [
+          {
+            "name": "buffers",
+            "values": {
+              "input_index": ["read", "input"],
+              "kernel_x_index": ["read", "input"],
+              "kernel_y_index": ["read", "input"],
+              "output_index": ["write", "output"]
+            }
+          }
+        ],
+        "push_constants": [
+          {
+            "name": "push_constants",
+            "values": {
+              "batch_size": ["U32", "batch"],
+              "channels": ["U32", "channels"],
+              "height": ["U32", "image_height"],
+              "width": ["U32", "image_width"],
+              "operation": ["U32", "7"],
+              "border_mode": ["U32", "border.code()"],
+              "kernel_width": ["U32", "width"],
+              "kernel_height": ["U32", "height"],
+              "kernel_size": ["U32", "1"],
+              "dx": ["U32", "0"],
+              "dy": ["U32", "0"],
+              "p0": ["F32", "0.0"],
+              "p1": ["F32", "0.0"],
+              "p2": ["F32", "0.0"],
+              "p3": ["F32", "0.0"],
+              "border_value": ["F32", "border_value"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageDilateF32"],
+            "kernel": "KernelId::ImageDilateF32",
+            "workgroups": "[\n\t\t\t\timage_width.div_ceil(16),\n\t\t\t\timage_height.div_ceil(16),\n\t\t\t\tbatch * channels,\n\t\t\t]"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "morphology_open",
+      "input_kinds": ["image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [
+        ["kernel_width", "unsigned_integer"],
+        ["kernel_height", "unsigned_integer"],
+        ["border", "enum"],
+        ["border_value", "float"]
+      ],
+      "rust": {
+        "category": "filter",
+        "parameters": [["input", "&Image"], ["width", "u32"], ["height", "u32"], ["border", "BorderMode"], ["border_value", "f32"]],
+        "returns": "Image",
+        "doc": ["Erode and then dilate with the same rectangular element."],
+        "attribute_sources": {
+          "kernel_width": {"encoding": "unsigned", "value": "width"},
+          "kernel_height": {"encoding": "unsigned", "value": "height"},
+          "border": {"encoding": "enumeration", "value": "border.token()"},
+          "border_value": {"encoding": "float", "value": "border_value"}
+        },
+        "bindings": [
+          {
+            "name": "buffers",
+            "values": {
+              "input_index": ["read", "input"],
+              "kernel_x_index": ["read", "input"],
+              "kernel_y_index": ["read", "input"],
+              "output_index": ["write", "output"]
+            }
+          }
+        ],
+        "push_constants": [
+          {
+            "name": "push_constants",
+            "values": {
+              "batch_size": ["U32", "batch"],
+              "channels": ["U32", "channels"],
+              "height": ["U32", "image_height"],
+              "width": ["U32", "image_width"],
+              "operation": ["U32", "8"],
+              "border_mode": ["U32", "border.code()"],
+              "kernel_width": ["U32", "width"],
+              "kernel_height": ["U32", "height"],
+              "kernel_size": ["U32", "1"],
+              "dx": ["U32", "0"],
+              "dy": ["U32", "0"],
+              "p0": ["F32", "0.0"],
+              "p1": ["F32", "0.0"],
+              "p2": ["F32", "0.0"],
+              "p3": ["F32", "0.0"],
+              "border_value": ["F32", "border_value"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageMorphologyOpenF32"],
+            "kernel": "KernelId::ImageMorphologyOpenF32",
+            "workgroups": "[\n\t\t\t\timage_width.div_ceil(16),\n\t\t\t\timage_height.div_ceil(16),\n\t\t\t\tbatch * channels,\n\t\t\t]"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "morphology_close",
+      "input_kinds": ["image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [
+        ["kernel_width", "unsigned_integer"],
+        ["kernel_height", "unsigned_integer"],
+        ["border", "enum"],
+        ["border_value", "float"]
+      ],
+      "rust": {
+        "category": "filter",
+        "parameters": [["input", "&Image"], ["width", "u32"], ["height", "u32"], ["border", "BorderMode"], ["border_value", "f32"]],
+        "returns": "Image",
+        "doc": ["Dilate and then erode with the same rectangular element."],
+        "attribute_sources": {
+          "kernel_width": {"encoding": "unsigned", "value": "width"},
+          "kernel_height": {"encoding": "unsigned", "value": "height"},
+          "border": {"encoding": "enumeration", "value": "border.token()"},
+          "border_value": {"encoding": "float", "value": "border_value"}
+        },
+        "bindings": [
+          {
+            "name": "buffers",
+            "values": {
+              "input_index": ["read", "input"],
+              "kernel_x_index": ["read", "input"],
+              "kernel_y_index": ["read", "input"],
+              "output_index": ["write", "output"]
+            }
+          }
+        ],
+        "push_constants": [
+          {
+            "name": "push_constants",
+            "values": {
+              "batch_size": ["U32", "batch"],
+              "channels": ["U32", "channels"],
+              "height": ["U32", "image_height"],
+              "width": ["U32", "image_width"],
+              "operation": ["U32", "9"],
+              "border_mode": ["U32", "border.code()"],
+              "kernel_width": ["U32", "width"],
+              "kernel_height": ["U32", "height"],
+              "kernel_size": ["U32", "1"],
+              "dx": ["U32", "0"],
+              "dy": ["U32", "0"],
+              "p0": ["F32", "0.0"],
+              "p1": ["F32", "0.0"],
+              "p2": ["F32", "0.0"],
+              "p3": ["F32", "0.0"],
+              "border_value": ["F32", "border_value"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageMorphologyCloseF32"],
+            "kernel": "KernelId::ImageMorphologyCloseF32",
+            "workgroups": "[\n\t\t\t\timage_width.div_ceil(16),\n\t\t\t\timage_height.div_ceil(16),\n\t\t\t\tbatch * channels,\n\t\t\t]"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "morphology_gradient",
+      "input_kinds": ["image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [
+        ["kernel_width", "unsigned_integer"],
+        ["kernel_height", "unsigned_integer"],
+        ["border", "enum"],
+        ["border_value", "float"]
+      ],
+      "rust": {
+        "category": "filter",
+        "parameters": [["input", "&Image"], ["width", "u32"], ["height", "u32"], ["border", "BorderMode"], ["border_value", "f32"]],
+        "returns": "Image",
+        "doc": ["Return dilation minus erosion."],
+        "attribute_sources": {
+          "kernel_width": {"encoding": "unsigned", "value": "width"},
+          "kernel_height": {"encoding": "unsigned", "value": "height"},
+          "border": {"encoding": "enumeration", "value": "border.token()"},
+          "border_value": {"encoding": "float", "value": "border_value"}
+        },
+        "bindings": [
+          {
+            "name": "buffers",
+            "values": {
+              "input_index": ["read", "input"],
+              "kernel_x_index": ["read", "input"],
+              "kernel_y_index": ["read", "input"],
+              "output_index": ["write", "output"]
+            }
+          }
+        ],
+        "push_constants": [
+          {
+            "name": "push_constants",
+            "values": {
+              "batch_size": ["U32", "batch"],
+              "channels": ["U32", "channels"],
+              "height": ["U32", "image_height"],
+              "width": ["U32", "image_width"],
+              "operation": ["U32", "10"],
+              "border_mode": ["U32", "border.code()"],
+              "kernel_width": ["U32", "width"],
+              "kernel_height": ["U32", "height"],
+              "kernel_size": ["U32", "1"],
+              "dx": ["U32", "0"],
+              "dy": ["U32", "0"],
+              "p0": ["F32", "0.0"],
+              "p1": ["F32", "0.0"],
+              "p2": ["F32", "0.0"],
+              "p3": ["F32", "0.0"],
+              "border_value": ["F32", "border_value"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageMorphologyGradientF32"],
+            "kernel": "KernelId::ImageMorphologyGradientF32",
+            "workgroups": "[\n\t\t\t\timage_width.div_ceil(16),\n\t\t\t\timage_height.div_ceil(16),\n\t\t\t\tbatch * channels,\n\t\t\t]"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "gaussian_blur",
+      "input_kinds": ["image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [["sigma", "float"], ["kernel_size", "unsigned_integer"]],
+      "rust": {
+        "category": "filter",
+        "parameters": [["input", "&Image"], ["sigma", "f32"], ["kernel_size", "u32"]],
+        "returns": "Image",
+        "doc": ["Apply a normalized Gaussian blur with replicate borders."],
+        "attribute_sources": {
+          "sigma": {"encoding": "float", "value": "sigma"},
+          "kernel_size": {"encoding": "unsigned", "value": "kernel_size"}
+        },
+        "bindings": [
+          {
+            "name": "buffers",
+            "values": {
+              "input_index": ["read", "input"],
+              "kernel_x_index": ["read", "input"],
+              "kernel_y_index": ["read", "input"],
+              "output_index": ["write", "output"]
+            }
+          }
+        ],
+        "push_constants": [
+          {
+            "name": "push_constants",
+            "values": {
+              "batch_size": ["U32", "batch"],
+              "channels": ["U32", "channels"],
+              "height": ["U32", "image_height"],
+              "width": ["U32", "image_width"],
+              "operation": ["U32", "11"],
+              "border_mode": ["U32", "BorderMode::Replicate.code()"],
+              "kernel_width": ["U32", "1"],
+              "kernel_height": ["U32", "1"],
+              "kernel_size": ["U32", "size"],
+              "dx": ["U32", "0"],
+              "dy": ["U32", "0"],
+              "p0": ["F32", "sigma"],
+              "p1": ["F32", "0.0"],
+              "p2": ["F32", "0.0"],
+              "p3": ["F32", "0.0"],
+              "border_value": ["F32", "0.0"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageGaussianBlurF32"],
+            "kernel": "KernelId::ImageGaussianBlurF32",
+            "workgroups": "[\n\t\t\t\timage_width.div_ceil(16),\n\t\t\t\timage_height.div_ceil(16),\n\t\t\t\tbatch * channels,\n\t\t\t]"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "sharpen",
+      "input_kinds": ["image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [["amount", "float"], ["border", "enum"]],
+      "rust": {
+        "category": "filter",
+        "parameters": [["input", "&Image"], ["amount", "f32"], ["border", "BorderMode"]],
+        "returns": "Image",
+        "doc": ["Apply a nonnegative four-neighbor sharpening amount."],
+        "attribute_sources": {
+          "amount": {"encoding": "float", "value": "amount"},
+          "border": {"encoding": "enumeration", "value": "border.token()"}
+        },
+        "bindings": [
+          {
+            "name": "buffers",
+            "values": {
+              "input_index": ["read", "input"],
+              "kernel_x_index": ["read", "input"],
+              "kernel_y_index": ["read", "input"],
+              "output_index": ["write", "output"]
+            }
+          }
+        ],
+        "push_constants": [
+          {
+            "name": "push_constants",
+            "values": {
+              "batch_size": ["U32", "batch"],
+              "channels": ["U32", "channels"],
+              "height": ["U32", "image_height"],
+              "width": ["U32", "image_width"],
+              "operation": ["U32", "12"],
+              "border_mode": ["U32", "border.code()"],
+              "kernel_width": ["U32", "1"],
+              "kernel_height": ["U32", "1"],
+              "kernel_size": ["U32", "1"],
+              "dx": ["U32", "0"],
+              "dy": ["U32", "0"],
+              "p0": ["F32", "amount"],
+              "p1": ["F32", "0.0"],
+              "p2": ["F32", "0.0"],
+              "p3": ["F32", "0.0"],
+              "border_value": ["F32", "0.0"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageSharpenF32"],
+            "kernel": "KernelId::ImageSharpenF32",
+            "workgroups": "[\n\t\t\t\timage_width.div_ceil(16),\n\t\t\t\timage_height.div_ceil(16),\n\t\t\t\tbatch * channels,\n\t\t\t]"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "median_blur",
+      "input_kinds": ["image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [["kernel_size", "unsigned_integer"], ["border", "enum"]],
+      "rust": {
+        "category": "filter",
+        "parameters": [["input", "&Image"], ["kernel_size", "u32"], ["border", "BorderMode"]],
+        "returns": "Image",
+        "doc": ["Select the median of an odd square neighborhood up to 15×15."],
+        "attribute_sources": {
+          "kernel_size": {"encoding": "unsigned", "value": "kernel_size"},
+          "border": {"encoding": "enumeration", "value": "border.token()"}
+        },
+        "bindings": [
+          {
+            "name": "buffers",
+            "values": {
+              "input_index": ["read", "input"],
+              "kernel_x_index": ["read", "input"],
+              "kernel_y_index": ["read", "input"],
+              "output_index": ["write", "output"]
+            }
+          }
+        ],
+        "push_constants": [
+          {
+            "name": "push_constants",
+            "values": {
+              "batch_size": ["U32", "batch"],
+              "channels": ["U32", "channels"],
+              "height": ["U32", "image_height"],
+              "width": ["U32", "image_width"],
+              "operation": ["U32", "13"],
+              "border_mode": ["U32", "border.code()"],
+              "kernel_width": ["U32", "1"],
+              "kernel_height": ["U32", "1"],
+              "kernel_size": ["U32", "kernel_size"],
+              "dx": ["U32", "0"],
+              "dy": ["U32", "0"],
+              "p0": ["F32", "0.0"],
+              "p1": ["F32", "0.0"],
+              "p2": ["F32", "0.0"],
+              "p3": ["F32", "0.0"],
+              "border_value": ["F32", "0.0"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageMedianBlurF32"],
+            "kernel": "KernelId::ImageMedianBlurF32",
+            "workgroups": "[\n\t\t\t\timage_width.div_ceil(16),\n\t\t\t\timage_height.div_ceil(16),\n\t\t\t\tbatch * channels,\n\t\t\t]"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "bilateral_filter",
+      "input_kinds": ["image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [["kernel_size", "unsigned_integer"], ["sigma_color", "float"], ["sigma_space", "float"], ["border", "enum"]],
+      "rust": {
+        "category": "filter",
+        "parameters": [
+          ["input", "&Image"],
+          ["kernel_size", "u32"],
+          ["sigma_color", "f32"],
+          ["sigma_space", "f32"],
+          ["border", "BorderMode"]
+        ],
+        "returns": "Image",
+        "doc": ["Apply a bilateral neighborhood filter."],
+        "attribute_sources": {
+          "kernel_size": {"encoding": "unsigned", "value": "kernel_size"},
+          "sigma_color": {"encoding": "float", "value": "sigma_color"},
+          "sigma_space": {"encoding": "float", "value": "sigma_space"},
+          "border": {"encoding": "enumeration", "value": "border.token()"}
+        },
+        "bindings": [
+          {
+            "name": "buffers",
+            "values": {
+              "input_index": ["read", "input"],
+              "kernel_x_index": ["read", "input"],
+              "kernel_y_index": ["read", "input"],
+              "output_index": ["write", "output"]
+            }
+          }
+        ],
+        "push_constants": [
+          {
+            "name": "push_constants",
+            "values": {
+              "batch_size": ["U32", "batch"],
+              "channels": ["U32", "channels"],
+              "height": ["U32", "image_height"],
+              "width": ["U32", "image_width"],
+              "operation": ["U32", "14"],
+              "border_mode": ["U32", "border.code()"],
+              "kernel_width": ["U32", "1"],
+              "kernel_height": ["U32", "1"],
+              "kernel_size": ["U32", "kernel_size"],
+              "dx": ["U32", "0"],
+              "dy": ["U32", "0"],
+              "p0": ["F32", "sigma_color"],
+              "p1": ["F32", "sigma_space"],
+              "p2": ["F32", "0.0"],
+              "p3": ["F32", "0.0"],
+              "border_value": ["F32", "0.0"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageBilateralFilterF32"],
+            "kernel": "KernelId::ImageBilateralFilterF32",
+            "workgroups": "[\n\t\t\t\timage_width.div_ceil(16),\n\t\t\t\timage_height.div_ceil(16),\n\t\t\t\tbatch * channels,\n\t\t\t]"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "unsharp_mask",
+      "input_kinds": ["image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [["sigma", "float"], ["amount", "float"], ["kernel_size", "unsigned_integer"]],
+      "rust": {
+        "category": "filter",
+        "parameters": [["input", "&Image"], ["sigma", "f32"], ["amount", "f32"], ["kernel_size", "u32"]],
+        "returns": "Image",
+        "doc": ["Apply an unsharp mask using a Gaussian detail estimate."],
+        "attribute_sources": {
+          "sigma": {"encoding": "float", "value": "sigma"},
+          "amount": {"encoding": "float", "value": "amount"},
+          "kernel_size": {"encoding": "unsigned", "value": "kernel_size"}
+        },
+        "bindings": [
+          {
+            "name": "buffers",
+            "values": {
+              "input_index": ["read", "input"],
+              "kernel_x_index": ["read", "input"],
+              "kernel_y_index": ["read", "input"],
+              "output_index": ["write", "output"]
+            }
+          }
+        ],
+        "push_constants": [
+          {
+            "name": "push_constants",
+            "values": {
+              "batch_size": ["U32", "batch"],
+              "channels": ["U32", "channels"],
+              "height": ["U32", "image_height"],
+              "width": ["U32", "image_width"],
+              "operation": ["U32", "15"],
+              "border_mode": ["U32", "BorderMode::Replicate.code()"],
+              "kernel_width": ["U32", "1"],
+              "kernel_height": ["U32", "1"],
+              "kernel_size": ["U32", "size"],
+              "dx": ["U32", "0"],
+              "dy": ["U32", "0"],
+              "p0": ["F32", "sigma"],
+              "p1": ["F32", "amount"],
+              "p2": ["F32", "0.0"],
+              "p3": ["F32", "0.0"],
+              "border_value": ["F32", "0.0"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageUnsharpMaskF32"],
+            "kernel": "KernelId::ImageUnsharpMaskF32",
+            "workgroups": "[\n\t\t\t\timage_width.div_ceil(16),\n\t\t\t\timage_height.div_ceil(16),\n\t\t\t\tbatch * channels,\n\t\t\t]"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "morphology_top_hat",
+      "input_kinds": ["image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [
+        ["kernel_width", "unsigned_integer"],
+        ["kernel_height", "unsigned_integer"],
+        ["border", "enum"],
+        ["border_value", "float"]
+      ],
+      "rust": {
+        "category": "filter",
+        "parameters": [["input", "&Image"], ["width", "u32"], ["height", "u32"], ["border", "BorderMode"], ["border_value", "f32"]],
+        "returns": "Image",
+        "doc": ["Return the source minus its morphological opening."],
+        "attribute_sources": {
+          "kernel_width": {"encoding": "unsigned", "value": "width"},
+          "kernel_height": {"encoding": "unsigned", "value": "height"},
+          "border": {"encoding": "enumeration", "value": "border.token()"},
+          "border_value": {"encoding": "float", "value": "border_value"}
+        },
+        "bindings": [
+          {
+            "name": "buffers",
+            "values": {
+              "input_index": ["read", "input"],
+              "kernel_x_index": ["read", "input"],
+              "kernel_y_index": ["read", "input"],
+              "output_index": ["write", "output"]
+            }
+          }
+        ],
+        "push_constants": [
+          {
+            "name": "push_constants",
+            "values": {
+              "batch_size": ["U32", "batch"],
+              "channels": ["U32", "channels"],
+              "height": ["U32", "image_height"],
+              "width": ["U32", "image_width"],
+              "operation": ["U32", "16"],
+              "border_mode": ["U32", "border.code()"],
+              "kernel_width": ["U32", "width"],
+              "kernel_height": ["U32", "height"],
+              "kernel_size": ["U32", "1"],
+              "dx": ["U32", "0"],
+              "dy": ["U32", "0"],
+              "p0": ["F32", "0.0"],
+              "p1": ["F32", "0.0"],
+              "p2": ["F32", "0.0"],
+              "p3": ["F32", "0.0"],
+              "border_value": ["F32", "border_value"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageMorphologyTopHatF32"],
+            "kernel": "KernelId::ImageMorphologyTopHatF32",
+            "workgroups": "[\n\t\t\t\timage_width.div_ceil(16),\n\t\t\t\timage_height.div_ceil(16),\n\t\t\t\tbatch * channels,\n\t\t\t]"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "morphology_black_hat",
+      "input_kinds": ["image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [
+        ["kernel_width", "unsigned_integer"],
+        ["kernel_height", "unsigned_integer"],
+        ["border", "enum"],
+        ["border_value", "float"]
+      ],
+      "rust": {
+        "category": "filter",
+        "parameters": [["input", "&Image"], ["width", "u32"], ["height", "u32"], ["border", "BorderMode"], ["border_value", "f32"]],
+        "returns": "Image",
+        "doc": ["Return the morphological closing minus the source."],
+        "attribute_sources": {
+          "kernel_width": {"encoding": "unsigned", "value": "width"},
+          "kernel_height": {"encoding": "unsigned", "value": "height"},
+          "border": {"encoding": "enumeration", "value": "border.token()"},
+          "border_value": {"encoding": "float", "value": "border_value"}
+        },
+        "bindings": [
+          {
+            "name": "buffers",
+            "values": {
+              "input_index": ["read", "input"],
+              "kernel_x_index": ["read", "input"],
+              "kernel_y_index": ["read", "input"],
+              "output_index": ["write", "output"]
+            }
+          }
+        ],
+        "push_constants": [
+          {
+            "name": "push_constants",
+            "values": {
+              "batch_size": ["U32", "batch"],
+              "channels": ["U32", "channels"],
+              "height": ["U32", "image_height"],
+              "width": ["U32", "image_width"],
+              "operation": ["U32", "17"],
+              "border_mode": ["U32", "border.code()"],
+              "kernel_width": ["U32", "width"],
+              "kernel_height": ["U32", "height"],
+              "kernel_size": ["U32", "1"],
+              "dx": ["U32", "0"],
+              "dy": ["U32", "0"],
+              "p0": ["F32", "0.0"],
+              "p1": ["F32", "0.0"],
+              "p2": ["F32", "0.0"],
+              "p3": ["F32", "0.0"],
+              "border_value": ["F32", "border_value"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageMorphologyBlackHatF32"],
+            "kernel": "KernelId::ImageMorphologyBlackHatF32",
+            "workgroups": "[\n\t\t\t\timage_width.div_ceil(16),\n\t\t\t\timage_height.div_ceil(16),\n\t\t\t\tbatch * channels,\n\t\t\t]"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "adaptive_threshold_mean",
+      "input_kinds": ["image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [["kernel_size", "unsigned_integer"], ["c", "float"], ["max_value", "float"], ["border", "enum"]],
+      "rust": {
+        "category": "filter",
+        "parameters": [["input", "&Image"], ["kernel_size", "u32"], ["c", "f32"], ["max_value", "f32"], ["border", "BorderMode"]],
+        "returns": "Image",
+        "doc": ["Threshold against the local arithmetic mean minus `c`."],
+        "attribute_sources": {
+          "kernel_size": {"encoding": "unsigned", "value": "kernel_size"},
+          "c": {"encoding": "float", "value": "c"},
+          "max_value": {"encoding": "float", "value": "max_value"},
+          "border": {"encoding": "enumeration", "value": "border.token()"}
+        },
+        "bindings": [
+          {
+            "name": "buffers",
+            "values": {
+              "input_index": ["read", "input"],
+              "kernel_x_index": ["read", "input"],
+              "kernel_y_index": ["read", "input"],
+              "output_index": ["write", "output"]
+            }
+          }
+        ],
+        "push_constants": [
+          {
+            "name": "push_constants",
+            "values": {
+              "batch_size": ["U32", "batch"],
+              "channels": ["U32", "channels"],
+              "height": ["U32", "image_height"],
+              "width": ["U32", "image_width"],
+              "operation": ["U32", "18"],
+              "border_mode": ["U32", "border.code()"],
+              "kernel_width": ["U32", "1"],
+              "kernel_height": ["U32", "1"],
+              "kernel_size": ["U32", "kernel_size"],
+              "dx": ["U32", "0"],
+              "dy": ["U32", "0"],
+              "p0": ["F32", "c"],
+              "p1": ["F32", "max_value"],
+              "p2": ["F32", "0.0"],
+              "p3": ["F32", "0.0"],
+              "border_value": ["F32", "0.0"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageAdaptiveThresholdMeanF32"],
+            "kernel": "KernelId::ImageAdaptiveThresholdMeanF32",
+            "workgroups": "[\n\t\t\t\timage_width.div_ceil(16),\n\t\t\t\timage_height.div_ceil(16),\n\t\t\t\tbatch * channels,\n\t\t\t]"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "adaptive_threshold_gaussian",
+      "input_kinds": ["image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [
+        ["kernel_size", "unsigned_integer"],
+        ["c", "float"],
+        ["max_value", "float"],
+        ["sigma", "float"],
+        ["border", "enum"]
+      ],
+      "rust": {
+        "category": "filter",
+        "parameters": [
+          ["input", "&Image"],
+          ["kernel_size", "u32"],
+          ["c", "f32"],
+          ["max_value", "f32"],
+          ["sigma", "f32"],
+          ["border", "BorderMode"]
+        ],
+        "returns": "Image",
+        "doc": ["Threshold against a local Gaussian-weighted mean minus `c`."],
+        "attribute_sources": {
+          "kernel_size": {"encoding": "unsigned", "value": "kernel_size"},
+          "c": {"encoding": "float", "value": "c"},
+          "max_value": {"encoding": "float", "value": "max_value"},
+          "sigma": {"encoding": "float", "value": "sigma"},
+          "border": {"encoding": "enumeration", "value": "border.token()"}
+        },
+        "bindings": [
+          {
+            "name": "buffers",
+            "values": {
+              "input_index": ["read", "input"],
+              "kernel_x_index": ["read", "input"],
+              "kernel_y_index": ["read", "input"],
+              "output_index": ["write", "output"]
+            }
+          }
+        ],
+        "push_constants": [
+          {
+            "name": "push_constants",
+            "values": {
+              "batch_size": ["U32", "batch"],
+              "channels": ["U32", "channels"],
+              "height": ["U32", "image_height"],
+              "width": ["U32", "image_width"],
+              "operation": ["U32", "19"],
+              "border_mode": ["U32", "border.code()"],
+              "kernel_width": ["U32", "1"],
+              "kernel_height": ["U32", "1"],
+              "kernel_size": ["U32", "kernel_size"],
+              "dx": ["U32", "0"],
+              "dy": ["U32", "0"],
+              "p0": ["F32", "c"],
+              "p1": ["F32", "max_value"],
+              "p2": ["F32", "resolved_sigma"],
+              "p3": ["F32", "0.0"],
+              "border_value": ["F32", "0.0"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageAdaptiveThresholdGaussianF32"],
+            "kernel": "KernelId::ImageAdaptiveThresholdGaussianF32",
+            "workgroups": "[\n\t\t\t\timage_width.div_ceil(16),\n\t\t\t\timage_height.div_ceil(16),\n\t\t\t\tbatch * channels,\n\t\t\t]"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "normalize",
+      "input_kinds": ["image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [
+        ["mean_0", "float"],
+        ["mean_1", "float"],
+        ["mean_2", "float"],
+        ["std_0", "float"],
+        ["std_1", "float"],
+        ["std_2", "float"]
+      ],
+      "rust": {
+        "category": "color",
+        "parameters": [["input", "&Image"], ["parameters", "NormalizationParams"]],
+        "returns": "Image",
+        "doc": ["Apply `(pixel - mean[channel]) / std[channel]` to up to three channels."],
+        "attribute_sources": {
+          "mean_0": {"encoding": "float", "value": "parameters.mean[0]"},
+          "mean_1": {"encoding": "float", "value": "parameters.mean[1]"},
+          "mean_2": {"encoding": "float", "value": "parameters.mean[2]"},
+          "std_0": {"encoding": "float", "value": "parameters.std[0]"},
+          "std_1": {"encoding": "float", "value": "parameters.std[1]"},
+          "std_2": {"encoding": "float", "value": "parameters.std[2]"}
+        },
+        "bindings": [{"name": null, "values": {"input_index": ["read", "input"], "output_index": ["write", "output"]}}],
+        "push_constants": [
+          {
+            "name": null,
+            "values": {
+              "batch_size": ["U32", "batch"],
+              "channels": ["U32", "channels"],
+              "height": ["U32", "height"],
+              "width": ["U32", "width"],
+              "mean_0": ["F32", "parameters.mean[0]"],
+              "mean_1": ["F32", "parameters.mean[1]"],
+              "mean_2": ["F32", "parameters.mean[2]"],
+              "std_0": ["F32", "parameters.std[0]"],
+              "std_1": ["F32", "parameters.std[1]"],
+              "std_2": ["F32", "parameters.std[2]"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageNormalizeF32"],
+            "kernel": "KernelId::ImageNormalizeF32",
+            "workgroups": "[width.div_ceil(16), height.div_ceil(16), batch * channels]"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "convert_color",
+      "input_kinds": ["image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [["destination_format", "enum"]],
+      "rust": {
+        "category": "color",
+        "parameters": [["input", "&Image"], ["destination_format", "crate::ImageFormat"]],
+        "returns": "Image",
+        "doc": ["Convert between three-channel RGB and BGR semantics, including identity."],
+        "attribute_sources": {"destination_format": {"encoding": "enumeration", "value": "format_token(destination_format)"}},
+        "bindings": [{"name": null, "values": {"input_index": ["read", "input"], "output_index": ["write", "output"]}}],
+        "push_constants": [
+          {
+            "name": null,
+            "values": {
+              "batch_size": ["U32", "batch"],
+              "height": ["U32", "height"],
+              "width": ["U32", "width"],
+              "swap_red_blue": ["U32", "swap"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageConvertColorF32"],
+            "kernel": "KernelId::ImageConvertColorF32",
+            "workgroups": "[width.div_ceil(16), height.div_ceil(16), batch * 3]"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "resize_normalize",
+      "input_kinds": ["image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [
+        ["target_width", "unsigned_integer"],
+        ["target_height", "unsigned_integer"],
+        ["mean_0", "float"],
+        ["mean_1", "float"],
+        ["mean_2", "float"],
+        ["std_0", "float"],
+        ["std_1", "float"],
+        ["std_2", "float"]
+      ],
+      "rust": {
+        "category": "color",
+        "parameters": [["input", "&Image"], ["width", "u32"], ["height", "u32"], ["parameters", "NormalizationParams"]],
+        "returns": "Image",
+        "doc": ["Bilinearly resize and normalize in one semantic and executable operation."],
+        "attribute_sources": {
+          "target_width": {"encoding": "unsigned", "value": "width"},
+          "target_height": {"encoding": "unsigned", "value": "height"},
+          "mean_0": {"encoding": "float", "value": "parameters.mean[0]"},
+          "mean_1": {"encoding": "float", "value": "parameters.mean[1]"},
+          "mean_2": {"encoding": "float", "value": "parameters.mean[2]"},
+          "std_0": {"encoding": "float", "value": "parameters.std[0]"},
+          "std_1": {"encoding": "float", "value": "parameters.std[1]"},
+          "std_2": {"encoding": "float", "value": "parameters.std[2]"}
+        },
+        "bindings": [{"name": null, "values": {"input_index": ["read", "input"], "output_index": ["write", "output"]}}],
+        "push_constants": [
+          {
+            "name": null,
+            "values": {
+              "batch_size": ["U32", "batch"],
+              "channels": ["U32", "channels"],
+              "input_height": ["U32", "input_height"],
+              "input_width": ["U32", "input_width"],
+              "output_height": ["U32", "height"],
+              "output_width": ["U32", "width"],
+              "mean_0": ["F32", "parameters.mean[0]"],
+              "mean_1": ["F32", "parameters.mean[1]"],
+              "mean_2": ["F32", "parameters.mean[2]"],
+              "std_0": ["F32", "parameters.std[0]"],
+              "std_1": ["F32", "parameters.std[1]"],
+              "std_2": ["F32", "parameters.std[2]"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageResizeNormalizeF32"],
+            "kernel": "KernelId::ImageResizeNormalizeF32",
+            "workgroups": "[width.div_ceil(16), height.div_ceil(16), batch * channels]"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "segmentation_overlay",
+      "input_kinds": ["image", "matrix", "matrix"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "explicit",
+      "attributes": [["alpha", "float"]],
+      "rust": {
+        "category": "color",
+        "parameters": [["input", "&Image"], ["mask", "&Matrix"], ["palette", "&Matrix"], ["alpha", "f32"]],
+        "returns": "Image",
+        "doc": ["Blend a class palette over an RGB/RGBA image using an I32 label map."],
+        "attribute_sources": {"alpha": {"encoding": "float", "value": "alpha"}},
+        "bindings": [
+          {
+            "name": null,
+            "values": {
+              "image_index": ["read", "input"],
+              "mask_index": ["read", "mask"],
+              "palette_index": ["read", "palette"],
+              "output_index": ["write", "output"]
+            }
+          }
+        ],
+        "push_constants": [
+          {
+            "name": null,
+            "values": {
+              "batch_size": ["U32", "batch_u32"],
+              "channels": ["U32", "channels"],
+              "height": ["U32", "height_u32"],
+              "width": ["U32", "width_u32"],
+              "class_count": ["U32", "classes"],
+              "alpha": ["F32", "alpha"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageSegmentationOverlayF32"],
+            "kernel": "KernelId::ImageSegmentationOverlayF32",
+            "workgroups": "[\n\t\t\t\twidth_u32.div_ceil(16),\n\t\t\t\theight_u32.div_ceil(16),\n\t\t\t\tbatch_u32 * channels,\n\t\t\t]"
+          }
+        ],
+        "annotations": []
+      }
+    }
+  ],
+  "kernels": [
+    {
+      "stable_id": 123,
+      "name": "resize_nearest",
+      "kernel_id": "ImageResizeNearestF32",
+      "source": "src/slang/image/geometric/resize_nearest.slang",
+      "variant": "nearest",
+      "workgroup_size": [16, 16, 1],
+      "dispatch_tile_size": [16, 16, 1],
+      "semantic_operation": "resize",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["input_height", "uint32"],
+        ["input_width", "uint32"],
+        ["output_height", "uint32"],
+        ["output_width", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 124,
+      "name": "resize_bilinear",
+      "kernel_id": "ImageResizeBilinearF32",
+      "source": "src/slang/image/geometric/resize_bilinear.slang",
+      "variant": "bilinear_align_corners_false",
+      "workgroup_size": [16, 16, 1],
+      "dispatch_tile_size": [16, 16, 1],
+      "semantic_operation": "resize",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["input_height", "uint32"],
+        ["input_width", "uint32"],
+        ["output_height", "uint32"],
+        ["output_width", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 137,
+      "name": "crop",
+      "kernel_id": "ImageCropF32",
+      "source": "src/slang/image/geometric/crop.slang",
+      "variant": "nchw_or_chw",
+      "workgroup_size": [16, 16, 1],
+      "dispatch_tile_size": [16, 16, 1],
+      "semantic_operation": "crop",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["input_height", "uint32"],
+        ["input_width", "uint32"],
+        ["crop_x", "uint32"],
+        ["crop_y", "uint32"],
+        ["output_height", "uint32"],
+        ["output_width", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 138,
+      "name": "flip",
+      "kernel_id": "ImageFlipF32",
+      "source": "src/slang/image/geometric/flip.slang",
+      "variant": "nchw_or_chw",
+      "workgroup_size": [16, 16, 1],
+      "dispatch_tile_size": [16, 16, 1],
+      "semantic_operation": "flip",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["height", "uint32"],
+        ["width", "uint32"],
+        ["horizontal", "uint32"],
+        ["vertical", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 139,
+      "name": "rotate",
+      "kernel_id": "ImageRotateF32",
+      "source": "src/slang/image/geometric/rotate.slang",
+      "variant": "clockwise_quarter_turns",
+      "workgroup_size": [16, 16, 1],
+      "dispatch_tile_size": [16, 16, 1],
+      "semantic_operation": "rotate",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["input_height", "uint32"],
+        ["input_width", "uint32"],
+        ["output_height", "uint32"],
+        ["output_width", "uint32"],
+        ["degrees", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 140,
+      "name": "pad",
+      "kernel_id": "ImagePadF32",
+      "source": "src/slang/image/geometric/pad.slang",
+      "variant": "shared_border_modes",
+      "workgroup_size": [16, 16, 1],
+      "dispatch_tile_size": [16, 16, 1],
+      "semantic_operation": "pad",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["input_height", "uint32"],
+        ["input_width", "uint32"],
+        ["output_height", "uint32"],
+        ["output_width", "uint32"],
+        ["pad_top", "uint32"],
+        ["pad_left", "uint32"],
+        ["border_mode", "uint32"],
+        ["border_value", "float32"]
+      ]
+    },
+    {
+      "stable_id": 141,
+      "name": "center_crop",
+      "kernel_id": "ImageCenterCropF32",
+      "source": "src/slang/image/geometric/center_crop.slang",
+      "variant": "nchw_or_chw",
+      "workgroup_size": [16, 16, 1],
+      "dispatch_tile_size": [16, 16, 1],
+      "semantic_operation": "center_crop",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["input_height", "uint32"],
+        ["input_width", "uint32"],
+        ["crop_x", "uint32"],
+        ["crop_y", "uint32"],
+        ["output_height", "uint32"],
+        ["output_width", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 142,
+      "name": "remap",
+      "kernel_id": "ImageRemapF32",
+      "source": "src/slang/image/geometric/remap.slang",
+      "variant": "absolute_coordinates",
+      "workgroup_size": [16, 16, 1],
+      "dispatch_tile_size": [16, 16, 1],
+      "semantic_operation": "remap",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 2,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["map_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["input_height", "uint32"],
+        ["input_width", "uint32"],
+        ["output_height", "uint32"],
+        ["output_width", "uint32"],
+        ["interpolation", "uint32"],
+        ["border_mode", "uint32"],
+        ["map_batch", "uint32"],
+        ["border_value", "float32"]
+      ]
+    },
+    {
+      "stable_id": 143,
+      "name": "warp_affine",
+      "kernel_id": "ImageWarpAffineF32",
+      "source": "src/slang/image/geometric/warp_affine.slang",
+      "variant": "inverse_2x3",
+      "workgroup_size": [16, 16, 1],
+      "dispatch_tile_size": [16, 16, 1],
+      "semantic_operation": "warp_affine",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 2,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["transform_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["input_height", "uint32"],
+        ["input_width", "uint32"],
+        ["output_height", "uint32"],
+        ["output_width", "uint32"],
+        ["interpolation", "uint32"],
+        ["border_mode", "uint32"],
+        ["border_value", "float32"]
+      ]
+    },
+    {
+      "stable_id": 144,
+      "name": "warp_perspective",
+      "kernel_id": "ImageWarpPerspectiveF32",
+      "source": "src/slang/image/geometric/warp_perspective.slang",
+      "variant": "inverse_3x3",
+      "workgroup_size": [16, 16, 1],
+      "dispatch_tile_size": [16, 16, 1],
+      "semantic_operation": "warp_perspective",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 2,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["transform_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["input_height", "uint32"],
+        ["input_width", "uint32"],
+        ["output_height", "uint32"],
+        ["output_width", "uint32"],
+        ["interpolation", "uint32"],
+        ["border_mode", "uint32"],
+        ["border_value", "float32"]
+      ]
+    },
+    {
+      "stable_id": 145,
+      "name": "threshold_binary",
+      "kernel_id": "ImageThresholdBinaryF32",
+      "source": "src/slang/image/pixel/pointwise.slang",
+      "reflection_name": "pointwise",
+      "variant": "parameterized",
+      "workgroup_size": [256, 1, 1],
+      "semantic_operation": "threshold_binary",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["output_index", "uint32"],
+        ["element_count", "uint32"],
+        ["operation", "uint32"],
+        ["p0", "float32"],
+        ["p1", "float32"],
+        ["p2", "float32"],
+        ["p3", "float32"]
+      ]
+    },
+    {
+      "stable_id": 146,
+      "name": "threshold_binary_inv",
+      "kernel_id": "ImageThresholdBinaryInvF32",
+      "source": "src/slang/image/pixel/pointwise.slang",
+      "reflection_name": "pointwise",
+      "variant": "parameterized",
+      "workgroup_size": [256, 1, 1],
+      "semantic_operation": "threshold_binary_inv",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["output_index", "uint32"],
+        ["element_count", "uint32"],
+        ["operation", "uint32"],
+        ["p0", "float32"],
+        ["p1", "float32"],
+        ["p2", "float32"],
+        ["p3", "float32"]
+      ]
+    },
+    {
+      "stable_id": 147,
+      "name": "threshold_truncate",
+      "kernel_id": "ImageThresholdTruncateF32",
+      "source": "src/slang/image/pixel/pointwise.slang",
+      "reflection_name": "pointwise",
+      "variant": "parameterized",
+      "workgroup_size": [256, 1, 1],
+      "semantic_operation": "threshold_truncate",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["output_index", "uint32"],
+        ["element_count", "uint32"],
+        ["operation", "uint32"],
+        ["p0", "float32"],
+        ["p1", "float32"],
+        ["p2", "float32"],
+        ["p3", "float32"]
+      ]
+    },
+    {
+      "stable_id": 148,
+      "name": "threshold_to_zero",
+      "kernel_id": "ImageThresholdToZeroF32",
+      "source": "src/slang/image/pixel/pointwise.slang",
+      "reflection_name": "pointwise",
+      "variant": "parameterized",
+      "workgroup_size": [256, 1, 1],
+      "semantic_operation": "threshold_to_zero",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["output_index", "uint32"],
+        ["element_count", "uint32"],
+        ["operation", "uint32"],
+        ["p0", "float32"],
+        ["p1", "float32"],
+        ["p2", "float32"],
+        ["p3", "float32"]
+      ]
+    },
+    {
+      "stable_id": 149,
+      "name": "threshold_to_zero_inv",
+      "kernel_id": "ImageThresholdToZeroInvF32",
+      "source": "src/slang/image/pixel/pointwise.slang",
+      "reflection_name": "pointwise",
+      "variant": "parameterized",
+      "workgroup_size": [256, 1, 1],
+      "semantic_operation": "threshold_to_zero_inv",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["output_index", "uint32"],
+        ["element_count", "uint32"],
+        ["operation", "uint32"],
+        ["p0", "float32"],
+        ["p1", "float32"],
+        ["p2", "float32"],
+        ["p3", "float32"]
+      ]
+    },
+    {
+      "stable_id": 150,
+      "name": "in_range",
+      "kernel_id": "ImageInRangeF32",
+      "source": "src/slang/image/pixel/pointwise.slang",
+      "reflection_name": "pointwise",
+      "variant": "parameterized",
+      "workgroup_size": [256, 1, 1],
+      "semantic_operation": "in_range",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["output_index", "uint32"],
+        ["element_count", "uint32"],
+        ["operation", "uint32"],
+        ["p0", "float32"],
+        ["p1", "float32"],
+        ["p2", "float32"],
+        ["p3", "float32"]
+      ]
+    },
+    {
+      "stable_id": 151,
+      "name": "clamp",
+      "kernel_id": "ImageClampF32",
+      "source": "src/slang/image/pixel/pointwise.slang",
+      "reflection_name": "pointwise",
+      "variant": "parameterized",
+      "workgroup_size": [256, 1, 1],
+      "semantic_operation": "clamp",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["output_index", "uint32"],
+        ["element_count", "uint32"],
+        ["operation", "uint32"],
+        ["p0", "float32"],
+        ["p1", "float32"],
+        ["p2", "float32"],
+        ["p3", "float32"]
+      ]
+    },
+    {
+      "stable_id": 152,
+      "name": "invert",
+      "kernel_id": "ImageInvertF32",
+      "source": "src/slang/image/pixel/pointwise.slang",
+      "reflection_name": "pointwise",
+      "variant": "parameterized",
+      "workgroup_size": [256, 1, 1],
+      "semantic_operation": "invert",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["output_index", "uint32"],
+        ["element_count", "uint32"],
+        ["operation", "uint32"],
+        ["p0", "float32"],
+        ["p1", "float32"],
+        ["p2", "float32"],
+        ["p3", "float32"]
+      ]
+    },
+    {
+      "stable_id": 153,
+      "name": "brightness_contrast",
+      "kernel_id": "ImageBrightnessContrastF32",
+      "source": "src/slang/image/pixel/pointwise.slang",
+      "reflection_name": "pointwise",
+      "variant": "parameterized",
+      "workgroup_size": [256, 1, 1],
+      "semantic_operation": "brightness_contrast",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["output_index", "uint32"],
+        ["element_count", "uint32"],
+        ["operation", "uint32"],
+        ["p0", "float32"],
+        ["p1", "float32"],
+        ["p2", "float32"],
+        ["p3", "float32"]
+      ]
+    },
+    {
+      "stable_id": 154,
+      "name": "gamma_contrast",
+      "kernel_id": "ImageGammaContrastF32",
+      "source": "src/slang/image/pixel/pointwise.slang",
+      "reflection_name": "pointwise",
+      "variant": "parameterized",
+      "workgroup_size": [256, 1, 1],
+      "semantic_operation": "gamma_contrast",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["output_index", "uint32"],
+        ["element_count", "uint32"],
+        ["operation", "uint32"],
+        ["p0", "float32"],
+        ["p1", "float32"],
+        ["p2", "float32"],
+        ["p3", "float32"]
+      ]
+    },
+    {
+      "stable_id": 155,
+      "name": "solarize",
+      "kernel_id": "ImageSolarizeF32",
+      "source": "src/slang/image/pixel/pointwise.slang",
+      "reflection_name": "pointwise",
+      "variant": "parameterized",
+      "workgroup_size": [256, 1, 1],
+      "semantic_operation": "solarize",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["output_index", "uint32"],
+        ["element_count", "uint32"],
+        ["operation", "uint32"],
+        ["p0", "float32"],
+        ["p1", "float32"],
+        ["p2", "float32"],
+        ["p3", "float32"]
+      ]
+    },
+    {
+      "stable_id": 156,
+      "name": "posterize",
+      "kernel_id": "ImagePosterizeF32",
+      "source": "src/slang/image/pixel/pointwise.slang",
+      "reflection_name": "pointwise",
+      "variant": "parameterized",
+      "workgroup_size": [256, 1, 1],
+      "semantic_operation": "posterize",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["output_index", "uint32"],
+        ["element_count", "uint32"],
+        ["operation", "uint32"],
+        ["p0", "float32"],
+        ["p1", "float32"],
+        ["p2", "float32"],
+        ["p3", "float32"]
+      ]
+    },
+    {
+      "stable_id": 157,
+      "name": "grayscale",
+      "kernel_id": "ImageGrayscaleF32",
+      "source": "src/slang/image/pixel/grayscale.slang",
+      "variant": "rec709_rgb",
+      "workgroup_size": [16, 16, 1],
+      "semantic_operation": "grayscale",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["input_channels", "uint32"],
+        ["height", "uint32"],
+        ["width", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 158,
+      "name": "alpha_blend",
+      "kernel_id": "ImageAlphaBlendF32",
+      "source": "src/slang/image/pixel/composite.slang",
+      "reflection_name": "composite",
+      "variant": "parameterized",
+      "workgroup_size": [16, 16, 1],
+      "semantic_operation": "alpha_blend",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 3,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["a_index", "uint32"],
+        ["b_index", "uint32"],
+        ["mask_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["height", "uint32"],
+        ["width", "uint32"],
+        ["operation", "uint32"],
+        ["mask_channels", "uint32"],
+        ["rect_x", "uint32"],
+        ["rect_y", "uint32"],
+        ["rect_width", "uint32"],
+        ["rect_height", "uint32"],
+        ["alpha", "float32"],
+        ["value", "float32"]
+      ]
+    },
+    {
+      "stable_id": 159,
+      "name": "composite",
+      "kernel_id": "ImageCompositeF32",
+      "source": "src/slang/image/pixel/composite.slang",
+      "reflection_name": "composite",
+      "variant": "parameterized",
+      "workgroup_size": [16, 16, 1],
+      "semantic_operation": "composite",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 3,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["a_index", "uint32"],
+        ["b_index", "uint32"],
+        ["mask_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["height", "uint32"],
+        ["width", "uint32"],
+        ["operation", "uint32"],
+        ["mask_channels", "uint32"],
+        ["rect_x", "uint32"],
+        ["rect_y", "uint32"],
+        ["rect_width", "uint32"],
+        ["rect_height", "uint32"],
+        ["alpha", "float32"],
+        ["value", "float32"]
+      ]
+    },
+    {
+      "stable_id": 160,
+      "name": "erase",
+      "kernel_id": "ImageEraseF32",
+      "source": "src/slang/image/pixel/composite.slang",
+      "reflection_name": "composite",
+      "variant": "parameterized",
+      "workgroup_size": [16, 16, 1],
+      "semantic_operation": "erase",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 3,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["a_index", "uint32"],
+        ["b_index", "uint32"],
+        ["mask_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["height", "uint32"],
+        ["width", "uint32"],
+        ["operation", "uint32"],
+        ["mask_channels", "uint32"],
+        ["rect_x", "uint32"],
+        ["rect_y", "uint32"],
+        ["rect_width", "uint32"],
+        ["rect_height", "uint32"],
+        ["alpha", "float32"],
+        ["value", "float32"]
+      ]
+    },
+    {
+      "stable_id": 161,
+      "name": "color_twist",
+      "kernel_id": "ImageColorTwistF32",
+      "source": "src/slang/image/pixel/color_twist.slang",
+      "variant": "rgb_3x4",
+      "workgroup_size": [16, 16, 1],
+      "semantic_operation": "color_twist",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 2,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["transform_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["height", "uint32"],
+        ["width", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 162,
+      "name": "channel_reorder",
+      "kernel_id": "ImageChannelReorderF32",
+      "source": "src/slang/image/pixel/channel_reorder.slang",
+      "variant": "explicit_semantic_format",
+      "workgroup_size": [16, 16, 1],
+      "semantic_operation": "channel_reorder",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["height", "uint32"],
+        ["width", "uint32"],
+        ["channel_0", "uint32"],
+        ["channel_1", "uint32"],
+        ["channel_2", "uint32"],
+        ["channel_3", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 163,
+      "name": "gaussian_noise",
+      "kernel_id": "ImageGaussianNoiseF32",
+      "source": "src/slang/image/pixel/gaussian_noise.slang",
+      "variant": "philox_explicit_seed",
+      "workgroup_size": [256, 1, 1],
+      "semantic_operation": "gaussian_noise",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "up_to_two_elements",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["output_index", "uint32"],
+        ["element_count", "uint32"],
+        ["seed_low", "uint32"],
+        ["seed_high", "uint32"],
+        ["mean", "float32"],
+        ["stddev", "float32"]
+      ]
+    },
+    {
+      "stable_id": 164,
+      "name": "salt_pepper_noise",
+      "kernel_id": "ImageSaltPepperNoiseF32",
+      "source": "src/slang/image/pixel/salt_pepper_noise.slang",
+      "variant": "philox_explicit_seed",
+      "workgroup_size": [256, 1, 1],
+      "semantic_operation": "salt_pepper_noise",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "up_to_four_elements",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["output_index", "uint32"],
+        ["element_count", "uint32"],
+        ["seed_low", "uint32"],
+        ["seed_high", "uint32"],
+        ["probability", "float32"],
+        ["salt_value", "float32"],
+        ["pepper_value", "float32"]
+      ]
+    },
+    {
+      "stable_id": 165,
+      "name": "convolve_2d",
+      "kernel_id": "ImageConvolve2dF32",
+      "source": "src/slang/image/filter/filter.slang",
+      "reflection_name": "filter",
+      "variant": "parameterized",
+      "workgroup_size": [16, 16, 1],
+      "semantic_operation": "convolve_2d",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 3,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["kernel_x_index", "uint32"],
+        ["kernel_y_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["height", "uint32"],
+        ["width", "uint32"],
+        ["operation", "uint32"],
+        ["border_mode", "uint32"],
+        ["kernel_width", "uint32"],
+        ["kernel_height", "uint32"],
+        ["kernel_size", "uint32"],
+        ["dx", "uint32"],
+        ["dy", "uint32"],
+        ["p0", "float32"],
+        ["p1", "float32"],
+        ["p2", "float32"],
+        ["p3", "float32"],
+        ["border_value", "float32"]
+      ]
+    },
+    {
+      "stable_id": 166,
+      "name": "separable_convolve_2d",
+      "kernel_id": "ImageSeparableConvolve2dF32",
+      "source": "src/slang/image/filter/filter.slang",
+      "reflection_name": "filter",
+      "variant": "parameterized",
+      "workgroup_size": [16, 16, 1],
+      "semantic_operation": "separable_convolve_2d",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 3,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["kernel_x_index", "uint32"],
+        ["kernel_y_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["height", "uint32"],
+        ["width", "uint32"],
+        ["operation", "uint32"],
+        ["border_mode", "uint32"],
+        ["kernel_width", "uint32"],
+        ["kernel_height", "uint32"],
+        ["kernel_size", "uint32"],
+        ["dx", "uint32"],
+        ["dy", "uint32"],
+        ["p0", "float32"],
+        ["p1", "float32"],
+        ["p2", "float32"],
+        ["p3", "float32"],
+        ["border_value", "float32"]
+      ]
+    },
+    {
+      "stable_id": 167,
+      "name": "average_blur",
+      "kernel_id": "ImageAverageBlurF32",
+      "source": "src/slang/image/filter/filter.slang",
+      "reflection_name": "filter",
+      "variant": "parameterized",
+      "workgroup_size": [16, 16, 1],
+      "semantic_operation": "average_blur",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 3,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["kernel_x_index", "uint32"],
+        ["kernel_y_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["height", "uint32"],
+        ["width", "uint32"],
+        ["operation", "uint32"],
+        ["border_mode", "uint32"],
+        ["kernel_width", "uint32"],
+        ["kernel_height", "uint32"],
+        ["kernel_size", "uint32"],
+        ["dx", "uint32"],
+        ["dy", "uint32"],
+        ["p0", "float32"],
+        ["p1", "float32"],
+        ["p2", "float32"],
+        ["p3", "float32"],
+        ["border_value", "float32"]
+      ]
+    },
+    {
+      "stable_id": 168,
+      "name": "sobel",
+      "kernel_id": "ImageSobelF32",
+      "source": "src/slang/image/filter/filter.slang",
+      "reflection_name": "filter",
+      "variant": "parameterized",
+      "workgroup_size": [16, 16, 1],
+      "semantic_operation": "sobel",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 3,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["kernel_x_index", "uint32"],
+        ["kernel_y_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["height", "uint32"],
+        ["width", "uint32"],
+        ["operation", "uint32"],
+        ["border_mode", "uint32"],
+        ["kernel_width", "uint32"],
+        ["kernel_height", "uint32"],
+        ["kernel_size", "uint32"],
+        ["dx", "uint32"],
+        ["dy", "uint32"],
+        ["p0", "float32"],
+        ["p1", "float32"],
+        ["p2", "float32"],
+        ["p3", "float32"],
+        ["border_value", "float32"]
+      ]
+    },
+    {
+      "stable_id": 169,
+      "name": "scharr",
+      "kernel_id": "ImageScharrF32",
+      "source": "src/slang/image/filter/filter.slang",
+      "reflection_name": "filter",
+      "variant": "parameterized",
+      "workgroup_size": [16, 16, 1],
+      "semantic_operation": "scharr",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 3,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["kernel_x_index", "uint32"],
+        ["kernel_y_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["height", "uint32"],
+        ["width", "uint32"],
+        ["operation", "uint32"],
+        ["border_mode", "uint32"],
+        ["kernel_width", "uint32"],
+        ["kernel_height", "uint32"],
+        ["kernel_size", "uint32"],
+        ["dx", "uint32"],
+        ["dy", "uint32"],
+        ["p0", "float32"],
+        ["p1", "float32"],
+        ["p2", "float32"],
+        ["p3", "float32"],
+        ["border_value", "float32"]
+      ]
+    },
+    {
+      "stable_id": 170,
+      "name": "laplacian",
+      "kernel_id": "ImageLaplacianF32",
+      "source": "src/slang/image/filter/filter.slang",
+      "reflection_name": "filter",
+      "variant": "parameterized",
+      "workgroup_size": [16, 16, 1],
+      "semantic_operation": "laplacian",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 3,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["kernel_x_index", "uint32"],
+        ["kernel_y_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["height", "uint32"],
+        ["width", "uint32"],
+        ["operation", "uint32"],
+        ["border_mode", "uint32"],
+        ["kernel_width", "uint32"],
+        ["kernel_height", "uint32"],
+        ["kernel_size", "uint32"],
+        ["dx", "uint32"],
+        ["dy", "uint32"],
+        ["p0", "float32"],
+        ["p1", "float32"],
+        ["p2", "float32"],
+        ["p3", "float32"],
+        ["border_value", "float32"]
+      ]
+    },
+    {
+      "stable_id": 171,
+      "name": "erode",
+      "kernel_id": "ImageErodeF32",
+      "source": "src/slang/image/filter/filter.slang",
+      "reflection_name": "filter",
+      "variant": "parameterized",
+      "workgroup_size": [16, 16, 1],
+      "semantic_operation": "erode",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 3,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["kernel_x_index", "uint32"],
+        ["kernel_y_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["height", "uint32"],
+        ["width", "uint32"],
+        ["operation", "uint32"],
+        ["border_mode", "uint32"],
+        ["kernel_width", "uint32"],
+        ["kernel_height", "uint32"],
+        ["kernel_size", "uint32"],
+        ["dx", "uint32"],
+        ["dy", "uint32"],
+        ["p0", "float32"],
+        ["p1", "float32"],
+        ["p2", "float32"],
+        ["p3", "float32"],
+        ["border_value", "float32"]
+      ]
+    },
+    {
+      "stable_id": 172,
+      "name": "dilate",
+      "kernel_id": "ImageDilateF32",
+      "source": "src/slang/image/filter/filter.slang",
+      "reflection_name": "filter",
+      "variant": "parameterized",
+      "workgroup_size": [16, 16, 1],
+      "semantic_operation": "dilate",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 3,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["kernel_x_index", "uint32"],
+        ["kernel_y_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["height", "uint32"],
+        ["width", "uint32"],
+        ["operation", "uint32"],
+        ["border_mode", "uint32"],
+        ["kernel_width", "uint32"],
+        ["kernel_height", "uint32"],
+        ["kernel_size", "uint32"],
+        ["dx", "uint32"],
+        ["dy", "uint32"],
+        ["p0", "float32"],
+        ["p1", "float32"],
+        ["p2", "float32"],
+        ["p3", "float32"],
+        ["border_value", "float32"]
+      ]
+    },
+    {
+      "stable_id": 173,
+      "name": "morphology_open",
+      "kernel_id": "ImageMorphologyOpenF32",
+      "source": "src/slang/image/filter/filter.slang",
+      "reflection_name": "filter",
+      "variant": "parameterized",
+      "workgroup_size": [16, 16, 1],
+      "semantic_operation": "morphology_open",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 3,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["kernel_x_index", "uint32"],
+        ["kernel_y_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["height", "uint32"],
+        ["width", "uint32"],
+        ["operation", "uint32"],
+        ["border_mode", "uint32"],
+        ["kernel_width", "uint32"],
+        ["kernel_height", "uint32"],
+        ["kernel_size", "uint32"],
+        ["dx", "uint32"],
+        ["dy", "uint32"],
+        ["p0", "float32"],
+        ["p1", "float32"],
+        ["p2", "float32"],
+        ["p3", "float32"],
+        ["border_value", "float32"]
+      ]
+    },
+    {
+      "stable_id": 174,
+      "name": "morphology_close",
+      "kernel_id": "ImageMorphologyCloseF32",
+      "source": "src/slang/image/filter/filter.slang",
+      "reflection_name": "filter",
+      "variant": "parameterized",
+      "workgroup_size": [16, 16, 1],
+      "semantic_operation": "morphology_close",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 3,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["kernel_x_index", "uint32"],
+        ["kernel_y_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["height", "uint32"],
+        ["width", "uint32"],
+        ["operation", "uint32"],
+        ["border_mode", "uint32"],
+        ["kernel_width", "uint32"],
+        ["kernel_height", "uint32"],
+        ["kernel_size", "uint32"],
+        ["dx", "uint32"],
+        ["dy", "uint32"],
+        ["p0", "float32"],
+        ["p1", "float32"],
+        ["p2", "float32"],
+        ["p3", "float32"],
+        ["border_value", "float32"]
+      ]
+    },
+    {
+      "stable_id": 175,
+      "name": "morphology_gradient",
+      "kernel_id": "ImageMorphologyGradientF32",
+      "source": "src/slang/image/filter/filter.slang",
+      "reflection_name": "filter",
+      "variant": "parameterized",
+      "workgroup_size": [16, 16, 1],
+      "semantic_operation": "morphology_gradient",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 3,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["kernel_x_index", "uint32"],
+        ["kernel_y_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["height", "uint32"],
+        ["width", "uint32"],
+        ["operation", "uint32"],
+        ["border_mode", "uint32"],
+        ["kernel_width", "uint32"],
+        ["kernel_height", "uint32"],
+        ["kernel_size", "uint32"],
+        ["dx", "uint32"],
+        ["dy", "uint32"],
+        ["p0", "float32"],
+        ["p1", "float32"],
+        ["p2", "float32"],
+        ["p3", "float32"],
+        ["border_value", "float32"]
+      ]
+    },
+    {
+      "stable_id": 176,
+      "name": "gaussian_blur",
+      "kernel_id": "ImageGaussianBlurF32",
+      "source": "src/slang/image/filter/filter.slang",
+      "reflection_name": "filter",
+      "variant": "parameterized",
+      "workgroup_size": [16, 16, 1],
+      "semantic_operation": "gaussian_blur",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 3,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["kernel_x_index", "uint32"],
+        ["kernel_y_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["height", "uint32"],
+        ["width", "uint32"],
+        ["operation", "uint32"],
+        ["border_mode", "uint32"],
+        ["kernel_width", "uint32"],
+        ["kernel_height", "uint32"],
+        ["kernel_size", "uint32"],
+        ["dx", "uint32"],
+        ["dy", "uint32"],
+        ["p0", "float32"],
+        ["p1", "float32"],
+        ["p2", "float32"],
+        ["p3", "float32"],
+        ["border_value", "float32"]
+      ]
+    },
+    {
+      "stable_id": 177,
+      "name": "sharpen",
+      "kernel_id": "ImageSharpenF32",
+      "source": "src/slang/image/filter/filter.slang",
+      "reflection_name": "filter",
+      "variant": "parameterized",
+      "workgroup_size": [16, 16, 1],
+      "semantic_operation": "sharpen",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 3,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["kernel_x_index", "uint32"],
+        ["kernel_y_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["height", "uint32"],
+        ["width", "uint32"],
+        ["operation", "uint32"],
+        ["border_mode", "uint32"],
+        ["kernel_width", "uint32"],
+        ["kernel_height", "uint32"],
+        ["kernel_size", "uint32"],
+        ["dx", "uint32"],
+        ["dy", "uint32"],
+        ["p0", "float32"],
+        ["p1", "float32"],
+        ["p2", "float32"],
+        ["p3", "float32"],
+        ["border_value", "float32"]
+      ]
+    },
+    {
+      "stable_id": 178,
+      "name": "median_blur",
+      "kernel_id": "ImageMedianBlurF32",
+      "source": "src/slang/image/filter/filter.slang",
+      "reflection_name": "filter",
+      "variant": "parameterized",
+      "workgroup_size": [16, 16, 1],
+      "semantic_operation": "median_blur",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 3,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["kernel_x_index", "uint32"],
+        ["kernel_y_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["height", "uint32"],
+        ["width", "uint32"],
+        ["operation", "uint32"],
+        ["border_mode", "uint32"],
+        ["kernel_width", "uint32"],
+        ["kernel_height", "uint32"],
+        ["kernel_size", "uint32"],
+        ["dx", "uint32"],
+        ["dy", "uint32"],
+        ["p0", "float32"],
+        ["p1", "float32"],
+        ["p2", "float32"],
+        ["p3", "float32"],
+        ["border_value", "float32"]
+      ]
+    },
+    {
+      "stable_id": 179,
+      "name": "bilateral_filter",
+      "kernel_id": "ImageBilateralFilterF32",
+      "source": "src/slang/image/filter/filter.slang",
+      "reflection_name": "filter",
+      "variant": "parameterized",
+      "workgroup_size": [16, 16, 1],
+      "semantic_operation": "bilateral_filter",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 3,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["kernel_x_index", "uint32"],
+        ["kernel_y_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["height", "uint32"],
+        ["width", "uint32"],
+        ["operation", "uint32"],
+        ["border_mode", "uint32"],
+        ["kernel_width", "uint32"],
+        ["kernel_height", "uint32"],
+        ["kernel_size", "uint32"],
+        ["dx", "uint32"],
+        ["dy", "uint32"],
+        ["p0", "float32"],
+        ["p1", "float32"],
+        ["p2", "float32"],
+        ["p3", "float32"],
+        ["border_value", "float32"]
+      ]
+    },
+    {
+      "stable_id": 180,
+      "name": "unsharp_mask",
+      "kernel_id": "ImageUnsharpMaskF32",
+      "source": "src/slang/image/filter/filter.slang",
+      "reflection_name": "filter",
+      "variant": "parameterized",
+      "workgroup_size": [16, 16, 1],
+      "semantic_operation": "unsharp_mask",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 3,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["kernel_x_index", "uint32"],
+        ["kernel_y_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["height", "uint32"],
+        ["width", "uint32"],
+        ["operation", "uint32"],
+        ["border_mode", "uint32"],
+        ["kernel_width", "uint32"],
+        ["kernel_height", "uint32"],
+        ["kernel_size", "uint32"],
+        ["dx", "uint32"],
+        ["dy", "uint32"],
+        ["p0", "float32"],
+        ["p1", "float32"],
+        ["p2", "float32"],
+        ["p3", "float32"],
+        ["border_value", "float32"]
+      ]
+    },
+    {
+      "stable_id": 181,
+      "name": "morphology_top_hat",
+      "kernel_id": "ImageMorphologyTopHatF32",
+      "source": "src/slang/image/filter/filter.slang",
+      "reflection_name": "filter",
+      "variant": "parameterized",
+      "workgroup_size": [16, 16, 1],
+      "semantic_operation": "morphology_top_hat",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 3,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["kernel_x_index", "uint32"],
+        ["kernel_y_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["height", "uint32"],
+        ["width", "uint32"],
+        ["operation", "uint32"],
+        ["border_mode", "uint32"],
+        ["kernel_width", "uint32"],
+        ["kernel_height", "uint32"],
+        ["kernel_size", "uint32"],
+        ["dx", "uint32"],
+        ["dy", "uint32"],
+        ["p0", "float32"],
+        ["p1", "float32"],
+        ["p2", "float32"],
+        ["p3", "float32"],
+        ["border_value", "float32"]
+      ]
+    },
+    {
+      "stable_id": 182,
+      "name": "morphology_black_hat",
+      "kernel_id": "ImageMorphologyBlackHatF32",
+      "source": "src/slang/image/filter/filter.slang",
+      "reflection_name": "filter",
+      "variant": "parameterized",
+      "workgroup_size": [16, 16, 1],
+      "semantic_operation": "morphology_black_hat",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 3,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["kernel_x_index", "uint32"],
+        ["kernel_y_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["height", "uint32"],
+        ["width", "uint32"],
+        ["operation", "uint32"],
+        ["border_mode", "uint32"],
+        ["kernel_width", "uint32"],
+        ["kernel_height", "uint32"],
+        ["kernel_size", "uint32"],
+        ["dx", "uint32"],
+        ["dy", "uint32"],
+        ["p0", "float32"],
+        ["p1", "float32"],
+        ["p2", "float32"],
+        ["p3", "float32"],
+        ["border_value", "float32"]
+      ]
+    },
+    {
+      "stable_id": 183,
+      "name": "adaptive_threshold_mean",
+      "kernel_id": "ImageAdaptiveThresholdMeanF32",
+      "source": "src/slang/image/filter/filter.slang",
+      "reflection_name": "filter",
+      "variant": "parameterized",
+      "workgroup_size": [16, 16, 1],
+      "semantic_operation": "adaptive_threshold_mean",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 3,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["kernel_x_index", "uint32"],
+        ["kernel_y_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["height", "uint32"],
+        ["width", "uint32"],
+        ["operation", "uint32"],
+        ["border_mode", "uint32"],
+        ["kernel_width", "uint32"],
+        ["kernel_height", "uint32"],
+        ["kernel_size", "uint32"],
+        ["dx", "uint32"],
+        ["dy", "uint32"],
+        ["p0", "float32"],
+        ["p1", "float32"],
+        ["p2", "float32"],
+        ["p3", "float32"],
+        ["border_value", "float32"]
+      ]
+    },
+    {
+      "stable_id": 184,
+      "name": "adaptive_threshold_gaussian",
+      "kernel_id": "ImageAdaptiveThresholdGaussianF32",
+      "source": "src/slang/image/filter/filter.slang",
+      "reflection_name": "filter",
+      "variant": "parameterized",
+      "workgroup_size": [16, 16, 1],
+      "semantic_operation": "adaptive_threshold_gaussian",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 3,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["kernel_x_index", "uint32"],
+        ["kernel_y_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["height", "uint32"],
+        ["width", "uint32"],
+        ["operation", "uint32"],
+        ["border_mode", "uint32"],
+        ["kernel_width", "uint32"],
+        ["kernel_height", "uint32"],
+        ["kernel_size", "uint32"],
+        ["dx", "uint32"],
+        ["dy", "uint32"],
+        ["p0", "float32"],
+        ["p1", "float32"],
+        ["p2", "float32"],
+        ["p3", "float32"],
+        ["border_value", "float32"]
+      ]
+    },
+    {
+      "stable_id": 185,
+      "name": "normalize",
+      "kernel_id": "ImageNormalizeF32",
+      "source": "src/slang/image/color/normalize.slang",
+      "variant": "per_channel_three_parameter",
+      "workgroup_size": [16, 16, 1],
+      "semantic_operation": "normalize",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["height", "uint32"],
+        ["width", "uint32"],
+        ["mean_0", "float32"],
+        ["mean_1", "float32"],
+        ["mean_2", "float32"],
+        ["std_0", "float32"],
+        ["std_1", "float32"],
+        ["std_2", "float32"]
+      ]
+    },
+    {
+      "stable_id": 186,
+      "name": "convert_color",
+      "kernel_id": "ImageConvertColorF32",
+      "source": "src/slang/image/color/convert_color.slang",
+      "variant": "rgb_bgr",
+      "workgroup_size": [16, 16, 1],
+      "semantic_operation": "convert_color",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["height", "uint32"],
+        ["width", "uint32"],
+        ["swap_red_blue", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 187,
+      "name": "resize_normalize",
+      "kernel_id": "ImageResizeNormalizeF32",
+      "source": "src/slang/image/color/resize_normalize.slang",
+      "variant": "bilinear_half_pixel",
+      "workgroup_size": [16, 16, 1],
+      "semantic_operation": "resize_normalize",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["input_height", "uint32"],
+        ["input_width", "uint32"],
+        ["output_height", "uint32"],
+        ["output_width", "uint32"],
+        ["mean_0", "float32"],
+        ["mean_1", "float32"],
+        ["mean_2", "float32"],
+        ["std_0", "float32"],
+        ["std_1", "float32"],
+        ["std_2", "float32"]
+      ]
+    },
+    {
+      "stable_id": 188,
+      "name": "segmentation_overlay",
+      "kernel_id": "ImageSegmentationOverlayF32",
+      "source": "src/slang/image/color/segmentation_overlay.slang",
+      "variant": "i32_labels_f32_palette",
+      "workgroup_size": [16, 16, 1],
+      "semantic_operation": "segmentation_overlay",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 3,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["image_index", "uint32"],
+        ["mask_index", "uint32"],
+        ["palette_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["height", "uint32"],
+        ["width", "uint32"],
+        ["class_count", "uint32"],
+        ["alpha", "float32"]
+      ]
+    }
+  ],
+  "types": [
+    {
+      "category": "geometric",
+      "name": "InterpolationMode",
+      "before": "resize",
+      "kind": "enum",
+      "visibility": "pub",
+      "derive": ["Clone", "Copy", "Debug", "Default", "PartialEq", "Eq"],
+      "doc": "Sampling rule used by [`resize`].",
+      "fields": [],
+      "variants": [
+        {
+          "name": "Nearest",
+          "doc": "Select the source pixel containing the scaled output coordinate.",
+          "token": "nearest",
+          "code": "0",
+          "kernel": "KernelId::ImageResizeNearestF32"
+        },
+        {
+          "name": "Bilinear",
+          "doc": "Use half-pixel-center bilinear sampling with `align_corners = false`.",
+          "token": "bilinear",
+          "code": "1",
+          "kernel": "KernelId::ImageResizeBilinearF32"
+        }
+      ],
+      "defaults": null,
+      "default_variant": "Bilinear",
+      "mappings": [
+        {"name": "token", "visibility": "pub(super)", "returns": "&'static str", "field": "token"},
+        {"name": "kernel", "visibility": "", "returns": "KernelId", "field": "kernel"},
+        {"name": "code", "visibility": "pub(super)", "returns": "u32", "field": "code"}
+      ]
+    },
+    {
+      "category": "geometric",
+      "name": "BorderMode",
+      "before": "resize",
+      "kind": "enum",
+      "visibility": "pub",
+      "derive": ["Clone", "Copy", "Debug", "Default", "PartialEq", "Eq"],
+      "doc": "Sampling behavior for coordinates outside an image.",
+      "fields": [],
+      "variants": [
+        {"name": "Constant", "doc": "Return the caller-provided constant value.", "token": "constant", "code": "0"},
+        {"name": "Replicate", "doc": "Extend the nearest edge pixel.", "token": "replicate", "code": "1"},
+        {
+          "name": "Reflect",
+          "doc": "Reflect coordinates while repeating the edge pixel.",
+          "token": "reflect",
+          "code": "2"
+        },
+        {
+          "name": "Reflect101",
+          "doc": "Reflect coordinates without repeating the edge pixel.",
+          "token": "reflect_101",
+          "code": "3"
+        },
+        {"name": "Wrap", "doc": "Wrap coordinates periodically.", "token": "wrap", "code": "4"}
+      ],
+      "defaults": null,
+      "default_variant": "Constant",
+      "mappings": [
+        {"name": "token", "visibility": "pub(super)", "returns": "&'static str", "field": "token"},
+        {"name": "code", "visibility": "pub(super)", "returns": "u32", "field": "code"}
+      ]
+    },
+    {
+      "category": "geometric",
+      "name": "ImageExtent",
+      "before": "resize",
+      "kind": "struct",
+      "visibility": "",
+      "derive": ["Clone", "Copy"],
+      "doc": "",
+      "fields": [
+        {"name": "batch", "type": "u32", "visibility": "", "doc": ""},
+        {"name": "channels", "type": "u32", "visibility": "", "doc": ""},
+        {"name": "height", "type": "u32", "visibility": "", "doc": ""},
+        {"name": "width", "type": "u32", "visibility": "", "doc": ""}
+      ],
+      "variants": [],
+      "defaults": null,
+      "default_variant": null
+    },
+    {
+      "category": "color",
+      "name": "NormalizationParams",
+      "before": "normalize",
+      "kind": "struct",
+      "visibility": "pub",
+      "derive": ["Clone", "Copy", "Debug", "PartialEq"],
+      "doc": "Three-channel normalization parameters.",
+      "fields": [
+        {"name": "mean", "type": "[f32; 3]", "visibility": "pub", "doc": ""},
+        {"name": "std", "type": "[f32; 3]", "visibility": "pub", "doc": ""}
+      ],
+      "variants": [],
+      "defaults": {"mean": "[0.0; 3]", "std": "[1.0; 3]"},
+      "default_variant": null
+    }
+  ]
+}

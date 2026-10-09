@@ -1,0 +1,1 @@
+"""Operation-schema generator tests."""

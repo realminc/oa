@@ -1,0 +1,48 @@
+{
+	"version": 1,
+	"family": "moe",
+	"imports": [
+		"use std::{cell::{Cell, RefCell}, rc::Rc};",
+		"use crate::{DType, Engine, Error, Matrix, Result, matrix as core_matrix};",
+		"use super::super::{Module, ModuleRegistry, NamedBuffer, Parameter, autograd, matrix, random};",
+		"use super::{Linear, RmsNorm, Swiglu};"
+	],
+	"helper": "",
+	"layers": [
+		{
+			"name": "Moe",
+			"doc": "Sparse top-k mixture-of-experts feed-forward module.",
+			"template": "moe",
+			"values": {
+				"stats_type": "MoeRouteStats",
+				"norm_constructor": "RmsNorm::new",
+				"norm_restore_constructor": "RmsNorm::from_matrix",
+				"router_constructor": "Linear::with_seed",
+				"router_restore_constructor": "Linear::from_matrices",
+				"shared_constructor": "Swiglu::with_seed",
+				"initializer": "random::symmetric_uniform",
+				"softmax_operation": "core_matrix::softmax",
+				"selection_operation": "core_matrix::top_k",
+				"mask_operation": "core_matrix::top_k_mask",
+				"route_weight_operation": "matrix::moe_route_weights",
+				"plan_operation": "core_matrix::moe_expert_plan",
+				"gather_operation": "matrix::moe_gather",
+				"activation_operation": "matrix::silu_mul",
+				"combine_operation": "matrix::moe_combine",
+				"projection_operation": "matrix::grouped_linear_m_parameterized",
+				"parameter_leaf_operation": "autograd::record_parameter_leaf",
+				"bias_update_operation": "core_matrix::moe_routing_bias_update",
+				"gate_up_weight_name": "expert_gate_up_weight",
+				"gate_up_bias_name": "expert_gate_up_bias",
+				"down_weight_name": "expert_down_weight",
+				"down_bias_name": "expert_down_bias",
+				"norm_name": "norm",
+				"router_name": "router",
+				"routing_bias_name": "routing_bias",
+				"shared_prefix": "shared_expert"
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/moe/moe.cpp",
+			"adaptation": "Complete donor sparse routing, stacked parameter ownership, shared experts, balancing losses and reduced host telemetry; Rust retains deterministic seeded host initialization, versioned parameter adjoints, scalar auxiliary loss and dense per-expert accumulation instead of donor concat storage"
+		}
+	]
+}

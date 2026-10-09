@@ -1,0 +1,17 @@
+// OA adjoint recipes mechanically extracted from the admitted Rust reverse traversal.
+// Donor source and adaptation: see README.md. No shader or numerical formula changes.
+
+// @operation rope
+let Self { input, output_id, num_heads, head_dim, theta_base, position_offset } = self;
+let Some(output_gradient) = gradients.remove(output_id) else {
+	return Ok(BackwardStatus::Skipped);
+};
+let input_gradient = ml_matrix::rope_backward(
+	&output_gradient,
+	*num_heads,
+	*head_dim,
+	*theta_base,
+	*position_offset,
+)?;
+accumulate_value_gradient(gradients, input.value_id(), input_gradient)?;
+Ok(BackwardStatus::Recorded)

@@ -1,0 +1,71 @@
+/// {{doc}}
+pub struct {{name}} {
+	kernel_size: usize,
+	stride: usize,
+	padding: usize,
+	registry: ModuleRegistry,
+}
+
+impl {{name}} {
+	/// Construct {{name}} with `stride == kernel_size` and no padding.
+	///
+	/// # Errors
+	///
+	/// Returns an error when `kernel_size` is zero.
+	pub fn new(kernel_size: usize) -> Result<Self> {
+		Self::with_options(kernel_size, kernel_size, 0)
+	}
+
+	/// Construct {{name}} with explicit square-kernel geometry.
+	///
+	/// # Errors
+	///
+	/// Returns an error when `kernel_size` or `stride` is zero.
+	pub fn with_options(kernel_size: usize, stride: usize, padding: usize) -> Result<Self> {
+		if kernel_size == 0 || stride == 0 {
+			return Err(Error::invalid_argument(
+				"{{name}} kernel size and stride must be nonzero",
+			));
+		}
+		Ok(Self {
+			kernel_size,
+			stride,
+			padding,
+			registry: ModuleRegistry::new(),
+		})
+	}
+
+	/// Return the square kernel extent.
+	pub const fn kernel_size(&self) -> usize {
+		self.kernel_size
+	}
+
+	/// Return the spatial stride.
+	pub const fn stride(&self) -> usize {
+		self.stride
+	}
+
+	/// Return the symmetric padding extent.
+	pub const fn padding(&self) -> usize {
+		self.padding
+	}
+
+	/// Pool one NCHW Matrix and retain argmax state for reverse mode.
+	///
+	/// # Errors
+	///
+	/// Returns an error from the underlying Matrix operation.
+	pub fn forward(&self, input: &Matrix) -> Result<Matrix> {
+		Ok({{operation}}(input, self.kernel_size, self.stride, self.padding)?.output)
+	}
+}
+
+impl Module for {{name}} {
+	fn forward(&self, input: &Matrix) -> Result<Matrix> {
+		{{name}}::forward(self, input)
+	}
+
+	fn registry(&self) -> &ModuleRegistry {
+		&self.registry
+	}
+}

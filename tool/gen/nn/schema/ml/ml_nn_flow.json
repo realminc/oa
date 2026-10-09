@@ -1,0 +1,56 @@
+{
+	"version": 1,
+	"family": "flow",
+	"imports": [
+		"use std::{cell::Cell, rc::Rc};",
+		"use crate::{DType, Engine, Error, Matrix, Result, matrix};",
+		"use super::super::{Module, ModuleRegistry, Parameter, autograd};",
+		"use super::{AttentionMode, LayerNorm, Linear, TransformerBlock};"
+	],
+	"helper": "",
+	"layers": [
+		{
+			"name": "FlowDenoiser",
+			"doc": "Trainable flow/diffusion denoiser with optional condition features and CFG.",
+			"template": "flow",
+			"values": {
+				"config_type": "FlowDenoiserConfig",
+				"time_type": "FlowTimeEmbedding",
+				"transformer_type": "FlowTransformer",
+				"transformer_config_type": "FlowTransformerConfig",
+				"reshape_operation": "matrix::reshape",
+				"multiply_operation": "matrix::mul",
+				"concat_operation": "matrix::concat",
+				"sin_operation": "matrix::sin",
+				"cos_operation": "matrix::cos",
+				"scale_operation": "matrix::scale",
+				"subtract_scalar_operation": "matrix::sub_scalar",
+				"repeat_operation": "matrix::repeat_interleave",
+				"add_operation": "matrix::add",
+				"add_scalar_operation": "matrix::add_scalar",
+				"slice_operation": "matrix::slice",
+				"dropout_operation": "matrix::dropout",
+				"subtract_operation": "matrix::sub",
+				"position_initializer": "matrix::philox_normal",
+				"parameter_leaf_operation": "autograd::record_parameter_leaf",
+				"projection_constructor": "Linear::with_seed",
+				"norm_constructor": "LayerNorm::new",
+				"dense_constructor": "TransformerBlock::with_seed",
+				"dense_conditioned_constructor": "TransformerBlock::with_seed_conditioned",
+				"moe_constructor": "TransformerBlock::with_seed_moe",
+				"moe_conditioned_constructor": "TransformerBlock::with_seed_moe_conditioned",
+				"frequency_name": "frequencies",
+				"block_prefix": "block_",
+				"output_norm_name": "output_norm",
+				"position_name": "position",
+				"input_projection_name": "input_projection",
+				"time_embedding_name": "time_embedding",
+				"condition_projection_name": "condition_projection",
+				"backbone_name": "backbone",
+				"output_projection_name": "output_projection"
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/flow/flowDenoiser.cpp",
+			"adaptation": "Complete donor flowDenoiser, flowTransformer and flowTimeEmbedding family consolidated into one private Rust module; existing FP32 and same-engine checks, seeded child initialization, block_ checkpoint prefixes, nonpersistent frequency buffer, registered position adjoint, replay-safe binary condition dropout and scoped classifier-free guidance are unchanged"
+		}
+	]
+}

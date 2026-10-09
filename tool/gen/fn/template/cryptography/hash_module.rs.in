@@ -1,0 +1,37 @@
+//! Vulkan batch hashing operations.
+// OA donor: source/cpp/lib/oa/crypto/hash/fnHash.cpp.
+// Adaptation: Rust ownership, checked ABI and complete-body generation.
+use crate::{
+	DType, Error, Matrix, OpAttribute, Result,
+	runtime::{BufferBinding, ComputeDispatch, KernelId, PushConstant, SemanticDispatch},
+};
+
+
+{{items}}
+
+fn validate_byte_rows(input: &Matrix, operation: &'static str) -> Result<[usize; 2]> {
+	if input.dtype() != DType::U8 {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires a U8 Matrix; found {}",
+			input.dtype().token()
+		)));
+	}
+	let [rows, columns] = input.shape() else {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires rank-2 [batch, bytes] input; found {:?}",
+			input.shape()
+		)));
+	};
+	if *rows == 0 {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires a non-zero batch size"
+		)));
+	}
+	shader_u32(input.num_elements(), "input byte size", operation)?;
+	Ok([*rows, *columns])
+}
+
+fn shader_u32(value: usize, label: &str, operation: &'static str) -> Result<u32> {
+	u32::try_from(value)
+		.map_err(|_| Error::invalid_argument(format!("{operation} {label} exceeds u32")))
+}

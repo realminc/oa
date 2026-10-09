@@ -1,0 +1,41 @@
+{
+	"version": 1,
+	"family": "transformer",
+	"imports": [
+		"use std::{cell::Cell, rc::Rc};",
+		"use crate::{DType, Engine, Error, Matrix, Result, matrix};",
+		"use super::super::{Module, ModuleRegistry, matrix::gelu};",
+		"use super::{AttentionMode, LayerNorm, Linear, Moe, MultiHeadAttention};"
+	],
+	"helper": "",
+	"layers": [
+		{
+			"name": "Transformer",
+			"doc": "Ready-to-train causal Transformer language model.",
+			"template": "transformer",
+			"values": {
+				"block_type": "TransformerBlock",
+				"norm_constructor": "LayerNorm::new",
+				"projection_constructor": "Linear::with_seed",
+				"attention_constructor": "MultiHeadAttention::with_seed",
+				"moe_constructor": "Moe::with_seed",
+				"embedding_constructor": "super::Embedding::with_seed",
+				"activation_operation": "gelu",
+				"attention_norm_name": "ln_attn",
+				"attention_name": "attention",
+				"dense_norm_name": "ln_ffn",
+				"dense_input_name": "ffn1",
+				"dense_output_name": "ffn2",
+				"moe_name": "moe",
+				"modulation_name": "adaptive_modulation",
+				"token_embedding_name": "token_embedding",
+				"position_embedding_name": "position_embedding",
+				"final_norm_name": "final_norm",
+				"head_name": "head",
+				"block_prefix": "block"
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/transformer/transformer.cpp",
+			"adaptation": "Complete donor composition with constructor-owned adaptive child registration; shared typed dense/MoE recipes preserve parameter names, seed strides and MoE-owned RMSNorm/residual; Rust retains separate Linear/GELU dispatch and extends the donor MoE block recipe to a stacked language model"
+		}
+	]
+}

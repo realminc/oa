@@ -1,0 +1,514 @@
+// OA donor: source/cpp/lib/oa/audio/fnaudio/signal/fnAudioSignal.cpp
+// Mechanical generation adaptation of OARS 6623c50; preserve validated algorithms.
+// @operation normalize
+	if !config.target_db.is_finite() || !(-300.0..=100.0).contains(&config.target_db) {
+		return Err(Error::invalid_argument(
+			"audio::normalize target_db must be finite and in [-300, 100]",
+		));
+	}
+	let count = element_count_u32(input, "audio::normalize")?;
+	let level = Matrix::allocate(input.engine_handle(), vec![1], 1, crate::DType::F32)?;
+	let output_matrix = allocate_like(input)?;
+	let output = wrap_like(output_matrix, input)?;
+	{{bindings:0}}
+	let mode = match config.mode {
+		NormalizeAudioMode::Peak => 0,
+		NormalizeAudioMode::Rms => 1,
+	};
+	{{push:0}}
+	{{bindings:1}}
+	{{push:1}}
+	let dispatches = [
+		{{dispatch:0}},
+		{{dispatch:1}},
+	];
+	let attributes = [{{attributes}}];
+	let outputs = [AudioSemanticOutput::Audio(&output)];
+	input.engine_handle().record_audio_split_semantic(
+		&dispatches,
+		AudioSemanticDispatch {
+			contract: {{contract}},
+			inputs: &[input],
+			outputs: &outputs,
+			attributes: &attributes,
+		},
+	)?;
+	Ok(output)
+// @operation resample
+	if config.out_rate == 0 || !(1..=1_024).contains(&config.filter_half_width) {
+		return Err(Error::invalid_argument(
+			"audio::resample requires a nonzero rate and filter_half_width in [1, 1024]",
+		));
+	}
+	let divisor = gcd(input.sample_rate(), config.out_rate);
+	let in_rate = input.sample_rate() / divisor;
+	let out_rate = config.out_rate / divisor;
+	let out_samples = input
+		.samples()
+		.checked_mul(out_rate as usize)
+		.and_then(|value| value.checked_div(in_rate as usize))
+		.ok_or_else(|| Error::out_of_range("audio::resample output length exceeds usize"))?;
+	if out_samples == 0 {
+		return Err(Error::invalid_argument(
+			"audio::resample output would be empty",
+		));
+	}
+	let channels = u32_extent(input.channels(), "audio::resample channels")?;
+	let in_samples = u32_extent(input.samples(), "audio::resample input samples")?;
+	let out_samples_u32 = u32_extent(out_samples, "audio::resample output samples")?;
+	let count = channels
+		.checked_mul(out_samples_u32)
+		.ok_or_else(|| Error::out_of_range("audio::resample dispatch exceeds u32"))?;
+	let matrix = Matrix::allocate(
+		input.engine_handle(),
+		vec![input.channels(), out_samples],
+		count as usize,
+		crate::DType::F32,
+	)?;
+	let output = Audio::new(matrix, config.out_rate, input.layout())?;
+	{{push:0}}
+	let attributes = [{{attributes}}];
+	{{bindings:0}}
+	let outputs = [AudioSemanticOutput::Audio(&output)];
+	input.engine_handle().record_audio_semantic(
+		{{dispatch:0}},
+		AudioSemanticDispatch {
+			contract: {{contract}},
+			inputs: &[input],
+			outputs: &outputs,
+			attributes: &attributes,
+		},
+	)?;
+	Ok(output)
+// @operation gain
+	if !gain_db.is_finite() || !(-300.0..=100.0).contains(&gain_db) {
+		return Err(Error::invalid_argument(
+			"audio::gain gain_db must be finite and in [-300, 100]",
+		));
+	}
+	let count = element_count_u32(input, {{contract}}.name())?;
+	let output = wrap_like(allocate_like(input)?, input)?;
+	{{push:0}}
+	{{bindings:0}}
+	let outputs = [AudioSemanticOutput::Audio(&output)];
+	input.engine_handle().record_audio_semantic(
+		{{dispatch:0}},
+		AudioSemanticDispatch {
+			contract: {{contract}},
+			inputs: &[input],
+			outputs: &outputs,
+			attributes: &[{{attributes}}],
+		},
+	)?;
+	Ok(output)
+// @operation clip
+	if !minimum.is_finite() || !maximum.is_finite() || minimum > maximum {
+		return Err(Error::invalid_argument(
+			"audio::clip requires finite ordered bounds",
+		));
+	}
+	let count = element_count_u32(input, {{contract}}.name())?;
+	let output = wrap_like(allocate_like(input)?, input)?;
+	{{push:0}}
+	{{bindings:0}}
+	let outputs = [AudioSemanticOutput::Audio(&output)];
+	input.engine_handle().record_audio_semantic(
+		{{dispatch:0}},
+		AudioSemanticDispatch {
+			contract: {{contract}},
+			inputs: &[input],
+			outputs: &outputs,
+			attributes: &[{{attributes}}],
+		},
+	)?;
+	Ok(output)
+// @operation saturate
+	if !drive_db.is_finite()
+		|| !(-60.0..=60.0).contains(&drive_db)
+		|| !mix.is_finite()
+		|| !(0.0..=1.0).contains(&mix)
+	{
+		return Err(Error::invalid_argument(
+			"audio::saturate requires drive_db in [-60, 60] and mix in [0, 1]",
+		));
+	}
+	let count = element_count_u32(input, {{contract}}.name())?;
+	let output = wrap_like(allocate_like(input)?, input)?;
+	{{push:0}}
+	{{bindings:0}}
+	let outputs = [AudioSemanticOutput::Audio(&output)];
+	input.engine_handle().record_audio_semantic(
+		{{dispatch:0}},
+		AudioSemanticDispatch {
+			contract: {{contract}},
+			inputs: &[input],
+			outputs: &outputs,
+			attributes: &[{{attributes}}],
+		},
+	)?;
+	Ok(output)
+// @operation biquad
+	if !stable_biquad(coefficients) {
+		return Err(Error::invalid_argument(
+			"audio biquad filtering requires one to 64 finite stable a0-normalized sections",
+		));
+	}
+
+	let channels = u32_extent(input.channels(), "audio::biquad channels")?;
+	let samples = u32_extent(input.samples(), "audio::biquad samples")?;
+	let blocks = samples.div_ceil(BIQUAD_BLOCK_SIZE);
+	let tasks = channels
+		.checked_mul(blocks)
+		.ok_or_else(|| Error::out_of_range("audio::biquad workspace exceeds u32"))?;
+	let summary_elements = usize::try_from(tasks)
+		.ok()
+		.and_then(|value| value.checked_mul(6))
+		.ok_or_else(|| Error::out_of_range("audio::biquad summary exceeds usize"))?;
+	let state_elements = usize::try_from(tasks)
+		.ok()
+		.and_then(|value| value.checked_mul(2))
+		.ok_or_else(|| Error::out_of_range("audio::biquad state exceeds usize"))?;
+	let summaries = Matrix::allocate(
+		input.engine_handle(),
+		vec![input.channels(), blocks as usize, 6],
+		summary_elements,
+		DType::F32,
+	)?;
+	let states = Matrix::allocate(
+		input.engine_handle(),
+		vec![input.channels(), blocks as usize, 2],
+		state_elements,
+		DType::F32,
+	)?;
+	let output_matrix = Matrix::allocate(
+		input.engine_handle(),
+		input.as_matrix().shape().to_vec(),
+		input.as_matrix().num_elements(),
+		DType::F32,
+	)?;
+	let output = Audio::new(output_matrix, input.sample_rate(), input.layout())?;
+	{{push:0}}
+	{{bindings:0}}
+	{{bindings:1}}
+	{{push:1}}
+	{{bindings:2}}
+	let dispatches = [
+		{{dispatch:0}},
+		{{dispatch:1}},
+		{{dispatch:2}},
+	];
+	let attributes = [{{attributes}}];
+	let outputs = [AudioSemanticOutput::Audio(&output)];
+	input.engine_handle().record_audio_split_semantic(
+		&dispatches,
+		AudioSemanticDispatch {
+			contract: {{contract}},
+			inputs: &[input],
+			outputs: &outputs,
+			attributes: &attributes,
+		},
+	)?;
+	Ok(output)
+// @operation reverb
+	if !decay_seconds.is_finite()
+		|| !(0.1..=10.0).contains(&decay_seconds)
+		|| !wet.is_finite()
+		|| !(0.0..=1.0).contains(&wet)
+	{
+		return Err(Error::invalid_argument(
+			"audio::reverb requires decay_seconds in [0.1, 10] and wet in [0, 1]",
+		));
+	}
+	let channels = u32_extent(input.channels(), "audio::reverb channels")?;
+	let in_samples = u32_extent(input.samples(), "audio::reverb input samples")?;
+	let tail = (f64::from(input.sample_rate()) * f64::from(decay_seconds)).ceil();
+	if !(1.0..=f64::from(u32::MAX)).contains(&tail) {
+		return Err(Error::out_of_range("audio::reverb tail exceeds u32"));
+	}
+	let tail = tail as u32;
+	let out_samples = in_samples
+		.checked_add(tail)
+		.ok_or_else(|| Error::out_of_range("audio::reverb output samples exceed u32"))?;
+	let count = channels
+		.checked_mul(out_samples)
+		.ok_or_else(|| Error::out_of_range("audio::reverb output dispatch exceeds u32"))?;
+	let output_shape = [input.channels(), out_samples as usize];
+	let allocate_output = || {
+		Matrix::allocate(
+			input.engine_handle(),
+			output_shape.to_vec(),
+			count as usize,
+			DType::F32,
+		)
+	};
+	let combs = [
+		allocate_output()?,
+		allocate_output()?,
+		allocate_output()?,
+		allocate_output()?,
+	];
+	let summed = allocate_output()?;
+	let diffuse_a = allocate_output()?;
+	let diffuse_b = allocate_output()?;
+	let output = Audio::new(allocate_output()?, input.sample_rate(), input.layout())?;
+
+	let delay_seconds = [0.0297_f64, 0.0371, 0.0411, 0.0437];
+	let mut delays = [0_u32; 4];
+	let mut feedback = [0_f32; 4];
+	let mut denominator = 0.0_f64;
+	for index in 0..4 {
+		delays[index] = (delay_seconds[index] * f64::from(input.sample_rate()))
+			.round()
+			.max(1.0) as u32;
+		feedback[index] = 0.001_f64
+			.powf((f64::from(delays[index]) / f64::from(input.sample_rate())) / f64::from(decay_seconds))
+			as f32;
+		denominator += 1.0 / (1.0 - f64::from(feedback[index]));
+	}
+	let allpass_delays = [
+		(0.0050_f64 * f64::from(input.sample_rate()))
+			.round()
+			.max(1.0) as u32,
+		(0.0017_f64 * f64::from(input.sample_rate()))
+			.round()
+			.max(1.0) as u32,
+	];
+	for delay in delays.into_iter().chain(allpass_delays) {
+		channels
+			.checked_mul(delay)
+			.ok_or_else(|| Error::out_of_range("audio::reverb recurrence dispatch exceeds u32"))?;
+	}
+
+	{{bindings:0}}
+	{{bindings:1}}
+	{{bindings:2}}
+	{{bindings:3}}
+	{{push:0}}
+	{{push:1}}
+	{{push:2}}
+	{{push:3}}
+	{{bindings:4}}
+	{{push:4}}
+	{{bindings:5}}
+	{{bindings:6}}
+	{{push:5}}
+	{{push:6}}
+	{{bindings:7}}
+	{{push:7}}
+	let dispatches = [
+		{{dispatch:0}},
+		{{dispatch:1}},
+		{{dispatch:2}},
+		{{dispatch:3}},
+		{{dispatch:4}},
+		{{dispatch:5}},
+		{{dispatch:6}},
+		{{dispatch:7}},
+	];
+	let attributes = [{{attributes}}];
+	let outputs = [AudioSemanticOutput::Audio(&output)];
+	input.engine_handle().record_audio_split_semantic(
+		&dispatches,
+		AudioSemanticDispatch {
+			contract: {{contract}},
+			inputs: &[input],
+			outputs: &outputs,
+			attributes: &attributes,
+		},
+	)?;
+	Ok(output)
+// @operation sos_filter
+	if sections.is_empty() || sections.len() > 64 || !sections.iter().copied().all(stable_biquad) {
+		return Err(Error::invalid_argument(
+			"audio biquad filtering requires one to 64 finite stable a0-normalized sections",
+		));
+	}
+
+	let channels = u32_extent(input.channels(), "audio::sos_filter channels")?;
+	let samples = u32_extent(input.samples(), "audio::sos_filter samples")?;
+	let section_count = u32::try_from(sections.len())
+		.map_err(|_| Error::out_of_range("audio::sos_filter section count exceeds u32"))?;
+	let mut packed = Vec::new();
+	packed
+		.try_reserve_exact(sections.len() * 5)
+		.map_err(|_| Error::resource_exhausted("audio::sos_filter coefficient allocation failed"))?;
+	for section in sections {
+		packed.extend_from_slice(&[section.b0, section.b1, section.b2, section.a1, section.a2]);
+	}
+	let coefficient_matrix =
+		Matrix::from_slice_handle(input.engine_handle(), vec![sections.len(), 5], &packed)?;
+	let output_matrix = Matrix::allocate(
+		input.engine_handle(),
+		input.as_matrix().shape().to_vec(),
+		input.as_matrix().num_elements(),
+		DType::F32,
+	)?;
+	let output = Audio::new(output_matrix, input.sample_rate(), input.layout())?;
+	{{bindings:0}}
+	{{push:0}}
+	let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+	for value in packed {
+		for byte in value.to_bits().to_le_bytes() {
+			hash = (hash ^ u64::from(byte)).wrapping_mul(0x0000_0100_0000_01b3);
+		}
+	}
+	let attributes = [{{attributes}}];
+	let outputs = [AudioSemanticOutput::Audio(&output)];
+	input.engine_handle().record_audio_semantic(
+		{{dispatch:0}},
+		AudioSemanticDispatch {
+			contract: {{contract}},
+			inputs: &[input],
+			outputs: &outputs,
+			attributes: &attributes,
+		},
+	)?;
+	Ok(output)
+// @operation pre_emphasis
+	if !alpha.is_finite() {
+		return Err(Error::invalid_argument(
+			"audio::pre_emphasis alpha must be finite",
+		));
+	}
+	let samples = u32_extent(input.samples(), "audio::pre_emphasis samples")?;
+	let count = element_count_u32(input, {{contract}}.name())?;
+	let output = wrap_like(allocate_like(input)?, input)?;
+	{{push:0}}
+	{{bindings:0}}
+	let outputs = [AudioSemanticOutput::Audio(&output)];
+	input.engine_handle().record_audio_semantic(
+		{{dispatch:0}},
+		AudioSemanticDispatch {
+			contract: {{contract}},
+			inputs: &[input],
+			outputs: &outputs,
+			attributes: &[{{attributes}}],
+		},
+	)?;
+	Ok(output)
+// @operation to_mono
+	let channels = u32_extent(input.channels(), "audio::to_mono channels")?;
+	let samples = u32_extent(input.samples(), "audio::to_mono samples")?;
+	let matrix = Matrix::allocate(
+		input.engine_handle(),
+		vec![1, input.samples()],
+		input.samples(),
+		crate::DType::F32,
+	)?;
+	let output = Audio::new(matrix, input.sample_rate(), AudioChannelLayout::Mono)?;
+	{{bindings:0}}
+	{{push:0}}
+	let outputs = [AudioSemanticOutput::Audio(&output)];
+	input.engine_handle().record_audio_semantic(
+		{{dispatch:0}},
+		AudioSemanticDispatch {
+			contract: {{contract}},
+			inputs: &[input],
+			outputs: &outputs,
+			attributes: &[{{attributes}}],
+		},
+	)?;
+	Ok(output)
+// @operation fade
+	let samples = u32_extent(input.samples(), "audio::fade samples")?;
+	let fade_in = u32::try_from(fade_in_samples.min(u64::from(samples)))
+		.map_err(|_| Error::out_of_range("audio::fade fade-in exceeds u32"))?;
+	let fade_out = u32::try_from(fade_out_samples.min(u64::from(samples)))
+		.map_err(|_| Error::out_of_range("audio::fade fade-out exceeds u32"))?;
+	let count = element_count_u32(input, {{contract}}.name())?;
+	let output = wrap_like(allocate_like(input)?, input)?;
+	{{push:0}}
+	{{bindings:0}}
+	let outputs = [AudioSemanticOutput::Audio(&output)];
+	input.engine_handle().record_audio_semantic(
+		{{dispatch:0}},
+		AudioSemanticDispatch {
+			contract: {{contract}},
+			inputs: &[input],
+			outputs: &outputs,
+			attributes: &[{{attributes}}],
+		},
+	)?;
+	Ok(output)
+// @operation mix
+	if a.sample_rate() != b.sample_rate()
+		|| a.layout() != b.layout()
+		|| a.as_matrix().shape() != b.as_matrix().shape()
+		|| !a.engine_handle().same_as(b.engine_handle())
+		|| !gain_a.is_finite()
+		|| !gain_b.is_finite()
+	{
+		return Err(Error::invalid_argument(
+			"audio::mix requires matching ownership, rate, layout, and shape plus finite gains",
+		));
+	}
+	let count = element_count_u32(a, "audio::mix")?;
+	let output = wrap_like(allocate_like(a)?, a)?;
+	{{bindings:0}}
+	{{push:0}}
+	let attributes = [{{attributes}}];
+	let outputs = [AudioSemanticOutput::Audio(&output)];
+	a.engine_handle().record_audio_semantic(
+		{{dispatch:0}},
+		AudioSemanticDispatch {
+			contract: {{contract}},
+			inputs: &[a, b],
+			outputs: &outputs,
+			attributes: &attributes,
+		},
+	)?;
+	Ok(output)
+// @operation amplitude_to_db
+	if !floor_db.is_finite() || !(-300.0..=0.0).contains(&floor_db) {
+		return Err(Error::invalid_argument(
+			"audio::amplitude_to_db floor_db must be finite and in [-300, 0]",
+		));
+	}
+	let count = element_count_u32(input, "audio::amplitude_to_db")?;
+	let output = allocate_like(input)?;
+	{{bindings:0}}
+	{{push:0}}
+	let outputs = [AudioSemanticOutput::Matrix(&output)];
+	let attributes = [{{attributes}}];
+	input.engine_handle().record_audio_semantic(
+		{{dispatch:0}},
+		AudioSemanticDispatch {
+			contract: {{contract}},
+			inputs: &[input],
+			outputs: &outputs,
+			attributes: &attributes,
+		},
+	)?;
+	Ok(output)
+// @operation waveform_envelope
+	if bins == 0 || bins > 65_536 {
+		return Err(Error::invalid_argument(
+			"audio::waveform_envelope bins must be in [1, 65536]",
+		));
+	}
+	let channels = u32_extent(input.channels(), "audio::waveform_envelope channels")?;
+	let samples = u32_extent(input.samples(), "audio::waveform_envelope samples")?;
+	let elements = usize::try_from(bins)
+		.ok()
+		.and_then(|value| value.checked_mul(2))
+		.ok_or_else(|| Error::out_of_range("audio::waveform_envelope output exceeds usize"))?;
+	let output = Matrix::allocate(
+		input.engine_handle(),
+		vec![bins as usize, 2],
+		elements,
+		crate::DType::F32,
+	)?;
+	{{bindings:0}}
+	{{push:0}}
+	let outputs = [AudioSemanticOutput::Matrix(&output)];
+	let attributes = [{{attributes}}];
+	input.engine_handle().record_audio_semantic(
+		{{dispatch:0}},
+		AudioSemanticDispatch {
+			contract: {{contract}},
+			inputs: &[input],
+			outputs: &outputs,
+			attributes: &attributes,
+		},
+	)?;
+	Ok(output)

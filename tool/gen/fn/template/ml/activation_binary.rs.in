@@ -1,0 +1,64 @@
+/// {{doc}}
+///
+/// # Errors
+///
+/// Returns an error unless both inputs are equal-shape F32 on the same engine,
+/// or runtime recording fails.
+pub fn {{name}}(
+	{{left}}: &Matrix,
+	{{right}}: &Matrix,
+) -> Result<Matrix> {
+	let contract = {{contract}};
+	let operation = contract.name();
+	let engine = {{left}}.engine_handle();
+	for matrix in &[{{left}}, {{right}}] {
+		if matrix.dtype() != DType::F32 {
+			return Err(Error::invalid_argument(format!(
+				"{operation} requires F32 matrices; found {}",
+				matrix.dtype().token()
+			)));
+		}
+		if !engine.same_as(matrix.engine_handle()) {
+			return Err(Error::invalid_argument(format!(
+				"{operation} inputs must belong to the same engine"
+			)));
+		}
+	}
+	if {{left}}.shape() != {{right}}.shape() {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires equal input shapes"
+		)));
+	}
+	let element_count = u32::try_from({{left}}.num_elements())
+		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
+	let output = Matrix::allocate(
+		engine,
+		{{left}}.shape().to_vec(),
+		{{left}}.num_elements(),
+		DType::F32,
+	)?;
+	if element_count != 0 {
+		let buffers = [
+			BufferBinding::read({{left}}.storage()),
+			BufferBinding::read({{right}}.storage()),
+			BufferBinding::write(output.storage()),
+		];
+		let push_constants = [PushConstant::U32(element_count)];
+		engine.record_semantic(
+			ComputeDispatch {
+				kernel: KernelId::{{kernel}},
+				buffers: &buffers,
+				push_constants: &push_constants,
+				workgroups: KernelId::{{kernel}}.linear_workgroups(element_count),
+			},
+			SemanticDispatch {
+				contract,
+				inputs: &[{{left}}, {{right}}],
+				outputs: &[&output],
+				attributes: &[],
+			},
+		)?;
+	}
+{{autograd_call}}
+	Ok(output)
+}

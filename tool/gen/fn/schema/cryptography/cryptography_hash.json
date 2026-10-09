@@ -1,0 +1,460 @@
+{
+  "schema_version": 1,
+  "family": "cryptography_hash",
+  "domain": "cryptography::hash",
+  "dtype": "u8",
+  "contracts": [
+    {
+      "name": "shake128",
+      "input_kinds": [
+        "matrix"
+      ],
+      "output_kinds": [
+        "matrix"
+      ],
+      "shape_rule": "explicit",
+      "dtype_rule": "u8",
+      "attributes": [
+        [
+          "output_length",
+          "unsigned_integer"
+        ]
+      ]
+    },
+    {
+      "name": "shake256",
+      "input_kinds": [
+        "matrix"
+      ],
+      "output_kinds": [
+        "matrix"
+      ],
+      "shape_rule": "explicit",
+      "dtype_rule": "u8",
+      "attributes": [
+        [
+          "output_length",
+          "unsigned_integer"
+        ]
+      ]
+    },
+    {
+      "name": "keccak_f1600",
+      "input_kinds": [
+        "matrix"
+      ],
+      "output_kinds": [
+        "matrix"
+      ],
+      "shape_rule": "match_input",
+      "dtype_rule": "u8",
+      "attributes": []
+    },
+    {
+      "name": "merkle_root",
+      "input_kinds": [
+        "matrix"
+      ],
+      "output_kinds": [
+        "matrix"
+      ],
+      "shape_rule": "explicit",
+      "dtype_rule": "u8",
+      "attributes": []
+    }
+  ],
+  "kernels": [
+    {
+      "stable_id": 200,
+      "name": "shake128",
+      "kernel_id": "CryptographyShake128U8",
+      "source": "src/slang/cryptography/hash/shake128.slang",
+      "workgroup_size": [
+        256,
+        1,
+        1
+      ],
+      "semantic_operation": "shake128",
+      "push_fields": [
+        [
+          "input_index",
+          "uint32"
+        ],
+        [
+          "output_index",
+          "uint32"
+        ],
+        [
+          "count",
+          "uint32"
+        ],
+        [
+          "message_len",
+          "uint32"
+        ],
+        [
+          "num_blocks",
+          "uint32"
+        ],
+        [
+          "squeeze_u64",
+          "uint32"
+        ]
+      ]
+    },
+    {
+      "stable_id": 201,
+      "name": "shake256",
+      "kernel_id": "CryptographyShake256U8",
+      "source": "src/slang/cryptography/hash/shake256.slang",
+      "workgroup_size": [
+        256,
+        1,
+        1
+      ],
+      "semantic_operation": "shake256",
+      "push_fields": [
+        [
+          "input_index",
+          "uint32"
+        ],
+        [
+          "output_index",
+          "uint32"
+        ],
+        [
+          "count",
+          "uint32"
+        ],
+        [
+          "message_len",
+          "uint32"
+        ],
+        [
+          "num_blocks",
+          "uint32"
+        ],
+        [
+          "squeeze_u64",
+          "uint32"
+        ]
+      ]
+    },
+    {
+      "stable_id": 202,
+      "name": "keccak_f1600",
+      "kernel_id": "CryptographyKeccakF1600U8",
+      "source": "src/slang/cryptography/hash/keccak_f1600.slang",
+      "workgroup_size": [
+        256,
+        1,
+        1
+      ],
+      "semantic_operation": "keccak_f1600",
+      "push_fields": [
+        [
+          "input_index",
+          "uint32"
+        ],
+        [
+          "output_index",
+          "uint32"
+        ],
+        [
+          "count",
+          "uint32"
+        ]
+      ]
+    },
+    {
+      "stable_id": 203,
+      "name": "merkle_reduce",
+      "kernel_id": "CryptographyMerkleReduceU8",
+      "source": "src/slang/cryptography/hash/merkle_reduce.slang",
+      "workgroup_size": [
+        256,
+        1,
+        1
+      ],
+      "semantic_operation": "merkle_root",
+      "push_fields": [
+        [
+          "input_index",
+          "uint32"
+        ],
+        [
+          "output_index",
+          "uint32"
+        ],
+        [
+          "count",
+          "uint32"
+        ],
+        [
+          "hash_bytes",
+          "uint32"
+        ]
+      ]
+    },
+    {
+      "stable_id": 204,
+      "name": "merkle_copy",
+      "kernel_id": "CryptographyMerkleCopyU8",
+      "source": "src/slang/cryptography/hash/merkle_copy.slang",
+      "workgroup_size": [
+        256,
+        1,
+        1
+      ],
+      "semantic_operation": "merkle_root",
+      "push_fields": [
+        [
+          "input_index",
+          "uint32"
+        ],
+        [
+          "output_index",
+          "uint32"
+        ],
+        [
+          "count",
+          "uint32"
+        ]
+      ]
+    }
+  ],
+  "rust_api": [
+    {
+      "name": "shake128",
+      "visibility": "pub",
+      "parameters": [
+        [
+          "input",
+          "&Matrix"
+        ],
+        [
+          "output_length",
+          "usize"
+        ]
+      ],
+      "doc": [
+        "Hash every row with SHAKE-128.",
+        "",
+        "An `output_length` of zero selects 16 bytes. Output rows are padded to an",
+        "eight-byte boundary, matching the OA donor ABI.",
+        "",
+        "# Errors",
+        "",
+        "Rejects invalid shapes, dtypes, shader address limits, allocation or recording failures."
+      ],
+      "annotations": [],
+      "contracts": [
+        "shake128"
+      ],
+      "values": {
+        "rate": "168",
+        "default_output_length": "16"
+      },
+      "stages": [
+        {
+          "kernel": "CryptographyShake128U8",
+          "bindings": {
+            "input_index": [
+              "read",
+              "input"
+            ],
+            "output_index": [
+              "write",
+              "output"
+            ]
+          },
+          "push_constants": {
+            "count": "rows_u32",
+            "message_len": "message_len_u32",
+            "num_blocks": "num_blocks",
+            "squeeze_u64": "squeeze_u64"
+          }
+        }
+      ],
+      "attributes": {
+        "output_length": "u64::try_from(output_length).map_err(|_| Error::invalid_argument(\"SHAKE output length exceeds u64\"))?"
+      },
+      "template": "shake"
+    },
+    {
+      "name": "shake256",
+      "visibility": "pub",
+      "parameters": [
+        [
+          "input",
+          "&Matrix"
+        ],
+        [
+          "output_length",
+          "usize"
+        ]
+      ],
+      "doc": [
+        "Hash every row with SHAKE-256.",
+        "",
+        "An `output_length` of zero selects 32 bytes. Output rows are padded to an",
+        "eight-byte boundary, matching the OA donor ABI.",
+        "",
+        "# Errors",
+        "",
+        "Rejects invalid shapes, dtypes, shader address limits, allocation or recording failures."
+      ],
+      "annotations": [],
+      "contracts": [
+        "shake256"
+      ],
+      "values": {
+        "rate": "136",
+        "default_output_length": "32"
+      },
+      "stages": [
+        {
+          "kernel": "CryptographyShake256U8",
+          "bindings": {
+            "input_index": [
+              "read",
+              "input"
+            ],
+            "output_index": [
+              "write",
+              "output"
+            ]
+          },
+          "push_constants": {
+            "count": "rows_u32",
+            "message_len": "message_len_u32",
+            "num_blocks": "num_blocks",
+            "squeeze_u64": "squeeze_u64"
+          }
+        }
+      ],
+      "attributes": {
+        "output_length": "u64::try_from(output_length).map_err(|_| Error::invalid_argument(\"SHAKE output length exceeds u64\"))?"
+      },
+      "template": "shake"
+    },
+    {
+      "name": "keccak_f1600",
+      "visibility": "pub",
+      "parameters": [
+        [
+          "input",
+          "&Matrix"
+        ]
+      ],
+      "doc": [
+        "Apply Keccak-f\\[1600\\] independently to every 200-byte row.",
+        "",
+        "# Errors",
+        "",
+        "Rejects invalid shapes, dtypes, shader address limits, allocation or recording failures."
+      ],
+      "annotations": [],
+      "contracts": [
+        "keccak_f1600"
+      ],
+      "values": {},
+      "stages": [
+        {
+          "kernel": "CryptographyKeccakF1600U8",
+          "bindings": {
+            "input_index": [
+              "read",
+              "input"
+            ],
+            "output_index": [
+              "write",
+              "output"
+            ]
+          },
+          "push_constants": {
+            "count": "count"
+          }
+        }
+      ],
+      "attributes": {},
+      "template": "keccak_f1600"
+    },
+    {
+      "name": "merkle_root",
+      "visibility": "pub",
+      "parameters": [
+        [
+          "input",
+          "&Matrix"
+        ]
+      ],
+      "doc": [
+        "Reduce 32-byte leaf hashes to one Merkle root.",
+        "",
+        "# Errors",
+        "",
+        "Rejects invalid shapes, dtypes, shader address limits, allocation or recording failures."
+      ],
+      "annotations": [],
+      "contracts": [
+        "merkle_root"
+      ],
+      "values": {},
+      "stages": [
+        {
+          "kernel": "CryptographyMerkleCopyU8",
+          "bindings": {
+            "input_index": [
+              "read",
+              "input"
+            ],
+            "output_index": [
+              "write",
+              "output"
+            ]
+          },
+          "push_constants": {
+            "count": "8"
+          }
+        },
+        {
+          "kernel": "CryptographyMerkleReduceU8",
+          "bindings": {
+            "input_index": [
+              "read",
+              "input"
+            ],
+            "output_index": [
+              "write",
+              "output"
+            ]
+          },
+          "push_constants": {
+            "count": "1",
+            "hash_bytes": "32"
+          }
+        },
+        {
+          "kernel": "CryptographyMerkleReduceU8",
+          "bindings": {
+            "input_index": [
+              "read",
+              "source"
+            ],
+            "output_index": [
+              "write",
+              "output"
+            ]
+          },
+          "push_constants": {
+            "count": "shader_u32(level.shape()[0], \"level count\", OPERATION)?",
+            "hash_bytes": "32"
+          }
+        }
+      ],
+      "attributes": {},
+      "template": "merkle_root"
+    }
+  ]
+}

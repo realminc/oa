@@ -1,0 +1,43 @@
+{
+	"version": 1,
+	"family": "vq",
+	"imports": [
+		"use std::rc::Rc;",
+		"use crate::{DType, Engine, Error, Matrix, Result, matrix as core_matrix};",
+		"use super::super::{Module, ModuleRegistry, NamedBuffer, NamedStateU32, matrix, random};"
+	],
+	"helper": "",
+	"layers": [
+		{
+			"name": "VectorQuantizer",
+			"doc": "EMA-trained vector quantizer with persistent, non-gradient codebook state.",
+			"template": "vq",
+			"values": {
+				"config_type": "VectorQuantizerConfig",
+				"result_type": "VqResult",
+				"residual_type": "ResidualVectorQuantizer",
+				"residual_result_type": "ResidualVqResult",
+				"initializer": "random::symmetric_uniform",
+				"assign_operation": "matrix::vq_assign",
+				"detach_operation": "matrix::detach",
+				"ema_operation": "matrix::vq_ema_update",
+				"lookup_operation": "matrix::vq_lookup",
+				"add_operation": "core_matrix::add",
+				"subtract_operation": "core_matrix::sub",
+				"multiply_operation": "core_matrix::mul",
+				"sum_operation": "core_matrix::sum",
+				"reshape_operation": "core_matrix::reshape",
+				"scale_operation": "core_matrix::scale",
+				"top_k_operation": "core_matrix::top_k",
+				"copy_operation": "core_matrix::copy",
+				"codebook_name": "codebook",
+				"embed_sum_name": "embed_sum",
+				"cluster_size_name": "cluster_size",
+				"ema_step_name": "ema_step",
+				"level_prefix": "level"
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/vq/vq.cpp",
+			"adaptation": "Complete donor EMA and residual quantizer composition; Rust retains checked FP32 geometry, deterministic seeded Glorot initialization, fresh semantic EMA outputs behind persistent NamedBuffer identities and checkpointed NamedStateU32 revival counter; explicit GPU seeding completion remains unchanged"
+		}
+	]
+}

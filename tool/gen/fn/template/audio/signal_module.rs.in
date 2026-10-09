@@ -1,0 +1,78 @@
+//! Stateless GPU audio-signal operations.
+
+use crate::{
+	Audio, DType, Error, Matrix, OpAttribute, Result,
+	runtime::{
+		AudioSemanticDispatch, AudioSemanticOutput, BufferBinding, ComputeDispatch, KernelId,
+		PushConstant,
+	},
+};
+
+use super::AudioChannelLayout;
+
+const BIQUAD_BLOCK_SIZE: u32 = 256;
+
+fn allocate_like(input: &Audio) -> Result<Matrix> {
+	Matrix::allocate(
+		input.engine_handle(),
+		input.as_matrix().shape().to_vec(),
+		input.as_matrix().num_elements(),
+		crate::DType::F32,
+	)
+}
+
+fn wrap_like(matrix: Matrix, input: &Audio) -> Result<Audio> {
+	Audio::new(matrix, input.sample_rate(), input.layout())
+}
+
+pub(super) fn element_count_u32(input: &Audio, operation: &str) -> Result<u32> {
+	u32::try_from(input.as_matrix().num_elements())
+		.map_err(|_| Error::out_of_range(format!("{operation} dispatch exceeds u32")))
+}
+
+pub(super) fn u32_extent(value: usize, label: &str) -> Result<u32> {
+	u32::try_from(value).map_err(|_| Error::out_of_range(format!("{label} exceeds u32")))
+}
+
+pub(super) fn float_attribute(name: &str, value: f32) -> OpAttribute {
+	OpAttribute::Float {
+		name: name.into(),
+		value: f64::from(value),
+	}
+}
+
+pub(super) fn unsigned_attribute(name: &str, value: u64) -> OpAttribute {
+	OpAttribute::UnsignedInteger {
+		name: name.into(),
+		value,
+	}
+}
+
+fn gcd(mut left: u32, mut right: u32) -> u32 {
+	while right != 0 {
+		let remainder = left % right;
+		left = right;
+		right = remainder;
+	}
+	left
+}
+
+fn stable_biquad(coefficients: BiquadCoefficients) -> bool {
+	if ![
+		coefficients.b0,
+		coefficients.b1,
+		coefficients.b2,
+		coefficients.a1,
+		coefficients.a2,
+	]
+	.into_iter()
+	.all(f32::is_finite)
+	{
+		return false;
+	}
+	let a1 = f64::from(coefficients.a1);
+	let a2 = f64::from(coefficients.a2);
+	1.0 + a1 + a2 > 0.0 && 1.0 - a1 + a2 > 0.0 && 1.0 - a2 > 0.0
+}
+
+{{items}}

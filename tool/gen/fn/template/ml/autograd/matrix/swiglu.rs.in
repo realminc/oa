@@ -1,0 +1,22 @@
+// Adjoint formulas retained from the existing SwiGLU providers. See ../README.md.
+
+// @operation swiglu
+let Self { gate, up, output_id } = self;
+let Some(output_gradient) = gradients.remove(output_id) else {
+	return Ok(BackwardStatus::Skipped);
+};
+let (gate_gradient, up_gradient) =
+	ml_matrix::swiglu_backward(gate, up, &output_gradient)?;
+accumulate_value_gradient(gradients, gate.value_id(), gate_gradient)?;
+accumulate_value_gradient(gradients, up.value_id(), up_gradient)?;
+Ok(BackwardStatus::Recorded)
+
+// @operation silu_mul
+let Self { input, intermediate_size, output_id } = self;
+let Some(output_gradient) = gradients.remove(output_id) else {
+	return Ok(BackwardStatus::Skipped);
+};
+let input_gradient =
+	crate::ml::matrix::silu_mul_backward(input, &output_gradient, *intermediate_size)?;
+accumulate_value_gradient(gradients, input.value_id(), input_gradient)?;
+Ok(BackwardStatus::Recorded)

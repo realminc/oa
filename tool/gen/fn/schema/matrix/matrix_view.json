@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "family": "matrix_view",
+  "domain": "matrix",
+  "port_provenance": {
+    "classification": "mechanical_metadata_adaptation",
+    "donors": [
+      "source/cpp/lib/oa/core/autograd/matrix/autogradShape.h",
+      "tools/gen/fn/schema/core/coreFnMatrixShape.toml"
+    ],
+    "reason": "Records the existing zero-copy reshape attachment and adjoint; no new kernel, executable operation ID or runtime contract."
+  },
+  "operations": [
+    {
+      "name": "reshape",
+      "differentiation": "reverse",
+      "metadata_only": true,
+      "autograd": {
+        "mode": "generated",
+        "family": "view",
+        "node": "Reshape",
+        "saved_fields": [
+          [
+            "input",
+            "matrix"
+          ],
+          [
+            "output_id",
+            "output_identity"
+          ]
+        ]
+      }
+    }
+  ]
+}

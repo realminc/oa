@@ -1,0 +1,179 @@
+// Complete admitted Rust operation bodies; donor evidence remains in ml_training.json.
+
+// @operation rope
+/// Apply split-half rotary position embeddings to `[tokens, heads * head_dim]`.
+///
+/// `position_offset` selects the first absolute position, making the same
+/// operation usable for full sequences and future KV-cache extension.
+///
+/// # Errors
+///
+/// Returns an error unless the input is nonempty F32, `head_dim` is even, the
+/// final width matches `num_heads * head_dim`, and `theta_base` is finite and
+/// positive.
+pub fn rope(
+	input: &Matrix,
+	num_heads: usize,
+	head_dim: usize,
+	theta_base: f32,
+	position_offset: u32,
+) -> Result<Matrix> {
+	const OPERATION: &str = crate::core::operation::ml::ROPE.name();
+	let (tokens, num_heads_u32, head_dim_u32, pair_count) =
+		validate_rope(input, num_heads, head_dim, theta_base, OPERATION)?;
+	let output = Matrix::allocate(
+		input.engine_handle(),
+		input.shape().to_vec(),
+		input.num_elements(),
+		DType::F32,
+	)?;
+	let buffers = [
+		BufferBinding::read(input.storage()),
+		BufferBinding::write(output.storage()),
+	];
+	let push_constants = [
+		PushConstant::U32(tokens),
+		PushConstant::U32(num_heads_u32),
+		PushConstant::U32(head_dim_u32),
+		PushConstant::F32(theta_base),
+		PushConstant::U32(position_offset),
+	];
+	let attributes = [
+		OpAttribute::UnsignedInteger {
+			name: "num_heads".into(),
+			value: u64::from(num_heads_u32),
+		},
+		OpAttribute::UnsignedInteger {
+			name: "head_dim".into(),
+			value: u64::from(head_dim_u32),
+		},
+		OpAttribute::Float {
+			name: "theta_base".into(),
+			value: f64::from(theta_base),
+		},
+		OpAttribute::UnsignedInteger {
+			name: "position_offset".into(),
+			value: u64::from(position_offset),
+		},
+	];
+	let kernel = KernelId::MlRopeF32;
+	{
+		let inputs: &[&Matrix] = &[input];
+		let outputs: &[&Matrix] = &[&output];
+		let attributes: &[OpAttribute] = &attributes;
+		let dispatch = ComputeDispatch {
+			kernel,
+			buffers: &buffers,
+			push_constants: &push_constants,
+			workgroups: kernel.linear_workgroups(pair_count),
+		};
+		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
+			Error::internal(format!(
+				"lowering-only kernel {} cannot own one semantic ML operation",
+				dispatch.kernel.report_name()
+			))
+		})?;
+		let engine = inputs
+			.first()
+			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
+			.engine_handle();
+		engine.record_semantic(
+			dispatch,
+			SemanticDispatch {
+				contract,
+				inputs,
+				outputs,
+				attributes,
+			},
+		)
+	}?;
+	autograd::record_rope(
+		input,
+		num_heads,
+		head_dim,
+		theta_base,
+		position_offset,
+		&output,
+	)?;
+	Ok(output)
+}
+
+// @operation rope_backward
+pub(in crate::ml) fn rope_backward(
+	output_gradient: &Matrix,
+	num_heads: usize,
+	head_dim: usize,
+	theta_base: f32,
+	position_offset: u32,
+) -> Result<Matrix> {
+	const OPERATION: &str = crate::core::operation::ml::ROPE_BACKWARD.name();
+	let (tokens, num_heads, head_dim, pair_count) =
+		validate_rope(output_gradient, num_heads, head_dim, theta_base, OPERATION)?;
+	let input_gradient = Matrix::allocate(
+		output_gradient.engine_handle(),
+		output_gradient.shape().to_vec(),
+		output_gradient.num_elements(),
+		DType::F32,
+	)?;
+	let buffers = [
+		BufferBinding::read(output_gradient.storage()),
+		BufferBinding::write(input_gradient.storage()),
+	];
+	let push_constants = [
+		PushConstant::U32(tokens),
+		PushConstant::U32(num_heads),
+		PushConstant::U32(head_dim),
+		PushConstant::F32(theta_base),
+		PushConstant::U32(position_offset),
+	];
+	let attributes = [
+		OpAttribute::UnsignedInteger {
+			name: "num_heads".into(),
+			value: u64::from(num_heads),
+		},
+		OpAttribute::UnsignedInteger {
+			name: "head_dim".into(),
+			value: u64::from(head_dim),
+		},
+		OpAttribute::Float {
+			name: "theta_base".into(),
+			value: f64::from(theta_base),
+		},
+		OpAttribute::UnsignedInteger {
+			name: "position_offset".into(),
+			value: u64::from(position_offset),
+		},
+	];
+	let kernel = KernelId::MlRopeBackwardF32;
+	{
+		let inputs: &[&Matrix] = &[output_gradient];
+		let outputs: &[&Matrix] = &[&input_gradient];
+		let attributes: &[OpAttribute] = &attributes;
+		let dispatch = ComputeDispatch {
+			kernel,
+			buffers: &buffers,
+			push_constants: &push_constants,
+			workgroups: kernel.linear_workgroups(pair_count),
+		};
+		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
+			Error::internal(format!(
+				"lowering-only kernel {} cannot own one semantic ML operation",
+				dispatch.kernel.report_name()
+			))
+		})?;
+		let engine = inputs
+			.first()
+			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
+			.engine_handle();
+		engine.record_semantic(
+			dispatch,
+			SemanticDispatch {
+				contract,
+				inputs,
+				outputs,
+				attributes,
+			},
+		)
+	}?;
+	Ok(input_gradient)
+}

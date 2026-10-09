@@ -1,0 +1,55 @@
+	let operation = contract.name();
+	let (axis, output_shape) = sum_shape(input, dim, operation)?;
+	let output_count = if dim == -1 {
+		1
+	} else {
+		usize::try_from(axis.group_count)
+			.map_err(|_| Error::invalid_argument(format!("{operation} output count exceeds usize")))?
+	};
+	let output = Matrix::allocate(
+		input.engine_handle(),
+		output_shape,
+		output_count,
+		DType::F32,
+	)?;
+	let buffers = [
+		BufferBinding::read(input.storage()),
+		BufferBinding::write(output.storage()),
+	];
+	let full_push = [PushConstant::U32(axis.dim_size)];
+	let axis_push = [
+		PushConstant::U32(axis.outer_size),
+		PushConstant::U32(axis.dim_size),
+		PushConstant::U32(axis.inner_size),
+	];
+	let (kernel, push_constants, workgroups) = if dim == -1 {
+		(KernelId::MatrixSumF32, full_push.as_slice(), [1, 1, 1])
+	} else {
+		(
+			KernelId::MatrixSumAxisF32,
+			axis_push.as_slice(),
+			[axis.group_count.div_ceil(256), 1, 1],
+		)
+	};
+	let attributes = [OpAttribute::SignedInteger {
+		name: "dim".into(),
+		value: i64::from(dim),
+	}];
+	let inputs = [input];
+	let outputs = [&output];
+	input.engine_handle().record_semantic(
+		ComputeDispatch {
+			kernel,
+			buffers: &buffers,
+			push_constants,
+			workgroups,
+		},
+		SemanticDispatch {
+			contract,
+			inputs: &inputs,
+			outputs: &outputs,
+			attributes: &attributes,
+		},
+	)?;
+	autograd::record_sum(input, &output, dim)?;
+	Ok(output)

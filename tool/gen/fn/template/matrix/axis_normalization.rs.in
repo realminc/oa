@@ -1,0 +1,39 @@
+	let operation = contract.name();
+	let axis = resolve_axis(input, dim, operation)?;
+	let output = Matrix::allocate(
+		input.engine_handle(),
+		input.shape().to_vec(),
+		input.num_elements(),
+		DType::F32,
+	)?;
+	let buffers = [
+		BufferBinding::read(input.storage()),
+		BufferBinding::write(output.storage()),
+	];
+	let push_constants = [
+		PushConstant::U32(axis.outer_size),
+		PushConstant::U32(axis.dim_size),
+		PushConstant::U32(axis.inner_size),
+	];
+	let attributes = [OpAttribute::SignedInteger {
+		name: "dim".into(),
+		value: i64::from(dim),
+	}];
+	let inputs = [input];
+	let outputs = [&output];
+	input.engine_handle().record_semantic(
+		ComputeDispatch {
+			kernel,
+			buffers: &buffers,
+			push_constants: &push_constants,
+			workgroups: [axis.group_count, 1, 1],
+		},
+		SemanticDispatch {
+			contract,
+			inputs: &inputs,
+			outputs: &outputs,
+			attributes: &attributes,
+		},
+	)?;
+	autograd::record_$node(input, &output, dim)?;
+	Ok(output)

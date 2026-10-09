@@ -1,0 +1,126 @@
+//! Stateless GPU feature transforms from Audio to Matrix.
+
+use crate::{
+	Audio, DType, Error, Matrix, OpAttribute, Result,
+	runtime::{
+		AudioSemanticDispatch, AudioSemanticOutput, BufferBinding, ComputeDispatch, KernelId,
+		PushConstant,
+	},
+};
+
+use super::signal::{float_attribute, u32_extent, unsigned_attribute};
+
+fn validate_stft(input: &Audio, config: StftConfig) -> Result<StftShape> {
+	if !config.fft_size.is_power_of_two() || !(16..=1_024).contains(&config.fft_size) {
+		return Err(Error::invalid_argument(
+			"audio::stft fft_size must be a power of two in [16, 1024]",
+		));
+	}
+	if config.hop_size == 0 {
+		return Err(Error::invalid_argument(
+			"audio::stft hop_size must be nonzero",
+		));
+	}
+	let win_size = if config.win_size == 0 {
+		config.fft_size
+	} else {
+		config.win_size
+	};
+	if win_size > config.fft_size {
+		return Err(Error::invalid_argument(
+			"audio::stft win_size must be zero or no larger than fft_size",
+		));
+	}
+	let channels = u32_extent(input.channels(), "audio::stft channels")?;
+	let samples = u32_extent(input.samples(), "audio::stft samples")?;
+	let frames = if config.center {
+		1 + samples / config.hop_size
+	} else if samples < config.fft_size {
+		1
+	} else {
+		1 + (samples - config.fft_size) / config.hop_size
+	};
+	let freq_bins = config.fft_size / 2 + 1;
+	channels
+		.checked_mul(frames)
+		.and_then(|value| value.checked_mul(freq_bins))
+		.ok_or_else(|| Error::out_of_range("audio::stft output exceeds u32"))?;
+	Ok(StftShape {
+		channels,
+		samples,
+		frames,
+		freq_bins,
+	})
+}
+
+fn validate_mel(input: &Audio, config: MelConfig) -> Result<()> {
+	let nyquist = input.sample_rate() as f32 * 0.5;
+	let f_max = if config.f_max > 0.0 {
+		config.f_max
+	} else {
+		nyquist
+	};
+	if !config.fft_size.is_power_of_two()
+		|| !(16..=1_024).contains(&config.fft_size)
+		|| config.hop_size == 0
+		|| !(1..=4_096).contains(&config.num_mels)
+		|| !config.f_min.is_finite()
+		|| !f_max.is_finite()
+		|| config.f_min < 0.0
+		|| config.f_min >= f_max
+		|| f_max > nyquist
+	{
+		return Err(Error::invalid_argument(
+			"audio mel configuration is invalid",
+		));
+	}
+	Ok(())
+}
+
+fn build_mel_filterbank(input: &Audio, config: MelConfig, freq_bins: u32) -> Result<Matrix> {
+	let sample_rate = input.sample_rate() as f32;
+	let f_max = if config.f_max > 0.0 {
+		config.f_max
+	} else {
+		sample_rate * 0.5
+	};
+	let hz_to_mel = |frequency: f32| 2_595.0 * (1.0 + frequency / 700.0).log10();
+	let mel_to_hz = |mel: f32| 700.0 * (10.0_f32.powf(mel / 2_595.0) - 1.0);
+	let mel_min = hz_to_mel(config.f_min);
+	let mel_max = hz_to_mel(f_max);
+	let point_count = config.num_mels as usize + 2;
+	let mut points = Vec::new();
+	points
+		.try_reserve_exact(point_count)
+		.map_err(|_| Error::resource_exhausted("mel point allocation failed"))?;
+	for index in 0..point_count {
+		let ratio = index as f32 / (config.num_mels + 1) as f32;
+		points.push(mel_to_hz(mel_min + ratio * (mel_max - mel_min)));
+	}
+	let element_count = (config.num_mels as usize)
+		.checked_mul(freq_bins as usize)
+		.ok_or_else(|| Error::out_of_range("mel filterbank exceeds usize"))?;
+	let mut weights = vec![0.0_f32; element_count];
+	let bin_hz = sample_rate / config.fft_size as f32;
+	for mel in 0..config.num_mels as usize {
+		for bin in 0..freq_bins as usize {
+			let frequency = bin as f32 * bin_hz;
+			let (low, center, high) = (points[mel], points[mel + 1], points[mel + 2]);
+			weights[mel * freq_bins as usize + bin] =
+				if frequency >= low && frequency <= center && center > low {
+					(frequency - low) / (center - low)
+				} else if frequency > center && frequency <= high && high > center {
+					(high - frequency) / (high - center)
+				} else {
+					0.0
+				};
+		}
+	}
+	Matrix::from_slice_handle(
+		input.engine_handle(),
+		vec![config.num_mels as usize, freq_bins as usize],
+		&weights,
+	)
+}
+
+{{items}}

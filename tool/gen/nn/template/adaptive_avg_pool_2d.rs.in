@@ -1,0 +1,64 @@
+/// {{doc}}
+pub struct {{name}} {
+	output_height: usize,
+	output_width: usize,
+	registry: ModuleRegistry,
+}
+
+impl {{name}} {
+	/// Construct {{name}} with a square output extent.
+	///
+	/// # Errors
+	///
+	/// Returns an error when `output_size` is zero.
+	pub fn new(output_size: usize) -> Result<Self> {
+		Self::with_output_size(output_size, output_size)
+	}
+
+	/// Construct {{name}} with independent output height and width.
+	///
+	/// # Errors
+	///
+	/// Returns an error when either output extent is zero.
+	pub fn with_output_size(output_height: usize, output_width: usize) -> Result<Self> {
+		if output_height == 0 || output_width == 0 {
+			return Err(Error::invalid_argument(
+				"{{name}} output extents must be nonzero",
+			));
+		}
+		Ok(Self {
+			output_height,
+			output_width,
+			registry: ModuleRegistry::new(),
+		})
+	}
+
+	/// Return the requested output height.
+	pub const fn output_height(&self) -> usize {
+		self.output_height
+	}
+
+	/// Return the requested output width.
+	pub const fn output_width(&self) -> usize {
+		self.output_width
+	}
+
+	/// Adaptively pool one NCHW Matrix without submitting or waiting.
+	///
+	/// # Errors
+	///
+	/// Returns an error from the underlying Matrix operation.
+	pub fn forward(&self, input: &Matrix) -> Result<Matrix> {
+		{{operation}}(input, self.output_height, self.output_width)
+	}
+}
+
+impl Module for {{name}} {
+	fn forward(&self, input: &Matrix) -> Result<Matrix> {
+		{{name}}::forward(self, input)
+	}
+
+	fn registry(&self) -> &ModuleRegistry {
+		&self.registry
+	}
+}

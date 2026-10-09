@@ -1,0 +1,244 @@
+// OA donor: source/cpp/lib/oa/audio/fnaudio/transform/fnAudioTransform.cpp
+// Mechanical generation adaptation of OARS 6623c50; preserve validated algorithms.
+// @operation stft
+	let shape = validate_stft(input, config)?;
+	let elements = shape.channels * shape.frames * shape.freq_bins;
+	let output = Matrix::allocate(
+		input.engine_handle(),
+		vec![
+			shape.channels as usize,
+			shape.frames as usize,
+			shape.freq_bins as usize,
+		],
+		elements as usize,
+		DType::F32,
+	)?;
+	{{bindings:0}}
+	let win_size = if config.win_size == 0 {
+		config.fft_size
+	} else {
+		config.win_size
+	};
+	let window: u32 = match config.window {
+		StftWindow::Hann => 0,
+		StftWindow::Hamming => 1,
+		StftWindow::Blackman => 2,
+		StftWindow::Rectangular => 3,
+	};
+	{{push:0}}
+	let attributes = [{{attributes}}];
+	let outputs = [AudioSemanticOutput::Matrix(&output)];
+	input.engine_handle().record_audio_semantic(
+		{{dispatch:0}},
+		AudioSemanticDispatch {
+			contract: {{contract}},
+			inputs: &[input],
+			outputs: &outputs,
+			attributes: &attributes,
+		},
+	)?;
+	Ok(output)
+// @operation mel_spectrogram
+	validate_mel(input, config)?;
+	let stft_config = StftConfig {
+		fft_size: config.fft_size,
+		hop_size: config.hop_size,
+		win_size: config.fft_size,
+		..StftConfig::default()
+	};
+	let shape = validate_stft(input, stft_config)?;
+	let elements = shape.channels * shape.frames * shape.freq_bins;
+	let spectrum = Matrix::allocate(
+		input.engine_handle(),
+		vec![
+			shape.channels as usize,
+			shape.frames as usize,
+			shape.freq_bins as usize,
+		],
+		elements as usize,
+		DType::F32,
+	)?;
+	let filterbank = build_mel_filterbank(input, config, shape.freq_bins)?;
+	let values_per_channel = config
+		.num_mels
+		.checked_mul(shape.frames)
+		.ok_or_else(|| Error::out_of_range("audio::mel_spectrogram channel extent exceeds u32"))?;
+	let output_elements = shape
+		.channels
+		.checked_mul(values_per_channel)
+		.ok_or_else(|| Error::out_of_range("audio::mel_spectrogram output exceeds u32"))?;
+
+	{{bindings:0}}
+	let win_size = if stft_config.win_size == 0 {
+		stft_config.fft_size
+	} else {
+		stft_config.win_size
+	};
+	let window: u32 = match stft_config.window {
+		StftWindow::Hann => 0,
+		StftWindow::Hamming => 1,
+		StftWindow::Blackman => 2,
+		StftWindow::Rectangular => 3,
+	};
+	{{push:0}}
+	{{push:1}}
+	let attributes = [{{attributes}}];
+
+	let output = if config.normalize {
+		let raw = Matrix::allocate(
+			input.engine_handle(),
+			vec![
+				shape.channels as usize,
+				config.num_mels as usize,
+				shape.frames as usize,
+			],
+			output_elements as usize,
+			DType::F32,
+		)?;
+		let output = Matrix::allocate(
+			input.engine_handle(),
+			raw.shape().to_vec(),
+			raw.num_elements(),
+			DType::F32,
+		)?;
+		{{bindings:1}}
+		{{bindings:2}}
+		{{push:2}}
+		let dispatches = [
+			{{dispatch:0}},
+			{{dispatch:1}},
+			{{dispatch:2}},
+		];
+		let outputs = [AudioSemanticOutput::Matrix(&output)];
+		input.engine_handle().record_audio_split_semantic(
+			&dispatches,
+			AudioSemanticDispatch {
+				contract: {{contract}},
+				inputs: &[input],
+				outputs: &outputs,
+				attributes: &attributes,
+			},
+		)?;
+		output
+	} else {
+		let output = Matrix::allocate(
+			input.engine_handle(),
+			vec![
+				shape.channels as usize,
+				config.num_mels as usize,
+				shape.frames as usize,
+			],
+			output_elements as usize,
+			DType::F32,
+		)?;
+		{{bindings:3}}
+		let dispatches = [
+			{{dispatch:3}},
+			{{dispatch:4}},
+		];
+		let outputs = [AudioSemanticOutput::Matrix(&output)];
+		input.engine_handle().record_audio_split_semantic(
+			&dispatches,
+			AudioSemanticDispatch {
+				contract: {{contract}},
+				inputs: &[input],
+				outputs: &outputs,
+				attributes: &attributes,
+			},
+		)?;
+		output
+	};
+	Ok(output)
+// @operation mfcc
+	if config.num_coeffs == 0 || config.num_coeffs > config.mel.num_mels {
+		return Err(Error::invalid_argument(
+			"audio::mfcc num_coeffs must be in [1, num_mels]",
+		));
+	}
+	validate_mel(input, config.mel)?;
+	let stft_config = StftConfig {
+		fft_size: config.mel.fft_size,
+		hop_size: config.mel.hop_size,
+		win_size: config.mel.fft_size,
+		..StftConfig::default()
+	};
+	let shape = validate_stft(input, stft_config)?;
+	let elements = shape.channels * shape.frames * shape.freq_bins;
+	let spectrum = Matrix::allocate(
+		input.engine_handle(),
+		vec![
+			shape.channels as usize,
+			shape.frames as usize,
+			shape.freq_bins as usize,
+		],
+		elements as usize,
+		DType::F32,
+	)?;
+	let filterbank = build_mel_filterbank(input, config.mel, shape.freq_bins)?;
+	let mel_elements = shape
+		.channels
+		.checked_mul(config.mel.num_mels)
+		.and_then(|value| value.checked_mul(shape.frames))
+		.ok_or_else(|| Error::out_of_range("audio::mfcc mel workspace exceeds u32"))?;
+	let mel = Matrix::allocate(
+		input.engine_handle(),
+		vec![
+			shape.channels as usize,
+			config.mel.num_mels as usize,
+			shape.frames as usize,
+		],
+		mel_elements as usize,
+		DType::F32,
+	)?;
+	let output_elements = shape
+		.channels
+		.checked_mul(config.num_coeffs)
+		.and_then(|value| value.checked_mul(shape.frames))
+		.ok_or_else(|| Error::out_of_range("audio::mfcc output exceeds u32"))?;
+	let output = Matrix::allocate(
+		input.engine_handle(),
+		vec![
+			shape.channels as usize,
+			config.num_coeffs as usize,
+			shape.frames as usize,
+		],
+		output_elements as usize,
+		DType::F32,
+	)?;
+	{{bindings:0}}
+	let win_size = if stft_config.win_size == 0 {
+		stft_config.fft_size
+	} else {
+		stft_config.win_size
+	};
+	let window: u32 = match stft_config.window {
+		StftWindow::Hann => 0,
+		StftWindow::Hamming => 1,
+		StftWindow::Blackman => 2,
+		StftWindow::Rectangular => 3,
+	};
+	{{push:0}}
+	{{bindings:1}}
+	let mut mel_config = config.mel;
+	mel_config.log_scale = true;
+	mel_config.normalize = false;
+	{{push:1}}
+	{{bindings:2}}
+	{{push:2}}
+	let dispatches = [
+		{{dispatch:0}},
+		{{dispatch:1}},
+		{{dispatch:2}},
+	];
+	let attributes = [{{attributes}}];
+	let outputs = [AudioSemanticOutput::Matrix(&output)];
+	input.engine_handle().record_audio_split_semantic(
+		&dispatches,
+		AudioSemanticDispatch {
+			contract: {{contract}},
+			inputs: &[input],
+			outputs: &outputs,
+			attributes: &attributes,
+		},
+	)?;
+	Ok(output)

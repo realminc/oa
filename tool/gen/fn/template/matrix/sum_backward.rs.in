@@ -1,0 +1,60 @@
+	let operation = contract.name();
+	let (axis, output_shape) = sum_shape(input, dim, operation)?;
+	if output_gradient.dtype() != DType::F32 || output_gradient.shape() != output_shape {
+		return Err(Error::invalid_argument(format!(
+			"{operation} output gradient has {:?} {}; expected {:?} F32",
+			output_gradient.shape(),
+			output_gradient.dtype().token(),
+			output_shape
+		)));
+	}
+	if !input
+		.engine_handle()
+		.same_as(output_gradient.engine_handle())
+	{
+		return Err(Error::invalid_argument(format!(
+			"{operation} inputs must belong to the same engine"
+		)));
+	}
+	let input_gradient = Matrix::allocate(
+		input.engine_handle(),
+		input.shape().to_vec(),
+		input.num_elements(),
+		DType::F32,
+	)?;
+	let buffers = [
+		BufferBinding::read(output_gradient.storage()),
+		BufferBinding::write(input_gradient.storage()),
+	];
+	let push_constants = [
+		PushConstant::U32(axis.outer_size),
+		PushConstant::U32(axis.dim_size),
+		PushConstant::U32(axis.inner_size),
+	];
+	let attributes = [OpAttribute::SignedInteger {
+		name: "dim".into(),
+		value: i64::from(dim),
+	}];
+	let inputs = [input, output_gradient];
+	let outputs = [&input_gradient];
+	input.engine_handle().record_semantic(
+		ComputeDispatch {
+			kernel: KernelId::MatrixSumBackwardF32,
+			buffers: &buffers,
+			push_constants: &push_constants,
+			workgroups: [
+				u32::try_from(input.num_elements())
+					.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?
+					.div_ceil(256),
+				1,
+				1,
+			],
+		},
+		SemanticDispatch {
+			contract,
+			inputs: &inputs,
+			outputs: &outputs,
+			attributes: &attributes,
+		},
+	)?;
+	Ok(input_gradient)

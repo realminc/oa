@@ -1,8 +1,0 @@
-// One stb image implementation owner shared by Vision, UI, and Plot.
-
-#define STB_IMAGE_IMPLEMENTATION
-#define STBI_FAILURE_USERMSG
-#include "../../../../../thirdparty/stb/stb_image.h"
-
-#define STB_IMAGE_WRITE_IMPLEMENTATION
-#include "../../../../../thirdparty/stb/stb_image_write.h"

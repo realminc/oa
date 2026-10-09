@@ -1,0 +1,120 @@
+//! Stateless geometric image transformations.
+
+use crate::{
+	DType, Error, Image, ImageLayout, Matrix, OpAttribute, Result,
+	runtime::{
+		BufferBinding, ComputeDispatch, ImageSemanticDispatch, ImageSemanticInput, KernelId,
+		PushConstant,
+	},
+};
+
+{{items}}
+
+
+
+fn validate_image(input: &Image, operation: &str) -> Result<ImageExtent> {
+	if input.dtype() != DType::F32 {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires f32 storage; received {}",
+			input.dtype().token()
+		)));
+	}
+	if !matches!(input.layout(), ImageLayout::Nchw | ImageLayout::Chw) {
+		return Err(Error::invalid_argument(format!(
+			"{operation} supports Nchw and Chw layouts; received {:?}",
+			input.layout()
+		)));
+	}
+	if input.batch_size() == 0 || input.channels() == 0 || input.height() == 0 || input.width() == 0 {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires a nonempty image"
+		)));
+	}
+	Ok(ImageExtent {
+		batch: u32_extent(input.batch_size(), &format!("{operation} batch"))?,
+		channels: u32_extent(input.channels(), &format!("{operation} channels"))?,
+		height: u32_extent(input.height(), &format!("{operation} height"))?,
+		width: u32_extent(input.width(), &format!("{operation} width"))?,
+	})
+}
+
+fn validate_warp_inputs(
+	input: &Image,
+	coordinates: &Matrix,
+	operation: &str,
+	border_value: f32,
+) -> Result<ImageExtent> {
+	let extent = validate_image(input, operation)?;
+	if coordinates.dtype() != DType::F32 {
+		return Err(Error::invalid_argument(format!(
+			"{operation} coordinates must use f32 storage"
+		)));
+	}
+	if !input.engine_handle().same_as(coordinates.engine_handle()) {
+		return Err(Error::invalid_argument(format!(
+			"{operation} inputs must belong to the same engine"
+		)));
+	}
+	if !border_value.is_finite() {
+		return Err(Error::invalid_argument(format!(
+			"{operation} border value must be finite"
+		)));
+	}
+	u32_extent(
+		coordinates.num_elements(),
+		&format!("{operation} coordinate element count"),
+	)?;
+	Ok(extent)
+}
+
+fn allocate_image(input: &Image, width: u32, height: u32, operation: &str) -> Result<Image> {
+	let width = usize::try_from(width)
+		.map_err(|_| Error::out_of_range(format!("{operation} width exceeds usize")))?;
+	let height = usize::try_from(height)
+		.map_err(|_| Error::out_of_range(format!("{operation} height exceeds usize")))?;
+	let shape = match input.layout() {
+		ImageLayout::Nchw => vec![input.batch_size(), input.channels(), height, width],
+		ImageLayout::Chw => vec![input.channels(), height, width],
+		_ => unreachable!("layout was validated before allocation"),
+	};
+	let elements = shape.iter().copied().try_fold(1_usize, |count, extent| {
+		count
+			.checked_mul(extent)
+			.ok_or_else(|| Error::out_of_range(format!("{operation} output size exceeds usize")))
+	})?;
+	u32_extent(elements, &format!("{operation} output element count"))?;
+	let matrix = Matrix::allocate(input.engine_handle(), shape, elements, DType::F32)?;
+	Image::new(matrix, input.layout(), input.format())
+}
+
+fn unsigned(name: &str, value: u32) -> OpAttribute {
+	OpAttribute::UnsignedInteger {
+		name: name.into(),
+		value: u64::from(value),
+	}
+}
+
+fn boolean(name: &str, value: bool) -> OpAttribute {
+	OpAttribute::Boolean {
+		name: name.into(),
+		value,
+	}
+}
+
+fn enumeration(name: &str, value: &str) -> OpAttribute {
+	OpAttribute::Enum {
+		name: name.into(),
+		value: value.into(),
+	}
+}
+
+fn float(name: &str, value: f32) -> OpAttribute {
+	OpAttribute::Float {
+		name: name.into(),
+		value: f64::from(value),
+	}
+}
+
+fn u32_extent(value: usize, label: &str) -> Result<u32> {
+	u32::try_from(value).map_err(|_| Error::out_of_range(format!("{label} exceeds u32")))
+}

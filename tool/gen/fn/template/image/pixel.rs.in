@@ -1,0 +1,771 @@
+// OA donor: source/cpp/lib/oa/vision/fnimage/color/fnImagePixel.cpp
+// Mechanical generation adaptation of OARS 2c0e489; preserve validated algorithms.
+// @operation threshold_binary
+	let contract = {{contract}};
+	finite(&[threshold, max_value], "image::threshold_binary")?;
+	if input.dtype() != DType::F32 {
+		return Err(Error::invalid_argument(format!(
+			"{} requires f32 storage",
+			contract.name()
+		)));
+	}
+	let element_count = u32::try_from(input.as_matrix().num_elements())
+		.map_err(|_| Error::out_of_range(format!("{} element count exceeds u32", contract.name())))?;
+	if element_count == 0 {
+		return Err(Error::invalid_argument(format!(
+			"{} requires a nonempty image",
+			contract.name()
+		)));
+	}
+	let matrix = crate::Matrix::allocate(
+		input.engine_handle(),
+		input.as_matrix().shape().to_vec(),
+		input.as_matrix().num_elements(),
+		DType::F32,
+	)?;
+	let output = Image::new(matrix, input.layout(), input.format())?;
+	input.engine_handle().record_image_semantic(
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &[{{bindings:0}}],
+			push_constants: &[{{push:0}}],
+			workgroups: {{workgroups:0}},
+		},
+		ImageSemanticDispatch {
+			contract,
+			inputs: &[ImageSemanticInput::Image(input)],
+			outputs: &[&output],
+			attributes: &[{{attributes}}],
+		},
+	)?;
+	Ok(output)
+// @operation threshold_binary_inv
+	let contract = {{contract}};
+	finite(&[threshold, max_value], "image::threshold_binary_inv")?;
+	if input.dtype() != DType::F32 {
+		return Err(Error::invalid_argument(format!(
+			"{} requires f32 storage",
+			contract.name()
+		)));
+	}
+	let element_count = u32::try_from(input.as_matrix().num_elements())
+		.map_err(|_| Error::out_of_range(format!("{} element count exceeds u32", contract.name())))?;
+	if element_count == 0 {
+		return Err(Error::invalid_argument(format!(
+			"{} requires a nonempty image",
+			contract.name()
+		)));
+	}
+	let matrix = crate::Matrix::allocate(
+		input.engine_handle(),
+		input.as_matrix().shape().to_vec(),
+		input.as_matrix().num_elements(),
+		DType::F32,
+	)?;
+	let output = Image::new(matrix, input.layout(), input.format())?;
+	input.engine_handle().record_image_semantic(
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &[{{bindings:0}}],
+			push_constants: &[{{push:0}}],
+			workgroups: {{workgroups:0}},
+		},
+		ImageSemanticDispatch {
+			contract,
+			inputs: &[ImageSemanticInput::Image(input)],
+			outputs: &[&output],
+			attributes: &[{{attributes}}],
+		},
+	)?;
+	Ok(output)
+// @operation threshold_truncate
+	let contract = {{contract}};
+	finite(&[threshold], "image::threshold_truncate")?;
+	if input.dtype() != DType::F32 {
+		return Err(Error::invalid_argument(format!(
+			"{} requires f32 storage",
+			contract.name()
+		)));
+	}
+	let element_count = u32::try_from(input.as_matrix().num_elements())
+		.map_err(|_| Error::out_of_range(format!("{} element count exceeds u32", contract.name())))?;
+	if element_count == 0 {
+		return Err(Error::invalid_argument(format!(
+			"{} requires a nonempty image",
+			contract.name()
+		)));
+	}
+	let matrix = crate::Matrix::allocate(
+		input.engine_handle(),
+		input.as_matrix().shape().to_vec(),
+		input.as_matrix().num_elements(),
+		DType::F32,
+	)?;
+	let output = Image::new(matrix, input.layout(), input.format())?;
+	input.engine_handle().record_image_semantic(
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &[{{bindings:0}}],
+			push_constants: &[{{push:0}}],
+			workgroups: {{workgroups:0}},
+		},
+		ImageSemanticDispatch {
+			contract,
+			inputs: &[ImageSemanticInput::Image(input)],
+			outputs: &[&output],
+			attributes: &[{{attributes}}],
+		},
+	)?;
+	Ok(output)
+// @operation threshold_to_zero
+	let contract = {{contract}};
+	finite(&[threshold], "image::threshold_to_zero")?;
+	if input.dtype() != DType::F32 {
+		return Err(Error::invalid_argument(format!(
+			"{} requires f32 storage",
+			contract.name()
+		)));
+	}
+	let element_count = u32::try_from(input.as_matrix().num_elements())
+		.map_err(|_| Error::out_of_range(format!("{} element count exceeds u32", contract.name())))?;
+	if element_count == 0 {
+		return Err(Error::invalid_argument(format!(
+			"{} requires a nonempty image",
+			contract.name()
+		)));
+	}
+	let matrix = crate::Matrix::allocate(
+		input.engine_handle(),
+		input.as_matrix().shape().to_vec(),
+		input.as_matrix().num_elements(),
+		DType::F32,
+	)?;
+	let output = Image::new(matrix, input.layout(), input.format())?;
+	input.engine_handle().record_image_semantic(
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &[{{bindings:0}}],
+			push_constants: &[{{push:0}}],
+			workgroups: {{workgroups:0}},
+		},
+		ImageSemanticDispatch {
+			contract,
+			inputs: &[ImageSemanticInput::Image(input)],
+			outputs: &[&output],
+			attributes: &[{{attributes}}],
+		},
+	)?;
+	Ok(output)
+// @operation threshold_to_zero_inv
+	let contract = {{contract}};
+	finite(&[threshold], "image::threshold_to_zero_inv")?;
+	if input.dtype() != DType::F32 {
+		return Err(Error::invalid_argument(format!(
+			"{} requires f32 storage",
+			contract.name()
+		)));
+	}
+	let element_count = u32::try_from(input.as_matrix().num_elements())
+		.map_err(|_| Error::out_of_range(format!("{} element count exceeds u32", contract.name())))?;
+	if element_count == 0 {
+		return Err(Error::invalid_argument(format!(
+			"{} requires a nonempty image",
+			contract.name()
+		)));
+	}
+	let matrix = crate::Matrix::allocate(
+		input.engine_handle(),
+		input.as_matrix().shape().to_vec(),
+		input.as_matrix().num_elements(),
+		DType::F32,
+	)?;
+	let output = Image::new(matrix, input.layout(), input.format())?;
+	input.engine_handle().record_image_semantic(
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &[{{bindings:0}}],
+			push_constants: &[{{push:0}}],
+			workgroups: {{workgroups:0}},
+		},
+		ImageSemanticDispatch {
+			contract,
+			inputs: &[ImageSemanticInput::Image(input)],
+			outputs: &[&output],
+			attributes: &[{{attributes}}],
+		},
+	)?;
+	Ok(output)
+// @operation in_range
+	let contract = {{contract}};
+	finite(&[low, high, true_value], "image::in_range")?;
+	if low > high {
+		return Err(Error::invalid_argument(
+			"image::in_range low must not exceed high",
+		));
+	}
+	if input.dtype() != DType::F32 {
+		return Err(Error::invalid_argument(format!(
+			"{} requires f32 storage",
+			contract.name()
+		)));
+	}
+	let element_count = u32::try_from(input.as_matrix().num_elements())
+		.map_err(|_| Error::out_of_range(format!("{} element count exceeds u32", contract.name())))?;
+	if element_count == 0 {
+		return Err(Error::invalid_argument(format!(
+			"{} requires a nonempty image",
+			contract.name()
+		)));
+	}
+	let matrix = crate::Matrix::allocate(
+		input.engine_handle(),
+		input.as_matrix().shape().to_vec(),
+		input.as_matrix().num_elements(),
+		DType::F32,
+	)?;
+	let output = Image::new(matrix, input.layout(), input.format())?;
+	input.engine_handle().record_image_semantic(
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &[{{bindings:0}}],
+			push_constants: &[{{push:0}}],
+			workgroups: {{workgroups:0}},
+		},
+		ImageSemanticDispatch {
+			contract,
+			inputs: &[ImageSemanticInput::Image(input)],
+			outputs: &[&output],
+			attributes: &[{{attributes}}],
+		},
+	)?;
+	Ok(output)
+// @operation clamp
+	let contract = {{contract}};
+	finite(&[low, high], "image::clamp")?;
+	if low > high {
+		return Err(Error::invalid_argument(
+			"image::clamp low must not exceed high",
+		));
+	}
+	if input.dtype() != DType::F32 {
+		return Err(Error::invalid_argument(format!(
+			"{} requires f32 storage",
+			contract.name()
+		)));
+	}
+	let element_count = u32::try_from(input.as_matrix().num_elements())
+		.map_err(|_| Error::out_of_range(format!("{} element count exceeds u32", contract.name())))?;
+	if element_count == 0 {
+		return Err(Error::invalid_argument(format!(
+			"{} requires a nonempty image",
+			contract.name()
+		)));
+	}
+	let matrix = crate::Matrix::allocate(
+		input.engine_handle(),
+		input.as_matrix().shape().to_vec(),
+		input.as_matrix().num_elements(),
+		DType::F32,
+	)?;
+	let output = Image::new(matrix, input.layout(), input.format())?;
+	input.engine_handle().record_image_semantic(
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &[{{bindings:0}}],
+			push_constants: &[{{push:0}}],
+			workgroups: {{workgroups:0}},
+		},
+		ImageSemanticDispatch {
+			contract,
+			inputs: &[ImageSemanticInput::Image(input)],
+			outputs: &[&output],
+			attributes: &[{{attributes}}],
+		},
+	)?;
+	Ok(output)
+// @operation invert
+	let contract = {{contract}};
+	finite(&[max_value], "image::invert")?;
+	if input.dtype() != DType::F32 {
+		return Err(Error::invalid_argument(format!(
+			"{} requires f32 storage",
+			contract.name()
+		)));
+	}
+	let element_count = u32::try_from(input.as_matrix().num_elements())
+		.map_err(|_| Error::out_of_range(format!("{} element count exceeds u32", contract.name())))?;
+	if element_count == 0 {
+		return Err(Error::invalid_argument(format!(
+			"{} requires a nonempty image",
+			contract.name()
+		)));
+	}
+	let matrix = crate::Matrix::allocate(
+		input.engine_handle(),
+		input.as_matrix().shape().to_vec(),
+		input.as_matrix().num_elements(),
+		DType::F32,
+	)?;
+	let output = Image::new(matrix, input.layout(), input.format())?;
+	input.engine_handle().record_image_semantic(
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &[{{bindings:0}}],
+			push_constants: &[{{push:0}}],
+			workgroups: {{workgroups:0}},
+		},
+		ImageSemanticDispatch {
+			contract,
+			inputs: &[ImageSemanticInput::Image(input)],
+			outputs: &[&output],
+			attributes: &[{{attributes}}],
+		},
+	)?;
+	Ok(output)
+// @operation brightness_contrast
+	let contract = {{contract}};
+	finite(&[brightness, contrast], "image::brightness_contrast")?;
+	if input.dtype() != DType::F32 {
+		return Err(Error::invalid_argument(format!(
+			"{} requires f32 storage",
+			contract.name()
+		)));
+	}
+	let element_count = u32::try_from(input.as_matrix().num_elements())
+		.map_err(|_| Error::out_of_range(format!("{} element count exceeds u32", contract.name())))?;
+	if element_count == 0 {
+		return Err(Error::invalid_argument(format!(
+			"{} requires a nonempty image",
+			contract.name()
+		)));
+	}
+	let matrix = crate::Matrix::allocate(
+		input.engine_handle(),
+		input.as_matrix().shape().to_vec(),
+		input.as_matrix().num_elements(),
+		DType::F32,
+	)?;
+	let output = Image::new(matrix, input.layout(), input.format())?;
+	input.engine_handle().record_image_semantic(
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &[{{bindings:0}}],
+			push_constants: &[{{push:0}}],
+			workgroups: {{workgroups:0}},
+		},
+		ImageSemanticDispatch {
+			contract,
+			inputs: &[ImageSemanticInput::Image(input)],
+			outputs: &[&output],
+			attributes: &[{{attributes}}],
+		},
+	)?;
+	Ok(output)
+// @operation gamma_contrast
+	let contract = {{contract}};
+	finite(&[gamma, gain], "image::gamma_contrast")?;
+	if gamma <= 0.0 {
+		return Err(Error::invalid_argument(
+			"image::gamma_contrast gamma must be positive",
+		));
+	}
+	if input.dtype() != DType::F32 {
+		return Err(Error::invalid_argument(format!(
+			"{} requires f32 storage",
+			contract.name()
+		)));
+	}
+	let element_count = u32::try_from(input.as_matrix().num_elements())
+		.map_err(|_| Error::out_of_range(format!("{} element count exceeds u32", contract.name())))?;
+	if element_count == 0 {
+		return Err(Error::invalid_argument(format!(
+			"{} requires a nonempty image",
+			contract.name()
+		)));
+	}
+	let matrix = crate::Matrix::allocate(
+		input.engine_handle(),
+		input.as_matrix().shape().to_vec(),
+		input.as_matrix().num_elements(),
+		DType::F32,
+	)?;
+	let output = Image::new(matrix, input.layout(), input.format())?;
+	input.engine_handle().record_image_semantic(
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &[{{bindings:0}}],
+			push_constants: &[{{push:0}}],
+			workgroups: {{workgroups:0}},
+		},
+		ImageSemanticDispatch {
+			contract,
+			inputs: &[ImageSemanticInput::Image(input)],
+			outputs: &[&output],
+			attributes: &[{{attributes}}],
+		},
+	)?;
+	Ok(output)
+// @operation solarize
+	let contract = {{contract}};
+	finite(&[threshold, max_value], "image::solarize")?;
+	if input.dtype() != DType::F32 {
+		return Err(Error::invalid_argument(format!(
+			"{} requires f32 storage",
+			contract.name()
+		)));
+	}
+	let element_count = u32::try_from(input.as_matrix().num_elements())
+		.map_err(|_| Error::out_of_range(format!("{} element count exceeds u32", contract.name())))?;
+	if element_count == 0 {
+		return Err(Error::invalid_argument(format!(
+			"{} requires a nonempty image",
+			contract.name()
+		)));
+	}
+	let matrix = crate::Matrix::allocate(
+		input.engine_handle(),
+		input.as_matrix().shape().to_vec(),
+		input.as_matrix().num_elements(),
+		DType::F32,
+	)?;
+	let output = Image::new(matrix, input.layout(), input.format())?;
+	input.engine_handle().record_image_semantic(
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &[{{bindings:0}}],
+			push_constants: &[{{push:0}}],
+			workgroups: {{workgroups:0}},
+		},
+		ImageSemanticDispatch {
+			contract,
+			inputs: &[ImageSemanticInput::Image(input)],
+			outputs: &[&output],
+			attributes: &[{{attributes}}],
+		},
+	)?;
+	Ok(output)
+// @operation posterize
+	let contract = {{contract}};
+	finite(&[low, high], "image::posterize")?;
+	if !(2..=65_536).contains(&levels) || low >= high {
+		return Err(Error::invalid_argument(
+			"image::posterize requires 2..=65536 levels and low < high",
+		));
+	}
+	if input.dtype() != DType::F32 {
+		return Err(Error::invalid_argument(format!(
+			"{} requires f32 storage",
+			contract.name()
+		)));
+	}
+	let element_count = u32::try_from(input.as_matrix().num_elements())
+		.map_err(|_| Error::out_of_range(format!("{} element count exceeds u32", contract.name())))?;
+	if element_count == 0 {
+		return Err(Error::invalid_argument(format!(
+			"{} requires a nonempty image",
+			contract.name()
+		)));
+	}
+	let matrix = crate::Matrix::allocate(
+		input.engine_handle(),
+		input.as_matrix().shape().to_vec(),
+		input.as_matrix().num_elements(),
+		DType::F32,
+	)?;
+	let output = Image::new(matrix, input.layout(), input.format())?;
+	input.engine_handle().record_image_semantic(
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &[{{bindings:0}}],
+			push_constants: &[{{push:0}}],
+			workgroups: {{workgroups:0}},
+		},
+		ImageSemanticDispatch {
+			contract,
+			inputs: &[ImageSemanticInput::Image(input)],
+			outputs: &[&output],
+			attributes: &[{{attributes}}],
+		},
+	)?;
+	Ok(output)
+// @operation grayscale
+	let (batch, channels, height, width) = image_extent(input, "image::grayscale")?;
+	if !matches!(input.format(), ImageFormat::Rgb | ImageFormat::Rgba) {
+		return Err(Error::invalid_argument(
+			"image::grayscale requires RGB or RGBA channel semantics",
+		));
+	}
+	let shape = match input.layout() {
+		ImageLayout::Nchw => vec![batch as usize, 1, height as usize, width as usize],
+		ImageLayout::Chw => vec![1, height as usize, width as usize],
+		_ => unreachable!("image extent admitted an unsupported layout"),
+	};
+	let output = allocate(input, shape, ImageFormat::Gray, "image::grayscale")?;
+	input.engine_handle().record_image_semantic(
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &[{{bindings:0}}],
+			push_constants: &[{{push:0}}],
+			workgroups: {{workgroups:0}},
+		},
+		ImageSemanticDispatch {
+			contract: {{contract}},
+			inputs: &[ImageSemanticInput::Image(input)],
+			outputs: &[&output],
+			attributes: &[{{attributes}}],
+		},
+	)?;
+	Ok(output)
+// @operation alpha_blend
+	finite(&[alpha], "image::alpha_blend")?;
+	if !(0.0..=1.0).contains(&alpha) {
+		return Err(Error::invalid_argument(
+			"image::alpha_blend alpha must be in [0, 1]",
+		));
+	}
+	validate_matching_images(a, b, "image::alpha_blend")?;
+	let contract = {{contract}};
+	let (batch, channels, height, width) = image_extent(a, contract.name())?;
+	let mask_channels = u32::try_from(a.channels())
+		.map_err(|_| Error::out_of_range(format!("{} mask channels exceed u32", contract.name())))?;
+	let output = allocate(
+		a,
+		a.as_matrix().shape().to_vec(),
+		a.format(),
+		contract.name(),
+	)?;
+	let {{binding_name:0}} = [{{bindings:0}}];
+	let {{push_name:0}} = [{{push:0}}];
+	a.engine_handle().record_image_semantic(
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &{{binding_name:0}},
+			push_constants: &{{push_name:0}},
+			workgroups: {{workgroups:0}},
+		},
+		ImageSemanticDispatch {
+			contract,
+			inputs: &[ImageSemanticInput::Image(a), ImageSemanticInput::Image(b)],
+			outputs: &[&output],
+			attributes: &[{{attributes}}],
+		},
+	)?;
+	Ok(output)
+// @operation composite
+	let (batch, channels, height, width) = image_extent(a, "image::composite")?;
+	validate_matching_images(a, b, "image::composite")?;
+	let (mask_batch, mask_channels, mask_height, mask_width) =
+		image_extent(mask, "image::composite")?;
+	if !a.engine_handle().same_as(mask.engine_handle())
+		|| mask_batch != batch
+		|| mask_height != height
+		|| mask_width != width
+		|| !matches!(mask_channels, 1) && mask_channels != channels
+	{
+		return Err(Error::invalid_argument(
+			"image::composite mask must share batch/spatial extents and have one or matching channels",
+		));
+	}
+	let contract = {{contract}};
+	let (batch, channels, height, width) = image_extent(a, contract.name())?;
+	let mask_channels = u32::try_from(mask.channels())
+		.map_err(|_| Error::out_of_range(format!("{} mask channels exceed u32", contract.name())))?;
+	let output = allocate(
+		a,
+		a.as_matrix().shape().to_vec(),
+		a.format(),
+		contract.name(),
+	)?;
+	let {{binding_name:0}} = [{{bindings:0}}];
+	let {{push_name:0}} = [{{push:0}}];
+	a.engine_handle().record_image_semantic(
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &{{binding_name:0}},
+			push_constants: &{{push_name:0}},
+			workgroups: {{workgroups:0}},
+		},
+		ImageSemanticDispatch {
+			contract,
+			inputs: &[
+				ImageSemanticInput::Image(a),
+				ImageSemanticInput::Image(b),
+				ImageSemanticInput::Image(mask),
+			],
+			outputs: &[&output],
+			attributes: &[{{attributes}}],
+		},
+	)?;
+	Ok(output)
+// @operation erase
+	finite(&[value], "image::erase")?;
+	let (_, _, image_height, image_width) = image_extent(input, "image::erase")?;
+	if width == 0 || height == 0 || x >= image_width || y >= image_height {
+		return Err(Error::invalid_argument(
+			"image::erase requires a nonzero rectangle with an in-bounds origin",
+		));
+	}
+	let contract = {{contract}};
+	let (batch, channels, image_height, image_width) = image_extent(input, contract.name())?;
+	let mask_channels = u32::try_from(input.channels())
+		.map_err(|_| Error::out_of_range(format!("{} mask channels exceed u32", contract.name())))?;
+	let output = allocate(
+		input,
+		input.as_matrix().shape().to_vec(),
+		input.format(),
+		contract.name(),
+	)?;
+	let {{binding_name:0}} = [{{bindings:0}}];
+	let {{push_name:0}} = [{{push:0}}];
+	input.engine_handle().record_image_semantic(
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &{{binding_name:0}},
+			push_constants: &{{push_name:0}},
+			workgroups: {{workgroups:0}},
+		},
+		ImageSemanticDispatch {
+			contract,
+			inputs: &[ImageSemanticInput::Image(input)],
+			outputs: &[&output],
+			attributes: &[{{attributes}}],
+		},
+	)?;
+	Ok(output)
+// @operation color_twist
+	let (batch, channels, height, width) = image_extent(input, "image::color_twist")?;
+	if !matches!(input.format(), ImageFormat::Rgb | ImageFormat::Rgba)
+		|| transform.dtype() != DType::F32
+		|| transform.shape() != [3, 4]
+		|| !input.engine_handle().same_as(transform.engine_handle())
+	{
+		return Err(Error::invalid_argument(
+			"image::color_twist requires RGB/RGBA input and a same-engine FP32 [3, 4] transform",
+		));
+	}
+	let output = allocate(
+		input,
+		input.as_matrix().shape().to_vec(),
+		input.format(),
+		"image::color_twist",
+	)?;
+	let workgroups = [width.div_ceil(16), height.div_ceil(16), batch * channels];
+	input.engine_handle().record_image_semantic(
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &[{{bindings:0}}],
+			push_constants: &[{{push:0}}],
+			workgroups,
+		},
+		ImageSemanticDispatch {
+			contract: {{contract}},
+			inputs: &[
+				ImageSemanticInput::Image(input),
+				ImageSemanticInput::Matrix(transform),
+			],
+			outputs: &[&output],
+			attributes: &[{{attributes}}],
+		},
+	)?;
+	Ok(output)
+// @operation channel_reorder
+	let (batch, channels, height, width) = image_extent(input, "image::channel_reorder")?;
+	if output_format.channels() != input.channels()
+		|| order[..channels as usize]
+			.iter()
+			.any(|channel| *channel >= channels)
+	{
+		return Err(Error::invalid_argument(
+			"image::channel_reorder requires in-range source channels and an equal-width output format",
+		));
+	}
+	let output = allocate(
+		input,
+		input.as_matrix().shape().to_vec(),
+		output_format,
+		"image::channel_reorder",
+	)?;
+	input.engine_handle().record_image_semantic(
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &[{{bindings:0}}],
+			push_constants: &[{{push:0}}],
+			workgroups: {{workgroups:0}},
+		},
+		ImageSemanticDispatch {
+			contract: {{contract}},
+			inputs: &[ImageSemanticInput::Image(input)],
+			outputs: &[&output],
+			attributes: &[{{attributes}}],
+		},
+	)?;
+	Ok(output)
+// @operation gaussian_noise
+	finite(&[mean, stddev], "image::gaussian_noise")?;
+	if stddev < 0.0 {
+		return Err(Error::invalid_argument(
+			"image::gaussian_noise standard deviation must be nonnegative",
+		));
+	}
+	let contract = {{contract}};
+	image_extent(input, contract.name())?;
+	let element_count = u32::try_from(input.as_matrix().num_elements())
+		.map_err(|_| Error::out_of_range(format!("{} element count exceeds u32", contract.name())))?;
+	let output = allocate(
+		input,
+		input.as_matrix().shape().to_vec(),
+		input.format(),
+		contract.name(),
+	)?;
+	let {{push_name:0}} = [{{push:0}}];
+	input.engine_handle().record_image_semantic(
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &[{{bindings:0}}],
+			push_constants: &{{push_name:0}},
+			workgroups: {{workgroups:0}},
+		},
+		ImageSemanticDispatch {
+			contract,
+			inputs: &[ImageSemanticInput::Image(input)],
+			outputs: &[&output],
+			attributes: &[{{attributes}}],
+		},
+	)?;
+	Ok(output)
+// @operation salt_pepper_noise
+	finite(
+		&[probability, salt_value, pepper_value],
+		"image::salt_pepper_noise",
+	)?;
+	if !(0.0..=1.0).contains(&probability) {
+		return Err(Error::invalid_argument(
+			"image::salt_pepper_noise probability must be in [0, 1]",
+		));
+	}
+	let contract = {{contract}};
+	image_extent(input, contract.name())?;
+	let element_count = u32::try_from(input.as_matrix().num_elements())
+		.map_err(|_| Error::out_of_range(format!("{} element count exceeds u32", contract.name())))?;
+	let output = allocate(
+		input,
+		input.as_matrix().shape().to_vec(),
+		input.format(),
+		contract.name(),
+	)?;
+	let {{push_name:0}} = [{{push:0}}];
+	input.engine_handle().record_image_semantic(
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &[{{bindings:0}}],
+			push_constants: &{{push_name:0}},
+			workgroups: {{workgroups:0}},
+		},
+		ImageSemanticDispatch {
+			contract,
+			inputs: &[ImageSemanticInput::Image(input)],
+			outputs: &[&output],
+			attributes: &[{{attributes}}],
+		},
+	)?;
+	Ok(output)

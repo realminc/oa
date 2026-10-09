@@ -1,0 +1,190 @@
+/// {{doc}}
+pub struct {{name}} {
+	input_channels: usize,
+	output_channels: usize,
+	kernel_size: usize,
+	stride: usize,
+	padding: usize,
+	dilation: usize,
+	weight: Parameter,
+	bias: Parameter,
+	registry: ModuleRegistry,
+}
+
+impl {{name}} {
+	/// Construct a deterministically initialized {{name}} layer.
+	///
+	/// Forward preserves OA's im2col plus tiled-GEMM route. Weight uses a
+	/// fan-in-scaled symmetric uniform initializer and bias starts at zero.
+	///
+	/// # Errors
+	///
+	/// Returns an error when dimensions, stride, or dilation are zero, shape
+	/// arithmetic overflows, or allocation/upload fails.
+	#[allow(
+		clippy::too_many_arguments,
+		reason = "the donor {{name}} contract has five geometry fields plus a seed"
+	)]
+	pub fn with_seed(
+		engine: &Engine,
+		input_channels: usize,
+		output_channels: usize,
+		kernel_size: usize,
+		stride: usize,
+		padding: usize,
+		dilation: usize,
+		seed: u64,
+	) -> Result<Self> {
+		if input_channels == 0
+			|| output_channels == 0
+			|| kernel_size == 0
+			|| stride == 0
+			|| dilation == 0
+		{
+			return Err(Error::invalid_argument(
+				"{{name}} requires nonzero channels, kernel size, stride, and dilation",
+			));
+		}
+		let fan_in = input_channels
+			.checked_mul(kernel_size)
+			.ok_or_else(|| Error::invalid_argument("{{name}} fan-in overflows usize"))?;
+		let weight_count = output_channels
+			.checked_mul(fan_in)
+			.ok_or_else(|| Error::invalid_argument("{{name}} weight size overflows usize"))?;
+		let limit = 1.0_f32 / (fan_in as f32).sqrt();
+		let values = random::symmetric_uniform(weight_count, limit, seed);
+		let weight = Matrix::from_f32(
+			engine,
+			[output_channels, input_channels, kernel_size],
+			&values,
+		)?;
+		let bias = Matrix::from_f32(engine, [output_channels], &vec![0.0; output_channels])?;
+		Self::from_matrices(weight, bias, stride, padding, dilation)
+	}
+
+	/// Construct {{name}} from exact OIK weight and channel-bias matrices.
+	///
+	/// # Errors
+	///
+	/// Returns an error unless weight is nonempty F32 `[O, I, K]`, bias is
+	/// matching same-engine F32 `[O]`, and stride/dilation are nonzero.
+	pub fn from_matrices(
+		weight: Matrix,
+		bias: Matrix,
+		stride: usize,
+		padding: usize,
+		dilation: usize,
+	) -> Result<Self> {
+		let [output_channels, input_channels, kernel_size] = weight.shape() else {
+			return Err(Error::invalid_argument(
+				"{{name}} weight must have OIK rank three",
+			));
+		};
+		if *output_channels == 0
+			|| *input_channels == 0
+			|| *kernel_size == 0
+			|| stride == 0
+			|| dilation == 0
+			|| bias.shape() != [*output_channels]
+			|| weight.dtype() != DType::F32
+			|| bias.dtype() != DType::F32
+			|| !weight.engine_handle().same_as(bias.engine_handle())
+		{
+			return Err(Error::invalid_argument(
+				"{{name}} requires nonempty same-engine F32 OIK weight, matching bias, and nonzero stride/dilation",
+			));
+		}
+		let input_channels = *input_channels;
+		let output_channels = *output_channels;
+		let kernel_size = *kernel_size;
+		let weight = Parameter::new("{{weight_name}}", weight)?;
+		let bias = Parameter::new("{{bias_name}}", bias)?;
+		let mut registry = ModuleRegistry::new();
+		registry.register_parameter("{{weight_name}}", weight.clone())?;
+		registry.register_parameter("{{bias_name}}", bias.clone())?;
+		Ok(Self {
+			input_channels,
+			output_channels,
+			kernel_size,
+			stride,
+			padding,
+			dilation,
+			weight,
+			bias,
+			registry,
+		})
+	}
+
+	/// Apply {{name}} without submitting or waiting.
+	///
+	/// # Errors
+	///
+	/// Returns an error from the underlying Matrix operation.
+	pub fn forward(&self, input: &Matrix) -> Result<Matrix> {
+		let (weight, weight_version, _) = self.weight.snapshot();
+		let (bias, bias_version, _) = self.bias.snapshot();
+		{{operation}}(
+			input,
+			(self.weight.clone(), weight, weight_version),
+			(self.bias.clone(), bias, bias_version),
+			self.stride,
+			self.padding,
+			self.dilation,
+		)
+	}
+
+	/// Return the input channel count.
+	pub const fn input_channels(&self) -> usize {
+		self.input_channels
+	}
+
+	/// Return the output channel count.
+	pub const fn output_channels(&self) -> usize {
+		self.output_channels
+	}
+
+	/// Return the kernel extent.
+	pub const fn kernel_size(&self) -> usize {
+		self.kernel_size
+	}
+
+	/// Return the spatial stride.
+	pub const fn stride(&self) -> usize {
+		self.stride
+	}
+
+	/// Return the symmetric zero-padding extent.
+	pub const fn padding(&self) -> usize {
+		self.padding
+	}
+
+	/// Return the within-kernel dilation.
+	pub const fn dilation(&self) -> usize {
+		self.dilation
+	}
+
+	/// Return the stable OIK weight parameter.
+	pub fn weight(&self) -> Parameter {
+		self.weight.clone()
+	}
+
+	/// Return the stable channel-bias parameter.
+	pub fn bias(&self) -> Parameter {
+		self.bias.clone()
+	}
+
+	/// Return parameters in deterministic weight, bias order.
+	pub fn parameters(&self) -> [Parameter; 2] {
+		[self.weight.clone(), self.bias.clone()]
+	}
+}
+
+impl Module for {{name}} {
+	fn forward(&self, input: &Matrix) -> Result<Matrix> {
+		{{name}}::forward(self, input)
+	}
+
+	fn registry(&self) -> &ModuleRegistry {
+		&self.registry
+	}
+}

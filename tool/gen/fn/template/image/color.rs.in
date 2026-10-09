@@ -1,0 +1,198 @@
+// OA donors: source/cpp/lib/oa/vision/fnimage/fnImageConversion.cpp
+// source/cpp/lib/oa/vision/fnimage/fnImagePipeline.cpp
+// source/cpp/lib/oa/vision/fnimage/postprocess/fnImageSegmentation.cpp
+// Mechanical generation adaptation of OARS 2c0e489; preserve validated algorithms.
+// @operation normalize
+	if input.dtype() != DType::F32 || !matches!(input.layout(), ImageLayout::Nchw | ImageLayout::Chw)
+	{
+		return Err(Error::invalid_argument(
+			"image::normalize requires an FP32 NCHW or CHW image",
+		));
+	}
+	if input.channels() > 3 || input.batch_size() == 0 || input.height() == 0 || input.width() == 0 {
+		return Err(Error::invalid_argument(
+			"image::normalize requires a nonempty image with at most three channels",
+		));
+	}
+	for channel in 0..input.channels() {
+		if !parameters.mean[channel].is_finite()
+			|| !parameters.std[channel].is_finite()
+			|| parameters.std[channel] <= 0.0
+		{
+			return Err(Error::invalid_argument(
+				"image::normalize requires finite means and positive finite standard deviations",
+			));
+		}
+	}
+	let batch = u32::try_from(input.batch_size())
+		.map_err(|_| Error::out_of_range("image::normalize batch exceeds u32"))?;
+	let channels = u32::try_from(input.channels())
+		.map_err(|_| Error::out_of_range("image::normalize channels exceed u32"))?;
+	let height = u32::try_from(input.height())
+		.map_err(|_| Error::out_of_range("image::normalize height exceeds u32"))?;
+	let width = u32::try_from(input.width())
+		.map_err(|_| Error::out_of_range("image::normalize width exceeds u32"))?;
+	let elements = input.as_matrix().num_elements();
+	let matrix = Matrix::allocate(
+		input.engine_handle(),
+		input.as_matrix().shape().to_vec(),
+		elements,
+		DType::F32,
+	)?;
+	let output = Image::new(matrix, input.layout(), input.format())?;
+	let attributes = [{{attributes}}];
+	input.engine_handle().record_image_semantic(
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &[{{bindings:0}}],
+			push_constants: &[{{push:0}}],
+			workgroups: {{workgroups:0}},
+		},
+		ImageSemanticDispatch {
+			contract: {{contract}},
+			inputs: &[ImageSemanticInput::Image(input)],
+			outputs: &[&output],
+			attributes: &attributes,
+		},
+	)?;
+	Ok(output)
+// @operation convert_color
+	if !matches!(
+		input.format(),
+		crate::ImageFormat::Rgb | crate::ImageFormat::Bgr
+	) || !matches!(
+		destination_format,
+		crate::ImageFormat::Rgb | crate::ImageFormat::Bgr
+	) || input.dtype() != DType::F32
+		|| !matches!(input.layout(), ImageLayout::Nchw | ImageLayout::Chw)
+	{
+		return Err(Error::invalid_argument(
+			"image::convert_color currently admits FP32 NCHW/CHW RGB and BGR images",
+		));
+	}
+	let batch = extent(input.batch_size(), "batch")?;
+	let height = extent(input.height(), "height")?;
+	let width = extent(input.width(), "width")?;
+	if batch == 0 || height == 0 || width == 0 {
+		return Err(Error::invalid_argument(
+			"image::convert_color requires a nonempty image",
+		));
+	}
+	let output = allocate(
+		input,
+		input.as_matrix().shape().to_vec(),
+		destination_format,
+	)?;
+	let swap = u32::from(input.format() != destination_format);
+	input.engine_handle().record_image_semantic(
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &[{{bindings:0}}],
+			push_constants: &[{{push:0}}],
+			workgroups: {{workgroups:0}},
+		},
+		ImageSemanticDispatch {
+			contract: {{contract}},
+			inputs: &[ImageSemanticInput::Image(input)],
+			outputs: &[&output],
+			attributes: &[{{attributes}}],
+		},
+	)?;
+	Ok(output)
+// @operation resize_normalize
+	validate_normalization(input, parameters)?;
+	if width == 0 || height == 0 {
+		return Err(Error::invalid_argument(
+			"image::resize_normalize target extent must be nonzero",
+		));
+	}
+	let batch = extent(input.batch_size(), "batch")?;
+	let channels = extent(input.channels(), "channels")?;
+	let input_height = extent(input.height(), "input height")?;
+	let input_width = extent(input.width(), "input width")?;
+	let shape = match input.layout() {
+		ImageLayout::Nchw => vec![
+			batch as usize,
+			channels as usize,
+			height as usize,
+			width as usize,
+		],
+		ImageLayout::Chw => vec![channels as usize, height as usize, width as usize],
+		_ => unreachable!("normalization validation admitted unsupported layout"),
+	};
+	let output = allocate(input, shape, input.format())?;
+	let attributes = [{{attributes}}];
+	input.engine_handle().record_image_semantic(
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &[{{bindings:0}}],
+			push_constants: &[{{push:0}}],
+			workgroups: {{workgroups:0}},
+		},
+		ImageSemanticDispatch {
+			contract: {{contract}},
+			inputs: &[ImageSemanticInput::Image(input)],
+			outputs: &[&output],
+			attributes: &attributes,
+		},
+	)?;
+	Ok(output)
+// @operation segmentation_overlay
+	if input.dtype() != DType::F32
+		|| input.layout() != ImageLayout::Nchw
+		|| !matches!(
+			input.format(),
+			crate::ImageFormat::Rgb | crate::ImageFormat::Rgba
+		) {
+		return Err(Error::invalid_argument(
+			"image::segmentation_overlay requires an FP32 NCHW RGB/RGBA image",
+		));
+	}
+	if !alpha.is_finite() || !(0.0..=1.0).contains(&alpha) {
+		return Err(Error::invalid_argument(
+			"image::segmentation_overlay alpha must be finite and in [0,1]",
+		));
+	}
+	let batch = input.batch_size();
+	let height = input.height();
+	let width = input.width();
+	let valid_mask = mask.dtype() == DType::I32
+		&& (mask.shape() == [batch, height, width] || mask.shape() == [batch, 1, height, width]);
+	let valid_palette = palette.dtype() == DType::F32
+		&& palette.shape().len() == 2
+		&& palette.shape()[0] > 0
+		&& palette.shape()[1] == 3;
+	if !valid_mask
+		|| !valid_palette
+		|| !input.engine_handle().same_as(mask.engine_handle())
+		|| !input.engine_handle().same_as(palette.engine_handle())
+	{
+		return Err(Error::invalid_argument(
+			"image::segmentation_overlay requires same-engine I32 [B,H,W]/[B,1,H,W] labels and FP32 [K,3] palette",
+		));
+	}
+	let batch_u32 = extent(batch, "batch")?;
+	let channels = extent(input.channels(), "channels")?;
+	let height_u32 = extent(height, "height")?;
+	let width_u32 = extent(width, "width")?;
+	let classes = extent(palette.shape()[0], "class count")?;
+	let output = allocate(input, input.as_matrix().shape().to_vec(), input.format())?;
+	input.engine_handle().record_image_semantic(
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &[{{bindings:0}}],
+			push_constants: &[{{push:0}}],
+			workgroups: {{workgroups:0}},
+		},
+		ImageSemanticDispatch {
+			contract: {{contract}},
+			inputs: &[
+				ImageSemanticInput::Image(input),
+				ImageSemanticInput::Matrix(mask),
+				ImageSemanticInput::Matrix(palette),
+			],
+			outputs: &[&output],
+			attributes: &[{{attributes}}],
+		},
+	)?;
+	Ok(output)

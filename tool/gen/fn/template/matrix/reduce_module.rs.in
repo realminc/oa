@@ -1,0 +1,98 @@
+//! Matrix reductions and shared checked axis inference.
+
+use crate::{
+	DType, Error, Matrix, OpAttribute, Result,
+	matrix::autograd,
+	runtime::{BufferBinding, ComputeDispatch, KernelId, PushConstant, SemanticDispatch},
+};
+
+struct AxisShape {
+	outer_size: u32,
+	dim_size: u32,
+	inner_size: u32,
+	group_count: u32,
+}
+
+fn resolve_axis(input: &Matrix, dim: i32, operation: &'static str) -> Result<AxisShape> {
+	if input.dtype() != DType::F32 || input.shape().is_empty() || input.num_elements() == 0 {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires a nonempty FP32 matrix"
+		)));
+	}
+	let byte_size = input
+		.num_elements()
+		.checked_mul(DType::F32.size_bytes())
+		.ok_or_else(|| Error::invalid_argument(format!("{operation} byte size overflows usize")))?;
+	u32::try_from(byte_size).map_err(|_| {
+		Error::invalid_argument(format!(
+			"{operation} byte-address range exceeds the admitted shader ABI"
+		))
+	})?;
+	let rank = input.shape().len();
+	let axis = if dim == -1 {
+		rank - 1
+	} else {
+		usize::try_from(dim).map_err(|_| {
+			Error::invalid_argument(format!(
+				"{operation} dim must be -1 or a valid non-negative axis; found {dim}"
+			))
+		})?
+	};
+	if axis >= rank {
+		return Err(Error::invalid_argument(format!(
+			"{operation} dim {dim} is invalid for rank {rank}"
+		)));
+	}
+	let outer_size = input.shape()[..axis]
+		.iter()
+		.try_fold(1_usize, |product, extent| product.checked_mul(*extent))
+		.ok_or_else(|| Error::invalid_argument(format!("{operation} outer size overflows usize")))?;
+	let dim_size = input.shape()[axis];
+	let inner_size = input.shape()[axis + 1..]
+		.iter()
+		.try_fold(1_usize, |product, extent| product.checked_mul(*extent))
+		.ok_or_else(|| Error::invalid_argument(format!("{operation} inner size overflows usize")))?;
+	let group_count = outer_size.checked_mul(inner_size).ok_or_else(|| {
+		Error::invalid_argument(format!("{operation} dispatch count overflows usize"))
+	})?;
+	Ok(AxisShape {
+		outer_size: u32::try_from(outer_size)
+			.map_err(|_| Error::invalid_argument(format!("{operation} outer size exceeds u32")))?,
+		dim_size: u32::try_from(dim_size)
+			.map_err(|_| Error::invalid_argument(format!("{operation} axis size exceeds u32")))?,
+		inner_size: u32::try_from(inner_size)
+			.map_err(|_| Error::invalid_argument(format!("{operation} inner size exceeds u32")))?,
+		group_count: u32::try_from(group_count)
+			.map_err(|_| Error::invalid_argument(format!("{operation} dispatch count exceeds u32")))?,
+	})
+}
+
+fn sum_shape(input: &Matrix, dim: i32, operation: &'static str) -> Result<(AxisShape, Vec<usize>)> {
+	if dim < -1 {
+		return Err(Error::invalid_argument(format!(
+			"{operation} dim must be -1 or a valid non-negative axis; found {dim}"
+		)));
+	}
+	if dim == -1 {
+		resolve_axis(input, -1, operation)?;
+		let element_count = u32::try_from(input.num_elements())
+			.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
+		return Ok((
+			AxisShape {
+				outer_size: 1,
+				dim_size: element_count,
+				inner_size: 1,
+				group_count: 1,
+			},
+			vec![1],
+		));
+	}
+	let axis = resolve_axis(input, dim, operation)?;
+	let mut output_shape = input.shape().to_vec();
+	output_shape[usize::try_from(dim).map_err(|_| {
+		Error::invalid_argument(format!("{operation} dim cannot be represented as usize"))
+	})?] = 1;
+	Ok((axis, output_shape))
+}
+
+{{items}}

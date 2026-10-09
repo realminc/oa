@@ -1,0 +1,68 @@
+/// {{doc}}
+///
+/// # Errors
+///
+/// Returns an error unless `input` is F32 with final extent exactly twice the
+/// nonzero `intermediate_size`, or runtime recording fails.
+pub fn {{name}}(input: &Matrix, intermediate_size: usize) -> Result<Matrix> {
+	let contract = {{contract}};
+	let operation = contract.name();
+	let engine = input.engine_handle();
+	if input.dtype() != DType::F32 {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires F32 matrices; found {}",
+			input.dtype().token()
+		)));
+	}
+	let Some(last_extent) = input.shape().last() else {
+		return Err(Error::invalid_argument(format!(
+			"{operation} input must have at least one dimension"
+		)));
+	};
+	let concatenated = intermediate_size.checked_mul(2).ok_or_else(|| {
+		Error::invalid_argument(format!("{operation} intermediate size overflows usize"))
+	})?;
+	if intermediate_size == 0 || *last_extent != concatenated {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires final input extent 2 * intermediate_size"
+		)));
+	}
+	let output_count = input.num_elements() / 2;
+	let output_count_u32 = u32::try_from(output_count).map_err(|_| {
+		Error::invalid_argument(format!("{operation} output element count exceeds u32"))
+	})?;
+	let intermediate_u32 = u32::try_from(intermediate_size)
+		.map_err(|_| Error::invalid_argument(format!("{operation} intermediate size exceeds u32")))?;
+	let mut output_shape = input.shape().to_vec();
+	*output_shape.last_mut().expect("validated nonempty shape") = intermediate_size;
+	let output = Matrix::allocate(engine, output_shape, output_count, DType::F32)?;
+	let buffers = [
+		BufferBinding::read(input.storage()),
+		BufferBinding::write(output.storage()),
+	];
+	let attributes = [OpAttribute::SignedInteger {
+		name: "intermediate_size".into(),
+		value: i64::try_from(intermediate_size)
+			.map_err(|_| Error::invalid_argument(format!("{operation} intermediate size exceeds i64")))?,
+	}];
+	let push_constants = [
+		PushConstant::U32(output_count_u32),
+		PushConstant::U32(intermediate_u32),
+	];
+	engine.record_semantic(
+		ComputeDispatch {
+			kernel: KernelId::{{kernel}},
+			buffers: &buffers,
+			push_constants: &push_constants,
+			workgroups: KernelId::{{kernel}}.linear_workgroups(output_count_u32),
+		},
+		SemanticDispatch {
+			contract,
+			inputs: &[input],
+			outputs: &[&output],
+			attributes: &attributes,
+		},
+	)?;
+	autograd::record_silu_mul(input, intermediate_size, &output)?;
+	Ok(output)
+}

@@ -1,0 +1,106 @@
+// @operation verify
+{{prehash_validation}}
+	let (contract, kernel) = match parameters {
+{{routes}}
+	};
+	let operation = contract.name();
+	let sig_bytes = parameters.signature_size();
+	let pk_bytes = parameters.public_key_size();
+
+	// Validate message buffer.
+	if messages.dtype() != DType::U8 {
+		return Err(Error::invalid_argument(format!(
+			"{operation} messages must be a U8 matrix; found {}",
+			messages.dtype().token()
+		)));
+	}
+	if messages.shape().len() != 1 {
+		return Err(Error::invalid_argument(format!(
+			"{operation} messages must be rank-1 [total_bytes]; found {:?}",
+			messages.shape()
+		)));
+	}
+
+	// A shared public context is a checked view into the existing message bytes.
+	let context_length = context
+		.end
+		.checked_sub(context.start)
+		.ok_or_else(|| Error::invalid_argument(format!("{operation} context range is reversed")))?;
+	if context.end > messages.num_elements() || context_length > 255 {
+		return Err(Error::invalid_argument(format!(
+			"{operation} context must be within messages and at most 255 bytes"
+		)));
+	}
+	let context_offset = u32::try_from(context.start)
+		.map_err(|_| Error::invalid_argument(format!("{operation} context offset exceeds u32")))?;
+	let context_length = u32::try_from(context_length)
+		.map_err(|_| Error::invalid_argument(format!("{operation} context length exceeds u32")))?;
+
+	// Validate offset / length vectors — must be U32 rank-1 of equal length.
+	let batch_size = validate_u32_vector(msg_offsets, "msg_offsets", None, operation)?;
+	validate_u32_vector(msg_lengths, "msg_lengths", Some(batch_size), operation)?;
+
+	// Validate packed signature and public-key buffers.
+	validate_packed_u8(signatures, "signatures", batch_size, sig_bytes, operation)?;
+	validate_packed_u8(public_keys, "public_keys", batch_size, pk_bytes, operation)?;
+
+	// All matrices must share the same engine.
+	let engine = messages.engine_handle();
+	for (label, matrix) in [
+		("msg_offsets", msg_offsets),
+		("msg_lengths", msg_lengths),
+		("signatures", signatures),
+		("public_keys", public_keys),
+	] {
+		if !engine.same_as(matrix.engine_handle()) {
+			return Err(Error::invalid_argument(format!(
+				"{operation} {label} must share an engine with messages"
+			)));
+		}
+	}
+
+	let batch_u32 = u32::try_from(batch_size)
+		.map_err(|_| Error::invalid_argument(format!("{operation} batch_size exceeds u32")))?;
+	let message_bytes = u32::try_from(messages.num_elements())
+		.map_err(|_| Error::invalid_argument(format!("{operation} message byte size exceeds u32")))?;
+	for matrix in [msg_offsets, msg_lengths, signatures, public_keys] {
+		let bytes = matrix
+			.num_elements()
+			.checked_mul(matrix.dtype().size_bytes())
+			.ok_or_else(|| Error::invalid_argument(format!("{operation} buffer byte size overflows")))?;
+		u32::try_from(bytes)
+			.map_err(|_| Error::invalid_argument(format!("{operation} buffer byte size exceeds u32")))?;
+	}
+
+	// Allocate U32 result buffer: one entry per signature.
+	let results = Matrix::allocate_output(engine, vec![batch_size], batch_size, DType::U32)?;
+	// Empty U32 vectors have no Vulkan backing. There is no invocation or value
+	// to produce; return the already-ready empty value without binding them.
+	if batch_size == 0 {
+		return Ok(results);
+	}
+
+	// Binding order matches the PushConstants indices in mldsa_verify.slang:
+	// [input_index, offsets_index, lengths_index, sigs_index, pks_index, results_index]
+	// The engine prepends one descriptor index per binding as push constants before
+	// the caller-supplied push_constants slice.
+	let buffers = [{{bindings:0}}];
+	let push_constants = [{{push:0}}];
+	let inputs = [messages, msg_offsets, msg_lengths, signatures, public_keys];
+	let outputs = [&results];
+	let attributes = [{{attributes}}];
+	engine.record_semantic(
+		ComputeDispatch {
+			kernel,
+			buffers: &buffers,
+			push_constants: &push_constants,
+			workgroups: kernel.linear_workgroups(batch_u32),
+		},
+		SemanticDispatch {
+			contract,
+			inputs: &inputs,
+			outputs: &outputs,
+			attributes: &attributes,
+		},
+	)?;
+	Ok(results)

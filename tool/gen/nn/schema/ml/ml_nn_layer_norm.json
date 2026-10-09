@@ -1,0 +1,26 @@
+{
+	"version": 1,
+	"family": "layer_norm",
+	"imports": [
+		"use crate::{DType, Engine, Error, Matrix, Result};",
+		"use super::super::{Module, ModuleRegistry, Parameter, autograd, matrix};"
+	],
+	"helper": "",
+	"layers": [
+		{
+			"name": "LayerNorm",
+			"doc": "Trainable FP32 LayerNorm over the final input dimension.",
+			"template": "layer_norm",
+			"values": {
+				"operation": "matrix::layer_norm",
+				"autograd_operation": "autograd::record_layer_norm",
+				"channel_operation": "matrix::channel_norm_forward",
+				"channel_autograd_operation": "autograd::record_channel_norm",
+				"weight_name": "weight",
+				"bias_name": "bias"
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/layernorm/layerNorm.cpp",
+			"adaptation": "Preserve existing Rust initialization, parameter versions and autograd; adapt donor structure to ModuleRegistry ownership"
+		}
+	]
+}

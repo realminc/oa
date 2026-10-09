@@ -1,0 +1,780 @@
+#[derive(Clone, Copy)]
+enum FeedForwardConfig {
+	Dense,
+	Moe {
+		num_experts: usize,
+		experts_per_token: usize,
+	},
+}
+
+enum FeedForward {
+	Dense {
+		norm: Rc<LayerNorm>,
+		input: Rc<Linear>,
+		output: Rc<Linear>,
+	},
+	Moe(Rc<Moe>),
+}
+
+/// One pre-normalized causal {{name}} block.
+pub struct {{block_type}} {
+	model_width: usize,
+	hidden_width: usize,
+	sequence_length: Cell<usize>,
+	num_heads: usize,
+	norm_attention: Rc<LayerNorm>,
+	attention: Rc<MultiHeadAttention>,
+	feed_forward: FeedForward,
+	adaptive_modulation: Option<Rc<Linear>>,
+	condition_dim: Option<usize>,
+	registry: ModuleRegistry,
+}
+
+impl {{block_type}} {
+	/// Construct the canonical pre-norm attention and GELU feed-forward block.
+	///
+	/// # Errors
+	///
+	/// Returns an error for invalid dimensions or failed child construction.
+	pub fn with_seed(
+		engine: &Engine,
+		model_width: usize,
+		hidden_width: usize,
+		sequence_length: usize,
+		num_heads: usize,
+		epsilon: f32,
+		seed: u64,
+	) -> Result<Self> {
+		Self::with_seed_config(
+			engine,
+			model_width,
+			hidden_width,
+			sequence_length,
+			num_heads,
+			epsilon,
+			seed,
+			FeedForwardConfig::Dense,
+		)
+	}
+
+	/// Construct a dense block with zero-initialized adaptive conditioning.
+	///
+	/// The complete child tree is registered before the block is returned. This
+	/// is the Rust replacement for donor `enableAdaptiveConditioning`, whose
+	/// post-construction registry mutation would violate [`ModuleRegistry`]'s
+	/// fixed structural-ownership contract.
+	///
+	/// # Errors
+	///
+	/// Returns an error for invalid block dimensions, a zero condition width,
+	/// shape overflow, allocation failure, or child registration failure.
+	#[allow(
+		clippy::too_many_arguments,
+		reason = "the constructor preserves the donor block and conditioning dimensions"
+	)]
+	pub fn with_seed_conditioned(
+		engine: &Engine,
+		model_width: usize,
+		hidden_width: usize,
+		sequence_length: usize,
+		num_heads: usize,
+		condition_dim: usize,
+		epsilon: f32,
+		seed: u64,
+	) -> Result<Self> {
+		Self::with_seed(
+			engine,
+			model_width,
+			hidden_width,
+			sequence_length,
+			num_heads,
+			epsilon,
+			seed,
+		)?
+		.with_adaptive_conditioning(engine, condition_dim)
+	}
+
+	/// Construct the donor pre-norm attention block with a sparse MoE residual.
+	///
+	/// The MoE owns its RMSNorm and residual connection, so this block does not
+	/// add a second feed-forward normalization or residual around it.
+	///
+	/// # Errors
+	///
+	/// Returns an error for invalid attention or MoE dimensions, failed child
+	/// construction, or registration failure.
+	#[allow(
+		clippy::too_many_arguments,
+		reason = "the constructor preserves the donor attention and MoE dimensions"
+	)]
+	pub fn with_seed_moe(
+		engine: &Engine,
+		model_width: usize,
+		expert_hidden_width: usize,
+		sequence_length: usize,
+		num_heads: usize,
+		num_experts: usize,
+		experts_per_token: usize,
+		epsilon: f32,
+		seed: u64,
+	) -> Result<Self> {
+		Self::with_seed_config(
+			engine,
+			model_width,
+			expert_hidden_width,
+			sequence_length,
+			num_heads,
+			epsilon,
+			seed,
+			FeedForwardConfig::Moe {
+				num_experts,
+				experts_per_token,
+			},
+		)
+	}
+
+	/// Construct a sparse-MoE block with zero-initialized adaptive conditioning.
+	///
+	/// # Errors
+	///
+	/// Returns an error for invalid attention, expert, or conditioning geometry,
+	/// allocation failure, or child registration failure.
+	#[allow(
+		clippy::too_many_arguments,
+		reason = "the constructor preserves the donor attention, MoE, and conditioning dimensions"
+	)]
+	pub fn with_seed_moe_conditioned(
+		engine: &Engine,
+		model_width: usize,
+		expert_hidden_width: usize,
+		sequence_length: usize,
+		num_heads: usize,
+		num_experts: usize,
+		experts_per_token: usize,
+		condition_dim: usize,
+		epsilon: f32,
+		seed: u64,
+	) -> Result<Self> {
+		Self::with_seed_moe(
+			engine,
+			model_width,
+			expert_hidden_width,
+			sequence_length,
+			num_heads,
+			num_experts,
+			experts_per_token,
+			epsilon,
+			seed,
+		)?
+		.with_adaptive_conditioning(engine, condition_dim)
+	}
+
+	// Both public recipes construct one attention tree and one feed-forward owner.
+	#[allow(
+		clippy::too_many_arguments,
+		reason = "shared constructor preserves public block recipes"
+	)]
+	fn with_seed_config(
+		engine: &Engine,
+		model_width: usize,
+		hidden_width: usize,
+		sequence_length: usize,
+		num_heads: usize,
+		epsilon: f32,
+		seed: u64,
+		config: FeedForwardConfig,
+	) -> Result<Self> {
+		if matches!(config, FeedForwardConfig::Dense) && hidden_width == 0 {
+			return Err(Error::invalid_argument(
+				"{{name}} FFN width must be nonzero",
+			));
+		}
+		let norm_attention = Rc::new({{norm_constructor}}(engine, model_width, epsilon)?);
+		let attention = Rc::new({{attention_constructor}}(
+			engine,
+			model_width,
+			num_heads,
+			sequence_length,
+			seed,
+		)?);
+		let mut registry = ModuleRegistry::new();
+		registry.register_module("{{attention_norm_name}}", norm_attention.clone())?;
+		registry.register_module("{{attention_name}}", attention.clone())?;
+		let feed_forward = match config {
+			FeedForwardConfig::Dense => {
+				let norm = Rc::new({{norm_constructor}}(engine, model_width, epsilon)?);
+				let input = Rc::new({{projection_constructor}}(
+					engine,
+					model_width,
+					hidden_width,
+					seed.wrapping_add(4),
+				)?);
+				let output = Rc::new({{projection_constructor}}(
+					engine,
+					hidden_width,
+					model_width,
+					seed.wrapping_add(5),
+				)?);
+				registry.register_module("{{dense_norm_name}}", norm.clone())?;
+				registry.register_module("{{dense_input_name}}", input.clone())?;
+				registry.register_module("{{dense_output_name}}", output.clone())?;
+				FeedForward::Dense {
+					norm,
+					input,
+					output,
+				}
+			}
+			FeedForwardConfig::Moe {
+				num_experts,
+				experts_per_token,
+			} => {
+				let moe = Rc::new({{moe_constructor}}(
+					engine,
+					model_width,
+					hidden_width,
+					num_experts,
+					experts_per_token,
+					epsilon,
+					seed.wrapping_add(4),
+				)?);
+				registry.register_module("{{moe_name}}", moe.clone())?;
+				FeedForward::Moe(moe)
+			}
+		};
+		Ok(Self {
+			model_width,
+			hidden_width,
+			sequence_length: Cell::new(sequence_length),
+			num_heads,
+			norm_attention,
+			attention,
+			feed_forward,
+			adaptive_modulation: None,
+			condition_dim: None,
+			registry,
+		})
+	}
+
+	fn with_adaptive_conditioning(mut self, engine: &Engine, condition_dim: usize) -> Result<Self> {
+		if condition_dim == 0 {
+			return Err(Error::invalid_argument(
+				"{{name}} adaptive condition width must be nonzero",
+			));
+		}
+		let modulation_width = self
+			.model_width
+			.checked_mul(6)
+			.ok_or_else(|| Error::invalid_argument("{{name}} modulation width overflows usize"))?;
+		let weight_count = condition_dim
+			.checked_mul(modulation_width)
+			.ok_or_else(|| Error::invalid_argument("{{name}} modulation size overflows usize"))?;
+		let weight = Matrix::from_f32(
+			engine,
+			[modulation_width, condition_dim],
+			&vec![0.0; weight_count],
+		)?;
+		let bias = Matrix::from_f32(engine, [modulation_width], &vec![0.0; modulation_width])?;
+		let adaptive_modulation = Rc::new(Linear::from_matrices(weight, bias)?);
+		self
+			.registry
+			.register_module("{{modulation_name}}", adaptive_modulation.clone())?;
+		self.adaptive_modulation = Some(adaptive_modulation);
+		self.condition_dim = Some(condition_dim);
+		Ok(self)
+	}
+
+	/// Apply pre-norm attention/residual followed by pre-norm GELU FFN/residual.
+	///
+	/// # Errors
+	///
+	/// Returns an error unless input is F32 `[B*S, D]` or child recording fails.
+	pub fn forward(&self, input: &Matrix) -> Result<Matrix> {
+		self.forward_impl(input, None)
+	}
+
+	/// Apply this block with an explicit bidirectional additive attention mask.
+	///
+	/// # Errors
+	///
+	/// Returns an error unless the mask is F32 `[B*H*S, S]` for the current
+	/// sequence geometry, or a child operation fails.
+	pub fn forward_masked(&self, input: &Matrix, additive_mask: &Matrix) -> Result<Matrix> {
+		self.forward_impl(input, Some(additive_mask))
+	}
+
+	/// Apply donor AdaLN-Zero conditioning without an explicit attention mask.
+	///
+	/// # Errors
+	///
+	/// Returns an error unless this block was constructed with adaptive
+	/// conditioning, input is F32 `[B*S, D]`, condition is same-engine F32
+	/// `[B, C]`, or a child operation fails.
+	pub fn forward_conditioned(&self, input: &Matrix, condition: &Matrix) -> Result<Matrix> {
+		self.forward_conditioned_impl(input, condition, None)
+	}
+
+	/// Apply donor AdaLN-Zero conditioning with an additive attention mask.
+	///
+	/// # Errors
+	///
+	/// Returns an error unless the conditioned input contract and the attention
+	/// mask contract are both satisfied, or a child operation fails.
+	pub fn forward_conditioned_masked(
+		&self,
+		input: &Matrix,
+		condition: &Matrix,
+		additive_mask: &Matrix,
+	) -> Result<Matrix> {
+		self.forward_conditioned_impl(input, condition, Some(additive_mask))
+	}
+
+	fn forward_conditioned_impl(
+		&self,
+		input: &Matrix,
+		condition: &Matrix,
+		additive_mask: Option<&Matrix>,
+	) -> Result<Matrix> {
+		let Some(adaptive_modulation) = &self.adaptive_modulation else {
+			return Err(Error::failed_precondition(
+				"{{name}} block was not constructed with adaptive conditioning",
+			));
+		};
+		let condition_dim = self
+			.condition_dim
+			.expect("adaptive modulation and condition width are constructed together");
+		let [rows, features] = input.shape() else {
+			return Err(Error::invalid_argument(
+				"conditioned {{name}} input must have shape [B*S, D]",
+			));
+		};
+		let [condition_batch, condition_features] = condition.shape() else {
+			return Err(Error::invalid_argument(
+				"{{name}} condition must have shape [B, C]",
+			));
+		};
+		if input.dtype() != DType::F32
+			|| condition.dtype() != DType::F32
+			|| *features != self.model_width
+			|| *rows == 0
+			|| !rows.is_multiple_of(self.sequence_length.get())
+			|| *condition_batch != rows / self.sequence_length.get()
+			|| *condition_features != condition_dim
+			|| !input.engine_handle().same_as(condition.engine_handle())
+		{
+			return Err(Error::invalid_argument(
+				"conditioned {{name}} requires same-engine F32 [B*S, D] input and [B, C] condition",
+			));
+		}
+
+		let modulation = adaptive_modulation.forward(condition)?;
+		let modulation = matrix::repeat_interleave(&modulation, self.sequence_length.get(), 0)?;
+		let mut parts = Vec::with_capacity(6);
+		for index in 0..6 {
+			let start = index * self.model_width;
+			parts.push(matrix::slice(
+				&modulation,
+				1,
+				start as i64,
+				(start + self.model_width) as i64,
+			)?);
+		}
+
+		let attention_scale = matrix::add_scalar(&parts[1], 1.0)?;
+		let attention_normalized = self.norm_attention.forward(input)?;
+		let attention_normalized = matrix::mul(&attention_normalized, &attention_scale)?;
+		let attention_normalized = matrix::add(&attention_normalized, &parts[0])?;
+		let attention_delta = match additive_mask {
+			Some(mask) => self.attention.forward_masked(&attention_normalized, mask)?,
+			None => self.attention.forward(&attention_normalized)?,
+		};
+		let attention_delta = matrix::mul(&attention_delta, &parts[2])?;
+		let residual = matrix::add(input, &attention_delta)?;
+
+		let feed_forward_normalized = match &self.feed_forward {
+			FeedForward::Dense { norm, .. } => norm.forward(&residual)?,
+			FeedForward::Moe(_) => residual.clone(),
+		};
+		let feed_forward_scale = matrix::add_scalar(&parts[4], 1.0)?;
+		let feed_forward_normalized = matrix::mul(&feed_forward_normalized, &feed_forward_scale)?;
+		let feed_forward_normalized = matrix::add(&feed_forward_normalized, &parts[3])?;
+		let feed_forward_delta = match &self.feed_forward {
+			FeedForward::Dense { input, output, .. } => {
+				let hidden = {{activation_operation}}(&input.forward(&feed_forward_normalized)?)?;
+				output.forward(&hidden)?
+			}
+			FeedForward::Moe(moe) => moe.forward(&feed_forward_normalized)?,
+		};
+		let feed_forward_delta = matrix::mul(&feed_forward_delta, &parts[5])?;
+		matrix::add(&residual, &feed_forward_delta)
+	}
+
+	fn forward_impl(&self, input: &Matrix, additive_mask: Option<&Matrix>) -> Result<Matrix> {
+		let normalized = self.norm_attention.forward(input)?;
+		let attended = match additive_mask {
+			Some(mask) => self.attention.forward_masked(&normalized, mask)?,
+			None => self.attention.forward(&normalized)?,
+		};
+		let residual = matrix::add(input, &attended)?;
+		match &self.feed_forward {
+			FeedForward::Dense {
+				norm,
+				input,
+				output,
+			} => {
+				let normalized = norm.forward(&residual)?;
+				let hidden = {{activation_operation}}(&input.forward(&normalized)?)?;
+				let projected = output.forward(&hidden)?;
+				matrix::add(&residual, &projected)
+			}
+			FeedForward::Moe(moe) => moe.forward(&residual),
+		}
+	}
+
+	pub const fn model_width(&self) -> usize {
+		self.model_width
+	}
+	pub const fn hidden_width(&self) -> usize {
+		self.hidden_width
+	}
+	pub fn sequence_length(&self) -> usize {
+		self.sequence_length.get()
+	}
+	pub const fn num_heads(&self) -> usize {
+		self.num_heads
+	}
+
+	/// Return whether this block uses routed experts instead of a dense FFN.
+	pub fn is_moe(&self) -> bool {
+		matches!(&self.feed_forward, FeedForward::Moe(_))
+	}
+
+	/// Return the routed expert module when this is an MoE block.
+	pub fn moe(&self) -> Option<&Moe> {
+		match &self.feed_forward {
+			FeedForward::Moe(moe) => Some(moe),
+			FeedForward::Dense { .. } => None,
+		}
+	}
+
+	/// Return whether this block owns a registered AdaLN-Zero projection.
+	pub fn is_adaptively_conditioned(&self) -> bool {
+		self.adaptive_modulation.is_some()
+	}
+
+	/// Return the accepted condition width for an adaptive block.
+	pub const fn condition_dim(&self) -> Option<usize> {
+		self.condition_dim
+	}
+
+	/// Select causal or bidirectional attention for this block.
+	pub fn set_attention_mode(&self, mode: AttentionMode) {
+		self.attention.set_mode(mode);
+	}
+
+	/// Return this block's attention visibility contract.
+	pub fn attention_mode(&self) -> AttentionMode {
+		self.attention.mode()
+	}
+
+	/// Change runtime sequence geometry without rebuilding block parameters.
+	///
+	/// # Errors
+	///
+	/// Returns an error when `sequence_length` is zero.
+	pub fn set_sequence_length(&self, sequence_length: usize) -> Result<()> {
+		self.attention.set_sequence_length(sequence_length)?;
+		self.sequence_length.set(sequence_length);
+		Ok(())
+	}
+}
+
+impl Module for {{block_type}} {
+	fn forward(&self, input: &Matrix) -> Result<Matrix> {
+		{{block_type}}::forward(self, input)
+	}
+	fn registry(&self) -> &ModuleRegistry {
+		&self.registry
+	}
+}
+
+/// {{doc}}
+///
+/// This is the idiomatic Rust spelling of donor `oa::Nn{{name}}`: token and
+/// position embeddings, registered {{name}} blocks, final normalization,
+/// and a vocabulary projection.
+pub struct {{name}} {
+	vocab_size: usize,
+	context_length: usize,
+	model_width: usize,
+	hidden_width: usize,
+	num_heads: usize,
+	token_embedding: Rc<super::Embedding>,
+	position_embedding: Rc<super::Embedding>,
+	blocks: Vec<Rc<{{block_type}}>>,
+	final_norm: Rc<LayerNorm>,
+	head: Rc<Linear>,
+	registry: ModuleRegistry,
+}
+
+impl {{name}} {
+	/// Construct a deterministic causal language model.
+	///
+	/// # Errors
+	///
+	/// Returns an error unless all dimensions are positive, the model width is
+	/// divisible by the head count, positions fit U32, and every child can be
+	/// constructed and registered.
+	#[allow(clippy::too_many_arguments)]
+	pub fn with_seed(
+		engine: &Engine,
+		vocab_size: usize,
+		context_length: usize,
+		model_width: usize,
+		hidden_width: usize,
+		num_layers: usize,
+		num_heads: usize,
+		epsilon: f32,
+		seed: u64,
+	) -> Result<Self> {
+		Self::with_seed_config(
+			engine,
+			vocab_size,
+			context_length,
+			model_width,
+			hidden_width,
+			num_layers,
+			num_heads,
+			epsilon,
+			seed,
+			FeedForwardConfig::Dense,
+		)
+	}
+
+	/// Construct a deterministic causal language model with MoE {{name}} blocks.
+	///
+	/// Every block preserves the donor topology: pre-norm attention and residual,
+	/// followed by one MoE module that owns its own RMSNorm and residual.
+	///
+	/// # Errors
+	///
+	/// Returns an error unless all dimensions are valid or when child allocation
+	/// and registration fail.
+	#[allow(
+		clippy::too_many_arguments,
+		reason = "the constructor preserves the complete {{name}} and MoE recipe"
+	)]
+	pub fn with_seed_moe(
+		engine: &Engine,
+		vocab_size: usize,
+		context_length: usize,
+		model_width: usize,
+		expert_hidden_width: usize,
+		num_layers: usize,
+		num_heads: usize,
+		num_experts: usize,
+		experts_per_token: usize,
+		epsilon: f32,
+		seed: u64,
+	) -> Result<Self> {
+		Self::with_seed_config(
+			engine,
+			vocab_size,
+			context_length,
+			model_width,
+			expert_hidden_width,
+			num_layers,
+			num_heads,
+			epsilon,
+			seed,
+			FeedForwardConfig::Moe {
+				num_experts,
+				experts_per_token,
+			},
+		)
+	}
+
+	// A single model builder retains each recipe's checkpoint names and seed stride.
+	#[allow(
+		clippy::too_many_arguments,
+		reason = "shared constructor preserves public model recipes"
+	)]
+	fn with_seed_config(
+		engine: &Engine,
+		vocab_size: usize,
+		context_length: usize,
+		model_width: usize,
+		hidden_width: usize,
+		num_layers: usize,
+		num_heads: usize,
+		epsilon: f32,
+		seed: u64,
+		config: FeedForwardConfig,
+	) -> Result<Self> {
+		let (seed_stride, valid_experts, dimension_error) = match config {
+			FeedForwardConfig::Dense => (
+				6,
+				true,
+				"{{name}} requires positive dimensions, D divisible by H, and U32 positions",
+			),
+			FeedForwardConfig::Moe { num_experts, .. } => (
+				8,
+				num_experts != 0,
+				"MoE {{name}} requires positive dimensions, D divisible by H, and U32 positions",
+			),
+		};
+		if vocab_size == 0
+			|| context_length == 0
+			|| model_width == 0
+			|| hidden_width == 0
+			|| num_layers == 0
+			|| num_heads == 0
+			|| !valid_experts
+			|| !model_width.is_multiple_of(num_heads)
+			|| u32::try_from(context_length - 1).is_err()
+		{
+			return Err(Error::invalid_argument(dimension_error));
+		}
+		let token_embedding = Rc::new({{embedding_constructor}}(
+			engine,
+			vocab_size,
+			model_width,
+			seed,
+		)?);
+		let position_embedding = Rc::new({{embedding_constructor}}(
+			engine,
+			context_length,
+			model_width,
+			seed.wrapping_add(1),
+		)?);
+		let mut registry = ModuleRegistry::new();
+		registry.register_module("{{token_embedding_name}}", token_embedding.clone())?;
+		registry.register_module("{{position_embedding_name}}", position_embedding.clone())?;
+		let mut blocks = Vec::with_capacity(num_layers);
+		for index in 0..num_layers {
+			let seed_offset = (index as u64).wrapping_mul(seed_stride).wrapping_add(2);
+			let block = Rc::new({{block_type}}::with_seed_config(
+				engine,
+				model_width,
+				hidden_width,
+				context_length,
+				num_heads,
+				epsilon,
+				seed.wrapping_add(seed_offset),
+				config,
+			)?);
+			registry.register_module(format!("{{block_prefix}}_{index}"), block.clone())?;
+			blocks.push(block);
+		}
+		let final_norm = Rc::new({{norm_constructor}}(engine, model_width, epsilon)?);
+		let head_seed = seed.wrapping_add(
+			(num_layers as u64)
+				.wrapping_mul(seed_stride)
+				.wrapping_add(2),
+		);
+		let head = Rc::new({{projection_constructor}}(
+			engine,
+			model_width,
+			vocab_size,
+			head_seed,
+		)?);
+		registry.register_module("{{final_norm_name}}", final_norm.clone())?;
+		registry.register_module("{{head_name}}", head.clone())?;
+		Ok(Self {
+			vocab_size,
+			context_length,
+			model_width,
+			hidden_width,
+			num_heads,
+			token_embedding,
+			position_embedding,
+			blocks,
+			final_norm,
+			head,
+			registry,
+		})
+	}
+
+	/// Evaluate all-position vocabulary logits for U8 or U32 tokens `[B, S]`.
+	///
+	/// # Errors
+	///
+	/// Returns an error unless `S` equals the configured context length and the
+	/// input is nonempty U8/U32, or a child operation fails.
+	pub fn forward(&self, tokens: &Matrix) -> Result<Matrix> {
+		let [batch, sequence] = tokens.shape() else {
+			return Err(Error::invalid_argument(
+				"{{name}} tokens must have shape [batch, context_length]",
+			));
+		};
+		if *batch == 0
+			|| *sequence != self.context_length
+			|| !matches!(tokens.dtype(), DType::U8 | DType::U32)
+		{
+			return Err(Error::invalid_argument(
+				"{{name}} tokens must be nonempty U8 or U32 [batch, context_length]",
+			));
+		}
+		let rows = batch
+			.checked_mul(*sequence)
+			.ok_or_else(|| Error::invalid_argument("{{name}} row count overflows usize"))?;
+		let position_values = (0..rows)
+			.map(|index| (index % self.context_length) as u32)
+			.collect::<Vec<_>>();
+		let position_ids =
+			Matrix::from_slice_handle(tokens.engine_handle(), vec![rows], &position_values)?;
+		let token_values = self
+			.token_embedding
+			.forward(tokens)?
+			.reshape([rows, self.model_width])?;
+		let position_values = self.position_embedding.forward(&position_ids)?;
+		let mut value = matrix::add(&token_values, &position_values)?;
+		for block in &self.blocks {
+			value = block.forward(&value)?;
+		}
+		self.head.forward(&self.final_norm.forward(&value)?)
+	}
+
+	pub const fn vocab_size(&self) -> usize {
+		self.vocab_size
+	}
+
+	pub const fn context_length(&self) -> usize {
+		self.context_length
+	}
+
+	pub const fn model_width(&self) -> usize {
+		self.model_width
+	}
+
+	pub const fn hidden_width(&self) -> usize {
+		self.hidden_width
+	}
+
+	pub fn num_layers(&self) -> usize {
+		self.blocks.len()
+	}
+
+	pub const fn num_heads(&self) -> usize {
+		self.num_heads
+	}
+
+	/// Return whether every block uses routed experts.
+	pub fn is_moe(&self) -> bool {
+		self.blocks.iter().all(|block| block.is_moe())
+	}
+
+	/// Return one {{name}} block by layer index.
+	pub fn block(&self, index: usize) -> Option<&{{block_type}}> {
+		self.blocks.get(index).map(Rc::as_ref)
+	}
+}
+
+impl Module for {{name}} {
+	fn forward(&self, input: &Matrix) -> Result<Matrix> {
+		{{name}}::forward(self, input)
+	}
+
+	fn registry(&self) -> &ModuleRegistry {
+		&self.registry
+	}
+}

@@ -1,0 +1,50 @@
+// @operation abs
+	autograd::record_abs(input, &output)?;
+
+// @operation add
+	autograd::record_add(left, right, &output)?;
+
+// @operation add_scalar
+	autograd::record_scale(input, &output, 1.0)?;
+
+// @operation clamp_max
+	autograd::record_clamp_max(input, &output, scalar)?;
+
+// @operation clamp_min
+	autograd::record_clamp_min(input, &output, scalar)?;
+
+// @operation copy
+	autograd::record_copy(input, &output)?;
+
+// @operation div
+	autograd::record_div(left, right, &output)?;
+
+// @operation div_scalar
+	autograd::record_scale(input, &output, 1.0 / scalar)?;
+
+// @operation exp
+	autograd::record_exp(input, &output)?;
+
+// @operation log
+	autograd::record_log(input, &output)?;
+
+// @operation mul
+	autograd::record_mul(left, right, &output)?;
+
+// @operation neg
+	autograd::record_scale(input, &output, -1.0)?;
+
+// @operation reciprocal
+	autograd::record_reciprocal(input, &output)?;
+
+// @operation scale
+	autograd::record_scale(input, &output, scalar)?;
+
+// @operation sqrt
+	autograd::record_sqrt(input, &output)?;
+
+// @operation sub
+	autograd::record_sub(left, right, &output)?;
+
+// @operation sub_scalar
+	autograd::record_scale(input, &output, 1.0)?;

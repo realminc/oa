@@ -1,0 +1,89 @@
+{
+  "schema": "oars.benchmark_suite.v1",
+  "workloads": [
+    {
+      "name": "core.matmul_nt.square_512",
+      "command_id": "oars.core.matmul_nt.f32.m512.n512.k512.v1",
+      "command": ["{binary_root}/sdk/benchmarks/core/core_mat_mul_bench", "--name", "square-512", "--m", "512", "--n", "512", "--k", "512", "--device", "{device_index}", "--warmup", "5", "--samples", "20"],
+      "contract": {"dtype": "f32", "layout": "left_mk_right_nk", "m": "512", "n": "512", "k": "512", "route": "matrix_mat_mul_nt_tiled_f32", "fallback": "none", "boundary": "captured_plan_gpu_timestamp"},
+      "metric_regex": "OARS_BENCH[^\\n]*gpu_median_ms=(?P<value>[0-9.]+)",
+      "metric_name": "gpu_median",
+      "metric_unit": "ms",
+      "warmup": 2,
+      "runs": 7,
+      "cooldown": 2.0,
+      "max_spread_percent": 25.0,
+      "require_regex": ["correctness=pass", "unexpected_fallbacks=0", "route=matrix_mat_mul_nt_tiled_f32"]
+    },
+    {
+      "name": "core.matmul_nt.square_1024",
+      "command_id": "oars.core.matmul_nt.f32.m1024.n1024.k1024.v1",
+      "command": ["{binary_root}/sdk/benchmarks/core/core_mat_mul_bench", "--name", "square-1024", "--m", "1024", "--n", "1024", "--k", "1024", "--device", "{device_index}", "--warmup", "5", "--samples", "20"],
+      "contract": {"dtype": "f32", "layout": "left_mk_right_nk", "m": "1024", "n": "1024", "k": "1024", "route": "matrix_mat_mul_nt_tiled_f32", "fallback": "none", "boundary": "captured_plan_gpu_timestamp"},
+      "metric_regex": "OARS_BENCH[^\\n]*gpu_median_ms=(?P<value>[0-9.]+)",
+      "metric_name": "gpu_median",
+      "metric_unit": "ms",
+      "warmup": 2,
+      "runs": 7,
+      "cooldown": 2.0,
+      "max_spread_percent": 25.0,
+      "require_regex": ["correctness=pass", "unexpected_fallbacks=0", "route=matrix_mat_mul_nt_tiled_f32"]
+    },
+    {
+      "name": "core.matmul_nt.square_2048",
+      "command_id": "oars.core.matmul_nt.f32.m2048.n2048.k2048.v1",
+      "command": ["{binary_root}/sdk/benchmarks/core/core_mat_mul_bench", "--name", "square-2048", "--m", "2048", "--n", "2048", "--k", "2048", "--device", "{device_index}", "--warmup", "5", "--samples", "20"],
+      "contract": {"dtype": "f32", "layout": "left_mk_right_nk", "m": "2048", "n": "2048", "k": "2048", "route": "matrix_mat_mul_nt_tiled_f32", "fallback": "none", "boundary": "captured_plan_gpu_timestamp"},
+      "metric_regex": "OARS_BENCH[^\\n]*gpu_median_ms=(?P<value>[0-9.]+)",
+      "metric_name": "gpu_median",
+      "metric_unit": "ms",
+      "warmup": 2,
+      "runs": 7,
+      "cooldown": 2.0,
+      "max_spread_percent": 25.0,
+      "require_regex": ["correctness=pass", "unexpected_fallbacks=0", "route=matrix_mat_mul_nt_tiled_f32"]
+    },
+    {
+      "name": "core.matmul_nt.tall_skinny",
+      "command_id": "oars.core.matmul_nt.f32.m4096.n128.k1024.v1",
+      "command": ["{binary_root}/sdk/benchmarks/core/core_mat_mul_bench", "--name", "tall-skinny", "--m", "4096", "--n", "128", "--k", "1024", "--device", "{device_index}", "--warmup", "5", "--samples", "20"],
+      "contract": {"dtype": "f32", "layout": "left_mk_right_nk", "m": "4096", "n": "128", "k": "1024", "route": "matrix_mat_mul_nt_tiled_f32", "fallback": "none", "boundary": "captured_plan_gpu_timestamp"},
+      "metric_regex": "OARS_BENCH[^\\n]*gpu_median_ms=(?P<value>[0-9.]+)",
+      "metric_name": "gpu_median",
+      "metric_unit": "ms",
+      "warmup": 2,
+      "runs": 7,
+      "cooldown": 2.0,
+      "max_spread_percent": 25.0,
+      "require_regex": ["correctness=pass", "unexpected_fallbacks=0", "route=matrix_mat_mul_nt_tiled_f32"]
+    },
+    {
+      "name": "core.matmul_nt.short_wide",
+      "command_id": "oars.core.matmul_nt.f32.m128.n4096.k1024.v1",
+      "command": ["{binary_root}/sdk/benchmarks/core/core_mat_mul_bench", "--name", "short-wide", "--m", "128", "--n", "4096", "--k", "1024", "--device", "{device_index}", "--warmup", "5", "--samples", "20"],
+      "contract": {"dtype": "f32", "layout": "left_mk_right_nk", "m": "128", "n": "4096", "k": "1024", "route": "matrix_mat_mul_nt_tiled_f32", "fallback": "none", "boundary": "captured_plan_gpu_timestamp"},
+      "metric_regex": "OARS_BENCH[^\\n]*gpu_median_ms=(?P<value>[0-9.]+)",
+      "metric_name": "gpu_median",
+      "metric_unit": "ms",
+      "warmup": 2,
+      "runs": 7,
+      "cooldown": 2.0,
+      "max_spread_percent": 25.0,
+      "require_regex": ["correctness=pass", "unexpected_fallbacks=0", "route=matrix_mat_mul_nt_tiled_f32"]
+    },
+    {
+      "name": "core.matmul_nt.gemv_decode",
+      "command_id": "oars.core.matmul_nt.f32.m1.n4096.k4096.v1",
+      "command": ["{binary_root}/sdk/benchmarks/core/core_mat_mul_bench", "--name", "gemv-decode", "--m", "1", "--n", "4096", "--k", "4096", "--device", "{device_index}", "--warmup", "5", "--samples", "20"],
+      "contract": {"dtype": "f32", "layout": "left_mk_right_nk", "m": "1", "n": "4096", "k": "4096", "route": "matrix_mat_mul_nt_tiled_f32", "fallback": "none", "boundary": "captured_plan_gpu_timestamp"},
+      "metric_regex": "OARS_BENCH[^\\n]*gpu_median_ms=(?P<value>[0-9.]+)",
+      "metric_name": "gpu_median",
+      "metric_unit": "ms",
+      "warmup": 2,
+      "runs": 7,
+      "cooldown": 2.0,
+      "max_spread_percent": 25.0,
+      "require_regex": ["correctness=pass", "unexpected_fallbacks=0", "route=matrix_mat_mul_nt_tiled_f32"]
+    }
+  ]
+}

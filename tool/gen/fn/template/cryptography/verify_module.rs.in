@@ -1,0 +1,146 @@
+//! Schema-generated public-data ML-DSA verification.
+// No live OA C++ GPU verifier donor; preserve the existing FIPS-qualified formulas.
+
+use super::MlDsaParameters;
+use crate::{
+	DType, Error, Matrix, OpAttribute, Result,
+	runtime::{BufferBinding, ComputeDispatch, KernelId, PushConstant, SemanticDispatch},
+};
+
+
+/// Verify ML-DSA-65 signatures on the originating Vulkan device, empty context.
+///
+/// Each workgroup processes one `(message, signature, public_key)` triple.
+/// Results are device-resident U32 `[batch_size]`: `1` = valid, `0` = invalid
+/// or malformed.  Every invalid path in the shader writes `0`; no short-circuit
+/// path converts an invalid signature to valid.
+///
+/// # Arguments
+///
+/// * `messages`    — U8 rank-1 `[total_message_bytes]` flat byte buffer.
+/// * `msg_offsets` — U32 rank-1 `[batch_size]` byte start of each message.
+/// * `msg_lengths` — U32 rank-1 `[batch_size]` byte length of each message.
+/// * `signatures`  — U8 rank-1 `[batch_size × 3309]` packed signatures in FIPS
+///   204 §6.4 wire format.
+/// * `public_keys` — U8 rank-1 `[batch_size × 1952]` packed public keys in FIPS
+///   204 §6.2 wire format.
+///
+/// # Errors
+///
+/// Returns an error for mismatched shapes, dtypes, engines, address limits, or
+/// an unavailable Vulkan pipeline. Out-of-range message offsets and lengths
+/// produce `0` for that row without host readback of the offset/length vectors.
+///
+/// # Status
+///
+/// Experimental. Named software Vulkan execution is a correctness checkpoint;
+/// physical-device, performance and side-channel qualification remain separate.
+pub fn verify_batch(
+	messages: &Matrix,
+	msg_offsets: &Matrix,
+	msg_lengths: &Matrix,
+	signatures: &Matrix,
+	public_keys: &Matrix,
+) -> Result<Matrix> {
+	verify_batch_with_parameters(
+		MlDsaParameters::MlDsa65,
+		messages,
+		msg_offsets,
+		msg_lengths,
+		signatures,
+		public_keys,
+	)
+}
+
+/// Verify a batch using the selected FIPS 204 parameter set, empty context.
+///
+/// Inputs and results follow [`verify_batch`]. Packed key and signature strides
+/// are [`MlDsaParameters::public_key_size`] and
+/// [`MlDsaParameters::signature_size`]; selecting a different parameter set
+/// never truncates, pads, or converts the encodings.
+///
+/// # Errors
+///
+/// Rejects mismatched shapes, dtypes, engines, address limits, or unavailable
+/// Vulkan pipelines. Malformed encodings and out-of-range message rows return
+/// zero on the device. This Experimental public-data operation does not admit
+/// private-key execution or claim physical-device qualification.
+pub fn verify_batch_with_parameters(
+	parameters: MlDsaParameters,
+	messages: &Matrix,
+	msg_offsets: &Matrix,
+	msg_lengths: &Matrix,
+	signatures: &Matrix,
+	public_keys: &Matrix,
+) -> Result<Matrix> {
+	verify_batch_with_context(
+		parameters,
+		messages,
+		msg_offsets,
+		msg_lengths,
+		signatures,
+		public_keys,
+		0..0,
+	)
+}
+
+
+{{items}}
+
+fn validate_u32_vector(
+	matrix: &Matrix,
+	label: &str,
+	expected_len: Option<usize>,
+	operation: &str,
+) -> Result<usize> {
+	if matrix.dtype() != DType::U32 {
+		return Err(Error::invalid_argument(format!(
+			"{operation} {label} must be a U32 matrix; found {}",
+			matrix.dtype().token()
+		)));
+	}
+	let [len] = matrix.shape() else {
+		return Err(Error::invalid_argument(format!(
+			"{operation} {label} must be rank-1; found {:?}",
+			matrix.shape()
+		)));
+	};
+	if let Some(expected) = expected_len
+		&& *len != expected
+	{
+		return Err(Error::invalid_argument(format!(
+			"{operation} {label} length {len} does not match batch_size {expected}"
+		)));
+	}
+	Ok(*len)
+}
+
+fn validate_packed_u8(
+	matrix: &Matrix,
+	label: &str,
+	batch_size: usize,
+	stride: usize,
+	operation: &str,
+) -> Result<()> {
+	if matrix.dtype() != DType::U8 {
+		return Err(Error::invalid_argument(format!(
+			"{operation} {label} must be a U8 matrix; found {}",
+			matrix.dtype().token()
+		)));
+	}
+	let expected = batch_size
+		.checked_mul(stride)
+		.ok_or_else(|| Error::invalid_argument(format!("{operation} {label} size overflows")))?;
+	let [actual] = matrix.shape() else {
+		return Err(Error::invalid_argument(format!(
+			"{operation} {label} must be rank-1 [batch * stride]; found {:?}",
+			matrix.shape()
+		)));
+	};
+	if *actual != expected {
+		return Err(Error::invalid_argument(format!(
+			"{operation} {label} must contain {expected} bytes for batch {batch_size}; found {actual}"
+		)));
+	}
+	Ok(())
+}

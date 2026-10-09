@@ -1,0 +1,134 @@
+// Complete admitted Rust operation bodies; donor evidence remains in ml_training.json.
+
+// @operation upsample_2d
+/// Upsample an FP32 NCHW Matrix by a positive integer scale factor.
+///
+/// # Errors
+///
+/// Returns an error unless the input is nonempty rank-four F32, the scale
+/// factor is positive, all output geometry is representable, or runtime
+/// recording fails.
+pub fn upsample_2d(input: &Matrix, scale_factor: usize, mode: UpsampleMode) -> Result<Matrix> {
+	let operation = crate::core::operation::ml::UPSAMPLE_2D.name();
+	validate_f32_same_engine(operation, &[input])?;
+	let geometry = Upsample2dGeometry::resolve(input, scale_factor, operation)?;
+	let output_shape = geometry.output_shape();
+	let output_count = output_shape
+		.iter()
+		.try_fold(1_usize, |product, extent| product.checked_mul(*extent))
+		.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))?;
+	let output = Matrix::allocate(
+		input.engine_handle(),
+		output_shape,
+		output_count,
+		DType::F32,
+	)?;
+	let kernel = match mode {
+		UpsampleMode::Nearest => KernelId::MlUpsample2dNearestF32,
+		UpsampleMode::Bilinear => KernelId::MlUpsample2dBilinearF32,
+	};
+	let buffers = [
+		BufferBinding::read(input.storage()),
+		BufferBinding::write(output.storage()),
+	];
+	let push_constants = geometry.push_constants();
+	let attributes = make_attributes(scale_factor, mode)?;
+	{
+		let inputs: &[&Matrix] = &[input];
+		let outputs: &[&Matrix] = &[&output];
+		let attributes: &[OpAttribute] = &attributes;
+		let dispatch = ComputeDispatch {
+			kernel,
+			buffers: &buffers,
+			push_constants: &push_constants,
+			workgroups: geometry.forward_workgroups(),
+		};
+		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
+			Error::internal(format!(
+				"lowering-only kernel {} cannot own one semantic ML operation",
+				dispatch.kernel.report_name()
+			))
+		})?;
+		let engine = inputs
+			.first()
+			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
+			.engine_handle();
+		engine.record_semantic(
+			dispatch,
+			SemanticDispatch {
+				contract,
+				inputs,
+				outputs,
+				attributes,
+			},
+		)
+	}?;
+	autograd::record_upsample_2d(input, scale_factor, mode, &output)?;
+	Ok(output)
+}
+
+// @operation upsample_2d_backward
+pub(in crate::ml) fn upsample_2d_backward(
+	input: &Matrix,
+	output_gradient: &Matrix,
+	scale_factor: usize,
+	mode: UpsampleMode,
+) -> Result<Matrix> {
+	let operation = crate::core::operation::ml::UPSAMPLE_2D_BACKWARD.name();
+	validate_f32_same_engine(operation, &[input, output_gradient])?;
+	let geometry = Upsample2dGeometry::resolve(input, scale_factor, operation)?;
+	if output_gradient.shape() != geometry.output_shape() {
+		return Err(Error::invalid_argument(format!(
+			"{operation} output gradient shape {:?} does not match {:?}",
+			output_gradient.shape(),
+			geometry.output_shape()
+		)));
+	}
+	let input_gradient = Matrix::allocate(
+		input.engine_handle(),
+		input.shape().to_vec(),
+		input.num_elements(),
+		DType::F32,
+	)?;
+	let kernel = match mode {
+		UpsampleMode::Nearest => KernelId::MlUpsample2dNearestBackwardF32,
+		UpsampleMode::Bilinear => KernelId::MlUpsample2dBilinearBackwardF32,
+	};
+	let buffers = [
+		BufferBinding::read(output_gradient.storage()),
+		BufferBinding::write(input_gradient.storage()),
+	];
+	let push_constants = geometry.push_constants();
+	let attributes = make_attributes(scale_factor, mode)?;
+	{
+		let inputs: &[&Matrix] = &[input, output_gradient];
+		let outputs: &[&Matrix] = &[&input_gradient];
+		let attributes: &[OpAttribute] = &attributes;
+		let dispatch = ComputeDispatch {
+			kernel,
+			buffers: &buffers,
+			push_constants: &push_constants,
+			workgroups: geometry.backward_workgroups(),
+		};
+		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
+			Error::internal(format!(
+				"lowering-only kernel {} cannot own one semantic ML operation",
+				dispatch.kernel.report_name()
+			))
+		})?;
+		let engine = inputs
+			.first()
+			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
+			.engine_handle();
+		engine.record_semantic(
+			dispatch,
+			SemanticDispatch {
+				contract,
+				inputs,
+				outputs,
+				attributes,
+			},
+		)
+	}?;
+	Ok(input_gradient)
+}

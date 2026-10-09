@@ -1,0 +1,28 @@
+// Complete admitted OA Matrix reverse recipes; see README.md.
+
+// @operation softmax
+// @fields input,output,output_id,dim
+let Some(output_gradient) = gradients.take_output(*output_id) else {
+		return Ok(false);
+	};
+	let input_gradient = matrix::softmax_backward(output, &output_gradient, *dim)?;
+	gradients.accumulate(input.value_id(), input_gradient)?;
+	Ok(true)
+
+// @operation log_softmax
+// @fields input,output,output_id,dim
+let Some(output_gradient) = gradients.take_output(*output_id) else {
+		return Ok(false);
+	};
+	let input_gradient = matrix::log_softmax_backward(output, &output_gradient, *dim)?;
+	gradients.accumulate(input.value_id(), input_gradient)?;
+	Ok(true)
+
+// @operation sum
+// @fields input,output_id,dim
+let Some(output_gradient) = gradients.take_output(*output_id) else {
+		return Ok(false);
+	};
+	let input_gradient = matrix::sum_backward(input, &output_gradient, *dim)?;
+	gradients.accumulate(input.value_id(), input_gradient)?;
+	Ok(true)

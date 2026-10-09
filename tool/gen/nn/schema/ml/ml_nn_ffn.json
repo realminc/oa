@@ -1,0 +1,30 @@
+{
+	"version": 1,
+	"family": "ffn",
+	"imports": [
+		"use std::rc::Rc;",
+		"use crate::{Engine, Matrix, Result, matrix as core_matrix};",
+		"use super::super::{Module, ModuleRegistry, matrix::swiglu};",
+		"use super::{Linear, RmsNorm};"
+	],
+	"helper": "",
+	"layers": [
+		{
+			"name": "Ffn",
+			"doc": "Pre-normalized SwiGLU feed-forward network with a residual connection.",
+			"template": "ffn",
+			"values": {
+				"norm_constructor": "RmsNorm::new",
+				"projection_constructor": "Linear::with_seed",
+				"gate_operation": "swiglu",
+				"residual_operation": "core_matrix::add",
+				"norm_name": "norm",
+				"gate_name": "gate",
+				"up_name": "up",
+				"down_name": "down"
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/ffn/ffn.cpp",
+			"adaptation": "Complete generation of existing Rust donor composition; preserved Rc child ownership, seeded Xavier projections and seven parameter paths; Matrix and child modules retain adjoints"
+		}
+	]
+}

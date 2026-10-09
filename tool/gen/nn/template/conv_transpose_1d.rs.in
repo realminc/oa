@@ -1,0 +1,155 @@
+/// {{doc}}
+pub struct {{name}} {
+	input_channels: usize,
+	output_channels: usize,
+	kernel_size: usize,
+	stride: usize,
+	padding: usize,
+	weight: Parameter,
+	registry: ModuleRegistry,
+}
+
+impl {{name}} {
+	/// Construct a deterministically initialized {{name}} layer.
+	///
+	/// Weight uses the donor `[input_channels, output_channels, kernel]` layout,
+	/// a fan-in-scaled symmetric uniform initializer, and no bias parameter.
+	///
+	/// # Errors
+	///
+	/// Returns an error when channels, kernel size, or stride are zero, shape
+	/// arithmetic overflows, or parameter allocation/upload fails.
+	#[allow(
+		clippy::too_many_arguments,
+		reason = "the donor {{name}} contract has five geometry fields plus a seed"
+	)]
+	pub fn with_seed(
+		engine: &Engine,
+		input_channels: usize,
+		output_channels: usize,
+		kernel_size: usize,
+		stride: usize,
+		padding: usize,
+		seed: u64,
+	) -> Result<Self> {
+		if input_channels == 0 || output_channels == 0 || kernel_size == 0 || stride == 0 {
+			return Err(Error::invalid_argument(
+				"{{name}} requires nonzero channels, kernel size, and stride",
+			));
+		}
+		let fan_in = output_channels
+			.checked_mul(kernel_size)
+			.ok_or_else(|| Error::invalid_argument("{{name}} fan-in overflows usize"))?;
+		let weight_count = input_channels
+			.checked_mul(fan_in)
+			.ok_or_else(|| Error::invalid_argument("{{name}} weight size overflows usize"))?;
+		let limit = 1.0_f32 / (fan_in as f32).sqrt();
+		let values = random::symmetric_uniform(weight_count, limit, seed);
+		let weight = Matrix::from_f32(
+			engine,
+			[input_channels, output_channels, kernel_size],
+			&values,
+		)?;
+		Self::from_matrix(weight, stride, padding)
+	}
+
+	/// Construct {{name}} from an exact IOK weight matrix.
+	///
+	/// # Errors
+	///
+	/// Returns an error unless weight is nonempty F32 `[I, O, K]` and stride is
+	/// nonzero.
+	pub fn from_matrix(weight: Matrix, stride: usize, padding: usize) -> Result<Self> {
+		let [input_channels, output_channels, kernel_size] = weight.shape() else {
+			return Err(Error::invalid_argument(
+				"{{name}} weight must have IOK rank three",
+			));
+		};
+		if *input_channels == 0
+			|| *output_channels == 0
+			|| *kernel_size == 0
+			|| stride == 0
+			|| weight.dtype() != DType::F32
+		{
+			return Err(Error::invalid_argument(
+				"{{name}} requires nonempty F32 IOK weight and nonzero stride",
+			));
+		}
+		let input_channels = *input_channels;
+		let output_channels = *output_channels;
+		let kernel_size = *kernel_size;
+		let weight = Parameter::new("{{weight_name}}", weight)?;
+		let mut registry = ModuleRegistry::new();
+		registry.register_parameter("{{weight_name}}", weight.clone())?;
+		Ok(Self {
+			input_channels,
+			output_channels,
+			kernel_size,
+			stride,
+			padding,
+			weight,
+			registry,
+		})
+	}
+
+	/// Apply {{name}} without submitting or waiting.
+	///
+	/// # Errors
+	///
+	/// Returns an error from the underlying Matrix operation.
+	pub fn forward(&self, input: &Matrix) -> Result<Matrix> {
+		let (weight, weight_version, _) = self.weight.snapshot();
+		{{operation}}(
+			input,
+			(self.weight.clone(), weight, weight_version),
+			self.stride,
+			self.padding,
+			1,
+		)
+	}
+
+	/// Return the input channel count.
+	pub const fn input_channels(&self) -> usize {
+		self.input_channels
+	}
+
+	/// Return the output channel count.
+	pub const fn output_channels(&self) -> usize {
+		self.output_channels
+	}
+
+	/// Return the kernel extent.
+	pub const fn kernel_size(&self) -> usize {
+		self.kernel_size
+	}
+
+	/// Return the spatial stride.
+	pub const fn stride(&self) -> usize {
+		self.stride
+	}
+
+	/// Return the symmetric zero-padding extent.
+	pub const fn padding(&self) -> usize {
+		self.padding
+	}
+
+	/// Return the stable IOK weight parameter.
+	pub fn weight(&self) -> Parameter {
+		self.weight.clone()
+	}
+
+	/// Return the only trainable parameter.
+	pub fn parameters(&self) -> [Parameter; 1] {
+		[self.weight.clone()]
+	}
+}
+
+impl Module for {{name}} {
+	fn forward(&self, input: &Matrix) -> Result<Matrix> {
+		{{name}}::forward(self, input)
+	}
+
+	fn registry(&self) -> &ModuleRegistry {
+		&self.registry
+	}
+}

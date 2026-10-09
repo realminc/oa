@@ -1,0 +1,29 @@
+{
+	"version": 1,
+	"family": "swiglu",
+	"imports": [
+		"use crate::{Engine, Error, Matrix, Result};",
+		"use super::super::{Module, ModuleRegistry, Parameter, autograd, matrix, random};"
+	],
+	"helper": "",
+	"layers": [
+		{
+			"name": "Swiglu",
+			"doc": "Donor-compatible SwiGLU MLP with optional projection biases.",
+			"template": "swiglu",
+			"values": {
+				"operation": "matrix::swiglu",
+				"projection_operation": "matrix::linear",
+				"autograd_operation": "autograd::record_linear",
+				"gate_weight_name": "gate_weight",
+				"up_weight_name": "up_weight",
+				"down_weight_name": "down_weight",
+				"gate_bias_name": "gate_bias",
+				"up_bias_name": "up_bias",
+				"down_bias_name": "down_bias"
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/swiglu/swiglu.cpp",
+			"adaptation": "Preserve existing Rust initializer, shape/ownership checks and versioned parameter adjoints; mechanical generated ownership"
+		}
+	]
+}

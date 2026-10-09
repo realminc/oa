@@ -1,0 +1,62 @@
+/// {{doc}}
+pub struct {{name}} {
+	inner: Embedding,
+}
+
+impl {{name}} {
+	/// Construct a deterministically initialized byte embedding.
+	///
+	/// # Errors
+	///
+	/// Returns an error when `embedding_dim` is zero or initialization fails.
+	pub fn with_seed(engine: &Engine, embedding_dim: usize, seed: u64) -> Result<Self> {
+		Ok(Self {
+			inner: {{constructor}}(engine, {{vocabulary}}, embedding_dim, seed)?,
+		})
+	}
+
+	/// Construct a byte embedding from an exact FP32 `[256, D]` table.
+	///
+	/// # Errors
+	///
+	/// Returns an error unless the table has exactly 256 nonempty rows.
+	pub fn from_matrix(weight: Matrix) -> Result<Self> {
+		if weight.shape().first() != Some(&{{vocabulary}}) {
+			return Err(Error::invalid_argument(
+				"byte embedding weight must have shape [256, D]",
+			));
+		}
+		Ok(Self {
+			inner: {{restore_constructor}}(weight)?,
+		})
+	}
+
+	/// Gather one row per packed U8 or U32 byte ID.
+	///
+	/// # Errors
+	///
+	/// Returns an error for an invalid input or runtime recording failure.
+	pub fn forward(&self, byte_ids: &Matrix) -> Result<Matrix> {
+		self.inner.forward(byte_ids)
+	}
+
+	/// Embedding width.
+	pub const fn embedding_dim(&self) -> usize {
+		self.inner.embedding_dim()
+	}
+
+	/// Stable trainable table handle.
+	pub fn weight(&self) -> Parameter {
+		self.inner.weight()
+	}
+}
+
+impl Module for {{name}} {
+	fn forward(&self, input: &Matrix) -> Result<Matrix> {
+		{{name}}::forward(self, input)
+	}
+
+	fn registry(&self) -> &ModuleRegistry {
+		self.inner.registry()
+	}
+}

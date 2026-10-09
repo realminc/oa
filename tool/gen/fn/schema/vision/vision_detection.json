@@ -1,0 +1,1740 @@
+{
+  "schema_version": 1,
+  "family": "vision_detection",
+  "domain": "vision",
+  "dtype": "f32",
+  "contracts": [
+    {
+      "name": "box_iou",
+      "input_kinds": [
+        "matrix",
+        "matrix"
+      ],
+      "output_kinds": [
+        "matrix"
+      ],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [],
+      "rust": {
+        "category": "detection",
+        "parameters": [
+          [
+            "boxes_a",
+            "&Matrix"
+          ],
+          [
+            "boxes_b",
+            "&Matrix"
+          ]
+        ],
+        "returns": "Matrix",
+        "doc": [
+          "Compute every pairwise intersection-over-union for center-coordinate boxes.",
+          "",
+          "`boxes_a` and `boxes_b` must be nonempty FP32 matrices shaped `[N, 4]` and",
+          "`[M, 4]`. Each row is `[center_x, center_y, width, height]`; negative widths",
+          "and heights are clamped to zero, matching donor OA. A pair with no positive",
+          "finite union produces zero. The returned matrix has shape `[N, M]`.",
+          "",
+          "The call records asynchronously and returns its output immediately. Reading",
+          "the result is an explicit submission and observation point.",
+          "",
+          "# Errors",
+          "",
+          "Returns an error when an input has the wrong rank, extent, dtype, or engine,",
+          "a shader-ABI size overflows, allocation fails, or runtime recording fails."
+        ],
+        "annotations": [],
+        "attribute_sources": {},
+        "bindings": [
+          {
+            "name": "buffers",
+            "values": {
+              "boxes_a_index": [
+                "read",
+                "boxes_a"
+              ],
+              "boxes_b_index": [
+                "read",
+                "boxes_b"
+              ],
+              "output_index": [
+                "write",
+                "output"
+              ]
+            }
+          }
+        ],
+        "push_constants": [
+          {
+            "name": "push_constants",
+            "values": {
+              "rows_a": [
+                "U32",
+                "rows_a"
+              ],
+              "rows_b": [
+                "U32",
+                "rows_b"
+              ]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": [
+              "VisionBoxIouF32"
+            ],
+            "kernel": "KernelId::VisionBoxIouF32",
+            "workgroups": "KernelId::VisionBoxIouF32.linear_workgroups(pair_count)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "nms",
+      "input_kinds": [
+        "matrix",
+        "matrix",
+        "matrix"
+      ],
+      "output_kinds": [
+        "matrix",
+        "matrix"
+      ],
+      "shape_rule": "explicit",
+      "dtype_rule": "explicit",
+      "attributes": [
+        [
+          "iou_threshold",
+          "float"
+        ],
+        [
+          "score_threshold",
+          "float"
+        ],
+        [
+          "max_detections",
+          "signed_integer"
+        ],
+        [
+          "class_agnostic",
+          "boolean"
+        ]
+      ],
+      "rust": {
+        "category": "detection",
+        "parameters": [
+          [
+            "boxes",
+            "&Matrix"
+          ],
+          [
+            "scores",
+            "&Matrix"
+          ],
+          [
+            "classes",
+            "&Matrix"
+          ],
+          [
+            "config",
+            "NmsConfig"
+          ]
+        ],
+        "returns": "NmsResult",
+        "doc": [
+          "Select score-ranked boxes with deterministic class-aware suppression.",
+          "",
+          "Equal scores select the smaller source index. NaN or infinite scores are",
+          "ignored. All outputs remain device-resident and the operation never sorts or",
+          "compacts on the host.",
+          "",
+          "# Errors",
+          "",
+          "Returns an error unless boxes are nonempty FP32 `[N, 4]`, scores are FP32",
+          "`[N]`, classes are I32 `[N]`, all inputs share an engine, thresholds are",
+          "finite, `iou_threshold` is in `[0, 1]`, and `max_detections` is positive."
+        ],
+        "annotations": [],
+        "attribute_sources": {
+          "iou_threshold": {
+            "encoding": "Float",
+            "value": "f64::from(config.iou_threshold)"
+          },
+          "score_threshold": {
+            "encoding": "Float",
+            "value": "f64::from(config.score_threshold)"
+          },
+          "max_detections": {
+            "encoding": "SignedInteger",
+            "value": "i64::from(config.max_detections)"
+          },
+          "class_agnostic": {
+            "encoding": "Boolean",
+            "value": "config.class_agnostic"
+          }
+        },
+        "bindings": [
+          {
+            "name": "buffers",
+            "values": {
+              "boxes_index": [
+                "read",
+                "boxes"
+              ],
+              "scores_index": [
+                "read",
+                "scores"
+              ],
+              "classes_index": [
+                "read",
+                "classes"
+              ],
+              "indices_index": [
+                "write",
+                "indices"
+              ],
+              "count_index": [
+                "write",
+                "selected_count"
+              ]
+            }
+          }
+        ],
+        "push_constants": [
+          {
+            "name": "push_constants",
+            "values": {
+              "box_count": [
+                "U32",
+                "count"
+              ],
+              "maximum": [
+                "U32",
+                "maximum"
+              ],
+              "class_agnostic": [
+                "U32",
+                "u32::from(config.class_agnostic)"
+              ],
+              "iou_threshold": [
+                "F32",
+                "config.iou_threshold"
+              ],
+              "score_threshold": [
+                "F32",
+                "config.score_threshold"
+              ]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": [
+              "VisionNmsF32"
+            ],
+            "kernel": "KernelId::VisionNmsF32",
+            "workgroups": "[1,1,1]"
+          }
+        ]
+      }
+    },
+    {
+      "name": "confusion_matrix",
+      "input_kinds": [
+        "matrix",
+        "matrix"
+      ],
+      "output_kinds": [
+        "matrix"
+      ],
+      "shape_rule": "explicit",
+      "dtype_rule": "explicit",
+      "attributes": [
+        [
+          "class_count",
+          "signed_integer"
+        ]
+      ],
+      "rust": {
+        "category": "detection",
+        "parameters": [
+          [
+            "predicted",
+            "&Matrix"
+          ],
+          [
+            "target",
+            "&Matrix"
+          ],
+          [
+            "class_count",
+            "i32"
+          ]
+        ],
+        "returns": "Matrix",
+        "doc": [
+          "Accumulate an integer classification confusion matrix.",
+          "",
+          "Rows are targets and columns are predictions. Either label being outside",
+          "`[0, class_count)` ignores that element.",
+          "",
+          "# Errors",
+          "",
+          "Returns an error unless inputs are equal nonempty I32 vectors on one engine,",
+          "`class_count` is positive, and all sizes fit the shader ABI."
+        ],
+        "annotations": [],
+        "attribute_sources": {
+          "class_count": {
+            "encoding": "SignedInteger",
+            "value": "i64::from(classes)"
+          }
+        },
+        "bindings": [
+          {
+            "name": "clear_buffers",
+            "values": {
+              "output_index": [
+                "write",
+                "output"
+              ]
+            }
+          },
+          {
+            "name": "count_buffers",
+            "values": {
+              "predicted_index": [
+                "read",
+                "predicted"
+              ],
+              "target_index": [
+                "read",
+                "target"
+              ],
+              "output_index": [
+                "read_write",
+                "output"
+              ]
+            }
+          }
+        ],
+        "push_constants": [
+          {
+            "name": "clear_push",
+            "values": {
+              "element_count": [
+                "U32",
+                "clear_count"
+              ]
+            }
+          },
+          {
+            "name": "count_push",
+            "values": {
+              "element_count": [
+                "U32",
+                "element_count"
+              ],
+              "class_count": [
+                "U32",
+                "classes"
+              ]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": [
+              "VisionConfusionMatrixClearU32"
+            ],
+            "kernel": "KernelId::VisionConfusionMatrixClearU32",
+            "workgroups": "KernelId::VisionConfusionMatrixClearU32.linear_workgroups(clear_count)"
+          },
+          {
+            "kernels": [
+              "VisionConfusionMatrixI32"
+            ],
+            "kernel": "KernelId::VisionConfusionMatrixI32",
+            "workgroups": "KernelId::VisionConfusionMatrixI32.linear_workgroups(element_count)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "binary_mask_counts",
+      "input_kinds": [
+        "matrix",
+        "matrix"
+      ],
+      "output_kinds": [
+        "matrix"
+      ],
+      "shape_rule": "explicit",
+      "dtype_rule": "explicit",
+      "attributes": [],
+      "rust": {
+        "category": "detection",
+        "parameters": [
+          [
+            "predicted",
+            "&Matrix"
+          ],
+          [
+            "target",
+            "&Matrix"
+          ]
+        ],
+        "returns": "Matrix",
+        "doc": [
+          "Count `[true_positive, false_positive, false_negative, true_negative]` for",
+          "two equally-shaped U8 masks. Every nonzero byte is true.",
+          "",
+          "# Errors",
+          "",
+          "Returns an error unless inputs are nonempty, equal-shaped U8 matrices on one",
+          "engine and their element count fits the shader ABI."
+        ],
+        "annotations": [],
+        "attribute_sources": {},
+        "bindings": [
+          {
+            "name": "clear_buffers",
+            "values": {
+              "output_index": [
+                "write",
+                "output"
+              ]
+            }
+          },
+          {
+            "name": "count_buffers",
+            "values": {
+              "predicted_index": [
+                "read",
+                "predicted"
+              ],
+              "target_index": [
+                "read",
+                "target"
+              ],
+              "output_index": [
+                "read_write",
+                "output"
+              ]
+            }
+          }
+        ],
+        "push_constants": [
+          {
+            "name": "clear_push",
+            "values": {
+              "element_count": [
+                "U32",
+                "4"
+              ]
+            }
+          },
+          {
+            "name": "count_push",
+            "values": {
+              "element_count": [
+                "U32",
+                "element_count"
+              ]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": [
+              "VisionBinaryMaskCountsClearU32"
+            ],
+            "kernel": "KernelId::VisionBinaryMaskCountsClearU32",
+            "workgroups": "KernelId::VisionBinaryMaskCountsClearU32.linear_workgroups(4)"
+          },
+          {
+            "kernels": [
+              "VisionBinaryMaskCountsU8"
+            ],
+            "kernel": "KernelId::VisionBinaryMaskCountsU8",
+            "workgroups": "KernelId::VisionBinaryMaskCountsU8.linear_workgroups(element_count)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "evaluate",
+      "input_kinds": [
+        "matrix",
+        "matrix",
+        "matrix",
+        "matrix",
+        "matrix",
+        "matrix",
+        "matrix",
+        "matrix"
+      ],
+      "output_kinds": [
+        "matrix",
+        "matrix",
+        "matrix",
+        "matrix"
+      ],
+      "shape_rule": "explicit",
+      "dtype_rule": "explicit",
+      "attributes": [
+        [
+          "class_count",
+          "signed_integer"
+        ],
+        [
+          "score_threshold",
+          "float"
+        ]
+      ],
+      "rust": {
+        "category": "detection",
+        "parameters": [
+          [
+            "predicted_boxes",
+            "&Matrix"
+          ],
+          [
+            "predicted_scores",
+            "&Matrix"
+          ],
+          [
+            "predicted_classes",
+            "&Matrix"
+          ],
+          [
+            "predicted_image_ids",
+            "&Matrix"
+          ],
+          [
+            "target_boxes",
+            "&Matrix"
+          ],
+          [
+            "target_classes",
+            "&Matrix"
+          ],
+          [
+            "target_image_ids",
+            "&Matrix"
+          ],
+          [
+            "iou_thresholds",
+            "&Matrix"
+          ],
+          [
+            "class_count",
+            "i32"
+          ],
+          [
+            "score_threshold",
+            "f32"
+          ]
+        ],
+        "returns": "DetectionMetricsResult",
+        "doc": [
+          "Evaluate object-detection precision, recall, F1, AP, and mAP.",
+          "",
+          "Matching is class-aware, image-aware, greedy by descending score, and uses",
+          "101-point interpolated average precision. Classes without targets do not",
+          "contribute to mAP. Scratch and outputs remain GPU-resident.",
+          "",
+          "# Errors",
+          "",
+          "Returns an error when any shape, dtype, ownership, class-count,",
+          "score-threshold, or 32-bit scratch-size contract is invalid."
+        ],
+        "annotations": [
+          "allow(clippy::too_many_arguments)"
+        ],
+        "attribute_sources": {
+          "class_count": {
+            "encoding": "SignedInteger",
+            "value": "i64::from(class_count)"
+          },
+          "score_threshold": {
+            "encoding": "Float",
+            "value": "f64::from(score_threshold)"
+          }
+        },
+        "bindings": [
+          {
+            "name": "curves_buffers",
+            "values": {
+              "predicted_boxes_index": [
+                "read",
+                "predicted_boxes"
+              ],
+              "predicted_scores_index": [
+                "read",
+                "predicted_scores"
+              ],
+              "predicted_classes_index": [
+                "read",
+                "predicted_classes"
+              ],
+              "predicted_images_index": [
+                "read",
+                "predicted_image_ids"
+              ],
+              "target_boxes_index": [
+                "read",
+                "target_boxes"
+              ],
+              "target_classes_index": [
+                "read",
+                "target_classes"
+              ],
+              "target_images_index": [
+                "read",
+                "target_image_ids"
+              ],
+              "thresholds_index": [
+                "read",
+                "iou_thresholds"
+              ],
+              "state_index": [
+                "write",
+                "state"
+              ],
+              "curve_index": [
+                "write",
+                "curve"
+              ],
+              "counts_index": [
+                "write",
+                "counts"
+              ],
+              "metrics_index": [
+                "write",
+                "per_class"
+              ]
+            }
+          },
+          {
+            "name": "ap_buffers",
+            "values": {
+              "curve_index": [
+                "read",
+                "curve"
+              ],
+              "counts_index": [
+                "read",
+                "counts"
+              ],
+              "metrics_index": [
+                "read_write",
+                "per_class"
+              ]
+            }
+          },
+          {
+            "name": "mean_buffers",
+            "values": {
+              "counts_index": [
+                "read",
+                "counts"
+              ],
+              "metrics_index": [
+                "read",
+                "per_class"
+              ],
+              "map_index": [
+                "write",
+                "map_by_threshold"
+              ],
+              "mean_index": [
+                "write",
+                "mean_average_precision"
+              ]
+            }
+          }
+        ],
+        "push_constants": [
+          {
+            "name": "curves_push",
+            "values": {
+              "predicted_count": [
+                "U32",
+                "predicted"
+              ],
+              "target_count": [
+                "U32",
+                "targets"
+              ],
+              "threshold_count": [
+                "U32",
+                "threshold_count"
+              ],
+              "class_count": [
+                "U32",
+                "classes"
+              ],
+              "state_stride": [
+                "U32",
+                "state_stride"
+              ],
+              "score_threshold": [
+                "F32",
+                "score_threshold"
+              ]
+            }
+          },
+          {
+            "name": "ap_push",
+            "values": {
+              "predicted_count": [
+                "U32",
+                "predicted"
+              ],
+              "pair_count": [
+                "U32",
+                "pair_count"
+              ]
+            }
+          },
+          {
+            "name": "mean_push",
+            "values": {
+              "threshold_count": [
+                "U32",
+                "threshold_count"
+              ],
+              "class_count": [
+                "U32",
+                "classes"
+              ]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": [
+              "VisionDetectionMetricCurvesF32"
+            ],
+            "kernel": "KernelId::VisionDetectionMetricCurvesF32",
+            "workgroups": "[pair_count,1,1]"
+          },
+          {
+            "kernels": [
+              "VisionDetectionAveragePrecisionF32"
+            ],
+            "kernel": "KernelId::VisionDetectionAveragePrecisionF32",
+            "workgroups": "[pair_count,1,1]"
+          },
+          {
+            "kernels": [
+              "VisionDetectionMeanAveragePrecisionF32"
+            ],
+            "kernel": "KernelId::VisionDetectionMeanAveragePrecisionF32",
+            "workgroups": "[1,1,1]"
+          }
+        ]
+      }
+    },
+    {
+      "name": "evaluate_segmentation",
+      "input_kinds": [
+        "matrix",
+        "matrix"
+      ],
+      "output_kinds": [
+        "matrix",
+        "matrix",
+        "matrix",
+        "matrix"
+      ],
+      "shape_rule": "explicit",
+      "dtype_rule": "explicit",
+      "attributes": [
+        [
+          "class_count",
+          "signed_integer"
+        ]
+      ],
+      "rust": {
+        "category": "detection",
+        "parameters": [
+          [
+            "predicted",
+            "&Matrix"
+          ],
+          [
+            "target",
+            "&Matrix"
+          ],
+          [
+            "class_count",
+            "i32"
+          ]
+        ],
+        "returns": "SegmentationMetricsResult",
+        "doc": [
+          "Evaluate multiclass semantic-segmentation labels.",
+          "",
+          "Labels outside `[0, class_count)` are ignored. The operation records a",
+          "confusion accumulator followed by a metrics kernel as one semantic Vision",
+          "operation.",
+          "",
+          "# Errors",
+          "",
+          "Returns an error unless inputs are equal-shaped nonempty I32 matrices on one",
+          "engine, `class_count` is positive, and all sizes fit the shader ABI."
+        ],
+        "annotations": [],
+        "attribute_sources": {
+          "class_count": {
+            "encoding": "SignedInteger",
+            "value": "i64::from(class_count)"
+          }
+        },
+        "bindings": [
+          {
+            "name": "clear_buffers",
+            "values": {
+              "output_index": [
+                "write",
+                "confusion"
+              ]
+            }
+          },
+          {
+            "name": "confusion_buffers",
+            "values": {
+              "predicted_index": [
+                "read",
+                "predicted"
+              ],
+              "target_index": [
+                "read",
+                "target"
+              ],
+              "output_index": [
+                "read_write",
+                "confusion"
+              ]
+            }
+          },
+          {
+            "name": "metrics_buffers",
+            "values": {
+              "confusion_index": [
+                "read",
+                "confusion"
+              ],
+              "per_class_index": [
+                "write",
+                "per_class"
+              ],
+              "mean_iou_index": [
+                "write",
+                "mean_iou"
+              ],
+              "pixel_accuracy_index": [
+                "write",
+                "pixel_accuracy"
+              ]
+            }
+          }
+        ],
+        "push_constants": [
+          {
+            "name": "clear_push",
+            "values": {
+              "element_count": [
+                "U32",
+                "confusion_elements"
+              ]
+            }
+          },
+          {
+            "name": "confusion_push",
+            "values": {
+              "element_count": [
+                "U32",
+                "element_count"
+              ],
+              "class_count": [
+                "U32",
+                "classes"
+              ]
+            }
+          },
+          {
+            "name": "metrics_push",
+            "values": {
+              "class_count": [
+                "U32",
+                "classes"
+              ]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": [
+              "VisionSegmentationConfusionClearU32"
+            ],
+            "kernel": "KernelId::VisionSegmentationConfusionClearU32",
+            "workgroups": "KernelId::VisionSegmentationConfusionClearU32.linear_workgroups(confusion_elements)"
+          },
+          {
+            "kernels": [
+              "VisionSegmentationConfusionI32"
+            ],
+            "kernel": "KernelId::VisionSegmentationConfusionI32",
+            "workgroups": "KernelId::VisionSegmentationConfusionI32.linear_workgroups(element_count)"
+          },
+          {
+            "kernels": [
+              "VisionSegmentationMetricsF32"
+            ],
+            "kernel": "KernelId::VisionSegmentationMetricsF32",
+            "workgroups": "[1,1,1]"
+          }
+        ]
+      }
+    }
+  ],
+  "kernels": [
+    {
+      "stable_id": 125,
+      "name": "box_iou",
+      "kernel_id": "VisionBoxIouF32",
+      "source": "src/slang/vision/detection/box_iou.slang",
+      "variant": "pairwise_center_xywh",
+      "workgroup_size": [
+        256,
+        1,
+        1
+      ],
+      "dispatch_tile_size": [
+        256,
+        1,
+        1
+      ],
+      "semantic_operation": "box_iou",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 2,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        [
+          "boxes_a_index",
+          "uint32"
+        ],
+        [
+          "boxes_b_index",
+          "uint32"
+        ],
+        [
+          "output_index",
+          "uint32"
+        ],
+        [
+          "rows_a",
+          "uint32"
+        ],
+        [
+          "rows_b",
+          "uint32"
+        ]
+      ]
+    },
+    {
+      "stable_id": 126,
+      "name": "nms",
+      "kernel_id": "VisionNmsF32",
+      "source": "src/slang/vision/detection/nms.slang",
+      "variant": "deterministic_serial",
+      "workgroup_size": [
+        1,
+        1,
+        1
+      ],
+      "semantic_operation": "nms",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 3,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 4,
+            "domain": "scalar",
+            "partition": "exclusive_per_workgroup",
+            "extent": "one_scalar",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        [
+          "boxes_index",
+          "uint32"
+        ],
+        [
+          "scores_index",
+          "uint32"
+        ],
+        [
+          "classes_index",
+          "uint32"
+        ],
+        [
+          "indices_index",
+          "uint32"
+        ],
+        [
+          "count_index",
+          "uint32"
+        ],
+        [
+          "box_count",
+          "uint32"
+        ],
+        [
+          "maximum",
+          "uint32"
+        ],
+        [
+          "class_agnostic",
+          "uint32"
+        ],
+        [
+          "iou_threshold",
+          "float32"
+        ],
+        [
+          "score_threshold",
+          "float32"
+        ]
+      ]
+    },
+    {
+      "stable_id": 127,
+      "name": "confusion_matrix",
+      "kernel_id": "VisionConfusionMatrixI32",
+      "source": "src/slang/vision/detection/confusion_matrix.slang",
+      "variant": "atomic_u32",
+      "dtype": "i32",
+      "workgroup_size": [
+        256,
+        1,
+        1
+      ],
+      "semantic_operation": "confusion_matrix",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 2,
+            "domain": "output_elements",
+            "partition": "shared_atomic_contributors",
+            "extent": "one_element",
+            "collision": "atomic_u32",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        [
+          "predicted_index",
+          "uint32"
+        ],
+        [
+          "target_index",
+          "uint32"
+        ],
+        [
+          "output_index",
+          "uint32"
+        ],
+        [
+          "element_count",
+          "uint32"
+        ],
+        [
+          "class_count",
+          "uint32"
+        ]
+      ]
+    },
+    {
+      "stable_id": 128,
+      "name": "binary_mask_counts",
+      "kernel_id": "VisionBinaryMaskCountsU8",
+      "source": "src/slang/vision/detection/binary_mask_counts.slang",
+      "variant": "atomic_u32",
+      "dtype": "u8",
+      "workgroup_size": [
+        256,
+        1,
+        1
+      ],
+      "semantic_operation": "binary_mask_counts",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 2,
+            "domain": "output_elements",
+            "partition": "shared_atomic_contributors",
+            "extent": "one_element",
+            "collision": "atomic_u32",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        [
+          "predicted_index",
+          "uint32"
+        ],
+        [
+          "target_index",
+          "uint32"
+        ],
+        [
+          "output_index",
+          "uint32"
+        ],
+        [
+          "element_count",
+          "uint32"
+        ]
+      ]
+    },
+    {
+      "stable_id": 129,
+      "name": "detection_metric_curves",
+      "kernel_id": "VisionDetectionMetricCurvesF32",
+      "source": "src/slang/vision/detection/detection_metric_curves.slang",
+      "variant": "greedy_score_rank",
+      "workgroup_size": [
+        1,
+        1,
+        1
+      ],
+      "semantic_operation": "evaluate",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 8,
+            "domain": "rows",
+            "partition": "exclusive_per_invocation",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 9,
+            "domain": "rows",
+            "partition": "exclusive_per_invocation",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 10,
+            "domain": "rows",
+            "partition": "exclusive_per_invocation",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 11,
+            "domain": "rows",
+            "partition": "exclusive_per_invocation",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        [
+          "predicted_boxes_index",
+          "uint32"
+        ],
+        [
+          "predicted_scores_index",
+          "uint32"
+        ],
+        [
+          "predicted_classes_index",
+          "uint32"
+        ],
+        [
+          "predicted_images_index",
+          "uint32"
+        ],
+        [
+          "target_boxes_index",
+          "uint32"
+        ],
+        [
+          "target_classes_index",
+          "uint32"
+        ],
+        [
+          "target_images_index",
+          "uint32"
+        ],
+        [
+          "thresholds_index",
+          "uint32"
+        ],
+        [
+          "state_index",
+          "uint32"
+        ],
+        [
+          "curve_index",
+          "uint32"
+        ],
+        [
+          "counts_index",
+          "uint32"
+        ],
+        [
+          "metrics_index",
+          "uint32"
+        ],
+        [
+          "predicted_count",
+          "uint32"
+        ],
+        [
+          "target_count",
+          "uint32"
+        ],
+        [
+          "threshold_count",
+          "uint32"
+        ],
+        [
+          "class_count",
+          "uint32"
+        ],
+        [
+          "state_stride",
+          "uint32"
+        ],
+        [
+          "score_threshold",
+          "float32"
+        ]
+      ]
+    },
+    {
+      "stable_id": 130,
+      "name": "detection_average_precision",
+      "kernel_id": "VisionDetectionAveragePrecisionF32",
+      "source": "src/slang/vision/detection/detection_average_precision.slang",
+      "variant": "interpolated_101_point",
+      "workgroup_size": [
+        1,
+        1,
+        1
+      ],
+      "semantic_operation": "evaluate",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 2,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        [
+          "curve_index",
+          "uint32"
+        ],
+        [
+          "counts_index",
+          "uint32"
+        ],
+        [
+          "metrics_index",
+          "uint32"
+        ],
+        [
+          "predicted_count",
+          "uint32"
+        ],
+        [
+          "pair_count",
+          "uint32"
+        ]
+      ]
+    },
+    {
+      "stable_id": 131,
+      "name": "detection_mean_average_precision",
+      "kernel_id": "VisionDetectionMeanAveragePrecisionF32",
+      "source": "src/slang/vision/detection/detection_mean_average_precision.slang",
+      "variant": "target_present_classes",
+      "workgroup_size": [
+        1,
+        1,
+        1
+      ],
+      "semantic_operation": "evaluate",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 2,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 3,
+            "domain": "scalar",
+            "partition": "exclusive_per_workgroup",
+            "extent": "one_scalar",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        [
+          "counts_index",
+          "uint32"
+        ],
+        [
+          "metrics_index",
+          "uint32"
+        ],
+        [
+          "map_index",
+          "uint32"
+        ],
+        [
+          "mean_index",
+          "uint32"
+        ],
+        [
+          "threshold_count",
+          "uint32"
+        ],
+        [
+          "class_count",
+          "uint32"
+        ]
+      ]
+    },
+    {
+      "stable_id": 132,
+      "name": "segmentation_confusion",
+      "kernel_id": "VisionSegmentationConfusionI32",
+      "source": "src/slang/vision/detection/segmentation_confusion.slang",
+      "variant": "atomic_u32",
+      "dtype": "i32",
+      "workgroup_size": [
+        256,
+        1,
+        1
+      ],
+      "semantic_operation": "evaluate_segmentation",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 2,
+            "domain": "output_elements",
+            "partition": "shared_atomic_contributors",
+            "extent": "one_element",
+            "collision": "atomic_u32",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        [
+          "predicted_index",
+          "uint32"
+        ],
+        [
+          "target_index",
+          "uint32"
+        ],
+        [
+          "output_index",
+          "uint32"
+        ],
+        [
+          "element_count",
+          "uint32"
+        ],
+        [
+          "class_count",
+          "uint32"
+        ]
+      ]
+    },
+    {
+      "stable_id": 133,
+      "name": "segmentation_metrics",
+      "kernel_id": "VisionSegmentationMetricsF32",
+      "source": "src/slang/vision/detection/segmentation_metrics.slang",
+      "variant": "per_class_and_means",
+      "workgroup_size": [
+        1,
+        1,
+        1
+      ],
+      "semantic_operation": "evaluate_segmentation",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 2,
+            "domain": "scalar",
+            "partition": "exclusive_per_workgroup",
+            "extent": "one_scalar",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 3,
+            "domain": "scalar",
+            "partition": "exclusive_per_workgroup",
+            "extent": "one_scalar",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        [
+          "confusion_index",
+          "uint32"
+        ],
+        [
+          "per_class_index",
+          "uint32"
+        ],
+        [
+          "mean_iou_index",
+          "uint32"
+        ],
+        [
+          "pixel_accuracy_index",
+          "uint32"
+        ],
+        [
+          "class_count",
+          "uint32"
+        ]
+      ]
+    },
+    {
+      "stable_id": 134,
+      "name": "confusion_matrix_clear",
+      "kernel_id": "VisionConfusionMatrixClearU32",
+      "source": "src/slang/vision/detection/confusion_matrix_clear.slang",
+      "variant": "replay_safe_zero",
+      "dtype": "u32",
+      "workgroup_size": [
+        256,
+        1,
+        1
+      ],
+      "semantic_operation": "confusion_matrix",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 0,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        [
+          "output_index",
+          "uint32"
+        ],
+        [
+          "element_count",
+          "uint32"
+        ]
+      ]
+    },
+    {
+      "stable_id": 135,
+      "name": "binary_mask_counts_clear",
+      "kernel_id": "VisionBinaryMaskCountsClearU32",
+      "source": "src/slang/vision/detection/binary_mask_counts_clear.slang",
+      "variant": "replay_safe_zero",
+      "dtype": "u32",
+      "workgroup_size": [
+        256,
+        1,
+        1
+      ],
+      "semantic_operation": "binary_mask_counts",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 0,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        [
+          "output_index",
+          "uint32"
+        ],
+        [
+          "element_count",
+          "uint32"
+        ]
+      ]
+    },
+    {
+      "stable_id": 136,
+      "name": "segmentation_confusion_clear",
+      "kernel_id": "VisionSegmentationConfusionClearU32",
+      "source": "src/slang/vision/detection/segmentation_confusion_clear.slang",
+      "variant": "replay_safe_zero",
+      "dtype": "u32",
+      "workgroup_size": [
+        256,
+        1,
+        1
+      ],
+      "semantic_operation": "evaluate_segmentation",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 0,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        [
+          "output_index",
+          "uint32"
+        ],
+        [
+          "element_count",
+          "uint32"
+        ]
+      ]
+    }
+  ],
+  "types": [
+    {
+      "category": "detection",
+      "name": "NmsConfig",
+      "before": "nms",
+      "kind": "struct",
+      "visibility": "pub",
+      "derive": [
+        "Clone",
+        "Copy",
+        "Debug",
+        "PartialEq"
+      ],
+      "doc": "Deterministic non-maximum-suppression policy.",
+      "fields": [
+        {
+          "name": "iou_threshold",
+          "type": "f32",
+          "visibility": "pub",
+          "doc": "Suppress a same-class box when its IoU is at least this value."
+        },
+        {
+          "name": "score_threshold",
+          "type": "f32",
+          "visibility": "pub",
+          "doc": "Ignore candidates below this score."
+        },
+        {
+          "name": "max_detections",
+          "type": "i32",
+          "visibility": "pub",
+          "doc": "Maximum number of selected source rows."
+        },
+        {
+          "name": "class_agnostic",
+          "type": "bool",
+          "visibility": "pub",
+          "doc": "Suppress overlaps across class labels when true."
+        }
+      ],
+      "variants": [],
+      "defaults": {
+        "iou_threshold": "0.45",
+        "score_threshold": "0.0",
+        "max_detections": "100",
+        "class_agnostic": "false"
+      },
+      "default_variant": null
+    },
+    {
+      "category": "detection",
+      "name": "NmsResult",
+      "before": "nms",
+      "kind": "struct",
+      "visibility": "pub",
+      "derive": [],
+      "doc": "Device-resident result of [`nms`].",
+      "fields": [
+        {
+          "name": "indices",
+          "type": "Matrix",
+          "visibility": "pub",
+          "doc": "I32 selected source-row indices, padded with `-1` after [`Self::count`]."
+        },
+        {
+          "name": "count",
+          "type": "Matrix",
+          "visibility": "pub",
+          "doc": "U32 scalar containing the selected prefix length."
+        }
+      ],
+      "variants": [],
+      "defaults": null,
+      "default_variant": null
+    },
+    {
+      "category": "detection",
+      "name": "DetectionMetricsResult",
+      "before": "evaluate",
+      "kind": "struct",
+      "visibility": "pub",
+      "derive": [],
+      "doc": "Device-resident object-detection evaluation outputs.",
+      "fields": [
+        {
+          "name": "counts",
+          "type": "Matrix",
+          "visibility": "pub",
+          "doc": "U32 `[T, C, 3]`: true positives, false positives, false negatives."
+        },
+        {
+          "name": "per_class",
+          "type": "Matrix",
+          "visibility": "pub",
+          "doc": "FP32 `[T, C, 4]`: precision, recall, F1, interpolated AP."
+        },
+        {
+          "name": "mean_average_precision_by_threshold",
+          "type": "Matrix",
+          "visibility": "pub",
+          "doc": "FP32 `[T]`: mean AP across classes containing at least one target."
+        },
+        {
+          "name": "mean_average_precision",
+          "type": "Matrix",
+          "visibility": "pub",
+          "doc": "FP32 `[1]`: mean over thresholds containing at least one target class."
+        }
+      ],
+      "variants": [],
+      "defaults": null,
+      "default_variant": null
+    },
+    {
+      "category": "detection",
+      "name": "SegmentationMetricsResult",
+      "before": "evaluate_segmentation",
+      "kind": "struct",
+      "visibility": "pub",
+      "derive": [],
+      "doc": "Device-resident semantic-segmentation evaluation outputs.",
+      "fields": [
+        {
+          "name": "confusion",
+          "type": "Matrix",
+          "visibility": "pub",
+          "doc": "U32 `[C, C]`, with target rows and predicted columns."
+        },
+        {
+          "name": "per_class",
+          "type": "Matrix",
+          "visibility": "pub",
+          "doc": "FP32 `[C, 4]`: precision, recall, F1/Dice, IoU."
+        },
+        {
+          "name": "mean_iou",
+          "type": "Matrix",
+          "visibility": "pub",
+          "doc": "FP32 `[1]`: mean IoU across classes with nonzero union."
+        },
+        {
+          "name": "pixel_accuracy",
+          "type": "Matrix",
+          "visibility": "pub",
+          "doc": "FP32 `[1]`: correct divided by admitted labels."
+        }
+      ],
+      "variants": [],
+      "defaults": null,
+      "default_variant": null
+    }
+  ]
+}

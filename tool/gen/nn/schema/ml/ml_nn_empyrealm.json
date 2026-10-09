@@ -1,0 +1,27 @@
+{
+	"version": 1,
+	"family": "empyrealm",
+	"imports": [
+		"use std::rc::Rc;",
+		"use crate::{DType, Engine, Error, Matrix, Result};",
+		"use super::{Embedding, Mamba3, Mamba3Config, Mamba3State};",
+		"use crate::ml::{Module, ModuleRegistry};"
+	],
+	"helper": "",
+	"layers": [
+		{
+			"name": "Empyrealm",
+			"doc": "OA's embedding-plus-Mamba core with one canonical Rust execution path.",
+			"template": "empyrealm",
+			"values": {
+				"embedding_constructor": "Embedding::with_seed",
+				"mixer_constructor": "Mamba3::with_seed",
+				"add_operation": "crate::matrix::add",
+				"embedding_name": "embed",
+				"mixer_name": "mixer"
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/empyrealm/empyrealmCore.cpp",
+			"adaptation": "Complete existing Rust embedding plus residual Mamba3 composition; preserves seeded child construction, embed/mixer checkpoint tree, checked U8/U32 token and FP32 embedded shapes, explicit caller-owned recurrent state and canonical Mamba3 providers rather than duplicate donor shaders; renames public EmpyrealmCore to Empyrealm"
+		}
+	]
+}

@@ -1,1 +1,0 @@
-"""Schema-owned operation generator."""

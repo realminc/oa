@@ -1,0 +1,244 @@
+{
+  "schema_version": 1,
+  "family": "ml_activation",
+  "domain": "ml",
+  "dtype": "f32",
+  "workgroup_size": [256, 1, 1],
+  "port_provenance": [
+    {
+      "family": "gelu",
+      "operations": ["gelu", "gelu_backward"],
+      "classification": "replacement",
+      "donors": [
+        "source/cpp/lib/oa/ml/shader/compute/nn/gelu/gelu.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/gelu/geluBwd.slang",
+        "tools/gen/fn/schema/ml/mlFnMatrixActivation.toml"
+      ],
+      "reason": "Temporary Rust correctness baseline predating the donor-first port policy."
+    },
+    {
+      "family": "activation",
+      "operations": [
+        "silu", "silu_backward", "relu", "relu_backward",
+        "tanh", "tanh_backward", "sigmoid", "sigmoid_backward",
+        "leaky_relu", "leaky_relu_backward", "elu", "elu_backward",
+        "mish", "mish_backward", "softplus", "softplus_backward"
+      ],
+      "classification": "mechanical_adaptation",
+      "donors": [
+        "tools/gen/fn/schema/ml/mlFnMatrixActivation.toml",
+        "tools/gen/fn/schema/ml/mlFnMatrixBackward.toml",
+        "source/cpp/lib/oa/ml/shader/compute/nn/activation",
+        "source/cpp/lib/oa/ml/shader/compute/nn/relu/reluBwd.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/silu/siluBwd.slang"
+      ],
+      "reason": "Preserves the donor FP32 activation formulas, saved-input/output adjoint choices, scalar alpha parameters, and elementwise dispatch while adapting names, attributes, and bindless ABI spelling."
+    },
+    {
+      "family": "swiglu_gate_up",
+      "operations": ["swiglu", "swiglu_backward", "silu_mul", "silu_mul_backward"],
+      "classification": "mechanical_adaptation",
+      "donors": [
+        "source/cpp/lib/oa/ml/shader/compute/nn/swiglu/swiglu.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/swiglu/swigluBwd.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/swiglu/siluMul.slang",
+        "source/cpp/lib/oa/ml/shader/compute/nn/swiglu/siluMulBwd.slang",
+        "tools/gen/fn/schema/ml/mlFnMatrixActivation.toml"
+      ],
+      "reason": "Preserves donor SiLU-gated multiply, complete gate and up adjoints, and the split-last-axis SiluMul fused variant while adapting names and bindless ABI spelling."
+    }
+  ],
+  "operations": [
+    {
+      "stable_id": 33,
+      "name": "gelu",
+      "rust_family": "activation",
+      "kind": "unary",
+      "kernel_id": "MlGeluF32",
+      "doc": "Apply the tanh-approximate Gaussian error linear unit elementwise.",
+      "autograd": {"node": "Gelu", "inputs": ["input"], "saved_matrices": ["input"]}
+    },
+    {
+      "stable_id": 34,
+      "name": "gelu_backward",
+      "rust_family": "activation",
+      "kind": "unary_backward",
+      "saved": "input",
+      "kernel_id": "MlGeluBackwardF32"
+    },
+    {
+      "stable_id": 92,
+      "name": "silu",
+      "rust_family": "activation",
+      "kind": "unary",
+      "kernel_id": "MlSiluF32",
+      "doc": "Apply the sigmoid linear unit elementwise.",
+      "autograd": {"node": "Silu", "inputs": ["input"], "saved_matrices": ["input"]}
+    },
+    {
+      "stable_id": 93,
+      "name": "silu_backward",
+      "rust_family": "activation",
+      "kind": "unary_backward",
+      "saved": "input",
+      "kernel_id": "MlSiluBackwardF32"
+    },
+    {
+      "stable_id": 94,
+      "name": "relu",
+      "rust_family": "activation",
+      "kind": "unary",
+      "kernel_id": "MlReluF32",
+      "doc": "Apply the rectified linear unit elementwise.",
+      "autograd": {"node": "Relu", "inputs": ["input"], "saved_matrices": ["output"]}
+    },
+    {
+      "stable_id": 95,
+      "name": "relu_backward",
+      "rust_family": "activation",
+      "kind": "unary_backward",
+      "saved": "output",
+      "kernel_id": "MlReluBackwardF32"
+    },
+    {
+      "stable_id": 96,
+      "name": "tanh",
+      "rust_family": "activation",
+      "kind": "unary",
+      "kernel_id": "MlTanhF32",
+      "doc": "Apply hyperbolic tangent elementwise.",
+      "autograd": {"node": "Tanh", "inputs": ["input"], "saved_matrices": ["output"]}
+    },
+    {
+      "stable_id": 97,
+      "name": "tanh_backward",
+      "rust_family": "activation",
+      "kind": "unary_backward",
+      "saved": "output",
+      "kernel_id": "MlTanhBackwardF32"
+    },
+    {
+      "stable_id": 98,
+      "name": "sigmoid",
+      "rust_family": "activation",
+      "kind": "unary",
+      "kernel_id": "MlSigmoidF32",
+      "doc": "Apply the logistic sigmoid elementwise.",
+      "autograd": {"node": "Sigmoid", "inputs": ["input"], "saved_matrices": ["output"]}
+    },
+    {
+      "stable_id": 99,
+      "name": "sigmoid_backward",
+      "rust_family": "activation",
+      "kind": "unary_backward",
+      "saved": "output",
+      "kernel_id": "MlSigmoidBackwardF32"
+    },
+    {
+      "stable_id": 100,
+      "name": "leaky_relu",
+      "rust_family": "activation",
+      "kind": "unary_scalar",
+      "scalar": "alpha",
+      "kernel_id": "MlLeakyReluF32",
+      "doc": "Apply Leaky ReLU elementwise with the requested negative slope.",
+      "autograd": {"node": "LeakyRelu", "inputs": ["input"], "saved_matrices": ["input"], "saved_scalars": [["alpha", "f32"]]}
+    },
+    {
+      "stable_id": 101,
+      "name": "leaky_relu_backward",
+      "rust_family": "activation",
+      "kind": "unary_scalar_backward",
+      "saved": "input",
+      "scalar": "alpha",
+      "kernel_id": "MlLeakyReluBackwardF32"
+    },
+    {
+      "stable_id": 102,
+      "name": "elu",
+      "rust_family": "activation",
+      "kind": "unary_scalar",
+      "scalar": "alpha",
+      "kernel_id": "MlEluF32",
+      "doc": "Apply the exponential linear unit elementwise.",
+      "autograd": {"node": "Elu", "inputs": ["input"], "saved_matrices": ["output"], "saved_scalars": [["alpha", "f32"]]}
+    },
+    {
+      "stable_id": 103,
+      "name": "elu_backward",
+      "rust_family": "activation",
+      "kind": "unary_scalar_backward",
+      "saved": "output",
+      "scalar": "alpha",
+      "kernel_id": "MlEluBackwardF32"
+    },
+    {
+      "stable_id": 104,
+      "name": "mish",
+      "rust_family": "activation",
+      "kind": "unary",
+      "kernel_id": "MlMishF32",
+      "doc": "Apply Mish elementwise.",
+      "autograd": {"node": "Mish", "inputs": ["input"], "saved_matrices": ["input"]}
+    },
+    {
+      "stable_id": 105,
+      "name": "mish_backward",
+      "rust_family": "activation",
+      "kind": "unary_backward",
+      "saved": "input",
+      "kernel_id": "MlMishBackwardF32"
+    },
+    {
+      "stable_id": 106,
+      "name": "softplus",
+      "rust_family": "activation",
+      "kind": "unary",
+      "kernel_id": "MlSoftplusF32",
+      "doc": "Apply the overflow-safe Softplus formulation elementwise.",
+      "autograd": {"node": "Softplus", "inputs": ["input"], "saved_matrices": ["output"]}
+    },
+    {
+      "stable_id": 107,
+      "name": "softplus_backward",
+      "rust_family": "activation",
+      "kind": "unary_backward",
+      "saved": "output",
+      "kernel_id": "MlSoftplusBackwardF32"
+    },
+    {
+      "stable_id": 43,
+      "name": "swiglu",
+      "rust_family": "swiglu",
+      "kind": "binary",
+      "kernel_id": "MlSwigluF32",
+      "doc": "Apply SiLU(gate) * up elementwise.",
+      "inputs": ["gate", "up"],
+      "autograd": {"node": "Swiglu", "inputs": ["gate", "up"], "saved_matrices": ["gate", "up"]}
+    },
+    {
+      "stable_id": 44,
+      "name": "swiglu_backward",
+      "rust_family": "swiglu",
+      "kind": "binary_backward",
+      "inputs": ["gate", "up"],
+      "outputs": ["gate_gradient", "up_gradient"],
+      "kernel_id": "MlSwigluBackwardF32"
+    },
+    {
+      "stable_id": 367,
+      "name": "silu_mul",
+      "rust_family": "swiglu",
+      "kind": "silu_mul",
+      "kernel_id": "MlSiluMulF32",
+      "doc": "Apply SiLU(gate) * up to concatenated halves of the final input axis."
+    },
+    {
+      "stable_id": 368,
+      "name": "silu_mul_backward",
+      "rust_family": "swiglu",
+      "kind": "silu_mul_backward",
+      "kernel_id": "MlSiluMulBackwardF32"
+    }
+  ]
+}

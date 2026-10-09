@@ -1,0 +1,58 @@
+{
+	"version": 1,
+	"family": "conv",
+	"imports": [
+		"use crate::{DType, Engine, Error, Matrix, Result};",
+		"use super::super::{Module, ModuleRegistry, Parameter, matrix, random};"
+	],
+	"helper": "",
+	"layers": [
+		{
+			"name": "Conv1d",
+			"doc": "Trainable FP32 one-dimensional convolution over NCL matrices.",
+			"template": "conv_1d",
+			"values": {
+				"operation": "matrix::conv_1d_parameterized",
+				"weight_name": "weight",
+				"bias_name": "bias"
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/conv1d/conv1d.cpp",
+			"adaptation": "Preserve existing Rust initializer, shape/ownership checks and versioned parameter adjoints; mechanical generated ownership"
+		},
+		{
+			"name": "ConvTranspose1d",
+			"doc": "Trainable bias-free FP32 one-dimensional transposed convolution over NCL matrices.",
+			"template": "conv_transpose_1d",
+			"values": {
+				"operation": "matrix::conv_transpose_1d_parameterized",
+				"weight_name": "weight"
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/convtranspose1d/convTranspose1d.cpp",
+			"adaptation": "Preserve existing Rust initializer, shape/ownership checks and versioned parameter adjoints; mechanical generated ownership"
+		},
+		{
+			"name": "ConvTranspose2d",
+			"doc": "Trainable FP32 two-dimensional transposed convolution over NCHW matrices.",
+			"template": "conv_transpose_2d",
+			"values": {
+				"operation": "matrix::conv_transpose_2d_parameterized",
+				"weight_name": "weight",
+				"bias_name": "bias"
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/convtranspose2d/convTranspose2d.cpp",
+			"adaptation": "Preserve existing Rust initializer, shape/ownership checks and versioned parameter adjoints; mechanical generated ownership"
+		},
+		{
+			"name": "Conv2d",
+			"doc": "Trainable grouped FP32 two-dimensional convolution over NCHW matrices.",
+			"template": "conv_2d",
+			"values": {
+				"operation": "matrix::conv_2d_parameterized",
+				"weight_name": "weight",
+				"bias_name": "bias"
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/conv2d/conv2d.cpp",
+			"adaptation": "Preserve existing Rust initializer, shape/ownership checks and versioned parameter adjoints; mechanical generated ownership"
+		}
+	]
+}

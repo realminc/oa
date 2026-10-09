@@ -1,0 +1,59 @@
+//! Rotary position embedding Matrix operations.
+
+use crate::ml::autograd;
+use crate::ml::validation::{shader_u32, validate_f32_same_engine};
+use crate::runtime::ComputeDispatch;
+use crate::runtime::SemanticDispatch;
+use crate::{
+	DType, Error, Matrix, OpAttribute, Result,
+	runtime::{BufferBinding, KernelId, PushConstant},
+};
+
+
+
+
+
+fn validate_rope(
+	input: &Matrix,
+	num_heads: usize,
+	head_dim: usize,
+	theta_base: f32,
+	operation: &'static str,
+) -> Result<(u32, u32, u32, u32)> {
+	let [tokens, width] = input.shape() else {
+		return Err(Error::invalid_argument(format!(
+			"{operation} input must have shape [tokens, num_heads * head_dim]"
+		)));
+	};
+	let expected_width = num_heads
+		.checked_mul(head_dim)
+		.ok_or_else(|| Error::invalid_argument(format!("{operation} width overflows usize")))?;
+	if *tokens == 0
+		|| num_heads == 0
+		|| head_dim == 0
+		|| !head_dim.is_multiple_of(2)
+		|| *width != expected_width
+	{
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires nonempty [tokens, num_heads * even head_dim] input"
+		)));
+	}
+	if !theta_base.is_finite() || theta_base <= 0.0 {
+		return Err(Error::invalid_argument(format!(
+			"{operation} theta base must be finite and positive"
+		)));
+	}
+	validate_f32_same_engine(operation, &[input])?;
+	let pair_count = tokens
+		.checked_mul(num_heads)
+		.and_then(|count| count.checked_mul(head_dim / 2))
+		.ok_or_else(|| Error::invalid_argument(format!("{operation} pair count overflows usize")))?;
+	Ok((
+		shader_u32(*tokens, "token count", operation)?,
+		shader_u32(num_heads, "head count", operation)?,
+		shader_u32(head_dim, "head dimension", operation)?,
+		shader_u32(pair_count, "rotary pair count", operation)?,
+	))
+}
+
+{{items}}
