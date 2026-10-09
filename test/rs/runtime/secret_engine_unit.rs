@@ -134,6 +134,8 @@ fn abandoned_secret_is_quarantined_instead_of_recycled() -> Result<()> {
 	let engine = secret_test_engine()?;
 	let handle = engine.handle();
 	let secret = handle.allocate_secret_buffer(32)?;
+	let buffer = secret.binding()?.raw();
+	let index = secret.binding()?.descriptor_index();
 	let (command, witness) = secret.record_erasure()?;
 	assert!(!witness.is_confirmed());
 	assert!(!witness.is_unconfirmed());
@@ -143,7 +145,17 @@ fn abandoned_secret_is_quarantined_instead_of_recycled() -> Result<()> {
 	device.free(command);
 	assert!(witness.is_unconfirmed());
 	assert!(!witness.is_confirmed());
-	assert!(handle.state.borrow_mut().retirement.prepare().is_err());
+	// Cancellation happened before submission: quarantine this allocation, not
+	// the healthy retirement worker or unrelated future work.
+	let replacement = handle.allocate_secret_buffer(32)?;
+	assert_ne!(replacement.binding()?.raw(), buffer);
+	assert_ne!(replacement.binding()?.descriptor_index(), index);
+	let final_consumer = engine.checkpoint()?;
+	handle
+		.erase_secret_buffer(replacement, &final_consumer)?
+		.wait()?;
+	assert!(witness.is_unconfirmed());
+	assert!(!witness.is_confirmed());
 	Ok(())
 }
 

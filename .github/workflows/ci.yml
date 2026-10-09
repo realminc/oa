@@ -142,6 +142,9 @@ jobs:
           cargo run --all-features --example tu_core_device_canary --locked -- --list-devices
           cargo test --test runtime --all-features --locked \
             vk::software_vulkan_index_executes_compute_and_crypto -- --exact --ignored --nocapture
+          OA_TEST_DEVICE_INDEX=0 cargo test --lib --all-features --locked \
+            runtime::engine::secret_tests::abandoned_secret_is_quarantined_instead_of_recycled \
+            -- --exact --ignored --nocapture
           OA_TEST_DEVICE_INDEX=0 cargo test --test cryptography --all-features --locked \
             cryptography::batch_shake_matches_cpu_across_rate_boundaries -- --exact --ignored --nocapture
           OA_TEST_DEVICE_INDEX=0 cargo test --test cryptography --all-features --locked \
@@ -351,9 +354,10 @@ jobs:
           import oa.image
           import oa.matrix
           import oa.ml
-          import oa.render
+          import oa.plot
           import oa.runtime
           import oa.video
+          import oa.viewer
           import oa.vision
 
           assert importlib.metadata.version("oapython") == oa.__version__
