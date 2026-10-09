@@ -6,7 +6,7 @@
 #
 # Triggers:
 #   realminc/oa tag (v*) on main → build + test + release
-#   realminc/oa pull request     → build + test
+#   realminc/oa pull request     → build + test + package, without publication
 #
 # Every job is repository-gated. The private empyrealm/oa staging repository
 # may receive the same refs, but it must not consume hosted or self-hosted
@@ -174,12 +174,12 @@ jobs:
           path: target/package/oarust-*.crate
 
       - name: Release debug build storage before SDK packaging
-        if: github.repository == 'realminc/oa' && startsWith(github.ref, 'refs/tags/v')
+        if: github.repository == 'realminc/oa'
         run: cargo clean --profile dev
 
-      # ── Packaging (tags only) ──────────────────────────────────────────────
+      # Verify every artifact on the public candidate before creating a tag.
       - name: Build and stage SDK programs
-        if: github.repository == 'realminc/oa' && startsWith(github.ref, 'refs/tags/v')
+        if: github.repository == 'realminc/oa'
         run: |
           cargo build -p oarust --release --examples --locked
           python3 tool/build/stage.py --clean --profile release
@@ -187,10 +187,10 @@ jobs:
           test -n "$(find bin/release/sdk -type f -perm -111 -print -quit)"
 
       - name: Package source, SDK programs, and build evidence
-        if: github.repository == 'realminc/oa' && startsWith(github.ref, 'refs/tags/v')
+        if: github.repository == 'realminc/oa'
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME#v}"
+          version=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["package"]["version"])')
           epoch="$(git show -s --format=%ct HEAD)"
           source_name="oa-${version}-source"
           sdk_name="oa-sdk-${version}-linux-x86_64"
@@ -209,7 +209,7 @@ jobs:
           cargo tree --workspace --all-features --locked --prefix none \
             > "dist/oa-${version}-dependencies.txt"
           {
-            echo "OA ${GITHUB_REF_NAME}"
+            echo "OA v${version}"
             echo "commit=$(git rev-parse HEAD)"
             echo "source_date_epoch=${epoch}"
             rustc -Vv
@@ -220,10 +220,10 @@ jobs:
           } > "dist/oa-${version}-build-info.txt"
 
       - name: Build SDK distro packages
-        if: github.repository == 'realminc/oa' && startsWith(github.ref, 'refs/tags/v')
+        if: github.repository == 'realminc/oa'
         run: |
           set -euo pipefail
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["package"]["version"])')
           sudo apt-get install -y --no-install-recommends ruby ruby-dev build-essential rpm zstd libarchive-tools
           sudo gem install --no-document fpm
 
@@ -254,7 +254,7 @@ jobs:
           ls -lh dist/*.deb dist/*.rpm dist/*.pkg.tar.zst | awk '{print "- " $NF " (" $5 ")"}' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload Rust release assets
-        if: github.repository == 'realminc/oa' && startsWith(github.ref, 'refs/tags/v')
+        if: github.repository == 'realminc/oa'
         uses: actions/upload-artifact@v4
         with:
           name: oa-dist
