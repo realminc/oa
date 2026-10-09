@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path, PurePosixPath
+import re
 import tarfile
 import tomllib
 
@@ -30,7 +32,8 @@ def audit(path: Path, version: str) -> None:
 			if not member.isfile():
 				raise ValueError(f"non-file crate entry: {member.name}")
 			name = "/".join(parts[1:])
-			if name in files or not (name in allowed or name.startswith(prefixes)):
+			library_shader = name.startswith("sdk/rs/slang/ml/rl/") and name.endswith(".slang")
+			if name in files or not (name in allowed or name.startswith(prefixes) or library_shader):
 				raise ValueError(f"unexpected crate path: {name}")
 			if "__pycache__" in parts or name.endswith(".pyc"):
 				raise ValueError(f"cached Python output: {name}")
@@ -56,6 +59,24 @@ def audit(path: Path, version: str) -> None:
 	for required in ("src/rs/lib.rs", "build.rs", "tool/gen/fn/generate.py", "rustfmt.toml", "LICENSE", "NOTICE.md", "Cargo.lock", "README.md"):
 		if required not in files:
 			raise ValueError(f"missing crate build input: {required}")
+	# Check declared build inputs before invoking compilers. Donor provenance is
+	# not a local input; only live src/ and sdk/ shader paths enter this contract.
+	def check_sources(value, owner):
+		if isinstance(value, dict):
+			for key, child in value.items():
+				if key == "source" and isinstance(child, str) and child.endswith(".slang"):
+					if child.startswith(("src/", "sdk/")) and child not in files:
+						raise ValueError(f"missing crate shader input: {child} (declared by {owner})")
+				check_sources(child, owner)
+		elif isinstance(value, list):
+			for child in value:
+				check_sources(child, owner)
+	for name, contents in files.items():
+		if name.startswith("tool/gen/fn/schema/") and name.endswith(".json"):
+			check_sources(json.loads(contents), name)
+	for source in re.findall(r'"((?:src|sdk)/[^"\n]+\.slang)"', files["build.rs"].decode()):
+		if source not in files:
+			raise ValueError(f"missing crate shader input: {source} (declared by build.rs)")
 	print(f"Verified {path.name}: {len(files)} public files, oa namespace, registry dependencies")
 
 

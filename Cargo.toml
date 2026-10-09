@@ -12,6 +12,7 @@ include = [
   "/Cargo.toml", "/Cargo.lock", "/build.rs", "/rustfmt.toml", "/rust-toolchain.toml",
   "/README.md", "/LICENSE", "/NOTICE.md", "/CHANGELOG.md", "/RELEASE_NOTES.md",
   "/.oa-public-snapshot", "/src/rs/**", "/src/slang/**", "/sdk/asset/font/**",
+  "/sdk/rs/slang/ml/rl/**/*.slang",
   "/test/rs/matrix/*.gen.rs", "/tool/gen/**",
   "/test/rs/runtime/*_unit.rs", "/test/rs/cryptography/entropy_unit.rs", "/test/rs/ml/tape_unit.rs",
   "/test/fixtures/cryptography/mldsa/keyGen-*.json", "/test/fixtures/cryptography/mldsa/sigGen-*.json",

@@ -95,6 +95,12 @@ jobs:
           git diff --check
           git diff --exit-code
 
+      - name: Audit the Rust registry archive inventory
+        run: |
+          cargo package -p oarust --locked --no-verify
+          version=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["package"]["version"])')
+          python3 tool/build/audit_crate.py "target/package/oarust-${version}.crate" "$version"
+
       - name: Verify tag is on main
         if: github.repository == 'realminc/oa' && startsWith(github.ref, 'refs/tags/v')
         run: |
@@ -123,6 +129,12 @@ jobs:
           sudo tar -xzf "$RUNNER_TEMP/slang.tar.gz" -C /opt/slang
           test -x /opt/slang/bin/slangc
           echo /opt/slang/bin >> "$GITHUB_PATH"
+
+      - name: Compile and verify the Rust registry archive
+        run: |
+          cargo package -p oarust --locked
+          version=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["package"]["version"])')
+          python3 tool/build/audit_crate.py "target/package/oarust-${version}.crate" "$version"
 
       - name: Format, lint, test, and document
         run: |
@@ -154,17 +166,11 @@ jobs:
           OA_TEST_DEVICE_INDEX=0 cargo test --lib --all-features --locked \
             secret_ -- --include-ignored --test-threads=1 --nocapture
 
-      - name: Package and verify the Rust registry archive
+      - name: Package Rust API documentation
         run: |
           mkdir -p dist
-          version="${GITHUB_REF_NAME#v}"
-          if [[ "$GITHUB_REF" != refs/tags/v* ]]; then
-            version=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["package"]["version"])')
-          fi
-          tar -czf "dist/oa-${version}-rust-api.tar.gz" -C target doc
-          cargo package -p oarust --locked
           version=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["package"]["version"])')
-          python3 tool/build/audit_crate.py "target/package/oarust-${version}.crate" "$version"
+          tar -czf "dist/oa-${version}-rust-api.tar.gz" -C target doc
 
       - uses: actions/upload-artifact@v4
         with:

@@ -2,6 +2,7 @@
 
 import importlib.util
 import io
+import json
 from pathlib import Path
 import tarfile
 import tempfile
@@ -40,6 +41,26 @@ class CrateTests(unittest.TestCase):
 	def test_internal_document_is_rejected(self):
 		with self.assertRaisesRegex(ValueError, "unexpected crate path"):
 			AUDITOR.audit(self.archive({"/".join(("docs", "internal", "design.md")): b"private"}), "0.8.6")
+	def test_sdk_shader_build_input_is_admitted(self):
+		source = "sdk/rs/slang/ml/rl/cart_pole/reset.slang"
+		schema = json.dumps({"kernels": [{"source": source}]}).encode()
+		AUDITOR.audit(self.archive({
+			"tool/gen/fn/schema/ml/ml_training.json": schema, source: b"shader",
+		}), "0.8.6")
+
+	def test_missing_schema_shader_is_rejected(self):
+		source = "sdk/rs/slang/ml/rl/cart_pole/reset.slang"
+		schema = json.dumps({"kernels": [{"source": source}]}).encode()
+		with self.assertRaisesRegex(ValueError, "missing crate shader input"):
+			AUDITOR.audit(self.archive({"tool/gen/fn/schema/ml/ml_training.json": schema}), "0.8.6")
+
+	def test_missing_build_script_shader_is_rejected(self):
+		with self.assertRaisesRegex(ValueError, "missing crate shader input"):
+			AUDITOR.audit(self.archive({"build.rs": b'const SOURCE: &str = "src/slang/missing.slang";'}), "0.8.6")
+
+	def test_sdk_program_source_is_rejected(self):
+		with self.assertRaisesRegex(ValueError, "unexpected crate path"):
+			AUDITOR.audit(self.archive({"sdk/rs/tutorials/ml/rl/example.rs": b"program"}), "0.8.6")
 
 	def test_traversal_is_rejected(self):
 		with self.assertRaisesRegex(ValueError, "unsafe crate path"):
