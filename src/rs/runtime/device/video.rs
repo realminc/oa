@@ -10,6 +10,7 @@ mod h264;
 mod h265;
 mod profile;
 mod vp9;
+mod vp9_abi;
 
 use h264::record_h264_picture;
 use h265::record_h265_picture;

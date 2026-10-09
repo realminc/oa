@@ -1,5 +1,7 @@
 //! VP9 decoded-picture-buffer planning and Vulkan standard-video lowering.
 
+use super::vp9_abi;
+
 use crate::{Error, Result, video};
 
 use crate::runtime::{
@@ -182,9 +184,9 @@ impl DpbState {
 }
 
 pub(super) struct PictureParameters {
-	pub color: ash_vp9::vk::native::StdVideoVP9ColorConfig,
-	pub loop_filter: ash_vp9::vk::native::StdVideoVP9LoopFilter,
-	pub segmentation: ash_vp9::vk::native::StdVideoVP9Segmentation,
+	pub color: vp9_abi::native::StdVideoVP9ColorConfig,
+	pub loop_filter: vp9_abi::native::StdVideoVP9LoopFilter,
+	pub segmentation: vp9_abi::native::StdVideoVP9Segmentation,
 }
 
 impl PictureParameters {
@@ -199,11 +201,11 @@ impl PictureParameters {
 	pub fn picture_info(
 		&self,
 		picture: &video::Vp9Picture,
-	) -> ash_vp9::vk::native::StdVideoDecodeVP9PictureInfo {
-		ash_vp9::vk::native::StdVideoDecodeVP9PictureInfo {
-			flags: ash_vp9::vk::native::StdVideoDecodeVP9PictureInfoFlags {
+	) -> vp9_abi::native::StdVideoDecodeVP9PictureInfo {
+		vp9_abi::native::StdVideoDecodeVP9PictureInfo {
+			flags: vp9_abi::native::StdVideoDecodeVP9PictureInfoFlags {
 				_bitfield_align_1: [],
-				_bitfield_1: ash_vp9::vk::native::StdVideoDecodeVP9PictureInfoFlags::new_bitfield_1(
+				_bitfield_1: vp9_abi::native::StdVideoDecodeVP9PictureInfoFlags::new_bitfield_1(
 					u32::from(picture.error_resilient_mode),
 					u32::from(picture.intra_only),
 					u32::from(picture.allow_high_precision_motion_vectors),
@@ -273,7 +275,7 @@ pub(super) fn record_picture(
 
 	let parameters = PictureParameters::new(picture);
 	let std_picture = parameters.picture_info(picture);
-	let mut vp9_picture = ash_vp9::vk::VideoDecodeVP9PictureInfoKHR::default()
+	let mut vp9_picture = vp9_abi::VideoDecodeVP9PictureInfoKHR::default()
 		.std_picture_info(&std_picture)
 		.reference_name_slot_indices(plan.reference_name_slot_indices)
 		.uncompressed_header_offset(picture.uncompressed_header_offset)
@@ -565,11 +567,11 @@ fn record_release_for_readback(
 	Ok(())
 }
 
-fn std_color(value: video::vp9::Vp9ColorConfig) -> ash_vp9::vk::native::StdVideoVP9ColorConfig {
-	ash_vp9::vk::native::StdVideoVP9ColorConfig {
-		flags: ash_vp9::vk::native::StdVideoVP9ColorConfigFlags {
+fn std_color(value: video::vp9::Vp9ColorConfig) -> vp9_abi::native::StdVideoVP9ColorConfig {
+	vp9_abi::native::StdVideoVP9ColorConfig {
+		flags: vp9_abi::native::StdVideoVP9ColorConfigFlags {
 			_bitfield_align_1: [],
-			_bitfield_1: ash_vp9::vk::native::StdVideoVP9ColorConfigFlags::new_bitfield_1(
+			_bitfield_1: vp9_abi::native::StdVideoVP9ColorConfigFlags::new_bitfield_1(
 				u32::from(value.full_range),
 				0,
 			),
@@ -582,11 +584,11 @@ fn std_color(value: video::vp9::Vp9ColorConfig) -> ash_vp9::vk::native::StdVideo
 	}
 }
 
-fn std_loop_filter(value: video::vp9::Vp9LoopFilter) -> ash_vp9::vk::native::StdVideoVP9LoopFilter {
-	ash_vp9::vk::native::StdVideoVP9LoopFilter {
-		flags: ash_vp9::vk::native::StdVideoVP9LoopFilterFlags {
+fn std_loop_filter(value: video::vp9::Vp9LoopFilter) -> vp9_abi::native::StdVideoVP9LoopFilter {
+	vp9_abi::native::StdVideoVP9LoopFilter {
+		flags: vp9_abi::native::StdVideoVP9LoopFilterFlags {
 			_bitfield_align_1: [],
-			_bitfield_1: ash_vp9::vk::native::StdVideoVP9LoopFilterFlags::new_bitfield_1(
+			_bitfield_1: vp9_abi::native::StdVideoVP9LoopFilterFlags::new_bitfield_1(
 				u32::from(value.delta_enabled),
 				u32::from(value.delta_update),
 				0,
@@ -603,11 +605,11 @@ fn std_loop_filter(value: video::vp9::Vp9LoopFilter) -> ash_vp9::vk::native::Std
 
 fn std_segmentation(
 	value: &video::vp9::Vp9Segmentation,
-) -> ash_vp9::vk::native::StdVideoVP9Segmentation {
-	ash_vp9::vk::native::StdVideoVP9Segmentation {
-		flags: ash_vp9::vk::native::StdVideoVP9SegmentationFlags {
+) -> vp9_abi::native::StdVideoVP9Segmentation {
+	vp9_abi::native::StdVideoVP9Segmentation {
+		flags: vp9_abi::native::StdVideoVP9SegmentationFlags {
 			_bitfield_align_1: [],
-			_bitfield_1: ash_vp9::vk::native::StdVideoVP9SegmentationFlags::new_bitfield_1(
+			_bitfield_1: vp9_abi::native::StdVideoVP9SegmentationFlags::new_bitfield_1(
 				u32::from(value.update_map),
 				u32::from(value.temporal_update),
 				u32::from(value.update_data),
@@ -622,37 +624,35 @@ fn std_segmentation(
 	}
 }
 
-const fn std_frame_type(
-	value: video::vp9::Vp9FrameType,
-) -> ash_vp9::vk::native::StdVideoVP9FrameType {
+const fn std_frame_type(value: video::vp9::Vp9FrameType) -> vp9_abi::native::StdVideoVP9FrameType {
 	match value {
 		video::vp9::Vp9FrameType::Key => {
-			ash_vp9::vk::native::StdVideoVP9FrameType_STD_VIDEO_VP9_FRAME_TYPE_KEY
+			vp9_abi::native::StdVideoVP9FrameType_STD_VIDEO_VP9_FRAME_TYPE_KEY
 		}
 		video::vp9::Vp9FrameType::Inter => {
-			ash_vp9::vk::native::StdVideoVP9FrameType_STD_VIDEO_VP9_FRAME_TYPE_NON_KEY
+			vp9_abi::native::StdVideoVP9FrameType_STD_VIDEO_VP9_FRAME_TYPE_NON_KEY
 		}
 	}
 }
 
-const fn std_profile(value: u8) -> ash_vp9::vk::native::StdVideoVP9Profile {
+const fn std_profile(value: u8) -> vp9_abi::native::StdVideoVP9Profile {
 	match value {
-		0 => ash_vp9::vk::native::StdVideoVP9Profile_STD_VIDEO_VP9_PROFILE_0,
-		1 => ash_vp9::vk::native::StdVideoVP9Profile_STD_VIDEO_VP9_PROFILE_1,
-		2 => ash_vp9::vk::native::StdVideoVP9Profile_STD_VIDEO_VP9_PROFILE_2,
-		3 => ash_vp9::vk::native::StdVideoVP9Profile_STD_VIDEO_VP9_PROFILE_3,
-		_ => ash_vp9::vk::native::StdVideoVP9Profile_STD_VIDEO_VP9_PROFILE_INVALID,
+		0 => vp9_abi::native::StdVideoVP9Profile_STD_VIDEO_VP9_PROFILE_0,
+		1 => vp9_abi::native::StdVideoVP9Profile_STD_VIDEO_VP9_PROFILE_1,
+		2 => vp9_abi::native::StdVideoVP9Profile_STD_VIDEO_VP9_PROFILE_2,
+		3 => vp9_abi::native::StdVideoVP9Profile_STD_VIDEO_VP9_PROFILE_3,
+		_ => vp9_abi::native::StdVideoVP9Profile_STD_VIDEO_VP9_PROFILE_INVALID,
 	}
 }
 
 const fn std_interpolation_filter(
 	value: video::vp9::Vp9InterpolationFilter,
-) -> ash_vp9::vk::native::StdVideoVP9InterpolationFilter {
+) -> vp9_abi::native::StdVideoVP9InterpolationFilter {
 	match value {
-		video::vp9::Vp9InterpolationFilter::EightTapSmooth => ash_vp9::vk::native::StdVideoVP9InterpolationFilter_STD_VIDEO_VP9_INTERPOLATION_FILTER_EIGHTTAP_SMOOTH,
-		video::vp9::Vp9InterpolationFilter::EightTap => ash_vp9::vk::native::StdVideoVP9InterpolationFilter_STD_VIDEO_VP9_INTERPOLATION_FILTER_EIGHTTAP,
-		video::vp9::Vp9InterpolationFilter::EightTapSharp => ash_vp9::vk::native::StdVideoVP9InterpolationFilter_STD_VIDEO_VP9_INTERPOLATION_FILTER_EIGHTTAP_SHARP,
-		video::vp9::Vp9InterpolationFilter::Bilinear => ash_vp9::vk::native::StdVideoVP9InterpolationFilter_STD_VIDEO_VP9_INTERPOLATION_FILTER_BILINEAR,
-		video::vp9::Vp9InterpolationFilter::Switchable => ash_vp9::vk::native::StdVideoVP9InterpolationFilter_STD_VIDEO_VP9_INTERPOLATION_FILTER_SWITCHABLE,
+		video::vp9::Vp9InterpolationFilter::EightTapSmooth => vp9_abi::native::StdVideoVP9InterpolationFilter_STD_VIDEO_VP9_INTERPOLATION_FILTER_EIGHTTAP_SMOOTH,
+		video::vp9::Vp9InterpolationFilter::EightTap => vp9_abi::native::StdVideoVP9InterpolationFilter_STD_VIDEO_VP9_INTERPOLATION_FILTER_EIGHTTAP,
+		video::vp9::Vp9InterpolationFilter::EightTapSharp => vp9_abi::native::StdVideoVP9InterpolationFilter_STD_VIDEO_VP9_INTERPOLATION_FILTER_EIGHTTAP_SHARP,
+		video::vp9::Vp9InterpolationFilter::Bilinear => vp9_abi::native::StdVideoVP9InterpolationFilter_STD_VIDEO_VP9_INTERPOLATION_FILTER_BILINEAR,
+		video::vp9::Vp9InterpolationFilter::Switchable => vp9_abi::native::StdVideoVP9InterpolationFilter_STD_VIDEO_VP9_INTERPOLATION_FILTER_SWITCHABLE,
 	}
 }

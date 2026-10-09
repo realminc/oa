@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="sdk/asset/docs/readme/oaSpaceCathedral.jpg" width="100%" alt="OA — one Rust and Vulkan foundation for compute, ML, media, and intelligent systems">
+  <img src="https://raw.githubusercontent.com/realminc/oa/main/sdk/asset/docs/readme/oaSpaceCathedral.jpg" width="100%" alt="OA — one Rust and Vulkan foundation for compute, ML, media, and intelligent systems">
 </p>
 
 # OA
@@ -14,12 +14,13 @@ continues separately as the donor and compatibility reference.
 
 [![Release](https://img.shields.io/github/v/release/realminc/oa?include_prereleases&label=preview)](https://github.com/realminc/oa/releases)
 [![CI](https://github.com/realminc/oa/actions/workflows/ci.yml/badge.svg)](https://github.com/realminc/oa/actions/workflows/ci.yml)
+[![Crates.io](https://img.shields.io/crates/v/oarust?label=crates.io)](https://crates.io/crates/oarust)
 [![PyPI](https://img.shields.io/pypi/v/oapython?label=pypi)](https://pypi.org/project/oapython/)
 [![License](https://img.shields.io/badge/license-BSL--1.1-3b3b3b)](LICENSE)
 
 <p align="center">
-  <a href="sdk/asset/docs/readme/realmIdentityAscii.mp4">
-    <img src="sdk/asset/docs/readme/realmIdentityAscii.gif" width="100%" alt="Realm ASCII identity display forming under a right-to-left hover, rippling under three liquid presses, then returning to a sine wave">
+  <a href="https://github.com/realminc/oa/blob/main/sdk/asset/docs/readme/realmIdentityAscii.mp4">
+    <img src="https://raw.githubusercontent.com/realminc/oa/main/sdk/asset/docs/readme/realmIdentityAscii.gif" width="100%" alt="Realm ASCII identity display forming under a right-to-left hover, rippling under three liquid presses, then returning to a sine wave">
   </a>
 </p>
 
@@ -114,19 +115,31 @@ semantic values and operations
 The project and API namespace are `oa`. The language-specific distribution
 names are `oarust` on crates.io and `oapython` on PyPI; Python uses `import oa`.
 
-The [published `oarust` 0.0.1 package](https://crates.io/crates/oarust) currently
-reserves the name and contains documentation only. It does not provide the
-framework. Until the framework crate is published, Rust consumers use this
-source checkout or the release source archive. The root Cargo package is still
-`oa`; the planned `oarust` publication will preserve `use oa::...`.
+The Rust package is `oarust`, with library name `oa`:
+
+```toml
+[dependencies]
+oarust = "0.8.6"
+```
+
+The crate contains the library and its required build inputs. SDK programs are
+separate release downloads; they are not part of the registry package.
+
+Rust code uses `use oa::...`. Python installs with
+`python -m pip install oapython==0.8.6` and uses `import oa`.
+Tagged CI verifies and publishes both packages, the SDK executables and native
+Linux packages, source and Rust API documentation archives, and checksums.
+The old `oarust` 0.0.1 package is a documentation-only name reservation.
 
 ## Build
 
-Requirements: Rust 1.98, Python 3, `slangc`, `spirv-val`, and a compatible
+Requirements: Rust 1.98, Python 3, rustfmt, CMake, `slangc` 2026.14,
+`spirv-val`, native audio/window-system development libraries, and a compatible
 Vulkan driver. Strict execution requires Vulkan 1.3; bounded Compatibility
 compute supports admitted Vulkan 1.2 devices. Compatibility presentation is
 not yet qualified. Linux builds use Clang/LLD for native linking while `rustc`
-and LLVM compile Rust.
+and LLVM compile Rust. SDL3 builds statically from the pinned Cargo source
+by default (`bundled-sdl`); `--no-default-features` uses system SDL3 instead.
 
 ```bash
 cargo build --release
@@ -232,11 +245,11 @@ on admitted devices. See [test organization](test/README.md).
 
 ## SDK and source reference
 
-- [Rust tutorials](sdk/rs/tutorials)
-- [Rust examples](sdk/rs/examples)
-- [Python tutorials](sdk/py/tutorials)
-- [Python examples](sdk/py/examples)
-- [Python SDK guide](sdk/py/README.md)
-- [Test organization](test/README.md)
+- [Rust tutorials](https://github.com/realminc/oa/tree/main/sdk/rs/tutorials)
+- [Rust examples](https://github.com/realminc/oa/tree/main/sdk/rs/examples)
+- [Python tutorials](https://github.com/realminc/oa/tree/main/sdk/py/tutorials)
+- [Python examples](https://github.com/realminc/oa/tree/main/sdk/py/examples)
+- [Python SDK guide](https://github.com/realminc/oa/tree/main/sdk/py/README.md)
+- [Test organization](https://github.com/realminc/oa/tree/main/test/README.md)
 
 OA is licensed under the Business Source License 1.1. See `LICENSE`.

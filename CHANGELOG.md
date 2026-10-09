@@ -1,7 +1,9 @@
 # Changelog
 
-## 0.8.5
+## 0.8.6
 
+- Publish the real `oarust` crate with an audited archive and unchanged `oa` namespace.
+- Bundle SDL3 and gate registry publication on native and portable-wheel validation.
 - Pin and checksum Slang 2026.14 for native and Python CI builds; repair the
   compiler mismatch that prevented v0.8.4 package publication.
 - Consolidate the public Rust implementation into its first release checkpoint.

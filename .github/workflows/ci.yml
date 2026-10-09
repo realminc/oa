@@ -109,7 +109,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             clang libasound2-dev libvulkan-dev mesa-vulkan-drivers \
-            pkg-config spirv-tools unzip
+            pkg-config spirv-tools unzip cmake libwayland-dev libxkbcommon-dev \
+            libx11-dev libxcursor-dev libxrandr-dev libxi-dev libxfixes-dev libxss-dev libxtst-dev
           # Set AR to use system ar instead of llvm-ar
           echo "AR=ar" >> $GITHUB_ENV
 
@@ -150,6 +151,25 @@ jobs:
           OA_TEST_DEVICE_INDEX=0 cargo test --lib --all-features --locked \
             secret_ -- --include-ignored --test-threads=1 --nocapture
 
+      - name: Package and verify the Rust registry archive
+        run: |
+          mkdir -p dist
+          version="${GITHUB_REF_NAME#v}"
+          if [[ "$GITHUB_REF" != refs/tags/v* ]]; then
+            version=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["package"]["version"])')
+          fi
+          tar -czf "dist/oa-${version}-rust-api.tar.gz" -C target doc
+          cargo package -p oarust --locked
+          version=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["package"]["version"])')
+          python3 tool/build/audit_crate.py "target/package/oarust-${version}.crate" "$version"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: oa-crate
+          retention-days: 7
+          if-no-files-found: error
+          path: target/package/oarust-*.crate
+
       - name: Release debug build storage before SDK packaging
         if: github.repository == 'realminc/oa' && startsWith(github.ref, 'refs/tags/v')
         run: cargo clean --profile dev
@@ -158,7 +178,7 @@ jobs:
       - name: Build and stage SDK programs
         if: github.repository == 'realminc/oa' && startsWith(github.ref, 'refs/tags/v')
         run: |
-          cargo build -p oa --release --examples --locked
+          cargo build -p oarust --release --examples --locked
           python3 tool/build/stage.py --clean --profile release
           python3 tool/build/stage.py --profile release
           test -n "$(find bin/release/sdk -type f -perm -111 -print -quit)"
@@ -222,9 +242,9 @@ jobs:
               "${deps[@]}" -C "$root" -p dist/ usr
           }
           # The Vulkan loader dependency name differs per distro.
-          pkg deb    oa-sdk stage/oa-sdk-distro "OA runnable Rust SDK programs" libvulkan1
-          pkg rpm    oa-sdk stage/oa-sdk-distro "OA runnable Rust SDK programs" vulkan-loader
-          pkg pacman oa-sdk stage/oa-sdk-distro "OA runnable Rust SDK programs" vulkan-icd-loader
+          pkg deb    oa-sdk stage/oa-sdk-distro "OA runnable Rust SDK programs" libvulkan1 libasound2t64 libstdc++6
+          pkg rpm    oa-sdk stage/oa-sdk-distro "OA runnable Rust SDK programs" vulkan-loader alsa-lib libstdc++
+          pkg pacman oa-sdk stage/oa-sdk-distro "OA runnable Rust SDK programs" vulkan-icd-loader alsa-lib gcc-libs
 
           ( cd dist && sha256sum *.tar.gz *.deb *.rpm *.pkg.tar.zst > SHA256SUMS.txt )
           echo "### 📦 Distro packages" >> "$GITHUB_STEP_SUMMARY"
@@ -280,7 +300,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             clang libasound2-dev libvulkan-dev mesa-vulkan-drivers \
-            pkg-config spirv-tools
+            pkg-config spirv-tools cmake libwayland-dev libxkbcommon-dev \
+            libx11-dev libxcursor-dev libxrandr-dev libxi-dev libxfixes-dev libxss-dev libxtst-dev
           # Set AR to use system ar instead of llvm-ar
           echo "AR=ar" >> $GITHUB_ENV
           curl -fsSL -o "$RUNNER_TEMP/slang.tar.gz" \
@@ -367,10 +388,64 @@ jobs:
         with:
           skip-existing: true
 
+  crates:
+    name: Publish to crates.io (oarust preview)
+    runs-on: ubuntu-24.04
+    needs: [build, wheel]
+    if: github.repository == 'realminc/oa' && startsWith(github.ref, 'refs/tags/v')
+    environment: crates-io
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
+      - uses: actions/download-artifact@v4
+        with:
+          name: oa-crate
+          path: verified-crate
+      - name: Verify exact archive and publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$CARGO_REGISTRY_TOKEN" || { echo "::error::Missing CRATES_IO_TOKEN"; exit 1; }
+          version="${GITHUB_REF_NAME#v}"
+          cargo package -p oarust --locked --no-verify
+          cmp "verified-crate/oarust-${version}.crate" "target/package/oarust-${version}.crate"
+          python3 tool/build/audit_crate.py "target/package/oarust-${version}.crate" "$version"
+          # A retry may find a version published before a later job failed.
+          # Admit that version only if its registry checksum matches this archive.
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import pathlib
+          import subprocess
+          import urllib.error
+          import urllib.request
+
+          version = os.environ["GITHUB_REF_NAME"].removeprefix("v")
+          request = urllib.request.Request(
+              f"https://crates.io/api/v1/crates/oarust/{version}",
+              headers={"User-Agent": "OA-release-publication"},
+          )
+          try:
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  existing = json.load(response)["version"]
+          except urllib.error.HTTPError as error:
+              if error.code != 404:
+                  raise
+              subprocess.run(["cargo", "publish", "-p", "oarust", "--locked", "--no-verify"], check=True)
+          else:
+              archive = pathlib.Path(f"target/package/oarust-{version}.crate")
+              assert not existing["yanked"]
+              assert hashlib.sha256(archive.read_bytes()).hexdigest() == existing["checksum"]
+              print("Existing crates.io version matches the verified archive")
+          PY
+
   release:
     name: Release
     runs-on: ubuntu-24.04
-    needs: [build, wheel, pypi]
+    needs: [build, wheel, pypi, crates]
     if: github.repository == 'realminc/oa' && startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
@@ -400,10 +475,52 @@ jobs:
           name: oa-wheel
           path: dist
 
+      - name: Download verified Rust crate
+        uses: actions/download-artifact@v4
+        with:
+          name: oa-crate
+          path: verified-crate
+
+      - name: Verify the crate published by crates.io
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import pathlib
+          import time
+          import urllib.request
+
+          version = os.environ["GITHUB_REF_NAME"].removeprefix("v")
+          for attempt in range(12):
+              try:
+                  request = urllib.request.Request(
+                      f"https://crates.io/api/v1/crates/oarust/{version}",
+                      headers={"User-Agent": "OA-release-verification"},
+                  )
+                  with urllib.request.urlopen(request, timeout=30) as response:
+                      metadata = json.load(response)["version"]
+                  break
+              except Exception:
+                  if attempt == 11:
+                      raise
+                  time.sleep(5)
+          assert not metadata["yanked"]
+          request = urllib.request.Request(
+              f"https://crates.io/api/v1/crates/oarust/{version}/download",
+              headers={"User-Agent": "OA-release-verification"},
+          )
+          with urllib.request.urlopen(request, timeout=60) as response:
+              data = response.read()
+          assert hashlib.sha256(data).hexdigest() == metadata["checksum"]
+          name = f"oarust-{version}.crate"
+          assert data == pathlib.Path("verified-crate", name).read_bytes()
+          pathlib.Path("dist", name).write_bytes(data)
+          PY
+
       - name: Use the exact wheel published by PyPI
         run: |
           set -euo pipefail
-          find dist -maxdepth 1 -type f -name '*.whl' -delete
           python3 - <<'PY'
           import hashlib
           import json
@@ -434,6 +551,9 @@ jobs:
           assert len(candidates) == 1, [item["filename"] for item in candidates]
           item = candidates[0]
           target = pathlib.Path("dist", item["filename"])
+          staged = list(pathlib.Path("dist").glob("*.whl"))
+          assert staged == [target], [path.name for path in staged]
+          assert hashlib.sha256(target.read_bytes()).hexdigest() == item["digests"]["sha256"]
           urllib.request.urlretrieve(item["url"], target)
           actual = hashlib.sha256(target.read_bytes()).hexdigest()
           assert actual == item["digests"]["sha256"], (actual, item["digests"]["sha256"])
@@ -462,19 +582,23 @@ jobs:
             ## OA ${{ github.ref_name }} — Rust development preview
 
             This prerelease publishes the exact tagged OA source together with the
-            automated Rust source and SDK packages. When the independent wheel job
-            succeeds, it attaches and publishes the matching `oapython` wheel.
+            verified `oarust` crate, Rust API documentation and SDK binaries/packages.
+            Both the crates.io package and the `oapython` PyPI wheel are published
+            before this release is created; their downloaded bytes are verified.
 
             ⚠️ **Preview, not a stable API.** Read the README's honest preview
             boundaries and the changelog for this tag before depending on
             experimental hardware paths. See [release notes](https://github.com/realminc/oa/blob/main/RELEASE_NOTES.md).
 
-            ### Install (Arch / AUR)
+            ### Linux SDK binaries
+            Download the matching SDK archive or Debian/RPM/Arch package below.
+            These packages contain the Rust tutorials, examples and applications.
+
+            ### Rust
             ```bash
-            paru -S oa-bin      # prebuilt (this release)
-            # or build from source:
-            paru -S oa-git
+            cargo add oarust
             ```
+            The library namespace is `oa`. See the README for native build prerequisites.
 
             ### Python 3.10+
             ```bash
@@ -490,6 +614,7 @@ jobs:
             dist/*.deb
             dist/*.rpm
             dist/*.pkg.tar.zst
+            dist/*.crate
             dist/*.whl
             dist/*.txt
 

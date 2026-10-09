@@ -1,5 +1,7 @@
 //! Private Vulkan Video profile, format, and StdVideo translation.
 
+use super::vp9_abi;
+
 use crate::runtime::device::video::*;
 
 pub(super) struct DecodeCapabilityQuery {
@@ -142,8 +144,8 @@ pub(super) fn query_decode_details(
 			luma_bit_depth,
 			chroma_bit_depth,
 		} => {
-			let mut codec_profile = ash_vp9::vk::VideoDecodeVP9ProfileInfoKHR::default()
-				.std_profile(vp9_profile(codec_profile));
+			let mut codec_profile =
+				vp9_abi::VideoDecodeVP9ProfileInfoKHR::default().std_profile(vp9_profile(codec_profile));
 			let mut vk_profile = common_profile(
 				vp9_operation(),
 				chroma_subsampling,
@@ -151,7 +153,7 @@ pub(super) fn query_decode_details(
 				chroma_bit_depth,
 			);
 			vk_profile.p_next = std::ptr::from_mut(&mut codec_profile).cast();
-			let mut codec = ash_vp9::vk::VideoDecodeVP9CapabilitiesKHR::default();
+			let mut codec = vp9_abi::VideoDecodeVP9CapabilitiesKHR::default();
 			let mut decode = ash::vk::VideoDecodeCapabilitiesKHR {
 				p_next: std::ptr::from_mut(&mut codec).cast(),
 				..Default::default()
@@ -1340,7 +1342,7 @@ pub(super) fn with_decode_profile<T>(
 			chroma_bit_depth,
 		} => {
 			let mut codec =
-				ash_vp9::vk::VideoDecodeVP9ProfileInfoKHR::default().std_profile(vp9_profile(profile));
+				vp9_abi::VideoDecodeVP9ProfileInfoKHR::default().std_profile(vp9_profile(profile));
 			let mut profile = common_profile(
 				vp9_operation(),
 				chroma_subsampling,
@@ -1787,14 +1789,12 @@ pub(super) const fn vp9_operation() -> ash::vk::VideoCodecOperationFlagsKHR {
 	ash::vk::VideoCodecOperationFlagsKHR::from_raw(0b1000)
 }
 
-pub(super) const fn vp9_profile(
-	value: video::Vp9Profile,
-) -> ash_vp9::vk::native::StdVideoVP9Profile {
+pub(super) const fn vp9_profile(value: video::Vp9Profile) -> vp9_abi::native::StdVideoVP9Profile {
 	match value {
-		video::Vp9Profile::Profile0 => ash_vp9::vk::native::StdVideoVP9Profile_STD_VIDEO_VP9_PROFILE_0,
-		video::Vp9Profile::Profile1 => ash_vp9::vk::native::StdVideoVP9Profile_STD_VIDEO_VP9_PROFILE_1,
-		video::Vp9Profile::Profile2 => ash_vp9::vk::native::StdVideoVP9Profile_STD_VIDEO_VP9_PROFILE_2,
-		video::Vp9Profile::Profile3 => ash_vp9::vk::native::StdVideoVP9Profile_STD_VIDEO_VP9_PROFILE_3,
+		video::Vp9Profile::Profile0 => vp9_abi::native::StdVideoVP9Profile_STD_VIDEO_VP9_PROFILE_0,
+		video::Vp9Profile::Profile1 => vp9_abi::native::StdVideoVP9Profile_STD_VIDEO_VP9_PROFILE_1,
+		video::Vp9Profile::Profile2 => vp9_abi::native::StdVideoVP9Profile_STD_VIDEO_VP9_PROFILE_2,
+		video::Vp9Profile::Profile3 => vp9_abi::native::StdVideoVP9Profile_STD_VIDEO_VP9_PROFILE_3,
 	}
 }
 

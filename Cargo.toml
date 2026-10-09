@@ -1,12 +1,23 @@
 [package]
-name = "oa"
-version = "0.8.5"
+name = "oarust"
+version = "0.8.6"
 edition = "2024"
 rust-version = "1.98"
 autotests = false
 description = "GPU-first semantic computing engine written in Rust"
 repository = "https://github.com/realminc/oa"
 license = "BUSL-1.1"
+readme = "README.md"
+include = [
+  "/Cargo.toml", "/Cargo.lock", "/build.rs", "/rustfmt.toml", "/rust-toolchain.toml",
+  "/README.md", "/LICENSE", "/NOTICE.md", "/CHANGELOG.md", "/RELEASE_NOTES.md",
+  "/.oa-public-snapshot", "/src/rs/**", "/src/slang/**", "/sdk/asset/font/**",
+  "/test/rs/matrix/*.gen.rs", "/tool/gen/**",
+  "/test/rs/runtime/*_unit.rs", "/test/rs/cryptography/entropy_unit.rs", "/test/rs/ml/tape_unit.rs",
+  "/test/fixtures/cryptography/mldsa/keyGen-*.json", "/test/fixtures/cryptography/mldsa/sigGen-*.json",
+  "/test/fixtures/cryptography/mlkem/keyGen-*.json",
+  "!**/__pycache__/**", "!**/*.pyc",
+]
 
 [workspace]
 members = ["sdk/py"]
@@ -14,6 +25,7 @@ default-members = ["."]
 resolver = "3"
 
 [lib]
+name = "oa"
 path = "src/rs/lib.rs"
 
 [[test]]
@@ -232,10 +244,12 @@ path = "sdk/rs/tutorials/vision/tu_viewer_video.rs"
 name = "tu_renderer_ui"
 path = "sdk/rs/tutorials/ui/tu_renderer_ui.rs"
 
+[features]
+default = ["bundled-sdl"]
+bundled-sdl = ["sdl3/build-from-source-static"]
+
 [dependencies]
 ash = "0.38"
-# VP9 C-ABI structs only; released Ash remains the Vulkan loader and vk-mem ABI.
-ash-vp9 = { package = "ash", git = "https://github.com/ash-rs/ash.git", rev = "33d758c81475c4852166d30655c85834e11b0731", default-features = false }
 vk-mem = "0.5"
 sdl3 = { version = "0.20", features = ["ash", "use-pkg-config"] }
 
