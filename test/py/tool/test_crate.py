@@ -62,6 +62,28 @@ class CrateTests(unittest.TestCase):
 		with self.assertRaisesRegex(ValueError, "unexpected crate path"):
 			AUDITOR.audit(self.archive({"sdk/rs/tutorials/ml/rl/example.rs": b"program"}), "0.8.6")
 
+	def test_declared_sdk_support_is_admitted(self):
+		AUDITOR.audit(self.archive({
+			"src/rs/lib.rs": b'#[path = "../../sdk/rs/mod.rs"] pub mod sdk;',
+			"sdk/rs/mod.rs": b'pub mod ml;',
+			"sdk/rs/ml.rs": b'pub mod rl;',
+			"sdk/rs/ml/rl.rs": b'',
+		}), "0.8.6")
+
+	def test_missing_rust_path_is_rejected(self):
+		with self.assertRaisesRegex(ValueError, "missing crate Rust input: sdk/rs/mod.rs"):
+			AUDITOR.audit(self.archive({
+				"src/rs/lib.rs": b'#[path = "../../sdk/rs/mod.rs"] pub mod sdk;',
+			}), "0.8.6")
+
+	def test_missing_literal_rust_include_is_rejected(self):
+		for macro in ("include", "include_bytes", "include_str"):
+			with self.subTest(macro=macro):
+				with self.assertRaisesRegex(ValueError, "missing crate Rust input"):
+					AUDITOR.audit(self.archive({
+						"src/rs/lib.rs": f'{macro}!("missing.rs");'.encode(),
+					}), "0.8.6")
+
 	def test_traversal_is_rejected(self):
 		with self.assertRaisesRegex(ValueError, "unsafe crate path"):
 			AUDITOR.audit(self.archive({"../private": b"private"}), "0.8.6")

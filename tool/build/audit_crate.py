@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path, PurePosixPath
+import posixpath
 import re
 import tarfile
 import tomllib
@@ -33,7 +34,10 @@ def audit(path: Path, version: str) -> None:
 				raise ValueError(f"non-file crate entry: {member.name}")
 			name = "/".join(parts[1:])
 			library_shader = name.startswith("sdk/rs/slang/ml/rl/") and name.endswith(".slang")
-			if name in files or not (name in allowed or name.startswith(prefixes) or library_shader):
+			library_support = name in ("sdk/rs/mod.rs", "sdk/rs/data.rs", "sdk/rs/ml.rs") or (
+				name.startswith(("sdk/rs/data/", "sdk/rs/ml/")) and name.endswith(".rs")
+			)
+			if name in files or not (name in allowed or name.startswith(prefixes) or library_shader or library_support):
 				raise ValueError(f"unexpected crate path: {name}")
 			if "__pycache__" in parts or name.endswith(".pyc"):
 				raise ValueError(f"cached Python output: {name}")
@@ -77,6 +81,18 @@ def audit(path: Path, version: str) -> None:
 	for source in re.findall(r'"((?:src|sdk)/[^"\n]+\.slang)"', files["build.rs"].decode()):
 		if source not in files:
 			raise ValueError(f"missing crate shader input: {source} (declared by build.rs)")
+	# Literal Rust paths are resolved relative to the declaring file, including
+	# cfg(test) paths. OUT_DIR-generated shader includes are verified by Cargo.
+	for name, contents in files.items():
+		if not name.endswith(".rs"):
+			continue
+		text = contents.decode()
+		paths = re.findall(r'#\[path\s*=\s*"([^"\n]+)"\]', text)
+		paths += re.findall(r'\binclude(?:_bytes|_str)?!\(\s*"([^"\n]+)"\s*\)', text)
+		for relative in paths:
+			source = posixpath.normpath(posixpath.join(posixpath.dirname(name), relative))
+			if source not in files:
+				raise ValueError(f"missing crate Rust input: {source} (declared by {name})")
 	print(f"Verified {path.name}: {len(files)} public files, oa namespace, registry dependencies")
 
 

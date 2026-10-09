@@ -122,7 +122,8 @@ The Rust package is `oarust`, with library name `oa`:
 oarust = "0.8.6"
 ```
 
-The crate contains the library and its required build inputs. SDK programs are
+The crate contains the library and its required build inputs, including the
+source support modules exposed through `oa::sdk`. Runnable SDK programs are
 separate release downloads; they are not part of the registry package.
 
 Rust code uses `use oa::...`. Python installs with
