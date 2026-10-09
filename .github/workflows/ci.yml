@@ -322,7 +322,19 @@ jobs:
           python-zig version
 
       - name: Build portable ABI3 wheel
-        run: ZIG_COMMAND=python-zig python -m maturin build --release --zig --locked --compatibility manylinux_2_38
+        run: |
+          # Zig's cross-CMake configuration hides native desktop libraries.
+          # SDL uses native Clang; Zig performs the final link and maturin
+          # audits the resulting ELF symbol versions for manylinux_2_38.
+          cat > "$RUNNER_TEMP/oa-wheel-native.cmake" <<'CMAKE'
+          set(CMAKE_C_COMPILER clang)
+          set(CMAKE_CXX_COMPILER clang++)
+          set(CMAKE_AR ar)
+          set(CMAKE_RANLIB ranlib)
+          CMAKE
+          CMAKE_TOOLCHAIN_FILE="$RUNNER_TEMP/oa-wheel-native.cmake" \
+            ZIG_COMMAND=python-zig python -m maturin build \
+              --release --zig --locked --compatibility manylinux_2_38
 
       - name: Test installed wheel package integrity
         run: |
@@ -359,6 +371,8 @@ jobs:
           grep -q 'oa/_native.pyi' wheel-files.txt
           grep -q 'oa/py.typed' wheel-files.txt
           grep -q 'oa/ml/matrix.py' wheel-files.txt
+          grep -q 'licenses/NOTICE.md' wheel-files.txt
+          grep -q 'licenses/LICENSE' wheel-files.txt
           if grep -q '__pycache__\|\.pyc' wheel-files.txt; then
             echo "::error::wheel contains Python cache files"
             exit 1
