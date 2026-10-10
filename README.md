@@ -14,8 +14,8 @@ continues separately as the donor and compatibility reference.
 
 [![Release](https://img.shields.io/github/v/release/realminc/oa?include_prereleases&label=preview)](https://github.com/realminc/oa/releases)
 [![CI](https://github.com/realminc/oa/actions/workflows/ci.yml/badge.svg)](https://github.com/realminc/oa/actions/workflows/ci.yml)
-[![Crates.io](https://img.shields.io/crates/v/oarust?label=crates.io)](https://crates.io/crates/oarust)
-[![PyPI](https://img.shields.io/pypi/v/oapython?label=pypi)](https://pypi.org/project/oapython/)
+[![Crates.io](https://img.shields.io/crates/v/oarust?label=crates.io&cacheSeconds=300)](https://crates.io/crates/oarust)
+[![PyPI](https://img.shields.io/pypi/v/oapython?label=pypi&cacheSeconds=300)](https://pypi.org/project/oapython/)
 [![License](https://img.shields.io/badge/license-BSL--1.1-3b3b3b)](LICENSE)
 
 <p align="center">
